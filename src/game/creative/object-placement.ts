@@ -22,6 +22,9 @@ import {
   validateBaseReferenceFields, validateEllipticPlacementFields, validateLagrangePlacementFields,
   type PlacementFieldIssue,
 } from './placement-validation';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
+import { pointPlacement } from '../marker/marker-placement';
+import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
 import type * as THREE from 'three/webgpu';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -33,9 +36,6 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEventSink } from '../run-events';
 import type { HudLayers } from '../hud/hud-layers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import { MARKER_PRIORITY } from '../marker/marker-priority';
-import { pointPlacement } from '../marker/marker-placement';
-import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
 
 // 軌道上へ配置できる自機の上限隻数(SPEC GAME.md 9.1)。
 export const MAX_PLACED_SHIPS = 50;
@@ -248,6 +248,7 @@ export class ObjectPlacement {
     if (!(motion instanceof OrbitingMotion)) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
+    // いまの時刻の主天体・副天体の系で、ハロー/リサジューの初期状態を解く。
     const t = this.roster.simTime;
     const system = secondaryFrameOf(this.celestialSystem.celestialMotions, t, motion, t);
     if (system === null) {

@@ -1,8 +1,5 @@
 // 戦闘・マップの2台のカメラ視点を所有し、進行に合わせる規則と直列化をまとめる。
 import { frameRoleAnchorId } from '../../physics/frame';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { RunEvent, RunEventSink } from '../run-events';
-import type { ViewMode } from '../view/view-mode';
 import {
   type CameraFrameSample,
   type FocusCameraConfig,
@@ -10,6 +7,9 @@ import {
   type FocusCameraSource,
   type SerializedFocusCameraSelection,
 } from './focus-camera-selection';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { RunEvent, RunEventSink } from '../run-events';
+import type { ViewMode } from '../view/view-mode';
 
 export const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
 const COMBAT_CAMERA_INIT_DIST = 38; // 注視距離 [m]
@@ -19,13 +19,13 @@ export interface SerializedCameraSelection {
   readonly map: SerializedFocusCameraSelection;
 }
 
+// 2台のカメラそれぞれの、進行直後の追従の材料。
 export interface CameraFrameSamples {
   readonly combat: CameraFrameSample;
   readonly map: CameraFrameSample;
 }
 
-// マップのカメラだけを読む面。マップ上の当たり判定・窓・計画編集・マップビューは、
-// 2台ぶんではなくこれを受ける。
+// マップのカメラの注視と距離を読む面。
 export interface MapCameraSource {
   readonly map: Pick<FocusCameraSource, 'focus' | 'distance'>;
 }

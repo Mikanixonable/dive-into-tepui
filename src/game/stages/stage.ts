@@ -1,14 +1,21 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
-import * as THREE from 'three/webgpu';
-import { Enemy } from '../dynamic/dynamic-entity/enemy';
 import { isPlayer, Player, type PlayerPlacement } from '../player/player';
 import { strongestAttractor } from '../../physics/attractor';
 import { Logistics, type SerializedLogistics } from './stage-utils/logistics';
 import { ScoreCounter, type SerializedScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
+import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
+import { profileAtOrNull } from '../../physics/ephemeris/profile';
+import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
+import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
+import { v3 } from '../../math/vec3';
+import { solarSystem } from '../celestial/solar-system/solar-system';
+import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
+import type * as THREE from 'three/webgpu';
+import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { HudLayers } from '../hud/hud-layers';
-import { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
@@ -17,21 +24,13 @@ import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';
-import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
-import { profileAtOrNull } from '../../physics/ephemeris/profile';
-import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
-import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { v3 } from '../../math/vec3';
-import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
-import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
 
-// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
-// 自分の epoch としてこれを宣言する。ステージの宣言以外から読まない(元期は共有の定数ではなく、
-// ステージの宣言)。
+// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。ステージの epoch の
+// 宣言以外から読まない(元期は共有の定数ではなく、ステージの宣言)。
 export const STORY_EPOCH: TdbJulianDate =
   calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 
@@ -223,8 +222,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // ステータスパネルを同期する。camera・displayTime は配置プレビューなどステージ固有の
-  // 描画物を持つサブクラスが使う。
+  // ステータスパネルを同期する。
   public sync(
     camera: CameraFrame, _displayTime: number,
   ): void {
@@ -241,8 +239,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills);
   }
 
-  // 台本が相手にする自艦。補給の投入先・敵の追跡先・ステータスパネルの表示対象はどれもこれ。
-  // 操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
+  // 台本が相手にする自艦。操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
   protected get ship(): Player | null {
     const controlled = this._controlSelection.current;
     if (controlled instanceof Player) return controlled;
@@ -297,7 +294,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 毎フレーム呼ぶ。台本が相手にする自艦は this.ship から引く。
   public abstract update(dt: number, simTime: number, simSpeed: SimSpeedManager): void;
 
-  // 時刻固定イベントを持つステージだけが override する。
+  // 時刻に固定したイベントの、次の時刻(無ければ null)と、その時刻に達したときの適用。既定ではイベントを持たない。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }
   public applySimulationEvents(_simTime: number): void { }
 

@@ -9,14 +9,14 @@ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { hudRail } from '../hud/hud-root';
 import { isPlayer } from '../player/player';
 import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
+import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
+import { FREE_PLAY_STAGE_RULES } from './stage-rules';
+import { queuedEventSink, type RunEventSink } from '../run-events';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
-import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
-import { FREE_PLAY_STAGE_RULES } from './stage-rules';
-import { queuedEventSink, type RunEventSink } from '../run-events';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 
 // クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
@@ -65,7 +65,7 @@ export class CreativeStage extends Stage {
   private constructor(
     deps: StageDeps,
     waveAttack?: WaveAttack,
-    // 敵の波状攻撃を発生させるかどうか(既定 OFF)。
+    // 敵の波状攻撃を発生させるかどうか。
     private waveAttackEnabled = false,
     manualSpawn?: ManualSpawn,
     objectPlacement?: ObjectPlacement,
@@ -138,12 +138,12 @@ export class CreativeStage extends Stage {
 
   // 弾薬の自動投入の可否を切り替える。
   public setResupplyEnabled(on: boolean): void {
-    this.logistics.resupplyEnabled = on;
+    this.logistics.setResupplyEnabled(on);
   }
 
   // RCS燃料の自動投入の可否を切り替える。
   public setFuelResupplyEnabled(on: boolean): void {
-    this.logistics.rcsFuelResupplyEnabled = on;
+    this.logistics.setFuelResupplyEnabled(on);
   }
 
   // 敵の波状攻撃の可否を切り替える。
@@ -153,7 +153,7 @@ export class CreativeStage extends Stage {
 
   // 手動スポーンが使う距離 [m] を差し替える。
   public setSpawnDistance(distanceM: number): void {
-    this.manualSpawn.spawnDistance = distanceM;
+    this.manualSpawn.setSpawnDistance(distanceM);
   }
 
   // 操作艦の弾薬チェーンへマガジンを1つ追加する。操作艦がいなければ、操作艦が要ることを記録する。
@@ -204,6 +204,7 @@ export class CreativeStage extends Stage {
   public placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void {
     if (entityKind === 'player'
       && this._dynamicSystem.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) return;
+    // 自機は配置の指定から艦として置き、それ以外は作った実体をそのまま顔ぶれへ入れる。
     const placed = this.objectPlacement.createObject(name, entityKind, state);
     if (placed.kind === 'player') {
       const ship = this.addPlayer(placed.placement);
@@ -236,6 +237,7 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
+  // 直近の sync が組んだ、配置プレビューのマーカーの宣言。
   public override get markerDeclarations(): readonly MarkerDeclaration[] {
     return this.objectPlacement.markerDeclarations;
   }
@@ -288,7 +290,7 @@ export class CreativeStage extends Stage {
     return false;
   }
 
-  // 艦の喪失を、決着させずに知らせるだけで済ませる。
+  // 艦の喪失を出来事として記録する。
   public recordPlayerLost(reason: string): void {
     this._dynamicSystem.events.record({ kind: 'shipLost', reason });
   }
