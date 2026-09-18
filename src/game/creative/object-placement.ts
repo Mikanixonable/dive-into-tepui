@@ -55,32 +55,62 @@ export type PlacedObject =
   | { readonly kind: 'player'; readonly placement: PlayerPlacement }
   | { readonly kind: 'entity'; readonly entity: DynamicEntity };
 
+// 配置した自機の id の、次に発番する連番。
+export interface SerializedObjectPlacement {
+  readonly playerIdAllocator: number;
+}
+
 export class ObjectPlacement {
   private readonly panel: ObjectPlacerPanel;
   private readonly previewView: ObjectPlacementPreviewView;
   // このフレームのプレビュー ▷ マーカーの宣言。
   private readonly declarations: MarkerDeclaration[] = [];
-  private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
+  private readonly playerIdAllocator: EntityIdAllocator;
 
   // 検証を通った配置の指定の渡し先。実体を作るのは受け取った側。
   public onPlace: ((name: string, entityKind: DynamicEntityKind, state: KinematicState) => void) | null = null;
 
-  // 配置パネルとプレビューの表示資源を組む。
-  public constructor(
+  // 配置パネルとプレビューの表示資源を組む。playerIdCounter は配置した自機の id の次に発番する
+  // 連番で、省けば連番の初めから発番する。
+  private constructor(
     hud: HudLayers,
     private readonly scene: THREE.Scene,
     private readonly roster: EntityRoster,
     private readonly idAllocators: EntityIdAllocators,
     private readonly events: RunEventSink,
     private readonly celestialSystem: CelestialSystem,
+    playerIdCounter = 0,
   ) {
-    // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦の id を予約する。
-    for (const p of roster.all().filter(isPlayer)) this.playerIdAllocator.next(p.id);
+    this.playerIdAllocator = new EntityIdAllocator('creative-player-', playerIdCounter);
 
     this.previewView = new ObjectPlacementPreviewView(scene, PREVIEW_LINE_STYLE);
 
     this.panel = new ObjectPlacerPanel(hud.mapRoot, hud.layers.popup, celestialSystem, hud.overlayManager);
     this.panel.onConfirm = (name, form) => this.place(name, form);
+  }
+
+  // 新しいランの配置を、自機の id の連番の初めから組む。
+  public static create(
+    hud: HudLayers, scene: THREE.Scene, roster: EntityRoster, idAllocators: EntityIdAllocators,
+    events: RunEventSink, celestialSystem: CelestialSystem,
+  ): ObjectPlacement {
+    return new ObjectPlacement(hud, scene, roster, idAllocators, events, celestialSystem);
+  }
+
+  // 直列化した連番から復元する。
+  public static deserialize(
+    serialized: SerializedObjectPlacement,
+    hud: HudLayers, scene: THREE.Scene, roster: EntityRoster, idAllocators: EntityIdAllocators,
+    events: RunEventSink, celestialSystem: CelestialSystem,
+  ): ObjectPlacement {
+    return new ObjectPlacement(
+      hud, scene, roster, idAllocators, events, celestialSystem, serialized.playerIdAllocator,
+    );
+  }
+
+  // 配置した自機の id の連番を直列化した形へ畳む。
+  public serialize(): SerializedObjectPlacement {
+    return { playerIdAllocator: this.playerIdAllocator.serialize() };
   }
 
   // オブジェクト配置モーダルを開く。focusId が基準天体になれる ID なら、基準天体の初期選択に使う。

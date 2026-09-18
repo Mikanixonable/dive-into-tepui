@@ -2,6 +2,8 @@
 // 引くと、基底 → 具象 → 基底の実行時循環になるので、辞書は具象だけを import するここに置く。
 import type * as THREE from 'three/webgpu';
 import { Base, type SerializedBase } from './base';
+import { Bullet, type SerializedBullet } from './bullet';
+import { DebrisPiece, type SerializedDebrisPiece } from './debris-piece';
 import { DetachedBooster, type SerializedDetachedBooster } from './detached-booster';
 import { AmmoPickup, RcsFuelPickup, type SerializedAmmoPickup, type SerializedRcsFuelPickup } from './pickup';
 import { MetalEnemy, type SerializedMetalEnemy } from './metal-enemy';
@@ -18,7 +20,9 @@ export type SerializedDynamicEntity =
   | SerializedAmmoPickup
   | SerializedRcsFuelPickup
   | SerializedDetachedBooster
-  | SerializedBase;
+  | SerializedBase
+  | SerializedBullet
+  | SerializedDebrisPiece;
 
 // 実体クラスの静的側。直列化した実体の復元はここから引く。新しく作る引数は具象の create が持つ。
 export interface DynamicEntityClass {
@@ -32,7 +36,7 @@ export interface DynamicEntityClass {
 }
 
 const ENTITY_CLASSES: readonly DynamicEntityClass[] = [
-  Player, MetalEnemy, ProteinEnemy, AmmoPickup, RcsFuelPickup, DetachedBooster, Base,
+  Player, MetalEnemy, ProteinEnemy, AmmoPickup, RcsFuelPickup, DetachedBooster, Base, Bullet, DebrisPiece,
 ];
 
 // 直列化された種別タグは未検証の文字列なので、知らない種別なら null を返す。
