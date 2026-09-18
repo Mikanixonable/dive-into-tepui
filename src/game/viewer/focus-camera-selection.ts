@@ -94,6 +94,7 @@ export interface FocusCameraSource {
   availableRotationFollows(sample: CameraFrameSample): readonly CameraRotationFollow[];
 }
 
+// 新しいゲームと視点のリセットで始める視点。
 interface FocusCameraInitial {
   readonly angles: PolarEuler;
   readonly dist: number;
@@ -102,11 +103,15 @@ interface FocusCameraInitial {
   readonly follow: CameraRotationFollow | null;
 }
 
+// ビューごとに固定の、カメラの既定の視点と規則。
 export interface FocusCameraConfig {
   readonly view: 'combat' | 'map';
+  // 注視対象を見失ったとき、注視を保つか原点天体へ戻すか。
   readonly focusLossPolicy: 'hold' | 'fallToOrigin';
   readonly initial: FocusCameraInitial;
+  // オイラー操作の極軸を、基準の上方向と対象の姿勢のどちらから取るか。
   readonly eulerPole: 'reference' | 'attitude';
+  // 視点のリセットで、初期値へ戻すか、視線を保って上方向とずらしだけを戻すか。
   readonly reset: 'initial' | 'orientation';
 }
 
@@ -239,7 +244,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     }
   }
 
-  // 導出側が喪失を確定した同じ FocusTarget をまだ指していれば原点天体へ戻す。
+  // fallToOrigin のカメラが、見失ったと確定した注視 lostFocus をまだ指していれば原点天体へ戻す。
   private followFocusLoss(lostFocus: FocusTarget | null): void {
     if (this.config.focusLossPolicy !== 'fallToOrigin' || lostFocus !== this._focus) return;
     this.setFocus({ kind: 'object', id: this.celestialBodies.originId });
@@ -268,6 +273,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     if (this._focus.kind === 'point') return [];
     const id = this._focus.id;
     const out: CameraRotationFollow[] = [];
+    // 天体なら自分と衛星の公転・自転を、実体なら重力源まわりの公転と姿勢を選べる。
     const body = this.celestialBodies.findMotion(id);
     if (body !== null) {
       if (body.primary !== null) out.push({ kind: 'revolution', id });
@@ -400,11 +406,13 @@ export class FocusCameraSelection implements FocusCameraSource {
 
   // 視点を基準面の真上または真横へ回し、パンを戻す。
   public setReferenceView(view: CameraReferenceView, sample: CameraFrameSample): void {
+    // 基準面の法線を、視点を持つ座標系で表す。
     const transform = this.celestialBodies.frames.transformAt(
       this._cameraFrame, sample.displayTime, sample.frameAnchors,
     );
     const normal = norm(frameDirVector(toFrameDir(transform, this.framePlaneNormal(sample))));
     const currentOffset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
+    // 真上は法線から見下ろし、真横はいまの視線を面へ倒す。縮退したら春分方向、次に右軸で代える。
     let offset: Vec3;
     let up: Vec3;
     if (view === 'above') {
@@ -429,6 +437,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     if (this.config.reset === 'initial') {
       this.resetToInitial();
     } else {
+      // 視線はそのままで、上方向を基準の上方向へ揃え、ずらしを戻す。
       const transform = this.celestialBodies.frames.transformAt(
         this._cameraFrame, sample.displayTime, sample.frameAnchors,
       );
@@ -450,6 +459,7 @@ export class FocusCameraSelection implements FocusCameraSource {
         rotatingWith: this._focus.frame.rotatingWith,
         point: { x: this._focus.point.x, y: this._focus.point.y, z: this._focus.point.z },
       };
+    // 向きと注視距離を、注視点からカメラへの変位 offset と上方向 up の組へ畳む。
     const rotation = this.orientation.raw;
     const offset = scale(qRotate(rotation, LOCAL_FORWARD), this._distance);
     const up = qRotate(rotation, LOCAL_UP);
@@ -498,7 +508,8 @@ export class FocusCameraSelection implements FocusCameraSource {
     return norm(frameDirVector(toFrameDir(transform, polarEci)));
   }
 
-  // いま選ばれている基準面の法線(ECI)。面を決める天体が居なければ黄道極へ落ちる。
+  // いま選ばれている基準面の法線(ECI)。月の軌道面は月が公転していなければ黄道極、赤道面は
+  // 地球(居なければ原点天体)の自転軸が引けなければ ECI の極で代える。
   private framePlaneNormal(sample: CameraFrameSample): Vec3 {
     if (this._referencePlane === 'ecliptic') return ECL_POLE_ECI;
     if (this._referencePlane === 'moonOrbit') {
@@ -519,6 +530,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     const frame = frames.frameOf(this.celestialBodies.originId, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
+    // 同じ表示時刻の新旧の座標系で、視線・上方向・ずらしを表し直す。
     const fromTransform = frames.transformAt(from, sample.displayTime, sample.frameAnchors);
     const toTransform = frames.transformAt(frame, sample.displayTime, sample.frameAnchors);
     const rotation = this.orientation.effective();
