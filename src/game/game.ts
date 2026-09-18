@@ -1,640 +1,240 @@
-// ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
-// 段 5 でモデル層の根・表示の導出の根・ランの組み立ての3つへ分けるので、それまで計画の外で分割しない(1.2 の暫定)。
-import * as THREE from 'three/webgpu';
-import type { PerfCounts } from './perf-counts';
-import { proteinMotionFrameSample, type ProteinMotionFrameSample } from './protein/protein-motion-metrics';
+// 1ランのモデル層の根: 進行と視点を所有し、直列化と進行の位相を持つ。
 import { SECTION, type FrameSections } from './frame-sections';
-import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import { CameraSystem } from './camera/camera-system';
-import type { Stage, StageClass } from './stages/stage';
 import { CommandQueue } from './command-queue';
-import { controlSelectionCommands, type ControlSelectionCommands } from './control-selection-commands';
-import { simSpeedCommands, type SimSpeedCommands } from './dynamic/sim-speed-commands';
-import { deployableCommands, type DeployableCommands } from './player/deployable-commands';
-import { boosterCommands, type BoosterCommands } from './player/booster-commands';
-import { objectMenuCommands } from './pickable/object-menu-commands';
-import { planCommands } from './plan/plan-commands';
-import type { MarkerDevice } from '../marker/marker-device';
-import type { MarkerSink } from '../marker/marker-sink';
-import type { MarkerDeclaration } from '../marker/marker-declaration';
-import { MARKER_PRIORITY } from './marker/marker-priority';
-import { PlayerMarkers } from './marker/player-markers';
-import { isPlayer } from './player/player';
-import { CelestialMarkers } from './marker/celestial-markers';
-import { EquatorNodeManager } from './marker/equator-node-manager';
-import { ControlSelection } from './control-selection';
-import { Targeter } from './targeter';
-import { PlanDisplay } from './plan/plan-display';
-import { PlanGuide } from './plan/plan-guide';
-import { DisplayWindowManager, timeLabelSettingOf, trajectoryDemandOf } from './display-window-manager';
-import { SimSpeedManager } from './dynamic/sim-speed-manager';
-import { DynamicSystem } from './dynamic/dynamic-system';
+import { ControlSelection, type SerializedControlSelection } from './control-selection';
+import { PlanNodeRules, type SerializedPlanNodeRules } from './plan/plan-node-rules';
+import { SimSpeedManager, type SerializedSimSpeedManager } from './dynamic/sim-speed-manager';
+import { DynamicSystem, type SerializedDynamicSystem } from './dynamic/dynamic-system';
 import { RunEventLog } from './run-events';
-import { RunEventPresenter } from './run-event-presenter';
-import { FlashPresenter } from './flash-presenter';
-import { FlashEffectsView } from '../render/vfx/flash-effects-view';
-import { EntityLineManager } from './lines/entity-line-manager';
 import { Predictor } from './dynamic/predictor';
-import { Input } from '../input/input';
-import { TouchControls } from './hud/touch-controls';
-import type { Hud } from './hud/hud';
-import type { PauseMenu } from '../hud/windows/pause-menu';
-import { WorldSfx } from '../audio/sfx/world-sfx';
-import { UiSfx } from '../audio/sfx/ui-sfx';
-import type { AudioEngine } from '../audio/audio-engine';
-import type { RenderPipeline } from '../render/pipeline/render-pipeline';
-import type { GpuTimingSink } from '../render/gpu-timings';
-import type { GraphicsSettingsData } from '../render/graphics-settings';
-import type { RenderStyle } from '../render/render-style';
-import type { Viewport } from '../render/viewport';
-import { CameraView } from '../render/camera/camera-view';
-import type { CameraFrame } from '../render/camera/camera-frame';
-import type { CelestialSystem } from './celestial/celestial-system';
-import { ViewManager } from './view/view-manager';
-import { CombatView } from './view/combat-view';
-import { MapView } from './view/map-view';
-import { NavTargetPresenter } from './nav-target-presenter';
-import { FrameAnchors } from './frame-anchors';
-import { resolveOrbitReference } from './orbit-reference';
-import { Viewer } from './viewer/viewer';
-import { navTargetCommands, type NavTargetCommands } from './viewer/nav-target-commands';
-import { orbitReferenceCommands, type OrbitReferenceCommands } from './viewer/orbit-reference-commands';
-import { orbitGuideCommands } from './viewer/orbit-guide-commands';
-import { predictPanelCommands } from './viewer/predict-panel-commands';
-import { viewCommands } from './viewer/view-commands';
-import { cameraCommands, type CameraCommands } from './viewer/camera-commands';
-import { entityDisplayCommands } from './viewer/entity-display-commands';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
-import { ObjectWindows } from './pickable/object-windows';
-import { SAVE_VERSION, type GameSaveData } from './save/save-data';
-import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
-import type { LoadingProgress } from './loading-progress';
-import type { GameHost } from './game-host';
+import { Viewer, type SerializedViewer } from './viewer/viewer';
+import { ephemerisContextFor, type EphemerisContext } from '../physics/ephemeris/ephemeris-context';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
-import { KEY_MAPPING as K } from '../input/key-mapping';
-import { frameRoleOf } from '../physics/frame';
-import { ViewBadge } from './hud/view-badge';
-import { FrameControls } from './hud/frame/frame-controls';
-import { syncControlledLoopSfx } from './controlled-loop-sfx';
-import { ViewOptionsControl } from './hud/panels/view-options-control';
-import { MapVisibilityPolicy } from './map/visibility-policy';
-import type { ViewOptionsSettings } from './hud/panels/view-options-control';
-import type { BurnManagementPanelHandlers } from './hud/panels/burn-management-panel';
-import type { SettingValue } from '../settings/setting-value';
-import type { ThemePalette } from '../theme';
-import { len, sub } from '../math/vec3';
-import { orbitInfo, relativeInfo } from './orbit-info';
-import { isEnemy } from './dynamic/dynamic-entity/enemy';
-import { isProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
-import { isPlayerMotion } from './player/player-motion';
-import { aliveCombatTarget } from './dynamic/dynamic-entity/combat-target';
-import { focusTargetId } from './viewer/focus-target';
-import { frameRoleName } from './hud/frame/frame-labels';
 import { summarizeRun, type RunSummary } from './run-summary';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
-import type { OrbitReference } from './orbit-reference';
-import type { HudPanelViewModels } from './hud/hud';
-import type { ViewMode } from './view/view-mode';
-import type { ApproachTargetSource } from './hud/orbit/orbit-analysis-data';
-import type { EnemyContact } from './hud/panels/enemies-panel';
-import type { VesselPanelViewModel } from './hud/panels/vessel-panel';
-import type { OrbitPanelViewModel } from './hud/orbit/orbit-panel';
-import type { TargetPanelViewModel } from './hud/panels/target-panel';
-import { GameInputRouter, type GameInputPort } from './input/game-input-router';
-import { gameCommand } from './input/game-commands';
-import { rawGameInputAdapter } from './input/raw-game-input-adapter';
-import { PilotInput } from './input/pilot-input';
+import type { GameScene } from '../render/scene';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { SerializedStage, Stage, StageClass } from './stages/stage';
+import type { HudLayers } from './hud/hud-layers';
+import type { CelestialSystem } from './celestial/celestial-system';
+import type { LoadingProgress } from './loading-progress';
 import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
+import type { TrajectoryDemand } from './dynamic/trajectory-demand';
+import type { CameraFrameSamples } from './viewer/camera-selection';
 
-// 新規開始のブリーフィングを出しておく時間 [ms]。
-const BRIEFING_TOAST_MS = 12000;
+// SerializedGame の形式バージョン。上げるのは構造が変わって互換を切るときで、上げた時点で
+// それ以前に書かれた記録は読めなくなる。項目を増やすだけなら版は据え置き、省略可能にして
+// 欠けた項目は復元で新しく作ったときの初期値で補う(SAVE.md「形式の版」)。
+export const SERIALIZATION_VERSION = 4;
+
+// 1ランの直列化した形。進行と視点を分けて持つ(R4)。
+export interface SerializedGame {
+  readonly version: number;
+  readonly progress: SerializedProgress;
+  readonly viewer: SerializedViewer;
+}
+
+// 進行の直列化した形。Game 自身の値と、Game が持つ進行の所有者ごとの記録から成る。
+export interface SerializedProgress {
+  readonly stageId: string;
+  /**
+   * そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
+   * 暦データの識別。
+   */
+  readonly ephemerisContext: EphemerisContext;
+  readonly dynamicSystem: SerializedDynamicSystem;
+  readonly simSpeedManager: SerializedSimSpeedManager;
+  readonly controlSelection: SerializedControlSelection;
+  readonly stage: SerializedStage;
+  readonly planNodeRules: SerializedPlanNodeRules;
+}
 
 export class Game {
-  private readonly _scene: THREE.Scene;
-  private readonly renderer: THREE.WebGPURenderer;
-  private readonly pipeline: RenderPipeline;
-  private readonly gpu: GpuTimingSink;
-  public readonly input: Input;
-  private readonly touchControls: TouchControls | null;
-  private readonly _hud: Hud;
-  private readonly _worldSfx: WorldSfx;
-  private readonly pauseMenu: PauseMenu;
-  private readonly markers: MarkerDevice;
-  // 天体系・ステージ・長押しのように、このランの組み立てだけが持ち主になるマーカー。
-  private readonly frameMarkers: MarkerSink;
-  private readonly frameDeclarations: MarkerDeclaration[] = [];
-  private readonly playerMarkers: PlayerMarkers;
-  private readonly celestialMarkers: CelestialMarkers;
-  public readonly cameraSystem: CameraSystem;
-  // 論理視点を表示値へ写す側。sync が確定させた1フレームぶんの値を cameraFrame が持つ。
-  private readonly cameraView = new CameraView();
-  private cameraFrame: CameraFrame | null = null;
-  // 操作対象(艦 0..n 隻と基地のうちどれを操作するか)の切替を持つ。
-  private readonly controlSelection: ControlSelection;
+  // 顔ぶれの予測軌道のキャッシュ。需要が求める長さまで伸ばす。
+  public readonly predictor: Predictor;
+
   // いま操作している対象。操作しているものが無ければ null。
   public get activeControllable(): Controllable | null { return this.controlSelection.current; }
-  public readonly simSpeedManager: SimSpeedManager;
-
-  private readonly planDisplay: PlanDisplay;
-  // 直近ノードの消化・達成通知と、その実行ガイドのマーカー。
-  private readonly planGuide: PlanGuide;
-  // このフレームの表示座標系と表示時刻窓。update で確定させ、sync が読む。
-  public readonly displayWindowManager: DisplayWindowManager;
-  private readonly viewManager: ViewManager;
-  private readonly objectWindows: ObjectWindows;
-
-  // モデル層の外から届いた書き換えを溜める列。進行の位相の先頭で適用する。
-  private readonly commands = new CommandQueue();
-
-  // 直近の進行で起きた一回きりの出来事の記録と、それを音・通知へ写す読み手。
-  private readonly runEvents = new RunEventLog();
-  private readonly runEventPresenter: RunEventPresenter;
-  // 操作対象の差し替えを列へ積む口。
-  private readonly controlSelectionCommands: ControlSelectionCommands;
-  // 時間加速の段の差し替えを列へ積む口。
-  private readonly simSpeedCommands: SimSpeedCommands;
-  // 太陽電池・放熱板の展開/収納を列へ積む口。
-  private readonly deployableCommands: DeployableCommands;
-  // ブースターの追加・点火・分離を列へ積む口。
-  private readonly boosterCommands: BoosterCommands;
-
-  public readonly activeStage: Stage;
-  // ポーズ中か。時間倍率とは独立に時間を止める。決着は止めない — 結果画面の裏でも
-  // 弾・敵・補給タイマーは通常どおり進む(GAME.md §2.1)。
-  public get isPaused(): boolean { return this._hud.overlayManager.isGamePaused(); }
-
-  private readonly _celestialSystem: CelestialSystem;
-  public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
-  // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
-  private readonly viewOptions: ViewOptionsControl;
-  // マップ・天球の表示設定と、表示パネルのタブの選択。
-  private readonly viewOptionSettings: ViewOptionsSettings;
-  // 選ばれている配色。
-  private readonly themePalette: SettingValue<ThemePalette>;
-  // ブースターの取り付け・点火・切り離しの口。
-  private readonly boosterHandlers: BurnManagementPanelHandlers;
-
-  public readonly targeter: Targeter;
-  // 遊ぶ人の選択のうち、セーブごとに持つもの。
-  private readonly viewer: Viewer;
-  // 航法ターゲットの差し替えを列へ積む口。
-  private readonly navTargetCommands: NavTargetCommands;
-  // 軌道要素の基準の差し替えを列へ積む口。
-  private readonly orbitReferenceCommands: OrbitReferenceCommands;
-  // 2台のカメラ視点へ変更を積む口。
-  private readonly cameraCommandPort: CameraCommands;
-  // 航法ターゲットの解決と、その相対交点・再接近点のマーカー。
-  private readonly navTargetPresenter: NavTargetPresenter;
-  private readonly frameAnchors: FrameAnchors;
-  public readonly dynamicSystem: DynamicSystem;
-  // 閃光・ガスパフなど、寿命だけで消えていく一過性の見た目。
-  private readonly flashPresenter = new FlashPresenter();
-  private readonly flashEffectsView: FlashEffectsView;
-  private readonly entityLines: EntityLineManager;
-  private readonly equatorNodes: EquatorNodeManager;
-  private readonly predictor: Predictor;
-  private readonly viewBadge: ViewBadge;
-  private readonly frameControls: FrameControls;
-  // 計測区間の境界を打つ先。
-  private readonly sections: FrameSections;
-  private readonly inputRouter: GameInputRouter;
-  // 生の入力を操作対象の操作量へ解釈する側と、その入力を受け取る口。
-  private readonly pilotInput = new PilotInput();
-  private readonly pilotPorts: readonly GameInputPort[];
-
-  // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
-  // 組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
-  public static async create(
-    host: GameHost,
-    stageClass: StageClass,
-    audioEngine: AudioEngine,
-    pauseMenu: PauseMenu,
-    initialSave: GameSaveData | undefined,
-    startEpoch: TdbJulianDate | undefined,
-    graphics: GraphicsSettingsData,
-    renderStyle: RenderStyle,
-    progress: LoadingProgress,
-  ): Promise<Game> {
-    const { scene: gs } = host;
-    await progress.enter('system');
-    // このランの元期。セーブの元期、開始日時の指定、ステージの宣言の順に採る — 保存された simTime
-    // はセーブの元期からの経過秒なので、別の元期で組むと全天体がずれる。
-    const savedJdTdb = initialSave?.ephemerisContext.epochJdTdb;
-    const epoch = savedJdTdb !== undefined ? createJulianDate('TDB', savedJdTdb) : startEpoch ?? stageClass.epoch;
-    const celestialSystem = await stageClass.createCelestialSystem(
-      epoch, (ratio) => progress.within(ratio), gs.renderer,
-    );
-    await progress.enter('bodies');
-    celestialSystem.build(gs.scene, gs.pipeline);
-    await progress.enter('run');
-    const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, initialSave);
-    // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
-    // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
-    game.update(0, 0, gs.viewport);
-    game.sync(graphics, renderStyle, gs.viewport, 0);
-    await progress.enter('shaders');
-    // カメラは直前の sync が確定させたものを使う — 捨てる1フレームと同じ行列で組ませる。
-    await gs.pipeline.compile(
-      gs.scene,
-      game.cameraFrame!.camera,
-      renderStyle,
-      (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
-    );
-    // 出力段の階調変換は three が実際に描いたときにしか組まないので、捨てる 1 フレームで組ませる。
-    game.render(renderStyle);
-    return game;
-  }
-
-  // このランを1件ぶんのセーブ本体へ畳む。
-  public serialize(): GameSaveData {
-    return {
-      version: SAVE_VERSION,
-      stageId: this.activeStage.id,
-      simTime: this.simTime,
-      ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
-      entities: this.dynamicSystem.serialize(
-        (id) => this.viewer.entityDisplay.showsTrajectoryLine(id), this.viewer.entityDisplay.proteinDisplay,
-      ),
-      activeControlledId: this.activeControllable?.id ?? null,
-      stage: this.activeStage.serialize(),
-      // 遊ぶ人の選択。
-      ...this.viewer.serialize(),
-    };
-  }
-
-  // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。星系は実体化済みで渡る。
-  private constructor(
-    host: GameHost,
-    stageClass: StageClass,
-    audioEngine: AudioEngine,
-    pauseMenu: PauseMenu,
-    celestialSystem: CelestialSystem,
-    initialSave?: GameSaveData,
-  ) {
-    this.sections = host.sections;
-    this._scene = host.scene.scene;
-    this.renderer = host.scene.renderer;
-    this.pipeline = host.scene.pipeline;
-    this.gpu = host.scene.gpu;
-    this._celestialSystem = celestialSystem;
-    this._hud = host.hud;
-    this.viewOptionSettings = host.viewOptions;
-    this.themePalette = host.themePalette;
-    this._worldSfx = new WorldSfx(audioEngine);
-    const uiSfx = new UiSfx(audioEngine);
-    this.runEventPresenter = new RunEventPresenter(this._worldSfx, uiSfx, this._hud);
-    this.pauseMenu = pauseMenu;
-
-    this.markers = host.markers;
-    this.frameMarkers = this.markers.createGroup();
-    this.playerMarkers = new PlayerMarkers(this.markers.createGroup());
-
-    this.flashEffectsView = new FlashEffectsView(this._scene);
-    this.dynamicSystem = new DynamicSystem(
-      this._scene, this.runEvents, celestialSystem,
-      this.sections, initialSave?.simTime ?? 0, initialSave);
-    this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markers.createGroup());
-    this.celestialMarkers = new CelestialMarkers(this.markers.createGroup(), celestialSystem);
-    this.simSpeedManager = new SimSpeedManager(this.runEvents);
-    this.simSpeedCommands = simSpeedCommands(this.commands, this.simSpeedManager);
-    this.deployableCommands = deployableCommands(this.commands);
-    this.controlSelection = new ControlSelection(initialSave?.activeControlledId, this.dynamicSystem);
-    this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
-    this.activeStage = new stageClass(
-      initialSave?.stage, this._hud, this._scene, this.dynamicSystem,
-      celestialSystem, this.controlSelection, this.commands,
-    );
-    this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
-    this.viewer = new Viewer(
-      initialSave, this.dynamicSystem, this.controlSelection, this.runEvents, celestialSystem,
-    );
-    const viewSelectionCommands = viewCommands(this.commands, this.viewer.view);
-    this.navTargetCommands = navTargetCommands(this.commands, this.viewer.navTarget);
-    const entityDisplayPort = entityDisplayCommands(this.commands, this.viewer.entityDisplay);
-    const proteinDisplayControl = this.activeStage.proteinDisplayControl;
-    if (proteinDisplayControl !== null) {
-      proteinDisplayControl.onProteinDisplayChange = (display) => entityDisplayPort.setProteinDisplay(display);
-    }
-    this.entityLines = new EntityLineManager(this.dynamicSystem, this.viewer.entityDisplay);
-    this.orbitReferenceCommands = orbitReferenceCommands(this.commands, this.viewer.orbitReference);
-    this.cameraCommandPort = cameraCommands(this.commands, this.viewer.camera);
-    this.cameraSystem = new CameraSystem(
-      this._hud, celestialSystem, this.viewer.camera, this.cameraCommandPort, this.viewer.view,
-      (id, t) => {
-        const role = frameRoleOf(id);
-        const entity = role === 'controlled' ? this.activeControllable
-          : role === 'navTarget'
-            ? this.navTargetPresenter.resolveState(
-              this.dynamicSystem, celestialSystem, celestialSystem.celestialMotions, t)?.entity ?? null
-            : this.dynamicSystem.all().find((e) => e.id === id) ?? null;
-        return entity?.motion.alive ? entity.motion.att.q : null;
-      },
-      host.scene.viewport,
-    );
-    const predictCommands = predictPanelCommands(this.commands, this.viewer.predictPanel);
-    this.displayWindowManager = new DisplayWindowManager(
-      this._hud.mapRoot, this._hud.panelCollapse, celestialSystem,
-      this.viewer.predictPanel, predictCommands,
-    );
-    this.navTargetPresenter = new NavTargetPresenter(this.viewer.navTarget, this.markers.createGroup());
-    // 表示パネル。左レールの並びはパネルを足した順で決まるので、同じレールへ足す座標系パネル
-    // (FrameControls)より先に組む。
-    this.viewOptions = new ViewOptionsControl(
-      this._hud.mapRoot, this._hud.panelCollapse, host.viewOptions,
-      this.viewer.orbitGuide, orbitGuideCommands(this.commands, this.viewer.orbitGuide),
-    );
-    // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
-    // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
-    this.frameAnchors = new FrameAnchors(celestialSystem, {
-      entityState: (id, t) => this.dynamicSystem.all()
-        .find((e) => e.id === id && e.motion.alive)
-        ?.motion.stateAt(t, celestialSystem) ?? null,
-      controlledState: (t) => this.activeControllable?.motion.stateAt(t, celestialSystem) ?? null,
-      navTargetState: (bodies, t) => this.navTargetPresenter.resolveState(
-        this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
-    });
-    this.frameControls = new FrameControls(
-      this._hud.mapRoot, this._hud.combatRoot, this._hud.layers.popup,
-      celestialSystem, this.viewer.camera.map, this.viewer.camera.combat,
-      this.cameraCommandPort.map, this.cameraCommandPort.combat, this.cameraSystem,
-      this.viewer.predictPanel, predictCommands, this._hud.overlayManager, this.frameAnchors,
-    );
-    this.targeter = new Targeter(
-      this.markers, this.viewer.navTarget, this.navTargetCommands,
-      this.dynamicSystem, celestialSystem.celestialMotions,
-    );
-    this.boosterCommands = boosterCommands(this.commands, this.dynamicSystem);
-    this.boosterHandlers = {
-      onAttach: () => {
-        const boosters = this.activeControllable?.boosters;
-        if (boosters) this.boosterCommands.attach(boosters);
-      },
-      onToggleIgnition: () => {
-        const boosters = this.activeControllable?.boosters;
-        if (boosters) this.boosterCommands.toggleIgnition(boosters);
-      },
-      onDecouple: () => {
-        const boosters = this.activeControllable?.boosters;
-        if (boosters) this.boosterCommands.decouple(boosters);
-      },
-    };
-    this.planDisplay = new PlanDisplay(
-      this._scene, this.markers.createGroup(), celestialSystem, this.displayWindowManager, this.controlSelection,
-    );
-    this.planGuide = new PlanGuide(this.runEvents, this.markers.createGroup());
-    this.input = new Input(host.scene.renderer.domElement);
-    this.touchControls = new TouchControls(this.input);
-    this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
-
-    this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
-
-    // activeStage を読むのでその後に組む。ビューの表示実装は ObjectWindows より後に組む。
-    this.objectWindows = new ObjectWindows(
-      this._hud, this.dynamicSystem, celestialSystem,
-      this.viewer.navTarget, this.navTargetPresenter, this.navTargetCommands,
-      this.viewer.entityDisplay, entityDisplayPort,
-      this.viewer.camera, this.viewer.view, () => this.viewManager.activeView, this.pauseMenu,
-      this.controlSelection, this.frameControls, this.cameraCommandPort.combat,
-      this.activeStage, this.targeter, this.displayWindowManager,
-      objectMenuCommands(this.commands, this.controlSelection),
-    );
-
-    const combatView = new CombatView(
-      this.input, this.targeter, this.objectWindows, this.dynamicSystem,
-      this.celestialMarkers, this.touchControls,
-      this.controlSelection, this.planDisplay.path, this.planGuide,
-    );
-    const mapView = new MapView(
-      this.input, this.cameraSystem, this.viewer.camera, this.objectWindows,
-      this.dynamicSystem, this.equatorNodes, celestialSystem,
-      this.celestialMarkers, this.markers, this.targeter.combatMarkers,
-      this.displayWindowManager, this.frameControls,
-      this.frameAnchors, this.controlSelection, this.controlSelectionCommands,
-      this.simSpeedManager, this.simSpeedCommands, this.planDisplay, planCommands(this.commands),
-      this._scene, this._hud, uiSfx, this.navTargetPresenter, this.navTargetCommands,
-      this.viewOptionSettings.mapDisplay,
-    );
-    this.viewManager = new ViewManager(
-      this.viewer.view, this.touchControls,
-      { combat: combatView, map: mapView },
-    );
-
-    this.viewBadge = new ViewBadge(
-      this._hud.viewBadgeRow, this._hud.layers.notify, this._hud.overlayManager, viewSelectionCommands,
-    );
-    this.viewBadge.onRenderStyleChange = (style) => this._hud.setRenderStyle(style);
-
-    this.inputRouter = new GameInputRouter(rawGameInputAdapter(this.input), [
-      {
-        feature: 'pause',
-        commands: [gameCommand(K.pauseMenu.code, K.pauseMenu)],
-        handleCommand: () => {
-          if (!this._hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(true);
-        },
-      },
-      {
-        feature: 'overlay-shortcut',
-        handlePressed: code => this._hud.overlayManager.dispatchShortcut(code),
-      },
-      {
-        feature: 'hud',
-        commands: [gameCommand(K.help.code, K.help)],
-        handleCommand: command => this._hud.handleCommand(command.id),
-      },
-      {
-        feature: 'camera-command',
-        commands: [gameCommand(K.followAttitudeToggle.code, K.followAttitudeToggle)],
-        handleCommand: command => this.cameraSystem.handleCommand(command.id),
-      },
-      {
-        feature: 'target-command',
-        isEnabled: () => !this.isPaused
-          && !this._hud.overlayManager.isInputGated()
-          && this.viewManager.current === 'combat'
-          && this.activeControllable !== null,
-        commands: [gameCommand(K.targetSelect.code, K.targetSelect)],
-        handleCommand: () => this.targeter.requestTargetSelect(),
-      },
-      {
-        feature: 'game-speed',
-        isEnabled: () => !this._hud.overlayManager.isInputGated(),
-        commands: [
-          gameCommand(K.warpSlower.code, K.warpSlower),
-          gameCommand(K.warpFaster.code, K.warpFaster),
-        ],
-        handleCommand: command => this.simSpeedCommands.handleCommand(command.id),
-      },
-      {
-        feature: 'view',
-        isEnabled: () => !this._hud.overlayManager.isInputGated(),
-        commands: [gameCommand(K.toggleMapMode.code, K.toggleMapMode)],
-        handleCommand: () => viewSelectionCommands.toggle(),
-      },
-      {
-        feature: 'active-view',
-        isEnabled: () => !this._hud.overlayManager.isInputGated(),
-        commands: [
-          gameCommand(K.deleteNode.code, K.deleteNode),
-          gameCommand(K.autoWarpToNode.code, K.autoWarpToNode),
-        ],
-        handleCommand: command => this.viewManager.activeView.handleCommand(
-          command.id, this.dynamicSystem.simTime,
-        ),
-      },
-    ]);
-    // 操作対象の入力は、ビュー固有の Δv 編集が押下中キーを確保した後に解釈する。押下エッジを
-    // 拾う口は、命令を適用できないフレームには閉じて他の受け手へ回す。ワープ倍率で決まる可否だけは
-    // ここで見ない — このフレームの倍率は進行の位相の先頭で確定するので、適用の側で見る。
-    this.pilotPorts = [
-      this.pilotInput.actionPort,
-      this.pilotInput.commandPort(
-        () => !this.isPaused && this.activeStage.isPlaying && this.activeControllable !== null,
-      ),
-    ];
-
-    // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
-    // ここで視点に当てて写しておく。新規開始のブリーフィングもこの場で出す。
-    this.followProgress();
-    this.frameAnchors.update(this.dynamicSystem.simTime);
-    this.viewer.followCameraProgress(
-      this.runEvents.recent,
-      this.cameraSystem.sampleProgress(this.dynamicSystem.simTime, this.frameAnchors),
-    );
-    this.runEventPresenter.present(this.runEvents.recent);
-    const briefing = this.activeStage.briefing;
-    if (briefing !== null) this._hud.toast(briefing, BRIEFING_TOAST_MS);
-  }
-
-  // ------------------------------------------------------------------ lifecycle
-
-  // このゲームが scene・Hud・マーカー装置・window/document/canvas へ足したものを残らず
-  // 取り除く。呼んだ後のこのインスタンスは使えない。構築の逆順で辿る — 後から組んだものほど
-  // 先に組んだものを参照する。
-  public dispose(): void {
-    // Hud はこのゲームより長生きするので、書き換えたクラスを戻し、操作対象も操作の受け口も
-    // 無い状態を1度宣言してから畳む。
-    this._hud.root.classList.remove('creative-mode');
-    this._hud.clearRunPanels();
-    this.viewBadge.dispose();
-    this.viewManager.dispose();
-    this.objectWindows.dispose();
-    this.activeStage.dispose();
-    this._worldSfx.dispose();
-    this.touchControls?.dispose();
-    this.input.dispose();
-    this.planDisplay.dispose();
-    this.planGuide.dispose();
-    this._celestialSystem.dispose();
-    this.frameControls.dispose();
-    this.cameraSystem.dispose();
-    this.viewOptions.dispose();
-    this.displayWindowManager.dispose();
-    this.equatorNodes.dispose();
-    this.dynamicSystem.dispose();
-    this.flashEffectsView.dispose();
-    this.targeter.dispose();
-    this.navTargetPresenter.dispose();
-    this.celestialMarkers.dispose();
-    this.playerMarkers.dispose();
-    this.frameMarkers.dispose();
-  }
-
   public get simTime(): number { return this.dynamicSystem.simTime; }
 
-  // ------------------------------------------------------------ update
+  // 組み上がった各所有者から組む。星系は実体化済みで渡る。
+  private constructor(
+    public readonly celestialSystem: CelestialSystem,
+    // 計測区間の境界を打つ先。
+    private readonly sections: FrameSections,
+    // モデル層の外から届いた書き換えを溜める列。進行の位相の先頭で適用する。
+    public readonly commands: CommandQueue,
+    // 直近の進行で起きた一回きりの出来事の記録。
+    public readonly events: RunEventLog,
+    public readonly dynamicSystem: DynamicSystem,
+    public readonly simSpeedManager: SimSpeedManager,
+    // 操作対象(艦 0..n 隻と基地のうちどれを操作するか)の切替を持つ。
+    public readonly controlSelection: ControlSelection,
+    public readonly activeStage: Stage,
+    // 直近ノードの消化と、接近・達成の記録。進行の末尾で通す。
+    private readonly planNodeRules: PlanNodeRules,
+    // 遊ぶ人の選択のうち、セーブごとに持つもの。
+    public readonly viewer: Viewer,
+  ) {
+    this.predictor = new Predictor(dynamicSystem, celestialSystem);
+  }
 
-  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過、nowMs [ms] はフレームの
-  // 先頭で1度だけ読んだ実時刻。ポーズ中もシミュレーション以外の更新は通す。
-  public update(dtRaw: number, nowMs: number, viewport: Viewport): void {
-    this.sections.enter(SECTION.input);
-    this.input.update();
-    const dt = Math.min(dtRaw, 0.1);
-    // ポーズ中も Esc・ヘルプなどは効かせるので、入力配分はポーズ判定より前に置く。
-    this.handleInput(dt, nowMs, viewport);
-    this.sections.exit(SECTION.input);
+  // stageClass の新しいランを組む。元期は開始日時 startEpoch、無ければステージの宣言から採る。
+  // 段の切れ目で描画を明け渡すので、組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
+  // scene は天体系と実体の表示物の置き場、hud はステージのパネルの置き場。
+  public static async create(
+    stageClass: StageClass,
+    startEpoch: TdbJulianDate | undefined,
+    scene: GameScene,
+    hud: HudLayers,
+    sections: FrameSections,
+    progress: LoadingProgress,
+  ): Promise<Game> {
+    const celestialSystem = await Game.buildCelestialSystem(
+      stageClass, startEpoch ?? stageClass.epoch, scene, progress,
+    );
+    const commands = new CommandQueue();
+    const events = new RunEventLog();
+    // 顔ぶれを先に組む — 操作対象の選択・ステージの初期配置・視点は、組み上がった顔ぶれを読む。
+    const dynamicSystem = DynamicSystem.create(scene.scene, events, celestialSystem, sections);
+    const simSpeedManager = SimSpeedManager.create(events);
+    const controlSelection = ControlSelection.create(dynamicSystem);
+    const stage = stageClass.create(hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands);
+    const planNodeRules = PlanNodeRules.create(events);
+    const viewer = Viewer.create(controlSelection, events, celestialSystem);
+    return new Game(
+      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage,
+      planNodeRules, viewer,
+    );
+  }
 
-    // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。命令の適用そのものが
-    // 出来事を積むので、記録を空にするのはその前。
-    this.runEvents.beginStep();
+  // 直列化したラン serialized を、stageClass のランとして復元する。元期は記録から採る — 記録の
+  // simTime はその元期からの経過秒なので、別の元期で組むと全天体がずれる。scene・hud は create と同じ。
+  public static async deserialize(
+    serialized: SerializedGame,
+    stageClass: StageClass,
+    scene: GameScene,
+    hud: HudLayers,
+    sections: FrameSections,
+    progress: LoadingProgress,
+  ): Promise<Game> {
+    const { progress: serializedProgress } = serialized;
+    const celestialSystem = await Game.buildCelestialSystem(
+      stageClass, createJulianDate('TDB', serializedProgress.ephemerisContext.epochJdTdb), scene, progress,
+    );
+    const commands = new CommandQueue();
+    const events = new RunEventLog();
+    // 顔ぶれを先に組む — 操作対象の選択・ステージ・視点は、復元を終えた顔ぶれを読む。
+    const dynamicSystem = DynamicSystem.deserialize(
+      serializedProgress.dynamicSystem, scene.scene, events, celestialSystem, sections,
+    );
+    const simSpeedManager = SimSpeedManager.deserialize(serializedProgress.simSpeedManager, events);
+    const controlSelection = ControlSelection.deserialize(serializedProgress.controlSelection, dynamicSystem);
+    const stage = stageClass.deserialize(
+      // 記録にステージの内訳が無い・null なら、空の記録として新しいランの初期値で補う(初期配置はしない)。
+      serializedProgress.stage ?? ({} as SerializedStage),
+      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands,
+    );
+    const planNodeRules = PlanNodeRules.deserialize(serializedProgress.planNodeRules, events);
+    const viewer = Viewer.deserialize(serialized.viewer, dynamicSystem, controlSelection, events, celestialSystem);
+    return new Game(
+      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage,
+      planNodeRules, viewer,
+    );
+  }
+
+  // 元期 epoch の星系を組み、表示物を scene へ実体化する。
+  private static async buildCelestialSystem(
+    stageClass: StageClass, epoch: TdbJulianDate, scene: GameScene, progress: LoadingProgress,
+  ): Promise<CelestialSystem> {
+    await progress.enter('system');
+    const celestialSystem = await stageClass.createCelestialSystem(
+      epoch, (ratio) => progress.within(ratio), scene.renderer,
+    );
+    await progress.enter('bodies');
+    celestialSystem.build(scene.scene, scene.pipeline);
+    await progress.enter('run');
+    return celestialSystem;
+  }
+
+  // このランを直列化した形へ畳む。
+  public serialize(): SerializedGame {
+    return {
+      version: SERIALIZATION_VERSION,
+      progress: {
+        stageId: this.activeStage.id,
+        ephemerisContext: { ...ephemerisContextFor(this.celestialSystem.epoch) },
+        dynamicSystem: this.dynamicSystem.serialize(),
+        simSpeedManager: this.simSpeedManager.serialize(),
+        controlSelection: this.controlSelection.serialize(),
+        stage: this.activeStage.serialize(),
+        planNodeRules: this.planNodeRules.serialize(),
+      },
+      viewer: this.viewer.serialize(),
+    };
+  }
+
+  // このランのいまの要約。
+  public runSummary(): RunSummary {
+    return summarizeRun(
+      this.simTime, this.activeStage.phase, this.activeControllable,
+      this.celestialSystem, this.dynamicSystem.all(),
+    );
+  }
+
+  // このランが scene・Hud へ足したものを取り除く。呼んだ後のこのインスタンスは使えない。
+  public dispose(): void {
+    this.activeStage.dispose();
+    this.celestialSystem.dispose();
+    this.dynamicSystem.dispose();
+  }
+
+  // ------------------------------------------------------------ 進行の位相
+
+  // 出来事の記録を空にし、受け付けた命令を適用し、一時停止でなければ操作量 controls と dt [s] で
+  // 1フレーム進め、視点を進行に合わせる。
+  public advance(dt: number, controls: PilotControls, paused: boolean): void {
+    // 一時停止中も命令は適用する(R8)。命令の適用そのものが出来事を積むので、記録を空にするのは
+    // その前。
+    this.events.beginStep();
     this.commands.applyAll();
     // 的面の通過をどの対象について記録するかの需要(R4)。命令を適用した後の選択から立てる。
     const boardTargetId = this.viewer.navTarget.id;
-    // ポーズは開いているオーバーレイからの導出値で「止まった瞬間」が無いので、止まっている
-    // 間は毎フレーム連続指令を畳む。
-    if (this.isPaused) this.dynamicSystem.pause();
-    else this.advanceSimulation(dt, boardTargetId);
+    // ポーズには「止まった瞬間」の知らせが無いので、止まっている間は毎フレーム連続指令を畳む。
+    if (paused) this.dynamicSystem.pause();
+    else this.advanceSimulation(dt, controls, boardTargetId);
     this.followProgress();
-    this.viewManager.sync();
-    // ここから先はポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になる
-    // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
-    const activeControllable = this.activeControllable;
-    const view = this.viewManager.current;
-    const displayWindow = this.displayWindowManager.resolve(
-      this.dynamicSystem.simTime, activeControllable, view !== 'map',
-    );
-    // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
-    // すべてこの frameAnchors を通す。
-    this.frameAnchors.update(displayWindow.displayTime);
-    const cameraSamples = this.cameraSystem.sampleProgress(
-      displayWindow.displayTime, this.frameAnchors,
-    );
-    this.viewer.followCameraProgress(this.runEvents.recent, cameraSamples);
-    // 一時エフェクトと的通過マークは、進行が記録した出来事から表示時刻で組み直す(R5)。
-    // 一時停止中は表示時刻が止まるので、そのまま止まって見える。
-    this.sections.enter(SECTION.effects);
-    this.flashPresenter.present(this.runEvents.recent, displayWindow.displayTime);
-    this.targeter.updateBoardMarks(
-      this.runEvents.recent, activeControllable, displayWindow.displayTime);
-    this.sections.exit(SECTION.effects);
-    // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
-    this.sections.enter(SECTION.plan);
-    this.planDisplay.update(displayWindow, this.frameAnchors, view);
-    this.sections.exit(SECTION.plan);
-    // 表示の選択が進行へ効いてよいのは需要だけ(R4)。どこまで計算してほしいかを1つにまとめ、
-    // 読む側より前に立てる。履歴の長さは、次の積分がサンプルを積むまでに立っていればよい。
-    const demand = trajectoryDemandOf(displayWindow, this.planDisplay.growableArcs());
-    this.dynamicSystem.requestHistoryDuration(demand.historyDuration);
-    // ポーズ中・決着後も呼ぶ。simTime が止まっていれば予測は伸び切ったところで止まる。
-    this.sections.enter(SECTION.predict);
-    this.predictor.update(
-      this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt,
-      activeControllable?.motion ?? null, demand,
-    );
-    this.sections.exit(SECTION.predict);
-    // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
-    // 楕円が引く予測列を伸ばした後に通す。
-    this.sections.enter(SECTION.plan);
-    const equatorVisibility = this.viewManager.current === 'map'
-      ? new MapVisibilityPolicy(
-        this._celestialSystem, this.viewOptionSettings.mapDisplay.current,
-      )
-      : null;
-    this.equatorNodes.update({
-      displayTime: displayWindow.displayTime,
-      celestialBodies: this._celestialSystem,
-      frameAnchors: this.frameAnchors,
-      paths: this.planDisplay,
-    }, activeControllable, this.viewer.navTarget.id, equatorVisibility);
-    // ノードの期限切れ・達成はビューに依らない計画そのものの規則なので、折れ線を組み終えた
-    // 後に毎フレーム通す。
-    this.planGuide.update(
-      activeControllable, this.dynamicSystem.simTime, this._celestialSystem.celestialMotions);
-    this.sections.exit(SECTION.plan);
-    this.sections.enter(SECTION.camera);
-    this.cameraSystem.update(
-      this.viewManager.activeView.pickables, activeControllable, viewport, nowMs,
-    );
-    this.sections.exit(SECTION.camera);
-    // カメラ更新の後に置く — 候補列の組み直しは遮蔽判定などにカメラ位置を読むので、先に組むと
-    // このフレームの sync が1フレーム古いカメラ位置での判定を読む。
-    this.sections.enter(SECTION.mapPick);
-    this.viewManager.activeView.update(displayWindow);
-    this.sections.exit(SECTION.mapPick);
   }
 
-  // ステージ → 指令決定 → 積分 → エフェクトの順に1フレーム進める
-  // (残骸・弾の先端時刻はどの状況でも進め続ける)。boardTargetId は的面の通過を記録する対象の id。
-  private advanceSimulation(dt: number, boardTargetId: string | null): void {
+  // 進行が今ステップに記録した出来事へ、航法ターゲットと予測パネルを合わせる。
+  public followProgress(): void {
+    this.viewer.followProgress(this.events.recent);
+  }
+
+  // 進行の結果から作った視点の追従の材料 samples へ、カメラ視点を合わせる。
+  public followCamera(samples: CameraFrameSamples): void {
+    this.viewer.followCameraProgress(this.events.recent, samples);
+  }
+
+  // 需要 demand が求める長さまで履歴を残し予測を伸ばしてから、計画ノードの規則を通す。一時停止中・
+  // 決着後も毎フレーム呼ぶ。
+  public extendPredictions(demand: TrajectoryDemand): void {
+    const controlled = this.activeControllable;
+    this.dynamicSystem.requestHistoryDuration(demand.historyDuration);
+    this.sections.enter(SECTION.predict);
+    this.predictor.update(
+      this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt, controlled?.motion ?? null, demand,
+    );
+    this.sections.exit(SECTION.predict);
+    // ノードの期限切れ・達成はビューに依らない計画そのものの規則なので、毎フレーム通す。
+    this.sections.enter(SECTION.plan);
+    this.planNodeRules.update(controlled, this.dynamicSystem.simTime, this.celestialSystem.celestialMotions);
+    this.sections.exit(SECTION.plan);
+  }
+
+  // ステージ・顔ぶれ・操作対象の選択を、操作量 controls と dt [s] で1フレーム進める。boardTargetId は
+  // 的面の通過を記録する対象の id。
+  private advanceSimulation(dt: number, controls: PilotControls, boardTargetId: string | null): void {
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
     // 自動ワープの段階変更を跨いで別の倍率を読むと、同じ区間を表さなくなる。
     this.simSpeedManager.update(this.dynamicSystem.simTime);
@@ -647,395 +247,20 @@ export class Game {
     this.sections.enter(SECTION.stage);
     this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
-    const controls = this.pilotInput.controls;
     this.dynamicSystem.update(
       controlled, controls, canShipAct, dt, simDt, canEngage, this.activeStage, this.activeStage.stageRules,
       () => this.applyPilotCommands(controls),
     );
 
-    recordTargetBoardPasses(controlled, boardTargetId, this.dynamicSystem, this.runEvents);
+    recordTargetBoardPasses(controlled, boardTargetId, this.dynamicSystem, this.events);
     this.controlSelection.reclaimDead();
-  }
-
-  // 進行が今ステップに記録した出来事へ、航法ターゲットと予測パネルを合わせる。
-  private followProgress(): void {
-    this.viewer.followProgress(this.runEvents.recent);
-  }
-
-  // --------------------------------------------------------------- input
-
-  // 生の入力を担当モジュールへ先着順で配り、このフレームの操作量を組む。決めるのは
-  // 優先順位 = 呼ぶ順序だけで、どのキー/クリックが何をするかは各モジュールが持つ。
-  private handleInput(dt: number, nowMs: number, viewport: Viewport): void {
-    this.inputRouter.beginFrame();
-    // 連打の判定が読むワープ倍率は、直前の進行が確定させたもの — ×4 を超えている間は数えず、
-    // 戻したフレームにワープ中の押下が発火しないようにする(CONTROLS.md)。
-    this.pilotInput.beginFrame(nowMs, this.simSpeedManager.canShipAct);
-    this.inputRouter.route();
-    // ヘルプや設定など、背景入力をゲートするモーダルが開いた後は、同じフレームの
-    // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
-    if (!this._hud.overlayManager.isInputGated()) {
-      // マップの Δv 編集は操作対象の解釈より先に押下中キーを確保する。
-      this.viewManager.activeView.updateActions(this.input, dt);
-    }
-    this.inputRouter.routeAdditional(this.pilotPorts);
-    // カメラ操作は視点所有者への命令へ変え、この直後の applyAll で同じフレームに反映する。
-    // 入力がゼロでも毎フレーム積み、距離・画角のクランプを所有者側で一貫して通す。
-    this.cameraSystem.handleInput(this.input, dt, viewport, this.activeControllable);
-    // ピックは直前の sync が確定した CameraFrame と候補列を使う。これにより入力解釈が、
-    // この後に導出される新しい表示値へ依存しない。
-    if (!this.isPaused && !this._hud.overlayManager.isInputGated() && this.cameraFrame !== null) {
-      this.sections.switchTo(SECTION.input, SECTION.pointer);
-      this.viewManager.activeView.handlePointer(this.dynamicSystem.simTime, this.cameraFrame);
-      this.sections.switchTo(SECTION.pointer, SECTION.input);
-    }
   }
 
   // ステージ更新と自律推力の更新が終わった後、このフレームに受け付けた命令を操作対象へ適用する。
   private applyPilotCommands(controls: PilotControls): void {
-    if (this.isPaused || !this.activeStage.isPlaying || !this.simSpeedManager.canShipAct) return;
-    if (this.activeControllable === null) return;
-    for (const command of controls.commands) {
-      this.activeControllable?.handleCommand(command, this.dynamicSystem);
-    }
-  }
-
-  // Game 更新後、Launcher と snapshot の入力を同じ raw edge router へ追加する。
-  public routeInput(ports: readonly GameInputPort[]): void {
-    this.inputRouter.routeAdditional(ports);
-  }
-
-  // ------------------------------------------------------------------ sync
-
-  // 1フレームぶんの sync フェーズ。update が確定させた表示窓とカメラを表示物へ写す。
-  // nowMs はフレームの先頭で1度だけ読んだ実時刻 [ms]。
-  public sync(
-    graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport, nowMs: number,
-  ): void {
+    if (!this.activeStage.isPlaying || !this.simSpeedManager.canShipAct) return;
     const controlled = this.activeControllable;
-    const palette = this.themePalette.current;
-    // update() が確定させた、このフレームの表示窓。
-    const displayWindow = this.displayWindowManager.current;
-    this.viewBadge.sync({
-      modeLabel: this.activeStage.stageClass.selectLabel,
-      view: this.viewManager.current,
-      selectableViews: this.viewManager.selectableViews(),
-      focusName: this.focusName(),
-      controlName: controlled?.name ?? null,
-      targetName: this.viewer.navTarget.name,
-      renderStyle: style,
-    });
-
-    // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
-    const { displayTime, simTime } = displayWindow;
-    const celestialBodies = this._celestialSystem.celestialMotions;
-
-    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
-    const cs = this.cameraSystem;
-    const camera = this.cameraView.sync(
-      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, this.viewManager.current, cs.zoomActive, cs.focusVelocity,
-    );
-    this.cameraFrame = camera;
-    this.viewOptions.setVisible(this.viewManager.current === 'map');
-    // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
-    this.viewManager.activeView.syncLabels(displayWindow, camera, nowMs);
-
-    // 表示・選択可否はこのフレームの update フェーズで現在のビューが確定させたものを読む
-    // (選べる対象と描かれる対象が同じ判定から出るようにする)。
-    const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
-    // 3D 軌道線を軌道パネルと同じ基準で解く。
-    const orbitRef = controlled
-      ? resolveOrbitReference(
-        this.viewer.orbitReference.mode, controlled.motion.state.r, celestialBodies, this.navTargetPresenter,
-        this.dynamicSystem, this._celestialSystem, controlled.motion.state.t,
-      )
-      : undefined;
-
-    this._celestialSystem.sync(
-      displayTime, nowMs, camera, this.viewer.camera.map, this.cameraSystem.mapResolvedFocus,
-      graphics, style,
-      this.viewOptionSettings.grid.current, this.viewer.orbitGuide.settings, visibilityPolicy,
-    );
-    // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
-    this.viewOptions.setOrbitGuideLineCount(this._celestialSystem.orbitGuide.lineCount);
-    this._celestialSystem.bakeClouds(this.renderer, displayTime, this.gpu);
-
-    // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
-    const timeLabel = timeLabelSettingOf(displayWindow);
-    this.dynamicSystem.sync(
-      displayTime, controlled, camera, style, graphics, this.viewer.entityDisplay.proteinDisplay, orbitRef,
-    );
-    // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
-    this.playerMarkers.sync(
-      controlled !== null && isPlayer(controlled) ? controlled : null, camera.mode, camera.project,
-      orbitRef?.state ?? null, nowMs,
-    );
-    this.equatorNodes.sync(
-      camera.project,
-      camera.position,
-      this.frameAnchors.bodies,
-      this.frameAnchors.bodiesPivot,
-      camera.mode === 'map',
-      timeLabel,
-      nowMs,
-    );
-    // このフレームの進行が記録した出来事を、音と通知の宣言へ写す。
-    this.runEventPresenter.present(this.runEvents.recent);
-    syncControlledLoopSfx(
-      this._worldSfx, controlled, displayTime, !this.isPaused && this.activeStage.isPlaying);
-    // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
-    this.flashEffectsView.sync(this.flashPresenter.live, camera);
-
-    this.targeter.sync(
-      controlled, camera, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette);
-    this.navTargetPresenter.sync(
-      camera, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel, nowMs);
-
-    // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
-    this.objectWindows.sync(simTime, displayTime);
-    this.planDisplay.sync(camera, displayWindow, nowMs);
-
-    // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
-    this.entityLines.sync(
-      controlled, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
-      camera, this.frameAnchors, this._celestialSystem, palette);
-    // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
-    // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
-    this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
-
-    this.activeStage.sync(camera, displayTime);
-    this.activeStage.proteinDisplayControl?.syncProteinDisplay(this.viewer.entityDisplay.proteinDisplay);
-
-    const view = this.viewManager.current;
-    this._hud.syncPanels(view, this.hudPanelViewModels(view, orbitRef, palette), camera, nowMs);
-
-    this.syncFrameMarkers(nowMs);
-    // このフレームのマーカーが出揃った後でなければならないので最後に置く。
-    this.markers.resolveOverlaps(this.viewManager.current === 'map');
-  }
-
-  // 天体系・ステージが組んだ宣言と、長押しのフィードバックを1つの群へまとめて置く。
-  private syncFrameMarkers(nowMs: number): void {
-    const declarations = this.frameDeclarations;
-    declarations.length = 0;
-    declarations.push(...this._celestialSystem.markerDeclarations);
-    declarations.push(...this.activeStage.markerDeclarations);
-    // 長押しは、点が無いフレームでも front: false の宣言として出す。
-    const longPress = this.input.longPressPoint;
-    declarations.push({
-      id: 'longpress', cls: 'mk-longpress', sym: '',
-      x: longPress?.x ?? 0, y: longPress?.y ?? 0, front: longPress !== null,
-      priority: MARKER_PRIORITY.NONE,
-    });
-    this.frameMarkers.sync(declarations, nowMs);
-  }
-
-  // ------------------------------------------------------- HUD へ渡す値
-  // 値を束ねる場所は、ここが持ち物を全部知っている間の暫定(暫定 — 段 5 で Game を3つの根へ分けるときに解く)。
-
-  // 常設パネルの値をこのランの状態から束ねる。view は表に出ているビューで、
-  // そこに出るパネルのぶんだけを組む。
-  private hudPanelViewModels(
-    view: ViewMode, orbitRef: OrbitReference | undefined, palette: ThemePalette,
-  ): HudPanelViewModels {
-    const controlled = this.activeControllable;
-    // 戦闘ビューにしか出ないパネルは、マップでは値を組まない。
-    const combatControlled = view === 'map' ? null : controlled;
-    const displayWindow = this.displayWindowManager.current;
-    const { simTime } = displayWindow;
-    const scoreCounter = this.activeStage.scoreCounter;
-    // 操作対象が要るパネルは、対象が無い間 null で畳む。
-    return {
-      topBar: {
-        epochUnixSec: displayWindow.epochUnixSec,
-        simTime,
-        simSpeed: this.simSpeedManager.simSpeed,
-        isPaused: this.isPaused,
-        autoWarpRealRemainSec: this.simSpeedManager.estimatedRealSecondsToWarpEnd(simTime),
-        autoWarpSimRemainSec: this.simSpeedManager.remainingSimulationSeconds(simTime),
-        setSimSpeed: (speed) => this.simSpeedCommands.setSpeed(speed),
-      },
-      vessel: combatControlled === null ? null : this.vesselViewModel(combatControlled),
-      orbit: controlled === null || orbitRef === undefined
-        ? null
-        : this.orbitViewModel(controlled, orbitRef),
-      target: this.targetViewModel(combatControlled),
-      enemies: combatControlled === null ? null : {
-        remainingCount: scoreCounter.totalEnemiesSpawned - scoreCounter.kills,
-        totalCount: scoreCounter.totalEnemiesSpawned,
-        contacts: this.enemyContacts(combatControlled),
-        onSelectRight: (id, x, y) => this.objectWindows.openEnemy(id, x, y),
-      },
-      burnManagement: controlled?.boosters?.managementViewModel() ?? null,
-      burnHandlers: this.boosterHandlers,
-      mapFocus: this.cameraSystem.mapResolvedFocus,
-      analysisSource: {
-        celestialSystem: this._celestialSystem,
-        windowDurationSec: displayWindow.duration,
-        palette,
-      },
-      analysisSubject: controlled === null || orbitRef === undefined
-        ? null
-        : { entity: controlled, reference: orbitRef, target: this.approachTarget() },
-    };
-  }
-
-  // 操作対象の装備・燃料・姿勢の状態と、代替操作の口。
-  private vesselViewModel(controlled: Controllable): VesselPanelViewModel {
-    const motion = controlled.motion;
-    const player = isPlayerMotion(motion) ? motion : null;
-    const power = player?.power ?? null;
-    const radiator = player?.radiator ?? null;
-    const fire = controlled.fire ?? null;
-    // 積んでいない装備は null で答える。
-    return {
-      rcsDamp: controlled.throttle.rcsDamp,
-      throttleIdx: controlled.throttle.throttleIdx,
-      dynamicPressurePa: player?.aero?.qdyn ?? null,
-      fineAttitude: controlled.fineAttitude,
-      cameraFollowsAttitude: this.viewer.camera.combat.rotationFollow?.kind === 'attitude',
-      progradeHold: controlled.throttle.progradeHold,
-      totalFuel: controlled.totalFuel,
-      totalMaxFuel: controlled.totalMaxFuel,
-      ammo: fire === null ? null : { rounds: fire.rounds, mags: fire.mags, cooldown: fire.cooldown },
-      solar: power === null ? null : {
-        up: { deploy: power.deployOf('up'), wear: 0 },
-        down: { deploy: power.deployOf('down'), wear: 0 },
-      },
-      radiator: radiator === null ? null : {
-        up: { deploy: radiator.deployOf('up'), wear: radiator.wearOf('up') },
-        down: { deploy: radiator.deployOf('down'), wear: radiator.wearOf('down') },
-      },
-      tapKey: (key) => this.input.tapKey(key),
-      toggleSolar: (side) => { if (power !== null) this.deployableCommands.toggleSolar(power, side); },
-      toggleRadiator: (side) => { if (radiator !== null) this.deployableCommands.toggleRadiator(radiator, side); },
-    };
-  }
-
-  // 操作対象の軌道要素と、基準切替の口。航法ターゲット基準で対象が重力天体でない(艦・基地・
-  // ラグランジュ点)場合は、天体名の生 ID フォールバックより航法ターゲットの表示名を優先する。
-  private orbitViewModel(controlled: Controllable, reference: OrbitReference): OrbitPanelViewModel {
-    const info = orbitInfo(
-      controlled, reference, controlled.motion.state.t, (id: string) => this._celestialSystem.nameOf(id),
-    );
-    const motion = controlled.motion;
-    const targetName = this.viewer.navTarget.name;
-    // 軌道の数値は基準に対して解き、警告と切替の状態は操作対象から直に引く。
-    return {
-      selectedMode: this.viewer.orbitReference.mode,
-      centerId: info.centerId,
-      centerName: !reference.attractor && targetName ? targetName : info.centerName,
-      altitudeM: info.alt,
-      descendWarned: controlled.altitudeAlarm?.descendWarned ?? false,
-      speedMps: info.spd,
-      apAltitudeM: info.apAlt,
-      peAltitudeM: info.peAlt,
-      inclinationDeg: info.incDeg,
-      periodSec: info.period,
-      dynamicPressurePa: isPlayerMotion(motion) ? motion.aero?.qdyn ?? null : null,
-      temperatureK: motion.temperature,
-      setReferenceMode: (mode) => this.orbitReferenceCommands.setMode(mode),
-    };
-  }
-
-  // 固定中のターゲットの読み値。操作対象かターゲットが無ければ null。
-  private targetViewModel(controlled: Controllable | null): TargetPanelViewModel | null {
-    const target = controlled === null ? null : this.targeter.aliveTarget;
-    if (controlled === null || target === null) return null;
-    const relative = relativeInfo(
-      controlled, target, this._celestialSystem.celestialMotions, controlled.motion.state.t,
-    );
-    // 距離・接近速度は、両者の基準天体に依らない相対量として解く。
-    return {
-      name: target.name,
-      distanceM: relative.dist,
-      closingMps: relative.closing,
-      relativeSpeedMps: relative.relSpeed,
-      hp: target.hp,
-      maxHp: target.maxHp,
-      protein: isProteinEnemy(target) ? target.combatReadout : null,
-      onSelectRight: (x, y) => this.objectWindows.openTarget(x, y),
-    };
-  }
-
-  // 生存している敵に、操作対象からの距離と固定の有無を添えて一覧の形へ写す。
-  private enemyContacts(controlled: Controllable): readonly EnemyContact[] {
-    const viewerPos = controlled.motion.state.r;
-    const primaryTarget = this.targeter.aliveTarget;
-    return this.dynamicSystem.all()
-      .filter(isEnemy)
-      .filter((enemy) => enemy.motion.alive)
-      .map((enemy) => ({
-        id: enemy.id,
-        name: enemy.name,
-        distanceM: len(sub(enemy.motion.state.r, viewerPos)),
-        waveId: enemy.waveId,
-        targeted: enemy === primaryTarget,
-      }));
-  }
-
-  // 現在の航法ターゲットを、接近・投影タブが扱える形(天体 or 個体)へ解決する。
-  // 質量を持たない対象(ラグランジュ点など)と、ターゲット未選択のときは null。
-  private approachTarget(): ApproachTargetSource | null {
-    const id = this.viewer.navTarget.id;
-    if (id === null) return null;
-    const body = this._celestialSystem.find(id)?.motion;
-    if (body !== undefined) return { kind: 'celestialBody', body };
-    const entity = aliveCombatTarget(this.dynamicSystem.all(), id);
-    return entity ? { kind: 'entity', entity } : null;
-  }
-
-  // 注視対象の表示名。アプシス/交点などの一時マーカーも指しうるので、座標系の役割・被選択物
-  // 候補・実体・天体名(未登録なら id)の順に引く。
-  private focusName(): string {
-    const id = focusTargetId(this.cameraSystem.activeFocus);
-    if (id === undefined) return '固定点';
-    const role = frameRoleOf(id);
-    if (role !== null) return frameRoleName(role);
-    const pickable = this.viewManager.activeView.pickables.find((item) => item.id === id);
-    if (pickable) return pickable.name;
-    const entity: DynamicEntity | undefined = this.dynamicSystem.all().find((item) => item.id === id);
-    if (entity) return entity.name;
-    return this._celestialSystem.nameOf(id);
-  }
-
-  // このランのいまの要約。
-  public runSummary(): RunSummary {
-    return summarizeRun(
-      this.simTime, this.activeStage.phase, this.activeControllable,
-      this._celestialSystem, this.dynamicSystem.all(),
-    );
-  }
-
-  // ------------------------------------------------------------------ render
-
-  // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。
-  public render(style: RenderStyle): void {
-    if (this.cameraFrame === null) return;
-    this.pipeline.render(this._scene, this.cameraFrame.camera, style);
-  }
-
-  // ------------------------------------------------------------------ debug
-
-  // 各モジュールが答えた計測値を1つに合流させる。
-  public perfCounts(): PerfCounts {
-    return {
-      ...this.dynamicSystem.perfCounts(),
-      ...this.predictor.perfCounts(
-        this.dynamicSystem.simTime, this.displayWindowManager.current.duration,
-        this.activeControllable?.motion ?? null,
-      ),
-      ...this.planDisplay.perfCounts(),
-      ...this._celestialSystem.perfCounts(),
-      ...this.viewManager.activeView.perfCounts(),
-      // ここから下は Game 自身が答える値。
-      displayDurationSec: this.displayWindowManager.current.duration,
-      warp: this.simSpeedManager.simSpeed,
-    };
-  }
-
-  // タンパク質敵モーションの集計値。
-  public proteinMotionFrameSample(): ProteinMotionFrameSample {
-    return proteinMotionFrameSample(this.dynamicSystem.all());
+    if (controlled === null) return;
+    for (const command of controls.commands) controlled.handleCommand(command, this.dynamicSystem);
   }
 }

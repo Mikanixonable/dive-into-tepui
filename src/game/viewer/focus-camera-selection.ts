@@ -1,12 +1,11 @@
-// 1台の注視カメラについて、保存される視点とその変更規則を持つ。
+// 1台の注視カメラについて、直列化される視点とその変更規則を持つ。
 import {
   LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, type Quat, qFromBasis, qRotate,
 } from '../../math/quat';
-import type { PolarEuler } from '../../math/polar-euler';
-import { sphericalOffset } from '../../math/polar-euler';
+import { sphericalOffset, type PolarEuler } from '../../math/polar-euler';
 import { metersPerPixelAtDepth, tanHalfFov, type ProjectionMode } from '../../math/projection';
 import {
-  addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, type Vec3, v3,
+  addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, type SerializedVec3, type Vec3, v3,
 } from '../../math/vec3';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import {
@@ -22,13 +21,10 @@ import {
   toInertialDir,
 } from '../../physics/frame';
 import { OrbitingMotion } from '../../physics/celestial-motion';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type {
-  CameraRotationFollowSaveData, FocusCameraSaveData, FrameRotationSourceSaveData,
-} from '../save/save-data';
-import type { RunEventSink } from '../run-events';
 import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
-import type { FocusTarget } from './focus-target';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { RunEventSink } from '../run-events';
+import type { FocusTarget, SerializedFocusTarget } from './focus-target';
 
 const FOCUS_CAMERA_MIN_DIST = 1e3; // 天体フォーカス時の注視距離の下限 [m]
 export const FOCUS_CAMERA_FOV_MIN = 15; // 最小垂直画角 [deg]
@@ -36,10 +32,28 @@ export const FOCUS_CAMERA_FOV_MAX = 120; // 最大垂直画角 [deg]
 const FOCUS_CAMERA_MAX_DIST = 1e14; // 注視距離の上限 [m]
 const ENTITY_MIN_DIST = 12; // 機体・固定点フォーカスでの最小注視距離 [m]
 const FOCUS_CAMERA_FOV = 50; // 既定の垂直画角 [deg]
+const STALE_FOLLOW_FRAMES_TO_DROP = 2; // 回転追従が成立しないフレームがこの数だけ続いたら外す
 
+// 'attitude' はフォーカス機体の姿勢追従(対象は id でなくフォーカスから決まる)。
 export type CameraRotationFollow = FrameRotationSource | { readonly kind: 'attitude' };
 export type CameraReferencePlane = 'ecliptic' | 'equator' | 'moonOrbit';
 export type CameraReferenceView = 'above' | 'side';
+
+// offset・up の向きは、rotatingWith が姿勢追従なら対象姿勢からの相対値。
+export interface SerializedFocusCameraSelection {
+  readonly offset: SerializedVec3;
+  readonly pan: SerializedVec3;
+  readonly up: SerializedVec3;
+  readonly rotatingWith: CameraRotationFollow | null;
+  readonly focus: SerializedFocusTarget;
+  readonly rotationMode: CameraRotationMode;
+  readonly fovDeg: number;
+  readonly referencePlane: CameraReferencePlane;
+  readonly projectionMode: ProjectionMode;
+  readonly orthographicHalfHeight: number;
+  readonly staleFollowFrames: number;
+  readonly focusReplaced: boolean;
+}
 
 // 入力の解釈が1フレーム分のカメラ操作へ換算した値。
 export interface CameraInput {
@@ -80,6 +94,7 @@ export interface FocusCameraSource {
   availableRotationFollows(sample: CameraFrameSample): readonly CameraRotationFollow[];
 }
 
+// 新しいゲームと視点のリセットで始める視点。
 interface FocusCameraInitial {
   readonly angles: PolarEuler;
   readonly dist: number;
@@ -88,11 +103,15 @@ interface FocusCameraInitial {
   readonly follow: CameraRotationFollow | null;
 }
 
+// ビューごとに固定の、カメラの既定の視点と規則。
 export interface FocusCameraConfig {
   readonly view: 'combat' | 'map';
+  // 注視対象を見失ったとき、注視を保つか原点天体へ戻すか。
   readonly focusLossPolicy: 'hold' | 'fallToOrigin';
   readonly initial: FocusCameraInitial;
+  // オイラー操作の極軸を、基準の上方向と対象の姿勢のどちらから取るか。
   readonly eulerPole: 'reference' | 'attitude';
+  // 視点のリセットで、初期値へ戻すか、視線を保って上方向とずらしだけを戻すか。
   readonly reset: 'initial' | 'orientation';
 }
 
@@ -102,20 +121,17 @@ export function rotationFollowKey(follow: CameraRotationFollow | null): string {
   return follow.kind === 'attitude' ? 'attitude' : rotationSourceKey(follow);
 }
 
-// 保存形の回転源を、実行時の形へ戻す。null はどこにも追従しない。
-function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | null): FrameRotationSource | null {
-  return saved === null ? null : { kind: saved.kind, id: saved.id };
-}
-
-// 保存形の回転追従を実行時の形へ戻す。姿勢追従だけ回転源を持たない別の形になる。
-function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | null): CameraRotationFollow | null {
-  if (saved !== null && saved.kind === 'attitude') return { kind: 'attitude' };
-  return rotationSourceFromSaveData(saved);
-}
-
 // 正射影の半高さ [m] を許容範囲へ収める。
 function clampOrthographicHalfHeight(halfHeight: number): number {
   return Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6, Math.min(FOCUS_CAMERA_MAX_DIST, halfHeight));
+}
+
+// 垂直画角 [deg] を許容範囲へ収める。有限でない値は既定へ落とす。
+function clampFov(fovDeg: number): number {
+  return Math.max(
+    FOCUS_CAMERA_FOV_MIN,
+    Math.min(FOCUS_CAMERA_FOV_MAX, Number.isFinite(fovDeg) ? fovDeg : FOCUS_CAMERA_FOV),
+  );
 }
 
 // 座標系相対の方向を、成分そのままの Vec3 として読む。
@@ -129,18 +145,10 @@ function reframeDir(from: FrameTransform, to: FrameTransform, d: Vec3): Vec3 {
 }
 
 export class FocusCameraSelection implements FocusCameraSource {
-  private fovDeg = FOCUS_CAMERA_FOV;
-  private projectionMode: ProjectionMode;
-  private _orthographicHalfHeight = 1;
+  private fovDeg: number;
+  private _orthographicHalfHeight: number;
   private readonly orientation: CameraOrientation;
-  private _distance: number;
-  private _pan: FrameDir;
   private _cameraFrame: ReferenceFrame;
-  private _focus: FocusTarget;
-  private _referencePlane: CameraReferencePlane = 'equator';
-  private staleFollowFrames = 0;
-  // setFocus で差し替えた注視に、まだ回転追従の可否を当てていないか。
-  private focusReplaced = false;
 
   public get focus(): FocusTarget { return this._focus; }
   public get focusLossPolicy(): 'hold' | 'fallToOrigin' { return this.config.focusLossPolicy; }
@@ -158,56 +166,67 @@ export class FocusCameraSelection implements FocusCameraSource {
   public get fov(): number { return this.fovDeg; }
   public get referencePlane(): CameraReferencePlane { return this._referencePlane; }
 
-  // 保存状態またはビュー固有の既定から、1台分の視点を復元する。
+  // config のビューのカメラを、渡した視点から組む。省いた値はそのビューの既定の視点で補う。
+  // rotation は rotationFollow が姿勢追従なら対象姿勢からの相対の向き、そうでなければ絶対の向き。
   public constructor(
     private readonly celestialBodies: CelestialBodies,
     private readonly config: FocusCameraConfig,
     private readonly events: RunEventSink,
-    saved: FocusCameraSaveData | undefined,
+    private _focus: FocusTarget = config.initial.focus,
+    rotationFollow: CameraRotationFollow | null = config.initial.follow,
+    private _distance = config.initial.dist,
+    private _pan: FrameDir = frameDir(0, 0, 0),
+    rotation: Quat = qFromBasis(sphericalOffset(config.initial.angles, 1), v3(0, 1, 0)),
+    rotationMode: CameraRotationMode = 'euler',
+    fovDeg = config.initial.fovDeg,
+    private projectionMode: ProjectionMode = 'perspective',
+    orthographicHalfHeight = _distance * tanHalfFov(clampFov(fovDeg)),
+    private _referencePlane: CameraReferencePlane = 'equator',
+    // 回転追従が成立しないまま続いたフレーム数。
+    private staleFollowFrames = 0,
+    // setFocus で差し替えた注視に、まだ回転追従の可否を当てていないか。
+    private focusReplaced = false,
   ) {
-    const frames = celestialBodies.frames;
-    this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
-    this._referencePlane = saved?.referencePlane === 'ecliptic' || saved?.referencePlane === 'moonOrbit'
-      ? saved.referencePlane : 'equator';
-    this.fovDeg = this.clampFov(saved?.fovDeg ?? config.initial.fovDeg);
+    this._cameraFrame = this.frameFollowing(rotationFollow);
+    this.orientation = new CameraOrientation(rotation, rotationMode, rotationFollow?.kind === 'attitude');
+    this.fovDeg = clampFov(fovDeg);
+    this._orthographicHalfHeight = clampOrthographicHalfHeight(orthographicHalfHeight);
+  }
 
-    let followAttitude = false;
-    let rotation: Quat;
-    if (saved !== undefined) {
-      const savedFollow = rotationFollowFromSaveData(saved.rotatingWith);
-      if (savedFollow?.kind === 'attitude') {
-        this._cameraFrame = frames.inertialFrame;
-        followAttitude = true;
-      } else {
-        this._cameraFrame = frames.frameOf(celestialBodies.originId, savedFollow ?? null);
-      }
-      const offset = v3(saved.offset.x, saved.offset.y, saved.offset.z);
-      this._distance = len(offset);
-      this._pan = frameDir(saved.pan.x, saved.pan.y, saved.pan.z);
-      rotation = qFromBasis(offset, v3(saved.up.x, saved.up.y, saved.up.z));
-      this._focus = saved.focus.kind === 'object'
-        ? { kind: 'object', id: saved.focus.id }
+  // 直列化した視点から、config のビューのカメラを1台復元する。
+  public static deserialize(
+    serialized: SerializedFocusCameraSelection,
+    celestialBodies: CelestialBodies,
+    config: FocusCameraConfig,
+    events: RunEventSink,
+  ): FocusCameraSelection {
+    const { offset, pan, up, focus, projectionMode, orthographicHalfHeight, referencePlane } = serialized;
+    const offsetVector = v3(offset.x, offset.y, offset.z);
+    return new FocusCameraSelection(
+      celestialBodies,
+      config,
+      events,
+      focus.kind === 'object'
+        ? { kind: 'object', id: focus.id }
         : {
           kind: 'point',
-          frame: frames.frameOf(saved.focus.center, rotationSourceFromSaveData(saved.focus.rotatingWith)),
-          point: framePoint(saved.focus.point.x, saved.focus.point.y, saved.focus.point.z),
-        };
-    } else {
-      const initial = config.initial;
-      this._focus = initial.focus;
-      this._cameraFrame = frames.inertialFrame;
-      followAttitude = initial.follow?.kind === 'attitude';
-      this.applyInitialFrame(initial.follow);
-      this._distance = initial.dist;
-      this._pan = frameDir(0, 0, 0);
-      rotation = qFromBasis(sphericalOffset(initial.angles, 1), v3(0, 1, 0));
-    }
-    this.orientation = new CameraOrientation(rotation, saved?.rotationMode ?? 'euler', followAttitude, null);
-    const defaultHalfHeight = this.distance * tanHalfFov(this.fovDeg);
-    const savedHalfHeight = saved?.orthographicHalfHeight;
-    const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight)
-      ? savedHalfHeight : defaultHalfHeight;
-    this._orthographicHalfHeight = clampOrthographicHalfHeight(halfHeight);
+          frame: celestialBodies.frames.frameOf(focus.center, focus.rotatingWith),
+          point: framePoint(focus.point.x, focus.point.y, focus.point.z),
+        },
+      serialized.rotatingWith,
+      len(offsetVector),
+      frameDir(pan.x, pan.y, pan.z),
+      qFromBasis(offsetVector, v3(up.x, up.y, up.z)),
+      // null も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
+      serialized.rotationMode ?? undefined,
+      serialized.fovDeg ?? undefined,
+      projectionMode === 'perspective' || projectionMode === 'orthographic' ? projectionMode : undefined,
+      Number.isFinite(orthographicHalfHeight) ? orthographicHalfHeight : undefined,
+      referencePlane === 'ecliptic' || referencePlane === 'equator' || referencePlane === 'moonOrbit'
+        ? referencePlane : undefined,
+      serialized.staleFollowFrames,
+      serialized.focusReplaced,
+    );
   }
 
   // フォーカスを差し替え、パンを対象の位置へ戻す。新しい対象で成立しない回転追従は、次の
@@ -225,7 +244,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     }
   }
 
-  // 導出側が喪失を確定した同じ FocusTarget をまだ指していれば原点天体へ戻す。
+  // fallToOrigin のカメラが、見失ったと確定した注視 lostFocus をまだ指していれば原点天体へ戻す。
   private followFocusLoss(lostFocus: FocusTarget | null): void {
     if (this.config.focusLossPolicy !== 'fallToOrigin' || lostFocus !== this._focus) return;
     this.setFocus({ kind: 'object', id: this.celestialBodies.originId });
@@ -244,7 +263,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     }
     // 対象が一時的に解決できないだけのフレームでは外さない。
     this.staleFollowFrames++;
-    if (!focusReplaced && this.staleFollowFrames < 2) return;
+    if (!focusReplaced && this.staleFollowFrames < STALE_FOLLOW_FRAMES_TO_DROP) return;
     this.staleFollowFrames = 0;
     this.setRotationFollow(null, sample);
   }
@@ -254,6 +273,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     if (this._focus.kind === 'point') return [];
     const id = this._focus.id;
     const out: CameraRotationFollow[] = [];
+    // 天体なら自分と衛星の公転・自転を、実体なら重力源まわりの公転と姿勢を選べる。
     const body = this.celestialBodies.findMotion(id);
     if (body !== null) {
       if (body.primary !== null) out.push({ kind: 'revolution', id });
@@ -348,7 +368,7 @@ export class FocusCameraSelection implements FocusCameraSource {
 
   // 垂直画角を設定し、透視投影では見かけの大きさを保つよう距離も換算する。
   public setFovDeg(fovDeg: number): void {
-    const nextFov = this.clampFov(fovDeg);
+    const nextFov = clampFov(fovDeg);
     if (nextFov === this.fovDeg) return;
     if (this.projectionMode === 'perspective') {
       const oldScale = tanHalfFov(this.fovDeg);
@@ -386,11 +406,13 @@ export class FocusCameraSelection implements FocusCameraSource {
 
   // 視点を基準面の真上または真横へ回し、パンを戻す。
   public setReferenceView(view: CameraReferenceView, sample: CameraFrameSample): void {
+    // 基準面の法線を、視点を持つ座標系で表す。
     const transform = this.celestialBodies.frames.transformAt(
       this._cameraFrame, sample.displayTime, sample.frameAnchors,
     );
     const normal = norm(frameDirVector(toFrameDir(transform, this.framePlaneNormal(sample))));
     const currentOffset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
+    // 真上は法線から見下ろし、真横はいまの視線を面へ倒す。縮退したら春分方向、次に右軸で代える。
     let offset: Vec3;
     let up: Vec3;
     if (view === 'above') {
@@ -415,6 +437,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     if (this.config.reset === 'initial') {
       this.resetToInitial();
     } else {
+      // 視線はそのままで、上方向を基準の上方向へ揃え、ずらしを戻す。
       const transform = this.celestialBodies.frames.transformAt(
         this._cameraFrame, sample.displayTime, sample.frameAnchors,
       );
@@ -426,9 +449,9 @@ export class FocusCameraSelection implements FocusCameraSource {
     this.events.record({ kind: 'cameraViewReset', view: this.config.view });
   }
 
-  // 保存形式へ、姿勢追従を合成した絶対の向きで畳む。
-  public serialize(): FocusCameraSaveData {
-    const focus: FocusCameraSaveData['focus'] = this._focus.kind === 'object'
+  // 直列化した形へ畳む。向きは姿勢追従中なら対象姿勢からの相対値のまま書く。
+  public serialize(): SerializedFocusCameraSelection {
+    const focus: SerializedFocusCameraSelection['focus'] = this._focus.kind === 'object'
       ? { kind: 'object', id: this._focus.id }
       : {
         kind: 'point',
@@ -436,20 +459,23 @@ export class FocusCameraSelection implements FocusCameraSource {
         rotatingWith: this._focus.frame.rotatingWith,
         point: { x: this._focus.point.x, y: this._focus.point.y, z: this._focus.point.z },
       };
-    const rotation = this.orientation.effective();
+    // 向きと注視距離を、注視点からカメラへの変位 offset と上方向 up の組へ畳む。
+    const rotation = this.orientation.raw;
     const offset = scale(qRotate(rotation, LOCAL_FORWARD), this._distance);
     const up = qRotate(rotation, LOCAL_UP);
     return {
       offset: { x: offset.x, y: offset.y, z: offset.z },
       pan: { x: this._pan.x, y: this._pan.y, z: this._pan.z },
       up: { x: up.x, y: up.y, z: up.z },
-      rotatingWith: this.orientation.followingAttitude ? { kind: 'attitude' } : this._cameraFrame.rotatingWith,
+      rotatingWith: this.rotationFollow,
       focus,
       rotationMode: this.orientation.rotationMode,
       fovDeg: this.fovDeg,
       projectionMode: this.projectionMode,
       orthographicHalfHeight: this._orthographicHalfHeight,
       referencePlane: this._referencePlane,
+      staleFollowFrames: this.staleFollowFrames,
+      focusReplaced: this.focusReplaced,
     };
   }
 
@@ -457,14 +483,6 @@ export class FocusCameraSelection implements FocusCameraSource {
   private isFollowAvailable(follow: CameraRotationFollow, sample: CameraFrameSample): boolean {
     const key = rotationFollowKey(follow);
     return this.availableRotationFollows(sample).some((candidate) => rotationFollowKey(candidate) === key);
-  }
-
-  // 垂直画角 [deg] を許容範囲へ収める。有限でない値は既定へ落とす。
-  private clampFov(fovDeg: number): number {
-    return Math.max(
-      FOCUS_CAMERA_FOV_MIN,
-      Math.min(FOCUS_CAMERA_FOV_MAX, Number.isFinite(fovDeg) ? fovDeg : FOCUS_CAMERA_FOV),
-    );
   }
 
   // 注視距離 [m] を、注視対象の半径(天体でなければ実体の下限)と上限の間へ収めて据える。
@@ -490,7 +508,8 @@ export class FocusCameraSelection implements FocusCameraSource {
     return norm(frameDirVector(toFrameDir(transform, polarEci)));
   }
 
-  // いま選ばれている基準面の法線(ECI)。面を決める天体が居なければ黄道極へ落ちる。
+  // いま選ばれている基準面の法線(ECI)。月の軌道面は月が公転していなければ黄道極、赤道面は
+  // 地球(居なければ原点天体)の自転軸が引けなければ ECI の極で代える。
   private framePlaneNormal(sample: CameraFrameSample): Vec3 {
     if (this._referencePlane === 'ecliptic') return ECL_POLE_ECI;
     if (this._referencePlane === 'moonOrbit') {
@@ -511,6 +530,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     const frame = frames.frameOf(this.celestialBodies.originId, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
+    // 同じ表示時刻の新旧の座標系で、視線・上方向・ずらしを表し直す。
     const fromTransform = frames.transformAt(from, sample.displayTime, sample.frameAnchors);
     const toTransform = frames.transformAt(frame, sample.displayTime, sample.frameAnchors);
     const rotation = this.orientation.effective();
@@ -525,19 +545,19 @@ export class FocusCameraSelection implements FocusCameraSource {
   private resetToInitial(): void {
     const initial = this.config.initial;
     this._focus = initial.focus;
-    this.applyInitialFrame(initial.follow);
-    this.orientation.restoreFollow(initial.follow?.kind === 'attitude');
+    this.staleFollowFrames = 0;
+    this._cameraFrame = this.frameFollowing(initial.follow);
+    this.orientation.resetFollow(initial.follow?.kind === 'attitude');
     this._distance = initial.dist;
     this.orientation.setRaw(qFromBasis(sphericalOffset(initial.angles, 1), v3(0, 1, 0)));
-    this.fovDeg = this.clampFov(initial.fovDeg);
+    this.fovDeg = clampFov(initial.fovDeg);
     this.resetPan();
   }
 
-  // 初期の回転追従に対応する座標系を据える。姿勢追従は慣性系で持ち、それ以外は原点の座標系。
-  private applyInitialFrame(follow: CameraRotationFollow | null): void {
-    this.staleFollowFrames = 0;
-    this._cameraFrame = follow?.kind === 'attitude'
+  // 回転追従 follow のときに視点を持つ座標系。姿勢追従は慣性系で持ち、それ以外は原点の座標系。
+  private frameFollowing(follow: CameraRotationFollow | null): ReferenceFrame {
+    return follow?.kind === 'attitude'
       ? this.celestialBodies.frames.inertialFrame
-      : this.celestialBodies.frames.frameOf(this.celestialBodies.originId, follow ?? null);
+      : this.celestialBodies.frames.frameOf(this.celestialBodies.originId, follow);
   }
 }

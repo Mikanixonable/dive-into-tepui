@@ -1,5 +1,5 @@
-// 分離式ブースターの順序、最後尾限定の燃焼、燃料切れ途中の平均推力、保存復元、
-// 分離時の運動量保存を検証する。
+// 分離式ブースターの順序、最後尾限定の燃焼、燃料切れ途中の平均推力、分離時の運動量保存を
+// 検証する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
@@ -91,26 +91,6 @@ export function register(): void {
     assert.equal(detached.fuel, 9.5);
     assert.equal(detached.ignited, true);
     assert.deepEqual(stack.stages.map((s) => s.id), ['inner']);
-  });
-
-  test('booster stack: セーブ用 plain data は独立コピーでラウンドトリップする', () => {
-    const stack = new BoosterStack([stage('inner'), stage('outer', 4, true)]);
-    const data = stack.exportData();
-    data.stages[1]!.fuel = 0;
-    assert.equal(stack.stages[1]?.fuel, 4);
-
-    const restored = BoosterStack.importData(stack.exportData());
-    assert.deepEqual(restored.exportData(), stack.exportData());
-    assert.notEqual(restored.stages[0], stack.stages[0]);
-  });
-
-  test('booster stack: 読み出した段の書き換えでは内部状態を壊せない', () => {
-    const stack = new BoosterStack([stage('outer')]);
-    const exposed = stack.stages[0]!;
-    exposed.fuel = 0;
-    exposed.ignited = true;
-    assert.equal(stack.stages[0]?.fuel, 10);
-    assert.equal(stack.totalMass, 110);
   });
 
   test('booster stack: 段の質量・燃料不変条件を拒否する', () => {

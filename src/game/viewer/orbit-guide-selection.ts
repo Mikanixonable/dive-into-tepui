@@ -1,5 +1,7 @@
 // 軌道ガイドとして、どの参照軌道をどう描くかの選択。
-import { normalizeOrbitGuideSettings, savedOrbitGuideSettings } from './orbit-guide-settings';
+import {
+  DEFAULT_ORBIT_GUIDE_SETTINGS, normalizeOrbitGuideSettings, deserializeOrbitGuideSettings,
+} from './orbit-guide-settings';
 import type { OrbitGuideSettings } from './orbit-guide-settings';
 
 // 軌道ガイドの選択を読む口。
@@ -9,11 +11,11 @@ export interface OrbitGuideSource {
 }
 
 export class OrbitGuideSelection implements OrbitGuideSource {
-  private _settings: OrbitGuideSettings;
+  public constructor(private _settings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS) {}
 
-  // セーブに残っていた設定 saved を読み直して始める。無ければ既定から始める。
-  public constructor(saved: Partial<OrbitGuideSettings> | undefined) {
-    this._settings = savedOrbitGuideSettings(saved);
+  // 直列化された設定から復元する。欠けた項目は既定値で補い、範囲・本数を丸める。
+  public static deserialize(serialized: Partial<OrbitGuideSettings>): OrbitGuideSelection {
+    return new OrbitGuideSelection(deserializeOrbitGuideSettings(serialized));
   }
 
   public get settings(): OrbitGuideSettings { return this._settings; }

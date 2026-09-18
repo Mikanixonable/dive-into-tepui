@@ -1,37 +1,36 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
-import * as THREE from 'three/webgpu';
-import { Enemy } from '../dynamic/dynamic-entity/enemy';
 import { isPlayer, Player, type PlayerPlacement } from '../player/player';
 import { strongestAttractor } from '../../physics/attractor';
-import { Logistics } from './stage-utils/logistics';
-import { ScoreCounter } from './stage-utils/score-counter';
+import { Logistics, type SerializedLogistics } from './stage-utils/logistics';
+import { ScoreCounter, type SerializedScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
+import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
+import { profileAtOrNull } from '../../physics/ephemeris/profile';
+import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
+import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
+import { v3 } from '../../math/vec3';
+import { solarSystem } from '../celestial/solar-system/solar-system';
+import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
+import type * as THREE from 'three/webgpu';
+import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { HudLayers } from '../hud/hud-layers';
-import { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { StageSaveData } from '../save/save-data';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { ProteinDisplayControl } from '../creative/stage-controls-panel';
 import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';
-import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
-import { profileAtOrNull } from '../../physics/ephemeris/profile';
-import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
-import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { v3 } from '../../math/vec3';
-import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
-import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
-import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
+import type { EntityRegistry } from '../dynamic/entity-registry';
+import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
 
-// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
-// 自分の epoch としてこれを宣言する。ステージの宣言以外から読まない(元期は共有の定数ではなく、
-// ステージの宣言)。
+// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。ステージの epoch の
+// 宣言以外から読まない(元期は共有の定数ではなく、ステージの宣言)。
 export const STORY_EPOCH: TdbJulianDate =
   calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 
@@ -42,8 +41,7 @@ export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt
 const PLAYER_INITIAL_ALT = 420e3; // [m]
 const PLAYER_INITIAL_INC_DEG = 97.0; // [deg]
 
-// 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
-// これをそのまま基底へ渡す。
+// 全ステージ共通の協力者。create・deserialize が受け、基底のコンストラクタへそのまま渡す。
 export type StageDeps = [
   hud: HudLayers,
   scene: THREE.Scene,
@@ -52,6 +50,10 @@ export type StageDeps = [
   controlSelection: ControlSelection,
   commandQueue: CommandQueue,
 ];
+
+// 全ステージ共通の状態(スコア・決着状態・補給)。基底のコンストラクタが deps の後ろに受け、
+// 省いたものは新しいランの初期値から始まる。
+export type CommonStageState = [scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
@@ -74,13 +76,24 @@ export interface StageClass {
   readonly selectGroup: string;
   readonly hiddenFromSelect: boolean;
   isUnlocked(clearCounts: ClearCounts): boolean;
-  new (saved: StageSaveData | undefined, ...deps: StageDeps): Stage;
+  // 新しいランのステージを組み、初期配置を置く。
+  create(...deps: StageDeps): Stage;
+  // このステージクラスが直列化した形 serialized から復元する。
+  deserialize(serialized: SerializedStage, ...deps: StageDeps): Stage;
 }
 
 // ステージ ID → クリア回数(周回数によるアンロックに備えて、クリアの有無でなく回数で持つ)。
 export type ClearCounts = Readonly<Record<string, number>>;
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
+
+// 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳は、これを拡張した
+// 型に持つ。
+export interface SerializedStage {
+  readonly scoreCounter: SerializedScoreCounter;
+  readonly phase: GamePhase;
+  readonly logistics: SerializedLogistics;
+}
 
 // 決着した周回の結果画面に出す内容。
 export interface StageResult {
@@ -134,7 +147,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // タンパク質の表示形態と着色を選ぶ UI を持つステージはそれを差し出す。既定では持たない。
   public readonly proteinDisplayControl: ProteinDisplayControl | null = null;
 
-  public readonly scoreCounter: ScoreCounter;
   protected readonly logistics: Logistics;
   private readonly statusPanel: StatusPanel;
 
@@ -146,7 +158,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // モデル層の外から届いた書き換えを積む先。ステージ固有の命令の口はここへ積む。
   protected readonly _commandQueue: CommandQueue;
 
-  private _phase: GamePhase;
   public get phase(): GamePhase { return this._phase; }
   public get isPlaying(): boolean { return this._phase === 'playing'; }
   private _result: StageResult | null = null;
@@ -159,12 +170,15 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._result = result;
     this.onDecided?.();
   }
-  private readonly restored: boolean;
-
-  // saved が undefined ならスナップショットからの再開ではない新規開始で、スコア0・進行中・
-  // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
-  // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
-  protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  // 協力者 deps と全ステージ共通の状態から組む。省いた状態は新しいランの初期値(スコア 0・進行中・
+  // 補給タイマー未経過)から始まる。固有の状態を持つ具象ステージは、自分の分を deps の直後に受け、
+  // 共通の状態を末尾で受けてここへ渡す。
+  protected constructor(
+    deps: StageDeps,
+    public readonly scoreCounter = new ScoreCounter(),
+    private _phase: GamePhase = 'playing',
+    logistics?: Logistics,
+  ) {
     const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue] = deps;
     this._hud = hud;
     this._scene = scene;
@@ -172,26 +186,34 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
     this._commandQueue = commandQueue;
-    // 進行状態は saved から復元し、無ければ新規開始の既定値で始める。
-    this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
-    this._phase = saved?.phase ?? 'playing';
-    this.restored = saved !== undefined;
-    this.logistics = new Logistics(
-      scene, dynamicSystem, saved?.logistics, this.stageRules.automaticResupply,
-    );
+    this.logistics = logistics ?? new Logistics(scene, dynamicSystem, this.stageRules.automaticResupply);
     this.statusPanel = new StatusPanel(hud.combatRoot);
+  }
+
+  // 直列化した共通の内訳 serialized から、全ステージ共通の状態を戻す。具象の deserialize が自分の
+  // コンストラクタの末尾へ渡す。rules はそのステージクラスの規則。
+  protected static deserializeCommonState(
+    serialized: SerializedStage, deps: StageDeps, rules: StageRules,
+  ): CommonStageState {
+    const [, scene, dynamicSystem] = deps;
+    const { scoreCounter, phase, logistics } = serialized;
+    // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
+    return [
+      scoreCounter == null ? undefined : ScoreCounter.deserialize(scoreCounter),
+      phase ?? undefined,
+      logistics == null
+        ? undefined
+        : Logistics.deserialize(logistics, scene, dynamicSystem, rules.automaticResupply),
+    ];
   }
 
   private _briefing: string | null = null;
 
-  // 新規開始のランで1度だけ出すブリーフィングの本文(HTML)。再開したランでは null。
+  // 新規開始のランで1度だけ出すブリーフィングの本文(HTML)。復元したランでは null。
   public get briefing(): string | null { return this._briefing; }
 
-  // 新規開始なら初期配置を行い、ブリーフィングの本文を組む。具象ステージは自分のコンストラクタの
-  // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
-  protected begin(): void {
-    if (this.restored) return;
-    this.init();
+  // ブリーフィングの本文を、いまの状態から組む。新しいランのステージで、初期配置を終えた後に1度だけ呼ぶ。
+  protected composeBriefing(): void {
     this._briefing = this.briefingHtml();
   }
 
@@ -200,8 +222,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // ステータスパネルを同期する。camera・displayTime は配置プレビューなどステージ固有の
-  // 描画物を持つサブクラスが使う。
+  // ステータスパネルを同期する。
   public sync(
     camera: CameraFrame, _displayTime: number,
   ): void {
@@ -218,8 +239,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills);
   }
 
-  // 台本が相手にする自艦。補給の投入先・敵の追跡先・ステータスパネルの表示対象はどれもこれ。
-  // 操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
+  // 台本が相手にする自艦。操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
   protected get ship(): Player | null {
     const controlled = this._controlSelection.current;
     if (controlled instanceof Player) return controlled;
@@ -232,10 +252,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   protected addPlayer(placement: Partial<PlayerPlacement> = {}): Player {
     const state = placement.state ?? this.defaultPlayerState();
     const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
-    const ship = new Player(
-      this._dynamicSystem.events, this._scene, this._dynamicSystem.idAllocators,
-      { ...placement, state, center },
-    );
+    const ship = Player.create({ ...placement, state }, center, this._dynamicSystem, this._scene);
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;
@@ -261,33 +278,36 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  // 外部資源の取得待ちで実体化を遅らせうる敵を登録する。gate が通り次第登録され、
-  // そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(gate: SpawnGate | null, build: () => Enemy): void {
-    this._dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
+  // タンパク質の敵を要求し、出撃数をスコアへ記録する。敵はアセットが揃い次第実体化する。
+  protected addProteinEnemy(request: ProteinEnemyRequest): void {
+    this._dynamicSystem.spawnWhenReady({ kind: 'protein-enemy', request });
+    this.scoreCounter.recordSpawnEnemy();
   }
 
-  // ステージごとのブリーフィングの本文(HTML)。init() を終えた状態から組む。
+  // 戦場に現れた敵の数。アセットを待つ敵は、実体化した時点から数える(SPEC/PROTEIN.md「出現」節)。
+  public get enemiesAppeared(): number {
+    return this.scoreCounter.totalEnemiesSpawned - this._dynamicSystem.pendingEnemyCount;
+  }
+
+  // ステージごとのブリーフィングの本文(HTML)。初期配置を終えた状態から組む。
   protected abstract briefingHtml(): string;
-  // 初期配置。既定では何も置かない。
-  protected init(): void { }
   // 毎フレーム呼ぶ。台本が相手にする自艦は this.ship から引く。
   public abstract update(dt: number, simTime: number, simSpeed: SimSpeedManager): void;
 
-  // 時刻固定イベントを持つステージだけが override する。
+  // 時刻に固定したイベントの、次の時刻(無ければ null)と、その時刻に達したときの適用。既定ではイベントを持たない。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }
   public applySimulationEvents(_simTime: number): void { }
 
   // 残存敵数が 0 以下なら勝利。
   protected checkWin(): boolean {
-    return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
+    return this.enemiesAppeared - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
   // 決着を「勝利」で確定させる。
   protected onWin(simTime: number): void {
     this.decide('won', {
       win: true,
       title: null,
-      detailHtml: winDetailHtml(this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime),
+      detailHtml: winDetailHtml(this.scoreCounter, this.enemiesAppeared, simTime),
     });
   }
 
@@ -313,7 +333,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.decide('lost', {
       win: false,
       title: null,
-      detailHtml: `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`,
+      detailHtml: `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.enemiesAppeared} 機`,
     });
   }
 
@@ -323,9 +343,9 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.dispose();
   }
 
-  // スコア・決着状態・補給タイマーをセーブデータへ変換する。固有の内訳を持つ具象ステージは
+  // スコア・決着状態・補給タイマーを直列化した形へ変換する。固有の内訳を持つ具象ステージは
   // これを拡張した戻り値型で override する。
-  public serialize(): StageSaveData {
+  public serialize(): SerializedStage {
     return {
       scoreCounter: this.scoreCounter.serialize(),
       phase: this._phase,

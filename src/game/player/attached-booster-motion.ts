@@ -1,9 +1,9 @@
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { scale, type Vec3 } from '../../math/vec3';
 import {
-  BoosterStack,
   boosterAverageAcceleration,
-  type BoosterStackData,
+  type BoosterStack,
+  type SerializedBoosterStack,
   type BoosterStage,
 } from './booster-stack';
 import type { Attitude } from '../../physics/attitude';
@@ -16,17 +16,14 @@ export interface BoosterHostMotion {
   invalidatePrediction(): void;
 }
 
-// 接続中ブースターの段、燃料、推力を管理し、段の寄与を機体の質量・慣性へ反映させる。
+// 接続中ブースターの段、燃料、推力を管理し、段を変えるたびに寄与を機体の質量・慣性へ反映させる。
 export class AttachedBoosterMotion {
-  private readonly stack: BoosterStack;
+  // 直近の区間の推力と燃焼率。段を燃やすたびに求め直すキャッシュ。
   private thrustValue: Vec3 | null = null;
   private burnRatioValue = 0;
 
-  // ship の質量・慣性に段を反映して始める。saved があれば段スタックを復元する。
-  public constructor(private readonly ship: BoosterHostMotion, saved?: BoosterStackData) {
-    this.stack = saved ? BoosterStack.importData(saved) : new BoosterStack();
-    this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
-  }
+  // ship に積んだ段 stack を持つ。構築時点の段の寄与は、ship が自分の質量・慣性へ入れておく。
+  public constructor(private readonly ship: BoosterHostMotion, private readonly stack: BoosterStack) {}
 
   public get stages(): readonly BoosterStage[] { return this.stack.stages; }
   // 船体側から最後尾へ並ぶ段の識別子。
@@ -78,8 +75,8 @@ export class AttachedBoosterMotion {
     this.burnRatioValue = 0;
   }
 
-  // 段スタックの保存形。
-  public serialize(): BoosterStackData {
-    return this.stack.exportData();
+  // 段スタックの直列化。
+  public serialize(): SerializedBoosterStack {
+    return this.stack.serialize();
   }
 }

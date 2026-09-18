@@ -11,12 +11,12 @@ import { addScaled, cross, norm, scale, type Vec3 } from '../../math/vec3';
 export type CameraRotationMode = 'quaternion' | 'euler';
 
 // 画面ドラッグと回転キーを、いまの向き rotation へ積む。すべて [rad] で受け、感度の換算は
-// 呼び出し側が済ませておく。ヨー/ピッチは固定のワールド軸ではなく現在の上軸/右軸まわりに
-// 回すので、ロールで上方向が傾いても画面上の動きと入力方向が一致し続ける。
+// 呼び出し側が済ませておく。
 function rotateByScreenDrag(
   rotation: Quat, dragRight: number, dragUp: number, roll: number, keyYaw: number, keyPitch: number,
 ): Quat {
   let q = rotation;
+  // ヨー/ピッチは現在の上軸/右軸まわりに回す — ロールで上方向が傾いても画面上の動きと入力方向が揃う。
   if (keyYaw !== 0) q = qNormalize(qMul(qFromAxisAngle(qRotate(q, LOCAL_UP), -keyYaw), q));
   if (keyPitch !== 0) {
     const right = norm(cross(norm(qRotate(q, LOCAL_FORWARD)), qRotate(q, LOCAL_UP)));
@@ -35,20 +35,24 @@ function rotateByScreenDrag(
 }
 
 export class CameraOrientation {
-  // rotation は追従中なら対象姿勢からの相対値。attitude が null の間は絶対値のまま扱い、
-  // 初めて姿勢が引けたときに相対値へ読み替える。
+  // 合成に使う追従対象の姿勢。進行から引き直せるキャッシュで、まだ引けていなければ null。
+  private attitude: Quat | null = null;
+
+  // rotation は追従中なら対象姿勢からの相対値、そうでなければ絶対の向き。
   public constructor(
     private rotation: Quat,
     private mode: CameraRotationMode,
     private following: boolean,
-    private attitude: Quat | null,
   ) {}
+
+  // 生の値。追従中は対象姿勢からの相対値。
+  public get raw(): Quat { return this.rotation; }
 
   public get rotationMode(): CameraRotationMode { return this.mode; }
 
   public get followingAttitude(): boolean { return this.following; }
 
-  // 入力をオイラー角として積むか。姿勢追従中は生の相対回転へ積み、実効回転で姿勢を合成する。
+  // 入力をオイラー角として積むか。
   public get usesEuler(): boolean { return this.mode === 'euler'; }
 
   // 姿勢追従を掛けた、描画・入力に使う実効回転。
@@ -105,7 +109,7 @@ export class CameraOrientation {
   }
 
   // 追従の選択だけを差し替える。向きは読み替えず、追従中に追従へ戻す場合だけ基準の姿勢を持ち越す。
-  public restoreFollow(following: boolean): void {
+  public resetFollow(following: boolean): void {
     this.attitude = following && this.following ? this.attitude : null;
     this.following = following;
   }
@@ -113,8 +117,6 @@ export class CameraOrientation {
   // 合成に使う姿勢を最新へ。解決できないフレームは直前の姿勢を保つ(視点が跳ねない)。
   public refreshAttitude(attitude: Quat | null): void {
     if (!this.following || attitude === null) return;
-    // 絶対値で持っていた向き(ロード直後)を、初めて引けた姿勢からの相対値へ読み替える。
-    if (this.attitude === null) this.rotation = qNormalize(qMul(qInvert(attitude), this.rotation));
     this.attitude = attitude;
   }
 }

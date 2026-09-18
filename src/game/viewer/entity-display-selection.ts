@@ -2,7 +2,11 @@
 import {
   DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, type ProteinDisplaySettings,
 } from '../../render/protein/protein-display';
-import type { EntitySaveDataUnion, ProteinEnemySaveData } from '../save/save-data';
+
+export interface SerializedEntityDisplaySelection {
+  readonly trajectoryLineIds: readonly string[];
+  readonly proteinDisplay: ProteinDisplaySettings;
+}
 
 // 実体ごとの表示設定を読む面。
 export interface EntityDisplaySource {
@@ -12,25 +16,24 @@ export interface EntityDisplaySource {
   readonly proteinDisplay: ProteinDisplaySettings;
 }
 
-// saved のうち最初のタンパク質の敵が持つ表示設定。その敵がいないか、値が不正なら既定。
-function savedProteinDisplay(saved: readonly EntitySaveDataUnion[]): ProteinDisplaySettings {
-  const protein = saved.find((data): data is ProteinEnemySaveData => data.kind === 'protein-enemy');
-  return isProteinDisplaySettings(protein?.display) ? protein.display : DEFAULT_PROTEIN_DISPLAY;
-}
-
 export class EntityDisplaySelection implements EntityDisplaySource {
-  // 予測線・過去線を出す実体の id。アセット待ちで顔ぶれにまだいない個体の id も持つ。
-  private readonly trajectoryLineIds: Set<string>;
-  private _proteinDisplay: ProteinDisplaySettings;
+  public constructor(
+    // 予測線・過去線を出す実体の id。アセット待ちで顔ぶれにまだいない個体の id も持つ。
+    private readonly trajectoryLineIds: Set<string> = new Set(),
+    private _proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY,
+  ) {}
 
-  // 保存された実体の記録 saved から、線を出す実体とタンパク質の表示設定を戻して始める。
-  // saved が無ければ既定から始める。
-  public constructor(saved: readonly EntitySaveDataUnion[] | undefined) {
-    const entities = saved ?? [];
-    this.trajectoryLineIds = new Set(entities
-      .filter((data) => 'showTrajectoryLine' in data && data.showTrajectoryLine === true)
-      .map((data) => data.id));
-    this._proteinDisplay = savedProteinDisplay(entities);
+  // 直列化した表示設定から復元する。タンパク質の表示が不正なら既定から始める。
+  public static deserialize(serialized: SerializedEntityDisplaySelection): EntityDisplaySelection {
+    return new EntityDisplaySelection(
+      new Set(serialized.trajectoryLineIds),
+      isProteinDisplaySettings(serialized.proteinDisplay) ? serialized.proteinDisplay : undefined,
+    );
+  }
+
+  // 直列化した形へ畳む。
+  public serialize(): SerializedEntityDisplaySelection {
+    return { trajectoryLineIds: [...this.trajectoryLineIds], proteinDisplay: this._proteinDisplay };
   }
 
   public showsTrajectoryLine(id: string): boolean { return this.trajectoryLineIds.has(id); }

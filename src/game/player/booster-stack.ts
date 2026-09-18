@@ -2,19 +2,24 @@
 // 数値を持つ。燃焼は、刻みの途中で燃料が尽きても実際に燃焼していた時間の割合で推力を返す。
 import { addScaled, type Vec3 } from '../../math/vec3';
 
-/** 燃料を含む、スタック内の一段の可変状態。質量の単位は kg、推力は N。 */
+/** 燃料を含む、スタック内の一段の状態。質量の単位は kg、推力は N。 */
 export interface BoosterStage {
   readonly id: string;
   readonly dryMass: number;
-  fuel: number;
+  readonly fuel: number;
   readonly maxFuel: number;
   readonly thrust: number;
   readonly fuelRate: number;
+  readonly ignited: boolean;
+}
+
+// スタックが燃焼と点火で書き換える、段の内部状態。
+interface StageState extends BoosterStage {
+  fuel: number;
   ignited: boolean;
 }
 
-/** セーブデータに使うスタック全体の plain data。 */
-export interface BoosterStackData {
+export interface SerializedBoosterStack {
   readonly stages: BoosterStage[];
 }
 
@@ -85,40 +90,40 @@ function finiteNonNegative(value: number, name: string): void {
 }
 
 // 段データを検証して複製する。不正な値には TypeError / RangeError を投げる。
-function cloneStage(data: BoosterStage): BoosterStage {
-  if (typeof data.id !== 'string' || data.id.length === 0) {
+function cloneStage(stage: BoosterStage): StageState {
+  if (typeof stage.id !== 'string' || stage.id.length === 0) {
     throw new TypeError('booster stage id must be a non-empty string');
   }
-  finiteNonNegative(data.dryMass, 'booster stage dryMass');
-  finiteNonNegative(data.fuel, 'booster stage fuel');
-  finiteNonNegative(data.maxFuel, 'booster stage maxFuel');
-  finiteNonNegative(data.thrust, 'booster stage thrust');
-  finiteNonNegative(data.fuelRate, 'booster stage fuelRate');
-  if (data.fuel > data.maxFuel) {
+  finiteNonNegative(stage.dryMass, 'booster stage dryMass');
+  finiteNonNegative(stage.fuel, 'booster stage fuel');
+  finiteNonNegative(stage.maxFuel, 'booster stage maxFuel');
+  finiteNonNegative(stage.thrust, 'booster stage thrust');
+  finiteNonNegative(stage.fuelRate, 'booster stage fuelRate');
+  if (stage.fuel > stage.maxFuel) {
     throw new RangeError('booster stage fuel cannot exceed maxFuel');
   }
-  if (typeof data.ignited !== 'boolean') {
+  if (typeof stage.ignited !== 'boolean') {
     throw new TypeError('booster stage ignited must be a boolean');
   }
 
   return {
-    id: data.id,
-    dryMass: data.dryMass,
-    fuel: data.fuel,
-    maxFuel: data.maxFuel,
-    thrust: data.thrust,
-    fuelRate: data.fuelRate,
+    id: stage.id,
+    dryMass: stage.dryMass,
+    fuel: stage.fuel,
+    maxFuel: stage.maxFuel,
+    thrust: stage.thrust,
+    fuelRate: stage.fuelRate,
     // 燃料ゼロの段は消火状態で読み込む。
-    ignited: data.fuel > 0 && data.ignited,
+    ignited: stage.fuel > 0 && stage.ignited,
   };
 }
 
 /**
  * 分離式ブースターの段スタック。配列は船体側 -> 最後尾の順で、attach/detach/燃焼は
- * 末尾の段に対して行う。attach と import は入力を複製して持つ。
+ * 末尾の段に対して行う。構築と attach は入力を複製して持つ。
  */
 export class BoosterStack {
-  private readonly _stages: BoosterStage[];
+  private readonly _stages: StageState[];
 
   // stages を検証・複製して始める。
   public constructor(stages: readonly BoosterStage[] = []) {
@@ -201,14 +206,16 @@ export class BoosterStack {
     return this._stages.pop() ?? null;
   }
 
-  /** セーブ用 plain data(内部状態の複製)。 */
-  public exportData(): BoosterStackData {
+  /** 直列化した形(内部状態の複製)。 */
+  public serialize(): SerializedBoosterStack {
     return { stages: this._stages.map((stage) => ({ ...stage })) };
   }
 
-  /** セーブ用 plain data から新しいスタックを復元する。 */
-  public static importData(data: BoosterStackData): BoosterStack {
-    if (!data || !Array.isArray(data.stages)) throw new TypeError('booster stack data must contain a stages array');
-    return new BoosterStack(data.stages);
+  /** 直列化した段の並びから復元する。不正な記録には TypeError / RangeError を投げる。 */
+  public static deserialize(serialized: SerializedBoosterStack): BoosterStack {
+    if (!serialized || !Array.isArray(serialized.stages)) {
+      throw new TypeError('booster stack data must contain a stages array');
+    }
+    return new BoosterStack(serialized.stages);
   }
 }

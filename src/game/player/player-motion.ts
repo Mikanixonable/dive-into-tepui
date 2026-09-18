@@ -2,18 +2,18 @@ import { v3, type Vec3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { BoosterStackData } from './booster-stack';
-import type { PowerSaveData, RadiatorSaveData } from '../save/save-data';
+import { BoosterStack } from './booster-stack';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
+import { DynamicMotion, type DynamicMotionBehavior, type DynamicMotionThermal } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
+import type { StageOutcome } from '../stages/stage-outcome';
 import {
   MAX_HULL_TEMP,
   SHIP_BCINV,
   SHIP_RADIATING_AREA_PER_MASS,
   SHIP_SRP_COEFF,
   shipMotionOptions,
-} from '../dynamic/dynamic-entity/ship';
+} from '../dynamic/dynamic-entity/vessel';
 import {
   PLAYER_INERTIA_PITCH,
   PLAYER_INERTIA_ROLL,
@@ -25,6 +25,10 @@ import { AttachedBoosterMotion } from './attached-booster-motion';
 import { BeltController } from './belt';
 import { PowerSystem } from './power';
 import { RadiatorSystem, type RadiatorSide } from './radiator';
+import type { DeployablePanelState } from './deployable-panel-state';
+
+// 新しく作った艦の熱の状態。外殻は 273 K の等温から始める。
+const HULL_START_THERMAL: DynamicMotionThermal = { temperature: 273, thermalDeviation: 0, pendingSpecificHeat: 0 };
 
 // 自機の Motion が Entity 側から読む値と、接触・喪失を通知する先。
 export interface PlayerMotionWeaponPort {
@@ -46,18 +50,16 @@ export interface AltitudeAlarmPort {
 }
 
 export interface PlayerMotionContactPort {
-  receiveEntityContact(
-    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
-  ): void;
+  receiveEntityContact(other: DynamicMotion, contact: Contact, activeStage: StageOutcome): void;
   receiveRadiatorContact(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    side: RadiatorSide, other: DynamicMotion, contact: Contact, activeStage: StageOutcome,
   ): void;
-  receiveSurfaceContact(contact: Contact, services: DynamicReactionServices): void;
+  receiveSurfaceContact(contact: Contact, activeStage: StageOutcome): void;
 }
 
 export interface PlayerMotionLossPort {
-  receiveStructuralLoss(services: DynamicReactionServices): void;
-  receiveBurnUp(services: DynamicReactionServices): void;
+  receiveStructuralLoss(activeStage: StageOutcome): void;
+  receiveBurnUp(activeStage: StageOutcome): void;
 }
 
 export interface PlayerMotionReactions {
@@ -118,7 +120,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
       motion.state.r, motion.state.v, motion.att, simTime,
     ));
     this.contactProxyScratch.push(...motion.belt.contactSections(
-      simTime, dt, motion.state.r, motion.state.v, motion.att,
+      motion, simTime, dt, motion.state.r, motion.state.v, motion.att,
     ));
     return this.contactProxyScratch;
   }
@@ -150,7 +152,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
   public onEntityContact(
     _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
-    this.reactions.contact.receiveEntityContact(other, contact, services);
+    this.reactions.contact.receiveEntityContact(other, contact, services.activeStage);
   }
 
   // 天体表面への接触を reactions へ渡す。
@@ -160,12 +162,12 @@ class PlayerBehavior implements DynamicMotionBehavior {
     contact: Contact,
     services: DynamicReactionServices,
   ): void {
-    this.reactions.contact.receiveSurfaceContact(contact, services);
+    this.reactions.contact.receiveSurfaceContact(contact, services.activeStage);
   }
 
   // 温度上限を超えた焼失を reactions へ渡す。
   public onBurnUp(_self: DynamicMotion, services: DynamicReactionServices): void {
-    this.reactions.loss.receiveBurnUp(services);
+    this.reactions.loss.receiveBurnUp(services.activeStage);
   }
 
   // 空力荷重が構造限界を超えていれば、構造喪失を reactions へ渡す。
@@ -176,51 +178,54 @@ class PlayerBehavior implements DynamicMotionBehavior {
     services: DynamicReactionServices,
   ): void {
     if (playerMotionOf(self).aero.overStructuralLimit) {
-      this.reactions.loss.receiveStructuralLoss(services);
+      this.reactions.loss.receiveStructuralLoss(services.activeStage);
     }
   }
 }
 
 // 自機の軌道・姿勢・物性と、機体に付随する物理系を一体として管理する。
 export class PlayerMotion extends DynamicMotion {
-  public readonly belt: BeltController;
   public readonly aero = new AeroLoad();
   public readonly radiator: RadiatorSystem;
-  public readonly power: PowerSystem;
   public readonly attachedBoosters: AttachedBoosterMotion;
 
-  // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。
+  // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。thermal は熱の
+  // 状態、radiatorUp・radiatorDown は放熱板の展開状態、boosters は接続中の段、belt は給弾ベルト。
+  // 省いた付随物理系は新しく作ったときの状態で始める。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
     radius: number,
-    temperature: number,
     beltLinkCount: number,
     reactions: PlayerMotionReactions,
-    radiatorSave?: RadiatorSaveData,
-    powerSave?: PowerSaveData,
-    boosterSave?: BoosterStackData,
+    thermal = HULL_START_THERMAL,
+    radiatorUp?: DeployablePanelState,
+    radiatorDown?: DeployablePanelState,
+    public readonly power = new PowerSystem(),
+    boosters = new BoosterStack(),
+    public readonly belt = BeltController.create(beltLinkCount),
   ) {
     super(state, shipMotionOptions(attitude, radius, {
       mass: PLAYER_MASS,
       collides: true,
       engagementAnchor: true,
       preciseReentry: true,
-      temperature,
+      ...thermal,
       maxTemperature: MAX_HULL_TEMP,
       behavior: new PlayerBehavior(reactions),
     }));
-    // 付随物理系は、この Motion を本体として組む。保存があればその状態から戻す。
-    this.belt = new BeltController(this, beltLinkCount);
+    // 付随物理系は、この Motion を本体として組む。
     this.radiator = new RadiatorSystem(
       this,
       (side, other, contact, services) => (
-        reactions.contact.receiveRadiatorContact(side, other, contact, services)
+        reactions.contact.receiveRadiatorContact(side, other, contact, services.activeStage)
       ),
-      radiatorSave,
+      radiatorUp,
+      radiatorDown,
     );
-    this.power = new PowerSystem(powerSave);
-    this.attachedBoosters = new AttachedBoosterMotion(this, boosterSave);
+    this.attachedBoosters = new AttachedBoosterMotion(this, boosters);
+    // 接続中の段の寄与を、自分の質量と慣性へ入れる
+    this.rebuildMassAndInertia(boosters.totalMass, boosters.stages.length);
   }
 
   // 接続中ブースターの寄与を受けて、自分の質量と慣性を組み直す。boosterMass は段の合計質量 [kg]。
@@ -240,6 +245,7 @@ export class PlayerMotion extends DynamicMotion {
   }
 }
 
+// PlayerBehavior が受けた self を自機の Motion として読む。自機の Motion でなければ例外を投げる。
 function playerMotionOf(motion: DynamicMotion): PlayerMotion {
   if (!(motion instanceof PlayerMotion)) throw new Error('PlayerBehavior received a non-player motion');
   return motion;

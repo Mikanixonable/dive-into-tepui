@@ -8,7 +8,7 @@ import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { ARC_STEP_BUDGET, ARC_INTERACTIVE_RATIO, ARC_MIN_ITEM_STEPS } from '../../src/game/dynamic/predictor';
-import { SHIP_BCINV } from '../../src/game/dynamic/dynamic-entity/ship';
+import { SHIP_BCINV } from '../../src/game/dynamic/dynamic-entity/vessel';
 import { GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';
 import { SUBSTEP_MAX_DT, ARC_MIN_STEP_DT } from '../../src/game/dynamic/time-step';
 import { ARC_STEPS_PER_REV, ARC_MAX_STEPS, TRAJECTORY_SAMPLES_PER_REV, ARC_MAX_SAMPLES } from '../../src/game/dynamic/predicted-arc';

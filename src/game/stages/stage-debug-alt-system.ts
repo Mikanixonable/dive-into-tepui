@@ -2,28 +2,29 @@
 // 惑星1体・衛星1体の最小構成で、輻射源・日照率・点群などの経路が任意のレジストリで動くことを
 // 確かめる。
 import * as THREE from 'three/webgpu';
-import { Stage, type StageDeps, STORY_EPOCH } from './stage';
-import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
-import { PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
+import {
+  planetDefForSimZero, satelliteDefForSimZero, type PlanetDef, type SatelliteDef, type StarDef,
+} from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit, JULIAN_CENTURY } from '../../physics/kepler-orbit';
 import { AU, SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { addPrimaryRelative, kinematicState } from '../../physics/kinematic-state';
-import type { StageSaveData } from '../save/save-data';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { CelestialSurface } from '../../render/celestial/celestial-surface';
 import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
-import type { TdbJulianDate } from '../../physics/time';
 import { SphereCelestialView } from '../../render/celestial/celestial-entity/sphere-celestial-view';
 import { StarCelestialView } from '../../render/celestial/celestial-entity/star-celestial-view';
 import { MAG_ROUNDS } from '../player/ammo-spec';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import type { TdbJulianDate } from '../../physics/time';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 const STAR_ID = 'aeolus';
 const PRIMARY_ID = 'zephyrus';
@@ -104,27 +105,32 @@ export class StageDebugAltSystem extends Stage {
   public static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
   public static readonly hiddenFromSelect = true;
 
-  // saved があればそこから復元し、無ければ初期配置してステージを始める。
-  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    super(saved, ...deps);
-    this.begin();
+  // 自機を zephyrus の高度 500km の赤道円軌道へ置いて始める。
+  public static create(...deps: StageDeps): StageDebugAltSystem {
+    const stage = new StageDebugAltSystem(deps);
+    // zephyrus に対する円軌道の相対状態を、ECI の絶対状態へ直して置く
+    const t = stage._dynamicSystem.simTime;
+    const primary = stage._celestialSystem.motionOf(PRIMARY_ID);
+    const primaryState = primary.stateAt(t);
+    const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.def.mu);
+    stage.addPlayer({
+      state: addPrimaryRelative(primaryState, kinematicState<'primaryRel'>(t, rel.r, rel.v)),
+      ammo: { mags: 20, rounds: MAG_ROUNDS },
+    });
+    stage.composeBriefing();
+    return stage;
+  }
+
+  // 直列化した形から復元する。
+  public static deserialize(serialized: SerializedStage, ...deps: StageDeps): StageDebugAltSystem {
+    return new StageDebugAltSystem(
+      deps, ...Stage.deserializeCommonState(serialized, deps, StageDebugAltSystem.stageRules),
+    );
   }
 
   // ステージ開始時に出すブリーフィングの本文(HTML)。
   protected briefingHtml(): string {
     return `<b>架空星系デバッグステージ</b><br>${STAR_ID} 系の ${PRIMARY_ID} で起動`;
-  }
-
-  // 自機を zephyrus の高度 500km の赤道円軌道へ置く。
-  protected init(): void {
-    const t = this._dynamicSystem.simTime;
-    const primary = this._celestialSystem.motionOf(PRIMARY_ID);
-    const primaryState = primary.stateAt(t);
-    const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.def.mu);
-    this.addPlayer({
-      state: addPrimaryRelative(primaryState, kinematicState<'primaryRel'>(t, rel.r, rel.v)),
-      ammo: { mags: 20, rounds: MAG_ROUNDS },
-    });
   }
 
   // 補給を1フレーム分進める。自艦がいなければ何もしない。
@@ -134,7 +140,7 @@ export class StageDebugAltSystem extends Stage {
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 
-  // 検証を継続できるよう、勝敗を発生させない(クリア回数にも入らない)。
+  // 検証を継続できるよう、勝敗を発生させない。
   protected checkWin(): boolean {
     return false;
   }

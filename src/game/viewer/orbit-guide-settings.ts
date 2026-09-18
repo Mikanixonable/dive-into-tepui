@@ -1,5 +1,5 @@
 // 軌道ガイド(表示パネルの軌道ガイドタブ)の設定値。参照として描く軌道の種類ごとに、表示の
-// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、セーブからの読み直しを持つ。
+// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、直列化された形からの読み直しを持つ。
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
 import type { DirectionMarkerMode } from '../../render/celestial/orbit-guide/direction-markers';
 
@@ -235,33 +235,27 @@ function clamp(value: number, lo: number, hi: number): number {
   return Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : lo;
 }
 
-// 保存データ・外部入力を安全な形に整える。範囲の上下が入れ替わっていれば直し、本数は正の整数へ丸める。
+// 種類・小題に共通の値を整える。範囲の上下を揃え、本数と不透明度を丸める。
+function normalizeSharedKindSettings<T extends GuideKindSharedSettings>(kind: T): T {
+  const lo = clamp(kind.rangeMin, 0, 1);
+  const hi = clamp(kind.rangeMax, 0, 1);
+  return {
+    ...kind,
+    count: Math.max(1, Math.round(clamp(kind.count, 1, MAX_LINES_PER_KIND))),
+    rangeMin: Math.min(lo, hi),
+    rangeMax: Math.max(lo, hi),
+    opacity: clamp(kind.opacity, 0, 1),
+  };
+}
+
+// 復元した値・外部入力を安全な形に整える。範囲の上下が入れ替わっていれば直し、本数は正の整数へ丸める。
 export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): OrbitGuideSettings {
-  // 族・小題: 範囲の上下を揃え、本数と不透明度を丸める。
-  const kinds: Record<string, GuideKindSettings> = {};
-  for (const [id, kind] of Object.entries(settings.kinds)) {
-    const lo = clamp(kind.rangeMin, 0, 1);
-    const hi = clamp(kind.rangeMax, 0, 1);
-    kinds[id] = {
-      ...kind,
-      count: Math.max(1, Math.round(clamp(kind.count, 1, MAX_LINES_PER_KIND))),
-      rangeMin: Math.min(lo, hi),
-      rangeMax: Math.max(lo, hi),
-      opacity: clamp(kind.opacity, 0, 1),
-    };
-  }
-  const combinedKinds: Record<string, CombinedKindSettings> = {};
-  for (const [key, combined] of Object.entries(settings.combinedKinds)) {
-    const lo = clamp(combined.rangeMin, 0, 1);
-    const hi = clamp(combined.rangeMax, 0, 1);
-    combinedKinds[key] = {
-      ...combined,
-      count: Math.max(1, Math.round(clamp(combined.count, 1, MAX_LINES_PER_KIND))),
-      rangeMin: Math.min(lo, hi),
-      rangeMax: Math.max(lo, hi),
-      opacity: clamp(combined.opacity, 0, 1),
-    };
-  }
+  const kinds = Object.fromEntries(
+    Object.entries(settings.kinds).map(([id, kind]) => [id, normalizeSharedKindSettings(kind)]),
+  );
+  const combinedKinds = Object.fromEntries(
+    Object.entries(settings.combinedKinds).map(([key, combined]) => [key, normalizeSharedKindSettings(combined)]),
+  );
   // 単一軌道・リサジュー・ゼロ速度曲線の値を丸める。
   const zv = settings.zeroVelocity;
   const clampSunSync = <T extends SunSyncSettings>(s: T): T => ({
@@ -300,21 +294,20 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
   };
 }
 
-// セーブに残っていた設定を読み直す。無ければ既定値で、セーブに欠けた入れ子の項目は既定値で埋めてから丸める。
-export function savedOrbitGuideSettings(saved: Partial<OrbitGuideSettings> | undefined): OrbitGuideSettings {
-  if (saved === undefined) return DEFAULT_ORBIT_GUIDE_SETTINGS;
+// 直列化された設定を読み直す。欠けた項目は入れ子の中まで既定値で埋めてから丸める。
+export function deserializeOrbitGuideSettings(serialized: Partial<OrbitGuideSettings>): OrbitGuideSettings {
   // 浅く重ねるだけでは入れ子の欠けが埋まらないので、入れ子ごとに既定値へ重ねる。
   return normalizeOrbitGuideSettings({
     ...DEFAULT_ORBIT_GUIDE_SETTINGS,
-    ...saved,
-    systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...saved.systems },
-    kinds: { ...saved.kinds },
-    combinedKinds: { ...saved.combinedKinds },
-    lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...saved.lissajous },
-    sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...saved.sunSync },
-    dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...saved.dawnDusk },
-    molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...saved.molniya },
-    tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...saved.tundra },
-    zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...saved.zeroVelocity },
+    ...serialized,
+    systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...serialized.systems },
+    kinds: { ...serialized.kinds },
+    combinedKinds: { ...serialized.combinedKinds },
+    lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...serialized.lissajous },
+    sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...serialized.sunSync },
+    dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...serialized.dawnDusk },
+    molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...serialized.molniya },
+    tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...serialized.tundra },
+    zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...serialized.zeroVelocity },
   });
 }

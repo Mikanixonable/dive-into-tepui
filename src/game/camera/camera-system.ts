@@ -1,7 +1,6 @@
 // 2台のカメラ視点を入力命令と表示用 Viewpoint へ結び、ガンサイトと画角遷移を重ねる。
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { Quat } from '../../math/quat';
 import type { Viewpoint } from '../../math/projection';
 import type { Vec3 } from '../../math/vec3';
 import { v3 } from '../../math/vec3';
@@ -9,6 +8,7 @@ import { bodyAnchorSource } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Viewport } from '../../render/viewport';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { AnchorEntities } from '../frame-anchors';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { HudLayers } from '../hud/hud-layers';
 import type { ViewMode } from '../view/view-mode';
@@ -40,6 +40,7 @@ export class CameraSystem {
   private get view(): ViewMode { return this.viewSelection.current; }
   private get activeSource(): FocusCameraSource { return this.cameraSelection.camera(this.view); }
   public get activeFocus(): FocusTarget { return this.activeSource.focus; }
+  // 表に出ているビューの視点。
   public get activeViewpoint(): Viewpoint {
     return this.view === 'map' ? this.mapRig.viewpoint : this.combatViewpoint;
   }
@@ -48,6 +49,7 @@ export class CameraSystem {
   public get zoomActive(): boolean { return this.view === 'combat' && this.zoomRequested; }
   public get clipFovDeg(): number { return this.activeSource.fov; }
   public get clipDistance(): number { return this.activeSource.distance; }
+  // 表に出ているビューの注視点の速度。定まらなければ 0。
   public get focusVelocity(): Vec3 {
     const velocity = this.view === 'map' ? this.mapRig.focusVelocity : this.combatRig.focusVelocity;
     return velocity ?? v3();
@@ -60,11 +62,12 @@ export class CameraSystem {
     private readonly cameraSelection: CameraSelectionSource,
     private readonly commands: CameraCommands,
     private readonly viewSelection: Pick<ViewSelectionSource, 'current'>,
-    private readonly attitudeOf: (id: string, t: number) => Quat | null,
+    private readonly anchorEntities: Pick<AnchorEntities, 'attitudeOf'>,
     viewport: Viewport,
   ) {
     this.combatRig = new CameraRig(celestialBodies);
     this.mapRig = new CameraRig(celestialBodies);
+    // 最初の sampleProgress までの材料は、天体を持たない錨で埋める。
     const initialAnchors = bodyAnchorSource([], 0);
     const initialSample: CameraFrameSample = {
       displayTime: 0,
@@ -82,22 +85,25 @@ export class CameraSystem {
       aspect: viewport.width / viewport.height,
     };
     this.gunsightCamera = new GunsightCamera(viewport);
+    // HUD の視点リセットボタンを、表に出ているビューのリセットへ繋ぐ。
     this.viewResetButton = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     this.viewResetButton?.addEventListener('pointerdown', this.handleViewReset);
   }
 
   // 現在の進行値から、命令と導出が共有する2台分のフレーム材料を作る。
   public sampleProgress(displayTime: number, frameAnchors: FrameAnchorSource): CameraFrameSamples {
+    // 注視対象の姿勢・基準の上方向・注視の見失いは、そのカメラの注視と導出器から引く。
     const sample = (source: FocusCameraSource, rig: CameraRig): CameraFrameSample => {
       const id = focusTargetId(source.focus);
       const base = { displayTime, frameAnchors };
       return {
         ...base,
-        attitude: id === undefined ? null : this.attitudeOf(id, displayTime),
+        attitude: id === undefined ? null : this.anchorEntities.attitudeOf(id, displayTime),
         referenceUp: rig.referenceUp(base),
         lostFocus: rig.lostFocus,
       };
     };
+    // 入力の命令と導出が同じ材料を読むよう、2台ぶんを持っておく。
     this.samples = {
       combat: sample(this.cameraSelection.combat, this.combatRig),
       map: sample(this.cameraSelection.map, this.mapRig),
@@ -105,6 +111,7 @@ export class CameraSystem {
     return this.samples;
   }
 
+  // view のカメラの、直近の sampleProgress が作った材料。
   public sample(view: ViewMode): CameraFrameSample {
     return view === 'map' ? this.samples.map : this.samples.combat;
   }
@@ -114,13 +121,16 @@ export class CameraSystem {
     const view = this.view;
     const commands = this.commands.camera(view);
     const sample = this.sample(view);
+    // 中クリックは視点のリセット。
     input.takeMiddleClicks(() => {
       commands.reset(sample);
       return true;
     });
+    // ガンサイトを覗いている間は、視点を動かす入力を止める。
     this.zoomRequested = input.down(K.gunsightZoom);
     const suppressMotion = view === 'combat' && this.zoomRequested && controlled?.fire != null;
     const operation = cameraOperation(input, dt, viewport, suppressMotion);
+    // マップではロールのリセットを視点のリセットとして積む。
     if (operation.rollReset && view === 'map') this.commands.map.reset(this.samples.map);
     commands.applyInput(operation.input, sample);
   }
@@ -149,6 +159,7 @@ export class CameraSystem {
     this.combatViewpoint = { ...target, fovDeg: this.transitionFov(target.fovDeg, nowMs) };
   }
 
+  // 視点リセットボタンへ繋いだ受け口を外す。
   public dispose(): void {
     this.viewResetButton?.removeEventListener('pointerdown', this.handleViewReset);
   }
@@ -163,12 +174,14 @@ export class CameraSystem {
     return this.fovAt(nowMs);
   }
 
+  // 実時刻 nowMs [ms] における遷移中の画角 [deg]。
   private fovAt(nowMs: number): number {
     const elapsedSec = Math.max(0, nowMs - this.transitionStartMs) / 1000;
     const remain = Math.exp(-ZOOM_LERP_RATE * elapsedSec);
     return this.transitionTargetFov + (this.transitionStartFov - this.transitionTargetFov) * remain;
   }
 
+  // 視点リセットボタンの押下を、表に出ているビューのリセットの命令として積む。
   private readonly handleViewReset = (event: PointerEvent): void => {
     event.stopPropagation();
     this.commands.camera(this.view).reset(this.sample(this.view));

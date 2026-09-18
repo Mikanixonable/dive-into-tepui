@@ -3,19 +3,31 @@
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 
-export class ControlSelection {
-  private _current: Controllable | null;
+// 操作対象の直列化した形。操作対象の id で、操作していなければ null。
+export type SerializedControlSelection = string | null;
 
-  // 起動時の操作対象を自分で解決する。savedId に一致するもの、無ければ生存中の先頭、
-  // 操作できるものが1つも無ければ null。
-  public constructor(
-    savedId: string | null | undefined,
+export class ControlSelection {
+  // current を操作対象にして始める。省けば生存中の先頭、操作できるものが1つも無ければ null。
+  private constructor(
     private readonly dynamicSystem: DynamicSystem,
-  ) {
-    const candidates = dynamicSystem.controllables;
-    this._current = candidates.find((c) => c.id === savedId)
-      ?? candidates.find((c) => c.motion.alive)
-      ?? null;
+    private _current: Controllable | null = dynamicSystem.controllables.find((c) => c.motion.alive) ?? null,
+  ) {}
+
+  // 組み上がった顔ぶれの生存中の先頭を操作対象にして始める。
+  public static create(dynamicSystem: DynamicSystem): ControlSelection {
+    return new ControlSelection(dynamicSystem);
+  }
+
+  // 直列化した id の操作対象を、復元を終えた顔ぶれから選び直して始める。null なら未操作のまま
+  // 始める。顔ぶれに無い id なら、新しく始めたときと同じく生存中の先頭を選ぶ。
+  public static deserialize(serialized: SerializedControlSelection, dynamicSystem: DynamicSystem): ControlSelection {
+    if (serialized === null) return new ControlSelection(dynamicSystem, null);
+    return new ControlSelection(dynamicSystem, dynamicSystem.controllables.find((c) => c.id === serialized));
+  }
+
+  // 直列化した形へ変換する。
+  public serialize(): SerializedControlSelection {
+    return this._current?.id ?? null;
   }
 
   public get current(): Controllable | null { return this._current; }

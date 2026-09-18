@@ -40,6 +40,7 @@ export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 export abstract class Vessel extends DynamicEntity {
   public override readonly combatTarget = true;
   private readonly markerRenderer: ShipMarkerRenderer;
+  // 残 HP と装甲値。派生の被弾モデル(部品)から作り直すキャッシュ。
   private _hp: number;
   private _maxHp: number;
 

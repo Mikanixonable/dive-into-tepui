@@ -4,12 +4,15 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import { appearsOnMap, type MapVisibilityPolicy } from '../map/visibility-policy';
+import { appearsOnMap, MapVisibilityPolicy } from '../map/visibility-policy';
+import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarkerPair, type EquatorNodeInputs } from './equator-node-marker-pair';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
+import type { SettingValue } from '../../settings/setting-value';
+import type { ViewMode } from '../view/view-mode';
 
 export class EquatorNodeManager {
   private readonly pairs = new Map<string, EquatorNodeMarkerPair>();
@@ -18,14 +21,18 @@ export class EquatorNodeManager {
   public constructor(
     private readonly roster: EntityRoster,
     private readonly group: MarkerSink,
+    private readonly mapDisplay: SettingValue<MapDisplayToggles>,
   ) {}
 
   // このフレームで必要な個体だけを解き、消滅・非表示になった個体の解を失効させる。
-  // navTargetId は航法ターゲットの id で、未設定なら null。
+  // navTargetId は航法ターゲットの id で、未設定なら null。view は表に出ているビュー。
   public update(
-    inputs: EquatorNodeInputs, controlled: Controllable | null, navTargetId: string | null,
-    visibilityPolicy: MapVisibilityPolicy | null,
+    inputs: EquatorNodeInputs, controlled: Controllable | null, navTargetId: string | null, view: ViewMode,
   ): void {
+    // マップの表示設定で伏せた個体は、マップでは交点も伏せる。
+    const visibilityPolicy = view === 'map'
+      ? new MapVisibilityPolicy(inputs.celestialBodies, this.mapDisplay.current)
+      : null;
     // roster の現行 id を記録し、走査後に消滅した個体の DOM 資源を回収する。
     const retainedIds = new Set<string>();
     for (const entity of this.roster.all()) {

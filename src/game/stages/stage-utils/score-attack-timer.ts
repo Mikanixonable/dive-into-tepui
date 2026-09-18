@@ -1,13 +1,18 @@
+// 残り時間 [s]。
+export type SerializedScoreAttackTimer = number;
+
 // スコアアタックの残り時間を管理する。
 export class ScoreAttackTimer {
-  timeLeft: number;
-  // 残り時間を initialTime [s] で開始する。
-  constructor(initialTime: number) {
-    this.timeLeft = initialTime;
+  // 残り時間 timeLeft [s] から始める。
+  public constructor(public timeLeft: number) {}
+
+  // 直列化した残り時間から復元する。
+  public static deserialize(serialized: SerializedScoreAttackTimer): ScoreAttackTimer {
+    return new ScoreAttackTimer(serialized);
   }
 
   // 残り時間を減算し、尽きたフレームでちょうど一度だけ true を返す。
-  update(dt: number): boolean {
+  public update(dt: number): boolean {
     if (this.timeLeft <= 0) return false;
     this.timeLeft -= dt;
     if (this.timeLeft > 0) return false;
@@ -15,7 +20,8 @@ export class ScoreAttackTimer {
     return true;
   }
 
-  serialize(): number {
+  // 残り時間を直列化した形へ畳む。
+  public serialize(): SerializedScoreAttackTimer {
     return this.timeLeft;
   }
 }

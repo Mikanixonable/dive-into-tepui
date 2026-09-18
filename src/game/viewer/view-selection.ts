@@ -21,12 +21,18 @@ export class ViewSelection implements ViewSelectionSource {
 
   // requested のビューで始める。戦闘ビューへ入れないときはマップから始める。
   public constructor(
-    requested: ViewMode | undefined,
     private readonly control: ViewControlSource,
     private readonly events: RunEventSink,
+    requested: ViewMode = 'combat',
   ) {
-    const restored: ViewMode = requested === 'map' ? 'map' : 'combat';
-    this.view = this.canSelect(restored) ? restored : 'map';
+    this.view = this.canSelect(requested) ? requested : 'map';
+  }
+
+  // 直列化したビューで始める。ビューでない値は欠けと同じく既定から始める。
+  public static deserialize(serialized: ViewMode, control: ViewControlSource, events: RunEventSink): ViewSelection {
+    return new ViewSelection(
+      control, events, serialized === 'combat' || serialized === 'map' ? serialized : undefined,
+    );
   }
 
   public get current(): ViewMode { return this.view; }

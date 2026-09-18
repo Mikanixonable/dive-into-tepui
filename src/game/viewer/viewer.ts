@@ -1,60 +1,96 @@
-// 視点の根。遊ぶ人の選択のうちセーブごとに持つものの所有者を組み、セーブとの行き来と、
+// 視点の根。遊ぶ人の選択のうちセーブごとに持つものの所有者を組み、直列化と復元と、
 // 進行が記録した出来事に視点を合わせる規則を1か所に持つ(R4)。
-import { NavTargetSelection } from './nav-target-selection';
+import { NavTargetSelection, type SerializedNavTargetSelection } from './nav-target-selection';
 import { OrbitGuideSelection } from './orbit-guide-selection';
-import { OrbitReferenceSelection } from './orbit-reference-selection';
-import { PredictPanelSelection } from './predict-panel-selection';
+import { OrbitReferenceSelection, type OrbitReferenceMode } from './orbit-reference-selection';
+import { PredictPanelSelection, type SerializedPredictPanelSelection } from './predict-panel-selection';
 import { ViewSelection, type ViewControlSource } from './view-selection';
-import { CameraSelection, type CameraFrameSamples } from './camera-selection';
-import { EntityDisplaySelection } from './entity-display-selection';
+import { CameraSelection, type CameraFrameSamples, type SerializedCameraSelection } from './camera-selection';
+import { EntityDisplaySelection, type SerializedEntityDisplaySelection } from './entity-display-selection';
 import { focusTargetId } from './focus-target';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEvent, RunEventSink } from '../run-events';
-import type { GameSaveData } from '../save/save-data';
+import type { ViewMode } from '../view/view-mode';
+import type { OrbitGuideSettings } from './orbit-guide-settings';
+
+export interface SerializedViewer {
+  readonly view: ViewMode;
+  readonly camera: SerializedCameraSelection;
+  // ターゲット未選択なら null。
+  readonly navTarget: SerializedNavTargetSelection | null;
+  readonly orbitGuide: OrbitGuideSettings;
+  readonly entityDisplay: SerializedEntityDisplaySelection;
+  readonly orbitReference: OrbitReferenceMode;
+  readonly predictPanel: SerializedPredictPanelSelection;
+}
 
 export class Viewer {
-  // 航法ターゲットの選択。
-  public readonly navTarget: NavTargetSelection;
-  // 軌道要素の基準の選択。
-  public readonly orbitReference = new OrbitReferenceSelection();
-  // 軌道ガイドの選択。
-  public readonly orbitGuide: OrbitGuideSelection;
-  // 予測パネルの座標系・表示期間・表示時刻・時刻表記の選択。
-  public readonly predictPanel: PredictPanelSelection;
-  // 戦闘/マップのビュー選択。
-  public readonly view: ViewSelection;
-  // 戦闘/マップの2台のカメラ視点。
-  public readonly camera: CameraSelection;
-  // 実体ごとの表示設定。
-  public readonly entityDisplay: EntityDisplaySelection;
+  // 各選択の所有者から組む。省いた所有者は新しいゲームの既定から始まる。control は復元と初期配置を
+  // 終えた進行の操作対象、所有者の命令の結果は events へ記録する。
+  private constructor(
+    control: ViewControlSource,
+    events: RunEventSink,
+    celestialBodies: CelestialBodies,
+    // 航法ターゲットの選択。
+    public readonly navTarget = new NavTargetSelection(events),
+    // 軌道ガイドの選択。
+    public readonly orbitGuide = new OrbitGuideSelection(),
+    // 戦闘/マップのビュー選択。
+    public readonly view = new ViewSelection(control, events),
+    // 戦闘/マップの2台のカメラ視点。
+    public readonly camera = new CameraSelection(celestialBodies, events),
+    // 実体ごとの表示設定。
+    public readonly entityDisplay = new EntityDisplaySelection(),
+    // 軌道要素の基準の選択。
+    public readonly orbitReference = new OrbitReferenceSelection(),
+    // 予測パネルの座標系・表示期間・表示時刻・時刻表記の選択。新しいゲームでは、座標系をマップの
+    // カメラの注視から始める。
+    public readonly predictPanel = PredictPanelSelection.create(
+      celestialBodies.frames, celestialBodies, focusTargetId(camera.map.focus),
+    ),
+  ) {}
 
-  // saved のうち視点の分を戻して組む。saved が無ければ既定から始める。roster と control には
-  // 復元と初期配置を終えた進行を渡し、所有者の命令の結果は events へ記録する。
-  public constructor(
-    saved: GameSaveData | undefined,
+  // 新しいゲームの視点を既定から組む。
+  public static create(control: ViewControlSource, events: RunEventSink, celestialBodies: CelestialBodies): Viewer {
+    return new Viewer(control, events, celestialBodies);
+  }
+
+  // 直列化した形から視点を復元する。roster は復元を終えた顔ぶれ。
+  public static deserialize(
+    serialized: SerializedViewer,
     roster: EntityRoster,
     control: ViewControlSource,
     events: RunEventSink,
     celestialBodies: CelestialBodies,
-  ) {
-    this.navTarget = new NavTargetSelection(saved?.navTarget, roster, events);
-    this.orbitGuide = new OrbitGuideSelection(saved?.orbitGuide);
-    this.view = new ViewSelection(saved?.camera?.view, control, events);
-    this.camera = new CameraSelection(celestialBodies, events, saved?.camera);
-    // 予測パネルの初期基準は、復元したマップ注視の登録天体から始まる。
-    this.predictPanel = new PredictPanelSelection(
-      celestialBodies.frames, celestialBodies, focusTargetId(this.camera.map.focus),
+  ): Viewer {
+    const { navTarget, orbitGuide, camera, entityDisplay, orbitReference, predictPanel } = serialized;
+    // 記録に無い所有者は undefined のまま渡し、新しいゲームの既定から始める。
+    return new Viewer(
+      control,
+      events,
+      celestialBodies,
+      navTarget === undefined ? undefined : NavTargetSelection.deserialize(navTarget, roster, events),
+      orbitGuide === undefined ? undefined : OrbitGuideSelection.deserialize(orbitGuide),
+      ViewSelection.deserialize(serialized.view, control, events),
+      camera === undefined ? undefined : CameraSelection.deserialize(camera, celestialBodies, events),
+      entityDisplay === undefined ? undefined : EntityDisplaySelection.deserialize(entityDisplay),
+      orbitReference === undefined ? undefined : OrbitReferenceSelection.deserialize(orbitReference),
+      predictPanel === undefined
+        ? undefined : PredictPanelSelection.deserialize(predictPanel, celestialBodies.frames, celestialBodies, roster),
     );
-    this.entityDisplay = new EntityDisplaySelection(saved?.entities);
   }
 
-  // セーブのうち視点の分。
-  public serialize(): Pick<GameSaveData, 'camera' | 'navTarget' | 'orbitGuide'> {
+  // 直列化した形へ畳む。
+  public serialize(): SerializedViewer {
     return {
-      camera: this.camera.serialize(this.view.current),
+      view: this.view.current,
+      camera: this.camera.serialize(),
       navTarget: this.navTarget.serialize(),
       orbitGuide: this.orbitGuide.settings,
+      entityDisplay: this.entityDisplay.serialize(),
+      orbitReference: this.orbitReference.mode,
+      predictPanel: this.predictPanel.serialize(),
     };
   }
 

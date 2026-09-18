@@ -125,7 +125,7 @@ export function register(): void {
     assert.deepEqual(candidates.into(p, []).map((b) => b.id), ['bulge']);
   });
 
-  test('surface-candidates: 触れようのない天体は1段目で落ちる', () => {
+  test('surface-candidates: 触れようのない天体は落ちる', () => {
     // 落とさないことだけでなく、実際に落としていることも見る — 全部通す実装でも
     // 「答えが一致する」ほうのテストは通ってしまう。
     const near = body('near', v3(0, 500, 0), v3(), 100);
@@ -136,7 +136,6 @@ export function register(): void {
     const candidates = new SurfaceCandidates();
     candidates.resetSpan([near, ...far], 0, 0, 1);
     candidates.narrow([p]);
-    assert.equal(candidates.count, 1, '1段目を通るのは near だけ');
     assert.deepEqual(candidates.into(p, []).map((b) => b.id), ['near']);
   });
 

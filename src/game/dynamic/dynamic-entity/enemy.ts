@@ -1,29 +1,29 @@
-import * as THREE from 'three/webgpu';
 import type { ViewMode } from '../../view/view-mode';
 import { Vessel } from './vessel';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { Contact } from './contact';
-import type { KinematicState } from '../../../physics/kinematic-state';
-import { len, sub, Vec3, v3 } from '../../../math/vec3';
+import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
+import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import type { Player } from '../../player/player';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
-import type { Quat } from '../../../math/quat';
+import { randomQuat, type Quat } from '../../../math/quat';
+import { randSym } from '../../../math/random';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { StageOutcome } from '../../stages/stage-outcome';
-import { savedKinematicState, type EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import type { CombatTarget } from './combat-target';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
-import type { EntityRegistry, SpawnGate } from '../entity-registry';
+import type { EntityRegistry } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
+import type { DynamicEntityClass, SerializedDynamicEntity } from './entity-dictionary';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import type { DynamicMotion } from '../dynamic-motion';
+import type { DynamicMotion, DynamicMotionThermal } from '../dynamic-motion';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 import { EnemyInspection } from '../../pickable/enemy-inspection';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
-import { EnemyFireController } from './enemy-fire-controller';
+import { EnemyFireController, type SerializedEnemyFireController } from './enemy-fire-controller';
 import { EnemyReactions } from './enemy-reactions';
 
 // 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
@@ -34,16 +34,42 @@ export const ENEMY_MAX_HP = 6; // 敵機の総 HP
 
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
-// 軌道物体一覧で接近中として扱う、自艦との距離 [m]。
-// スナップショットからの再開。復元の腕は全具象で共通でなければならない。
-export interface EnemyRestore { readonly saved: EnemySaveData; readonly simTime: number }
+// 敵に共通する直列化の項目。具象の直列化した形がこれを継ぐ。
+export interface SerializedEnemy extends SerializedDynamicEntityFields {
+  readonly kind: 'metal-enemy' | 'protein-enemy';
+  readonly name: string;
+  readonly alive: boolean;
+  readonly thermal: DynamicMotionThermal;
+  // マーカー色・集団識別と、マーカー・軌道線の色。
+  readonly accent: string | number;
+  readonly orbitLineColor: string | number;
+  // 表示色とは独立した、同時発砲数を共有する攻撃グループ。
+  readonly attackGroupId: string;
+  // 所属するウェーブの番号。ウェーブに属さない敵は null。
+  readonly waveId: number | null;
+  // 陣形に属する敵だけが持つ識別子と役割。単体敵は null。
+  readonly formationId: string | null;
+  readonly formationRole: FormationRole | null;
+  readonly fireController: SerializedEnemyFireController;
+}
 
-// 新規配置。具象ごとに固有の項目(機体テンプレート番号・タンパク質アセット)を足して使う。
+// 敵の直列化した形が取る種別タグ。
+const SERIALIZED_ENEMY_KINDS: Record<SerializedEnemy['kind'], true> = { 'metal-enemy': true, 'protein-enemy': true };
+
+// 直列化した実体が敵のものか。
+export function isSerializedEnemy(serialized: SerializedDynamicEntity): boolean {
+  return Object.hasOwn(SERIALIZED_ENEMY_KINDS, serialized.kind);
+}
+
+// 敵を置く識別・色・陣形所属と運動状態。新しく置くときは、具象ごとに固有の項目(機体テンプレート
+// 番号・タンパク質アセット)を足して使う。id を省くと採番器が発番し、thermal を省くと環境温度から
+// 始める。
 export interface EnemyPlacement {
   readonly name: string;
   readonly state: KinematicState;
   readonly q: Quat;
   readonly w: Vec3;
+  readonly thermal?: DynamicMotionThermal;
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
   readonly attackGroupId?: string;
@@ -53,13 +79,33 @@ export interface EnemyPlacement {
   readonly formationRole?: FormationRole;
 }
 
-// 敵クラスの静的側。セーブからの復元はここから読む。
-export interface EnemyClass {
-  // セーブへ書く具象タグ。
-  readonly kind: EnemySaveData['kind'];
-  // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
-  spawnGate(saved: EnemySaveData): SpawnGate | null;
-  new (init: EnemyRestore, idAllocators: EntityIdAllocators, scene?: THREE.Scene): Enemy;
+// 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
+export function driftingAttitude(): { q: Quat; w: Vec3 } {
+  return { q: randomQuat(), w: v3(randSym(0.12), randSym(0.12), randSym(0.12)) };
+}
+
+// 直列化した敵に共通する項目を、配置として読む。
+export function deserializeEnemyPlacement(serialized: SerializedEnemy): EnemyPlacement {
+  return {
+    name: serialized.name || '',
+    state: deserializeKinematicState(serialized),
+    q: { ...serialized.q },
+    w: v3(serialized.w.x, serialized.w.y, serialized.w.z),
+    thermal: serialized.thermal,
+    accent: serialized.accent,
+    orbitLineColor: serialized.orbitLineColor,
+    // 攻撃グループの無い記録は、陣形・id・名前の順に代える
+    attackGroupId: serialized.attackGroupId ?? serialized.formationId ?? serialized.id ?? serialized.name,
+    waveId: serialized.waveId ?? undefined,
+    id: serialized.id || undefined,
+    formationId: serialized.formationId ?? undefined,
+    formationRole: serialized.formationRole ?? undefined,
+  };
+}
+
+// 敵クラスの静的側。直列化のタグを敵の種別に絞る。
+export interface EnemyClass extends DynamicEntityClass {
+  readonly kind: SerializedEnemy['kind'];
 }
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
@@ -85,40 +131,28 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   public set fireEnabled(value: boolean) { this.fireController.enabled = value; }
   public get isBursting(): boolean { return this.fireController.isBursting; }
 
-  // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径)を受けて、
-  // 敵に共通する識別・色・陣形所属を初期化する。復元時は保存済みの生死・バースト状態も戻す。
+  // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を
+  // placement に置く。alive は生死、burstLeft から後ろは射撃の途中経過と時刻で、省けば新しく置いた
+  // ときの状態で始める。
   protected constructor(
-    init: EnemyPlacement | EnemyRestore,
+    placement: EnemyPlacement,
     view: DynamicView,
     inertia: Vec3,
     radius: number,
     idAllocators: EntityIdAllocators,
-    shape?: EnemyCollisionShape,
+    shape: EnemyCollisionShape | null,
+    alive = true,
+    burstLeft?: number | null,
+    burstDelay?: number | null,
+    lastFireSim?: number | null,
+    lastBehaviorSim?: number | null,
   ) {
-    // 復元と新規配置を同じ形へ均してから基底へ渡す。
-    const placed: EnemyPlacement = 'saved' in init
-      ? {
-        name: init.saved.name || '',
-        state: savedKinematicState(init.saved, init.simTime),
-        q: { ...init.saved.q },
-        w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
-        accent: init.saved.accent,
-        orbitLineColor: init.saved.orbitLineColor,
-        attackGroupId: init.saved.attackGroupId
-          ?? init.saved.formationId
-          ?? init.saved.id
-          ?? init.saved.name,
-        waveId: init.saved.waveId,
-        id: init.saved.id || undefined,
-        formationId: init.saved.formationId,
-        formationRole: init.saved.formationRole,
-      }
-      : init;
-    const attitude = { q: placed.q, w: placed.w, inertia };
+    // 運動の接触・焼失をこの敵へ通知させ、識別を採番する
+    const attitude = { q: placement.q, w: placement.w, inertia };
     super(
-      placed.name,
+      placement.name,
       ENEMY_MAX_HP,
-      owner => new EnemyMotion(placed.state, attitude, radius, {
+      owner => new EnemyMotion(placement.state, attitude, radius, {
         receiveEntityContact: (other, contact, services) => (
           (owner as Enemy).receiveEntityContact(
             other, contact, services.activeStage, services.registry,
@@ -130,16 +164,18 @@ export abstract class Enemy extends Vessel implements CombatTarget {
         receiveBurnUp: services => (
           (owner as Enemy).receiveBurnUp(services.activeStage, services.registry)
         ),
-      }, shape),
+      }, shape, placement.thermal),
       view,
-      idAllocators.entity.next(placed.id),
+      idAllocators.entity.next(placement.id),
     );
-    this.accent = placed.accent;
-    this.orbitLineColor = placed.orbitLineColor;
-    this.attackGroupId = placed.attackGroupId ?? placed.formationId ?? this.id;
-    this.waveId = placed.waveId;
-    this.formationId = placed.formationId;
-    this.formationRole = placed.formationRole;
+    // 色と所属
+    this.accent = placement.accent;
+    this.orbitLineColor = placement.orbitLineColor;
+    this.attackGroupId = placement.attackGroupId ?? placement.formationId ?? this.id;
+    this.waveId = placement.waveId;
+    this.formationId = placement.formationId;
+    this.formationRole = placement.formationRole;
+    // 射撃と被弾の反応は、具象の機体を読む
     this.fireController = new EnemyFireController({
       motion: this.motion,
       attackGroupId: this.attackGroupId,
@@ -147,7 +183,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       muzzlePosition: () => this.muzzlePosition(),
       plasmaDamage: () => this.plasmaDamage(),
       muzzleEffect: (muzzleState, events) => this.muzzleEffect(muzzleState, events),
-    });
+    }, burstLeft, burstDelay, lastFireSim, lastBehaviorSim);
     this.reactions = new EnemyReactions({
       motion: this.motion,
       modelScale: ENEMY_MODEL_SCALE,
@@ -158,13 +194,10 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       hasHealth: () => this.hp > 0,
       recordDeath: (activeStage, simTime, cause) => activeStage.recordEnemyDeath(this, simTime, cause),
     });
-    if ('saved' in init) {
-      this.fireController.restore(init.saved.burstLeft, init.saved.burstDelay);
-      this.motion.alive = init.saved.alive;
-    }
+    this.motion.alive = alive;
   }
 
-  // 自身のクラス。復元タグはここから読む。
+  // 自身のクラス。直列化のタグはここから読む。
   public get enemyClass(): EnemyClass {
     return this.constructor as unknown as EnemyClass;
   }
@@ -217,27 +250,31 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     };
   }
 
+  // 他の個体と触れたときの帰結を受ける。
   private receiveEntityContact(
     other: DynamicMotion, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     this.reactions.receiveEntityContact(other, contact, activeStage, registry);
   }
 
+  // 天体の固体表面へ触れたときの帰結を受ける。
   private receiveSurfaceContact(
     contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     this.reactions.receiveSurfaceContact(contact, activeStage, registry);
   }
 
+  // 交戦圏を離れて消す。撃破によらない喪失として activeStage へ記録する。
   public despawn(simTime: number, activeStage: StageOutcome): void {
     this.reactions.despawn(simTime, activeStage);
   }
 
+  // 大気で焼失したときの帰結を受ける。
   private receiveBurnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
     this.reactions.receiveBurnUp(activeStage, registry);
   }
 
-  // 行動関数。射撃の時系列は EnemyFireController が所有する。
+  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
     operable: boolean, celestialBodies: CelestialBodies,
@@ -245,33 +282,22 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     this.fireController.behave(simTime, player, registry, enemies, operable, celestialBodies);
   }
 
-  // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。showTrajectoryLine は
-  // この敵の予測線・過去線を出しているか。
-  protected serializeEnemyFields(showTrajectoryLine: boolean): EnemySaveData {
-    const fire = this.fireController.saveState;
+  // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。
+  protected serializeEnemyFields(): SerializedEnemy {
     return {
-      id: this.id,
+      ...this.serializeEntityFields(this.enemyClass.kind),
       name: this.name,
-      kind: this.enemyClass.kind,
-      r: { ...this.motion.state.r },
-      v: { ...this.motion.state.v },
-      q: { ...this.motion.att.q },
-      w: { ...this.motion.att.w },
       alive: this.motion.alive,
-      health: this.hp,
+      thermal: this.motion.thermal,
       accent: this.accent,
       orbitLineColor: this.orbitLineColor,
       attackGroupId: this.attackGroupId,
-      waveId: this.waveId,
-      // 陣形所属は無所属の単体敵も多いため、値がある場合だけキーを持たせる。
-      ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
-      ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
-      burstLeft: fire.burstLeft,
-      burstDelay: fire.burstDelay,
-      showTrajectoryLine,
+      waveId: this.waveId ?? null,
+      formationId: this.formationId ?? null,
+      formationRole: this.formationRole ?? null,
+      fireController: this.fireController.serialize(),
     };
   }
-
 }
 
 // entity を敵へ絞り込む型ガード。

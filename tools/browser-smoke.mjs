@@ -479,14 +479,14 @@ try {
     if (!marker) throw new Error('No pickable celestial marker was on screen for the property window check.');
     await rightClickAt(marker.x, marker.y);
     await waitFor(
-      `[...document.querySelectorAll('.prop-window')].some((el) => getComputedStyle(el).display !== 'none')`,
+      `[...document.querySelectorAll('.property-window')].some((el) => getComputedStyle(el).display !== 'none')`,
       `right-clicking marker ${marker.id} to open a property window`,
     );
     await devTools.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 568, deviceScaleFactor: 1, mobile: true });
     await sleep(150);
     const clamped = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}
-      const win = [...document.querySelectorAll('.prop-window')].find(visible);
+      const win = [...document.querySelectorAll('.property-window')].find(visible);
       if (!win) return { open: false };
       return { open: true, inside: insideViewport(rect(win)) };
     })()`);

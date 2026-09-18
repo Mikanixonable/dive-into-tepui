@@ -23,6 +23,7 @@ const ENEMY_ATTACK_CHANCE = 0.6;
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20];
 const PLASMA_SPREAD_DEG = 0.05;
 
+// 撃つ敵が、射撃の判断と弾の生成に差し出す面。
 export interface EnemyFireControllerPort {
   readonly motion: DynamicMotion;
   readonly attackGroupId: string;
@@ -32,54 +33,75 @@ export interface EnemyFireControllerPort {
   muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
 }
 
-// 敵の射撃判断・バースト進行・弾生成をEnemy本体から分離する。
+// バースト射撃の残弾と次弾までの残り時間 [s](未着手なら両方 null)、最後に射撃の機会が巡った時刻と
+// 最後に行動した時刻 [sim s](まだなら null)。
+export interface SerializedEnemyFireController {
+  readonly burstLeft: number | null;
+  readonly burstDelay: number | null;
+  readonly lastFireSim: number | null;
+  readonly lastBehaviorSim: number | null;
+}
+
+// 敵1体の射撃判断・バースト進行・弾の生成。
 export class EnemyFireController {
-  private lastFireSim?: number;
-  private burstLeft?: number;
-  private burstDelay?: number;
-  private lastBehaviorSim?: number;
+  // 射撃を許すか。直列化せず、ステージの設定から書き直すキャッシュ。
   public enabled = true;
 
-  public constructor(private readonly port: EnemyFireControllerPort) {}
+  // port は撃つ敵。burstLeft・burstDelay はバースト射撃の残弾と次弾までの残り時間で、未着手なら
+  // 両方 null。lastFireSim・lastBehaviorSim は最後に射撃の機会が巡った時刻と最後に行動した
+  // 時刻で、まだなら null。
+  public constructor(
+    private readonly port: EnemyFireControllerPort,
+    private burstLeft: number | null = null,
+    private burstDelay: number | null = null,
+    private lastFireSim: number | null = null,
+    private lastBehaviorSim: number | null = null,
+  ) {}
 
-  public get isBursting(): boolean { return this.burstLeft !== undefined && this.burstLeft > 0; }
+  public get isBursting(): boolean { return this.burstLeft !== null && this.burstLeft > 0; }
 
-  public restore(burstLeft: number | undefined, burstDelay: number | undefined): void {
-    this.burstLeft = burstLeft;
-    this.burstDelay = burstDelay;
+  // バースト射撃の途中経過と、射撃の機会・行動の時刻の直列化。
+  public serialize(): SerializedEnemyFireController {
+    return {
+      burstLeft: this.burstLeft,
+      burstDelay: this.burstDelay,
+      lastFireSim: this.lastFireSim,
+      lastBehaviorSim: this.lastBehaviorSim,
+    };
   }
 
-  public get saveState(): { readonly burstLeft?: number; readonly burstDelay?: number } {
-    return { burstLeft: this.burstLeft, burstDelay: this.burstDelay };
-  }
-
+  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。operable が偽の
+  // 間は撃たない。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
     operable: boolean, celestialBodies: CelestialBodies,
   ): void {
-    const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
+    const behaviorDt = this.lastBehaviorSim === null ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
     if (!operable || !this.enabled) return;
     if (!this.port.canFire(enemies)) {
-      this.burstLeft = undefined;
-      this.burstDelay = undefined;
+      this.burstLeft = null;
+      this.burstDelay = null;
       return;
     }
+    // 交戦距離の内にいる間だけ撃つ
     const dist = len(sub(player.motion.state.r, this.port.motion.state.r));
     if (!(dist < ENGAGEMENT_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
 
+    // バーストの途中なら、次弾の時刻が来たら続きを撃つ
     if (this.isBursting) {
       this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
       if (this.burstDelay <= 0) {
         this.firePlasma(simTime, player, registry, celestialBodies);
         const burstLeft = this.burstLeft;
-        this.burstLeft = burstLeft === undefined ? undefined : burstLeft - 1;
+        this.burstLeft = burstLeft === null ? null : burstLeft - 1;
         this.burstDelay = ENEMY_BURST_INTERVAL;
       }
       return;
     }
 
-    if (this.lastFireSim === undefined) this.lastFireSim = simTime - Math.random() * ENEMY_FIRE_INTERVAL;
+    // 射撃の機会が巡ったら、攻撃グループの同時発砲数と確率で新しいバーストを始める
+    if (this.lastFireSim === null) this.lastFireSim = simTime - Math.random() * ENEMY_FIRE_INTERVAL;
     if (simTime - this.lastFireSim <= ENEMY_FIRE_INTERVAL) return;
     this.lastFireSim = simTime;
     const countInGroup = countAttackingEnemiesInGroup(enemies, this.port.attackGroupId);
@@ -90,6 +112,7 @@ export class EnemyFireController {
     this.firePlasma(simTime, player, registry, celestialBodies);
   }
 
+  // player の未来位置を狙ってプラズマ弾を1発撃ち、発砲を記録する。
   private firePlasma(
     simTime: number, player: Player, registry: EntityRegistry, celestialBodies: CelestialBodies,
   ): void {
@@ -97,10 +120,12 @@ export class EnemyFireController {
     const v = this.port.motion.state.v;
     const toPlayer = sub(player.motion.state.r, r);
     const relV = sub(player.motion.state.v, v);
+    // 相対運動から迎撃時刻を解き、解けなければ直線距離で代える
     let leadTime = solveLeadTime(toPlayer, relV, PLASMA_BULLET_SPEED);
     if (leadTime === null || leadTime < 0) leadTime = len(toPlayer) / PLASMA_BULLET_SPEED;
     const predictedRelPos = add(toPlayer, scale(relV, leadTime));
     const aimDir = norm(predictedRelPos);
+    // 太陽の眩しさで広がる散布界を狙いに足す
     const spreadScale = sunGlareSpreadScale(r, aimDir, celestialBodies, simTime);
     const perp = randPerp(aimDir);
     const spreadAng = (Math.random() * PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;

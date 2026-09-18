@@ -1,12 +1,14 @@
 import type * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import {
-  ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
+  ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement,
+  type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
 import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
 import type { EntityIdAllocators } from './entity-id';
-import type { MetalEnemySaveData } from '../../save/save-data';
+import type { EntityRegistry } from '../entity-registry';
+import { deserializeParts, type Part, type SerializedPart } from './parts';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
 // 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
@@ -30,8 +32,15 @@ export function metalEnemyCollisionRadius(typeIndex: number | null): number {
 const DRIFTING_INERTIA = v3(1, 1.1, 1.05);
 const TYPED_INERTIA = v3(1, 1, 1);
 
-// 新規配置。typeIndex が null なら型番を持たない漂流機体、数値なら stage00 ウェーブ敵の
-// 機体テンプレート番号。
+export interface SerializedMetalEnemy extends SerializedEnemy {
+  readonly kind: 'metal-enemy';
+  // 機体テンプレート番号。型番を持たない漂流機体は null。
+  readonly typeIndex: number | null;
+  readonly parts: readonly SerializedPart[];
+}
+
+// 敵の配置に機体テンプレート番号を足したもの。typeIndex が null なら型番を持たない漂流機体、数値なら
+// stage00 ウェーブ敵の機体テンプレート番号。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
 // 金属機体の敵。機体テンプレートが外形と接触半径を決め、被弾は艦と同じパーツ式の被弾モデルへ入る。
@@ -41,25 +50,55 @@ export class MetalEnemy extends PartBasedEnemy {
 
   private readonly typeIndex: number | null;
 
-  // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。
-  public constructor(
-    init: MetalEnemyPlacement | EnemyRestore,
+  // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。parts は機体の
+  // 部品構成で、省けば既定の構成を満タンで積む。
+  private constructor(
+    placement: MetalEnemyPlacement,
     idAllocators: EntityIdAllocators,
-    scene?: THREE.Scene,
+    scene: THREE.Scene | undefined,
+    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP),
+    alive?: boolean,
+    burstLeft?: number | null,
+    burstDelay?: number | null,
+    lastFireSim?: number | null,
+    lastBehaviorSim?: number | null,
   ) {
-    const typeIndex = 'saved' in init ? (init.saved as MetalEnemySaveData).typeIndex : init.typeIndex;
-    const accent = 'saved' in init ? init.saved.accent : init.accent;
+    const { typeIndex, accent } = placement;
+    // 型番の有無で見た目と慣性を選ぶ
     const metalView = typeIndex === null
       ? new MetalEnemyView(accent, ENEMY_MODEL_SCALE, scene)
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
-      init, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), idAllocators,
-      createShipDefaultParts(ENEMY_MAX_HP),
+      placement, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
+      metalEnemyCollisionRadius(typeIndex), idAllocators, parts, alive,
+      burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.typeIndex = typeIndex;
-    // 部品単位の HP までは保存していないので、既定パーツ構成のまま総 HP を按分して戻す。
-    if ('saved' in init) this.setOverallHp(init.saved.health);
+  }
+
+  // placement に新しく置く。
+  public static create(
+    placement: MetalEnemyPlacement, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
+  ): MetalEnemy {
+    return new MetalEnemy(placement, idAllocators, scene);
+  }
+
+  // 直列化した敵を復元する。
+  public static deserialize(
+    serialized: SerializedMetalEnemy, registry: EntityRegistry, scene?: THREE.Scene,
+  ): MetalEnemy {
+    return new MetalEnemy(
+      { ...deserializeEnemyPlacement(serialized), typeIndex: serialized.typeIndex },
+      registry.idAllocators,
+      scene,
+      deserializeParts(serialized.parts),
+      // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
+      serialized.alive ?? false,
+      serialized.fireController.burstLeft,
+      serialized.fireController.burstDelay,
+      serialized.fireController.lastFireSim,
+      serialized.fireController.lastBehaviorSim,
+    );
   }
 
   // 金属機体はいつでも撃てる。
@@ -90,10 +129,13 @@ export class MetalEnemy extends PartBasedEnemy {
     return this.applyCollisionDamage(damageSpeed);
   }
 
-  // 敵に共通する保存項目へ型番を足す。showTrajectoryLine はこの敵の予測線・過去線を出しているか。
-  public override serialize(showTrajectoryLine: boolean): MetalEnemySaveData {
+  // 敵に共通する直列化の項目へ、型番と部品を足す。
+  public override serialize(): SerializedMetalEnemy {
     return {
-      ...this.serializeEnemyFields(showTrajectoryLine), kind: MetalEnemy.kind, typeIndex: this.typeIndex,
+      ...this.serializeEnemyFields(),
+      kind: MetalEnemy.kind,
+      typeIndex: this.typeIndex,
+      parts: this.parts.map(p => ({ ...p })) as SerializedPart[],
     };
   }
 }

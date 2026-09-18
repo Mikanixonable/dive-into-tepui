@@ -11,10 +11,9 @@ import {
   RADIATOR_SEGMENT_LENGTH,
 } from '../../physics/player-shape';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import type { RadiatorSaveData } from '../save/save-data';
 import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
-import { DeployablePanelState } from './deployable-panel-state';
+import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
@@ -69,39 +68,34 @@ class RadiatorFold extends DynamicMotion {
 }
 
 // 折りへの接触を艦側のゲーム上の反応へ渡す口。side は当たった放熱板。
-interface RadiatorContactReaction {
-  (
-    side: RadiatorSide,
-    other: DynamicMotion,
-    contact: Contact,
-    services: DynamicReactionServices,
-  ): void;
+type RadiatorContactReaction = (
+  side: RadiatorSide,
+  other: DynamicMotion,
+  contact: Contact,
+  services: DynamicReactionServices,
+) => void;
+
+export interface SerializedRadiatorSystem {
+  readonly up: SerializedDeployablePanelState;
+  readonly down: SerializedDeployablePanelState;
 }
 
 export class RadiatorSystem {
-  private readonly panels: Record<RadiatorSide, DeployablePanelState> = {
-    up: new DeployablePanelState(0, 0), down: new DeployablePanelState(0, 0),
-  };
-  // side ごとの損耗率(0=無傷, 1=全損)。
+  private readonly panels: Record<RadiatorSide, DeployablePanelState>;
+  // side ごとの損耗率(0=無傷, 1=全損)。放熱板部品の残 HP から求め直すキャッシュ。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
 
-  // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。saved があれば展開状態を復元する。
+  // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。up・down は各側の展開状態で、
+  // 省いた側は収納から始める。
   public constructor(
     private readonly owner: DynamicMotion,
     private readonly onContact: RadiatorContactReaction,
-    saved?: RadiatorSaveData,
+    up = new DeployablePanelState(0, 0),
+    down = new DeployablePanelState(0, 0),
   ) {
-    if (saved) {
-      for (const side of ['up', 'down'] as const) {
-        const savedPanel = saved[side];
-        if (!savedPanel) continue;
-        this.panels[side].target = savedPanel.deployTarget === 1 ? 1 : 0;
-        this.panels[side].value = typeof savedPanel.deploy === 'number'
-          && Number.isFinite(savedPanel.deploy) ? Math.max(0, Math.min(1, savedPanel.deploy)) : 0;
-      }
-    }
+    this.panels = { up, down };
   }
 
   // side の展開/収納を切り替える。
@@ -203,11 +197,8 @@ export class RadiatorSystem {
   public deployOf(side: RadiatorSide): number { return this.panels[side].value; }
   public wearOf(side: RadiatorSide): number { return this.wear[side]; }
 
-  // 保存するのは side ごとの展開目標と展開度。
-  public serialize(): RadiatorSaveData {
-    return {
-      up: { deployTarget: this.panels.up.target, deploy: this.panels.up.value },
-      down: { deployTarget: this.panels.down.target, deploy: this.panels.down.value },
-    };
+  // side ごとの展開目標と展開度の直列化。
+  public serialize(): SerializedRadiatorSystem {
+    return { up: this.panels.up.serialize(), down: this.panels.down.serialize() };
   }
 }

@@ -7,13 +7,15 @@ import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { DynamicMotion } from './dynamic-motion';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { EntityRoster } from './entity-roster';
-import type { EntityRegistry, SpawnGate } from './entity-registry';
-import { EntityIdAllocators } from './dynamic-entity/entity-id';
+import type { EntityRegistry, SpawnGate, SpawnRecord } from './entity-registry';
+import { EntityIdAllocators, type SerializedEntityIdAllocators } from './dynamic-entity/entity-id';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
-import { isEnemy } from './dynamic-entity/enemy';
+import { isEnemy, isSerializedEnemy } from './dynamic-entity/enemy';
+import { ProteinEnemy } from './dynamic-entity/protein-enemy';
 import { isPlayer, Player } from '../player/player';
-import { restorationFor } from './dynamic-entity/entity-dictionary';
+import { findEntityClass, type SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
+import { proteinAssetGate } from '../protein/protein-asset-loader';
 import { InstancedPools } from '../../render/dynamic/instanced-pools';
 import { BulletPools } from '../../render/dynamic/dynamic-entity/bullet-view';
 import { CasingPool } from '../../render/dynamic/dynamic-entity/casing-view';
@@ -28,19 +30,36 @@ import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { StageRules } from '../stages/stage-rules';
-
-import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
 import type { PerfCounts } from '../perf-counts';
 import type { RunEventSink } from '../run-events';
 import type { OrbitReference } from '../orbit-reference';
 
+// 顔ぶれと、それを進めた先端時刻、実体化を待つ個体、id の採番の直列化した形。
+export interface SerializedDynamicSystem {
+  readonly simTime: number;
+  // 顔ぶれ。種別は各要素の kind が持つ。
+  readonly entities: readonly SerializedDynamicEntity[];
+  readonly pendingSpawns: readonly SpawnRecord[];
+  readonly idAllocators: SerializedEntityIdAllocators;
+}
+
+// record の個体を実体化してよいか。待つ外部資源があれば、その取得を起こしてから揃ったかを答える。
+// 知らない種別の記録は待つものが無いとして答える。
+function readyToSpawn(record: SpawnRecord): boolean {
+  const gate: SpawnGate | null = record.kind === 'protein-enemy'
+    ? proteinAssetGate(record.request.assetId)
+    : findEntityClass(record.entity.kind)?.spawnGate(record.entity) ?? null;
+  return gate === null || gate();
+}
+
+// record が敵の個体の記録か。
+function isEnemyRecord(record: SpawnRecord): boolean {
+  return record.kind === 'protein-enemy' || isSerializedEnemy(record.entity);
+}
+
 export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
   private readonly entities: DynamicEntity[] = [];
-
-  // このランの id 採番器。復元した顔ぶれの id もここで予約するので、この回の連番は
-  // ランの寿命でしか進まない。
-  public readonly idAllocators = new EntityIdAllocators();
 
   // 操作されうる個体。呼ぶたびに顔ぶれから数え直すので、フレームに何度も読むなら受けた配列を
   // 持ち回る。
@@ -55,45 +74,65 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。
   private readonly nanWatchdog: NanWatchdog;
 
-  // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
-  public constructor(
-    scene: THREE.Scene,
+  // 描画資源のプールと前進の機構を、顔ぶれが空のまま simTime [s] から組む。idAllocators はこの
+  // ランの id 採番器で、省けば連番の初めから発番する。
+  private constructor(
+    private readonly scene: THREE.Scene,
     public readonly events: RunEventSink,
     private readonly celestialBodies: CelestialBodies,
     private readonly sections: FrameSections,
-    initialSimTime: number,
-    saved?: GameSaveData,
+    simTime = 0,
+    public readonly idAllocators = new EntityIdAllocators(),
   ) {
     this.instancedPools = new InstancedPools([
       new BulletPools(scene, ENTITY_CAP.bullet),
       new CasingPool(scene, ENTITY_CAP.casing),
       new DebrisFragmentPools(scene, ENTITY_CAP.debris),
     ]);
-    this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
+    this.simulator = new Simulator(this, this, this, celestialBodies, sections, simTime);
     this.nanWatchdog = new NanWatchdog(events);
-    if (saved) this.restoreFromSave(saved, scene);
   }
 
-  // スナップショットの顔ぶれを復元する。知らない種別は読み飛ばす。
-  private restoreFromSave(save: GameSaveData, scene: THREE.Scene): void {
-    // 実体化がゲートで遅れる個体があるので、先に全部の id を押さえてから組み始める。
-    for (const data of save.entities) this.idAllocators.reserve(data.id);
-    for (const data of save.entities) {
-      const restoration = restorationFor(
-        data, save.simTime, scene, this.events, this.idAllocators);
-      if (restoration === null) continue;
-      this.spawnWhenReady(restoration.gate, () => restoration.build());
+  // 新しいランの空の顔ぶれを組む。
+  public static create(
+    scene: THREE.Scene, events: RunEventSink, celestialBodies: CelestialBodies, sections: FrameSections,
+  ): DynamicSystem {
+    return new DynamicSystem(scene, events, celestialBodies, sections);
+  }
+
+  // 直列化した顔ぶれと実体化を待つ個体を、その先端時刻から復元する。知らない種別は読み飛ばす。
+  public static deserialize(
+    serialized: SerializedDynamicSystem,
+    scene: THREE.Scene,
+    events: RunEventSink,
+    celestialBodies: CelestialBodies,
+    sections: FrameSections,
+  ): DynamicSystem {
+    const { simTime, entities, pendingSpawns } = serialized;
+    const records: readonly SpawnRecord[] = [
+      ...entities.map((entity): SpawnRecord => ({ kind: 'entity', entity })),
+      ...pendingSpawns,
+    ];
+    // 採番は保存した番号から続け、記録にそれより先の id があればその次から続ける。実体化がゲートで
+    // 遅れる個体があるので、組み始める前に全部の id を押さえる。
+    const idAllocators = EntityIdAllocators.deserialize(serialized.idAllocators);
+    for (const record of records) {
+      if (record.kind === 'entity') idAllocators.reserve(record.entity.id);
     }
+    // null の先端時刻も欠けと同じく 0 から始める(既定引数は undefined でしか働かない)。
+    const system = new DynamicSystem(scene, events, celestialBodies, sections, simTime ?? undefined, idAllocators);
+    for (const record of records) system.spawnWhenReady(record);
+    return system;
   }
 
-  // 顔ぶれを保存形へ畳む。保存へ載らない種別は落ちる。showsTrajectoryLine は id の個体の
-  // 予測線・過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
-  public serialize(
-    showsTrajectoryLine: (id: string) => boolean, proteinDisplay: ProteinDisplaySettings,
-  ): EntitySaveDataUnion[] {
-    return this.entities
-      .map((e) => e.serialize(showsTrajectoryLine(e.id), proteinDisplay))
-      .filter((data): data is EntitySaveDataUnion => data !== null);
+  // 顔ぶれと実体化を待つ個体、採番を直列化した形へ畳む。
+  public serialize(): SerializedDynamicSystem {
+    return {
+      simTime: this.simTime,
+      entities: this.entities.map((e) => e.serialize()),
+      pendingSpawns: [...this.pendingSpawns],
+      idAllocators: this.idAllocators.serialize(),
+    };
   }
 
   private _collectionRevision = 0;
@@ -110,39 +149,41 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     this.bumpCollectionRevision();
   }
 
-  // 実体化に外部資源の取得が要る個体の待ち行列。生成そのものを gate が通るまで遅らせるので、
+  // 実体化に外部資源の取得が要る個体の待ち行列。生成そのものを資源が揃うまで遅らせるので、
   // その間その個体は顔ぶれのどこにも現れない。
-  private readonly pendingSpawns: {
-    readonly gate: SpawnGate;
-    readonly build: () => DynamicEntity;
-    readonly onSpawned?: () => void;
-  }[] = [];
+  private readonly pendingSpawns: SpawnRecord[] = [];
 
-  // 個体を1体足す。gate がまだ通らなければ、通るまで待ち行列へ回す。onSpawned は実体化した
-  // 直後に1度だけ呼ぶ。待つものが無ければ gate は null。
-  public spawnWhenReady(gate: SpawnGate | null, build: () => DynamicEntity, onSpawned?: () => void): void {
-    if (gate === null || gate()) {
-      this.add(build());
-      onSpawned?.();
-      return;
-    }
-    this.pendingSpawns.push({ gate, build, onSpawned });
+  // 待ち行列にいる敵の数。
+  public get pendingEnemyCount(): number {
+    return this.pendingSpawns.filter(isEnemyRecord).length;
   }
 
-  // 待ち行列のうち、gate が通ったものを実体化して顔ぶれへ足す。
+  // record の個体を1体足す。実体化に要る外部資源がまだ揃わなければ、揃うまで待ち行列へ回す。
+  public spawnWhenReady(record: SpawnRecord): void {
+    if (readyToSpawn(record)) this.materialize(record);
+    else this.pendingSpawns.push(record);
+  }
+
+  // 待ち行列のうち、外部資源が揃ったものを実体化して顔ぶれへ足す。
   private processPendingSpawns(): void {
     if (this.pendingSpawns.length === 0) return;
     let w = 0;
-    // 通らなかったものは前へ詰めて待ち行列に残す。
-    for (const pending of this.pendingSpawns) {
-      if (pending.gate()) {
-        this.add(pending.build());
-        pending.onSpawned?.();
-      } else {
-        this.pendingSpawns[w++] = pending;
-      }
+    // 揃わなかったものは前へ詰めて待ち行列に残す。
+    for (const record of this.pendingSpawns) {
+      if (readyToSpawn(record)) this.materialize(record);
+      else this.pendingSpawns[w++] = record;
     }
     this.pendingSpawns.length = w;
+  }
+
+  // record の個体を組んで顔ぶれへ足す。知らない種別の記録は読み飛ばす。外部資源が揃ってから呼ぶこと。
+  private materialize(record: SpawnRecord): void {
+    if (record.kind === 'protein-enemy') {
+      this.add(ProteinEnemy.create(record.request, this.idAllocators, this.scene));
+      return;
+    }
+    const entityClass = findEntityClass(record.entity.kind);
+    if (entityClass !== null) this.add(entityClass.deserialize(record.entity, this, this.scene));
   }
 
   // エンティティを取り除き、メッシュを破棄する。
@@ -297,7 +338,6 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
         controls: controllable === active && operable ? controls : null,
         dt,
         simDt,
-        registry: this,
         activeStage,
         stageRules,
         celestialBodies: this.celestialBodies,
@@ -342,8 +382,6 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   public dispose(): void {
     for (const e of this.entities) e.dispose();
     this.entities.length = 0;
-    // 待ち行列の build は scene などを掴んだままなので、実体化されないまま残さない。
-    this.pendingSpawns.length = 0;
 
     this.instancedPools.dispose();
 
