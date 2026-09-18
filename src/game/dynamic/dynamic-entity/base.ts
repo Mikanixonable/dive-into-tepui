@@ -10,7 +10,7 @@ import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import type { Vec3 } from '../../../math/vec3';
 import { len, sub, v3 } from '../../../math/vec3';
 import type { MarkerVisibility } from '../../../marker/marker-visibility';
-import { Plan, type PlanExecutionMode } from '../../plan/plan';
+import { Plan, type PlanExecutionMode, type SerializedPlan } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import { fmtDist } from '../../../hud/utils';
@@ -49,6 +49,7 @@ export interface SerializedBase extends SerializedDynamicEntityFields {
   // 基地の燃料 [kg]。
   readonly fuel: number;
   readonly throttle: SerializedThrottle;
+  readonly plan: SerializedPlan | null;
 }
 
 // 基地を新しく置く運動状態と表示名。id を省くと採番器が発番する。
@@ -68,9 +69,9 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public override readonly controllable = true;
   public override readonly pickable = true;
 
-  public readonly plan = Plan.create();
-  public planExecution: PlanExecutionMode = 'off';
-  public fineAttitude = false;
+  // 基地の計画の実行方法と姿勢操作の微調整は、既定のまま固定する。
+  public readonly planExecution: PlanExecutionMode = 'off';
+  public readonly fineAttitude = false;
   // 除去の前に注視・操作対象の参照を引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
   // 基地は常設の軌道構造物なので、選択の有無に関わらず赤道交点マーカーを出す。
@@ -96,7 +97,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   }
 
   // 基地 name を state・attitude に置く。id は採番器が配った識別子。_money から後ろは所持金 [Cr]・
-  // 燃料・操作状態で、省いたものは新しく置いたときの状態で始める。
+  // 燃料・操作状態・マニューバ計画で、省いたものは新しく置いたときの状態で始める。
   private constructor(
     scene: THREE.Scene,
     id: string,
@@ -106,6 +107,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     private readonly _money = BASE_INITIAL_MONEY,
     fuel?: number,
     public readonly throttle = new Throttle(),
+    public readonly plan = Plan.create(),
   ) {
     super(() => new BaseMotion(state, attitude, fuel), new BaseView(scene, id), id);
     this.setName(name);
@@ -120,11 +122,13 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     );
   }
 
-  // 直列化した基地を復元する。
+  // 直列化した基地を復元する。計画のうち起点より前のノードは戻せないので、その数を registry の出来事へ
+  // 記録する。
   public static deserialize(
     serialized: SerializedBase, registry: EntityRegistry, scene: THREE.Scene,
   ): Base {
-    return new Base(
+    const { plan } = serialized;
+    const base = new Base(
       scene,
       registry.idAllocators.base.next(serialized.id),
       // 記録に無い名前は、新しく置いたときと違って無作為に選ばず「基地」と名乗る。
@@ -135,7 +139,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       serialized.money ?? undefined,
       serialized.fuel,
       serialized.throttle ? Throttle.deserialize(serialized.throttle) : undefined,
+      plan ? Plan.deserialize(plan) : undefined,
     );
+    const dropped = plan ? Plan.droppedNodeCount(plan) : 0;
+    if (dropped > 0) registry.events.record({ kind: 'planNodesDropped', ship: base.name, count: dropped });
+    return base;
   }
 
   // 主慣性モーメント。
@@ -223,10 +231,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     return {
       ...this.serializeEntityFields(Base.kind),
       name: this.name,
-      // 基地の資源と、操作の設定
+      // 基地の資源と、操作の設定と計画
       money: this._money,
       fuel: this.motion.fuel,
       throttle: this.throttle.serialize(),
+      plan: this.plan.serialize(),
     };
   }
 
