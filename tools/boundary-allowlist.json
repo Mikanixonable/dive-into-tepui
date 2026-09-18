@@ -10,12 +10,6 @@
     ],
     "src/game/dynamic/dynamic-system.ts": [
       "restoreFromSave("
-    ],
-    "src/game/player/attached-booster-motion.ts": [
-      "importData("
-    ],
-    "src/game/player/booster-stack.ts": [
-      "importData("
     ]
   },
   "直列化された形をコンストラクタで受ける禁止": {
@@ -46,27 +40,6 @@
     ],
     "src/game/game.ts": [
       "initialSave"
-    ],
-    "src/game/player/attached-booster-motion.ts": [
-      "saved"
-    ],
-    "src/game/player/fire-control.ts": [
-      "'saved' in"
-    ],
-    "src/game/player/player.ts": [
-      "'saved' in"
-    ],
-    "src/game/player/power.ts": [
-      "saved"
-    ],
-    "src/game/player/radiator.ts": [
-      "saved"
-    ],
-    "src/game/player/throttle.ts": [
-      "saved"
-    ],
-    "src/game/player/weapon-state.ts": [
-      "saved"
     ],
     "src/game/protein/protein-combat-state.ts": [
       "saved"
