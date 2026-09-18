@@ -1,6 +1,6 @@
 // デバッグ用ステージ: 敵集団1つのみを配置し、勝敗を発生させずに検証を続けられる。
 // 敵の射撃 ON/OFF をパネルから切り替えられる。
-import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../../hud/widgets';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -24,24 +24,13 @@ export class StageDebug extends Stage {
   // パネルの操作を積む先。
   private readonly commands: StageDebugCommands;
 
-  constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
-    super(saved, ...deps);
+  // 共通の状態から組み、射撃切替トグルとスポーンボタン列をステータスウィンドウ左部へ追加する。
+  private constructor(deps: StageDeps, ...common: CommonStageState) {
+    super(deps, ...common);
     this.commands = stageDebugCommands(this._commandQueue, this);
-    this.begin();
-  }
-
-  // デバッグステージのブリーフィング文言を返す。
-  briefingHtml(): string {
-    return `<b>デバッグステージ</b><br>敵集団 ${this.scoreCounter.totalEnemiesSpawned} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
-  }
-
-  // 自機と敵集団1つを置き、射撃切替トグルとスポーンボタン列をステータスウィンドウ左部へ追加する。
-  protected init(): void {
-    const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
-    for (const enemy of this.generateWaveAround(player)) this.addEnemy(enemy);
 
     const fireToggle = new ToggleSwitch('敵射撃', (on) => this.commands.setEnemyFireEnabled(on));
-    fireToggle.setOn(false);
+    fireToggle.setOn(this.enemyFireEnabled);
     this.addStatusPanelWidget(fireToggle.element);
 
     // 以降は、検証を続けるための手動スポーン。
@@ -53,6 +42,25 @@ export class StageDebug extends Stage {
 
     const spawnFuelBtn = new Button('RCS燃料をスポーン', () => this.commands.spawnRcsFuel());
     this.addStatusPanelWidget(spawnFuelBtn.element);
+  }
+
+  // 自機と敵集団1つを置いて始める。
+  public static create(...deps: StageDeps): StageDebug {
+    const stage = new StageDebug(deps);
+    const player = stage.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
+    for (const enemy of stage.generateWaveAround(player)) stage.addEnemy(enemy);
+    stage.composeBriefing();
+    return stage;
+  }
+
+  // 直列化した形から復元する。
+  public static deserialize(serialized: SerializedStage, ...deps: StageDeps): StageDebug {
+    return new StageDebug(deps, ...Stage.deserializeCommonState(serialized, deps, StageDebug.stageRules));
+  }
+
+  // デバッグステージのブリーフィング文言を返す。
+  briefingHtml(): string {
+    return `<b>デバッグステージ</b><br>敵集団 ${this.scoreCounter.totalEnemiesSpawned} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
   }
 
   // 敵の射撃の可否を切り替える。
