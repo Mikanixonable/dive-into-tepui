@@ -1,6 +1,6 @@
 # ゲーム全体の再設計 — 状態の種類から層と依存方向を決め直す
 
-**段 1〜3 は main へ入っている(PR #80・#81・#84)。段 4 は PR #85 で送った。残りは段 5〜8。**
+**段 1〜4 は main へ入っている(PR #80・#81・#84・#85)。段 5 は PR #86 で送った。残りは段 6〜8。**
 
 **段 5 は 2026-09-18 に新設した**(K8-7)。当初の段 4 は R4(モデル層を進行と視点に分ける)と R11(セーブの規格化)を載せていたが、後者が繋ぎ方の設計(K8)で7手順に膨らんだので、そこで段を切った。以前の段 5〜7 は、番号が1つずつ繰り下がって段 6〜8 になっている。
 
@@ -59,7 +59,7 @@
 - **置き場を仮に認める。** 例: 表示の導出は当面 `src/game/` の中に置く。
 - **層の代わりにパスで禁止する。** 層の対応表がまだ割れていない場所を、禁止パターンで代用する。
 
-`rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が段ごとに変わり(段 1 で 3、段 2 で 4、段 3 で 7、段 4 で 6、段 5 で 4、段 6 で 6、段 7 で 4)、段 8 で 0 になる。**いまは 6**(段 4 の終わり)。
+`rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が段ごとに変わり(段 1 で 3、段 2 で 4、段 3 で 7、段 4 で 6、段 5 で 4、段 6 で 6、段 7 で 4)、段 8 で 0 になる。**いまは 4**(段 5 の終わり)。
 
 ### 書き込む規則(最終形)
 
@@ -204,7 +204,7 @@
 | ~~2~~ 済 | R5、R10 の `settings/` の項、R2 の定義層の項 | 1.3「設定の正本を consumer へ渡さない」 | 表示の導出の置き場は `src/game/` の中(段 8)、R5 が「視点へ置く」と言う値は `game/` の所有者が持つ(段 4) | 定義層の出ていく import、`localStorage`・`RunSetting`・二段初期化の禁止パターン、`game/hud` が `Game` を import しないこと |
 | ~~3~~ 済 | R3、R7 の出来事の段落、R8、R4 の需要の2項 | 1.10 の全体 | 位相の順序は `game/game.ts` が持つ(段 8)、モデル層の禁止は層でなくパスで当てる(段 6)、視点への書き込みは列を通さなくてよい(段 4) | 表示の選択が進行へ漏れる禁止、モデル層が生の入力を読む禁止、モデル層が出来事の装置を持つ禁止(どれもパス指定) |
 | ~~4~~ 済 | R4 の全文、R11 の1。R1・R5・R10 の「ラン跨ぎ」を「セーブを跨いで共通」へ言い直した。**4-1 で先に書いた R11 の2は、4-4 で落として段 5 へ回した**(K8-7) | — | **`game.ts` は段 5 まで分割しない**(4-4。段 5 で外す) | `game/viewer/` への片方向、`settings/` と `game/viewer/` の相互 import、セーブの型から表示の導出への import(以上 4-2 で済。落とす判定は無い) |
-| 5 | **R12、R13、R8 の言い直し(進行の末尾の追従・位相の順序の置き場)、R10 のランの組み立ての項、R2 の表の `run/`、段 4 で落とした R11 の2**(5-1) | 1.6「多態を保存し、復元する」の3点目、1.10 の暫定「位相の順序を組み立てるのは `game.ts`」、4-4 の `game.ts` の暫定 | (R11 の3は段 7 で足す) | `run/` を組み立てとして対応表へ、直列化の語彙・復元の流し込み・直列化された形を受けるコンストラクタの禁止パターン、モデル層の根が表示の導出を持つ禁止(5-1) |
+| ~~5~~ 済 | **R12、R13、R8 の言い直し(進行の末尾の追従・位相の順序の置き場)、R10 のランの組み立ての項、R2 の表の `run/`、段 4 で落とした R11 の2**(5-1) | 1.6「多態を保存し、復元する」の3点目、1.10 の暫定「位相の順序を組み立てるのは `game.ts`」、4-4 の `game.ts` の暫定 | (R11 の3は段 7 で足す) | `run/` を組み立てとして対応表へ、直列化の語彙・復元の流し込み・直列化された形を受けるコンストラクタの禁止パターン、モデル層の根が表示の導出を持つ禁止(5-1) |
 | 6 | R6(dynamic の族とステージ)、R2 のモデル層の項 | 1.6 の具体例の段落、2.2 の `entity` / `motion` / `view` | R6 を天体の族に当てない(段 7)、`game/celestial/` は未分類(段 7)、モデル層の根は天体系の描画のために `GameScene` を受けてよい(段 7)、`render/` の語彙の型 import を許す(段 8) | 対応表を `game/` の中まで割り、モデル層の出ていく import と `three` を判定 |
 | 7 | R6 の全域、R11 の3 | — | 時刻層は `game/celestial/` にある(段 8) | 時刻層の規則を `game/celestial/` へ当てる |
 | 8 | R2 の最終の対応表、R9、R10 の全文 | 1.3「`launcher/` が `game/` を見てよいのは…」 | なし(残る4つをすべて外す) | 最終の対応表、`hud/` を装置として判定、`settings/` の import 規則、許可リストを空にする |
@@ -518,7 +518,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 | ~~2~~ 済 | R5・R10(`settings/`) | `rg -n "localStorage" src/game src/theme.ts` が 0 件。`rg -n "RunSetting\|setInput\(\|setHandlers\(" src` が 0 件。`game/hud` が `Game` を受けない |
 | ~~3~~ 済 | R3・R7(出来事)・R8・R4(需要) | 表示側から進行へ届く経路が需要だけになる(`rg -n "predictsFuture\|display-window-duration" src/game/dynamic` が 0 件)。予測弧をなぞる積分について、R4 の検査が通るか、ユーザーの判断が記録されている |
 | ~~4~~ 済 | R4(全文)・R11 の1 | 進行のパスから `game/viewer/` への import が 0 件。`settings/` と `game/viewer/` の間の import が双方向とも 0 件。§6 が設定と言う値を `game/` が持っていない。`rg -n "例外なくすべてセーブ" DEVELOP/CODING-RULE.md` が 0 件(規則は段 5 で書き直す)。`game.ts` を段 5 まで分割しないことが、1.10 の位相の印・1.2 の暫定・`game.ts` の冒頭・PR 本文の4か所に書いてある |
-| 5 | R11 の2・R12・R13・R8 と R10 の言い直し | 手順 5-5 で洗い出したモデル層の値が、キャッシュを除いてすべてセーブに載っている。`rg -n "\w+SaveData\b\|WeaponStateData\|BoosterStackData" src` が 0 件で、`src/game/save/` と `src/game/game-host.ts` が無い。`rg -n "'saved' in\|restoreFromSave\|importData\|exportData\|saveState" src/game` が 0 件。位相の順序が `src/run/run.ts` だけにあり、`src/game/game.ts` が `game/{hud,marker,view,pickable,map,lines,input,camera}` と `game-presentation` を import しない。セーブの版が上がり、新しい版で書いた記録が読め、古い版は拒まれるだけで壊れない |
+| ~~5~~ 済 | R11 の2・R12・R13・R8 と R10 の言い直し | 手順 5-5 で洗い出したモデル層の値が、キャッシュを除いてすべてセーブに載っている。`rg -n "\w+SaveData\b\|WeaponStateData\|BoosterStackData" src` が 0 件で、`src/game/save/` と `src/game/game-host.ts` が無い。`rg -n "'saved' in\|restoreFromSave\|importData\|exportData\|saveState" src/game` が 0 件。位相の順序が `src/run/run.ts` だけにあり、`src/game/game.ts` が `game/{hud,marker,view,pickable,map,lines,input,camera}` と `game-presentation` を import しない。セーブの版が上がり、新しい版で書いた記録が読め、古い版は拒まれるだけで壊れない |
 | 6 | R6(dynamic の族とステージ) | モデル層の実体が表示物・装置を持たない。`Game.create`/`Game.deserialize` が `HudLayers` と `THREE.Scene` を受けない。`rg -n "DynamicView\|WorldSfx\|UiSfx\|Notifier\|MarkerSlots\|FlashEffects\|from 'three" src/game/dynamic src/game/player src/game/stages src/game/creative` が 0 件 |
 | 7 | R6(全域)・R11 の3 | `Game.create`/`Game.deserialize` が `GameScene` を受けず、THREE と DOM なしでテストから組める。時刻層に残った天体のファイルから、`render/`・`three`・`hud/`・`game/(camera\|marker\|map\|pickable\|hud\|dynamic)` への import が 0 件。天体系の構築関数の引数が構築値ひとつになる |
 | 8 | R2(最終の対応表)・R9・R10(全文) | `src/game/game.ts`(モデル層の根)から `render/`・`three`・`hud/`・`presentation/`・`run/` への import が 0 件。`src/celestial/` が存在し、そこから `physics/` と `math/` 以外への import が 0 件。`rg -n "game/celestial" src tests tools DEVELOP CLAUDE.md .claude/skills` が 0 件。`rg -n "from '.*render/" src/game` が 0 件。`rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 0 |
@@ -607,102 +607,33 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 **いま生きている検査**: `tools/check-boundaries.mjs` が 18 種を判定し、`tools/boundary-allowlist.json` は空。進行のフォルダに残る表示の導出は `MISPLACED_PRESENTATION_FILES` に名指しで載っている(手順 6-2 が引き継ぐ)。
 
-### 段 5 — 繋ぎ方を揃え、セーブを作り直す
+### 段 5 — 済(PR #86)
 
-**この段で書く規則**: R12・R13(K8)、R8 と R10 の言い直し(進行の末尾の追従、位相の順序はランの組み立てが持つ)、段 4 で落とした R11 の2。
+**手順は実施して main へ送ったので、この文書からは落とした。** 残っているのは、段 6 以降が前提にしてよい結果だけ。消したアサーション・洗い出しの表・規約点検で直したものは PR #86 の本文にある。
 
-**段の後、他の作業へ効くこと**: 直列化は `serialize(): SerializedT` と `static deserialize` で書き、コンストラクタで直列化された形を受けない。部品は持ち主が作り、協力者は受ける。1ランの組み立てと位相の順序は `src/run/run.ts` にあり、`src/game/game.ts` はモデル層の根、`game-presentation.ts` は表示の導出の根である。セーブはモデル層の直列化で、キャッシュを除く全部が載る。**セーブの版が上がるので、段 4 までのセーブは読めなくなる**(K9)。
+**書いた規則**: R12・R13(1.3)、R8(1.10)と R10 の言い直し(需要と追従の材料は進行の末尾で受ける、位相の順序は `src/run/` が持つ)、R2 の表の `run/`、R11 の2。1.6 の静的側は「タグと静的な `deserialize`」。**実施中に広げた文面**: `deserialize` が `serialized` の後ろに受けてよいものへ「どの種類として組むかを呼び手が決める不変な定義(カメラの設定・種別ごとの慣性など)」を足した。実体の記録が状態の時刻 `t` を持つので、実体の `deserialize` は復元時刻を受けない(1.6 の揃える引数は「直列化された形と協力者」)。
 
-**手順の並び**(同じファイル群を重ねて触るので直列)
+**コードが満たしていること**
+- **3つの根**: `Game`(`src/game/game.ts`)はモデル層の根で、`create`/`deserialize`・`advance`・`followCamera`・`extendPredictions`・`serialize` を持つ。`GamePresentation`(`src/game/game-presentation.ts`)は表示の導出の根。`Run`(`src/run/run.ts`)が2つを組み、`frame()` が位相の順序を持つ。`Run.create`/`Run.resume` を `launcher.startRun` が呼び分ける。暖機(シェーダの事前コンパイル)は進行を通さず、進行の後の導出と同期だけを通す。
+- **直列化と復元の形**: 所有者はどれも「既定引数を含む private コンストラクタ(新規の初期値)」「`create`」「`static deserialize`」。持ち主を参照する部品(`FireControl`・`RadiatorSystem`・`EnemyFireController`)は `deserialize` を持たず、持ち主のコンストラクタが復元済みの値から作る。実体は `entity-dictionary.ts` の `ENTITY_CLASSES`(9種)を `findEntityClass(kind)` で引き、`DynamicEntityClass.deserialize(serialized, registry, scene)`。`DynamicEntity.serialize` は抽象。
+- **セーブの形式(版 4)**: `{ version, progress, viewer }`。`progress` は `Game` 自身の値と所有者ごとの入れ子(`dynamicSystem`・`controlSelection`・`stage`・`simSpeedManager`・`planNodeRules`)。モデル層の値は、キャッシュ(所有者のコメントに書いてある)・乱数の系列・需要が残させる過去の軌跡を除いてすべて載っている。**段 6 以降は版を上げない**(K9)。段 6 以降の検証は「段 5 で書き出したセーブが読める」を基準にする。
+- **アセット待ちの実体**は種別つきの記録 `SpawnRecord`(`entity-registry.ts`)で、実体化は `DynamicSystem` が `ProteinEnemy.create(request, …)` を呼ぶ。出撃数は要求した時点で数え、表示と勝ちの判定は `Stage.enemiesAppeared`(出撃数 − アセット待ちの敵)を読む(PROTEIN.md「出現」)。
+- **検査**: `tools/check-boundaries.mjs` に直列化の語彙・復元の流し込み・直列化された形をコンストラクタで受ける・モデル層の根が表示の導出を持つ、の4判定を足した。許可リストは空。`Game` が `HudLayers` の型を受けてよい例外が1つある(`(暫定 — 段 6 の 6-5 で外す)`)。
+- **テスト**: `npm run test` は launcher 層(`npm run test:launcher`)を含めて 1003 本。往復の表 `tests/game/progress-serialization.test.ts` は、既定と違う値の記録を入力と期待値にする形(本物を組んで往復させる形は `serialize` 側の取りこぼしを検出しない)。THREE と DOM が要る所有者の往復は 7-4 で扱う。
 
-| 手順 | 内容 | 挙動 |
-| --- | --- | --- |
-| 5-1 | R12・R13 と R8・R10 の言い直し、R11 の2を書き、判定を足す | 変えない(規則と検査だけ) |
-| 5-2 | 直列化の型を `SerializedT` へ改名し、所有者へ移す | 変えない |
-| 5-3 | `game.ts` をモデル層の根・表示の導出の根・ランの組み立てに分ける | 変えない(位相の中の並べ替え1つを確かめる) |
-| 5-4 | 復元を `deserialize` へ揃える | 変えない(復元したデバッグステージの操作パネルだけ直す) |
-| 5-5 | セーブの版を上げ、形式をモデル層へ揃える(歪みの是正と、載っていない値を載せる) | **段 4 までのセーブは読めなくなる。** 新しい版では、モデル層の値がすべて戻る |
-| 5-6 | 段 5 が触った層のテストを 4.1 に照らして整える | — |
-| 5-7 | 段 5 を main へ送る | — |
+**段 5 の終わりに残っている暫定**(`rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 4)
+- `game/` の中を割らない / モデル層の禁止はパスで当てる — 段 6 で外す
+- `hud/` の扱い / 表示の導出の置き場 — 段 8 で外す
 
-**5-2〜5-4 で変えない挙動と直す挙動**(SPEC の該当: SAVE.md「形式の版」「保存される内容」、INVARIANTS.md §6、R8 と「段 1〜3 — 済」の位相の中の順序)
+**段 5 で見つけて後の段へ回したもの**
+- 6-3・6-5: `StageDebug.update` が毎フレーム敵の `fireEnabled` へ代入、creative の `applySimulationEvents` が艦の `motion.state` へ代入(R3)。`player.ts`(約 590 行)は表示物の同居が原因。
+- 8-6: `Launcher` が設定と計測を `Run` へ中継するだけの引数、`main.ts` のラン外の入力ポートの表。
+- 未割り当て: `SimSpeedManager.handleCommand` が生のキーコードを比べる(入力の解釈が進行へ漏れている、R8)。`DynamicSystem.update` の閉包の注入。`ProteinEnemy.muzzlePosition` が状態を進めて値を返す。敵の `waveId` などが無いことを `undefined` で表す。燃料の関数が状態を更新して値を返す。`focus-camera-selection.ts` が 563 行。
+- SPEC と実装の食い違い(テストに書けなかったもの): GAME.md §7「何も無い空間で止まって見えてもならない」に対し、基地の判定形状は p90 で 16 m 浮いている。
+- launcher の UI: セーブデータ画面が版 3 の手動セーブを読み込めるものとして並べ、ダブルクリックすると何も知らせずに新しいランが始まる(SAVE.md は満たしている)。
 
-- **保存する**: 保存形式(JSON のキー・入れ子・版)。5-5 まではここを触らない。記録に無い項目は読み込み時に補われ、読み込みを妨げない。読み込んだ記録は、保存した瞬間の状態(位置・操作対象・カメラ・ターゲット・表示設定)から続く。欠けたときに補う値は、いまと同じ(`planExecution` の `'off'` など、新規の初期値と違うものも含む)。不正な値の扱い(既定へ落とす所、throw する所)。フレームの中の順序(段 3 の5項目と、5-3 の表で動かさないとした呼び出し)。
-- **直す**: 復元したデバッグステージに操作パネルが出ない不具合(5-4)。仕様に反する(ステージの操作で変えた設定は保存される対象で、操作できることが前提)ので直す。
-- **確かめてから決める**: 5-3 で赤道交点の更新を計画ノードの規則の後ろへ動かすこと。赤道交点が計画ノードを直に読まないなら挙動は変わらない。読むなら、`Game` の呼び出しを分けていまの順序を保つ。
+**進め方で分かったこと**: 所有者の群ごとにファイルを重ねずに割れば、段の中でも git worktree で並行できた(5-5b の4群、5-6 の2つ、規約点検の4群)。worktree の node_modules はジャンクションで繋ぎ、終わる前にリンクだけを外す。統合は cherry-pick。
 
-**5-5 で変える挙動**(K9)
-
-- セーブの形式の版を上げる。**段 4 までに書き出した記録は読めなくなる**(SAVE.md「形式の版」: 版が一致しない記録は読み込めず、変換もしない)。拒否されるだけで、セーブデータ画面もページの再読み込みも壊れない。
-- 新しい版では、保存の項目名と入れ子が所有者の語彙と一致し、モデル層の値がキャッシュを除いてすべて載る。
-
-#### 手順 5-1・5-2 — 済(`361005e2`・`bed54eda`・`9acf2853`)
-
-**手順は実施したので落とした。** 後の手順が前提にしてよい結果だけを残す。
-
-- **規則**: R12・R13 を 1.3 に書き、R8(1.10)・R10・R11 の2を最終形へ言い直した。1.2 の `game.ts` の暫定と 1.10 の位相の暫定は外れ、`rg -c "暫定 — 段"` は 4。R4 の「需要を作るのは入力の解釈の位相」の項は、言い直した R8 と矛盾するので消した。
-- **検査**: 4判定を足した(`MODEL_ROOTS` = 進行のパス + `src/game/viewer/` + `src/game/game.ts`)。コンストラクタの判定はファイル全体に後読みで当て、引数名(`saved…`・`initialSave…`)だけを識別子として許可リストに載せる。**5-2 の後の許可リスト**: 復元の流し込み 9、直列化された形をコンストラクタで受ける 36(5-4 で空にする)、モデル層の根が表示の導出を持つ 15(5-3 で空にする)。「セーブの型から表示の導出」の判定は、`entity-dictionary.ts` だけへ差し替えた(`game.ts` は「モデル層の根」の判定が同じ違反を覆うので、二重に数えない)。
-- **型**: 改名表のとおり。表と違えたもの: `QuatSaveData` は `Quat`(readonly で JSON の素の値)をそのまま使って消した。`FrameRotationSource`・`CameraRotationFollow` は実行時の型をそのまま使う。熱の型は `SerializedDynamicMotionThermal`(`dynamic-motion.ts`)。`SerializedPart = Readonly<AnyPart>`。`ThrottlePort.serialize` は呼び手が無いので消した。
-- **暫定の形(5-4・5-5 で作り直す)**: `SerializedGame`(`game.ts`)は `SerializedViewer` を継ぐ平坦な形。`DynamicSystem` は `{ simTime; entities }` の無名の型、`Viewer` は `SerializedViewer & { entities }` を受ける(`SerializedGame` を import すると `game.ts` との型の循環になるため)。
-- **dep-metrics**: 辺は 3769 → 3733、型の最大の強連結成分は 113 → 98 ファイル。ctx2 の平均だけ 2357 → 2368 と増えた。`launcher/save/*` が `SerializedGame` のために 1040 行の `game.ts` を読むようになったためで、5-3 で `game.ts` が縮めば戻る(5-3 の検証で見る)。
-
-#### 手順 5-3 — 済(`ea5562ad`)
-
-**手順は実施したので落とした。** 後の手順が前提にしてよい結果だけを残す。
-
-- **3つの根**: `Game`(`src/game/game.ts`、231 行)はモデル層の根で、`advance(dt, controls, paused)`・`followProgress()`・`followCamera(samples)`・`extendPredictions(demand)`・`serialize()`・`runSummary()` を持つ。`GamePresentation`(`src/game/game-presentation.ts`、487 行)は表示の導出の根。`Run`(`src/run/run.ts`、167 行)が2つを組み、`frame()` が位相の順序を持つ(入力の途中でランが畳まれたら `false` を返し、自動セーブ・sync・render を走らせない)。`PageDevices`(`src/run/page-devices.ts`)は計画の5項目に `debugInfo` を足した(t0〜t3 の計測を `Run.frame` が持つため)。`Run` は launcher の読み口(`SnapshotSource`・`CurrentGameSource`・`PerfCountSource`)を実装する。
-- **動かした順序は1つだけ**: 赤道交点の更新が計画ノードの規則の後ろへ回った。赤道交点が読むのは顔ぶれ・予測・`planDisplay` の折れ線(`displayedPathOf` は `displayedPlan === null` と `sources`・`displayFrom/To` だけを読む)で、規則が書く `plan.data` を読まないので、挙動は変わらない。
-- **切り出したもの**: 「HUD へ渡す値」はビューバッジと一緒に `src/game/hud/hud-panel-presenter.ts`(`HudPanelViewModels` は `hud.ts` の型名なので `*Presenter` にした)。入力ポートの表は `src/game/input/game-input-ports.ts`。計画ノードの規則(進行)は `src/game/plan/plan-node-rules.ts` の `PlanNodeRules` で `Game` が持ち、`PlanGuide` はマーカーだけの表示の導出になった。姿勢の閉包と錨の問い合わせは `frame-anchors.ts` の `AnchorEntities`、`MapVisibilityPolicy` の条件は `EquatorNodeManager.update`、長押しの宣言は `TouchControls.longPressDeclaration()`、creative の分岐は `Hud.beginRun(stageId)` へ。
-- **暫定の受け口**: `Game.create` は `GameScene`・`HudLayers`・`FrameSections` を受ける。「モデル層の根が表示の導出を持つ禁止」は `./hud/hud-layers` の型 import だけを外してあり、`tools/check-boundaries.mjs` のその箇所に `(暫定 — 段 6 の 6-5 で外す)` がある。
-- **検査**: 「モデル層の根が表示の導出を持つ禁止」の許可リストは空。`MISPLACED_PRESENTATION_FILES` に `game-presentation.ts` と `plan-guide.ts` を足した。「モデル層が出来事の装置を持つ禁止」の対象を `plan-guide.ts` から `plan-node-rules.ts` へ差し替えた。
-- **dep-metrics**: ctx2 の平均は 2368 → 2353 で、5-2 で増えた分は戻った。
-- **実行時の確認**: `npm run build` のあとの `npm run smoke:browser`(stage 00)は最後まで通る。creative の smoke は起動の 60 フレームで時間切れになることが多く(分割前は4回とも)、「mk-earth の右クリックでプロパティ窓が開く」の段は分割の前後とも必ず落ちる。退行ではなく、smoke が 2026-08-22(f28d533a)に消えたクラス `.prop-window` を待っていたため。`.property-window` へ直すと、分割の前後とも creative の smoke は最後まで通った(起動待ちを延ばして各3回)。セレクタは段 5 の中で直す。**`npm run smoke:browser` はビルドしない(`docs/` を配信する)ので、先に `npm run build` を走らせる。**
-
-#### 手順 5-4 — 済(群 a〜g: `5d1835e7`・`bf1dcb17`・`048997da`・`3ca961a3`・`962fecd5`・`32c62861`・`abb89bff`)
-
-**手順は実施したので落とした。** 後の手順が前提にしてよい結果だけを残す。
-
-- **形**: モデル層の所有者はどれも「既定引数を含む private コンストラクタ(新規の初期値)」「`static create`(入力の要る新規)」「`static deserialize(serialized, …)`(復元)」で組む。`deserialize` は記録に無い項目を `undefined` のまま渡し、`null` を欠けと同じに扱うところは `?? undefined` に1行のコメントを付ける。持ち主を参照する部品(`FireControl`・`RadiatorSystem`・`EnemyFireController`)は `deserialize` を持たず、持ち主のコンストラクタが復元済みの値から作る(R13)。値の型の補助(`deserializeKinematicState`・`deserializeAttitude`・`deserializePart`・`deserializeOrbitGuideSettings`)は関数のまま。
-- **実体の辞書**: `entity-dictionary.ts` の `ENTITY_CLASSES`(Player・MetalEnemy・ProteinEnemy・AmmoPickup・RcsFuelPickup・DetachedBooster・Base)を `findEntityClass(kind)` で引く。`DynamicEntityClass.deserialize(serialized, simTime, registry, scene)` — 計画の `events, idAllocators` は、自機が registry を構築時に持つ形にしたので registry 1つにした(群 g)。`enemy-dictionary.ts` は畳んだ。知らない種別は `findEntityClass` が `null` を返して読み飛ばす。
-- **根**: `Game.create(stageClass, startEpoch, …)` / `Game.deserialize(serialized, stageClass, …)`、`Run.create` / `Run.resume`。`launcher.startRun` が呼び分ける。構築の順序は両方とも `DynamicSystem` → `SimSpeedManager` → `ControlSelection` → `Stage` → `Viewer`。ステージの初期配置は各ステージの `create` が行う。
-- **R12 の文面を1つ広げた**(`7a36ce80`): `deserialize` が `serialized` の後ろに受けてよいものへ「どの種類として組むかを呼び手が決める不変な定義(カメラの設定・種別ごとの慣性など)」を足した。
-- **残した名前**: `serializeEnemyFields`(基底 `Enemy` が `serialize()` を override すると `DynamicEntity.serialize` の閉じた和の戻り値に代入できないので、共通の項目を組む protected の補助として残す。引数なし)。
-- **挙動の差**(どれも壊れた記録か、直すと決めたもの): 復元したデバッグステージに操作パネルが出る。カメラの記録に `rotatingWith` が無い・記録に `stage` が無い・基地に `money` が無い記録は、例外や `undefined` でなく新規の初期値で読む。敵の `alive` が無い・`null` の記録は `false` として読む(ゲーム中の扱いは同じ)。保存形式は変えていない(群 f が変更前後の木をそれぞれコンパイルし、8ステージの記録の往復が一致することを確かめた。違いは JSON のキーの順序だけ)。
-- **消したもの**: `PartInventory.serialize`、`ProjectileEmitter`(registry を構築時に持つ火器の中で、呼ぶたびに registry から組んでいた)、`Ship.setOverallHp`・`PartDamageModel.setOverallHp`、`Stage.begin()`/`init()`/`restored`。
-- **実行時の確認はまだ**(`npm run dev` の目視)。段の終わり(5-7 の前)にまとめて見る。
-
-#### 手順 5-5 — 済(`66d1cc57`・`4bb20727`・`7bf6f1e3`・`168f879f`・`38f653ba`・`4a3a0685`・`be25fc2f` ・キャッシュのコメント `b3352e6f`)
-
-**手順は実施したので落とした。** 後の段が前提にしてよい結果だけを残す。洗い出しの表は PR 本文へ移す(scratchpad の調査を `962fecd5` の時点として添える)。
-
-- **形式(版 4)**: `SerializedGame = { version, progress, viewer }`。`progress` は `Game` 自身の値(`stageId`・`ephemerisContext`)と、所有者ごとの入れ子(`dynamicSystem`・`controlSelection`・`stage`・`simSpeedManager`・`planNodeRules`)。`viewer` は `view`・`camera: { combat, map }`・`navTarget`・`orbitGuide`・`entityDisplay`・`orbitReference`・`predictPanel`。実体の記録は状態の時刻 `t` を持ち、視点の値を持たない。版 3 までの記録は読み込みも取り込みも拒まれ、例外にはならない。**段 6 以降は版を上げない**(K9)。
-- **載せた値**: 計画の表のすべて(弾・破片・アセット待ちの実体・熱・時間加速・基地の計画・太陽電池・スロットルのラッチ・射撃の旗・高度警報・ベルト・金属敵の部品 HP・敵の射撃の時系列・タンパク質の攻撃部位の巡回・未操作の状態・採番器・creative の出現の設定と連番・デバッグステージ・計画ノードの接近の記録)と、引き直しで足したもの(状態の時刻・補給と破片の慣性・カメラの2つの猶予・`wasEmptyClick`)。視点の軌道要素の基準・予測パネルの10項目も載った。
-- **消した値**: `Plan._revision`、`PlanNodeRules.achievedNotified`、`BeltPhysics.angularAccel`・`anchorValue`(作り直す値にした)。`Base.planExecution`・`fineAttitude` は不変な値にした。
-- **形の判断**: アセット待ちの実体は種別つきの記録 `SpawnRecord`(`entity-registry.ts`)で、実体化は `DynamicSystem` が `ProteinEnemy.create(request, …)` を呼ぶ。出撃数は要求した時点で数え、表示と勝ちの判定は `Stage.enemiesAppeared`(出撃数 − アセット待ちの敵)を読む(PROTEIN.md「出現」)。ベルトは持ち主を参照しない部品にした(吊り元は呼ぶたびに受ける)。計画ノードの接近の記録は、ノードの同一性でなく値の一致で比べる。
-- **見た目が変わること**:
-  - 新しいゲームの戦闘カメラは、機体に対して後方見下ろしから始まる(以前は既定の角度を慣性系の向きとして読んでいた)。姿勢追従を外した状態の視点リセットも後方見下ろしへ戻る(CAMERA.md §2)。マップビュー中に保存しても、戦闘カメラの機体に対する向きが保たれる。
-  - 戦闘ビューのまま操作を外したセーブは、マップビューで戻る(戦闘ビューは操作対象がいるときだけ選べる、の規則による)。
-- **実行時の確認はまだ**(段の終わりにまとめて見る)。
-
-#### 手順 5-6 — 済(`c979cbac`・`e7719203`)
-
-**手順は実施したので落とした。** 消したアサーションと足した不変条件の一覧は PR 本文へ移す。`npm run test` は launcher 層を含めて 1003 本。往復の表(`tests/game/progress-serialization.test.ts`)は、既定と違う値の記録を入力と期待値にする形(本物を組んで往復させる形は `serialize` 側の取りこぼしを検出しない)。THREE と DOM が要る所有者(`Logistics`・`WaveAttack`・`ManualSpawn`・`StageDebug`・`ControlSelection`・`DynamicSystem`・`ObjectPlacement`)の往復は、段 7 の 7-4 で `Game` の往復と一緒に扱う。
-
-#### 手順 5-7. 段 5 を main へ送る
-
-**手順と達成条件**: 「段を main へ送る(共通)」のとおり。ただし**セーブの互換の確認は、この段から基準が変わる**(K9) — 「段 1 の前のセーブが読める」ではなく、「段 5 で書き出したセーブが読め、古い版は拒まれるだけで壊れない」を見る。PR 本文には次を書く。
-
-- K8 の決定: R12・R13、R8 と R10 の言い直し、段 4 で落とした R11 の2を書き直したこと。1.6「多態を保存し、復元する」を `deserialize` へ置き換えたこと。
-- 構造の変化:
-  - `game.ts` をモデル層の根・表示の導出の根・`src/run/run.ts` に分けたこと。`Run.frame` の順序表と、動かした1か所(赤道交点)の確認結果。
-  - 直列化の語彙(`SerializedT`・`deserialize`)と、`game/save/` の解体。
-- **セーブの版を上げたこと**(K9): 直した形式の歪みの一覧、新しい版の形、**段 4 までの記録が読めなくなること**と、拒まれるだけで壊れないことの確認結果。
-- 手順 5-5 の洗い出しの表。セーブへ足した値と、キャッシュとして載せない値。
-- 挙動の変化:
-  - 手順 5-5 で足した値が、読み込みで元に戻るようになったこと。
-  - 復元したデバッグステージに操作パネルが出るようになったこと。
-- 手順 5-6 で消したアサーションと、足した不変条件。
-- SPEC に書かず、いまの挙動のまま残したもの(K7-1 の操作途中の状態、K7-3 の画角と投影の置き場、所有者ごとに割れている不正な値の扱い)。
 
 ### 段 6 — 1体ぶんの表示物を表示担当へ移す
 
@@ -1118,7 +1049,7 @@ import を直す外側:
 
 ## 見積り
 
-作業量は次の式で出す。**段 1〜4 は実施済みなので、残り(段 5〜8)だけを載せる。** 段 3 から回した項目の分は、受ける手順の行に足して括弧で示した。
+作業量は次の式で出す。**段 1〜5 は実施済みなので、残り(段 6〜8)だけを載せる。** 段 3 から回した項目の分は、受ける手順の行に足して括弧で示した。
 
 ```
 意味の変更ファイル数 × 20 分 + 機械的な import 置換ファイル数 × 1 分 + 検証 20 分
@@ -1128,14 +1059,6 @@ import を直す外側:
 
 | 段 | 手順 | 分 |
 | --- | --- | --- |
-| 5 | 5-1 繋ぎ方の規則と検査(規則 8 節 × 15 = 120、判定 4 本 × 10 + 自己検証 20 = 60) | 180 |
-| | 5-2 型の改名と移動(機械的な置換 約 50 ファイル × 1 = 50、型の宣言の移動 約 40 型 × 3 = 120、補助関数の移動 2 × 20 = 40、検証 20) | 230 |
-| | 5-3 `game.ts` の分割(意味の変更 13 ファイル × 20 = 260、`/callstack` での順序の突き合わせ 60、検証と `npm run dev` 50) | 370 |
-| | 5-4 `deserialize` へ揃える(意味の変更 約 45 ファイル × 20 = 900、テストの書き直し 10 本 × 10 = 100、検証 20) | 1,020 |
-| | 5-5 版を上げて形式を揃え、載っていない値を載せる(形式の歪み 9 件 × 20 = 180、視点の洗い出し 30、意味の変更 約 35 ファイル × 20 = 700、古い版の拒否の確認 30、検証 20。往復の検査は 5-6 へ移した) | 960 |
-| | 5-6 テストを整える(B の削除 約 15 ファイル × 5 = 75、新しい検査 8 本 × 30 = 240、`launcher` 層の追加 20、検証 20) | 355 |
-| | 5-7 main へ送る(commit が増えたぶんの本文 +30) | 150 |
-| | **段 5 計** | **3,265** |
 | 6 | 6-1 規則(R6・R2 のモデル層。実体と運動の所有の判断 +15) | 105 |
 | | 6-2 検査(対応表を game/ の中まで割る) | 90 |
 | | 6-3 3D の表示担当(運動のフィールドへの代入をやめる場合 +60。モデル層の根の `scene` +20、`PilotCommandFrame` の分割 +60、漏れていたテスト3本 +30、突き合わせの検査 +40) | 930 |
@@ -1158,9 +1081,9 @@ import を直す外側:
 | | 8-6 ランの組み立ての残り(決着の読み方 3 ファイル、狭い面 3、計測と進捗 4、`simTime` の経路 3 — 計 13 × 20 = 260、時間加速の命令を領域の語彙にする 40、検証 20) | 320 |
 | | 8-7 main へ送る | 120 |
 | | **段 8 計** | **1,883** |
-| | **残りの合計** | **8,803 分 ≒ 147 時間** |
+| | **残りの合計** | **5,538 分 ≒ 92 時間** |
 
-- 残りの commit は約 29 本(段 5 が 14 本 — 5-1 が2本、5-4 が群ごとに7本)、PR は 4 本。**段の中で並行してよい組は、段 5 以降には無い**(どの手順も同じファイル群を重ねて触る。5-4 の群も、実体の基底クラスと `Game` の復元経路を重ねて触るので直列にする)。
+- 残りの commit は約 15 本、PR は 3 本。段 5 の実測は約 45 commit(規約点検と後始末を含む)。**手順どうしは直列にする**(どの手順も同じファイル群を重ねて触る)。ただし手順の中で、所有者の群ごとにファイルを重ねずに割れるなら、git worktree で並行してよい(段 5 の「進め方で分かったこと」)。
 - 手順 6-3〜7-3 は `src/game/dynamic/` と `stages/` を重ねて触るので、段を跨いでも直列にする。
 - **規則と検査の手順(N-1・N-2)は、その段の実装の手順と同じ commit にしない。** 規則だけの commit を先に置くと、PR の中で「規則 → コード」の順が読める。
 - 段を1本の PR にする。段の中の手順ごとに commit を分け、**段の途中で main へ送らない** — 送ると、規則を満たしていないコードが main に入る。
