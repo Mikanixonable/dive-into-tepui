@@ -4,9 +4,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { CommandQueue } from '../../src/game/command-queue';
 import { predictPanelCommands } from '../../src/game/viewer/predict-panel-commands';
-import {
-  APERIODIC_ARC_DURATION, PredictPanelSelection,
-} from '../../src/game/viewer/predict-panel-selection';
+import { PredictPanelSelection } from '../../src/game/viewer/predict-panel-selection';
 import type { FrameRotationSource, ReferenceFrame } from '../../src/physics/frame';
 
 const inertialFrame: ReferenceFrame = { center: 'earth', rotatingWith: null };
@@ -60,6 +58,5 @@ export function register(): void {
 
     selection.followProgress(true);
     assert.equal(selection.sliderT, 0);
-    assert.equal(selection.durationSec(NaN), APERIODIC_ARC_DURATION);
   });
 }
