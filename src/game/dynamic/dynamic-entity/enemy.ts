@@ -25,7 +25,6 @@ import { EnemyInspection } from '../../pickable/enemy-inspection';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
 import { EnemyFireController } from './enemy-fire-controller';
 import { EnemyReactions } from './enemy-reactions';
-import type { ProteinDisplayController } from './enemy-display-capabilities';
 
 // 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
 // 全ての敵がこの1つの倍率を共有する。
@@ -71,7 +70,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   public readonly inspection = new EnemyInspection(this);
   public readonly objectPickable = this.inspection;
   public get proteinInspection(): EnemyProteinInspection | null { return null; }
-  public get proteinDisplayController(): ProteinDisplayController | null { return null; }
 
   public readonly accent: string | number; // マーカー色。攻撃グループとは独立
   public readonly orbitLineColor: string | number;
@@ -163,7 +161,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     if ('saved' in init) {
       this.fireController.restore(init.saved.burstLeft, init.saved.burstDelay);
       this.motion.alive = init.saved.alive;
-      this.trajectoryLineVisible = init.saved.showTrajectoryLine ?? false;
     }
   }
 
@@ -248,8 +245,9 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     this.fireController.behave(simTime, player, registry, enemies, operable, celestialBodies);
   }
 
-  // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。
-  protected serializeEnemyFields(): EnemySaveData {
+  // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。showTrajectoryLine は
+  // この敵の予測線・過去線を出しているか。
+  protected serializeEnemyFields(showTrajectoryLine: boolean): EnemySaveData {
     const fire = this.fireController.saveState;
     return {
       id: this.id,
@@ -270,7 +268,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
       burstLeft: fire.burstLeft,
       burstDelay: fire.burstDelay,
-      showTrajectoryLine: this.trajectoryLineVisible,
+      showTrajectoryLine,
     };
   }
 

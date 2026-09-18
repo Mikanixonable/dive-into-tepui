@@ -5,12 +5,13 @@ import {
 } from '../../../hud/widgets';
 import type { PanelCollapse } from '../panel-shell';
 import { fmtDateTime, fmtDuration } from '../../../hud/utils';
-import type { TickLabelMode } from '../orbit/calendar-ticks';
 import type { DisplayTick } from '../orbit/tick-scale';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
-  type DisplayDurationKey, type DisplayPastDurationKey,
-} from '../../display-window-duration';
+} from '../../viewer/predict-panel-selection';
+import type {
+  DisplayDurationKey, DisplayPastDurationKey, TickLabelMode,
+} from '../../viewer/predict-panel-selection';
 
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。
@@ -247,6 +248,7 @@ interface PredictPanelState {
   readonly pastDuration: number;
   readonly tickLabelMode: TickLabelMode;
   readonly showElementTimes: boolean;
+  readonly showTicks: boolean;
   readonly duration: number;
   readonly displayTime: number;
   // ランの元期(simTime=0)の unix 秒相当。displayTime を足すと絶対日時になる。
@@ -264,6 +266,7 @@ export class PredictPanel {
   public onPastCustomDurationConfirm: ((sec: number) => void) | null = null;
   public onTickLabelModeChange: ((mode: TickLabelMode) => void) | null = null;
   public onShowElementTimesChange: ((show: boolean) => void) | null = null;
+  public onShowTicksChange: ((show: boolean) => void) | null = null;
   public onSliderChange: ((t: number) => void) | null = null;
   public onResetToNow: (() => void) | null = null;
   public onJumpToTime: ((sec: number) => void) | null = null;
@@ -272,6 +275,7 @@ export class PredictPanel {
   private readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
   private readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
   private readonly tickLabelModeSwitch: ToggleSwitch;
+  private readonly showTicksSwitch: ToggleSwitch;
   private readonly showElementTimesSwitch: ToggleSwitch;
   private readonly slider: Slider;
   private readonly absoluteLabel: HTMLElement;
@@ -301,6 +305,7 @@ export class PredictPanel {
 
     const modeSwitches = this.buildModeRow();
     this.tickLabelModeSwitch = modeSwitches.tickLabelModeSwitch;
+    this.showTicksSwitch = modeSwitches.showTicksSwitch;
     this.showElementTimesSwitch = modeSwitches.showElementTimesSwitch;
 
     const scrubberRow = this.buildScrubberRow();
@@ -356,6 +361,7 @@ export class PredictPanel {
   // 軌道要素の時刻の表示有無を選ぶ行。
   private buildModeRow(): {
     readonly tickLabelModeSwitch: ToggleSwitch;
+    readonly showTicksSwitch: ToggleSwitch;
     readonly showElementTimesSwitch: ToggleSwitch;
   } {
     const modeRow = document.createElement('div');
@@ -365,12 +371,10 @@ export class PredictPanel {
       (on) => this.onTickLabelModeChange?.(on ? 'relative' : 'absolute'),
     );
     modeRow.appendChild(tickLabelModeSwitch.element);
-    // 目盛り行自体の表示切替。ここは正本を持たず、ticks 要素の hidden を直接叩く。
     const showTicksSwitch = new ToggleSwitch(
       '目盛りを表示',
-      (on) => { this.ticks.classList.toggle('hidden', !on); },
+      (on) => this.onShowTicksChange?.(on),
     );
-    showTicksSwitch.setOn(true);
     modeRow.appendChild(showTicksSwitch.element);
     const showElementTimesSwitch = new ToggleSwitch(
       '軌道要素の時刻を表示',
@@ -378,7 +382,7 @@ export class PredictPanel {
     );
     modeRow.appendChild(showElementTimesSwitch.element);
     this.panel.appendChild(modeRow);
-    return { tickLabelModeSwitch, showElementTimesSwitch };
+    return { tickLabelModeSwitch, showTicksSwitch, showElementTimesSwitch };
   }
 
   // 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)の行。
@@ -440,10 +444,12 @@ export class PredictPanel {
     this.durationRow.render(state.durationKey, state.duration);
     this.pastDurationRow.render(state.pastDurationKey, state.pastDuration);
     this.tickLabelModeSwitch.setOn(state.tickLabelMode === 'relative');
+    this.showTicksSwitch.setOn(state.showTicks);
     this.showElementTimesSwitch.setOn(state.showElementTimes);
     this.renderSlider(state.sliderSteps, state.sliderT, state.predictionRatio);
     this.renderAbsoluteLabel(state.epochUnixSec + state.displayTime);
     if (!this.jumpToggle.editing) this.renderElapsedLabel(state.sliderT * state.duration);
+    this.ticks.classList.toggle('hidden', !state.showTicks);
     this.renderTicks(state.ticks);
   }
 

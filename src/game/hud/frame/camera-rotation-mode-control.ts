@@ -1,7 +1,7 @@
 // カメラの回転モードを切り替える共通トグル。マップの詳細パネルと戦闘の簡易パネルで
 // 共有する。
 import { ToggleSwitch } from '../../../hud/widgets';
-import type { CameraRotationMode } from '../../camera/camera-orientation';
+import type { CameraRotationMode } from '../../viewer/camera-orientation';
 
 // 回転モードの切り替えを受ける口。
 export interface CameraRotationModeCommands {

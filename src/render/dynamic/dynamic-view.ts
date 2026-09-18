@@ -17,6 +17,7 @@ import { TargetRelativeLine } from '../lines/target-relative-line';
 import { TrajectoryLine } from '../lines/trajectory-line';
 import type { CelestialFrameSource } from '../lines/celestial-frame-source';
 import type { InstancedPools } from './instanced-pools';
+import type { ProteinDisplaySettings } from '../protein/protein-display';
 import { syncThermalState } from '../thermal-emissive';
 
 // 熱による発光の表示入力。温度と過熱の振幅は [K]。
@@ -45,6 +46,8 @@ export interface DynamicViewFrame {
   readonly camera: CameraFrame;
   readonly style: RenderStyle;
   readonly visual: EntityVisualSettings;
+  // 全個体に共通のタンパク質の表示形態と着色。
+  readonly proteinDisplay: ProteinDisplaySettings;
   readonly pools: InstancedPools;
 }
 

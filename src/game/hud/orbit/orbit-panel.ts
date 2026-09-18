@@ -2,7 +2,7 @@
 // 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘/マップ共通。
 import { fmtDist, fmtSpeed, fmtTime, setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
-import type { OrbitReferenceMode } from '../../orbit-reference';
+import type { OrbitReferenceMode } from '../../viewer/orbit-reference-selection';
 import { Button, SegmentedControl } from '../../../hud/widgets';
 
 import { getApsisLabelSpec } from './orbit-labels';

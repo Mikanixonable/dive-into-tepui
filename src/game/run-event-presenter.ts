@@ -220,6 +220,29 @@ export class RunEventPresenter {
         this.notifier.hint(`${body.ship}: 起点より前のマニューバノード ${body.count} 件を復元できません`);
         return;
 
+      case 'combatViewUnavailable':
+        this.notifier.hint('操作できる艦または基地がいません');
+        return;
+      case 'maneuverPlanConfirmed':
+        this.notifier.hint(`マニューバ計画 ${body.nodeCount} 件確定`, 4500);
+        return;
+      case 'orbitPlanningOpened':
+        this.notifier.hint(
+          `軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [${K.toggleMapMode.label}] で確定`,
+          5000,
+        );
+        return;
+
+      case 'cameraViewReset':
+        this.notifier.hint(body.view === 'map' ? 'マップビューの視点をリセット' : '視点をリセット');
+        return;
+      case 'cameraAttitudeFollowToggled':
+        this.notifier.hint(`視点の姿勢追従: ${body.on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
+        return;
+      case 'cameraReferenceViewSelected':
+        this.notifier.hint(body.view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
+        return;
+
       case 'controlTargetSelected':
         // 自機は操作方法を HUD とヘルプが常設で示しているので、選び直しても案内を出さない。
         if (body.target === 'base') {
@@ -229,6 +252,13 @@ export class RunEventPresenter {
         return;
       case 'controlTargetReleased':
         if (body.target === 'base') this.notifier.hint('基地の操作を解除しました');
+        return;
+
+      case 'navTargetToggled':
+        this.notifier.hint(body.name === null ? 'ターゲット解除' : `ターゲット: ${body.name}`);
+        return;
+      case 'navTargetLocked':
+        this.notifier.hint(body.name === null ? 'ターゲット固定解除' : `ターゲット固定: ${body.name}`);
         return;
 
       case 'waveAttackArmed':

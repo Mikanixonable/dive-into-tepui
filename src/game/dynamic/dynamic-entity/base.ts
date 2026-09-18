@@ -84,7 +84,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     return this.motion.consumeFuel(amount);
   }
 
-  // 基地を組む。復元時は操作状態・所持金・軌道線の表示も戻す。
+  // 基地を組む。復元時は操作状態・所持金も戻す。
   public constructor(
     init: BaseInit,
     scene: THREE.Scene,
@@ -117,10 +117,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.setName(name);
     this.throttle = new Throttle('saved' in init ? init.saved.throttle : undefined);
     this._money = 'saved' in init ? init.saved.money : BASE_INITIAL_MONEY;
-
-    if ('saved' in init) {
-      this.trajectoryLineVisible = init.saved.showTrajectoryLine ?? false;
-    }
   }
 
   // 噴射表現に要る推力・トルクを、共通の表示入力へ足す。
@@ -200,8 +196,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     };
   }
 
-  // セーブデータへ変換する。
-  public override serialize(): BaseSaveData {
+  // セーブデータへ変換する。showTrajectoryLine はこの基地の予測線・過去線を出しているか。
+  public override serialize(showTrajectoryLine: boolean): BaseSaveData {
     return {
       id: this.id,
       kind: 'base',
@@ -215,7 +211,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       money: this._money,
       fuel: this.motion.fuel,
       throttle: this.throttle.serialize(),
-      showTrajectoryLine: this.trajectoryLineVisible,
+      showTrajectoryLine,
     };
   }
 
@@ -256,6 +252,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
     _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
+    trajectoryLineShown: boolean,
   ): readonly MenuItem<MenuAction>[] {
     const subLabel = `基地 / 所持金: ${this._money.toLocaleString()} Cr`;
     const controlItem: MenuItem<MenuAction> = viewer === this
@@ -268,7 +265,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       MenuCommon.target(navTargetId === this.id),
       controlItem,
       MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.trajectoryLineVisible),
+      MenuCommon.trajectoryLine(trajectoryLineShown),
       MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
@@ -279,13 +276,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public runMenu(
     act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
-    // 軌道線の表示は自分の状態を書き換え、それ以外は controlSelection / authoring へ依頼する
+    // 操作対象の切り替えと削除は controlSelection へ、複製は authoring へ依頼する
     if (act === 'activate') {
       controlSelection.select(this);
     } else if (act === 'deactivate') {
       controlSelection.release(this);
-    } else if (act === 'toggleTrajectoryLine') {
-      this.trajectoryLineVisible = !this.trajectoryLineVisible;
     } else if (act === 'delete') {
       controlSelection.remove(this);
     } else if (act === 'duplicate') {

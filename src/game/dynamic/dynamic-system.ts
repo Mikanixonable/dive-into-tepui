@@ -26,6 +26,7 @@ import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { PilotControls } from './dynamic-entity/pilot-controls';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
+import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { StageRules } from '../stages/stage-rules';
 
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
@@ -85,10 +86,13 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     }
   }
 
-  // 顔ぶれを保存形へ畳む。保存へ載らない種別は落ちる。
-  public serialize(): EntitySaveDataUnion[] {
+  // 顔ぶれを保存形へ畳む。保存へ載らない種別は落ちる。showsTrajectoryLine は id の個体の
+  // 予測線・過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
+  public serialize(
+    showsTrajectoryLine: (id: string) => boolean, proteinDisplay: ProteinDisplaySettings,
+  ): EntitySaveDataUnion[] {
     return this.entities
-      .map((e) => e.serialize())
+      .map((e) => e.serialize(showsTrajectoryLine(e.id), proteinDisplay))
       .filter((data): data is EntitySaveDataUnion => data !== null);
   }
 
@@ -320,13 +324,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return this.entities.filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
-  // このフレームの表示物を、顔ぶれを1度辿って同期する。
+  // このフレームの表示物を、顔ぶれを1度辿って同期する。proteinDisplay はタンパク質の敵に
+  // 共通の表示形態と着色。
   public sync(
     displayTime: number, active: Controllable | null, camera: CameraFrame, style: RenderStyle,
-    visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
+    visual: EntityVisualSettings, proteinDisplay: ProteinDisplaySettings, orbitRef: OrbitReference | undefined,
   ): void {
     // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
-    const viewFrame = { displayTime, camera, style, visual, pools: this.instancedPools };
+    const viewFrame = { displayTime, camera, style, visual, proteinDisplay, pools: this.instancedPools };
     // instance pool の受付期間で全 Entity を挟む。
     this.instancedPools.beginFrame();
     for (const e of this.entities) e.sync(viewFrame, e === active, orbitRef);

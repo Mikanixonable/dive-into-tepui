@@ -158,11 +158,35 @@ export type RunEventBody =
   // スナップショットの計画に、起点より前のノードが残っていて復元できなかった。
   | { readonly kind: 'planNodesDropped'; readonly ship: string; readonly count: number }
 
+  // ------------------------------------------------------------------ ビュー
+  // 操作対象が無いため、戦闘ビューへの切り替えを受け付けなかった。
+  | { readonly kind: 'combatViewUnavailable' }
+  // 計画ノードを確定して戦闘ビューへ戻った。nodeCount は確定したノード数。
+  | { readonly kind: 'maneuverPlanConfirmed'; readonly nodeCount: number }
+  // 軌道計画のためにマップビューへ入った。
+  | { readonly kind: 'orbitPlanningOpened' }
+
+  // ------------------------------------------------------------------ カメラ
+  // ビューの視点をリセットした。
+  | { readonly kind: 'cameraViewReset'; readonly view: 'combat' | 'map' }
+  // 姿勢追従を切り替えた。
+  | { readonly kind: 'cameraAttitudeFollowToggled'; readonly on: boolean }
+  // 基準面に対する視点を選んだ。
+  | { readonly kind: 'cameraReferenceViewSelected'; readonly view: 'above' | 'side' }
+
   // -------------------------------------------------------------------- 操作対象
   // 操作対象に選ばれた。
   | { readonly kind: 'controlTargetSelected'; readonly target: DynamicEntityKind; readonly name: string }
   // 操作対象から手で外された。
   | { readonly kind: 'controlTargetReleased'; readonly target: DynamicEntityKind }
+  // 操作対象候補が世界から取り除かれた。id は取り除かれた個体の id。
+  | { readonly kind: 'controllableRemoved'; readonly id: string }
+
+  // ---------------------------------------------------------- 航法ターゲット
+  // 航法ターゲットを切り替えた。name は新しいターゲットの表示名で、解除したなら null。
+  | { readonly kind: 'navTargetToggled'; readonly name: string | null }
+  // 航法ターゲットを戦闘対象へ固定した。name は固定した対象の表示名で、固定を外したなら null。
+  | { readonly kind: 'navTargetLocked'; readonly name: string | null }
 
   // ---------------------------------------------------------------- 波状攻撃
   // 自機が弾薬を確保し、敵部隊の接近が始まった。

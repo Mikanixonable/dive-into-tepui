@@ -1,7 +1,7 @@
 // 天体ID・役割・回転ゾーンの選択から、パネルへ表示する日本語ラベルを引き当てる。
 import { frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { CameraRotationFollow } from '../../camera/focus-camera';
+import type { CameraRotationFollow } from '../../viewer/focus-camera-selection';
 
 // 役割の日本語表示名。
 export function frameRoleName(role: FrameRole): string {

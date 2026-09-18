@@ -1,17 +1,19 @@
 // 表示パネルを持ち、その操作を選択の書き換えとして返して、書き戻された値をパネルの表示状態へ当てる。
-// 天体分類・天球グリッドとタブの選択はラン跨ぎの設定として、軌道ガイドはこのランの選択として扱う。
+// 天体分類・天球グリッドとタブの選択はセーブを跨いで共通の設定として、軌道ガイドはこのセーブの選択
+// (視点)として扱う。
 import { catalogFamilyIndex } from '../../celestial/orbit-guide/orbit-guide-catalog';
-import { normalizeOrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
+import { normalizeOrbitGuideSettings } from '../../viewer/orbit-guide-settings';
 import { applyMapDisplayMode } from '../../map/display-toggles';
 import { ViewOptionsPanel } from './view-options-panel';
-import type { OrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
+import type { OrbitGuideCommands } from '../../viewer/orbit-guide-commands';
+import type { OrbitGuideSource } from '../../viewer/orbit-guide-selection';
 import type { OrbitGuideGroupTab, ViewOptionsTab } from '../hud-selection';
 import type { MapDisplayToggles } from '../../map/display-toggles';
 import type { PanelCollapse } from '../panel-shell';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { SettingValue } from '../../../settings/setting-value';
 
-// 表示パネルが読み書きするラン跨ぎ設定。現在値を読み、書き換えは onXxxChange へ返す。
+// 表示パネルが読み書きする、セーブを跨いで共通の設定。現在値を読み、書き換えは onXxxChange へ返す。
 export interface ViewOptionsSettings {
   readonly mapDisplay: SettingValue<MapDisplayToggles>;
   readonly grid: SettingValue<CelestialGridVisibility>;
@@ -26,11 +28,12 @@ export interface ViewOptionsSettings {
 export class ViewOptionsControl {
   private readonly panel: ViewOptionsPanel;
 
-  // root はパネルを差し込む先、collapse は折りたたみトグルの配線役。settings の現在値と、このランの
-  // 軌道ガイド orbitGuide をパネルへ当て、パネルの操作は settings の書き換えと onOrbitGuideChange として返す。
+  // root はパネルを差し込む先、collapse は折りたたみトグルの配線役。settings の現在値と、このセーブの
+  // 軌道ガイド orbitGuide の現在値をパネルへ当て、パネルの操作は settings の書き換えと
+  // orbitGuideCommands の命令として返す。
   public constructor(
     root: HTMLElement, collapse: PanelCollapse, settings: ViewOptionsSettings,
-    orbitGuide: OrbitGuideSettings, onOrbitGuideChange: (value: OrbitGuideSettings) => void,
+    orbitGuide: OrbitGuideSource, orbitGuideCommands: OrbitGuideCommands,
   ) {
     this.panel = new ViewOptionsPanel(root, collapse, catalogFamilyIndex());
 
@@ -53,12 +56,12 @@ export class ViewOptionsControl {
     // 軌道ガイド(ゼロ速度曲線を含む)。編集結果は範囲・本数を丸めてから書き戻す。
     this.panel.onOrbitGuideChange = (edited) => {
       const next = normalizeOrbitGuideSettings(edited);
-      onOrbitGuideChange(next);
+      orbitGuideCommands.setSettings(next);
       this.panel.setOrbitGuideSettings(next);
     };
-    this.panel.setOrbitGuideSettings(orbitGuide);
+    this.panel.setOrbitGuideSettings(orbitGuide.settings);
 
-    // タブの選択。ランを跨いで残るので、これも設定として書き戻す。
+    // タブの選択。セーブを跨いで共通なので、これも設定として書き戻す。
     this.panel.onTabChange = (tab) => {
       settings.onTabChange(tab);
       this.panel.setSelectedTab(tab);

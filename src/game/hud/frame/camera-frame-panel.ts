@@ -5,7 +5,7 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import {
   CameraReferencePlane, CameraReferenceView, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX,
   type CameraRotationFollow,
-} from '../../camera/focus-camera';
+} from '../../viewer/focus-camera-selection';
 import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../../../hud/widgets';
@@ -14,7 +14,7 @@ import { frameRoleName, rotationFollowLabel } from './frame-labels';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-panel';
 import type { ListedObject } from '../../pickable/listed-object';
-import type { CameraRotationMode } from '../../camera/camera-orientation';
+import type { CameraRotationMode } from '../../viewer/camera-orientation';
 import type { ProjectionMode } from '../../../math/projection';
 
 const FOCUS_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]

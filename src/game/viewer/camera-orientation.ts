@@ -1,6 +1,6 @@
 // カメラの向きをクォータニオン1本で保ち、画面ドラッグと極軸まわりのオイラー操作をそこへ積む。
-// 姿勢追従中は生の値を対象姿勢からの相対値として持ち、実効回転で姿勢を合成する。**極軸の
-// 選び方は持たない** — 天体から選ぶのはカメラの仕事なので、オイラー操作のたびに受け取る。
+// 姿勢追従中は生の値を対象姿勢からの相対値として持ち、実効回転で姿勢を合成する。極軸は
+// オイラー操作のたびに引数で受ける。
 import {
   LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate,
 } from '../../math/quat';
@@ -36,7 +36,7 @@ function rotateByScreenDrag(
 
 export class CameraOrientation {
   // rotation は追従中なら対象姿勢からの相対値。attitude が null の間は絶対値のまま扱い、
-  // 初めて姿勢が引けたときに相対値へ読み替える(ロード直後がこの状態)。
+  // 初めて姿勢が引けたときに相対値へ読み替える。
   public constructor(
     private rotation: Quat,
     private mode: CameraRotationMode,
@@ -104,8 +104,7 @@ export class CameraOrientation {
     this.attitude = null;
   }
 
-  // 追従の選択だけを差し替える(向きは読み替えない)。初期状態へ戻すときに使い、
-  // 追従中に追従へ戻す場合だけ基準の姿勢を持ち越す。
+  // 追従の選択だけを差し替える。向きは読み替えず、追従中に追従へ戻す場合だけ基準の姿勢を持ち越す。
   public restoreFollow(following: boolean): void {
     this.attitude = following && this.following ? this.attitude : null;
     this.following = following;

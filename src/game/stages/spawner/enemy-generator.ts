@@ -18,7 +18,6 @@ import type { CelestialBody } from '../../../physics/celestial-body';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
 import type { FormationRole } from '../../dynamic/dynamic-entity/entity-kind';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
-import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 
 // 自機軌道(base)を、中心天体 center まわりの軌道面内で弧長 dAlong [m] だけ進めた、center 相対の状態。
 function phasedState(base: KinematicState, center: CelestialBody, dAlong: number): KinematicState<'primaryRel'> {
@@ -41,10 +40,10 @@ export function generateDriftingEnemy(name: string, state: KinematicState, accen
   );
 }
 
-// 登録されたタンパク質アセットを、現在の表示設定で描画する敵。陣形に属する個体だけが
-// formationId と役割を持ち、属さない個体は単体敵になる。
+// 登録されたタンパク質アセットを描画する敵。陣形に属する個体だけが formationId と役割を持ち、
+// 属さない個体は単体敵になる。
 export function generateProteinEnemy(
-  name: string, state: KinematicState, assetId: ProteinAssetId, display: ProteinDisplaySettings,
+  name: string, state: KinematicState, assetId: ProteinAssetId,
   scene: THREE.Scene, idAllocators: EntityIdAllocators,
   formationId?: string, formationRole?: FormationRole,
 ): Enemy {
@@ -52,7 +51,7 @@ export function generateProteinEnemy(
     {
       name, state, ...driftingAttitude(),
       accent: 0xffffff, orbitLineColor: 0xffffff, attackGroupId: formationId,
-      assetId, display, formationId, formationRole,
+      assetId, formationId, formationRole,
     },
     idAllocators, scene,
   );
@@ -63,7 +62,7 @@ export function generateProteinEnemy(
 // エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離す。役ごとに準備完了を待てるよう
 // (SPEC/PROTEIN.md「出現」節)、実体ではなく assetId と build の組を返す。
 export function proteinFormationSpawns(
-  name: string, centerState: KinematicState, playerPosition: Vec3, display: ProteinDisplaySettings, formationId: string,
+  name: string, centerState: KinematicState, playerPosition: Vec3, formationId: string,
   scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): readonly { assetId: ProteinAssetId; build: () => Enemy }[] {
   // 盾役はプレイヤー側、エネルギー役は反対側へずらした状態に置く
@@ -74,15 +73,15 @@ export function proteinFormationSpawns(
   return [
     {
       assetId: 'pdb-5i4r',
-      build: () => generateProteinEnemy(`${name}-ATTACKER`, centerState, 'pdb-5i4r', display, scene, idAllocators, formationId, 'attacker'),
+      build: () => generateProteinEnemy(`${name}-ATTACKER`, centerState, 'pdb-5i4r', scene, idAllocators, formationId, 'attacker'),
     },
     {
       assetId: 'pdb-8ruc-rubisco',
-      build: () => generateProteinEnemy(`${name}-SHIELD`, shieldState, 'pdb-8ruc-rubisco', display, scene, idAllocators, formationId, 'shield'),
+      build: () => generateProteinEnemy(`${name}-SHIELD`, shieldState, 'pdb-8ruc-rubisco', scene, idAllocators, formationId, 'shield'),
     },
     {
       assetId: 'pdb-6n2y-atp-synthase',
-      build: () => generateProteinEnemy(`${name}-ENERGY`, energyState, 'pdb-6n2y-atp-synthase', display, scene, idAllocators, formationId, 'energy'),
+      build: () => generateProteinEnemy(`${name}-ENERGY`, energyState, 'pdb-6n2y-atp-synthase', scene, idAllocators, formationId, 'energy'),
     },
   ];
 }

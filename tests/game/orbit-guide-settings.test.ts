@@ -4,8 +4,8 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   DEFAULT_ORBIT_GUIDE_SETTINGS, savedOrbitGuideSettings,
-} from '../../src/game/celestial/orbit-guide/orbit-guide-settings';
-import type { OrbitGuideSettings } from '../../src/game/celestial/orbit-guide/orbit-guide-settings';
+} from '../../src/game/viewer/orbit-guide-settings';
+import type { OrbitGuideSettings } from '../../src/game/viewer/orbit-guide-settings';
 
 export function register(): void {
   test('orbit-guide-settings: セーブへ書いた設定がそのまま読み戻る', () => {
