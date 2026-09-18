@@ -22,14 +22,14 @@ const ARC_BODY_LEAD_STEPS = 4;
 
 // 弧の1歩が読む天体一式。gravity は引力を持つ天体、collision は表面到達の相手、
 // pivot はこの一式を解決した(= 天体の位置を厳密に引いた)時刻。
-export type ArcCelestialBodyWindow = {
+export interface ArcCelestialBodyWindow {
   readonly pivot: number;
   readonly gravity: readonly CelestialBody[];
   readonly collision: readonly CelestialBody[];
-};
+}
 
 // 候補1体ぶんの成員判定の状態。
-type Watch = {
+interface Watch {
   readonly motion: CelestialBody;
   readonly candidate: Pick<CelestialBodyDef, 'id' | 'mu' | 'radius'>;
   // 引力の寄与を無視できると言い切れる距離 [m]。
@@ -38,7 +38,7 @@ type Watch = {
   readonly pinned: boolean;
   member: boolean;
   nextVisitT: number;
-};
+}
 
 // 候補の状態が「効き始める」までの猶予 [s]。重力(寄与が無視できなくなる距離まで)と表面到達
 // (半径まで)のうち早いほうを、保守的に見積もった接近速度で割る。
@@ -74,11 +74,11 @@ export class ArcCelestialBodies {
   // 候補1体につき1つ。顔ぶれは弧の一生を通じて同じなので、構築時に組んで持ち続ける。
   private readonly watches: readonly Watch[];
   // 直近の resolve で解決した天体の数と、そのうち期限到来で訪問したものの数。
-  lastResolved = 0;
-  lastRevisited = 0;
+  public lastResolved = 0;
+  public lastRevisited = 0;
 
   // 候補の顔ぶれを構築時に確定させ、以後は1体ぶんの状態だけを sources へ問う。
-  constructor(sources: readonly CelestialBody[]) {
+  public constructor(sources: readonly CelestialBody[]) {
     const candidates = sources.map((m) => m.def);
     const pinnedId = heaviestGravityId(candidates);
     this.watches = sources.map((motion) => ({
@@ -94,7 +94,7 @@ export class ArcCelestialBodies {
   // 時刻 t に弧が読む天体一式。from は判定の基準にする弧の先端状態、stepDt はこの解決のあとに
   // 踏む刻み幅 [s](まだ決まっていない最初の解決では 0 でよい)。返る配列はこの呼び出しごとに
   // 新しく、呼び出し側が次の解決まで保持してよい。
-  resolve(t: number, from: KinematicState, stepDt: number): ArcCelestialBodyWindow {
+  public resolve(t: number, from: KinematicState, stepDt: number): ArcCelestialBodyWindow {
     // 次の歩で表面へ届きうる天体が一覧の外に残らないよう、刻み幅の数歩ぶん先まで入れておく。
     const lead = Math.max(stepDt, ARC_MIN_STEP_DT) * ARC_BODY_LEAD_STEPS;
     const gravity: CelestialBody[] = [];
