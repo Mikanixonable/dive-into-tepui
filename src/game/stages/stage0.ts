@@ -3,8 +3,8 @@ import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STO
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { generateCluster, STAGE0_PER_GROUP, STAGE0_MAX_RANGE, COLOR_STAGE0_GROUP_ACCENTS } from './spawner/enemy-spawner';
 import { ScoreAttackTimer, type SerializedScoreAttackTimer } from './stage-utils/score-attack-timer';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ScoreCounter } from './stage-utils/score-counter';
-import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 
 // 制限時間 [実秒]。
 const STAGE0_TIME_LIMIT = 120;
@@ -20,14 +20,14 @@ export interface SerializedStage0 extends SerializedStage {
 }
 
 export class Stage0 extends Stage {
-  static readonly id = '0' as const;
-  static readonly epoch = STORY_EPOCH;
-  static readonly selectLabel = 'stage 0';
-  static readonly selectSub =
+  public static readonly id = '0' as const;
+  public static readonly epoch = STORY_EPOCH;
+  public static readonly selectLabel = 'stage 0';
+  public static readonly selectSub =
     `【近接戦闘訓練】 常時選択可。${STAGE0_MAX_RANGE / 1000}km以内に色分けされた敵集団 ` +
     `約${STAGE0_PER_GROUP * COLOR_STAGE0_GROUP_ACCENTS.length}機、` +
     `制限時間${stage0TimeLimitMinutes()}分の撃墜数スコアアタック`;
-  static readonly selectKey = 'KeyT';
+  public static readonly selectKey = 'KeyT';
 
   // 制限時間のタイマーと共通の状態から組む。省いたタイマーは制限時間いっぱいから始まる。
   private constructor(
@@ -68,7 +68,7 @@ export class Stage0 extends Stage {
   }
 
   // ステージ開始時のブリーフィング文言を返す。
-  briefingHtml(): string {
+  protected briefingHtml(): string {
     return (
       `<b>訓練ステージ: 制限時間 ${stage0TimeLimitMinutes()}分で何機撃墜できるか</b><br>` +
       `周囲${STAGE0_MAX_RANGE / 1000}km以内の色分けされた集団を撃墜せよ — RCS の並進と回転の練習に最適<br>` +
@@ -78,7 +78,7 @@ export class Stage0 extends Stage {
   }
 
   // 補給と制限時間を1フレーム分進める。
-  update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+  public update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
 
@@ -89,16 +89,16 @@ export class Stage0 extends Stage {
     }
   }
 
-  checkWin(): boolean { return false; }
-  onWin(): void { }
+  protected checkWin(): boolean { return false; }
+  protected onWin(): void { }
 
   // 残り時間を HUD 表示用の文字列で返す。
-  hudSubStatus(): string {
+  protected hudSubStatus(): string {
     return `残り時間: ${Math.ceil(this.timer.timeLeft)}秒`;
   }
 
   // 共通の内訳へ残り時間を足して直列化する。
-  serialize(): SerializedStage0 {
+  public serialize(): SerializedStage0 {
     return { ...super.serialize(), timeLeft: this.timer.serialize() };
   }
 }

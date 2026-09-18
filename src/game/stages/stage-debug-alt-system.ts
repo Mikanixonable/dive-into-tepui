@@ -3,9 +3,10 @@
 // 確かめる。
 import * as THREE from 'three/webgpu';
 import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
-import { PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
+import {
+  planetDefForSimZero, satelliteDefForSimZero, type PlanetDef, type SatelliteDef, type StarDef,
+} from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit, JULIAN_CENTURY } from '../../physics/kepler-orbit';
 import { AU, SOLAR_CONSTANT } from '../../physics/astronomical-unit';
@@ -17,12 +18,13 @@ import { CelestialSurface } from '../../render/celestial/celestial-surface';
 import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
-import type { TdbJulianDate } from '../../physics/time';
 import { SphereCelestialView } from '../../render/celestial/celestial-entity/sphere-celestial-view';
 import { StarCelestialView } from '../../render/celestial/celestial-entity/star-celestial-view';
 import { MAG_ROUNDS } from '../player/ammo-spec';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import type { TdbJulianDate } from '../../physics/time';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 const STAR_ID = 'aeolus';
 const PRIMARY_ID = 'zephyrus';

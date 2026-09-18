@@ -1,21 +1,20 @@
 // 波状攻撃: 弾薬確保待ち → 遅延後の初回湧き → 交戦圏内数に応じた周期湧きへ進むフェーズ機械と、
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
 import * as THREE from 'three/webgpu';
-import type { CelestialBody } from '../../../physics/celestial-body';
-import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
-import { Player } from '../../player/player';
-import type { StageOutcome } from '../stage-outcome';
-import type { RunEventSink } from '../../run-events';
-
-import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
 import { ellipsoidAltitude } from '../../../physics/atmosphere';
 import { frameOfCelestialBody, framePoint, toFramePoint, toFrameState, toInertialPoint } from '../../../physics/frame';
 import { strongestAttractor } from '../../../physics/attractor';
-import { add, addScaled, len, norm, randPerp, randVec, scale, sub, v3, Vec3 } from '../../../math/vec3';
+import { add, addScaled, len, norm, randPerp, randVec, scale, sub, v3, type Vec3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
+import type { CelestialBody } from '../../../physics/celestial-body';
+import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
+import type { Player } from '../../player/player';
+import type { StageOutcome } from '../stage-outcome';
+import type { RunEventSink } from '../../run-events';
 
 const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m]
 
@@ -47,9 +46,9 @@ const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横ブレ最
 type WaveState = 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
 
 export interface SerializedWaveAttack {
-  waveState: WaveState;
-  spawnTimer: number;
-  waveCount: number;
+  readonly waveState: WaveState;
+  readonly spawnTimer: number;
+  readonly waveCount: number;
 }
 
 export class WaveAttack {
@@ -296,7 +295,10 @@ function waveShipPosition(
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(
+  player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[],
+  scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random',
+): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber, attractors);
@@ -312,7 +314,10 @@ export function generateWave(player: KinematicState, waveNumber: number, attract
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir, attractors, player.t);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators, `wave-${waveNumber}-group-${i % subGroups.length}`));
+    enemies.push(generateApproachingEnemy(
+      `W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators,
+      `wave-${waveNumber}-group-${i % subGroups.length}`,
+    ));
   }
   return enemies;
 }

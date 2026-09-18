@@ -3,15 +3,15 @@
 // **軌道は、置く位置で最も強く引く天体を中心とする二体の幾何で置く、ゲームバランスのための簡易な置き方。**
 // 高度はその天体の表面半径の球面から測る(扁平な天体の基準楕円体とのずれ — 地球の極で 21km — は
 // 出現高度の余裕に埋もれる)。
-import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat } from '../../../math/quat';
-import { addPrimaryRelative, KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import { addPrimaryRelative, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { strongestAttractor } from '../../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { addScaled, cross, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';
-import { driftingAttitude, Enemy } from '../../dynamic/dynamic-entity/enemy';
+import { driftingAttitude, type Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
+import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
 import type { ProteinEnemyRequest } from '../../dynamic/dynamic-entity/protein-enemy';
@@ -25,7 +25,10 @@ function phasedState(base: KinematicState, center: CelestialBody, dAlong: number
 }
 
 // state に、無秩序に漂う金属の敵を生成する。
-export function generateDriftingEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string): Enemy {
+export function generateDriftingEnemy(
+  name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number,
+  scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string,
+): Enemy {
   return MetalEnemy.create(
     { name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId, typeIndex: null },
     idAllocators, scene,

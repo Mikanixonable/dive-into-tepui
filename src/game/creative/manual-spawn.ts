@@ -33,13 +33,13 @@ export class ManualSpawn {
   private readonly enemyNameAllocator: EntityIdAllocator;
   private readonly formationIdAllocator: EntityIdAllocator;
 
-  // spawnDistance は自機前方の、敵を出す距離 [m]。enemyNameCounter・formationIdCounter は敵の名前と
+  // _spawnDistance は自機前方の、敵を出す距離 [m]。enemyNameCounter・formationIdCounter は敵の名前と
   // 陣形 id の次に発番する連番で、省けば連番の初めから発番する。
   private constructor(
     private readonly scene: THREE.Scene,
     private readonly attractors: readonly CelestialBody[],
     private readonly idAllocators: EntityIdAllocators,
-    public spawnDistance = DEFAULT_SPAWN_DISTANCE,
+    private _spawnDistance = DEFAULT_SPAWN_DISTANCE,
     enemyNameCounter = 0,
     formationIdCounter = 0,
   ) {
@@ -66,10 +66,17 @@ export class ManualSpawn {
   // 敵を出す距離と連番を直列化した形へ畳む。
   public serialize(): SerializedManualSpawn {
     return {
-      spawnDistance: this.spawnDistance,
+      spawnDistance: this._spawnDistance,
       enemyNameAllocator: this.enemyNameAllocator.serialize(),
       formationIdAllocator: this.formationIdAllocator.serialize(),
     };
+  }
+
+  public get spawnDistance(): number { return this._spawnDistance; }
+
+  // 敵を出す、自機前方の距離を distanceM [m] へ差し替える。
+  public setSpawnDistance(distanceM: number): void {
+    this._spawnDistance = distanceM;
   }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。知らない形なら null。
@@ -104,7 +111,7 @@ export class ManualSpawn {
   // 自機の前方 spawnDistance [m]、自機と同じ速度の状態。
   private frontOf(player: Player): KinematicState {
     const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
-    const position = addScaled(player.motion.state.r, forward, this.spawnDistance);
+    const position = addScaled(player.motion.state.r, forward, this._spawnDistance);
     return kinematicState<'eci'>(player.motion.state.t, position, player.motion.state.v);
   }
 }

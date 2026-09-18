@@ -3,12 +3,12 @@
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../../hud/widgets';
-import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { isEnemy, type Enemy } from '../dynamic/dynamic-entity/enemy';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import { LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import { stageDebugCommands, type StageDebugCommands } from './stage-debug-commands';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { Player } from '../player/player';
 
 // デバッグステージの内訳。敵の射撃の可否と、次に出す敵集団の通し番号を持つ。
@@ -18,12 +18,12 @@ export interface SerializedStageDebug extends SerializedStage {
 }
 
 export class StageDebug extends Stage {
-  static readonly id = 'debug' as const;
-  static readonly stageRules = FREE_PLAY_STAGE_RULES;
-  static readonly epoch = STORY_EPOCH;
-  static readonly selectLabel = 'DEBUG';
-  static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
-  static readonly hiddenFromSelect = true;
+  public static readonly id = 'debug' as const;
+  public static readonly stageRules = FREE_PLAY_STAGE_RULES;
+  public static readonly epoch = STORY_EPOCH;
+  public static readonly selectLabel = 'DEBUG';
+  public static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
+  public static readonly hiddenFromSelect = true;
 
   // パネルの操作を積む先。
   private readonly commands: StageDebugCommands;
@@ -78,7 +78,7 @@ export class StageDebug extends Stage {
   }
 
   // デバッグステージのブリーフィング文言を返す。
-  briefingHtml(): string {
+  protected briefingHtml(): string {
     return `<b>デバッグステージ</b><br>敵集団 ${this.enemiesAppeared} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
   }
 
@@ -117,7 +117,7 @@ export class StageDebug extends Stage {
   }
 
   // 射撃許可を毎フレーム自ステージの敵全体へ反映し、補給を進める。
-  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+  public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
     for (const e of this._dynamicSystem.all().filter(isEnemy)) e.fireEnabled = this.enemyFireEnabled;
@@ -125,12 +125,12 @@ export class StageDebug extends Stage {
   }
 
   // 検証を継続できるよう、勝敗を発生させない。
-  checkWin(): boolean {
+  protected checkWin(): boolean {
     return false;
   }
 
   // 敵の射撃 ON/OFF の現在値を表示する。
-  hudSubStatus(): string {
+  protected hudSubStatus(): string {
     return `敵射撃: ${this.enemyFireEnabled ? 'ON' : 'OFF'}`;
   }
 }

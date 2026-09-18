@@ -9,14 +9,14 @@ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { hudRail } from '../hud/hud-root';
 import { isPlayer } from '../player/player';
 import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
+import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
+import { FREE_PLAY_STAGE_RULES } from './stage-rules';
+import { queuedEventSink, type RunEventSink } from '../run-events';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
-import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
-import { FREE_PLAY_STAGE_RULES } from './stage-rules';
-import { queuedEventSink, type RunEventSink } from '../run-events';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 
 // クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
@@ -138,12 +138,12 @@ export class CreativeStage extends Stage {
 
   // 弾薬の自動投入の可否を切り替える。
   public setResupplyEnabled(on: boolean): void {
-    this.logistics.resupplyEnabled = on;
+    this.logistics.setResupplyEnabled(on);
   }
 
   // RCS燃料の自動投入の可否を切り替える。
   public setFuelResupplyEnabled(on: boolean): void {
-    this.logistics.rcsFuelResupplyEnabled = on;
+    this.logistics.setFuelResupplyEnabled(on);
   }
 
   // 敵の波状攻撃の可否を切り替える。
@@ -153,7 +153,7 @@ export class CreativeStage extends Stage {
 
   // 手動スポーンが使う距離 [m] を差し替える。
   public setSpawnDistance(distanceM: number): void {
-    this.manualSpawn.spawnDistance = distanceM;
+    this.manualSpawn.setSpawnDistance(distanceM);
   }
 
   // 操作艦の弾薬チェーンへマガジンを1つ追加する。操作艦がいなければ、操作艦が要ることを記録する。

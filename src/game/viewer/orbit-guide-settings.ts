@@ -235,33 +235,27 @@ function clamp(value: number, lo: number, hi: number): number {
   return Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : lo;
 }
 
+// 種類・小題に共通の値を整える。範囲の上下を揃え、本数と不透明度を丸める。
+function normalizeSharedKindSettings<T extends GuideKindSharedSettings>(kind: T): T {
+  const lo = clamp(kind.rangeMin, 0, 1);
+  const hi = clamp(kind.rangeMax, 0, 1);
+  return {
+    ...kind,
+    count: Math.max(1, Math.round(clamp(kind.count, 1, MAX_LINES_PER_KIND))),
+    rangeMin: Math.min(lo, hi),
+    rangeMax: Math.max(lo, hi),
+    opacity: clamp(kind.opacity, 0, 1),
+  };
+}
+
 // 復元した値・外部入力を安全な形に整える。範囲の上下が入れ替わっていれば直し、本数は正の整数へ丸める。
 export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): OrbitGuideSettings {
-  // 族・小題: 範囲の上下を揃え、本数と不透明度を丸める。
-  const kinds: Record<string, GuideKindSettings> = {};
-  for (const [id, kind] of Object.entries(settings.kinds)) {
-    const lo = clamp(kind.rangeMin, 0, 1);
-    const hi = clamp(kind.rangeMax, 0, 1);
-    kinds[id] = {
-      ...kind,
-      count: Math.max(1, Math.round(clamp(kind.count, 1, MAX_LINES_PER_KIND))),
-      rangeMin: Math.min(lo, hi),
-      rangeMax: Math.max(lo, hi),
-      opacity: clamp(kind.opacity, 0, 1),
-    };
-  }
-  const combinedKinds: Record<string, CombinedKindSettings> = {};
-  for (const [key, combined] of Object.entries(settings.combinedKinds)) {
-    const lo = clamp(combined.rangeMin, 0, 1);
-    const hi = clamp(combined.rangeMax, 0, 1);
-    combinedKinds[key] = {
-      ...combined,
-      count: Math.max(1, Math.round(clamp(combined.count, 1, MAX_LINES_PER_KIND))),
-      rangeMin: Math.min(lo, hi),
-      rangeMax: Math.max(lo, hi),
-      opacity: clamp(combined.opacity, 0, 1),
-    };
-  }
+  const kinds = Object.fromEntries(
+    Object.entries(settings.kinds).map(([id, kind]) => [id, normalizeSharedKindSettings(kind)]),
+  );
+  const combinedKinds = Object.fromEntries(
+    Object.entries(settings.combinedKinds).map(([key, combined]) => [key, normalizeSharedKindSettings(combined)]),
+  );
   // 単一軌道・リサジュー・ゼロ速度曲線の値を丸める。
   const zv = settings.zeroVelocity;
   const clampSunSync = <T extends SunSyncSettings>(s: T): T => ({

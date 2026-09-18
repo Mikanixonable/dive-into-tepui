@@ -6,16 +6,16 @@ import {
   generateMolniyaEnemy,
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
-import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 
 export class Stage2 extends Stage {
-  static readonly id = '2' as const;
-  static readonly epoch = STORY_EPOCH;
-  static readonly selectLabel = 'stage 2';
-  static readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
-  static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
-  static readonly selectKey = 'Digit2';
+  public static readonly id = '2' as const;
+  public static readonly epoch = STORY_EPOCH;
+  public static readonly selectLabel = 'stage 2';
+  public static readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
+  public static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
+  public static readonly selectKey = 'Digit2';
 
   // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置して始める。
   public static create(...deps: StageDeps): Stage2 {
@@ -42,12 +42,12 @@ export class Stage2 extends Stage {
   }
 
   // 第一ステージのクリア実績があれば解放。
-  static isUnlocked(clearCounts: ClearCounts): boolean {
+  public static isUnlocked(clearCounts: ClearCounts): boolean {
     return (clearCounts['1'] ?? 0) > 0;
   }
 
   // 作戦目標と操作方法を示すブリーフィング文面を組む。
-  briefingHtml(): string {
+  protected briefingHtml(): string {
     return (
       `<b>作戦目標: 敵機 ${this.enemiesAppeared} 機を全機撃破せよ</b><br>` +
       `敵の一部はモルニヤ級の高楕円軌道上にいる — [${K.toggleMapMode.label}] 軌道計画モードで遷移を計画せよ<br>` +
@@ -56,7 +56,7 @@ export class Stage2 extends Stage {
   }
 
   // 補給品の湧きを進める。
-  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+  public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
 

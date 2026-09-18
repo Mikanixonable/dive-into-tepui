@@ -1,15 +1,15 @@
 // デバッグ用ステージ: 破片を多数配置し、積分するエンティティ数の高負荷を常時再現する。
 import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import {
   DebrisPiece, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
 } from '../dynamic/dynamic-entity/debris-piece';
 import { randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../math/random';
-import { add, v3, Vec3 } from '../../math/vec3';
+import { add, v3, type Vec3 } from '../../math/vec3';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
 const DEBRIS_COUNT = 500;

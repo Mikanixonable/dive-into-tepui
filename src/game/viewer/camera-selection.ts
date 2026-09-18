@@ -1,8 +1,5 @@
 // 戦闘・マップの2台のカメラ視点を所有し、進行に合わせる規則と直列化をまとめる。
 import { frameRoleAnchorId } from '../../physics/frame';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { RunEvent, RunEventSink } from '../run-events';
-import type { ViewMode } from '../view/view-mode';
 import {
   type CameraFrameSample,
   type FocusCameraConfig,
@@ -10,6 +7,9 @@ import {
   type FocusCameraSource,
   type SerializedFocusCameraSelection,
 } from './focus-camera-selection';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { RunEvent, RunEventSink } from '../run-events';
+import type { ViewMode } from '../view/view-mode';
 
 export const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
 const COMBAT_CAMERA_INIT_DIST = 38; // 注視距離 [m]
