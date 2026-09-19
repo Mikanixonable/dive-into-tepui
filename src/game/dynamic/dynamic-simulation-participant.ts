@@ -6,6 +6,7 @@ import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
+import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
 import type { ContactKind } from './dynamic-motion';
@@ -37,6 +38,11 @@ export interface KinematicParticipant {
   readonly state: KinematicState;
   readonly prevState: KinematicState;
   readonly radius: number;
+  // compound 接触の掃引始点姿勢。球だけの既存参加者は省略できる。
+  readonly prevAtt: Attitude;
+  // 接触側が姿勢と同じ世代の compound を読むための不変スナップショット。
+  readonly compoundShape: CompoundCylinderShape | null;
+  readonly shapeRevision: number;
 }
 
 // 物体どうしの接触に加わる当事者。
@@ -81,6 +87,8 @@ export interface EntityContactParticipant extends KinematicParticipant {
 // 天体表面との接触に加わる当事者。
 export interface SurfaceContactParticipant extends KinematicParticipant {
   readonly alive: boolean;
+  readonly att: Attitude;
+  readonly attachedTo: EntityContactParticipant | null;
   absorbHeat(specificJoules: number): void;
   collideWithCelestialBody(
     body: CelestialBody, contact: Contact, services: DynamicReactionServices,

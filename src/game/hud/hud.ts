@@ -14,6 +14,7 @@ import {
   BurnManagementPanel,
   type BurnManagementPanelHandlers, type BurnManagementViewModel,
 } from './panels/burn-management-panel';
+import { ShipConstructionPanel } from './panels/ship-construction-panel';
 import { TopBar, type TopBarViewModel } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow, type OrbitAnalysisSubject } from './orbit/orbit-analysis-window';
@@ -59,6 +60,7 @@ export class Hud implements HudLayers, Notifier {
   private readonly targetPanel: TargetPanel;
   private readonly enemiesPanel: EnemiesPanel;
   private readonly burnManagementPanel: BurnManagementPanel;
+  public readonly shipConstructionPanel: ShipConstructionPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
   private chromeView: ViewMode | null = null;
@@ -86,6 +88,7 @@ export class Hud implements HudLayers, Notifier {
     this.targetPanel = new TargetPanel(els);
     this.enemiesPanel = new EnemiesPanel(els);
     this.burnManagementPanel = new BurnManagementPanel(els);
+    this.shipConstructionPanel = new ShipConstructionPanel(els);
 
     // ランがまだ無い状態の見た目で組み上げる。
     this.burnManagementPanel.sync(null, {});
