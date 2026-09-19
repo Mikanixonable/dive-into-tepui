@@ -1,6 +1,5 @@
 // シミュレーション速度(「ワープ」と呼ぶ)の段と、指定した時刻まで自動的に加速する自動ワープ。
 import type { KinematicState } from '../../physics/kinematic-state';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { NODE_APPROACH_LEAD } from '../plan/plan';
 import type { RunEventSink } from '../run-events';
 
@@ -77,8 +76,8 @@ export class SimSpeedManager {
     return this.simSpeed === 1;
   }
 
-  // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。
-  private shift(step: number): void {
+  // ワープ段を1つ下げる(step = -1)か上げる(step = 1)。上下限を超える変更は無視する。
+  public shift(step: -1 | 1): void {
     const next = this.levelIdx + step;
     if (next < 0 || next >= SIM_SPEED_LEVELS.length) return;
     this.setSpeed(SIM_SPEED_LEVELS[next]!);
@@ -108,12 +107,6 @@ export class SimSpeedManager {
   // 自動ワープを解除する。
   public cancelAutoWarp(): void {
     this.autoWarpUntil = null;
-  }
-
-  // [,]/[.] の単発入力 commandId でワープ段を上下する。
-  public handleCommand(commandId: string): void {
-    if (commandId === K.warpSlower.code) this.shift(-1);
-    if (commandId === K.warpFaster.code) this.shift(1);
   }
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。

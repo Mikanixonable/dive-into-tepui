@@ -73,8 +73,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。
   private readonly nanWatchdog: NanWatchdog;
 
-  // 描画資源のプールと前進の機構を、顔ぶれが空のまま simTime [s] から組む。idAllocators はこの
-  // ランの id 採番器で、省けば連番の初めから発番する。
+  // 描画資源のプールと前進の機構を simTime [s] から組み、records の個体を足す(実体化に要る外部資源が
+  // 揃わないものは待ち行列へ回す)。idAllocators はこのランの id 採番器で、省けば連番の初めから発番する。
   private constructor(
     private readonly scene: THREE.Scene,
     public readonly events: RunEventSink,
@@ -82,6 +82,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     private readonly sections: FrameSections,
     simTime = 0,
     public readonly idAllocators = new EntityIdAllocators(),
+    records: readonly SpawnRecord[] = [],
   ) {
     this.instancedPools = new InstancedPools([
       new BulletPools(scene, ENTITY_CAP.bullet),
@@ -90,6 +91,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     ]);
     this.simulator = new Simulator(this, this, this, celestialBodies, sections, simTime);
     this.nanWatchdog = new NanWatchdog(events);
+    for (const record of records) this.spawnWhenReady(record);
   }
 
   // 新しいランの空の顔ぶれを組む。
@@ -112,16 +114,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       ...entities.map((entity): SpawnRecord => ({ kind: 'entity', entity })),
       ...pendingSpawns,
     ];
-    // 採番は保存した番号から続け、記録にそれより先の id があればその次から続ける。実体化がゲートで
-    // 遅れる個体があるので、組み始める前に全部の id を押さえる。
-    const idAllocators = EntityIdAllocators.deserialize(serialized.idAllocators);
-    for (const record of records) {
-      if (record.kind === 'entity') idAllocators.reserve(record.entity.id);
-    }
     // null の先端時刻も欠けと同じく 0 から始める(既定引数は undefined でしか働かない)。
-    const system = new DynamicSystem(scene, events, celestialBodies, sections, simTime ?? undefined, idAllocators);
-    for (const record of records) system.spawnWhenReady(record);
-    return system;
+    return new DynamicSystem(
+      scene, events, celestialBodies, sections, simTime ?? undefined,
+      EntityIdAllocators.deserialize(serialized.idAllocators), records,
+    );
   }
 
   // 顔ぶれと実体化を待つ個体、採番を直列化した形へ畳む。

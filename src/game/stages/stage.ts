@@ -164,13 +164,11 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public get enemiesMayFire(): boolean { return true; }
   private _result: StageResult | null = null;
   public get result(): StageResult | null { return this._result; }
-  // decide() が決着を確定させた瞬間に一度だけ呼ぶ。
-  public onDecided: (() => void) | null = null;
-  // 勝敗と結果画面の内容を同時に確定させる。
+  // 勝敗と結果画面の内容を同時に確定させ、確定したことを出来事として記録する。
   protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
     this._phase = phase;
     this._result = result;
-    this.onDecided?.();
+    this._dynamicSystem.events.record({ kind: 'stageDecided' });
   }
   // 協力者 deps と全ステージ共通の状態から組む。省いた状態は新しいランの初期値(スコア 0・進行中・
   // 補給タイマー未経過)から始まる。固有の状態を持つ具象ステージは、自分の分を deps の直後に受け、

@@ -105,6 +105,8 @@ export type RunEventBody =
   | { readonly kind: 'enemyDied'; readonly name: string; readonly cause: EnemyDeathCause }
   // 自機を喪失した。reason は喪失の理由。
   | { readonly kind: 'shipLost'; readonly reason: string }
+  // ステージの勝敗と結果が確定した。
+  | { readonly kind: 'stageDecided' }
 
   // -------------------------------------------------------------------- 飛行
   // 高度の警戒線を下回った。threshold はその線の高度 [m]。

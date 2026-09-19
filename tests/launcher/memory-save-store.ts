@@ -1,6 +1,6 @@
 // 索引と記録をメモリ上の JSON 文字列として持つ SaveStore。ブラウザの保存先と同じく、書いた値は
 // 文字列を経て読み戻る。
-import type { SerializedGame } from '../../src/game/game';
+import type { SavedGame } from '../../src/launcher/save/save-store';
 import type { SaveStore } from '../../src/launcher/save/save-store';
 import type { SaveIndex } from '../../src/launcher/save/slot-data';
 
@@ -19,13 +19,13 @@ export class MemorySaveStore implements SaveStore {
   }
 
   // id の記録。書いていない id では null。形は確かめずに読む。
-  public readSnapshot(id: string): SerializedGame | null {
+  public readSnapshot(id: string): SavedGame | null {
     const raw = this.snapshots.get(id);
-    return raw === undefined ? null : JSON.parse(raw) as SerializedGame;
+    return raw === undefined ? null : JSON.parse(raw) as SavedGame;
   }
 
   // id の記録を data へ置き換える。
-  public writeSnapshot(id: string, data: SerializedGame): void {
+  public writeSnapshot(id: string, data: SavedGame): void {
     this.writeRawSnapshot(id, data);
   }
 

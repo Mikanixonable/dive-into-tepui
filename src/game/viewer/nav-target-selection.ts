@@ -4,7 +4,8 @@ import { combatTargetById, type CombatTarget } from '../dynamic/dynamic-entity/c
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEvent, RunEventSink } from '../run-events';
 
-export interface SerializedNavTargetSelection {
+// 航法ターゲットにしている対象。name は選んだ時点の表示名。
+export interface NavTarget {
   readonly id: string;
   readonly name: string;
 }
@@ -27,13 +28,12 @@ export class NavTargetSelection implements NavTargetSource {
   // 命令の結果は events へ記録する。
   public constructor(
     private readonly events: RunEventSink,
-    // ターゲットの id と、選んだ時点の表示名。
-    private target: SerializedNavTargetSelection | null = null,
+    private target: NavTarget | null = null,
   ) {}
 
   // 直列化したターゲットを、戻せるなら戻して始める。roster は復元した時点の顔ぶれ。
   public static deserialize(
-    serialized: SerializedNavTargetSelection | null, roster: EntityRoster, events: RunEventSink,
+    serialized: NavTarget | null, roster: EntityRoster, events: RunEventSink,
   ): NavTargetSelection {
     return new NavTargetSelection(events, serialized && !isDestroyedTarget(serialized.id, roster) ? serialized : null);
   }
@@ -43,7 +43,7 @@ export class NavTargetSelection implements NavTargetSource {
   public get name(): string | null { return this.target?.name ?? null; }
 
   // 航法ターゲットを直列化した形。未設定なら null。
-  public serialize(): SerializedNavTargetSelection | null {
+  public serialize(): NavTarget | null {
     return this.target;
   }
 

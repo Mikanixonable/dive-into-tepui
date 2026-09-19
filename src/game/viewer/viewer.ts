@@ -1,6 +1,6 @@
 // 視点の根。遊ぶ人の選択のうちセーブごとに持つものの所有者を組み、直列化と復元と、
 // 進行が記録した出来事に視点を合わせる規則を1か所に持つ(R4)。
-import { NavTargetSelection, type SerializedNavTargetSelection } from './nav-target-selection';
+import { NavTargetSelection, type NavTarget } from './nav-target-selection';
 import { OrbitGuideSelection } from './orbit-guide-selection';
 import { OrbitReferenceSelection, type OrbitReferenceMode } from './orbit-reference-selection';
 import { PredictPanelSelection, type SerializedPredictPanelSelection } from './predict-panel-selection';
@@ -18,7 +18,7 @@ export interface SerializedViewer {
   readonly view: ViewMode;
   readonly camera: SerializedCameraSelection;
   // ターゲット未選択なら null。
-  readonly navTarget: SerializedNavTargetSelection | null;
+  readonly navTarget: NavTarget | null;
   readonly orbitGuide: OrbitGuideSettings;
   readonly entityDisplay: SerializedEntityDisplaySelection;
   readonly orbitReference: OrbitReferenceMode;

@@ -58,8 +58,7 @@ export class MapPicking {
     this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, hud.panelCollapse, celestialBodies);
     this.orbitLineWindows = new OrbitLineWindows(
       hud, linePickables, pickables, (id, name) => this.focusOwner(id, name),
-      (clientX, clientY, target) => this.objectWindows.open(
-        clientX, clientY, target, this.displayWindowManager.current.simTime),
+      (clientX, clientY, target) => this.objectWindows.open(clientX, clientY, target),
     );
     // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md「軌道物体一覧パネル」)。
     this.listPanel.onFocus = (id) => {
@@ -74,7 +73,7 @@ export class MapPicking {
     };
     this.listPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target) this.objectWindows.open(clientX, clientY, target, this.displayWindowManager.current.simTime);
+      if (target) this.objectWindows.open(clientX, clientY, target);
     };
   }
 
@@ -101,11 +100,11 @@ export class MapPicking {
 
   // 右クリック位置の被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
   // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
-  public handleRightClick(input: Input, simTime: number, camera: CameraFrame): void {
+  public handleRightClick(input: Input, camera: CameraFrame): void {
     input.takeRightClicks((p) => {
       const target = this.pickAt(() => true, p.x, p.y, camera);
       if (!target) return false;
-      this.objectWindows.open(p.x, p.y, target, simTime);
+      this.objectWindows.open(p.x, p.y, target);
       return true;
     });
   }
@@ -153,9 +152,9 @@ export class MapPicking {
   }
 
   // 何も当たらなかった右クリックを「空域」として扱う(他のハンドラの後に呼ぶ)。
-  public handleEmptySpaceRightClick(input: Input, simTime: number): void {
+  public handleEmptySpaceRightClick(input: Input): void {
     input.takeRightClicks((p) => {
-      this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
+      this.objectWindows.openEmptySpaceMenu(p.x, p.y);
       return true;
     });
   }

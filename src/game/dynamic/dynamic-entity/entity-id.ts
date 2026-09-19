@@ -17,7 +17,7 @@ export class EntityIdAllocator {
 
   // id がこのカウンタの採番済み連番を追い越していれば、次の発番と衝突しないよう
   // カウンタをその次まで進める。接頭辞が違う id は自分のものではないので何もしない。
-  public reserve(id: string): void {
+  private reserve(id: string): void {
     if (!id.startsWith(this.prefix)) return;
     const n = Number(id.slice(this.prefix.length));
     if (Number.isFinite(n) && n >= this.counter) this.counter = n + 1;
@@ -70,13 +70,5 @@ export class EntityIdAllocators {
       rcsFuelPickup: this.rcsFuelPickup.serialize(),
       booster: this.booster.serialize(),
     };
-  }
-
-  // 復元する id を、その接頭辞を持つ採番器で押さえる。実体化を待つ個体の id を、その間の新規発番が
-  // 追い越さないよう、実体を組む前に呼ぶ。
-  public reserve(id: string): void {
-    for (const allocator of [this.entity, this.base, this.ammoPickup, this.rcsFuelPickup, this.booster]) {
-      allocator.reserve(id);
-    }
   }
 }

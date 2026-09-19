@@ -275,7 +275,7 @@ export class GamePresentation {
     // ピックは直前の sync が確定したカメラと候補列で解く — 入力の解釈はこのフレームの導出より前に走る。
     if (!this.isPaused && !overlays.isInputGated() && this.cameraFrame !== null) {
       this.sections.switchTo(SECTION.input, SECTION.pointer);
-      this.viewManager.activeView.handlePointer(this.game.simTime, this.cameraFrame);
+      this.viewManager.activeView.handlePointer(this.cameraFrame);
       this.sections.switchTo(SECTION.pointer, SECTION.input);
     }
   }
@@ -364,7 +364,7 @@ export class GamePresentation {
     );
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
-    const { displayTime, simTime } = displayWindow;
+    const { displayTime } = displayWindow;
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     const cs = this.cameraSystem;
@@ -430,7 +430,7 @@ export class GamePresentation {
     );
 
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
-    this.objectWindows.sync(simTime, displayTime);
+    this.objectWindows.sync();
     this.planDisplay.sync(camera, displayWindow, nowMs);
 
     this.entityLines.sync(

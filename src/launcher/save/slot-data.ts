@@ -1,7 +1,7 @@
 // スロットとスナップショットの索引の形。一覧 UI と入出力がここだけを読んで済むように、
 // ランの直列化形(SerializedGame)からは切り離して持つ。
 import type { GamePhase } from '../../game/stages/stage';
-import type { SerializedGame } from '../../game/game';
+import type { SavedGame } from './save-store';
 
 // 索引が指す id を1つ作る。同一ミリ秒内の連続生成でも衝突しないよう、時刻にランダム部を足す。
 export function newSaveId(): string {
@@ -72,5 +72,5 @@ export interface SlotExport {
   exportedAtReal: number;
   slot: SaveSlotMeta;
   // スナップショット id → 本体。
-  snapshots: Record<string, SerializedGame>;
+  snapshots: Record<string, SavedGame>;
 }
