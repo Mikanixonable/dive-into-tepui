@@ -1,7 +1,7 @@
 import { distSq, type Vec3 } from '../../../math/vec3';
 import type { EngagementParticipant, EngagementZone } from '../engagement-zone';
-import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
-import type { DynamicReactionServices } from '../dynamic-simulation-participant';
+import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic-motion';
+import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic-simulation-participant';
 
 // 自機の弾が自機に当たりはじめるまでの、発射からの猶予 [sim s]。
 const SELF_CONTACT_GRACE = 2.0;
@@ -17,21 +17,51 @@ function nearAnyAnchor(r: Vec3, zones: readonly EngagementZone<EngagementPartici
 export type Shooter = 'player' | 'enemy';
 export type BulletType = 'normal' | 'plasma';
 
+// 弾1発の発射時刻・寿命・撃ち手・弾種・ダメージと、敵弾が交戦圏の中心の近くを通ったか。
+export interface SerializedBulletReaction {
+  readonly bornSim: number;
+  readonly lifetime: number;
+  readonly shooter: Shooter;
+  readonly type: BulletType;
+  readonly damage: number;
+  readonly passedClose: boolean;
+}
+
 // 弾1発の当たる相手・寿命・消滅の判定。
 export class BulletReaction implements DynamicMotionBehavior {
   public readonly contactKind = 'bullet';
-  private passedClose = false;
 
+  // bornSim [sim s] に撃たれ lifetime [sim s] だけ飛ぶ弾。damage は命中した相手へ与えるダメージ
+  // [HP]、passedClose は交戦圏の中心の近くを通ったことを記録済みか。
   public constructor(
     private readonly bornSim: number,
     private readonly lifetime: number,
     public readonly shooter: Shooter,
     public readonly type: BulletType,
     public readonly damage: number,
+    private passedClose = false,
   ) {}
 
+  // 直列化した形から復元する。
+  public static deserialize(serialized: SerializedBulletReaction): BulletReaction {
+    const { bornSim, lifetime, shooter, type, damage, passedClose } = serialized;
+    return new BulletReaction(bornSim, lifetime, shooter, type, damage, passedClose);
+  }
+
+  // 直列化した形へ変換する。
+  public serialize(): SerializedBulletReaction {
+    return {
+      bornSim: this.bornSim,
+      lifetime: this.lifetime,
+      shooter: this.shooter,
+      type: this.type,
+      damage: this.damage,
+      passedClose: this.passedClose,
+    };
+  }
+
   // other と当たるか。弾同士、敵弾と敵機、発射から猶予内の自機の弾と自機を除く。
-  public contactsWith(_self: DynamicMotion, other: DynamicMotion, simTime: number): boolean {
+  public contactsWith(_self: DynamicMotion, other: EntityContactParticipant, simTime: number): boolean {
     if (other.contactKind === 'bullet') return false;
     const ship = other.attachedTo ?? other;
     if (this.shooter === 'enemy' && ship.contactKind === 'enemy') return false;
@@ -41,7 +71,7 @@ export class BulletReaction implements DynamicMotionBehavior {
 
   // 何かに当たった弾は消える。
   public onEntityContact(self: DynamicMotion): void {
-    self.alive = false;
+    self.kill();
   }
 
   // 寿命の尽きる時刻 [sim s]。simTime がそれを過ぎていれば null。
@@ -64,7 +94,7 @@ export class BulletReaction implements DynamicMotionBehavior {
       if (this.type === 'plasma') services.registry.events.record({ kind: 'plasmaPassedClose' });
     }
     const outsideZones = zones.length > 0 && !zones.some((zone) => zone.contains(self.state.r));
-    if (outsideZones || simTime >= this.expiresAt) self.alive = false;
+    if (outsideZones || simTime >= this.expiresAt) self.kill();
   }
 
   // 寿命の尽きる時刻 [sim s]。
@@ -73,7 +103,8 @@ export class BulletReaction implements DynamicMotionBehavior {
   }
 }
 
-// motion が弾なら、その反応。弾でなければ null。
-export function bulletReactionOf(motion: DynamicMotion): BulletReaction | null {
-  return motion.behavior instanceof BulletReaction ? motion.behavior : null;
+// 接触の相手 participant が弾なら、その反応。弾でなければ null。
+export function bulletReactionOf(participant: EntityContactParticipant): BulletReaction | null {
+  return participant instanceof DynamicMotion && participant.behavior instanceof BulletReaction
+    ? participant.behavior : null;
 }

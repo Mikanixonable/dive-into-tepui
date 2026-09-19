@@ -55,7 +55,7 @@ worktree の作成に失敗した場合や、作業対象を安全に分離で�
 専用 worktree で、実装前に以下を確認する。
 
 - `AGENTS.md` と `CLAUDE.md`
-- `DEVELOP/CODING-RULE.md`
+- `DEVELOP/CODING-RULE.md`(1.3 に当たるなら `DEVELOP/ARCHITECTURE.md` も)
 - 変更に関係する `DEVELOP/SPEC/`
 - 変更内容に応じた既存 Skill（`/modify-feature`、`/add-feature`、`/ui-design`、
   `/rendering-workflow` など）
@@ -95,7 +95,7 @@ worktree の作成に失敗した場合や、作業対象を安全に分離で�
 - 既存の呼び出し元、状態の所有者、実行順を壊していないか
 - 重複実装、旧名・旧実装、不要なデバッグコードが残っていないか
 - エラー処理、境界条件、後方互換性、テストの不足がないか
-- `DEVELOP/CODING-RULE.md` と関連 Skill に違反していないか
+- `DEVELOP/CODING-RULE.md`・`DEVELOP/ARCHITECTURE.md` と関連 Skill に違反していないか
 
 可能なら、実装担当とは独立した Luna のレビューを追加する。今回の変更が原因のバグ、回帰、
 仕様違反、または正しさに必要なリファクタリングは修正する。修正後は影響するレビューと検証を

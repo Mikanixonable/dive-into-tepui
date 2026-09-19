@@ -1,10 +1,23 @@
-import type { GameSaveData } from '../../game/save/save-data';
+import type { SerializedGame } from '../../game/game';
 import type { SaveIndex } from './slot-data';
 
 // セーブの永続化。索引と記録本体の読み書きを JSON I/O として提供する。
 
 // 索引の形式バージョン。上げると、それ以前に書かれた索引は読めなくなる。
 export const SAVE_INDEX_VERSION = 2;
+
+// 記録本体の形式バージョン。上げるのは構造が変わって互換を切るときで、上げた時点で
+// それ以前に書かれた記録は読めなくなる。項目を増やすだけなら版は据え置き、省略可能にして
+// 欠けた項目は復元で新しく作ったときの初期値で補う(SAVE.md「形式の版」)。
+export const SAVED_GAME_VERSION = 4;
+
+// 記録本体。ランを直列化した形に、書いたときの形式バージョンを添える。
+// 例外(ARCHITECTURE R12): 形式バージョン(launcher の値)を、ランの記録(モデル層の値)の最上位へ平らに
+// 並べる。版を包む記録へ分けると保存の形式が変わり、版 4 の記録が読めなくなる。形式は版を上げるときに
+// まとめて直す。
+export interface SavedGame extends SerializedGame {
+  readonly version: number;
+}
 
 const INDEX_KEY = 'tepui.saveIndex';
 const SNAPSHOT_KEY_PREFIX = 'tepui.snapshot.';
@@ -13,15 +26,16 @@ const SNAPSHOT_KEY_PREFIX = 'tepui.snapshot.';
 export interface SaveStore {
   readIndex(): SaveIndex | null;
   writeIndex(index: SaveIndex): void;
-  readSnapshot(id: string): GameSaveData | null;
-  writeSnapshot(id: string, data: GameSaveData): void;
+  readSnapshot(id: string): SavedGame | null;
+  writeSnapshot(id: string, data: SavedGame): void;
   deleteSnapshot(id: string): void;
   snapshotIds(): readonly string[];
 }
 
 export class LocalStorageSaveStore implements SaveStore {
-  // 未保存・JSON 破損・version 不一致は、どれも null を返す。
+  // 未保存・JSON 破損・version 不一致・localStorage が使えないときは、どれも null を返す。
   public readIndex(): SaveIndex | null {
+    // localStorage が使えない環境では getItem も投げる。
     let raw: string | null;
     try {
       raw = localStorage.getItem(INDEX_KEY);
@@ -29,6 +43,7 @@ export class LocalStorageSaveStore implements SaveStore {
       return null;
     }
     if (raw === null) return null;
+    // 壊れた JSON と、形式の版が違う索引は、未保存と同じ扱い。
     try {
       const index = JSON.parse(raw) as SaveIndex;
       if (index.version !== SAVE_INDEX_VERSION) return null;
@@ -43,8 +58,9 @@ export class LocalStorageSaveStore implements SaveStore {
     localStorage.setItem(INDEX_KEY, JSON.stringify(index));
   }
 
-  // 未保存・JSON 破損は、どちらも null を返す。
-  public readSnapshot(id: string): GameSaveData | null {
+  // 未保存・JSON 破損・localStorage が使えないときは null を返す。形式の版を問わず返す。
+  public readSnapshot(id: string): SavedGame | null {
+    // localStorage が使えない環境では getItem も投げる。
     let raw: string | null;
     try {
       raw = localStorage.getItem(SNAPSHOT_KEY_PREFIX + id);
@@ -52,15 +68,16 @@ export class LocalStorageSaveStore implements SaveStore {
       return null;
     }
     if (raw === null) return null;
+    // 壊れた JSON は未保存と同じ扱い。
     try {
-      return JSON.parse(raw) as GameSaveData;
+      return JSON.parse(raw) as SavedGame;
     } catch {
       return null;
     }
   }
 
   // localStorage が使えない・容量を超えたときは、その例外を素通しする。
-  public writeSnapshot(id: string, data: GameSaveData): void {
+  public writeSnapshot(id: string, data: SavedGame): void {
     localStorage.setItem(SNAPSHOT_KEY_PREFIX + id, JSON.stringify(data));
   }
 
@@ -73,10 +90,11 @@ export class LocalStorageSaveStore implements SaveStore {
     }
   }
 
-  // 現存する本体のキーを、索引に依らず直接走査して返す。
+  // 現存する本体の id を、索引に依らずストアを走査して返す。localStorage が使えなければ空。
   public snapshotIds(): readonly string[] {
     const ids: string[] = [];
     try {
+      // 本体のキーは接頭辞で見分け、接頭辞を除いた残りが id。
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key !== null && key.startsWith(SNAPSHOT_KEY_PREFIX)) {
