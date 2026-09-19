@@ -1,4 +1,4 @@
-// クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
+// クリエイティブモード: 物体配置と軌道計画を自由に試すための、勝利条件の無いステージ。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { ManualSpawn, type SerializedManualSpawn } from '../creative/manual-spawn';
 import { MAX_PLACED_SHIPS, ObjectPlacement, type SerializedObjectPlacement } from '../creative/object-placement';
@@ -18,6 +18,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { ViewMode } from '../view/view-mode';
 
 // クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
 // 保つ(ON に戻したとき波数を続きから再開する)。手動スポーンと物体配置の設定・連番も持つ。
@@ -49,7 +50,7 @@ export class CreativeStage extends Stage {
 
   private readonly objectPlacement: ObjectPlacement;
   private readonly manualSpawn: ManualSpawn;
-  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。
+  // 補給の自動投入・敵の波状攻撃のトグルと、手動スポーンの操作を載せたパネル。
   private readonly stageControlsPanel: StageControlsPanel;
   private readonly waveAttack: WaveAttack;
   // パネルの操作を積む先。
@@ -60,15 +61,15 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // 波状攻撃の進行・トグル、手動スポーン、配置と共通の状態から、ステージ操作パネルを組む。
-  // 省いた波状攻撃・手動スポーン・配置は新しいランの初期値から始まる。
+  // 波状攻撃の進行・トグル、手動スポーン、配置した自機の id の連番と共通の状態から組む。省いたものは
+  // 新しいランの初期値から始まる。
   private constructor(
     deps: StageDeps,
     waveAttack?: WaveAttack,
     // 敵の波状攻撃を発生させるかどうか。
     private waveAttackEnabled = false,
     manualSpawn?: ManualSpawn,
-    objectPlacement?: ObjectPlacement,
+    placedPlayerIdCounter?: number,
     ...common: CommonStageState
   ) {
     super(deps, ...common);
@@ -79,11 +80,10 @@ export class CreativeStage extends Stage {
       this._scene, this._celestialSystem.celestialMotions, this._dynamicSystem.idAllocators,
     );
 
-    this.objectPlacement = objectPlacement ?? ObjectPlacement.create(
+    this.objectPlacement = new ObjectPlacement(
       this._hud, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
-      placementEventSink(deps), this._celestialSystem,
+      placementEventSink(deps), this._celestialSystem, this.commands, placedPlayerIdCounter,
     );
-    this.objectPlacement.onPlace = (name, entityKind, state) => this.commands.placeObject(name, entityKind, state);
     this.authoring = this.objectPlacement;
 
     this.waveAttack = waveAttack ?? new WaveAttack(
@@ -115,23 +115,21 @@ export class CreativeStage extends Stage {
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedCreativeStage, ...deps: StageDeps): CreativeStage {
-    const [hud, scene, dynamicSystem, celestialSystem] = deps;
-    const { waveAttack, waveAttackEnabled, manualSpawn, objectPlacement } = serialized;
+  public static deserialize(serialized: SerializedCreativeStage | null, ...deps: StageDeps): CreativeStage {
+    const [, scene, dynamicSystem, celestialSystem] = deps;
+    const waveAttack = serialized?.waveAttack;
+    const manualSpawn = serialized?.manualSpawn;
     return new CreativeStage(
       deps,
       // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
       waveAttack == null ? undefined : WaveAttack.deserialize(
         waveAttack, dynamicSystem.events, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
       ),
-      waveAttackEnabled ?? undefined,
+      serialized?.waveAttackEnabled ?? undefined,
       manualSpawn == null ? undefined : ManualSpawn.deserialize(
         manualSpawn, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
       ),
-      objectPlacement == null ? undefined : ObjectPlacement.deserialize(
-        objectPlacement, hud, scene, dynamicSystem, dynamicSystem.idAllocators,
-        placementEventSink(deps), celestialSystem,
-      ),
+      serialized?.objectPlacement?.playerIdAllocator ?? undefined,
       ...Stage.deserializeCommonState(serialized, deps, CreativeStage.stageRules),
     );
   }
@@ -227,13 +225,13 @@ export class CreativeStage extends Stage {
 
   // 共通のステータス表示に加えて、ステージ操作パネルと配置プレビューを同期する。
   public sync(
-    camera: CameraFrame, displayTime: number,
+    camera: CameraFrame, view: ViewMode, displayTime: number,
   ): void {
-    super.sync(camera, displayTime);
+    super.sync(camera, view, displayTime);
     const ship = this.ship;
     this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
-    this.mountStageControlsPanel(camera.mode === 'map');
-    this.objectPlacement.sync(camera, displayTime);
+    this.mountStageControlsPanel(view === 'map');
+    this.objectPlacement.sync(camera, view, displayTime);
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
@@ -249,9 +247,7 @@ export class CreativeStage extends Stage {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
       if (this.waveAttackEnabled) {
-        this.waveAttack.update(
-          dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this,
-          (enemy) => this.addEnemy(enemy));
+        this.waveAttack.update(dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this);
       }
     }
   }
@@ -260,29 +256,15 @@ export class CreativeStage extends Stage {
   public nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
     for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
-      const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t : undefined;
-      if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
+      const t = ship.instantNodeTime;
+      if (t !== null && t >= simTime && (next === null || t < next)) next = t;
     }
     return next;
   }
 
   // ノード時刻ちょうどでノードの絶対状態へ乗り移る。
   public applySimulationEvents(simTime: number): void {
-    for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
-      if (ship.planExecution !== 'instant') continue;
-      const node = ship.plan.firstNode();
-      if (!node || node.t > simTime + 1e-9) continue;
-      // 消化する最後のノードの絶対状態がそのまま到達状態になる(誤差が無い)。
-      const nodes = ship.plan.nodes;
-      let reached: KinematicState | undefined;
-      for (let i = nodes.length - 1; i >= 0; i--) {
-        const n = nodes[i];
-        if (n && n.t <= simTime) { reached = n; break; }
-      }
-      if (!reached) continue;
-      ship.plan.consumeNodesUpTo(simTime, reached);
-      ship.motion.state = reached;
-    }
+    for (const ship of this._dynamicSystem.all().filter(isPlayer)) ship.executeInstantNodesUpTo(simTime);
   }
 
   // 勝利条件を持たないモードなので、常に false。

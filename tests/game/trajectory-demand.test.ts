@@ -60,8 +60,7 @@ function planArc(): PredictedArc {
   const state0 = kinematicState<'eci'>(ship.t, ship.r, add(ship.v, v3(0, 100, 0)));
   const arc = new PredictedArc(
     state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ false, /* consumable */ false);
-  arc.requiredEnd = state0.t + 28 * DAY;
-  arc.retainFrom = state0.t;
+  arc.demand(state0.t + 28 * DAY, state0.t);
   return arc;
 }
 
@@ -87,7 +86,7 @@ function runFrames(demand: TrajectoryDemand, thrust: Vec3 | null): FrameRun {
     historyDuration: DEFAULT_HISTORY_DURATION,
     followsPredictedArc: true,
   });
-  motion.thrust = thrust;
+  motion.setThrust(thrust);
   const roster: PredictableMotionRoster = { allMotions: () => [motion] };
   const predictor = new Predictor(roster, celestialBodiesOf(bodies));
   const services = reactionServices();

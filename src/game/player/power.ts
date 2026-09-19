@@ -1,13 +1,13 @@
 // 自機の太陽電池パネル上下2枚の展開と、その発電による蓄電量を扱う。
-import { Attitude } from '../../physics/attitude';
+import type { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
-import { Vec3, dot } from '../../math/vec3';
+import { type Vec3, dot } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { RADIATOR_DEPLOY_TIME } from './radiator';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
 export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
-const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
+const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](2枚合計)
 const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 
 export type SolarSide = 'up' | 'down';
@@ -36,8 +36,8 @@ export class PowerSystem {
     const { charge, up, down } = serialized;
     return new PowerSystem(
       typeof charge === 'number' && Number.isFinite(charge) ? Math.max(0, Math.min(POWER_CAPACITY, charge)) : undefined,
-      up ? DeployablePanelState.deserialize(up) : undefined,
-      down ? DeployablePanelState.deserialize(down) : undefined,
+      (up && DeployablePanelState.deserialize(up)) ?? undefined,
+      (down && DeployablePanelState.deserialize(down)) ?? undefined,
     );
   }
 
