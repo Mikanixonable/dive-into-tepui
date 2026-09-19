@@ -1,7 +1,6 @@
 // エンティティ id の採番。
 
-// `${prefix}${連番}` で発番し、id を渡された場合はそれをそのまま採用しつつ、
-// 以後の新規発番と衝突しないようカウンタをその番号の次まで進める。
+// `${prefix}${連番}` の id を発番する。渡された id を採用した後も、以後の発番はそれと衝突しない。
 export class EntityIdAllocator {
   // counter は次に発番する連番で、省けば連番の初めから発番する。
   public constructor(private readonly prefix: string, private counter = 0) {}
@@ -15,9 +14,8 @@ export class EntityIdAllocator {
     return `${this.prefix}${this.counter++}`;
   }
 
-  // id がこのカウンタの採番済み連番を追い越していれば、次の発番と衝突しないよう
-  // カウンタをその次まで進める。接頭辞が違う id は自分のものではないので何もしない。
-  public reserve(id: string): void {
+  // 以後の発番が id と衝突しないよう、連番を id の番号の次まで進める。接頭辞の違う id は無視する。
+  private reserve(id: string): void {
     if (!id.startsWith(this.prefix)) return;
     const n = Number(id.slice(this.prefix.length));
     if (Number.isFinite(n) && n >= this.counter) this.counter = n + 1;
@@ -70,13 +68,5 @@ export class EntityIdAllocators {
       rcsFuelPickup: this.rcsFuelPickup.serialize(),
       booster: this.booster.serialize(),
     };
-  }
-
-  // 復元する id を、その接頭辞を持つ採番器で押さえる。実体化を待つ個体の id を、その間の新規発番が
-  // 追い越さないよう、実体を組む前に呼ぶ。
-  public reserve(id: string): void {
-    for (const allocator of [this.entity, this.base, this.ammoPickup, this.rcsFuelPickup, this.booster]) {
-      allocator.reserve(id);
-    }
   }
 }

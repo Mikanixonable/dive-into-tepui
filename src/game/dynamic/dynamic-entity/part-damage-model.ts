@@ -1,13 +1,13 @@
 import { collisionDamageFraction } from './contact-damage';
 import type {
-  ArmorPart, CockpitPart, Part, PartType, RadiatorPart, SolarPanelPart, WeaponPart,
+  ArmorPart, CockpitPart, Part, PartType, RadiatorPart, AnyPart, SolarPanelPart, WeaponPart,
 } from './parts';
 import { PartInventory } from './part-inventory';
 
 // 部品式機体の被弾モデル。部品一覧・部品 HP・部品由来の性能をまとめる。
 export class PartDamageModel {
   private readonly inventory: PartInventory;
-  // 以下は部品一覧から組むキャッシュ(性能と致死判定で使う参照、装甲値)。
+  // 以下は部品一覧から組むキャッシュ(性能と致死判定で使う部品の参照と、装甲値)。
   private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
   private readonly solarPanelPartRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
   private readonly weaponPartRefs: WeaponPart[] = [];
@@ -90,7 +90,7 @@ export class PartDamageModel {
         }
       } else target = this.parts[targetIndex];
     }
-    if (target) target.hp = Math.max(0, target.hp - effectiveDamage);
+    if (target) this.inventory.damage(target, effectiveDamage);
   }
 
   // 損傷した部品へ amount を均等に配って回復させる。放熱板と太陽電池は対象から外れる。
@@ -100,10 +100,15 @@ export class PartDamageModel {
     );
     if (targets.length === 0) return;
     const share = amount / targets.length;
-    for (const part of targets) part.hp = Math.min(part.maxHp, part.hp + share);
+    for (const part of targets) this.inventory.repair(part, share);
   }
 
-  // 船体かコックピットを失った時点で、他の部品が無事でも機体を全損とする。
+  // 部品の一覧の直列化。
+  public serialize(): AnyPart[] {
+    return this.inventory.serialize();
+  }
+
+  // 機体全体の残 HP。船体かコックピットを失っていれば、他の部品が無事でも 0。
   public overallHp(): number {
     if (this.parts.length === 0) return 0;
     if ((this.hullPart && this.hullPart.hp <= 0) || (this.cockpitPart && this.cockpitPart.hp <= 0)) return 0;
@@ -115,8 +120,8 @@ export class PartDamageModel {
   public get totalFuelConsumptionRate(): number { return this.inventory.healthySum('thruster', part => part.fuelConsumptionRate); }
   public get totalFuel(): number { return this.inventory.totalFuel(); }
   public get totalMaxFuel(): number { return this.inventory.totalMaxFuel(); }
-  public consumeFuel(amount: number): number { return this.inventory.consumeFuel(amount); }
-  public refuelFuel(amount: number): number { return this.inventory.refuelFuel(amount); }
+  public consumeFuel(amount: number): void { this.inventory.consumeFuel(amount); }
+  public refuelFuel(amount: number): void { this.inventory.refuelFuel(amount); }
 
   public get radiatorParts(): readonly (RadiatorPart | undefined)[] { return this.radiatorPartRefs; }
   public get solarParts(): readonly (SolarPanelPart | undefined)[] { return this.solarPanelPartRefs; }

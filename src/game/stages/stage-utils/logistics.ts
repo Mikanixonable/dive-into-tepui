@@ -160,8 +160,7 @@ export class Logistics {
     this.despawnFarAmmoPickups(player, respawnOnDespawn && canResupplyAmmo);
     this.despawnFarRcsFuelPickups(player, respawnOnDespawn && canResupplyFuel);
 
-    // 投入できない間は次回判定時刻を進めない — 再開した直後の1フレームで判定させ、
-    // 停止していた長さぶんの空白を再開後に持ち越さないため。
+    // 投入できない間は次回判定時刻を進めず、再開した直後のフレームで判定させる。
     if (!canResupplyAmmo && !canResupplyFuel) return;
     if (simTime < this.resupplyCheckAt) return;
     this.resupplyCheckAt = simTime + LOGISTICS_CHECK_INTERVAL;
@@ -182,7 +181,7 @@ export class Logistics {
     };
   }
 
-  // 生存中の補給の数を返す。
+  // 生存中の弾薬補給の数を返す。
   private liveAmmoPickupCount(): number {
     let count = 0;
     for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) {
@@ -206,7 +205,7 @@ export class Logistics {
       && player.totalFuel < player.totalMaxFuel * LOGISTICS_LOW_FUEL_RATIO;
   }
 
-  // 回収半径内の生存中補給を吸収し、ベルトへ弾を追加する。
+  // 回収半径内の生存中の弾薬補給を吸収し、自機へマガジンを追加する。
   private absorbNearbyAmmoPickups(player: Player): void {
     for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) {
       if (!ammoPickup.motion.alive) continue;
@@ -215,7 +214,7 @@ export class Logistics {
         >= AMMO_PICKUP_RADIUS * AMMO_PICKUP_RADIUS
       ) continue;
       // 取り込んで消し、取り込んだことを記録する
-      ammoPickup.motion.alive = false;
+      ammoPickup.motion.kill();
       player.onPickup(AMMO_PICKUP_MAGS);
       this.dynamicSystem.events.record({ kind: 'ammoPickedUp', mags: AMMO_PICKUP_MAGS });
     }
@@ -230,8 +229,9 @@ export class Logistics {
         >= RCS_FUEL_PICKUP_RADIUS * RCS_FUEL_PICKUP_RADIUS
       ) continue;
       // 取り込んで消し、取り込んだことを記録する
-      pickup.motion.alive = false;
-      const added = player.refuelFuel(RCS_FUEL_PICKUP_AMOUNT);
+      pickup.motion.kill();
+      const added = Math.min(RCS_FUEL_PICKUP_AMOUNT, Math.max(0, player.totalMaxFuel - player.totalFuel));
+      player.refuelFuel(RCS_FUEL_PICKUP_AMOUNT);
       this.dynamicSystem.events.record({ kind: 'rcsFuelPickedUp', fuel: added });
     }
   }
@@ -245,7 +245,7 @@ export class Logistics {
       if (len(sub(
         ammoPickup.motion.state.r, player.motion.state.r,
       )) <= LOGISTICS_DESPAWN_DIST) continue;
-      ammoPickup.motion.alive = false;
+      ammoPickup.motion.kill();
       if (respawnOnDespawn) respawn++;
     }
     if (!respawnOnDespawn) return;
@@ -266,7 +266,7 @@ export class Logistics {
       if (len(sub(
         pickup.motion.state.r, player.motion.state.r,
       )) <= LOGISTICS_DESPAWN_DIST) continue;
-      pickup.motion.alive = false;
+      pickup.motion.kill();
       if (respawnOnDespawn) respawn++;
     }
     if (!respawnOnDespawn) return;
