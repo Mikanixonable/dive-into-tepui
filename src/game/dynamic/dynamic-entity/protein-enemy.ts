@@ -48,15 +48,15 @@ export interface ProteinEnemyRequest {
 // 同じ陣形に生存中のエネルギー役がいるかを答える。攻撃担当以外と、陣形に属さない敵
 // (formationId なし)は常に true。
 export function isFormationEnergyAvailable(
-  formationRole: FormationRole | undefined,
-  formationId: string | undefined,
+  formationRole: FormationRole | null,
+  formationId: string | null,
   enemies: readonly {
     readonly motion: { readonly alive: boolean };
-    readonly formationId?: string;
-    readonly formationRole?: FormationRole;
+    readonly formationId: string | null;
+    readonly formationRole: FormationRole | null;
   }[],
 ): boolean {
-  if (formationRole !== 'attacker' || formationId === undefined) return true;
+  if (formationRole !== 'attacker' || formationId === null) return true;
   return enemies.some((enemy) => (
     enemy.motion.alive && enemy.formationId === formationId && enemy.formationRole === 'energy'
   ));
@@ -142,8 +142,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     request: ProteinEnemyRequest, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
   ): ProteinEnemy {
     const definition = definitionFor(request.assetId);
-    // 陣形に属する個体は、陣形を攻撃グループとして同時発砲数を共有する。
-    const formationId = request.formationId ?? undefined;
+    const formationId = request.formationId;
     return new ProteinEnemy(
       {
         name: `${definition.asset.displayName} ${request.name}`,
@@ -151,9 +150,11 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
         ...driftingAttitude(),
         accent: 0xffffff,
         orbitLineColor: 0xffffff,
-        attackGroupId: formationId,
+        // 陣形に属する個体は、陣形を攻撃グループとして同時発砲数を共有する。
+        attackGroupId: formationId ?? undefined,
+        waveId: null,
         formationId,
-        formationRole: request.formationRole ?? undefined,
+        formationRole: request.formationRole,
       },
       definition,
       // 表示の揺らぎの軌跡を決める識別子。
