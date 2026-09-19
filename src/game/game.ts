@@ -125,8 +125,8 @@ export class Game {
     const simSpeedManager = SimSpeedManager.deserialize(serializedProgress.simSpeedManager, events);
     const controlSelection = ControlSelection.deserialize(serializedProgress.controlSelection, dynamicSystem);
     const stage = stageClass.deserialize(
-      // 記録にステージの内訳が無い・null なら、空の記録として新しいランの初期値で補う(初期配置はしない)。
-      serializedProgress.stage ?? ({} as SerializedStage),
+      // 記録にステージの内訳が無い・null なら、新しいランの初期値で補う(初期配置はしない)。
+      serializedProgress.stage ?? null,
       hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands,
     );
     const planNodeRules = PlanNodeRules.deserialize(serializedProgress.planNodeRules, events);

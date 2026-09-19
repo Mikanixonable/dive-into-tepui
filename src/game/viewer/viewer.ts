@@ -84,12 +84,12 @@ export class Viewer {
   // 直列化した形へ畳む。
   public serialize(): SerializedViewer {
     return {
-      view: this.view.current,
+      view: this.view.serialize(),
       camera: this.camera.serialize(),
       navTarget: this.navTarget.serialize(),
-      orbitGuide: this.orbitGuide.settings,
+      orbitGuide: this.orbitGuide.serialize(),
       entityDisplay: this.entityDisplay.serialize(),
-      orbitReference: this.orbitReference.mode,
+      orbitReference: this.orbitReference.serialize(),
       predictPanel: this.predictPanel.serialize(),
     };
   }

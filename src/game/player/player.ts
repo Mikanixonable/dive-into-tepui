@@ -229,8 +229,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       // null も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
       serialized.thermal ?? undefined,
       serialized.alive,
-      radiator?.up ? DeployablePanelState.deserialize(radiator.up) : undefined,
-      radiator?.down ? DeployablePanelState.deserialize(radiator.down) : undefined,
+      (radiator?.up && DeployablePanelState.deserialize(radiator.up)) ?? undefined,
+      (radiator?.down && DeployablePanelState.deserialize(radiator.down)) ?? undefined,
       serialized.power ? PowerSystem.deserialize(serialized.power) : undefined,
       serialized.boosters ? BoosterStack.deserialize(serialized.boosters) : undefined,
       belt ? BeltController.deserialize(belt) : undefined,
