@@ -16,7 +16,7 @@ import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
 import { ContextMenu } from '../hud/windows/context-menu';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import type { UiSfx } from '../../audio/sfx/ui-sfx';
+import type { UiSoundQueue } from '../ui-sound-queue';
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { focusPoint } from '../viewer/focus-target';
@@ -91,7 +91,7 @@ export class PlanEditor {
   // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
   public constructor(
     private readonly hud: HudLayers & Notifier,
-    private readonly uiSfx: UiSfx,
+    private readonly uiSounds: UiSoundQueue,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly simSpeedCommands: SimSpeedCommands,
     private readonly celestialBodies: CelestialBodies,
@@ -141,7 +141,7 @@ export class PlanEditor {
     g.onNodeSelect = (idx) => {
       this.selectedNodeIdx = idx;
       this.closeMenu();
-      this.uiSfx.warp();
+      this.uiSounds.push('warp');
     };
     g.onNodeDragMove = (idx, clientX, clientY) => {
       this.closeMenu();
@@ -246,7 +246,7 @@ export class PlanEditor {
       : null;
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
-      this.uiSfx.warp();
+      this.uiSounds.push('warp');
       return;
     }
 
@@ -304,7 +304,7 @@ export class PlanEditor {
     }
     this.selectedNode = postState;
     this.planCommands.addNode(plan, postState, anchor);
-    this.uiSfx.warp();
+    this.uiSounds.push('warp');
   }
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
@@ -386,7 +386,7 @@ export class PlanEditor {
     const moved = this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state;
     this.selectedNode = moved;
     this.planCommands.replaceNode(plan, idx, moved);
-    this.uiSfx.warp();
+    this.uiSounds.push('warp');
     if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
   }
 
@@ -459,7 +459,7 @@ export class PlanEditor {
     const burned = kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld));
     this.selectedNode = burned;
     this.planCommands.replaceNode(plan, idx, burned);
-    this.uiSfx.warp();
+    this.uiSounds.push('warp');
   }
 
   // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を ECI で返す。ノードか到着状態が求まって

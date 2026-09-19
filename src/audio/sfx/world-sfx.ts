@@ -1,8 +1,9 @@
 // ゲーム世界内の物体・出来事(発砲・被弾・接触・爆発・噴射など)が発する合成効果音
 // (アセット不要)。AudioEngine が共有する素材(ノイズバッファ・基本ボイス)と、ここで組む
-// 専用のオシレータ/フィルタで、単発音とループ音を鳴らす。
-// AudioContext が開くまでは、どのメソッドも無音のまま何もしない。
-import { AudioEngine } from '../audio-engine';
+// 専用のオシレータ/フィルタで、そのフレームの宣言どおりに単発音とループ音を鳴らす。
+// AudioContext が開くまでは無音のまま何もしない。
+import type { AudioEngine } from '../audio-engine';
+import type { SoundCue } from './sound-cue';
 
 // 被弾点がこの距離まで自機中心から離れると、遠い被弾として音量・音高を下限にする [m]。
 const HIT_SOUND_DISTANCE_MAX = 10;
@@ -17,6 +18,20 @@ export interface LoopSfx {
   readonly rcs: boolean;
 }
 
+// 一回きりの効果音の種類。hit の impactDistance は被弾点と自機中心の距離 [m]。
+export type WorldSound =
+  | {
+    readonly kind: 'fire' | 'reload' | 'spinUp' | 'clank' | 'magFeed' | 'pickup' | 'emptyClick'
+      | 'magneticInterference' | 'enemyHit' | 'explosion' | 'decouple' | 'altAlarm';
+  }
+  | { readonly kind: 'hit'; readonly impactDistance: number };
+
+// そのフレームに鳴らすべき音の全体。
+export interface WorldSfxDeclaration {
+  readonly loops: LoopSfx;
+  readonly cues: readonly SoundCue<WorldSound>[];
+}
+
 export class WorldSfx {
   // 連続音のチャンネル。AudioContext が開くまで組めないので、最初に鳴らす機会に組む。
   private loops: { thrust: GainNode; rcs: GainNode } | null = null;
@@ -24,8 +39,40 @@ export class WorldSfx {
   private disposed = false;
   // 組んだループ音の音源。止めて切り離すのは dispose だけ。
   private readonly loopSources: AudioBufferSourceNode[] = [];
+  // 鳴らした一回きりの音のうち、最も新しい id。
+  private lastCueId = -1;
 
-  constructor(private readonly engine: AudioEngine) { }
+  public constructor(private readonly engine: AudioEngine) { }
+
+  // そのフレームに鳴らすべき音の全体 declaration を受ける。一回きりの音は、まだ鳴らしていない id の
+  // ものだけを鳴らす。
+  public sync(declaration: WorldSfxDeclaration): void {
+    for (const cue of declaration.cues) {
+      if (cue.id <= this.lastCueId) continue;
+      this.lastCueId = cue.id;
+      this.play(cue.sound);
+    }
+    this.syncLoops(declaration.loops);
+  }
+
+  // 一回きりの音を1つ鳴らす。
+  private play(sound: WorldSound): void {
+    switch (sound.kind) {
+      case 'fire': this.fire(); return;
+      case 'reload': this.reload(); return;
+      case 'spinUp': this.spinUp(); return;
+      case 'clank': this.clank(); return;
+      case 'magFeed': this.magFeed(); return;
+      case 'pickup': this.pickup(); return;
+      case 'emptyClick': this.emptyClick(); return;
+      case 'magneticInterference': this.magneticInterference(); return;
+      case 'hit': this.hit(sound.impactDistance); return;
+      case 'enemyHit': this.enemyHit(); return;
+      case 'explosion': this.explosion(); return;
+      case 'decouple': this.decouple(); return;
+      case 'altAlarm': this.altAlarm(); return;
+    }
+  }
 
   // 常時再生のループ音チャンネル(通常は無音)を組む。
   private loopChannel(ctx: AudioContext, noise: AudioBuffer, freq: number, q: number): GainNode {
@@ -45,7 +92,7 @@ export class WorldSfx {
   }
 
   // 鳴らしているループ音を止めて切り離す。以後このインスタンスは音を出さない。
-  dispose(): void {
+  public dispose(): void {
     this.disposed = true;
     for (const src of this.loopSources) {
       src.stop();
@@ -59,7 +106,7 @@ export class WorldSfx {
 
   // 艦砲 CIWS 風の砲声: 低く重い胴鳴り + 鋭いクラック。
   // 実物のように連続音にはせず、1 発ずつ聞こえる離散的な発砲音のまま。
-  fire(): void {
+  private fire(): void {
     this.engine.noiseBurst(0.11, 'lowpass', 480, 0.4);
     this.engine.noiseBurst(0.025, 'highpass', 2600, 0.09);
     this.engine.tone(48, 0.1, 0.2, 'square');
@@ -67,7 +114,7 @@ export class WorldSfx {
   }
 
   // リロード音: 金属質のノイズと金属音を組み合わせて「ガチャッ、シャコォォン」という音を作る
-  playReload(): void {
+  private reload(): void {
     const ctx = this.engine.ctx;
     const noise = this.engine.noiseBuf;
     if (!ctx || !noise) return;
@@ -93,7 +140,7 @@ export class WorldSfx {
 
   // 連射開始前の起動音: 艦砲 CIWS のモーターが立ち上がる唸りに似せる。
   // 低い三角波の唸りが滑り上がり、機械的なこすれノイズが重なる。
-  spinUp(): void {
+  private spinUp(): void {
     const ctx = this.engine.ctx;
     const noise = this.engine.noiseBuf;
     if (!ctx || !noise) return;
@@ -142,7 +189,7 @@ export class WorldSfx {
   }
 
   // 薬莢が機体に当たったときの、からんとした金属音(かすかに)
-  clank(): void {
+  private clank(): void {
     const f0 = 1800 + Math.random() * 1600;
     this.engine.tone(f0, 0.05, 0.035, 'triangle');
     this.engine.tone(f0 * 1.53, 0.04, 0.02, 'triangle'); // 非整数倍音で金属感
@@ -150,27 +197,27 @@ export class WorldSfx {
   }
 
   // マガジン給弾(次のマガジンが取り込まれるガチャッという機械音)
-  magFeed(): void {
+  private magFeed(): void {
     this.engine.noiseBurst(0.1, 'lowpass', 500, 0.14);
     this.engine.tone(140, 0.07, 0.08, 'square');
     this.engine.noiseBurst(0.05, 'highpass', 3000, 0.04);
   }
 
   // 補給マガジンの取り込み(肯定的なブリップ)
-  pickup(): void {
+  private pickup(): void {
     this.engine.tone(660, 0.09, 0.09, 'sine');
     this.engine.tone(990, 0.12, 0.07, 'sine');
     this.engine.noiseBurst(0.08, 'lowpass', 600, 0.06);
   }
 
   // 弾切れの空撃ちクリック
-  emptyClick(): void {
+  private emptyClick(): void {
     this.engine.tone(1400, 0.03, 0.05, 'square');
     this.engine.noiseBurst(0.02, 'highpass', 4000, 0.03);
   }
 
   // 弾が至近を通過したときの「ヴン」という磁気干渉音
-  magneticInterference(): void {
+  private magneticInterference(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
@@ -199,7 +246,7 @@ export class WorldSfx {
   }
 
   // 自機被弾音。被弾点が自機中心から遠いほど、音量と音高を下げる。
-  hit(impactDistance: number): void {
+  private hit(impactDistance: number): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
@@ -225,7 +272,7 @@ export class WorldSfx {
   }
 
   // 敵機被弾時のノコギリ波ローパス和音
-  enemyHit(): void {
+  private enemyHit(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
@@ -250,7 +297,7 @@ export class WorldSfx {
   }
 
   // 撃破爆発音
-  explosion(): void {
+  private explosion(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
@@ -274,7 +321,7 @@ export class WorldSfx {
   }
 
   // デカプラーの爆砕ボルト。撃破爆発より短い破裂音と金属の解放音を重ねる。
-  decouple(): void {
+  private decouple(): void {
     this.engine.noiseBurst(0.055, 'highpass', 1800, 0.16);
     this.engine.noiseBurst(0.09, 'lowpass', 320, 0.22);
     this.engine.tone(760, 0.06, 0.07, 'square');
@@ -282,13 +329,13 @@ export class WorldSfx {
   }
 
   // 高度低下警報: 短い二音の警告音(熱防御警報よりは緊急度の低いトーン)
-  altAlarm(): void {
+  private altAlarm(): void {
     this.engine.tone(392, 0.16, 0.09, 'square');
     this.engine.tone(415.3, 0.16, 0.07, 'square'); // わずかに不協和にして警報らしいうなりを出す
   }
 
-  // そのフレームに鳴らすべき連続音の全体を受け、各チャンネルの音量をなめらかに追わせる。
-  syncLoops(loops: LoopSfx): void {
+  // 連続音の宣言 loops へ、各チャンネルの音量をなめらかに追わせる。
+  private syncLoops(loops: LoopSfx): void {
     const ctx = this.engine.ctx;
     const channels = this.ensureLoops();
     if (!ctx || channels === null) return;
