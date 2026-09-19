@@ -1015,49 +1015,35 @@ R3 の判定の許可リストに残るのは `Stage.onDecided`(5.5-7)だけに�
 - 消音は `UserSettings.bgmMuted`(鍵 `tepui.settings.bgm_muted`)に音量と分けて持つ。スライダーは消音を織り込んだ音量を見せ、動かせば消音を解く。**変わった挙動**: 消音の前の音量が再読み込みを跨いで残る。手で 0 にした音量から消音ボタンで戻すと、前に消音した音量ではなく既定の 1 になる。
 - 検証: `npm run typecheck`、テストの型検査、`npm run test:settings`(6/6)、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での聴き取りは 5.5-10 へ回す。
 
-#### 手順 5.5-7. 位相・直列化・導出の残りを片づける(R8・R12・R5)
+#### 手順 5.5-7. 位相・直列化・導出の残りを片づける(R8・R12・R5)— 済
 
-**目的**: 後の段へ回していた、段 5 までの規則の未達を直す。変わる挙動は、結果画面が出るのが最大1フレーム遅れる点だけ(決着の読み方)。
+境界の検査の許可リストが空になった(`Stage.onDecided` と `NavTargetSelection.constructor(target)` が最後の2件)。
 
-**前提(段 3・5-3)**: 位相の中の順序は、「段 1〜3 — 済」の節の5項目と、5-3 の `Run.frame` の順序表のとおりである。決着の読み方を変えるときも、これを崩さない。
+**実施で決めたこと**
+- 時間加速の段の上下は `SimSpeedManager.shift(step: -1 | 1)`(命令の口は `SimSpeedCommands.shift`)。キーから段の向きへの解釈は `game-input-ports.ts` が持つ。
+- 決着は `Stage.decide` が出来事 `stageDecided` を記録する。`Launcher.followProgress()` を `main.ts` が `Run.frame` を回し終えたフレームごとに呼び、出来事があればクリアを数えて結果画面を出す。BGM は 5.5-6 でフレームごとの宣言にしたので、ここでは触らない。
+- `DynamicSystem` はコンストラクタで記録の列を受け、その場で実体化する(揃わないものは待ち行列へ)。`spawnWhenReady` はステージが遊びの最中に敵を足す命令として残る。
+- **採番器の予約は、組む前へ移すのではなく消した。** 記録にある id(顔ぶれの個体も、接続中のブースターの段も)はどれも同じ記録に保存した採番器が発番したもので、保存した「次の番号」はそれらを必ず追い越している。予約が守っていた場合は、この形式の記録からは起こらない。`EntityIdAllocators.reserve` は消え、`EntityIdAllocator.reserve` は `next(id)` の中だけで使う private になった。
+- `SerializedNavTargetSelection` は `NavTarget` へ改名した(保存形式は同じ)。
+- 版の刻印はモデル層から launcher へ移した。`SerializedGame` は `version` を持たず、launcher の `SavedGame`(`save-store.ts`、版 `SAVED_GAME_VERSION`)が版を添えた記録本体。版は `SnapshotService` が書くときに先頭へ添えるので、版の値と位置は変わらない。
+- `simTime` の二重経路: `ObjectWindows.open`/`openEmptySpaceMenu`/`sync`、`MapPicking.handleRightClick`/`handleEmptySpaceRightClick`、`ViewFrame.handleCommand`/`handlePointer`、`PlanEditor.handleCommand`/`update` の時刻の引数を落とし、表示窓の所有者 `DisplayWindowManager.current` から読む。`PlanEditor` は写しの `simTime` 欄をやめて所有者から読む。`frame-controls` の `lastTime` は、この手順に着手した時点で既に無かった。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run test:launcher`(2/2)、`npm run check:boundaries`(許可リスト 0 件)、変更ファイルの lint。`npm run dev` での目視(決着から結果画面、時間加速、マップの右クリック、段 5 のセーブの読み込み)は 5.5-10 へ回す。
 
-**変更が必要な箇所**
+#### 手順 5.5-8. 段 5 が残した 1.x の未達と、launcher の表示を片づける — 済
 
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/sim-speed-manager.ts`、`sim-speed-commands.ts`、`src/game/input/game-input-ports.ts` | 時間加速の段の上下が、まだキーコードを命令の id として受けている(`handleCommand(commandId)` が `K.warpSlower.code`/`K.warpFaster.code` と比べる)。「段を1つ上げる/下げる」という領域の命令にし、`sim-speed-manager.ts` から `KEY_MAPPING` の import を消す(R8)。キーの解釈は入力の解釈へ |
-| `src/launcher/launcher.ts`、`src/game/stages/stage.ts`、`src/run/run.ts` | 構築の後に `stage.onDecided` を差す配線をやめる(R12・CODING-RULE 1.11 の二段初期化)。決着は進行が出来事として記録し、launcher は `Run.frame` の後にそれを読んで、解放記録・BGM・結果画面を動かす |
-| `src/game/dynamic/dynamic-system.ts` | `deserialize` が空のまま構築してから記録を `spawnWhenReady` で流し込む形を判定する。アセット待ちの関門のためなら、待ちの記録を構築の引数で受け、流し込みの口を持たない形にする(R12)。採番器を組んだ後で記録中の id を `reserve()` で流し込む形と、`AttachedBoosters` のコンストラクタが段の id を予約する形も、組む前に予約する id を渡す形にする(5.5-3 から回した行) |
-| `src/game/viewer/{nav-target-selection,viewer}.ts` | `SerializedNavTargetSelection` を状態の名前で呼び直す(5.5-2 の R12 の1件)。不変な素の値の型なので、`SerializedT` を別に作らない(R12)。保存形式は変えない |
-| `src/game/game.ts`、`src/launcher/save/*` | 版の刻印 `SERIALIZATION_VERSION` の置き場を判定する。版の照合は launcher の語彙(R12)なので、モデル層の直列化が版を知る必要が無ければ launcher へ移す。**保存形式(版の値と位置)は変えない**(K9) |
-| `src/game/pickable/object-windows.ts`、`src/game/pickable/map-picking.ts`、`src/game/view/view-frame.ts`、`src/game/hud/frame/frame-controls.ts`、`src/game/plan/plan-editor.ts` | `simTime` を引数で配る経路を落とし、表示時刻の所有者から読む1本にする(K6 の保留 2)。`frame-controls` の `lastTime` と `plan-editor` の `simTime` も同じく所有者から読む |
+`ProteinEnemy.muzzlePosition` の分割は計画どおり 5.5-9 で行う。
 
-**達成条件と検証**
-
-- `rg -n "onDecided" src` が 0 件。
-- `rg -n "KEY_MAPPING" src/game/dynamic` が 0 件。
-- R3 の判定の許可リストが空(`Stage.onDecided` が最後の1件だった)。
-- `npm run typecheck`、`npm run test:game`、`npm run test:launcher`、`npm run check:boundaries`。
-- `npm run dev` で次を見る。決着から結果画面が出る。決着済みの記録から始めても結果画面が出る。時間加速の上げ下げ。マップの右クリックとプロパティ窓の時刻表示。段 5 で書き出したセーブが読める。
-
-#### 手順 5.5-8. 段 5 が残した 1.x の未達と、launcher の表示を片づける
-
-**目的**: 段 5 の規約点検で見つけて割り当てなかったものと、段 5 の版上げが持ち込んだ振る舞いを直す。挙動は、launcher の一覧の表示だけを変える。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/protein-enemy.ts`(`muzzlePosition`)、`src/game/player/booster-stack.ts`(`step`)ほか燃料の関数 | 状態を進める命令と、値を返す問い合わせに分ける(CODING-RULE 1.11)。`muzzlePosition` は 5.5-9 で静止座標から求める形に直すので、分割もそこで一緒に行う |
-| `src/game/dynamic/dynamic-system.ts`(`update` の `beforeControllables`) | 閉包の注入をやめる(CODING-RULE 1.11)。呼び手が順に呼べば足りるなら、そうする |
-| `src/game/dynamic/dynamic-entity/enemy.ts`、`src/game/hud/hud-panel-presenter.ts`、`src/game/hud/panels/enemies-panel.ts` | `waveId` などの不在を `null` で表す(1.6)。同じ形の欄を洗い、まとめて揃える |
-| `src/game/viewer/focus-camera-selection.ts`(563 行) | 1.2 のとおり、まず原因を診断する。責務が複数なら分け、一つなら理由を書いて残す |
-| `src/launcher/save-browser/*` | 版の合わない記録を、読み込めるものとして並べない。開こうとしたら、読めないことを知らせる(SAVE.md「形式の版」。`/ui-design` を通す) |
-
-**達成条件と検証**
-
-- `npm run typecheck`、`npm run test:game`、`npm run test:launcher`。
-- `npm run dev` で、ブースターの燃焼と分離、敵の射撃、敵の一覧、セーブデータ画面(版の違う記録を置いた状態)を見る。
+**実施で決めたこと**
+- 状態を進めて副産物を返す関数(CODING-RULE 1.11)を、命令と問い合わせに分けた。
+  - `BoosterStack.step` → 問い合わせ `burnOver(dt)`(燃焼結果。型は `BoosterBurn`)と命令 `burn(dt)`。`toggleIgnition` は操作後の点火状態を返していたので void にし、`ignited` で読む(`AttachedBoosterMotion` も同じ)。
+  - 燃料: `consumeFuel`・`refuelFuel` は void。賄えた割合は `throttle.ts` の `suppliedFuelRatio(ship.totalFuel, amount)` で消費の前に求め、補給で入った量は `logistics.ts` が補給の前に残りの容量から求める。
+  - `WeaponState.beginShot` → 問い合わせ `nextShot(muzzleCount)` と命令 `fire(muzzleCount)`。`beginShot` は `left` が偽なら null を返していたので、消費の結果の `'empty'` は通らない値だった — 型から消した。計画の表には無かったが、同じ形なのでここで直した。
+  - `manualReload(): boolean` は成否の真偽なので 1.11 の許容に入り、残した。
+- `DynamicSystem.update` の閉包 `beforeControllables` をやめ、引数 `acceptsCommands`(決着前かつ操作できる倍率か。`Game` が求める)を受けて、自律の推力の後に操縦の命令を自分で適用する。順序は変えていない。
+- 不在の `undefined` → `null`(1.6): 敵の `waveId`・`formationId`・`formationRole`(実体の欄と `EnemyPlacement`)、`isFormationEnergyAvailable`、`EnemyContact.waveId`、ウェーブ数の数え上げ。同じ形の欄を洗った結果、記録では null で持ち実体では undefined で持つものはこれだけだった。構築の省略可能な引数(省けば既定)と、`PartDamageModel` の部品参照(記録に出ない内部の参照)は形が違うので対象外。
+- `focus-camera-selection.ts`(563 行)は**分けずに残す**。診断: 責務は「1台のカメラの視点と、その変更規則」の1つで、向きは既に `CameraOrientation` へ出ている。各命令は注視・座標系・向き・距離・ずらしをまとめて読み書きする同じ関心の実装で、`config.view` が切り替えるのは初期値と3つの方針だけ(多態で分ける種類ではない)。投影(画角・投影方式・正射影の半高さ)を切り出す案は、距離が視点の置き場(直列化では変位の長さ)と透視のズームを兼ね、下限が注視対象で決まるため、切り出すと各命令へ下限を渡す委譲が並び、行数はほとんど減らない。
+- セーブデータ画面: `SnapshotService.isReadable(id)` が本体の形式の版を照合し、読めない手動セーブのカードは選べる見た目にせず、カードの上に理由を書く(タッチでも見える)。ダブルクリックすると理由を状態欄に出し、周回は始めない。カードの `onLoadSnapshot` は真偽の代わりに拒否の文面(読めるなら null)を渡す。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run test:launcher`(2/2)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視(ブースターの燃焼と分離、敵の射撃、敵の一覧、版の違う記録を置いたセーブデータ画面)は 5.5-10 へ回す。
 
 #### 手順 5.5-9. 洗い出しで出た残りと、監査報告の 4 を片づける
 
@@ -1563,11 +1549,11 @@ import を直す外側:
 | | ~~5.5-4 運動の書き手~~ 済 | 0 |
 | | ~~5.5-5 残りのモデル層の欄~~ 済 | 0 |
 | | ~~5.5-6 音の装置~~ 済 | 0 |
-| | 5.5-7 位相・直列化・導出の残り(15 ファイル × 20、時間加速の命令を領域の語彙にする +40、検証 20、採番器の予約 +20) | 380 |
-| | 5.5-8 1.x の未達と launcher の表示(10 ファイル × 20 + 検証 20) | 220 |
+| | ~~5.5-7 位相・直列化・導出の残り~~ 済 | 0 |
+| | ~~5.5-8 1.x の未達と launcher の表示~~ 済 | 0 |
 | | 5.5-9 洗い出しの残りと監査報告の 4(4 の分は SPEC の削除と 6 ファイル × 20 + 検証 20 = 140。洗い出しの 22 行は約 40 ファイル × 20 = 800) | 940 |
 | | 5.5-10 main へ送る | 150 |
-| | **段 5.5 計(残り)** | **1,690** |
+| | **段 5.5 計(残り)** | **1,090** |
 | 6 | 6-1 規則(R6・R2 のモデル層、`entity-shapes/` の層と条件 +15、`physics/` から実体の形を締め出す +15) | 120 |
 | | 6-2 検査(対応表を game/ の中まで割る、`LAYER_TABLE` の行 +5。K11-2 で B なら読み手の数の判定 +20) | 95 |
 | | 6-3 3D の表示担当(モデル層の根の `scene` +20、漏れていたテスト3本 +30、突き合わせの検査 +40) | 810 |

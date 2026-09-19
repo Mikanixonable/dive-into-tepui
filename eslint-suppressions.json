@@ -370,7 +370,7 @@
   },
   "src/game/dynamic/dynamic-entity/protein-enemy.ts": {
     "no-restricted-syntax": {
-      "count": 4
+      "count": 2
     }
   },
   "src/game/dynamic/dynamic-entity/ship.ts": {
@@ -568,11 +568,6 @@
     }
   },
   "src/game/hud/panels/burn-management-panel.ts": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/game/hud/panels/enemies-panel.ts": {
     "no-restricted-syntax": {
       "count": 1
     }
@@ -977,11 +972,6 @@
       "count": 1
     }
   },
-  "src/game/stages/spawner/enemy-generator.ts": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
   "src/game/stages/spawner/enemy-spawner.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
@@ -1155,7 +1145,7 @@
   },
   "src/launcher/save/snapshot-service.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 2
+      "count": 1
     }
   },
   "src/launcher/snapshot-controls.ts": {
