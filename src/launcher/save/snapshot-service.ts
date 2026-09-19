@@ -44,7 +44,6 @@ export class SnapshotService {
       hpRatio: summary.hpRatio,
       maxHp: summary.maxHp,
       magazines: summary.magazines,
-      money: summary.money,
       playerCount: summary.playerCount,
       enemyAliveCount: summary.enemyAliveCount,
       phase: summary.phase,

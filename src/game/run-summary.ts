@@ -1,7 +1,6 @@
 // いまのランの要約と、その組み立て。
-import { isBase } from './dynamic/dynamic-entity/base';
 import { isEnemy } from './dynamic/dynamic-entity/enemy';
-import { isPlayer } from './player/player';
+import { isModularShip } from './ship/modular-ship';
 import { autoOrbitReference } from './orbit-reference';
 import { orbitInfo } from './orbit-info';
 import type { CelestialBodies } from './celestial/celestial-bodies';
@@ -21,7 +20,6 @@ export interface RunSummary {
   readonly hpRatio: number;
   readonly maxHp: number;
   readonly magazines: number;
-  readonly money: number;
   readonly playerCount: number;
   readonly enemyAliveCount: number;
 }
@@ -51,8 +49,7 @@ export function summarizeRun(
       : 0,
     maxHp: controlled?.maxHp ?? 0,
     magazines: controlled?.fire?.mags ?? 0,
-    money: entities.filter(isBase).reduce((sum, b) => sum + b.money, 0),
-    playerCount: entities.filter(isPlayer).length,
+    playerCount: entities.filter(isModularShip).length,
     enemyAliveCount: entities.filter(isEnemy).filter((e) => e.motion.alive).length,
   };
 }

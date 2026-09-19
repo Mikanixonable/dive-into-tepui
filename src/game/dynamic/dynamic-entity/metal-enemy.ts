@@ -6,8 +6,6 @@ import {
 } from './enemy';
 import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
-import { MUZZLE_SPEED } from './vessel';
-import { PLAYER_THRUST, PLAYER_TORQUE } from '../../player/player-loadout';
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
 import { deserializeParts, type Part, type AnyPart } from './parts';
@@ -58,7 +56,7 @@ export class MetalEnemy extends PartBasedEnemy {
     id: string,
     scene: THREE.Scene | undefined,
     // 金属の敵は、自機と同じ性能の推進器と機関砲を積む。
-    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP, PLAYER_THRUST, PLAYER_TORQUE, MUZZLE_SPEED),
+    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP),
     alive?: boolean,
     burstLeft?: number | null,
     burstDelay?: number | null,

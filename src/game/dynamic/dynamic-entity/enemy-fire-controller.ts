@@ -1,6 +1,6 @@
 import { sunGlareSpreadScale } from '../../combat/sun-glare-spread';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { Player } from '../../player/player';
+import type { ModularShip } from '../../ship/modular-ship';
 import { Bullet } from './bullet';
 import type { Enemy } from './enemy';
 import type { EntityRegistry } from '../entity-registry';
@@ -69,7 +69,7 @@ export class EnemyFireController {
   // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
   // 間は撃たない。
   public behave(
-    simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
+    simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
     mayFire: boolean, celestialBodies: CelestialBodies,
   ): void {
     const behaviorDt = this.lastBehaviorSim === null ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
@@ -110,7 +110,7 @@ export class EnemyFireController {
 
   // player の未来位置を狙ってプラズマ弾を1発撃ち、発砲を記録する。
   private firePlasma(
-    simTime: number, player: Player, registry: EntityRegistry, celestialBodies: CelestialBodies,
+    simTime: number, player: ModularShip, registry: EntityRegistry, celestialBodies: CelestialBodies,
   ): void {
     const r = this.port.muzzlePosition();
     const v = this.port.motion.state.v;

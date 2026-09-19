@@ -123,6 +123,12 @@ export class DisplayWindowManager {
     return this._current;
   }
 
+  // 建造など未来表示を一時停止するモードが、現在の表示窓を保ったまま強制現在表示を切り替える。
+  public setForceCurrent(forceCurrent: boolean): void {
+    this._current = { ...this._current, forceCurrent,
+      displayTime: forceCurrent ? this._current.simTime : this._current.displayTime };
+  }
+
   // 選んだ期間の秒数を返す。'orbit' では referencePeriod をそのまま返し、それが有限な正数で
   // なければ APERIODIC_ARC_DURATION へ落とす。どの軌道の周期を参照するかは呼び出し側の文脈で
   // 決まるので、このクラス自身は軌道周期を持たない。

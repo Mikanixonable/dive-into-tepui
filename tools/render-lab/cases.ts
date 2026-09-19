@@ -17,9 +17,8 @@ import { BodyGraticule } from '../../src/render/celestial/body-graticule';
 import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
 import coastlineData from '../../src/assets/earth-coastline.json';
 import { Curve } from '../../src/render/curve';
-import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
+import { createAnnulusRing, type RingMaterials } from '../../src/render/celestial/ring';
 import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
-import { buildPlayerShip } from '../../src/render/dynamic/player/player-view';
 import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
 import { InstancedPool } from '../../src/render/instanced-pool';
@@ -48,6 +47,7 @@ import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 import type { WebGPURenderer } from 'three/webgpu';
+import { buildDefaultShipObject, SHIP_CASES } from './ship-cases';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -193,7 +193,7 @@ function circle(
 
 // 自機メッシュ 1 隻を、描画座標の position へ置く。rotation を渡すと機体の姿勢を回す。
 function shipAt(position: THREE.Vector3, rotation?: THREE.Euler): THREE.Object3D {
-  const group = buildPlayerShip();
+  const group = buildDefaultShipObject();
   group.position.copy(position);
   if (rotation !== undefined) group.rotation.copy(rotation);
   return group;
@@ -669,15 +669,14 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       polarRatio: radii.polarRadius / radii.equatorRadius,
       optics: EARTH_ATMOSPHERE_OPTICS,
       // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
-      clouds: { get field() { return cumulus.binding; }, bodyFromWorld },
+      clouds: { get cloud() { return cumulus.renderInput; }, bodyFromWorld },
     },
     cumulus: {
       center,
       surfaceRadius: R_EARTH_EQ,
       axes: shellAxes,
-      topAltitude: cumulus.topAltitude,
       bodyFromWorld,
-      get field() { return cumulus.binding; },
+      get cloud() { return cumulus.renderInput; },
     },
     // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
     shadowBody: { center, axes: shellAxes.clone(), bodyFromWorld },
@@ -1160,6 +1159,7 @@ export const CASES = {
   'sun-5au': () => sunAt(5.2 * AU),
   'sun-30au': () => sunAt(30 * AU),
   'blackbody': blackbody,
+  ...SHIP_CASES,
   ...PROTEIN_CASES,
 } as const satisfies Record<
   string, (style: RenderStyle, ringMaterials: RingMaterials) => LabCase

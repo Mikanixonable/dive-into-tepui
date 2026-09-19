@@ -5,10 +5,9 @@ import { orbitInfo, relativeInfo } from '../orbit-info';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { isProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { isPlayerMotion } from '../player/player-motion';
+import { isModularShip } from '../ship/modular-ship';
 import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import { deployableCommands, type DeployableCommands } from '../player/deployable-commands';
-import { boosterCommands } from '../player/booster-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from '../viewer/orbit-reference-commands';
 import { viewCommands } from '../viewer/view-commands';
 import { focusTargetId } from '../viewer/focus-target';
@@ -73,22 +72,9 @@ export class HudPanelPresenter {
     this.simSpeedCommands = simSpeedCommands(commands, simSpeedManager);
     this.deployableCommands = deployableCommands(commands);
     this.orbitReferenceCommands = orbitReferenceCommands(commands, viewer.orbitReference);
-    // ブースターの操作は、押された時点の操作対象のブースターへ積む。
-    const boosters = boosterCommands(commands);
-    this.burnHandlers = {
-      onAttach: () => {
-        const attached = this.controlSelection.current?.boosters;
-        if (attached) boosters.attach(attached);
-      },
-      onToggleIgnition: () => {
-        const attached = this.controlSelection.current?.boosters;
-        if (attached) boosters.toggleIgnition(attached);
-      },
-      onDecouple: () => {
-        const attached = this.controlSelection.current?.boosters;
-        if (attached) boosters.decouple(attached);
-      },
-    };
+    // 旧ブースター操作はモジュール船の建造・分離操作へ統合された。燃焼表示は
+    // 船が提供する読み取り専用 view model だけを使い、ここでは命令を持たない。
+    this.burnHandlers = {};
   }
 
   // ビューバッジを取り除く。
@@ -165,7 +151,8 @@ export class HudPanelPresenter {
         contacts: this.enemyContacts(combatControlled),
         onSelectRight: (id, x, y) => this.objectWindows.openEnemy(id, x, y),
       },
-      burnManagement: controlled?.boosters?.managementViewModel() ?? null,
+      burnManagement: controlled !== null && isModularShip(controlled)
+        ? controlled.burnManagementViewModel() : null,
       burnHandlers: this.burnHandlers,
       mapFocus: this.cameraSystem.mapResolvedFocus,
       analysisSource: {
@@ -181,16 +168,16 @@ export class HudPanelPresenter {
 
   // 操作対象の装備・燃料・姿勢の状態と、代替操作の口。
   private vesselViewModel(controlled: Controllable): VesselPanelViewModel {
-    const motion = controlled.motion;
-    const player = isPlayerMotion(motion) ? motion : null;
-    const power = player?.power ?? null;
-    const radiator = player?.radiator ?? null;
+    const ship = isModularShip(controlled) ? controlled : null;
+    const motion = ship?.motion ?? null;
+    const power = motion?.power ?? null;
+    const radiator = motion?.radiator ?? null;
     const fire = controlled.fire ?? null;
     // 積んでいない装備は null で答える。
     return {
       rcsDamp: controlled.throttle.rcsDamp,
       throttleIdx: controlled.throttle.throttleIdx,
-      dynamicPressurePa: player?.aero?.qdyn ?? null,
+      dynamicPressurePa: motion?.aero.qdyn ?? null,
       fineAttitude: controlled.fineAttitude,
       cameraFollowsAttitude: this.viewer.camera.combat.rotationFollow?.kind === 'attitude',
       progradeHold: controlled.throttle.progradeHold,
@@ -218,6 +205,7 @@ export class HudPanelPresenter {
       controlled, reference, controlled.motion.state.t, (id: string) => this.celestialSystem.nameOf(id),
     );
     const motion = controlled.motion;
+    const ship = isModularShip(controlled) ? controlled : null;
     const targetName = this.viewer.navTarget.name;
     // 軌道の数値は基準に対して解き、警告と切替の状態は操作対象から直に引く。
     return {
@@ -231,7 +219,7 @@ export class HudPanelPresenter {
       peAltitudeM: info.peAlt,
       inclinationDeg: info.incDeg,
       periodSec: info.period,
-      dynamicPressurePa: isPlayerMotion(motion) ? motion.aero?.qdyn ?? null : null,
+      dynamicPressurePa: ship?.motion.aero.qdyn ?? null,
       temperatureK: motion.temperature,
       setReferenceMode: (mode) => this.orbitReferenceCommands.setMode(mode),
     };
