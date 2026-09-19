@@ -84,7 +84,10 @@ export class Stage0 extends Stage {
 
     this.logistics.updateLogistics(simTime, player, simSpeed);
 
-    if (this.timer.update(dt)) {
+    // 残り時間が尽きたフレームで一度だけ決着させる
+    const running = this.timer.timeLeft > 0;
+    this.timer.update(dt);
+    if (running && this.timer.timeLeft <= 0) {
       this.decide('timeup', { win: true, title: 'TIME UP', detailHtml: scoreAttackDetailHtml(this.scoreCounter) });
     }
   }

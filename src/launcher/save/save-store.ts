@@ -12,6 +12,9 @@ export const SAVE_INDEX_VERSION = 2;
 export const SAVED_GAME_VERSION = 4;
 
 // 記録本体。ランを直列化した形に、書いたときの形式バージョンを添える。
+// 例外(ARCHITECTURE R12): 形式バージョン(launcher の値)を、ランの記録(モデル層の値)の最上位へ平らに
+// 並べる。版を包む記録へ分けると保存の形式が変わり、版 4 の記録が読めなくなる。形式は版を上げるときに
+// まとめて直す。
 export interface SavedGame extends SerializedGame {
   readonly version: number;
 }
