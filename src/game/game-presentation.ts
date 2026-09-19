@@ -14,7 +14,7 @@ import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
 import { PlanGuide } from './plan/plan-guide';
 import { DisplayWindowManager, timeLabelSettingOf, trajectoryDemandOf } from './display-window-manager';
-import { RunEventPresenter } from './run-event-presenter';
+import { RunEventPresenter, worldSoundCues } from './run-event-presenter';
 import { FlashPresenter } from './flash-presenter';
 import { FlashEffectsView } from '../render/vfx/flash-effects-view';
 import { EntityLineManager } from './lines/entity-line-manager';
@@ -38,7 +38,8 @@ import { ObjectWindows } from './pickable/object-windows';
 import { FrameControls } from './hud/frame/frame-controls';
 import { HudPanelPresenter } from './hud/hud-panel-presenter';
 import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-options-control';
-import { syncControlledLoopSfx } from './controlled-loop-sfx';
+import { controlledLoopSfx } from './controlled-loop-sfx';
+import { UiSoundQueue } from './ui-sound-queue';
 import { GameInputRouter, type GameInputPort } from './input/game-input-router';
 import { gameInputPorts, pilotInputPorts } from './input/game-input-ports';
 import { rawGameInputAdapter } from './input/raw-game-input-adapter';
@@ -66,7 +67,10 @@ export class GamePresentation {
   private readonly input: Input;
   private readonly touchControls: TouchControls;
   private readonly worldSfx: WorldSfx;
-  // 進行が記録した出来事を音・通知へ写す読み手。
+  private readonly uiSfx: UiSfx;
+  // 操作と出来事から出す UI の効果音を、同期まで溜める先。
+  private readonly uiSounds = new UiSoundQueue();
+  // 進行が記録した出来事を UI の効果音・通知へ写す読み手。
   private readonly runEventPresenter: RunEventPresenter;
   // 天体系・ステージ・長押しの宣言を1つにまとめて置くマーカー。
   private readonly frameMarkers: MarkerSink;
@@ -119,8 +123,8 @@ export class GamePresentation {
     const { scene, hud, markers, audioEngine, pauseMenu } = devices;
     const { commands, dynamicSystem, celestialSystem, controlSelection, viewer, activeStage } = game;
     this.worldSfx = new WorldSfx(audioEngine);
-    const uiSfx = new UiSfx(audioEngine);
-    this.runEventPresenter = new RunEventPresenter(this.worldSfx, uiSfx, hud);
+    this.uiSfx = new UiSfx(audioEngine);
+    this.runEventPresenter = new RunEventPresenter(this.uiSounds, hud);
     this.frameMarkers = markers.createGroup();
     this.playerMarkers = new PlayerMarkers(markers.createGroup());
     this.flashEffectsView = new FlashEffectsView(scene.scene);
@@ -193,7 +197,7 @@ export class GamePresentation {
       this.displayWindowManager, this.frameControls,
       this.frameAnchors, controlSelection, controlSelectionCommands(commands, controlSelection),
       game.simSpeedManager, simSpeedCommands(commands, game.simSpeedManager), this.planDisplay, planCommands(commands),
-      scene.scene, hud, uiSfx, this.navTargetPresenter, targetCommands,
+      scene.scene, hud, this.uiSounds, this.navTargetPresenter, targetCommands,
       viewOptionSettings.mapDisplay,
     );
     this.viewManager = new ViewManager(viewer.view, this.touchControls, { combat: combatView, map: mapView });
@@ -406,11 +410,15 @@ export class GamePresentation {
       camera.project, camera.position, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot,
       camera.mode === 'map', timeLabel, nowMs,
     );
-    // このフレームの進行が記録した出来事を、音と通知の宣言へ写す。
-    this.runEventPresenter.present(this.game.events.recent);
-    syncControlledLoopSfx(
-      this.worldSfx, controlled, displayTime, !this.isPaused && activeStage.isPlaying,
-    );
+    // このフレームの進行が記録した出来事を、通知と音の宣言へ写す。
+    const events = this.game.events.recent;
+    this.runEventPresenter.present(events);
+    this.worldSfx.sync({
+      loops: controlledLoopSfx(controlled, displayTime, !this.isPaused && activeStage.isPlaying),
+      cues: worldSoundCues(events),
+    });
+    this.uiSfx.sync(this.uiSounds.cues);
+    this.uiSounds.clear();
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
     this.flashEffectsView.sync(this.flashPresenter.live, camera);
 
