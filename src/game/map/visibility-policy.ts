@@ -1,21 +1,28 @@
-// 天体とゲーム内 entity に共通するマップ表示ポリシー。
-// category/icon/label/orbit/pickable を各描画・選択系で個別に解釈しないための正本。
-import { celestialClassVisible, celestialNameVisible, type MapDisplayToggles } from './display-toggles';
+// 天体とゲーム内 entity に共通するマップ表示ポリシー。マップへ重ねる記号と軌道線の可否を
+// 各描画・選択系で個別に解釈しないための正本。
+import {
+  celestialClassVisible, celestialNameVisible, mapDisplayCategoryVisible,
+  type MapDisplayCategory, type MapDisplayToggles,
+} from './display-toggles';
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 
 export type MapVisibility = {
-  readonly category: boolean;
   readonly icon: boolean;
   readonly label: boolean;
   readonly orbit: boolean;
   readonly pickable: boolean;
 };
 
+// マップ上に記号か軌道線のどちらかで現れるか。
+export function appearsOnMap(visibility: MapVisibility): boolean {
+  return visibility.icon || visibility.orbit;
+}
+
 const ENTITY_KEYS: Record<DynamicEntityKind, {
-  readonly category: keyof MapDisplayToggles;
+  readonly category: MapDisplayCategory;
   readonly name: keyof MapDisplayToggles;
   readonly orbit: keyof MapDisplayToggles;
 }> = {
@@ -39,13 +46,12 @@ function focusSystemOf(celestialBodies: CelestialBodies, focusId: string | undef
 // 恒星、フォーカス中の天体の親・兄弟・子、およびカメラが現在属する系の天体——トグルの
 // 状態に関わらず名前が見える id の集合。「距離が近いもの」をズーム距離で判定
 // すると操作の途中で行が明滅するので、カメラ位置から求めた重力系のメンバーで代用する。
-// focusId が undefined でも、nearbyIds に渡された近傍系は残す。
 export function alwaysFullyVisibleIds(
   celestialBodies: CelestialBodies, focusId: string | undefined,
   nearbyIds: Iterable<string> = [],
   toggles?: MapDisplayToggles,
 ): ReadonlySet<string> {
-  // 未登録の id は 'planet' として扱う。トグルを渡されていない呼び出しはクラスで絞らない。
+  // 未登録の id は 'planet' として扱い、トグルが無ければクラスで絞らない。
   const classVisible = (id: string): boolean => toggles === undefined
     || celestialClassVisible(celestialBodies.bodyClassOf(id) ?? 'planet', toggles);
   const ids = new Set<string>();
@@ -53,7 +59,6 @@ export function alwaysFullyVisibleIds(
     if (motion.kind === 'star') ids.add(motion.id);
   }
 
-  // nearbyIds は systemMembersAt() など、呼び出し側がカメラ位置から求めた系の集合。
   // 未登録の重力源が混ざっても、ここは天体ラベルの集合なので無視する。
   for (const id of nearbyIds) {
     if (celestialBodies.has(id) && classVisible(id)) ids.add(id);
@@ -65,8 +70,7 @@ export function alwaysFullyVisibleIds(
     if (classVisible(id)) ids.add(id);
   }
   // 兄弟は「惑星系の中の兄弟」に限る。恒星の子はすべて互いに兄弟なので、そこまで含めると
-  // 惑星にフォーカスしただけで全太陽周回天体が出てしまう(惑星どうしの表示は planetOrbit/
-  // planetName トグルが別途受け持つ)。
+  // 惑星にフォーカスしただけで全太陽周回天体が出てしまう。
   const focusParent = celestialBodies.findMotion(focusId)?.primary ?? null;
   const siblingsMatter = focusParent !== null && focusParent.kind !== 'star';
   for (const id of celestialBodies.sameSystemIds(focusId)) {
@@ -79,22 +83,21 @@ export function alwaysFullyVisibleIds(
   return ids;
 }
 
-// 表示トグルを持たない対象(軌道上の点マーカー、弾・薬莢・破片)の判定。軌道線は元から引かない。
+// 表示トグルを持たない対象(軌道上の点マーカー、弾・薬莢・破片)の判定。
 export const MARKER_VISIBILITY: MapVisibility = {
-  category: true, icon: true, label: true, orbit: false, pickable: true,
+  icon: true, label: true, orbit: false, pickable: true,
 };
 
-// すべての項目を伏せた判定。カテゴリが閉じていれば、残りの項目は問わずこれになる。
+// マップへ何も重ねない判定。
 function noVisibility(): MapVisibility {
-  return { category: false, icon: false, label: false, orbit: false, pickable: false };
+  return { icon: false, label: false, orbit: false, pickable: false };
 }
 
 export class MapVisibilityPolicy {
   private readonly alwaysVisible: ReadonlySet<string>;
   private readonly nearby: ReadonlySet<string>;
-  // policy の入力(toggles/focus/nearby)はインスタンス生成後に変わらない。判定結果を
-  // id/kind ごとに保持し、同じフレームで body()/entity() を何度呼んでもオブジェクトと
-  // 条件分岐を作り直さない。呼び出し側がトグルを変える場合は新しい policy を作る。
+  // 入力(toggles/focus/nearby)は生成後に変わらないので、判定結果を id/kind ごとに保持する。
+  // トグルを変えるときは、新しい policy を作る。
   private readonly bodyResults = new Map<string, MapVisibility>();
   private readonly entityResults = new Map<string, MapVisibility>();
 
@@ -120,24 +123,19 @@ export class MapVisibilityPolicy {
     return result;
   }
 
-  // body() の判定そのもの。ラグランジュ点は専用の2トグルだけで決まり、天体は分類トグルが
-  // 開いていることを前提に、名前と軌道線をそれぞれの規則で決める。
+  // body() の判定そのもの。
   private computeBody(id: string): MapVisibility {
     if (isLagrangeId(id)) {
-      const category = this.toggles.lagrangeVisible;
-      const shown = category && this.toggles.lagrangeName;
-      return { category, icon: shown, label: shown, orbit: false, pickable: shown };
+      const shown = this.toggles.lagrangeName;
+      return { icon: shown, label: shown, orbit: false, pickable: shown };
     }
-    // 注視・近傍で格上げされた天体は、名前トグルが閉じていても名前とアイコンを出す。
     const cls = this.celestialBodies.bodyClassOf(id);
     if (cls === null) return noVisibility();
 
-    const category = celestialClassVisible(cls, this.toggles);
-    if (!category) return noVisibility();
-    const forced = this.alwaysVisible.has(id);
-    const shown = forced || celestialNameVisible(cls, this.toggles);
-    const orbit = this.orbitForBody(id, cls);
-    return { category, icon: shown, label: shown, orbit, pickable: shown };
+    if (!celestialClassVisible(cls, this.toggles)) return noVisibility();
+    // 注視・近傍で格上げされた天体は、名前トグルが閉じていても名前とアイコンを出す。
+    const shown = this.alwaysVisible.has(id) || celestialNameVisible(cls, this.toggles);
+    return { icon: shown, label: shown, orbit: this.orbitForBody(id, cls), pickable: shown };
   }
 
   // ゲーム内 entity の種別ごとの表示判定。isActivePlayer はいま操作している自艦にだけ立てる。
@@ -151,19 +149,16 @@ export class MapVisibilityPolicy {
     return result;
   }
 
-  // entity() の判定そのもの。種別ごとのトグル3本(カテゴリ・名前・軌道線)から決まる。
+  // entity() の判定そのもの。
   private computeEntity(kind: DynamicEntityKind, isActivePlayer: boolean): MapVisibility {
     const keys = ENTITY_KEYS[kind];
-    const categoryToggle = this.toggles[keys.category];
-    // 操作対象の自艦は、カテゴリを閉じても現在位置を失わないように残す。ただし
+    // 操作対象の自艦は、クラスを畳んでも現在位置を失わないように点だけ残す。ただし
     // 艦名/軌道線は名前トグルに従うので、例外が表示設定を無効化しない。
-    const category = categoryToggle || (kind === 'player' && isActivePlayer);
-    if (!category) return noVisibility();
-    const nameToggle = Boolean(this.toggles[keys.name]);
-    const icon = kind === 'player' && isActivePlayer ? true : nameToggle;
-    const label = nameToggle;
-    const orbit = Boolean(this.toggles[keys.orbit]) && category;
-    return { category, icon, label, orbit, pickable: icon || label };
+    const active = kind === 'player' && isActivePlayer;
+    if (!active && !mapDisplayCategoryVisible(this.toggles, keys.category)) return noVisibility();
+    const nameToggle = this.toggles[keys.name];
+    const icon = active || nameToggle;
+    return { icon, label: nameToggle, orbit: this.toggles[keys.orbit], pickable: icon || nameToggle };
   }
 
   // その天体の軌道線を引くか。惑星・準惑星・小天体は分類のトグルだけで決まり、衛星はさらに
@@ -178,8 +173,7 @@ export class MapVisibilityPolicy {
         const planetId = this.celestialBodies.motionOf(id).primary?.id ?? null;
         if (planetId === null) return false;
         return this.toggles.satelliteOrbit
-          && (id === 'moon' || focusSystemOf(this.celestialBodies, this.focusId) === planetId
-            || this.nearby.has(id));
+          && (focusSystemOf(this.celestialBodies, this.focusId) === planetId || this.nearby.has(id));
       }
       default: return false;
     }

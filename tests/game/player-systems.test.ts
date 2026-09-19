@@ -7,36 +7,37 @@ import { v3 } from '../../src/math/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
-import { partFromSaveData } from '../../src/game/dynamic/dynamic-entity/parts';
 import { createShipDefaultParts } from '../../src/game/dynamic/dynamic-entity/ship-default-parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
-import { WeaponState } from '../../src/game/player/weapon-state';
+import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
-import { Throttle, THROTTLE_LEVELS } from '../../src/game/player/throttle';
-import type { FireSaveData, ThrottleSaveData } from '../../src/game/save/save-data';
 import type { ModularShip } from '../../src/game/ship/modular-ship';
 import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
 import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
-import type { Notifier } from '../../src/hud/notifier';
+import type { SerializedDynamicEntity } from '../../src/game/dynamic/dynamic-entity/entity-dictionary';
 
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 const state = kinematicState<'eci'>(0, v3(), v3());
-const quietNotifier: Notifier = { hint() {}, toast() {} };
 
 class TestShip extends Ship {
-  public constructor(name: string) {
+  public constructor(name: string, id = 'test-ship') {
     super(
       name, 1_000, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(),
-      undefined, createShipDefaultParts(1_000),
+      id, createShipDefaultParts(1_000),
     );
   }
 
   public rename(name: string): void { this.setName(name); }
+
+  // 試験用の艦には直列化した形の種別が無いので、呼ぶと例外を投げる。
+  public override serialize(): SerializedDynamicEntity {
+    throw new Error('TestShip は直列化できない');
+  }
 }
 
 class NullView extends DynamicView {
@@ -87,8 +88,8 @@ export function register(): void {
   });
 
   test('ship marker: 同名艦でも clipPath ID が衝突せず、改名でも安定する', () => {
-    const first = new TestShip('same-name');
-    const second = new TestShip('same-name');
+    const first = new TestShip('same-name', 'entity-1');
+    const second = new TestShip('same-name', 'entity-2');
     const clipId = (svg: string): string => /<clipPath id="([^"]+)">/.exec(svg)?.[1] ?? '';
     const firstId = clipId(first.headingHpMarkerSvg());
     const secondId = clipId(second.headingHpMarkerSvg());
@@ -98,50 +99,41 @@ export function register(): void {
     assert.equal(clipId(first.headingHpMarkerSvg()), firstId);
   });
 
-  test('player save: 電力・放熱板・スロットル・パーツの不正値を安全な状態へ正規化する', () => {
-    assert.equal(new PowerSystem({ charge: Number.NaN }).chargeJ, POWER_CAPACITY * 0.75);
-    assert.equal(new PowerSystem({ charge: POWER_CAPACITY * 2 }).chargeJ, POWER_CAPACITY);
-
-    const radiator = new RadiatorSystem(new DynamicMotion(state), () => {}, {
-      up: { deployTarget: 7 as 0 | 1, deploy: Number.NaN },
-      down: { deployTarget: 0, deploy: 2 },
+  test('player save: 電力・放熱板の不正値を安全な状態へ正規化する', () => {
+    const powerOf = (charge: number): PowerSystem => PowerSystem.deserialize({
+      charge, up: { deployTarget: 1, deploy: 1 }, down: { deployTarget: 1, deploy: 1 },
     });
+    assert.equal(powerOf(POWER_CAPACITY * 2).chargeJ, POWER_CAPACITY);
+
+    // 壊れた記録は持ち主の初期値(放熱板は収納)で補い、範囲外の展開度は収める。
+    const radiator = new RadiatorSystem(
+      new DynamicMotion(state), () => {},
+      DeployablePanelState.deserialize({ deployTarget: 7 as 0 | 1, deploy: Number.NaN }) ?? undefined,
+      DeployablePanelState.deserialize({ deployTarget: 0, deploy: 2 }) ?? undefined,
+    );
     assert.equal(radiator.deployOf('up'), 0);
     assert.equal(radiator.deployOf('down'), 1);
-
-    const throttle = new Throttle(quietNotifier, {
-      throttleIdx: 99,
-      rcsDamp: 'bad' as unknown as boolean,
-      progradeHold: null as unknown as boolean,
-    } satisfies ThrottleSaveData);
-    assert.equal(throttle.throttleIdx, 1);
-    throttle.setThrottlePreset(-1);
-    assert.equal(throttle.throttleIdx, 1);
-    throttle.setThrottlePreset(THROTTLE_LEVELS.length);
-    assert.equal(throttle.throttleIdx, 1);
-
-    const part = partFromSaveData({
-      id: 'bad-part', type: 'hull', name: 'bad', weight: 100, maxHp: Number.NaN, hp: Number.POSITIVE_INFINITY,
+    // 太陽電池の初期値は展開。
+    const power = PowerSystem.deserialize({
+      charge: 0, up: { deployTarget: 7 as 0 | 1, deploy: Number.NaN }, down: { deployTarget: 1, deploy: 1 },
     });
-    assert.ok(part);
-    assert.equal(part.maxHp, 1);
-    assert.equal(part.hp, 0);
+    assert.equal(power.serialize().up.deploy, 1);
   });
 
   test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
+    const weapon = WeaponState.deserialize({
+      mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
+      barrelTemperature: Number.NaN, barrelDeviation: Number.NaN, pendingBarrelJoules: -1,
+      wasFiring: false, wasEmptyClick: false,
+    } satisfies SerializedWeaponState);
     const fire = new FireControl(
       { motion: { mass: 1_000 } } as ModularShip,
-      quietNotifier,
       {} as never,
       {} as never,
-      {} as never,
-      { saved: {
-        mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
-      } as FireSaveData },
+      weapon,
     );
     assert.equal(fire.mags, 2);
     assert.equal(fire.rounds, 32);
-    assert.equal(fire.barrel, 3);
     const before = fire.mags;
     fire.onPickup(0);
     fire.onPickup(-1);
@@ -149,22 +141,11 @@ export function register(): void {
   });
 
   test('weapon state: 弾薬遷移と砲口交互状態は副作用なしに再現できる', () => {
-    const weapon = new WeaponState(undefined, { mags: 1, rounds: 1 });
-    const first = weapon.beginShot(2);
-    assert.deepEqual(first, { consumption: 'mag-reload', muzzleIndex: 0 });
-    const second = weapon.beginShot(2);
-    assert.deepEqual(second, { consumption: 'normal', muzzleIndex: 1 });
+    const weapon = WeaponState.create({ mags: 1, rounds: 1 });
+    assert.deepEqual(weapon.nextShot(2), { consumption: 'mag-reload', muzzleIndex: 0 });
+    weapon.fire(2);
+    assert.deepEqual(weapon.nextShot(2), { consumption: 'normal', muzzleIndex: 1 });
+    weapon.fire(2);
     assert.equal(weapon.muzzleIdx, 0);
-  });
-
-  test('deployable panel: 展開目標と補間値は電力・放熱の性能から独立して進む', () => {
-    const panel = new DeployablePanelState(0, 0);
-    panel.toggle();
-    panel.update(0.5, 1);
-    assert.equal(panel.target, 1);
-    assert.equal(panel.value, 0.5);
-    panel.setTarget(false);
-    panel.update(1, 1);
-    assert.equal(panel.value, 0);
   });
 }

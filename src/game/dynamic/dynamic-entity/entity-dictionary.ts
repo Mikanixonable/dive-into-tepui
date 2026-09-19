@@ -1,61 +1,41 @@
-// セーブの種別タグから、その1体を組み立て直す手順を引く。
-// 敵の具象は enemy-dictionary.ts 越しにしか触らない(直接 import すると
-// enemy.ts → 具象 → enemy.ts の実行時循環に落ちる)。
-import * as THREE from 'three/webgpu';
-import { AmmoPickup, RcsFuelPickup } from './pickup';
-import { findEnemyClass } from './enemy-dictionary';
-import { ModularShip } from '../../ship/modular-ship';
+// 直列化された実体の種別タグから、その具象クラスの静的側を引く。基底のモジュールから具象を
+// 引くと、基底 → 具象 → 基底の実行時循環になるので、辞書は具象だけを import するここに置く。
+import type * as THREE from 'three/webgpu';
+import { ModularShip, type SerializedModularShip } from '../../ship/modular-ship';
+import { Bullet, type SerializedBullet } from './bullet';
+import { DebrisPiece, type SerializedDebrisPiece } from './debris-piece';
+import { MetalEnemy, type SerializedMetalEnemy } from './metal-enemy';
+import { ProteinEnemy, type SerializedProteinEnemy } from './protein-enemy';
+import { AmmoPickup, RcsFuelPickup, type SerializedAmmoPickup, type SerializedRcsFuelPickup } from './pickup';
 import type { DynamicEntity } from './dynamic-entity';
-import type { EntitySaveDataUnion } from '../../save/save-data';
-import type { SpawnGate } from '../entity-registry';
-import type { FlashEffects } from '../../vfx/flash-effects';
-import type { Notifier } from '../../../hud/notifier';
-import type { MarkerSlots } from '../../marker/marker-slots';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
+import type { EntityRegistry, SpawnGate } from '../entity-registry';
 
-// 1体ぶんの復元手順。実体化(build)は、要る外部資源が揃うまで遅らせてよい。
-export interface EntityRestoration {
-  // 組み立てる前に通っている必要のある関門。待つものが無ければ null。
-  readonly gate: SpawnGate | null;
-  build(): DynamicEntity;
+// 顔ぶれ1体分の直列化した形。kind で具象を判別する。
+export type SerializedDynamicEntity =
+  | SerializedModularShip
+  | SerializedMetalEnemy
+  | SerializedProteinEnemy
+  | SerializedAmmoPickup
+  | SerializedRcsFuelPickup
+  | SerializedBullet
+  | SerializedDebrisPiece;
+
+// 実体クラスの静的側。直列化した実体の復元はここから引く。新しく作る引数は具象の create が持つ。
+export interface DynamicEntityClass {
+  // 直列化した形の具象タグ。
+  readonly kind: SerializedDynamicEntity['kind'];
+  // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
+  spawnGate(serialized: SerializedDynamicEntity): SpawnGate | null;
+  // serialized を、記録した時刻の状態として復元する。id は registry の採番器から取り直す。gate が
+  // あるなら、それが通ってから呼ぶこと。
+  deserialize(serialized: SerializedDynamicEntity, registry: EntityRegistry, scene: THREE.Scene): DynamicEntity;
 }
 
-// セーブ1体分から復元手順を引く。知らない種別なら null。
-export function restorationFor(
-  data: EntitySaveDataUnion,
-  simTime: number,
-  scene: THREE.Scene,
-  notifier: Notifier,
-  worldSfx: WorldSfx,
-  markers: MarkerSlots,
-  effects: FlashEffects,
-): EntityRestoration | null {
-  switch (data.kind) {
-    case 'ship':
-      return {
-        gate: null,
-        build: () => new ModularShip(notifier, worldSfx, scene, effects, markers, { saved: data, simTime }),
-      };
-    case 'metal-enemy':
-    case 'protein-enemy': {
-      // 敵は具象クラスの示す関門を通ってから組む。
-      const enemyClass = findEnemyClass(data.kind);
-      if (enemyClass === null) return null;
-      return {
-        gate: enemyClass.spawnGate(data),
-        build: () => new enemyClass({ saved: data, simTime }, worldSfx, effects, scene),
-      };
-    }
-    case 'ammo':
-      return { gate: null, build: () => new AmmoPickup({ saved: data, simTime }, scene) };
-    case 'rcs-fuel':
-      return { gate: null, build: () => new RcsFuelPickup({ saved: data, simTime }, scene) };
-    default:
-      return skipUnknownKind(data);
-  }
-}
+const ENTITY_CLASSES: readonly DynamicEntityClass[] = [
+  ModularShip, MetalEnemy, ProteinEnemy, AmmoPickup, RcsFuelPickup, Bullet, DebrisPiece,
+];
 
-// セーブ由来の種別タグは未検証の文字列なので、知らない種別は読み飛ばす。
-function skipUnknownKind(_data: never): null {
-  return null;
+// 直列化された種別タグは未検証の文字列なので、知らない種別なら null を返す。
+export function findEntityClass(kind: string): DynamicEntityClass | null {
+  return ENTITY_CLASSES.find((c) => c.kind === kind) ?? null;
 }

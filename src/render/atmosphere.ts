@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
 import { airglowCutoffAltitude, type AirglowOptics } from './airglow';
-import type { CloudFieldBinding } from './cloud/cloud-field-sampler';
+import type { CloudRenderInput } from './cloud/cloud-render-input';
 
 // 大気の描き方の段。上げるほど、大気ぜんぶへ配れる精細さの合計が増える。
 export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
@@ -98,7 +98,7 @@ function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPer
 // 大気の中へ散乱の殻として立てる雲。field は焼いた雲場と、それを焼いた cap の置き方の組、
 // bodyFromWorld は描画座標のベクトルを天体固定の向きへ回す行列。
 export interface AtmosphereClouds {
-  readonly field: CloudFieldBinding;
+  readonly cloud: CloudRenderInput;
   readonly bodyFromWorld: THREE.Matrix4;
 }
 

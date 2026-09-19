@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import {
   ephemerisContextFor,
-  ephemerisContextStatus,
-  isEphemerisContextCompatible,
   isEphemerisContextRestorable,
 } from '../../src/physics/ephemeris/ephemeris-context';
 import { EPHEMERIS_PROFILES } from '../../src/physics/ephemeris/profile';
@@ -14,38 +12,20 @@ const EPOCH = createJulianDate('TDB', EPHEMERIS_PROFILES['far-future-20000'].val
 const CONTEXT = ephemerisContextFor(EPOCH);
 
 export function register(): void {
-  test('save ephemeris context: legacy snapshots remain compatible', () => {
-    assert.equal(ephemerisContextStatus(undefined, CONTEXT), 'legacy');
-    assert.equal(isEphemerisContextCompatible(undefined, CONTEXT), true);
+  test('save ephemeris context: いま組める暦情報はそのまま復元できる', () => {
+    assert.equal(isEphemerisContextRestorable({ ...CONTEXT }), true);
   });
 
-  test('save ephemeris context: current context is compatible', () => {
-    assert.equal(ephemerisContextStatus({ ...CONTEXT }, CONTEXT), 'compatible');
-  });
-
-  test('save ephemeris context: explicit mismatches are incompatible', () => {
-    assert.equal(
-      ephemerisContextStatus({ ...CONTEXT, profileId: 'modern-de440' }, CONTEXT),
-      'incompatible',
-    );
-    assert.equal(
-      ephemerisContextStatus({ ...CONTEXT, packId: 'different-pack' }, CONTEXT),
-      'incompatible',
-    );
-    assert.equal(
-      ephemerisContextStatus({ ...CONTEXT, packFormatVersion: 2 }, CONTEXT),
-      'incompatible',
-    );
+  test('save ephemeris context: 暦データの食い違いは復元できない', () => {
+    assert.equal(isEphemerisContextRestorable({ ...CONTEXT, profileId: 'modern-de440' }), false);
+    assert.equal(isEphemerisContextRestorable({ ...CONTEXT, packId: 'different-pack' }), false);
+    assert.equal(isEphemerisContextRestorable({ ...CONTEXT, packFormatVersion: 2 }), false);
   });
 
   // 元期はそのランを定義する値で、読み込む側が継ぐ(SAVE.md「読み込み」)。
   test('save ephemeris context: 元期の違いは読み込みを妨げない', () => {
-    assert.equal(
-      ephemerisContextStatus({ ...CONTEXT, epochJdTdb: CONTEXT.epochJdTdb + 1 }, CONTEXT),
-      'compatible',
-    );
-    // 同じプロファイル期間の別の元期で保存されたスナップショットは、そのまま読める。
     const other = ephemerisContextFor(createJulianDate('TDB', EPOCH.value + 100));
+    assert.notEqual(other.epochJdTdb, CONTEXT.epochJdTdb);
     assert.equal(isEphemerisContextRestorable({ ...other }), true);
   });
 
@@ -55,13 +35,13 @@ export function register(): void {
     assert.equal(analyticOnly.profileId, null);
     assert.equal(analyticOnly.packId, null);
     assert.equal(isEphemerisContextRestorable({ ...analyticOnly }), true);
-    // 暦データそのものが食い違えば、元期に関わらず拒否する。
-    assert.equal(isEphemerisContextRestorable({ ...CONTEXT, packId: 'different-pack' }), false);
   });
 
-  test('save ephemeris context: malformed explicit values are incompatible', () => {
-    assert.equal(ephemerisContextStatus(null, CONTEXT), 'incompatible');
-    assert.equal(ephemerisContextStatus({ ...CONTEXT, packId: '' }, CONTEXT), 'incompatible');
-    assert.equal(isEphemerisContextCompatible({ epochJdTdb: CONTEXT.epochJdTdb }, CONTEXT), false);
+  // 暦情報を欠く・壊れているスナップショットには、補える基底値が無い(SAVE.md「形式の版」)。
+  test('save ephemeris context: 欠けている・壊れている暦情報は復元できない', () => {
+    assert.equal(isEphemerisContextRestorable(undefined), false);
+    assert.equal(isEphemerisContextRestorable(null), false);
+    assert.equal(isEphemerisContextRestorable({ ...CONTEXT, packId: '' }), false);
+    assert.equal(isEphemerisContextRestorable({ epochJdTdb: CONTEXT.epochJdTdb }), false);
   });
 }

@@ -1,6 +1,6 @@
 // フレームの描画パスの構成 — 何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか — を持つ。
-// composite パスは通常表示(debugTarget==='off')では HDR ターゲットをトーンマッピングして合成し、
-// デバッグ表示を選ぶと中間ターゲットの中身を画面いっぱいに映す。
+// composite パスは通常表示では HDR ターゲットをトーンマッピングして合成し、デバッグ表示を
+// 選ぶと中間ターゲットの中身を画面いっぱいに映す。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
@@ -8,7 +8,7 @@ import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
-import type { DebugTargetHost, DebugTargetId } from './debug-target';
+import type { DebugTargetId } from './debug-target';
 import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
@@ -32,11 +32,12 @@ import { ShadowMaps } from './shadow/shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein/protein-motion-material';
 import { FilmLut } from './film-lut';
+import { VisualEffectLut } from './visual-effect-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
 import { setCelestialSurfaceViewport } from '../celestial/celestial-surface';
 
-export class RenderPipeline implements DebugTargetHost {
+export class RenderPipeline {
   private readonly gbuffer: GBufferPass;
   private readonly shadowPass: ShadowPass;
   private readonly _bodyShadow: BodyShadow;
@@ -65,6 +66,7 @@ export class RenderPipeline implements DebugTargetHost {
   // 合成段の色へ当てるフィルムのルック。通常表示の2枚(compositeMaterials.off と
   // lensCompositeMaterial)が組み込む。
   private readonly filmLut = new FilmLut();
+  private readonly visualEffectLut = new VisualEffectLut();
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
   // レンズ効果を掛けた通常表示。**compositeMaterials とは別に持つ** — デバッグ表示の選択肢
   // (DebugTargetId)ではなく、描画品質設定でオン/オフする 'off' の別版だからである。
@@ -85,9 +87,8 @@ export class RenderPipeline implements DebugTargetHost {
   private readonly drawingBufferSize = new THREE.Vector2();
   private readonly unregisterProteinMotionRenderer: () => void;
 
-  // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。セッション限定で、ページを読み直すと
-  // 'off' に戻る。
-  public debugTarget: DebugTargetId = 'off';
+  // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。
+  private debugTarget: DebugTargetId = 'off';
 
   // 以下は、毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・環境光の割合・
   // 大気を持つ天体)の書き込み先。
@@ -100,7 +101,7 @@ export class RenderPipeline implements DebugTargetHost {
   public get ambient(): AmbientSource { return this._ambient; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
 
-  // graphics は構築時点の描画品質設定。以後の変更は applyGraphics() で受ける。
+  // graphics は構築時点の描画品質設定。以後の変更は rebuildForGraphics() で受ける。
   public constructor(
     private readonly renderer: WebGPURenderer, graphics: GraphicsSettingsData, private readonly gpu: GpuTimings,
   ) {
@@ -171,7 +172,9 @@ export class RenderPipeline implements DebugTargetHost {
     // 分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを bind/sample することになる。
     this.compositeMaterials = {
       off: this.buildCompositeMaterial(
-        vec4(this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
+        vec4(this.visualEffectLut.apply(
+          this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)),
+        ), 1),
       ),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
@@ -210,7 +213,9 @@ export class RenderPipeline implements DebugTargetHost {
     };
     this.lensCompositeMaterial = this.buildCompositeMaterial(
       vec4(
-        this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        this.visualEffectLut.apply(
+          this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        ),
         1,
       ),
     );
@@ -302,8 +307,14 @@ export class RenderPipeline implements DebugTargetHost {
     }
   }
 
-  // 構築後に変わった描画品質設定を各パスへ配る。
-  public applyGraphics(graphics: GraphicsSettingsData): void {
+  // このフレームに画面いっぱいへ映す中間ターゲット。'off' なら通常表示。
+  public syncDebugTarget(target: DebugTargetId): void {
+    this.debugTarget = target;
+  }
+
+  // 描画品質設定を各パスへ配り、影マップなどの GPU 資源を組み直す。設定が前回と別の値に
+  // なったフレームだけで呼ぶ — 同じ値で呼ぶと、資源を毎フレーム捨てて作り直すことになる。
+  public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
     this.shadowMaps.setQuality(
@@ -377,6 +388,9 @@ export class RenderPipeline implements DebugTargetHost {
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
+
+    // 物理環境光の有効状態を、そのフレームの通常合成だけへ伝える。模式図と3D UIは別経路。
+    this.visualEffectLut.setEnabled(this._ambient.hasContribution());
 
     // 影マップパスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
     flushProteinMotionComputes(this.renderer);

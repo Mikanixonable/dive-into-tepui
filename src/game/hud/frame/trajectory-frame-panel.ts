@@ -5,7 +5,8 @@ import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../../../hud/widgets';
 import { frameRoleName, rotationSourceLabel } from './frame-labels';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { DisplayFrameSelection } from '../../display-frame-selection';
+import type { PredictPanelSource } from '../../viewer/predict-panel-selection';
+import type { PredictPanelCommands } from '../../viewer/predict-panel-commands';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-panel';
 import type { ListedObject } from '../../pickable/listed-object';
@@ -17,14 +18,16 @@ export class TrajectoryFramePanel {
   private readonly followToggle: ToggleSwitch;
   private readonly orbitSummary: HTMLElement;
 
-  public followCamera = true;
-
   // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
-    private readonly displayFrame: DisplayFrameSelection,
+    private readonly predictPanel: Pick<PredictPanelSource, 'frame' | 'followCamera'>,
+    private readonly commands: Pick<
+      PredictPanelCommands,
+      'setFrameCenter' | 'setFrameRotation' | 'setFollowCamera'
+    >,
     overlayManager: OverlayManager,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-trajectory-frame', '軌道フレーム');
@@ -35,19 +38,19 @@ export class TrajectoryFramePanel {
     this.planCenterZone.element.classList.add('hud-frame-origin-zone');
     this.planCenterZone.onSelect = (id) => {
       if (id === null) return;
-      this.displayFrame.frame = celestialBodies.frames.frameOf(id, this.displayFrame.frame.rotatingWith);
+      this.commands.setFrameCenter(id);
     };
     this.panel.appendChild(this.planCenterZone.element);
 
     this.planRotationZone = new RotationZone('回転フレーム', celestialBodies);
     this.planRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.planRotationZone.onSelect = (rotatingWith) => {
-      this.displayFrame.frame = celestialBodies.frames.frameOf(this.displayFrame.frame.center, rotatingWith);
+      this.commands.setFrameRotation(rotatingWith);
     };
     this.panel.appendChild(this.planRotationZone.element);
 
-    this.followToggle = new ToggleSwitch('カメラの基準に追随', (on: boolean) => { this.followCamera = on; });
-    this.followToggle.setOn(this.followCamera);
+    this.followToggle = new ToggleSwitch('カメラの基準に追随', (on: boolean) => commands.setFollowCamera(on));
+    this.followToggle.setOn(predictPanel.followCamera);
     this.panel.appendChild(this.followToggle.element);
 
     this.orbitSummary = document.createElement('div');
@@ -57,10 +60,10 @@ export class TrajectoryFramePanel {
 
   // パネル下部に表示するサマリ行の文字列を組み立てる。
   private orbitSummaryText(): string {
-    const centerId = this.displayFrame.frame.center;
+    const centerId = this.predictPanel.frame.center;
     const centerRole = frameRoleOf(centerId);
     const planCenter = centerRole !== null ? frameRoleName(centerRole) : this.celestialBodies.nameOf(centerId);
-    const planRot = this.displayFrame.frame.rotatingWith;
+    const planRot = this.predictPanel.frame.rotatingWith;
     return `基準: ${planCenter}・${rotationSourceLabel(this.celestialBodies, planRot)}`;
   }
 
@@ -71,11 +74,11 @@ export class TrajectoryFramePanel {
   ): void {
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
-    this.planCenterZone.setSelected(this.displayFrame.frame.center);
+    this.planCenterZone.setSelected(this.predictPanel.frame.center);
     this.planRotationZone.setNearby(members, displayTime, validRoles);
-    this.planRotationZone.setSelected(this.displayFrame.frame.rotatingWith);
+    this.planRotationZone.setSelected(this.predictPanel.frame.rotatingWith);
 
-    this.followToggle.setOn(this.followCamera);
+    this.followToggle.setOn(this.predictPanel.followCamera);
     this.orbitSummary.textContent = this.orbitSummaryText();
   }
 

@@ -1,5 +1,5 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決め、View へ渡す。
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -8,7 +8,7 @@ import type { DynamicLineDisplay } from '../../render/dynamic/dynamic-view';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { isModularShip } from '../ship/modular-ship';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import { currentThemePalette } from '../../theme';
+import type { ThemePalette } from '../../theme';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { DisplayWindow } from '../display-window-manager';
@@ -16,6 +16,7 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import { orbitLineBasisOf, type OrbitReference } from '../orbit-reference';
 import { COLOR_BASE } from '../marker/marker-identity';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { EntityDisplaySource } from '../viewer/entity-display-selection';
 
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
@@ -55,51 +56,22 @@ function orbitDisplay(
 }
 
 export class EntityLineManager {
-  public constructor(private readonly roster: EntityRoster) {}
+  // roster の個体の線を、entityDisplay が選んだ個体ごとの表示設定に従って宣言する。
+  public constructor(
+    private readonly roster: EntityRoster,
+    private readonly entityDisplay: EntityDisplaySource,
+  ) {}
 
-  // 次回の予測更新が必要な個体を update フェーズで確定する。
-  public updatePredictionReaders(
-    active: Controllable | null, primaryTarget: CombatTarget | null,
-    view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
-  ): void {
-    this.forEachDisplay(
-      active, primaryTarget, view, displayWindow, visibilityPolicy, undefined,
-      (entity, display) => { entity.motion.trajectoryReader = display.predicted !== null; },
-    );
-  }
-
-  // 各個体の線表示をこのフレームの確定状態から宣言し、View に一括同期させる。
+  // 各個体の線表示をこのフレームの確定状態から宣言し、View へ同期させる。
   public sync(
     active: Controllable | null, primaryTarget: CombatTarget | null,
     view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined, camera: CameraFrame,
-    frameAnchors: FrameAnchorSource, celestialBodies: CelestialBodies,
+    frameAnchors: FrameAnchorSource, celestialBodies: CelestialBodies, palette: ThemePalette,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
-    this.forEachDisplay(
-      active, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef,
-      (entity, display) => {
-        // 予測が伸びきっていないフレームでは終端時刻を渡さず、届いたところまでで描かせる。
-        const predictedTo = entity.motion.predictionTruncated ? null : simTime + duration;
-        entity.view.syncLines(
-          display, entity.motion, frame, simTime, displayTime, pastDuration, predictedTo,
-          celestialBodies, camera, frameAnchors,
-        );
-      },
-    );
-  }
-
-  // 1フレーム分の表示判断を各対象へ配る。
-  private forEachDisplay(
-    active: Controllable | null, primaryTarget: CombatTarget | null,
-    view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
-    orbitRef: OrbitReference | undefined,
-    accept: (entity: DynamicEntity, display: DynamicLineDisplay) => void,
-  ): void {
-    const { pastDuration } = displayWindow;
     // マップビューでは軌道基準を常に自動選択(最も強く引く天体)にする。
     const lineOrbitRef = view === 'map' ? undefined : orbitRef;
-    const palette = currentThemePalette();
     const primaryStyle: LineStyle = {
       color: palette.signal, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target,
     };
@@ -121,12 +93,12 @@ export class EntityLineManager {
       opacity: 0.3,
       renderOrder: LINE_RENDER_ORDER.predicted,
     });
-    // 1個体の判定材料を、View へ渡す完全な線表示宣言へ変換する。
+    // 1個体の判定材料を線表示の宣言へ畳み、その個体の View へ同期させる。
     const resolve = (
       entity: DynamicEntity, asTarget: LineStyle | null, lineVisible: boolean,
       trajectoryEligible: boolean, styles: TrajectoryStyles,
     ): void => {
-      // 生存・カテゴリ可視性・表示設定・ターゲット強調を、3本の宣言へ畳み込む。
+      // 生存・軌道線トグル・個体ごとの表示方式・ターゲット強調を、3本の宣言へ畳み込む。
       const available = entity.motion.alive && lineVisible;
       const showTrajectories = trajectoryEligible && available && asTarget === null;
       const ownEllipse = showTrajectories && view !== 'map';
@@ -134,39 +106,42 @@ export class EntityLineManager {
       const orbitStyle = asTarget !== null && available
         ? asTarget
         : (ownEllipse || fallbackEllipse ? styles.ellipse : null);
-      accept(entity, {
-        orbit: orbitDisplay(entity, orbitStyle, lineOrbitRef),
-        predicted: showTrajectories && !ownEllipse ? styles.predicted : null,
-        actual: showTrajectories && pastDuration > 0 ? styles.actual : null,
-      });
+      // 予測が伸びきっていないフレームでは終端時刻を渡さず、届いたところまでで描かせる。
+      const predictedTo = entity.motion.predictionTruncated ? null : simTime + duration;
+      entity.view.syncLines(
+        {
+          orbit: orbitDisplay(entity, orbitStyle, lineOrbitRef),
+          predicted: showTrajectories && !ownEllipse ? styles.predicted : null,
+          actual: showTrajectories && pastDuration > 0 ? styles.actual : null,
+        },
+        entity.motion, frame, simTime, displayTime, pastDuration, predictedTo,
+        celestialBodies, camera, frameAnchors,
+      );
     };
 
-    // モジュール船と敵の順に、役割・種別ごとの色と表示設定で resolve を通す。
+    // 自艦・基地・敵の順に、種別ごとの色と表示設定で resolve を通す。
     for (const ship of this.roster.all().filter(isModularShip)) {
       const isActive = ship === active;
-      const isBaseRole = ship.capabilities.role === 'base';
-      const visibility = visibilityPolicy?.entity(isBaseRole ? 'base' : 'player', isActive);
-      const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      const styles = isBaseRole
-        ? sameTrajectoryStyle(LINE_STYLE.baseLine)
-        : {
-          ellipse: playerOrbitStyleOf(isActive),
-          predicted: playerPredictedStyleOf(isActive),
-          actual: playerActualStyleOf(isActive),
-        };
+      const isBase = ship.capabilities.role === 'base';
+      const kind = isBase ? 'base' : 'player';
+      const lineVisible = visibilityPolicy?.entity(kind, isActive).orbit ?? true;
+      const baseStyle: LineStyle = { ...LINE_STYLE.baseLine };
       resolve(
         ship, targetStyleOf(ship), lineVisible,
-        isActive || (view === 'map' && ship.trajectoryLineVisible),
-        styles,
+        isActive || (view === 'map' && this.entityDisplay.showsTrajectoryLine(ship.id)),
+        {
+          ellipse: isBase ? baseStyle : playerOrbitStyleOf(isActive),
+          predicted: isBase ? baseStyle : playerPredictedStyleOf(isActive),
+          actual: isBase ? baseStyle : playerActualStyleOf(isActive),
+        },
       );
     }
     for (const enemy of this.roster.all().filter(isEnemy)) {
-      const visibility = visibilityPolicy?.entity('enemy');
-      const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
+      const lineVisible = visibilityPolicy?.entity('enemy').orbit ?? true;
       const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
       resolve(
         enemy, targetStyleOf(enemy), lineVisible,
-        view === 'map' && enemy.trajectoryLineVisible,
+        view === 'map' && this.entityDisplay.showsTrajectoryLine(enemy.id),
         sameTrajectoryStyle(enemyLineStyle),
       );
     }
