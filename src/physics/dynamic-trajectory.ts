@@ -14,7 +14,7 @@ export interface ExtrapolationCenter {
 }
 
 export class DynamicTrajectory {
-  // 直前ステップの状態。samples とは別フィールドで持つ — 間引かれた samples からは
+  // 直前ステップの状態(キャッシュ)。samples とは別フィールドで持つ — 間引かれた samples からは
   // 「直前サブステップの位置」が取れないため(ワープ中は1サンプルが数百秒に相当する)。
   private _prevState: KinematicState;
   // 先端(state)を含む、間引き済みのサンプル列。保持は時間窓(keepDuration)と間隔
@@ -23,7 +23,7 @@ export class DynamicTrajectory {
   private readonly _samples = new StateQueue();
   // samplesOldestFirst() の結果のメモ。先端を動かすたびに無効化する。
   private _samplesCache: readonly KinematicState[] | null = null;
-  // 直近の step で渡された、先端位置で最も強く引く解析天体。extrapolatedAt が二体軌道の
+  // 直近の step で渡された、先端位置で最も強く引く解析天体(キャッシュ)。extrapolatedAt が二体軌道の
   // 中心に使う。中心天体を渡されずに進んだ列と、不連続な差し替えのあとは null。
   private _extrapolationCenter: ExtrapolationCenter | null = null;
 

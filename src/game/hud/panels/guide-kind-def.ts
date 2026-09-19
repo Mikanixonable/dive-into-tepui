@@ -6,7 +6,7 @@
 // 垂直・軸方向・ハロー・短周期・長周期・DPO・LPO)は、点/南北/東西/区間の軸を持つ小題として
 // まとめた CombinedKindDef になる。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-settings';
+import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-groups';
 import {
   parseGuideKindId, type CombinedKindAxes, type ParsedGuideKindId,
 } from '../../celestial/orbit-guide/orbit-guide-kind-ids';

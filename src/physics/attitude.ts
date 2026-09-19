@@ -1,13 +1,20 @@
 // 剛体姿勢力学: クォータニオン + 機体座標系角速度をオイラーの運動方程式で積分。
 // 非対称な慣性主軸を与えると中間軸まわりの回転が不安定化し、
 // ジャニベコフ効果(デブリの周期的な反転)が自然に現れる。
-import { Vec3, add, addScaled, len, scale, v3 } from '../math/vec3';
+import { Vec3, add, addScaled, len, scale, v3, type SerializedVec3 } from '../math/vec3';
 import { Quat, qMul, qNormalize, qFromAxisAngle, qInvert, qRotate, qFromForwardUp } from '../math/quat';
 
 export interface Attitude {
   readonly q: Quat; // 機体座標系 → ワールドの回転
   readonly w: Vec3; // 機体座標系での角速度 [rad/s]
   readonly inertia: Vec3; // 主慣性モーメント(対角、相対値でよい)
+}
+
+// 直列化された姿勢・角速度へ、復元する個体の主慣性モーメントを添えて姿勢へ戻す。
+export function deserializeAttitude(
+  serialized: { readonly q: Quat; readonly w: SerializedVec3 }, inertia: Vec3,
+): Attitude {
+  return { q: { ...serialized.q }, w: v3(serialized.w.x, serialized.w.y, serialized.w.z), inertia };
 }
 
 const ATT_MAX_SUB_DT = 0.04; // 姿勢積分の最大刻み [s]

@@ -1,7 +1,7 @@
 // 戦闘ビューの「カメラ」パネル。戦闘中に必要な回転モード切替だけを表示する。
 import { CameraRotationModeControl, type CameraRotationModeCommands } from './camera-rotation-mode-control';
 import { buildPanel } from './frame-panel';
-import type { CameraRotationMode } from '../../camera/camera-orientation';
+import type { CameraRotationMode } from '../../viewer/camera-orientation';
 
 export class CombatCameraPanel {
   private readonly panel: HTMLElement;
