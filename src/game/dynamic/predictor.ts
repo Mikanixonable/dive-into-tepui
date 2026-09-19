@@ -91,15 +91,14 @@ export class Predictor {
   }
 
   // budgetSteps を上限に予測列を1歩ずつ伸ばし、消費した歩数を実体側の集計へ積んで返す。
-  // 要求終端・保持窓の左端・実シミュレーションの刻み上限は、伸ばす前に弧へ書き込む。
+  // 要求終端・保持窓の左端・実シミュレーションの刻み上限は、伸ばす前に弧へ渡す。
   private advanceBudget(
     e: PredictableMotion, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
   ): number {
     const arc = e.ensurePredictedArc(this.celestialBodies.celestialMotions);
     if (arc === null) return 0;
-    arc.requiredEnd = simTime + horizon;
-    arc.retainFrom = simTime - ARC_RETAIN_MARGIN;
-    arc.simulationMaxStep = maxStep;
+    arc.demand(simTime + horizon, simTime - ARC_RETAIN_MARGIN);
+    arc.alignSimulationStep(maxStep);
     const consumed = this.grow(arc, budgetSteps);
     this.lastSteps += consumed;
     return consumed;

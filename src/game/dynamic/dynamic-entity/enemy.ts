@@ -19,7 +19,8 @@ import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { DynamicEntityClass, SerializedDynamicEntity } from './entity-dictionary';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import type { DynamicMotion, DynamicMotionThermal } from '../dynamic-motion';
+import type { DynamicMotionThermal } from '../dynamic-motion';
+import type { EntityContactParticipant } from '../dynamic-simulation-participant';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 import { EnemyInspection } from '../../pickable/enemy-inspection';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
@@ -164,7 +165,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
         receiveBurnUp: services => (
           (owner as Enemy).receiveBurnUp(services.activeStage, services.registry)
         ),
-      }, shape, placement.thermal),
+      }, shape, placement.thermal, alive),
       view,
       idAllocators.entity.next(placement.id),
     );
@@ -194,7 +195,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       hasHealth: () => this.hp > 0,
       recordDeath: (activeStage, simTime, cause) => activeStage.recordEnemyDeath(this, simTime, cause),
     });
-    this.motion.alive = alive;
   }
 
   // 自身のクラス。直列化のタグはここから読む。
@@ -252,7 +252,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
 
   // 他の個体と触れたときの帰結を受ける。
   private receiveEntityContact(
-    other: DynamicMotion, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
+    other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     this.reactions.receiveEntityContact(other, contact, activeStage, registry);
   }

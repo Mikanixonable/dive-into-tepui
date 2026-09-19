@@ -45,9 +45,8 @@ export function register(): void {
   test('predicted-arc: consumable な弧の刻みは simulationMaxStep を超えず、接近していない円軌道ではちょうど simulationMaxStep になる', () => {
     const state0 = circularState();
     const arc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
-    arc.requiredEnd = state0.t + 86400; // 1日ぶん先まで伸びてよいことにする(十分大きい)
-    arc.retainFrom = state0.t;
-    arc.simulationMaxStep = 20;
+    arc.demand(state0.t + 86400, state0.t); // 1日ぶん先まで伸びてよいことにする(十分大きい)
+    arc.alignSimulationStep(20);
 
     let prevT = state0.t;
     for (let i = 0; i < 300; i++) {
@@ -66,9 +65,8 @@ export function register(): void {
     const r0 = R_EARTH + 40e3;
     const state0 = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
     const arc = new PredictedArc(state0, earthOnlyBodies(true), /* radius */ 0, SHIP_BCINV, 0, /* keplerTail */ true, /* consumable */ true);
-    arc.requiredEnd = state0.t + 86400;
-    arc.retainFrom = state0.t;
-    arc.simulationMaxStep = 20;
+    arc.demand(state0.t + 86400, state0.t);
+    arc.alignSimulationStep(20);
 
     const atmosphere = { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) };
     const earth: CelestialMotion = fixedMotion({
@@ -91,14 +89,12 @@ export function register(): void {
     const retainFrom = state0.t;
 
     const shortArc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
-    shortArc.requiredEnd = state0.t + 86400; // 1日
-    shortArc.retainFrom = retainFrom;
-    shortArc.simulationMaxStep = 20;
+    shortArc.demand(state0.t + 86400, retainFrom); // 1日
+    shortArc.alignSimulationStep(20);
 
     const longArc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
-    longArc.requiredEnd = state0.t + 86400 * 28; // 28日
-    longArc.retainFrom = retainFrom;
-    longArc.simulationMaxStep = 20;
+    longArc.demand(state0.t + 86400 * 28, retainFrom); // 28日
+    longArc.alignSimulationStep(20);
 
     // ARC_FINE_STEPS(512) を跨いで、毎歩保持 → 周期基準の間引きへ移る歩数まで進める。
     const steps = 800;
@@ -119,9 +115,8 @@ export function register(): void {
     const r0 = R_EARTH + 150e3;
     const state0 = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
     const arc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
-    arc.requiredEnd = state0.t + 86400;
-    arc.retainFrom = state0.t;
-    arc.simulationMaxStep = 20;
+    arc.demand(state0.t + 86400, state0.t);
+    arc.alignSimulationStep(20);
 
     let prevT = state0.t;
     for (let i = 0; i < 20; i++) {
@@ -139,9 +134,8 @@ export function register(): void {
     const state0 = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, 1500, 0)); // 円速度を大きく割る = 落ちる
     const arc = new PredictedArc(
       state0, earthOnlyBodies(true), /* radius */ 0, 3.3e-3, 0, /* keplerTail */ true, /* consumable */ true);
-    arc.requiredEnd = state0.t + 86400;
-    arc.retainFrom = state0.t;
-    arc.simulationMaxStep = 20;
+    arc.demand(state0.t + 86400, state0.t);
+    arc.alignSimulationStep(20);
 
     // 80km(旧・弧の打ち切り高度)を割っても伸び続けることを確かめるため、そこを跨いで進める。
     let crossedOldReentryAlt = false;
@@ -161,8 +155,7 @@ export function register(): void {
     const state0 = circularState();
     const end = state0.t + 3600;
     const arc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ false, /* consumable */ false);
-    arc.requiredEnd = end;
-    arc.retainFrom = state0.t;
+    arc.demand(end, state0.t);
     tipTimes(arc, 5);
 
     const edited = kinematicState<'eci'>(state0.t, state0.r, v3(state0.v.x, state0.v.y + 10, state0.v.z));
