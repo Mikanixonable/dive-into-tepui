@@ -38,20 +38,21 @@ export class DetachedBooster extends DynamicEntity {
   public declare readonly motion: DetachedBoosterMotion;
 
   // 切り離した段 stage を、state・attitude で飛ばす。collisionEnableAt は親艦との接触を許す時刻。
-  // id は段の id を引き継ぐ。thermal は熱の状態で、省くと環境温度から始める。
+  // id は採番器が段の id から配った識別子。thermal は熱の状態で、省くと環境温度から始める。alive は生死。
   private constructor(
     stage: BoosterStage,
     state: KinematicState,
     attitude: Attitude,
     collisionEnableAt: number,
     scene: THREE.Scene,
-    idAllocators: EntityIdAllocators,
+    id: string,
     thermal?: DynamicMotionThermal,
+    alive?: boolean,
   ) {
     super(
-      () => new DetachedBoosterMotion(state, attitude, stage, collisionEnableAt, thermal),
+      () => new DetachedBoosterMotion(state, attitude, stage, collisionEnableAt, thermal, alive),
       new DetachedBoosterView(scene),
-      idAllocators.booster.next(stage.id),
+      id,
     );
     this.setName('分離ブースター');
   }
@@ -71,7 +72,9 @@ export class DetachedBooster extends DynamicEntity {
     idAllocators: EntityIdAllocators,
   ): DetachedBooster {
     const attitude = { q, w, inertia: DetachedBooster.INERTIA };
-    return new DetachedBooster({ ...stage }, state, attitude, collisionEnableAt, scene, idAllocators);
+    return new DetachedBooster(
+      { ...stage }, state, attitude, collisionEnableAt, scene, idAllocators.booster.next(stage.id),
+    );
   }
 
   // 直列化した分離ブースターを復元する。
@@ -85,8 +88,9 @@ export class DetachedBooster extends DynamicEntity {
       // 記録に無い接触の猶予は、記録した状態の時刻で切れているとみなす。
       serialized.collisionEnableAt ?? serialized.t,
       scene,
-      registry.idAllocators,
+      registry.idAllocators.booster.next(serialized.id),
       serialized.thermal,
+      serialized.alive,
     );
   }
 

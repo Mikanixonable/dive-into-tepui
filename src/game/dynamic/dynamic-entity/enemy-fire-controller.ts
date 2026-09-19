@@ -128,7 +128,7 @@ export class EnemyFireController {
     const spreadAng = (Math.random() * PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
     const bV = add(v, scale(actualAim, PLASMA_BULLET_SPEED));
-    const bullet = new Bullet(
+    const bullet = Bullet.create(
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma',
       this.port.plasmaDamage(), registry.idAllocators,
     );
