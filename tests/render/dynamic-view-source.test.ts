@@ -198,7 +198,8 @@ export function register(): void {
     effects.syncFromAnchor(
       anchor, v3(0, 0, 10), 20, true, new THREE.Quaternion(), false, 'realistic', DISPLAY_TIME,
     );
-    const core = scene.children[0]!;
+    const core = scene.children[0];
+    assert.ok(core !== undefined);
     assert.deepEqual(core.position.toArray(), [4, 5, 2.6]);
     effects.dispose(scene);
   });
@@ -243,8 +244,10 @@ export function register(): void {
       root, [anchor], v3(0, 0, -1), true, new THREE.Quaternion(), false, DISPLAY_TIME,
     );
 
-    assert.equal(scene.children[0]!.visible, true);
-    assert.deepEqual(scene.children[0]!.position.toArray(), [12, 20.55, 30]);
+    const child = scene.children[0];
+    assert.ok(child !== undefined);
+    assert.equal(child.visible, true);
+    assert.deepEqual(child.position.toArray(), [12, 20.55, 30]);
     effects.dispose(scene);
   });
 }

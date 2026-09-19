@@ -1,3 +1,4 @@
+// 船体モジュールの木構造、接続変換、可変状態と分割・統合操作を所有する。
 import { mulberry32 } from '../../math/random';
 import {
   LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate, type Quat,
@@ -103,7 +104,7 @@ function isDockModule(
   return module?.kind === 'dock' || module?.kind === 'docking_port';
 }
 
-// 接続グラフと module state を一体で所有する純粋な船体ドメイン。THREE や DynamicMotion は知らない。
+// 接続グラフと module state を一体で所有し、構造操作を原子的に行う。
 export class ShipAssembly {
   private readonly nodes = new Map<string, AssemblyNode>();
   private readonly connections: ShipConnection[] = [];
@@ -118,12 +119,10 @@ export class ShipAssembly {
 
   public get moduleIds(): readonly string[] { return [...this.nodes.keys()]; }
 
-  // 外部へ内部の可変 state を露出しない。編集は damage/remove/instanceState API を通す。
+  // 各 module の可変 state を独立した複製として返す。
   public get modules(): readonly ShipModuleInstance[] {
     return [...this.nodes.values()].map(node => cloneShipModuleInstance(node.instance));
   }
-
-  public get instances(): readonly ShipModuleInstance[] { return this.modules; }
 
   public get graph(): readonly ShipConnection[] { return this.connections.map(connectionCopy); }
 
@@ -131,8 +130,6 @@ export class ShipAssembly {
     const node = this.nodes.get(id);
     return node === undefined ? null : cloneShipModuleInstance(node.instance);
   }
-
-  public instance(id: string): ShipModuleInstance | null { return this.module(id); }
 
   public definition(id: string): ShipModuleDefinition | null {
     const node = this.nodes.get(id);
@@ -199,7 +196,7 @@ export class ShipAssembly {
     }, 'axial');
   }
 
-  // 側面 dock は transform を呼び出し側が明示する。自動で軸回転・位置補正はしない。
+  // 明示 transform で module を側面接続する。
   public connectSide(
     instance: ShipModuleInstance, parentId: string, transform: ModuleTransform, connectionId?: string,
   ): void {
@@ -334,8 +331,6 @@ export class ShipAssembly {
     const id = this.tailId();
     return id === null ? null : this.removeModule(id);
   }
-
-  public tailRemoval(): ShipModuleInstance | null { return this.removeTail(); }
 
   private tailId(): string | null {
     for (const id of [...this.nodes.keys()].reverse()) {
@@ -537,15 +532,14 @@ export class ShipAssembly {
     if (!result.valid) throw new Error(`invalid ship assembly: ${result.errors.join('; ')}`);
   }
 
-  // 健全 module から seed 固定で一様に選ぶ。展開中の健全 radiator を target にした場合だけ、
-  // 既存例外として軽減された damage をその radiator へ固定する。接続 graph は変更しない。
+  // 健全 module から seed 固定で標的を選ぶ。展開中 radiator への直撃は damage を 0.25 倍する。
   public damage(amount: number, seed: number, targetModuleId?: string): string | null {
     if (!Number.isFinite(amount) || amount <= 0) return null;
     const target = targetModuleId === undefined ? null : this.nodes.get(targetModuleId);
     let targetNode = target;
     let effectiveAmount = amount;
     if (targetNode?.instance.kind === 'radiator' && targetNode.instance.hp > 0 && targetNode.instance.deployed > 0) {
-      effectiveAmount *= 0.25; // player.ts の既存 RADIATOR_BULLET_DAMAGE と同じ軽減。展開状態は変えない。
+      effectiveAmount *= 0.25;
     } else {
       const healthy = [...this.nodes.values()].filter(node => node.instance.hp > 0);
       if (healthy.length === 0) return null;
@@ -559,10 +553,6 @@ export class ShipAssembly {
     }
     targetNode.instance.hp = Math.max(0, targetNode.instance.hp - effectiveAmount * (1 - reduction));
     return targetNode.instance.id;
-  }
-
-  public applyDamage(amount: number, seed: number, targetModuleId?: string): string | null {
-    return this.damage(amount, seed, targetModuleId);
   }
 
   public clone(): ShipAssembly {
@@ -583,10 +573,7 @@ export class ShipAssembly {
     return [left, right];
   }
 
-  public split(connectionId: string): readonly [ShipAssembly, ShipAssembly] { return this.splitAt(connectionId); }
-
-  // Motion/View が保持する assembly オブジェクトの同一性を保ったまま、分割後の構成へ置換する。
-  // source の instance は排他的に移管し、呼び出し後の source は消費済みになる。
+  // この assembly の同一性を保って source の構成を移管する。source は消費済みになる。
   public replaceWith(source: ShipAssembly): void {
     if (source === this) return;
     if (source.catalog !== this.catalog) throw new Error('cannot replace assembly from a different catalog');
@@ -652,7 +639,7 @@ export class ShipAssembly {
     return assembly;
   }
 
-  // 子 module の transform を親の local frame から world-like assembly frame へ展開する補助。
+  // 子 module の transform を親 local frame から assembly frame へ展開する。
   public worldTransformOf(id: string): ModuleTransform | null {
     const node = this.nodes.get(id);
     if (node === undefined) return null;

@@ -1,3 +1,4 @@
+// 1モジュールの model、assembly transform、semantic anchor と表示状態を所有する。
 import * as THREE from 'three/webgpu';
 import type { Quat } from '../../../math/quat';
 import { qNormalize } from '../../../math/quat';
@@ -8,11 +9,10 @@ import type { ShipModuleInstance } from '../../../game/ship/ship-module-instance
 import { disposeOwnedRenderResources } from '../../dispose-owned-render-resources';
 import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
 
-// Asset のロード方式は render 層の外側で決める。factory は呼び出しごとに、この view が所有できる
-// model の新しい root を返す。共有 geometry/material を使う場合は baked-model の共有 clone を返す。
+// 呼び出しごとに、この view が所有できる model root を返す factory。
 export type ShipModuleModelFactory = (modelId: string) => THREE.Object3D;
 
-// 損傷・展開値は view の内部で解釈せず、親が狭い状態面だけを読むための値として公開する。
+// module 表示 hook が読む損傷率と展開率。
 export interface ShipModuleVisualState {
   readonly id: string;
   readonly kind: ShipModuleInstance['kind'];
@@ -35,7 +35,7 @@ function semanticName(object: THREE.Object3D): string | null {
   return null;
 }
 
-// 1 module の model、transform、semantic anchor、状態を所有する。assembly graph の判断は行わない。
+// 1 module の model、transform、semantic anchor、状態を所有する。
 export class ShipModuleView {
   public readonly object = new THREE.Group();
   private model: THREE.Object3D;
@@ -89,8 +89,7 @@ export class ShipModuleView {
     this.syncVisualState();
   }
 
-  // semanticAnchor の値は module-local の Object3D。親が world 座標を必要とする場合は
-  // getWorldPosition/getWorldQuaternion を使い、描画ツリーの所有権を view 外へ移さない。
+  // 名前付きの module-local anchor を返す。欠けていれば null。
   public semanticAnchor(name: string): THREE.Object3D | null {
     return this.anchors.get(name) ?? null;
   }
@@ -101,10 +100,7 @@ export class ShipModuleView {
       .map(([, anchor]) => anchor);
   }
 
-  public anchor(name: string): THREE.Object3D | null { return this.semanticAnchor(name); }
-
-  // 損傷・展開を既存資源へ反映する hook 用の狭い state 面。material を共有している可能性が
-  // あるため、ここでは共有 material の色や透明度を直接書き換えない。
+  // 現在の instance を表示 hook 用の正規化状態へ畳む。
   public get visualState(): ShipModuleVisualState {
     const maxHp = this.definitionValue.maxHp;
     const deployed = this.instanceValue.kind === 'radiator' || this.instanceValue.kind === 'solar_panel'
@@ -150,8 +146,7 @@ export class ShipModuleView {
     this.model.userData.shipModuleVisualState = state;
   }
 
-  // model の差し替えは同一 instance id を別 definition へ再利用する場合のために明示的に公開する。
-  // 古い model は先に tree から外してから所有資源を解放し、anchor の残骸を残さない。
+  // 同じ instance id の model 定義を置換し、所有資源と anchor index を更新する。
   public replaceDefinition(
     instance: ShipModuleInstance,
     definition: ShipModuleDefinition,

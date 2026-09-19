@@ -45,6 +45,12 @@ const EPSILON = 1e-10;
 const MAX_GJK_ITERATIONS = 48;
 const MAX_EPA_ITERATIONS = 64;
 
+function elementAt<T>(values: readonly T[], index: number): T {
+  const value = values[index];
+  if (value === undefined) throw new RangeError(`Missing geometry element at ${index}`);
+  return value;
+}
+
 function finiteVec(value: Vec3): boolean {
   return Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
 }
@@ -168,10 +174,10 @@ function tripleCross(a: Vec3, b: Vec3, c: Vec3): Vec3 {
 
 // simplex は最後に追加した点を先頭に置く。true は原点が simplex 内にあることを表す。
 function updateSimplex(simplex: SupportPoint[], direction: { value: Vec3 }): boolean {
-  const a = simplex[0]!.p;
+  const a = elementAt(simplex, 0).p;
   const ao = scale(a, -1);
   if (simplex.length === 2) {
-    const b = simplex[1]!.p;
+    const b = elementAt(simplex, 1).p;
     const ab = sub(b, a);
     if (dot(ab, ao) > 0) {
       const next = tripleCross(ab, ao, ab);
@@ -184,8 +190,8 @@ function updateSimplex(simplex: SupportPoint[], direction: { value: Vec3 }): boo
   }
 
   if (simplex.length === 3) {
-    const b = simplex[1]!.p;
-    const c = simplex[2]!.p;
+    const b = elementAt(simplex, 1).p;
+    const c = elementAt(simplex, 2).p;
     const ab = sub(b, a);
     const ac = sub(c, a);
     const abc = cross(ab, ac);
@@ -203,16 +209,16 @@ function updateSimplex(simplex: SupportPoint[], direction: { value: Vec3 }): boo
     }
     direction.value = dot(abc, ao) > 0 ? abc : scale(abc, -1);
     if (dot(abc, ao) < 0) {
-      const swap = simplex[1]!;
-      simplex[1] = simplex[2]!;
+      const swap = elementAt(simplex, 1);
+      simplex[1] = elementAt(simplex, 2);
       simplex[2] = swap;
     }
     return false;
   }
 
-  const b = simplex[1]!.p;
-  const c = simplex[2]!.p;
-  const d = simplex[3]!.p;
+  const b = elementAt(simplex, 1).p;
+  const c = elementAt(simplex, 2).p;
+  const d = elementAt(simplex, 3).p;
   const ab = sub(b, a);
   const ac = sub(c, a);
   const ad = sub(d, a);
@@ -244,7 +250,7 @@ function gjk(a: PreparedCylinder, b: PreparedCylinder): SupportPoint[] | null {
   let direction = sub(b.center, a.center);
   if (lenSq(direction) <= EPSILON) direction = fallbackPerpendicular(a.axis);
   const simplex: SupportPoint[] = [minkowskiSupport(a, b, direction)];
-  direction = scale(simplex[0]!.p, -1);
+  direction = scale(elementAt(simplex, 0).p, -1);
   if (lenSq(direction) <= EPSILON) return simplex;
   for (let i = 0; i < MAX_GJK_ITERATIONS; i++) {
     const point = minkowskiSupport(a, b, direction);
@@ -259,11 +265,12 @@ function gjk(a: PreparedCylinder, b: PreparedCylinder): SupportPoint[] | null {
 }
 
 function makeFace(vertices: SupportPoint[], ia: number, ib: number, ic: number): EpaFace | null {
-  const edgeA = sub(vertices[ib]!.p, vertices[ia]!.p);
-  const edgeB = sub(vertices[ic]!.p, vertices[ia]!.p);
+  const vertexA = elementAt(vertices, ia);
+  const edgeA = sub(elementAt(vertices, ib).p, vertexA.p);
+  const edgeB = sub(elementAt(vertices, ic).p, vertexA.p);
   let normal = norm(cross(edgeA, edgeB));
   if (lenSq(normal) <= EPSILON) return null;
-  let distance = dot(normal, vertices[ia]!.p);
+  let distance = dot(normal, vertexA.p);
   if (distance < 0) {
     normal = scale(normal, -1);
     distance = -distance;
@@ -275,12 +282,13 @@ function makeFace(vertices: SupportPoint[], ia: number, ib: number, ic: number):
 function makeOutwardFace(
   vertices: SupportPoint[], ia: number, ib: number, ic: number, opposite: number,
 ): EpaFace | null {
-  const edgeA = sub(vertices[ib]!.p, vertices[ia]!.p);
-  const edgeB = sub(vertices[ic]!.p, vertices[ia]!.p);
+  const vertexA = elementAt(vertices, ia);
+  const edgeA = sub(elementAt(vertices, ib).p, vertexA.p);
+  const edgeB = sub(elementAt(vertices, ic).p, vertexA.p);
   let normal = norm(cross(edgeA, edgeB));
   if (lenSq(normal) <= EPSILON) return null;
-  if (dot(normal, sub(vertices[opposite]!.p, vertices[ia]!.p)) > 0) normal = scale(normal, -1);
-  const distance = dot(normal, vertices[ia]!.p);
+  if (dot(normal, sub(elementAt(vertices, opposite).p, vertexA.p)) > 0) normal = scale(normal, -1);
+  const distance = dot(normal, vertexA.p);
   return distance > EPSILON ? { a: ia, b: ib, c: ic, normal, distance } : null;
 }
 
@@ -302,9 +310,9 @@ function barycentric(point: Vec3, a: Vec3, b: Vec3, c: Vec3): [number, number, n
 
 function contactFromFace(vertices: SupportPoint[], face: EpaFace): CappedCylinderHit | null {
   const projected = scale(face.normal, face.distance);
-  const va = vertices[face.a]!;
-  const vb = vertices[face.b]!;
-  const vc = vertices[face.c]!;
+  const va = elementAt(vertices, face.a);
+  const vb = elementAt(vertices, face.b);
+  const vc = elementAt(vertices, face.c);
   const weights = barycentric(projected, va.p, vb.p, vc.p);
   const pointA = add(add(scale(va.a, weights[0]), scale(vb.a, weights[1])), scale(vc.a, weights[2]));
   const pointB = add(add(scale(va.b, weights[0]), scale(vb.b, weights[1])), scale(vc.b, weights[2]));
@@ -340,8 +348,9 @@ function epa(a: PreparedCylinder, b: PreparedCylinder, initial: SupportPoint[]):
             makeOutwardFace(vertices, ia, ib, ic, id), makeOutwardFace(vertices, ia, id, ib, ic),
             makeOutwardFace(vertices, ia, ic, id, ib), makeOutwardFace(vertices, ib, id, ic, ia),
           ];
-          if (candidateFaces.some((face) => face === null)) continue;
-          const clearance = Math.min(...candidateFaces.map((face) => face!.distance));
+          const validFaces = candidateFaces.filter((face): face is EpaFace => face !== null);
+          if (validFaces.length !== candidateFaces.length) continue;
+          const clearance = Math.min(...validFaces.map((face) => face.distance));
           if (clearance > seedClearance) {
             seedClearance = clearance;
             seed = [ia, ib, ic, id];
@@ -375,7 +384,9 @@ function epa(a: PreparedCylinder, b: PreparedCylinder, initial: SupportPoint[]):
 
     const newIndex = vertices.length;
     vertices.push(supportPoint);
-    const visible = faces.filter((face) => dot(face.normal, sub(supportPoint.p, vertices[face.a]!.p)) > EPSILON);
+    const visible = faces.filter((face) => (
+      dot(face.normal, sub(supportPoint.p, elementAt(vertices, face.a).p)) > EPSILON
+    ));
     if (visible.length === 0) return contactFromFace(vertices, closest);
     const boundary: Array<[number, number]> = [];
     const addEdge = (from: number, to: number): void => {
@@ -494,6 +505,3 @@ export function cappedCylinderRaycast(
   candidates.sort((left, right) => left.distance - right.distance);
   return candidates[0] ?? null;
 }
-
-// 呼び出し側が選ぶ名前を限定しないための短い別名。
-export const rayCappedCylinder = cappedCylinderRaycast;

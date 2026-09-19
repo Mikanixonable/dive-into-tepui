@@ -1,6 +1,6 @@
-// shipModules.json を一度だけパースし、module 境界ごとの独立した表示インスタンスを作る。
-// geometry は焼き込み template と共有し、状態で変わりうる material だけを個体所有にする。
-import * as THREE from 'three/webgpu';
+// shipModules.json の template から module 境界ごとの表示インスタンスを作る。
+// geometry は template と共有し、可変 material は個体ごとに所有する。
+import type * as THREE from 'three/webgpu';
 import shipModulesData from '../../../assets/models/shipModules.json';
 import { memoTemplate } from '../baked-model';
 import { makeThermallyEmissive } from '../../thermal-emissive';
@@ -16,7 +16,7 @@ function templateFor(modelId: string): THREE.Object3D {
   return template;
 }
 
-// 呼び出し側が disposeOwnedRenderResources で安全に破棄できる module model を返す。
+// 所有 material と共有 geometry を印付けした module model を返す。
 export function buildShipModuleModel(modelId: string): THREE.Object3D {
   const model = templateFor(modelId).clone(true);
   model.traverse((child) => {
@@ -32,4 +32,3 @@ export function buildShipModuleModel(modelId: string): THREE.Object3D {
   markShadowCaster(model);
   return model;
 }
-

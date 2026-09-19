@@ -18,7 +18,6 @@ import coastlineData from '../../src/assets/earth-coastline.json';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
 import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
-import { buildLegacyPlayerShip } from './legacy-player-model';
 import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
 import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
@@ -48,7 +47,7 @@ import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 import type { WebGPURenderer } from 'three/webgpu';
-import { SHIP_CASES } from './ship-cases';
+import { buildDefaultShipObject, SHIP_CASES } from './ship-cases';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -194,7 +193,7 @@ function circle(
 
 // 自機メッシュ 1 隻を、描画座標の position へ置く。rotation を渡すと機体の姿勢を回す。
 function shipAt(position: THREE.Vector3, rotation?: THREE.Euler): THREE.Object3D {
-  const group = buildLegacyPlayerShip();
+  const group = buildDefaultShipObject();
   group.position.copy(position);
   if (rotation !== undefined) group.rotation.copy(rotation);
   return group;
