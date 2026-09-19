@@ -35,7 +35,8 @@ export class SurfaceContactPhysics {
   private readonly bodyScratch: CelestialBody[] = [];
   private readonly candidates = new SurfaceCandidates();
   private readonly nearbyScratch: CelestialBody[] = [];
-  // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、そのサブステップの解決すべてで使う。
+  // 天体の位置を厳密に引く時刻(キャッシュ)。beginSubstep が受け取り、そのサブステップの解決すべてで
+  // 使う。
   private pivot = 0;
   // 絞り込みを通した延べ候補天体数。解決のたびに積み増し、resetCounts で 0 へ戻す計数(キャッシュ)。
   private _candidateBodies = 0;

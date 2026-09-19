@@ -197,7 +197,7 @@ export class GamePresentation {
     this.mapView = new MapView(
       this.input, this.cameraSystem, viewer.camera, this.objectWindows,
       dynamicSystem, this.equatorNodes, celestialSystem,
-      this.celestialMarkers, markers, this.targeter.combatMarkers,
+      this.celestialMarkers, markers, this.targeter,
       this.displayWindowManager, this.frameControls,
       this.frameAnchors, controlSelection, controlSelectionCommands(commands, controlSelection),
       game.simSpeedManager, simSpeedCommands(commands, game.simSpeedManager),

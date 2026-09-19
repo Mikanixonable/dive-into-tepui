@@ -258,7 +258,7 @@ export class PlanPath {
   }
 
   // 表示中の区間が覆う simTime の範囲。どの区間にもサンプルが無ければ null。
-  public timeRange(): { readonly min: number; readonly max: number } | null {
+  public timeRange(): TimeRange | null {
     let minT = Infinity;
     let maxT = -Infinity;
     for (let i = 0; i < this.activeCount; i++) {
