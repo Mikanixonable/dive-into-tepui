@@ -41,6 +41,8 @@ export function register(): void {
     assert.equal(capability.consumeFuel('main', 12), 12);
     assert.equal(capability.fuel('main'), 148);
     assert.equal(capability.toggleDeployable('radiator', 0), true);
-    assert.equal(capability.modules('radiator')[0]!.deployed, 1);
+    const radiator = capability.modules('radiator')[0];
+    assert.ok(radiator !== undefined);
+    assert.equal(radiator.deployed, 1);
   });
 }

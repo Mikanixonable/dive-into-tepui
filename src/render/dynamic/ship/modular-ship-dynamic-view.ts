@@ -1,3 +1,4 @@
+// モジュール船の本体、推進・RCS・再突入・給弾・姿勢マーカーを1体分の表示へ同期する。
 import * as THREE from 'three/webgpu';
 import type { Vec3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
@@ -42,7 +43,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   private readonly markers: PlayerMarkers;
 
   public constructor(
-    scene: THREE.Scene,
+    private readonly effectScene: THREE.Scene,
     ownerId: string,
     markerSlots: MarkerSlots,
     beltLinkCount: number,
@@ -51,11 +52,11 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     const root = new THREE.Group();
     root.name = 'modular-ship-dynamic';
     root.add(modules.object);
-    super(root, scene);
+    super(root, effectScene);
     this.modules = modules;
-    this.thrustEffects = new ThrustEffects(scene, ownerId);
-    this.rcsEffects = new RcsEffects(scene, ownerId);
-    this.reentryEffects = new ReentryEffects(scene);
+    this.thrustEffects = new ThrustEffects(effectScene, ownerId);
+    this.rcsEffects = new RcsEffects(effectScene, ownerId);
+    this.reentryEffects = new ReentryEffects(effectScene);
     this.belt = new BeltView(this.object, beltLinkCount);
     this.markers = new PlayerMarkers(markerSlots, ownerId);
   }
@@ -137,9 +138,9 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
 
   public override dispose(): void {
     this.markers.dispose();
-    this.thrustEffects.dispose(this.scene!);
-    this.rcsEffects.dispose(this.scene!);
-    this.reentryEffects.dispose(this.scene!);
+    this.thrustEffects.dispose(this.effectScene);
+    this.rcsEffects.dispose(this.effectScene);
+    this.reentryEffects.dispose(this.effectScene);
     this.modules.dispose();
     super.dispose();
   }
