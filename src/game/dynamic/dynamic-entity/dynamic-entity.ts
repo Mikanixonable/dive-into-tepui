@@ -14,7 +14,7 @@ import type {
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 
-// 実体の直列化に共通する項目。t・r・v は運動状態、q・w は姿勢と角速度。
+// 実体の直列化に共通する項目。t・r・v は運動状態、q・w は姿勢と角速度、alive は生死。
 export interface SerializedDynamicEntityFields extends SerializedKinematicState {
   readonly id: string;
   // 具象クラスのタグ。
@@ -22,6 +22,7 @@ export interface SerializedDynamicEntityFields extends SerializedKinematicState 
     | 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base' | 'bullet' | 'debris';
   readonly q: Quat;
   readonly w: SerializedVec3;
+  readonly alive?: boolean;
 }
 
 // 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断を持つ。
@@ -72,13 +73,14 @@ export abstract class DynamicEntity {
   protected serializeEntityFields<K extends SerializedDynamicEntityFields['kind']>(
     kind: K,
   ): SerializedDynamicEntityFields & { readonly kind: K } {
-    const { state, att } = this.motion;
+    const { state, att, alive } = this.motion;
     return {
       id: this.id,
       kind,
       ...serializeKinematicState(state),
       q: { ...att.q },
       w: { ...att.w },
+      alive,
     };
   }
 

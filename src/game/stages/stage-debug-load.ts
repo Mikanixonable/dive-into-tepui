@@ -38,7 +38,7 @@ export class StageDebugLoad extends Stage {
       );
       const size = DESTROY_FRAG_SIZE_MIN + rand() * (DESTROY_FRAG_SIZE_MAX - DESTROY_FRAG_SIZE_MIN);
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
-      stage._dynamicSystem.add(new DebrisPiece(
+      stage._dynamicSystem.add(DebrisPiece.create(
         state, { kind: 'fragment', accent: 0x888888, size }, att,
         stage._dynamicSystem.idAllocators, undefined, stage._scene,
       ));

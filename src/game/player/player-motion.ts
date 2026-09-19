@@ -192,8 +192,8 @@ export class PlayerMotion extends DynamicMotion {
   public readonly attachedBoosters: AttachedBoosterMotion;
 
   // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。thermal は熱の
-  // 状態、radiatorUp・radiatorDown は放熱板の展開状態、boosters は接続中の段、belt は給弾ベルト。
-  // 省いた付随物理系は新しく作ったときの状態で始める。
+  // 状態、alive は生死、radiatorUp・radiatorDown は放熱板の展開状態、boosters は接続中の段、belt は
+  // 給弾ベルト。省いたものは新しく作ったときの状態で始める。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
@@ -201,6 +201,7 @@ export class PlayerMotion extends DynamicMotion {
     beltLinkCount: number,
     reactions: PlayerMotionReactions,
     thermal = HULL_START_THERMAL,
+    alive?: boolean,
     radiatorUp?: DeployablePanelState,
     radiatorDown?: DeployablePanelState,
     public readonly power = new PowerSystem(),
@@ -208,6 +209,7 @@ export class PlayerMotion extends DynamicMotion {
     public readonly belt = BeltController.create(beltLinkCount),
   ) {
     super(state, shipMotionProperties(attitude, radius, {
+      alive,
       mass: PLAYER_MASS,
       collides: true,
       engagementAnchor: true,
