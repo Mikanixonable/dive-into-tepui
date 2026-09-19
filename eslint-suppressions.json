@@ -2393,11 +2393,6 @@
       "count": 1
     }
   },
-  "tests/game/attractors.test.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    }
-  },
   "tests/game/base-collision.test.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
