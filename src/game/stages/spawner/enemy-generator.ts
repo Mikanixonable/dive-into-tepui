@@ -30,7 +30,10 @@ export function generateDriftingEnemy(
   scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string,
 ): Enemy {
   return MetalEnemy.create(
-    { name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId, typeIndex: null },
+    {
+      name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId,
+      waveId: null, formationId: null, formationRole: null, typeIndex: null,
+    },
     idAllocators, scene,
   );
 }
@@ -135,7 +138,7 @@ export function generateMolniyaEnemy(
 // 金属の敵を state に生成する。
 export function generateApproachingEnemy(
   name: string, state: KinematicState, attractors: readonly CelestialBody[], accent: number, orbitLineColor: number,
-  typeIndex: number, waveId: number | undefined,
+  typeIndex: number, waveId: number | null,
   scene: THREE.Scene, idAllocators: EntityIdAllocators,
   attackGroupId?: string,
 ): Enemy {
@@ -152,6 +155,8 @@ export function generateApproachingEnemy(
       orbitLineColor,
       attackGroupId,
       waveId,
+      formationId: null,
+      formationRole: null,
       typeIndex,
     },
     idAllocators,

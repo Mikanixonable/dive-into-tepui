@@ -231,7 +231,8 @@ export class Logistics {
       ) continue;
       // 取り込んで消し、取り込んだことを記録する
       pickup.motion.kill();
-      const added = player.refuelFuel(RCS_FUEL_PICKUP_AMOUNT);
+      const added = Math.min(RCS_FUEL_PICKUP_AMOUNT, Math.max(0, player.totalMaxFuel - player.totalFuel));
+      player.refuelFuel(RCS_FUEL_PICKUP_AMOUNT);
       this.dynamicSystem.events.record({ kind: 'rcsFuelPickedUp', fuel: added });
     }
   }

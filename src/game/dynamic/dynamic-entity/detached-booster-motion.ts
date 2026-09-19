@@ -45,7 +45,8 @@ class DetachedBoosterBehavior implements DynamicMotionBehavior {
   // simDt 秒ぶん燃料を燃やし、その区間の平均の加速度を求める。
   public updateCommands(_self: DynamicMotion, simDt: number): void {
     const massBefore = this.stack.totalMass;
-    const result = this.stack.step(simDt);
+    const result = this.stack.burnOver(simDt);
+    this.stack.burn(simDt);
     this.lastBurnRatio = result.burnRatio;
     this.lastAcceleration = boosterAverageAcceleration(result, massBefore, this.stack.totalMass);
   }

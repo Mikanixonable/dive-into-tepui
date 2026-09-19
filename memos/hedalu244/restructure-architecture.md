@@ -1029,24 +1029,21 @@ R3 の判定の許可リストに残るのは `Stage.onDecided`(5.5-7)だけに�
 - `simTime` の二重経路: `ObjectWindows.open`/`openEmptySpaceMenu`/`sync`、`MapPicking.handleRightClick`/`handleEmptySpaceRightClick`、`ViewFrame.handleCommand`/`handlePointer`、`PlanEditor.handleCommand`/`update` の時刻の引数を落とし、表示窓の所有者 `DisplayWindowManager.current` から読む。`PlanEditor` は写しの `simTime` 欄をやめて所有者から読む。`frame-controls` の `lastTime` は、この手順に着手した時点で既に無かった。
 - 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run test:launcher`(2/2)、`npm run check:boundaries`(許可リスト 0 件)、変更ファイルの lint。`npm run dev` での目視(決着から結果画面、時間加速、マップの右クリック、段 5 のセーブの読み込み)は 5.5-10 へ回す。
 
-#### 手順 5.5-8. 段 5 が残した 1.x の未達と、launcher の表示を片づける
+#### 手順 5.5-8. 段 5 が残した 1.x の未達と、launcher の表示を片づける — 済
 
-**目的**: 段 5 の規約点検で見つけて割り当てなかったものと、段 5 の版上げが持ち込んだ振る舞いを直す。挙動は、launcher の一覧の表示だけを変える。
+`ProteinEnemy.muzzlePosition` の分割は計画どおり 5.5-9 で行う。
 
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/protein-enemy.ts`(`muzzlePosition`)、`src/game/player/booster-stack.ts`(`step`)ほか燃料の関数 | 状態を進める命令と、値を返す問い合わせに分ける(CODING-RULE 1.11)。`muzzlePosition` は 5.5-9 で静止座標から求める形に直すので、分割もそこで一緒に行う |
-| `src/game/dynamic/dynamic-system.ts`(`update` の `beforeControllables`) | 閉包の注入をやめる(CODING-RULE 1.11)。呼び手が順に呼べば足りるなら、そうする |
-| `src/game/dynamic/dynamic-entity/enemy.ts`、`src/game/hud/hud-panel-presenter.ts`、`src/game/hud/panels/enemies-panel.ts` | `waveId` などの不在を `null` で表す(1.6)。同じ形の欄を洗い、まとめて揃える |
-| `src/game/viewer/focus-camera-selection.ts`(563 行) | 1.2 のとおり、まず原因を診断する。責務が複数なら分け、一つなら理由を書いて残す |
-| `src/launcher/save-browser/*` | 版の合わない記録を、読み込めるものとして並べない。開こうとしたら、読めないことを知らせる(SAVE.md「形式の版」。`/ui-design` を通す) |
-
-**達成条件と検証**
-
-- `npm run typecheck`、`npm run test:game`、`npm run test:launcher`。
-- `npm run dev` で、ブースターの燃焼と分離、敵の射撃、敵の一覧、セーブデータ画面(版の違う記録を置いた状態)を見る。
+**実施で決めたこと**
+- 状態を進めて副産物を返す関数(CODING-RULE 1.11)を、命令と問い合わせに分けた。
+  - `BoosterStack.step` → 問い合わせ `burnOver(dt)`(燃焼結果。型は `BoosterBurn`)と命令 `burn(dt)`。`toggleIgnition` は操作後の点火状態を返していたので void にし、`ignited` で読む(`AttachedBoosterMotion` も同じ)。
+  - 燃料: `consumeFuel`・`refuelFuel` は void。賄えた割合は `throttle.ts` の `suppliedFuelRatio(ship.totalFuel, amount)` で消費の前に求め、補給で入った量は `logistics.ts` が補給の前に残りの容量から求める。
+  - `WeaponState.beginShot` → 問い合わせ `nextShot(muzzleCount)` と命令 `fire(muzzleCount)`。`beginShot` は `left` が偽なら null を返していたので、消費の結果の `'empty'` は通らない値だった — 型から消した。計画の表には無かったが、同じ形なのでここで直した。
+  - `manualReload(): boolean` は成否の真偽なので 1.11 の許容に入り、残した。
+- `DynamicSystem.update` の閉包 `beforeControllables` をやめ、引数 `acceptsCommands`(決着前かつ操作できる倍率か。`Game` が求める)を受けて、自律の推力の後に操縦の命令を自分で適用する。順序は変えていない。
+- 不在の `undefined` → `null`(1.6): 敵の `waveId`・`formationId`・`formationRole`(実体の欄と `EnemyPlacement`)、`isFormationEnergyAvailable`、`EnemyContact.waveId`、ウェーブ数の数え上げ。同じ形の欄を洗った結果、記録では null で持ち実体では undefined で持つものはこれだけだった。構築の省略可能な引数(省けば既定)と、`PartDamageModel` の部品参照(記録に出ない内部の参照)は形が違うので対象外。
+- `focus-camera-selection.ts`(563 行)は**分けずに残す**。診断: 責務は「1台のカメラの視点と、その変更規則」の1つで、向きは既に `CameraOrientation` へ出ている。各命令は注視・座標系・向き・距離・ずらしをまとめて読み書きする同じ関心の実装で、`config.view` が切り替えるのは初期値と3つの方針だけ(多態で分ける種類ではない)。投影(画角・投影方式・正射影の半高さ)を切り出す案は、距離が視点の置き場(直列化では変位の長さ)と透視のズームを兼ね、下限が注視対象で決まるため、切り出すと各命令へ下限を渡す委譲が並び、行数はほとんど減らない。
+- セーブデータ画面: `SnapshotService.isReadable(id)` が本体の形式の版を照合し、読めない手動セーブのカードは選べる見た目にせず、カードの上に理由を書く(タッチでも見える)。ダブルクリックすると理由を状態欄に出し、周回は始めない。カードの `onLoadSnapshot` は真偽の代わりに拒否の文面(読めるなら null)を渡す。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run test:launcher`(2/2)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視(ブースターの燃焼と分離、敵の射撃、敵の一覧、版の違う記録を置いたセーブデータ画面)は 5.5-10 へ回す。
 
 #### 手順 5.5-9. 洗い出しで出た残りと、監査報告の 4 を片づける
 
@@ -1553,10 +1550,10 @@ import を直す外側:
 | | ~~5.5-5 残りのモデル層の欄~~ 済 | 0 |
 | | ~~5.5-6 音の装置~~ 済 | 0 |
 | | ~~5.5-7 位相・直列化・導出の残り~~ 済 | 0 |
-| | 5.5-8 1.x の未達と launcher の表示(10 ファイル × 20 + 検証 20) | 220 |
+| | ~~5.5-8 1.x の未達と launcher の表示~~ 済 | 0 |
 | | 5.5-9 洗い出しの残りと監査報告の 4(4 の分は SPEC の削除と 6 ファイル × 20 + 検証 20 = 140。洗い出しの 22 行は約 40 ファイル × 20 = 800) | 940 |
 | | 5.5-10 main へ送る | 150 |
-| | **段 5.5 計(残り)** | **1,310** |
+| | **段 5.5 計(残り)** | **1,090** |
 | 6 | 6-1 規則(R6・R2 のモデル層、`entity-shapes/` の層と条件 +15、`physics/` から実体の形を締め出す +15) | 120 |
 | | 6-2 検査(対応表を game/ の中まで割る、`LAYER_TABLE` の行 +5。K11-2 で B なら読み手の数の判定 +20) | 95 |
 | | 6-3 3D の表示担当(モデル層の根の `scene` +20、漏れていたテスト3本 +30、突き合わせの検査 +40) | 810 |
