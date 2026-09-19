@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "datasetId": "earth-pages-fixture",
+  "pagesPath": "earth-surface/earth-pages-fixture",
+  "manifestSha256": "914f1bc9b5e58bd511fd717f1aa9d19bf35bf4a7f8ca9085b75b6c6f65ec2d51",
+  "sourceManifestSha256": "9faebdbacffd9e67aa58d54addb96a9493a5eaf0a93e9ef10a25131728e4cb52",
+  "files": 19,
+  "totalBytes": 2080657,
+  "treeSha256": "e31e627cfea7f7b5936488ab00ca050157928c7c21a7464ce1aceae630657234",
+  "cachePolicy": {
+    "manifest": "public, max-age=60, must-revalidate",
+    "assets": "public, max-age=31536000, immutable"
+  }
+}
