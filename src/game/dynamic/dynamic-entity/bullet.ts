@@ -21,32 +21,34 @@ export class Bullet extends DynamicEntity {
   public override readonly capKind = 'bullet';
   public declare readonly motion: BulletMotion;
 
-  // shooter が撃った type の弾1発を、state から lifetime [sim s] だけ飛ぶ個体として組む。
-  // damage は命中した相手へ与えるダメージ [HP]。bornSim は発射時刻 [sim s]、passedClose は交戦圏の
-  // 中心の近くを通ったことを記録済みか、id は採番器が配った識別子で、省けば state の瞬間に撃った弾になる。
-  public constructor(
+  // state から飛ぶ弾1発を、reaction が決める弾種・当たる相手・寿命で組む。id は採番器が配った識別子、
+  // alive は生死。
+  private constructor(state: KinematicState, reaction: BulletReaction, id: string, alive?: boolean) {
+    super(
+      () => new BulletMotion(state, reaction, alive),
+      reaction.type === 'plasma' ? new PlasmaBulletView() : new NormalBulletView(),
+      id,
+    );
+  }
+
+  // shooter が撃った type の弾1発を、state の瞬間から lifetime [sim s] だけ飛ぶ個体として新しく組む。
+  // damage は命中した相手へ与えるダメージ [HP]。
+  public static create(
     state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number,
     idAllocators: EntityIdAllocators,
-    bornSim = state.t,
-    passedClose = false,
-    id?: string,
-  ) {
-    super(
-      () => new BulletMotion(
-        state,
-        new BulletReaction(bornSim, lifetime, shooter, type, damage, passedClose),
-      ),
-      type === 'plasma' ? new PlasmaBulletView() : new NormalBulletView(),
-      idAllocators.entity.next(id),
+  ): Bullet {
+    return new Bullet(
+      state, new BulletReaction(state.t, lifetime, shooter, type, damage), idAllocators.entity.next(),
     );
   }
 
   // 直列化した弾を、記録した時刻の状態として復元する。
   public static deserialize(serialized: SerializedBullet, registry: EntityRegistry): Bullet {
-    const { bornSim, lifetime, shooter, type, damage, passedClose } = serialized.reaction;
     return new Bullet(
-      deserializeKinematicState(serialized), lifetime, shooter, type, damage, registry.idAllocators,
-      bornSim, passedClose, serialized.id,
+      deserializeKinematicState(serialized),
+      BulletReaction.deserialize(serialized.reaction),
+      registry.idAllocators.entity.next(serialized.id),
+      serialized.alive,
     );
   }
 

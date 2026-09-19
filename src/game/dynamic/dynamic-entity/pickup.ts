@@ -89,15 +89,17 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   protected abstract readonly pickupRadius: number;
 
   // placement に置き、表示名が与えられていなければ defaultName で名乗る。id は採番器が配った識別子。
-  // pickupKind は接触の種別・マーカーキーの接頭辞・直列化の種別タグを兼ねる。
+  // pickupKind は接触の種別・マーカーキーの接頭辞・直列化の種別タグを兼ねる。alive は生死で、省くと
+  // 生きた状態で始める。
   protected constructor(
     placement: PickupPlacement,
     view: DynamicView,
     id: string,
     defaultName: string,
     private readonly pickupKind: PickupKind,
+    alive?: boolean,
   ) {
-    super(() => new PickupMotion(placement.state, placement.att, pickupKind, placement.thermal), view, id);
+    super(() => new PickupMotion(placement.state, placement.att, pickupKind, placement.thermal, alive), view, id);
     this.setName(placement.name ?? defaultName);
   }
 
@@ -115,7 +117,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   // 画面マーカーと被選択判定が同じ個体を指すためのキー。
   private get markerKey(): string { return `${this.pickupKind}-${this.id}`; }
 
-  // 画面マーカーに出すこの補給物の項目。ターゲットにならないので優先度は固定値。
+  // 画面マーカーに出すこの補給物の項目。優先度は視点からの距離によらず固定。
   public markerItem(): GroupedMarkerItem {
     return {
       key: this.markerKey,
@@ -193,7 +195,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   public runMenu(
     act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
-    if (act === 'delete') this.motion.alive = false;
+    if (act === 'delete') this.motion.kill();
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
   }
 
@@ -231,21 +233,22 @@ export class AmmoPickup extends Pickup {
   protected override readonly bearingColor = 'var(--color-primary-hover)';
   protected override readonly pickupRadius = AMMO_PICKUP_RADIUS;
 
-  // 弾薬補給の見た目・採番器・既定名で組む。
-  private constructor(placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators) {
-    super(placement, new AmmoPickupView(scene), idAllocators.ammoPickup.next(placement.id), '弾薬', AmmoPickup.kind);
+  // 弾薬補給の見た目・既定名で組む。id は採番器が配った識別子、alive は生死。
+  private constructor(placement: PickupPlacement, scene: THREE.Scene, id: string, alive?: boolean) {
+    super(placement, new AmmoPickupView(scene), id, '弾薬', AmmoPickup.kind, alive);
   }
 
   // placement に新しく置く。
   public static create(placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators): AmmoPickup {
-    return new AmmoPickup(placement, scene, idAllocators);
+    return new AmmoPickup(placement, scene, idAllocators.ammoPickup.next(placement.id));
   }
 
   // 直列化した弾薬補給を復元する。
   public static deserialize(
     serialized: SerializedAmmoPickup, registry: EntityRegistry, scene: THREE.Scene,
   ): AmmoPickup {
-    return new AmmoPickup(deserializePickupPlacement(serialized), scene, registry.idAllocators);
+    const placement = deserializePickupPlacement(serialized);
+    return new AmmoPickup(placement, scene, registry.idAllocators.ammoPickup.next(placement.id), serialized.alive);
   }
 }
 
@@ -260,29 +263,29 @@ export class RcsFuelPickup extends Pickup {
   protected override readonly bearingColor = COLOR_MARKER_FUEL;
   protected override readonly pickupRadius = RCS_FUEL_PICKUP_RADIUS;
 
-  // RCS 燃料補給の見た目・採番器・既定名で組む。
-  private constructor(placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators) {
-    super(
-      placement, new RcsFuelPickupView(scene), idAllocators.rcsFuelPickup.next(placement.id), 'RCS燃料',
-      RcsFuelPickup.kind,
-    );
+  // RCS 燃料補給の見た目・既定名で組む。id は採番器が配った識別子、alive は生死。
+  private constructor(placement: PickupPlacement, scene: THREE.Scene, id: string, alive?: boolean) {
+    super(placement, new RcsFuelPickupView(scene), id, 'RCS燃料', RcsFuelPickup.kind, alive);
   }
 
   // placement に新しく置く。
   public static create(
     placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators,
   ): RcsFuelPickup {
-    return new RcsFuelPickup(placement, scene, idAllocators);
+    return new RcsFuelPickup(placement, scene, idAllocators.rcsFuelPickup.next(placement.id));
   }
 
   // 直列化した RCS 燃料補給を復元する。
   public static deserialize(
     serialized: SerializedRcsFuelPickup, registry: EntityRegistry, scene: THREE.Scene,
   ): RcsFuelPickup {
-    return new RcsFuelPickup(deserializePickupPlacement(serialized), scene, registry.idAllocators);
+    const placement = deserializePickupPlacement(serialized);
+    return new RcsFuelPickup(
+      placement, scene, registry.idAllocators.rcsFuelPickup.next(placement.id), serialized.alive,
+    );
   }
 
-  // 1 個の取り込みで増える燃料の量。
+  // 1 個の取り込みで増える燃料の量を示す行。
   protected override supplyRows(): readonly PropertyRow[] {
     return [{ key: 'amount', label: '補給量', value: `${RCS_FUEL_PICKUP_AMOUNT.toLocaleString()} kg` }];
   }

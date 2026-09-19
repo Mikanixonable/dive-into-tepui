@@ -61,7 +61,7 @@
 - **置き場を仮に認める。** 例: 表示の導出は当面 `src/game/` の中に置く。
 - **層の代わりにパスで禁止する。** 層の対応表がまだ割れていない場所を、禁止パターンで代用する。
 
-`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が段ごとに変わり(段 1 で 3、段 2 で 4、段 3 で 7、段 4 で 6、段 5 で 4、段 5.5 で 5、段 6 で 6、段 7 で 4)、段 8 で 0 になる。**いまは 4**(段 5 の終わり)。
+`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が段ごとに変わり(段 1 で 3、段 2 で 4、段 3 で 7、段 4 で 6、段 5 で 4、段 5.5 で 10、段 6 で 10、段 7 で 8)、段 8 で 0 になる。**いまは 10**(段 5.5 の 5.5-3 の後)。
 
 ### 書き込む規則(最終形)
 
@@ -107,7 +107,9 @@
 
 **R3. 正本には書き手が1つあり、書くのは進行の位相だけ。**
 
-- モデル層の値を書くのは、その値を所有するモジュールだけ。外から変えるときは、所有者が公開する命令(メソッド)を呼ぶ。
+- モデル層の値を書くのは、その値を所有するモジュールだけ。所有者は、その欄を宣言したクラスである(所有の木の中でも例外にしない)。外から変えるときは、所有者が公開する命令(メソッド)を呼ぶ。
+- モデル層の口は、命令・読み取り面・出来事の3つ。命令の名前の形は問わない。整合性は所有者が命令の中で保ち、呼び手に世話の口を公開しない。
+- モデル層のクラスは可変な public 欄と `set` アクセサを持たず、export する型も可変な欄を持たない。
 - 命令は受け付けた時点では状態を変えない。次の進行の位相の先頭で、受け付けた順に適用する。
 - 外から読むときは、所有者が公開する読み取り専用の面を通す。可変オブジェクトそのものを外へ渡さない。
 
@@ -208,10 +210,10 @@
 | ~~3~~ 済 | R3、R7 の出来事の段落、R8、R4 の需要の2項 | 1.10 の全体 | 位相の順序は `game/game.ts` が持つ(段 8)、モデル層の禁止は層でなくパスで当てる(段 6)、視点への書き込みは列を通さなくてよい(段 4) | 表示の選択が進行へ漏れる禁止、モデル層が生の入力を読む禁止、モデル層が出来事の装置を持つ禁止(どれもパス指定) |
 | ~~4~~ 済 | R4 の全文、R11 の1。R1・R5・R10 の「ラン跨ぎ」を「セーブを跨いで共通」へ言い直した。**4-1 で先に書いた R11 の2は、4-4 で落として段 5 へ回した**(K8-7) | — | **`game.ts` は段 5 まで分割しない**(4-4。段 5 で外す) | `game/viewer/` への片方向、`settings/` と `game/viewer/` の相互 import、セーブの型から表示の導出への import(以上 4-2 で済。落とす判定は無い) |
 | ~~5~~ 済 | **R12、R13、R8 の言い直し(進行の末尾の追従・位相の順序の置き場)、R10 のランの組み立ての項、R2 の表の `run/`、段 4 で落とした R11 の2**(5-1) | 1.6「多態を保存し、復元する」の3点目、1.10 の暫定「位相の順序を組み立てるのは `game.ts`」、4-4 の `game.ts` の暫定 | (R11 の3は段 7 で足す) | `run/` を組み立てとして対応表へ、直列化の語彙・復元の流し込み・直列化された形を受けるコンストラクタの禁止パターン、モデル層の根が表示の導出を持つ禁止(5-1) |
-| 5.5(臨時) | 新しい規則は無い。**R3 の言い直し**(所有者は欄を宣言したクラス、モデル層の口は命令・読み取り面・出来事、整合性は所有者が命令の中で保つ、可変な public 欄と `set` を持たない)。`motion` の基準(K10-6)・軌跡の置き場(K10-7)・形状の正本のフォルダ(K11)は段 6 で書く | ARCHITECTURE の層の中身の `physics/` の「状態を持つクラスを置いてもよい」、CODING-RULE 1.11 の「mutable な public フィールドは禁止しない」のモデル層への適用 | 軌跡の記録を `physics/` に置き、運動が読み手へそのまま渡す(段 6。K10-7)。ほかは、洗い出しで直さずに残すと決めたものが出たときだけ置く | **R3 を構文木で判定**。「命令 API の禁止」の名前の列を外す。コンストラクタの判定を引数の型(`Serialized*`)へ |
+| 5.5(臨時) | 新しい規則は無い。**R3 の言い直し**(所有者は欄を宣言したクラス、モデル層の口は命令・読み取り面・出来事、整合性は所有者が命令の中で保つ、可変な public 欄と `set` を持たない)。`motion` の基準(K10-6)・軌跡の置き場(K10-7)・形状の正本のフォルダ(K11)は段 6 で書く | ARCHITECTURE の層の中身の `physics/` の「状態を持つクラスを置いてもよい」、CODING-RULE 1.11 の「mutable な public フィールドは禁止しない」のモデル層への適用 | 軌跡の記録を `physics/` に置き、運動が読み手へそのまま渡す(段 6。K10-7)。5.5-3 の洗い出しで残すと決めた5つ — 表示の導出がモデル層の所有者を具象のまま受ける(段 8)、被選択物の猶予から視点を動かす(段 8)、カメラの投影を `render/` が返す(段 8)、入力の解釈が押し続ける入力を dt で積む(段 8)、実体が同じ協力者を2経路で受ける(段 6) | **R3 を構文木で判定**。「命令 API の禁止」の名前の列を外す。コンストラクタの判定を引数の型(`Serialized*`)へ |
 | 6 | R6(dynamic の族とステージ)、R2 のモデル層の項、`motion` の基準(K10-6)、軌跡の置き場(K10-7)、R2 の層の表の `entity-shapes/` とその入れてよい条件(K11)。K10-6・K10-7 と K11-2 は段 6 の着手前に決める | CODING-RULE 1.6 の具体例の段落、ARCHITECTURE の `entity` / `motion` / `view` | R6 を天体の族に当てない(段 7)、`game/celestial/` は未分類(段 7)、モデル層の根は天体系の描画のために `GameScene` を受けてよい(段 7)、`render/` の語彙の型 import を許す(段 8) | 対応表を `game/` の中まで割り、モデル層の出ていく import と `three` を判定 |
 | 7 | R6 の全域、R11 の3 | — | 時刻層は `game/celestial/` にある(段 8) | 時刻層の規則を `game/celestial/` へ当てる |
-| 8 | R2 の最終の対応表、R9、R10 の全文 | ARCHITECTURE「`launcher/` が `game/` を見てよいのは…」 | なし(残る4つをすべて外す) | 最終の対応表、`hud/` を装置として判定、`settings/` の import 規則、許可リストを空にする |
+| 8 | R2 の最終の対応表、R9、R10 の全文 | ARCHITECTURE「`launcher/` が `game/` を見てよいのは…」 | なし(残る8つをすべて外す) | 最終の対応表、`hud/` を装置として判定、`settings/` の import 規則、許可リストを空にする |
 
 **段の切り方は「規則が完結する単位」で決めた。** R7 は装置3つ(`render/`・`marker/`・`audio/`)が揃って宣言的になるまで書けないので、段 1 はその3つを含む。R6 は表示担当が族ごとに揃うまで書けないので、dynamic の族(段 6)と天体の族(段 7)に分かれる。R12・R13 は段 5 に入れた — 手順 5-5 で足す直列化のコードを、新しい形で一度だけ書くためである。同じ理由で、`game.ts` の分割(5-3)も段 5 で済ませる(K8-5)。**手順を段の間で動かすなら、その手順が満たす規則も一緒に動かす。**
 
@@ -392,6 +394,43 @@
 
 
 **単独では扱わないもの。** `field-projection.ts:110` の `cosRadiusValue`、`curve.ts:90` の `appliedStyle`、`orbit-guide-catalog.ts:74` の `loadState`、`slot-data.ts:35,47` の `lastPlayedAtReal` は、どれも1フィールドの導出値。`planet-system.ts:53` の `offsetting` は時刻層のメモ化として R1 に適うが、**性能上の理由がコメントに書かれていない**(`:52` のコメントは何を保持するかだけを述べている) — 段 7 で天体を触るときに書く。`next-event-time.ts:8`・`dynamic-trajectory.ts:25`・セーブ索引(`slot-data.ts:13-30`)は、理由が明記された意図的な保持。
+
+
+**5.5-3 の洗い出しで擬陽性と確定したもの**(`5f87b1790` で規則ごとに洗った。再調査しない)
+
+- **R8**
+  - 表示の導出が進行の結果を見て命令を積む形(`dropStaleRotatingFrame`、`onMapClosed` → `removeNode`)は、段 4 で決めた設計(K3-2)。命令を作るのは入力の解釈だけ、とは R8 は定めていない。
+  - 一時停止メニューの手動セーブが DOM のハンドラで直列化するのは、位相 2 と 3 の間と同じ状態を読む。フレームの間に走るハンドラの時点では、モデル層は直前の進行の直後から変わっていない(位相 3・4 と次の位相 1 はモデル層を書かない)。
+  - 一時停止を開いているオーバーレイから導いて進行の入力にするのは K2 の決定どおり(オーバーレイは入力の解釈が読み、操作量を作る)。
+  - `Run.launch`・`warmUp` が `followProgress`・`followCamera`・`extendPredictions` を呼ぶのは、位相の順序の持ち主が最初のフレームの「進行の末尾 → 導出と同期」を組む形で、外からの命令ではない。`extendPredictions` の計画ノードの消化は、復元した計画が起点より前のノードを持たないので空振りする。
+  - 装置の中の壁時計(計測、ダブルタップ判定、`ctx.currentTime`)は外界の写しか計測。
+- **R3**
+  - `DynamicSystem.events`・`idAllocators` の公開は、実体へ協力者を配る `EntityRegistry` の契約。
+  - 創作パネルの `requestProteinAsset` がモジュールの取得キャッシュを書くのは、変わらないアセットの取得(外部資源の I/O)。出現の可否がそれを読むのは、資源が揃ったかという外界の条件。
+- **R5**
+  - パネルが毎フレームの表示用の値(命令の口を含む)を写して持ち、フレームの外の DOM のハンドラが読む形(`orbit-panel`・`target-panel`・`top-bar`・`vessel-panel`・`enemies-panel`・`view-badge`・`predict-panel`)は R5-5 — 読むのは入力の解釈だけ。
+  - 閉じても残る小さな UI の選択(設定面の内側タブ、一時停止メニューの位置、予測パネルの入力欄の単位、物体一覧の並び順と分類フィルタ、デバッグの描画ターゲット)は K7-1 の操作途中の状態。
+  - 閃光と的通過の印の寿命を表示時刻で測るのは K2 の決定(世界に貼り付く効果)。
+  - `PilotInput` が `beginFrame` の引数を写して router の口が読むのは、口の形(`handleCommand(command)`)に引数を足せず、鮮度は beginFrame → route の順で保たれる。`FrameAnchors._bodiesPivot` も同じ。
+- **R7**
+  - 入力の装置 `input/` の `update`・`take*`・`setVirtualKey`・`tapKey` は、外界(キーボード・ポインタ・画面の操作パッド)の出来事を受ける口。R7 の「宣言だけを受ける」は見せる・鳴らす装置の入力の規則。
+  - `MarkerDevice.resolveOverlaps` は全群の宣言の後にフレームで1度だけ呼ぶ締め。
+  - 軌道ガイドの線が運ぶ `familyId` などは、装置が解釈しないピック用の素通し。
+  - BGM の `Conductor` の曲の選択と曲送りの起点は、音声資源の再生状態(R5-2)。
+- **R11・R12**
+  - 敵の `attackGroupId` の補い(`deserializeEnemyPlacement`)は、記録に id が無いときに名前へ落とす、初期値と違う値を含む。
+  - `OrbitGuideSettings` の入れ子の欠けを既定の定数へ重ねて補うのは、コンストラクタの既定引数では書けない入れ子の補い。定数は1つ。
+  - `CameraOrientation.attitude` を復元で持ち越さず、表に出ていないカメラでは null のまま残るのは段 4 の決定(表示中のカメラにだけ進行を当てる)。
+  - `RadiatorSystem`・`FireControl`・`EnemyFireController` が `deserialize` を持たないこと、`Player.deserialize` が作った部品を `Player` のコンストラクタが `PlayerMotion`・`FireControl` へ中継することは、持ち主への参照を要する部品の例外(R13)。
+- **R13**
+  - `NavTargetSelection` が出来事の書き口を持ちながら直近の出来事を呼ぶたびに受けるのは、協力者ではなく中身の値。`PlanDisplay` が期間の読み口を持ちながら今フレームの表示窓を受けるのも同じ。
+  - `Enemy.behave` が `registry`・`celestialBodies` を部品 `fireController` へ渡すのは、持ち主から部品への委譲。
+  - `protein-asset-loader` のモジュールのキャッシュは、ページの寿命のアセット取得で、ランの状態ではない。
+- **R1**
+  - `TimeRing` の `hits`・`misses` は、返す値に効かないメモ化の計数。
+  - `hud/inject-style.ts` の注入済みの集合は、import を持たないが語彙ではない(R2 の「import を持たないモジュール」は union や定数だけの語彙を指す)ので、置き場の層(表示の導出)の DOM 資源の登録(R5-2)。import を持たない非純粋なモジュール(`overlay-layer`・`breakpoints` ほか)も同じで、装置どうしを跨いで読まれてはいない。
+  - `physics/ephemeris/catalog.ts` の取得(I/O)は、保持する値ではない。
+  - 慣性の相対値(破片・薬莢・砲身)は操縦応答用の調整値で、形からの手計算ではない。`protein-enemy`・`metal-enemy` の同じ慣性は、別々に調整する敵の値(1.5)。
 
 ### K7. 視点と設定の境界で決めたこと(2026-09-17)
 
@@ -694,8 +733,8 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 | ~~3~~ 済 | R3・R7(出来事)・R8・R4(需要) | 表示側から進行へ届く経路が需要だけになる(`rg -n "predictsFuture\|display-window-duration" src/game/dynamic` が 0 件)。予測弧をなぞる積分について、R4 の検査が通るか、ユーザーの判断が記録されている |
 | ~~4~~ 済 | R4(全文)・R11 の1 | 進行のパスから `game/viewer/` への import が 0 件。`settings/` と `game/viewer/` の間の import が双方向とも 0 件。§6 が設定と言う値を `game/` が持っていない。`rg -n "例外なくすべてセーブ" DEVELOP/CODING-RULE.md` が 0 件(規則は段 5 で書き直す)。`game.ts` を段 5 まで分割しないことが、1.10 の位相の印・1.2 の暫定・`game.ts` の冒頭・PR 本文の4か所に書いてある |
 | ~~5~~ 済 | R11 の2・R12・R13・R8 と R10 の言い直し | 手順 5-5 で洗い出したモデル層の値が、キャッシュを除いてすべてセーブに載っている。`rg -n "\w+SaveData\b\|WeaponStateData\|BoosterStackData" src` が 0 件で、`src/game/save/` と `src/game/game-host.ts` が無い。`rg -n "'saved' in\|restoreFromSave\|importData\|exportData\|saveState" src/game` が 0 件。位相の順序が `src/run/run.ts` だけにあり、`src/game/game.ts` が `game/{hud,marker,view,pickable,map,lines,input,camera}` と `game-presentation` を import しない。セーブの版が上がり、新しい版で書いた記録が読め、古い版は拒まれるだけで壊れない |
-| 5.5(臨時) | 段 5 までの規則(R3 は構文の判定つき) | R3 の判定(モデル層の可変な public 欄・`set`・export する型の可変な欄)が 0 件。`invalidatePrediction` が `dynamic-motion.ts` の外に無い。`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 5(軌跡の暫定を足した)。`rg -n "onDecided" src` と `rg -n "KEY_MAPPING" src/game/dynamic` が 0 件。`rg -n "view\.(siteWorldPositionById\|siteModelPositionById\|localImpactPoint)" src/game` が 0 件。音の装置が単発の命令を公開しない。振り分けの表(5.5-3 で足した行を含む)の全行が「直した」か「残す理由がある」。段 5 で書き出したセーブが読める |
-| 6 | R6(dynamic の族とステージ)・`motion` の基準(K10-6)・軌跡の置き場(K10-7)・`entity-shapes/`(K11) | モデル層の実体が表示物・装置を持たない。5.5-1 で置いた軌跡の暫定が、K10-7 で決めた形で外れている。`Game.create`/`Game.deserialize` が `HudLayers` と `THREE.Scene` を受けない。`rg -n "DynamicView\|WorldSfx\|UiSfx\|Notifier\|MarkerSlots\|FlashEffects\|from 'three" src/game/dynamic src/game/player src/game/stages src/game/creative` が 0 件。`src/entity-shapes/` があり、`src/physics/` に実体の形状(`player-shape.ts`・`booster-stage-shape.ts`・`protein-site-geometry.ts`)が無い。`/modify-model-shape` がある |
+| 5.5(臨時) | 段 5 までの規則(R3 は構文の判定つき) | R3 の判定(モデル層の可変な public 欄・`set`・export する型の可変な欄)が 0 件。`invalidatePrediction` が `dynamic-motion.ts` の外に無い。`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 10(軌跡の暫定と、5.5-3 で置いた5つを足した)。`rg -n "onDecided" src` と `rg -n "KEY_MAPPING" src/game/dynamic` が 0 件。`rg -n "view\.(siteWorldPositionById\|siteModelPositionById\|localImpactPoint)" src/game` が 0 件。音の装置が単発の命令を公開しない。振り分けの表(5.5-3 で足した行を含む)の全行が「直した」か「残す理由がある」。段 5 で書き出したセーブが読める |
+| 6 | R6(dynamic の族とステージ)・`motion` の基準(K10-6)・軌跡の置き場(K10-7)・`entity-shapes/`(K11) | モデル層の実体が表示物・装置を持たない。5.5-1 で置いた軌跡の暫定が K10-7 で決めた形で、5.5-3 で置いた協力者の2経路の暫定が K10-6 で決めた形で外れている。`Game.create`/`Game.deserialize` が `HudLayers` と `THREE.Scene` を受けない。`rg -n "DynamicView\|WorldSfx\|UiSfx\|Notifier\|MarkerSlots\|FlashEffects\|from 'three" src/game/dynamic src/game/player src/game/stages src/game/creative` が 0 件。`src/entity-shapes/` があり、`src/physics/` に実体の形状(`player-shape.ts`・`booster-stage-shape.ts`・`protein-site-geometry.ts`)が無い。`/modify-model-shape` がある |
 | 7 | R6(全域)・R11 の3 | `Game.create`/`Game.deserialize` が `GameScene` を受けず、THREE と DOM なしでテストから組める。時刻層に残った天体のファイルから、`render/`・`three`・`hud/`・`game/(camera\|marker\|map\|pickable\|hud\|dynamic)` への import が 0 件。天体系の構築関数の引数が構築値ひとつになる |
 | 8 | R2(最終の対応表)・R9・R10(全文) | `src/game/game.ts`(モデル層の根)から `render/`・`three`・`hud/`・`presentation/`・`run/` への import が 0 件。`src/celestial/` が存在し、そこから `physics/` と `math/` 以外への import が 0 件。`rg -n "game/celestial" src tests tools DEVELOP CLAUDE.md .claude/skills` が 0 件。`rg -n "from '.*render/" src/game` が 0 件。`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 0 |
 
@@ -852,207 +891,202 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 | `Launcher` の中継の引数、`main.ts` のラン外の入力ポートの表、launcher が読む面、計測と読み込みの進捗 | 段 8(8-6) | R10 の全文(段 8)の作業 |
 | GAME.md §7 に対して、基地の判定形状が p90 で 16 m 浮いている | 計画の外 | SPEC はコードより先行してよい(未実装は正常)。規則の未達ではない |
 | タンパク質の見た目と、判定・発射が一致しない(PR #82 の動機)。判定の球が粗く、揺らいだ主鎖が判定形状から最大 10 m はみ出す | 計画の外(`fix_protain_combat.md`、独立の PR) | 主要因が揺らぎか、判定形状の近似か、潜在バグかが未評価で、原因の調査から要る。規則の未達ではない(5.5-9 の後、規則は View を読まない) |
+| **以下は 5.5-3 の洗い出しで足した行**(規則ごとに配って `5f87b1790` で洗った。擬陽性は K6 に足した) | | |
+| R3・R4: `PlanPath.update`(表示の導出の材料作り)が、操作艦の予測弧の極値列を `arc.apsides.dropBefore` で切り詰める。戦闘ビューでは走らないので、ビューがモデル層のキャッシュを変える | 5.5-9 | 所有者の外からの書き込み。極値は「時刻 t より後の最初の極値」を問う読み取りにし、列を切り詰めない |
+| R3・1.7: `Plan` がノード列をその場で書き換えながら、同じ配列を `nodes`・`displayData()` で外へ渡す | 5.5-9 | 可変オブジェクトを外へ渡している。変更のたびに新しい値へ差し替える |
+| 置き場: `plan/plan-path.ts` は `PlanDisplay` が作って持つ作り直せる表示(`PlanPathView` を持つ)で、モデル層ではない | 5.5-9 | `MISPLACED_PRESENTATION_FILES` へ足す(R3 の判定から外れる)。`PlanPath` を `PlanDisplay` の部品のまま他へ配っている件(R13)も同じ手順で、根が作る形にする |
+| R3: 表示の導出が、モデル層の所有者を具象のまま受ける(`Game` の public な欄、`ControlSelection`・`SimSpeedManager`・`Stage`・`Player`・`Plan` ほか約 30 か所)。実際の書き込みは列を通るか、既知のものだけ | 段 8(8-3)。**5.5 で暫定を置く** | 読み取り面の型をどこに置き、`Game` が何を公開するかは、表示の導出を `presentation/` へ出すときの境界の設計そのもの。5.5-5 の後は可変な欄が無くなり、残るのは命令を直に呼べる形であることだけ |
+| R8: 入力の解釈が dt を受け、押し続ける入力の量を積む(視点のキーの回転・パン `camera-operator.ts:37-46`、Δv の長押しとラッチ `plan-axis-drag.ts:100-115`、長押しの時間 `dvHoldTime += dt`) | 段 8。**5.5 で暫定を置く** | 直し方に設計の選択が残る(操作量として進行へ渡し視点が dt で積むか、命令が dt を受けるか。Δv の編集は選択中ノードという表示の導出の状態に依る) |
+| R8: 進行の中で実体を作る・捨てるとき、その View を作り・捨てる(`dynamic-system.ts` の実体化と `prune`) | 段 6(6-3) | 実体が View を持つあいだの帰結で、6-3 が View を表示担当へ移すと消える(後の段が対象ごと作り直す) |
+| R8: 列の中で走るメニューの操作が、表示の導出の処理を走らせる(複製で配置パネルを開く、軌道点のワープ・ノード追加で案内と効果音) | 段 6(6-4) | メニューを表示担当へ移し、命令を進行の語彙にする 6-4 が作り直す |
+| R5: 前フレームの記憶(被選択物の2フレームの猶予)が視点を変える。`CameraRig.missingFocusFrames` → `lostFocus` → 注視を原点へ戻す、`FrameAnchors` の役割の猶予 → `dropStaleRotatingFrame` の命令。視点の側にも `staleFollowFrames` がある | 段 8。**5.5 で暫定を置く** | 猶予は SPEC(MAP.md)が被選択物に定める表示の挙動で、視点の判断へ効かせるなら視点へ置く。どの猶予をどこへ置くかは設計の選択 |
+| R7: 表示の導出が、装置 `CameraView.sync` の出力 `CameraFrame` の投影を読んで、マーカー・線の宣言を作る(K4 の「投影は `camera-system` が作る」は古い) | 段 8。**5.5 で暫定を置く** | 投影は `math/projection` の純関数なので表示の導出でも作れるが、描画原点を含む `CameraFrame` の置き場と `render/` のカメラの境界の設計が要る |
+| R13: 同じ協力者を「持つ」と「呼ぶたびに受ける」の両方で受ける — `Player` は `registry` を持ちながら `handleCommand(command, registry)` と `DynamicReactionServices.registry` でも受ける(`Base` は持たない)。`DynamicReactionServices` は束の型 | 段 6(着手前に K10-6 で決める)。**5.5 で暫定を置く** | 実体が協力者を構築時に受けるか呼ぶたびに受けるかは、`PilotCommandFrame` の協力者と一緒に K10-6 で決める(振り分けの表の既存の行と同じ理由) |
+| R13: `GamePresentation` がマーカー群を作って表示物へ渡し、受けた側が破棄する(`player-markers`・`equator-node-manager`・`celestial-markers`・`nav-target-presenter`・`plan-display`・`plan-guide`) | 5.5-9 | 受けた側が装置からマーカー群を作る(`Targeter` と同じ形) |
+| R13: `CombatView`・`MapView` を `GamePresentation` が作り、`ViewManager` が破棄する | 5.5-9 | 作る者と捨てる者を揃える |
+| R13: `DynamicSystem` が持っている天体系の面(`atmosphereMotions`)を、自分の部品 `Simulator` から `cleanup` の引数でも受け、`checkLoss` へ中継する | 5.5-4 | `Simulator` と接触の面を触る手順で、`DynamicSystem` が自分で読む形にする |
+| 1.11: `WaveAttack.update` が、同じステージを `activeStage` と閉包 `addEnemy` の2つで受ける | 5.5-9 | ステージを1つの面で受ける |
+| 1.6: `EquatorNodeInputs`(`{ displayTime, celestialBodies, frameAnchors, paths }`)を毎フレーム組む | 段 6(6-4) | 赤道交点のマーカーは 6-4 で表示担当へ移る(K1-4 の id の対応表) |
+| 1.6: `StageDeps` の束を基底のコンストラクタへ1つの値のまま運ぶ | 段 6(6-3・6-5) | 束の `scene`・`HudLayers` を 6-3・6-5 が外すので、そのとき作り直す |
+| 1.6: 名前の禁止 — `DynamicMotion` のコンストラクタ引数 `options`、`shipMotionOptions`、破片の `options` | 5.5-4 | 型 `DynamicMotionProperties` は「物性と初期値」で名前が中身を言っている。引数と関数の名前を揃える |
+| 6-4 へ: `HudPanelPresenter` がモデルの木を平らに展開して受ける | 段 6(6-4) | `MapView`・`ObjectWindows` と同じく、受け手の引数を見直す手順で扱う |
+| R11: 実体の生死 `alive` を記録するのは敵だけ。一時停止中にメニューから消した補給を保存すると、生きて戻る | 5.5-9 | 実体の共通の記録へ省略可能な `alive` を足し、構築の引数で受ける(版は据え置き) |
+| R11: `WeaponState.pendingBarrelJoules` を直列化していない | 5.5-5 | `WeaponState` を命令にする手順で、省略可能な項目として足す |
+| R11: キャッシュなのにそうと書いていない — `DynamicSystem.capsUncheckedSinceAdd`・`_collectionRevision`、`Simulator.lastSimDt`・`consecutiveZeroSteps`、フレームごとの計数(`Simulator`・接触・`Predictor`・`ArcCelestialBodies`)、`NanWatchdog.tripped`、接触代理の `prevState` | 5.5-4・5.5-5・5.5-9 | 触る手順で、所有者のコメントにキャッシュであることを書く |
+| R11: `RunEventLog` の通し番号と直近の出来事を保存しない | 例外(`例外(ARCHITECTURE R11)` のコメント) | 出来事は進行の位相の先頭で空にする1フレームの通り道で、読み手もランと一緒に作り直す。保存すると、読み込んだフレームに前のランの音と通知が出る |
+| R12: `EntityIdAllocators.deserialize` の後で `reserve()` を流し込む(`dynamic-system.ts:118-121`、`attached-boosters.ts:48`) | 5.5-7 | `DynamicSystem.deserialize` の流し込みと同じ手順で、予約する id を材料として組む前に渡す |
+| R12: コンストラクタが採番器と省略可能な id を受け、`next(id)` で新規と復元を分ける(`Bullet`・`DebrisPiece`・`Enemy`・`Pickup`・`DetachedBooster`) | 5.5-9 | id は `create`・`deserialize` が採番し、コンストラクタは採番済みの id を受ける(`Base`・`Player` と同じ形) |
+| R12: 子の `deserialize` が無い・親が子の値を書く — `BulletReaction`(親が記録を分解して読む)、`ViewSelection`・`OrbitGuideSelection`・`OrbitReferenceSelection`(`Viewer` が読み取り面から書く)、`PartDamageModel`(持ち主が部品を書く) | 5.5-9(部品は 5.5-5) | 所有者が `serialize`・`deserialize` を持つ |
+| R12: 保存の形式が2つの所有者の値を1つの記録に混ぜる — 実体の記録に運動の値(状態・姿勢・熱・生死)が平らに入る、`DynamicSystem` の記録に `Simulator` の `simTime` が平らに入る、カメラの記録の `offset`・`rotatingWith` が `CameraOrientation` と自分の値を合成する | 例外(`例外(ARCHITECTURE R12)` のコメント)。**同じ規則に例外が3つ重なるので、報告で再設計(版を上げて形式を直すか)を提案する** | 直すのは形式のほうだが、段 5 の版の記録を読めることが段 5.5 以降の検証の基準で、版は段 5 の1回だけ上げると決めてある(K9)。実体と運動の境界は K10-6 で決まる |
+| R12・1.11: `{} as SerializedStage`(`game.ts:135`)で欠けた記録を補う | 5.5-9 | 型アサーションで検査を黙らせている。欠けは `undefined` のまま渡す |
+| R12: `PredictPanelSelection.create` が組んだ後に `followCameraFocus()` で座標系を流し込む | 5.5-9 | 初期値をコンストラクタへ渡す |
+| R12: `DeployablePanelState.deserialize` が欠けた展開度を 0(収納)で補う。太陽電池の新規の初期値は展開 | 5.5-9 | 補う値を持ち主の初期値に揃える(初期値はコンストラクタの既定引数に1か所) |
+| 2.2: `run/` が `AutoSave` 型と `autoSave` という名前を使う(セーブの語は `launcher/` と SPEC だけ) | 5.5-9 | `run/` は、位相 2 と 3 の間に直列化の読み口を受け取る者を自分の語彙で受ける |
+| R11・R6: 決着の結果 `Stage._result`(文面)とブリーフィング `_briefing` を保存しない。ブリーフィングは構築後に流し込む | 段 6(6-5) | 結果とブリーフィングの文面は表示の導出(K2)で、6-5 がステージから表示を外すときに、文面の材料(決着の時刻・戦果)を保存する形へ作り直す |
+| R11: タンパク質の揺らぎの鍵 `motionSeed` を新規と復元で別の値から導く | 段 6(6-3) | 表示だけが読む値で、View と一緒に表示担当へ移る |
+| R7: 単発の命令 — `UiSfx.warp()`(出来事から、と `plan-editor` から直に)、`Bgm.seekAudition`。装置の出力 `Bgm.auditionElapsedSec` を HUD が表示に読む | 5.5-6 | 同じ手順で宣言にする。試聴の経過は、設定画面が宣言した開始時刻と実時刻から求める |
+| R5・R10: 消音前の音量 `PauseMenu.lastVol` が表示の導出にしか無い | 5.5-6 | 設定に音量と消音を分けて持つ |
+| R7: `FlashKind` の値が出来事の語彙(`bulletImpact`・`destroy1` ほか)で、照準ズームの意味(`dimsInGunsight`)も装置が解釈する | 5.5-9 | 装置は見え方の語彙で受け、出来事からの写しは `flash-presenter` が持つ |
+| R7: `CameraFrame` がビュー `mode: ViewMode` を運ぶ(装置の中では誰も読まない) | 5.5-9 | ビューは表示の導出が自分で持って配る |
+| R7: `CameraFrame.zoomed`・`PlayerRenderSource.active` を View が解釈して噴射・炎・自機を隠す | 段 6(6-3) | 1体ぶんの View の入力を表示担当が作り直す |
+| R7: `InstancedPools` の begin/end と push の即時モードを表示の導出へ公開し、束をモデル層の `DynamicSystem` が組む | 段 6(6-3) | 同上(落とし穴の表の「InstancedPools の begin/end と順序」) |
+| R7: タンパク質の `siteMarkers()`(装置の出力)をマーカーの位置に読み、入力 `ProteinSiteStatus` に戦闘の状態が入る | 段 6(6-3・6-6) | 表示担当と部位の変換の分割(K11-6)で作り直す |
+| R7・R9: `ProteinPhase` を `render/` が定義しモデル層が import する。`Stage0MetalEnemyView`・`ScaleGridVisibility` の名前にステージ・天体の意味 | 段 8(8-5) | 型の置き場を所有者へ揃える手順 |
+| R7・R5: 天体の装置 — `GeostationaryOverlay` の文面、`CelestialIllumination.fixedBrightnessScale` の読み、`bakeClouds` の順序依存、`PointFieldView` の巡回更新(表示時刻が混ざるキャッシュ)、参照軌道線の色を天体の種別で分ける | 段 7(7-3) | 天体の見た目と UI を分ける手順が作り直す |
+| R5: `MarkerGroup` が宣言の `cls` を作るときに1度しか貼らない(操作対象を替えても自艦・僚艦の塗り分けが古いまま) | 5.5-9 | 結果に効く入力をキーにする |
+| R5: `TrajectoryLine` の焼き直しの鍵に、役割トークンの解決先が入っていない | 段 6(6-4) | 軌道線を表示担当へ移す手順で入力を作り直す |
+| R5・R1: 破片の形と暗さを View の構築時に乱数で決める(復元で変わる) | 段 6(6-3) | 表示担当が id から決める形へ作り直す |
+| R5: タンパク質の LOD のフェードを表示時刻で測る | 段 6(6-3) | 同上 |
+| R5: 表示の不具合 — 窓の行の差分キャッシュの鍵に見出しが無い(`property-window-rows.ts:38`)、天体ラベルの `labelStateOf` が今フレーム出ていないラベルの古い値を返す、相対交点の `update` がマップでしか走らないのに `sync` は両ビューで走る | 5.5-9 | キャッシュの鍵と同期の条件を直す |
+| R5・R10: 創作パネルの形態ごとの着色の記憶(視点)、コンパクト表示と敵の種類タブ(設定) | 段 6(6-5) | 創作の UI をステージから外す手順 |
+| R5: 物体一覧の順序・行が `viewer`・`displayTime` を引数から写して持ち、呼ぶ順に依る。区画の開閉を構築時に1度だけ設定から写す | 段 6(6-4) | 一覧の行の開閉の二流儀(既存の行)と一緒に扱う |
+| R5・R13: ページ寿命のパネルが、ラン寿命の命令の口を毎フレーム受ける(`burnHandlers` ほか) | 段 8(8-6) | `Hud`(ページの寿命)と game 用パネル(ランの寿命)を分ける作業(K2) |
+| R7: 列の中で `openObjectPlacer` を直に呼ぶ、`ObjectPlacement` が DOM パネルを持つ、`WaveAttack` が `THREE.Color` を使う | 段 6(6-2・6-5) | ステージと creative から表示を外す手順と、モデル層の `three` の判定 |
+| 計測: `FrameSections.enabled`・`GpuTimings.enabled` を HUD が代入で切り替える | 段 8(8-6) | 計測の置き場を決める手順 |
+| R1・1.11: 時刻層の天体の運動を構築後に結び直す・積む(`CelestialMotion.bind*`、`addPlanetSystem`・`addSatellite`・`setBody`)。メモ化の鍵が結び直しを含まず、答えが呼ぶ順に依る | 段 7(7-4) | 天体系を構築値から組む手順が、構築の形ごと作り直す |
+| R1: `ApsisTrack`(`physics/trajectory-features.ts`)が観測の履歴で極値を溜める記録 | 段 6。5.5 で軌跡の暫定に含めた | 予測の弧の記録の一部で、軌跡の置き場(K10-7)と一緒に決める |
+| 1.6: 自機の既定部品の推力・トルクが自機の定数の手写し(`ship-default-parts.ts` の `SHIP_MASS`・`DEFAULT_TORQUE`・`THRUST_LEVEL_MAX`)、`MUZZLE_SPEED` が2か所、`BASE_TORQUE` が手計算、`WeaponState` の砲身の初期温度が `ENV_TEMP` の手写し、軌道ガイドの系の一覧 `ALL_SYSTEMS` が2か所 | 5.5-9(砲身の温度は 5.5-5) | 値を変えずに所有者から引く。既定部品は敵と共有する汎用の構成なので、自機の性能は自機の側から渡す |
+| 1.6: 抗力係数 2.2 の手写しと式の重複(`player-motion.ts:145`) | 5.5-4 | 運動を触る手順で、`dynamic-motion.ts` の定数と式を使う |
+| 1.6・K11: 形状と焼き込みアセットの手写し — 段の寸法とノズル出口、爆砕ボルトのずれ `+0.08`、排出ポート `v3(-0.9,0,0)`、砲身の放出位置、太陽電池の面積 `7.2`、噴射・再突入の効果の位置、タンパク質のリボンの断面、薬莢の縮尺の2段、model-builder が写した弾数・補給の弾倉数 | 段 6(6-6) | 形状の正本を分ける手順(K11-5)。入れてよい条件は K11-2 で決める |
+| 1.6: 天体の定義の `radius` が `shape` の手写し(約 25 件) | 段 7(7-4) | 天体の定義と構築値の手順 |
+| 1.6: 天体のテクスチャから手で測った `albedoScale`・`averageHue` | 段 7(7-3) | 天体の見た目の手順。測り直す運用はコメントにある |
+| 物理の値の食い違い: `SHIP_BCINV`(質量 8t の前提)と `SHIP_SRP_COEFF`(1t の前提)を `player-motion` が両方 1t の値として扱う、`BULLET_BCINV` が弾の半径・質量から出る値と約 140 倍違う、model-builder の `booster.mjs` の円環の向き | 計画の外 | 物理の値と見た目の判断(CODING-RULE 1.1 はユーザーに問うとする)。規則の未達ではない |
+| **以下は 5.5-10 の洗い出しで足した行**(5.5-3 の後に変わったファイルを、読むだけのサブエージェント 4 体へ規則ごとに配って洗った) | | |
+| 1.11: 状態を進めて値を返す — スロットルの推力とトルク、接触代理を置き直して返す口、タンパク質の被弾、計画のノード追加、空ノードの削除、ブースターの切り離し、スコアアタックの残り時間 | 5.5-10 で直した | 命令と問い合わせに分けた |
+| R3: 可変のまま外へ渡す — スコアの集計器(`StageOutcome.scoreCounter`)、給弾ベルトの配列、出来事の列(その場で空にする)。即時実行の計画の消化を、ステージが自機の計画と運動を別々に書いて保つ | 5.5-10 で直した | 集計はステージの命令、配列は読み取り面、列は差し替え、消化は自機の命令にした |
+| R13: `Targeter` がマーカー群を作って部品へ注入し、部品を外へ見せる。`CelestialMarkers.syncSubLabels` が持っている協力者を呼ぶたびにも受ける。`ProteinRuntime` が View の作った借り位置を受けて破棄する | 5.5-10 で直した | 受けた側が作る/持っている協力者から読む |
+| 1.6・R12: 操作対象の装備の不在を `?:` で表す、`SerializedPart` が `AnyPart` と同じ、`Serialized*` の可変な配列、試聴の期間と曲を2つの値で表す | 5.5-10 で直した | |
+| 1.2・1.6・R10: BGM の音量と消音の整合を `main.ts` が持つ | 5.5-10 で直した | 設定(`UserSettings`)の命令へ移した |
+| R12: 形式の版(launcher の値)を記録本体へ平らに並べる、自機の記録に運動の部品の記録を並べる、`DynamicSystem` が個体の記録を構築の引数で受ける | 例外(`例外(ARCHITECTURE R12)` のコメント) | 前の2つは形式の混在(版を上げるときに直す)。最後は復元に顔ぶれ自身が要る構築の順序 |
+| 1.2: `dynamic-motion.ts`(593 行) | 段 6(着手前に K10-6) | 診断: 行為の差し込み口の宣言・判定の委譲・熱の歩み・予測の弧が同居する。実体と運動の境界(K10-6)が作り直すので、そこで分ける |
+| 1.2: `plan-editor.ts`(640 行) | 段 6(6-4) | 診断: ノードの選択と移動、Δv の編集の途中経過、ギズモと計画パネルの同期が同居する。6-4 がマーカー・UI を表示担当へ移すときに分ける |
+| 1.2: `orbit-guide-tab.ts`(569 行)、`RunEventPresenter.show`(182 行) | 残す | 診断: どちらも同じ関心(軌道ガイドの種類ごとの行と設定の差分/出来事ごとの告知)が並んでいるだけで、分ける線が無い |
+| 1.11: 疑わしいが残した — `DynamicMotion.stepSimulation` の真偽(積分したか弧をなぞったか)、`Predictor` の消費歩数、`SaveSlots.createSlot` ほかが作った記録を返す、生成関数が採番して作ったものを返す | 残す | 生成と採番は作ったものを返すのが目的で、副産物ではない。前者2つは計測だけが読む値で、段 8-6(計測の置き場)で扱う |
+| R3: `PartInventory` が部品を読み取りの型で外へ渡しつつ中身を書き換える、`DynamicMotion.behavior`・`BulletMotion.reaction` が公開 | 段 6(着手前に K10-6) | 読み取りの型を通しているので書き込みはできない。部品と弾の反応の置き場は実体と運動の境界で決まる |
+| R7: 効果音の種類が艦の役割(`hit`・`enemyHit`)で分かれ、距離による減衰を装置が持つ | 残す | 種類は装置が鳴らし分ける音の一覧で、距離の減衰は装置の中の音作り(立体音響の減衰と同じ) |
+| セーブデータ画面が一覧を組み直すたびに記録の本体を読む(`isReadable`) | 残す | 読むのは表示中のステージの手動セーブ(上限 30)だけで、組み直すのは操作のときだけ。遅さを実測で確かめてから、版を索引に持たせるかを決める |
+| 1.6: `\| undefined` と `?:` の不在(lint の suppressions にある既存の分と、省略可能な引数) | 残す | lint の suppressions が件数を減らす一方で管理している。省略可能な引数は「省けば既定」の形で不在ではない |
 
-#### 手順 5.5-1. 規則を直す
+#### 手順 5.5-1. 規則を直す — 済
 
-**目的**: R3 を判定できる形で言い直し、`physics/` の記述を R1 に揃える。コードは変えない。
+ARCHITECTURE の R3(所有者・口・整合性・可変な public 欄)、層の中身の `physics/` と軌跡の暫定、CODING-RULE 1.11 を書いた。`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` は 5。**`physics/` の文面には、計画の「定数・純関数と、意味を持たない容器」に「結果を変えないメモ化キャッシュ(R1)」を足した** — R1 が時刻層に許しているもので、`CelestialMotion`・`PlanetSystem`・`TimeRing` が持つ。締め出すと、R1 に適う値が層の中身の文面の未達になる。
 
-**変更が必要な箇所**
+#### 手順 5.5-2. 検査を直す — 済
 
-| ファイル | 何をするか |
-| --- | --- |
-| `DEVELOP/ARCHITECTURE.md` — R3 | K10 の 1〜3 を書く。**所有者はその欄を宣言したクラス**で、所有の木(実体と運動、運動と behavior、持ち主と部品)の中でも他のクラスの欄へ代入しない(継承した欄を `this` で書くのは自分の欄)。**モデル層の口は命令・読み取り面・出来事の3つ**で、命令 API の禁止(R7)は装置の規則であってモデル層には当てない。**整合性は所有者が命令の中で保ち**、呼び手に世話(キャッシュの破棄など)の口を公開しない。**モデル層のクラスは可変な public 欄と `set` アクセサを持たず、export する型も可変な欄を持たない** — 代入の形は、それが命令であることを呼び手から隠し、書き手を1つに保てなくする |
-| `DEVELOP/CODING-RULE.md` — 1.11 | 「mutable な public フィールドは禁止しないが…」に、モデル層では R3 が禁じることを書き足す |
-| `DEVELOP/ARCHITECTURE.md` — 層の中身の `physics/` | 「THREE 非依存であれば状態を持つクラスを置いてもよい」を、R1 の時刻層に合わせて「定数・純関数と、意味を持たない容器(`StateQueue`。インスタンスの可変な値は、それを持つ者の層に属する)」へ直す。**定数を締め出さない** — `physics/` には物理定数のファイルが多い。実体の形状の定数を `physics/` から締め出すのは段 6 の 6-1 で行う(K11-5) |
-| 同 — 軌跡の暫定 | 同じ項に、`dynamic-trajectory.ts` が実軌跡と予測の弧の可変な記録と積分を持ったまま `physics/` にあり、運動がそれを読み手へそのまま渡すことを、`(暫定 — 段 6 で外す)` で書く(K10-7)。どこへ出すかは書かない — 段 6 の着手前に決める。`entity` / `motion` の節にある軌跡の記述(`DynamicTrajectory` の名指し、Motion が実軌跡・予測軌跡を所有する)は、6-1 で書き直すまで触らない |
+`tools/check-boundaries.mjs` に構文木の判定2つ(`SYNTAX_RULES`)を足した。「モデル層の可変な公開欄の禁止」(R3。class の可変な public 欄・コンストラクタ引数の欄・`set` アクセサ、export する interface と型の可変な欄・索引・mapped type)と、「直列化された形をコンストラクタで受ける禁止」(R12。コンストラクタ引数の型に `Serialized*` が現れるか。名前の正規表現の行と置き換えた)。「命令 API の禁止」の行は外した。「二段初期化」「復元の流し込み」は代用のまま残し、その旨を行のコメントに書いた。
 
-**達成条件と検証**
+- **判定の範囲**: `MODEL_ROOTS` から `MISPLACED_PRESENTATION_FILES` を除いたもの。`MODEL_ROOTS` へ、進行と視点の両方が使う `command-queue.ts`・`run-events.ts` と、`control-selection-commands.ts` を足した(当たりは無かった)。
+- **着手時の当たり**(許可リストに載せた): R3 が 84 件(計画の見積り 65 件より多いのは、`EllipticPlacementInput` の7欄と `Part` 系の欄を数えたため)、R12 が1件(`NavTargetSelection.constructor(target)`)。
+- **R12 の1件は 5.5-7 で直す。** `SerializedNavTargetSelection` は不変な素の値 `{ id, name }` で、選択の状態そのものをそのまま直列化の形に使っている。R12 はこの場合 `SerializedT` を別に作らないとしているので、型を状態の名前(航法ターゲット)で呼び直す。
+- 自己検証: `public x = 0`・`set x`(可視性を問わない)・export する interface の `x: number`・export する型の union の中の型リテラル・コンストラクタの `public y`・`Serialized*` の引数で 1、`private x = 0`・`readonly x`・export しない interface で 0 を返した。
 
-- R3 に「宣言したクラス」「命令・読み取り面・出来事」「可変な public 欄と `set` アクセサを持たない」が書かれていること。
-- `rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 5(軌跡の暫定を1つ足す。ほかは、5.5-3 の洗い出しで直さずに残すと決めたものが出たときだけ置く)。
-- `npm run typecheck`。
+#### 手順 5.5-3. 段 5 までの規則を洗い出す — 済
 
-#### 手順 5.5-2. 検査を直す
+R1(と 1.6 の手写し)・R3・R5(表示の導出)・R5 と R7(装置)・R8・R11 と R12・R13 を、読むだけのサブエージェント 7 体へ規則ごとに配って洗った(`5f87b1790`)。R4 は判定だけで洗い出す列が無く、R2 は段 6 から。結果は振り分けの表の「以下は 5.5-3 の洗い出しで足した行」から下の 60 行と、K6 の擬陽性の節にある。
 
-**目的**: R3 に構文の判定を足し、形を名前で代用している行を見直す(K10-5)。
+- **直さずに残すと決めたもの**は、規則の文面を暫定で狭めた(`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` は 10)。
+  - R3: 表示の導出がモデル層の所有者を具象のまま受ける(段 8)
+  - R5: 被選択物の2フレームの猶予を通した解決から視点を動かす(段 8)
+  - R7: カメラの投影を `render/` が返し、表示の導出が読む(段 8)
+  - R8: 入力の解釈が押し続ける入力を実時間 dt で積む(段 8)
+  - R13: 実体が同じ協力者を持ちながら呼ぶたびにも受ける(段 6)
+  - 軌跡の暫定に `ApsisTrack` を含めた
+- **保存の形式が2つの所有者の値を混ぜているもの(R12)と `RunEventLog`(R11)は例外にする。** 違反箇所に `例外(ARCHITECTURE Rn):` のコメントを書く(5.5-9)。R12 に例外が3つ重なるので、段 5.5 の PR 本文と報告で、版を上げて形式を直すかをユーザーに提案する。
+- 後の段へ回した行は、その段の手順が対象ごと作り直すもの。各段の手順の「5.5-3 から回した行」を見る。
+- 計画の外へ出したのは、物理の値の食い違い(`SHIP_BCINV` と `SHIP_SRP_COEFF` の質量の前提、`BULLET_BCINV`)と model-builder の円環の向き。物理の値の判断はユーザーに問う(CODING-RULE 1.1)。
 
-**変更が必要な箇所**
+#### 手順 5.5-4. 運動の値を運動だけが書く — 済
 
-| ファイル | 何をするか |
-| --- | --- |
-| `tools/check-boundaries.mjs` — R3 の判定 | TypeScript の構文木(`typescript` パッケージの parser)で、モデル層(いまの `MODEL_ROOTS` から `MISPLACED_PRESENTATION_FILES` を除いたもの。段 6 の 6-2 で対応表を割ったら、層で当てる)の class が持つ可変な public 欄(コンストラクタ引数の欄を含む)と `set` アクセサ(可視性を問わない)、export する interface と型リテラルの可変な欄を数える。**名前では判定しない。** 違反の識別子は「型名.欄名」。`Stage.onDecided` も当たり、5.5-7 で消える。ほかの判定と同じく、目的の規則(`ref: 'ARCHITECTURE R3'`)を付ける |
-| 同 — 名前で当てる行を見直す | 「命令 API の禁止」を外す(K10-5)。特定の API の呼び手を限る行(壁時計・`localStorage`・生の入力エッジ・定義層と時刻層の `three`・`RunSetting`・HUD の `Game`)と、R12 の語彙の行は残す。形を名前で代用している行のうち、「直列化された形をコンストラクタで受ける禁止」は、引数名 `saved*` ではなく**引数の型に `Serialized*` が現れるか**で判定する(型の名前は語彙の行が保証する。`nav-target-selection.ts` のように不変な素の値の型をそのまま直列化に使うものは R12 の例外として除く)。「二段初期化の禁止」「復元の流し込みの禁止」は代用のまま残し、規則と判定の対応表では洗い出しの側に置く |
-| `tools/boundary-allowlist.json` | R3 の判定の当たりを載せる(着手時点で class の欄と `set` が 52 件、export する型が 13 件)。5.5-4〜5.5-7 が消し、段の終わりに空にする |
+`DynamicMotion` の欄を private と getter にし、命令 `setThrust`・`setTorque`・`kill`・`reset` と、継承先が構成を変えたときの `setMassProperties`(protected)を置いた。`invalidatePrediction` は private。参加者の面は `state`・`alive` を読み取りにして `reset`・`kill` を足し、接触の相手の型を `EntityContactParticipant` へ広げた(`contactKind`・`contactDamageWeight` を足した)。接触代理は `game/dynamic/contact-proxy.ts` の `ContactProxy`(履歴を持たない)。`PilotCommandFrame` は消し、`updateControls` は明示的な引数で受ける。R3 の許可リストから 17 件が消えた(残り 68)。
 
-**達成条件と検証**
+**実施で決めたこと**
+- 分離ブースターの推力は、`updateCommands`(燃焼を進める命令)と `commandedThrust`(直近の燃焼から推力を答える問い合わせ)に分けた。計画の「updateCommands が値を返す」は、状態を進めて値を返す関数(CODING-RULE 1.11)になるので採らなかった。問い合わせは命令の直後に同じ姿勢で呼ぶので、推力の向きは変わらない。質量は behavior の `mass` から引く。
+- 予測弧を捨てる条件: 推力は非 null のとき(いまの setter と同じ)。質量と慣性は変わったときだけ(`AttachedBoosterMotion.step` は燃えていないフレームも呼ぶので、無条件に捨てると弧をなぞれなくなる)。点火の切り替えでは捨てない — 点火しても質量は変わらず、燃え始めれば推力で捨てる。
+- `DynamicMotion.attachedTo` は常に null の読み取り欄。
+- 5.5-3 から回した行(`cleanup` の中継、`options` の名前、抗力係数の手写し、接触代理の `prevState` のキャッシュのコメント)もここで直した。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。**計画の `npm run dev` での目視(噴射・段の分離・被弾ほか)はしていない** — 段の終わりの 5.5-10 でヘッドレスの起動と、ユーザーの目視に回す。
 
-- `npm run check:boundaries` が 0 を返す。
-- 自己検証(R3): モデル層のクラスへ `public x = 0` か `set x(v: number) {}` を足すと 1 を返し、`private x = 0` なら通る。モデル層から export する interface に `x: number` を足すと 1 を返す。
-- 自己検証(R12): モデル層のコンストラクタの引数に `Serialized*` の型を足すと 1 を返す。
+#### 手順 5.5-5. 残りのモデル層の欄を、所有者だけが書く形にする — 済
 
-#### 手順 5.5-3. 段 5 までの規則を洗い出す
+R3 の判定の許可リストに残るのは `Stage.onDecided`(5.5-7)だけになった(R12 の `NavTargetSelection` は 5.5-7)。
 
-**目的**: 規則と判定の対応表(達成目標)の「洗い出す」列を、R1〜R5・R7・R8・R11〜R13 について全量行い、この段の振り分けの表へ行を足す。判定の無い規則を満たしたことにしないための、初回の洗い出しである。コードは変えない。
+**実施で決めたこと**
+- `WeaponState` は遷移を命令として持つ形にした(トリガー・空撃ちの記録・クールダウン・砲身の熱の蓄えと温度の歩み・砲身の交換)。遷移はどれも武装の状態だけに閉じ、`FireControl` は出来事の記録と実体の生成だけを持つ。砲身の熱の蓄え `pendingBarrelJoules` を直列化へ足し、初期温度は `ENV_TEMP` から引く。
+- 部品 `Part` の欄は読み取りにし、HP と燃料を書くのは部品を積む `PartInventory`(構築時に受けた部品の写しを持つ)の命令にした。部品の直列化は `PartDamageModel` が持つ。
+- 敵の射撃の可否は、ステージの読み取り `Stage.enemiesMayFire`(デバッグステージはトグルの値)を `DynamicSystem.update` の引数で射撃の判断へ届ける。
+- `ObjectPlacement` は、持ち主の命令の口を受ける部品として `CreativeStage` のコンストラクタが組む(R13)。`create`・`deserialize` は消えた。
+- `plan/plan-path.ts` を `MISPLACED_PRESENTATION_FILES` へ足した(`PlanDisplay` が作って持つ作り直せる表示)。振り分けの表では 5.5-9 としていた行の一部。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視は 5.5-10 へ回す。
 
-**進め方**
+#### 手順 5.5-6. 音の装置を宣言だけにする(R7)— 済
 
-- 規則ごとにサブエージェントへ配る(`/delegate`)。読むだけで、書かせない。渡すのは規則の文面と、対応表の「洗い出す」列の問いと、「名前でなく形で判定すること」。
-- 規則ごとに、違反を `path:line` と「何がどう反しているか」の1行で返させる。擬陽性と判定したものは、理由を付けて K6 の擬陽性の節へ足す(同じ場所を後で洗い直さない)。
-- 結果は、この段の振り分けの表へ行として足す。行ごとに、5.5-4〜5.5-9 のどれで直すかを決める。直さずに残すなら、残してよい2つの場合(後の段が対象ごと作り直す / 暫定で規則を狭める)のどちらかを理由とともに書く。
-- 手で写した数値のような重複(1.6)も、同じ洗い出しで拾う。
-- 実体の形状の近似と手で写した数値(K11 の事実に挙げた「実寸に近い半径」を含む)は拾うだけにして、振り分けの表で段 6 の 6-6 へ回す(K11-5)。
+`WorldSfx.sync({ loops, cues })`・`UiSfx.sync(cues)`・`Bgm.sync(BgmDeclaration)` だけが公開の口になった。一回きりの音は `SoundCue`(`audio/sfx/sound-cue.ts`、id と音の種類)の列で受け、装置は鳴らした最新の id より大きいものだけを鳴らす。`Bgm` の `setVolume`・`syncRun`・`beginAudition`・`playAudition`・`seekAudition`・`auditionElapsedSec`・`endAudition` は消えた。
 
-**達成条件と検証**
+**実施で決めたこと**
+- ゲーム世界の効果音の id は出来事の通し番号。出来事から音への写像は `run-event-presenter.ts` の `worldSoundCues`(距離の減衰の値はここで付ける)。UI の効果音(`warp`)は `game/ui-sound-queue.ts` の `UiSoundQueue` が溜めて番号を振り、`GamePresentation.sync` が装置へ渡して空にする。`plan-editor` と出来事の写しはどちらもそこへ積む。
+- BGM の宣言は `main.ts` のフレームで毎回組む — 音量(消音を織り込む)、ランの進行(`run.game.activeStage.isPlaying`)、試聴の期間(設定面が開いているか)、試聴の曲。`syncRun` を遷移点で呼ぶ形はこの宣言へまとめたので、`Launcher` は `Bgm` を持たない。決着・周回の開始の反映は最大1フレーム遅れる。
+- 最初のタイトル画面でも試聴を鳴らすため、フレームのループは `launcher.start()` を待つ前に回し始める(タイトルへ戻った後と同じ状態)。
+- 試聴の選択(曲・選曲の回・シークの回と位置)は `BgmSettingsPanel` が操作途中の状態として持ち、`audition` で宣言する。経過の表示は、選曲・シークの後の最初のフレームの実時刻を起点に求める。
+- 消音は `UserSettings.bgmMuted`(鍵 `tepui.settings.bgm_muted`)に音量と分けて持つ。スライダーは消音を織り込んだ音量を見せ、動かせば消音を解く。**変わった挙動**: 消音の前の音量が再読み込みを跨いで残る。手で 0 にした音量から消音ボタンで戻すと、前に消音した音量ではなく既定の 1 になる。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:settings`(6/6)、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での聴き取りは 5.5-10 へ回す。
 
-- 対象の規則すべてについて、「違反なし」か違反の一覧が振り分けの表にある。
-- 表のすべての行に、直す手順か、残す理由がある。
-- 5.5-9 の見積りを、足した行の数から書き直してある。
+#### 手順 5.5-7. 位相・直列化・導出の残りを片づける(R8・R12・R5)— 済
 
-#### 手順 5.5-4. 運動の値を運動だけが書く
+境界の検査の許可リストが空になった(`Stage.onDecided` と `NavTargetSelection.constructor(target)` が最後の2件)。
 
-**目的**: 段 3 から main で満たしていなかった R3 を、運動へ当てる(K10)。運動の欄を書くのは運動だけにし、実体・behavior・反応・シミュレーションの機構・ステージは命令で変える。予測弧の破棄は運動の命令の中で行い、呼び手に世話をさせない。同じ編集範囲にある次の2つも片づける。
+**実施で決めたこと**
+- 時間加速の段の上下は `SimSpeedManager.shift(step: -1 | 1)`(命令の口は `SimSpeedCommands.shift`)。キーから段の向きへの解釈は `game-input-ports.ts` が持つ。
+- 決着は `Stage.decide` が出来事 `stageDecided` を記録する。`Launcher.followProgress()` を `main.ts` が `Run.frame` を回し終えたフレームごとに呼び、出来事があればクリアを数えて結果画面を出す。BGM は 5.5-6 でフレームごとの宣言にしたので、ここでは触らない。
+- `DynamicSystem` はコンストラクタで記録の列を受け、その場で実体化する(揃わないものは待ち行列へ)。`spawnWhenReady` はステージが遊びの最中に敵を足す命令として残る。
+- **採番器の予約は、組む前へ移すのではなく消した。** 記録にある id(顔ぶれの個体も、接続中のブースターの段も)はどれも同じ記録に保存した採番器が発番したもので、保存した「次の番号」はそれらを必ず追い越している。予約が守っていた場合は、この形式の記録からは起こらない。`EntityIdAllocators.reserve` は消え、`EntityIdAllocator.reserve` は `next(id)` の中だけで使う private になった。
+- `SerializedNavTargetSelection` は `NavTarget` へ改名した(保存形式は同じ)。
+- 版の刻印はモデル層から launcher へ移した。`SerializedGame` は `version` を持たず、launcher の `SavedGame`(`save-store.ts`、版 `SAVED_GAME_VERSION`)が版を添えた記録本体。版は `SnapshotService` が書くときに先頭へ添えるので、版の値と位置は変わらない。
+- `simTime` の二重経路: `ObjectWindows.open`/`openEmptySpaceMenu`/`sync`、`MapPicking.handleRightClick`/`handleEmptySpaceRightClick`、`ViewFrame.handleCommand`/`handlePointer`、`PlanEditor.handleCommand`/`update` の時刻の引数を落とし、表示窓の所有者 `DisplayWindowManager.current` から読む。`PlanEditor` は写しの `simTime` 欄をやめて所有者から読む。`frame-controls` の `lastTime` は、この手順に着手した時点で既に無かった。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run test:launcher`(2/2)、`npm run check:boundaries`(許可リスト 0 件)、変更ファイルの lint。`npm run dev` での目視(決着から結果画面、時間加速、マップの右クリック、段 5 のセーブの読み込み)は 5.5-10 へ回す。
 
-- **接触代理**: 置き直しが、この手順で消す `state` の setter を通っている。書き直す先を履歴を持たない軽いクラスにして、履歴の無制限な伸び(`reduce_implement.md` R20)を構造ごと消す(K10-7)。
-- **`PilotCommandFrame`**: `updateControls` が受ける寄せ集め(1.6)をやめる。推力とトルクの指令を置くのと同じ関数である。
+#### 手順 5.5-8. 段 5 が残した 1.x の未達と、launcher の表示を片づける — 済
 
-**物理の結果と見た目は変えない**(変わるのは、代理の履歴が伸びなくなることだけ)。**軌跡を `physics/` から出すことはしない**(K10-7) — 行き先と分け方は、段 6 の着手前に実体・運動と一緒に決める。
+`ProteinEnemy.muzzlePosition` の分割は計画どおり 5.5-9 で行う。
 
-**変更が必要な箇所**
+**実施で決めたこと**
+- 状態を進めて副産物を返す関数(CODING-RULE 1.11)を、命令と問い合わせに分けた。
+  - `BoosterStack.step` → 問い合わせ `burnOver(dt)`(燃焼結果。型は `BoosterBurn`)と命令 `burn(dt)`。`toggleIgnition` は操作後の点火状態を返していたので void にし、`ignited` で読む(`AttachedBoosterMotion` も同じ)。
+  - 燃料: `consumeFuel`・`refuelFuel` は void。賄えた割合は `throttle.ts` の `suppliedFuelRatio(ship.totalFuel, amount)` で消費の前に求め、補給で入った量は `logistics.ts` が補給の前に残りの容量から求める。
+  - `WeaponState.beginShot` → 問い合わせ `nextShot(muzzleCount)` と命令 `fire(muzzleCount)`。`beginShot` は `left` が偽なら null を返していたので、消費の結果の `'empty'` は通らない値だった — 型から消した。計画の表には無かったが、同じ形なのでここで直した。
+  - `manualReload(): boolean` は成否の真偽なので 1.11 の許容に入り、残した。
+- `DynamicSystem.update` の閉包 `beforeControllables` をやめ、引数 `acceptsCommands`(決着前かつ操作できる倍率か。`Game` が求める)を受けて、自律の推力の後に操縦の命令を自分で適用する。順序は変えていない。
+- 不在の `undefined` → `null`(1.6): 敵の `waveId`・`formationId`・`formationRole`(実体の欄と `EnemyPlacement`)、`isFormationEnergyAvailable`、`EnemyContact.waveId`、ウェーブ数の数え上げ。同じ形の欄を洗った結果、記録では null で持ち実体では undefined で持つものはこれだけだった。構築の省略可能な引数(省けば既定)と、`PartDamageModel` の部品参照(記録に出ない内部の参照)は形が違うので対象外。
+- `focus-camera-selection.ts`(563 行)は**分けずに残す**。診断: 責務は「1台のカメラの視点と、その変更規則」の1つで、向きは既に `CameraOrientation` へ出ている。各命令は注視・座標系・向き・距離・ずらしをまとめて読み書きする同じ関心の実装で、`config.view` が切り替えるのは初期値と3つの方針だけ(多態で分ける種類ではない)。投影(画角・投影方式・正射影の半高さ)を切り出す案は、距離が視点の置き場(直列化では変位の長さ)と透視のズームを兼ね、下限が注視対象で決まるため、切り出すと各命令へ下限を渡す委譲が並び、行数はほとんど減らない。
+- セーブデータ画面: `SnapshotService.isReadable(id)` が本体の形式の版を照合し、読めない手動セーブのカードは選べる見た目にせず、カードの上に理由を書く(タッチでも見える)。ダブルクリックすると理由を状態欄に出し、周回は始めない。カードの `onLoadSnapshot` は真偽の代わりに拒否の文面(読めるなら null)を渡す。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run test:launcher`(2/2)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視(ブースターの燃焼と分離、敵の射撃、敵の一覧、版の違う記録を置いたセーブデータ画面)は 5.5-10 へ回す。
 
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-motion.ts` | `state`・`thrust` の setter と、public の `alive`・`mass`・`torque`・`att`・`prevAtt`・`temperature`・`thermalDeviation`・`attachedTo` をやめる(読み取りは getter、継承先が書くものは protected)。命令を置く: 推力とトルクの指令(実体が毎フレーム渡す)、`kill()`、不連続な置き換え(いまの `reset`)。`invalidatePrediction` は private にし、予測弧を古くする命令の中で捨てる。**捨てる条件はいまの setter と同じにする**(推力は非 null のときだけ)。復元時の `alive` は構築の引数で受ける。軌跡(`actual` と、`predicted` が返すもの)は、5.5-1 の暫定のとおり据え置く(K10-7) |
-| `src/game/dynamic/dynamic-simulation-participant.ts`、`simulator.ts`、`entity-contact-physics.ts`、`surface-contact-physics.ts` | 参加者の面の可変な `state`・`alive` を、置き換えと `kill()` の命令にする。接触の相手の型を、代理も満たす参加者の面へ広げる |
-| `src/game/dynamic/predicted-arc.ts`、`predictor.ts`、`src/game/plan/plan-path.ts` | `requiredEnd`・`retainFrom`・`simulationMaxStep` を private にし、需要を受ける命令にする(Predictor と PlanPath が書いている) |
-| `src/game/player/{player-motion,player,attached-booster-motion,attached-boosters,fire-control}.ts`、`src/game/dynamic/dynamic-entity/base.ts` | 推力・トルク・状態の置き換え・退場を命令で行う。`invalidatePrediction` の呼び出し(`player.ts`・`attached-booster-motion.ts` の3か所・`attached-boosters.ts`)と `BoosterHostMotion.invalidatePrediction` を消す。`rebuildMassAndInertia` が予測弧を捨てる |
-| `src/game/dynamic/dynamic-entity/detached-booster-motion.ts` | behavior が `self.mass`・`self.thrust` へ代入するのをやめる。質量は `bcInv` と同じく behavior から引く導出値にし(状態が1つ減る)、推力は `updateCommands` が値を返して運動が持つ。`burnRatio` を private にする |
-| `alive = false` の書き手(`enemy.ts`・`enemy-reactions.ts`・`bullet-reaction.ts`・`debris-reaction.ts`・`pickup.ts`・`player.ts`・`dynamic-system.ts`・`stages/stage-utils/logistics.ts`・`pickable/enemy-inspection.ts`) | `kill()` にする。`enemy.ts` の構築後の `alive` の代入は構築の引数へ |
-| `src/game/stages/creative-stage.ts` | `ship.motion.state =` を置き換えの命令にする |
-| `src/game/player/{belt-physics,radiator}.ts` | 接触代理を `DynamicMotion` の派生から、参加者の面だけを持つ軽いクラスにする。置き直し(いまの `section.state = world`・`fold.state = world`)は履歴を持たない |
-| `src/game/dynamic/dynamic-entity/controllable.ts` の `PilotCommandFrame`、`dynamic-system.ts` の `updateControllables` | 寄せ集め(`controls`・`dt`・`simDt`・`activeStage`・`stageRules`・`celestialBodies`)をやめ、`updateControls` へ明示的な引数で渡す(CODING-RULE 1.6、K8 の別件)。協力者を構築時に受ける形へは移さない(振り分けの表) |
-| `tests/game/{predicted-arc,trajectory-demand}.test.ts` | 運動と弧の命令化に合わせて直す。`trajectory-demand` の不変条件(需要によらず同じ状態)は変えない |
+#### 手順 5.5-9. 洗い出しで出た残りと、監査報告の 4 を片づける — 済
 
-**達成条件と検証**
+振り分けの表で 5.5-9 と書いた行はすべて直した。コミットは3つ — 実体の採番と生死(サブエージェントが別の作業木で書き、差分を確かめて取り込んだ)、SPEC の削除(`docs(spec):` 単独)、残りのコード。
 
-- 5.5-2 の R3 の判定のうち、`DynamicMotion`・`PredictedArc`・参加者の面・`DetachedBoosterBehavior` の当たりが 0 件。
-- `rg -n "invalidatePrediction" src` が `dynamic-motion.ts` の中だけ。
-- `rg -n "PilotCommandFrame" src` が 0 件。
-- `rg -n "extends DynamicMotion" src/game/player/belt-physics.ts src/game/player/radiator.ts` が 0 件(接触代理が派生でない)。
-- `npm run typecheck`、`npm run test:game`、`npm run check:boundaries`。段 5 で書き出したセーブが読める(保存形式は変えない)。
-- `npm run dev` で次を見る。噴射と RCS、段の点火・分離、発砲の反動、放熱板とベルトへの被弾、creative の計画の即時実行、メニューの削除、補給の回収、弾・破片の上限。予測弧が噴射中に消え、噴射をやめると引き直される。
+**実施で決めたこと**
+- 計画の表示: `ApsisTrack` は `periapsisAfter(t)`・`apoapsisAfter(t)` で「t 以降で最初の極値」を答える。列を落とす `dropBefore` は持ち主の `PredictedArc` だけが `demand` で保持窓の左端まで呼ぶ(落とさないと列が際限なく伸びる)。`rg -n "dropBefore" src/game` に残る1件はこの持ち主の呼び出しで、外からの切り詰めではない。`FinalSegment` は極値と中心天体の組 `Apsis` を持つ。`Plan` のノード列は変えるたびに新しい配列へ差し替える(`consumeNodesUpTo` は件数を返さない)。`PlanPath` は `GamePresentation` が作って `PlanDisplay`・`CombatView`・`MapView` へ配り、自分で畳む。
+- 表示の導出の組み立て: `PlayerMarkers`・`EquatorNodeManager`・`CelestialMarkers`・`NavTargetPresenter`・`PlanDisplay`・`PlanGuide` はマーカー装置を受けて自分で群を作る。`CombatView`・`MapView` は作った `GamePresentation` が畳み、`ViewManager.dispose` は消えた。
+- 直列化: 実体の採番は `create`・`deserialize` が行い、コンストラクタは採番済みの id を受ける(`Bullet`・`DebrisPiece` のコンストラクタは private、直接 `new` していた呼び手は `create` へ)。`BulletReaction.deserialize` を足した。生死は実体の共通の記録の省略可能な `alive` に1か所で書き、全種の復元が運動へ渡す(記録に無ければ生存)。**変わった挙動**: 一時停止中に消した補給物・失った自艦・壊れた基地が、読み込み後に生き返らない。視点の子の選択(ビュー・軌道ガイド・軌道の基準)は自分の `serialize` を持つ。ステージの記録の欠けは `SerializedStage | null` で受ける(不在は null — lint が `| undefined` を禁じる)。`PredictPanelSelection.create` は初期の座標系をコンストラクタへ渡す。展開パネルの壊れた記録は `DeployablePanelState.deserialize` が null を返し、持ち主のコンストラクタの既定(太陽電池は展開、放熱板は収納)で補う。`run/` は `AutoSave` の代わりに自分の語彙の `ProgressReader` を受ける。
+- キャッシュのコメント: `DynamicSystem` の `_collectionRevision`・`capsUncheckedSinceAdd`、`NanWatchdog.tripped`。
+- 例外のコメント4件: R12 — 実体の記録の運動の値(`serializeEntityFields`)、顔ぶれの記録の `simTime`(`DynamicSystem.serialize`)、カメラの `offset`・`up`・`rotatingWith`(`FocusCameraSelection.serialize`)。R11 — `RunEventLog`。**R12 に例外が3つ重なる**ので、版を上げて形式を持ち主ごとに直す再設計を 5.5-10 の報告と PR 本文で提案する。
+- 装置の語彙: 閃光の種別・見え方の表・照準ズームでの減光は `flash-presenter` が持ち(`present` が `gunsightZoomed` を受ける)、装置 `FlashEffectsView` は色・大きさ・明るさだけを受ける。`CameraFrame.mode` を外し、ビューを読む導出(天体系・縮尺グリッド・照準・まとめマーカー・相対交点・計画の表示・ステージ・配置プレビュー)は `GamePresentation` が `viewManager.current` を渡す(描画層から `game/view` への import も消えた)。`MarkerGroup` は宣言の `cls` が変わったフレームで貼り直す。
+- 表示の不具合: 窓の行の構成の鍵に見出しを入れ、区切りの衝突しない形にした。天体ラベルの `labelStateOf` は今フレームに投影していないラベルに null を返す。相対交点は、MAP.md のとおりマップビューでだけ宣言する(戦闘ビューでは前のマップのフレームの位置が残っていた)。
+- `WaveAttack` はステージを面 `WaveAttackStage`(`StageOutcome` と `addEnemy`)1つで受け、`Stage.addEnemy` は public になった。
+- 定数: 既定部品 `createShipDefaultParts(maxHp, thrust, torque, muzzleVelocity)` は性能を受け、自機は `player-loadout.ts` の `PLAYER_THRUST`(質量 × 推力段の最大)・`PLAYER_TORQUE`(RCS の角加速度 `PLAYER_RCS_ANGULAR_ACCEL` × ヨー慣性)と `MUZZLE_SPEED` を渡す。金属の敵は自機と同じ性能を積む(値は変わらない)。`BASE_TORQUE` は基地の慣性 × `PLAYER_RCS_ANGULAR_ACCEL`。軌道ガイドの系の一覧は `orbit-guide-groups.ts` の `GUIDE_SYSTEMS` 1つ。
+- 監査報告の 4: SPEC の削除は計画の一覧(挙動の固定・LOD の近似・INVARIANTS §3 の言い直し)の全部とユーザーが決めた。銃口は部位の静止座標を `physics/protein-site-geometry.ts` の変換で個体の位置・姿勢へ写し、被弾は着弾点を模型座標へ戻して静止位置の部位と比べる。撃つ部位の巡回は、問い合わせ `nextAttackSite` と命令 `advanceAttackSite` に分け、発砲の後の口(`muzzleEffect` を `fired` に改名)で進める。View と runtime の規則専用の問い合わせは消した。**変わった挙動**: タンパク質の銃口と被弾部位が、ズーム・時刻スライダー・揺らぎの表示設定で変わらなくなった。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(256/256)・`test:render`(202/202)・`test:physics`(476/476)・`test:launcher`(2/2)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視(5i4r の陣形が撃ち、撃たれて部位が壊れる/揺らぎを切っても部位 HP の減り方が変わらない)は 5.5-10 へ回す。
 
-#### 手順 5.5-5. 残りのモデル層の欄を、所有者だけが書く形にする
+#### 手順 5.5-10. 段 5.5 を main へ送る — 済
 
-**目的**: 5.5-2 の R3 の判定のうち、5.5-4 が扱わなかった残りを、`Stage.onDecided`(5.5-7)を除いて 0 にする。大半は「自分しか書かない欄が public なだけ」なので private と getter にする。所有者でない者が書いているものは、書く処理を所有者の命令へ移す。挙動は変えない。
+`origin/main` を取り込み(中身の差は無かった)、段の終わりの洗い出し・`/refactor`・`/comment-cleanup`・CI と同じ全検証を通して PR を出した。
 
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/player/{weapon-state,fire-control}.ts` | `WeaponState` は「状態機械」と名乗りながら遷移を持たず、`FireControl` が欄を 20 か所書いている。遷移を `WeaponState` の命令へ移すか、`FireControl` の private な記録へ畳む。どちらにするかは、遷移がどちらに閉じるかで実施時に決める |
-| `src/game/dynamic/dynamic-entity/{parts,part-damage-model,part-inventory}.ts` | `Part` 系の型が可変な欄を export している。`PartDamageModel` が部品の `hp` を書く処理を、部品の所有者(`PartInventory`)の命令へ移す |
-| `src/game/dynamic/dynamic-entity/{enemy,enemy-fire-controller}.ts`、`src/game/stages/stage-debug.ts` | ステージの旗を毎フレーム全敵の `fireEnabled` へ写すのをやめる(ステージの値の写しを敵ごとに持っている)。旗は、いまの `operable` と同じく進行の引数で射撃の判断へ届ける |
-| `src/game/player/player.ts`、`src/game/dynamic/dynamic-entity/controllable.ts`、`src/game/pickable/player-inspection.ts` | `planExecution`・`fineAttitude` を private にし、メニューからの切り替えを命令にする |
-| `src/game/dynamic/dynamic-entity/{vessel,ship,part-based-enemy}.ts` | `hp`・`maxHp` の protected setter を、protected の欄かメソッドにする(モデル層は `set` アクセサを持たない) |
-| `src/game/creative/object-placement.ts`、`src/game/stages/creative-stage.ts` | 構築後に差す `onPlace` を、構築の引数で受ける |
-| 自分しか書かない public 欄(`Simulator`・`EntityContactPhysics`・`SurfaceContactPhysics`・`ArcCelestialBodies`・`PlanPath`・`Throttle`・`AeroLoad`・`AltitudeAlarm`・`DeployablePanelState`・`ScoreCounter`・`ScoreAttackTimer` と、`plan.ts` の `TimeRange`・`placement-validation.ts` の `PlacementFieldIssue`) | private と getter、または `readonly` にする。外から書いているもの(`dynamic-system.ts` の `lastSimDt`、`simulator.ts` の接触の計数)は所有者の命令へ移す |
-
-**達成条件と検証**
-
-- `npm run check:boundaries` で、R3 の判定の許可リストに残るのが `Stage.onDecided` だけ(5.5-7 で消す)。
-- `npm run typecheck`、`npm run test:game`。
-- `npm run dev` で、射撃(連射・装填・砲身交換・過熱)、被弾による部品の損傷、デバッグステージの敵の射撃の切り替え、計画の実行方式の切り替え、creative の配置を見る。
-
-#### 手順 5.5-6. 音の装置を宣言だけにする(R7)
-
-**目的**: 段 1 の R7 のうち、名前の列に無かったので素通りしていた命令をなくす。効果音は「そのフレームの出来事の列」、BGM は「音量と試聴中の曲」を、宣言として受ける。挙動は変えない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/audio/sfx/world-sfx.ts`、`src/game/run-event-presenter.ts` | 単発音の命令(`fire()`・`spinUp()`・`emptyClick()`・`magFeed()`・`playReload()`・`hit()` ほか)をやめ、そのフレームに鳴らす音の列を、出来事の通し番号付きで宣言として受ける。装置は同じ通し番号を二度鳴らさない(R7 の出来事の段落)。距離による減衰のような値は、表示の導出が写すときに付ける |
-| `src/audio/bgm/bgm.ts`、`src/main.ts`、`src/hud/panels/bgm-settings-panel.ts`、`src/hud/windows/settings-view.ts` | `setVolume` を設定の購読から呼ぶのをやめ、音量を宣言の一部として受ける。試聴の `beginAudition`/`playAudition`/`stopAudition`/`endAudition` を、試聴中の曲(無しを含む)の宣言にする。試聴の選択は、設定画面が R5-4 の操作途中の状態として持つ。`syncRun` を遷移点だけで呼んでいる形も、同じ宣言へまとめられるかをここで判定する |
-
-**達成条件と検証**
-
-- `rg -n "worldSfx\.\w+\(" src/game` が、宣言を渡す1本だけ。
-- `rg -n "bgm\.(setVolume|beginAudition|playAudition|stopAudition|endAudition)" src` が 0 件。
-- `npm run typecheck`、`npm run check:boundaries`。
-- `npm run dev` で次を見る。射撃・装填・被弾・空撃ちの音。一時停止中と決着後に効果音が鳴り続けない(AUDIO.md)。設定画面での BGM の音量変更と試聴。タブを隠して戻したときの再開。
-
-#### 手順 5.5-7. 位相・直列化・導出の残りを片づける(R8・R12・R5)
-
-**目的**: 後の段へ回していた、段 5 までの規則の未達を直す。変わる挙動は、結果画面が出るのが最大1フレーム遅れる点だけ(決着の読み方)。
-
-**前提(段 3・5-3)**: 位相の中の順序は、「段 1〜3 — 済」の節の5項目と、5-3 の `Run.frame` の順序表のとおりである。決着の読み方を変えるときも、これを崩さない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/sim-speed-manager.ts`、`sim-speed-commands.ts`、`src/game/input/game-input-ports.ts` | 時間加速の段の上下が、まだキーコードを命令の id として受けている(`handleCommand(commandId)` が `K.warpSlower.code`/`K.warpFaster.code` と比べる)。「段を1つ上げる/下げる」という領域の命令にし、`sim-speed-manager.ts` から `KEY_MAPPING` の import を消す(R8)。キーの解釈は入力の解釈へ |
-| `src/launcher/launcher.ts`、`src/game/stages/stage.ts`、`src/run/run.ts` | 構築の後に `stage.onDecided` を差す配線をやめる(R12・CODING-RULE 1.11 の二段初期化)。決着は進行が出来事として記録し、launcher は `Run.frame` の後にそれを読んで、解放記録・BGM・結果画面を動かす |
-| `src/game/dynamic/dynamic-system.ts` | `deserialize` が空のまま構築してから記録を `spawnWhenReady` で流し込む形を判定する。アセット待ちの関門のためなら、待ちの記録を構築の引数で受け、流し込みの口を持たない形にする(R12) |
-| `src/game/game.ts`、`src/launcher/save/*` | 版の刻印 `SERIALIZATION_VERSION` の置き場を判定する。版の照合は launcher の語彙(R12)なので、モデル層の直列化が版を知る必要が無ければ launcher へ移す。**保存形式(版の値と位置)は変えない**(K9) |
-| `src/game/pickable/object-windows.ts`、`src/game/pickable/map-picking.ts`、`src/game/view/view-frame.ts`、`src/game/hud/frame/frame-controls.ts`、`src/game/plan/plan-editor.ts` | `simTime` を引数で配る経路を落とし、表示時刻の所有者から読む1本にする(K6 の保留 2)。`frame-controls` の `lastTime` と `plan-editor` の `simTime` も同じく所有者から読む |
-
-**達成条件と検証**
-
-- `rg -n "onDecided" src` が 0 件。
-- `rg -n "KEY_MAPPING" src/game/dynamic` が 0 件。
-- R3 の判定の許可リストが空(`Stage.onDecided` が最後の1件だった)。
-- `npm run typecheck`、`npm run test:game`、`npm run test:launcher`、`npm run check:boundaries`。
-- `npm run dev` で次を見る。決着から結果画面が出る。決着済みの記録から始めても結果画面が出る。時間加速の上げ下げ。マップの右クリックとプロパティ窓の時刻表示。段 5 で書き出したセーブが読める。
-
-#### 手順 5.5-8. 段 5 が残した 1.x の未達と、launcher の表示を片づける
-
-**目的**: 段 5 の規約点検で見つけて割り当てなかったものと、段 5 の版上げが持ち込んだ振る舞いを直す。挙動は、launcher の一覧の表示だけを変える。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/protein-enemy.ts`(`muzzlePosition`)、`src/game/player/booster-stack.ts`(`step`)ほか燃料の関数 | 状態を進める命令と、値を返す問い合わせに分ける(CODING-RULE 1.11)。`muzzlePosition` は 5.5-9 で静止座標から求める形に直すので、分割もそこで一緒に行う |
-| `src/game/dynamic/dynamic-system.ts`(`update` の `beforeControllables`) | 閉包の注入をやめる(CODING-RULE 1.11)。呼び手が順に呼べば足りるなら、そうする |
-| `src/game/dynamic/dynamic-entity/enemy.ts`、`src/game/hud/hud-panel-presenter.ts`、`src/game/hud/panels/enemies-panel.ts` | `waveId` などの不在を `null` で表す(1.6)。同じ形の欄を洗い、まとめて揃える |
-| `src/game/viewer/focus-camera-selection.ts`(563 行) | 1.2 のとおり、まず原因を診断する。責務が複数なら分け、一つなら理由を書いて残す |
-| `src/launcher/save-browser/*` | 版の合わない記録を、読み込めるものとして並べない。開こうとしたら、読めないことを知らせる(SAVE.md「形式の版」。`/ui-design` を通す) |
-
-**達成条件と検証**
-
-- `npm run typecheck`、`npm run test:game`、`npm run test:launcher`。
-- `npm run dev` で、ブースターの燃焼と分離、敵の射撃、敵の一覧、セーブデータ画面(版の違う記録を置いた状態)を見る。
-
-#### 手順 5.5-9. 洗い出しで出た残りと、監査報告の 4 を片づける
-
-**目的**: 5.5-3 の振り分けの表のうち、5.5-4〜5.5-8 に載らなかった行を直す。あわせて、監査報告の 4(K10-11 で決めた)を実施する。監査報告の 5(K11)は段 6 の 6-6 で行う。
-
-**変えてよい挙動**: タンパク質の銃口と被弾部位の選択だけ。いまはズーム・時刻スライダー・揺らぎの表示設定で変わるが、静止構造から決まるようにする(K10-11)。部位マーカーと結合線は、これまでどおり表示中の揺らぎに追従する。
-
-**変更が必要な箇所**
-
-| 対象 | 何をするか |
-| --- | --- |
-| 5.5-3 で足した行 | 表のとおりに直す。**この行は 5.5-3 の終わりに、足した行の数で書き直す** |
-| `DEVELOP/SPEC/PROTEIN.md`、`DEVELOP/SPEC/RENDERING.md`(監査報告の 4) | **コードより先に `/modify-feature` で削り、`docs(spec):` の単独 commit にする。** 書き足すものは無く、INVARIANTS §3 は触らない。行番号は `5ef4194d3` のもの。<br>・実装上の近似(LOD): PROTEIN 58〜59、RENDERING 629〜631<br>・いまの挙動を固定している文: PROTEIN 60 の後半(発射位置も揺らぎに追従)、62〜63(マーカー・発射位置・命中部位で同じ時点の位置)、RENDERING 627〜628 の「攻撃の起点や活性部位のマーカーは見えているゆらぎに追従するが」<br>・INVARIANTS §3 を個別に言い直している文: PROTEIN 4 の後半、43〜44、66、67〜68 の後半、69〜70 の後半、RENDERING 626<br>どこまで削るかは `/modify-feature` の中でユーザーと決める |
-| `src/game/dynamic/dynamic-entity/protein-enemy.ts`(監査報告の 4、R4) | 銃口(`muzzlePosition`。5.5-8 の命令と問い合わせの分割も一緒に)を、部位の静止座標を個体の位置・姿勢で変換して求める。被弾は、着弾点を模型座標へ戻して、部位の位置を渡さずに `applyDamage` を呼ぶ。`view.siteWorldPositionById`・`view.siteModelPositionById`・`view.localImpactPoint` を読まない。コメント「銃口は静止座標で取り…」は実装と一致するようになる |
-| `src/game/protein/protein-combat-state.ts` | `applyDamage` と `closestSite` から引数 `sitePositions` を消す。静止位置で選ぶ分岐が唯一の経路になる |
-| `src/render/dynamic/dynamic-entity/protein-enemy-view.ts`、`src/render/protein/protein-runtime.ts` | 規則のためだけの問い合わせ(`siteWorldPositionById`・`siteModelPositionById`・`localImpactPoint` と runtime の `siteModelPositionById`)を消す。`siteMarkers` は表示の導出が読むので残す |
-| `src/physics/protein-site-geometry.ts` | 規則が要るのは静止位置の変換だけ、View が要るのは変換と変位の加算になる。**この段ではファイルを動かさない。** 規則も `physics/` の関数を読む(モデル層から時刻層への import は R2 に適う)。読み手の隣へ分けるのは段 6 の 6-6(K11-6) |
-| `tests/game/protein-combat-state.test.ts` | 「表示中のアンカーで被弾部位を選ぶ」(`a displayed anchor should select the same site on impact`)を、静止位置で選ぶ検査に書き直す |
-
-**達成条件と検証**
-
-- 振り分けの表のすべての行が「直した」か「残す理由がある」になっている。
-- `rg -n "view\.(siteWorldPositionById|siteModelPositionById|localImpactPoint)" src/game` が 0 件。
-- 変更した層の回帰テスト(`npm run test:game`・`npm run test:render` ほか)、`npm run check:boundaries`。
-- `npm run dev` で、タンパク質陣形の 5i4r が撃ち、撃たれて部位が壊れることを見る。部位マーカーが揺らぎに追従したまま、揺らぎの表示を切っても部位の HP の減り方が変わらない。
-
-#### 手順 5.5-10. 段 5.5 を main へ送る
-
-**手順と達成条件**: 「段を main へ送る(共通)」のとおり。PR 本文には、新しい規則は書いておらず、段 1〜5 の規則の言い直しと未達の是正の段であることを書く。書き直した規則(ARCHITECTURE の R3・層の中身の `physics/`、CODING-RULE 1.11)、足した判定と外した名前の列、洗い出しの結果(振り分けの表)も書く。暫定の数は 5 — 軌跡の暫定を1つ足した理由(K10-7: 行き先が実体・運動・軌跡の設計で変わりうるので、段 6 の着手前に決める)。洗い出しで置いたものがあれば、その理由も書く。**変えた挙動として、タンパク質の銃口と被弾部位を静止構造へ戻したことを書く**(K10-11)。PR #82 の意図を戻すことと、見た目との一致の調査を `fix_protain_combat.md` で別に行うことも書く。実体と運動の境界(K10-6)、軌跡の置き場(K10-7)、実体の形状の正本(K11)は段 6 で扱うので、この段では書いていないことも書く。
-
+**実施で決めたこと**
+- **段の終わりの洗い出し**: 5.5-3 の全体の洗い出しの後に変わったファイル(143)を、読むだけのサブエージェント 4 体へファイル群ごとに配り、全規則(R1〜R13 と 1.6・1.11)を当てた。見つけた違反はこの段で直した(振り分けの表の「以下は 5.5-10 の洗い出しで足した行」)。直さずに残したものは、後の段が対象ごと作り直すもの(段 6 の 6-4 と K10-6 の「5.5-10 から回した行」)か、理由を書いたもの。
+- **例外が増えた**: R12 の形式の混在は4か所(実体の記録と自機の運動の部品、顔ぶれの `simTime`、カメラの合成、記録本体の形式の版)、R12 の構築の順序が1か所(`DynamicSystem` が個体の記録を構築の引数で受ける)、R11 が1か所。`rg -n "例外\(ARCHITECTURE R1[12]\)" src` は 7 件(5.5-9 の達成条件の 4 件から、洗い出しで足した3件ぶん増えた)。
+- `/refactor`: lint の自動修正(型だけの import)と suppressions の刈り込み、旧名の残骸の全文検索(0 件)。長さの警告は振り分けの表で診断した。
+- `/comment-cleanup`: サブエージェント 4 体へファイル群ごとに配り、差分がコメントだけであることを構文木から確かめた(CSS の文字列の中のコメント2件を除く)。範囲内の呼出規約の不足 22 → 0、文脈の不足 39 → 1(`WorldSfx.play` の振り分けだけの `switch`)。`src` 全体の複数行のコメント 2657 ブロック/6953 行 → 2606/6764。
+- 検証の結果は PR 本文にある。`earth-surface:pages-check` は手元(Windows)で落ちる — 検査ツールと入力はこのブランチで触っていない。`smoke:browser` は通過の後の一時ディレクトリの削除だけが EPERM で落ちる。`npm run dev` での目視はユーザーへ回した(PR 本文の「回していないもの」)。
 
 ### 段 6 — 1体ぶんの表示物を表示担当へ移す
 
@@ -1065,6 +1099,10 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 **段の後、他の作業へ効くこと**: 実体に表示物・装置・UI の語彙を持たせない。1体ぶんの表示物は表示担当のフィールドにし、生成と破棄は族ごとの突き合わせ役だけが行う。モデル層から `three` と装置を import しない。実体の形状(寸法・取付位置など)は `entity-shapes/` を正本にし、形を変えるときは `/modify-model-shape` を通す。
 
 #### 手順 6-1. 段 6 の規則を書く
+
+**5.5-3 から回した行**: R13 の暫定(実体が同じ協力者を2経路で受ける)を、K10-6 で決めた繋ぎ方で外す。
+
+**5.5-10 から回した行**: `dynamic-motion.ts` の長さ(1.2。診断は振り分けの表)と、`PartInventory` が書き換える部品・`DynamicMotion.behavior`・`BulletMotion.reaction` の公開(R3)を、K10-6 で決めた実体と運動の境界で分ける。
 
 **目的**: 1体ぶんの表示物の持ち方と、モデル層の出ていく import を正本にする。コードは変えない。
 
@@ -1109,6 +1147,8 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 #### 手順 6-3. 1体ぶんの 3D 表示を表示担当へ移す
 
+**5.5-3 から回した行**: 進行の中の実体化と `prune` が View を作り捨てる(R8)、`CameraFrame.zoomed`・`PlayerRenderSource.active` を View が解釈する(R7)、`InstancedPools` の即時モード(R7)、破片の形の乱数(R5・R1)、タンパク質の LOD のフェードと `motionSeed`(R5・R11)、`siteMarkers`・`ProteinSiteStatus`(R7)、`StageDeps` の束(1.6)。振り分けの表を見る。
+
 **目的**: R6 のとおり、`DynamicEntity` から View を外す。表示の導出の突き合わせ役が、実体ごとの表示担当を作る・捨てるようにする。View の構築は sync で行う(update 中に THREE を作らない)。実体の構築経路から `scene` を消す。見た目は変えない。
 
 **変更が必要な箇所**
@@ -1142,6 +1182,10 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 #### 手順 6-4. 1体ぶんのマーカー・軌道線・UI を表示担当へ移す
 
+**5.5-3 から回した行**: 列の中のメニューの操作が表示の導出を走らせる(R8)、`EquatorNodeInputs`(1.6)、`HudPanelPresenter` の平らな引数、`TrajectoryLine` の焼き直しの鍵(R5)、物体一覧の引数の写しと区画の開閉(R5)。振り分けの表を見る。
+
+**5.5-10 から回した行**: `plan-editor.ts` の長さ(1.2。ノードの選択と移動・Δv の編集の途中経過・ギズモと計画パネルの同期が同居する)を、マーカーと UI を表示担当へ移すときに分ける。
+
 **目的**: R6 の残りとして、実体に付随するマーカー、軌道線、一覧の行、メニュー、プロパティ行、ピック候補を表示担当のフィールドにする。管理者ごとの id 対応表を消す。実体から UI の語彙を消す。挙動は変えない。
 
 **変更が必要な箇所**
@@ -1171,6 +1215,8 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 #### 手順 6-5. ステージと creative から表示を外す
 
+**5.5-3 から回した行**: 決着の結果とブリーフィングの文面(R11・K2)、創作パネルの着色の記憶・コンパクト表示・種類タブ(R5・R10)、`openObjectPlacer` を列を通さず呼ぶ・`ObjectPlacement` が DOM パネルを持つ・`WaveAttack` の `THREE.Color`(R7・R8)、`StageDeps` の束(1.6)。振り分けの表を見る。
+
 **目的**: ステージを進行だけにする。ステータスパネル、ブリーフィング・結果・副題の文面、デバッグ用ウィジェット、creative のパネルと配置プレビューは、ステージクラスごとの表示(表示の導出。一般化しない)へ移す。`StageDeps` から表示の型を消す。`stage.id === 'creative'` の分岐を、宣言された能力に置き換える。挙動は変えない。
 
 **変更が必要な箇所**
@@ -1199,6 +1245,8 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 #### 手順 6-6. 実体の形状の正本を分ける
 
+**5.5-3 から回した行**: 形状と焼き込みアセットの手写し(段の寸法とノズル出口、爆砕ボルトのずれ、排出ポート、砲身の放出位置、太陽電池の面積、噴射・再突入の効果の位置、タンパク質のリボンの断面、薬莢の縮尺の2段、model-builder が写した弾数・補給の弾倉数)。振り分けの表を見る。
+
 **目的**: 監査報告の 5 を実施する(K11)。実体の形状を `physics/` から出し、`entity-shapes/` を正本にする。手で写した近似は、描画側のアセットとの一致を確かめられる形にする。形を変える手順を SKILL にする。どこまで `entity-shapes/` に入れるかは、段の着手前に決めた K11-2 の条件に従う。**3D モデルの形と、物理の結果は変えない**(焼き直したアセットの差分が識別子だけになる)。
 
 **変更が必要な箇所**(C を選んだ場合。A なら RCS ノズルの行が落ち、B なら当たり判定の近似は所有者の隣に残り、照合のテストだけを足す)
@@ -1221,7 +1269,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 #### 手順 6-7. 段 6 を main へ送る
 
-**手順と達成条件**: 「段を main へ送る(共通)」のとおり。PR 本文には、R6(dynamic の族とステージ)と R2 のモデル層の項、`motion` の基準(K10-6)、`entity-shapes/` とその入れてよい条件(K11)、SKILL `/modify-model-shape`、そしてこの段で置いた暫定4つを書く。
+**手順と達成条件**: 「段を main へ送る(共通)」のとおり。PR 本文には、R6(dynamic の族とステージ)と R2 のモデル層の項、`motion` の基準(K10-6)、`entity-shapes/` とその入れてよい条件(K11)、SKILL `/modify-model-shape`、そしてこの段で置いた暫定4つと、外した暫定(軌跡、協力者の2経路)を書く。
 
 ### 段 7 — 天体を時刻層にする
 
@@ -1265,6 +1313,8 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 #### 手順 7-3. 天体の見た目と UI を分ける
 
+**5.5-3 から回した行**: 天体の装置の出力の読み・順序依存・巡回更新(R7・R5)、テクスチャから手で測った `albedoScale`・`averageHue`(1.6)。振り分けの表を見る。
+
 **目的**: 天体のモジュールを時刻層だけにする。対象は天体の定義、系の構築、索引、所属の問い合わせ、重力源の一覧、セーブ。見た目・View・照明と星野・グリッド・軌道ガイドの表示・ラベルの距離帯・近傍系のヒステリシス・点群の分布・地表の配信は表示の導出へ移す。見た目は変えない。
 
 **変更が必要な箇所**
@@ -1291,6 +1341,8 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
   - デバッグステージの架空の星系
 
 #### 手順 7-4. 天体系を構築値から組む
+
+**5.5-3 から回した行**: 天体の運動を構築後に結び直す・積む形(R1・1.11)、天体の定義の `radius` と `shape` の手写し(1.6)。振り分けの表を見る。
 
 **目的**: R11 のとおり、天体系を1つの immutable な構築値から組む形にする。構築値は、元期・暦プロファイル・暦パック・形式版・自転初期位相・位相オフセット・系の選択。構築時の乱数は `80c63542` で消えたので、構築値に乱数は入らない。保存形式は変えない。
 
@@ -1335,7 +1387,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 | ファイル | 何をするか |
 | --- | --- |
 | `DEVELOP/ARCHITECTURE.md` | R2 の対応表を最終形にする(`presentation/`・`celestial/`・`game/viewer/`・`run/` を含み、`hud/` を装置とする)。R9 を新しい節として書く。「`launcher/` が `game/` を見てよいのは、ランを起こすときだけ」を R10 の全文で置き換える(`launcher/`・`main.ts`・モデル層は `settings/`・`launcher/`・`run/` を import しない・`settings/` が import してよい範囲。ランの組み立ての項は 5-1 で書いた) |
-| 同 — 外す暫定 | 残る4つ(`hud/` の扱い、表示の導出の置き場、`render/` の語彙の型、天体の置き場)をすべて外す |
+| 同 — 外す暫定 | 残る8つ(`hud/` の扱い、表示の導出の置き場、`render/` の語彙の型、天体の置き場と、5.5-3 で置いた R3・R5・R7・R8 の4つ)をすべて外す。後者の4つは設計を決めてから外す(8-3・8-6 の「5.5-3 から回した行」) |
 | `.claude/skills/**/SKILL.md`、`CLAUDE.md` | 層の名前とフォルダが最終形になったので、参照を揃える |
 
 **達成条件と検証**
@@ -1362,6 +1414,8 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 - 段の終わりに空の許可リストで 0 を返す。
 
 #### 手順 8-3. 表示の導出を `src/presentation/` へ出す
+
+**5.5-3 から回した行**: R3 の暫定(表示の導出がモデル層の所有者を具象のまま受ける)を、`Game` が公開する読み取り面と命令の口の設計を決めて外す。R7 の暫定(カメラの投影を `render/` が返す)と R5 の暫定(被選択物の猶予から視点を動かす)も、`CameraFrame` の置き場と猶予の置き場を決めて外す。
 
 **目的**: 段 1〜6 で表示の導出になったものを、R2 の対応表どおり `src/presentation/` へ移す。汎用の部品は `src/hud/` へ移す。移動だけで、挙動は変えない。
 
@@ -1421,6 +1475,8 @@ import を直す外側:
 
 #### 手順 8-5. 型の置き場を所有者へ揃える
 
+**5.5-3 から回した行**: `ProteinPhase` を `render/` が定義する、`Stage0MetalEnemyView`・`ScaleGridVisibility` の名前(R7・R9)。
+
 **目的**: R9 のとおり、型をその値の正本の所有者へ移す。対象は、モデル層が `render/` で定義された型を使っている残りと、`hud/` と `settings/` が装置の内部から引いている型・定数である(段 8 で `hud/` が装置になるので、後者も装置どうしの import になる)。挙動は変えない。
 
 **変更が必要な箇所**
@@ -1445,6 +1501,8 @@ import を直す外側:
 - `npm run typecheck`、`npm run test`、`npm run check:boundaries`。
 
 #### 手順 8-6. ランの組み立ての残りを片づける
+
+**5.5-3 から回した行**: R8 の暫定(入力の解釈が押し続ける入力を dt で積む)を、視点とΔv の編集の量を操作量として進行へ渡すかどうかを決めて外す。ページ寿命のパネルがラン寿命の口を毎フレーム受ける(R5・R13)、`FrameSections.enabled`・`GpuTimings.enabled`(計測)。
 
 **目的**: 5-3 で `game.ts` を3つの根に分けた後に残る、組み立ての仕事を片づける。ここに残したのは、R10 の全文と段 8 の置き場が要るもの(launcher が読む面、計測と読み込みの進捗)である。決着の読み方・時間加速の命令・`simTime` の経路は、段 5 までの規則(R12・R8・R5)の未達なので、段 5.5 の 5.5-7 へ移した(2026-09-19)。
 
@@ -1502,17 +1560,17 @@ import を直す外側:
 
 | 段 | 手順 | 分 |
 | --- | --- | --- |
-| 5.5 | 5.5-1 規則(R3・CODING-RULE 1.11・層の中身の `physics/`。`motion` の基準と `entity-shapes/` は段 6 へ移した) | 60 |
-| | 5.5-2 検査(R3 の構文の判定 +40、名前で当てる行の見直しと型の判定 +20) | 90 |
-| | 5.5-3 洗い出し(規則ごとに配る。R1〜R5・R7・R8・R11〜R13) | 150 |
-| | 5.5-4 運動の書き手(29 ファイル × 20 + 検証 20、`PilotCommandFrame` を明示的な引数へ +20。`power` と接続中ブースターの段は K10-6、軌跡の移動は K10-7 の保留で外した) | 620 |
-| | 5.5-5 残りのモデル層の欄(24 ファイル × 20 + 検証 20) | 500 |
-| | 5.5-6 音の装置(6 ファイル × 20 + 検証 20) | 140 |
-| | 5.5-7 位相・直列化・導出の残り(15 ファイル × 20、時間加速の命令を領域の語彙にする +40、検証 20) | 360 |
-| | 5.5-8 1.x の未達と launcher の表示(10 ファイル × 20 + 検証 20) | 220 |
-| | 5.5-9 洗い出しの残りと監査報告の 4(5.5-3 の終わりに書き直す。いまは 4 の分だけ。SPEC の削除と 6 ファイル × 20 + 検証 20。監査報告の 5 は 6-6 へ移した) | 140 |
-| | 5.5-10 main へ送る | 150 |
-| | **段 5.5 計** | **2,430**(5.5-9 が洗い出しで増える) |
+| 5.5 | ~~5.5-1 規則~~ 済 | 0 |
+| | ~~5.5-2 検査~~ 済 | 0 |
+| | ~~5.5-3 洗い出し~~ 済 | 0 |
+| | ~~5.5-4 運動の書き手~~ 済 | 0 |
+| | ~~5.5-5 残りのモデル層の欄~~ 済 | 0 |
+| | ~~5.5-6 音の装置~~ 済 | 0 |
+| | ~~5.5-7 位相・直列化・導出の残り~~ 済 | 0 |
+| | ~~5.5-8 1.x の未達と launcher の表示~~ 済 | 0 |
+| | ~~5.5-9 洗い出しの残りと監査報告の 4~~ 済 | 0 |
+| | ~~5.5-10 main へ送る~~ 済 | 0 |
+| | **段 5.5 計(残り)** | **0** |
 | 6 | 6-1 規則(R6・R2 のモデル層、`entity-shapes/` の層と条件 +15、`physics/` から実体の形を締め出す +15) | 120 |
 | | 6-2 検査(対応表を game/ の中まで割る、`LAYER_TABLE` の行 +5。K11-2 で B なら読み手の数の判定 +20) | 95 |
 | | 6-3 3D の表示担当(モデル層の根の `scene` +20、漏れていたテスト3本 +30、突き合わせの検査 +40) | 810 |
@@ -1528,15 +1586,15 @@ import を直す外側:
 | | ~~7-5 採番器~~ 済 | 0 |
 | | 7-6 main へ送る | 120 |
 | | **段 7 計** | **1,170** |
-| 8 | 8-1 規則(R2 の最終表・R9・R10 の残り・暫定4つの削除) | 90 |
+| 8 | 8-1 規則(R2 の最終表・R9・R10 の残り・暫定8つの削除) | 120 |
 | | 8-2 検査(最終形。可変値の判定を広げる +20) | 100 |
 | | 8-3 presentation へ(段 3 の入力の解釈と出来事の読み手 +10、表示の導出の根 +10、移すテストの 4.1 の判定 +30) | 540 |
 | | 8-4 celestial へ | 363 |
 | | 8-5 型の置き場(語彙モジュールの切り出しを含む。`ViewMode` は移動済み) | 350 |
 | | 8-6 ランの組み立ての残り(狭い面 3、計測と進捗 4 — 計 7 × 20 = 140、検証 20。決着の読み方・時間加速・`simTime` の経路は 5.5-7 へ移した) | 160 |
 | | 8-7 main へ送る | 120 |
-| | **段 8 計** | **1,723** |
-| | **残りの合計** | **7,918 分 ≒ 132 時間**(段 5.5 の洗い出しの分と、段 6 の前に決める K10-6・K10-7 の是正の分を除く) |
+| | **段 8 計** | **1,753** |
+| | **残りの合計** | **8,668 分 ≒ 144 時間**(段 6 の前に決める K10-6・K10-7 の是正の分と、段 8 で暫定を外すための設計の分を除く) |
 
 - 残りの commit は約 25 本、PR は 4 本(段 5.5・6・7・8)。段 5 の実測は約 45 commit(規約点検と後始末を含む)。**手順どうしは直列にする**(どの手順も同じファイル群を重ねて触る)。ただし手順の中で、所有者の群ごとにファイルを重ねずに割れるなら、git worktree で並行してよい(段 5 の「進め方で分かったこと」)。
 - 手順 5.5-4〜7-3 は `src/game/dynamic/` と `stages/` を重ねて触るので、段を跨いでも直列にする。**段 5.5 を main へ入れてから段 6 に着手する。**
@@ -1550,7 +1608,7 @@ import を直す外側:
 | --- | --- | --- |
 | 規則を段より先に書く(最終形をまとめて書く) | 満たしていないコードが main に入り、他の作業が計画の外で規則へ合わせ始める。次の段が触る場所が先に動く | 各段の N-1 の手順(その段の終わりに満たせる分だけ書く)。狭めた文面に `(暫定 — 段 N で外す)` を付ける |
 | 段の終わりに許可リストが空にならない | 次の段の着手条件が崩れ、違反が段を越えて積み上がる | 段の PR の手順。空にできないなら段を閉じず、残りが規則の設計の誤りなら**その段の規則を狭める** |
-| 暫定の文面が残る・増える | 規則が読めなくなり、最終形との差が分からなくなる | 各段の N-1 の達成条件の `rg -c "暫定 — 段"`(3 → 4 → 7 → 6 → 4 → 5 → 6 → 4 → 0) |
+| 暫定の文面が残る・増える | 規則が読めなくなり、最終形との差が分からなくなる | 各段の N-1 の達成条件の `rg -c "暫定 — 段"`(3 → 4 → 7 → 6 → 4 → 10 → 10 → 8 → 0) |
 | 段を切ったのに、先に書いた規則を落とし忘れる | 満たしていない規則(R11 の2)が main に入り、他の作業が「載っていない値がある」ことを違反と読む | 手順 4-4(`rg -n "例外なくすべてセーブ"` が 0 件)、4-5 の PR 本文 |
 | 規則を落とすときに、SPEC まで一緒に落とす | 仕様が後退する。SPEC はコードより先行してよい(未実装の記述は正常) | 手順 4-4(触るのは `DEVELOP/CODING-RULE.md` だけ。`DEVELOP/SPEC/SAVE.md` は触らない) |
 | 段 4 の PR の後、ほかの作業が `game.ts` を割る | 段 5 の分割と衝突し、計画の切り方(3つの根)が失われる | 手順 4-4(1.10 の位相の印・1.2 の暫定・`game.ts` の冒頭のコメント)、4-5(PR 本文の予告) |

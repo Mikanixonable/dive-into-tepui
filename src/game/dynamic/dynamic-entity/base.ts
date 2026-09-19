@@ -17,8 +17,9 @@ import { fmtDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import { Throttle, type SerializedThrottle } from '../../player/throttle';
-import type { Controllable, PilotCommandFrame } from './controllable';
-import type { PilotCommand } from './pilot-controls';
+import { PLAYER_RCS_ANGULAR_ACCEL } from '../../player/player-loadout';
+import type { Controllable } from './controllable';
+import type { PilotCommand, PilotControls } from './pilot-controls';
 import type { EntityRegistry } from '../entity-registry';
 import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
@@ -35,11 +36,12 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import { BASE_THRUST, BaseMotion } from './base-motion';
 
-const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
 const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
 const BASE_INERTIA_Y = 1e8;
 const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
+// 基地のトルク [N·m]。短軸まわりに自機の RCS と同じ角加速度を出す。
+const BASE_TORQUE = BASE_INERTIA_X * PLAYER_RCS_ANGULAR_ACCEL;
 const BASE_INITIAL_MONEY = 100000; // 新規配置の基地の所持金 [Cr]
 
 export interface SerializedBase extends SerializedDynamicEntityFields {
@@ -89,15 +91,17 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public get totalMaxFuel(): number { return this.motion.maxFuel; }
   public readonly hp = null;
   public readonly maxHp = null;
+  public readonly fire = null;
+  public readonly boosters = null;
+  public readonly altitudeAlarm = null;
 
-  // 燃料を amount だけ使い、要求に対して実際に賄えた割合 [0, 1] を返す。
-  public consumeFuel(amount: number): number {
-    if (amount <= 0) return 1.0;
-    return this.motion.consumeFuel(amount);
+  // 燃料を amount [kg] だけ、残量の範囲で使う。
+  public consumeFuel(amount: number): void {
+    this.motion.consumeFuel(amount);
   }
 
   // 基地 name を state・attitude に置く。id は採番器が配った識別子。_money から後ろは所持金 [Cr]・
-  // 燃料・操作状態・マニューバ計画で、省いたものは新しく置いたときの状態で始める。
+  // 燃料・生死・操作状態・マニューバ計画で、省いたものは新しく置いたときの状態で始める。
   private constructor(
     scene: THREE.Scene,
     id: string,
@@ -106,10 +110,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     attitude: Attitude,
     private readonly _money = BASE_INITIAL_MONEY,
     fuel?: number,
+    alive?: boolean,
     public readonly throttle = new Throttle(),
     public readonly plan = Plan.create(),
   ) {
-    super(() => new BaseMotion(state, attitude, fuel), new BaseView(scene, id), id);
+    super(() => new BaseMotion(state, attitude, fuel, alive), new BaseView(scene, id), id);
     this.setName(name);
   }
 
@@ -131,13 +136,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     const base = new Base(
       scene,
       registry.idAllocators.base.next(serialized.id),
-      // 記録に無い名前は、新しく置いたときと違って無作為に選ばず「基地」と名乗る。
+      // 記録に名前が無ければ、無作為な名前でなく「基地」と名乗る。
       serialized.name || '基地',
       deserializeKinematicState(serialized),
       deserializeAttitude(serialized, Base.INERTIA),
       // null の所持金も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
       serialized.money ?? undefined,
       serialized.fuel,
+      serialized.alive,
       serialized.throttle ? Throttle.deserialize(serialized.throttle) : undefined,
       plan ? Plan.deserialize(plan) : undefined,
     );
@@ -164,26 +170,28 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // --- 操作制御 ---
 
-  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。controls が null なら操作されない。
-  public updateControls(frame: PilotCommandFrame): void {
-    const { controls, dt, simDt } = frame;
+  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。controls はこのフレームの操作量で、null なら
+  // 操作されない。dt [s] は実時間、simDt [sim s] はシミュレーション時間の刻み。
+  public updateControls(controls: PilotControls | null, dt: number, simDt: number): void {
     if (controls === null) {
       this.clearTransientCommands();
       return;
     }
     // 操作量から姿勢のトルクと推力を決める
-    this.motion.torque = this.throttle.updateTorque(
+    this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, controls, false, dt, simDt, this,
       null,
     );
+    this.motion.setTorque(this.throttle.torque);
     this.throttle.updateThrustLatches(controls);
-    this.motion.thrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.motion.setThrust(this.throttle.thrust);
   }
 
   // 推力・トルクの指令とスロットルの一時状態を解く。
   public clearTransientCommands(): void {
-    this.motion.thrust = null;
-    this.motion.torque = v3();
+    this.motion.setThrust(null);
+    this.motion.setTorque(v3());
     this.throttle.clearTransientState();
   }
 

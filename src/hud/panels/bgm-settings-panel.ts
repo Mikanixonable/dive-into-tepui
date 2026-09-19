@@ -1,4 +1,4 @@
-import type { Bgm } from '../../audio/bgm/bgm';
+import { auditionDurationSec, type BgmAudition } from '../../audio/bgm/bgm';
 import { BGM_TRACKS } from '../../audio/bgm/tracks/tracks';
 import { Button, Slider } from '../widgets';
 
@@ -10,14 +10,13 @@ function formatSeekTime(sec: number): string {
 }
 
 // BGM の設定面。ゲーム中BGMの音量調整と、曲の試聴(選曲・再生位置のシーク・停止)を扱う。
-// 音量の操作は onVolumeChange で外へ返す。
+// 音量の操作は onVolumeChange で外へ返し、試聴している曲は audition として宣言する。
 export class BgmSettingsPanel {
   public readonly element: HTMLElement;
 
   // 音量スライダーが動いたときに呼ばれる。
   public onVolumeChange: ((volume: number) => void) | null = null;
 
-  private activeTrack: number | null = null;
   private readonly stopButton: Button;
   private readonly trackButtons: Button[] = [];
   private readonly volumeSlider: Slider;
@@ -26,9 +25,17 @@ export class BgmSettingsPanel {
   private readonly seekTimeLabel: HTMLSpanElement;
   private seeking = false;
 
-  // 音量・再生位置・曲一覧・停止ボタンの4ブロックを縦に並べる。bgm は試聴の音声経路、
-  // volume は組み立て時のユーザー音量。
-  public constructor(private readonly bgm: Bgm, volume: number) {
+  // 以下は試聴の操作の途中経過。activeTrack は試聴している曲(止めていれば null)、session は選曲の
+  // たびに、seekId は再生位置を飛ばすたびに増える通し番号、seekSec は飛ばした先の位置 [s]。
+  private activeTrack: number | null = null;
+  private session = 0;
+  private seekId = 0;
+  private seekSec = 0;
+  // 経過の表示の起点になった実時刻 [ms]。選曲・シークの後の最初の sync で入れる。
+  private positionAnchorMs: number | null = null;
+
+  // 音量・再生位置・曲一覧・停止ボタンの4ブロックを縦に並べる。volume は組み立て時のユーザー音量。
+  public constructor(volume: number) {
     this.element = document.createElement('div');
 
     // 音量: ゲーム中BGMそのものの音量。試聴の音量もこれに従う。
@@ -58,7 +65,7 @@ export class BgmSettingsPanel {
     seekRow.appendChild(seekLabel);
     this.seekSlider = new Slider({ min: 0, max: 1, step: 1 }, (value) => {
       this.seekTimeLabel.textContent = formatSeekTime(value);
-      this.bgm.seekAudition(value);
+      this.seekTo(value);
     });
     this.seekSlider.element.addEventListener('pointerdown', (e) => {
       this.seeking = true;
@@ -106,22 +113,28 @@ export class BgmSettingsPanel {
     // 停止: 試聴を止め、選曲・再生位置の表示を未選択へ戻す。
     const trackActions = document.createElement('div');
     trackActions.className = 'sv-track-actions';
-    this.stopButton = new Button('試聴を停止', () => {
-      this.bgm.stopAudition();
-      this.activeTrack = null;
-      this.updateTrackButtons();
-      this.updateSeekControls();
-    });
+    this.stopButton = new Button('試聴を停止', () => this.stopAudition());
     trackActions.appendChild(this.stopButton.element);
     this.element.appendChild(trackActions);
 
     this.stopButton.setEnabled(false);
   }
 
-  // 試聴の再生位置の表示を、いま鳴っている位置へ合わせる。毎フレーム呼ぶ。
-  public sync(): void {
+  // 試聴している曲の宣言。止めていれば null。
+  public get audition(): BgmAudition | null {
+    if (this.activeTrack === null) return null;
+    return { track: this.activeTrack, session: this.session, seekSec: this.seekSec, seekId: this.seekId };
+  }
+
+  // 試聴の再生位置の表示を、選曲・シークからの経過へ合わせる。nowMs [ms] はフレームの実時刻。毎フレーム
+  // 呼ぶ。
+  public sync(nowMs: number): void {
     if (this.activeTrack === null || this.seeking) return;
-    const elapsed = this.bgm.auditionElapsedSec();
+    this.positionAnchorMs ??= nowMs;
+    // 一巡を持つ曲は、先頭へ戻って鳴り続ける。
+    const duration = auditionDurationSec(this.activeTrack);
+    const played = this.seekSec + (nowMs - this.positionAnchorMs) / 1000;
+    const elapsed = duration > 0 ? played % duration : played;
     this.seekSlider.setValue(elapsed);
     this.seekTimeLabel.textContent = formatSeekTime(elapsed);
   }
@@ -138,9 +151,8 @@ export class BgmSettingsPanel {
     this.volumeValue.textContent = `${Math.round(volume * 100)}%`;
   }
 
-  // 試聴の期間を終える。試聴を畳んでゲーム中BGMを戻し、選曲・シークの表示を未選択へ戻す。
+  // 試聴を止め、選曲・シークの表示を未選択へ戻す。
   public stopAudition(): void {
-    this.bgm.endAudition();
     this.activeTrack = null;
     this.updateTrackButtons();
     this.updateSeekControls();
@@ -148,10 +160,19 @@ export class BgmSettingsPanel {
 
   // 指定した曲を先頭から試聴し、選曲・再生位置の表示をその曲へ合わせる。
   private previewTrack(index: number): void {
-    this.bgm.playAudition(index);
     this.activeTrack = index;
+    this.session++;
+    this.seekSec = 0;
+    this.positionAnchorMs = null;
     this.updateTrackButtons();
     this.updateSeekControls();
+  }
+
+  // 試聴中の曲の再生位置を sec [s] へ飛ばす。
+  private seekTo(sec: number): void {
+    this.seekSec = sec;
+    this.seekId++;
+    this.positionAnchorMs = null;
   }
 
   // 選曲ボタンの点灯と停止ボタンの有効/無効を、試聴中の曲へ合わせて引き直す。
@@ -166,7 +187,7 @@ export class BgmSettingsPanel {
 
   // シークバーの可動域を試聴中の曲へ合わせ、無ければ操作できなくする。
   private updateSeekControls(): void {
-    const duration = this.activeTrack !== null ? this.bgm.auditionDurationSec(this.activeTrack) : 0;
+    const duration = this.activeTrack !== null ? auditionDurationSec(this.activeTrack) : 0;
     this.seekSlider.element.max = String(duration);
     this.seekSlider.setValue(0);
     this.seekSlider.element.disabled = duration <= 0;

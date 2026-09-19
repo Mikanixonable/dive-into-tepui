@@ -6,8 +6,8 @@ export interface Part {
   readonly name: string;
   readonly weight: number; // kg
 
-  maxHp: number;
-  hp: number; // 0 = 破壊/機能停止
+  readonly maxHp: number;
+  readonly hp: number; // 0 = 破壊/機能停止
 }
 
 interface HullPart extends Part {
@@ -20,45 +20,43 @@ export interface CockpitPart extends Part {
 
 export interface ArmorPart extends Part {
   readonly type: 'armor';
-  damageReduction: number; // 0-1
+  readonly damageReduction: number; // 0-1
 }
 
 export interface ThrusterPart extends Part {
   readonly type: 'thruster';
-  torque: number;
-  thrust: number;
-  fuelConsumptionRate: number; // kg/s(スロットル100%時)
+  readonly torque: number;
+  readonly thrust: number;
+  readonly fuelConsumptionRate: number; // kg/s(スロットル100%時)
 }
 
 export interface RcsTankPart extends Part {
   readonly type: 'rcs_tank';
-  maxFuel: number; // kg
-  fuel: number; // kg
+  readonly maxFuel: number; // kg
+  readonly fuel: number; // kg
 }
 
 export interface RadiatorPart extends Part {
   readonly type: 'radiator';
-  coolingRate: number; // 展開しきった1枚の実効放熱面積 [m^2]
+  readonly coolingRate: number; // 展開しきった1枚の実効放熱面積 [m^2]
 }
 
 export interface SolarPanelPart extends Part {
   readonly type: 'solar_panel';
-  powerGeneration: number; // W
+  readonly powerGeneration: number; // W
 }
 
 export interface WeaponPart extends Part {
   readonly type: 'weapon';
-  weaponType: 'gatling' | 'cannon' | 'missile';
-  fireRate: number; // rounds/s
-  damage: number; // 命中1回あたりのダメージ
-  muzzleVelocity: number; // m/s
+  readonly weaponType: 'gatling' | 'cannon' | 'missile';
+  readonly fireRate: number; // rounds/s
+  readonly damage: number; // 命中1回あたりのダメージ
+  readonly muzzleVelocity: number; // m/s
 }
 
 export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTankPart | RadiatorPart | SolarPanelPart | WeaponPart;
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
-
-export type SerializedPart = Readonly<AnyPart>;
 
 // type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
 export function createPart<TType extends PartType>(
@@ -85,9 +83,9 @@ function nonNegative(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-// 直列化された部品を復元する。id も引き継ぐので、直列化の前後で部品の同一性(id)が保たれる。
-// 種別が不正なら null。ほかの項目が不正なら、その項目だけを安全な値へ落とす。
-export function deserializePart(serialized: SerializedPart): AnyPart | null {
+// 直列化された部品を id ごと復元する。種別が不正なら null、ほかの項目が不正ならその項目を安全な値へ
+// 落とす。
+export function deserializePart(serialized: AnyPart): AnyPart | null {
   if (serialized === null || typeof serialized !== 'object'
     || !PART_TYPES.includes(serialized.type as PartType)) return null;
   // 種別に共通の項目。
@@ -144,9 +142,9 @@ export function deserializePart(serialized: SerializedPart): AnyPart | null {
   }
 }
 
-// 直列化された部品の一覧を復元する。種別が不正な部品は落とし、1つも残らなければ、空の機体でなく
-// 既定の構成で組ませるために undefined を返す。
-export function deserializeParts(serialized: readonly SerializedPart[]): AnyPart[] | undefined {
+// 直列化された部品の一覧を復元する。種別が不正な部品は落とす。1つも残らなければ、既定の構成で
+// 組ませるため undefined を返す。
+export function deserializeParts(serialized: readonly AnyPart[]): AnyPart[] | undefined {
   const parts = Array.isArray(serialized)
     ? serialized.map(deserializePart).filter((part) => part !== null)
     : [];

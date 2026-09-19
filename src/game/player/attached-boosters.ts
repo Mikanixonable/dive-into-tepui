@@ -25,9 +25,8 @@ import {
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { AttachedBoosterMotion } from './attached-booster-motion';
 
-// 分離式ブースターの標準段。自機 1,000 kg と並べたとき、1段あたりの乾燥+満載質量
-// 1,000 kg、推力 0.6 MN で約 300 m/s² となるようにする。燃料 800 kg を 80 kg/s
-// で燃やし切るので、通常のフレーム刻みでも十数秒の燃焼と最後の燃料切れを扱える。
+// 分離式ブースターの標準段。自機 1,000 kg に満載の1段(1,000 kg)を繋いで約 300 m/s²、
+// 燃料は 10 秒で燃え切る。
 const DEFAULT_DRY_MASS = 200; // [kg]
 const DEFAULT_MAX_FUEL = 800; // [kg]
 const DEFAULT_THRUST = 6e5; // [N]
@@ -37,16 +36,13 @@ const SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
 const COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
 
 export class AttachedBoosters {
-  // 段の id は registry の採番器から採り、分離で出る実体と出来事は registry へ積む。復元済みの段の
-  // id を先に予約し、以後の追加がそれを追い越すようにする。
+  // 段の id は registry の採番器から採り、分離で出る実体と出来事は registry へ積む。
   public constructor(
     private readonly motion: DynamicMotion,
     private readonly boosterMotion: AttachedBoosterMotion,
     private readonly registry: EntityRegistry,
     private readonly scene: THREE.Scene,
-  ) {
-    for (const id of boosterMotion.stageIds) registry.idAllocators.booster.reserve(id);
-  }
+  ) { }
 
   // 標準ブースターを最後尾へ追加する。
   public attach(): void {
@@ -75,14 +71,18 @@ export class AttachedBoosters {
       this.registry.events.record({ kind: 'boosterIgnitionUnavailable' });
       return;
     }
-    const ignited = this.boosterMotion.toggleIgnition();
-    this.registry.events.record({ kind: 'boosterIgnitionToggled', on: ignited, fuelEmpty: active.fuel <= 0 });
+    this.boosterMotion.toggleIgnition();
+    this.registry.events.record({
+      kind: 'boosterIgnitionToggled', on: this.boosterMotion.ignited, fuelEmpty: active.fuel <= 0,
+    });
   }
 
-  // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
+  // 最後尾の段を切り離して独立した実体にし、爆砕ボルトの相対速度を質量比で両者へ配る。
+  // 段が無ければ、分離できなかったことを記録する。
   public decouple(): void {
     const stageIndex = this.boosterMotion.stages.length - 1;
-    if (stageIndex < 0) {
+    const detachedStage = this.activeStage();
+    if (detachedStage === undefined) {
       this.registry.events.record({ kind: 'boosterDecoupleUnavailable' });
       return;
     }
@@ -93,7 +93,7 @@ export class AttachedBoosters {
       + (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
     const jointR = add(player.state.r, qRotate(player.att.q, v3(0, 0, frontZ)));
     const boosterR = add(player.state.r, qRotate(player.att.q, v3(0, 0, centerZ)));
-    const detachedStage = this.boosterMotion.detachOutermost()!;
+    this.boosterMotion.detachOutermost();
     const boosterMass = detachedStage.dryMass + detachedStage.fuel;
 
     // 分離後の速度を両者へ配り、段間の部品と外した段を実体として顔ぶれへ入れる
@@ -106,13 +106,12 @@ export class AttachedBoosters {
       SEPARATION_SPEED,
     );
     const t = player.state.t;
-    player.state = kinematicState<'eci'>(t, player.state.r, separated.player);
+    player.reset(kinematicState<'eci'>(t, player.state.r, separated.player));
     this.scatterInterstageHardware(t, jointR, separated.player, separated.booster, player.att);
     this.registry.add(DetachedBooster.create(
       detachedStage,
       kinematicState<'eci'>(t, boosterR, separated.booster),
-      // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
-      // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
+      // 爆砕ボルトは中心軸上にありトルクを与えないので、角速度をそのまま引き継ぐ。
       player.att.q,
       player.att.w,
       t + COLLISION_GRACE,
@@ -120,7 +119,6 @@ export class AttachedBoosters {
       this.registry.idAllocators,
     ));
 
-    player.invalidatePrediction();
     this.registry.events.record({
       kind: 'boosterDecoupled',
       stages: this.boosterMotion.stages.length,
@@ -159,7 +157,7 @@ export class AttachedBoosters {
         tangent,
         randSym(1.5),
       );
-      this.registry.add(new DebrisPiece(
+      this.registry.add(DebrisPiece.create(
         kinematicState<'eci'>(t, coverPosition, coverVelocity),
         { kind: 'boosterCover', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(0.8), randSym(1.8), randSym(0.8)), inertia: v3(1, 1.7, 2.4) },
@@ -181,7 +179,7 @@ export class AttachedBoosters {
         qRotate(att.q, LOCAL_FORWARD),
         randSym(2.5),
       );
-      this.registry.add(new DebrisPiece(
+      this.registry.add(DebrisPiece.create(
         kinematicState<'eci'>(t, boltPosition, boltVelocity),
         { kind: 'boosterBolt', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(2.5), randSym(2.5), randSym(2.5)), inertia: v3(0.4, 0.5, 0.7) },

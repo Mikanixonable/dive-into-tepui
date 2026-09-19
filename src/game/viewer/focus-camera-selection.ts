@@ -305,11 +305,13 @@ export class FocusCameraSelection implements FocusCameraSource {
 
   // 姿勢追従と慣性系を往復し、切り替わったときだけ出来事を記録する。
   public toggleAttitudeFollow(sample: CameraFrameSample): void {
+    // 追従中なら慣性系へ戻す。
     if (this.orientation.followingAttitude) {
       this.orientation.endAttitudeFollow();
       this.events.record({ kind: 'cameraAttitudeFollowToggled', on: false });
       return;
     }
+    // 姿勢を持つ対象を注視しているときだけ姿勢追従へ入る。
     if (!this.isFollowAvailable({ kind: 'attitude' }, sample)) return;
     this.setRotationFollow({ kind: 'attitude' }, sample);
     if (this.orientation.followingAttitude) {
@@ -450,6 +452,9 @@ export class FocusCameraSelection implements FocusCameraSource {
   }
 
   // 直列化した形へ畳む。向きは姿勢追従中なら対象姿勢からの相対値のまま書く。
+  // 例外(ARCHITECTURE R12): 向き(CameraOrientation の値)と注視距離・追従(自分の値)を、変位 offset・
+  // 上方向 up・rotatingWith に合成して書く。持ち主ごとの記録に分けると保存の形式が変わり、版 4 の
+  // 記録が読めなくなる。形式は版を上げるときにまとめて直す。
   public serialize(): SerializedFocusCameraSelection {
     const focus: SerializedFocusCameraSelection['focus'] = this._focus.kind === 'object'
       ? { kind: 'object', id: this._focus.id }
@@ -508,14 +513,15 @@ export class FocusCameraSelection implements FocusCameraSource {
     return norm(frameDirVector(toFrameDir(transform, polarEci)));
   }
 
-  // いま選ばれている基準面の法線(ECI)。月の軌道面は月が公転していなければ黄道極、赤道面は
-  // 地球(居なければ原点天体)の自転軸が引けなければ ECI の極で代える。
+  // いま選ばれている基準面の法線(ECI)。求まらない面は黄道極か ECI の極で代える。
   private framePlaneNormal(sample: CameraFrameSample): Vec3 {
     if (this._referencePlane === 'ecliptic') return ECL_POLE_ECI;
+    // 月の軌道面。月が公転していなければ黄道極へ落ちる。
     if (this._referencePlane === 'moonOrbit') {
       const moon = this.celestialBodies.findMotion('moon');
       if (moon instanceof OrbitingMotion) return moon.orbitNormalAt(sample.displayTime);
     }
+    // 赤道面は地球(居なければ原点天体)の自転軸。自転軸が引けなければ ECI の極。
     if (this._referencePlane === 'equator') {
       const earth = this.celestialBodies.findMotion('earth')
         ?? this.celestialBodies.motionOf(this.celestialBodies.originId);

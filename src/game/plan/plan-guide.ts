@@ -1,10 +1,11 @@
 // 直近ノードの実行ガイド: NODE/BURN マーカーと、噴射方向が視界外のときの方位ガイド。
-import { KinematicState } from '../../physics/kinematic-state';
+import type { KinematicState } from '../../physics/kinematic-state';
 import { addScaled, len, norm, sub } from '../../math/vec3';
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDevice } from '../../marker/marker-device';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { MARKER_DIR_DIST, bearingPlacement, directionPlacement, pointPlacement } from '../marker/marker-placement';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker/marker-identity';
@@ -15,7 +16,12 @@ import { THROTTLE_LEVELS } from '../player/throttle';
 export class PlanGuide {
   private readonly declarations: MarkerDeclaration[] = [];
 
-  public constructor(private readonly group: MarkerSink) {}
+  private readonly group: MarkerSink;
+
+  // マーカー群を markers から作って持つ。
+  public constructor(markers: MarkerDevice) {
+    this.group = markers.createGroup();
+  }
 
   // 所有するマーカー群を取り除く。
   public dispose(): void { this.group.dispose(); }

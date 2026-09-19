@@ -1,6 +1,6 @@
 // 視点の根。遊ぶ人の選択のうちセーブごとに持つものの所有者を組み、直列化と復元と、
 // 進行が記録した出来事に視点を合わせる規則を1か所に持つ(R4)。
-import { NavTargetSelection, type SerializedNavTargetSelection } from './nav-target-selection';
+import { NavTargetSelection, type NavTarget } from './nav-target-selection';
 import { OrbitGuideSelection } from './orbit-guide-selection';
 import { OrbitReferenceSelection, type OrbitReferenceMode } from './orbit-reference-selection';
 import { PredictPanelSelection, type SerializedPredictPanelSelection } from './predict-panel-selection';
@@ -18,7 +18,7 @@ export interface SerializedViewer {
   readonly view: ViewMode;
   readonly camera: SerializedCameraSelection;
   // ターゲット未選択なら null。
-  readonly navTarget: SerializedNavTargetSelection | null;
+  readonly navTarget: NavTarget | null;
   readonly orbitGuide: OrbitGuideSettings;
   readonly entityDisplay: SerializedEntityDisplaySelection;
   readonly orbitReference: OrbitReferenceMode;
@@ -32,9 +32,7 @@ export class Viewer {
     control: ViewControlSource,
     events: RunEventSink,
     celestialBodies: CelestialBodies,
-    // 航法ターゲットの選択。
     public readonly navTarget = new NavTargetSelection(events),
-    // 軌道ガイドの選択。
     public readonly orbitGuide = new OrbitGuideSelection(),
     // 戦闘/マップのビュー選択。
     public readonly view = new ViewSelection(control, events),
@@ -84,12 +82,12 @@ export class Viewer {
   // 直列化した形へ畳む。
   public serialize(): SerializedViewer {
     return {
-      view: this.view.current,
+      view: this.view.serialize(),
       camera: this.camera.serialize(),
       navTarget: this.navTarget.serialize(),
-      orbitGuide: this.orbitGuide.settings,
+      orbitGuide: this.orbitGuide.serialize(),
       entityDisplay: this.entityDisplay.serialize(),
-      orbitReference: this.orbitReference.mode,
+      orbitReference: this.orbitReference.serialize(),
       predictPanel: this.predictPanel.serialize(),
     };
   }

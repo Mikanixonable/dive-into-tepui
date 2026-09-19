@@ -19,12 +19,14 @@ const BARREL_MAX_TEMP = 1700; // [K]
 export const BARREL_SPECIFIC_HEAT = 500; // [J/(kg·K)]
 export const BARREL_RADIATING_AREA_PER_MASS = 0.047; // [m^2/kg]
 
-// 破片の種別・振る舞い・接触半径 [m] と熱の状態。熱の状態で省いた項目は環境温度の既定から始める。
+// 破片の種別・振る舞い・接触半径 [m]・熱の状態と生死。熱の状態で省いた項目は環境温度の既定から、
+// 生死を省くと生きた状態で始める。
 interface DebrisMotionProperties {
   readonly kind: DebrisKind['kind'];
   readonly behavior: DynamicMotionBehavior;
   readonly radius?: number;
   readonly thermal: Partial<DynamicMotionThermal>;
+  readonly alive?: boolean;
 }
 
 // 破片の材質ごとの熱の物性。
@@ -60,26 +62,27 @@ export class DebrisMotion extends DynamicMotion {
   public constructor(
     state: KinematicState,
     attitude: Attitude,
-    options: DebrisMotionProperties,
+    properties: DebrisMotionProperties,
   ) {
-    const thermal = debrisThermal(options.kind);
+    const thermal = debrisThermal(properties.kind);
     super(state, {
+      alive: properties.alive,
       attitude,
       mass: 0,
-      radius: options.radius ?? 0,
-      collides: options.kind !== 'fragment'
-        && options.kind !== 'boosterCover'
-        && options.kind !== 'boosterBolt',
+      radius: properties.radius ?? 0,
+      collides: properties.kind !== 'fragment'
+        && properties.kind !== 'boosterCover'
+        && properties.kind !== 'boosterBolt',
       contactDamageWeight: 0,
       bcInv: SMALL_DEBRIS_BCINV,
       srpCoeff: SMALL_DEBRIS_SRP_COEFF,
       // 熱の状態は与えられた値、熱の物性は材質の値
-      ...options.thermal,
+      ...properties.thermal,
       specificHeat: thermal.specificHeat,
       bulkDensity: thermal.bulkDensity,
       radiatingAreaPerMass: thermal.radiatingAreaPerMass,
       maxTemperature: thermal.maxTemperature,
-      behavior: options.behavior,
+      behavior: properties.behavior,
     });
   }
 }

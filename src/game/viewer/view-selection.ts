@@ -37,6 +37,9 @@ export class ViewSelection implements ViewSelectionSource {
 
   public get current(): ViewMode { return this.view; }
 
+  // 直列化した形。
+  public serialize(): ViewMode { return this.view; }
+
   // view へいま遷移できるか。
   public canSelect(view: ViewMode): boolean {
     return view === 'map' || this.control.current !== null;

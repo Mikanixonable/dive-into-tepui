@@ -3,10 +3,10 @@
 import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { apsisCrossing, ApsisTrack, findEquatorCrossings } from '../../src/physics/trajectory-features';
 import { keplerPeriod, stateFromOrbitalElements, trueAnomalyFromMean } from '../../src/physics/elements';
-import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { len, sub, v3 } from '../../src/math/vec3';
 
@@ -103,9 +103,9 @@ export function register(): void {
 
     const expectedFirstPeriapsis = apsisCrossing(EARTH, 0, ...pairs[0]!)!.state;
     const expectedFirstApoapsis = apsisCrossing(EARTH, 0, ...pairs[1]!)!.state;
-    assert.deepEqual(track.periapsis, expectedFirstPeriapsis);
-    assert.deepEqual(track.apoapsis, expectedFirstApoapsis);
-    assert.ok(track.periapsis!.t < track.apoapsis!.t, 'periapsis should precede apoapsis in time');
+    assert.deepEqual(track.periapsisAfter(-Infinity)?.state, expectedFirstPeriapsis);
+    assert.deepEqual(track.apoapsisAfter(-Infinity)?.state, expectedFirstApoapsis);
+    assert.ok(expectedFirstPeriapsis.t < expectedFirstApoapsis.t, 'periapsis should precede apoapsis in time');
   });
 
   test('trajectory-features: ApsisTrack keeps the center used by each extremum', () => {
@@ -117,12 +117,12 @@ export function register(): void {
     track.observe(EARTH, 0, ...pairs[0]!);
     track.observe(moon, 0, ...pairs[1]!);
 
-    assert.equal(track.periapsisCenter?.id, 'earth');
-    assert.equal(track.apoapsisCenter?.id, 'moon');
+    assert.equal(track.periapsisAfter(-Infinity)?.center.id, 'earth');
+    assert.equal(track.apoapsisAfter(-Infinity)?.center.id, 'moon');
     assert.equal(track.center?.id, 'moon');
   });
 
-  test('trajectory-features: ApsisTrack.dropBefore drops earlier extrema and promotes the next one to the front', () => {
+  test('trajectory-features: ApsisTrack answers the first extremum at or after the asked time, also after dropBefore', () => {
     const period = keplerPeriod(a, MU_EARTH);
     const pairs = apsisStepPairs();
     const track = new ApsisTrack();
@@ -130,16 +130,19 @@ export function register(): void {
 
     const expectedSecondPeriapsis = apsisCrossing(EARTH, 0, ...pairs[2]!)!.state;
     const expectedSecondApoapsis = apsisCrossing(EARTH, 0, ...pairs[3]!)!.state;
-    // 1つめの近地点(t≈0)・遠地点(t≈period/2)は落ち、2つめ(t≈period, t≈1.5period)が先頭になる。
+    // 1つめの近地点(t≈0)・遠地点(t≈period/2)より後を問うと、2つめ(t≈period, t≈1.5period)が答えになる。
+    assert.deepEqual(track.periapsisAfter(period * 0.75)?.state, expectedSecondPeriapsis);
+    assert.deepEqual(track.apoapsisAfter(period * 0.75)?.state, expectedSecondApoapsis);
+    // 落としても、残りの答えは変わらない。
     track.dropBefore(period * 0.75);
-    assert.deepEqual(track.periapsis, expectedSecondPeriapsis);
-    assert.deepEqual(track.apoapsis, expectedSecondApoapsis);
+    assert.deepEqual(track.periapsisAfter(-Infinity)?.state, expectedSecondPeriapsis);
+    assert.deepEqual(track.apoapsisAfter(-Infinity)?.state, expectedSecondApoapsis);
   });
 
   test('trajectory-features: ApsisTrack answers null with no observations or no crossings observed', () => {
     const track = new ApsisTrack();
-    assert.equal(track.periapsis, null);
-    assert.equal(track.apoapsis, null);
+    assert.equal(track.periapsisAfter(-Infinity), null);
+    assert.equal(track.apoapsisAfter(-Infinity), null);
 
     // 遠地点手前でまだ遠ざかり続けている脚 — 符号反転がなく極値が見つからない対。
     track.observe(
@@ -147,8 +150,8 @@ export function register(): void {
       stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 4),
       stateAtMeanAnomaly(a, e, incDeg, raan, argp, Math.PI / 2),
     );
-    assert.equal(track.periapsis, null);
-    assert.equal(track.apoapsis, null);
+    assert.equal(track.periapsisAfter(-Infinity), null);
+    assert.equal(track.apoapsisAfter(-Infinity), null);
   });
 
   test('trajectory-features: findEquatorCrossings finds ascending/descending nodes at zero latitude with the correct sign', () => {

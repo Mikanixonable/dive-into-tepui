@@ -4,9 +4,8 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { RunEventLog } from '../../src/game/run-events';
 import { RunEventPresenter } from '../../src/game/run-event-presenter';
+import { UiSoundQueue } from '../../src/game/ui-sound-queue';
 import type { Notifier } from '../../src/hud/notifier';
-import type { UiSfx } from '../../src/audio/sfx/ui-sfx';
-import type { WorldSfx } from '../../src/audio/sfx/world-sfx';
 
 // 出した告知を順に溜める Notifier と、その本文。
 function recordingNotifier(): { notifier: Notifier; shown: string[] } {
@@ -34,8 +33,7 @@ export function register(): void {
   test('run-event-presenter: 同じ通し番号の出来事は、何度渡されても1度だけ写す', () => {
     // ARCHITECTURE R7: 同じ通し番号を二度扱わない
     const { notifier, shown } = recordingNotifier();
-    // 写す出来事は告知だけを伴う種別に限るので、音の装置(組むには DOM が要る)は呼ばれない。
-    const presenter = new RunEventPresenter({} as WorldSfx, {} as UiSfx, notifier);
+    const presenter = new RunEventPresenter(new UiSoundQueue(), notifier);
     const log = new RunEventLog();
     log.record({ kind: 'autoWarpStarted' });
     presenter.present(log.recent);

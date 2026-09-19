@@ -12,7 +12,6 @@ import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
 import type { GameInputPort } from '../game/input/game-input-router';
 import type { ViewOptionsSettings } from '../game/hud/panels/view-options-control';
 import type { SnapshotSource } from '../launcher/save/snapshot-service';
-import type { AutoSave } from '../launcher/save/autosave';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { Viewport } from '../render/viewport';
@@ -22,6 +21,11 @@ import type { TdbJulianDate } from '../physics/time';
 
 // 1フレームで進める実時間の上限 [s]。
 const MAX_FRAME_DT = 0.1;
+
+// 進行と導出の間で、モデル層だけが確定した瞬間のランを毎フレーム読む者。
+export interface ProgressReader {
+  update(source: SnapshotSource): void;
+}
 
 export class Run implements SnapshotSource, PerfCountSource {
   // 畳まれた後か。入力の途中で畳まれたフレームを、そこで打ち切るのに読む。
@@ -38,7 +42,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
-    autoSave: AutoSave,
+    progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
@@ -46,7 +50,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     const game = await Game.create(stageClass, startEpoch, devices.scene, devices.hud, sections, progress);
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      autoSave, progress,
+      progressReader, progress,
     );
   }
 
@@ -60,7 +64,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
-    autoSave: AutoSave,
+    progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
@@ -68,7 +72,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     const game = await Game.deserialize(serialized, stageClass, devices.scene, devices.hud, sections, progress);
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      autoSave, progress,
+      progressReader, progress,
     );
   }
 
@@ -84,11 +88,11 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
-    autoSave: AutoSave,
+    progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
     const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections);
-    const run = new Run(game, presentation, devices, graphics, renderStyle, sections, autoSave);
+    const run = new Run(game, presentation, devices, graphics, renderStyle, sections, progressReader);
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
     // ここで視点に当てて表示へ写しておく。新規開始のブリーフィングもこの場で出す。
     game.followProgress();
@@ -106,7 +110,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     private readonly graphics: SettingValue<GraphicsSettingsData>,
     private readonly renderStyle: SettingValue<RenderStyle>,
     private readonly sections: FrameSections,
-    private readonly autoSave: AutoSave,
+    private readonly progressReader: ProgressReader,
   ) {}
 
   // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を、進行の後の導出と同期で作る —
@@ -140,8 +144,8 @@ export class Run implements SnapshotSource, PerfCountSource {
     this.sections.endFrame();
     this.presentation.routeInput(ports);
     if (this.disposed) return false;
-    // セーブは進行と導出の間で、モデル層だけを直列化する(R8)。
-    this.autoSave.update(this.snapshot);
+    // ランを読む者へは、進行と導出の間のモデル層だけが確定した瞬間を渡す(R8)。
+    this.progressReader.update(this.snapshot);
     const t1 = debugInfo.on ? performance.now() : 0;
     this.presentation.sync(this.graphics.current, this.renderStyle.current, viewport, nowMs);
     const t2 = debugInfo.on ? performance.now() : 0;

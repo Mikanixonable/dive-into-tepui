@@ -2,7 +2,7 @@
 // 指数移動平均で平滑化する。
 import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
-import { Vec3, sub } from '../../math/vec3';
+import { type Vec3, sub } from '../../math/vec3';
 import type { RunEventSink } from '../run-events';
 
 // 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
@@ -22,8 +22,7 @@ export interface SerializedAltitudeAlarm {
 }
 
 export class AltitudeAlarm {
-  // 既に警告済みのしきい値。しきい値 + ヒステリシスまで登り返すと解除され、再度潜った際に
-  // 同じしきい値で再警告できる。
+  // 警告済みのしきい値 [m]。登り返すと外れ、再び潜れば同じしきい値で再警告する。
   private readonly warnedThresholds: Set<number>;
 
   // 警告は events へ記録する。descendWarned は降下中とみなされているか、altEma は高度の指数移動
@@ -31,7 +30,7 @@ export class AltitudeAlarm {
   // warnedThresholds は警告済みのしきい値 [m]。
   public constructor(
     private readonly events: RunEventSink,
-    public descendWarned = false,
+    private _descendWarned = false,
     private altEma: number | null = null,
     private altRateEma = 0,
     warnedThresholds: readonly number[] = [],
@@ -50,10 +49,13 @@ export class AltitudeAlarm {
     );
   }
 
+  // 降下中とみなされているか。
+  public get descendWarned(): boolean { return this._descendWarned; }
+
   // 平滑化と警告の状態を直列化した形へ落とす。
   public serialize(): SerializedAltitudeAlarm {
     return {
-      descendWarned: this.descendWarned,
+      descendWarned: this._descendWarned,
       altEma: this.altEma,
       altRateEma: this.altRateEma,
       warnedThresholds: [...this.warnedThresholds],
@@ -83,8 +85,8 @@ export class AltitudeAlarm {
       this.altRateEma += (rate - this.altRateEma) * k;
     }
     // 降下の判定はヒステリシスを持つ
-    if (this.altRateEma < ALT_DESCEND_WARN_RATE) this.descendWarned = true;
-    else if (this.altRateEma > ALT_DESCEND_CLEAR_RATE) this.descendWarned = false;
+    if (this.altRateEma < ALT_DESCEND_WARN_RATE) this._descendWarned = true;
+    else if (this.altRateEma > ALT_DESCEND_CLEAR_RATE) this._descendWarned = false;
 
     // しきい値を潜るたびに1度だけ警告する
     for (const threshold of ALT_WARN_THRESHOLDS) {

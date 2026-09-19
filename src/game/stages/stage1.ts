@@ -36,7 +36,7 @@ export class Stage1 extends Stage {
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedStage, ...deps: StageDeps): Stage1 {
+  public static deserialize(serialized: SerializedStage | null, ...deps: StageDeps): Stage1 {
     return new Stage1(deps, ...Stage.deserializeCommonState(serialized, deps, Stage1.stageRules));
   }
 

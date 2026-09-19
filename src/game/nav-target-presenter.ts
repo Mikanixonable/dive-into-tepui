@@ -18,12 +18,14 @@ import type { EntityRoster } from './dynamic/entity-roster';
 import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import type { MarkerDeclaration } from '../marker/marker-declaration';
 import type { MarkerSink } from '../marker/marker-sink';
+import type { MarkerDevice } from '../marker/marker-device';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { ObjectPickable } from './pickable/object-pickable';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { OrbitReference } from './orbit-reference';
 import type { NavTargetSource } from './viewer/nav-target-selection';
+import type { ViewMode } from './view/view-mode';
 
 // 再接近点探索: 自艦とターゲットの相対距離を今から何秒先まで走査するか。低軌道の
 // 数周ぶんに相当する1日。
@@ -74,9 +76,12 @@ export class NavTargetPresenter {
   private readonly closestApproach = new RelativeNodeMarker('ca');
 
   private readonly declarations: MarkerDeclaration[] = [];
+  private readonly group: MarkerSink;
 
-  // navTarget から航法ターゲットを読み、マーカーを group へ宣言する。
-  public constructor(private readonly navTarget: NavTargetSource, private readonly group: MarkerSink) {}
+  // navTarget から航法ターゲットを読み、マーカーを markers から作ったマーカー群へ宣言する。
+  public constructor(private readonly navTarget: NavTargetSource, markers: MarkerDevice) {
+    this.group = markers.createGroup();
+  }
 
   // 所有するマーカー群を取り除く。
   public dispose(): void { this.group.dispose(); }
@@ -207,19 +212,21 @@ export class NavTargetPresenter {
     return this.nodeMarkers.filter((marker) => !marker.gone);
   }
 
-  // AN/DN・再接近点のマーカーを置く。マップビューでは天体に遮蔽された点を隠す。
-  // occluders は遮蔽判定に使う天体で、occludersPivot はその位置を引く時刻。
+  // AN/DN・再接近点のマーカーを update で求めた位置へ、マップビューでだけ置く。天体に遮蔽された点は
+  // 隠す。occluders は遮蔽判定に使う天体で、occludersPivot はその位置を引く時刻。
   public sync(
-    camera: CameraFrame, occluders: readonly CelestialBody[],
+    camera: CameraFrame, view: ViewMode, occluders: readonly CelestialBody[],
     occludersPivot: number, timeLabel: TimeLabelSetting, nowMs: number,
   ): void {
     const declarations = this.declarations;
     declarations.length = 0;
-    for (const marker of this.nodeMarkers) {
-      declarations.push(marker.declaration(
-        camera.project, camera.position,
-        occluders, occludersPivot, camera.mode === 'map', timeLabel,
-      ));
+    // 戦闘ビューでは空の宣言で3点とも片付ける。
+    if (view === 'map') {
+      for (const marker of this.nodeMarkers) {
+        declarations.push(marker.declaration(
+          camera.project, camera.position, occluders, occludersPivot, true, timeLabel,
+        ));
+      }
     }
     this.group.sync(declarations, nowMs);
   }

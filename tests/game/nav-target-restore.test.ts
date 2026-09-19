@@ -21,6 +21,9 @@ function newEnemy(name: string, idAllocators: EntityIdAllocators): MetalEnemy {
     w: v3(),
     accent: 0xffffff,
     orbitLineColor: 0xffffff,
+    waveId: null,
+    formationId: null,
+    formationRole: null,
     typeIndex: null,
   }, idAllocators);
 }

@@ -35,15 +35,15 @@ export class Stage00 extends Stage {
     for (let i = 0; i < MAX_ACTIVE_AMMO_PICKUPS; i++) {
       stage.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
     }
-    stage.waveAttack.spawnWave(player, (enemy) => stage.addEnemy(enemy), 'random');
+    stage.waveAttack.spawnWave(player, stage, 'random');
     stage.composeBriefing();
     return stage;
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedStage00, ...deps: StageDeps): Stage00 {
+  public static deserialize(serialized: SerializedStage00 | null, ...deps: StageDeps): Stage00 {
     const [, scene, dynamicSystem, celestialSystem] = deps;
-    const { waveAttack } = serialized;
+    const waveAttack = serialized?.waveAttack;
     return new Stage00(
       deps,
       // null も欠けと同じく新しい進行から始める。
@@ -70,9 +70,7 @@ export class Stage00 extends Stage {
     if (!player) return;
 
     this.logistics.updateLogistics(simTime, player, simSpeed, true);
-    this.waveAttack.update(
-      dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this, (enemy) => this.addEnemy(enemy),
-    );
+    this.waveAttack.update(dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this);
   }
 
   // 撃破数では決着させず、自機の喪失まで続ける。

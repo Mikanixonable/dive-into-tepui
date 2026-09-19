@@ -13,7 +13,6 @@ export interface BoosterHostMotion {
   readonly mass: number;
   readonly att: Attitude;
   rebuildMassAndInertia(boosterMass: number, boosterStageCount: number): void;
-  invalidatePrediction(): void;
 }
 
 // 接続中ブースターの段、燃料、推力を管理し、段を変えるたびに寄与を機体の質量・慣性へ反映させる。
@@ -37,30 +36,29 @@ export class AttachedBoosterMotion {
   public attach(stage: BoosterStage): void {
     this.stack.attach(stage);
     this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
-    this.ship.invalidatePrediction();
   }
 
-  // 最後尾段の点火状態を反転し、操作後の点火状態を返す。
-  public toggleIgnition(): boolean {
-    const ignited = this.stack.toggleIgnition();
-    this.ship.invalidatePrediction();
-    return ignited;
+  // 最後尾段が点火しているか。
+  public get ignited(): boolean { return this.stack.ignited; }
+
+  // 最後尾段の点火状態を反転する。
+  public toggleIgnition(): void {
+    this.stack.toggleIgnition();
   }
 
-  // 最後尾段を物理状態から外し、外した段を返す。段が無ければ null。
-  public detachOutermost(): BoosterStage | null {
-    const stage = this.stack.detachOutermost();
-    if (stage === null) return null;
+  // 最後尾段を物理状態から外す。段が無ければ何もしない。
+  public detachOutermost(): void {
+    if (this.stack.stages.length === 0) return;
+    this.stack.detachOutermost();
     this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
     this.clearThrust();
-    this.ship.invalidatePrediction();
-    return stage;
   }
 
   // simDt 秒ぶん燃焼させ、区間平均の加速度を求める。
   public step(simDt: number): void {
     const massBefore = this.ship.mass;
-    const burn = this.stack.step(simDt);
+    const burn = this.stack.burnOver(simDt);
+    this.stack.burn(simDt);
     this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
     this.burnRatioValue = burn.burnRatio;
     const acceleration = boosterAverageAcceleration(burn, massBefore, this.ship.mass);

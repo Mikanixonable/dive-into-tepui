@@ -1,9 +1,9 @@
-// デバッグ用ステージ: 敵集団1つのみを配置し、勝敗を発生させずに検証を続けられる。
-// 敵の射撃 ON/OFF をパネルから切り替えられる。
+// デバッグ用ステージ: 敵集団1つから始め、勝敗を発生させずに検証を続けられる。敵の射撃 ON/OFF と、
+// 敵集団・補給の手動スポーンをステータスウィンドウから操作できる。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../../hud/widgets';
-import { isEnemy, type Enemy } from '../dynamic/dynamic-entity/enemy';
+import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import { LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
@@ -65,9 +65,9 @@ export class StageDebug extends Stage {
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedStageDebug, ...deps: StageDeps): StageDebug {
+  public static deserialize(serialized: SerializedStageDebug | null, ...deps: StageDeps): StageDebug {
     return new StageDebug(
-      deps, serialized.enemyFireEnabled, serialized.waveCount,
+      deps, serialized?.enemyFireEnabled, serialized?.waveCount,
       ...Stage.deserializeCommonState(serialized, deps, StageDebug.stageRules),
     );
   }
@@ -116,13 +116,15 @@ export class StageDebug extends Stage {
     );
   }
 
-  // 射撃許可を毎フレーム自ステージの敵全体へ反映し、補給を進める。
+  // 補給を進める。
   public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
-    for (const e of this._dynamicSystem.all().filter(isEnemy)) e.fireEnabled = this.enemyFireEnabled;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
+
+  // 敵の射撃の切り替えトグルの値。
+  public override get enemiesMayFire(): boolean { return this.enemyFireEnabled; }
 
   // 検証を継続できるよう、勝敗を発生させない。
   protected checkWin(): boolean {

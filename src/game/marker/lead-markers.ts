@@ -4,6 +4,7 @@ import type { Vec3 } from '../../math/vec3';
 import type { ViewMode } from '../view/view-mode';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDevice } from '../../marker/marker-device';
 import { MARKER_PRIORITY } from './marker-priority';
 import { pointPlacement } from './marker-placement';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
@@ -24,7 +25,12 @@ const markerKey = (target: CombatTarget): string => `lead-${target.id}`;
 export class LeadMarkers {
   private readonly declarations: MarkerDeclaration[] = [];
 
-  public constructor(private readonly group: MarkerSink) { }
+  private readonly group: MarkerSink;
+
+  // マーカー群を markers から作って持つ。
+  public constructor(markers: MarkerDevice) {
+    this.group = markers.createGroup();
+  }
 
   // 所有するマーカー群を取り除く。
   public dispose(): void { this.group.dispose(); }
@@ -41,7 +47,7 @@ export class LeadMarkers {
   ): void {
     const declarations = this.declarations;
     declarations.length = 0;
-    // 現在のターゲットだけリード点を求める。ターゲットから外れた敵の宣言はこのフレームで消える。
+    // 現在のターゲットだけリード点を求める。
     if (shooter !== null && view !== 'map' && target !== null && targetsArray.includes(target)) {
       const lead = leadPoint(
         target.motion.state, shooter.state, shooter.muzzleVelocity, LEAD_MAX_TIME,

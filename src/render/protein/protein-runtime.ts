@@ -10,7 +10,6 @@ import {
 } from './protein-motion-material';
 import type { Quat } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
-import { v3 } from '../../math/vec3';
 import type { ProteinMotionDisplay, ProteinMotionLod, ProteinPhase } from './protein-display';
 import type {
   ProteinRenderAsset,
@@ -44,21 +43,16 @@ export class ProteinRuntime {
   private lastCpuMs = 0;
   private lastUploadBytes = 0;
 
-  // root に部位の結合線を加える。motionBinding が無ければ自分で借りる。残基数が合わなければ例外。
+  // root に部位の結合線を加え、残基変形を解く共有バッファ上の借り位置を借りる。
   public constructor(
     private readonly root: THREE.Object3D,
     private readonly asset: ProteinRenderAsset,
     private readonly motion: ProteinRenderMotion,
-    motionBinding?: ProteinMotionBinding | null,
   ) {
     for (const site of asset.sites) this.siteDefinitions.set(site.id, site);
-    // 残基変形を解く共有バッファ上の借り位置。
-    this.motionBinding = motionBinding ?? createProteinMotionBinding(
+    this.motionBinding = createProteinMotionBinding(
       motion.residueCount, proteinMotionModeDisplacements(motion), motion.modes.length,
     );
-    if (this.motionBinding !== null && this.motionBinding.residueCount !== motion.residueCount) {
-      throw new RangeError('Protein motion binding and asset residue counts must match');
-    }
     // アンカーの残基変位を CPU で投影する作業領域と、結合線。
     this.trackedResidueOffsets = new Float32Array(motion.residueCount * 4);
     this.bondMaterial = new THREE.LineBasicMaterial({ color: 0x60d9ff, transparent: true, opacity: 0.42 });
@@ -171,24 +165,6 @@ export class ProteinRuntime {
     return this.siteWorldPosition(this.siteDefinitions.get(id) ?? null, origin, attitude);
   }
 
-  // 表示中の変形を含む、root倍率をまだ掛けていないモデルローカル座標を返す。
-  // ゲーム側の命中部位判定と、表示側の発射・マーカーの共通入力にする。
-  public siteModelPositionById(id: string): Vec3 {
-    const site = this.siteDefinitions.get(id);
-    if (!site) return v3();
-    const [x, y, z] = site.position;
-    const offset = proteinAnchorOffset(
-      this.siteResidueGroups.get(site.id) ?? [],
-      this.trackedResidueOffsets,
-      this.motion.residueCount,
-    );
-    return v3(
-      (x + offset[0]) * this.asset.coordinateScale,
-      (y + offset[1]) * this.asset.coordinateScale,
-      (z + offset[2]) * this.asset.coordinateScale,
-    );
-  }
-
   // 部位の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。site が null なら origin。
   private siteWorldPosition(site: ProteinRenderSite | null, origin: Vec3, attitude: Quat): Vec3 {
     if (site === null) return origin;
@@ -201,7 +177,7 @@ export class ProteinRuntime {
     );
   }
 
-  // root に加えた資源と motionBinding(外から渡したものも)を破棄する。
+  // root に加えた資源と motionBinding を破棄する。
   public dispose(): void {
     this.clearVisuals();
     this.bondMaterial.dispose();

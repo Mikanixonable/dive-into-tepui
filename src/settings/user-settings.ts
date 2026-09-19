@@ -1,6 +1,8 @@
 // ラン跨ぎのユーザー設定の正本。設定ごとの現在値を1つずつ起こし、保存先のどの鍵へ載せるかを決める。
 
-import { formatBgmVolume, parseBgmVolume } from '../audio/bgm/bgm';
+import {
+  DEFAULT_BGM_VOLUME, formatBgmMuted, formatBgmVolume, parseBgmMuted, parseBgmVolume,
+} from '../audio/bgm/bgm';
 import {
   formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
   parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
@@ -19,7 +21,7 @@ import type { RenderStyle } from '../render/render-style';
 import type { ThemePalette } from '../theme';
 import type { SettingStorage } from './stored-setting';
 
-// 折りたたみ状態をビュー別に分ける前の鍵。新しい鍵がまだ無い環境からの移行元として読む。
+// ビュー別でない折りたたみ状態の鍵。新しい鍵がまだ無い環境で、移行元として読む。
 const LEGACY_PANEL_COLLAPSED_KEY = 'tepui.panelCollapsed';
 
 export class UserSettings {
@@ -29,6 +31,8 @@ export class UserSettings {
   public readonly renderStyle: StoredSetting<RenderStyle>;
   // BGM のユーザー音量。0〜1。
   public readonly bgmVolume: StoredSetting<number>;
+  // BGM を消音しているか。消音を解けば bgmVolume の音量で鳴る。
+  public readonly bgmMuted: StoredSetting<boolean>;
   // 選ばれている配色。
   public readonly themePalette: StoredSetting<ThemePalette>;
   // マップに出す天体分類・個体種別のトグル。
@@ -49,6 +53,7 @@ export class UserSettings {
     this.graphics = new StoredSetting(storage, 'tepui.settings.graphics', parseGraphics, formatGraphics);
     this.renderStyle = new StoredSetting(storage, 'tepui.settings.renderStyle', parseRenderStyle, formatRenderStyle);
     this.bgmVolume = new StoredSetting(storage, 'tepui.settings.bgm_vol', parseBgmVolume, formatBgmVolume);
+    this.bgmMuted = new StoredSetting(storage, 'tepui.settings.bgm_muted', parseBgmMuted, formatBgmMuted);
     this.themePalette = new StoredSetting(storage, 'tepui.theme-palette', parseThemePalette, formatThemePalette);
     // マップ・天球の表示に効く設定。
     this.mapDisplayToggles = new StoredSetting(
@@ -69,5 +74,22 @@ export class UserSettings {
     this.orbitGuideGroupTab = new StoredSetting(
       storage, 'tepui.orbitGuideGroupTab', parseOrbitGuideGroupTab, formatOrbitGuideGroupTab,
     );
+  }
+
+  // 消音を織り込んだ BGM の音量。
+  public get audibleBgmVolume(): number {
+    return this.bgmMuted.current ? 0 : this.bgmVolume.current;
+  }
+
+  // BGM の音量を volume にし、消音を解く。
+  public setBgmVolume(volume: number): void {
+    this.bgmVolume.set(volume);
+    this.bgmMuted.set(false);
+  }
+
+  // BGM の消音を muted にする。音量 0 のまま解くと無音が続くので、そのときは既定の音量へ戻して解く。
+  public setBgmMuted(muted: boolean): void {
+    if (!muted && this.bgmVolume.current <= 0) this.bgmVolume.set(DEFAULT_BGM_VOLUME);
+    this.bgmMuted.set(muted);
   }
 }

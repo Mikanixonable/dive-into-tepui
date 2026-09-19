@@ -2,9 +2,9 @@
 // 検証する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
+import { type Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
 import {
-  BoosterSeparationVelocities,
+  type BoosterSeparationVelocities,
   BoosterStack,
   boosterAverageAcceleration,
   boosterSeparationVelocities,
@@ -52,8 +52,10 @@ export function register(): void {
 
   test('booster stack: 点火・燃焼は最後尾だけ', () => {
     const stack = new BoosterStack([stage('inner'), stage('outer')]);
-    assert.equal(stack.toggleIgnition(), true);
-    const result = stack.step(1);
+    stack.toggleIgnition();
+    assert.equal(stack.ignited, true);
+    const result = stack.burnOver(1);
+    stack.burn(1);
     assert.equal(result.averageThrust, 1_000);
     assert.equal(stack.stages[0]?.fuel, 10, '内側段は燃えない');
     assert.equal(stack.stages[1]?.fuel, 8);
@@ -61,8 +63,10 @@ export function register(): void {
 
   test('booster stack: 燃料切れがフレーム途中なら平均推力を燃焼割合で返す', () => {
     const stack = new BoosterStack([stage('outer', 2)]);
-    assert.equal(stack.toggleIgnition(), true);
-    const result = stack.step(2); // 1秒で燃料が尽き、残り1秒は推力なし
+    stack.toggleIgnition();
+    assert.equal(stack.ignited, true);
+    const result = stack.burnOver(2); // 1秒で燃料が尽き、残り1秒は推力なし
+    stack.burn(2);
     assert.equal(result.fuelConsumed, 2);
     assert.equal(result.burnRatio, 0.5);
     assert.equal(result.averageThrust, 500);
@@ -72,20 +76,24 @@ export function register(): void {
 
   test('booster stack: 空スタック/空燃料段は点火せず、detach は null', () => {
     const empty = new BoosterStack();
-    assert.equal(empty.toggleIgnition(), false);
-    assert.deepEqual(empty.step(1), { averageThrust: 0, burnRatio: 0, fuelConsumed: 0 });
-    assert.equal(empty.detachOutermost(), null);
+    empty.toggleIgnition();
+    assert.equal(empty.ignited, false);
+    assert.deepEqual(empty.burnOver(1), { averageThrust: 0, burnRatio: 0, fuelConsumed: 0 });
+    empty.detachOutermost();
+    assert.equal(empty.stages.length, 0);
 
     const dry = new BoosterStack([stage('dry', 0)]);
-    assert.equal(dry.toggleIgnition(), false);
+    dry.toggleIgnition();
+    assert.equal(dry.ignited, false);
     assert.equal(dry.stages[0]?.ignited, false);
   });
 
   test('booster stack: detachOutermost は最後尾の状態を完全に移して pop', () => {
     const stack = new BoosterStack([stage('inner'), stage('outer')]);
     stack.toggleIgnition();
-    stack.step(0.25);
-    const detached = stack.detachOutermost();
+    stack.burn(0.25);
+    const detached = stack.stages[1];
+    stack.detachOutermost();
     assert.ok(detached);
     assert.equal(detached.id, 'outer');
     assert.equal(detached.fuel, 9.5);
@@ -103,7 +111,7 @@ export function register(): void {
     const stack = new BoosterStack([stage('outer', 10, true)]);
     const massBefore = 110;
     const dt = 2;
-    const result = stack.step(dt);
+    const result = stack.burnOver(dt);
     const massAfter = 106;
     const averageAcceleration = boosterAverageAcceleration(result, massBefore, massAfter);
     // ve=thrust/fuelRate=500m/s、Δv=ve ln(m0/m1)。平均加速度はΔv/dt。

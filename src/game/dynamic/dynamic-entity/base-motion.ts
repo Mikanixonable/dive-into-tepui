@@ -52,9 +52,12 @@ class BaseCollisionBehavior implements DynamicMotionBehavior {
 export class BaseMotion extends DynamicMotion {
   private fuelValue: number;
 
-  // state と attitude はその時刻の初期状態。fuel を省くと満載で始まる。
-  public constructor(state: KinematicState, attitude: Attitude, fuel = BASE_MAX_FUEL) {
+  // state と attitude はその時刻の初期状態。fuel を省くと満載で、alive(生死)を省くと生きた状態で
+  // 始まる。
+  public constructor(state: KinematicState, attitude: Attitude, fuel = BASE_MAX_FUEL, alive?: boolean) {
+    // 押されない大質量の剛体として、交戦圏の中心になり予測の弧をなぞる
     super(state, {
+      alive,
       attitude,
       mass: 3e6,
       radius: BASE_COLLISION_RADIUS,
@@ -71,11 +74,9 @@ export class BaseMotion extends DynamicMotion {
   public get maxFuel(): number { return BASE_MAX_FUEL; }
   public get maximumAcceleration(): number { return BASE_THRUST / this.mass; }
 
-  // 要求量を残量の範囲で消費し、満たせた割合を返す。
-  public consumeFuel(amount: number): number {
-    if (amount <= 0) return 1;
-    const consumed = Math.min(this.fuelValue, amount);
-    this.fuelValue -= consumed;
-    return consumed / amount;
+  // 要求量 amount [kg] を残量の範囲で消費する。
+  public consumeFuel(amount: number): void {
+    if (amount <= 0) return;
+    this.fuelValue -= Math.min(this.fuelValue, amount);
   }
 }

@@ -97,14 +97,14 @@ function roundTrips(): readonly RoundTrip[] {
       (serialized) => new RadiatorSystem(
         hull,
         noContact,
-        DeployablePanelState.deserialize(serialized.up),
-        DeployablePanelState.deserialize(serialized.down),
+        DeployablePanelState.deserialize(serialized.up) ?? undefined,
+        DeployablePanelState.deserialize(serialized.down) ?? undefined,
       ),
     ),
     roundTrip<SerializedDeployablePanelState>(
       'DeployablePanelState',
       { deployTarget: 1, deploy: 0.3 },
-      (serialized) => DeployablePanelState.deserialize(serialized),
+      (serialized) => DeployablePanelState.deserialize(serialized) ?? new DeployablePanelState(0, 0),
     ),
     roundTrip<SerializedWeaponState>(
       'WeaponState',
@@ -114,6 +114,7 @@ function roundTrips(): readonly RoundTrip[] {
         barrel: MAGS_PER_BARREL - 1,
         barrelTemperature: 310,
         barrelDeviation: 12,
+        pendingBarrelJoules: 2.5e6,
         cooldown: 0.2,
         muzzleIdx: 1,
         wasFiring: true,
