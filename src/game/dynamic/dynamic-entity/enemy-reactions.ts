@@ -3,6 +3,7 @@
 import { kinematicState } from '../../../physics/kinematic-state';
 import { enemyDestroyFragments } from './debris-piece';
 import type { DynamicMotion } from '../dynamic-motion';
+import type { EntityContactParticipant } from '../dynamic-simulation-participant';
 import type { EntityRegistry } from '../entity-registry';
 import type { StageOutcome, EnemyDeathCause } from '../../stages/stage-outcome';
 import { bulletReactionOf, type BulletType } from './bullet-reaction';
@@ -32,7 +33,7 @@ export class EnemyReactions {
 
   // 他の個体と触れたときの帰結。弾なら被弾として、それ以外は接触の相対速度で損傷させる。
   public receiveEntityContact(
-    other: DynamicMotion, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
+    other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     if (!this.port.motion.alive) return;
     const bullet = bulletReactionOf(other);
@@ -53,7 +54,7 @@ export class EnemyReactions {
 
   // 大気で焼失したときの帰結。撃破ではなく焼失として戦果へ残す。
   public receiveBurnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
-    this.port.motion.alive = false;
+    this.port.motion.kill();
     this.recordDestroy(registry);
     this.port.recordDeath(activeStage, this.port.motion.state.t, 'burnup');
   }
@@ -61,7 +62,7 @@ export class EnemyReactions {
   // 交戦圏を離れて消えるときの帰結。破片は残さない。
   public despawn(simTime: number, activeStage: StageOutcome): void {
     if (!this.port.motion.alive) return;
-    this.port.motion.alive = false;
+    this.port.motion.kill();
     this.port.recordDeath(activeStage, simTime, 'despawn');
   }
 
@@ -76,7 +77,7 @@ export class EnemyReactions {
       this.recordImpact(bulletType, impactPoint, registry);
       return;
     }
-    this.port.motion.alive = false;
+    this.port.motion.kill();
     this.port.recordDeath(activeStage, simTime, 'killed');
     this.recordDestroy(registry);
   }
@@ -101,7 +102,7 @@ export class EnemyReactions {
       registry.events.record({ kind: 'enemyDamagedByContact', state: this.port.motion.state });
       return;
     }
-    this.port.motion.alive = false;
+    this.port.motion.kill();
     this.port.recordDeath(activeStage, simTime, cause);
     this.recordDestroy(registry);
   }

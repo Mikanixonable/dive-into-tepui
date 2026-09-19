@@ -106,7 +106,7 @@ export class AttachedBoosters {
       SEPARATION_SPEED,
     );
     const t = player.state.t;
-    player.state = kinematicState<'eci'>(t, player.state.r, separated.player);
+    player.reset(kinematicState<'eci'>(t, player.state.r, separated.player));
     this.scatterInterstageHardware(t, jointR, separated.player, separated.booster, player.att);
     this.registry.add(DetachedBooster.create(
       detachedStage,
@@ -120,7 +120,6 @@ export class AttachedBoosters {
       this.registry.idAllocators,
     ));
 
-    player.invalidatePrediction();
     this.registry.events.record({
       kind: 'boosterDecoupled',
       stages: this.boosterMotion.stages.length,

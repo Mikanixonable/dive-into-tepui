@@ -8,6 +8,7 @@ import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
+import type { ContactKind } from './dynamic-motion';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { EntityRegistry } from './entity-registry';
 import type { PredictedArc } from './predicted-arc';
@@ -30,19 +31,22 @@ export interface PredictableMotionRoster {
 }
 
 export interface KinematicParticipant {
-  state: KinematicState;
+  readonly state: KinematicState;
   readonly prevState: KinematicState;
   readonly radius: number;
 }
 
 export interface EntityContactParticipant extends KinematicParticipant {
-  alive: boolean;
+  readonly alive: boolean;
   readonly att: Attitude;
   readonly prevAtt: Attitude;
   readonly engagementAnchor: boolean;
   readonly collides: boolean;
   readonly attachedTo: EntityContactParticipant | null;
   readonly contactMass: number;
+  readonly contactKind: ContactKind;
+  // 接触ダメージの根拠に掛ける、相手から見たこの個体の重み。
+  readonly contactDamageWeight: number;
   contactsWith(other: EntityContactParticipant, simTime: number): boolean;
   usesCustomSphereCollision(): boolean;
   usesCustomEntityCollision(): boolean;
@@ -66,20 +70,23 @@ export interface EntityContactParticipant extends KinematicParticipant {
   collideWithEntity(
     other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void;
+  // 接触の解決が補正した状態 state へ置き換える。
+  reset(state: KinematicState): void;
 }
 
 export interface SurfaceContactParticipant extends KinematicParticipant {
-  alive: boolean;
-  readonly attachedTo: EntityContactParticipant | null;
+  readonly alive: boolean;
   absorbHeat(specificJoules: number): void;
   collideWithCelestialBody(
     body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void;
+  // 天体表面からの押し戻しを反映した状態 state へ置き換える。
+  reset(state: KinematicState): void;
 }
 
 export interface DynamicSimulationParticipant extends EntityContactParticipant, SurfaceContactParticipant {
   readonly att: Attitude;
-  contactProxies(simTime: number, dt: number): readonly DynamicSimulationParticipant[];
+  contactProxies(simTime: number, dt: number): readonly EntityContactParticipant[];
   applyContactProxies(dt: number): void;
   outpacedByDrag(dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number): boolean;
   substepDivisions(dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number): number;
@@ -89,6 +96,8 @@ export interface DynamicSimulationParticipant extends EntityContactParticipant, 
     services: DynamicReactionServices,
   ): boolean;
   nextSimulationEventTime(simTime: number): number | null;
+  // シミュレーションから退場させる。
+  kill(): void;
 }
 
 export interface SimulationState {
@@ -108,6 +117,6 @@ export interface DynamicSimulationRoster {
 export interface SimulationLifecycle extends DynamicSimulationRoster {
   cleanup(
     dt: number, simTime: number, activeStage: StageOutcome,
-    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
+    zones: readonly EngagementZone<EngagementParticipant>[],
   ): void;
 }

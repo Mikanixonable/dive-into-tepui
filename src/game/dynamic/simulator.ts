@@ -4,8 +4,8 @@
 // (どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)は、両者で
 // 同じ答えでなければならない。**
 import type {
-  DynamicReactionServices, DynamicSimulationParticipant, DynamicSimulationRoster, SimulationControlled,
-  SimulationLifecycle,
+  DynamicReactionServices, DynamicSimulationParticipant, DynamicSimulationRoster, EntityContactParticipant,
+  SimulationControlled, SimulationLifecycle,
 } from './dynamic-simulation-participant';
 import type { EntityRegistry } from './entity-registry';
 import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
@@ -20,7 +20,6 @@ import { simulationMaxStep, simulationStepDuration, SUBSTEP_MAX_DT, SUBSTEP_MAX_
 import type { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
 import type { PerfCounts } from '../perf-counts';
-import type { CelestialBody } from '../../physics/celestial-body';
 
 // ゼロ長サブステップが連続してよい回数。超えたらそのフレームぶんを一括で消費する。丸め誤差で
 // 刻みが 0 のまま進まなくなる個体への保険で、正常時は同時刻のイベント消費に数回使う程度。
@@ -41,7 +40,7 @@ export class Simulator {
   private readonly nextEventTime = new NextEventTime();
   // ゼロ長サブステップが連続した回数。simTime が実際に進んだら 0 へ戻す。
   private consecutiveZeroSteps = 0;
-  private readonly contactEntitiesScratch: DynamicSimulationParticipant[] = [];
+  private readonly contactEntitiesScratch: EntityContactParticipant[] = [];
   // このサブステップを1歩で渡った個体。区間が揃っているので、天体接触をまとめて解ける。
   private readonly sharedIntervalScratch: DynamicSimulationParticipant[] = [];
   // このサブステップの天体窓。
@@ -105,9 +104,7 @@ export class Simulator {
           this.consecutiveZeroSteps = 0;
         }
         activeStage.applySimulationEvents(this.simTime);
-        this.lifecycle.cleanup(
-          0, this.simTime, activeStage, engagementZones(this.roster.allMotions(), canEngage),
-          this.atmosphereBodies());
+        this.lifecycle.cleanup(0, this.simTime, activeStage, engagementZones(this.roster.allMotions(), canEngage));
         continue;
       }
       this.consecutiveZeroSteps = 0;
@@ -154,15 +151,10 @@ export class Simulator {
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
-      this.lifecycle.cleanup(subDt, this.simTime, activeStage, zones, this.atmosphereBodies());
+      this.lifecycle.cleanup(subDt, this.simTime, activeStage, zones);
     }
 
     this.lastSimDt = simDt;
-  }
-
-  // このサブステップで大気を持つ相手として扱う天体。焼失の判定に表面の窓は要らない。
-  private atmosphereBodies(): readonly CelestialBody[] {
-    return this.windows.atmosphereMotions;
   }
 
   // 生存する全個体を dt だけ進め、終端 endTime へ着地させる。濃い大気が細かい刻みを要求する個体は
@@ -174,7 +166,7 @@ export class Simulator {
       if (!e.alive) continue;
       // 抗力をもう積めない個体は、進める前に失う — 積んでも正確な軌道は得られない。
       if (e.outpacedByDrag(dt, this.bodies.atmosphere, this.bodies.pivot)) {
-        e.alive = false;
+        e.kill();
         continue;
       }
       // 重力源と大気天体の選択は個体ごとに1回 — 顔ぶれはサブステップの中で変わらない。

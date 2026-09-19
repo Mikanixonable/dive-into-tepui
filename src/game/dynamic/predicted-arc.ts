@@ -72,13 +72,13 @@ export class PredictedArc {
   // 含めると、作り直しても同じ値になる粗さを理由に represents が毎フレーム作り直しを命じる。
   private _decimation = 0;
 
-  // 所有者が毎フレーム書く。積分先端が到達すべき絶対時刻と、保持窓の左端。
-  public requiredEnd: number;
-  public retainFrom: number;
+  // 需要が決める、積分先端が到達すべき絶対時刻と、保持窓の左端。
+  private requiredEnd: number;
+  private retainFrom: number;
   // 実シミュレーションのサブステップ幅の上限 [s]。消費される弧はこれに刻みを揃える。
-  public simulationMaxStep = SUBSTEP_MAX_DT;
+  private simulationMaxStep = SUBSTEP_MAX_DT;
 
-  // state0 を起点に組む。requiredEnd/retainFrom は state0.t から始まり、所有者が書き換えるまで
+  // state0 を起点に組む。要求終端と保持窓の左端は state0.t から始まり、demand で受けるまで
   // 伸びない。radius は表面到達の判定に使う物体の接触半径。keplerTail は先端の先を二体ケプラー
   // 外挿で継ぐか(計画の区間は継がない — 外挿の上に次のノードを置くと、積分し直した結果と
   // 繋がらない)。consumable は実シミュレーションがこの弧から状態を引くかで、引く弧は刻みと
@@ -109,6 +109,18 @@ export class PredictedArc {
   // 打ち切られておらず、先端がまだ requiredEnd に届いていないか。
   public get needsGrowth(): boolean { return !this._truncated && this._trajectory.state.t < this.requiredEnd; }
   public get decimation(): number { return this._decimation; }
+
+  // 積分先端が到達すべき絶対時刻 requiredEnd と、保持窓の左端 retainFrom を受ける。伸ばす前に毎フレーム
+  // 渡す。
+  public demand(requiredEnd: number, retainFrom: number): void {
+    this.requiredEnd = requiredEnd;
+    this.retainFrom = retainFrom;
+  }
+
+  // 実シミュレーションのサブステップ幅の上限 maxStep [s] を受ける。消費される弧はこれに刻みを揃える。
+  public alignSimulationStep(maxStep: number): void {
+    this.simulationMaxStep = maxStep;
+  }
 
   // この弧が (state0, end) の区間を作り直さずに表せるか。起点は同一参照で比べる(計画のノードは
   // 不変で、編集は別オブジェクトへの差し替えになる)。間引き下限が区間の求める下限の
