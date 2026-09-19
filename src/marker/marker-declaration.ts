@@ -4,7 +4,7 @@
 export interface MarkerDeclaration {
   // 群をまたいで一意な識別子。DOM 要素の同一性と、表示したかの問い合わせに使う。
   readonly id: string;
-  // 要素へ貼る CSS クラス。要素を作るときに一度だけ貼る。
+  // 要素へ貼る CSS クラス。
   readonly cls: string;
   // シンボルの字形。markup を立てると HTML として書き込む。
   readonly sym: string;
