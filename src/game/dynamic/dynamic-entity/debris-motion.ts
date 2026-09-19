@@ -19,12 +19,14 @@ const BARREL_MAX_TEMP = 1700; // [K]
 export const BARREL_SPECIFIC_HEAT = 500; // [J/(kg·K)]
 export const BARREL_RADIATING_AREA_PER_MASS = 0.047; // [m^2/kg]
 
-// 破片の種別・振る舞い・接触半径 [m] と熱の状態。熱の状態で省いた項目は環境温度の既定から始める。
+// 破片の種別・振る舞い・接触半径 [m]・熱の状態と生死。熱の状態で省いた項目は環境温度の既定から、
+// 生死を省くと生きた状態で始める。
 interface DebrisMotionProperties {
   readonly kind: DebrisKind['kind'];
   readonly behavior: DynamicMotionBehavior;
   readonly radius?: number;
   readonly thermal: Partial<DynamicMotionThermal>;
+  readonly alive?: boolean;
 }
 
 // 破片の材質ごとの熱の物性。
@@ -64,6 +66,7 @@ export class DebrisMotion extends DynamicMotion {
   ) {
     const thermal = debrisThermal(properties.kind);
     super(state, {
+      alive: properties.alive,
       attitude,
       mass: 0,
       radius: properties.radius ?? 0,
