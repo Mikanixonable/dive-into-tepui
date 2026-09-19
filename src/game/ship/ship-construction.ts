@@ -234,7 +234,10 @@ export class ShipConstruction implements OverlayHandle {
     if (branch.role === 'material'
       && typeof globalThis.confirm === 'function'
       && !globalThis.confirm('コックピットがないため操縦不能な物資として残ります。続けますか？')) return;
-    // 建造終了は編集を閉じるだけ。接続された枝と建造予約は残し、後から再開できるようにする。
+    draft.ship.assembly.promoteConnectionToDocking(draft.firstConnectionId);
+    draft.ship.docks.finishBuilding(draft.dockId);
+    this.drafts.delete(this.key(draft.ship, draft.dockId));
+    this.synchronizeShip(draft.ship);
     this.close();
   }
 
