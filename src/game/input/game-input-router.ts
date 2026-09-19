@@ -1,6 +1,23 @@
 import type { ContinuousGameAction, GameInputBinding } from './game-actions';
 import type { GameCommand } from './game-commands';
 
+export interface GameInputMode {
+  readonly camera: boolean;
+  readonly construction: boolean;
+  readonly world: boolean;
+  readonly simulation: boolean;
+}
+
+// モーダル、建造、一時停止の優先順位を1箇所へ固定する。建造中は視点と建造操作だけを通す。
+export function gameInputMode(paused: boolean, inputGated: boolean, constructionActive: boolean): GameInputMode {
+  return {
+    camera: !inputGated,
+    construction: !inputGated && constructionActive,
+    world: !inputGated && !paused && !constructionActive,
+    simulation: !paused && !constructionActive,
+  };
+}
+
 /**
  * Input の生データをゲーム側へ渡す narrow port。
  *

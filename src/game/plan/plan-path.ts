@@ -20,7 +20,10 @@ import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../math/optimize';
 import { SHIP_BCINV, SHIP_SRP_COEFF } from '../dynamic/dynamic-entity/vessel';
-import { PLAYER_HULL_RADIUS } from '../player/player';
+
+// 計画弧の衝突判定に使う既定の船体半径。実体の compound shape が無い表示弧では
+// 保守的な球近似を使う。
+const PLAN_SHIP_RADIUS = 8;
 
 // 折れ線が自分自身に重なる(周回を跨いで表示期間が延びた)場合、最短画面距離からこの
 // 許容差以内の候補のうち最も早い時刻のものを選ぶ [px]
@@ -148,7 +151,7 @@ export class PlanPath {
         // 惑星への周回計画のみが対象なので自機の諸元で積分する。外挿の尾を付けると、尾の上に
         // 置いたノードが積分し直した次のノードと繋がらなくなる。
         arc = new PredictedArc(
-          seg.state0, this.celestialBodies.celestialMotions, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
+          seg.state0, this.celestialBodies.celestialMotions, PLAN_SHIP_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
           /* keplerTail */ false, /* consumable */ false,
         );
         this.lastRebuiltArcs++;

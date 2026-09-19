@@ -163,7 +163,7 @@ function buildSnapshotCard(
 
   const row3 = document.createElement('div');
   row3.className = 'sb-snap-row';
-  row3.textContent = `艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)} / 所持金 ${num(s.money).toLocaleString()} Cr`;
+  row3.textContent = `艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)}`;
   card.appendChild(row3);
 
   // 読めない版の記録は、ホバーの出ないタッチでも分かるようカードの上に理由を書く。

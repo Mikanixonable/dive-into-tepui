@@ -53,10 +53,6 @@ export function helpRows(): readonly HelpRow[] {
       [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax],
       '並進出力レベル', `並進 6 方向に共通する出力を切り替える (${THROTTLE_LABELS.join(' / ')})。`,
     ),
-    keyRow(
-      [K.boosterIgnitionToggle, K.boosterDecouple], 'ブースター燃焼管理',
-      `${K.boosterIgnitionToggle.label} で最後尾の段を点火 / 停止、${K.boosterDecouple.label} で分離する。`,
-    ),
     keyRow([K.fineAttitudeToggle], '姿勢微調整モード', '角加速度・角速度を絞り、小刻みに姿勢を調整する。'),
     keyRow([K.progradeHoldToggle], '進行方向ホールド', '機首をプログレード方向へ自動で向け続ける。手動回転で解除する。'),
     keyRow(

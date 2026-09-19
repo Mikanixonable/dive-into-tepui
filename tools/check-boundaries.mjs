@@ -101,7 +101,15 @@ const PRESENTATION_ROOTS = [
 // 判定の名前と、その目的を書いた規則(ref)。違反の行に ref を添え、読む先を示す。exempt は例外にする
 // import の辺 [import する側, される側] で、理由は各辺のコメントに書く(ARCHITECTURE「規則に合わないとき」)。
 const RULES = {
-  deviceOut: { name: '装置の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  // モジュール船の device adapter は assembly の定義・状態を直接読む必要がある。ゲーム側へ
+  // 表示実装を移すと mesh 所有とモデル所有が逆転するため、この5本だけを境界として固定する。
+  deviceOut: { name: '装置の出ていく import', ref: 'ARCHITECTURE R2', exempt: [
+    ['src/render/dynamic/ship/modular-ship-dynamic-view.ts', 'src/game/ship/ship-assembly.ts'],
+    ['src/render/dynamic/ship/modular-ship-view.ts', 'src/game/ship/ship-assembly.ts'],
+    ['src/render/dynamic/ship/ship-module-view.ts', 'src/game/ship/ship-assembly.ts'],
+    ['src/render/dynamic/ship/ship-module-view.ts', 'src/game/ship/ship-module-definition.ts'],
+    ['src/render/dynamic/ship/ship-module-view.ts', 'src/game/ship/ship-module-instance.ts'],
+  ] },
   deviceToDevice: { name: '装置どうしの相互 import', ref: 'ARCHITECTURE R2', exempt: [] },
   timeOut: { name: '時刻層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
   definitionOut: { name: '定義層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
@@ -117,7 +125,15 @@ const RULES = {
 // [ファイル, 違反の識別子] で、理由は各行のコメントに書く(ARCHITECTURE「規則に合わないとき」)。
 const SYNTAX_RULES = {
   // 識別子は「型名.欄名」。代入の形は命令であることを呼び手から隠し、書き手を1つに保てなくする。
-  mutableField: { name: 'モデル層の可変な公開欄の禁止', ref: 'ARCHITECTURE R3', exempt: [] },
+  // 旧敵船の Part は PartInventory が唯一の所有者として損傷・燃料を更新し、Ship の
+  // hp キャッシュは同じ所有者が assembly と同期する。型を readonly に分解すると敵の
+  // 既存ダメージ経路が二重の adapter になり、移行中の一体性を失うためこの4欄を固定する。
+  mutableField: { name: 'モデル層の可変な公開欄の禁止', ref: 'ARCHITECTURE R3', exempt: [
+    ['src/game/dynamic/dynamic-entity/parts.ts', 'Part.hp'],
+    ['src/game/dynamic/dynamic-entity/parts.ts', 'RcsTankPart.fuel'],
+    ['src/game/dynamic/dynamic-entity/ship.ts', 'Ship.hp'],
+    ['src/game/dynamic/dynamic-entity/ship.ts', 'Ship.maxHp'],
+  ] },
   // 識別子は「型名.constructor(引数名)」。型の名前 Serialized* は直列化の語彙の行が保証する。不変な
   // 素の値の型をそのまま直列化の形に使うもの(R12)は、新しく作るときにも同じ型で受けるので当てない。
   serializedConstructorArg: {

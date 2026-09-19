@@ -24,18 +24,18 @@ import type { ViewSelectionSource } from '../viewer/view-selection';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { ControlSelection } from '../control-selection';
 import type { Stage } from '../stages/stage';
-import { Player } from '../player/player';
+import { isModularShip } from '../ship/modular-ship';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import type { Targeter } from '../targeter';
 import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
-import { PartWindows } from './part-windows';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
 import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
 import type { DisplayWindowManager } from '../display-window-manager';
+import type { ModuleWindowOpener } from './module-windows';
 
 // 開いているプロパティウィンドウ本体と、その対象。
 interface WindowEntry {
@@ -48,7 +48,6 @@ export class ObjectWindows implements PropertyWindowOpener {
   private readonly menu: ContextMenu<InspectedObject, MenuAction>;
   // 開いているプロパティウィンドウ。対象の id で、オブジェクト1つにつき高々1枚に保つ。
   private readonly windows = new Map<string, WindowEntry>();
-  private readonly partWindows: PartWindows;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
   private readonly emptySpace: InspectedObject = new EmptySpacePickable();
 
@@ -73,11 +72,11 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
     private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
+    private readonly moduleWindows: ModuleWindowOpener,
     private readonly commands: ObjectMenuCommands,
   ) {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
-    this.partWindows = new PartWindows(hud, controlSelection, commands);
   }
 
   // id で名指しされた敵のプロパティウィンドウを開く。既に消えていれば開かない。
@@ -117,7 +116,6 @@ export class ObjectWindows implements PropertyWindowOpener {
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => {
-      this.partWindows.closeFor(entry.target.id);
       this.forgetWindow(key);
     };
   }
@@ -158,14 +156,12 @@ export class ObjectWindows implements PropertyWindowOpener {
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(entry.target.id === mapFocusId);
     }
-    this.partWindows.sync();
   }
 
   // 開いたままのメニュー・ウィンドウを畳む。
   public close(): void {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
-    this.partWindows.close();
   }
 
   // 開いているメニュー・ウィンドウを畳んだうえで、自身のメニューを取り除く。
@@ -256,13 +252,19 @@ export class ObjectWindows implements PropertyWindowOpener {
   // それ以外は空。
   private relatedItemsFor(target: InspectedObject, pivot: number): readonly PropertyWindowRelatedItem[] {
     const controlled = this.controlSelection.current;
-    if (controlled instanceof Player && target.id === controlled.id) {
-      return controlled.inspection.parts.map((part) => ({
-        id: part.id,
-        label: part.name,
-        onFocus: () => this.focus(controlled.id, `${part.name} を搭載する ${controlled.name}`),
-        onContextMenu: (clientX, clientY) => this.partWindows.open(controlled, part, clientX, clientY),
-      }));
+    // 操作対象のモジュール船だけは、プロパティ窓から個別モジュールを開ける。
+    if (controlled !== null && isModularShip(controlled) && target.id === controlled.id) {
+      return controlled.assembly.modules.map((module) => {
+        const label = controlled.assembly.definition(module.id)?.name ?? module.definitionId;
+        return {
+          id: `module:${controlled.id}:${module.id}`,
+          label,
+          onFocus: () => this.moduleWindows.openAtDefault(controlled, module.id),
+          onContextMenu: (clientX: number, clientY: number) => {
+            this.moduleWindows.open(controlled, module.id, clientX, clientY);
+          },
+        };
+      });
     }
     // 天体なら、いまのビューの候補のうちその天体を周回しているものを名前順に並べる。
     if (!(target instanceof CelestialEntity)) return [];
@@ -294,7 +296,8 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 関連一覧の見出し。操作中の艦自身を見ているときだけ搭載部品で、それ以外は周回物体。
   private relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
-    return controlled instanceof Player && target.id === controlled.id ? '搭載部品' : '周回物体';
+    return controlled !== null && isModularShip(controlled) && target.id === controlled.id
+      ? '搭載モジュール' : '周回物体';
   }
 
   // 表示中のビューのカメラの注視を id の対象へ移し、name で知らせる。

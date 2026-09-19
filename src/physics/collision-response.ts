@@ -5,8 +5,8 @@
 // 幾何は両方の入口で共通で、分かれるのは補正の受け持ちだけ。不動な相手は質量ではなく型で
 // 表され、質量を持つのは反作用を受ける側だけ。その質量は 0(試験粒子 — 相手に力を及ぼさず
 // 自分だけが跳ね返る)から無限大(不動)までを取りうる。
-import { Vec3, add, addScaled, dot, scale, sub } from '../math/vec3';
-import { KinematicState } from './kinematic-state';
+import { type Vec3, add, addScaled, dot, scale, sub } from '../math/vec3';
+import type { KinematicState } from './kinematic-state';
 import { sweptSphereContact } from './sphere-contact';
 
 // 位置・速度と大きさだけを持つ球。
@@ -35,6 +35,9 @@ export interface CollisionResponse {
   // 種別固有メッシュが返した実接触点。通常の球接触では null とし、呼び出し側が
   // 中心間法線から従来どおり近似する。
   readonly contactPoint: Vec3 | null;
+  // compound 接触の module id。球／従来形状は null のまま通す。
+  readonly moduleIdA: string | null;
+  readonly moduleIdB: string | null;
 }
 
 // 不動な相手との接触の結果。相手には書き込む先が無いので、動く側だけを返す。
@@ -45,11 +48,19 @@ export interface FixedContactResponse {
   readonly bounced: boolean;
   readonly toi: number;
   readonly specificEnergyLoss: number;  // 動く側が失う力学エネルギー [J/kg]
+  readonly contactPoint: Vec3 | null;
+  readonly moduleIdA: string | null;
 }
 
 // 接触の幾何。掃引で解けたなら中心間を separation ちょうどへ揃え、区間終端の重なりを
 // 見つけたなら pushOut だけ離す。normal は a → b、toi は区間内の割合。
-export type ContactGeometry = { readonly normal: Vec3; readonly toi: number; readonly contactPoint?: Vec3 } & (
+export type ContactGeometry = {
+  readonly normal: Vec3;
+  readonly toi: number;
+  readonly contactPoint?: Vec3;
+  readonly moduleIdA?: string | null;
+  readonly moduleIdB?: string | null;
+} & (
   | { readonly separation: number; readonly pushOut?: undefined }
   | {
     readonly pushOut: number;
@@ -134,6 +145,7 @@ export function distributeSphereContact(
       rA, rB, vA: a.state.v, vB: b.state.v, normal, bounced: false, toi,
       specificEnergyLossA: 0, specificEnergyLossB: 0,
       contactPoint: geometry.contactPoint ?? null,
+      moduleIdA: geometry.moduleIdA ?? null, moduleIdB: geometry.moduleIdB ?? null,
     };
   }
   const exchange = (1 + restitution) * vn;
@@ -145,6 +157,7 @@ export function distributeSphereContact(
     specificEnergyLossA: specificEnergyLoss(vn, restitution, wa),
     specificEnergyLossB: specificEnergyLoss(vn, restitution, wb),
     contactPoint: geometry.contactPoint ?? null,
+    moduleIdA: geometry.moduleIdA ?? null, moduleIdB: geometry.moduleIdB ?? null,
   };
 }
 
@@ -180,7 +193,10 @@ export function distributeFixedContact(
 
   const vn = dot(sub(fixed.state.v, moving.state.v), normal);
   if (!(vn < 0)) {
-    return { r, v: moving.state.v, normal, bounced: false, toi, specificEnergyLoss: 0 };
+    return {
+      r, v: moving.state.v, normal, bounced: false, toi, specificEnergyLoss: 0,
+      contactPoint: geometry.contactPoint ?? null, moduleIdA: geometry.moduleIdA ?? null,
+    };
   }
   return {
     r,
@@ -188,5 +204,6 @@ export function distributeFixedContact(
     normal, bounced: true, toi,
     // 動く側が補正を全部受け持つので、受け持ちの割合は 1。残る半分は相手が持ち去る。
     specificEnergyLoss: specificEnergyLoss(vn, restitution, 1),
+    contactPoint: geometry.contactPoint ?? null, moduleIdA: geometry.moduleIdA ?? null,
   };
 }

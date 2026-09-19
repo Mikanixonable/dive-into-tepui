@@ -10,6 +10,11 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physics/dynamics';
+import {
+  compoundCylinderRaycast,
+  type CompoundCylinderRayHit,
+  type CompoundCylinderShape,
+} from '../../physics/compound-cylinder-contact';
 import { isStar } from '../../physics/celestial-body-def';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
@@ -46,8 +51,8 @@ export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 
 // 接触した相手を見分ける種別。
 export type ContactKind =
-  | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'base' | 'debris' | 'casing'
-  | 'booster' | 'enemy' | 'ammo' | 'rcs-fuel';
+  | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'debris' | 'casing'
+  | 'enemy' | 'ammo' | 'rcs-fuel';
 
 // 断面積質量比 × 放射率で見積もる、球とみなした個体の日射を吸収する質量あたりの面積 [m^2/kg]。
 // bcInv は弾道係数の逆数 [m^2/kg]。
@@ -136,7 +141,86 @@ export interface DynamicMotionProperties {
   readonly behavior?: DynamicMotionBehavior;
 }
 
+// 接触形状と、同じ形状に対応する剛体物性の一貫したスナップショット。
+// 交換時に全項目を検証するため、部分的に更新された物性は観測されない。
+export interface DynamicCollisionProperties {
+  readonly mass: number;
+  readonly radius: number;
+  readonly centerOfMass: Vec3;
+  readonly inertia: Vec3;
+  readonly compoundShape: CompoundCylinderShape | null;
+}
+
+export interface DynamicCollisionPropertiesSnapshot extends DynamicCollisionProperties {
+  readonly shapeRevision: number;
+}
+
 const PASSIVE_BEHAVIOR: DynamicMotionBehavior = Object.freeze({ contactKind: 'generic' });
+
+const COLLISION_EPSILON = 1e-12;
+
+function frozenVec(value: Vec3): Vec3 {
+  return Object.freeze(v3(value.x, value.y, value.z));
+}
+
+function finiteVec(value: Vec3): boolean {
+  return value !== null && value !== undefined
+    && Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
+}
+
+function validateMass(value: number): number {
+  if (!Number.isFinite(value) || value < 0) throw new Error('dynamic mass must be finite and nonnegative');
+  return value;
+}
+
+function validateRadius(value: number): number {
+  if (!Number.isFinite(value) || value < 0) throw new Error('dynamic radius must be finite and nonnegative');
+  return value;
+}
+
+function validateVec(value: Vec3, name: string): Vec3 {
+  if (!finiteVec(value)) throw new Error(`dynamic ${name} must be finite`);
+  return value;
+}
+
+function validateInertia(value: Vec3): Vec3 {
+  validateVec(value, 'inertia');
+  if (!(value.x > 0) || !(value.y > 0) || !(value.z > 0)) {
+    throw new Error('dynamic inertia must be finite and positive');
+  }
+  return value;
+}
+
+function freezeCompoundShape(shape: CompoundCylinderShape | null): CompoundCylinderShape | null {
+  if (shape === null) return null;
+  if (shape === undefined || !Array.isArray(shape.primitives) || shape.primitives.length === 0) {
+    throw new Error('dynamic compound shape must contain primitives');
+  }
+  const primitives = shape.primitives.map((primitive) => {
+    if (primitive === null || primitive === undefined || typeof primitive.moduleId !== 'string'
+      || primitive.moduleId.length === 0) throw new Error('dynamic primitive moduleId must be non-empty');
+    validateVec(primitive.center, 'primitive center');
+    validateVec(primitive.axis, 'primitive axis');
+    const axisLength = Math.hypot(primitive.axis.x, primitive.axis.y, primitive.axis.z);
+    if (!Number.isFinite(axisLength) || !(axisLength > COLLISION_EPSILON)) {
+      throw new Error('dynamic primitive axis must be nonzero');
+    }
+    if (!Number.isFinite(primitive.halfLength) || !(primitive.halfLength > 0)
+      || !Number.isFinite(primitive.radius) || !(primitive.radius > 0)) {
+      throw new Error('dynamic primitive dimensions must be finite and positive');
+    }
+    return Object.freeze({
+      moduleId: primitive.moduleId,
+      center: frozenVec(primitive.center),
+      axis: frozenVec(v3(
+        primitive.axis.x / axisLength, primitive.axis.y / axisLength, primitive.axis.z / axisLength,
+      )),
+      halfLength: primitive.halfLength,
+      radius: primitive.radius,
+    });
+  });
+  return Object.freeze({ primitives: Object.freeze(primitives) });
+}
 
 // 1歩ぶんの環境標本を平均した、日照率込みの太陽光の放射照度 [W/m²] と太陽方向(単位ベクトル)。
 // radiantIntensity は光源の放射強度 [W/sr]。
@@ -189,7 +273,10 @@ export class DynamicMotion {
   private _alive: boolean;
   // 質量 [kg]。種別と構成から決まるキャッシュ。
   private _mass: number;
-  public readonly radius: number;
+  private _radius: number;
+  private _centerOfMass: Vec3;
+  private _compoundShape: CompoundCylinderShape | null;
+  private _shapeRevision = 0;
   public readonly collides: boolean;
   public readonly engagementAnchor: boolean;
   public readonly preciseReentry: boolean;
@@ -224,11 +311,14 @@ export class DynamicMotion {
     this.actual = new DynamicTrajectory(state);
     // 生死・姿勢・質量と接触
     this._alive = properties.alive ?? true;
-    this._att = properties.attitude ?? identityAttitude();
+    const attitude = properties.attitude ?? identityAttitude();
+    this._att = { ...attitude, inertia: frozenVec(validateInertia(attitude.inertia)) };
     this._prevAtt = this._att;
     this.hasAttitude = properties.hasAttitude ?? true;
-    this._mass = properties.mass ?? 1;
-    this.radius = properties.radius ?? 0;
+    this._mass = validateMass(properties.mass ?? 1);
+    this._radius = validateRadius(properties.radius ?? 0);
+    this._centerOfMass = frozenVec(v3());
+    this._compoundShape = null;
     this.collides = properties.collides ?? false;
     this.engagementAnchor = properties.engagementAnchor ?? false;
     this.preciseReentry = properties.preciseReentry ?? false;
@@ -264,6 +354,39 @@ export class DynamicMotion {
   // 現在の質量・姿勢などから求めた輻射圧係数と断面積質量比の積 [m²/kg]。
   public get srpCoeff(): number { return this.behavior.srpCoeff?.(this) ?? this.fixedSrpCoeff; }
   public get prevState(): KinematicState { return this.actual.prevState; }
+  public get radius(): number { return this._radius; }
+  public get centerOfMass(): Vec3 { return this._centerOfMass; }
+  public get compoundShape(): CompoundCylinderShape | null { return this._compoundShape; }
+  public get shapeRevision(): number { return this._shapeRevision; }
+  public get collisionProperties(): DynamicCollisionPropertiesSnapshot {
+    return Object.freeze({
+      mass: this._mass,
+      radius: this._radius,
+      centerOfMass: this._centerOfMass,
+      inertia: this.att.inertia,
+      compoundShape: this._compoundShape,
+      shapeRevision: this._shapeRevision,
+    });
+  }
+
+  // 形状・質量・重心・慣性を、検証済みのスナップショットとして一括交換する。
+  // 検証中に例外が出ても、現在の物性と予測弧には触れない。
+  public replaceCollisionProperties(properties: DynamicCollisionProperties): void {
+    const nextMass = validateMass(properties.mass);
+    const nextRadius = validateRadius(properties.radius);
+    const nextCenterOfMass = frozenVec(validateVec(properties.centerOfMass, 'centerOfMass'));
+    const nextInertia = frozenVec(validateInertia(properties.inertia));
+    const nextShape = freezeCompoundShape(properties.compoundShape);
+
+    this._mass = nextMass;
+    this._radius = nextRadius;
+    this._centerOfMass = nextCenterOfMass;
+    this._compoundShape = nextShape;
+    this._att = { ...this._att, inertia: nextInertia };
+    this._prevAtt = { ...this._prevAtt, inertia: nextInertia };
+    this._shapeRevision++;
+    this.invalidatePrediction();
+  }
   public get predicted(): DynamicTrajectory | null { return this.predictedArc?.trajectory ?? null; }
   public get arc(): PredictedArc | null { return this.predictedArc; }
   public get predictionTruncated(): boolean { return this.predictedArc?.truncated ?? false; }
@@ -312,7 +435,21 @@ export class DynamicMotion {
 
   // pos に置いた判定形状へ ray が当たるか。既定の形状は半径 radius の球。
   public intersectsRay(ray: Ray, pos: Vec3): boolean {
-    return this.behavior.hitBodyByRay?.(this, ray, pos) ?? hitsSphere(ray, pos, this.radius);
+    const custom = this.behavior.hitBodyByRay;
+    if (custom !== undefined) return custom(this, ray, pos);
+    if (this._compoundShape !== null) return this.raycastCompound(ray, pos) !== null;
+    return hitsSphere(ray, pos, this.radius);
+  }
+
+  // 画面上の直接操作で使う、compound の最近傍 module hit。固定形状と球は module を持たない。
+  public raycastCompound(ray: Ray, pos: Vec3): CompoundCylinderRayHit | null {
+    if (this._compoundShape === null) return null;
+    return compoundCylinderRaycast(
+      this._compoundShape,
+      { position: pos, rotation: this.att.q },
+      ray.origin,
+      ray.dir,
+    );
   }
 
   // 残す履歴の長さ sec [s](0 以上の有限値)を要求する。構築時の長さを持つ個体が、構築時と
@@ -333,8 +470,15 @@ export class DynamicMotion {
   }
 
   // 予測弧を捨てる。次の ensurePredictedArc で現在の状態から引き直す。
-  private invalidatePrediction(): void {
+  public invalidatePrediction(): void {
     this.predictedArc = null;
+  }
+
+  // 構成変更で姿勢・慣性を同時に置き換える継承先の入口。
+  protected resetAttitude(attitude: Attitude, previous: Attitude = attitude): void {
+    this._att = attitude;
+    this._prevAtt = previous;
+    this.invalidatePrediction();
   }
 
   // 時刻 t の状態。予測弧の先は celestialBodies を渡したときに外挿する。届かない時刻では null。

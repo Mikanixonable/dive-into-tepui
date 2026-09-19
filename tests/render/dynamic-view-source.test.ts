@@ -179,14 +179,32 @@ export function register(): void {
     assert.ok(varied.size > 1, '表示時刻を変えても揺らぎが動かない');
   });
 
+  test('dynamic view source: module thrust anchor を噴射口の表示位置に使う', () => {
+    const scene = new THREE.Scene();
+    const effects = new ThrustEffects(scene, 'entity-anchor');
+    const anchor = new THREE.Object3D();
+    anchor.position.set(4, 5, 6);
+    anchor.updateWorldMatrix(true, false);
+    effects.syncFromAnchor(
+      anchor, v3(0, 0, 10), 20, true, new THREE.Quaternion(), false, 'realistic', DISPLAY_TIME,
+    );
+    const core = scene.children[0];
+    assert.ok(core !== undefined);
+    assert.deepEqual(core.position.toArray(), [4, 5, 2.6]);
+    effects.dispose(scene);
+  });
+
   test('dynamic view source: RCS パフの揺らぎは表示時刻だけで決まる', () => {
-    const camera = cameraFrame();
     const scene = new THREE.Scene();
     const effects = new RcsEffects(scene, 'entity-0');
-    const position = v3(7.0e6, 0, 0);
-    const cameraQuat = camera.camera.quaternion;
-    const syncAt = (displayTime: number): void => effects.sync(
-      camera.floatingOrigin, position, v3(0, 1, 0), Q_IDENTITY, true, cameraQuat, false, displayTime,
+    const root = new THREE.Object3D();
+    const anchor = new THREE.Object3D();
+    anchor.position.set(2, 0, 0);
+    anchor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0));
+    root.add(anchor);
+    root.updateWorldMatrix(true, true);
+    const syncAt = (displayTime: number): void => effects.syncFromAnchors(
+      root, [anchor], v3(0, 0, -1), true, new THREE.Quaternion(), false, displayTime,
     );
 
     syncAt(DISPLAY_TIME);
@@ -198,5 +216,28 @@ export function register(): void {
 
     const varied = statesOverTimes(scene, OTHER_DISPLAY_TIMES, syncAt);
     assert.ok(varied.size > 1, '表示時刻を変えても揺らぎが動かない');
+  });
+
+  test('dynamic view source: module RCS anchor の位置と向きから噴射を選ぶ', () => {
+    const scene = new THREE.Scene();
+    const effects = new RcsEffects(scene, 'entity-anchor');
+    const root = new THREE.Object3D();
+    root.position.set(10, 20, 30);
+    const anchor = new THREE.Object3D();
+    anchor.position.set(2, 0, 0);
+    // anchor +Z を +Y の排気方向へ向ける。反力は -Y なので -Z torque を生む。
+    anchor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0));
+    root.add(anchor);
+    root.updateWorldMatrix(true, true);
+
+    effects.syncFromAnchors(
+      root, [anchor], v3(0, 0, -1), true, new THREE.Quaternion(), false, DISPLAY_TIME,
+    );
+
+    const child = scene.children[0];
+    assert.ok(child !== undefined);
+    assert.equal(child.visible, true);
+    assert.deepEqual(child.position.toArray(), [12, 20.55, 30]);
+    effects.dispose(scene);
   });
 }

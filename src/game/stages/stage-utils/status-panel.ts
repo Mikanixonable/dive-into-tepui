@@ -1,7 +1,7 @@
 // ステージ固有の状況表示パネル(左部: ステージ補助メッセージ・撃墜数 / 中央部: 自機の装甲・温度・電力)。
 // 表示内容がステージごとに決まるので Stage が所有する。
 
-import type { Player } from '../../player/player';
+import type { ModularShip } from '../../ship/modular-ship';
 import { fmtEnergy } from '../../../hud/utils';
 import { Meter } from '../../../hud/widgets';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/vessel';
@@ -54,7 +54,7 @@ export class StatusPanel {
 
   // 毎フレーム(sync 時)呼ぶ。player が null ならパネルを畳む。DOM の書き換えは
   // 内容が変わったフレームだけに絞る。
-  sync(player: Player | null, message: string, kills: number): void {
+  sync(player: ModularShip | null, message: string, kills: number): void {
     this.panel.classList.toggle('hidden', !player);
     if (!player) return;
 

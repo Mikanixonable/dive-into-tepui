@@ -1,7 +1,7 @@
 // マガジンベルトの給弾状態とたわみ物理を管理する。
 import type { Attitude } from '../../physics/attitude';
 import type { Vec3 } from '../../math/vec3';
-import { BeltPhysics, beltAnchor, type SerializedBeltPhysics } from './belt-physics';
+import { BeltPhysics, type SerializedBeltPhysics } from './belt-physics';
 import { MAG_ROUNDS } from './ammo-spec';
 import type { ContactProxy } from '../dynamic/contact-proxy';
 import type { EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
@@ -50,9 +50,13 @@ export class BeltController {
 
   // たわみ物理が解いた節点配置(いずれも機体座標系)。給弾口側の吊り元、吊り元から順に並ぶ
   // 各節の位置、各節のチェーン軸まわりのねじれ角 [rad]。
-  public get anchor(): Vec3 { return beltAnchor(this.feed); }
+  public get anchor(): Vec3 { return this.physics.anchor; }
   public get positions(): readonly Vec3[] { return this.physics.positions; }
   public get twists(): readonly number[] { return this.physics.twists; }
+
+  public setMount(anchor: Vec3, direction: Vec3): void {
+    this.physics.setMount(anchor, direction);
+  }
 
   // 各リンクの接触代理。placeContactSections で置き直す。
   public get contactSections(): readonly ContactProxy[] { return this.physics.contactSections; }

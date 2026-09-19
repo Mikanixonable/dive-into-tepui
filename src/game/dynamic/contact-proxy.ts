@@ -4,6 +4,7 @@ import { Q_IDENTITY } from '../../math/quat';
 import { v3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
 import type { KinematicState } from '../../physics/kinematic-state';
+import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
 import type { Contact } from './dynamic-entity/contact';
 import type { ContactKind } from './dynamic-motion';
 import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
@@ -23,6 +24,8 @@ export class ContactProxy implements EntityContactParticipant {
   public readonly contactDamageWeight = 1;
   public readonly att = STILL_ATTITUDE;
   public readonly prevAtt = STILL_ATTITUDE;
+  public readonly compoundShape: CompoundCylinderShape | null = null;
+  public readonly shapeRevision = 0;
   // いまの状態と、その前に置いた状態。本体の状態から置き直すキャッシュ。
   private current: KinematicState;
   private previous: KinematicState;

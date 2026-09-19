@@ -21,7 +21,6 @@ export interface SnapshotMeta {
   hpRatio: number;
   maxHp: number;
   magazines: number;
-  money: number;
   playerCount: number;
   enemyAliveCount: number;
   phase: GamePhase;

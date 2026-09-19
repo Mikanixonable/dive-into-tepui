@@ -10,12 +10,13 @@ import {
 import { BlueNoise } from './blue-noise';
 import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
 import type { CloudSample } from './cloud/cloud-field-sample';
-import { CloudFieldSampler, type CloudFieldBinding } from './cloud/cloud-field-sampler';
+import { CloudFieldSampler } from './cloud/cloud-field-sampler';
+import type { CloudRenderInput } from './cloud/cloud-render-input';
 import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
-import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './celestial/screen-lod';
+import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
@@ -111,8 +112,8 @@ export class OpaqueCloudSurfaceRenderer {
   }
 
   // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
-  public bind(binding: CloudFieldBinding): void {
-    this.fieldSampler.bind(binding);
+  public bind(input: CloudRenderInput): void {
+    this.fieldSampler.bind(input.field);
   }
 
   // 標本の配り方を置き直す。回数はシェーダへ展開されるので、変わればマテリアルを組み直す。

@@ -3,7 +3,6 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Attitude } from '../../../physics/attitude';
 import type { Vec3 } from '../../../math/vec3';
 import type { FireControl } from '../../player/fire-control';
-import type { AttachedBoosters } from '../../player/attached-boosters';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
 import type { PilotCommand, PilotControls, ThrustDirection } from './pilot-controls';
 import type { RunEventSink } from '../../run-events';
@@ -38,7 +37,9 @@ export interface FuelConsumer {
   readonly totalFuelConsumptionRate: number;
   readonly totalFuel: number;
   readonly totalMaxFuel: number;
-  consumeFuel(amount: number): void;
+  consumeFuel(amount: number): number;
+  readonly rcsFuelConsumptionRate?: number;
+  consumeRcsFuel?(amount: number): number;
   readonly motion: DynamicEntity['motion'];
 }
 
@@ -67,7 +68,6 @@ export interface NavigationController {
 export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandReceiver, NavigationController {
   readonly throttle: ThrottlePort;
   readonly fire: FireControl | null;
-  readonly boosters: AttachedBoosters | null;
   readonly altitudeAlarm: AltitudeAlarm | null;
 }
 

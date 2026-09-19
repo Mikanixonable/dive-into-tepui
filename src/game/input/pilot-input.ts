@@ -46,8 +46,6 @@ const COMMAND_KEYS: Readonly<Record<PilotCommandKind, KeyBinding>> = {
   throttleMid: K.throttleMid,
   throttleHigh: K.throttleHigh,
   throttleMax: K.throttleMax,
-  boosterDecouple: K.boosterDecouple,
-  boosterIgnitionToggle: K.boosterIgnitionToggle,
   radiatorDeployLeft: K.radiatorDeployLeft,
   radiatorDeployRight: K.radiatorDeployRight,
   solarDeployLeft: K.solarDeployLeft,

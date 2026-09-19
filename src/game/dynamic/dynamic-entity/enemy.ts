@@ -4,7 +4,7 @@ import type { DynamicEntity, SerializedDynamicEntityFields } from './dynamic-ent
 import type { Contact } from './contact';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
-import type { Player } from '../../player/player';
+import type { ModularShip } from '../../ship/modular-ship';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { randomQuat, type Quat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
@@ -274,7 +274,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
   // 間は撃たない。
   public behave(
-    simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
+    simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
     mayFire: boolean, celestialBodies: CelestialBodies,
   ): void {
     this.fireController.behave(simTime, player, registry, enemies, mayFire, celestialBodies);

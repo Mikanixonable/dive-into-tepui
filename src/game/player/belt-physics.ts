@@ -41,17 +41,27 @@ export class BeltPhysics {
   // 各リンクのチェーン軸まわりのねじれ角 [rad]。常に ±MAG_CHAIN_MAX_ROLL_DEG に収まる。
   private readonly _twists: number[];
 
+  private prevShipW: Vec3;
+  private mountAnchor = v3(MAG_BELT_ANCHOR_X, 0, 0);
+  private mountDirection = LOCAL_RIGHT;
+  private mountQ: Quat = Q_IDENTITY;
+  // 給弾進みに応じて動く根本の固定点(機体座標系)。
+  private anchorValue: Vec3 = this.mountAnchor;
+
+  public get anchor(): Vec3 { return this.anchorValue; }
+
   // positions・prevPositions は機体座標系の節点の位置と前フレームの位置、twists は各節のねじれ角
   // [rad]、prevShipW は前フレームの機体角速度 [rad/s]。省いたものは静止した鎖として始める。
   public constructor(
     positions: readonly Vec3[],
     prevPositions: readonly Vec3[] = positions,
     twists: readonly number[] = positions.map(() => 0),
-    private prevShipW = v3(),
+    prevShipW = v3(),
   ) {
     this._positions = [...positions];
     this.prevPositions = [...prevPositions];
     this._twists = [...twists];
+    this.prevShipW = prevShipW;
   }
 
   // linkCount 個の節点を、アンカーから等間隔に伸ばした形で新しく作る。最初の update より前から位置を
@@ -88,6 +98,24 @@ export class BeltPhysics {
   public get positions(): readonly Vec3[] { return this._positions; }
   public get twists(): readonly number[] { return this._twists; }
 
+  // weapon module の semantic belt anchor と延伸方向へ鎖全体を据え直す。assembly の質量だけが
+  // 変わったフレームでは同値入力を無視し、燃料消費でベルトを毎回初期化しない。
+  public setMount(anchor: Vec3, direction: Vec3): void {
+    const normalizedDirection = norm(direction);
+    if (len(sub(anchor, this.mountAnchor)) < 1e-9
+      && len(sub(normalizedDirection, this.mountDirection)) < 1e-9) return;
+    this.mountAnchor = v3(anchor.x, anchor.y, anchor.z);
+    this.mountDirection = normalizedDirection;
+    this.mountQ = qFromUnitVectors(LOCAL_RIGHT, normalizedDirection);
+    this.anchorValue = this.mountAnchor;
+    for (let i = 0; i < this.linkCount; i++) {
+      const p = addScaled(this.mountAnchor, this.mountDirection, (i + 1) * MAG_BELT_PITCH);
+      this._positions[i] = p;
+      this.prevPositions[i] = p;
+      this._twists[i] = 0;
+    }
+  }
+
   // リンクを1つ手前へ詰め、末尾に新しいリンクを継ぎ足す。
   public shiftBeltNodes(): void {
     const n = this.linkCount;
@@ -104,7 +132,7 @@ export class BeltPhysics {
     const last = this._positions[n - 2]!;
     const lastPrev = this.prevPositions[n - 2]!;
     const vel = sub(last, lastPrev); // 前のノードの速度ベクトルを引き継いで自然に延長
-    const newLast = v3(last.x + vel.x + MAG_BELT_PITCH, last.y + vel.y, last.z + vel.z);
+    const newLast = addScaled(add(last, vel), this.mountDirection, MAG_BELT_PITCH);
     this._positions[n - 1] = newLast;
     this.prevPositions[n - 1] = (newLast); // 新末尾は追加直後は速度ゼロ
     this._twists[n - 1] = this._twists[n - 2]!;
@@ -121,7 +149,10 @@ export class BeltPhysics {
     const aThrustShip = qRotate(qInvert(att.q), thrustAccelVec);
     this.integrateVerlet(dt, att.w, angularAccel, aThrustShip);
 
-    const anchor = beltAnchor(beltFeed);
+    this.anchorValue = addScaled(
+      this.mountAnchor, this.mountDirection, -beltFeed * MAG_BELT_PITCH,
+    );
+    const anchor = this.anchorValue;
     this.pinRootToAnchor(anchor);
     this.relaxDistanceConstraints(anchor);
 
@@ -155,9 +186,9 @@ export class BeltPhysics {
     }
   }
 
-  // 根本(リンク0)をアンカー anchor の隣へ固定する
+  // 根本(リンク0)をアンカー anchor の隣へ固定する。
   private pinRootToAnchor(anchor: Vec3): void {
-    const root = v3(anchor.x + MAG_BELT_PITCH, anchor.y, anchor.z);
+    const root = addScaled(anchor, this.mountDirection, MAG_BELT_PITCH);
     this._positions[0] = root;
     this.prevPositions[0] = (root);
   }
@@ -194,7 +225,7 @@ export class BeltPhysics {
     const secondLinkNarrowing = clamp(1 - feed, 0, 1);
     const rollLerp = Math.min(1, dt * MAG_CHAIN_ROLL_RATE);
     let prevPoint = anchor;
-    let prevQ: Quat = Q_IDENTITY; // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
+    let prevQ: Quat = this.mountQ;
     let prevTwist = att.w.z * MAG_CHAIN_ROLL_GAIN; // ねじれの発生源: 機体のロール角速度
 
     for (let i = 0; i < this.linkCount; i++) {

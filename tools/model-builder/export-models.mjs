@@ -1,4 +1,4 @@
-// 機体・弾・薬莢・破片・基地などのモデルを組み立て、THREE.Object3D.toJSON() でシリアライズして
+// 機体・弾・薬莢・破片などのモデルを組み立て、THREE.Object3D.toJSON() でシリアライズして
 // src/assets/models/<名前>.json に書き出すツール。実行時はこの JSON を THREE.ObjectLoader でパースして使う。
 //
 // 実行: node tools/model-builder/export-models.mjs
@@ -11,14 +11,12 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildBaseModel } from './base-station.mjs';
-import { buildBoosterInterstageCover, buildBoosterStage } from './booster.mjs';
 import { buildDebrisChunk, buildDebrisPanel, buildDebrisRod } from './debris-fragments.mjs';
 import { buildBarrelMesh, buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
 import { buildEnemyShip, buildStage0EnemyA, buildStage0EnemyB, buildStage0EnemyC } from './metal-enemies.mjs';
 import { buildAmmoPickup, buildRcsFuelPickup } from './pickups.mjs';
-import { buildPlayerShip } from './player-ship.mjs';
 import { buildBulletMesh, buildPlasmaBullet } from './projectiles.mjs';
+import { buildShipModules } from './ship-modules.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, '..', '..', 'src', 'assets', 'models');
@@ -65,7 +63,6 @@ function mergeStaticChildren(root) {
 
 // ------------------------------------------------------------- 書き出し
 const models = {
-  player:       buildPlayerShip(),
   enemy:        buildEnemyShip(),
   stage0EnemyA: buildStage0EnemyA(),
   stage0EnemyB: buildStage0EnemyB(),
@@ -79,14 +76,11 @@ const models = {
   debrisChunk:  buildDebrisChunk(),
   debrisPanel:  buildDebrisPanel(),
   debrisRod:    buildDebrisRod(),
-  base:         buildBaseModel(),
   rcsFuel:      buildRcsFuelPickup(),
-  boosterStage: buildBoosterStage(),
-  boosterInterstageCover: buildBoosterInterstageCover(),
+  shipModules: buildShipModules(),
 };
 
-// draw call の大半を占める player と magazine(ammo が束ねる分も)の静的な子メッシュを統合する。
-mergeStaticChildren(models.player);
+// magazine は ammo の子としても使われるため、静的な子メッシュを材質ごとに統合する。
 mergeStaticChildren(models.magazine);
 mergeStaticChildren(models.ammo);
 

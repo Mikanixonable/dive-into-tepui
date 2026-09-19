@@ -7,8 +7,8 @@ import { injectOnce } from '../../../hud/inject-style';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../../render/pipeline/debug-target';
 import type { RenderStyle } from '../../../render/render-style';
 import { fmtDuration } from '../../../hud/utils';
-import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../../frame-sections';
-import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from '../../../render/gpu-timings';
+import { type FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../../frame-sections';
+import { GPU_PASS_COUNT, GPU_PASS_LABELS, type GpuTimings, type GpuPassId } from '../../../render/gpu-timings';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { ProteinMotionMetricsRecorder } from '../../protein/protein-motion-metrics';
@@ -24,7 +24,6 @@ const ENTITY_COUNT_ROWS: readonly { key: EntityCountKind; label: string }[] = [
   { key: 'bullet', label: 'bullets' },
   { key: 'casing', label: 'casings' },
   { key: 'debris', label: 'debris' },
-  { key: 'booster', label: 'boosters' },
   { key: 'ammo', label: 'ammoPickups' },
   { key: 'fuel', label: 'rcsFuelPickups' },
   { key: 'base', label: 'bases' },

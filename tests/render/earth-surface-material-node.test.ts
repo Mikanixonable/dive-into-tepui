@@ -90,6 +90,7 @@ export function register(): void {
         geometricNormalView: vec3(0, 1, 0),
         bodyToView: uniform(new THREE.Matrix3()),
         schematic: uniform(false),
+        albedoScale: 0.9102,
       },
     );
     assert.equal(nodes.colorNode.isNode, true);

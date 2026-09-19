@@ -27,8 +27,8 @@ export type EntityInspectionAction =
   | 'cancel'
   | 'openObjectPlacer'
   | 'openSettings'
-  | 'deployPart'
-  | 'stowPart';
+  | 'deployModule'
+  | 'stowModule';
 
 // メニュー描画に必要なゲーム側の宣言。ContextMenu の項目型を持ち込まない。
 export interface EntityInspectionMenuItem {

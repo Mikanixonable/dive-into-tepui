@@ -8,7 +8,7 @@ import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
-import { CollinearPoint } from '../../physics/lagrange';
+import type { CollinearPoint } from '../../physics/lagrange';
 import { MOON, MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../celestial/solar-system/earth-system';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
@@ -16,7 +16,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
 import {
-  SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
+  type SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
 } from './slider-field';
 
 // ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
@@ -62,23 +62,27 @@ export type LagrangeForm = {
 
 // 確定時点のフォーム値。placementMode を判別子とし、選ばれた配置方法(・サイズ/形・軌道種別)が
 // 実際に使う値だけを持つ。
-export type ObjectPlacerForm = { readonly entityKind: DynamicEntityKind } & (ElementsForm | LagrangeForm);
+export type ShipPlacementPreset = 'combat-ship' | 'base-ship';
+export type ObjectPlacementSelection = ShipPlacementPreset | Exclude<DynamicEntityKind, 'player' | 'base'>;
+export type ObjectPlacerForm = { readonly selection: ObjectPlacementSelection } & (ElementsForm | LagrangeForm);
 
-// open() の事前入力。'body' は基準天体だけをその値へ合わせ、他のフィールドは前回の値のまま残す。
-// 'entityKind' は種類だけを合わせる。'form' は種類を entityKind に固定し、軌道要素一式をその値へ
-// 書き換える。
+// open() の事前入力: 'body' は基準天体だけをその値へ合わせる(他のフィールドは前回の値のまま) —
+// マップの現在フォーカスを新規配置の初期値にする経路。'selection' は preset/種類だけを合わせる —
+// 複製元の軌道要素一式は引き継げない(または引き継ぐと基地の基準天体制約に反する)ときの経路。
+// 'form' は preset/種類を selection に固定し、軌道要素一式をその値へ書き換える —
+// 軌道要素をそのまま引き継げる複製の経路。
 type ObjectPlacerPreset =
   | { readonly kind: 'body'; readonly celestialBody: ReferenceCelestialBody }
-  | { readonly kind: 'entityKind'; readonly entityKind: DynamicEntityKind }
-  | { readonly kind: 'form'; readonly entityKind: DynamicEntityKind; readonly form: ElementsForm };
+  | { readonly kind: 'selection'; readonly selection: ObjectPlacementSelection }
+  | { readonly kind: 'form'; readonly selection: ObjectPlacementSelection; readonly form: ElementsForm };
 
-// アイコンはマップ実マーカーと同じ形状を使う。
-const ENTITY_KIND_ITEMS: readonly (readonly [DynamicEntityKind, string, string])[] = [
-  ['player', '自機', shipMarkerSvg(true)],
+// アイコンはマップ実マーカーと同じ形状(自機=鏃の塗りつぶし、敵機=鏃の中抜き、基地=正七角形)。
+const ENTITY_KIND_ITEMS: readonly (readonly [ObjectPlacementSelection, string, string])[] = [
+  ['combat-ship', '自機', shipMarkerSvg(true)],
   ['enemy', '敵機', shipMarkerSvg(false)],
   ['ammo', '弾薬', ENTITY_GLYPH.ammo],
   ['fuel', 'RCS燃料', ENTITY_GLYPH.fuel],
-  ['base', '基地', baseMarkerSvg()],
+  ['base-ship', '基地', baseMarkerSvg()],
 ];
 
 const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
@@ -120,7 +124,7 @@ const SUN_SYNC_ALT_KM = 700;
 const MOON_LOW_ALT_KM = 100;
 
 // 軌道要素指定のサイズ/形プリセット。意味を持つ軌道が基準天体ごとに違うので、天体単位で持つ。
-type SizePreset = { readonly label: string; readonly peAltKm: number; readonly apAltKm: number; readonly incDeg?: number };
+interface SizePreset { readonly label: string; readonly peAltKm: number; readonly apAltKm: number; readonly incDeg?: number }
 const PRESETS_BY_BODY: Partial<Record<ReferenceCelestialBody, readonly SizePreset[]>> = {
   earth: [
     { label: '低軌道(LEO)', peAltKm: 400, apAltKm: 400 },
@@ -144,7 +148,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   get isOpen(): boolean { return this._isOpen; }
 
   private readonly panel: HTMLElement;
-  private readonly entityKind: SegmentedControl<DynamicEntityKind>;
+  private readonly entityKind: SegmentedControl<ObjectPlacementSelection>;
   private readonly placementMode: SegmentedControl<PlacementMode>;
   private readonly placementGroups: Record<PlacementMode, HTMLElement>;
   private readonly celestialBody: ObjectPicker<ReferenceCelestialBody>;
@@ -175,7 +179,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private issueRows: readonly HTMLElement[] = [];
   private lastIssueKey = '';
 
-  private entityKindValue: DynamicEntityKind = 'player';
+  private entityKindValue: ObjectPlacementSelection = 'combat-ship';
   private placementModeValue: PlacementMode = 'elements';
   private celestialBodyValue: ReferenceCelestialBody = 'earth';
   private sizeModeValue: SizeShapeMode = 'apsides';
@@ -423,13 +427,13 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.appendChild(btnRow);
   }
 
-  // 種類を切り替え、その種類で選べる基準天体へ選択肢と現在値を寄せ直す。
-  private selectEntityKind(v: DynamicEntityKind): void {
+// 種類を切り替える。基地は月基準の軌道要素かラグランジュ点指定でしか設置できない
+// (placement-validation.ts の validateBaseReferenceFields と対応)ので、基準天体の選択肢を
+// 月だけに絞り、月以外が選ばれていたら月へ寄せ直す。基地以外へ戻したら選択肢も元に戻す。
+  private selectEntityKind(v: ObjectPlacementSelection): void {
     this.entityKindValue = v;
     this.entityKind.setSelected(v);
-    // 基地は月基準の軌道要素かラグランジュ点指定でしか設置できない(placement-validation.ts の
-    // validateBaseReferenceFields と対応)ので、基準天体の選択肢を月だけに絞る。
-    if (v === 'base') {
+    if (v === 'base-ship') {
       if (this.celestialBodyValue !== 'moon') this.celestialBodyValue = 'moon';
       this.celestialBody.setGroups([{ label: '', items: this.baseCelestialBodyItems }]);
     } else {
@@ -484,7 +488,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
   // 現在のフォームの値を、選ばれた組・種別が使う値だけを読み取って ObjectPlacerForm へ組む。
   getForm(): ObjectPlacerForm {
-    const entityKind = this.entityKindValue;
+    const selection = this.entityKindValue;
     // ラグランジュ点指定: 軌道種別が使う振幅だけを読む。
     if (this.placementModeValue === 'lagrange') {
       const common = {
@@ -493,10 +497,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
         lagrangePoint: this.lagrangePointValue,
       };
       if (this.lagrangeOrbitKindValue === 'halo') {
-        return { entityKind, ...common, lagrangeOrbitKind: 'halo', azKm: Number(this.libAz.value) };
+        return { selection, ...common, lagrangeOrbitKind: 'halo', azKm: Number(this.libAz.value) };
       }
       return {
-        entityKind, ...common, lagrangeOrbitKind: 'lissajous',
+        selection, ...common, lagrangeOrbitKind: 'lissajous',
         axKm: Number(this.libAx.value), azKm: Number(this.libAz.value),
       };
     }
@@ -511,17 +515,17 @@ export class ObjectPlacerPanel implements OverlayHandle {
     };
     if (this.sizeModeValue === 'apsides') {
       return {
-        entityKind, ...common, sizeMode: 'apsides',
+        selection, ...common, sizeMode: 'apsides',
         peAltKm: Number(this.peAlt.input.value), apAltKm: Number(this.apAlt.input.value),
       };
     } else if (this.sizeModeValue === 'semiMajorEcc') {
       return {
-        entityKind, ...common, sizeMode: 'semiMajorEcc',
+        selection, ...common, sizeMode: 'semiMajorEcc',
         semiMajorKm: Number(this.semiMajor.input.value), eccentricity: Number(this.eccSemiMajor.input.value),
       };
     } else {
       return {
-        entityKind, ...common, sizeMode: 'periodEcc',
+        selection, ...common, sizeMode: 'periodEcc',
         periodHours: Number(this.period.input.value), eccentricity: Number(this.eccPeriod.input.value),
       };
     }
@@ -575,13 +579,12 @@ export class ObjectPlacerPanel implements OverlayHandle {
   open(preset?: ObjectPlacerPreset): void {
     // 事前入力の範囲は preset の種別で決まる。
     if (preset?.kind === 'form') {
-      this.selectEntityKind(preset.entityKind);
+      this.selectEntityKind(preset.selection);
       this.applyElementsForm(preset.form);
-    } else if (preset?.kind === 'entityKind') {
-      this.selectEntityKind(preset.entityKind);
+    } else if (preset?.kind === 'selection') {
+      this.selectEntityKind(preset.selection);
     } else if (preset?.kind === 'body') {
-      // 基準天体の差し替えは、現在の種類で選べる ID のときだけ受け入れる。
-      const allowed = this.entityKindValue === 'base' ? this.baseCelestialBodyItems : this.celestialBodyItems;
+      const allowed = this.entityKindValue === 'base-ship' ? this.baseCelestialBodyItems : this.celestialBodyItems;
       if (allowed.some(([id]) => id === preset.celestialBody)) {
         this.celestialBodyValue = preset.celestialBody;
         this.celestialBody.setSelected(this.celestialBodyValue);

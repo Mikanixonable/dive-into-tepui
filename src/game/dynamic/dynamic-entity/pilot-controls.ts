@@ -24,7 +24,6 @@ export type RotationDirection = (typeof ROTATION_DIRECTIONS)[number];
 export const PILOT_COMMAND_KINDS = [
   'rcsDampToggle', 'progradeReset', 'fineAttitudeToggle', 'progradeHoldToggle',
   'throttleLow', 'throttleMid', 'throttleHigh', 'throttleMax',
-  'boosterDecouple', 'boosterIgnitionToggle',
   'radiatorDeployLeft', 'radiatorDeployRight', 'solarDeployLeft', 'solarDeployRight',
   'reload',
 ] as const;

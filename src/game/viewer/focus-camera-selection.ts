@@ -491,7 +491,7 @@ export class FocusCameraSelection implements FocusCameraSource {
   }
 
   // 注視距離 [m] を、注視対象の半径(天体でなければ実体の下限)と上限の間へ収めて据える。
-  private setDistance(distance: number): void {
+  public setDistance(distance: number): void {
     const body = this._focus.kind === 'object' ? this.celestialBodies.findMotion(this._focus.id) : null;
     const minDistance = body === null ? ENTITY_MIN_DIST : Math.max(FOCUS_CAMERA_MIN_DIST, body.def.radius);
     this._distance = Math.max(minDistance, Math.min(FOCUS_CAMERA_MAX_DIST, distance));

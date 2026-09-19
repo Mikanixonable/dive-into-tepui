@@ -10,6 +10,7 @@ import {
 import type { EarthSurfaceGpuTextures } from './earth-surface-gpu';
 import { createEarthSurfaceNodeMaterial } from './earth-surface-material-node';
 import { configureEarthSurfaceTexture } from './earth-surface-texture';
+import { EARTH_TEXTURE } from './earth-surface-defaults';
 import type { Mat3Uniform, Vec3Node, Vec3Uniform, BoolUniform } from './tsl-types';
 
 export interface EarthSurfaceMaterialBinding {
@@ -93,6 +94,7 @@ export function createEarthSurfaceMaterialBinding(
         geometricNormalView: normalView as unknown as Vec3Node,
         bodyToView,
         schematic,
+        albedoScale: EARTH_TEXTURE.albedoScale,
       },
     );
   } catch (error) {

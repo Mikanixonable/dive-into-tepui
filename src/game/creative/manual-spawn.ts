@@ -11,8 +11,8 @@ import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './stage-contro
 import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
+import type { ModularShip } from '../ship/modular-ship';
 import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
-import type { Player } from '../player/player';
 
 // 手動スポーンで出す敵1体。その場で組んだ敵か、アセットの取得を待つタンパク質の敵の要求。
 export type ManualEnemySpawn =
@@ -80,7 +80,7 @@ export class ManualSpawn {
   }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。知らない形なら null。
-  public enemy(player: Player, shape: EnemySpawnShape, colorValue: string): ManualEnemySpawn | null {
+  public enemy(player: ModularShip, shape: EnemySpawnShape, colorValue: string): ManualEnemySpawn | null {
     const color = Number(colorValue);
     const state = this.frontOf(player);
     const name = this.enemyNameAllocator.next();
@@ -103,13 +103,13 @@ export class ManualSpawn {
   }
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機の前方へ出す要求を返す。
-  public proteinFormation(player: Player): readonly ProteinEnemyRequest[] {
+  public proteinFormation(player: ModularShip): readonly ProteinEnemyRequest[] {
     const formationId = this.formationIdAllocator.next();
     return proteinFormationRequests(formationId, this.frontOf(player), player.motion.state.r, formationId);
   }
 
   // 自機の前方 spawnDistance [m]、自機と同じ速度の状態。
-  private frontOf(player: Player): KinematicState {
+  private frontOf(player: ModularShip): KinematicState {
     const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
     const position = addScaled(player.motion.state.r, forward, this._spawnDistance);
     return kinematicState<'eci'>(player.motion.state.t, position, player.motion.state.v);

@@ -8,15 +8,16 @@ import { secondaryFrameOf } from '../../physics/lagrange';
 import { isOccluded } from '../../physics/occlusion';
 import { ObjectPlacementPreviewView } from '../../render/creative/object-placement-preview-view';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
-import { Base } from '../dynamic/dynamic-entity/base';
 import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { AmmoPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
-import { isPlayer, type PlayerPlacement } from '../player/player';
+import { isModularShip, type ModularShipInit } from '../ship/modular-ship';
+import { createBasePreset } from '../ship/ship-presets';
 import { generateRandomName } from '../random-name';
 import { generateDriftingEnemy } from '../stages/spawner/enemy-generator';
 import { elementsFormFromState } from './duplicate-form';
 import {
-  ObjectPlacerPanel, type ElementsForm, type LagrangeForm, type ObjectPlacerForm, type ReferenceCelestialBody,
+  ObjectPlacerPanel, type ElementsForm, type LagrangeForm, type ObjectPlacementSelection,
+  type ObjectPlacerForm, type ReferenceCelestialBody,
 } from './object-placer-panel';
 import {
   validateBaseReferenceFields, validateEllipticPlacementFields, validateLagrangePlacementFields,
@@ -38,8 +39,13 @@ import type { HudLayers } from '../hud/hud-layers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ViewMode } from '../view/view-mode';
 
-// 軌道上へ配置できる自機の上限隻数(SPEC GAME.md 9.1)。
+// 軌道上へ配置できる自機の上限隻数。
 export const MAX_PLACED_SHIPS = 50;
+
+export function reachesPlacedShipLimit(selection: ObjectPlacementSelection, currentShipCount: number): boolean {
+  return (selection === 'combat-ship' || selection === 'base-ship')
+    && currentShipCount >= MAX_PLACED_SHIPS;
+}
 
 // 配置プレビューの軌道線の見た目。
 const PREVIEW_LINE_STYLE: LineStyle = {
@@ -53,7 +59,7 @@ const PREVIEW_MARKER_ID = 'creative-preview';
 
 // 置くと決まった物体。自機は実体ではなく配置の指定で表す。
 export type PlacedObject =
-  | { readonly kind: 'player'; readonly placement: PlayerPlacement }
+  | { readonly kind: 'ship'; readonly init: ModularShipInit }
   | { readonly kind: 'entity'; readonly entity: DynamicEntity };
 
 // 配置した自機の id の、次に発番する連番。
@@ -63,7 +69,7 @@ export interface SerializedObjectPlacement {
 
 // 検証を通った配置の指定の受け手。実体を作るのは受け手の側。
 export interface ObjectPlacementSink {
-  placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void;
+  placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void;
 }
 
 export class ObjectPlacement {
@@ -106,14 +112,16 @@ export class ObjectPlacement {
   // 種類と軌道要素を引き継いで配置パネルを開く。state を軌道要素へ逆算できないか基地の基準天体
   // 制約に反するときは、種類だけを引き継ぎ、軌道を複製できなかったことを記録する。
   public openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
+    const selection: ObjectPlacementSelection = entityKind === 'player' ? 'combat-ship'
+      : entityKind === 'base' ? 'base-ship' : entityKind;
     const form = elementsFormFromState(
       state, this.celestialSystem, state.t, this.celestialSystem.origin.id);
-    if (form && validateBaseReferenceFields(entityKind, 'elements', form.celestialBody).length === 0) {
-      this.panel.open({ kind: 'form', entityKind, form });
+    if (form && validateBaseReferenceFields(selection, 'elements', form.celestialBody).length === 0) {
+      this.panel.open({ kind: 'form', selection, form });
       return;
     }
     this.events.record({ kind: 'orbitNotDuplicable' });
-    this.panel.open({ kind: 'entityKind', entityKind });
+    this.panel.open({ kind: 'selection', selection });
   }
 
   // 開いているフォームの現在値から、配置プレビューと入力欄の検証表示を更新する。
@@ -173,8 +181,8 @@ export class ObjectPlacement {
   // フォームの値を検証して初期状態を組み、置く物体の指定を受け手へ渡す。
   // 検証に落ちるか状態を組めなければ、落ちた理由を記録して何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
-    // 隻数の上限に掛かることを、操作した場で知らせるための先読み。
-    if (form.entityKind === 'player' && this.roster.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
+    // combat/base preset は同じ ModularShip 上限を共有する(SPEC GAME.md 9.1)。
+    if (reachesPlacedShipLimit(form.selection, this.roster.all().filter(isModularShip).length)) {
       this.events.record({ kind: 'shipPlacementLimitReached', limit: MAX_PLACED_SHIPS });
       return;
     }
@@ -182,42 +190,55 @@ export class ObjectPlacement {
       this.assertValidForm(form);
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
-      this.placements.placeObject(name, form.entityKind, state);
+      this.placements.placeObject(name, form.selection, state);
     } catch (error) {
       const message = error instanceof Error ? error.message : '入力を解釈できません';
       this.events.record({ kind: 'objectPlacementRejected', reason: message });
     }
   }
 
-  // 空欄の名前を種類ごとの既定名で埋め、種類ごとに実体を作る。id の採番はここで走る。
-  public createObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): PlacedObject {
-    const finalName = name.trim() || generateRandomName(entityKind);
-    // 自機だけは実体ではなく配置の指定で返す。
-    switch (entityKind) {
-      case 'player':
-        return { kind: 'player', placement: { name: finalName, state, id: this.playerIdAllocator.next() } };
-      case 'enemy':
+  // 種類ごとに実体を作り、id を採番して、空欄の名前を種類ごとの既定名で埋める。
+  public createObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): PlacedObject {
+    // 自機は生成引数、それ以外は実体として返す。
+    switch (selection) {
+      case 'combat-ship': {
+        const id = this.playerIdAllocator.next();
+        return { kind: 'ship', init: { name: name.trim() || generateRandomName('player'), state, id } };
+      }
+      case 'enemy': {
+        const finalName = name.trim() || generateRandomName('enemy');
         return {
           kind: 'entity',
           entity: generateDriftingEnemy(
             finalName, state, '#ff6a00', '#ff6a00', this.scene, this.idAllocators,
           ),
         };
+      }
       case 'ammo':
+        {
+          const finalName = name.trim() || generateRandomName('ammo');
         return {
           kind: 'entity',
           entity: AmmoPickup.create({ state, name: finalName }, this.scene, this.idAllocators),
         };
+        }
       case 'fuel':
+        {
+          const finalName = name.trim() || generateRandomName('fuel');
         return {
           kind: 'entity',
           entity: RcsFuelPickup.create({ state, name: finalName }, this.scene, this.idAllocators),
         };
-      case 'base':
+        }
+      case 'base-ship': {
+        const id = this.playerIdAllocator.next();
         return {
-          kind: 'entity',
-          entity: Base.create({ state, name: finalName }, this.scene, this.idAllocators),
+          kind: 'ship',
+          init: {
+            name: name.trim() || generateRandomName('base'), state, id, assembly: createBasePreset(),
+          },
         };
+      }
     }
   }
 
@@ -282,7 +303,7 @@ export class ObjectPlacement {
   private computeFieldIssues(form: ObjectPlacerForm): PlacementFieldIssue[] {
     // 配置方法によらず効く、種類ごとの基準天体の制約。
     const issues = [...validateBaseReferenceFields(
-      form.entityKind, form.placementMode, form.placementMode === 'elements' ? form.celestialBody : undefined,
+      form.selection, form.placementMode, form.placementMode === 'elements' ? form.celestialBody : undefined,
     )];
     // 配置方法ごとの制約。
     if (form.placementMode === 'elements') {

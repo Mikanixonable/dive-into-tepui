@@ -1,18 +1,20 @@
 // クリエイティブモード: 物体配置と軌道計画を自由に試すための、勝利条件の無いステージ。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { ManualSpawn, type SerializedManualSpawn } from '../creative/manual-spawn';
-import { MAX_PLACED_SHIPS, ObjectPlacement, type SerializedObjectPlacement } from '../creative/object-placement';
+import {
+  ObjectPlacement, reachesPlacedShipLimit, type SerializedObjectPlacement,
+} from '../creative/object-placement';
+import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import {
   StageControlsPanel, type EnemySpawnShape, type ProteinDisplayControl,
 } from '../creative/stage-controls-panel';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { hudRail } from '../hud/hud-root';
-import { isPlayer } from '../player/player';
+import { isModularShip } from '../ship/modular-ship';
 import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
 import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import { queuedEventSink, type RunEventSink } from '../run-events';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -171,7 +173,7 @@ export class CreativeStage extends Stage {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'refillRcsFuel' });
       return;
     }
-    player.refuelFuel(player.totalMaxFuel);
+    player.refuelRcsFuel(player.totalMaxRcsFuel);
   }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければ、操作艦が要ることを記録する。
@@ -199,13 +201,14 @@ export class CreativeStage extends Stage {
 
   // 検証を通った配置の指定から物体を作り、顔ぶれへ入れて、配置したことを記録する。
   // 自機の隻数が上限に達していれば、作らずに返る(SPEC GAME.md 9.1)。
-  public placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void {
-    if (entityKind === 'player'
-      && this._dynamicSystem.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) return;
+  public placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void {
+    if (reachesPlacedShipLimit(
+      selection, this._dynamicSystem.all().filter(isModularShip).length,
+    )) return;
     // 自機は配置の指定から艦として置き、それ以外は作った実体をそのまま顔ぶれへ入れる。
-    const placed = this.objectPlacement.createObject(name, entityKind, state);
-    if (placed.kind === 'player') {
-      const ship = this.addPlayer(placed.placement);
+    const placed = this.objectPlacement.createObject(name, selection, state);
+    if (placed.kind === 'ship') {
+      const ship = this.addPlayer(placed.init);
       this._dynamicSystem.events.record({ kind: 'objectPlaced', name: ship.name });
       return;
     }
@@ -255,7 +258,7 @@ export class CreativeStage extends Stage {
   // 'instant' の艦が次に消化するノードの時刻。待っているノードが1つも無ければ null。
   public nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
-    for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
+    for (const ship of this._dynamicSystem.all().filter(isModularShip)) {
       const t = ship.instantNodeTime;
       if (t !== null && t >= simTime && (next === null || t < next)) next = t;
     }
@@ -264,7 +267,7 @@ export class CreativeStage extends Stage {
 
   // ノード時刻ちょうどでノードの絶対状態へ乗り移る。
   public applySimulationEvents(simTime: number): void {
-    for (const ship of this._dynamicSystem.all().filter(isPlayer)) ship.executeInstantNodesUpTo(simTime);
+    for (const ship of this._dynamicSystem.all().filter(isModularShip)) ship.executeInstantNodesUpTo(simTime);
   }
 
   // 勝利条件を持たないモードなので、常に false。
