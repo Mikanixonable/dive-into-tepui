@@ -5,5 +5,4 @@ export type DebrisKind =
   | { readonly kind: 'barrel'; readonly bornTemperature: number; readonly bornThermalDeviation: number; }
   | { readonly kind: 'magazineFrame'; }
   | { readonly kind: 'casing'; readonly bornSim: number; }
-  | { readonly kind: 'boosterCover'; readonly segment: number; readonly bornSim: number; }
-  | { readonly kind: 'boosterBolt'; readonly segment: number; readonly bornSim: number; };
+  | { readonly kind: 'decouplerPanel'; readonly segment: number; readonly bornSim: number; };

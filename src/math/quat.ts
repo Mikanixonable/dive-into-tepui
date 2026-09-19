@@ -1,6 +1,6 @@
 // クォータニオンの代数と、ベクトル/基底からの組み立て。回転そのものを表す道具で、
 // 何を回すか(剛体・カメラ・座標系)は知らない。
-import { Vec3, cross, dot, lenSq, norm, v3 } from './vec3';
+import { type Vec3, cross, dot, lenSq, norm, v3 } from './vec3';
 
 // 回転が写す局所基底。qFromForwardUp / qFromBasis が組む回転は、この3本を渡された
 // 前方向・上方向・右方向へ写す。
@@ -31,38 +31,56 @@ export function qMul(a: Quat, b: Quat): Quat {
 
 // クォータニオンを単位長へ正規化する。ノルムがほぼ0なら単位クォータニオンを返す。
 export function qNormalize(q: Quat): Quat {
-  const l = Math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-  if (l < 1e-12) return Q_IDENTITY;
-  return { x: q.x / l, y: q.y / l, z: q.z / l, w: q.w / l };
+  // 先に最大成分で割るので、極端に大きい入力でも二乗が overflow しない。
+  const scale = Math.max(Math.abs(q.x), Math.abs(q.y), Math.abs(q.z), Math.abs(q.w));
+  if (!Number.isFinite(scale) || scale < 1e-12) return Q_IDENTITY;
+  const x = q.x / scale;
+  const y = q.y / scale;
+  const z = q.z / scale;
+  const w = q.w / scale;
+  const l = Math.sqrt(x * x + y * y + z * z + w * w);
+  if (!Number.isFinite(l) || l < 1e-12) return Q_IDENTITY;
+  return { x: x / l, y: y / l, z: z / l, w: w / l };
 }
 
-// 姿勢を最短経路で補間する。剛体形状の掃引など、フレーム間の姿勢変化を
-// 位置の線分へ近似せずに扱う箇所で使う。
+// a から b へ、同じ回転を表す符号を除いて最短経路で球面線形補間する。
+// 入力と出力は常に単位クォータニオンで、t は補間率(通常は [0, 1])。
 export function qSlerp(a: Quat, b: Quat, t: number): Quat {
-  let bx = b.x, by = b.y, bz = b.z, bw = b.w;
-  let cosine = a.x * bx + a.y * by + a.z * bz + a.w * bw;
+  const start = qNormalize(a);
+  let end = qNormalize(b);
+  let cosine = start.x * end.x + start.y * end.y + start.z * end.z + start.w * end.w;
+
+  // q と -q は同じ回転なので、内積を正にして長い経路を避ける。
   if (cosine < 0) {
+    end = { x: -end.x, y: -end.y, z: -end.z, w: -end.w };
     cosine = -cosine;
-    bx = -bx; by = -by; bz = -bz; bw = -bw;
   }
+  // 丸め誤差で acos の定義域を出ないようにする。
+  cosine = Math.max(-1, Math.min(1, cosine));
+
+  if (t === 0) return start;
+  if (t === 1) return end;
+
+  // 角度が小さいと sin(theta) による除算が不安定なので、正規化した lerp に退避する。
   if (cosine > 0.9995) {
     return qNormalize({
-      x: a.x + (bx - a.x) * t,
-      y: a.y + (by - a.y) * t,
-      z: a.z + (bz - a.z) * t,
-      w: a.w + (bw - a.w) * t,
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t,
+      z: start.z + (end.z - start.z) * t,
+      w: start.w + (end.w - start.w) * t,
     });
   }
-  const angle = Math.acos(Math.max(-1, Math.min(1, cosine)));
-  const sine = Math.sin(angle);
-  const from = Math.sin((1 - t) * angle) / sine;
-  const to = Math.sin(t * angle) / sine;
-  return {
-    x: a.x * from + bx * to,
-    y: a.y * from + by * to,
-    z: a.z * from + bz * to,
-    w: a.w * from + bw * to,
-  };
+
+  const theta = Math.acos(cosine);
+  const sinTheta = Math.sin(theta);
+  const startWeight = Math.sin((1 - t) * theta) / sinTheta;
+  const endWeight = Math.sin(t * theta) / sinTheta;
+  return qNormalize({
+    x: start.x * startWeight + end.x * endWeight,
+    y: start.y * startWeight + end.y * endWeight,
+    z: start.z * startWeight + end.z * endWeight,
+    w: start.w * startWeight + end.w * endWeight,
+  });
 }
 
 // 軸 axis(単位ベクトル)まわりに angle [rad] 回転するクォータニオンを作る。

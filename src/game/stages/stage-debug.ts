@@ -9,7 +9,7 @@ import { LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stag
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import { stageDebugCommands, type StageDebugCommands } from './stage-debug-commands';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { Player } from '../player/player';
+import type { ModularShip } from '../ship/modular-ship';
 
 // デバッグステージの内訳。敵の射撃の可否と、次に出す敵集団の通し番号を持つ。
 export interface SerializedStageDebug extends SerializedStage {
@@ -109,7 +109,7 @@ export class StageDebug extends Stage {
   }
 
   // player のまわりへ出す敵集団を、ランダム方向で1波ぶん組む。
-  private generateWaveAround(player: Player): readonly Enemy[] {
+  private generateWaveAround(player: ModularShip): readonly Enemy[] {
     return generateWave(
       player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
       this._scene, this._dynamicSystem.idAllocators, 'random',

@@ -3,17 +3,28 @@
 import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { firstSurfaceContact } from '../../src/physics/surface-contact';
 import { hermiteInterpolate, kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { len, sub, v3 } from '../../src/math/vec3';
+import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
+import type { Attitude } from '../../src/physics/attitude';
+import type { CompoundCylinderShape } from '../../src/physics/compound-cylinder-contact';
 
 const ZERO = v3(0, 0, 0);
 const EARTH: CelestialMotion = fixedMotion({
   id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, ZERO, ZERO),
   accel: ZERO, degree2: null, atmosphere: null,
 });
+
+const IDENTITY_ATTITUDE: Attitude = { q: Q_IDENTITY, w: ZERO, inertia: v3(1, 1, 1) };
+
+function compound(
+  moduleId = 'hull', center = ZERO, axis = v3(0, 1, 0), halfLength = 1, radius = 0.5,
+): CompoundCylinderShape {
+  return { primitives: [{ moduleId, center, axis, halfLength, radius }] };
+}
 
 // 位置・速度・半径だけを持つ天体。重力も大気も表面判定には効かない。
 function body(id: string, r = ZERO, v = ZERO, radius = 500): CelestialMotion {
@@ -134,5 +145,57 @@ export function register(): void {
 
     assert.equal(firstSurfaceContact(prev, next, 0, [near, far], 0)?.body, near);
     assert.equal(firstSurfaceContact(prev, next, 0, [far, near], 0)?.body, near);
+  });
+
+  test('firstSurfaceContact: compound は高速並進と動く天体の最初の接触を module id 付きで返す', () => {
+    const movingBody = body('moving-rock', v3(0, -2, 0), v3(0, 4, 0), 0.3);
+    const prev = kinematicState<'eci'>(0, v3(-5, 0, 0), v3(10, 0, 0));
+    const next = kinematicState<'eci'>(1, v3(5, 0, 0), v3(10, 0, 0));
+    const hit = firstSurfaceContact(
+      prev, next, 6, [movingBody], 0, compound('tank', ZERO, v3(0, 1, 0), 0.5, 0.3),
+      IDENTITY_ATTITUDE, IDENTITY_ATTITUDE,
+    );
+    assert.ok(hit !== null);
+    assert.ok(hit.geometry.toi > 0 && hit.geometry.toi < 1, `toi=${hit.geometry.toi}`);
+    assert.equal(hit.geometry.moduleIdA, 'tank');
+    assert.ok(hit.geometry.contactPoint !== undefined);
+  });
+
+  test('firstSurfaceContact: compound は回転途中の接触を補間姿勢から見つける', () => {
+    const target = body('target', v3(4, 0, 0), ZERO, 0.2);
+    const state0 = kinematicState<'eci'>(0, ZERO, ZERO);
+    const state1 = kinematicState<'eci'>(1, ZERO, ZERO);
+    const rotated: Attitude = {
+      ...IDENTITY_ATTITUDE,
+      q: qFromAxisAngle(v3(0, 1, 0), Math.PI / 2),
+    };
+    const hit = firstSurfaceContact(
+      state0, state1, 5, [target], 0,
+      compound('arm', v3(0, 0, 4), v3(0, 0, 1), 4, 0.15),
+      IDENTITY_ATTITUDE, rotated,
+    );
+    assert.ok(hit !== null);
+    assert.ok(hit.geometry.toi > 0 && hit.geometry.toi < 1, `toi=${hit.geometry.toi}`);
+    assert.equal(hit.geometry.moduleIdA, 'arm');
+  });
+
+  test('firstSurfaceContact: compound の外接球だけが重なる空間は接触にせず姿勢省略でも同じ', () => {
+    const target = body('target', v3(2.5, 0, 0), ZERO, 0.1);
+    const state = kinematicState<'eci'>(0, ZERO, ZERO);
+    assert.equal(
+      firstSurfaceContact(state, state, 4, [target], 0, compound()),
+      null,
+    );
+  });
+
+  test('firstSurfaceContact: 区間の無い compound 重なりは終端接触 toi=1 として返す', () => {
+    const target = body('target', v3(0.7, 0, 0), ZERO, 0.3);
+    const state = kinematicState<'eci'>(0, ZERO, ZERO);
+    const hit = firstSurfaceContact(
+      state, state, 2, [target], 0, compound(), IDENTITY_ATTITUDE, IDENTITY_ATTITUDE,
+    );
+    assert.ok(hit !== null);
+    assert.equal(hit.geometry.toi, 1);
+    assert.equal(hit.geometry.moduleIdA, 'hull');
   });
 }

@@ -145,9 +145,8 @@ export class PointCelestialView extends SphereCelestialView {
       center: fo.RtoThreeV3(motion.stateAt(displayTime).r),
       surfaceRadius: motion.def.radius,
       axes: this.axes,
-      topAltitude: this.cumulus.topAltitude,
       bodyFromWorld: this.bodyFromWorld,
-      field: this.cumulus.binding,
+      cloud: this.cumulus.renderInput,
     };
   }
 
@@ -158,7 +157,7 @@ export class PointCelestialView extends SphereCelestialView {
   ): AtmosphereClouds | null {
     if (this.cumulus === null || !this.cumulus.cloudsVisible) return null;
     return {
-      field: this.cumulus.binding,
+      cloud: this.cumulus.renderInput,
       bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), motion, displayTime),
     };
   }

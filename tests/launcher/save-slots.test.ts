@@ -20,7 +20,6 @@ function meta(id: string): SnapshotMeta {
     hpRatio: 1,
     maxHp: 100,
     magazines: 0,
-    money: 0,
     playerCount: 1,
     enemyAliveCount: 0,
     phase: 'playing',

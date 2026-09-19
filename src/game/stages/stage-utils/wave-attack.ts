@@ -12,7 +12,7 @@ import { generateApproachingEnemy } from '../spawner/enemy-generator';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
-import type { Player } from '../../player/player';
+import type { ModularShip } from '../../ship/modular-ship';
 import type { StageOutcome } from '../stage-outcome';
 import type { RunEventSink } from '../../run-events';
 
@@ -87,7 +87,7 @@ export class WaveAttack {
 
   // ウェーブ番号を1つ進め、生成した敵を stage へ足す。
   public spawnWave(
-    player: Player, stage: Pick<WaveAttackStage, 'addEnemy'>, forcedPattern?: 'linear' | 'random',
+    player: ModularShip, stage: Pick<WaveAttackStage, 'addEnemy'>, forcedPattern?: 'linear' | 'random',
   ): void {
     const wave = ++this._waveCount;
     const enemies = generateWave(
@@ -99,7 +99,7 @@ export class WaveAttack {
 
   // フェーズ機械を1フレーム分進める。敵は stage へ足し、交戦圏外へ出た敵の消滅を stage へ記録する。
   public update(
-    dt: number, player: Player, enemies: readonly Enemy[], simTime: number, stage: WaveAttackStage,
+    dt: number, player: ModularShip, enemies: readonly Enemy[], simTime: number, stage: WaveAttackStage,
   ): void {
     if (this.waveState === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
     if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, stage);
@@ -107,7 +107,7 @@ export class WaveAttack {
   }
 
   // 自機が弾薬を確保するまで待ち、確保でき次第 spawning_enemies フェーズへ進める。
-  private updateWaitingForAmmoPhase(player: Player): void {
+  private updateWaitingForAmmoPhase(player: ModularShip): void {
     if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
     this.waveState = 'spawning_enemies';
     this.spawnTimer = STAGE00_SPAWN_DELAY;
@@ -115,7 +115,7 @@ export class WaveAttack {
   }
 
   // 遅延タイマーが尽きたら最初のウェーブを湧かせ、active_combat フェーズへ進める。
-  private updateSpawningEnemiesPhase(dt: number, player: Player, stage: WaveAttackStage): void {
+  private updateSpawningEnemiesPhase(dt: number, player: ModularShip, stage: WaveAttackStage): void {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, stage);
@@ -125,7 +125,7 @@ export class WaveAttack {
 
   // 交戦圏外の敵を消し、同時展開数の上限内でタイマーに従い次のウェーブを湧かせる。
   private updateActiveCombatPhase(
-    dt: number, player: Player, enemies: readonly Enemy[], simTime: number, stage: WaveAttackStage,
+    dt: number, player: ModularShip, enemies: readonly Enemy[], simTime: number, stage: WaveAttackStage,
   ): void {
     despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, stage);
     const activeGroups = countActiveWaveGroups(enemies);
@@ -149,7 +149,7 @@ export class WaveAttack {
 
 // 自機から maxRange より離れた敵を交戦圏外として消す。
 function despawnOutOfRangeEnemies(
-  enemies: readonly Enemy[], player: Player, maxRange: number, simTime: number, activeStage: StageOutcome,
+  enemies: readonly Enemy[], player: ModularShip, maxRange: number, simTime: number, activeStage: StageOutcome,
 ): void {
   for (const enemy of enemies) {
     if (!enemy.motion.alive) continue;
