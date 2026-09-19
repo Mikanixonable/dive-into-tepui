@@ -669,15 +669,14 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       polarRatio: radii.polarRadius / radii.equatorRadius,
       optics: EARTH_ATMOSPHERE_OPTICS,
       // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
-      clouds: { get field() { return cumulus.binding; }, bodyFromWorld },
+      clouds: { get cloud() { return cumulus.renderInput; }, bodyFromWorld },
     },
     cumulus: {
       center,
       surfaceRadius: R_EARTH_EQ,
       axes: shellAxes,
-      topAltitude: cumulus.topAltitude,
       bodyFromWorld,
-      get field() { return cumulus.binding; },
+      get cloud() { return cumulus.renderInput; },
     },
     // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
     shadowBody: { center, axes: shellAxes.clone(), bodyFromWorld },
