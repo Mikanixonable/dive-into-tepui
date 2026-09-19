@@ -11,7 +11,6 @@ import type { Input } from '../../input/input';
 import type { Viewport } from '../../render/viewport';
 import type { CameraSystem } from '../camera/camera-system';
 import type { DisplayWindowManager } from '../display-window-manager';
-import type { EntityRegistry } from '../dynamic/entity-registry';
 import type {
   ConstructionMount, ShipConstructionPanelModel,
 } from '../hud/panels/ship-construction-panel';
@@ -74,7 +73,6 @@ export class ShipConstruction implements OverlayHandle {
     private readonly panel: ShipConstructionPanelPort,
     private readonly overlayManager: OverlayManager,
     private readonly displayWindow: DisplayWindowManager,
-    private readonly registry: EntityRegistry,
     private readonly notifier: Notifier,
     private readonly focusDock: ((ship: ModularShip) => void) | null = null,
   ) {
@@ -120,7 +118,7 @@ export class ShipConstruction implements OverlayHandle {
     this.previousForceCurrent = this.displayWindow.current.forceCurrent;
     this.displayWindow.setForceCurrent(true);
     this.overlayManager.open('ship-construction-mode', this, {
-      kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
+      kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false, pausesGame: true,
     });
     this.syncPanel();
   }
@@ -235,10 +233,8 @@ export class ShipConstruction implements OverlayHandle {
     const branch = draft.ship.assembly.clone().splitAt(draft.firstConnectionId)[1];
     if (branch.role === 'material'
       && typeof globalThis.confirm === 'function'
-      && !globalThis.confirm('コックピットがないため操縦不能な物資として発進します。続けますか？')) return;
-    draft.ship.launchConstruction(draft.firstConnectionId, this.registry);
-    draft.ship.docks.finishBuilding(draft.dockId);
-    this.drafts.delete(this.key(draft.ship, draft.dockId));
+      && !globalThis.confirm('コックピットがないため操縦不能な物資として残ります。続けますか？')) return;
+    // 建造終了は編集を閉じるだけ。接続された枝と建造予約は残し、後から再開できるようにする。
     this.close();
   }
 
