@@ -980,39 +980,16 @@ R1(と 1.6 の手写し)・R3・R5(表示の導出)・R5 と R7(装置)・R8・R
 - 後の段へ回した行は、その段の手順が対象ごと作り直すもの。各段の手順の「5.5-3 から回した行」を見る。
 - 計画の外へ出したのは、物理の値の食い違い(`SHIP_BCINV` と `SHIP_SRP_COEFF` の質量の前提、`BULLET_BCINV`)と model-builder の円環の向き。物理の値の判断はユーザーに問う(CODING-RULE 1.1)。
 
-#### 手順 5.5-4. 運動の値を運動だけが書く
+#### 手順 5.5-4. 運動の値を運動だけが書く — 済
 
-**目的**: 段 3 から main で満たしていなかった R3 を、運動へ当てる(K10)。運動の欄を書くのは運動だけにし、実体・behavior・反応・シミュレーションの機構・ステージは命令で変える。予測弧の破棄は運動の命令の中で行い、呼び手に世話をさせない。同じ編集範囲にある次の2つも片づける。
+`DynamicMotion` の欄を private と getter にし、命令 `setThrust`・`setTorque`・`kill`・`reset` と、継承先が構成を変えたときの `setMassProperties`(protected)を置いた。`invalidatePrediction` は private。参加者の面は `state`・`alive` を読み取りにして `reset`・`kill` を足し、接触の相手の型を `EntityContactParticipant` へ広げた(`contactKind`・`contactDamageWeight` を足した)。接触代理は `game/dynamic/contact-proxy.ts` の `ContactProxy`(履歴を持たない)。`PilotCommandFrame` は消し、`updateControls` は明示的な引数で受ける。R3 の許可リストから 17 件が消えた(残り 68)。
 
-- **接触代理**: 置き直しが、この手順で消す `state` の setter を通っている。書き直す先を履歴を持たない軽いクラスにして、履歴の無制限な伸び(`reduce_implement.md` R20)を構造ごと消す(K10-7)。
-- **`PilotCommandFrame`**: `updateControls` が受ける寄せ集め(1.6)をやめる。推力とトルクの指令を置くのと同じ関数である。
-
-**物理の結果と見た目は変えない**(変わるのは、代理の履歴が伸びなくなることだけ)。**軌跡を `physics/` から出すことはしない**(K10-7) — 行き先と分け方は、段 6 の着手前に実体・運動と一緒に決める。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-motion.ts` | `state`・`thrust` の setter と、public の `alive`・`mass`・`torque`・`att`・`prevAtt`・`temperature`・`thermalDeviation`・`attachedTo` をやめる(読み取りは getter、継承先が書くものは protected)。命令を置く: 推力とトルクの指令(実体が毎フレーム渡す)、`kill()`、不連続な置き換え(いまの `reset`)。`invalidatePrediction` は private にし、予測弧を古くする命令の中で捨てる。**捨てる条件はいまの setter と同じにする**(推力は非 null のときだけ)。復元時の `alive` は構築の引数で受ける。軌跡(`actual` と、`predicted` が返すもの)は、5.5-1 の暫定のとおり据え置く(K10-7) |
-| `src/game/dynamic/dynamic-simulation-participant.ts`、`simulator.ts`、`entity-contact-physics.ts`、`surface-contact-physics.ts` | 参加者の面の可変な `state`・`alive` を、置き換えと `kill()` の命令にする。接触の相手の型を、代理も満たす参加者の面へ広げる |
-| `src/game/dynamic/predicted-arc.ts`、`predictor.ts`、`src/game/plan/plan-path.ts` | `requiredEnd`・`retainFrom`・`simulationMaxStep` を private にし、需要を受ける命令にする(Predictor と PlanPath が書いている) |
-| `src/game/player/{player-motion,player,attached-booster-motion,attached-boosters,fire-control}.ts`、`src/game/dynamic/dynamic-entity/base.ts` | 推力・トルク・状態の置き換え・退場を命令で行う。`invalidatePrediction` の呼び出し(`player.ts`・`attached-booster-motion.ts` の3か所・`attached-boosters.ts`)と `BoosterHostMotion.invalidatePrediction` を消す。`rebuildMassAndInertia` が予測弧を捨てる |
-| `src/game/dynamic/dynamic-entity/detached-booster-motion.ts` | behavior が `self.mass`・`self.thrust` へ代入するのをやめる。質量は `bcInv` と同じく behavior から引く導出値にし(状態が1つ減る)、推力は `updateCommands` が値を返して運動が持つ。`burnRatio` を private にする |
-| `alive = false` の書き手(`enemy.ts`・`enemy-reactions.ts`・`bullet-reaction.ts`・`debris-reaction.ts`・`pickup.ts`・`player.ts`・`dynamic-system.ts`・`stages/stage-utils/logistics.ts`・`pickable/enemy-inspection.ts`) | `kill()` にする。`enemy.ts` の構築後の `alive` の代入は構築の引数へ |
-| `src/game/stages/creative-stage.ts` | `ship.motion.state =` を置き換えの命令にする |
-| `src/game/player/{belt-physics,radiator}.ts` | 接触代理を `DynamicMotion` の派生から、参加者の面だけを持つ軽いクラスにする。置き直し(いまの `section.state = world`・`fold.state = world`)は履歴を持たない |
-| `src/game/dynamic/dynamic-entity/controllable.ts` の `PilotCommandFrame`、`dynamic-system.ts` の `updateControllables` | 寄せ集め(`controls`・`dt`・`simDt`・`activeStage`・`stageRules`・`celestialBodies`)をやめ、`updateControls` へ明示的な引数で渡す(CODING-RULE 1.6、K8 の別件)。協力者を構築時に受ける形へは移さない(振り分けの表) |
-| `tests/game/{predicted-arc,trajectory-demand}.test.ts` | 運動と弧の命令化に合わせて直す。`trajectory-demand` の不変条件(需要によらず同じ状態)は変えない |
-| 5.5-3 から回した行 | `DynamicSystem.cleanup` が持っている天体系の面を引数でも受けて中継する形をやめる(R13)。`options`・`shipMotionOptions` の名前を揃える(1.6)。`player-motion.ts` の抗力係数 2.2 の手写しと式の重複をやめる(1.6)。接触代理の `prevState` がキャッシュであることを書く(R11) |
-
-**達成条件と検証**
-
-- 5.5-2 の R3 の判定のうち、`DynamicMotion`・`PredictedArc`・参加者の面・`DetachedBoosterBehavior` の当たりが 0 件。
-- `rg -n "invalidatePrediction" src` が `dynamic-motion.ts` の中だけ。
-- `rg -n "PilotCommandFrame" src` が 0 件。
-- `rg -n "extends DynamicMotion" src/game/player/belt-physics.ts src/game/player/radiator.ts` が 0 件(接触代理が派生でない)。
-- `npm run typecheck`、`npm run test:game`、`npm run check:boundaries`。段 5 で書き出したセーブが読める(保存形式は変えない)。
-- `npm run dev` で次を見る。噴射と RCS、段の点火・分離、発砲の反動、放熱板とベルトへの被弾、creative の計画の即時実行、メニューの削除、補給の回収、弾・破片の上限。予測弧が噴射中に消え、噴射をやめると引き直される。
+**実施で決めたこと**
+- 分離ブースターの推力は、`updateCommands`(燃焼を進める命令)と `commandedThrust`(直近の燃焼から推力を答える問い合わせ)に分けた。計画の「updateCommands が値を返す」は、状態を進めて値を返す関数(CODING-RULE 1.11)になるので採らなかった。問い合わせは命令の直後に同じ姿勢で呼ぶので、推力の向きは変わらない。質量は behavior の `mass` から引く。
+- 予測弧を捨てる条件: 推力は非 null のとき(いまの setter と同じ)。質量と慣性は変わったときだけ(`AttachedBoosterMotion.step` は燃えていないフレームも呼ぶので、無条件に捨てると弧をなぞれなくなる)。点火の切り替えでは捨てない — 点火しても質量は変わらず、燃え始めれば推力で捨てる。
+- `DynamicMotion.attachedTo` は常に null の読み取り欄。
+- 5.5-3 から回した行(`cleanup` の中継、`options` の名前、抗力係数の手写し、接触代理の `prevState` のキャッシュのコメント)もここで直した。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。**計画の `npm run dev` での目視(噴射・段の分離・被弾ほか)はしていない** — 段の終わりの 5.5-10 でヘッドレスの起動と、ユーザーの目視に回す。
 
 #### 手順 5.5-5. 残りのモデル層の欄を、所有者だけが書く形にする
 
@@ -1602,14 +1579,14 @@ import を直す外側:
 | 5.5 | ~~5.5-1 規則~~ 済 | 0 |
 | | ~~5.5-2 検査~~ 済 | 0 |
 | | ~~5.5-3 洗い出し~~ 済 | 0 |
-| | 5.5-4 運動の書き手(29 ファイル × 20 + 検証 20、`PilotCommandFrame` を明示的な引数へ +20。`power` と接続中ブースターの段は K10-6、軌跡の移動は K10-7 の保留で外した。5.5-3 から回した行 +60) | 680 |
+| | ~~5.5-4 運動の書き手~~ 済 | 0 |
 | | 5.5-5 残りのモデル層の欄(24 ファイル × 20 + 検証 20、5.5-3 から回した行 +60) | 560 |
 | | 5.5-6 音の装置(6 ファイル × 20 + 検証 20、`UiSfx`・消音の設定・試聴の位置と経過 +80) | 220 |
 | | 5.5-7 位相・直列化・導出の残り(15 ファイル × 20、時間加速の命令を領域の語彙にする +40、検証 20、採番器の予約 +20) | 380 |
 | | 5.5-8 1.x の未達と launcher の表示(10 ファイル × 20 + 検証 20) | 220 |
 | | 5.5-9 洗い出しの残りと監査報告の 4(4 の分は SPEC の削除と 6 ファイル × 20 + 検証 20 = 140。洗い出しの 22 行は約 40 ファイル × 20 = 800) | 940 |
 | | 5.5-10 main へ送る | 150 |
-| | **段 5.5 計(残り)** | **3,150** |
+| | **段 5.5 計(残り)** | **2,470** |
 | 6 | 6-1 規則(R6・R2 のモデル層、`entity-shapes/` の層と条件 +15、`physics/` から実体の形を締め出す +15) | 120 |
 | | 6-2 検査(対応表を game/ の中まで割る、`LAYER_TABLE` の行 +5。K11-2 で B なら読み手の数の判定 +20) | 95 |
 | | 6-3 3D の表示担当(モデル層の根の `scene` +20、漏れていたテスト3本 +30、突き合わせの検査 +40) | 810 |

@@ -2,7 +2,7 @@
 // 今フレームの放熱面積と太陽入射を答える。
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, LOCAL_UP, qFromAxisAngle, qRotate } from '../../math/quat';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { kinematicState } from '../../physics/kinematic-state';
 import { add, cross, dot, rotateAxis, v3, Vec3 } from '../../math/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
@@ -11,14 +11,17 @@ import {
   RADIATOR_SEGMENT_LENGTH,
 } from '../../physics/player-shape';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
-import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
+import { ContactProxy } from '../dynamic/contact-proxy';
+import type {
+  DynamicReactionServices, EntityContactParticipant,
+} from '../dynamic/dynamic-simulation-participant';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 
 const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
+const RADIATOR_FOLD_MASS = 5; // 接触で押し合うときの、蛇腹1折りの質量 [kg]
 
 export type RadiatorSide = 'up' | 'down';
 
@@ -47,30 +50,10 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
   return add(origin, yRotatedOffset(fold % 2 === 0 ? even : odd, sign * RADIATOR_SEGMENT_LENGTH / 2));
 }
 
-// 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付け。
-class RadiatorFold extends DynamicMotion {
-  // state は生成時点の実際の world 状態 — 仮の状態で始めると、最初に置き直した substep の
-  // prevState がその仮位置になり、そこからの偽の区間を掃引してしまう。
-  public constructor(
-    side: RadiatorSide,
-    owner: DynamicMotion,
-    state: KinematicState,
-    onContact: RadiatorContactReaction,
-  ) {
-    const behavior: DynamicMotionBehavior = {
-      contactKind: 'radiator-fold',
-      contactsWith: (_self, other) => other !== owner && other.attachedTo !== owner,
-      onEntityContact: (_self, other, contact, services) => onContact(side, other, contact, services),
-    };
-    super(state, { mass: 5, radius: RADIATOR_SEGMENT_LENGTH / 2, collides: true, behavior });
-    this.attachedTo = owner;
-  }
-}
-
 // 折りへの接触を艦側のゲーム上の反応へ渡す口。side は当たった放熱板。
 type RadiatorContactReaction = (
   side: RadiatorSide,
-  other: DynamicMotion,
+  other: EntityContactParticipant,
   contact: Contact,
   services: DynamicReactionServices,
 ) => void;
@@ -84,13 +67,13 @@ export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, DeployablePanelState>;
   // side ごとの損耗率(0=無傷, 1=全損)。放熱板部品の残 HP から求め直すキャッシュ。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
-  // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
-  private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
+  // side ごとの蛇腹1折りぶんの接触代理。折り数まで遅延生成し、以後は使い回す。
+  private readonly foldProxies: Record<RadiatorSide, ContactProxy[]> = { up: [], down: [] };
 
   // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。up・down は各側の展開状態で、
   // 省いた側は収納から始める。
   public constructor(
-    private readonly owner: DynamicMotion,
+    private readonly owner: EntityContactParticipant,
     private readonly onContact: RadiatorContactReaction,
     up = new DeployablePanelState(0, 0),
     down = new DeployablePanelState(0, 0),
@@ -166,8 +149,8 @@ export class RadiatorSystem {
 
   // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を返す。
   // t は接触代理の KinematicState.t に使う現在時刻(swept 判定の区間を成す)。
-  public contactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
-    const result: RadiatorFold[] = [];
+  public contactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): ContactProxy[] {
+    const result: ContactProxy[] = [];
     for (const side of ['up', 'down'] as const) {
       if (this.panels[side].value < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
       const proxies = this.foldProxies[side];
@@ -179,9 +162,12 @@ export class RadiatorSystem {
         const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
         const world = kinematicState<'eci'>(t, worldPos, worldVel);
         const known = proxies[i];
-        const fold = known ?? new RadiatorFold(side, this.owner, world, this.onContact);
+        const fold = known ?? new ContactProxy(
+          this.owner, 'radiator-fold', RADIATOR_FOLD_MASS, RADIATOR_SEGMENT_LENGTH / 2, world,
+          (other, contact, services) => this.onContact(side, other, contact, services),
+        );
         if (known === undefined) proxies.push(fold);
-        else fold.state = world;
+        else fold.reset(world);
         result.push(fold);
       }
     }

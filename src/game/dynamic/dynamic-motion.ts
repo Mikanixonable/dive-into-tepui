@@ -2,7 +2,7 @@ import { Q_IDENTITY } from '../../math/quat';
 import { hitsSphere, type Ray } from '../../math/ray';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
-import { sub, type Vec3, v3 } from '../../math/vec3';
+import { sameVec, sub, type Vec3, v3 } from '../../math/vec3';
 import { type Attitude, stepAttitude } from '../../physics/attitude';
 import { airflow } from '../../physics/atmosphere';
 import { localOrbitPeriod } from '../../physics/attractor';
@@ -18,7 +18,7 @@ import {
 import { orbitalElementsOf, type OrbitalElements } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { Contact } from './dynamic-entity/contact';
-import type { DynamicReactionServices } from './dynamic-simulation-participant';
+import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import { PredictedArc, trajectorySampleInterval } from './predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from './time-step';
@@ -49,12 +49,21 @@ export type ContactKind =
   | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'base' | 'debris' | 'casing'
   | 'booster' | 'enemy' | 'ammo' | 'rcs-fuel';
 
+// 断面積質量比 × 放射率で見積もる、球とみなした個体の日射を吸収する質量あたりの面積 [m^2/kg]。
+// bcInv は弾道係数の逆数 [m^2/kg]。
+export function sphereSolarAbsorbAreaPerMass(emissivity: number, bcInv: number): number {
+  return (emissivity * bcInv) / DRAG_COEFFICIENT;
+}
+
 // 種別ごとに差し込む反応。省いたメソッドは DynamicMotion の既定の振る舞いになる。
 export interface DynamicMotionBehavior {
   readonly contactKind?: ContactKind;
   contactMass?(self: DynamicMotion): number;
+  // simDt ぶんの自律の指令(燃焼など)を進める。
   updateCommands?(self: DynamicMotion, simDt: number): void;
-  contactsWith?(self: DynamicMotion, other: DynamicMotion, simTime: number): boolean;
+  // 直近の updateCommands が決めた推力加速度(ECI)。噴いていなければ null。
+  commandedThrust?(self: DynamicMotion): Vec3 | null;
+  contactsWith?(self: DynamicMotion, other: EntityContactParticipant, simTime: number): boolean;
   testSphereCollision?(
     self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number,
     selfState: KinematicState, selfAttitude: Attitude,
@@ -65,19 +74,19 @@ export interface DynamicMotionBehavior {
     previousSelfAttitude: Attitude, selfAttitude: Attitude,
   ): { readonly hit: SphereHit; readonly toi: number } | null;
   testEntityCollision?(
-    self: DynamicMotion, other: DynamicMotion,
+    self: DynamicMotion, other: EntityContactParticipant,
     selfState: KinematicState, otherState: KinematicState,
   ): ContactGeometry | null;
   testSweptEntityCollision?(
-    self: DynamicMotion, other: DynamicMotion,
+    self: DynamicMotion, other: EntityContactParticipant,
     previousSelf: KinematicState, selfState: KinematicState,
     previousOther: KinematicState, otherState: KinematicState,
   ): ContactGeometry | null;
   hitBodyByRay?(self: DynamicMotion, ray: Ray, pos: Vec3): boolean;
-  contactProxies?(self: DynamicMotion, simTime: number, dt: number): readonly DynamicMotion[];
+  contactProxies?(self: DynamicMotion, simTime: number, dt: number): readonly EntityContactParticipant[];
   applyContactProxies?(self: DynamicMotion, dt: number): void;
   onEntityContact?(
-    self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    self: DynamicMotion, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void;
   onSurfaceContact?(
     self: DynamicMotion, body: CelestialBody, contact: Contact, services: DynamicReactionServices,
@@ -88,6 +97,7 @@ export interface DynamicMotionBehavior {
     atmospherePivot: number, sunlight: number, sunDir: Vec3,
   ): void;
   // 質量などの状態に応じて変化する物性。省略時は生成時の固定値を使う。
+  mass?(self: DynamicMotion): number;
   bcInv?(self: DynamicMotion): number;
   srpCoeff?(self: DynamicMotion): number;
   radiatingAreaPerMass?(self: DynamicMotion): number;
@@ -101,6 +111,7 @@ export interface DynamicMotionBehavior {
 
 // DynamicMotion の物性と初期値。省いた項目は既定値になる。
 export interface DynamicMotionProperties {
+  readonly alive?: boolean;
   readonly attitude?: Attitude;
   readonly hasAttitude?: boolean;
   readonly mass?: number;
@@ -170,25 +181,26 @@ export class DynamicMotion {
   public readonly hasAttitude: boolean;
   public readonly behavior: DynamicMotionBehavior;
   // 姿勢・角速度と主慣性モーメント。慣性は、種別と構成から決まる個体ではキャッシュ。
-  public att: Attitude;
+  private _att: Attitude;
   // 直前の刻みの姿勢(キャッシュ)。
-  public prevAtt: Attitude;
-  public alive = true;
+  private _prevAtt: Attitude;
+  // シミュレーションに参加しているか。退場は kill で下ろし、戻さない。
+  private _alive: boolean;
   // 質量 [kg]。種別と構成から決まるキャッシュ。
-  public mass: number;
+  private _mass: number;
   public readonly radius: number;
   public readonly collides: boolean;
   public readonly engagementAnchor: boolean;
   public readonly preciseReentry: boolean;
   public readonly contactDamageWeight: number;
-  // 本体に取り付けた付属物なら、その本体。
-  public attachedTo: DynamicMotion | null = null;
+  // 個体は本体そのもので、何にも取り付いていない。
+  public readonly attachedTo = null;
   // 姿勢の積分に加えるトルク。指令から積分の前に毎フレーム書き直すキャッシュ。
-  public torque: Vec3 = v3();
+  private _torque: Vec3 = v3();
   private readonly fixedBcInv: number;
   private readonly fixedSrpCoeff: number;
-  public temperature: number;
-  public thermalDeviation: number;
+  private _temperature: number;
+  private _thermalDeviation: number;
   public readonly specificHeat: number;
   public readonly bulkDensity: number;
   public readonly emissivity: number;
@@ -206,39 +218,46 @@ export class DynamicMotion {
   // 推力。指令から積分の前に毎フレーム書き直すキャッシュ。
   private _thrust: Vec3 | null = null;
 
-  // state から始まる軌道を組む。options で省いた物性は既定値になる。
-  public constructor(state: KinematicState, options: DynamicMotionProperties = {}) {
+  // state から始まる軌道を組む。properties で省いた物性と初期値は既定値になる。
+  public constructor(state: KinematicState, properties: DynamicMotionProperties = {}) {
     this.actual = new DynamicTrajectory(state);
-    // 姿勢・質量と接触
-    this.att = options.attitude ?? identityAttitude();
-    this.prevAtt = this.att;
-    this.hasAttitude = options.hasAttitude ?? true;
-    this.mass = options.mass ?? 1;
-    this.radius = options.radius ?? 0;
-    this.collides = options.collides ?? false;
-    this.engagementAnchor = options.engagementAnchor ?? false;
-    this.preciseReentry = options.preciseReentry ?? false;
-    this.contactDamageWeight = options.contactDamageWeight ?? 1;
+    // 生死・姿勢・質量と接触
+    this._alive = properties.alive ?? true;
+    this._att = properties.attitude ?? identityAttitude();
+    this._prevAtt = this._att;
+    this.hasAttitude = properties.hasAttitude ?? true;
+    this._mass = properties.mass ?? 1;
+    this.radius = properties.radius ?? 0;
+    this.collides = properties.collides ?? false;
+    this.engagementAnchor = properties.engagementAnchor ?? false;
+    this.preciseReentry = properties.preciseReentry ?? false;
+    this.contactDamageWeight = properties.contactDamageWeight ?? 1;
     // 空力・輻射圧
-    this.fixedBcInv = options.bcInv ?? 0;
-    this.fixedSrpCoeff = options.srpCoeff ?? 0;
+    this.fixedBcInv = properties.bcInv ?? 0;
+    this.fixedSrpCoeff = properties.srpCoeff ?? 0;
     // 熱
-    this.temperature = options.temperature ?? ENV_TEMP;
-    this.thermalDeviation = options.thermalDeviation ?? 0;
-    this.pendingSpecificHeat = options.pendingSpecificHeat ?? 0;
-    this.specificHeat = options.specificHeat ?? 0;
-    this.bulkDensity = options.bulkDensity ?? SMALL_DEBRIS_BULK_DENSITY;
-    this.fixedRadiatingAreaPerMass = options.radiatingAreaPerMass ?? 0;
-    this.emissivity = options.emissivity ?? HULL_EMISS;
-    this.maxTemperature = options.maxTemperature ?? Infinity;
+    this._temperature = properties.temperature ?? ENV_TEMP;
+    this._thermalDeviation = properties.thermalDeviation ?? 0;
+    this.pendingSpecificHeat = properties.pendingSpecificHeat ?? 0;
+    this.specificHeat = properties.specificHeat ?? 0;
+    this.bulkDensity = properties.bulkDensity ?? SMALL_DEBRIS_BULK_DENSITY;
+    this.fixedRadiatingAreaPerMass = properties.radiatingAreaPerMass ?? 0;
+    this.emissivity = properties.emissivity ?? HULL_EMISS;
+    this.maxTemperature = properties.maxTemperature ?? Infinity;
     // 履歴の保持・予測の弧と、接触の振る舞い
-    this.baseHistoryDuration = options.historyDuration ?? 0;
-    this.followsPredictedArc = options.followsPredictedArc ?? false;
-    this.behavior = options.behavior ?? PASSIVE_BEHAVIOR;
+    this.baseHistoryDuration = properties.historyDuration ?? 0;
+    this.followsPredictedArc = properties.followsPredictedArc ?? false;
+    this.behavior = properties.behavior ?? PASSIVE_BEHAVIOR;
   }
 
   public get state(): KinematicState { return this.actual.state; }
-  public set state(state: KinematicState) { this.reset(state); }
+  public get att(): Attitude { return this._att; }
+  public get prevAtt(): Attitude { return this._prevAtt; }
+  public get alive(): boolean { return this._alive; }
+  public get mass(): number { return this.behavior.mass?.(this) ?? this._mass; }
+  public get torque(): Vec3 { return this._torque; }
+  public get temperature(): number { return this._temperature; }
+  public get thermalDeviation(): number { return this._thermalDeviation; }
   // 現在の質量・姿勢などから求めた弾道係数の逆数 [m²/kg]。
   public get bcInv(): number { return this.behavior.bcInv?.(this) ?? this.fixedBcInv; }
   // 現在の質量・姿勢などから求めた輻射圧係数と断面積質量比の積 [m²/kg]。
@@ -253,20 +272,41 @@ export class DynamicMotion {
   // いまの熱の状態の写し。
   public get thermal(): DynamicMotionThermal {
     return {
-      temperature: this.temperature,
-      thermalDeviation: this.thermalDeviation,
+      temperature: this._temperature,
+      thermalDeviation: this._thermalDeviation,
       pendingSpecificHeat: this.pendingSpecificHeat,
     };
   }
-  // 推力を与えると予測弧を捨てる。null は無推力。
-  public set thrust(thrust: Vec3 | null) {
+
+  // 次の積分に加える推力加速度(ECI)を指令する。null は無推力。推力を与えると予測弧を捨てる。
+  public setThrust(thrust: Vec3 | null): void {
     this._thrust = thrust;
     if (thrust !== null) this.invalidatePrediction();
   }
 
-  // 状態を state へ置き換え、予測弧を捨てる。
+  // 次の積分に加える、姿勢のトルクを指令する。
+  public setTorque(torque: Vec3): void {
+    this._torque = torque;
+  }
+
+  // シミュレーションから退場させる。
+  public kill(): void {
+    this._alive = false;
+  }
+
+  // 状態を state へ置き換え、予測弧を捨てる。積分を経ない不連続な差し替え(接触・反動・計画の即時
+  // 実行)に使う。
   public reset(state: KinematicState): void {
     this.actual.reset(state);
+    this.invalidatePrediction();
+  }
+
+  // 質量 mass [kg] と主慣性モーメント inertia を置き換え、変わったなら予測弧を捨てる(弾道係数が
+  // 質量で変わる)。構成で質量の決まる継承先が、構成を変えたときに呼ぶ。
+  protected setMassProperties(mass: number, inertia: Vec3): void {
+    if (mass === this._mass && sameVec(inertia, this._att.inertia)) return;
+    this._mass = mass;
+    this._att = { ...this._att, inertia };
     this.invalidatePrediction();
   }
 
@@ -293,7 +333,7 @@ export class DynamicMotion {
   }
 
   // 予測弧を捨てる。次の ensurePredictedArc で現在の状態から引き直す。
-  public invalidatePrediction(): void {
+  private invalidatePrediction(): void {
     this.predictedArc = null;
   }
 
@@ -351,8 +391,8 @@ export class DynamicMotion {
       environmentSamples = [environmentSampleAt(
         this.state.t, this.state.r, this.state.v, star, occluders, atmosphereBody, pivot)];
     }
-    this.prevAtt = this.att;
-    if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
+    this._prevAtt = this._att;
+    if (this.hasAttitude) this._att = stepAttitude(this._att, this._torque, dt);
 
     // 歩のあいだの環境の平均で、種別ごとの環境反応と熱を進める。
     const radiantIntensity = star !== null && isStar(star) ? star.def.radiantIntensity : 0;
@@ -369,7 +409,7 @@ export class DynamicMotion {
   }
 
   // other と当たるか。既定では当たる。
-  public contactsWith(other: DynamicMotion, simTime: number): boolean {
+  public contactsWith(other: EntityContactParticipant, simTime: number): boolean {
     return this.behavior.contactsWith?.(this, other, simTime) ?? true;
   }
 
@@ -406,14 +446,14 @@ export class DynamicMotion {
 
   // 固有形状どうしの接触。形状を持たない個体との接触は null を返し、球対形状の経路へ戻す。
   public testCustomEntityCollision(
-    other: DynamicMotion, selfState: KinematicState, otherState: KinematicState,
+    other: EntityContactParticipant, selfState: KinematicState, otherState: KinematicState,
   ): ContactGeometry | null {
     return this.behavior.testEntityCollision?.(this, other, selfState, otherState) ?? null;
   }
 
   // 固有形状どうしの掃引接触。形状を持たない個体との接触は null を返す。
   public testCustomSweptEntityCollision(
-    other: DynamicMotion,
+    other: EntityContactParticipant,
     previousSelf: KinematicState, selfState: KinematicState,
     previousOther: KinematicState, otherState: KinematicState,
   ): ContactGeometry | null {
@@ -422,8 +462,8 @@ export class DynamicMotion {
     ) ?? null;
   }
 
-  // 接触判定で本体と別に当たる付属物の Motion。既定は空。
-  public contactProxies(simTime: number, dt: number): readonly DynamicMotion[] {
+  // 接触判定で本体と別に当たる付属物の接触代理。既定は空。
+  public contactProxies(simTime: number, dt: number): readonly EntityContactParticipant[] {
     return this.behavior.contactProxies?.(this, simTime, dt) ?? [];
   }
 
@@ -434,7 +474,7 @@ export class DynamicMotion {
 
   // 他の個体との接触を反応へ渡す。
   public collideWithEntity(
-    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void {
     this.behavior.onEntityContact?.(this, other, contact, services);
   }
@@ -447,7 +487,7 @@ export class DynamicMotion {
       this.behavior.onSurfaceContact(this, body, contact, services);
       return;
     }
-    this.alive = false;
+    this.kill();
   }
 
   // simTime 以降で次に反応が起きる時刻。予定が無ければ null。
@@ -463,9 +503,12 @@ export class DynamicMotion {
     this.behavior.checkLoss?.(this, dt, simTime, services, zones, atmosphereBodies);
   }
 
-  // simDt ぶんの操作指令を反応に更新させる。
+  // simDt ぶんの自律の指令を反応に進めさせ、反応が決めた推力を指令する。自律の指令を持たない
+  // 個体では何もしない。
   public updateCommands(simDt: number): void {
-    this.behavior.updateCommands?.(this, simDt);
+    if (this.behavior.updateCommands === undefined) return;
+    this.behavior.updateCommands(this, simDt);
+    this.setThrust(this.behavior.commandedThrust?.(this) ?? null);
   }
 
   // 残す履歴の長さ [s]。既定と要求の長いほう。
@@ -497,7 +540,7 @@ export class DynamicMotion {
   // sunDir からの日射を吸収する質量あたりの面積 [m^2/kg]。既定は断面積質量比 × 放射率。
   private solarAbsorbAreaPerMass(sunDir: Vec3): number {
     return this.behavior.solarAbsorbAreaPerMass?.(this, sunDir)
-      ?? (this.emissivity * this.bcInv) / DRAG_COEFFICIENT;
+      ?? sphereSolarAbsorbAreaPerMass(this.emissivity, this.bcInv);
   }
 
   // 温度を dt 進め、上限を超えたら燃え尽きさせる。比熱 0 の個体は熱を持たない。radiantIntensity は
@@ -529,15 +572,15 @@ export class DynamicMotion {
     // 放射冷却を差し引き、外から積まれた熱を足して温度を進める。
     const area = this.radiatingAreaPerMass();
     const cooling = radiativeCooling(
-      this.temperature, ENV_TEMP, this.emissivity, area, this.specificHeat, dt);
-    this.temperature = stepTemperature(this.temperature, heating - cooling, this.specificHeat, dt)
+      this._temperature, ENV_TEMP, this.emissivity, area, this.specificHeat, dt);
+    this._temperature = stepTemperature(this._temperature, heating - cooling, this.specificHeat, dt)
       + this.pendingSpecificHeat / this.specificHeat;
     this.pendingSpecificHeat = 0;
-    this.thermalDeviation = stepThermalDeviation(
-      this.thermalDeviation, this.temperature, this.emissivity, area, this.specificHeat, dt);
+    this._thermalDeviation = stepThermalDeviation(
+      this._thermalDeviation, this._temperature, this.emissivity, area, this.specificHeat, dt);
     // 上限を超えたら焼失の反応へ渡す。反応を持たない個体は消える。
-    if (this.temperature <= this.maxTemperature) return;
+    if (this._temperature <= this.maxTemperature) return;
     if (this.behavior.onBurnUp !== undefined) this.behavior.onBurnUp(this, services);
-    else this.alive = false;
+    else this.kill();
   }
 }

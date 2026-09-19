@@ -28,7 +28,7 @@ interface Candidate {
 }
 
 // 動いた当事者だけ working[i] を after へ差し替え、changed へ1度だけ積む。書き戻しは予測弧を
-// 捨て、state セッタは prevState を進めるので、動いていない当事者を書き戻したり、同じ当事者を
+// 捨て、置き換えは prevState を進めるので、動いていない当事者を書き戻したり、同じ当事者を
 // substep 内で2度書き戻したりしてはならない。
 function replaceIfMoved(
   i: number,
@@ -119,8 +119,8 @@ export class EntityContactPhysics {
       dirtyA = best.ai;
       dirtyB = best.bi;
     }
-    // 書き戻しは全解決の後に一括で — 途中で書くと state セッタが prevState を進め、区間の始点を失う。
-    for (const i of changed) all[i]!.state = working[i]!;
+    // 書き戻しは全解決の後に一括で — 途中で置き換えると prevState が進み、区間の始点を失う。
+    for (const i of changed) all[i]!.reset(working[i]!);
     // 使わなかった末尾を落とす — 候補は反発の計算結果を抱えるので、残すと使われない
     // CollisionResponse が候補列の中だけ生き続ける。
     this.candidateScratch.length = count;

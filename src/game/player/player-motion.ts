@@ -4,15 +4,17 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { BoosterStack } from './booster-stack';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import { DynamicMotion, type DynamicMotionBehavior, type DynamicMotionThermal } from '../dynamic/dynamic-motion';
-import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
+import {
+  DynamicMotion, sphereSolarAbsorbAreaPerMass, type DynamicMotionBehavior, type DynamicMotionThermal,
+} from '../dynamic/dynamic-motion';
+import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import type { StageOutcome } from '../stages/stage-outcome';
 import {
   MAX_HULL_TEMP,
   SHIP_BCINV,
   SHIP_RADIATING_AREA_PER_MASS,
   SHIP_SRP_COEFF,
-  shipMotionOptions,
+  shipMotionProperties,
 } from '../dynamic/dynamic-entity/vessel';
 import {
   PLAYER_INERTIA_PITCH,
@@ -50,9 +52,9 @@ export interface AltitudeAlarmPort {
 }
 
 export interface PlayerMotionContactPort {
-  receiveEntityContact(other: DynamicMotion, contact: Contact, activeStage: StageOutcome): void;
+  receiveEntityContact(other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome): void;
   receiveRadiatorContact(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, activeStage: StageOutcome,
+    side: RadiatorSide, other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome,
   ): void;
   receiveSurfaceContact(contact: Contact, activeStage: StageOutcome): void;
 }
@@ -74,7 +76,7 @@ export interface PlayerMotionReactions {
 class PlayerBehavior implements DynamicMotionBehavior {
   public readonly contactKind = 'player';
   // contactProxies が毎回詰め直して返す接触代理の列。
-  private readonly contactProxyScratch: DynamicMotion[] = [];
+  private readonly contactProxyScratch: EntityContactParticipant[] = [];
 
   public constructor(private readonly reactions: PlayerMotionReactions) {}
 
@@ -113,7 +115,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
   }
 
   // 艦体と、展開中の放熱板・ベルト節点を接触形状として返す。
-  public contactProxies(self: DynamicMotion, simTime: number, dt: number): readonly DynamicMotion[] {
+  public contactProxies(self: DynamicMotion, simTime: number, dt: number): readonly EntityContactParticipant[] {
     const motion = playerMotionOf(self);
     this.contactProxyScratch.length = 0;
     this.contactProxyScratch.push(...motion.radiator.contactFolds(
@@ -142,7 +144,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
   // 艦体と放熱板が sunDir からの日射を吸収する、質量あたりの面積 [m^2/kg]。
   public solarAbsorbAreaPerMass(self: DynamicMotion, sunDir: Vec3): number {
     const motion = playerMotionOf(self);
-    const hullArea = (motion.emissivity * motion.bcInv) / 2.2;
+    const hullArea = sphereSolarAbsorbAreaPerMass(motion.emissivity, motion.bcInv);
     return hullArea + motion.radiator.solarAbsorbArea(
       sunDir, motion.att, this.reactions.environment.totalCoolingRate(),
     ) / Math.max(motion.mass, 1e-9);
@@ -150,7 +152,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
 
   // 他の個体との接触を reactions へ渡す。
   public onEntityContact(
-    _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    _self: DynamicMotion, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void {
     this.reactions.contact.receiveEntityContact(other, contact, services.activeStage);
   }
@@ -205,7 +207,7 @@ export class PlayerMotion extends DynamicMotion {
     boosters = new BoosterStack(),
     public readonly belt = BeltController.create(beltLinkCount),
   ) {
-    super(state, shipMotionOptions(attitude, radius, {
+    super(state, shipMotionProperties(attitude, radius, {
       mass: PLAYER_MASS,
       collides: true,
       engagementAnchor: true,
@@ -230,18 +232,15 @@ export class PlayerMotion extends DynamicMotion {
 
   // 接続中ブースターの寄与を受けて、自分の質量と慣性を組み直す。boosterMass は段の合計質量 [kg]。
   public rebuildMassAndInertia(boosterMass: number, boosterStageCount: number): void {
-    this.mass = PLAYER_MASS + boosterMass;
+    const mass = PLAYER_MASS + boosterMass;
     // 慣性は質量比に比例し、ピッチ・ヨーだけは段の列が長いほど増える(ロールは機軸まわり)
-    const massRatio = this.mass / PLAYER_MASS;
+    const massRatio = mass / PLAYER_MASS;
     const lengthFactor = 1 + 0.35 * boosterStageCount ** 2;
-    this.att = {
-      ...this.att,
-      inertia: v3(
-        PLAYER_INERTIA_PITCH * massRatio * lengthFactor,
-        PLAYER_INERTIA_YAW * massRatio * lengthFactor,
-        PLAYER_INERTIA_ROLL * massRatio,
-      ),
-    };
+    this.setMassProperties(mass, v3(
+      PLAYER_INERTIA_PITCH * massRatio * lengthFactor,
+      PLAYER_INERTIA_YAW * massRatio * lengthFactor,
+      PLAYER_INERTIA_ROLL * massRatio,
+    ));
   }
 }
 

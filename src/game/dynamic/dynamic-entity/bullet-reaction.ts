@@ -1,7 +1,7 @@
 import { distSq, type Vec3 } from '../../../math/vec3';
 import type { EngagementParticipant, EngagementZone } from '../engagement-zone';
-import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
-import type { DynamicReactionServices } from '../dynamic-simulation-participant';
+import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic-motion';
+import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic-simulation-participant';
 
 // 自機の弾が自機に当たりはじめるまでの、発射からの猶予 [sim s]。
 const SELF_CONTACT_GRACE = 2.0;
@@ -55,7 +55,7 @@ export class BulletReaction implements DynamicMotionBehavior {
   }
 
   // other と当たるか。弾同士、敵弾と敵機、発射から猶予内の自機の弾と自機を除く。
-  public contactsWith(_self: DynamicMotion, other: DynamicMotion, simTime: number): boolean {
+  public contactsWith(_self: DynamicMotion, other: EntityContactParticipant, simTime: number): boolean {
     if (other.contactKind === 'bullet') return false;
     const ship = other.attachedTo ?? other;
     if (this.shooter === 'enemy' && ship.contactKind === 'enemy') return false;
@@ -65,7 +65,7 @@ export class BulletReaction implements DynamicMotionBehavior {
 
   // 何かに当たった弾は消える。
   public onEntityContact(self: DynamicMotion): void {
-    self.alive = false;
+    self.kill();
   }
 
   // 寿命の尽きる時刻 [sim s]。simTime がそれを過ぎていれば null。
@@ -88,7 +88,7 @@ export class BulletReaction implements DynamicMotionBehavior {
       if (this.type === 'plasma') services.registry.events.record({ kind: 'plasmaPassedClose' });
     }
     const outsideZones = zones.length > 0 && !zones.some((zone) => zone.contains(self.state.r));
-    if (outsideZones || simTime >= this.expiresAt) self.alive = false;
+    if (outsideZones || simTime >= this.expiresAt) self.kill();
   }
 
   // 寿命の尽きる時刻 [sim s]。
@@ -97,7 +97,8 @@ export class BulletReaction implements DynamicMotionBehavior {
   }
 }
 
-// motion が弾なら、その反応。弾でなければ null。
-export function bulletReactionOf(motion: DynamicMotion): BulletReaction | null {
-  return motion.behavior instanceof BulletReaction ? motion.behavior : null;
+// 接触の相手 participant が弾なら、その反応。弾でなければ null。
+export function bulletReactionOf(participant: EntityContactParticipant): BulletReaction | null {
+  return participant instanceof DynamicMotion && participant.behavior instanceof BulletReaction
+    ? participant.behavior : null;
 }

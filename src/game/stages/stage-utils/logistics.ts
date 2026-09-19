@@ -215,7 +215,7 @@ export class Logistics {
         >= AMMO_PICKUP_RADIUS * AMMO_PICKUP_RADIUS
       ) continue;
       // 取り込んで消し、取り込んだことを記録する
-      ammoPickup.motion.alive = false;
+      ammoPickup.motion.kill();
       player.onPickup(AMMO_PICKUP_MAGS);
       this.dynamicSystem.events.record({ kind: 'ammoPickedUp', mags: AMMO_PICKUP_MAGS });
     }
@@ -230,7 +230,7 @@ export class Logistics {
         >= RCS_FUEL_PICKUP_RADIUS * RCS_FUEL_PICKUP_RADIUS
       ) continue;
       // 取り込んで消し、取り込んだことを記録する
-      pickup.motion.alive = false;
+      pickup.motion.kill();
       const added = player.refuelFuel(RCS_FUEL_PICKUP_AMOUNT);
       this.dynamicSystem.events.record({ kind: 'rcsFuelPickedUp', fuel: added });
     }
@@ -245,7 +245,7 @@ export class Logistics {
       if (len(sub(
         ammoPickup.motion.state.r, player.motion.state.r,
       )) <= LOGISTICS_DESPAWN_DIST) continue;
-      ammoPickup.motion.alive = false;
+      ammoPickup.motion.kill();
       if (respawnOnDespawn) respawn++;
     }
     if (!respawnOnDespawn) return;
@@ -266,7 +266,7 @@ export class Logistics {
       if (len(sub(
         pickup.motion.state.r, player.motion.state.r,
       )) <= LOGISTICS_DESPAWN_DIST) continue;
-      pickup.motion.alive = false;
+      pickup.motion.kill();
       if (respawnOnDespawn) respawn++;
     }
     if (!respawnOnDespawn) return;

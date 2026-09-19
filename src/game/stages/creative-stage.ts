@@ -281,7 +281,7 @@ export class CreativeStage extends Stage {
       }
       if (!reached) continue;
       ship.plan.consumeNodesUpTo(simTime, reached);
-      ship.motion.state = reached;
+      ship.motion.reset(reached);
     }
   }
 

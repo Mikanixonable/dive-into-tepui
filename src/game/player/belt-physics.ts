@@ -1,36 +1,24 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromUnitVectors, qInvert, qMul, qRotate, Quat } from '../../math/quat';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3, type SerializedVec3 } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../physics/player-shape';
-import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
+import { ContactProxy } from '../dynamic/contact-proxy';
+import type { EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 
 const MAG_CHAIN_MAX_ROLL_DEG = 15;  // ロール上限
 const MAG_CHAIN_MAX_PITCH_DEG = 45; // ピッチ上限(上下方向の折れ)
 const MAG_CHAIN_MAX_YAW_DEG = 15;   // ヨー上限(左右方向の折れ)
 const MAG_CHAIN_ROLL_GAIN = 0.6; // 機体のロール角速度→ねじれ目標角への変換係数
 const MAG_CHAIN_ROLL_RATE = 3.5; // ねじれ角が目標へ追従する速さ [1/s]
+const BELT_SECTION_MASS = 5; // 接触で押し合うときの、節点1つの質量 [kg]
+const BELT_SECTION_RADIUS = 0.8; // 節点の接触半径 [m]
 
 
 // v を [lo, hi] にクランプする。
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
-}
-
-// ベルトのリンク節点を剛体接触に参加させるためのプロキシ。
-export class BeltSection extends DynamicMotion {
-  // 吊り元の艦 owner にぶら下がる節点のプロキシを生成する。
-  // state は生成時点の実際の world 状態 — 仮の状態で始めると、最初に置き直した substep の
-  // prevState がその仮位置になり、そこからの偽の区間を掃引してしまう。
-  public constructor(owner: DynamicMotion, state: KinematicState) {
-    const behavior: DynamicMotionBehavior = {
-      contactKind: 'belt-section',
-      contactsWith: (_self, other) => other !== owner && other.attachedTo !== owner,
-    };
-    super(state, { mass: 5, radius: 0.8, collides: true, behavior });
-    this.attachedTo = owner;
-  }
 }
 
 // 給弾進み feed(0..1)に応じて動く根本の固定点(機体座標系)。
@@ -260,15 +248,15 @@ export class BeltPhysics {
   }
 
   // 節点ごとの接触代理。初回の contactSections で生成し、以後は使い回す。
-  private readonly sections: BeltSection[] = [];
+  private readonly sections: ContactProxy[] = [];
 
   // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の
   // プロキシ配列を返す。owner は鎖を吊る艦で、接触判定で自身の節点との接触を除外する(呼ぶたびに
   // 同じ艦を渡す)。t は接触代理の KinematicState.t に使う現在時刻(掃引判定の区間を成す)。
   // 返す配列と代理は呼び出しをまたいで同じもので、状態だけが書き換わる。
   public contactSections(
-    owner: DynamicMotion, t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude,
-  ): BeltSection[] {
+    owner: EntityContactParticipant, t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude,
+  ): ContactProxy[] {
     const invDt = 1 / dt;
     for (const [i, bp] of this.positions.entries()) {
       const bpPrev = this.prevPositions[i]!;
@@ -282,8 +270,11 @@ export class BeltPhysics {
         add(baseV, qRotate(att.q, bodyVel)),
       );
       const section = this.sections[i];
-      if (section === undefined) this.sections.push(new BeltSection(owner, world));
-      else section.state = world;
+      if (section === undefined) {
+        this.sections.push(new ContactProxy(owner, 'belt-section', BELT_SECTION_MASS, BELT_SECTION_RADIUS, world));
+      } else {
+        section.reset(world);
+      }
     }
     return this.sections;
   }

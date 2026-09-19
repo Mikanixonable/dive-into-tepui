@@ -13,7 +13,6 @@ export interface BoosterHostMotion {
   readonly mass: number;
   readonly att: Attitude;
   rebuildMassAndInertia(boosterMass: number, boosterStageCount: number): void;
-  invalidatePrediction(): void;
 }
 
 // 接続中ブースターの段、燃料、推力を管理し、段を変えるたびに寄与を機体の質量・慣性へ反映させる。
@@ -37,14 +36,11 @@ export class AttachedBoosterMotion {
   public attach(stage: BoosterStage): void {
     this.stack.attach(stage);
     this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
-    this.ship.invalidatePrediction();
   }
 
   // 最後尾段の点火状態を反転し、操作後の点火状態を返す。
   public toggleIgnition(): boolean {
-    const ignited = this.stack.toggleIgnition();
-    this.ship.invalidatePrediction();
-    return ignited;
+    return this.stack.toggleIgnition();
   }
 
   // 最後尾段を物理状態から外し、外した段を返す。段が無ければ null。
@@ -53,7 +49,6 @@ export class AttachedBoosterMotion {
     if (stage === null) return null;
     this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
     this.clearThrust();
-    this.ship.invalidatePrediction();
     return stage;
   }
 

@@ -193,7 +193,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   public runMenu(
     act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
-    if (act === 'delete') this.motion.alive = false;
+    if (act === 'delete') this.motion.kill();
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
   }
 

@@ -158,8 +158,7 @@ export class PlanPath {
         );
         this.lastRebuiltArcs++;
       }
-      arc.requiredEnd = seg.end;
-      arc.retainFrom = seg.state0.t;
+      arc.demand(seg.end, seg.state0.t);
       this.sources[i] = { arc, from: seg.state0.t, to: seg.end, owned: true };
     }
     this.sources.length = segments.length;

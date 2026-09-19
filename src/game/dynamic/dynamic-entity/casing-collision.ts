@@ -6,8 +6,9 @@ import {
   cylinderCylinderContact, sweptCylinderCylinderContact, cylinderSphereContact,
   sweptSphereCylinderContact, type Cylinder,
 } from '../../../physics/cylinder-contact';
+import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import type { DynamicMotion } from '../dynamic-motion';
+import type { EntityContactParticipant } from '../dynamic-simulation-participant';
 
 // casing.json の縦方向の外形を、表示側の y 軸補正後の長さへ合わせる [m]。
 export const CASING_CYLINDER_HALF_LENGTH = 0.7333333333333334;
@@ -20,7 +21,8 @@ export const CASING_COLLISION_BOUND_RADIUS = Math.hypot(
   CASING_CYLINDER_HALF_LENGTH + Math.abs(CASING_LOCAL_CENTER_Y), CASING_CYLINDER_RADIUS,
 );
 
-function casingCylinder(self: DynamicMotion, state: KinematicState, attitude = self.att): Cylinder {
+// 姿勢を持つ当事者 self の、状態 state・姿勢 attitude での薬莢の円柱。
+function casingCylinder(self: { readonly att: Attitude }, state: KinematicState, attitude = self.att): Cylinder {
   return {
     center: add(state.r, qRotate(attitude.q, v3(0, CASING_LOCAL_CENTER_Y, 0))),
     axis: qRotate(attitude.q, CASING_LOCAL_AXIS),
@@ -29,15 +31,18 @@ function casingCylinder(self: DynamicMotion, state: KinematicState, attitude = s
   };
 }
 
+// 状態 selfState・姿勢 selfAttitude の薬莢 self と球の接触。触れていなければ null。
 export function casingSphereCollision(
-  self: DynamicMotion, sphereCenter: Vec3,
+  self: EntityContactParticipant, sphereCenter: Vec3,
   sphereRadius: number, selfState: KinematicState, selfAttitude = self.att,
 ) {
   return cylinderSphereContact(casingCylinder(self, selfState, selfAttitude), sphereCenter, sphereRadius);
 }
 
+// 前の歩から今の歩へ動く球と、薬莢 self の最初の接触と、その時刻の歩内での割合 toi。触れていなければ
+// null。
 export function casingSweptSphereCollision(
-  self: DynamicMotion,
+  self: EntityContactParticipant,
   previousSphereCenter: Vec3,
   sphereCenter: Vec3,
   sphereRadius: number,
@@ -53,8 +58,9 @@ export function casingSweptSphereCollision(
   );
 }
 
+// 薬莢 self と、相手 other が薬莢のときの円柱どうしの接触。相手が薬莢でないか触れていなければ null。
 export function casingEntityCollision(
-  self: DynamicMotion, other: DynamicMotion,
+  self: EntityContactParticipant, other: EntityContactParticipant,
   selfState: KinematicState, otherState: KinematicState,
 ): ContactGeometry | null {
   if (other.contactKind !== 'casing') return null;
@@ -67,12 +73,14 @@ export function casingEntityCollision(
   };
 }
 
+// 前の歩から今の歩へ動く薬莢どうしの最初の接触。相手が薬莢でないか触れていなければ null。
 export function casingSweptEntityCollision(
-  self: DynamicMotion, other: DynamicMotion,
+  self: EntityContactParticipant, other: EntityContactParticipant,
   previousSelfState: KinematicState, selfState: KinematicState,
   previousOtherState: KinematicState, otherState: KinematicState,
 ): ContactGeometry | null {
   if (other.contactKind !== 'casing') return null;
+  // 今の歩の円柱どうしを、前の歩の中心から掃引する
   const currentSelf = casingCylinder(self, selfState);
   const currentOther = casingCylinder(other, otherState);
   const previousSelfCenter = casingCylinder(self, previousSelfState).center;
