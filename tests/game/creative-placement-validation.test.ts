@@ -3,7 +3,7 @@ import { test } from '../harness';
 import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
 import {
   validateEllipticPlacementFields, validateLagrangePlacementFields, validateBaseReferenceFields,
-  EllipticPlacementInput, PlacementFieldIssue,
+  type EllipticPlacementInput, type PlacementFieldIssue,
 } from '../../src/game/creative/placement-validation';
 import { MAX_PLACED_SHIPS, reachesPlacedShipLimit } from '../../src/game/creative/object-placement';
 
