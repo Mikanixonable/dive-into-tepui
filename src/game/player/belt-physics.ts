@@ -1,8 +1,8 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
-import { Attitude } from '../../physics/attitude';
-import { LOCAL_RIGHT, Q_IDENTITY, qFromUnitVectors, qInvert, qMul, qRotate, Quat } from '../../math/quat';
+import type { Attitude } from '../../physics/attitude';
+import { LOCAL_RIGHT, Q_IDENTITY, qFromUnitVectors, qInvert, qMul, qRotate, type Quat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3, type SerializedVec3 } from '../../math/vec3';
+import { type Vec3, add, addScaled, cross, len, norm, scale, sub, v3, type SerializedVec3 } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../physics/player-shape';
 import { ContactProxy } from '../dynamic/contact-proxy';
 import type { EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';

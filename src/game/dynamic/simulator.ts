@@ -18,7 +18,7 @@ import { SubstepCelestialBodies } from './substep-celestial-bodies';
 import { NextEventTime } from './next-event-time';
 import { simulationMaxStep, simulationStepDuration, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { NanWatchdog } from './nan-watchdog';
-import { FrameSections, SECTION } from '../frame-sections';
+import { type FrameSections, SECTION } from '../frame-sections';
 import type { PerfCounts } from '../perf-counts';
 
 // ゼロ長サブステップが連続してよい回数。超えたらそのフレームぶんを一括で消費する。丸め誤差で

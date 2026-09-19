@@ -4,17 +4,17 @@ import { isFormationEnergyAvailable } from '../../src/game/dynamic/dynamic-entit
 import { countAttackingEnemiesInGroup } from '../../src/game/dynamic/dynamic-entity/enemy-attack-group';
 import type { FormationRole } from '../../src/game/dynamic/dynamic-entity/entity-kind';
 
-type FormationMember = {
+interface FormationMember {
   readonly motion: { readonly alive: boolean };
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
-};
+}
 
-type AttackingMember = {
+interface AttackingMember {
   readonly motion: { readonly alive: boolean };
   readonly attackGroupId: string;
   readonly isBursting: boolean;
-};
+}
 
 export function register(): void {
   test('protein formation: an attacker needs a living energy member in the same formation', () => {

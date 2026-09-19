@@ -1,7 +1,7 @@
 // 多数の対象のマーカーを、投影後のスクリーン座標だけを見て破綻なく並べる表示器。画面上で
 // 近接するものを1つの代表にまとめ、画面外へ出たものは画面端の方位マーカーに置き換える。
-import { Vec3, len, sub } from '../../math/vec3';
-import { Projected } from '../../math/projection';
+import { type Vec3, len, sub } from '../../math/vec3';
+import type { Projected } from '../../math/projection';
 import type { ActiveCelestialLabel } from './celestial-markers';
 import { MARKER_PRIORITY } from './marker-priority';
 import { bearingPlacement, headingRotationDeg } from './marker-placement';
