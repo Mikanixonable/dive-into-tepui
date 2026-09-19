@@ -1,3 +1,4 @@
+// デカプラー位置で船体を分割し、質量比に応じた分離速度を求める。
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { addScaled, type Vec3 } from '../../math/vec3';
 import type { ModuleTransform, ShipAssembly } from './ship-assembly';
@@ -24,12 +25,14 @@ export function splitAtDecoupler(assembly: ShipAssembly, decouplerId: string): S
   if (incoming.length !== 1 || outgoing.length !== 1) {
     throw new Error(`decoupler must connect exactly two branches: ${decouplerId}`);
   }
+  const outgoingEdge = outgoing[0];
+  if (outgoingEdge === undefined) throw new Error(`missing decoupler branch: ${decouplerId}`);
   const transform = assembly.worldTransformOf(decouplerId);
-  const detachedRoot = assembly.worldTransformOf(outgoing[0]!.childId);
+  const detachedRoot = assembly.worldTransformOf(outgoingEdge.childId);
   if (transform === null) throw new Error(`missing decoupler transform: ${decouplerId}`);
   if (detachedRoot === null) throw new Error(`missing detached root transform: ${decouplerId}`);
   const working = assembly.clone();
-  const [retained, detached] = working.splitAt(outgoing[0]!.id);
+  const [retained, detached] = working.splitAt(outgoingEdge.id);
   // 火工品は作動時に消費する。split 後は親側の葉なので安全に除去できる。
   retained.removeModule(decouplerId);
   return {
@@ -53,6 +56,7 @@ export function separationImpulseVelocities(
   };
 }
 
+// 分割後の二 assembly から、資源を含む現在質量を返す。
 export function decoupledMasses(split: ShipDecouplingSplit): { readonly retained: number; readonly detached: number } {
   const retained = shipPhysicsShape(split.retained);
   const detached = shipPhysicsShape(split.detached);

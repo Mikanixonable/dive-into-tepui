@@ -46,7 +46,8 @@ export class RcsEffects {
     const rootWorldQ = shipRoot.getWorldQuaternion(new THREE.Quaternion());
     const inverseRootQ = rootWorldQ.clone().invert();
     for (const [index, anchor] of anchors.entries()) {
-      const plume = this.plumes[index]!;
+      const plume = this.plumes[index];
+      if (plume === undefined) continue;
       const worldPosition = anchor.getWorldPosition(new THREE.Vector3());
       const bodyPosition = shipRoot.worldToLocal(worldPosition.clone());
       const worldExhaust = new THREE.Vector3(0, 0, 1)
@@ -66,7 +67,7 @@ export class RcsEffects {
         cameraQuat,
       );
     }
-    for (let i = anchors.length; i < this.plumes.length; i++) this.plumes[i]!.hide();
+    for (let i = anchors.length; i < this.plumes.length; i++) this.plumes[i]?.hide();
   }
 
   private ensurePlumeCount(count: number): void {

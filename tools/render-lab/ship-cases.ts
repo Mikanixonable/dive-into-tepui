@@ -39,14 +39,27 @@ function separationPreset(): ShipAssembly {
   return assembly;
 }
 
+function dockedPreset(): ShipAssembly {
+  const vessel = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+  vessel.addRoot(module('cockpit-standard', 'docked-cockpit'));
+  vessel.append(module('tank-3-main', 'docked-tank'));
+  vessel.append(module('docking-port-standard', 'docked-port'));
+  return createBasePreset().mergedAtDock(vessel, 'dock-left', 'docked-port', 'docked').assembly;
+}
+
 function shipObject(assembly: ShipAssembly): THREE.Object3D {
   const shape = shipPhysicsShape(assembly);
   if (shape === null) throw new Error('render-lab ship assembly is empty');
   const view = new ModularShipView(buildShipModuleModel, undefined, false);
   view.sync(assembly, shape.centerOffset);
-  // LabCase が scene と共に寿命を持つため、ここでは表示 root だけを渡す。
+  // render-lab case の破棄時に view も解放できるよう所有者を紐付ける。
   view.object.userData.renderLabShipView = view;
   return view.object;
+}
+
+// 共通の照明・影ケースへ、現在の既定戦闘船モデルを渡す。
+export function buildDefaultShipObject(): THREE.Object3D {
+  return shipObject(createDefaultCombatPreset());
 }
 
 function at(object: THREE.Object3D, x: number, y: number, z: number): THREE.Object3D {
@@ -90,6 +103,7 @@ export const SHIP_CASES: Record<string, () => LabCase> = {
   'modular-ship-default': () => modularShipCase(createDefaultCombatPreset()),
   'modular-ship-base': () => modularShipCase(createBasePreset(), -36),
   'modular-ship-ghost': constructionGhost,
+  'modular-ship-docked': () => modularShipCase(dockedPreset(), -38),
   'modular-ship-pre-separation': () => modularShipCase(separationPreset()),
   'modular-ship-post-separation': separatedShips,
 };
