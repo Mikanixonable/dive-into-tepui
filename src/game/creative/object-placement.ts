@@ -36,6 +36,7 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEventSink } from '../run-events';
 import type { HudLayers } from '../hud/hud-layers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { ViewMode } from '../view/view-mode';
 
 // 軌道上へ配置できる自機の上限隻数(SPEC GAME.md 9.1)。
 export const MAX_PLACED_SHIPS = 50;
@@ -116,12 +117,12 @@ export class ObjectPlacement {
   }
 
   // 開いているフォームの現在値から、配置プレビューと入力欄の検証表示を更新する。
-  public sync(camera: CameraFrame, displayTime: number): void {
+  public sync(camera: CameraFrame, view: ViewMode, displayTime: number): void {
     const form = this.panel.isOpen ? this.panel.getForm() : null;
     const preview = form ? this.computePreview(form) : null;
     this.previewView.sync(preview?.elements ?? null, PREVIEW_LINE_STYLE, camera);
     this.declarations.length = 0;
-    this.declarations.push(this.previewMarker(preview?.pos ?? null, camera, displayTime));
+    this.declarations.push(this.previewMarker(preview?.pos ?? null, camera, view, displayTime));
     this.panel.setIssues(form ? this.computeFieldIssues(form) : []);
   }
 
@@ -150,7 +151,7 @@ export class ObjectPlacement {
   // プレビューの ▷ マーカーの宣言。pos はプレビューの ECI 位置で、プレビューを出せない
   // フレームでは null。
   private previewMarker(
-    pos: Vec3 | null, camera: CameraFrame, displayTime: number,
+    pos: Vec3 | null, camera: CameraFrame, view: ViewMode, displayTime: number,
   ): MarkerDeclaration {
     const base = {
       id: PREVIEW_MARKER_ID, cls: 'mk-self', sym: ENTITY_GLYPH.preview,
@@ -158,7 +159,7 @@ export class ObjectPlacement {
     };
     // 位置が無いときと、マップ視点で天体に遮られているときは、画面上の位置を示さない。
     if (pos === null) return { ...base, x: 0, y: 0, front: false, occluded: true };
-    if (camera.mode === 'map'
+    if (view === 'map'
       && isOccluded(camera.position, pos, this.celestialSystem.celestialMotions, displayTime)) {
       return { ...base, x: 0, y: 0, front: false };
     }

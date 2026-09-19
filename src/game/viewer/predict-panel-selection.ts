@@ -95,9 +95,10 @@ export class PredictPanelSelection implements PredictPanelSource {
     celestialBodies: Pick<CelestialBodies, 'has'>,
     cameraFocusId: string | undefined,
   ): PredictPanelSelection {
-    const selection = new PredictPanelSelection(frames, celestialBodies);
-    selection.followCameraFocus(cameraFocusId);
-    return selection;
+    const frame = cameraFocusId !== undefined && celestialBodies.has(cameraFocusId)
+      ? frames.frameOf(cameraFocusId, frames.inertialFrame.rotatingWith)
+      : undefined;
+    return new PredictPanelSelection(frames, celestialBodies, frame);
   }
 
   // 直列化した選択から復元する。座標系の中心が撃墜・破壊された対象を指していれば、既定の座標系から

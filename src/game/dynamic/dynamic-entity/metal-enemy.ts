@@ -6,6 +6,8 @@ import {
 } from './enemy';
 import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
+import { MUZZLE_SPEED } from './vessel';
+import { PLAYER_THRUST, PLAYER_TORQUE } from '../../player/player-loadout';
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
 import { deserializeParts, type Part, type SerializedPart } from './parts';
@@ -56,7 +58,8 @@ export class MetalEnemy extends PartBasedEnemy {
     placement: MetalEnemyPlacement,
     id: string,
     scene: THREE.Scene | undefined,
-    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP),
+    // 金属の敵は、自機と同じ性能の推進器と機関砲を積む。
+    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP, PLAYER_THRUST, PLAYER_TORQUE, MUZZLE_SPEED),
     alive?: boolean,
     burstLeft?: number | null,
     burstDelay?: number | null,
@@ -117,8 +120,8 @@ export class MetalEnemy extends PartBasedEnemy {
     return PLASMA_BULLET_DAMAGE;
   }
 
-  // 金属機体の発砲は閃光を伴わないので、記録するものを持たない。
-  protected override muzzleEffect(): void {}
+  // 金属機体の発砲は閃光を伴わず、砲口も1つなので、受けて変わるものを持たない。
+  protected override fired(): void {}
 
   // 被弾位置によらず、健全な部品へ無作為に割り振る。
   protected override applyBulletDamage(damage: number): void {

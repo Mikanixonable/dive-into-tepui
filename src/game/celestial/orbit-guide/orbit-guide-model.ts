@@ -17,7 +17,7 @@ import {
   familyGradientColor, familyGradientColorAt, type GuideLineDisplay,
 } from '../../../render/celestial/orbit-guide/orbit-guide-view';
 import type { GuideKindSettings, OrbitGuideSettings } from '../../viewer/orbit-guide-settings';
-import type { GuideGroupId } from './orbit-guide-groups';
+import { GUIDE_SYSTEMS, type GuideGroupId } from './orbit-guide-groups';
 import { combinedCandidateIds, parseGuideKindId } from './orbit-guide-kind-ids';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import type { CelestialBody } from '../../../physics/celestial-body';
@@ -36,11 +36,6 @@ const STABLE_OPACITY_BOOST = 1.8;
 // 線の中で始点から終点までに振る明度の幅。族ごとの色分けを潰さない範囲で、1本の線の中にも
 // 向きの手がかりを与える値。
 const LINE_LIGHTNESS_SWING = 0.08;
-
-// ガイドを描ける CR3BP の系。
-const ALL_SYSTEMS: readonly CatalogSystemId[] = [
-  'earth-moon', 'sun-earth', 'sun-mars', 'jupiter-europa', 'saturn-titan', 'saturn-enceladus', 'mars-phobos',
-];
 
 // 「基本」群の地球専用参照軌道。族を持たない単一軌道で、CR3BP の系選択に依らず描く。
 type ReferenceOrbitKind = 'sunSync' | 'dawnDusk' | 'molniya' | 'tundra';
@@ -176,7 +171,7 @@ function activeFamilyIds(settings: OrbitGuideSettings): readonly string[] {
 
 // 設定で選ばれている CR3BP の系。
 function activeSystems(settings: OrbitGuideSettings): readonly CatalogSystemId[] {
-  return ALL_SYSTEMS.filter((id) => settings.systems[id] === true);
+  return GUIDE_SYSTEMS.filter((id) => settings.systems[id] === true);
 }
 
 // 族の中の index 番目の線の族位置 s。族範囲を両端込みで等分し、1本なら rangeMin。

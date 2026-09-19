@@ -11,18 +11,23 @@ import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarkerPair, type EquatorNodeInputs } from './equator-node-marker-pair';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDevice } from '../../marker/marker-device';
 import type { SettingValue } from '../../settings/setting-value';
 import type { ViewMode } from '../view/view-mode';
 
 export class EquatorNodeManager {
   private readonly pairs = new Map<string, EquatorNodeMarkerPair>();
   private readonly declarations: MarkerDeclaration[] = [];
+  private readonly group: MarkerSink;
 
+  // roster の個体の赤道交点を、markers から作ったマーカー群へ置く。mapDisplay はマップの表示トグル。
   public constructor(
     private readonly roster: EntityRoster,
-    private readonly group: MarkerSink,
+    markers: MarkerDevice,
     private readonly mapDisplay: SettingValue<MapDisplayToggles>,
-  ) {}
+  ) {
+    this.group = markers.createGroup();
+  }
 
   // このフレームで必要な個体だけを解き、消滅・非表示になった個体の解を失効させる。
   // navTargetId は航法ターゲットの id で、未設定なら null。view は表に出ているビュー。
