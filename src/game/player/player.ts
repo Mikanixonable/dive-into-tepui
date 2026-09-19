@@ -36,11 +36,14 @@ import { AttachedBoosters } from './attached-boosters';
 import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
-import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
-import type { DynamicMotion, DynamicMotionThermal } from '../dynamic/dynamic-motion';
+import type { DynamicMotionThermal } from '../dynamic/dynamic-motion';
+import type { EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { StageOutcome } from '../stages/stage-outcome';
+import type { StageRules } from '../stages/stage-rules';
 import type { DamageOutcomeSink } from './damage-outcome';
 import { PlayerInspection } from '../pickable/player-inspection';
 import { PlayerEffects } from './player-effects';
@@ -271,16 +274,18 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.onPickup(mags);
   }
 
-  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。controls が null の艦は、このフレーム
-  // 操作されない艦として畳む。
-  public updateControls(frame: PilotCommandFrame): void {
-    const { controls, dt, simDt, activeStage, stageRules, celestialBodies } = frame;
+  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。controls はこのフレームの操作量で、null の艦は
+  // 操作されない艦として畳む。dt [s] は実時間、simDt [sim s] はシミュレーション時間の刻み。
+  public updateControls(
+    controls: PilotControls | null, dt: number, simDt: number,
+    activeStage: StageOutcome, stageRules: StageRules, celestialBodies: CelestialBodies,
+  ): void {
     if (stageRules.selfRepair) this.hpRegen(dt);
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
     if (controls === null) {
       this.clearTransientCommands();
       this.motion.attachedBoosters.step(simDt);
-      this.motion.thrust = this.motion.attachedBoosters.thrust;
+      this.motion.setThrust(this.motion.attachedBoosters.thrust);
       return;
     }
     this.motion.attachedBoosters.step(simDt);
@@ -291,19 +296,17 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.throttle.updateThrustLatches(controls);
     const rcsThrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
     const boosterThrust = this.motion.attachedBoosters.thrust;
-    this.motion.thrust = rcsThrust && boosterThrust
+    this.motion.setThrust(rcsThrust && boosterThrust
       ? add(rcsThrust, boosterThrust)
-      : rcsThrust ?? boosterThrust;
-    // 噴射中は予測が毎フレーム陳腐化するので破棄する。
-    if (this.motion.thrust !== null) this.motion.invalidatePrediction();
+      : rcsThrust ?? boosterThrust);
   }
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。角速度による
   // coast はそのまま続く。
   public clearTransientCommands(): void {
-    this.motion.thrust = null;
+    this.motion.setThrust(null);
     this.motion.attachedBoosters.clearThrust();
-    this.motion.torque = v3();
+    this.motion.setTorque(v3());
     this.throttle.clearTransientState();
     this.fire.stopFiring();
   }
@@ -364,7 +367,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     }
 
     // HP が尽きたら喪失させる
-    this.motion.alive = false;
+    this.motion.kill();
     const reason = shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
     outcome.playerLost(reason);
     this.effects.destroy(this.motion.state);
@@ -372,7 +375,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
 
   // 他の動体との接触の帰結。弾なら武装のダメージを、それ以外は接近速度と相手の種別を根拠に
   // 無作為なパーツへダメージを入れる(ゲームバランスの量)。
-  private receiveEntityContact(other: DynamicMotion, contact: Contact, activeStage: StageOutcome): void {
+  private receiveEntityContact(other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome): void {
     if (!this.motion.alive) return;
 
     // 弾の命中
@@ -398,9 +401,9 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     );
   }
 
-  // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは side の放熱板パーツへ入る。
+  // 放熱板の接触代理からの帰結。ダメージは side の放熱板パーツへ入る。
   private receiveRadiatorContact(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, activeStage: StageOutcome,
+    side: RadiatorSide, other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome,
   ): void {
     if (!this.motion.alive) return;
 
@@ -433,7 +436,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     }
 
     // HP が尽きたら喪失させる
-    this.motion.alive = false;
+    this.motion.kill();
     outcome.playerLost(lossReason);
     this.effects.destroy(this.motion.state);
   }
@@ -469,7 +472,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
 
   // 喪失の共通処理。reason はステージの記録に残す喪失理由。
   private lose(reason: string, outcome: DamageOutcomeSink): void {
-    this.motion.alive = false;
+    this.motion.kill();
     this.effects.destroy(this.motion.state);
     outcome.playerLost(reason);
   }
@@ -483,7 +486,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   private updateTorque(controls: PilotControls, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
-    this.motion.torque = this.throttle.updateTorque(
+    this.motion.setTorque(this.throttle.updateTorque(
       this.motion.att,
       this.motion.state.r,
       this.motion.state.v,
@@ -493,7 +496,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       simDt,
       this,
       this.registry.events,
-    );
+    ));
   }
 
   // 艦は任意のタイミングで削除されうるので、一度だけ連続指令と View を解放する。

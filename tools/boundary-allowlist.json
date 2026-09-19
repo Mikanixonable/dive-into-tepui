@@ -22,9 +22,6 @@
       "NavigationController.planExecution",
       "NavigationController.fineAttitude"
     ],
-    "src/game/dynamic/dynamic-entity/detached-booster-motion.ts": [
-      "DetachedBoosterBehavior.burnRatio"
-    ],
     "src/game/dynamic/dynamic-entity/enemy-fire-controller.ts": [
       "EnemyFireController.enabled"
     ],
@@ -51,31 +48,9 @@
       "Vessel.hp",
       "Vessel.maxHp"
     ],
-    "src/game/dynamic/dynamic-motion.ts": [
-      "DynamicMotion.att",
-      "DynamicMotion.prevAtt",
-      "DynamicMotion.alive",
-      "DynamicMotion.mass",
-      "DynamicMotion.attachedTo",
-      "DynamicMotion.torque",
-      "DynamicMotion.temperature",
-      "DynamicMotion.thermalDeviation",
-      "DynamicMotion.state",
-      "DynamicMotion.thrust"
-    ],
-    "src/game/dynamic/dynamic-simulation-participant.ts": [
-      "KinematicParticipant.state",
-      "EntityContactParticipant.alive",
-      "SurfaceContactParticipant.alive"
-    ],
     "src/game/dynamic/entity-contact-physics.ts": [
       "EntityContactPhysics.candidatePairs",
       "EntityContactPhysics.participants"
-    ],
-    "src/game/dynamic/predicted-arc.ts": [
-      "PredictedArc.requiredEnd",
-      "PredictedArc.retainFrom",
-      "PredictedArc.simulationMaxStep"
     ],
     "src/game/dynamic/simulator.ts": [
       "Simulator.simTime",

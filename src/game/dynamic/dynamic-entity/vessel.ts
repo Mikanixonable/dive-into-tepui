@@ -14,8 +14,8 @@ const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
 export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
 
-// 宇宙機の物性を既定にした Motion の設定。overrides の項目で上書きする。
-export function shipMotionOptions(
+// 宇宙機の物性を既定にした Motion の物性と初期値。overrides の項目で上書きする。
+export function shipMotionProperties(
   attitude: Attitude, radius: number, overrides: DynamicMotionProperties = {},
 ): DynamicMotionProperties {
   return {
