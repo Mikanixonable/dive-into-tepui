@@ -1,10 +1,10 @@
 // マヌーバ噴射プルーム: 推力方向の逆側に置く発光ビルボード 2 枚(コア+アウター)と、模式図用のコーン。
 import * as THREE from 'three/webgpu';
-import { Vec3, len, scale } from '../../../math/vec3';
+import { type Vec3, len, scale } from '../../../math/vec3';
 import { mulberry32 } from '../../../math/random';
 import { Billboard } from '../../billboard';
 import { SchematicThrustCone } from '../../schematic-thrust-cone';
-import { FloatingOrigin } from '../../camera/floating-origin';
+import type { FloatingOrigin } from '../../camera/floating-origin';
 import { plumeNoiseSeed } from './plume-noise';
 import type { RenderStyle } from '../../render-style';
 
