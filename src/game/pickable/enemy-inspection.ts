@@ -25,14 +25,16 @@ import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
 import { MenuCommon } from '../hud/windows/menu-actions';
 
+// 一覧で「接近」として数える、viewer からの距離 [m]。
 const ENEMY_APPROACH_DIST = 2e5;
 
-// Enemyの内部全体ではなく、表示・一覧・検査が必要とする面だけを受け取る契約。
+// タンパク質の敵が差し出す、戦闘状態の読み出しと部位マーカー。
 export interface EnemyProteinInspection {
   combatReadout(): ProteinCombatReadout;
   siteMarkers(displayPos: Vec3, attitude: Quat): readonly ProteinSiteMarker[];
 }
 
+// 敵の表示・一覧・検査に要る面。
 export interface EnemyInspectionSource extends OrbitingObject {
   readonly name: string;
   readonly mapKind: DynamicEntityKind;
@@ -46,7 +48,7 @@ export interface EnemyInspectionSource extends OrbitingObject {
   mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility;
 }
 
-// Enemyの表示・一覧・検査面を戦闘AIと分離するadapter。
+// Enemy の表示・一覧・検査面を戦闘 AI と分離する adapter。
 export class EnemyInspection implements InspectedObject {
   public constructor(private readonly source: EnemyInspectionSource) {}
   public get id(): string { return this.source.id; }
@@ -65,26 +67,31 @@ export class EnemyInspection implements InspectedObject {
 
   public get protein(): EnemyProteinInspection | null { return this.source.proteinInspection; }
 
+  // 表示位置 pos・速度 vel に置く敵のマーカー項目。
   public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, _isActive: boolean): GroupedMarkerItem {
     return this.source.markerItem(viewerPos, pos, vel, view);
   }
 
+  // 表示時刻の敵の位置。運動が求まらない時刻は null。
   public posAt(displayTime: number): Vec3 | null {
     return this.source.motion.stateAt(displayTime)?.r ?? null;
   }
 
   public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(`enemy-${this.source.id}`); }
   public hitBodyByRay(ray: Ray, pos: Vec3): boolean { return this.source.hitBodyByRay(ray, pos); }
+  // 表示トグル policy による敵の表示可否。
   public mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility {
     return this.source.mapVisibility(policy, viewer);
   }
   public listPriority(): number { return 0; }
 
+  // viewer から ENEMY_APPROACH_DIST 未満にいれば接近として数える。viewer が無ければ false。
   public listCounted(viewer: OrbitingObject | null, displayTime: number): boolean {
     if (viewer === null) return false;
     return len(sub(this.posAt(displayTime) ?? this.source.motion.state.r, viewer.motion.state.r)) < ENEMY_APPROACH_DIST;
   }
 
+  // viewer からの距離(接近中は「接近」と冠する)と相対速度。viewer が無ければ空文字。
   public listDetail(_bodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number): string {
     if (viewer === null) return '';
     const distance = len(sub(this.posAt(displayTime) ?? this.source.motion.state.r, viewer.motion.state.r));
@@ -92,10 +99,12 @@ export class EnemyInspection implements InspectedObject {
     return `${label} ${fmtDist(distance)} · ${fmtSpeed(len(sub(this.source.motion.state.v, viewer.motion.state.v)))}`;
   }
 
+  // 検索は行の補助表示と同じ文字列に照合する。
   public listSearchText(bodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number): string {
     return this.listDetail(bodies, viewer, displayTime);
   }
 
+  // 敵の操作項目(ターゲット・フォーカス・線表示・複製・削除)。
   public menuItems(
     _bodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
     trajectoryLineShown: boolean,
@@ -105,16 +114,19 @@ export class EnemyInspection implements InspectedObject {
       { label: '削除', act: 'delete' }, MenuCommon.cancel()];
   }
 
+  // 削除と複製を実行する。
   public runMenu(act: MenuAction, _selection: ControlSelection, authoring: ObjectAuthoring | null): void {
-    if (act === 'delete') this.source.motion.alive = false;
+    if (act === 'delete') this.source.motion.kill();
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.source.mapKind, this.source.motion.state);
   }
 
+  // 装甲・viewer との相対距離と速度・軌道・相対傾斜の行。viewer が無ければ相対の行を省く。
   public propertyRows(
     bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number, _displayTime: number,
   ): readonly PropertyRow[] {
     const rel = viewer ? relativeInfo(viewer, this.source, bodies.celestialMotions, simTime) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.source.hp)} / ${this.source.maxHp}` }];
+    // 相対の行は、距離・速度を装甲の下へ、相対傾斜を軌道の群の末尾へ置く。
     if (rel) rows.push(
       { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
       { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing) },
@@ -127,7 +139,7 @@ export class EnemyInspection implements InspectedObject {
   }
 }
 
-// 具象ProteinEnemyを知らずに、検査面からProtein能力だけを取得する。
+// entity がタンパク質の検査面を持てばそれを返す。持たなければ null。
 export function proteinInspectionOf(entity: DynamicEntity): EnemyProteinInspection | null {
   const candidate = entity as DynamicEntity & Partial<Pick<EnemyInspectionSource, 'proteinInspection'>>;
   return candidate.proteinInspection ?? null;

@@ -60,7 +60,7 @@ export function gameInputPorts(
         gameCommand(K.warpSlower.code, K.warpSlower),
         gameCommand(K.warpFaster.code, K.warpFaster),
       ],
-      handleCommand: command => speedCommands.handleCommand(command.id),
+      handleCommand: command => speedCommands.shift(command.id === K.warpSlower.code ? -1 : 1),
     },
     {
       feature: 'view',
@@ -75,14 +75,13 @@ export function gameInputPorts(
         gameCommand(K.deleteNode.code, K.deleteNode),
         gameCommand(K.autoWarpToNode.code, K.autoWarpToNode),
       ],
-      handleCommand: command => viewManager.activeView.handleCommand(command.id, game.simTime),
+      handleCommand: command => viewManager.activeView.handleCommand(command.id),
     },
   ];
 }
 
-// 操作対象の操作量と命令を受ける口。押下エッジを拾う口は、命令を適用できないフレームには閉じて
-// 他の受け手へ回す。ワープ倍率で決まる可否だけはここで見ない — このフレームの倍率は進行の位相の
-// 先頭で確定するので、適用の側で見る。
+// 操作対象の操作量と命令を受ける口。命令の口は、命令を適用できないフレームには閉じて他の受け手へ
+// 回す。ワープ倍率による可否は、このフレームの倍率が進行の位相の先頭で確定するので適用の側で見る。
 export function pilotInputPorts(pilotInput: PilotInput, game: Game, hud: Hud): readonly GameInputPort[] {
   return [
     pilotInput.actionPort,

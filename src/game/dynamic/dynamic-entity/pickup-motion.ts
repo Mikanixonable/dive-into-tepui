@@ -19,11 +19,13 @@ const PICKUP_PHYSICAL_RADIUS = 1.3; // [m]
 // 補給物の軌道・姿勢・物性・接触種別を所有する。
 export class PickupMotion extends DynamicMotion {
   // 小さな金属片と同じ物性で、質量と接触ダメージの重みを 0 にした漂流物として組む。thermal は熱の
-  // 状態で、省くと環境温度から始める。
+  // 状態で、省くと環境温度から始める。alive は生死で、省くと生きた状態で始める。
   public constructor(
     state: KinematicState, attitude: Attitude | undefined, kind: PickupKind, thermal?: DynamicMotionThermal,
+    alive?: boolean,
   ) {
     super(state, {
+      alive,
       attitude,
       ...thermal,
       mass: 0,

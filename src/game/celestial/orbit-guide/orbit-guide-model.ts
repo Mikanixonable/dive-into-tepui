@@ -1,15 +1,15 @@
 // マップビューのガイドとして描く、CR3BP 周期軌道族(ハロー・リヤプノフ・DRO 等)・リサジュー
 // 軌道・地球専用の参照軌道の宣言を、軌道ガイド設定と表示時刻から組む。
 import { OrbitingMotion } from '../../../physics/celestial-motion';
-import { CollinearPoint, SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
+import { type CollinearPoint, type SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialBodies } from '../celestial-bodies';
-import { Vec3 } from '../../../math/vec3';
+import type { Vec3 } from '../../../math/vec3';
 import {
-  catalogLoop, dawnDuskGuideLoop, GuideLoop, guideSecondary, lissajousLoop,
+  catalogLoop, dawnDuskGuideLoop, type GuideLoop, guideSecondary, lissajousLoop,
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { LINE_RENDER_ORDER, LineStyle } from '../../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../../render/line-style';
 import type { RenderStyle } from '../../../render/render-style';
 import type { ViewMode } from '../../view/view-mode';
 import { SCHEMATIC_LINE } from '../../../render/schematic-style';
@@ -17,7 +17,7 @@ import {
   familyGradientColor, familyGradientColorAt, type GuideLineDisplay,
 } from '../../../render/celestial/orbit-guide/orbit-guide-view';
 import type { GuideKindSettings, OrbitGuideSettings } from '../../viewer/orbit-guide-settings';
-import type { GuideGroupId } from './orbit-guide-groups';
+import { GUIDE_SYSTEMS, type GuideGroupId } from './orbit-guide-groups';
 import { combinedCandidateIds, parseGuideKindId } from './orbit-guide-kind-ids';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import type { CelestialBody } from '../../../physics/celestial-body';
@@ -36,11 +36,6 @@ const STABLE_OPACITY_BOOST = 1.8;
 // 線の中で始点から終点までに振る明度の幅。族ごとの色分けを潰さない範囲で、1本の線の中にも
 // 向きの手がかりを与える値。
 const LINE_LIGHTNESS_SWING = 0.08;
-
-// ガイドを描ける CR3BP の系。
-const ALL_SYSTEMS: readonly CatalogSystemId[] = [
-  'earth-moon', 'sun-earth', 'sun-mars', 'jupiter-europa', 'saturn-titan', 'saturn-enceladus', 'mars-phobos',
-];
 
 // 「基本」群の地球専用参照軌道。族を持たない単一軌道で、CR3BP の系選択に依らず描く。
 type ReferenceOrbitKind = 'sunSync' | 'dawnDusk' | 'molniya' | 'tundra';
@@ -176,7 +171,7 @@ function activeFamilyIds(settings: OrbitGuideSettings): readonly string[] {
 
 // 設定で選ばれている CR3BP の系。
 function activeSystems(settings: OrbitGuideSettings): readonly CatalogSystemId[] {
-  return ALL_SYSTEMS.filter((id) => settings.systems[id] === true);
+  return GUIDE_SYSTEMS.filter((id) => settings.systems[id] === true);
 }
 
 // 族の中の index 番目の線の族位置 s。族範囲を両端込みで等分し、1本なら rangeMin。
@@ -246,15 +241,14 @@ export class OrbitGuideModel {
   // 直近にマップビューで組んだ線の本数。曲線を引けなかった線も数える。
   public get lineCount(): number { return this.lines.length; }
 
-  // 設定と表示時刻から、描くガイド線の宣言を返す(マップビュー以外では空)。曲線の組み直しは、
-  // 設定・カタログ・表示時刻のいずれかが動いたときに走る。形も設定も動いていなければ
-  // 前回と同じ宣言をそのまま返す。
+  // 設定と表示時刻から、描くガイド線の宣言を返す(マップビュー以外では空)。形も設定も動いて
+  // いなければ前回と同じ列を返す。
   public displaysAt(
     settings: OrbitGuideSettings, displayTime: number, style: RenderStyle, viewMode: ViewMode,
   ): readonly GuideLineDisplay[] {
     if (viewMode !== 'map') return NO_LINES;
 
-    // 本数・族範囲・系選択の直積が変わったときだけ線の顔ぶれを組み直す。
+    // 種類ごとの on・本数と系選択が変わったときだけ線の顔ぶれを組み直す。
     const structureKey = structuralKey(settings);
     if (structureKey !== this.structureKey) {
       this.rebuildLines(settings);

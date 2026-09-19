@@ -1,9 +1,8 @@
 // エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { DynamicMotion } from './dynamic-motion';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { EntityRoster } from './entity-roster';
@@ -22,7 +21,7 @@ import { CasingPool } from '../../render/dynamic/dynamic-entity/casing-view';
 import { DebrisFragmentPools } from '../../render/dynamic/dynamic-entity/debris-fragment-view';
 import { Simulator } from './simulator';
 import { NanWatchdog } from './nan-watchdog';
-import { FrameSections, SECTION } from '../frame-sections';
+import { type FrameSections, SECTION } from '../frame-sections';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { PilotControls } from './dynamic-entity/pilot-controls';
@@ -44,7 +43,7 @@ export interface SerializedDynamicSystem {
 }
 
 // record の個体を実体化してよいか。待つ外部資源があれば、その取得を起こしてから揃ったかを答える。
-// 知らない種別の記録は待つものが無いとして答える。
+// 知らない種別の記録では true。
 function readyToSpawn(record: SpawnRecord): boolean {
   const gate: SpawnGate | null = record.kind === 'protein-enemy'
     ? proteinAssetGate(record.request.assetId)
@@ -74,8 +73,10 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。
   private readonly nanWatchdog: NanWatchdog;
 
-  // 描画資源のプールと前進の機構を、顔ぶれが空のまま simTime [s] から組む。idAllocators はこの
-  // ランの id 採番器で、省けば連番の初めから発番する。
+  // 描画資源のプールと前進の機構を simTime [s] から組み、records の個体を足す(実体化に要る外部資源が
+  // 揃わないものは待ち行列へ回す)。idAllocators はこのランの id 採番器で、省けば連番の初めから発番する。
+  // 例外(ARCHITECTURE R12): 直列化された個体の記録を構築の引数で受け、ここで復元する。個体の復元は
+  // 顔ぶれそのもの(採番器・出来事の記録)を registry として要るので、組む前には復元できない。
   private constructor(
     private readonly scene: THREE.Scene,
     public readonly events: RunEventSink,
@@ -83,6 +84,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     private readonly sections: FrameSections,
     simTime = 0,
     public readonly idAllocators = new EntityIdAllocators(),
+    records: readonly SpawnRecord[] = [],
   ) {
     this.instancedPools = new InstancedPools([
       new BulletPools(scene, ENTITY_CAP.bullet),
@@ -91,6 +93,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     ]);
     this.simulator = new Simulator(this, this, this, celestialBodies, sections, simTime);
     this.nanWatchdog = new NanWatchdog(events);
+    for (const record of records) this.spawnWhenReady(record);
   }
 
   // 新しいランの空の顔ぶれを組む。
@@ -113,19 +116,16 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       ...entities.map((entity): SpawnRecord => ({ kind: 'entity', entity })),
       ...pendingSpawns,
     ];
-    // 採番は保存した番号から続け、記録にそれより先の id があればその次から続ける。実体化がゲートで
-    // 遅れる個体があるので、組み始める前に全部の id を押さえる。
-    const idAllocators = EntityIdAllocators.deserialize(serialized.idAllocators);
-    for (const record of records) {
-      if (record.kind === 'entity') idAllocators.reserve(record.entity.id);
-    }
     // null の先端時刻も欠けと同じく 0 から始める(既定引数は undefined でしか働かない)。
-    const system = new DynamicSystem(scene, events, celestialBodies, sections, simTime ?? undefined, idAllocators);
-    for (const record of records) system.spawnWhenReady(record);
-    return system;
+    return new DynamicSystem(
+      scene, events, celestialBodies, sections, simTime ?? undefined,
+      EntityIdAllocators.deserialize(serialized.idAllocators), records,
+    );
   }
 
   // 顔ぶれと実体化を待つ個体、採番を直列化した形へ畳む。
+  // 例外(ARCHITECTURE R12): Simulator の値である先端時刻 simTime を、顔ぶれの記録へ平らに入れる。
+  // Simulator の記録として分けると版 4 の記録が読めなくなるので、版を上げるときに直す。
   public serialize(): SerializedDynamicSystem {
     return {
       simTime: this.simTime,
@@ -137,7 +137,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   private _collectionRevision = 0;
 
-  // 保持するエンティティの顔ぶれの世代。追加・除去・prune のいずれでも増える。
+  // 保持するエンティティの顔ぶれの世代。顔ぶれが変わるたびに増える。
   public get collectionRevision(): number {
     return this._collectionRevision;
   }
@@ -149,8 +149,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     this.bumpCollectionRevision();
   }
 
-  // 実体化に外部資源の取得が要る個体の待ち行列。生成そのものを資源が揃うまで遅らせるので、
-  // その間その個体は顔ぶれのどこにも現れない。
+  // 実体化に要る外部資源が揃うのを待つ個体の記録。揃ってから組んで顔ぶれへ足す。
   private readonly pendingSpawns: SpawnRecord[] = [];
 
   // 待ち行列にいる敵の数。
@@ -201,12 +200,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return true;
   }
 
-  // 上限付きの個体が追加されてから、まだ上限を確かめていないか。枠が増えるのは追加のときだけ
-  // なので、走査はこれが立っている間に限れる。
+  // 上限付きの個体が追加されてから、まだ上限を確かめていないか(キャッシュ)。枠の個体数が増えるのは
+  // 追加のときだけなので、走査はこれが立っている間に限れる。
   private capsUncheckedSinceAdd = false;
 
-  // 上限を超えた個体を、枠ごとに古いものから落とす。配列は追加順なので、末尾から数えて上限を
-  // 超えたところがその枠の最古になる。
+  // 上限を超えた個体を、枠ごとに古いものから落とす。
   private enforceCaps(): void {
     if (!this.capsUncheckedSinceAdd) return;
     this.capsUncheckedSinceAdd = false;
@@ -219,7 +217,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       if (cap === null || !entity.motion.alive) continue;
       const rank = live[cap] + 1;
       live[cap] = rank;
-      if (rank > ENTITY_CAP[cap]) entity.motion.alive = false;
+      if (rank > ENTITY_CAP[cap]) entity.motion.kill();
     }
   }
 
@@ -241,11 +239,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
     dt: number, simTime: number, activeStage: StageOutcome,
-    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
+    zones: readonly EngagementZone<EngagementParticipant>[],
   ): void {
     this.processPendingSpawns();
-    // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
-    // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
+    // 判定は開始時の顔ぶれに限る — 死の演出が足した破片まで同じパスで判定すると、生成の連鎖が終わらない。
+    const atmosphereBodies = this.celestialBodies.atmosphereMotions;
     for (let i = 0, n = this.entities.length; i < n; i++) {
       this.entities[i]!.motion.checkLoss(
         dt, simTime, { activeStage, registry: this }, zones, atmosphereBodies);
@@ -284,25 +282,29 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 時間が止まったことを記録し、次のフレームへ持ち越してはならない連続指令を畳む。
   public pause(): void {
-    this.simulator.lastSimDt = 0;
+    this.simulator.pause();
     for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
-  // 顔ぶれを1フレーム進める。自律の推力、操作・敵の指令を決めてから積分する。各段の境界で
-  // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。
+  // 顔ぶれを1フレーム進める。自律の推力、操縦の命令、操作・敵の指令を決めてから積分する。operable は
+  // 操作と敵の射撃ができる倍率か、acceptsCommands は controls の命令を操作対象へ適用するか、
+  // enemiesMayFire はステージが敵の射撃を許しているか、canEngage は交戦圏を組むか。
   public update(
-    active: Controllable | null, controls: PilotControls, operable: boolean,
-    dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
-    stageRules: StageRules, beforeControllables: () => void = () => {},
+    active: Controllable | null, controls: PilotControls, operable: boolean, acceptsCommands: boolean,
+    enemiesMayFire: boolean, dt: number, simDt: number, canEngage: boolean,
+    activeStage: StageOutcome & StageSimulationEvents, stageRules: StageRules,
   ): void {
     this.nanWatchdog.checkControlled(
       'update(入口)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
     );
     this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
-    beforeControllables();
+    // 命令が足した個体(分離したブースターなど)は、このフレームの自律の推力を持たない。
+    if (active !== null && acceptsCommands) {
+      for (const command of controls.commands) active.handleCommand(command, this);
+    }
     this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
-    this.behaveAll(active, operable);
+    this.behaveAll(active, operable && enemiesMayFire);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
       'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
@@ -334,26 +336,22 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     for (const controllable of this.controllables) {
       if (!controllable.motion.alive) continue;
       // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として操作量なしで進める。
-      controllable.updateControls({
-        controls: controllable === active && operable ? controls : null,
-        dt,
-        simDt,
-        activeStage,
-        stageRules,
-        celestialBodies: this.celestialBodies,
-      });
+      controllable.updateControls(
+        controllable === active && operable ? controls : null,
+        dt, simDt, activeStage, stageRules, this.celestialBodies,
+      );
     }
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。追跡先の艦が1隻も無ければ何もしない。
-  // 同一集団の判定に使う母集団は、このフレームの顔ぶれを1度だけ取って全機で共有する。
-  private behaveAll(active: Controllable | null, operable: boolean): void {
+  // mayFire が偽の間は撃たない。
+  private behaveAll(active: Controllable | null, mayFire: boolean): void {
     const player = this.trackedShip(active);
     if (player === null) return;
     const enemies = this.entities.filter(isEnemy);
     for (const e of enemies) {
       if (e.motion.alive) {
-        e.behave(this.simTime, player, this, enemies, operable, this.celestialBodies);
+        e.behave(this.simTime, player, this, enemies, mayFire, this.celestialBodies);
       }
     }
   }
