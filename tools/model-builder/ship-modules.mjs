@@ -85,7 +85,7 @@ function addKindDetails(root, definition) {
       cylinderBody(root, definition,
         definition.abilities.fuelKind === 'rcs' ? materials.tankRcs : materials.tankMain);
       for (let z = -definition.length / 2 + 1.5; z < definition.length / 2; z += 3) {
-        root.add(axialMesh(new THREE.TorusGeometry(radius * 1.01, 0.07, 8, 24), materials.rim, z, 'tank-band'));
+        root.add(ringMesh(new THREE.TorusGeometry(radius * 1.01, 0.07, 8, 24), materials.rim, z, 'tank-band'));
       }
       break;
     case 'thruster':
