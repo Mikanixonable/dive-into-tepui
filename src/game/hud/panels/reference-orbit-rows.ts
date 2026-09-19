@@ -9,7 +9,7 @@ import {
 } from './guide-value-field';
 import type {
   CriticalInclinationSettings, DawnDuskSettings, LocalTime, SunSyncSettings,
-} from '../../celestial/orbit-guide/orbit-guide-settings';
+} from '../../viewer/orbit-guide-settings';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 interface AppearancePatch {

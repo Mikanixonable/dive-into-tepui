@@ -11,6 +11,12 @@ import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import { entityContactResponse } from '../../src/game/dynamic/entity-contact-response';
 import { test } from '../harness';
 
+class TestMotion extends DynamicMotion {
+  public setAttitudes(previous: Attitude, current: Attitude): void {
+    this.resetAttitude(current, previous);
+  }
+}
+
 const INERTIA = v3(1, 1, 1);
 
 function cylinder(moduleId: string, center = v3(), axis = v3(0, 1, 0), halfLength = 1, radius = 0.5) {
@@ -20,7 +26,7 @@ function cylinder(moduleId: string, center = v3(), axis = v3(0, 1, 0), halfLengt
 function motion(
   position: ReturnType<typeof v3>, shape: CompoundCylinderShape, radius: number,
 ): DynamicMotion {
-  const result = new DynamicMotion(
+  const result = new TestMotion(
     kinematicState<'eci'>(0, position, v3()),
     {
       attitude: attitude(Q_IDENTITY), mass: 1, radius, collides: true,
@@ -32,8 +38,8 @@ function motion(
   return result;
 }
 
-function sphere(position: ReturnType<typeof v3>, radius: number): DynamicMotion {
-  return new DynamicMotion(
+function sphere(position: ReturnType<typeof v3>, radius: number): TestMotion {
+  return new TestMotion(
     kinematicState<'eci'>(0, position, v3()),
     {
       attitude: attitude(Q_IDENTITY), mass: 1, radius, collides: true,
@@ -49,8 +55,8 @@ function advance(
   entity: DynamicMotion, position: ReturnType<typeof v3>, rotation: Quat,
   previousRotation: Quat = entity.att.q,
 ): void {
-  entity.prevAtt = attitude(previousRotation);
-  entity.att = { ...entity.att, q: rotation };
+  if (!(entity instanceof TestMotion)) throw new Error('test motion expected');
+  entity.setAttitudes(attitude(previousRotation), { ...entity.att, q: rotation });
   entity.reset(kinematicState<'eci'>(1, position, v3()));
 }
 

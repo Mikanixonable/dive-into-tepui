@@ -17,6 +17,7 @@ import { TargetRelativeLine } from '../lines/target-relative-line';
 import { TrajectoryLine } from '../lines/trajectory-line';
 import type { CelestialFrameSource } from '../lines/celestial-frame-source';
 import type { InstancedPools } from './instanced-pools';
+import type { ProteinDisplaySettings } from '../protein/protein-display';
 import { syncThermalState } from '../thermal-emissive';
 
 // 熱による発光の表示入力。温度と過熱の振幅は [K]。
@@ -30,8 +31,6 @@ export interface DynamicThermalSource {
 export interface DynamicRenderSource {
   readonly id: string;
   readonly name: string;
-  // このフレームに本体を出すか。
-  readonly visible: boolean;
   readonly alive: boolean;
   // 表示時刻の運動状態。引けないフレームは null。
   stateAt(t: number): KinematicState | null;
@@ -47,6 +46,8 @@ export interface DynamicViewFrame {
   readonly camera: CameraFrame;
   readonly style: RenderStyle;
   readonly visual: EntityVisualSettings;
+  // 全個体に共通のタンパク質の表示形態と着色。
+  readonly proteinDisplay: ProteinDisplaySettings;
   readonly pools: InstancedPools;
 }
 
@@ -106,7 +107,7 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
   // 表示時刻の状態があれば、可視性・位置・姿勢・熱表現を THREE ルートへ適用する。
   protected place(source: DynamicRenderSource, viewFrame: DynamicViewFrame): KinematicState | null {
     const state = source.stateAt(viewFrame.displayTime);
-    this.object.visible = state !== null && source.visible;
+    this.object.visible = state !== null;
     if (state === null) return null;
     // 位置は表示時刻の状態から、姿勢は現在の値から置く。
     this.object.position.copy(viewFrame.camera.floatingOrigin.RtoThreeV3(state.r));

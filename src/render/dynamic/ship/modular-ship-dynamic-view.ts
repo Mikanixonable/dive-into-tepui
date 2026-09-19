@@ -3,9 +3,6 @@ import * as THREE from 'three/webgpu';
 import type { Vec3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { ShipAssembly } from '../../../game/ship/ship-assembly';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
-import { PlayerMarkers } from '../../../game/marker/player-markers';
-import type { OrbitReference } from '../../../game/orbit-reference';
 import type { BeltNodes } from '../player/belt-view';
 import { BeltView } from '../player/belt-view';
 import { RcsEffects } from '../player/rcs-effects';
@@ -28,9 +25,6 @@ export interface ModularShipRenderSource extends DynamicRenderSource {
   readonly dynamicPressure: number;
   readonly belt: BeltNodes;
   readonly magsLeft: number;
-  readonly roundsInMag: number;
-  readonly averageMuzzleVelocity: number;
-  readonly orbitAxesReference: KinematicState | null;
 }
 
 // DynamicView の時刻配置と、assembly から再構築する module 表示を一体にした実体用 View。
@@ -40,12 +34,10 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly belt: BeltView;
-  private readonly markers: PlayerMarkers;
 
   public constructor(
     private readonly effectScene: THREE.Scene,
     ownerId: string,
-    markerSlots: MarkerSlots,
     beltLinkCount: number,
   ) {
     const modules = new ModularShipView(buildShipModuleModel, undefined, false);
@@ -58,7 +50,6 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     this.rcsEffects = new RcsEffects(effectScene, ownerId);
     this.reentryEffects = new ReentryEffects(effectScene);
     this.belt = new BeltView(this.object, beltLinkCount);
-    this.markers = new PlayerMarkers(markerSlots, ownerId);
   }
 
   protected override syncModel(
@@ -96,17 +87,6 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     );
     this.reentryEffects.sync(origin, displayed, source.dynamicPressure, effectVisible, cameraQuat);
     this.belt.sync(source.magsLeft, source.belt);
-    this.markers.sync(
-      source.state,
-      source.attitude,
-      viewFrame.camera.mode,
-      source.active,
-      viewFrame.camera.project,
-      source.roundsInMag,
-      source.magsLeft,
-      source.averageMuzzleVelocity,
-      source.orbitAxesReference,
-    );
     if (source.active && zoomActive) this.object.visible = false;
   }
 
@@ -137,15 +117,10 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   }
 
   public override dispose(): void {
-    this.markers.dispose();
     this.thrustEffects.dispose(this.effectScene);
     this.rcsEffects.dispose(this.effectScene);
     this.reentryEffects.dispose(this.effectScene);
     this.modules.dispose();
     super.dispose();
   }
-}
-
-export function modularShipOrbitReference(reference: OrbitReference | undefined): KinematicState | null {
-  return reference?.state ?? null;
 }

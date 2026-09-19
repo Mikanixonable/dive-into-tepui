@@ -1,11 +1,10 @@
 // 表示パネル(マップモード左レール)ガイドタブのゼロ速度曲線節。CR3BP のヤコビ定数で決まる
 // 到達可能領域の境界を、断面ゲート・ヤコビ定数入力・ラグランジュ点への一発合わせ・範囲/本数・
-// 透明度で設定させる。状態の正本を持たず、操作のたびに現在値の鏡映しから次の
-// ZeroVelocitySettings を組んで onChange へ渡す。
+// 透明度で設定させる。操作のたびに、書き換わった項目だけを onChange へ渡す。
 import { Button, ToggleSwitch } from '../../../hud/widgets';
 import type { LagrangeLabel } from '../../../physics/lagrange';
 import { lagrangePointJacobi } from '../../celestial/orbit-guide/orbit-guide-catalog';
-import type { ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
+import type { ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
 import {
   JACOBI_MAPPING, OPACITY_MAPPING, ZERO_VELOCITY_COUNT_MAPPING, buildValueField, syncValueField,
   type ValueField,
@@ -32,11 +31,23 @@ interface RangeFields {
   readonly countField: ValueField;
 }
 
+// 断面が開いている系のラグランジュ点 point のヤコビ定数。複数系が開いていれば先頭、
+// 何も開いていなければ地球-月の値を返す。
+export function zeroVelocityJacobiAt(s: ZeroVelocitySettings, point: LagrangeLabel): number {
+  const system = s.earthMoonXY || s.earthMoonXZ ? 'earth-moon'
+    : s.sunEarthXY || s.sunEarthXZ ? 'sun-earth'
+      : s.sunJupiterXY || s.sunJupiterXZ ? 'sun-jupiter'
+        : s.sunSaturnXY || s.sunSaturnXZ ? 'sun-saturn' : 'earth-moon';
+  return lagrangePointJacobi(system, point);
+}
+
 export class ZeroVelocitySection {
   public readonly element: HTMLElement;
-  public onChange: ((settings: ZeroVelocitySettings) => void) | null = null;
+  // 書き換わった項目だけを載せて呼ばれる。
+  public onChange: ((change: Partial<ZeroVelocitySettings>) => void) | null = null;
+  // ラグランジュ点ボタンが押されたときに、その点で呼ばれる。
+  public onSnapToLagrange: ((point: LagrangeLabel) => void) | null = null;
 
-  private current: ZeroVelocitySettings;
   private readonly switches: readonly (readonly [keyof ZeroVelocitySettings, ToggleSwitch])[];
   private readonly multipleSwitch: ToggleSwitch;
   private readonly jacobiField: ValueField;
@@ -47,11 +58,8 @@ export class ZeroVelocitySection {
   private readonly countField: ValueField;
   private readonly opacityField: ValueField;
 
-  // 初期値から節の DOM 一式を組み立てる。以後の状態はコンストラクタ引数でなく setSettings で
-  // 差し替える。
+  // initial の状態で節の DOM 一式を組み立てる。
   public constructor(initial: ZeroVelocitySettings) {
-    this.current = initial;
-
     // 節見出し。
     this.element = document.createElement('div');
     this.element.className = 'orbit-guide-section-divider-wrap';
@@ -62,11 +70,11 @@ export class ZeroVelocitySection {
 
     // 断面ゲートと表示方式。
     this.switches = this.buildGateSwitches(this.element);
-    this.multipleSwitch = new ToggleSwitch('多数の曲線を表示', (multiple) => this.commit({ multiple }));
+    this.multipleSwitch = new ToggleSwitch('多数の曲線を表示', (multiple) => this.onChange?.({ multiple }));
     this.element.appendChild(this.multipleSwitch.element);
 
     // ヤコビ定数とラグランジュ点スナップ。
-    this.jacobiField = buildValueField('ヤコビ定数', JACOBI_MAPPING, (jacobi) => this.commit({ jacobi }));
+    this.jacobiField = buildValueField('ヤコビ定数', JACOBI_MAPPING, (jacobi) => this.onChange?.({ jacobi }));
     this.element.appendChild(this.jacobiField.row);
     this.buildLagrangeRow(this.element);
 
@@ -78,17 +86,17 @@ export class ZeroVelocitySection {
     this.countField = range.countField;
     this.countRow = range.countField.row;
 
-    this.opacityField = buildValueField('透明度', OPACITY_MAPPING, (opacity) => this.commit({ opacity }));
+    this.opacityField = buildValueField('透明度', OPACITY_MAPPING, (opacity) => this.onChange?.({ opacity }));
     this.element.appendChild(this.opacityField.row);
 
-    this.sync();
+    this.sync(initial);
   }
 
   // 断面ゲート8種のトグル列を組む。
   private buildGateSwitches(parent: HTMLElement): readonly (readonly [keyof ZeroVelocitySettings, ToggleSwitch])[] {
     const switches: (readonly [keyof ZeroVelocitySettings, ToggleSwitch])[] = [];
     for (const [key, label] of ZERO_VELOCITY_SECTION_ROWS) {
-      const sw = new ToggleSwitch(label, (on) => this.commit({ [key]: on }));
+      const sw = new ToggleSwitch(label, (on) => this.onChange?.({ [key]: on }));
       parent.appendChild(sw.element);
       switches.push([key, sw]);
     }
@@ -100,7 +108,7 @@ export class ZeroVelocitySection {
     const row = document.createElement('div');
     row.className = 'w-group orbit-guide-toggle-row';
     for (const point of LAGRANGE_POINTS) {
-      const btn = new Button(point, () => this.snapToLagrange(point));
+      const btn = new Button(point, () => this.onSnapToLagrange?.(point));
       row.appendChild(btn.element);
     }
     parent.appendChild(row);
@@ -110,10 +118,10 @@ export class ZeroVelocitySection {
   private buildRangeFields(parent: HTMLElement): RangeFields {
     const row = document.createElement('div');
     row.className = 'orbit-guide-zero-velocity-range';
-    // 下限・上限は互いに独立して動かせるが、commitRange で常に min ≤ max に整える。
-    const minField = buildValueField('ヤコビ定数(下限)', JACOBI_MAPPING, (v) => this.commitRange(v, this.current.jacobiMax));
-    const maxField = buildValueField('ヤコビ定数(上限)', JACOBI_MAPPING, (v) => this.commitRange(this.current.jacobiMin, v));
-    const countField = buildValueField('本数', ZERO_VELOCITY_COUNT_MAPPING, (count) => this.commit({ count: Math.round(count) }));
+    // 下限・上限は互いに独立して動かせる。大小関係の整えは設定を組み直す側が行う。
+    const minField = buildValueField('ヤコビ定数(下限)', JACOBI_MAPPING, (v) => this.onChange?.({ jacobiMin: v }));
+    const maxField = buildValueField('ヤコビ定数(上限)', JACOBI_MAPPING, (v) => this.onChange?.({ jacobiMax: v }));
+    const countField = buildValueField('本数', ZERO_VELOCITY_COUNT_MAPPING, (count) => this.onChange?.({ count: Math.round(count) }));
     row.appendChild(minField.row);
     row.appendChild(maxField.row);
     row.appendChild(countField.row);
@@ -121,32 +129,8 @@ export class ZeroVelocitySection {
     return { row, minField, maxField, countField };
   }
 
-  // 正本を差し替え、見た目を鏡映しへ合わせて呼び出し側へ通知する。
-  private commit(patch: Partial<ZeroVelocitySettings>): void {
-    this.current = { ...this.current, ...patch };
-    this.sync();
-    this.onChange?.(this.current);
-  }
-
-  // 下限・上限の大小関係が入れ替わっても壊れないよう、コミット前に min ≤ max へ整える。
-  private commitRange(min: number, max: number): void {
-    this.commit({ jacobiMin: Math.min(min, max), jacobiMax: Math.max(min, max) });
-  }
-
-  // 断面が実際に開いている系のラグランジュ点の値へヤコビ定数を合わせる。
-  // 複数系が開いていれば先頭、何も開いていなければ地球-月を使う。
-  private snapToLagrange(point: LagrangeLabel): void {
-    const s = this.current;
-    const system = s.earthMoonXY || s.earthMoonXZ ? 'earth-moon'
-      : s.sunEarthXY || s.sunEarthXZ ? 'sun-earth'
-        : s.sunJupiterXY || s.sunJupiterXZ ? 'sun-jupiter'
-          : s.sunSaturnXY || s.sunSaturnXZ ? 'sun-saturn' : 'earth-moon';
-    this.commit({ jacobi: lagrangePointJacobi(system, point) });
-  }
-
-  // 現在値を各ウィジェットへ映す。
-  private sync(): void {
-    const s = this.current;
+  // 各ウィジェットの表示を s へ合わせる。
+  public sync(s: ZeroVelocitySettings): void {
     for (const [key, sw] of this.switches) sw.setOn(Boolean(s[key]));
     this.multipleSwitch.setOn(s.multiple);
 
@@ -160,11 +144,5 @@ export class ZeroVelocitySection {
     this.jacobiField.row.classList.toggle('hidden', s.multiple);
     this.jacobiRangeRow.classList.toggle('hidden', !s.multiple);
     this.countRow.classList.toggle('hidden', !s.multiple);
-  }
-
-  // 正本からの鏡映し反映。
-  public setSettings(settings: ZeroVelocitySettings): void {
-    this.current = settings;
-    this.sync();
   }
 }

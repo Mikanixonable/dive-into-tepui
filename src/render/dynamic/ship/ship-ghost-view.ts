@@ -79,13 +79,13 @@ export class ShipGhostView {
 
   // 通常船と material を共有すると ghost の透過色が伝播するため、専用 clone へ置換する。
   private prepareGhostMaterials(model: THREE.Object3D): void {
-    const replacements: Array<{
+    const replacements: {
       readonly mesh: THREE.Mesh;
       readonly original: THREE.Material[];
       readonly array: boolean;
       readonly ghost: THREE.Material[];
       readonly ownsOriginal: boolean;
-    }> = [];
+    }[] = [];
     model.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;

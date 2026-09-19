@@ -1,29 +1,82 @@
-// ゲーム世界内の物体・出来事(発砲・被弾・接触・爆発・噴射など)が発する合成効果音
-// (アセット不要)。AudioEngine が共有する素材(ノイズバッファ・基本ボイス)と、ここで組む
-// 専用のオシレータ/フィルタで、単発音とループ音を鳴らす。
-// AudioContext が unlock されるまでは、どのメソッドも無音のまま何もしない。
-import { AudioEngine } from '../audio-engine';
+// ゲーム世界内の物体・出来事(発砲・被弾・接触・爆発・噴射など)が発する合成効果音。
+// そのフレームの宣言どおりに、一回きりの音とループ音を鳴らす。
+import type { AudioEngine } from '../audio-engine';
+import type { SoundCue } from './sound-cue';
 
 // 被弾点がこの距離まで自機中心から離れると、遠い被弾として音量・音高を下限にする [m]。
 const HIT_SOUND_DISTANCE_MAX = 10;
 
+const THRUST_LOOP_GAIN = 0.1;
+const RCS_LOOP_GAIN = 0.015; // メインエンジンより高く軽いシュー音なので、控えめに混ぜる
+
+// そのフレームに鳴らすべき連続音の全体。
+export interface LoopSfx {
+  readonly thrust: boolean;
+  readonly rcs: boolean;
+}
+
+// 一回きりの効果音の種類。hit の impactDistance は被弾点と自機中心の距離 [m]。
+export type WorldSound =
+  | {
+    readonly kind: 'fire' | 'reload' | 'spinUp' | 'clank' | 'magFeed' | 'pickup' | 'emptyClick'
+      | 'magneticInterference' | 'enemyHit' | 'explosion' | 'decouple' | 'altAlarm';
+  }
+  | { readonly kind: 'hit'; readonly impactDistance: number };
+
+// そのフレームに鳴らすべき音の全体。
+export interface WorldSfxDeclaration {
+  readonly loops: LoopSfx;
+  readonly cues: readonly SoundCue<WorldSound>[];
+}
+
 export class WorldSfx {
-  private thrustGain: GainNode | null = null;
-  private rcsGain: GainNode | null = null;
-  // 組んだループ音の音源。止めて切り離すのは dispose だけ。
+  // 連続音のチャンネル。組めるまでと、畳んだ後は null。
+  private loops: { thrust: GainNode; rcs: GainNode } | null = null;
+  // 畳んだ後か。立っていれば連続音の組み直しを禁じる。
+  private disposed = false;
+  // 組んだループ音の音源。
   private readonly loopSources: AudioBufferSourceNode[] = [];
+  // 鳴らした一回きりの音のうち、最も新しい id。
+  private lastCueId = -1;
 
-  constructor(private readonly engine: AudioEngine) { }
+  public constructor(private readonly engine: AudioEngine) { }
 
-  // 常時再生のループ音チャンネル(通常は無音)を組む。ctx が未生成のうちは null を返し、
-  // 呼び出し側は次の機会にまた組み直しを試みる。
-  private loopChannel(freq: number, q: number): GainNode | null {
-    const ctx = this.engine.ctx;
-    const noise = this.engine.noiseBuf;
-    if (!ctx || !noise) return null;
+  // そのフレームに鳴らすべき音の全体 declaration を受ける。一回きりの音は、まだ鳴らしていない id の
+  // ものを鳴らす。
+  public sync(declaration: WorldSfxDeclaration): void {
+    for (const cue of declaration.cues) {
+      if (cue.id <= this.lastCueId) continue;
+      this.lastCueId = cue.id;
+      this.play(cue.sound);
+    }
+    this.syncLoops(declaration.loops);
+  }
+
+  // 一回きりの音を1つ鳴らす。
+  private play(sound: WorldSound): void {
+    switch (sound.kind) {
+      case 'fire': this.fire(); return;
+      case 'reload': this.reload(); return;
+      case 'spinUp': this.spinUp(); return;
+      case 'clank': this.clank(); return;
+      case 'magFeed': this.magFeed(); return;
+      case 'pickup': this.pickup(); return;
+      case 'emptyClick': this.emptyClick(); return;
+      case 'magneticInterference': this.magneticInterference(); return;
+      case 'hit': this.hit(sound.impactDistance); return;
+      case 'enemyHit': this.enemyHit(); return;
+      case 'explosion': this.explosion(); return;
+      case 'decouple': this.decouple(); return;
+      case 'altAlarm': this.altAlarm(); return;
+    }
+  }
+
+  // noise を中心 freq・鋭さ q の帯域で絞ったループ音を鳴らし始め、その音量ノードを返す。音量は 0 で始まる。
+  private loopChannel(ctx: AudioContext, noise: AudioBuffer, freq: number, q: number): GainNode {
     const src = ctx.createBufferSource();
     src.buffer = noise;
     src.loop = true;
+    // 音色は帯域で、鳴らすかどうかは音量で決める。音源は dispose まで鳴り続ける。
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
     filter.frequency.value = freq;
@@ -36,30 +89,29 @@ export class WorldSfx {
     return gain;
   }
 
-  // 鳴らしているループ音を止めて切り離す。以後このインスタンスは音を出さない。
-  dispose(): void {
+  // ループ音を止めて切り離す。以後の宣言でループ音は鳴らず、一回きりの音は鳴る。
+  public dispose(): void {
+    this.disposed = true;
     for (const src of this.loopSources) {
       src.stop();
       src.disconnect();
     }
     this.loopSources.length = 0;
-    this.thrustGain?.disconnect();
-    this.rcsGain?.disconnect();
-    this.thrustGain = null;
-    this.rcsGain = null;
+    this.loops?.thrust.disconnect();
+    this.loops?.rcs.disconnect();
+    this.loops = null;
   }
 
-  // 艦砲 CIWS 風の砲声: 低く重い胴鳴り + 鋭いクラック。
-  // 実物のように連続音にはせず、1 発ずつ聞こえる離散的な発砲音のまま。
-  fire(): void {
+  // 艦砲 CIWS 風の砲声1発ぶん: 低く重い胴鳴り + 鋭いクラック。連射は断続的に聞こえる(SPEC/AUDIO.md「機関砲」)。
+  private fire(): void {
     this.engine.noiseBurst(0.11, 'lowpass', 480, 0.4);
     this.engine.noiseBurst(0.025, 'highpass', 2600, 0.09);
     this.engine.tone(48, 0.1, 0.2, 'square');
     this.engine.tone(96, 0.05, 0.07, 'sawtooth');
   }
 
-  // リロード音: 金属質のノイズと金属音を組み合わせて「ガチャッ、シャコォォン」という音を作る
-  playReload(): void {
+  // リロード音「ガチャッ、シャコォォン」。
+  private reload(): void {
     const ctx = this.engine.ctx;
     const noise = this.engine.noiseBuf;
     if (!ctx || !noise) return;
@@ -84,8 +136,7 @@ export class WorldSfx {
   }
 
   // 連射開始前の起動音: 艦砲 CIWS のモーターが立ち上がる唸りに似せる。
-  // 低い三角波の唸りが滑り上がり、機械的なこすれノイズが重なる。
-  spinUp(): void {
+  private spinUp(): void {
     const ctx = this.engine.ctx;
     const noise = this.engine.noiseBuf;
     if (!ctx || !noise) return;
@@ -134,7 +185,7 @@ export class WorldSfx {
   }
 
   // 薬莢が機体に当たったときの、からんとした金属音(かすかに)
-  clank(): void {
+  private clank(): void {
     const f0 = 1800 + Math.random() * 1600;
     this.engine.tone(f0, 0.05, 0.035, 'triangle');
     this.engine.tone(f0 * 1.53, 0.04, 0.02, 'triangle'); // 非整数倍音で金属感
@@ -142,31 +193,32 @@ export class WorldSfx {
   }
 
   // マガジン給弾(次のマガジンが取り込まれるガチャッという機械音)
-  magFeed(): void {
+  private magFeed(): void {
     this.engine.noiseBurst(0.1, 'lowpass', 500, 0.14);
     this.engine.tone(140, 0.07, 0.08, 'square');
     this.engine.noiseBurst(0.05, 'highpass', 3000, 0.04);
   }
 
   // 補給マガジンの取り込み(肯定的なブリップ)
-  pickup(): void {
+  private pickup(): void {
     this.engine.tone(660, 0.09, 0.09, 'sine');
     this.engine.tone(990, 0.12, 0.07, 'sine');
     this.engine.noiseBurst(0.08, 'lowpass', 600, 0.06);
   }
 
   // 弾切れの空撃ちクリック
-  emptyClick(): void {
+  private emptyClick(): void {
     this.engine.tone(1400, 0.03, 0.05, 'square');
     this.engine.noiseBurst(0.02, 'highpass', 4000, 0.03);
   }
 
   // 弾が至近を通過したときの「ヴン」という磁気干渉音
-  magneticInterference(): void {
+  private magneticInterference(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
 
+    // 音高: 低い唸りが持ち上がってから沈む。
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
 
@@ -174,12 +226,14 @@ export class WorldSfx {
     osc.frequency.exponentialRampToValueAtTime(80, t + 0.3);
     osc.frequency.exponentialRampToValueAtTime(40, t + 0.4);
 
+    // 音色: 立ち上がりだけ明るくする。
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(100, t);
     filter.frequency.exponentialRampToValueAtTime(400, t + 0.1);
     filter.frequency.exponentialRampToValueAtTime(100, t + 0.3);
 
+    // 音量: 膨らんでから消える。
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.01, t);
     gain.gain.linearRampToValueAtTime(0.15, t + 0.2);
@@ -191,15 +245,17 @@ export class WorldSfx {
   }
 
   // 自機被弾音。被弾点が自機中心から遠いほど、音量と音高を下げる。
-  hit(impactDistance: number): void {
+  private hit(impactDistance: number): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
+    // 近さ 0〜1(1 が自機中心)から、音高と音量を決める。
     const proximity = Math.max(0, Math.min(1, 1 - impactDistance / HIT_SOUND_DISTANCE_MAX));
     const frequency = 80 + 90 * proximity;
     const peakGain = 0.2 + 0.7 * proximity;
     const tailGain = 0.02 + 0.08 * proximity;
 
+    // ノコギリ波をローパスで鈍らせた、短い打撃音。
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(frequency, t);
@@ -217,10 +273,11 @@ export class WorldSfx {
   }
 
   // 敵機被弾時のノコギリ波ローパス和音
-  enemyHit(): void {
+  private enemyHit(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
+    // 和音全体が通る、一瞬開いて閉じるローパスと減衰。
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(180, t);
@@ -229,6 +286,7 @@ export class WorldSfx {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.08, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    // 3音の和音。どの音も音高が沈んでいく。
     [110, 138, 165].forEach((frequency) => {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
@@ -242,7 +300,7 @@ export class WorldSfx {
   }
 
   // 撃破爆発音
-  explosion(): void {
+  private explosion(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
@@ -266,32 +324,38 @@ export class WorldSfx {
   }
 
   // デカプラーの爆砕ボルト。撃破爆発より短い破裂音と金属の解放音を重ねる。
-  decouple(): void {
+  private decouple(): void {
     this.engine.noiseBurst(0.055, 'highpass', 1800, 0.16);
     this.engine.noiseBurst(0.09, 'lowpass', 320, 0.22);
     this.engine.tone(760, 0.06, 0.07, 'square');
     this.engine.tone(430, 0.11, 0.05, 'triangle');
   }
 
-  // 高度低下警報: 短い二音の警告音(熱防御警報よりは緊急度の低いトーン)
-  altAlarm(): void {
+  // 高度低下警報: 短い二音の警告音。
+  private altAlarm(): void {
     this.engine.tone(392, 0.16, 0.09, 'square');
     this.engine.tone(415.3, 0.16, 0.07, 'square'); // わずかに不協和にして警報らしいうなりを出す
   }
 
-  // メインエンジンのループ音量をなめらかに on/off する。
-  setThrust(on: boolean): void {
-    this.thrustGain ??= this.loopChannel(320, 0.8);
+  // 連続音の宣言 loops へ、各チャンネルの音量をなめらかに追わせる。
+  private syncLoops(loops: LoopSfx): void {
     const ctx = this.engine.ctx;
-    if (!ctx || !this.thrustGain) return;
-    this.thrustGain.gain.setTargetAtTime(on ? 0.1 : 0, ctx.currentTime, 0.04);
+    const channels = this.ensureLoops();
+    if (!ctx || channels === null) return;
+    channels.thrust.gain.setTargetAtTime(loops.thrust ? THRUST_LOOP_GAIN : 0, ctx.currentTime, 0.04);
+    channels.rcs.gain.setTargetAtTime(loops.rcs ? RCS_LOOP_GAIN : 0, ctx.currentTime, 0.03);
   }
 
-  // RCS スラスタのループ音量をなめらかに on/off する(メインエンジンより高く軽いシュー音)。
-  setRcs(on: boolean): void {
-    this.rcsGain ??= this.loopChannel(1600, 1.1);
+  // 連続音のチャンネルを、無ければ組んで返す。ctx が開く前と、畳んだ後は null。
+  private ensureLoops(): { thrust: GainNode; rcs: GainNode } | null {
+    if (this.loops !== null || this.disposed) return this.loops;
     const ctx = this.engine.ctx;
-    if (!ctx || !this.rcsGain) return;
-    this.rcsGain.gain.setTargetAtTime(on ? 0.015 : 0, ctx.currentTime, 0.03);
+    const noise = this.engine.noiseBuf;
+    if (!ctx || !noise) return null;
+    this.loops = {
+      thrust: this.loopChannel(ctx, noise, 320, 0.8),
+      rcs: this.loopChannel(ctx, noise, 1600, 1.1),
+    };
+    return this.loops;
   }
 }
