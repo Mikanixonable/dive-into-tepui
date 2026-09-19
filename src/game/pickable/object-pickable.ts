@@ -16,7 +16,7 @@ export interface ObjectPickableProvider {
 }
 
 // この個体が被選択物として公開されるか。顔ぶれから被選択物だけを絞るときに使う。
-export function isObjectPickable(entity: DynamicEntity): entity is DynamicEntity & ObjectPickable {
+function isObjectPickable(entity: DynamicEntity): entity is DynamicEntity & ObjectPickable {
   return entity.pickable;
 }
 

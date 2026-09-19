@@ -5,7 +5,8 @@ import { test } from '../harness';
 import { maxShadowedFraction, sunlitFactor } from '../../src/physics/shadow';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
+import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/sun';
 import { len, sub, v3 } from '../../src/math/vec3';
 
 const AU = 1.495978707e11;

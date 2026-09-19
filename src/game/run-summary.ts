@@ -3,7 +3,9 @@ import { isEnemy } from './dynamic/dynamic-entity/enemy';
 import { isModularShip } from './ship/modular-ship';
 import { autoOrbitReference } from './orbit-reference';
 import { orbitInfo } from './orbit-info';
-import type { Game } from './game';
+import type { CelestialBodies } from './celestial/celestial-bodies';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { GamePhase } from './stages/stage';
 
 export interface RunSummary {
@@ -23,10 +25,11 @@ export interface RunSummary {
 }
 
 // いまの状態から1周回ぶんの要約を組む。自機が居ない周回では、軌道の項を星系の原点で埋める。
-export function runSummary(game: Game): RunSummary {
+export function summarizeRun(
+  simTime: number, phase: GamePhase, controlled: Controllable | null,
+  celestial: CelestialBodies, entities: readonly DynamicEntity[],
+): RunSummary {
   // 操作対象が居る周回なら、軌道の項もそこから解く。
-  const controlled = game.activeControllable;
-  const celestial = game.celestialSystem;
   const info = controlled === null ? null : orbitInfo(
     controlled,
     autoOrbitReference(
@@ -34,10 +37,9 @@ export function runSummary(game: Game): RunSummary {
     ),
     controlled.motion.state.t, (id: string) => celestial.nameOf(id),
   );
-  const entities = game.dynamicSystem.all();
   return {
-    simTime: game.simTime,
-    phase: game.activeStage.phase,
+    simTime,
+    phase,
     centerBodyId: info ? info.centerId : celestial.originId,
     centerBodyName: info ? info.centerName : celestial.nameOf(celestial.originId),
     altitude: info ? info.alt : 0,

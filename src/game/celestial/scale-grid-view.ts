@@ -3,12 +3,13 @@
 import * as THREE from 'three/webgpu';
 import { ScaleGrid } from '../../render/scale-grid';
 import { OrbitingMotion } from '../../physics/celestial-motion';
-import { CameraSystem } from '../camera/camera-system';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBodies } from './celestial-bodies';
 import type { Vec3 } from '../../math/vec3';
 import type { ScaleGridVisibility } from '../../render/scale-grid';
 import type { CelestialGridVisibility } from '../../render/celestial-grid';
+import type { FocusCameraSource } from '../viewer/focus-camera-selection';
+import type { ViewMode } from '../view/view-mode';
 
 // ECI の方向を描画フレームへ移す。方向は平行移動を受けないので成分をそのまま写す。
 function toThreeDirection(dir: Vec3): THREE.Vector3 {
@@ -26,11 +27,13 @@ export class ScaleGridView {
   // 4面ぶんの表示状態を、この1フレームのトグル・フォーカス・月の姿勢へ同期する。戦闘ビューでは
   // トグルに関わらず4面とも隠す。
   public sync(
-    displayTime: number, camera: CameraFrame, cameraSystem: CameraSystem, celestialBodies: CelestialBodies,
+    displayTime: number, camera: CameraFrame, view: ViewMode,
+    mapCamera: Pick<FocusCameraSource, 'distance'>, mapResolvedFocus: Vec3,
+    celestialBodies: CelestialBodies,
     gridVisibility: CelestialGridVisibility,
   ): void {
     // 表示可否は、マップビューのときトグルに従う。
-    const mapView = camera.mode === 'map';
+    const mapView = view === 'map';
     const visibility: ScaleGridVisibility = {
       ecliptic: mapView && gridVisibility.eclipticScaleGrid,
       equator: mapView && gridVisibility.equatorScaleGrid,
@@ -44,9 +47,9 @@ export class ScaleGridView {
       visibility,
       moon instanceof OrbitingMotion ? toThreeDirection(moon.orbitNormalAt(displayTime)) : null,
       moonPole === null ? null : toThreeDirection(moonPole.axis),
-      camera.floatingOrigin.RtoThreeV3(cameraSystem.mapCamera.resolvedFocus),
+      camera.floatingOrigin.RtoThreeV3(mapResolvedFocus),
       camera.camera,
-      cameraSystem.mapCamera.dist,
+      mapCamera.distance,
       camera.viewport,
     );
   }
