@@ -55,8 +55,8 @@ export abstract class Ship extends Vessel {
   public get totalFuelConsumptionRate(): number { return this.partModel.totalFuelConsumptionRate; }
   public get totalFuel(): number { return this.partModel.totalFuel; }
   public get totalMaxFuel(): number { return this.partModel.totalMaxFuel; }
-  public consumeFuel(amount: number): number { return this.partModel.consumeFuel(amount); }
-  public refuelFuel(amount: number): number { return this.partModel.refuelFuel(amount); }
+  public consumeFuel(amount: number): void { this.partModel.consumeFuel(amount); }
+  public refuelFuel(amount: number): void { this.partModel.refuelFuel(amount); }
 
   public get radiatorParts(): readonly (RadiatorPart | undefined)[] { return this.partModel.radiatorParts; }
   public get solarParts(): readonly (SolarPanelPart | undefined)[] { return this.partModel.solarParts; }

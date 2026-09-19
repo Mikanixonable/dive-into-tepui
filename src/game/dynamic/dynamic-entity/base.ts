@@ -90,10 +90,9 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public readonly hp = null;
   public readonly maxHp = null;
 
-  // 燃料を amount だけ使い、要求に対して実際に賄えた割合 [0, 1] を返す。
-  public consumeFuel(amount: number): number {
-    if (amount <= 0) return 1.0;
-    return this.motion.consumeFuel(amount);
+  // 燃料を amount [kg] だけ、残量の範囲で使う。
+  public consumeFuel(amount: number): void {
+    this.motion.consumeFuel(amount);
   }
 
   // 基地 name を state・attitude に置く。id は採番器が配った識別子。_money から後ろは所持金 [Cr]・
