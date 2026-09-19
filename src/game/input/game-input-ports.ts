@@ -17,6 +17,7 @@ import type { Targeter } from '../targeter';
 export function gameInputPorts(
   game: Game, hud: Hud, pauseMenu: PauseMenu,
   cameraSystem: CameraSystem, viewManager: ViewManager, targeter: Targeter,
+  constructionActive: () => boolean,
 ): readonly GameInputPort[] {
   const speedCommands = simSpeedCommands(game.commands, game.simSpeedManager);
   const viewSelectionCommands = viewCommands(game.commands, game.viewer.view);
@@ -48,6 +49,7 @@ export function gameInputPorts(
       feature: 'target-command',
       isEnabled: () => !overlays.isGamePaused()
         && !overlays.isInputGated()
+        && !constructionActive()
         && viewManager.current === 'combat'
         && game.activeControllable !== null,
       commands: [gameCommand(K.targetSelect.code, K.targetSelect)],
@@ -55,7 +57,7 @@ export function gameInputPorts(
     },
     {
       feature: 'game-speed',
-      isEnabled: () => !overlays.isInputGated(),
+      isEnabled: () => !overlays.isInputGated() && !constructionActive(),
       commands: [
         gameCommand(K.warpSlower.code, K.warpSlower),
         gameCommand(K.warpFaster.code, K.warpFaster),
@@ -64,13 +66,13 @@ export function gameInputPorts(
     },
     {
       feature: 'view',
-      isEnabled: () => !overlays.isInputGated(),
+      isEnabled: () => !overlays.isInputGated() && !constructionActive(),
       commands: [gameCommand(K.toggleMapMode.code, K.toggleMapMode)],
       handleCommand: () => viewSelectionCommands.toggle(),
     },
     {
       feature: 'active-view',
-      isEnabled: () => !overlays.isInputGated(),
+      isEnabled: () => !overlays.isInputGated() && !constructionActive(),
       commands: [
         gameCommand(K.deleteNode.code, K.deleteNode),
         gameCommand(K.autoWarpToNode.code, K.autoWarpToNode),
@@ -82,11 +84,14 @@ export function gameInputPorts(
 
 // 操作対象の操作量と命令を受ける口。命令の口は、命令を適用できないフレームには閉じて他の受け手へ
 // 回す。ワープ倍率による可否は、このフレームの倍率が進行の位相の先頭で確定するので適用の側で見る。
-export function pilotInputPorts(pilotInput: PilotInput, game: Game, hud: Hud): readonly GameInputPort[] {
+export function pilotInputPorts(
+  pilotInput: PilotInput, game: Game, hud: Hud, constructionActive: () => boolean,
+): readonly GameInputPort[] {
   return [
     pilotInput.actionPort,
     pilotInput.commandPort(
-      () => !hud.overlayManager.isGamePaused() && game.activeStage.isPlaying && game.activeControllable !== null,
+      () => !hud.overlayManager.isGamePaused() && !constructionActive()
+        && game.activeStage.isPlaying && game.activeControllable !== null,
     ),
   ];
 }

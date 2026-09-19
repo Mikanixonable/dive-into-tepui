@@ -31,17 +31,20 @@ import { NavTargetPresenter } from './nav-target-presenter';
 import { AnchorEntities, FrameAnchors } from './frame-anchors';
 import { resolveOrbitReference } from './orbit-reference';
 import { navTargetCommands } from './viewer/nav-target-commands';
+import { viewCommands } from './viewer/view-commands';
 import { orbitGuideCommands } from './viewer/orbit-guide-commands';
 import { predictPanelCommands } from './viewer/predict-panel-commands';
 import { cameraCommands } from './viewer/camera-commands';
 import { entityDisplayCommands } from './viewer/entity-display-commands';
 import { ObjectWindows } from './pickable/object-windows';
+import { ModuleWindows } from './pickable/module-windows';
+import { ShipConstruction } from './ship/ship-construction';
 import { FrameControls } from './hud/frame/frame-controls';
 import { HudPanelPresenter } from './hud/hud-panel-presenter';
 import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-options-control';
 import { controlledLoopSfx } from './controlled-loop-sfx';
 import { UiSoundQueue } from './ui-sound-queue';
-import { GameInputRouter, type GameInputPort } from './input/game-input-router';
+import { GameInputRouter, gameInputMode, type GameInputPort } from './input/game-input-router';
 import { gameInputPorts, pilotInputPorts } from './input/game-input-ports';
 import { rawGameInputAdapter } from './input/raw-game-input-adapter';
 import { PilotInput } from './input/pilot-input';
@@ -93,6 +96,8 @@ export class GamePresentation {
   private readonly mapView: MapView;
   private readonly viewManager: ViewManager;
   private readonly objectWindows: ObjectWindows;
+  private readonly moduleWindows: ModuleWindows;
+  private readonly shipConstruction: ShipConstruction;
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
   private readonly viewOptions: ViewOptionsControl;
   private readonly targeter: Targeter;
@@ -155,6 +160,21 @@ export class GamePresentation {
     this.displayWindowManager = new DisplayWindowManager(
       hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.predictPanel, predictCommands,
     );
+    this.shipConstruction = new ShipConstruction(
+      scene.scene, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
+      hud,
+      (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
+    );
+    const viewSelectionCommands = viewCommands(commands, viewer.view);
+    this.moduleWindows = new ModuleWindows(
+      hud, controlSelection, dynamicSystem, this.shipConstruction,
+      () => {
+        if (!viewer.view.canSelect('combat')) return false;
+        viewSelectionCommands.select('combat');
+        return true;
+      },
+      () => this.objectWindows.close(),
+    );
     // 表示パネル。左レールの並びはパネルを足した順で決まるので、同じレールへ足す座標系パネル
     // (FrameControls)より先に組む。
     this.viewOptions = new ViewOptionsControl(
@@ -187,6 +207,7 @@ export class GamePresentation {
       viewer.camera, viewer.view, () => this.viewManager.activeView, pauseMenu,
       controlSelection, this.frameControls, cameraCommandPort.combat,
       activeStage, this.targeter, this.displayWindowManager,
+      this.moduleWindows,
       objectMenuCommands(commands, controlSelection),
     );
     this.combatView = new CombatView(
@@ -215,9 +236,12 @@ export class GamePresentation {
     );
     this.inputRouter = new GameInputRouter(
       rawGameInputAdapter(this.input),
-      gameInputPorts(game, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter),
+      gameInputPorts(
+        game, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
+        () => this.shipConstruction.active,
+      ),
     );
-    this.pilotPorts = pilotInputPorts(this.pilotInput, game, hud);
+    this.pilotPorts = pilotInputPorts(this.pilotInput, game, hud, () => this.shipConstruction.active);
   }
 
   // このランが scene・Hud・マーカー装置・window/document/canvas へ足したものを残らず取り除く。
@@ -229,6 +253,8 @@ export class GamePresentation {
     this.hudPanels.dispose();
     this.mapView.dispose();
     this.combatView.dispose();
+    this.moduleWindows.close();
+    this.shipConstruction.dispose();
     this.objectWindows.dispose();
     this.worldSfx.dispose();
     this.touchControls.dispose();
@@ -274,17 +300,26 @@ export class GamePresentation {
     // 連打の判定には、直前の進行が確定させたワープ倍率で艦が動けるかを渡す(CONTROLS.md)。
     this.pilotInput.beginFrame(nowMs, this.game.simSpeedManager.canShipAct);
     this.inputRouter.route();
+    const inputMode = gameInputMode(
+      this.isPaused, overlays.isInputGated(), this.shipConstruction.active,
+    );
     // 同じフレームの route で開いたモーダルも、ここから先のビューの操作を止める。
-    if (!overlays.isInputGated()) {
+    if (inputMode.world) {
       // マップの Δv 編集は操作対象の解釈より先に押下中キーを確保する。
       this.viewManager.activeView.updateActions(dt);
     }
     this.inputRouter.routeAdditional(this.pilotPorts);
-    this.cameraSystem.handleInput(this.input, dt, viewport, this.game.activeControllable);
+    if (inputMode.camera) {
+      this.cameraSystem.handleInput(this.input, dt, viewport, this.game.activeControllable);
+    }
     // ピックは直前の sync が確定したカメラと候補列で解く — 入力の解釈はこのフレームの導出より前に走る。
-    if (!this.isPaused && !overlays.isInputGated() && this.cameraFrame !== null) {
+    if ((inputMode.world || inputMode.construction) && this.cameraFrame !== null) {
       this.sections.switchTo(SECTION.input, SECTION.pointer);
-      this.viewManager.activeView.handlePointer(this.cameraFrame);
+      if (inputMode.construction) {
+        this.shipConstruction.handlePointer(this.input, this.cameraSystem, viewport);
+      } else {
+        this.viewManager.activeView.handlePointer(this.cameraFrame);
+      }
       this.sections.switchTo(SECTION.pointer, SECTION.input);
     }
   }
@@ -410,6 +445,7 @@ export class GamePresentation {
     dynamicSystem.sync(
       displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay, orbitRef,
     );
+    this.shipConstruction.sync(camera);
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
     this.playerMarkers.sync(
       controlled !== null && isModularShip(controlled) ? controlled : null, view, camera.project,
@@ -440,6 +476,7 @@ export class GamePresentation {
 
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
     this.objectWindows.sync();
+    this.moduleWindows.sync();
     this.planDisplay.sync(camera, view, displayWindow, nowMs);
 
     this.entityLines.sync(
