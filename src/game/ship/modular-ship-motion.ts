@@ -9,7 +9,7 @@ import {
   type DynamicMotionBehavior,
 } from '../dynamic/dynamic-motion';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
+import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import {
   MAX_HULL_TEMP,
   SHIP_RADIATING_AREA_PER_MASS,
@@ -17,11 +17,13 @@ import {
   SHIP_SRP_COEFF,
   shipMotionOptions,
 } from '../dynamic/dynamic-entity/ship';
-import type { PowerSaveData, RadiatorSaveData } from '../save/save-data';
+import type { SerializedPowerSystem } from '../player/power';
+import type { SerializedRadiatorSystem } from '../player/radiator';
 import { AeroLoad } from '../player/aero-load';
-import { BeltController } from '../player/belt';
+import { BeltController, type SerializedBeltController } from '../player/belt';
 import { PowerSystem } from '../player/power';
 import { RadiatorSystem, type RadiatorSide } from '../player/radiator';
+import { DeployablePanelState } from '../player/deployable-panel-state';
 import type { ShipAssembly } from './ship-assembly';
 import { shipPhysicsShape, type ShipPhysicsShape } from './ship-physics-shape';
 
@@ -39,13 +41,13 @@ export interface ModularShipMotionReactions {
     dt: number, position: Vec3, atmosphereBody: CelestialBody | null, atmospherePivot: number,
   ): void;
   receiveEntityContact?(
-    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void;
   receiveSurfaceContact?(
     body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void;
   receiveRadiatorContact?(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    side: RadiatorSide, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void;
   receiveStructuralLoss?(services: DynamicReactionServices): void;
   receiveBurnUp?(services: DynamicReactionServices): void;
@@ -54,8 +56,9 @@ export interface ModularShipMotionReactions {
 export interface ModularShipMotionSystems {
   readonly temperature?: number;
   readonly beltLinkCount?: number;
-  readonly radiatorSave?: RadiatorSaveData;
-  readonly powerSave?: PowerSaveData;
+  readonly beltSave?: SerializedBeltController;
+  readonly radiatorSave?: SerializedRadiatorSystem;
+  readonly powerSave?: SerializedPowerSystem;
 }
 
 class ModularShipBehavior implements DynamicMotionBehavior {
@@ -106,12 +109,15 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     );
   }
 
-  public contactProxies(self: DynamicMotion, simTime: number, dt: number): readonly DynamicMotion[] {
+  public placeContactProxies(self: DynamicMotion, simTime: number, dt: number): void {
     const motion = modularShipMotionOf(self);
-    return [
-      ...motion.radiator.contactFolds(motion.state.r, motion.state.v, motion.att, simTime),
-      ...motion.belt.contactSections(simTime, dt, motion.state.r, motion.state.v, motion.att),
-    ];
+    motion.radiator.placeContactFolds(motion.state.r, motion.state.v, motion.att, simTime);
+    motion.belt.placeContactSections(motion, simTime, dt, motion.state.r, motion.state.v, motion.att);
+  }
+
+  public contactProxies(self: DynamicMotion): readonly EntityContactParticipant[] {
+    const motion = modularShipMotionOf(self);
+    return [...motion.radiator.contactFolds, ...motion.belt.contactSections];
   }
 
   public applyContactProxies(self: DynamicMotion, dt: number): void {
@@ -188,7 +194,7 @@ function componentwiseAngularMomentumVelocity(
 // 原点との差は centerOffset にだけ保持する。
 export class ModularShipMotion extends DynamicMotion {
   private physicsShapeValue: ShipPhysicsShape;
-  private readonly collisionGraceUntil = new Map<DynamicMotion, number>();
+  private readonly collisionGraceUntil = new Map<EntityContactParticipant, number>();
   public readonly belt: BeltController;
   public readonly aero = new AeroLoad();
   public readonly radiator: RadiatorSystem;
@@ -220,28 +226,36 @@ export class ModularShipMotion extends DynamicMotion {
       inertia: shape.mass.inertia,
       compoundShape: shape.shape,
     });
-    this.belt = new BeltController(this, systems.beltLinkCount ?? 18);
+    this.belt = systems.beltSave
+      ? BeltController.deserialize(systems.beltSave)
+      : BeltController.create(systems.beltLinkCount ?? 18);
     this.synchronizeBeltMount(shape);
     this.radiator = new RadiatorSystem(
       this,
       (side, other, contact, services) => (
         reactions.receiveRadiatorContact?.(side, other, contact, services)
       ),
-      systems.radiatorSave,
+      systems.radiatorSave?.up ? DeployablePanelState.deserialize(systems.radiatorSave.up) ?? undefined : undefined,
+      systems.radiatorSave?.down ? DeployablePanelState.deserialize(systems.radiatorSave.down) ?? undefined : undefined,
     );
-    this.power = new PowerSystem(systems.powerSave);
+    this.power = systems.powerSave ? PowerSystem.deserialize(systems.powerSave) : new PowerSystem();
   }
 
   public get physicsShape(): ShipPhysicsShape { return this.physicsShapeValue; }
   public get centerOffset(): Vec3 { return this.physicsShapeValue.centerOffset; }
 
-  public ignoreCollisionWith(other: DynamicMotion, until: number): void {
+  public resetRigidState(state: KinematicState, attitude: Attitude = this.att): void {
+    this.resetAttitude(attitude);
+    this.reset(state);
+  }
+
+  public ignoreCollisionWith(other: EntityContactParticipant, until: number): void {
     if (!Number.isFinite(until) || until <= this.state.t) return;
     this.collisionGraceUntil.set(other, until);
     this.invalidatePrediction();
   }
 
-  public contactsAllowedWith(other: DynamicMotion, simTime: number): boolean {
+  public contactsAllowedWith(other: EntityContactParticipant, simTime: number): boolean {
     const until = this.collisionGraceUntil.get(other);
     if (until === undefined) return true;
     if (simTime > until) {
@@ -281,8 +295,7 @@ export class ModularShipMotion extends DynamicMotion {
     const nextW = componentwiseAngularMomentumVelocity(
       this.att.w, previous.mass.inertia, next.mass.inertia,
     );
-    this.att = { ...this.att, w: nextW };
-    this.prevAtt = { ...this.prevAtt, w: nextW };
+    this.resetAttitude({ ...this.att, w: nextW }, { ...this.prevAtt, w: nextW });
     this.replaceCollisionProperties({
       mass: next.mass.totalMass,
       radius: next.mass.boundingRadius,

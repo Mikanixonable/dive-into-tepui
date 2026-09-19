@@ -81,17 +81,17 @@ export class Input {
   // 直近に検知した入力種別が変わるたびに通知する(タッチ⇄マウス/キーボードの切替を含む)。
   onPointerKindChange: ((kind: PointerKind) => void) | null = null;
   private lastPointerKind: PointerKind | null = null;
-  // keydown・pointerdown・仮想キー押下(setVirtualKey の down=true)でのみ発火する
-  // (pointermove では発火しない)。
-  onUserGesture: (() => void) | null = null;
   // タッチの長押し(右クリック合成)。1本指のジェスチャにしか存在しないので
   // pointers のような Map ではなく単一の状態で持つ。
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressPointerId: number | null = null;
   private longPressFired = false;
-  // タッチの長押しに対する視覚フィードバック。point で表示位置を渡し、null で非表示にする。
-  onLongPressFeedback: ((point: PointerPoint | null) => void) | null = null;
+  private _longPressPoint: PointerPoint | null = null;
+
+  // 長押しの判定中であることを示す画面上の位置。押し始めから TOUCH_LONG_PRESS_FEEDBACK_MS が
+  // 経つまでと、右クリックを合成した後は null。
+  public get longPressPoint(): PointerPoint | null { return this._longPressPoint; }
   // 直近に成立したタップ(ダブルタップ合成用)。タッチ由来でなければ null のまま。
   private lastTap: { x: number; y: number; time: number } | null = null;
   // 直近に成立したクリックがタッチ由来だったか。真なら、二重計上を避けるため
@@ -123,10 +123,7 @@ export class Input {
     if (e.code === FOCUS_GUARD_CODE || SCROLL_GUARD_KEYS.some((k) => matchesCode(k, e.code))) {
       e.preventDefault();
     }
-    if (!e.repeat) {
-      this.pendingPresses.push(e.code);
-      this.onUserGesture?.();
-    }
+    if (!e.repeat) this.pendingPresses.push(e.code);
     this.keys.add(e.code);
     this.notePointerKind('mouse');
   };
@@ -180,7 +177,6 @@ export class Input {
   // 左ボタン・右ボタンはともにドラッグ/ピンチ開始(右クリックは閾値未満ならコンテキストメニュー用のクリックとして扱う)、中ボタンはパン開始として扱う。
   private readonly handlePointerDown = (e: PointerEvent): void => {
     this.notePointerKind(e.pointerType === 'touch' ? 'touch' : 'mouse');
-    this.onUserGesture?.();
     const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
     const isLeft = e.button === 0 && !e.ctrlKey;
     if (isLeft) {
@@ -325,26 +321,26 @@ export class Input {
   }
 
   // pointerId の長押しタイマーを開始する。TOUCH_LONG_PRESS_FEEDBACK_MS 後に
-  // onLongPressFeedback を、TOUCH_LONG_PRESS_MS 後に右クリックを合成する。
+  // longPressPoint を立て、TOUCH_LONG_PRESS_MS 後に右クリックを合成する。
   private startLongPress(pointerId: number, point: PointerPoint): void {
     this.cancelLongPress();
     this.longPressPointerId = pointerId;
     this.longPressFired = false;
-    this.longPressFeedbackTimer = setTimeout(() => this.onLongPressFeedback?.(point), TOUCH_LONG_PRESS_FEEDBACK_MS);
+    this.longPressFeedbackTimer = setTimeout(() => { this._longPressPoint = point; }, TOUCH_LONG_PRESS_FEEDBACK_MS);
     this.longPressTimer = setTimeout(() => {
       this.longPressFired = true;
-      this.onLongPressFeedback?.(null);
+      this._longPressPoint = null;
       this.pendingRightClicks.push(point);
     }, TOUCH_LONG_PRESS_MS);
   }
 
-  // 進行中の長押し判定を打ち切り、表示中の視覚フィードバックがあれば消す。
+  // 進行中の長押し判定を打ち切る。
   private cancelLongPress(): void {
     if (this.longPressTimer !== null) clearTimeout(this.longPressTimer);
     if (this.longPressFeedbackTimer !== null) clearTimeout(this.longPressFeedbackTimer);
     this.longPressTimer = null;
     this.longPressFeedbackTimer = null;
-    if (this.longPressPointerId !== null) this.onLongPressFeedback?.(null);
+    this._longPressPoint = null;
     this.longPressPointerId = null;
   }
 
@@ -416,7 +412,6 @@ export class Input {
     if (down) {
       if (!this.keys.has(key.code)) this.pendingPresses.push(key.code);
       this.keys.add(key.code);
-      this.onUserGesture?.();
     } else {
       this.keys.delete(key.code);
     }

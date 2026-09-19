@@ -1,7 +1,7 @@
 // 主鎖を球の数珠つなぎで覆い、その列で静止球・掃引球との接触を判定する。表示形態に依らない
 // 形なので、球列はアセットごとに1度組めば足りる。
 import { add, addScaled, lenSq, norm, scale, sub, v3, type Vec3 } from '../../math/vec3';
-import { qInvert, qRotate, type Quat } from '../../math/quat';
+import { qInvert, qRotate, qSlerp, type Quat } from '../../math/quat';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { linearSphereContact } from '../../physics/sphere-contact';
 import type { SphereHit } from '../../math/triangle-mesh';
@@ -152,46 +152,87 @@ export class ProteinSphereCollisionGeometry {
    */
   public testSweptSphereCollision(
     previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
-    previousSelfState: KinematicState, selfState: KinematicState, att: Quat,
+    previousSelfState: KinematicState, selfState: KinematicState,
+    previousAttitude: Quat, attitude: Quat = previousAttitude,
   ): { readonly hit: SphereHit; readonly toi: number } | null {
     const duration = selfState.t - previousSelfState.t;
     if (!(duration > 0)) return null;
 
     // 始点で既に重なっているなら、跨ぎは区間の内側に無い。
     const initial = this.testSphereCollision(
-      previousSphereCenter, sphereRadius, previousSelfState.r, att,
+      previousSphereCenter, sphereRadius, previousSelfState.r, previousAttitude,
     );
     if (initial !== null) return { hit: initial, toi: 0 };
 
-    // 棄却は敵ローカルで済ませ、生き残った球だけを ECI へ持ち上げる。
-    const inverse = qInvert(att);
-    const localStart = qRotate(inverse, sub(previousSphereCenter, previousSelfState.r));
-    const localEnd = qRotate(inverse, sub(sphereCenter, selfState.r));
-    const selfVelocity = scale(sub(selfState.r, previousSelfState.r), 1 / duration);
-    const sphereVelocity = scale(sub(sphereCenter, previousSphereCenter), 1 / duration);
-    const sweepStart = kinematicState<'eci'>(previousSelfState.t, previousSphereCenter, sphereVelocity);
-    const sweepEnd = kinematicState<'eci'>(selfState.t, sphereCenter, sphereVelocity);
+    // 外接球で、回転しても接触し得ない経路を先に落とす。姿勢が変わるので、球列を
+    // 現在姿勢へ戻してから線分距離を測ることはできない。
+    const relativeStart = sub(previousSphereCenter, previousSelfState.r);
+    const relativeEnd = sub(sphereCenter, selfState.r);
+    if (segmentSphereDistanceSq(relativeStart, relativeEnd, { cx: 0, cy: 0, cz: 0, radius: 0 })
+      > (this.outerRadius + sphereRadius) ** 2) return null;
+
+    // 姿勢を最短経路で補間し、回転角が大きい区間は分割する。各区間の球中心は
+    // 線分として解くため、固定形状を現在姿勢だけで評価する近似を避けられる。
+    const rotationAngle = 2 * Math.acos(Math.min(1, Math.abs(
+      previousAttitude.x * attitude.x
+      + previousAttitude.y * attitude.y
+      + previousAttitude.z * attitude.z
+      + previousAttitude.w * attitude.w,
+    )));
+    const segments = Math.max(1, Math.ceil(rotationAngle / (Math.PI / 12)));
 
     let nearest: { readonly hit: SphereHit; readonly toi: number } | null = null;
-    for (const sphere of this.spheres) {
-      const reach = sphere.radius + sphereRadius;
-      if (!(segmentSphereDistanceSq(localStart, localEnd, sphere) < reach * reach)) continue;
-      const offsetToCenter = qRotate(att, v3(sphere.cx, sphere.cy, sphere.cz));
-      const centerStart = kinematicState<'eci'>(
-        previousSelfState.t, add(previousSelfState.r, offsetToCenter), selfVelocity);
-      const centerEnd = kinematicState<'eci'>(
-        selfState.t, add(selfState.r, offsetToCenter), selfVelocity);
-      const contact = linearSphereContact(centerStart, centerEnd, sweepStart, sweepEnd, reach);
-      // 始点の重なりは上で除いてあるので、跨ぎは必ず外から内への1本。
-      if (contact === null || contact.startsInside || contact.crossing === null) continue;
-      const { toi, normal } = contact.crossing;
-      if (nearest !== null && toi >= nearest.toi) continue;
-      const center = addScaled(centerStart.r, sub(centerEnd.r, centerStart.r), toi);
-      // TOI では2球が接するだけなので、押し戻し量は 0 になる。反発は法線と相対速度で決まる。
-      nearest = { hit: { point: addScaled(center, normal, sphere.radius), normal, depth: 0 }, toi };
+    for (let segment = 0; segment < segments; segment++) {
+      const u0 = segment / segments;
+      const u1 = (segment + 1) / segments;
+      const segmentDuration = duration * (u1 - u0);
+      const segmentStartTime = previousSelfState.t + duration * u0;
+      const segmentEndTime = previousSelfState.t + duration * u1;
+      const rootStart = interpolate(previousSelfState.r, selfState.r, u0);
+      const rootEnd = interpolate(previousSelfState.r, selfState.r, u1);
+      const otherStart = interpolate(previousSphereCenter, sphereCenter, u0);
+      const otherEnd = interpolate(previousSphereCenter, sphereCenter, u1);
+      const qStart = qSlerp(previousAttitude, attitude, u0);
+      const qEnd = qSlerp(previousAttitude, attitude, u1);
+      const sphereVelocity = scale(sub(otherEnd, otherStart), 1 / segmentDuration);
+      const sweepStart = kinematicState<'eci'>(segmentStartTime, otherStart, sphereVelocity);
+      const sweepEnd = kinematicState<'eci'>(segmentEndTime, otherEnd, sphereVelocity);
+
+      for (const sphere of this.spheres) {
+        const offset = v3(sphere.cx, sphere.cy, sphere.cz);
+        const centerStartPosition = add(rootStart, qRotate(qStart, offset));
+        const centerEndPosition = add(rootEnd, qRotate(qEnd, offset));
+        const centerVelocity = scale(sub(centerEndPosition, centerStartPosition), 1 / segmentDuration);
+        const centerStart = kinematicState<'eci'>(segmentStartTime, centerStartPosition, centerVelocity);
+        const centerEnd = kinematicState<'eci'>(segmentEndTime, centerEndPosition, centerVelocity);
+        const reach = sphere.radius + sphereRadius;
+        const contact = linearSphereContact(centerStart, centerEnd, sweepStart, sweepEnd, reach);
+        // 始点の重なりは上で除いてあるので、跨ぎは必ず外から内への1本。
+        if (contact === null || contact.startsInside || contact.crossing === null) continue;
+        const { toi, normal } = contact.crossing;
+        const globalToi = u0 + (u1 - u0) * toi;
+        if (nearest !== null && globalToi >= nearest.toi) continue;
+        const center = interpolate(previousSelfState.r, selfState.r, globalToi);
+        const hitAttitude = qSlerp(previousAttitude, attitude, globalToi);
+        // TOI では2球が接するだけなので、押し戻し量は 0 になる。接触点は
+        // 相手の球ではなく、Protein側の球面上へ置く。
+        nearest = {
+          hit: {
+            point: addScaled(add(center, qRotate(hitAttitude, offset)), normal, sphere.radius),
+            normal,
+            depth: 0,
+          },
+          toi: globalToi,
+        };
+      }
     }
     return nearest;
   }
+}
+
+// 姿勢補間に対応する位置補間。各状態は同じ時間軸上にある。
+function interpolate(start: Vec3, end: Vec3, t: number): Vec3 {
+  return add(start, scale(sub(end, start), t));
 }
 
 // 外接箱の半対角に、リボン断面ぶんの余裕を足した半径 [Å]。

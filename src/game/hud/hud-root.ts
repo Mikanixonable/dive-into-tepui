@@ -1,13 +1,11 @@
 // HUD の静的 DOM/スタイル構築。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { injectThemeVariables } from '../../theme';
 import type { HudShell } from '../../hud/hud-shell';
 import { createHudElement } from '../../hud/hud-element';
 import { HelpPanel } from './windows/help-panel';
-import { PanelShell, wirePanelCollapse } from './panel-shell';
+import { PanelShell } from './panel-shell';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
-import { MARKER_STYLE } from './style/marker-style';
 import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
 import { MAP_PANEL_STYLE } from './style/map-panel-style';
 import { STAGE_STATUS_STYLE } from './style/stage-status-style';
@@ -18,20 +16,21 @@ import { isCompactViewport } from '../../hud/breakpoints';
 import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 import type { CollapseToggleLabels } from '../../hud/widgets';
+import type { PanelCollapse } from './panel-shell';
 
-// トークン→骨格→マーカー→パネル群→ビュー→ウィジェット共通の順に結合する。
+// 後に置いた規則が勝つので、トークン→骨格→パネル群→ビューの順に重ねる。
 const STYLE =
-  LAYOUT_TOKENS_STYLE + SKELETON_STYLE + MARKER_STYLE
+  LAYOUT_TOKENS_STYLE + SKELETON_STYLE
   + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE;
 
 
+// 組み上がった HUD の DOM への参照一式。
 interface HudDomRefs {
   readonly combatRoot: HudViewRoot;
   readonly mapRoot: HudViewRoot;
-  readonly svgOverlay: SVGSVGElement;
   readonly helpPanel: HelpPanel;
   readonly els: Map<string, HTMLElement>;
 }
@@ -62,9 +61,9 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
 // レールの収納トグルを配線する。折りたたみ状態はビュー別に保存し、一度も操作されていなければ
 // compact 幅のとき畳んで始める。
 function buildRailToggle(
-  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: ViewMode,
+  root: HTMLElement, rail: HTMLElement, collapse: PanelCollapse, side: 'left' | 'right', view: ViewMode,
 ): void {
-  wirePanelCollapse({
+  collapse.wire({
     toggleRoot: root,
     toggleId: `hud-${view}-rail-toggle-${side}`,
     toggleClassName: `rail-toggle rail-toggle-${side}`,
@@ -75,26 +74,23 @@ function buildRailToggle(
   });
 }
 
-// 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
-function buildViewRoot(parent: HTMLElement, id: string, view: ViewMode): HudViewRoot {
-  // ビューのルート要素を作る。
+// 戦闘/マップ一方ぶんの HUD ルートを組む。
+function buildViewRoot(parent: HTMLElement, collapse: PanelCollapse, id: string, view: ViewMode): HudViewRoot {
   const element = createHudElement('div', id, parent, `hud-view-root hud-${view}-root`);
-  // 左右のレールを子として組む。
+  // パネルの置き場は左右のレールで、それぞれ収納トグルを持つ。
   const leftRail = createHudElement(
     'div', `${id}-rail-left`, element, 'hud-rail hud-rail-left',
   );
   const rightRail = createHudElement(
     'div', `${id}-rail-right`, element, 'hud-rail hud-rail-right',
   );
-  // 各レールの収納トグルを配線する。
-  buildRailToggle(element, leftRail, 'left', view);
-  buildRailToggle(element, rightRail, 'right', view);
+  buildRailToggle(element, leftRail, collapse, 'left', view);
+  buildRailToggle(element, rightRail, collapse, 'right', view);
   return { element, leftRail, rightRail };
 }
 
 // PanelShell が組んだ見出し・本文・開閉ボタンを、アクセシブルな一領域として関連付ける。
 function configureCombatPanel(panel: PanelShell): void {
-  // 見出しと本文を id で結び、region として関連付ける。
   const titleId = `${panel.el.id}-title`;
   const bodyId = `${panel.el.id}-body`;
   panel.el.classList.add('combat-panel');
@@ -121,25 +117,9 @@ function injectStyle(): void {
   document.head.appendChild(style);
 }
 
-// マーカーのリード線を描く SVG オーバーレイを作る。
-function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
-  // 画面全体に重ねる透過 SVG 要素を用意する。
-  const svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svgOverlay.setAttribute('aria-hidden', 'true');
-  svgOverlay.style.position = 'absolute';
-  svgOverlay.style.inset = '0';
-  svgOverlay.style.width = '100%';
-  svgOverlay.style.height = '100%';
-  svgOverlay.style.pointerEvents = 'none';
-  svgOverlay.style.zIndex = '0';
-  // 呼び出し元のレイヤへ組み込む。
-  root.appendChild(svgOverlay);
-  return svgOverlay;
-}
-
 // 常設 VESSEL パネルを右レールへ組む。
-function buildVesselStatusPanel(rightRail: HTMLElement): void {
-  const status = new PanelShell(rightRail, 'hud-vessel-status', 'Vessel');
+function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
+  const status = new PanelShell(rightRail, collapse, 'hud-vessel-status', 'Vessel');
   configureCombatPanel(status);
   // 計器の行(燃料・RCS・出力・動圧・各モード・弾薬)と、展開・スロットル・主要操作の置き場。
   status.body.innerHTML = `
@@ -186,9 +166,9 @@ function buildVesselStatusPanel(rightRail: HTMLElement): void {
 }
 
 // 常設 ORBIT パネルを左レールへ組む。マップビューと compact 幅では畳んで始める。
-function buildOrbitInfoPanel(leftRail: HTMLElement): void {
+function buildOrbitInfoPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
   const orbit = new PanelShell(
-    leftRail, 'hud-orbit', 'Orbit', (view) => view === 'map' || isCompactViewport(),
+    leftRail, collapse, 'hud-orbit', 'Orbit', (view) => view === 'map' || isCompactViewport(),
   );
   configureCombatPanel(orbit);
   // 基準天体・高度・速度・軌道要素・動圧・機体温度の行と、軌道の操作の置き場。
@@ -213,12 +193,12 @@ function buildOrbitInfoPanel(leftRail: HTMLElement): void {
 }
 
 // ブースター燃焼管理パネルを左レールへ組む。
-function buildBurnManagementPanel(leftRail: HTMLElement): void {
+function buildBurnManagementPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
   const burnManagement = new PanelShell(
-    leftRail, 'burn-management-panel', '燃焼管理',
+    leftRail, collapse, 'burn-management-panel', '燃焼管理',
   );
   configureCombatPanel(burnManagement);
-  // module 数・総質量・合計燃料・燃焼状態と、booster/decoupler の一覧。
+  // 段数・総質量・最後尾燃料・燃焼状態の行と、ブースター操作の置き場。
   burnManagement.body.innerHTML = `
     <dl class="metric-list burn-management-metrics">
       <div class="row metric">
@@ -228,10 +208,10 @@ function buildBurnManagementPanel(leftRail: HTMLElement): void {
         <dt class="k">総質量</dt><dd class="v"><output data-id="burn-total-mass">—</output></dd>
       </div>
       <div class="row metric">
-        <dt class="k">合計燃料</dt>
+        <dt class="k">最後尾燃料</dt>
         <dd class="v burn-fuel-readout">
           <span class="burn-fuel-meter w-meter-track" data-id="burn-active-fuel-meter" role="progressbar"
-            aria-label="ブースター合計燃料" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+            aria-label="最後尾ブースター燃料" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
             <span class="w-meter-fill" data-id="burn-active-fuel-fill"></span>
           </span>
           <output class="burn-fuel-value" data-id="burn-active-fuel-value">—</output>
@@ -244,8 +224,9 @@ function buildBurnManagementPanel(leftRail: HTMLElement): void {
     <div class="metric-list burn-module-list" data-id="burn-module-list" aria-label="ブースターとデカプラー"></div>`;
 }
 
-function buildShipConstructionPanel(leftRail: HTMLElement): void {
-  const construction = new PanelShell(leftRail, 'ship-construction-panel', '船体建造');
+// 戦闘ビューの左レールへ、選択中 dock から船体を組み立てるパネルを組む。
+function buildShipConstructionPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
+  const construction = new PanelShell(leftRail, collapse, 'ship-construction-panel', '船体建造');
   configureCombatPanel(construction);
   construction.body.innerHTML = `
     <div data-id="construction-controls"></div>
@@ -264,8 +245,8 @@ function buildShipConstructionPanel(leftRail: HTMLElement): void {
 }
 
 // 常設 TARGET パネルを右レールへ組む。ロック対象が無い間は隠す。
-function buildTargetPanel(rightRail: HTMLElement): void {
-  const target = new PanelShell(rightRail, 'hud-target', 'Target');
+function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
+  const target = new PanelShell(rightRail, collapse, 'hud-target', 'Target');
   configureCombatPanel(target);
   target.setHidden(true);
   // 名前・距離・速度・装甲の行と、タンパク質標的の詳細欄。
@@ -305,8 +286,8 @@ function buildTargetPanel(rightRail: HTMLElement): void {
 }
 
 // 常設 ENEMIES パネルを右レールへ組む。件数バッジを見出しへ添える。
-function buildEnemiesPanel(rightRail: HTMLElement): void {
-  const enemies = new PanelShell(rightRail, 'hud-enemies', 'Enemies', isCompactViewport());
+function buildEnemiesPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
+  const enemies = new PanelShell(rightRail, collapse, 'hud-enemies', 'Enemies', isCompactViewport());
   configureCombatPanel(enemies);
   const count = document.createElement('span');
   count.className = 'panel-count';
@@ -317,22 +298,21 @@ function buildEnemiesPanel(rightRail: HTMLElement): void {
 }
 
 // 常設の情報パネル群を左右のドックへ組む。
-function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
-  buildVesselStatusPanel(rightRail);
-  buildOrbitInfoPanel(leftRail);
-  buildBurnManagementPanel(leftRail);
-  buildShipConstructionPanel(leftRail);
-  buildTargetPanel(rightRail);
-  buildEnemiesPanel(rightRail);
+function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement, collapse: PanelCollapse): void {
+  buildVesselStatusPanel(rightRail, collapse);
+  buildOrbitInfoPanel(leftRail, collapse);
+  buildBurnManagementPanel(leftRail, collapse);
+  buildShipConstructionPanel(leftRail, collapse);
+  buildTargetPanel(rightRail, collapse);
+  buildEnemiesPanel(rightRail, collapse);
 }
 
-// マップビューの縮尺バー(数値と目盛りルーラー)を組む。
+// マップビューの縮尺バーを組む。
 function buildMapScale(root: HTMLElement): void {
-  // 縮尺表示の要素を作る。
   const mapScale = createHudElement('div', 'hud-map-scale', root, 'ui-surface-quiet');
   mapScale.dataset.id = 'map-scale';
   mapScale.setAttribute('aria-label', 'マップ縮尺');
-  // 数値表示と目盛りルーラーを組む。
+  // 数値表示と、その下の目盛りルーラー。
   mapScale.innerHTML = `
     <div><span class="map-scale-value" data-id="map-scale-value"></span></div>
     <div class="map-scale-ruler" data-id="map-scale-ruler">
@@ -342,13 +322,11 @@ function buildMapScale(root: HTMLElement): void {
     </div>`;
 }
 
-// 画面全体のトップバーを組む。1行目はビュー切替と現在の対象バッジの置き場、2行目は MET・
-// 時間加速・NODE WARP。
+// 画面全体のトップバーを組む。
 function buildTopBar(root: HTMLElement): void {
-  // トップバー本体の section 要素を作る。
   const bar = createHudElement('section', 'hud-topbar', root, 'ui-surface-quiet');
   bar.setAttribute('aria-label', 'Mission status');
-  // ビュー切替行と、MET・時間加速・NODE WARP の行を組み立てる。
+  // 1行目はビュー切替と現在の対象バッジの置き場、2行目は MET・時間加速・NODE WARP。
   bar.innerHTML = `
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
     <div class="gs-row">
@@ -362,7 +340,6 @@ function buildTopBar(root: HTMLElement): void {
 
 // 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味。
 function buildChaseReset(root: HTMLElement): void {
-  // リセットボタン本体を作る。
   const chaseReset = createHudElement('button', 'hud-chase-reset', root, 'ui-surface-quiet');
   chaseReset.setAttribute('type', 'button');
   chaseReset.setAttribute('aria-label', '視点をリセット');
@@ -402,21 +379,18 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
-// HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを構築し、DOM 参照をまとめて返す。
-export function buildHudDom(shell: HudShell, renderStyle: RenderStyle): HudDomRefs {
-  injectThemeVariables();
+// HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
+export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle): HudDomRefs {
   injectStyle();
   startViewportTracking();
   const { root, layers } = shell;
-  // 模式図では白背景になるため、マーカー配色をそれに合わせて切り替える手掛かりとして
-  // 現在のスタイルをルート要素の属性で公開する。
+  // 模式図では白背景になるので、配色を切り替えられるよう現在のスタイルを属性で公開する。
   root.dataset['renderStyle'] = renderStyle;
-  const svgOverlay = buildSvgOverlay(layers.marker);
-  const combatRoot = buildViewRoot(layers.panel, 'hud-combat-root', 'combat');
-  const mapRoot = buildViewRoot(layers.panel, 'hud-map-root', 'map');
+  const combatRoot = buildViewRoot(layers.panel, collapse, 'hud-combat-root', 'combat');
+  const mapRoot = buildViewRoot(layers.panel, collapse, 'hud-map-root', 'map');
 
   // 常設パネル群を組む。
-  buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
+  buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, collapse);
   buildTopBar(layers.panel);
   buildChaseReset(layers.panel);
   buildMapScale(mapRoot.element);
@@ -426,5 +400,5 @@ export function buildHudDom(shell: HudShell, renderStyle: RenderStyle): HudDomRe
   buildHelpBadge(layers.panel, helpPanel);
 
   const els = collectDataIdElements(root);
-  return { combatRoot, mapRoot, svgOverlay, helpPanel, els };
+  return { combatRoot, mapRoot, helpPanel, els };
 }

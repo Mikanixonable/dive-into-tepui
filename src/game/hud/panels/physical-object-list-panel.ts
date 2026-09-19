@@ -1,10 +1,13 @@
+// マップビュー右部に常設の軌道物体一覧ウィンドウ。種別ごとの区画に見出しで開閉し、
+// ダブルクリックでフォーカスを移動する。天体区画は衛星・ラグランジュ点を親の下のトグル子
+// メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 import { hudRail } from '../hud-root';
 import {
   Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
 } from '../../../hud/widgets';
 import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { injectOnce } from '../../../hud/inject-style';
-import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';
+import type { PanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListRowTree as PhysicalObjectListTree } from './physical-object-list-row-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
@@ -99,9 +102,6 @@ const STYLE = `
 }
 `;
 
-// マップビュー右部に常設の軌道物体一覧ウィンドウ。種別ごとの区画にタブ見出しで
-// 開閉し、ダブルクリックでフォーカスを移動する。天体区画は衛星・ラグランジュ点を親の下の
-// トグル子メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 export class PhysicalObjectListPanel {
   public onFocus: ((id: string) => void) | null = null;
   public onNavTarget: ((id: string) => void) | null = null;
@@ -130,7 +130,9 @@ export class PhysicalObjectListPanel {
   private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
-  public constructor(root: HTMLElement, celestialBodies: CelestialBodies) {
+  // 検索・分類・並び順の操作部と、種別ごとの区画を組んで root の右レールへ置く。隠した状態で
+  // 始まるので、出すかどうかは setVisible で決める。
+  public constructor(root: HTMLElement, collapse: PanelCollapse, celestialBodies: CelestialBodies) {
     injectOnce('physical-object-list-panel', STYLE);
     this.order = new PhysicalObjectListOrder(celestialBodies);
     this.rowTree = new PhysicalObjectListTree(celestialBodies, this.order, this.itemsByIdScratch, {
@@ -198,7 +200,7 @@ export class PhysicalObjectListPanel {
     body.className = 'physical-object-list-body';
     this.body = body;
     this.panel.appendChild(body);
-    this.unsubscribeCollapsedView = wirePanelCollapse({
+    this.unsubscribeCollapsedView = collapse.wire({
       toggleRoot: titleRow,
       toggleId: 'hud-physical-object-list-toggle',
       toggleClassName: 'physical-object-list-collapse',
@@ -233,7 +235,7 @@ export class PhysicalObjectListPanel {
       sectionBody.className = 'physical-object-list-section-body';
       const order: SectionOrder = { ids: [], rootIds: [], childIds: new Map() };
       // 開閉状態はビューごとに引き継ぐ(未操作なら既定で開く)。
-      const expanded = !(loadPanelCollapsed(sectionId) ?? false);
+      const expanded = !(collapse.collapsed(sectionId) ?? false);
       const section: Section = {
         header, labelEl, glyphEl, body: sectionBody, rows: new Map(), order, expanded, savedExpanded: null,
       };
@@ -242,14 +244,13 @@ export class PhysicalObjectListPanel {
       const toggleSection = (): void => {
         section.expanded = !section.expanded;
         this.applyExpanded(section);
-        savePanelCollapsed(sectionId, !section.expanded);
+        collapse.setCollapsed(sectionId, !section.expanded);
       };
       bindActivation(header, toggleSection);
       this.sections.set(sectionKey, section);
       body.appendChild(header);
-      // 入れ子を持つのは天体区画だけなので、一括開閉ボタンもここにだけ添える。区画本体の中
-      // (先頭)へ置くことで、区画の折りたたみ・絞り込みでの表示切替へ自然と連動する
-      // (区画の外に置くと、区画を畳んだり0件で見出しごと隠れたりしてもボタンだけ浮いて残る)。
+      // 入れ子を持つのは天体区画だけなので、一括開閉ボタンもそこにだけ添える。区画本体の先頭へ
+      // 置いて、区画の折りたたみ・絞り込みでの表示切替へ連動させる。
       if (sectionKey === 'body') sectionBody.appendChild(this.buildTreeControls(section));
       body.appendChild(sectionBody);
       this.applyExpanded(section);
@@ -264,6 +265,7 @@ export class PhysicalObjectListPanel {
     this.setVisible(false);
   }
 
+  // パネルを出し入れする。
   public setVisible(visible: boolean): void {
     this.panel.classList.toggle('hidden', !visible);
   }
@@ -274,11 +276,8 @@ export class PhysicalObjectListPanel {
     this.panel.remove();
   }
 
-  // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。行のクリックリスナーは
-  // 生成時の1回だけ張るので、ここで毎フレーム innerHTML を書き換えてはいけない
-  // (張り直しになり、クリック中に要素が消えてイベントが発火しなくなる)。
-  // parentOf は id → 親 id(天体の親子関係のみ、他種別は載らない)。focusId が undefined
-  // (フォーカス中の天体が無い)なら、どの行も強調しない。
+  // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。parentOf は id → 親 id
+  // (天体の親子関係だけが載る)。focusId が undefined なら、どの行も強調しない。
   public sync(
     items: readonly ListedObject[],
     focusId: string | undefined,
@@ -286,10 +285,8 @@ export class PhysicalObjectListPanel {
     viewer: OrbitingObject | null,
     displayTime: number,
   ): void {
-    // 本体が畳まれている間は完全に不可視(CSS が display:none)なので、行ツリーの差分同期を
-    // 毎フレーム走らせない。次に開いたときは items/focusId の現在値から通常どおり組み直される
-    // ため、この間の変化を取りこぼしても壊れない(検索欄・フィルタ・並び順は head 側の別要素で
-    // 常時操作でき、その入力自体はここを経由せず order へ直接反映されるので凍結しない)。
+    // 本体が畳まれている間は完全に不可視なので、行ツリーの差分同期を止める。次に開いたときは
+    // items/focusId の現在値から組み直されるため、この間の変化を取りこぼしても壊れない。
     if (this.body.classList.contains('collapsed')) return;
     this.namesScratch.clear();
     this.itemsByIdScratch.clear();
@@ -356,6 +353,8 @@ export class PhysicalObjectListPanel {
 
       // 行は区画ごとの平坦な台帳が持つ。根から辿って今フレーム現れた id を集め、最後に
       // 一度だけ剪定する — 木の形(誰が根か)が絞り込みで変わっても、行そのものは残る。
+      // クリックリスナーは行の生成時に1回だけ張るので、一覧をまとめて組み直すとクリック中に
+      // 要素が消えてイベントが発火しなくなる。
       const seen = this.seenScratch;
       seen.clear();
       for (const id of section.order.rootIds) {
@@ -382,9 +381,8 @@ export class PhysicalObjectListPanel {
     return null;
   }
 
-  // 区画見出しへ件数と状況の内訳を書き出す。表示行が無い区画は見出しごと隠す
-  // (区画本体もあわせて隠す — 天体区画の一括開閉ボタンなど、見出し以外の常設要素が
-  // 見出しだけ消えた場所に浮いて残らないようにする)。
+  // 区画見出しへ件数と状況の内訳を書き出す。表示行が無い区画は、見出しと本体をまとめて隠す
+  // (本体に常設要素があるので、見出しだけ消すと浮いて残る)。
   private syncHeader(
     section: Section, sectionKey: MapListSection, label: string, viewer: OrbitingObject | null,
     displayTime: number,
@@ -400,7 +398,7 @@ export class PhysicalObjectListPanel {
       for (const id of ids) if (this.itemsByIdScratch.get(id)?.listCounted(viewer, displayTime)) count++;
       state = ` · ${summaryLabel} ${count}`;
     }
-    // 行側と同じく、変わっていなければ書き換えない(毎フレームの再代入はレイアウト再計算の元)。
+    // 毎フレームの再代入はレイアウト再計算を招くので、変わったときだけ書く。
     const text = `${label} (${ids.length})${state}`;
     if (section.labelEl.textContent !== text) section.labelEl.textContent = text;
     const glyph = section.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
@@ -418,6 +416,7 @@ export class PhysicalObjectListPanel {
     return controls;
   }
 
+  // 区画の開閉状態を、本体の表示と見出しの aria へ当てる。
   private applyExpanded(section: Section): void {
     section.body.classList.toggle('collapsed', !section.expanded);
     section.header.setAttribute('aria-expanded', String(section.expanded));

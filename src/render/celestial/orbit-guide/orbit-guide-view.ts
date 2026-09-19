@@ -72,8 +72,9 @@ export class OrbitGuideView {
   }
 
   // このフレームに描くガイド線とマーカーを反映する。宣言に無い線は描画資源ごと解放されるので、
-  // 何も描かないフレームには空の列を渡す。
-  public sync(displays: readonly GuideLineDisplay[], camera: CameraFrame): void {
+  // 何も描かないフレームには空の列を渡す。nowMs はこのフレームの実時刻 [ms]で、マーカーの
+  // アニメーションはこれだけで進む。
+  public sync(displays: readonly GuideLineDisplay[], camera: CameraFrame, nowMs: number): void {
     // 宣言の列が入れ替わったフレームだけ、線ごとの曲線の顔ぶれを合わせ直す。
     if (displays !== this.displays) {
       this.retainOnly(displays);
@@ -87,7 +88,7 @@ export class OrbitGuideView {
       const curve = this.curveFor(display);
       curve.sync(display, camera);
       this.markers.addLoop(
-        curve, display.revolutions, display.direction, display.animate, display.markerColor,
+        curve, display.revolutions, display.direction, display.animate, nowMs, display.markerColor,
         camera.floatingOrigin,
       );
     }

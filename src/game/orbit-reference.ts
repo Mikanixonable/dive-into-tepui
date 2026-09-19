@@ -1,15 +1,14 @@
-// 軌道要素・軌道要素アイコンの表示基準(自動/地球/月/航法ターゲット)の選択と解決。
-// 選択状態そのものを持ち、モードに応じて基準天体・対象の状態(KinematicState)を解決する。
+// 軌道要素・軌道要素アイコンの表示基準の解決。選ばれた基準の選び方(自動/地球/月/航法ターゲット)に
+// 応じて、基準天体・対象の状態(KinematicState)を解く。
 import { strongestAttractor } from '../physics/attractor';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../math/vec3';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
-import type { NavTarget } from './nav-target';
+import type { NavTargetPresenter } from './nav-target-presenter';
 import type { EntityRoster } from './dynamic/entity-roster';
 import type { CelestialBody } from '../physics/celestial-body';
-
-export type OrbitReferenceMode = 'auto' | 'earth' | 'moon' | 'target';
+import type { OrbitReferenceMode } from './viewer/orbit-reference-selection';
 
 export interface OrbitReference {
   readonly id: string;
@@ -50,35 +49,25 @@ export function autoOrbitReference(
   };
 }
 
-export class OrbitReferenceSelector {
-  private mode: OrbitReferenceMode = 'auto';
-
-  get selectedMode(): OrbitReferenceMode {
-    return this.mode;
-  }
-
-  setMode(mode: OrbitReferenceMode): void {
-    this.mode = mode;
-  }
-
-  // r 位置のエンティティに対する現在の基準を解決する。地球・月が登録に無い、または航法
-  // ターゲットが未設定・解決不能なときは自動選択(strongestAttractor)へフォールバックする。
-  resolve(
-    r: Vec3, attractors: readonly CelestialBody[], navTarget: NavTarget, roster: EntityRoster,
-    celestialBodies: CelestialBodies, t: number,
-  ): OrbitReference {
-    if (this.mode === 'earth' || this.mode === 'moon') {
-      const found = celestialBodies.findMotion(this.mode);
-      if (found !== null) {
-        return {
-          id: found.id, state: found.stateAt(t), hasMass: true, attractor: found,
-          entity: null, fixed: true,
-        };
-      }
-    } else if (this.mode === 'target') {
-      const resolved = navTarget.resolveState(roster, celestialBodies, attractors, t);
-      if (resolved) return resolved;
+// 選び方 mode での、r 位置のエンティティに対する基準を解決する。地球・月が登録に無い、または航法
+// ターゲットが未設定・解決不能なときは自動選択(strongestAttractor)へフォールバックする。
+export function resolveOrbitReference(
+  mode: OrbitReferenceMode, r: Vec3, attractors: readonly CelestialBody[], navTarget: NavTargetPresenter,
+  roster: EntityRoster, celestialBodies: CelestialBodies, t: number,
+): OrbitReference {
+  // 地球・月に固定する選び方では、選び方の名前がそのまま天体 id になる。
+  if (mode === 'earth' || mode === 'moon') {
+    const found = celestialBodies.findMotion(mode);
+    if (found !== null) {
+      return {
+        id: found.id, state: found.stateAt(t), hasMass: true, attractor: found,
+        entity: null, fixed: true,
+      };
     }
-    return autoOrbitReference(r, attractors, t);
+  } else if (mode === 'target') {
+    const resolved = navTarget.resolveState(roster, celestialBodies, attractors, t);
+    if (resolved) return resolved;
   }
+  // 'auto' と、固定先を解けなかった場合。
+  return autoOrbitReference(r, attractors, t);
 }
