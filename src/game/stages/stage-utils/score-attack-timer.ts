@@ -14,13 +14,9 @@ export class ScoreAttackTimer {
     return new ScoreAttackTimer(serialized);
   }
 
-  // 残り時間を減算し、尽きたフレームでちょうど一度だけ true を返す。
-  public update(dt: number): boolean {
-    if (this._timeLeft <= 0) return false;
-    this._timeLeft -= dt;
-    if (this._timeLeft > 0) return false;
-    this._timeLeft = 0;
-    return true;
+  // 残り時間を dt [s] だけ減らす。0 で止まる。
+  public update(dt: number): void {
+    this._timeLeft = Math.max(0, this._timeLeft - dt);
   }
 
   // 残り時間を直列化した形へ畳む。

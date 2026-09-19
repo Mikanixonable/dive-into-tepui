@@ -8,13 +8,12 @@ import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 import { LagrangePointMarker } from './lagrange-point-marker';
 import { CelestialSubLabels, type CelestialLabelState } from './celestial-sub-labels';
 import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type ProjectedLabel } from '../../marker/crowding';
-import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import { appearsOnMap, type MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ProjectFn } from '../../math/projection';
-import type { GroupedMarkers } from './grouped-markers';
+import type { GroupedMarkerItem } from './grouped-markers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
 import type { MarkerDevice } from '../../marker/marker-device';
@@ -269,12 +268,12 @@ export class CelestialMarkers {
 
   // 混雑で画面から消えた船・敵機・基地を、天体ラベルの下のサブ行として描き足す。
   // syncLabels が組んだ宣言のうち、集約先になった天体のぶんだけを差し替えて置き直す。
+  // hiddenItems は、戦闘対象のマーカー集合が天体ラベルへラベルを譲った項目。
   syncSubLabels(
-    groupedMarkers: GroupedMarkers, celestialBodies: readonly CelestialBody[], pivot: number,
-    project: ProjectFn, cameraPos: Vec3, nowMs: number,
+    hiddenItems: readonly GroupedMarkerItem[], pivot: number, project: ProjectFn, cameraPos: Vec3, nowMs: number,
   ): void {
     const replacements = this.subLabels.declarations(
-      groupedMarkers, (id) => this.labelStateOf(id), celestialBodies, pivot, project, cameraPos);
+      hiddenItems, (id) => this.labelStateOf(id), pivot, project, cameraPos);
     if (replacements.length === 0) return;
     for (const replacement of replacements) {
       const index = this.declarations.findIndex((d) => d.id === replacement.id);

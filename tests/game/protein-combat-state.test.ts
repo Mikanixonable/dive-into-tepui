@@ -38,13 +38,14 @@ export function register(): void {
     const readout = state.combatReadout();
     assert.equal(readout.sites.length, asset.sites.length);
     assert.equal(readout.sites.filter((entry) => entry.attackable).length, attackSitesOf(state, asset).length);
-    const result = state.applyDamage(site.maxHp, {
+    const sitePoint = {
       x: site.position[0] * asset.coordinateScale,
       y: site.position[1] * asset.coordinateScale,
       z: site.position[2] * asset.coordinateScale,
-    });
-    assert.equal(result.siteId, site.id);
-    assert.equal(result.siteDisabled, true);
+    };
+    assert.equal(state.siteIdAt(sitePoint), site.id);
+    state.applyDamage(site.maxHp, sitePoint);
+    assert.equal(state.combatReadout().sites.find((entry) => entry.id === site.id)?.disabled, true);
     assert.equal(state.isActionEnabled(actionId), true);
     assert.ok(!attackSitesOf(state, asset).some((entry) => entry.id === site.id));
     for (const attackSite of attackSitesOf(state, asset)) {
@@ -268,10 +269,10 @@ export function register(): void {
     assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
     // 表示中のアンカーが揺らぎで動いても、被弾部位は静止位置で選ぶ。
     const restCombat = new ProteinCombatState(asset);
-    const restHit = restCombat.applyDamage(
-      active.maxHp, proteinLocalImpactPoint(activeWorld, origin, IDENTITY_ATTITUDE, root.scale.x),
+    assert.equal(
+      restCombat.siteIdAt(proteinLocalImpactPoint(activeWorld, origin, IDENTITY_ATTITUDE, root.scale.x)),
+      active.id, 'the rest position should select the site on impact',
     );
-    assert.equal(restHit.siteId, active.id, 'the rest position should select the site on impact');
     assert.deepEqual(root.position, baseRootPosition);
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);

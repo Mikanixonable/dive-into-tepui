@@ -58,8 +58,6 @@ export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTan
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
 
-export type SerializedPart = Readonly<AnyPart>;
-
 // type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
 export function createPart<TType extends PartType>(
   type: TType,
@@ -87,7 +85,7 @@ function nonNegative(value: unknown): number {
 
 // 直列化された部品を復元する。id も引き継ぐので、直列化の前後で部品の同一性(id)が保たれる。
 // 種別が不正なら null。ほかの項目が不正なら、その項目だけを安全な値へ落とす。
-export function deserializePart(serialized: SerializedPart): AnyPart | null {
+export function deserializePart(serialized: AnyPart): AnyPart | null {
   if (serialized === null || typeof serialized !== 'object'
     || !PART_TYPES.includes(serialized.type as PartType)) return null;
   // 種別に共通の項目。
@@ -146,7 +144,7 @@ export function deserializePart(serialized: SerializedPart): AnyPart | null {
 
 // 直列化された部品の一覧を復元する。種別が不正な部品は落とし、1つも残らなければ、空の機体でなく
 // 既定の構成で組ませるために undefined を返す。
-export function deserializeParts(serialized: readonly SerializedPart[]): AnyPart[] | undefined {
+export function deserializeParts(serialized: readonly AnyPart[]): AnyPart[] | undefined {
   const parts = Array.isArray(serialized)
     ? serialized.map(deserializePart).filter((part) => part !== null)
     : [];

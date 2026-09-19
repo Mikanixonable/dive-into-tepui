@@ -145,9 +145,8 @@ export class Simulator {
         for (const entity of this.roster.allMotions()) {
           this.contactEntitiesScratch.push(entity);
           if (entity.alive) {
-            for (const proxy of entity.contactProxies(this._simTime, subDt)) {
-              this.contactEntitiesScratch.push(proxy);
-            }
+            entity.placeContactProxies(this._simTime, subDt);
+            for (const proxy of entity.contactProxies()) this.contactEntitiesScratch.push(proxy);
           }
         }
         this.entityContactPhysics.resolveEntityContacts(

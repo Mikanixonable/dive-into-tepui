@@ -6,6 +6,14 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ReferenceFrames } from '../celestial/reference-frames';
 import type { EntityRoster } from '../dynamic/entity-roster';
 
+// カメラの基準 id が登録天体なら、その天体を中心に rotatingWith で回る座標系。そうでなければ null。
+function frameCenteredOnFocus(
+  frames: Pick<ReferenceFrames, 'frameOf'>, celestialBodies: Pick<CelestialBodies, 'has'>,
+  id: string, rotatingWith: FrameRotationSource | null,
+): ReferenceFrame | null {
+  return celestialBodies.has(id) ? frames.frameOf(id, rotatingWith) : null;
+}
+
 const DISPLAY_DUR_DAY = 86400; // 1日 [s]
 const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日 [s]
 const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月 [s]
@@ -95,10 +103,10 @@ export class PredictPanelSelection implements PredictPanelSource {
     celestialBodies: Pick<CelestialBodies, 'has'>,
     cameraFocusId: string | undefined,
   ): PredictPanelSelection {
-    const frame = cameraFocusId !== undefined && celestialBodies.has(cameraFocusId)
-      ? frames.frameOf(cameraFocusId, frames.inertialFrame.rotatingWith)
-      : undefined;
-    return new PredictPanelSelection(frames, celestialBodies, frame);
+    const frame = cameraFocusId === undefined
+      ? null
+      : frameCenteredOnFocus(frames, celestialBodies, cameraFocusId, frames.inertialFrame.rotatingWith);
+    return new PredictPanelSelection(frames, celestialBodies, frame ?? undefined);
   }
 
   // 直列化した選択から復元する。座標系の中心が撃墜・破壊された対象を指していれば、既定の座標系から
@@ -217,8 +225,8 @@ export class PredictPanelSelection implements PredictPanelSource {
 
   // カメラの基準が登録天体 id へ移ったとき、描画基準の中心を合わせる。
   public followCameraFocus(id: string | undefined): void {
-    if (!this._followCamera || id === undefined || !this.celestialBodies.has(id)) return;
-    this._frame = this.frames.frameOf(id, this._frame.rotatingWith);
+    if (!this._followCamera || id === undefined) return;
+    this._frame = frameCenteredOnFocus(this.frames, this.celestialBodies, id, this._frame.rotatingWith) ?? this._frame;
   }
 
   // 現在の回転を外し、中心を保った慣性系へ移す。

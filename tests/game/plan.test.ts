@@ -84,7 +84,8 @@ export function register(): void {
     assert.equal(plan.serialize(), null);
 
     // 1件目を置いた時点で起点が凍結し、以降 anchorOr の引数は無視される。
-    assert.equal(plan.addNode(kinematicState<'eci'>(50, ship.r, ship.v), ship), 0);
+    plan.addNode(kinematicState<'eci'>(50, ship.r, ship.v), ship);
+    assert.equal(plan.nodes.length, 1);
     assert.equal(plan.anchorOr(later), ship);
 
     // 最後のノードが消えると起点も一緒に落ちる。
@@ -116,12 +117,14 @@ export function register(): void {
     // 先に答えた位置と、実際に置いたときの位置は一致する。
     const first = kinematicState<'eci'>(100, ship.r, ship.v);
     const firstIdx = plan.nodeIndexFor(first.t, plan.anchorOr(ship));
-    assert.equal(plan.addNode(first, ship), firstIdx);
+    plan.addNode(first, ship);
+    assert.equal(plan.nodes[firstIdx], first);
 
     const second = kinematicState<'eci'>(300, ship.r, ship.v);
     const secondIdx = plan.nodeIndexFor(second.t, plan.anchorOr(ship));
     assert.equal(secondIdx, 1);
-    assert.equal(plan.addNode(second, ship), secondIdx);
+    plan.addNode(second, ship);
+    assert.equal(plan.nodes[secondIdx], second);
 
     // 既存ノードの間を指すと、その位置から後ろを置き換える番号になる。
     assert.equal(plan.nodeIndexFor(200, plan.anchorOr(ship)), 1);

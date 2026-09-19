@@ -10,7 +10,7 @@ import { MUZZLE_SPEED } from './vessel';
 import { PLAYER_THRUST, PLAYER_TORQUE } from '../../player/player-loadout';
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
-import { deserializeParts, type Part, type SerializedPart } from './parts';
+import { deserializeParts, type Part, type AnyPart } from './parts';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
 // 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
@@ -38,7 +38,7 @@ export interface SerializedMetalEnemy extends SerializedEnemy {
   readonly kind: 'metal-enemy';
   // 機体テンプレート番号。型番を持たない漂流機体は null。
   readonly typeIndex: number | null;
-  readonly parts: readonly SerializedPart[];
+  readonly parts: readonly AnyPart[];
 }
 
 // 敵の配置に機体テンプレート番号を足したもの。typeIndex が null なら型番を持たない漂流機体、数値なら

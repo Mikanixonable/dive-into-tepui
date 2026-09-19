@@ -114,16 +114,18 @@ class PlayerBehavior implements DynamicMotionBehavior {
     );
   }
 
-  // 艦体と、展開中の放熱板・ベルト節点を接触形状として返す。
-  public contactProxies(self: DynamicMotion, simTime: number, dt: number): readonly EntityContactParticipant[] {
+  // 展開中の放熱板の折りとベルト節点の接触代理を、いまの艦の状態へ置き直す。
+  public placeContactProxies(self: DynamicMotion, simTime: number, dt: number): void {
+    const motion = playerMotionOf(self);
+    motion.radiator.placeContactFolds(motion.state.r, motion.state.v, motion.att, simTime);
+    motion.belt.placeContactSections(motion, simTime, dt, motion.state.r, motion.state.v, motion.att);
+  }
+
+  // 置き直した放熱板の折りとベルト節点の接触代理。
+  public contactProxies(self: DynamicMotion): readonly EntityContactParticipant[] {
     const motion = playerMotionOf(self);
     this.contactProxyScratch.length = 0;
-    this.contactProxyScratch.push(...motion.radiator.contactFolds(
-      motion.state.r, motion.state.v, motion.att, simTime,
-    ));
-    this.contactProxyScratch.push(...motion.belt.contactSections(
-      motion, simTime, dt, motion.state.r, motion.state.v, motion.att,
-    ));
+    this.contactProxyScratch.push(...motion.radiator.contactFolds, ...motion.belt.contactSections);
     return this.contactProxyScratch;
   }
 

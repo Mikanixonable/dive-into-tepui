@@ -1,6 +1,6 @@
 import { collisionDamageFraction } from './contact-damage';
 import type {
-  ArmorPart, CockpitPart, Part, PartType, RadiatorPart, SerializedPart, SolarPanelPart, WeaponPart,
+  ArmorPart, CockpitPart, Part, PartType, RadiatorPart, AnyPart, SolarPanelPart, WeaponPart,
 } from './parts';
 import { PartInventory } from './part-inventory';
 
@@ -104,7 +104,7 @@ export class PartDamageModel {
   }
 
   // 部品の一覧の直列化。
-  public serialize(): SerializedPart[] {
+  public serialize(): AnyPart[] {
     return this.inventory.serialize();
   }
 

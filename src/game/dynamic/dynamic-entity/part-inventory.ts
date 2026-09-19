@@ -1,4 +1,4 @@
-import type { AnyPart, Part, PartType, SerializedPart } from './parts';
+import type { AnyPart, Part, PartType } from './parts';
 
 // 部品の欄を書ける形。積んでいる部品の HP と燃料を、このモジュールが書き換えるのに使う。
 type Writable<T> = T extends unknown ? { -readonly [K in keyof T]: T[K] } : never;
@@ -30,7 +30,7 @@ export class PartInventory {
   }
 
   // 部品の一覧の直列化。
-  public serialize(): SerializedPart[] {
+  public serialize(): AnyPart[] {
     return this.items.map((part) => ({ ...part }));
   }
 

@@ -13,7 +13,7 @@ export type PlanExecutionMode = 'off' | 'instant';
 
 export interface SerializedPlan {
   readonly anchor: SerializedKinematicState;
-  readonly nodes: SerializedKinematicState[];
+  readonly nodes: readonly SerializedKinematicState[];
 }
 
 // ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
@@ -131,18 +131,17 @@ export class Plan {
     return this.data?.nodes.filter((node) => node.t < t).length ?? 0;
   }
 
-  // 噴射直後の絶対状態としてノードを追加し、その index を返す。実行時刻順の挿入位置より
-  // 後ろのノードは破棄されるので、追加したノードが常に末尾になる。ノードがまだ1件も無ければ
-  // from を起点として凍結する。置けない実行時刻なら何もせず -1 を返す。
-  public addNode(postState: KinematicState, from: KinematicState): number {
+  // 噴射直後の絶対状態としてノードを追加する。実行時刻順の挿入位置(nodeIndexFor)より後ろのノードは
+  // 破棄されるので、追加したノードが常に末尾になる。ノードがまだ1件も無ければ from を起点として
+  // 凍結する。置けない実行時刻なら何もしない。
+  public addNode(postState: KinematicState, from: KinematicState): void {
     const data = this.data;
     const idx = this.nodeIndexFor(postState.t, this.anchorOr(from));
-    if (idx < 0) return idx;
+    if (idx < 0) return;
     // 1件目は起点の凍結を伴う。2件目以降は挿入位置から先を捨てて積み直す。
     this.data = data
       ? { anchor: data.anchor, nodes: [...data.nodes.slice(0, idx), postState] }
       : { anchor: from, nodes: [postState] };
-    return idx;
   }
 
   // idx 番目のノードを下流ノードごと削除する。範囲外なら何もしない。1件も残らなければ

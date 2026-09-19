@@ -12,9 +12,10 @@ import type { CelestialBody } from './celestial-body';
 // フレームごとに変動し、その分だけ結果がわずかに揺れるため。
 const REFINE_ITERATIONS = 20;
 
-// 中心天体からの距離。
+// 時刻 t の中心天体の運動状態。
 type CenterStateAt = (t: number) => KinematicState;
 
+// 中心天体からの距離。
 function distFromCenter(centerStateAt: CenterStateAt, s: KinematicState): number {
   return len(sub(s.r, centerStateAt(s.t).r));
 }
@@ -48,8 +49,8 @@ interface ApsisCrossing {
 // あるので、位置だけでなく速度も中心天体の値を差し引いた相対量で判定する。
 export function apsisCrossing(
   center: CelestialBody, centerPivot: number, prev: KinematicState, next: KinematicState,
-  centerStateAt: CenterStateAt = (t) => center.stateAt(centerPivot, t),
 ): ApsisCrossing | null {
+  const centerStateAt: CenterStateAt = (t) => center.stateAt(centerPivot, t);
   const radialVel = (s: KinematicState): number => {
     const centerState = centerStateAt(s.t);
     return dot(sub(s.r, centerState.r), sub(s.v, centerState.v));
@@ -94,12 +95,9 @@ export class ApsisTrack {
 
   // prev→next の1ステップを、その瞬間の中心天体 center を使って apsisCrossing に掛け、
   // 見つかった極値を種類ごとの列へ追加する。
-  public observe(
-    center: CelestialBody, centerPivot: number, prev: KinematicState, next: KinematicState,
-    centerStateAt: CenterStateAt = (t) => center.stateAt(centerPivot, t),
-  ): void {
+  public observe(center: CelestialBody, centerPivot: number, prev: KinematicState, next: KinematicState): void {
     this._center = center;
-    const crossing = apsisCrossing(center, centerPivot, prev, next, centerStateAt);
+    const crossing = apsisCrossing(center, centerPivot, prev, next);
     if (crossing?.kind === 'periapsis') this.periapsides.push({ state: crossing.state, center });
     if (crossing?.kind === 'apoapsis') this.apoapsides.push({ state: crossing.state, center });
   }

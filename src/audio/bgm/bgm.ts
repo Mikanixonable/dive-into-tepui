@@ -56,13 +56,12 @@ export interface BgmAudition {
 }
 
 // そのフレームに鳴らすべき BGM の全体。volume はユーザー音量 [0〜1]、inRun はランが進行中か(ゲーム中の
-// BGM を鳴らすか)、auditioning は試聴の期間か(ゲーム中の BGM を伏せる)、audition は試聴している曲で、
-// 止めていれば null。
+// BGM を鳴らすか)。audition は試聴の期間の外なら null で、期間の間はゲーム中の BGM を伏せ、試聴している
+// 曲を鳴らす(曲を止めていれば 'silent')。
 export interface BgmDeclaration {
   readonly volume: number;
   readonly inRun: boolean;
-  readonly auditioning: boolean;
-  readonly audition: BgmAudition | null;
+  readonly audition: BgmAudition | 'silent' | null;
 }
 
 export class Bgm {
@@ -85,9 +84,10 @@ export class Bgm {
   // そのフレームに鳴らすべき BGM の全体 declaration を受け、前の宣言との差だけを鳴らし分ける。
   // 同じ宣言を何度渡しても結果は変わらない。
   public sync(declaration: BgmDeclaration): void {
+    const { audition } = declaration;
     this.syncVolume(declaration.volume);
-    this.syncAuditioning(declaration.auditioning);
-    this.syncAudition(declaration.audition);
+    this.syncAuditioning(audition !== null);
+    this.syncAudition(audition === 'silent' ? null : audition);
     this.syncRun(declaration.inRun);
   }
 

@@ -1,6 +1,6 @@
 import type { Vec3 } from '../../../math/vec3';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import type { Part, SerializedPart } from './parts';
+import type { Part, AnyPart } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Enemy, type EnemyPlacement } from './enemy';
 import type { PartDamageTarget } from './damage-capabilities';
@@ -34,7 +34,7 @@ export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
   public get parts(): readonly Part[] { return this.partModel.parts; }
 
   // 部品の一覧の直列化。
-  protected serializeParts(): SerializedPart[] { return this.partModel.serialize(); }
+  protected serializeParts(): AnyPart[] { return this.partModel.serialize(); }
 
   // 接近速度に応じたダメージを入れ、ダメージが出たかを返す。part を指定すると
   // その部品へ固定し、省略すると健全な部品へ無作為に割り振る。

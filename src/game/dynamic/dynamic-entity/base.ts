@@ -91,6 +91,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public get totalMaxFuel(): number { return this.motion.maxFuel; }
   public readonly hp = null;
   public readonly maxHp = null;
+  // 基地は武装・ブースター・高度警報を持たない。
+  public readonly fire = null;
+  public readonly boosters = null;
+  public readonly altitudeAlarm = null;
 
   // 燃料を amount [kg] だけ、残量の範囲で使う。
   public consumeFuel(amount: number): void {
@@ -175,12 +179,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       return;
     }
     // 操作量から姿勢のトルクと推力を決める
-    this.motion.setTorque(this.throttle.updateTorque(
+    this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, controls, false, dt, simDt, this,
       null,
-    ));
+    );
+    this.motion.setTorque(this.throttle.torque);
     this.throttle.updateThrustLatches(controls);
-    this.motion.setThrust(this.throttle.updateThrustState(controls, this.motion.att, simDt, this));
+    this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.motion.setThrust(this.throttle.thrust);
   }
 
   // 推力・トルクの指令とスロットルの一時状態を解く。

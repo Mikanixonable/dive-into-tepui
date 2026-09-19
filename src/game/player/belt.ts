@@ -54,12 +54,15 @@ export class BeltController {
   public get positions(): readonly Vec3[] { return this.physics.positions; }
   public get twists(): readonly number[] { return this.physics.twists; }
 
-  // 各リンクの体軸座標を ECI 絶対状態に変換し、衝突判定用の接触代理として返す。owner は鎖を
+  // 各リンクの接触代理。placeContactSections で置き直す。
+  public get contactSections(): readonly ContactProxy[] { return this.physics.contactSections; }
+
+  // 各リンクの体軸座標を ECI 絶対状態に変換し、衝突判定用の接触代理を置き直す。owner は鎖を
   // 吊る艦で、接触判定で自身の節点との接触を除外する。
-  public contactSections(
+  public placeContactSections(
     owner: EntityContactParticipant, t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude,
-  ): ContactProxy[] {
-    return this.physics.contactSections(owner, t, dt, baseR, baseV, att);
+  ): void {
+    this.physics.placeContactSections(owner, t, dt, baseR, baseV, att);
   }
 
   // 衝突解決後の ECI 状態を体軸座標へ戻し、たわみ物理へ反映する。

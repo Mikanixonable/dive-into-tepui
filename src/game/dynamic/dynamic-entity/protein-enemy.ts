@@ -255,13 +255,18 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     const localPoint = proteinLocalImpactPoint(
       impactPoint, this.motion.state.r, this.motion.att.q, ENEMY_MODEL_SCALE,
     );
-    const result = this.combat.applyDamage(damage, localPoint);
+    const siteId = this.combat.siteIdAt(localPoint);
+    const previousPhase = this.combat.phase;
+    this.combat.applyDamage(damage, localPoint);
     // 部位が止まるか構造フェーズが変わったら、着弾点の出来事として記録する
-    if (result.siteDisabled || result.phaseChanged) {
+    const phase = this.combat.phase;
+    const siteDisabled = siteId !== null
+      && this.combat.combatReadout().sites.some((site) => site.id === siteId && site.disabled);
+    if (siteDisabled || phase !== previousPhase) {
       events.record({
         kind: 'proteinStateChanged',
         state: kinematicState<'eci'>(this.motion.state.t, impactPoint, this.motion.state.v),
-        transition: result.phaseChanged ? result.phase : 'site-disabled',
+        transition: phase !== previousPhase ? phase : 'site-disabled',
       });
     }
   }

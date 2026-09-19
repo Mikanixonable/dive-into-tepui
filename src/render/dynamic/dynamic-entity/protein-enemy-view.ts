@@ -1,8 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../../../math/projection';
-import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
 import { ProteinRuntime } from '../../protein/protein-runtime';
-import { createProteinMotionBinding } from '../../protein/protein-motion-material';
 import {
   ProteinMotionController, proteinMotionLodForProjectedSize,
 } from '../../protein/protein-motion-controller';
@@ -35,13 +33,14 @@ export interface ProteinSiteMarker extends ProteinSiteStatus {
   readonly worldPos: Vec3;
 }
 
-// タンパク質モデル、構造ゆらぎ、結合線と、ゆらぎの LOD・係数遷移の履歴を所有する。
+// 直近の同期で選んだゆらぎの LOD と、その反映に要した CPU 時間 [ms]・GPU 転送量 [byte]。
 export interface ProteinMotionMetrics {
   readonly lod: ProteinMotionLod;
   readonly cpuMs: number;
   readonly uploadBytes: number;
 }
 
+// タンパク質モデル、構造ゆらぎ、結合線と、ゆらぎの LOD・係数遷移の履歴を所有する。
 export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
   private readonly runtime: ProteinRuntime;
   // 構造メッシュを組んだ表示設定。まだ組んでいなければ null。
@@ -51,7 +50,7 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
   // 直近の同期でモード係数の確定に要した CPU 時間 [ms]。
   private motionControllerCpuMs = 0;
 
-  // THREE ツリーの根と共有 GPU binding を用意する。構造メッシュは最初の同期で、そのフレームの
+  // THREE ツリーの根と、残基変形を持つ runtime を用意する。構造メッシュは最初の同期で、そのフレームの
   // 表示設定から組む。modelScale(表示倍率)と boundingRadius(LOD を選ぶ外接半径 [m])には
   // 物理の判定形状と同じ値を渡す。enemyId はゆらぎの個体差の鍵で、同じ鍵の個体は同じように揺らぐ。
   public constructor(
@@ -61,18 +60,12 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     enemyId: string,
     scene?: THREE.Scene,
   ) {
-    // モード変位は asset 単位で共有し、個体ごとに係数スロットを確保する。
     const motion = definition.source.motion;
-    const motionBinding = createProteinMotionBinding(
-      motion.residueCount,
-      proteinMotionModeDisplacements(motion),
-      motion.modes.length,
-    );
-    // 表示ツリーと runtime は同じ root/binding を共有し、寿命も View に揃える。
+    // 表示ツリーと runtime は同じ root を共有し、寿命も View に揃える。
     const root = new THREE.Group();
     root.scale.setScalar(modelScale);
     super(root, scene);
-    this.runtime = new ProteinRuntime(root, definition.source.semantic, motion, motionBinding);
+    this.runtime = new ProteinRuntime(root, definition.source.semantic, motion);
     this.motionController = new ProteinMotionController(motion, enemyId);
   }
 

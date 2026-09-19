@@ -71,7 +71,7 @@ export class EnemyReactions {
     bulletType: BulletType, damage: number, impactPoint: Vec3,
     simTime: number, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
-    activeStage.scoreCounter.recordHit();
+    activeStage.recordHit();
     this.port.applyBulletDamage(damage, impactPoint, registry.events);
     if (this.port.hasHealth()) {
       this.recordImpact(bulletType, impactPoint, registry);

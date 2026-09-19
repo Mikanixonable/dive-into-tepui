@@ -198,9 +198,9 @@ export class BoosterStack {
     }
   }
 
-  /** 最後尾段を状態ごと取り外して返す。空なら null。 */
-  public detachOutermost(): BoosterStage | null {
-    return this._stages.pop() ?? null;
+  /** 最後尾段を取り外す。空なら何もしない。 */
+  public detachOutermost(): void {
+    this._stages.pop();
   }
 
   /** 直列化した形(内部状態の複製)。 */

@@ -105,12 +105,9 @@ export class SettingsView {
     return header;
   }
 
-  // 試聴の期間か。設定面を開いている間を試聴の期間とする。
-  public get bgmAuditioning(): boolean { return this.active; }
-
-  // 試聴している曲の宣言。試聴の期間の外や、止めていれば null。
-  public get bgmAudition(): BgmAudition | null {
-    return this.active ? this.bgmPanel.audition : null;
+  // 試聴の宣言。設定面を開いている間を試聴の期間とし、期間の外なら null、曲を止めていれば 'silent'。
+  public get bgmAudition(): BgmAudition | 'silent' | null {
+    return this.active ? this.bgmPanel.audition ?? 'silent' : null;
   }
 
   // 設定面の表示を、試聴の経過へ合わせる。nowMs [ms] はフレームの実時刻。毎フレーム呼ぶ。

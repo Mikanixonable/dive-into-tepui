@@ -27,7 +27,7 @@ import { BoosterStack, type SerializedBoosterStack } from './booster-stack';
 
 import { Plan, type PlanExecutionMode, type SerializedPlan } from '../plan/plan';
 import {
-  deserializeParts, type Part, type RadiatorPart, type SerializedPart,
+  deserializeParts, type Part, type RadiatorPart, type AnyPart,
 } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
@@ -85,7 +85,7 @@ export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly belt: SerializedBeltController;
   readonly throttle: SerializedThrottle;
   readonly altitudeAlarm: SerializedAltitudeAlarm;
-  readonly parts: SerializedPart[];
+  readonly parts: AnyPart[];
   readonly plan: SerializedPlan | null;
   readonly planExecution: PlanExecutionMode;
   readonly fineAttitude: boolean;
@@ -143,7 +143,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         stepBarrelThermal: dt => owner.fire.stepBarrelThermal(dt),
       },
       environment: {
-        thrustAcceleration: () => owner.throttle.thrustAccelVec,
+        thrustAcceleration: () => owner.throttle.thrust ?? v3(),
         radiatorWear: () => owner.radiatorWear(),
         totalCoolingRate: () => owner.totalCoolingRate,
         totalPowerGeneration: () => owner.totalPowerGeneration,
@@ -297,7 +297,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.updateFireState(dt, controls, activeStage, celestialBodies);
 
     this.throttle.updateThrustLatches(controls);
-    const rcsThrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    const rcsThrust = this.throttle.thrust;
     const boosterThrust = this.motion.attachedBoosters.thrust;
     this.motion.setThrust(rcsThrust && boosterThrust
       ? add(rcsThrust, boosterThrust)
@@ -347,6 +348,27 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // 計画の実行方法を mode へ切り替える。
   public setPlanExecution(mode: PlanExecutionMode): void {
     this._planExecution = mode;
+  }
+
+  // 計画を 'instant' で実行しているとき、次に消化するノードの時刻。それ以外や、待っているノードが
+  // 無ければ null。
+  public get instantNodeTime(): number | null {
+    if (this._planExecution !== 'instant') return null;
+    return this.plan.firstNode()?.t ?? null;
+  }
+
+  // 計画を 'instant' で実行しているとき、時刻 simTime までに来たノードを消化し、消化した最後のノードの
+  // 絶対状態へそのまま乗り移る(誤差が無い)。
+  public executeInstantNodesUpTo(simTime: number): void {
+    if (this._planExecution !== 'instant') return;
+    const first = this.plan.firstNode();
+    if (!first || first.t > simTime + 1e-9) return;
+    // ノードは実行時刻順に並ぶので、来たもののうち最後が到達状態になる。
+    const due = this.plan.nodes.filter((node) => node.t <= simTime);
+    const reached = due[due.length - 1];
+    if (reached === undefined) return;
+    this.plan.consumeNodesUpTo(simTime, reached);
+    this.motion.reset(reached);
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
@@ -499,7 +521,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   private updateTorque(controls: PilotControls, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this._fineAttitude || this.fire.isFiring;
-    this.motion.setTorque(this.throttle.updateTorque(
+    this.throttle.updateTorque(
       this.motion.att,
       this.motion.state.r,
       this.motion.state.v,
@@ -509,7 +531,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       simDt,
       this,
       this.registry.events,
-    ));
+    );
+    this.motion.setTorque(this.throttle.torque);
   }
 
   // 艦は任意のタイミングで削除されうるので、一度だけ連続指令と View を解放する。
@@ -548,14 +571,12 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   ): PlayerRenderSource {
     const motion = this.motion;
     const { attachedBoosters: boosters, belt, power, radiator } = motion;
-    // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
-    const thrustAcceleration = this.throttle.thrustAccelVec;
     const radiatorPanel = (side: RadiatorSide) => ({ wear: radiator.wearOf(side), ...radiator.foldThetas(side) });
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
       state: motion.state,
       active,
-      thrustAcceleration: len(thrustAcceleration) > 0 ? thrustAcceleration : null,
+      thrustAcceleration: this.throttle.thrust,
       maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,
@@ -580,6 +601,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   }
 
   // 現在の艦状態を直列化した形へ変換する。
+  // 例外(ARCHITECTURE R12): 運動の部品(放熱板・電力・給弾ベルト・ブースター)の記録を、自機の記録へ
+  // 並べる。理由は serializeEntityFields と同じ。
   public override serialize(): SerializedPlayer {
     return {
       ...this.serializeEntityFields(Player.kind),

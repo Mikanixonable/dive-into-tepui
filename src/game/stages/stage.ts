@@ -276,6 +276,16 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return addPrimaryRelative(center.stateAt(t), rel);
   }
 
+  // 自機の発砲を1発数える。
+  public recordShot(): void {
+    this.scoreCounter.recordShot();
+  }
+
+  // 敵への命中を1発数える。
+  public recordHit(): void {
+    this.scoreCounter.recordHit();
+  }
+
   // 敵を登録し、出撃数をスコアへ記録する。
   public addEnemy(enemy: Enemy): void {
     this._dynamicSystem.add(enemy);

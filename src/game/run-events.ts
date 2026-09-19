@@ -230,7 +230,7 @@ export function queuedEventSink(queue: CommandQueue, events: RunEventSink): RunE
 // 例外(ARCHITECTURE R11): モデル層の状態だが直列化しない。出来事は進行の位相の先頭で空にする1フレームの
 // 通り道で、読み手もランと一緒に作り直す。保存すると、読み込んだフレームに前のランの音と通知が出る。
 export class RunEventLog implements RunEventSink {
-  private readonly events: RunEvent[] = [];
+  private events: RunEvent[] = [];
   private nextSeq = 0;
 
   // 直近の進行で記録された出来事を、記録した順に返す。
@@ -240,7 +240,7 @@ export class RunEventLog implements RunEventSink {
 
   // 進行の位相の先頭で呼び、前のフレームの出来事を捨てる。
   public beginStep(): void {
-    this.events.length = 0;
+    this.events = [];
   }
 
   // 起きたことを1件、次の通し番号を付けて積む。

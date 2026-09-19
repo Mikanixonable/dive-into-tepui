@@ -3,11 +3,10 @@
 // ぶら下げるかは対象を最も強く引く天体から辿り、そのラベルが出ていなければ親天体へ繰り上げる。
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
-import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ProjectFn } from '../../math/projection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { GroupedMarkerItem, GroupedMarkers } from './grouped-markers';
+import type { GroupedMarkerItem } from './grouped-markers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import { pointPlacement } from './marker-placement';
 
@@ -54,17 +53,16 @@ export class CelestialSubLabels {
   // 隠れた項目を天体ラベルへ振り分け、集約先になった天体ラベルをサブ行付きで組み直した宣言を返す。
   // labelStateOf は天体ラベルの今フレームの表示状態を引く関数で、ラベルを持たない id には null。
   declarations(
-    groupedMarkers: GroupedMarkers,
+    hiddenItems: readonly GroupedMarkerItem[],
     labelStateOf: (id: string) => CelestialLabelState | null,
-    attractors: readonly CelestialBody[],
     pivot: number,
     project: ProjectFn,
     cameraPos: Vec3,
   ): readonly MarkerDeclaration[] {
     const out = this.declarationsScratch;
     out.length = 0;
-    const hiddenItems = groupedMarkers.getHiddenItems();
     if (hiddenItems.length === 0) return out;
+    const attractors = this.celestialBodies.celestialMotions;
 
     // まず隠れた項目を集約先の天体ごとに束ねる。
     this.entriesByBody.clear();

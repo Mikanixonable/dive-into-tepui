@@ -47,9 +47,10 @@ export interface SerializedThrottle {
 }
 
 export class Throttle {
-  // 直近の操作で出した並進の推力加速度(ECI)[m/s^2]。噴射していなければ零ベクトル。操作量から
-  // 毎フレーム求め直すキャッシュ。
-  private _thrustAccelVec: Vec3 = v3();
+  // 直近の操作で出した並進の推力加速度(ECI)[m/s^2] と、機体座標系のトルク [N·m]。操作量から毎フレーム
+  // 求め直すキャッシュで、噴射していなければ推力は null。
+  private _thrust: Vec3 | null = null;
+  private _torque: Vec3 = v3();
 
   // ラッチ中の並進方向。押しっぱなしと同じに扱う。
   private readonly latchedThrust: Set<ThrustDirection>;
@@ -66,7 +67,8 @@ export class Throttle {
     this.latchedThrust = new Set(latchedThrust);
   }
 
-  public get thrustAccelVec(): Vec3 { return this._thrustAccelVec; }
+  public get thrust(): Vec3 | null { return this._thrust; }
+  public get torque(): Vec3 { return this._torque; }
   public get throttleIdx(): number { return this._throttleIdx; }
   public get rcsDamp(): boolean { return this._rcsDamp; }
   public get progradeHold(): boolean { return this._progradeHold; }
@@ -112,15 +114,11 @@ export class Throttle {
     events.record({ kind: 'throttlePresetSelected', index: idx });
   }
 
-  // スラスト方向の表示用状態と噴射ラッチを初期化する。
+  // 推力・トルクと噴射ラッチを初期化する。
   public clearTransientState(): void {
-    this.stopThrust();
+    this._thrust = null;
+    this._torque = v3();
     this.latchedThrust.clear();
-  }
-
-  // 推力ゼロの状態へ戻す。噴射が実際に無い、または許可されないときに通す。
-  public stopThrust(): void {
-    this._thrustAccelVec = v3();
   }
 
   // 段・制動・ホールド・回転の保持時間・噴射ラッチを直列化した形へ落とす。
@@ -134,16 +132,9 @@ export class Throttle {
     };
   }
 
-  // 操作量から推力加速度(ECI)を組み立てて thrustAccelVec へ置き、それを返す。噴射しないフレームは
-  // null で、thrustAccelVec は零ベクトルになる。噴射のぶんの燃料を ship から消費する。
-  public updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null {
-    const thrust = this.buildThrust(controls, att.q, ship, simDt);
-    if (!thrust) {
-      this.stopThrust();
-      return null;
-    }
-    this._thrustAccelVec = thrust;
-    return thrust;
+  // 操作量から推力加速度(ECI)を組み立てて thrust へ置く。噴射のぶんの燃料を ship から消費する。
+  public updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): void {
+    this._thrust = this.buildThrust(controls, att.q, ship, simDt);
   }
 
   // 対向の方向を押している間は、そのラッチを外し続ける(片方をラッチしたまま逆方向を
@@ -200,8 +191,8 @@ export class Throttle {
     return qRotate(q, scale(dir, thrustAccel));
   }
 
-  // 手動回転・RCS制動・プログレードホールドを合成した機体座標系のトルクを返す。r・v はホールドの目標
-  // 姿勢(進行方向)を組む軌道の位置・速度。出力ランプは操作感の量なので実時間 dt、燃料消費は物理量なので
+  // 手動回転・RCS制動・プログレードホールドを合成した機体座標系のトルクを torque へ置く。r・v はホールドの
+  // 目標姿勢(進行方向)を組む軌道の位置・速度。出力ランプは操作感の量なので実時間 dt、燃料消費は物理量なので
   // simDt で数える。回転の入力はホールドを外し、events があればそれを記録する。
   public updateTorque(
     att: Attitude,
@@ -213,7 +204,7 @@ export class Throttle {
     simDt: number,
     ship: FuelConsumer,
     events: RunEventSink | null,
-  ): Vec3 {
+  ): void {
     const inertia = att.inertia;
     const rotation = controls.rotation;
     const inX = (rotation.has('pitchDown') ? 1 : 0) + (rotation.has('pitchUp') ? -1 : 0);
@@ -257,16 +248,16 @@ export class Throttle {
 
     // 無入力かつホールド中なら自動整列トルクを加える(機首をプログレード v、上方向を r へ)
     if (this._progradeHold && inX === 0 && inY === 0 && inZ === 0) {
-      return add(manualTorque, attitudeAlignTorque(v, r, att, PROGRADE_HOLD_KP, PROGRADE_HOLD_KD));
+      this._torque = add(manualTorque, attitudeAlignTorque(v, r, att, PROGRADE_HOLD_KP, PROGRADE_HOLD_KD));
+      return;
     }
     // 無入力の軸だけRCS制動を掛ける
-    if (this._rcsDamp) {
-      return v3(
+    this._torque = this._rcsDamp
+      ? v3(
         manualTorque.x - (inX === 0 ? RCS_DAMP_RATE * inertia.x * att.w.x : 0),
         manualTorque.y - (inY === 0 ? RCS_DAMP_RATE * inertia.y * att.w.y : 0),
         manualTorque.z - (inZ === 0 ? RCS_DAMP_RATE * inertia.z * att.w.z : 0),
-      );
-    }
-    return manualTorque;
+      )
+      : manualTorque;
   }
 }

@@ -69,6 +69,8 @@ export class RadiatorSystem {
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   // side ごとの蛇腹1折りぶんの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, ContactProxy[]> = { up: [], down: [] };
+  // 直近の placeContactFolds で接触に加えた折りの代理(キャッシュ)。
+  private activeFolds: readonly ContactProxy[] = [];
 
   // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。up・down は各側の展開状態で、
   // 省いた側は収納から始める。
@@ -147,9 +149,12 @@ export class RadiatorSystem {
     }, 0);
   }
 
-  // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を返す。
+  // 直近の placeContactFolds で置いた折りの接触代理。
+  public get contactFolds(): readonly ContactProxy[] { return this.activeFolds; }
+
+  // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を置き直す。
   // t は接触代理の KinematicState.t に使う現在時刻(swept 判定の区間を成す)。
-  public contactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): ContactProxy[] {
+  public placeContactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): void {
     const result: ContactProxy[] = [];
     for (const side of ['up', 'down'] as const) {
       if (this.panels[side].value < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
@@ -171,7 +176,7 @@ export class RadiatorSystem {
         result.push(fold);
       }
     }
-    return result;
+    this.activeFolds = result;
   }
 
   // side の蛇腹の一番先の折りの位置(world、shipR と同じ絶対座標系)。

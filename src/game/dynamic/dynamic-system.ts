@@ -75,6 +75,9 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 描画資源のプールと前進の機構を simTime [s] から組み、records の個体を足す(実体化に要る外部資源が
   // 揃わないものは待ち行列へ回す)。idAllocators はこのランの id 採番器で、省けば連番の初めから発番する。
+  // 例外(ARCHITECTURE R12): 直列化された個体の記録を構築の引数で受け、ここで復元する。個体の復元は
+  // 顔ぶれそのもの(採番器・出来事の記録)を registry として要るので、組む前には復元できない。
+  // アセット待ちの記録も、組んだ後に流し込む口を持たないためにここで受ける。
   private constructor(
     private readonly scene: THREE.Scene,
     public readonly events: RunEventSink,
