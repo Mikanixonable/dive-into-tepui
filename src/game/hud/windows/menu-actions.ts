@@ -1,4 +1,4 @@
-import { MenuItem } from './context-menu';
+import type { MenuItem } from './context-menu';
 
 // 右クリックメニューの操作を表す act 識別子(MenuAction)と、頻出する項目を組み立てる
 // 共通ファクトリ(MenuCommon)を提供する。
@@ -16,8 +16,15 @@ export type MenuAction =
   | 'cancel'
   | 'openObjectPlacer'
   | 'openSettings'
-  | 'deployPart'
-  | 'stowPart';
+  | 'deployModule'
+  | 'stowModule'
+  | 'toggleBoosterModule'
+  | 'decoupleModule'
+  | 'dockModule'
+  | 'startConstructionModule'
+  | 'undockModule'
+  | 'repairDockedModules'
+  | 'selectCockpitModule';
 
 // shortcut には KeyboardEvent.code の表記を使う。
 export const MenuCommon = {

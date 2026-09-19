@@ -9,6 +9,14 @@ if (!query.startsWith('?') || query.includes('#')) {
   throw new Error('SMOKE_QUERY must be a query string beginning with "?" and must not contain a fragment.');
 }
 const expectCreative = new URLSearchParams(query.slice(1)).get('stage') === 'creative';
+const creativePreset = process.env.SMOKE_CREATIVE_PRESET ?? 'combat';
+if (creativePreset !== 'combat' && creativePreset !== 'base') {
+  throw new Error('SMOKE_CREATIVE_PRESET must be either "combat" or "base".');
+}
+const smokeConstruction = process.env.SMOKE_CONSTRUCTION === '1';
+if (smokeConstruction && (!expectCreative || creativePreset !== 'base')) {
+  throw new Error('SMOKE_CONSTRUCTION=1 requires creative stage and base preset.');
+}
 const emulateTouch = process.env.SMOKE_TOUCH === '1';
 let session;
 let devTools;
@@ -339,6 +347,21 @@ async function placeShipThroughMenu() {
     `getComputedStyle(document.getElementById('hud-object-placer')).display !== 'none'`,
     'the placement panel to open',
   );
+  if (creativePreset === 'base') {
+    const selectedBase = await devTools.evaluate(`(() => {
+      const panel = document.getElementById('hud-object-placer');
+      const button = [...panel.querySelectorAll('.w-btn')].find((b) => b.textContent?.includes('基地'));
+      if (!button) return 'no base preset button';
+      button.click();
+      return '';
+    })()`);
+    if (selectedBase) throw new Error(`Creative base preset selection failed: ${selectedBase}`);
+    await waitFor(
+      `[...document.querySelectorAll('#hud-object-placer .w-btn')]
+        .some((b) => b.textContent?.includes('基地') && b.classList.contains('on'))`,
+      'the base preset to become selected',
+    );
+  }
   const confirmed = await devTools.evaluate(`(() => {
     const panel = document.getElementById('hud-object-placer');
     const button = [...panel.querySelectorAll('.w-btn')].find((b) => b.textContent?.startsWith('配置'));
@@ -351,6 +374,99 @@ async function placeShipThroughMenu() {
     `getComputedStyle(document.getElementById('hud-object-placer')).display === 'none'`,
     'the placement panel to close after confirming',
   );
+}
+
+async function selectConstructionModuleAndPlace(label, expectedCount) {
+  const selected = await devTools.evaluate(`(() => {
+    const panel = document.getElementById('ship-construction-panel');
+    const select = panel?.querySelector('select[aria-label="追加するモジュール"]');
+    if (!select) return 'module selector is missing';
+    const index = [...select.options].findIndex((option) => option.textContent === ${JSON.stringify(label)});
+    if (index < 0) return 'module option is missing: ' + ${JSON.stringify(label)};
+    select.selectedIndex = index;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return '';
+  })()`);
+  if (selected) throw new Error(`Construction module selection failed: ${selected}`);
+  await waitFor(
+    `(() => {
+      const panel = document.getElementById('ship-construction-panel');
+      const button = [...panel.querySelectorAll('.construction-actions .w-btn')]
+        .find((item) => item.textContent?.trim() === '配置');
+      return button && !button.disabled;
+    })()`,
+    `${label} to become placeable`,
+  );
+  await devTools.evaluate(`(() => {
+    const panel = document.getElementById('ship-construction-panel');
+    [...panel.querySelectorAll('.construction-actions .w-btn')]
+      .find((item) => item.textContent?.trim() === '配置')?.click();
+  })()`);
+  await waitFor(
+    `document.querySelector('[data-id="construction-count"]')?.textContent === '${expectedCount}'`,
+    `${label} placement to update the construction assembly`,
+  );
+}
+
+async function constructMaterialFromBaseDock() {
+  await devTools.evaluate(`(() => {
+    const title = [...document.querySelectorAll('.property-window .prop-window-related-title')]
+      .find((item) => item.textContent?.includes('搭載モジュール'));
+    title?.click();
+  })()`);
+  await waitFor(
+    `[...document.querySelectorAll('.property-window .prop-window-related-item')]
+      .some((item) => getComputedStyle(item).display !== 'none' && item.textContent?.includes('dock-standard'))`,
+    'the base dock module to appear in the property window',
+  );
+  await devTools.evaluate(`(() => {
+    const row = [...document.querySelectorAll('.property-window .prop-window-related-item')]
+      .find((item) => item.textContent?.includes('dock-standard'));
+    const r = row.getBoundingClientRect();
+    row.dispatchEvent(new MouseEvent('contextmenu', {
+      bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+    }));
+  })()`);
+  await waitFor(
+    `[...document.querySelectorAll('.property-window .prop-window-item')]
+      .some((item) => item.textContent?.includes('船体を建造'))`,
+    'the dock construction action to appear',
+  );
+  await devTools.evaluate(`(() => {
+    [...document.querySelectorAll('.property-window .prop-window-item')]
+      .find((item) => item.textContent?.includes('船体を建造'))?.click();
+  })()`);
+  await waitFor(
+    `Boolean(document.querySelector('.hud-combat-root.active'))
+      && !document.getElementById('ship-construction-panel')?.classList.contains('hidden')`,
+    'construction mode to enter the combat view',
+  );
+
+  await devTools.evaluate(`(() => {
+    window.__smokeConfirmMessages = [];
+    window.confirm = (message) => { window.__smokeConfirmMessages.push(String(message)); return true; };
+  })()`);
+  await selectConstructionModuleAndPlace('主燃料タンク 3m', 1);
+  const materialWarning = await devTools.evaluate(`({
+    material: document.querySelector('[data-id="construction-role"]')?.textContent === '物資',
+    warned: document.querySelector('[data-id="construction-warning"]')?.textContent?.includes('操縦不能') === true,
+  })`);
+  expectAll('Cockpit-less construction did not show its material warning', materialWarning);
+  await selectConstructionModuleAndPlace('主推進器', 2);
+  await selectConstructionModuleAndPlace('ドッキングポート', 3);
+  await devTools.evaluate(`(() => {
+    const panel = document.getElementById('ship-construction-panel');
+    [...panel.querySelectorAll('.construction-actions .w-btn')]
+      .find((item) => item.textContent?.includes('完成して発進'))?.click();
+  })()`);
+  await waitFor(
+    `document.getElementById('ship-construction-panel')?.classList.contains('hidden') === true`,
+    'the material vessel to launch',
+  );
+  const confirmed = await devTools.evaluate(
+    `window.__smokeConfirmMessages.some((message) => message.includes('操縦不能な物資'))`,
+  );
+  if (!confirmed) throw new Error('The cockpit-less launch confirmation was not shown.');
 }
 
 async function bootAndCheckReady() {
@@ -459,28 +575,53 @@ try {
       toggleGlyphs: JSON.stringify([...document.querySelectorAll('.hud-map-root.active .rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
     })`);
     expectAll('Rail collapse state did not survive the map round trip', backToMap);
-    await devTools.evaluate(`document.querySelector('.hud-map-root.active .rail-toggle').click()`);
-
-    // 天体マーカーの右クリックはプロパティウィンドウを開き、画面を狭めても視界内に留まる。
-    // マーカー自身は pointer-events:none で、当たり判定はキャンバス上の座標で解かれる。
-    // だから狙える印は「視界内にあり、その一点で最前面がキャンバスである」もの。
-    const marker = await devTools.evaluate(`(() => {
-      for (const el of document.querySelectorAll('.mk-poi')) {
-        if (getComputedStyle(el).display === 'none') continue;
-        const r = el.getBoundingClientRect();
-        const x = r.left + r.width / 2;
-        const y = r.top + r.height / 2;
-        if (x < 0 || x > innerWidth || y < 0 || y > innerHeight) continue;
-        if (document.elementFromPoint(x, y)?.tagName !== 'CANVAS') continue;
-        return { id: el.id, x, y };
+    await devTools.evaluate(`(() => {
+      for (const side of ['left', 'right']) {
+        const rail = document.querySelector('.hud-map-root.active .hud-rail-' + side);
+        if (!rail?.classList.contains('collapsed')) {
+          document.querySelector('.hud-map-root.active .rail-toggle-' + side)?.click();
+        }
       }
-      return null;
     })()`);
-    if (!marker) throw new Error('No pickable celestial marker was on screen for the property window check.');
-    await rightClickAt(marker.x, marker.y);
+
+    // 配置した自艦の一覧行を右クリックするとプロパティウィンドウが開き、画面を狭めても
+    // 視界内に留まる。カメラ姿勢次第で天体マーカーがレールの下へ入ることには依存しない。
+    await devTools.evaluate(`(() => {
+      const rail = document.querySelector('.hud-map-root.active .hud-rail-right');
+      if (rail?.classList.contains('collapsed')) {
+        document.querySelector('.hud-map-root.active .rail-toggle-right')?.click();
+      }
+    })()`);
+    await waitFor(
+      `Boolean(document.querySelector(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
+      ))`,
+      'the placed ship or base to populate the physical object list',
+    );
+    const shipRowState = await devTools.evaluate(`(() => {
+      const row = document.querySelector(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
+      );
+      if (!row || getComputedStyle(row).display === 'none') return { row: null };
+      const r = row.getBoundingClientRect();
+      return { row: { x: r.left + r.width / 2, y: r.top + r.height / 2, label: row.getAttribute('aria-label') } };
+    })()`);
+    const shipRow = shipRowState.row;
+    if (!shipRow) {
+      throw new Error('The placed ship or base row was hidden in the physical object list.');
+    }
+    await devTools.evaluate(`(() => {
+      const row = document.querySelector(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
+      );
+      const r = row.getBoundingClientRect();
+      row.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+      }));
+    })()`);
     await waitFor(
       `[...document.querySelectorAll('.property-window')].some((el) => getComputedStyle(el).display !== 'none')`,
-      `right-clicking marker ${marker.id} to open a property window`,
+      `right-clicking ship row ${shipRow.label} to open a property window`,
     );
     await devTools.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 568, deviceScaleFactor: 1, mobile: true });
     await sleep(150);
@@ -492,6 +633,7 @@ try {
     })()`);
     expectAll('Property window did not remain clamped after resize', clamped);
     await devTools.send('Emulation.clearDeviceMetricsOverride');
+    if (smokeConstruction) await constructMaterialFromBaseDock();
   }
 
   if (expectCreative && process.env.SMOKE_CREATIVE_PLACE === '2') {
@@ -503,7 +645,7 @@ try {
     throwIfFatal('Creative second placement reported page exception(s)');
   }
   throwIfFatal('Browser reported page exception(s) or console error(s) during interaction');
-  const mode = expectCreative ? 'creative zero-ship map view' : query;
+  const mode = expectCreative ? `creative ${creativePreset} placement` : query;
   console.log(`Browser smoke passed (${mode}): production build ran and its HUD held together without page/console fatal errors.`);
 } finally {
   await session?.close();

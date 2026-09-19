@@ -14,11 +14,15 @@ import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
 import type { StageOutcome } from '../stages/stage-outcome';
-import type { Player } from './player';
+import type { ModularShip } from '../ship/modular-ship';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-collision';
 import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
-import { WeaponState, type SerializedWeaponState, type WeaponFireCommand } from './weapon-state';
+import {
+  WeaponState, type SerializedWeaponState, type WeaponFireCommand,
+} from './weapon-state';
+
+export type { AmmoLoad } from './weapon-state';
 
 const BARREL_PHYS_RADIUS = 0.8;
 const EJECTED_MAG_PHYS_RADIUS = 1.4;
@@ -49,7 +53,7 @@ export class FireControl {
   // player が撃つ。発砲で出る実体と出来事は registry へ積む。weapon は弾薬・砲身の状態で、省けば
   // 既定の積載で始める。
   public constructor(
-    private readonly player: Player,
+    private readonly player: ModularShip,
     private readonly registry: EntityRegistry,
     private readonly scene: THREE.Scene,
     private readonly weapon = new WeaponState(),

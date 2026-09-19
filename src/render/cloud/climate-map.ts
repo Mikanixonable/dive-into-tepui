@@ -17,7 +17,7 @@ const LAND_ELEVATION = 100;
 const SLOPE_STEP = 0.02;
 
 // 天体の気候を単位方向で答える入力。generation は入力(読む画像か、その選択)が変わるたびに進む世代。
-export interface ClimateMap {
+export interface ClimateData {
   readonly generation: number;
   temperatureK(direction: Vec3Node): FloatNode;
   meanCloudiness(direction: Vec3Node): FloatNode;
@@ -33,7 +33,7 @@ export interface ClimateMap {
 // 人工の斜面として代用する。surfaceRadius [m] はこの天体の半径で、勾配を角あたりから長さあたりへ
 // 直すのに要る。
 export function climateSlope(
-  climate: ClimateMap, direction: Vec3Node, landHeight: number, surfaceRadius: number,
+  climate: ClimateData, direction: Vec3Node, landHeight: number, surfaceRadius: number,
 ): Vec2Node {
   const east = eastAt(direction).mul(SLOPE_STEP);
   const north = northAt(direction).mul(SLOPE_STEP);
@@ -59,7 +59,7 @@ function configureClimateTexture(map: THREE.Texture): THREE.Texture {
 }
 
 // 平年(通年で1枚)の気候テクスチャを読む気候入力。
-export class AnnualClimateMap implements ClimateMap {
+export class AnnualClimateMap implements ClimateData {
   // url の PNG を読み終えてから器を返す。
   public static async load(url: string): Promise<AnnualClimateMap> {
     const map = await new THREE.TextureLoader().loadAsync(url);
@@ -120,3 +120,6 @@ export class AnnualClimateMap implements ClimateMap {
     else this.deferred.dispose();
   }
 }
+
+// 既存の生成・天候コードとの移行用別名。新しい表示境界ではClimateDataを使う。
+export type ClimateMap = ClimateData;

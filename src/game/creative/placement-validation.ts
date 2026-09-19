@@ -1,7 +1,7 @@
 // クリエイティブモードの物体配置フォームの入力値を、入力欄ごとに検証する。
 import { semiMajorFromPeriod } from '../../physics/elements';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { ObjectPlacementSelection } from './object-placer-panel';
 
 // 検証に落ちた入力欄の識別子。
 export type PlacementFieldId =
@@ -88,9 +88,9 @@ export function validateLagrangePlacementFields(input: LagrangePlacementInput): 
 
 // 基地の設置先の制約(SPEC GAME.md 9.1「基地の設置先」)を検証する。問題がなければ空配列を返す。
 export function validateBaseReferenceFields(
-  entityKind: DynamicEntityKind, placementMode: 'elements' | 'lagrange', celestialBody?: string,
+  selection: ObjectPlacementSelection, placementMode: 'elements' | 'lagrange', celestialBody?: string,
 ): PlacementFieldIssue[] {
-  if (entityKind !== 'base') return [];
+  if (selection !== 'base-ship') return [];
   if (placementMode === 'elements' && celestialBody !== 'moon') {
     return [{ field: 'referenceCelestialBody', message: '基地は月を基準天体とする軌道要素指定かラグランジュ点指定でのみ配置できます' }];
   }

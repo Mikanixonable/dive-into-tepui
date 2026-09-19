@@ -1,26 +1,22 @@
 // 直列化された実体の種別タグから、その具象クラスの静的側を引く。基底のモジュールから具象を
 // 引くと、基底 → 具象 → 基底の実行時循環になるので、辞書は具象だけを import するここに置く。
 import type * as THREE from 'three/webgpu';
-import { Base, type SerializedBase } from './base';
+import { ModularShip, type SerializedModularShip } from '../../ship/modular-ship';
 import { Bullet, type SerializedBullet } from './bullet';
 import { DebrisPiece, type SerializedDebrisPiece } from './debris-piece';
-import { DetachedBooster, type SerializedDetachedBooster } from './detached-booster';
-import { AmmoPickup, RcsFuelPickup, type SerializedAmmoPickup, type SerializedRcsFuelPickup } from './pickup';
 import { MetalEnemy, type SerializedMetalEnemy } from './metal-enemy';
 import { ProteinEnemy, type SerializedProteinEnemy } from './protein-enemy';
-import { Player, type SerializedPlayer } from '../../player/player';
+import { AmmoPickup, RcsFuelPickup, type SerializedAmmoPickup, type SerializedRcsFuelPickup } from './pickup';
 import type { DynamicEntity } from './dynamic-entity';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 
 // 顔ぶれ1体分の直列化した形。kind で具象を判別する。
 export type SerializedDynamicEntity =
-  | SerializedPlayer
+  | SerializedModularShip
   | SerializedMetalEnemy
   | SerializedProteinEnemy
   | SerializedAmmoPickup
   | SerializedRcsFuelPickup
-  | SerializedDetachedBooster
-  | SerializedBase
   | SerializedBullet
   | SerializedDebrisPiece;
 
@@ -36,7 +32,7 @@ export interface DynamicEntityClass {
 }
 
 const ENTITY_CLASSES: readonly DynamicEntityClass[] = [
-  Player, MetalEnemy, ProteinEnemy, AmmoPickup, RcsFuelPickup, DetachedBooster, Base, Bullet, DebrisPiece,
+  ModularShip, MetalEnemy, ProteinEnemy, AmmoPickup, RcsFuelPickup, Bullet, DebrisPiece,
 ];
 
 // 直列化された種別タグは未検証の文字列なので、知らない種別なら null を返す。

@@ -17,6 +17,7 @@ import type { FocusTarget } from './focus-target';
 // 1台のカメラ視点を変える命令。受け付けるだけで、適用は次の進行の位相。
 export interface FocusCameraCommands {
   setFocus(target: FocusTarget): void;
+  setDistance(distance: number): void;
   applyInput(input: CameraInput, sample: CameraFrameSample): void;
   reset(sample: CameraFrameSample): void;
   toggleAttitudeFollow(sample: CameraFrameSample): void;
@@ -42,6 +43,7 @@ function focusCameraCommands(
 ): FocusCameraCommands {
   return {
     setFocus: (target) => queue.submit(() => selection.setFocus(target)),
+    setDistance: (distance) => queue.submit(() => selection.setDistance(distance)),
     applyInput: (input, sample) => queue.submit(() => selection.applyInput(input, sample)),
     reset: (sample) => queue.submit(() => selection.reset(sample)),
     toggleAttitudeFollow: (sample) => queue.submit(() => selection.toggleAttitudeFollow(sample)),

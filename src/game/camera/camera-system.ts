@@ -10,6 +10,8 @@ import type { Viewport } from '../../render/viewport';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { AnchorEntities } from '../frame-anchors';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import { screenRay } from './screen-ray';
+import type { Ray } from '../../math/ray';
 import type { HudLayers } from '../hud/hud-layers';
 import type { ViewMode } from '../view/view-mode';
 import type { CameraCommands } from '../viewer/camera-commands';
@@ -114,6 +116,16 @@ export class CameraSystem {
   // view のカメラの、直近の sampleProgress が作った材料。
   public sample(view: ViewMode): CameraFrameSample {
     return view === 'map' ? this.samples.map : this.samples.combat;
+  }
+
+  public rayThroughScreen(clientX: number, clientY: number, viewport: Viewport): Ray {
+    return screenRay(this.activeViewpoint, viewport, clientX, clientY);
+  }
+
+  // 建造対象の艦へ戦闘カメラを寄せる。以後の orbit／zoom 操作は通常のカメラ命令が担う。
+  public focusConstruction(shipId: string, radius: number): void {
+    this.commands.combat.setFocus({ kind: 'object', id: shipId });
+    this.commands.combat.setDistance(Math.max(12, radius * 2.5));
   }
 
   // 入力を現在のビューの視点命令へ変換する。命令は同じフレームの進行先頭で適用される。

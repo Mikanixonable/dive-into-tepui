@@ -9,7 +9,7 @@ import type { MarkerDevice } from '../../marker/marker-device';
 import { MARKER_PRIORITY } from './marker-priority';
 import { directionPlacement } from './marker-placement';
 import { DIRECTION_GLYPH } from './marker-identity';
-import type { Player } from '../player/player';
+import type { ModularShip } from '../ship/modular-ship';
 import type { ProjectFn } from '../../math/projection';
 
 // 中央に切り欠きを残した、細い線の三尖星(120度間隔)。
@@ -30,7 +30,7 @@ export class PlayerMarkers {
   // 戦闘ビューで操作している艦の軌道軸・ボアサイトを置く。それ以外のフレームは全て片付ける。
   // orbitAxesReference は方向の基準にする運動状態で、null なら ECI(地球基準)。
   public sync(
-    player: Player | null, view: ViewMode, project: ProjectFn,
+    player: ModularShip | null, view: ViewMode, project: ProjectFn,
     orbitAxesReference: KinematicState | null, nowMs: number,
   ): void {
     const declarations = this.declarations;
@@ -45,7 +45,7 @@ export class PlayerMarkers {
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを積む。
   // 方向は reference(null なら ECI)に対する相対 r/v から求める。
   private pushOrbitAxes(
-    out: MarkerDeclaration[], player: Player, project: ProjectFn, reference: KinematicState | null,
+    out: MarkerDeclaration[], player: ModularShip, project: ProjectFn, reference: KinematicState | null,
   ): void {
     const state = player.motion.state;
     // 参照対象があれば相対状態へ移し、マーカーを置く原点だけは自機の絶対位置に保つ。
@@ -65,7 +65,7 @@ export class PlayerMarkers {
   }
 
   // 機首方向へ置くボアサイトマーカー。ラベルへ残弾とベルト・砲口初速を添える。
-  private boresight(player: Player, project: ProjectFn): MarkerDeclaration {
+  private boresight(player: ModularShip, project: ProjectFn): MarkerDeclaration {
     const state = player.motion.state;
     const fwd = qRotate(player.motion.att.q, LOCAL_FORWARD);
     const label = `AMMO ${Math.max(0, player.roundsInMag)}\nBELT ${Math.max(0, player.magsLeft)}\n${player.averageMuzzleVelocity.toFixed(0)} m/s`;

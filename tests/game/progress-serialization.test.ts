@@ -12,7 +12,6 @@ import { PlanNodeRules, type SerializedPlanNodeRules } from '../../src/game/plan
 import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { AltitudeAlarm, type SerializedAltitudeAlarm } from '../../src/game/player/altitude-alarm';
 import { BeltController, type SerializedBeltController } from '../../src/game/player/belt';
-import { BoosterStack, type BoosterStage, type SerializedBoosterStack } from '../../src/game/player/booster-stack';
 import {
   DeployablePanelState, type SerializedDeployablePanelState,
 } from '../../src/game/player/deployable-panel-state';
@@ -43,11 +42,6 @@ interface RoundTrip {
 // 記録 serialized を restore で組み直して直列化し直す往復を、所有者 owner の1行にする。
 function roundTrip<T>(owner: string, serialized: T, restore: (serialized: T) => { serialize(): unknown }): RoundTrip {
   return { owner, serialized, reserialized: () => restore(serialized).serialize() };
-}
-
-// 燃料 fuel [kg] を積んだブースターの段 id。
-function boosterStage(id: string, fuel: number, ignited: boolean): BoosterStage {
-  return { id, dryMass: 100, fuel, maxFuel: 10, thrust: 1_000, fuelRate: 2, ignited };
 }
 
 // 時刻 t [s] の、地球を回る位置・速度の記録。
@@ -121,11 +115,6 @@ function roundTrips(): readonly RoundTrip[] {
         wasEmptyClick: true,
       },
       (serialized) => WeaponState.deserialize(serialized),
-    ),
-    roundTrip<SerializedBoosterStack>(
-      'BoosterStack',
-      { stages: [boosterStage('inner', 10, false), boosterStage('outer', 4, true)] },
-      (serialized) => BoosterStack.deserialize(serialized),
     ),
     roundTrip<SerializedProteinCombatState>(
       'ProteinCombatState',

@@ -1,7 +1,6 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
-import { isPlayer, Player, type PlayerPlacement } from '../player/player';
-import { strongestAttractor } from '../../physics/attractor';
+import { isModularShip, ModularShip, type ModularShipInit } from '../ship/modular-ship';
 import { Logistics, type SerializedLogistics } from './stage-utils/logistics';
 import { ScoreCounter, type SerializedScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
@@ -244,18 +243,17 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   }
 
   // 台本が相手にする自艦。操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
-  protected get ship(): Player | null {
+  protected get ship(): ModularShip | null {
     const controlled = this._controlSelection.current;
-    if (controlled instanceof Player) return controlled;
-    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.motion.alive) ?? null;
+    if (controlled instanceof ModularShip) return controlled;
+    return this._dynamicSystem.all().filter(isModularShip).find((ship) => ship.motion.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。state を省いた新規配置は
   // 既定の円軌道(defaultPlayerState)に置き、機首と上面はその位置で最も強く引く天体を基準に向ける。
-  protected addPlayer(placement: Partial<PlayerPlacement> = {}): Player {
-    const state = placement.state ?? this.defaultPlayerState();
-    const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
-    const ship = Player.create({ ...placement, state }, center, this._dynamicSystem, this._scene);
+  protected addPlayer(init: ModularShipInit = {}): ModularShip {
+    const state = init.state ?? this.defaultPlayerState();
+    const ship = ModularShip.create({ ...init, state }, this._dynamicSystem, this._scene);
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;
