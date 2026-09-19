@@ -49,7 +49,8 @@ npm run check:boundaries
 - `check:boundaries` は層と境界の判定。`src/**/*.ts` を編集するたびに PostToolUse フック
   (`.claude/hooks/check-boundaries.mjs`)も位相の混線・`physics/` の依存汚染・配線で占められた
   モジュールへの実装の混入を指摘するが、点検時はまとめて通す。違反は、各行の括弧が指す規則を
-  読んで直す。**許可リスト・`exempt`・規則を足して通さない**(`ARCHITECTURE.md`「違反が出たとき」)。
+  読んで直す。規則どおりに分けられないものだけを例外にし、**規則と判定は書き換えない**
+(`ARCHITECTURE.md`「規則に合わないとき」)。
 
 lint の外で機械的に当たれるもの:
 
