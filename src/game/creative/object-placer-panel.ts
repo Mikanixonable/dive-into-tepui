@@ -8,7 +8,7 @@ import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
-import { CollinearPoint } from '../../physics/lagrange';
+import type { CollinearPoint } from '../../physics/lagrange';
 import { MOON, MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../celestial/solar-system/earth-system';
 import { semiMajorFromPeriod } from '../../physics/elements';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
@@ -16,7 +16,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
 import {
-  SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
+  type SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
 } from './slider-field';
 
 // ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
@@ -124,7 +124,7 @@ const SUN_SYNC_ALT_KM = 700;
 const MOON_LOW_ALT_KM = 100;
 
 // 軌道要素指定のサイズ/形プリセット。意味を持つ軌道が基準天体ごとに違うので、天体単位で持つ。
-type SizePreset = { readonly label: string; readonly peAltKm: number; readonly apAltKm: number; readonly incDeg?: number };
+interface SizePreset { readonly label: string; readonly peAltKm: number; readonly apAltKm: number; readonly incDeg?: number }
 const PRESETS_BY_BODY: Partial<Record<ReferenceCelestialBody, readonly SizePreset[]>> = {
   earth: [
     { label: '低軌道(LEO)', peAltKm: 400, apAltKm: 400 },

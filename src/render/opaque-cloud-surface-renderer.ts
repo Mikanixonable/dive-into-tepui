@@ -16,7 +16,7 @@ import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
-import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './celestial/screen-lod';
+import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。

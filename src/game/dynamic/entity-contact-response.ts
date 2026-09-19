@@ -1,5 +1,5 @@
 // 接触ペア1組の反発の計算。当事者2体の現在状態から、押し戻し後の位置・速度と接触の幾何を出す。
-import { KinematicState } from '../../physics/kinematic-state';
+import type { KinematicState } from '../../physics/kinematic-state';
 import { sub, scale, len, type Vec3 } from '../../math/vec3';
 import type { SphereHit } from '../../math/triangle-mesh';
 import {
@@ -9,7 +9,7 @@ import {
 } from '../../physics/compound-cylinder-contact';
 import type { EntityContactParticipant } from './dynamic-simulation-participant';
 import {
-  CollisionResponse, ContactGeometry,
+  type CollisionResponse, type ContactGeometry,
   distributeSphereContact, resolveSphereCollision,
 } from '../../physics/collision-response';
 
