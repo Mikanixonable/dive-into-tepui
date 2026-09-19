@@ -16,9 +16,9 @@ import type { CelestialBody } from '../../physics/celestial-body';
 // 外れてよく、落としてはいけない。
 const SPAN_REACH_MARGIN = 2;
 
-// 天体との接触に参加するか。取り付いた付属物は本体が代表する。
+// 天体との接触に参加するか。
 function isParticipant(e: SurfaceContactParticipant): boolean {
-  return e.alive && e.attachedTo === null && isFiniteSurfaceParticipant(e);
+  return e.alive && isFiniteSurfaceParticipant(e);
 }
 
 // 位置・速度・半径が有限か。
@@ -89,7 +89,7 @@ export class SurfaceContactPhysics {
     const before = e.state;
     // 位置も速度も動いていなければ書き戻さない — 書き戻しは予測弧を捨てる。
     if (!sameVec(before.r, response.r) || !sameVec(before.v, response.v)) {
-      e.state = kinematicState<'eci'>(before.t, response.r, response.v);
+      e.reset(kinematicState<'eci'>(before.t, response.r, response.v));
     }
     if (!response.bounced) return;
     // 反発で失われた力学エネルギーは熱になる。当事者の判断ではなく物理なので、失われるかどうか

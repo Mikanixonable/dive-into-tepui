@@ -17,8 +17,8 @@ import { fmtDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import { Throttle, type SerializedThrottle } from '../../player/throttle';
-import type { Controllable, PilotCommandFrame } from './controllable';
-import type { PilotCommand } from './pilot-controls';
+import type { Controllable } from './controllable';
+import type { PilotCommand, PilotControls } from './pilot-controls';
 import type { EntityRegistry } from '../entity-registry';
 import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
@@ -164,26 +164,26 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // --- 操作制御 ---
 
-  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。controls が null なら操作されない。
-  public updateControls(frame: PilotCommandFrame): void {
-    const { controls, dt, simDt } = frame;
+  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。controls はこのフレームの操作量で、null なら
+  // 操作されない。dt [s] は実時間、simDt [sim s] はシミュレーション時間の刻み。
+  public updateControls(controls: PilotControls | null, dt: number, simDt: number): void {
     if (controls === null) {
       this.clearTransientCommands();
       return;
     }
     // 操作量から姿勢のトルクと推力を決める
-    this.motion.torque = this.throttle.updateTorque(
+    this.motion.setTorque(this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, controls, false, dt, simDt, this,
       null,
-    );
+    ));
     this.throttle.updateThrustLatches(controls);
-    this.motion.thrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.motion.setThrust(this.throttle.updateThrustState(controls, this.motion.att, simDt, this));
   }
 
   // 推力・トルクの指令とスロットルの一時状態を解く。
   public clearTransientCommands(): void {
-    this.motion.thrust = null;
-    this.motion.torque = v3();
+    this.motion.setThrust(null);
+    this.motion.setTorque(v3());
     this.throttle.clearTransientState();
   }
 

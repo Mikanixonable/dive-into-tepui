@@ -106,7 +106,7 @@ export class EnemyInspection implements InspectedObject {
   }
 
   public runMenu(act: MenuAction, _selection: ControlSelection, authoring: ObjectAuthoring | null): void {
-    if (act === 'delete') this.source.motion.alive = false;
+    if (act === 'delete') this.source.motion.kill();
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.source.mapKind, this.source.motion.state);
   }
 

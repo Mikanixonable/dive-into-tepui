@@ -60,26 +60,26 @@ export class DebrisMotion extends DynamicMotion {
   public constructor(
     state: KinematicState,
     attitude: Attitude,
-    options: DebrisMotionProperties,
+    properties: DebrisMotionProperties,
   ) {
-    const thermal = debrisThermal(options.kind);
+    const thermal = debrisThermal(properties.kind);
     super(state, {
       attitude,
       mass: 0,
-      radius: options.radius ?? 0,
-      collides: options.kind !== 'fragment'
-        && options.kind !== 'boosterCover'
-        && options.kind !== 'boosterBolt',
+      radius: properties.radius ?? 0,
+      collides: properties.kind !== 'fragment'
+        && properties.kind !== 'boosterCover'
+        && properties.kind !== 'boosterBolt',
       contactDamageWeight: 0,
       bcInv: SMALL_DEBRIS_BCINV,
       srpCoeff: SMALL_DEBRIS_SRP_COEFF,
       // 熱の状態は与えられた値、熱の物性は材質の値
-      ...options.thermal,
+      ...properties.thermal,
       specificHeat: thermal.specificHeat,
       bulkDensity: thermal.bulkDensity,
       radiatingAreaPerMass: thermal.radiatingAreaPerMass,
       maxTemperature: thermal.maxTemperature,
-      behavior: options.behavior,
+      behavior: properties.behavior,
     });
   }
 }

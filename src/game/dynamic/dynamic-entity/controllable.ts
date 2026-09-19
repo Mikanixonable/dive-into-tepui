@@ -38,18 +38,13 @@ export interface FuelConsumer {
   readonly motion: DynamicEntity['motion'];
 }
 
-export interface PilotCommandFrame {
-  // このフレームの操作量。操作されない個体は null。
-  readonly controls: PilotControls | null;
-  readonly dt: number;
-  readonly simDt: number;
-  readonly activeStage: StageOutcome;
-  readonly stageRules: StageRules;
-  readonly celestialBodies: CelestialBodies;
-}
-
 export interface PilotCommandReceiver {
-  updateControls(frame: PilotCommandFrame): void;
+  // controls はこのフレームの操作量で、操作されない個体は null。dt [s] は実時間、simDt [sim s] は
+  // シミュレーション時間の刻み。
+  updateControls(
+    controls: PilotControls | null, dt: number, simDt: number,
+    activeStage: StageOutcome, stageRules: StageRules, celestialBodies: CelestialBodies,
+  ): void;
   clearTransientCommands(): void;
   handleCommand(command: PilotCommand, registry: EntityRegistry): void;
 }
