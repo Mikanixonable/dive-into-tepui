@@ -81,7 +81,8 @@ export class AttachedBoosters {
   // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
   public decouple(): void {
     const stageIndex = this.boosterMotion.stages.length - 1;
-    if (stageIndex < 0) {
+    const detachedStage = this.activeStage();
+    if (detachedStage === undefined) {
       this.registry.events.record({ kind: 'boosterDecoupleUnavailable' });
       return;
     }
@@ -92,7 +93,7 @@ export class AttachedBoosters {
       + (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
     const jointR = add(player.state.r, qRotate(player.att.q, v3(0, 0, frontZ)));
     const boosterR = add(player.state.r, qRotate(player.att.q, v3(0, 0, centerZ)));
-    const detachedStage = this.boosterMotion.detachOutermost()!;
+    this.boosterMotion.detachOutermost();
     const boosterMass = detachedStage.dryMass + detachedStage.fuel;
 
     // 分離後の速度を両者へ配り、段間の部品と外した段を実体として顔ぶれへ入れる

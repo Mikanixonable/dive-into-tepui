@@ -189,7 +189,7 @@ export class FireControl {
     ));
     this.dropCasing(muzzle);
 
-    activeStage.scoreCounter.recordShot();
+    activeStage.recordShot();
     this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
     this.weapon.addBarrelHeat(GUN_BARREL_HEAT_PER_ROUND);
     this.registry.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzle, fwd) });

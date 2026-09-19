@@ -70,8 +70,10 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
 }
 
 type LagrangePlacementInput =
-  | { orbitKind: 'halo'; outOfPlaneAmplitudeKm: number }
-  | { orbitKind: 'lissajous'; inPlaneAmplitudeKm: number; outOfPlaneAmplitudeKm: number };
+  | { readonly orbitKind: 'halo'; readonly outOfPlaneAmplitudeKm: number }
+  | {
+    readonly orbitKind: 'lissajous'; readonly inPlaneAmplitudeKm: number; readonly outOfPlaneAmplitudeKm: number;
+  };
 
 // ラグランジュ点まわりの振幅入力をフィールドごとに検証する。問題がなければ空配列を返す。
 // ハローの面内振幅は三次の振幅拘束で面外振幅から決まる(buildLagrangeState 参照)ため、
