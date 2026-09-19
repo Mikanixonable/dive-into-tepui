@@ -1,14 +1,14 @@
 import { createPart, type Part } from './parts';
 
-// 敵の金属船体にも使える汎用的な初期ロードアウト。推進器と機関砲の性能は、積む側が渡す。
+// 艦の既定の部品一式。推進器と機関砲の性能は、積む側が渡す。
 
-// 既定パーツへの HP 配分比。放熱板・太陽電池パドルは左右2枚ぶんあるので、合計は
-// hull + cockpit + thruster + rcsTank + radiator×2 + solarPanel×2 + weapon + armor = 1 になる。
-// 総 HP をこの比でそのまま割り振るので、パーツ HP の合計は maxHp と一致する。
+// 既定パーツへの HP 配分比。放熱板・太陽電池パドルを左右2枚ぶん数えて合計 1 になり、パーツ HP の
+// 合計が maxHp と一致する。
 const DEFAULT_PART_HP_RATIO = {
   hull: 0.40, cockpit: 0.10, thruster: 0.08, rcsTank: 0.08,
   radiator: 0.05, solarPanel: 0.03, weapon: 0.08, armor: 0.10,
 } as const;
+// 機関砲の射撃間隔 [s]。
 const FIRE_INTERVAL = 0.06;
 
 // 総 HP maxHp を配分した既定の部品一式。推進器は推力 thrust [N]・トルク torque [N·m]、機関砲は
@@ -16,6 +16,7 @@ const FIRE_INTERVAL = 0.06;
 export function createShipDefaultParts(
   maxHp: number, thrust: number, torque: number, muzzleVelocity: number,
 ): Part[] {
+  // 各部品は総 HP の配分比ぶんを満タンで持つ
   const share = (ratio: number): number => maxHp * ratio;
   const mk = <T extends Parameters<typeof createPart>[0]>(type: T, ratio: number, props: object) =>
     createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);

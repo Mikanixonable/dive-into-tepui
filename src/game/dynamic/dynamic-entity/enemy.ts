@@ -39,14 +39,14 @@ export interface SerializedEnemy extends SerializedDynamicEntityFields {
   readonly kind: 'metal-enemy' | 'protein-enemy';
   readonly name: string;
   readonly thermal: DynamicMotionThermal;
-  // マーカー色・集団識別と、マーカー・軌道線の色。
+  // マーカーに使う個体色と、軌道線の色。
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
   // 表示色とは独立した、同時発砲数を共有する攻撃グループ。
   readonly attackGroupId: string;
   // 所属するウェーブの番号。ウェーブに属さない敵は null。
   readonly waveId: number | null;
-  // 陣形に属する敵だけが持つ識別子と役割。単体敵は null。
+  // 陣形の識別子と役割。陣形に属さない敵は null。
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
   readonly fireController: SerializedEnemyFireController;
@@ -60,9 +60,8 @@ export function isSerializedEnemy(serialized: SerializedDynamicEntity): boolean 
   return Object.hasOwn(SERIALIZED_ENEMY_KINDS, serialized.kind);
 }
 
-// 敵を置く識別・色・陣形所属と運動状態。新しく置くときは、具象ごとに固有の項目(機体テンプレート
-// 番号・タンパク質アセット)を足して使う。id を省くと採番器が発番し、thermal を省くと環境温度から
-// 始める。
+// 敵を置く識別・色・陣形所属と運動状態。具象はこれに固有の項目を足して使う。id を省くと採番器が
+// 発番し、thermal を省くと環境温度から始め、attackGroupId を省くと陣形か id を攻撃グループにする。
 export interface EnemyPlacement {
   readonly name: string;
   readonly state: KinematicState;
@@ -75,7 +74,7 @@ export interface EnemyPlacement {
   readonly id?: string;
   // 所属するウェーブの番号。ウェーブに属さない敵は null。
   readonly waveId: number | null;
-  // 陣形に属する敵だけが持つ識別子と役割。単体敵は null。
+  // 陣形の識別子と役割。陣形に属さない敵は null。
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
 }
@@ -206,7 +205,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   protected abstract muzzlePosition(): Vec3;
   // プラズマ弾1発のダメージ [HP]。
   protected abstract plasmaDamage(): number;
-  // 弾の被弾ダメージを当てる。撃破判定は呼び出し側が hp で行う。
+  // 弾の被弾ダメージを hp へ当てる。撃破は、当てた後の hp から別に決まる。
   protected abstract applyBulletDamage(
     damage: number, impactPoint: Vec3, events: RunEventSink,
   ): void;
@@ -287,6 +286,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       ...this.serializeEntityFields(this.enemyClass.kind),
       name: this.name,
       thermal: this.motion.thermal,
+      // 色と所属、射撃の途中経過
       accent: this.accent,
       orbitLineColor: this.orbitLineColor,
       attackGroupId: this.attackGroupId,

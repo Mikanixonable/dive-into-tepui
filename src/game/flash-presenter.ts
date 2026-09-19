@@ -185,8 +185,8 @@ export class FlashPresenter {
     this.add(state, 'gasPuff2', GAS_PUFF2_DURATION);
   }
 
-  // state は発生位置・発生源速度と、その位置が表す時刻(エポック)。積分前の座標から
-  // 起こす場合も、その座標の時刻をそのまま渡せば取り残されない。
+  // 閃光1件を起こす。state は発生位置・発生源速度と、その位置が表す時刻(エポック)で、
+  // 積分前の座標でもその座標の時刻を渡せば表示時刻まで正しく運ばれる。
   private add(state: KinematicState, kind: FlashKind, duration: number, sizeScale = 1): void {
     this.spawned.push({ kind, state, duration, sizeScale });
   }

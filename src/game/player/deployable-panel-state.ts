@@ -18,7 +18,7 @@ export class DeployablePanelState {
   // 展開目標(0 = 収納、1 = 展開)。
   public get target(): 0 | 1 { return this._target; }
 
-  // 直列化した展開目標と展開度から復元する。壊れた記録なら null — 持ち主が自分の初期値で補う。
+  // 直列化した展開目標と展開度から復元する。壊れた記録なら null。
   public static deserialize(serialized: SerializedDeployablePanelState): DeployablePanelState | null {
     const { deployTarget, deploy } = serialized;
     if (deployTarget !== 0 && deployTarget !== 1) return null;

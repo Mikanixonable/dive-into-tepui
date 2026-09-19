@@ -26,6 +26,7 @@ export interface BearingMarker {
   readonly clustered: boolean;
 }
 
+// 並べる対象1件の、画面内マーカーと方位マーカーの材料。
 export interface GroupedMarkerItem {
   key: string;
   readonly kind: DynamicEntityKind;
@@ -61,12 +62,13 @@ const CLUSTER_RADIUS_PX = 40;
 
 const bearingKey = (key: string): string => `${key}-bearing`;
 
+// 投影済みの対象1件と、近接まとめの結果。
 interface PlacedItem {
   item: GroupedMarkerItem;
   p: Projected;
   dist: number;
   count: number; // 自分がまとめた件数(1 = 単独)
-  labeled: boolean; // false = 代表に吸収されたのでラベルを出さない
+  labeled: boolean; // ラベルを出すか。代表に吸収されたか天体ラベルへ譲ったなら false
   groupMembers?: readonly GroupedMarkerItem[];
   hiddenByCelestialLabel?: boolean;
 }
@@ -149,6 +151,7 @@ export class GroupedMarkers {
   private itemDeclaration(m: PlacedItem, rotationDeg: number | undefined): MarkerDeclaration {
     const opacity = m.item.opacity ?? 1;
     const visible = m.item.occluded !== true && opacity > 0 && m.p.front;
+    // 近接まとめはここで済んでいるので、装置へはまとめ済み(clustered)として渡す。
     return {
       id: m.item.key,
       cls: m.item.cls,
@@ -171,6 +174,7 @@ export class GroupedMarkers {
   // 画面外(背面を含む)の対象を画面端で指す方位マーカー1件の宣言。
   private bearingDeclaration(m: PlacedItem, mapView: boolean, camera: CameraFrame): MarkerDeclaration {
     const bearing = m.item.bearing;
+    // 方位マーカーは戦闘ビューで、方位を出す種別の見えている対象にだけ置く。
     const placement = mapView || !bearing.visible || m.item.occluded === true || (m.item.opacity ?? 1) <= 0
       ? null : bearingPlacement(m.p, camera.viewport);
     return {
