@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 このリポジトリで作業するときの**進め方**を定める。ゲームの仕様は `DEVELOP/SPEC/`、コードの
-書き方は `DEVELOP/CODING-RULE.md` が正本で、ここには書かない。
+書き方は `DEVELOP/CODING-RULE.md`、置き場と繋ぎ方は `DEVELOP/ARCHITECTURE.md` が正本で、ここには書かない。
 
 ## 文書の運用規則
 
@@ -28,6 +28,11 @@
 
 **`DEVELOP/CODING-RULE.md` はコードを編集するとき常に参照する。** 設計方針・命名規則・
 コメント規約・テストとデバッグコードの正本。既存コードに残る違反を、規則を弱める根拠にしない。
+
+**`DEVELOP/ARCHITECTURE.md` は層・境界・繋ぎ方の規則の正本。** いつ読むかは CODING-RULE 1.3 が
+決める。**機能はまず規則どおりに分ける。** 分けられないときは理由を書いて例外にし、報告に
+挙げる — 規則と判定を書き換えて通さない。規則を変えるのはユーザーが始める再設計だけ(ARCHITECTURE
+「規則に合わないとき」)。
 
 **`memos/` 以下は、指示があったときだけ書き換える。** 指示がなければ読むだけにする。
 検討の経緯・進行中の todo・人間の開発ノートが置かれていて、どれも書き手が管理している。
@@ -111,6 +116,7 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 | --- | --- | --- |
 | `npm run typecheck` | 型検査 | **常に** |
 | `npm run check:boundaries` | 層と境界の検査 | `src/` の置き場を触ったとき |
+| `npm run lint` | CODING-RULE のうち構文で判定できる規則の検査 | **main へ送る前**(`/send-pr`)。点検範囲だけへは `/refactor` `/comment-cleanup` が当てる |
 | `npm run test` | 全層の回帰テスト | **main へ送る前**(`/send-pr`) |
 | `npm run test:physics` | `src/physics/` の回帰テスト | `src/physics/` を触ったとき |
 | `npm run test:math` | `src/math/` の回帰テスト | `src/math/` を触ったとき |

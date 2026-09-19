@@ -2,13 +2,13 @@
 import {
   deserializeKinematicState, serializeKinematicState, type KinematicState, type SerializedKinematicState,
 } from '../../physics/kinematic-state';
-import { OrbitalElements, orbitalElementsOf } from '../../physics/elements';
+import { type OrbitalElements, orbitalElementsOf } from '../../physics/elements';
 import { strongestAttractor } from '../../physics/attractor';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { dot, sameVec } from '../../math/vec3';
+import { NODE_APPROACH_LEAD } from './plan';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { RunEventSink } from '../run-events';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import { NODE_APPROACH_LEAD } from './plan';
 
 // マニューバ達成判定(計画軌道への接近許容)
 const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
@@ -56,8 +56,7 @@ export class PlanNodeRules {
     plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, controlled.motion.state);
 
     const node = plan.firstNode();
-    // 実行の窓に入るまでは記録しない。窓の手前では操作対象はまだ噴射前の軌道にいるので、
-    // 目標軌道との近さを見ても達成の判定にならない。
+    // 窓の手前の操作対象はまだ噴射前の軌道にいるので、接近と達成は窓に入ってから記録する。
     if (node && simTime >= node.t - NODE_APPROACH_LEAD) {
       this.notifyApproach(node);
       this.notifyAchieved(node, controlled, celestialBodies, simTime);
@@ -66,8 +65,7 @@ export class PlanNodeRules {
 
   // 実行の窓に入ったことを記録する。
   private notifyApproach(node: KinematicState): void {
-    // ノードは編集のたびに別の状態へ置き換わるので、値の一致を「同じノードについて既に記録したか」の
-    // 判定にする。
+    // 編集のたびにノードは別の状態へ置き換わるので、同じノードかは値の一致で見る。
     if (this.approachNotified !== null && sameState(this.approachNotified, node)) return;
     this.approachNotified = node;
     this.events.record({ kind: 'maneuverNodeApproaching' });
@@ -88,8 +86,7 @@ export class PlanNodeRules {
     const targetEl = orbitalElementsOf(node, nodeCenter, pivot);
     const controlledEl = controlled.motion.orbitalElementsAround(controlledCenter, pivot);
     if (!controlledEl || !targetEl || !orbitalElementsClose(controlledEl, targetEl)) return;
-    // 計画軌道へ到達したノードは、その場で実行済みとして削除する。同時刻のノードが複数あれば
-    // まとめて落ちるので、残り件数は落とした後の実数を読む。
+    // 同時刻のノードはまとめて落ちるので、残り件数は落とした後に数える。
     plan.consumeNodesUpTo(node.t, controlled.motion.state);
     this.events.record({ kind: 'maneuverNodeAchieved', remaining: plan.nodes.length });
   }

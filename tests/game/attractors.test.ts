@@ -24,10 +24,10 @@ const SAMPLE_TIMES: readonly number[] = [0, 90 * DAY, 200 * DAY];
 const X_AXIS = v3(1, 0, 0);
 
 // 検査する場所。位置は天体の運動から導き、どこなのかが式から読めるようにする。
-type Site = {
+interface Site {
   readonly name: string;
   readonly positionAt: (t: number) => Vec3;
-};
+}
 
 // 天体 id の時刻 t の位置から +X 方向へ、天体の半径 + altitude [m] だけ離れた点。
 function aboveSurface(id: string, altitude: number, t: number): Vec3 {
@@ -75,7 +75,7 @@ export function register(): void {
   // 区間の途中で到達量の内側へ入ってくる天体を取りこぼす。区間は最高段の時間加速で 60 fps の
   // 1フレームが進む時間送り。
   test('attractors: フレームに1組だけ組んだ分類は、区間内のどの時刻の分類も覆う', () => {
-    const FRAME = SIM_SPEED_LEVELS[SIM_SPEED_LEVELS.length - 1]! / 60;
+    const FRAME = Math.max(...SIM_SPEED_LEVELS) / 60;
     for (const site of SITES) {
       for (const t0 of SAMPLE_TIMES) {
         const frame = classifyAttractors(SYSTEM.gravityMotions, t0 + FRAME / 2, t0, t0 + FRAME);

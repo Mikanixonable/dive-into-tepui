@@ -23,7 +23,7 @@ description: /write-plan で書いた計画ファイルのステップを実施�
 ## 3. 実施する
 
 - 該当する SKILL を通す。機能の追加・変更・削除なら `/modify-feature`、HUD/UI/DOM/CSS に触れるなら
-  `/ui-design`。書き方は `DEVELOP/CODING-RULE.md`。
+  `/ui-design`。書き方は `DEVELOP/CODING-RULE.md`、置き場と繋ぎ方は `DEVELOP/ARCHITECTURE.md`(CODING-RULE 1.3)。
 - ステップが互いに独立しているなら、サブエージェントへ配って並行させる(`/delegate`)。
 
 ## 4. 途中で出たものを取りこぼさない
@@ -37,7 +37,8 @@ description: /write-plan で書いた計画ファイルのステップを実施�
 
 各ステップの終わりに、順に:
 
-1. **コードレビュー** — `/code-review`、または自分で `DEVELOP/CODING-RULE.md` を当てる。
+1. **コードレビュー** — `/code-review`、または自分で `DEVELOP/CODING-RULE.md`(置き場と繋ぎ方に
+   触れたなら `DEVELOP/ARCHITECTURE.md` も)を当てる。
 2. **検証** — **計画のそのステップの「達成条件と検証」に書かれたものを走らせる。** 書かれていなければ
    既定は `npm run typecheck`(触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も)。
    変更と無関係な検証に時間を使わない。
