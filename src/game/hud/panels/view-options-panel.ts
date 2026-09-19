@@ -19,8 +19,8 @@ import {
 } from '../../map/display-toggles';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
-import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../celestial/orbit-guide/orbit-guide-settings';
+import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
+import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../viewer/orbit-guide-settings';
 import { OrbitGuideTab } from './orbit-guide-tab';
 import { ZeroVelocitySection, zeroVelocityJacobiAt } from './zero-velocity-section';
 import type { PanelCollapse } from '../panel-shell';

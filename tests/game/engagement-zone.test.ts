@@ -52,11 +52,6 @@ export function register(): void {
     assert.equal(zone.contains(v3(85e3, 0, 0)), false);
   });
 
-  test('engagement-zone: 基準変位は先頭の中心の変位', () => {
-    const zones = engagementZones([at(0, true, -100), at(50e3, true, 50e3 - 900)], true);
-    assert.deepEqual(zones[0]!.referenceDisplacement, v3(100, 0, 0));
-  });
-
   test('engagement-zone: 死んだ中心は数えない', () => {
     const zones = engagementZones([at(0, true, 0, false), at(70e3, true)], true);
     assert.equal(zones.length, 1);

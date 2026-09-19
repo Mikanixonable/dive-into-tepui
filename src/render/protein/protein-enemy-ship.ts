@@ -4,11 +4,11 @@ import {
   buildProteinAtoms,
   buildProteinLigands,
 } from './protein-atom-view';
-import { type ProteinMotionBinding } from './protein-motion-material';
 import { disposeOwnedRenderResources } from '../dispose-owned-render-resources';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
 import { buildProteinSilhouette } from './protein-silhouette-view';
 import { buildProteinRibbon } from './protein-ribbon';
+import type { ProteinMotionBinding } from './protein-motion-material';
 import type { ProteinDisplaySettings, ProteinRibbonColorMode } from './protein-display';
 import type { ProteinRenderSource } from './protein-render-definition';
 

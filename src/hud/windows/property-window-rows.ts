@@ -1,7 +1,5 @@
-// プロパティウィンドウの行一覧。key/label/value の行を並べ、同名の行はグループ見出しの下へ
-// まとめ、collapsible な行は末尾の「詳細」トグルの下へ畳む。グループ・詳細トグルの開閉状態は
-// 自分で保持し、再構築をまたいで保つ。行の値だけが変わったフレームでは DOM 全体を組み直さず、
-// 値の差分更新にとどめる。
+// プロパティウィンドウの行一覧。key/label/value の行を並べ、同じ group の行はグループ見出しの下へ
+// まとめ、collapsible な行は末尾の「詳細」トグルの下へ畳む。開閉状態は行の組み直しをまたいで保つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
 import type { DraggableWindow } from './draggable-window';
 import type { PropertyRow } from './property-window-content';
@@ -15,9 +13,9 @@ function groupToggleLabel(name: string, rowCount: number, expanded: boolean): st
 
 export class PropertyWindowRows {
   public readonly element: HTMLDivElement;
-  // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
+  // 前フレームに描画した行の値。値の差分更新に使う。
   private lastRowValues = new Map<string, string>();
-  // 前フレームの行構成(key・group・collapsible の並び)。DOM 組み直しの要否判定に使う。
+  // 前フレームの行構成(key・見出し・group・collapsible の並び)。DOM 組み直しの要否判定に使う。
   private lastRowShapeKey = '';
   private collapsibleContainerEl: HTMLDivElement | null = null;
   private toggleEl: HTMLDivElement | null = null;
@@ -25,17 +23,17 @@ export class PropertyWindowRows {
   // グループ名ごとの開閉状態。sync の再構築をまたいで保つ。
   private readonly groupExpanded = new Map<string, boolean>();
 
-  // 行一覧を差し込む要素を用意する。win は開閉トグルで自分が伸縮した際のはみ出し補正にだけ使う。
+  // 行一覧を差し込む要素を用意する。win は開閉で行一覧が伸縮したときに画面内へ収め直す窓。
   public constructor(private readonly win: DraggableWindow) {
     this.element = document.createElement('div');
     this.element.className = 'prop-window-rows';
   }
 
-  // 行の値だけを毎フレーム差分更新する。行構成(key・group・collapsible の並び)が変わった
-  // 場合のみ行 DOM 全体を組み直す。描画順は「group を持つ行(グループ見出し単位、初出順)」→
-  // 「無印の行」→「collapsible な行(末尾の「詳細」トグルの下)」。
+  // 行一覧を rows へ合わせる。毎フレーム呼び、行構成(key・見出し・group・collapsible の並び)が
+  // 変わったフレームでは行の DOM を組み直す。並びは group を持つ行(グループ単位、初出順)→ 無印の行
+  // → collapsible な行。
   public sync(rows: readonly PropertyRow[]): void {
-    const shapeKey = rows.map((r) => `${r.key}${r.group ?? ''}${r.collapsible ?? ''}`).join('');
+    const shapeKey = JSON.stringify(rows.map((r) => [r.key, r.label, r.group ?? null, r.collapsible === true]));
     if (shapeKey === this.lastRowShapeKey) {
       // 構成が変わっていなければ、値が変わった行の表示だけを書き換える。
       for (const r of rows) {
@@ -92,7 +90,7 @@ export class PropertyWindowRows {
     }
   }
 
-  // key/label/value の行 div を組み立てて container へ足し、値を lastRowValues へ記録する。
+  // key/label/value の行 div を組み立てて container へ足す。
   private appendRowEl(container: HTMLElement, r: PropertyRow): void {
     const rowEl = document.createElement('div');
     rowEl.className = 'prop-window-row';
@@ -106,12 +104,11 @@ export class PropertyWindowRows {
     rowEl.appendChild(labelEl);
     rowEl.appendChild(valueEl);
     container.appendChild(rowEl);
-    // 次フレームの差分更新が参照できるよう、いま描画した値を記録しておく。
+    // 描いた値を、次フレームの差分更新の基準にする。
     this.lastRowValues.set(r.key, r.value);
   }
 
-  // 1グループ分の見出しボタンと行コンテナを element へ足す。開閉状態は groupExpanded に
-  // 名前で記録し、既定は畳んだ状態(未登録なら false)。
+  // 1グループ分の見出しと行コンテナを element へ足す。開閉はグループ名ごとに覚え、既定は畳んだ状態。
   private appendGroupEl(name: string, rows: readonly PropertyRow[]): void {
     const expanded = this.groupExpanded.get(name) ?? false;
     const toggle = document.createElement('div');
@@ -119,7 +116,7 @@ export class PropertyWindowRows {
     toggle.textContent = groupToggleLabel(name, rows.length, expanded);
     const container = document.createElement('div');
     container.style.display = expanded ? '' : 'none';
-    // クリックのたびに groupExpanded を反転し、見出し文字列と表示をその場で書き換える。
+    // 見出しのクリックで開閉する。
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       const next = !(this.groupExpanded.get(name) ?? false);
@@ -149,7 +146,7 @@ export class PropertyWindowRows {
     this.reclamp();
   }
 
-  // 本文の変化でウィンドウの高さが伸びたときに、画面外へのはみ出しだけ戻す。
+  // 伸縮した窓を画面内へ収め直す。
   private reclamp(): void {
     this.win.moveTo(this.win.element.offsetLeft, this.win.element.offsetTop);
   }
