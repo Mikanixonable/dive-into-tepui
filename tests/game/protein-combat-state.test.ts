@@ -38,13 +38,14 @@ export function register(): void {
     const readout = state.combatReadout();
     assert.equal(readout.sites.length, asset.sites.length);
     assert.equal(readout.sites.filter((entry) => entry.attackable).length, attackSitesOf(state, asset).length);
-    const result = state.applyDamage(site.maxHp, {
+    const sitePoint = {
       x: site.position[0] * asset.coordinateScale,
       y: site.position[1] * asset.coordinateScale,
       z: site.position[2] * asset.coordinateScale,
-    });
-    assert.equal(result.siteId, site.id);
-    assert.equal(result.siteDisabled, true);
+    };
+    assert.equal(state.siteIdAt(sitePoint), site.id);
+    state.applyDamage(site.maxHp, sitePoint);
+    assert.equal(state.combatReadout().sites.find((entry) => entry.id === site.id)?.disabled, true);
     assert.equal(state.isActionEnabled(actionId), true);
     assert.ok(!attackSitesOf(state, asset).some((entry) => entry.id === site.id));
     for (const attackSite of attackSitesOf(state, asset)) {
@@ -115,7 +116,7 @@ export function register(): void {
     assert.equal(myoglobinAsset.ligands[0]?.metalElement, 'FE');
     assert.equal(myoglobinAsset.ligands[0]?.centerSite, 'heme-iron');
     assert.deepEqual(attackSitesOf(state, myoglobinAsset).map((site) => site.id), ['heme-iron']);
-    assert.equal(state.nextAttackSite()?.id, 'heme-iron');
+    assert.equal(state.nextAttackSite?.id, 'heme-iron');
 
     const structure = rawMyoglobinStructure as unknown as {
       atoms: {
@@ -250,10 +251,11 @@ export function register(): void {
     assert.ok(Math.abs(localImpact.y - active.position[1] * asset.coordinateScale) < 1e-12);
     assert.ok(Math.abs(localImpact.z - active.position[2] * asset.coordinateScale) < 1e-12);
     const firstAttackWorld = runtime.siteWorldPositionById(
-      combat.nextAttackSite()!.id, origin, IDENTITY_ATTITUDE,
+      combat.nextAttackSite!.id, origin, IDENTITY_ATTITUDE,
     );
+    combat.advanceAttackSite();
     const nextWorld = runtime.siteWorldPositionById(
-      combat.nextAttackSite()!.id, origin, IDENTITY_ATTITUDE,
+      combat.nextAttackSite!.id, origin, IDENTITY_ATTITUDE,
     );
     assert.deepEqual(firstAttackWorld, activeWorld);
     assert.notDeepEqual(nextWorld, activeWorld);
@@ -265,16 +267,12 @@ export function register(): void {
     syncVisual();
     // 変形が生きていれば、サイトのアンカーは変形前の位置から動く。
     assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
-    const dynamicCombat = new ProteinCombatState(asset);
-    const dynamicLocal = runtime.siteModelPositionById(active.id);
-    const dynamicWorld = runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE);
-    const dynamicImpact = proteinLocalImpactPoint(
-      dynamicWorld, origin, IDENTITY_ATTITUDE, root.scale.x,
+    // 表示中のアンカーが揺らぎで動いても、被弾部位は静止位置で選ぶ。
+    const restCombat = new ProteinCombatState(asset);
+    assert.equal(
+      restCombat.siteIdAt(proteinLocalImpactPoint(activeWorld, origin, IDENTITY_ATTITUDE, root.scale.x)),
+      active.id, 'the rest position should select the site on impact',
     );
-    const dynamicHit = dynamicCombat.applyDamage(
-      active.maxHp, dynamicImpact, new Map([[active.id, dynamicLocal]]),
-    );
-    assert.equal(dynamicHit.siteId, active.id, 'a displayed anchor should select the same site on impact');
     assert.deepEqual(root.position, baseRootPosition);
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);

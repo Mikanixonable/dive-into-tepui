@@ -6,13 +6,15 @@ import {
 } from './enemy';
 import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
+import { MUZZLE_SPEED } from './vessel';
+import { PLAYER_THRUST, PLAYER_TORQUE } from '../../player/player-loadout';
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
-import { deserializeParts, type Part, type SerializedPart } from './parts';
+import { deserializeParts, type Part, type AnyPart } from './parts';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
-// 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
-// bounds と一致することを固定し、実行時の物理構築が THREE のモデル生成へ依存しないようにする。
+// 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。アセットの bounds を写した
+// 定数で、一致は描画テストが確かめる。
 const DRIFTING_COLLISION_RADIUS = 67.1935257886386;
 const TYPED_COLLISION_RADII = [
   93.8906797184146,
@@ -36,11 +38,10 @@ export interface SerializedMetalEnemy extends SerializedEnemy {
   readonly kind: 'metal-enemy';
   // 機体テンプレート番号。型番を持たない漂流機体は null。
   readonly typeIndex: number | null;
-  readonly parts: readonly SerializedPart[];
+  readonly parts: readonly AnyPart[];
 }
 
-// 敵の配置に機体テンプレート番号を足したもの。typeIndex が null なら型番を持たない漂流機体、数値なら
-// stage00 ウェーブ敵の機体テンプレート番号。
+// 敵の配置に機体テンプレート番号を足したもの。typeIndex が null なら型番を持たない漂流機体。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
 // 金属機体の敵。機体テンプレートが外形と接触半径を決め、被弾は艦と同じパーツ式の被弾モデルへ入る。
@@ -50,13 +51,14 @@ export class MetalEnemy extends PartBasedEnemy {
 
   private readonly typeIndex: number | null;
 
-  // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。parts は機体の
-  // 部品構成で、省けば既定の構成を満タンで積む。
+  // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。id は採番器が
+  // 配った識別子。parts は機体の部品構成で、省けば既定の構成を満タンで積む。
   private constructor(
     placement: MetalEnemyPlacement,
-    idAllocators: EntityIdAllocators,
+    id: string,
     scene: THREE.Scene | undefined,
-    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP),
+    // 金属の敵は、自機と同じ性能の推進器と機関砲を積む。
+    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP, PLAYER_THRUST, PLAYER_TORQUE, MUZZLE_SPEED),
     alive?: boolean,
     burstLeft?: number | null,
     burstDelay?: number | null,
@@ -70,7 +72,7 @@ export class MetalEnemy extends PartBasedEnemy {
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
       placement, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), idAllocators, parts, alive,
+      metalEnemyCollisionRadius(typeIndex), id, parts, alive,
       burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.typeIndex = typeIndex;
@@ -80,20 +82,21 @@ export class MetalEnemy extends PartBasedEnemy {
   public static create(
     placement: MetalEnemyPlacement, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
   ): MetalEnemy {
-    return new MetalEnemy(placement, idAllocators, scene);
+    return new MetalEnemy(placement, idAllocators.entity.next(placement.id), scene);
   }
 
   // 直列化した敵を復元する。
   public static deserialize(
     serialized: SerializedMetalEnemy, registry: EntityRegistry, scene?: THREE.Scene,
   ): MetalEnemy {
+    const placement = { ...deserializeEnemyPlacement(serialized), typeIndex: serialized.typeIndex };
     return new MetalEnemy(
-      { ...deserializeEnemyPlacement(serialized), typeIndex: serialized.typeIndex },
-      registry.idAllocators,
+      placement,
+      registry.idAllocators.entity.next(placement.id),
       scene,
       deserializeParts(serialized.parts),
-      // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
-      serialized.alive ?? false,
+      serialized.alive,
+      // 射撃の途中経過と時刻
       serialized.fireController.burstLeft,
       serialized.fireController.burstDelay,
       serialized.fireController.lastFireSim,
@@ -116,8 +119,7 @@ export class MetalEnemy extends PartBasedEnemy {
     return PLASMA_BULLET_DAMAGE;
   }
 
-  // 金属機体の発砲は閃光を伴わないので、記録するものを持たない。
-  protected override muzzleEffect(): void {}
+  protected override fired(): void {}
 
   // 被弾位置によらず、健全な部品へ無作為に割り振る。
   protected override applyBulletDamage(damage: number): void {
@@ -135,7 +137,7 @@ export class MetalEnemy extends PartBasedEnemy {
       ...this.serializeEnemyFields(),
       kind: MetalEnemy.kind,
       typeIndex: this.typeIndex,
-      parts: this.parts.map(p => ({ ...p })) as SerializedPart[],
+      parts: this.serializeParts(),
     };
   }
 }

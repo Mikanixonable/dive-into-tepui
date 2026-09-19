@@ -1,6 +1,6 @@
 import type { ViewMode } from '../../view/view-mode';
 import { Vessel } from './vessel';
-import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
+import type { DynamicEntity, SerializedDynamicEntityFields } from './dynamic-entity';
 import type { Contact } from './contact';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
@@ -16,10 +16,10 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
-import type { EntityIdAllocators } from './entity-id';
 import type { DynamicEntityClass, SerializedDynamicEntity } from './entity-dictionary';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import type { DynamicMotion, DynamicMotionThermal } from '../dynamic-motion';
+import type { DynamicMotionThermal } from '../dynamic-motion';
+import type { EntityContactParticipant } from '../dynamic-simulation-participant';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 import { EnemyInspection } from '../../pickable/enemy-inspection';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
@@ -38,16 +38,15 @@ export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾�
 export interface SerializedEnemy extends SerializedDynamicEntityFields {
   readonly kind: 'metal-enemy' | 'protein-enemy';
   readonly name: string;
-  readonly alive: boolean;
   readonly thermal: DynamicMotionThermal;
-  // マーカー色・集団識別と、マーカー・軌道線の色。
+  // マーカーに使う個体色と、軌道線の色。
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
   // 表示色とは独立した、同時発砲数を共有する攻撃グループ。
   readonly attackGroupId: string;
   // 所属するウェーブの番号。ウェーブに属さない敵は null。
   readonly waveId: number | null;
-  // 陣形に属する敵だけが持つ識別子と役割。単体敵は null。
+  // 陣形の識別子と役割。陣形に属さない敵は null。
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
   readonly fireController: SerializedEnemyFireController;
@@ -61,9 +60,8 @@ export function isSerializedEnemy(serialized: SerializedDynamicEntity): boolean 
   return Object.hasOwn(SERIALIZED_ENEMY_KINDS, serialized.kind);
 }
 
-// 敵を置く識別・色・陣形所属と運動状態。新しく置くときは、具象ごとに固有の項目(機体テンプレート
-// 番号・タンパク質アセット)を足して使う。id を省くと採番器が発番し、thermal を省くと環境温度から
-// 始める。
+// 敵を置く識別・色・陣形所属と運動状態。具象はこれに固有の項目を足して使う。id を省くと採番器が
+// 発番し、thermal を省くと環境温度から始め、attackGroupId を省くと陣形か id を攻撃グループにする。
 export interface EnemyPlacement {
   readonly name: string;
   readonly state: KinematicState;
@@ -73,10 +71,12 @@ export interface EnemyPlacement {
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
   readonly attackGroupId?: string;
-  readonly waveId?: number;
   readonly id?: string;
-  readonly formationId?: string;
-  readonly formationRole?: FormationRole;
+  // 所属するウェーブの番号。ウェーブに属さない敵は null。
+  readonly waveId: number | null;
+  // 陣形の識別子と役割。陣形に属さない敵は null。
+  readonly formationId: string | null;
+  readonly formationRole: FormationRole | null;
 }
 
 // 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
@@ -96,10 +96,10 @@ export function deserializeEnemyPlacement(serialized: SerializedEnemy): EnemyPla
     orbitLineColor: serialized.orbitLineColor,
     // 攻撃グループの無い記録は、陣形・id・名前の順に代える
     attackGroupId: serialized.attackGroupId ?? serialized.formationId ?? serialized.id ?? serialized.name,
-    waveId: serialized.waveId ?? undefined,
     id: serialized.id || undefined,
-    formationId: serialized.formationId ?? undefined,
-    formationRole: serialized.formationRole ?? undefined,
+    waveId: serialized.waveId ?? null,
+    formationId: serialized.formationId ?? null,
+    formationRole: serialized.formationRole ?? null,
   };
 }
 
@@ -120,34 +120,32 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   public readonly accent: string | number; // マーカー色。攻撃グループとは独立
   public readonly orbitLineColor: string | number;
   public readonly attackGroupId: string;
-  public readonly waveId?: number; // 所属するウェーブの番号。ウェーブに属さない敵は undefined
-  public readonly formationId?: string;
-  public readonly formationRole?: FormationRole;
+  public readonly waveId: number | null; // 所属するウェーブの番号。ウェーブに属さない敵は null
+  public readonly formationId: string | null;
+  public readonly formationRole: FormationRole | null;
 
   private readonly fireController: EnemyFireController;
   private readonly reactions: EnemyReactions;
 
-  public get fireEnabled(): boolean { return this.fireController.enabled; }
-  public set fireEnabled(value: boolean) { this.fireController.enabled = value; }
   public get isBursting(): boolean { return this.fireController.isBursting; }
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を
-  // placement に置く。alive は生死、burstLeft から後ろは射撃の途中経過と時刻で、省けば新しく置いた
-  // ときの状態で始める。
+  // placement に置く。id は採番器が配った識別子。alive は生死、burstLeft から後ろは射撃の途中経過と
+  // 時刻で、省けば新しく置いたときの状態で始める。
   protected constructor(
     placement: EnemyPlacement,
     view: DynamicView,
     inertia: Vec3,
     radius: number,
-    idAllocators: EntityIdAllocators,
+    id: string,
     shape: EnemyCollisionShape | null,
-    alive = true,
+    alive?: boolean,
     burstLeft?: number | null,
     burstDelay?: number | null,
     lastFireSim?: number | null,
     lastBehaviorSim?: number | null,
   ) {
-    // 運動の接触・焼失をこの敵へ通知させ、識別を採番する
+    // 運動の接触・焼失をこの敵へ通知させる
     const attitude = { q: placement.q, w: placement.w, inertia };
     super(
       placement.name,
@@ -164,9 +162,9 @@ export abstract class Enemy extends Vessel implements CombatTarget {
         receiveBurnUp: services => (
           (owner as Enemy).receiveBurnUp(services.activeStage, services.registry)
         ),
-      }, shape, placement.thermal),
+      }, shape, placement.thermal, alive),
       view,
-      idAllocators.entity.next(placement.id),
+      id,
     );
     // 色と所属
     this.accent = placement.accent;
@@ -182,7 +180,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       canFire: enemies => this.canFire(enemies),
       muzzlePosition: () => this.muzzlePosition(),
       plasmaDamage: () => this.plasmaDamage(),
-      muzzleEffect: (muzzleState, events) => this.muzzleEffect(muzzleState, events),
+      fired: (muzzleState, events) => this.fired(muzzleState, events),
     }, burstLeft, burstDelay, lastFireSim, lastBehaviorSim);
     this.reactions = new EnemyReactions({
       motion: this.motion,
@@ -194,7 +192,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       hasHealth: () => this.hp > 0,
       recordDeath: (activeStage, simTime, cause) => activeStage.recordEnemyDeath(this, simTime, cause),
     });
-    this.motion.alive = alive;
   }
 
   // 自身のクラス。直列化のタグはここから読む。
@@ -208,14 +205,14 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   protected abstract muzzlePosition(): Vec3;
   // プラズマ弾1発のダメージ [HP]。
   protected abstract plasmaDamage(): number;
-  // 弾の被弾ダメージを当てる。撃破判定は呼び出し側が hp で行う。
+  // 弾の被弾ダメージを hp へ当てる。撃破は、当てた後の hp から別に決まる。
   protected abstract applyBulletDamage(
     damage: number, impactPoint: Vec3, events: RunEventSink,
   ): void;
   // 接触ダメージを当て、ダメージが発生したかを返す。しきい値未満なら false。
   protected abstract applyImpactDamage(damageSpeed: number): boolean;
-  // 1発撃ったことを記録する。muzzleState は砲口の位置と機体の速度。
-  protected abstract muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
+  // 1発撃ったことを受ける。muzzleState は砲口の位置と機体の速度。
+  protected abstract fired(muzzleState: KinematicState, events: RunEventSink): void;
 
   // 個体色の CSS 表記。
   public get accentColor(): string {
@@ -252,7 +249,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
 
   // 他の個体と触れたときの帰結を受ける。
   private receiveEntityContact(
-    other: DynamicMotion, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
+    other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     this.reactions.receiveEntityContact(other, contact, activeStage, registry);
   }
@@ -274,12 +271,13 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     this.reactions.receiveBurnUp(activeStage, registry);
   }
 
-  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。
+  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
+  // 間は撃たない。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
-    operable: boolean, celestialBodies: CelestialBodies,
+    mayFire: boolean, celestialBodies: CelestialBodies,
   ): void {
-    this.fireController.behave(simTime, player, registry, enemies, operable, celestialBodies);
+    this.fireController.behave(simTime, player, registry, enemies, mayFire, celestialBodies);
   }
 
   // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。
@@ -287,14 +285,14 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     return {
       ...this.serializeEntityFields(this.enemyClass.kind),
       name: this.name,
-      alive: this.motion.alive,
       thermal: this.motion.thermal,
+      // 色と所属、射撃の途中経過
       accent: this.accent,
       orbitLineColor: this.orbitLineColor,
       attackGroupId: this.attackGroupId,
-      waveId: this.waveId ?? null,
-      formationId: this.formationId ?? null,
-      formationRole: this.formationRole ?? null,
+      waveId: this.waveId,
+      formationId: this.formationId,
+      formationRole: this.formationRole,
       fireController: this.fireController.serialize(),
     };
   }

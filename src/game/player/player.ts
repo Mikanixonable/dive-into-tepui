@@ -1,10 +1,10 @@
 import type * as THREE from 'three/webgpu';
 
 import type { ViewMode } from '../view/view-mode';
-import { Attitude, deserializeAttitude } from '../../physics/attitude';
+import { type Attitude, deserializeAttitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
-import { KinematicState, deserializeKinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, v3, len, sub } from '../../math/vec3';
+import { type KinematicState, deserializeKinematicState } from '../../physics/kinematic-state';
+import { type Vec3, add, v3, len, sub } from '../../math/vec3';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -27,7 +27,7 @@ import { BoosterStack, type SerializedBoosterStack } from './booster-stack';
 
 import { Plan, type PlanExecutionMode, type SerializedPlan } from '../plan/plan';
 import {
-  deserializeParts, type Part, type RadiatorPart, type SerializedPart,
+  deserializeParts, type Part, type RadiatorPart, type AnyPart,
 } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
@@ -36,11 +36,14 @@ import { AttachedBoosters } from './attached-boosters';
 import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
-import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
-import type { DynamicMotion, DynamicMotionThermal } from '../dynamic/dynamic-motion';
+import type { DynamicMotionThermal } from '../dynamic/dynamic-motion';
+import type { EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { StageOutcome } from '../stages/stage-outcome';
+import type { StageRules } from '../stages/stage-rules';
 import type { DamageOutcomeSink } from './damage-outcome';
 import { PlayerInspection } from '../pickable/player-inspection';
 import { PlayerEffects } from './player-effects';
@@ -65,12 +68,12 @@ const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 const BELT_MAX_VISIBLE = 18;
 
 // 新規配置の艦。state に機首プログレードで置き、name/id/ammo は任意指定する。
-export type PlayerPlacement = {
+export interface PlayerPlacement {
   readonly name?: string;
   readonly state: KinematicState;
   readonly id?: string;
   readonly ammo?: AmmoLoad;
-};
+}
 
 export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly kind: 'player';
@@ -82,7 +85,7 @@ export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly belt: SerializedBeltController;
   readonly throttle: SerializedThrottle;
   readonly altitudeAlarm: SerializedAltitudeAlarm;
-  readonly parts: SerializedPart[];
+  readonly parts: AnyPart[];
   readonly plan: SerializedPlan | null;
   readonly planExecution: PlanExecutionMode;
   readonly fineAttitude: boolean;
@@ -109,7 +112,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public override get parts(): readonly Part[] { return super.parts; }
 
   // registry は出来事と生んだ実体を積む先。name は表示名、id は採番器が配った識別子、state と
-  // attitude は運動状態。weapon から後ろは下位系の状態と部品で、省いたものは新しく作ったときの
+  // attitude は運動状態。weapon から後ろは下位系の状態・生死・部品で、省いたものは新しく作ったときの
   // 状態で始める。plan はこの艦自身のマニューバ計画。
   private constructor(
     private readonly registry: EntityRegistry,
@@ -120,6 +123,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     attitude: Attitude,
     weapon?: WeaponState,
     thermal?: DynamicMotionThermal,
+    alive?: boolean,
     radiatorUp?: DeployablePanelState,
     radiatorDown?: DeployablePanelState,
     power?: PowerSystem,
@@ -129,8 +133,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     public readonly altitudeAlarm = new AltitudeAlarm(registry.events),
     parts: readonly Part[] = createPlayerParts(PLAYER_MAX_HP),
     public readonly plan = Plan.create(),
-    public planExecution: PlanExecutionMode = 'instant',
-    public fineAttitude = false,
+    private _planExecution: PlanExecutionMode = 'instant',
+    private _fineAttitude = false,
   ) {
     // Motion が読む値と、接触・喪失の通知先をこの艦へ結ぶ
     const reactions = (owner: Player): PlayerMotionReactions => ({
@@ -139,7 +143,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         stepBarrelThermal: dt => owner.fire.stepBarrelThermal(dt),
       },
       environment: {
-        thrustAcceleration: () => owner.throttle.thrustAccelVec,
+        thrustAcceleration: () => owner.throttle.thrust ?? v3(),
         radiatorWear: () => owner.radiatorWear(),
         totalCoolingRate: () => owner.totalCoolingRate,
         totalPowerGeneration: () => owner.totalPowerGeneration,
@@ -174,6 +178,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         BELT_MAX_VISIBLE,
         reactions(owner as Player),
         thermal,
+        alive,
         radiatorUp,
         radiatorDown,
         power,
@@ -223,8 +228,9 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       serialized.fire ? WeaponState.deserialize(serialized.fire) : undefined,
       // null も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
       serialized.thermal ?? undefined,
-      radiator?.up ? DeployablePanelState.deserialize(radiator.up) : undefined,
-      radiator?.down ? DeployablePanelState.deserialize(radiator.down) : undefined,
+      serialized.alive,
+      (radiator?.up && DeployablePanelState.deserialize(radiator.up)) ?? undefined,
+      (radiator?.down && DeployablePanelState.deserialize(radiator.down)) ?? undefined,
       serialized.power ? PowerSystem.deserialize(serialized.power) : undefined,
       serialized.boosters ? BoosterStack.deserialize(serialized.boosters) : undefined,
       belt ? BeltController.deserialize(belt) : undefined,
@@ -241,8 +247,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     return player;
   }
 
-  // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
-  // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
+  // 自機の主慣性モーメント(ピッチ・ヨー・ロール)。
   private static readonly INERTIA = v3(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL);
 
   // 機首を center に対する速度の向きへ、上面を center から見た位置の向きへ向けた静止姿勢。
@@ -271,16 +276,18 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.onPickup(mags);
   }
 
-  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。controls が null の艦は、このフレーム
-  // 操作されない艦として畳む。
-  public updateControls(frame: PilotCommandFrame): void {
-    const { controls, dt, simDt, activeStage, stageRules, celestialBodies } = frame;
+  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。controls はこのフレームの操作量で、null の艦は
+  // 操作されない艦として畳む。dt [s] は実時間、simDt [sim s] はシミュレーション時間の刻み。
+  public updateControls(
+    controls: PilotControls | null, dt: number, simDt: number,
+    activeStage: StageOutcome, stageRules: StageRules, celestialBodies: CelestialBodies,
+  ): void {
     if (stageRules.selfRepair) this.hpRegen(dt);
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
     if (controls === null) {
       this.clearTransientCommands();
       this.motion.attachedBoosters.step(simDt);
-      this.motion.thrust = this.motion.attachedBoosters.thrust;
+      this.motion.setThrust(this.motion.attachedBoosters.thrust);
       return;
     }
     this.motion.attachedBoosters.step(simDt);
@@ -289,21 +296,20 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.updateFireState(dt, controls, activeStage, celestialBodies);
 
     this.throttle.updateThrustLatches(controls);
-    const rcsThrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    const rcsThrust = this.throttle.thrust;
     const boosterThrust = this.motion.attachedBoosters.thrust;
-    this.motion.thrust = rcsThrust && boosterThrust
+    this.motion.setThrust(rcsThrust && boosterThrust
       ? add(rcsThrust, boosterThrust)
-      : rcsThrust ?? boosterThrust;
-    // 噴射中は予測が毎フレーム陳腐化するので破棄する。
-    if (this.motion.thrust !== null) this.motion.invalidatePrediction();
+      : rcsThrust ?? boosterThrust);
   }
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。角速度による
   // coast はそのまま続く。
   public clearTransientCommands(): void {
-    this.motion.thrust = null;
+    this.motion.setThrust(null);
     this.motion.attachedBoosters.clearThrust();
-    this.motion.torque = v3();
+    this.motion.setTorque(v3());
     this.throttle.clearTransientState();
     this.fire.stopFiring();
   }
@@ -333,10 +339,41 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     }
   }
 
+  // 計画の実行方法。
+  public get planExecution(): PlanExecutionMode { return this._planExecution; }
+  // 姿勢微調整モードか。
+  public get fineAttitude(): boolean { return this._fineAttitude; }
+
+  // 計画の実行方法を mode へ切り替える。
+  public setPlanExecution(mode: PlanExecutionMode): void {
+    this._planExecution = mode;
+  }
+
+  // 計画を 'instant' で実行しているとき、次に消化するノードの時刻。それ以外や、待っているノードが
+  // 無ければ null。
+  public get instantNodeTime(): number | null {
+    if (this._planExecution !== 'instant') return null;
+    return this.plan.firstNode()?.t ?? null;
+  }
+
+  // 計画を 'instant' で実行しているとき、時刻 simTime までに来たノードを消化し、消化した最後のノードの
+  // 絶対状態へそのまま乗り移る(誤差が無い)。
+  public executeInstantNodesUpTo(simTime: number): void {
+    if (this._planExecution !== 'instant') return;
+    const first = this.plan.firstNode();
+    if (!first || first.t > simTime + 1e-9) return;
+    // ノードは実行時刻順に並ぶので、来たもののうち最後が到達状態になる。
+    const due = this.plan.nodes.filter((node) => node.t <= simTime);
+    const reached = due[due.length - 1];
+    if (reached === undefined) return;
+    this.plan.consumeNodesUpTo(simTime, reached);
+    this.motion.reset(reached);
+  }
+
   // 姿勢微調整モードの ON/OFF を切り替える。
   private toggleFineAttitude(): void {
-    this.fineAttitude = !this.fineAttitude;
-    this.registry.events.record({ kind: 'fineAttitudeToggled', on: this.fineAttitude });
+    this._fineAttitude = !this._fineAttitude;
+    this.registry.events.record({ kind: 'fineAttitudeToggled', on: this._fineAttitude });
   }
 
   // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
@@ -364,7 +401,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     }
 
     // HP が尽きたら喪失させる
-    this.motion.alive = false;
+    this.motion.kill();
     const reason = shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
     outcome.playerLost(reason);
     this.effects.destroy(this.motion.state);
@@ -372,7 +409,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
 
   // 他の動体との接触の帰結。弾なら武装のダメージを、それ以外は接近速度と相手の種別を根拠に
   // 無作為なパーツへダメージを入れる(ゲームバランスの量)。
-  private receiveEntityContact(other: DynamicMotion, contact: Contact, activeStage: StageOutcome): void {
+  private receiveEntityContact(other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome): void {
     if (!this.motion.alive) return;
 
     // 弾の命中
@@ -398,9 +435,9 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     );
   }
 
-  // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは side の放熱板パーツへ入る。
+  // 放熱板の接触代理からの帰結。ダメージは side の放熱板パーツへ入る。
   private receiveRadiatorContact(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, activeStage: StageOutcome,
+    side: RadiatorSide, other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome,
   ): void {
     if (!this.motion.alive) return;
 
@@ -433,7 +470,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     }
 
     // HP が尽きたら喪失させる
-    this.motion.alive = false;
+    this.motion.kill();
     outcome.playerLost(lossReason);
     this.effects.destroy(this.motion.state);
   }
@@ -469,7 +506,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
 
   // 喪失の共通処理。reason はステージの記録に残す喪失理由。
   private lose(reason: string, outcome: DamageOutcomeSink): void {
-    this.motion.alive = false;
+    this.motion.kill();
     this.effects.destroy(this.motion.state);
     outcome.playerLost(reason);
   }
@@ -482,8 +519,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // 操作量から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
   private updateTorque(controls: PilotControls, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
-    const fine = this.fineAttitude || this.fire.isFiring;
-    this.motion.torque = this.throttle.updateTorque(
+    const fine = this._fineAttitude || this.fire.isFiring;
+    this.throttle.updateTorque(
       this.motion.att,
       this.motion.state.r,
       this.motion.state.v,
@@ -494,6 +531,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       this,
       this.registry.events,
     );
+    this.motion.setTorque(this.throttle.torque);
   }
 
   // 艦は任意のタイミングで削除されうるので、一度だけ連続指令と View を解放する。
@@ -525,24 +563,23 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     };
   }
 
-  // 自機の View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
-  // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
+  // 自機の View が読む値を、このフレームの Motion と装備の現在値から組み、共通の表示入力へ足す。
   protected override renderSource(
     viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): PlayerRenderSource {
     const motion = this.motion;
     const { attachedBoosters: boosters, belt, power, radiator } = motion;
-    // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
-    const thrustAcceleration = this.throttle.thrustAccelVec;
     const radiatorPanel = (side: RadiatorSide) => ({ wear: radiator.wearOf(side), ...radiator.foldThetas(side) });
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
       state: motion.state,
       active,
-      thrustAcceleration: len(thrustAcceleration) > 0 ? thrustAcceleration : null,
+      // 噴射と空力の表現
+      thrustAcceleration: this.throttle.thrust,
       maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,
+      // 可動部と装備
       boosters: {
         stageIds: boosters.stageIds,
         firing: boosters.thrust !== null,
@@ -564,6 +601,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   }
 
   // 現在の艦状態を直列化した形へ変換する。
+  // 例外(ARCHITECTURE R12): 運動の部品(放熱板・電力・給弾ベルト・ブースター)の記録を、自機の記録へ
+  // 並べる。運動の記録として分けると保存の形式が変わり、版 4 の記録が読めなくなる。
   public override serialize(): SerializedPlayer {
     return {
       ...this.serializeEntityFields(Player.kind),
@@ -576,10 +615,10 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       belt: this.motion.belt.serialize(),
       throttle: this.throttle.serialize(),
       altitudeAlarm: this.altitudeAlarm.serialize(),
-      parts: this.parts.map(p => ({ ...p })) as SerializedPart[],
+      parts: this.serializeParts(),
       // 操作の設定と計画
-      planExecution: this.planExecution,
-      fineAttitude: this.fineAttitude,
+      planExecution: this._planExecution,
+      fineAttitude: this._fineAttitude,
       plan: this.plan.serialize(),
       boosters: this.motion.attachedBoosters.serialize(),
     };
@@ -588,7 +627,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public rename(name: string): void { this.setName(name); }
 }
 
-// この個体が自機か。顔ぶれから自機だけを絞るときに使う。
+// entity を自機へ絞り込む型ガード。
 export function isPlayer(entity: DynamicEntity): entity is Player {
   return entity instanceof Player;
 }

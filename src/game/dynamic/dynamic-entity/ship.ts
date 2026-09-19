@@ -1,6 +1,6 @@
 import type { DynamicMotionFactory } from './dynamic-entity';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import type { Part, RadiatorPart, SolarPanelPart } from './parts';
+import type { Part, RadiatorPart, AnyPart, SolarPanelPart } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Vessel } from './vessel';
 
@@ -22,30 +22,32 @@ export abstract class Ship extends Vessel {
     super(name, hp, motionFactory, view, id);
     this.partModel = new PartDamageModel(initialParts);
     if (initialParts.length === 0) return;
-    this.maxHp = this.partModel.maxHp;
-    this.hp = this.partModel.overallHp();
+    this.setHealth(this.partModel.overallHp(), this.partModel.maxHp);
   }
 
   public hasPart(part: Part): boolean { return this.partModel.hasPart(part); }
+
+  // 部品の一覧の直列化。
+  protected serializeParts(): AnyPart[] { return this.partModel.serialize(); }
 
   // 接近速度に応じたダメージを入れ、ダメージが出たかを返す。part を指定すると
   // その部品へ固定し、省略すると健全な部品へ無作為に割り振る。
   protected applyCollisionDamage(closingSpeed: number, part?: Part): boolean {
     const damaged = this.partModel.applyCollisionDamage(closingSpeed, this.maxHp, part);
-    this.hp = this.partModel.overallHp();
+    this.setHealth(this.partModel.overallHp());
     return damaged;
   }
 
   // 装甲の軽減を通したダメージを部品へ入れる。part の扱いは applyCollisionDamage と同じ。
   protected applyDamageToParts(amount: number, part?: Part): void {
     this.partModel.applyDamageToParts(amount, part);
-    this.hp = this.partModel.overallHp();
+    this.setHealth(this.partModel.overallHp());
   }
 
   // 損傷した部品へ amount を均等に配って回復させる。機上で直せない部品は対象から外れる。
   protected selfRepair(amount: number): void {
     this.partModel.selfRepair(amount);
-    this.hp = this.partModel.overallHp();
+    this.setHealth(this.partModel.overallHp());
   }
 
   public get totalTorque(): number { return this.partModel.totalTorque; }
@@ -53,8 +55,8 @@ export abstract class Ship extends Vessel {
   public get totalFuelConsumptionRate(): number { return this.partModel.totalFuelConsumptionRate; }
   public get totalFuel(): number { return this.partModel.totalFuel; }
   public get totalMaxFuel(): number { return this.partModel.totalMaxFuel; }
-  public consumeFuel(amount: number): number { return this.partModel.consumeFuel(amount); }
-  public refuelFuel(amount: number): number { return this.partModel.refuelFuel(amount); }
+  public consumeFuel(amount: number): void { this.partModel.consumeFuel(amount); }
+  public refuelFuel(amount: number): void { this.partModel.refuelFuel(amount); }
 
   public get radiatorParts(): readonly (RadiatorPart | undefined)[] { return this.partModel.radiatorParts; }
   public get solarParts(): readonly (SolarPanelPart | undefined)[] { return this.partModel.solarParts; }

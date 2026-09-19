@@ -1,13 +1,67 @@
 // 直近の進行が記録した出来事を読み、そのフレームに描く一時エフェクト(閃光・ガスパフ)の
-// 宣言を作る表示の導出。どの出来事がどの見え方の閃光を伴うか、何枚重ねるか、どれだけ保つかを
-// ここで決める。
+// 宣言を作る表示の導出。どの出来事がどの見え方の閃光を伴うか、何枚重ねるか、どれだけ保つか、
+// 照準ズーム中に減光するかをここで決める。
 import { addScaled } from '../math/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import type { KinematicState } from '../physics/kinematic-state';
-import type { FlashEffect, FlashKind } from '../render/vfx/flash-effects-view';
+import type { FlashEffect } from '../render/vfx/flash-effects-view';
 import type { ProteinPhase } from '../render/protein/protein-display';
 import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
 import type { RunEvent, RunEventBody } from './run-events';
+
+// 閃光の種別。どの出来事を示す閃光かを表し、見え方はこれで決まる。
+type FlashKind =
+  | 'bulletImpact'
+  | 'plasmaImpact'
+  | 'muzzle'
+  | 'destroy1'
+  | 'destroy2'
+  | 'gasPuff1'
+  | 'gasPuff2'
+  | 'proteinCritical'
+  | 'proteinDissociated'
+  | 'proteinDamaged';
+
+// 種別1つぶんの見え方。板の一辺は発生直後の size0 から寿命末の size1 まで広がる。
+interface FlashAppearance {
+  readonly color: string | number;
+  readonly size0: number; // 発生直後の一辺 [m]
+  readonly size1: number; // 寿命末の一辺 [m]
+  readonly peakBrightness: number; // 発生直後の最大の明るさ倍率
+  readonly dimsInGunsight: boolean; // 照準ズーム中に減光するか
+}
+
+const ZOOM_DIM_SCALE = 0.02; // 照準ズーム中に減光する種別の明るさ倍率(完全には消さない)
+
+// タンパク質の状態遷移フラッシュの大きさ [m] と明るさ。危篤・解離・それ以外の損傷で共通にし、色だけで分ける。
+const PROTEIN_STATE_FLASH_SIZE0 = 2.5;
+const PROTEIN_STATE_FLASH_SIZE1 = 13;
+const PROTEIN_STATE_FLASH_BRIGHTNESS = 0.9;
+
+// TODO: 明るさは 1 天文単位を基準にした目盛りへ手で置いた表示値。ボリュームレンダリングで放射量として組み直す。
+const FLASH_APPEARANCE: Record<FlashKind, FlashAppearance> = {
+  bulletImpact: { color: '#ffe2a0', size0: 1.5, size1: 6, peakBrightness: 1, dimsInGunsight: false },
+  plasmaImpact: { color: '#ffa0ff', size0: 2, size1: 8, peakBrightness: 1, dimsInGunsight: false },
+  muzzle: { color: '#fff0b8', size0: 2.2, size1: 6, peakBrightness: 1, dimsInGunsight: true },
+  // 撃破の芯(1)と外殻(2)の2枚。
+  destroy1: { color: '#ffb36b', size0: 10, size1: 110, peakBrightness: 1, dimsInGunsight: false },
+  destroy2: { color: '#fffbe8', size0: 6, size1: 40, peakBrightness: 1, dimsInGunsight: false },
+  // ガスの放出。薄く広がる灰色の板を2枚重ねて気体らしさを出す。
+  gasPuff1: { color: '#aaaaaa', size0: 1.0, size1: 8.0, peakBrightness: 0.3, dimsInGunsight: false },
+  gasPuff2: { color: '#ffffff', size0: 0.5, size1: 6.0, peakBrightness: 0.4, dimsInGunsight: false },
+  proteinCritical: {
+    color: 0xff3d88, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
+    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
+  },
+  proteinDissociated: {
+    color: 0xa76dff, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
+    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
+  },
+  proteinDamaged: {
+    color: 0x59e7ff, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
+    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
+  },
+};
 
 // 種別ごとの寿命 [s]。
 const BULLET_IMPACT_FLASH_DURATION = 0.25;
@@ -50,7 +104,8 @@ export class FlashPresenter {
   }
 
   // まだ読んでいない出来事から閃光を起こし、表示時刻 displayTime で生きているものを宣言へ組む。
-  public present(events: readonly RunEvent[], displayTime: number): void {
+  // gunsightZoomed は照準ズーム中か。
+  public present(events: readonly RunEvent[], displayTime: number, gunsightZoomed: boolean): void {
     for (const event of events) {
       if (event.seq <= this.lastSeq) continue;
       this.lastSeq = event.seq;
@@ -64,12 +119,16 @@ export class FlashPresenter {
       spawned.push(flash);
       // 軌道速度で流れて見えないよう、発生源の速度で表示時刻まで運ぶ。
       const { r, v, t } = flash.state;
+      const appearance = FLASH_APPEARANCE[flash.kind];
+      const dimmed = gunsightZoomed && appearance.dimsInGunsight;
       effects.push({
-        kind: flash.kind,
         state: kinematicState<'eci'>(displayTime, addScaled(r, v, displayTime - t), v),
         age,
         duration: flash.duration,
-        sizeScale: flash.sizeScale,
+        color: appearance.color,
+        size0: appearance.size0 * flash.sizeScale,
+        size1: appearance.size1 * flash.sizeScale,
+        brightness: appearance.peakBrightness * (dimmed ? ZOOM_DIM_SCALE : 1),
       });
     }
     this.spawned = spawned;
@@ -126,8 +185,8 @@ export class FlashPresenter {
     this.add(state, 'gasPuff2', GAS_PUFF2_DURATION);
   }
 
-  // state は発生位置・発生源速度と、その位置が表す時刻(エポック)。積分前の座標から
-  // 起こす場合も、その座標の時刻をそのまま渡せば取り残されない。
+  // 閃光1件を起こす。state は発生位置・発生源速度と、その位置が表す時刻(エポック)で、
+  // 積分前の座標でもその座標の時刻を渡せば表示時刻まで正しく運ばれる。
   private add(state: KinematicState, kind: FlashKind, duration: number, sizeScale = 1): void {
     this.spawned.push({ kind, state, duration, sizeScale });
   }
