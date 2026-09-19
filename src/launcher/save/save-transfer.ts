@@ -1,4 +1,4 @@
-import { SERIALIZATION_VERSION } from '../../game/game';
+import { SAVED_GAME_VERSION } from './save-store';
 import {
   type SaveSlotMeta,
   type SlotExport,
@@ -145,7 +145,7 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
     const stageObj = stage as unknown as StageHistoryMeta;
     const keptSnapshots = stageObj.snapshots.filter((meta) => {
       const data = snapshotsRecord[meta.id] as { version?: unknown } | undefined;
-      return data !== undefined && data.version === SERIALIZATION_VERSION;
+      return data !== undefined && data.version === SAVED_GAME_VERSION;
     });
     filteredStages.push({ ...stageObj, snapshots: keptSnapshots });
   }

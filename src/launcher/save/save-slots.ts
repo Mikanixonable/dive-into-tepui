@@ -1,4 +1,3 @@
-import type { SerializedGame } from '../../game/game';
 import {
   type SaveIndex,
   type SaveSlotMeta,
@@ -9,7 +8,7 @@ import {
   SLOT_EXPORT_VERSION,
   newSaveId,
 } from './slot-data';
-import { SaveStore, SAVE_INDEX_VERSION } from './save-store';
+import { SaveStore, SAVE_INDEX_VERSION, type SavedGame } from './save-store';
 
 // 履歴ごとに持てる手動セーブの件数の上限。
 export const MANUAL_SAVE_LIMIT = 30;
@@ -193,7 +192,7 @@ export class SaveSlots {
   }
 
   // 自動セーブを差し替える。書き込みに失敗したら false を返し、前の自動セーブをそのまま残す。
-  public writeAutoSave(slotId: string, stageId: string, data: SerializedGame): boolean {
+  public writeAutoSave(slotId: string, stageId: string, data: SavedGame): boolean {
     const history = this.historyFor(slotId, stageId);
     if (!history) return false;
 
@@ -220,7 +219,7 @@ export class SaveSlots {
 
   // 本体を書き、メタを履歴の先頭へ入れる。履歴が MANUAL_SAVE_LIMIT 件に達しているときと、
   // 書き込みに失敗したときは false を返す。
-  public addManualSave(slotId: string, stageId: string, meta: SnapshotMeta, data: SerializedGame): boolean {
+  public addManualSave(slotId: string, stageId: string, meta: SnapshotMeta, data: SavedGame): boolean {
     const history = this.historyFor(slotId, stageId);
     if (!history) return false;
     if (history.snapshots.length >= MANUAL_SAVE_LIMIT) return false;
@@ -286,7 +285,7 @@ export class SaveSlots {
 
     // 履歴ごとに、書き出すメタと本体を組にして詰める。
     const exportedSlot: SaveSlotMeta = { ...slot, stages: [] };
-    const snapshots: Record<string, SerializedGame> = {};
+    const snapshots: Record<string, SavedGame> = {};
     for (const history of slot.stages) {
       const keptMetas: SnapshotMeta[] = [];
       for (const meta of history.snapshots) {

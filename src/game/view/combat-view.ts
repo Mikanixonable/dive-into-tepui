@@ -48,7 +48,7 @@ export class CombatView implements ViewFrame {
   public updateActions(): void {}
 
   // 照準キーと右クリックを配る。操作対象がいなければ照準先が無いので何もしない。
-  public handlePointer(simTime: number, camera: CameraFrame): void {
+  public handlePointer(camera: CameraFrame): void {
     const controlled = this.controlSelection.current;
     if (!controlled) return;
     this.targeter.handleTargetSelect(controlled, camera.project, camera.viewport);
@@ -57,8 +57,8 @@ export class CombatView implements ViewFrame {
       const hit = pickCombatEntityAtPoint(
         this.roster, camera.viewpoint, camera.project, p.x, p.y, camera.viewport);
       const inspected = hit ? objectPickableOf(hit) : null;
-      if (inspected) this.objectWindows.open(p.x, p.y, inspected, simTime);
-      else this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
+      if (inspected) this.objectWindows.open(p.x, p.y, inspected);
+      else this.objectWindows.openEmptySpaceMenu(p.x, p.y);
       return true;
     });
   }

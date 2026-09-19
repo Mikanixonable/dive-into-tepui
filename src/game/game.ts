@@ -22,14 +22,8 @@ import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
 import type { TrajectoryDemand } from './dynamic/trajectory-demand';
 import type { CameraFrameSamples } from './viewer/camera-selection';
 
-// SerializedGame の形式バージョン。上げるのは構造が変わって互換を切るときで、上げた時点で
-// それ以前に書かれた記録は読めなくなる。項目を増やすだけなら版は据え置き、省略可能にして
-// 欠けた項目は復元で新しく作ったときの初期値で補う(SAVE.md「形式の版」)。
-export const SERIALIZATION_VERSION = 4;
-
 // 1ランの直列化した形。進行と視点を分けて持つ(R4)。
 export interface SerializedGame {
-  readonly version: number;
   readonly progress: SerializedProgress;
   readonly viewer: SerializedViewer;
 }
@@ -160,7 +154,6 @@ export class Game {
   // このランを直列化した形へ畳む。
   public serialize(): SerializedGame {
     return {
-      version: SERIALIZATION_VERSION,
       progress: {
         stageId: this.activeStage.id,
         ephemerisContext: { ...ephemerisContextFor(this.celestialSystem.epoch) },
