@@ -190,11 +190,11 @@ export class FireControl {
 
     this.spawnBullet(muzzle, fwd, celestialBodies);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
-    this.player.motion.state = kinematicState<'eci'>(
+    this.player.motion.reset(kinematicState<'eci'>(
       this.player.motion.state.t,
       this.player.motion.state.r,
       addScaled(this.player.motion.state.v, fwd, -RECOIL_DV),
-    );
+    ));
     this.dropCasing(muzzle);
 
     activeStage.scoreCounter.recordShot();

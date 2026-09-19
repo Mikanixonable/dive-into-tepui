@@ -5,7 +5,7 @@ import type { Vec3 } from '../../../math/vec3';
 import type { ContactGeometry } from '../../../physics/collision-response';
 import type { SphereHit } from '../../../math/triangle-mesh';
 import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
-import type { DynamicReactionServices } from '../dynamic-simulation-participant';
+import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic-simulation-participant';
 import type { Contact } from './contact';
 import type { DebrisKind } from './debris-kind';
 import { bulletReactionOf } from './bullet-reaction';
@@ -51,11 +51,11 @@ export class DebrisReaction implements DynamicMotionBehavior {
       )
     );
     this.testEntityCollision = (
-      self: DynamicMotion, other: DynamicMotion,
+      self: DynamicMotion, other: EntityContactParticipant,
       selfState: KinematicState, otherState: KinematicState,
     ): ContactGeometry | null => casingEntityCollision(self, other, selfState, otherState);
     this.testSweptEntityCollision = (
-      self: DynamicMotion, other: DynamicMotion,
+      self: DynamicMotion, other: EntityContactParticipant,
       previousSelfState: KinematicState, selfState: KinematicState,
       previousOtherState: KinematicState, otherState: KinematicState,
     ) => casingSweptEntityCollision(
@@ -65,7 +65,7 @@ export class DebrisReaction implements DynamicMotionBehavior {
 
   // 弾が当たったこと、薬莢が船体か他の薬莢へ当たったことを出来事として記録する。
   public onEntityContact(
-    _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    _self: DynamicMotion, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void {
     if (bulletReactionOf(other) !== null) {
       services.registry.events.record({
@@ -95,7 +95,7 @@ export class DebrisReaction implements DynamicMotionBehavior {
   // 寿命の尽きた破片を消す。
   public checkLoss(self: DynamicMotion, _dt: number, simTime: number): void {
     const expiresAt = this.expiresAt;
-    if (expiresAt !== null && simTime >= expiresAt) self.alive = false;
+    if (expiresAt !== null && simTime >= expiresAt) self.kill();
   }
 
   // 寿命の尽きる時刻 [sim s]。寿命を持たない種別では null。
