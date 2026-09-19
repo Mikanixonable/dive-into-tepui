@@ -84,19 +84,19 @@ export class ObjectWindows implements PropertyWindowOpener {
   public openEnemy(id: string, clientX: number, clientY: number): void {
     const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
     const inspected = enemy ? objectPickableOf(enemy) : null;
-    if (inspected) this.open(clientX, clientY, inspected, this.displayWindowManager.current.simTime);
+    if (inspected) this.open(clientX, clientY, inspected);
   }
 
   // いま固定しているターゲットのプロパティウィンドウを開く。固定していなければ開かない。
   public openTarget(clientX: number, clientY: number): void {
     const target = this.targeter.aliveTarget;
     const inspected = target ? objectPickableOf(target) : null;
-    if (inspected) this.open(clientX, clientY, inspected, this.displayWindowManager.current.simTime);
+    if (inspected) this.open(clientX, clientY, inspected);
   }
 
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
   // 新規には開かない。
-  public open(clientX: number, clientY: number, target: InspectedObject, simTime: number): void {
+  public open(clientX: number, clientY: number, target: InspectedObject): void {
     const key = target.id;
     const existing = this.windows.get(key);
     if (existing) {
@@ -104,8 +104,9 @@ export class ObjectWindows implements PropertyWindowOpener {
       existing.win.bringToFront();
       return;
     }
+    const content = this.buildContent(target, this.displayWindowManager.current.simTime);
     const w = new PropertyWindow<MenuAction>(
-      this.hud.layers.window, clientX, clientY, this.buildContent(target, simTime),
+      this.hud.layers.window, clientX, clientY, content,
       this.hud.overlayManager, TEMP_WINDOW_GROUP,
     );
     const entry: WindowEntry = { win: w, target };
@@ -124,9 +125,10 @@ export class ObjectWindows implements PropertyWindowOpener {
   }
 
   // 何にも当たらなかった右クリックの落ち先。
-  public openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
+  public openEmptySpaceMenu(clientX: number, clientY: number): void {
     const target = this.emptySpace;
-    this.menu.open(clientX, clientY, target, this.offeredItems(target, simTime));
+    const items = this.offeredItems(target, this.displayWindowManager.current.simTime);
+    this.menu.open(clientX, clientY, target, items);
   }
 
   // 閉じ終わったウィンドウを台帳から外す。
@@ -144,7 +146,8 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 開いている全プロパティウィンドウの値を最新化する。対象そのものが消滅していれば
   // (撃破・回収・削除)閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム
   // (posAt が null)は候補列から外れるだけで消滅ではないので、生存判定は対象の gone で行う。
-  public sync(simTime: number, displayTime: number): void {
+  public sync(): void {
+    const { simTime, displayTime } = this.displayWindowManager.current;
     // バッジはマップのカメラが注視している対象の窓に付ける。
     const mapFocusId = focusTargetId(this.camera.map.focus);
     for (const [key, entry] of [...this.windows]) {
@@ -285,7 +288,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       },
       onContextMenu: (clientX, clientY) => {
         const current = this.activeView().pickables.find((candidate) => candidate.id === item.id);
-        if (current) this.open(clientX, clientY, current, this.displayWindowManager.current.simTime);
+        if (current) this.open(clientX, clientY, current);
       },
     }));
   }
@@ -309,6 +312,6 @@ export class ObjectWindows implements PropertyWindowOpener {
 
   // target のプロパティウィンドウを開く。
   public openProperties(target: InspectedObject, clientX: number, clientY: number): void {
-    this.open(clientX, clientY, target, this.displayWindowManager.current.simTime);
+    this.open(clientX, clientY, target);
   }
 }
