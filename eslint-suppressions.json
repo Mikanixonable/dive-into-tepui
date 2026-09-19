@@ -864,9 +864,6 @@
     }
   },
   "src/game/player/attached-boosters.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 1
     }
@@ -959,11 +956,6 @@
   },
   "src/game/random-name.ts": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "src/game/stages/creative-stage.ts": {
-    "no-restricted-syntax": {
       "count": 1
     }
   },
