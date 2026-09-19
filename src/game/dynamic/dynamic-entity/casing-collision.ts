@@ -1,4 +1,4 @@
-// 薬莢の表示寸法から組んだ物理形状。描画メッシュを参照せず、姿勢に応じた円柱近似へ変換する。
+// 薬莢の表示寸法から組んだ円柱近似の物理形状と、その接触判定。
 import { qRotate } from '../../../math/quat';
 import { add, v3, type Vec3 } from '../../../math/vec3';
 import type { ContactGeometry } from '../../../physics/collision-response';
@@ -16,7 +16,7 @@ export const CASING_CYLINDER_RADIUS = 0.231;
 const CASING_LOCAL_CENTER_Y = -0.013333333333333308;
 const CASING_LOCAL_AXIS = v3(0, 1, 0);
 
-// 物理形状の中心が Object3D の原点からずれるため、空間グリッドへ渡す外接半径を別に持つ。
+// 原点から見た物理形状の外接半径 [m]。形状の中心が原点からずれるぶんを含む。
 export const CASING_COLLISION_BOUND_RADIUS = Math.hypot(
   CASING_CYLINDER_HALF_LENGTH + Math.abs(CASING_LOCAL_CENTER_Y), CASING_CYLINDER_RADIUS,
 );
@@ -51,7 +51,7 @@ export function casingSweptSphereCollision(
   _previousSelfAttitude = self.prevAtt,
   selfAttitude = self.att,
 ) {
-  // 薬莢は回転を持たない円柱近似なので、掃引中も終端姿勢だけを使う。
+  // 掃引中の回転は近似で無視し、終端姿勢の円柱を動かす。
   void _previousSelfAttitude;
   return sweptSphereCylinderContact(
     casingCylinder(self, selfState, selfAttitude), previousSphereCenter, sphereCenter, sphereRadius,

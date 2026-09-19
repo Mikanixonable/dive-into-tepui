@@ -33,8 +33,9 @@ export interface SaveStore {
 }
 
 export class LocalStorageSaveStore implements SaveStore {
-  // 未保存・JSON 破損・version 不一致は、どれも null を返す。
+  // 未保存・JSON 破損・version 不一致・localStorage が使えないときは、どれも null を返す。
   public readIndex(): SaveIndex | null {
+    // localStorage が使えない環境では getItem も投げる。
     let raw: string | null;
     try {
       raw = localStorage.getItem(INDEX_KEY);
@@ -42,6 +43,7 @@ export class LocalStorageSaveStore implements SaveStore {
       return null;
     }
     if (raw === null) return null;
+    // 壊れた JSON と、形式の版が違う索引は、未保存と同じ扱い。
     try {
       const index = JSON.parse(raw) as SaveIndex;
       if (index.version !== SAVE_INDEX_VERSION) return null;
@@ -56,8 +58,9 @@ export class LocalStorageSaveStore implements SaveStore {
     localStorage.setItem(INDEX_KEY, JSON.stringify(index));
   }
 
-  // 未保存・JSON 破損は、どちらも null を返す。
+  // 未保存・JSON 破損・localStorage が使えないときは null を返す。形式の版を問わず返す。
   public readSnapshot(id: string): SavedGame | null {
+    // localStorage が使えない環境では getItem も投げる。
     let raw: string | null;
     try {
       raw = localStorage.getItem(SNAPSHOT_KEY_PREFIX + id);
@@ -65,6 +68,7 @@ export class LocalStorageSaveStore implements SaveStore {
       return null;
     }
     if (raw === null) return null;
+    // 壊れた JSON は未保存と同じ扱い。
     try {
       return JSON.parse(raw) as SavedGame;
     } catch {
@@ -86,10 +90,11 @@ export class LocalStorageSaveStore implements SaveStore {
     }
   }
 
-  // 現存する本体のキーを、索引に依らず直接走査して返す。
+  // 現存する本体の id を、索引に依らずストアを走査して返す。localStorage が使えなければ空。
   public snapshotIds(): readonly string[] {
     const ids: string[] = [];
     try {
+      // 本体のキーは接頭辞で見分け、接頭辞を除いた残りが id。
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key !== null && key.startsWith(SNAPSHOT_KEY_PREFIX)) {

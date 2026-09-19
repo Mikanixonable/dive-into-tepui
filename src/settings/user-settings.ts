@@ -21,7 +21,7 @@ import type { RenderStyle } from '../render/render-style';
 import type { ThemePalette } from '../theme';
 import type { SettingStorage } from './stored-setting';
 
-// 折りたたみ状態をビュー別に分ける前の鍵。新しい鍵がまだ無い環境からの移行元として読む。
+// ビュー別でない折りたたみ状態の鍵。新しい鍵がまだ無い環境で、移行元として読む。
 const LEGACY_PANEL_COLLAPSED_KEY = 'tepui.panelCollapsed';
 
 export class UserSettings {

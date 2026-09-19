@@ -1,5 +1,5 @@
-// 本体に取り付いた付属物(放熱板の折り・ベルトの節点)の接触代理。本体の姿勢と構成から毎サブステップ
-// 置き直され、物体どうしの接触の解決に本体と別の剛体として加わる。
+// 本体に取り付いた付属物(放熱板の折り・ベルトの節点)の接触代理。物体どうしの接触の解決に本体と
+// 別の剛体として加わり、状態は本体の側が reset で置き直す。
 import { Q_IDENTITY } from '../../math/quat';
 import { v3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
@@ -23,7 +23,7 @@ export class ContactProxy implements EntityContactParticipant {
   public readonly contactDamageWeight = 1;
   public readonly att = STILL_ATTITUDE;
   public readonly prevAtt = STILL_ATTITUDE;
-  // いまの状態と、直前に置いた状態。本体の状態から置き直すキャッシュ。
+  // いまの状態と、その前に置いた状態。本体の状態から置き直すキャッシュ。
   private current: KinematicState;
   private previous: KinematicState;
 

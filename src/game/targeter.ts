@@ -105,7 +105,7 @@ export class Targeter {
     return id === null ? null : aliveCombatTarget(this.roster.all(), id);
   }
 
-  // router から [T] の要求を受け取る。実際の選定はカメラ更新後に行う。
+  // [T] のターゲット選定を要求する。選定は、カメラ更新後に呼ぶ handleTargetSelect で行う。
   public requestTargetSelect(): void {
     this.targetSelectRequested = true;
   }

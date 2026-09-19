@@ -32,9 +32,7 @@ export class Viewer {
     control: ViewControlSource,
     events: RunEventSink,
     celestialBodies: CelestialBodies,
-    // 航法ターゲットの選択。
     public readonly navTarget = new NavTargetSelection(events),
-    // 軌道ガイドの選択。
     public readonly orbitGuide = new OrbitGuideSelection(),
     // 戦闘/マップのビュー選択。
     public readonly view = new ViewSelection(control, events),

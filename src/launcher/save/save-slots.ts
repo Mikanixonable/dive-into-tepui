@@ -56,6 +56,7 @@ export class SaveSlots {
 
   // 空のスロットを索引へ追加して返す。
   public createSlot(name: string): SaveSlotMeta {
+    // 周回もステージ履歴もまだ持たない、いま作ったスロット。
     const now = Date.now();
     const slot: SaveSlotMeta = {
       id: newSaveId(),
@@ -70,7 +71,7 @@ export class SaveSlots {
     return slot;
   }
 
-  // 遊び始めたステージを直近の周回としてスロットへ記録する。ゲーム開始時に一度だけ呼ぶ。
+  // 遊び始めたステージを直近の周回としてスロットへ記録する。周回を起こすたびに一度呼ぶ。
   public noteRunLaunched(slotId: string, stageId: string): void {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return;
@@ -96,9 +97,8 @@ export class SaveSlots {
     this.persist();
   }
 
-  // そのスロットが参照する全本体を先に消してから索引から外す。遊んでいたスロットを消した
-  // 場合は、残っているスロットの1つをアクティブにする(遊ぶ先が無いと以降どの経路でも
-  // 記録を残せなくなるため)。
+  // スロット id を、参照する本体ごと消す。遊んでいたスロットを消したら残りの先頭をアクティブにする
+  // — 遊ぶ先が無いと、以降どの経路でも記録を残せない。
   public deleteSlot(id: string): void {
     const slot = this.index.slots.find((s) => s.id === id);
     if (!slot) return;
@@ -171,7 +171,7 @@ export class SaveSlots {
     return copy;
   }
 
-  // slotId/stageId のステージ履歴を返す。無ければ作って索引に足す。
+  // slotId/stageId のステージ履歴を返す。無ければ作って索引に足す。スロットが無ければ null。
   private historyFor(slotId: string, stageId: string): StageHistoryMeta | null {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return null;
@@ -306,9 +306,9 @@ export class SaveSlots {
     };
   }
 
-  // 常に新規スロットとして追加する。id を振り直すのは、既に import 済みの同じファイルを
-  // もう一度読んだ時に既存スロットを壊さないため。取り込む形は自動セーブを持たないので、直近の
-  // 周回は締めた状態で足す。書き込み途中で失敗したら書いた分を消して null。
+  // 書き出しの形 exp を新規スロットとして足して返す。id は振り直す — 同じファイルを二度読んでも
+  // 既存スロットを壊さない。自動セーブを持たない形なので、直近の周回は締めて足す。書き込みに失敗
+  // したら書いた分を消して null。
   public importSlot(exp: SlotExport): SaveSlotMeta | null {
     const newSlot: SaveSlotMeta = {
       ...exp.slot,

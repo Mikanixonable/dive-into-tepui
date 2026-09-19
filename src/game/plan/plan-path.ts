@@ -62,7 +62,6 @@ interface SegmentSource { arc: PredictedArc | null; from: number; to: number; ow
 
 // 最後のバーン後(これから乗る軌道)の区間で見つかったアプシス。
 // periapsis/apoapsis は、区間が地表到達等で打ち切られてその極値へ届かなければ null。
-// *Center はその極値を検出した弧が答える中心天体。
 interface FinalSegment {
   readonly periapsis: Apsis | null;
   readonly apoapsis: Apsis | null;
@@ -100,8 +99,7 @@ export class PlanPath {
   // 積分範囲とは別に持つ。
   private displayFrom = 0;
   private displayTo = 0;
-  // clipSamplesTo が実際に切り詰めた(= 新規配列を作った)結果を区間の index ごとに
-  // (元配列, to) でメモ化したもの。
+  // 区間の index ごとに、clipSamplesTo の結果を (元配列, to) をキーにメモ化したもの。
   private readonly samplesCache: ({ source: readonly KinematicState[]; to: number; result: readonly KinematicState[] } | null)[] = [];
   // 直近の update() で作り直した区間の本数。
   public lastRebuiltArcs = 0;

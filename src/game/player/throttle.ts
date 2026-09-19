@@ -11,8 +11,7 @@ import type { PilotControls, ThrustDirection } from '../dynamic/dynamic-entity/p
 import type { RunEventSink } from '../run-events';
 import type { FuelConsumer } from '../dynamic/dynamic-entity/controllable';
 
-// 並進推力(全 6 方向で共通)の出力 4 段階 [m/s^2]。方向の操作量が立っている間だけ
-// 選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
+// 並進推力(全 6 方向で共通)の出力 4 段階の加速度 [m/s^2]。
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];
 export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
 
@@ -47,7 +46,7 @@ export interface SerializedThrottle {
 }
 
 export class Throttle {
-  // 直近の操作で出した並進の推力加速度(ECI)[m/s^2] と、機体座標系のトルク [N·m]。操作量から毎フレーム
+  // 直近の操作で出した並進の推力加速度(ECI)[m/s^2] と、機体座標系のトルク。操作量から毎フレーム
   // 求め直すキャッシュで、噴射していなければ推力は null。
   private _thrust: Vec3 | null = null;
   private _torque: Vec3 = v3();
@@ -137,9 +136,8 @@ export class Throttle {
     this._thrust = this.buildThrust(controls, att.q, ship, simDt);
   }
 
-  // 対向の方向を押している間は、そのラッチを外し続ける(片方をラッチしたまま逆方向を
-  // 押しっぱなしにしても axX/Y/Z の相殺で終わらせず、逆方向を離した瞬間にラッチが
-  // 復活するのを防ぐ)。緊急停止の間は全ラッチを外す。
+  // 押している方向の対向のラッチを外す。緊急停止の間は全ラッチを外す。逆方向を離した瞬間に、
+  // ラッチ側の噴射が復活しないようにするため。
   public updateThrustLatches(controls: PilotControls): void {
     if (thrustKillSwitchActive(controls.thrust)) {
       this.latchedThrust.clear();
@@ -150,7 +148,7 @@ export class Throttle {
     }
   }
 
-  // その軸のラッチを反転する。
+  // direction の噴射ラッチを反転する。
   public toggleThrustLatch(direction: ThrustDirection): void {
     if (this.latchedThrust.has(direction)) this.latchedThrust.delete(direction);
     else this.latchedThrust.add(direction);
@@ -174,8 +172,7 @@ export class Throttle {
     const axZ = (this.isThrustHeld(controls, 'forward') ? 1 : 0) + (this.isThrustHeld(controls, 'backward') ? -1 : 0);
     if (axX === 0 && axY === 0 && axZ === 0) return null;
 
-    // 全開加速度は推力/質量で決まる。スロットル段は THROTTLE_LEVELS の最大値に対する
-    // 比としてそこへ掛けるので、既定パーツの艦では表示値(THROTTLE_LEVELS)と実加速度が一致する。
+    // 段は最大段に対する比として全開加速度へ掛ける。既定部品の艦では段の値と実加速度が一致する。
     const maxAccel = ship.motion.mass > 0 ? ship.totalThrust / ship.motion.mass : 0;
     const presetScale = THROTTLE_LEVELS[this._throttleIdx]! / THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1]!;
     let thrustAccel = maxAccel * presetScale;

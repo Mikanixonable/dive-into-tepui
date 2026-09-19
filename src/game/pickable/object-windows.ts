@@ -94,8 +94,8 @@ export class ObjectWindows implements PropertyWindowOpener {
     if (inspected) this.open(clientX, clientY, inspected);
   }
 
-  // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
-  // 新規には開かない。
+  // target のプロパティウィンドウを (clientX, clientY) に開く。対象1つにつき高々1枚で、既に
+  // 開いていればその窓をクリック位置へ動かして最前面に出す。
   public open(clientX: number, clientY: number, target: InspectedObject): void {
     const key = target.id;
     const existing = this.windows.get(key);
@@ -111,8 +111,6 @@ export class ObjectWindows implements PropertyWindowOpener {
     );
     const entry: WindowEntry = { win: w, target };
     this.windows.set(key, entry);
-    // 実行時は entry.target(sync のたびに最新化される)を読む — 開いた瞬間の対象を
-    // 捕まえたままだと、時刻に依存する操作(ワープ・ノード追加)が古い時刻へ向けて走ってしまう。
     w.onSelect = (act, keepOpen) => {
       this.runAct(entry.target, act);
       // 「削除」は対象自体が消えるので、クリップ済みの窓でも閉じる。
@@ -124,7 +122,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     };
   }
 
-  // 何にも当たらなかった右クリックの落ち先。
+  // 何にも当たらなかった右クリックの位置 (clientX, clientY) に空域メニューを開く。
   public openEmptySpaceMenu(clientX: number, clientY: number): void {
     const target = this.emptySpace;
     const items = this.offeredItems(target, this.displayWindowManager.current.simTime);
@@ -143,9 +141,8 @@ export class ObjectWindows implements PropertyWindowOpener {
     entry.win.close();
   }
 
-  // 開いている全プロパティウィンドウの値を最新化する。対象そのものが消滅していれば
-  // (撃破・回収・削除)閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム
-  // (posAt が null)は候補列から外れるだけで消滅ではないので、生存判定は対象の gone で行う。
+  // 開いている全プロパティウィンドウの値を最新化し、対象が消滅(gone)していれば閉じる。位置が
+  // 求まらないだけのフレーム(posAt が null)は消滅ではない。
   public sync(): void {
     const { simTime, displayTime } = this.displayWindowManager.current;
     // バッジはマップのカメラが注視している対象の窓に付ける。
@@ -208,12 +205,12 @@ export class ObjectWindows implements PropertyWindowOpener {
     return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
   }
 
-  // 対象が組んだ項目のうち、いま実際に選べるものだけを残す。対象によらない可否
-  // (航法ターゲットにできるか・物体を配置できるか・計画を実行できるステージか)はここで判定する。
+  // 対象が組んだ項目のうち、いま実際に選べるものだけを残す。
   private offeredItems(target: InspectedObject, simTime: number): readonly MenuItem<MenuAction>[] {
     const all = target.menuItems(
       this.celestialBodies, this.controlSelection.current, this.navTarget.id,
       this.entityDisplay.showsTrajectoryLine(target.id));
+    // 対象によらない可否(航法ターゲット・物体の配置・計画の実行ができるか)で間引く。
     return all.filter((it) => {
       switch (it.act) {
         case 'target':
@@ -255,10 +252,10 @@ export class ObjectWindows implements PropertyWindowOpener {
     return this.activeView().planEditor;
   }
 
-  // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
+  // 窓の先頭に出す関連一覧。操作中の艦自身なら搭載部品、天体ならいまその天体を周回している物体、
+  // それ以外は空。
   private relatedItemsFor(target: InspectedObject, pivot: number): readonly PropertyWindowRelatedItem[] {
     const controlled = this.controlSelection.current;
-    // 搭載部品を持つのは艦だけなので、操作中の基地では周回物体の一覧へ落ちる。
     if (controlled instanceof Player && target.id === controlled.id) {
       return controlled.inspection.parts.map((part) => ({
         id: part.id,
@@ -267,6 +264,7 @@ export class ObjectWindows implements PropertyWindowOpener {
         onContextMenu: (clientX, clientY) => this.partWindows.open(controlled, part, clientX, clientY),
       }));
     }
+    // 天体なら、いまのビューの候補のうちその天体を周回しているものを名前順に並べる。
     if (!(target instanceof CelestialEntity)) return [];
     const related: { item: InspectedObject; label: string }[] = [];
     for (const item of this.activeView().pickables) {
@@ -299,8 +297,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     return controlled instanceof Player && target.id === controlled.id ? '搭載部品' : '周回物体';
   }
 
-  // フォーカスをその対象へ移す。マップは座標系パネル連動(計画中心の追随)込みの経路、
-  // 戦闘はその場のカメラだけを動かす。
+  // 表示中のビューのカメラの注視を id の対象へ移し、name で知らせる。
   private focus(id: string, name: string): void {
     if (this.view.current === 'map') {
       this.mapFocusCommands.setFocus({ kind: 'object', id });

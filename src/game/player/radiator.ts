@@ -39,8 +39,8 @@ function yRotatedOffset(theta: number, x: number): Vec3 {
   return rotateAxis(v3(x, 0, 0), LOCAL_UP, theta);
 }
 
-// side の fold 番目の折りの中心位置(機体座標系)。RADIATOR_HINGE から蛇腹を辿り、
-// 各折りの根本から半セグメント先(tools/model-builder/player-ship.mjs の panel.position と同じ位置)を返す。
+// side の fold 番目の折りの中心位置(機体座標系)。even・odd は foldThetas の折り角。
+// モデル(tools/model-builder/player-ship.mjs の panel.position)と同じ位置を返す。
 function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: number): Vec3 {
   const sign = sideSign(side);
   let origin = v3(sign * RADIATOR_HINGE.x, RADIATOR_HINGE.y, RADIATOR_HINGE.z);
@@ -104,22 +104,19 @@ export class RadiatorSystem {
     }
   }
 
-  // 展開度から折り角(展開軸からの傾き)を返す。deploy=0 で STOW_TILT、deploy=1 で
-  // RADIATOR_DEPLOY_TILT へ線形補間する。
+  // 展開度 deploy(0..1)での折り角(展開軸からの傾き)[rad]。
   private tilt(deploy: number): number {
     return STOW_TILT + (RADIATOR_DEPLOY_TILT - STOW_TILT) * deploy;
   }
 
-  // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角 [rad]。展開方向は side ごとに
-  // 符号が付くので、回転角自体は side に依らず ±psi で揃う。
+  // side の偶数・奇数の折り目それぞれの、ヒンジ基準での回転角 [rad]。
   public foldThetas(side: RadiatorSide): { even: number; odd: number } {
     const sign = sideSign(side);
     const psi = this.tilt(this.panels[side].value);
     return { even: sign * psi, odd: -sign * psi };
   }
 
-  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、その半分に
-  // 展開度を掛ける。全損した側は 0。
+  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和。全損した側は 0。
   private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
     if (this.wear[side] >= 1) return 0;
     return (totalCoolingRate / 2) * this.panels[side].value;
@@ -153,7 +150,7 @@ export class RadiatorSystem {
   public get contactFolds(): readonly ContactProxy[] { return this.activeFolds; }
 
   // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を置き直す。
-  // t は接触代理の KinematicState.t に使う現在時刻(swept 判定の区間を成す)。
+  // shipR・shipV は艦の ECI 位置・速度、t は現在時刻。
   public placeContactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): void {
     const result: ContactProxy[] = [];
     for (const side of ['up', 'down'] as const) {
