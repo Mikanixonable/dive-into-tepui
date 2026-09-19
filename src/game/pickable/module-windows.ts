@@ -19,6 +19,11 @@ interface ModuleWindowEntry {
   readonly moduleId: string;
 }
 
+export interface ModuleWindowOpener {
+  open(ship: ModularShip, moduleId: string, clientX: number, clientY: number): void;
+  openAtDefault(ship: ModularShip, moduleId: string): void;
+}
+
 function wearText(module: ShipModuleInstance, maxHp: number): string {
   const wear = maxHp > 0 ? Math.max(0, Math.min(1, 1 - module.hp / maxHp)) : 1;
   return `${(wear * 100).toFixed(1)}% (${Math.floor(module.hp)} / ${maxHp})`;
@@ -57,7 +62,7 @@ function moduleItems(ship: ModularShip, module: ShipModuleInstance): PropertyWin
   return [];
 }
 
-export class ModuleWindows {
+export class ModuleWindows implements ModuleWindowOpener {
   private readonly windows = new Map<string, ModuleWindowEntry>();
 
   public constructor(
@@ -66,6 +71,7 @@ export class ModuleWindows {
     private readonly roster: EntityRoster & EntityRegistry,
     private readonly construction: ShipConstruction,
     private readonly enterCombatView: () => boolean,
+    private readonly closeOtherWindows: () => void = () => {},
   ) {}
 
   // モジュールのウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
@@ -102,6 +108,7 @@ export class ModuleWindows {
         try {
           if (!this.enterCombatView()) throw new Error('戦闘ビューへ切り替えられません');
           this.construction.start(ship, moduleId);
+          this.closeOtherWindows();
         } catch (error) {
           this.hud.hint(error instanceof Error ? error.message : '建造を開始できません');
         }
@@ -122,6 +129,14 @@ export class ModuleWindows {
       }
     };
     win.onClose = () => { this.windows.delete(key); };
+  }
+
+  // キーボード/タッチからモジュール行を開くときの既定位置。マウス右クリックは位置を直接渡す。
+  public openAtDefault(ship: ModularShip, moduleId: string): void {
+    const bounds = this.hud.root.getBoundingClientRect();
+    const x = bounds.left + Math.max(0, (bounds.width - 320) * 0.5);
+    const y = bounds.top + Math.max(0, (bounds.height - 240) * 0.5);
+    this.open(ship, moduleId, x, y);
   }
 
   // その艦のモジュールウィンドウをすべて畳む。
