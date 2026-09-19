@@ -32,14 +32,14 @@ import type { ProteinCombatTarget } from './damage-capabilities';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
 import type { ProteinMotionMetrics } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
 
-// タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
-// 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
+// 判定形状は構造の揺らぎによらず1つに固定するので、慣性も1つ。非対称にして、ジャニベコフ効果
+// (中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
-// 部位の静止座標へ足す残基変位。規則は揺らぎを読まないので常に零。
+// 部位の静止座標へ足す残基変位。規則は静止座標で判定するので常に零。
 const NO_RESIDUE_OFFSET = [0, 0, 0] as const;
 
 // 新しく置くタンパク質の敵の要求。アセットが揃うまで実体化を待てるよう(SPEC/PROTEIN.md「出現」節)、
-// 直列化できる値だけで表す。陣形に属する個体だけが formationId と役割を持ち、属さない個体は単体敵になる。
+// 直列化できる値で表す。陣形に属さない個体は formationId と役割が null。
 export interface ProteinEnemyRequest {
   readonly name: string;
   readonly state: SerializedKinematicState;
@@ -72,7 +72,7 @@ function definitionFor(assetId: ProteinAssetId): ProteinEnemyDefinition {
   return definition;
 }
 
-// 表示ツリーの組み立て手順。判定形状と同じく、アセットが揃っていなければ実体化できない。
+// 表示ツリーの組み立て手順を引く。アセットが揃っていなければ実体化できないので投げる。
 function renderDefinitionFor(assetId: ProteinAssetId): ProteinRenderDefinition {
   const definition = proteinRenderDefinitionFor(assetId);
   if (!definition) throw new Error(`No protein render definition registered for ${assetId}`);
@@ -227,8 +227,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     return energyAvailable && this.combat.isActionEnabled(attackAction.id);
   }
 
-  // 次に撃つ機能部位の ECI 位置。銃口は部位の静止座標を個体の位置・姿勢で写したもので、表示の
-  // 揺らぎ(残基変位)は乗せない。
+  // 次に撃つ機能部位の ECI 位置。部位の静止座標を個体の位置・姿勢で写したもの。
   protected override muzzlePosition(): Vec3 {
     return proteinSiteWorldPosition(
       this.combat.nextAttackSite?.position ?? null, NO_RESIDUE_OFFSET, this.coordinateScale, ENEMY_MODEL_SCALE,

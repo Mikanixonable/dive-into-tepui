@@ -1,4 +1,4 @@
-// マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
+// マガジンベルトの鎖のたわみ・ねじれを機体座標系で解き、接触判定の代理を置く。
 import type { Attitude } from '../../physics/attitude';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromUnitVectors, qInvert, qMul, qRotate, type Quat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -42,8 +42,7 @@ export class BeltPhysics {
   private readonly _twists: number[];
 
   // positions・prevPositions は機体座標系の節点の位置と前フレームの位置、twists は各節のねじれ角
-  // [rad]、prevShipW は前フレームの機体角速度 [rad/s](角加速度の推定に使う)。省いたものは静止した
-  // 鎖として始める。
+  // [rad]、prevShipW は前フレームの機体角速度 [rad/s]。省いたものは静止した鎖として始める。
   public constructor(
     positions: readonly Vec3[],
     prevPositions: readonly Vec3[] = positions,
@@ -111,9 +110,8 @@ export class BeltPhysics {
     this._twists[n - 1] = this._twists[n - 2]!;
   }
 
-  // ベルトのたわみを解く。軌道上は自由落下なので重力ではたわまず、機体自身の推力加速度と
-  // スピンが生む慣性力(並進慣性 -a、遠心力 -ω×(ω×r)、オイラー力 -α×r、コリオリ力 -2ω×v)
-  // だけがベルトを機体座標系の中で揺らす。
+  // ベルトのたわみを dt 秒ぶん解く。軌道上は自由落下なので重力は効かず、機体の推力加速度と
+  // 回転が生む慣性力がベルトを機体座標系の中で揺らす。
   public update(dt: number, att: Attitude, thrustAccelVec: Vec3, beltFeed: number): void {
     // 前フレームとの角速度差から角加速度を推定する
     const invDt = dt > 1e-6 ? 1 / dt : 0;
@@ -135,8 +133,7 @@ export class BeltPhysics {
     const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
     const damping = 0.99; // 慣性を維持しつつ、毎ステップ速度を1%減衰させる
     const invDt = dt > 1e-6 ? 1 / dt : 0;
-    // コリオリ力 -2ω×v の係数: vel = pos-prevPos = v*dt なので速度への変換に 2/dt を使う。
-    // (2/h ではなく実際の dt を使わないと dt > 0.05 のときコリオリ力が過大になる。)
+    // コリオリ力 -2ω×v の係数。vel は dt あたりの変位なので h でなく dt で割る(h では dt > 0.05 で過大になる)。
     const inv2Dt = invDt * 2;
 
     for (let i = 0; i < this.linkCount; i++) {
@@ -227,8 +224,8 @@ export class BeltPhysics {
     }
   }
 
-  // 前リンクのローカル座標系(+X = 進行方向)へ移し、横ずれ Y/X と上下ずれ Z/X をそれぞれ
-  // tan(上限角度) でクランプして、再正規化のうえワールドへ戻す。
+  // 単位方向 dirWorld を、前リンクの姿勢 prevQ(+X が進行方向)から見た上下・左右の折れ角が
+  // 上限内に収まるよう曲げて返す。tanMaxPitch・tanMaxYaw は上限角の正接。
   private clampDirectionToPrevFrame(dirWorld: Vec3, prevQ: Quat, tanMaxPitch: number, tanMaxYaw: number): Vec3 {
     const local = qRotate(qInvert(prevQ), dirWorld);
     // local.x は cos(折れ角) ≈ 1。ゼロ割を避けるため下限 0.001。
@@ -256,9 +253,9 @@ export class BeltPhysics {
   // 節点ごとの接触代理。placeContactSections で置き直す。
   public get contactSections(): readonly ContactProxy[] { return this.sections; }
 
-  // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の接触代理を
-  // 置き直す。owner は鎖を吊る艦で、接触判定で自身の節点との接触を除外する(呼ぶたびに同じ艦を渡す)。
-  // t は接触代理の KinematicState.t に使う現在時刻(掃引判定の区間を成す)。
+  // 機体座標系の節点を ECI 状態へ直し、衝突判定用の接触代理を置き直す。owner は鎖を吊る艦で、
+  // 自身の節点との接触を除外するのに使う(呼ぶたびに同じ艦を渡す)。t は現在時刻、baseR・baseV は
+  // 機体の ECI 位置・速度。
   public placeContactSections(
     owner: EntityContactParticipant, t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude,
   ): void {

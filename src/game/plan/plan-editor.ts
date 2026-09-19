@@ -39,7 +39,7 @@ import type { FocusCameraCommands } from '../viewer/camera-commands';
 
 const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
-const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
+const NODE_MIN_DV = 0.5; // Δv がこれ未満のノードは空とみなし、編集の区切りで破棄する [m/s]
 const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
 
 const PE_WARN_DENSITY = 2.4e-8; // 噴射後の軌道の近点がこの大気密度に達したら警告する [kg/m^3]。地球の高度 120km 相当
@@ -65,7 +65,7 @@ export class PlanEditor {
     this.selectedNode = idx === null ? null : this.plan?.nodes[idx] ?? null;
   }
 
-  // 操作対象(自機船または基地)。ノードの起点として状態が要るときだけ引く。
+  // 操作対象(自機船または基地)。
   private get ship(): Controllable | null {
     return this.controlSelection.current;
   }
@@ -199,7 +199,7 @@ export class PlanEditor {
     this.hud.hint('マニューバ計画を破棄');
   }
 
-  // router から計画キー([X] 削除・[N] 直近ノードへの自動ワープ)を受け取る。
+  // 計画キー([X] 削除・[N] 直近ノードへの自動ワープ)の単発入力 commandId を実行する。
   public handleCommand(commandId: string): void {
     if (commandId === K.deleteNode.code) this.deleteSelectedNodeOrPlan();
     if (commandId === K.autoWarpToNode.code) {
@@ -213,7 +213,7 @@ export class PlanEditor {
   }
 
   // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
-  // 艦がいなければ計画そのものが無いので、クリックはここで捨てる。
+  // 操作対象がいなければ計画が無いので、クリックは後の受け手へ残す。
   public handleMapPointer(input: Input): void {
     if (this.plan === null) return;
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
@@ -453,7 +453,7 @@ export class PlanEditor {
     this.planCommands.replaceNode(plan, idx, burned);
   }
 
-  // 手動入力フォームから絶対的な Δv (PRO, NRM, RAD) を指定してノードの速度を上書きする。
+  // 選択中ノードの Δv を、到着軌道基準の成分 (pro, nrm, rad) [m/s] の絶対量で上書きする。
   private setNodeDvLocal(pro: number, nrm: number, rad: number): void {
     const plan = this.plan;
     const idx = this.selectedNodeIdx;
@@ -462,7 +462,7 @@ export class PlanEditor {
     const node = plan.nodes[idx];
     if (!arr || !node) return;
 
-    // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
+    // 到着状態の軌道基準枠で組んだ Δv を、到着速度へ足す。
     const dvWorld = fromOrbitAxes(this.bodyState(arr), v3(pro, nrm, rad));
     const burned = kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld));
     this.selectedNode = burned;
@@ -604,9 +604,8 @@ export class PlanEditor {
     this.gizmo3d.dispose();
   }
 
-  // 操作対象の切り替えを検出してメニューを畳む。
+  // 操作対象が替わったフレームで、前の艦のノードに開いたままのメニューを畳む。
   public update(): void {
-    // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む。
     const ship = this.ship;
     if (ship !== this.lastSeenShip) {
       this.lastSeenShip = ship;

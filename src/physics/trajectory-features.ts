@@ -1,8 +1,6 @@
-// 軌道の特徴点を探す純粋関数群と、それを積分の進行に沿って溜める入れ物。接触軌道要素の解析式は
-// 評価エポックが変わるだけで値が動く(J2 短周期振動が1周回で数十km)ため、実際に描かれている
-// 積分結果と一致させたい特徴点はここで求める。赤道交点(findEquatorCrossings)はサンプル列
-// (折れ線)を走査して求め、アプシス(apsisCrossing/ApsisTrack)は積分の1ステップごとに動径速度の
-// 符号反転を直接見て求める — どちらも同じ黄金分割探索/二分法の補間機構を使う。
+// 積分した軌道の特徴点(近地点・遠地点・赤道交点)を探す純粋関数群と、アプシスを積分の進行に沿って
+// 溜める ApsisTrack。特徴点を描かれている積分結果と一致させる — 接触軌道要素の解析式は評価エポック
+// だけで値が動く(J2 短周期振動が1周回で数十km)。
 import { hermiteInterpolate, type KinematicState } from './kinematic-state';
 import { goldenSectionMin } from '../math/optimize';
 import { dot, len, sub, type Vec3 } from '../math/vec3';
@@ -43,20 +41,20 @@ interface ApsisCrossing {
   readonly kind: ApsisKind;
 }
 
-// prev→next の1積分ステップの間に中心天体からの動径速度(距離の変化率)の符号が
-// 反転していれば、その瞬間がアプシス。減速→増速(負→正)が近地点、増速→減速
-// (正→負)が遠地点で、どちらでもなければ null。中心天体自身も動いている場合が
-// あるので、位置だけでなく速度も中心天体の値を差し引いた相対量で判定する。
+// prev→next の1積分ステップの間に中心天体 center に対するアプシスがあれば、その瞬間の状態と種類を
+// 返す。無ければ null。
 export function apsisCrossing(
   center: CelestialBody, centerPivot: number, prev: KinematicState, next: KinematicState,
 ): ApsisCrossing | null {
   const centerStateAt: CenterStateAt = (t) => center.stateAt(centerPivot, t);
+  // 中心天体に対する r·v(動径速度と同符号)。中心天体自身も動くので、速度も相対量で取る。
   const radialVel = (s: KinematicState): number => {
     const centerState = centerStateAt(s.t);
     return dot(sub(s.r, centerState.r), sub(s.v, centerState.v));
   };
   const vPrev = radialVel(prev);
   const vNext = radialVel(next);
+  // 動径速度が負→正なら近地点、正→負なら遠地点。
   if (vPrev < 0 && vNext >= 0) {
     return { state: refineExtremum(centerStateAt, prev, next, false), kind: 'periapsis' };
   }
@@ -79,10 +77,8 @@ function dropBefore(apsides: Apsis[], t: number): void {
   if (cut > 0) apsides.splice(0, cut);
 }
 
-// 積分の1ステップ対を時刻順に observe へ渡すと、見つかった近地点・遠地点を時刻昇順に溜める。
-// 中心天体は observe のたびに渡される — 生成時に固定すると、中心天体自身が動く(月など)
-// 場合に検出済みの値が古い中心位置基準のままずれ続けるため。溜めた列は持ち主が dropBefore で
-// 保持範囲の先頭まで落とす。
+// 積分の1ステップ対を時刻順に observe へ渡すと、見つかった近地点・遠地点を、その時点の中心天体と
+// 組にして時刻昇順に溜める。溜めた列は dropBefore で先頭から落とす。
 export class ApsisTrack {
   private readonly periapsides: Apsis[] = [];
   private readonly apoapsides: Apsis[] = [];
@@ -93,8 +89,7 @@ export class ApsisTrack {
     return this._center;
   }
 
-  // prev→next の1ステップを、その瞬間の中心天体 center を使って apsisCrossing に掛け、
-  // 見つかった極値を種類ごとの列へ追加する。
+  // prev→next の1ステップに中心天体 center に対するアプシスがあれば、種類ごとの列へ溜める。
   public observe(center: CelestialBody, centerPivot: number, prev: KinematicState, next: KinematicState): void {
     this._center = center;
     const crossing = apsisCrossing(center, centerPivot, prev, next);
@@ -119,14 +114,13 @@ export class ApsisTrack {
   }
 }
 
-// [a, b] 区間内で、中心天体の赤道面(pole に垂直な面)を横切る点を、符号反転する
-// 隣接サンプル対から二分法で追い込む。asc(昇交点、負→正)/desc(降交点、正→負)。
-// 中心天体位置は centerPositionAt(t) でサンプルごとの時刻から引く — 月のように区間の間に
-// 中心天体自身が動く場合、固定した1点を使うと区間後半ほど基準がずれて交点を見失うため。
+// 時刻順の samples が中心天体の赤道面(pole に垂直な面)を最初に横切る点を追い込んで返す。
+// ascending なら負→正(昇交点)、でなければ正→負(降交点)を探し、無ければ null。
 function findCrossing(
   samples: readonly KinematicState[], centerPositionAt: (t: number) => Vec3, pole: Vec3, ascending: boolean,
 ): KinematicState | null {
-  // pole 方向の符号(赤道面のどちら側にいるか)。
+  // pole 方向の符号(赤道面のどちら側にいるか)。中心天体はサンプルの時刻の位置を使う — 1点に
+  // 固定すると、月のように動く中心天体で区間後半ほど基準がずれて交点を見失う。
   const sideOf = (s: KinematicState): number => {
     const rel = sub(s.r, centerPositionAt(s.t));
     return dot(rel, pole);
@@ -155,7 +149,8 @@ interface EquatorCrossings {
   readonly descending: KinematicState | null;
 }
 
-// 昇交点・降交点をそれぞれ独立に探して返す。
+// 時刻順の samples から、昇交点・降交点をそれぞれ独立に探して返す。centerPositionAt は時刻 t の
+// 中心天体の位置、pole は赤道面の法線。
 export function findEquatorCrossings(
   samples: readonly KinematicState[], centerPositionAt: (t: number) => Vec3, pole: Vec3,
 ): EquatorCrossings {

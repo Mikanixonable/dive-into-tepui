@@ -1,5 +1,5 @@
 // 分離式ブースターの物理・状態モデル。船体側から最後尾へ並ぶ段の並びと、その燃焼・分離の
-// 数値を持つ。燃焼は、刻みの途中で燃料が尽きても実際に燃焼していた時間の割合で推力を返す。
+// 数値を持つ。
 import { addScaled, type Vec3 } from '../../math/vec3';
 
 /** 燃料を含む、スタック内の一段の状態。質量の単位は kg、推力は N。 */
@@ -33,8 +33,8 @@ interface BoosterBurn {
   readonly fuelConsumed: number;
 }
 
-// 燃焼区間で質量が線形に減るときの平均加速度。平均推力を最終質量だけで割ると、
-// 大きな刻みほどΔvを過大評価するため、始終質量の対数平均を使う。推力・質量が正でなければ 0。
+// 燃焼区間で質量が線形に減るときの平均加速度 [m/s²]。区間の Δv がロケット方程式に一致するよう、
+// 始終質量の対数平均で割る。推力・質量が正でなければ 0。
 export function boosterAverageAcceleration(
   result: BoosterBurn,
   massBefore: number,
@@ -155,10 +155,7 @@ export class BoosterStack {
     this._stages.push(cloneStage(stage));
   }
 
-  /**
-   * 最後尾段の点火状態を反転する。段が無い、または燃料が無い段は点火しない。消火は燃料の有無に
-   * よらず可能。
-   */
+  /** 最後尾段の点火状態を反転する。燃料の無い段は点火できず、消火はいつでもできる。 */
   public toggleIgnition(): void {
     const stage = this._stages[this._stages.length - 1];
     if (!stage) return;
@@ -166,8 +163,8 @@ export class BoosterStack {
   }
 
   /**
-   * 最後尾段を dt 秒のあいだ燃やしたときの燃焼結果。fuelRate=0 の段は燃料を減らさずに燃え続ける。
-   * dt 内で燃料が尽きるときは、burnRatio と averageThrust が燃焼していた時間の割合で縮む。
+   * 最後尾段を dt 秒のあいだ燃やしたときの燃焼結果を見積もる(燃やすのは burn)。fuelRate=0 の段は
+   * 燃料を減らさずに燃え続ける。
    */
   public burnOver(dt: number): BoosterBurn {
     if (!Number.isFinite(dt) || dt < 0) throw new RangeError('booster burn dt must be finite and non-negative');

@@ -69,9 +69,7 @@ export class SimSpeedManager {
     return this.simSpeed <= MAX_PHYS_SIM_SPEED;
   }
 
-  // 現在のワープ倍率で補給を投入してよいかどうか。等倍(実時間)のときだけ投入するのは、
-  // 補給が「接近して回収する」操作を前提にした投入であり、時間を進めている間も投入だけが
-  // 続くと、回収されないまま軌道上に溜まり続けるため。
+  // 現在のワープ倍率で補給を投入してよいかどうか。等倍のときだけ投入する根拠は SPEC/GAME.md「8. 補給」。
   public get canResupplyAmmo(): boolean {
     return this.simSpeed === 1;
   }
@@ -83,7 +81,7 @@ export class SimSpeedManager {
     this.setSpeed(SIM_SPEED_LEVELS[next]!);
   }
 
-  // UI のプルダウンから選ばれた時間加速倍率を適用する。
+  // 時間加速倍率を speed へ差し替え、自動ワープを解除する。SIM_SPEED_LEVELS に無い倍率は無視する。
   public setSpeed(speed: number): void {
     const next = SIM_SPEED_LEVELS.indexOf(speed);
     if (next < 0 || next === this.levelIdx) return;
@@ -97,7 +95,7 @@ export class SimSpeedManager {
     return isFinite(time) && time > simTime + NODE_APPROACH_LEAD;
   }
 
-  // 未来の指定時刻まで自動ワープする。既に到達窓へ入った時刻は受け付けない。
+  // 未来の時刻 time まで自動ワープし、始められたかを返す。既に到達窓へ入った時刻は受け付けない。
   public startAutoWarpTo(time: number, simTime: number): boolean {
     if (!this.canAutoWarpTo(time, simTime)) return false;
     this.autoWarpUntil = time;
@@ -146,8 +144,7 @@ export class SimSpeedManager {
   }
 
   // 自動ワープが解除されるまでの残り実時間 [s] の見積り。自動ワープ中でなければ null。段は残り時間と
-  // ともに下がるので、update() と同じ段選択のもとで段ごとの区間を積算する(いまの段のままの
-  // tRem/simSpeed では、長い低倍率区間を見落とす)。
+  // ともに下がるので、update() と同じ段選択のもとで段ごとの区間を積算する。
   public estimatedRealSecondsToWarpEnd(simTime: number): number | null {
     if (this.autoWarpUntil === null) return null;
     let tRem = this.autoWarpUntil - simTime;

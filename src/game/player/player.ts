@@ -247,8 +247,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     return player;
   }
 
-  // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
-  // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
+  // 自機の主慣性モーメント(ピッチ・ヨー・ロール)。
   private static readonly INERTIA = v3(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL);
 
   // 機首を center に対する速度の向きへ、上面を center から見た位置の向きへ向けた静止姿勢。
@@ -564,8 +563,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     };
   }
 
-  // 自機の View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
-  // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
+  // 自機の View が読む値を、このフレームの Motion と装備の現在値から組み、共通の表示入力へ足す。
   protected override renderSource(
     viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): PlayerRenderSource {
@@ -576,10 +574,12 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       ...super.renderSource(viewFrame, active, orbitReference),
       state: motion.state,
       active,
+      // 噴射と空力の表現
       thrustAcceleration: this.throttle.thrust,
       maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,
+      // 可動部と装備
       boosters: {
         stageIds: boosters.stageIds,
         firing: boosters.thrust !== null,
@@ -602,7 +602,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
 
   // 現在の艦状態を直列化した形へ変換する。
   // 例外(ARCHITECTURE R12): 運動の部品(放熱板・電力・給弾ベルト・ブースター)の記録を、自機の記録へ
-  // 並べる。理由は serializeEntityFields と同じ。
+  // 並べる。運動の記録として分けると保存の形式が変わり、版 4 の記録が読めなくなる。
   public override serialize(): SerializedPlayer {
     return {
       ...this.serializeEntityFields(Player.kind),
@@ -627,7 +627,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public rename(name: string): void { this.setName(name); }
 }
 
-// この個体が自機か。顔ぶれから自機だけを絞るときに使う。
+// entity を自機へ絞り込む型ガード。
 export function isPlayer(entity: DynamicEntity): entity is Player {
   return entity instanceof Player;
 }

@@ -38,8 +38,8 @@ const PLAN_TICK_MIN_PX = 40; // 目盛同士の最小画面間隔 [px]
 const PLAN_TICK_LABEL_MIN_PX = 90; // ラベルを付ける最小画面間隔 [px]
 const PLAN_TICK_MAX_COUNT = 400; // 日・月・年階級の目盛候補の上限本数
 
-// 時階級(1/3/6/12時間ごと)の目盛候補の上限本数。既定の最長表示区間(28日)の1時間ごとが収まる
-// 本数 — 区間の長さで階級が丸ごと切り替わるとズームに対して連続に見えないので、最細で列挙する。
+// 時階級(1/3/6/12時間ごと)の目盛候補の上限本数(1時間ごとで50日ぶん)。区間の長さで階級が丸ごと
+// 切り替わるとズームに対して連続に見えないので、最細で列挙する。
 const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 
 // 目盛点の半径 [px]。表示中の最細目盛からの相対階層(0/1/2以上)で引く。
@@ -169,8 +169,7 @@ export class PlanDisplay {
     };
   }
 
-  // ⬢ ゴーストマーカーの宣言。計画がそこまで届いていなければ伏せ、マップビューで天体の陰に
-  // 入ったら薄れて消える。
+  // ⬢ ゴーストマーカーの宣言。
   private ghostDeclaration(
     project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number, simTime: number,
   ): MarkerDeclaration {
@@ -178,8 +177,10 @@ export class PlanDisplay {
       id: 'plannedPlayer', cls: 'mk-planned', sym: ENTITY_GLYPH.ghost,
       priority: MARKER_PRIORITY.NONE,
     };
+    // 計画がそこまで届いていなければ伏せる。
     const ghost = this.ghostAt(displayTime, simTime);
     if (!ghost) return { ...base, x: 0, y: 0, front: false };
+    // マップビューで天体の陰に入ったら薄れて消える。
     if (view === 'map' && this.occludedByCelestialBody(cameraPos, ghost.pos, displayTime)) {
       return { ...base, x: 0, y: 0, front: false, occluded: true };
     }

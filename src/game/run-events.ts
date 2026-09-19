@@ -63,8 +63,8 @@ export type RunEventBody =
   | { readonly kind: 'targetBoardPassed'; readonly offset: Vec3; readonly simTime: number }
 
   // ------------------------------------------------------------ 被弾・接触
-  // 自機の一点に衝撃が入った。着弾点と艦の状態を値として持ち、音の距離減衰は読み手が出す。
-  // bullet は衝撃を与えた弾の種類で、被弾以外の破断で入った衝撃では null。
+  // 自機の一点 impactPoint に衝撃が入った。shipState はそのときの艦の状態、bullet は衝撃を与えた
+  // 弾の種類で、被弾以外の破断で入った衝撃では null。
   | {
     readonly kind: 'shipStruck';
     readonly impactPoint: Vec3;

@@ -12,8 +12,7 @@ import { contactDamageSpeed } from './contact-damage';
 import type { Vec3 } from '../../../math/vec3';
 import type { RunEventSink } from '../../run-events';
 
-// 帰結を受け取る敵1体の面。ダメージの入れ方と撃破の記録の仕方は個体ごとに違うので、
-// 構築時に渡された当事者がそれを持つ。
+// 帰結を受け取る敵1体の面。ダメージの入れ方と撃破の記録は個体ごとに実装する。
 export interface EnemyReactionPort {
   readonly motion: DynamicMotion;
   // 破片と爆散の大きさを決める機体模型の倍率。
@@ -59,7 +58,7 @@ export class EnemyReactions {
     this.port.recordDeath(activeStage, this.port.motion.state.t, 'burnup');
   }
 
-  // 交戦圏を離れて消えるときの帰結。破片は残さない。
+  // 交戦圏を離れて消えるときの帰結。離脱として戦果へ残す。
   public despawn(simTime: number, activeStage: StageOutcome): void {
     if (!this.port.motion.alive) return;
     this.port.motion.kill();

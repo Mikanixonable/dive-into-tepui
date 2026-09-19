@@ -13,7 +13,7 @@ export class ScoreCounter {
     private _shots = 0,
     private _hits = 0,
     private _kills = 0,
-    // 非プレイヤー起因の喪失数(再突入・空力分解等)。
+    // 撃破以外で失われた敵の数(焼失・衝突・交戦圏からの離脱)。
     private _losses = 0,
     // ステージが出した敵の総数。アセットを待っていて、まだ実体化していない敵も数える。
     private _totalEnemiesSpawned = 0,

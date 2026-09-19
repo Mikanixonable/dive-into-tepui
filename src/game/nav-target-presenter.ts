@@ -212,14 +212,15 @@ export class NavTargetPresenter {
     return this.nodeMarkers.filter((marker) => !marker.gone);
   }
 
-  // AN/DN・再接近点のマーカーを、マップビューでだけ置く(位置はマップの update が求め直す)。天体に
-  // 遮蔽された点は隠す。occluders は遮蔽判定に使う天体で、occludersPivot はその位置を引く時刻。
+  // AN/DN・再接近点のマーカーを update で求めた位置へ、マップビューでだけ置く。天体に遮蔽された点は
+  // 隠す。occluders は遮蔽判定に使う天体で、occludersPivot はその位置を引く時刻。
   public sync(
     camera: CameraFrame, view: ViewMode, occluders: readonly CelestialBody[],
     occludersPivot: number, timeLabel: TimeLabelSetting, nowMs: number,
   ): void {
     const declarations = this.declarations;
     declarations.length = 0;
+    // 戦闘ビューでは空の宣言で3点とも片付ける。
     if (view === 'map') {
       for (const marker of this.nodeMarkers) {
         declarations.push(marker.declaration(

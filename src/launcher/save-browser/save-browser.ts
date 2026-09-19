@@ -40,7 +40,7 @@ const STYLE = `
 #save-browser .sb-empty { color: var(--text-dim); padding: var(--space-5); text-align: center; line-height: 1.7; font-size: var(--font-s); }
 #save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); }
 #save-browser .sb-status.error { color: var(--color-error); }
-/* compact: 左右ペインを並べず、sb-mobile-tabs で切り替えた片方だけを表示する。 */
+/* compact: 左右ペインのうち、sb-mobile-tabs で選んだ片方を表示する。 */
 #save-browser .sb-mobile-tabs { display: none; padding: var(--space-3) var(--space-5) 0; }
 @media ${MQ_COMPACT} {
   #save-browser .sb-panel { width: 100vw; height: 100vh; height: 100dvh; border-radius: 0; }
@@ -116,6 +116,7 @@ export class SaveBrowser implements OverlayHandle {
     this.overlayManager.close('save-browser');
   }
 
+  // target がこの画面の要素の内部かどうかを返す。
   public contains(target: Node): boolean {
     return this.el.contains(target);
   }
@@ -126,12 +127,14 @@ export class SaveBrowser implements OverlayHandle {
     this.statusIsError = isError;
   }
 
-  // いま手動セーブを残せるか。決着後(won/lost/timeup)の状態は復元しても操作不能なので残せない。
+  // いま手動セーブを残せるか。遊んでいるスロットを表示していて、周回が決着前であること
+  // (決着後の状態は復元しても操作不能)。
   private canSaveNow(): boolean {
     const game = this.gameSource.current;
     return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.snapshot.isPlaying;
   }
 
+  // 表示しているスロット。一覧に無ければ null。
   private viewedSlot(): SaveSlotMeta | null {
     return this.slots.slots.find((s) => s.id === this.viewedSlotId) ?? null;
   }
@@ -152,7 +155,7 @@ export class SaveBrowser implements OverlayHandle {
     header.appendChild(closeBtn.element);
     panel.appendChild(header);
 
-    // ペイン切替タブ。compact 幅でだけ見せる判定は CSS が持つので、常に組んで選択状態を渡す。
+    // ペイン切替タブ。見せるかどうかは幅に応じて CSS が決める。
     const mobileTabs = new TabBar<'slots' | 'snapshots'>(
       [['slots', 'セーブデータ'], ['snapshots', '手動セーブ']],
       (pane) => { this.mobilePane = pane; this.rebuild(); },
@@ -242,14 +245,15 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // 遷移を要求する前に自分を閉じる — 開いたままだと次の周回でも入力を遮断し続ける。
+  // スロット id をアクティブにして遊び始める。遷移を要求する前に閉じる — 開いたままだと次の周回でも
+  // 入力を遮断し続ける。
   private handlePlaySlot(id: string): void {
     this.slots.setActiveSlot(id);
     this.close();
     this.onSlotSwitched?.();
   }
 
-  // 遊ぶステージはステージ選択画面で決まるので、空のスロットを作ってアクティブにする。
+  // 名前を prompt で尋ねて空のスロットを作り、アクティブにして遊び始める。キャンセル・空文字なら何もしない。
   private handleNewSlot(): void {
     const name = prompt('新しいセーブデータの名前', '新しいセーブデータ');
     if (!name) return;
@@ -285,8 +289,8 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // 読み込めない理由 refusal があれば、それを状態欄に出すだけ。読み込めるなら、遷移を要求する前に
-  // 自分を閉じてから onLoadSnapshot を呼ぶ — 開いたままだと次の周回でも入力を遮断し続ける。
+  // 手動セーブ snapId の復元を求める。読み込めない理由 refusal があれば、それをステータス行へ出して
+  // 止まる。遷移を要求する前に閉じる — 開いたままだと次の周回でも入力を遮断し続ける。
   private handleLoadSnapshot(snapId: string, refusal: string | null): void {
     if (refusal !== null) {
       this.setStatus(refusal, true);

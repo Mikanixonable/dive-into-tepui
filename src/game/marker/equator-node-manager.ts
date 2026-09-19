@@ -1,4 +1,4 @@
-// 全 Entity の赤道交点を update で解き、sync で DOM へ反映し、選択候補として公開する。
+// 全 Entity の赤道交点を update で解き、sync でマーカーへ反映し、選択候補として公開する。
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
@@ -38,12 +38,12 @@ export class EquatorNodeManager {
     const visibilityPolicy = view === 'map'
       ? new MapVisibilityPolicy(inputs.celestialBodies, this.mapDisplay.current)
       : null;
-    // roster の現行 id を記録し、走査後に消滅した個体の DOM 資源を回収する。
+    // roster にいる個体ごとに、交点を出すなら解き、出さないなら解を失効させる。
     const retainedIds = new Set<string>();
     for (const entity of this.roster.all()) {
       retainedIds.add(entity.id);
       const current = this.pairs.get(entity.id);
-      // 表示理由を View に持たせず、ここでマップ上の現れ方と注目状態を一度だけ判定する。
+      // マップ上の現れ方と注目状態(常時表示・操作対象・航法ターゲット)から、交点を出すかを決める。
       const onMap = entity.mapKind === null || visibilityPolicy === null
         || appearsOnMap(visibilityPolicy.entity(entity.mapKind, entity === controlled));
       const visible = entity.motion.alive && onMap

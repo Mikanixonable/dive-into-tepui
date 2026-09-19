@@ -13,6 +13,7 @@ import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
 import type { StageRules } from '../../stages/stage-rules';
 
+// 操作量から推力とトルクを決め、推力のラッチ・RCS 減衰・プログレード保持を持つスロットルの面。
 export interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
@@ -30,6 +31,7 @@ export interface ThrottlePort {
   clearTransientState(): void;
 }
 
+// スロットルが推力・トルクの上限と燃料を読み、燃料 [kg] を消費させる相手。
 export interface FuelConsumer {
   readonly totalThrust: number;
   readonly totalTorque: number;
@@ -40,6 +42,7 @@ export interface FuelConsumer {
   readonly motion: DynamicEntity['motion'];
 }
 
+// フレームごとの操作量と、単発の命令を受ける面。
 export interface PilotCommandReceiver {
   // controls はこのフレームの操作量で、操作されない個体は null。dt [s] は実時間、simDt [sim s] は
   // シミュレーション時間の刻み。
@@ -47,10 +50,13 @@ export interface PilotCommandReceiver {
     controls: PilotControls | null, dt: number, simDt: number,
     activeStage: StageOutcome, stageRules: StageRules, celestialBodies: CelestialBodies,
   ): void;
+  // 推力・トルクの指令とスロットルの一時状態を解く。
   clearTransientCommands(): void;
+  // 単発の命令 command のうち、備える操作を状態へ適用する。
   handleCommand(command: PilotCommand, registry: EntityRegistry): void;
 }
 
+// マニューバ計画と、その実行方法・姿勢操作の微調整の有無。
 export interface NavigationController {
   readonly plan: Plan;
   readonly planExecution: PlanExecutionMode;

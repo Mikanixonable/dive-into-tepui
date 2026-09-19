@@ -20,7 +20,7 @@ export interface ViewFrame {
   onEnter(): void;
   // このビューから出るときの後始末。
   onLeave(): void;
-  // router からビュー固有の単発入力を受け取る。
+  // ビュー固有の単発入力 commandId を実行する。
   handleCommand(commandId: string): void;
   // 押下中の連続操作をこのビューへ配る。
   updateActions(dt: number): void;

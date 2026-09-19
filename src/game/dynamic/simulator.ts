@@ -165,9 +165,8 @@ export class Simulator {
     this._lastSimDt = simDt;
   }
 
-  // 生存する全個体を dt だけ進め、終端 endTime へ着地させる。濃い大気が細かい刻みを要求する個体は
-  // 区間を内側で割り、その1歩ごとに天体表面への到達も解く。1歩で渡った個体は区間が揃っているので、
-  // sharedIntervalScratch へ集める。
+  // 生存する全個体を dt だけ進め、終端 endTime へ着地させる。区間を内側で割った個体は各歩で天体表面
+  // への到達も解き、1歩で渡った個体は sharedIntervalScratch へ集める。
   private substep(endTime: number, dt: number, services: DynamicReactionServices): void {
     this.sharedIntervalScratch.length = 0;
     for (const e of this.roster.allMotions()) {

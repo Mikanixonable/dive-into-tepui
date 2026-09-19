@@ -1,5 +1,4 @@
-// 個々の敵機を、座標・色・機種などのパラメータから直接生成する。無秩序に漂う姿勢と
-// プログレードへ向けた姿勢の2方針を並べて置く。
+// 個々の敵機とタンパク質陣形の要求を、座標・色・機種などのパラメータから直接組む。
 // **軌道は、置く位置で最も強く引く天体を中心とする二体の幾何で置く、ゲームバランスのための簡易な置き方。**
 // 高度はその天体の表面半径の球面から測る(扁平な天体の基準楕円体とのずれ — 地球の極で 21km — は
 // 出現高度の余裕に埋もれる)。
@@ -38,9 +37,8 @@ export function generateDriftingEnemy(
   );
 }
 
-// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)の要求を、共通の時刻・速度で組む。
-// centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー方向へ 450 m、
-// エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離す。
+// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)の要求を、centerState を中心に共通の
+// 時刻・速度で組む。name は各役の名前の接頭辞。
 export function proteinFormationRequests(
   name: string, centerState: KinematicState, playerPosition: Vec3, formationId: string,
 ): readonly ProteinEnemyRequest[] {

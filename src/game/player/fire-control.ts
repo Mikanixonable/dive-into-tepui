@@ -85,8 +85,7 @@ export class FireControl {
     this.weapon.tickCooldown(dt);
 
     if (!controls.firing) {
-      // トリガーを離したら連射状態を畳む。畳まないと微調整出力が有効なまま残り、次に引いたときの
-      // スピンアップも起きない。
+      // トリガーを離したら連射状態を畳む。畳まないと次に引いたときにスピンアップが起きない。
       this.weapon.releaseTrigger();
       return;
     }
@@ -216,8 +215,7 @@ export class FireControl {
     ));
   }
 
-  // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
-  // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
+  // 薬莢を -X 側(+X 側には給弾ベルトがある)へ、ゆっくり漂い個体ごとに大きくばらついて回るよう排出する。
   private dropCasing(muzzle: Vec3): void {
     const ship = this.player;
     // 機体姿勢基準の左右・上方向
@@ -274,8 +272,7 @@ export class FireControl {
     this.weapon.mountFreshBarrel();
   }
 
-  // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から
-  // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
+  // 空になったマガジンの外枠を、-X 側(薬莢と同じ側)からデブリとして放出する。
   private spawnEjectedMagazineFrame(): void {
     const ship = this.player;
     // 排出ポートの位置と初速

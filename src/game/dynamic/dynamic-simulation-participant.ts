@@ -19,6 +19,7 @@ export interface DynamicReactionServices {
   readonly registry: EntityRegistry;
 }
 
+// 予測の弧を持ちうる個体。
 export interface PredictableMotion {
   readonly followsPredictedArc: boolean;
   readonly predicted: DynamicTrajectory | null;
@@ -26,16 +27,19 @@ export interface PredictableMotion {
   ensurePredictedArc(sources: readonly CelestialBody[]): PredictedArc | null;
 }
 
+// 予測の弧を伸ばす対象の顔ぶれ。
 export interface PredictableMotionRoster {
   allMotions(): readonly PredictableMotion[];
 }
 
+// 接触の掃引が読む、直前と現在の状態と接触半径 [m]。
 export interface KinematicParticipant {
   readonly state: KinematicState;
   readonly prevState: KinematicState;
   readonly radius: number;
 }
 
+// 物体どうしの接触に加わる当事者。
 export interface EntityContactParticipant extends KinematicParticipant {
   readonly alive: boolean;
   readonly att: Attitude;
@@ -74,6 +78,7 @@ export interface EntityContactParticipant extends KinematicParticipant {
   reset(state: KinematicState): void;
 }
 
+// 天体表面との接触に加わる当事者。
 export interface SurfaceContactParticipant extends KinematicParticipant {
   readonly alive: boolean;
   absorbHeat(specificJoules: number): void;
@@ -84,6 +89,7 @@ export interface SurfaceContactParticipant extends KinematicParticipant {
   reset(state: KinematicState): void;
 }
 
+// 実シミュレーションがサブステップごとに進め、接触を解く個体。
 export interface DynamicSimulationParticipant extends EntityContactParticipant, SurfaceContactParticipant {
   readonly att: Attitude;
   placeContactProxies(simTime: number, dt: number): void;
@@ -101,6 +107,7 @@ export interface DynamicSimulationParticipant extends EntityContactParticipant, 
   kill(): void;
 }
 
+// 状態の健全さを見るときに読む個体の状態と、操作対象ではその姿勢。
 export interface SimulationState {
   readonly state: KinematicState;
 }
@@ -109,6 +116,7 @@ export interface SimulationControlled extends SimulationState {
   readonly att: Attitude;
 }
 
+// 実シミュレーションが進める顔ぶれ。
 export interface DynamicSimulationRoster {
   // 顔ぶれが変わるたびに増える世代。
   readonly collectionRevision: number;
@@ -116,6 +124,7 @@ export interface DynamicSimulationRoster {
 }
 
 export interface SimulationLifecycle extends DynamicSimulationRoster {
+  // 寿命と上限を判定し、死んだ個体を顔ぶれから除く。dt [s] は直前に進めた長さ、zones はいまの交戦圏。
   cleanup(
     dt: number, simTime: number, activeStage: StageOutcome,
     zones: readonly EngagementZone<EngagementParticipant>[],

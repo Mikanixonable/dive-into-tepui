@@ -36,7 +36,7 @@ export function shipMotionProperties(
 
 export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 
-// 艦・敵・タンパク質が共有する、識別・寿命・一般 HP・本体マーカーの基底。
+// 戦闘の標的になる機体の基底。表示名・HP と装甲値・本体の HP マーカーを持つ。
 export abstract class Vessel extends DynamicEntity {
   public override readonly combatTarget = true;
   private readonly markerRenderer: ShipMarkerRenderer;

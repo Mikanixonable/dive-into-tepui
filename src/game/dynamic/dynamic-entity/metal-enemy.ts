@@ -13,8 +13,8 @@ import type { EntityRegistry } from '../entity-registry';
 import { deserializeParts, type Part, type AnyPart } from './parts';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
-// 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
-// bounds と一致することを固定し、実行時の物理構築が THREE のモデル生成へ依存しないようにする。
+// 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。アセットの bounds を写した
+// 定数で、一致は描画テストが確かめる。
 const DRIFTING_COLLISION_RADIUS = 67.1935257886386;
 const TYPED_COLLISION_RADII = [
   93.8906797184146,
@@ -41,8 +41,7 @@ export interface SerializedMetalEnemy extends SerializedEnemy {
   readonly parts: readonly AnyPart[];
 }
 
-// 敵の配置に機体テンプレート番号を足したもの。typeIndex が null なら型番を持たない漂流機体、数値なら
-// stage00 ウェーブ敵の機体テンプレート番号。
+// 敵の配置に機体テンプレート番号を足したもの。typeIndex が null なら型番を持たない漂流機体。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
 // 金属機体の敵。機体テンプレートが外形と接触半径を決め、被弾は艦と同じパーツ式の被弾モデルへ入る。
@@ -120,7 +119,6 @@ export class MetalEnemy extends PartBasedEnemy {
     return PLASMA_BULLET_DAMAGE;
   }
 
-  // 金属機体の発砲は閃光を伴わず、砲口も1つなので、受けて変わるものを持たない。
   protected override fired(): void {}
 
   // 被弾位置によらず、健全な部品へ無作為に割り振る。

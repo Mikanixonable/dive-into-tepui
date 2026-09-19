@@ -118,6 +118,7 @@ export class PredictPanelSelection implements PredictPanelSource {
     roster: EntityRoster,
   ): PredictPanelSelection {
     const { frame } = serialized;
+    // 座標系は frames から引き直し、同じ対に同じ参照を保つ。
     return new PredictPanelSelection(
       frames,
       celestialBodies,
@@ -136,6 +137,7 @@ export class PredictPanelSelection implements PredictPanelSource {
 
   // 直列化した形へ畳む。
   public serialize(): SerializedPredictPanelSelection {
+    // 手動レンジの期間は、選んでいないあいだの値も書く。
     return {
       frame: this._frame,
       durationKey: this._durationKey,

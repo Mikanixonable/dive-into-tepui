@@ -25,9 +25,8 @@ import {
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { AttachedBoosterMotion } from './attached-booster-motion';
 
-// 分離式ブースターの標準段。自機 1,000 kg と並べたとき、1段あたりの乾燥+満載質量
-// 1,000 kg、推力 0.6 MN で約 300 m/s² となるようにする。燃料 800 kg を 80 kg/s
-// で燃やし切るので、通常のフレーム刻みでも十数秒の燃焼と最後の燃料切れを扱える。
+// 分離式ブースターの標準段。自機 1,000 kg に満載の1段(1,000 kg)を繋いで約 300 m/s²、
+// 燃料は 10 秒で燃え切る。
 const DEFAULT_DRY_MASS = 200; // [kg]
 const DEFAULT_MAX_FUEL = 800; // [kg]
 const DEFAULT_THRUST = 6e5; // [N]
@@ -78,7 +77,8 @@ export class AttachedBoosters {
     });
   }
 
-  // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
+  // 最後尾の段を切り離して独立した実体にし、爆砕ボルトの相対速度を質量比で両者へ配る。
+  // 段が無ければ、分離できなかったことを記録する。
   public decouple(): void {
     const stageIndex = this.boosterMotion.stages.length - 1;
     const detachedStage = this.activeStage();
@@ -111,8 +111,7 @@ export class AttachedBoosters {
     this.registry.add(DetachedBooster.create(
       detachedStage,
       kinematicState<'eci'>(t, boosterR, separated.booster),
-      // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
-      // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
+      // 爆砕ボルトは中心軸上にありトルクを与えないので、角速度をそのまま引き継ぐ。
       player.att.q,
       player.att.w,
       t + COLLISION_GRACE,

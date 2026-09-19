@@ -194,7 +194,7 @@ export class DynamicMotion {
   public readonly engagementAnchor: boolean;
   public readonly preciseReentry: boolean;
   public readonly contactDamageWeight: number;
-  // 個体は本体そのもので、何にも取り付いていない。
+  // 本体そのものなので、取り付き先は null。
   public readonly attachedTo = null;
   // 姿勢の積分に加えるトルク。指令から積分の前に毎フレーム書き直すキャッシュ。
   private _torque: Vec3 = v3();
@@ -295,15 +295,14 @@ export class DynamicMotion {
     this._alive = false;
   }
 
-  // 状態を state へ置き換え、予測弧を捨てる。積分を経ない不連続な差し替え(接触・反動・計画の即時
-  // 実行)に使う。
+  // 状態を state へ置き換え、予測弧を捨てる。積分を経ない不連続な差し替えに使う。
   public reset(state: KinematicState): void {
     this.actual.reset(state);
     this.invalidatePrediction();
   }
 
   // 質量 mass [kg] と主慣性モーメント inertia を置き換え、変わったなら予測弧を捨てる(弾道係数が
-  // 質量で変わる)。構成で質量の決まる継承先が、構成を変えたときに呼ぶ。
+  // 質量で変わる)。構成で質量の決まる継承先は、構成を変えたときに呼ぶこと。
   protected setMassProperties(mass: number, inertia: Vec3): void {
     if (mass === this._mass && sameVec(inertia, this._att.inertia)) return;
     this._mass = mass;
@@ -445,14 +444,14 @@ export class DynamicMotion {
     ) ?? null;
   }
 
-  // 固有形状どうしの接触。形状を持たない個体との接触は null を返し、球対形状の経路へ戻す。
+  // 固有形状どうしの接触。触れていないか、固有形状どうしの組でなければ null。
   public testCustomEntityCollision(
     other: EntityContactParticipant, selfState: KinematicState, otherState: KinematicState,
   ): ContactGeometry | null {
     return this.behavior.testEntityCollision?.(this, other, selfState, otherState) ?? null;
   }
 
-  // 固有形状どうしの掃引接触。形状を持たない個体との接触は null を返す。
+  // 固有形状どうしの掃引接触。触れていないか、固有形状どうしの組でなければ null。
   public testCustomSweptEntityCollision(
     other: EntityContactParticipant,
     previousSelf: KinematicState, selfState: KinematicState,
@@ -510,8 +509,7 @@ export class DynamicMotion {
     this.behavior.checkLoss?.(this, dt, simTime, services, zones, atmosphereBodies);
   }
 
-  // simDt ぶんの自律の指令を反応に進めさせ、反応が決めた推力を指令する。自律の指令を持たない
-  // 個体では何もしない。
+  // simDt ぶんの自律の指令を反応に進めさせ、反応が決めた推力を指令する。
   public updateCommands(simDt: number): void {
     if (this.behavior.updateCommands === undefined) return;
     this.behavior.updateCommands(this, simDt);

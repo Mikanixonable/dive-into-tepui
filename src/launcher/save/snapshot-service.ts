@@ -76,8 +76,7 @@ export class SnapshotService {
     // 版を先に照合する — 版の違う記録は形が違うので、ほかの項目を読まない。
     if (data.version !== SAVED_GAME_VERSION) return null;
     if (expectedStageId !== data.progress.stageId) return null;
-    // 元期は継承するので照合しないが、その元期が選ぶ暦データがいま手元にあるものと違うなら、
-    // 絶対天体状態が曖昧になるので拒否する。
+    // 元期が選ぶ暦データが手元のものと違えば、絶対天体状態が曖昧になるので拒否する。
     if (!isEphemerisContextRestorable(data.progress.ephemerisContext)) return null;
     return data;
   }

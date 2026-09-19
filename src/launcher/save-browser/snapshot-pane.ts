@@ -1,6 +1,5 @@
-// セーブブラウザ右ペイン(手動セーブの一覧)の DOM 構築。
-// ステージ切替タブと、カード1件ごとの表示と操作ボタンを組み立てる。
-// 表示対象の状態やクリップ・改名・削除・分岐などの実処理は、コールバックを通じて呼び出し側へ委ねる。
+// セーブブラウザ右ペイン(手動セーブの一覧)の DOM 構築。ステージ切替タブと、手動セーブ1件ごとの
+// カードを組む。操作はコールバックで呼び出し側へ返す。
 import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/utils';
@@ -19,8 +18,7 @@ const STYLE = `
 #save-browser .sb-snap-loadable:hover { background: var(--fill-1); }
 #save-browser .sb-snap-name { font-size: var(--font-s); }
 #save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
-/* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
-   HP 表示ではないため、他の注目要素と競合しないモノトーンに留める(danger 色も使わない)。 */
+/* HP バーは細いモノトーン — このパネルの主役はセーブ操作なので、HP 表示を他の注目要素と競合させない。 */
 #save-browser .sb-snap-hp-meter .w-meter-track { height: 3px; border-radius: var(--radius-s); }
 #save-browser .sb-snap-hp-meter .w-meter-fill { background: var(--text-dim); }
 #save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
@@ -29,8 +27,8 @@ const STYLE = `
 // 形式の版が合わず、読み込めない手動セーブに添える文面。
 const UNREADABLE_SNAPSHOT = '形式の版が違うため、この手動セーブは読み込めません。';
 
-// 数値であるはずのメタ項目。取り込んだファイルでは欠けていることがあり、そのまま
-// 書式化関数へ渡すと一覧の組み立てごと落ちてイベント配線まで届かなくなる。
+// 数値であるはずのメタ項目 v を、有限でなければ 0 に均す。取り込んだファイルでは欠けていることが
+// あり、そのまま書式化すると一覧の組み立てごと落ちる。
 function num(v: number): number {
   return Number.isFinite(v) ? v : 0;
 }
@@ -44,15 +42,15 @@ interface SnapshotPaneCallbacks {
   readonly onRenameSnapshot: (snapshotId: string) => void;
   readonly onDeleteSnapshot: (snapshotId: string) => void;
   readonly onBranch: (slotId: string, snapshotId: string) => void;
-  // 天体 id → 表示名。実行中の周回の celestialSystem から引く(周回が無ければ id のまま)。
+  // 天体 id → 表示名。
   readonly nameOf: (id: string) => string;
   // 手動セーブの本体が、いまの形式の版で読めるか。
   readonly isReadable: (snapshotId: string) => boolean;
 }
 
-// 右ペイン(手動セーブの一覧)を組み立てる。slot が null なら選択待ちの案内だけを返す。
-// activeSlotId/activePlayingStageId は、いま実際にプレイしているセーブデータ・ステージ
-// (プレイ中の Game が無ければ activePlayingStageId は null)。
+// 右ペイン(手動セーブの一覧)を組み立てる。slot が null なら選択待ちの案内を返す。viewedStageId が
+// null なら slot の先頭のステージを出す。activeSlotId/activePlayingStageId は、いま実際にプレイして
+// いるセーブデータ・ステージ(プレイ中の周回が無ければ activePlayingStageId は null)。
 export function buildSnapshotPane(
   slot: SaveSlotMeta | null, viewedStageId: string | null, activeSlotId: string | null,
   activePlayingStageId: string | null, canSaveNow: boolean, callbacks: SnapshotPaneCallbacks,
@@ -100,13 +98,13 @@ export function buildSnapshotPane(
   return wrap;
 }
 
-// 手動セーブのカード列を組み立てる。0件なら「なし」を出す。
+// 手動セーブのカード列を組み立てる。
 function buildSnapshotList(
   list: readonly SnapshotMeta[], slot: SaveSlotMeta, loadable: boolean, callbacks: SnapshotPaneCallbacks,
 ): HTMLElement {
   const el = document.createElement('div');
   el.className = 'sb-snapshot-list';
-  // 0件なら一覧の代わりに「なし」とだけ出す。
+  // 0件なら、一覧の代わりに「なし」を出す。
   if (list.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'sb-empty';
@@ -157,7 +155,7 @@ function buildSnapshotCard(
   row2.textContent = `${callbacks.nameOf(s.centerBodyId)} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
   card.appendChild(row2);
 
-  // このパネルの主役はセーブ操作であって HP 表示ではないため、常にモノトーンで塗る(danger 色は使わない)。
+  // HP の残りを細いメーターで示す。
   const hpMeter = new Meter();
   hpMeter.element.classList.add('sb-snap-hp-meter');
   hpMeter.setRatio(hpPct / 100);

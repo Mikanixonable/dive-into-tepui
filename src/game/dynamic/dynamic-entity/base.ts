@@ -91,7 +91,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public get totalMaxFuel(): number { return this.motion.maxFuel; }
   public readonly hp = null;
   public readonly maxHp = null;
-  // 基地は武装・ブースター・高度警報を持たない。
   public readonly fire = null;
   public readonly boosters = null;
   public readonly altitudeAlarm = null;
@@ -137,7 +136,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     const base = new Base(
       scene,
       registry.idAllocators.base.next(serialized.id),
-      // 記録に無い名前は、新しく置いたときと違って無作為に選ばず「基地」と名乗る。
+      // 記録に名前が無ければ、無作為な名前でなく「基地」と名乗る。
       serialized.name || '基地',
       deserializeKinematicState(serialized),
       deserializeAttitude(serialized, Base.INERTIA),

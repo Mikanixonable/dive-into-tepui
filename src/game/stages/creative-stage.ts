@@ -1,4 +1,4 @@
-// クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
+// クリエイティブモード: 物体配置と軌道計画を自由に試すための、勝利条件の無いステージ。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { ManualSpawn, type SerializedManualSpawn } from '../creative/manual-spawn';
 import { MAX_PLACED_SHIPS, ObjectPlacement, type SerializedObjectPlacement } from '../creative/object-placement';
@@ -50,7 +50,7 @@ export class CreativeStage extends Stage {
 
   private readonly objectPlacement: ObjectPlacement;
   private readonly manualSpawn: ManualSpawn;
-  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。
+  // 補給の自動投入・敵の波状攻撃のトグルと、手動スポーンの操作を載せたパネル。
   private readonly stageControlsPanel: StageControlsPanel;
   private readonly waveAttack: WaveAttack;
   // パネルの操作を積む先。
@@ -61,8 +61,8 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // 波状攻撃の進行・トグル、手動スポーン、配置した自機の id の連番と共通の状態から、ステージ操作
-  // パネルを組む。省いたものは新しいランの初期値から始まる。
+  // 波状攻撃の進行・トグル、手動スポーン、配置した自機の id の連番と共通の状態から組む。省いたものは
+  // 新しいランの初期値から始まる。
   private constructor(
     deps: StageDeps,
     waveAttack?: WaveAttack,

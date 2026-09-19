@@ -22,8 +22,7 @@ export interface SerializedAltitudeAlarm {
 }
 
 export class AltitudeAlarm {
-  // 既に警告済みのしきい値。しきい値 + ヒステリシスまで登り返すと解除され、再度潜った際に
-  // 同じしきい値で再警告できる。
+  // 警告済みのしきい値 [m]。登り返すと外れ、再び潜れば同じしきい値で再警告する。
   private readonly warnedThresholds: Set<number>;
 
   // 警告は events へ記録する。descendWarned は降下中とみなされているか、altEma は高度の指数移動

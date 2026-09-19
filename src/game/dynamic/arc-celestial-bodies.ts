@@ -1,5 +1,5 @@
-// 1本の積分弧が引く天体の一覧。候補(レジストリの全天体)のうち、いま効きうる天体だけを成員として
-// 保ち、成員でない候補は効き得ない期限が来たときに見直す。
+// 1本の積分弧が引く天体の一覧。候補の天体のうち、いま効きうる天体を成員として保ち、成員でない
+// 候補は効き得ない期限が来たときに見直す。
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
@@ -7,10 +7,9 @@ import { gravityReachOf } from './attractors';
 import { ARC_MIN_STEP_DT } from './time-step';
 import type { CelestialBodyDef } from '../../physics/celestial-body-def';
 
-// 一覧の外にある天体が「いつまで効き得ないか」を見積もるときの、相対速さの安全率と下限 [m/s]。
-// 見積りは保守的でありさえすればよく、精密である必要はない — 外れても訪問が1回増えるだけで、
-// 逆に短く見積もりすぎることだけが取りこぼしになる。下限は、相対速度がいま 0 の天体にも
-// 有限の期限を与えるために要る。
+// 一覧の外にある天体が「いつまで効き得ないか」を見積もるときの、接近速さの安全率と下限 [m/s]。
+// 接近速さを小さく見積もると取りこぼすので保守側に取る。下限は、相対速度がいま 0 の天体にも
+// 有限の期限を与えるため。
 const ARC_BODY_CLOSING_SAFETY = 2;
 const ARC_BODY_CLOSING_MARGIN = 2000;
 
@@ -67,18 +66,18 @@ function heaviestGravityId(candidates: readonly Pick<CelestialBodyDef, 'id' | 'm
   return id;
 }
 
-// 予測の弧のキャッシュの一部。弧と一緒に候補の天体から組み直せる。
+// 弧1本ぶんの天体の成員と見直しの期限。resolve は弧の先端の時刻の順に呼ぶ。
 export class ArcCelestialBodies {
-  // 候補1体につき1つ。顔ぶれは弧の一生を通じて同じなので、構築時に組んで持ち続ける。
+  // 候補1体につき1つ。
   private readonly watches: readonly Watch[];
-  // 直近の resolve で解決した天体の数と、そのうち期限到来で訪問したものの数(キャッシュ)。
+  // 直近の resolve で解決した天体の数と、そのうち期限到来で訪問したものの数。
   private _lastResolved = 0;
   private _lastRevisited = 0;
 
   public get lastResolved(): number { return this._lastResolved; }
   public get lastRevisited(): number { return this._lastRevisited; }
 
-  // 候補の顔ぶれを構築時に確定させ、以後は1体ぶんの状態だけを sources へ問う。
+  // sources が候補の天体。顔ぶれは以後変わらない。
   public constructor(sources: readonly CelestialBody[]) {
     const candidates = sources.map((m) => m.def);
     // 最も重い天体は、寄与が無視できても成員に留める。
@@ -97,12 +96,13 @@ export class ArcCelestialBodies {
   // 踏む刻み幅 [s](まだ決まっていない最初の解決では 0 でよい)。返る配列はこの呼び出しごとに
   // 新しく、呼び出し側が次の解決まで保持してよい。
   public resolve(t: number, from: KinematicState, stepDt: number): ArcCelestialBodyWindow {
-    // 次の歩で表面へ届きうる天体が一覧の外に残らないよう、刻み幅の数歩ぶん先まで入れておく。
+    // 成員に入れておく先読み時間 [s]
     const lead = Math.max(stepDt, ARC_MIN_STEP_DT) * ARC_BODY_LEAD_STEPS;
     const gravity: CelestialBody[] = [];
     const collision: CelestialBody[] = [];
     this._lastResolved = 0;
     this._lastRevisited = 0;
+    // 成員と、見直しの期限が来た候補だけを判定し直す
     for (const w of this.watches) {
       if (!w.member && w.nextVisitT > t) continue;
       if (!w.member) this._lastRevisited++;

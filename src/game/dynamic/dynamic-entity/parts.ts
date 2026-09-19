@@ -83,8 +83,8 @@ function nonNegative(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-// 直列化された部品を復元する。id も引き継ぐので、直列化の前後で部品の同一性(id)が保たれる。
-// 種別が不正なら null。ほかの項目が不正なら、その項目だけを安全な値へ落とす。
+// 直列化された部品を id ごと復元する。種別が不正なら null、ほかの項目が不正ならその項目を安全な値へ
+// 落とす。
 export function deserializePart(serialized: AnyPart): AnyPart | null {
   if (serialized === null || typeof serialized !== 'object'
     || !PART_TYPES.includes(serialized.type as PartType)) return null;
@@ -142,8 +142,8 @@ export function deserializePart(serialized: AnyPart): AnyPart | null {
   }
 }
 
-// 直列化された部品の一覧を復元する。種別が不正な部品は落とし、1つも残らなければ、空の機体でなく
-// 既定の構成で組ませるために undefined を返す。
+// 直列化された部品の一覧を復元する。種別が不正な部品は落とす。1つも残らなければ、既定の構成で
+// 組ませるため undefined を返す。
 export function deserializeParts(serialized: readonly AnyPart[]): AnyPart[] | undefined {
   const parts = Array.isArray(serialized)
     ? serialized.map(deserializePart).filter((part) => part !== null)

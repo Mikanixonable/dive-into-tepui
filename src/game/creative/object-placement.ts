@@ -103,8 +103,8 @@ export class ObjectPlacement {
     this.panel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
-  // 種類と軌道要素を引き継いで配置パネルを開く。引き継ぐのは state を軌道要素へ逆算でき、基地の
-  // 基準天体制約も満たすときだけ — それ以外は種類だけにして、制約外の軌道が黙って置かれるのを防ぐ。
+  // 種類と軌道要素を引き継いで配置パネルを開く。state を軌道要素へ逆算できないか基地の基準天体
+  // 制約に反するときは、種類だけを引き継ぎ、軌道を複製できなかったことを記録する。
   public openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
     const form = elementsFormFromState(
       state, this.celestialSystem, state.t, this.celestialSystem.origin.id);
@@ -173,7 +173,7 @@ export class ObjectPlacement {
   // フォームの値を検証して初期状態を組み、置く物体の指定を受け手へ渡す。
   // 検証に落ちるか状態を組めなければ、落ちた理由を記録して何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
-    // 隻数の上限に掛かることを操作した場で知らせるための先読み。判定の正本は受け手。
+    // 隻数の上限に掛かることを、操作した場で知らせるための先読み。
     if (form.entityKind === 'player' && this.roster.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
       this.events.record({ kind: 'shipPlacementLimitReached', limit: MAX_PLACED_SHIPS });
       return;

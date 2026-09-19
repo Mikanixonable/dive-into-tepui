@@ -61,7 +61,7 @@ class DetachedBoosterBehavior implements DynamicMotionBehavior {
     return this.collisionEnableAt > simTime ? this.collisionEnableAt : null;
   }
 
-  // 分離直後の接触猶予中は接触へ参加しない。
+  // 接触猶予が終わってから接触へ参加する。
   public contactsWith(_self: DynamicMotion, _other: EntityContactParticipant, simTime: number): boolean {
     return simTime > this.collisionEnableAt;
   }

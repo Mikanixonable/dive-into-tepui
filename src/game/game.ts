@@ -31,10 +31,8 @@ export interface SerializedGame {
 // 進行の直列化した形。Game 自身の値と、Game が持つ進行の所有者ごとの記録から成る。
 export interface SerializedProgress {
   readonly stageId: string;
-  /**
-   * そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
-   * 暦データの識別。
-   */
+  // そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
+  // 暦データの識別。
   readonly ephemerisContext: EphemerisContext;
   readonly dynamicSystem: SerializedDynamicSystem;
   readonly simSpeedManager: SerializedSimSpeedManager;
@@ -153,6 +151,7 @@ export class Game {
 
   // このランを直列化した形へ畳む。
   public serialize(): SerializedGame {
+    // 進行は Game 自身の値と所有者ごとの記録から、視点はそれと分けて畳む。
     return {
       progress: {
         stageId: this.activeStage.id,

@@ -1,5 +1,4 @@
-// ゲーム世界の外の操作・通知の合成効果音(アセット不要)。音源の位置という概念を持たず、
-// どこでも一定音量で鳴る。AudioContext が開くまでは無音のまま何もしない。
+// ゲーム世界の外の操作・通知を知らせる合成効果音。位置によらず一定の音量で鳴る。
 import type { AudioEngine } from '../audio-engine';
 import type { SoundCue } from './sound-cue';
 
@@ -12,7 +11,7 @@ export class UiSfx {
 
   public constructor(private readonly engine: AudioEngine) {}
 
-  // そのフレームに鳴らす音の宣言 cues を受け、まだ鳴らしていない id のものだけを鳴らす。
+  // そのフレームに鳴らす音の宣言 cues を受け、まだ鳴らしていない id のものを鳴らす。
   public sync(cues: readonly SoundCue<UiSound>[]): void {
     for (const cue of cues) {
       if (cue.id <= this.lastCueId) continue;

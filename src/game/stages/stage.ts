@@ -121,7 +121,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;
-  // タイトルのステージ選択ボタン列に並べない。
+  // タイトルのステージ選択ボタン列から隠すか。既定では並べる。
   public static readonly hiddenFromSelect: boolean = false;
   // ショートカットキーを持たない。持つステージだけが宣言する。
   public static readonly selectKey: string | null = null;
@@ -252,7 +252,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。state を省いた新規配置は
   // 既定の円軌道(defaultPlayerState)に置き、機首と上面はその位置で最も強く引く天体を基準に向ける。
-  // 艦の隻数は0..n隻が一般形で、何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(placement: Partial<PlayerPlacement> = {}): Player {
     const state = placement.state ?? this.defaultPlayerState();
     const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
@@ -330,7 +329,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return null;
   }
 
-  // 原因によらず勝利判定を通す: 再突入・離脱でも残存数 0 なら決着させる。
+  // 敵1体の消滅を原因ごとに数えて記録する。撃破以外の消滅でも、残存数が 0 になれば勝利で決着させる。
   public recordEnemyDeath(enemy: Enemy, simTime: number, cause: EnemyDeathCause = 'killed'): void {
     if (cause === 'killed') this.scoreCounter.recordKill();
     else this.scoreCounter.recordEnemyLoss();

@@ -47,7 +47,7 @@ export class LeadMarkers {
   ): void {
     const declarations = this.declarations;
     declarations.length = 0;
-    // 現在のターゲットだけリード点を求める。ターゲットから外れた敵の宣言はこのフレームで消える。
+    // 現在のターゲットだけリード点を求める。
     if (shooter !== null && view !== 'map' && target !== null && targetsArray.includes(target)) {
       const lead = leadPoint(
         target.motion.state, shooter.state, shooter.muzzleVelocity, LEAD_MAX_TIME,

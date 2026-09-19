@@ -33,10 +33,9 @@ export interface WeaponFireCommand {
 
 // 弾薬・砲身(温度を含む)・クールダウン・交互に撃つ砲口・トリガーの状態機械。
 export class WeaponState {
-  // mags・rounds は予備のマガジン数と装填済みの残弾数、barrel は装着中の砲身に残るマガジン数、
-  // barrelTemperature・barrelDeviation は砲身の平均温度と薬室側の温度差 [K]、pendingBarrelJoules は
-  // 発砲で砲身へ入り、まだ温度へ変えていない熱量 [J]、muzzleIdx は次に撃つ砲口。wasFiring は
-  // トリガーを引き続けているか、wasEmptyClick は撃てないまま引いたことを記録済みか。
+  // barrel は装着中の砲身で撃てる残りのマガジン数、barrelDeviation は薬室側が平均より高い温度差 [K]、
+  // pendingBarrelJoules は発砲で砲身へ入り、まだ温度へ変えていない熱量 [J]、muzzleIdx は次に撃つ砲口。
+  // 省いた値は既定の積載と、環境温度の新しい砲身で始める。
   public constructor(
     private _mags = MAGS_PER_BARREL - 1,
     private _rounds = MAG_ROUNDS,
@@ -193,15 +192,16 @@ export class WeaponState {
   // 弾薬・砲身・砲口と、トリガーの引き続けの直列化。
   public serialize(): SerializedWeaponState {
     return {
+      // 弾薬と砲身
       mags: this._mags,
       rounds: this._rounds,
       barrel: this.barrel,
       barrelTemperature: this._barrelTemperature,
       barrelDeviation: this._barrelDeviation,
       pendingBarrelJoules: this.pendingBarrelJoules,
+      // 発射サイクルとトリガー
       cooldown: this._cooldown,
       muzzleIdx: this._muzzleIdx,
-      // トリガーを引き続けているか、撃てないまま引いたことを記録済みか
       wasFiring: this._wasFiring,
       wasEmptyClick: this._wasEmptyClick,
     };
