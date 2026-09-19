@@ -60,9 +60,13 @@ export abstract class Vessel extends DynamicEntity {
   }
 
   public get hp(): number { return this._hp; }
-  protected set hp(value: number) { this._hp = value; }
   public get maxHp(): number { return this._maxHp; }
-  protected set maxHp(value: number) { this._maxHp = value; }
+
+  // 被弾モデルから求め直した残 HP hp と装甲値 maxHp を受ける。maxHp を省くといまの装甲値のまま。
+  protected setHealth(hp: number, maxHp = this._maxHp): void {
+    this._hp = hp;
+    this._maxHp = maxHp;
+  }
 
   // 残HP比を塗りで示す三角のHPマーカー。
   public hpMarkerSvg(): string { return this.markerRenderer.hpMarker(this.hp, this.maxHp); }

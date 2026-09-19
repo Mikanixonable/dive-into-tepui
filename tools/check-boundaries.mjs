@@ -73,6 +73,7 @@ const MODEL_ROOTS = [
 const MISPLACED_PRESENTATION_FILES = [
   'src/game/game-presentation.ts',
   'src/game/plan/plan-editor.ts',
+  'src/game/plan/plan-path.ts',
   'src/game/plan/node-gizmo.ts',
   'src/game/plan/plan-panel.ts',
   'src/game/plan/plan-axis-drag.ts',
