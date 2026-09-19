@@ -1,14 +1,14 @@
-import { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
-import { ObjectPickerGroup } from '../hud/windows/object-picker';
+// 軌道の指定に要る、天体まわりの選択肢と諸元。基準天体とラグランジュ系の候補を登録天体から組み、
+// 主天体間距離と太陽同期軌道の傾斜角を答える。
 import { OrbitingMotion } from '../../physics/celestial-motion';
-import { type CelestialBodyDef } from '../../physics/celestial-body-def';
-import { EARTH } from '../celestial/solar-system/earth-system';
-import { J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
+import { EARTH, J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/earth-system';
 import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
+import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
+import type { ObjectPickerGroup } from '../hud/windows/object-picker';
+import type { CelestialBodyDef } from '../../physics/celestial-body-def';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 
-// ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
-// これを使う(公転していない恒星を周回の中心には選べない)。
+// ラグランジュ系の副天体・軌道要素の基準天体になれる天体(= 公転しているもの)を列挙する。
 export function orbitingIdsOf(celestialBodies: CelestialBodies): readonly string[] {
   return celestialBodies.celestialMotions.filter((b) => b.kind !== 'star').map((b) => b.id);
 }
@@ -30,12 +30,11 @@ export function bodyGroupsOf(
   ].filter((g) => g.items.length > 0);
 }
 
-// 表示名を「中心天体名-自分の名」として celestialBodies から組む。
+// ラグランジュ系の候補を [副天体 id, 「主天体名-副天体名」] で組む。
 export function lagrangeSystemItemsOf(
   celestialBodies: CelestialBodies, orbitingIds: readonly string[],
 ): readonly (readonly [string, string])[] {
-  // 共線点が行き先として意味を持つ系だけを出す。重力を無視すると宣言した天体(μ = 0)では
-  // 質量比が 0 になり、共線点の距離比を解く反復が収束せず NaN の状態を返す。
+  // 共線点が行き先として意味を持つ系だけを出す。
   const usable = (id: string): boolean => {
     const motion = celestialBodies.motionOf(id);
     return motion instanceof OrbitingMotion && motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO);
@@ -55,9 +54,8 @@ export function primaryDistanceKm(def: CelestialBodyDef): number {
 
 const DEG = Math.PI / 180;
 
-// 太陽同期軌道の傾斜角: その高度の円軌道が J2 摂動で受ける昇交点歳差(dynamics.ts の j2Accel と
-// 同じ式)が、地球の公転角速度(地球の公転要素そのもの)にちょうど一致する条件から
-// 逆算する。retrograde 解(i>90°)が太陽同期の側。
+// 太陽同期軌道の傾斜角: その高度の円軌道が J2 摂動で受ける昇交点歳差が、地球の公転角速度
+// (地球の公転要素そのもの)にちょうど一致する条件から逆算する。retrograde 解(i>90°)が太陽同期の側。
 export function sunSyncInclinationDeg(altKm: number): number {
   const a = R_EARTH + altKm * 1e3;
   const n = Math.sqrt(MU_EARTH / (a * a * a));

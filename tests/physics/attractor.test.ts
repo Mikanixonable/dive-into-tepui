@@ -4,11 +4,10 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel, localOrbitPeriod, orbitingAttractorOf, strongestAttractor } from '../../src/physics/attractor';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
-import { orbitalElementsOf } from '../../src/physics/elements';
+import { keplerPeriod, orbitalElementsOf, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
-import { keplerPeriod, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
-import { MU_MOON, MU_SUN, R_MOON, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { MU_EARTH, MU_MOON, R_EARTH, R_MOON, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
+import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/sun';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
@@ -51,7 +50,7 @@ export function register(): void {
   });
 
   test('attractor: attractorAccel は差分潮汐式 μ[(r_b−r)/|r_b−r|³ − r_b/|r_b|³] に一致', () => {
-    const celestialBodies = solarSystemParts({ earth: 0.3, moon: 0.4 }).system.celestialMotions;
+    const celestialBodies = solarSystemParts().system.celestialMotions;
     const r = v3(R_EARTH + 420e3, 1.2e6, -3e5);
 
     for (const celestialBody of celestialBodies.filter((b) => b.id !== 'earth')) {
@@ -73,13 +72,13 @@ export function register(): void {
   });
 
   test('attractor: strongestAttractor は LEO で earth', () => {
-    const celestialBodies = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const celestialBodies = solarSystemParts().system.celestialMotions;
     const r = v3(R_EARTH + 420e3, 0, 0);
     assert.equal(strongestAttractor(r, celestialBodies, 0).id, 'earth');
   });
 
   test('attractor: strongestAttractor は月から30,000kmでmoon、50,000kmでearthに切り替わる', () => {
-    const celestialBodies = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const celestialBodies = solarSystemParts().system.celestialMotions;
     const moon = celestialBodies.find((b) => b.id === 'moon')!;
     const towardEarth = (dist: number) => addScaled(moon.stateAt(0).r, norm(moon.stateAt(0).r), -dist);
     assert.equal(strongestAttractor(towardEarth(30_000e3), celestialBodies, 0).id, 'moon', '月から30,000km');
@@ -87,14 +86,14 @@ export function register(): void {
   });
 
   test('attractor: strongestAttractor は素の引力でなくattractorAccelで比べる(地心1e9mでearth、5e9mでsun)', () => {
-    const celestialBodies = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const celestialBodies = solarSystemParts().system.celestialMotions;
     // 素の引力 μ/d² で比べると太陽は地心 2.6e5 km 手前で既に地球に勝ってしまう回帰。
     assert.equal(strongestAttractor(v3(1e9, 0, 0), celestialBodies, 0).id, 'earth', '地心 1e9 m');
     assert.equal(strongestAttractor(v3(5e9, 0, 0), celestialBodies, 0).id, 'sun', '地心 5e9 m');
   });
 
   test('attractor: localOrbitPeriod は LEO で約5,580秒、月面+100kmで約7,066秒(実測値をピン留め)', () => {
-    const celestialBodies = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const celestialBodies = solarSystemParts().system.celestialMotions;
     const leoPeriod = localOrbitPeriod(v3(R_EARTH + 420e3, 0, 0), celestialBodies, 0);
     assert.ok(Math.abs(leoPeriod - 5580) / 5580 < 0.01, `LEO 周期: ${leoPeriod}`);
 
@@ -124,14 +123,14 @@ export function register(): void {
   });
 
   test('celestialMotions: 同じ pivot を引くたび同じ値を返す', () => {
-    const windows = solarSystemParts({ earth: 0.1, moon: 0.2 }).system;
+    const windows = solarSystemParts().system;
     const a = windows.celestialMotions;
     const b = windows.celestialMotions;
     assert.deepEqual(a, b);
   });
 
   test('celestialMotions: 太陽系の宣言順で並び、天体の運動と整合する', () => {
-    const parts = solarSystemParts({ earth: 0.1, moon: 0.2 });
+    const parts = solarSystemParts();
     const windows = parts.system;
     const celestialBodies = windows.celestialMotions;
     assert.deepEqual(celestialBodies.map((b) => b.id), ['earth', 'moon', 'mercury', 'venus', 'mars', 'phobos', 'deimos', 'jupiter', 'metis', 'adrastea', 'amalthea', 'thebe', 'io', 'europa', 'ganymede', 'callisto', 'himalia', 'elara', 'ananke', 'carme', 'pasiphae', 'sinope', 'saturn', 'pan', 'daphnis', 'prometheus', 'pandora', 'epimetheus', 'janus', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'titan', 'hyperion', 'iapetus', 'phoebe', 'uranus', 'puck', 'miranda', 'ariel', 'umbriel', 'titania', 'oberon', 'neptune', 'triton', 'nereid', 'ceres', 'vesta', 'pallas', 'pluto', 'charon', 'styx', 'nix', 'kerberos', 'hydra', 'haumea', 'hiiaka', 'namaka', 'makemake', 'eris', 'dysnomia', 'halley', 'encke', 'sedna', 'quaoar', 'weywot', 'chariklo', 'hygiea', 'eros', 'ryugu', 'bennu', 'orcus', 'vanth', 'gonggong', 'salacia', 'varuna', 'ixion', 'arrokoth', 'chiron', 'interamnia', 'europa52', 'davida', 'juno', 'psyche', 'eunomia', 'sylvia', 'apophis', 'didymos', 'tempel1', 'wild2', 'hartley2', 'cruithne', 'kamooalewa', 'tk7', 'eureka', 'sun']);

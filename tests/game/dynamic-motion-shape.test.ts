@@ -17,13 +17,14 @@ function shape(): CompoundCylinderShape {
 }
 
 function motion(): DynamicMotion {
-  return new DynamicMotion(kinematicState<'eci'>(0, v3(), v3()), { mass: 2, radius: 3 });
+  return new DynamicMotion(kinematicState<'eci'>(0, v3(), v3()), {
+    mass: 2, radius: 3, followsPredictedArc: true,
+  });
 }
 
 export function register(): void {
   test('dynamic motion: collision properties are replaced atomically and freeze the shape snapshot', () => {
     const self = motion();
-    self.trajectoryReader = true;
     const oldArc = self.ensurePredictedArc([]);
     assert.ok(oldArc !== null);
     const input = shape();
@@ -61,7 +62,6 @@ export function register(): void {
 
   test('dynamic motion: invalid collision properties leave every value and arc unchanged', () => {
     const self = motion();
-    self.trajectoryReader = true;
     const originalShape = shape();
     self.replaceCollisionProperties({
       mass: 4, radius: 5, centerOfMass: v3(1, 0, 0), inertia: v3(2, 3, 4), compoundShape: originalShape,
@@ -83,15 +83,23 @@ export function register(): void {
 
   test('dynamic motion: mass setter validates and invalidates prediction', () => {
     const self = motion();
-    self.trajectoryReader = true;
     const arc = self.ensurePredictedArc([]);
     assert.ok(arc !== null);
-    self.mass = 8;
+    self.replaceCollisionProperties({
+      mass: 8, radius: self.radius, centerOfMass: self.centerOfMass,
+      inertia: self.att.inertia, compoundShape: self.compoundShape,
+    });
     assert.equal(self.mass, 8);
     assert.equal(self.arc, null);
-    assert.throws(() => { self.mass = Infinity; });
+    assert.throws(() => self.replaceCollisionProperties({
+      mass: Infinity, radius: self.radius, centerOfMass: self.centerOfMass,
+      inertia: self.att.inertia, compoundShape: self.compoundShape,
+    }));
     assert.equal(self.mass, 8);
-    self.mass = 0;
+    self.replaceCollisionProperties({
+      mass: 0, radius: self.radius, centerOfMass: self.centerOfMass,
+      inertia: self.att.inertia, compoundShape: self.compoundShape,
+    });
     assert.equal(self.mass, 0, '質量0の固定物体は既存契約として許可する');
   });
 

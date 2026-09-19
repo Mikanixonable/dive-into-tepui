@@ -108,7 +108,7 @@ def dependency_report():
 
 def estimate(manifest, probes, raw_root):
     """入力実測値と、圧縮前に必ず必要な出力容量を分けて見積もる。"""
-    tile_count = 43520
+    tile_count = 43008
     terrain_payload = 32 + (256 + 2 * manifest["outputGrid"]["gutter"]) ** 2 * 4
     terrain_bytes = tile_count * terrain_payload + 2 * terrain_payload
     input_bytes = sum(item.get("contentLengthBytes", 0) for item in probes)

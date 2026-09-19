@@ -388,8 +388,7 @@ class ArrayRenderer:
             region["iceFraction"] = tile.ice_fraction
         result = bake.bake_region(region, self.manifest)
         color = _encode_jpeg(tile.color_srgb, grid.width, grid.height)
-        terrain = bake.encode_terrain_tile(result["normals"], result["roughness"], *key,
-                                            result["materialClass"])
+        terrain = bake.encode_terrain_tile(result["normals"], result["roughness"], *key)
         return color, terrain
 
     def climate_maps(self):

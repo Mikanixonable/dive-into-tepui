@@ -1,4 +1,4 @@
-// タンパク質アセット(意味論定義・モーション)の型とその検証、および保存形と戦闘の読み取り値の型。
+// タンパク質アセット(意味論定義・モーション)の型とその検証、および戦闘の読み取り値の型。
 import type { ProteinPhase } from '../../render/protein/protein-display';
 
 type ProteinVec3 = readonly [number, number, number];
@@ -138,26 +138,11 @@ export interface ProteinAssetDefinition {
   readonly modificationSlots: readonly ProteinModificationDefinition[];
 }
 
-interface ProteinSiteSaveData {
-  id: string;
-  hp: number;
-  disabled: boolean;
-}
-
-export interface ProteinSaveData {
-  schemaVersion: number;
-  integrityHp: number;
-  phase: ProteinPhase;
-  sites: ProteinSiteSaveData[];
-  modifications: Record<string, string>;
-}
-
 /** 戦闘状態の、そのときの読み取り値。 */
 export interface ProteinCombatReadout {
   readonly phase: ProteinPhase;
   readonly integrityHp: number;
   readonly integrityMaxHp: number;
-  readonly selectedSiteId: string | null;
   readonly sites: readonly {
     readonly id: string;
     readonly abbreviation: string;

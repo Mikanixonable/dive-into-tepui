@@ -2,13 +2,11 @@
 // 高度の目盛りとして引く1本。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
-import { isOccluded } from '../../../physics/occlusion';
 import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
 import type { CameraFrame } from '../../camera/camera-frame';
 import { EllipseLine } from '../../lines/ellipse-line';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
-import { MARKER_PRIORITY } from '../../../game/marker/crowding';
+import type { MapOverlayLabel } from './celestial-view';
 import type { CelestialBody } from '../../../physics/celestial-body';
 
 // リングとラベルは中心天体から 240,000km で薄れ始め 720,000km で消える。
@@ -27,8 +25,6 @@ function ringStyle(fade: number): LineStyle {
 
 // ラベルを置く軌道上の真近点角 [rad]。
 const LABEL_ANOMALY = Math.PI / 4;
-
-const MARKER_KEY = 'geolabel';
 
 // 真円に近い離心率。厳密な 0 は軌道面基底が縮退するので避ける。
 const NEAR_CIRCULAR_E = 1e-6;
@@ -67,11 +63,11 @@ export class GeostationaryOverlay {
     scene.add(this.line.line);
   }
 
-  // リングとラベルを、表示時刻 pivot のこのフレームの表示状態へ同期する。
+  // リングを、表示時刻 pivot のこのフレームの表示状態へ同期し、添える高度ラベルを返す。
+  // 薄れて読めなくなったフレームは null。
   public sync(
-    center: CelestialBody, pivot: number, camera: CameraFrame,
-    markers: MarkerSlots, celestialBodies: readonly CelestialBody[], visible: boolean,
-  ): void {
+    center: CelestialBody, pivot: number, camera: CameraFrame, visible: boolean,
+  ): MapOverlayLabel | null {
     // 幾何と距離フェードは可視性に関係なく同じフレーム値から求める。
     const centerPos = center.positionAt(pivot);
     const elements = this.elementsAround(center, pivot);
@@ -79,8 +75,7 @@ export class GeostationaryOverlay {
     const fade = 1.0 - Math.min(1, Math.max(0, (dist - FADE_NEAR_DIST) / FADE_SPAN));
     // リングとラベルへ同じ visible を渡し、片方だけが焼き付く経路を作らない。
     this.line.sync(visible ? elements : null, ringStyle(fade), camera);
-    this.syncLabel(
-      elements, centerPos, pivot, fade, camera, markers, celestialBodies, visible);
+    return this.labelAt(elements, centerPos, fade, visible);
   }
 
   // リングを親から外して解放する。
@@ -95,29 +90,15 @@ export class GeostationaryOverlay {
       this.semiMajorAxis, NEAR_CIRCULAR_E, 0, 0, 0, center, center.stateAt(pivot));
   }
 
-  // 軌道上の1点へ、高度を書いた半透明の小さな文字ラベルを置く。
-  private syncLabel(
-    elements: OrbitalElements, centerPos: Vec3, pivot: number, fade: number,
-    camera: CameraFrame, markers: MarkerSlots,
-    celestialBodies: readonly CelestialBody[], visible: boolean,
-  ): void {
-    // 消えるほど薄いラベルは、射影も遮蔽判定もせずに畳む。
+  // 軌道上の1点に置く、高度を書いた半透明の小さな文字ラベル。消えるほど薄いフレームは null。
+  private labelAt(
+    elements: OrbitalElements, centerPos: Vec3, fade: number, visible: boolean,
+  ): MapOverlayLabel | null {
     const opacity = LABEL_OPACITY * fade;
-    if (!visible || opacity <= 0.02) {
-      markers.hide(MARKER_KEY);
-      return;
-    }
+    if (!visible || opacity <= 0.02) return null;
     const r = this.semiMajorAxis;
     const pos = add(centerPos, add(
       scale(elements.pHat, r * Math.cos(LABEL_ANOMALY)), scale(elements.qHat, r * Math.sin(LABEL_ANOMALY))));
-    const cameraPos = camera.position;
-    const p = camera.project(pos);
-    if (!p.front || isOccluded(cameraPos, pos, celestialBodies, pivot)) {
-      markers.hide(MARKER_KEY);
-      return;
-    }
-    markers.set(
-      MARKER_KEY, 'mk-geolabel', this.label, p.x, p.y, p.front, '', opacity,
-      undefined, undefined, false, true, MARKER_PRIORITY.ORBITAL_NODE, len(sub(pos, cameraPos)));
+    return { text: this.label, pos, opacity };
   }
 }

@@ -1,53 +1,50 @@
 // モジュール船 entity の船体・操縦・戦闘・接舷・分離・保存ライフサイクルを所有する。
 import type * as THREE from 'three/webgpu';
-import type { ViewMode } from '../../render/view-mode';
-import type { Attitude } from '../../physics/attitude';
+import type { ViewMode } from '../view/view-mode';
+import { deserializeAttitude, type Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, qFromBasis, qInvert, qMul, qRotate } from '../../math/quat';
-import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
+import { deserializeKinematicState, kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { add, cross, scale, v3, len, sub, type Vec3 } from '../../math/vec3';
 import { randSym } from '../../math/random';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity, SerializedDynamicEntityFields } from '../dynamic/dynamic-entity/dynamic-entity';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { collisionDamageFraction } from '../dynamic/dynamic-entity/contact-damage';
-import type { Input } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { Notifier } from '../../hud/notifier';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { generateRandomName } from '../random-name';
-import { Throttle } from '../player/throttle';
-import { FireControl, type AmmoLoad } from '../player/fire-control';
-import { AltitudeAlarm } from '../player/altitude-alarm';
-import type { FlashEffects } from '../vfx/flash-effects';
+import { Throttle, type SerializedThrottle } from '../player/throttle';
+import { FireControl, type SerializedFireControl } from '../player/fire-control';
+import { WeaponState, type AmmoLoad } from '../player/weapon-state';
+import { AltitudeAlarm, type SerializedAltitudeAlarm } from '../player/altitude-alarm';
 import {
   ModularShipDynamicView, type ModularShipRenderSource,
 } from '../../render/dynamic/ship/modular-ship-dynamic-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
-import type { MarkerSlots } from '../marker/marker-slots';
 import type { RadiatorSide } from '../player/radiator';
+import type { SerializedRadiatorSystem } from '../player/radiator';
+import type { SerializedPowerSystem } from '../player/power';
+import type { SerializedBeltController } from '../player/belt';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
-import { savedAttitude, savedKinematicState, type PlanSaveData, type ShipSaveData } from '../save/save-data';
+import type { SerializedPlan } from '../plan/plan';
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import { MARKER_PRIORITY } from '../marker/crowding';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { baseMarkerSvg } from '../marker/marker-shapes';
-import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { ModularShipMotion, type ModularShipMotionReactions } from './modular-ship-motion';
-import type { DynamicMotion } from '../dynamic/dynamic-motion';
-import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
-import type { PlayerStatusSnapshot } from '../player/player-status-snapshot';
+import type { DynamicMotionThermal } from '../dynamic/dynamic-motion';
+import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import type { DamageOutcomeSink } from '../player/damage-outcome';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
 import { ShipInspection } from '../pickable/ship-inspection';
-import { DefaultPlayerEffects, type PlayerEffects } from '../player/player-effects';
+import { PlayerEffects } from '../player/player-effects';
 import { createDefaultCombatPreset } from './ship-presets';
 import type { ShipAssembly, ShipConnection } from './ship-assembly';
 import { ShipCapabilities } from './ship-capabilities';
@@ -61,12 +58,15 @@ import type { ControlSelection } from '../control-selection';
 import { ShipDockState } from './ship-dock-state';
 import {
   restoreConstructionDrafts, restoreDockedVessels, restoreShipAssembly, serializeShipAssembly,
+  type SerializedCollisionGrace, type SerializedDockedVessel, type SerializedShipAssembly,
+  type SerializedShipConstructionDraft,
 } from './ship-save';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { StageOutcome } from '../stages/stage-outcome';
+import type { StageRules } from '../stages/stage-rules';
 
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
-const INITIAL_ALT = 420e3; // 初期高度 [m]
-const INITIAL_INC_DEG = 97.0; // 初期軌道傾斜角 [deg]
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLASMA_BULLET_DAMAGE)より軽い。
 const RADIATOR_BULLET_DAMAGE = 0.25;
@@ -82,23 +82,45 @@ const BELT_MAX_VISIBLE = 18;
 // 新規配置は name/state/id/ammo を任意指定し、省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の
 // 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime 付きの
 // 状態として展開する。
-export type ModularShipInit =
-  | {
-    readonly name?: string;
-    readonly state?: KinematicState;
-    readonly id?: string;
-    readonly ammo?: AmmoLoad;
-    readonly assembly?: ShipAssembly;
-    readonly att?: Attitude;
-  }
-  | { readonly saved: ShipSaveData; readonly simTime: number };
+export interface ModularShipInit {
+  readonly name?: string;
+  readonly state?: KinematicState;
+  readonly id?: string;
+  readonly ammo?: AmmoLoad;
+  readonly assembly?: ShipAssembly;
+  readonly att?: Attitude;
+}
+
+export interface SerializedModularShip extends SerializedDynamicEntityFields {
+  readonly kind: 'ship';
+  readonly name: string;
+  readonly assembly: SerializedShipAssembly;
+  readonly dockState: readonly SerializedShipConstructionDraft[];
+  readonly dockedVessels: readonly SerializedDockedVessel[];
+  readonly collisionGrace: readonly SerializedCollisionGrace[];
+  readonly operatingCockpitId: string | null;
+  readonly fire: SerializedFireControl;
+  readonly thermal: DynamicMotionThermal;
+  readonly radiator: SerializedRadiatorSystem;
+  readonly power: SerializedPowerSystem;
+  readonly belt: SerializedBeltController;
+  readonly throttle: SerializedThrottle;
+  readonly altitudeAlarm: SerializedAltitudeAlarm;
+  readonly plan: SerializedPlan | null;
+  readonly planExecution: PlanExecutionMode;
+  readonly fineAttitude: boolean;
+}
 
 // モジュール船の操縦・射撃・ブースター・接触帰結・保存を合成する entity。
 export class ModularShip extends Ship implements Controllable {
+  public static readonly kind = 'ship';
+  public static spawnGate(): null { return null; }
   public override mapKind: DynamicEntityKind;
   public override showsEquatorNodesAlways: boolean;
   public override readonly controllable = true;
   public override readonly pickable = true;
+  // 軌道線の表示切替は表示 adapter から直接読む軽量な個体設定。
+  public trajectoryLineVisible = true;
   public readonly inspection = new ShipInspection(this);
   public readonly objectPickable = this.inspection;
   // 除去の前に注視・操作対象の参照を次の艦へ引き継ぐ必要があるので、所有者側に回収させる。
@@ -112,17 +134,15 @@ export class ModularShip extends Ship implements Controllable {
   public readonly fire: FireControl;
   public readonly altitudeAlarm: AltitudeAlarm;
   private readonly effects: PlayerEffects;
-  private readonly worldSfx: WorldSfx;
   private readonly scene: THREE.Scene;
-  private readonly fx: FlashEffects;
-  private readonly markers: MarkerSlots;
+  private readonly registry: EntityRegistry;
   private readonly dockedVessels = new Map<string, { readonly id: string; readonly name: string }>();
   private readonly collisionGrace = new Map<string, number>();
   // この艦自身のマニューバ計画。
-  public readonly plan = new Plan();
-  public planExecution: PlanExecutionMode = 'instant';
+  public readonly plan: Plan;
+  private _planExecution: PlanExecutionMode;
 
-  public fineAttitude = false;
+  private _fineAttitude: boolean;
   // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
   public readonly controlHint = null;
   public readonly releaseHint = null;
@@ -143,6 +163,8 @@ export class ModularShip extends Ship implements Controllable {
   }
   public override get totalFuel(): number { return this.capabilities.fuel('main'); }
   public override get totalMaxFuel(): number { return this.capabilities.maxFuel('main'); }
+  public get totalRcsFuel(): number { return this.capabilities.fuel('rcs'); }
+  public get totalMaxRcsFuel(): number { return this.capabilities.maxFuel('rcs'); }
   public override consumeFuel(amount: number): number {
     if (amount <= 0) return 1;
     const consumed = this.capabilities.consumeFuel('main', amount);
@@ -160,37 +182,51 @@ export class ModularShip extends Ship implements Controllable {
     if (consumed > 0) this.motion.synchronizeAssembly();
     return consumed / amount;
   }
+  public refuelRcsFuel(amount: number): number {
+    const added = this.capabilities.refuel('rcs', amount);
+    if (added > 0) this.motion.synchronizeAssembly();
+    return added;
+  }
   public override get totalCoolingRate(): number { return this.capabilities.totalCoolingRate; }
   public override get totalPowerGeneration(): number { return this.capabilities.totalPowerGeneration; }
   public override get weaponDamage(): number { return this.capabilities.weaponDamage; }
   public override get totalFireRate(): number { return this.capabilities.totalFireRate; }
   public override get averageMuzzleVelocity(): number { return this.capabilities.averageMuzzleVelocity; }
 
-  // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
-  // 艦の識別子になるので、複数隻を並べるなら name も分ける。
-  public constructor(
-    private readonly notifier: Notifier,
-    worldSfx: WorldSfx,
+  // placement に新しいモジュール船を置く。
+  public static create(
+    placement: ModularShipInit, registry: EntityRegistry, scene: THREE.Scene,
+  ): ModularShip {
+    return new ModularShip(registry, scene, { placement });
+  }
+
+  // 直列化したモジュール船を復元する。
+  public static deserialize(
+    serialized: SerializedModularShip, registry: EntityRegistry, scene: THREE.Scene,
+  ): ModularShip {
+    return new ModularShip(registry, scene, { serialized });
+  }
+
+  private constructor(
+    registry: EntityRegistry,
     scene: THREE.Scene,
-    fx: FlashEffects,
-    markers: MarkerSlots,
-    init: ModularShipInit = {},
+    init: { readonly placement: ModularShipInit } | { readonly serialized: SerializedModularShip },
   ) {
-    const effects: PlayerEffects = new DefaultPlayerEffects(worldSfx, fx);
-    const assembly = 'saved' in init ? restoreShipAssembly(init.saved.assembly) : (init.assembly ?? createDefaultCombatPreset());
+    const saved = 'serialized' in init ? init.serialized : undefined;
+    const placement = 'placement' in init ? init.placement : undefined;
+    const assembly = saved ? restoreShipAssembly(saved.assembly) : (placement?.assembly ?? createDefaultCombatPreset());
     const physics = shipPhysicsShape(assembly);
     if (physics === null) throw new Error('default modular ship preset is empty');
-    const saved = 'saved' in init ? init.saved : undefined;
-    const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
-    const state = 'saved' in init
-      ? savedKinematicState(init.saved, init.simTime)
-      : (init.state ?? ModularShip.makeInitialState());
-    const id = 'saved' in init ? init.saved.id : (init.id ?? name);
-    const att: Attitude = 'saved' in init
-      ? savedAttitude(init.saved, physics.mass.inertia)
-      : (init.att === undefined
+    const name = saved ? (saved.name || saved.id) : (placement?.name ?? generateRandomName('player'));
+    const state = saved
+      ? deserializeKinematicState(saved)
+      : (placement?.state ?? kinematicState<'eci'>(0, v3(1, 0, 0), v3(0, 1, 0)));
+    const id = registry.idAllocators.entity.next(saved?.id ?? placement?.id ?? name);
+    const att: Attitude = saved
+      ? deserializeAttitude(saved, physics.mass.inertia)
+      : (placement?.att === undefined
         ? ModularShip.progradeAttitude(state, physics.mass.inertia)
-        : { ...init.att, inertia: physics.mass.inertia });
+        : { ...placement.att, inertia: physics.mass.inertia });
 
     const reactions = (owner: ModularShip): ModularShipMotionReactions => ({
       roundsInMagazine: () => owner.fire.rounds,
@@ -221,13 +257,14 @@ export class ModularShip extends Ship implements Controllable {
         att,
         reactions(owner as ModularShip),
         {
-          temperature: saved?.thermal.hullTemp ?? HULL_START_TEMP,
+          temperature: saved?.thermal.temperature ?? HULL_START_TEMP,
           beltLinkCount: BELT_MAX_VISIBLE,
+          beltSave: saved?.belt,
           radiatorSave: saved?.radiator,
           powerSave: saved?.power,
         },
       ),
-      new ModularShipDynamicView(scene, id, markers, BELT_MAX_VISIBLE),
+      new ModularShipDynamicView(scene, id, BELT_MAX_VISIBLE),
       id,
     );
     this.assembly = assembly;
@@ -237,12 +274,13 @@ export class ModularShip extends Ship implements Controllable {
     this.showsEquatorNodesAlways = assembly.role === 'base';
     this.hp = assembly.totalHp;
     this.maxHp = assembly.maxHp;
-    this.throttle = new Throttle(notifier, saved?.throttle);
-    this.effects = effects;
-    this.worldSfx = worldSfx;
+    this.registry = registry;
     this.scene = scene;
-    this.fx = fx;
-    this.markers = markers;
+    this.throttle = saved?.throttle ? Throttle.deserialize(saved.throttle) : new Throttle();
+    this.effects = new PlayerEffects(registry);
+    this.plan = saved?.plan ? Plan.deserialize(saved.plan) : Plan.create();
+    this._planExecution = saved?.planExecution ?? 'instant';
+    this._fineAttitude = saved?.fineAttitude ?? false;
     if (saved) {
       for (const record of restoreDockedVessels(saved.dockedVessels, assembly)) {
         this.dockedVessels.set(record.connectionId, { id: record.id, name: record.name });
@@ -253,39 +291,17 @@ export class ModularShip extends Ship implements Controllable {
         }
       }
     }
-    this.fire = new FireControl(this, notifier, worldSfx, scene, fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
-    this.altitudeAlarm = new AltitudeAlarm(notifier, worldSfx);
-
-    if (saved) {
-      // 現行のモードでない planExecution は、保存形の followPlan(boolean)から読み替える。
-      this.planExecution = saved.planExecution === 'off' || saved.planExecution === 'instant'
-        ? saved.planExecution
-        : (saved.followPlan ? 'instant' : 'off');
-      this.fineAttitude = saved.fineAttitude ?? false;
-      this.trajectoryLineVisible = saved.showTrajectoryLine ?? false;
-      if (saved.plan) {
-        // 計画を保存時の起点から組み直す。起点より前のノードは復元できない。
-        const anchor = kinematicState<'eci'>(
-          saved.plan.anchor.t,
-          v3(saved.plan.anchor.r.x, saved.plan.anchor.r.y, saved.plan.anchor.r.z),
-          v3(saved.plan.anchor.v.x, saved.plan.anchor.v.y, saved.plan.anchor.v.z),
-        );
-        let rejected = 0;
-        for (const n of saved.plan.nodes) {
-          const idx = this.plan.addNode(kinematicState<'eci'>(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
-          if (idx < 0) rejected++;
-        }
-        if (rejected > 0) notifier.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
-      }
+    this.fire = new FireControl(
+      this, registry, scene,
+      saved?.fire ? WeaponState.deserialize(saved.fire) : placement?.ammo ? WeaponState.create(placement.ammo) : undefined,
+    );
+    this.altitudeAlarm = saved?.altitudeAlarm
+      ? AltitudeAlarm.deserialize(saved.altitudeAlarm, registry.events)
+      : new AltitudeAlarm(registry.events);
+    if (saved?.plan) {
+      const dropped = Plan.droppedNodeCount(saved.plan);
+      if (dropped > 0) registry.events.record({ kind: 'planNodesDropped', ship: this.name, count: dropped });
     }
-  }
-
-  // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
-  private static makeInitialState(): KinematicState {
-    const r0 = R_EARTH + INITIAL_ALT;
-    const vCirc = Math.sqrt(MU_EARTH / r0);
-    const inc = (INITIAL_INC_DEG * Math.PI) / 180;
-    return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
   // state の速度方向を機首、位置方向を上として姿勢を組む。
@@ -295,6 +311,36 @@ export class ModularShip extends Ship implements Controllable {
       w: v3(),
       inertia,
     };
+  }
+
+  public get planExecution(): PlanExecutionMode { return this._planExecution; }
+  public get fineAttitude(): boolean { return this._fineAttitude; }
+
+  public setPlanExecution(mode: PlanExecutionMode): void { this._planExecution = mode; }
+
+  public get instantNodeTime(): number | null {
+    return this._planExecution === 'instant' ? this.plan.firstNode()?.t ?? null : null;
+  }
+
+  public executeInstantNodesUpTo(simTime: number): void {
+    if (this._planExecution !== 'instant') return;
+    const due = this.plan.nodes.filter(node => node.t <= simTime);
+    const reached = due[due.length - 1];
+    if (reached === undefined) return;
+    this.plan.consumeNodesUpTo(simTime, reached);
+    this.motion.reset(reached);
+  }
+
+  private hpRegen(dt: number): void {
+    let remaining = Math.max(0, dt);
+    for (const module of this.assembly.modules) {
+      if (remaining <= 0 || module.hp <= 0) continue;
+      const maxHp = this.assembly.definition(module.id)?.maxHp ?? module.hp;
+      const repaired = Math.min(remaining, Math.max(0, maxHp - module.hp));
+      if (repaired > 0) this.assembly.setHp(module.id, module.hp + repaired);
+      remaining -= repaired;
+    }
+    this.hp = this.assembly.totalHp;
   }
 
   // -------------------------------------------------------- 移動/射撃 状態
@@ -382,7 +428,7 @@ export class ModularShip extends Ship implements Controllable {
     const t = this.motion.state.t;
     this.assembly.replaceWith(merged.assembly);
     this.motion.synchronizeAssembly();
-    this.motion.state = kinematicState<'eci'>(t, position, velocity);
+    this.motion.reset(kinematicState<'eci'>(t, position, velocity));
     this.hp = this.assembly.totalHp;
     this.maxHp = this.assembly.maxHp;
     this.capabilities.reconcileOperatingCockpit();
@@ -392,7 +438,6 @@ export class ModularShip extends Ship implements Controllable {
     }
     this.dockedVessels.set(merged.connectionId, { id: other.id, name: other.name });
     selection.remove(other);
-    this.notifier.hint(`${other.name} を接舷`);
     return merged.connectionId;
   }
 
@@ -440,8 +485,7 @@ export class ModularShip extends Ship implements Controllable {
     const retainedVelocity = add(this.motion.state.v, cross(omegaWorld, sub(retainedPosition, this.motion.state.r)));
     const detachedVelocity = add(this.motion.state.v, cross(omegaWorld, sub(detachedPosition, this.motion.state.r)));
     const record = identity ?? this.dockedVessels.get(connection.id);
-    const detached = new ModularShip(
-      this.notifier, this.worldSfx, this.scene, this.fx, this.markers,
+    const detached = ModularShip.create(
       {
         id: record?.id,
         name: record?.name ?? `${this.name} 分離船`,
@@ -452,7 +496,7 @@ export class ModularShip extends Ship implements Controllable {
           inertia: detachedShape.mass.inertia,
         },
         assembly: detachedAssembly,
-      },
+      }, registry, this.scene,
     );
     const detachedDockingIds = new Set(
       detachedAssembly.dockingConnections().map(edge => edge.id),
@@ -464,7 +508,7 @@ export class ModularShip extends Ship implements Controllable {
     }
     this.assembly.replaceWith(retainedAssembly);
     this.motion.synchronizeAssembly();
-    this.motion.state = kinematicState<'eci'>(t, retainedPosition, retainedVelocity);
+    this.motion.reset(kinematicState<'eci'>(t, retainedPosition, retainedVelocity));
     this.hp = this.assembly.totalHp;
     this.maxHp = this.assembly.maxHp;
     this.capabilities.reconcileOperatingCockpit();
@@ -473,7 +517,6 @@ export class ModularShip extends Ship implements Controllable {
     const collisionEnableAt = t + SHIP_DECOUPLING_COLLISION_GRACE;
     this.ignoreCollisionsWith(detached, collisionEnableAt);
     registry.add(detached);
-    this.notifier.hint(`${detached.name} を発進`);
     return detached;
   }
 
@@ -484,14 +527,13 @@ export class ModularShip extends Ship implements Controllable {
     this.maxHp = this.assembly.maxHp;
     this.capabilities.reconcileOperatingCockpit();
     this.syncDerivedRole();
-    this.notifier.hint(repaired > 0 ? `${repaired.toFixed(0)} HP 修理` : '修理箇所はありません');
     return repaired;
   }
 
   // assembly を直接編集する建造系の操作後に、質量特性・耐久値・能力・表示上の役割を一括更新する。
   public synchronizeAssemblyState(): void {
     if (this.assembly.size === 0) {
-      this.motion.alive = false;
+      this.motion.kill();
       return;
     }
     this.motion.synchronizeAssembly();
@@ -537,22 +579,22 @@ export class ModularShip extends Ship implements Controllable {
     const t = this.motion.state.t;
 
     const detachedW = qRotate(qInvert(split.detachedRoot.rotation), w);
-    const detached = new ModularShip(
-      this.notifier, this.worldSfx, this.scene, this.fx, this.markers,
+    const detached = ModularShip.create(
       {
         name: `${this.name} 分離体`,
         id: `${this.id}-${decouplerId}`,
         state: kinematicState<'eci'>(t, detachedPosition, velocities.detached),
         att: { q: detachedQ, w: detachedW, inertia: detachedShape.mass.inertia },
         assembly: split.detached,
-      },
+      }, registry, this.scene,
     );
     // 分離船の構築成功後に live assembly を差し替え、途中失敗を原船へ反映させない。
     this.assembly.replaceWith(split.retained);
     this.motion.synchronizeAssembly();
-    this.motion.att = { ...this.motion.att, q, w };
-    this.motion.prevAtt = this.motion.att;
-    this.motion.state = kinematicState<'eci'>(t, retainedPosition, velocities.retained);
+    this.motion.resetRigidState(
+      kinematicState<'eci'>(t, retainedPosition, velocities.retained),
+      { ...this.motion.att, q, w },
+    );
     this.hp = this.assembly.totalHp;
     this.maxHp = this.assembly.maxHp;
     this.capabilities.reconcileOperatingCockpit();
@@ -561,9 +603,10 @@ export class ModularShip extends Ship implements Controllable {
     this.ignoreCollisionsWith(detached, collisionEnableAt);
     registry.add(detached);
     this.scatterDecouplerPanels(t, decouplerPosition, q, this.motion.state.v, registry);
-    this.worldSfx.decouple();
-    this.fx.spawnGasPuff(kinematicState<'eci'>(t, detachedRootPosition, this.motion.state.v));
-    this.notifier.hint(`${decouplerId} を分離`);
+    registry.events.record({
+      kind: 'boosterDecoupled', stages: this.capabilities.modules('booster').length,
+      jointState: kinematicState<'eci'>(t, detachedRootPosition, this.motion.state.v),
+    });
     return detached;
   }
 
@@ -575,7 +618,7 @@ export class ModularShip extends Ship implements Controllable {
     for (let segment = 0; segment < segments; segment++) {
       const angle = segment * Math.PI * 2 / segments;
       const radial = qRotate(attitude, v3(Math.cos(angle), Math.sin(angle), 0));
-      registry.add(new DebrisPiece(
+      registry.add(DebrisPiece.create(
         kinematicState<'eci'>(t, add(center, scale(radial, 3)), add(baseVelocity, scale(radial, 5))),
         { kind: 'decouplerPanel', segment, bornSim: t },
         {
@@ -583,7 +626,7 @@ export class ModularShip extends Ship implements Controllable {
           w: v3(randSym(1.4), randSym(1.4), randSym(1.4)),
           inertia: v3(1, 1.7, 2.4),
         },
-        this.worldSfx, this.fx, 0.8, this.scene,
+        registry.idAllocators, 0.8, this.scene,
       ));
     }
   }
@@ -635,97 +678,69 @@ export class ModularShip extends Ship implements Controllable {
     };
   }
 
-  // HUD が読む操縦・環境・電力・放熱・射撃状態を同じフレームへ畳む。
-  public statusSnapshot(): PlayerStatusSnapshot {
-    return {
-      throttleIdx: this.throttle.throttleIdx,
-      rcsDamp: this.throttle.rcsDamp,
-      progradeHold: this.throttle.progradeHold,
-      fineAttitude: this.fineAttitude,
-      totalFuel: this.totalFuel,
-      totalMaxFuel: this.totalMaxFuel,
-      aero: { qdyn: this.motion.aero.qdyn },
-      power: {
-        chargeJ: this.motion.power.chargeJ,
-        deploy: { up: this.motion.power.deployOf('up'), down: this.motion.power.deployOf('down') },
-      },
-      radiator: {
-        up: { deploy: this.motion.radiator.deployOf('up'), wear: this.motion.radiator.wearOf('up') },
-        down: { deploy: this.motion.radiator.deployOf('down'), wear: this.motion.radiator.wearOf('down') },
-      },
-      fire: { rounds: this.fire.rounds, mags: this.fire.mags, cooldown: this.fire.cooldown },
-    };
-  }
-
   // 弾薬ピックアップで得たマグ数を加算する。
   public onPickup(mags: number): void {
     this.fire.onPickup(mags);
   }
 
   // 1フレーム分の操縦入力と booster 燃焼を処理し、非操作艦の連続指令を畳む。
-  public updateControls(frame: PilotCommandFrame): void {
-    const { input: requestedInput, dt, simDt, registry, activeStage, stageRules, celestialBodies } = frame;
-    const input = this.capabilities.controllable ? requestedInput : null;
-    void stageRules;
+  public updateControls(
+    requestedControls: PilotControls | null, dt: number, simDt: number,
+    activeStage: StageOutcome, stageRules: StageRules, celestialBodies: CelestialBodies,
+  ): void {
+    const controls = this.capabilities.controllable ? requestedControls : null;
+    if (stageRules.selfRepair) this.hpRegen(dt);
     this.syncModuleDeployments();
     const boosterThrust = this.stepBoosters(simDt);
-    if (input !== null) this.handleEdgeInput(input, registry);
-    if (input === null) {
+    if (controls === null) {
       this.clearTransientCommands();
-      this.motion.thrust = boosterThrust;
+      this.motion.setThrust(boosterThrust);
       return;
     }
-    this.updateTorque(input, dt, simDt);
+    this.updateTorque(controls, dt, simDt);
 
-    this.fire.updateFireState(dt, input, activeStage, registry, celestialBodies);
+    this.fire.updateFireState(dt, controls, activeStage, celestialBodies);
 
-    this.throttle.updateThrustLatches(input);
-    const rcsThrust = this.throttle.updateThrustState(input, this.motion.att, simDt, this);
-    this.motion.thrust = rcsThrust && boosterThrust
+    this.throttle.updateThrustLatches(controls);
+    this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    const rcsThrust = this.throttle.thrust;
+    this.motion.setThrust(rcsThrust && boosterThrust
       ? add(rcsThrust, boosterThrust)
-      : rcsThrust ?? boosterThrust;
-    // 噴射中は予測が毎フレーム陳腐化するので破棄する。
-    if (this.motion.thrust !== null) this.motion.invalidatePrediction();
+      : rcsThrust ?? boosterThrust);
   }
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。角速度による
   // coast はそのまま続く。
   public clearTransientCommands(): void {
-    this.motion.thrust = null;
-    this.motion.torque = v3();
+    this.motion.setThrust(null);
+    this.motion.setTorque(v3());
     this.throttle.clearTransientState();
     this.fire.stopFiring();
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
   private toggleFineAttitude(): void {
-    this.fineAttitude = !this.fineAttitude;
-    this.notifier.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+    this._fineAttitude = !this._fineAttitude;
+    this.registry.events.record({ kind: 'fineAttitudeToggled', on: this._fineAttitude });
   }
 
-  // 自機側のキー(RCS減衰・プログレード・スロットル等)を1フレーム分消費する。
-  private handleEdgeInput(input: Input, registry: EntityRegistry): void {
-    input.takeKeys((code) => this.handleEdgePress(code, registry));
-  }
-
-  // 自機側キー1個を処理する。処理したキーは true を返し input.takeKeys に消費させる。
-  private handleEdgePress(code: string, registry: EntityRegistry): boolean {
-    // キーごとに姿勢・スロットル・ブースター・放熱板・太陽電池・装填の各系へ振り分ける
-    switch (code) {
-      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
-      case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
-      case K.fineAttitudeToggle.code: this.toggleFineAttitude(); return true;
-      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return true;
-      case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
-      case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
-      case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
-      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
-      case K.radiatorDeployLeft.code: this.motion.radiator.toggle('up'); return true;
-      case K.radiatorDeployRight.code: this.motion.radiator.toggle('down'); return true;
-      case K.solarDeployLeft.code: this.motion.power.toggle('up'); return true;
-      case K.solarDeployRight.code: this.motion.power.toggle('down'); return true;
-      case K.reload.code: return this.fire.manualReload(registry);
-      default: return false;
+  public handleCommand(command: PilotCommand): void {
+    const events = this.registry.events;
+    switch (command.kind) {
+      case 'thrustLatchToggle': this.throttle.toggleThrustLatch(command.direction); return;
+      case 'rcsDampToggle': this.throttle.toggleRcsDamp(events); return;
+      case 'progradeReset': this.throttle.enableProgradeReset(events); return;
+      case 'fineAttitudeToggle': this.toggleFineAttitude(); return;
+      case 'progradeHoldToggle': this.throttle.toggleProgradeHold(events); return;
+      case 'throttleLow': this.throttle.setThrottlePreset(0, events); return;
+      case 'throttleMid': this.throttle.setThrottlePreset(1, events); return;
+      case 'throttleHigh': this.throttle.setThrottlePreset(2, events); return;
+      case 'throttleMax': this.throttle.setThrottlePreset(3, events); return;
+      case 'radiatorDeployLeft': this.motion.radiator.toggle('up'); return;
+      case 'radiatorDeployRight': this.motion.radiator.toggle('down'); return;
+      case 'solarDeployLeft': this.motion.power.toggle('up'); return;
+      case 'solarDeployRight': this.motion.power.toggle('down'); return;
+      case 'reload': this.fire.manualReload(); return;
     }
   }
 
@@ -744,7 +759,7 @@ export class ModularShip extends Ship implements Controllable {
   // 無作為なパーツへダメージが入る。
   private attackedByBullet(
     bulletType: BulletType, shooter: Shooter, damage: number, impactPoint: Vec3,
-    outcome: DamageOutcomeSink, registry: EntityRegistry,
+    outcome: DamageOutcomeSink,
     side: RadiatorSide | null = null,
   ): void {
     // 熱とダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
@@ -753,7 +768,7 @@ export class ModularShip extends Ship implements Controllable {
     this.damageAssembly(side === null ? damage : RADIATOR_BULLET_DAMAGE, radiator?.id);
     if (side !== null && radiator && (this.assembly.module(radiator.id)?.hp ?? 0) <= 0) {
       const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(side, this.motion.state, tip, registry);
+      this.effects.radiatorBreak(this.motion.state, tip);
     }
     this.effects.impact(bulletType, this.motion.state, impactPoint);
     void shooter;
@@ -763,7 +778,7 @@ export class ModularShip extends Ship implements Controllable {
   // 他の動体との接触の帰結。弾なら武装のダメージを、それ以外は接近速度と相手の種別を根拠に
   // 無作為なパーツへダメージを入れる(ゲームバランスの量)。
   private receiveEntityContact(
-    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void {
     if (!this.motion.alive) return;
 
@@ -772,7 +787,7 @@ export class ModularShip extends Ship implements Controllable {
     if (bullet !== null) {
       this.attackedByBullet(
         bullet.type, bullet.shooter, bullet.damage, contact.point,
-        this.outcomeOf(services), services.registry,
+        this.outcomeOf(services),
       );
       return;
     }
@@ -780,7 +795,7 @@ export class ModularShip extends Ship implements Controllable {
     // 弾以外との衝突
     this.damagedByContact(
       contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した',
-      this.outcomeOf(services), services.registry,
+      this.outcomeOf(services),
     );
   }
 
@@ -789,13 +804,13 @@ export class ModularShip extends Ship implements Controllable {
     if (!this.motion.alive) return;
     this.damagedByContact(
       closingSpeed(contact), null, '天体の地表へ到達し機体は失われた',
-      this.outcomeOf(services), services.registry,
+      this.outcomeOf(services),
     );
   }
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは side の放熱板パーツへ入る。
   private receiveRadiatorContact(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    side: RadiatorSide, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void {
     if (!this.motion.alive) return;
 
@@ -804,7 +819,7 @@ export class ModularShip extends Ship implements Controllable {
     if (bullet !== null) {
       this.attackedByBullet(
         bullet.type, bullet.shooter, bullet.damage, contact.point,
-        this.outcomeOf(services), services.registry, side,
+        this.outcomeOf(services), side,
       );
       return;
     }
@@ -812,7 +827,7 @@ export class ModularShip extends Ship implements Controllable {
     // 弾以外との衝突
     this.damagedByContact(
       contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した',
-      this.outcomeOf(services), services.registry,
+      this.outcomeOf(services),
     );
   }
 
@@ -820,7 +835,6 @@ export class ModularShip extends Ship implements Controllable {
   // パーツへダメージが入る。
   private damagedByContact(
     damageSpeed: number, side: RadiatorSide | null, lossReason: string, outcome: DamageOutcomeSink,
-    registry: EntityRegistry,
   ): void {
     // ダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
     const fraction = collisionDamageFraction(damageSpeed);
@@ -829,7 +843,7 @@ export class ModularShip extends Ship implements Controllable {
     this.damageAssembly(this.maxHp * fraction, radiator?.id);
     if (side !== null && radiator && (this.assembly.module(radiator.id)?.hp ?? 0) <= 0) {
       const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(side, this.motion.state, tip, registry);
+      this.effects.radiatorBreak(this.motion.state, tip);
     }
     this.effects.contact(this.motion.state);
     void lossReason;
@@ -841,7 +855,7 @@ export class ModularShip extends Ship implements Controllable {
     if (!this.motion.alive) return;
     this.lose(
       '動圧が構造限界を超え、機体は空力的に分解した',
-      this.outcomeOf(services), services.registry,
+      this.outcomeOf(services),
     );
   }
 
@@ -851,14 +865,14 @@ export class ModularShip extends Ship implements Controllable {
       this.motion.aero.heatingAerodynamically
         ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
         : '排熱が追いつかず、機体は熱で機能不全に陥った',
-      this.outcomeOf(services), services.registry,
+      this.outcomeOf(services),
     );
   }
 
   // 喪失の共通処理。reason はステージの記録に残す喪失理由。
-  private lose(reason: string, outcome: DamageOutcomeSink, registry: EntityRegistry): void {
-    this.motion.alive = false;
-    this.effects.destroy(this.motion.state, registry);
+  private lose(reason: string, outcome: DamageOutcomeSink): void {
+    this.motion.kill();
+    this.effects.destroy(this.motion.state);
     outcome.playerLost(reason);
   }
 
@@ -867,20 +881,21 @@ export class ModularShip extends Ship implements Controllable {
   }
 
   // 入力から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
-  private updateTorque(input: Input, dt: number, simDt: number): void {
+  private updateTorque(controls: PilotControls, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
-    this.motion.torque = this.throttle.updateTorque(
+    this.throttle.updateTorque(
       this.motion.att,
       this.motion.state.r,
       this.motion.state.v,
-      input,
+      controls,
       fine,
       dt,
       simDt,
       this,
-      () => this.notifier.hint('進行方向ホールド解除(手動操作)'),
+      this.registry.events,
     );
+    this.motion.setTorque(this.throttle.torque);
   }
 
   // dispose の多重実行を防ぐ状態。
@@ -904,10 +919,13 @@ export class ModularShip extends Ship implements Controllable {
       priority: isBaseRole ? MARKER_PRIORITY.BASE - dist / 1e9 : MARKER_PRIORITY.PLAYER,
       name: this.name,
       // 遠距離では画面外方位マーカーを畳み、密集を抑える。
-      bearingColor: COLOR_MARKER_ALLY,
-      bearingSym: DIRECTION_GLYPH.allyBearing,
-      bearingClass: 'mk-dir mk-ally-dir',
-      bearingVisible: dist <= ALLY_BEARING_MAX_DISTANCE,
+      bearing: {
+        color: COLOR_MARKER_ALLY,
+        sym: DIRECTION_GLYPH.allyBearing,
+        cls: 'mk-dir mk-ally-dir',
+        visible: dist <= ALLY_BEARING_MAX_DISTANCE,
+        clustered: true,
+      },
       color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
       symMarkup: true,
     };
@@ -916,7 +934,8 @@ export class ModularShip extends Ship implements Controllable {
   // 船体 View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
   // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
+    viewFrame: DynamicViewFrame, active: boolean,
+    // eslint-disable-next-line no-restricted-syntax
     orbitReference: OrbitReference | undefined,
   ): ModularShipRenderSource {
     const motion = this.motion;
@@ -924,7 +943,7 @@ export class ModularShip extends Ship implements Controllable {
     // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
     const thrustAcceleration = motion.thrust;
     return {
-      ...super.renderSource(viewFrame, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, active, orbitReference),
       assembly: this.assembly,
       centerOffset: motion.centerOffset,
       state: motion.state,
@@ -937,9 +956,6 @@ export class ModularShip extends Ship implements Controllable {
       dynamicPressure: motion.aero.qdyn,
       belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
       magsLeft: this.magsLeft,
-      roundsInMag: this.roundsInMag,
-      averageMuzzleVelocity: this.averageMuzzleVelocity,
-      orbitAxesReference: orbitReference?.state ?? null,
     };
   }
 
@@ -952,17 +968,10 @@ export class ModularShip extends Ship implements Controllable {
   }
 
   // 現在の艦状態を保存用データへ変換する。
-  public override serialize(): ShipSaveData | null {
-    if (!this.motion.alive || this.assembly.size === 0) return null;
+  public override serialize(): SerializedModularShip {
     return {
-      id: this.id,
+      ...this.serializeEntityFields(ModularShip.kind),
       name: this.name,
-      kind: 'ship',
-      // 運動状態
-      r: { ...this.motion.state.r },
-      v: { ...this.motion.state.v },
-      q: { ...this.motion.att.q },
-      w: { ...this.motion.att.w },
       assembly: serializeShipAssembly(this.assembly),
       dockState: this.docks.serialize(),
       dockedVessels: [...this.dockedVessels].map(([connectionId, vessel]) => ({ connectionId, ...vessel })),
@@ -972,26 +981,16 @@ export class ModularShip extends Ship implements Controllable {
       operatingCockpitId: this.capabilities.operatingCockpitId,
       // 下位系の状態
       fire: this.fire.serialize(),
-      thermal: { hullTemp: this.motion.temperature },
+      thermal: this.motion.thermal,
       radiator: this.motion.radiator.serialize(),
       power: this.motion.power.serialize(),
+      belt: this.motion.belt.serialize(),
       throttle: this.throttle.serialize(),
+      altitudeAlarm: this.altitudeAlarm.serialize(),
       // 操作・表示の設定と計画
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
-      showTrajectoryLine: this.trajectoryLineVisible,
-      plan: this.serializePlan(),
-    };
-  }
-
-  // 計画の保存形。凍結された計画が無ければ null。
-  private serializePlan(): PlanSaveData | null {
-    const frozen = this.plan.frozenData();
-    if (!frozen) return null;
-    const { anchor, nodes } = frozen;
-    return {
-      anchor: { t: anchor.t, r: { ...anchor.r }, v: { ...anchor.v } },
-      nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
+      plan: this.plan.serialize(),
     };
   }
 

@@ -1,24 +1,24 @@
-// Creative のフォーム入力をDOMやTHREEに依存せず検証する小さな境界。
+// クリエイティブモードの物体配置フォームの入力値を、入力欄ごとに検証する。
 import { semiMajorFromPeriod } from '../../physics/elements';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import type { ObjectPlacementSelection } from './object-placer-panel';
 
-// UI 側が「どの入力欄が悪いか」を示すための識別子。
+// 検証に落ちた入力欄の識別子。
 export type PlacementFieldId =
   | 'periapsisAltitude' | 'apoapsisAltitude' | 'semiMajorAxis' | 'eccentricity' | 'period'
   | 'inclination' | 'raan' | 'argumentOfPeriapsis' | 'trueAnomaly'
   | 'referenceCelestialBody' | 'inPlaneAmplitude' | 'outOfPlaneAmplitude';
 
-export type PlacementFieldIssue = { field: PlacementFieldId; message: string };
+export interface PlacementFieldIssue { readonly field: PlacementFieldId; readonly message: string }
 
 type EllipticSizeInput =
-  | { sizeMode: 'apsides'; peAltKm: number; apAltKm: number }
-  | { sizeMode: 'semiMajorEcc'; semiMajorKm: number; eccentricity: number }
-  | { sizeMode: 'periodEcc'; periodHours: number; eccentricity: number };
+  | { readonly sizeMode: 'apsides'; readonly peAltKm: number; readonly apAltKm: number }
+  | { readonly sizeMode: 'semiMajorEcc'; readonly semiMajorKm: number; readonly eccentricity: number }
+  | { readonly sizeMode: 'periodEcc'; readonly periodHours: number; readonly eccentricity: number };
 
 export type EllipticPlacementInput = {
-  centerRadius: number; mu: number; centerId?: string;
-  incDeg: number; raanDeg: number; argpDeg: number; nuDeg: number;
+  readonly centerRadius: number; readonly mu: number; readonly centerId?: string;
+  readonly incDeg: number; readonly raanDeg: number; readonly argpDeg: number; readonly nuDeg: number;
 } & EllipticSizeInput;
 
 // 入力が有効な楕円軌道を表すか、フィールドごとに検証する。問題がなければ空配列を返す。
@@ -55,8 +55,7 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
   } else if (!(input.eccentricity >= 0 && input.eccentricity < 1)) {
     issues.push({ field: 'eccentricity', message: '離心率は 0 以上 1 未満にしてください' });
   }
-  // 導出した近地点半径 a*(1-e) が天体表面より上かを見る(apsides モードは近地点高度
-  // そのものを上で直接検証済みなので、ここは半長軸/周期指定の2モードだけが通る)。
+  // 導出した近地点半径 a(1-e) が天体表面より上か。
   if (Number.isFinite(input.eccentricity) && input.eccentricity >= 0 && input.eccentricity < 1) {
     const a = input.sizeMode === 'semiMajorEcc' ? input.semiMajorKm * 1e3 : semiMajorFromPeriod(input.periodHours * 3600, input.mu);
     if (Number.isFinite(a) && !(a > 0 && a * (1 - input.eccentricity) > input.centerRadius)) {
@@ -70,12 +69,12 @@ export function validateEllipticPlacementFields(input: EllipticPlacementInput): 
 }
 
 type LagrangePlacementInput =
-  | { orbitKind: 'halo'; outOfPlaneAmplitudeKm: number }
-  | { orbitKind: 'lissajous'; inPlaneAmplitudeKm: number; outOfPlaneAmplitudeKm: number };
+  | { readonly orbitKind: 'halo'; readonly outOfPlaneAmplitudeKm: number }
+  | {
+    readonly orbitKind: 'lissajous'; readonly inPlaneAmplitudeKm: number; readonly outOfPlaneAmplitudeKm: number;
+  };
 
 // ラグランジュ点まわりの振幅入力をフィールドごとに検証する。問題がなければ空配列を返す。
-// ハローの面内振幅は三次の振幅拘束で面外振幅から決まる(buildLagrangeState 参照)ため、
-// リサジューのときのみ面内振幅を検証する。
 export function validateLagrangePlacementFields(input: LagrangePlacementInput): PlacementFieldIssue[] {
   const issues: PlacementFieldIssue[] = [];
   if (!(Number.isFinite(input.outOfPlaneAmplitudeKm) && input.outOfPlaneAmplitudeKm > 0)) {
@@ -87,8 +86,7 @@ export function validateLagrangePlacementFields(input: LagrangePlacementInput): 
   return issues;
 }
 
-// 基地は敵の射程となる惑星近傍を避け、月基準の軌道要素かラグランジュ点指定でのみ設置できる。
-// 問題がなければ空配列を返す。
+// 基地の設置先の制約(SPEC GAME.md 9.1「基地の設置先」)を検証する。問題がなければ空配列を返す。
 export function validateBaseReferenceFields(
   selection: ObjectPlacementSelection, placementMode: 'elements' | 'lagrange', celestialBody?: string,
 ): PlacementFieldIssue[] {

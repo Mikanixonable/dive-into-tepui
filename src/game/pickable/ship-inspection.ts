@@ -1,8 +1,8 @@
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
-import type { ViewMode } from '../../render/view-mode';
-import type { MarkerVisibility } from '../marker/marker-visibility';
+import type { ViewMode } from '../view/view-mode';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { PropertyWindowOpener } from './property-window-opener';
 import type { ObjectAuthoring, InspectedObject } from './inspected-object';
 import type { MenuItem } from '../hud/windows/context-menu';
@@ -100,7 +100,7 @@ export class ShipInspection implements InspectedObject {
     else if (act === 'planExecCycle') {
       const index = PLAN_EXECUTION_MODES.indexOf(this.ship.planExecution);
       const nextMode = PLAN_EXECUTION_MODES[(index + 1) % PLAN_EXECUTION_MODES.length];
-      if (nextMode !== undefined) this.ship.planExecution = nextMode;
+      if (nextMode !== undefined) this.ship.setPlanExecution(nextMode);
     } else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.ship.mapKind, this.ship.motion.state);
     else if (act === 'delete') selection.remove(this.ship);
   }
