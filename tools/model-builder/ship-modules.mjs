@@ -29,6 +29,14 @@ function axialMesh(geometry, material, z = 0, name = '') {
   return mesh;
 }
 
+// TorusGeometry の法線は +Z なので、円柱と同じ軸回転を加えずに配置する。
+function ringMesh(geometry, material, z = 0, name = '') {
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.z = z;
+  mesh.name = name;
+  return mesh;
+}
+
 function anchor(parent, name, x, y, z, direction = null) {
   const node = new THREE.Object3D();
   node.name = `anchor:${name}`;
@@ -59,7 +67,7 @@ function cylinderBody(root, definition, material, radius = definition.diameter /
     material, 0, 'body',
   ));
   for (const z of [-definition.length / 2 + 0.08, definition.length / 2 - 0.08]) {
-    root.add(axialMesh(new THREE.TorusGeometry(radius * 0.94, 0.08, 8, 24), materials.rim, z, 'end-ring'));
+    root.add(ringMesh(new THREE.TorusGeometry(radius * 0.94, 0.08, 8, 24), materials.rim, z, 'end-ring'));
   }
 }
 
@@ -132,7 +140,7 @@ function addKindDetails(root, definition) {
     case 'decoupler': {
       const color = definition.kind === 'dock' ? materials.dock : materials.rim;
       root.add(axialMesh(new THREE.CylinderGeometry(radius, radius, definition.length, 24, 1), color, 0, 'ring'));
-      root.add(axialMesh(new THREE.TorusGeometry(radius * 0.78, radius * 0.12, 8, 24), materials.dark,
+      root.add(ringMesh(new THREE.TorusGeometry(radius * 0.78, radius * 0.12, 8, 24), materials.dark,
         definition.length / 2 + 0.02, 'interface-ring'));
       const semantic = definition.kind === 'dock' ? 'construction-dock'
         : definition.kind === 'docking_port' ? 'docking-port' : 'decoupler';

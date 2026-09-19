@@ -31,6 +31,14 @@ function semanticAnchor(root: THREE.Object3D, name: string): THREE.Object3D | nu
   return result;
 }
 
+function objectByName(root: THREE.Object3D, name: string): THREE.Object3D | null {
+  let result: THREE.Object3D | null = null;
+  root.traverse((child) => {
+    if (child.name === name) result = child;
+  });
+  return result;
+}
+
 export function register(): void {
   test('ship module asset: catalog の全 modelId が独立した等倍 Group を持つ', () => {
     const root = parsedRoot();
@@ -59,6 +67,16 @@ export function register(): void {
       assert.equal(forward.position.x, 0);
       assert.equal(forward.position.y, 0);
     }
+  });
+
+  test('ship module asset: interface ring は接続面と同じ +Z 法線を持つ', () => {
+    const modules = moduleRoots(parsedRoot());
+    const module = modules.get('dock-standard');
+    assert.ok(module !== undefined);
+    const ring = objectByName(module, 'interface-ring');
+    assert.ok(ring !== null);
+    const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(ring.quaternion);
+    assert.ok(normal.distanceTo(new THREE.Vector3(0, 0, 1)) < 1e-9);
   });
 
   test('ship module asset: 能力を持つ module は対応する semantic anchor を保つ', () => {
