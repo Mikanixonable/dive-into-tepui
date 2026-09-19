@@ -1,3 +1,4 @@
+// 船体 assembly から COM 基準の compound shape と質量特性を同時に導出する。
 import { qNormalize, qRotate, type Quat } from '../../math/quat';
 import { add, v3, type Vec3 } from '../../math/vec3';
 import type {
@@ -99,7 +100,8 @@ function expandModule(
   if (moduleResourceMass === null) return null;
   const result: ExpandedPrimitive[] = [];
   for (let index = 0; index < definition.solidPrimitives.length; index++) {
-    const primitive = definition.solidPrimitives[index]!;
+    const primitive = definition.solidPrimitives[index];
+    if (primitive === undefined) return null;
     const volume = cylinderVolume(primitive.halfLength, primitive.radius);
     const center = add(transform.position, qRotate(rotation, primitive.center));
     const axis = qRotate(rotation, primitive.axis);

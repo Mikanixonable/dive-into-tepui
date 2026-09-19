@@ -1,12 +1,12 @@
+// ShipAssembly の module ごとの表示資源を所有し、COM 基準の表示ツリーへ同期する。
 import * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
-import { ShipAssembly, type ModuleTransform } from '../../../game/ship/ship-assembly';
+import type { ShipAssembly } from '../../../game/ship/ship-assembly';
 import { ShipModuleView, type ShipModuleModelFactory } from './ship-module-view';
 
 const ZERO = v3();
 
-// ShipAssembly の module ごとの model view を一体で所有する。asset の取得と ship の運動状態は
-// 呼び出し側が渡すため、固定船体モデルや DynamicMotion を知らない。
+// ShipAssembly の module ごとの model view を一体で所有する。
 export class ModularShipView {
   public readonly object = new THREE.Group();
   private readonly modules = new Map<string, ShipModuleView>();
@@ -60,18 +60,13 @@ export class ModularShipView {
     this.object.userData.shipModuleIds = [...live];
   }
 
-  // module-local anchor を取得する。world anchor が必要な consumer は returned Object3D の
-  // world transform を読むだけで、module model の所有権を奪わない。
+  // 指定 module の名前付き local anchor を返す。欠けていれば null。
   public semanticAnchor(moduleId: string, name: string): THREE.Object3D | null {
     return this.modules.get(moduleId)?.semanticAnchor(name) ?? null;
   }
 
   public semanticAnchors(moduleId: string, prefix: string): readonly THREE.Object3D[] {
     return this.modules.get(moduleId)?.semanticAnchors(prefix) ?? [];
-  }
-
-  public anchor(moduleId: string, name: string): THREE.Object3D | null {
-    return this.semanticAnchor(moduleId, name);
   }
 
   public dispose(): void {
@@ -83,6 +78,3 @@ export class ModularShipView {
     this.object.clear();
   }
 }
-
-// 呼び出し側が module transform の型を再定義しないための公開 alias。
-export type ShipModuleTransform = ModuleTransform;
