@@ -1045,30 +1045,22 @@ R3 の判定の許可リストに残るのは `Stage.onDecided`(5.5-7)だけに�
 - セーブデータ画面: `SnapshotService.isReadable(id)` が本体の形式の版を照合し、読めない手動セーブのカードは選べる見た目にせず、カードの上に理由を書く(タッチでも見える)。ダブルクリックすると理由を状態欄に出し、周回は始めない。カードの `onLoadSnapshot` は真偽の代わりに拒否の文面(読めるなら null)を渡す。
 - 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run test:launcher`(2/2)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視(ブースターの燃焼と分離、敵の射撃、敵の一覧、版の違う記録を置いたセーブデータ画面)は 5.5-10 へ回す。
 
-#### 手順 5.5-9. 洗い出しで出た残りと、監査報告の 4 を片づける
+#### 手順 5.5-9. 洗い出しで出た残りと、監査報告の 4 を片づける — 済
 
-**目的**: 5.5-3 の振り分けの表のうち、5.5-4〜5.5-8 に載らなかった行を直す。あわせて、監査報告の 4(K10-11 で決めた)を実施する。監査報告の 5(K11)は段 6 の 6-6 で行う。
+振り分けの表で 5.5-9 と書いた行はすべて直した。コミットは3つ — 実体の採番と生死(サブエージェントが別の作業木で書き、差分を確かめて取り込んだ)、SPEC の削除(`docs(spec):` 単独)、残りのコード。
 
-**変えてよい挙動**: タンパク質の銃口と被弾部位の選択だけ。いまはズーム・時刻スライダー・揺らぎの表示設定で変わるが、静止構造から決まるようにする(K10-11)。部位マーカーと結合線は、これまでどおり表示中の揺らぎに追従する。
-
-**変更が必要な箇所**
-
-| 対象 | 何をするか |
-| --- | --- |
-| 5.5-3 で足した行(5.5-9 と書いた 22 行) | 振り分けの表のとおりに直す。群ごとに分けると次のとおり。<br>・計画の表示: `PlanPath.update` の `dropBefore` をやめ極値を時刻で問う、`Plan` のノード列を差し替えで持つ、`plan-path.ts` を `MISPLACED_PRESENTATION_FILES` へ足し `PlanPath` を根が作る<br>・表示の導出の組み立て(R13): マーカー群を受けた側が作る、`CombatView`・`MapView` の作る者と捨てる者を揃える<br>・直列化(R11・R12): 実体の共通の記録に `alive`、キャッシュのコメント、コンストラクタの `next(id)` を `create`・`deserialize` へ、子の `serialize`・`deserialize`(`BulletReaction`・視点の3つの選択)、`{} as SerializedStage`、`PredictPanelSelection.create`、`DeployablePanelState` の補い、`run/` の `AutoSave` の語、例外のコメント(R12 の形式3件・R11 の `RunEventLog`)<br>・装置の語彙(R7・R5): `FlashKind` を見え方の語彙へ、`CameraFrame.mode` を外す、`MarkerGroup` の `cls` の差分<br>・表示の不具合(R5): 窓の行の鍵、天体ラベルの `labelStateOf`、相対交点の `update`<br>・`WaveAttack` がステージを1つの面で受ける(1.11)<br>・定数の手写し(1.6): 自機の既定部品の性能を自機の側から渡す、`MUZZLE_SPEED`・`BASE_TORQUE`・`ALL_SYSTEMS` |
-| `DEVELOP/SPEC/PROTEIN.md`、`DEVELOP/SPEC/RENDERING.md`(監査報告の 4) | **コードより先に `/modify-feature` で削り、`docs(spec):` の単独 commit にする。** 書き足すものは無く、INVARIANTS §3 は触らない。行番号は `5ef4194d3` のもの。<br>・実装上の近似(LOD): PROTEIN 58〜59、RENDERING 629〜631<br>・いまの挙動を固定している文: PROTEIN 60 の後半(発射位置も揺らぎに追従)、62〜63(マーカー・発射位置・命中部位で同じ時点の位置)、RENDERING 627〜628 の「攻撃の起点や活性部位のマーカーは見えているゆらぎに追従するが」<br>・INVARIANTS §3 を個別に言い直している文: PROTEIN 4 の後半、43〜44、66、67〜68 の後半、69〜70 の後半、RENDERING 626<br>どこまで削るかは `/modify-feature` の中でユーザーと決める |
-| `src/game/dynamic/dynamic-entity/protein-enemy.ts`(監査報告の 4、R4) | 銃口(`muzzlePosition`。5.5-8 の命令と問い合わせの分割も一緒に)を、部位の静止座標を個体の位置・姿勢で変換して求める。被弾は、着弾点を模型座標へ戻して、部位の位置を渡さずに `applyDamage` を呼ぶ。`view.siteWorldPositionById`・`view.siteModelPositionById`・`view.localImpactPoint` を読まない。コメント「銃口は静止座標で取り…」は実装と一致するようになる |
-| `src/game/protein/protein-combat-state.ts` | `applyDamage` と `closestSite` から引数 `sitePositions` を消す。静止位置で選ぶ分岐が唯一の経路になる |
-| `src/render/dynamic/dynamic-entity/protein-enemy-view.ts`、`src/render/protein/protein-runtime.ts` | 規則のためだけの問い合わせ(`siteWorldPositionById`・`siteModelPositionById`・`localImpactPoint` と runtime の `siteModelPositionById`)を消す。`siteMarkers` は表示の導出が読むので残す |
-| `src/physics/protein-site-geometry.ts` | 規則が要るのは静止位置の変換だけ、View が要るのは変換と変位の加算になる。**この段ではファイルを動かさない。** 規則も `physics/` の関数を読む(モデル層から時刻層への import は R2 に適う)。読み手の隣へ分けるのは段 6 の 6-6(K11-6) |
-| `tests/game/protein-combat-state.test.ts` | 「表示中のアンカーで被弾部位を選ぶ」(`a displayed anchor should select the same site on impact`)を、静止位置で選ぶ検査に書き直す |
-
-**達成条件と検証**
-
-- 振り分けの表のすべての行が「直した」か「残す理由がある」になっている。
-- `rg -n "view\.(siteWorldPositionById|siteModelPositionById|localImpactPoint)" src/game` が 0 件。`rg -n "dropBefore" src/game` が 0 件。`rg -n "例外\(ARCHITECTURE R1[12]\)" src` が 4 件(R12 の形式3件、R11 の `RunEventLog`)。
-- 変更した層の回帰テスト(`npm run test:game`・`npm run test:render` ほか)、`npm run check:boundaries`。
-- `npm run dev` で、タンパク質陣形の 5i4r が撃ち、撃たれて部位が壊れることを見る。部位マーカーが揺らぎに追従したまま、揺らぎの表示を切っても部位の HP の減り方が変わらない。
+**実施で決めたこと**
+- 計画の表示: `ApsisTrack` は `periapsisAfter(t)`・`apoapsisAfter(t)` で「t 以降で最初の極値」を答える。列を落とす `dropBefore` は持ち主の `PredictedArc` だけが `demand` で保持窓の左端まで呼ぶ(落とさないと列が際限なく伸びる)。`rg -n "dropBefore" src/game` に残る1件はこの持ち主の呼び出しで、外からの切り詰めではない。`FinalSegment` は極値と中心天体の組 `Apsis` を持つ。`Plan` のノード列は変えるたびに新しい配列へ差し替える(`consumeNodesUpTo` は件数を返さない)。`PlanPath` は `GamePresentation` が作って `PlanDisplay`・`CombatView`・`MapView` へ配り、自分で畳む。
+- 表示の導出の組み立て: `PlayerMarkers`・`EquatorNodeManager`・`CelestialMarkers`・`NavTargetPresenter`・`PlanDisplay`・`PlanGuide` はマーカー装置を受けて自分で群を作る。`CombatView`・`MapView` は作った `GamePresentation` が畳み、`ViewManager.dispose` は消えた。
+- 直列化: 実体の採番は `create`・`deserialize` が行い、コンストラクタは採番済みの id を受ける(`Bullet`・`DebrisPiece` のコンストラクタは private、直接 `new` していた呼び手は `create` へ)。`BulletReaction.deserialize` を足した。生死は実体の共通の記録の省略可能な `alive` に1か所で書き、全種の復元が運動へ渡す(記録に無ければ生存)。**変わった挙動**: 一時停止中に消した補給物・失った自艦・壊れた基地が、読み込み後に生き返らない。視点の子の選択(ビュー・軌道ガイド・軌道の基準)は自分の `serialize` を持つ。ステージの記録の欠けは `SerializedStage | null` で受ける(不在は null — lint が `| undefined` を禁じる)。`PredictPanelSelection.create` は初期の座標系をコンストラクタへ渡す。展開パネルの壊れた記録は `DeployablePanelState.deserialize` が null を返し、持ち主のコンストラクタの既定(太陽電池は展開、放熱板は収納)で補う。`run/` は `AutoSave` の代わりに自分の語彙の `ProgressReader` を受ける。
+- キャッシュのコメント: `DynamicSystem` の `_collectionRevision`・`capsUncheckedSinceAdd`、`NanWatchdog.tripped`。
+- 例外のコメント4件: R12 — 実体の記録の運動の値(`serializeEntityFields`)、顔ぶれの記録の `simTime`(`DynamicSystem.serialize`)、カメラの `offset`・`up`・`rotatingWith`(`FocusCameraSelection.serialize`)。R11 — `RunEventLog`。**R12 に例外が3つ重なる**ので、版を上げて形式を持ち主ごとに直す再設計を 5.5-10 の報告と PR 本文で提案する。
+- 装置の語彙: 閃光の種別・見え方の表・照準ズームでの減光は `flash-presenter` が持ち(`present` が `gunsightZoomed` を受ける)、装置 `FlashEffectsView` は色・大きさ・明るさだけを受ける。`CameraFrame.mode` を外し、ビューを読む導出(天体系・縮尺グリッド・照準・まとめマーカー・相対交点・計画の表示・ステージ・配置プレビュー)は `GamePresentation` が `viewManager.current` を渡す(描画層から `game/view` への import も消えた)。`MarkerGroup` は宣言の `cls` が変わったフレームで貼り直す。
+- 表示の不具合: 窓の行の構成の鍵に見出しを入れ、区切りの衝突しない形にした。天体ラベルの `labelStateOf` は今フレームに投影していないラベルに null を返す。相対交点は、MAP.md のとおりマップビューでだけ宣言する(戦闘ビューでは前のマップのフレームの位置が残っていた)。
+- `WaveAttack` はステージを面 `WaveAttackStage`(`StageOutcome` と `addEnemy`)1つで受け、`Stage.addEnemy` は public になった。
+- 定数: 既定部品 `createShipDefaultParts(maxHp, thrust, torque, muzzleVelocity)` は性能を受け、自機は `player-loadout.ts` の `PLAYER_THRUST`(質量 × 推力段の最大)・`PLAYER_TORQUE`(RCS の角加速度 `PLAYER_RCS_ANGULAR_ACCEL` × ヨー慣性)と `MUZZLE_SPEED` を渡す。金属の敵は自機と同じ性能を積む(値は変わらない)。`BASE_TORQUE` は基地の慣性 × `PLAYER_RCS_ANGULAR_ACCEL`。軌道ガイドの系の一覧は `orbit-guide-groups.ts` の `GUIDE_SYSTEMS` 1つ。
+- 監査報告の 4: SPEC の削除は計画の一覧(挙動の固定・LOD の近似・INVARIANTS §3 の言い直し)の全部とユーザーが決めた。銃口は部位の静止座標を `physics/protein-site-geometry.ts` の変換で個体の位置・姿勢へ写し、被弾は着弾点を模型座標へ戻して静止位置の部位と比べる。撃つ部位の巡回は、問い合わせ `nextAttackSite` と命令 `advanceAttackSite` に分け、発砲の後の口(`muzzleEffect` を `fired` に改名)で進める。View と runtime の規則専用の問い合わせは消した。**変わった挙動**: タンパク質の銃口と被弾部位が、ズーム・時刻スライダー・揺らぎの表示設定で変わらなくなった。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(256/256)・`test:render`(202/202)・`test:physics`(476/476)・`test:launcher`(2/2)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視(5i4r の陣形が撃ち、撃たれて部位が壊れる/揺らぎを切っても部位 HP の減り方が変わらない)は 5.5-10 へ回す。
 
 #### 手順 5.5-10. 段 5.5 を main へ送る
 
@@ -1551,9 +1543,9 @@ import を直す外側:
 | | ~~5.5-6 音の装置~~ 済 | 0 |
 | | ~~5.5-7 位相・直列化・導出の残り~~ 済 | 0 |
 | | ~~5.5-8 1.x の未達と launcher の表示~~ 済 | 0 |
-| | 5.5-9 洗い出しの残りと監査報告の 4(4 の分は SPEC の削除と 6 ファイル × 20 + 検証 20 = 140。洗い出しの 22 行は約 40 ファイル × 20 = 800) | 940 |
+| | ~~5.5-9 洗い出しの残りと監査報告の 4~~ 済 | 0 |
 | | 5.5-10 main へ送る | 150 |
-| | **段 5.5 計(残り)** | **1,090** |
+| | **段 5.5 計(残り)** | **150** |
 | 6 | 6-1 規則(R6・R2 のモデル層、`entity-shapes/` の層と条件 +15、`physics/` から実体の形を締め出す +15) | 120 |
 | | 6-2 検査(対応表を game/ の中まで割る、`LAYER_TABLE` の行 +5。K11-2 で B なら読み手の数の判定 +20) | 95 |
 | | 6-3 3D の表示担当(モデル層の根の `scene` +20、漏れていたテスト3本 +30、突き合わせの検査 +40) | 810 |
