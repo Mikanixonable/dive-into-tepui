@@ -24,10 +24,10 @@ const SAMPLE_TIMES: readonly number[] = [0, 90 * DAY, 200 * DAY];
 const X_AXIS = v3(1, 0, 0);
 
 // 検査する場所。位置は天体の運動から導き、どこなのかが式から読めるようにする。
-type Site = {
+interface Site {
   readonly name: string;
   readonly positionAt: (t: number) => Vec3;
-};
+}
 
 // 天体 id の時刻 t の位置から +X 方向へ、天体の半径 + altitude [m] だけ離れた点。
 function aboveSurface(id: string, altitude: number, t: number): Vec3 {
