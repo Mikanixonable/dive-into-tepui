@@ -1,12 +1,1 @@
-{
-  "モデル層の可変な公開欄の禁止": {
-    "src/game/stages/stage.ts": [
-      "Stage.onDecided"
-    ]
-  },
-  "直列化された形をコンストラクタで受ける禁止": {
-    "src/game/viewer/nav-target-selection.ts": [
-      "NavTargetSelection.constructor(target)"
-    ]
-  }
-}
+{}

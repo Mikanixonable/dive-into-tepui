@@ -37,16 +37,13 @@ const SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
 const COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
 
 export class AttachedBoosters {
-  // 段の id は registry の採番器から採り、分離で出る実体と出来事は registry へ積む。復元済みの段の
-  // id を先に予約し、以後の追加がそれを追い越すようにする。
+  // 段の id は registry の採番器から採り、分離で出る実体と出来事は registry へ積む。
   public constructor(
     private readonly motion: DynamicMotion,
     private readonly boosterMotion: AttachedBoosterMotion,
     private readonly registry: EntityRegistry,
     private readonly scene: THREE.Scene,
-  ) {
-    for (const id of boosterMotion.stageIds) registry.idAllocators.booster.reserve(id);
-  }
+  ) { }
 
   // 標準ブースターを最後尾へ追加する。
   public attach(): void {

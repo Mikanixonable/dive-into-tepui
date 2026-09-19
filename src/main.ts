@@ -105,6 +105,7 @@ function startAnimationLoop(
         },
       ]);
       if (completed) {
+        launcher.followProgress();
         completedFrames++;
         // 例外なく60フレーム完走したことを、外から読めるようにする印。
         if (completedFrames === 60) document.documentElement.dataset.gameReady = 'true';
