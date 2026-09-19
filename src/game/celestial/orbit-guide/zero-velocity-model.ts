@@ -10,7 +10,7 @@ import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { LINE_RENDER_ORDER, LineStyle } from '../../../render/line-style';
 import type { ViewMode } from '../../view/view-mode';
 import type { ZeroVelocityDisplay } from '../../../render/celestial/orbit-guide/zero-velocity-view';
-import { ZeroVelocitySettings } from './orbit-guide-settings';
+import type { ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
 import { catalogSystemScale } from './orbit-guide-catalog';
 
 const COLOR_ZERO_VELOCITY_LINE = 0xd97a94;

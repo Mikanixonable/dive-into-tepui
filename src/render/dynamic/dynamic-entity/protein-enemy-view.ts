@@ -1,9 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../../../math/projection';
-import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
 import { ProteinRuntime } from '../../protein/protein-runtime';
-import { proteinLocalImpactPoint } from '../../../physics/protein-site-geometry';
-import { createProteinMotionBinding } from '../../protein/protein-motion-material';
 import {
   ProteinMotionController, proteinMotionLodForProjectedSize,
 } from '../../protein/protein-motion-controller';
@@ -16,9 +13,8 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import type { Quat } from '../../../math/quat';
 import type { Vec3 } from '../../../math/vec3';
 
-// タンパク質の敵1体ぶんの、そのフレームの表示入力。表示設定と構造フェーズを共通の面へ足す。
+// タンパク質の敵1体ぶんの、そのフレームの表示入力。構造フェーズを共通の面へ足す。
 export interface ProteinVisualSource extends DynamicRenderSource {
-  readonly display: ProteinDisplaySettings;
   readonly phase: ProteinPhase;
 }
 
@@ -37,54 +33,49 @@ export interface ProteinSiteMarker extends ProteinSiteStatus {
   readonly worldPos: Vec3;
 }
 
-// タンパク質モデル、構造ゆらぎ、結合線と、ゆらぎの LOD・係数遷移の履歴を所有する。
+// 直近の同期で選んだゆらぎの LOD と、その反映に要した CPU 時間 [ms]・GPU 転送量 [byte]。
 export interface ProteinMotionMetrics {
   readonly lod: ProteinMotionLod;
   readonly cpuMs: number;
   readonly uploadBytes: number;
 }
 
+// タンパク質モデル、構造ゆらぎ、結合線と、ゆらぎの LOD・係数遷移の履歴を所有する。
 export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
   private readonly runtime: ProteinRuntime;
-  private renderedDisplay: ProteinDisplaySettings;
+  // 構造メッシュを組んだ表示設定。まだ組んでいなければ null。
+  private renderedDisplay: ProteinDisplaySettings | null = null;
   private readonly motionController: ProteinMotionController;
   private lod: ProteinMotionLod = 'near';
   // 直近の同期でモード係数の確定に要した CPU 時間 [ms]。
   private motionControllerCpuMs = 0;
 
-  // 初期表示設定で THREE ツリーと共有 GPU binding を組み立てる。modelScale(表示倍率)と
-  // boundingRadius(LOD を選ぶ外接半径 [m])には物理の判定形状と同じ値を渡す。enemyId は
-  // ゆらぎの個体差の鍵で、同じ鍵の個体は同じように揺らぐ。
+  // THREE ツリーの根と、残基変形を持つ runtime を用意する。構造メッシュは最初の同期で、そのフレームの
+  // 表示設定から組む。modelScale(表示倍率)と boundingRadius(LOD を選ぶ外接半径 [m])には
+  // 物理の判定形状と同じ値を渡す。enemyId はゆらぎの個体差の鍵で、同じ鍵の個体は同じように揺らぐ。
   public constructor(
     private readonly definition: ProteinRenderDefinition,
-    display: ProteinDisplaySettings,
     modelScale: number,
     private readonly boundingRadius: number,
     enemyId: string,
     scene?: THREE.Scene,
   ) {
-    // モード変位は asset 単位で共有し、個体ごとに係数スロットを確保する。
     const motion = definition.source.motion;
-    const motionBinding = createProteinMotionBinding(
-      motion.residueCount,
-      proteinMotionModeDisplacements(motion),
-      motion.modes.length,
-    );
-    // 表示ツリーと runtime は同じ root/binding を共有し、寿命も View に揃える。
-    const root = definition.buildRenderObject(display, motionBinding ?? undefined);
+    // 表示ツリーと runtime は同じ root を共有し、寿命も View に揃える。
+    const root = new THREE.Group();
     root.scale.setScalar(modelScale);
     super(root, scene);
-    this.runtime = new ProteinRuntime(root, definition.source.semantic, motion, motionBinding);
-    this.renderedDisplay = { ...display };
+    this.runtime = new ProteinRuntime(root, definition.source.semantic, motion);
     this.motionController = new ProteinMotionController(motion, enemyId);
   }
 
-  // 表現種別か着色が変わったときだけ THREE 子要素を再構築する。
+  // まだ組んでいないか、表現種別か着色が変わったときだけ THREE 子要素を組み直す。
   private syncDisplay(display: ProteinDisplaySettings): void {
-    if (display.representation === this.renderedDisplay.representation
+    if (this.renderedDisplay !== null
+      && display.representation === this.renderedDisplay.representation
       && display.colorMode === this.renderedDisplay.colorMode) return;
     this.runtime.clearVisuals();
-    this.definition.recolorRenderObject(this.object, display, this.runtime.motionBinding ?? undefined);
+    this.definition.buildRenderObjectInto(this.object, display, this.runtime.motionBinding ?? undefined);
     this.runtime.rebuildVisuals();
     this.renderedDisplay = { ...display };
   }
@@ -114,21 +105,6 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     }));
   }
 
-  // 部位idの表示中アンカーを本体の位置・姿勢へ写す。
-  public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
-    return this.runtime.siteWorldPositionById(id, origin, attitude);
-  }
-
-  // 部位 id の変形済みモデルローカル座標。rootの表示倍率と姿勢は含めない。
-  public siteModelPositionById(id: string): Vec3 {
-    return this.runtime.siteModelPositionById(id);
-  }
-
-  // ワールド着弾点を表示中アンカーと同じモデルローカル座標へ写す。
-  public localImpactPoint(worldPoint: Vec3, origin: Vec3, attitude: Quat): Vec3 {
-    return proteinLocalImpactPoint(worldPoint, origin, attitude, this.object.scale.x);
-  }
-
   // 表示設定を反映し、投影サイズから LOD を選んで表示時刻のモード係数を確定させ、変形資源へ渡す。
   // 表示時刻の状態を引けないフレームは LOD を保ったまま変形を止める。
   protected override syncModel(
@@ -136,7 +112,7 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     displayed: KinematicState | null,
     viewFrame: DynamicViewFrame,
   ): void {
-    this.syncDisplay(source.display);
+    this.syncDisplay(viewFrame.proteinDisplay);
     this.motionControllerCpuMs = 0;
     if (displayed !== null) {
       const projectedDiameterPx = apparentSizePx(

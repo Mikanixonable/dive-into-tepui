@@ -1,8 +1,6 @@
 // ビュー(戦闘/マップ)固有のフレーム処理と遷移フックの口。
 import type { DisplayWindow } from '../display-window-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { Viewport } from '../../render/viewport';
-import type { Input } from '../../input/input';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { PlanEditor } from '../plan/plan-editor';
@@ -18,18 +16,16 @@ export interface ViewFrame {
   // このビューの候補列/ラベル数。
   perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'>;
 
-  // このビューへ遷移できるか。
-  canEnter(): boolean;
   // このビューへ入るときの支度。
   onEnter(): void;
   // このビューから出るときの後始末。
   onLeave(): void;
-  // router からビュー固有の単発入力を受け取る。
-  handleCommand(commandId: string, simTime: number): void;
+  // ビュー固有の単発入力 commandId を実行する。
+  handleCommand(commandId: string): void;
   // 押下中の連続操作をこのビューへ配る。
-  updateActions(input: Input, dt: number): void;
+  updateActions(dt: number): void;
   // ポーズ・入力ゲートの判定後に呼ばれる。ポインタ入力の配分。
-  handlePointer(simTime: number, viewport: Viewport): void;
+  handlePointer(camera: CameraFrame): void;
   // update フェーズ: カメラ更新の後。選択候補と可視性ポリシーの確定。
   update(displayWindow: DisplayWindow): void;
   // sync フェーズ前半: 天体ラベル。マーカー同期より先に呼ばれる。nowMs はフレームの実時刻 [ms]。

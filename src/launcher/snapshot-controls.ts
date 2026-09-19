@@ -4,8 +4,8 @@ import { PauseMenu } from '../hud/windows/pause-menu';
 import { SaveBrowser } from './save-browser/save-browser';
 import { SnapshotService, type SnapshotSource } from './save/snapshot-service';
 
-// F5(手動セーブ)/F9(一覧開閉)の単発入力を担う。router へは Game.update のあとに足す —
-// その回で Game が消費しなかった入力エッジだけを見る。
+// F5(手動セーブ)/F9(一覧開閉)の単発入力を担う。router へはランの入力の解釈のあとに足す —
+// その回でランが消費しなかった入力エッジだけを見る。
 export class SnapshotControls {
   public constructor(
     private readonly notifier: Notifier,
@@ -32,9 +32,7 @@ export class SnapshotControls {
   // 現在の瞬間を無名の手動セーブとして残す。source が無ければ何もしない。
   public saveManually(source: SnapshotSource | null): void {
     if (source === null) return;
-    // 決着後の phase(won/lost/timeup)は復元する経路を持たない — 復元は phase を
-    // そのまま代入するだけで結果画面を出し直さないので、ロードすると結果画面の無いまま
-    // 決着済みのステージが続くことになる。
+    // 決着後の状態を残すと、結果画面へ辿り着けない記録になる(SAVE.md「記録」)。
     if (!source.isPlaying) {
       this.notifier.hint('決着後はセーブできません');
       return;

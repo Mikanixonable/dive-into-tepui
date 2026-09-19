@@ -2,7 +2,6 @@ import type { Plan, PlanExecutionMode } from '../../plan/plan';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Attitude } from '../../../physics/attitude';
 import type { Vec3 } from '../../../math/vec3';
-import type { ThrottleSaveData } from '../../save/save-data';
 import type { FireControl } from '../../player/fire-control';
 import type { AttachedBoosters } from '../../player/attached-boosters';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
@@ -14,68 +13,65 @@ import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
 import type { StageRules } from '../../stages/stage-rules';
 
+// 操作量から推力とトルクを決め、推力のラッチ・RCS 減衰・プログレード保持を持つスロットルの面。
 export interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
   readonly progradeHold: boolean;
-  updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null;
+  readonly thrust: Vec3 | null;
+  readonly torque: Vec3;
+  updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): void;
   updateTorque(
     att: Attitude, r: Vec3, v: Vec3, controls: PilotControls, fineAttitude: boolean,
     dt: number, simDt: number, ship: FuelConsumer, events: RunEventSink | null,
-  ): Vec3;
+  ): void;
   updateThrustLatches(controls: PilotControls): void;
   toggleThrustLatch(direction: ThrustDirection): void;
   isThrustLatched(direction: ThrustDirection): boolean;
   clearTransientState(): void;
-  serialize(): ThrottleSaveData;
 }
 
+// スロットルが推力・トルクの上限と燃料を読み、燃料 [kg] を消費させる相手。
 export interface FuelConsumer {
   readonly totalThrust: number;
   readonly totalTorque: number;
   readonly totalFuelConsumptionRate: number;
   readonly totalFuel: number;
   readonly totalMaxFuel: number;
-  consumeFuel(amount: number): number;
+  consumeFuel(amount: number): void;
   readonly motion: DynamicEntity['motion'];
 }
 
-export interface PilotCommandFrame {
-  // このフレームの操作量。操作されない個体は null。
-  readonly controls: PilotControls | null;
-  readonly dt: number;
-  readonly simDt: number;
-  readonly registry: EntityRegistry;
-  readonly activeStage: StageOutcome;
-  readonly stageRules: StageRules;
-  readonly celestialBodies: CelestialBodies;
-}
-
+// フレームごとの操作量と、単発の命令を受ける面。
 export interface PilotCommandReceiver {
-  updateControls(frame: PilotCommandFrame): void;
+  // controls はこのフレームの操作量で、操作されない個体は null。dt [s] は実時間、simDt [sim s] は
+  // シミュレーション時間の刻み。
+  updateControls(
+    controls: PilotControls | null, dt: number, simDt: number,
+    activeStage: StageOutcome, stageRules: StageRules, celestialBodies: CelestialBodies,
+  ): void;
+  // 推力・トルクの指令とスロットルの一時状態を解く。
   clearTransientCommands(): void;
+  // 単発の命令 command のうち、備える操作を状態へ適用する。
   handleCommand(command: PilotCommand, registry: EntityRegistry): void;
 }
 
+// マニューバ計画と、その実行方法・姿勢操作の微調整の有無。
 export interface NavigationController {
   readonly plan: Plan;
-  planExecution: PlanExecutionMode;
-  fineAttitude: boolean;
+  readonly planExecution: PlanExecutionMode;
+  readonly fineAttitude: boolean;
 }
 
-// 操作対象(自艦・基地)の共通能力。装備していない機能は null ではなくプロパティ自体を
-// 持たない。HUD や入力側は capability の有無だけを確認して利用する。
+// 操作対象(自艦・基地)の共通能力。装備していない機能は null なので、有無を確かめてから使う。
 export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandReceiver, NavigationController {
   readonly throttle: ThrottlePort;
-  readonly fire?: FireControl;
-  readonly boosters?: AttachedBoosters;
-  readonly altitudeAlarm?: AltitudeAlarm;
-  // 装備を持つ操作対象だけが実装する入力命令。未搭載はメソッド自体を持たない。
-  readonly toggleSolarPanel?: (side: 'up' | 'down') => void;
-  readonly toggleRadiator?: (side: 'up' | 'down') => void;
+  readonly fire: FireControl | null;
+  readonly boosters: AttachedBoosters | null;
+  readonly altitudeAlarm: AltitudeAlarm | null;
 }
 
-// この個体が操作対象になりうるか。顔ぶれから操作対象だけを絞るときに使う。
+// この個体が操作対象になりうるか。
 export function isControllable(entity: DynamicEntity): entity is Controllable {
   return entity.controllable;
 }

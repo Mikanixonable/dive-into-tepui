@@ -1,4 +1,4 @@
-import type { Bgm } from '../../audio/bgm/bgm';
+import type { BgmAudition } from '../../audio/bgm/bgm';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { BgmSettingsPanel } from '../panels/bgm-settings-panel';
 import { GraphicsPanel } from '../panels/graphics-panel';
@@ -10,7 +10,6 @@ type SettingsTab = 'theme' | 'graphics' | 'bgm';
 // 描画・BGM・配色の詳細設定面。内側タブで3面を切り替え、各面の変更を onXxx で外へ返す。
 export class SettingsView {
   public readonly element: HTMLElement;
-  private readonly bgm: Bgm;
   private readonly bgmPanel: BgmSettingsPanel;
   private active = false;
 
@@ -23,9 +22,7 @@ export class SettingsView {
 
   // 見出し・内側タブバーと、描画/BGM/配色の3面を組み立てる。graphics・bgmVolume・themeId は
   // 組み立て時の設定値。
-  public constructor(bgm: Bgm, graphics: GraphicsSettingsData, bgmVolume: number, themeId: string) {
-    this.bgm = bgm;
-
+  public constructor(graphics: GraphicsSettingsData, bgmVolume: number, themeId: string) {
     this.element = document.createElement('section');
     this.element.className = 'pm-settings-view';
     this.element.setAttribute('aria-labelledby', 'hud-settings-title');
@@ -73,7 +70,7 @@ export class SettingsView {
     graphicsSectionBody.appendChild(graphicsPanel.element);
 
     const bgmSectionBody = addTabPanel('bgm', 'BGM');
-    this.bgmPanel = new BgmSettingsPanel(bgm, bgmVolume);
+    this.bgmPanel = new BgmSettingsPanel(bgmVolume);
     this.bgmPanel.onVolumeChange = (volume) => this.onBgmVolumeChange?.(volume);
     bgmSectionBody.appendChild(this.bgmPanel.element);
 
@@ -108,10 +105,15 @@ export class SettingsView {
     return header;
   }
 
-  // 設定面の表示を、いま鳴っている試聴へ合わせる。毎フレーム呼ぶ。
-  public sync(): void {
+  // 試聴の宣言。設定面を開いている間を試聴の期間とし、期間の外なら null、曲を止めていれば 'silent'。
+  public get bgmAudition(): BgmAudition | 'silent' | null {
+    return this.active ? this.bgmPanel.audition ?? 'silent' : null;
+  }
+
+  // 設定面の表示を、試聴の経過へ合わせる。nowMs [ms] はフレームの実時刻。毎フレーム呼ぶ。
+  public sync(nowMs: number): void {
     if (!this.active) return;
-    this.bgmPanel.sync();
+    this.bgmPanel.sync(nowMs);
   }
 
   // 外から音量が変わったときに、BGM タブの表示を引き直す。
@@ -119,11 +121,10 @@ export class SettingsView {
     this.bgmPanel.syncVolume(volume);
   }
 
-  // active の間を試聴の期間とし、切り替わったときに試聴を始める・終える。
+  // active の間を試聴の期間とし、期間を出るときに試聴を止める。
   public setActive(active: boolean): void {
     if (active === this.active) return;
     this.active = active;
-    if (active) this.bgm.beginAudition();
-    else this.bgmPanel.stopAudition();
+    if (!active) this.bgmPanel.stopAudition();
   }
 }

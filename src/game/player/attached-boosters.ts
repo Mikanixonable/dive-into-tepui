@@ -7,7 +7,6 @@ import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { kinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
 import { add, addScaled, scale, v3 } from '../../math/vec3';
-import type { RunEventSink } from '../run-events';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
@@ -23,13 +22,11 @@ import {
   boosterSeparationVelocities,
   type BoosterStage,
 } from './booster-stack';
-import type { EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { AttachedBoosterMotion } from './attached-booster-motion';
 
-// 分離式ブースターの標準段。自機 1,000 kg と並べたとき、1段あたりの乾燥+満載質量
-// 1,000 kg、推力 0.6 MN で約 300 m/s² となるようにする。燃料 800 kg を 80 kg/s
-// で燃やし切るので、通常のフレーム刻みでも十数秒の燃焼と最後の燃料切れを扱える。
+// 分離式ブースターの標準段。自機 1,000 kg に満載の1段(1,000 kg)を繋いで約 300 m/s²、
+// 燃料は 10 秒で燃え切る。
 const DEFAULT_DRY_MASS = 200; // [kg]
 const DEFAULT_MAX_FUEL = 800; // [kg]
 const DEFAULT_THRUST = 6e5; // [N]
@@ -39,25 +36,24 @@ const SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
 const COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
 
 export class AttachedBoosters {
-  // 段の id を採る。復元済みの段の id を先に予約し、以後の追加がそれを追い越すようにする。
+  // 段の id は registry の採番器から採り、分離で出る実体と出来事は registry へ積む。
   public constructor(
     private readonly motion: DynamicMotion,
     private readonly boosterMotion: AttachedBoosterMotion,
-    private readonly idAllocators: EntityIdAllocators,
-    private readonly events: RunEventSink,
-    private readonly _scene: THREE.Scene,
-  ) {
-    for (const id of boosterMotion.stageIds) idAllocators.booster.reserve(id);
-  }
+    private readonly registry: EntityRegistry,
+    private readonly scene: THREE.Scene,
+  ) { }
 
   // 標準ブースターを最後尾へ追加する。
   public attach(): void {
+    // 段数の上限に達していれば、繋げなかったことを記録する
     if (this.boosterMotion.stages.length >= MAX_ATTACHED) {
-      this.events.record({ kind: 'boosterLimitReached', limit: MAX_ATTACHED });
+      this.registry.events.record({ kind: 'boosterLimitReached', limit: MAX_ATTACHED });
       return;
     }
+    // 満タンで未点火の標準段を採番して繋ぐ
     this.boosterMotion.attach({
-      id: this.idAllocators.booster.next(),
+      id: this.registry.idAllocators.booster.next(),
       dryMass: DEFAULT_DRY_MASS,
       fuel: DEFAULT_MAX_FUEL,
       maxFuel: DEFAULT_MAX_FUEL,
@@ -65,36 +61,42 @@ export class AttachedBoosters {
       fuelRate: DEFAULT_FUEL_RATE,
       ignited: false,
     });
-    this.events.record({ kind: 'boosterAttached', stages: this.boosterMotion.stages.length });
+    this.registry.events.record({ kind: 'boosterAttached', stages: this.boosterMotion.stages.length });
   }
 
   // 最後尾段の点火を切り替える。点けられなかった理由は出来事として記録する。
   public toggleIgnition(): void {
     const active = this.activeStage();
     if (!active) {
-      this.events.record({ kind: 'boosterIgnitionUnavailable' });
+      this.registry.events.record({ kind: 'boosterIgnitionUnavailable' });
       return;
     }
-    const ignited = this.boosterMotion.toggleIgnition();
-    this.events.record({ kind: 'boosterIgnitionToggled', on: ignited, fuelEmpty: active.fuel <= 0 });
+    this.boosterMotion.toggleIgnition();
+    this.registry.events.record({
+      kind: 'boosterIgnitionToggled', on: this.boosterMotion.ignited, fuelEmpty: active.fuel <= 0,
+    });
   }
 
-  // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
-  public decouple(registry: EntityRegistry): void {
+  // 最後尾の段を切り離して独立した実体にし、爆砕ボルトの相対速度を質量比で両者へ配る。
+  // 段が無ければ、分離できなかったことを記録する。
+  public decouple(): void {
     const stageIndex = this.boosterMotion.stages.length - 1;
-    if (stageIndex < 0) {
-      this.events.record({ kind: 'boosterDecoupleUnavailable' });
+    const detachedStage = this.activeStage();
+    if (detachedStage === undefined) {
+      this.registry.events.record({ kind: 'boosterDecoupleUnavailable' });
       return;
     }
+    // 最後尾段の接続面と中心の位置(ECI)を求めてから、段を外す
     const player = this.motion;
     const frontZ = BOOSTER_MOUNT_Z - stageIndex * BOOSTER_STAGE_DIMENSIONS.length;
     const centerZ = frontZ
       + (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
     const jointR = add(player.state.r, qRotate(player.att.q, v3(0, 0, frontZ)));
     const boosterR = add(player.state.r, qRotate(player.att.q, v3(0, 0, centerZ)));
-    const detachedStage = this.boosterMotion.detachOutermost()!;
+    this.boosterMotion.detachOutermost();
     const boosterMass = detachedStage.dryMass + detachedStage.fuel;
 
+    // 分離後の速度を両者へ配り、段間の部品と外した段を実体として顔ぶれへ入れる
     const forward = qRotate(player.att.q, LOCAL_FORWARD);
     const separated = boosterSeparationVelocities(
       player.state.v,
@@ -104,23 +106,20 @@ export class AttachedBoosters {
       SEPARATION_SPEED,
     );
     const t = player.state.t;
-    player.state = kinematicState<'eci'>(t, player.state.r, separated.player);
-    this.scatterInterstageHardware(t, jointR, separated.player, separated.booster, player.att, registry);
-    registry.add(new DetachedBooster({
-      stage: detachedStage,
-      state: kinematicState<'eci'>(t, boosterR, separated.booster),
-      att: {
-        // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
-        // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
-        q: player.att.q,
-        w: player.att.w,
-        inertia: v3(1, 1, 0.4),
-      },
-      collisionEnableAt: t + COLLISION_GRACE,
-    }, this._scene, this.idAllocators));
+    player.reset(kinematicState<'eci'>(t, player.state.r, separated.player));
+    this.scatterInterstageHardware(t, jointR, separated.player, separated.booster, player.att);
+    this.registry.add(DetachedBooster.create(
+      detachedStage,
+      kinematicState<'eci'>(t, boosterR, separated.booster),
+      // 爆砕ボルトは中心軸上にありトルクを与えないので、角速度をそのまま引き継ぐ。
+      player.att.q,
+      player.att.w,
+      t + COLLISION_GRACE,
+      this.scene,
+      this.registry.idAllocators,
+    ));
 
-    player.invalidatePrediction();
-    this.events.record({
+    this.registry.events.record({
       kind: 'boosterDecoupled',
       stages: this.boosterMotion.stages.length,
       jointState: kinematicState<'eci'>(t, jointR, player.state.v),
@@ -134,7 +133,6 @@ export class AttachedBoosters {
     playerVelocity: Vec3,
     boosterVelocity: Vec3,
     att: Attitude,
-    registry: EntityRegistry,
   ): void {
     const coverBaseZ = BOOSTER_STAGE_DIMENSIONS.length + BOOSTER_INTERSTAGE_COVER_Z;
     const boltBaseZ = BOOSTER_STAGE_DIMENSIONS.length + BOOSTER_INTERSTAGE_BOLT_Z;
@@ -159,11 +157,11 @@ export class AttachedBoosters {
         tangent,
         randSym(1.5),
       );
-      registry.add(new DebrisPiece(
+      this.registry.add(DebrisPiece.create(
         kinematicState<'eci'>(t, coverPosition, coverVelocity),
         { kind: 'boosterCover', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(0.8), randSym(1.8), randSym(0.8)), inertia: v3(1, 1.7, 2.4) },
-        this.idAllocators, undefined, this._scene,
+        this.registry.idAllocators, undefined, this.scene,
       ));
 
       // 爆砕ボルトは両段の平均速度を基準に、カバーより速く径方向と機軸方向へ。
@@ -181,11 +179,11 @@ export class AttachedBoosters {
         qRotate(att.q, LOCAL_FORWARD),
         randSym(2.5),
       );
-      registry.add(new DebrisPiece(
+      this.registry.add(DebrisPiece.create(
         kinematicState<'eci'>(t, boltPosition, boltVelocity),
         { kind: 'boosterBolt', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(2.5), randSym(2.5), randSym(2.5)), inertia: v3(0.4, 0.5, 0.7) },
-        this.idAllocators, undefined, this._scene,
+        this.registry.idAllocators, undefined, this.scene,
       ));
     }
   }
@@ -199,6 +197,7 @@ export class AttachedBoosters {
       totalMass: this.motion.mass,
       activeFuel: active?.fuel ?? 0,
       activeFuelMax: active?.maxFuel ?? 0,
+      // 燃焼の段階と操作の可否は、最後尾の段の有無・燃料・点火で決まる
       burnState: !active ? 'idle' : active.fuel <= 0 ? 'empty' : active.ignited ? 'burning' : 'ready',
       ignitionOn: active?.ignited ?? false,
       canAttach: this.boosterMotion.stages.length < MAX_ATTACHED,

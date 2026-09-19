@@ -1,9 +1,9 @@
-// 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
-// rAF ループ(Game.update → sync → render の駆動)を統括する。
+// エントリポイント。ページに1つずつの装置(シーン・HUD・音声・セーブ)と周回の遷移を組んで配線し、
+// rAF ループでランのフレームを回す。
 // HUD の書体は太さ 400 だけを読み、bold はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
-import { createGameScene, GameScene } from './render/scene';
+import { createGameScene, type GameScene } from './render/scene';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { FrameSections } from './game/frame-sections';
@@ -29,13 +29,11 @@ import { SnapshotService } from './launcher/save/snapshot-service';
 import { AutoSave } from './launcher/save/autosave';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
-import type { GameHost } from './game/game-host';
-import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
-import type { GraphicsSettingsData } from './render/graphics-settings';
-import type { RenderStyle } from './render/render-style';
-import type { SettingValue } from './settings/setting-value';
 import { gameCommand } from './game/input/game-commands';
 import { KEY_MAPPING as K } from './input/key-mapping';
+import type { PageDevices } from './run/page-devices';
+import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
+import type { GraphicsSettingsData } from './render/graphics-settings';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -50,49 +48,47 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, gs: GameScene,
-  graphics: SettingValue<GraphicsSettingsData>, renderStyle: SettingValue<RenderStyle>,
-  debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, sections: FrameSections,
-  autoSave: AutoSave,
-  snapshotControls: SnapshotControls,
+  launcher: Launcher, gs: GameScene, settings: UserSettings, bgm: Bgm,
+  debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
 ): void {
   let lastTime = performance.now();
   let completedFrames = 0;
-  // 1フレーム分: update → sync → render を実行し、計測後に次フレームを予約する。
+  // 1フレーム分: ランのフレームを回し、次フレームを予約する。
   function animate(now: number) {
     const dt = (now - lastTime) / 1000;
     lastTime = now;
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gs.syncFrame(viewport, graphics.current, debugInfo.debugTarget);
-    // 設定面はタイトル画面でも開けるので、周回の有無を見る前に引き直す。
-    pauseMenu.sync();
-    const game = launcher.currentGame;
-    const current = launcher.current;
-    // 周回の切り替え中は Game が無いので、次フレームを予約して抜ける。
-    if (game === null || current === null) {
+    gs.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
+    // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
+    // 決まった周回の進行と、設定面の試聴に合わせる。
+    pauseMenu.sync(now);
+    const run = launcher.current;
+    bgm.sync({
+      volume: settings.audibleBgmVolume,
+      inRun: run?.isPlaying ?? false,
+      audition: pauseMenu.settingsView.bgmAudition,
+    });
+    // 周回の切り替え中はランが無いので、次フレームを予約して抜ける。
+    if (run === null) {
       requestAnimationFrame(animate);
       return;
     }
-    const t0 = debugInfo.on ? performance.now() : 0;
     try {
-      sections.beginFrame();
-      game.update(dt, now, viewport);
-      sections.endFrame();
-      // Game が消費した入力エッジの残りを、外部ライフサイクルの優先順へ配る。
-      game.routeInput([
+      // ランが消費しなかった入力エッジを、ランの外の優先順で受ける口。
+      const completed = run.frame(dt, now, viewport, [
         {
           feature: 'snapshot',
           commands: [
             gameCommand(K.manualSave.code, K.manualSave),
             gameCommand(K.openSaveBrowser.code, K.openSaveBrowser),
           ],
-          handleCommand: command => snapshotControls.handleCommand(command.id, current.snapshot),
+          handleCommand: command => snapshotControls.handleCommand(command.id, run.snapshot),
         },
         {
           feature: 'launcher',
-          isEnabled: () => !game.activeStage.isPlaying,
+          isEnabled: () => !run.game.activeStage.isPlaying,
           commands: [gameCommand(K.restart.code, K.restart)],
           handleCommand: command => launcher.handleCommand(command.id),
         },
@@ -102,26 +98,12 @@ function startAnimationLoop(
           handleCommand: command => debugInfo.handleCommand(command.id),
         },
       ]);
-      // 入力の処理中に周回が畳まれたら(再出撃キーなど)、捨てた Game には触らずこのフレームを終える。
-      if (launcher.currentGame !== game) {
-        requestAnimationFrame(animate);
-        return;
+      if (completed) {
+        launcher.followProgress();
+        completedFrames++;
+        // 例外なく60フレーム完走したことを、外から読めるようにする印。
+        if (completedFrames === 60) document.documentElement.dataset.gameReady = 'true';
       }
-      autoSave.update(current.snapshot);
-      const t1 = debugInfo.on ? performance.now() : 0;
-      game.sync(graphics.current, renderStyle.current, viewport, now);
-      const t2 = debugInfo.on ? performance.now() : 0;
-      game.render(renderStyle.current);
-      const t3 = debugInfo.on ? performance.now() : 0;
-      // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
-      // render 区間へ混ざらないよう、区間の外で呼ぶ。
-      gs.gpu.resolve();
-      if (debugInfo.on) {
-        debugInfo.record(game, t1 - t0, t2 - t1, t3 - t2, t3);
-      }
-      completedFrames++;
-      // 例外なく60フレーム完走したことを、外から読めるようにする印。
-      if (completedFrames === 60) document.documentElement.dataset.gameReady = 'true';
       requestAnimationFrame(animate);
     } catch (e) {
       console.error('Fatal error in animation loop, stopping game loop:', e);
@@ -138,7 +120,7 @@ function startAnimationLoop(
   });
 }
 
-// タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、Game より先に組む。
+// タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、ランより先に組む。
 // 各部品は設定の現在値を構築時に受け取り、以後の変更は main が配線する。
 function initHud(settings: UserSettings): {
   shell: HudShell; hud: Hud; markers: MarkerDevice; audioEngine: AudioEngine; bgm: Bgm;
@@ -154,18 +136,17 @@ function initHud(settings: UserSettings): {
   const markers = new MarkerDevice(shell.layers.marker);
   injectMarkerIdentityStyle();
   const audioEngine = new AudioEngine();
-  const bgm = new Bgm(audioEngine, settings.bgmVolume.current);
+  const bgm = new Bgm(audioEngine);
   const pauseMenu = new PauseMenu(
-    shell.layers.system, shell.overlayManager, bgm,
-    settings.graphics.current, settings.bgmVolume.current, settings.themePalette.current.id,
+    shell.layers.system, shell.overlayManager,
+    settings.graphics.current, settings.audibleBgmVolume, settings.themePalette.current.id,
   );
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
 }
 
 // 設定の変更を、通知から引き直す側へ配る。書き換えの入口はどれも設定へ戻す。
 function bindSettings(
-  settings: UserSettings, hud: Hud, bgm: Bgm,
-  pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
+  settings: UserSettings, hud: Hud, pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {
   const settingsView = pauseMenu.settingsView;
   settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
@@ -174,13 +155,16 @@ function bindSettings(
   hud.onRenderStyleChange = (style) => settings.renderStyle.set(style);
 
   // 音量は一時停止メニューと設定ビューの両方が書き換えるので、通知を受けた側で両方を引き直す。
-  settings.bgmVolume.subscribe((volume) => {
-    bgm.setVolume(volume);
-    pauseMenu.syncBgmVolume(volume);
-    settingsView.syncBgmVolume(volume);
-  });
-  pauseMenu.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
-  settingsView.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
+  // どちらも消音中は音量を 0 と見せる。
+  const syncBgmVolume = (): void => {
+    pauseMenu.syncBgmVolume(settings.audibleBgmVolume);
+    settingsView.syncBgmVolume(settings.audibleBgmVolume);
+  };
+  settings.bgmVolume.subscribe(syncBgmVolume);
+  settings.bgmMuted.subscribe(syncBgmVolume);
+  pauseMenu.onBgmVolumeChange = (volume) => settings.setBgmVolume(volume);
+  settingsView.onBgmVolumeChange = (volume) => settings.setBgmVolume(volume);
+  pauseMenu.onBgmMutedChange = (muted) => settings.setBgmMuted(muted);
 
   // 配色はプリセットに在るものだけを選択として残す。
   settingsView.onThemeIdChange = (id) => {
@@ -220,15 +204,15 @@ async function main() {
   const gs = await initScene(settings.graphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
-  const host: GameHost = {
-    scene: gs, hud, markers, sections,
-    viewOptions: viewOptionSettings(settings),
-    themePalette: settings.themePalette,
-  };
+  const debugInfo = new DebugInfoWindow(
+    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager,
+    settings.renderStyle.current, debugInfoOpenAtStart(),
+  );
+  const devices: PageDevices = { scene: gs, hud, markers, audioEngine, pauseMenu, debugInfo };
 
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
-    shell, host, audioEngine, bgm, pauseMenu, unlockManager,
+    shell, devices, viewOptionSettings(settings), settings.themePalette, sections, unlockManager,
     slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
   );
 
@@ -243,12 +227,8 @@ async function main() {
     saveBrowser.open();
   };
 
-  // デバッグ情報ウィンドウと、設定の配線。
-  const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager,
-    settings.renderStyle.current, debugInfoOpenAtStart(),
-  );
-  bindSettings(settings, hud, bgm, pauseMenu, debugInfo);
+  // 設定とデバッグ情報ウィンドウの配線。
+  bindSettings(settings, hud, pauseMenu, debugInfo);
   pauseMenu.onOpenDebugInfoWindow = () => {
     pauseMenu.toggle(false);
     debugInfo.open();
@@ -257,12 +237,9 @@ async function main() {
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
   pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
-  // 最初の周回を起こしてから、フレームを回し始める。
+  // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
+  startAnimationLoop(launcher, gs, settings, bgm, debugInfo, pauseMenu, snapshotControls);
   await launcher.start();
-  startAnimationLoop(
-    launcher, gs, settings.graphics, settings.renderStyle, debugInfo, pauseMenu, sections,
-    autoSave, snapshotControls,
-  );
 }
 
 main().catch((err) => {

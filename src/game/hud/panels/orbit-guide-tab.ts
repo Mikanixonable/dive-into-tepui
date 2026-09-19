@@ -1,9 +1,10 @@
-// 表示パネルの軌道ガイドタブ。CR3BP の周期軌道族(DEVELOP/SPEC/MAP.md 4.1 の表が正本)と地球専用の
-// 参照軌道4種を、基本/共線点/三角点/副天体周回/共鳴の5群タブに分けて並べる。種類の見出しはその
-// 種類の表示トグルを兼ね、ON の種類だけ設定行を出す。操作のたびに次の OrbitGuideSettings を組んで
-// onSettingsChange へ渡す。並べる族は、実在する族を示す availableFamilies から作る。
+// 表示パネルの軌道ガイドタブ。CR3BP の周期軌道族(DEVELOP/SPEC/MAP.md「軌道ガイドタブ」の表が
+// 正本)と地球専用の参照軌道4種を、基本/共線点/三角点/副天体周回/共鳴の5群タブに分けて並べる。
+// 種類の見出しはその種類の表示トグルを兼ね、ON の種類だけ設定行を出す。操作のたびに次の
+// OrbitGuideSettings を組んで onSettingsChange へ渡す。並べる族は、実在する族を示す
+// availableFamilies から作る。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { buildLabeledRow, Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../../hud/widgets';
+import { buildLabeledRow, Button, SegmentedControl, TabBar, ToggleSwitch, type ValueInput } from '../../../hud/widgets';
 import {
   AMPLITUDE_MAPPING, COUNT_MAPPING, CYCLES_MAPPING, DIRECTION_ITEMS, OPACITY_MAPPING,
   PHASE_MAPPING, RANGE_MAPPING,
@@ -16,17 +17,16 @@ import {
   DEFAULT_ORBIT_GUIDE_SETTINGS,
   defaultCombinedKindSettings,
   defaultKindSettings,
-  GUIDE_GROUPS,
   type CombinedKindSettings,
   type CriticalInclinationSettings,
   type DawnDuskSettings,
-  type GuideGroupId,
   type GuideKindSettings,
   type GuideKindSharedSettings,
   type LissajousSettings,
   type OrbitGuideSettings,
   type SunSyncSettings,
-} from '../../celestial/orbit-guide/orbit-guide-settings';
+} from '../../viewer/orbit-guide-settings';
+import { GUIDE_GROUPS, GUIDE_SYSTEMS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-groups';
 import { ORBIT_GUIDE_GROUP_TABS } from '../hud-selection';
 import type { OrbitGuideGroupTab } from '../hud-selection';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
@@ -89,6 +89,7 @@ function syncSharedKindFields(row: SharedKindFields, settings: GuideKindSharedSe
 
 export class OrbitGuideTab {
   public readonly element: HTMLElement;
+  // 操作で設定が変わるたびに、次の設定で呼ばれる。
   public onSettingsChange: ((settings: OrbitGuideSettings) => void) | null = null;
 
   private current: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
@@ -208,7 +209,7 @@ export class OrbitGuideTab {
   private buildSystemRow(parent: HTMLElement): void {
     const row = document.createElement('div');
     row.className = 'orbit-guide-system-row';
-    for (const system of ALL_SYSTEMS) {
+    for (const system of GUIDE_SYSTEMS) {
       const sw = new ToggleSwitch(SYSTEM_LABEL[system], (on) => this.setSystem(system, on));
       row.appendChild(sw.element);
       this.systemSwitches.set(system, sw);
@@ -562,9 +563,6 @@ const GROUP_TAB_LABEL: Readonly<Record<OrbitGuideGroupTab, string>> = {
   basic: '基本', collinear: '共線点', triangular: '三角点', secondary: '副天体周回', resonant: '共鳴',
 };
 
-const ALL_SYSTEMS: readonly CatalogSystemId[] = [
-  'earth-moon', 'sun-earth', 'sun-mars', 'jupiter-europa', 'saturn-titan', 'saturn-enceladus', 'mars-phobos',
-];
 const SYSTEM_LABEL: Readonly<Record<CatalogSystemId, string>> = {
   'earth-moon': '地球-月系', 'sun-earth': '太陽-地球系', 'sun-mars': '太陽-火星系',
   'sun-jupiter': '太陽-木星系', 'sun-saturn': '太陽-土星系',

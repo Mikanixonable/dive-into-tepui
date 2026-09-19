@@ -1,4 +1,4 @@
-// マップビューの「未来表示」がどこを・いつを指すかの管理と、その操作パネル。
+// マップビューの選択から「未来表示」がどこを・いつを指すかを導出し、操作パネルへ同期する。
 //
 // ここでいう window は「どの座標系で(frame)・いつを(displayTime)見るか」を1フレーム分に
 // 束ねたもので、時間の窓だけを指す語ではない。画面全体で1つに揃っていなければならない —
@@ -8,24 +8,19 @@ import { PredictPanel } from './hud/panels/predict-panel';
 import type { PanelCollapse } from './hud/panel-shell';
 import { buildTicks } from './hud/orbit/tick-scale';
 import { epochUnixSeconds } from '../hud/utils';
-import type { TickLabelMode, TimeLabelSetting } from './hud/orbit/calendar-ticks';
+import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
-import { frameRoleOf, ReferenceFrame } from '../physics/frame';
-import type { FrameAnchorSource } from '../physics/frame';
+import { frameRoleOf } from '../physics/frame';
+import type { FrameAnchorSource, ReferenceFrame } from '../physics/frame';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { PredictedArc } from './dynamic/predicted-arc';
 import type { TrajectoryDemand } from './dynamic/trajectory-demand';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
-  type DisplayDurationKey, type DisplayPastDurationKey,
-} from './display-window-duration';
-
-
-const DISPLAY_DUR_DAY = 86400; // 1日
-const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
-const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
-const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
+} from './viewer/predict-panel-selection';
+import type { PredictPanelSource, TickLabelMode } from './viewer/predict-panel-selection';
+import type { PredictPanelCommands } from './viewer/predict-panel-commands';
 
 // 1フレーム分の「どこを・いつを表示しているか」。
 export interface DisplayWindow {
@@ -73,29 +68,12 @@ export function trajectoryDemandOf(
 // パネル幅に収まる目盛りの上限本数。
 const TICK_MAX_COUNT = 6;
 
-// 固定長プリセットの秒数。
-const FIXED_DURATION_SEC: Record<'day' | 'tenDay' | 'month' | 'threeMonth', number> = {
-  day: DISPLAY_DUR_DAY,
-  tenDay: DISPLAY_DUR_TEN_DAY,
-  month: DISPLAY_DUR_MONTH,
-  threeMonth: DISPLAY_DUR_THREE_MONTH,
-};
-
 // スライダーの段階数 [下限, 上限] と、1 段階あたりの目安の粗さ [s]。上限は DOM/イベント負荷の天井。
 const SLIDER_MIN_STEPS = 200;
 const SLIDER_MAX_STEPS = 4000;
 const SLIDER_TARGET_STEP_SEC = 10;
 
 export class DisplayWindowManager {
-  private _followCamera = true;
-  private durationKey: DisplayDurationKey = 'orbit';
-  private pastDurationKey: DisplayPastDurationKey = 'none';
-  private sliderT = 0;
-  private customDurationSec = DISPLAY_DUR_DAY;
-  private customPastDurationSec = DISPLAY_DUR_DAY;
-  private _tickLabelMode: TickLabelMode = 'absolute';
-  private _showElementTimes = false;
-  private _frame: ReferenceFrame;
   // このランの元期の unix 秒相当。
   private readonly epochUnixSec: number;
 
@@ -103,169 +81,91 @@ export class DisplayWindowManager {
 
   private _current: DisplayWindow;
 
-  // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力の反映先を自身にする。
-  constructor(
+  // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力を命令口へ繋ぐ。
+  public constructor(
     hudRoot: HTMLElement,
     collapse: PanelCollapse,
     private readonly celestialBodies: CelestialBodies,
+    private readonly selection: PredictPanelSource,
+    private readonly commands: PredictPanelCommands,
   ) {
-    this._frame = celestialBodies.frames.inertialFrame;
     this.epochUnixSec = epochUnixSeconds(celestialBodies.epoch);
     this._current = {
-      frame: this._frame, simTime: 0, referencePeriod: NaN,
+      frame: selection.frame, simTime: 0, referencePeriod: NaN,
       duration: APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0, forceCurrent: true,
-      tickLabelMode: this._tickLabelMode, showElementTimes: this._showElementTimes,
+      tickLabelMode: selection.tickLabelMode, showElementTimes: selection.showElementTimes,
       epochUnixSec: this.epochUnixSec,
     };
     this.panel = new PredictPanel(hudRoot, collapse);
-    // 期間はスライダーの尺度そのものなので、尺度を変えたら位置も原点へ戻す。
-    this.panel.onDurationSelect = (key) => {
-      this.durationKey = key;
-      this.sliderT = 0;
-    };
-    this.panel.onCustomDurationConfirm = (sec) => {
-      this.customDurationSec = sec;
-      this.durationKey = 'custom';
-      this.sliderT = 0;
-    };
-    // 過去期間はスライダーの尺度ではないので、切り替えてもつまみ位置は動かさない。
-    this.panel.onPastDurationSelect = (key) => {
-      this.pastDurationKey = key;
-    };
-    this.panel.onPastCustomDurationConfirm = (sec) => {
-      this.customPastDurationSec = sec;
-      this.pastDurationKey = 'custom';
-    };
-    this.panel.onTickLabelModeChange = (mode) => {
-      this.tickLabelMode = mode;
-    };
-    this.panel.onShowElementTimesChange = (show) => {
-      this.showElementTimes = show;
-    };
-    this.panel.onSliderChange = (t) => {
-      this.sliderT = t;
-    };
-    this.panel.onResetToNow = () => {
-      this.sliderT = 0;
-    };
-    this.panel.onJumpToTime = (sec) => {
-      this.sliderT = Math.max(0, Math.min(1, sec / this._current.duration));
-    };
-  }
-
-  // 未来の軌道・マーカーを描く座標系。カメラを固定する座標系とは独立にプレイヤーが選ぶ。
-  get frame(): ReferenceFrame {
-    return this._frame;
-  }
-
-  set frame(value: ReferenceFrame) {
-    this._frame = value;
-  }
-
-  // 時刻ラベルを UTC カレンダーで書くか(既定)、simTime からの経過時間で書くか。
-  get tickLabelMode(): TickLabelMode {
-    return this._tickLabelMode;
-  }
-
-  set tickLabelMode(value: TickLabelMode) {
-    this._tickLabelMode = value;
-  }
-
-  // 軌道要素マーカーへ通過時刻を併記するか(既定 OFF)。
-  get showElementTimes(): boolean {
-    return this._showElementTimes;
-  }
-
-  set showElementTimes(value: boolean) {
-    this._showElementTimes = value;
-  }
-
-  // カメラの基準が移ったとき、描画基準も同じ天体へ合わせるか。
-  get followCamera(): boolean {
-    return this._followCamera;
-  }
-
-  setFollowCamera(on: boolean): void {
-    this._followCamera = on;
-  }
-
-  // カメラの基準が id へ移ったことを受け、追随が有効で id が登録天体なら描画基準もそこへ移す
-  // (回転側は現状を保つ)。
-  followCameraFocus(id: string | undefined): void {
-    if (!this._followCamera || id === undefined || !this.celestialBodies.has(id)) return;
-    this._frame = this.celestialBodies.frames.frameOf(id, this._frame.rotatingWith);
+    this.panel.onDurationSelect = (key) => this.commands.selectDuration(key);
+    this.panel.onCustomDurationConfirm = (sec) => this.commands.selectCustomDuration(sec);
+    this.panel.onPastDurationSelect = (key) => this.commands.selectPastDuration(key);
+    this.panel.onPastCustomDurationConfirm = (sec) => this.commands.selectCustomPastDuration(sec);
+    this.panel.onTickLabelModeChange = (mode) => this.commands.setTickLabelMode(mode);
+    this.panel.onShowElementTimesChange = (show) => this.commands.setShowElementTimes(show);
+    this.panel.onShowTicksChange = (show) => this.commands.setShowTicks(show);
+    this.panel.onSliderChange = (t) => this.commands.setSliderT(t);
+    this.panel.onResetToNow = () => this.commands.setSliderT(0);
+    this.panel.onJumpToTime = (sec) => this.commands.jumpToTime(sec, this._current.duration);
   }
 
   // 軌道フレームが選んでいる役割の公転が成立しなくなったら、慣性系へ落とす。
-  dropStaleRotatingFrame(displayTime: number, frameAnchors: FrameAnchorSource): void {
-    const rotatingWith = this._frame.rotatingWith;
+  public dropStaleRotatingFrame(displayTime: number, frameAnchors: FrameAnchorSource): void {
+    const rotatingWith = this.selection.frame.rotatingWith;
     if (rotatingWith === null || rotatingWith.kind !== 'revolution') return;
     const role = frameRoleOf(rotatingWith.id);
     if (role === null || frameAnchors.attractorOf(`@${role}`, displayTime) !== null) return;
-    this._frame = this.celestialBodies.frames.frameOf(this._frame.center, null);
+    this.commands.dropRotation();
   }
 
   // 直近の resolve() が確定させた表示窓。
-  get current(): DisplayWindow {
+  public get current(): DisplayWindow {
     return this._current;
   }
 
   // 選んだ期間の秒数を返す。'orbit' では referencePeriod をそのまま返し、それが有限な正数で
   // なければ APERIODIC_ARC_DURATION へ落とす。どの軌道の周期を参照するかは呼び出し側の文脈で
   // 決まるので、このクラス自身は軌道周期を持たない。
-  durationSec(referencePeriod: number): number {
-    if (this.durationKey === 'orbit') {
-      return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : APERIODIC_ARC_DURATION;
-    }
-    if (this.durationKey === 'custom') return this.customDurationSec;
-    return FIXED_DURATION_SEC[this.durationKey];
-  }
-
-  // 過去方向に遡って描く期間の秒数。durationSec と同じ参照周期の解釈を使い、'none' は 0。
-  private pastDurationSec(referencePeriod: number): number {
-    if (this.pastDurationKey === 'none') return 0;
-    if (this.pastDurationKey === 'orbit') {
-      return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : APERIODIC_ARC_DURATION;
-    }
-    if (this.pastDurationKey === 'custom') return this.customPastDurationSec;
-    return FIXED_DURATION_SEC[this.pastDurationKey];
+  public durationSec(referencePeriod: number): number {
+    return this.selection.durationSec(referencePeriod);
   }
 
   // このフレームの表示窓を確定させて返す。表示時刻はスライダーが立っている間だけ未来を指し、
-  // forceCurrent または原点では simTime そのもの。forceCurrent の間はスクラバーの位置も原点に戻す。
-  resolve(simTime: number, controlled: DynamicEntity | null, forceCurrent: boolean): DisplayWindow {
+  // forceCurrent または原点では simTime そのもの。
+  public resolve(simTime: number, controlled: DynamicEntity | null, forceCurrent: boolean): DisplayWindow {
     const referencePeriod = this.currentOrbitPeriod(controlled, simTime);
     const duration = this.durationSec(referencePeriod);
-    if (forceCurrent) this.sliderT = 0;
+    const sliderT = this.selection.sliderT;
     this._current = {
-      frame: this._frame,
+      frame: this.selection.frame,
       simTime,
       referencePeriod,
       duration,
-      pastDuration: this.pastDurationSec(referencePeriod),
-      displayTime: forceCurrent || this.sliderT <= 0 ? simTime : simTime + this.sliderT * duration,
+      pastDuration: this.selection.pastDurationSec(referencePeriod),
+      displayTime: forceCurrent || sliderT <= 0 ? simTime : simTime + sliderT * duration,
       forceCurrent,
-      tickLabelMode: this._tickLabelMode,
-      showElementTimes: this._showElementTimes,
+      tickLabelMode: this.selection.tickLabelMode,
+      showElementTimes: this.selection.showElementTimes,
       epochUnixSec: this.epochUnixSec,
     };
     return this._current;
   }
 
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
-  sync(controlled: DynamicEntity | null): void {
+  public sync(controlled: DynamicEntity | null): void {
     this.panel.render({
       visible: !this._current.forceCurrent,
-      durationKey: this.durationKey,
-      pastDurationKey: this.pastDurationKey,
+      durationKey: this.selection.durationKey,
+      pastDurationKey: this.selection.pastDurationKey,
       pastDuration: this._current.pastDuration,
-      tickLabelMode: this._tickLabelMode,
-      showElementTimes: this._showElementTimes,
+      tickLabelMode: this.selection.tickLabelMode,
+      showElementTimes: this.selection.showElementTimes,
+      showTicks: this.selection.showTicks,
       duration: this._current.duration,
       displayTime: this._current.displayTime,
       epochUnixSec: this.epochUnixSec,
       sliderSteps: this.sliderSteps(),
-      sliderT: this.sliderT,
+      sliderT: this.selection.sliderT,
       predictionRatio: this.predictionCoverageRatio(controlled),
       ticks: buildTicks(this._current.duration, TICK_MAX_COUNT),
     });
@@ -293,7 +193,7 @@ export class DisplayWindowManager {
   }
 
   // 操作パネルの DOM を片付ける。
-  dispose(): void {
+  public dispose(): void {
     this.panel.dispose();
   }
 }

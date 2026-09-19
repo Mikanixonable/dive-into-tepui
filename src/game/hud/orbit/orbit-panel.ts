@@ -2,11 +2,11 @@
 // 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘/マップ共通。
 import { fmtDist, fmtSpeed, fmtTime, setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
-import type { OrbitReferenceMode } from '../../orbit-reference';
+import type { OrbitReferenceMode } from '../../viewer/orbit-reference-selection';
 import { Button, SegmentedControl } from '../../../hud/widgets';
 
 import { getApsisLabelSpec } from './orbit-labels';
-import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
+import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/vessel';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
 const SYNC_INTERVAL_MS = 100;

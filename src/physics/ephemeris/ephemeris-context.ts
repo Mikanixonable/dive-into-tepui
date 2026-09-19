@@ -3,7 +3,7 @@ import { profileAtOrNull } from './profile';
 import { createJulianDate, TdbJulianDate } from '../time';
 
 // スナップショットが「どの元期・どの暦プロファイル・どの pack で作られたか」。
-// この形のまま GameSaveData の1フィールドとして保存される。
+// JSON の素の値だけから成り、この形のまま直列化の形を兼ねる。
 export interface EphemerisContext {
   // このランの元期(simTime=0 が指す絶対時刻)。**照合の対象ではなく、継承する値。**
   epochJdTdb: number;

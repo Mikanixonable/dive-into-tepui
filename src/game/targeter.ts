@@ -1,15 +1,13 @@
 // 戦闘ターゲットの選定と、戦闘対象・弾薬・燃料の画面マーカーの同期。ターゲットに紐づく
 // 表示(方位マーカー・見越し点・的通過マーク)もここが受け持つ。
 import type { Vec3 } from '../math/vec3';
-import { add, addScaled, dot, len, lenSq, norm, scale, sub } from '../math/vec3';
+import { add, len, norm, scale, sub } from '../math/vec3';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
-import { isBullet } from './dynamic/dynamic-entity/bullet';
-import { bulletReactionOf } from './dynamic/dynamic-entity/bullet-reaction';
 import { isAmmoPickup, isRcsFuelPickup } from './dynamic/dynamic-entity/pickup';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { EntityRoster } from './dynamic/entity-roster';
 import { Player } from './player/player';
-import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
+import { aliveCombatTarget, isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { Viewport } from '../render/viewport';
 import { GroupedMarkers, withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
@@ -27,16 +25,17 @@ import { fmtMarkerDist } from '../hud/utils';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
-import type { NavTarget } from './nav-target';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
 import type { ProjectFn } from '../math/projection';
-import type { RunEvent, RunEventSink } from './run-events';
+import type { RunEvent } from './run-events';
+import type { NavTargetSource } from './viewer/nav-target-selection';
+import type { NavTargetCommands } from './viewer/nav-target-commands';
+import type { ViewMode } from './view/view-mode';
 
 // ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
 const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
 const MAX_BOARD_MARKS = 1; // 同時に出す通過点の数。増やすと照準の目安として紛らわしい
-const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
 // マップ上の弾薬・燃料マーカーが薄れ始める/消える、視点からの距離 [m]。
 const MAP_AMMO_FADE_START = 5e7;
@@ -60,7 +59,7 @@ export class Targeter {
   private readonly aimGroup: MarkerSink;
 
   // 画面上で近接するものをまとめる戦闘対象のマーカー集合。
-  public readonly combatMarkers: GroupedMarkers;
+  private readonly combatMarkers: GroupedMarkers;
   // ターゲットへの見越し点のマーカー。
   private readonly leadMarkers: LeadMarkers;
 
@@ -70,15 +69,23 @@ export class Targeter {
   // 最後に読んだ出来事の通し番号。同じ通過を二度マークにしないために持つ。
   private lastBoardSeq = -1;
 
-  // 照準・戦闘対象・見越し点の3つの群を装置から確保する。畳むのは dispose。
+  // 照準・戦闘対象・見越し点の3つの群を装置から確保する。畳むのは dispose。ターゲットは navTarget から
+  // 読み、選び直しは navTargetCommands へ積む。
   public constructor(
     markers: MarkerDevice,
-    private readonly navTarget: NavTarget, private readonly roster: EntityRoster,
+    private readonly navTarget: NavTargetSource,
+    private readonly navTargetCommands: NavTargetCommands,
+    private readonly roster: EntityRoster,
     private readonly celestialBodies: readonly CelestialBody[],
   ) {
     this.aimGroup = markers.createGroup();
-    this.combatMarkers = new GroupedMarkers(markers.createGroup());
-    this.leadMarkers = new LeadMarkers(markers.createGroup());
+    this.combatMarkers = new GroupedMarkers(markers);
+    this.leadMarkers = new LeadMarkers(markers);
+  }
+
+  // 直前の sync で、戦闘対象のマーカー集合が天体ラベルへラベルを譲った項目。
+  public get hiddenMarkerItems(): readonly GroupedMarkerItem[] {
+    return this.combatMarkers.getHiddenItems();
   }
 
   // 所有するマーカー群を取り除く。
@@ -94,47 +101,25 @@ export class Targeter {
   // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
   // (天体・ラグランジュ点)や撃破済みなら null。
   public get aliveTarget(): CombatTarget | null {
-    return this.navTarget.resolveCombatTarget(this.roster);
+    const id = this.navTarget.id;
+    return id === null ? null : aliveCombatTarget(this.roster.all(), id);
   }
 
-  // router から [T] の要求を受け取る。実際の選定はカメラ更新後に行う。
+  // [T] のターゲット選定を要求する。選定は、カメラ更新後に呼ぶ handleTargetSelect で行う。
   public requestTargetSelect(): void {
     this.targetSelectRequested = true;
   }
 
-  // 照準中心にもっとも近い対象をターゲットにする。操作中の艦自身は候補から外す。
+  // [T] の要求が立っていれば、照準中心にもっとも近い対象をターゲットにする命令を積む。候補が
+  // 無ければ解除する命令になる。操作中の艦自身は候補から外す。
   public handleTargetSelect(viewer: OrbitingObject, project: ProjectFn, viewport: Viewport): void {
     if (!this.targetSelectRequested) return;
     this.targetSelectRequested = false;
     const targets = this.roster.all()
       .filter(isCombatTarget).filter((e) => e.motion.alive && e !== viewer);
-    this.navTarget.setCombatTarget(pickNearest(
+    this.navTargetCommands.setCombatTarget(pickNearest(
       targets, (target) => project(target.motion.state.r),
       viewport.width * 0.5, viewport.height * 0.5, Infinity));
-  }
-
-  // 発射弾が標的面を自機側から通過したことを出来事として記録する。的の半径から外れた通過は
-  // 記録しない。
-  public recordBoardPasses(viewer: OrbitingObject | null, events: RunEventSink): void {
-    const target = this.aliveTarget;
-    if (!viewer || !target) return;
-    const n = norm(sub(target.motion.state.r, viewer.motion.state.r)); // 的の法線 = 視線方向
-    if (lenSq(n) < 0.5) return;
-
-    // 各弾について、前フレームと今フレームの位置が的面をどちら向きに跨いだかを見る。
-    for (const b of this.roster.all().filter(isBullet)) {
-      const bullet = bulletReactionOf(b.motion);
-      if (bullet?.type !== 'normal' || !b.motion.alive) continue; // 的通過マーカーは通常弾のみ対象
-      const prevR = b.motion.prevState.r;
-      const d0 = dot(sub(prevR, target.motion.state.r), n);
-      const d1 = dot(sub(b.motion.state.r, target.motion.state.r), n);
-      if (!(d0 < 0 && d1 >= 0)) continue; // 自機側 → 向こう側への通過のみ
-      const t = d0 / (d0 - d1);
-      const pos = addScaled(prevR, sub(b.motion.state.r, prevR), t);
-      const off = sub(pos, target.motion.state.r);
-      if (lenSq(off) > BOARD_RADIUS * BOARD_RADIUS) continue; // 的から外れすぎ
-      events.record({ kind: 'targetBoardPassed', offset: off, simTime: b.motion.state.t });
-    }
   }
 
   // 記録された通過からマークの列を組み直す。表示時刻 displayTime で寿命の尽きたものは落とし、
@@ -163,22 +148,22 @@ export class Targeter {
   // まとめて更新する。celestialLabels は今フレームに描かれた天体ラベルで、マップでの重なりを
   // 避けるために読む。
   public sync(
-    viewer: OrbitingObject | null, camera: CameraFrame, displayTime: number,
+    viewer: OrbitingObject | null, camera: CameraFrame, view: ViewMode, displayTime: number,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
     nowMs: number, palette: ThemePalette,
   ): void {
     const project = camera.project;
     this.declarations.length = 0;
     this.pushBoardMarkers(project, displayTime);
-    this.pushTargetDirMarkers(viewer, camera.mode === 'map', project);
-    this.syncTargetMarkers(viewer, displayTime, camera, visibilityPolicy, celestialLabels, nowMs, palette);
+    this.pushTargetDirMarkers(viewer, view === 'map', project);
+    this.syncTargetMarkers(viewer, displayTime, camera, view, visibilityPolicy, celestialLabels, nowMs, palette);
     this.aimGroup.sync(this.declarations, nowMs);
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。位置は
   // 機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   private syncTargetMarkers(
-    viewer: OrbitingObject | null, displayTime: number, camera: CameraFrame,
+    viewer: OrbitingObject | null, displayTime: number, camera: CameraFrame, view: ViewMode,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
     nowMs: number, palette: ThemePalette,
   ): void {
@@ -186,7 +171,6 @@ export class Targeter {
     const targets = this.roster.all().filter(isCombatTarget);
     const ammoPickups = this.roster.all().filter(isAmmoPickup);
     const fuelPickups = this.roster.all().filter(isRcsFuelPickup);
-    const view = camera.mode;
     const mapView = view === 'map';
     const project = camera.project;
     // 視点が居なければ、どの対象も視点から等しく遠く、距離で決まる範囲の外にあるものとして表示する。
@@ -245,7 +229,7 @@ export class Targeter {
       this.pushMarkerItem(fuel.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     this.combatMarkers.sync(
-      this.markerItemScratch, camera, nowMs, celestialLabels, this.celestialBodies,
+      this.markerItemScratch, camera, view, nowMs, celestialLabels, this.celestialBodies,
     );
     // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。
     const shooter = viewer instanceof Player

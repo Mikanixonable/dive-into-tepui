@@ -1,6 +1,6 @@
 // マップの天体・ラグランジュ点のラベルを、集合として間引きながら HUD マーカーへ出す。
 // 画面上で近すぎるものをどれだけ残すかという、集合でしか決まらない判断を持つ。
-import { Vec3, v3, sub, len } from '../../math/vec3';
+import { type Vec3, v3, sub, len } from '../../math/vec3';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { lagrangePointsOf, secondaryFrameOf } from '../../physics/lagrange';
 import { occlusionOpacity } from '../../physics/occlusion';
@@ -8,15 +8,15 @@ import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 import { LagrangePointMarker } from './lagrange-point-marker';
 import { CelestialSubLabels, type CelestialLabelState } from './celestial-sub-labels';
 import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type ProjectedLabel } from '../../marker/crowding';
-import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import { appearsOnMap, type MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ProjectFn } from '../../math/projection';
-import type { GroupedMarkers } from './grouped-markers';
+import type { GroupedMarkerItem } from './grouped-markers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDevice } from '../../marker/marker-device';
 import { pointPlacement } from './marker-placement';
 
 // 名前の混雑判定の半径 [px]。これより近い名前どうしは、優先度の低いほうを隠す。
@@ -104,9 +104,12 @@ export class CelestialMarkers {
   // 選択候補に出す対象。登録天体は円盤を持つので全件、ラグランジュ点は記号を出す点だけ。
   get bodyPickables(): readonly ObjectPickable[] { return this.bodyPickableItems; }
 
-  // 星系の全天体とラグランジュ点からラベルの全集合を組む。ラグランジュ点は、共線点・三角点
-  // それぞれの成立条件を満たす点だけを持つ。
-  constructor(private readonly group: MarkerSink, private readonly celestialSystem: CelestialSystem) {
+  private readonly group: MarkerSink;
+
+  // 星系の全天体とラグランジュ点からラベルの全集合を組み、markers から作ったマーカー群へ置く。
+  // ラグランジュ点は、共線点・三角点それぞれの成立条件を満たす点だけを持つ。
+  constructor(markers: MarkerDevice, private readonly celestialSystem: CelestialSystem) {
+    this.group = markers.createGroup();
     this.subLabels = new CelestialSubLabels(celestialSystem);
     this.lagrangeSources = celestialSystem.entities.flatMap((body) => {
       const motion = body.motion;
@@ -263,14 +266,13 @@ export class CelestialMarkers {
     };
   }
 
-  // 混雑で画面から消えた船・敵機・基地を、天体ラベルの下のサブ行として描き足す。
-  // syncLabels が組んだ宣言のうち、集約先になった天体のぶんだけを差し替えて置き直す。
+  // 混雑で画面から消えた船・敵機・基地を、天体ラベルの下のサブ行として描き足す。同じフレームの
+  // syncLabels の後に呼ぶ。hiddenItems は天体ラベルへラベルを譲った項目。
   syncSubLabels(
-    groupedMarkers: GroupedMarkers, celestialBodies: readonly CelestialBody[], pivot: number,
-    project: ProjectFn, cameraPos: Vec3, nowMs: number,
+    hiddenItems: readonly GroupedMarkerItem[], pivot: number, project: ProjectFn, cameraPos: Vec3, nowMs: number,
   ): void {
     const replacements = this.subLabels.declarations(
-      groupedMarkers, (id) => this.labelStateOf(id), celestialBodies, pivot, project, cameraPos);
+      hiddenItems, (id) => this.labelStateOf(id), pivot, project, cameraPos);
     if (replacements.length === 0) return;
     for (const replacement of replacements) {
       const index = this.declarations.findIndex((d) => d.id === replacement.id);
@@ -279,11 +281,13 @@ export class CelestialMarkers {
     this.group.sync(this.declarations, nowMs);
   }
 
-  // サブ行を足すために要る、今フレームの1件ぶんの表示状態。ラベルを持たない id には null。
+  // サブ行を足すために要る、今フレームの1件ぶんの表示状態。ラベルを持たない id と、今フレームに
+  // 出していないラベルには null。
   private labelStateOf(id: string): CelestialLabelState | null {
     const label = this.labelsById.get(id);
-    if (label === undefined) return null;
     const projected = this.frameScratch.get(id);
+    if (label === undefined || projected === undefined) return null;
+    // 表示トグルでアイコンを消したラベルは、サブ行を足して組み直しても字形を出さない。
     return {
       pos: label.pos,
       shown: label.drawn,
@@ -292,13 +296,14 @@ export class CelestialMarkers {
       markerLabel: label.item.markerLabel,
       glyph: label.showIcon ? label.item.glyph : '',
       priority: label.item.labelPriority,
-      opacity: projected?.opacity ?? 1,
-      drawable: projected !== undefined && projected.front && projected.opacity > 0,
+      opacity: projected.opacity,
+      drawable: projected.front && projected.opacity > 0,
     };
   }
 
   // 出している天体ラベルをすべて畳む。
   hideLabels(nowMs: number): void {
+    this.frameScratch.clear();
     this.activeCelestialLabels.length = 0;
     this.declarations.length = 0;
     this.group.sync(this.declarations, nowMs);

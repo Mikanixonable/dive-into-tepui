@@ -1,16 +1,20 @@
 import type * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import {
-  ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
+  ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement,
+  type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
 import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
+import { MUZZLE_SPEED } from './vessel';
+import { PLAYER_THRUST, PLAYER_TORQUE } from '../../player/player-loadout';
 import type { EntityIdAllocators } from './entity-id';
-import type { MetalEnemySaveData } from '../../save/save-data';
+import type { EntityRegistry } from '../entity-registry';
+import { deserializeParts, type Part, type AnyPart } from './parts';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
-// 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
-// bounds と一致することを固定し、実行時の物理構築が THREE のモデル生成へ依存しないようにする。
+// 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。アセットの bounds を写した
+// 定数で、一致は描画テストが確かめる。
 const DRIFTING_COLLISION_RADIUS = 67.1935257886386;
 const TYPED_COLLISION_RADII = [
   93.8906797184146,
@@ -30,8 +34,14 @@ export function metalEnemyCollisionRadius(typeIndex: number | null): number {
 const DRIFTING_INERTIA = v3(1, 1.1, 1.05);
 const TYPED_INERTIA = v3(1, 1, 1);
 
-// 新規配置。typeIndex が null なら型番を持たない漂流機体、数値なら stage00 ウェーブ敵の
-// 機体テンプレート番号。
+export interface SerializedMetalEnemy extends SerializedEnemy {
+  readonly kind: 'metal-enemy';
+  // 機体テンプレート番号。型番を持たない漂流機体は null。
+  readonly typeIndex: number | null;
+  readonly parts: readonly AnyPart[];
+}
+
+// 敵の配置に機体テンプレート番号を足したもの。typeIndex が null なら型番を持たない漂流機体。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
 // 金属機体の敵。機体テンプレートが外形と接触半径を決め、被弾は艦と同じパーツ式の被弾モデルへ入る。
@@ -41,25 +51,57 @@ export class MetalEnemy extends PartBasedEnemy {
 
   private readonly typeIndex: number | null;
 
-  // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。
-  public constructor(
-    init: MetalEnemyPlacement | EnemyRestore,
-    idAllocators: EntityIdAllocators,
-    scene?: THREE.Scene,
+  // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。id は採番器が
+  // 配った識別子。parts は機体の部品構成で、省けば既定の構成を満タンで積む。
+  private constructor(
+    placement: MetalEnemyPlacement,
+    id: string,
+    scene: THREE.Scene | undefined,
+    // 金属の敵は、自機と同じ性能の推進器と機関砲を積む。
+    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP, PLAYER_THRUST, PLAYER_TORQUE, MUZZLE_SPEED),
+    alive?: boolean,
+    burstLeft?: number | null,
+    burstDelay?: number | null,
+    lastFireSim?: number | null,
+    lastBehaviorSim?: number | null,
   ) {
-    const typeIndex = 'saved' in init ? (init.saved as MetalEnemySaveData).typeIndex : init.typeIndex;
-    const accent = 'saved' in init ? init.saved.accent : init.accent;
+    const { typeIndex, accent } = placement;
+    // 型番の有無で見た目と慣性を選ぶ
     const metalView = typeIndex === null
       ? new MetalEnemyView(accent, ENEMY_MODEL_SCALE, scene)
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
-      init, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), idAllocators,
-      createShipDefaultParts(ENEMY_MAX_HP),
+      placement, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
+      metalEnemyCollisionRadius(typeIndex), id, parts, alive,
+      burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.typeIndex = typeIndex;
-    // 部品単位の HP までは保存していないので、既定パーツ構成のまま総 HP を按分して戻す。
-    if ('saved' in init) this.setOverallHp(init.saved.health);
+  }
+
+  // placement に新しく置く。
+  public static create(
+    placement: MetalEnemyPlacement, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
+  ): MetalEnemy {
+    return new MetalEnemy(placement, idAllocators.entity.next(placement.id), scene);
+  }
+
+  // 直列化した敵を復元する。
+  public static deserialize(
+    serialized: SerializedMetalEnemy, registry: EntityRegistry, scene?: THREE.Scene,
+  ): MetalEnemy {
+    const placement = { ...deserializeEnemyPlacement(serialized), typeIndex: serialized.typeIndex };
+    return new MetalEnemy(
+      placement,
+      registry.idAllocators.entity.next(placement.id),
+      scene,
+      deserializeParts(serialized.parts),
+      serialized.alive,
+      // 射撃の途中経過と時刻
+      serialized.fireController.burstLeft,
+      serialized.fireController.burstDelay,
+      serialized.fireController.lastFireSim,
+      serialized.fireController.lastBehaviorSim,
+    );
   }
 
   // 金属機体はいつでも撃てる。
@@ -77,8 +119,7 @@ export class MetalEnemy extends PartBasedEnemy {
     return PLASMA_BULLET_DAMAGE;
   }
 
-  // 金属機体の発砲は閃光を伴わないので、記録するものを持たない。
-  protected override muzzleEffect(): void {}
+  protected override fired(): void {}
 
   // 被弾位置によらず、健全な部品へ無作為に割り振る。
   protected override applyBulletDamage(damage: number): void {
@@ -90,8 +131,13 @@ export class MetalEnemy extends PartBasedEnemy {
     return this.applyCollisionDamage(damageSpeed);
   }
 
-  // 敵に共通する保存項目へ型番を足す。
-  public override serialize(): MetalEnemySaveData {
-    return { ...this.serializeEnemyFields(), kind: MetalEnemy.kind, typeIndex: this.typeIndex };
+  // 敵に共通する直列化の項目へ、型番と部品を足す。
+  public override serialize(): SerializedMetalEnemy {
+    return {
+      ...this.serializeEnemyFields(),
+      kind: MetalEnemy.kind,
+      typeIndex: this.typeIndex,
+      parts: this.serializeParts(),
+    };
   }
 }

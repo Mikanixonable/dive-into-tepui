@@ -35,7 +35,7 @@ const VIEWPOINT: Viewpoint = {
 };
 
 function cameraFrame(): CameraFrame {
-  return new CameraView().sync(VIEWPOINT, VIEWPOINT.fovDeg, 2e7, VIEWPORT, 'map', false, v3());
+  return new CameraView().sync(VIEWPOINT, VIEWPOINT.fovDeg, 2e7, VIEWPORT, false, v3());
 }
 
 // 各パスへ書かれた値の記録。illumination が書き込む口だけを持つ。

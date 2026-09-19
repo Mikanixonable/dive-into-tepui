@@ -1,21 +1,26 @@
 // 波状攻撃: 弾薬確保待ち → 遅延後の初回湧き → 交戦圏内数に応じた周期湧きへ進むフェーズ機械と、
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
 import * as THREE from 'three/webgpu';
-import type { CelestialBody } from '../../../physics/celestial-body';
-import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
-import { Player } from '../../player/player';
-import type { StageOutcome } from '../stage-outcome';
-import type { RunEventSink } from '../../run-events';
-
-import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
 import { ellipsoidAltitude } from '../../../physics/atmosphere';
 import { frameOfCelestialBody, framePoint, toFramePoint, toFrameState, toInertialPoint } from '../../../physics/frame';
 import { strongestAttractor } from '../../../physics/attractor';
-import { add, addScaled, len, norm, randPerp, randVec, scale, sub, v3, Vec3 } from '../../../math/vec3';
+import { add, addScaled, len, norm, randPerp, randVec, scale, sub, v3, type Vec3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
+import type { CelestialBody } from '../../../physics/celestial-body';
+import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
+import type { Player } from '../../player/player';
+import type { StageOutcome } from '../stage-outcome';
+import type { RunEventSink } from '../../run-events';
+
+// 波状攻撃が敵を足し、交戦圏外へ出た敵の消滅を記録するステージの面。
+export interface WaveAttackStage extends StageOutcome {
+  // 敵を登録し、出撃数をスコアへ記録する。
+  addEnemy(enemy: Enemy): void;
+}
 
 const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m]
 
@@ -35,9 +40,8 @@ const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距�
 const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
 const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
 
-// フライパス速度の上限 [m/s]。ステージ00は無限に続き波数に上限がないため、これが無いと
-// 相対速度が際限なく上がり、フライパスの Δv だけで敵の軌道が壊れる(近地点が地中に落ちる)。
-// 400 m/s なら 30km の交戦圏を約75秒で通過する — 演出として十分速く、軌道も壊れない。
+// フライパス速度の上限 [m/s]。波数に上限が無いので、これが無いとフライパスの Δv だけで敵の軌道が
+// 壊れる(近地点が地中に落ちる)。400 m/s なら 30km の交戦圏を約75秒で通過する。
 const STAGE00_FLYBY_SPEED_MAX = 400.0;
 
 // 敵の軌道が保つべき近地点高度の余裕 [m](大気圏突入高度 REENTRY_ALT に加算する)。
@@ -46,50 +50,60 @@ const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横ブレ最
 
 type WaveState = 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
 
-export interface WaveAttackSaveData {
-  waveState: WaveState;
-  spawnTimer: number;
-  waveCount: number;
+export interface SerializedWaveAttack {
+  readonly waveState: WaveState;
+  readonly spawnTimer: number;
+  readonly waveCount: number;
 }
 
 export class WaveAttack {
-  private waveState: WaveState;
-  private spawnTimer: number;
-  private _waveCount: number;
-
   public get waveCount(): number { return this._waveCount; }
 
-  // saved があればその状態から始める。
+  // 渡した進行から始める。省いた進行は、弾薬の確保を待つ第0波から始まる。
   public constructor(
     private readonly events: RunEventSink,
     private readonly scene: THREE.Scene,
     private readonly attractors: readonly CelestialBody[],
     private readonly idAllocators: EntityIdAllocators,
-    saved?: WaveAttackSaveData,
-  ) {
-    this.waveState = saved?.waveState ?? 'waiting_for_ammo';
-    this.spawnTimer = saved?.spawnTimer ?? 0;
-    this._waveCount = saved?.waveCount ?? 0;
+    private waveState: WaveState = 'waiting_for_ammo',
+    private spawnTimer = 0,
+    private _waveCount = 0,
+  ) {}
+
+  // 直列化した進行から復元する。
+  public static deserialize(
+    serialized: SerializedWaveAttack,
+    events: RunEventSink,
+    scene: THREE.Scene,
+    attractors: readonly CelestialBody[],
+    idAllocators: EntityIdAllocators,
+  ): WaveAttack {
+    const { waveState, spawnTimer, waveCount } = serialized;
+    // null も欠けと同じく新しい進行の初期値から始める(既定引数は undefined でしか働かない)。
+    return new WaveAttack(
+      events, scene, attractors, idAllocators, waveState ?? undefined, spawnTimer ?? undefined, waveCount ?? undefined,
+    );
   }
 
-  // ウェーブ番号を1つ進め、生成した敵を addEnemy へ渡す。
-  public spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
+  // ウェーブ番号を1つ進め、生成した敵を stage へ足す。
+  public spawnWave(
+    player: Player, stage: Pick<WaveAttackStage, 'addEnemy'>, forcedPattern?: 'linear' | 'random',
+  ): void {
     const wave = ++this._waveCount;
     const enemies = generateWave(
       player.motion.state, wave, this.attractors,
       this.scene, this.idAllocators, forcedPattern,
     );
-    for (const enemy of enemies) addEnemy(enemy);
+    for (const enemy of enemies) stage.addEnemy(enemy);
   }
 
-  // フェーズ機械を1フレーム分進める。
+  // フェーズ機械を1フレーム分進める。敵は stage へ足し、交戦圏外へ出た敵の消滅を stage へ記録する。
   public update(
-    dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: StageOutcome, addEnemy: (enemy: Enemy) => void,
+    dt: number, player: Player, enemies: readonly Enemy[], simTime: number, stage: WaveAttackStage,
   ): void {
     if (this.waveState === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
-    if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, addEnemy);
-    if (this.waveState === 'active_combat') this.updateActiveCombatPhase(dt, player, enemies, simTime, activeStage, addEnemy);
+    if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, stage);
+    if (this.waveState === 'active_combat') this.updateActiveCombatPhase(dt, player, enemies, simTime, stage);
   }
 
   // 自機が弾薬を確保するまで待ち、確保でき次第 spawning_enemies フェーズへ進める。
@@ -101,35 +115,34 @@ export class WaveAttack {
   }
 
   // 遅延タイマーが尽きたら最初のウェーブを湧かせ、active_combat フェーズへ進める。
-  private updateSpawningEnemiesPhase(dt: number, player: Player, addEnemy: (enemy: Enemy) => void): void {
+  private updateSpawningEnemiesPhase(dt: number, player: Player, stage: WaveAttackStage): void {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    this.spawnWave(player, addEnemy);
+    this.spawnWave(player, stage);
     this.waveState = 'active_combat';
     this.spawnTimer = STAGE00_SPAWN_INTERVAL;
   }
 
   // 交戦圏外の敵を消し、同時展開数の上限内でタイマーに従い次のウェーブを湧かせる。
   private updateActiveCombatPhase(
-    dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: StageOutcome, addEnemy: (enemy: Enemy) => void,
+    dt: number, player: Player, enemies: readonly Enemy[], simTime: number, stage: WaveAttackStage,
   ): void {
-    despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, activeStage);
+    despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, stage);
     const activeGroups = countActiveWaveGroups(enemies);
     if (activeGroups === 0) {
-      // 短縮先を 0 にすると、湧いた波が同じフレームで離脱しきる時間加速下で毎フレーム湧き、
-      // 波数と機数が際限なく上がる正のフィードバックになる。
+      // 短縮先を 0 にすると、湧いた波が同じフレームで離脱しきる時間加速下で毎フレーム湧き続ける。
       this.spawnTimer = Math.min(this.spawnTimer, STAGE00_CLEARED_SPAWN_INTERVAL);
     }
     if (activeGroups >= maxWaveGroups(this._waveCount)) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    this.spawnWave(player, addEnemy);
+    this.spawnWave(player, stage);
     this.spawnTimer = STAGE00_SPAWN_INTERVAL;
     this.events.record({ kind: 'waveSpawned', wave: this._waveCount });
   }
 
-  public serialize(): WaveAttackSaveData {
+  // 進行を直列化した形へ畳む。
+  public serialize(): SerializedWaveAttack {
     return { waveState: this.waveState, spawnTimer: this.spawnTimer, waveCount: this._waveCount };
   }
 }
@@ -149,7 +162,7 @@ function despawnOutOfRangeEnemies(
 function countActiveWaveGroups(enemies: readonly Enemy[]): number {
   const activeWaves = new Set<number>();
   for (const enemy of enemies) {
-    if (enemy.motion.alive && enemy.waveId !== undefined) activeWaves.add(enemy.waveId);
+    if (enemy.motion.alive && enemy.waveId !== null) activeWaves.add(enemy.waveId);
   }
   return activeWaves.size;
 }
@@ -214,8 +227,9 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, at
   return addScaled(playerV, dv, lo);
 }
 
-// 基調色: アースカラー7割 / 寒色系2割 / アクセントカラー1割
+// ウェーブの基調色を、アースカラー7割 / 寒色系2割 / アクセントカラー1割の確率で選ぶ。
 function pickWaveBaseHex(): number {
+  // 系統を選び、その系統の中から1色を等確率で引く
   const randCol = Math.random();
   if (randCol < 0.7) {
     const earthColors = [0xc2b280, 0x808080, 0xb2beb5, 0x8b4513, 0xc3b091, 0x556b2f, 0x8f9779, 0x5f9ea0];
@@ -286,7 +300,10 @@ function waveShipPosition(
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(
+  player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[],
+  scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random',
+): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber, attractors);
@@ -302,7 +319,10 @@ export function generateWave(player: KinematicState, waveNumber: number, attract
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir, attractors, player.t);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators, `wave-${waveNumber}-group-${i % subGroups.length}`));
+    enemies.push(generateApproachingEnemy(
+      `W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators,
+      `wave-${waveNumber}-group-${i % subGroups.length}`,
+    ));
   }
   return enemies;
 }

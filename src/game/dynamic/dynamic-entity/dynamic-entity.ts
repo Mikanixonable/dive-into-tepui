@@ -1,9 +1,11 @@
 import type { Ray } from '../../../math/ray';
-import type { Vec3 } from '../../../math/vec3';
+import type { Quat } from '../../../math/quat';
+import type { SerializedVec3, Vec3 } from '../../../math/vec3';
+import { serializeKinematicState, type SerializedKinematicState } from '../../../physics/kinematic-state';
 import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { OrbitingObject } from './orbiting-object';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
+import type { SerializedDynamicEntity } from './entity-dictionary';
 import type { DynamicMotion } from '../dynamic-motion';
 import type { OrbitReference } from '../../orbit-reference';
 import type {
@@ -12,25 +14,37 @@ import type {
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 
+// 実体の直列化に共通する項目。t・r・v は運動状態、q・w は姿勢と角速度、alive は生死。
+export interface SerializedDynamicEntityFields extends SerializedKinematicState {
+  readonly id: string;
+  // 具象クラスのタグ。
+  readonly kind:
+    | 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base' | 'bullet' | 'debris';
+  readonly q: Quat;
+  readonly w: SerializedVec3;
+  readonly alive?: boolean;
+}
+
 // 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断を持つ。
-export class DynamicEntity {
+export abstract class DynamicEntity {
   public readonly id: string;
   public readonly motion: DynamicMotion;
   public readonly view: DynamicView;
+  // 上限の枠とマップ上の種別(持たなければ null)と、派生 Entity が上書きする能力の旗。
   public readonly capKind: CapKind | null = null;
   public readonly mapKind: DynamicEntityKind | null = null;
   public readonly combatTarget: boolean = false;
   public readonly controllable: boolean = false;
   public readonly pickable: boolean = false;
+  // 死亡した個体の除去を所有者に任せるか。
   public readonly reclaimedByOwner: boolean = false;
+  // 選択の有無によらず赤道交点マーカーを出すか。
   public readonly showsEquatorNodesAlways: boolean = false;
-  // マップで予測軌跡を表示するか。
-  public trajectoryLineVisible = false;
 
   private nameValue: string;
 
-  // 識別、Motion、View を1体の寿命へ束ねる。motionFactory には id を確定させた owner を渡す。
-  // id は生成する側が採番器から取って渡す。
+  // 識別、Motion、View を1体の寿命へ束ねる。id は採番器が配った識別子で、motionFactory には id を
+  // 確定させた自身を渡す。
   public constructor(motionFactory: DynamicMotionFactory, view: DynamicView, id: string) {
     this.id = id;
     this.nameValue = this.id;
@@ -40,7 +54,7 @@ export class DynamicEntity {
 
   public get name(): string { return this.nameValue; }
 
-  // 派生 Entity だけが表示名を確定できる。
+  // 表示名を name に確定する。
   protected setName(name: string): void {
     this.nameValue = name;
   }
@@ -55,9 +69,24 @@ export class DynamicEntity {
     return this.motion.intersectsRay(ray, pos);
   }
 
-  // セーブデータへ変換する。永続化しない種別は null。
-  public serialize(): EntitySaveDataUnion | null {
-    return null;
+  // 直列化した形へ変換する。
+  public abstract serialize(): SerializedDynamicEntity;
+
+  // 実体に共通する直列化の項目。kind は具象のタグ。具象の serialize() がこれへ自分の項目を足す。
+  // 例外(ARCHITECTURE R12): 運動の値(状態・姿勢・生死。具象では熱・燃料・半径・慣性なども)を実体の
+  // 記録へ平らに並べる。運動の記録として分けると版 4 の記録が読めなくなるので、版を上げるときに直す。
+  protected serializeEntityFields<K extends SerializedDynamicEntityFields['kind']>(
+    kind: K,
+  ): SerializedDynamicEntityFields & { readonly kind: K } {
+    const { state, att, alive } = this.motion;
+    return {
+      id: this.id,
+      kind,
+      ...serializeKinematicState(state),
+      q: { ...att.q },
+      w: { ...att.w },
+      alive,
+    };
   }
 
   // このフレームの表示入力。派生 Entity は自分の View が読む値を足したものを返す。

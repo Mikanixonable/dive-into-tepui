@@ -63,8 +63,8 @@ export type RunEventBody =
   | { readonly kind: 'targetBoardPassed'; readonly offset: Vec3; readonly simTime: number }
 
   // ------------------------------------------------------------ 被弾・接触
-  // 自機の一点に衝撃が入った。着弾点と艦の状態を値として持ち、音の距離減衰は読み手が出す。
-  // bullet は衝撃を与えた弾の種類で、被弾以外の破断で入った衝撃では null。
+  // 自機の一点 impactPoint に衝撃が入った。shipState はそのときの艦の状態、bullet は衝撃を与えた
+  // 弾の種類で、被弾以外の破断で入った衝撃では null。
   | {
     readonly kind: 'shipStruck';
     readonly impactPoint: Vec3;
@@ -105,6 +105,8 @@ export type RunEventBody =
   | { readonly kind: 'enemyDied'; readonly name: string; readonly cause: EnemyDeathCause }
   // 自機を喪失した。reason は喪失の理由。
   | { readonly kind: 'shipLost'; readonly reason: string }
+  // ステージの勝敗と結果が確定した。
+  | { readonly kind: 'stageDecided' }
 
   // -------------------------------------------------------------------- 飛行
   // 高度の警戒線を下回った。threshold はその線の高度 [m]。
@@ -158,11 +160,35 @@ export type RunEventBody =
   // スナップショットの計画に、起点より前のノードが残っていて復元できなかった。
   | { readonly kind: 'planNodesDropped'; readonly ship: string; readonly count: number }
 
+  // ------------------------------------------------------------------ ビュー
+  // 操作対象が無いため、戦闘ビューへの切り替えを受け付けなかった。
+  | { readonly kind: 'combatViewUnavailable' }
+  // 計画ノードを確定して戦闘ビューへ戻った。nodeCount は確定したノード数。
+  | { readonly kind: 'maneuverPlanConfirmed'; readonly nodeCount: number }
+  // 軌道計画のためにマップビューへ入った。
+  | { readonly kind: 'orbitPlanningOpened' }
+
+  // ------------------------------------------------------------------ カメラ
+  // ビューの視点をリセットした。
+  | { readonly kind: 'cameraViewReset'; readonly view: 'combat' | 'map' }
+  // 姿勢追従を切り替えた。
+  | { readonly kind: 'cameraAttitudeFollowToggled'; readonly on: boolean }
+  // 基準面に対する視点を選んだ。
+  | { readonly kind: 'cameraReferenceViewSelected'; readonly view: 'above' | 'side' }
+
   // -------------------------------------------------------------------- 操作対象
   // 操作対象に選ばれた。
   | { readonly kind: 'controlTargetSelected'; readonly target: DynamicEntityKind; readonly name: string }
   // 操作対象から手で外された。
   | { readonly kind: 'controlTargetReleased'; readonly target: DynamicEntityKind }
+  // 操作対象候補が世界から取り除かれた。id は取り除かれた個体の id。
+  | { readonly kind: 'controllableRemoved'; readonly id: string }
+
+  // ---------------------------------------------------------- 航法ターゲット
+  // 航法ターゲットを切り替えた。name は新しいターゲットの表示名で、解除したなら null。
+  | { readonly kind: 'navTargetToggled'; readonly name: string | null }
+  // 航法ターゲットを戦闘対象へ固定した。name は固定した対象の表示名で、固定を外したなら null。
+  | { readonly kind: 'navTargetLocked'; readonly name: string | null }
 
   // ---------------------------------------------------------------- 波状攻撃
   // 自機が弾薬を確保し、敵部隊の接近が始まった。
@@ -201,8 +227,10 @@ export function queuedEventSink(queue: CommandQueue, events: RunEventSink): RunE
 }
 
 // 1ランぶんの出来事の記録。通し番号はランの中で単調増加する。
+// 例外(ARCHITECTURE R11): モデル層の状態だが直列化しない。出来事は進行の位相の先頭で空にする1フレームの
+// 通り道で、読み手もランと一緒に作り直す。保存すると、読み込んだフレームに前のランの音と通知が出る。
 export class RunEventLog implements RunEventSink {
-  private readonly events: RunEvent[] = [];
+  private events: RunEvent[] = [];
   private nextSeq = 0;
 
   // 直近の進行で記録された出来事を、記録した順に返す。
@@ -212,7 +240,7 @@ export class RunEventLog implements RunEventSink {
 
   // 進行の位相の先頭で呼び、前のフレームの出来事を捨てる。
   public beginStep(): void {
-    this.events.length = 0;
+    this.events = [];
   }
 
   // 起きたことを1件、次の通し番号を付けて積む。

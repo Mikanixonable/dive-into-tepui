@@ -1,24 +1,19 @@
-// 個々の敵機を、座標・色・機種などのパラメータから直接生成する。無秩序に漂う姿勢と
-// プログレードへ向けた姿勢の2方針を並べて置く。
+// 個々の敵機とタンパク質陣形の要求を、座標・色・機種などのパラメータから直接組む。
 // **軌道は、置く位置で最も強く引く天体を中心とする二体の幾何で置く、ゲームバランスのための簡易な置き方。**
 // 高度はその天体の表面半径の球面から測る(扁平な天体の基準楕円体とのずれ — 地球の極で 21km — は
 // 出現高度の余裕に埋もれる)。
-import * as THREE from 'three/webgpu';
-import { qFromForwardUp, randomQuat, type Quat } from '../../../math/quat';
-import { addPrimaryRelative, KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import { qFromForwardUp, randomQuat } from '../../../math/quat';
+import { addPrimaryRelative, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { strongestAttractor } from '../../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { stateFromOrbitalElements } from '../../../physics/elements';
-import { randSym } from '../../../math/random';
 import { addScaled, cross, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';
-import { Enemy } from '../../dynamic/dynamic-entity/enemy';
+import { driftingAttitude, type Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
-import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
+import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
-import type { FormationRole } from '../../dynamic/dynamic-entity/entity-kind';
-import type { ProteinAssetId } from '../../protein/protein-asset-loader';
-import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
+import type { ProteinEnemyRequest } from '../../dynamic/dynamic-entity/protein-enemy';
 
 // 自機軌道(base)を、中心天体 center まわりの軌道面内で弧長 dAlong [m] だけ進めた、center 相対の状態。
 function phasedState(base: KinematicState, center: CelestialBody, dAlong: number): KinematicState<'primaryRel'> {
@@ -28,44 +23,25 @@ function phasedState(base: KinematicState, center: CelestialBody, dAlong: number
   return kinematicState<'primaryRel'>(base.t, rotateAxis(rel.r, hHat, ang), rotateAxis(rel.v, hHat, ang));
 }
 
-// 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
-function driftingAttitude(): { q: Quat; w: Vec3 } {
-  return { q: randomQuat(), w: v3(randSym(0.12), randSym(0.12), randSym(0.12)) };
-}
-
 // state に、無秩序に漂う金属の敵を生成する。
-export function generateDriftingEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string): Enemy {
-  return new MetalEnemy(
-    { name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId, typeIndex: null },
-    idAllocators, scene,
-  );
-}
-
-// 登録されたタンパク質アセットを、現在の表示設定で描画する敵。陣形に属する個体だけが
-// formationId と役割を持ち、属さない個体は単体敵になる。
-export function generateProteinEnemy(
-  name: string, state: KinematicState, assetId: ProteinAssetId, display: ProteinDisplaySettings,
-  scene: THREE.Scene, idAllocators: EntityIdAllocators,
-  formationId?: string, formationRole?: FormationRole,
+export function generateDriftingEnemy(
+  name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number,
+  scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string,
 ): Enemy {
-  return new ProteinEnemy(
+  return MetalEnemy.create(
     {
-      name, state, ...driftingAttitude(),
-      accent: 0xffffff, orbitLineColor: 0xffffff, attackGroupId: formationId,
-      assetId, display, formationId, formationRole,
+      name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId,
+      waveId: null, formationId: null, formationRole: null, typeIndex: null,
     },
     idAllocators, scene,
   );
 }
 
-// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の時刻・速度で組む。
-// centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー方向へ 450 m、
-// エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離す。役ごとに準備完了を待てるよう
-// (SPEC/PROTEIN.md「出現」節)、実体ではなく assetId と build の組を返す。
-export function proteinFormationSpawns(
-  name: string, centerState: KinematicState, playerPosition: Vec3, display: ProteinDisplaySettings, formationId: string,
-  scene: THREE.Scene, idAllocators: EntityIdAllocators,
-): readonly { assetId: ProteinAssetId; build: () => Enemy }[] {
+// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)の要求を、centerState を中心に共通の
+// 時刻・速度で組む。name は各役の名前の接頭辞。
+export function proteinFormationRequests(
+  name: string, centerState: KinematicState, playerPosition: Vec3, formationId: string,
+): readonly ProteinEnemyRequest[] {
   // 盾役はプレイヤー側、エネルギー役は反対側へずらした状態に置く
   const towardPlayer = norm(sub(playerPosition, centerState.r));
   const offset = 450;
@@ -73,16 +49,16 @@ export function proteinFormationSpawns(
   const energyState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
   return [
     {
-      assetId: 'pdb-5i4r',
-      build: () => generateProteinEnemy(`${name}-ATTACKER`, centerState, 'pdb-5i4r', display, scene, idAllocators, formationId, 'attacker'),
+      name: `${name}-ATTACKER`, state: centerState, assetId: 'pdb-5i4r',
+      formationId, formationRole: 'attacker',
     },
     {
-      assetId: 'pdb-8ruc-rubisco',
-      build: () => generateProteinEnemy(`${name}-SHIELD`, shieldState, 'pdb-8ruc-rubisco', display, scene, idAllocators, formationId, 'shield'),
+      name: `${name}-SHIELD`, state: shieldState, assetId: 'pdb-8ruc-rubisco',
+      formationId, formationRole: 'shield',
     },
     {
-      assetId: 'pdb-6n2y-atp-synthase',
-      build: () => generateProteinEnemy(`${name}-ENERGY`, energyState, 'pdb-6n2y-atp-synthase', display, scene, idAllocators, formationId, 'energy'),
+      name: `${name}-ENERGY`, state: energyState, assetId: 'pdb-6n2y-atp-synthase',
+      formationId, formationRole: 'energy',
     },
   ];
 }
@@ -160,13 +136,13 @@ export function generateMolniyaEnemy(
 // 金属の敵を state に生成する。
 export function generateApproachingEnemy(
   name: string, state: KinematicState, attractors: readonly CelestialBody[], accent: number, orbitLineColor: number,
-  typeIndex: number, waveId: number | undefined,
+  typeIndex: number, waveId: number | null,
   scene: THREE.Scene, idAllocators: EntityIdAllocators,
   attackGroupId?: string,
 ): Enemy {
   const center = strongestAttractor(state.r, attractors, state.t);
   const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
-  return new MetalEnemy(
+  return MetalEnemy.create(
     {
       name,
       state,
@@ -177,6 +153,8 @@ export function generateApproachingEnemy(
       orbitLineColor,
       attackGroupId,
       waveId,
+      formationId: null,
+      formationRole: null,
       typeIndex,
     },
     idAllocators,

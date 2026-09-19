@@ -17,6 +17,7 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import { orbitLineBasisOf, type OrbitReference } from '../orbit-reference';
 import { COLOR_BASE } from '../marker/marker-identity';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { EntityDisplaySource } from '../viewer/entity-display-selection';
 
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
@@ -56,7 +57,11 @@ function orbitDisplay(
 }
 
 export class EntityLineManager {
-  public constructor(private readonly roster: EntityRoster) {}
+  // roster の個体の線を、entityDisplay が選んだ個体ごとの表示設定に従って宣言する。
+  public constructor(
+    private readonly roster: EntityRoster,
+    private readonly entityDisplay: EntityDisplaySource,
+  ) {}
 
   // 各個体の線表示をこのフレームの確定状態から宣言し、View へ同期させる。
   public sync(
@@ -121,7 +126,7 @@ export class EntityLineManager {
       const lineVisible = visibilityPolicy?.entity('player', isActive).orbit ?? true;
       resolve(
         ship, targetStyleOf(ship), lineVisible,
-        isActive || (view === 'map' && ship.trajectoryLineVisible),
+        isActive || (view === 'map' && this.entityDisplay.showsTrajectoryLine(ship.id)),
         {
           ellipse: playerOrbitStyleOf(isActive),
           predicted: playerPredictedStyleOf(isActive),
@@ -134,7 +139,7 @@ export class EntityLineManager {
       const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
       resolve(
         enemy, targetStyleOf(enemy), lineVisible,
-        view === 'map' && enemy.trajectoryLineVisible,
+        view === 'map' && this.entityDisplay.showsTrajectoryLine(enemy.id),
         sameTrajectoryStyle(enemyLineStyle),
       );
     }
@@ -142,7 +147,7 @@ export class EntityLineManager {
       const lineVisible = visibilityPolicy?.entity('base').orbit ?? true;
       resolve(
         base, targetStyleOf(base), lineVisible,
-        view === 'map' && base.trajectoryLineVisible,
+        view === 'map' && this.entityDisplay.showsTrajectoryLine(base.id),
         sameTrajectoryStyle(LINE_STYLE.baseLine),
       );
     }

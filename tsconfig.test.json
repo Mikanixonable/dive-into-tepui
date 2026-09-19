@@ -32,7 +32,7 @@
     "src/game/celestial/solar-system/point-field.ts",
     "src/physics/point-orbit.ts",
     "src/render/celestial/point-field-view.ts",
-    "src/game/camera/focus-target.ts",
+    "src/game/camera/focus-derivation.ts",
     "src/physics/ephemeris/ephemeris-context.ts",
     "src/settings",
     "tests/*.ts",
@@ -40,6 +40,7 @@
     "tests/math/**/*.ts",
     "tests/game/**/*.ts",
     "tests/render/**/*.ts",
-    "tests/settings/**/*.ts"
+    "tests/settings/**/*.ts",
+    "tests/launcher/**/*.ts"
   ]
 }

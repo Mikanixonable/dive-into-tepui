@@ -2,24 +2,24 @@
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import type { EntityIdAllocators } from './entity-id';
-import type { KinematicState } from '../../../physics/kinematic-state';
-import type { Attitude } from '../../../physics/attitude';
+import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
+import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import type { Vec3 } from '../../../math/vec3';
 import { len, sub, v3 } from '../../../math/vec3';
 import type { MarkerVisibility } from '../../../marker/marker-visibility';
-import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
-import { Plan, type PlanExecutionMode } from '../../plan/plan';
+import { Plan, type PlanExecutionMode, type SerializedPlan } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import { fmtDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
-import { Throttle } from '../../player/throttle';
-import type { Controllable, PilotCommandFrame } from './controllable';
-import type { PilotCommand } from './pilot-controls';
+import { Throttle, type SerializedThrottle } from '../../player/throttle';
+import { PLAYER_RCS_ANGULAR_ACCEL } from '../../player/player-loadout';
+import type { Controllable } from './controllable';
+import type { PilotCommand, PilotControls } from './pilot-controls';
 import type { EntityRegistry } from '../entity-registry';
 import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
@@ -36,40 +36,54 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import { BASE_THRUST, BaseMotion } from './base-motion';
 
-const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
 const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
 const BASE_INERTIA_Y = 1e8;
 const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
+// 基地のトルク [N·m]。短軸まわりに自機の RCS と同じ角加速度を出す。
+const BASE_TORQUE = BASE_INERTIA_X * PLAYER_RCS_ANGULAR_ACCEL;
 const BASE_INITIAL_MONEY = 100000; // 新規配置の基地の所持金 [Cr]
 
-// 新規配置は state/name/att をそのまま使い、スナップショットからの再開は saved を
-// simTime 付きの状態として展開する。
-type BaseInit =
-  | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
-  | { readonly saved: BaseSaveData; readonly simTime: number };
+export interface SerializedBase extends SerializedDynamicEntityFields {
+  readonly kind: 'base';
+  readonly name: string;
+  readonly money: number;
+  // 基地の燃料 [kg]。
+  readonly fuel: number;
+  readonly throttle: SerializedThrottle;
+  readonly plan: SerializedPlan | null;
+}
+
+// 基地を新しく置く運動状態と表示名。id を省くと採番器が発番する。
+export interface BasePlacement {
+  readonly state: KinematicState;
+  readonly name?: string;
+  readonly att?: Attitude;
+  readonly id?: string;
+}
 
 export class Base extends DynamicEntity implements Controllable, ObjectPickable {
+  public static readonly kind = 'base';
+  public static spawnGate(): null { return null; }
+
   public override readonly mapKind: DynamicEntityKind = 'base';
   public override readonly combatTarget = true;
   public override readonly controllable = true;
   public override readonly pickable = true;
 
-  public readonly plan = new Plan();
-  public planExecution: PlanExecutionMode = 'off';
-  public fineAttitude = false;
+  // 基地の計画の実行方法と姿勢操作の微調整は、既定のまま固定する。
+  public readonly planExecution: PlanExecutionMode = 'off';
+  public readonly fineAttitude = false;
   // 除去の前に注視・操作対象の参照を引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
   // 基地は常設の軌道構造物なので、選択の有無に関わらず赤道交点マーカーを出す。
   public override readonly showsEquatorNodesAlways = true;
   // 所持金 [Cr]。
-  private readonly _money: number;
   public get money(): number { return this._money; }
 
   public declare readonly motion: BaseMotion;
 
   // --- Controllable 実装 ---
-  public readonly throttle: Throttle;
   public get totalThrust(): number { return BASE_THRUST; }
   public get totalTorque(): number { return BASE_TORQUE; }
   public get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
@@ -77,51 +91,69 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public get totalMaxFuel(): number { return this.motion.maxFuel; }
   public readonly hp = null;
   public readonly maxHp = null;
+  public readonly fire = null;
+  public readonly boosters = null;
+  public readonly altitudeAlarm = null;
 
-  // 燃料を amount だけ使い、要求に対して実際に賄えた割合 [0, 1] を返す。
-  public consumeFuel(amount: number): number {
-    if (amount <= 0) return 1.0;
-    return this.motion.consumeFuel(amount);
+  // 燃料を amount [kg] だけ、残量の範囲で使う。
+  public consumeFuel(amount: number): void {
+    this.motion.consumeFuel(amount);
   }
 
-  // 基地を組む。復元時は操作状態・所持金・軌道線の表示も戻す。
-  public constructor(
-    init: BaseInit,
+  // 基地 name を state・attitude に置く。id は採番器が配った識別子。_money から後ろは所持金 [Cr]・
+  // 燃料・生死・操作状態・マニューバ計画で、省いたものは新しく置いたときの状態で始める。
+  private constructor(
     scene: THREE.Scene,
-    idAllocators: EntityIdAllocators,
+    id: string,
+    name: string,
+    state: KinematicState,
+    attitude: Attitude,
+    private readonly _money = BASE_INITIAL_MONEY,
+    fuel?: number,
+    alive?: boolean,
+    public readonly throttle = new Throttle(),
+    public readonly plan = Plan.create(),
   ) {
-    // 復元と新規配置を同じ形へ均してから基底へ渡す。
-    const { state, name, att, id } = 'saved' in init
-      ? {
-        state: savedKinematicState(init.saved, init.simTime),
-        name: init.saved.name || '基地',
-        att: undefined,
-        id: init.saved.id,
-      }
-      : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
-    const savedAtt: Attitude | undefined = 'saved' in init
-      ? savedAttitude(init.saved, v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z))
-      : undefined;
-    const attitude = savedAtt ?? att ?? {
-      q: { x: 0, y: 0, z: 0, w: 1 },
-      w: v3(),
-      inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
-    };
-    const fuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : undefined;
-    const entityId = idAllocators.base.next(id);
-    super(
-      () => new BaseMotion(state, attitude, fuel),
-      new BaseView(scene, entityId),
-      entityId,
-    );
+    super(() => new BaseMotion(state, attitude, fuel, alive), new BaseView(scene, id), id);
     this.setName(name);
-    this.throttle = new Throttle('saved' in init ? init.saved.throttle : undefined);
-    this._money = 'saved' in init ? init.saved.money : BASE_INITIAL_MONEY;
-
-    if ('saved' in init) {
-      this.trajectoryLineVisible = init.saved.showTrajectoryLine ?? false;
-    }
   }
+
+  // placement に新しく置く。name を省くと無作為な名前、att を省くと静止した姿勢で置く。
+  public static create(placement: BasePlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators): Base {
+    const name = placement.name ?? generateRandomName('base');
+    return new Base(
+      scene, idAllocators.base.next(placement.id), name, placement.state,
+      placement.att ?? { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia: Base.INERTIA },
+    );
+  }
+
+  // 直列化した基地を復元する。計画のうち起点より前のノードは戻せないので、その数を registry の出来事へ
+  // 記録する。
+  public static deserialize(
+    serialized: SerializedBase, registry: EntityRegistry, scene: THREE.Scene,
+  ): Base {
+    const { plan } = serialized;
+    const base = new Base(
+      scene,
+      registry.idAllocators.base.next(serialized.id),
+      // 記録に名前が無ければ、無作為な名前でなく「基地」と名乗る。
+      serialized.name || '基地',
+      deserializeKinematicState(serialized),
+      deserializeAttitude(serialized, Base.INERTIA),
+      // null の所持金も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
+      serialized.money ?? undefined,
+      serialized.fuel,
+      serialized.alive,
+      serialized.throttle ? Throttle.deserialize(serialized.throttle) : undefined,
+      plan ? Plan.deserialize(plan) : undefined,
+    );
+    const dropped = plan ? Plan.droppedNodeCount(plan) : 0;
+    if (dropped > 0) registry.events.record({ kind: 'planNodesDropped', ship: base.name, count: dropped });
+    return base;
+  }
+
+  // 主慣性モーメント。
+  private static readonly INERTIA = v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z);
 
   // 噴射表現に要る推力・トルクを、共通の表示入力へ足す。
   protected override renderSource(
@@ -138,31 +170,35 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // --- 操作制御 ---
 
-  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。controls が null なら操作されない。
-  public updateControls(frame: PilotCommandFrame): void {
-    const { controls, dt, simDt } = frame;
+  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。controls はこのフレームの操作量で、null なら
+  // 操作されない。dt [s] は実時間、simDt [sim s] はシミュレーション時間の刻み。
+  public updateControls(controls: PilotControls | null, dt: number, simDt: number): void {
     if (controls === null) {
       this.clearTransientCommands();
       return;
     }
-    this.motion.torque = this.throttle.updateTorque(
+    // 操作量から姿勢のトルクと推力を決める
+    this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, controls, false, dt, simDt, this,
       null,
     );
+    this.motion.setTorque(this.throttle.torque);
     this.throttle.updateThrustLatches(controls);
-    this.motion.thrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.motion.setThrust(this.throttle.thrust);
   }
 
   // 推力・トルクの指令とスロットルの一時状態を解く。
   public clearTransientCommands(): void {
-    this.motion.thrust = null;
-    this.motion.torque = v3();
+    this.motion.setThrust(null);
+    this.motion.setTorque(v3());
     this.throttle.clearTransientState();
   }
 
   // 受け付けた単発の命令のうち、基地が備える操作を状態へ適用する。
   public handleCommand(command: PilotCommand, registry: EntityRegistry): void {
     const events = registry.events;
+    // 命令の種類ごとにスロットルの操作へ写す
     switch (command.kind) {
       case 'thrustLatchToggle': this.throttle.toggleThrustLatch(command.direction); return;
       case 'rcsDampToggle': this.throttle.toggleRcsDamp(events); return;
@@ -200,22 +236,16 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     };
   }
 
-  // セーブデータへ変換する。
-  public override serialize(): BaseSaveData {
+  // 直列化した形へ変換する。
+  public override serialize(): SerializedBase {
     return {
-      id: this.id,
-      kind: 'base',
+      ...this.serializeEntityFields(Base.kind),
       name: this.name,
-      // 運動状態
-      r: { ...this.motion.state.r },
-      v: { ...this.motion.state.v },
-      q: { ...this.motion.att.q },
-      w: { ...this.motion.att.w },
-      // 基地の資源と、操作・表示の設定
+      // 基地の資源と、操作の設定と計画
       money: this._money,
       fuel: this.motion.fuel,
       throttle: this.throttle.serialize(),
-      showTrajectoryLine: this.trajectoryLineVisible,
+      plan: this.plan.serialize(),
     };
   }
 
@@ -256,6 +286,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
     _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
+    trajectoryLineShown: boolean,
   ): readonly MenuItem<MenuAction>[] {
     const subLabel = `基地 / 所持金: ${this._money.toLocaleString()} Cr`;
     const controlItem: MenuItem<MenuAction> = viewer === this
@@ -268,7 +299,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       MenuCommon.target(navTargetId === this.id),
       controlItem,
       MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.trajectoryLineVisible),
+      MenuCommon.trajectoryLine(trajectoryLineShown),
       MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
@@ -279,13 +310,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public runMenu(
     act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
-    // 軌道線の表示は自分の状態を書き換え、それ以外は controlSelection / authoring へ依頼する
     if (act === 'activate') {
       controlSelection.select(this);
     } else if (act === 'deactivate') {
       controlSelection.release(this);
-    } else if (act === 'toggleTrajectoryLine') {
-      this.trajectoryLineVisible = !this.trajectoryLineVisible;
     } else if (act === 'delete') {
       controlSelection.remove(this);
     } else if (act === 'duplicate') {

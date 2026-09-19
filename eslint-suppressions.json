@@ -4,11 +4,6 @@
       "count": 6
     }
   },
-  "src/audio/bgm/bgm.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/audio/bgm/composer-factory.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
@@ -103,50 +98,19 @@
       "count": 1
     }
   },
-  "src/audio/sfx/ui-sfx.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 2
-    }
-  },
-  "src/audio/sfx/world-sfx.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 16
-    }
-  },
-  "src/game/camera/camera-orientation.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/camera/camera-system.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    }
-  },
-  "src/game/camera/focus-camera.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 8
-    }
-  },
-  "src/game/camera/focus-target.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
   "src/game/camera/gunsight-camera.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },
+  "src/game/celestial/celestial-bodies.ts": {
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
   "src/game/celestial/celestial-system.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 7
+    "no-restricted-syntax": {
+      "count": 3
     }
   },
   "src/game/celestial/lagrange-id.ts": {
@@ -167,17 +131,22 @@
       "count": 1
     }
   },
+  "src/game/celestial/orbit-guide/orbit-guide-kind-ids.ts": {
+    "no-restricted-syntax": {
+      "count": 6
+    }
+  },
   "src/game/celestial/orbit-guide/orbit-guide-model.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 5
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 3
     }
   },
   "src/game/celestial/orbit-guide/zero-velocity-model.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 3
+      "count": 2
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 7
@@ -194,11 +163,6 @@
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 6
-    }
-  },
-  "src/game/celestial/scale-grid-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
     }
   },
   "src/game/celestial/solar-system/dwarf-planets.ts": {
@@ -234,6 +198,11 @@
   "src/game/celestial/solar-system/neptune-system.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
+    }
+  },
+  "src/game/celestial/solar-system/point-field.ts": {
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/game/celestial/solar-system/poles.ts": {
@@ -276,30 +245,26 @@
       "count": 2
     }
   },
-  "src/game/control-selection.ts": {
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 8
-    }
-  },
   "src/game/creative/duplicate-form.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
     }
   },
   "src/game/creative/object-placer-panel.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 10
     },
+    "no-restricted-syntax": {
+      "count": 1
+    },
     "prefer-const": {
       "count": 1
-    }
-  },
-  "src/game/creative/orbit-form-fields.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
     }
   },
   "src/game/creative/stage-controls-panel.ts": {
@@ -307,20 +272,10 @@
       "count": 2
     }
   },
-  "src/game/display-window-manager.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 16
-    }
-  },
-  "src/game/dynamic/arc-celestial-bodies.ts": {
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
-    }
-  },
   "src/game/dynamic/attractors.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
@@ -335,6 +290,11 @@
   },
   "src/game/dynamic/dynamic-entity/base-motion.ts": {
     "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "src/game/dynamic/dynamic-entity/base.ts": {
+    "no-restricted-syntax": {
       "count": 1
     }
   },
@@ -354,36 +314,49 @@
     }
   },
   "src/game/dynamic/dynamic-entity/detached-booster.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+    "no-restricted-syntax": {
       "count": 1
     }
   },
   "src/game/dynamic/dynamic-entity/dynamic-entity.ts": {
     "@typescript-eslint/no-unused-vars": {
       "count": 3
-    }
-  },
-  "src/game/dynamic/dynamic-entity/enemy.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    }
-  },
-  "src/game/dynamic/dynamic-entity/entity-dictionary.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+    },
+    "@typescript-eslint/parameter-properties": {
       "count": 1
     },
-    "@typescript-eslint/no-unused-vars": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "src/game/dynamic/dynamic-entity/metal-enemy.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/game/dynamic/dynamic-entity/part-damage-model.ts": {
+    "no-restricted-syntax": {
+      "count": 8
+    }
+  },
+  "src/game/dynamic/dynamic-entity/parts.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/game/dynamic/dynamic-entity/pickup-motion.ts": {
+    "no-restricted-syntax": {
       "count": 1
     }
   },
   "src/game/dynamic/dynamic-entity/protein-enemy.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/game/dynamic/dynamic-entity/ship.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/game/dynamic/dynamic-motion.ts": {
@@ -392,11 +365,11 @@
     }
   },
   "src/game/dynamic/dynamic-system.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/game/dynamic/engagement-zone.ts": {
@@ -408,9 +381,6 @@
     }
   },
   "src/game/dynamic/entity-contact-physics.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 25
     }
@@ -421,9 +391,6 @@
     }
   },
   "src/game/dynamic/nan-watchdog.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 3
     },
@@ -436,34 +403,25 @@
       "count": 1
     }
   },
-  "src/game/dynamic/predicted-arc.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 15
-    }
-  },
   "src/game/dynamic/predictor.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     }
   },
-  "src/game/dynamic/sim-speed-manager.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+  "src/game/dynamic/sim-speed-commands.ts": {
+    "no-restricted-syntax": {
       "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 15
-    },
+    }
+  },
+  "src/game/dynamic/sim-speed-manager.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 4
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/game/dynamic/simulator.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "no-console": {
       "count": 1
     }
@@ -477,6 +435,9 @@
     }
   },
   "src/game/dynamic/surface-candidates.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
     },
@@ -490,11 +451,11 @@
     }
   },
   "src/game/frame-anchors.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 6
     }
   },
   "src/game/frame-sections.ts": {
@@ -506,11 +467,8 @@
     }
   },
   "src/game/game.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+    "no-restricted-syntax": {
       "count": 1
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 2
     }
   },
   "src/game/hud/frame/anchor-zone.ts": {
@@ -521,11 +479,6 @@
   "src/game/hud/frame/camera-frame-panel.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
-    }
-  },
-  "src/game/hud/frame/frame-controls.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
     }
   },
   "src/game/hud/frame/frame-labels.ts": {
@@ -543,6 +496,11 @@
       "count": 1
     }
   },
+  "src/game/hud/hud-panel-presenter.ts": {
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
   "src/game/hud/hud-root.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
@@ -558,9 +516,29 @@
       "count": 1
     }
   },
+  "src/game/hud/orbit/calendar-ticks.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    }
+  },
   "src/game/hud/orbit/orbit-analysis-data.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
+    }
+  },
+  "src/game/hud/orbit/tick-scale.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    }
+  },
+  "src/game/hud/panel-shell.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/game/hud/panels/burn-management-panel.ts": {
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/game/hud/panels/guide-kind-def.ts": {
@@ -568,18 +546,24 @@
       "count": 2
     }
   },
-  "src/game/hud/panels/orbit-guide-tab.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/game/hud/panels/physical-object-list-order.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 4
     }
   },
   "src/game/hud/panels/physical-object-list-panel.ts": {
     "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "src/game/hud/panels/physical-object-list-row-tree.ts": {
+    "no-restricted-syntax": {
       "count": 1
     }
   },
@@ -596,6 +580,9 @@
   "src/game/hud/panels/vessel-panel.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 4
+    },
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/game/hud/touch-controls.ts": {
@@ -632,19 +619,30 @@
     }
   },
   "src/game/hud/windows/object-picker.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 4
     }
   },
+  "src/game/lines/entity-line-manager.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
   "src/game/map/visibility-policy.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/game/marker/celestial-markers.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 10
     },
@@ -666,29 +664,21 @@
     }
   },
   "src/game/marker/grouped-markers.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 5
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/game/marker/marker-placement.ts": {
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/game/marker/marker-shapes.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
-    }
-  },
-  "src/game/marker/player-markers.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/nav-target.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 6
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 4
     }
   },
   "src/game/orbit-info.ts": {
@@ -700,8 +690,8 @@
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 3
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/game/pickable/enemy-inspection.ts": {
@@ -722,17 +712,14 @@
       "count": 1
     }
   },
-  "src/game/pickable/object-pickables.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
+  "src/game/pickable/map-picking.ts": {
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
-  "src/game/pickable/object-windows.ts": {
+  "src/game/pickable/object-pickables.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 7
+      "count": 2
     }
   },
   "src/game/pickable/part-windows.ts": {
@@ -773,9 +760,6 @@
     }
   },
   "src/game/plan/plan-display.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 6
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 12
     }
@@ -783,14 +767,6 @@
   "src/game/plan/plan-editor.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
-    }
-  },
-  "src/game/plan/plan-guide.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
     }
   },
   "src/game/plan/plan-panel.ts": {
@@ -802,9 +778,6 @@
     }
   },
   "src/game/plan/plan-path.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 6
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 17
     }
@@ -812,40 +785,19 @@
   "src/game/plan/plan.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
-    }
-  },
-  "src/game/player/aero-load.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
     },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
-    }
-  },
-  "src/game/player/altitude-alarm.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+    "no-restricted-syntax": {
       "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 3
     }
   },
   "src/game/player/attached-boosters.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
+    "no-restricted-syntax": {
       "count": 1
     }
   },
   "src/game/player/belt-physics.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 18
-    }
-  },
-  "src/game/player/belt.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
     }
   },
   "src/game/player/fire-control.ts": {
@@ -853,29 +805,19 @@
       "count": 1
     }
   },
-  "src/game/player/player-loadout.ts": {
-    "@typescript-eslint/explicit-module-boundary-types": {
-      "count": 1
-    }
-  },
   "src/game/player/player.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    }
-  },
-  "src/game/player/power.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+    "no-restricted-syntax": {
       "count": 2
-    }
-  },
-  "src/game/player/radiator.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
     }
   },
   "src/game/player/throttle.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    }
+  },
+  "src/game/player/weapon-state.ts": {
+    "no-restricted-syntax": {
+      "count": 5
     }
   },
   "src/game/protein/protein-asset-loader.ts": {
@@ -886,11 +828,17 @@
   "src/game/protein/protein-combat-state.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/game/protein/protein-motion-metrics.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/game/protein/protein-schema.ts": {
@@ -908,16 +856,6 @@
       "count": 1
     }
   },
-  "src/game/save/save-data.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/stages/spawner/enemy-generator.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    }
-  },
   "src/game/stages/spawner/enemy-spawner.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
@@ -927,9 +865,6 @@
     }
   },
   "src/game/stages/stage-debug-alt-system.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     },
@@ -937,32 +872,9 @@
       "count": 2
     }
   },
-  "src/game/stages/stage-debug-load.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/stages/stage-debug.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 11
-    }
-  },
   "src/game/stages/stage-dictionary.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
-    }
-  },
-  "src/game/stages/stage-utils/logistics.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
-  "src/game/stages/stage-utils/score-attack-timer.ts": {
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
     }
   },
   "src/game/stages/stage-utils/status-panel.ts": {
@@ -974,61 +886,44 @@
     }
   },
   "src/game/stages/stage-utils/wave-attack.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 4
     }
   },
   "src/game/stages/stage.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    },
     "@typescript-eslint/no-unused-vars": {
       "count": 4
-    }
-  },
-  "src/game/stages/stage0.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
     },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 12
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
-  "src/game/stages/stage00.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+  "src/game/targeter.ts": {
+    "no-restricted-syntax": {
       "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 12
     }
   },
-  "src/game/stages/stage1.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+  "src/game/viewer/focus-target.ts": {
+    "no-restricted-syntax": {
       "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 8
     }
   },
-  "src/game/stages/stage2.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+  "src/game/viewer/predict-panel-commands.ts": {
+    "no-restricted-syntax": {
       "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 10
     }
   },
-  "src/game/view/view-manager.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+  "src/game/viewer/predict-panel-selection.ts": {
+    "no-restricted-syntax": {
       "count": 2
     }
   },
   "src/hud/overlay-manager.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/hud/utils.ts": {
@@ -1036,19 +931,45 @@
       "count": 1
     }
   },
-  "src/hud/windows/draggable-window.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+  "src/hud/widgets/pulldown.ts": {
+    "@typescript-eslint/parameter-properties": {
       "count": 1
     }
   },
-  "src/hud/windows/pause-menu.ts": {
+  "src/hud/widgets/segmented-control.ts": {
+    "@typescript-eslint/parameter-properties": {
+      "count": 1
+    }
+  },
+  "src/hud/widgets/tab-bar.ts": {
+    "@typescript-eslint/parameter-properties": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/hud/widgets/value-input.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/hud/windows/draggable-window.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/hud/windows/property-window-rename.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    }
+  },
+  "src/hud/windows/property-window.ts": {
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/input/input.ts": {
@@ -1057,10 +978,16 @@
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 15
+    },
+    "@typescript-eslint/parameter-properties": {
+      "count": 1
     }
   },
   "src/launcher/launcher.ts": {
     "no-console": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
       "count": 1
     }
   },
@@ -1069,32 +996,19 @@
       "count": 3
     }
   },
-  "src/launcher/save-browser/save-browser.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
   "src/launcher/save/autosave.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },
   "src/launcher/save/save-slots.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "no-console": {
       "count": 4
     }
   },
   "src/launcher/save/save-transfer.ts": {
-    "@typescript-eslint/consistent-type-imports": {
+    "no-restricted-syntax": {
       "count": 1
-    }
-  },
-  "src/launcher/save/snapshot-service.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
     }
   },
   "src/launcher/snapshot-controls.ts": {
@@ -1105,6 +1019,9 @@
   "src/launcher/stage-select.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 8
+    },
+    "no-restricted-syntax": {
+      "count": 3
     }
   },
   "src/launcher/title-scene.ts": {
@@ -1118,21 +1035,31 @@
     }
   },
   "src/main.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "no-console": {
       "count": 2
+    }
+  },
+  "src/marker/crowding.ts": {
+    "no-restricted-syntax": {
+      "count": 3
     }
   },
   "src/marker/label-declutter.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/marker/label-layout.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 5
+    }
+  },
+  "src/marker/marker-group.ts": {
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/math/deque.ts": {
@@ -1147,6 +1074,9 @@
     },
     "no-irregular-whitespace": {
       "count": 4
+    },
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/math/hierarchical-spatial-grid.ts": {
@@ -1178,6 +1108,9 @@
     }
   },
   "src/math/ray.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
@@ -1188,6 +1121,9 @@
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/math/triangle-mesh.ts": {
@@ -1199,6 +1135,9 @@
     }
   },
   "src/physics/atmosphere.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     },
@@ -1233,6 +1172,14 @@
   "src/physics/celestial-body-def.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 6
+    }
+  },
+  "src/physics/celestial-body.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
     }
   },
   "src/physics/celestial-motion.ts": {
@@ -1278,6 +1225,9 @@
     }
   },
   "src/physics/eci-transform.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
     },
@@ -1291,6 +1241,9 @@
     }
   },
   "src/physics/elements.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
     }
@@ -1316,25 +1269,47 @@
       "count": 10
     }
   },
+  "src/physics/ephemeris/pack-format.ts": {
+    "@typescript-eslint/array-type": {
+      "count": 1
+    }
+  },
+  "src/physics/ephemeris/pack-types.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    }
+  },
   "src/physics/ephemeris/pack.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 4
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 10
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/physics/ephemeris/point.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },
   "src/physics/ephemeris/profile.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 3
     }
   },
   "src/physics/frame.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
     }
@@ -1360,11 +1335,17 @@
     }
   },
   "src/physics/kepler-orbit.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 3
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
     }
   },
   "src/physics/kinematic-state.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     },
@@ -1373,6 +1354,9 @@
     }
   },
   "src/physics/lagrange.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
     }
@@ -1396,6 +1380,9 @@
     }
   },
   "src/physics/planet-system.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 8
     },
@@ -1404,6 +1391,9 @@
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 5
+    },
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/physics/point-orbit.ts": {
@@ -1412,6 +1402,9 @@
     }
   },
   "src/physics/satellite-orbit.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
     }
@@ -1447,12 +1440,12 @@
   "src/physics/time-ring.ts": {
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "src/physics/trajectory-features.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 5
     }
@@ -1467,6 +1460,11 @@
       "count": 1
     }
   },
+  "src/render/aurora-field.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 3
+    }
+  },
   "src/render/billboard.ts": {
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 5
@@ -1477,19 +1475,25 @@
       "count": 5
     }
   },
-  "src/render/camera/camera-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
   "src/render/camera/floating-origin.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
+    },
+    "@typescript-eslint/parameter-properties": {
+      "count": 2
     }
   },
   "src/render/celestial-grid.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 4
+    },
+    "@typescript-eslint/parameter-properties": {
+      "count": 1
+    }
+  },
+  "src/render/celestial-textures.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
     }
   },
   "src/render/celestial/aurora.ts": {
@@ -1505,6 +1509,9 @@
   "src/render/celestial/celestial-entity/geostationary-overlay.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
+    },
+    "@typescript-eslint/parameter-properties": {
+      "count": 1
     }
   },
   "src/render/celestial/celestial-entity/sphere-celestial-view.ts": {
@@ -1538,6 +1545,9 @@
       "count": 1
     },
     "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "@typescript-eslint/parameter-properties": {
       "count": 1
     }
   },
@@ -1588,11 +1598,19 @@
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/render/celestial/screen-lod.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    }
+  },
+  "src/render/cloud/atmospheric-wind.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
     }
   },
   "src/render/cloud/baked-field.ts": {
@@ -1604,17 +1622,33 @@
     }
   },
   "src/render/cloud/circulating-noise.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     }
   },
   "src/render/cloud/circulation.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
+    },
     "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/render/cloud/cloud-field-sample.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
       "count": 1
     }
   },
   "src/render/cloud/cyclone-tracks.ts": {
     "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/render/cloud/field-projection.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
       "count": 1
     }
   },
@@ -1678,11 +1712,6 @@
       "count": 1
     }
   },
-  "src/render/dynamic/dynamic-entity/protein-enemy-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/dynamic/dynamic-view.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -1727,6 +1756,9 @@
   "src/render/earth-surface-factory.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/render/earth-surface-gpu.ts": {
@@ -1781,13 +1813,29 @@
     }
   },
   "src/render/gpu-timings.ts": {
+    "@typescript-eslint/array-type": {
+      "count": 1
+    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/render/hermite-curve.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 21
+    }
+  },
+  "src/render/instanced-pool.ts": {
+    "@typescript-eslint/parameter-properties": {
+      "count": 1
+    }
+  },
+  "src/render/line-style.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
     }
   },
   "src/render/lines/ellipse-line.ts": {
@@ -1815,6 +1863,14 @@
   },
   "src/render/pipeline/antialias-pass.ts": {
     "@typescript-eslint/consistent-type-imports": {
+      "count": 1
+    },
+    "@typescript-eslint/parameter-properties": {
+      "count": 1
+    }
+  },
+  "src/render/pipeline/aperture-psf.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
       "count": 1
     }
   },
@@ -1858,6 +1914,9 @@
     }
   },
   "src/render/pipeline/lens-kernels.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     },
@@ -1866,6 +1925,9 @@
     }
   },
   "src/render/pipeline/lens-pass.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     },
@@ -1885,6 +1947,9 @@
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 8
+    },
+    "@typescript-eslint/parameter-properties": {
+      "count": 1
     }
   },
   "src/render/pipeline/lighting/ambient-source.ts": {
@@ -1893,6 +1958,16 @@
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 6
+    }
+  },
+  "src/render/pipeline/lighting/light-source.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    }
+  },
+  "src/render/pipeline/lighting/ltc-table.generated.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
     }
   },
   "src/render/pipeline/lighting/ltc.ts": {
@@ -1926,6 +2001,9 @@
     }
   },
   "src/render/pipeline/reversed-sort.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 8
     }
@@ -1962,11 +2040,20 @@
     }
   },
   "src/render/pipeline/shadow/shadow-casters.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
+    },
     "@typescript-eslint/explicit-member-accessibility": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
       "count": 1
     }
   },
   "src/render/pipeline/shadow/shadow-maps.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     },
@@ -1994,6 +2081,9 @@
     }
   },
   "src/render/pipeline/view-ray.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
@@ -2021,6 +2111,9 @@
   "src/render/protein/protein-motion-controller.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 9
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/render/protein/protein-motion-material.ts": {
@@ -2041,6 +2134,9 @@
   "src/render/protein/protein-ribbon-color.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "src/render/protein/protein-ribbon.ts": {
@@ -2058,6 +2154,16 @@
       "count": 6
     }
   },
+  "src/render/ray-march.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
+    }
+  },
+  "src/render/scale-grid.ts": {
+    "@typescript-eslint/parameter-properties": {
+      "count": 1
+    }
+  },
   "src/render/schematic-thrust-cone.ts": {
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 5
@@ -2065,6 +2171,11 @@
   },
   "src/render/tsl-types.ts": {
     "@typescript-eslint/consistent-type-imports": {
+      "count": 1
+    }
+  },
+  "src/run/run.ts": {
+    "no-restricted-syntax": {
       "count": 1
     }
   },
@@ -2103,14 +2214,6 @@
       "count": 2
     }
   },
-  "tests/game/booster-stack.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 2
-    }
-  },
   "tests/game/camera-orientation.test.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -2127,19 +2230,14 @@
   "tests/game/creative-placement-validation.test.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "tests/game/engagement-zone.test.ts": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 8
-    }
-  },
-  "tests/game/focus-target.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 2
+      "count": 7
     }
   },
   "tests/game/frame-anchors.test.ts": {
@@ -2157,6 +2255,9 @@
       "count": 1
     },
     "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
       "count": 1
     }
   },
@@ -2177,9 +2278,6 @@
     }
   },
   "tests/game/predicted-arc.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 3
     }
@@ -2258,6 +2356,16 @@
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 9
+    }
+  },
+  "tests/perf/exp11-celestial-pivot.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
+    }
+  },
+  "tests/perf/exp4-predictor-lookahead.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
     }
   },
   "tests/perf/sphere-contact-reference.ts": {
@@ -2462,6 +2570,9 @@
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 8
+    },
+    "no-restricted-syntax": {
+      "count": 2
     }
   },
   "tests/physics/satellite-orbit.test.ts": {
@@ -2512,6 +2623,9 @@
     }
   },
   "tests/physics/test-helpers.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 7
     },
@@ -2520,14 +2634,14 @@
     }
   },
   "tests/physics/trajectory-features.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 27
+      "count": 25
     }
   },
   "tests/physics/window-agreement.test.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 2
+    },
     "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
@@ -2569,6 +2683,9 @@
     }
   },
   "tests/render/earth-surface-material.test.ts": {
+    "@typescript-eslint/array-type": {
+      "count": 1
+    },
     "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
@@ -2639,11 +2756,19 @@
     }
   },
   "tests/render/tsl-node-evaluator.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 5
+    }
+  },
+  "tests/repo-assets.ts": {
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "tools/bgm-lab/lab-player.ts": {
@@ -2678,6 +2803,9 @@
     }
   },
   "tools/cloud-lab/separate-main.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
+      "count": 1
+    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 13
     }
