@@ -79,6 +79,21 @@ export function register(): void {
     assert.ok(normal.distanceTo(new THREE.Vector3(0, 0, 1)) < 1e-9);
   });
 
+  test('ship module asset: tank band は船体軸と同じ +Z 法線を持つ', () => {
+    const modules = moduleRoots(parsedRoot());
+    const module = modules.get('tank-6-main');
+    assert.ok(module !== undefined);
+    const bands: THREE.Object3D[] = [];
+    module.traverse((child) => {
+      if (child.name === 'tank-band') bands.push(child);
+    });
+    assert.ok(bands.length > 0);
+    for (const band of bands) {
+      const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(band.quaternion);
+      assert.ok(normal.distanceTo(new THREE.Vector3(0, 0, 1)) < 1e-9);
+    }
+  });
+
   test('ship module asset: 能力を持つ module は対応する semantic anchor を保つ', () => {
     const modules = moduleRoots(parsedRoot());
     const expected: Readonly<Record<string, readonly string[]>> = {
