@@ -1,6 +1,6 @@
 // ラン跨ぎのユーザー設定の正本。設定ごとの現在値を1つずつ起こし、保存先のどの鍵へ載せるかを決める。
 
-import { formatBgmVolume, parseBgmVolume } from '../audio/bgm/bgm';
+import { formatBgmMuted, formatBgmVolume, parseBgmMuted, parseBgmVolume } from '../audio/bgm/bgm';
 import {
   formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
   parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
@@ -29,6 +29,8 @@ export class UserSettings {
   public readonly renderStyle: StoredSetting<RenderStyle>;
   // BGM のユーザー音量。0〜1。
   public readonly bgmVolume: StoredSetting<number>;
+  // BGM を消音しているか。消音を解けば bgmVolume の音量で鳴る。
+  public readonly bgmMuted: StoredSetting<boolean>;
   // 選ばれている配色。
   public readonly themePalette: StoredSetting<ThemePalette>;
   // マップに出す天体分類・個体種別のトグル。
@@ -49,6 +51,7 @@ export class UserSettings {
     this.graphics = new StoredSetting(storage, 'tepui.settings.graphics', parseGraphics, formatGraphics);
     this.renderStyle = new StoredSetting(storage, 'tepui.settings.renderStyle', parseRenderStyle, formatRenderStyle);
     this.bgmVolume = new StoredSetting(storage, 'tepui.settings.bgm_vol', parseBgmVolume, formatBgmVolume);
+    this.bgmMuted = new StoredSetting(storage, 'tepui.settings.bgm_muted', parseBgmMuted, formatBgmMuted);
     this.themePalette = new StoredSetting(storage, 'tepui.theme-palette', parseThemePalette, formatThemePalette);
     // マップ・天球の表示に効く設定。
     this.mapDisplayToggles = new StoredSetting(

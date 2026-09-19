@@ -18,7 +18,7 @@ import { MarkerDevice } from './marker/marker-device';
 import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
 import { PauseMenu } from './hud/windows/pause-menu';
 import { AudioEngine } from './audio/audio-engine';
-import { Bgm } from './audio/bgm/bgm';
+import { Bgm, DEFAULT_BGM_VOLUME } from './audio/bgm/bgm';
 import { debugInfoOpenAtStart, Launcher } from './launcher/launcher';
 import { UnlockManager } from './launcher/unlock-manager';
 import { SnapshotControls } from './launcher/snapshot-controls';
@@ -34,7 +34,6 @@ import { KEY_MAPPING as K } from './input/key-mapping';
 import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
 import type { GraphicsSettingsData } from './render/graphics-settings';
-import type { SettingValue } from './settings/setting-value';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -47,9 +46,14 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   return gs;
 }
 
+// 消音を織り込んだ BGM の音量。
+function audibleBgmVolume(settings: UserSettings): number {
+  return settings.bgmMuted.current ? 0 : settings.bgmVolume.current;
+}
+
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, gs: GameScene, graphics: SettingValue<GraphicsSettingsData>,
+  launcher: Launcher, gs: GameScene, settings: UserSettings, bgm: Bgm,
   debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
 ): void {
   let lastTime = performance.now();
@@ -61,10 +65,17 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gs.syncFrame(viewport, graphics.current, debugInfo.debugTarget);
-    // 設定面はタイトル画面でも開けるので、周回の有無を見る前に引き直す。
-    pauseMenu.sync();
+    gs.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
+    // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
+    // 決まった周回の進行と、設定面の試聴に合わせる。
+    pauseMenu.sync(now);
     const run = launcher.current;
+    bgm.sync({
+      volume: audibleBgmVolume(settings),
+      inRun: run?.game.activeStage.isPlaying ?? false,
+      auditioning: pauseMenu.settingsView.bgmAuditioning,
+      audition: pauseMenu.settingsView.bgmAudition,
+    });
     // 周回の切り替え中はランが無いので、次フレームを予約して抜ける。
     if (run === null) {
       requestAnimationFrame(animate);
@@ -130,18 +141,17 @@ function initHud(settings: UserSettings): {
   const markers = new MarkerDevice(shell.layers.marker);
   injectMarkerIdentityStyle();
   const audioEngine = new AudioEngine();
-  const bgm = new Bgm(audioEngine, settings.bgmVolume.current);
+  const bgm = new Bgm(audioEngine);
   const pauseMenu = new PauseMenu(
-    shell.layers.system, shell.overlayManager, bgm,
-    settings.graphics.current, settings.bgmVolume.current, settings.themePalette.current.id,
+    shell.layers.system, shell.overlayManager,
+    settings.graphics.current, audibleBgmVolume(settings), settings.themePalette.current.id,
   );
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
 }
 
 // 設定の変更を、通知から引き直す側へ配る。書き換えの入口はどれも設定へ戻す。
 function bindSettings(
-  settings: UserSettings, hud: Hud, bgm: Bgm,
-  pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
+  settings: UserSettings, hud: Hud, pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {
   const settingsView = pauseMenu.settingsView;
   settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
@@ -150,13 +160,25 @@ function bindSettings(
   hud.onRenderStyleChange = (style) => settings.renderStyle.set(style);
 
   // 音量は一時停止メニューと設定ビューの両方が書き換えるので、通知を受けた側で両方を引き直す。
-  settings.bgmVolume.subscribe((volume) => {
-    bgm.setVolume(volume);
-    pauseMenu.syncBgmVolume(volume);
-    settingsView.syncBgmVolume(volume);
-  });
-  pauseMenu.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
-  settingsView.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
+  // どちらも消音中は音量を 0 と見せる。
+  const syncBgmVolume = (): void => {
+    pauseMenu.syncBgmVolume(audibleBgmVolume(settings));
+    settingsView.syncBgmVolume(audibleBgmVolume(settings));
+  };
+  settings.bgmVolume.subscribe(syncBgmVolume);
+  settings.bgmMuted.subscribe(syncBgmVolume);
+  // 音量を動かせば消音を解く。
+  const setBgmVolume = (volume: number): void => {
+    settings.bgmVolume.set(volume);
+    settings.bgmMuted.set(false);
+  };
+  pauseMenu.onBgmVolumeChange = setBgmVolume;
+  settingsView.onBgmVolumeChange = setBgmVolume;
+  // 音量 0 のまま消音を解くと無音が続くので、既定の音量へ戻して解く。
+  pauseMenu.onBgmMutedChange = (muted) => {
+    if (!muted && settings.bgmVolume.current <= 0) settings.bgmVolume.set(DEFAULT_BGM_VOLUME);
+    settings.bgmMuted.set(muted);
+  };
 
   // 配色はプリセットに在るものだけを選択として残す。
   settingsView.onThemeIdChange = (id) => {
@@ -204,7 +226,7 @@ async function main() {
 
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
-    shell, devices, viewOptionSettings(settings), settings.themePalette, sections, bgm, unlockManager,
+    shell, devices, viewOptionSettings(settings), settings.themePalette, sections, unlockManager,
     slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
   );
 
@@ -220,7 +242,7 @@ async function main() {
   };
 
   // 設定とデバッグ情報ウィンドウの配線。
-  bindSettings(settings, hud, bgm, pauseMenu, debugInfo);
+  bindSettings(settings, hud, pauseMenu, debugInfo);
   pauseMenu.onOpenDebugInfoWindow = () => {
     pauseMenu.toggle(false);
     debugInfo.open();
@@ -229,9 +251,9 @@ async function main() {
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
   pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
-  // 最初の周回を起こしてから、フレームを回し始める。
+  // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
+  startAnimationLoop(launcher, gs, settings, bgm, debugInfo, pauseMenu, snapshotControls);
   await launcher.start();
-  startAnimationLoop(launcher, gs, settings.graphics, debugInfo, pauseMenu, snapshotControls);
 }
 
 main().catch((err) => {

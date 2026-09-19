@@ -1,9 +1,9 @@
-// BGM の公開窓口。ユーザー音量をマスターゲインとして持ち、音楽の線(Conductor)を束ねて
-// 1つの先読みタイマーで進める。線はゲーム中の BGM と試聴の2本で、互いのノード鎖は独立している。
-// 試聴の期間(beginAudition〜endAudition)はゲーム中の BGM を伏せる。
+// BGM の公開窓口。そのフレームに鳴らすべき BGM の宣言を受け、前の宣言との差だけを鳴らし分ける。
+// ユーザー音量をマスターゲインとして持ち、音楽の線(Conductor)を束ねて1つの先読みタイマーで進める。
+// 線はゲーム中の BGM と試聴の2本で、互いのノード鎖は独立している。試聴の期間はゲーム中の BGM を伏せる。
 import { BGM_TRACKS } from './tracks/tracks';
 import { Conductor } from './conductor';
-import { AudioEngine } from '../audio-engine';
+import type { AudioEngine } from '../audio-engine';
 import { trackCycleDurationSec } from './track-cycle';
 
 const PUMP_INTERVAL_MS = 120; // スケジューラを回す間隔
@@ -11,8 +11,9 @@ const LOOKAHEAD_SEC = 0.6; // まとめてスケジュールする先読みの�
 const AUDITION_FADE_SEC = 0.15; // 試聴を切り替える・止めるときのフェード
 const RUN_END_FADE_SEC = 2.5; // ランの外へ出たときのフェードアウト
 
-// 保存が無いときのユーザー音量。
+// 保存が無いときのユーザー音量と消音。
 export const DEFAULT_BGM_VOLUME = 1;
+export const DEFAULT_BGM_MUTED = false;
 
 // 保存された文字列をユーザー音量へ読み直す。数として読めない値は既定へ落とし、読めた値は 0〜1 へ収める。
 export function parseBgmVolume(text: string | null): number {
@@ -27,21 +28,72 @@ export function formatBgmVolume(vol: number): string {
   return String(vol);
 }
 
+// 保存された文字列を消音の有無へ読み直す。読めない値は既定へ落とす。
+export function parseBgmMuted(text: string | null): boolean {
+  if (text === 'true') return true;
+  if (text === 'false') return false;
+  return DEFAULT_BGM_MUTED;
+}
+
+// 消音の有無を保存文字列へ書き出す。
+export function formatBgmMuted(muted: boolean): string {
+  return String(muted);
+}
+
+// 曲 index が一巡する長さ(秒)。一巡という概念を持たない曲では 0。
+export function auditionDurationSec(index: number): number {
+  const track = BGM_TRACKS[index];
+  return track ? trackCycleDurationSec(track) : 0;
+}
+
+// 試聴している曲。session が変わるたびに曲 track を先頭から鳴らし直し、同じ session のあいだは
+// seekId が変わるたびに再生位置を seekSec [s] へ飛ばす。
+export interface BgmAudition {
+  readonly track: number;
+  readonly session: number;
+  readonly seekSec: number;
+  readonly seekId: number;
+}
+
+// そのフレームに鳴らすべき BGM の全体。volume はユーザー音量 [0〜1]、inRun はランが進行中か(ゲーム中の
+// BGM を鳴らすか)、auditioning は試聴の期間か(ゲーム中の BGM を伏せる)、audition は試聴している曲で、
+// 止めていれば null。
+export interface BgmDeclaration {
+  readonly volume: number;
+  readonly inRun: boolean;
+  readonly auditioning: boolean;
+  readonly audition: BgmAudition | null;
+}
+
 export class Bgm {
   private masterGain: GainNode | null = null;
   private ambient: Conductor | null = null;
   private audition: Conductor | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  // 直近に受けた宣言のうち、鳴らし分けに使う値。解禁前に受けた宣言は、解禁できた時点で効く。
+  private volume = DEFAULT_BGM_VOLUME;
+  private inRun = false;
+  private auditioning = false;
+  private auditionSession: number | null = null;
+  private auditionSeekId: number | null = null;
 
-  // volume は鳴らし始めるときのユーザー音量 [0〜1]。解禁前に受けた宣言は、解禁できた時点で効く。
-  public constructor(private readonly engine: AudioEngine, private volume: number) {
+  // engine が解禁されたら、それまでに受けた宣言どおりに鳴らし始める。
+  public constructor(private readonly engine: AudioEngine) {
     engine.whenUnlocked(() => this.syncAmbient());
   }
 
-  // === 共通 (conductor によらない操作) ===
+  // そのフレームに鳴らすべき BGM の全体 declaration を受け、前の宣言との差だけを鳴らし分ける。
+  // 同じ宣言を何度渡しても結果は変わらない。
+  public sync(declaration: BgmDeclaration): void {
+    this.syncVolume(declaration.volume);
+    this.syncAuditioning(declaration.auditioning);
+    this.syncAudition(declaration.audition);
+    this.syncRun(declaration.inRun);
+  }
 
-  // ユーザー音量を差し替える。鳴っていれば即反映するだけで、再生の有無は変えない。
-  public setVolume(vol: number): void {
+  // ユーザー音量を vol へ合わせる。鳴っていれば即反映するだけで、再生の有無は変えない。
+  private syncVolume(vol: number): void {
+    if (vol === this.volume) return;
     this.volume = vol;
     const ctx = this.engine.ctx;
     if (!ctx || !this.masterGain) return;
@@ -80,15 +132,9 @@ export class Bgm {
   }
 
   // === ゲーム内BGM (ambient conductor) ===
-  // これが既定の conductor なので、特別扱いとし、関連するメソッド名から目的語 (ambient) を省く。
 
-  // 伏せる指示。線は最初に鳴らすときまで組まれないので、その間の指示をここで覚えておく。
-  private paused = false;
-  // ランの中に居るか。ゲーム内 BGM を鳴らすかどうかは、この宣言だけで決まる。
-  private inRun = false;
-
-  // ランが進行中か(= ゲーム内 BGM を鳴らすべきか)の宣言。同じ値を何度渡しても結果は変わらない。
-  public syncRun(inProgress: boolean): void {
+  // ランが進行中か(= ゲーム内 BGM を鳴らすべきか)を inProgress へ合わせる。
+  private syncRun(inProgress: boolean): void {
     if (this.inRun === inProgress) return;
     this.inRun = inProgress;
     this.syncAmbient();
@@ -111,63 +157,58 @@ export class Bgm {
   private ensureAmbient(ctx: AudioContext): Conductor {
     if (!this.ambient) {
       this.ambient = new Conductor(ctx, this.ensureMasterGain(ctx), true);
-      if (this.paused) this.ambient.pause();
+      if (this.auditioning) this.ambient.pause();
     }
     return this.ambient;
   }
 
   // === 試聴用 BGM (audition conductor) ===
-  // beginAudition〜endAudition が試聴の期間で、その間ゲーム内 BGM を伏せる。
 
-  // 試聴の期間を始め、ゲーム内 BGM を伏せる。まだ線が無ければ、組まれたときから伏せておく。
-  public beginAudition(): void {
-    this.paused = true;
-    this.ambient?.pause();
-  }
-
-  // 指定した曲を先頭から試聴し、曲送りせずに鳴らし続ける。
-  public playAudition(index: number): void {
-    const ctx = this.engine.ctx;
-    if (!ctx || BGM_TRACKS.length === 0) return;
-    this.disposeAudition();
-    this.audition = new Conductor(ctx, this.ensureMasterGain(ctx), false);
-    this.audition.start(index);
-    this.syncPump();
-  }
-
-  // 試聴を止める。試聴の期間は続くので、ゲーム中の BGM は伏せたまま。
-  public stopAudition(): void {
-    this.disposeAudition();
-    this.syncPump();
-  }
-
-  // 試聴中の曲を、一巡の中の timeSec 秒の位置へ飛ばす。試聴していなければ何もしない。
-  public seekAudition(timeSec: number): void {
-    this.audition?.seek(timeSec);
-  }
-
-  // 試聴中の曲の、一巡の中での経過秒数。試聴していなければ 0。
-  public auditionElapsedSec(): number {
-    return this.audition?.elapsedSec ?? 0;
-  }
-
-  // 指定した曲が一巡する長さ(秒)。一巡という概念を持たない曲では 0。
-  public auditionDurationSec(index: number): number {
-    const track = BGM_TRACKS[index];
-    return track ? trackCycleDurationSec(track) : 0;
-  }
-
-  // 試聴の期間を終える。試聴の線を畳み、ゲーム中の BGM の伏せを解く(伏せる前に鳴っていなければ無音のまま)。
-  public endAudition(): void {
-    this.paused = false;
+  // 試聴の期間かを on へ合わせる。期間に入るとゲーム内 BGM を伏せ(まだ線が無ければ、組まれた
+  // ときから伏せておく)、期間を出ると試聴の線を畳んで伏せを解く(伏せる前に鳴っていなければ無音のまま)。
+  private syncAuditioning(on: boolean): void {
+    if (on === this.auditioning) return;
+    this.auditioning = on;
+    if (on) {
+      this.ambient?.pause();
+      return;
+    }
     this.disposeAudition();
     this.ambient?.resume();
     this.syncPump();
+  }
+
+  // 試聴している曲を audition へ合わせる。止めていれば試聴の線を畳む。
+  private syncAudition(audition: BgmAudition | null): void {
+    if (audition === null) {
+      if (this.audition !== null) {
+        this.disposeAudition();
+        this.syncPump();
+      }
+      return;
+    }
+    // 新しい試聴は先頭から鳴らし直す。解禁前は鳴らせないので、解禁後の宣言で鳴らす。
+    if (audition.session !== this.auditionSession) {
+      const ctx = this.engine.ctx;
+      if (!ctx || BGM_TRACKS.length === 0) return;
+      this.disposeAudition();
+      this.audition = new Conductor(ctx, this.ensureMasterGain(ctx), false);
+      this.audition.start(audition.track);
+      this.auditionSession = audition.session;
+      this.auditionSeekId = audition.seekId;
+      this.syncPump();
+      return;
+    }
+    if (audition.seekId === this.auditionSeekId) return;
+    this.auditionSeekId = audition.seekId;
+    this.audition?.seek(audition.seekSec);
   }
 
   // 試聴の線があれば畳む。
   private disposeAudition(): void {
     this.audition?.dispose(AUDITION_FADE_SEC);
     this.audition = null;
+    this.auditionSession = null;
+    this.auditionSeekId = null;
   }
 }

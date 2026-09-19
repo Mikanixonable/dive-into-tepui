@@ -21,7 +21,6 @@ import type { PlanCommands } from '../plan/plan-commands';
 import type { PlanDisplay } from '../plan/plan-display';
 import type { SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { UiSfx } from '../../audio/sfx/ui-sfx';
 import type * as THREE from 'three/webgpu';
 import type { ControlSelection } from '../control-selection';
 import type { ControlSelectionCommands } from '../control-selection-commands';
@@ -35,6 +34,7 @@ import type { ViewFrame } from './view-frame';
 import type { PerfCounts } from '../perf-counts';
 import type { Vec3 } from '../../math/vec3';
 import type { MapCameraSource } from '../viewer/camera-selection';
+import type { UiSoundQueue } from '../ui-sound-queue';
 
 interface CameraPositionSource {
   readonly activeCameraPos: Vec3;
@@ -69,13 +69,13 @@ export class MapView implements ViewFrame {
     planCommands: PlanCommands,
     scene: THREE.Scene,
     hud: HudLayers & Notifier,
-    uiSfx: UiSfx,
+    uiSounds: UiSoundQueue,
     navTargetPresenter: NavTargetPresenter,
     navTargetCommands: NavTargetCommands,
     private readonly mapDisplay: SettingValue<MapDisplayToggles>,
   ) {
     this.planEditor = new PlanEditor(
-      hud, uiSfx, simSpeedManager, simSpeedCommands, celestialSystem, scene, controlSelection,
+      hud, uiSounds, simSpeedManager, simSpeedCommands, celestialSystem, scene, controlSelection,
       displayWindowManager, frameControls, planDisplay.path, planCommands,
     );
     this.objectPickables = new ObjectPickables(
