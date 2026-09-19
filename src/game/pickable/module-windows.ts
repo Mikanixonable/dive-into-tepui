@@ -65,6 +65,7 @@ export class ModuleWindows {
     private readonly controlSelection: ControlSelection,
     private readonly roster: EntityRoster & EntityRegistry,
     private readonly construction: ShipConstruction,
+    private readonly enterCombatView: () => boolean,
   ) {}
 
   // モジュールのウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
@@ -99,6 +100,7 @@ export class ModuleWindows {
         this.dockNearest(ship, moduleId);
       } else if (act === 'startConstructionModule') {
         try {
+          if (!this.enterCombatView()) throw new Error('戦闘ビューへ切り替えられません');
           this.construction.start(ship, moduleId);
         } catch (error) {
           this.hud.hint(error instanceof Error ? error.message : '建造を開始できません');

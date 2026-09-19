@@ -1,3 +1,4 @@
+// モジュール船 entity の船体・操縦・戦闘・接舷・分離・保存ライフサイクルを所有する。
 import type * as THREE from 'three/webgpu';
 import type { ViewMode } from '../../render/view-mode';
 import type { Attitude } from '../../physics/attitude';
@@ -92,7 +93,7 @@ export type ModularShipInit =
   }
   | { readonly saved: ShipSaveData; readonly simTime: number };
 
-// プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結と保存を持つ。
+// モジュール船の操縦・射撃・ブースター・接触帰結・保存を合成する entity。
 export class ModularShip extends Ship implements Controllable {
   public override mapKind: DynamicEntityKind;
   public override showsEquatorNodesAlways: boolean;
@@ -309,7 +310,7 @@ export class ModularShip extends Ship implements Controllable {
     this.syncDerivedRole();
   }
 
-  // 既存の左右2枚操作を、接続順で先頭2枚の module state へ写す。
+  // 左右の展開操作を、接続順で先頭2枚の module state へ写す。
   private syncModuleDeployments(): void {
     const solar = this.capabilities.modules('solar_panel');
     const radiators = this.capabilities.modules('radiator');
@@ -362,6 +363,7 @@ export class ModularShip extends Ship implements Controllable {
     return updated?.kind === 'booster' && updated.ignited;
   }
 
+  // 条件を満たす二船をこの entity へ統合し、相手 entity を選択系から除去する。
   public dock(
     other: ModularShip, localPortId: string, otherPortId: string,
     selection: ControlSelection,
@@ -394,6 +396,7 @@ export class ModularShip extends Ship implements Controllable {
     return merged.connectionId;
   }
 
+  // 指定接舷部の docking edge を切り、記録された identity で船を再登録する。
   public undock(portId: string, registry: EntityRegistry): ModularShip {
     const connection = this.assembly.dockingConnections().find(
       edge => edge.parentId === portId || edge.childId === portId,
@@ -402,6 +405,7 @@ export class ModularShip extends Ship implements Controllable {
     return this.separateConnection(connection, registry);
   }
 
+  // 建造枝の接続を切り、新しい船として登録する。
   public launchConstruction(connectionId: string, registry: EntityRegistry): ModularShip {
     const connection = this.assembly.graph.find(edge => edge.id === connectionId);
     if (connection === undefined || connection.kind === 'docking') {
@@ -412,6 +416,7 @@ export class ModularShip extends Ship implements Controllable {
     );
   }
 
+  // 指定 edge の両側へ assembly と運動状態を分け、分離船を登録する。
   private separateConnection(
     connection: ShipConnection, registry: EntityRegistry,
     identity?: { readonly id?: string; readonly name: string },
@@ -472,6 +477,7 @@ export class ModularShip extends Ship implements Controllable {
     return detached;
   }
 
+  // 接舷済みの統合船体を指定接舷部から一括修理し、導出状態を同期する。
   public repairAtDock(portId: string): number {
     const repaired = repairDockedAssembly(this.assembly, portId);
     this.hp = this.assembly.totalHp;
@@ -500,6 +506,7 @@ export class ModularShip extends Ship implements Controllable {
     this.showsEquatorNodesAlways = this.capabilities.role === 'base';
   }
 
+  // 健全なデカプラーで船体と運動量を二分し、分離船と火工品 debris を登録する。
   public decouple(decouplerId: string, registry: EntityRegistry): ModularShip {
     const before = this.motion.physicsShape;
     const split = splitAtDecoupler(this.assembly, decouplerId);
@@ -540,8 +547,7 @@ export class ModularShip extends Ship implements Controllable {
         assembly: split.detached,
       },
     );
-    // 新しい実体を組み立て終えてから live assembly を一度だけ差し替える。ここより前で
-    // 失敗しても元の船体は変更されない。
+    // 分離船の構築成功後に live assembly を差し替え、途中失敗を原船へ反映させない。
     this.assembly.replaceWith(split.retained);
     this.motion.synchronizeAssembly();
     this.motion.att = { ...this.motion.att, q, w };
@@ -589,7 +595,7 @@ export class ModularShip extends Ship implements Controllable {
     other.collisionGrace.set(this.id, until);
   }
 
-  // 全 entity 復元後に ID 参照を motion 参照へ戻す。期限切れ・欠損相手は保存ノイズとして落とす。
+  // 復元した ID 参照を motion 参照へ結び、期限切れ・欠損記録を取り除く。
   public restoreCollisionGrace(ships: readonly ModularShip[]): void {
     for (const [otherId, until] of [...this.collisionGrace]) {
       const other = ships.find(ship => ship.id === otherId);
@@ -601,6 +607,7 @@ export class ModularShip extends Ship implements Controllable {
     }
   }
 
+  // ブースターとデカプラーがある艦の燃焼管理表示を組み立てる。
   public burnManagementViewModel(): BurnManagementViewModel | null {
     const boosters = this.capabilities.modules('booster');
     const decouplers = this.capabilities.modules('decoupler');
@@ -628,6 +635,7 @@ export class ModularShip extends Ship implements Controllable {
     };
   }
 
+  // HUD が読む操縦・環境・電力・放熱・射撃状態を同じフレームへ畳む。
   public statusSnapshot(): PlayerStatusSnapshot {
     return {
       throttleIdx: this.throttle.throttleIdx,
@@ -654,8 +662,7 @@ export class ModularShip extends Ship implements Controllable {
     this.fire.onPickup(mags);
   }
 
-  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦は、このフレーム操作されない
-  // 艦として畳む。
+  // 1フレーム分の操縦入力と booster 燃焼を処理し、非操作艦の連続指令を畳む。
   public updateControls(frame: PilotCommandFrame): void {
     const { input: requestedInput, dt, simDt, registry, activeStage, stageRules, celestialBodies } = frame;
     const input = this.capabilities.controllable ? requestedInput : null;
@@ -876,7 +883,7 @@ export class ModularShip extends Ship implements Controllable {
     );
   }
 
-  // 艦は任意のタイミングで削除されうるので、一度だけ連続指令と View を解放する。
+  // dispose の多重実行を防ぐ状態。
   private disposed: boolean = false;
 
   // 画面マーカーと被選択判定が同じ艦を指すためのキー。
@@ -896,7 +903,7 @@ export class ModularShip extends Ship implements Controllable {
       vel,
       priority: isBaseRole ? MARKER_PRIORITY.BASE - dist / 1e9 : MARKER_PRIORITY.PLAYER,
       name: this.name,
-      // 画面外の方位マーカーは ALLY_BEARING_MAX_DISTANCE 以内の艦にだけ出す
+      // 遠距離では画面外方位マーカーを畳み、密集を抑える。
       bearingColor: COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
@@ -906,7 +913,7 @@ export class ModularShip extends Ship implements Controllable {
     };
   }
 
-  // 自機の View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
+  // 船体 View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
   // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
   protected override renderSource(
     viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
@@ -991,7 +998,7 @@ export class ModularShip extends Ship implements Controllable {
   public rename(name: string): void { this.setName(name); }
 }
 
-// この個体が自機か。顔ぶれから自機だけを絞るときに使う。
+// entity がモジュール船なら型を絞り込む。
 export function isModularShip(entity: DynamicEntity): entity is ModularShip {
   return entity instanceof ModularShip;
 }

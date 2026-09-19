@@ -35,12 +35,15 @@ export function register(): void {
     const assembly = new ShipAssembly();
     assembly.addRoot(module('cockpit-standard', 'root'));
     assembly.append(module('tank-12-main', 'tank'));
-    const edge = assembly.graph[0]!;
+    const edge = assembly.graph[0];
+    assert.ok(edge !== undefined);
     assert.equal(edge.kind, 'axial');
     assert.equal(edge.childTransform.position.x, 0);
     assert.equal(edge.childTransform.position.y, 0);
     assert.equal(edge.childTransform.position.z, 7.5);
-    assert.equal(assembly.worldTransformOf('tank')!.position.z, 7.5);
+    const tankTransform = assembly.worldTransformOf('tank');
+    assert.ok(tankTransform !== null);
+    assert.equal(tankTransform.position.z, 7.5);
     assert.equal(assembly.validate().valid, true);
   });
 
@@ -50,7 +53,9 @@ export function register(): void {
     const transform = { position: v3(0, 3.5, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(0, 1, 0)) };
     assembly.connectSide(module('dock-standard', 'dock'), 'root', transform, 'side-edge');
     assert.deepEqual(assembly.transformOf('dock'), transform);
-    assert.equal(assembly.graph[0]!.id, 'side-edge');
+    const sideEdge = assembly.graph[0];
+    assert.ok(sideEdge !== undefined);
+    assert.equal(sideEdge.id, 'side-edge');
   });
 
   test('ship assembly: docking edge は接舷面を一致させ、重複IDを安定名へ写す', () => {
@@ -64,8 +69,9 @@ export function register(): void {
     assert.equal(merged.moduleIds.get('cockpit'), 'guest:cockpit');
     assert.equal(merged.assembly.validate().valid, true);
     assert.equal(merged.assembly.graph.find(edge => edge.id === merged.connectionId)?.kind, 'docking');
-    const hostTransform = merged.assembly.worldTransformOf('dock')!;
-    const guestTransform = merged.assembly.worldTransformOf('port')!;
+    const hostTransform = merged.assembly.worldTransformOf('dock');
+    const guestTransform = merged.assembly.worldTransformOf('port');
+    assert.ok(hostTransform !== null && guestTransform !== null);
     const hostPoint = add(hostTransform.position, scale(qRotate(hostTransform.rotation, LOCAL_FORWARD), 0.5));
     const guestPoint = add(guestTransform.position, scale(qRotate(guestTransform.rotation, LOCAL_FORWARD), 0.5));
     assert.ok(Math.hypot(
@@ -97,12 +103,17 @@ export function register(): void {
     assembly.append(module('thruster-standard', 'c'));
     const clone = assembly.clone();
     clone.damage(10, 1, 'a');
-    assert.equal(assembly.module('a')!.hp, 100);
-    const [left, right] = assembly.splitAt(assembly.graph[1]!.id);
+    const moduleA = assembly.module('a');
+    const splitEdge = assembly.graph[1];
+    assert.ok(moduleA !== null && splitEdge !== undefined);
+    assert.equal(moduleA.hp, 100);
+    const [left, right] = assembly.splitAt(splitEdge.id);
     assert.deepEqual(left.moduleIds, ['a', 'b']);
     assert.deepEqual(right.moduleIds, ['c']);
     assert.equal(assembly.size, 0);
-    assert.equal(left.module('b')!.kind, 'tank');
+    const leftTank = left.module('b');
+    assert.ok(leftTank !== null);
+    assert.equal(leftTank.kind, 'tank');
     assert.equal(right.validate().valid, true);
   });
 
@@ -120,8 +131,11 @@ export function register(): void {
     const assembly = new ShipAssembly();
     assembly.addRoot(module('cockpit-standard', 'cockpit'));
     const listed = assembly.modules;
-    listed[0]!.hp = 0;
-    assert.equal(assembly.module('cockpit')!.hp, 100);
+    const listedCockpit = listed[0];
+    const cockpit = assembly.module('cockpit');
+    assert.ok(listedCockpit !== undefined && cockpit !== null);
+    listedCockpit.hp = 0;
+    assert.equal(cockpit.hp, 100);
   });
 
   test('ship assembly: 可変 state は狭い所有 API から更新する', () => {
@@ -131,13 +145,18 @@ export function register(): void {
     assembly.append(module('radiator-standard', 'radiator'));
     assembly.setIgnited('booster', true);
     assert.equal(assembly.consumeFuel('main', 3), 3);
-    const boosterBefore = assembly.module('booster')!;
+    const boosterBefore = assembly.module('booster');
+    assert.ok(boosterBefore !== null);
     assert.equal(boosterBefore.kind === 'booster' && boosterBefore.fuel, 2);
     assert.equal(assembly.consumeBoosterFuel('booster', 1), 1);
-    assert.equal(assembly.module('booster')!.kind, 'booster');
+    const booster = assembly.module('booster');
+    assert.ok(booster !== null);
+    assert.equal(booster.kind, 'booster');
     assembly.setDeployment('radiator', 0.4);
     assembly.setTemperature('radiator', 500);
-    assert.equal(assembly.module('radiator')!.temperature, 500);
-    assert.equal(assembly.module('radiator')!.kind, 'radiator');
+    const radiator = assembly.module('radiator');
+    assert.ok(radiator !== null);
+    assert.equal(radiator.temperature, 500);
+    assert.equal(radiator.kind, 'radiator');
   });
 }

@@ -1,3 +1,4 @@
+// 船体モジュールの不変な寸法・質量・能力・衝突プリミティブを定義する。
 import { v3, type Vec3 } from '../../math/vec3';
 
 // 建造可能な部品の種別。表示・物理・保存はこのタグを共有するが、振る舞いは instance の状態を読む。
@@ -73,7 +74,7 @@ function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinitio
   });
 }
 
-// 定義を組み立てる唯一の入口。呼び出し側の配列をコピーし、実行時にも変更できないようにする。
+// definition を検証し、入れ子の配列・値まで凍結して返す。
 export function defineShipModule(
   definition: Omit<ShipModuleDefinition, 'solidPrimitives'> & {
     readonly solidPrimitives: readonly LocalCappedCylinder[];
@@ -103,6 +104,7 @@ export function defineShipModule(
   return freezeDefinition(definition);
 }
 
+// +Z 軸を長手方向とする原点中心の円柱 primitive を作る。
 export function bodyPrimitive(length: number, radius = 3): LocalCappedCylinder {
   return { center: v3(), axis: v3(0, 0, 1), halfLength: length / 2, radius };
 }

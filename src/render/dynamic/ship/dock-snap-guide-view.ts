@@ -1,3 +1,4 @@
+// 建造候補の接続面と妥当性を円形ガイドで描画する。
 import * as THREE from 'three/webgpu';
 import { qNormalize, type Quat } from '../../../math/quat';
 import type { Vec3 } from '../../../math/vec3';

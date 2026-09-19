@@ -1,3 +1,4 @@
+// モジュール船を一体剛体として進め、船体由来の形状・質量・補助システムを同期する。
 import { cross, add, v3, type Vec3 } from '../../math/vec3';
 import { LOCAL_RIGHT, qRotate } from '../../math/quat';
 import type { Attitude } from '../../physics/attitude';
@@ -24,7 +25,7 @@ import { RadiatorSystem, type RadiatorSide } from '../player/radiator';
 import type { ShipAssembly } from './ship-assembly';
 import { shipPhysicsShape, type ShipPhysicsShape } from './ship-physics-shape';
 
-// 既定戦闘船で既存の空力・輻射圧を再現する基準質量 [kg]。
+// 空力・輻射圧係数を質量あたりへ換算する基準質量 [kg]。
 const REFERENCE_SHIP_MASS = 1_000;
 
 export interface ModularShipMotionReactions {

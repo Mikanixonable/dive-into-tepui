@@ -70,10 +70,13 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
     construction: ShipConstruction,
+    enterCombatView: () => boolean,
   ) {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
-    this.moduleWindows = new ModuleWindows(hud, controlSelection, roster, construction);
+    this.moduleWindows = new ModuleWindows(
+      hud, controlSelection, roster, construction, enterCombatView,
+    );
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
       const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
       const inspected = enemy ? objectPickableOf(enemy) : null;

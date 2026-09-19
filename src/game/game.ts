@@ -291,6 +291,7 @@ export class Game {
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
       this.controlSelection, this.frameControls, this.activeStage, this.targeter, this.shipConstruction,
+      () => this.viewManager.setView('combat'),
     );
 
     const combatView = new CombatView(

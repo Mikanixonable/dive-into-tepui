@@ -87,15 +87,17 @@ function compoundContactGeometry(
     return hit === null ? null : compoundGeometry(hit);
   }
 
+  if (shapeB === null) return null;
+
   // primitive が返す B(compound) → A(sphere) を、呼び出し側の A → B へ反転する。
   if (sweptValid) {
     const swept = sweptCompoundCylinderSphereContact(
-      shapeB!, poseOf(b, b.prevState, true), poseOf(b, bWork, false),
+      shapeB, poseOf(b, b.prevState, true), poseOf(b, bWork, false),
       a.prevState.r, aWork.r, a.radius,
     );
     if (swept !== null) return reverseContactGeometry(compoundGeometry(swept));
   }
-  const hit = compoundCylinderSphereContact(shapeB!, poseOf(b, bWork, false), aWork.r, a.radius);
+  const hit = compoundCylinderSphereContact(shapeB, poseOf(b, bWork, false), aWork.r, a.radius);
   return hit === null ? null : reverseContactGeometry(compoundGeometry(hit));
 }
 

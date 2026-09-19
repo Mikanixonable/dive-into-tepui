@@ -20,6 +20,9 @@ import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import { PLAN_EXECUTION_MODES, planExecutionLabel } from '../player/player-plan-settings';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
+import type { KinematicState } from '../../physics/kinematic-state';
+import type { Vec3 } from '../../math/vec3';
+import type { MapVisibility } from '../map/visibility-policy';
 
 const ROLE_LABEL = { ship: '船', base: '基地', material: '物資' } as const;
 
@@ -30,7 +33,7 @@ export class ShipInspection implements InspectedObject {
   public get id(): string { return this.ship.id; }
   public get name(): string { return this.ship.name; }
   public get gone(): boolean { return !this.ship.motion.alive; }
-  public get orbitState() { return this.ship.motion.state; }
+  public get orbitState(): KinematicState { return this.ship.motion.state; }
   public get glyph(): string { return this.ship.capabilities.role === 'base' ? ENTITY_GLYPH.base : ENTITY_GLYPH.ship; }
   public get glyphSvg(): string { return this.ship.capabilities.role === 'base' ? baseMarkerSvg() : shipMarkerSvg(true); }
   public get listSection(): 'player' | 'base' { return this.ship.capabilities.role === 'base' ? 'base' : 'player'; }
@@ -58,12 +61,14 @@ export class ShipInspection implements InspectedObject {
     vel: Parameters<ModularShip['markerItem']>[2], view: ViewMode, isActive: boolean): GroupedMarkerItem {
     return this.ship.markerItem(viewerPos, pos, vel, view, isActive);
   }
-  public posAt(displayTime: number) { return this.ship.motion.stateAt(displayTime)?.r ?? null; }
+  public posAt(displayTime: number): Vec3 | null { return this.ship.motion.stateAt(displayTime)?.r ?? null; }
   public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.ship.markerKey); }
   public hitBodyByRay(ray: Parameters<ModularShip['hitBodyByRay']>[0], pos: Parameters<ModularShip['hitBodyByRay']>[1]): boolean {
     return this.ship.hitBodyByRay(ray, pos);
   }
-  public mapVisibility(policy: Parameters<ModularShip['mapVisibility']>[0], viewer: OrbitingObject | null) {
+  public mapVisibility(
+    policy: Parameters<ModularShip['mapVisibility']>[0], viewer: OrbitingObject | null,
+  ): MapVisibility {
     return this.ship.mapVisibility(policy, viewer);
   }
   public listCounted(): boolean { return false; }
@@ -94,11 +99,14 @@ export class ShipInspection implements InspectedObject {
     else if (act === 'deactivate') selection.release(this.ship);
     else if (act === 'planExecCycle') {
       const index = PLAN_EXECUTION_MODES.indexOf(this.ship.planExecution);
-      this.ship.planExecution = PLAN_EXECUTION_MODES[(index + 1) % PLAN_EXECUTION_MODES.length]!;
+      const nextMode = PLAN_EXECUTION_MODES[(index + 1) % PLAN_EXECUTION_MODES.length];
+      if (nextMode !== undefined) this.ship.planExecution = nextMode;
     } else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.ship.mapKind, this.ship.motion.state);
     else if (act === 'delete') selection.remove(this.ship);
   }
-  public propertyRows(bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number, _displayTime: number): readonly PropertyRow[] {
+  public propertyRows(
+    bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
+  ): readonly PropertyRow[] {
     const dockRows: PropertyRow[] = this.ship.assembly.modules
       .filter(module => module.kind === 'dock' || module.kind === 'docking_port')
       .map(module => ({

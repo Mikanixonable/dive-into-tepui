@@ -1,9 +1,9 @@
-import type { ShipAssembly, ShipRole } from './ship-assembly';
+// 船体構成から役割・操作可否・装備能力・資源量を導出する。
+import type { ShipAssembly, ShipAssemblyTotals, ShipRole } from './ship-assembly';
 import type { FuelKind, ShipModuleKind } from './ship-module-definition';
 import type { CockpitInstance, ShipModuleInstance } from './ship-module-instance';
 
-// 操作・HUD・AI が ShipAssembly の構造を直接解釈しないための能力面。
-// role や性能値は保持せず、その都度 module state から導出する。
+// 操作・HUD・AI に、現在の module state から導出した能力面を提供する。
 export class ShipCapabilities {
   private operatingCockpitIdValue: string | null;
 
@@ -59,7 +59,7 @@ export class ShipCapabilities {
     return this.assembly.modules.some(module => module.kind === kind && (!healthyOnly || module.hp > 0));
   }
 
-  public get totals() { return this.assembly.totals(); }
+  public get totals(): ShipAssemblyTotals { return this.assembly.totals(); }
   public get totalThrust(): number { return this.totals.thrust; }
   public get totalTorque(): number { return this.totals.torque; }
   public get weaponDamage(): number { return this.totals.weaponDamage; }

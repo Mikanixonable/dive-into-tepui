@@ -30,7 +30,9 @@ export function register(): void {
     const repaired = repairDockedAssembly(assembly, 'dock');
     assert.ok(repaired > 0);
     for (const module of assembly.modules) {
-      assert.equal(module.hp, assembly.definition(module.id)!.maxHp);
+      const definition = assembly.definition(module.id);
+      assert.ok(definition !== null);
+      assert.equal(module.hp, definition.maxHp);
     }
     const fuelAfter = assembly.module('tank');
     assert.ok(fuelAfter?.kind === 'tank');

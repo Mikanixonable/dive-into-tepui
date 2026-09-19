@@ -1,3 +1,4 @@
+// ドック起点の建造セッションと候補配置を管理し、船体・HUD・ゴーストへ同期する。
 import type * as THREE from 'three/webgpu';
 import { LOCAL_FORWARD, qFromUnitVectors, qMul, qRotate, Q_IDENTITY } from '../../math/quat';
 import { add, dot, scale, sub, v3, type Vec3 } from '../../math/vec3';

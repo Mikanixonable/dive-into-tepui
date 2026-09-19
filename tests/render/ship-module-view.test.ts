@@ -115,7 +115,8 @@ export function register(): void {
     const view = new ShipModuleView(
       radiator, definition, { position: v3(), rotation: Q_IDENTITY }, panelFactory,
     );
-    const hinge = view.semanticAnchor('panel-hinge')!;
+    const hinge = view.semanticAnchor('panel-hinge');
+    assert.ok(hinge !== null);
     assert.ok(Math.abs(hinge.rotation.y - Math.PI / 2) < 1e-12);
     const deployed = createShipModuleInstance(definition, 'radiator', { deployed: 1 });
     view.sync(deployed, { position: v3(), rotation: Q_IDENTITY });

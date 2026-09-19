@@ -38,6 +38,12 @@ function close(actual: number, expected: number, message: string): void {
   assert.ok(Math.abs(actual - expected) < 1e-9, `${message}: ${actual} !== ${expected}`);
 }
 
+function physicsShape(assembly: ShipAssembly): NonNullable<ReturnType<typeof shipPhysicsShape>> {
+  const result = shipPhysicsShape(assembly);
+  assert.ok(result !== null);
+  return result;
+}
+
 function primitiveExtentFromCom(
   center: Vec3,
   axis: Vec3,
@@ -71,7 +77,7 @@ export function register(): void {
     assert.equal(shipPhysicsShape(new ShipAssembly()), null);
     const assembly = new ShipAssembly(multiCatalog());
     assembly.addRoot(multi('tank', 5));
-    const result = shipPhysicsShape(assembly)!;
+    const result = physicsShape(assembly);
     assert.equal(result.shape.primitives.length, 2);
     close(result.mass.totalMass, 20, 'total mass');
     close(result.centerOffset.x, 0, 'center offset x');
@@ -82,8 +88,11 @@ export function register(): void {
         && Number.isFinite(primitive.center.y) && Number.isFinite(primitive.center.z));
     }
     assert.notStrictEqual(result.shape.primitives, MULTI_TANK.solidPrimitives);
-    assert.equal(result.shape.primitives[0]!.moduleId, 'tank');
-    assert.equal(result.shape.primitives[1]!.moduleId, 'tank');
+    const first = result.shape.primitives[0];
+    const second = result.shape.primitives[1];
+    assert.ok(first !== undefined && second !== undefined);
+    assert.equal(first.moduleId, 'tank');
+    assert.equal(second.moduleId, 'tank');
   });
 
   test('ship physics shape: module transform と primitive transform を合成し、複数 primitive を保持する', () => {
@@ -93,7 +102,7 @@ export function register(): void {
       position: v3(10, 0, 0),
       rotation: qFromAxisAngle(v3(0, 1, 0), Math.PI / 2),
     });
-    const result = shipPhysicsShape(assembly)!;
+    const result = physicsShape(assembly);
     close(result.mass.totalMass, 20, 'total mass');
     close(result.centerOffset.x, 5, 'center offset');
     assert.equal(result.shape.primitives.length, 4);
@@ -101,9 +110,15 @@ export function register(): void {
     const side = result.shape.primitives.filter(primitive => primitive.moduleId === 'side');
     assert.equal(root.length, 2);
     assert.equal(side.length, 2);
-    close(root[0]!.center.x, -5, 'root first center');
-    close(root[1]!.center.x, -5, 'root second center');
-    close(side[0]!.center.x + side[1]!.center.x, 10, 'side center sum');
+    const rootFirst = root[0];
+    const rootSecond = root[1];
+    const sideFirst = side[0];
+    const sideSecond = side[1];
+    assert.ok(rootFirst !== undefined && rootSecond !== undefined
+      && sideFirst !== undefined && sideSecond !== undefined);
+    close(rootFirst.center.x, -5, 'root first center');
+    close(rootSecond.center.x, -5, 'root second center');
+    close(sideFirst.center.x + sideSecond.center.x, 10, 'side center sum');
     assert.deepEqual(side.map(primitive => primitive.center.x).sort((a, b) => a - b), [4, 6]);
     for (const primitive of root) {
       close(primitive.axis.x, 0, 'root axis x');
@@ -122,27 +137,29 @@ export function register(): void {
   test('ship physics shape: mass は燃料、追加撤去、split で同じ変換から再計算される', () => {
     const assembly = new ShipAssembly(multiCatalog());
     assembly.addRoot(multi('root', 5));
-    const full = shipPhysicsShape(assembly)!;
+    const full = physicsShape(assembly);
     close(full.mass.totalMass, 20, 'full fuel mass');
     assert.equal(assembly.consumeFuel('main', 2), 2);
-    const consumed = shipPhysicsShape(assembly)!;
+    const consumed = physicsShape(assembly);
     close(consumed.mass.totalMass, 16, 'consumed fuel mass');
     assert.equal(assembly.refuel('main', 1), 1);
-    const refueled = shipPhysicsShape(assembly)!;
+    const refueled = physicsShape(assembly);
     close(refueled.mass.totalMass, 18, 'refueled mass');
 
     assembly.addModule(multi('tail', 0), 'root', { position: v3(0, 0, 4), rotation: Q_IDENTITY });
-    const withTail = shipPhysicsShape(assembly)!;
+    const withTail = physicsShape(assembly);
     close(withTail.mass.totalMass, 28, 'added module mass');
     assert.ok(assembly.removeModule('tail') !== null);
-    close(shipPhysicsShape(assembly)!.mass.totalMass, 18, 'removed module mass');
+    close(physicsShape(assembly).mass.totalMass, 18, 'removed module mass');
 
     const splitAssembly = new ShipAssembly(multiCatalog());
     splitAssembly.addRoot(multi('left', 1));
     splitAssembly.append(multi('right', 2));
-    const before = shipPhysicsShape(splitAssembly)!.mass.totalMass;
-    const [left, right] = splitAssembly.splitAt(splitAssembly.graph[0]!.id);
-    close(shipPhysicsShape(left)!.mass.totalMass + shipPhysicsShape(right)!.mass.totalMass, before, 'split mass');
+    const before = physicsShape(splitAssembly).mass.totalMass;
+    const splitEdge = splitAssembly.graph[0];
+    assert.ok(splitEdge !== undefined);
+    const [left, right] = splitAssembly.splitAt(splitEdge.id);
+    close(physicsShape(left).mass.totalMass + physicsShape(right).mass.totalMass, before, 'split mass');
   });
 
   test('ship physics shape: module の追加順によらず同じ shape と質量を返す', () => {
@@ -154,8 +171,8 @@ export function register(): void {
     second.addRoot(multi('root'));
     second.connectSide(multi('a'), 'root', { position: v3(10, 0, 0), rotation: Q_IDENTITY });
     second.connectSide(multi('b'), 'root', { position: v3(0, 10, 0), rotation: Q_IDENTITY });
-    const firstShape = shipPhysicsShape(first)!;
-    const secondShape = shipPhysicsShape(second)!;
+    const firstShape = physicsShape(first);
+    const secondShape = physicsShape(second);
     assert.deepEqual(firstShape.shape, secondShape.shape);
     assert.deepEqual(firstShape.mass, secondShape.mass);
     assert.deepEqual(firstShape.centerOffset, secondShape.centerOffset);

@@ -1,3 +1,4 @@
+// 新規配置に使う既定戦闘船と基地の assembly preset を組み立てる。
 import { qFromUnitVectors, LOCAL_FORWARD, type Quat } from '../../math/quat';
 import { v3 } from '../../math/vec3';
 import { SHIP_MODULE_CATALOG, type ShipModuleCatalog } from './ship-module-catalog';
@@ -24,9 +25,8 @@ function addSideEquipment(assembly: ShipAssembly, catalog: ShipModuleCatalog): v
   });
 }
 
-// 旧 Player の集計値(HP 1,000、燃料 1,000、推力 400,000 N、トルク 2.24、
-// 発電 100 W、放熱 84 m²、武装 damage 1 / 1,000 m/s)を保つ移行用の既定戦闘船。
-// 乾燥 400 kg + 移行用燃料の質量 600 kg = 1,000 kg とし、400 m/s² も保つ。
+// 既定戦闘船は HP 1,000、満載質量 1,000 kg、推力 400,000 N、トルク 2.24、
+// 発電 100 W、放熱 84 m²、武装 damage 1 / 1,000 m/s に固定する。
 export function createDefaultCombatPreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALOG): ShipAssembly {
   const assembly = new ShipAssembly(catalog, true);
   assembly.addRoot(instance(catalog, 'cockpit-standard', 'cockpit'));
@@ -56,6 +56,3 @@ export function createBasePreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALO
   assembly.assertValid();
   return assembly;
 }
-
-export const createCombatPreset = createDefaultCombatPreset;
-export const createDefaultBasePreset = createBasePreset;

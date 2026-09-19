@@ -113,7 +113,9 @@ export function register(): void {
 
   test('compound-cylinder: empty, invalid and non-finite shapes are safe', () => {
     assert.equal(compoundCylinderSphereContact({ primitives: [] }, IDENTITY, v3(), 1), null);
-    assert.equal(compoundCylinderSphereContact({ primitives: [{ ...SINGLE.primitives[0]!, radius: Number.NaN }] }, IDENTITY, v3(), 1), null);
+    const primitive = SINGLE.primitives[0];
+    assert.ok(primitive !== undefined);
+    assert.equal(compoundCylinderSphereContact({ primitives: [{ ...primitive, radius: Number.NaN }] }, IDENTITY, v3(), 1), null);
     assert.equal(compoundCylinderRaycast(SINGLE, IDENTITY, v3(), v3()), null);
     assert.equal(sweptCompoundCylinderSphereContact(SINGLE, IDENTITY, IDENTITY, v3(Number.NaN, 0, 0), v3(), 1), null);
   });

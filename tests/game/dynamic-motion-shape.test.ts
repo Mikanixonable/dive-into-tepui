@@ -44,10 +44,16 @@ export function register(): void {
     assert.equal(self.compoundShape?.primitives[0]?.axis.z, 1, '軸は単位化される');
     assert.notEqual(self.compoundShape, input);
 
-    (input.primitives[0]!.center as { x: number }).x = 99;
+    const inputPrimitive = input.primitives[0];
+    assert.ok(inputPrimitive !== undefined);
+    (inputPrimitive.center as { x: number }).x = 99;
     assert.equal(self.compoundShape?.primitives[0]?.center.x, 1, '入力 Vec3 を共有しない');
-    assert.throws(() => { (self.compoundShape!.primitives[0] as { radius: number }).radius = 99; }, TypeError);
-    assert.throws(() => { (self.compoundShape!.primitives as unknown[])[0] = null; }, TypeError);
+    const compoundShape = self.compoundShape;
+    assert.ok(compoundShape !== null);
+    const compoundPrimitive = compoundShape.primitives[0];
+    assert.ok(compoundPrimitive !== undefined);
+    assert.throws(() => { (compoundPrimitive as { radius: number }).radius = 99; }, TypeError);
+    assert.throws(() => { (compoundShape.primitives as unknown[])[0] = null; }, TypeError);
 
     const newArc = self.ensurePredictedArc([]);
     assert.ok(newArc !== null && newArc !== oldArc, '物性交換後は予測弧を再生成する');

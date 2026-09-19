@@ -75,7 +75,8 @@ export function register(): void {
       decoupler: ['decoupler'],
     };
     for (const definition of SHIP_MODULE_CATALOG.all()) {
-      const module = modules.get(definition.modelId)!;
+      const module = modules.get(definition.modelId);
+      assert.ok(module !== undefined, definition.modelId);
       for (const anchor of expected[definition.kind] ?? []) {
         assert.ok(semanticAnchor(module, anchor) !== null, `${definition.modelId} lacks ${anchor}`);
       }

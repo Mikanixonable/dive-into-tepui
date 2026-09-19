@@ -1,3 +1,4 @@
+// モジュール定義から HP・温度・資源を持つ可変 instance を生成・複製する。
 import type { ShipModuleDefinition, ShipModuleKind, FuelKind } from './ship-module-definition';
 
 interface InstanceBase {
@@ -24,7 +25,7 @@ export interface RadiatorInstance extends InstanceBase {
 }
 export interface SolarPanelInstance extends InstanceBase {
   readonly kind: 'solar_panel';
-  deployed: number; // 0..1, retained for compatibility with deployable panel controls
+  deployed: number; // 0..1
 }
 export interface BoosterInstance extends InstanceBase {
   readonly kind: 'booster';
@@ -55,23 +56,24 @@ function instanceId(): string {
 }
 
 function normalizedHp(value: number | undefined, maxHp: number): number {
-  return Number.isFinite(value) ? Math.max(0, Math.min(maxHp, value!)) : maxHp;
+  return value !== undefined && Number.isFinite(value) ? Math.max(0, Math.min(maxHp, value)) : maxHp;
 }
 
 function normalizedFraction(value: number | undefined): number {
-  return Number.isFinite(value) ? Math.max(0, Math.min(1, value!)) : 0;
+  return value !== undefined && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 }
 
 function normalizedFuel(value: number | undefined, capacity: number): number {
-  return Number.isFinite(value) ? Math.max(0, Math.min(capacity, value!)) : capacity;
+  return value !== undefined && Number.isFinite(value) ? Math.max(0, Math.min(capacity, value)) : capacity;
 }
 
-// 定義から可変 state を一度だけ初期化する。返る object は assembly が所有し、HP/fuel のみを変更する。
+// 定義と任意の保存 state から、assembly が所有する可変 instance を作る。
 export function createShipModuleInstance(
   definition: ShipModuleDefinition, id = instanceId(), state: ShipModuleState = {},
 ): ShipModuleInstance {
   if (id.length === 0) throw new Error('ship module instance id must not be empty');
-  const temperature = Number.isFinite(state.temperature) ? Math.max(0, state.temperature!) : 255;
+  const temperature = state.temperature !== undefined && Number.isFinite(state.temperature)
+    ? Math.max(0, state.temperature) : 255;
   const base = {
     id, definitionId: definition.id, kind: definition.kind,
     hp: normalizedHp(state.hp, definition.maxHp), temperature,
@@ -100,7 +102,7 @@ export function createShipModuleInstance(
   }
 }
 
-// split/clone 用の深い複製。可変 state を共有しないことを一箇所で保証する。
+// split/clone 用に、可変 state が独立した instance を返す。
 export function cloneShipModuleInstance(instance: ShipModuleInstance): ShipModuleInstance {
   switch (instance.kind) {
     case 'tank': return { ...instance };
@@ -110,5 +112,3 @@ export function cloneShipModuleInstance(instance: ShipModuleInstance): ShipModul
     default: return { ...instance } as ShipModuleInstance;
   }
 }
-
-export const cloneModuleInstance = cloneShipModuleInstance;

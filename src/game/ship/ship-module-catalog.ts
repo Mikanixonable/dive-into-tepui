@@ -1,3 +1,4 @@
+// 建造・preset・保存復元が共有する船体モジュール定義を検索可能な一覧として提供する。
 import {
   bodyPrimitive, defineShipModule, type FuelKind, type ShipModuleDefinition, type ShipModuleKind,
 } from './ship-module-definition';
@@ -29,9 +30,9 @@ const definitions: readonly ShipModuleDefinition[] = [
   tank('tank-3-rcs', 3, 'rcs', 80),
   tank('tank-6-rcs', 6, 'rcs', 160),
   tank('tank-12-rcs', 12, 'rcs', 320),
-  // 旧戦闘船は容量 1,000 のタンクを1個持っていた。標準建造サイズとは別の移行用定義として残す。
+  // 既定戦闘船の能力・質量特性を固定する専用タンク。
   tank('tank-combat-main', 6, 'main', 1_000, 100, 0.6),
-  // 既定戦闘船の RCS 専用タンク。移行元の総質量を保つため、内容物質量は main 側へ集約する。
+  // RCS の容量は持つが、推進剤質量は主タンク側の集計値に含まれる。
   tank('tank-combat-rcs', 3, 'rcs', 80, 25, 0, 'tank-3-rcs'),
   moduleDefinition('thruster-standard', 'thruster', 1, 80, 50, {
     thrust: 400_000, fuelConsumptionRate: 1,
@@ -55,24 +56,6 @@ const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('decoupler-standard', 'decoupler', 1, 50, 60),
 ];
 
-const aliases: Readonly<Record<string, string>> = Object.freeze({
-  'cockpit': 'cockpit-standard',
-  'thruster': 'thruster-standard',
-  'rcs': 'rcs-standard',
-  'weapon': 'weapon-gatling',
-  'armor': 'armor-standard',
-  'radiator': 'radiator-standard',
-  'solar_panel': 'solar-panel-standard',
-  'booster': 'booster-standard',
-  'docking_port': 'docking-port-standard',
-  'dock': 'dock-standard',
-  'decoupler': 'decoupler-standard',
-  'tank-main-3': 'tank-3-main', 'tank-main-6': 'tank-6-main', 'tank-main-12': 'tank-12-main',
-  'tank-rcs-3': 'tank-3-rcs', 'tank-rcs-6': 'tank-6-rcs', 'tank-rcs-12': 'tank-12-rcs',
-  'tank-3m-main': 'tank-3-main', 'tank-6m-main': 'tank-6-main', 'tank-12m-main': 'tank-12-main',
-  'tank-3m-rcs': 'tank-3-rcs', 'tank-6m-rcs': 'tank-6-rcs', 'tank-12m-rcs': 'tank-12-rcs',
-});
-
 export class ShipModuleCatalog {
   private readonly byId: ReadonlyMap<string, ShipModuleDefinition>;
 
@@ -86,11 +69,11 @@ export class ShipModuleCatalog {
   }
 
   public has(id: string): boolean {
-    return this.byId.has(this.canonicalId(id));
+    return this.byId.has(id);
   }
 
   public get(id: string): ShipModuleDefinition | null {
-    return this.byId.get(this.canonicalId(id)) ?? null;
+    return this.byId.get(id) ?? null;
   }
 
   public require(id: string): ShipModuleDefinition {
@@ -102,11 +85,6 @@ export class ShipModuleCatalog {
   public all(): readonly ShipModuleDefinition[] {
     return [...this.byId.values()];
   }
-
-  private canonicalId(id: string): string {
-    return aliases[id] ?? id;
-  }
 }
 
 export const SHIP_MODULE_CATALOG = new ShipModuleCatalog();
-export const shipModuleCatalog = SHIP_MODULE_CATALOG;

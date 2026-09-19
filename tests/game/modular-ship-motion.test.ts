@@ -84,8 +84,9 @@ export function register(): void {
   test('modular ship motion: 給弾ベルトは weapon module の semantic anchor から始まる', () => {
     const ship = createDefaultCombatPreset();
     const motion = new ModularShipMotion(ship, kinematicState<'eci'>(0, v3(), v3()), attitude());
-    const transform = ship.worldTransformOf('weapon')!;
-    const definition = ship.definition('weapon')!;
+    const transform = ship.worldTransformOf('weapon');
+    const definition = ship.definition('weapon');
+    assert.ok(transform !== null && definition !== null);
     const localAnchor = v3(0, -definition.diameter * 0.325, 0);
     const assemblyAnchor = qRotate(transform.rotation, localAnchor);
     const expected = v3(

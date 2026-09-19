@@ -1,3 +1,4 @@
+// 建造候補モジュールを配置可否の色付き半透明ゴーストとして描画する。
 import * as THREE from 'three/webgpu';
 import { qNormalize, type Quat } from '../../../math/quat';
 import type { Vec3 } from '../../../math/vec3';
@@ -10,7 +11,7 @@ const VALID_COLOR = 0x53f089;
 const INVALID_COLOR = 0xff5b63;
 const GHOST_OPACITY = 0.35;
 
-// 建造候補を物理状態から求めた world transform で受け取る。表示側は候補の妥当性を判断しない。
+// 建造候補の world transform と配置可否。
 export interface ShipGhostDisplay {
   readonly modelId: string;
   readonly position: Vec3;
@@ -18,7 +19,7 @@ export interface ShipGhostDisplay {
   readonly valid: boolean;
 }
 
-// 建造中の module 1個を、通常 ship と共有しない半透明 material で描く。
+// 建造中の module 1個を専用の半透明 material で描く。
 export class ShipGhostView {
   public readonly object = new THREE.Group();
   private model: THREE.Object3D | null = null;
@@ -36,7 +37,7 @@ export class ShipGhostView {
     if (addToScene) scene?.add(this.object);
   }
 
-  // display が null なら ghost を畳む。modelId が変わったときだけ model と専用 material を作り直す。
+  // null で非表示にし、候補があれば model・world pose・可否色を同期する。
   public sync(display: ShipGhostDisplay | null): void {
     if (this.disposed) throw new Error('cannot sync a disposed ShipGhostView');
     this.object.visible = display !== null;
@@ -76,8 +77,7 @@ export class ShipGhostView {
     this.modelId = null;
   }
 
-  // factory が返す通常 model の material は状態を持つ通常 ship と共有しうるため、ghost 専用 clone へ
-  // 置き換える。factory が渡した所有 material だけをこの時点で解放し、共有 material には触れない。
+  // 通常船と material を共有すると ghost の透過色が伝播するため、専用 clone へ置換する。
   private prepareGhostMaterials(model: THREE.Object3D): void {
     const replacements: Array<{
       readonly mesh: THREE.Mesh;
@@ -109,7 +109,9 @@ export class ShipGhostView {
           disposed.add(material);
         }
       }
-      replacement.mesh.material = replacement.array ? replacement.ghost : replacement.ghost[0]!;
+      const firstGhost = replacement.ghost[0];
+      if (firstGhost === undefined) throw new Error('ship ghost model has no material');
+      replacement.mesh.material = replacement.array ? replacement.ghost : firstGhost;
       replacement.mesh.userData.ownsMaterial = true;
     }
   }

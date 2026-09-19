@@ -19,6 +19,7 @@ import type { EquatorNodeManager } from '../marker/equator-node-manager';
 
 export class ObjectPickables {
   private readonly candidateItems: ObjectPickable[] = [];
+  private readonly listedItems: ObjectPickable[] = [];
   private _lastSimTime = 0;
   private _lastDisplayTime = 0;
   private _visibilityPolicy: MapVisibilityPolicy | null = null;
@@ -26,6 +27,10 @@ export class ObjectPickables {
 
   // このフレームの被選択物候補。refresh の後に読む。clear の後は空。
   public get pickables(): readonly ObjectPickable[] { return this.candidateItems; }
+
+  // 軌道物体一覧は、画面外・遮蔽中・表示トグルで隠れた対象にも操作経路を残す。
+  // 画面上の hit test 候補とは分け、一覧へ出す契約を持つ生存対象をすべて返す。
+  public get listables(): readonly ObjectPickable[] { return this.listedItems; }
 
   // このフレームの表示・選択可否。refresh の前と clear の後は null。
   public get visibilityPolicy(): MapVisibilityPolicy | null { return this._visibilityPolicy; }
@@ -52,6 +57,7 @@ export class ObjectPickables {
   // 候補列と可視性ポリシーを空へ戻す。マップを離れるときに呼ぶ。
   public clear(): void {
     this.candidateItems.length = 0;
+    this.listedItems.length = 0;
     this._visibilityPolicy = null;
   }
 
@@ -82,7 +88,9 @@ export class ObjectPickables {
     // 候補1件を、消滅・表示トグル・位置の有無・所属系・遮蔽の順に通して積む。所属系と遮蔽を
     // 効かせるかは候補自身が答える。
     const append = (item: ObjectPickable): void => {
-      if (item.gone || !item.mapVisibility(visibilityPolicy, controlled).pickable) return;
+      if (item.gone) return;
+      if (item.listSection !== null) this.listedItems.push(item);
+      if (!item.mapVisibility(visibilityPolicy, controlled).pickable) return;
       const pos = item.posAt(displayTime);
       if (pos === null) return;
       if (item.onlyInFocusedSystem
@@ -93,6 +101,7 @@ export class ObjectPickables {
     };
 
     this.candidateItems.length = 0;
+    this.listedItems.length = 0;
     for (const body of this.celestialMarkers.bodyPickables) append(body);
     for (const entity of this.roster.all()) {
       const pickable = objectPickableOf(entity);

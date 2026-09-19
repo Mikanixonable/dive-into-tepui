@@ -144,15 +144,18 @@ export function register(): void {
 
     assert.equal(receivedA.length, 1);
     assert.equal(receivedB.length, 1);
-    assert.equal(receivedA[0]!.selfModuleId, 'a-other');
-    assert.equal(receivedA[0]!.otherModuleId, 'b-self');
-    assert.equal(receivedA[0]!.normal.x, 1);
-    assert.equal(Math.abs(receivedA[0]!.normal.y), 0);
-    assert.equal(Math.abs(receivedA[0]!.normal.z), 0);
-    assert.equal(receivedB[0]!.selfModuleId, 'b-self');
-    assert.equal(receivedB[0]!.otherModuleId, 'a-other');
-    assert.equal(receivedB[0]!.normal.x, -1);
-    assert.equal(Math.abs(receivedB[0]!.normal.y), 0);
-    assert.equal(Math.abs(receivedB[0]!.normal.z), 0);
+    const contactA = receivedA[0];
+    const contactB = receivedB[0];
+    assert.ok(contactA !== undefined && contactB !== undefined);
+    assert.equal(contactA.selfModuleId, 'a-other');
+    assert.equal(contactA.otherModuleId, 'b-self');
+    assert.equal(contactA.normal.x, 1);
+    assert.equal(Math.abs(contactA.normal.y), 0);
+    assert.equal(Math.abs(contactA.normal.z), 0);
+    assert.equal(contactB.selfModuleId, 'b-self');
+    assert.equal(contactB.otherModuleId, 'a-other');
+    assert.equal(contactB.normal.x, -1);
+    assert.equal(Math.abs(contactB.normal.y), 0);
+    assert.equal(Math.abs(contactB.normal.z), 0);
   });
 }

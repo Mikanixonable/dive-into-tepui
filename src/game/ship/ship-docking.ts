@@ -1,3 +1,4 @@
+// 接舷部の world pose と、距離・向き・相対速度に基づく接舷可否を求める。
 import { LOCAL_FORWARD, qMul, qRotate, type Quat } from '../../math/quat';
 import { add, cross, dot, len, norm, scale, sub, type Vec3 } from '../../math/vec3';
 import type { ModularShip } from './modular-ship';
@@ -39,6 +40,7 @@ export function dockingPortPose(ship: ModularShip, moduleId: string): DockingPor
   return { point, axis, velocity, rotation };
 }
 
+// 二つの接舷部を距離・正対角・接続点相対速度・能力条件で評価する。
 export function dockingEligibility(
   first: ModularShip, firstPortId: string, second: ModularShip, secondPortId: string,
 ): DockingEligibility {
