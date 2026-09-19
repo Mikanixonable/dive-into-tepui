@@ -224,9 +224,9 @@ function buildBurnManagementPanel(leftRail: HTMLElement, collapse: PanelCollapse
     <div class="metric-list burn-module-list" data-id="burn-module-list" aria-label="ブースターとデカプラー"></div>`;
 }
 
-// 戦闘ビューの左レールへ、選択中 dock から船体を組み立てるパネルを組む。
-function buildShipConstructionPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
-  const construction = new PanelShell(leftRail, collapse, 'ship-construction-panel', '船体建造');
+// 戦闘ビューの右レールへ、選択中 dock から船体を組み立てるパネルを組む。
+function buildShipConstructionPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
+  const construction = new PanelShell(rightRail, collapse, 'ship-construction-panel', '船体建造');
   configureCombatPanel(construction);
   construction.body.innerHTML = `
     <div data-id="construction-controls"></div>
@@ -302,7 +302,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement, collapse
   buildVesselStatusPanel(rightRail, collapse);
   buildOrbitInfoPanel(leftRail, collapse);
   buildBurnManagementPanel(leftRail, collapse);
-  buildShipConstructionPanel(leftRail, collapse);
+  buildShipConstructionPanel(rightRail, collapse);
   buildTargetPanel(rightRail, collapse);
   buildEnemiesPanel(rightRail, collapse);
 }

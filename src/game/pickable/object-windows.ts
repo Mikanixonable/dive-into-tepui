@@ -35,6 +35,7 @@ import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
 import type { DisplayWindowManager } from '../display-window-manager';
+import type { ModuleWindowOpener } from './module-windows';
 
 // 開いているプロパティウィンドウ本体と、その対象。
 interface WindowEntry {
@@ -71,6 +72,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
     private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
+    private readonly moduleWindows: ModuleWindowOpener,
     private readonly commands: ObjectMenuCommands,
   ) {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
@@ -250,8 +252,20 @@ export class ObjectWindows implements PropertyWindowOpener {
   // それ以外は空。
   private relatedItemsFor(target: InspectedObject, pivot: number): readonly PropertyWindowRelatedItem[] {
     const controlled = this.controlSelection.current;
-    // モジュール船の部品は建造画面が責務を持つ。プロパティ窓では船体自身だけを表示する。
-    if (controlled !== null && isModularShip(controlled) && target.id === controlled.id) return [];
+    // 操作対象のモジュール船だけは、プロパティ窓から個別モジュールを開ける。
+    if (controlled !== null && isModularShip(controlled) && target.id === controlled.id) {
+      return controlled.assembly.modules.map((module) => {
+        const label = controlled.assembly.definition(module.id)?.name ?? module.definitionId;
+        return {
+          id: `module:${controlled.id}:${module.id}`,
+          label,
+          onFocus: () => this.moduleWindows.openAtDefault(controlled, module.id),
+          onContextMenu: (clientX: number, clientY: number) => {
+            this.moduleWindows.open(controlled, module.id, clientX, clientY);
+          },
+        };
+      });
+    }
     // 天体なら、いまのビューの候補のうちその天体を周回しているものを名前順に並べる。
     if (!(target instanceof CelestialEntity)) return [];
     const related: { item: InspectedObject; label: string }[] = [];
