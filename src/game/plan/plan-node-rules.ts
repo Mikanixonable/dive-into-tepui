@@ -4,11 +4,11 @@ import {
 } from '../../physics/kinematic-state';
 import { type OrbitalElements, orbitalElementsOf } from '../../physics/elements';
 import { strongestAttractor } from '../../physics/attractor';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { dot, sameVec } from '../../math/vec3';
+import { NODE_APPROACH_LEAD } from './plan';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { RunEventSink } from '../run-events';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import { NODE_APPROACH_LEAD } from './plan';
 
 // マニューバ達成判定(計画軌道への接近許容)
 const NODE_TOL_SMA = 0.02 / 3; // 長半径の相対誤差
