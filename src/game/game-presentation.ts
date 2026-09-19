@@ -258,22 +258,17 @@ export class GamePresentation {
   private handleInput(dt: number, nowMs: number, viewport: Viewport): void {
     const overlays = this.devices.hud.overlayManager;
     this.inputRouter.beginFrame();
-    // 連打の判定が読むワープ倍率は、直前の進行が確定させたもの — ×4 を超えている間は数えず、
-    // 戻したフレームにワープ中の押下が発火しないようにする(CONTROLS.md)。
+    // 連打の判定には、直前の進行が確定させたワープ倍率で艦が動けるかを渡す(CONTROLS.md)。
     this.pilotInput.beginFrame(nowMs, this.game.simSpeedManager.canShipAct);
     this.inputRouter.route();
-    // ヘルプや設定など、背景入力をゲートするモーダルが開いた後は、同じフレームの
-    // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
+    // 同じフレームの route で開いたモーダルも、ここから先のビューの操作を止める。
     if (!overlays.isInputGated()) {
       // マップの Δv 編集は操作対象の解釈より先に押下中キーを確保する。
       this.viewManager.activeView.updateActions(dt);
     }
     this.inputRouter.routeAdditional(this.pilotPorts);
-    // カメラ操作は視点所有者への命令へ変え、直後の進行で同じフレームに反映する。入力がゼロでも
-    // 毎フレーム積み、距離・画角のクランプを所有者側で一貫して通す。
     this.cameraSystem.handleInput(this.input, dt, viewport, this.game.activeControllable);
-    // ピックは直前の sync が確定した CameraFrame と候補列を使う。これにより入力解釈が、
-    // この後に導出される新しい表示値へ依存しない。
+    // ピックは直前の sync が確定したカメラと候補列で解く — 入力の解釈はこのフレームの導出より前に走る。
     if (!this.isPaused && !overlays.isInputGated() && this.cameraFrame !== null) {
       this.sections.switchTo(SECTION.input, SECTION.pointer);
       this.viewManager.activeView.handlePointer(this.game.simTime, this.cameraFrame);
@@ -289,8 +284,7 @@ export class GamePresentation {
   // ------------------------------------------------ 進行の材料と、進行の後の導出
 
   // 進行の直後に、ビューの切替とこのフレームの表示窓を確定させ、座標系の錨を表示時刻へ合わせる。
-  // ポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置だけが絶対 ECI
-  // に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
+  // ポーズ中も決着後も通す — 決着後も積分は進むので、飛ばすと追従対象がカメラから流れ去る。
   public resolveFrame(): void {
     this.viewManager.sync();
     const displayWindow = this.displayWindowManager.resolve(
@@ -331,8 +325,7 @@ export class GamePresentation {
   // nowMs [ms] はフレームの実時刻。
   public update(nowMs: number, viewport: Viewport): void {
     const displayWindow = this.displayWindowManager.current;
-    // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
-    // 楕円が引く予測列を伸ばした後に通す。
+    // 交点は計画折れ線か予測の楕円の上に置くので、両方を組み終えた後に通す。
     this.sections.enter(SECTION.plan);
     this.equatorNodes.update({
       displayTime: displayWindow.displayTime,
@@ -346,8 +339,7 @@ export class GamePresentation {
       this.viewManager.activeView.pickables, this.game.activeControllable, viewport, nowMs,
     );
     this.sections.exit(SECTION.camera);
-    // カメラ更新の後に置く — 候補列の組み直しは遮蔽判定などにカメラ位置を読むので、先に組むと
-    // このフレームの sync が1フレーム古いカメラ位置での判定を読む。
+    // 候補列は遮蔽判定にカメラ位置を読むので、カメラの更新より後に組む。
     this.sections.enter(SECTION.mapPick);
     this.viewManager.activeView.update(displayWindow);
     this.sections.exit(SECTION.mapPick);
@@ -381,8 +373,7 @@ export class GamePresentation {
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels(displayWindow, camera, nowMs);
 
-    // 表示・選択可否は、現在のビューがこのフレームに確定させたものを読む
-    // (選べる対象と描かれる対象が同じ判定から出るようにする)。
+    // 描く対象と選べる対象を同じ判定から出すため、ビューが確定させた可否を読む。
     const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
     // 3D 軌道線を軌道パネルと同じ基準で解く。
     const orbitRef = controlled
@@ -434,7 +425,6 @@ export class GamePresentation {
     this.objectWindows.sync(simTime, displayTime);
     this.planDisplay.sync(camera, displayWindow, nowMs);
 
-    // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
       controlled, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
       camera, this.frameAnchors, celestialSystem, palette,
@@ -463,8 +453,7 @@ export class GamePresentation {
     this.frameMarkers.sync(declarations, nowMs);
   }
 
-  // 直前の sync が確定させたカメラでシェーダを組む — 捨てる1フレームと同じ行列で組ませる。
-  // sync を1度も通していなければ組めない。
+  // 直前の sync が確定させたカメラでシェーダを組む。sync を1度も通す前に呼ぶと例外になる。
   public async compile(style: RenderStyle, progress: LoadingProgress): Promise<void> {
     if (this.cameraFrame === null) throw new Error('GamePresentation.compile: sync has not run yet');
     const { scene } = this.devices;
