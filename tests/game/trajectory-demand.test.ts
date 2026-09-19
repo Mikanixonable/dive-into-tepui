@@ -1,4 +1,4 @@
-// 需要(TrajectoryDemand)が計算量しか変えないこと(CODING-RULE 1.3 R4)の回帰。需要の項目
+// 需要(TrajectoryDemand)が計算量しか変えないこと(ARCHITECTURE R4)の回帰。需要の項目
 // (予測を伸ばす長さ・履歴を残す長さ・計画の弧)を1つずつ変えて実シミュレーションを同じ歩数進め、
 // 同じ時刻の状態がビット単位で一致することを、弧をなぞる個体と推力で弧を離れる個体の両方で固定する。
 // 弧をなぞった状態はサンプル時刻に一致しなければ Hermite 補間の結果になるので、ここで比べるのは
@@ -159,12 +159,12 @@ function assertDemandIndependent(thrust: Vec3 | null, followedSteps: number): vo
 
 export function register(): void {
   test('trajectory-demand: 需要のどの項目を変えても、弧をなぞる個体の状態はビット単位で変わらない', () => {
-    // CODING-RULE R4「需要が変えてよいのは計算量だけ」
+    // ARCHITECTURE R4「需要が変えてよいのは計算量だけ」
     assertDemandIndependent(null, FRAMES);
   });
 
   test('trajectory-demand: 推力のある個体でも、需要のどの項目を変えても状態はビット単位で変わらない', () => {
-    // CODING-RULE R4「需要が変えてよいのは計算量だけ」
+    // ARCHITECTURE R4「需要が変えてよいのは計算量だけ」
     assertDemandIndependent(v3(0, 0.1, 0), 0);
   });
 }
