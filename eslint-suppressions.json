@@ -1155,7 +1155,7 @@
   },
   "src/launcher/save/snapshot-service.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 2
+      "count": 1
     }
   },
   "src/launcher/snapshot-controls.ts": {
