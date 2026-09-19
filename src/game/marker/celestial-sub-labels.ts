@@ -3,11 +3,10 @@
 // ぶら下げるかは対象を最も強く引く天体から辿り、そのラベルが出ていなければ親天体へ繰り上げる。
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
-import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ProjectFn } from '../../math/projection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { GroupedMarkerItem, GroupedMarkers } from './grouped-markers';
+import type { GroupedMarkerItem } from './grouped-markers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import { pointPlacement } from './marker-placement';
 
@@ -39,7 +38,7 @@ export interface CelestialLabelState {
   readonly drawable: boolean;
 }
 
-// サブ行を集約する先の天体 id と、そこへぶら下げる項目。
+// 天体ラベルへぶら下げる項目1件と、行頭に添える集約元の天体名(「月: 」、添えないなら空文字)。
 interface SubLabelEntry {
   readonly prefix: string;
   readonly item: GroupedMarkerItem;
@@ -54,17 +53,16 @@ export class CelestialSubLabels {
   // 隠れた項目を天体ラベルへ振り分け、集約先になった天体ラベルをサブ行付きで組み直した宣言を返す。
   // labelStateOf は天体ラベルの今フレームの表示状態を引く関数で、ラベルを持たない id には null。
   declarations(
-    groupedMarkers: GroupedMarkers,
+    hiddenItems: readonly GroupedMarkerItem[],
     labelStateOf: (id: string) => CelestialLabelState | null,
-    attractors: readonly CelestialBody[],
     pivot: number,
     project: ProjectFn,
     cameraPos: Vec3,
   ): readonly MarkerDeclaration[] {
     const out = this.declarationsScratch;
     out.length = 0;
-    const hiddenItems = groupedMarkers.getHiddenItems();
     if (hiddenItems.length === 0) return out;
+    const attractors = this.celestialBodies.celestialMotions;
 
     // まず隠れた項目を集約先の天体ごとに束ねる。
     this.entriesByBody.clear();
@@ -89,8 +87,8 @@ export class CelestialSubLabels {
     return out;
   }
 
-  // 項目1件を集約先の天体ラベルへ割り当てる。遠い天体では主親天体へまとめ、近い天体では
-  // 直近の天体ラベルへ付ける — そのラベルが出ていなければ「月:」のように名前を添えて親へ繰り上げる。
+  // item を、それを最も強く引く天体 centerId から辿った集約先の天体ラベルへ割り当てる。
+  // 集約先になれるラベルが出ていなければ捨てる。
   private route(
     item: GroupedMarkerItem, centerId: string,
     labelStateOf: (id: string) => CelestialLabelState | null, cameraPos: Vec3,
@@ -101,7 +99,7 @@ export class CelestialSubLabels {
     const primaryId = this.celestialBodies.motionOf(centerId).primary?.id ?? null;
     const primaryShown = primaryId !== null && (labelStateOf(primaryId)?.shown ?? false);
 
-    // 遠い系ではプレフィックスを付けず主親天体へまとめ、近い系では直近の天体へ付ける。
+    // 遠い系は主親天体へまとめ、近い系は直近の天体へ付ける(出ていなければ名前を添えて親へ)。
     if (distToCenter >= STAGE2_DIST) {
       if (primaryShown && primaryId !== null) this.append(primaryId, '', item);
       else if (centerShown) this.append(centerId, '', item);
