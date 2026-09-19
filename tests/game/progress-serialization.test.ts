@@ -97,14 +97,14 @@ function roundTrips(): readonly RoundTrip[] {
       (serialized) => new RadiatorSystem(
         hull,
         noContact,
-        DeployablePanelState.deserialize(serialized.up),
-        DeployablePanelState.deserialize(serialized.down),
+        DeployablePanelState.deserialize(serialized.up) ?? undefined,
+        DeployablePanelState.deserialize(serialized.down) ?? undefined,
       ),
     ),
     roundTrip<SerializedDeployablePanelState>(
       'DeployablePanelState',
       { deployTarget: 1, deploy: 0.3 },
-      (serialized) => DeployablePanelState.deserialize(serialized),
+      (serialized) => DeployablePanelState.deserialize(serialized) ?? new DeployablePanelState(0, 0),
     ),
     roundTrip<SerializedWeaponState>(
       'WeaponState',

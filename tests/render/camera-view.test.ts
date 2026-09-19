@@ -40,7 +40,7 @@ export function register(): void {
   test('camera-view: 描画原点はカメラ位置で、THREE カメラは原点に立つ', () => {
     const view = new CameraView();
     const frame = view.sync(
-      perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, 'combat', false, v3(),
+      perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, false, v3(),
     );
 
     // 描画原点を通した視点の位置は、単精度で扱える大きさまで潰れていなければならない。
@@ -53,7 +53,7 @@ export function register(): void {
     const view = new CameraView();
     const focusVelocity = v3(1.2e3, -3.4e2, 7.6e2);
     const frame = view.sync(
-      perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, 'map', false, focusVelocity,
+      perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, false, focusVelocity,
     );
     assert.ok(frame.floatingOrigin.VtoThreeV3(focusVelocity).length() === 0, '速度基準が注視点の速度と違う');
   });
@@ -62,14 +62,14 @@ export function register(): void {
     const view = new CameraView();
     const probe = v3(2.0e6, 5.0e5, 1.0e6);
 
-    const first = view.sync(perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, 'combat', false, v3());
+    const first = view.sync(perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, false, v3());
     const firstProjected = first.project(probe);
     const firstScale = first.scale(probe);
     const firstRadial = first.radialScale(probe);
     const firstMatrix = first.camera.matrixWorld.elements.slice();
     const firstProjection = (first.camera as THREE.PerspectiveCamera).projectionMatrix.elements.slice();
 
-    const second = view.sync(perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, 'combat', false, v3());
+    const second = view.sync(perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, false, v3());
     assert.deepEqual(second.project(probe), firstProjected, '投影が再現しない');
     assert.equal(second.scale(probe), firstScale, '尺度が再現しない');
     assert.equal(second.radialScale(probe), firstRadial, '直線距離の尺度が再現しない');
@@ -87,7 +87,7 @@ export function register(): void {
 
     for (const viewport of [wide, narrow]) {
       const viewpoint = { ...perspectiveViewpoint(), aspect: viewport.width / viewport.height };
-      const frame = view.sync(viewpoint, CLIP_FOV_DEG, CLIP_DISTANCE, viewport, 'map', false, v3());
+      const frame = view.sync(viewpoint, CLIP_FOV_DEG, CLIP_DISTANCE, viewport, false, v3());
       const center = frame.project(LOOK);
       assert.ok(Math.abs(center.x - viewport.width / 2) < 1e-6, `中心からずれた x=${center.x}`);
       assert.ok(Math.abs(center.y - viewport.height / 2) < 1e-6, `中心からずれた y=${center.y}`);
@@ -98,12 +98,12 @@ export function register(): void {
   test('camera-view: 視点の投影方式が、描画に使う THREE カメラを決める', () => {
     const view = new CameraView();
     const perspective = view.sync(
-      perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, 'combat', false, v3(),
+      perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, false, v3(),
     );
     assert.ok(perspective.camera instanceof THREE.PerspectiveCamera, '透視視点で透視カメラが選ばれない');
 
     const orthographic = view.sync(
-      orthographicViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, 'map', false, v3(),
+      orthographicViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, false, v3(),
     );
     assert.ok(orthographic.camera instanceof THREE.OrthographicCamera, '平行視点で平行カメラが選ばれない');
     // 平行投影の尺度は視点からの距離に依らない。

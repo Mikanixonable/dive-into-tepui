@@ -28,6 +28,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
+import type { ViewMode } from '../view/view-mode';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。ステージの epoch の
 // 宣言以外から読まない(元期は共有の定数ではなく、ステージの宣言)。
@@ -78,8 +79,9 @@ export interface StageClass {
   isUnlocked(clearCounts: ClearCounts): boolean;
   // 新しいランのステージを組み、初期配置を置く。
   create(...deps: StageDeps): Stage;
-  // このステージクラスが直列化した形 serialized から復元する。
-  deserialize(serialized: SerializedStage, ...deps: StageDeps): Stage;
+  // このステージクラスが直列化した形 serialized から復元する。記録が欠けていれば(null)、
+  // 新しいランの初期値で補う。
+  deserialize(serialized: SerializedStage | null, ...deps: StageDeps): Stage;
 }
 
 // ステージ ID → クリア回数(周回数によるアンロックに備えて、クリアの有無でなく回数で持つ)。
@@ -193,10 +195,12 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 直列化した共通の内訳 serialized から、全ステージ共通の状態を戻す。具象の deserialize が自分の
   // コンストラクタの末尾へ渡す。rules はそのステージクラスの規則。
   protected static deserializeCommonState(
-    serialized: SerializedStage, deps: StageDeps, rules: StageRules,
+    serialized: SerializedStage | null, deps: StageDeps, rules: StageRules,
   ): CommonStageState {
     const [, scene, dynamicSystem] = deps;
-    const { scoreCounter, phase, logistics } = serialized;
+    const scoreCounter = serialized?.scoreCounter;
+    const phase = serialized?.phase;
+    const logistics = serialized?.logistics;
     // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
     return [
       scoreCounter == null ? undefined : ScoreCounter.deserialize(scoreCounter),
@@ -224,9 +228,9 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   // ステータスパネルを同期する。
   public sync(
-    camera: CameraFrame, _displayTime: number,
+    _camera: CameraFrame, view: ViewMode, _displayTime: number,
   ): void {
-    this.syncStatusPanel(camera.mode === 'map');
+    this.syncStatusPanel(view === 'map');
   }
 
   // 直近の sync が組んだ、このステージ固有のマーカーの宣言。
@@ -273,7 +277,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   }
 
   // 敵を登録し、出撃数をスコアへ記録する。
-  protected addEnemy(enemy: Enemy): void {
+  public addEnemy(enemy: Enemy): void {
     this._dynamicSystem.add(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }

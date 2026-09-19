@@ -16,6 +16,12 @@ import type { Player } from '../../player/player';
 import type { StageOutcome } from '../stage-outcome';
 import type { RunEventSink } from '../../run-events';
 
+// 波状攻撃が敵を足し、交戦圏外へ出た敵の消滅を記録するステージの面。
+export interface WaveAttackStage extends StageOutcome {
+  // 敵を登録し、出撃数をスコアへ記録する。
+  addEnemy(enemy: Enemy): void;
+}
+
 const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m]
 
 const STAGE00_SPAWN_DELAY = 10; // 弾取得からスポーンまでの遅延 [s]
@@ -80,24 +86,25 @@ export class WaveAttack {
     );
   }
 
-  // ウェーブ番号を1つ進め、生成した敵を addEnemy へ渡す。
-  public spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
+  // ウェーブ番号を1つ進め、生成した敵を stage へ足す。
+  public spawnWave(
+    player: Player, stage: Pick<WaveAttackStage, 'addEnemy'>, forcedPattern?: 'linear' | 'random',
+  ): void {
     const wave = ++this._waveCount;
     const enemies = generateWave(
       player.motion.state, wave, this.attractors,
       this.scene, this.idAllocators, forcedPattern,
     );
-    for (const enemy of enemies) addEnemy(enemy);
+    for (const enemy of enemies) stage.addEnemy(enemy);
   }
 
-  // フェーズ機械を1フレーム分進める。
+  // フェーズ機械を1フレーム分進める。敵は stage へ足し、交戦圏外へ出た敵の消滅を stage へ記録する。
   public update(
-    dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: StageOutcome, addEnemy: (enemy: Enemy) => void,
+    dt: number, player: Player, enemies: readonly Enemy[], simTime: number, stage: WaveAttackStage,
   ): void {
     if (this.waveState === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
-    if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, addEnemy);
-    if (this.waveState === 'active_combat') this.updateActiveCombatPhase(dt, player, enemies, simTime, activeStage, addEnemy);
+    if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, stage);
+    if (this.waveState === 'active_combat') this.updateActiveCombatPhase(dt, player, enemies, simTime, stage);
   }
 
   // 自機が弾薬を確保するまで待ち、確保でき次第 spawning_enemies フェーズへ進める。
@@ -109,20 +116,19 @@ export class WaveAttack {
   }
 
   // 遅延タイマーが尽きたら最初のウェーブを湧かせ、active_combat フェーズへ進める。
-  private updateSpawningEnemiesPhase(dt: number, player: Player, addEnemy: (enemy: Enemy) => void): void {
+  private updateSpawningEnemiesPhase(dt: number, player: Player, stage: WaveAttackStage): void {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    this.spawnWave(player, addEnemy);
+    this.spawnWave(player, stage);
     this.waveState = 'active_combat';
     this.spawnTimer = STAGE00_SPAWN_INTERVAL;
   }
 
   // 交戦圏外の敵を消し、同時展開数の上限内でタイマーに従い次のウェーブを湧かせる。
   private updateActiveCombatPhase(
-    dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: StageOutcome, addEnemy: (enemy: Enemy) => void,
+    dt: number, player: Player, enemies: readonly Enemy[], simTime: number, stage: WaveAttackStage,
   ): void {
-    despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, activeStage);
+    despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, stage);
     const activeGroups = countActiveWaveGroups(enemies);
     if (activeGroups === 0) {
       // 短縮先を 0 にすると、湧いた波が同じフレームで離脱しきる時間加速下で毎フレーム湧き、
@@ -132,7 +138,7 @@ export class WaveAttack {
     if (activeGroups >= maxWaveGroups(this._waveCount)) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    this.spawnWave(player, addEnemy);
+    this.spawnWave(player, stage);
     this.spawnTimer = STAGE00_SPAWN_INTERVAL;
     this.events.record({ kind: 'waveSpawned', wave: this._waveCount });
   }

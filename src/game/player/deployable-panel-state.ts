@@ -18,13 +18,12 @@ export class DeployablePanelState {
   // 展開目標(0 = 収納、1 = 展開)。
   public get target(): 0 | 1 { return this._target; }
 
-  // 直列化した展開目標と展開度から復元する。壊れた値は収納へ落とす。
-  public static deserialize(serialized: SerializedDeployablePanelState): DeployablePanelState {
+  // 直列化した展開目標と展開度から復元する。壊れた記録なら null — 持ち主が自分の初期値で補う。
+  public static deserialize(serialized: SerializedDeployablePanelState): DeployablePanelState | null {
     const { deployTarget, deploy } = serialized;
-    return new DeployablePanelState(
-      deployTarget === 1 ? 1 : 0,
-      typeof deploy === 'number' && Number.isFinite(deploy) ? deploy : 0,
-    );
+    if (deployTarget !== 0 && deployTarget !== 1) return null;
+    if (typeof deploy !== 'number' || !Number.isFinite(deploy)) return null;
+    return new DeployablePanelState(deployTarget, deploy);
   }
 
   // 展開目標と展開度の直列化。
