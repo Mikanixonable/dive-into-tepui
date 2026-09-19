@@ -33,6 +33,11 @@ const FINE_ATTITUDE_SCALE = 0.5;
 const PROGRADE_HOLD_KP = 3.2; // 姿勢誤差角に対する比例ゲイン
 const PROGRADE_HOLD_KD = 2.6; // 角速度に対する減衰ゲイン
 
+// 残量 available [kg] が要求 amount [kg] を賄える割合 [0, 1]。
+function suppliedFuelRatio(available: number, amount: number): number {
+  return amount <= 0 ? 1 : Math.min(available, amount) / amount;
+}
+
 export interface SerializedThrottle {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
@@ -186,8 +191,8 @@ export class Throttle {
 
     // 燃料残量に応じて実際の加速度を絞る
     const consumption = ship.totalFuelConsumptionRate * presetScale * simDt;
-    const actualRatio = ship.consumeFuel(consumption);
-    thrustAccel *= actualRatio;
+    thrustAccel *= suppliedFuelRatio(ship.totalFuel, consumption);
+    ship.consumeFuel(consumption);
 
     if (thrustAccel <= 0) return null;
 
@@ -240,8 +245,8 @@ export class Throttle {
     const rotateIntensity = Math.max(Math.abs(inX), Math.abs(inY), Math.abs(inZ));
     if (rotateIntensity > 0) {
       const consumption = ship.totalFuelConsumptionRate * rotateIntensity * rcsOutputFactor * angScale * simDt;
-      const actualRatio = ship.consumeFuel(consumption);
-      maxAngAccel *= actualRatio;
+      maxAngAccel *= suppliedFuelRatio(ship.totalFuel, consumption);
+      ship.consumeFuel(consumption);
     }
 
     const manualTorque = v3(
