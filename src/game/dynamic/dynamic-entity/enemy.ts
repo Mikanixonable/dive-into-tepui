@@ -16,7 +16,6 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
-import type { EntityIdAllocators } from './entity-id';
 import type { DynamicEntityClass, SerializedDynamicEntity } from './entity-dictionary';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotionThermal } from '../dynamic-motion';
@@ -39,7 +38,6 @@ export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾�
 export interface SerializedEnemy extends SerializedDynamicEntityFields {
   readonly kind: 'metal-enemy' | 'protein-enemy';
   readonly name: string;
-  readonly alive: boolean;
   readonly thermal: DynamicMotionThermal;
   // マーカー色・集団識別と、マーカー・軌道線の色。
   readonly accent: string | number;
@@ -74,10 +72,12 @@ export interface EnemyPlacement {
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
   readonly attackGroupId?: string;
-  readonly waveId?: number;
   readonly id?: string;
-  readonly formationId?: string;
-  readonly formationRole?: FormationRole;
+  // 所属するウェーブの番号。ウェーブに属さない敵は null。
+  readonly waveId: number | null;
+  // 陣形に属する敵だけが持つ識別子と役割。単体敵は null。
+  readonly formationId: string | null;
+  readonly formationRole: FormationRole | null;
 }
 
 // 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
@@ -97,10 +97,10 @@ export function deserializeEnemyPlacement(serialized: SerializedEnemy): EnemyPla
     orbitLineColor: serialized.orbitLineColor,
     // 攻撃グループの無い記録は、陣形・id・名前の順に代える
     attackGroupId: serialized.attackGroupId ?? serialized.formationId ?? serialized.id ?? serialized.name,
-    waveId: serialized.waveId ?? undefined,
     id: serialized.id || undefined,
-    formationId: serialized.formationId ?? undefined,
-    formationRole: serialized.formationRole ?? undefined,
+    waveId: serialized.waveId ?? null,
+    formationId: serialized.formationId ?? null,
+    formationRole: serialized.formationRole ?? null,
   };
 }
 
@@ -121,9 +121,9 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   public readonly accent: string | number; // マーカー色。攻撃グループとは独立
   public readonly orbitLineColor: string | number;
   public readonly attackGroupId: string;
-  public readonly waveId?: number; // 所属するウェーブの番号。ウェーブに属さない敵は undefined
-  public readonly formationId?: string;
-  public readonly formationRole?: FormationRole;
+  public readonly waveId: number | null; // 所属するウェーブの番号。ウェーブに属さない敵は null
+  public readonly formationId: string | null;
+  public readonly formationRole: FormationRole | null;
 
   private readonly fireController: EnemyFireController;
   private readonly reactions: EnemyReactions;
@@ -131,14 +131,14 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   public get isBursting(): boolean { return this.fireController.isBursting; }
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を
-  // placement に置く。alive は生死、burstLeft から後ろは射撃の途中経過と時刻で、省けば新しく置いた
-  // ときの状態で始める。
+  // placement に置く。id は採番器が配った識別子。alive は生死、burstLeft から後ろは射撃の途中経過と
+  // 時刻で、省けば新しく置いたときの状態で始める。
   protected constructor(
     placement: EnemyPlacement,
     view: DynamicView,
     inertia: Vec3,
     radius: number,
-    idAllocators: EntityIdAllocators,
+    id: string,
     shape: EnemyCollisionShape | null,
     alive = true,
     burstLeft?: number | null,
@@ -146,7 +146,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     lastFireSim?: number | null,
     lastBehaviorSim?: number | null,
   ) {
-    // 運動の接触・焼失をこの敵へ通知させ、識別を採番する
+    // 運動の接触・焼失をこの敵へ通知させる
     const attitude = { q: placement.q, w: placement.w, inertia };
     super(
       placement.name,
@@ -165,7 +165,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
         ),
       }, shape, placement.thermal, alive),
       view,
-      idAllocators.entity.next(placement.id),
+      id,
     );
     // 色と所属
     this.accent = placement.accent;
@@ -286,14 +286,13 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     return {
       ...this.serializeEntityFields(this.enemyClass.kind),
       name: this.name,
-      alive: this.motion.alive,
       thermal: this.motion.thermal,
       accent: this.accent,
       orbitLineColor: this.orbitLineColor,
       attackGroupId: this.attackGroupId,
-      waveId: this.waveId ?? null,
-      formationId: this.formationId ?? null,
-      formationRole: this.formationRole ?? null,
+      waveId: this.waveId,
+      formationId: this.formationId,
+      formationRole: this.formationRole,
       fireController: this.fireController.serialize(),
     };
   }

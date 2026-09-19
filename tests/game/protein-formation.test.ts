@@ -6,8 +6,8 @@ import type { FormationRole } from '../../src/game/dynamic/dynamic-entity/entity
 
 type FormationMember = {
   readonly motion: { readonly alive: boolean };
-  readonly formationId?: string;
-  readonly formationRole?: FormationRole;
+  readonly formationId: string | null;
+  readonly formationRole: FormationRole | null;
 };
 
 type AttackingMember = {
@@ -31,8 +31,8 @@ export function register(): void {
     const members: readonly FormationMember[] = [];
     assert.equal(isFormationEnergyAvailable('shield', 'formation-1', members), true);
     assert.equal(isFormationEnergyAvailable('energy', 'formation-1', members), true);
-    assert.equal(isFormationEnergyAvailable('attacker', undefined, members), true);
-    assert.equal(isFormationEnergyAvailable(undefined, undefined, members), true);
+    assert.equal(isFormationEnergyAvailable('attacker', null, members), true);
+    assert.equal(isFormationEnergyAvailable(null, null, members), true);
   });
 
   test('protein formation: a living energy member from another formation cannot supply an attacker', () => {

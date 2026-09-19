@@ -45,7 +45,8 @@ class DetachedBoosterBehavior implements DynamicMotionBehavior {
   // simDt 秒ぶん燃料を燃やし、その区間の平均の加速度を求める。
   public updateCommands(_self: DynamicMotion, simDt: number): void {
     const massBefore = this.stack.totalMass;
-    const result = this.stack.step(simDt);
+    const result = this.stack.burnOver(simDt);
+    this.stack.burn(simDt);
     this.lastBurnRatio = result.burnRatio;
     this.lastAcceleration = boosterAverageAcceleration(result, massBefore, this.stack.totalMass);
   }
@@ -71,17 +72,19 @@ export class DetachedBoosterMotion extends DynamicMotion {
   private readonly booster: DetachedBoosterBehavior;
 
   // 段 stage を state・attitude で飛ばし、collisionEnableAt まで接触させない。thermal は熱の状態で、
-  // 省くと環境温度から始める。
+  // 省くと環境温度から始める。alive は生死で、省くと生きた状態で始める。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
     stage: BoosterStage,
     public readonly collisionEnableAt: number,
     thermal?: DynamicMotionThermal,
+    alive?: boolean,
   ) {
     const behavior = new DetachedBoosterBehavior(stage, collisionEnableAt);
     // 質量は残った段から、熱の物性は小さな金属片の値で決める
     super(state, {
+      alive,
       attitude,
       ...thermal,
       radius: BOOSTER_COLLISION_RADIUS,

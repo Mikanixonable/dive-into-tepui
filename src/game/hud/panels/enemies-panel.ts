@@ -9,8 +9,8 @@ export interface EnemyContact {
   readonly id: string;
   readonly name: string;
   readonly distanceM: number;
-  // 波に属さない敵では undefined。
-  readonly waveId: number | undefined;
+  // 波に属さない敵では null。
+  readonly waveId: number | null;
   readonly targeted: boolean;
 }
 
@@ -80,7 +80,7 @@ export class EnemiesPanel {
     const singles: EnemyRow[] = [];
     const waves = new Map<number, { count: number; nearestDistanceM: number; targeted: boolean }>();
     for (const { id, name, distanceM, waveId, targeted } of contacts) {
-      if (waveId === undefined) {
+      if (waveId === null) {
         singles.push({ kind: 'single', id, name, distanceM, targeted });
         continue;
       }

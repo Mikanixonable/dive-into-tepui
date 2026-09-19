@@ -26,6 +26,9 @@ const STYLE = `
 #save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 `;
 
+// 形式の版が合わず、読み込めない手動セーブに添える文面。
+const UNREADABLE_SNAPSHOT = '形式の版が違うため、この手動セーブは読み込めません。';
+
 // 数値であるはずのメタ項目。取り込んだファイルでは欠けていることがあり、そのまま
 // 書式化関数へ渡すと一覧の組み立てごと落ちてイベント配線まで届かなくなる。
 function num(v: number): number {
@@ -35,13 +38,16 @@ function num(v: number): number {
 interface SnapshotPaneCallbacks {
   readonly onSaveNow: () => void;
   readonly onSelectStage: (stageId: string) => void;
-  readonly onLoadSnapshot: (snapshotId: string, loadable: boolean) => void;
+  // refusal は読み込めない理由の文面で、読み込めるなら null。
+  readonly onLoadSnapshot: (snapshotId: string, refusal: string | null) => void;
   readonly onTogglePin: (snapshotId: string, currentlyPinned: boolean) => void;
   readonly onRenameSnapshot: (snapshotId: string) => void;
   readonly onDeleteSnapshot: (snapshotId: string) => void;
   readonly onBranch: (slotId: string, snapshotId: string) => void;
   // 天体 id → 表示名。実行中の周回の celestialSystem から引く(周回が無ければ id のまま)。
   readonly nameOf: (id: string) => string;
+  // 手動セーブの本体が、いまの形式の版で読めるか。
+  readonly isReadable: (snapshotId: string) => boolean;
 }
 
 // 右ペイン(手動セーブの一覧)を組み立てる。slot が null なら選択待ちの案内だけを返す。
@@ -113,25 +119,27 @@ function buildSnapshotList(
 }
 
 // 1件の手動セーブのカードを組み立てる。ダブルクリックでロードを、右側のボタンで
-// クリップ切替・改名・削除・分岐を、それぞれコールバックへ委ねる。
+// クリップ切替・改名・削除・分岐を、それぞれコールバックへ委ねる。loadable は、いま遊んでいる
+// セーブデータ・ステージの手動セーブか。
 function buildSnapshotCard(
   s: SnapshotMeta, slot: SaveSlotMeta, loadable: boolean, callbacks: SnapshotPaneCallbacks,
 ): HTMLElement {
   // 取り込んだファイル由来のメタは欠けていたり別物だったりし得るので、表示前に必ず均す。
   const hpPct = Math.max(0, Math.min(100, num(s.hpRatio) * 100));
-  const loadTitle = loadable
-    ? 'ダブルクリックでロード'
-    : 'いま遊んでいるセーブデータ・ステージの手動セーブだけを復元できます';
+  const readable = callbacks.isReadable(s.id);
+  const refusal = !readable ? UNREADABLE_SNAPSHOT
+    : !loadable ? 'いま遊んでいるセーブデータ・ステージの手動セーブだけを復元できます。'
+      : null;
 
   const card = document.createElement('div');
   card.className = 'sb-snap-card';
-  card.classList.toggle('ui-selectable', loadable);
-  card.classList.toggle('sb-snap-loadable', loadable);
-  card.title = loadTitle;
+  card.classList.toggle('ui-selectable', refusal === null);
+  card.classList.toggle('sb-snap-loadable', refusal === null);
+  card.title = refusal ?? 'ダブルクリックでロード';
   // ボタンの click は自身で止まるが dblclick は素通りするので、カード自身の判定で弾く。
   card.addEventListener('dblclick', (e) => {
     if ((e.target as HTMLElement).closest('.w-btn')) return;
-    callbacks.onLoadSnapshot(s.id, loadable);
+    callbacks.onLoadSnapshot(s.id, refusal);
   });
 
   const name = document.createElement('div');
@@ -159,6 +167,14 @@ function buildSnapshotCard(
   row3.className = 'sb-snap-row';
   row3.textContent = `艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)} / 所持金 ${num(s.money).toLocaleString()} Cr`;
   card.appendChild(row3);
+
+  // 読めない版の記録は、ホバーの出ないタッチでも分かるようカードの上に理由を書く。
+  if (!readable) {
+    const unreadable = document.createElement('div');
+    unreadable.className = 'sb-snap-row';
+    unreadable.textContent = UNREADABLE_SNAPSHOT;
+    card.appendChild(unreadable);
+  }
 
   const actions = document.createElement('div');
   actions.className = 'sb-snap-actions';

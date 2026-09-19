@@ -48,15 +48,15 @@ export interface ProteinEnemyRequest {
 // 同じ陣形に生存中のエネルギー役がいるかを答える。攻撃担当以外と、陣形に属さない敵
 // (formationId なし)は常に true。
 export function isFormationEnergyAvailable(
-  formationRole: FormationRole | undefined,
-  formationId: string | undefined,
+  formationRole: FormationRole | null,
+  formationId: string | null,
   enemies: readonly {
     readonly motion: { readonly alive: boolean };
-    readonly formationId?: string;
-    readonly formationRole?: FormationRole;
+    readonly formationId: string | null;
+    readonly formationRole: FormationRole | null;
   }[],
 ): boolean {
-  if (formationRole !== 'attacker' || formationId === undefined) return true;
+  if (formationRole !== 'attacker' || formationId === null) return true;
   return enemies.some((enemy) => (
     enemy.motion.alive && enemy.formationId === formationId && enemy.formationRole === 'energy'
   ));
@@ -96,12 +96,12 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   private readonly assetId: ProteinAssetId;
 
   // View を組み、definition のアセットが持つ球列へ判定形状を当てる。motionSeed は表示の揺らぎの軌跡を
-  // 決める識別子、combat は被弾モデルで、省けば無傷から始める。
+  // 決める識別子、id は採番器が配った識別子、combat は被弾モデルで、省けば無傷から始める。
   private constructor(
     placement: EnemyPlacement,
     definition: ProteinEnemyDefinition,
     motionSeed: string,
-    idAllocators: EntityIdAllocators,
+    id: string,
     scene: THREE.Scene | undefined,
     private readonly combat = new ProteinCombatState(definition.asset),
     alive?: boolean,
@@ -130,7 +130,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       ),
     };
     super(
-      placement, proteinView, PROTEIN_INERTIA, collision.outerRadius, idAllocators, shape,
+      placement, proteinView, PROTEIN_INERTIA, collision.outerRadius, id, shape,
       alive, burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.assetId = definition.assetId;
@@ -142,8 +142,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     request: ProteinEnemyRequest, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
   ): ProteinEnemy {
     const definition = definitionFor(request.assetId);
-    // 陣形に属する個体は、陣形を攻撃グループとして同時発砲数を共有する。
-    const formationId = request.formationId ?? undefined;
+    const formationId = request.formationId;
     return new ProteinEnemy(
       {
         name: `${definition.asset.displayName} ${request.name}`,
@@ -151,14 +150,16 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
         ...driftingAttitude(),
         accent: 0xffffff,
         orbitLineColor: 0xffffff,
-        attackGroupId: formationId,
+        // 陣形に属する個体は、陣形を攻撃グループとして同時発砲数を共有する。
+        attackGroupId: formationId ?? undefined,
+        waveId: null,
         formationId,
-        formationRole: request.formationRole ?? undefined,
+        formationRole: request.formationRole,
       },
       definition,
       // 表示の揺らぎの軌跡を決める識別子。
       request.name || request.assetId,
-      idAllocators,
+      idAllocators.entity.next(),
       scene,
     );
   }
@@ -169,15 +170,16 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     serialized: SerializedProteinEnemy, registry: EntityRegistry, scene?: THREE.Scene,
   ): ProteinEnemy {
     const definition = definitionFor(serialized.assetId);
+    const placement = deserializeEnemyPlacement(serialized);
     return new ProteinEnemy(
-      deserializeEnemyPlacement(serialized),
+      placement,
       definition,
       serialized.id || serialized.name || serialized.assetId,
-      registry.idAllocators,
+      registry.idAllocators.entity.next(placement.id),
       scene,
       serialized.protein ? ProteinCombatState.deserialize(serialized.protein, definition.asset) : undefined,
-      // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
-      serialized.alive ?? false,
+      serialized.alive,
+      // 射撃の途中経過と時刻
       serialized.fireController.burstLeft,
       serialized.fireController.burstDelay,
       serialized.fireController.lastFireSim,

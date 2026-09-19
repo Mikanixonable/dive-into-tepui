@@ -370,7 +370,7 @@
   },
   "src/game/dynamic/dynamic-entity/protein-enemy.ts": {
     "no-restricted-syntax": {
-      "count": 4
+      "count": 2
     }
   },
   "src/game/dynamic/dynamic-entity/ship.ts": {
@@ -568,11 +568,6 @@
     }
   },
   "src/game/hud/panels/burn-management-panel.ts": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/game/hud/panels/enemies-panel.ts": {
     "no-restricted-syntax": {
       "count": 1
     }
@@ -973,11 +968,6 @@
     }
   },
   "src/game/stages/creative-stage.ts": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/game/stages/spawner/enemy-generator.ts": {
     "no-restricted-syntax": {
       "count": 1
     }
