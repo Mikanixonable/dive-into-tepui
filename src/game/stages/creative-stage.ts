@@ -60,15 +60,15 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // 波状攻撃の進行・トグル、手動スポーン、配置と共通の状態から、ステージ操作パネルを組む。
-  // 省いた波状攻撃・手動スポーン・配置は新しいランの初期値から始まる。
+  // 波状攻撃の進行・トグル、手動スポーン、配置した自機の id の連番と共通の状態から、ステージ操作
+  // パネルを組む。省いたものは新しいランの初期値から始まる。
   private constructor(
     deps: StageDeps,
     waveAttack?: WaveAttack,
     // 敵の波状攻撃を発生させるかどうか。
     private waveAttackEnabled = false,
     manualSpawn?: ManualSpawn,
-    objectPlacement?: ObjectPlacement,
+    placedPlayerIdCounter?: number,
     ...common: CommonStageState
   ) {
     super(deps, ...common);
@@ -79,11 +79,10 @@ export class CreativeStage extends Stage {
       this._scene, this._celestialSystem.celestialMotions, this._dynamicSystem.idAllocators,
     );
 
-    this.objectPlacement = objectPlacement ?? ObjectPlacement.create(
+    this.objectPlacement = new ObjectPlacement(
       this._hud, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
-      placementEventSink(deps), this._celestialSystem,
+      placementEventSink(deps), this._celestialSystem, this.commands, placedPlayerIdCounter,
     );
-    this.objectPlacement.onPlace = (name, entityKind, state) => this.commands.placeObject(name, entityKind, state);
     this.authoring = this.objectPlacement;
 
     this.waveAttack = waveAttack ?? new WaveAttack(
@@ -116,7 +115,7 @@ export class CreativeStage extends Stage {
 
   // 直列化した形から復元する。
   public static deserialize(serialized: SerializedCreativeStage, ...deps: StageDeps): CreativeStage {
-    const [hud, scene, dynamicSystem, celestialSystem] = deps;
+    const [, scene, dynamicSystem, celestialSystem] = deps;
     const { waveAttack, waveAttackEnabled, manualSpawn, objectPlacement } = serialized;
     return new CreativeStage(
       deps,
@@ -128,10 +127,7 @@ export class CreativeStage extends Stage {
       manualSpawn == null ? undefined : ManualSpawn.deserialize(
         manualSpawn, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
       ),
-      objectPlacement == null ? undefined : ObjectPlacement.deserialize(
-        objectPlacement, hud, scene, dynamicSystem, dynamicSystem.idAllocators,
-        placementEventSink(deps), celestialSystem,
-      ),
+      objectPlacement?.playerIdAllocator ?? undefined,
       ...Stage.deserializeCommonState(serialized, deps, CreativeStage.stageRules),
     );
   }

@@ -991,73 +991,43 @@ R1(と 1.6 の手写し)・R3・R5(表示の導出)・R5 と R7(装置)・R8・R
 - 5.5-3 から回した行(`cleanup` の中継、`options` の名前、抗力係数の手写し、接触代理の `prevState` のキャッシュのコメント)もここで直した。
 - 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。**計画の `npm run dev` での目視(噴射・段の分離・被弾ほか)はしていない** — 段の終わりの 5.5-10 でヘッドレスの起動と、ユーザーの目視に回す。
 
-#### 手順 5.5-5. 残りのモデル層の欄を、所有者だけが書く形にする
+#### 手順 5.5-5. 残りのモデル層の欄を、所有者だけが書く形にする — 済
 
-**目的**: 5.5-2 の R3 の判定のうち、5.5-4 が扱わなかった残りを、`Stage.onDecided`(5.5-7)を除いて 0 にする。大半は「自分しか書かない欄が public なだけ」なので private と getter にする。所有者でない者が書いているものは、書く処理を所有者の命令へ移す。挙動は変えない。
+R3 の判定の許可リストに残るのは `Stage.onDecided`(5.5-7)だけになった(R12 の `NavTargetSelection` は 5.5-7)。
 
-**変更が必要な箇所**
+**実施で決めたこと**
+- `WeaponState` は遷移を命令として持つ形にした(トリガー・空撃ちの記録・クールダウン・砲身の熱の蓄えと温度の歩み・砲身の交換)。遷移はどれも武装の状態だけに閉じ、`FireControl` は出来事の記録と実体の生成だけを持つ。砲身の熱の蓄え `pendingBarrelJoules` を直列化へ足し、初期温度は `ENV_TEMP` から引く。
+- 部品 `Part` の欄は読み取りにし、HP と燃料を書くのは部品を積む `PartInventory`(構築時に受けた部品の写しを持つ)の命令にした。部品の直列化は `PartDamageModel` が持つ。
+- 敵の射撃の可否は、ステージの読み取り `Stage.enemiesMayFire`(デバッグステージはトグルの値)を `DynamicSystem.update` の引数で射撃の判断へ届ける。
+- `ObjectPlacement` は、持ち主の命令の口を受ける部品として `CreativeStage` のコンストラクタが組む(R13)。`create`・`deserialize` は消えた。
+- `plan/plan-path.ts` を `MISPLACED_PRESENTATION_FILES` へ足した(`PlanDisplay` が作って持つ作り直せる表示)。振り分けの表では 5.5-9 としていた行の一部。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視は 5.5-10 へ回す。
 
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/player/{weapon-state,fire-control}.ts` | `WeaponState` は「状態機械」と名乗りながら遷移を持たず、`FireControl` が欄を 20 か所書いている。遷移を `WeaponState` の命令へ移すか、`FireControl` の private な記録へ畳む。どちらにするかは、遷移がどちらに閉じるかで実施時に決める |
-| `src/game/dynamic/dynamic-entity/{parts,part-damage-model,part-inventory}.ts` | `Part` 系の型が可変な欄を export している。`PartDamageModel` が部品の `hp` を書く処理を、部品の所有者(`PartInventory`)の命令へ移す |
-| `src/game/dynamic/dynamic-entity/{enemy,enemy-fire-controller}.ts`、`src/game/stages/stage-debug.ts` | ステージの旗を毎フレーム全敵の `fireEnabled` へ写すのをやめる(ステージの値の写しを敵ごとに持っている)。旗は、いまの `operable` と同じく進行の引数で射撃の判断へ届ける |
-| `src/game/player/player.ts`、`src/game/dynamic/dynamic-entity/controllable.ts`、`src/game/pickable/player-inspection.ts` | `planExecution`・`fineAttitude` を private にし、メニューからの切り替えを命令にする |
-| `src/game/dynamic/dynamic-entity/{vessel,ship,part-based-enemy}.ts` | `hp`・`maxHp` の protected setter を、protected の欄かメソッドにする(モデル層は `set` アクセサを持たない) |
-| `src/game/creative/object-placement.ts`、`src/game/stages/creative-stage.ts` | 構築後に差す `onPlace` を、構築の引数で受ける |
-| 自分しか書かない public 欄(`Simulator`・`EntityContactPhysics`・`SurfaceContactPhysics`・`ArcCelestialBodies`・`Throttle`・`AeroLoad`・`AltitudeAlarm`・`DeployablePanelState`・`ScoreCounter`・`ScoreAttackTimer` と、`plan.ts` の `TimeRange`・`placement-validation.ts` の `PlacementFieldIssue`・`EllipticPlacementInput`) | private と getter、または `readonly` にする。外から書いているもの(`dynamic-system.ts` の `lastSimDt`、`simulator.ts` の接触の計数)は所有者の命令へ移す。`PlanPath` は表示の導出なので 5.5-9 で判定の対象から外す |
-| 5.5-3 から回した行 | `WeaponState.pendingBarrelJoules` を省略可能な項目として直列化する(R11)。砲身の初期温度を `ENV_TEMP` から引く(1.6)。部品の直列化を `PartDamageModel` が持つ(R12)。`Simulator.lastSimDt`・`consecutiveZeroSteps` とフレームごとの計数(`Simulator`・接触・`Predictor`・`ArcCelestialBodies`)がキャッシュであることを書く(R11) |
+#### 手順 5.5-6. 音の装置を宣言だけにする(R7)— 済
 
-**達成条件と検証**
+`WorldSfx.sync({ loops, cues })`・`UiSfx.sync(cues)`・`Bgm.sync(BgmDeclaration)` だけが公開の口になった。一回きりの音は `SoundCue`(`audio/sfx/sound-cue.ts`、id と音の種類)の列で受け、装置は鳴らした最新の id より大きいものだけを鳴らす。`Bgm` の `setVolume`・`syncRun`・`beginAudition`・`playAudition`・`seekAudition`・`auditionElapsedSec`・`endAudition` は消えた。
 
-- `npm run check:boundaries` で、R3 の判定の許可リストに残るのが `Stage.onDecided` だけ(5.5-7 で消す)。
-- `npm run typecheck`、`npm run test:game`。
-- `npm run dev` で、射撃(連射・装填・砲身交換・過熱)、被弾による部品の損傷、デバッグステージの敵の射撃の切り替え、計画の実行方式の切り替え、creative の配置を見る。
+**実施で決めたこと**
+- ゲーム世界の効果音の id は出来事の通し番号。出来事から音への写像は `run-event-presenter.ts` の `worldSoundCues`(距離の減衰の値はここで付ける)。UI の効果音(`warp`)は `game/ui-sound-queue.ts` の `UiSoundQueue` が溜めて番号を振り、`GamePresentation.sync` が装置へ渡して空にする。`plan-editor` と出来事の写しはどちらもそこへ積む。
+- BGM の宣言は `main.ts` のフレームで毎回組む — 音量(消音を織り込む)、ランの進行(`run.game.activeStage.isPlaying`)、試聴の期間(設定面が開いているか)、試聴の曲。`syncRun` を遷移点で呼ぶ形はこの宣言へまとめたので、`Launcher` は `Bgm` を持たない。決着・周回の開始の反映は最大1フレーム遅れる。
+- 最初のタイトル画面でも試聴を鳴らすため、フレームのループは `launcher.start()` を待つ前に回し始める(タイトルへ戻った後と同じ状態)。
+- 試聴の選択(曲・選曲の回・シークの回と位置)は `BgmSettingsPanel` が操作途中の状態として持ち、`audition` で宣言する。経過の表示は、選曲・シークの後の最初のフレームの実時刻を起点に求める。
+- 消音は `UserSettings.bgmMuted`(鍵 `tepui.settings.bgm_muted`)に音量と分けて持つ。スライダーは消音を織り込んだ音量を見せ、動かせば消音を解く。**変わった挙動**: 消音の前の音量が再読み込みを跨いで残る。手で 0 にした音量から消音ボタンで戻すと、前に消音した音量ではなく既定の 1 になる。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:settings`(6/6)、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での聴き取りは 5.5-10 へ回す。
 
-#### 手順 5.5-6. 音の装置を宣言だけにする(R7)
+#### 手順 5.5-7. 位相・直列化・導出の残りを片づける(R8・R12・R5)— 済
 
-**目的**: 段 1 の R7 のうち、名前の列に無かったので素通りしていた命令をなくす。効果音は「そのフレームの出来事の列」、BGM は「音量と試聴中の曲」を、宣言として受ける。挙動は変えない。
+境界の検査の許可リストが空になった(`Stage.onDecided` と `NavTargetSelection.constructor(target)` が最後の2件)。
 
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/audio/sfx/world-sfx.ts`、`src/game/run-event-presenter.ts` | 単発音の命令(`fire()`・`spinUp()`・`emptyClick()`・`magFeed()`・`playReload()`・`hit()` ほか)をやめ、そのフレームに鳴らす音の列を、出来事の通し番号付きで宣言として受ける。装置は同じ通し番号を二度鳴らさない(R7 の出来事の段落)。距離による減衰のような値は、表示の導出が写すときに付ける |
-| `src/audio/sfx/ui-sfx.ts`、`src/game/plan/plan-editor.ts`(5.5-3 から回した行) | `UiSfx.warp()` も単発の命令なので、効果音と同じく通し番号付きの宣言にする。`plan-editor` が操作の場で直に鳴らしている分も、表示の導出が番号を振って宣言へ積む |
-| `src/hud/windows/pause-menu.ts`、`src/settings/*`(5.5-3 から回した行) | 消音前の音量 `lastVol` を表示の導出だけが持つのをやめ、設定に音量と消音を分けて持つ(R5・R10)。BGM へ渡す音量は、音量と消音から宣言を組むときに求める |
-| `src/audio/bgm/bgm.ts`、`src/main.ts`、`src/hud/panels/bgm-settings-panel.ts`、`src/hud/windows/settings-view.ts` | `setVolume` を設定の購読から呼ぶのをやめ、音量を宣言の一部として受ける。試聴の位置の `seekAudition` も宣言にし、試聴の経過 `auditionElapsedSec`(装置の出力)を HUD が表示に読むのをやめる — 経過は設定画面が宣言した開始時刻と実時刻から求める(5.5-3 から回した行)。試聴の `beginAudition`/`playAudition`/`stopAudition`/`endAudition` を、試聴中の曲(無しを含む)の宣言にする。試聴の選択は、設定画面が R5-4 の操作途中の状態として持つ。`syncRun` を遷移点だけで呼んでいる形も、同じ宣言へまとめられるかをここで判定する |
-
-**達成条件と検証**
-
-- `rg -n "worldSfx\.\w+\(" src/game` が、宣言を渡す1本だけ。
-- `rg -n "bgm\.(setVolume|beginAudition|playAudition|stopAudition|endAudition)" src` が 0 件。
-- `npm run typecheck`、`npm run check:boundaries`。
-- `npm run dev` で次を見る。射撃・装填・被弾・空撃ちの音。一時停止中と決着後に効果音が鳴り続けない(AUDIO.md)。設定画面での BGM の音量変更と試聴。タブを隠して戻したときの再開。
-
-#### 手順 5.5-7. 位相・直列化・導出の残りを片づける(R8・R12・R5)
-
-**目的**: 後の段へ回していた、段 5 までの規則の未達を直す。変わる挙動は、結果画面が出るのが最大1フレーム遅れる点だけ(決着の読み方)。
-
-**前提(段 3・5-3)**: 位相の中の順序は、「段 1〜3 — 済」の節の5項目と、5-3 の `Run.frame` の順序表のとおりである。決着の読み方を変えるときも、これを崩さない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/sim-speed-manager.ts`、`sim-speed-commands.ts`、`src/game/input/game-input-ports.ts` | 時間加速の段の上下が、まだキーコードを命令の id として受けている(`handleCommand(commandId)` が `K.warpSlower.code`/`K.warpFaster.code` と比べる)。「段を1つ上げる/下げる」という領域の命令にし、`sim-speed-manager.ts` から `KEY_MAPPING` の import を消す(R8)。キーの解釈は入力の解釈へ |
-| `src/launcher/launcher.ts`、`src/game/stages/stage.ts`、`src/run/run.ts` | 構築の後に `stage.onDecided` を差す配線をやめる(R12・CODING-RULE 1.11 の二段初期化)。決着は進行が出来事として記録し、launcher は `Run.frame` の後にそれを読んで、解放記録・BGM・結果画面を動かす |
-| `src/game/dynamic/dynamic-system.ts` | `deserialize` が空のまま構築してから記録を `spawnWhenReady` で流し込む形を判定する。アセット待ちの関門のためなら、待ちの記録を構築の引数で受け、流し込みの口を持たない形にする(R12)。採番器を組んだ後で記録中の id を `reserve()` で流し込む形と、`AttachedBoosters` のコンストラクタが段の id を予約する形も、組む前に予約する id を渡す形にする(5.5-3 から回した行) |
-| `src/game/viewer/{nav-target-selection,viewer}.ts` | `SerializedNavTargetSelection` を状態の名前で呼び直す(5.5-2 の R12 の1件)。不変な素の値の型なので、`SerializedT` を別に作らない(R12)。保存形式は変えない |
-| `src/game/game.ts`、`src/launcher/save/*` | 版の刻印 `SERIALIZATION_VERSION` の置き場を判定する。版の照合は launcher の語彙(R12)なので、モデル層の直列化が版を知る必要が無ければ launcher へ移す。**保存形式(版の値と位置)は変えない**(K9) |
-| `src/game/pickable/object-windows.ts`、`src/game/pickable/map-picking.ts`、`src/game/view/view-frame.ts`、`src/game/hud/frame/frame-controls.ts`、`src/game/plan/plan-editor.ts` | `simTime` を引数で配る経路を落とし、表示時刻の所有者から読む1本にする(K6 の保留 2)。`frame-controls` の `lastTime` と `plan-editor` の `simTime` も同じく所有者から読む |
-
-**達成条件と検証**
-
-- `rg -n "onDecided" src` が 0 件。
-- `rg -n "KEY_MAPPING" src/game/dynamic` が 0 件。
-- R3 の判定の許可リストが空(`Stage.onDecided` が最後の1件だった)。
-- `npm run typecheck`、`npm run test:game`、`npm run test:launcher`、`npm run check:boundaries`。
-- `npm run dev` で次を見る。決着から結果画面が出る。決着済みの記録から始めても結果画面が出る。時間加速の上げ下げ。マップの右クリックとプロパティ窓の時刻表示。段 5 で書き出したセーブが読める。
+**実施で決めたこと**
+- 時間加速の段の上下は `SimSpeedManager.shift(step: -1 | 1)`(命令の口は `SimSpeedCommands.shift`)。キーから段の向きへの解釈は `game-input-ports.ts` が持つ。
+- 決着は `Stage.decide` が出来事 `stageDecided` を記録する。`Launcher.followProgress()` を `main.ts` が `Run.frame` を回し終えたフレームごとに呼び、出来事があればクリアを数えて結果画面を出す。BGM は 5.5-6 でフレームごとの宣言にしたので、ここでは触らない。
+- `DynamicSystem` はコンストラクタで記録の列を受け、その場で実体化する(揃わないものは待ち行列へ)。`spawnWhenReady` はステージが遊びの最中に敵を足す命令として残る。
+- **採番器の予約は、組む前へ移すのではなく消した。** 記録にある id(顔ぶれの個体も、接続中のブースターの段も)はどれも同じ記録に保存した採番器が発番したもので、保存した「次の番号」はそれらを必ず追い越している。予約が守っていた場合は、この形式の記録からは起こらない。`EntityIdAllocators.reserve` は消え、`EntityIdAllocator.reserve` は `next(id)` の中だけで使う private になった。
+- `SerializedNavTargetSelection` は `NavTarget` へ改名した(保存形式は同じ)。
+- 版の刻印はモデル層から launcher へ移した。`SerializedGame` は `version` を持たず、launcher の `SavedGame`(`save-store.ts`、版 `SAVED_GAME_VERSION`)が版を添えた記録本体。版は `SnapshotService` が書くときに先頭へ添えるので、版の値と位置は変わらない。
+- `simTime` の二重経路: `ObjectWindows.open`/`openEmptySpaceMenu`/`sync`、`MapPicking.handleRightClick`/`handleEmptySpaceRightClick`、`ViewFrame.handleCommand`/`handlePointer`、`PlanEditor.handleCommand`/`update` の時刻の引数を落とし、表示窓の所有者 `DisplayWindowManager.current` から読む。`PlanEditor` は写しの `simTime` 欄をやめて所有者から読む。`frame-controls` の `lastTime` は、この手順に着手した時点で既に無かった。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run test:launcher`(2/2)、`npm run check:boundaries`(許可リスト 0 件)、変更ファイルの lint。`npm run dev` での目視(決着から結果画面、時間加速、マップの右クリック、段 5 のセーブの読み込み)は 5.5-10 へ回す。
 
 #### 手順 5.5-8. 段 5 が残した 1.x の未達と、launcher の表示を片づける
 
@@ -1580,13 +1550,13 @@ import を直す外側:
 | | ~~5.5-2 検査~~ 済 | 0 |
 | | ~~5.5-3 洗い出し~~ 済 | 0 |
 | | ~~5.5-4 運動の書き手~~ 済 | 0 |
-| | 5.5-5 残りのモデル層の欄(24 ファイル × 20 + 検証 20、5.5-3 から回した行 +60) | 560 |
-| | 5.5-6 音の装置(6 ファイル × 20 + 検証 20、`UiSfx`・消音の設定・試聴の位置と経過 +80) | 220 |
-| | 5.5-7 位相・直列化・導出の残り(15 ファイル × 20、時間加速の命令を領域の語彙にする +40、検証 20、採番器の予約 +20) | 380 |
+| | ~~5.5-5 残りのモデル層の欄~~ 済 | 0 |
+| | ~~5.5-6 音の装置~~ 済 | 0 |
+| | ~~5.5-7 位相・直列化・導出の残り~~ 済 | 0 |
 | | 5.5-8 1.x の未達と launcher の表示(10 ファイル × 20 + 検証 20) | 220 |
 | | 5.5-9 洗い出しの残りと監査報告の 4(4 の分は SPEC の削除と 6 ファイル × 20 + 検証 20 = 140。洗い出しの 22 行は約 40 ファイル × 20 = 800) | 940 |
 | | 5.5-10 main へ送る | 150 |
-| | **段 5.5 計(残り)** | **2,470** |
+| | **段 5.5 計(残り)** | **1,310** |
 | 6 | 6-1 規則(R6・R2 のモデル層、`entity-shapes/` の層と条件 +15、`physics/` から実体の形を締め出す +15) | 120 |
 | | 6-2 検査(対応表を game/ の中まで割る、`LAYER_TABLE` の行 +5。K11-2 で B なら読み手の数の判定 +20) | 95 |
 | | 6-3 3D の表示担当(モデル層の根の `scene` +20、漏れていたテスト3本 +30、突き合わせの検査 +40) | 810 |

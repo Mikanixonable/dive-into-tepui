@@ -132,8 +132,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     public readonly altitudeAlarm = new AltitudeAlarm(registry.events),
     parts: readonly Part[] = createPlayerParts(PLAYER_MAX_HP),
     public readonly plan = Plan.create(),
-    public planExecution: PlanExecutionMode = 'instant',
-    public fineAttitude = false,
+    private _planExecution: PlanExecutionMode = 'instant',
+    private _fineAttitude = false,
   ) {
     // Motion が読む値と、接触・喪失の通知先をこの艦へ結ぶ
     const reactions = (owner: Player): PlayerMotionReactions => ({
@@ -336,10 +336,20 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     }
   }
 
+  // 計画の実行方法。
+  public get planExecution(): PlanExecutionMode { return this._planExecution; }
+  // 姿勢微調整モードか。
+  public get fineAttitude(): boolean { return this._fineAttitude; }
+
+  // 計画の実行方法を mode へ切り替える。
+  public setPlanExecution(mode: PlanExecutionMode): void {
+    this._planExecution = mode;
+  }
+
   // 姿勢微調整モードの ON/OFF を切り替える。
   private toggleFineAttitude(): void {
-    this.fineAttitude = !this.fineAttitude;
-    this.registry.events.record({ kind: 'fineAttitudeToggled', on: this.fineAttitude });
+    this._fineAttitude = !this._fineAttitude;
+    this.registry.events.record({ kind: 'fineAttitudeToggled', on: this._fineAttitude });
   }
 
   // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
@@ -485,7 +495,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // 操作量から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
   private updateTorque(controls: PilotControls, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
-    const fine = this.fineAttitude || this.fire.isFiring;
+    const fine = this._fineAttitude || this.fire.isFiring;
     this.motion.setTorque(this.throttle.updateTorque(
       this.motion.att,
       this.motion.state.r,
@@ -579,10 +589,10 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       belt: this.motion.belt.serialize(),
       throttle: this.throttle.serialize(),
       altitudeAlarm: this.altitudeAlarm.serialize(),
-      parts: this.parts.map(p => ({ ...p })) as SerializedPart[],
+      parts: this.serializeParts(),
       // 操作の設定と計画
-      planExecution: this.planExecution,
-      fineAttitude: this.fineAttitude,
+      planExecution: this._planExecution,
+      fineAttitude: this._fineAttitude,
       plan: this.plan.serialize(),
       boosters: this.motion.attachedBoosters.serialize(),
     };

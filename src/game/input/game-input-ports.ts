@@ -60,7 +60,7 @@ export function gameInputPorts(
         gameCommand(K.warpSlower.code, K.warpSlower),
         gameCommand(K.warpFaster.code, K.warpFaster),
       ],
-      handleCommand: command => speedCommands.handleCommand(command.id),
+      handleCommand: command => speedCommands.shift(command.id === K.warpSlower.code ? -1 : 1),
     },
     {
       feature: 'view',
@@ -75,7 +75,7 @@ export function gameInputPorts(
         gameCommand(K.deleteNode.code, K.deleteNode),
         gameCommand(K.autoWarpToNode.code, K.autoWarpToNode),
       ],
-      handleCommand: command => viewManager.activeView.handleCommand(command.id, game.simTime),
+      handleCommand: command => viewManager.activeView.handleCommand(command.id),
     },
   ];
 }

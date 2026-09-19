@@ -4,11 +4,6 @@
       "count": 6
     }
   },
-  "src/audio/bgm/bgm.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/audio/bgm/composer-factory.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
@@ -101,22 +96,6 @@
   "src/audio/bgm/tracks/types.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
-    }
-  },
-  "src/audio/sfx/ui-sfx.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 2
-    }
-  },
-  "src/audio/sfx/world-sfx.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 16
     }
   },
   "src/game/camera/gunsight-camera.ts": {
@@ -1124,11 +1103,6 @@
       "count": 1
     }
   },
-  "src/hud/windows/settings-view.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    }
-  },
   "src/input/input.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -1181,7 +1155,7 @@
   },
   "src/launcher/save/snapshot-service.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 2
+      "count": 1
     }
   },
   "src/launcher/snapshot-controls.ts": {

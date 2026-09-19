@@ -73,8 +73,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。
   private readonly nanWatchdog: NanWatchdog;
 
-  // 描画資源のプールと前進の機構を、顔ぶれが空のまま simTime [s] から組む。idAllocators はこの
-  // ランの id 採番器で、省けば連番の初めから発番する。
+  // 描画資源のプールと前進の機構を simTime [s] から組み、records の個体を足す(実体化に要る外部資源が
+  // 揃わないものは待ち行列へ回す)。idAllocators はこのランの id 採番器で、省けば連番の初めから発番する。
   private constructor(
     private readonly scene: THREE.Scene,
     public readonly events: RunEventSink,
@@ -82,6 +82,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     private readonly sections: FrameSections,
     simTime = 0,
     public readonly idAllocators = new EntityIdAllocators(),
+    records: readonly SpawnRecord[] = [],
   ) {
     this.instancedPools = new InstancedPools([
       new BulletPools(scene, ENTITY_CAP.bullet),
@@ -90,6 +91,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     ]);
     this.simulator = new Simulator(this, this, this, celestialBodies, sections, simTime);
     this.nanWatchdog = new NanWatchdog(events);
+    for (const record of records) this.spawnWhenReady(record);
   }
 
   // 新しいランの空の顔ぶれを組む。
@@ -112,16 +114,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       ...entities.map((entity): SpawnRecord => ({ kind: 'entity', entity })),
       ...pendingSpawns,
     ];
-    // 採番は保存した番号から続け、記録にそれより先の id があればその次から続ける。実体化がゲートで
-    // 遅れる個体があるので、組み始める前に全部の id を押さえる。
-    const idAllocators = EntityIdAllocators.deserialize(serialized.idAllocators);
-    for (const record of records) {
-      if (record.kind === 'entity') idAllocators.reserve(record.entity.id);
-    }
     // null の先端時刻も欠けと同じく 0 から始める(既定引数は undefined でしか働かない)。
-    const system = new DynamicSystem(scene, events, celestialBodies, sections, simTime ?? undefined, idAllocators);
-    for (const record of records) system.spawnWhenReady(record);
-    return system;
+    return new DynamicSystem(
+      scene, events, celestialBodies, sections, simTime ?? undefined,
+      EntityIdAllocators.deserialize(serialized.idAllocators), records,
+    );
   }
 
   // 顔ぶれと実体化を待つ個体、採番を直列化した形へ畳む。
@@ -284,14 +281,15 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 時間が止まったことを記録し、次のフレームへ持ち越してはならない連続指令を畳む。
   public pause(): void {
-    this.simulator.lastSimDt = 0;
+    this.simulator.pause();
     for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
   // 顔ぶれを1フレーム進める。自律の推力、操作・敵の指令を決めてから積分する。各段の境界で
-  // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。
+  // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。operable は操作と敵の
+  // 射撃ができる倍率か、enemiesMayFire はステージが敵の射撃を許しているか。
   public update(
-    active: Controllable | null, controls: PilotControls, operable: boolean,
+    active: Controllable | null, controls: PilotControls, operable: boolean, enemiesMayFire: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
     stageRules: StageRules, beforeControllables: () => void = () => {},
   ): void {
@@ -302,7 +300,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     this.updateThrusts(simDt);
     beforeControllables();
     this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
-    this.behaveAll(active, operable);
+    this.behaveAll(active, operable && enemiesMayFire);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
       'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
@@ -342,14 +340,15 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。追跡先の艦が1隻も無ければ何もしない。
-  // 同一集団の判定に使う母集団は、このフレームの顔ぶれを1度だけ取って全機で共有する。
-  private behaveAll(active: Controllable | null, operable: boolean): void {
+  // 同一集団の判定に使う母集団は、このフレームの顔ぶれを1度だけ取って全機で共有する。mayFire が偽の
+  // 間は撃たない。
+  private behaveAll(active: Controllable | null, mayFire: boolean): void {
     const player = this.trackedShip(active);
     if (player === null) return;
     const enemies = this.entities.filter(isEnemy);
     for (const e of enemies) {
       if (e.motion.alive) {
-        e.behave(this.simTime, player, this, enemies, operable, this.celestialBodies);
+        e.behave(this.simTime, player, this, enemies, mayFire, this.celestialBodies);
       }
     }
   }

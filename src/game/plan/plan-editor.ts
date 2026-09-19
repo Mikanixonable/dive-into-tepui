@@ -16,7 +16,7 @@ import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
 import { ContextMenu } from '../hud/windows/context-menu';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import type { UiSfx } from '../../audio/sfx/ui-sfx';
+import type { UiSoundQueue } from '../ui-sound-queue';
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { focusPoint } from '../viewer/focus-target';
@@ -26,7 +26,8 @@ import { NodeGizmo } from './node-gizmo';
 import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from '../../render/plan/plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
-import type { DisplayDurationSource, Plan } from './plan';
+import type { Plan } from './plan';
+import type { DisplayWindowManager } from '../display-window-manager';
 import type { PlanCommands } from './plan-commands';
 import type { SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
@@ -81,7 +82,6 @@ export class PlanEditor {
   private readonly axisDrag: AxisDragGizmo;
 
   private readonly panel: PlanPanel;
-  private simTime = 0; // 現在の simTime [s]
 
   // このフレームに積み上がった Δv の、到着軌道基準(PRO/NRM/RAD)成分 [m/s]。加算が
   // 一度も無ければ null。
@@ -91,13 +91,13 @@ export class PlanEditor {
   // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
   public constructor(
     private readonly hud: HudLayers & Notifier,
-    private readonly uiSfx: UiSfx,
+    private readonly uiSounds: UiSoundQueue,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly simSpeedCommands: SimSpeedCommands,
     private readonly celestialBodies: CelestialBodies,
     scene: THREE.Scene,
     private readonly controlSelection: ControlSelection,
-    private readonly displayDuration: DisplayDurationSource,
+    private readonly displayWindowManager: Pick<DisplayWindowManager, 'current' | 'durationSec'>,
     private readonly mapFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
     private readonly path: PlanPath,
     private readonly planCommands: PlanCommands,
@@ -124,6 +124,9 @@ export class PlanEditor {
     this.wireNodeGizmo();
   }
 
+  // 直近の進行が確定させた simTime [s]。
+  private get simTime(): number { return this.displayWindowManager.current.simTime; }
+
   // 時刻 t まで自動ワープを始める。既に通過した時刻ならその旨を出すだけで何もしない。
   public warpTo(t: number): void {
     if (!this.simSpeedManager.canAutoWarpTo(t, this.simTime)) {
@@ -141,7 +144,7 @@ export class PlanEditor {
     g.onNodeSelect = (idx) => {
       this.selectedNodeIdx = idx;
       this.closeMenu();
-      this.uiSfx.warp();
+      this.uiSounds.push('warp');
     };
     g.onNodeDragMove = (idx, clientX, clientY) => {
       this.closeMenu();
@@ -197,10 +200,10 @@ export class PlanEditor {
   }
 
   // router から計画キー([X] 削除・[N] 直近ノードへの自動ワープ)を受け取る。
-  public handleCommand(commandId: string, simTime: number): void {
+  public handleCommand(commandId: string): void {
     if (commandId === K.deleteNode.code) this.deleteSelectedNodeOrPlan();
     if (commandId === K.autoWarpToNode.code) {
-      this.simSpeedCommands.toggleAutoWarpToFirstNode(this.plan?.firstNode(), simTime);
+      this.simSpeedCommands.toggleAutoWarpToFirstNode(this.plan?.firstNode(), this.simTime);
     }
   }
 
@@ -246,7 +249,7 @@ export class PlanEditor {
       : null;
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
-      this.uiSfx.warp();
+      this.uiSounds.push('warp');
       return;
     }
 
@@ -304,7 +307,7 @@ export class PlanEditor {
     }
     this.selectedNode = postState;
     this.planCommands.addNode(plan, postState, anchor);
-    this.uiSfx.warp();
+    this.uiSounds.push('warp');
   }
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
@@ -340,7 +343,7 @@ export class PlanEditor {
     const picked = this.path.nearestSample(
       clientX, clientY, Infinity, node.t,
       ship.plan.nodeTimeRange(
-        idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayDuration,
+        idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayWindowManager,
       ),
     );
     // Δv を保ったまま移動先へ置き換える
@@ -365,7 +368,7 @@ export class PlanEditor {
     const hasDownstreamNodes = idx < plan.nodes.length - 1;
     const targetT = this.simTime + secondsFromNow;
     const range = plan.nodeTimeRange(
-      idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayDuration,
+      idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayWindowManager,
     );
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
@@ -386,7 +389,7 @@ export class PlanEditor {
     const moved = this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state;
     this.selectedNode = moved;
     this.planCommands.replaceNode(plan, idx, moved);
-    this.uiSfx.warp();
+    this.uiSounds.push('warp');
     if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
   }
 
@@ -459,7 +462,7 @@ export class PlanEditor {
     const burned = kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld));
     this.selectedNode = burned;
     this.planCommands.replaceNode(plan, idx, burned);
-    this.uiSfx.warp();
+    this.uiSounds.push('warp');
   }
 
   // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を ECI で返す。ノードか到着状態が求まって
@@ -596,15 +599,14 @@ export class PlanEditor {
     this.gizmo3d.dispose();
   }
 
-  // 操作対象の切り替えを検出してメニューを畳み、ワープメニューが使う現在時刻を差し込む。
-  public update(simTime: number): void {
+  // 操作対象の切り替えを検出してメニューを畳む。
+  public update(): void {
     // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む。
     const ship = this.ship;
     if (ship !== this.lastSeenShip) {
       this.lastSeenShip = ship;
       this.closeMenu();
     }
-    this.simTime = simTime;
   }
 
   // 操作 UI(ノードギズモ・Δv アーム・3D 矢印・計画パネル)を現在の選択と画面座標で組み直す。
