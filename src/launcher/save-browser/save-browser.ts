@@ -1,8 +1,8 @@
 // セーブデータブラウザ: 複数のセーブデータ(スロット)とその手動セーブの履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
 import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
-import { SaveSlots } from '../save/save-slots';
-import { SnapshotService, type SnapshotSource } from '../save/snapshot-service';
+import type { SaveSlots } from '../save/save-slots';
+import type { SnapshotService, SnapshotSource } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta } from '../save/slot-data';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';

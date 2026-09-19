@@ -4,9 +4,9 @@
 import { fixedMotion } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import type { CelestialBody } from '../../src/physics/celestial-body';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { EARTH_ATMOSPHERE, MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { len, v3 } from '../../src/math/vec3';
 import { PredictedArc } from '../../src/game/dynamic/predicted-arc';

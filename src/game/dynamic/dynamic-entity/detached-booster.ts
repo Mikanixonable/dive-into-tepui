@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import type { Quat } from '../../../math/quat';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { deserializeAttitude, type Attitude } from '../../../physics/attitude';

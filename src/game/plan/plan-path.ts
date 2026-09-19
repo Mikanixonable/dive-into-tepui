@@ -2,20 +2,20 @@
 // アプシス・衝突点と、画面上の最寄り点を答える。折れ線は PlanPathView へ宣言して描く。
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { KinematicState } from '../../physics/kinematic-state';
+import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { Apsis } from '../../physics/trajectory-features';
-import { Vec3 } from '../../math/vec3';
-import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
+import type { Vec3 } from '../../math/vec3';
+import { type FrameAnchorSource, type FrameTransform, type ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 
-import { Projected } from '../../math/projection';
+import type { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { PlanPathView, type PlanArcLine } from '../../render/plan/plan-path-view';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import type { ProjectFn, ScaleFn } from '../../math/projection';
-import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
-import { BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
+import { type DisplayDurationSource, type PlanData, type TimeRange, segmentDurationFrom } from './plan';
+import { type BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../math/optimize';
