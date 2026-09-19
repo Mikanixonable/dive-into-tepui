@@ -33,7 +33,7 @@ function cameraFrame(): CameraFrame {
     aspect: VIEWPORT.width / VIEWPORT.height,
     projection: 'perspective',
   };
-  return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, 'map', false, v3());
+  return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, false, v3());
 }
 
 // center を中心に xy 面を回る半径 radius の円を、閉じた解析曲線として宣言する。

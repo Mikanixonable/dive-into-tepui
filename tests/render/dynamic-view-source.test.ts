@@ -53,7 +53,7 @@ function cameraFrame(): CameraFrame {
     aspect: VIEWPORT.width / VIEWPORT.height,
     projection: 'perspective',
   };
-  return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, 'map', false, v3());
+  return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, false, v3());
 }
 
 // 表示時刻とカメラだけを持つ、そのフレームの共通入力。

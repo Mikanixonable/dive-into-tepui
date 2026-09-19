@@ -8,7 +8,6 @@ import {
   metersPerPixel, metersPerPixelAtDistance, screenProjection, Viewpoint,
 } from '../../math/projection';
 import type { CameraFrame } from './camera-frame';
-import type { ViewMode } from '../../game/view/view-mode';
 import type { Viewport } from '../viewport';
 
 // 近クリップ距離 = 注視距離 / NEAR_RATIO。比を大きくするほど手前がクリップされにくい。
@@ -118,7 +117,6 @@ export class CameraView {
     clipFovDeg: number,
     clipDistance: number,
     viewport: Viewport,
-    mode: ViewMode,
     zoomed: boolean,
     focusVelocity: Vec3,
   ): CameraFrame {
@@ -135,7 +133,6 @@ export class CameraView {
       position,
       viewpoint,
       viewport,
-      mode,
       zoomed,
       floatingOrigin: new FloatingOrigin(position, focusVelocity),
       project: screenProjection(viewpoint, viewport.width, viewport.height),

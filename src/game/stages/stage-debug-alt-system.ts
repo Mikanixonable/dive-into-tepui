@@ -122,7 +122,7 @@ export class StageDebugAltSystem extends Stage {
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedStage, ...deps: StageDeps): StageDebugAltSystem {
+  public static deserialize(serialized: SerializedStage | null, ...deps: StageDeps): StageDebugAltSystem {
     return new StageDebugAltSystem(
       deps, ...Stage.deserializeCommonState(serialized, deps, StageDebugAltSystem.stageRules),
     );

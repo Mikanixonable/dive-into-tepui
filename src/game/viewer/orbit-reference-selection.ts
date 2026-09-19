@@ -13,6 +13,9 @@ export class OrbitReferenceSelection {
 
   public get mode(): OrbitReferenceMode { return this._mode; }
 
+  // 直列化した形。
+  public serialize(): OrbitReferenceMode { return this._mode; }
+
   // 基準の選び方を mode へ差し替える。
   public setMode(mode: OrbitReferenceMode): void {
     this._mode = mode;

@@ -65,20 +65,26 @@ export function apsisCrossing(
   return null;
 }
 
-// 時刻昇順の states から t より前のものを落とす。
-function dropBefore<T extends { readonly state: KinematicState }>(states: T[], t: number): void {
+// 近地点か遠地点の1つ。center はそれを見つけたときの中心天体。
+export interface Apsis {
+  readonly state: KinematicState;
+  readonly center: CelestialBody;
+}
+
+// 時刻昇順の apsides から t より前のものを落とす。
+function dropBefore(apsides: Apsis[], t: number): void {
   let cut = 0;
-  while (cut < states.length && states[cut]!.state.t < t) cut++;
-  if (cut > 0) states.splice(0, cut);
+  while (cut < apsides.length && apsides[cut]!.state.t < t) cut++;
+  if (cut > 0) apsides.splice(0, cut);
 }
 
 // 積分の1ステップ対を時刻順に observe へ渡すと、見つかった近地点・遠地点を時刻昇順に溜める。
 // 中心天体は observe のたびに渡される — 生成時に固定すると、中心天体自身が動く(月など)
-// 場合に検出済みの値が古い中心位置基準のままずれ続けるため。dropBefore で範囲の先頭より前を
-// 落とすので、periapsis/apoapsis は常に「いま答える範囲で最初の極値」を返す。
+// 場合に検出済みの値が古い中心位置基準のままずれ続けるため。溜めた列は持ち主が dropBefore で
+// 保持範囲の先頭まで落とす。
 export class ApsisTrack {
-  private readonly periapsides: { readonly state: KinematicState; readonly center: CelestialBody }[] = [];
-  private readonly apoapsides: { readonly state: KinematicState; readonly center: CelestialBody }[] = [];
+  private readonly periapsides: Apsis[] = [];
+  private readonly apoapsides: Apsis[] = [];
   private _center: CelestialBody | null = null;
 
   // 直近の observe に渡された中心天体。まだ observe を1度も呼んでいなければ null。
@@ -104,22 +110,14 @@ export class ApsisTrack {
     dropBefore(this.apoapsides, t);
   }
 
-  // 時刻昇順の列で最初の近地点。無ければ null。
-  public get periapsis(): KinematicState | null {
-    return this.periapsides[0]?.state ?? null;
+  // 時刻 t 以降で最初の近地点。無ければ null。
+  public periapsisAfter(t: number): Apsis | null {
+    return this.periapsides.find((apsis) => apsis.state.t >= t) ?? null;
   }
 
-  public get periapsisCenter(): CelestialBody | null {
-    return this.periapsides[0]?.center ?? null;
-  }
-
-  // 時刻昇順の列で最初の遠地点。無ければ null。
-  public get apoapsis(): KinematicState | null {
-    return this.apoapsides[0]?.state ?? null;
-  }
-
-  public get apoapsisCenter(): CelestialBody | null {
-    return this.apoapsides[0]?.center ?? null;
+  // 時刻 t 以降で最初の遠地点。無ければ null。
+  public apoapsisAfter(t: number): Apsis | null {
+    return this.apoapsides.find((apsis) => apsis.state.t >= t) ?? null;
   }
 }
 

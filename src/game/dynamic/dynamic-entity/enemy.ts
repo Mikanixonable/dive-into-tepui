@@ -181,7 +181,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       canFire: enemies => this.canFire(enemies),
       muzzlePosition: () => this.muzzlePosition(),
       plasmaDamage: () => this.plasmaDamage(),
-      muzzleEffect: (muzzleState, events) => this.muzzleEffect(muzzleState, events),
+      fired: (muzzleState, events) => this.fired(muzzleState, events),
     }, burstLeft, burstDelay, lastFireSim, lastBehaviorSim);
     this.reactions = new EnemyReactions({
       motion: this.motion,
@@ -212,8 +212,8 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   ): void;
   // 接触ダメージを当て、ダメージが発生したかを返す。しきい値未満なら false。
   protected abstract applyImpactDamage(damageSpeed: number): boolean;
-  // 1発撃ったことを記録する。muzzleState は砲口の位置と機体の速度。
-  protected abstract muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
+  // 1発撃ったことを受ける。muzzleState は砲口の位置と機体の速度。
+  protected abstract fired(muzzleState: KinematicState, events: RunEventSink): void;
 
   // 個体色の CSS 表記。
   public get accentColor(): string {

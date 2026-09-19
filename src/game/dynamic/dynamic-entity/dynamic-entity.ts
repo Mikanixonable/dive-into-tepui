@@ -70,6 +70,9 @@ export abstract class DynamicEntity {
   public abstract serialize(): SerializedDynamicEntity;
 
   // 実体に共通する直列化の項目。kind は具象のタグ。具象の serialize() がこれへ自分の項目を足す。
+  // 例外(ARCHITECTURE R12): 運動の値(状態・姿勢・生死。具象では熱も)を、実体の記録へ平らに並べる。
+  // 運動の記録として分けると保存の形式が変わり、版 4 の記録が読めなくなる。形式は版を上げるときに
+  // まとめて直す。
   protected serializeEntityFields<K extends SerializedDynamicEntityFields['kind']>(
     kind: K,
   ): SerializedDynamicEntityFields & { readonly kind: K } {

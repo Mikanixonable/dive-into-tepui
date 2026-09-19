@@ -111,10 +111,11 @@ export class PredictedArc {
   public get decimation(): number { return this._decimation; }
 
   // 積分先端が到達すべき絶対時刻 requiredEnd と、保持窓の左端 retainFrom を受ける。伸ばす前に毎フレーム
-  // 渡す。
+  // 渡す。保持窓より前の極値は捨てる。
   public demand(requiredEnd: number, retainFrom: number): void {
     this.requiredEnd = requiredEnd;
     this.retainFrom = retainFrom;
+    this._apsides?.dropBefore(retainFrom);
   }
 
   // 実シミュレーションのサブステップ幅の上限 maxStep [s] を受ける。消費される弧はこれに刻みを揃える。

@@ -2,7 +2,6 @@ import * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../../../math/projection';
 import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
 import { ProteinRuntime } from '../../protein/protein-runtime';
-import { proteinLocalImpactPoint } from '../../../physics/protein-site-geometry';
 import { createProteinMotionBinding } from '../../protein/protein-motion-material';
 import {
   ProteinMotionController, proteinMotionLodForProjectedSize,
@@ -111,21 +110,6 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
       disabled: site.disabled,
       attackable: site.attackable,
     }));
-  }
-
-  // 部位idの表示中アンカーを本体の位置・姿勢へ写す。
-  public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
-    return this.runtime.siteWorldPositionById(id, origin, attitude);
-  }
-
-  // 部位 id の変形済みモデルローカル座標。rootの表示倍率と姿勢は含めない。
-  public siteModelPositionById(id: string): Vec3 {
-    return this.runtime.siteModelPositionById(id);
-  }
-
-  // ワールド着弾点を表示中アンカーと同じモデルローカル座標へ写す。
-  public localImpactPoint(worldPoint: Vec3, origin: Vec3, attitude: Quat): Vec3 {
-    return proteinLocalImpactPoint(worldPoint, origin, attitude, this.object.scale.x);
   }
 
   // 表示設定を反映し、投影サイズから LOD を選んで表示時刻のモード係数を確定させ、変形資源へ渡す。

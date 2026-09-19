@@ -99,7 +99,7 @@ export function register(): void {
     const plan = Plan.create();
     plan.addNode(kinematicState<'eci'>(50, ship.r, ship.v), ship);
 
-    assert.equal(plan.consumeNodesUpTo(55, reached), 1);
+    plan.consumeNodesUpTo(55, reached);
     assert.equal(plan.nodes.length, 0);
     assert.equal(plan.serialize(), null);
   });

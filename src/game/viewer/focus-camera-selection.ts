@@ -450,6 +450,9 @@ export class FocusCameraSelection implements FocusCameraSource {
   }
 
   // 直列化した形へ畳む。向きは姿勢追従中なら対象姿勢からの相対値のまま書く。
+  // 例外(ARCHITECTURE R12): 向き(CameraOrientation の値)と注視距離・追従(自分の値)を、変位 offset・
+  // 上方向 up・rotatingWith に合成して書く。持ち主ごとの記録に分けると保存の形式が変わり、版 4 の
+  // 記録が読めなくなる。形式は版を上げるときにまとめて直す。
   public serialize(): SerializedFocusCameraSelection {
     const focus: SerializedFocusCameraSelection['focus'] = this._focus.kind === 'object'
       ? { kind: 'object', id: this._focus.id }

@@ -41,6 +41,7 @@ import type { FocusCameraSource } from '../viewer/focus-camera-selection';
 import type { CelestialClass } from './celestial-entity/celestial-entity-def';
 import type { PerfCounts } from '../perf-counts';
 import { STICKY_MARGIN_SQ } from './nearby-system-tracker';
+import type { ViewMode } from '../view/view-mode';
 
 // 数値暦が収録している点を、結び先のノードへ配る。暦は id ごとに天体本体を収録している場合と
 // 惑星系の重心を収録している場合があり、宣言と食い違う点へ結ぶとその系がまるごと重心オフセット
@@ -362,6 +363,7 @@ export class CelestialSystem implements CelestialBodies {
     displayTime: number,
     nowMs: number,
     camera: CameraFrame,
+    view: ViewMode,
     mapCamera: Pick<FocusCameraSource, 'focus' | 'distance'>,
     mapResolvedFocus: Vec3,
     graphics: GraphicsSettingsData,
@@ -388,7 +390,7 @@ export class CelestialSystem implements CelestialBodies {
     const fixedBrightnessScale = this.illumination.fixedBrightnessScale;
     const starPos = this.starMotion?.stateAt(displayTime).r ?? null;
     this.pointFieldView?.sync(
-      camera.mode === 'map' && graphics.pointField,
+      view === 'map' && graphics.pointField,
       floatingOrigin, displayTime, starPos, fixedBrightnessScale);
     this.stars.sync(grid.stars);
     this.syncReferenceLines(displayTime, camera, visibilityPolicy);
@@ -398,17 +400,17 @@ export class CelestialSystem implements CelestialBodies {
     for (const body of this.entities) {
       overlayLabel = body.view.syncMapOverlay(
         body.motion, displayTime, camera,
-        camera.mode === 'map' && orbitGuide.geostationary) ?? overlayLabel;
+        view === 'map' && orbitGuide.geostationary) ?? overlayLabel;
     }
     this.overlayDeclarations.length = 0;
     const overlay = this.overlayDeclarationOf(overlayLabel, camera, displayTime);
     if (overlay !== null) this.overlayDeclarations.push(overlay);
     this.orbitGuideView.sync(
-      this.orbitGuideModel.displaysAt(orbitGuide, displayTime, style, camera.mode), camera, nowMs);
+      this.orbitGuideModel.displaysAt(orbitGuide, displayTime, style, view), camera, nowMs);
     this.zeroVelocityView.sync(
-      this.zeroVelocityModel.displaysAt(orbitGuide.zeroVelocity, displayTime, camera.mode), camera);
+      this.zeroVelocityModel.displaysAt(orbitGuide.zeroVelocity, displayTime, view), camera);
     this.celestialGrid.sync(style, grid, camera.camera, CELESTIAL_SHELL_SCALE, camera.viewport);
-    this.scaleGrid.sync(displayTime, camera, mapCamera, mapResolvedFocus, this, grid);
+    this.scaleGrid.sync(displayTime, camera, view, mapCamera, mapResolvedFocus, this, grid);
   }
 
   // 天体固有のマップ付随表示が、このフレームに出す文字マーカーの宣言。

@@ -52,7 +52,7 @@ function cameraFrame(): CameraFrame {
     aspect: VIEWPORT.width / VIEWPORT.height,
     projection: 'perspective',
   };
-  return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, 'map', false, v3());
+  return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, false, v3());
 }
 
 // 地球中心の円軌道を 10 分ぶん積分した軌跡。

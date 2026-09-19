@@ -17,7 +17,7 @@ export class PropertyWindowRows {
   public readonly element: HTMLDivElement;
   // 前フレームに描画した行の値。同じ値なら DOM に触れない差分更新のための記録。
   private lastRowValues = new Map<string, string>();
-  // 前フレームの行構成(key・group・collapsible の並び)。DOM 組み直しの要否判定に使う。
+  // 前フレームの行構成(key・見出し・group・collapsible の並び)。DOM 組み直しの要否判定に使う。
   private lastRowShapeKey = '';
   private collapsibleContainerEl: HTMLDivElement | null = null;
   private toggleEl: HTMLDivElement | null = null;
@@ -31,11 +31,11 @@ export class PropertyWindowRows {
     this.element.className = 'prop-window-rows';
   }
 
-  // 行の値だけを毎フレーム差分更新する。行構成(key・group・collapsible の並び)が変わった
+  // 行の値だけを毎フレーム差分更新する。行構成(key・見出し・group・collapsible の並び)が変わった
   // 場合のみ行 DOM 全体を組み直す。描画順は「group を持つ行(グループ見出し単位、初出順)」→
   // 「無印の行」→「collapsible な行(末尾の「詳細」トグルの下)」。
   public sync(rows: readonly PropertyRow[]): void {
-    const shapeKey = rows.map((r) => `${r.key}${r.group ?? ''}${r.collapsible ?? ''}`).join('');
+    const shapeKey = JSON.stringify(rows.map((r) => [r.key, r.label, r.group ?? null, r.collapsible === true]));
     if (shapeKey === this.lastRowShapeKey) {
       // 構成が変わっていなければ、値が変わった行の表示だけを書き換える。
       for (const r of rows) {

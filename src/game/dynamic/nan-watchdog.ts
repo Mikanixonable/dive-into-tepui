@@ -26,6 +26,7 @@ function finiteVec(v: Vec3): boolean {
 }
 
 export class NanWatchdog {
+  // 壊れた値を一度報告したか(キャッシュ)。報告を1回に留めるためだけに持つ。
   private tripped = false;
 
   constructor(private readonly events: RunEventSink) { }

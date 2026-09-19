@@ -4,6 +4,7 @@ import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialBody } from '../../physics/celestial-body';
+import type { Apsis } from '../../physics/trajectory-features';
 import { Vec3 } from '../../math/vec3';
 import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 
@@ -63,10 +64,8 @@ interface SegmentSource { arc: PredictedArc | null; from: number; to: number; ow
 // periapsis/apoapsis は、区間が地表到達等で打ち切られてその極値へ届かなければ null。
 // *Center はその極値を検出した弧が答える中心天体。
 interface FinalSegment {
-  readonly periapsis: KinematicState | null;
-  readonly apoapsis: KinematicState | null;
-  readonly periapsisCenter: CelestialBody | null;
-  readonly apoapsisCenter: CelestialBody | null;
+  readonly periapsis: Apsis | null;
+  readonly apoapsis: Apsis | null;
 }
 
 // 計画軌道上の1点と、それが属する区間の index。
@@ -142,9 +141,7 @@ export class PlanPath {
       // ノードが1つも無い間の唯一の区間は操作対象の予測弧そのものを借りる。その予測がまだ
       // 生えていないフレームは何も答えず、次のフレームで生え直す。
       if (planData.nodes.length === 0 && isFinal && ship !== null) {
-        const arc = ship.motion.arc;
-        arc?.apsides?.dropBefore(seg.state0.t);
-        this.sources[i] = { arc, from: seg.state0.t, to: seg.end, owned: false };
+        this.sources[i] = { arc: ship.motion.arc, from: seg.state0.t, to: seg.end, owned: false };
         continue;
       }
       const prev = this.sources[i];
@@ -197,11 +194,13 @@ export class PlanPath {
   public finalSegment(): FinalSegment | null {
     const source = this.sources[this.activeCount - 1];
     if (!source) return null;
+    // 区間の範囲に入る、最初の極値。
+    const inRange = (apsis: Apsis | null): Apsis | null => (
+      apsis && withinEnd(apsis.state.t, source.to) ? apsis : null
+    );
     return {
-      periapsis: this.periapsisOf(source),
-      apoapsis: this.apoapsisOf(source),
-      periapsisCenter: source.arc?.apsides?.periapsisCenter ?? null,
-      apoapsisCenter: source.arc?.apsides?.apoapsisCenter ?? null,
+      periapsis: inRange(source.arc?.apsides?.periapsisAfter(source.from) ?? null),
+      apoapsis: inRange(source.arc?.apsides?.apoapsisAfter(source.from) ?? null),
     };
   }
 
@@ -428,17 +427,6 @@ export class PlanPath {
     return impact && withinEnd(impact.state.t, source.to) ? impact : null;
   }
 
-  // source が答える範囲で最初の近地点。to を超えていれば null。
-  private periapsisOf(source: SegmentSource): KinematicState | null {
-    const first = source.arc?.apsides?.periapsis ?? null;
-    return first && withinEnd(first.t, source.to) ? first : null;
-  }
-
-  // source が答える範囲で最初の遠地点。to を超えていれば null。
-  private apoapsisOf(source: SegmentSource): KinematicState | null {
-    const first = source.arc?.apsides?.apoapsis ?? null;
-    return first && withinEnd(first.t, source.to) ? first : null;
-  }
 }
 
 // 起点から nodes を順にたどって区間列を返す。先頭 nodes.length 本は次のノードで終わり、

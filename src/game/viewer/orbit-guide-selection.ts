@@ -20,6 +20,9 @@ export class OrbitGuideSelection implements OrbitGuideSource {
 
   public get settings(): OrbitGuideSettings { return this._settings; }
 
+  // 直列化した形。
+  public serialize(): OrbitGuideSettings { return this._settings; }
+
   // 設定を settings へ差し替える。範囲・本数は丸めてから持つ。
   public setSettings(settings: OrbitGuideSettings): void {
     this._settings = normalizeOrbitGuideSettings(settings);

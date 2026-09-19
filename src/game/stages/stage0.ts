@@ -57,8 +57,8 @@ export class Stage0 extends Stage {
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedStage0, ...deps: StageDeps): Stage0 {
-    const { timeLeft } = serialized;
+  public static deserialize(serialized: SerializedStage0 | null, ...deps: StageDeps): Stage0 {
+    const timeLeft = serialized?.timeLeft;
     return new Stage0(
       deps,
       // null も欠けと同じく制限時間いっぱいから始める(既定引数は undefined でしか働かない)。

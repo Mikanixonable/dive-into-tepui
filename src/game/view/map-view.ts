@@ -19,6 +19,7 @@ import type { NavTargetCommands } from '../viewer/nav-target-commands';
 import { PlanEditor } from '../plan/plan-editor';
 import type { PlanCommands } from '../plan/plan-commands';
 import type { PlanDisplay } from '../plan/plan-display';
+import type { PlanPath } from '../plan/plan-path';
 import type { SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type * as THREE from 'three/webgpu';
@@ -66,6 +67,7 @@ export class MapView implements ViewFrame {
     simSpeedManager: SimSpeedManager,
     simSpeedCommands: SimSpeedCommands,
     planDisplay: PlanDisplay,
+    planPath: PlanPath,
     planCommands: PlanCommands,
     scene: THREE.Scene,
     hud: HudLayers & Notifier,
@@ -76,7 +78,7 @@ export class MapView implements ViewFrame {
   ) {
     this.planEditor = new PlanEditor(
       hud, uiSounds, simSpeedManager, simSpeedCommands, celestialSystem, scene, controlSelection,
-      displayWindowManager, frameControls, planDisplay.path, planCommands,
+      displayWindowManager, frameControls, planPath, planCommands,
     );
     this.objectPickables = new ObjectPickables(
       controlSelection, roster, celestialSystem, navTargetPresenter, camera,

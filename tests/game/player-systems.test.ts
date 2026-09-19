@@ -103,13 +103,19 @@ export function register(): void {
     });
     assert.equal(powerOf(POWER_CAPACITY * 2).chargeJ, POWER_CAPACITY);
 
+    // 壊れた記録は持ち主の初期値(放熱板は収納)で補い、範囲外の展開度は収める。
     const radiator = new RadiatorSystem(
       new DynamicMotion(state), () => {},
-      DeployablePanelState.deserialize({ deployTarget: 7 as 0 | 1, deploy: Number.NaN }),
-      DeployablePanelState.deserialize({ deployTarget: 0, deploy: 2 }),
+      DeployablePanelState.deserialize({ deployTarget: 7 as 0 | 1, deploy: Number.NaN }) ?? undefined,
+      DeployablePanelState.deserialize({ deployTarget: 0, deploy: 2 }) ?? undefined,
     );
     assert.equal(radiator.deployOf('up'), 0);
     assert.equal(radiator.deployOf('down'), 1);
+    // 太陽電池の初期値は展開。
+    const power = PowerSystem.deserialize({
+      charge: 0, up: { deployTarget: 7 as 0 | 1, deploy: Number.NaN }, down: { deployTarget: 1, deploy: 1 },
+    });
+    assert.equal(power.serialize().up.deploy, 1);
   });
 
   test('fire control: 非正数の補給ではマガジンが増えない', () => {

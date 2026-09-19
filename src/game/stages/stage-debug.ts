@@ -65,9 +65,9 @@ export class StageDebug extends Stage {
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedStageDebug, ...deps: StageDeps): StageDebug {
+  public static deserialize(serialized: SerializedStageDebug | null, ...deps: StageDeps): StageDebug {
     return new StageDebug(
-      deps, serialized.enemyFireEnabled, serialized.waveCount,
+      deps, serialized?.enemyFireEnabled, serialized?.waveCount,
       ...Stage.deserializeCommonState(serialized, deps, StageDebug.stageRules),
     );
   }

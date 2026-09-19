@@ -9,6 +9,7 @@ import type { Vec3 } from '../../math/vec3';
 import type { ScaleGridVisibility } from '../../render/scale-grid';
 import type { CelestialGridVisibility } from '../../render/celestial-grid';
 import type { FocusCameraSource } from '../viewer/focus-camera-selection';
+import type { ViewMode } from '../view/view-mode';
 
 // ECI の方向を描画フレームへ移す。方向は平行移動を受けないので成分をそのまま写す。
 function toThreeDirection(dir: Vec3): THREE.Vector3 {
@@ -26,13 +27,13 @@ export class ScaleGridView {
   // 4面ぶんの表示状態を、この1フレームのトグル・フォーカス・月の姿勢へ同期する。戦闘ビューでは
   // トグルに関わらず4面とも隠す。
   public sync(
-    displayTime: number, camera: CameraFrame,
+    displayTime: number, camera: CameraFrame, view: ViewMode,
     mapCamera: Pick<FocusCameraSource, 'distance'>, mapResolvedFocus: Vec3,
     celestialBodies: CelestialBodies,
     gridVisibility: CelestialGridVisibility,
   ): void {
     // 表示可否は、マップビューのときトグルに従う。
-    const mapView = camera.mode === 'map';
+    const mapView = view === 'map';
     const visibility: ScaleGridVisibility = {
       ecliptic: mapView && gridVisibility.eclipticScaleGrid,
       equator: mapView && gridVisibility.equatorScaleGrid,

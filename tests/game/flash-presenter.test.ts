@@ -18,7 +18,7 @@ function presentOne(body: RunEventBody, displayTime: number): FlashPresenter {
   const presenter = new FlashPresenter();
   const log = new RunEventLog();
   log.record(body);
-  presenter.present(log.recent, displayTime);
+  presenter.present(log.recent, displayTime, false);
   return presenter;
 }
 
@@ -26,23 +26,23 @@ export function register(): void {
   test('flash-presenter: 出来事から起きた閃光は live に並び、寿命が尽きると落ちる', () => {
     const presenter = new FlashPresenter();
     const log = new RunEventLog();
-    presenter.present(log.recent, 0);
+    presenter.present(log.recent, 0, false);
     assert.equal(presenter.live.length, 0, '何も起きていないのに live がある');
 
     log.record({ kind: 'gunFired', muzzleState: source(0) });
-    presenter.present(log.recent, 0);
+    presenter.present(log.recent, 0, false);
     assert.equal(presenter.live.length, 1);
     const duration = presenter.live[0]?.duration ?? 0;
     assert.ok(duration > 0, '寿命が正でない');
 
     // 寿命の手前までは残り、超えた時点で落ちる。記録は読んだ後に空になる。
     log.beginStep();
-    presenter.present(log.recent, duration * 0.5);
+    presenter.present(log.recent, duration * 0.5, false);
     assert.equal(presenter.live.length, 1, '寿命の半分で消えている');
     assert.ok(
       Math.abs((presenter.live[0]?.age ?? 0) - duration * 0.5) < 1e-9, 'age が進んでいない');
 
-    presenter.present(log.recent, duration * 1.5);
+    presenter.present(log.recent, duration * 1.5, false);
     assert.equal(presenter.live.length, 0, '寿命を超えても残っている');
   });
 
@@ -55,7 +55,7 @@ export function register(): void {
     const start = presenter.live[0]?.state.r.x ?? 0;
     const dt = (presenter.live[0]?.duration ?? 0) * 0.25;
 
-    presenter.present([], dt);
+    presenter.present([], dt, false);
     const moved = (presenter.live[0]?.state.r.x ?? 0) - start;
     assert.ok(Math.abs(moved - speed * dt) < 1e-6, `移流が速度に従っていない (${moved})`);
     // 速度そのものは運ばれても変わらない。
@@ -66,7 +66,7 @@ export function register(): void {
     const presenter = presentOne(
       { kind: 'enemyStruckByBullet', bullet: 'plasma', state: source(0, v3(0, 3e6, 0)) }, 0);
     const before = presenter.live[0]?.state.r;
-    presenter.present([], (presenter.live[0]?.duration ?? 0) * 0.5);
+    presenter.present([], (presenter.live[0]?.duration ?? 0) * 0.5, false);
     assert.deepEqual(presenter.live[0]?.state.r, before, '静止源なのに位置が動いた');
   });
 
@@ -74,7 +74,7 @@ export function register(): void {
     const overlaid = presentOne({ kind: 'shipExploded', state: source(0), modelScale: 1 }, 0);
     assert.equal(overlaid.live.length, 2, '撃破フラッシュが芯と外殻の 2 枚になっていない');
     assert.notEqual(
-      overlaid.live[0]?.kind, overlaid.live[1]?.kind, '2 枚が同じ種別になっている');
+      overlaid.live[0]?.color, overlaid.live[1]?.color, '2 枚が同じ見え方になっている');
 
     const single = presentOne({ kind: 'gunFired', muzzleState: source(0) }, 0);
     assert.equal(single.live.length, 1);
@@ -87,7 +87,7 @@ export function register(): void {
     // 倍率そのものの値は調整値なので固定しない。大きい模型ほど大きく出ることだけを見る。
     for (const [i, big] of large.live.entries()) {
       assert.ok(
-        big.sizeScale > (small.live[i]?.sizeScale ?? Infinity), '模型が大きいほうが小さく出ている');
+        big.size1 > (small.live[i]?.size1 ?? Infinity), '模型が大きいほうが小さく出ている');
     }
   });
 
@@ -98,7 +98,7 @@ export function register(): void {
     const longest = Math.max(...presenter.live.map((e) => e.duration));
     if (shortest === longest) return; // 同じ寿命なら落ちる順は決まらない。
 
-    presenter.present([], shortest);
+    presenter.present([], shortest, false);
     assert.equal(presenter.live.length, 1, '短いほうが落ちていない');
     assert.equal(presenter.live[0]?.duration, longest);
   });
@@ -107,18 +107,33 @@ export function register(): void {
     const presenter = new FlashPresenter();
     const log = new RunEventLog();
     log.record({ kind: 'gunFired', muzzleState: source(0) });
-    presenter.present(log.recent, 0);
-    presenter.present(log.recent, 0);
+    presenter.present(log.recent, 0, false);
+    presenter.present(log.recent, 0, false);
     assert.equal(presenter.live.length, 1, '同じ出来事から二度閃光が出ている');
+  });
+
+  test('flash-presenter: 照準ズーム中は、それで減光する種別だけが暗くなる', () => {
+    // マズルフラッシュはズームで減光し、着弾フラッシュは減光しない。
+    const brightness = (body: RunEventBody, zoomed: boolean): number => {
+      const presenter = new FlashPresenter();
+      const log = new RunEventLog();
+      log.record(body);
+      presenter.present(log.recent, 0, zoomed);
+      return presenter.live[0]?.brightness ?? 0;
+    };
+    const muzzle: RunEventBody = { kind: 'gunFired', muzzleState: source(0) };
+    const impact: RunEventBody = { kind: 'enemyStruckByBullet', bullet: 'normal', state: source(0) };
+    assert.ok(brightness(muzzle, true) < brightness(muzzle, false), 'ズーム中にマズルフラッシュが減光していない');
+    assert.equal(brightness(impact, true), brightness(impact, false), 'ズームで減光しない種別まで暗くなった');
   });
 
   test('flash-presenter: 表示時刻が止まっている間は閃光も止まる', () => {
     const presenter = presentOne({ kind: 'gunFired', muzzleState: source(0) }, 0);
     const duration = presenter.live[0]?.duration ?? 0;
-    presenter.present([], duration * 0.5);
+    presenter.present([], duration * 0.5, false);
     const frozen = presenter.live[0]?.age;
     // 表示時刻が同じフレームを何度通しても、経過も件数も変わらない。
-    presenter.present([], duration * 0.5);
+    presenter.present([], duration * 0.5, false);
     assert.equal(presenter.live.length, 1);
     assert.equal(presenter.live[0]?.age, frozen);
   });

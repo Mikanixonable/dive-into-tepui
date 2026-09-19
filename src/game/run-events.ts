@@ -227,6 +227,8 @@ export function queuedEventSink(queue: CommandQueue, events: RunEventSink): RunE
 }
 
 // 1ランぶんの出来事の記録。通し番号はランの中で単調増加する。
+// 例外(ARCHITECTURE R11): モデル層の状態だが直列化しない。出来事は進行の位相の先頭で空にする1フレームの
+// 通り道で、読み手もランと一緒に作り直す。保存すると、読み込んだフレームに前のランの音と通知が出る。
 export class RunEventLog implements RunEventSink {
   private readonly events: RunEvent[] = [];
   private nextSeq = 0;

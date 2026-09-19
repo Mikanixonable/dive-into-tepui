@@ -33,11 +33,6 @@ export class ViewManager {
     this.displayedView = selected;
   }
 
-  // 保持する両ビューの表示物・DOM を片付ける。
-  public dispose(): void {
-    for (const view of Object.values(this.views)) view.dispose();
-  }
-
   // ビュー選択 UI に並べる遷移先 — 現在のビュー以外で、いま入れるもの。
   public selectableViews(): readonly ViewMode[] {
     return (Object.keys(this.views) as ViewMode[])

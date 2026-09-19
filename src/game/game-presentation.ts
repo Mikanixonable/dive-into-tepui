@@ -26,6 +26,7 @@ import { CameraView } from '../render/camera/camera-view';
 import { ViewManager } from './view/view-manager';
 import { CombatView } from './view/combat-view';
 import { MapView } from './view/map-view';
+import { PlanPath } from './plan/plan-path';
 import { NavTargetPresenter } from './nav-target-presenter';
 import { AnchorEntities, FrameAnchors } from './frame-anchors';
 import { resolveOrbitReference } from './orbit-reference';
@@ -81,11 +82,15 @@ export class GamePresentation {
   // 論理視点を表示値へ写す側。sync が確定させた1フレームぶんの値を cameraFrame が持つ。
   private readonly cameraView = new CameraView();
   private cameraFrame: CameraFrame | null = null;
+  // 操作対象の計画折れ線。計画の表示と、マップの計画の編集・戦闘の噴射ガイドが読む。
+  private readonly planPath: PlanPath;
   private readonly planDisplay: PlanDisplay;
   // 直近ノードの実行ガイドのマーカー。
   private readonly planGuide: PlanGuide;
   // このフレームの表示座標系と表示時刻窓。resolveFrame で確定させ、sync が読む。
   private readonly displayWindowManager: DisplayWindowManager;
+  private readonly combatView: CombatView;
+  private readonly mapView: MapView;
   private readonly viewManager: ViewManager;
   private readonly objectWindows: ObjectWindows;
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
@@ -126,10 +131,10 @@ export class GamePresentation {
     this.uiSfx = new UiSfx(audioEngine);
     this.runEventPresenter = new RunEventPresenter(this.uiSounds, hud);
     this.frameMarkers = markers.createGroup();
-    this.playerMarkers = new PlayerMarkers(markers.createGroup());
+    this.playerMarkers = new PlayerMarkers(markers);
     this.flashEffectsView = new FlashEffectsView(scene.scene);
-    this.equatorNodes = new EquatorNodeManager(dynamicSystem, markers.createGroup(), viewOptionSettings.mapDisplay);
-    this.celestialMarkers = new CelestialMarkers(markers.createGroup(), celestialSystem);
+    this.equatorNodes = new EquatorNodeManager(dynamicSystem, markers, viewOptionSettings.mapDisplay);
+    this.celestialMarkers = new CelestialMarkers(markers, celestialSystem);
     hud.beginRun(activeStage.id);
     const entityDisplayPort = entityDisplayCommands(commands, viewer.entityDisplay);
     const proteinDisplayControl = activeStage.proteinDisplayControl;
@@ -139,7 +144,7 @@ export class GamePresentation {
     this.entityLines = new EntityLineManager(dynamicSystem, viewer.entityDisplay);
     const cameraCommandPort = cameraCommands(commands, viewer.camera);
     const targetCommands = navTargetCommands(commands, viewer.navTarget);
-    this.navTargetPresenter = new NavTargetPresenter(viewer.navTarget, markers.createGroup());
+    this.navTargetPresenter = new NavTargetPresenter(viewer.navTarget, markers);
     const anchorEntities = new AnchorEntities(
       dynamicSystem, controlSelection, this.navTargetPresenter, celestialSystem,
     );
@@ -167,10 +172,9 @@ export class GamePresentation {
     this.targeter = new Targeter(
       markers, viewer.navTarget, targetCommands, dynamicSystem, celestialSystem.celestialMotions,
     );
-    this.planDisplay = new PlanDisplay(
-      scene.scene, markers.createGroup(), celestialSystem, this.displayWindowManager, controlSelection,
-    );
-    this.planGuide = new PlanGuide(markers.createGroup());
+    this.planPath = new PlanPath(scene.scene, celestialSystem, this.displayWindowManager);
+    this.planDisplay = new PlanDisplay(this.planPath, markers, celestialSystem, controlSelection);
+    this.planGuide = new PlanGuide(markers);
     this.input = new Input(scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls.setPointerKind(kind);
@@ -185,22 +189,25 @@ export class GamePresentation {
       activeStage, this.targeter, this.displayWindowManager,
       objectMenuCommands(commands, controlSelection),
     );
-    const combatView = new CombatView(
+    this.combatView = new CombatView(
       this.input, this.targeter, this.objectWindows, dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      controlSelection, this.planDisplay.path, this.planGuide,
+      controlSelection, this.planPath, this.planGuide,
     );
-    const mapView = new MapView(
+    this.mapView = new MapView(
       this.input, this.cameraSystem, viewer.camera, this.objectWindows,
       dynamicSystem, this.equatorNodes, celestialSystem,
       this.celestialMarkers, markers, this.targeter.combatMarkers,
       this.displayWindowManager, this.frameControls,
       this.frameAnchors, controlSelection, controlSelectionCommands(commands, controlSelection),
-      game.simSpeedManager, simSpeedCommands(commands, game.simSpeedManager), this.planDisplay, planCommands(commands),
+      game.simSpeedManager, simSpeedCommands(commands, game.simSpeedManager),
+      this.planDisplay, this.planPath, planCommands(commands),
       scene.scene, hud, this.uiSounds, this.navTargetPresenter, targetCommands,
       viewOptionSettings.mapDisplay,
     );
-    this.viewManager = new ViewManager(viewer.view, this.touchControls, { combat: combatView, map: mapView });
+    this.viewManager = new ViewManager(
+      viewer.view, this.touchControls, { combat: this.combatView, map: this.mapView },
+    );
 
     this.hudPanels = new HudPanelPresenter(
       hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
@@ -220,12 +227,14 @@ export class GamePresentation {
     // Hud はこのランより長生きするので、操作対象も操作の受け口も無い状態を1度宣言してから畳む。
     this.devices.hud.clearRunPanels();
     this.hudPanels.dispose();
-    this.viewManager.dispose();
+    this.mapView.dispose();
+    this.combatView.dispose();
     this.objectWindows.dispose();
     this.worldSfx.dispose();
     this.touchControls.dispose();
     this.input.dispose();
     this.planDisplay.dispose();
+    this.planPath.dispose();
     this.planGuide.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
@@ -312,7 +321,7 @@ export class GamePresentation {
     const displayWindow = this.displayWindowManager.current;
     const events = this.game.events.recent;
     this.sections.enter(SECTION.effects);
-    this.flashPresenter.present(events, displayWindow.displayTime);
+    this.flashPresenter.present(events, displayWindow.displayTime, this.cameraSystem.zoomActive);
     this.targeter.updateBoardMarks(events, this.game.activeControllable, displayWindow.displayTime);
     this.sections.exit(SECTION.effects);
     this.sections.enter(SECTION.plan);
@@ -365,12 +374,12 @@ export class GamePresentation {
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime } = displayWindow;
+    const view = this.viewManager.current;
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     const cs = this.cameraSystem;
     const camera = this.cameraView.sync(
-      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, this.viewManager.current,
-      cs.zoomActive, cs.focusVelocity,
+      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.zoomActive, cs.focusVelocity,
     );
     this.cameraFrame = camera;
     this.viewOptions.setVisible(this.viewManager.current === 'map');
@@ -388,7 +397,7 @@ export class GamePresentation {
       : undefined;
 
     celestialSystem.sync(
-      displayTime, nowMs, camera, viewer.camera.map, this.cameraSystem.mapResolvedFocus,
+      displayTime, nowMs, camera, view, viewer.camera.map, this.cameraSystem.mapResolvedFocus,
       graphics, style,
       this.viewOptionSettings.grid.current, viewer.orbitGuide.settings, visibilityPolicy,
     );
@@ -403,12 +412,12 @@ export class GamePresentation {
     );
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
     this.playerMarkers.sync(
-      controlled !== null && isPlayer(controlled) ? controlled : null, camera.mode, camera.project,
+      controlled !== null && isPlayer(controlled) ? controlled : null, view, camera.project,
       orbitRef?.state ?? null, nowMs,
     );
     this.equatorNodes.sync(
       camera.project, camera.position, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot,
-      camera.mode === 'map', timeLabel, nowMs,
+      view === 'map', timeLabel, nowMs,
     );
     // このフレームの進行が記録した出来事を、通知と音の宣言へ写す。
     const events = this.game.events.recent;
@@ -423,15 +432,15 @@ export class GamePresentation {
     this.flashEffectsView.sync(this.flashPresenter.live, camera);
 
     this.targeter.sync(
-      controlled, camera, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette,
+      controlled, camera, view, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette,
     );
     this.navTargetPresenter.sync(
-      camera, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel, nowMs,
+      camera, view, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel, nowMs,
     );
 
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
     this.objectWindows.sync();
-    this.planDisplay.sync(camera, displayWindow, nowMs);
+    this.planDisplay.sync(camera, view, displayWindow, nowMs);
 
     this.entityLines.sync(
       controlled, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
@@ -441,7 +450,7 @@ export class GamePresentation {
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
 
-    activeStage.sync(camera, displayTime);
+    activeStage.sync(camera, view, displayTime);
     activeStage.proteinDisplayControl?.syncProteinDisplay(viewer.entityDisplay.proteinDisplay);
 
     this.hudPanels.sync(this.viewManager.current, displayWindow, orbitRef, palette, camera, nowMs);

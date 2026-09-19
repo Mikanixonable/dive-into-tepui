@@ -1,6 +1,5 @@
 // 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
 // (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
-import type * as THREE from 'three/webgpu';
 import type { ViewMode } from '../view/view-mode';
 import { Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
@@ -13,16 +12,16 @@ import { ApsisMarker } from '../marker/apsis-marker';
 import type { DisplayedPath } from '../marker/equator-node-marker-pair';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDevice } from '../../marker/marker-device';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ObjectPickable } from '../pickable/object-pickable';
-import { DisplayDurationSource, PlanData } from './plan';
-import { PlanPath } from './plan-path';
+import type { PlanData } from './plan';
+import type { PlanPath } from './plan-path';
 import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
-import type { CelestialBody } from '../../physics/celestial-body';
-import type { KinematicState } from '../../physics/kinematic-state';
+import type { Apsis } from '../../physics/trajectory-features';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import type { PredictedArc } from '../dynamic/predicted-arc';
@@ -69,23 +68,21 @@ function screenDistSq(a: Projected, b: Projected): number {
 }
 
 export class PlanDisplay {
-  public readonly path: PlanPath;
-
+  private readonly group: MarkerSink;
   private readonly apsisPe = new ApsisMarker('pe');
   private readonly apsisAp = new ApsisMarker('ap');
   // このフレームに描く計画の材料。描く計画が無ければ null。
   private displayedPlan: PlanData | null = null;
   private readonly declarations: MarkerDeclaration[] = [];
 
-  // scene に描く計画折れ線を構築する。
+  // path へ操作対象の計画を描かせ、その印を markers から作ったマーカー群へ置く。
   public constructor(
-    scene: THREE.Scene,
-    private readonly group: MarkerSink,
+    private readonly path: PlanPath,
+    markers: MarkerDevice,
     private readonly celestialBodies: CelestialBodies,
-    displayDuration: DisplayDurationSource,
     private readonly controlSelection: ControlSelection,
   ) {
-    this.path = new PlanPath(scene, celestialBodies, displayDuration);
+    this.group = markers.createGroup();
   }
 
   // 計画折れ線を再積分し、アプシスアイコンを求め直す。
@@ -113,14 +110,13 @@ export class PlanDisplay {
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコン・目盛を、焼かれた折れ線から組んで置く。
   // nowMs はフレームの実時刻 [ms]。
-  public sync(camera: CameraFrame, displayWindow: DisplayWindow, nowMs: number): void {
+  public sync(camera: CameraFrame, view: ViewMode, displayWindow: DisplayWindow, nowMs: number): void {
     // 描く弧が無いフレームも折れ線の同期は通す — 止めると、消えたはずの線がそのまま残る。
     this.path.sync(camera);
     const declarations = this.declarations;
     declarations.length = 0;
     if (this.displayedPlan !== null) {
       const project = camera.project;
-      const view = camera.mode;
       const cameraPos = camera.position;
       const { simTime, displayTime } = displayWindow;
       const timeLabel = timeLabelSettingOf(displayWindow);
@@ -142,9 +138,8 @@ export class PlanDisplay {
     return { planArcs: this.path.lastRebuiltArcs };
   }
 
-  // 計画折れ線の描画資源とマーカー群を片付ける。
+  // マーカー群を片付ける。
   public dispose(): void {
-    this.path.dispose();
     this.group.dispose();
   }
 
@@ -221,40 +216,35 @@ export class PlanDisplay {
 
     // 中心天体は極値ごとに検出時と同じものを使い、その位置だけを極値の時刻で引き直す —
     // 距離を測る基準が検出時と食い違わないようにするため。
-    const peCenter = final.periapsisCenter;
-    const apCenter = final.apoapsisCenter;
-    let peDist = 0;
-    if (pe && peCenter) {
-      peDist = len(sub(pe.r, this.celestialBodies.stateAt(peCenter.id, pe.t).r));
-    }
-    let apDist = 0;
-    if (ap && apCenter) {
-      apDist = len(sub(ap.r, this.celestialBodies.stateAt(apCenter.id, ap.t).r));
-    }
+    const distanceOf = (apsis: Apsis): number => (
+      len(sub(apsis.state.r, this.celestialBodies.stateAt(apsis.center.id, apsis.state.t).r))
+    );
     // 円かどうかは、近地点と遠地点が同じ中心天体から測られているときだけ判定できる。
-    if (pe && ap && peCenter && apCenter && peCenter.id === apCenter.id
-      && (apDist - peDist) / (apDist + peDist) < APSIS_MIN_ECC) { this.clearApsisMarkers(); return; }
+    if (pe && ap && pe.center.id === ap.center.id) {
+      const peDist = distanceOf(pe);
+      const apDist = distanceOf(ap);
+      if ((apDist - peDist) / (apDist + peDist) < APSIS_MIN_ECC) { this.clearApsisMarkers(); return; }
+    }
 
     const namePrefix = ownerName ? (this.path.nodeCount > 0 ? `${ownerName} (計画)` : ownerName) : null;
-    this.placeApsisMarker(this.apsisPe, pe, peCenter, namePrefix);
-    this.placeApsisMarker(this.apsisAp, ap, apCenter, namePrefix);
+    this.placeApsisMarker(this.apsisPe, pe, namePrefix);
+    this.placeApsisMarker(this.apsisAp, ap, namePrefix);
   }
 
-  // 極値とその中心天体が揃っていれば、折れ線と同じ座標系へ写した位置を記録する。
-  private placeApsisMarker(
-    marker: ApsisMarker, apsis: KinematicState | null, center: CelestialBody | null, ownerName: string | null,
-  ): void {
-    if (!apsis || !center) {
+  // 極値があれば、折れ線と同じ座標系へ写した位置を記録する。
+  private placeApsisMarker(marker: ApsisMarker, apsis: Apsis | null, ownerName: string | null): void {
+    if (!apsis) {
       marker.place(null, null, null, null);
       return;
     }
-    marker.place(this.path.toDisplay(apsis.r, apsis.t), apsis.t, center.id, ownerName);
+    const { state, center } = apsis;
+    marker.place(this.path.toDisplay(state.r, state.t), state.t, center.id, ownerName);
   }
 
   // 近地点・遠地点アイコンを、このフレームは求まらなかった状態にする。
   private clearApsisMarkers(): void {
-    this.placeApsisMarker(this.apsisPe, null, null, null);
-    this.placeApsisMarker(this.apsisAp, null, null, null);
+    this.placeApsisMarker(this.apsisPe, null, null);
+    this.placeApsisMarker(this.apsisAp, null, null);
   }
 
   // 表示中の折れ線が暦の区切り(時・日・月・年)を跨ぐ地点の目盛候補。ラベルは timeLabel の
