@@ -50,11 +50,11 @@ export class MetalEnemy extends PartBasedEnemy {
 
   private readonly typeIndex: number | null;
 
-  // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。parts は機体の
-  // 部品構成で、省けば既定の構成を満タンで積む。
+  // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。id は採番器が
+  // 配った識別子。parts は機体の部品構成で、省けば既定の構成を満タンで積む。
   private constructor(
     placement: MetalEnemyPlacement,
-    idAllocators: EntityIdAllocators,
+    id: string,
     scene: THREE.Scene | undefined,
     parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP),
     alive?: boolean,
@@ -70,7 +70,7 @@ export class MetalEnemy extends PartBasedEnemy {
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
       placement, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), idAllocators, parts, alive,
+      metalEnemyCollisionRadius(typeIndex), id, parts, alive,
       burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.typeIndex = typeIndex;
@@ -80,20 +80,21 @@ export class MetalEnemy extends PartBasedEnemy {
   public static create(
     placement: MetalEnemyPlacement, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
   ): MetalEnemy {
-    return new MetalEnemy(placement, idAllocators, scene);
+    return new MetalEnemy(placement, idAllocators.entity.next(placement.id), scene);
   }
 
   // 直列化した敵を復元する。
   public static deserialize(
     serialized: SerializedMetalEnemy, registry: EntityRegistry, scene?: THREE.Scene,
   ): MetalEnemy {
+    const placement = { ...deserializeEnemyPlacement(serialized), typeIndex: serialized.typeIndex };
     return new MetalEnemy(
-      { ...deserializeEnemyPlacement(serialized), typeIndex: serialized.typeIndex },
-      registry.idAllocators,
+      placement,
+      registry.idAllocators.entity.next(placement.id),
       scene,
       deserializeParts(serialized.parts),
-      // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
-      serialized.alive ?? false,
+      serialized.alive,
+      // 射撃の途中経過と時刻
       serialized.fireController.burstLeft,
       serialized.fireController.burstDelay,
       serialized.fireController.lastFireSim,
