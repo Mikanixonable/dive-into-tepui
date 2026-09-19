@@ -1,7 +1,7 @@
 // 自機の太陽電池パネル上下2枚の展開と、その発電による蓄電量を扱う。
-import { Attitude } from '../../physics/attitude';
+import type { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
-import { Vec3, dot } from '../../math/vec3';
+import { type Vec3, dot } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { RADIATOR_DEPLOY_TIME } from './radiator';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';

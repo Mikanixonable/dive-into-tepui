@@ -1,6 +1,6 @@
 // マップの天体・ラグランジュ点のラベルを、集合として間引きながら HUD マーカーへ出す。
 // 画面上で近すぎるものをどれだけ残すかという、集合でしか決まらない判断を持つ。
-import { Vec3, v3, sub, len } from '../../math/vec3';
+import { type Vec3, v3, sub, len } from '../../math/vec3';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { lagrangePointsOf, secondaryFrameOf } from '../../physics/lagrange';
 import { occlusionOpacity } from '../../physics/occlusion';

@@ -1,9 +1,9 @@
 // 自機の展開式ラジエーター: 上下2枚それぞれの展開度・損耗度を持ち、
 // 今フレームの放熱面積と太陽入射を答える。
-import { Attitude } from '../../physics/attitude';
+import type { Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, LOCAL_UP, qFromAxisAngle, qRotate } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
-import { add, cross, dot, rotateAxis, v3, Vec3 } from '../../math/vec3';
+import { add, cross, dot, rotateAxis, v3, type Vec3 } from '../../math/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_FOLD_COUNT,
