@@ -8,7 +8,7 @@ import {
   SLOT_EXPORT_VERSION,
   newSaveId,
 } from './slot-data';
-import { SaveStore, SAVE_INDEX_VERSION, type SavedGame } from './save-store';
+import { type SaveStore, SAVE_INDEX_VERSION, type SavedGame } from './save-store';
 
 // 履歴ごとに持てる手動セーブの件数の上限。
 export const MANUAL_SAVE_LIMIT = 30;

@@ -1,6 +1,6 @@
 // マガジンベルトの給弾状態とたわみ物理を管理する。
-import { Attitude } from '../../physics/attitude';
-import { Vec3 } from '../../math/vec3';
+import type { Attitude } from '../../physics/attitude';
+import type { Vec3 } from '../../math/vec3';
 import { BeltPhysics, beltAnchor, type SerializedBeltPhysics } from './belt-physics';
 import { MAG_ROUNDS } from './ammo-spec';
 import type { ContactProxy } from '../dynamic/contact-proxy';

@@ -1,8 +1,8 @@
 // エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { DynamicMotion } from './dynamic-motion';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { EntityRoster } from './entity-roster';
@@ -21,7 +21,7 @@ import { CasingPool } from '../../render/dynamic/dynamic-entity/casing-view';
 import { DebrisFragmentPools } from '../../render/dynamic/dynamic-entity/debris-fragment-view';
 import { Simulator } from './simulator';
 import { NanWatchdog } from './nan-watchdog';
-import { FrameSections, SECTION } from '../frame-sections';
+import { type FrameSections, SECTION } from '../frame-sections';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { PilotControls } from './dynamic-entity/pilot-controls';
