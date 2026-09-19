@@ -44,9 +44,6 @@ export interface SerializedEnemyFireController {
 
 // 敵1体の射撃判断・バースト進行・弾の生成。
 export class EnemyFireController {
-  // 射撃を許すか。直列化せず、ステージの設定から書き直すキャッシュ。
-  public enabled = true;
-
   // port は撃つ敵。burstLeft・burstDelay はバースト射撃の残弾と次弾までの残り時間で、未着手なら
   // 両方 null。lastFireSim・lastBehaviorSim は最後に射撃の機会が巡った時刻と最後に行動した
   // 時刻で、まだなら null。
@@ -70,15 +67,15 @@ export class EnemyFireController {
     };
   }
 
-  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。operable が偽の
+  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
   // 間は撃たない。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
-    operable: boolean, celestialBodies: CelestialBodies,
+    mayFire: boolean, celestialBodies: CelestialBodies,
   ): void {
     const behaviorDt = this.lastBehaviorSim === null ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
-    if (!operable || !this.enabled) return;
+    if (!mayFire) return;
     if (!this.port.canFire(enemies)) {
       this.burstLeft = null;
       this.burstDelay = null;

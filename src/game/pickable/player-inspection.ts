@@ -92,7 +92,7 @@ export class PlayerInspection implements InspectedObject {
     else if (act === 'deactivate') selection.release(this.player);
     else if (act === 'planExecCycle') {
       const index = PLAN_EXECUTION_MODES.indexOf(this.player.planExecution);
-      this.player.planExecution = PLAN_EXECUTION_MODES[(index + 1) % PLAN_EXECUTION_MODES.length]!;
+      this.player.setPlanExecution(PLAN_EXECUTION_MODES[(index + 1) % PLAN_EXECUTION_MODES.length]!);
     } else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.player.mapKind, this.player.motion.state);
     else if (act === 'delete') selection.remove(this.player);
   }
