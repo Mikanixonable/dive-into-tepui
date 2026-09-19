@@ -13,7 +13,13 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/check-boundaries.mjs\" 2>/dev/null || true",
-            "statusMessage": "責務境界(CODING-RULE)の違反チェック",
+            "statusMessage": "責務境界(ARCHITECTURE)の違反チェック",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/remind-after-rule-edit.mjs\" 2>/dev/null || true",
+            "statusMessage": "規則・検査を緩めていないかのチェック",
             "timeout": 10
           }
         ]
