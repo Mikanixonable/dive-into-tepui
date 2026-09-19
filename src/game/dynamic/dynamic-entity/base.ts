@@ -96,7 +96,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   }
 
   // 基地 name を state・attitude に置く。id は採番器が配った識別子。_money から後ろは所持金 [Cr]・
-  // 燃料・操作状態・マニューバ計画で、省いたものは新しく置いたときの状態で始める。
+  // 燃料・生死・操作状態・マニューバ計画で、省いたものは新しく置いたときの状態で始める。
   private constructor(
     scene: THREE.Scene,
     id: string,
@@ -105,10 +105,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     attitude: Attitude,
     private readonly _money = BASE_INITIAL_MONEY,
     fuel?: number,
+    alive?: boolean,
     public readonly throttle = new Throttle(),
     public readonly plan = Plan.create(),
   ) {
-    super(() => new BaseMotion(state, attitude, fuel), new BaseView(scene, id), id);
+    super(() => new BaseMotion(state, attitude, fuel, alive), new BaseView(scene, id), id);
     this.setName(name);
   }
 
@@ -137,6 +138,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       // null の所持金も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
       serialized.money ?? undefined,
       serialized.fuel,
+      serialized.alive,
       serialized.throttle ? Throttle.deserialize(serialized.throttle) : undefined,
       plan ? Plan.deserialize(plan) : undefined,
     );
