@@ -22,8 +22,10 @@ export interface InspectedObject extends PickCandidate {
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。先頭の header 項目は
   // ウィンドウのタイトル/サブタイトルへ抜き出される。出せない項目を自分で間引く必要はない
   // — 出せるかどうか(航法ターゲットの可否・物体の配置の可否)は窓側が絞る。
+  // trajectoryLineShown はこの対象の予測線・過去線を出しているか。
   menuItems(
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
+    trajectoryLineShown: boolean,
   ): readonly MenuItem<MenuAction>[];
   // 自分に固有の操作を実行する。フォーカス・ターゲットなど対象によらない操作は窓側が
   // 実行するのでここへは来ない。固有の操作を持たない対象は null。authoring と planEditor は
