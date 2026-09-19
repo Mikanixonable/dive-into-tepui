@@ -2,10 +2,10 @@
 // 答える。
 import type { Ray } from '../../math/ray';
 import type { Vec3 } from '../../math/vec3';
-import type { ControlSelection } from '../control-selection';
+import type { ControlSelectionCommands } from '../control-selection-commands';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
-import type { MarkerVisibility } from '../marker/marker-visibility';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { PropertyWindowOpener } from './property-window-opener';
 import type { PickCandidate } from './pick-candidate';
 
@@ -24,7 +24,7 @@ export interface MapPickable extends PickCandidate {
   // マップの左クリックで選ばれたときの振る舞い。左クリックで掴めない対象は null。
   readonly onMapSelect: ((windows: PropertyWindowOpener, clientX: number, clientY: number) => void) | null;
   // マップの注視点が自分へ移ったときに、注視の移動に加えて起きること。何も起きない対象は null。
-  readonly onMapFocus: ((controlSelection: ControlSelection) => void) | null;
+  readonly onMapFocus: ((commands: ControlSelectionCommands) => void) | null;
 
   // 視線が、pos に描かれているこの対象の本体へ当たるか。pos は posAt が答えた、いま
   // 描かれている位置。本体を持たず、マーカーだけで示される対象は常に false。

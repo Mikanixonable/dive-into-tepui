@@ -274,8 +274,8 @@ async function checkHelpModal() {
   );
 }
 
-// ポーズメニューはモーダルだが背景を暗くせず、入力も遮らない
-// (dimsBackground:false, gatesInput:false)。両方の退行を明示的に見る。
+// ポーズメニューはモーダルだが背景の入力は遮らない(gatesInput:false)。
+// ゲーム世界も暗転させない(UI-DESIGN.md「一時停止タブ」)。どちらも退行しやすいので明示的に見る。
 async function checkPauseMenu() {
   await pressKey('Escape', 'Escape', 27);
   await waitFor(`getComputedStyle(document.getElementById('hud-pause-menu')).display !== 'none'`, 'Escape to open the pause menu');
@@ -290,7 +290,7 @@ async function checkPauseMenu() {
     return {
       open: getComputedStyle(document.getElementById('hud-pause-menu')).display !== 'none',
       modal: document.body.classList.contains('hud-overlay-modal-open'),
-      shieldHidden: getComputedStyle(shield).display === 'none',
+      worldNotDimmed: getComputedStyle(shield).display === 'none',
       shieldPasses: getComputedStyle(shield).pointerEvents === 'none',
       backgroundReachable: target !== shield && target?.tagName === 'CANVAS',
       touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',

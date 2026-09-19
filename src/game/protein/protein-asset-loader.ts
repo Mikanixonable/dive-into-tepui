@@ -99,29 +99,20 @@ async function loadProteinAssetBundle(source: ProteinAssetSource): Promise<Prote
 }
 
 // id ごとに1回だけ fetch する。準備が整うまでは resolvedProteinAssetBundles に現れない。
-const proteinAssetBundlePromises = new Map<ProteinAssetId, Promise<ProteinAssetBundle>>();
+const proteinAssetRequests = new Map<ProteinAssetId, Promise<void>>();
 const resolvedProteinAssetBundles = new Map<ProteinAssetId, ProteinAssetBundle>();
 
 // この体の取得を始め、決着したときに解決する promise を返す(拒否はしない)。同じ体を
-// 何度要求しても fetch は1回。**待たずに投げっぱなしにしてよい** — 準備が整ったかは
-// isProteinAssetReady が答え、失敗した asset は false のまま残る。
+// 何度要求しても fetch と失敗の記録は1回で、同じ promise を返す。**待たずに投げっぱなしにして
+// よい** — 準備が整ったかは isProteinAssetReady が答え、失敗した asset は false のまま残る。
 export function requestProteinAsset(id: ProteinAssetId): Promise<void> {
-  return loadProteinAssetBundlePromise(id)
-    .then(() => undefined)
+  let request = proteinAssetRequests.get(id);
+  if (request) return request;
+  request = loadProteinAssetBundle(PROTEIN_ASSET_SOURCES[id])
+    .then((bundle) => { resolvedProteinAssetBundles.set(id, bundle); })
     .catch((error: unknown) => { console.error(error); });
-}
-
-// id の取得・検証の promise。同じ id には同じ promise を返し、成功したら
-// resolvedProteinAssetBundles へ登録する。
-function loadProteinAssetBundlePromise(id: ProteinAssetId): Promise<ProteinAssetBundle> {
-  let promise = proteinAssetBundlePromises.get(id);
-  if (promise) return promise;
-  promise = loadProteinAssetBundle(PROTEIN_ASSET_SOURCES[id]).then((bundle) => {
-    resolvedProteinAssetBundles.set(id, bundle);
-    return bundle;
-  });
-  proteinAssetBundlePromises.set(id, promise);
-  return promise;
+  proteinAssetRequests.set(id, request);
+  return request;
 }
 
 // id のアセットが取得・検証を終え、同期的に引ける状態か。
