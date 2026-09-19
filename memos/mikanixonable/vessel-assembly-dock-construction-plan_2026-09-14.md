@@ -2,8 +2,8 @@
 
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
-最終レビュー: 2026-09-16
-状態: 実装中。手順9まで完了し、手順10から進める。
+最終レビュー: 2026-09-19
+状態: 実装・検証完了。workspace3 への統合待ち。
 
 ## 目的
 
@@ -303,115 +303,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 建造途中、ドッキング中、分離後、燃料切れ漂流中を保存・復元しても、ID、HP、燃料、役割、
   操作対象、見た目、接触形状が一致する。
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
-
-## 実装手順
-
-### 10. 戦闘ビューの建造モードとゴースト配置を実装する
-
-#### 目的
-
-選択 dock を起点に、3D 表示を見ながらモジュールを追加・撤去できる最小 UI を作る。
-
-このステップの開始前に /ui-design を起動し、既存の panel shell、property window、overlay manager、
-タッチ規約へ合わせる。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/ship-construction.ts（新規） | 統合船体内の選択 dock、catalog selection、candidate、配置、撤去、破棄、構造上の完成判定を所有する。 |
-| src/game/hud/panels/ship-construction-panel.ts（新規） | catalog、能力集計、完成条件、操作ボタンを表示する。 |
-| src/game/hud/style/ship-construction-style.ts（新規） | 既存 token と panel shell だけを使って建造 UI を整える。 |
-| src/game/view/combat-view.ts | construction mode を通常の combat pick／target pointer handling より先に処理する。 |
-| src/game/camera/camera-system.ts | 選択 dock への focus、建造中の orbit／zoom、同一フレームの screen ray 入力を提供する。 |
-| src/game/camera/screen-ray.ts（新規） | camera update 後の Viewpoint と viewport 座標から CPU 側の world ray を組み立てる。shader 用 view-ray.ts は流用しない。 |
-| src/game/display-window-manager.ts | 建造開始時に display time を現在へ戻し、終了まで過去／未来表示を固定する。 |
-| src/game/input/game-actions.ts、game-commands.ts、game-input-router.ts | 建造中の world input 遮断と camera／confirm／close の配送を追加する。 |
-| src/game/game.ts | ShipConstruction の生成、update、sync、dispose、pause 所有を配線し、建造 pointer だけを通常の pause return より先に配送する。 |
-| src/game/hud/hud.ts、hud-root.ts、hud-layers.ts | combatRoot の hud rail へ建造 panel を置き、寿命と表示を配線する。 |
-| src/game/hud/windows/menu-actions.ts | dock の建造、修理、接舷、切り離し操作を property window の action として追加する。 |
-| src/render/dynamic/ship/ship-ghost-view.ts | pointer ray と候補状態から ghost を同期する。 |
-| src/render/dynamic/ship/dock-snap-guide-view.ts | 選択 dock の自由端と hover 状態を同期する。 |
-| tests/game/ship-construction.test.ts（新規） | 追加、末尾撤去、側面スロットごとのdock数、cockpitなし完成、操縦不能警告と確認／キャンセル、未完成保持、破棄、pause を検証する。 |
-| tests/game/construction-input-routing.test.ts（新規） | 飛行・射撃・target を遮断し、camera と建造操作だけが通ることを検証する。 |
-| tests/render/ship-construction-ghost.test.ts（新規） | valid／invalid／hidden、snap transform、dispose を検証する。 |
-| tests/render/camera-view.test.ts | perspective／orthographic の screen ray と camera update 直後の一致を検証する。 |
-
-#### 達成条件と検証
-
-- combat view を離れずに統合船体内の任意の空 dock から、cockpitなしを含む構造完成部品集合を作り、分離できる。
-- camera を動かしたフレームでも pointer ray と ghost が同じ camera state を使い、1 フレーム遅れない。
-- 建造中の display time は simTime に一致し、過去／未来の表示位置へ module を確定できない。
-- mouse と touch の両方で catalog 選択、ghost 確定、末尾撤去、終了、破棄ができる。
-- 建造のために停止中でも ghost click は届き、flight command、fire、warp、target change は世界へ
-  漏れず、ESC は共通管理から閉じる。
-- npm run typecheck、npm run test:game、npm run test:render を通す。
-
-### 11. ship 保存、漂流、CREATIVE 統合を完成させる
-
-#### 目的
-
-すべての役割と中間状態を 1 種類の ship 保存形式で復元し、喪失と燃料切れを分ける。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/save/save-data.ts | ShipSaveData、ShipAssemblySaveData、module state、dock state を追加し、旧 3 kind と BaseSaveData を削除して version 4 にする。 |
-| src/game/dynamic/dynamic-entity/entity-dictionary.ts | ship の一経路から ModularShip とドッキング中のassemblyを復元する。 |
-| src/game/ship/ship-save.ts（新規） | module／dock の discriminated union validator と serialize／restore を持つ。 |
-| src/game/creative/object-placement.ts、manual-spawn.ts | 既定戦闘船／基地 preset と上限判定を ModularShip へ揃える。 |
-| src/game/stages/creative-stage.ts | 操作対象、補給、波状攻撃、喪失を player 判定とcockpit能力で扱う。 |
-| src/game/dynamic/entity-lifecycle.ts | destroyed と stranded を分け、player 判定された alive ship／物資を距離で除去しない。dock分離時はassemblyを分割する。 |
-| src/game/run-summary.ts | ModularShip 数を集計し、money を除く。 |
-| src/launcher/save/save-transfer.ts、legacy-save.ts、snapshot-service.ts | version 4 と metadata 変更を反映し、v3 を移行しない。 |
-| src/launcher/save-browser/snapshot-pane.ts | 所持金行を除き、船数を新しい集計へ合わせる。 |
-| tests/game/ship-save-roundtrip.test.ts（新規） | free、building、docked、split、stranded の round trip を検証する。 |
-| tests/game/ship-loss-persistence.test.ts（新規） | cockpit全損後の物資化、tankなし物資、全module instance残存中の保存、fuel 0 の生存・保存、全module除去時の喪失、ドッキング中の損失単位を検証する。 |
-
-#### 達成条件と検証
-
-- rg で保存 kind の player、base、booster と BaseSaveData、DetachedBoosterSaveData が 0 件になる。
-- v4 の保存復元前後で module id、entity id、player／enemy 判定、HP、燃料、点火、dock state、導出 role、
-  control が一致する。
-- v3 は壊れたデータではなく「対応しない版」として拒否される。
-- 燃料切れ船を時間経過・ビュー切替・保存復元しても消えない。
-- npm run typecheck と npm run test:game を通す。
-
-### 12. 旧経路を削除し、統合検証する
-
-#### 目的
-
-共通化後に旧クラス、旧モデル、旧 save kind、別集計が残っていないことを確認し、ユーザーが求める
-一連の操作を実行時に検証する。
-
-#### 変更・検査箇所
-
-- src/game/player、src/game/dynamic/dynamic-entity、src/render/dynamic の旧 Player/Base/booster
-  専用ファイルと import を削除する。
-- src/assets/models の旧 player/base/booster asset を、参照 0 を確認してから削除する。
-- help content、property window、marker label、object list、burn management の用語を
-  「役割としての自機／基地／ブースター」へ揃える。
-- git diff でユーザー作業中の memos/mikanixonable/dev.md と既存の移動中メモを変更していないことを
-  確認する。
-
-#### 達成条件と検証
-
-- npm run typecheck を通す。
-- npm run test:physics、npm run test:game、npm run test:render を通す。
-- npm run export-assets の差分を確認し、無関係な識別子差分を含めない。
-- /rendering-workflow に従い render-lab で、側面dockを2個持つ基地、module 列、ghost、outline、分離前後、
-  ドッキング状態を画像比較する。
-- ユーザーが「動くか確かめたい」と明示しているため /verify を起動し、npm run smoke:browser で
-  次の実操作を確認する。
-  1. CREATIVE で基地presetを配置して操作対象にする。
-  2. combat view で dock 1 を開き、tank、thruster、docking_port を含む cockpitなしの「物資」を作り、
-     操縦不能警告を確認して分離する。
-  3. decoupler と booster を含む構成を発進させ、対象boosterを直接クリックして点火し、対象decouplerを直接クリックして分離する。
-  4. 分離後の船を dock 2 へ条件内で接舷し、損傷を修理し、末尾を交換して再発進する。
-  5. 建造途中、ドッキング中、燃料 0 の各 snapshot を保存・読み込みし、状態が戻る。
-  6. 全 module instance を失わせ、物資だけが消え、別の船と歴史線が残る。
-- git diff --check を通す。
 
 ## 見積り
 

@@ -18,12 +18,12 @@ import { ShipMarkerRenderer } from '../../marker/ship-marker-renderer';
 // 艦の材質・空力。大気抵抗は弾道係数の逆数 Cd·A/m [m^2/kg]、太陽輻射圧は輻射圧係数 ×
 // 断面積質量比 C_R·A/m [m^2/kg] で表す。
 export const SHIP_BCINV = 3.3e-3; // Cd≈2.2, A≈12m², m≈8t
-export const SHIP_SRP_COEFF = 1.56e-2; // C_R≈1.3, A≈12m², m=PLAYER_MASS
+export const SHIP_SRP_COEFF = 1.56e-2; // C_R≈1.3, A≈12m², 基準質量 1,000 kg
 // 宇宙機の実効密度で、曲率半径 0.6 m を与える値。
 const SHIP_BULK_DENSITY = 833; // [kg/m^3]
-// PLAYER_MASS と掛けて外殻の熱容量 0.1 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
+// 基準質量 1,000 kg で外殻の熱容量 0.1 MJ/K。射撃・被弾の発熱量はこれを基準に決めてある。
 const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
-// 艦体自体の放熱面積 70 m² を PLAYER_MASS で割った値。放熱板の展開ぶんはこれに上乗せする。
+// 艦体自体の放熱面積 70 m² を基準質量 1,000 kg で割った値。放熱板の展開ぶんはこれに上乗せする。
 export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
 

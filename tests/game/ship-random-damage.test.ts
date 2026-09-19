@@ -35,9 +35,11 @@ export function register(): void {
       position: v3(3.5, 0, 0),
       rotation: { x: 0, y: 0, z: 0, w: 1 },
     });
-    const before = assembly.module('radiator')!;
+    const before = assembly.module('radiator');
+    assert.ok(before !== null);
     assert.equal(assembly.damage(20, 3, 'radiator'), 'radiator');
-    const after = assembly.module('radiator')!;
+    const after = assembly.module('radiator');
+    assert.ok(after !== null);
     assert.equal(after.kind, 'radiator');
     if (after.kind === 'radiator' && before.kind === 'radiator') {
       assert.equal(after.deployed, before.deployed);

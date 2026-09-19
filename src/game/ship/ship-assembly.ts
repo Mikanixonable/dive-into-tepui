@@ -1,10 +1,11 @@
+// 船体モジュールの木構造、接続変換、可変状態と分割・統合操作を所有する。
 import { mulberry32 } from '../../math/random';
 import {
   LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate, type Quat,
 } from '../../math/quat';
 import { add, v3, type Vec3 } from '../../math/vec3';
 import {
-  SHIP_MODULE_CATALOG, ShipModuleCatalog,
+  SHIP_MODULE_CATALOG, type ShipModuleCatalog,
 } from './ship-module-catalog';
 import type { ShipModuleDefinition } from './ship-module-definition';
 import { cloneShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
@@ -34,6 +35,7 @@ export interface DockingMergeResult {
   readonly assembly: ShipAssembly;
   readonly connectionId: string;
   readonly moduleIds: ReadonlyMap<string, string>;
+  readonly connectionIds: ReadonlyMap<string, string>;
 }
 
 export interface ShipAssemblyTotals {
@@ -102,7 +104,7 @@ function isDockModule(
   return module?.kind === 'dock' || module?.kind === 'docking_port';
 }
 
-// 接続グラフと module state を一体で所有する純粋な船体ドメイン。THREE や DynamicMotion は知らない。
+// 接続グラフと module state を一体で所有し、構造操作を原子的に行う。
 export class ShipAssembly {
   private readonly nodes = new Map<string, AssemblyNode>();
   private readonly connections: ShipConnection[] = [];
@@ -117,12 +119,10 @@ export class ShipAssembly {
 
   public get moduleIds(): readonly string[] { return [...this.nodes.keys()]; }
 
-  // 外部へ内部の可変 state を露出しない。編集は damage/remove/instanceState API を通す。
+  // 各 module の可変 state を独立した複製として返す。
   public get modules(): readonly ShipModuleInstance[] {
     return [...this.nodes.values()].map(node => cloneShipModuleInstance(node.instance));
   }
-
-  public get instances(): readonly ShipModuleInstance[] { return this.modules; }
 
   public get graph(): readonly ShipConnection[] { return this.connections.map(connectionCopy); }
 
@@ -130,8 +130,6 @@ export class ShipAssembly {
     const node = this.nodes.get(id);
     return node === undefined ? null : cloneShipModuleInstance(node.instance);
   }
-
-  public instance(id: string): ShipModuleInstance | null { return this.module(id); }
 
   public definition(id: string): ShipModuleDefinition | null {
     const node = this.nodes.get(id);
@@ -198,7 +196,7 @@ export class ShipAssembly {
     }, 'axial');
   }
 
-  // 側面 dock は transform を呼び出し側が明示する。自動で軸回転・位置補正はしない。
+  // 明示 transform で module を側面接続する。
   public connectSide(
     instance: ShipModuleInstance, parentId: string, transform: ModuleTransform, connectionId?: string,
   ): void {
@@ -221,6 +219,7 @@ export class ShipAssembly {
 
     const merged = this.clone();
     const moduleIds = new Map<string, string>();
+    const connectionIds = new Map<string, string>();
     for (const id of other.moduleIds) {
       let candidate = id;
       let suffix = 2;
@@ -231,7 +230,12 @@ export class ShipAssembly {
       moduleIds.set(id, candidate);
     }
 
-    const otherWorld = new Map(other.moduleIds.map(id => [id, other.worldTransformOf(id)!]));
+    const otherWorld = new Map<string, ModuleTransform>();
+    for (const id of other.moduleIds) {
+      const transform = other.worldTransformOf(id);
+      if (transform === null) throw new Error(`missing module transform: ${id}`);
+      otherWorld.set(id, transform);
+    }
     const visited = new Set<string>();
     const pending: { readonly id: string; readonly parentId: string | null; readonly sourceEdge: ShipConnection | null }[] = [
       { id: otherPortId, parentId: null, sourceEdge: null },
@@ -239,21 +243,30 @@ export class ShipAssembly {
     const dockRotation = qFromAxisAngle(LOCAL_RIGHT, Math.PI);
     const localDefinition = this.catalog.require(localPort.definitionId);
     const otherDefinition = this.catalog.require(otherPort.definitionId);
-    const dockingConnectionId = merged.uniqueConnectionId(`docking-${localPortId}-${moduleIds.get(otherPortId)!}`);
+    const mappedOtherPortId = moduleIds.get(otherPortId);
+    if (mappedOtherPortId === undefined) throw new Error(`missing mapped docking port: ${otherPortId}`);
+    const dockingConnectionId = merged.uniqueConnectionId(`docking-${localPortId}-${mappedOtherPortId}`);
     while (pending.length > 0) {
-      const current = pending.shift()!;
+      const current = pending.shift();
+      if (current === undefined) break;
       if (visited.has(current.id)) continue;
       visited.add(current.id);
-      const sourceInstance = other.module(current.id)!;
-      const instance = { ...sourceInstance, id: moduleIds.get(current.id)! } as ShipModuleInstance;
+      const sourceInstance = other.module(current.id);
+      const mappedId = moduleIds.get(current.id);
+      if (sourceInstance === null || mappedId === undefined) throw new Error(`missing docked module: ${current.id}`);
+      const instance = { ...sourceInstance, id: mappedId } as ShipModuleInstance;
       if (current.parentId === null) {
         merged.addModule(instance, localPortId, {
           position: v3(0, 0, (localDefinition.length + otherDefinition.length) / 2),
           rotation: dockRotation,
         }, 'docking', dockingConnectionId);
       } else {
-        const parentWorld = otherWorld.get(current.parentId)!;
-        const childWorld = otherWorld.get(current.id)!;
+        const sourceEdge = current.sourceEdge;
+        const parentWorld = otherWorld.get(current.parentId);
+        const childWorld = otherWorld.get(current.id);
+        const mappedParentId = moduleIds.get(current.parentId);
+        if (sourceEdge === null || parentWorld === undefined || childWorld === undefined
+          || mappedParentId === undefined) throw new Error(`invalid docked branch: ${current.id}`);
         const inverse = qInvert(parentWorld.rotation);
         const relative: ModuleTransform = {
           position: qRotate(inverse, v3(
@@ -263,9 +276,10 @@ export class ShipAssembly {
           )),
           rotation: qMul(inverse, childWorld.rotation),
         };
-        const edgeId = merged.uniqueConnectionId(current.sourceEdge!.id);
+        const edgeId = merged.uniqueConnectionId(sourceEdge.id);
+        connectionIds.set(sourceEdge.id, edgeId);
         merged.addModule(
-          instance, moduleIds.get(current.parentId)!, relative, current.sourceEdge!.kind, edgeId,
+          instance, mappedParentId, relative, sourceEdge.kind, edgeId,
         );
       }
       for (const edge of other.connections) {
@@ -277,7 +291,7 @@ export class ShipAssembly {
       }
     }
     merged.assertValid();
-    return { assembly: merged, connectionId: dockingConnectionId, moduleIds };
+    return { assembly: merged, connectionId: dockingConnectionId, moduleIds, connectionIds };
   }
 
   public dockingConnections(): readonly ShipConnection[] {
@@ -306,7 +320,8 @@ export class ShipAssembly {
     }
     this.nodes.delete(id);
     for (let i = this.connections.length - 1; i >= 0; i--) {
-      if (this.connections[i]!.childId === id) this.connections.splice(i, 1);
+      const connection = this.connections[i];
+      if (connection?.childId === id) this.connections.splice(i, 1);
     }
     return cloneShipModuleInstance(node.instance);
   }
@@ -316,8 +331,6 @@ export class ShipAssembly {
     const id = this.tailId();
     return id === null ? null : this.removeModule(id);
   }
-
-  public tailRemoval(): ShipModuleInstance | null { return this.removeTail(); }
 
   private tailId(): string | null {
     for (const id of [...this.nodes.keys()].reverse()) {
@@ -519,19 +532,18 @@ export class ShipAssembly {
     if (!result.valid) throw new Error(`invalid ship assembly: ${result.errors.join('; ')}`);
   }
 
-  // 健全 module から seed 固定で一様に選ぶ。展開中の健全 radiator を target にした場合だけ、
-  // 既存例外として軽減された damage をその radiator へ固定する。接続 graph は変更しない。
+  // 健全 module から seed 固定で標的を選ぶ。展開中 radiator への直撃は damage を 0.25 倍する。
   public damage(amount: number, seed: number, targetModuleId?: string): string | null {
     if (!Number.isFinite(amount) || amount <= 0) return null;
     const target = targetModuleId === undefined ? null : this.nodes.get(targetModuleId);
     let targetNode = target;
     let effectiveAmount = amount;
     if (targetNode?.instance.kind === 'radiator' && targetNode.instance.hp > 0 && targetNode.instance.deployed > 0) {
-      effectiveAmount *= 0.25; // player.ts の既存 RADIATOR_BULLET_DAMAGE と同じ軽減。展開状態は変えない。
+      effectiveAmount *= 0.25;
     } else {
       const healthy = [...this.nodes.values()].filter(node => node.instance.hp > 0);
       if (healthy.length === 0) return null;
-      targetNode = healthy[Math.floor(mulberry32(seed)() * healthy.length)]!;
+      targetNode = healthy[Math.floor(mulberry32(seed)() * healthy.length)];
     }
     if (targetNode === undefined) return null;
     let reduction = 0;
@@ -541,10 +553,6 @@ export class ShipAssembly {
     }
     targetNode.instance.hp = Math.max(0, targetNode.instance.hp - effectiveAmount * (1 - reduction));
     return targetNode.instance.id;
-  }
-
-  public applyDamage(amount: number, seed: number, targetModuleId?: string): string | null {
-    return this.damage(amount, seed, targetModuleId);
   }
 
   public clone(): ShipAssembly {
@@ -565,10 +573,7 @@ export class ShipAssembly {
     return [left, right];
   }
 
-  public split(connectionId: string): readonly [ShipAssembly, ShipAssembly] { return this.splitAt(connectionId); }
-
-  // Motion/View が保持する assembly オブジェクトの同一性を保ったまま、分割後の構成へ置換する。
-  // source の instance は排他的に移管し、呼び出し後の source は消費済みになる。
+  // この assembly の同一性を保って source の構成を移管する。source は消費済みになる。
   public replaceWith(source: ShipAssembly): void {
     if (source === this) return;
     if (source.catalog !== this.catalog) throw new Error('cannot replace assembly from a different catalog');
@@ -585,7 +590,8 @@ export class ShipAssembly {
   private component(start: string, excludedEdge: string): Set<string> {
     const result = new Set<string>(), pending = [start];
     while (pending.length > 0) {
-      const id = pending.pop()!;
+      const id = pending.pop();
+      if (id === undefined) break;
       if (result.has(id)) continue;
       result.add(id);
       for (const edge of this.connections) {
@@ -601,11 +607,13 @@ export class ShipAssembly {
     const nodes = new Map<string, AssemblyNode>();
     for (const id of this.nodes.keys()) {
       if (!ids.has(id)) continue;
-      nodes.set(id, this.nodes.get(id)!);
+      const node = this.nodes.get(id);
+      if (node !== undefined) nodes.set(id, node);
     }
     const edges = this.connections.filter(edge => ids.has(edge.parentId) && ids.has(edge.childId)).map(connectionCopy);
     const root = [...ids].find(id => !edges.some(edge => edge.childId === id));
-    if (root !== undefined) nodes.get(root)!.transform = copyTransform(IDENTITY_TRANSFORM);
+    const rootNode = root === undefined ? undefined : nodes.get(root);
+    if (rootNode !== undefined) rootNode.transform = copyTransform(IDENTITY_TRANSFORM);
     return ShipAssembly.fromTransferred(this.catalog, nodes, edges, this.nextConnectionNumber, this.playerOwned);
   }
 
@@ -631,14 +639,15 @@ export class ShipAssembly {
     return assembly;
   }
 
-  // 子 module の transform を親の local frame から world-like assembly frame へ展開する補助。
+  // 子 module の transform を親 local frame から assembly frame へ展開する。
   public worldTransformOf(id: string): ModuleTransform | null {
-    if (!this.nodes.has(id)) return null;
+    const node = this.nodes.get(id);
+    if (node === undefined) return null;
     const parentOf = this.connections.find(connection => connection.childId === id);
-    if (parentOf === undefined) return copyTransform(this.nodes.get(id)!.transform);
+    if (parentOf === undefined) return copyTransform(node.transform);
     const parent = this.worldTransformOf(parentOf.parentId);
     if (parent === null) return null;
-    const local = this.nodes.get(id)!.transform;
+    const local = node.transform;
     return {
       position: add(parent.position, qRotate(parent.rotation, local.position)),
       rotation: qMul(parent.rotation, local.rotation),
