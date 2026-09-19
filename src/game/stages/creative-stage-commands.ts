@@ -1,7 +1,7 @@
 // クリエイティブステージへ外から出せる命令の口と、それを列へ積む実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { EnemySpawnShape } from '../creative/stage-controls-panel';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CreativeStage } from './creative-stage';
 
@@ -24,7 +24,7 @@ export interface CreativeStageCommands {
   // タンパク質陣形を自機の前方へ一括で出す。
   spawnProteinFormation(): void;
   // 検証を通った配置の指定から物体を作り、顔ぶれへ入れる。
-  placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void;
+  placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void;
 }
 
 // stage への命令を queue へ積むだけの口を組む。
@@ -38,6 +38,6 @@ export function creativeStageCommands(queue: CommandQueue, stage: CreativeStage)
     setSpawnDistance: (distanceM) => queue.submit(() => stage.setSpawnDistance(distanceM)),
     spawnManualEnemy: (shape, colorValue) => queue.submit(() => stage.spawnManualEnemy(shape, colorValue)),
     spawnProteinFormation: () => queue.submit(() => stage.spawnProteinFormation()),
-    placeObject: (name, entityKind, state) => queue.submit(() => stage.placeObject(name, entityKind, state)),
+    placeObject: (name, selection, state) => queue.submit(() => stage.placeObject(name, selection, state)),
   };
 }

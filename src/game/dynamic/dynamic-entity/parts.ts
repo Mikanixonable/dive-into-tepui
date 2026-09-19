@@ -7,7 +7,7 @@ export interface Part {
   readonly weight: number; // kg
 
   readonly maxHp: number;
-  readonly hp: number; // 0 = 破壊/機能停止
+  hp: number; // 0 = 破壊/機能停止
 }
 
 interface HullPart extends Part {
@@ -33,7 +33,7 @@ export interface ThrusterPart extends Part {
 export interface RcsTankPart extends Part {
   readonly type: 'rcs_tank';
   readonly maxFuel: number; // kg
-  readonly fuel: number; // kg
+  fuel: number; // kg
 }
 
 export interface RadiatorPart extends Part {
@@ -57,6 +57,20 @@ export interface WeaponPart extends Part {
 export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTankPart | RadiatorPart | SolarPanelPart | WeaponPart;
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
+
+// 旧 Ship が必要とする最小の部品集合。敵は PartInventory、移行中の自機は
+// ShipAssembly 側の adapter を渡せるよう、Ship から具体コンテナの生成を切り離す。
+export interface ShipPartCollection {
+  readonly parts: readonly AnyPart[];
+  replace(parts: readonly Part[]): void;
+  has(part: Part): boolean;
+  ofType<T extends PartType>(type: T): readonly ExtractPart<T>[];
+  healthySum<T extends PartType>(type: T, valueOf: (part: ExtractPart<T>) => number): number;
+  totalFuel(): number;
+  totalMaxFuel(): number;
+  consumeFuel(amount: number): number;
+  refuelFuel(amount: number): number;
+}
 
 // type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
 export function createPart<TType extends PartType>(

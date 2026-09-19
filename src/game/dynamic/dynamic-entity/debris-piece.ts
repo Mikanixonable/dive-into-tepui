@@ -5,9 +5,6 @@ import { add, randVec, type SerializedVec3, type Vec3, v3 } from '../../../math/
 import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import { deserializeKinematicState, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { CapKind } from './entity-kind';
-import {
-  BoosterExplosiveBoltView, BoosterInterstageCoverPanelView,
-} from '../../../render/dynamic/dynamic-entity/booster-interstage-part-view';
 import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
 import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
 import {
@@ -36,8 +33,7 @@ function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicVi
     case 'barrel': return new BarrelView(scene);
     case 'magazineFrame': return new MagazineFrameView(scene);
     case 'casing': return new CasingView(scene);
-    case 'boosterCover': return new BoosterInterstageCoverPanelView(debrisKind.segment, scene);
-    case 'boosterBolt': return new BoosterExplosiveBoltView(debrisKind.segment, scene);
+    case 'decouplerPanel': return new DebrisFragmentView('#a9c8d6', 0.8, scene);
   }
 }
 

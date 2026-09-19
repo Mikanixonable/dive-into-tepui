@@ -10,10 +10,14 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { closingSpeed, type Contact } from '../../src/game/dynamic/dynamic-entity/contact';
 import {
-  distributeFixedContact, resolveSphereCollision, sphereContactGeometry,
+  distributeFixedContact, distributeSphereContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, scale, v3 } from '../../src/math/vec3';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { type Vec3, scale, v3 } from '../../src/math/vec3';
+import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
+import type { DynamicReactionServices } from '../../src/game/dynamic/dynamic-simulation-participant';
+import { EntityContactPhysics } from '../../src/game/dynamic/entity-contact-physics';
+import { EngagementZone } from '../../src/game/dynamic/engagement-zone';
 
 // closingSpeed が読むのは速度と法線だけなので、時刻と接触点は退化させてよい。
 function contact(selfV: Vec3, otherV: Vec3, normal: Vec3): Contact {
@@ -67,5 +71,72 @@ export function register(): void {
     const response = geometry === null ? null : distributeFixedContact(moving, fixed, 0.4, geometry);
     assert.ok(response !== null && response.bounced, '前提: 表面へ突っ込めば反発が起きる');
     assert.equal(closingSpeed(received(moving.state, fixed.state, response.normal)), 8);
+  });
+
+  test('contact: 固有形状の module id は反発しない重なりでも応答に残る', () => {
+    const a = {
+      state: kinematicState<'eci'>(0, v3(), v3()), radius: 1, invMass: 1,
+    };
+    const b = {
+      state: kinematicState<'eci'>(0, v3(1.5, 0, 0), v3()), radius: 1, invMass: 1,
+    };
+    const response = distributeSphereContact(a, b, 0.4, {
+      normal: v3(1, 0, 0), toi: 1, pushOut: 0.4,
+      moduleIdA: 'module-a', moduleIdB: 'module-b',
+    });
+    assert.equal(response.bounced, false);
+    assert.equal(response.moduleIdA, 'module-a');
+    assert.equal(response.moduleIdB, 'module-b');
+  });
+
+  test('contact: 地表への fixed 応答も実接触点と self module id を保持する', () => {
+    const moving = { state: kinematicState<'eci'>(0, v3(), v3(1, 0, 0)), radius: 4 };
+    const fixed = { state: kinematicState<'eci'>(0, v3(10, 0, 0), v3()), radius: 5 };
+    const point = v3(3, 2, 1);
+    const response = distributeFixedContact(moving, fixed, 0.4, {
+      normal: v3(1, 0, 0), toi: 0.5, pushOut: 0.25,
+      contactPoint: point, moduleIdA: 'hull', moduleIdB: null,
+    });
+    assert.equal(response.moduleIdA, 'hull');
+    assert.deepEqual(response.contactPoint, point);
+  });
+
+  test('contact: B側の固有形状は法線と module id を反転し、両側通知へ self/other を渡す', () => {
+    const receivedA: Contact[] = [];
+    const receivedB: Contact[] = [];
+    const a = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(0, 0, 0), v3(1, 0, 0)),
+      { radius: 1, mass: 1, collides: true, behavior: {
+        onEntityContact: (_self, _other, received) => { receivedA.push(received); },
+      } },
+    );
+    const b = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(1.5, 0, 0), v3(-1, 0, 0)),
+      { radius: 1, mass: 1, collides: true, behavior: {
+        testEntityCollision: () => ({
+          normal: v3(-1, 0, 0), toi: 1, pushOut: 0.4,
+          moduleIdA: 'b-self', moduleIdB: 'a-other',
+        }),
+        onEntityContact: (_self, _other, received) => { receivedB.push(received); },
+      } },
+    );
+    const physics = new EntityContactPhysics();
+    physics.resolveEntityContacts(0, [a, b], [new EngagementZone([a])], {} as DynamicReactionServices);
+
+    assert.equal(receivedA.length, 1);
+    assert.equal(receivedB.length, 1);
+    const contactA = receivedA[0];
+    const contactB = receivedB[0];
+    assert.ok(contactA !== undefined && contactB !== undefined);
+    assert.equal(contactA.selfModuleId, 'a-other');
+    assert.equal(contactA.otherModuleId, 'b-self');
+    assert.equal(contactA.normal.x, 1);
+    assert.equal(Math.abs(contactA.normal.y), 0);
+    assert.equal(Math.abs(contactA.normal.z), 0);
+    assert.equal(contactB.selfModuleId, 'b-self');
+    assert.equal(contactB.otherModuleId, 'a-other');
+    assert.equal(contactB.normal.x, -1);
+    assert.equal(Math.abs(contactB.normal.y), 0);
+    assert.equal(Math.abs(contactB.normal.z), 0);
   });
 }

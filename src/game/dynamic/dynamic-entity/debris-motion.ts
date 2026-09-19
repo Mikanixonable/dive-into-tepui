@@ -70,9 +70,7 @@ export class DebrisMotion extends DynamicMotion {
       attitude,
       mass: 0,
       radius: properties.radius ?? 0,
-      collides: properties.kind !== 'fragment'
-        && properties.kind !== 'boosterCover'
-        && properties.kind !== 'boosterBolt',
+      collides: properties.kind !== 'fragment',
       contactDamageWeight: 0,
       bcInv: SMALL_DEBRIS_BCINV,
       srpCoeff: SMALL_DEBRIS_SRP_COEFF,

@@ -6,25 +6,30 @@ import { Q_IDENTITY } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
-import { Ship } from '../../src/game/dynamic/dynamic-entity/ship';
-import { SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/vessel';
+import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
+import { createShipDefaultParts } from '../../src/game/dynamic/dynamic-entity/ship-default-parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
-import { WeaponState } from '../../src/game/player/weapon-state';
+import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
-import { PlayerMotion, type PlayerMotionReactions } from '../../src/game/player/player-motion';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
-import type { Player } from '../../src/game/player/player';
+import type { ModularShip } from '../../src/game/ship/modular-ship';
+import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
+import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
+import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
+import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import type { SerializedDynamicEntity } from '../../src/game/dynamic/dynamic-entity/entity-dictionary';
 
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 const state = kinematicState<'eci'>(0, v3(), v3());
 
 class TestShip extends Ship {
-  // 識別子は本番では採番器が配るので、テストでも名前とは別に与える。
-  public constructor(name: string, id: string) {
-    super(name, 100, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(), id);
+  public constructor(name: string, id = 'test-ship') {
+    super(
+      name, 1_000, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(),
+      id, createShipDefaultParts(1_000),
+    );
   }
 
   public rename(name: string): void { this.setName(name); }
@@ -41,26 +46,25 @@ class NullView extends DynamicView {
   }
 }
 
-function reactions(): PlayerMotionReactions {
-  return {
-    weapon: { roundsInMagazine: () => 0, stepBarrelThermal: () => {} },
-    environment: {
-      thrustAcceleration: () => v3(),
-      radiatorWear: () => ({ up: 0, down: 0 }),
-      totalCoolingRate: () => 84,
-      totalPowerGeneration: () => 0,
-    },
-    altitudeAlarm: { updateAltitudeAlarm: () => {} },
-    contact: {
-      receiveEntityContact: () => {},
-      receiveRadiatorContact: () => {},
-      receiveSurfaceContact: () => {},
-    },
-    loss: { receiveStructuralLoss: () => {}, receiveBurnUp: () => {} },
-  };
-}
-
 export function register(): void {
+  test('default ship: 固定ロードアウトの集計値を維持する', () => {
+    const ship = new TestShip('default');
+
+    // FLIGHT.md の既定船: HP 1,000、既定部品の出力・資源・装備を合計した値。
+    assert.equal(ship.hp, 1_000);
+    assert.equal(ship.maxHp, 1_000);
+    assert.equal(ship.totalThrust, 400_000);
+    assert.ok(Math.abs(ship.totalTorque - 2.24) < 1e-12);
+    assert.equal(ship.totalFuel, 1_000);
+    assert.equal(ship.totalMaxFuel, 1_000);
+    assert.equal(ship.totalFuelConsumptionRate, 1);
+    assert.equal(ship.totalPowerGeneration, 100);
+    assert.equal(ship.totalCoolingRate, 84);
+    assert.equal(ship.weaponDamage, 1);
+    assert.equal(ship.totalFireRate, 1 / 0.06);
+    assert.equal(ship.averageMuzzleVelocity, 1_000);
+  });
+
   test('player power: installedGeneration=0 は全損として発電しない', () => {
     const power = new PowerSystem();
     const start = power.chargeJ;
@@ -72,14 +76,12 @@ export function register(): void {
     assert.ok(defaultPower.chargeJ > start);
   });
 
-  test('player motion: 接続ブースターの質量で空力・輻射圧の質量あたり値が下がる', () => {
-    const motion = new PlayerMotion(
-      state, attitude, 2.6, 0, reactions(), { temperature: 300, thermalDeviation: 0, pendingSpecificHeat: 0 },
-    );
-    motion.attachedBoosters.attach({
-      id: 'test-booster', dryMass: 200, fuel: 800, maxFuel: 800,
-      thrust: 600_000, fuelRate: 80, ignited: false,
-    });
+  test('modular ship motion: booster module の質量で空力・輻射圧の質量あたり値が下がる', () => {
+    const assembly = createDefaultCombatPreset();
+    assembly.append(createShipModuleInstance(
+      SHIP_MODULE_CATALOG.require('booster-standard'), 'test-booster',
+    ));
+    const motion = new ModularShipMotion(assembly, state, attitude);
     assert.equal(motion.mass, 2_000);
     assert.equal(motion.bcInv, SHIP_BCINV / 2);
     assert.equal(motion.srpCoeff, SHIP_SRP_COEFF / 2);
@@ -118,8 +120,20 @@ export function register(): void {
     assert.equal(power.serialize().up.deploy, 1);
   });
 
-  test('fire control: 非正数の補給ではマガジンが増えない', () => {
-    const fire = new FireControl({ motion: { mass: 1_000 } } as Player, {} as never, {} as never);
+  test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
+    const weapon = WeaponState.deserialize({
+      mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
+      barrelTemperature: Number.NaN, barrelDeviation: Number.NaN, pendingBarrelJoules: -1,
+      wasFiring: false, wasEmptyClick: false,
+    } satisfies SerializedWeaponState);
+    const fire = new FireControl(
+      { motion: { mass: 1_000 } } as ModularShip,
+      {} as never,
+      {} as never,
+      weapon,
+    );
+    assert.equal(fire.mags, 2);
+    assert.equal(fire.rounds, 32);
     const before = fire.mags;
     fire.onPickup(0);
     fire.onPickup(-1);
