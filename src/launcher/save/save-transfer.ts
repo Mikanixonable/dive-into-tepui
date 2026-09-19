@@ -1,4 +1,4 @@
-import { SERIALIZATION_VERSION } from '../../game/game';
+import { SAVED_GAME_VERSION } from './save-store';
 import {
   type SaveSlotMeta,
   type SlotExport,
@@ -6,7 +6,7 @@ import {
   SLOT_EXPORT_FORMAT,
   SLOT_EXPORT_VERSION,
 } from './slot-data';
-import { SaveSlots } from './save-slots';
+import type { SaveSlots } from './save-slots';
 
 // セーブスロットのファイルへの出し入れと、読み込んだ JSON が SlotExport として妥当かどうかの検証。
 
@@ -70,7 +70,7 @@ async function importSlotFromFile(slots: SaveSlots, file: File): Promise<ImportR
   return { ok: true, slot };
 }
 
-// ファイル選択ダイアログを開き、選ばれたファイルを importSlotFromFile に渡す。
+// ファイル選択ダイアログを開き、選ばれたファイルを取り込んだ結果で解決する。閉じられたら中止として解決する。
 export function pickAndImportSlot(slots: SaveSlots): Promise<ImportResult> {
   // ダイアログを閉じただけでは change が来ない環境があるので、ウィンドウへ戻った時点も終端
   // として扱う — これが無いと Promise が永久に解決せず、input も DOM に残り続ける。
@@ -89,6 +89,7 @@ export function pickAndImportSlot(slots: SaveSlots): Promise<ImportResult> {
       input.remove();
       resolve(result);
     };
+    // ウィンドウへ戻ったとき、ファイルが選ばれていなければ中止として終える。
     const onWindowFocus = () => {
       // focus はダイアログを閉じた直後に来るが、選択時は change がその後に続く。
       setTimeout(() => {
@@ -135,6 +136,7 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
     return { ok: false, reason: 'セーブファイルが壊れています' };
   }
 
+  // 本体が無い・形式の版が違う手動セーブを、ステージ履歴ごとにメタから外す。
   const snapshotsRecord = snapshots as Record<string, unknown>;
   const stages = (slot as Record<string, unknown>).stages as unknown[];
   const filteredStages: StageHistoryMeta[] = [];
@@ -145,7 +147,7 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
     const stageObj = stage as unknown as StageHistoryMeta;
     const keptSnapshots = stageObj.snapshots.filter((meta) => {
       const data = snapshotsRecord[meta.id] as { version?: unknown } | undefined;
-      return data !== undefined && data.version === SERIALIZATION_VERSION;
+      return data !== undefined && data.version === SAVED_GAME_VERSION;
     });
     filteredStages.push({ ...stageObj, snapshots: keptSnapshots });
   }
@@ -155,6 +157,7 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
     return { ok: false, reason: '復元できる手動セーブがありません' };
   }
 
+  // 残ったメタが指す本体を集め直す。
   const keptIds = new Set(filteredStages.flatMap((s) => s.snapshots.map((m) => m.id)));
   const filteredSnapshots: Record<string, unknown> = {};
   for (const id of keptIds) filteredSnapshots[id] = snapshotsRecord[id];

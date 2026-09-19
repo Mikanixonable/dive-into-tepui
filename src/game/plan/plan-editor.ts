@@ -16,7 +16,7 @@ import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
 import { ContextMenu } from '../hud/windows/context-menu';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import type { UiSfx } from '../../audio/sfx/ui-sfx';
+import type { UiSoundQueue } from '../ui-sound-queue';
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { focusPoint } from '../viewer/focus-target';
@@ -26,7 +26,8 @@ import { NodeGizmo } from './node-gizmo';
 import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from '../../render/plan/plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
-import type { DisplayDurationSource, Plan } from './plan';
+import type { Plan } from './plan';
+import type { DisplayWindowManager } from '../display-window-manager';
 import type { PlanCommands } from './plan-commands';
 import type { SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
@@ -38,7 +39,7 @@ import type { FocusCameraCommands } from '../viewer/camera-commands';
 
 const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
-const NODE_MIN_DV = 0.5; // これ未満のノードは軌道計画モードを抜けるときに破棄 [m/s]
+const NODE_MIN_DV = 0.5; // Δv がこれ未満のノードは空とみなし、編集の区切りで破棄する [m/s]
 const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
 
 const PE_WARN_DENSITY = 2.4e-8; // 噴射後の軌道の近点がこの大気密度に達したら警告する [kg/m^3]。地球の高度 120km 相当
@@ -64,7 +65,7 @@ export class PlanEditor {
     this.selectedNode = idx === null ? null : this.plan?.nodes[idx] ?? null;
   }
 
-  // 操作対象(自機船または基地)。ノードの起点として状態が要るときだけ引く。
+  // 操作対象(自機船または基地)。
   private get ship(): Controllable | null {
     return this.controlSelection.current;
   }
@@ -81,7 +82,6 @@ export class PlanEditor {
   private readonly axisDrag: AxisDragGizmo;
 
   private readonly panel: PlanPanel;
-  private simTime = 0; // 現在の simTime [s]
 
   // このフレームに積み上がった Δv の、到着軌道基準(PRO/NRM/RAD)成分 [m/s]。加算が
   // 一度も無ければ null。
@@ -91,13 +91,13 @@ export class PlanEditor {
   // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
   public constructor(
     private readonly hud: HudLayers & Notifier,
-    private readonly uiSfx: UiSfx,
+    private readonly uiSounds: UiSoundQueue,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly simSpeedCommands: SimSpeedCommands,
     private readonly celestialBodies: CelestialBodies,
     scene: THREE.Scene,
     private readonly controlSelection: ControlSelection,
-    private readonly displayDuration: DisplayDurationSource,
+    private readonly displayWindowManager: Pick<DisplayWindowManager, 'current' | 'durationSec'>,
     private readonly mapFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
     private readonly path: PlanPath,
     private readonly planCommands: PlanCommands,
@@ -124,6 +124,9 @@ export class PlanEditor {
     this.wireNodeGizmo();
   }
 
+  // 直近の進行が確定させた simTime [s]。
+  private get simTime(): number { return this.displayWindowManager.current.simTime; }
+
   // 時刻 t まで自動ワープを始める。既に通過した時刻ならその旨を出すだけで何もしない。
   public warpTo(t: number): void {
     if (!this.simSpeedManager.canAutoWarpTo(t, this.simTime)) {
@@ -141,7 +144,7 @@ export class PlanEditor {
     g.onNodeSelect = (idx) => {
       this.selectedNodeIdx = idx;
       this.closeMenu();
-      this.uiSfx.warp();
+      this.uiSounds.push('warp');
     };
     g.onNodeDragMove = (idx, clientX, clientY) => {
       this.closeMenu();
@@ -196,11 +199,11 @@ export class PlanEditor {
     this.hud.hint('マニューバ計画を破棄');
   }
 
-  // router から計画キー([X] 削除・[N] 直近ノードへの自動ワープ)を受け取る。
-  public handleCommand(commandId: string, simTime: number): void {
+  // 計画キー([X] 削除・[N] 直近ノードへの自動ワープ)の単発入力 commandId を実行する。
+  public handleCommand(commandId: string): void {
     if (commandId === K.deleteNode.code) this.deleteSelectedNodeOrPlan();
     if (commandId === K.autoWarpToNode.code) {
-      this.simSpeedCommands.toggleAutoWarpToFirstNode(this.plan?.firstNode(), simTime);
+      this.simSpeedCommands.toggleAutoWarpToFirstNode(this.plan?.firstNode(), this.simTime);
     }
   }
 
@@ -210,7 +213,7 @@ export class PlanEditor {
   }
 
   // マップ上のクリック・右クリックをノード選択/配置とコンテキストメニューへ振り分ける。
-  // 艦がいなければ計画そのものが無いので、クリックはここで捨てる。
+  // 操作対象がいなければ計画が無いので、クリックは後の受け手へ残す。
   public handleMapPointer(input: Input): void {
     if (this.plan === null) return;
     input.takeRightClicks((p) => this.handleNodeRightClick(p.x, p.y));
@@ -242,11 +245,12 @@ export class PlanEditor {
     // 選択が外れるクリックを編集の区切りとして、Δv を一度も加えていない空のノードを破棄する。
     // 毎フレーム削除すると、置いた直後にギズモを操作する前に消えてしまう。
     const dropped = this.selectedNodeIdx !== null && this.selectedNodeIdx !== bestNodeIdx
-      ? this.removeSelectedIfEmpty()
+      ? this.selectedEmptyNodeIdx()
       : null;
+    if (dropped !== null) this.removeSelectedNode(dropped);
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
-      this.uiSfx.warp();
+      this.uiSounds.push('warp');
       return;
     }
 
@@ -271,15 +275,19 @@ export class PlanEditor {
     return dv !== null && len(dv) < NODE_MIN_DV;
   }
 
-  // 選択中ノードが実質的に空なら削除し、削除したノードの index を返す。削除しなければ null。
-  private removeSelectedIfEmpty(): number | null {
+  // 選択中ノードが実質的に空なら、その index。選択が無いか、空でなければ null。
+  private selectedEmptyNodeIdx(): number | null {
     const idx = this.selectedNodeIdx;
+    if (idx === null || this.plan === null) return null;
+    return this.isEmptyNode(idx, this.path.arrivalStates()) ? idx : null;
+  }
+
+  // idx 番目の選択中ノードを削除し、選択を外す。
+  private removeSelectedNode(idx: number): void {
     const plan = this.plan;
-    if (idx === null || plan === null) return null;
-    if (!this.isEmptyNode(idx, this.path.arrivalStates())) return null;
+    if (plan === null) return;
     this.planCommands.removeNode(plan, idx);
     this.selectedNodeIdx = null;
-    return idx;
   }
 
   // 時刻 t の計画軌道上の状態にノードを追加し、選択する。その時刻の計画軌道が
@@ -304,7 +312,7 @@ export class PlanEditor {
     }
     this.selectedNode = postState;
     this.planCommands.addNode(plan, postState, anchor);
-    this.uiSfx.warp();
+    this.uiSounds.push('warp');
   }
 
   // 既存ノード近傍ならそれを選択してコンテキストメニューを開き true を返す。外れは false。
@@ -340,7 +348,7 @@ export class PlanEditor {
     const picked = this.path.nearestSample(
       clientX, clientY, Infinity, node.t,
       ship.plan.nodeTimeRange(
-        idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayDuration,
+        idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayWindowManager,
       ),
     );
     // Δv を保ったまま移動先へ置き換える
@@ -365,7 +373,7 @@ export class PlanEditor {
     const hasDownstreamNodes = idx < plan.nodes.length - 1;
     const targetT = this.simTime + secondsFromNow;
     const range = plan.nodeTimeRange(
-      idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayDuration,
+      idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayWindowManager,
     );
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
@@ -386,7 +394,7 @@ export class PlanEditor {
     const moved = this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state;
     this.selectedNode = moved;
     this.planCommands.replaceNode(plan, idx, moved);
-    this.uiSfx.warp();
+    this.uiSounds.push('warp');
     if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
   }
 
@@ -445,7 +453,7 @@ export class PlanEditor {
     this.planCommands.replaceNode(plan, idx, burned);
   }
 
-  // 手動入力フォームから絶対的な Δv (PRO, NRM, RAD) を指定してノードの速度を上書きする。
+  // 選択中ノードの Δv を、到着軌道基準の成分 (pro, nrm, rad) [m/s] の絶対量で上書きする。
   private setNodeDvLocal(pro: number, nrm: number, rad: number): void {
     const plan = this.plan;
     const idx = this.selectedNodeIdx;
@@ -454,12 +462,12 @@ export class PlanEditor {
     const node = plan.nodes[idx];
     if (!arr || !node) return;
 
-    // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
+    // 到着状態の軌道基準枠で組んだ Δv を、到着速度へ足す。
     const dvWorld = fromOrbitAxes(this.bodyState(arr), v3(pro, nrm, rad));
     const burned = kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld));
     this.selectedNode = burned;
     this.planCommands.replaceNode(plan, idx, burned);
-    this.uiSfx.warp();
+    this.uiSounds.push('warp');
   }
 
   // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を ECI で返す。ノードか到着状態が求まって
@@ -596,15 +604,13 @@ export class PlanEditor {
     this.gizmo3d.dispose();
   }
 
-  // 操作対象の切り替えを検出してメニューを畳み、ワープメニューが使う現在時刻を差し込む。
-  public update(simTime: number): void {
-    // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む。
+  // 操作対象が替わったフレームで、前の艦のノードに開いたままのメニューを畳む。
+  public update(): void {
     const ship = this.ship;
     if (ship !== this.lastSeenShip) {
       this.lastSeenShip = ship;
       this.closeMenu();
     }
-    this.simTime = simTime;
   }
 
   // 操作 UI(ノードギズモ・Δv アーム・3D 矢印・計画パネル)を現在の選択と画面座標で組み直す。

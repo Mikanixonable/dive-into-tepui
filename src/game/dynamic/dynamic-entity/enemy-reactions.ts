@@ -3,6 +3,7 @@
 import { kinematicState } from '../../../physics/kinematic-state';
 import { enemyDestroyFragments } from './debris-piece';
 import type { DynamicMotion } from '../dynamic-motion';
+import type { EntityContactParticipant } from '../dynamic-simulation-participant';
 import type { EntityRegistry } from '../entity-registry';
 import type { StageOutcome, EnemyDeathCause } from '../../stages/stage-outcome';
 import { bulletReactionOf, type BulletType } from './bullet-reaction';
@@ -11,8 +12,7 @@ import { contactDamageSpeed } from './contact-damage';
 import type { Vec3 } from '../../../math/vec3';
 import type { RunEventSink } from '../../run-events';
 
-// 帰結を受け取る敵1体の面。ダメージの入れ方と撃破の記録の仕方は個体ごとに違うので、
-// 構築時に渡された当事者がそれを持つ。
+// 帰結を受け取る敵1体の面。ダメージの入れ方と撃破の記録は個体ごとに実装する。
 export interface EnemyReactionPort {
   readonly motion: DynamicMotion;
   // 破片と爆散の大きさを決める機体模型の倍率。
@@ -32,7 +32,7 @@ export class EnemyReactions {
 
   // 他の個体と触れたときの帰結。弾なら被弾として、それ以外は接触の相対速度で損傷させる。
   public receiveEntityContact(
-    other: DynamicMotion, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
+    other: EntityContactParticipant, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     if (!this.port.motion.alive) return;
     const bullet = bulletReactionOf(other);
@@ -53,15 +53,15 @@ export class EnemyReactions {
 
   // 大気で焼失したときの帰結。撃破ではなく焼失として戦果へ残す。
   public receiveBurnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
-    this.port.motion.alive = false;
+    this.port.motion.kill();
     this.recordDestroy(registry);
     this.port.recordDeath(activeStage, this.port.motion.state.t, 'burnup');
   }
 
-  // 交戦圏を離れて消えるときの帰結。破片は残さない。
+  // 交戦圏を離れて消えるときの帰結。離脱として戦果へ残す。
   public despawn(simTime: number, activeStage: StageOutcome): void {
     if (!this.port.motion.alive) return;
-    this.port.motion.alive = false;
+    this.port.motion.kill();
     this.port.recordDeath(activeStage, simTime, 'despawn');
   }
 
@@ -70,13 +70,13 @@ export class EnemyReactions {
     bulletType: BulletType, damage: number, impactPoint: Vec3,
     simTime: number, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
-    activeStage.scoreCounter.recordHit();
+    activeStage.recordHit();
     this.port.applyBulletDamage(damage, impactPoint, registry.events);
     if (this.port.hasHealth()) {
       this.recordImpact(bulletType, impactPoint, registry);
       return;
     }
-    this.port.motion.alive = false;
+    this.port.motion.kill();
     this.port.recordDeath(activeStage, simTime, 'killed');
     this.recordDestroy(registry);
   }
@@ -101,7 +101,7 @@ export class EnemyReactions {
       registry.events.record({ kind: 'enemyDamagedByContact', state: this.port.motion.state });
       return;
     }
-    this.port.motion.alive = false;
+    this.port.motion.kill();
     this.port.recordDeath(activeStage, simTime, cause);
     this.recordDestroy(registry);
   }

@@ -96,7 +96,7 @@ export class ManualSpawn {
     const enemy = shapeDefinition.kind === 'drifting'
       ? generateDriftingEnemy(name, state, color, color, this.scene, this.idAllocators)
       : generateApproachingEnemy(
-        name, state, this.attractors, color, color, shapeDefinition.typeIndex, undefined,
+        name, state, this.attractors, color, color, shapeDefinition.typeIndex, null,
         this.scene, this.idAllocators,
       );
     return { kind: 'enemy', enemy };

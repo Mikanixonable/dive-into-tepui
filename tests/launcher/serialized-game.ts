@@ -1,5 +1,5 @@
 // いまの形式の版で書いた、始めたばかりのランの記録を組む。
-import { SERIALIZATION_VERSION, type SerializedGame } from '../../src/game/game';
+import { SAVED_GAME_VERSION, type SavedGame } from '../../src/launcher/save/save-store';
 import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
 import { SimSpeedManager } from '../../src/game/dynamic/sim-speed-manager';
 import { PlanNodeRules } from '../../src/game/plan/plan-node-rules';
@@ -11,10 +11,10 @@ import { ephemerisContextFor } from '../../src/physics/ephemeris/ephemeris-conte
 import { TEST_EPOCH } from '../physics/test-helpers';
 
 // ステージ stageId を回帰テストの元期で始め、まだ何も置いていないランの記録。
-export function serializedGame(stageId: string): SerializedGame {
+export function serializedGame(stageId: string): SavedGame {
   const events = new RunEventLog();
   return {
-    version: SERIALIZATION_VERSION,
+    version: SAVED_GAME_VERSION,
     progress: {
       stageId,
       ephemerisContext: ephemerisContextFor(TEST_EPOCH),

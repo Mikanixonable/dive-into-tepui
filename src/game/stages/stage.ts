@@ -28,6 +28,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
+import type { ViewMode } from '../view/view-mode';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。ステージの epoch の
 // 宣言以外から読まない(元期は共有の定数ではなく、ステージの宣言)。
@@ -78,8 +79,9 @@ export interface StageClass {
   isUnlocked(clearCounts: ClearCounts): boolean;
   // 新しいランのステージを組み、初期配置を置く。
   create(...deps: StageDeps): Stage;
-  // このステージクラスが直列化した形 serialized から復元する。
-  deserialize(serialized: SerializedStage, ...deps: StageDeps): Stage;
+  // このステージクラスが直列化した形 serialized から復元する。記録が欠けていれば(null)、
+  // 新しいランの初期値で補う。
+  deserialize(serialized: SerializedStage | null, ...deps: StageDeps): Stage;
 }
 
 // ステージ ID → クリア回数(周回数によるアンロックに備えて、クリアの有無でなく回数で持つ)。
@@ -119,7 +121,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;
-  // タイトルのステージ選択ボタン列に並べない。
+  // タイトルのステージ選択ボタン列から隠すか。既定では並べる。
   public static readonly hiddenFromSelect: boolean = false;
   // ショートカットキーを持たない。持つステージだけが宣言する。
   public static readonly selectKey: string | null = null;
@@ -160,15 +162,15 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   public get phase(): GamePhase { return this._phase; }
   public get isPlaying(): boolean { return this._phase === 'playing'; }
+  // 敵の射撃を許しているか。射撃の可否を切り替えるステージが上書きする。
+  public get enemiesMayFire(): boolean { return true; }
   private _result: StageResult | null = null;
   public get result(): StageResult | null { return this._result; }
-  // decide() が決着を確定させた瞬間に一度だけ呼ぶ。
-  public onDecided: (() => void) | null = null;
-  // 勝敗と結果画面の内容を同時に確定させる。
+  // 勝敗と結果画面の内容を同時に確定させ、確定したことを出来事として記録する。
   protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
     this._phase = phase;
     this._result = result;
-    this.onDecided?.();
+    this._dynamicSystem.events.record({ kind: 'stageDecided' });
   }
   // 協力者 deps と全ステージ共通の状態から組む。省いた状態は新しいランの初期値(スコア 0・進行中・
   // 補給タイマー未経過)から始まる。固有の状態を持つ具象ステージは、自分の分を deps の直後に受け、
@@ -193,10 +195,12 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 直列化した共通の内訳 serialized から、全ステージ共通の状態を戻す。具象の deserialize が自分の
   // コンストラクタの末尾へ渡す。rules はそのステージクラスの規則。
   protected static deserializeCommonState(
-    serialized: SerializedStage, deps: StageDeps, rules: StageRules,
+    serialized: SerializedStage | null, deps: StageDeps, rules: StageRules,
   ): CommonStageState {
     const [, scene, dynamicSystem] = deps;
-    const { scoreCounter, phase, logistics } = serialized;
+    const scoreCounter = serialized?.scoreCounter;
+    const phase = serialized?.phase;
+    const logistics = serialized?.logistics;
     // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
     return [
       scoreCounter == null ? undefined : ScoreCounter.deserialize(scoreCounter),
@@ -224,9 +228,9 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   // ステータスパネルを同期する。
   public sync(
-    camera: CameraFrame, _displayTime: number,
+    _camera: CameraFrame, view: ViewMode, _displayTime: number,
   ): void {
-    this.syncStatusPanel(camera.mode === 'map');
+    this.syncStatusPanel(view === 'map');
   }
 
   // 直近の sync が組んだ、このステージ固有のマーカーの宣言。
@@ -248,7 +252,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。state を省いた新規配置は
   // 既定の円軌道(defaultPlayerState)に置き、機首と上面はその位置で最も強く引く天体を基準に向ける。
-  // 艦の隻数は0..n隻が一般形で、何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(placement: Partial<PlayerPlacement> = {}): Player {
     const state = placement.state ?? this.defaultPlayerState();
     const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
@@ -272,8 +275,18 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return addPrimaryRelative(center.stateAt(t), rel);
   }
 
+  // 自機の発砲を1発数える。
+  public recordShot(): void {
+    this.scoreCounter.recordShot();
+  }
+
+  // 敵への命中を1発数える。
+  public recordHit(): void {
+    this.scoreCounter.recordHit();
+  }
+
   // 敵を登録し、出撃数をスコアへ記録する。
-  protected addEnemy(enemy: Enemy): void {
+  public addEnemy(enemy: Enemy): void {
     this._dynamicSystem.add(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
@@ -316,7 +329,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return null;
   }
 
-  // 原因によらず勝利判定を通す: 再突入・離脱でも残存数 0 なら決着させる。
+  // 敵1体の消滅を原因ごとに数えて記録する。撃破以外の消滅でも、残存数が 0 になれば勝利で決着させる。
   public recordEnemyDeath(enemy: Enemy, simTime: number, cause: EnemyDeathCause = 'killed'): void {
     if (cause === 'killed') this.scoreCounter.recordKill();
     else this.scoreCounter.recordEnemyLoss();
