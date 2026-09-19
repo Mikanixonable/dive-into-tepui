@@ -5,8 +5,9 @@ import { MAX_PHYS_SIM_SPEED } from './dynamic/sim-speed-manager';
 import { THROTTLE_LABELS, THROTTLE_LEVELS } from './player/throttle';
 import { len, sub } from '../math/vec3';
 import type { Notifier } from '../hud/notifier';
-import type { UiSfx } from '../audio/sfx/ui-sfx';
-import type { WorldSfx } from '../audio/sfx/world-sfx';
+import type { SoundCue } from '../audio/sfx/sound-cue';
+import type { WorldSound } from '../audio/sfx/world-sfx';
+import type { UiSoundQueue } from './ui-sound-queue';
 import type { Attitude } from '../physics/attitude';
 import type { KinematicState } from '../physics/kinematic-state';
 import type { EnemyDeathCause } from './stages/stage-outcome';
@@ -46,17 +47,51 @@ function corruptionMessage(phase: string, dt: number, simDt: number, detail: str
   return `シミュレーション状態が壊れました(NaN/Infinity)。phase=${phase} dt=${dt} simDt=${simDt} — ${detail}`;
 }
 
+// 出来事 body が伴うゲーム世界の効果音。音を伴わない出来事なら null。
+function worldSoundOf(body: RunEventBody): WorldSound | null {
+  switch (body.kind) {
+    case 'gunFired': return { kind: 'fire' };
+    case 'gunSpunUp': return { kind: 'spinUp' };
+    case 'gunDryFired': return { kind: 'emptyClick' };
+    case 'gunMagazineFed': return { kind: 'magFeed' };
+    case 'gunBarrelSwapped': return { kind: 'reload' };
+    // 被弾音は着弾点と艦の距離で減衰する。距離はここで出す。
+    case 'shipStruck': return { kind: 'hit', impactDistance: len(sub(body.impactPoint, body.shipState.r)) };
+    case 'shipDamagedByContact':
+    case 'enemyDamagedByContact':
+    case 'casingContacted': return { kind: 'clank' };
+    case 'enemyStruckByBullet': return { kind: 'enemyHit' };
+    case 'shipExploded': return { kind: 'explosion' };
+    case 'plasmaPassedClose': return { kind: 'magneticInterference' };
+    case 'altitudeWarned': return { kind: 'altAlarm' };
+    case 'boosterDecoupled': return { kind: 'decouple' };
+    case 'ammoPickedUp':
+    case 'rcsFuelPickedUp': return { kind: 'pickup' };
+    default: return null;
+  }
+}
+
+// 出来事 events が伴うゲーム世界の効果音の宣言。id は出来事の通し番号。
+export function worldSoundCues(events: readonly RunEvent[]): SoundCue<WorldSound>[] {
+  const cues: SoundCue<WorldSound>[] = [];
+  for (const { seq, body } of events) {
+    const sound = worldSoundOf(body);
+    if (sound !== null) cues.push({ id: seq, sound });
+  }
+  return cues;
+}
+
 export class RunEventPresenter {
-  // 最後に写した出来事の通し番号。同じ出来事を二度鳴らさないために持つ。
+  // 最後に写した出来事の通し番号。同じ出来事を二度写さないために持つ。
   private lastSeq = -1;
 
+  // UI の効果音は uiSounds へ溜め、通知は notifier へ出す。
   public constructor(
-    private readonly worldSfx: WorldSfx,
-    private readonly uiSfx: UiSfx,
+    private readonly uiSounds: UiSoundQueue,
     private readonly notifier: Notifier,
   ) { }
 
-  // 記録された出来事のうち、まだ写していないものを音と通知へ写す。
+  // 記録された出来事のうち、まだ写していないものを UI の効果音と通知へ写す。
   public present(events: readonly RunEvent[]): void {
     for (const event of events) {
       if (event.seq <= this.lastSeq) continue;
@@ -65,11 +100,11 @@ export class RunEventPresenter {
     }
   }
 
-  // 出来事1件を、その出来事が伴う音と通知へ写す。
+  // 出来事1件を、その出来事が伴う UI の効果音と通知へ写す。
   private show(body: RunEventBody): void {
     switch (body.kind) {
       case 'simSpeedChanged': {
-        this.uiSfx.warp();
+        this.uiSounds.push('warp');
         // 操作できない倍率へ上げたときは、自機の操作が効かなくなったことを併記する。
         const gated = body.shipActs ? '' : `(自機の操作はワープ ×${MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
         this.notifier.hint(`時間加速 ×${body.speed}${gated}`);
@@ -97,21 +132,6 @@ export class RunEventPresenter {
         return;
       }
 
-      case 'gunFired':
-        this.worldSfx.fire();
-        return;
-      case 'gunSpunUp':
-        this.worldSfx.spinUp();
-        return;
-      case 'gunDryFired':
-        this.worldSfx.emptyClick();
-        return;
-      case 'gunMagazineFed':
-        this.worldSfx.magFeed();
-        return;
-      case 'gunBarrelSwapped':
-        this.worldSfx.playReload();
-        return;
       case 'gunDisabled':
         this.notifier.hint('武装が損傷しており発射できない', 3000);
         return;
@@ -119,24 +139,6 @@ export class RunEventPresenter {
         this.notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
         return;
 
-      case 'shipStruck':
-        // 被弾音は着弾点と艦の距離で減衰する。距離はここで出す。
-        this.worldSfx.hit(len(sub(body.impactPoint, body.shipState.r)));
-        return;
-      case 'shipDamagedByContact':
-      case 'enemyDamagedByContact':
-      case 'casingContacted':
-        this.worldSfx.clank();
-        return;
-      case 'enemyStruckByBullet':
-        this.worldSfx.enemyHit();
-        return;
-      case 'shipExploded':
-        this.worldSfx.explosion();
-        return;
-      case 'plasmaPassedClose':
-        this.worldSfx.magneticInterference();
-        return;
       case 'enemyDied':
         this.notifier.hint(body.cause === 'killed'
           ? `${body.name} 撃破`
@@ -148,7 +150,6 @@ export class RunEventPresenter {
 
       case 'altitudeWarned':
         this.notifier.hint(`警告: 高度が${Math.round(body.threshold / 1000)}km以下です`, 3000);
-        this.worldSfx.altAlarm();
         return;
       case 'rcsDampToggled':
         this.notifier.hint(`RCS 回転制動: ${body.on ? 'ON' : 'OFF'}`);
@@ -187,24 +188,21 @@ export class RunEventPresenter {
         this.notifier.hint('分離できるブースターがありません');
         return;
       case 'boosterDecoupled':
-        this.worldSfx.decouple();
         this.notifier.hint(`ブースター分離: 残り ${body.stages} 段`);
         return;
 
       case 'ammoResupplyDeployed':
-        this.uiSfx.warp();
+        this.uiSounds.push('warp');
         this.notifier.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
         return;
       case 'rcsFuelResupplyDeployed':
-        this.uiSfx.warp();
+        this.uiSounds.push('warp');
         this.notifier.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
         return;
       case 'ammoPickedUp':
-        this.worldSfx.pickup();
         this.notifier.hint(`補給取り込み — ベルト +${body.mags} 連`, 3000);
         return;
       case 'rcsFuelPickedUp':
-        this.worldSfx.pickup();
         this.notifier.hint(`補給取り込み — RCS燃料 +${Math.round(body.fuel)} kg`, 3000);
         return;
 
@@ -214,10 +212,33 @@ export class RunEventPresenter {
       case 'maneuverNodeAchieved':
         if (body.remaining === 0) this.notifier.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
         else this.notifier.hint(`✓ ノード達成 — 残り ${body.remaining} 件`, 4000);
-        this.uiSfx.warp();
+        this.uiSounds.push('warp');
         return;
       case 'planNodesDropped':
         this.notifier.hint(`${body.ship}: 起点より前のマニューバノード ${body.count} 件を復元できません`);
+        return;
+
+      case 'combatViewUnavailable':
+        this.notifier.hint('操作できる艦または基地がいません');
+        return;
+      case 'maneuverPlanConfirmed':
+        this.notifier.hint(`マニューバ計画 ${body.nodeCount} 件確定`, 4500);
+        return;
+      case 'orbitPlanningOpened':
+        this.notifier.hint(
+          `軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [${K.toggleMapMode.label}] で確定`,
+          5000,
+        );
+        return;
+
+      case 'cameraViewReset':
+        this.notifier.hint(body.view === 'map' ? 'マップビューの視点をリセット' : '視点をリセット');
+        return;
+      case 'cameraAttitudeFollowToggled':
+        this.notifier.hint(`視点の姿勢追従: ${body.on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
+        return;
+      case 'cameraReferenceViewSelected':
+        this.notifier.hint(body.view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
         return;
 
       case 'controlTargetSelected':
@@ -229,6 +250,13 @@ export class RunEventPresenter {
         return;
       case 'controlTargetReleased':
         if (body.target === 'base') this.notifier.hint('基地の操作を解除しました');
+        return;
+
+      case 'navTargetToggled':
+        this.notifier.hint(body.name === null ? 'ターゲット解除' : `ターゲット: ${body.name}`);
+        return;
+      case 'navTargetLocked':
+        this.notifier.hint(body.name === null ? 'ターゲット固定解除' : `ターゲット固定: ${body.name}`);
         return;
 
       case 'waveAttackArmed':

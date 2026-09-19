@@ -14,8 +14,8 @@ const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
 export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
 
-// 宇宙機の物性を既定にした Motion の設定。overrides の項目で上書きする。
-export function shipMotionOptions(
+// 宇宙機の物性を既定にした Motion の物性と初期値。overrides の項目で上書きする。
+export function shipMotionProperties(
   attitude: Attitude, radius: number, overrides: DynamicMotionProperties = {},
 ): DynamicMotionProperties {
   return {
@@ -36,10 +36,11 @@ export function shipMotionOptions(
 
 export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 
-// 艦・敵・タンパク質が共有する、識別・寿命・一般 HP・本体マーカーの基底。
+// 戦闘の標的になる機体の基底。表示名・HP と装甲値・本体の HP マーカーを持つ。
 export abstract class Vessel extends DynamicEntity {
   public override readonly combatTarget = true;
   private readonly markerRenderer: ShipMarkerRenderer;
+  // 残 HP と装甲値。派生の被弾モデル(部品)から作り直すキャッシュ。
   private _hp: number;
   private _maxHp: number;
 
@@ -59,9 +60,13 @@ export abstract class Vessel extends DynamicEntity {
   }
 
   public get hp(): number { return this._hp; }
-  protected set hp(value: number) { this._hp = value; }
   public get maxHp(): number { return this._maxHp; }
-  protected set maxHp(value: number) { this._maxHp = value; }
+
+  // 被弾モデルから求め直した残 HP hp と装甲値 maxHp を受ける。maxHp を省くといまの装甲値のまま。
+  protected setHealth(hp: number, maxHp = this._maxHp): void {
+    this._hp = hp;
+    this._maxHp = maxHp;
+  }
 
   // 残HP比を塗りで示す三角のHPマーカー。
   public hpMarkerSvg(): string { return this.markerRenderer.hpMarker(this.hp, this.maxHp); }

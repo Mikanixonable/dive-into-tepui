@@ -1,7 +1,7 @@
 // 多数の対象のマーカーを、投影後のスクリーン座標だけを見て破綻なく並べる表示器。画面上で
 // 近接するものを1つの代表にまとめ、画面外へ出たものは画面端の方位マーカーに置き換える。
-import { Vec3, len, sub } from '../../math/vec3';
-import { Projected } from '../../math/projection';
+import { type Vec3, len, sub } from '../../math/vec3';
+import type { Projected } from '../../math/projection';
 import type { ActiveCelestialLabel } from './celestial-markers';
 import { MARKER_PRIORITY } from './marker-priority';
 import { bearingPlacement, headingRotationDeg } from './marker-placement';
@@ -9,9 +9,11 @@ import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from '../../marker/crowding';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDevice } from '../../marker/marker-device';
 import type { ThemePalette } from '../../theme';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
+import type { ViewMode } from '../view/view-mode';
 
 // 画面外へ出た対象を画面端の円周上で指す方位マーカーの見た目。
 export interface BearingMarker {
@@ -24,6 +26,7 @@ export interface BearingMarker {
   readonly clustered: boolean;
 }
 
+// 並べる対象1件の、画面内マーカーと方位マーカーの材料。
 export interface GroupedMarkerItem {
   key: string;
   readonly kind: DynamicEntityKind;
@@ -59,12 +62,13 @@ const CLUSTER_RADIUS_PX = 40;
 
 const bearingKey = (key: string): string => `${key}-bearing`;
 
+// 投影済みの対象1件と、近接まとめの結果。
 interface PlacedItem {
   item: GroupedMarkerItem;
   p: Projected;
   dist: number;
   count: number; // 自分がまとめた件数(1 = 単独)
-  labeled: boolean; // false = 代表に吸収されたのでラベルを出さない
+  labeled: boolean; // ラベルを出すか。代表に吸収されたか天体ラベルへ譲ったなら false
   groupMembers?: readonly GroupedMarkerItem[];
   hiddenByCelestialLabel?: boolean;
 }
@@ -80,7 +84,12 @@ export class GroupedMarkers {
     return this.hiddenItemsList;
   }
 
-  public constructor(private readonly group: MarkerSink) { }
+  private readonly group: MarkerSink;
+
+  // マーカー群を markers から作って持つ。
+  public constructor(markers: MarkerDevice) {
+    this.group = markers.createGroup();
+  }
 
   // 所有するマーカー群を取り除く。
   public dispose(): void { this.group.dispose(); }
@@ -89,12 +98,12 @@ export class GroupedMarkers {
   // 方位マーカーの代わりに、マーカー自体を vel の進行方向へ回す(円軌道では静止画から
   // 回転方向が読めないため)。
   public sync(
-    items: readonly GroupedMarkerItem[], camera: CameraFrame, nowMs: number,
+    items: readonly GroupedMarkerItem[], camera: CameraFrame, view: ViewMode, nowMs: number,
     celestialLabels: readonly ActiveCelestialLabel[],
     celestialBodies: readonly CelestialBody[],
   ): void {
     const project = camera.project;
-    const mapView = camera.mode === 'map';
+    const mapView = view === 'map';
     // 画面座標とカメラからの距離を求めてから、近接するものをまとめる。
     const placed: PlacedItem[] = items.map(
       (item) => ({
@@ -142,6 +151,7 @@ export class GroupedMarkers {
   private itemDeclaration(m: PlacedItem, rotationDeg: number | undefined): MarkerDeclaration {
     const opacity = m.item.opacity ?? 1;
     const visible = m.item.occluded !== true && opacity > 0 && m.p.front;
+    // 近接まとめはここで済んでいるので、装置へはまとめ済み(clustered)として渡す。
     return {
       id: m.item.key,
       cls: m.item.cls,
@@ -164,6 +174,7 @@ export class GroupedMarkers {
   // 画面外(背面を含む)の対象を画面端で指す方位マーカー1件の宣言。
   private bearingDeclaration(m: PlacedItem, mapView: boolean, camera: CameraFrame): MarkerDeclaration {
     const bearing = m.item.bearing;
+    // 方位マーカーは戦闘ビューで、方位を出す種別の見えている対象にだけ置く。
     const placement = mapView || !bearing.visible || m.item.occluded === true || (m.item.opacity ?? 1) <= 0
       ? null : bearingPlacement(m.p, camera.viewport);
     return {

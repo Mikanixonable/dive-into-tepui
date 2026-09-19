@@ -1,5 +1,5 @@
 // クリエイティブモードの物体配置。配置パネルを持ち、フォームの値を検証して初期状態を組み、
-// 置くと決まった物体を onPlace へ渡す。配置プレビューをどの値で出すかもここが決める。
+// 置くと決まった物体の指定を受け手へ渡す。配置プレビューをどの値で出すかもここが決める。
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf, semiMajorFromPeriod, stateFromOrbitalElements, type OrbitalElements } from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
@@ -22,6 +22,9 @@ import {
   validateBaseReferenceFields, validateEllipticPlacementFields, validateLagrangePlacementFields,
   type PlacementFieldIssue,
 } from './placement-validation';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
+import { pointPlacement } from '../marker/marker-placement';
+import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
 import type * as THREE from 'three/webgpu';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -33,9 +36,7 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEventSink } from '../run-events';
 import type { HudLayers } from '../hud/hud-layers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import { MARKER_PRIORITY } from '../marker/marker-priority';
-import { pointPlacement } from '../marker/marker-placement';
-import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
+import type { ViewMode } from '../view/view-mode';
 
 // 軌道上へ配置できる自機の上限隻数(SPEC GAME.md 9.1)。
 export const MAX_PLACED_SHIPS = 50;
@@ -55,17 +56,25 @@ export type PlacedObject =
   | { readonly kind: 'player'; readonly placement: PlayerPlacement }
   | { readonly kind: 'entity'; readonly entity: DynamicEntity };
 
+// 配置した自機の id の、次に発番する連番。
+export interface SerializedObjectPlacement {
+  readonly playerIdAllocator: number;
+}
+
+// 検証を通った配置の指定の受け手。実体を作るのは受け手の側。
+export interface ObjectPlacementSink {
+  placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void;
+}
+
 export class ObjectPlacement {
   private readonly panel: ObjectPlacerPanel;
   private readonly previewView: ObjectPlacementPreviewView;
   // このフレームのプレビュー ▷ マーカーの宣言。
   private readonly declarations: MarkerDeclaration[] = [];
-  private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
+  private readonly playerIdAllocator: EntityIdAllocator;
 
-  // 検証を通った配置の指定の渡し先。実体を作るのは受け取った側。
-  public onPlace: ((name: string, entityKind: DynamicEntityKind, state: KinematicState) => void) | null = null;
-
-  // 配置パネルとプレビューの表示資源を組む。
+  // 配置パネルとプレビューの表示資源を組む。placements は検証を通った配置の指定の受け手。
+  // playerIdCounter は配置した自機の id の次に発番する連番で、省けば連番の初めから発番する。
   public constructor(
     hud: HudLayers,
     private readonly scene: THREE.Scene,
@@ -73,9 +82,10 @@ export class ObjectPlacement {
     private readonly idAllocators: EntityIdAllocators,
     private readonly events: RunEventSink,
     private readonly celestialSystem: CelestialSystem,
+    private readonly placements: ObjectPlacementSink,
+    playerIdCounter = 0,
   ) {
-    // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦の id を予約する。
-    for (const p of roster.all().filter(isPlayer)) this.playerIdAllocator.next(p.id);
+    this.playerIdAllocator = new EntityIdAllocator('creative-player-', playerIdCounter);
 
     this.previewView = new ObjectPlacementPreviewView(scene, PREVIEW_LINE_STYLE);
 
@@ -83,13 +93,18 @@ export class ObjectPlacement {
     this.panel.onConfirm = (name, form) => this.place(name, form);
   }
 
+  // 配置した自機の id の連番を直列化した形へ畳む。
+  public serialize(): SerializedObjectPlacement {
+    return { playerIdAllocator: this.playerIdAllocator.serialize() };
+  }
+
   // オブジェクト配置モーダルを開く。focusId が基準天体になれる ID なら、基準天体の初期選択に使う。
   public openObjectPlacer(focusId?: string): void {
     this.panel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
-  // 種類と軌道要素を引き継いで配置パネルを開く。引き継ぐのは state を軌道要素へ逆算でき、基地の
-  // 基準天体制約も満たすときだけ — それ以外は種類だけにして、制約外の軌道が黙って置かれるのを防ぐ。
+  // 種類と軌道要素を引き継いで配置パネルを開く。state を軌道要素へ逆算できないか基地の基準天体
+  // 制約に反するときは、種類だけを引き継ぎ、軌道を複製できなかったことを記録する。
   public openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
     const form = elementsFormFromState(
       state, this.celestialSystem, state.t, this.celestialSystem.origin.id);
@@ -102,12 +117,12 @@ export class ObjectPlacement {
   }
 
   // 開いているフォームの現在値から、配置プレビューと入力欄の検証表示を更新する。
-  public sync(camera: CameraFrame, displayTime: number): void {
+  public sync(camera: CameraFrame, view: ViewMode, displayTime: number): void {
     const form = this.panel.isOpen ? this.panel.getForm() : null;
     const preview = form ? this.computePreview(form) : null;
     this.previewView.sync(preview?.elements ?? null, PREVIEW_LINE_STYLE, camera);
     this.declarations.length = 0;
-    this.declarations.push(this.previewMarker(preview?.pos ?? null, camera, displayTime));
+    this.declarations.push(this.previewMarker(preview?.pos ?? null, camera, view, displayTime));
     this.panel.setIssues(form ? this.computeFieldIssues(form) : []);
   }
 
@@ -136,7 +151,7 @@ export class ObjectPlacement {
   // プレビューの ▷ マーカーの宣言。pos はプレビューの ECI 位置で、プレビューを出せない
   // フレームでは null。
   private previewMarker(
-    pos: Vec3 | null, camera: CameraFrame, displayTime: number,
+    pos: Vec3 | null, camera: CameraFrame, view: ViewMode, displayTime: number,
   ): MarkerDeclaration {
     const base = {
       id: PREVIEW_MARKER_ID, cls: 'mk-self', sym: ENTITY_GLYPH.preview,
@@ -144,7 +159,7 @@ export class ObjectPlacement {
     };
     // 位置が無いときと、マップ視点で天体に遮られているときは、画面上の位置を示さない。
     if (pos === null) return { ...base, x: 0, y: 0, front: false, occluded: true };
-    if (camera.mode === 'map'
+    if (view === 'map'
       && isOccluded(camera.position, pos, this.celestialSystem.celestialMotions, displayTime)) {
       return { ...base, x: 0, y: 0, front: false };
     }
@@ -155,10 +170,10 @@ export class ObjectPlacement {
     };
   }
 
-  // フォームの値を検証して初期状態を組み、置く物体の指定を onPlace へ渡す。
+  // フォームの値を検証して初期状態を組み、置く物体の指定を受け手へ渡す。
   // 検証に落ちるか状態を組めなければ、落ちた理由を記録して何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
-    // 隻数の上限に掛かることを操作した場で知らせるための先読み。判定の正本は onPlace の受け手。
+    // 隻数の上限に掛かることを、操作した場で知らせるための先読み。
     if (form.entityKind === 'player' && this.roster.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
       this.events.record({ kind: 'shipPlacementLimitReached', limit: MAX_PLACED_SHIPS });
       return;
@@ -167,7 +182,7 @@ export class ObjectPlacement {
       this.assertValidForm(form);
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
-      this.onPlace?.(name, form.entityKind, state);
+      this.placements.placeObject(name, form.entityKind, state);
     } catch (error) {
       const message = error instanceof Error ? error.message : '入力を解釈できません';
       this.events.record({ kind: 'objectPlacementRejected', reason: message });
@@ -191,17 +206,17 @@ export class ObjectPlacement {
       case 'ammo':
         return {
           kind: 'entity',
-          entity: new AmmoPickup({ state, name: finalName }, this.scene, this.idAllocators),
+          entity: AmmoPickup.create({ state, name: finalName }, this.scene, this.idAllocators),
         };
       case 'fuel':
         return {
           kind: 'entity',
-          entity: new RcsFuelPickup({ state, name: finalName }, this.scene, this.idAllocators),
+          entity: RcsFuelPickup.create({ state, name: finalName }, this.scene, this.idAllocators),
         };
       case 'base':
         return {
           kind: 'entity',
-          entity: new Base({ state, name: finalName }, this.scene, this.idAllocators),
+          entity: Base.create({ state, name: finalName }, this.scene, this.idAllocators),
         };
     }
   }
@@ -218,6 +233,7 @@ export class ObjectPlacement {
     if (!(motion instanceof OrbitingMotion)) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
+    // いまの時刻の主天体・副天体の系で、ハロー/リサジューの初期状態を解く。
     const t = this.roster.simTime;
     const system = secondaryFrameOf(this.celestialSystem.celestialMotions, t, motion, t);
     if (system === null) {

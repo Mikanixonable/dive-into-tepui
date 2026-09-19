@@ -1,6 +1,5 @@
-// 持ち主1人ぶんのマーカー群。毎フレームの宣言の列を受け取り、前フレームとの差分で要素を作り、
-// 置き直し、宣言から外れたものを片付ける。遮蔽で畳む宣言だけは、透明になりきるまでの時間を
-// sync が受け取る実時刻で測る。
+// 持ち主1人ぶんのマーカー群。毎フレームの宣言の列を受け取り、要素を作り・置き直し・宣言から
+// 外れたものを片付ける。
 import type { MarkerDeclaration } from './marker-declaration';
 import type { MarkerSink } from './marker-sink';
 
@@ -13,6 +12,8 @@ export interface MarkerRecord {
   readonly root: HTMLElement;
   readonly sym: HTMLElement;
   readonly lbl: HTMLElement;
+  // 要素へ貼っている宣言の cls。変わったフレームだけ貼り直す。
+  cls: string;
   fixedLabel: boolean;
   hidden: boolean;
   x: number;
@@ -46,14 +47,17 @@ export class MarkerGroup implements MarkerSink {
     private readonly onDispose: (group: MarkerGroup) => void,
   ) {}
 
+  // 要素をこのフレームの宣言の列 items へ合わせる。nowMs [ms] は実時刻で、遮蔽で畳む時間を測る。
   // 列から外れた宣言の要素は、この呼び出しで DOM ごと消える。
   public sync(items: readonly MarkerDeclaration[], nowMs: number): void {
+    // 宣言された要素を置き直す。
     const declared = this.declaredScratch;
     declared.clear();
     for (const item of items) {
       declared.add(item.id);
       this.place(item, nowMs);
     }
+    // 宣言から外れた要素を片付ける。
     for (const [id, m] of this.records) {
       if (declared.has(id)) continue;
       m.root.remove();
@@ -90,7 +94,12 @@ export class MarkerGroup implements MarkerSink {
       if (known !== undefined) this.fade(known, nowMs);
       return;
     }
+    // 見えている宣言: 要素を用意し、記録を宣言へ揃える。
     const m = known ?? this.create(item);
+    if (m.cls !== item.cls) {
+      m.cls = item.cls;
+      m.root.className = `mk ${item.cls}`;
+    }
     m.fadeStartMs = null;
     m.fixedLabel = item.fixedLabel === true;
     m.hidden = !item.front;
@@ -100,6 +109,7 @@ export class MarkerGroup implements MarkerSink {
     m.dist = item.dist;
     m.iconHidable = item.iconHidable !== false;
     m.clustered = item.clustered === true;
+    // 前フレームの間引きを解いてから、手前にあれば描く。
     m.sym.classList.remove('priority-hidden');
     m.lbl.classList.remove('priority-hidden');
     m.root.style.display = item.front ? 'block' : 'none';
@@ -132,6 +142,7 @@ export class MarkerGroup implements MarkerSink {
 
   // 遮蔽で畳む。透明化は CSS の遷移に任せ、遷移が終わる時刻を過ぎたフレームで伏せる。
   private fade(m: MarkerRecord, nowMs: number): void {
+    // 畳んでいる途中: 遷移が終わっていれば伏せる。
     if (m.fadeStartMs !== null) {
       if (nowMs - m.fadeStartMs < OCCLUSION_FADE_MS) return;
       m.fadeStartMs = null;
@@ -139,6 +150,7 @@ export class MarkerGroup implements MarkerSink {
       m.root.style.display = 'none';
       return;
     }
+    // 見えている要素を、透明への遷移に乗せる。
     if (m.hidden) return;
     m.root.style.display = 'block';
     m.root.style.opacity = '0';
@@ -148,11 +160,13 @@ export class MarkerGroup implements MarkerSink {
   // 宣言1件ぶんの要素(枠・シンボル・ラベル)を作って記録する。
   private create(item: MarkerDeclaration): MarkerRecord {
     const root = el('div', `mk-${item.id}`, this.root, `mk ${item.cls}`);
+    // 伏せた姿で記録を始める。
     const m: MarkerRecord = {
       id: item.id,
       root,
       sym: el('span', `mk-${item.id}-s`, root, 'sym'),
       lbl: el('span', `mk-${item.id}-l`, root, 'lbl'),
+      cls: item.cls,
       fixedLabel: false,
       hidden: true,
       x: item.x,
