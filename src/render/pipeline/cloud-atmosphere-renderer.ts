@@ -131,7 +131,7 @@ export class CloudAtmosphereRenderer {
     this.active.value = clouds === null ? 0 : 1;
     if (clouds === null) return;
     this.bodyFromWorld.value.copy(clouds.bodyFromWorld);
-    this.fieldSampler.bind(clouds.field);
+    this.fieldSampler.bind(clouds.cloud.field);
   }
 
   // 種類ごとに、その殻を描くかを置き直す。

@@ -8,7 +8,7 @@ import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { CloudFieldBinding } from './cloud-field-sampler';
+import type { CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from './field-projection';
 
 // cap を置き直す前の仮の向き。aim() が最初に上書きするまでしか効かないので、どの向きでもよい。
@@ -22,6 +22,8 @@ export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof
 // 雲場の出どころ1つが供給するもの。texture は cap へ焼いた写しで、寿命は出どころが持つ。
 export interface CloudFieldSource {
   readonly texture: THREE.Texture;
+  // prepare() が公開した焼成済み場の世代。未準備の場は0。
+  readonly generation: number;
   // 表示時刻 displayTime [s] の場を読める状態にする。GPU で焼くなら、その時間を gpu へ計上する。
   prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
   // 保持している GPU 資源を解放する。
@@ -50,9 +52,12 @@ export class CloudPresentation {
     this.aim(INITIAL_CAP_DIRECTION, 1);
   }
 
-  // 焼いた場と、それを焼いた cap の置き方の組。読み手はこれを自分の sampler へ写す。
-  public get binding(): CloudFieldBinding {
-    return { texture: this.source.texture, cap: this.cap.placement };
+  public get renderInput(): CloudRenderInput {
+    return {
+      field: { texture: this.source.texture, cap: this.cap.placement },
+      generation: this.source.generation,
+      topAltitude: this.topAltitude,
+    };
   }
   public get visible(): boolean { return this.surface.visible; }
   public get cloudsVisible(): boolean { return this.cloudVisible; }
@@ -64,7 +69,7 @@ export class CloudPresentation {
   // **選び直したら結び直す** — 結び直さないと、不透明表面が前の出どころの写しを読み続ける。
   public setSource(kind: CloudFieldSourceKind): void {
     this.source = this.sources[kind];
-    this.surface.bind(this.binding);
+    this.surface.bind(this.renderInput);
   }
 
   // cap を、天体固定・半軸で割った殻の空間で見た直下点 subpoint(単位方向)へ置き直す。
@@ -72,7 +77,7 @@ export class CloudPresentation {
   // すぐ写す — 写さないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
   public aim(subpoint: THREE.Vector3, rho: number): void {
     this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
-    this.surface.bind(this.binding);
+    this.surface.bind(this.renderInput);
   }
 
   public setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
