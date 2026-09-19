@@ -1,13 +1,11 @@
 // 地表タイルの固定レイアウトと、周期境界を含むキー操作を定義する。
 import * as THREE from 'three/webgpu';
 
-export const EARTH_TILE_MIN_Z = 4;
+export const EARTH_TILE_MIN_Z = 5;
 export const EARTH_TILE_MAX_Z = 7;
 export const EARTH_TILE_TEXELS = 256;
 export const EARTH_TILE_GUTTER = 2;
 export const EARTH_TILE_EXTENT = EARTH_TILE_TEXELS + 2 * EARTH_TILE_GUTTER;
-// 安定frontierとLOD選択が参照するresident層の上限。
-export const EARTH_TILE_FRONTIER_LAYERS = 80;
 // 親子fadeを含むGPU配列の物理層数。WebGPUの最低保証256層内に収める。
 export const EARTH_TILE_LAYERS = 96;
 export const EARTH_BASE_LAYER = 255;
@@ -47,7 +45,7 @@ export function earthTileChildren(key: EarthTileKey): readonly EarthTileKey[] {
   ];
 }
 
-// 表示木の根を返す。z0のESTBは配信fallback専用で、詳細木はz4から始める。
+// 表示木の根を返す。全球画像は暗黙のz4で、地域詳細はz5から始める。
 export function earthTileRoots(): readonly EarthTileKey[] {
   const height = 2 ** EARTH_TILE_MIN_Z;
   return Array.from({ length: height }, (_, y) => Array.from({ length: 2 * height }, (_, x) =>
@@ -63,18 +61,4 @@ export function earthTileNeighbors(key: EarthTileKey): readonly EarthTileKey[] {
     earthTileKey(key.z, key.y === height - 1 ? key.x + height : key.x,
       key.y === height - 1 ? key.y : key.y + 1),
   ];
-}
-
-// 段差を縮尺へ直し、キーが祖先区画に含まれるかを判定する。
-function contains(ancestor: EarthTileKey, key: EarthTileKey): boolean {
-  // 段差を縮尺へ直し、周期正規化済みの区画が祖先内にあるかを判定する。
-  const scale = 2 ** (key.z - ancestor.z);
-  return scale >= 1 && Math.floor(key.x / scale) === ancestor.x && Math.floor(key.y / scale) === ancestor.y;
-}
-
-// 段の異なる2区画が辺を共有するかを、周期境界と極も含めて答える。
-export function earthTilesAdjacent(a: EarthTileKey, b: EarthTileKey): boolean {
-  const fine = a.z >= b.z ? a : b;
-  const coarse = a.z >= b.z ? b : a;
-  return earthTileNeighbors(fine).some((neighbor) => contains(coarse, neighbor));
 }

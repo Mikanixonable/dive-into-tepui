@@ -1,5 +1,5 @@
 // パフォーマンス再現計測プローブ。tools/chrome-session.mjs でヘッドレス Chrome を上げ、
-// デバッグ情報ウィンドウ(DebugInfoWindow, `.prop-window` タイトル「デバッグ」)の計測タブ全行をワープ段数・
+// デバッグ情報ウィンドウ(DebugInfoWindow, `.property-window` タイトル「デバッグ」)の計測タブ全行をワープ段数・
 // ビュー・計画ノード有無ごとに読み取って JSON で出す。ゲーム本体(src/)は一切変更しない。
 //
 // 使い方:
@@ -102,8 +102,8 @@ async function bootAndWaitReady(devTools, timeoutMs = 60000) {
 // デバッグ情報ウィンドウ(タイトル「デバッグ」)の計測タブ全行を {key,label,value} で読む。無ければ null。
 async function readPerfRows(devTools) {
   return devTools.evaluate(`(() => {
-    const wins = [...document.querySelectorAll('.prop-window')];
-    const win = wins.find((w) => w.querySelector('.prop-window-title-main')?.textContent === 'デバッグ');
+    const wins = [...document.querySelectorAll('.property-window')];
+    const win = wins.find((w) => w.querySelector('.dg-window-title-main')?.textContent === 'デバッグ');
     if (!win) return null;
     return [...win.querySelectorAll('.prop-window-row')].map((r) => ({
       key: r.dataset.key ?? '',

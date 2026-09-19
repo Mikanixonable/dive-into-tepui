@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from '../harness';
-import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
-import { MU_MOON, R_MOON } from '../../src/game/celestial/solar-system/constants';
+import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
 import {
   validateEllipticPlacementFields, validateLagrangePlacementFields, validateBaseReferenceFields,
   EllipticPlacementInput, PlacementFieldIssue,

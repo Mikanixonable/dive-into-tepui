@@ -41,13 +41,10 @@ export type ShipModuleInstance =
   | RadiatorInstance | SolarPanelInstance | BoosterInstance | DockingPortInstance | DockInstance
   | DecouplerInstance;
 
-export type ShipModuleState = Partial<Pick<ShipModuleInstance, 'hp'>> & {
-  readonly temperature?: number;
-  readonly fuel?: number;
-  readonly fuelKind?: FuelKind;
-  readonly ignited?: boolean;
-  readonly deployed?: number;
-};
+export type ShipModuleState = Partial<Pick<ShipModuleInstance, 'hp'>>
+  & Partial<Record<'temperature' | 'fuel' | 'deployed', number | null>>
+  & Partial<Record<'fuelKind', FuelKind | null>>
+  & Partial<Record<'ignited', boolean | null>>;
 
 let nextGeneratedId = 1;
 
@@ -55,16 +52,16 @@ function instanceId(): string {
   return `module-${nextGeneratedId++}`;
 }
 
-function normalizedHp(value: number | undefined, maxHp: number): number {
-  return value !== undefined && Number.isFinite(value) ? Math.max(0, Math.min(maxHp, value)) : maxHp;
+function normalizedHp(value: number | null, maxHp: number): number {
+  return value !== null && Number.isFinite(value) ? Math.max(0, Math.min(maxHp, value)) : maxHp;
 }
 
-function normalizedFraction(value: number | undefined): number {
-  return value !== undefined && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+function normalizedFraction(value: number | null): number {
+  return value !== null && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 }
 
-function normalizedFuel(value: number | undefined, capacity: number): number {
-  return value !== undefined && Number.isFinite(value) ? Math.max(0, Math.min(capacity, value)) : capacity;
+function normalizedFuel(value: number | null, capacity: number): number {
+  return value !== null && Number.isFinite(value) ? Math.max(0, Math.min(capacity, value)) : capacity;
 }
 
 // 定義と任意の保存 state から、assembly が所有する可変 instance を作る。
@@ -72,24 +69,25 @@ export function createShipModuleInstance(
   definition: ShipModuleDefinition, id = instanceId(), state: ShipModuleState = {},
 ): ShipModuleInstance {
   if (id.length === 0) throw new Error('ship module instance id must not be empty');
-  const temperature = state.temperature !== undefined && Number.isFinite(state.temperature)
-    ? Math.max(0, state.temperature) : 255;
+  const temperatureValue = state.temperature ?? null;
+  const temperature = temperatureValue !== null && Number.isFinite(temperatureValue)
+    ? Math.max(0, temperatureValue) : 255;
   const base = {
     id, definitionId: definition.id, kind: definition.kind,
-    hp: normalizedHp(state.hp, definition.maxHp), temperature,
+    hp: normalizedHp(state.hp ?? null, definition.maxHp), temperature,
   };
   switch (definition.kind) {
     case 'tank': {
       const fuelKind = definition.abilities.fuelKind;
       if (fuelKind === undefined) throw new Error(`tank definition ${definition.id} lacks fuelKind`);
       const capacity = definition.abilities.fuelCapacity ?? 0;
-      return { ...base, kind: 'tank', fuelKind, fuel: normalizedFuel(state.fuel, capacity) };
+      return { ...base, kind: 'tank', fuelKind, fuel: normalizedFuel(state.fuel ?? null, capacity) };
     }
-    case 'radiator': return { ...base, kind: 'radiator', deployed: normalizedFraction(state.deployed) };
+    case 'radiator': return { ...base, kind: 'radiator', deployed: normalizedFraction(state.deployed ?? null) };
     case 'solar_panel': return { ...base, kind: 'solar_panel', deployed: normalizedFraction(state.deployed ?? 1) };
     case 'booster': {
       const capacity = definition.abilities.fuelCapacity ?? 0;
-      return { ...base, kind: 'booster', fuel: normalizedFuel(state.fuel, capacity), ignited: state.ignited === true };
+      return { ...base, kind: 'booster', fuel: normalizedFuel(state.fuel ?? null, capacity), ignited: state.ignited === true };
     }
     case 'cockpit': return { ...base, kind: 'cockpit' };
     case 'thruster': return { ...base, kind: 'thruster' };

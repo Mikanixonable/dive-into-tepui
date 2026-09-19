@@ -1,8 +1,8 @@
-import { Attitude } from '../../../physics/attitude';
+import type { Attitude } from '../../../physics/attitude';
 import { DynamicEntity, type DynamicMotionFactory } from './dynamic-entity';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotionProperties } from '../dynamic-motion';
-import { Part, PartType, type ShipPartCollection } from './parts';
+import type { Part, PartType, ShipPartCollection } from './parts';
 import { collisionDamageFraction } from './contact-damage';
 import type {
   ArmorPart,
@@ -38,7 +38,7 @@ export function shipMotionOptions(
     srpCoeff: SHIP_SRP_COEFF,
     // 過去線を保持し、予測も引く
     historyDuration: DEFAULT_HISTORY_DURATION,
-    predictedForGhost: true,
+    followsPredictedArc: true,
     // 熱の物性
     specificHeat: SHIP_SPECIFIC_HEAT,
     bulkDensity: SHIP_BULK_DENSITY,
@@ -52,7 +52,7 @@ export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 // パーツ式の被弾モデルを持つ艦(自機・敵機)。HP と性能はパーツの合計から求める。
 export abstract class Ship extends DynamicEntity {
   public override readonly combatTarget = true;
-  private readonly markerRenderer = new ShipMarkerRenderer();
+  private readonly markerRenderer: ShipMarkerRenderer;
 
   private _hp!: number;
   private _maxHp!: number;
@@ -66,12 +66,12 @@ export abstract class Ship extends DynamicEntity {
 
   // type 別のパーツ参照。parts を入れ替えたら組み直す。値ではなく参照を持つので、パーツの
   // HP・燃料の変化はそのまま読める。
-  private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
-  private readonly solarPanelPartRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
+  private readonly radiatorPartRefs: [RadiatorPart | null, RadiatorPart | null] = [null, null];
+  private readonly solarPanelPartRefs: [SolarPanelPart | null, SolarPanelPart | null] = [null, null];
   private readonly weaponPartRefs: WeaponPart[] = [];
   private readonly armorPartRefs: ArmorPart[] = [];
-  private hullPart: Part | undefined;
-  private cockpitPart: CockpitPart | undefined;
+  private hullPart: Part | null = null;
+  private cockpitPart: CockpitPart | null = null;
 
   // 基底の識別・Motion・View を組み、名前と HP を初期化する。ロードアウトは呼び出し側が渡す。
   public constructor(
@@ -79,11 +79,12 @@ export abstract class Ship extends DynamicEntity {
     hp: number,
     motionFactory: DynamicMotionFactory,
     view: DynamicView,
-    id?: string,
+    id: string,
     initialParts?: readonly Part[],
     partCollection: ShipPartCollection = new PartInventory(),
   ) {
     super(motionFactory, view, id);
+    this.markerRenderer = new ShipMarkerRenderer(id);
     this.inventory = partCollection;
     this.setName(name);
     this.hp = hp;
@@ -108,12 +109,12 @@ export abstract class Ship extends DynamicEntity {
     this.armorPartRefs.length = 0;
     let radiatorIndex = 0;
     let solarPanelIndex = 0;
-    this.radiatorPartRefs[0] = undefined;
-    this.radiatorPartRefs[1] = undefined;
-    this.solarPanelPartRefs[0] = undefined;
-    this.solarPanelPartRefs[1] = undefined;
-    this.hullPart = undefined;
-    this.cockpitPart = undefined;
+    this.radiatorPartRefs[0] = null;
+    this.radiatorPartRefs[1] = null;
+    this.solarPanelPartRefs[0] = null;
+    this.solarPanelPartRefs[1] = null;
+    this.hullPart = null;
+    this.cockpitPart = null;
 
     // 船体とコックピットは最初の1つ、放熱板と太陽電池パドルは左右の2枚までを取る。
     for (const part of this.parts) {
@@ -269,12 +270,12 @@ export abstract class Ship extends DynamicEntity {
 
   // 機体左右2枚の放熱板・太陽電池パドルに対応するパーツ。並び順が side に対応し、
   // 先頭が 'up'(左)、次が 'down'(右)。枚数が足りなければ undefined になる。
-  public get radiatorParts(): readonly (RadiatorPart | undefined)[] {
+  public get radiatorParts(): readonly (RadiatorPart | null)[] {
     return this.radiatorPartRefs;
   }
 
   // 左右2枚の太陽電池パドルに対応するパーツ。並びは radiatorParts と同じく side 順。
-  public get solarParts(): readonly (SolarPanelPart | undefined)[] {
+  public get solarParts(): readonly (SolarPanelPart | null)[] {
     return this.solarPanelPartRefs;
   }
 

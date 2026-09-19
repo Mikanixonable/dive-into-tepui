@@ -35,7 +35,7 @@ const VIEWPOINT: Viewpoint = {
 };
 
 function cameraFrame(): CameraFrame {
-  return new CameraView().sync(VIEWPOINT, VIEWPOINT.fovDeg, 2e7, VIEWPORT, 'map', false, v3());
+  return new CameraView().sync(VIEWPOINT, VIEWPOINT.fovDeg, 2e7, VIEWPORT, false, v3());
 }
 
 // 各パスへ書かれた値の記録。illumination が書き込む口だけを持つ。
@@ -143,9 +143,9 @@ function plainView(): CelestialIlluminationView {
 }
 
 function source(
-  motion: DefinedCelestialBody, view: CelestialIlluminationView, visible: boolean,
+  motion: DefinedCelestialBody, view: CelestialIlluminationView,
 ): CelestialIlluminationSource {
-  return { motion, view, visible };
+  return { motion, view };
 }
 
 export function register(): void {
@@ -164,27 +164,27 @@ export function register(): void {
     assert.ok(placed.x > 0 && Math.abs(placed.y) < 1e-6 && Math.abs(placed.z) < 1e-6, '向きが渡した値と違う');
   });
 
-  test('celestial-illumination: 非表示の天体は大気の候補から外れる', () => {
+  test('celestial-illumination: 大気を持つ天体は大気の候補に入る', () => {
     const targets = recordingTargets();
     const illumination = new CelestialIllumination(null, targets);
     const camera = cameraFrame();
-    const earthLike = body('earth-like', 6.371e6, v3());
 
     illumination.sync(
-      [source(earthLike, atmosphereView(), true)], 0, camera, DEFAULT_GRAPHICS, null, v3(1, 0, 0));
-    const visibleDraws = targets.atmosphereDraws[0]!.length;
-    assert.ok(visibleDraws > 0, '表示中の天体の大気が描かれていない');
+      [source(body('earth-like', 6.371e6, v3()), atmosphereView())],
+      0, camera, DEFAULT_GRAPHICS, null, v3(1, 0, 0));
+    assert.ok(targets.atmosphereDraws[0]!.length > 0, '大気を持つ天体の大気が描かれていない');
 
     illumination.sync(
-      [source(earthLike, atmosphereView(), false)], 0, camera, DEFAULT_GRAPHICS, null, v3(1, 0, 0));
-    assert.equal(targets.atmosphereDraws[1]!.length, 0, '非表示の天体の大気が残っている');
+      [source(body('airless', 1e6, v3()), plainView())],
+      0, camera, DEFAULT_GRAPHICS, null, v3(1, 0, 0));
+    assert.equal(targets.atmosphereDraws[1]!.length, 0, '大気を持たない天体の大気が描かれた');
   });
 
   test('celestial-illumination: 同じ入力を再び sync すると、同じ値が書かれる', () => {
     const targets = recordingTargets();
     const illumination = new CelestialIllumination(null, targets);
     const camera = cameraFrame();
-    const sources = [source(body('a', 1e6, v3(2e7, 0, 0)), plainView(), true)];
+    const sources = [source(body('a', 1e6, v3(2e7, 0, 0)), plainView())];
 
     illumination.sync(sources, 100, camera, DEFAULT_GRAPHICS, null, v3(0, 1, 0));
     illumination.sync(sources, 100, camera, DEFAULT_GRAPHICS, null, v3(0, 1, 0));
@@ -199,7 +199,7 @@ export function register(): void {
     const targets = recordingTargets();
     const illumination = new CelestialIllumination(null, targets);
     illumination.sync(
-      [source(body('a', 1e6, v3()), plainView(), true)], 0, cameraFrame(), DEFAULT_GRAPHICS, null, v3(1, 0, 0));
+      [source(body('a', 1e6, v3()), plainView())], 0, cameraFrame(), DEFAULT_GRAPHICS, null, v3(1, 0, 0));
     assert.equal(targets.cumulusCasters[0], null, '雲を持たないのに影の源が置かれた');
   });
 }

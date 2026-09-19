@@ -220,7 +220,6 @@
       "defaultState": "phosphorylated",
       "effects": {
         "phosphorylated": {
-          "fireRateMultiplier": 1.25,
           "damageMultiplier": 1.1
         }
       },

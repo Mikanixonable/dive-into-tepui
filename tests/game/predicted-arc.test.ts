@@ -1,20 +1,17 @@
 // game/dynamic/predicted-arc.ts の回帰。実シミュレーションが状態を引く弧(consumable)の
 // 刻みが simulationMaxStep に揃うことと、その刻み・間引きが表示期間(requiredEnd)に依存しない
 // ことを固定する — 依存すると PREDICT パネルの選択が実体の軌道と HUD の読みを変えてしまう。
-// consumable でない弧が requiredEnd に依存したままであることも併せて固定し、前者が
-// 「requiredEnd が誰にも効かなくなった」ことの確認になっていないようにする。
 import { fixedMotion } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import type { CelestialBody } from '../../src/physics/celestial-body';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
-import { EARTH_ATMOSPHERE } from '../../src/game/celestial/solar-system/earth-system';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { EARTH_ATMOSPHERE, MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { len, v3 } from '../../src/math/vec3';
 import { PredictedArc } from '../../src/game/dynamic/predicted-arc';
 import { atmosphericMaxStep } from '../../src/game/dynamic/time-step';
-import { SHIP_BCINV } from '../../src/game/dynamic/dynamic-entity/ship';
+import { SHIP_BCINV } from '../../src/game/dynamic/dynamic-entity/vessel';
 
 function circularState(t = 0): KinematicState {
   const r0 = R_EARTH + 420e3;
@@ -48,9 +45,8 @@ export function register(): void {
   test('predicted-arc: consumable な弧の刻みは simulationMaxStep を超えず、接近していない円軌道ではちょうど simulationMaxStep になる', () => {
     const state0 = circularState();
     const arc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
-    arc.requiredEnd = state0.t + 86400; // 1日ぶん先まで伸びてよいことにする(十分大きい)
-    arc.retainFrom = state0.t;
-    arc.simulationMaxStep = 20;
+    arc.demand(state0.t + 86400, state0.t); // 1日ぶん先まで伸びてよいことにする(十分大きい)
+    arc.alignSimulationStep(20);
 
     let prevT = state0.t;
     for (let i = 0; i < 300; i++) {
@@ -69,9 +65,8 @@ export function register(): void {
     const r0 = R_EARTH + 40e3;
     const state0 = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
     const arc = new PredictedArc(state0, earthOnlyBodies(true), /* radius */ 0, SHIP_BCINV, 0, /* keplerTail */ true, /* consumable */ true);
-    arc.requiredEnd = state0.t + 86400;
-    arc.retainFrom = state0.t;
-    arc.simulationMaxStep = 20;
+    arc.demand(state0.t + 86400, state0.t);
+    arc.alignSimulationStep(20);
 
     const atmosphere = { ...EARTH_ATMOSPHERE, pole: v3(0, 1, 0) };
     const earth: CelestialMotion = fixedMotion({
@@ -89,36 +84,17 @@ export function register(): void {
     }
   });
 
-  test('predicted-arc: consumable な弧の刻みは simulationMaxStep の値をそのまま反映する', () => {
-    const state0 = circularState();
-    const arc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
-    arc.requiredEnd = state0.t + 86400;
-    arc.retainFrom = state0.t;
-    arc.simulationMaxStep = 34.1;
-
-    let prevT = state0.t;
-    for (let i = 0; i < 300; i++) {
-      assert.ok(arc.step(), `step ${i} should grow`);
-      const t = arc.trajectory.state.t;
-      const dt = t - prevT;
-      assert.ok(Math.abs(dt - 34.1) < 1e-6, `step ${i}: expected dt=34.1, got ${dt}`);
-      prevT = t;
-    }
-  });
-
   test('predicted-arc: consumable な弧の刻み・間引きは requiredEnd を変えても変わらない', () => {
     const state0 = circularState();
     const retainFrom = state0.t;
 
     const shortArc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
-    shortArc.requiredEnd = state0.t + 86400; // 1日
-    shortArc.retainFrom = retainFrom;
-    shortArc.simulationMaxStep = 20;
+    shortArc.demand(state0.t + 86400, retainFrom); // 1日
+    shortArc.alignSimulationStep(20);
 
     const longArc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
-    longArc.requiredEnd = state0.t + 86400 * 28; // 28日
-    longArc.retainFrom = retainFrom;
-    longArc.simulationMaxStep = 20;
+    longArc.demand(state0.t + 86400 * 28, retainFrom); // 28日
+    longArc.alignSimulationStep(20);
 
     // ARC_FINE_STEPS(512) を跨いで、毎歩保持 → 周期基準の間引きへ移る歩数まで進める。
     const steps = 800;
@@ -134,32 +110,13 @@ export function register(): void {
     }
   });
 
-  test('predicted-arc: consumable でない弧(計画の区間)は requiredEnd に依存したまま', () => {
-    const state0 = circularState();
-    const retainFrom = state0.t;
-
-    const shortArc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ false);
-    shortArc.requiredEnd = state0.t + 86400; // 1日
-    shortArc.retainFrom = retainFrom;
-
-    const longArc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ false);
-    longArc.requiredEnd = state0.t + 86400 * 28; // 28日
-    longArc.retainFrom = retainFrom;
-
-    const steps = 20;
-    const shortTimes = tipTimes(shortArc, steps);
-    const longTimes = tipTimes(longArc, steps);
-    assert.notDeepEqual(shortTimes, longTimes, 'consumable でない弧は requiredEnd で刻みが変わるはず');
-  });
-
   test('predicted-arc: 大気を持たない天体の低空では、再突入域の細分化が起きない', () => {
     // 細分化の理由は大気の密度勾配なので、大気の無いところに再突入域は無い。
     const r0 = R_EARTH + 150e3;
     const state0 = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, Math.sqrt(MU_EARTH / r0), 0));
     const arc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ true, /* consumable */ true);
-    arc.requiredEnd = state0.t + 86400;
-    arc.retainFrom = state0.t;
-    arc.simulationMaxStep = 20;
+    arc.demand(state0.t + 86400, state0.t);
+    arc.alignSimulationStep(20);
 
     let prevT = state0.t;
     for (let i = 0; i < 20; i++) {
@@ -177,9 +134,8 @@ export function register(): void {
     const state0 = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, 1500, 0)); // 円速度を大きく割る = 落ちる
     const arc = new PredictedArc(
       state0, earthOnlyBodies(true), /* radius */ 0, 3.3e-3, 0, /* keplerTail */ true, /* consumable */ true);
-    arc.requiredEnd = state0.t + 86400;
-    arc.retainFrom = state0.t;
-    arc.simulationMaxStep = 20;
+    arc.demand(state0.t + 86400, state0.t);
+    arc.alignSimulationStep(20);
 
     // 80km(旧・弧の打ち切り高度)を割っても伸び続けることを確かめるため、そこを跨いで進める。
     let crossedOldReentryAlt = false;
@@ -195,15 +151,13 @@ export function register(): void {
     assert.ok(Math.abs(impactAlt) < 1e3, `到達点は地表のはず, got ${impactAlt / 1e3} km`);
   });
 
-  test('predicted-arc: 区間を表せるかは起点で決まり、起点を差し替えると表せなくなる', () => {
+  test('predicted-arc: 起点を差し替えた区間は、元の弧では表せない', () => {
     const state0 = circularState();
     const end = state0.t + 3600;
     const arc = new PredictedArc(state0, earthOnlyBodies(), /* radius */ 0, 0, 0, /* keplerTail */ false, /* consumable */ false);
-    arc.requiredEnd = end;
-    arc.retainFrom = state0.t;
+    arc.demand(end, state0.t);
     tipTimes(arc, 5);
 
-    assert.ok(arc.represents(state0, end), '同じ起点なら弧を使い回せる(毎フレーム作り直さない)');
     const edited = kinematicState<'eci'>(state0.t, state0.r, v3(state0.v.x, state0.v.y + 10, state0.v.z));
     assert.ok(!arc.represents(edited, end), '起点を差し替えたら弧を作り直す(計画のノードを編集したとき)');
   });

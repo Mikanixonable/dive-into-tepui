@@ -23,6 +23,9 @@ export interface BurnManagementViewModel {
   }[];
 }
 
+// ブースターとデカプラーの操作は各モジュールのプロパティウィンドウから行う。
+export type BurnManagementPanelHandlers = Record<string, never>;
+
 interface BurnManagementDom {
   readonly stageCount: HTMLElement;
   readonly totalMass: HTMLElement;
@@ -91,7 +94,8 @@ export class BurnManagementPanel {
   }
 
   /** 表示モデルを同期する。null はブースターのない機体としてパネルを隠す。 */
-  public sync(view: BurnManagementViewModel | null): void {
+  public sync(view: BurnManagementViewModel | null, _handlers: BurnManagementPanelHandlers = {}): void {
+    void _handlers;
     this.model = view;
     const panel = this.els.get('burn-management-panel');
     if (!panel) return;

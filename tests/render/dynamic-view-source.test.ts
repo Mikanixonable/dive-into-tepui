@@ -10,6 +10,7 @@ import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '..
 import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
 import { ThrustEffects } from '../../src/render/dynamic/player/thrust-effects';
 import { RcsEffects } from '../../src/render/dynamic/player/rcs-effects';
+import { DEFAULT_PROTEIN_DISPLAY } from '../../src/render/protein/protein-display';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { add, len, sub, v3, type Vec3 } from '../../src/math/vec3';
@@ -52,7 +53,7 @@ function cameraFrame(): CameraFrame {
     aspect: VIEWPORT.width / VIEWPORT.height,
     projection: 'perspective',
   };
-  return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, 'map', false, v3());
+  return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, false, v3());
 }
 
 // 表示時刻とカメラだけを持つ、そのフレームの共通入力。
@@ -62,18 +63,18 @@ function viewFrame(camera: CameraFrame, pools: InstancedPools): DynamicViewFrame
     camera,
     style: 'realistic',
     visual: { proteinVibration: false },
+    proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
     pools,
   };
 }
 
 // 1体ぶんの表示入力。stateAt は表示時刻に対する応答で、null なら状態を引けないフレーム。
 function renderSource(
-  alive: boolean, visible: boolean, stateAt: (t: number) => KinematicState | null,
+  alive: boolean, stateAt: (t: number) => KinematicState | null,
 ): DynamicRenderSource {
   return {
     id: 'entity-0',
     name: 'entity-0',
-    visible,
     alive,
     stateAt,
     attitude: Q_IDENTITY,
@@ -125,7 +126,7 @@ export function register(): void {
     const asked: number[] = [];
     const position = v3(7.0e6, 1.0e6, -2.0e6);
 
-    view.sync(renderSource(true, true, stateSource(position, asked)), viewFrame(camera, pools));
+    view.sync(renderSource(true, stateSource(position, asked)), viewFrame(camera, pools));
 
     assert.deepEqual(asked, [DISPLAY_TIME], '表示時刻以外の時刻を引いている');
     assert.ok(view.object.visible, '状態を引けたのに本体が出ていない');
@@ -140,7 +141,7 @@ export function register(): void {
     const pools = new InstancedPools([]);
     const view = new BareView(new THREE.Object3D());
     const asked: number[] = [];
-    const source = renderSource(false, true, stateSource(v3(7.0e6, 0, 0), asked));
+    const source = renderSource(false, stateSource(v3(7.0e6, 0, 0), asked));
 
     view.sync(source, viewFrame(camera, pools));
 
@@ -148,23 +149,12 @@ export function register(): void {
     assert.deepEqual(asked, [], '死んだ個体の状態を引いている');
   });
 
-  test('dynamic view source: visible が false のフレームは本体を出さない', () => {
-    const camera = cameraFrame();
-    const pools = new InstancedPools([]);
-    const view = new BareView(new THREE.Object3D());
-    const source = renderSource(true, false, stateSource(v3(7.0e6, 0, 0), []));
-
-    view.sync(source, viewFrame(camera, pools));
-
-    assert.equal(view.object.visible, false, '出さない宣言なのに本体が出ている');
-  });
-
   test('dynamic view source: 状態を引けないフレームは本体を出さない', () => {
     const camera = cameraFrame();
     const pools = new InstancedPools([]);
     const view = new BareView(new THREE.Object3D());
 
-    view.sync(renderSource(true, true, () => null), viewFrame(camera, pools));
+    view.sync(renderSource(true, () => null), viewFrame(camera, pools));
 
     assert.equal(view.object.visible, false, '状態を引けないのに本体が出ている');
   });

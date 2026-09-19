@@ -1,12 +1,6 @@
-// 凍結した起点状態(state0)から要求終端(requiredEnd)へ向けて、step() を呼ぶたびに RK4 で
-// 1歩だけ伸びる積分弧。刻み幅の決定・重力源/衝突体の窓解決・表面到達の判定・
-// 近地点/遠地点の蓄積を1歩の中で行う。作り直し(無効化)は持ち主がインスタンスを
-// 差し替えることで行う。
-//
-// **弧は大気による焼失を判定しない。** 姿勢も熱の蓄積状態も運ばないので、実体がどこで
-// 失われるかを原理的に当てられない。当てられない量を近似で埋めると、その近似の値を実体側と
-// 揃え続ける保守が発生する。弧が答えるのは「この自由落下の経路が固体表面へ到達するか」だけ。
-import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
+// 凍結した起点状態(state0)から要求終端(requiredEnd)へ向けて、step() を呼ぶたびに1歩だけ伸びる
+// 積分弧と、その経路の固体表面への到達・近地点/遠地点。作り直すときはインスタンスを差し替える。
+import { hermiteInterpolate, type KinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { nearestAtmosphereBody, strongestAttractor } from '../../physics/attractor';
 import { firstSurfaceContact } from '../../physics/surface-contact';
@@ -17,21 +11,18 @@ import { ArcCelestialBodies, type ArcCelestialBodyWindow } from './arc-celestial
 import { atmosphericMaxStep, SUBSTEP_MAX_DT, ARC_MIN_STEP_DT } from './time-step';
 import type { CelestialBody } from '../../physics/celestial-body';
 
-// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
-// (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
-// 狭めるが、狭めた区間に残るサンプルが数点まで減ると、折れ線上のクリック候補が飛び飛びの
-// 点になる。これを超えて粗ければ弧を作り直す。
+// 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか。これを超えて
+// 粗ければ弧を作り直す — 表示期間を縮めてもサンプルは増えないので、残りが数点まで減ると
+// 折れ線のクリック候補が飛び飛びになる。
 const ARC_MAX_SAMPLE_COARSENING = 8;
 
-// 天体接近時、1ステップで表面までの残距離を跨がないための安全率。動径接近率(表面までの
-// 距離の減り方)に掛かる上限係数で、相対速さそのものではなく接近している成分だけを見る
-// — でないと円軌道でも常に効いて粗化項(ARC_MAX_STEPS)を不当に上書きしてしまう。
+// 天体接近時、1歩で表面までの残距離を跨がないための安全率。動径接近率(表面までの距離の減り方)
+// に掛ける — 相対速さに掛けると円軌道でも常に効き、粗化項(ARC_MAX_STEPS)を不当に上書きする。
 const ARC_APPROACH_SAFETY = 0.5;
 
-// 消費される弧が、消費前線の近くで毎歩サンプルを残す歩数。この範囲では at() の補間誤差が
-// 1歩ぶん(20s 刻みで 4.5mm)まで落ちる。前線がここを抜けると周期基準の間引きへ移り、
-// 補間誤差は LEO で 20〜26m になる。512 は ×1 で 512×20s = 2.8 時間ぶん、最高ワープで
-// 512×34.1s = 8フレームぶんの前線をこの精度で覆う。
+// 消費される弧が、消費前線の近くで毎歩サンプルを残す歩数。この範囲の at() の補間誤差は 20s 刻みで
+// 4.5mm、外の周期基準の間引きでは LEO で 20〜26m。512 は ×1 で 2.8 時間ぶん、最高ワープで
+// 8フレームぶんの前線を覆う。
 const ARC_FINE_STEPS = 512;
 
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
@@ -45,17 +36,13 @@ export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ船の�
 // 1px 未満に収まる(LEO と低月周回では period/300 が ARC_MIN_STEP_DT を割るので、そちらの
 // 床が採用値になってこの値に依らない)。
 export const ARC_STEPS_PER_REV = 300;
-// 消費されない弧(計画の区間)の積分ステップ数・保持サンプル数の上限。
-// 弧の長さは表示期間(最大1年)に追従するので、1周回基準の刻みのままではステップ数もメモリも
-// 青天井になる。長い期間ではこれらが刻み幅と間引き間隔を決め、軌道の形の精度と引き換えに
-// 費用を頭打ちにする。刻み幅を決めるのは span > ARC_MAX_STEPS × ARC_MIN_STEP_DT(≒4.6日)の
-// ときだけ。ARC_MAX_SAMPLES は実状態の履歴の間引き(trajectorySampleInterval)でも使う。
+// 消費されない弧の積分ステップ数と、保持する列のサンプル数の上限。長い区間ではこれらが刻み幅と
+// 間引き間隔を決め、軌道の形の精度と引き換えに費用を頭打ちにする。
 export const ARC_MAX_STEPS = 20000;
 export const ARC_MAX_SAMPLES = 10000;
 
-// keepDuration ぶんを保持する列へ積む最小間隔 [s]。軌道周期 period を TRAJECTORY_SAMPLES_PER_REV
-// 等分した値と、保持窓を ARC_MAX_SAMPLES 等分した値の大きい方(period が非有限なら
-// DEFAULT_HISTORY_DURATION で代用)。
+// keepDuration ぶんを保持する列へ積む最小間隔 [s]。1周回で TRAJECTORY_SAMPLES_PER_REV 点、保持窓全体で
+// ARC_MAX_SAMPLES 点を超えない。period が非有限なら DEFAULT_HISTORY_DURATION を周期とみなす。
 export function trajectorySampleInterval(period: number, keepDuration: number): number {
   const span = isFinite(period) && period > 0 ? period : DEFAULT_HISTORY_DURATION;
   return Math.max(span / TRAJECTORY_SAMPLES_PER_REV, keepDuration / ARC_MAX_SAMPLES);
@@ -67,6 +54,7 @@ export interface BodyImpact {
   readonly state: KinematicState;
 }
 
+// 起点状態と天体から積分し直せるキャッシュ。
 export class PredictedArc {
   private readonly _trajectory: DynamicTrajectory;
   private _truncated = false;
@@ -74,28 +62,24 @@ export class PredictedArc {
   private _apsides: ApsisTrack | null = null;
   // この弧が引く天体の一覧。
   private readonly bodies: ArcCelestialBodies;
-  // 前歩の中点で解決した窓の持ち越し。刻み幅と外挿・極値の中心天体の解決だけに使うので、
-  // 半歩〜1フレーム古い内容で構わない(RK4 は鈍感、外挿中心は元から1歩古い)。
+  // 前歩の中点で解決した窓の持ち越し。刻み幅と外挿・極値の中心天体の解決に使い、半歩〜1フレーム
+  // 古くてよい(RK4 は鈍感、外挿中心は元から1歩古い)。
   private carriedSources: ArcCelestialBodyWindow | null = null;
   // 要求された間引き下限(span / ARC_MAX_SAMPLES)の最も粗い値。周期由来の間隔は含めない —
   // 含めると、作り直しても同じ値になる粗さを理由に represents が毎フレーム作り直しを命じる。
   private _decimation = 0;
 
-  // 所有者が毎フレーム書く。積分先端が到達すべき絶対時刻と、保持窓の左端。
-  requiredEnd: number;
-  retainFrom: number;
+  // 需要が決める、積分先端が到達すべき絶対時刻と、保持窓の左端。
+  private requiredEnd: number;
+  private retainFrom: number;
   // 実シミュレーションのサブステップ幅の上限 [s]。消費される弧はこれに刻みを揃える。
-  simulationMaxStep = SUBSTEP_MAX_DT;
+  private simulationMaxStep = SUBSTEP_MAX_DT;
 
-  // state0 を起点に先端を構築する。requiredEnd/retainFrom は state0.t で初期化され、
-  // 所有者が書き換えるまで needsGrowth は偽のまま。radius はこの弧が表す物体の接触半径で、
-  // 表面到達の判定に天体の半径と足して使う。keplerTail は先端の先を二体ケプラー外挿で
-  // 継ぐか — 実体の予測列は継ぐ(true)、計画の区間は継がない(false: 外挿の暫定値の上に
-  // 次のノードを置くと、実際に積分し直した結果と繋がらなくなるため)。consumable は
-  // 実シミュレーションがこの弧から状態を引くか — 引く弧は刻みと間引きを実シミュレーション側に
-  // 合わせ、表示期間由来の項を使わない。
-  constructor(
-    readonly state0: KinematicState,
+  // state0 を起点に組み、demand で要求終端を受けるまで伸びない。radius は表面到達の判定に使う接触
+  // 半径。keplerTail は先端の先を二体ケプラー外挿で継ぐか。consumable は実シミュレーションがこの弧
+  // から状態を引くかで、引く弧は刻みと間引きを実シミュレーションに揃える。
+  public constructor(
+    public readonly state0: KinematicState,
     sources: readonly CelestialBody[],
     private readonly radius: number,
     private readonly bcInv: number,
@@ -110,33 +94,41 @@ export class PredictedArc {
   }
 
   // 直近の1歩が解決した天体の数と、そのうち期限到来で訪問したものの数。
-  get lastResolvedBodies(): number { return this.bodies.lastResolved; }
-  get lastRevisitedBodies(): number { return this.bodies.lastRevisited; }
+  public get lastResolvedBodies(): number { return this.bodies.lastResolved; }
+  public get lastRevisitedBodies(): number { return this.bodies.lastRevisited; }
 
-  get trajectory(): DynamicTrajectory { return this._trajectory; }
-  get truncated(): boolean { return this._truncated; }
-  get impact(): BodyImpact | null { return this._impact; }
-  get apsides(): ApsisTrack | null { return this._apsides; }
+  public get trajectory(): DynamicTrajectory { return this._trajectory; }
+  public get truncated(): boolean { return this._truncated; }
+  public get impact(): BodyImpact | null { return this._impact; }
+  public get apsides(): ApsisTrack | null { return this._apsides; }
   // 打ち切られておらず、先端がまだ requiredEnd に届いていないか。
-  get needsGrowth(): boolean { return !this._truncated && this._trajectory.state.t < this.requiredEnd; }
-  get decimation(): number { return this._decimation; }
+  public get needsGrowth(): boolean { return !this._truncated && this._trajectory.state.t < this.requiredEnd; }
+  public get decimation(): number { return this._decimation; }
 
-  // この弧が (state0, end) を持つ区間をそのまま表せるか(= 作り直さずに使い回せるか)。起点は
-  // 同一参照で判定する — 計画のノードは不変オブジェクトで、編集は必ず別オブジェクトへの
-  // 差し替えになるので、参照が同じなら積分の入力も同じ。
-  // 積分済みの間引き下限が、要求区間(end で決まる)の求める下限の ARC_MAX_SAMPLE_COARSENING
-  // 倍を超えて粗ければ、区間を狭めるだけでは折れ線のクリック候補が飛び飛びの点になってしまう
-  // ので表せないと答える。比べるのは間引き下限どうしで、実際のサンプル間隔ではない — 間隔は
-  // 刻み幅(ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても同じ値になるので、間隔を下限と
-  // 比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
-  represents(state0: KinematicState, end: number): boolean {
+  // 積分先端が到達すべき絶対時刻 requiredEnd と、保持窓の左端 retainFrom を受ける。伸ばす前に毎フレーム
+  // 渡す。保持窓より前の極値は捨てる。
+  public demand(requiredEnd: number, retainFrom: number): void {
+    this.requiredEnd = requiredEnd;
+    this.retainFrom = retainFrom;
+    this._apsides?.dropBefore(retainFrom);
+  }
+
+  // 実シミュレーションのサブステップ幅の上限 maxStep [s] を受ける。消費される弧はこれに刻みを揃える。
+  public alignSimulationStep(maxStep: number): void {
+    this.simulationMaxStep = maxStep;
+  }
+
+  // この弧が (state0, end) の区間を作り直さずに表せるか。起点は同一参照で比べるので、起点を変える
+  // ときは別オブジェクトを渡す。間引き下限が区間の求める下限の ARC_MAX_SAMPLE_COARSENING 倍より
+  // 粗ければ表せない。
+  public represents(state0: KinematicState, end: number): boolean {
     const sampleInterval = (end - this.state0.t) / ARC_MAX_SAMPLES;
     if (this._decimation > sampleInterval * ARC_MAX_SAMPLE_COARSENING) return false;
     return state0 === this.state0;
   }
 
   // 1歩伸ばす。伸ばせなければ(既に requiredEnd に達している/打ち切り済みなら)false。
-  step(): boolean {
+  public step(): boolean {
     if (!this.needsGrowth) return false;
     const tip = this._trajectory.state;
     const span = Math.max(0, this.requiredEnd - this.retainFrom);
@@ -150,17 +142,14 @@ export class PredictedArc {
     const period = keplerPeriod(len(sub(tip.r, center.positionAt(held.pivot))), center.def.mu);
     const dt = this.stepDt(tip, span, period, held.collision, held.pivot);
     // 消費される弧の間引きは表示期間(span)由来の項を使わない — 使うと PREDICT パネルの
-    // 選択が実体の状態を変えてしまう。消費前線の近く(ARC_FINE_STEPS 歩ぶん)は毎歩保持し、
-    // それより遠くは周期基準の間引きへ落とす。
+    // 選択が実体の状態を変えてしまう。
     const sampleInterval = this.consumable
       ? (tip.t - this.retainFrom <= ARC_FINE_STEPS * dt ? 0 : trajectorySampleInterval(period, 0))
       : trajectorySampleInterval(period, span);
 
-    // RK4 の各ステップにはその中点時刻の重力源を渡す。実シミュレーションも各サブステップの
-    // 中点で重力源を解決しており、弧だけ過去の天体位置を据え置かないようにする。
+    // 重力源は歩の中点時刻で解決する(実シミュレーションのサブステップと揃える)。
     const mid = this.bodies.resolve(tip.t + dt / 2, tip, dt);
-    // 遮蔽体には mid.collision を渡す — 弧が幾何の相手として追っている窓であり、重力を
-    // 及ぼすかとは無関係に成員が決まる。登録天体の全数を毎歩解決することはできない。
+    // 遮蔽体には、重力の有無によらず幾何の相手として追っている mid.collision を渡す。
     this._trajectory.step(
       dt, mid.gravity, mid.collision, nearestAtmosphereBody(tip.r, mid.collision, mid.pivot), mid.pivot,
       this.bcInv, this.srpCoeff, null,
@@ -182,16 +171,8 @@ export class PredictedArc {
     return true;
   }
 
-  // 刻み幅。消費される弧は実シミュレーションの刻み規則をそのまま採る — ある時間帯の状態を
-  // 決める積分が同じ刻みで積まれるのが目的なので、所有者が毎フレーム書く simulationMaxStep と、
-  // 実シミュレーションと同じ大気の上限(atmosphericMaxStep)と、接近項の最も小さいものを使う。
-  // 周期・粗化項・下限は使わない。
-  // 消費されない弧は、軌道項(周期基準)・粗化項(span を ARC_MAX_STEPS 等分)・接近項(動径
-  // 接近率基準)のうち最も厳しいものを、下限 ARC_MIN_STEP_DT で頭打ちにする。接近項が相対速さで
-  // なく動径接近率であることが要 — 円軌道では相対速さが軌道速度そのものになり、接近して
-  // いなくても常に効いて粗化項を不当に上書きしてしまう。下限自体は接近項の幾何級数的な
-  // 潰れ(Zeno)を断つためのもので、これがあるおかげで衝突コースは必ず有限歩で表面を跨ぎ、
-  // 掃引判定が交差点を補間で求められる。
+  // 次の1歩の刻み幅 [s]。消費される弧は、実シミュレーションと同じ刻みで積むために
+  // simulationMaxStep・大気の上限・接近項の最小を採る。
   private stepDt(
     tip: KinematicState, span: number, period: number,
     collisionBodies: readonly CelestialBody[], pivot: number,
@@ -208,12 +189,14 @@ export class PredictedArc {
       if (closingRate <= 1e-9) continue;
       approachDt = Math.min(approachDt, (clearance / closingRate) * ARC_APPROACH_SAFETY);
     }
-    // 大気が要求する上限は下限 ARC_MIN_STEP_DT より優先される。下限は接近項の Zeno を断つため
-    // のもので、抗力を積めない幅まで刻みを広げる権利は持たない。
+    // 大気が要求する上限は下限 ARC_MIN_STEP_DT より優先する — 下限は接近項の潰れ(Zeno)を断つ
+    // ためのもので、抗力を積めない幅まで刻みを広げてはならない。
     const atmosphericDt = atmosphericMaxStep(tip, this.bcInv, collisionBodies, pivot);
     if (this.consumable) {
       return Math.min(approachDt, atmosphericDt, this.simulationMaxStep);
     }
+    // 消費されない弧: 軌道項(周期基準)を粗化項(span を ARC_MAX_STEPS 等分)まで広げ、接近項で絞り、
+    // 下限 ARC_MIN_STEP_DT で衝突コースを有限歩で表面へ跨がせる。
     const naturalDt = period / ARC_STEPS_PER_REV;
     const coarseFloor = span / ARC_MAX_STEPS;
     return Math.min(

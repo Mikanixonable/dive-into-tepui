@@ -2,33 +2,35 @@ import type { Plan, PlanExecutionMode } from '../../plan/plan';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Attitude } from '../../../physics/attitude';
 import type { Vec3 } from '../../../math/vec3';
-import type { ThrottleSaveData } from '../../save/save-data';
 import type { FireControl } from '../../player/fire-control';
-import type { BurnManagementViewModel } from '../../hud/panels/burn-management-panel';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
-import type { Input } from '../../../input/input';
+import type { PilotCommand, PilotControls, ThrustDirection } from './pilot-controls';
+import type { RunEventSink } from '../../run-events';
 import type { StageOutcome } from '../../stages/stage-outcome';
 import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
-import type { PlayerStatusSnapshot } from '../../player/player-status-snapshot';
 import type { StageRules } from '../../stages/stage-rules';
 
+// 操作量から推力とトルクを決め、推力のラッチ・RCS 減衰・プログレード保持を持つスロットルの面。
 export interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
   readonly progradeHold: boolean;
-  updateThrustState(input: Input, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null;
+  readonly thrust: Vec3 | null;
+  readonly torque: Vec3;
+  updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): void;
   updateTorque(
-    att: Attitude, r: Vec3, v: Vec3, input: Input, fineAttitude: boolean,
-    dt: number, simDt: number, ship: FuelConsumer, onProgradeHoldReleased: () => void,
-  ): Vec3;
-  updateThrustLatches(input: Input): void;
-  isThrustLatched(key: { readonly code: string }): boolean;
+    att: Attitude, r: Vec3, v: Vec3, controls: PilotControls, fineAttitude: boolean,
+    dt: number, simDt: number, ship: FuelConsumer, events: RunEventSink | null,
+  ): void;
+  updateThrustLatches(controls: PilotControls): void;
+  toggleThrustLatch(direction: ThrustDirection): void;
+  isThrustLatched(direction: ThrustDirection): boolean;
   clearTransientState(): void;
-  serialize(): ThrottleSaveData;
 }
 
+// スロットルが推力・トルクの上限と燃料を読み、燃料 [kg] を消費させる相手。
 export interface FuelConsumer {
   readonly totalThrust: number;
   readonly totalTorque: number;
@@ -41,46 +43,35 @@ export interface FuelConsumer {
   readonly motion: DynamicEntity['motion'];
 }
 
-export interface PilotCommandFrame {
-  readonly input: Input | null;
-  readonly dt: number;
-  readonly simDt: number;
-  readonly registry: EntityRegistry;
-  readonly activeStage: StageOutcome;
-  readonly stageRules: StageRules;
-  readonly celestialBodies: CelestialBodies;
-}
-
+// フレームごとの操作量と、単発の命令を受ける面。
 export interface PilotCommandReceiver {
-  updateControls(frame: PilotCommandFrame): void;
+  // controls はこのフレームの操作量で、操作されない個体は null。dt [s] は実時間、simDt [sim s] は
+  // シミュレーション時間の刻み。
+  updateControls(
+    controls: PilotControls | null, dt: number, simDt: number,
+    activeStage: StageOutcome, stageRules: StageRules, celestialBodies: CelestialBodies,
+  ): void;
+  // 推力・トルクの指令とスロットルの一時状態を解く。
   clearTransientCommands(): void;
+  // 単発の命令 command のうち、備える操作を状態へ適用する。
+  handleCommand(command: PilotCommand, registry: EntityRegistry): void;
 }
 
+// マニューバ計画と、その実行方法・姿勢操作の微調整の有無。
 export interface NavigationController {
   readonly plan: Plan;
-  planExecution: PlanExecutionMode;
-  fineAttitude: boolean;
+  readonly planExecution: PlanExecutionMode;
+  readonly fineAttitude: boolean;
 }
 
-// 操作対象(自艦・基地)の共通能力。装備していない機能は null ではなくプロパティ自体を
-// 持たない。HUD や入力側は capability の有無だけを確認して利用する。
+// 操作対象(自艦・基地)の共通能力。装備していない機能は null なので、有無を確かめてから使う。
 export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandReceiver, NavigationController {
   readonly throttle: ThrottlePort;
-  readonly fire?: FireControl;
-  burnManagementViewModel?(): BurnManagementViewModel | null;
-  readonly altitudeAlarm?: AltitudeAlarm;
-  // 操作対象になったときに出す案内。出すものが無ければ null。
-  readonly controlHint: string | null;
-  // 操作対象から手で外したときに出す案内。出すものが無ければ null。
-  readonly releaseHint: string | null;
-  // HUD が読む同一フレームの表示値。Motion 内部の個別系を公開しない。
-  statusSnapshot(): PlayerStatusSnapshot;
-  // 装備を持つ操作対象だけが実装する入力命令。未搭載はメソッド自体を持たない。
-  readonly toggleSolarPanel?: (side: 'up' | 'down') => void;
-  readonly toggleRadiator?: (side: 'up' | 'down') => void;
+  readonly fire: FireControl | null;
+  readonly altitudeAlarm: AltitudeAlarm | null;
 }
 
-// この個体が操作対象になりうるか。顔ぶれから操作対象だけを絞るときに使う。
+// この個体が操作対象になりうるか。
 export function isControllable(entity: DynamicEntity): entity is Controllable {
   return entity.controllable;
 }

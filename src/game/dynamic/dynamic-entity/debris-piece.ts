@@ -1,11 +1,9 @@
 import type * as THREE from 'three/webgpu';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
-import { add, randVec, type Vec3, v3 } from '../../../math/vec3';
-import type { Attitude } from '../../../physics/attitude';
-import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
-import type { FlashEffects } from '../../vfx/flash-effects';
+import { add, randVec, type SerializedVec3, type Vec3, v3 } from '../../../math/vec3';
+import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
+import { deserializeKinematicState, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { CapKind } from './entity-kind';
 import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
 import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
@@ -13,8 +11,11 @@ import {
   BarrelView, MagazineFrameView,
 } from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
+import type { EntityIdAllocators } from './entity-id';
+import type { EntityRegistry } from '../entity-registry';
+import type { DynamicMotionThermal } from '../dynamic-motion';
 import { DebrisMotion } from './debris-motion';
 import { DebrisReaction } from './debris-reaction';
 
@@ -36,38 +37,95 @@ function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicVi
   }
 }
 
+// 新しく出した破片の熱の状態。砲身の破片は外れた時点の温度と温度差を引き継ぎ、ほかは環境温度から
+// 始める。
+function initialThermal(debrisKind: DebrisKind): Partial<DynamicMotionThermal> {
+  if (debrisKind.kind !== 'barrel') return {};
+  return { temperature: debrisKind.bornTemperature, thermalDeviation: debrisKind.bornThermalDeviation };
+}
+
+// 破片1個の直列化した形。慣性と接触半径は出す場所ごとに違い、種別からは決まらないので記録に持つ。
+export interface SerializedDebrisPiece extends SerializedDynamicEntityFields {
+  readonly kind: 'debris';
+  readonly debrisKind: DebrisKind;
+  readonly inertia: SerializedVec3;
+  readonly radius: number;
+  readonly thermal: DynamicMotionThermal;
+}
+
 export class DebrisPiece extends DynamicEntity {
+  public static readonly kind = 'debris';
+  public static spawnGate(): null { return null; }
+
   public override readonly capKind: CapKind;
 
-  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。
-  public constructor(
+  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。id は採番器が配った識別子。radius は
+  // 接触半径 [m] で、省くと 0。thermal は熱の状態、alive は生死で、省けばいま出した破片として組む。
+  private constructor(
     state: KinematicState,
-    debrisKind: DebrisKind,
+    private readonly debrisKind: DebrisKind,
     attitude: Attitude,
-    worldSfx: WorldSfx,
-    effects: FlashEffects,
+    id: string,
     radius?: number,
     scene?: THREE.Scene,
+    thermal = initialThermal(debrisKind),
+    alive?: boolean,
   ) {
     super(
       () => new DebrisMotion(state, attitude, {
         kind: debrisKind.kind,
+        // 発生時刻を持つ種別だけが、寿命の起点を反応へ渡す
         behavior: new DebrisReaction(
           debrisKind.kind,
           'bornSim' in debrisKind ? debrisKind.bornSim : null,
-          worldSfx,
-          effects,
         ),
         radius,
-        // 砲身の破片は、外れた時点の温度と温度差を引き継ぐ
-        temperature: debrisKind.kind === 'barrel' ? debrisKind.bornTemperature : undefined,
-        thermalDeviation: debrisKind.kind === 'barrel'
-          ? debrisKind.bornThermalDeviation
-          : undefined,
+        thermal,
+        alive,
       }),
       debrisPieceView(debrisKind, scene),
+      id,
     );
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
+  }
+
+  // 種別 debrisKind の破片1個を、state・attitude でいま出したものとして新しく組む。radius は接触半径
+  // [m] で、省くと 0。
+  public static create(
+    state: KinematicState, debrisKind: DebrisKind, attitude: Attitude, idAllocators: EntityIdAllocators,
+    radius?: number, scene?: THREE.Scene,
+  ): DebrisPiece {
+    return new DebrisPiece(state, debrisKind, attitude, idAllocators.entity.next(), radius, scene);
+  }
+
+  // 直列化した破片を、記録した時刻の状態として復元する。
+  public static deserialize(
+    serialized: SerializedDebrisPiece, registry: EntityRegistry, scene: THREE.Scene,
+  ): DebrisPiece {
+    const { inertia } = serialized;
+    // 慣性・接触半径・熱の状態も記録した値から始める
+    return new DebrisPiece(
+      deserializeKinematicState(serialized),
+      serialized.debrisKind,
+      deserializeAttitude(serialized, v3(inertia.x, inertia.y, inertia.z)),
+      registry.idAllocators.entity.next(serialized.id),
+      serialized.radius,
+      scene,
+      serialized.thermal,
+      serialized.alive,
+    );
+  }
+
+  // 運動状態と種別・慣性・接触半径・熱を直列化した形へ変換する。
+  public override serialize(): SerializedDebrisPiece {
+    const { inertia } = this.motion.att;
+    return {
+      ...this.serializeEntityFields(DebrisPiece.kind),
+      debrisKind: this.debrisKind,
+      inertia: { x: inertia.x, y: inertia.y, z: inertia.z },
+      radius: this.motion.radius,
+      thermal: this.motion.thermal,
+    };
   }
 }
 
@@ -82,8 +140,7 @@ export function buildDestroyFragments(
   sizeMin: number,
   sizeMax: number,
   spread: number,
-  worldSfx: WorldSfx,
-  effects: FlashEffects,
+  idAllocators: EntityIdAllocators,
 ): DebrisPiece[] {
   const pieces: DebrisPiece[] = [];
   for (let i = 0; i < count; i++) {
@@ -99,29 +156,29 @@ export function buildDestroyFragments(
       ),
       inertia: v3(1, 2.05, 3.0),
     };
-    pieces.push(new DebrisPiece(
-      state, { kind: 'fragment', accent, size }, attitude, worldSfx, effects));
+    pieces.push(DebrisPiece.create(
+      state, { kind: 'fragment', accent, size }, attitude, idAllocators));
   }
   return pieces;
 }
 
 // 自機の撃破で飛び散る破片。
 export function playerDestroyFragments(
-  state: KinematicState, worldSfx: WorldSfx, effects: FlashEffects,
+  state: KinematicState, idAllocators: EntityIdAllocators,
 ): DebrisPiece[] {
   return buildDestroyFragments(
     state.t, state.r, state.v, 11, PLAYER_DESTROY_FRAG_COLOR,
-    DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0, worldSfx, effects,
+    DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0, idAllocators,
   );
 }
 
 // 敵機の撃破で飛び散る破片。機体メッシュのスケール meshScale へ見合った大きさにする。
 export function enemyDestroyFragments(
-  state: KinematicState, meshScale: number, worldSfx: WorldSfx, effects: FlashEffects,
+  state: KinematicState, meshScale: number, idAllocators: EntityIdAllocators,
 ): DebrisPiece[] {
   return buildDestroyFragments(
     state.t, state.r, state.v, 11, ENEMY_DESTROY_FRAG_COLOR,
     (DESTROY_FRAG_SIZE_MIN * meshScale) / 3, (DESTROY_FRAG_SIZE_MAX * meshScale) / 3, 20.0,
-    worldSfx, effects,
+    idAllocators,
   );
 }

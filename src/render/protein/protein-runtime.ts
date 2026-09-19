@@ -1,9 +1,6 @@
 import * as THREE from 'three/webgpu';
-import {
-  proteinAnchorOffset,
-  proteinAnchorResidues,
-  proteinSiteWorldPosition,
-} from './protein-anchors';
+import { proteinAnchorOffset, proteinAnchorResidues } from './protein-anchors';
+import { proteinSiteWorldPosition } from '../../physics/protein-site-geometry';
 import { projectProteinResidues, proteinMotionModeDisplacements } from './protein-motion-modes';
 import {
   createProteinMotionBinding,
@@ -46,21 +43,16 @@ export class ProteinRuntime {
   private lastCpuMs = 0;
   private lastUploadBytes = 0;
 
-  // root に部位の結合線を加える。motionBinding が無ければ自分で借りる。残基数が合わなければ例外。
+  // root に部位の結合線を加え、残基変形を解く共有バッファ上の借り位置を借りる。
   public constructor(
     private readonly root: THREE.Object3D,
     private readonly asset: ProteinRenderAsset,
     private readonly motion: ProteinRenderMotion,
-    motionBinding?: ProteinMotionBinding | null,
   ) {
     for (const site of asset.sites) this.siteDefinitions.set(site.id, site);
-    // 残基変形を解く共有バッファ上の借り位置。
-    this.motionBinding = motionBinding ?? createProteinMotionBinding(
+    this.motionBinding = createProteinMotionBinding(
       motion.residueCount, proteinMotionModeDisplacements(motion), motion.modes.length,
     );
-    if (this.motionBinding !== null && this.motionBinding.residueCount !== motion.residueCount) {
-      throw new RangeError('Protein motion binding and asset residue counts must match');
-    }
     // アンカーの残基変位を CPU で投影する作業領域と、結合線。
     this.trackedResidueOffsets = new Float32Array(motion.residueCount * 4);
     this.bondMaterial = new THREE.LineBasicMaterial({ color: 0x60d9ff, transparent: true, opacity: 0.42 });
@@ -175,20 +167,17 @@ export class ProteinRuntime {
 
   // 部位の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。site が null なら origin。
   private siteWorldPosition(site: ProteinRenderSite | null, origin: Vec3, attitude: Quat): Vec3 {
+    if (site === null) return origin;
     // 残基の変位は、直前の syncVisual で投影したもの。
+    const offset = proteinAnchorOffset(
+      this.siteResidueGroups.get(site.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount,
+    );
     return proteinSiteWorldPosition(
-      site,
-      site ? this.siteResidueGroups.get(site.id) ?? [] : [],
-      this.trackedResidueOffsets,
-      this.motion.residueCount,
-      this.asset.coordinateScale,
-      this.root.scale.x,
-      origin,
-      attitude,
+      site.position, offset, this.asset.coordinateScale, this.root.scale.x, origin, attitude,
     );
   }
 
-  // root に加えた資源と motionBinding(外から渡したものも)を破棄する。
+  // root に加えた資源と motionBinding を破棄する。
   public dispose(): void {
     this.clearVisuals();
     this.bondMaterial.dispose();

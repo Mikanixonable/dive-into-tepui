@@ -1,7 +1,7 @@
 // タイトル画面の背景となる3D場面。タンパク質を抽象化した形(捻れたチューブ、枝分かれするロッド、
 // 結節、リング、カプセル)を光沢プラスチックで多数配置し、ゆっくり漂わせる。
 import * as THREE from 'three/webgpu';
-import { ACCENT, ACCENT_SOFT, BG, SIGNAL } from '../theme';
+import type { ThemePalette } from '../theme';
 
 // 背景の図案。図案ごとに物体の並べ方と形の組み合わせが変わる。
 export const TITLE_SCENE_PATTERNS = ['mosaic', 'helix', 'orbital', 'lattice'] as const;
@@ -17,7 +17,6 @@ const OBJECT_COUNTS: Readonly<Record<TitleScenePattern, number>> = {
 
 // 地の材質の色。乳白・煙色・黒・暖灰色。
 const BODY_COLORS = [0xf1edf0, 0xa8aec0, 0x48506a, 0xd6d6d0] as const;
-const BG_COLOR = Number.parseInt(BG.slice(1), 16);
 // 有彩色の材質を割り当てる物体の通し番号。有彩色は少数へ絞り、残りは地の材質にする。
 const ACCENT_INDICES = new Set([6, 18]);
 const ACCENT_SOFT_INDICES = new Set([11, 22]);
@@ -32,15 +31,22 @@ class TitleSceneMaterials {
     clearcoat: 0.94,
     clearcoatRoughness: 0.18,
   }));
-  private readonly accent = new THREE.MeshPhysicalMaterial({
-    color: ACCENT, roughness: 0.2, metalness: 0.03, clearcoat: 0.94, clearcoatRoughness: 0.18,
-  });
-  private readonly accentSoft = new THREE.MeshPhysicalMaterial({
-    color: ACCENT_SOFT, roughness: 0.22, metalness: 0.02, clearcoat: 0.9, clearcoatRoughness: 0.2,
-  });
-  private readonly signal = new THREE.MeshPhysicalMaterial({
-    color: SIGNAL, roughness: 0.19, metalness: 0.02, clearcoat: 1, clearcoatRoughness: 0.12,
-  });
+  private readonly accent: THREE.MeshPhysicalMaterial;
+  private readonly accentSoft: THREE.MeshPhysicalMaterial;
+  private readonly signal: THREE.MeshPhysicalMaterial;
+
+  // 有彩色の材質を palette の色で起こす。
+  public constructor(palette: ThemePalette) {
+    this.accent = new THREE.MeshPhysicalMaterial({
+      color: palette.accent, roughness: 0.2, metalness: 0.03, clearcoat: 0.94, clearcoatRoughness: 0.18,
+    });
+    this.accentSoft = new THREE.MeshPhysicalMaterial({
+      color: palette.accentNear, roughness: 0.22, metalness: 0.02, clearcoat: 0.9, clearcoatRoughness: 0.2,
+    });
+    this.signal = new THREE.MeshPhysicalMaterial({
+      color: palette.signal, roughness: 0.19, metalness: 0.02, clearcoat: 1, clearcoatRoughness: 0.12,
+    });
+  }
 
   // index 番目の物体の材質。
   public forIndex(index: number): THREE.MeshPhysicalMaterial {
@@ -59,18 +65,18 @@ class TitleSceneMaterials {
   }
 }
 
-// 半球光と主光源に、アクセント色・Signal 色の差し色の点光源を添えて scene へ加える。
-function addLights(scene: THREE.Scene): void {
+// 半球光と主光源に、palette のアクセント色・Signal 色の差し色の点光源を添えて scene へ加える。
+function addLights(scene: THREE.Scene, palette: ThemePalette): void {
   // 地の明るさと主光源。
   scene.add(new THREE.HemisphereLight(0xe8e4f0, 0x121418, 2.2));
   const key = new THREE.PointLight(0xffffff, 100, 40, 1.4);
   key.position.set(-5, 7, 9);
   scene.add(key);
   // 差し色。
-  const accentLight = new THREE.PointLight(ACCENT, 70, 28, 1.6);
+  const accentLight = new THREE.PointLight(palette.accent, 70, 28, 1.6);
   accentLight.position.set(7, -2, 6);
   scene.add(accentLight);
-  const signalLight = new THREE.PointLight(SIGNAL, 28, 24, 1.7);
+  const signalLight = new THREE.PointLight(palette.signal, 28, 24, 1.7);
   signalLight.position.set(-7, -5, 2);
   scene.add(signalLight);
 }
@@ -289,7 +295,7 @@ function createDrifts(pattern: TitleScenePattern, materials: TitleSceneMaterials
 export class TitleScene {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
-  private readonly materials = new TitleSceneMaterials();
+  private readonly materials: TitleSceneMaterials;
   private readonly drifts: readonly Drift[];
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private readonly resizeObserver = new ResizeObserver(() => this.resize());
@@ -316,11 +322,12 @@ export class TitleScene {
     pointerTarget: HTMLElement,
     pattern: TitleScenePattern,
     seed: number,
+    palette: ThemePalette,
   ): Promise<TitleScene> {
     const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     await renderer.init();
-    return new TitleScene(renderer, canvas, pointerTarget, pattern, seed);
+    return new TitleScene(renderer, canvas, pointerTarget, pattern, seed, palette);
   }
 
   // 初期化済みの renderer へ場面を組み、回し始める。
@@ -330,12 +337,15 @@ export class TitleScene {
     private readonly pointerTarget: HTMLElement,
     pattern: TitleScenePattern,
     seed: number,
+    palette: ThemePalette,
   ) {
     // 背景色へ溶ける霧の中に、光源と図案を置く。
-    renderer.setClearColor(BG_COLOR, 1);
-    this.scene.fog = new THREE.FogExp2(BG_COLOR, 0.038);
+    const background = Number.parseInt(palette.page.slice(1), 16);
+    renderer.setClearColor(background, 1);
+    this.scene.fog = new THREE.FogExp2(background, 0.038);
     this.camera.position.set(0, 0, 17);
-    addLights(this.scene);
+    addLights(this.scene, palette);
+    this.materials = new TitleSceneMaterials(palette);
     const root = new THREE.Group();
     root.rotation.z = -0.08;
     this.drifts = createDrifts(pattern, this.materials, seed);

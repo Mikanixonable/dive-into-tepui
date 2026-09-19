@@ -1,142 +1,132 @@
-// 1曲を、指定のステップから鳴らす再生機。曲送りもフェードインも無い — 詰めたい所だけを
-// 鳴らす道具なので。音を作る側(Composer と Instrument)は本番と同じものを読む。
-//
-// 刻みの進め方だけはここが自前で持つ。任意ステップからの開始と区間ループという、本番の
-// TrackPlayback には無い要求のために要る。逆に言えばそれ以外は本番と同じでなければならず、
-// 予約される音が TrackPlayback と一致することは検証で押さえてある。
+// 1曲を、指定のステップから鳴らす作曲用の再生機。本番の TrackPlayback を、区間ループと
+// ミュートを被せた Composer の上で回し、いま鳴っているステップを画面へ答える。
 import { BgmTrack } from '../../src/audio/bgm/tracks/types';
 import { createComposer } from '../../src/audio/bgm/composer-factory';
-import { createInstrument } from '../../src/audio/bgm/instrument-factory';
-import { Composer } from '../../src/audio/bgm/composer';
-import { Instrument } from '../../src/audio/bgm/instrument';
+import { TrackPlayback } from '../../src/audio/bgm/track-playback';
+import { Composer, ComposerNote } from '../../src/audio/bgm/composer';
 
-const LOOKAHEAD_SEC = 0.6; // 本番と同じ先読み幅。刻みの感触を揃える
-const PUMP_INTERVAL_MS = 120;
-const START_DELAY_SEC = 0.15;
-const STOP_FADE_SEC = 0.08;
+const LOOKAHEAD_SEC = 0.6; // まとめて予約する先読みの幅
+const PUMP_INTERVAL_MS = 120; // 予約を足しに行く間隔
+const START_DELAY_SEC = 0.15; // 鳴らし始めるまでの余裕
+const STOP_FADE_SEC = 0.08; // 止めるときのフェード
 
+// 繰り返して聴きたい区間。to のステップまでを鳴らして from へ戻る。
 export interface LoopRange {
   from: number;
   to: number;
 }
 
-export class LabPlayer {
-  private master: GainNode | null = null;
-  private composer: Composer | null = null;
-  private instruments = new Map<string, Instrument>();
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private step = 0;
-  private nextTime = 0;
-  // 予約した音の位置。表示は先読み位置ではなく「いま鳴っている所」を出したいので控える。
-  private queue: { step: number; at: number; notes: number }[] = [];
-  private sounding = { step: 0, notes: 0 };
-  private muted = new Set<string>();
-  private loop: LoopRange | null = null;
-  private volume = 0.7;
+// 曲の Composer へ、詰めるための都合を被せたもの。ステップ番号を区間ループの中へ畳み、
+// ミュート中の楽器の音を落とす。
+class LabComposer implements Composer {
+  public constructor(
+    private readonly source: Composer,
+    private muted: ReadonlySet<string>,
+    private loop: LoopRange | null,
+  ) {}
 
-  constructor(private readonly ctx: AudioContext) {}
-
-  get isPlaying(): boolean {
-    return this.timer !== null;
+  public get stepDurSec(): number {
+    return this.source.stepDurSec;
   }
 
-  // いま鳴っているステップと、そのステップで実際に鳴らした音の数。
-  get current(): { step: number; notes: number } {
-    return this.sounding;
+  public notesAt(step: number): readonly ComposerNote[] {
+    return this.source.notesAt(this.loopedStep(step)).filter((note) => !this.muted.has(note.instrument));
   }
 
-  setVolume(v: number): void {
-    this.volume = v;
-    if (this.master) this.master.gain.setTargetAtTime(Math.max(0.0001, v), this.ctx.currentTime, 0.02);
-  }
-
-  setMuted(ids: Iterable<string>): void {
+  // 鳴らさない楽器の id 一式。
+  public setMuted(ids: Iterable<string>): void {
     this.muted = new Set(ids);
   }
 
-  setLoop(loop: LoopRange | null): void {
+  public setLoop(loop: LoopRange | null): void {
     this.loop = loop;
   }
 
-  // 鳴らしたままステップ位置だけを飛ばす。予約済みの音は取り消せないので、そのぶんは
-  // 鳴り終わるに任せる(直前の音が短く重なるのは STOP_FADE_SEC 相当の許容範囲)。
-  seek(toStep: number): void {
-    if (!this.composer) return;
-    this.step = toStep;
-    this.nextTime = this.ctx.currentTime + START_DELAY_SEC;
-    this.sounding = { step: toStep, notes: 0 };
-    this.queue = [];
+  // 区間の終わりより先へ進んだステップ番号を、区間の中へ畳んで返す。
+  public loopedStep(step: number): number {
+    const loop = this.loop;
+    if (!loop || step <= loop.to) return step;
+    const span = loop.to - loop.from + 1;
+    if (span <= 0) return loop.from;
+    return loop.from + ((step - loop.from) % span);
+  }
+}
+
+export class LabPlayer {
+  private readonly master: GainNode;
+  private composer: LabComposer | null = null;
+  private playback: TrackPlayback | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private startStep = 0;
+
+  // volume は 0〜1 のユーザー音量。曲を跨いで生きるマスターゲインをここで組む。
+  public constructor(private readonly ctx: AudioContext, volume: number) {
+    this.master = ctx.createGain();
+    this.master.gain.setValueAtTime(volume, ctx.currentTime);
+    this.master.connect(ctx.destination);
   }
 
-  // 曲を組み直して fromStep から鳴らす。すでに鳴っていれば作り直す。
-  play(track: BgmTrack, fromStep: number): void {
+  public get isPlaying(): boolean {
+    return this.playback !== null;
+  }
+
+  // いま鳴っているステップと、そのステップで鳴らした音の数。止まっていれば鳴らし出す位置。
+  public get current(): { step: number; notes: number } {
+    const composer = this.composer;
+    const playback = this.playback;
+    if (!composer || !playback) return { step: this.startStep, notes: 0 };
+    // 予約は先読みのぶん先へ進んでいるので、まだ鳴り始めていないステップ数を差し引く。
+    const pending = Math.ceil((playback.nextStepTime - this.ctx.currentTime) / composer.stepDurSec);
+    const step = composer.loopedStep(Math.max(this.startStep, playback.nextStep - pending));
+    return { step, notes: composer.notesAt(step).length };
+  }
+
+  public setVolume(volume: number): void {
+    this.master.gain.setTargetAtTime(volume, this.ctx.currentTime, 0.02);
+  }
+
+  public setMuted(ids: Iterable<string>): void {
+    this.composer?.setMuted(ids);
+  }
+
+  public setLoop(loop: LoopRange | null): void {
+    this.composer?.setLoop(loop);
+  }
+
+  // 鳴らしたままステップ位置だけを飛ばす。予約済みの音は取り消せないので、飛ぶ前の音が
+  // 短く重なって鳴り終える。
+  public seek(toStep: number): void {
+    if (!this.playback) return;
+    this.startStep = toStep;
+    this.playback.seek(toStep, this.ctx.currentTime + START_DELAY_SEC);
+  }
+
+  // 曲を組み直して fromStep から鳴らす。muted と loop はこの再生の初期値で、以降は
+  // setMuted / setLoop が差し替える。すでに鳴っていれば作り直す。
+  public play(track: BgmTrack, fromStep: number, muted: Iterable<string>, loop: LoopRange | null): void {
     this.stop();
-    const master = this.ctx.createGain();
-    master.gain.setValueAtTime(Math.max(0.0001, this.volume), this.ctx.currentTime);
-    master.connect(this.ctx.destination);
-    this.master = master;
-    this.composer = createComposer(track);
-    this.instruments = new Map(track.instruments.map((d) => [d.id, createInstrument(d, this.ctx, master)]));
-    this.step = fromStep;
-    this.nextTime = this.ctx.currentTime + START_DELAY_SEC;
-    this.sounding = { step: fromStep, notes: 0 };
-    this.queue = [];
-    this.timer = setInterval(() => this.pump(), PUMP_INTERVAL_MS);
+    const composer = new LabComposer(createComposer(track), new Set(muted), loop);
+    const startTime = this.ctx.currentTime + START_DELAY_SEC;
+    const playback = new TrackPlayback(this.ctx, composer, track.instruments, this.master, startTime);
+    playback.seek(fromStep, startTime);
+    this.composer = composer;
+    this.playback = playback;
+    this.startStep = fromStep;
+    this.timer = setInterval(() => playback.scheduleUntil(this.ctx.currentTime + LOOKAHEAD_SEC), PUMP_INTERVAL_MS);
   }
 
-  // 鳴らすのをやめ、音声グラフから切り離す。まだ鳴っている音は短く絞ってから外す。
-  stop(): void {
+  // 鳴らすのをやめる。予約済みの音を短く絞り、鳴り終えたところで音声グラフから外す。
+  public stop(): void {
     if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
     }
-    const master = this.master;
-    const instruments = [...this.instruments.values()];
-    this.instruments = new Map();
+    const playback = this.playback;
+    this.playback = null;
     this.composer = null;
-    this.queue = [];
-    this.master = null;
-    if (!master) return;
-    master.gain.setTargetAtTime(0.0001, this.ctx.currentTime, STOP_FADE_SEC / 3);
-    setTimeout(() => {
-      for (const inst of instruments) inst.dispose();
-      master.disconnect();
-    }, (STOP_FADE_SEC + 0.4) * 1000);
-  }
-
-  // 先読み幅ぶんの音を予約し、そのぶんステップを進める。区間ループはここで巻き戻す。
-  pump(): void {
-    const composer = this.composer;
-    if (!composer) return;
-    const deadline = this.ctx.currentTime + LOOKAHEAD_SEC;
-    while (this.nextTime < deadline) {
-      if (this.loop && this.step > this.loop.to) this.step = this.loop.from;
-      let played = 0;
-      for (const note of composer.notesAt(this.step)) {
-        if (this.muted.has(note.instrument)) continue;
-        const inst = this.instruments.get(note.instrument);
-        if (inst === undefined) continue;
-        inst.play(note.freq, this.nextTime + note.offsetSec, note.durationSec, note.velocity);
-        played++;
-      }
-      this.queue.push({ step: this.step, at: this.nextTime, notes: played });
-      this.step++;
-      this.nextTime += composer.stepDurSec;
-    }
-    this.dropPast();
-  }
-
-  // 表示側から細かく呼ばれる。ポンプの間隔より滑らかに現在位置を進めるため。
-  tick(): void {
-    this.dropPast();
-  }
-
-  // 予約のうち、すでに鳴り始めたものを畳んで「いま鳴っている所」を更新する。
-  private dropPast(): void {
-    const now = this.ctx.currentTime;
-    while (this.queue.length > 0 && this.queue[0]!.at <= now) {
-      const entry = this.queue.shift()!;
-      this.sounding = { step: entry.step, notes: entry.notes };
-    }
+    if (!playback) return;
+    playback.fadeOut(STOP_FADE_SEC);
+    const waitSec = Math.max(0, playback.soundingUntil - this.ctx.currentTime);
+    setTimeout(() => playback.dispose(), waitSec * 1000);
   }
 }

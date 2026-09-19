@@ -2,7 +2,6 @@
 import { KinematicState } from '../../physics/kinematic-state';
 import { sub, scale, len, type Vec3 } from '../../math/vec3';
 import type { SphereHit } from '../../math/triangle-mesh';
-import type { Attitude } from '../../physics/attitude';
 import {
   compoundCylinderCompoundContact, compoundCylinderSphereContact,
   sweptCompoundCylinderCompoundContact, sweptCompoundCylinderSphereContact,
@@ -26,19 +25,15 @@ function reverseContactGeometry(geometry: ContactGeometry): ContactGeometry {
   };
 }
 
-const IDENTITY_ROTATION = { x: 0, y: 0, z: 0, w: 1 };
-
 // compound shape は DynamicMotion の重心を原点とする。姿勢の履歴は動力学側が提供する
 // optional な prevAtt を優先し、古い参加者実装では終端姿勢を始点にも使う。
-interface AttitudeHistoryParticipant extends EntityContactParticipant {
-  readonly prevAtt?: Attitude;
-}
+type AttitudeHistoryParticipant = EntityContactParticipant;
 
 function poseOf(
   entity: AttitudeHistoryParticipant, state: KinematicState, previous: boolean,
 ): RigidPose {
-  const attitude = previous ? (entity.prevAtt ?? entity.att) : entity.att;
-  return { position: state.r, rotation: attitude?.q ?? IDENTITY_ROTATION };
+  const attitude = previous ? entity.prevAtt : entity.att;
+  return { position: state.r, rotation: attitude.q };
 }
 
 function compoundGeometry(hit: CompoundCylinderContact & { readonly toi?: number }): ContactGeometry {
@@ -145,21 +140,23 @@ function customContactGeometry(
   if (sweptValid) {
     const sweptA = a.testCustomSweptSphereCollision(
       b.prevState.r, bWork.r, b.radius, a.prevState, aWork,
+      a.prevAtt, a.att,
     );
     if (sweptA !== null) return makeSweptGeometry(sweptA, sweptA.hit.normal);
 
     const sweptB = b.testCustomSweptSphereCollision(
       a.prevState.r, aWork.r, a.radius, b.prevState, bWork,
+      b.prevAtt, b.att,
     );
     if (sweptB !== null) return reverseContactGeometry(makeSweptGeometry(sweptB, sweptB.hit.normal));
   }
 
-  const sphereHitA = a.testCustomSphereCollision(bWork.r, b.radius, aWork);
+  const sphereHitA = a.testCustomSphereCollision(bWork.r, b.radius, aWork, a.att);
   if (sphereHitA !== null) {
     return { normal: sphereHitA.normal, toi: 1, pushOut: sphereHitA.depth, contactPoint: sphereHitA.point };
   }
 
-  const sphereHitB = b.testCustomSphereCollision(aWork.r, a.radius, bWork);
+  const sphereHitB = b.testCustomSphereCollision(aWork.r, a.radius, bWork, b.att);
   if (sphereHitB !== null) {
     return reverseContactGeometry({ normal: sphereHitB.normal, toi: 1, pushOut: sphereHitB.depth, contactPoint: sphereHitB.point });
   }

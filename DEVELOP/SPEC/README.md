@@ -33,7 +33,7 @@
 | [RENDERING.md](RENDERING.md) | 描画品質・LOD・描画パイプライン |
 | [PROTEIN.md](PROTEIN.md) | タンパク質型の敵の見せ方・揺らぎ・戦闘状態 |
 | [AUDIO.md](AUDIO.md) | BGM・効果音 |
-| [SAVE.md](SAVE.md) | セーブスロットとスナップショット |
+| [SAVE.md](SAVE.md) | セーブデータ・手動セーブ・自動セーブ |
 
 ## この文書とコードの関係
 

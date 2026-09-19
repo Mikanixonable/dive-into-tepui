@@ -1,7 +1,6 @@
-// セーブブラウザ右ペイン(スナップショット一覧)の DOM 構築。
-// クリップ済み/自動の区画分け、ステージ切替タブ、カード1件ごとの表示と操作ボタンを組み立てる。
-// 表示対象の状態やクリップ・改名・削除・分岐などの実処理は、コールバックを通じて呼び出し側へ委ねる。
-import { AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../save/save-slots';
+// セーブブラウザ右ペイン(手動セーブの一覧)の DOM 構築。ステージ切替タブと、手動セーブ1件ごとの
+// カードを組む。操作はコールバックで呼び出し側へ返す。
+import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/utils';
 import { Button, Meter, TabBar } from '../../hud/widgets';
@@ -10,8 +9,6 @@ import { smallBtn, stageLabel } from './shared';
 
 const STYLE = `
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
-#save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: var(--space-2); }
-#save-browser .sb-snapshot-group-title { font-size: var(--font-xs); color: var(--text-dim); margin-top: var(--space-2); }
 #save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: var(--space-2); }
 #save-browser .sb-snap-card {
   display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4);
@@ -19,49 +16,44 @@ const STYLE = `
 }
 #save-browser .sb-snap-loadable { cursor: pointer; }
 #save-browser .sb-snap-loadable:hover { background: var(--fill-1); }
-#save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 #save-browser .sb-snap-name { font-size: var(--font-s); }
-#save-browser .sb-snap-badge {
-  font-size: var(--font-xxs); letter-spacing: .5px; padding: 1px var(--space-3); border-radius: var(--radius-l);
-  border: 0; color: var(--text-dim); background: var(--fill-1);
-}
-#save-browser .sb-snap-badge-checkpoint { color: var(--text); }
 #save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
-/* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
-   HP 表示ではないため、他の注目要素と競合しないモノトーンに留める(danger 色も使わない)。 */
+/* HP バーは細いモノトーン — このパネルの主役はセーブ操作なので、HP 表示を他の注目要素と競合させない。 */
 #save-browser .sb-snap-hp-meter .w-meter-track { height: 3px; border-radius: var(--radius-s); }
 #save-browser .sb-snap-hp-meter .w-meter-fill { background: var(--text-dim); }
 #save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 `;
 
-// 数値であるはずのメタ項目。取り込んだファイルでは欠けていることがあり、そのまま
-// 書式化関数へ渡すと一覧の組み立てごと落ちてイベント配線まで届かなくなる。
+// 形式の版が合わず、読み込めない手動セーブに添える文面。
+const UNREADABLE_SNAPSHOT = '形式の版が違うため、この手動セーブは読み込めません。';
+
+// 数値であるはずのメタ項目 v を、有限でなければ 0 に均す。取り込んだファイルでは欠けていることが
+// あり、そのまま書式化すると一覧の組み立てごと落ちる。
 function num(v: number): number {
   return Number.isFinite(v) ? v : 0;
 }
 
-const SNAPSHOT_KIND_LABEL: Record<SnapshotMeta['kind'], string> = {
-  auto: '自動', manual: '手動', checkpoint: '決着',
-};
-
 interface SnapshotPaneCallbacks {
-  readonly onCaptureNow: () => void;
+  readonly onSaveNow: () => void;
   readonly onSelectStage: (stageId: string) => void;
-  readonly onLoadSnapshot: (snapshotId: string, loadable: boolean) => void;
+  // refusal は読み込めない理由の文面で、読み込めるなら null。
+  readonly onLoadSnapshot: (snapshotId: string, refusal: string | null) => void;
   readonly onTogglePin: (snapshotId: string, currentlyPinned: boolean) => void;
   readonly onRenameSnapshot: (snapshotId: string) => void;
   readonly onDeleteSnapshot: (snapshotId: string) => void;
   readonly onBranch: (slotId: string, snapshotId: string) => void;
-  // 天体 id → 表示名。実行中の周回の celestialSystem から引く(周回が無ければ id のまま)。
+  // 天体 id → 表示名。
   readonly nameOf: (id: string) => string;
+  // 手動セーブの本体が、いまの形式の版で読めるか。
+  readonly isReadable: (snapshotId: string) => boolean;
 }
 
-// 右ペイン(スナップショット一覧)を組み立てる。slot が null なら選択待ちの案内だけを返す。
-// activeSlotId/activePlayingStageId は、いま実際にプレイしているセーブデータ・ステージ
-// (プレイ中の Game が無ければ activePlayingStageId は null)。
+// 右ペイン(手動セーブの一覧)を組み立てる。slot が null なら選択待ちの案内を返す。viewedStageId が
+// null なら slot の先頭のステージを出す。activeSlotId/activePlayingStageId は、いま実際にプレイして
+// いるセーブデータ・ステージ(プレイ中の周回が無ければ activePlayingStageId は null)。
 export function buildSnapshotPane(
   slot: SaveSlotMeta | null, viewedStageId: string | null, activeSlotId: string | null,
-  activePlayingStageId: string | null, canCaptureNow: boolean, callbacks: SnapshotPaneCallbacks,
+  activePlayingStageId: string | null, canSaveNow: boolean, callbacks: SnapshotPaneCallbacks,
 ): HTMLElement {
   injectOnce('save-browser-snapshot-pane', STYLE);
   const wrap = document.createElement('div');
@@ -74,18 +66,19 @@ export function buildSnapshotPane(
   }
   const stageId = viewedStageId ?? slot.stages[0]?.stageId ?? null;
   const history = stageId ? slot.stages.find((h) => h.stageId === stageId) ?? null : null;
+  const manualSaves = history?.snapshots ?? [];
 
   const title = document.createElement('div');
   title.className = 'sb-pane-title';
-  title.textContent = 'スナップショット';
+  title.textContent = `手動セーブ (${manualSaves.length}/${MANUAL_SAVE_LIMIT})`;
   wrap.appendChild(title);
 
-  const captureBtn = new Button('今の状態をクリップして残す', callbacks.onCaptureNow, undefined, 'primary');
-  captureBtn.element.id = 'sb-capture-now';
-  captureBtn.element.classList.add('sb-btn');
-  captureBtn.setEnabled(canCaptureNow);
-  captureBtn.element.title = canCaptureNow ? '' : '決着後の状態は復元できないため残せません';
-  wrap.appendChild(captureBtn.element);
+  const saveBtn = new Button('今の状態をセーブする', callbacks.onSaveNow, undefined, 'primary');
+  saveBtn.element.id = 'sb-save-now';
+  saveBtn.element.classList.add('sb-btn');
+  saveBtn.setEnabled(canSaveNow);
+  saveBtn.element.title = canSaveNow ? '' : '決着後の状態は復元できないため残せません';
+  wrap.appendChild(saveBtn.element);
 
   if (slot.stages.length > 1) {
     const tabsWrap = document.createElement('div');
@@ -99,34 +92,19 @@ export function buildSnapshotPane(
     wrap.appendChild(tabsWrap);
   }
 
-  const pinned = history ? history.snapshots.filter((s) => s.pinned) : [];
-  const auto = history ? history.snapshots.filter((s) => !s.pinned) : [];
   // 復元できるのは、いま遊んでいるスロットの、いま遊んでいるステージのものだけ。
   const loadable = slot.id === activeSlotId && activePlayingStageId !== null && stageId === activePlayingStageId;
-
-  const groups = document.createElement('div');
-  groups.className = 'sb-snapshot-groups';
-  const pinnedTitle = document.createElement('div');
-  pinnedTitle.className = 'sb-snapshot-group-title';
-  pinnedTitle.textContent = `クリップ済み (${pinned.length}/${PINNED_SNAPSHOT_LIMIT})`;
-  groups.appendChild(pinnedTitle);
-  groups.appendChild(buildSnapshotList(pinned, slot, loadable, callbacks));
-  const autoTitle = document.createElement('div');
-  autoTitle.className = 'sb-snapshot-group-title';
-  autoTitle.textContent = `自動 (${auto.length}/${AUTO_SNAPSHOT_LIMIT}・古い順に消えます)`;
-  groups.appendChild(autoTitle);
-  groups.appendChild(buildSnapshotList(auto, slot, loadable, callbacks));
-  wrap.appendChild(groups);
+  wrap.appendChild(buildSnapshotList(manualSaves, slot, loadable, callbacks));
   return wrap;
 }
 
-// 1区画分(クリップ済み/自動)のスナップショットカード列を組み立てる。0件なら「なし」を出す。
+// 手動セーブのカード列を組み立てる。
 function buildSnapshotList(
   list: readonly SnapshotMeta[], slot: SaveSlotMeta, loadable: boolean, callbacks: SnapshotPaneCallbacks,
 ): HTMLElement {
   const el = document.createElement('div');
   el.className = 'sb-snapshot-list';
-  // 0件なら一覧の代わりに「なし」とだけ出す。
+  // 0件なら、一覧の代わりに「なし」を出す。
   if (list.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'sb-empty';
@@ -138,39 +116,34 @@ function buildSnapshotList(
   return el;
 }
 
-// 1件のスナップショットカードを組み立てる。ダブルクリックでロードを、右側のボタンで
-// クリップ切替・改名・削除・分岐を、それぞれコールバックへ委ねる。
+// 1件の手動セーブのカードを組み立てる。ダブルクリックでロードを、右側のボタンで
+// クリップ切替・改名・削除・分岐を、それぞれコールバックへ委ねる。loadable は、いま遊んでいる
+// セーブデータ・ステージの手動セーブか。
 function buildSnapshotCard(
   s: SnapshotMeta, slot: SaveSlotMeta, loadable: boolean, callbacks: SnapshotPaneCallbacks,
 ): HTMLElement {
   // 取り込んだファイル由来のメタは欠けていたり別物だったりし得るので、表示前に必ず均す。
-  const kind = SNAPSHOT_KIND_LABEL[s.kind] ? s.kind : 'auto';
   const hpPct = Math.max(0, Math.min(100, num(s.hpRatio) * 100));
-  const loadTitle = loadable
-    ? 'ダブルクリックでロード'
-    : 'いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます';
+  const readable = callbacks.isReadable(s.id);
+  const refusal = !readable ? UNREADABLE_SNAPSHOT
+    : !loadable ? 'いま遊んでいるセーブデータ・ステージの手動セーブだけを復元できます。'
+      : null;
 
   const card = document.createElement('div');
   card.className = 'sb-snap-card';
-  card.classList.toggle('ui-selectable', loadable);
-  card.classList.toggle('sb-snap-loadable', loadable);
-  card.title = loadTitle;
+  card.classList.toggle('ui-selectable', refusal === null);
+  card.classList.toggle('sb-snap-loadable', refusal === null);
+  card.title = refusal ?? 'ダブルクリックでロード';
   // ボタンの click は自身で止まるが dblclick は素通りするので、カード自身の判定で弾く。
   card.addEventListener('dblclick', (e) => {
     if ((e.target as HTMLElement).closest('.w-btn')) return;
-    callbacks.onLoadSnapshot(s.id, loadable);
+    callbacks.onLoadSnapshot(s.id, refusal);
   });
 
-  const head = document.createElement('div');
-  head.className = 'sb-snap-head';
-  const name = document.createElement('span');
+  const name = document.createElement('div');
   name.className = 'sb-snap-name';
   name.textContent = String(s.name ?? '');
-  const badge = document.createElement('span');
-  badge.className = `sb-snap-badge sb-snap-badge-${kind}`;
-  badge.textContent = SNAPSHOT_KIND_LABEL[kind];
-  head.append(name, badge);
-  card.appendChild(head);
+  card.appendChild(name);
 
   const row1 = document.createElement('div');
   row1.className = 'sb-snap-row';
@@ -182,7 +155,7 @@ function buildSnapshotCard(
   row2.textContent = `${callbacks.nameOf(s.centerBodyId)} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
   card.appendChild(row2);
 
-  // このパネルの主役はセーブ操作であって HP 表示ではないため、常にモノトーンで塗る(danger 色は使わない)。
+  // HP の残りを細いメーターで示す。
   const hpMeter = new Meter();
   hpMeter.element.classList.add('sb-snap-hp-meter');
   hpMeter.setRatio(hpPct / 100);
@@ -193,13 +166,21 @@ function buildSnapshotCard(
   row3.textContent = `艦 ${num(s.playerCount)} / 敵残 ${num(s.enemyAliveCount)}`;
   card.appendChild(row3);
 
+  // 読めない版の記録は、ホバーの出ないタッチでも分かるようカードの上に理由を書く。
+  if (!readable) {
+    const unreadable = document.createElement('div');
+    unreadable.className = 'sb-snap-row';
+    unreadable.textContent = UNREADABLE_SNAPSHOT;
+    card.appendChild(unreadable);
+  }
+
   const actions = document.createElement('div');
   actions.className = 'sb-snap-actions';
   const pinBtn = new Button(
     s.pinned ? '📌 解除' : '📌 クリップ', () => callbacks.onTogglePin(s.id, s.pinned), undefined,
     ['secondary', 'dense'],
   );
-  pinBtn.element.classList.add('sb-btn', 'sb-btn-pin');
+  pinBtn.element.classList.add('sb-btn');
   pinBtn.setOn(s.pinned);
   actions.appendChild(pinBtn.element);
   actions.appendChild(smallBtn('✎', '名前変更', () => callbacks.onRenameSnapshot(s.id)));

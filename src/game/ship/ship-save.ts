@@ -1,21 +1,64 @@
 // ship v4 の assembly・建造予約・接舷 identity を検証し、実行時状態と相互変換する。
 import { v3 } from '../../math/vec3';
-import type {
-  DockedVesselSaveData, ShipAssemblySaveData, ShipConnectionSaveData,
-  ShipConstructionDraftSaveData, ShipModuleSaveData,
-} from '../save/save-data';
+import type { Quat } from '../../math/quat';
+import type { SerializedVec3 } from '../../math/vec3';
 import { ShipAssembly } from './ship-assembly';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { createShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
 import type { ShipConstructionDraftState } from './ship-dock-state';
 
+export type SerializedShipModule = {
+  readonly id: string;
+  readonly definitionId: string;
+  readonly hp: number;
+  readonly temperature: number;
+} & (
+  | { readonly kind: 'cockpit' | 'thruster' | 'rcs' | 'weapon' | 'armor' | 'docking_port' | 'dock' | 'decoupler' }
+  | { readonly kind: 'tank'; readonly fuelKind: 'main' | 'rcs'; readonly fuel: number }
+  | { readonly kind: 'radiator' | 'solar_panel'; readonly deployed: number }
+  | { readonly kind: 'booster'; readonly fuel: number; readonly ignited: boolean }
+);
+
+export interface SerializedShipConnection {
+  readonly id: string;
+  readonly parentId: string;
+  readonly childId: string;
+  readonly kind: 'axial' | 'side' | 'docking';
+  readonly position: SerializedVec3;
+  readonly rotation: Quat;
+}
+
+export interface SerializedShipAssembly {
+  readonly playerOwned: boolean;
+  readonly modules: readonly SerializedShipModule[];
+  readonly connections: readonly SerializedShipConnection[];
+}
+
+export interface SerializedShipConstructionDraft {
+  readonly dockId: string;
+  readonly addedIds: readonly string[];
+  readonly axialTailId: string;
+  readonly firstConnectionId: string | null;
+}
+
+export interface SerializedDockedVessel {
+  readonly connectionId: string;
+  readonly id: string;
+  readonly name: string;
+}
+
+export interface SerializedCollisionGrace {
+  readonly otherId: string;
+  readonly until: number;
+}
+
 function finite(value: number): boolean { return Number.isFinite(value); }
 
-function validConnectionKind(value: unknown): value is ShipConnectionSaveData['kind'] {
+function validConnectionKind(value: unknown): value is SerializedShipConnection['kind'] {
   return value === 'axial' || value === 'side' || value === 'docking';
 }
 
-function validTransform(connection: ShipConnectionSaveData): boolean {
+function validTransform(connection: SerializedShipConnection): boolean {
   const { position: p, rotation: q } = connection;
   return finite(p.x) && finite(p.y) && finite(p.z)
     && finite(q.x) && finite(q.y) && finite(q.z) && finite(q.w)
@@ -23,7 +66,7 @@ function validTransform(connection: ShipConnectionSaveData): boolean {
 }
 
 // definition の discriminant と可変値を検証し、正規化済み instance を返す。
-function moduleState(saved: ShipModuleSaveData): ShipModuleInstance {
+function moduleState(saved: SerializedShipModule): ShipModuleInstance {
   const definition = SHIP_MODULE_CATALOG.get(saved.definitionId);
   if (definition === null || definition.kind !== saved.kind) {
     throw new Error(`unknown or mismatched ship module definition: ${saved.definitionId}`);
@@ -51,7 +94,7 @@ function moduleState(saved: ShipModuleSaveData): ShipModuleInstance {
 }
 
 // assembly の module state と接続木を v4 の平坦な保存形へ畳む。
-export function serializeShipAssembly(assembly: ShipAssembly): ShipAssemblySaveData {
+export function serializeShipAssembly(assembly: ShipAssembly): SerializedShipAssembly {
   return {
     playerOwned: assembly.playerOwned,
     modules: assembly.modules.map(module => ({ ...module })),
@@ -67,7 +110,7 @@ export function serializeShipAssembly(assembly: ShipAssembly): ShipAssemblySaveD
 }
 
 // v4 の保存形を検証し、接続木の親から子へ assembly を復元する。
-export function restoreShipAssembly(saved: ShipAssemblySaveData): ShipAssembly {
+export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly {
   if (typeof saved?.playerOwned !== 'boolean' || !Array.isArray(saved.modules)
     || !Array.isArray(saved.connections) || saved.modules.length === 0) {
     throw new Error('invalid ship assembly save data');
@@ -125,7 +168,7 @@ export function restoreShipAssembly(saved: ShipAssemblySaveData): ShipAssembly {
 
 // 建造予約が現在の dock と assembly graph を参照することを検証して複製する。
 export function restoreConstructionDrafts(
-  saved: readonly ShipConstructionDraftSaveData[], assembly: ShipAssembly,
+  saved: readonly SerializedShipConstructionDraft[], assembly: ShipAssembly,
 ): readonly ShipConstructionDraftState[] {
   if (!Array.isArray(saved)) throw new Error('invalid ship dock state');
   const docks = new Set<string>();
@@ -147,8 +190,8 @@ export function restoreConstructionDrafts(
 
 // 接舷船 identity が現在の docking edge と一対一に対応することを検証する。
 export function restoreDockedVessels(
-  saved: readonly DockedVesselSaveData[], assembly: ShipAssembly,
-): readonly DockedVesselSaveData[] {
+  saved: readonly SerializedDockedVessel[], assembly: ShipAssembly,
+): readonly SerializedDockedVessel[] {
   if (!Array.isArray(saved)) throw new Error('invalid docked vessel state');
   const connectionIds = new Set(assembly.dockingConnections().map(connection => connection.id));
   const seen = new Set<string>();

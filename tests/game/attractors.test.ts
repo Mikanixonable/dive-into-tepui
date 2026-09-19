@@ -5,11 +5,12 @@ import { solarSystemParts } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/attractor';
-import { R_EARTH } from '../../src/game/celestial/solar-system/constants';
+import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { add, addScaled, len, sub, v3 } from '../../src/math/vec3';
 import {
   attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL,
 } from '../../src/game/dynamic/attractors';
+import { SIM_SPEED_LEVELS } from '../../src/game/dynamic/sim-speed-manager';
 import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { Vec3 } from '../../src/math/vec3';
 
@@ -23,10 +24,10 @@ const SAMPLE_TIMES: readonly number[] = [0, 90 * DAY, 200 * DAY];
 const X_AXIS = v3(1, 0, 0);
 
 // 検査する場所。位置は天体の運動から導き、どこなのかが式から読めるようにする。
-type Site = {
+interface Site {
   readonly name: string;
   readonly positionAt: (t: number) => Vec3;
-};
+}
 
 // 天体 id の時刻 t の位置から +X 方向へ、天体の半径 + altitude [m] だけ離れた点。
 function aboveSurface(id: string, altitude: number, t: number): Vec3 {
@@ -72,9 +73,9 @@ export function register(): void {
   // 分類はフレームに1組だけ組んで全サブステップで使い回すので、**区間内のどの時刻の分類も
   // 覆っていなければならない。** 判定距離へ足す「区間のあいだに動きうる距離」を落とすと、
   // 区間の途中で到達量の内側へ入ってくる天体を取りこぼす。区間は最高段の時間加速で 60 fps の
-  // 1フレームが進む時間送り(×33554432 / 60 ≈ 5.6e5 s)。
+  // 1フレームが進む時間送り。
   test('attractors: フレームに1組だけ組んだ分類は、区間内のどの時刻の分類も覆う', () => {
-    const FRAME = 33554432 / 60;
+    const FRAME = Math.max(...SIM_SPEED_LEVELS) / 60;
     for (const site of SITES) {
       for (const t0 of SAMPLE_TIMES) {
         const frame = classifyAttractors(SYSTEM.gravityMotions, t0 + FRAME / 2, t0, t0 + FRAME);

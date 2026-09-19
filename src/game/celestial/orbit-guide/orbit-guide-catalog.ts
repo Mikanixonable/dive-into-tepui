@@ -6,7 +6,7 @@ import type { LagrangeLabel } from '../../../physics/lagrange';
 import type {
   CatalogSystem, CatalogSystemId, CatalogSystemScale, OrbitCatalog, OrbitCatalogIndex,
 } from '../../../physics/orbit-catalog';
-import { MU_JUPITER, MU_SATURN, MU_SUN } from '../solar-system/constants';
+import { MU_SUN } from '../solar-system/sun';
 import { JUPITER } from '../solar-system/jupiter-system';
 import { SATURN } from '../solar-system/saturn-system';
 import indexTable from '../../../assets/orbits/lagrange-orbits-index.json';
@@ -14,15 +14,15 @@ import indexTable from '../../../assets/orbits/lagrange-orbits-index.json';
 const CATALOG_INDEX = indexTable as unknown as OrbitCatalogIndex;
 
 const SUN_JUPITER_SCALE: CatalogSystemScale = {
-  mu: MU_JUPITER / (MU_SUN + MU_JUPITER),
+  mu: JUPITER.mu / (MU_SUN + JUPITER.mu),
   lunit: JUPITER.orbit.a / 1e3,
-  tunit: Math.sqrt(JUPITER.orbit.a ** 3 / (MU_SUN + MU_JUPITER)),
+  tunit: Math.sqrt(JUPITER.orbit.a ** 3 / (MU_SUN + JUPITER.mu)),
   secondaryRadius: JUPITER.radius / 1e3,
 };
 const SUN_SATURN_SCALE: CatalogSystemScale = {
-  mu: MU_SATURN / (MU_SUN + MU_SATURN),
+  mu: SATURN.mu / (MU_SUN + SATURN.mu),
   lunit: SATURN.orbit.a / 1e3,
-  tunit: Math.sqrt(SATURN.orbit.a ** 3 / (MU_SUN + MU_SATURN)),
+  tunit: Math.sqrt(SATURN.orbit.a ** 3 / (MU_SUN + SATURN.mu)),
   secondaryRadius: SATURN.radius / 1e3,
 };
 const DERIVED_SCALES: Readonly<Partial<Record<CatalogSystemId, CatalogSystemScale>>> = {
@@ -39,9 +39,9 @@ export function catalogSystemScale(id: CatalogSystemId): CatalogSystemScale | nu
 export function lagrangePointJacobi(
   system: 'earth-moon' | 'sun-earth' | 'sun-jupiter' | 'sun-saturn', point: LagrangeLabel,
 ): number {
-  const fallback = system === 'earth-moon' ? 0.012150585
-    : catalogSystemScale(system)?.mu ?? 3.003e-6;
-  return lagrangeJacobi(catalogSystemScale(system)?.mu ?? fallback, point);
+  // 索引に諸元が無い系は、地球-月とそれ以外(太陽-惑星)の代表的な質量比で代える。
+  const mu = catalogSystemScale(system)?.mu ?? (system === 'earth-moon' ? 0.012150585 : 3.003e-6);
+  return lagrangeJacobi(mu, point);
 }
 
 // 系ごとの取得関数。系ごとに1個の別ファイルを充てる。
@@ -76,6 +76,7 @@ export class OrbitGuideCatalog {
   // 待たずに読み込み完了した系をすぐ表示へ反映できる。
   public generation = 0;
 
+  // 系の軌道族カタログ。まだ手元に無ければ取得を始めて null を返す。
   public systemFor(id: CatalogSystemId): CatalogSystem | null {
     const existing = this.systems[id];
     if (existing) return existing;
@@ -88,8 +89,10 @@ export class OrbitGuideCatalog {
     return CATALOG_INDEX.familyIndex[system]?.includes(familyId) ?? false;
   }
 
+  // 系の族ファイルの取得を始める。取得の成否によらず、終わった時点で世代を1つ進める。
   private startLoad(id: CatalogSystemId): void {
     this.loadState.set(id, 'loading');
+    // 取得関数を持たない系は、取りに行かずその場で諦める。
     const load = LAZY_IMPORTS[id];
     if (load === undefined) {
       this.loadState.set(id, 'failed');

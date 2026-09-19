@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { PlanetDef } from '../../src/physics/celestial-body-def';
-import { MU_SUN } from '../../src/game/celestial/solar-system/constants';
+import { MU_SUN } from '../../src/game/celestial/solar-system/sun';
 import { keplerPeriod } from '../../src/physics/elements';
 import { KeplerOrbit, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { motionOf, solarSystemParts } from './test-helpers';
@@ -24,7 +24,7 @@ const SMALL_BODY_IDS: readonly string[] = [
 ];
 
 export function register(): void {
-  const windows = solarSystemParts({}).system;
+  const windows = solarSystemParts().system;
 
   test('small-bodies: lRate がケプラー第3法則から導いた値と一致する', () => {
     for (const id of SMALL_BODY_IDS) {

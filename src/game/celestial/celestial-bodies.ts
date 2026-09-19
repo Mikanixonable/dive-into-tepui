@@ -45,11 +45,11 @@ export interface CelestialBodies extends FrameCelestialBodies {
 
   // 天体 id の主天体。未登録なら undefined、主天体を持たなければ null。
   bodyParentId(id: string): string | null | undefined;
-  // focusId から主星まで遡った先祖の id(近い順)。focusId 自身は含まない。
+  // focusId から主星まで遡った id(近い順)。focusId 自身を含む。
   ancestorsOf(focusId: string): readonly string[];
   // focusId と同じ系に属する天体の id。focusId を省くと空集合。
   sameSystemIds(focusId: string | undefined): ReadonlySet<string>;
-  // id から主星までの系の鎖(内側から外側の順)。系に属さない id では空。
+  // id から主星までの系の鎖(内側から外側の順)。未登録の id では、その id 1つだけ。
   chainFrom(id: string): readonly string[];
   // 鎖の各段に属する天体の id をまとめたもの。重複は畳む。
   membersFrom(chain: readonly string[]): readonly string[];

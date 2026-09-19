@@ -8,7 +8,7 @@ import {
   LagrangePoints, SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
 } from '../../src/physics/lagrange';
 import { CelestialMotion, OrbitingMotion } from '../../src/physics/celestial-motion';
-import { CelestialBodyDef, PhaseOffsets, StarDef } from '../../src/physics/celestial-body-def';
+import { CelestialBodyDef, StarDef } from '../../src/physics/celestial-body-def';
 import { BodyOrientation, CelestialKind, FrameRotation, type Degree2Gravity } from '../../src/physics/celestial-body';
 import { EciTransform } from '../../src/physics/eci-transform';
 import type { Atmosphere } from '../../src/physics/atmosphere';
@@ -39,15 +39,13 @@ export type SolarSystemParts = {
 export const TEST_EPOCH: TdbJulianDate =
   createJulianDate('TDB', J2000_JULIAN_DATE + TEST_SIM_ZERO_ET / SECONDS_PER_DAY);
 
-// 現実の太陽系を地球原点で組む。phases は天体ごとの平均黄経の初期位相 [rad]、
-// epoch は simTime=0 が指す絶対時刻。ephemerisPoints を渡すと、そこに載っている天体だけが
-// その有効期間で数値暦経路を通る。
+// 現実の太陽系を地球原点で組む。epoch は simTime=0 が指す絶対時刻。ephemerisPoints を渡すと、
+// そこに載っている天体だけがその有効期間で数値暦経路を通る。
 export function solarSystemParts(
-  phases: PhaseOffsets = {},
   epoch: TdbJulianDate = TEST_EPOCH,
   ephemerisPoints: EphemerisPoints | null = null,
 ): SolarSystemParts {
-  const system = solarSystem('earth', phases, 0, ephemerisPoints, epoch);
+  const system = solarSystem('earth', ephemerisPoints, epoch);
   return { bodies: system.celestialMotions, system, referenceFrames: system.frames };
 }
 
@@ -176,17 +174,19 @@ class FixedMotion extends CelestialMotion {
 
 // ECI 原点に置く、太陽系重心に静止した基準。FixedMotion の ECI 化を恒等変換にする。
 const FIXED_ORIGIN = new FixedMotion(
-  { id: '@fixed-origin', mu: 0, radius: 0 },
+  { id: '@fixed-origin', mu: 0, radius: 0, radiantIntensity: 0 },
   kinematicState<'eci'>(0, v3(), v3()), v3(), 'star', null, null,
 );
 const FIXED_ECI = new EciTransform(FIXED_ORIGIN);
 
 // 宣言した瞬間値だけを答える天体を1体組む。state は anchor(その時刻で厳密)、accel は
-// そこから伸びる二次曲線の加速度。
+// そこから伸びる二次曲線の加速度、radiantIntensity は kind が 'star' のときに放つ放射強度
+// [W/sr](省略時 0)。
 export function fixedMotion(spec: {
   readonly id: string;
   readonly mu: number;
   readonly radius: number;
+  readonly radiantIntensity?: number;
   readonly state: KinematicState;
   readonly accel?: Vec3;
   readonly kind?: CelestialKind;
@@ -194,7 +194,7 @@ export function fixedMotion(spec: {
   readonly atmosphere?: Atmosphere | null;
 }): CelestialMotion {
   const motion = new FixedMotion(
-    { id: spec.id, mu: spec.mu, radius: spec.radius },
+    { id: spec.id, mu: spec.mu, radius: spec.radius, radiantIntensity: spec.radiantIntensity ?? 0 },
     spec.state, spec.accel ?? v3(), spec.kind ?? 'planet',
     spec.degree2 ?? null, spec.atmosphere ?? null,
   );

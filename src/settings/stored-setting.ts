@@ -1,6 +1,8 @@
 // ラン跨ぎで残るユーザー設定1つぶんの器と、その保存先。設定の現在値を持ち、書き換えを保存先へ
 // 流して購読者へ配る。
 
+import type { SettingValue } from './setting-value';
+
 // 設定の保存先。読み書きの失敗はここで吸収する。
 export interface SettingStorage {
   // key に保存された文字列。未保存なら null。
@@ -45,12 +47,6 @@ export class MemorySettingStorage implements SettingStorage {
   public write(key: string, text: string): void {
     this.entries.set(key, text);
   }
-}
-
-// 現在値だけを読む面。
-export interface SettingValue<T> {
-  // いま選ばれている値。
-  readonly current: T;
 }
 
 // 設定1つ。現在値を正本として持ち、書き換えを保存と購読者へ配る。

@@ -2,10 +2,11 @@
 // 返す。天体が枠から外れるのは、より明るい天体に追い越されたときだけ。
 import { lambertPhase } from '../../../physics/lambert-sphere';
 import { sunlitFactor } from '../../../physics/shadow';
+import { isStar } from '../../../physics/celestial-body-def';
 import { dot, len, sub } from '../../../math/vec3';
 import { rec709Luminance } from '../../celestial-albedo';
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from './planet-light-source';
-import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../sun-light';
+import { SUN_IRRADIANCE_1AU, irradianceAtDistance, scaledRadiantIntensity } from '../sun-light';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
 import type { Albedo } from '../../celestial-albedo';
@@ -26,13 +27,12 @@ interface PlanetLight<T extends CelestialBody> {
 }
 
 // 基準点 reference(ECI)へ強く届く順に天体光源を MAX_PLANET_LIGHT_SLOTS 体まで返す。
-// starIntensity は主星の放射強度で、主星を持たない星系では null。
 export function selectPlanetLights<T extends CelestialBody>(
-  candidates: readonly PlanetLightCandidate<T>[], pivot: number, starIntensity: number | null,
-  reference: Vec3,
+  candidates: readonly PlanetLightCandidate<T>[], pivot: number, reference: Vec3,
 ): readonly PlanetLight<T>[] {
   const bodies = candidates.map(({ celestialBody }) => celestialBody);
-  const star = bodies.find((body) => body.kind === 'star') ?? null;
+  const star = bodies.find(isStar) ?? null;
+  const starIntensity = star === null ? null : scaledRadiantIntensity(star.def.radiantIntensity);
   const scored: { readonly light: PlanetLight<T>; readonly irradiance: number }[] = [];
   for (const { celestialBody, albedo } of candidates) {
     if (celestialBody.kind === 'star' || celestialBody.def.radius <= 0) continue;

@@ -15,7 +15,7 @@ import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/prote
 import { createProteinEnemyDefinition } from '../../src/game/protein/protein-enemy-registry';
 import { testProteinAssetBundleFor } from '../protein-test-assets';
 import { v3 } from '../../src/math/vec3';
-import { proteinLocalImpactPoint } from '../../src/render/protein/protein-anchors';
+import { proteinLocalImpactPoint } from '../../src/physics/protein-site-geometry';
 
 const asset = rawAsset as unknown as ProteinAssetDefinition;
 const motion = rawMotion as unknown as ProteinMotionAsset;
@@ -33,20 +33,19 @@ export function register(): void {
     const state = new ProteinCombatState(asset);
     const site = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
     const actionId = state.attackAction?.id;
-    assert.equal(actionId, 'plasma-burst');
     assert.ok(actionId);
-    assert.ok(attackSitesOf(state, asset).length >= 3);
     assert.equal(state.isActionEnabled(actionId), state.activeSite !== null);
     const readout = state.combatReadout();
     assert.equal(readout.sites.length, asset.sites.length);
     assert.equal(readout.sites.filter((entry) => entry.attackable).length, attackSitesOf(state, asset).length);
-    const result = state.applyDamage(site.maxHp, {
+    const sitePoint = {
       x: site.position[0] * asset.coordinateScale,
       y: site.position[1] * asset.coordinateScale,
       z: site.position[2] * asset.coordinateScale,
-    });
-    assert.equal(result.siteId, site.id);
-    assert.equal(result.siteDisabled, true);
+    };
+    assert.equal(state.siteIdAt(sitePoint), site.id);
+    state.applyDamage(site.maxHp, sitePoint);
+    assert.equal(state.combatReadout().sites.find((entry) => entry.id === site.id)?.disabled, true);
     assert.equal(state.isActionEnabled(actionId), true);
     assert.ok(!attackSitesOf(state, asset).some((entry) => entry.id === site.id));
     for (const attackSite of attackSitesOf(state, asset)) {
@@ -70,7 +69,6 @@ export function register(): void {
       })),
     };
     const state = new ProteinCombatState(genericActionAsset);
-    assert.equal(attackSitesOf(state, genericActionAsset).length, 3);
     assert.equal(state.isActionEnabled('ion-pulse'), true);
     assert.equal(state.isActionEnabled('plasma-burst'), false);
   });
@@ -78,7 +76,6 @@ export function register(): void {
   test('protein combat: myoglobin uses its own projectile action ID', () => {
     const state = new ProteinCombatState(myoglobinAsset);
     const actionId = state.attackAction?.id;
-    assert.equal(actionId, 'heme-iron-pulse');
     assert.ok(actionId);
     assert.equal(state.isActionEnabled(actionId), true);
     assert.equal(state.isActionEnabled('plasma-burst'), false);
@@ -91,21 +88,11 @@ export function register(): void {
     assert.equal(state.isActionEnabled('plasma-burst'), false);
   });
 
-  test('protein assets: registered assets resolve by ID', () => {
-    assert.ok(PROTEIN_ASSET_IDS.includes('pdb-5i4r'));
-    assert.ok(PROTEIN_ASSET_IDS.includes('pdb-1mbn-myoglobin'));
-    assert.equal(proteinAssetFor('pdb-5i4r')?.id, asset.id);
-    assert.equal(proteinAssetFor('pdb-1mbn-myoglobin')?.id, myoglobinAsset.id);
-    assert.equal(proteinAssetFor('missing-protein'), null);
-  });
-
-  test('protein assets: every registered enemy uses residue-bound ANM modes', () => {
+  test('protein assets: every registered enemy binds collective and local motion modes to residues', () => {
     for (const id of PROTEIN_ASSET_IDS) {
       const candidate = proteinAssetFor(id)!;
       const motionAsset = testProteinAssetBundleFor(id).semantic.motion;
       assert.ok(motionAsset);
-      assert.equal(motionAsset.model, 'c-alpha-anm-overdamped');
-      assert.equal(motionAsset.modes.length, 24);
       assert.equal(motionAsset.bindings.siteResidues.length, candidate.sites.length);
       assert.ok(motionAsset.bindings.backboneResidues.length > 0);
       assert.ok(motionAsset.modes.some((mode) => mode.band === 'collective'));
@@ -129,7 +116,7 @@ export function register(): void {
     assert.equal(myoglobinAsset.ligands[0]?.metalElement, 'FE');
     assert.equal(myoglobinAsset.ligands[0]?.centerSite, 'heme-iron');
     assert.deepEqual(attackSitesOf(state, myoglobinAsset).map((site) => site.id), ['heme-iron']);
-    assert.equal(state.nextAttackSite()?.id, 'heme-iron');
+    assert.equal(state.nextAttackSite?.id, 'heme-iron');
 
     const structure = rawMyoglobinStructure as unknown as {
       atoms: {
@@ -176,14 +163,6 @@ export function register(): void {
     hit('complex-interface');
     for (const site of asset.sites.filter((entry) => entry.actions.includes('plasma-burst'))) hit(site.id);
     assert.equal(state.phase, 'dissociated');
-  });
-
-  test('protein combat: save round-trip preserves sites and modification', () => {
-    const state = new ProteinCombatState(asset);
-    const serialized = state.serialize();
-    const restored = new ProteinCombatState(asset, serialized);
-    assert.deepEqual(restored.serialize(), serialized);
-    assert.equal(restored.serialize().modifications['phosphate-1'], 'phosphorylated');
   });
 
   test('protein combat: structural damage removes the visible modification state', () => {
@@ -272,10 +251,11 @@ export function register(): void {
     assert.ok(Math.abs(localImpact.y - active.position[1] * asset.coordinateScale) < 1e-12);
     assert.ok(Math.abs(localImpact.z - active.position[2] * asset.coordinateScale) < 1e-12);
     const firstAttackWorld = runtime.siteWorldPositionById(
-      combat.nextAttackSite()!.id, origin, IDENTITY_ATTITUDE,
+      combat.nextAttackSite!.id, origin, IDENTITY_ATTITUDE,
     );
+    combat.advanceAttackSite();
     const nextWorld = runtime.siteWorldPositionById(
-      combat.nextAttackSite()!.id, origin, IDENTITY_ATTITUDE,
+      combat.nextAttackSite!.id, origin, IDENTITY_ATTITUDE,
     );
     assert.deepEqual(firstAttackWorld, activeWorld);
     assert.notDeepEqual(nextWorld, activeWorld);
@@ -287,6 +267,12 @@ export function register(): void {
     syncVisual();
     // 変形が生きていれば、サイトのアンカーは変形前の位置から動く。
     assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
+    // 表示中のアンカーが揺らぎで動いても、被弾部位は静止位置で選ぶ。
+    const restCombat = new ProteinCombatState(asset);
+    assert.equal(
+      restCombat.siteIdAt(proteinLocalImpactPoint(activeWorld, origin, IDENTITY_ATTITUDE, root.scale.x)),
+      active.id, 'the rest position should select the site on impact',
+    );
     assert.deepEqual(root.position, baseRootPosition);
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);

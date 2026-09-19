@@ -32,7 +32,8 @@ process.stdin.on('end', () => {
     '更新されているかを確認せよ(手順は /modify-feature)。まだなら、コードを進める前に直す。\n' +
     'コードの現状を追認するだけの記述を文書へ書き足さないこと。\n' +
     '【規約への追従】DEVELOP/CODING-RULE.md(設計方針・命名規則・コメント規約)から変更範囲が\n' +
-    '逸脱していないか確認せよ。大きな変更を終えた後は /refactor で一括点検する。';
+    '逸脱していないか確認せよ。置き場・import・状態・直列化・構築に触れたなら DEVELOP/ARCHITECTURE.md\n' +
+    'も当てる(CODING-RULE 1.3)。大きな変更を終えた後は /refactor で一括点検する。';
 
   process.stdout.write(
     JSON.stringify({

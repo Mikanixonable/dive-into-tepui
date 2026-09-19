@@ -388,7 +388,7 @@ function epa(a: PreparedCylinder, b: PreparedCylinder, initial: SupportPoint[]):
       dot(face.normal, sub(supportPoint.p, elementAt(vertices, face.a).p)) > EPSILON
     ));
     if (visible.length === 0) return contactFromFace(vertices, closest);
-    const boundary: Array<[number, number]> = [];
+    const boundary: [number, number][] = [];
     const addEdge = (from: number, to: number): void => {
       const reverse = boundary.findIndex(([a0, b0]) => a0 === to && b0 === from);
       if (reverse >= 0) boundary.splice(reverse, 1);

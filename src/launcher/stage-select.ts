@@ -9,6 +9,7 @@ import { StartEpochForm } from './start-epoch-form';
 import { TITLE_SCENE_PATTERNS, TitleScene } from './title-scene';
 import type { StageClass } from '../game/stages/stage';
 import type { TdbJulianDate } from '../physics/time';
+import type { ThemePalette } from '../theme';
 import type { UnlockManager } from './unlock-manager';
 
 // タイトルの添え書き1組。primary は副題、script はその下に添える異文字(lang の言語で
@@ -136,8 +137,10 @@ class StageSelectScreen {
   private closed = false;
 
   // onEscape は ESC キーで、onClose は選択が済んで画面を畳むときに、onSettings は設定ボタンで呼ばれる。
+  // palette は3D場面の材質と光の色。
   public constructor(
     unlockManager: UnlockManager,
+    palette: ThemePalette,
     private readonly onEscape: (() => void) | undefined,
     private readonly onClose: (() => void) | undefined,
     onSettings: (() => void) | undefined,
@@ -161,7 +164,7 @@ class StageSelectScreen {
 
     // 隅の控えめなリンクからデバッグステージへ移動できる。
     this.debugLink.className = 'ss-debug';
-    this.debugLink.textContent = 'debug stage [d]';
+    this.debugLink.textContent = 'debug stage';
     this.debugLink.addEventListener('click', () => this.select(StageDebug));
     this.settingsButton.type = 'button';
     this.settingsButton.className = 'ss-settings';
@@ -181,6 +184,7 @@ class StageSelectScreen {
       this.root.querySelector<HTMLElement>('.ss-3d-window')!,
       pickRandom(TITLE_SCENE_PATTERNS),
       randomUint32(),
+      palette,
     )
       .then((scene) => {
         if (this.closed) scene.dispose();
@@ -203,7 +207,7 @@ class StageSelectScreen {
     // 見出し・ショートカットキー・説明。説明は未解放なら解放条件に差し替わる。
     const unlocked = this.unlockedStages.has(stageClass);
     const sub = unlocked ? stageClass.selectSub : stageClass.selectLockedSub ?? stageClass.selectSub;
-    const key = stageClass.selectKeys[0] ? `[${stageClass.selectKeys[0].replace('Digit', '').replace('Key', '')}]` : '';
+    const key = stageClass.selectKey === null ? '' : `[${stageClass.selectKey.replace('Digit', '').replace('Key', '')}]`;
     const row = document.createElement('div');
     row.className = `ss-stage ui-selectable${unlocked ? '' : ' locked'}`;
     row.innerHTML =
@@ -243,7 +247,7 @@ class StageSelectScreen {
     // 手前にシステム窓か開始日時の入力欄が開いている間は、ステージのショートカットを止める。
     if (document.body.classList.contains('hud-overlay-modal-open') || this.startEpochForm.isOpen) return;
     const stageClass = STAGE_CLASSES.find((candidate) =>
-      this.unlockedStages.has(candidate) && candidate.selectKeys.includes(e.code));
+      this.unlockedStages.has(candidate) && candidate.selectKey === e.code);
     if (stageClass !== undefined) this.select(stageClass);
   };
 
@@ -263,11 +267,12 @@ class StageSelectScreen {
 // なら指定した開始日時の元期も併せて)で解決される Promise を返す。
 export function selectStage(
   unlockManager: UnlockManager,
+  palette: ThemePalette,
   onEscape?: () => void,
   onClose?: () => void,
   onSettings?: () => void,
 ): Promise<StageSelection> {
   return new Promise((resolve) => {
-    new StageSelectScreen(unlockManager, onEscape, onClose, onSettings, resolve);
+    new StageSelectScreen(unlockManager, palette, onEscape, onClose, onSettings, resolve);
   });
 }

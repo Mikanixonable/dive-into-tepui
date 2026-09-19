@@ -1,40 +1,40 @@
-import { SAVE_VERSION } from '../../game/save/save-data';
+import type { SerializedGame } from '../../game/game';
 import type { RunSummary } from '../../game/run-summary';
 import { fmtDist, fmtTime } from '../../hud/utils';
-import { SaveStore } from './save-store';
-import { SaveSlots } from './save-slots';
+import { SAVED_GAME_VERSION, type SavedGame, type SaveStore } from './save-store';
+import type { SaveSlots } from './save-slots';
 import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-context';
-import type { GameSaveData } from '../../game/save/save-data';
-import type { SnapshotKind, SnapshotMeta } from './slot-data';
+import { newSaveId } from './slot-data';
+import type { SnapshotMeta } from './slot-data';
 
-export interface SnapshotCaptureSource {
+// 周回を直列化した形 serialized に、いまの形式バージョンを添えた記録本体。
+function savedGame(serialized: SerializedGame): SavedGame {
+  return { version: SAVED_GAME_VERSION, ...serialized };
+}
+
+// 記録を1件残すときに、その瞬間の周回から読む口。
+export interface SnapshotSource {
   readonly isPaused: boolean;
   readonly isPlaying: boolean;
   runSummary(): RunSummary;
-  serialize(): GameSaveData;
+  serialize(): SerializedGame;
 }
 
-// スナップショットの出し入れを担う。撮るときは索引のメタを組んでスロットへ収め、読むときは
-// 保存形式を検証する。
+// 記録の出し入れを担う。手動セーブは索引のメタを組んでスロットへ収め、自動セーブは上書きし、
+// 読むときは保存形式を検証する。
 export class SnapshotService {
-  constructor(private readonly store: SaveStore, private readonly slots: SaveSlots) {}
+  public constructor(private readonly store: SaveStore, private readonly slots: SaveSlots) {}
 
-  // 要約と保存本体を1件のスナップショットとして永続化し、そのメタを返す。
+  // 要約と保存本体を1件の手動セーブとして残し、そのメタを返す。同じ瞬間で自動セーブも更新する。
   // アクティブスロットが無い、またはストア書き込みに失敗した場合は null。
-  capture(
-    summary: RunSummary,
-    save: GameSaveData,
-    kind: SnapshotKind,
-    name: string | null,
-    pinned: boolean,
-  ): SnapshotMeta | null {
+  public addManualSave(summary: RunSummary, serialized: SerializedGame, name: string | null): SnapshotMeta | null {
     const slotId = this.slots.activeSlotId;
     if (slotId === null) return null;
 
+    // 一覧が本体を読まずに描けるよう、その瞬間の要約をメタへ写す。
     const meta: SnapshotMeta = {
-      id: generateSnapshotId(),
-      kind,
-      pinned,
+      id: newSaveId(),
+      pinned: false,
       name: name && name.length > 0 ? name : autoName(summary),
       createdAtReal: Date.now(),
       simTime: summary.simTime,
@@ -49,34 +49,42 @@ export class SnapshotService {
       phase: summary.phase,
     };
 
-    return this.slots.addSnapshot(slotId, save.stageId, meta, save) ? meta : null;
+    const save = savedGame(serialized);
+    if (!this.slots.addManualSave(slotId, save.progress.stageId, meta, save)) return null;
+    this.slots.writeAutoSave(slotId, save.progress.stageId, save);
+    return meta;
   }
 
-  // snapshotId のスナップショット本体を取得する。本体欠損・バージョン不一致・
+  // 自動セーブをこの瞬間へ差し替える。アクティブスロットが無ければ何も残さない。
+  public writeAutoSave(serialized: SerializedGame): void {
+    const slotId = this.slots.activeSlotId;
+    if (slotId === null) return;
+    this.slots.writeAutoSave(slotId, serialized.progress.stageId, savedGame(serialized));
+  }
+
+  // snapshotId の本体が残っていて、いまの形式バージョンで書かれているか。
+  public isReadable(snapshotId: string): boolean {
+    return this.store.readSnapshot(snapshotId)?.version === SAVED_GAME_VERSION;
+  }
+
+  // snapshotId の本体を取得する。本体欠損・バージョン不一致・
   // 起動先ステージとの不一致のいずれかなら null。
-  load(snapshotId: string, expectedStageId: string): GameSaveData | null {
+  public load(snapshotId: string, expectedStageId: string): SavedGame | null {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
-    if (data.version !== SAVE_VERSION) return null;
-    if (expectedStageId !== data.stageId) return null;
-    // 暦情報が無いスナップショットは互換復元で読む。元期は継承するので照合しないが、
-    // その元期が選ぶ暦データがいま手元にあるものと違うなら、絶対天体状態が曖昧になるので拒否する。
-    if (!isEphemerisContextRestorable(
-      (data as { ephemerisContext?: unknown }).ephemerisContext,
-    )) return null;
+    // 版を先に照合する — 版の違う記録は形が違うので、ほかの項目を読まない。
+    if (data.version !== SAVED_GAME_VERSION) return null;
+    if (expectedStageId !== data.progress.stageId) return null;
+    // 元期が選ぶ暦データが手元のものと違えば、絶対天体状態が曖昧になるので拒否する。
+    if (!isEphemerisContextRestorable(data.progress.ephemerisContext)) return null;
     return data;
   }
 }
 
-// 名前を付けずに撮ったスナップショットの表示名。自機が居ない周回では経過時間だけを出す。
+// 名前を付けずに残した手動セーブの表示名。自機が居ない周回では経過時間だけを出す。
 function autoName(summary: RunSummary): string {
   const timeLabel = `MET ${fmtTime(summary.simTime)}`;
   return summary.playerCount > 0
     ? `${timeLabel} ・ ${summary.centerBodyName} 高度 ${fmtDist(summary.altitude)}`
     : timeLabel;
-}
-
-// 同一ミリ秒の連続呼び出しでも衝突しないよう、時刻にランダムな尾部を付ける。
-function generateSnapshotId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }

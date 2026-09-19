@@ -1,4 +1,3 @@
-import type { GameSaveData } from '../../game/save/save-data';
 import {
   type SaveIndex,
   type SaveSlotMeta,
@@ -7,25 +6,15 @@ import {
   type SlotExport,
   SLOT_EXPORT_FORMAT,
   SLOT_EXPORT_VERSION,
+  newSaveId,
 } from './slot-data';
-import { SaveStore, SAVE_INDEX_VERSION } from './save-store';
-import { migrateLegacySave } from './legacy-save';
+import { type SaveStore, SAVE_INDEX_VERSION, type SavedGame } from './save-store';
 
-// 履歴ごとに残す pinned:false の件数の上限。超えた分は古い順に消える。
-export const AUTO_SNAPSHOT_LIMIT = 12;
-// 履歴ごとに持てる pinned:true(クリップ済み)の件数の上限。
-export const PINNED_SNAPSHOT_LIMIT = 30;
+// 履歴ごとに持てる手動セーブの件数の上限。
+export const MANUAL_SAVE_LIMIT = 30;
 
-// 容量超過かどうか。ブラウザによって名前とコードが違うので両方を見る。
-function isQuotaError(e: unknown): boolean {
-  return (
-    e instanceof DOMException &&
-    (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22)
-  );
-}
-
-// セーブ索引(SaveIndex)を持ち、スロット/スナップショットのメタを操作する。メタの追加・削除に
-// 合わせて、store 上のスナップショット本体も書き・消す。
+// セーブ索引(SaveIndex)を持ち、スロット/手動セーブ/自動セーブのメタを操作する。メタの追加・削除に
+// 合わせて、store 上の本体も書き・消す。
 export class SaveSlots {
   private readonly index: SaveIndex;
 
@@ -34,14 +23,12 @@ export class SaveSlots {
     this.index = store.readIndex() ?? { version: SAVE_INDEX_VERSION, slots: [], activeSlotId: null };
   }
 
-  // store から索引を開く。参照されない本体を掃除し、旧セーブを取り込み、遊ぶ先のスロットが
-  // 必ず1つある状態で返す。
+  // store から索引を開く。参照されない本体を掃除し、遊ぶ先のスロットが必ず1つある状態で返す。
   public static load(store: SaveStore): SaveSlots {
     const slots = new SaveSlots(store);
     slots.pruneOrphans();
-    const migrated = migrateLegacySave(slots);
     if (slots.activeSlotId === null) {
-      slots.setActiveSlot((migrated ?? slots.slots[0] ?? slots.createSlot('セーブデータ 1')).id);
+      slots.setActiveSlot((slots.slots[0] ?? slots.createSlot('セーブデータ 1')).id);
     }
     return slots;
   }
@@ -69,14 +56,14 @@ export class SaveSlots {
 
   // 空のスロットを索引へ追加して返す。
   public createSlot(name: string): SaveSlotMeta {
+    // 周回もステージ履歴もまだ持たない、いま作ったスロット。
     const now = Date.now();
     const slot: SaveSlotMeta = {
-      id: this.genId(),
+      id: newSaveId(),
       name,
       createdAtReal: now,
       lastPlayedAtReal: now,
-      // 遊ぶステージは、実際に開始したときに noteLaunch が埋める。
-      lastStageId: '',
+      lastRun: null,
       stages: [],
     };
     this.index.slots.push(slot);
@@ -84,21 +71,20 @@ export class SaveSlots {
     return slot;
   }
 
-  // 実際に遊び始めたステージをスロットへ記録する。ゲーム開始時に一度だけ呼ぶ。
-  public noteLaunch(slotId: string, stageId: string): void {
+  // 遊び始めたステージを直近の周回としてスロットへ記録する。周回を起こすたびに一度呼ぶ。
+  public noteRunLaunched(slotId: string, stageId: string): void {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return;
-    slot.lastStageId = stageId;
+    slot.lastRun = { stageId, ended: false };
     slot.lastPlayedAtReal = Date.now();
     this.persist();
   }
 
-  // 決着した周回を締める。lastStageId を空にし、同じステージの次回起動が
-  // このスロットの最新スナップショットを進行中の周回と誤認して自動復元しないようにする。
+  // 直近の周回を締め、以降そこから再開しないようにする。一度も遊んでいないスロットでは何もしない。
   public noteRunEnded(slotId: string): void {
     const slot = this.index.slots.find((s) => s.id === slotId);
-    if (!slot) return;
-    slot.lastStageId = '';
+    if (!slot || slot.lastRun === null) return;
+    slot.lastRun = { stageId: slot.lastRun.stageId, ended: true };
     slot.lastPlayedAtReal = Date.now();
     this.persist();
   }
@@ -111,35 +97,38 @@ export class SaveSlots {
     this.persist();
   }
 
-  // そのスロットが参照する全スナップショット本体を先に消してから索引から外す。遊んでいた
-  // スロットを消した場合は、残っているスロットの1つをアクティブにする(遊ぶ先が無いと
-  // 以降どの経路でもスナップショットを撮れなくなるため)。
+  // スロット id を、参照する本体ごと消す。遊んでいたスロットを消したら残りの先頭をアクティブにする
+  // — 遊ぶ先が無いと、以降どの経路でも記録を残せない。
   public deleteSlot(id: string): void {
     const slot = this.index.slots.find((s) => s.id === id);
     if (!slot) return;
     for (const history of slot.stages) {
       for (const meta of history.snapshots) this.store.deleteSnapshot(meta.id);
+      if (history.autoSaveId) this.store.deleteSnapshot(history.autoSaveId);
     }
     this.index.slots = this.index.slots.filter((s) => s.id !== id);
     if (this.index.activeSlotId === id) this.index.activeSlotId = this.index.slots[0]?.id ?? null;
     this.persist();
   }
 
-  // 元スロットの複製を新規スロットとして作る。upToSnapshotId 以前(同時刻含む)だけを残す。
+  // 元スロットの複製を新規スロットとして作る。upToSnapshotId を渡すとその時点(同時刻含む)
+  // までを残し、複製先はその時点から再開する。渡さなければ自動セーブごと丸ごと複製する。
   // 無い id を指したとき・取り込みに失敗したときは null。
   public duplicateSlot(id: string, upToSnapshotId?: string): SaveSlotMeta | null {
     const source = this.index.slots.find((s) => s.id === id);
     if (!source) return null;
 
-    // 残す範囲の締め切り。
+    // 分岐なら、残す範囲の締め切りと分岐先が再開する時点が決まる。
     let cutoff = Infinity;
+    let branch: { stageId: string; snapshotId: string } | null = null;
     if (upToSnapshotId !== undefined) {
       const found = this.findSnapshot(upToSnapshotId);
       if (!found) return null;
       cutoff = found.meta.createdAtReal;
+      branch = { stageId: found.history.stageId, snapshotId: upToSnapshotId };
     }
 
-    // 書き出しと同じ形へ、本体が読めたスナップショットを詰めてから取り込む。
+    // 書き出しと同じ形へ、本体が読めた手動セーブを詰めてから取り込む。
     const copied: SlotExport = {
       format: SLOT_EXPORT_FORMAT,
       formatVersion: SLOT_EXPORT_VERSION,
@@ -147,6 +136,8 @@ export class SaveSlots {
       slot: { ...source, name: `${source.name} のコピー`, stages: [] },
       snapshots: {},
     };
+    // 複製先の自動セーブにする本体(ステージ履歴ごとに1つ)。分岐ならその時点、丸ごとなら複製元の自動セーブ。
+    const autoSaveSources = new Map<string, string>();
     for (const history of source.stages) {
       const kept = history.snapshots.filter((m) => m.createdAtReal <= cutoff);
       const readable: SnapshotMeta[] = [];
@@ -156,92 +147,120 @@ export class SaveSlots {
         copied.snapshots[meta.id] = data;
         readable.push(meta);
       }
-      copied.slot.stages.push({ ...history, snapshots: readable });
+      copied.slot.stages.push({ ...history, snapshots: readable, autoSaveId: null });
+      const autoSaveSource = branch === null
+        ? history.autoSaveId ?? null
+        : branch.stageId === history.stageId ? branch.snapshotId : null;
+      if (autoSaveSource !== null) autoSaveSources.set(history.stageId, autoSaveSource);
     }
-    return this.importSlot(copied);
+
+    const copy = this.importSlot(copied);
+    if (copy === null) return null;
+    // 取り込みは再開できる周回を持たないので、複製では自動セーブと直近の周回をここで入れ直す。
+    // 分岐点の本体が読めなければ再開先が無いので、直近の周回は締めたままにする。
+    let resumesBranch = false;
+    for (const [stageId, sourceId] of autoSaveSources) {
+      const data = this.store.readSnapshot(sourceId);
+      if (data === null || !this.writeAutoSave(copy.id, stageId, data)) continue;
+      if (branch !== null && branch.stageId === stageId) resumesBranch = true;
+    }
+    copy.lastRun = branch !== null
+      ? { stageId: branch.stageId, ended: !resumesBranch }
+      : source.lastRun === null ? null : { ...source.lastRun };
+    this.persist();
+    return copy;
   }
 
-  // slotId/stageId のステージ履歴を返す。無ければ作って索引に足す。
+  // slotId/stageId のステージ履歴を返す。無ければ作って索引に足す。スロットが無ければ null。
   private historyFor(slotId: string, stageId: string): StageHistoryMeta | null {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return null;
     let history = slot.stages.find((h) => h.stageId === stageId);
     if (!history) {
-      history = { stageId, clearCount: 0, lastPlayedAtReal: Date.now(), snapshots: [] };
+      history = { stageId, clearCount: 0, lastPlayedAtReal: Date.now(), snapshots: [], autoSaveId: null };
       slot.stages.push(history);
       this.persist();
     }
     return history;
   }
 
-  // slotId/stageId の履歴の最新スナップショット。無ければ null。
-  public latestSnapshot(slotId: string, stageId: string): SnapshotMeta | null {
+  // slotId/stageId の自動セーブの本体 id。まだ撮っていなければ null。
+  public autoSaveId(slotId: string, stageId: string): string | null {
     const slot = this.index.slots.find((s) => s.id === slotId);
     const history = slot?.stages.find((h) => h.stageId === stageId);
-    return history?.snapshots[0] ?? null;
+    return history?.autoSaveId ?? null;
   }
 
-  // 本体を書き、メタを履歴の先頭へ入れ、pinned:false の超過分を古い順に剪定する。
-  // 容量超過で書き込みに失敗した場合は pinned:false を1件ずつ消しながら再試行する。
-  // クリップ済みが上限に達している履歴へ pinned:true を足すことはできない(false を返す)。
-  public addSnapshot(slotId: string, stageId: string, meta: SnapshotMeta, data: GameSaveData): boolean {
+  // 自動セーブを差し替える。書き込みに失敗したら false を返し、前の自動セーブをそのまま残す。
+  public writeAutoSave(slotId: string, stageId: string, data: SavedGame): boolean {
     const history = this.historyFor(slotId, stageId);
     if (!history) return false;
-    if (meta.pinned && history.snapshots.filter((m) => m.pinned).length >= PINNED_SNAPSHOT_LIMIT) return false;
 
-    for (;;) {
-      try {
-        this.store.writeSnapshot(meta.id, data);
-        break;
-      } catch (e) {
-        // 空き容量以外の失敗(localStorage 自体が使えない等)は剪定しても直らないので、
-        // 消してから諦めることのないよう即座に降りる。
-        const oldestAuto = isQuotaError(e) ? this.oldestAutoIn(history) : null;
-        if (!oldestAuto) {
-          console.error('SaveSlots.addSnapshot: スナップショットを書き込めませんでした', e);
-          // 剪定でメタを消していれば索引が本体と食い違っているので、諦める前に書き戻す。
-          this.persist();
-          return false;
-        }
-        this.removeSnapshotFrom(history, oldestAuto.id);
-      }
+    // 前の本体を消すのは最後 — 逆順にすると、書き込みに失敗した瞬間に自動セーブが失われる。
+    const id = newSaveId();
+    try {
+      this.store.writeSnapshot(id, data);
+    } catch (e) {
+      console.error('SaveSlots.writeAutoSave: 自動セーブを書き込めませんでした', e);
+      return false;
+    }
+    const previous = history.autoSaveId ?? null;
+    history.autoSaveId = id;
+
+    const now = Date.now();
+    history.lastPlayedAtReal = now;
+    const slot = this.index.slots.find((s) => s.id === slotId);
+    if (slot) slot.lastPlayedAtReal = now;
+
+    this.persist();
+    if (previous !== null) this.store.deleteSnapshot(previous);
+    return true;
+  }
+
+  // 本体を書き、メタを履歴の先頭へ入れる。履歴が MANUAL_SAVE_LIMIT 件に達しているときと、
+  // 書き込みに失敗したときは false を返す。
+  public addManualSave(slotId: string, stageId: string, meta: SnapshotMeta, data: SavedGame): boolean {
+    const history = this.historyFor(slotId, stageId);
+    if (!history) return false;
+    if (history.snapshots.length >= MANUAL_SAVE_LIMIT) return false;
+
+    try {
+      this.store.writeSnapshot(meta.id, data);
+    } catch (e) {
+      console.error('SaveSlots.addManualSave: 手動セーブを書き込めませんでした', e);
+      return false;
     }
 
+    // 本体が置けてから索引へ載せる。
     history.snapshots.unshift(meta);
     history.lastPlayedAtReal = meta.createdAtReal;
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (slot) slot.lastPlayedAtReal = meta.createdAtReal;
 
-    this.pruneAutoOverflow(history);
     this.persist();
     return true;
   }
 
-  // 全スロット・全履歴を横断してスナップショット id から所属を引く。
-  private findSnapshot(snapshotId: string): { slot: SaveSlotMeta; history: StageHistoryMeta; meta: SnapshotMeta } | null {
+  // 全スロット・全履歴を横断して、手動セーブの id からそのメタと属する履歴を引く。
+  private findSnapshot(snapshotId: string): { history: StageHistoryMeta; meta: SnapshotMeta } | null {
     for (const slot of this.index.slots) {
       for (const history of slot.stages) {
         const meta = history.snapshots.find((m) => m.id === snapshotId);
-        if (meta) return { slot, history, meta };
+        if (meta) return { history, meta };
       }
     }
     return null;
   }
 
-  // クリップ状態を切り替える。PINNED_SNAPSHOT_LIMIT を超える昇格と、無い id では false。
-  public setPinned(snapshotId: string, pinned: boolean): boolean {
+  // クリップの印を付け外しする。無い id なら何もしない。
+  public setPinned(snapshotId: string, pinned: boolean): void {
     const found = this.findSnapshot(snapshotId);
-    if (!found) return false;
-    if (pinned) {
-      const pinnedCount = found.history.snapshots.filter((m) => m.pinned).length;
-      if (pinnedCount >= PINNED_SNAPSHOT_LIMIT) return false;
-    }
+    if (!found) return;
     found.meta.pinned = pinned;
     this.persist();
-    return true;
   }
 
-  // スナップショットの表示名を変える。無い id なら何もしない。
+  // 手動セーブの表示名を変える。無い id なら何もしない。
   public renameSnapshot(snapshotId: string, name: string): void {
     const found = this.findSnapshot(snapshotId);
     if (!found) return;
@@ -249,43 +268,33 @@ export class SaveSlots {
     this.persist();
   }
 
-  // スナップショットを本体ごと消す。無い id なら何もしない。
+  // 手動セーブを本体ごと消す。無い id なら何もしない。
   public deleteSnapshot(snapshotId: string): void {
     const found = this.findSnapshot(snapshotId);
     if (!found) return;
-    this.removeSnapshotFrom(found.history, snapshotId);
+    this.store.deleteSnapshot(snapshotId);
+    found.history.snapshots = found.history.snapshots.filter((m) => m.id !== snapshotId);
     this.persist();
   }
 
-  // ロード後に呼ぶ想定: 復元元より後(createdAtReal が新しい)の pinned:false を捨てる。
-  public discardAfter(snapshotId: string): void {
-    const found = this.findSnapshot(snapshotId);
-    if (!found) return;
-    const cutoff = found.meta.createdAtReal;
-    const toRemove = found.history.snapshots.filter((m) => !m.pinned && m.createdAtReal > cutoff);
-    for (const m of toRemove) this.removeSnapshotFrom(found.history, m.id);
-    this.persist();
-  }
-
-  // スロットを書き出しの形にする。pinnedOnly なら pinned:true のメタ・本体だけを含める。
-  // 本体が読めなかった件はメタからも落とす。無い slotId では null。
-  public exportSlot(slotId: string, pinnedOnly: boolean): SlotExport | null {
+  // スロットを書き出しの形にする。含めるのは手動セーブで、本体が読めなかった件は
+  // メタからも落とす。無い slotId では null。
+  public exportSlot(slotId: string): SlotExport | null {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return null;
 
     // 履歴ごとに、書き出すメタと本体を組にして詰める。
     const exportedSlot: SaveSlotMeta = { ...slot, stages: [] };
-    const snapshots: Record<string, GameSaveData> = {};
+    const snapshots: Record<string, SavedGame> = {};
     for (const history of slot.stages) {
-      const metas = pinnedOnly ? history.snapshots.filter((m) => m.pinned) : history.snapshots;
       const keptMetas: SnapshotMeta[] = [];
-      for (const meta of metas) {
+      for (const meta of history.snapshots) {
         const data = this.store.readSnapshot(meta.id);
         if (!data) continue;
         snapshots[meta.id] = data;
         keptMetas.push(meta);
       }
-      exportedSlot.stages.push({ ...history, snapshots: keptMetas });
+      exportedSlot.stages.push({ ...history, snapshots: keptMetas, autoSaveId: null });
     }
 
     return {
@@ -297,24 +306,26 @@ export class SaveSlots {
     };
   }
 
-  // 常に新規スロットとして追加する。id を振り直すのは、既に import 済みの同じファイルを
-  // もう一度読んだ時に既存スロットを壊さないため。書き込み途中で失敗したら書いた分を消して null。
+  // 書き出しの形 exp を新規スロットとして足して返す。id は振り直す — 同じファイルを二度読んでも
+  // 既存スロットを壊さない。自動セーブを持たない形なので、直近の周回は締めて足す。書き込みに失敗
+  // したら書いた分を消して null。
   public importSlot(exp: SlotExport): SaveSlotMeta | null {
     const newSlot: SaveSlotMeta = {
       ...exp.slot,
-      id: this.genId(),
+      id: newSaveId(),
       name: this.uniqueName(exp.slot.name),
+      lastRun: exp.slot.lastRun === null ? null : { stageId: exp.slot.lastRun.stageId, ended: true },
       stages: [],
     };
 
-    // スナップショットも id を振り直して本体を書く。途中で失敗したら書いた本体を消して取りやめる。
+    // 手動セーブも id を振り直して本体を書く。
     const written: string[] = [];
     for (const history of exp.slot.stages) {
-      const newHistory: StageHistoryMeta = { ...history, snapshots: [] };
+      const newHistory: StageHistoryMeta = { ...history, snapshots: [], autoSaveId: null };
       for (const meta of history.snapshots) {
         const data = exp.snapshots[meta.id];
         if (!data) continue;
-        const newMeta: SnapshotMeta = { ...meta, id: this.genId() };
+        const newMeta: SnapshotMeta = { ...meta, id: newSaveId() };
         try {
           this.store.writeSnapshot(newMeta.id, data);
         } catch (e) {
@@ -336,10 +347,12 @@ export class SaveSlots {
 
   // 索引のどこからも参照されていない本体キーを消す。
   private pruneOrphans(): void {
+    // 索引が指す本体(手動セーブと自動セーブ)を集めてから、それ以外のキーを消す。
     const referenced = new Set<string>();
     for (const slot of this.index.slots) {
       for (const history of slot.stages) {
         for (const meta of history.snapshots) referenced.add(meta.id);
+        if (history.autoSaveId) referenced.add(history.autoSaveId);
       }
     }
     for (const id of this.store.snapshotIds()) {
@@ -354,32 +367,6 @@ export class SaveSlots {
     let n = 2;
     while (existing.has(`${name} (${n})`)) n++;
     return `${name} (${n})`;
-  }
-
-  // pinned:false が AUTO_SNAPSHOT_LIMIT を超えていれば、古い順に超過分を本体ごと消す。
-  private pruneAutoOverflow(history: StageHistoryMeta): void {
-    const autos = history.snapshots.filter((m) => !m.pinned);
-    if (autos.length <= AUTO_SNAPSHOT_LIMIT) return;
-    const overflow = autos.slice(AUTO_SNAPSHOT_LIMIT).sort((a, b) => a.createdAtReal - b.createdAtReal);
-    for (const m of overflow) this.removeSnapshotFrom(history, m.id);
-  }
-
-  // 履歴内で最も古い pinned:false のメタ(容量超過リトライ用)。無ければ null。
-  private oldestAutoIn(history: StageHistoryMeta): SnapshotMeta | null {
-    const autos = history.snapshots.filter((m) => !m.pinned);
-    if (autos.length === 0) return null;
-    return autos.reduce((oldest, m) => (m.createdAtReal < oldest.createdAtReal ? m : oldest));
-  }
-
-  // 本体を消してから履歴のメタ配列からも外す。
-  private removeSnapshotFrom(history: StageHistoryMeta, snapshotId: string): void {
-    this.store.deleteSnapshot(snapshotId);
-    history.snapshots = history.snapshots.filter((m) => m.id !== snapshotId);
-  }
-
-  // 同一ミリ秒内の連続生成でも衝突しないよう、時刻に加えてランダム部を足す。
-  private genId(): string {
-    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   }
 
   // 索引を store へ書き戻す。書けなくても、この実行の中ではメモリ上の索引が生きる。

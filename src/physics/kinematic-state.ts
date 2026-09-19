@@ -1,6 +1,6 @@
 // 状態ベクトル(KinematicState)そのものの定義と、それだけで完結する幾何演算(軌道基底・
 // エルミート補間)。THREE/DOM 非依存の純粋関数群。
-import { Vec3, add, cross, norm, sub, v3 } from '../math/vec3';
+import { Vec3, add, cross, norm, sub, v3, type SerializedVec3 } from '../math/vec3';
 
 // 位置・速度を**どの供給源から、どの原点で**測っているか。軸はどれもゲーム ECI 軸
 // (icrf だけ ICRF 軸)。**供給源の違いも原点の違いも値からは見分けられない**ので、型で
@@ -43,6 +43,24 @@ export type KinematicState<F extends FrameTag = 'eci'> = {
 // 型引数を書く — 組み立てが原点を黙って選ぶことのほうが、書く量より高くつく。
 export function kinematicState<F extends FrameTag>(t: number, r: Vec3, v: Vec3): KinematicState<F> {
   return { t, r, v } as KinematicState<F>;
+}
+
+// 直列化した ECI の運動状態。
+export interface SerializedKinematicState {
+  readonly t: number;
+  readonly r: SerializedVec3;
+  readonly v: SerializedVec3;
+}
+
+// ECI 運動状態を、直列化した時刻・位置・速度へ写す。
+export function serializeKinematicState(state: KinematicState<'eci'>): SerializedKinematicState {
+  return { t: state.t, r: { ...state.r }, v: { ...state.v } };
+}
+
+// 直列化された時刻・位置・速度を、ECI 運動状態へ戻す。
+export function deserializeKinematicState(serialized: SerializedKinematicState): KinematicState<'eci'> {
+  const { t, r, v } = serialized;
+  return kinematicState<'eci'>(t, v3(r.x, r.y, r.z), v3(v.x, v.y, v.z));
 }
 
 // 主天体を原点に置き直した状態。**両者は同じ原点で測られていなければならない**(同じ F)。

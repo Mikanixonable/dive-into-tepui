@@ -115,13 +115,13 @@ export function register(): void {
     assert.equal(nextMapDisplayMode('label', true), 'orbit');
 
     const label = applyMapDisplayMode(DEFAULT_MAP_DISPLAY_TOGGLES, 'planetVisible', 'label');
-    assert.equal(label.planetVisible, true);
+    assert.equal(celestialClassVisible('planet', label), true);
     assert.equal(label.planetName, true);
     assert.equal(label.planetOrbit, false);
 
     const hidden = applyMapDisplayMode(label, 'planetVisible', 'hidden');
     assert.equal(mapDisplayModeOf(hidden, 'planetVisible'), 'hidden');
-    assert.equal(hidden.planetVisible, false);
+    assert.equal(celestialClassVisible('planet', hidden), false);
     assert.equal(hidden.planetName, false);
     assert.equal(hidden.planetOrbit, false);
 
@@ -255,7 +255,7 @@ export function register(): void {
   });
 
   test('systemChainAt: 天体が1体も無ければ空配列', () => {
-    const empty = new CelestialSystem([], SYSTEM.entityOf('sun'), {}, TEST_EPOCH);
+    const empty = new CelestialSystem([], SYSTEM.entityOf('sun'), TEST_EPOCH);
     assert.deepEqual(empty.systemChainAt(v3(), 0), []);
   });
 

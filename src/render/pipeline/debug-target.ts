@@ -21,8 +21,3 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['atmosphere', '大気'],
   ['lens', 'レンズ'],
 ];
-
-// デバッグ表示の選択を書き込む先。
-export interface DebugTargetHost {
-  debugTarget: DebugTargetId;
-}

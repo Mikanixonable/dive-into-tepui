@@ -21,12 +21,13 @@ export function gameInputMode(paused: boolean, inputGated: boolean, construction
 /**
  * Input の生データをゲーム側へ渡す narrow port。
  *
- * 実装は後続移行時に Input を保持する adapter が担う。`takePressed` の消費単位や
+ * 実装は後続移行時に Input を保持する adapter が担う。`takePressed` / `takePressedCodes` の消費単位や
  * `isDown` の押下判定は既存 Input の意味をそのまま委譲し、この契約では変更しない。
  */
 export interface RawGameInputAdapter {
   isDown(binding: GameInputBinding): boolean;
   takePressed(binding: GameInputBinding): boolean;
+  takePressedCodes(handler: (code: string) => boolean): void;
 }
 
 /**
@@ -42,6 +43,7 @@ export interface GameInputPort {
   readonly commands?: readonly GameCommand[];
   readonly handleAction?: (action: ContinuousGameAction) => void;
   readonly handleCommand?: (command: GameCommand) => void;
+  readonly handlePressed?: (code: string) => boolean;
 }
 
 /**
@@ -53,40 +55,55 @@ export interface GameInputPort {
  */
 export class GameInputRouter {
   private readonly ports: readonly GameInputPort[];
+  private readonly claimedActionCodes = new Set<string>();
+  private readonly claimedCommandCodes = new Set<string>();
 
-  constructor(private readonly input: RawGameInputAdapter, ports: readonly GameInputPort[]) {
+  public constructor(private readonly input: RawGameInputAdapter, ports: readonly GameInputPort[]) {
     this.ports = [...ports];
   }
 
   /** 登録順のポートへ連続操作と押下エッジを配分する。 */
-  route(): void {
-    const enabledPorts = this.ports.filter((port) => port.isEnabled?.() ?? true);
+  public route(): void {
+    this.routeAdditional(this.ports);
+  }
+
+  /** 同じフレームの残りの優先順位へ入力を配分する。外部のライフサイクル層が使う。 */
+  public routeAdditional(ports: readonly GameInputPort[]): void {
+    const enabledPorts = ports.filter((port) => port.isEnabled?.() ?? true);
     this.routeActions(enabledPorts);
     this.routeCommands(enabledPorts);
   }
 
+  /** フレーム開始時に連続操作の競合記録を破棄する。edge は raw adapter が管理する。 */
+  public beginFrame(): void {
+    this.claimedActionCodes.clear();
+    this.claimedCommandCodes.clear();
+  }
+
   private routeActions(ports: readonly GameInputPort[]): void {
-    const claimedCodes = new Set<string>();
     for (const port of ports) {
       if (!port.handleAction) continue;
       for (const action of port.actions ?? []) {
-        if (bindingOverlapsCodes(action.binding, claimedCodes)) continue;
+        if (bindingOverlapsCodes(action.binding, this.claimedActionCodes)) continue;
         if (!this.input.isDown(action.binding)) continue;
         port.handleAction(action);
-        addBindingCodes(action.binding, claimedCodes);
+        addBindingCodes(action.binding, this.claimedActionCodes);
       }
     }
   }
 
   private routeCommands(ports: readonly GameInputPort[]): void {
-    const consumedCodes = new Set<string>();
     for (const port of ports) {
+      if (port.handlePressed) {
+        const handlePressed = port.handlePressed;
+        this.input.takePressedCodes((code) => handlePressed(code));
+      }
       if (!port.handleCommand) continue;
       for (const command of port.commands ?? []) {
-        if (bindingOverlapsCodes(command.binding, consumedCodes)) continue;
+        if (bindingOverlapsCodes(command.binding, this.claimedCommandCodes)) continue;
         if (!this.input.takePressed(command.binding)) continue;
         port.handleCommand(command);
-        addBindingCodes(command.binding, consumedCodes);
+        addBindingCodes(command.binding, this.claimedCommandCodes);
       }
     }
   }

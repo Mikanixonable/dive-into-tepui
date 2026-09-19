@@ -78,8 +78,8 @@ export const KEY_MAPPING = {
   pauseMenu: { code: 'Escape', label: 'ESC' },
   restart: { code: 'KeyR', label: 'R' },
   toggleDebugInfoWindow: { code: 'F3', label: 'F3' },
-  clipSnapshot: { code: 'F5', label: 'F5' },
-  openSnapshots: { code: 'F9', label: 'F9' },
+  manualSave: { code: 'F5', label: 'F5' },
+  openSaveBrowser: { code: 'F9', label: 'F9' },
 } as const satisfies Record<string, KeyBinding>;
 
 // ブラウザ既定のスクロールを奪うキー(keydown で preventDefault する)。
@@ -92,6 +92,6 @@ export const SCROLL_GUARD_KEYS: readonly KeyBinding[] = [
   KEY_MAPPING.cameraPitchUp,
   KEY_MAPPING.cameraPitchDown,
   KEY_MAPPING.toggleDebugInfoWindow,
-  KEY_MAPPING.clipSnapshot,
-  KEY_MAPPING.openSnapshots,
+  KEY_MAPPING.manualSave,
+  KEY_MAPPING.openSaveBrowser,
 ];

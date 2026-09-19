@@ -1,67 +1,70 @@
-// 操作対象(自機船 0..n 隻と基地のうち、ちょうど1つ)の選択と、それに伴う各所有者への伝播
-// (航法ターゲット・SFX、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
+// 操作対象(自機船 0..n 隻と基地のうち、ちょうど1つ)の選択。選び直しと、操作対象候補を世界から
+// 取り除いたことを出来事として記録する。
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import type { CameraSystem } from './camera/camera-system';
-import type { NavTarget } from './nav-target';
-import type { WorldSfx } from '../audio/sfx/world-sfx';
-import type { Notifier } from '../hud/notifier';
+
+// 操作対象の直列化した形。操作対象の id で、操作していなければ null。
+export type SerializedControlSelection = string | null;
 
 export class ControlSelection {
-  private _current: Controllable | null;
-
-  // 起動時の操作対象を自分で解決する。savedId に一致するもの、無ければ生存中の先頭、
-  // 操作できるものが1つも無ければ null。
-  constructor(
-    savedId: string | null | undefined,
+  // current を操作対象にして始める。省けば生存中の先頭、操作できるものが1つも無ければ null。
+  private constructor(
     private readonly dynamicSystem: DynamicSystem,
-    private readonly cameraSystem: CameraSystem,
-    private readonly navTarget: NavTarget,
-    private readonly worldSfx: WorldSfx,
-    private readonly notifier?: Notifier,
-  ) {
-    const candidates = dynamicSystem.controllables;
-    this._current = candidates.find((c) => c.id === savedId)
-      ?? candidates.find((c) => c.motion.alive)
-      ?? null;
+    private _current: Controllable | null = dynamicSystem.controllables.find((c) => c.motion.alive) ?? null,
+  ) {}
+
+  // 組み上がった顔ぶれの生存中の先頭を操作対象にして始める。
+  public static create(dynamicSystem: DynamicSystem): ControlSelection {
+    return new ControlSelection(dynamicSystem);
   }
 
-  get current(): Controllable | null { return this._current; }
+  // 直列化した id の操作対象を、復元を終えた顔ぶれから選び直して始める。null なら未操作のまま
+  // 始める。顔ぶれに無い id なら、新しく始めたときと同じく生存中の先頭を選ぶ。
+  public static deserialize(serialized: SerializedControlSelection, dynamicSystem: DynamicSystem): ControlSelection {
+    if (serialized === null) return new ControlSelection(dynamicSystem, null);
+    return new ControlSelection(dynamicSystem, dynamicSystem.controllables.find((c) => c.id === serialized));
+  }
 
-  // 操作対象(操作・追従カメラ・計画編集の対象)を差し替える。
-  select(target: Controllable): void {
+  // 直列化した形へ変換する。
+  public serialize(): SerializedControlSelection {
+    return this._current?.id ?? null;
+  }
+
+  public get current(): Controllable | null { return this._current; }
+
+  // 操作対象(操作・追従カメラ・計画編集の対象)を差し替え、選び直したことを記録する。
+  public select(target: Controllable): void {
     if (this._current === target) return;
     this._current?.clearTransientCommands();
     this._current = target;
-    this.navTarget.clear();
-    if (target.controlHint !== null) this.notifier?.hint(target.controlHint);
+    this.dynamicSystem.events.record(
+      { kind: 'controlTargetSelected', target: target.mapKind, name: target.name });
   }
 
   // 未操作状態(全滅、または操作対象の手動解除)へ戻す。
-  clear(): void {
+  public clear(): void {
     if (this._current === null) return;
     this._current.clearTransientCommands();
     this._current = null;
-    this.worldSfx.setRcs(false);
   }
 
-  // 操作対象を手で外す。外れたときだけ案内を出す(全滅による喪失とは別の経路)。
-  release(target: Controllable): void {
+  // 操作対象を手で外す。外れたときだけ記録する(全滅による喪失とは別の経路)。
+  public release(target: Controllable): void {
     if (this._current !== target) return;
     this.clear();
-    if (target.releaseHint !== null) this.notifier?.hint(target.releaseHint);
+    this.dynamicSystem.events.record({ kind: 'controlTargetReleased', target: target.mapKind });
   }
 
   // 操作対象が居ない間に増えたものを、そのまま操作対象にする。既に居れば何もしない。
-  claimIfNone(target: Controllable): void {
+  public claimIfNone(target: Controllable): void {
     if (this._current === null) this.select(target);
   }
 
-  // 世界から取り除く。操作対象だった場合は他の生存個体へ引き継ぐか、無ければ未操作へ戻す。
-  remove(target: Controllable): void {
+  // 世界から取り除き、取り除いたことを記録する。操作対象だった場合は他の生存個体へ引き継ぐか、
+  // 無ければ未操作へ戻す。
+  public remove(target: Controllable): void {
     const wasActive = this._current === target;
-    this.navTarget.clearIfTargeting(target.id);
-    this.cameraSystem.mapCamera.clearFocusIf(target.id);
+    this.dynamicSystem.events.record({ kind: 'controllableRemoved', id: target.id });
     if (wasActive) {
       target.clearTransientCommands();
       this._current = null;
@@ -71,7 +74,7 @@ export class ControlSelection {
   }
 
   // 喪失した操作対象候補を回収・整理する。
-  reclaimDead(): void {
+  public reclaimDead(): void {
     let lostActive = false;
     // remove() が顔ぶれを触るので、走査は開始時の並びの写しに対して行う。
     for (const lost of [...this.dynamicSystem.controllables]) {

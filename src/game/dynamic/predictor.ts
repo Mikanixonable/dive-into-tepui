@@ -1,18 +1,16 @@
-// DynamicMotion.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
-// 積分(刻み幅・窓解決・到達判定)は PredictedArc が持ち、ここは予算の配分を持つ。伸長対象は
-// 「その個体の未来を読む消費者がいるか」(DynamicMotion.hasFutureReader)で決まる。
-// 弧は1本ずつ別の先端時刻で伸び、1フレームの歩数は予算で切られる — 追い越された弧は読まれなく
-// なり、その個体は実シミュレーションの積分へ落ちる。弧どうしの剛体接触と刻みの決まり方を除けば、
-// 個体1つと解析天体の関係(引く天体・表面到達・大気での焼失・刻みの上限)は実シミュレーション
-// と同じ答えでなければならない。
+// 予測の弧をなぞる個体(followsPredictedArc)の弧と計画軌道の各区間の弧を、共有のフレーム予算内で
+// 伸ばす。弧は1本ずつ別の先端時刻で伸び、1フレームの歩数は予算で切られる — 先端を実シミュレーション
+// に追い越された個体は積分へ落ちる。弧どうしの剛体接触と刻みの決まり方を除けば、個体1つと解析天体の
+// 関係(引く天体・表面到達・大気での焼失・刻みの上限)は実シミュレーションと同じ答えでなければならない。
 import type { PredictableMotion, PredictableMotionRoster } from './dynamic-simulation-participant';
 import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
-import { PredictedArc } from './predicted-arc';
+import type { PredictedArc } from './predicted-arc';
+import type { TrajectoryDemand } from './trajectory-demand';
 import type { PerfCounts } from '../perf-counts';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 // 消費される弧が、消費前線より過去側にも保持しておく余裕 [s]。保持窓の左端が前線に一致すると
-// at(前線) を挟む補間区間が消える。予測線の下端は simTime なので、余分に保持しても描画は変わらない。
+// at(前線) を挟む補間区間が消える。
 const ARC_RETAIN_MARGIN = 300;
 
 // 1フレームに配る積分ステップ数の上限。1歩 ≈ 0.025〜0.055ms(ブラウザ実測)なので、成長中の
@@ -20,8 +18,7 @@ const ARC_RETAIN_MARGIN = 300;
 // 1体あたり SUBSTEP_MAX_COUNT(=64)歩/フレームが要り、ホライズンへ伸ばすぶんはその上に乗る。
 export const ARC_STEP_BUDGET = 600;
 // 1フレームの予算のうち、操作対象の弧+計画軌道の弧(interactive 枠)に割ける割合の上限。優先は
-// するが独占はさせない — 計画の弧は他個体の予測を重力源・衝突判定の相手として読むので、編集
-// 直後の計画に全額を食わせると、その依存先の予測の成長が止まる。
+// するが独占はさせない — 編集直後の計画に全額を食わせると、他の個体の予測の成長が止まる。
 export const ARC_INTERACTIVE_RATIO = 0.5;
 // background のラウンドロビンで1体に必ず渡すステップ数の下限。最初の保持サンプル1つ分
 // (sampleInterval / 刻み幅 ≒ 10 ステップ)に届かない配分では、弧が消費されないまま捨てられ、
@@ -29,6 +26,7 @@ export const ARC_INTERACTIVE_RATIO = 0.5;
 export const ARC_MIN_ITEM_STEPS = 16;
 
 export class Predictor {
+  // 次に伸ばす個体の巡回の位置と、直近フレームの計数。
   private cursor = 0;
 
   private lastSteps = 0; // 実体側で消費した積分ステップ数
@@ -36,28 +34,25 @@ export class Predictor {
   private lastBodies = 0; // 弧が解決した天体の延べ数
   private lastRevisits = 0; // そのうち期限到来で訪問したものの数
 
-  constructor(
+  public constructor(
     private readonly roster: PredictableMotionRoster,
     private readonly celestialBodies: CelestialBodies,
   ) {}
 
   // このフレームぶんの積分予算を、操作対象の弧・計画の弧・その他の個体へ配って伸ばす。ポーズ中・
   // 決着後も呼んでよい。simDt はこのフレームの時間送りで、消費される弧の刻み上限を実シミュレー
-  // ションと揃えるのに使う。horizon は simTime から先へ予測する長さ [s]、canDisplayFuture は
-  // 表示時刻が現在より先へ動けるか。planArcs は時刻順に並べた計画の弧。
-  update(
-    simTime: number, simDt: number, controlled: PredictableMotion | null, horizon: number, canDisplayFuture: boolean,
-    planArcs: readonly PredictedArc[],
+  // ションと揃えるのに使う。demand は伸ばす長さと計画の弧を持つ、そのフレームの需要。
+  public update(
+    simTime: number, simDt: number, controlled: PredictableMotion | null, demand: TrajectoryDemand,
   ): void {
     this.lastSteps = 0;
     this.lastPlanSteps = 0;
     this.lastBodies = 0;
     this.lastRevisits = 0;
+    const horizon = demand.horizon;
     const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
-    // 伸ばすのは未来を読む消費者がいる個体だけ。線の有無は前フレームの状態を読むことになるが、
-    // 弧は何フレームもかけて伸びるので、伸ばし始めが1フレーム遅れても描かれる線は変わらない。
-    const targets = this.roster.allMotions().filter((e) => e.hasFutureReader(canDisplayFuture));
-    const interactive = controlled !== null && controlled.hasFutureReader(canDisplayFuture) ? controlled : null;
+    const targets = this.roster.allMotions().filter((e) => e.followsPredictedArc);
+    const interactive = controlled !== null && controlled.followsPredictedArc ? controlled : null;
 
     // interactive 枠: 操作対象の弧 → 計画の弧(時刻順)。他に伸ばす対象がいなければ全額を渡す。
     const others = targets.some((e) => e !== interactive);
@@ -69,7 +64,7 @@ export class Predictor {
       budget -= consumed;
       interactiveBudget -= consumed;
     }
-    for (const arc of planArcs) {
+    for (const arc of demand.planArcs) {
       if (interactiveBudget <= 0) break;
       const consumed = this.grow(arc, interactiveBudget);
       this.lastPlanSteps += consumed;
@@ -77,9 +72,8 @@ export class Predictor {
       interactiveBudget -= consumed;
     }
 
-    // 1体あたりの取り分は残額(interactive の使い残し込み)を残り訪問数で均等割りする。1体が
-    // 丸ごと消費すると、後続の個体が ARC_MIN_ITEM_STEPS に届かないまま実シミュレーションに
-    // 消費されず積分へ落ちて弧が捨てられ、作り直しを繰り返す。
+    // 残額(interactive の使い残し込み)を残り訪問数で均等割りする — 1体が丸ごと使うと、後続の
+    // 個体の弧が ARC_MIN_ITEM_STEPS に届かないまま捨てられ、作り直しを繰り返す。
     let visited = 0;
     while (budget > 0 && visited < targets.length) {
       const e = targets[(this.cursor + visited) % targets.length]!;
@@ -93,15 +87,14 @@ export class Predictor {
   }
 
   // budgetSteps を上限に予測列を1歩ずつ伸ばし、消費した歩数を実体側の集計へ積んで返す。
-  // 要求終端・保持窓の左端・実シミュレーションの刻み上限は、伸ばす前に弧へ書き込む。
+  // 要求終端・保持窓の左端・実シミュレーションの刻み上限は、伸ばす前に弧へ渡す。
   private advanceBudget(
     e: PredictableMotion, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
   ): number {
     const arc = e.ensurePredictedArc(this.celestialBodies.celestialMotions);
     if (arc === null) return 0;
-    arc.requiredEnd = simTime + horizon;
-    arc.retainFrom = simTime - ARC_RETAIN_MARGIN;
-    arc.simulationMaxStep = maxStep;
+    arc.demand(simTime + horizon, simTime - ARC_RETAIN_MARGIN);
+    arc.alignSimulationStep(maxStep);
     const consumed = this.grow(arc, budgetSteps);
     this.lastSteps += consumed;
     return consumed;
@@ -121,14 +114,14 @@ export class Predictor {
 
   // 直近フレームの予測伸長の集計値。planSteps は計画の弧ぶんの積分step数。horizon は予測の
   // 要求終端までの長さで、先端が届いた個体を数えるのに使う。
-  perfCounts(simTime: number, horizon: number, controlled: PredictableMotion | null): Pick<PerfCounts,
+  public perfCounts(simTime: number, horizon: number, controlled: PredictableMotion | null): Pick<PerfCounts,
   'predicted' | 'predictComplete' | 'predictorSteps' | 'planSteps'
   | 'arcCelestialBodies' | 'arcRevisits' | 'arcLead'> {
     // 先端が要求終端へ届いた個体と、打ち切られた個体を「完了」と数える。
     let tracked = 0;
     let finished = 0;
     for (const e of this.roster.allMotions()) {
-      if (!e.predictsFuture) continue;
+      if (!e.followsPredictedArc) continue;
       tracked++;
       const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;
       if (reachedHorizon || e.predictionTruncated) finished++;

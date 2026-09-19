@@ -3,9 +3,9 @@
 import { buildLabeledRow, Button, Slider, ValueInput } from '../../../hud/widgets';
 import {
   MAX_LINES_PER_KIND, MAX_ZERO_VELOCITY_CURVES,
-} from '../../celestial/orbit-guide/orbit-guide-settings';
+} from '../../viewer/orbit-guide-settings';
 import { sunSyncRevsPerDayRange } from '../../../physics/earth-reference-orbits';
-import { J2_EARTH, MU_EARTH, R_EARTH_EQ } from '../../celestial/solar-system/constants';
+import { J2_EARTH, MU_EARTH, R_EARTH_EQ } from '../../celestial/solar-system/earth-system';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 // 太陽同期条件が成立する「1日あたり周回数」の範囲。

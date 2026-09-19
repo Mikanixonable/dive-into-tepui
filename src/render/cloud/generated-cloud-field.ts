@@ -19,6 +19,7 @@ export class GeneratedCloudField implements CloudFieldSource {
   private lastBakedClimateGeneration: number | null = null;
   // 最後に焼いたときの投影の版。置き方が変われば、同じ表示時刻でも焼き直す。
   private lastBakedProjectionRevision: number | null = null;
+  private generationValue = 0;
 
   // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
   // 半径 [m]、rotationPeriod はその自転周期 [s]。
@@ -32,6 +33,7 @@ export class GeneratedCloudField implements CloudFieldSource {
 
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
   public get texture(): THREE.Texture { return this.field.texture; }
+  public get generation(): number { return this.generationValue; }
 
   // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。
   public at(direction: Vec3Node): CloudSample { return this.field.at(direction); }
@@ -55,6 +57,7 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.model.syncTime(displayTime);
     this.model.bake(renderer, gpu);
     this.field.render(renderer, gpu);
+    this.generationValue += 1;
     this.lastBakedDisplayTime = displayTime;
     this.lastBakedClimateGeneration = climateGeneration;
     this.lastBakedProjectionRevision = projectionRevision;

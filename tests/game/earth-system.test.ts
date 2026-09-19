@@ -12,35 +12,24 @@ import { EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE } from '../../src/render/ea
 import { SUN } from '../../src/game/celestial/solar-system/sun';
 
 const READY_MANIFEST = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   datasetId: 'earth-test-2026',
   sourceManifestSha256: '0'.repeat(64),
   terrainEncoding: {
-    formatVersion: 2, layout: 'octahedral-rg8-roughness-r8-material-class-a8',
+    formatVersion: 3, layout: 'normal-xyz-rgb8-roughness-a8',
     width: 260, height: 260, channels: 4, scalar: 'UInt8',
-    materialClasses: { water: 0, land: 1, ice: 2, unknown: 255 },
   },
   baseColor: 'base.jpg',
   baseTerrain: 'base.bin.gz',
-  tileIndexUrl: 'tile-index.json',
+  tileTemplates: { color: 'tiles/{z}/{x}/{y}.jpg', terrain: 'tiles/{z}/{x}/{y}.bin.gz' },
   climateMaps: Array.from({ length: 12 }, (_, index) => `climate-${index + 1}.png`),
   climateEncoding: {
     temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
     orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
     waterOrthometricElevationM: 0,
   },
-  coverage: { kind: 'sparse', minZoom: 4, maxZoom: 7, expectedTiles: null },
+  coverage: { kind: 'complete', minZoom: 5, maxZoom: 7, expectedTiles: 43_008 },
   attribution: ['test'],
-};
-
-const READY_INDEX = {
-  schemaVersion: 2,
-  datasetId: READY_MANIFEST.datasetId,
-  entries: [{
-    key: '4/0/0', z: 4, x: 0, y: 0,
-    color: { url: '4-0-0.jpg', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
-    terrain: { url: '4-0-0.bin.gz', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
-  }],
 };
 
 function fakeRenderer(isWebGPUBackend: boolean): WebGPURenderer {
@@ -53,14 +42,13 @@ function readyFetch(): typeof fetch {
   return async (input) => {
     const url = String(input);
     if (url.endsWith('earth-surface.json')) return new Response(JSON.stringify(READY_MANIFEST));
-    if (url.endsWith('tile-index.json')) return new Response(JSON.stringify(READY_INDEX));
     return new Response('missing', { status: 404 });
   };
 }
 
 export function register(): void {
   test('earth system: 地球はfallbackテクスチャを保ち、月の表面は変更しない', () => {
-    const bodies = earthSystem(new StarMotion(SUN), {}, 0);
+    const bodies = earthSystem(new StarMotion(SUN), 0);
     assert.equal(bodies.earth.view.surfaceTextureUrl, EARTH_TEXTURE.url);
     assert.match(bodies.moon.view.surfaceTextureUrl ?? '', /8k_moon\.jpg$/);
     assert.equal(EARTH_SURFACE_FIXTURE_SOURCE.climateMapUrls.length, 12);
@@ -155,8 +143,8 @@ export function register(): void {
   });
 
   test('earth system: PerfCountsは詳細地表を持つ天体だけ列挙する', () => {
-    const bodies = earthSystem(new StarMotion(SUN), {}, 0);
-    const system = new CelestialSystem([bodies.earth, bodies.moon], bodies.earth, {}, TEST_EPOCH);
+    const bodies = earthSystem(new StarMotion(SUN), 0);
+    const system = new CelestialSystem([bodies.earth, bodies.moon], bodies.earth, TEST_EPOCH);
     const surfaces = system.perfCounts().surfaces;
     assert.equal(surfaces.length, 1);
     assert.equal(surfaces[0]?.id, 'earth');

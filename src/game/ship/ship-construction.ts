@@ -117,8 +117,8 @@ export class ShipConstruction implements OverlayHandle {
     }
     this.current = draft;
     this.focusDock?.(ship);
-    this.previousForceCurrent = this.displayWindow.forceCurrent;
-    this.displayWindow.forceCurrent = true;
+    this.previousForceCurrent = this.displayWindow.current.forceCurrent;
+    this.displayWindow.setForceCurrent(true);
     this.overlayManager.open('ship-construction-mode', this, {
       kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
     });
@@ -132,7 +132,7 @@ export class ShipConstruction implements OverlayHandle {
     if (this.current === null) return;
     this.current = null;
     this.overlayManager.close('ship-construction-mode');
-    this.displayWindow.forceCurrent = this.previousForceCurrent;
+    this.displayWindow.setForceCurrent(this.previousForceCurrent);
     this.panel.sync({
       visible: false, moduleCount: 0, totalMass: 0, hp: 0, maxHp: 0,
       capabilitySummary: '—', role: 'material', warning: null,

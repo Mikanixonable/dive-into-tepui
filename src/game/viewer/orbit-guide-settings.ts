@@ -1,0 +1,313 @@
+// 軌道ガイド(表示パネルの軌道ガイドタブ)の設定値。参照として描く軌道の種類ごとに、表示の
+// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、直列化された形からの読み直しを持つ。
+import type { CatalogSystemId } from '../../physics/orbit-catalog';
+import type { DirectionMarkerMode } from '../../render/celestial/orbit-guide/direction-markers';
+
+// 1種類あたりに描ける線の本数の上限。
+export const MAX_LINES_PER_KIND = 40;
+// ゼロ速度曲線を一度に描ける本数の上限。
+export const MAX_ZERO_VELOCITY_CURVES = 20;
+
+// GuideKindSettings と CombinedKindSettings に共通する、本数・族範囲・色・進行方向・安定度の
+// 見せ方。表示ON/OFFの持ち方(単一の on か、軸値の組み合わせ axisValues か)だけが両者で違う。
+export interface GuideKindSharedSettings {
+  // 族から描く本数。1 なら族ではなく範囲の下限にあたる1本だけを描く。
+  readonly count: number;
+  // 族に沿った表示範囲。0 が族の始端、1 が終端。
+  readonly rangeMin: number;
+  readonly rangeMax: number;
+  // 族の下限側・上限側の色(0xRRGGBB)。本数が1なら下限側だけを使う。
+  readonly colorStart: number;
+  readonly colorEnd: number;
+  // 始と終を入れ替える。
+  readonly reversed: boolean;
+  readonly opacity: number;
+  readonly direction: DirectionMarkerMode;
+  readonly animate: boolean;
+  // 安定な軌道を太く描く。
+  readonly showStability: boolean;
+}
+
+// 軌道の種類1つぶんの表示設定。
+export interface GuideKindSettings extends GuideKindSharedSettings {
+  readonly on: boolean;
+}
+
+// 点/南北/東西/区間の軸を持つ小題1つぶんの表示設定(共線点のリヤプノフ・垂直・軸方向・ハロー、
+// 三角点の短周期・長周期・垂直・軸方向、副天体周回の DPO・LPO)。axisValues で選んだ軸値の組み合わせ
+// (例 {L1:true, N:true} なら「点L1」かつ「北」)の族を表示し、他のフィールドはそのすべてに共有する。
+// 存在しない組み合わせ(例 L2×区間2)は無視される。
+export interface CombinedKindSettings extends GuideKindSharedSettings {
+  readonly axisValues: Readonly<Record<string, boolean>>;
+}
+
+// リサジュー軌道の表示設定。族を持たないので、振幅と位相を直に指定する。
+export interface LissajousSettings {
+  readonly on: boolean;
+  readonly inPlane: number; // 無次元(L点局所γ単位に対する比)
+  readonly outOfPlane: number; // 無次元(L点局所γ単位に対する比)
+  readonly inPlanePhase: number; // [rad]
+  readonly outOfPlanePhase: number; // [rad]
+  readonly cycles: number;
+  readonly l1: boolean;
+  readonly l2: boolean;
+  readonly l3: boolean;
+  readonly colorStart: number;
+  readonly opacity: number;
+  readonly direction: DirectionMarkerMode;
+  readonly animate: boolean;
+}
+
+// 太陽同期準回帰軌道・ドーンダスク軌道の表示設定。族を持たない単一軌道。
+export interface SunSyncSettings {
+  readonly on: boolean;
+  readonly repeatDays: number; // 回帰日数
+  readonly revsPerRepeat: number; // 回帰日数の間に周回する回数
+  readonly colorStart: number;
+  readonly opacity: number;
+  readonly direction: DirectionMarkerMode;
+  readonly animate: boolean;
+}
+
+export type LocalTime = 'dawn' | 'dusk';
+
+// ドーンダスク軌道は太陽同期準回帰軌道と同じパラメータに加え、昇交点の地方太陽時を持つ。
+export interface DawnDuskSettings extends SunSyncSettings {
+  readonly localTime: LocalTime;
+}
+
+// モルニヤ軌道・ツンドラ軌道の表示設定。傾斜角・近点引数・周期は理論値に固定し、近地点高度・
+// 昇交点赤経を選ぶ。
+export interface CriticalInclinationSettings {
+  readonly on: boolean;
+  readonly perigeeAltitude: number; // [m]
+  readonly raan: number; // 昇交点赤経 [deg]
+  readonly colorStart: number;
+  readonly opacity: number;
+  readonly direction: DirectionMarkerMode;
+  readonly animate: boolean;
+}
+
+// ゼロ速度曲線(ガイドタブ)。断面は系と面の組で選ぶ。
+export interface ZeroVelocitySettings {
+  readonly earthMoonXY: boolean;
+  readonly earthMoonXZ: boolean;
+  readonly sunEarthXY: boolean;
+  readonly sunEarthXZ: boolean;
+  readonly sunJupiterXY: boolean;
+  readonly sunJupiterXZ: boolean;
+  readonly sunSaturnXY: boolean;
+  readonly sunSaturnXZ: boolean;
+  // 1本だけ描くか、範囲を等分して多数描くか。
+  readonly multiple: boolean;
+  readonly jacobi: number;
+  readonly jacobiMin: number;
+  readonly jacobiMax: number;
+  readonly count: number;
+  readonly opacity: number;
+}
+
+export interface OrbitGuideSettings {
+  readonly geostationary: boolean;
+  // 系トグル。全群に共通で効く。
+  readonly systems: Readonly<Partial<Record<CatalogSystemId, boolean>>>;
+  // 焼き込みカタログの族 id → その種類の表示設定。カタログに無い族の設定は無視される。
+  readonly kinds: Readonly<Record<string, GuideKindSettings>>;
+  // 小題 id(`${group}-${base}`)→ その小題の表示設定。カタログに無い小題の設定は無視される。
+  readonly combinedKinds: Readonly<Record<string, CombinedKindSettings>>;
+  readonly lissajous: LissajousSettings;
+  readonly sunSync: SunSyncSettings;
+  readonly dawnDusk: DawnDuskSettings;
+  readonly molniya: CriticalInclinationSettings;
+  readonly tundra: CriticalInclinationSettings;
+  readonly zeroVelocity: ZeroVelocitySettings;
+}
+
+// 表示ON/OFFの持ち方を除く、種類と小題に共通の既定値。色は群ごとの色相を呼び出し側が与える。
+function defaultSharedKindSettings(colorStart: number, colorEnd: number): GuideKindSharedSettings {
+  // 族から1本だけを、範囲の途中から控えめな不透明度で描くところから始める。
+  return {
+    count: 1,
+    rangeMin: 0.15,
+    rangeMax: 0.6,
+    colorStart,
+    colorEnd,
+    reversed: false,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+    showStability: false,
+  };
+}
+
+// 種類ごとの設定の既定値。非表示から始まる。
+export function defaultKindSettings(colorStart: number, colorEnd: number): GuideKindSettings {
+  return { on: false, ...defaultSharedKindSettings(colorStart, colorEnd) };
+}
+
+// 小題の設定の既定値。全軸とも未選択(=何も表示しない)から始まる。
+export function defaultCombinedKindSettings(colorStart: number, colorEnd: number): CombinedKindSettings {
+  return { axisValues: {}, ...defaultSharedKindSettings(colorStart, colorEnd) };
+}
+
+export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
+  geostationary: true,
+  systems: {
+    'earth-moon': true,
+    'sun-earth': false,
+  },
+  kinds: {},
+  combinedKinds: {},
+  lissajous: {
+    on: false,
+    inPlane: 0.1,
+    outOfPlane: 0.2,
+    inPlanePhase: 0,
+    outOfPlanePhase: 0,
+    cycles: 4,
+    l1: true,
+    l2: true,
+    l3: false,
+    colorStart: 0xb08bc9,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+  },
+  // 太陽同期準回帰軌道の既定値: 回帰7日・98周(1日14周)は高度約894kmの太陽同期軌道に相当する。
+  sunSync: {
+    on: false,
+    repeatDays: 7,
+    revsPerRepeat: 98,
+    colorStart: 0x8bc9a8,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+  },
+  dawnDusk: {
+    on: false,
+    repeatDays: 7,
+    revsPerRepeat: 98,
+    localTime: 'dawn',
+    colorStart: 0xc9b08b,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+  },
+  // モルニヤ軌道の既定値: 近地点高度600kmは実際の運用に近い値。
+  molniya: {
+    on: false,
+    perigeeAltitude: 600e3,
+    raan: 0,
+    colorStart: 0xc98b8b,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+  },
+  tundra: {
+    on: false,
+    perigeeAltitude: 24_000e3,
+    raan: 0,
+    colorStart: 0x8b96c9,
+    opacity: 0.4,
+    direction: 'none',
+    animate: false,
+  },
+  zeroVelocity: {
+    earthMoonXY: false,
+    earthMoonXZ: false,
+    sunEarthXY: false,
+    sunEarthXZ: false,
+    sunJupiterXY: false,
+    sunJupiterXZ: false,
+    sunSaturnXY: false,
+    sunSaturnXZ: false,
+    multiple: false,
+    jacobi: 3.18,
+    jacobiMin: 3.0,
+    jacobiMax: 3.2,
+    count: 5,
+    opacity: 0.35,
+  },
+};
+
+// value を [lo, hi] へ切り詰める。有限でなければ lo。
+function clamp(value: number, lo: number, hi: number): number {
+  return Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : lo;
+}
+
+// 種類・小題に共通の値を整える。範囲の上下を揃え、本数と不透明度を丸める。
+function normalizeSharedKindSettings<T extends GuideKindSharedSettings>(kind: T): T {
+  const lo = clamp(kind.rangeMin, 0, 1);
+  const hi = clamp(kind.rangeMax, 0, 1);
+  return {
+    ...kind,
+    count: Math.max(1, Math.round(clamp(kind.count, 1, MAX_LINES_PER_KIND))),
+    rangeMin: Math.min(lo, hi),
+    rangeMax: Math.max(lo, hi),
+    opacity: clamp(kind.opacity, 0, 1),
+  };
+}
+
+// 復元した値・外部入力を安全な形に整える。範囲の上下が入れ替わっていれば直し、本数は正の整数へ丸める。
+export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): OrbitGuideSettings {
+  const kinds = Object.fromEntries(
+    Object.entries(settings.kinds).map(([id, kind]) => [id, normalizeSharedKindSettings(kind)]),
+  );
+  const combinedKinds = Object.fromEntries(
+    Object.entries(settings.combinedKinds).map(([key, combined]) => [key, normalizeSharedKindSettings(combined)]),
+  );
+  // 単一軌道・リサジュー・ゼロ速度曲線の値を丸める。
+  const zv = settings.zeroVelocity;
+  const clampSunSync = <T extends SunSyncSettings>(s: T): T => ({
+    ...s,
+    repeatDays: Math.max(1, Math.round(s.repeatDays)),
+    revsPerRepeat: Math.max(1, Math.round(s.revsPerRepeat)),
+    opacity: clamp(s.opacity, 0, 1),
+  });
+  const clampCriticalInclination = (s: CriticalInclinationSettings): CriticalInclinationSettings => ({
+    ...s,
+    perigeeAltitude: Math.max(0, s.perigeeAltitude),
+    raan: ((s.raan % 360) + 360) % 360,
+    opacity: clamp(s.opacity, 0, 1),
+  });
+  return {
+    ...settings,
+    kinds,
+    combinedKinds,
+    lissajous: {
+      ...settings.lissajous,
+      cycles: Math.max(1, Math.round(settings.lissajous.cycles)),
+      // Richardson近似の妥当域(目安 0〜0.3)へクランプする。
+      inPlane: clamp(settings.lissajous.inPlane, 0.01, 0.3),
+      outOfPlane: clamp(settings.lissajous.outOfPlane, 0.01, 0.3),
+    },
+    sunSync: clampSunSync(settings.sunSync),
+    dawnDusk: clampSunSync(settings.dawnDusk),
+    molniya: clampCriticalInclination(settings.molniya),
+    tundra: clampCriticalInclination(settings.tundra),
+    zeroVelocity: {
+      ...zv,
+      jacobiMin: Math.min(zv.jacobiMin, zv.jacobiMax),
+      jacobiMax: Math.max(zv.jacobiMin, zv.jacobiMax),
+      count: Math.max(1, Math.round(clamp(zv.count, 1, MAX_ZERO_VELOCITY_CURVES))),
+    },
+  };
+}
+
+// 直列化された設定を読み直す。欠けた項目は入れ子の中まで既定値で埋めてから丸める。
+export function deserializeOrbitGuideSettings(serialized: Partial<OrbitGuideSettings>): OrbitGuideSettings {
+  // 浅く重ねるだけでは入れ子の欠けが埋まらないので、入れ子ごとに既定値へ重ねる。
+  return normalizeOrbitGuideSettings({
+    ...DEFAULT_ORBIT_GUIDE_SETTINGS,
+    ...serialized,
+    systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...serialized.systems },
+    kinds: { ...serialized.kinds },
+    combinedKinds: { ...serialized.combinedKinds },
+    lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...serialized.lissajous },
+    sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...serialized.sunSync },
+    dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...serialized.dawnDusk },
+    molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...serialized.molniya },
+    tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...serialized.tundra },
+    zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...serialized.zeroVelocity },
+  });
+}
