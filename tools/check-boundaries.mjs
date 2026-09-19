@@ -3,9 +3,9 @@
 //
 // 同名の .claude/hooks/check-boundaries.mjs は別物で、あちらは編集直後に1ファイルだけ見る。
 //
-// 例外の置き場は2つあり、混ぜない。**恒久の例外はこのファイルへコメント付きで書き、段の途中で
-// 消える残りは tools/boundary-allowlist.json へ書く。** 混ぜると、段の終わりに許可リストを
-// 空にできたかどうかで「規則をコードが満たしたか」を判定できなくなる。
+// 検査を外す置き場は2つあり、混ぜない。**規則どおりに分けられない箇所の例外は exempt へ理由の
+// コメント付きで書き、段の途中で消える残りは tools/boundary-allowlist.json へ書く。** 混ぜると、
+// 段の終わりに許可リストを空にできたかどうかで「規則をコードが満たしたか」を判定できなくなる。
 //
 //   node tools/check-boundaries.mjs
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -89,19 +89,23 @@ const PRESENTATION_ROOTS = [
   'src/game/run-event-presenter.ts',
 ];
 
-// 判定の名前と、その目的を書いた規則(ref)。違反の行に ref を添え、読む先を示す。
+// 判定の名前と、その目的を書いた規則(ref)。違反の行に ref を添え、読む先を示す。exempt は例外にする
+// import の辺 [import する側, される側] で、理由は各辺のコメントに書く(ARCHITECTURE「規則に合わないとき」)。
 const RULES = {
-  deviceOut: { name: '装置の出ていく import', ref: 'ARCHITECTURE R2' },
-  deviceToDevice: { name: '装置どうしの相互 import', ref: 'ARCHITECTURE R2' },
-  timeOut: { name: '時刻層の出ていく import', ref: 'ARCHITECTURE R2' },
-  definitionOut: { name: '定義層の出ていく import', ref: 'ARCHITECTURE R2' },
-  hudOut: { name: 'src/hud/ の出ていく import', ref: 'ARCHITECTURE R2' },
-  progressToViewer: { name: '進行から視点への import', ref: 'ARCHITECTURE R4' },
-  settingsViewer: { name: '設定と視点の相互 import', ref: 'ARCHITECTURE R4' },
-  serializationToPresentation: { name: '直列化の根の型から表示の導出への import', ref: 'ARCHITECTURE R11' },
+  deviceOut: { name: '装置の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  deviceToDevice: { name: '装置どうしの相互 import', ref: 'ARCHITECTURE R2', exempt: [] },
+  timeOut: { name: '時刻層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  definitionOut: { name: '定義層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  hudOut: { name: 'src/hud/ の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  progressToViewer: { name: '進行から視点への import', ref: 'ARCHITECTURE R4', exempt: [] },
+  settingsViewer: { name: '設定と視点の相互 import', ref: 'ARCHITECTURE R4', exempt: [] },
+  serializationToPresentation: {
+    name: '直列化の根の型から表示の導出への import', ref: 'ARCHITECTURE R11', exempt: [],
+  },
 };
 
-// 禁止パターンの表。段ごとに行を足す。exempt は恒久の例外で、理由は各行のコメントに書く。
+// 禁止パターンの表。段ごとに行を足す。exempt は例外で、理由は各行のコメントに書く
+// (ARCHITECTURE「規則に合わないとき」)。
 const FORBIDDEN = [
   {
     name: '命令 API の禁止',
@@ -116,7 +120,7 @@ const FORBIDDEN = [
     ref: 'ARCHITECTURE R5',
     pattern: /performance\.now|Date\.now/g,
     targets: ['src/render/', 'src/marker/', 'src/hud/', 'src/game/hud/'],
-    // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので恒久の例外にする。
+    // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので例外にする。
     exempt: [
       'src/render/protein/protein-runtime.ts',
       'src/render/dynamic/dynamic-entity/protein-enemy-view.ts',
@@ -336,7 +340,10 @@ function findImportViolations({ edges, layerOf }) {
   const found = [];
   for (const e of edges) {
     if (e.to === null) continue;
-    const flag = (rule) => found.push({ rule: rule.name, file: e.from, id: e.to, line: e.line });
+    const flag = (rule) => {
+      if (rule.exempt.some(([from, to]) => from === e.from && to === e.to)) return;
+      found.push({ rule: rule.name, file: e.from, id: e.to, line: e.line });
+    };
     const from = layerOf(e.from);
     const to = layerOf(e.to);
     const selfRoot = from === DEVICE ? deviceRootOf(e.from) : null;
@@ -460,7 +467,7 @@ if (ok) {
   console.log('\n境界の検査を通った。');
 } else {
   console.log('\n境界の検査に落ちた。各判定の括弧が、その目的を書いた規則(DEVELOP/ARCHITECTURE.md・CODING-RULE.md)。');
-  console.log('読んで、目的に照らしてコードを直す。規則・判定・exempt・許可リストを書き換えて通さない。規則か判定が');
-  console.log('目的を外していると判断したら、理由を添えてユーザーに問う(ARCHITECTURE.md「違反が出たとき」)。');
+  console.log('読んで、目的に照らしてコードを直す。規則どおりに分けられないなら、理由を書いて exempt へ例外にする。');
+  console.log('規則・判定を書き換えて通さない(ARCHITECTURE.md「規則に合わないとき」)。');
 }
 process.exit(ok ? 0 : 1);
