@@ -91,9 +91,8 @@ export class NavTargetPresenter {
     for (const marker of this.nodeMarkers) marker.retire();
   }
 
-  // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
-  // 対象の軌道面が定まらない(地球・太陽自身など)場合や操作対象の軌道要素が無い場合は、
-  // どちらの交点も解けていない状態にする。
+  // 相対 AN/DN・再接近点の位置と通過時刻を求め直す。解けない点は解けていない状態にし、
+  // ターゲットか操作対象が欠ければ3点とも出す理由が無くなったものとする。
   public update(
     controlled: Controllable | null, roster: EntityRoster, celestialBodies: CelestialBodies, displayWindow: DisplayWindow,
     frameAnchors: FrameAnchorSource,
@@ -102,8 +101,6 @@ export class NavTargetPresenter {
     const { id: targetId, name: targetName } = this.navTarget;
     const ownerName = controlled?.name ?? null;
     for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, targetName);
-    // 相対交点はターゲットと操作対象の両方が揃って初めて定義できる。片方でも欠ければ
-    // 出す理由そのものが無い。
     if (!targetId) { this.retireNodeMarkers(); return; }
     if (!controlled) { this.retireNodeMarkers(); return; }
     const target = aliveCombatTarget(roster.all(), targetId);
@@ -116,8 +113,7 @@ export class NavTargetPresenter {
     const toDisplay = (r: Vec3, t: number): Vec3 =>
       unbakeToDisplayPoint(unbakeTf, celestialBodies.frames.transformAt(frame, t, frameAnchors), r);
 
-    // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
-    // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
+    // 再接近点は軌道面が定まらなくても解けるので、AN/DN の早期 return より前に求める。
     if (target && strongestAttractor(
       target.motion.state.r, stateCelestialBodies, simTime,
     ).id === controlledCenter.id) {
@@ -146,9 +142,8 @@ export class NavTargetPresenter {
     this.descendingNode.place(toDisplay(dnEci, dnT), dnT, ownerName, targetName);
   }
 
-  // 現在のターゲットの時刻 t における位置・速度。重力中心になれるのは登録天体だけで、
-  // ラグランジュ点・船・基地は hasMass=false で返る。船・基地は軌道線を相対軌跡へ切り替え
-  // られるよう entity 自身も添える。ターゲット未設定・解決不能なら null。
+  // 現在のターゲットの時刻 t における位置・速度。質量を持つのは登録天体だけで、船・基地には
+  // entity も添える。ターゲット未設定・解決不能なら null。
   public resolveState(
     roster: EntityRoster, celestialBodies: CelestialBodies,
     attractors: readonly CelestialBody[], t: number,
@@ -188,16 +183,14 @@ export class NavTargetPresenter {
     return this.resolvePlaneNormal(id, roster, celestialBodies, t) !== null;
   }
 
-  // id から対象の軌道面法線を求める。船・基地は自身の軌道要素、公転している天体(惑星・衛星)
-  // はその公転面法線、ラグランジュ点(`${副天体}-l${n}`)は副天体の公転面法線を使う。
-  // 面が定まらない対象(恒星、および軌道要素の無い天体・存在しない船)は null。
+  // id の軌道面法線。公転天体は公転面、ラグランジュ点は副天体の公転面、船・基地は自身の軌道の
+  // 法線を使う。面が定まらない対象(恒星・軌道要素の無いもの・存在しない船)は null。
   private resolvePlaneNormal(id: string, roster: EntityRoster, celestialBodies: CelestialBodies, t: number): Vec3 | null {
     const idMotion = celestialBodies.findMotion(id);
     if (idMotion instanceof OrbitingMotion) {
       return idMotion.orbitNormalAt(t);
     }
-    // 副天体がレジストリに実在する公転天体のときだけラグランジュ点として解釈する。そうしないと
-    // 同じ形の名前を持つ船が天体として誤って解決される。
+    // 同じ形の id を持つ船と取り違えないよう、副天体が実在する公転天体のときだけラグランジュ点とみなす。
     const lagrange = lagrangePointOf(id);
     const secondaryMotion = lagrange === null ? undefined : celestialBodies.findMotion(lagrange.parentId);
     if (secondaryMotion instanceof OrbitingMotion) {
