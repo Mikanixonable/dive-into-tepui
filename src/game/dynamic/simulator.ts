@@ -29,8 +29,10 @@ export class Simulator {
   private readonly surfaceContactPhysics = new SurfaceContactPhysics();
   private readonly entityContactPhysics = new EntityContactPhysics();
 
-  public simTime: number;
-  public lastSimDt = 0;
+  private _simTime: number;
+  // 直前のフレームで進めた長さ [sim s]。フレームごとに書き直すキャッシュで、止めたフレームでは 0。
+  private _lastSimDt = 0;
+  // 以下は直近フレームの計数。フレームの先頭で 0 から数え直すキャッシュ。
   private lastSubsteps = 0;
   private lastGravitySourceCount = 0;
   // 今フレームに走った軌道積分の延べ数。
@@ -38,7 +40,7 @@ export class Simulator {
   // 今フレームに予測列から消費した(積分を省いた)延べ数。
   private lastFollowedSteps = 0;
   private readonly nextEventTime = new NextEventTime();
-  // ゼロ長サブステップが連続した回数。simTime が実際に進んだら 0 へ戻す。
+  // ゼロ長サブステップが連続した回数(キャッシュ)。simTime が実際に進んだら 0 へ戻す。
   private consecutiveZeroSteps = 0;
   private readonly contactEntitiesScratch: EntityContactParticipant[] = [];
   // このサブステップを1歩で渡った個体。区間が揃っているので、天体接触をまとめて解ける。
@@ -55,7 +57,15 @@ export class Simulator {
     private readonly sections: FrameSections,
     initialSimTime = 0,
   ) {
-    this.simTime = initialSimTime;
+    this._simTime = initialSimTime;
+  }
+
+  public get simTime(): number { return this._simTime; }
+  public get lastSimDt(): number { return this._lastSimDt; }
+
+  // 時間が止まったフレームとして、直前に進めた長さを 0 にする。
+  public pause(): void {
+    this._lastSimDt = 0;
   }
 
   // simDt ぶんシミュレーションを進める。サブステップごとに全個体を進めてから、天体・物体どうしの
@@ -72,60 +82,59 @@ export class Simulator {
     this.lastGravitySourceCount = 0;
     this.lastIntegratedSteps = 0;
     this.lastFollowedSteps = 0;
-    this.surfaceContactPhysics.candidateBodies = 0;
-    this.entityContactPhysics.candidatePairs = 0;
-    this.entityContactPhysics.participants = 0;
+    this.surfaceContactPhysics.resetCounts();
+    this.entityContactPhysics.resetCounts();
     const services: DynamicReactionServices = { activeStage, registry: this.registry };
-    const targetTime = this.simTime + simDt;
+    const targetTime = this._simTime + simDt;
     // 天体の顔ぶれと表面候補の絞り込みはこのフレームで1組だけ組んで全サブステップで使い回す。
-    if (this.simTime < targetTime) {
-      this.bodies.resetFrame(this.windows, this.simTime, simDt);
+    if (this._simTime < targetTime) {
+      this.bodies.resetFrame(this.windows, this._simTime, simDt);
       this.lastGravitySourceCount = this.bodies.gravitySourceCount;
       this.surfaceContactPhysics.beginFrame(
-        this.bodies.surface, this.bodies.framePivot, this.simTime, targetTime);
+        this.bodies.surface, this.bodies.framePivot, this._simTime, targetTime);
     }
-    while (this.simTime < targetTime) {
+    while (this._simTime < targetTime) {
       const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
-      const eventTime = this.nextEventTime.at(this.simTime, activeStage, this.roster);
-      const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
+      const eventTime = this.nextEventTime.at(this._simTime, activeStage, this.roster);
+      const subDt = simulationStepDuration(this._simTime, targetTime, maxStep, eventTime);
       // 丸めで前進しない刻みのイベントは現在時刻で消費する。判定は固定の ε ではなく「足しても
       // 進まないか」で見る — simTime の分解能は |simTime| に比例する(CODING-RULE 1.9)。
-      if (this.simTime + subDt <= this.simTime) {
+      if (this._simTime + subDt <= this._simTime) {
         this.consecutiveZeroSteps++;
         // eventTime との差が 1 ULP 未満に潰れたら、eventTime へ直接そろえて差を1回で消費する。
-        if (eventTime !== null && eventTime > this.simTime) this.simTime = eventTime;
+        if (eventTime !== null && eventTime > this._simTime) this._simTime = eventTime;
         // それでも進まない個体が残るなら、このフレームぶんを一括で消費して検知できる形で打ち切る。
         // 微小量を足して逃げると、|simTime| が大きいとき ULP 未満の加算が no-op になる。
         if (this.consecutiveZeroSteps > SIMULATION_STALL_MAX_ZERO_STEPS) {
           console.error(
-            `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this.simTime} `
+            `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this._simTime} `
             + `eventTime=${eventTime} entities=${this.roster.allMotions().length} — このフレームぶんを一括消費`);
-          this.simTime = targetTime;
+          this._simTime = targetTime;
           this.consecutiveZeroSteps = 0;
         }
-        activeStage.applySimulationEvents(this.simTime);
-        this.lifecycle.cleanup(0, this.simTime, activeStage, engagementZones(this.roster.allMotions(), canEngage));
+        activeStage.applySimulationEvents(this._simTime);
+        this.lifecycle.cleanup(0, this._simTime, activeStage, engagementZones(this.roster.allMotions(), canEngage));
         continue;
       }
       this.consecutiveZeroSteps = 0;
 
       this.sections.enter(SECTION.orbit);
       // 天体の位置を厳密に引く時刻は、このサブステップの中点。
-      this.bodies.beginSubstep(this.simTime, subDt);
+      this.bodies.beginSubstep(this._simTime, subDt);
       // 終端は絶対時刻で1つだけ決め、全個体をこの値へ着地させる。
-      const endTime = this.simTime + subDt;
+      const endTime = this._simTime + subDt;
       this.surfaceContactPhysics.beginSubstep(this.bodies.pivot);
       this.substep(endTime, subDt, services);
-      this.simTime = endTime;
+      this._simTime = endTime;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
-      nanWatchdog.checkControlled('simulator.advance(個体の前進)', controlled, this.simTime, dt, subDt);
+      nanWatchdog.checkControlled('simulator.advance(個体の前進)', controlled, this._simTime, dt, subDt);
       // 天体との接触を物体どうしより先に解く。細分した個体は内側で解き終えているので、ここでは
       // 1歩で渡った個体に限る — 二重に解くと反発が二度当たる。
       this.sections.enter(SECTION.celestialContact);
       this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, services);
       this.sections.exit(SECTION.celestialContact);
-      nanWatchdog.checkControlled('simulator.advance(天体接触)', controlled, this.simTime, dt, subDt);
+      nanWatchdog.checkControlled('simulator.advance(天体接触)', controlled, this._simTime, dt, subDt);
       // 接触代理は交戦圏があるときに限って組む — 交戦圏の組まれない倍率で組むと、代理が
       // substep 幅そのままの粗い刻みで解かれて発散する。
       const zones = engagementZones(this.roster.allMotions(), canEngage);
@@ -136,25 +145,25 @@ export class Simulator {
         for (const entity of this.roster.allMotions()) {
           this.contactEntitiesScratch.push(entity);
           if (entity.alive) {
-            for (const proxy of entity.contactProxies(this.simTime, subDt)) {
+            for (const proxy of entity.contactProxies(this._simTime, subDt)) {
               this.contactEntitiesScratch.push(proxy);
             }
           }
         }
         this.entityContactPhysics.resolveEntityContacts(
-          this.simTime, this.contactEntitiesScratch, zones, services);
+          this._simTime, this.contactEntitiesScratch, zones, services);
         for (const entity of this.roster.allMotions()) {
           if (entity.alive) entity.applyContactProxies(subDt);
         }
         this.sections.exit(SECTION.entityContact);
-        nanWatchdog.checkControlled('simulator.advance(接触)', controlled, this.simTime, dt, subDt);
+        nanWatchdog.checkControlled('simulator.advance(接触)', controlled, this._simTime, dt, subDt);
       }
-      activeStage.applySimulationEvents(this.simTime);
+      activeStage.applySimulationEvents(this._simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
-      this.lifecycle.cleanup(subDt, this.simTime, activeStage, zones);
+      this.lifecycle.cleanup(subDt, this._simTime, activeStage, zones);
     }
 
-    this.lastSimDt = simDt;
+    this._lastSimDt = simDt;
   }
 
   // 生存する全個体を dt だけ進め、終端 endTime へ着地させる。濃い大気が細かい刻みを要求する個体は

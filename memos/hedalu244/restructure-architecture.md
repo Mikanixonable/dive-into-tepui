@@ -991,28 +991,17 @@ R1(と 1.6 の手写し)・R3・R5(表示の導出)・R5 と R7(装置)・R8・R
 - 5.5-3 から回した行(`cleanup` の中継、`options` の名前、抗力係数の手写し、接触代理の `prevState` のキャッシュのコメント)もここで直した。
 - 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。**計画の `npm run dev` での目視(噴射・段の分離・被弾ほか)はしていない** — 段の終わりの 5.5-10 でヘッドレスの起動と、ユーザーの目視に回す。
 
-#### 手順 5.5-5. 残りのモデル層の欄を、所有者だけが書く形にする
+#### 手順 5.5-5. 残りのモデル層の欄を、所有者だけが書く形にする — 済
 
-**目的**: 5.5-2 の R3 の判定のうち、5.5-4 が扱わなかった残りを、`Stage.onDecided`(5.5-7)を除いて 0 にする。大半は「自分しか書かない欄が public なだけ」なので private と getter にする。所有者でない者が書いているものは、書く処理を所有者の命令へ移す。挙動は変えない。
+R3 の判定の許可リストに残るのは `Stage.onDecided`(5.5-7)だけになった(R12 の `NavTargetSelection` は 5.5-7)。
 
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/player/{weapon-state,fire-control}.ts` | `WeaponState` は「状態機械」と名乗りながら遷移を持たず、`FireControl` が欄を 20 か所書いている。遷移を `WeaponState` の命令へ移すか、`FireControl` の private な記録へ畳む。どちらにするかは、遷移がどちらに閉じるかで実施時に決める |
-| `src/game/dynamic/dynamic-entity/{parts,part-damage-model,part-inventory}.ts` | `Part` 系の型が可変な欄を export している。`PartDamageModel` が部品の `hp` を書く処理を、部品の所有者(`PartInventory`)の命令へ移す |
-| `src/game/dynamic/dynamic-entity/{enemy,enemy-fire-controller}.ts`、`src/game/stages/stage-debug.ts` | ステージの旗を毎フレーム全敵の `fireEnabled` へ写すのをやめる(ステージの値の写しを敵ごとに持っている)。旗は、いまの `operable` と同じく進行の引数で射撃の判断へ届ける |
-| `src/game/player/player.ts`、`src/game/dynamic/dynamic-entity/controllable.ts`、`src/game/pickable/player-inspection.ts` | `planExecution`・`fineAttitude` を private にし、メニューからの切り替えを命令にする |
-| `src/game/dynamic/dynamic-entity/{vessel,ship,part-based-enemy}.ts` | `hp`・`maxHp` の protected setter を、protected の欄かメソッドにする(モデル層は `set` アクセサを持たない) |
-| `src/game/creative/object-placement.ts`、`src/game/stages/creative-stage.ts` | 構築後に差す `onPlace` を、構築の引数で受ける |
-| 自分しか書かない public 欄(`Simulator`・`EntityContactPhysics`・`SurfaceContactPhysics`・`ArcCelestialBodies`・`Throttle`・`AeroLoad`・`AltitudeAlarm`・`DeployablePanelState`・`ScoreCounter`・`ScoreAttackTimer` と、`plan.ts` の `TimeRange`・`placement-validation.ts` の `PlacementFieldIssue`・`EllipticPlacementInput`) | private と getter、または `readonly` にする。外から書いているもの(`dynamic-system.ts` の `lastSimDt`、`simulator.ts` の接触の計数)は所有者の命令へ移す。`PlanPath` は表示の導出なので 5.5-9 で判定の対象から外す |
-| 5.5-3 から回した行 | `WeaponState.pendingBarrelJoules` を省略可能な項目として直列化する(R11)。砲身の初期温度を `ENV_TEMP` から引く(1.6)。部品の直列化を `PartDamageModel` が持つ(R12)。`Simulator.lastSimDt`・`consecutiveZeroSteps` とフレームごとの計数(`Simulator`・接触・`Predictor`・`ArcCelestialBodies`)がキャッシュであることを書く(R11) |
-
-**達成条件と検証**
-
-- `npm run check:boundaries` で、R3 の判定の許可リストに残るのが `Stage.onDecided` だけ(5.5-7 で消す)。
-- `npm run typecheck`、`npm run test:game`。
-- `npm run dev` で、射撃(連射・装填・砲身交換・過熱)、被弾による部品の損傷、デバッグステージの敵の射撃の切り替え、計画の実行方式の切り替え、creative の配置を見る。
+**実施で決めたこと**
+- `WeaponState` は遷移を命令として持つ形にした(トリガー・空撃ちの記録・クールダウン・砲身の熱の蓄えと温度の歩み・砲身の交換)。遷移はどれも武装の状態だけに閉じ、`FireControl` は出来事の記録と実体の生成だけを持つ。砲身の熱の蓄え `pendingBarrelJoules` を直列化へ足し、初期温度は `ENV_TEMP` から引く。
+- 部品 `Part` の欄は読み取りにし、HP と燃料を書くのは部品を積む `PartInventory`(構築時に受けた部品の写しを持つ)の命令にした。部品の直列化は `PartDamageModel` が持つ。
+- 敵の射撃の可否は、ステージの読み取り `Stage.enemiesMayFire`(デバッグステージはトグルの値)を `DynamicSystem.update` の引数で射撃の判断へ届ける。
+- `ObjectPlacement` は、持ち主の命令の口を受ける部品として `CreativeStage` のコンストラクタが組む(R13)。`create`・`deserialize` は消えた。
+- `plan/plan-path.ts` を `MISPLACED_PRESENTATION_FILES` へ足した(`PlanDisplay` が作って持つ作り直せる表示)。振り分けの表では 5.5-9 としていた行の一部。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視は 5.5-10 へ回す。
 
 #### 手順 5.5-6. 音の装置を宣言だけにする(R7)
 
@@ -1580,13 +1569,13 @@ import を直す外側:
 | | ~~5.5-2 検査~~ 済 | 0 |
 | | ~~5.5-3 洗い出し~~ 済 | 0 |
 | | ~~5.5-4 運動の書き手~~ 済 | 0 |
-| | 5.5-5 残りのモデル層の欄(24 ファイル × 20 + 検証 20、5.5-3 から回した行 +60) | 560 |
+| | ~~5.5-5 残りのモデル層の欄~~ 済 | 0 |
 | | 5.5-6 音の装置(6 ファイル × 20 + 検証 20、`UiSfx`・消音の設定・試聴の位置と経過 +80) | 220 |
 | | 5.5-7 位相・直列化・導出の残り(15 ファイル × 20、時間加速の命令を領域の語彙にする +40、検証 20、採番器の予約 +20) | 380 |
 | | 5.5-8 1.x の未達と launcher の表示(10 ファイル × 20 + 検証 20) | 220 |
 | | 5.5-9 洗い出しの残りと監査報告の 4(4 の分は SPEC の削除と 6 ファイル × 20 + 検証 20 = 140。洗い出しの 22 行は約 40 ファイル × 20 = 800) | 940 |
 | | 5.5-10 main へ送る | 150 |
-| | **段 5.5 計(残り)** | **2,470** |
+| | **段 5.5 計(残り)** | **1,910** |
 | 6 | 6-1 規則(R6・R2 のモデル層、`entity-shapes/` の層と条件 +15、`physics/` から実体の形を締め出す +15) | 120 |
 | | 6-2 検査(対応表を game/ の中まで割る、`LAYER_TABLE` の行 +5。K11-2 で B なら読み手の数の判定 +20) | 95 |
 | | 6-3 3D の表示担当(モデル層の根の `scene` +20、漏れていたテスト3本 +30、突き合わせの検査 +40) | 810 |

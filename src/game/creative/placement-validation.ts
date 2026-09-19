@@ -9,16 +9,16 @@ export type PlacementFieldId =
   | 'inclination' | 'raan' | 'argumentOfPeriapsis' | 'trueAnomaly'
   | 'referenceCelestialBody' | 'inPlaneAmplitude' | 'outOfPlaneAmplitude';
 
-export type PlacementFieldIssue = { field: PlacementFieldId; message: string };
+export type PlacementFieldIssue = { readonly field: PlacementFieldId; readonly message: string };
 
 type EllipticSizeInput =
-  | { sizeMode: 'apsides'; peAltKm: number; apAltKm: number }
-  | { sizeMode: 'semiMajorEcc'; semiMajorKm: number; eccentricity: number }
-  | { sizeMode: 'periodEcc'; periodHours: number; eccentricity: number };
+  | { readonly sizeMode: 'apsides'; readonly peAltKm: number; readonly apAltKm: number }
+  | { readonly sizeMode: 'semiMajorEcc'; readonly semiMajorKm: number; readonly eccentricity: number }
+  | { readonly sizeMode: 'periodEcc'; readonly periodHours: number; readonly eccentricity: number };
 
 export type EllipticPlacementInput = {
-  centerRadius: number; mu: number; centerId?: string;
-  incDeg: number; raanDeg: number; argpDeg: number; nuDeg: number;
+  readonly centerRadius: number; readonly mu: number; readonly centerId?: string;
+  readonly incDeg: number; readonly raanDeg: number; readonly argpDeg: number; readonly nuDeg: number;
 } & EllipticSizeInput;
 
 // 入力が有効な楕円軌道を表すか、フィールドごとに検証する。問題がなければ空配列を返す。
