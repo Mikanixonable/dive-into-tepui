@@ -9,6 +9,7 @@ import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from '../../marker/crowding';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDevice } from '../../marker/marker-device';
 import type { ThemePalette } from '../../theme';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -81,7 +82,12 @@ export class GroupedMarkers {
     return this.hiddenItemsList;
   }
 
-  public constructor(private readonly group: MarkerSink) { }
+  private readonly group: MarkerSink;
+
+  // マーカー群を markers から作って持つ。
+  public constructor(markers: MarkerDevice) {
+    this.group = markers.createGroup();
+  }
 
   // 所有するマーカー群を取り除く。
   public dispose(): void { this.group.dispose(); }

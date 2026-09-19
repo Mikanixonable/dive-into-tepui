@@ -59,7 +59,7 @@ export class Targeter {
   private readonly aimGroup: MarkerSink;
 
   // 画面上で近接するものをまとめる戦闘対象のマーカー集合。
-  public readonly combatMarkers: GroupedMarkers;
+  private readonly combatMarkers: GroupedMarkers;
   // ターゲットへの見越し点のマーカー。
   private readonly leadMarkers: LeadMarkers;
 
@@ -79,8 +79,13 @@ export class Targeter {
     private readonly celestialBodies: readonly CelestialBody[],
   ) {
     this.aimGroup = markers.createGroup();
-    this.combatMarkers = new GroupedMarkers(markers.createGroup());
-    this.leadMarkers = new LeadMarkers(markers.createGroup());
+    this.combatMarkers = new GroupedMarkers(markers);
+    this.leadMarkers = new LeadMarkers(markers);
+  }
+
+  // 直前の sync で、戦闘対象のマーカー集合が天体ラベルへラベルを譲った項目。
+  public get hiddenMarkerItems(): readonly GroupedMarkerItem[] {
+    return this.combatMarkers.getHiddenItems();
   }
 
   // 所有するマーカー群を取り除く。
