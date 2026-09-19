@@ -859,23 +859,14 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 ARCHITECTURE の R3(所有者・口・整合性・可変な public 欄)、層の中身の `physics/` と軌跡の暫定、CODING-RULE 1.11 を書いた。`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` は 5。**`physics/` の文面には、計画の「定数・純関数と、意味を持たない容器」に「結果を変えないメモ化キャッシュ(R1)」を足した** — R1 が時刻層に許しているもので、`CelestialMotion`・`PlanetSystem`・`TimeRing` が持つ。締め出すと、R1 に適う値が層の中身の文面の未達になる。
 
-#### 手順 5.5-2. 検査を直す
+#### 手順 5.5-2. 検査を直す — 済
 
-**目的**: R3 に構文の判定を足し、形を名前で代用している行を見直す(K10-5)。
+`tools/check-boundaries.mjs` に構文木の判定2つ(`SYNTAX_RULES`)を足した。「モデル層の可変な公開欄の禁止」(R3。class の可変な public 欄・コンストラクタ引数の欄・`set` アクセサ、export する interface と型の可変な欄・索引・mapped type)と、「直列化された形をコンストラクタで受ける禁止」(R12。コンストラクタ引数の型に `Serialized*` が現れるか。名前の正規表現の行と置き換えた)。「命令 API の禁止」の行は外した。「二段初期化」「復元の流し込み」は代用のまま残し、その旨を行のコメントに書いた。
 
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `tools/check-boundaries.mjs` — R3 の判定 | TypeScript の構文木(`typescript` パッケージの parser)で、モデル層(いまの `MODEL_ROOTS` から `MISPLACED_PRESENTATION_FILES` を除いたもの。段 6 の 6-2 で対応表を割ったら、層で当てる)の class が持つ可変な public 欄(コンストラクタ引数の欄を含む)と `set` アクセサ(可視性を問わない)、export する interface と型リテラルの可変な欄を数える。**名前では判定しない。** 違反の識別子は「型名.欄名」。`Stage.onDecided` も当たり、5.5-7 で消える。ほかの判定と同じく、目的の規則(`ref: 'ARCHITECTURE R3'`)を付ける |
-| 同 — 名前で当てる行を見直す | 「命令 API の禁止」を外す(K10-5)。特定の API の呼び手を限る行(壁時計・`localStorage`・生の入力エッジ・定義層と時刻層の `three`・`RunSetting`・HUD の `Game`)と、R12 の語彙の行は残す。形を名前で代用している行のうち、「直列化された形をコンストラクタで受ける禁止」は、引数名 `saved*` ではなく**引数の型に `Serialized*` が現れるか**で判定する(型の名前は語彙の行が保証する。`nav-target-selection.ts` のように不変な素の値の型をそのまま直列化に使うものは R12 の例外として除く)。「二段初期化の禁止」「復元の流し込みの禁止」は代用のまま残し、規則と判定の対応表では洗い出しの側に置く |
-| `tools/boundary-allowlist.json` | R3 の判定の当たりを載せる(着手時点で class の欄と `set` が 52 件、export する型が 13 件)。5.5-4〜5.5-7 が消し、段の終わりに空にする |
-
-**達成条件と検証**
-
-- `npm run check:boundaries` が 0 を返す。
-- 自己検証(R3): モデル層のクラスへ `public x = 0` か `set x(v: number) {}` を足すと 1 を返し、`private x = 0` なら通る。モデル層から export する interface に `x: number` を足すと 1 を返す。
-- 自己検証(R12): モデル層のコンストラクタの引数に `Serialized*` の型を足すと 1 を返す。
+- **判定の範囲**: `MODEL_ROOTS` から `MISPLACED_PRESENTATION_FILES` を除いたもの。`MODEL_ROOTS` へ、進行と視点の両方が使う `command-queue.ts`・`run-events.ts` と、`control-selection-commands.ts` を足した(当たりは無かった)。
+- **着手時の当たり**(許可リストに載せた): R3 が 84 件(計画の見積り 65 件より多いのは、`EllipticPlacementInput` の7欄と `Part` 系の欄を数えたため)、R12 が1件(`NavTargetSelection.constructor(target)`)。
+- **R12 の1件は 5.5-7 で直す。** `SerializedNavTargetSelection` は不変な素の値 `{ id, name }` で、選択の状態そのものをそのまま直列化の形に使っている。R12 はこの場合 `SerializedT` を別に作らないとしているので、型を状態の名前(航法ターゲット)で呼び直す。
+- 自己検証: `public x = 0`・`set x`(可視性を問わない)・export する interface の `x: number`・export する型の union の中の型リテラル・コンストラクタの `public y`・`Serialized*` の引数で 1、`private x = 0`・`readonly x`・export しない interface で 0 を返した。
 
 #### 手順 5.5-3. 段 5 までの規則を洗い出す
 
@@ -981,6 +972,7 @@ ARCHITECTURE の R3(所有者・口・整合性・可変な public 欄)、層の
 | `src/game/dynamic/sim-speed-manager.ts`、`sim-speed-commands.ts`、`src/game/input/game-input-ports.ts` | 時間加速の段の上下が、まだキーコードを命令の id として受けている(`handleCommand(commandId)` が `K.warpSlower.code`/`K.warpFaster.code` と比べる)。「段を1つ上げる/下げる」という領域の命令にし、`sim-speed-manager.ts` から `KEY_MAPPING` の import を消す(R8)。キーの解釈は入力の解釈へ |
 | `src/launcher/launcher.ts`、`src/game/stages/stage.ts`、`src/run/run.ts` | 構築の後に `stage.onDecided` を差す配線をやめる(R12・CODING-RULE 1.11 の二段初期化)。決着は進行が出来事として記録し、launcher は `Run.frame` の後にそれを読んで、解放記録・BGM・結果画面を動かす |
 | `src/game/dynamic/dynamic-system.ts` | `deserialize` が空のまま構築してから記録を `spawnWhenReady` で流し込む形を判定する。アセット待ちの関門のためなら、待ちの記録を構築の引数で受け、流し込みの口を持たない形にする(R12) |
+| `src/game/viewer/{nav-target-selection,viewer}.ts` | `SerializedNavTargetSelection` を状態の名前で呼び直す(5.5-2 の R12 の1件)。不変な素の値の型なので、`SerializedT` を別に作らない(R12)。保存形式は変えない |
 | `src/game/game.ts`、`src/launcher/save/*` | 版の刻印 `SERIALIZATION_VERSION` の置き場を判定する。版の照合は launcher の語彙(R12)なので、モデル層の直列化が版を知る必要が無ければ launcher へ移す。**保存形式(版の値と位置)は変えない**(K9) |
 | `src/game/pickable/object-windows.ts`、`src/game/pickable/map-picking.ts`、`src/game/view/view-frame.ts`、`src/game/hud/frame/frame-controls.ts`、`src/game/plan/plan-editor.ts` | `simTime` を引数で配る経路を落とし、表示時刻の所有者から読む1本にする(K6 の保留 2)。`frame-controls` の `lastTime` と `plan-editor` の `simTime` も同じく所有者から読む |
 
@@ -1490,7 +1482,7 @@ import を直す外側:
 | 段 | 手順 | 分 |
 | --- | --- | --- |
 | 5.5 | ~~5.5-1 規則~~ 済 | 0 |
-| | 5.5-2 検査(R3 の構文の判定 +40、名前で当てる行の見直しと型の判定 +20) | 90 |
+| | ~~5.5-2 検査~~ 済 | 0 |
 | | 5.5-3 洗い出し(規則ごとに配る。R1〜R5・R7・R8・R11〜R13) | 150 |
 | | 5.5-4 運動の書き手(29 ファイル × 20 + 検証 20、`PilotCommandFrame` を明示的な引数へ +20。`power` と接続中ブースターの段は K10-6、軌跡の移動は K10-7 の保留で外した) | 620 |
 | | 5.5-5 残りのモデル層の欄(24 ファイル × 20 + 検証 20) | 500 |
