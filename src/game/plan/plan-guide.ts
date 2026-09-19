@@ -1,5 +1,5 @@
 // 直近ノードの実行ガイド: NODE/BURN マーカーと、噴射方向が視界外のときの方位ガイド。
-import { KinematicState } from '../../physics/kinematic-state';
+import type { KinematicState } from '../../physics/kinematic-state';
 import { addScaled, len, norm, sub } from '../../math/vec3';
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import type { CameraFrame } from '../../render/camera/camera-frame';
