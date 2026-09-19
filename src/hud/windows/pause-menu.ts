@@ -1,9 +1,8 @@
 import faviconUrl from '../../../public/favicon.svg';
-import type { Bgm } from '../../audio/bgm/bgm';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_4 } from '../../theme';
-import { clampOverlayPosition, Point2 } from '../layout';
+import { clampOverlayPosition, type Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';
@@ -35,9 +34,10 @@ export class PauseMenu implements OverlayHandle {
   private hasCustomPosition = false;
   private activeTab: PauseMenuTab = 'pause';
 
-  public onPauseMenuOpenChange: ((open: boolean) => void) | null = null;
   public onQuitToTitle: (() => void) | null = null;
   public onBgmVolumeChange: ((vol: number) => void) | null = null;
+  // 消音ボタンが押されたときに、求められた消音の有無を渡して呼ばれる。
+  public onBgmMutedChange: ((muted: boolean) => void) | null = null;
   public onSave: (() => void) | null = null;
   public onOpenSaveBrowser: (() => void) | null = null;
   public onOpenDebugInfoWindow: (() => void) | null = null;
@@ -46,24 +46,22 @@ export class PauseMenu implements OverlayHandle {
   private readonly resizeObserver: ResizeObserver;
   private readonly bgmSlider: Slider;
   private readonly bgmMute: Button;
-  // 消音から復帰するときに戻す音量。消音中かどうかは bgmSlider の値が 0 かで読む。
-  private lastVol = 1;
 
   private dragPointerId: number | null = null;
   private dragStartClient: Point2 | null = null;
   private dragStartWindowPos: Point2 = { x: 0, y: 0 };
 
-  // パネル DOM を組み立てて root へ追加する。graphics と bgmVolume は組み立て時の設定値。
-  // 各操作のコールバックは onXxx フィールドへ後から代入する。
+  // パネル DOM を組み立てて root へ追加する。graphics・themeId は組み立て時の設定値、bgmVolume は
+  // 消音を織り込んだ組み立て時の音量。各操作のコールバックは onXxx フィールドへ後から代入する。
   public constructor(
-    root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm,
-    graphics: GraphicsSettingsData, bgmVolume: number,
+    root: HTMLElement, overlayManager: OverlayManager,
+    graphics: GraphicsSettingsData, bgmVolume: number, themeId: string,
   ) {
     injectCommonUiStyle();
     injectOnce('pause-menu', PAUSE_MENU_STYLE);
     injectOnce('settings-view', SETTINGS_VIEW_STYLE);
     this.overlayManager = overlayManager;
-    this._settingsView = new SettingsView(bgm, graphics, bgmVolume);
+    this._settingsView = new SettingsView(graphics, bgmVolume, themeId);
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel ui-surface-focus';
@@ -203,16 +201,9 @@ export class PauseMenu implements OverlayHandle {
     return actionGrid;
   }
 
-  // ミュート/復帰を切り替える。復帰は直前の音量へ戻す。
+  // 鳴っていれば消音を、無音なら復帰を求める。
   private toggleMute(): void {
-    if (this.bgmSlider.getValue() > 0) {
-      this.lastVol = this.bgmSlider.getValue();
-      this.bgmSlider.setValue(0);
-    } else {
-      this.bgmSlider.setValue(this.lastVol || 1);
-    }
-    this.updateMuteState(this.bgmSlider.getValue());
-    this.onBgmVolumeChange?.(this.bgmSlider.getValue());
+    this.onBgmMutedChange?.(this.bgmSlider.getValue() > 0);
   }
 
   // 消音ボタンの点灯を音量から合わせる。
@@ -239,12 +230,12 @@ export class PauseMenu implements OverlayHandle {
     this.reclamp();
   }
 
-  // タブに応じた ESC メニューの入力遮断設定を返す。
+  // ESC メニューのオーバーレイ宣言を返す。設定タブの間は背景入力も遮る。
   private overlaySpec(): OverlaySpec {
     return {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false,
       gatesInput: this.activeTab === 'settings', dimsBackground: false,
-      exclusiveGroup: 'system-modal',
+      pausesGame: true, exclusiveGroup: 'system-modal',
     };
   }
 
@@ -255,12 +246,12 @@ export class PauseMenu implements OverlayHandle {
     this.minimizeToggle.title = this.minimized ? '展開する' : '最小化する';
   }
 
-  // OverlayHandle 実装。target がパネル要素の内部かどうかを返す。
+  // target がパネル要素の内部かどうかを返す。
   public contains(target: Node): boolean {
     return this.panel.contains(target);
   }
 
-  // OverlayHandle 実装。toggle(false) と同じく閉じる。
+  // パネルを閉じる。
   public close(): void {
     this.toggle(false);
   }
@@ -289,7 +280,6 @@ export class PauseMenu implements OverlayHandle {
     } else {
       this.overlayManager.close('pause-menu');
     }
-    this.onPauseMenuOpenChange?.(show);
   }
 
   // 画面中央へ配置する。
@@ -343,7 +333,14 @@ export class PauseMenu implements OverlayHandle {
     this.dragStartClient = null;
   };
 
-  // 外から音量が変わったときに、スライダーと消音ボタンの点灯を引き直す。
+  // 開いている間の設定面の表示を引き直す。nowMs [ms] はフレームの実時刻。毎フレーム呼ぶ。
+  public sync(nowMs: number): void {
+    if (!this._isOpen) return;
+    this._settingsView.sync(nowMs);
+  }
+
+  // 外から音量か消音が変わったときに、消音を織り込んだ音量 vol でスライダーと消音ボタンの点灯を
+  // 引き直す。
   public syncBgmVolume(vol: number): void {
     this.bgmSlider.setValue(vol);
     this.updateMuteState(vol);

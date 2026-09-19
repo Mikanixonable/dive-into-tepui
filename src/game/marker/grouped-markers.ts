@@ -1,47 +1,58 @@
 // 多数の対象のマーカーを、投影後のスクリーン座標だけを見て破綻なく並べる表示器。画面上で
 // 近接するものを1つの代表にまとめ、画面外へ出たものは画面端の方位マーカーに置き換える。
-// 対象ごとの見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
-import { Vec3, len, sub } from '../../math/vec3';
-import type { ViewMode } from '../../render/view-mode';
-import { Projected } from '../../math/projection';
+import { type Vec3, len, sub } from '../../math/vec3';
+import type { Projected } from '../../math/projection';
 import type { ActiveCelestialLabel } from './celestial-markers';
-import type { MarkerManager } from './marker-manager';
-import { DIRECTION_GLYPH } from './marker-identity';
+import { MARKER_PRIORITY } from './marker-priority';
+import { bearingPlacement, headingRotationDeg } from './marker-placement';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import { resolveCrowdingWinner, MARKER_PRIORITY, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
-import { currentThemePalette } from '../../theme';
-import type { ProjectFn, ScaleFn } from '../../math/projection';
+import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from '../../marker/crowding';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDevice } from '../../marker/marker-device';
+import type { ThemePalette } from '../../theme';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
+import type { ViewMode } from '../view/view-mode';
 
+// 画面外へ出た対象を画面端の円周上で指す方位マーカーの見た目。
+export interface BearingMarker {
+  readonly cls: string;
+  readonly sym: string; // 上向きの記号
+  readonly color: string;
+  // 画面外へ出たときに出すか。
+  readonly visible: boolean;
+  // 近接まとめでアイコンの扱いが既に決まっている種別か。
+  readonly clustered: boolean;
+}
+
+// 並べる対象1件の、画面内マーカーと方位マーカーの材料。
 export interface GroupedMarkerItem {
-  key: string; // 対象を一意に識別するマーカーキー
-  readonly kind: DynamicEntityKind; // 天体ラベル下のサブ行が内訳を数えるための種別
+  key: string;
+  readonly kind: DynamicEntityKind;
   cls: string; // 画面内マーカーの CSS クラス
   sym: string; // 画面内マーカーの記号
   pos: Vec3; // ワールド位置 (ECI)
-  vel: Vec3; // ECI 速度。マップビューでの進行方向表示に使う
+  vel: Vec3; // ECI 速度
   priority: number; // 代表選出の優先度(大きいものが代表になる)
   name: string; // ラベルの主題。まとめられた代表には "xN" が付く
   detail?: string; // ラベル末尾の付随情報(距離など)
-  bearingColor: string; // 画面外方位マーカーの色
-  bearingSym?: string; // 画面外方位マーカーの記号。省略時は通常の矢印
-  bearingClass?: string; // 画面外方位マーカーの CSS クラス
-  bearingVisible?: boolean; // false のときは画面外でも方位マーカーを出さない
+  bearing: BearingMarker;
   color?: string; // 画面内マーカー自体の色。省略時は cls の CSS 色に従う
   symMarkup?: boolean; // sym をマークアップ(SVG など)として扱うか
   opacity?: number; // 画面内マーカーの不透明度。0 以下なら非表示
   occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
 }
 
-// ターゲットに指定された対象のマーカーへ、代表選出の優先度と強調色を被せる。
-export function withTargetRole(item: GroupedMarkerItem): GroupedMarkerItem {
-  const signal = currentThemePalette().signal;
+// ターゲットに指定された対象のマーカーへ、代表選出の優先度と palette の強調色を被せる。
+export function withTargetRole(item: GroupedMarkerItem, palette: ThemePalette): GroupedMarkerItem {
+  const signal = palette.signal;
   return {
     ...item,
     cls: `${item.cls} mk-target`,
     priority: MARKER_PRIORITY.PRIMARY_TARGET,
     color: signal,
-    bearingColor: signal,
+    bearing: { ...item.bearing, color: signal },
   };
 }
 
@@ -51,96 +62,133 @@ const CLUSTER_RADIUS_PX = 40;
 
 const bearingKey = (key: string): string => `${key}-bearing`;
 
+// 投影済みの対象1件と、近接まとめの結果。
 interface PlacedItem {
   item: GroupedMarkerItem;
   p: Projected;
-  dist: number | undefined;
+  dist: number;
   count: number; // 自分がまとめた件数(1 = 単独)
-  labeled: boolean; // false = 代表に吸収されたのでラベルを出さない
+  labeled: boolean; // ラベルを出すか。代表に吸収されたか天体ラベルへ譲ったなら false
   groupMembers?: readonly GroupedMarkerItem[];
   hiddenByCelestialLabel?: boolean;
 }
 
 export class GroupedMarkers {
-  // 前フレームに出したキー。集合から消えた対象のマーカーを片付けるために覚えておく。
-  private shownKeys: readonly string[] = [];
   private readonly hiddenItemsList: GroupedMarkerItem[] = [];
   // 天体ラベルとの近接で前フレームに隠したキー(depth-guard のヒステリシス用)。
   private prevHiddenByCelestialLabel = new Set<string>();
+  private readonly declarations: MarkerDeclaration[] = [];
 
-  // 直前の sync で天体ラベルへラベルを譲った項目。天体ラベル下のサブ行の候補になる。
+  // 直前の sync で天体ラベルへラベルを譲った項目。
   public getHiddenItems(): readonly GroupedMarkerItem[] {
     return this.hiddenItemsList;
   }
 
-  public constructor(private readonly markerManager: MarkerManager) { }
+  private readonly group: MarkerSink;
 
-  // items のマーカーをこのフレームの位置へ置き、前フレームから消えた対象のマーカーを片付ける。
-  // 全て隠すには空配列を渡す。マップビューでは方位マーカーの代わりに、マーカー自体を vel の
-  // 進行方向へ回す(円軌道では静止画から回転方向が読めないため)。
+  // マーカー群を markers から作って持つ。
+  public constructor(markers: MarkerDevice) {
+    this.group = markers.createGroup();
+  }
+
+  // 所有するマーカー群を取り除く。
+  public dispose(): void { this.group.dispose(); }
+
+  // items のマーカーをこのフレームの位置へ置く。全て消すには空配列を渡す。マップビューでは
+  // 方位マーカーの代わりに、マーカー自体を vel の進行方向へ回す(円軌道では静止画から
+  // 回転方向が読めないため)。
   public sync(
-    items: readonly GroupedMarkerItem[],
-    project: ProjectFn,
-    view: ViewMode,
-    scale: ScaleFn,
-    celestialLabels: readonly ActiveCelestialLabel[] = [],
-    celestialBodies: readonly CelestialBody[] = [],
-    cameraPos?: Vec3,
+    items: readonly GroupedMarkerItem[], camera: CameraFrame, view: ViewMode, nowMs: number,
+    celestialLabels: readonly ActiveCelestialLabel[],
+    celestialBodies: readonly CelestialBody[],
   ): void {
+    const project = camera.project;
+    const mapView = view === 'map';
+    // 画面座標とカメラからの距離を求めてから、近接するものをまとめる。
     const placed: PlacedItem[] = items.map(
-      (item) => ({ item, p: project(item.pos), dist: cameraPos ? len(sub(item.pos, cameraPos)) : undefined, count: 1, labeled: true }),
+      (item) => ({
+        item, p: project(item.pos), dist: len(sub(item.pos, camera.position)), count: 1, labeled: true,
+      }),
     );
     this.groupNearby(placed, celestialLabels);
 
+    // 対象1件につき、画面内マーカーと方位マーカーを1つずつ宣言する。
+    const declarations = this.declarations;
+    declarations.length = 0;
     for (const m of placed) {
-      const opacity = m.item.opacity ?? 1;
-      if (m.item.occluded) {
-        this.markerManager.fadeOut(m.item.key);
-        this.markerManager.hide(bearingKey(m.item.key));
-        continue;
-      }
-      if (opacity <= 0) {
-        this.markerManager.hide(m.item.key);
-        this.markerManager.hide(bearingKey(m.item.key));
-        continue;
-      }
-      const label = m.labeled ? this.label(m.item, m.count, m.groupMembers) : '';
-      const rotationDeg = view === 'map'
-        ? this.markerManager.headingRotationDeg(m.item.pos, m.item.vel, project, scale, celestialBodies)
+      const rotationDeg = mapView
+        ? headingRotationDeg(m.item.pos, m.item.vel, project, camera.scale, celestialBodies)
         : undefined;
-      this.markerManager.set(
-        m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, opacity, m.item.color,
-        rotationDeg, m.item.symMarkup, false, m.item.priority, m.dist,
-      );
-      // 画面外(背面を含む)の対象は、画面端の方位マーカーで方位を示す。
-      if (view === 'map' || m.item.bearingVisible === false) this.markerManager.hide(bearingKey(m.item.key));
-      else this.markerManager.setBearing(
-        bearingKey(m.item.key), m.item.bearingClass ?? 'mk-dir', m.item.bearingSym ?? DIRECTION_GLYPH.bearing,
-        m.p, '', 1, m.item.bearingColor,
-      );
+      declarations.push(this.itemDeclaration(m, rotationDeg));
+      declarations.push(this.bearingDeclaration(m, mapView, camera));
     }
+    this.group.sync(declarations, nowMs);
 
+    this.collectHiddenItems(placed);
+  }
+
+  // このフレームに天体ラベルへラベルを譲った項目を、サブ行の候補として集め直す。
+  private collectHiddenItems(placed: readonly PlacedItem[]): void {
     this.hiddenItemsList.length = 0;
     const addedKeys = new Set<string>();
-
     for (const m of placed) {
       // 天体ラベルへラベルを譲り、惑星に遮蔽されていない対象を天体サブ行の候補にする。
-      if (m.hiddenByCelestialLabel && !m.item.occluded && m.p.front) {
-        if (m.groupMembers && m.groupMembers.length > 0) {
-          for (const member of m.groupMembers) {
-            if (!addedKeys.has(member.key) && !member.occluded) {
-              addedKeys.add(member.key);
-              this.hiddenItemsList.push(member);
-            }
-          }
-        } else if (!addedKeys.has(m.item.key)) {
-          addedKeys.add(m.item.key);
-          this.hiddenItemsList.push(m.item);
+      if (!m.hiddenByCelestialLabel || m.item.occluded === true || !m.p.front) continue;
+      if (m.groupMembers && m.groupMembers.length > 0) {
+        for (const member of m.groupMembers) {
+          if (addedKeys.has(member.key) || member.occluded === true) continue;
+          addedKeys.add(member.key);
+          this.hiddenItemsList.push(member);
         }
+      } else if (!addedKeys.has(m.item.key)) {
+        addedKeys.add(m.item.key);
+        this.hiddenItemsList.push(m.item);
       }
     }
+  }
 
-    this.retire(items.map((item) => item.key));
+  // 画面内マーカー1件の宣言。遮蔽中は畳み、不透明度が尽きた対象は伏せる。
+  private itemDeclaration(m: PlacedItem, rotationDeg: number | undefined): MarkerDeclaration {
+    const opacity = m.item.opacity ?? 1;
+    const visible = m.item.occluded !== true && opacity > 0 && m.p.front;
+    // 近接まとめはここで済んでいるので、装置へはまとめ済み(clustered)として渡す。
+    return {
+      id: m.item.key,
+      cls: m.item.cls,
+      sym: m.item.sym,
+      markup: m.item.symMarkup,
+      x: m.p.x,
+      y: m.p.y,
+      front: visible,
+      label: m.labeled ? this.label(m.item, m.count, m.groupMembers) : '',
+      opacity,
+      color: m.item.color,
+      rotationDeg,
+      priority: m.item.priority,
+      dist: m.dist,
+      occluded: m.item.occluded === true,
+      clustered: true,
+    };
+  }
+
+  // 画面外(背面を含む)の対象を画面端で指す方位マーカー1件の宣言。
+  private bearingDeclaration(m: PlacedItem, mapView: boolean, camera: CameraFrame): MarkerDeclaration {
+    const bearing = m.item.bearing;
+    // 方位マーカーは戦闘ビューで、方位を出す種別の見えている対象にだけ置く。
+    const placement = mapView || !bearing.visible || m.item.occluded === true || (m.item.opacity ?? 1) <= 0
+      ? null : bearingPlacement(m.p, camera.viewport);
+    return {
+      id: bearingKey(m.item.key),
+      cls: bearing.cls,
+      sym: bearing.sym,
+      x: placement?.x ?? 0,
+      y: placement?.y ?? 0,
+      front: placement !== null,
+      color: bearing.color,
+      rotationDeg: placement?.rotationDeg,
+      priority: m.item.priority,
+      clustered: bearing.clustered,
+    };
   }
 
   // 画面手前にあるものだけをクラスタ化し、優先度が最大のものを代表に据える。
@@ -164,7 +212,7 @@ export class GroupedMarkers {
     }
     // 天体ラベルと画面上で近接している船マーカーはラベルを隠す。ただし船がカメラに著しく
     // 近く天体が著しく遠い(depth-guard)場合は、優先度(天体 > 船)に関わらず船を残す —
-    // 手前の船が奥の天体ラベルに隠され続けることを防ぐ(DEVELOP/SPEC/MAP.md 7.2 節)。
+    // 手前の船が奥の天体ラベルに隠され続けることを防ぐ(SPEC/MARKERS.md「天体ラベル」)。
     const nowHiddenByCelestialLabel = new Set<string>();
     if (celestialLabels.length > 0) {
       for (const m of placed) {
@@ -206,17 +254,5 @@ export class GroupedMarkers {
       return `x${count}`;
     }
     return item.detail ? `${item.name}\n${item.detail}` : item.name;
-  }
-
-  // 前フレームに出して keys に無いマーカーを DOM ごと片付ける。key は対象ごとに一意で増え続ける
-  // ので、隠さずに消す。
-  private retire(keys: readonly string[]): void {
-    const kept = new Set(keys);
-    for (const key of this.shownKeys) {
-      if (kept.has(key)) continue;
-      this.markerManager.remove(key);
-      this.markerManager.remove(bearingKey(key));
-    }
-    this.shownKeys = keys;
   }
 }

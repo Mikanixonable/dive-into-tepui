@@ -14,6 +14,7 @@ description: 実装の全体像・影響範囲を掴む手順。「どこで何�
 | --- | --- |
 | 本来どう振舞うべきなのか(仕様・数値・操作) | `DEVELOP/SPEC/` の該当ファイル |
 | 何と名付け、どう書くのか | `DEVELOP/CODING-RULE.md` |
+| どこに置き、どう繋ぐのか(層・import の向き・正本の書き手・位相・直列化と構築) | `DEVELOP/ARCHITECTURE.md` |
 | 誰がその状態を持っていて、誰が書き換えるのか / どこで `new` されるのか | `/ownership`(コードから調べる) |
 | いつ・どの順で・どんな条件で走るのか(per-frame) | `/callstack`(コードから調べる) |
 | 誰がその関数を呼んでいるのか / 消したら何が壊れるのか | `/inv-callstack`(コードから調べる) |
@@ -24,8 +25,9 @@ description: 実装の全体像・影響範囲を掴む手順。「どこで何�
 
 ## 2. 起点になるファイル
 
-per-frame の入口は `src/main.ts` の rAF ループ → `src/game/game.ts` の `update` / `sync` /
-`render`。`src/game/` は関心事ごとのフォルダ(`player/` `dynamic/` `camera/`
+per-frame の入口は `src/main.ts` の rAF ループ → `src/run/run.ts` の `Run.frame`。フレームは R8 の4つの位相
+(入力の解釈 → 進行 → 導出と同期 → 描画)に分かれ、位相の順序を組み立てるのは `run.ts`。`src/game/game.ts` はモデル層の根、
+`src/game/game-presentation.ts` は表示の導出の根。`src/game/` は関心事ごとのフォルダ(`player/` `dynamic/` `camera/`
 `plan/` `stages/` `hud/` `marker/` `vfx/` `input/` `celestial/` `map/`)、`src/physics/` は THREE/DOM に
 依存しない純粋な計算、`src/render/` は THREE のメッシュ構築と描画パイプライン。
 
