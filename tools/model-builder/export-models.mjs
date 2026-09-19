@@ -15,7 +15,6 @@ import { buildDebrisChunk, buildDebrisPanel, buildDebrisRod } from './debris-fra
 import { buildBarrelMesh, buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
 import { buildEnemyShip, buildStage0EnemyA, buildStage0EnemyB, buildStage0EnemyC } from './metal-enemies.mjs';
 import { buildAmmoPickup, buildRcsFuelPickup } from './pickups.mjs';
-import { buildPlayerShip } from './player-ship.mjs';
 import { buildBulletMesh, buildPlasmaBullet } from './projectiles.mjs';
 import { buildShipModules } from './ship-modules.mjs';
 
@@ -64,7 +63,6 @@ function mergeStaticChildren(root) {
 
 // ------------------------------------------------------------- 書き出し
 const models = {
-  player:       buildPlayerShip(),
   enemy:        buildEnemyShip(),
   stage0EnemyA: buildStage0EnemyA(),
   stage0EnemyB: buildStage0EnemyB(),
@@ -82,8 +80,7 @@ const models = {
   shipModules: buildShipModules(),
 };
 
-// draw call の大半を占める player と magazine(ammo が束ねる分も)の静的な子メッシュを統合する。
-mergeStaticChildren(models.player);
+// magazine は ammo の子としても使われるため、静的な子メッシュを材質ごとに統合する。
 mergeStaticChildren(models.magazine);
 mergeStaticChildren(models.ammo);
 

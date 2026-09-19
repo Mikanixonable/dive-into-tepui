@@ -70,7 +70,12 @@ function sortedPrimitives(shape: CompoundCylinderShape): readonly CompoundCylind
     if (a.moduleId !== b.moduleId) return a.moduleId < b.moduleId ? -1 : 1;
     const av = [a.center.x, a.center.y, a.center.z, a.axis.x, a.axis.y, a.axis.z, a.halfLength, a.radius];
     const bv = [b.center.x, b.center.y, b.center.z, b.axis.x, b.axis.y, b.axis.z, b.halfLength, b.radius];
-    for (let i = 0; i < av.length; i++) if (av[i] !== bv[i]) return av[i]! < bv[i]! ? -1 : 1;
+    for (let i = 0; i < av.length; i++) {
+      const left = av[i];
+      const right = bv[i];
+      if (left === undefined || right === undefined) return 0;
+      if (left !== right) return left < right ? -1 : 1;
+    }
     return 0;
   });
   for (const primitive of result) {
@@ -261,7 +266,7 @@ function firstSweepHit(
   at: (t: number) => CompoundCylinderContact | null,
 ): SweptCompoundCylinderContact | null {
   let previousT = 0;
-  let previous = at(0);
+  const previous = at(0);
   if (previous !== null) return { ...previous, toi: 0 };
   for (let i = 1; i <= subdivisionsCount; i++) {
     const currentT = i / subdivisionsCount;

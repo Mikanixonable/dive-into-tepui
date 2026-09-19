@@ -31,7 +31,8 @@ function dockingAssembly(portKind: 'dock' | 'docking_port' = 'dock'): ShipAssemb
 
 function fakeShip(q: Quat, root: Vec3, velocity = v3(), portKind: 'dock' | 'docking_port' = 'dock'): ModularShip {
   const assembly = dockingAssembly(portKind);
-  const shape = shipPhysicsShape(assembly)!;
+  const shape = shipPhysicsShape(assembly);
+  assert.ok(shape !== null);
   const state = kinematicState<'eci'>(0, add(root, qRotate(q, shape.centerOffset)), velocity);
   return {
     assembly,
@@ -57,7 +58,8 @@ function installCanvasStub(): void {
 function realShip(id: string, q: Quat, root: Vec3, portKind: 'dock' | 'docking_port'): ModularShip {
   installCanvasStub();
   const assembly = dockingAssembly(portKind);
-  const shape = shipPhysicsShape(assembly)!;
+  const shape = shipPhysicsShape(assembly);
+  assert.ok(shape !== null);
   const notifier: Notifier = { hint() {}, toast() {} };
   const markers = {
     shows: () => false, set() {}, setPosition() {}, setDirection() {}, setNodePosition() {}, setBearing() {},
