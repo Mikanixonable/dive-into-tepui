@@ -42,6 +42,12 @@ export class BulletReaction implements DynamicMotionBehavior {
     private passedClose = false,
   ) {}
 
+  // 直列化した形から復元する。
+  public static deserialize(serialized: SerializedBulletReaction): BulletReaction {
+    const { bornSim, lifetime, shooter, type, damage, passedClose } = serialized;
+    return new BulletReaction(bornSim, lifetime, shooter, type, damage, passedClose);
+  }
+
   // 直列化した形へ変換する。
   public serialize(): SerializedBulletReaction {
     return {

@@ -63,17 +63,17 @@ export class DebrisPiece extends DynamicEntity {
 
   public override readonly capKind: CapKind;
 
-  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。radius は接触半径 [m] で、省くと
-  // 0。thermal は熱の状態、id は採番器が配った識別子で、省けばいま出した破片として組む。
-  public constructor(
+  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。id は採番器が配った識別子。radius は
+  // 接触半径 [m] で、省くと 0。thermal は熱の状態、alive は生死で、省けばいま出した破片として組む。
+  private constructor(
     state: KinematicState,
     private readonly debrisKind: DebrisKind,
     attitude: Attitude,
-    idAllocators: EntityIdAllocators,
+    id: string,
     radius?: number,
     scene?: THREE.Scene,
     thermal = initialThermal(debrisKind),
-    id?: string,
+    alive?: boolean,
   ) {
     super(
       () => new DebrisMotion(state, attitude, {
@@ -85,11 +85,21 @@ export class DebrisPiece extends DynamicEntity {
         ),
         radius,
         thermal,
+        alive,
       }),
       debrisPieceView(debrisKind, scene),
-      idAllocators.entity.next(id),
+      id,
     );
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
+  }
+
+  // 種別 debrisKind の破片1個を、state・attitude でいま出したものとして新しく組む。radius は接触半径
+  // [m] で、省くと 0。
+  public static create(
+    state: KinematicState, debrisKind: DebrisKind, attitude: Attitude, idAllocators: EntityIdAllocators,
+    radius?: number, scene?: THREE.Scene,
+  ): DebrisPiece {
+    return new DebrisPiece(state, debrisKind, attitude, idAllocators.entity.next(), radius, scene);
   }
 
   // 直列化した破片を、記録した時刻の状態として復元する。
@@ -101,11 +111,11 @@ export class DebrisPiece extends DynamicEntity {
       deserializeKinematicState(serialized),
       serialized.debrisKind,
       deserializeAttitude(serialized, v3(inertia.x, inertia.y, inertia.z)),
-      registry.idAllocators,
+      registry.idAllocators.entity.next(serialized.id),
       serialized.radius,
       scene,
       serialized.thermal,
-      serialized.id,
+      serialized.alive,
     );
   }
 
@@ -149,7 +159,7 @@ export function buildDestroyFragments(
       ),
       inertia: v3(1, 2.05, 3.0),
     };
-    pieces.push(new DebrisPiece(
+    pieces.push(DebrisPiece.create(
       state, { kind: 'fragment', accent, size }, attitude, idAllocators));
   }
   return pieces;

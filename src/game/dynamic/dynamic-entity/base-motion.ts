@@ -52,9 +52,11 @@ class BaseCollisionBehavior implements DynamicMotionBehavior {
 export class BaseMotion extends DynamicMotion {
   private fuelValue: number;
 
-  // state と attitude はその時刻の初期状態。fuel を省くと満載で始まる。
-  public constructor(state: KinematicState, attitude: Attitude, fuel = BASE_MAX_FUEL) {
+  // state と attitude はその時刻の初期状態。fuel を省くと満載で、alive(生死)を省くと生きた状態で
+  // 始まる。
+  public constructor(state: KinematicState, attitude: Attitude, fuel = BASE_MAX_FUEL, alive?: boolean) {
     super(state, {
+      alive,
       attitude,
       mass: 3e6,
       radius: BASE_COLLISION_RADIUS,

@@ -112,7 +112,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public override get parts(): readonly Part[] { return super.parts; }
 
   // registry は出来事と生んだ実体を積む先。name は表示名、id は採番器が配った識別子、state と
-  // attitude は運動状態。weapon から後ろは下位系の状態と部品で、省いたものは新しく作ったときの
+  // attitude は運動状態。weapon から後ろは下位系の状態・生死・部品で、省いたものは新しく作ったときの
   // 状態で始める。plan はこの艦自身のマニューバ計画。
   private constructor(
     private readonly registry: EntityRegistry,
@@ -123,6 +123,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     attitude: Attitude,
     weapon?: WeaponState,
     thermal?: DynamicMotionThermal,
+    alive?: boolean,
     radiatorUp?: DeployablePanelState,
     radiatorDown?: DeployablePanelState,
     power?: PowerSystem,
@@ -177,6 +178,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         BELT_MAX_VISIBLE,
         reactions(owner as Player),
         thermal,
+        alive,
         radiatorUp,
         radiatorDown,
         power,
@@ -226,6 +228,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       serialized.fire ? WeaponState.deserialize(serialized.fire) : undefined,
       // null も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
       serialized.thermal ?? undefined,
+      serialized.alive,
       radiator?.up ? DeployablePanelState.deserialize(radiator.up) : undefined,
       radiator?.down ? DeployablePanelState.deserialize(radiator.down) : undefined,
       serialized.power ? PowerSystem.deserialize(serialized.power) : undefined,

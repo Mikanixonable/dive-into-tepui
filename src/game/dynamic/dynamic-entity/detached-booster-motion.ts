@@ -72,17 +72,19 @@ export class DetachedBoosterMotion extends DynamicMotion {
   private readonly booster: DetachedBoosterBehavior;
 
   // 段 stage を state・attitude で飛ばし、collisionEnableAt まで接触させない。thermal は熱の状態で、
-  // 省くと環境温度から始める。
+  // 省くと環境温度から始める。alive は生死で、省くと生きた状態で始める。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
     stage: BoosterStage,
     public readonly collisionEnableAt: number,
     thermal?: DynamicMotionThermal,
+    alive?: boolean,
   ) {
     const behavior = new DetachedBoosterBehavior(stage, collisionEnableAt);
     // 質量は残った段から、熱の物性は小さな金属片の値で決める
     super(state, {
+      alive,
       attitude,
       ...thermal,
       radius: BOOSTER_COLLISION_RADIUS,

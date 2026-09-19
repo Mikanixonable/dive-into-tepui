@@ -157,7 +157,7 @@ export class AttachedBoosters {
         tangent,
         randSym(1.5),
       );
-      this.registry.add(new DebrisPiece(
+      this.registry.add(DebrisPiece.create(
         kinematicState<'eci'>(t, coverPosition, coverVelocity),
         { kind: 'boosterCover', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(0.8), randSym(1.8), randSym(0.8)), inertia: v3(1, 1.7, 2.4) },
@@ -179,7 +179,7 @@ export class AttachedBoosters {
         qRotate(att.q, LOCAL_FORWARD),
         randSym(2.5),
       );
-      this.registry.add(new DebrisPiece(
+      this.registry.add(DebrisPiece.create(
         kinematicState<'eci'>(t, boltPosition, boltVelocity),
         { kind: 'boosterBolt', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(2.5), randSym(2.5), randSym(2.5)), inertia: v3(0.4, 0.5, 0.7) },

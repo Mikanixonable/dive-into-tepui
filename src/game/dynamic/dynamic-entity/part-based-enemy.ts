@@ -3,7 +3,6 @@ import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { Part, SerializedPart } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Enemy, type EnemyPlacement } from './enemy';
-import type { EntityIdAllocators } from './entity-id';
 import type { PartDamageTarget } from './damage-capabilities';
 
 // 部品式の被弾モデルを持つ敵に共通するもの。
@@ -16,7 +15,7 @@ export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
     view: DynamicView,
     inertia: Vec3,
     radius: number,
-    idAllocators: EntityIdAllocators,
+    id: string,
     parts: readonly Part[],
     alive?: boolean,
     burstLeft?: number | null,
@@ -25,7 +24,7 @@ export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
     lastBehaviorSim?: number | null,
   ) {
     super(
-      placement, view, inertia, radius, idAllocators, null, alive,
+      placement, view, inertia, radius, id, null, alive,
       burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.partModel = new PartDamageModel(parts);
