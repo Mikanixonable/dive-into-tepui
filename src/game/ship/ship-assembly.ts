@@ -203,6 +203,22 @@ export class ShipAssembly {
     this.addModule(instance, parentId, transform, 'side', connectionId);
   }
 
+  // 建造枝の根元を通常の接舷接続へ昇格する。親は健全な dock/port でなければならず、
+  // この命令の後はその接舷部から通常の undock を使える。
+  public promoteConnectionToDocking(connectionId: string): void {
+    const index = this.connections.findIndex(connection => connection.id === connectionId);
+    const connection = index < 0 ? undefined : this.connections[index];
+    if (connection === undefined) throw new Error(`unknown construction connection: ${connectionId}`);
+    if (connection.kind === 'docking') return;
+    if (!isDockModule(this.nodes.get(connection.parentId)?.instance ?? null)) {
+      throw new Error(`construction connection does not start at a docking module: ${connectionId}`);
+    }
+    if (this.isDockingPortOccupied(connection.parentId)) {
+      throw new Error(`docking module is already occupied: ${connection.parentId}`);
+    }
+    this.connections[index] = { ...connection, kind: 'docking' };
+  }
+
   /** 二つの接舷部を正対させ、other をこの assembly の dock branch として複製統合する。 */
   public mergedAtDock(
     other: ShipAssembly, localPortId: string, otherPortId: string, namespace: string,
