@@ -18,10 +18,10 @@ const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
 const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
 const ENEMY_AI_MIN_RANGE = 50; // 射撃する最短距離 [m]
-const ENEMY_MAX_ATTACKERS_PER_GROUP = 3;
-const ENEMY_ATTACK_CHANCE = 0.6;
-const ENEMY_BURST_COUNTS = [3, 5, 7, 20];
-const PLASMA_SPREAD_DEG = 0.05;
+const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 攻撃グループ内で同時にバーストする敵の上限
+const ENEMY_ATTACK_CHANCE = 0.6; // 射撃の機会ごとにバーストを始める確率
+const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト1回の弾数の候補
+const PLASMA_SPREAD_DEG = 0.05; // 太陽グレアの倍率が 1 のときの、プラズマ弾の散布角の最大 [deg]
 
 // 撃つ敵が、射撃の判断と弾の生成に差し出す面。
 export interface EnemyFireControllerPort {
@@ -33,8 +33,7 @@ export interface EnemyFireControllerPort {
   fired(muzzleState: KinematicState, events: RunEventSink): void;
 }
 
-// バースト射撃の残弾と次弾までの残り時間 [s](未着手なら両方 null)、最後に射撃の機会が巡った時刻と
-// 最後に行動した時刻 [sim s](まだなら null)。
+// 射撃判断の途中経過(バーストの残弾と次弾まで、射撃の機会と行動の時刻)の直列化した形。
 export interface SerializedEnemyFireController {
   readonly burstLeft: number | null;
   readonly burstDelay: number | null;
@@ -44,9 +43,9 @@ export interface SerializedEnemyFireController {
 
 // 敵1体の射撃判断・バースト進行・弾の生成。
 export class EnemyFireController {
-  // port は撃つ敵。burstLeft・burstDelay はバースト射撃の残弾と次弾までの残り時間で、未着手なら
+  // port は撃つ敵。burstLeft・burstDelay はバースト射撃の残弾と次弾までの残り時間 [s] で、未着手なら
   // 両方 null。lastFireSim・lastBehaviorSim は最後に射撃の機会が巡った時刻と最後に行動した
-  // 時刻で、まだなら null。
+  // 時刻 [sim s] で、まだなら null。
   public constructor(
     private readonly port: EnemyFireControllerPort,
     private burstLeft: number | null = null,
@@ -81,7 +80,7 @@ export class EnemyFireController {
       this.burstDelay = null;
       return;
     }
-    // 交戦距離の内にいる間だけ撃つ
+    // 近すぎず、交戦距離の内にいる間だけ撃つ
     const dist = len(sub(player.motion.state.r, this.port.motion.state.r));
     if (!(dist < ENGAGEMENT_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
 

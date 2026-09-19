@@ -241,15 +241,14 @@ export class OrbitGuideModel {
   // 直近にマップビューで組んだ線の本数。曲線を引けなかった線も数える。
   public get lineCount(): number { return this.lines.length; }
 
-  // 設定と表示時刻から、描くガイド線の宣言を返す(マップビュー以外では空)。曲線の組み直しは、
-  // 設定・カタログ・表示時刻のいずれかが動いたときに走る。形も設定も動いていなければ
-  // 前回と同じ宣言をそのまま返す。
+  // 設定と表示時刻から、描くガイド線の宣言を返す(マップビュー以外では空)。形も設定も動いて
+  // いなければ前回と同じ列を返す。
   public displaysAt(
     settings: OrbitGuideSettings, displayTime: number, style: RenderStyle, viewMode: ViewMode,
   ): readonly GuideLineDisplay[] {
     if (viewMode !== 'map') return NO_LINES;
 
-    // 本数・族範囲・系選択の直積が変わったときだけ線の顔ぶれを組み直す。
+    // 種類ごとの on・本数と系選択が変わったときだけ線の顔ぶれを組み直す。
     const structureKey = structuralKey(settings);
     if (structureKey !== this.structureKey) {
       this.rebuildLines(settings);

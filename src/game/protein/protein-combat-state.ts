@@ -149,8 +149,8 @@ export class ProteinCombatState {
     return Math.max(0, baseDamage) * multiplier;
   }
 
-  // localPoint に当たった弾が損傷させる機能部位の id。含む部位が無ければ null(integrity を直接削る)。
-  // localPoint は原子の座標 [Å] ではなく、表示の基準倍率を掛けたモデル座標。部位は静止した位置で比べる。
+  // localPoint(表示の基準倍率を掛けたモデル座標)に当たった弾が損傷させる機能部位の id。含む部位が
+  // 無ければ null。部位は静止した位置で比べる。
   public siteIdAt(localPoint: ProteinModelPoint): string | null {
     return this.closestSite(localPoint)?.definition.id ?? null;
   }
