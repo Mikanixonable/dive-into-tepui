@@ -30,12 +30,11 @@ export function bodyGroupsOf(
   ].filter((g) => g.items.length > 0);
 }
 
-// 表示名を「中心天体名-自分の名」として celestialBodies から組む。
+// ラグランジュ系の候補を [副天体 id, 「主天体名-副天体名」] で組む。
 export function lagrangeSystemItemsOf(
   celestialBodies: CelestialBodies, orbitingIds: readonly string[],
 ): readonly (readonly [string, string])[] {
-  // 共線点が行き先として意味を持つ系だけを出す。重力を無視すると宣言した天体(μ = 0)では
-  // 質量比が 0 になり、共線点の距離比を解く反復が収束せず NaN の状態を返す。
+  // 共線点が行き先として意味を持つ系だけを出す。
   const usable = (id: string): boolean => {
     const motion = celestialBodies.motionOf(id);
     return motion instanceof OrbitingMotion && motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO);
