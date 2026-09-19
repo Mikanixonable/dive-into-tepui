@@ -115,7 +115,7 @@ export function register(): void {
     assert.equal(myoglobinAsset.ligands[0]?.metalElement, 'FE');
     assert.equal(myoglobinAsset.ligands[0]?.centerSite, 'heme-iron');
     assert.deepEqual(attackSitesOf(state, myoglobinAsset).map((site) => site.id), ['heme-iron']);
-    assert.equal(state.nextAttackSite()?.id, 'heme-iron');
+    assert.equal(state.nextAttackSite?.id, 'heme-iron');
 
     const structure = rawMyoglobinStructure as unknown as {
       atoms: {
@@ -250,10 +250,11 @@ export function register(): void {
     assert.ok(Math.abs(localImpact.y - active.position[1] * asset.coordinateScale) < 1e-12);
     assert.ok(Math.abs(localImpact.z - active.position[2] * asset.coordinateScale) < 1e-12);
     const firstAttackWorld = runtime.siteWorldPositionById(
-      combat.nextAttackSite()!.id, origin, IDENTITY_ATTITUDE,
+      combat.nextAttackSite!.id, origin, IDENTITY_ATTITUDE,
     );
+    combat.advanceAttackSite();
     const nextWorld = runtime.siteWorldPositionById(
-      combat.nextAttackSite()!.id, origin, IDENTITY_ATTITUDE,
+      combat.nextAttackSite!.id, origin, IDENTITY_ATTITUDE,
     );
     assert.deepEqual(firstAttackWorld, activeWorld);
     assert.notDeepEqual(nextWorld, activeWorld);
@@ -265,16 +266,12 @@ export function register(): void {
     syncVisual();
     // 変形が生きていれば、サイトのアンカーは変形前の位置から動く。
     assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
-    const dynamicCombat = new ProteinCombatState(asset);
-    const dynamicLocal = runtime.siteModelPositionById(active.id);
-    const dynamicWorld = runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE);
-    const dynamicImpact = proteinLocalImpactPoint(
-      dynamicWorld, origin, IDENTITY_ATTITUDE, root.scale.x,
+    // 表示中のアンカーが揺らぎで動いても、被弾部位は静止位置で選ぶ。
+    const restCombat = new ProteinCombatState(asset);
+    const restHit = restCombat.applyDamage(
+      active.maxHp, proteinLocalImpactPoint(activeWorld, origin, IDENTITY_ATTITUDE, root.scale.x),
     );
-    const dynamicHit = dynamicCombat.applyDamage(
-      active.maxHp, dynamicImpact, new Map([[active.id, dynamicLocal]]),
-    );
-    assert.equal(dynamicHit.siteId, active.id, 'a displayed anchor should select the same site on impact');
+    assert.equal(restHit.siteId, active.id, 'the rest position should select the site on impact');
     assert.deepEqual(root.position, baseRootPosition);
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);

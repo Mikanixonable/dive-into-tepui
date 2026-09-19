@@ -13,6 +13,8 @@ export interface MarkerRecord {
   readonly root: HTMLElement;
   readonly sym: HTMLElement;
   readonly lbl: HTMLElement;
+  // 要素へ貼っている宣言の cls。変わったフレームだけ貼り直す。
+  cls: string;
   fixedLabel: boolean;
   hidden: boolean;
   x: number;
@@ -91,6 +93,10 @@ export class MarkerGroup implements MarkerSink {
       return;
     }
     const m = known ?? this.create(item);
+    if (m.cls !== item.cls) {
+      m.cls = item.cls;
+      m.root.className = `mk ${item.cls}`;
+    }
     m.fadeStartMs = null;
     m.fixedLabel = item.fixedLabel === true;
     m.hidden = !item.front;
@@ -153,6 +159,7 @@ export class MarkerGroup implements MarkerSink {
       root,
       sym: el('span', `mk-${item.id}-s`, root, 'sym'),
       lbl: el('span', `mk-${item.id}-l`, root, 'lbl'),
+      cls: item.cls,
       fixedLabel: false,
       hidden: true,
       x: item.x,
