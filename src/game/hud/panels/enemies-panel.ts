@@ -74,8 +74,8 @@ export class EnemiesPanel {
     panel?.classList.toggle('hidden', !this.hasContacts);
   }
 
-  // waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。
-  // waveId 不在の敵は個別の行になる。ターゲットが波のメンバーなら、その波の行を強調する側に倒す。
+  // contacts を、波ごとの「第N波」1行と波に属さない敵の個別行へまとめ、距離順に並べる。
+  // 波の行は、ターゲットが波のメンバーなら強調する。
   private buildEnemyRows(contacts: readonly EnemyContact[]): EnemyRow[] {
     const singles: EnemyRow[] = [];
     const waves = new Map<number, { count: number; nearestDistanceM: number; targeted: boolean }>();
@@ -88,7 +88,7 @@ export class EnemiesPanel {
       if (!waveSummary) {
         waves.set(waveId, { count: 1, nearestDistanceM: distanceM, targeted });
       } else {
-        // 波の代表距離は最も近い個体を使い、波内にターゲットがいれば強調する。
+        // 波の代表距離は最も近い個体の距離。
         waveSummary.count += 1;
         waveSummary.nearestDistanceM = Math.min(waveSummary.nearestDistanceM, distanceM);
         waveSummary.targeted = waveSummary.targeted || targeted;

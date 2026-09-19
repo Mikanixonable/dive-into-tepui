@@ -107,6 +107,7 @@ export class DebrisPiece extends DynamicEntity {
     serialized: SerializedDebrisPiece, registry: EntityRegistry, scene: THREE.Scene,
   ): DebrisPiece {
     const { inertia } = serialized;
+    // 慣性・接触半径・熱の状態も記録した値から始める
     return new DebrisPiece(
       deserializeKinematicState(serialized),
       serialized.debrisKind,

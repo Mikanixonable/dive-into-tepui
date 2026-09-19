@@ -266,9 +266,8 @@ export class CelestialMarkers {
     };
   }
 
-  // 混雑で画面から消えた船・敵機・基地を、天体ラベルの下のサブ行として描き足す。
-  // syncLabels が組んだ宣言のうち、集約先になった天体のぶんだけを差し替えて置き直す。
-  // hiddenItems は、戦闘対象のマーカー集合が天体ラベルへラベルを譲った項目。
+  // 混雑で画面から消えた船・敵機・基地を、天体ラベルの下のサブ行として描き足す。同じフレームの
+  // syncLabels の後に呼ぶ。hiddenItems は天体ラベルへラベルを譲った項目。
   syncSubLabels(
     hiddenItems: readonly GroupedMarkerItem[], pivot: number, project: ProjectFn, cameraPos: Vec3, nowMs: number,
   ): void {
@@ -288,6 +287,7 @@ export class CelestialMarkers {
     const label = this.labelsById.get(id);
     const projected = this.frameScratch.get(id);
     if (label === undefined || projected === undefined) return null;
+    // 表示トグルでアイコンを消したラベルは、サブ行を足して組み直しても字形を出さない。
     return {
       pos: label.pos,
       shown: label.drawn,

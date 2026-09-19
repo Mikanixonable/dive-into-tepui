@@ -117,7 +117,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   // 画面マーカーと被選択判定が同じ個体を指すためのキー。
   private get markerKey(): string { return `${this.pickupKind}-${this.id}`; }
 
-  // 画面マーカーに出すこの補給物の項目。ターゲットにならないので優先度は固定値。
+  // 画面マーカーに出すこの補給物の項目。優先度は視点からの距離によらず固定。
   public markerItem(): GroupedMarkerItem {
     return {
       key: this.markerKey,
@@ -285,7 +285,7 @@ export class RcsFuelPickup extends Pickup {
     );
   }
 
-  // 1 個の取り込みで増える燃料の量。
+  // 1 個の取り込みで増える燃料の量を示す行。
   protected override supplyRows(): readonly PropertyRow[] {
     return [{ key: 'amount', label: '補給量', value: `${RCS_FUEL_PICKUP_AMOUNT.toLocaleString()} kg` }];
   }
