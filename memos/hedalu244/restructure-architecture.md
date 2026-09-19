@@ -1003,25 +1003,17 @@ R3 の判定の許可リストに残るのは `Stage.onDecided`(5.5-7)だけに�
 - `plan/plan-path.ts` を `MISPLACED_PRESENTATION_FILES` へ足した(`PlanDisplay` が作って持つ作り直せる表示)。振り分けの表では 5.5-9 としていた行の一部。
 - 検証: `npm run typecheck`、テストの型検査、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での目視は 5.5-10 へ回す。
 
-#### 手順 5.5-6. 音の装置を宣言だけにする(R7)
+#### 手順 5.5-6. 音の装置を宣言だけにする(R7)— 済
 
-**目的**: 段 1 の R7 のうち、名前の列に無かったので素通りしていた命令をなくす。効果音は「そのフレームの出来事の列」、BGM は「音量と試聴中の曲」を、宣言として受ける。挙動は変えない。
+`WorldSfx.sync({ loops, cues })`・`UiSfx.sync(cues)`・`Bgm.sync(BgmDeclaration)` だけが公開の口になった。一回きりの音は `SoundCue`(`audio/sfx/sound-cue.ts`、id と音の種類)の列で受け、装置は鳴らした最新の id より大きいものだけを鳴らす。`Bgm` の `setVolume`・`syncRun`・`beginAudition`・`playAudition`・`seekAudition`・`auditionElapsedSec`・`endAudition` は消えた。
 
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/audio/sfx/world-sfx.ts`、`src/game/run-event-presenter.ts` | 単発音の命令(`fire()`・`spinUp()`・`emptyClick()`・`magFeed()`・`playReload()`・`hit()` ほか)をやめ、そのフレームに鳴らす音の列を、出来事の通し番号付きで宣言として受ける。装置は同じ通し番号を二度鳴らさない(R7 の出来事の段落)。距離による減衰のような値は、表示の導出が写すときに付ける |
-| `src/audio/sfx/ui-sfx.ts`、`src/game/plan/plan-editor.ts`(5.5-3 から回した行) | `UiSfx.warp()` も単発の命令なので、効果音と同じく通し番号付きの宣言にする。`plan-editor` が操作の場で直に鳴らしている分も、表示の導出が番号を振って宣言へ積む |
-| `src/hud/windows/pause-menu.ts`、`src/settings/*`(5.5-3 から回した行) | 消音前の音量 `lastVol` を表示の導出だけが持つのをやめ、設定に音量と消音を分けて持つ(R5・R10)。BGM へ渡す音量は、音量と消音から宣言を組むときに求める |
-| `src/audio/bgm/bgm.ts`、`src/main.ts`、`src/hud/panels/bgm-settings-panel.ts`、`src/hud/windows/settings-view.ts` | `setVolume` を設定の購読から呼ぶのをやめ、音量を宣言の一部として受ける。試聴の位置の `seekAudition` も宣言にし、試聴の経過 `auditionElapsedSec`(装置の出力)を HUD が表示に読むのをやめる — 経過は設定画面が宣言した開始時刻と実時刻から求める(5.5-3 から回した行)。試聴の `beginAudition`/`playAudition`/`stopAudition`/`endAudition` を、試聴中の曲(無しを含む)の宣言にする。試聴の選択は、設定画面が R5-4 の操作途中の状態として持つ。`syncRun` を遷移点だけで呼んでいる形も、同じ宣言へまとめられるかをここで判定する |
-
-**達成条件と検証**
-
-- `rg -n "worldSfx\.\w+\(" src/game` が、宣言を渡す1本だけ。
-- `rg -n "bgm\.(setVolume|beginAudition|playAudition|stopAudition|endAudition)" src` が 0 件。
-- `npm run typecheck`、`npm run check:boundaries`。
-- `npm run dev` で次を見る。射撃・装填・被弾・空撃ちの音。一時停止中と決着後に効果音が鳴り続けない(AUDIO.md)。設定画面での BGM の音量変更と試聴。タブを隠して戻したときの再開。
+**実施で決めたこと**
+- ゲーム世界の効果音の id は出来事の通し番号。出来事から音への写像は `run-event-presenter.ts` の `worldSoundCues`(距離の減衰の値はここで付ける)。UI の効果音(`warp`)は `game/ui-sound-queue.ts` の `UiSoundQueue` が溜めて番号を振り、`GamePresentation.sync` が装置へ渡して空にする。`plan-editor` と出来事の写しはどちらもそこへ積む。
+- BGM の宣言は `main.ts` のフレームで毎回組む — 音量(消音を織り込む)、ランの進行(`run.game.activeStage.isPlaying`)、試聴の期間(設定面が開いているか)、試聴の曲。`syncRun` を遷移点で呼ぶ形はこの宣言へまとめたので、`Launcher` は `Bgm` を持たない。決着・周回の開始の反映は最大1フレーム遅れる。
+- 最初のタイトル画面でも試聴を鳴らすため、フレームのループは `launcher.start()` を待つ前に回し始める(タイトルへ戻った後と同じ状態)。
+- 試聴の選択(曲・選曲の回・シークの回と位置)は `BgmSettingsPanel` が操作途中の状態として持ち、`audition` で宣言する。経過の表示は、選曲・シークの後の最初のフレームの実時刻を起点に求める。
+- 消音は `UserSettings.bgmMuted`(鍵 `tepui.settings.bgm_muted`)に音量と分けて持つ。スライダーは消音を織り込んだ音量を見せ、動かせば消音を解く。**変わった挙動**: 消音の前の音量が再読み込みを跨いで残る。手で 0 にした音量から消音ボタンで戻すと、前に消音した音量ではなく既定の 1 になる。
+- 検証: `npm run typecheck`、テストの型検査、`npm run test:settings`(6/6)、`npm run test:game`(255/255)、`npm run check:boundaries`、変更ファイルの lint。`npm run dev` での聴き取りは 5.5-10 へ回す。
 
 #### 手順 5.5-7. 位相・直列化・導出の残りを片づける(R8・R12・R5)
 
@@ -1570,12 +1562,12 @@ import を直す外側:
 | | ~~5.5-3 洗い出し~~ 済 | 0 |
 | | ~~5.5-4 運動の書き手~~ 済 | 0 |
 | | ~~5.5-5 残りのモデル層の欄~~ 済 | 0 |
-| | 5.5-6 音の装置(6 ファイル × 20 + 検証 20、`UiSfx`・消音の設定・試聴の位置と経過 +80) | 220 |
+| | ~~5.5-6 音の装置~~ 済 | 0 |
 | | 5.5-7 位相・直列化・導出の残り(15 ファイル × 20、時間加速の命令を領域の語彙にする +40、検証 20、採番器の予約 +20) | 380 |
 | | 5.5-8 1.x の未達と launcher の表示(10 ファイル × 20 + 検証 20) | 220 |
 | | 5.5-9 洗い出しの残りと監査報告の 4(4 の分は SPEC の削除と 6 ファイル × 20 + 検証 20 = 140。洗い出しの 22 行は約 40 ファイル × 20 = 800) | 940 |
 | | 5.5-10 main へ送る | 150 |
-| | **段 5.5 計(残り)** | **1,910** |
+| | **段 5.5 計(残り)** | **1,690** |
 | 6 | 6-1 規則(R6・R2 のモデル層、`entity-shapes/` の層と条件 +15、`physics/` から実体の形を締め出す +15) | 120 |
 | | 6-2 検査(対応表を game/ の中まで割る、`LAYER_TABLE` の行 +5。K11-2 で B なら読み手の数の判定 +20) | 95 |
 | | 6-3 3D の表示担当(モデル層の根の `scene` +20、漏れていたテスト3本 +30、突き合わせの検査 +40) | 810 |
