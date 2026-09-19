@@ -2,7 +2,7 @@ import faviconUrl from '../../../public/favicon.svg';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_4 } from '../../theme';
-import { clampOverlayPosition, Point2 } from '../layout';
+import { clampOverlayPosition, type Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';

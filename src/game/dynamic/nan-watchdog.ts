@@ -18,7 +18,7 @@
 // 一度検出したら以後は何もしない(告知の洪水と、汚染後の無意味な検査を避ける)。
 import type { SimulationControlled, SimulationState } from './dynamic-simulation-participant';
 import type { RunEventBody, RunEventSink } from '../run-events';
-import { Vec3 } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 
 // 全成分が有限値かどうかを返す。
 function finiteVec(v: Vec3): boolean {

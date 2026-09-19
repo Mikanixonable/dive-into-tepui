@@ -9,7 +9,7 @@ export type PlacementFieldId =
   | 'inclination' | 'raan' | 'argumentOfPeriapsis' | 'trueAnomaly'
   | 'referenceCelestialBody' | 'inPlaneAmplitude' | 'outOfPlaneAmplitude';
 
-export type PlacementFieldIssue = { readonly field: PlacementFieldId; readonly message: string };
+export interface PlacementFieldIssue { readonly field: PlacementFieldId; readonly message: string }
 
 type EllipticSizeInput =
   | { readonly sizeMode: 'apsides'; readonly peAltKm: number; readonly apAltKm: number }

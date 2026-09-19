@@ -1,6 +1,6 @@
 // 自機が浴びている空力荷重。動圧と、それが構造限界を超えたか・空力加熱が効く流れの中にいるかを答える。
 import { airflow } from '../../physics/atmosphere';
-import { Vec3, sub } from '../../math/vec3';
+import { type Vec3, sub } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 
 export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]

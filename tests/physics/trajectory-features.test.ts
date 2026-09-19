@@ -3,10 +3,10 @@
 import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { apsisCrossing, ApsisTrack, findEquatorCrossings } from '../../src/physics/trajectory-features';
 import { keplerPeriod, stateFromOrbitalElements, trueAnomalyFromMean } from '../../src/physics/elements';
-import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { len, sub, v3 } from '../../src/math/vec3';
 

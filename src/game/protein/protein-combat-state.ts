@@ -17,7 +17,7 @@ export interface SerializedProteinCombatState {
   readonly attackSiteCursor: number;
 }
 
-type ProteinModelPoint = { readonly x: number; readonly y: number; readonly z: number };
+interface ProteinModelPoint { readonly x: number; readonly y: number; readonly z: number }
 
 // 機能部位1つの戦闘中の状態。
 interface SiteState {

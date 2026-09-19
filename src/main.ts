@@ -3,7 +3,7 @@
 // HUD の書体は太さ 400 だけを読み、bold はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
-import { createGameScene, GameScene } from './render/scene';
+import { createGameScene, type GameScene } from './render/scene';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { FrameSections } from './game/frame-sections';

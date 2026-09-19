@@ -1,6 +1,6 @@
 // 開いているプロパティウィンドウ(被選択物・搭載部品)と空域メニューの台帳。中身を毎フレーム
 // 最新化し、被選択物が組んだメニュー項目のうちいま選べるものを絞って、選ばれた操作を実行する。
-import { Hud } from '../hud/hud';
+import type { Hud } from '../hud/hud';
 import { ContextMenu, type MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import { PropertyWindow } from '../../hud/windows/property-window';

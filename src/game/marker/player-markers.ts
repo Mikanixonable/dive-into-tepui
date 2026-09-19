@@ -1,7 +1,7 @@
 // 操作中の艦の姿勢だけから決まる戦闘ビュー専用マーカー(軌道基準の方向マーカーと機首ボアサイト)。
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import type { ViewMode } from '../view/view-mode';
-import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
+import { type KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, sub, type Vec3 } from '../../math/vec3';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';

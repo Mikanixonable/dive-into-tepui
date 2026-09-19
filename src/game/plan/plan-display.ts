@@ -1,13 +1,13 @@
 // 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
 // (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
 import type { ViewMode } from '../view/view-mode';
-import { Vec3, len, sub } from '../../math/vec3';
+import { type Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
-import { Projected } from '../../math/projection';
+import type { Projected } from '../../math/projection';
 import { fmtMarkerDist } from '../../hud/utils';
-import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
+import { type TickRank, type TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
 import type { DisplayedPath } from '../marker/equator-node-marker-pair';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
@@ -17,10 +17,10 @@ import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import { ObjectPickable } from '../pickable/object-pickable';
+import type { ObjectPickable } from '../pickable/object-pickable';
 import type { PlanData } from './plan';
 import type { PlanPath } from './plan-path';
-import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
+import { type DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { Apsis } from '../../physics/trajectory-features';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';

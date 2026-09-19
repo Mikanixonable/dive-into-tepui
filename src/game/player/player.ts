@@ -1,10 +1,10 @@
 import type * as THREE from 'three/webgpu';
 
 import type { ViewMode } from '../view/view-mode';
-import { Attitude, deserializeAttitude } from '../../physics/attitude';
+import { type Attitude, deserializeAttitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
-import { KinematicState, deserializeKinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, v3, len, sub } from '../../math/vec3';
+import { type KinematicState, deserializeKinematicState } from '../../physics/kinematic-state';
+import { type Vec3, add, v3, len, sub } from '../../math/vec3';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -68,12 +68,12 @@ const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 const BELT_MAX_VISIBLE = 18;
 
 // 新規配置の艦。state に機首プログレードで置き、name/id/ammo は任意指定する。
-export type PlayerPlacement = {
+export interface PlayerPlacement {
   readonly name?: string;
   readonly state: KinematicState;
   readonly id?: string;
   readonly ammo?: AmmoLoad;
-};
+}
 
 export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly kind: 'player';

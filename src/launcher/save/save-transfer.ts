@@ -6,7 +6,7 @@ import {
   SLOT_EXPORT_FORMAT,
   SLOT_EXPORT_VERSION,
 } from './slot-data';
-import { SaveSlots } from './save-slots';
+import type { SaveSlots } from './save-slots';
 
 // セーブスロットのファイルへの出し入れと、読み込んだ JSON が SlotExport として妥当かどうかの検証。
 

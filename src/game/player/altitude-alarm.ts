@@ -2,7 +2,7 @@
 // 指数移動平均で平滑化する。
 import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
-import { Vec3, sub } from '../../math/vec3';
+import { type Vec3, sub } from '../../math/vec3';
 import type { RunEventSink } from '../run-events';
 
 // 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]

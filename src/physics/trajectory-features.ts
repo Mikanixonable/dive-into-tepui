@@ -3,9 +3,9 @@
 // 積分結果と一致させたい特徴点はここで求める。赤道交点(findEquatorCrossings)はサンプル列
 // (折れ線)を走査して求め、アプシス(apsisCrossing/ApsisTrack)は積分の1ステップごとに動径速度の
 // 符号反転を直接見て求める — どちらも同じ黄金分割探索/二分法の補間機構を使う。
-import { hermiteInterpolate, KinematicState } from './kinematic-state';
+import { hermiteInterpolate, type KinematicState } from './kinematic-state';
 import { goldenSectionMin } from '../math/optimize';
-import { dot, len, sub, Vec3 } from '../math/vec3';
+import { dot, len, sub, type Vec3 } from '../math/vec3';
 import type { CelestialBody } from './celestial-body';
 
 // 極値探索・交点二分法の反復回数。固定回数にしているのは、収束判定にすると反復回数が

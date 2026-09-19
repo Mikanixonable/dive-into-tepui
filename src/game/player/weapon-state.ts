@@ -22,7 +22,7 @@ export interface SerializedWeaponState {
 }
 
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
-export type AmmoLoad = { readonly mags: number; readonly rounds: number };
+export interface AmmoLoad { readonly mags: number; readonly rounds: number }
 
 export type AmmoConsumption = 'normal' | 'mag-reload' | 'barrel-reload';
 

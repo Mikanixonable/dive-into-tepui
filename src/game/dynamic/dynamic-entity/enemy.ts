@@ -1,6 +1,6 @@
 import type { ViewMode } from '../../view/view-mode';
 import { Vessel } from './vessel';
-import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
+import type { DynamicEntity, SerializedDynamicEntityFields } from './dynamic-entity';
 import type { Contact } from './contact';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';

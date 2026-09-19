@@ -1,8 +1,8 @@
 // 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた参加者どうしの
 // 接触を 1 substep ぶん TOI(接触時刻)昇順で解き、反発が起きた当事者へ collideWithEntity を呼ぶ。
 // 参加者は互いの状態を書き換えるので、1 substep に解く件数に上限を置く。
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, scale, sameVec } from '../../math/vec3';
+import { type KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { type Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
 import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 import type { EngagementZone } from './engagement-zone';

@@ -3,9 +3,9 @@
 import * as THREE from 'three/webgpu';
 import { CELESTIAL_SHELL_RADIUS } from '../stars';
 import { FloatingOrigin } from './floating-origin';
-import { len, sub, Vec3 } from '../../math/vec3';
+import { len, sub, type Vec3 } from '../../math/vec3';
 import {
-  metersPerPixel, metersPerPixelAtDistance, screenProjection, Viewpoint,
+  metersPerPixel, metersPerPixelAtDistance, screenProjection, type Viewpoint,
 } from '../../math/projection';
 import type { CameraFrame } from './camera-frame';
 import type { Viewport } from '../viewport';

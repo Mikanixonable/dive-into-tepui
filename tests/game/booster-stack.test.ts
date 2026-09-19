@@ -2,9 +2,9 @@
 // 検証する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
+import { type Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
 import {
-  BoosterSeparationVelocities,
+  type BoosterSeparationVelocities,
   BoosterStack,
   boosterAverageAcceleration,
   boosterSeparationVelocities,
