@@ -1,5 +1,5 @@
 // 気候から表示時刻の雲場を焼く所有者。気候・天気の中間場・出力場を同じ寿命で管理する。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { CloudField } from './cloud-field';
 import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
