@@ -6,8 +6,8 @@ export interface Part {
   readonly name: string;
   readonly weight: number; // kg
 
-  maxHp: number;
-  hp: number; // 0 = 破壊/機能停止
+  readonly maxHp: number;
+  readonly hp: number; // 0 = 破壊/機能停止
 }
 
 interface HullPart extends Part {
@@ -20,38 +20,38 @@ export interface CockpitPart extends Part {
 
 export interface ArmorPart extends Part {
   readonly type: 'armor';
-  damageReduction: number; // 0-1
+  readonly damageReduction: number; // 0-1
 }
 
 export interface ThrusterPart extends Part {
   readonly type: 'thruster';
-  torque: number;
-  thrust: number;
-  fuelConsumptionRate: number; // kg/s(スロットル100%時)
+  readonly torque: number;
+  readonly thrust: number;
+  readonly fuelConsumptionRate: number; // kg/s(スロットル100%時)
 }
 
 export interface RcsTankPart extends Part {
   readonly type: 'rcs_tank';
-  maxFuel: number; // kg
-  fuel: number; // kg
+  readonly maxFuel: number; // kg
+  readonly fuel: number; // kg
 }
 
 export interface RadiatorPart extends Part {
   readonly type: 'radiator';
-  coolingRate: number; // 展開しきった1枚の実効放熱面積 [m^2]
+  readonly coolingRate: number; // 展開しきった1枚の実効放熱面積 [m^2]
 }
 
 export interface SolarPanelPart extends Part {
   readonly type: 'solar_panel';
-  powerGeneration: number; // W
+  readonly powerGeneration: number; // W
 }
 
 export interface WeaponPart extends Part {
   readonly type: 'weapon';
-  weaponType: 'gatling' | 'cannon' | 'missile';
-  fireRate: number; // rounds/s
-  damage: number; // 命中1回あたりのダメージ
-  muzzleVelocity: number; // m/s
+  readonly weaponType: 'gatling' | 'cannon' | 'missile';
+  readonly fireRate: number; // rounds/s
+  readonly damage: number; // 命中1回あたりのダメージ
+  readonly muzzleVelocity: number; // m/s
 }
 
 export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTankPart | RadiatorPart | SolarPanelPart | WeaponPart;

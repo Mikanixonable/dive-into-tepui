@@ -1,7 +1,6 @@
 // エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
 import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { DynamicMotion } from './dynamic-motion';
@@ -219,7 +218,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       if (cap === null || !entity.motion.alive) continue;
       const rank = live[cap] + 1;
       live[cap] = rank;
-      if (rank > ENTITY_CAP[cap]) entity.motion.alive = false;
+      if (rank > ENTITY_CAP[cap]) entity.motion.kill();
     }
   }
 
@@ -241,11 +240,12 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
     dt: number, simTime: number, activeStage: StageOutcome,
-    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
+    zones: readonly EngagementZone<EngagementParticipant>[],
   ): void {
     this.processPendingSpawns();
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
     // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
+    const atmosphereBodies = this.celestialBodies.atmosphereMotions;
     for (let i = 0, n = this.entities.length; i < n; i++) {
       this.entities[i]!.motion.checkLoss(
         dt, simTime, { activeStage, registry: this }, zones, atmosphereBodies);
@@ -284,14 +284,15 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 時間が止まったことを記録し、次のフレームへ持ち越してはならない連続指令を畳む。
   public pause(): void {
-    this.simulator.lastSimDt = 0;
+    this.simulator.pause();
     for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
   // 顔ぶれを1フレーム進める。自律の推力、操作・敵の指令を決めてから積分する。各段の境界で
-  // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。
+  // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。operable は操作と敵の
+  // 射撃ができる倍率か、enemiesMayFire はステージが敵の射撃を許しているか。
   public update(
-    active: Controllable | null, controls: PilotControls, operable: boolean,
+    active: Controllable | null, controls: PilotControls, operable: boolean, enemiesMayFire: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
     stageRules: StageRules, beforeControllables: () => void = () => {},
   ): void {
@@ -302,7 +303,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     this.updateThrusts(simDt);
     beforeControllables();
     this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
-    this.behaveAll(active, operable);
+    this.behaveAll(active, operable && enemiesMayFire);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
       'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
@@ -334,26 +335,23 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     for (const controllable of this.controllables) {
       if (!controllable.motion.alive) continue;
       // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として操作量なしで進める。
-      controllable.updateControls({
-        controls: controllable === active && operable ? controls : null,
-        dt,
-        simDt,
-        activeStage,
-        stageRules,
-        celestialBodies: this.celestialBodies,
-      });
+      controllable.updateControls(
+        controllable === active && operable ? controls : null,
+        dt, simDt, activeStage, stageRules, this.celestialBodies,
+      );
     }
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。追跡先の艦が1隻も無ければ何もしない。
-  // 同一集団の判定に使う母集団は、このフレームの顔ぶれを1度だけ取って全機で共有する。
-  private behaveAll(active: Controllable | null, operable: boolean): void {
+  // 同一集団の判定に使う母集団は、このフレームの顔ぶれを1度だけ取って全機で共有する。mayFire が偽の
+  // 間は撃たない。
+  private behaveAll(active: Controllable | null, mayFire: boolean): void {
     const player = this.trackedShip(active);
     if (player === null) return;
     const enemies = this.entities.filter(isEnemy);
     for (const e of enemies) {
       if (e.motion.alive) {
-        e.behave(this.simTime, player, this, enemies, operable, this.celestialBodies);
+        e.behave(this.simTime, player, this, enemies, mayFire, this.celestialBodies);
       }
     }
   }

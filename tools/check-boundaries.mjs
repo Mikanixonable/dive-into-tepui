@@ -3,13 +3,14 @@
 //
 // 同名の .claude/hooks/check-boundaries.mjs は別物で、あちらは編集直後に1ファイルだけ見る。
 //
-// 例外の置き場は2つあり、混ぜない。**恒久の例外はこのファイルへコメント付きで書き、段の途中で
-// 消える残りは tools/boundary-allowlist.json へ書く。** 混ぜると、段の終わりに許可リストを
-// 空にできたかどうかで「規則をコードが満たしたか」を判定できなくなる。
+// 検査を外す置き場は2つあり、混ぜない。**規則どおりに分けられない箇所の例外は exempt へ理由の
+// コメント付きで書き、段の途中で消える残りは tools/boundary-allowlist.json へ書く。** 混ぜると、
+// 段の終わりに許可リストを空にできたかどうかで「規則をコードが満たしたか」を判定できなくなる。
 //
 //   node tools/check-boundaries.mjs
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 
 const root = path.resolve(import.meta.dirname, '..');
 const SRC = 'src';
@@ -57,14 +58,22 @@ const PROGRESS_ROOTS = [
   'src/game/control-selection.ts',
 ];
 
-// モデル層の置き場。進行と視点と、モデル層の根。
-const MODEL_ROOTS = [...PROGRESS_ROOTS, 'src/game/viewer/', 'src/game/game.ts'];
+// モデル層の置き場。進行と視点と、モデル層の根と、その両方が使う命令の列と出来事の記録。
+const MODEL_ROOTS = [
+  ...PROGRESS_ROOTS,
+  'src/game/control-selection-commands.ts',
+  'src/game/viewer/',
+  'src/game/game.ts',
+  'src/game/command-queue.ts',
+  'src/game/run-events.ts',
+];
 
 // 表示の導出だが、置き場がまだ進行のフォルダか、モデル層の根の隣にあるファイル。動かしたらここも
 // 直す — 存在しないパスが残ると検査が落ちる。(暫定 — 段 8 で presentation/ へ移すときに消える)
 const MISPLACED_PRESENTATION_FILES = [
   'src/game/game-presentation.ts',
   'src/game/plan/plan-editor.ts',
+  'src/game/plan/plan-path.ts',
   'src/game/plan/node-gizmo.ts',
   'src/game/plan/plan-panel.ts',
   'src/game/plan/plan-axis-drag.ts',
@@ -89,34 +98,43 @@ const PRESENTATION_ROOTS = [
   'src/game/run-event-presenter.ts',
 ];
 
-// 判定の名前と、その目的を書いた規則(ref)。違反の行に ref を添え、読む先を示す。
+// 判定の名前と、その目的を書いた規則(ref)。違反の行に ref を添え、読む先を示す。exempt は例外にする
+// import の辺 [import する側, される側] で、理由は各辺のコメントに書く(ARCHITECTURE「規則に合わないとき」)。
 const RULES = {
-  deviceOut: { name: '装置の出ていく import', ref: 'ARCHITECTURE R2' },
-  deviceToDevice: { name: '装置どうしの相互 import', ref: 'ARCHITECTURE R2' },
-  timeOut: { name: '時刻層の出ていく import', ref: 'ARCHITECTURE R2' },
-  definitionOut: { name: '定義層の出ていく import', ref: 'ARCHITECTURE R2' },
-  hudOut: { name: 'src/hud/ の出ていく import', ref: 'ARCHITECTURE R2' },
-  progressToViewer: { name: '進行から視点への import', ref: 'ARCHITECTURE R4' },
-  settingsViewer: { name: '設定と視点の相互 import', ref: 'ARCHITECTURE R4' },
-  serializationToPresentation: { name: '直列化の根の型から表示の導出への import', ref: 'ARCHITECTURE R11' },
+  deviceOut: { name: '装置の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  deviceToDevice: { name: '装置どうしの相互 import', ref: 'ARCHITECTURE R2', exempt: [] },
+  timeOut: { name: '時刻層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  definitionOut: { name: '定義層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  hudOut: { name: 'src/hud/ の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  progressToViewer: { name: '進行から視点への import', ref: 'ARCHITECTURE R4', exempt: [] },
+  settingsViewer: { name: '設定と視点の相互 import', ref: 'ARCHITECTURE R4', exempt: [] },
+  serializationToPresentation: {
+    name: '直列化の根の型から表示の導出への import', ref: 'ARCHITECTURE R11', exempt: [],
+  },
 };
 
-// 禁止パターンの表。段ごとに行を足す。exempt は恒久の例外で、理由は各行のコメントに書く。
-const FORBIDDEN = [
-  {
-    name: '命令 API の禁止',
-    ref: 'ARCHITECTURE R7',
-    pattern: /ensureStarted|\.unlock\(|setThrust|setRcs|applyGraphics|setFixedBrightnessScale|MarkerSlots/g,
-    targets: ['src/'],
-    exempt: [],
+// 構文木で当てる判定。名前ではなく形を見るので、名前を替えても外れない。exempt は例外にする
+// [ファイル, 違反の識別子] で、理由は各行のコメントに書く(ARCHITECTURE「規則に合わないとき」)。
+const SYNTAX_RULES = {
+  // 識別子は「型名.欄名」。代入の形は命令であることを呼び手から隠し、書き手を1つに保てなくする。
+  mutableField: { name: 'モデル層の可変な公開欄の禁止', ref: 'ARCHITECTURE R3', exempt: [] },
+  // 識別子は「型名.constructor(引数名)」。型の名前 Serialized* は直列化の語彙の行が保証する。不変な
+  // 素の値の型をそのまま直列化の形に使うもの(R12)は、新しく作るときにも同じ型で受けるので当てない。
+  serializedConstructorArg: {
+    name: '直列化された形をコンストラクタで受ける禁止', ref: 'ARCHITECTURE R12', exempt: [],
   },
+};
+
+// 禁止パターンの表。段ごとに行を足す。exempt は例外で、理由は各行のコメントに書く
+// (ARCHITECTURE「規則に合わないとき」)。
+const FORBIDDEN = [
   {
     // R5 の「実時刻はフレームの先頭で1度だけ読み、入力として配る」を導出層へ当てたもの。
     name: '導出層の壁時計の禁止',
     ref: 'ARCHITECTURE R5',
     pattern: /performance\.now|Date\.now/g,
     targets: ['src/render/', 'src/marker/', 'src/hud/', 'src/game/hud/'],
-    // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので恒久の例外にする。
+    // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので例外にする。
     exempt: [
       'src/render/protein/protein-runtime.ts',
       'src/render/dynamic/dynamic-entity/protein-enemy-view.ts',
@@ -153,6 +171,7 @@ const FORBIDDEN = [
     exempt: [],
   },
   {
+    // 名前は形の代用にすぎないので、名前を替えた二段初期化は段の終わりの洗い出しで見る。
     name: '二段初期化の禁止',
     ref: 'CODING-RULE 1.11',
     pattern: /setInput\(|setHandlers\(|setOpenAnalysisHandler\(/g,
@@ -223,19 +242,11 @@ const FORBIDDEN = [
     exempt: [],
   },
   {
-    // 復元は静的な deserialize が行い、構築した後で保存値を流し込まない(R12)。
+    // 復元は静的な deserialize が行い、構築した後で保存値を流し込まない(R12)。名前は形の代用に
+    // すぎないので、名前を替えた流し込みは段の終わりの洗い出しで見る。
     name: '復元の流し込みの禁止',
     ref: 'ARCHITECTURE R12',
     pattern: /\brestore\w*\s*\(|\bimportData\s*\(|\bsaveState\b/g,
-    targets: MODEL_ROOTS,
-    exempt: [],
-  },
-  {
-    // コンストラクタは直列化された形を受けず、新規と復元で分岐しない(R12)。引数が複数行に
-    // 渡っても当たるよう、ファイル全体に対して引数名を探す。
-    name: '直列化された形をコンストラクタで受ける禁止',
-    ref: 'ARCHITECTURE R12',
-    pattern: /(?<=\bconstructor\s*\([^)]*)\b(?:saved|initialSave)\w*(?=\??\s*:)|'saved'\s+in\b/g,
     targets: MODEL_ROOTS,
     exempt: [],
   },
@@ -336,7 +347,10 @@ function findImportViolations({ edges, layerOf }) {
   const found = [];
   for (const e of edges) {
     if (e.to === null) continue;
-    const flag = (rule) => found.push({ rule: rule.name, file: e.from, id: e.to, line: e.line });
+    const flag = (rule) => {
+      if (rule.exempt.some(([from, to]) => from === e.from && to === e.to)) return;
+      found.push({ rule: rule.name, file: e.from, id: e.to, line: e.line });
+    };
     const from = layerOf(e.from);
     const to = layerOf(e.to);
     const selfRoot = from === DEVICE ? deviceRootOf(e.from) : null;
@@ -384,6 +398,107 @@ function findPatternViolations({ sources, texts }) {
   return found;
 }
 
+// モデル層のファイルか。表示の導出がまだ置かれているファイルを除く。
+function isModel(file) {
+  return isUnder(file, MODEL_ROOTS) && !MISPLACED_PRESENTATION_FILES.includes(file);
+}
+
+function modifiersOf(node) {
+  return ts.canHaveModifiers(node) ? (ts.getModifiers(node) ?? []) : [];
+}
+
+function hasModifier(node, kind) {
+  return modifiersOf(node).some((m) => m.kind === kind);
+}
+
+function isPublicMember(node) {
+  if (node.name !== undefined && ts.isPrivateIdentifier(node.name)) return false;
+  return !hasModifier(node, ts.SyntaxKind.PrivateKeyword) && !hasModifier(node, ts.SyntaxKind.ProtectedKeyword);
+}
+
+// export 宣言か、ファイル末尾の `export { … }` で export される名前。
+function exportedNames(sf) {
+  const names = new Set();
+  for (const st of sf.statements) {
+    if (ts.isExportDeclaration(st) && st.exportClause !== undefined && ts.isNamedExports(st.exportClause)) {
+      for (const el of st.exportClause.elements) names.add((el.propertyName ?? el.name).text);
+    } else if (hasModifier(st, ts.SyntaxKind.ExportKeyword) && st.name !== undefined) {
+      names.add(st.name.text);
+    }
+  }
+  return names;
+}
+
+// 型の構文の中に、名前が Serialized で始まる型の参照があるか。
+function mentionsSerialized(typeNode) {
+  let found = false;
+  const visit = (node) => {
+    if (ts.isTypeReferenceNode(node)) {
+      const name = ts.isQualifiedName(node.typeName) ? node.typeName.right.text : node.typeName.text;
+      if (name.startsWith('Serialized')) found = true;
+    }
+    if (!found) ts.forEachChild(node, visit);
+  };
+  visit(typeNode);
+  return found;
+}
+
+// 値の形を述べる型の構文を辿り、可変な欄を flag へ渡す。関数の型の引数と戻り値は、値が持つ欄では
+// ないので辿らない。
+function checkTypeShape(typeName, node, flag) {
+  if (ts.isFunctionLike(node)) return;
+  const readonly = hasModifier(node, ts.SyntaxKind.ReadonlyKeyword);
+  if (ts.isPropertySignature(node) && !readonly) flag(SYNTAX_RULES.mutableField, node, `${typeName}.${node.name.getText()}`);
+  if (ts.isIndexSignatureDeclaration(node) && !readonly) flag(SYNTAX_RULES.mutableField, node, `${typeName}[]`);
+  if (ts.isMappedTypeNode(node) && node.readonlyToken === undefined) flag(SYNTAX_RULES.mutableField, node, `${typeName}[]`);
+  ts.forEachChild(node, (child) => checkTypeShape(typeName, child, flag));
+}
+
+function checkClass(cls, flag) {
+  const className = cls.name?.text ?? '(無名クラス)';
+  for (const m of cls.members) {
+    const mutable = !hasModifier(m, ts.SyntaxKind.ReadonlyKeyword);
+    if (ts.isPropertyDeclaration(m) && isPublicMember(m) && mutable) {
+      flag(SYNTAX_RULES.mutableField, m, `${className}.${m.name.getText()}`);
+    }
+    if (ts.isSetAccessorDeclaration(m)) flag(SYNTAX_RULES.mutableField, m, `${className}.${m.name.getText()}`);
+    if (!ts.isConstructorDeclaration(m)) continue;
+    for (const p of m.parameters) {
+      const name = p.name.getText();
+      if (hasModifier(p, ts.SyntaxKind.PublicKeyword) && !hasModifier(p, ts.SyntaxKind.ReadonlyKeyword)) {
+        flag(SYNTAX_RULES.mutableField, p, `${className}.${name}`);
+      }
+      if (p.type !== undefined && mentionsSerialized(p.type)) {
+        flag(SYNTAX_RULES.serializedConstructorArg, p, `${className}.constructor(${name})`);
+      }
+    }
+  }
+}
+
+// モデル層のクラスの可変な公開欄と set アクセサ、export する型の可変な欄(R3)、コンストラクタが
+// 受ける直列化された形(R12)を数える。
+function findSyntaxViolations({ sources, texts }) {
+  const found = [];
+  for (const f of sources) {
+    if (!isModel(f)) continue;
+    const sf = ts.createSourceFile(f, texts.get(f), ts.ScriptTarget.Latest, true);
+    const flag = (rule, node, id) => {
+      if (rule.exempt.some(([file, exemptId]) => file === f && exemptId === id)) return;
+      found.push({ rule: rule.name, file: f, id, line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1 });
+    };
+    const exported = exportedNames(sf);
+    const visit = (node) => {
+      if (ts.isClassLike(node)) checkClass(node, flag);
+      if ((ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) && exported.has(node.name.text)) {
+        ts.forEachChild(node, (child) => checkTypeShape(node.name.text, child, flag));
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+  return found;
+}
+
 // 違反の同一性は「ファイル + 違反の識別子」で、行番号は持たない — 行番号は後続の編集で
 // すぐ嘘になる。同じ識別子が同じファイルに複数行あるときは、全部消えるまで1件として残る。
 function group(found) {
@@ -413,7 +528,7 @@ function keyOf(v) {
 }
 
 function report(violations, listed) {
-  const rules = [...Object.values(RULES), ...FORBIDDEN];
+  const rules = [...Object.values(RULES), ...Object.values(SYNTAX_RULES), ...FORBIDDEN];
   const allowed = new Set(listed.map(keyOf));
   const unlisted = violations.filter((v) => !allowed.has(keyOf(v)));
   const live = new Set(violations.map(keyOf));
@@ -455,12 +570,13 @@ if (graph.unresolved.length > 0) {
   for (const u of graph.unresolved) console.log(`  ${u.file}:${u.line} → ${u.spec}`);
   ok = false;
 }
-if (!report(group([...findImportViolations(graph), ...findPatternViolations(graph)]), readAllowlist())) ok = false;
+const violations = [...findImportViolations(graph), ...findSyntaxViolations(graph), ...findPatternViolations(graph)];
+if (!report(group(violations), readAllowlist())) ok = false;
 if (ok) {
   console.log('\n境界の検査を通った。');
 } else {
   console.log('\n境界の検査に落ちた。各判定の括弧が、その目的を書いた規則(DEVELOP/ARCHITECTURE.md・CODING-RULE.md)。');
-  console.log('読んで、目的に照らしてコードを直す。規則・判定・exempt・許可リストを書き換えて通さない。規則か判定が');
-  console.log('目的を外していると判断したら、理由を添えてユーザーに問う(ARCHITECTURE.md「違反が出たとき」)。');
+  console.log('読んで、目的に照らしてコードを直す。規則どおりに分けられないなら、理由を書いて exempt へ例外にする。');
+  console.log('規則・判定を書き換えて通さない(ARCHITECTURE.md「規則に合わないとき」)。');
 }
 process.exit(ok ? 0 : 1);

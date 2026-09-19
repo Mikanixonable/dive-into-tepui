@@ -160,6 +160,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   public get phase(): GamePhase { return this._phase; }
   public get isPlaying(): boolean { return this._phase === 'playing'; }
+  // 敵の射撃を許しているか。射撃の可否を切り替えるステージが上書きする。
+  public get enemiesMayFire(): boolean { return true; }
   private _result: StageResult | null = null;
   public get result(): StageResult | null { return this._result; }
   // decide() が決着を確定させた瞬間に一度だけ呼ぶ。

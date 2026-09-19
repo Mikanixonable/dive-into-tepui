@@ -30,6 +30,8 @@ export const ARC_INTERACTIVE_RATIO = 0.5;
 export const ARC_MIN_ITEM_STEPS = 16;
 
 export class Predictor {
+  // 次に伸ばす個体の巡回の位置と、直近フレームの計数。どれも予測の弧(キャッシュ)を伸ばす段取りの
+  // キャッシュ。
   private cursor = 0;
 
   private lastSteps = 0; // 実体側で消費した積分ステップ数
@@ -91,15 +93,14 @@ export class Predictor {
   }
 
   // budgetSteps を上限に予測列を1歩ずつ伸ばし、消費した歩数を実体側の集計へ積んで返す。
-  // 要求終端・保持窓の左端・実シミュレーションの刻み上限は、伸ばす前に弧へ書き込む。
+  // 要求終端・保持窓の左端・実シミュレーションの刻み上限は、伸ばす前に弧へ渡す。
   private advanceBudget(
     e: PredictableMotion, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
   ): number {
     const arc = e.ensurePredictedArc(this.celestialBodies.celestialMotions);
     if (arc === null) return 0;
-    arc.requiredEnd = simTime + horizon;
-    arc.retainFrom = simTime - ARC_RETAIN_MARGIN;
-    arc.simulationMaxStep = maxStep;
+    arc.demand(simTime + horizon, simTime - ARC_RETAIN_MARGIN);
+    arc.alignSimulationStep(maxStep);
     const consumed = this.grow(arc, budgetSteps);
     this.lastSteps += consumed;
     return consumed;

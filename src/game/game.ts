@@ -248,8 +248,8 @@ export class Game {
     this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
     this.dynamicSystem.update(
-      controlled, controls, canShipAct, dt, simDt, canEngage, this.activeStage, this.activeStage.stageRules,
-      () => this.applyPilotCommands(controls),
+      controlled, controls, canShipAct, this.activeStage.enemiesMayFire, dt, simDt, canEngage,
+      this.activeStage, this.activeStage.stageRules, () => this.applyPilotCommands(controls),
     );
 
     recordTargetBoardPasses(controlled, boardTargetId, this.dynamicSystem, this.events);
