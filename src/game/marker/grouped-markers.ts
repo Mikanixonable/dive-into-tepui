@@ -12,6 +12,7 @@ import type { MarkerSink } from '../../marker/marker-sink';
 import type { ThemePalette } from '../../theme';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
+import type { ViewMode } from '../view/view-mode';
 
 // 画面外へ出た対象を画面端の円周上で指す方位マーカーの見た目。
 export interface BearingMarker {
@@ -89,12 +90,12 @@ export class GroupedMarkers {
   // 方位マーカーの代わりに、マーカー自体を vel の進行方向へ回す(円軌道では静止画から
   // 回転方向が読めないため)。
   public sync(
-    items: readonly GroupedMarkerItem[], camera: CameraFrame, nowMs: number,
+    items: readonly GroupedMarkerItem[], camera: CameraFrame, view: ViewMode, nowMs: number,
     celestialLabels: readonly ActiveCelestialLabel[],
     celestialBodies: readonly CelestialBody[],
   ): void {
     const project = camera.project;
-    const mapView = camera.mode === 'map';
+    const mapView = view === 'map';
     // 画面座標とカメラからの距離を求めてから、近接するものをまとめる。
     const placed: PlacedItem[] = items.map(
       (item) => ({

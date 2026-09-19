@@ -122,6 +122,9 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // 顔ぶれと実体化を待つ個体、採番を直列化した形へ畳む。
+  // 例外(ARCHITECTURE R12): 先端時刻 simTime は Simulator の値だが、顔ぶれの記録へ平らに入れる。
+  // Simulator の記録として分けると保存の形式が変わり、版 4 の記録が読めなくなる。形式は版を上げる
+  // ときにまとめて直す。
   public serialize(): SerializedDynamicSystem {
     return {
       simTime: this.simTime,
@@ -131,6 +134,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     };
   }
 
+  // 顔ぶれの世代を数えるキャッシュ。読み手が顔ぶれの変化を見分けるためだけに持つ。
   private _collectionRevision = 0;
 
   // 保持するエンティティの顔ぶれの世代。追加・除去・prune のいずれでも増える。
@@ -197,8 +201,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return true;
   }
 
-  // 上限付きの個体が追加されてから、まだ上限を確かめていないか。枠が増えるのは追加のときだけ
-  // なので、走査はこれが立っている間に限れる。
+  // 上限付きの個体が追加されてから、まだ上限を確かめていないか(キャッシュ)。枠が増えるのは追加の
+  // ときだけなので、走査はこれが立っている間に限れる。
   private capsUncheckedSinceAdd = false;
 
   // 上限を超えた個体を、枠ごとに古いものから落とす。配列は追加順なので、末尾から数えて上限を

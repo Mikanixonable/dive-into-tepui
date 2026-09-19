@@ -30,7 +30,7 @@ export interface EnemyFireControllerPort {
   canFire(enemies: readonly Enemy[]): boolean;
   muzzlePosition(): Vec3;
   plasmaDamage(): number;
-  muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
+  fired(muzzleState: KinematicState, events: RunEventSink): void;
 }
 
 // バースト射撃の残弾と次弾までの残り時間 [s](未着手なら両方 null)、最後に射撃の機会が巡った時刻と
@@ -132,7 +132,7 @@ export class EnemyFireController {
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma',
       this.port.plasmaDamage(), registry.idAllocators,
     );
-    this.port.muzzleEffect(kinematicState<'eci'>(simTime, r, v), registry.events);
+    this.port.fired(kinematicState<'eci'>(simTime, r, v), registry.events);
     registry.add(bullet);
   }
 }

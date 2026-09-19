@@ -17,6 +17,7 @@ import { fmtDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import { Throttle, type SerializedThrottle } from '../../player/throttle';
+import { PLAYER_RCS_ANGULAR_ACCEL } from '../../player/player-loadout';
 import type { Controllable } from './controllable';
 import type { PilotCommand, PilotControls } from './pilot-controls';
 import type { EntityRegistry } from '../entity-registry';
@@ -35,11 +36,12 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import { BASE_THRUST, BaseMotion } from './base-motion';
 
-const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
 const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
 const BASE_INERTIA_Y = 1e8;
 const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
+// 基地のトルク [N·m]。短軸まわりに自機の RCS と同じ角加速度を出す。
+const BASE_TORQUE = BASE_INERTIA_X * PLAYER_RCS_ANGULAR_ACCEL;
 const BASE_INITIAL_MONEY = 100000; // 新規配置の基地の所持金 [Cr]
 
 export interface SerializedBase extends SerializedDynamicEntityFields {

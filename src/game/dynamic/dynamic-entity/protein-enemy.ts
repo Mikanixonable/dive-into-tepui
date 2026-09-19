@@ -3,6 +3,7 @@ import {
   deserializeKinematicState, kinematicState, type KinematicState, type SerializedKinematicState,
 } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
+import { proteinLocalImpactPoint, proteinSiteWorldPosition } from '../../../physics/protein-site-geometry';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState, type SerializedProteinCombatState } from '../../protein/protein-combat-state';
@@ -34,6 +35,8 @@ import type { ProteinMotionMetrics } from '../../../render/dynamic/dynamic-entit
 // タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
+// 部位の静止座標へ足す残基変位。規則は揺らぎを読まないので常に零。
+const NO_RESIDUE_OFFSET = [0, 0, 0] as const;
 
 // 新しく置くタンパク質の敵の要求。アセットが揃うまで実体化を待てるよう(SPEC/PROTEIN.md「出現」節)、
 // 直列化できる値だけで表す。陣形に属する個体だけが formationId と役割を持ち、属さない個体は単体敵になる。
@@ -94,6 +97,8 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   }
 
   private readonly assetId: ProteinAssetId;
+  // 部位の座標 [Å] から模型座標への倍率。
+  private readonly coordinateScale: number;
 
   // View を組み、definition のアセットが持つ球列へ判定形状を当てる。motionSeed は表示の揺らぎの軌跡を
   // 決める識別子、id は採番器が配った識別子、combat は被弾モデルで、省けば無傷から始める。
@@ -134,6 +139,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       alive, burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.assetId = definition.assetId;
+    this.coordinateScale = definition.asset.coordinateScale;
   }
 
   // request の敵を、無秩序に漂う姿勢で新しく置く。名前には、陣形役割・識別番号などの識別子の前へ
@@ -221,11 +227,13 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     return energyAvailable && this.combat.isActionEnabled(attackAction.id);
   }
 
-  // 次に撃つ機能部位の ECI 位置。呼ぶたびに撃つ部位を順繰りに進める。銃口は静止座標で取り、
-  // 表示の揺らぎ(残基変位)は乗せない。
+  // 次に撃つ機能部位の ECI 位置。銃口は部位の静止座標を個体の位置・姿勢で写したもので、表示の
+  // 揺らぎ(残基変位)は乗せない。
   protected override muzzlePosition(): Vec3 {
-    const site = this.combat.nextAttackSite();
-    return this.view.siteWorldPositionById(site?.id ?? '', this.motion.state.r, this.motion.att.q);
+    return proteinSiteWorldPosition(
+      this.combat.nextAttackSite?.position ?? null, NO_RESIDUE_OFFSET, this.coordinateScale, ENEMY_MODEL_SCALE,
+      this.motion.state.r, this.motion.att.q,
+    );
   }
 
   // 修飾の倍率を掛けたプラズマ弾のダメージ。
@@ -233,23 +241,21 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     return this.combat.projectileDamage(PLASMA_BULLET_DAMAGE);
   }
 
-  // 機能部位から撃ったことを記録する。
-  protected override muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void {
+  // 機能部位から撃ったことを記録し、次に撃つ部位を進める。
+  protected override fired(muzzleState: KinematicState, events: RunEventSink): void {
     events.record({ kind: 'proteinSiteFired', muzzleState });
+    this.combat.advanceAttackSite();
   }
 
   // 被弾位置に最も近い機能部位へダメージを割り振る。
   protected override applyBulletDamage(
     damage: number, impactPoint: Vec3, events: RunEventSink,
   ): void {
-    // 着弾点と各部位の位置を、同じ模型座標で比べる
-    const localPoint = this.view.localImpactPoint(
-      impactPoint, this.motion.state.r, this.motion.att.q,
+    // 着弾点を、部位の静止座標と同じ模型座標へ戻して比べる
+    const localPoint = proteinLocalImpactPoint(
+      impactPoint, this.motion.state.r, this.motion.att.q, ENEMY_MODEL_SCALE,
     );
-    const sitePositions = new Map(
-      this.combat.combatReadout().sites.map((site) => [site.id, this.view.siteModelPositionById(site.id)] as const),
-    );
-    const result = this.combat.applyDamage(damage, localPoint, sitePositions);
+    const result = this.combat.applyDamage(damage, localPoint);
     // 部位が止まるか構造フェーズが変わったら、着弾点の出来事として記録する
     if (result.siteDisabled || result.phaseChanged) {
       events.record({
