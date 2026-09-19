@@ -36,8 +36,8 @@ export class PowerSystem {
     const { charge, up, down } = serialized;
     return new PowerSystem(
       typeof charge === 'number' && Number.isFinite(charge) ? Math.max(0, Math.min(POWER_CAPACITY, charge)) : undefined,
-      up ? DeployablePanelState.deserialize(up) : undefined,
-      down ? DeployablePanelState.deserialize(down) : undefined,
+      (up && DeployablePanelState.deserialize(up)) ?? undefined,
+      (down && DeployablePanelState.deserialize(down)) ?? undefined,
     );
   }
 

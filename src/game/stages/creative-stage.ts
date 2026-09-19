@@ -18,6 +18,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { ViewMode } from '../view/view-mode';
 
 // クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
 // 保つ(ON に戻したとき波数を続きから再開する)。手動スポーンと物体配置の設定・連番も持つ。
@@ -114,20 +115,21 @@ export class CreativeStage extends Stage {
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedCreativeStage, ...deps: StageDeps): CreativeStage {
+  public static deserialize(serialized: SerializedCreativeStage | null, ...deps: StageDeps): CreativeStage {
     const [, scene, dynamicSystem, celestialSystem] = deps;
-    const { waveAttack, waveAttackEnabled, manualSpawn, objectPlacement } = serialized;
+    const waveAttack = serialized?.waveAttack;
+    const manualSpawn = serialized?.manualSpawn;
     return new CreativeStage(
       deps,
       // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
       waveAttack == null ? undefined : WaveAttack.deserialize(
         waveAttack, dynamicSystem.events, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
       ),
-      waveAttackEnabled ?? undefined,
+      serialized?.waveAttackEnabled ?? undefined,
       manualSpawn == null ? undefined : ManualSpawn.deserialize(
         manualSpawn, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
       ),
-      objectPlacement?.playerIdAllocator ?? undefined,
+      serialized?.objectPlacement?.playerIdAllocator ?? undefined,
       ...Stage.deserializeCommonState(serialized, deps, CreativeStage.stageRules),
     );
   }
@@ -223,13 +225,13 @@ export class CreativeStage extends Stage {
 
   // 共通のステータス表示に加えて、ステージ操作パネルと配置プレビューを同期する。
   public sync(
-    camera: CameraFrame, displayTime: number,
+    camera: CameraFrame, view: ViewMode, displayTime: number,
   ): void {
-    super.sync(camera, displayTime);
+    super.sync(camera, view, displayTime);
     const ship = this.ship;
     this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
-    this.mountStageControlsPanel(camera.mode === 'map');
-    this.objectPlacement.sync(camera, displayTime);
+    this.mountStageControlsPanel(view === 'map');
+    this.objectPlacement.sync(camera, view, displayTime);
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
@@ -245,9 +247,7 @@ export class CreativeStage extends Stage {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
       if (this.waveAttackEnabled) {
-        this.waveAttack.update(
-          dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this,
-          (enemy) => this.addEnemy(enemy));
+        this.waveAttack.update(dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this);
       }
     }
   }

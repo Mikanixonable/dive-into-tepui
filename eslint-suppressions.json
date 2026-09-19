@@ -813,7 +813,7 @@
   },
   "src/game/plan/plan-display.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 6
+      "count": 5
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 12
@@ -886,11 +886,6 @@
   },
   "src/game/player/fire-control.ts": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "src/game/player/player-loadout.ts": {
-    "@typescript-eslint/explicit-module-boundary-types": {
       "count": 1
     }
   },
@@ -2799,7 +2794,7 @@
       "count": 2
     },
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 27
+      "count": 25
     }
   },
   "tests/physics/window-agreement.test.ts": {

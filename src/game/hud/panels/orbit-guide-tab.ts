@@ -25,7 +25,7 @@ import {
   type OrbitGuideSettings,
   type SunSyncSettings,
 } from '../../viewer/orbit-guide-settings';
-import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-groups';
+import { GUIDE_GROUPS, GUIDE_SYSTEMS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-groups';
 import { ORBIT_GUIDE_GROUP_TABS } from '../hud-selection';
 import type { OrbitGuideGroupTab } from '../hud-selection';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
@@ -207,7 +207,7 @@ export class OrbitGuideTab {
   private buildSystemRow(parent: HTMLElement): void {
     const row = document.createElement('div');
     row.className = 'orbit-guide-system-row';
-    for (const system of ALL_SYSTEMS) {
+    for (const system of GUIDE_SYSTEMS) {
       const sw = new ToggleSwitch(SYSTEM_LABEL[system], (on) => this.setSystem(system, on));
       row.appendChild(sw.element);
       this.systemSwitches.set(system, sw);
@@ -561,9 +561,6 @@ const GROUP_TAB_LABEL: Readonly<Record<OrbitGuideGroupTab, string>> = {
   basic: '基本', collinear: '共線点', triangular: '三角点', secondary: '副天体周回', resonant: '共鳴',
 };
 
-const ALL_SYSTEMS: readonly CatalogSystemId[] = [
-  'earth-moon', 'sun-earth', 'sun-mars', 'jupiter-europa', 'saturn-titan', 'saturn-enceladus', 'mars-phobos',
-];
 const SYSTEM_LABEL: Readonly<Record<CatalogSystemId, string>> = {
   'earth-moon': '地球-月系', 'sun-earth': '太陽-地球系', 'sun-mars': '太陽-火星系',
   'sun-jupiter': '太陽-木星系', 'sun-saturn': '太陽-土星系',

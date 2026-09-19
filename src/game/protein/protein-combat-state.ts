@@ -118,13 +118,18 @@ export class ProteinCombatState {
       .map((site) => site.definition);
   }
 
-  // 次に撃つ部位を、機能している攻撃部位から順繰りに選ぶ。1つも無ければ null。
-  public nextAttackSite(): ProteinSiteDefinition | null {
+  // 次に撃つ部位。機能している攻撃部位を順繰りに担当させる。1つも無ければ null。
+  public get nextAttackSite(): ProteinSiteDefinition | null {
     const sites = this.attackSites;
     if (sites.length === 0) return null;
-    const site = sites[this.attackSiteCursor % sites.length] ?? sites[0]!;
+    return sites[this.attackSiteCursor % sites.length] ?? sites[0]!;
+  }
+
+  // 次に撃つ部位を、順繰りの次へ進める。撃つたびに呼ぶ。
+  public advanceAttackSite(): void {
+    const sites = this.attackSites;
+    if (sites.length === 0) return;
     this.attackSiteCursor = (this.attackSiteCursor + 1) % sites.length;
-    return site;
   }
 
   private modificationState(id: string): string | null { return this.modifications.get(id) ?? null; }
@@ -159,13 +164,11 @@ export class ProteinCombatState {
   }
 
   // amount を、localPoint を含む機能部位のうち最も近いものへ当てる。含む部位が無ければ integrity を
-  // 直接削る。localPoint は原子の座標 [Å] ではなく、表示の基準倍率を掛けたモデル座標。
-  public applyDamage(
-    amount: number, localPoint: ProteinModelPoint,
-    sitePositions?: ReadonlyMap<string, ProteinModelPoint>,
-  ): ProteinDamageResult {
+  // 直接削る。localPoint は原子の座標 [Å] ではなく、表示の基準倍率を掛けたモデル座標。部位は静止した
+  // 位置で比べる。
+  public applyDamage(amount: number, localPoint: ProteinModelPoint): ProteinDamageResult {
     const previousPhase = this.phase;
-    const candidate = this.closestSite(localPoint, sitePositions);
+    const candidate = this.closestSite(localPoint);
     let siteId: string | null = null;
     let siteDisabled = false;
     let damage = Math.max(0, amount);
@@ -234,21 +237,17 @@ export class ProteinCombatState {
   }
 
   // localPoint を半径の内に含む機能部位のうち、中心が最も近いもの。無ければ null。
-  private closestSite(
-    localPoint: ProteinModelPoint, sitePositions?: ReadonlyMap<string, ProteinModelPoint>,
-  ): SiteState | null {
+  private closestSite(localPoint: ProteinModelPoint): SiteState | null {
     let closest: SiteState | null = null;
     let closestDistance = Number.POSITIVE_INFINITY;
     // 部位の位置と半径は原子の座標なので、モデル座標へ直して比べる。
     const coordinateScale = this.asset.coordinateScale;
     for (const site of this.siteStates) {
       if (isDisabled(site)) continue;
-      const position = sitePositions?.get(site.definition.id);
       const [x, y, z] = site.definition.position;
-      const anchor = position ?? { x: x * coordinateScale, y: y * coordinateScale, z: z * coordinateScale };
-      const dx = localPoint.x - anchor.x;
-      const dy = localPoint.y - anchor.y;
-      const dz = localPoint.z - anchor.z;
+      const dx = localPoint.x - x * coordinateScale;
+      const dy = localPoint.y - y * coordinateScale;
+      const dz = localPoint.z - z * coordinateScale;
       const distance = Math.hypot(dx, dy, dz);
       const radius = site.definition.radius * coordinateScale;
       if (distance <= radius && distance < closestDistance) {
