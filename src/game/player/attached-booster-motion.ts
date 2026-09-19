@@ -38,9 +38,12 @@ export class AttachedBoosterMotion {
     this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
   }
 
-  // 最後尾段の点火状態を反転し、操作後の点火状態を返す。
-  public toggleIgnition(): boolean {
-    return this.stack.toggleIgnition();
+  // 最後尾段が点火しているか。
+  public get ignited(): boolean { return this.stack.ignited; }
+
+  // 最後尾段の点火状態を反転する。
+  public toggleIgnition(): void {
+    this.stack.toggleIgnition();
   }
 
   // 最後尾段を物理状態から外し、外した段を返す。段が無ければ null。
@@ -55,7 +58,8 @@ export class AttachedBoosterMotion {
   // simDt 秒ぶん燃焼させ、区間平均の加速度を求める。
   public step(simDt: number): void {
     const massBefore = this.ship.mass;
-    const burn = this.stack.step(simDt);
+    const burn = this.stack.burnOver(simDt);
+    this.stack.burn(simDt);
     this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
     this.burnRatioValue = burn.burnRatio;
     const acceleration = boosterAverageAcceleration(burn, massBefore, this.ship.mass);
