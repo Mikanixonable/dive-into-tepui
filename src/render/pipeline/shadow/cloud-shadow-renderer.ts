@@ -5,7 +5,8 @@ import {
   Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select,
   sqrt, uniform, vec4,
 } from 'three/tsl';
-import { CloudFieldSampler, type CloudFieldBinding } from '../../cloud/cloud-field-sampler';
+import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
+import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
 import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
@@ -19,9 +20,8 @@ export interface ShadowCumulus {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
   readonly axes: THREE.Vector3;
-  readonly topAltitude: number;
   readonly bodyFromWorld: THREE.Matrix4;
-  readonly field: CloudFieldBinding;
+  readonly cloud: CloudRenderInput;
 }
 
 // 光路のタップ数。
@@ -63,9 +63,9 @@ export class CloudShadowRenderer {
     this.center.value.copy(cumulus.center);
     this.surfaceRadius.value = cumulus.surfaceRadius;
     this.axes.value.copy(cumulus.axes);
-    this.topAltitude.value = cumulus.topAltitude;
+    this.topAltitude.value = cumulus.cloud.topAltitude;
     this.bodyFromWorld.value.copy(cumulus.bodyFromWorld);
-    this.fieldSampler.bind(cumulus.field);
+    this.fieldSampler.bind(cumulus.cloud.field);
   }
 
   // このフレームに積雲の殻の影があるか。

@@ -30,6 +30,8 @@ export interface EarthSurfaceMaterialNodeInputs {
   readonly geometricNormalView: Vec3Node;
   readonly bodyToView: Mat3Node;
   readonly schematic: BoolNode;
+  // 詳細タイルにもfallbackの全球画像と同じ拡散アルベド補正を適用する。
+  readonly albedoScale: number;
 }
 
 export interface EarthSurfaceMaterialNodes {
@@ -125,7 +127,7 @@ export function earthSurfaceMaterialNodes(
   const fade = page.a;
   const colorNode = sampleLodTexture(
     textures.color, textures.baseColor, uv, z, layer, parentLayer, fade,
-  ).rgb;
+  ).rgb.mul(inputs.albedoScale) as Vec3Node;
   const terrain = sampleLodTexture(
     textures.terrain, textures.baseTerrain, uv, z, layer, parentLayer, fade,
   );
