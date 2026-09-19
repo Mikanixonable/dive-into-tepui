@@ -1,8 +1,7 @@
 // カメラの向きをクォータニオン1本で保ち、画面ドラッグと極軸まわりのオイラー操作をそこへ積む。
-// 姿勢追従中は生の値を対象姿勢からの相対値として持ち、実効回転で姿勢を合成する。極軸は
-// オイラー操作のたびに引数で受ける。
+// 姿勢追従中は生の値を対象姿勢からの相対値として持ち、実効回転で姿勢を合成する。
 import {
-  LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate,
+  LOCAL_FORWARD, LOCAL_UP, type Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate,
 } from '../../math/quat';
 import { POLAR_PITCH_LIMIT, eulerFromRotation, rotationFromEuler } from '../../math/polar-euler';
 import { addScaled, cross, norm, scale, type Vec3 } from '../../math/vec3';

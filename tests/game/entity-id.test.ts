@@ -10,7 +10,7 @@ function allocatorsOf(allocators: EntityIdAllocators): readonly EntityIdAllocato
 
 export function register(): void {
   test('entity-id: 復元した採番器は、保存前に払い出した id をどの種別でも払い出さない', () => {
-    // CODING-RULE R11: 復元した id から数え直す採番は、作り直すと保存前と違う値になる正本である
+    // ARCHITECTURE R11: 復元した id から数え直す採番は、作り直すと保存前と違う値になる正本である
     const allocators = new EntityIdAllocators();
     const issued = new Set<string>();
     for (const allocator of allocatorsOf(allocators)) {

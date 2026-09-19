@@ -16,7 +16,7 @@ function recordingNotifier(): { notifier: Notifier; shown: string[] } {
 
 export function register(): void {
   test('run-events: beginStep で直近の記録は空になり、通し番号はその後も続く', () => {
-    // CODING-RULE R7: 出来事は通し番号を持ち、記録は進行の位相の先頭で空にする
+    // ARCHITECTURE R7: 出来事は通し番号を持ち、記録は進行の位相の先頭で空にする
     const log = new RunEventLog();
     log.record({ kind: 'autoWarpStarted' });
     log.record({ kind: 'autoWarpCancelled' });
@@ -32,7 +32,7 @@ export function register(): void {
   });
 
   test('run-event-presenter: 同じ通し番号の出来事は、何度渡されても1度だけ写す', () => {
-    // CODING-RULE R7: 同じ通し番号を二度扱わない
+    // ARCHITECTURE R7: 同じ通し番号を二度扱わない
     const { notifier, shown } = recordingNotifier();
     // 写す出来事は告知だけを伴う種別に限るので、音の装置(組むには DOM が要る)は呼ばれない。
     const presenter = new RunEventPresenter({} as WorldSfx, {} as UiSfx, notifier);
