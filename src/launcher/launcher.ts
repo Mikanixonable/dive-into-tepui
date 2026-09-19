@@ -18,7 +18,6 @@ import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
 import type { SnapshotService } from './save/snapshot-service';
 import type { AutoSave } from './save/autosave';
-import type { Bgm } from '../audio/bgm/bgm';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { SettingValue } from '../settings/setting-value';
@@ -64,7 +63,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly viewOptions: ViewOptionsSettings,
     private readonly themePalette: SettingValue<ThemePalette>,
     private readonly sections: FrameSections,
-    private readonly bgm: Bgm,
     private readonly unlockManager: UnlockManager,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
@@ -119,7 +117,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.run = null;
     this.resultScreen.close();
     this.devices.pauseMenu.toggle(false);
-    this.bgm.syncRun(false);
   }
 
   // 現在の周回を畳んだ上で、再開する記録があればそこから、無ければ新しく Run を組み、起動をスロットへ記録する。
@@ -148,7 +145,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.showResult(stage);
     };
     this.noteLaunched(stageClass);
-    this.bgm.syncRun(stage.isPlaying);
     this.autoSave.beginRun(this.run.snapshot);
     // 決着済みのスナップショットから始まったランは decide() を通らないため、ここで締める。
     if (!stage.isPlaying) this.showResult(stage);
@@ -156,7 +152,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 決着したランを締め、結果画面を出す。
   private showResult(stage: Stage): void {
-    this.bgm.syncRun(false);
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
     this.resultScreen.show(stage.result ?? fallbackResult(stage.phase));
