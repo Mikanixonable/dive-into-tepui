@@ -158,7 +158,7 @@ function despawnOutOfRangeEnemies(
 function countActiveWaveGroups(enemies: readonly Enemy[]): number {
   const activeWaves = new Set<number>();
   for (const enemy of enemies) {
-    if (enemy.motion.alive && enemy.waveId !== undefined) activeWaves.add(enemy.waveId);
+    if (enemy.motion.alive && enemy.waveId !== null) activeWaves.add(enemy.waveId);
   }
   return activeWaves.size;
 }

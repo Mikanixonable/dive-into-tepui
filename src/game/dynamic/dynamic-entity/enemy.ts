@@ -74,10 +74,12 @@ export interface EnemyPlacement {
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
   readonly attackGroupId?: string;
-  readonly waveId?: number;
   readonly id?: string;
-  readonly formationId?: string;
-  readonly formationRole?: FormationRole;
+  // 所属するウェーブの番号。ウェーブに属さない敵は null。
+  readonly waveId: number | null;
+  // 陣形に属する敵だけが持つ識別子と役割。単体敵は null。
+  readonly formationId: string | null;
+  readonly formationRole: FormationRole | null;
 }
 
 // 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
@@ -97,10 +99,10 @@ export function deserializeEnemyPlacement(serialized: SerializedEnemy): EnemyPla
     orbitLineColor: serialized.orbitLineColor,
     // 攻撃グループの無い記録は、陣形・id・名前の順に代える
     attackGroupId: serialized.attackGroupId ?? serialized.formationId ?? serialized.id ?? serialized.name,
-    waveId: serialized.waveId ?? undefined,
     id: serialized.id || undefined,
-    formationId: serialized.formationId ?? undefined,
-    formationRole: serialized.formationRole ?? undefined,
+    waveId: serialized.waveId ?? null,
+    formationId: serialized.formationId ?? null,
+    formationRole: serialized.formationRole ?? null,
   };
 }
 
@@ -121,9 +123,9 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   public readonly accent: string | number; // マーカー色。攻撃グループとは独立
   public readonly orbitLineColor: string | number;
   public readonly attackGroupId: string;
-  public readonly waveId?: number; // 所属するウェーブの番号。ウェーブに属さない敵は undefined
-  public readonly formationId?: string;
-  public readonly formationRole?: FormationRole;
+  public readonly waveId: number | null; // 所属するウェーブの番号。ウェーブに属さない敵は null
+  public readonly formationId: string | null;
+  public readonly formationRole: FormationRole | null;
 
   private readonly fireController: EnemyFireController;
   private readonly reactions: EnemyReactions;
@@ -291,9 +293,9 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       accent: this.accent,
       orbitLineColor: this.orbitLineColor,
       attackGroupId: this.attackGroupId,
-      waveId: this.waveId ?? null,
-      formationId: this.formationId ?? null,
-      formationRole: this.formationRole ?? null,
+      waveId: this.waveId,
+      formationId: this.formationId,
+      formationRole: this.formationRole,
       fireController: this.fireController.serialize(),
     };
   }

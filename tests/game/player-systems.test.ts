@@ -122,10 +122,10 @@ export function register(): void {
 
   test('weapon state: 弾薬遷移と砲口交互状態は副作用なしに再現できる', () => {
     const weapon = WeaponState.create({ mags: 1, rounds: 1 });
-    const first = weapon.beginShot(2);
-    assert.deepEqual(first, { consumption: 'mag-reload', muzzleIndex: 0 });
-    const second = weapon.beginShot(2);
-    assert.deepEqual(second, { consumption: 'normal', muzzleIndex: 1 });
+    assert.deepEqual(weapon.nextShot(2), { consumption: 'mag-reload', muzzleIndex: 0 });
+    weapon.fire(2);
+    assert.deepEqual(weapon.nextShot(2), { consumption: 'normal', muzzleIndex: 1 });
+    weapon.fire(2);
     assert.equal(weapon.muzzleIdx, 0);
   });
 }

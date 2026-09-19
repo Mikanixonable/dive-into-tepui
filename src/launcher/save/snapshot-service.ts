@@ -63,6 +63,11 @@ export class SnapshotService {
     this.slots.writeAutoSave(slotId, serialized.progress.stageId, savedGame(serialized));
   }
 
+  // snapshotId の本体が残っていて、いまの形式バージョンで書かれているか。
+  public isReadable(snapshotId: string): boolean {
+    return this.store.readSnapshot(snapshotId)?.version === SAVED_GAME_VERSION;
+  }
+
   // snapshotId の本体を取得する。本体欠損・バージョン不一致・
   // 起動先ステージとの不一致のいずれかなら null。
   public load(snapshotId: string, expectedStageId: string): SavedGame | null {

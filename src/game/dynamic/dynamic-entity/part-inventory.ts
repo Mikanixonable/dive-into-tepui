@@ -74,37 +74,29 @@ export class PartInventory {
     return total;
   }
 
-  // 健全なタンクから amount [kg] を順に抜き、要求に対して賄えた割合 [0, 1] を返す。
-  public consumeFuel(amount: number): number {
-    if (amount <= 0) return 1;
+  // 健全なタンクから amount [kg] を、残量の範囲で順に抜く。
+  public consumeFuel(amount: number): void {
     // 並び順に、空になるまで抜いてから次のタンクへ移る
     let remaining = amount;
-    let consumed = 0;
     for (const tank of this.writableOfType('rcs_tank')) {
+      if (remaining <= 0) break;
       if (tank.hp <= 0) continue;
       const fromTank = Math.min(tank.fuel, remaining);
       tank.fuel -= fromTank;
       remaining -= fromTank;
-      consumed += fromTank;
-      if (remaining <= 0) break;
     }
-    return consumed / amount;
   }
 
-  // 健全なタンクへ amount [kg] を順に満たし、実際に入った量 [kg] を返す。
-  public refuelFuel(amount: number): number {
-    if (amount <= 0) return 0;
+  // 健全なタンクへ amount [kg] を、容量の範囲で順に満たす。
+  public refuelFuel(amount: number): void {
     // 並び順に、満タンになるまで入れてから次のタンクへ移る
     let remaining = amount;
-    let added = 0;
     for (const tank of this.writableOfType('rcs_tank')) {
+      if (remaining <= 0) break;
       if (tank.hp <= 0) continue;
       const toTank = Math.min(Math.max(0, tank.maxFuel - tank.fuel), remaining);
       tank.fuel += toTank;
       remaining -= toTank;
-      added += toTank;
-      if (remaining <= 0) break;
     }
-    return added;
   }
 }

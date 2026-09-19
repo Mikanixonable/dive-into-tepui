@@ -285,20 +285,24 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
-  // 顔ぶれを1フレーム進める。自律の推力、操作・敵の指令を決めてから積分する。各段の境界で
-  // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。operable は操作と敵の
-  // 射撃ができる倍率か、enemiesMayFire はステージが敵の射撃を許しているか。
+  // 顔ぶれを1フレーム進める。自律の推力、操縦の命令、操作・敵の指令を決めてから積分する。各段の
+  // 境界で操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。operable は操作と
+  // 敵の射撃ができる倍率か、acceptsCommands は controls の命令を操作対象へ適用するか、enemiesMayFire
+  // はステージが敵の射撃を許しているか。
   public update(
-    active: Controllable | null, controls: PilotControls, operable: boolean, enemiesMayFire: boolean,
-    dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
-    stageRules: StageRules, beforeControllables: () => void = () => {},
+    active: Controllable | null, controls: PilotControls, operable: boolean, acceptsCommands: boolean,
+    enemiesMayFire: boolean, dt: number, simDt: number, canEngage: boolean,
+    activeStage: StageOutcome & StageSimulationEvents, stageRules: StageRules,
   ): void {
     this.nanWatchdog.checkControlled(
       'update(入口)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
     );
     this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
-    beforeControllables();
+    // 命令が足した個体(分離したブースターなど)は、このフレームの自律の推力を持たない。
+    if (active !== null && acceptsCommands) {
+      for (const command of controls.commands) active.handleCommand(command, this);
+    }
     this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
     this.behaveAll(active, operable && enemiesMayFire);
     this.sections.exit(SECTION.command);

@@ -71,11 +71,9 @@ export class BaseMotion extends DynamicMotion {
   public get maxFuel(): number { return BASE_MAX_FUEL; }
   public get maximumAcceleration(): number { return BASE_THRUST / this.mass; }
 
-  // 要求量を残量の範囲で消費し、満たせた割合を返す。
-  public consumeFuel(amount: number): number {
-    if (amount <= 0) return 1;
-    const consumed = Math.min(this.fuelValue, amount);
-    this.fuelValue -= consumed;
-    return consumed / amount;
+  // 要求量 amount [kg] を残量の範囲で消費する。
+  public consumeFuel(amount: number): void {
+    if (amount <= 0) return;
+    this.fuelValue -= Math.min(this.fuelValue, amount);
   }
 }

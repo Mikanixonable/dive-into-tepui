@@ -34,7 +34,7 @@ export interface FuelConsumer {
   readonly totalFuelConsumptionRate: number;
   readonly totalFuel: number;
   readonly totalMaxFuel: number;
-  consumeFuel(amount: number): number;
+  consumeFuel(amount: number): void;
   readonly motion: DynamicEntity['motion'];
 }
 

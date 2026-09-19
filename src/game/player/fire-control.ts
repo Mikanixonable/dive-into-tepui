@@ -130,13 +130,13 @@ export class FireControl {
       return;
     }
 
-    const command = this.weapon.beginShot(PLAYER_MUZZLE_OFFSETS.length);
+    const command = this.weapon.nextShot(PLAYER_MUZZLE_OFFSETS.length);
     if (command === null) return;
+    this.weapon.fire(PLAYER_MUZZLE_OFFSETS.length);
 
     this.fireGun(command, activeStage, celestialBodies);
     // 装填の段階に応じて、次の発射までの間隔と排出物を決める
     switch (command.consumption) {
-      case 'empty':
       case 'normal':
         this.weapon.setCooldown(1 / this.player.totalFireRate);
         return;

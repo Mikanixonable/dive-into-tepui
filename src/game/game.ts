@@ -240,20 +240,15 @@ export class Game {
     this.sections.enter(SECTION.stage);
     this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
+    // 操縦の命令は、決着前かつ操作できる倍率のときだけ受け付ける。
+    const acceptsCommands = this.activeStage.isPlaying && canShipAct;
     this.dynamicSystem.update(
-      controlled, controls, canShipAct, this.activeStage.enemiesMayFire, dt, simDt, canEngage,
-      this.activeStage, this.activeStage.stageRules, () => this.applyPilotCommands(controls),
+      controlled, controls, canShipAct, acceptsCommands, this.activeStage.enemiesMayFire, dt, simDt,
+      canEngage, this.activeStage, this.activeStage.stageRules,
     );
 
     recordTargetBoardPasses(controlled, boardTargetId, this.dynamicSystem, this.events);
     this.controlSelection.reclaimDead();
   }
 
-  // ステージ更新と自律推力の更新が終わった後、このフレームに受け付けた命令を操作対象へ適用する。
-  private applyPilotCommands(controls: PilotControls): void {
-    if (!this.activeStage.isPlaying || !this.simSpeedManager.canShipAct) return;
-    const controlled = this.activeControllable;
-    if (controlled === null) return;
-    for (const command of controls.commands) controlled.handleCommand(command, this.dynamicSystem);
-  }
 }

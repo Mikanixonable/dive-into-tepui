@@ -120,8 +120,8 @@ export class PartDamageModel {
   public get totalFuelConsumptionRate(): number { return this.inventory.healthySum('thruster', part => part.fuelConsumptionRate); }
   public get totalFuel(): number { return this.inventory.totalFuel(); }
   public get totalMaxFuel(): number { return this.inventory.totalMaxFuel(); }
-  public consumeFuel(amount: number): number { return this.inventory.consumeFuel(amount); }
-  public refuelFuel(amount: number): number { return this.inventory.refuelFuel(amount); }
+  public consumeFuel(amount: number): void { this.inventory.consumeFuel(amount); }
+  public refuelFuel(amount: number): void { this.inventory.refuelFuel(amount); }
 
   public get radiatorParts(): readonly (RadiatorPart | undefined)[] { return this.radiatorPartRefs; }
   public get solarParts(): readonly (SolarPanelPart | undefined)[] { return this.solarPanelPartRefs; }

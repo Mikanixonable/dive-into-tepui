@@ -24,7 +24,7 @@ export interface SerializedWeaponState {
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export type AmmoLoad = { readonly mags: number; readonly rounds: number };
 
-export type AmmoConsumption = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
+export type AmmoConsumption = 'normal' | 'mag-reload' | 'barrel-reload';
 
 export interface WeaponFireCommand {
   readonly consumption: AmmoConsumption;
@@ -112,29 +112,30 @@ export class WeaponState {
     this._wasEmptyClick = true;
   }
 
-  // 1発を消費する。マガジンを撃ち尽くせば次のマガジンを装填し(mag-reload)、砲身の全マガジンを
-  // 撃ち尽くせば砲身を替える(barrel-reload)。
-  private consume(): AmmoConsumption {
-    if (!this.left) return 'empty';
-    this._rounds--;
-    if (this._rounds > 0) return 'normal';
-    if (this._mags <= 0) return 'normal';
-    // 予備のマガジンを装填し、この砲身で撃てる残りのマガジン数を減らす
-    this._mags--;
-    this._rounds = MAG_ROUNDS;
-    this.barrel--;
-    if (this.barrel > 0) return 'mag-reload';
-    this.barrel = MAGS_PER_BARREL;
-    return 'barrel-reload';
+  // 次の1発が弾をどう消費するか。マガジンを撃ち尽くせば次のマガジンを装填し(mag-reload)、砲身の
+  // 全マガジンを撃ち尽くせば砲身を替える(barrel-reload)。
+  private nextConsumption(): AmmoConsumption {
+    if (this._rounds > 1 || this._mags <= 0) return 'normal';
+    return this.barrel > 1 ? 'mag-reload' : 'barrel-reload';
   }
 
-  // muzzleCount 本の砲口を交互に使って1発を消費し、消費の結果と撃つ砲口を返す。撃てなければ null。
-  public beginShot(muzzleCount: number): WeaponFireCommand | null {
+  // muzzleCount 本の砲口を交互に使うときの、次の1発の弾の消費と撃つ砲口。撃てなければ null。
+  public nextShot(muzzleCount: number): WeaponFireCommand | null {
     if (muzzleCount <= 0 || !this.left) return null;
-    const consumption = this.consume();
-    const muzzleIndex = this._muzzleIdx % muzzleCount;
-    this._muzzleIdx = (muzzleIndex + 1) % muzzleCount;
-    return { consumption, muzzleIndex };
+    return { consumption: this.nextConsumption(), muzzleIndex: this._muzzleIdx % muzzleCount };
+  }
+
+  // 次の1発(nextShot)を撃ち、弾を消費して砲口を次へ移す。撃てなければ何もしない。
+  public fire(muzzleCount: number): void {
+    const shot = this.nextShot(muzzleCount);
+    if (shot === null) return;
+    this._muzzleIdx = (shot.muzzleIndex + 1) % muzzleCount;
+    this._rounds--;
+    if (shot.consumption === 'normal') return;
+    // 予備のマガジンを装填し、この砲身で撃てる残りのマガジン数を減らす。撃ち尽くした砲身は替える。
+    this._mags--;
+    this._rounds = MAG_ROUNDS;
+    this.barrel = shot.consumption === 'mag-reload' ? this.barrel - 1 : MAGS_PER_BARREL;
   }
 
   // クールダウン中でなく、予備があり装填中のマガジンに補充の余地があれば、マガジンと砲身を替えて

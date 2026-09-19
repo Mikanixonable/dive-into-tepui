@@ -183,13 +183,14 @@ export class SaveBrowser implements OverlayHandle {
       this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.stageId ?? null, this.canSaveNow(), {
         onSaveNow: () => this.handleSaveNow(),
         onSelectStage: (id) => { this.viewedStageId = id; this.rebuild(); },
-        onLoadSnapshot: (id, loadable) => this.handleLoadSnapshot(id, loadable),
+        onLoadSnapshot: (id, refusal) => this.handleLoadSnapshot(id, refusal),
         onTogglePin: (id, pinned) => this.handleTogglePin(id, pinned),
         onRenameSnapshot: (id) => this.handleRenameSnapshot(id),
         onDeleteSnapshot: (id) => this.handleDeleteSnapshot(id),
         onBranch: (slotId, snapId) => this.handleBranch(slotId, snapId),
         // 周回が1つも動いていない状態でも一覧の中心天体名を出せるよう、静的な表へ落とす。
         nameOf: (id) => game?.nameOfBody(id) ?? solarSystemBodyName(id),
+        isReadable: (id) => this.service.isReadable(id),
       },
     ));
     body.appendChild(snapPane);
@@ -284,11 +285,11 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // loadable でなければ理由をヒントに出すだけ。loadable なら、遷移を要求する前に自分を
-  // 閉じてから onLoadSnapshot を呼ぶ — 開いたままだと次の周回でも入力を遮断し続ける。
-  private handleLoadSnapshot(snapId: string, loadable: boolean): void {
-    if (!loadable) {
-      this.setStatus('いま遊んでいるセーブデータ・ステージの手動セーブだけを復元できます。', true);
+  // 読み込めない理由 refusal があれば、それを状態欄に出すだけ。読み込めるなら、遷移を要求する前に
+  // 自分を閉じてから onLoadSnapshot を呼ぶ — 開いたままだと次の周回でも入力を遮断し続ける。
+  private handleLoadSnapshot(snapId: string, refusal: string | null): void {
+    if (refusal !== null) {
+      this.setStatus(refusal, true);
       this.rebuild();
       return;
     }

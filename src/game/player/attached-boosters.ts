@@ -72,8 +72,10 @@ export class AttachedBoosters {
       this.registry.events.record({ kind: 'boosterIgnitionUnavailable' });
       return;
     }
-    const ignited = this.boosterMotion.toggleIgnition();
-    this.registry.events.record({ kind: 'boosterIgnitionToggled', on: ignited, fuelEmpty: active.fuel <= 0 });
+    this.boosterMotion.toggleIgnition();
+    this.registry.events.record({
+      kind: 'boosterIgnitionToggled', on: this.boosterMotion.ignited, fuelEmpty: active.fuel <= 0,
+    });
   }
 
   // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
