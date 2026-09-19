@@ -76,8 +76,8 @@ export class ShipConstructionPanel {
     const actions = this.required(els, 'construction-actions');
     this.place = new Button('配置', () => this.onPlace?.(), undefined, 'primary');
     this.remove = new Button('末尾撤去', () => this.onRemove?.(), undefined, 'secondary');
-    this.finish = new Button('完成して発進', () => this.onFinish?.(), undefined, 'primary');
-    const discard = new Button('建造を破棄', () => this.onDiscard?.(), undefined, 'secondary');
+    this.finish = new Button('建造終了', () => this.onFinish?.(), undefined, 'primary');
+    const discard = new Button('船体破棄', () => this.onDiscard?.(), undefined, 'secondary');
     actions.append(this.place.element, this.remove.element, this.finish.element, discard.element);
     this.sync({
       visible: false, moduleCount: 0, totalMass: 0, hp: 0, maxHp: 0,
@@ -92,7 +92,7 @@ export class ShipConstructionPanel {
     this.mass.textContent = `${Math.round(model.totalMass).toLocaleString()} kg`;
     this.hp.textContent = `${Math.round(model.hp)} / ${Math.round(model.maxHp)}`;
     this.capabilities.textContent = model.capabilitySummary;
-    this.completion.textContent = model.canFinish ? '発進可能' : '部品を1個以上配置';
+    this.completion.textContent = model.canFinish ? '建造終了可能' : '部品を1個以上配置';
     this.role.textContent = model.role === 'ship' ? '船' : model.role === 'base' ? '基地' : '物資';
     this.warning.textContent = model.warning ?? '';
     this.warning.classList.toggle('hidden', model.warning === null);
