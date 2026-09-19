@@ -40,9 +40,8 @@ const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距�
 const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
 const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
 
-// フライパス速度の上限 [m/s]。ステージ00は無限に続き波数に上限がないため、これが無いと
-// 相対速度が際限なく上がり、フライパスの Δv だけで敵の軌道が壊れる(近地点が地中に落ちる)。
-// 400 m/s なら 30km の交戦圏を約75秒で通過する — 演出として十分速く、軌道も壊れない。
+// フライパス速度の上限 [m/s]。波数に上限が無いので、これが無いとフライパスの Δv だけで敵の軌道が
+// 壊れる(近地点が地中に落ちる)。400 m/s なら 30km の交戦圏を約75秒で通過する。
 const STAGE00_FLYBY_SPEED_MAX = 400.0;
 
 // 敵の軌道が保つべき近地点高度の余裕 [m](大気圏突入高度 REENTRY_ALT に加算する)。
@@ -131,8 +130,7 @@ export class WaveAttack {
     despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, stage);
     const activeGroups = countActiveWaveGroups(enemies);
     if (activeGroups === 0) {
-      // 短縮先を 0 にすると、湧いた波が同じフレームで離脱しきる時間加速下で毎フレーム湧き、
-      // 波数と機数が際限なく上がる正のフィードバックになる。
+      // 短縮先を 0 にすると、湧いた波が同じフレームで離脱しきる時間加速下で毎フレーム湧き続ける。
       this.spawnTimer = Math.min(this.spawnTimer, STAGE00_CLEARED_SPAWN_INTERVAL);
     }
     if (activeGroups >= maxWaveGroups(this._waveCount)) return;
@@ -229,8 +227,9 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, at
   return addScaled(playerV, dv, lo);
 }
 
-// 基調色: アースカラー7割 / 寒色系2割 / アクセントカラー1割
+// ウェーブの基調色を、アースカラー7割 / 寒色系2割 / アクセントカラー1割の確率で選ぶ。
 function pickWaveBaseHex(): number {
+  // 系統を選び、その系統の中から1色を等確率で引く
   const randCol = Math.random();
   if (randCol < 0.7) {
     const earthColors = [0xc2b280, 0x808080, 0xb2beb5, 0x8b4513, 0xc3b091, 0x556b2f, 0x8f9779, 0x5f9ea0];

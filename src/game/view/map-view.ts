@@ -76,10 +76,12 @@ export class MapView implements ViewFrame {
     navTargetCommands: NavTargetCommands,
     private readonly mapDisplay: SettingValue<MapDisplayToggles>,
   ) {
+    // 軌道計画の編集口。
     this.planEditor = new PlanEditor(
       hud, uiSounds, simSpeedManager, simSpeedCommands, celestialSystem, scene, controlSelection,
       displayWindowManager, frameControls, planPath, planCommands,
     );
+    // 被選択物・軌道線の候補列と、それらへクリックを当てる先。
     this.objectPickables = new ObjectPickables(
       controlSelection, roster, celestialSystem, navTargetPresenter, camera,
       celestialMarkers, planDisplay, frameAnchors, equatorNodes,
@@ -120,7 +122,7 @@ export class MapView implements ViewFrame {
     this.linePickables.clear();
   }
 
-  // router から計画キーと Δv 編集の単発キーを受け取る。
+  // 計画キーと Δv 編集の単発入力 commandId を実行する。
   public handleCommand(commandId: string): void {
     this.planEditor.handleCommand(commandId);
   }

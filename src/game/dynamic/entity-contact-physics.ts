@@ -1,6 +1,5 @@
 // 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた参加者どうしの
 // 接触を 1 substep ぶん TOI(接触時刻)昇順で解き、反発が起きた当事者へ collideWithEntity を呼ぶ。
-// 参加者は互いの状態を書き換えるので、1 substep に解く件数に上限を置く。
 import { type KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { type Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
@@ -10,8 +9,7 @@ import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { entityContactResponse } from './entity-contact-response';
 
-// 1 substep のあいだに1つの交戦圏で解決する接触の上限。TOI(接触時刻)昇順で解決し、これを
-// 超えた分は次の substep でグリッドから列挙し直されて改めて候補になる。
+// 1 substep のあいだに1つの交戦圏で解決する接触の上限。超えた分は次の substep で改めて候補になる。
 const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 
 // 接触の候補を引く階層グリッドの、最も細かい段の一辺 [m]。
@@ -28,8 +26,7 @@ interface Candidate {
 }
 
 // 動いた当事者だけ working[i] を after へ差し替え、changed へ1度だけ積む。書き戻しは予測弧を
-// 捨て、置き換えは prevState を進めるので、動いていない当事者を書き戻したり、同じ当事者を
-// substep 内で2度書き戻したりしてはならない。
+// 捨て、prevState を進めるので、動いていない当事者や同じ当事者を substep 内で2度書き戻してはならない。
 function replaceIfMoved(
   i: number,
   after: { readonly r: Vec3; readonly v: Vec3 },
@@ -59,8 +56,7 @@ export class EntityContactPhysics {
   private readonly pairScratch: number[] = [];
   private readonly gridScratch = new HierarchicalSpatialGrid<number>(CONTACT_GRID_MIN_CELL_SIZE);
   private readonly candidateScratch: Candidate[] = [];
-  // 列挙した延べ候補ペア数と、交戦圏ごとの参加者数の延べ数。解決のたびに積み増し、resetCounts で
-  // 0 へ戻す計数(キャッシュ)。
+  // 列挙した延べ候補ペア数と、交戦圏ごとの参加者数の延べ数。resetCounts で 0 へ戻す。
   private _candidatePairs = 0;
   private _participants = 0;
 
@@ -130,8 +126,7 @@ export class EntityContactPhysics {
     }
     // 書き戻しは全解決の後に一括で — 途中で置き換えると prevState が進み、区間の始点を失う。
     for (const i of changed) all[i]!.reset(working[i]!);
-    // 使わなかった末尾を落とす — 候補は反発の計算結果を抱えるので、残すと使われない
-    // CollisionResponse が候補列の中だけ生き続ける。
+    // 使わなかった末尾を落とし、抱えていた CollisionResponse を手放す。
     this.candidateScratch.length = count;
   }
 
@@ -204,9 +199,8 @@ export class EntityContactPhysics {
     return best;
   }
 
-  // 候補を1件解決する: working 上の状態を補正後の値へ差し替え、反発が起きたときだけ両者へ
-  // collideWithEntity を順不同で呼ぶ(接触時点の値は working から取った Contact に持たせて
-  // あるので、呼び出し順に結果は依存しない)。
+  // 候補を1件解決する。working 上の状態を補正後の値へ差し替え、反発が起きたら両者へ
+  // collideWithEntity を呼ぶ。
   private applyCandidate(
     candidate: Candidate,
     all: readonly EntityContactParticipant[],
@@ -223,8 +217,7 @@ export class EntityContactPhysics {
     replaceIfMoved(bi, { r: response.rB, v: response.vB }, working, changed);
     if (!response.bounced) return;
 
-    // 反発で失われた力学エネルギーは熱になる。当事者の判断ではなく物理なので、ダメージや
-    // 効果音を委ねる前にここで当てる。
+    // 反発で失われた力学エネルギーは熱になる。物理なので、当事者の反応より先にここで当てる。
     a.absorbHeat(response.specificEnergyLossA);
     b.absorbHeat(response.specificEnergyLossB);
 

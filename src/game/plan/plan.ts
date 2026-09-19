@@ -16,8 +16,7 @@ export interface SerializedPlan {
   readonly nodes: readonly SerializedKinematicState[];
 }
 
-// ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
-// 自動ワープの解除がこの1点を共有する。
+// ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。
 export const NODE_APPROACH_LEAD = 10;
 
 // 参照期間(公転周期)[s] から、表示する期間の長さ [s] を答える面。
@@ -106,8 +105,7 @@ export class Plan {
     return this.data?.nodes ?? NO_NODES;
   }
 
-  // 計画の起点。ノードが1件も無いあいだの起点は fallback — その計画は自機の現在軌道
-  // そのものなので、起点はここで自機から借りる。この対応付けを外へ出さないために、
+  // 計画の起点。ノードが1件も無いあいだは自機の現在状態 fallback を起点として借りる。
   // 起点は常にこれを通して読む。
   public anchorOr(fallback: KinematicState): KinematicState {
     return this.data?.anchor ?? fallback;

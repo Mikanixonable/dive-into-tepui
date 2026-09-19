@@ -1,6 +1,5 @@
-// BGM の公開窓口。そのフレームに鳴らすべき BGM の宣言を受け、前の宣言との差だけを鳴らし分ける。
-// ユーザー音量をマスターゲインとして持ち、音楽の線(Conductor)を束ねて1つの先読みタイマーで進める。
-// 線はゲーム中の BGM と試聴の2本で、互いのノード鎖は独立している。試聴の期間はゲーム中の BGM を伏せる。
+// BGM の公開窓口。そのフレームに鳴らすべき BGM の宣言を受け、前の宣言との差を鳴らし分ける。
+// 鳴らす線はゲーム中の BGM と試聴の2本で、試聴の期間はゲーム中の BGM を伏せる。
 import { BGM_TRACKS } from './tracks/tracks';
 import { Conductor } from './conductor';
 import type { AudioEngine } from '../audio-engine';
@@ -91,7 +90,7 @@ export class Bgm {
     this.syncRun(declaration.inRun);
   }
 
-  // ユーザー音量を vol へ合わせる。鳴っていれば即反映するだけで、再生の有無は変えない。
+  // ユーザー音量を vol へ合わせ、鳴っていれば即反映する。
   private syncVolume(vol: number): void {
     if (vol === this.volume) return;
     this.volume = vol;
@@ -140,7 +139,7 @@ export class Bgm {
     this.syncAmbient();
   }
 
-  // 宣言どおりにゲーム内 BGM を鳴らす・畳む。解禁前は何もできないので、解禁の購読から呼び直す。
+  // 宣言どおりにゲーム内 BGM を鳴らす・畳む。効くのは engine の解禁後から。
   private syncAmbient(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
@@ -164,8 +163,8 @@ export class Bgm {
 
   // === 試聴用 BGM (audition conductor) ===
 
-  // 試聴の期間かを on へ合わせる。期間に入るとゲーム内 BGM を伏せ(まだ線が無ければ、組まれた
-  // ときから伏せておく)、期間を出ると試聴の線を畳んで伏せを解く(伏せる前に鳴っていなければ無音のまま)。
+  // 試聴の期間かを on へ合わせる。期間に入るとゲーム内 BGM を伏せ、期間を出ると試聴の線を畳んで
+  // 伏せを解く。
   private syncAuditioning(on: boolean): void {
     if (on === this.auditioning) return;
     this.auditioning = on;

@@ -1,7 +1,8 @@
-// 表示パネルの軌道ガイドタブ。CR3BP の周期軌道族(DEVELOP/SPEC/MAP.md 4.1 の表が正本)と地球専用の
-// 参照軌道4種を、基本/共線点/三角点/副天体周回/共鳴の5群タブに分けて並べる。種類の見出しはその
-// 種類の表示トグルを兼ね、ON の種類だけ設定行を出す。操作のたびに次の OrbitGuideSettings を組んで
-// onSettingsChange へ渡す。並べる族は、実在する族を示す availableFamilies から作る。
+// 表示パネルの軌道ガイドタブ。CR3BP の周期軌道族(DEVELOP/SPEC/MAP.md「軌道ガイドタブ」の表が
+// 正本)と地球専用の参照軌道4種を、基本/共線点/三角点/副天体周回/共鳴の5群タブに分けて並べる。
+// 種類の見出しはその種類の表示トグルを兼ね、ON の種類だけ設定行を出す。操作のたびに次の
+// OrbitGuideSettings を組んで onSettingsChange へ渡す。並べる族は、実在する族を示す
+// availableFamilies から作る。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { buildLabeledRow, Button, SegmentedControl, TabBar, ToggleSwitch, type ValueInput } from '../../../hud/widgets';
 import {
@@ -88,6 +89,7 @@ function syncSharedKindFields(row: SharedKindFields, settings: GuideKindSharedSe
 
 export class OrbitGuideTab {
   public readonly element: HTMLElement;
+  // 操作で設定が変わるたびに、次の設定で呼ばれる。
   public onSettingsChange: ((settings: OrbitGuideSettings) => void) | null = null;
 
   private current: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
