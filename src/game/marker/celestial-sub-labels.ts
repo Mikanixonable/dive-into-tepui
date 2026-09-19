@@ -38,7 +38,7 @@ export interface CelestialLabelState {
   readonly drawable: boolean;
 }
 
-// サブ行を集約する先の天体 id と、そこへぶら下げる項目。
+// 天体ラベルへぶら下げる項目1件と、行頭に添える集約元の天体名(「月: 」、添えないなら空文字)。
 interface SubLabelEntry {
   readonly prefix: string;
   readonly item: GroupedMarkerItem;
@@ -87,8 +87,8 @@ export class CelestialSubLabels {
     return out;
   }
 
-  // 項目1件を集約先の天体ラベルへ割り当てる。遠い天体では主親天体へまとめ、近い天体では
-  // 直近の天体ラベルへ付ける — そのラベルが出ていなければ「月:」のように名前を添えて親へ繰り上げる。
+  // item を、それを最も強く引く天体 centerId から辿った集約先の天体ラベルへ割り当てる。
+  // 集約先になれるラベルが出ていなければ捨てる。
   private route(
     item: GroupedMarkerItem, centerId: string,
     labelStateOf: (id: string) => CelestialLabelState | null, cameraPos: Vec3,
@@ -99,7 +99,7 @@ export class CelestialSubLabels {
     const primaryId = this.celestialBodies.motionOf(centerId).primary?.id ?? null;
     const primaryShown = primaryId !== null && (labelStateOf(primaryId)?.shown ?? false);
 
-    // 遠い系ではプレフィックスを付けず主親天体へまとめ、近い系では直近の天体へ付ける。
+    // 遠い系は主親天体へまとめ、近い系は直近の天体へ付ける(出ていなければ名前を添えて親へ)。
     if (distToCenter >= STAGE2_DIST) {
       if (primaryShown && primaryId !== null) this.append(primaryId, '', item);
       else if (centerShown) this.append(centerId, '', item);

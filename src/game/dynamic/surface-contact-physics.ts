@@ -35,10 +35,9 @@ export class SurfaceContactPhysics {
   private readonly bodyScratch: CelestialBody[] = [];
   private readonly candidates = new SurfaceCandidates();
   private readonly nearbyScratch: CelestialBody[] = [];
-  // 天体の位置を厳密に引く時刻(キャッシュ)。beginSubstep が受け取り、そのサブステップの解決すべてで
-  // 使う。
+  // 天体の位置を厳密に引く時刻(キャッシュ)。beginSubstep で受け、そのサブステップの解決すべてで使う。
   private pivot = 0;
-  // 絞り込みを通した延べ候補天体数。解決のたびに積み増し、resetCounts で 0 へ戻す計数(キャッシュ)。
+  // 絞り込みを通した延べ候補天体数。resetCounts で 0 へ戻す。
   private _candidateBodies = 0;
 
   public get candidateBodies(): number { return this._candidateBodies; }
@@ -64,7 +63,7 @@ export class SurfaceContactPhysics {
     this.candidates.resetNarrow();
   }
 
-  // 個体1つの天体との接触。区間は beginSubstep へ渡した区間の内側であればよい。
+  // 個体1つの天体との接触。個体の区間は beginFrame へ渡した区間の内側であればよい。
   public resolveOne(e: SurfaceContactParticipant, services: DynamicReactionServices): void {
     if (!isParticipant(e)) return;
     this.resolveAgainstCandidates(e, services);
@@ -95,13 +94,12 @@ export class SurfaceContactPhysics {
       CONTACT_RESTITUTION, hit.geometry);
 
     const before = e.state;
-    // 位置も速度も動いていなければ書き戻さない — 書き戻しは予測弧を捨てる。
+    // 動いたときだけ書き戻す — 書き戻しは予測弧を捨てる。
     if (!sameVec(before.r, response.r) || !sameVec(before.v, response.v)) {
       e.reset(kinematicState<'eci'>(before.t, response.r, response.v));
     }
     if (!response.bounced) return;
-    // 反発で失われた力学エネルギーは熱になる。当事者の判断ではなく物理なので、失われるかどうか
-    // を委ねる前にここで当てる。
+    // 反発で失われた力学エネルギーは熱になる。物理なので、当事者の反応より先にここで当てる。
     e.absorbHeat(response.specificEnergyLoss);
     e.collideWithCelestialBody(hit.body, {
       t: contactTime(e, response.toi),

@@ -1,9 +1,8 @@
-// スロットとスナップショットの索引の形。一覧 UI と入出力がここだけを読んで済むように、
-// ランの直列化形(SerializedGame)からは切り離して持つ。
+// セーブの索引(スロット・ステージ履歴・手動セーブのメタ)と、書き出しファイルの形。
 import type { GamePhase } from '../../game/stages/stage';
 import type { SavedGame } from './save-store';
 
-// 索引が指す id を1つ作る。同一ミリ秒内の連続生成でも衝突しないよう、時刻にランダム部を足す。
+// 索引が指す id を1つ作る。同一ミリ秒内に続けて作っても衝突しない。
 export function newSaveId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -35,7 +34,7 @@ export interface StageHistoryMeta {
   lastPlayedAtReal: number;
   // 手動セーブ。新しい順。
   snapshots: SnapshotMeta[];
-  // 自動セーブの本体を指す id。無ければ null。手動セーブとは別の置き場で、一覧には出ない。
+  // 自動セーブの本体を指す id(手動セーブとは別枠)。無ければ null。
   autoSaveId: string | null;
 }
 
@@ -51,16 +50,14 @@ export interface SaveSlotMeta {
   stages: StageHistoryMeta[];
 }
 
-// 全スロットのメタを束ねた索引。スナップショット本体は別キーに置き、一覧描画で
-// 本体を読まずに済むようにする。
+// 全スロットのメタを束ねた索引。記録本体は id で指し、索引とは別に置く。
 export interface SaveIndex {
   version: number;
   slots: SaveSlotMeta[];
   activeSlotId: string | null;
 }
 
-// 書き出しファイルの識別子と形式バージョン。組み立てる側(SaveSlots)と検証する側
-// (save-transfer)の両方が参照するので、どちらでもない型定義の場所に置く。
+// 書き出しファイルの識別子と形式バージョン。
 export const SLOT_EXPORT_FORMAT = 'tepui.slot';
 export const SLOT_EXPORT_VERSION = 2;
 

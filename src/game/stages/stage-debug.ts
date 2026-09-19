@@ -1,5 +1,5 @@
-// デバッグ用ステージ: 敵集団1つのみを配置し、勝敗を発生させずに検証を続けられる。
-// 敵の射撃 ON/OFF をパネルから切り替えられる。
+// デバッグ用ステージ: 敵集団1つから始め、勝敗を発生させずに検証を続けられる。敵の射撃 ON/OFF と、
+// 敵集団・補給の手動スポーンをステータスウィンドウから操作できる。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../../hud/widgets';

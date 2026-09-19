@@ -1,6 +1,5 @@
-// デバッグ用ステージ: 現実の太陽系とは無関係な架空のレジストリ・原点で進行する。恒星1体・
-// 惑星1体・衛星1体の最小構成で、輻射源・日照率・点群などの経路が任意のレジストリで動くことを
-// 確かめる。
+// デバッグ用ステージ: 恒星1体・惑星1体・衛星1体だけの架空の天体系で進行し、輻射源・日照率・
+// 点群などの経路が太陽系以外の天体系でも動くことを確かめる。
 import * as THREE from 'three/webgpu';
 import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
@@ -75,7 +74,7 @@ function zephyrusSystemMotions(): readonly CelestialBody[] {
   return [aeolus, zephyrus.body, zephyrusI];
 }
 
-// 架空天体の見た目: 恒星なら太陽の見た目、それ以外は単色球。表示名は id をそのまま使う。
+// 架空天体の実体。恒星は恒星の見た目、それ以外は単色球で、表示名は id をそのまま使う。
 function fallbackEntity(motion: CelestialBody): CelestialEntity {
   // 色の手がかりを持たない架空の恒星なので、無彩色にする。
   if (motion instanceof StarMotion) {

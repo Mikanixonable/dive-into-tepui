@@ -7,7 +7,7 @@ import { PartInventory } from './part-inventory';
 // 部品式機体の被弾モデル。部品一覧・部品 HP・部品由来の性能をまとめる。
 export class PartDamageModel {
   private readonly inventory: PartInventory;
-  // 以下は部品一覧から組むキャッシュ(性能と致死判定で使う参照、装甲値)。
+  // 以下は部品一覧から組むキャッシュ(性能と致死判定で使う部品の参照と、装甲値)。
   private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
   private readonly solarPanelPartRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
   private readonly weaponPartRefs: WeaponPart[] = [];
@@ -108,7 +108,7 @@ export class PartDamageModel {
     return this.inventory.serialize();
   }
 
-  // 船体かコックピットを失った時点で、他の部品が無事でも機体を全損とする。
+  // 機体全体の残 HP。船体かコックピットを失っていれば、他の部品が無事でも 0。
   public overallHp(): number {
     if (this.parts.length === 0) return 0;
     if ((this.hullPart && this.hullPart.hp <= 0) || (this.cockpitPart && this.cockpitPart.hp <= 0)) return 0;

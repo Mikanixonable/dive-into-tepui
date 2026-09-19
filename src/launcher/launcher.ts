@@ -23,7 +23,7 @@ import type { RenderStyle } from '../render/render-style';
 import type { SettingValue } from '../settings/setting-value';
 import type { TdbJulianDate } from '../physics/time';
 
-// URL に ?perf=1 が付いているか。
+// 起動時からデバッグ表示を開くか。URL に ?perf=1 が付いていれば開く。
 export function debugInfoOpenAtStart(): boolean {
   return new URLSearchParams(location.search).get('perf') === '1';
 }
@@ -73,8 +73,9 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.resultScreen = new ResultScreen(shell, this);
   }
 
-  // タイトル解決から Run の起動までを行う。
+  // 起動時の遷移。始めるステージを決めて Run を起こし、失敗したら画面に出す。
   public async start(): Promise<void> {
+    // 遷移は1つずつ。遷移中に重なった呼び出しは捨てる。
     if (this.transitioning) return;
     this.transitioning = true;
     try {
@@ -87,8 +88,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     }
   }
 
-  // ?title=1 は選択画面へ強制する。?stage= は共有リンク・デバッグ用の明示指定として最優先。
-  // どちらも無ければアクティブスロットの終わっていない周回を再開し、それも無ければ選択画面を出す。
+  // 始めるステージを決める。?title=1 なら選択画面、?stage= があればそのステージ、どちらも無ければ
+  // アクティブスロットの終わっていない周回を再開し、それも無ければ選択画面で選ばせる。
   private async resolveStage(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
     const params = new URLSearchParams(location.search);
     if (params.get('title') !== '1') {
@@ -186,7 +187,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (activeSlotId !== null) this.slots.noteRunLaunched(activeSlotId, stageClass.id);
   }
 
-  // router から決着後の再出撃キーを受け取る。
+  // 入力のコマンド commandId を受け、決着後の再出撃キーなら作り直す。
   public handleCommand(commandId: string): void {
     if (commandId === K.restart.code && this.run !== null && !this.run.game.activeStage.isPlaying) this.restart();
   }
@@ -231,6 +232,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   public switchSlot(): void {
     if (this.transitioning) return;
     this.transitioning = true;
+    // 前のスロットの周回を畳んでから、次の起動先を決める。
     this.endRun();
     const resumed = resumableStageClass(this.unlockManager, this.slots);
     const resolved: Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> =

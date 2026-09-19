@@ -14,11 +14,11 @@ export interface SimSpeedCommands {
   startAutoWarpTo(time: number, simTime: number): void;
   // 進行中の自動ワープを解除する。
   cancelAutoWarp(): void;
-  // firstNode の実行時刻までの自動ワープをトグルする。ノードが無ければ計画を促す。
+  // firstNode の実行時刻までの自動ワープをトグルする。ノードが無ければ、起こせなかったことを記録する。
   toggleAutoWarpToFirstNode(firstNode: KinematicState | undefined, simTime: number): void;
 }
 
-// manager への命令を queue へ積むだけの口を組む。
+// manager への命令を queue へ積む口を組む。
 export function simSpeedCommands(queue: CommandQueue, manager: SimSpeedManager): SimSpeedCommands {
   return {
     setSpeed: (speed) => queue.submit(() => manager.setSpeed(speed)),
