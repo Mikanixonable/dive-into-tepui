@@ -2,8 +2,8 @@
 
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
-最終レビュー: 2026-09-16
-状態: 実装中。手順11まで完了し、手順12から進める。
+最終レビュー: 2026-09-19
+状態: 実装・検証完了。workspace3 への統合待ち。
 
 ## 目的
 
@@ -303,43 +303,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 建造途中、ドッキング中、分離後、燃料切れ漂流中を保存・復元しても、ID、HP、燃料、役割、
   操作対象、見た目、接触形状が一致する。
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
-
-## 実装手順
-
-### 12. 旧経路を削除し、統合検証する
-
-#### 目的
-
-共通化後に旧クラス、旧モデル、旧 save kind、別集計が残っていないことを確認し、ユーザーが求める
-一連の操作を実行時に検証する。
-
-#### 変更・検査箇所
-
-- src/game/player、src/game/dynamic/dynamic-entity、src/render/dynamic の旧 Player/Base/booster
-  専用ファイルと import を削除する。
-- src/assets/models の旧 player/base/booster asset を、参照 0 を確認してから削除する。
-- help content、property window、marker label、object list、burn management の用語を
-  「役割としての自機／基地／ブースター」へ揃える。
-- git diff でユーザー作業中の memos/mikanixonable/dev.md と既存の移動中メモを変更していないことを
-  確認する。
-
-#### 達成条件と検証
-
-- npm run typecheck を通す。
-- npm run test:physics、npm run test:game、npm run test:render を通す。
-- npm run export-assets の差分を確認し、無関係な識別子差分を含めない。
-- /rendering-workflow に従い render-lab で、側面dockを2個持つ基地、module 列、ghost、outline、分離前後、
-  ドッキング状態を画像比較する。
-- ユーザーが「動くか確かめたい」と明示しているため /verify を起動し、npm run smoke:browser で
-  次の実操作を確認する。
-  1. CREATIVE で基地presetを配置して操作対象にする。
-  2. combat view で dock 1 を開き、tank、thruster、docking_port を含む cockpitなしの「物資」を作り、
-     操縦不能警告を確認して分離する。
-  3. decoupler と booster を含む構成を発進させ、対象boosterを直接クリックして点火し、対象decouplerを直接クリックして分離する。
-  4. 分離後の船を dock 2 へ条件内で接舷し、損傷を修理し、末尾を交換して再発進する。
-  5. 建造途中、ドッキング中、燃料 0 の各 snapshot を保存・読み込みし、状態が戻る。
-  6. 全 module instance を失わせ、物資だけが消え、別の船と歴史線が残る。
-- git diff --check を通す。
 
 ## 見積り
 
