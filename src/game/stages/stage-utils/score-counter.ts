@@ -10,14 +10,20 @@ export interface SerializedScoreCounter {
 export class ScoreCounter {
   // 渡した数から数え始める。省いた数は 0 から。
   public constructor(
-    public shots = 0,
-    public hits = 0,
-    public kills = 0,
+    private _shots = 0,
+    private _hits = 0,
+    private _kills = 0,
     // 非プレイヤー起因の喪失数(再突入・空力分解等)。
-    public losses = 0,
+    private _losses = 0,
     // ステージが出した敵の総数。アセットを待っていて、まだ実体化していない敵も数える。
-    public totalEnemiesSpawned = 0,
+    private _totalEnemiesSpawned = 0,
   ) {}
+
+  public get shots(): number { return this._shots; }
+  public get hits(): number { return this._hits; }
+  public get kills(): number { return this._kills; }
+  public get losses(): number { return this._losses; }
+  public get totalEnemiesSpawned(): number { return this._totalEnemiesSpawned; }
 
   // 直列化した集計から復元する。
   public static deserialize(serialized: SerializedScoreCounter): ScoreCounter {
@@ -28,20 +34,20 @@ export class ScoreCounter {
     );
   }
 
-  public recordShot(): void { this.shots++; }
-  public recordHit(): void { this.hits++; }
-  public recordKill(): void { this.kills++; }
-  public recordEnemyLoss(): void { this.losses++; }
-  public recordSpawnEnemy(): void { this.totalEnemiesSpawned++; }
+  public recordShot(): void { this._shots++; }
+  public recordHit(): void { this._hits++; }
+  public recordKill(): void { this._kills++; }
+  public recordEnemyLoss(): void { this._losses++; }
+  public recordSpawnEnemy(): void { this._totalEnemiesSpawned++; }
 
   // 集計を直列化した形へ畳む。
   public serialize(): SerializedScoreCounter {
     return {
-      shots: this.shots,
-      hits: this.hits,
-      kills: this.kills,
-      losses: this.losses,
-      totalEnemiesSpawned: this.totalEnemiesSpawned,
+      shots: this._shots,
+      hits: this._hits,
+      kills: this._kills,
+      losses: this._losses,
+      totalEnemiesSpawned: this._totalEnemiesSpawned,
     };
   }
 }

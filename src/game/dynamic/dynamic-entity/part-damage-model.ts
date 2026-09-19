@@ -1,6 +1,6 @@
 import { collisionDamageFraction } from './contact-damage';
 import type {
-  ArmorPart, CockpitPart, Part, PartType, RadiatorPart, SolarPanelPart, WeaponPart,
+  ArmorPart, CockpitPart, Part, PartType, RadiatorPart, SerializedPart, SolarPanelPart, WeaponPart,
 } from './parts';
 import { PartInventory } from './part-inventory';
 
@@ -90,7 +90,7 @@ export class PartDamageModel {
         }
       } else target = this.parts[targetIndex];
     }
-    if (target) target.hp = Math.max(0, target.hp - effectiveDamage);
+    if (target) this.inventory.damage(target, effectiveDamage);
   }
 
   // 損傷した部品へ amount を均等に配って回復させる。放熱板と太陽電池は対象から外れる。
@@ -100,7 +100,12 @@ export class PartDamageModel {
     );
     if (targets.length === 0) return;
     const share = amount / targets.length;
-    for (const part of targets) part.hp = Math.min(part.maxHp, part.hp + share);
+    for (const part of targets) this.inventory.repair(part, share);
+  }
+
+  // 部品の一覧の直列化。
+  public serialize(): SerializedPart[] {
+    return this.inventory.serialize();
   }
 
   // 船体かコックピットを失った時点で、他の部品が無事でも機体を全損とする。

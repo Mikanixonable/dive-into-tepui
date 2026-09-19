@@ -1,5 +1,5 @@
 // クリエイティブモードの物体配置。配置パネルを持ち、フォームの値を検証して初期状態を組み、
-// 置くと決まった物体を onPlace へ渡す。配置プレビューをどの値で出すかもここが決める。
+// 置くと決まった物体の指定を受け手へ渡す。配置プレビューをどの値で出すかもここが決める。
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf, semiMajorFromPeriod, stateFromOrbitalElements, type OrbitalElements } from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
@@ -60,6 +60,11 @@ export interface SerializedObjectPlacement {
   readonly playerIdAllocator: number;
 }
 
+// 検証を通った配置の指定の受け手。実体を作るのは受け手の側。
+export interface ObjectPlacementSink {
+  placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void;
+}
+
 export class ObjectPlacement {
   private readonly panel: ObjectPlacerPanel;
   private readonly previewView: ObjectPlacementPreviewView;
@@ -67,18 +72,16 @@ export class ObjectPlacement {
   private readonly declarations: MarkerDeclaration[] = [];
   private readonly playerIdAllocator: EntityIdAllocator;
 
-  // 検証を通った配置の指定の渡し先。実体を作るのは受け取った側。
-  public onPlace: ((name: string, entityKind: DynamicEntityKind, state: KinematicState) => void) | null = null;
-
-  // 配置パネルとプレビューの表示資源を組む。playerIdCounter は配置した自機の id の次に発番する
-  // 連番で、省けば連番の初めから発番する。
-  private constructor(
+  // 配置パネルとプレビューの表示資源を組む。placements は検証を通った配置の指定の受け手。
+  // playerIdCounter は配置した自機の id の次に発番する連番で、省けば連番の初めから発番する。
+  public constructor(
     hud: HudLayers,
     private readonly scene: THREE.Scene,
     private readonly roster: EntityRoster,
     private readonly idAllocators: EntityIdAllocators,
     private readonly events: RunEventSink,
     private readonly celestialSystem: CelestialSystem,
+    private readonly placements: ObjectPlacementSink,
     playerIdCounter = 0,
   ) {
     this.playerIdAllocator = new EntityIdAllocator('creative-player-', playerIdCounter);
@@ -87,25 +90,6 @@ export class ObjectPlacement {
 
     this.panel = new ObjectPlacerPanel(hud.mapRoot, hud.layers.popup, celestialSystem, hud.overlayManager);
     this.panel.onConfirm = (name, form) => this.place(name, form);
-  }
-
-  // 新しいランの配置を、自機の id の連番の初めから組む。
-  public static create(
-    hud: HudLayers, scene: THREE.Scene, roster: EntityRoster, idAllocators: EntityIdAllocators,
-    events: RunEventSink, celestialSystem: CelestialSystem,
-  ): ObjectPlacement {
-    return new ObjectPlacement(hud, scene, roster, idAllocators, events, celestialSystem);
-  }
-
-  // 直列化した連番から復元する。
-  public static deserialize(
-    serialized: SerializedObjectPlacement,
-    hud: HudLayers, scene: THREE.Scene, roster: EntityRoster, idAllocators: EntityIdAllocators,
-    events: RunEventSink, celestialSystem: CelestialSystem,
-  ): ObjectPlacement {
-    return new ObjectPlacement(
-      hud, scene, roster, idAllocators, events, celestialSystem, serialized.playerIdAllocator,
-    );
   }
 
   // 配置した自機の id の連番を直列化した形へ畳む。
@@ -185,10 +169,10 @@ export class ObjectPlacement {
     };
   }
 
-  // フォームの値を検証して初期状態を組み、置く物体の指定を onPlace へ渡す。
+  // フォームの値を検証して初期状態を組み、置く物体の指定を受け手へ渡す。
   // 検証に落ちるか状態を組めなければ、落ちた理由を記録して何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
-    // 隻数の上限に掛かることを操作した場で知らせるための先読み。判定の正本は onPlace の受け手。
+    // 隻数の上限に掛かることを操作した場で知らせるための先読み。判定の正本は受け手。
     if (form.entityKind === 'player' && this.roster.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
       this.events.record({ kind: 'shipPlacementLimitReached', limit: MAX_PLACED_SHIPS });
       return;
@@ -197,7 +181,7 @@ export class ObjectPlacement {
       this.assertValidForm(form);
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
-      this.onPlace?.(name, form.entityKind, state);
+      this.placements.placeObject(name, form.entityKind, state);
     } catch (error) {
       const message = error instanceof Error ? error.message : '入力を解釈できません';
       this.events.record({ kind: 'objectPlacementRejected', reason: message });

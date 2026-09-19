@@ -71,9 +71,12 @@ function heaviestGravityId(candidates: readonly Pick<CelestialBodyDef, 'id' | 'm
 export class ArcCelestialBodies {
   // 候補1体につき1つ。顔ぶれは弧の一生を通じて同じなので、構築時に組んで持ち続ける。
   private readonly watches: readonly Watch[];
-  // 直近の resolve で解決した天体の数と、そのうち期限到来で訪問したものの数。
-  public lastResolved = 0;
-  public lastRevisited = 0;
+  // 直近の resolve で解決した天体の数と、そのうち期限到来で訪問したものの数(キャッシュ)。
+  private _lastResolved = 0;
+  private _lastRevisited = 0;
+
+  public get lastResolved(): number { return this._lastResolved; }
+  public get lastRevisited(): number { return this._lastRevisited; }
 
   // 候補の顔ぶれを構築時に確定させ、以後は1体ぶんの状態だけを sources へ問う。
   public constructor(sources: readonly CelestialBody[]) {
@@ -98,13 +101,13 @@ export class ArcCelestialBodies {
     const lead = Math.max(stepDt, ARC_MIN_STEP_DT) * ARC_BODY_LEAD_STEPS;
     const gravity: CelestialBody[] = [];
     const collision: CelestialBody[] = [];
-    this.lastResolved = 0;
-    this.lastRevisited = 0;
+    this._lastResolved = 0;
+    this._lastRevisited = 0;
     for (const w of this.watches) {
       if (!w.member && w.nextVisitT > t) continue;
-      if (!w.member) this.lastRevisited++;
+      if (!w.member) this._lastRevisited++;
       const body = w.motion;
-      this.lastResolved++;
+      this._lastResolved++;
       const slack = slackTime(w, body, t, from);
       w.member = w.pinned || slack <= lead;
       w.nextVisitT = t + Math.max(0, slack - lead);

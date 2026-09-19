@@ -30,6 +30,8 @@ export const ARC_INTERACTIVE_RATIO = 0.5;
 export const ARC_MIN_ITEM_STEPS = 16;
 
 export class Predictor {
+  // 次に伸ばす個体の巡回の位置と、直近フレームの計数。どれも予測の弧(キャッシュ)を伸ばす段取りの
+  // キャッシュ。
   private cursor = 0;
 
   private lastSteps = 0; // 実体側で消費した積分ステップ数

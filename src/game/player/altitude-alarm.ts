@@ -31,7 +31,7 @@ export class AltitudeAlarm {
   // warnedThresholds は警告済みのしきい値 [m]。
   public constructor(
     private readonly events: RunEventSink,
-    public descendWarned = false,
+    private _descendWarned = false,
     private altEma: number | null = null,
     private altRateEma = 0,
     warnedThresholds: readonly number[] = [],
@@ -50,10 +50,13 @@ export class AltitudeAlarm {
     );
   }
 
+  // 降下中とみなされているか。
+  public get descendWarned(): boolean { return this._descendWarned; }
+
   // 平滑化と警告の状態を直列化した形へ落とす。
   public serialize(): SerializedAltitudeAlarm {
     return {
-      descendWarned: this.descendWarned,
+      descendWarned: this._descendWarned,
       altEma: this.altEma,
       altRateEma: this.altRateEma,
       warnedThresholds: [...this.warnedThresholds],
@@ -83,8 +86,8 @@ export class AltitudeAlarm {
       this.altRateEma += (rate - this.altRateEma) * k;
     }
     // 降下の判定はヒステリシスを持つ
-    if (this.altRateEma < ALT_DESCEND_WARN_RATE) this.descendWarned = true;
-    else if (this.altRateEma > ALT_DESCEND_CLEAR_RATE) this.descendWarned = false;
+    if (this.altRateEma < ALT_DESCEND_WARN_RATE) this._descendWarned = true;
+    else if (this.altRateEma > ALT_DESCEND_CLEAR_RATE) this._descendWarned = false;
 
     // しきい値を潜るたびに1度だけ警告する
     for (const threshold of ALT_WARN_THRESHOLDS) {

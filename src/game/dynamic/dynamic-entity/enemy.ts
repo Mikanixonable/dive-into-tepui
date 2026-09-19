@@ -128,8 +128,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   private readonly fireController: EnemyFireController;
   private readonly reactions: EnemyReactions;
 
-  public get fireEnabled(): boolean { return this.fireController.enabled; }
-  public set fireEnabled(value: boolean) { this.fireController.enabled = value; }
   public get isBursting(): boolean { return this.fireController.isBursting; }
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を
@@ -274,12 +272,13 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     this.reactions.receiveBurnUp(activeStage, registry);
   }
 
-  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。
+  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
+  // 間は撃たない。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
-    operable: boolean, celestialBodies: CelestialBodies,
+    mayFire: boolean, celestialBodies: CelestialBodies,
   ): void {
-    this.fireController.behave(simTime, player, registry, enemies, operable, celestialBodies);
+    this.fireController.behave(simTime, player, registry, enemies, mayFire, celestialBodies);
   }
 
   // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。

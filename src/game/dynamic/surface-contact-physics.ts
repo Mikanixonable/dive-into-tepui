@@ -37,8 +37,15 @@ export class SurfaceContactPhysics {
   private readonly nearbyScratch: CelestialBody[] = [];
   // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、そのサブステップの解決すべてで使う。
   private pivot = 0;
-  // 絞り込みを通した延べ候補天体数。解決のたびに積み増す。
-  public candidateBodies = 0;
+  // 絞り込みを通した延べ候補天体数。解決のたびに積み増し、resetCounts で 0 へ戻す計数(キャッシュ)。
+  private _candidateBodies = 0;
+
+  public get candidateBodies(): number { return this._candidateBodies; }
+
+  // 延べの計数を 0 へ戻す。
+  public resetCounts(): void {
+    this._candidateBodies = 0;
+  }
 
   // フレームの区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の
   // 表面がその区間のあいだに届きうる範囲を求める。フレームに1度、サブステップより先に呼ぶ。
@@ -75,7 +82,7 @@ export class SurfaceContactPhysics {
   // collideWithCelestialBody を呼ぶ。
   private resolveAgainstCandidates(e: SurfaceContactParticipant, services: DynamicReactionServices): void {
     const candidates = this.candidates.into(e, this.nearbyScratch);
-    this.candidateBodies += candidates.length;
+    this._candidateBodies += candidates.length;
     const hit = firstSurfaceContact(e.prevState, e.state, e.radius, candidates, this.pivot);
     if (hit === null) return;
 

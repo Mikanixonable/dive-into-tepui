@@ -1,6 +1,6 @@
 import type { Vec3 } from '../../../math/vec3';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import type { Part } from './parts';
+import type { Part, SerializedPart } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Enemy, type EnemyPlacement } from './enemy';
 import type { EntityIdAllocators } from './entity-id';
@@ -29,23 +29,25 @@ export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
       burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.partModel = new PartDamageModel(parts);
-    this.maxHp = this.partModel.maxHp;
-    this.hp = this.partModel.overallHp();
+    this.setHealth(this.partModel.overallHp(), this.partModel.maxHp);
   }
 
   public get parts(): readonly Part[] { return this.partModel.parts; }
+
+  // 部品の一覧の直列化。
+  protected serializeParts(): SerializedPart[] { return this.partModel.serialize(); }
 
   // 接近速度に応じたダメージを入れ、ダメージが出たかを返す。part を指定すると
   // その部品へ固定し、省略すると健全な部品へ無作為に割り振る。
   protected applyCollisionDamage(closingSpeed: number, part?: Part): boolean {
     const damaged = this.partModel.applyCollisionDamage(closingSpeed, this.maxHp, part);
-    this.hp = this.partModel.overallHp();
+    this.setHealth(this.partModel.overallHp());
     return damaged;
   }
 
   // 装甲の軽減を通したダメージを部品へ入れる。part の扱いは applyCollisionDamage と同じ。
   protected applyDamageToParts(amount: number, part?: Part): void {
     this.partModel.applyDamageToParts(amount, part);
-    this.hp = this.partModel.overallHp();
+    this.setHealth(this.partModel.overallHp());
   }
 }

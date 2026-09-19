@@ -5,7 +5,6 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../math/random';
-import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import type { Vec3 } from '../../math/vec3';
 import { add, addScaled, norm, randPerp, randVec, scale, v3 } from '../../math/vec3';
 
@@ -16,11 +15,7 @@ import type { EntityRegistry } from '../dynamic/entity-registry';
 import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { Player } from './player';
-import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-motion';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
-import {
-  BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT,
-} from '../dynamic/dynamic-entity/debris-motion';
 import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-collision';
 import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
 import { WeaponState, type SerializedWeaponState, type WeaponFireCommand } from './weapon-state';
@@ -32,8 +27,6 @@ const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 
 // 1発あたりに砲身へ入る熱量 [J]。発射ガスの熱の大半は砲身の側が受け取る。
 const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
-
-const BARREL_MASS = 300; // [kg]
 
 // 砲口の位置とそのときの艦の速度。砲口は機首方向 fwd へ少し先を取る。
 function muzzleState(ship: Ship, muzzle: Vec3, fwd: Vec3): KinematicState {
@@ -79,7 +72,7 @@ export class FireControl {
 
   // 発射状態を強制的に解除する。
   public stopFiring(): void {
-    this.weapon.wasFiring = false;
+    this.weapon.releaseTrigger();
   }
 
   // 発射の操作量を1フレーム分処理する。トリガーが引かれ、火器が生きていて弾が残っていれば発射する。
@@ -94,7 +87,7 @@ export class FireControl {
     if (!controls.firing) {
       // トリガーを離したら連射状態を畳む。畳まないと微調整出力が有効なまま残り、次に引いたときの
       // スピンアップも起きない。
-      this.weapon.wasFiring = false;
+      this.weapon.releaseTrigger();
       return;
     }
 
@@ -103,7 +96,7 @@ export class FireControl {
       if (!this.weapon.wasEmptyClick) {
         this.registry.events.record({ kind: 'gunDryFired' });
         this.registry.events.record({ kind: 'gunDisabled' });
-        this.weapon.wasEmptyClick = true;
+        this.weapon.markEmptyClick();
       }
       return;
     }
@@ -112,7 +105,7 @@ export class FireControl {
       if (!this.weapon.wasEmptyClick) {
         this.registry.events.record({ kind: 'gunDryFired' });
         this.registry.events.record({ kind: 'gunOutOfAmmo' });
-        this.weapon.wasEmptyClick = true;
+        this.weapon.markEmptyClick();
       }
       return;
     }
@@ -123,13 +116,12 @@ export class FireControl {
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(activeStage: StageOutcome, celestialBodies: CelestialBodies): void {
     const justStartedFiring = !this.weapon.wasFiring;
-    this.weapon.wasFiring = true;
-    this.weapon.wasEmptyClick = false;
+    this.weapon.pullTrigger();
 
     // 起動時のタイムラグ
     if (justStartedFiring) {
       this.registry.events.record({ kind: 'gunSpunUp' });
-      this.weapon.cooldown = SPINUP_TIME;
+      this.weapon.setCooldown(SPINUP_TIME);
       return;
     }
 
@@ -146,16 +138,16 @@ export class FireControl {
     switch (command.consumption) {
       case 'empty':
       case 'normal':
-        this.weapon.cooldown = 1 / this.player.totalFireRate;
+        this.weapon.setCooldown(1 / this.player.totalFireRate);
         return;
       case 'mag-reload':
         this.spawnEjectedMagazineFrame();
         this.registry.events.record({ kind: 'gunMagazineFed' });
-        this.weapon.cooldown = 1 / this.player.totalFireRate;
+        this.weapon.setCooldown(1 / this.player.totalFireRate);
         return;
       case 'barrel-reload':
         this.spawnEjectedMagazineFrame();
-        this.weapon.cooldown = RELOAD_TIME;
+        this.weapon.setCooldown(RELOAD_TIME);
         this.dropBarrel();
         this.registry.events.record({ kind: 'gunBarrelSwapped' });
         return;
@@ -165,7 +157,7 @@ export class FireControl {
   // 手動リロードを試みる。開始できたら true。
   public manualReload(): boolean {
     if (!this.weapon.manualReload()) return false;
-    this.weapon.cooldown = RELOAD_TIME;
+    this.weapon.setCooldown(RELOAD_TIME);
     this.registry.events.record({ kind: 'gunBarrelSwapped' });
     this.dropBarrel();
     return true;
@@ -199,7 +191,7 @@ export class FireControl {
 
     activeStage.scoreCounter.recordShot();
     this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
-    this.weapon.pendingBarrelJoules += GUN_BARREL_HEAT_PER_ROUND;
+    this.weapon.addBarrelHeat(GUN_BARREL_HEAT_PER_ROUND);
     this.registry.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzle, fwd) });
   }
 
@@ -250,24 +242,9 @@ export class FireControl {
     ));
   }
 
-  // 装着している砲身の温度を dt だけ進める。発砲で入った熱は刻みの分け方に依らず一度だけ
-  // 温度へ変わり、薬室側には平均の 2 倍の温度上昇として乗る(SPEC/FLIGHT.md「熱管理」)。
+  // 装着している砲身の温度を dt だけ進める。
   public stepBarrelThermal(dt: number): void {
-    // 放射で冷え、温度差は薄まる。
-    const cooling = radiativeCooling(
-      this.weapon.barrelTemperature, ENV_TEMP, HULL_EMISS, BARREL_RADIATING_AREA_PER_MASS,
-      BARREL_SPECIFIC_HEAT, dt);
-    this.weapon.barrelTemperature = stepTemperature(
-      this.weapon.barrelTemperature, -cooling, BARREL_SPECIFIC_HEAT, dt);
-    this.weapon.barrelDeviation = stepThermalDeviation(
-      this.weapon.barrelDeviation, this.weapon.barrelTemperature, HULL_EMISS,
-      BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT, dt);
-    // 溜まっていた発射ガスの熱を、この区間で一度だけ温度へ変える。
-    if (this.weapon.pendingBarrelJoules === 0) return;
-    const rise = this.weapon.pendingBarrelJoules / (BARREL_MASS * BARREL_SPECIFIC_HEAT);
-    this.weapon.barrelTemperature += rise;
-    this.weapon.barrelDeviation += rise;
-    this.weapon.pendingBarrelJoules = 0;
+    this.weapon.stepBarrelThermal(dt);
   }
 
   // バレル交換時に円柱アイテムをデブリとして放出する。装着していた砲身の温度は、そのまま
@@ -294,9 +271,7 @@ export class FireControl {
       },
       this.registry.idAllocators, BARREL_PHYS_RADIUS, this.scene,
     ));
-    this.weapon.barrelTemperature = ENV_TEMP;
-    this.weapon.barrelDeviation = 0;
-    this.weapon.pendingBarrelJoules = 0;
+    this.weapon.mountFreshBarrel();
   }
 
   // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から

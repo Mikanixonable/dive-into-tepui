@@ -51,8 +51,8 @@ export interface PilotCommandReceiver {
 
 export interface NavigationController {
   readonly plan: Plan;
-  planExecution: PlanExecutionMode;
-  fineAttitude: boolean;
+  readonly planExecution: PlanExecutionMode;
+  readonly fineAttitude: boolean;
 }
 
 // 操作対象(自艦・基地)の共通能力。装備していない機能はプロパティ自体が無いので、有無を確かめて

@@ -46,8 +46,8 @@ export function segmentDurationFrom(
 
 // ノードを置ける実行時刻の範囲。
 export interface TimeRange {
-  min: number;
-  max: number;
+  readonly min: number;
+  readonly max: number;
 }
 
 // 計画折れ線の材料 — 起点1つとノード列。ノード列は空でもよい: 1件目のノードを置く前は、

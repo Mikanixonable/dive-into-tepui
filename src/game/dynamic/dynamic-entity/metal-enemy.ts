@@ -135,7 +135,7 @@ export class MetalEnemy extends PartBasedEnemy {
       ...this.serializeEnemyFields(),
       kind: MetalEnemy.kind,
       typeIndex: this.typeIndex,
-      parts: this.parts.map(p => ({ ...p })) as SerializedPart[],
+      parts: this.serializeParts(),
     };
   }
 }
