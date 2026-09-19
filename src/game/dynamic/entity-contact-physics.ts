@@ -59,10 +59,19 @@ export class EntityContactPhysics {
   private readonly pairScratch: number[] = [];
   private readonly gridScratch = new HierarchicalSpatialGrid<number>(CONTACT_GRID_MIN_CELL_SIZE);
   private readonly candidateScratch: Candidate[] = [];
-  // 列挙した延べ候補ペア数。解決のたびに積み増す。
-  public candidatePairs = 0;
-  // 交戦圏ごとの参加者数の延べ数。解決のたびに積み増す。
-  public participants = 0;
+  // 列挙した延べ候補ペア数と、交戦圏ごとの参加者数の延べ数。解決のたびに積み増し、resetCounts で
+  // 0 へ戻す計数(キャッシュ)。
+  private _candidatePairs = 0;
+  private _participants = 0;
+
+  public get candidatePairs(): number { return this._candidatePairs; }
+  public get participants(): number { return this._participants; }
+
+  // 延べの計数を 0 へ戻す。
+  public resetCounts(): void {
+    this._candidatePairs = 0;
+    this._participants = 0;
+  }
 
   // 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触を解く。交戦圏どうしは
   // 独立した系なので、解決回数の上限も交戦圏ごとに掛かる。
@@ -72,7 +81,7 @@ export class EntityContactPhysics {
   ): void {
     for (const zone of zones) {
       this.collectParticipants(entities, zone, this.participantScratch);
-      this.participants += this.participantScratch.length;
+      this._participants += this.participantScratch.length;
       this.resolveInOrder(this.participantScratch, simTime, zone.referenceDisplacement, services);
     }
   }
@@ -106,7 +115,7 @@ export class EntityContactPhysics {
 
     this.insertParticipants(all, working, reference);
     const count = this.collectCandidates(all, simTime, working);
-    this.candidatePairs += count;
+    this._candidatePairs += count;
     // 直前の解決で状態が変わった当事者。これを含まない候補の response は引き直しても同じ値に
     // なるので、含む候補だけを引き直す。-1 は「まだ無い」。
     let dirtyA = -1;

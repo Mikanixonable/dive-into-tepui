@@ -44,7 +44,7 @@ export interface SerializedThrottle {
 export class Throttle {
   // 直近の操作で出した並進の推力加速度(ECI)[m/s^2]。噴射していなければ零ベクトル。操作量から
   // 毎フレーム求め直すキャッシュ。
-  public thrustAccelVec: Vec3 = v3();
+  private _thrustAccelVec: Vec3 = v3();
 
   // ラッチ中の並進方向。押しっぱなしと同じに扱う。
   private readonly latchedThrust: Set<ThrustDirection>;
@@ -52,14 +52,19 @@ export class Throttle {
   // throttleIdx は THROTTLE_LEVELS の段、rotationHoldTime は手動回転を握り続けている実時間 [s]、
   // latchedThrust はラッチ中の並進方向。
   public constructor(
-    public throttleIdx = THROTTLE_DEFAULT_IDX,
-    public rcsDamp = true,
-    public progradeHold = true,
+    private _throttleIdx = THROTTLE_DEFAULT_IDX,
+    private _rcsDamp = true,
+    private _progradeHold = true,
     private rotationHoldTime = 0,
     latchedThrust: readonly ThrustDirection[] = [],
   ) {
     this.latchedThrust = new Set(latchedThrust);
   }
+
+  public get thrustAccelVec(): Vec3 { return this._thrustAccelVec; }
+  public get throttleIdx(): number { return this._throttleIdx; }
+  public get rcsDamp(): boolean { return this._rcsDamp; }
+  public get progradeHold(): boolean { return this._progradeHold; }
 
   // 直列化した段・制動・ホールド・回転の保持時間・噴射ラッチから復元する。壊れた値は既定へ落とし、
   // 知らない方向のラッチは捨てる。
@@ -79,26 +84,26 @@ export class Throttle {
 
   // RCS 回転制動の ON/OFF を切り替える。
   public toggleRcsDamp(events: RunEventSink): void {
-    this.rcsDamp = !this.rcsDamp;
-    events.record({ kind: 'rcsDampToggled', on: this.rcsDamp });
+    this._rcsDamp = !this._rcsDamp;
+    events.record({ kind: 'rcsDampToggled', on: this._rcsDamp });
   }
 
   // プログレードホールドを ON にする。
   public enableProgradeReset(events: RunEventSink): void {
-    this.progradeHold = true;
+    this._progradeHold = true;
     events.record({ kind: 'progradeHoldReset' });
   }
 
   // プログレードホールドの ON/OFF を切り替える。
   public toggleProgradeHold(events: RunEventSink): void {
-    this.progradeHold = !this.progradeHold;
-    events.record({ kind: 'progradeHoldToggled', on: this.progradeHold });
+    this._progradeHold = !this._progradeHold;
+    events.record({ kind: 'progradeHoldToggled', on: this._progradeHold });
   }
 
   // 並進出力のプリセットを idx 段階目へ切り替える。段の範囲外なら何もしない。
   public setThrottlePreset(idx: number, events: RunEventSink): void {
     if (!Number.isInteger(idx) || idx < 0 || idx >= THROTTLE_LEVELS.length) return;
-    this.throttleIdx = idx;
+    this._throttleIdx = idx;
     events.record({ kind: 'throttlePresetSelected', index: idx });
   }
 
@@ -110,15 +115,15 @@ export class Throttle {
 
   // 推力ゼロの状態へ戻す。噴射が実際に無い、または許可されないときに通す。
   public stopThrust(): void {
-    this.thrustAccelVec = v3();
+    this._thrustAccelVec = v3();
   }
 
   // 段・制動・ホールド・回転の保持時間・噴射ラッチを直列化した形へ落とす。
   public serialize(): SerializedThrottle {
     return {
-      throttleIdx: this.throttleIdx,
-      rcsDamp: this.rcsDamp,
-      progradeHold: this.progradeHold,
+      throttleIdx: this._throttleIdx,
+      rcsDamp: this._rcsDamp,
+      progradeHold: this._progradeHold,
       rotationHoldTime: this.rotationHoldTime,
       latchedThrust: [...this.latchedThrust],
     };
@@ -132,7 +137,7 @@ export class Throttle {
       this.stopThrust();
       return null;
     }
-    this.thrustAccelVec = thrust;
+    this._thrustAccelVec = thrust;
     return thrust;
   }
 
@@ -176,7 +181,7 @@ export class Throttle {
     // 全開加速度は推力/質量で決まる。スロットル段は THROTTLE_LEVELS の最大値に対する
     // 比としてそこへ掛けるので、既定パーツの艦では表示値(THROTTLE_LEVELS)と実加速度が一致する。
     const maxAccel = ship.motion.mass > 0 ? ship.totalThrust / ship.motion.mass : 0;
-    const presetScale = THROTTLE_LEVELS[this.throttleIdx]! / THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1]!;
+    const presetScale = THROTTLE_LEVELS[this._throttleIdx]! / THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1]!;
     let thrustAccel = maxAccel * presetScale;
 
     // 燃料残量に応じて実際の加速度を絞る
@@ -213,8 +218,8 @@ export class Throttle {
     // 回転指令があればプログレードホールドを解除する
     const isRotating = inX !== 0 || inY !== 0 || inZ !== 0;
     this.rotationHoldTime = isRotating ? this.rotationHoldTime + dt : 0;
-    if (this.progradeHold && isRotating) {
-      this.progradeHold = false;
+    if (this._progradeHold && isRotating) {
+      this._progradeHold = false;
       events?.record({ kind: 'progradeHoldReleasedByInput' });
     }
 
@@ -246,11 +251,11 @@ export class Throttle {
     );
 
     // 無入力かつホールド中なら自動整列トルクを加える(機首をプログレード v、上方向を r へ)
-    if (this.progradeHold && inX === 0 && inY === 0 && inZ === 0) {
+    if (this._progradeHold && inX === 0 && inY === 0 && inZ === 0) {
       return add(manualTorque, attitudeAlignTorque(v, r, att, PROGRADE_HOLD_KP, PROGRADE_HOLD_KD));
     }
     // 無入力の軸だけRCS制動を掛ける
-    if (this.rcsDamp) {
+    if (this._rcsDamp) {
       return v3(
         manualTorque.x - (inX === 0 ? RCS_DAMP_RATE * inertia.x * att.w.x : 0),
         manualTorque.y - (inY === 0 ? RCS_DAMP_RATE * inertia.y * att.w.y : 0),

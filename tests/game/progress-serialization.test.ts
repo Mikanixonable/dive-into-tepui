@@ -114,6 +114,7 @@ function roundTrips(): readonly RoundTrip[] {
         barrel: MAGS_PER_BARREL - 1,
         barrelTemperature: 310,
         barrelDeviation: 12,
+        pendingBarrelJoules: 2.5e6,
         cooldown: 0.2,
         muzzleIdx: 1,
         wasFiring: true,
