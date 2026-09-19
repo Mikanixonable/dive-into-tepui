@@ -2,7 +2,7 @@
 // 指数移動平均で平滑化する。
 import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
-import { Vec3, sub } from '../../math/vec3';
+import { type Vec3, sub } from '../../math/vec3';
 import type { RunEventSink } from '../run-events';
 
 // 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
@@ -22,8 +22,7 @@ export interface SerializedAltitudeAlarm {
 }
 
 export class AltitudeAlarm {
-  // 既に警告済みのしきい値。しきい値 + ヒステリシスまで登り返すと解除され、再度潜った際に
-  // 同じしきい値で再警告できる。
+  // 警告済みのしきい値 [m]。登り返すと外れ、再び潜れば同じしきい値で再警告する。
   private readonly warnedThresholds: Set<number>;
 
   // 警告は events へ記録する。descendWarned は降下中とみなされているか、altEma は高度の指数移動

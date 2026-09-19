@@ -1,10 +1,10 @@
 import type * as THREE from 'three/webgpu';
 
 import type { ViewMode } from '../view/view-mode';
-import { Attitude, deserializeAttitude } from '../../physics/attitude';
+import { type Attitude, deserializeAttitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
-import { KinematicState, deserializeKinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, v3, len, sub } from '../../math/vec3';
+import { type KinematicState, deserializeKinematicState } from '../../physics/kinematic-state';
+import { type Vec3, add, v3, len, sub } from '../../math/vec3';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -27,7 +27,7 @@ import { BoosterStack, type SerializedBoosterStack } from './booster-stack';
 
 import { Plan, type PlanExecutionMode, type SerializedPlan } from '../plan/plan';
 import {
-  deserializeParts, type Part, type RadiatorPart, type SerializedPart,
+  deserializeParts, type Part, type RadiatorPart, type AnyPart,
 } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
@@ -68,12 +68,12 @@ const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 const BELT_MAX_VISIBLE = 18;
 
 // 新規配置の艦。state に機首プログレードで置き、name/id/ammo は任意指定する。
-export type PlayerPlacement = {
+export interface PlayerPlacement {
   readonly name?: string;
   readonly state: KinematicState;
   readonly id?: string;
   readonly ammo?: AmmoLoad;
-};
+}
 
 export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly kind: 'player';
@@ -85,7 +85,7 @@ export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly belt: SerializedBeltController;
   readonly throttle: SerializedThrottle;
   readonly altitudeAlarm: SerializedAltitudeAlarm;
-  readonly parts: SerializedPart[];
+  readonly parts: AnyPart[];
   readonly plan: SerializedPlan | null;
   readonly planExecution: PlanExecutionMode;
   readonly fineAttitude: boolean;
@@ -143,7 +143,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         stepBarrelThermal: dt => owner.fire.stepBarrelThermal(dt),
       },
       environment: {
-        thrustAcceleration: () => owner.throttle.thrustAccelVec,
+        thrustAcceleration: () => owner.throttle.thrust ?? v3(),
         radiatorWear: () => owner.radiatorWear(),
         totalCoolingRate: () => owner.totalCoolingRate,
         totalPowerGeneration: () => owner.totalPowerGeneration,
@@ -247,8 +247,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     return player;
   }
 
-  // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
-  // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
+  // 自機の主慣性モーメント(ピッチ・ヨー・ロール)。
   private static readonly INERTIA = v3(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL);
 
   // 機首を center に対する速度の向きへ、上面を center から見た位置の向きへ向けた静止姿勢。
@@ -297,7 +296,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.updateFireState(dt, controls, activeStage, celestialBodies);
 
     this.throttle.updateThrustLatches(controls);
-    const rcsThrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    const rcsThrust = this.throttle.thrust;
     const boosterThrust = this.motion.attachedBoosters.thrust;
     this.motion.setThrust(rcsThrust && boosterThrust
       ? add(rcsThrust, boosterThrust)
@@ -347,6 +347,27 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // 計画の実行方法を mode へ切り替える。
   public setPlanExecution(mode: PlanExecutionMode): void {
     this._planExecution = mode;
+  }
+
+  // 計画を 'instant' で実行しているとき、次に消化するノードの時刻。それ以外や、待っているノードが
+  // 無ければ null。
+  public get instantNodeTime(): number | null {
+    if (this._planExecution !== 'instant') return null;
+    return this.plan.firstNode()?.t ?? null;
+  }
+
+  // 計画を 'instant' で実行しているとき、時刻 simTime までに来たノードを消化し、消化した最後のノードの
+  // 絶対状態へそのまま乗り移る(誤差が無い)。
+  public executeInstantNodesUpTo(simTime: number): void {
+    if (this._planExecution !== 'instant') return;
+    const first = this.plan.firstNode();
+    if (!first || first.t > simTime + 1e-9) return;
+    // ノードは実行時刻順に並ぶので、来たもののうち最後が到達状態になる。
+    const due = this.plan.nodes.filter((node) => node.t <= simTime);
+    const reached = due[due.length - 1];
+    if (reached === undefined) return;
+    this.plan.consumeNodesUpTo(simTime, reached);
+    this.motion.reset(reached);
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
@@ -499,7 +520,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   private updateTorque(controls: PilotControls, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this._fineAttitude || this.fire.isFiring;
-    this.motion.setTorque(this.throttle.updateTorque(
+    this.throttle.updateTorque(
       this.motion.att,
       this.motion.state.r,
       this.motion.state.v,
@@ -509,7 +530,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       simDt,
       this,
       this.registry.events,
-    ));
+    );
+    this.motion.setTorque(this.throttle.torque);
   }
 
   // 艦は任意のタイミングで削除されうるので、一度だけ連続指令と View を解放する。
@@ -541,24 +563,23 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     };
   }
 
-  // 自機の View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
-  // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
+  // 自機の View が読む値を、このフレームの Motion と装備の現在値から組み、共通の表示入力へ足す。
   protected override renderSource(
     viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): PlayerRenderSource {
     const motion = this.motion;
     const { attachedBoosters: boosters, belt, power, radiator } = motion;
-    // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
-    const thrustAcceleration = this.throttle.thrustAccelVec;
     const radiatorPanel = (side: RadiatorSide) => ({ wear: radiator.wearOf(side), ...radiator.foldThetas(side) });
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
       state: motion.state,
       active,
-      thrustAcceleration: len(thrustAcceleration) > 0 ? thrustAcceleration : null,
+      // 噴射と空力の表現
+      thrustAcceleration: this.throttle.thrust,
       maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,
+      // 可動部と装備
       boosters: {
         stageIds: boosters.stageIds,
         firing: boosters.thrust !== null,
@@ -580,6 +601,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   }
 
   // 現在の艦状態を直列化した形へ変換する。
+  // 例外(ARCHITECTURE R12): 運動の部品(放熱板・電力・給弾ベルト・ブースター)の記録を、自機の記録へ
+  // 並べる。運動の記録として分けると保存の形式が変わり、版 4 の記録が読めなくなる。
   public override serialize(): SerializedPlayer {
     return {
       ...this.serializeEntityFields(Player.kind),
@@ -604,7 +627,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public rename(name: string): void { this.setName(name); }
 }
 
-// この個体が自機か。顔ぶれから自機だけを絞るときに使う。
+// entity を自機へ絞り込む型ガード。
 export function isPlayer(entity: DynamicEntity): entity is Player {
   return entity instanceof Player;
 }

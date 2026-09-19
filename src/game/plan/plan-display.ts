@@ -1,13 +1,13 @@
 // 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
 // (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
 import type { ViewMode } from '../view/view-mode';
-import { Vec3, len, sub } from '../../math/vec3';
+import { type Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
-import { Projected } from '../../math/projection';
+import type { Projected } from '../../math/projection';
 import { fmtMarkerDist } from '../../hud/utils';
-import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
+import { type TickRank, type TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
 import type { DisplayedPath } from '../marker/equator-node-marker-pair';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
@@ -17,10 +17,10 @@ import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import { ObjectPickable } from '../pickable/object-pickable';
+import type { ObjectPickable } from '../pickable/object-pickable';
 import type { PlanData } from './plan';
 import type { PlanPath } from './plan-path';
-import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
+import { type DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { Apsis } from '../../physics/trajectory-features';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
@@ -38,8 +38,8 @@ const PLAN_TICK_MIN_PX = 40; // 目盛同士の最小画面間隔 [px]
 const PLAN_TICK_LABEL_MIN_PX = 90; // ラベルを付ける最小画面間隔 [px]
 const PLAN_TICK_MAX_COUNT = 400; // 日・月・年階級の目盛候補の上限本数
 
-// 時階級(1/3/6/12時間ごと)の目盛候補の上限本数。既定の最長表示区間(28日)の1時間ごとが収まる
-// 本数 — 区間の長さで階級が丸ごと切り替わるとズームに対して連続に見えないので、最細で列挙する。
+// 時階級(1/3/6/12時間ごと)の目盛候補の上限本数(1時間ごとで50日ぶん)。区間の長さで階級が丸ごと
+// 切り替わるとズームに対して連続に見えないので、最細で列挙する。
 const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 
 // 目盛点の半径 [px]。表示中の最細目盛からの相対階層(0/1/2以上)で引く。
@@ -169,8 +169,7 @@ export class PlanDisplay {
     };
   }
 
-  // ⬢ ゴーストマーカーの宣言。計画がそこまで届いていなければ伏せ、マップビューで天体の陰に
-  // 入ったら薄れて消える。
+  // ⬢ ゴーストマーカーの宣言。
   private ghostDeclaration(
     project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number, simTime: number,
   ): MarkerDeclaration {
@@ -178,8 +177,10 @@ export class PlanDisplay {
       id: 'plannedPlayer', cls: 'mk-planned', sym: ENTITY_GLYPH.ghost,
       priority: MARKER_PRIORITY.NONE,
     };
+    // 計画がそこまで届いていなければ伏せる。
     const ghost = this.ghostAt(displayTime, simTime);
     if (!ghost) return { ...base, x: 0, y: 0, front: false };
+    // マップビューで天体の陰に入ったら薄れて消える。
     if (view === 'map' && this.occludedByCelestialBody(cameraPos, ghost.pos, displayTime)) {
       return { ...base, x: 0, y: 0, front: false, occluded: true };
     }

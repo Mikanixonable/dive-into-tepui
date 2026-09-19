@@ -55,6 +55,7 @@ export class BaseMotion extends DynamicMotion {
   // state と attitude はその時刻の初期状態。fuel を省くと満載で、alive(生死)を省くと生きた状態で
   // 始まる。
   public constructor(state: KinematicState, attitude: Attitude, fuel = BASE_MAX_FUEL, alive?: boolean) {
+    // 押されない大質量の剛体として、交戦圏の中心になり予測の弧をなぞる
     super(state, {
       alive,
       attitude,

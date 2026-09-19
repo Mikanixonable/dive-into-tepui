@@ -1,10 +1,9 @@
-// 装置が毎フレーム受け取る、マーカー1件ぶんの宣言。cls は DOM へそのまま貼る文字列で、
-// 装置はその中身を解釈しない。種別の意味から装置の語彙へ写すのは宣言を組む側が行う。
+// 装置が毎フレーム受け取る、マーカー1件ぶんの宣言。
 
 export interface MarkerDeclaration {
   // 群をまたいで一意な識別子。DOM 要素の同一性と、表示したかの問い合わせに使う。
   readonly id: string;
-  // 要素へ貼る CSS クラス。
+  // 要素へそのまま貼る CSS クラス。
   readonly cls: string;
   // シンボルの字形。markup を立てると HTML として書き込む。
   readonly sym: string;

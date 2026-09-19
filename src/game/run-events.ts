@@ -63,8 +63,8 @@ export type RunEventBody =
   | { readonly kind: 'targetBoardPassed'; readonly offset: Vec3; readonly simTime: number }
 
   // ------------------------------------------------------------ 被弾・接触
-  // 自機の一点に衝撃が入った。着弾点と艦の状態を値として持ち、音の距離減衰は読み手が出す。
-  // bullet は衝撃を与えた弾の種類で、被弾以外の破断で入った衝撃では null。
+  // 自機の一点 impactPoint に衝撃が入った。shipState はそのときの艦の状態、bullet は衝撃を与えた
+  // 弾の種類で、被弾以外の破断で入った衝撃では null。
   | {
     readonly kind: 'shipStruck';
     readonly impactPoint: Vec3;
@@ -230,7 +230,7 @@ export function queuedEventSink(queue: CommandQueue, events: RunEventSink): RunE
 // 例外(ARCHITECTURE R11): モデル層の状態だが直列化しない。出来事は進行の位相の先頭で空にする1フレームの
 // 通り道で、読み手もランと一緒に作り直す。保存すると、読み込んだフレームに前のランの音と通知が出る。
 export class RunEventLog implements RunEventSink {
-  private readonly events: RunEvent[] = [];
+  private events: RunEvent[] = [];
   private nextSeq = 0;
 
   // 直近の進行で記録された出来事を、記録した順に返す。
@@ -240,7 +240,7 @@ export class RunEventLog implements RunEventSink {
 
   // 進行の位相の先頭で呼び、前のフレームの出来事を捨てる。
   public beginStep(): void {
-    this.events.length = 0;
+    this.events = [];
   }
 
   // 起きたことを1件、次の通し番号を付けて積む。

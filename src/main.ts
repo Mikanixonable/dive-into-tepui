@@ -1,9 +1,9 @@
-// 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
-// rAF ループ(ランのフレームの駆動)を統括する。
+// エントリポイント。ページに1つずつの装置(シーン・HUD・音声・セーブ)と周回の遷移を組んで配線し、
+// rAF ループでランのフレームを回す。
 // HUD の書体は太さ 400 だけを読み、bold はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
-import { createGameScene, GameScene } from './render/scene';
+import { createGameScene, type GameScene } from './render/scene';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { FrameSections } from './game/frame-sections';
@@ -18,7 +18,7 @@ import { MarkerDevice } from './marker/marker-device';
 import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
 import { PauseMenu } from './hud/windows/pause-menu';
 import { AudioEngine } from './audio/audio-engine';
-import { Bgm, DEFAULT_BGM_VOLUME } from './audio/bgm/bgm';
+import { Bgm } from './audio/bgm/bgm';
 import { debugInfoOpenAtStart, Launcher } from './launcher/launcher';
 import { UnlockManager } from './launcher/unlock-manager';
 import { SnapshotControls } from './launcher/snapshot-controls';
@@ -46,11 +46,6 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   return gs;
 }
 
-// 消音を織り込んだ BGM の音量。
-function audibleBgmVolume(settings: UserSettings): number {
-  return settings.bgmMuted.current ? 0 : settings.bgmVolume.current;
-}
-
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
   launcher: Launcher, gs: GameScene, settings: UserSettings, bgm: Bgm,
@@ -71,9 +66,8 @@ function startAnimationLoop(
     pauseMenu.sync(now);
     const run = launcher.current;
     bgm.sync({
-      volume: audibleBgmVolume(settings),
-      inRun: run?.game.activeStage.isPlaying ?? false,
-      auditioning: pauseMenu.settingsView.bgmAuditioning,
+      volume: settings.audibleBgmVolume,
+      inRun: run?.isPlaying ?? false,
       audition: pauseMenu.settingsView.bgmAudition,
     });
     // 周回の切り替え中はランが無いので、次フレームを予約して抜ける。
@@ -145,7 +139,7 @@ function initHud(settings: UserSettings): {
   const bgm = new Bgm(audioEngine);
   const pauseMenu = new PauseMenu(
     shell.layers.system, shell.overlayManager,
-    settings.graphics.current, audibleBgmVolume(settings), settings.themePalette.current.id,
+    settings.graphics.current, settings.audibleBgmVolume, settings.themePalette.current.id,
   );
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
 }
@@ -163,23 +157,14 @@ function bindSettings(
   // 音量は一時停止メニューと設定ビューの両方が書き換えるので、通知を受けた側で両方を引き直す。
   // どちらも消音中は音量を 0 と見せる。
   const syncBgmVolume = (): void => {
-    pauseMenu.syncBgmVolume(audibleBgmVolume(settings));
-    settingsView.syncBgmVolume(audibleBgmVolume(settings));
+    pauseMenu.syncBgmVolume(settings.audibleBgmVolume);
+    settingsView.syncBgmVolume(settings.audibleBgmVolume);
   };
   settings.bgmVolume.subscribe(syncBgmVolume);
   settings.bgmMuted.subscribe(syncBgmVolume);
-  // 音量を動かせば消音を解く。
-  const setBgmVolume = (volume: number): void => {
-    settings.bgmVolume.set(volume);
-    settings.bgmMuted.set(false);
-  };
-  pauseMenu.onBgmVolumeChange = setBgmVolume;
-  settingsView.onBgmVolumeChange = setBgmVolume;
-  // 音量 0 のまま消音を解くと無音が続くので、既定の音量へ戻して解く。
-  pauseMenu.onBgmMutedChange = (muted) => {
-    if (!muted && settings.bgmVolume.current <= 0) settings.bgmVolume.set(DEFAULT_BGM_VOLUME);
-    settings.bgmMuted.set(muted);
-  };
+  pauseMenu.onBgmVolumeChange = (volume) => settings.setBgmVolume(volume);
+  settingsView.onBgmVolumeChange = (volume) => settings.setBgmVolume(volume);
+  pauseMenu.onBgmMutedChange = (muted) => settings.setBgmMuted(muted);
 
   // 配色はプリセットに在るものだけを選択として残す。
   settingsView.onThemeIdChange = (id) => {

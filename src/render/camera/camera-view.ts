@@ -3,9 +3,9 @@
 import * as THREE from 'three/webgpu';
 import { CELESTIAL_SHELL_RADIUS } from '../stars';
 import { FloatingOrigin } from './floating-origin';
-import { len, sub, Vec3 } from '../../math/vec3';
+import { len, sub, type Vec3 } from '../../math/vec3';
 import {
-  metersPerPixel, metersPerPixelAtDistance, screenProjection, Viewpoint,
+  metersPerPixel, metersPerPixelAtDistance, screenProjection, type Viewpoint,
 } from '../../math/projection';
 import type { CameraFrame } from './camera-frame';
 import type { Viewport } from '../viewport';
@@ -53,6 +53,7 @@ function farClip(clipDistance: number): number {
 function syncCameraToViewpoint(
   camera: THREE.Camera, view: Viewpoint, near: number, far: number, origin: Vec3,
 ): void {
+  // 位置と姿勢は描画原点からの相対で置く。
   const position = sub(view.position, origin);
   const lookTarget = sub(view.lookTarget, origin);
   camera.position.set(position.x, position.y, position.z);
@@ -78,6 +79,7 @@ function syncCameraToViewpoint(
       projectionDirty = true;
     }
   } else if (camera instanceof THREE.OrthographicCamera) {
+    // 平行投影の視野は、半画面の高さと縦横比で決まる。
     const halfHeight = Math.max(ORTHOGRAPHIC_HALF_HEIGHT_MIN, view.orthographicHalfHeight ?? 1);
     const halfWidth = halfHeight * view.aspect;
     if (Math.abs(camera.left + halfWidth) > halfWidth * 1e-6

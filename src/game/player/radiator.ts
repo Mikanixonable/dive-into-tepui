@@ -1,9 +1,9 @@
 // 自機の展開式ラジエーター: 上下2枚それぞれの展開度・損耗度を持ち、
 // 今フレームの放熱面積と太陽入射を答える。
-import { Attitude } from '../../physics/attitude';
+import type { Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, LOCAL_UP, qFromAxisAngle, qRotate } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
-import { add, cross, dot, rotateAxis, v3, Vec3 } from '../../math/vec3';
+import { add, cross, dot, rotateAxis, v3, type Vec3 } from '../../math/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_FOLD_COUNT,
@@ -39,8 +39,8 @@ function yRotatedOffset(theta: number, x: number): Vec3 {
   return rotateAxis(v3(x, 0, 0), LOCAL_UP, theta);
 }
 
-// side の fold 番目の折りの中心位置(機体座標系)。RADIATOR_HINGE から蛇腹を辿り、
-// 各折りの根本から半セグメント先(tools/model-builder/player-ship.mjs の panel.position と同じ位置)を返す。
+// side の fold 番目の折りの中心位置(機体座標系)。even・odd は foldThetas の折り角。
+// モデル(tools/model-builder/player-ship.mjs の panel.position)と同じ位置を返す。
 function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: number): Vec3 {
   const sign = sideSign(side);
   let origin = v3(sign * RADIATOR_HINGE.x, RADIATOR_HINGE.y, RADIATOR_HINGE.z);
@@ -69,6 +69,8 @@ export class RadiatorSystem {
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   // side ごとの蛇腹1折りぶんの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, ContactProxy[]> = { up: [], down: [] };
+  // 直近の placeContactFolds で接触に加えた折りの代理(キャッシュ)。
+  private activeFolds: readonly ContactProxy[] = [];
 
   // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。up・down は各側の展開状態で、
   // 省いた側は収納から始める。
@@ -102,22 +104,19 @@ export class RadiatorSystem {
     }
   }
 
-  // 展開度から折り角(展開軸からの傾き)を返す。deploy=0 で STOW_TILT、deploy=1 で
-  // RADIATOR_DEPLOY_TILT へ線形補間する。
+  // 展開度 deploy(0..1)での折り角(展開軸からの傾き)[rad]。
   private tilt(deploy: number): number {
     return STOW_TILT + (RADIATOR_DEPLOY_TILT - STOW_TILT) * deploy;
   }
 
-  // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角 [rad]。展開方向は side ごとに
-  // 符号が付くので、回転角自体は side に依らず ±psi で揃う。
+  // side の偶数・奇数の折り目それぞれの、ヒンジ基準での回転角 [rad]。
   public foldThetas(side: RadiatorSide): { even: number; odd: number } {
     const sign = sideSign(side);
     const psi = this.tilt(this.panels[side].value);
     return { even: sign * psi, odd: -sign * psi };
   }
 
-  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、その半分に
-  // 展開度を掛ける。全損した側は 0。
+  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和。全損した側は 0。
   private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
     if (this.wear[side] >= 1) return 0;
     return (totalCoolingRate / 2) * this.panels[side].value;
@@ -147,9 +146,12 @@ export class RadiatorSystem {
     }, 0);
   }
 
-  // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を返す。
-  // t は接触代理の KinematicState.t に使う現在時刻(swept 判定の区間を成す)。
-  public contactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): ContactProxy[] {
+  // 直近の placeContactFolds で置いた折りの接触代理。
+  public get contactFolds(): readonly ContactProxy[] { return this.activeFolds; }
+
+  // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を置き直す。
+  // shipR・shipV は艦の ECI 位置・速度、t は現在時刻。
+  public placeContactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): void {
     const result: ContactProxy[] = [];
     for (const side of ['up', 'down'] as const) {
       if (this.panels[side].value < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
@@ -171,7 +173,7 @@ export class RadiatorSystem {
         result.push(fold);
       }
     }
-    return result;
+    this.activeFolds = result;
   }
 
   // side の蛇腹の一番先の折りの位置(world、shipR と同じ絶対座標系)。

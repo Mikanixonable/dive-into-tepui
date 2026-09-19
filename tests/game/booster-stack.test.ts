@@ -2,9 +2,9 @@
 // 検証する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
+import { type Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
 import {
-  BoosterSeparationVelocities,
+  type BoosterSeparationVelocities,
   BoosterStack,
   boosterAverageAcceleration,
   boosterSeparationVelocities,
@@ -79,7 +79,8 @@ export function register(): void {
     empty.toggleIgnition();
     assert.equal(empty.ignited, false);
     assert.deepEqual(empty.burnOver(1), { averageThrust: 0, burnRatio: 0, fuelConsumed: 0 });
-    assert.equal(empty.detachOutermost(), null);
+    empty.detachOutermost();
+    assert.equal(empty.stages.length, 0);
 
     const dry = new BoosterStack([stage('dry', 0)]);
     dry.toggleIgnition();
@@ -91,7 +92,8 @@ export function register(): void {
     const stack = new BoosterStack([stage('inner'), stage('outer')]);
     stack.toggleIgnition();
     stack.burn(0.25);
-    const detached = stack.detachOutermost();
+    const detached = stack.stages[1];
+    stack.detachOutermost();
     assert.ok(detached);
     assert.equal(detached.id, 'outer');
     assert.equal(detached.fuel, 9.5);

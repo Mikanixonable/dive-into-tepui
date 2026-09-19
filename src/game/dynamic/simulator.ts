@@ -18,7 +18,7 @@ import { SubstepCelestialBodies } from './substep-celestial-bodies';
 import { NextEventTime } from './next-event-time';
 import { simulationMaxStep, simulationStepDuration, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { NanWatchdog } from './nan-watchdog';
-import { FrameSections, SECTION } from '../frame-sections';
+import { type FrameSections, SECTION } from '../frame-sections';
 import type { PerfCounts } from '../perf-counts';
 
 // ゼロ長サブステップが連続してよい回数。超えたらそのフレームぶんを一括で消費する。丸め誤差で
@@ -145,9 +145,8 @@ export class Simulator {
         for (const entity of this.roster.allMotions()) {
           this.contactEntitiesScratch.push(entity);
           if (entity.alive) {
-            for (const proxy of entity.contactProxies(this._simTime, subDt)) {
-              this.contactEntitiesScratch.push(proxy);
-            }
+            entity.placeContactProxies(this._simTime, subDt);
+            for (const proxy of entity.contactProxies()) this.contactEntitiesScratch.push(proxy);
           }
         }
         this.entityContactPhysics.resolveEntityContacts(
@@ -166,9 +165,8 @@ export class Simulator {
     this._lastSimDt = simDt;
   }
 
-  // 生存する全個体を dt だけ進め、終端 endTime へ着地させる。濃い大気が細かい刻みを要求する個体は
-  // 区間を内側で割り、その1歩ごとに天体表面への到達も解く。1歩で渡った個体は区間が揃っているので、
-  // sharedIntervalScratch へ集める。
+  // 生存する全個体を dt だけ進め、終端 endTime へ着地させる。区間を内側で割った個体は各歩で天体表面
+  // への到達も解き、1歩で渡った個体は sharedIntervalScratch へ集める。
   private substep(endTime: number, dt: number, services: DynamicReactionServices): void {
     this.sharedIntervalScratch.length = 0;
     for (const e of this.roster.allMotions()) {

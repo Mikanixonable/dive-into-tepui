@@ -1,24 +1,25 @@
-// 天体系(天体ビュー・星・天球グリッド・参照軌道線・照明)の構築と毎フレーム更新。
-import * as THREE from 'three/webgpu';
+// 天体系(天体ビュー・星・天球グリッド・参照軌道線・照明)の構築と毎フレームの同期。天体の索引と、
+// 系の所属・系レベルの物理量を答える。
+import type * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
-import { CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
+import { type CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
 import { isStar, type StarCelestialBody } from '../../physics/celestial-body-def';
 import { attractorAccel, strongestAttractor } from '../../physics/attractor';
-import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
+import { type EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
 import { isLagrangeId, lagrangeParentId } from './lagrange-id';
 import { addTimeCacheStats } from '../../physics/time-ring';
-import { KinematicState } from '../../physics/kinematic-state';
-import { lenSq, norm, sub, v3, Vec3 } from '../../math/vec3';
-import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
+import type { KinematicState } from '../../physics/kinematic-state';
+import { lenSq, norm, sub, v3, type Vec3 } from '../../math/vec3';
+import { CELESTIAL_SHELL_SCALE, createStars, type Stars } from '../../render/stars';
 import { CelestialGrid, type CelestialGridVisibility } from '../../render/celestial-grid';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ScaleGridView } from './scale-grid-view';
 import { focusTargetId } from '../viewer/focus-target';
 import { CelestialIllumination, type IlluminationTargets } from '../../render/celestial/celestial-illumination';
 import { RingMaterials } from '../../render/celestial/ring';
-import { CelestialEntity } from './celestial-entity/celestial-entity';
+import type { CelestialEntity } from './celestial-entity/celestial-entity';
 import type { StellarLightSource } from '../../render/celestial/celestial-entity/celestial-view';
 import { OrbitGuideModel } from './orbit-guide/orbit-guide-model';
 import { ZeroVelocityModel } from './orbit-guide/zero-velocity-model';
@@ -149,9 +150,8 @@ export class CelestialSystem implements CelestialBodies {
     this.zeroVelocityModel = new ZeroVelocityModel(this);
   }
 
-  // シーンと、光源・影・大気の書き込み先(RenderPipeline が所有)を受け取り、全天体の
-  // メッシュ・星野・グリッドをシーンへ登録する。1度だけ呼ぶ — update / sync はこの後でないと
-  // 呼べない。
+  // シーンと、光源・影・大気の書き込み先を受け取り、全天体のメッシュ・星野・グリッドをシーンへ
+  // 登録する。1度だけ呼ぶ — sync・bakeClouds はこの後でないと呼べない。
   public build(scene: THREE.Scene, illuminationTargets: IlluminationTargets): void {
     this.scene = scene;
     this.illumination = new CelestialIllumination(this.stellarLightSource, illuminationTargets);
@@ -355,10 +355,9 @@ export class CelestialSystem implements CelestialBodies {
     return this.orbitGuideView.visibleLines(count);
   }
 
-  // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。
-  // nowMs はこのフレームの実時刻 [ms] で、表示時刻では進まないアニメーション(進行方向マーカー・
-  // 地表タイルのフェード)がこれを読む。grid・orbitGuide はこのフレームの表示設定。
-  // visibilityPolicy は軌道線を引く対象を決める。戦闘ビューでは null で、そのときは引かない。
+  // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。nowMs は
+  // このフレームの実時刻 [ms]、grid・orbitGuide はこのフレームの表示設定。visibilityPolicy は軌道線を
+  // 引く対象を決め、戦闘ビューでは null(引かない)。
   public sync(
     displayTime: number,
     nowMs: number,

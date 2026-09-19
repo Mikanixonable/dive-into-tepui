@@ -91,6 +91,9 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public get totalMaxFuel(): number { return this.motion.maxFuel; }
   public readonly hp = null;
   public readonly maxHp = null;
+  public readonly fire = null;
+  public readonly boosters = null;
+  public readonly altitudeAlarm = null;
 
   // 燃料を amount [kg] だけ、残量の範囲で使う。
   public consumeFuel(amount: number): void {
@@ -133,7 +136,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     const base = new Base(
       scene,
       registry.idAllocators.base.next(serialized.id),
-      // 記録に無い名前は、新しく置いたときと違って無作為に選ばず「基地」と名乗る。
+      // 記録に名前が無ければ、無作為な名前でなく「基地」と名乗る。
       serialized.name || '基地',
       deserializeKinematicState(serialized),
       deserializeAttitude(serialized, Base.INERTIA),
@@ -175,12 +178,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       return;
     }
     // 操作量から姿勢のトルクと推力を決める
-    this.motion.setTorque(this.throttle.updateTorque(
+    this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, controls, false, dt, simDt, this,
       null,
-    ));
+    );
+    this.motion.setTorque(this.throttle.torque);
     this.throttle.updateThrustLatches(controls);
-    this.motion.setThrust(this.throttle.updateThrustState(controls, this.motion.att, simDt, this));
+    this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.motion.setThrust(this.throttle.thrust);
   }
 
   // 推力・トルクの指令とスロットルの一時状態を解く。
