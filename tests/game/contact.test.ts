@@ -12,8 +12,8 @@ import { closingSpeed, type Contact } from '../../src/game/dynamic/dynamic-entit
 import {
   distributeFixedContact, distributeSphereContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, scale, v3 } from '../../src/math/vec3';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { type Vec3, scale, v3 } from '../../src/math/vec3';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../../src/game/dynamic/dynamic-simulation-participant';
 import { EntityContactPhysics } from '../../src/game/dynamic/entity-contact-physics';

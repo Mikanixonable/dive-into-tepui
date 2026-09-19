@@ -17,7 +17,7 @@ import { BodyGraticule } from '../../src/render/celestial/body-graticule';
 import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
 import coastlineData from '../../src/assets/earth-coastline.json';
 import { Curve } from '../../src/render/curve';
-import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
+import { createAnnulusRing, type RingMaterials } from '../../src/render/celestial/ring';
 import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
 import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';

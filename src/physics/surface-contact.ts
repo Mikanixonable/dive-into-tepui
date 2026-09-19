@@ -3,8 +3,8 @@
 //
 // 天体を相手にするので天体の運動を読むが、**依存はこの向きだけ**である — 重力のモジュールは
 // 何が何を引くかにだけ答え、何が何に触れたかには答えない。
-import { ContactGeometry, sphereContactGeometry } from './collision-response';
-import { KinematicState } from './kinematic-state';
+import { type ContactGeometry, sphereContactGeometry } from './collision-response';
+import type { KinematicState } from './kinematic-state';
 import type { CelestialBody } from './celestial-body';
 import type { Attitude } from './attitude';
 import {

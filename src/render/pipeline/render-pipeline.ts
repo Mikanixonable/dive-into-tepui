@@ -2,7 +2,7 @@
 // composite パスは通常表示では HDR ターゲットをトーンマッピングして合成し、デバッグ表示を
 // 選ぶと中間ターゲットの中身を画面いっぱいに映す。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { GraphicsSettingsData } from '../graphics-settings';

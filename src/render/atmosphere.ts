@@ -3,7 +3,7 @@
 // 上は真空」という界面を置かないので、大気の広がりは決め打ちの厚みではなく散乱係数から導かれる。
 // **配り方は物理ではなく、品質の段が決める予算をどの大気へ回すかの方針である。**
 // 抗力を解く大気モデル(physics/atmosphere.ts)とは別の分布で、こちらは見えだけを決める。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
 import { airglowCutoffAltitude, type AirglowOptics } from './airglow';
 import type { CloudRenderInput } from './cloud/cloud-render-input';

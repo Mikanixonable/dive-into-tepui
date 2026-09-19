@@ -1,6 +1,6 @@
 // クォータニオンの代数と、ベクトル/基底からの組み立て。回転そのものを表す道具で、
 // 何を回すか(剛体・カメラ・座標系)は知らない。
-import { Vec3, cross, dot, lenSq, norm, v3 } from './vec3';
+import { type Vec3, cross, dot, lenSq, norm, v3 } from './vec3';
 
 // 回転が写す局所基底。qFromForwardUp / qFromBasis が組む回転は、この3本を渡された
 // 前方向・上方向・右方向へ写す。

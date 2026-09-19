@@ -251,12 +251,6 @@
     }
   },
   "src/game/creative/object-placer-panel.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    },
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 10
     },
@@ -282,11 +276,6 @@
   },
   "src/game/dynamic/dynamic-entity/casing-collision.ts": {
     "@typescript-eslint/explicit-module-boundary-types": {
-      "count": 2
-    }
-  },
-  "src/game/dynamic/dynamic-entity/contact.ts": {
-    "@typescript-eslint/consistent-type-imports": {
       "count": 2
     }
   },
@@ -350,11 +339,6 @@
   "src/game/dynamic/entity-contact-physics.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 25
-    }
-  },
-  "src/game/dynamic/entity-contact-response.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
     }
   },
   "src/game/dynamic/nan-watchdog.ts": {
@@ -563,9 +547,6 @@
     }
   },
   "src/game/hud/windows/debug-info-window.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
     }
@@ -573,11 +554,6 @@
   "src/game/hud/windows/help-panel.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
-    }
-  },
-  "src/game/hud/windows/menu-actions.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
     }
   },
   "src/game/hud/windows/object-picker.ts": {
@@ -1038,11 +1014,6 @@
       "count": 1
     }
   },
-  "src/math/quat.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/math/ray.ts": {
     "@typescript-eslint/consistent-type-definitions": {
       "count": 1
@@ -1124,11 +1095,6 @@
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 54
-    }
-  },
-  "src/physics/collision-response.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
     }
   },
   "src/physics/cylinder-contact.ts": {
@@ -1368,11 +1334,6 @@
       "count": 1
     }
   },
-  "src/physics/surface-contact.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
   "src/physics/time-ring.ts": {
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 3
@@ -1387,11 +1348,6 @@
     }
   },
   "src/physics/zero-velocity.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/render/atmosphere.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
@@ -1588,11 +1544,6 @@
       "count": 1
     }
   },
-  "src/render/cloud/generated-cloud-field.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/cloud/weather-transport.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -1646,17 +1597,7 @@
       "count": 3
     }
   },
-  "src/render/dynamic/player/rcs-effects.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/dynamic/player/reentry-effects.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
-  "src/render/dynamic/player/thrust-effects.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
     }
@@ -1762,11 +1703,6 @@
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 11
-    }
-  },
-  "src/render/opaque-cloud-surface-renderer.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
     }
   },
   "src/render/pipeline/antialias-pass.ts": {
@@ -1899,11 +1835,6 @@
     }
   },
   "src/render/pipeline/overlay-pass.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/render/pipeline/render-pipeline.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
@@ -2125,15 +2056,7 @@
       "count": 10
     }
   },
-  "tests/game/contact.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
   "tests/game/creative-placement-validation.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 1
     }
@@ -2518,9 +2441,6 @@
     }
   },
   "tests/physics/surface-contact.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 3
     }
@@ -2758,9 +2678,6 @@
     }
   },
   "tools/render-lab/cases.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 10
     }
