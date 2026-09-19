@@ -119,8 +119,8 @@ export class MapView implements ViewFrame {
   }
 
   // router から計画キーと Δv 編集の単発キーを受け取る。
-  public handleCommand(commandId: string, simTime: number): void {
-    this.planEditor.handleCommand(commandId, simTime);
+  public handleCommand(commandId: string): void {
+    this.planEditor.handleCommand(commandId);
   }
 
   // Δv 編集の押下中操作を編集セッションへ配る。
@@ -129,13 +129,13 @@ export class MapView implements ViewFrame {
   }
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。
-  public handlePointer(simTime: number, camera: CameraFrame): void {
-    this.picking.handleRightClick(this.input, simTime, camera);
+  public handlePointer(camera: CameraFrame): void {
+    this.picking.handleRightClick(this.input, camera);
     this.picking.handleLeftClick(this.input, camera);
     this.picking.handleDoubleClick(this.input, camera);
     this.planEditor.handleMapPointer(this.input);
     this.picking.handleLineRightClick(this.input, camera);
-    this.picking.handleEmptySpaceRightClick(this.input, simTime);
+    this.picking.handleEmptySpaceRightClick(this.input);
   }
 
   // 選択候補と可視性ポリシーを組み、時刻に追従する操作パネルを更新する。
@@ -144,7 +144,7 @@ export class MapView implements ViewFrame {
       displayWindow, this.mapDisplay.current, this.cameraPresentation.activeCameraPos,
     );
     this.displayWindowManager.dropStaleRotatingFrame(displayWindow.displayTime, this.frameAnchors);
-    this.planEditor.update(displayWindow.simTime);
+    this.planEditor.update();
   }
 
   // 天体ラベルの間引きと表示。

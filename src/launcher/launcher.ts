@@ -139,15 +139,20 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       hideLoading();
     }
     const stage = this.run.game.activeStage;
-    stage.onDecided = () => {
-      // クリア回数は決着した瞬間に数える。
-      if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.devices.hud);
-      this.showResult(stage);
-    };
     this.noteLaunched(stageClass);
     this.autoSave.beginRun(this.run.snapshot);
-    // 決着済みのスナップショットから始まったランは decide() を通らないため、ここで締める。
+    // 決着済みのスナップショットから始まったランは決着の出来事を記録しないため、ここで締める。
     if (!stage.isPlaying) this.showResult(stage);
+  }
+
+  // このフレームの進行が決着を記録していたら、クリアを数えて結果画面を出す。Run.frame を回し
+  // 終えたフレームごとに呼ぶ。
+  public followProgress(): void {
+    if (this.run === null) return;
+    const { activeStage: stage, events } = this.run.game;
+    if (!events.recent.some(({ body }) => body.kind === 'stageDecided')) return;
+    if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.devices.hud);
+    this.showResult(stage);
   }
 
   // 決着したランを締め、結果画面を出す。
