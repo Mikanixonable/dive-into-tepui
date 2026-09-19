@@ -1,6 +1,6 @@
 import type { DynamicMotionFactory } from './dynamic-entity';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import type { Part, RadiatorPart, SerializedPart, SolarPanelPart } from './parts';
+import type { Part, RadiatorPart, AnyPart, SolarPanelPart } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Vessel } from './vessel';
 
@@ -28,7 +28,7 @@ export abstract class Ship extends Vessel {
   public hasPart(part: Part): boolean { return this.partModel.hasPart(part); }
 
   // 部品の一覧の直列化。
-  protected serializeParts(): SerializedPart[] { return this.partModel.serialize(); }
+  protected serializeParts(): AnyPart[] { return this.partModel.serialize(); }
 
   // 接近速度に応じたダメージを入れ、ダメージが出たかを返す。part を指定すると
   // その部品へ固定し、省略すると健全な部品へ無作為に割り振る。

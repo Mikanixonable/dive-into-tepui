@@ -256,29 +256,15 @@ export class CreativeStage extends Stage {
   public nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
     for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
-      const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t : undefined;
-      if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
+      const t = ship.instantNodeTime;
+      if (t !== null && t >= simTime && (next === null || t < next)) next = t;
     }
     return next;
   }
 
   // ノード時刻ちょうどでノードの絶対状態へ乗り移る。
   public applySimulationEvents(simTime: number): void {
-    for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
-      if (ship.planExecution !== 'instant') continue;
-      const node = ship.plan.firstNode();
-      if (!node || node.t > simTime + 1e-9) continue;
-      // 消化する最後のノードの絶対状態がそのまま到達状態になる(誤差が無い)。
-      const nodes = ship.plan.nodes;
-      let reached: KinematicState | undefined;
-      for (let i = nodes.length - 1; i >= 0; i--) {
-        const n = nodes[i];
-        if (n && n.t <= simTime) { reached = n; break; }
-      }
-      if (!reached) continue;
-      ship.plan.consumeNodesUpTo(simTime, reached);
-      ship.motion.reset(reached);
-    }
+    for (const ship of this._dynamicSystem.all().filter(isPlayer)) ship.executeInstantNodesUpTo(simTime);
   }
 
   // 勝利条件を持たないモードなので、常に false。

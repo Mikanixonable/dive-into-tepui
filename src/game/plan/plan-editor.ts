@@ -245,8 +245,9 @@ export class PlanEditor {
     // 選択が外れるクリックを編集の区切りとして、Δv を一度も加えていない空のノードを破棄する。
     // 毎フレーム削除すると、置いた直後にギズモを操作する前に消えてしまう。
     const dropped = this.selectedNodeIdx !== null && this.selectedNodeIdx !== bestNodeIdx
-      ? this.removeSelectedIfEmpty()
+      ? this.selectedEmptyNodeIdx()
       : null;
+    if (dropped !== null) this.removeSelectedNode(dropped);
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
       this.uiSounds.push('warp');
@@ -274,15 +275,19 @@ export class PlanEditor {
     return dv !== null && len(dv) < NODE_MIN_DV;
   }
 
-  // 選択中ノードが実質的に空なら削除し、削除したノードの index を返す。削除しなければ null。
-  private removeSelectedIfEmpty(): number | null {
+  // 選択中ノードが実質的に空なら、その index。選択が無いか、空でなければ null。
+  private selectedEmptyNodeIdx(): number | null {
     const idx = this.selectedNodeIdx;
+    if (idx === null || this.plan === null) return null;
+    return this.isEmptyNode(idx, this.path.arrivalStates()) ? idx : null;
+  }
+
+  // idx 番目の選択中ノードを削除し、選択を外す。
+  private removeSelectedNode(idx: number): void {
     const plan = this.plan;
-    if (idx === null || plan === null) return null;
-    if (!this.isEmptyNode(idx, this.path.arrivalStates())) return null;
+    if (plan === null) return;
     this.planCommands.removeNode(plan, idx);
     this.selectedNodeIdx = null;
-    return idx;
   }
 
   // 時刻 t の計画軌道上の状態にノードを追加し、選択する。その時刻の計画軌道が

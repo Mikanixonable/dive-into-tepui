@@ -140,7 +140,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     radius: number,
     id: string,
     shape: EnemyCollisionShape | null,
-    alive = true,
+    alive?: boolean,
     burstLeft?: number | null,
     burstDelay?: number | null,
     lastFireSim?: number | null,

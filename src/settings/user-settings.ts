@@ -1,6 +1,8 @@
 // ラン跨ぎのユーザー設定の正本。設定ごとの現在値を1つずつ起こし、保存先のどの鍵へ載せるかを決める。
 
-import { formatBgmMuted, formatBgmVolume, parseBgmMuted, parseBgmVolume } from '../audio/bgm/bgm';
+import {
+  DEFAULT_BGM_VOLUME, formatBgmMuted, formatBgmVolume, parseBgmMuted, parseBgmVolume,
+} from '../audio/bgm/bgm';
 import {
   formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
   parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
@@ -72,5 +74,22 @@ export class UserSettings {
     this.orbitGuideGroupTab = new StoredSetting(
       storage, 'tepui.orbitGuideGroupTab', parseOrbitGuideGroupTab, formatOrbitGuideGroupTab,
     );
+  }
+
+  // 消音を織り込んだ BGM の音量。
+  public get audibleBgmVolume(): number {
+    return this.bgmMuted.current ? 0 : this.bgmVolume.current;
+  }
+
+  // BGM の音量を volume にし、消音を解く。
+  public setBgmVolume(volume: number): void {
+    this.bgmVolume.set(volume);
+    this.bgmMuted.set(false);
+  }
+
+  // BGM の消音を muted にする。音量 0 のまま解くと無音が続くので、そのときは既定の音量へ戻して解く。
+  public setBgmMuted(muted: boolean): void {
+    if (!muted && this.bgmVolume.current <= 0) this.bgmVolume.set(DEFAULT_BGM_VOLUME);
+    this.bgmMuted.set(muted);
   }
 }

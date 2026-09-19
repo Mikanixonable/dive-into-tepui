@@ -46,13 +46,12 @@ export class AttachedBoosterMotion {
     this.stack.toggleIgnition();
   }
 
-  // 最後尾段を物理状態から外し、外した段を返す。段が無ければ null。
-  public detachOutermost(): BoosterStage | null {
-    const stage = this.stack.detachOutermost();
-    if (stage === null) return null;
+  // 最後尾段を物理状態から外す。段が無ければ何もしない。
+  public detachOutermost(): void {
+    if (this.stack.stages.length === 0) return;
+    this.stack.detachOutermost();
     this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
     this.clearThrust();
-    return stage;
   }
 
   // simDt 秒ぶん燃焼させ、区間平均の加速度を求める。

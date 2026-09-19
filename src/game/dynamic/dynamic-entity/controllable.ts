@@ -17,11 +17,13 @@ export interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
   readonly progradeHold: boolean;
-  updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null;
+  readonly thrust: Vec3 | null;
+  readonly torque: Vec3;
+  updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): void;
   updateTorque(
     att: Attitude, r: Vec3, v: Vec3, controls: PilotControls, fineAttitude: boolean,
     dt: number, simDt: number, ship: FuelConsumer, events: RunEventSink | null,
-  ): Vec3;
+  ): void;
   updateThrustLatches(controls: PilotControls): void;
   toggleThrustLatch(direction: ThrustDirection): void;
   isThrustLatched(direction: ThrustDirection): boolean;
@@ -55,13 +57,12 @@ export interface NavigationController {
   readonly fineAttitude: boolean;
 }
 
-// 操作対象(自艦・基地)の共通能力。装備していない機能はプロパティ自体が無いので、有無を確かめて
-// から使う。
+// 操作対象(自艦・基地)の共通能力。装備していない機能は null なので、有無を確かめてから使う。
 export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandReceiver, NavigationController {
   readonly throttle: ThrottlePort;
-  readonly fire?: FireControl;
-  readonly boosters?: AttachedBoosters;
-  readonly altitudeAlarm?: AltitudeAlarm;
+  readonly fire: FireControl | null;
+  readonly boosters: AttachedBoosters | null;
+  readonly altitudeAlarm: AltitudeAlarm | null;
 }
 
 // この個体が操作対象になりうるか。

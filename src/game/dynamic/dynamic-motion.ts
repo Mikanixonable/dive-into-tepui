@@ -83,7 +83,8 @@ export interface DynamicMotionBehavior {
     previousOther: KinematicState, otherState: KinematicState,
   ): ContactGeometry | null;
   hitBodyByRay?(self: DynamicMotion, ray: Ray, pos: Vec3): boolean;
-  contactProxies?(self: DynamicMotion, simTime: number, dt: number): readonly EntityContactParticipant[];
+  placeContactProxies?(self: DynamicMotion, simTime: number, dt: number): void;
+  contactProxies?(self: DynamicMotion): readonly EntityContactParticipant[];
   applyContactProxies?(self: DynamicMotion, dt: number): void;
   onEntityContact?(
     self: DynamicMotion, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
@@ -462,9 +463,15 @@ export class DynamicMotion {
     ) ?? null;
   }
 
+  // 付属物の接触代理を、時刻 simTime から dt [s] のサブステップの位置へ置き直す。サブステップごとに
+  // 1度、contactProxies より先に呼ぶ。
+  public placeContactProxies(simTime: number, dt: number): void {
+    this.behavior.placeContactProxies?.(this, simTime, dt);
+  }
+
   // 接触判定で本体と別に当たる付属物の接触代理。既定は空。
-  public contactProxies(simTime: number, dt: number): readonly EntityContactParticipant[] {
-    return this.behavior.contactProxies?.(this, simTime, dt) ?? [];
+  public contactProxies(): readonly EntityContactParticipant[] {
+    return this.behavior.contactProxies?.(this) ?? [];
   }
 
   // 接触を解いたあとの付属物の状態を、本体の側へ書き戻す。
