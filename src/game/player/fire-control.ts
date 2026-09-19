@@ -202,7 +202,7 @@ export class FireControl {
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
-    this.registry.add(new Bullet(
+    this.registry.add(Bullet.create(
       kinematicState<'eci'>(
         ship.motion.state.t,
         addScaled(muzzle, fwd, 1.5),
@@ -223,7 +223,7 @@ export class FireControl {
     // 機体姿勢基準の左右・上方向
     const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
     const up = qRotate(ship.motion.att.q, LOCAL_UP);
-    this.registry.add(new DebrisPiece(
+    this.registry.add(DebrisPiece.create(
       kinematicState<'eci'>(
         ship.motion.state.t,
         add(muzzle, scale(right, -1.4)),
@@ -253,7 +253,7 @@ export class FireControl {
     const ship = this.player;
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.motion.att.q, v3(0, -1, 0));
-    this.registry.add(new DebrisPiece(
+    this.registry.add(DebrisPiece.create(
       kinematicState<'eci'>(
         ship.motion.state.t,
         add(ship.motion.state.r, qRotate(ship.motion.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
@@ -283,7 +283,7 @@ export class FireControl {
     const portWorld = add(
       ship.motion.state.r, qRotate(ship.motion.att.q, v3(-0.9, 0, 0)),
     );
-    this.registry.add(new DebrisPiece(
+    this.registry.add(DebrisPiece.create(
       kinematicState<'eci'>(
         ship.motion.state.t,
         portWorld,
