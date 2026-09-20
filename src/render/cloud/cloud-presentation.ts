@@ -10,6 +10,8 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from './field-projection';
+import type { CloudQualityLevel } from './cloud-quality';
+import type { CloudStateBinding } from './cloud-state';
 
 // aim() による初回更新までのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
@@ -22,10 +24,12 @@ export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof
 // 雲データ供給源のインターフェース。texture はキャップへ投影されたテクスチャであり、供給元が寿命を管理する。
 export interface CloudFieldSource {
   readonly texture: THREE.Texture;
+  readonly state: CloudStateBinding;
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
   prepare(renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number): void;
+  setQuality?(level: CloudQualityLevel): void;
   // 保持している GPU 資源を解放する。
   dispose(): void;
 }
@@ -53,9 +57,10 @@ export class CloudPresentation {
 
   public get renderInput(): CloudRenderInput {
     return {
-      field: { texture: this.source.texture, cap: this.cap.placement },
+      field: { texture: this.source.texture, cap: this.cap.placement, state: this.source.state },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
+      state: this.source.state,
     };
   }
   public get visible(): boolean { return this.surface.visible; }
@@ -79,7 +84,12 @@ export class CloudPresentation {
     this.surface.bind(this.renderInput);
   }
 
-  public setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
+  public setDetail(detail: CumulusDetail): void {
+    this.surface.setDetail(detail);
+    const quality: CloudQualityLevel = detail === CUMULUS_DETAIL.fine
+      ? 'high' : detail === CUMULUS_DETAIL.coarse ? 'low' : 'standard';
+    this.sources.generated.setQuality?.(quality);
+  }
 
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   public setCloudsVisible(visible: boolean): void {

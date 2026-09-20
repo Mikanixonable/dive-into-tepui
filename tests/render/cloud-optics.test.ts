@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import {
   columnOpticalDepthFromCoverage,
+  cloudBasisOptics,
   composeCloudEvents,
   shellAirmass,
   transmittanceFromColumnOpticalDepth,
@@ -15,6 +16,14 @@ function event(
 }
 
 export function register(): void {
+  test('cloud optics: basisはliquidとiceのtauを連続的に分ける', () => {
+    const liquid = cloudBasisOptics(0.4, 0.3, 0.2, 0.05, 1, 0);
+    const icy = cloudBasisOptics(0.4, 0.3, 0.2, 0.05, 0, 1);
+    assert.ok(liquid.liquidColumn > icy.liquidColumn);
+    assert.ok(icy.iceColumn > 0);
+    assert.ok(liquid.singleScatteringAlbedo > icy.singleScatteringAlbedo);
+  });
+
   test('cloud optics: Rは柱光学深さへ変換しGを混ぜない', () => {
     assert.equal(columnOpticalDepthFromCoverage(0), 0);
     assert.equal(columnOpticalDepthFromCoverage(0.5), Math.log(2));

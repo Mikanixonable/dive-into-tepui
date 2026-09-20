@@ -13,6 +13,8 @@ import {
   canBakeInWindow, temporalLodFor, targetSimulationTime, type TemporalLodMode,
 } from './temporal-lod';
 import { simulationSecondsPerFrame, splitSimulationTime } from './weather-time';
+import type { CloudState, CloudStateBinding } from './cloud-state';
+import { CLOUD_QUALITY, type CloudQualityLevel } from './cloud-quality';
 
 export class GeneratedCloudField implements CloudFieldSource {
   private readonly model: WeatherModel;
@@ -29,6 +31,12 @@ export class GeneratedCloudField implements CloudFieldSource {
   private bakeWindowStartMs: number | null = null;
   private bakeCountInWindow = 0;
   private generationValue = 0;
+  private quality: CloudQualityLevel = 'standard';
+  private stateValue: CloudStateBinding = {
+    absoluteTimeSeconds: 0,
+    seed: 0,
+    temporalMode: 'normal',
+  };
 
   // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
   // 半径 [m]、rotationPeriod はその自転周期 [s]。
@@ -43,9 +51,19 @@ export class GeneratedCloudField implements CloudFieldSource {
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
   public get texture(): THREE.Texture { return this.field.texture; }
   public get generation(): number { return this.generationValue; }
+  public get state(): CloudStateBinding { return this.stateValue; }
+  public setQuality(level: CloudQualityLevel): void { this.quality = level; }
 
   // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。
   public at(direction: Vec3Node): CloudSample { return this.field.at(direction); }
+  public stateAt(direction: Vec3Node): CloudState {
+    return this.field.stateAt(
+      direction,
+      this.stateValue.absoluteTimeSeconds,
+      this.stateValue.seed,
+      this.stateValue.temporalMode,
+    );
+  }
 
   // この場を焼く天気のモデル・気候・投影。prepare で焼いた中間場を読むときに使い、寿命はこのクラスが持つ。
   public get weatherModel(): WeatherModel { return this.model; }
@@ -72,8 +90,13 @@ export class GeneratedCloudField implements CloudFieldSource {
       && this.lastBakedClimateGeneration === climateGeneration
       && this.lastBakedProjectionRevision === projectionRevision
       && this.lastBakedTemporalMode === temporal.mode) return;
+    const maxBakesPerRealSecond = Math.min(
+      temporal.maxBakesPerRealSecond,
+      CLOUD_QUALITY[this.quality].maxFieldUpdatesPerSecond,
+    );
     if (!canBakeInWindow(
-      nowMs, this.bakeWindowStartMs, this.bakeCountInWindow, temporal,
+      nowMs, this.bakeWindowStartMs, this.bakeCountInWindow,
+      { ...temporal, maxBakesPerRealSecond },
     )) return;
     if (this.bakeWindowStartMs === null || nowMs - this.bakeWindowStartMs >= 1000) {
       this.bakeWindowStartMs = nowMs;
@@ -89,6 +112,11 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.lastBakedClimateGeneration = climateGeneration;
     this.lastBakedProjectionRevision = projectionRevision;
     this.lastBakedTemporalMode = temporal.mode;
+    this.stateValue = {
+      absoluteTimeSeconds: targetTime,
+      seed: Math.trunc(targetTime / (24 * 60 * 60)),
+      temporalMode: temporal.mode,
+    };
   }
 
   // 保持している雲場を解放する。
