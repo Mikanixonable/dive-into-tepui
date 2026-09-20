@@ -11,7 +11,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
   gap: 2px;
   margin-bottom: var(--space-3);
   padding: var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent);
   border-radius: var(--radius-micro);
   background: var(--glass-inset);
 }
@@ -57,7 +57,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
   gap: var(--space-2);
   margin: var(--space-3) 0;
   padding: var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--text-dim) 35%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-dim) 35%, transparent);
   border-radius: var(--radius-micro);
   background: var(--glass-inset);
 }
@@ -116,7 +116,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
   grid-column: 1 / -1;
   margin-top: var(--space-2);
   padding-top: var(--space-2);
-  border-top: 1px solid color-mix(in srgb, var(--text-dim) 25%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 25%, transparent);
 }
 #ship-construction-panel .construction-destructive-actions .w-btn { width: 100%; }
 #ship-construction-panel [data-id="construction-role"][data-role="ship"] { color: var(--color-primary); }
