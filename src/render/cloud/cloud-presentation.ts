@@ -72,8 +72,8 @@ export class CloudPresentation {
   }
 
   // cap を、天体固定・半軸で割った殻の空間で見た直下点 subpoint(単位方向)へ置き直す。
-  // rho は同じ空間で測ったカメラの中心距離(地表が 1)。置き直したぶんは不透明表面の読み取りへ
-  // すぐ写す — 写さないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
+  // rho は同じ空間で測ったカメラの中心距離(地表が 1)。置き直した結果は不透明表面のサンプリングへ
+  // 即座に反映する — 反映しないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
   public aim(subpoint: THREE.Vector3, rho: number): void {
     this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
     this.surface.bind(this.renderInput);

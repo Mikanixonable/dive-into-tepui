@@ -4,8 +4,8 @@ import * as THREE from 'three/webgpu';
 import { asin, atan, clamp, cos, dot, float, max, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 
-// cap の置き方。中心・東・北の単位方向と、円板の角半径の sin / cos。読み手はこの組を自分の
-// uniform へ写して、焼いた側と同じ uv で読む。**ベクトルは使い回しの実体**で、aim のたびに
+// cap の置き方。中心・東・北の単位方向と、円板の角半径の sin / cos。読み手はこの組を自身の
+// uniform に反映し、テクスチャ生成側と同じ uv でサンプリングする。**ベクトルは使い回しの実体**で、aim のたびに
 // 書き換わるので、掴んだまま持ち越さない。
 export interface CapPlacement {
   readonly center: THREE.Vector3;
@@ -15,7 +15,7 @@ export interface CapPlacement {
   readonly cosRadius: number;
 }
 
-// cap の置き方から、単位方向を投影面の uv(0..1)へ写す。**式はここ 1 つ**で、焼く側
+// cap の置き方から、単位方向を投影面の uv(0..1) へ変換する。**式はここ 1 つ**で、焼く側
 // (OrthographicCap)と読む側(CloudFieldSampler)が共有する — 2 か所に書くと、片方だけ
 // 直したときに雲と影がずれる。
 export function orthographicCapUv(
@@ -26,22 +26,22 @@ export function orthographicCapUv(
 }
 
 export type FieldProjection = {
-  // 写しの大きさ [texel]。図法が持つ縦横比はここに出る。
+  // 投影テクスチャの解像度 [texel]。図法が持つ縦横比が反映される。
   readonly width: number;
   readonly height: number;
   readonly wrapS: THREE.Wrapping;
   readonly wrapT: THREE.Wrapping;
-  // 1 texel が張る角 [rad](写しの中でいちばん細かい所)。標本化できない細かさを畳むのに使う。
+  // 1 texel が張る角 [rad]（投影面内で最も細密な領域）。サンプリング限界を超える高周波成分を帯域制限する用途に用いる。
   readonly texelAngle: FloatNode;
-  // 同じ角のいまの値。写しをどこまで粗く焼いてよいかを CPU 側で決めるのに使う。
+  // 同一の角の現在値。テクスチャの要求解像度を CPU 側で判定する用途に用いる。
   readonly texelAngleValue: number;
-  // 写しの置き方の版。置き方が変わるたびに進むので、焼いた写しがいまの置き方のものかを見分けられる。
+  // 投影設定のリビジョン。配置変更のたびに加算され、生成済みテクスチャが現行の配置設定と一致するかを判定できる。
   readonly revision: number;
   // uv(0..1)の指す単位方向。1 texel を焼くのに 1 回走る。
   directionAt(uv: Vec2Node): Vec3Node;
-  // 単位方向を写す uv(0..1)。1 texel を焼くのに何度も走るので、費用はこちらが効く。
+  // 単位方向に対応する uv(0..1)。1 texel 生成時に高頻度で評価されるため、計算コストの主因となる。
   uvAt(direction: Vec3Node): Vec2Node;
-  // その uv に値を持つなら 1、持たないなら 0。正方形の写しへ円板を入れる図法では四隅が 0 になる。
+  // 指定の uv が定義域内であれば 1、域外であれば 0。正方形テクスチャ内に円板を投影する図法では四隅が 0 となる。
   insideAt(uv: Vec2Node): FloatNode;
 };
 
@@ -94,8 +94,8 @@ export class EquirectProjection implements FieldProjection {
   }
 }
 
-// 中心のまわりの円板だけを正方形の写しで持つ正射影 — 中心からの球面上距離 θ を、投影面上の
-// 半径 sin θ へ写す。遠方から球を見た画面そのものの写像なので、texel と画素の比が円板の全域で
+// 中心のまわりの円板だけを正方形のテクスチャで保持する正射影 — 中心からの球面上距離 θ を、投影面上の
+// 半径 sin θ へ射影する。遠方から球を見た画面そのものの写像なので、texel と画素の比が円板の全域で
 // ほぼ一定になる。円板の外側(四隅)は値を持たない。
 export class OrthographicCap implements FieldProjection {
   public readonly width: number;
@@ -117,7 +117,7 @@ export class OrthographicCap implements FieldProjection {
   // 外周へ向かって texel は角度としては粗くなるが、それは球の傾きぶんで、画面上では一定に見える。
   public readonly texelAngle: FloatNode;
 
-  // size は写しの 1 辺の texel 数。中心と半径の意味は aim() と同じ。
+  // size は投影テクスチャの 1 辺の texel 数。中心と半径の意味は aim() と同じ。
   public constructor(size: number, latitude: number, longitude: number, radius: number) {
     this.width = size;
     this.height = size;
@@ -154,7 +154,7 @@ export class OrthographicCap implements FieldProjection {
     this.aim(latitude, Math.atan2(direction.x, direction.z), radius);
   }
 
-  // いまの置き方。読み手が自分の uniform へ写すために読む。
+  // 現在の配置設定。サンプラー側が uniform に反映するために参照する。
   public get placement(): CapPlacement {
     return {
       center: this.center.value,

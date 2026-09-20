@@ -270,7 +270,7 @@ export class PhysicalObjectListPanel {
     this.panel.classList.toggle('hidden', !visible);
   }
 
-  // パネルを取り除き、折りたたみ状態変化の購読を解く。
+  // パネルを取り除き、折りたたみ状態変化の購読を解除する。
   public dispose(): void {
     this.unsubscribeCollapsedView();
     this.panel.remove();

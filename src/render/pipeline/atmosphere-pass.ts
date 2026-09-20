@@ -32,9 +32,9 @@ function copyMaterial(source: THREE.Texture): THREE.MeshBasicNodeMaterial {
 export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
-  // 板が解く層。描く直前に、その天体の光学パラメータを書き込む。
+  // フルスクリーンQuadが描画する大気層。描画直前に天体の光学パラメータを設定する。
   private readonly layer: AtmosphereIntegrator;
-  // 板が読む下地。層ごとに、その層より奥まで重ね終えた絵をここへ写す。
+  // 下地テクスチャ。層ごとに、その層より奥まで合成済みのバッファをここへコピーする。
   private readonly backdropTarget: THREE.RenderTarget;
   private readonly sharedCopyMaterial: THREE.MeshBasicNodeMaterial;
   private readonly sharedCopyQuad: QuadMesh;
@@ -182,7 +182,7 @@ export class AtmospherePass {
 
   // いま書き込んである層 1 つを destination へ描く。
   private drawLayer(destination: THREE.RenderTarget, includesClouds: boolean): void {
-    // 色だけを上書きする — 共有ターゲットの深度はマテリアルパスが書いたものを後段も使う。
+    // 色だけを上書きする — 共有ターゲットの深度はマテリアルパスが出力したものを後続パスでも再利用する。
     this.renderer.setRenderTarget(destination);
     this.renderer.autoClear = false;
     // GPU 計測は、beginPass の直後の描画命令に付く。層ごとのぶんは計測側が足し合わせる。
@@ -192,7 +192,7 @@ export class AtmospherePass {
     this.renderer.setRenderTarget(null);
   }
 
-  // source が読んでいる1枚を destination へ写す。
+  // source のバッファを destination へコピー（転送）する。
   private copyInto(destination: THREE.RenderTarget, source: QuadMesh): void {
     this.gpu.beginPass(GPU_PASS.atmosphere);
     this.renderer.setRenderTarget(destination);

@@ -27,7 +27,7 @@ export function proteinSiteWorldPosition(
   return add(origin, qRotate(attitude, local));
 }
 
-// ワールド座標の着弾点を、root の倍率を外した模型ローカル座標へ写す。
+// ワールド座標の着弾点を、root のスケールを除いたモデルローカル座標へ変換する。
 export function proteinLocalImpactPoint(
   worldPoint: Vec3, origin: Vec3, attitude: Quat, rootScale: number,
 ): Vec3 {
