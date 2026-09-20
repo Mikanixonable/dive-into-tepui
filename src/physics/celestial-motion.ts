@@ -32,8 +32,8 @@ interface EciValues {
   readonly atmosphere: Atmosphere | null;
 }
 
-// state.t と accel から時刻 t での位置を弾道外挿する。天体は実質的に弾道運動しており、
-// 1ステップぶんの時間幅では3次以上の項が無視できるので2次で足りる。
+// state.t と accel から時刻 t における位置を2次近似で弾道外挿する。
+// 1ステップの時間幅内では3次以上の加速度変化項が無視できるため十分な精度を得られる。
 function extrapolatedPosition(eci: EciValues, t: number): Vec3 {
   const { r, v } = eci.state;
   const s = t - eci.state.t;
@@ -223,8 +223,8 @@ export class StarMotion extends CelestialMotion {
     return addTimeCacheStats(super.cacheStats, this.analyticCache.stats);
   }
 
-  // 恒星の太陽系重心相対位置 −Σ(μ_i/μ_total)·r_i。r_i は各系の重心の**主星相対**位置なので、
-  // 自分の位置を経由せず循環しない。系の内訳(惑星本体と衛星)は各系の重心が畳んでいる。
+  // 恒星の太陽系重心相対位置 −Σ(μ_i/μ_total)·r_i。r_i は各系の重心の**主星相対**位置のため
+  // 循環参照を起こさない。惑星本体と衛星の内訳は各系の重心計算に内包される。
   private computeAnalyticStateAt(t: number): KinematicState<'analytic'> {
     // μ = 0 は「重力を無視すると宣言した」の意。その恒星は重心を動かさないので原点に置く。
     if (this.def.mu <= 0) return kinematicState<'analytic'>(t, v3(), v3());

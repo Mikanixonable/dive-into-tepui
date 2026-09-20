@@ -3,6 +3,21 @@
 // 名前付きの境界として表す。
 
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { DynamicMotion } from './dynamic-motion';
+import type { EntityRegistry, SpawnGate, SpawnRecord } from './entity-registry';
+import { EntityIdAllocators } from './dynamic-entity/entity-id';
+import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
+import { findEntityClass } from './dynamic-entity/entity-dictionary';
+import { isSerializedEnemy } from './dynamic-entity/enemy';
+import { ProteinEnemy } from './dynamic-entity/protein-enemy';
+import { proteinAssetGate } from '../protein/protein-asset-loader';
+import { ENTITY_CAP, type CapKind } from './dynamic-entity/entity-kind';
+import type { StageOutcome } from '../stages/stage-outcome';
+import type { EngagementParticipant, EngagementZone } from './engagement-zone';
+import type { DynamicSimulationRoster, SimulationLifecycle } from './dynamic-simulation-participant';
+import { isControllable, type Controllable } from './dynamic-entity/controllable';
 
 // pending spawn が実体化してよいかを決める条件。待つ理由はこの契約の外側に閉じ込める。
 export type EntitySpawnGate = () => boolean;
@@ -38,3 +53,177 @@ export interface EntityRemovalPort {
 // DynamicSystem が後続配線で実装を委譲できる寿命ポート。メソッド順が一体の寿命の流れを示す。
 export interface EntityLifecyclePort
   extends EntityAdditionPort, PendingEntitySpawnPort, EntityDeathPort, EntityRemovalPort {}
+
+function readyToSpawn(record: SpawnRecord): boolean {
+  const gate: SpawnGate | null = record.kind === 'protein-enemy'
+    ? proteinAssetGate(record.request.assetId)
+    : findEntityClass(record.entity.kind)?.spawnGate(record.entity) ?? null;
+  return gate === null || gate();
+}
+
+function isEnemyRecord(record: SpawnRecord): boolean {
+  return record.kind === 'protein-enemy' || isSerializedEnemy(record.entity);
+}
+
+// DynamicSystem からエンティティの collection、pending spawn、上限、回収を分離した所有者。
+// Simulator へは roster/lifecycle、生成側へは registry として同じインスタンスを渡す。
+export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, DynamicSimulationRoster, SimulationLifecycle {
+  private readonly entities: DynamicEntity[] = [];
+  private readonly pendingSpawns: SpawnRecord[] = [];
+  private readonly deferredSpawns: PendingEntitySpawn[] = [];
+  private collectionRevisionValue = 0;
+  private capsUncheckedSinceAdd = false;
+
+  public constructor(
+    private readonly scene: THREE.Scene,
+    public readonly events: EntityRegistry['events'],
+    private readonly celestialBodies: CelestialBodies,
+    public readonly idAllocators: EntityIdAllocators = new EntityIdAllocators(),
+    records: readonly SpawnRecord[] = [],
+  ) {
+    for (const record of records) this.spawnWhenReady(record);
+  }
+
+  public get collectionRevision(): number { return this.collectionRevisionValue; }
+
+  public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
+
+  public get pendingEnemyCount(): number {
+    return this.pendingSpawns.filter(isEnemyRecord).length;
+  }
+
+  public all(): readonly DynamicEntity[] { return this.entities; }
+
+  public allMotions(): readonly DynamicMotion[] {
+    return this.entities.map(entity => entity.motion);
+  }
+
+  public add(entity: DynamicEntity): void {
+    this.entities.push(entity);
+    if (entity.capKind !== null) this.capsUncheckedSinceAdd = true;
+    this.bumpCollectionRevision();
+  }
+
+  public queuePendingSpawn(spawn: PendingEntitySpawn): void {
+    if (spawn.gate()) {
+      const entity = spawn.build();
+      this.add(entity);
+      spawn.onSpawned?.();
+      return;
+    }
+    this.deferredSpawns.push(spawn);
+  }
+
+  public spawnWhenReady(record: SpawnRecord): void {
+    if (readyToSpawn(record)) this.materialize(record);
+    else this.pendingSpawns.push(record);
+  }
+
+  public processPendingSpawns(): void {
+    let deferredWrite = 0;
+    for (const spawn of this.deferredSpawns) {
+      if (spawn.gate()) {
+        this.add(spawn.build());
+        spawn.onSpawned?.();
+      } else {
+        this.deferredSpawns[deferredWrite++] = spawn;
+      }
+    }
+    this.deferredSpawns.length = deferredWrite;
+    if (this.pendingSpawns.length === 0) return;
+    let w = 0;
+    for (const record of this.pendingSpawns) {
+      if (readyToSpawn(record)) this.materialize(record);
+      else this.pendingSpawns[w++] = record;
+    }
+    this.pendingSpawns.length = w;
+  }
+
+  public markDead(entity: DynamicEntity): void { entity.motion.kill(); }
+
+  public remove(entity: DynamicEntity): void {
+    if (!this.detach(entity)) return;
+    entity.dispose();
+  }
+
+  public requestHistoryDuration(sec: number): void {
+    for (const entity of this.entities) entity.motion.requestHistoryDuration(sec);
+  }
+
+  public serializedEntities(): readonly SerializedDynamicEntity[] {
+    return this.entities.map(entity => entity.serialize());
+  }
+
+  public pendingSpawnRecords(): readonly SpawnRecord[] { return this.pendingSpawns; }
+
+  public cleanup(
+    _dt: number, _simTime: number, activeStage: StageOutcome,
+    zones: readonly EngagementZone<EngagementParticipant>[],
+  ): void {
+    this.processPendingSpawns();
+    const atmosphereBodies = this.celestialBodies.atmosphereMotions;
+    const currentEntities = this.entities.length;
+    for (let i = 0; i < currentEntities; i++) {
+      this.entities[i]!.motion.checkLoss(
+        _dt, _simTime, { activeStage, registry: this }, zones, atmosphereBodies,
+      );
+    }
+    this.enforceCaps();
+    this.prune();
+  }
+
+  public dispose(): void {
+    for (const entity of this.entities) entity.dispose();
+    this.entities.length = 0;
+    this.pendingSpawns.length = 0;
+    this.bumpCollectionRevision();
+  }
+
+  private materialize(record: SpawnRecord): void {
+    if (record.kind === 'protein-enemy') {
+      this.add(ProteinEnemy.create(record.request, this.idAllocators, this.scene));
+      return;
+    }
+    const entityClass = findEntityClass(record.entity.kind);
+    if (entityClass !== null) this.add(entityClass.deserialize(record.entity, this, this.scene));
+  }
+
+  private detach(entity: DynamicEntity): boolean {
+    const index = this.entities.indexOf(entity);
+    if (index < 0) return false;
+    this.entities.splice(index, 1);
+    this.bumpCollectionRevision();
+    return true;
+  }
+
+  private enforceCaps(): void {
+    if (!this.capsUncheckedSinceAdd) return;
+    this.capsUncheckedSinceAdd = false;
+    const live: Record<CapKind, number> = { bullet: 0, casing: 0, debris: 0 };
+    for (let i = this.entities.length - 1; i >= 0; i--) {
+      const entity = this.entities[i]!;
+      const cap = entity.capKind;
+      if (cap === null || !entity.motion.alive) continue;
+      const rank = live[cap] + 1;
+      live[cap] = rank;
+      if (rank > ENTITY_CAP[cap]) entity.motion.kill();
+    }
+  }
+
+  private prune(): void {
+    let write = 0;
+    let changed = false;
+    for (const entity of this.entities) {
+      if (!entity.motion.alive && !entity.reclaimedByOwner) {
+        entity.dispose();
+        changed = true;
+      } else {
+        this.entities[write++] = entity;
+      }
+    }
+    this.entities.length = write;
+    if (changed) this.bumpCollectionRevision();
+  }
+
+  private bumpCollectionRevision(): void { this.collectionRevisionValue++; }
+}

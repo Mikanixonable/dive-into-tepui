@@ -1,6 +1,5 @@
-// 1曲ぶんの鳴っている状態。自分のゲイン(その曲だけのフェード用)・Composer・楽器一式・
-// ステップ位置を持ち、与えられた時刻まで音を先読みでスケジュールする。
-// どの曲をいつ鳴らすかと、ユーザー音量(マスターゲイン)は持ち主の責務。
+// 単一トラックの再生状態。トラック固有のフェード用ゲイン、Composer、楽器群、および
+// ステップ進行位置を保持し、指定時刻までの発音を先読みスケジュールする。
 import { Composer, ComposerNote } from './composer';
 import { Instrument } from './instrument';
 import { createInstrument } from './instrument-factory';
@@ -16,7 +15,7 @@ export class TrackPlayback {
   private nextTime: number;
   private lastNoteEnd: number;
 
-  // destination は持ち主のマスターゲイン。最初のステップは startTime から刻み始める。
+  // destination は出力先オーディオノード。startTime から初回ステップの発音を開始する。
   // 楽器は曲の頭で一度だけ組み、以降は音符ごとに id で引く。
   public constructor(
     private readonly ctx: AudioContext,
