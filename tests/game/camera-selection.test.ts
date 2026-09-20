@@ -2,9 +2,11 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { bodyAnchorSource } from '../../src/physics/attractor';
+import { frameRoleAnchorId } from '../../src/physics/frame';
 import { LOCAL_FORWARD, qFromAxisAngle, qFromBasis, qMul, qRotate } from '../../src/math/quat';
 import { len, sub, v3 } from '../../src/math/vec3';
 import { CommandQueue } from '../../src/game/command-queue';
+import { RunEventLog } from '../../src/game/run-events';
 import { cameraCommands } from '../../src/game/viewer/camera-commands';
 import { CameraSelection, type SerializedCameraSelection } from '../../src/game/viewer/camera-selection';
 import type {
@@ -111,5 +113,24 @@ export function register(): void {
     ));
     assert.ok(offsetError < 1e-7 * len(v3(before.offset.x, before.offset.y, before.offset.z)));
     assert.ok(upError < 1e-9);
+  });
+
+  test('camera-selection: 操作対象を選び直すと、非表示中の戦闘カメラも操作対象注視へ戻る', () => {
+    const events = new RunEventLog();
+    const camera = CameraSelection.deserialize({
+      combat: serializedCamera({ focus: { kind: 'object', id: 'base' } }),
+      map: serializedCamera(),
+    }, solarSystemParts().system, events);
+
+    events.record({ kind: 'controlTargetSelected', target: 'player', name: 'ship-2' });
+    camera.followProgress(events.recent, { combat: sample(), map: sample() }, 'map');
+
+    assert.deepEqual(camera.combat.focus, { kind: 'object', id: frameRoleAnchorId('controlled') });
+
+    events.beginStep();
+    camera.combat.setFocus({ kind: 'object', id: 'base' });
+    events.record({ kind: 'controlTargetReleased', target: 'base' });
+    camera.followProgress(events.recent, { combat: sample(), map: sample() }, 'combat');
+    assert.deepEqual(camera.combat.focus, { kind: 'object', id: frameRoleAnchorId('controlled') });
   });
 }
