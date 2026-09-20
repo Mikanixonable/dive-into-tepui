@@ -7,6 +7,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
 import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
+import type { CompoundSphereShape } from '../../physics/compound-sphere-contact';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
 import type { ContactKind } from './dynamic-motion';
@@ -42,6 +43,8 @@ export interface KinematicParticipant {
   readonly prevAtt: Attitude;
   // 接触側が姿勢と同じ世代の compound を読むための不変スナップショット。
   readonly compoundShape: CompoundCylinderShape | null;
+  // 天体表面の候補絞り込みに使う、同じ世代の保守的な球代理。
+  readonly surfaceShape: CompoundSphereShape | null;
   readonly shapeRevision: number;
 }
 
