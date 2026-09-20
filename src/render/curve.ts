@@ -179,7 +179,7 @@ export class Curve {
     this.appliedStyle = style;
   }
 
-  // sample の座標系の点における m/px。要求された変換でワールドへ写してから換算する。
+  // sample のローカル座標系における点での m/px。指定された変換行列でワールド座標系へ変換してから換算する。
   private scaleAtLocal(cam: CameraScale, lx: number, ly: number, lz: number): number {
     this.scratchWorld.set(lx, ly, lz).applyQuaternion(this.reqQuaternion).add(this.reqPosition);
     return cam.at(this.scratchWorld.x, this.scratchWorld.y, this.scratchWorld.z);

@@ -5,7 +5,7 @@ import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissiv
 import type { ShadowExtent } from './pipeline/shadow/shadow-casters';
 
 // 空き枠へ置くゼロ行列。three は instanceMatrix のバッファ長を最初の描画で確定するので、
-// count は容量のまま動かさず、空き枠はこれで潰す。
+// count は容量のまま固定し、空きスロットはこれで無効化（ゼロスケール）する。
 const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 // capacity 体までを1本の InstancedMesh で描く。beginFrame → push(...) → endFrame の順に
