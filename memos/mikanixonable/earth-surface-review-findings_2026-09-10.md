@@ -152,3 +152,27 @@ CPU実装`earthSurfaceUv`は北極を`v=0`、南極を`v=1`へ写す。一方、
 - `npm run test:render`: 116/116 成功
 - `npm run test:game`: 205/205 成功
 - `npm run earth-surface:capture`: WebGPU/drawing bufferは利用可能、実データ未投入のためunavailable
+
+## 追補: base画像と詳細LODの明度差（2026-09-20）
+
+実データで詳細LODが有効になったとき、fallback画像より詳細タイルの領域が暗く見える問題を再調査した。
+原因はタイル生成や法線復号ではなく、詳細材質のbase画像のdatasetが異なっていたことである。
+`earth-surface-factory`が起動用のbundled `EARTH_TEXTURE`を詳細材質へ渡し、
+`earth-surface-material-binding`がmanifestの`source.baseColorUrl`より共有テクスチャを優先していた。
+そのため、未取得領域はbundled画像、取得済み領域はmanifestのタイルという組み合わせになっていた。
+
+今回の修正では、詳細材質が常にmanifestの`baseColorUrl`を`DeferredTexture`として所有・取得するようにし、
+fallback画像との共有経路と不要になった`CelestialSurface.baseColorTexture`を削除した。正規base画像が届くまで
+詳細材質へ切り替えない既存のpending契約は維持し、画像loaderが同期的に利用できない環境ではfallbackへ留まるようにした。
+z4タイルや新しいGit管理アセットは追加していない。
+
+この修正で、詳細材質内のbase領域とz5〜z7タイルは同一manifestのdatasetを参照する。起動直後にbundled fallbackから
+正規baseへ切り替わる際の全球的な明度変化は別の表示遷移であり、必要なら正規baseをfallback側にも差し替える検討を残す。
+
+### 追補時の検証
+
+- `npm run typecheck`: 成功
+- `npm run test:render`: 226/226 成功
+- `npm run test:game`: 307/307 成功
+- `npm run lint`: 成功
+- `npm run check:boundaries`: 成功
