@@ -1,18 +1,22 @@
 // 配信物が未設定の開発環境で使う地球表面の表示・入力初期値。
 import earthTextureUrl from '../assets/earth.jpg';
 import type { CelestialTexture } from './celestial-textures';
-import type { EarthSurfaceSource } from './earth-surface-source';
+import {
+  EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
+  type EarthSurfaceSource,
+} from './earth-surface-source';
 
 export const EARTH_TEXTURE: CelestialTexture = {
   url: earthTextureUrl,
-  albedoScale: 0.9102,
-  bondAlbedo: 0.306,
-  averageHue: [0.9703, 0.9940, 1.1471],
+  albedoScale: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION.diffuseAlbedoScale,
+  bondAlbedo: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION.bondAlbedo,
+  averageHue: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION.averageHue,
 };
 
 export const EARTH_SURFACE_FIXTURE_SOURCE = {
   datasetId: 'earth-development-fixture',
   sourceManifestSha256: '0'.repeat(64),
+  colorCalibration: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
   climateEncoding: {
     temperatureK: { min: 180, max: 330 },
     cloudFraction: { min: 0, max: 1 },

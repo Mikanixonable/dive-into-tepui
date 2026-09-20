@@ -11,6 +11,7 @@ import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tile-key';
 import { EarthSurfaceView } from '../../src/render/earth-surface-tile-projection';
 import type { EarthSurfaceResidentFrame } from '../../src/render/earth-surface-resident';
 import type { EarthSurfaceSource } from '../../src/render/earth-surface-source';
+import { EARTH_SURFACE_LEGACY_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
 import type {
   CelestialSurfaceFrame,
   CelestialSurfaceLike,
@@ -20,6 +21,7 @@ import type {
 const SOURCE = {
   datasetId: 'earth-test',
   sourceManifestSha256: '0'.repeat(64),
+  colorCalibration: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
   climateEncoding: {
     temperatureK: { min: 180, max: 330 },
     cloudFraction: { min: 0, max: 1 },
@@ -81,7 +83,7 @@ export function register(): void {
     const surface: CelestialSurfaceLike = new EarthSurface(context, fallback);
     const parent = new THREE.Group();
 
-    assert.equal(surface.photometry, fallback.photometry);
+    assert.equal(surface.photometry?.bondAlbedo, SOURCE.colorCalibration.bondAlbedo);
     assert.equal(surface.textureUrl, fallback.textureUrl);
     surface.addTo(parent);
     surface.syncLod(32);
@@ -94,6 +96,35 @@ export function register(): void {
     assert.deepEqual(fallback.calls, ['addTo', 'syncLod', 'syncFrame', 'hide', 'dispose']);
     assert.equal(lease.signal.aborted, true);
     assert.throws(() => context.requestLease(), /disposed/);
+  });
+
+  test('earth surface: manifest base fallbackの差し替えは既存parentとLODを保つ', () => {
+    const surface = new EarthSurface(
+      new EarthSurfaceContext(SOURCE), CelestialSurface.solid([0.1, 0.1, 0.1]),
+    );
+    const parent = new THREE.Group();
+    surface.addTo(parent);
+    surface.syncLod(32);
+    const previousCount = parent.children.length;
+    surface.replaceFallback(CelestialSurface.solid([0.2, 0.2, 0.2]));
+
+    assert.equal(parent.children.length, previousCount);
+    assert.equal(parent.children.filter((child) => child.visible).length, 1);
+    surface.dispose();
+  });
+
+  test('earth surface: attach後の測光は現在datasetの校正値へ切り替わる', () => {
+    const surface = new EarthSurface(
+      new EarthSurfaceContext(SOURCE), CelestialSurface.solid([0.1, 0.1, 0.1]),
+    );
+    const nextSource = {
+      ...SOURCE,
+      colorCalibration: { ...SOURCE.colorCalibration, bondAlbedo: 0.294 },
+    };
+    surface.attach(nextSource, null, 'fallback');
+
+    assert.equal(surface.photometry?.bondAlbedo, 0.294);
+    surface.dispose();
   });
 
   test('earth surface: diagnosticsは状態・理由・詳細材質・常駐LODを返す', () => {

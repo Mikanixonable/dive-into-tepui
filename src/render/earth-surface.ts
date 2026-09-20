@@ -1,6 +1,7 @@
 // 地球表面。EarthSurfaceContext は配信版と、地表要求の世代・キャンセル信号を配る。EarthSurface は
 // 天体表面の球へ、詳細な材質とタイルの常駐を接続する。
 import * as THREE from 'three/webgpu';
+import { scaledToBondAlbedo } from './celestial-albedo';
 import type { EarthSurfaceSource } from './earth-surface-source';
 import type {
   EarthSurfaceResidentFrame,
@@ -53,6 +54,16 @@ function isMaterialHost(
 ): surface is CelestialSurfaceLike & CelestialSurfaceMaterialHost {
   const candidate = surface as unknown as { replaceMaterial?: unknown };
   return typeof candidate.replaceMaterial === 'function';
+}
+
+// manifestが宣言する地表データセットの測光を、天体表面の公開面へ写す。
+function photometryOf(source: EarthSurfaceSource): SurfacePhotometry {
+  return {
+    bondAlbedo: source.colorCalibration.bondAlbedo,
+    lightSourceAlbedo: scaledToBondAlbedo(
+      source.colorCalibration.averageHue, source.colorCalibration.bondAlbedo,
+    ),
+  };
 }
 
 // 配信版(source)を持ち、地表要求へ世代とキャンセル信号を配る。世代を進めると、それまでに
@@ -123,13 +134,15 @@ export class EarthSurface implements CelestialSurfaceLike {
   private materialFailureReasonValue: (() => string | null) | null = null;
   private statusValue: EarthSurfaceStatus;
   private reasonValue: string | null;
+  private parentValue: THREE.Object3D | null = null;
+  private apparentDiameterPxValue: number | null = null;
   private disposed = false;
 
   // context と fallback の所有を引き継ぎ、dispose で一緒に解放する。status は省くと
   // coordinator の有無から決まる。
   public constructor(
     private readonly context: EarthSurfaceContext,
-    private readonly fallback: CelestialSurfaceLike,
+    private fallback: CelestialSurfaceLike,
     coordinator: EarthSurfaceResidentCoordinatorLike | null = null,
     status: EarthSurfaceStatus = coordinator === null ? 'fallback' : 'ready',
     reason: string | null = null,
@@ -137,7 +150,10 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.coordinatorValue = coordinator;
     this.statusValue = status;
     this.reasonValue = reason;
+    this.photometryValue = photometryOf(context.source);
   }
+
+  private photometryValue: SurfacePhotometry | null;
 
   public get status(): EarthSurfaceStatus { return this.statusValue; }
 
@@ -154,13 +170,19 @@ export class EarthSurface implements CelestialSurfaceLike {
     };
   }
 
-  public get photometry(): SurfacePhotometry | null { return this.fallback.photometry; }
+  public get photometry(): SurfacePhotometry | null { return this.photometryValue; }
 
   public get textureUrl(): string | null { return this.fallback.textureUrl; }
 
-  public addTo(parent: THREE.Object3D): void { this.fallback.addTo(parent); }
+  public addTo(parent: THREE.Object3D): void {
+    this.parentValue = parent;
+    this.fallback.addTo(parent);
+  }
 
-  public syncLod(apparentDiameterPx: number): void { this.fallback.syncLod(apparentDiameterPx); }
+  public syncLod(apparentDiameterPx: number): void {
+    this.apparentDiameterPxValue = apparentDiameterPx;
+    this.fallback.syncLod(apparentDiameterPx);
+  }
 
   // フレームの値で球と材質を更新し、タイルの常駐を進める。dispose 後は何もしない。
   public syncFrame(frame: CelestialSurfaceFrame): void {
@@ -231,6 +253,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     if (this.pendingMaterialValue !== null) disposeCelestialSurfaceMaterialAttachment(this.pendingMaterialValue);
     this.pendingMaterialValue = null;
     this.context.replaceSource(source);
+    this.photometryValue = photometryOf(source);
     this.coordinatorValue = coordinator;
     this.statusValue = status;
     this.reasonValue = reason;
@@ -245,6 +268,21 @@ export class EarthSurface implements CelestialSurfaceLike {
     } else {
       if (isMaterialHost(this.fallback)) this.fallback.restoreFallbackMaterial?.();
     }
+  }
+
+  // manifest取得後、詳細材質へ差し替える前に同じbase画像由来の全球fallbackへ切り替える。
+  // 詳細材質接続後の差し替えは資源の所有関係を壊すため受け付けない。
+  public replaceFallback(fallback: CelestialSurfaceLike): void {
+    if (this.disposed || this.usesDetailedMaterial) {
+      fallback.dispose();
+      return;
+    }
+    const previous = this.fallback;
+    this.fallback = fallback;
+    if (this.parentValue !== null) fallback.addTo(this.parentValue);
+    if (this.apparentDiameterPxValue !== null) fallback.syncLod(this.apparentDiameterPxValue);
+    this.photometryValue = fallback.photometry;
+    previous.dispose();
   }
 
   // 要求を中断し、所有する coordinator・context・fallback ごと解放する。何度呼んでもよい。
