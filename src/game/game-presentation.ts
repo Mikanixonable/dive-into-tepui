@@ -59,7 +59,12 @@ import type { SettingValue } from '../settings/setting-value';
 import type { ThemePalette } from '../theme';
 import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
 import type { TrajectoryDemand } from './dynamic/trajectory-demand';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import type { CameraFrameSamples } from './viewer/camera-selection';
+import type { DisplayWindow } from './display-window-manager';
+import type { MapVisibilityPolicy } from './map/visibility-policy';
+import type { OrbitReference } from './orbit-reference';
+import type { ViewMode } from './view/view-mode';
 import type { PerfCounts } from './perf-counts';
 import type { LoadingProgress } from './loading-progress';
 
@@ -332,7 +337,7 @@ export class GamePresentation {
   public sync(
     graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport, nowMs: number,
   ): void {
-    const { celestialSystem, dynamicSystem, activeStage, viewer } = this.game;
+    const { celestialSystem, dynamicSystem, viewer } = this.game;
     const controlled = this.game.activeControllable;
     const palette = this.themePalette.current;
     const displayWindow = this.displayWindowManager.current;
@@ -344,17 +349,8 @@ export class GamePresentation {
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime } = displayWindow;
     const view = this.viewManager.current;
-
-    // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
-    const cs = this.cameraSystem;
-    const camera = this.cameraView.sync(
-      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.zoomActive, cs.focusVelocity,
-    );
-    this.cameraFrame = camera;
-    this.viewOptions.setVisible(this.viewManager.current === 'map');
-    // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
-    this.viewManager.activeView.syncLabels(displayWindow, camera, nowMs);
-
+    // 最初にカメラを確定し、後続の同期とマーカー投影が読む行列を揃える。
+    const camera = this.syncCamera(displayWindow, view, viewport, nowMs);
     // 描く対象と選べる対象を同じ判定から出すため、ビューが確定させた可否を読む。
     const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
     // 3D 軌道線を軌道パネルと同じ基準で解く。
@@ -364,7 +360,41 @@ export class GamePresentation {
         this.navTargetPresenter, dynamicSystem, celestialSystem, controlled.motion.state.t,
       )
       : undefined;
+    // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
+    const timeLabel = timeLabelSettingOf(displayWindow);
+    this.syncWorld(
+      graphics, style, nowMs, displayTime, view, controlled, orbitRef ?? null, visibilityPolicy, timeLabel, camera,
+    );
+    this.syncEffectsAndTargets(
+      nowMs, displayTime, view, controlled, visibilityPolicy, timeLabel, palette, camera,
+    );
+    this.syncPanelsAndMarkers(
+      nowMs, displayWindow, displayTime, view, controlled, orbitRef ?? null, visibilityPolicy, palette, camera,
+    );
+  }
 
+  // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
+  private syncCamera(
+    displayWindow: DisplayWindow, view: ViewMode, viewport: Viewport, nowMs: number,
+  ): CameraFrame {
+    const cs = this.cameraSystem;
+    const camera = this.cameraView.sync(
+      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.zoomActive, cs.focusVelocity,
+    );
+    this.cameraFrame = camera;
+    this.viewOptions.setVisible(view === 'map');
+    // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
+    this.viewManager.activeView.syncLabels(displayWindow, camera, nowMs);
+    return camera;
+  }
+
+  // 天体系・動的物体・建造表示・天体由来のマーカーを、同じ表示時刻の状態へ同期する。
+  private syncWorld(
+    graphics: GraphicsSettingsData, style: RenderStyle, nowMs: number, displayTime: number, view: ViewMode,
+    controlled: Controllable | null, orbitRef: OrbitReference | null, visibilityPolicy: MapVisibilityPolicy | null,
+    timeLabel: ReturnType<typeof timeLabelSettingOf>, camera: CameraFrame,
+  ): void {
+    const { celestialSystem, dynamicSystem, viewer } = this.game;
     celestialSystem.sync(
       displayTime, nowMs, camera, view, viewer.camera.map, this.cameraSystem.mapResolvedFocus,
       graphics, style,
@@ -373,11 +403,8 @@ export class GamePresentation {
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
     celestialSystem.bakeClouds(this.devices.scene.renderer, displayTime, this.devices.scene.gpu);
-
-    // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
-    const timeLabel = timeLabelSettingOf(displayWindow);
     dynamicSystem.sync(
-      displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay, orbitRef,
+      displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay, orbitRef ?? undefined,
     );
     this.shipConstruction.sync(camera);
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
@@ -389,46 +416,56 @@ export class GamePresentation {
       camera.project, camera.position, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot,
       view === 'map', timeLabel, nowMs,
     );
-    // このフレームの進行が記録した出来事を、通知と音の宣言へ写す。
+  }
+
+  // このフレームの出来事を通知・音・閃光・対象・航法ターゲットの宣言へ写す。
+  private syncEffectsAndTargets(
+    nowMs: number, displayTime: number, view: ViewMode, controlled: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, timeLabel: ReturnType<typeof timeLabelSettingOf>,
+    palette: ThemePalette, camera: CameraFrame,
+  ): void {
     const events = this.game.events.recent;
     this.runEventPresenter.present(events);
     this.worldSfx.sync({
-      loops: controlledLoopSfx(controlled, displayTime, !this.isPaused && activeStage.isPlaying),
+      loops: controlledLoopSfx(controlled, displayTime, !this.isPaused && this.game.activeStage.isPlaying),
       cues: worldSoundCues(events),
     });
     this.uiSfx.sync(this.uiSounds.cues);
     this.uiSounds.clear();
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
     this.flashEffectsView.sync(this.flashPresenter.live, camera);
-
     this.targeter.sync(
       controlled, camera, view, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette,
     );
     this.navTargetPresenter.sync(
       camera, view, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel, nowMs,
     );
+  }
 
+  // プロパティ・計画・軌道線・ビュー・HUDを同期し、最後にマーカーの重なりを解決する。
+  private syncPanelsAndMarkers(
+    nowMs: number, displayWindow: DisplayWindow, displayTime: number, view: ViewMode,
+    controlled: Controllable | null, orbitRef: OrbitReference | null,
+    visibilityPolicy: MapVisibilityPolicy | null, palette: ThemePalette, camera: CameraFrame,
+  ): void {
+    const { celestialSystem, activeStage, viewer } = this.game;
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
     this.objectWindows.sync();
     this.moduleWindows.sync();
     this.planDisplay.sync(camera, view, displayWindow, nowMs);
-
     this.entityLines.sync(
-      controlled, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
+      controlled, this.targeter.aliveTarget, view, displayWindow, visibilityPolicy, orbitRef ?? undefined,
       camera, this.frameAnchors, celestialSystem, palette,
     );
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
-
     activeStage.sync(camera, view, displayTime);
     activeStage.proteinDisplayControl?.syncProteinDisplay(viewer.entityDisplay.proteinDisplay);
-
-    this.hudPanels.sync(this.viewManager.current, displayWindow, orbitRef, palette, camera, nowMs);
-
+    this.hudPanels.sync(view, displayWindow, orbitRef ?? undefined, palette, camera, nowMs);
     this.syncFrameMarkers(nowMs);
-    // このフレームのマーカーが出揃った後でなければならないので最後に置く。
-    this.devices.markers.resolveOverlaps(this.viewManager.current === 'map');
+    // このフレームのマーカーが出揃った後でなければならないので最後に通す。
+    this.devices.markers.resolveOverlaps(view === 'map');
   }
 
   // 天体系・ステージが組んだ宣言と、長押しのフィードバックを1つの群へまとめて置く。
