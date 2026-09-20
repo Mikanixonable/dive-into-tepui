@@ -5,6 +5,7 @@ import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
+import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { test } from '../harness';
 
 function module(definitionId: string, id: string, state = {}) {
@@ -29,6 +30,25 @@ export function register(): void {
     assert.equal(totals.mass, 1_000);
     assert.equal(totals.dryMass, 400);
     assert.equal(assembly.validate().valid, true);
+  });
+
+  test('ship render adapter: assembly state and world transforms become display input', () => {
+    const assembly = new ShipAssembly();
+    assembly.addRoot(module('cockpit-standard', 'cockpit', { hp: 40 }));
+    assembly.append(module('tank-3-main', 'tank'));
+    assembly.connectSide(module('radiator-standard', 'radiator', { deployed: 1 }), 'cockpit', 'side:+x');
+
+    const rendered = shipRenderAssembly(assembly).modules;
+    const cockpit = rendered.find(item => item.id === 'cockpit');
+    const tank = rendered.find(item => item.id === 'tank');
+    const radiator = rendered.find(item => item.id === 'radiator');
+    assert.ok(cockpit !== undefined && tank !== undefined && radiator !== undefined);
+    assert.equal(cockpit.modelId, 'cockpit-standard');
+    assert.equal(cockpit.hp, 40);
+    assert.equal(cockpit.maxHp, 100);
+    assert.equal(tank.transform.position.z, 3);
+    assert.equal(radiator.transform.position.x, 3.5);
+    assert.equal(radiator.deployed, 1);
   });
 
   test('ship assembly: +Z append は端面を隙間なく接続する', () => {
