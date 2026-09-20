@@ -72,8 +72,7 @@ export class HudPanelPresenter {
     this.simSpeedCommands = simSpeedCommands(commands, simSpeedManager);
     this.deployableCommands = deployableCommands(commands);
     this.orbitReferenceCommands = orbitReferenceCommands(commands, viewer.orbitReference);
-    // 旧ブースター操作はモジュール船の建造・分離操作へ統合された。燃焼表示は
-    // 船が提供する読み取り専用 view model だけを使い、ここでは命令を持たない。
+    // 燃焼表示は船体が提供する読み取り専用 view model を参照し、ハンドラ側では命令を発行しない。
     this.burnHandlers = {};
   }
 
