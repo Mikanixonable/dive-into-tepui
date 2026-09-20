@@ -26,6 +26,14 @@ interface SurfaceContact {
   readonly geometry: ContactGeometry;
 }
 
+export type SurfaceBodyStateAt = (
+  body: CelestialBody, pivot: number, time: number,
+) => KinematicState;
+
+function defaultBodyStateAt(body: CelestialBody, pivot: number, time: number): KinematicState {
+  return body.stateAt(pivot, time);
+}
+
 function boundingSphereMayContact(
   objectPrev: KinematicState,
   objectNext: KinematicState,
@@ -54,14 +62,15 @@ export function firstSurfaceContact(
   prevAtt?: Attitude,
   att?: Attitude,
   surfaceShape: CompoundSphereShape | null = null,
+  bodyStateAt: SurfaceBodyStateAt = defaultBodyStateAt,
 ): SurfaceContact | null {
   const swept = prev.t < next.t;
   let earliest: SurfaceContact | null = null;
   // 跨いだのか、区間の終端で重なっているだけなのかは幾何の側が決める。ここはどちらの場合も
   // 同じ toi で比べて1体に絞るだけで、区別は幾何を受け取った呼び出し側が付ける。
   for (const body of bodies) {
-    const bodyNext = body.stateAt(pivot, next.t);
-    const bodyPrev = swept ? body.stateAt(pivot, prev.t) : bodyNext;
+    const bodyNext = bodyStateAt(body, pivot, next.t);
+    const bodyPrev = swept ? bodyStateAt(body, pivot, prev.t) : bodyNext;
     let geometry: ContactGeometry | null;
     if (shape !== null) {
       const mayContact = surfaceShape !== null
