@@ -1,14 +1,14 @@
-// 天体ごとの、大気の見えを決める光学パラメータと、その大気を解くサンプル点の配り方。濃さは高度の
-// 指数関数で表し、レイリー散乱とミー散乱がそれぞれのスケールハイトを持つ。どの高度にも「ここから
-// 上は真空」という界面を置かないので、大気の広がりは決め打ちの厚みではなく散乱係数から導かれる。
-// **配り方は物理ではなく、品質の段が決める予算をどの大気へ回すかの方針である。**
-// 抗力を解く大気モデル(physics/atmosphere.ts)とは別の分布で、こちらは見えだけを決める。
+// 天体大気の光学パラメータとレイマーチングサンプル点の配分方針。
+// 密度分布は高度の指数関数でモデル化し、レイリー散乱・ミー散乱が各スケールハイトを持つ。
+// 境界界面は設けず、散乱係数から自然な減衰境界を導出する。
+// サンプル配分は描画品質設定に応じた計算リソースの最適化方針を表す。
+// ※物理シミュレーション用の大気モデル（physics/atmosphere.ts）とは独立した描画専用モデル。
 import type * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
 import { airglowCutoffAltitude, type AirglowOptics } from './airglow';
 import type { CloudRenderInput } from './cloud/cloud-render-input';
 
-// 大気の描き方の段。上げるほど、大気ぜんぶへ配れる精細さの合計が増える。
+// 大気描画品質の階層。品質を上げるほどサンプリング密度が増加する。
 export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
 type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
 
@@ -20,13 +20,13 @@ export interface AtmosphereOptics {
   // ミー散乱係数 [1/m]。粒径が波長より大きく波長依存がほぼ無いので1成分で持つ。
   readonly mie: number;
   readonly mieScaleHeight: number; // [m]
-  // ミー散乱の非対称因子 0..1。大きいほど前方へ強く散り、太陽のまわりのグローが締まる。
+  // ミー散乱の非対称因子（0..1）。値が大きいほど前方散乱が強まり、光源周囲のグレアが収束する。
   readonly mieAnisotropy: number;
   // 大気自身の発光層。未指定なら大気は反射・散乱だけを持つ。
   readonly airglow?: AirglowOptics;
 }
 
-// 同時に大気を描ける天体の数。1 体につき描画が 1 回増えるので、ここは絵の負荷の上限を決める。
+// 同時描画可能な大気天体の最大数。描画負荷の上限を制御する。
 export const MAX_ATMOSPHERE_BODIES = 4;
 
 // 品質の段ごとの、大気ぜんぶへ配れるサンプル点の合計。**段が現れるのはこの表だけで、配分は
@@ -53,7 +53,7 @@ const MIN_VISIBLE_OPTICAL_DEPTH = 1e-5;
 
 // 散乱係数 beta [1/m]・スケールハイト scaleHeight [m] の成分だけを見たときの打ち切り高度 [m]。
 // 高度 h を最接近点とする地平線方向の視線が通る光学的厚みは beta·exp(−h/H)·√(2πRH) で
-// 近似できるので、これが閾値を切る h を解く。
+// 近似できるので、これが閾値を下回る高度 h を算出する。
 function speciesCutoff(beta: number, scaleHeight: number, surfaceRadius: number): number {
   const limbPath = Math.sqrt(2 * Math.PI * surfaceRadius * scaleHeight);
   return Math.max(scaleHeight * Math.log((beta * limbPath) / MIN_VISIBLE_OPTICAL_DEPTH), 0);
@@ -125,7 +125,7 @@ export interface AtmosphereCandidate {
   readonly metersPerPixel: number;
 }
 
-// 大気を描く指示 1 体ぶん。steps はその大気を解くサンプル点の数で、整数でない値も採る。
+// 大気を描く指示 1 体ぶん。steps はその大気のレイマーチングにおけるサンプル点数で、整数でない値も採る。
 export interface AtmosphereDraw {
   readonly body: AtmosphereBody;
   readonly steps: number;

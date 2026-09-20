@@ -74,7 +74,7 @@ function crossPoints(basis: PlaneBasis, spacing: number): Float32Array {
   return values;
 }
 
-// edge0→edge1 を 0→1 へ滑らかに写す(範囲外はクランプ)。
+// edge0→edge1 の区間を 0→1 へ滑らかに補間する(範囲外はクランプ)。
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);

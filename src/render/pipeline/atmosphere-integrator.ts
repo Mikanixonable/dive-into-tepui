@@ -1,7 +1,7 @@
 // 大気 1 層ぶんの光学パラメータと、視線 1 本がその層を通って受ける透過率・内部散乱。
 // 指数分布の大気を通る区間の透過率と内部散乱をサンプル点で積み、雲の殻を解析の交点で挟む。
-// 天体本体が落とす影も同じ視線と地表との交差で解くので、深度テストの精度には依存しない。
-// **扁平な天体は、自転軸方向へ引き伸ばして真球にした空間で解く**(toSphereSpace)。
+// 天体本体による影も同一の視線と地表球面の交差判定から算出するため、深度バッファの精度に依存しない。
+// **扁平な天体は、自転軸方向へ引き伸ばして真球へ変換した空間で交差を算出する**(toSphereSpace)。
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, greaterThanEqual, length,
@@ -29,7 +29,7 @@ const MIN_POLAR_RATIO = 1e-3;
 const NO_AIRGLOW_COLOR = new THREE.Vector3();
 
 // 天体 1 体ぶんの uniform。surfaceRadius は赤道半径、cutoffRadius は大気の裾を打ち切る半径
-// (赤道半径 + 打ち切り高度)、steps はこの層を解くサンプル点の数。polarAxis は扁平を潰す軸の
+// (赤道半径 + 打ち切り高度)、steps はこの層の積分におけるサンプル点数。polarAxis は扁平を潰す軸の
 // 単位ベクトル、polarStretch はその向きへ引き伸ばす量(赤道半径/極半径 − 1。真球で 0)。
 interface BodySlot {
   readonly steps: FloatUniform;
@@ -100,7 +100,7 @@ const outwardDepth = Fn((
 // 半径 radius・天頂角余弦 mu の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。
 // 降る向き(mu<0)の経路は、最接近点で折り返す2本の上向きの経路として組み、最接近点が地表より
 // 内側へ落ちる向きでは地表で打ち切る。**打ち切った値は、地平線を掠める経路の厚みの続きである**
-// — 天体を貫く経路で直射を遮るのは horizonVisibility が解く。
+// — 天体内部を貫通する直射日光の遮蔽は horizonVisibility が判定する。
 //
 // **どちらの枝も outwardDepth へ渡す余弦を非負に保つ** — select は選ばれない枝も評価するので、
 // 負の余弦を通すと Chapman 近似の分母が 0 を跨ぎ、選ばれない側で無限大が湧く。
@@ -116,8 +116,8 @@ const depthToSpace = Fn((
 // レイリー散乱の位相関数。等方散乱を 1 とする目盛りなので、前後で 1.5、側方で 0.75 になる。
 const rayleighPhase = (cosTheta: FloatNode): FloatNode => cosTheta.mul(cosTheta).add(1).mul(0.75);
 
-// Henyey–Greenstein の位相関数。等方散乱を 1 とする目盛り。非対称因子 g が大きいほど
-// 前方へ尖り、太陽のまわりのグローが締まる。
+// Henyey–Greenstein の位相関数。等方散乱を 1 とする基準化値。非対称因子 g が大きいほど
+// 前方散乱の異方性が強まり、太陽周辺のフォワードグレアの集光度が高まる。
 const miePhase = Fn(([cosTheta, anisotropy]: readonly [FloatNode, FloatNode]) => {
   const squared = anisotropy.mul(anisotropy);
   const denominator = max(squared.add(1).sub(anisotropy.mul(cosTheta).mul(2)), 1e-4);
@@ -125,11 +125,11 @@ const miePhase = Fn(([cosTheta, anisotropy]: readonly [FloatNode, FloatNode]) =>
 });
 
 export class AtmosphereIntegrator {
-  // いま解く層 1 体ぶんの光学パラメータ。層ごとに描く直前へ書き込む。
+  // 描画対象となる大気層 1 体分の光学パラメータ。層ごとに描く直前へ書き込む。
   private readonly slot: BodySlot;
   // 積分の刻みを画素ごとにずらす種。
   private readonly blueNoise = new BlueNoise();
-  // いま解く層の雲。
+  // 描画対象となる層の雲。
   private readonly cloudLayers: AtmosphereCloudLayers;
 
   // 層 1 体ぶんの uniform を確保する。**steps の初期値は 1 以上でなければならない** — 積分の段の
@@ -163,7 +163,7 @@ export class AtmosphereIntegrator {
     this.cloudLayers.setShellEnabled(species, enabled);
   }
 
-  // この層が解く天体 1 体ぶんの光学パラメータと雲を書き込む。cutoffRadius は大気の裾を
+  // 描画対象とする天体 1 体分の光学パラメータと雲情報を設定する。cutoffRadius は大気の裾を
   // 打ち切る半径 [m]。
   public write(body: AtmosphereBody, steps: number, cutoffRadius: number): void {
     this.cloudLayers.setClouds(body.clouds);
@@ -171,7 +171,7 @@ export class AtmosphereIntegrator {
     this.slot.center.value.copy(body.center);
     this.slot.surfaceRadius.value = body.surfaceRadius;
     this.slot.cutoffRadius.value = cutoffRadius;
-    // **軸は単位長でなければならない** — 長さが乗ると潰し量がその2乗で効く。
+    // **極軸は単位ベクトルでなければならない** — ノルムが 1 でない場合、扁平率の圧縮係数が二乗で過剰に掛かる。
     this.slot.polarAxis.value.copy(body.polarAxis).normalize();
     this.slot.polarStretch.value = 1 / Math.max(body.polarRatio, MIN_POLAR_RATIO) - 1;
     this.slot.rayleigh.value.copy(body.optics.rayleigh);
@@ -243,7 +243,7 @@ export class AtmosphereIntegrator {
 
   // 視線と、天体と同心の半径 radius の球面との交点。距離は描画座標の実寸で返す。
   //
-  // **判別式は「半径² − 最接近距離²」の形で解く。** 教科書の b² − c の形は、天体を惑星間
+  // **判別式は「半径² − 最接近距離²」の形で算出する。** 教科書の b² − c の形は、天体を惑星間
   // 距離から見る視線で ~1e19 同士の引き算になり、f32 の桁落ちが交点距離に数十 km(スケール
   // ハイトの桁上)のノイズを載せる — 円盤全面が z-fighting 様の縞になる。最接近点への垂線
   // ベクトルは成分ごとの引き算なので、この桁落ちを持たない。
@@ -260,7 +260,7 @@ export class AtmosphereIntegrator {
 
   // 視線が 1 つの天体の大気を通る区間。奥は大気の裾・不透明面・地表のうち最も手前で止まる。
   // 距離はどれも描画座標の実寸で返す。
-  // **地表を解析で解くのは、地平線すれすれの視線で深度の量子化が縁を刻むため。**
+  // **地表との交差を解析的に求めるのは、地平線近傍の視線において深度バッファの量子化誤差による縁のジャギーを防ぐため。**
   private raySegment(ray: SphereSpaceRay, opaqueDist: FloatNode): RaySegment {
     const cutoff = this.crossingsOf(ray, this.slot.cutoffRadius);
     const near = max(cutoff.entry, 0);
@@ -307,7 +307,7 @@ export class AtmosphereIntegrator {
     // 積まれて捨てられる。
     const span = max(segment.far.sub(segment.near), 1);
     const split = clamp(peak.sub(segment.near).div(span), 0, 1);
-    // 区間の位置 fraction(0..1)を、山へ寄せた視線上の距離 [m] へ写す。
+    // 区間の位置 fraction(0..1)を、山へ寄せた視線上の距離 [m] へ変換する。
     const distanceAt = (fraction: FloatNode): FloatNode => {
       // **どちらの枝も 0 除算を踏まないよう分母に床を張る** — select は選ばれない枝も評価する。
       const nearFraction = clamp(fraction.div(max(split, 1e-6)), 0, 1);
@@ -329,8 +329,8 @@ export class AtmosphereIntegrator {
     return this.cloudLayers.compose(march.transmittance, march.radiance, shells);
   }
 
-  // 雲 renderer へ渡す天体空間の契約。殻の交差順序と場の解釈は AtmosphereCloudLayers が持ち、
-  // 大気側は自分の球空間・太陽輝度・大気透過率だけを提供する。
+  // 雲 renderer へ渡す天体空間の幾何・光学パラメータ。殻の交差順序と場の解釈は AtmosphereCloudLayers が担い、
+  // 大気側は球空間幾何・太陽輝度・大気透過率を提供する。
   private cloudGeometry(): AtmosphereCloudGeometry {
     return {
       shellRadiusOf: (species) => this.slot.surfaceRadius.add(shellAltitudeOf(species)),
@@ -356,7 +356,7 @@ export class AtmosphereIntegrator {
     );
   }
 
-  // 視線の起点から distance までに視線が受ける大気の透過率。**区間を刻まずに解く** —
+  // 視線の起点から distance までに視線が受ける大気の透過率。**区間を刻まずに求める** —
   // 指数分布を通る光路の厚みは、両端から大気の外へ抜ける厚みの差になる。originDepth は
   // 起点での outwardDepthAt。
   private transmittanceTo(
@@ -449,7 +449,7 @@ export class AtmosphereIntegrator {
 
   // 大気の中の 1 点から見て、恒星がその天体自身の地平線の上に出ている割合 0..1。
   //
-  // **この天体自身の遮りはここで解く** — 影を落とす天体の一覧に載っている保証が無く、載っていないと
+  // **この天体自身による日照遮蔽はここで判定する** — 影を落とす天体の一覧に載っている保証が無く、載っていないと
   // 夜側でも depthToSpace が地表で打ち切った有限の厚みを返し、真夜中の半球ぜんぶが夕焼け色に光る。
   //
   // 恒星は点ではないので、境目は縁を掠める帯の中で滑らかに変わる。帯の幅は恒星の視半径を

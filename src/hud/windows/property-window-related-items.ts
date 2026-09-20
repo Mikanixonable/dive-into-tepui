@@ -22,8 +22,8 @@ export class PropertyWindowRelatedItems {
     this.element.className = 'prop-window-related';
   }
 
-  // 対象に関連する物体の集合が変わったときだけ DOM を組み直す。空集合になったら自分自身を
-  // DOM から外し、再び非空になったら呼び出し側が差し込み直せるよう組み立て直す。
+  // 対象に関連する物体の集合が変わったときだけ DOM を組み直す。空集合になったら自身を
+  // DOM から取り外し、再び非空になったタイミングで再挿入できる状態に再構築する。
   public sync(items: readonly PropertyWindowRelatedItem[], title: string): void {
     const key = `${title}|${items.map((it) => `${it.id} ${it.label}`).join('|')}`;
     if (key === this.lastItemsKey) return;
@@ -55,7 +55,7 @@ export class PropertyWindowRelatedItems {
     });
     this.element.appendChild(titleEl);
 
-    // 一覧本体。ダブルクリック/右クリックは呼び出し側が渡したコールバックへそのまま委ねる。
+    // 一覧本体。ダブルクリック/右クリックは引数で渡されたコールバックへ委譲する。
     const list = document.createElement('div');
     list.className = 'prop-window-related-list';
     for (const it of items) {

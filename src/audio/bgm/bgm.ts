@@ -163,8 +163,8 @@ export class Bgm {
 
   // === 試聴用 BGM (audition conductor) ===
 
-  // 試聴の期間かを on へ合わせる。期間に入るとゲーム内 BGM を伏せ、期間を出ると試聴の線を畳んで
-  // 伏せを解く。
+  // 試聴状態を同期する。試聴開始時はゲーム内 BGM を一時停止し、試聴終了時は試聴音源を解放して
+  // 通常 BGM を再開する。
   private syncAuditioning(on: boolean): void {
     if (on === this.auditioning) return;
     this.auditioning = on;

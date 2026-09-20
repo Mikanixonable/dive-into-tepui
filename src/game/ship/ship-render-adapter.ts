@@ -1,4 +1,4 @@
-// ShipAssembly の現在値を、render が読む不変な表示契約へ変換する。
+// ShipAssembly の現在値を、描画層が参照する不変な表示用データモデルへ変換する。
 import type { ShipRenderAssembly } from '../../render/dynamic/ship/ship-render-contract';
 import type { ShipAssembly } from './ship-assembly';
 import type { ShipModuleInstance } from './ship-module-instance';

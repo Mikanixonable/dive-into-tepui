@@ -1,4 +1,4 @@
-// フレームの描画パスの構成 — 何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか — を持つ。
+// フレーム全体のレンダリングパイプライン構成 — 各パスの実行順序、描画先レンダーターゲット、合成フロー — を管理する。
 // composite パスは通常表示では HDR ターゲットをトーンマッピングして合成し、デバッグ表示を
 // 選ぶと中間ターゲットの中身を画面いっぱいに映す。
 import * as THREE from 'three/webgpu';
@@ -236,7 +236,7 @@ export class RenderPipeline {
 
   // composite 用マテリアル。colorNode だけが表示ごとに異なる。深度は G バッファのものを描画先の
   // 深度バッファへ複製する(depthTest を切ったまま depthWrite を立てるので全画素が無条件に書かれる)
-  // — 次段の 3D UI パスがこれに対して深度テストする。デバッグ表示中も同じく書く。
+  // — 後続の 3D UI パスがこの深度に対してテストを行う。デバッグ表示中も同じく書く。
   private buildCompositeMaterial(colorNode: Vec4Node): THREE.MeshBasicNodeMaterial {
     const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: true, transparent: false });
     material.colorNode = colorNode;
@@ -312,8 +312,7 @@ export class RenderPipeline {
     this.debugTarget = target;
   }
 
-  // 描画品質設定を各パスへ配り、影マップなどの GPU 資源を組み直す。設定が前回と別の値に
-  // なったフレームだけで呼ぶ — 同じ値で呼ぶと、資源を毎フレーム捨てて作り直すことになる。
+  // 描画品質設定を各パスへ配り、影マップ等の GPU 資源を再構築する（設定変更時のみ実行）。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
@@ -381,8 +380,8 @@ export class RenderPipeline {
 
   // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → ライティング → マテリアル → 大気 →
   // world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
-  // マテリアル・大気・world・レンズの4段を飛ばす。デバッグ表示を選んでいてもパスは省略しない —
-  // 設定で切られている段(影マップ・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
+  // マテリアル・大気・world・レンズの4つのパスをスキップする。デバッグ表示を選んでいてもパスは省略しない —
+  // 設定で切られているパス(影マップ・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
   // 空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
   // フレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
@@ -408,7 +407,7 @@ export class RenderPipeline {
     this.lightPrepass.render(camera, width, height);
 
     // 模式図は G バッファの深度・法線だけから輪郭を出すため、マテリアルパス・大気パス・world
-    // パスを経ない — 星野・大気・環・点群・ビルボードはこの3段が描くものなので、画面から消える。
+    // パスを経ない — 星野・大気・環・点群・ビルボードはこの3つのパスが描くものなので、画面から消える。
     if (style === 'schematic') {
       this.schematicComposite.update(width, height);
       this.quad.material = this.schematicMaterial;
