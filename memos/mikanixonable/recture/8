@@ -1,0 +1,115 @@
+# 雲レンダリングシステム 8大アクター相関図と協調フロー
+
+惑星規模の大気循環力学から、GPU 正射影キャップへの動的テクスチャベイク、そして不透明積雲表面レイマーチング・大気散乱光路積分・動的雲影の3系統並行レンダリングまで。雲システムを構成する8つのコアアクター間の依存関係・データフロー・一元評価機構を整理する。
+
+---
+
+## 全体トポロジーとデータフロー
+
+```text
+               [外部入力: カメラ位置, 天体距離 ρ, 時刻]
+                               │
+                               ▼
+        ┌────────────────────────────────────────────────────────┐
+        │  1. CloudPresentation (システム統括・パイプライン調停)   │
+        └───────┬────────────────────────────────┬───────────────┘
+                │ 毎フレームの aim / 視距離 ρ     │ 描画フレームキック
+                ▼                                │
+  ┌───────────────────────────────┐              │
+  │ 4. OrthographicCap &          │              │
+  │    CloudField (視点追随ベイク)  │              │
+  └─────────────┬─────────────────┘              │
+                │ テクセル座標 (UV ↔ 3D球面)     │
+                ▼                                │
+  ┌───────────────────────────────┐              │
+  │ 2. WeatherModel (気象力学)    │              │
+  └─────────────┬─────────────────┘              │
+                │ WeatherSample                  │
+                ▼                                │
+  ┌───────────────────────────────┐              │
+  │ 3. condense (雲凝結モデル)    │              │
+  └─────────────┬─────────────────┘              │
+                │ CloudSample                    │
+                ▼                                │
+  ┌───────────────────────────────┐              │
+  │ 4. CloudField (テクスチャ化)  │◄─────────────┘
+  │    RGBA 512x512 焼成完了       │
+  └─────────────┬─────────────────┘
+                │
+                │ Baked Texture (R:被覆率, G:雲頂, B:巻雲)
+                │
+                │   ┌────────────────────────────────────────────────────┐
+                └──►│ 8. CloudShapeEvaluator (形状・光学の一元評価器)       │
+                    │    ・opaqueFraction()  ・cloudTop()                │
+                    │    ・columnOpticalDepth() ・grainAt()              │
+                    └───┬──────────────────┬──────────────────┬──────────┘
+                        │ 幾何・法線・深度   │ 光学的厚み・透過率 │ 遮蔽高度・透過率
+                        │ 一元評価式         │ 一元評価式         │ 一元評価式
+                        ▼                  ▼                  ▼
+        ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+        │ 5. OpaqueCloud   │ │ 6. Atmosphere    │ │ 7. CloudShadow   │
+        │    Surface       │ │    CloudLayers   │ │    Renderer      │
+        │    Renderer      │ │    & CloudAtmo   │ │                  │
+        │ (不透明表面RM)   │ │ (大気光路積分)   │ │ (動的雲影投影)   │
+        └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘
+                 │                    │                    │
+                 ▼                    ▼                    ▼
+             [G-Buffer /          [大気散乱             [地表・大気・
+              Lit Pass]           合成パス]              宇宙船の影]
+```
+
+---
+
+## 8大アクターの責務と入出力一覧
+
+### 1. CloudPresentation（システム統括・パイプライン調停）
+- **配置**: `src/render/cloud/cloud-presentation.ts`
+- **責務**: 雲システムの最上位調停役。カメラ位置と天体中心距離から直下点（Subpoint）および正射影キャップの角半径を追随し、ベイクの実行キックと3系統レンダラーへの分配を行う。
+- **入力**: `cameraPosition: Vector3`, `bodyRadius: number`, `rho: number`, `displayTime: number`
+- **出力**: `CloudRenderInput`（ベイク済テクスチャ、射影行列、日照パラメータ）
+
+### 2. WeatherModel（気象力学・数値モデル）
+- **配置**: `src/render/cloud/weather-model.ts`
+- **責務**: 天体固定座標系の空間単位方向ベクトルから、大循環（`Circulation`）・ロスビー波（`RossbyWave`）・低気圧（`Cyclones`）・風上バックトラッキング水蒸気輸送（`WeatherTransport`）を決定論的 TSL 閉関数として解く。
+- **入力**: `direction: Vec3Node`（単位方向）, `displayTime: FloatNode`
+- **出力**: `WeatherSample`（気圧偏差 $p$, 風ベクトル $\vec{v}$, 鉛直上昇流 $w$, 地表湿度 $q_s$, 上層湿度 $q_u$, 対流セル $c$, 前線帯 $f$）
+
+### 3. condense（雲凝結アルゴリズム）
+- **配置**: `src/render/cloud/condensation.ts`
+- **責務**: 気象物理量を雲の幾何・光学サンプルへ相転移変換する。ガンマ分布混合モデル $(1 + t^2/k)^{-k}$ による被覆率白飛び防止、3峰競合雲頂合成（層状雲・積乱雲の塔・金床雲）、巻雲の $\tanh$ 光学的厚み制限（透過率 $\ge 53\%$ 保証）を担う。
+- **入力**: `WeatherSample`
+- **出力**: `CloudSample`（`coverage`: 被覆率, `cloudTop`: 正規化雲頂高度, `translucent`: 上層巻雲半透明度）
+
+### 4. OrthographicCap & CloudField（雲場のベイクと正射影キャップ）
+- **配置**: `src/render/cloud/field-projection.ts`, `cloud-field.ts`
+- **責務**: 直下点に追随する適応角半径の接平面正射影キャップを配置し、視距離 $\rho$ に応じた最高解像度で 512×512 RGBA テクスチャ（R: 被覆率, G: 雲頂/15km, B: 半透明度）へ焼成する。
+- **入力**: `subpoint: Vector3`, `capRadius: number`, `CloudSample`
+- **出力**: `bakedTexture: TextureNode`, UV ↔ 3D 球面方向写像
+
+### 5. OpaqueCloudSurfaceRenderer（不透明積雲表面レイマーチング）
+- **配置**: `src/render/opaque-cloud-surface-renderer.ts`
+- **責務**: 単位球メッシュの幾何 LOD（`syncLod`）とシェーダ内レイマーチング（粗探索 `march` ＋ 二分探索 `refine`）により、積雲頂面の正確な交点・法線・深度を算出して G-Buffer / Lit Pass へ書き込む。Blue Noise と画面微分（`dFdx`/`dFdy`）で Nyquist エイリアシングを抑制。
+- **入力**: `bakedTexture`, `CloudShapeEvaluator`, 画面占有径
+- **出力**: G-Buffer 深度（`depthNode`）＆ 法線（`normalNode`）
+
+### 6. AtmosphereCloudLayers & CloudAtmosphereRenderer（大気散乱光路積分）
+- **配置**: `src/render/pipeline/atmosphere-cloud-layers.ts`, `cloud-atmosphere-renderer.ts`
+- **責務**: 高層巻雲（15.5km）と低層半透明積雲（1.0km）の同心球殻モデル。視線光路との交差において Beer-Lambert 透過率減衰（$T = \exp(-\tau \cdot M)$）とミー散乱位相関数によるインスキャッタリング光を計算し、大気レイリー散乱光路と Front-to-Back 合成する。
+- **入力**: `bakedTexture`, `CloudShapeEvaluator.columnOpticalDepth()`, 光路パラメータ
+- **出力**: 雲層透過率および大気散乱光路への放射輝度加算
+
+### 7. CloudShadowRenderer（動的雲影の投影）
+- **配置**: `src/render/pipeline/shadow/cloud-shadow-renderer.ts`
+- **責務**: 地表・大気・機体上の評価点から太陽方向への光路に沿って 6 タップの消散積分を行い、実効雲頂と一致するシャドウファクターを投影する。ステップブラーにより縞抜けを防止。
+- **入力**: 評価点 `point: Vec3Node`, 太陽方向 $\vec{s}$, `bakedTexture`, `CloudShapeEvaluator.cloudTop()`
+- **出力**: 太陽光透過率マスク（Shadow Factor $S \in [0, 1]$）
+
+### 8. CloudShapeEvaluator（形状・光学の一元評価器）
+- **配置**: `src/render/cloud/cloud-shape-evaluator.ts`
+- **責務**: 3系統のレンダラー（5, 6, 7）が共有する幾何形状・ディザ帯・凹凸粒ノイズ・光学的厚みの全計算式を集約するハブ。独立したシェーダ間で同一の数式グラフを共有することで、雲と影の輪郭不整合（隙間やズレ）を数学的にゼロにする。
+- **主要関数**:
+  - `opaqueFraction(coverage, grain)`: ディザ帯境界評価
+  - `cloudTop(fieldTop, grain)`: 凹凸加味の実効雲頂
+  - `cloudTopRadius(top, groundRadius)`: 天体物理半径換算
+  - `columnOpticalDepth(coverage)`: 鉛直光学的厚み
+- **利用先**: 5. OpaqueCloudSurface, 6. AtmosphereCloudLayers, 7. CloudShadow
