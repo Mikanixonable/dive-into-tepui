@@ -172,7 +172,7 @@ export class ProteinSphereCollisionGeometry {
       > (this.outerRadius + sphereRadius) ** 2) return null;
 
     // 姿勢を最短経路で補間し、回転角が大きい区間は分割する。各区間の球中心は
-    // 線分として解くため、固定形状を現在姿勢だけで評価する近似を避けられる。
+    // 線分として幾何交差を求めるため、固定形状を現在姿勢のみで評価する近似を回避できる。
     const rotationAngle = 2 * Math.acos(Math.min(1, Math.abs(
       previousAttitude.x * attitude.x
       + previousAttitude.y * attitude.y

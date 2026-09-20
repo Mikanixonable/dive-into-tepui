@@ -2,8 +2,8 @@
 // 何を回すか(剛体・カメラ・座標系)は知らない。
 import { type Vec3, cross, dot, lenSq, norm, v3 } from './vec3';
 
-// 回転が写す局所基底。qFromForwardUp / qFromBasis が組む回転は、この3本を渡された
-// 前方向・上方向・右方向へ写す。
+// 回転の基準となる局所基底。qFromForwardUp / qFromBasis が組む回転は、この3本を渡された
+// 前方向・上方向・右方向へ変換する。
 export const LOCAL_FORWARD = v3(0, 0, 1);
 export const LOCAL_UP = v3(0, 1, 0);
 export const LOCAL_RIGHT = v3(1, 0, 0);

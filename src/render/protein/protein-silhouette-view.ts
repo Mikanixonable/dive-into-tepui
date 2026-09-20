@@ -11,7 +11,7 @@ import { buildProteinRibbon } from './protein-ribbon';
 import { triangleComponent } from './protein-ribbon-color';
 import type { ProteinRenderSource } from './protein-render-definition';
 
-// 表面の値 -127〜127 を色へ写す。電荷は負が赤・正が青、疎水性は低いと青・高いと橙。
+// 表面プロパティ値 -127〜127 をカラー値へマッピングする。電荷は負が赤・正が青、疎水性は低いと青・高いと橙。
 function surfaceColor(value: number, mode: ProteinSilhouetteColorMode): THREE.Color {
   const t = Math.max(0, Math.min(1, (value + 127) / 254));
   if (mode === 'surface-charge') {
