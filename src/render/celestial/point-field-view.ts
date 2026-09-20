@@ -1,5 +1,5 @@
 // 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト・散乱円盤の点群のマップビュー表示。群ごとの
-// 表示契約(描画半径・色)を定め、軌道要素から引いた位置を群ごとに1つの InstancedMesh へ置く。
+// 表示属性（描画半径・色）を定義し、軌道要素から算出した位置を群ごとに単一の InstancedMesh へ配置する。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../math/vec3';
 import { PointElements, pointPositionAt } from '../../physics/point-orbit';
