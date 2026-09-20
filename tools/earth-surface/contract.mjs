@@ -29,6 +29,7 @@ const DATASET = /^[a-z0-9-]+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const COLOR_TILE_TEMPLATE = 'tiles/{z}/{x}/{y}.jpg';
 const TERRAIN_TILE_TEMPLATE = 'tiles/{z}/{x}/{y}.bin.gz';
+const LEGACY_TERRAIN_LAYOUT = 'octahedral-rg8-roughness-r8-material-class-a8';
 
 export class EarthSurfaceContractError extends Error {
   constructor(message, options) {
@@ -129,6 +130,41 @@ export function validateManifest(value) {
   const tileTemplates = expectObject(manifest.tileTemplates, 'tileTemplates');
   if (tileTemplates.color !== COLOR_TILE_TEMPLATE || tileTemplates.terrain !== TERRAIN_TILE_TEMPLATE) {
     fail('tileTemplates must use the canonical Earth tile paths');
+  }
+  if (!Array.isArray(manifest.climateMaps) || manifest.climateMaps.length !== 12) fail('exactly 12 climate maps are required');
+  manifest.climateMaps.forEach((path, index) => {
+    expectString(path, `climateMaps[${index}]`);
+    if (path.startsWith('http:') || path.startsWith('https:')) fail(`climateMaps[${index}] must be a relative URL`);
+  });
+  if (new Set(manifest.climateMaps).size !== manifest.climateMaps.length) fail('climateMaps must not contain duplicate URLs');
+  expectClimateEncoding(manifest.climateEncoding);
+  expectAttribution(manifest.attribution);
+  return manifest;
+}
+
+// 実行時に受け入れる公開manifestを検査する。schema1は移行期間だけ許容し、bundleの完全検査はschema3へ限定する。
+export function validateRuntimeManifest(value) {
+  const manifest = expectObject(value, 'earth-surface manifest');
+  if (manifest.schemaVersion === 3) return validateManifest(manifest);
+  if (manifest.schemaVersion !== 1) fail('unsupported earth surface manifest schema');
+  if (typeof manifest.datasetId !== 'string' || !DATASET.test(manifest.datasetId)) fail('invalid earth surface datasetId');
+  expectSha256(manifest.sourceManifestSha256, 'sourceManifestSha256');
+  const terrainEncoding = expectObject(manifest.terrainEncoding, 'terrainEncoding');
+  if (terrainEncoding.formatVersion !== 2 || terrainEncoding.layout !== LEGACY_TERRAIN_LAYOUT
+    || terrainEncoding.width !== EARTH_TERRAIN_WIDTH || terrainEncoding.height !== EARTH_TERRAIN_HEIGHT
+    || terrainEncoding.channels !== EARTH_TERRAIN_CHANNELS || terrainEncoding.scalar !== 'UInt8') {
+    fail('unsupported legacy terrainEncoding');
+  }
+  const materialClasses = expectObject(terrainEncoding.materialClasses, 'terrainEncoding.materialClasses');
+  if (materialClasses.water !== 0 || materialClasses.land !== 1 || materialClasses.ice !== 2
+    || materialClasses.unknown !== 255) fail('unsupported legacy materialClasses');
+  const coverage = expectObject(manifest.coverage, 'coverage');
+  if (coverage.kind !== 'complete' || coverage.maxZoom !== EARTH_TILE_MAX_Z || coverage.expectedTiles !== 43_690) {
+    fail('legacy coverage must declare complete z0..z7 coverage');
+  }
+  for (const name of ['baseColor', 'baseTerrain', 'tileIndexUrl']) {
+    expectString(manifest[name], name);
+    if (manifest[name].startsWith('http:') || manifest[name].startsWith('https:')) fail(`${name} must be a relative URL`);
   }
   if (!Array.isArray(manifest.climateMaps) || manifest.climateMaps.length !== 12) fail('exactly 12 climate maps are required');
   manifest.climateMaps.forEach((path, index) => {
