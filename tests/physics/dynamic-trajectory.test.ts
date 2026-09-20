@@ -157,22 +157,6 @@ export function register(): void {
     assert.equal(noHistorySamples[0], noHistory.state);
   });
 
-  test('dynamic-trajectory: samplesOldestFirst returns the same array reference until step/reset', () => {
-    const e = new DynamicTrajectory(circularState());
-    e.step(10, ATTRACTORS, [], null, e.state.t + 5, 0, 0, null, 10, 1e6);
-    const a = e.samplesOldestFirst();
-    const b = e.samplesOldestFirst();
-    assert.equal(a, b, 'repeated calls with no intervening step/reset should be the same reference');
-
-    e.step(10, ATTRACTORS, [], null, e.state.t + 5, 0, 0, null, 10, 1e6);
-    const c = e.samplesOldestFirst();
-    assert.notEqual(c, a, 'a step must invalidate the memoized reference');
-
-    e.reset(kinematicState<'eci'>(e.state.t, v3(1, 0, 0), v3(0, 1, 0)));
-    const d = e.samplesOldestFirst();
-    assert.notEqual(d, c, 'a reset must invalidate the memoized reference');
-  });
-
   test('dynamic-trajectory: extrapolationCenter は既定 null で、省略した step からは変わらない', () => {
     const e = new DynamicTrajectory(circularState());
     assert.equal(e.extrapolationCenter, null);

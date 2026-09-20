@@ -1,4 +1,4 @@
-// カメラ視点へ外から出せる命令の口と、それを列へ積む実装(R3)。
+// カメラ視点へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { ProjectionMode } from '../../math/projection';
 import type { CommandQueue } from '../command-queue';
 import type { ViewMode } from '../view/view-mode';
@@ -36,7 +36,7 @@ export interface CameraCommands {
   camera(view: ViewMode): FocusCameraCommands;
 }
 
-// selection への命令を queue へ積むだけの口を組む。
+// selection へのコマンドを queue へエンキューする実装を構築する。
 function focusCameraCommands(
   queue: CommandQueue,
   selection: FocusCameraSelection,
@@ -57,7 +57,7 @@ function focusCameraCommands(
   };
 }
 
-// 2台の所有者へ命令を積む口を組む。
+// 2台の所有者へコマンドをエンキューするインターフェースを構築する。
 export function cameraCommands(queue: CommandQueue, selection: CameraSelection): CameraCommands {
   const combat = focusCameraCommands(queue, selection.combat);
   const map = focusCameraCommands(queue, selection.map);

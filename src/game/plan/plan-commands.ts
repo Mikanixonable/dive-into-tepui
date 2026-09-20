@@ -1,4 +1,4 @@
-// 軌道計画へ外から出せる命令の口と、それを列へ積む実装(R3)。
+// 軌道計画へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Plan } from './plan';
@@ -17,7 +17,7 @@ export interface PlanCommands {
   clear(plan: Plan): void;
 }
 
-// 計画への命令を queue へ積むだけの口を組む。
+// 計画へのコマンドを queue へエンキューする実装を構築する。
 export function planCommands(queue: CommandQueue): PlanCommands {
   return {
     addNode: (plan, postState, from) => queue.submit(() => { plan.addNode(postState, from); }),

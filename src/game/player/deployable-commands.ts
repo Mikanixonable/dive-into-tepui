@@ -1,4 +1,4 @@
-// 自機の展開物(太陽電池・放熱板)へ外から出せる命令の口と、それを列へ積む実装(R3)。
+// 自機の展開物(太陽電池・放熱板)へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { PowerSystem, SolarSide } from './power';
 import type { RadiatorSide, RadiatorSystem } from './radiator';
@@ -12,7 +12,7 @@ export interface DeployableCommands {
   toggleRadiator(radiator: RadiatorSystem, side: RadiatorSide): void;
 }
 
-// 展開物への命令を queue へ積むだけの口を組む。
+// 展開物へのコマンドを queue へエンキューする実装を構築する。
 export function deployableCommands(queue: CommandQueue): DeployableCommands {
   return {
     toggleSolar: (power, side) => queue.submit(() => power.toggle(side)),

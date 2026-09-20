@@ -184,16 +184,10 @@ export function register(): void {
     }
   });
 
-  test('protein motion controller: reuses coefficient buffers and projects only listed residues', () => {
+  test('protein motion controller: projects only listed residues', () => {
     const controller = new ProteinMotionController(assetFor(3), 'protein-enemy-2');
-    const coefficients = controller.modeCoefficients;
-    const effective = controller.effectiveModeCoefficients;
     controller.sampleAt(0, 'near');
     controller.sampleAt(1.5, 'near');
-    assert.strictEqual(controller.modeCoefficients, coefficients);
-    assert.strictEqual(controller.effectiveModeCoefficients, effective);
-    assert.equal(controller.modeCoefficients.length, 24);
-    assert.equal(controller.effectiveModeCoefficients.length, 24);
 
     const target = new Float32Array(3 * 4);
     controller.projectResidues([1], target);

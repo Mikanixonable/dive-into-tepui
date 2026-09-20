@@ -13,13 +13,13 @@ export class ControlSelection {
     private _current: Controllable | null = dynamicSystem.controllables.find((c) => c.motion.alive) ?? null,
   ) {}
 
-  // 組み上がった顔ぶれの生存中の先頭を操作対象にして始める。
+  // 登録された操作可能エンティティのうち生存中の先頭を操作対象にして初期化する。
   public static create(dynamicSystem: DynamicSystem): ControlSelection {
     return new ControlSelection(dynamicSystem);
   }
 
-  // 直列化した id の操作対象を、復元を終えた顔ぶれから選び直して始める。null なら未操作のまま
-  // 始める。顔ぶれに無い id なら、新しく始めたときと同じく生存中の先頭を選ぶ。
+  // シリアライズされた id の操作対象を、復元されたエンティティ一覧から再選択して初期化する。null なら未操作のまま
+  // 開始する。エンティティ一覧に無い id なら、新規開始時と同様に生存中の先頭を選択する。
   public static deserialize(serialized: SerializedControlSelection, dynamicSystem: DynamicSystem): ControlSelection {
     if (serialized === null) return new ControlSelection(dynamicSystem, null);
     const target = dynamicSystem.controllables.find((c) => c.id === serialized && c.motion.alive)
@@ -79,7 +79,7 @@ export class ControlSelection {
   // 喪失した操作対象候補を回収・整理する。
   public reclaimDead(): void {
     let lostActive = false;
-    // remove() が顔ぶれを触るので、走査は開始時の並びの写しに対して行う。
+    // remove() がコレクションを変更するため、ループ走査は開始時の浅いコピーに対して行う。
     for (const lost of [...this.dynamicSystem.controllables]) {
       if (lost.motion.alive) continue;
       if (this._current === lost) {

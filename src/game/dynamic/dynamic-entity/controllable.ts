@@ -43,7 +43,7 @@ export interface FuelConsumer {
   readonly motion: DynamicEntity['motion'];
 }
 
-// フレームごとの操作量と、単発の命令を受ける面。
+// フレームごとの操作入力および単発コマンドを受け付けるインターフェース。
 export interface PilotCommandReceiver {
   // controls はこのフレームの操作量で、操作されない個体は null。dt [s] は実時間、simDt [sim s] は
   // シミュレーション時間の刻み。

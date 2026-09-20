@@ -73,7 +73,7 @@ export class PartDamageModel {
       hasArmor = true;
     }
     const effectiveDamage = amount * (1 - reduction);
-    // 当てる部品を選ぶ
+    // ダメージを与える対象パーツを選定する
     let aliveCount = 0;
     for (const current of this.parts) if (current.hp > 0) aliveCount++;
     let target = part;

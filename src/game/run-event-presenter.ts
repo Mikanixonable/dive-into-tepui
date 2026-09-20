@@ -1,4 +1,4 @@
-// 直近の進行が記録した出来事を読み、そのフレームに鳴らす音と出す通知へ写す表示の導出。
+// 直近のシミュレーション進行で記録されたイベントを読み、そのフレームで再生する効果音やトースト通知へ変換・反映するプレゼンテーション層。
 // 文面とキーのラベルはここで組む。
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { MAX_PHYS_SIM_SPEED } from './dynamic/sim-speed-manager';
@@ -82,7 +82,7 @@ export function worldSoundCues(events: readonly RunEvent[]): SoundCue<WorldSound
 }
 
 export class RunEventPresenter {
-  // 最後に写した出来事の通し番号。同じ出来事を二度写さないために持つ。
+  // 最後に処理したイベントのシーケンス番号。同一イベントを二重処理しないために保持する。
   private lastSeq = -1;
 
   // UI の効果音は uiSounds へ溜め、通知は notifier へ出す。
@@ -91,7 +91,7 @@ export class RunEventPresenter {
     private readonly notifier: Notifier,
   ) { }
 
-  // 記録された出来事のうち、まだ写していないものを UI の効果音と通知へ写す。
+  // 記録されたイベントのうち、未処理のものを UI 効果音やトースト通知へ反映する。
   public present(events: readonly RunEvent[]): void {
     for (const event of events) {
       if (event.seq <= this.lastSeq) continue;
@@ -100,7 +100,7 @@ export class RunEventPresenter {
     }
   }
 
-  // 出来事1件を、その出来事が伴う UI の効果音と通知へ写す。
+  // イベント1件を、対応する UI 効果音やトースト通知へ変換して発行する。
   private show(body: RunEventBody): void {
     switch (body.kind) {
       case 'simSpeedChanged': {

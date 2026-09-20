@@ -1,6 +1,6 @@
 // HUD の骨格 CSS: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レールと、
 // 置き場を持たない画面固定バッジ・通知。末尾でブレークポイントごとの上書きと
-// prefers-reduced-motion を当てる。
+// prefers-reduced-motion を適用する。
 import { OVERLAY_LAYER_STYLE } from '../../../hud/overlay-layer';
 import { LIGHT_PALETTE } from '../../../theme';
 import {

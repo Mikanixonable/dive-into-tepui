@@ -94,7 +94,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections);
     const run = new Run(game, presentation, devices, graphics, renderStyle, sections, progressReader);
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
-    // ここで視点に当てて表示へ写しておく。新規開始のブリーフィングもこの場で出す。
+    // ここで視点に反映してプレゼンテーション層へ反映しておく。新規開始のブリーフィングもこの場で表示する。
     game.followProgress();
     presentation.anchorFrameAt(game.simTime);
     game.followCamera(presentation.cameraSamples());
@@ -134,7 +134,7 @@ export class Run implements SnapshotSource, PerfCountSource {
   }
 
   // 1フレームを回す。dtRaw [s] は実時間の経過、nowMs [ms] はフレームの先頭で1度だけ読んだ実時刻。
-  // ports はランが消費しなかった入力エッジを受けるランの外の口。入力の途中でランが畳まれたら
+  // ports はランが消費しなかった入力エッジを処理するラン外部のハンドラ。入力の途中でランが破棄されたら
   // (再出撃キーなど)導出と同期の前に打ち切り、false を返す。
   public frame(dtRaw: number, nowMs: number, viewport: Viewport, ports: readonly GameInputPort[]): boolean {
     const debugInfo = this.devices.debugInfo;

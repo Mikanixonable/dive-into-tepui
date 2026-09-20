@@ -63,7 +63,7 @@ export class RenderPipeline {
   // composite パスと 3D UI パスの描画先。トーンマッピングと表示用色空間への変換を終えた絵が入る。
   private readonly displayTarget: THREE.RenderTarget;
   private readonly quad: QuadMesh;
-  // 合成段の色へ当てるフィルムのルック。通常表示の2枚(compositeMaterials.off と
+  // 合成段の色へ適用するフィルム風ルック（LUT）。通常表示の2枚(compositeMaterials.off と
   // lensCompositeMaterial)が組み込む。
   private readonly filmLut = new FilmLut();
   private readonly visualEffectLut = new VisualEffectLut();

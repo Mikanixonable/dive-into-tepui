@@ -6,7 +6,7 @@ import type { ObjectPickerGroup } from './windows/object-picker';
 import { BODY_PICKER_GENRES, OBJECT_PICKER_GENRES, type ObjectPickerGenre } from '../pickable/pickable-listing';
 import type { ListedObject } from '../pickable/listed-object';
 
-// 登録されている天体の顔ぶれと、1体ごとの分類・表示名を答える口。
+// 登録されている天体の一覧と、各天体の分類・表示名を取得するインターフェース。
 export interface CelestialBodyRoster {
   readonly celestialMotions: readonly CelestialBody[];
   bodyClassOf(id: string): CelestialClass | null;
@@ -19,7 +19,7 @@ export function groupPickables(
 ): readonly ObjectPickerGroup<string>[] {
   const byGenre = new Map<ObjectPickerGenre, [string, string][]>();
   const shownIds = new Set<string>();
-  // ジャンルのグループへ [id, name] を積む(未登場のジャンルなら新規に作る)。
+  // ジャンルのグループへ [id, name] を追加する(未登場のジャンルなら新規に作る)。
   const push = (genre: ObjectPickerGenre, id: string, name: string): void => {
     const list = byGenre.get(genre);
     if (list) list.push([id, name]); else byGenre.set(genre, [[id, name]]);

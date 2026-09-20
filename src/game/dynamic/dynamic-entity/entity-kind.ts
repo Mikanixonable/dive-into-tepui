@@ -9,7 +9,7 @@ export type CapKind = 'bullet' | 'casing' | 'debris';
 // 個体数を数える枠。枠(capKind)を持つ個体はその枠で、持たない個体は種別(mapKind)で数える。
 export type EntityCountKind = CapKind | DynamicEntityKind;
 
-// 枠ごとに同時に存在してよい個体数。超えた分はその枠の古いものから落ちる。
+// 枠ごとに同時に存在してよい個体数。上限を超えた分はその枠の古い個体から自動的に破棄される。
 export const ENTITY_CAP: Record<CapKind, number> = {
   bullet: 1200,
   casing: 260,

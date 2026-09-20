@@ -1,4 +1,4 @@
-// 予測パネルの選択へ外から出せる命令の口と、それを列へ積む実装(R3)。
+// 予測パネルの選択へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { FrameRotationSource } from '../../physics/frame';
 import type { CommandQueue } from '../command-queue';
 import type {
@@ -37,7 +37,7 @@ export interface PredictPanelCommands {
   dropRotation(): void;
 }
 
-// selection への命令を queue へ積むだけの口を組む。
+// selection へのコマンドを queue へエンキューする実装を構築する。
 export function predictPanelCommands(
   queue: CommandQueue, selection: PredictPanelSelection,
 ): PredictPanelCommands {

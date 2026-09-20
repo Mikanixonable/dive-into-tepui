@@ -36,7 +36,7 @@ export interface CameraFrameViewModel {
   readonly referencePlane: CameraReferencePlane;
 }
 
-// カメラパネルの操作を受ける口。
+// カメラパネルの操作を受け付けるインターフェース。
 export interface CameraFrameCommands extends CameraRotationModeCommands {
   setRotationFollow(follow: CameraRotationFollow | null): void;
   setProjectionMode(mode: ProjectionMode): void;

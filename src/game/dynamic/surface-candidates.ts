@@ -43,7 +43,7 @@ export type SurfaceParticipant = {
 export class SurfaceCandidates {
   // 区間 [tStart, tEnd] のあいだに各天体の表面が届きうる範囲。
   private readonly spanning: BodyReach[] = [];
-  // そのうち、いま into が選び先とする一覧。narrow を掛けるまでは spanning と同じ顔ぶれ。
+  // そのうち、現在 into の抽出対象とする候補一覧。narrow を適用するまでは spanning と同じ要素構成。
   private readonly reachable: BodyReach[] = [];
 
   // into が選び先とする天体の数。
@@ -70,14 +70,14 @@ export class SurfaceCandidates {
     this.resetNarrow();
   }
 
-  // narrow で狭めた選び先を、区間の全候補へ戻す。**参加者の顔ぶれや位置が変わる区切りごとに
+  // narrow で狭めた候補を、区間の全候補へリセットする。**参加者リストや位置が変わる区切りごとに
   // 呼ぶ** — 狭めた結果はある1組の参加者に対してだけ正しい。
   resetNarrow(): void {
     this.reachable.length = 0;
     for (const candidate of this.spanning) this.reachable.push(candidate);
   }
 
-  // into の選び先を、この顔ぶれの誰かが触れうる天体だけへ狭める。狭めた結果は次の resetNarrow
+  // into の抽出対象を、参加者リストのいずれかが接触しうる天体のみに絞り込む。絞り込み結果は次の resetNarrow
   // まで残るので、**区間を共有する参加者へ続けて into を掛けるあいだにだけ掛ける。**
   narrow(participants: readonly SurfaceParticipant[]): void {
     this.reachable.length = 0;

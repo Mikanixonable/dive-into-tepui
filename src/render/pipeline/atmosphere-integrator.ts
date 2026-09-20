@@ -29,7 +29,7 @@ const MIN_POLAR_RATIO = 1e-3;
 const NO_AIRGLOW_COLOR = new THREE.Vector3();
 
 // 天体 1 体ぶんの uniform。surfaceRadius は赤道半径、cutoffRadius は大気の裾を打ち切る半径
-// (赤道半径 + 打ち切り高度)、steps はこの層の積分におけるサンプル点数。polarAxis は扁平を潰す軸の
+// (赤道半径 + 打ち切り高度)、steps はこの層の積分におけるサンプル点数。polarAxis は扁平化する極軸方向の
 // 単位ベクトル、polarStretch はその向きへ引き伸ばす量(赤道半径/極半径 − 1。真球で 0)。
 interface BodySlot {
   readonly steps: FloatUniform;
@@ -286,7 +286,7 @@ export class AtmosphereIntegrator {
   // **山は 1 つだけ選び、鋭いものを優先する。** 地表(または不透明面)での打ち切りと日没境界は
   // 被積分関数がそこで断ち切られるのに対し、最接近点は滑らかな極大でしかない。鋭い側を外すと、
   // その遷移が丸ごと 1 段の中へ収まって絵に帯が立つ。**最接近点しか無い視線では等間隔で取る**
-  // — 高度は最接近点から距離の 2 乗でしか増えず、寄せて山から離れた側を粗くする害のほうが勝つ。
+  // — 高度は最接近点から距離の 2 乗でしか増えず、特定点へ偏らせて離れた区間を粗くするデメリットのほうが上回るため。
   private integrated(
     ray: SphereSpaceRay, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
     shells: readonly CloudShellEvent[],

@@ -184,7 +184,7 @@ export class Targeter {
       if (!ds) continue;
       const visibility = visibilityPolicy?.entity(tgt.mapKind, tgt === viewer);
       if (visibility && !visibility.pickable) continue;
-      // 戦闘ビューのカメラ直下にいる操作艦は、マーカーを重ねると視界を潰す。
+      // 戦闘ビューのカメラ直下にいる自機は、マーカーを重ねると視界を遮るため除外する。
       if (!mapView && tgt === viewer) continue;
       const item = tgt.markerItem(viewerPos, ds.r, ds.v, view, tgt === viewer);
       const mapOccluded = mapView && isOccluded(camera.position, ds.r, this.celestialBodies, displayTime);

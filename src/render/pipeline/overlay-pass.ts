@@ -21,9 +21,9 @@ export class OverlayPass {
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly compositeMaterial: THREE.MeshBasicNodeMaterial;
-  // G バッファの深度を専用ターゲットへ写しつつ、色を透明で塗り潰す材質。
+  // G バッファの深度を専用ターゲットへコピーしつつ、色を透明でクリアするマテリアル。
   private readonly depthCopyMaterial: THREE.MeshBasicNodeMaterial;
-  // ダイレートで拾う上下左右オフセット [screenUV]。解像度が変わるたびに render() 側が書き込む。
+  // ダイレート（膨張処理）で参照する上下左右オフセット [screenUV]。解像度が変わるたびに render() 側が更新する。
   private readonly dilateOffset: THREE.UniformNode<'vec2', THREE.Vector2>;
   private static readonly sizeScratch = new THREE.Vector2();
 
