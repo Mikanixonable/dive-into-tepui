@@ -66,7 +66,7 @@ function heaviestGravityId(candidates: readonly Pick<CelestialBodyDef, 'id' | 'm
   return id;
 }
 
-// 弧1本ぶんの天体の成員と見直しの期限。resolve は弧の先端の時刻の順に呼ぶ。
+// 弧1本に影響する天体候補と見直し期限。resolve は弧先端の時刻順に呼び出す。
 export class ArcCelestialBodies {
   // 候補1体につき1つ。
   private readonly watches: readonly Watch[];
@@ -77,7 +77,7 @@ export class ArcCelestialBodies {
   public get lastResolved(): number { return this._lastResolved; }
   public get lastRevisited(): number { return this._lastRevisited; }
 
-  // sources が候補の天体。顔ぶれは以後変わらない。
+  // sources は候補天体の配列。生成後に配列要素は変更されない。
   public constructor(sources: readonly CelestialBody[]) {
     const candidates = sources.map((m) => m.def);
     // 最も重い天体は、寄与が無視できても成員に留める。
@@ -92,9 +92,9 @@ export class ArcCelestialBodies {
     }));
   }
 
-  // 時刻 t に弧が読む天体一式。from は判定の基準にする弧の先端状態、stepDt はこの解決のあとに
-  // 踏む刻み幅 [s](まだ決まっていない最初の解決では 0 でよい)。返る配列はこの呼び出しごとに
-  // 新しく、呼び出し側が次の解決まで保持してよい。
+  // 時刻 t で弧の計算対象となる天体一式を返す。from は判定基準となる弧先端の状態、
+  // stepDt は次ステップの刻み幅 [s]（初回解決時は 0）。返却配列は呼び出しごとに
+  // 新規生成され、次の解決まで保持できる。
   public resolve(t: number, from: KinematicState, stepDt: number): ArcCelestialBodyWindow {
     // 成員に入れておく先読み時間 [s]
     const lead = Math.max(stepDt, ARC_MIN_STEP_DT) * ARC_BODY_LEAD_STEPS;

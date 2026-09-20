@@ -1,6 +1,5 @@
-// THREE で曲線を折れ線で近似して描く。閉じた式で書ける曲線は setAnalyticCurve、離散サンプル
-// としてしか手に入らない曲線は setHermiteCurve で渡す。近似の細かさは渡したときのカメラで
-// 決まるので、カメラが動いたら渡し直す。
+// Three.js による曲線の折れ線近似描画。解析曲線は setAnalyticCurve、離散点列は
+// setHermiteCurve で設定する。サンプリング精度はカメラの視点距離に応じて決定される。
 
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../math/max-heap';
@@ -417,7 +416,7 @@ export class Curve {
     this.appliedStyle = style;
   }
 
-  // sample の座標系をワールドへ写す変換を渡す。
+  // サンプリング座標系をワールド座標系へ変換する位置・姿勢を指定する。
   public setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
     this.reqPosition.copy(position);
     if (quaternion) this.reqQuaternion.copy(quaternion);

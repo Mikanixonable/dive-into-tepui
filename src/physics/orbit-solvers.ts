@@ -1,4 +1,4 @@
-// 軌道上の特徴点(赤道交点 EqAN/EqDN、相対交点 AN/DN など)の計算を行う純粋物理計算層。
+// 軌道上の特徴点(赤道交点 EqAN/EqDN、相対交点 AN/DN 等)を算出する純関数群。
 import { frameOfCelestialBody, toFrameState } from './frame';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt, orbitalElementsOf } from './elements';
 import { KinematicState } from './kinematic-state';
@@ -20,10 +20,10 @@ interface OrbitCrossingsResult {
 
 // 折れ線または軌道状態から赤道交点(EqAN / EqDN)を求める純粋関数。paths は時刻昇順に並んだ
 // 折れ線の列(区間ごとに1本)で、渡されたときはその上を順に探して最初に見つかった昇交点・降交点を
-// 返す。空なら state の軌道要素から解析的に求める。ノード通過時刻 t における中心天体の ECI 位置は、
-// 呼び出し側が精密な天体暦を持っていれば centerPositionAt でそれを渡すこと — 既定の
-// centerPivot からの外挿は弾道近似でしかなく、月のように数時間〜数日先まで公転するものには
-// 不十分(表示側が数値暦で un-bake すると、この弾道外挿との差がそのまま交点位置のズレになる)。
+// 返す。空なら state の軌道要素から解析的に求める。
+// ノード通過時刻 t における中心天体の ECI 位置は、精密な天体暦関数を centerPositionAt に
+// 渡すことで高精度に評価できる。省略時の centerPivot からの外挿は弾道近似であり、
+// 公転による移動が大きい天体では誤差の原因となる。
 export function solveEquatorCrossings(
   state: KinematicState,
   center: CelestialBody,

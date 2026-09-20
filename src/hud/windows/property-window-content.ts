@@ -34,7 +34,7 @@ export interface PropertyWindowContent<A extends string = string> {
   readonly icon?: string;
   readonly rows: readonly PropertyRow[];
   readonly items: readonly PropertyWindowItem<A>[];
-  // 対象に関連する物体を本文上部へ表示する。ダブルクリック/右クリックの動作は呼び出し側が持つ。
+  // 対象に関連する物体を本文上部へ表示する。ダブルクリック/右クリックの動作はコールバックで定義する。
   readonly relatedItems?: readonly PropertyWindowRelatedItem[];
   readonly relatedTitle?: string;
   // 指定すると、タイトル横に改名ボタンが現れる。確定した新しい名前を受け取る。
