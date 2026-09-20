@@ -117,7 +117,7 @@ export class Deque<T> {
         return value;
     }
 
-    // 左からn要素まとめて削除　clear=falseのときO(1)　clear=trueのときO(n)
+    // 左からn要素まとめて削除 clear=falseのときO(1) clear=trueのときO(n)
     deleteLeftN(n: number, clear = false) {
         if (n < 0 || n > this.count)
             throw new RangeError();
@@ -130,7 +130,7 @@ export class Deque<T> {
         this.count -= n;
     }
 
-    // 右からn要素まとめて削除　clear=falseのときO(1)　clear=trueのときO(n)
+    // 右からn要素まとめて削除 clear=falseのときO(1) clear=trueのときO(n)
     deleteRightN(n: number, clear = false) {
         if (n < 0 || n > this.count)
             throw new RangeError();
