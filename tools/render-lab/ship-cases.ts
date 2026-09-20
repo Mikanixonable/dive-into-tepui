@@ -8,6 +8,7 @@ import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
+import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
@@ -51,7 +52,7 @@ function shipObject(assembly: ShipAssembly): THREE.Object3D {
   const shape = shipPhysicsShape(assembly);
   if (shape === null) throw new Error('render-lab ship assembly is empty');
   const view = new ModularShipView(buildShipModuleModel, undefined, false);
-  view.sync(assembly, shape.centerOffset);
+  view.sync(shipRenderAssembly(assembly).modules, shape.centerOffset);
   // render-lab case の破棄時に view も解放できるよう所有者を紐付ける。
   view.object.userData.renderLabShipView = view;
   return view.object;
