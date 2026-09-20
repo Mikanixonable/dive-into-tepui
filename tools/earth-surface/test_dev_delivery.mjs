@@ -18,8 +18,10 @@ const MANIFEST_URL = `earth/${DATASET_ID}/earth-surface.json`;
 
 const R2_BASE_URL = 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/';
 const R2_MANIFEST_URL = `${R2_BASE_URL}earth-surface.json`;
+const V3_BUNDLE_ROOT = join(ROOT, '.earth-surface/bundle-v3');
+const LEGACY_BUNDLE_ROOT = join(ROOT, '.earth-surface/bundle');
 
-function webpackConfigWithEnvironment({ baseUrl, manifestUrl, localBundle = true } = {}) {
+function webpackConfigWithEnvironment({ baseUrl, manifestUrl, localBundle = 'v3' } = {}) {
   const nodeFs = require('node:fs');
   const previousBase = process.env.EARTH_SURFACE_BASE_URL;
   const previousManifest = process.env.EARTH_SURFACE_MANIFEST_URL;
@@ -28,10 +30,10 @@ function webpackConfigWithEnvironment({ baseUrl, manifestUrl, localBundle = true
   else process.env.EARTH_SURFACE_BASE_URL = baseUrl;
   if (manifestUrl === undefined) delete process.env.EARTH_SURFACE_MANIFEST_URL;
   else process.env.EARTH_SURFACE_MANIFEST_URL = manifestUrl;
-  if (!localBundle) {
-    nodeFs.existsSync = (filePath) => filePath === join(ROOT, '.earth-surface/bundle/earth-surface.json')
-      ? false : previousExistsSync(filePath);
-  }
+  const localManifest = localBundle === 'v3'
+    ? join(V3_BUNDLE_ROOT, 'earth-surface.json')
+    : localBundle === 'legacy' ? join(LEGACY_BUNDLE_ROOT, 'earth-surface.json') : null;
+  nodeFs.existsSync = (filePath) => filePath === localManifest;
   try {
     delete require.cache[require.resolve('../../webpack.config.js')];
     return require('../../webpack.config.js');
@@ -48,7 +50,7 @@ function definePlugin(config) {
   return config.plugins.find((plugin) => plugin.constructor.name === 'DefinePlugin');
 }
 
-function assertConfigContract(config) {
+function assertConfigContract(config, bundleRoot) {
   assert.equal(config.output.path, resolve(ROOT, 'docs'));
   assert.ok(Array.isArray(config.devServer.static));
   assert.equal(config.devServer.static.length, 2);
@@ -56,7 +58,7 @@ function assertConfigContract(config) {
   const [docsMount, bundleMount] = config.devServer.static;
   assert.equal(docsMount.directory, resolve(ROOT, 'docs'));
   assert.equal(docsMount.publicPath, '/');
-  assert.equal(bundleMount.directory, resolve(ROOT, '.earth-surface/bundle'));
+  assert.equal(bundleMount.directory, bundleRoot);
   assert.equal(bundleMount.publicPath, BUNDLE_PUBLIC_PATH);
   assert.equal(bundleMount.watch, false);
 
@@ -118,7 +120,7 @@ async function assertHttpDelivery(config) {
 
 async function run() {
   const localConfig = webpackConfigWithEnvironment({ manifestUrl: MANIFEST_URL });
-  assertConfigContract(localConfig);
+  assertConfigContract(localConfig, V3_BUNDLE_ROOT);
   await assertHttpDelivery(localConfig);
 
   const externalConfig = webpackConfigWithEnvironment({ baseUrl: R2_BASE_URL });
@@ -126,7 +128,7 @@ async function run() {
   assert.equal(JSON.parse(definitions.__EARTH_SURFACE_BASE_URL__), R2_BASE_URL);
   assert.equal(JSON.parse(definitions.__EARTH_SURFACE_MANIFEST_URL__), R2_MANIFEST_URL);
 
-  const defaultConfig = webpackConfigWithEnvironment({ localBundle: false });
+  const defaultConfig = webpackConfigWithEnvironment({ localBundle: 'none' });
   const defaultDefinitions = definePlugin(defaultConfig)?.definitions;
   assert.equal(JSON.parse(defaultDefinitions.__EARTH_SURFACE_MANIFEST_URL__), R2_MANIFEST_URL);
   console.log('earth-surface dev delivery contract: ok');
