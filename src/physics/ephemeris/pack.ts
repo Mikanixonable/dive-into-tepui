@@ -3,7 +3,7 @@ import { EphemerisPointKind, EphemerisPoints, PointEphemeris } from './point';
 import { ChebyshevEphemeris } from './pack-evaluator';
 import { KinematicState, kinematicState } from '../kinematic-state';
 import { DecodedPack, decodePack, toChebyshevPack } from './pack-format';
-import { ephemerisSeconds, TdbJulianDate } from '../time';
+import { j2000EphemerisSeconds, TdbJulianDate } from '../time';
 
 // バイナリ pack の J2000 ET 秒を、構築時に一度だけ元期起点の simTime へ寄せる。**ET 秒が
 // 外へ出るのはここまで** — 有効期間も評価の引数も simTime で話す。寄せる理由は2つで、
@@ -24,7 +24,7 @@ export class PackEphemeris {
   // オブジェクトが pack と同じ寿命で残る。
   constructor(decoded: DecodedPack, epoch: TdbJulianDate) {
     this.evaluator = new ChebyshevEphemeris(
-      toChebyshevPack(decoded, ephemerisSeconds(epoch)));
+      toChebyshevPack(decoded, j2000EphemerisSeconds(epoch)));
     this.bodyPoints = decoded.manifest.bodyPoints ?? {};
     this.validStartEt = decoded.manifest.validStart;
     this.validEndEt = decoded.manifest.validEnd;

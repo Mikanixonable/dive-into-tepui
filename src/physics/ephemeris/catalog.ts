@@ -2,7 +2,7 @@ import modernPackUrl from '../../assets/ephemeris/modern-2026-10y.epk';
 import farFuturePackUrl from '../../assets/ephemeris/far-future-20115-10y.epk';
 import { EphemerisPoints } from './point';
 import { EphemerisProfileId, profileAt } from './profile';
-import { ephemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../time';
+import { j2000EphemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../time';
 import { PackEphemeris } from './pack';
 
 const PACK_URLS: Readonly<Record<EphemerisProfileId, string>> = {
@@ -64,7 +64,7 @@ export async function loadEphemerisPoints(
   // 覆っているかは絶対時刻の問いなので、**pack 自身の時刻軸(J2000 ET 秒)で比べる。**
   // simTime へ寄せてから比べると、要求側と pack 側で減算の順序が変わって同じ瞬間が
   // 数 µs ずれ、期間の内側にある元期を弾いてしまう。
-  const requestedStartEt = ephemerisSeconds(epoch);
+  const requestedStartEt = j2000EphemerisSeconds(epoch);
   const requestedEndEt = (requiredEndJdTdb - J2000_JULIAN_DATE) * SECONDS_PER_DAY;
   if (requestedStartEt < source.validStartEt || requestedEndEt > source.validEndEt) {
     throw new RangeError(

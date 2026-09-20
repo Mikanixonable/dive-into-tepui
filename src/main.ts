@@ -41,14 +41,14 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
 
-  const gs = await createGameScene(canvas, graphics, browserViewport());
+  const gameScene = await createGameScene(canvas, graphics, browserViewport());
   hideLoading();
-  return gs;
+  return gameScene;
 }
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, gs: GameScene, settings: UserSettings, bgm: Bgm,
+  launcher: Launcher, gameScene: GameScene, settings: UserSettings, bgm: Bgm,
   debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
 ): void {
   let lastTime = performance.now();
@@ -60,7 +60,7 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gs.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
+    gameScene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
     pauseMenu.sync(now);
@@ -174,7 +174,7 @@ function bindSettings(
 }
 
 // 表示パネルが読み書きする設定を、読み取り専用の面と書き換えの口に分けて束ねる。
-function viewOptionSettings(settings: UserSettings): ViewOptionsSettings {
+function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
   return {
     // 読み取り専用の面。
     mapDisplay: settings.mapDisplayToggles,
@@ -201,18 +201,18 @@ async function main() {
   const slots = SaveSlots.load(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const autoSave = new AutoSave(snapshotService);
-  const gs = await initScene(settings.graphics.current);
+  const gameScene = await initScene(settings.graphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
   const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager,
+    shell.layers.window, gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
-  const devices: PageDevices = { scene: gs, hud, markers, audioEngine, pauseMenu, debugInfo };
+  const devices: PageDevices = { scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo };
 
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
-    shell, devices, viewOptionSettings(settings), settings.themePalette, sections, unlockManager,
+    shell, devices, viewOptionsSettings(settings), settings.themePalette, sections, unlockManager,
     slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
   );
 
@@ -238,7 +238,7 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
-  startAnimationLoop(launcher, gs, settings, bgm, debugInfo, pauseMenu, snapshotControls);
+  startAnimationLoop(launcher, gameScene, settings, bgm, debugInfo, pauseMenu, snapshotControls);
   await launcher.start();
 }
 
