@@ -44,10 +44,8 @@ import { HudPanelPresenter } from './hud/hud-panel-presenter';
 import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-options-control';
 import { controlledLoopSfx } from './controlled-loop-sfx';
 import { UiSoundQueue } from './ui-sound-queue';
-import { GameInputRouter, gameInputMode, type GameInputPort } from './input/game-input-router';
-import { gameInputPorts, pilotInputPorts } from './input/game-input-ports';
-import { rawGameInputAdapter } from './input/raw-game-input-adapter';
-import { PilotInput } from './input/pilot-input';
+import { GameInputPhase } from './runtime/game-input-phase';
+import type { GameInputPort } from './input/game-input-router';
 import type { Game } from './game';
 import type { PageDevices } from '../run/page-devices';
 import type { MarkerSink } from '../marker/marker-sink';
@@ -111,15 +109,12 @@ export class GamePresentation {
   private readonly equatorNodes: EquatorNodeManager;
   private readonly frameControls: FrameControls;
   private readonly hudPanels: HudPanelPresenter;
-  private readonly inputRouter: GameInputRouter;
-  // 生の入力を操作対象の操作量へ解釈する側と、その入力を受け取る口。
-  private readonly pilotInput = new PilotInput();
-  private readonly pilotPorts: readonly GameInputPort[];
+  private readonly inputPhase: GameInputPhase;
 
   // ポーズ中か。時間倍率とは独立に時間を止める。
   public get isPaused(): boolean { return this.devices.hud.overlayManager.isGamePaused(); }
   // このフレームの入力の解釈が組んだ操作量。
-  public get pilotControls(): PilotControls { return this.pilotInput.controls; }
+  public get pilotControls(): PilotControls { return this.inputPhase.pilotControls; }
 
   // 各表示物・入力の受け口を、互いの依存関係が満たせる順に組んで game へ繋ぐ。viewOptionSettings は
   // マップ・天球の表示設定と表示パネルのタブの選択、themePalette は選ばれている配色。
@@ -234,14 +229,10 @@ export class GamePresentation {
       hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
       activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
     );
-    this.inputRouter = new GameInputRouter(
-      rawGameInputAdapter(this.input),
-      gameInputPorts(
-        game, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
-        () => this.shipConstruction.active,
-      ),
+    this.inputPhase = new GameInputPhase(
+      game, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
+      this.shipConstruction, this.input, () => this.cameraFrame, this.sections,
     );
-    this.pilotPorts = pilotInputPorts(this.pilotInput, game, hud, () => this.shipConstruction.active);
   }
 
   // このランが scene・Hud・マーカー装置・window/document/canvas へ足したものを残らず取り除く。
@@ -287,46 +278,12 @@ export class GamePresentation {
   // 生の入力を担当モジュールへ先着順で配り、命令とこのフレームの操作量を組む。dt [s] は進行へ渡す
   // 刻み、nowMs [ms] はフレームの先頭で1度だけ読んだ実時刻。ポーズ中も Esc・ヘルプなどは効かせる。
   public interpretInput(dt: number, nowMs: number, viewport: Viewport): void {
-    this.sections.enter(SECTION.input);
-    this.input.update();
-    this.handleInput(dt, nowMs, viewport);
-    this.sections.exit(SECTION.input);
-  }
-
-  // 入力の担当を優先順に呼び、命令とこのフレームの操作量を組む。呼ぶ順序が優先順位になる。
-  private handleInput(dt: number, nowMs: number, viewport: Viewport): void {
-    const overlays = this.devices.hud.overlayManager;
-    this.inputRouter.beginFrame();
-    // 連打の判定には、直前の進行が確定させたワープ倍率で艦が動けるかを渡す(CONTROLS.md)。
-    this.pilotInput.beginFrame(nowMs, this.game.simSpeedManager.canShipAct);
-    this.inputRouter.route();
-    const inputMode = gameInputMode(
-      this.isPaused, overlays.isInputGated(), this.shipConstruction.active,
-    );
-    // 同じフレームの route で開いたモーダルも、ここから先のビューの操作を止める。
-    if (inputMode.world) {
-      // マップの Δv 編集は操作対象の解釈より先に押下中キーを確保する。
-      this.viewManager.activeView.updateActions(dt);
-    }
-    this.inputRouter.routeAdditional(this.pilotPorts);
-    if (inputMode.camera) {
-      this.cameraSystem.handleInput(this.input, dt, viewport, this.game.activeControllable);
-    }
-    // ピックは直前の sync が確定したカメラと候補列で解く — 入力の解釈はこのフレームの導出より前に走る。
-    if ((inputMode.world || inputMode.construction) && this.cameraFrame !== null) {
-      this.sections.switchTo(SECTION.input, SECTION.pointer);
-      if (inputMode.construction) {
-        this.shipConstruction.handlePointer(this.input, this.cameraSystem, viewport);
-      } else {
-        this.viewManager.activeView.handlePointer(this.cameraFrame);
-      }
-      this.sections.switchTo(SECTION.pointer, SECTION.input);
-    }
+    this.inputPhase.interpret(dt, nowMs, viewport);
   }
 
   // フレームの残りの入力エッジを、ports の優先順へ配る。
   public routeInput(ports: readonly GameInputPort[]): void {
-    this.inputRouter.routeAdditional(ports);
+    this.inputPhase.routeInput(ports);
   }
 
   // ------------------------------------------------ 進行の材料と、進行の後の導出
