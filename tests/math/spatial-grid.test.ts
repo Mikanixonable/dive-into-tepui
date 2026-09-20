@@ -118,8 +118,8 @@ export function register(): void {
     const grid = new SpatialGrid<number>(cellSize);
     points.forEach((p, i) => grid.insert(i, p));
 
-    for (let i = 0; i < points.length; i++) {
-      const found = grid.neighborsInto(points[i]!, []);
+    for (const point of points) {
+      const found = grid.neighborsInto(point, []);
       assert.equal(found.length, new Set(found).size);
     }
   });
