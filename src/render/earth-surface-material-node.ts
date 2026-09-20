@@ -40,7 +40,7 @@ export interface EarthSurfaceMaterialNodes {
   readonly normalNode: Vec3Node;
 }
 
-// 全球地理UVを、指定LODのタイル内UVへ写す。v=1は南端の最終画素側へ残す。
+// 全球地理UV座標を、指定LODのタイル内ローカルUVへ変換する。v=1は南端の最終画素側へ残す。
 export function earthSurfaceTileUvNode(uv: Vec2Node, z: FloatNode): Vec2Node {
   const rows = exp2(z);
   const columns = rows.mul(2);

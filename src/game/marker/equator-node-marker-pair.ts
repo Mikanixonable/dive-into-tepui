@@ -27,7 +27,7 @@ interface DisplayedPathSource {
   displayedPathOf(ownerId: string): DisplayedPath | null;
 }
 
-// 赤道交点を解くのに要る、そのフレームの材料。個体によって変わらないものだけを持ち、
+// 赤道交点の算出に必要な、そのフレームの材料。個体によって変わらないものだけを持ち、
 // 個体ごとの違いは paths が答える。
 export interface EquatorNodeInputs {
   readonly displayTime: number;

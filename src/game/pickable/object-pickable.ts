@@ -1,5 +1,5 @@
-// 右クリック・一覧・選択ウィジェットから選べる物体の契約(面ごとの契約を1つへ束ねたもの)と、
-// 画面上で最も近い候補・視線が当たった候補を選ぶ処理。
+// 右クリック・一覧・選択ウィジェットから選べる物体の統合インターフェースと、
+// 画面上で最も近い候補および視線ヒット候補の選択ユーティリティ。
 import { lenSq, sub } from '../../math/vec3';
 import type { Ray } from '../../math/ray';
 import type { Projected, ProjectFn } from '../../math/projection';
@@ -20,8 +20,7 @@ function isObjectPickable(entity: DynamicEntity): entity is DynamicEntity & Obje
   return entity.pickable;
 }
 
-// Entity 本体と表示・検査面を分けた個体は adapter を優先する。既存の組み込み対象は
-// これまでどおり自身を返すので、段階的に移行できる。
+// 表示・検査用アダプタを持つ個体はそのアダプタを優先し、自身が直接 ObjectPickable を実装する個体は自身を返す。
 export function objectPickableOf(entity: DynamicEntity): ObjectPickable | null {
   const provider = entity as DynamicEntity & Partial<ObjectPickableProvider>;
   return provider.objectPickable ?? (isObjectPickable(entity) ? entity : null);

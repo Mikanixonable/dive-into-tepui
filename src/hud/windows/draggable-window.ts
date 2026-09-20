@@ -1,9 +1,7 @@
-// ドラッグして動かせる、📌 でクリップできるウィンドウの外枠。ヘッダ(タイトル・サブタイトル・
-// 呼び出し側が任意のボタンを差し込める枠・📌・✕)を持ち、ヘッダのドラッグによる移動、
-// クリップ状態に応じた OverlayManager への宣言更新、ビューポート変化への再クランプ、
-// 最前面化を行う。本文は呼び出し側が組み立てて置く。
-// #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
-// リセットに勝てるよう全セレクタを `#hud` で始める。
+// ドラッグ移動とピン留め（クリップ）に対応したウィンドウ枠。タイトルやピン留め・閉じるボタンを備え、
+// ドラッグ操作、OverlayManager への登録更新、ビューポート変化時の再クランプ、最前面化を制御する。
+// 本文要素はコンストラクタの引数として注入する。
+// #hud 配下の window レイヤに配置するため、リセットスタイルを上書きできるようセレクタは `#hud` で始める。
 import { clampOverlayPosition, Point2 } from '../layout';
 import { bringToFront as bringOverlayToFront } from '../overlay-layer';
 import { onViewportChange } from '../viewport';
@@ -49,8 +47,8 @@ const STYLE = `
 #hud .dg-window-title-icon svg { display: block; width: 100%; height: 100%; }
 #hud .dg-window-title-main { flex: 1; min-width: 0; color: var(--text); font-weight: bold; overflow-wrap: break-word; }
 #hud .dg-window-title-sub { color: var(--text); opacity: 0.7; font-size: var(--font-s); margin-top: var(--space-1); }
-/* 呼び出し側が任意のボタンを差し込める枠。ヘッダの flex 行へ直接子として並んだのと
-   同じ見た目にするため、自身は layout に参加しない。 */
+/* ヘッダの flex 行へ直接子として並んだのと同じ見た目で任意のボタンを追加できる枠。
+   自身はレイアウトに参加しない。 */
 #hud .dg-window-header-extras { display: contents; }
 #hud .dg-window-btn {
   flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
@@ -101,13 +99,12 @@ export class DraggableWindow implements OverlayHandle {
   private readonly onResize: () => void;
   private readonly unsubscribeViewport: () => void;
 
-  // 閉じられた(dispose 済み)ことを呼び出し側へ知らせる。ESC・外側クリック・✕ ボタンの
+  // 閉じられた(dispose 済み)ことを通知するコールバック。ESC・外側クリック・✕ ボタンの
   // どの経路で閉じても等しく発火する。
   public onClose: (() => void) | null = null;
-  // クリップボタンで状態が反転したことを通知する。排他は overlayManager 自身が持つので、
-  // これは呼び出し側が見た目の追従(一覧の表示等)を行うためだけの通知。
+  // クリップ状態変更の通知コールバック。一覧表示等の追従に利用する。
   public onClipChange: ((clipped: boolean) => void) | null = null;
-  // 項目ショートカットの一致判定を呼び出し側へ委ねるコールバック。
+  // 項目ショートカットの一致判定コールバック。一致したら true を返す。
   public onShortcut: ((code: string) => boolean) | null = null;
 
   // clientX/clientY を左上角として root の子として開く。viewport.ts のビューポート変化通知を
@@ -194,7 +191,7 @@ export class DraggableWindow implements OverlayHandle {
 
   // OverlayHandle 実装: クリップ中は受け付けない — 一時ウィンドウは高々1枚なので、
   // クリップされていないウィンドウどうしがキーを取り合うことはない。項目の一致判定は
-  // 呼び出し側(onShortcut)が持つ。
+  // onShortcut コールバックへ委譲する。
   public handleShortcut(code: string): boolean {
     if (this._clipped) return false;
     return this.onShortcut?.(code) ?? false;
@@ -319,8 +316,8 @@ export class DraggableWindow implements OverlayHandle {
     this.element.remove();
   }
 
-  // OverlayHandle 実装: ✕ ボタンと同じ「破棄して呼び出し側へ通知する」経路。ESC・外側クリック
-  // どちらで閉じてもここを通るので、onClose の発火経路は一本化される。
+  // OverlayHandle 実装: ✕ ボタンと同一経路で破棄し、onClose を発火する。
+  // ESC・外側クリックいずれで閉じてもここを経由するため、発火経路は一本化される。
   public close(): void {
     this.dispose();
     this.onClose?.();

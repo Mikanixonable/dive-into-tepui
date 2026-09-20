@@ -6,7 +6,7 @@ import type { CameraFrame } from '../camera/camera-frame';
 import { Curve, CurveSampler } from '../curve';
 import { LineStyle } from '../line-style';
 
-// 離心近点角 E=t·2π を、中心天体相対の ECI オフセットへ写す閉曲線サンプラ。
+// 離心近点角 E=t·2π から、中心天体相対の ECI オフセット位置を算出する閉曲線サンプラ。
 function ellipseSampler(el: OrbitalElements): CurveSampler {
   const b = el.a * Math.sqrt(1 - el.e * el.e);
   return (t, out) => {
@@ -14,7 +14,7 @@ function ellipseSampler(el: OrbitalElements): CurveSampler {
     const E = t * Math.PI * 2;
     const x = el.a * (Math.cos(E) - el.e);
     const y = b * Math.sin(E);
-    // 軌道面の基底 pHat・qHat で ECI の向きへ写す。
+    // 軌道面の基底 pHat・qHat を用いて ECI 座標系へ変換する。
     out.set(
       el.pHat.x * x + el.qHat.x * y,
       el.pHat.y * x + el.qHat.y * y,
