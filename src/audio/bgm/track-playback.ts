@@ -80,7 +80,7 @@ export class TrackPlayback {
     this.gain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, sec / 3);
   }
 
-  // 音声グラフから自分を切り離す。鳴り終えた(soundingUntil を過ぎた)あとに持ち主が呼ぶ。
+  // 再生完了後、自身と全楽器ノードを音声グラフから切り離す。
   public dispose(): void {
     for (const instrument of this.instruments.values()) instrument.dispose();
     this.gain.disconnect();
