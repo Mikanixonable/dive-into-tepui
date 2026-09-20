@@ -116,6 +116,41 @@ export function register(): void {
     }
   });
 
+  test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', () => {
+    const modules = moduleRoots(parsedRoot());
+    const expected = [
+      ['radiator-standard', 6, 0.8, 1.0],
+      ['solar-panel-standard', 3, 1.2, 1.0],
+    ] as const;
+    for (const [modelId, count, width, span] of expected) {
+      const module = modules.get(modelId);
+      assert.ok(module !== undefined);
+      const panels: THREE.Mesh[] = [];
+      module.traverse((child) => {
+        if (child.name === 'deployable-panel' || child.name.startsWith('deployable-panel:')) {
+          assert.ok(child instanceof THREE.Mesh);
+          panels.push(child as THREE.Mesh);
+        }
+      });
+      assert.equal(panels.length, count, `${modelId} panel count`);
+      for (const panel of panels) {
+        const geometry = panel.geometry as THREE.BoxGeometry;
+        const parameters = geometry.parameters;
+        assert.ok(Math.abs(parameters.width - width * 0.96) < 1e-9, `${modelId} width`);
+        assert.ok(Math.abs(parameters.depth - span * 0.96) < 1e-9, `${modelId} span`);
+      }
+      const hinges: THREE.Object3D[] = [];
+      module.traverse((child) => {
+        if (child.userData.semanticAnchor?.startsWith('panel-hinge:')) hinges.push(child);
+      });
+      assert.equal(hinges.length, count, `${modelId} hinge count`);
+      assert.deepEqual(
+        hinges.map((hinge) => hinge.userData.panelIndex),
+        [...Array(count).keys()],
+      );
+    }
+  });
+
   test('ship module asset: instance は geometry を共有し material と状態だけを分離する', () => {
     const first = buildShipModuleModel('cockpit-standard');
     const second = buildShipModuleModel('cockpit-standard');
