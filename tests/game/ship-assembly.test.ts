@@ -58,6 +58,24 @@ export function register(): void {
     assert.equal(sideEdge.id, 'side-edge');
   });
 
+  test('ship assembly: 建造枝の根元を通常の接舷接続へ昇格できる', () => {
+    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    assembly.addRoot(module('cockpit-standard', 'cockpit'));
+    assembly.connectSide(module('dock-standard', 'dock'), 'cockpit', {
+      position: v3(3.5, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)),
+    });
+    assembly.addModule(module('tank-3-main', 'construction-tank'), 'dock', {
+      position: v3(0, 0, 2), rotation: { x: 0, y: 0, z: 0, w: 1 },
+    }, 'axial', 'construction-edge');
+
+    assembly.promoteConnectionToDocking('construction-edge');
+
+    assert.equal(assembly.dockingConnections()[0]?.id, 'construction-edge');
+    assert.equal(assembly.isDockingPortOccupied('dock'), true);
+    assert.equal(assembly.graph.find(edge => edge.id === 'construction-edge')?.kind, 'docking');
+    assert.equal(assembly.validate().valid, true);
+  });
+
   test('ship assembly: docking edge は接舷面を一致させ、重複IDを安定名へ写す', () => {
     const host = new ShipAssembly(SHIP_MODULE_CATALOG, true);
     host.addRoot(module('cockpit-standard', 'cockpit'));
