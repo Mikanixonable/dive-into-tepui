@@ -1,4 +1,4 @@
-// 天体の気候入力の契約と、平年の気候テクスチャ(正距円筒 RGB8: R 平均気温 / G 平年の雲量 / B 標高)を
+// 天体の気候データ入力仕様と、平年の気候テクスチャ(正距円筒 RGB8: R 平均気温 / G 平年の雲量 / B 標高)を
 // 読むその実装。気候は雲より桁で低周波な、その天体固有の分布である。
 import * as THREE from 'three/webgpu';
 import { smoothstep, texture, vec2 } from 'three/tsl';
@@ -77,7 +77,7 @@ export class AnnualClimateMap implements ClimateData {
     private readonly deferred: DeferredTexture | null,
   ) {}
 
-  // 画像の取得を始める。fromDeferredUrl で作った器で効く。
+  // 画像リソースの取得を開始する。fromDeferredUrl で生成された遅延読み込みインスタンスに適用される。
   public request(): void { this.deferred?.request(); }
 
   // 入力の世代。画像が GPU へ公開されるたびに進む。

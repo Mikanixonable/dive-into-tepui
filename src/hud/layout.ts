@@ -1,4 +1,4 @@
-// 画面座標に関する DOM/カメラ非依存の幾何計算。オーバーレイの再配置に使う。
+// 画面座標の DOM/カメラ非依存幾何計算。オーバーレイの再配置に使う。
 
 export interface Point2 {
   readonly x: number;

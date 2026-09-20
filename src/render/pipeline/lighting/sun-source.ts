@@ -25,7 +25,7 @@ export class SunSource implements LightSource {
     private model: number,
   ) {}
 
-  // 描画設定 sunLightModel の値をそのまま受ける。次の material() から効く。
+  // 描画設定 sunLightModel の値を設定する。次回の material() 取得時から適用される。
   public setModel(model: number): void { this.model = model; }
 
   public hasContribution(): boolean { return true; }
@@ -53,8 +53,8 @@ export class SunSource implements LightSource {
     return { diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)) };
   }
 
-  // 恒星を視半径を持つ一様球として扱う寄与(sphere-light.ts)。1 天文単位では点光源の値と
-  // 一致し、視半径が効く近距離で終端の柔らかさと円盤のハイライトが出る。
+  // 恒星を有限の視半径を持つ均質球体光源として扱う寄与（sphere-light.ts）。1 天文単位の遠方では点光源の挙動へ漸近し、
+  // 視半径の影響が支配的となる近距離において明暗境界のソフト化と面光源ハイライトを表現する。
   private sphereContribution(sample: ShadingSample): LightContribution {
     const center = sample.viewPositionOf(this.sunLight.position);
     const toSun = center.sub(sample.position);

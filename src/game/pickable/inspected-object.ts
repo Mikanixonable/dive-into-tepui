@@ -27,9 +27,9 @@ export interface InspectedObject extends PickCandidate {
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
     trajectoryLineShown: boolean,
   ): readonly MenuItem<MenuAction>[];
-  // 自分に固有の操作を実行する。フォーカス・ターゲットなど対象によらない操作は窓側が
-  // 実行するのでここへは来ない。固有の操作を持たない対象は null。authoring と planEditor は
-  // マップでしか差し出されないので、戦闘ビューでは null。
+  // 対象固有の操作を処理する。フォーカスやターゲットなど対象に依存しない操作は
+  // ウィンドウ側で処理するため、ここには渡されない。固有操作を持たない対象は null。
+  // authoring と planEditor はマップ画面でのみ提供されるため、戦闘ビューでは null。
   readonly runMenu: ((
     act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
     planEditor: PlanEditor | null,

@@ -57,7 +57,7 @@ interface EarthSurfaceConnection {
 function detailedMaterialFor(
   source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures, fetchImpl?: typeof fetch,
 ): EarthSurfaceMaterialAttachment {
-  // 材質bindingの公開契約をruntime attachmentへ写す。
+  // 材質バインディングのインターフェースを runtime attachment へ変換する。
   const binding = createEarthSurfaceMaterialBinding(
     textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl, source.terrainFormat,
   );

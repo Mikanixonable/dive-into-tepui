@@ -363,7 +363,7 @@ export class GamePresentation {
     const camera = this.syncCamera(displayWindow, view, viewport, nowMs);
     // 描く対象と選べる対象を同じ判定から出すため、ビューが確定させた可否を読む。
     const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
-    // 3D 軌道線を軌道パネルと同じ基準で解く。
+    // 3D 軌道線を軌道パネルと同一の基準系で算出する。
     const orbitRef = controlled
       ? resolveOrbitReference(
         viewer.orbitReference.mode, controlled.motion.state.r, celestialSystem.celestialMotions,

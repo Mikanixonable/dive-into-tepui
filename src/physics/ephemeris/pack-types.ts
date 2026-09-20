@@ -23,11 +23,8 @@ interface ChebyshevBodyManifest {
   readonly segments: readonly ChebyshevSegmentManifest[];
 }
 
-// Segment times are SI seconds and coefficient values are SI metres. The
-// evaluator takes seconds on this same time axis and does not know where that
-// axis is anchored — whoever built the pack chose the origin. Julian dates are
-// deliberately kept out of this binary-independent core and belong at an
-// explicit adapter boundary.
+// 区間時刻は秒 [s]、係数はメートル [m]。評価器は同一の時間軸を受け取り、
+// 原点のアンカー位置は関知しない。ユリウス日はアダプタ境界側で扱う。
 interface ChebyshevManifest {
   readonly version: number;
   readonly bodies: readonly ChebyshevBodyManifest[];

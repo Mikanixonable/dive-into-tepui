@@ -80,7 +80,7 @@ export class GameInputPhase {
     if (inputMode.camera) {
       this.cameraSystem.handleInput(this.input, dt, viewport, this.source.activeControllable);
     }
-    // ピックは直前の sync が確定したカメラと候補列で解く — 入力の解釈はこのフレームの導出より前に走る。
+    // ピッキング判定は直前の sync で確定したカメラおよび候補列に基づいて評価する — 入力解釈は本フレームの導出処理に先行して実行される。
     const cameraFrame = this.cameraFrameOf();
     if ((inputMode.world || inputMode.construction) && cameraFrame !== null) {
       this.sections.switchTo(SECTION.input, SECTION.pointer);

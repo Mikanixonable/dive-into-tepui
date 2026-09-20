@@ -18,7 +18,7 @@ export interface Viewpoint {
   readonly orthographicHalfHeight?: number;
 }
 
-// 視点を束縛した投影。worldPos を画面ピクセルへ写す。
+// 視点を束縛した投影。worldPos を画面ピクセルへ投影する。
 export type ProjectFn = (worldPos: Vec3) => Projected;
 // 視点を束縛した尺度。worldPos の位置で画面1ピクセルに相当する実距離 [m] を答える。
 export type ScaleFn = (worldPos: Vec3) => number;
@@ -61,8 +61,8 @@ export function ndcToScreen(ndc: Projected, width: number, height: number, offse
   };
 }
 
-// 視点と描画先の寸法を束縛した投影。同じ視点で多数の点を写す呼び出し側は、これを1つ作って
-// 使い回す。
+// 視点と描画先寸法をバインドした投影関数を生成する。同一視点で多数の点を投影する際に
+// 再利用できる。
 export function screenProjection(view: Viewpoint, width: number, height: number): ProjectFn {
   return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), width, height);
 }

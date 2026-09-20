@@ -72,8 +72,7 @@ export class HudPanelPresenter {
     this.simSpeedCommands = simSpeedCommands(commands, simSpeedManager);
     this.deployableCommands = deployableCommands(commands);
     this.orbitReferenceCommands = orbitReferenceCommands(commands, viewer.orbitReference);
-    // 旧ブースター操作はモジュール船の建造・分離操作へ統合された。燃焼表示は
-    // 船が提供する読み取り専用 view model だけを使い、ここでは命令を持たない。
+    // 燃焼表示は船体が提供する読み取り専用 view model を参照し、ハンドラ側では命令を発行しない。
     this.burnHandlers = {};
   }
 
@@ -232,7 +231,7 @@ export class HudPanelPresenter {
     const relative = relativeInfo(
       controlled, target, this.celestialSystem.celestialMotions, controlled.motion.state.t,
     );
-    // 距離・接近速度は、両者の基準天体に依らない相対量として解く。
+    // 距離および接近速度は、双方の基準天体に依存しない相対量として算出する。
     return {
       name: target.name,
       distanceM: relative.dist,
@@ -245,7 +244,7 @@ export class HudPanelPresenter {
     };
   }
 
-  // 生存している敵に、操作対象からの距離と固定の有無を添えて一覧の形へ写す。
+  // 生存中の敵情報に、操作対象からの距離とロック状態を付与してリスト形式へ変換する。
   private enemyContacts(controlled: Controllable): readonly EnemyContact[] {
     const viewerPos = controlled.motion.state.r;
     const primaryTarget = this.targeter.aliveTarget;

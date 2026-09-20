@@ -14,7 +14,7 @@ import type { ProjectFn } from '../../math/projection';
 
 const LEAD_MAX_TIME = 25; // 表示する見越し解の、命中までの最長時間 [s]
 
-// 見越し解を解く射手。いまの運動状態と、撃ち出す弾の初速 [m/s]。
+// 見越し射撃の計算主体。現在の運動状態と、撃ち出す弾の初速 [m/s]。
 export interface LeadShooter {
   readonly state: KinematicState;
   readonly muzzleVelocity: number;

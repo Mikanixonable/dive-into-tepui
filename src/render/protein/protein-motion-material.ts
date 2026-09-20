@@ -220,8 +220,8 @@ export function flushProteinMotionComputes(renderer: THREE.WebGPURenderer): void
   dirtyBindings.clear();
 }
 
-// binding の GPU バッファを解放する先としてレンダラを登録し、登録を解く関数を返す。同じレンダラは
-// 登録した回数だけ解くまで登録されたままになる。
+// binding の GPU バッファを解放する対象としてレンダラを登録し、登録を解除するクリーンアップ関数を返す。
+// 同一のレンダラは登録された回数と同数回解除されるまで登録状態が維持される。
 export function registerProteinMotionRenderer(renderer: THREE.WebGPURenderer): () => void {
   const internals = renderer as THREE.WebGPURenderer & ProteinMotionRendererInternals;
   proteinMotionRenderers.set(internals, (proteinMotionRenderers.get(internals) ?? 0) + 1);

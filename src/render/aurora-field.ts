@@ -1,5 +1,4 @@
-// Deterministic auroral field. This module contains the geomagnetic coordinate
-// and emission model; Aurora owns only the Three.js buffers that consume it.
+// 決定論的なオーロラ場モデル。地磁気座標系と発光計算を担当し、描画バッファは Aurora クラスが持つ。
 import { dot, v3, type Vec3 } from '../math/vec3';
 
 export type AuroraFieldOptions = {

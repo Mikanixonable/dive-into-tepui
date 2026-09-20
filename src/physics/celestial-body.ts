@@ -1,5 +1,5 @@
-// 天体1体を外から見たときの契約。分類の札・自転姿勢・回転基準系・2次重力場と、時刻を与えると
-// ECI の位置・速度・大気を答える口。
+// 天体1体の外部公開インターフェース。分類タグ・自転姿勢・回転基準系・2次重力場を統括し、時刻に応じた
+// ECI の位置・速度・大気モデルを提供する。
 import type { Quat } from '../math/quat';
 import type { Vec3 } from '../math/vec3';
 import type { Atmosphere } from './atmosphere';
@@ -46,15 +46,15 @@ export interface CelestialBody {
   stateAt(pivot: number, t?: number): KinematicState;
   // 同じ外挿で位置だけを答える。
   positionAt(pivot: number, t?: number): Vec3;
-  // pivot での大気。大気を持たない天体は null。
+  // pivot における大気状態。大気モデル未設定時は null。
   atmosphereAt(pivot: number): Atmosphere | null;
-  // pivot での2次重力場。質点として扱う天体は null。
+  // pivot における2次重力場。質点近似時は null。
   degree2At(pivot: number): Degree2Gravity | null;
-  // 時刻 t の自転姿勢。自転モデルを持たない天体は null。
+  // 時刻 t における自転姿勢。自転モデル未設定時は null。
   orientationAt(t: number): BodyOrientation | null;
-  // 時刻 t の自転に固定した回転基準系。自転モデルを持たない天体は null。
+  // 時刻 t の自転に同期した回転座標系。自転モデル未設定時は null。
   spinRotationAt(t: number): FrameRotation | null;
-  // 自転角速度 [rad/s]。逆行自転では負。自転モデルを持たない天体は null。
+  // 自転角速度 [rad/s]（逆行自転は負値）。自転モデル未設定時は null。
   readonly spinRate: number | null;
 }
 

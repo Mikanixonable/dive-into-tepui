@@ -37,7 +37,7 @@ export class BakedField {
     map.type = THREE.HalfFloatType;
     map.wrapS = projection.wrapS;
     map.wrapT = projection.wrapT;
-    // RenderTarget の生成契約を、後からテクスチャ設定を変更するコードにも見える形で保持する。
+    // RenderTarget の初期化設定を明示的に指定し、テクスチャプロパティの整合性を保つ。
     map.generateMipmaps = false;
     map.minFilter = THREE.LinearFilter;
     map.magFilter = THREE.LinearFilter;

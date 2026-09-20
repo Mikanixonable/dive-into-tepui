@@ -1,4 +1,4 @@
-// 多ノードの計画軌道を区間ごとの予測弧として解く。計画を区間へ分解し、各区間の到達状態・
+// 複数ノードからなる計画軌道を区間ごとの予測弧として算出する。計画を区間へ分解し、各区間の到達状態・
 // アプシス・衝突点と、画面上の最寄り点を答える。折れ線は PlanPathView へ宣言して描く。
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';

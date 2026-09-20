@@ -1,5 +1,5 @@
 // 折れ線グラフの描き手。渡された点列・軸・マークだけを canvas 2D へ描く汎用エンジンで、
-// 単位系や意味づけは軸構築側(orbit-chart-axes.ts)と呼び出し側が持つ。
+// 単位系や意味づけは軸構築側(orbit-chart-axes.ts)および利用コンポーネントが定義する。
 import { edgeColor, FONT_FAMILY, FONT_XXS } from '../../../theme';
 import type { ThemePalette } from '../../../theme';
 import { injectOnce } from '../../../hud/inject-style';
@@ -53,7 +53,7 @@ const GRID_LINE_WIDTH = 1;
 
 const STYLE = chartCanvasStyle('orbit-chart');
 
-// 値域 [min, max] を長さ span の画面区間 [origin, origin+span] へ写す。min === max なら中央に固定する。
+// 値域 [min, max] を長さ span の画面区間 [origin, origin+span] へ線形変換する。min === max なら中央に固定する。
 function scaleValue(value: number, min: number, max: number, origin: number, span: number, invert: boolean): number {
   const range = max - min;
   const ratio = range !== 0 ? (value - min) / range : 0.5;
