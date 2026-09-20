@@ -36,15 +36,20 @@ export class DeferredTexture {
   public request(): void {
     if (this.requested) return;
     this.requested = true;
-    new THREE.ImageLoader().load(this.url, (image) => {
-      if (this.disposed) return;
+    // DOMを持たない検査環境や、loaderの同期的な生成失敗でもfallbackを維持する。
+    try {
+      new THREE.ImageLoader().load(this.url, (image) => {
+        if (this.disposed) return;
 
-      this.image = image;
-      this.queued = true;
-      DeferredTexture.ready.push(this);
-    }, undefined, (error) => {
+        this.image = image;
+        this.queued = true;
+        DeferredTexture.ready.push(this);
+      }, undefined, (error) => {
+        if (!this.disposed) this.onError?.(error);
+      });
+    } catch (error: unknown) {
       if (!this.disposed) this.onError?.(error);
-    });
+    }
   }
 
   // 待ち行列の先頭1枚を GPU へ投入する。空なら何もしない。
