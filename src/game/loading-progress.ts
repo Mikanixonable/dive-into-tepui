@@ -33,7 +33,7 @@ export class LoadingProgress {
     });
   }
 
-  // いまの段の中の進捗 [0,1]。段の中で待ちが入る処理(取得など)だけが呼ぶ。
+  // 現在フェーズ内の進捗値 [0, 1] を更新する。
   public within(ratio: number, note?: string): void {
     this.report(this.completed + this.currentWeight * Math.min(1, Math.max(0, ratio)), note);
   }

@@ -12,7 +12,7 @@ export interface EntityPresentationState {
   readonly alive: boolean;
 }
 
-// 表示資源を所有する renderer/view へ渡す同期ポート。ゲーム状態の更新や寿命判定は行わない。
+// 表示資源を所有する renderer/view へスナップショットを渡す同期ポート。
 export interface DynamicPresenter {
   present(entity: EntityPresentationState): void;
   remove(id: string): void;
