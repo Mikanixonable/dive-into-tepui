@@ -1,4 +1,4 @@
-// 大気の物理風を CloudPatternTransport でノイズ空間へ写す。帯は赤道を挟んで鏡像に並ぶ 6 本で、
+// 大気の物理風を CloudPatternTransport によってノイズ空間へ射影する。帯は赤道を挟んで鏡像に並ぶ 6 本で、
 // 境目では隣り合う 2 本が重なる。帯へ渡す値は atmospheric-wind の m/s で、ここは描画用の位相と
 // ノイズの評価だけを担う。
 //
@@ -71,7 +71,7 @@ export class Circulation {
     this.syncTime(0);
   }
 
-  // 時刻 [s] の帯ごとの角度を uniform へ写す。2π で畳んでから余弦・正弦にするので、大きな時刻でも
+  // 時刻 [s] における帯ごとの回転角を uniform に反映する。2π で畳んでから余弦・正弦にするので、大きな時刻でも
   // 精度が落ちない。
   public syncTime(seconds: number): void {
     for (const [i, band] of this.bands.entries()) {
