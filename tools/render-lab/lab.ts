@@ -35,6 +35,7 @@ export interface LabMeasurement {
   readonly frames: number;
   readonly cpuRenderMs: LabDistribution;
   readonly gpuSupported: boolean;
+  readonly gpuTotalMs: LabDistribution;
   readonly gpuPassMs: Readonly<Record<string, LabDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
@@ -316,7 +317,9 @@ export class LabView {
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     this.pipeline.cumulusShadow.set(
       castsCumulusShadow(this.graphicsData) ? this.current.cumulus ?? null : null);
-    this.current.bakeClouds?.(this.renderer, displayTime, this.gpu, this.renderClockMs);
+    if (this.graphicsData.clouds) {
+      this.current.bakeClouds?.(this.renderer, displayTime, this.gpu, this.renderClockMs);
+    }
     this.renderClockMs += 1000 / 60;
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     // 雲を切る設定では、大気へ立てる殻もゲーム本体と同じように外す。
@@ -358,6 +361,7 @@ export class LabView {
 
     // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
     const cpuSamples: number[] = [];
+    const gpuTotalSamples: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const motion = new ProteinMotionMetricsRecorder();
     for (let frame = 0; frame < sampleFrames; frame++) {
@@ -367,6 +371,7 @@ export class LabView {
       cpuSamples.push(this.lastRenderCpuMs);
       await this.gpu.waitForResolve();
       const snapshot = this.gpu.snapshot();
+      gpuTotalSamples.push(snapshot.elapsedMs.reduce((sum, value) => sum + value, 0));
       for (const [index, samples] of gpuSamples.entries()) samples.push(snapshot.elapsedMs[index] ?? 0);
       motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
     }
@@ -376,6 +381,7 @@ export class LabView {
       frames: sampleFrames,
       cpuRenderMs: distribution(cpuSamples),
       gpuSupported: this.gpu.snapshot().supported,
+      gpuTotalMs: distribution(gpuTotalSamples),
       gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distribution(gpuSamples[index]!)])),
       proteinMotion: motion.summary(),
       proteinCase: this.current?.proteinMotion,
