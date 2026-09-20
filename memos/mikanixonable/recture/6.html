@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dive into Tepui のシステム概観</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c1118;
+      --panel: #141d28;
+      --panel-2: #192536;
+      --ink: #e7eef7;
+      --muted: #9caec2;
+      --accent: #78d6c2;
+      --line: #2b4055;
+      --code: #c5e7ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      line-height: 1.75;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 72px; }
+    h1, h2 { line-height: 1.3; }
+    h1 { color: var(--accent); font-size: clamp(1.8rem, 4vw, 2.8rem); }
+    h2 { margin-top: 2.4rem; color: var(--accent); font-size: 1.45rem; }
+    h3 { margin-bottom: .3rem; color: #c9f5eb; font-size: 1.05rem; }
+    p { margin: .6rem 0 1rem; }
+    code { color: var(--code); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; }
+    .lead { color: var(--muted); font-size: 1.05rem; }
+    .flow, .note, .actor {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      padding: 18px 20px;
+      margin: 16px 0;
+    }
+    .flow { overflow-x: auto; color: var(--code); }
+    pre { margin: 0; font: .9rem/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .actor { background: linear-gradient(135deg, var(--panel), var(--panel-2)); }
+    .actor h2 { margin-top: 0; }
+    .actor ul { margin-top: .25rem; }
+    li { margin: .2rem 0; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0 24px; background: var(--panel); }
+    th, td { border: 1px solid var(--line); padding: 9px 11px; text-align: left; vertical-align: top; }
+    th { color: #c9f5eb; background: var(--panel-2); }
+    .source { color: var(--muted); font-size: .88rem; }
+    .source a { color: var(--code); }
+    footer { margin-top: 42px; color: var(--muted); font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; font-size: 0.85rem; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 16px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+      <a href="./1.html" style="color: var(--accent); text-decoration: none;">1: 地図</a>
+      <a href="./2.html" style="color: var(--accent); text-decoration: none;">2: 起動とループ</a>
+      <a href="./3.html" style="color: var(--accent); text-decoration: none;">3: 入力と進行</a>
+      <a href="./4.html" style="color: var(--accent); text-decoration: none;">4: Gameの責務</a>
+      <a href="./5.html" style="color: var(--accent); text-decoration: none;">5: 設計の4本軸</a>
+      <a href="./6.html" style="color: #fff; font-weight: 700; text-decoration: none; border-bottom: 2px solid var(--accent);">6: システム概観</a>
+      <a href="./7.html" style="color: var(--accent); text-decoration: none;">7: 雲レンダリング</a>
+      <a href="./8.html" style="color: var(--accent); text-decoration: none;">8: 8大アクター相関図</a>
+    </div>
+    <div>Dive into Tepui Architecture Series</div>
+  </div>
+
+  <h1>Dive into Tepui のシステム概観</h1>
+  <p class="lead">コード現状の読み取り。主要なアクター/サブシステムを6つに絞り、何をやり取りし、どの状態を所有するかをまとめる。</p>
+
+  <h2>全体の流れ</h2>
+  <p>ページ起動時に <code>main.ts</code> が、ランをまたいで生きる設定・セーブ・描画・HUD・音声の装置を組み、<code>Launcher</code> に渡す。<code>Launcher</code> はステージを選び、<code>Run.create</code> または <code>Run.resume</code> で1ランを起こす。</p>
+  <div class="flow"><pre>ブラウザ入力 + 設定 + viewport
+  │
+  ▼
+1. 入力の解釈（GamePresentation / GameInputPhase）
+  │  CommandQueue、PilotControls、視点操作
+  ▼
+2. 進行（Game / Stage / DynamicSystem / Simulator）
+  │  simTime、エンティティ、ステージ、RunEventLog
+  ▼
+3. 導出（表示窓・カメラ・予測・選択候補）
+  │  表示時刻、CameraFrame、HUD/マーカー/音の宣言
+  ▼
+4. 装置同期・描画（render / hud / marker / audio）</pre></div>
+  <p><code>src/run/run.ts</code> の <code>Run.frame</code> がこの順序を所有する。ゲーム側で消費されなかった押下エッジは、進行後にセーブ・ラン遷移・デバッグ用の外部ポートへ渡される。モデルを書き換える命令は <code>CommandQueue</code> に積まれ、次の進行位相の先頭で適用される。</p>
+
+  <section class="actor">
+    <h2>1. ページ寿命の組み立て役</h2>
+    <p><code>main.ts</code> / <code>Launcher</code> / <code>settings</code> / <code>launcher/save</code></p>
+    <h3>責務</h3>
+    <p>ページ全体で1つだけ必要なものを生成し、現在のランを開始・終了・再開・交換する。<code>main.ts</code> は設定、<code>GameScene</code>、HUD、マーカー、音声、セーブ関連を生成して <code>PageDevices</code> に束ねる。<code>Launcher</code> はステージ選択、タイトル復帰、再出撃、スナップショットのロード、スロット切替を担う。</p>
+    <h3>やりとり</h3>
+    <ul>
+      <li>URL、ステージ選択、スロットから <code>StageClass</code> と開始元期を決める。</li>
+      <li><code>Run.create</code> / <code>Run.resume</code> に装置、設定、進行状況の読み取り役を渡す。</li>
+      <li><code>Run</code> の <code>SnapshotSource</code> を <code>SnapshotService</code> / <code>AutoSave</code> へ渡す。</li>
+      <li>ステージ決着の <code>RunEventLog</code> を読み、解放状況更新と結果画面表示へつなぐ。</li>
+    </ul>
+    <h3>管理する状態</h3>
+    <p><code>Launcher</code> の現在の <code>Run</code>・起動ステージ・遷移中フラグ、<code>UserSettings</code> の描画/音声/HUD設定、<code>SaveSlots</code> の索引・スナップショット、<code>AutoSave</code> の実時間基準を持つ。艦・敵・<code>simTime</code> は持たない。</p>
+    <p class="source">根拠: <a href="../src/main.ts#L192">src/main.ts:192-243</a>、<a href="../src/launcher/launcher.ts#L46">src/launcher/launcher.ts:46-188</a>、<a href="../src/settings/user-settings.ts#L27">src/settings/user-settings.ts:27-95</a>、<a href="../src/launcher/save/snapshot-service.ts#L15">src/launcher/save/snapshot-service.ts:15-81</a></p>
+  </section>
+
+  <section class="actor">
+    <h2>2. フレームの交通整理役</h2>
+    <p><code>Run</code></p>
+    <h3>責務</h3>
+    <p>1ランの <code>Game</code>（モデル）と <code>GamePresentation</code>（表示導出）を組み合わせ、毎フレームの位相と呼び出し順を固定する。<code>dt</code> は最大0.1秒に丸められ、<code>nowMs</code> と viewport が下流へ渡る。</p>
+    <h3>やりとり</h3>
+    <ol>
+      <li><code>interpretInput</code> で命令と操作量を作る。</li>
+      <li><code>game.advance</code> でモデルを進める。</li>
+      <li>表示窓・カメラ・出来事・予測需要を導出する。</li>
+      <li><code>progressReader.update</code> で保存可能な進行後状態を外部へ見せる。</li>
+      <li><code>sync</code>、<code>render</code> で装置を更新する。</li>
+    </ol>
+    <h3>管理する状態</h3>
+    <p>モデルと表示導出の所有関係、破棄済みフラグ、描画設定への参照、フレーム計測と保存用の読み取り口を持つ。艦や敵を更新するのではなく、誰に何を渡すかだけを持つオーケストレータである。</p>
+    <p class="source">根拠: <a href="../src/run/run.ts#L1">src/run/run.ts:1-28</a>、<a href="../src/run/run.ts#L94">src/run/run.ts:94-178</a></p>
+  </section>
+
+  <section class="actor">
+    <h2>3. 1ランの進行モデル</h2>
+    <p><code>Game</code> / <code>Stage</code> / <code>DynamicSystem</code></p>
+    <h3>責務</h3>
+    <p>捨てると再構成できないゲーム内状態を持ち、命令と操作量で進行を確定する。<code>Game</code> は天体系、動的物体、時間倍率、操作対象、ステージ、計画ノード規則、視点、出来事ログを束ねる。</p>
+    <h3>やりとり</h3>
+    <ul>
+      <li>入力解釈から <code>CommandQueue</code> と <code>PilotControls</code> を受ける。</li>
+      <li><code>advance</code> の先頭で出来事を空にし、命令を適用する。ポーズ中も命令は適用する。</li>
+      <li><code>SimSpeedManager</code> が倍率を決め、<code>Stage.update</code> が湧き・勝敗・ステージ固有状態を更新する。</li>
+      <li><code>DynamicSystem.update</code> が自律推力、操作対象の指令、敵AI、積分を処理する。</li>
+      <li>一回きりの変化は <code>RunEventLog</code> に記録し、表示側が通知・音・エフェクトへ変換する。</li>
+    </ul>
+    <h3>管理する状態</h3>
+    <p><code>DynamicSystem</code> の <code>simTime</code>・全エンティティ・pending spawn・ID採番器、<code>SimSpeedManager</code>、<code>ControlSelection</code>、<code>Stage</code> の勝敗/スコア/補給/ステージ固有状態、<code>PlanNodeRules</code> を持つ。これらは <code>SerializedGame.progress</code> に直列化される。</p>
+    <p class="source">根拠: <a href="../src/game/game.ts#L25">src/game/game.ts:25-69</a>、<a href="../src/game/game.ts#L152">src/game/game.ts:152-251</a>、<a href="../src/game/dynamic/dynamic-system.ts#L59">src/game/dynamic/dynamic-system.ts:59-136</a>、<a href="../src/game/stages/stage.ts#L107">src/game/stages/stage.ts:107-182</a></p>
+  </section>
+
+  <section class="actor">
+    <h2>4. 天体系と物理計算</h2>
+    <p><code>CelestialSystem</code> / <code>physics</code> / <code>Simulator</code></p>
+    <h3>責務</h3>
+    <p>天体の階層、暦、運動、参照座標系、重力源・大気天体の索引を提供する。<code>physics/</code> は THREE や DOM を知らない計算層で、<code>CelestialSystem</code> はその値をゲーム側と表示側へ提供する。</p>
+    <h3>やりとり</h3>
+    <ul>
+      <li><code>Game.create/deserialize</code> が元期から星系を構築し、暦を天体運動へ結び付ける。</li>
+      <li><code>Simulator</code> が天体窓を使い、個体の重力、大気、表面接触をサブステップで解く。</li>
+      <li><code>Predictor</code> が動的物体と天体系を読み、表示要求ぶん予測を伸ばす。</li>
+      <li>表示導出が <code>stateAt</code>、参照フレーム、軌道ガイド、天体マーカーを読む。</li>
+    </ul>
+    <h3>管理する状態</h3>
+    <p>天体の親子階層、<code>origin</code>、<code>epoch</code>、暦、運動一覧、参照フレーム、軌道ガイド、天体ビュー/GPU資源を持つ。ただし進行時刻 <code>simTime</code> の正本は天体系ではなく <code>DynamicSystem</code> 内の <code>Simulator</code> である。天体系は指定時刻の状態を答える。</p>
+    <p class="source">根拠: <a href="../src/game/celestial/celestial-system.ts#L85">src/game/celestial/celestial-system.ts:85-169</a>、<a href="../src/game/celestial/celestial-system.ts#L296">src/game/celestial/celestial-system.ts:296-416</a>、<a href="../src/game/dynamic/simulator.ts#L28">src/game/dynamic/simulator.ts:28-166</a></p>
+  </section>
+
+  <section class="actor">
+    <h2>5. 入力と表示の導出</h2>
+    <p><code>GamePresentation</code> / <code>GameInputPhase</code> / <code>DisplayPhase</code></p>
+    <h3>責務</h3>
+    <p>ブラウザ入力をモデルの命令/操作量へ変換し、モデルの結果を表示宣言へ変換する。モデルを直接描画せず、モデルの正本も直接書き換えない。</p>
+    <h3>やりとり</h3>
+    <ul>
+      <li><code>Input</code> → <code>rawGameInputAdapter</code> → <code>GameInputRouter</code> → feature port。</li>
+      <li><code>PilotInput</code> が <code>PilotControls</code> を組み、所有者の命令を <code>CommandQueue</code> へ積む。</li>
+      <li><code>DisplayWindowManager</code> と <code>FrameAnchors</code> が表示時刻/座標系/カメラを確定する。</li>
+      <li><code>trajectoryDemand</code> を <code>Game.extendPredictions</code> へ渡し、予測を更新する。</li>
+      <li>天体、動的物体、計画、HUD、マーカー、効果音、通知を各装置の語彙へ写す。</li>
+    </ul>
+    <h3>管理する状態</h3>
+    <p><code>Viewer</code> がビュー、カメラ、航法ターゲット、軌道ガイド、実体表示、軌道基準、予測パネルを所有し、セーブ対象になる。表示側は直近の <code>CameraFrame</code>、表示窓、ピック候補、マーカー宣言、UI音キュー、一時エフェクトなどの導出キャッシュを持つ。</p>
+    <p class="source">根拠: <a href="../src/game/game-presentation.ts#L75">src/game/game-presentation.ts:75-126</a>、<a href="../src/game/runtime/game-input-phase.ts#L20">src/game/runtime/game-input-phase.ts:20-94</a>、<a href="../src/game/runtime/display-phase.ts#L17">src/game/runtime/display-phase.ts:17-91</a>、<a href="../src/game/viewer/viewer.ts#L17">src/game/viewer/viewer.ts:17-105</a></p>
+  </section>
+
+  <section class="actor">
+    <h2>6. 外部装置</h2>
+    <p><code>render</code> / <code>hud</code> / <code>marker</code> / <code>audio</code></p>
+    <h3>責務</h3>
+    <p>ゲームの意味を進めず、そのフレームに見せる・鳴らすべき内容をGPU、DOM、マーカー、WebAudioへ同期する。ページ寿命の装置は <code>main.ts</code> で一度だけ作られる。</p>
+    <h3>やりとり</h3>
+    <ul>
+      <li><code>GameScene</code> / <code>RenderPipeline</code> がカメラ、表示時刻、描画設定、Three.jsオブジェクトを同期して描画する。</li>
+      <li><code>Hud</code> が <code>HudPanelViewModels</code>、ビュー、トースト、モーダル状態をDOMへ反映する。</li>
+      <li><code>MarkerDevice</code> が <code>MarkerDeclaration</code> を投影し、重なりを解決する。</li>
+      <li><code>Bgm</code> / <code>WorldSfx</code> / <code>UiSfx</code> が音の宣言を前フレームとの差分として鳴らす。</li>
+    </ul>
+    <h3>管理する状態</h3>
+    <p>GPU renderer/scene/pipeline、DOMレイヤとパネル、マーカー群、AudioContext/BGM conductor、viewport、外部資源のキャッシュを持つ。艦のHP、敵の生死、勝敗、<code>simTime</code> は持たない。</p>
+    <p class="source">根拠: <a href="../src/run/page-devices.ts#L1">src/run/page-devices.ts:1-18</a>、<a href="../src/render/scene.ts#L11">src/render/scene.ts:11-73</a>、<a href="../src/game/hud/hud.ts#L34">src/game/hud/hud.ts:34-159</a>、<a href="../src/audio/audio-engine.ts#L1">src/audio/audio-engine.ts:1-63</a></p>
+  </section>
+
+  <h2>状態の所有関係</h2>
+  <table>
+    <thead><tr><th>状態</th><th>正本</th><th>他へ渡る形</th><th>寿命</th></tr></thead>
+    <tbody>
+      <tr><td>描画品質・配色・音量・HUD共通選択</td><td><code>UserSettings</code></td><td>現在値 + callback/購読</td><td>ページ/セーブをまたぐ</td></tr>
+      <tr><td>艦・敵・弾・<code>simTime</code></td><td><code>DynamicSystem</code> / <code>Simulator</code></td><td>読み取り面、<code>SerializedDynamicSystem</code></td><td>1ラン、セーブに入る</td></tr>
+      <tr><td>勝敗・スコア・補給・波</td><td><code>Stage</code></td><td><code>StageOutcome</code>、イベント、<code>SerializedStage</code></td><td>1ラン、セーブに入る</td></tr>
+      <tr><td>視点・ターゲット・カメラ選択</td><td><code>Viewer</code></td><td>命令 + 読み取り面、<code>SerializedViewer</code></td><td>1ラン、セーブに入る</td></tr>
+      <tr><td>直近の一回きりの変化</td><td><code>RunEventLog</code></td><td><code>recent</code> を表示導出が読む</td><td>1進行ステップ</td></tr>
+      <tr><td>予測・表示窓・ピック候補・マーカー</td><td><code>Predictor</code> / <code>GamePresentation</code></td><td>装置への宣言</td><td>毎フレーム再導出</td></tr>
+      <tr><td>GPU・DOM・音声資源</td><td><code>GameScene</code> / <code>Hud</code> / <code>AudioEngine</code></td><td><code>sync</code> / <code>render</code></td><td>ページまたはラン</td></tr>
+    </tbody>
+  </table>
+  <p>情報の流れは「入力を命令へ変える → 進行モデルが正本を更新する → 表示導出が読み取り面から宣言を作る → 外部装置が同期する」で閉じている。<code>Game</code> と装置の間に <code>GamePresentation</code> があるため、描画・DOM・音声はゲーム進行の正本を直接書き換えない。</p>
+
+  <footer>参照入口: <code>src/main.ts</code>、<code>src/run/run.ts</code>、<code>src/game/game.ts</code>、<code>src/game/game-presentation.ts</code>、<code>src/game/runtime/</code>、<code>src/game/dynamic/</code>、<code>src/game/celestial/</code>、<code>src/game/viewer/</code></footer>
+</main>
+</body>
+</html>
