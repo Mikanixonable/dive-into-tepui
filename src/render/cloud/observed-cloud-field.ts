@@ -41,14 +41,14 @@ export class ObservedCloudField implements CloudFieldSource {
   public get generation(): number { return this.generationValue; }
 
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
-  public prepare(renderer: WebGPURenderer, _displayTime: number, gpu?: GpuTimingSink): void {
+  public prepare(renderer: WebGPURenderer, _displayTime: number, gpu: GpuTimingSink | null, _nowMs: number): void {
     this.map.request();
     const generation = this.map.generation;
     const revision = this.projection.revision;
     if (generation === this.bakedGeneration && revision === this.bakedRevision) return;
     this.bakedGeneration = generation;
     this.bakedRevision = revision;
-    this.field.render(renderer, gpu);
+    this.field.render(renderer, gpu ?? undefined);
     this.generationValue += 1;
   }
 

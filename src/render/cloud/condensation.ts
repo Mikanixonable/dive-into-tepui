@@ -87,20 +87,21 @@ const TRANSLUCENT_LIMIT = 0.63;
 // **対流活発度は被覆率および雲塔の高さに反映され、沈降域の海洋性層積雲では層状起伏も低減する** — 一面に
 // 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 export function condense(weather: WeatherSample): CloudSample {
+  const { moisture, lift, organization } = weather.forcing;
   // 網目と粒を湿度で混ぜる。混ぜると振れ幅が落ちるので、二乗和の平方根で戻す — 戻さないと
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
-  const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, weather.surfaceHumidity);
+  const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, moisture);
   const network = float(1).sub(shape);
   const convection = mix(weather.convection.y, weather.convection.x, shape)
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
-  const peak = convection.mul(weather.convectiveActivity);
+  const peak = convection.mul(organization);
   const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus());
   // 沈降する湿った海洋の低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
-  const subsidence = max(weather.lift.negate(), 0);
+  const subsidence = max(lift.negate(), 0);
   const stratocumulus = smoothstep(
-    STRATOCUMULUS_HUMIDITY_ONSET,
-    STRATOCUMULUS_HUMIDITY_ONSET + STRATOCUMULUS_HUMIDITY_WIDTH,
-    weather.surfaceHumidity,
+      STRATOCUMULUS_HUMIDITY_ONSET,
+      STRATOCUMULUS_HUMIDITY_ONSET + STRATOCUMULUS_HUMIDITY_WIDTH,
+      moisture,
   )
     .mul(tanh(subsidence.mul(STRATOCUMULUS_SUBSIDENCE_SCALE)))
     .mul(smoothstep(
@@ -112,12 +113,12 @@ export function condense(weather: WeatherSample): CloudSample {
     .mul(smoothstep(
       STRATOCUMULUS_ACTIVITY_ONSET,
       STRATOCUMULUS_ACTIVITY_ONSET + STRATOCUMULUS_ACTIVITY_WIDTH,
-      weather.convectiveActivity,
+      organization,
     ).oneMinus())
     .mul(weather.band.oneMinus());
   // 層状の雲: 上昇流と暖気の流入と折り目の帯が持ち上げる高さに、対流の起伏が乗る。
-  const convectionRelief = mix(float(1), weather.convectiveActivity, stratocumulus);
-  const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
+  const convectionRelief = mix(float(1), organization, stratocumulus);
+  const depth = max(lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
     .add(weather.band.mul(BAND_TOP)).add(convection.mul(CLOUD_TOP_RELIEF).mul(convectionRelief))
     .sub(CLOUD_TOP_BIAS);
   const layered = float(1).add(exp(depth.negate())).reciprocal().mul(LAYER_TOP_SPAN).add(CLOUD_BASE_HEIGHT);
@@ -125,15 +126,15 @@ export function condense(weather: WeatherSample): CloudSample {
   // 圏界面までを二乗で渡すので、低い塔が多く高い塔は少ない。**塔は、その場が覆われるほど湿っていて、
   // かつ沈降していない所にだけ立つ** — 乾いた土地と高気圧の下では、粒の峰が雲を作っても深い対流に
   // ならない。金床は眼を持つ渦の芯だけが敷く平らな天蓋で、圏界面まで届く。
-  const grain = max(weather.convection.x, 0).mul(weather.convectiveActivity);
-  const moist = smoothstep(COVERAGE_ONSET, COVERAGE_ONSET + COVERAGE_WIDTH, weather.surfaceHumidity);
-  const rising = smoothstep(-TOWER_LIFT_GATE, TOWER_LIFT_GATE, weather.lift);
+  const grain = max(weather.convection.x, 0).mul(organization);
+  const moist = smoothstep(COVERAGE_ONSET, COVERAGE_ONSET + COVERAGE_WIDTH, moisture);
+  const rising = smoothstep(-TOWER_LIFT_GATE, TOWER_LIFT_GATE, lift);
   const reach = smoothstep(TOWER_ONSET, TOWER_ONSET + TOWER_WIDTH, grain);
   const tower = layered.add(weather.tropopause.sub(layered).mul(reach.mul(reach)).mul(moist).mul(rising));
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が開始閾値を超過した量を遷移幅で正規化した値に基づく晴天率の補数。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
+  const moistened = moisture.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();

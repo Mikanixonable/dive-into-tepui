@@ -163,9 +163,11 @@ export class PointCelestialView extends SphereCelestialView {
   }
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
-  public override bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+  public override bakeClouds(
+    renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number,
+  ): void {
     if (!this.cumulus?.cloudsVisible) return;
-    this.cumulus.bake(renderer, displayTime, gpu);
+    this.cumulus.bake(renderer, displayTime, gpu, nowMs);
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期し、高度ラベルを返す。
