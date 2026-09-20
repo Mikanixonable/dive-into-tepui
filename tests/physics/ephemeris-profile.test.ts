@@ -3,7 +3,7 @@ import { test } from '../harness';
 import {
   EPHEMERIS_PROFILES, UnsupportedEphemerisEpochError, profileAt,
 } from '../../src/physics/ephemeris/profile';
-import { createJulianDate, ephemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY } from '../../src/physics/time';
+import { createJulianDate, j2000EphemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY } from '../../src/physics/time';
 
 export function register(): void {
   test('ephemeris profile: 現代と西暦20000年付近を別の根拠データへ割り当てる', () => {
@@ -36,7 +36,7 @@ export function register(): void {
       const packEndEt = (profile.validEndJdTdb - J2000_JULIAN_DATE) * SECONDS_PER_DAY;
       for (const frac of [0, 1e-4, 0.001, 0.0338, 0.2739, 0.5, 0.9999, 1]) {
         const epoch = createJulianDate('TDB', profile.validStartJdTdb + span * frac);
-        const requestedStartEt = ephemerisSeconds(epoch);
+    const requestedStartEt = j2000EphemerisSeconds(epoch);
         const requestedEndEt = (profile.validEndJdTdb - J2000_JULIAN_DATE) * SECONDS_PER_DAY;
         const where = `${profile.id} frac=${frac}`;
         assert.ok(requestedStartEt >= packStartEt, `${where}: 元期が pack の開始より前と判定された`);
