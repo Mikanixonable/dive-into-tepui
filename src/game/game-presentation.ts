@@ -293,22 +293,16 @@ export class GamePresentation {
   }
 
   // フレームの残りの入力エッジを、ports の優先順へ配る。
-  public routeInput(ports: readonly GameInputPort[]): void {
-    this.inputPhase.routeInput(ports);
-  }
+  public routeInput(ports: readonly GameInputPort[]): void { this.inputPhase.routeInput(ports); }
 
   // ------------------------------------------------ 進行の材料と、進行の後の導出
 
   // 進行の直後に、ビューの切替とこのフレームの表示窓を確定させ、座標系の錨を表示時刻へ合わせる。
   // ポーズ中も決着後も通す — 決着後も積分は進むので、飛ばすと追従対象がカメラから流れ去る。
-  public resolveFrame(): void {
-    this.displayPhase.resolveFrame();
-  }
+  public resolveFrame(): void { this.displayPhase.resolveFrame(); }
 
   // 座標系の錨が天体を引く時刻 time [s] を差し込む。以降の座標系の変換はすべてこの錨を通す。
-  public anchorFrameAt(time: number): void {
-    this.displayPhase.anchorFrameAt(time);
-  }
+  public anchorFrameAt(time: number): void { this.displayPhase.anchorFrameAt(time); }
 
   // 錨を合わせた時刻での、視点の追従の材料。
   public cameraSamples(): CameraFrameSamples {
@@ -316,14 +310,10 @@ export class GamePresentation {
   }
 
   // 一時エフェクト・的通過マーク・計画表示を、進行が記録した出来事と計画から表示時刻で組み直す(R5)。
-  public presentProgress(): void {
-    this.displayPhase.presentProgress();
-  }
+  public presentProgress(): void { this.displayPhase.presentProgress(); }
 
   // 予測と履歴をどこまで計算してほしいかの需要(R4)。
-  public trajectoryDemand(): TrajectoryDemand {
-    return this.displayPhase.trajectoryDemand();
-  }
+  public trajectoryDemand(): TrajectoryDemand { return this.displayPhase.trajectoryDemand(); }
 
   // 予測を伸ばした後の導出: 赤道交点、カメラ、選択候補をこの順に同じ時刻の状態へ更新する。
   // nowMs [ms] はフレームの実時刻。
