@@ -50,6 +50,7 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 - 値は 0..1 に正規化した基底係数で、値を高度や雲種 ID として読み替えない。G 単独の中層雲、R 単独の低層雲、B 単独の対流残留雲、A 単独の巻雲を許す。
 - R/G/B は一つの対流起源に属する場合、同じ seed と履歴からピーク時刻をずらして生成する。A は上層湿度・上昇・温度から独立に生成し、B と合成しても因果を失わない。
 - 実行時の生成 cap は 512×512 の RGBA16F 一枚、約 2 MiB を上限とする。既存の 4096×2048 RGB/グレースケール画像は観測・見た目の初期化元であり、実行時 cap のメモリ契約ではない。追加の 3D 雲テクスチャは導入しない。
+- Earth の通常描画は `OrthographicCap(CLOUD_CAP_SIZE=512)` を runtime cap とする。一方 cloud-lab の全全球比較は `EquirectProjection(1024×512)` を使うため、lab の global projection は 2 MiB cap とは別の reference buffer として manifest・性能表へ記録する。
 - 512×512 の `cloud-field` は総観・メソスケールの envelope を担当する。典型的な浅い積雲より細かい形状・エッジは、同じ絶対時刻と seed から shader の deterministic sub-grid detail として補う。したがって、この cap の texel を個々の浅い雲セルそのものと解釈せず、cell-series の物体統計は field の解像度と sub-grid の担当範囲を manifest に明記する。
 - `CloudState` は基底係数、絶対時刻に基づく seed、局所緯度・季節、対流圏界面、雲相別の光学パラメータを保持する。雲面・大気内雲・雲影には同じ state/binding を渡す。path ごとのサンプル密度・積分順・早期終了は共有しない。
 
