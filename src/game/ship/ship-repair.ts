@@ -1,10 +1,10 @@
 // 接舷済み船体を、指定接舷部から一括修理する。
 import type { ShipAssembly } from './ship-assembly';
 
-/** 健全かつ接続済みの dock/port から、統合船体の全 module HP を即時回復する。 */
+/** 健全かつ接続済みの dock から、統合船体の全 module HP を即時回復する。 */
 export function repairDockedAssembly(assembly: ShipAssembly, dockId: string): number {
   const dock = assembly.module(dockId);
-  if (dock === null || (dock.kind !== 'dock' && dock.kind !== 'docking_port')) {
+  if (dock?.kind !== 'dock') {
     throw new Error(`not a docking module: ${dockId}`);
   }
   if (dock.hp <= 0) throw new Error(`docking module is destroyed: ${dockId}`);

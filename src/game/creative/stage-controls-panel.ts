@@ -11,14 +11,14 @@ import {
 
 type EnemyShapeDefinition =
   | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
-  | { readonly id: 'stage0-a' | 'stage0-b' | 'stage0-c'; readonly family: 'conventional'; readonly kind: 'stage0'; readonly typeIndex: number }
+  | { readonly id: 'variant-a' | 'variant-b' | 'variant-c'; readonly family: 'conventional'; readonly kind: 'variant'; readonly typeIndex: number }
   | { readonly id: ProteinAssetId; readonly family: 'protein'; readonly kind: 'protein'; readonly assetId: ProteinAssetId };
 
 export const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
   { id: 'drifting', family: 'conventional', kind: 'drifting' },
-  { id: 'stage0-a', family: 'conventional', kind: 'stage0', typeIndex: 0 },
-  { id: 'stage0-b', family: 'conventional', kind: 'stage0', typeIndex: 1 },
-  { id: 'stage0-c', family: 'conventional', kind: 'stage0', typeIndex: 2 },
+  { id: 'variant-a', family: 'conventional', kind: 'variant', typeIndex: 0 },
+  { id: 'variant-b', family: 'conventional', kind: 'variant', typeIndex: 1 },
+  { id: 'variant-c', family: 'conventional', kind: 'variant', typeIndex: 2 },
   ...PROTEIN_ASSET_IDS.map((assetId) => ({ id: assetId, family: 'protein', kind: 'protein', assetId } as const)),
 ];
 export type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
