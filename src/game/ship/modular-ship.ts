@@ -46,6 +46,7 @@ import { ShipInspection } from '../pickable/ship-inspection';
 import { PlayerEffects } from '../player/player-effects';
 import { createDefaultCombatPreset } from './ship-presets';
 import type { ShipAssembly, ShipConnection } from './ship-assembly';
+import { shipRenderAssembly } from './ship-render-adapter';
 import { ShipCapabilities } from './ship-capabilities';
 import { shipPhysicsShape } from './ship-physics-shape';
 import {
@@ -982,7 +983,7 @@ export class ModularShip extends Ship implements Controllable {
     const thrustAcceleration = motion.thrust;
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
-      assembly: this.assembly,
+      assembly: shipRenderAssembly(this.assembly),
       centerOffset: motion.centerOffset,
       state: motion.state,
       active,
@@ -997,7 +998,7 @@ export class ModularShip extends Ship implements Controllable {
     };
   }
 
-  // 自身に関するメッシュやエフェクトを解放する。
+  // 自身のメッシュやエフェクト等の表示資源を解放する。
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
