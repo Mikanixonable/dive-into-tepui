@@ -47,10 +47,9 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active #hud-physical-object-list {
     max-height: var(--rail-panel-max-h);
   }
-  /* min-height は他の同格レールパネルとの見た目の釣り合いを取るためのものなので、
-     全パネルが --rail-panel-max-h まで縮む画面幅ではこの下限自体が矛盾を起こす
-     (max-height より大きい min-height は常に min-height 側が勝つ)——ここでは
-     外す。 */
+  /* min-height は同格レールパネル間の高さの均整を保つ設定。ただし全パネルが
+     --rail-panel-max-h まで縮小する画面幅では下限値が優先され競合するため、
+     ここでは下限を解除する。 */
   #hud .hud-map-root.active .hud-rail-left > #hud-view-options {
     min-height: 0;
   }
@@ -138,8 +137,8 @@ export const MAP_VIEW_STYLE = `
   border: 0;
   border-radius: var(--radius-control);
   color: var(--text-muted);
-  /* 見出しは内側スクロール領域の先頭に貼り付く(sticky、寸法は physical-object-list-panel.ts
-     側)ため、スクロールで下を通り過ぎる行を隠せるようパネルと同じ地の不透明度を持たせる。 */
+  /* 見出しはスクロール領域上端に固定（sticky）される。スクロール時に背後を通過する行が
+     透けて重ならないよう、パネル地と同等の不透明背景を設定する。 */
   background: var(--glass-quiet);
   letter-spacing: 0;
   cursor: pointer;

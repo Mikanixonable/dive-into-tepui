@@ -21,11 +21,11 @@ export interface DynamicsEnvironmentSample {
   readonly atmosphereState: KinematicState | null;
 }
 
-// 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに、その段が
-// 実際に評価されるべき絶対時刻 t とともに呼ばれる。RK4 が4次精度を持つのは非自励系
-// y' = f(t, y) の各段をそれぞれ正しい時刻で評価したときに限られ、t を1点(例えばステップ
-// 中点)へ凍結して自励系として解くと求積が中点則相当に落ち、大域誤差が O(h²) の2次へ
-// 退化する — 重力源が動く系(天体が段の間に位置を変える)では t を無視できない。
+// 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間ステージ(k1〜k4)ごとに、
+// その評価時刻における絶対時刻 t とともに呼ばれる。RK4 が4次精度を持つのは非自励系
+// y' = f(t, y) の各中間値をそれぞれ対応する時刻で評価したときに限られ、t を1点(例えばステップ
+// 中点)へ固定して自励系として扱うと、求積が中点則相当へ落ちて大域誤差が O(h²) へ
+// 退化する — 重力源が動く系(天体がステップの間に位置を変える)では t を無視できない。
 type AccelFn = (t: number, rx: number, ry: number, rz: number, vx: number, vy: number, vz: number) => Vec3;
 
 // 天体の2次重力場による摂動加速度。rRel はその天体の中心からの相対位置。
@@ -114,10 +114,10 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
 }
 
 // 全天体からの重力(Σ attractorAccel — ECI が非慣性系であることの補正込み)と、2次重力場を
-// 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。t は accel を評価すべき絶対時刻(RK4 の各段
-// の時刻)で、重力項(質点・2次重力場とも)は天体位置を pivot からその時刻へ外挿してから
-// 評価する — 距離の3乗で効く重力はステップ幅ぶんの天体の移動が精度を左右するため。
-// 日照率・輻射圧・大気も重力と同じく各評価段の時刻で評価する。これらを pivot に据え置くと、
+// 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。t は加速度を評価すべき絶対時刻(RK4 の各ステージ
+// の評価時刻)で、重力項(質点・2次重力場とも)は天体位置を pivot からその時刻へ外挿してから
+// 評価する — 距離の3乗に比例する重力計算では、ステップ幅ぶんの天体移動が精度を左右するため。
+// 日照率・輻射圧・大気も重力と同じく各評価ステージの時刻で評価する。これらを pivot に据え置くと、
 // ステップが長い時間加速時に SRP/食と大気相対速度が同じ時刻を見なくなる。
 export function environmentSampleAt(
   t: number, r: Vec3, v: Vec3, star: CelestialBody | null,
@@ -133,8 +133,8 @@ export function environmentSampleAt(
   return { t, r, v, sunDist, sunlit, sunDir, atmosphere, atmosphereState };
 }
 
-// 時刻 t・位置 r・速度 v の質点にかかる加速度の合成。environment はその段の日照・大気で、
-// 呼び出し側が同じ (t, r, v) で解決したものを渡す。
+// 時刻 t・位置 r・速度 v における質点への合成加速度を算出する。引数 environment には、
+// 同一の (t, r, v) に対して評価された日照および大気情報を渡す。
 function totalAccel(
   t: number,
   r: Vec3,
@@ -166,7 +166,7 @@ function totalAccel(
   }
   const atmosphere = environment.atmosphere;
   if (atmosphereBody === null || atmosphere === null) return v3(ax, ay, az);
-  // 抗力はその天体の中心を基準に測る。天体位置は重力項と同じくこの段の時刻へ外挿する。
+  // 抗力はその天体の中心を基準に測る。天体位置は重力項と同じくこのステージの評価時刻へ外挿する。
   const atmosphereState = environment.atmosphereState!;
   const b = atmosphereBody.positionAt(pivot, t);
   const drag = dragAccel(
@@ -191,10 +191,10 @@ export function stepDynamics(
     state, dt, attractors, occluders, atmosphereBody, pivot, bcInv, srpCoeff, thrust).state;
 }
 
-// 同じ1ステップを、RK4 の各段で評価した環境ごと返す。attractors はこのステップぶん
-// 呼び出し側が確定させた重力源一覧、occluders は日照率だけに使う遮蔽体一覧(重力の絞り込みとは
-// 別の関心事なので別の引数で受け取る)。atmosphereBody は抗力を及ぼす**ただ1体**の大気天体で、
-// null なら抗力は恒等的にゼロ。pivot は天体一式を厳密に引いた時刻。
+// RK4 の 1 ステップを実行し、各中間ステージで評価された環境サンプルの配列と新しい状態を返す。
+// 引数 attractors はこのステップで考慮する重力源の一覧、occluders は日照率計算に用いる遮蔽体一覧
+// (重力の絞り込みとは独立に指定可能)。atmosphereBody は抗力を及ぼす対象の大気天体
+// (null なら抗力は恒等的にゼロ)。pivot は天体位置を厳密に取得した基準時刻。
 export function stepDynamicsWithSamples(
   state: KinematicState,
   dt: number,

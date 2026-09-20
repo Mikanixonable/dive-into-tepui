@@ -1,4 +1,4 @@
-// 3D の勾配ノイズ(改良 Perlin)1 段。格子点ごとに 12 方向のどれかを割り当て、格子の中の位置との
+// 3D 勾配ノイズ(改良 Perlin)の単一オクターブ評価。格子点ごとに 12 方向のどれかを割り当て、格子の中の位置との
 // 内積を五次のフェードで三重線形に混ぜる。値はおおむね −1..1 で、格子点では 0 になる。
 import { Fn, floor, int, mix, or, select, uint } from 'three/tsl';
 import type { FloatNode, UintNode, Vec3Node } from '../tsl-types';

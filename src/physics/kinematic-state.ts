@@ -34,7 +34,7 @@ type FramedVec3<F extends FrameTag> = Vec3 & { readonly __originOf: F };
 // (dynamic/dynamic-entity/dynamic-entity.ts)も同じこの型で表す。
 // 型引数は原点と供給源(FrameTag)。既定が 'eci' なので、ECI を読む側は型引数を書かなくてよい。
 export type KinematicState<F extends FrameTag = 'eci'> = {
-  readonly t: number; // 絶対 simTime [s](時刻軸の契約は CODING-RULE 1.9)
+  readonly t: number; // 絶対 simTime [s](時刻軸の仕様規約は CODING-RULE 1.9)
   readonly r: FramedVec3<F>; // 位置 [m]
   readonly v: FramedVec3<F>; // 速度 [m/s]
 } & { readonly __frame: F; }
@@ -52,7 +52,7 @@ export interface SerializedKinematicState {
   readonly v: SerializedVec3;
 }
 
-// ECI 運動状態を、直列化した時刻・位置・速度へ写す。
+// ECI 運動状態を、直列化用のプレーンオブジェクトへ変換する。
 export function serializeKinematicState(state: KinematicState<'eci'>): SerializedKinematicState {
   return { t: state.t, r: { ...state.r }, v: { ...state.v } };
 }

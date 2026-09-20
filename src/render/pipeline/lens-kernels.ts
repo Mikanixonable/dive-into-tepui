@@ -139,8 +139,8 @@ export function tentUpsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Nod
   return sumOf([corners, edges.mul(2), tap(0, 0).mul(4)]).mul(1 / 16);
 }
 
-// 回折PSFの主ローブを1段分広げる。directionごとに片側のタップを使い、段をまたいで間隔を広げる。
-// これにより条の太さは読み元の段、長さはパス数で決まり、方向ごとの鎖が互いに混ざらない。
+// 回折PSFのメインローブを1パス分伸長する。direction ごとに一方向タップをサンプリングし、パス進行に応じてタップ間隔を拡大する。
+// これにより光条の幅は入力テクセルサイズ、長さは反復パス数によって定まり、方向ごとのブラー処理が互いに直交して独立性を保つ。
 export function diffractionPass(
   source: THREE.Texture, texel: Vec2Uniform, direction: Vec2Uniform,
   psfTaps: readonly AperturePsfTap[],

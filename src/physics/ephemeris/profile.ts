@@ -46,9 +46,8 @@ export class UnsupportedEphemerisEpochError extends RangeError {
   }
 }
 
-// jdTdb に数値暦を持つプロファイル。無ければ null(この時代は CELESTIAL.md 2.2 の
-// とおり解析暦だけで扱う、正常な状態)。有効期間は重ならない。将来重なるプロファイルを
-// 追加するときは、暗黙の優先順位ではなく呼び出し側に requestedProfile を要求するよう変更する。
+// jdTdb に数値暦を持つプロファイル。無ければ null(この時代は解析暦だけで扱う正常な状態)。
+// 有効期間は互いに重複しない構成とする。
 export function profileAtOrNull(jdTdb: number): EphemerisProfile | null {
   if (!Number.isFinite(jdTdb)) throw new TypeError(`JD_TDB は有限値でなければならない: ${jdTdb}`);
   for (const profile of Object.values(EPHEMERIS_PROFILES)) {
