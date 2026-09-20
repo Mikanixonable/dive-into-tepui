@@ -1,7 +1,7 @@
 // マップ上のオブジェクトを右クリックして開く、プロパティ表示付きの小窓。行一覧・操作項目・
 // 関連物体一覧・改名 UI という4つの副概念を束ね、本文でのそれぞれの並び順と、本文の高さが
 // 変わったときのはみ出し補正(reclamp)をいつ行うかを決める。表示専用で、プロパティの値を
-// どう導出するかは呼び出し側の責務。複数存続できる想定のため ContextMenu と異なり呼び出し
+// 対応するコンポーネントが導出する。複数存続できる想定のため ContextMenu と異なり呼び出し
 // ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置くため、
 // `#hud, #hud *` の margin/padding リセットに勝てるよう全セレクタを `#hud` で始める。
 import { injectOnce } from '../inject-style';
@@ -179,8 +179,8 @@ export class PropertyWindow<A extends string = string> {
     return this.win.clipped;
   }
 
-  // 呼び出し側が組んだ操作ウィジェットを本文の先頭へ載せる。プロパティ行が伸びても押しに行ける
-  // 位置に置くため、行より上に入る。ウィジェット本体の所有権は呼び出し側に残し、null で外す。
+  // 操作ウィジェットを本文の先頭に起き、プロパティ行が伸びても先頭から操作できる位置に置く。
+  // 所有権は導入元に残り、null で取り外す。
   public setControls(controls: HTMLElement | null): void {
     this.controlsEl.replaceChildren();
     if (controls === null) {
@@ -213,8 +213,8 @@ export class PropertyWindow<A extends string = string> {
     this.win.dispose();
   }
 
-  // ✕ ボタンと同じ「破棄して呼び出し側へ通知する」経路。ESC・外側クリックどちらで閉じても
-  // ここを通るので、onClose の発火経路は一本化される。
+  // ✕ ボタンと同一経路で破棄し、onClose を発火する。
+  // ESC・外側クリックいずれで閉じてもここを経由するため、発火経路は一本化される。
   public close(): void {
     this.win.close();
   }

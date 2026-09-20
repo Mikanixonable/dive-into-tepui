@@ -254,7 +254,7 @@ export class ObjectPlacement {
     if (!(motion instanceof OrbitingMotion)) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
-    // いまの時刻の主天体・副天体の系で、ハロー/リサジューの初期状態を解く。
+    // 現在時刻の主天体・副天体系から、ハロー/リサジュー軌道の初期状態を算出する。
     const t = this.roster.simTime;
     const system = secondaryFrameOf(this.celestialSystem.celestialMotions, t, motion, t);
     if (system === null) {

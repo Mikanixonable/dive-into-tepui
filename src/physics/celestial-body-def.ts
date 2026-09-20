@@ -56,10 +56,9 @@ export interface Degree2GravityDef {
   readonly refRadius: number; // 係数が定義された基準半径 [m]
 }
 
-// 天体の形状(歪み)。省略時は `radius` による真球。'spheroid' は回転楕円体(赤道半径=極半径
-// の2値)、'triaxial' は三軸楕円体(a >= b >= c、a が最長の赤道軸、b が残りの赤道軸、
-// c が最短の極軸)。出典は pck00011.tpc の BODY_RADII。値はいずれも半径 [m](直径ではない)
-// — pck/SBDB の `extent` は直径で載ることが多いので登録時に 2 で割ること。
+// 天体の形状歪み定義。省略時は `radius` による真球。
+// 'spheroid' は回転楕円体（赤道半径と極半径を指定）、'triaxial' は三軸楕円体（a >= b >= c：長赤道軸、短赤道軸、極軸）。
+// 出典は pck00011.tpc の BODY_RADII。値はいずれも半径 [m]（直径ではないため、文献の extent 値は 2 で除算して登録する）。
 export type ShapeDef =
   | { readonly kind: 'spheroid'; readonly equatorRadius: number; readonly polarRadius: number }
   | { readonly kind: 'triaxial'; readonly a: number; readonly b: number; readonly c: number };
@@ -166,7 +165,7 @@ export function spinRateOf(def: CelestialBodyDef): number | null {
   return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
 }
 
-// 天体の宣言を、元期オフセットを畳み込んだ宣言へ写す。これを通した宣言だけが CelestialMotion
+// 天体定義の元期オフセットを畳み込み、simTime 基準の定義へ変換する。これを通した宣言だけが CelestialMotion
 // へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形になり、評価のたびに巨大な
 // 定数を足し直さずに済む。
 export function planetDefForSimZero(def: PlanetDef, simZeroEt: number): PlanetDef {
@@ -177,7 +176,7 @@ export function planetDefForSimZero(def: PlanetDef, simZeroEt: number): PlanetDe
   };
 }
 
-// 衛星の宣言を、同じ規約で simTime 基準の宣言へ写す。
+// 衛星の定義を、同様に simTime 基準の定義へ変換する。
 export function satelliteDefForSimZero(def: SatelliteDef, simZeroEt: number): SatelliteDef {
   return {
     ...def,

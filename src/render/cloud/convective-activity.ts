@@ -13,7 +13,7 @@ import type { Circulation } from './circulation';
 import type { FieldProjection } from './field-projection';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
-// 気団のノイズの段の表と、その振れ幅。雲塊の配置(800 km)より粗い所から始めて、粒(48 km)の
+// 気団ノイズのオクターブ定義表と、その振幅。雲塊の配置(800 km)より粗い所から始めて、粒(48 km)の
 // 約 5 倍の 250 km まで届かせる — 活発度が粒ごとではなく粒の群れごとに振れるので、粒は数百 km の
 // 塊に群れ、塊のあいだは静かな隙間として晴れる(`DEVELOP/SPEC/RENDERING.md`「粒は数百キロの
 // 塊に群れ、塊のあいだは晴れる」)。積雲の粒(48〜24 km)には届かせない — 粒より細かい所で
@@ -26,17 +26,17 @@ const INSTABILITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 25, amplitude: 0.65 }, // 250 km
 ];
 const INSTABILITY_AMPLITUDE = 1.0;
-// 上昇流が活発度へ効く利得 [per m/s] と、上昇流の無い所での活発度。並の低気圧(0.02 m/s)で
+// 上昇流の対流活発度に対する伝達利得 [per m/s] と、無上昇流時の基準活発度。並の低気圧(0.02 m/s)で
 // 気団に依らず 1 へ、高気圧の吹きおろし(−0.02 m/s)で床へ届く。
 const LIFT_ACTIVITY = 25;
 const ACTIVITY_BASE = 0.5;
-// 寒気の流入が活発度へ効く利得 [per rad] と、活発度の床。並の寒気の吹き出し(−0.26 rad)で
+// 寒気流入の対流活発度に対する寄与ゲイン [per rad] と、活発度の下限値。並の寒気の吹き出し(−0.26 rad)で
 // 活発度が半分ぶん上がる高さに取る。
 const COLD_ACTIVITY = 1.9;
 const ACTIVITY_MIN = 0.3;
 // 陸の上で上がる分。日射で温まる地面の上は不安定で、雲は板ではなく粒になる。
 const LAND_ACTIVITY = 0.3;
-// 気団の折り目の帯(前線・雨帯)が活発度へ効く利得。帯の中の対流は活発で、粒立った塔が列をなす —
+// 前線帯・雨帯が対流活発度へ寄与する伝達利得。帯の中の対流は活発で、粒立った塔が列をなす —
 // 帯が飽和した所で活発度が半分ぶん上がる高さに取る。
 const BAND_ACTIVITY = 0.5;
 

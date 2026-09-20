@@ -64,8 +64,8 @@ interface RotatingFrame {
   readonly unit: number;
 }
 
-// その瞬間の天体位置から系の回転基底を組む。副天体の解決(guideSecondary の id を星系から
-// 引くこと)は呼び出し側の仕事で、主星を持たない副天体では null。
+// その瞬間の天体位置から系の回転基底を組む。主星を持たない副天体など有効な回転系を
+// 構成できない場合は null を返す。
 // 焼き込みは重心原点なので、原点も重心へ置く(質量比はカタログが持つ値を使う)。
 export function rotatingFrame(system: SecondaryFrame, mu: number): RotatingFrame | null {
   const primaryPos = system.primaryState.r;
@@ -87,8 +87,8 @@ function toEci(frame: RotatingFrame, local: Vec3Tuple): Vec3 {
   return add(frame.origin, rotateToEci(frame, local));
 }
 
-// 無次元回転系のベクトルを ECI [m] のベクトルへ写す(原点の平行移動を伴わない、速度や
-// 接線のための変換)。
+// 無次元回転系のベクトルを ECI [m] のベクトルへ変換する(平行移動を含まない速度や
+// 接線の回転変換)。
 function rotateToEci(frame: RotatingFrame, local: Vec3Tuple): Vec3 {
   const { xHat, yHat, zHat, unit } = frame;
   return add(
@@ -160,7 +160,7 @@ export function catalogLoop(
       mix(values, a, b, 6, f) * period,
     ];
     points.push(toEci(frame, local));
-    // 速度は原点の平行移動を受けないので、回転基底だけで写す。
+    // 速度は原点の平行移動を受けないため、回転基底のみを乗じて変換する。
     tangents.push(rotateToEci(frame, velocity));
     us.push(mix(values, a, b, 3, f));
   }
@@ -207,7 +207,7 @@ export function lissajousLoop(
   const zRatio = frame.omegaZ / frame.lambda;
   const omegaCorrection = 1 + coeffs.s1 * axHat * axHat + coeffs.s2 * azHat * azHat;
 
-  // u∈[0,1] を cycles 周ぶんの位相へ写し、局所γ単位の Richardson 解を ECI [m] へ戻す。
+  // u∈[0,1] を cycles 周分の位相角へ換算し、局所γ単位の Richardson 解を ECI [m] 座標へ変換する。
   const positionAt = (u: number): Vec3 => {
     const phase = 2 * Math.PI * cycles * u;
     const theta1 = omegaCorrection * (phase + inPlanePhase);
@@ -232,7 +232,7 @@ function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideL
   return { shape: { kind: 'analytic', positionAt }, revolutions: 1 };
 }
 
-// 太陽同期準回帰軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
+// 太陽同期準回帰軌道のガイド線。earth は地球の CelestialBody インスタンス。
 export function sunSyncRepeatGroundTrackLoop(
   earth: CelestialBody, earthPivot: number, repeatDays: number, revsPerRepeat: number,
 ): GuideLoop | null {
@@ -265,7 +265,7 @@ function spinResonantLoop(
     elementsOf(earth, Math.abs((2 * Math.PI) / spinRate)), earth.positionAt(earthPivot));
 }
 
-// モルニヤ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
+// モルニヤ軌道のガイド線。earth は地球の CelestialBody インスタンス。
 export function molniyaGuideLoop(
   earth: CelestialBody, earthPivot: number, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
 ): GuideLoop | null {
@@ -274,7 +274,7 @@ export function molniyaGuideLoop(
     (p, spin) => molniyaElements(perigeeAltitude, raanDeg, p, earthPivot, spin));
 }
 
-// ツンドラ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
+// ツンドラ軌道のガイド線。earth は地球の CelestialBody インスタンス。
 export function tundraGuideLoop(
   earth: CelestialBody, earthPivot: number, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
 ): GuideLoop | null {

@@ -9,8 +9,8 @@ export function buildGroupTitle(text: string): HTMLSpanElement {
   return heading;
 }
 
-// 見出し付きの行を組む。className は行そのもののクラスで、既定は横並びの行 .w-group。
-// title が空文字なら見出しを持たない行になる。中身は呼び出し側が append する。
+// 見出し付きの行コンテナを生成する。className は行そのもののクラスで、既定は横並びの行 .w-group。
+// title が空文字なら見出しを持たない行となる。行コンテンツは返却された要素の子として追加する。
 export function buildLabeledRow(title: string, className = 'w-group'): HTMLElement {
   const row = document.createElement('div');
   row.className = className;

@@ -51,7 +51,7 @@ function formatFuel(value: number, max: number): string {
   return `${Math.round(finiteNonNegative(value)).toLocaleString()} / ${Math.round(finiteNonNegative(max)).toLocaleString()} kg`;
 }
 
-// 燃焼状態の内部文字列を日本語ラベルへ写す。未知の状態はそのまま返す。
+// 燃焼状態の内部識別子を日本語表示名へマッピングする。未知の状態はそのまま返す。
 function stateLabel(state: string): string {
   const labels: Record<string, string> = {
     idle: '待機',

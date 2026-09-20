@@ -1,6 +1,5 @@
-// 1本の連続した音楽の線。どの曲を鳴らし、いつ次の曲へ送るかを決め、鳴っている曲を
-// 先読みで進める。1曲ぶんの発音そのものは TrackPlayback、ユーザー音量と刻みを回す
-// タイマーは持ち主(Bgm)の責務。
+// BGM 再生の進行管理。再生トラックの選択・遷移タイミング制御、および先読み発音スケジューリングを行う。
+// トラックごとの個別発音処理は TrackPlayback が担当する。
 import { BGM_TRACKS } from './tracks/tracks';
 import { createComposer } from './composer-factory';
 import { TrackPlayback } from './track-playback';
@@ -18,9 +17,8 @@ export class Conductor {
   private trackIdx = 0;
   private trackStartTime = 0;
 
-  // destination は持ち主のマスターゲイン。ctx は開いているものを受け取る。
-  // rotates は線ごとの方針で、あとから変わらない — ゲーム中の線は送り、試聴の線は送らない。
-  // この線ぶんのゲインをここで組む。曲ごとのフェードとは別の層で、線そのものを伏せるのに使う。
+  // destination は出力先ゲインノード。rotates は自動トラック遷移の有無を指定する。
+  // 本クラス専用のゲインノードを構成し、トラック別フェードとは独立したダッキング制御を行う。
   public constructor(
     private readonly ctx: AudioContext,
     destination: AudioNode,
@@ -31,12 +29,12 @@ export class Conductor {
     this.gain.connect(destination);
   }
 
-  // 曲を鳴らしている最中か。持ち主が刻みを回す必要があるかの判断に使う。
+  // 現在トラックが再生中かどうかを返す。
   public get isSounding(): boolean {
     return this.playback !== null;
   }
 
-  // 現在の曲の一巡の中での経過秒数。一巡という概念を持たない曲(antipode)では 0。
+  // 現在トラックの1サイクル内における経過秒数。周回概念を持たないトラック（antipode）では 0。
   public get elapsedSec(): number {
     const duration = trackCycleDurationSec(BGM_TRACKS[this.trackIdx]!);
     if (duration <= 0) return 0;

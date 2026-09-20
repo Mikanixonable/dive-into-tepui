@@ -51,8 +51,8 @@ interface GuideLineGeometry {
   readonly shape: GuideLineDisplay['shape'];
 }
 
-// 線1本がどの曲線から引かれるか。焼き込みカタログの族は系と族の点(点を持たない族は null)、
-// リサジュー軌道は系と共線点を持ち、地球専用の参照軌道はどちらも持たない。
+// 軌道線の生成元曲線定義。カタログ族は対象星系および対応平衡点（未定義時は null）、
+// リサジュー軌道は対象星系と共線点、地球参照軌道は地球慣性座標系を基準に構成する。
 type GuideLineFamily =
   | {
     readonly source: 'catalog';

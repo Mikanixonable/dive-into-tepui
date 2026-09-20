@@ -1,8 +1,7 @@
-// 地球表面のページ表・タイル・材質を同じ地理UVから読む解析契約。
+// 地球表面のページ表・タイル・材質を同一の地理UV座標から解決するデータアクセス仕様。
 //
-// このモジュールはThree.jsのテクスチャやTSLノードを生成しない。GPU側の配列層を
-// 置き換えられるよう、ページ表の最近傍読取り、タイル内UV、親子遷移、色空間、法線の
-// 座標系を値と純粋関数で固定する。
+// Three.js テクスチャや TSL ノードの生成は行わず、ページ表の最近傍サンプリング、タイル内UV変換、
+// 親子LOD遷移、色空間、および法線座標系を純粋関数と定数値として定義する。
 import * as THREE from 'three/webgpu';
 import {
   EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_MAX_Z, EARTH_TILE_TEXELS, EARTH_TILE_MIN_Z,

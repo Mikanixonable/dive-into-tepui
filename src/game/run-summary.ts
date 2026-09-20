@@ -29,7 +29,7 @@ export function summarizeRun(
   simTime: number, phase: GamePhase, controlled: Controllable | null,
   celestial: CelestialBodies, entities: readonly DynamicEntity[],
 ): RunSummary {
-  // 操作対象が居る周回なら、軌道の項もそこから解く。
+  // 操作対象が存在する周回であれば、軌道情報も対象オブジェクトから算出する。
   const info = controlled === null ? null : orbitInfo(
     controlled,
     autoOrbitReference(

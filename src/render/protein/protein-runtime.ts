@@ -43,7 +43,7 @@ export class ProteinRuntime {
   private lastCpuMs = 0;
   private lastUploadBytes = 0;
 
-  // root に部位の結合線を加え、残基変形を解く共有バッファ上の借り位置を借りる。
+  // root に部位の結合線を追加し、残基の変位計算に必要なバッファを初期化する。
   public constructor(
     private readonly root: THREE.Object3D,
     private readonly asset: ProteinRenderAsset,
@@ -160,12 +160,12 @@ export class ProteinRuntime {
       : display.phase === 'critical' ? 0.12 : 0.68;
   }
 
-  // 部位 id の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。id が無ければ origin。
+  // 部位 id の変形済みアンカーを、個体の位置・姿勢に基づいてワールド座標へ変換する。id が無ければ origin。
   public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.siteDefinitions.get(id) ?? null, origin, attitude);
   }
 
-  // 部位の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。site が null なら origin。
+  // 部位の変形済みアンカーを、個体の位置・姿勢に基づいてワールド座標へ変換する。site が null なら origin。
   private siteWorldPosition(site: ProteinRenderSite | null, origin: Vec3, attitude: Quat): Vec3 {
     if (site === null) return origin;
     // 残基の変位は、直前の syncVisual で投影したもの。

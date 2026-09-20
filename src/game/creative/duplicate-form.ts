@@ -1,5 +1,5 @@
 // マップ上の既存オブジェクトを「複製」するための、状態→物体配置フォーム値の逆変換。
-// elements.ts の orbitPlaneBasis(inc, raan, argp → pHat/qHat) の逆方向を解くだけで、
+// elements.ts の orbitPlaneBasis(inc, raan, argp → pHat/qHat) の逆変換を行うのみであり、
 // 新しい軌道計算はしない。中心天体の選定・要素化・真近点角の算出は celestial-body.ts/elements.ts の
 // 既存関数(strongestAttractor/elementsAround/trueAnomalyAt/apsisAltitudes)をそのまま使う。
 import { KinematicState } from '../../physics/kinematic-state';

@@ -1,5 +1,5 @@
 // 気圧の場と釣り合う風の法則と、その風に流された 1 歩。傾度風(気圧勾配 = コリオリ + 遠心力)へ
-// 摩擦を足した定常の釣り合いを 1 本の式で解く。勾配が緩い所ではコリオリが釣り合いを受け持って
+// 摩擦を加えた定常の釣り合いを単一の方程式から算出する。勾配が緩い領域ではコリオリ力が支配的となって
 // 地衡風の枝へ、谷が狭く深い所では遠心力が受け持って緯度に依らない枝へ落ちるので、**中緯度の
 // 低気圧も熱帯の台風も同じ式から出る。** 赤道でも高気圧側でも有限に留まる。
 import { abs, cos, cross, length, max, min, sin, sqrt, tanh } from 'three/tsl';
@@ -74,7 +74,7 @@ export function balancedWind(
   const spinSense = tanh(sinLatitude.div(SPIN_SENSE_WIDTH));
   const spin = spinSquared.mul(2).div(denominator).mul(spinSense);
   const along = coriolis.add(spin);
-  // 向きだけに効く摩擦。上限はコリオリ力の弱い所で低気圧へ流れ込む風の角を maxCrossing に抑えるためのもの
+  // 風向にのみ作用する摩擦項。上限はコリオリパラメータが小さい低緯度域で低気圧への流入角を maxCrossing 以内に抑制するための設定
   // で、赤道へ向かっては渦の向きが決まらない幅で開く — 開かないと along の消える赤道で向きの長さが 0 に
   // なり(0/0)、along の符号が変わる所で風が 2 × maxCrossing 跳んで緯線に沿う継ぎ目が立つ。高気圧側では
   // along が赤道の外でも 0 を通るので尺度を |coriolis| で下から支える — その流れは勾配をまっすぐ下って

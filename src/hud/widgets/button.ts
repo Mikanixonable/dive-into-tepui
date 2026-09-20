@@ -1,5 +1,5 @@
-// 単発クリックのボタン。押すと onClick を呼ぶ。on(点灯)/disabled の表示は呼び出し側が
-// setOn/setEnabled で与える。点灯型トグルは setOn を外から呼ぶ形でこのボタンに表現させる。
+// 単発クリックのボタン。押下時に onClick を発火する。on(点灯)/disabled 表示は
+// setOn/setEnabled を介して制御する。点灯型トグル表示にも対応する。
 import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-base';
 
 // ボタンの意味(Primary/Secondary)と密度・形状(Dense/Icon)を、画面側の個別 CSS ではなく
@@ -54,7 +54,7 @@ export class Button {
     else this.element.textContent = label;
   }
 
-  // 点灯表示を外部状態に合わせて設定する。呼び出し側が onClick 内などから setOn を呼んで反映する。
+  // 点灯表示を外部状態に合わせて設定する。onClick ハンドラなどから状態を反映する際に用いる。
   public setOn(on: boolean): void {
     this.element.classList.toggle('on', on);
     this.element.setAttribute('aria-pressed', String(on));

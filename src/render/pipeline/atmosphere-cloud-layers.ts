@@ -1,5 +1,5 @@
-// 大気積分へ挿入する雲殻の交差・順序・合成を所有する。大気の密度積分や地平線の幾何は持たず、
-// AtmosphereIntegrator から天体空間の幾何と太陽輝度だけを契約として受け取る。
+// 大気積分へ挿入する雲殻の交差判定・順序制御・合成処理を統括する。
+// AtmosphereIntegrator から天体空間の幾何配置と太陽放射輝度を入力パラメータとして受け取る。
 import { If, and, float, greaterThan, lessThan, mix, normalize, step, vec3 } from 'three/tsl';
 import {
   CLOUD_SHELL_SPECIES, CloudAtmosphereRenderer, type CloudShellSample, type CloudSpecies,
