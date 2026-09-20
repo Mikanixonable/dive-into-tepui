@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lecture 1: このゲームを読むための地図 - Dive into Tepui</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090d14;
+      --bg-alt: #0e1520;
+      --panel: #131d2b;
+      --panel-hover: #19273a;
+      --panel-elevated: #1a2738;
+      --ink: #e6eef8;
+      --muted: #8ea4bc;
+      --accent: #5eead4;
+      --accent-dim: #14b8a6;
+      --accent-glow: rgba(94, 234, 212, 0.16);
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --indigo: #818cf8;
+      --rose: #fb7185;
+      --line: #22344a;
+      --line-bright: #354e6e;
+      --code-bg: #070b10;
+      --code-ink: #bae6fd;
+      --card-radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      line-height: 1.8;
+      letter-spacing: 0.015em;
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 48px 24px 96px; }
+    
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 16px;
+    }
+    .nav-links { display: flex; flex-wrap: wrap; gap: 12px; }
+    .nav-links a { color: var(--accent); text-decoration: none; font-weight: 500; }
+    .nav-links a:hover { text-decoration: underline; color: #fff; }
+    .nav-links a.current { color: #fff; font-weight: 700; border-bottom: 2px solid var(--accent); }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      background: var(--accent-glow);
+      border: 1px solid rgba(94, 234, 212, 0.3);
+      padding: 3px 12px;
+      border-radius: 9999px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      color: #fff;
+      font-size: clamp(2rem, 4vw, 2.7rem);
+      font-weight: 800;
+      line-height: 1.25;
+      background: linear-gradient(135deg, #ffffff 30%, var(--accent) 70%, var(--sky) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 16px;
+    }
+
+    .lead { color: var(--muted); font-size: 1.1rem; line-height: 1.7; margin-bottom: 32px; }
+    
+    h2 {
+      margin-top: 48px;
+      margin-bottom: 20px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    h2::before {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 1.2em;
+      background: var(--accent);
+      border-radius: 3px;
+    }
+
+    h3 { margin-top: 24px; margin-bottom: 12px; font-size: 1.2rem; color: #f1f5f9; }
+    p { margin: 12px 0 16px; color: #cbd5e1; }
+    
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9em;
+      color: var(--code-ink);
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    pre code {
+      display: block;
+      padding: 16px 20px;
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow-x: auto;
+      line-height: 1.6;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--card-radius);
+      padding: 24px 28px;
+      margin: 24px 0;
+      box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.35);
+    }
+
+    .diagram-box {
+      background: #080d14;
+      border: 1px solid var(--line-bright);
+      border-radius: var(--card-radius);
+      padding: 24px;
+      margin: 24px 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 0.92rem;
+      background: var(--panel);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    th, td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; }
+    th { background: var(--panel-elevated); color: #f1f5f9; font-weight: 700; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+    .highlight-box {
+      background: linear-gradient(135deg, rgba(94, 234, 212, 0.08) 0%, rgba(56, 189, 248, 0.04) 100%);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 10px 10px 0;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    footer {
+      margin-top: 64px;
+      border-top: 1px solid var(--line);
+      padding-top: 24px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="nav-bar">
+    <div class="nav-links">
+      <a href="./1.html" class="current">1: 地図</a>
+      <a href="./2.html">2: 起動とループ</a>
+      <a href="./3.html">3: 入力と進行</a>
+      <a href="./4.html">4: Gameの責務</a>
+      <a href="./5.html">5: 設計の4本軸</a>
+      <a href="./6.html">6: システム概観</a>
+      <a href="./7.html">7: 雲レンダリング</a>
+      <a href="./8.html">8: 8大アクター相関図</a>
+    </div>
+    <div>Dive into Tepui Architecture Series</div>
+  </div>
+
+  <header>
+    <div class="badge">Lecture 1 / Overview & Architecture Map</div>
+    <h1>第1講：このゲームを読むための地図<br>――最新アーキテクチャ版</h1>
+    <p class="lead">
+      低軌道を舞台にした3D宇宙軌道シューティングゲームの全貌を掴む。最初から軌道力学やWebGPUシェーダの詳細を読むのではなく、「誰が全体を動かし、毎フレームどんな順序で処理するのか」という呼び出しの幹を整理する。
+    </p>
+  </header>
+
+  <section>
+    <h2>1. 巨大なコードベースは「ファイル一覧」ではなく「呼び出しの幹」から読む</h2>
+    <p>
+      現在の <code>src/</code> 配下には、ゲーム進行、HUD、カメラ、物理、セーブ、マップ、エフェクト、雲描画など、多数の専門モジュールがあります。最初からファイルツリーを順番に読もうとすると迷子になってしまいます。まずは次の大黒柱（幹）を頭に入れます。
+    </p>
+
+    <div class="diagram-box">
+      <svg viewBox="0 0 840 280" width="840" height="280" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto;">
+        <!-- main.ts -->
+        <rect x="20" y="30" width="200" height="70" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+        <text x="120" y="60" fill="#38bdf8" font-size="14" font-weight="700" text-anchor="middle">src/main.ts</text>
+        <text x="120" y="80" fill="#94a3b8" font-size="11" text-anchor="middle">ページ寿命の装置・ループ始動</text>
+
+        <!-- Launcher -->
+        <path d="M 220 65 L 290 65" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+        <rect x="290" y="30" width="220" height="70" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
+        <text x="400" y="60" fill="#c084fc" font-size="14" font-weight="700" text-anchor="middle">Launcher</text>
+        <text x="400" y="80" fill="#94a3b8" font-size="11" text-anchor="middle">周回・ステージ選択・セーブ復元</text>
+
+        <!-- Run -->
+        <path d="M 510 65 L 580 65" stroke="#a855f7" stroke-width="2"/>
+        <rect x="580" y="30" width="230" height="70" rx="10" fill="#1e293b" stroke="#5eead4" stroke-width="2"/>
+        <text x="695" y="60" fill="#5eead4" font-size="14" font-weight="700" text-anchor="middle">Run (1ランの進行)</text>
+        <text x="695" y="80" fill="#94a3b8" font-size="11" text-anchor="middle">毎フレームのフェーズ交通整理</text>
+
+        <!-- Split into Game and GamePresentation -->
+        <path d="M 695 100 L 695 150" stroke="#5eead4" stroke-width="2"/>
+        <path d="M 450 150 L 780 150" stroke="#5eead4" stroke-width="2"/>
+        <path d="M 450 150 L 450 180" stroke="#5eead4" stroke-width="2"/>
+        <path d="M 780 150 L 780 180" stroke="#5eead4" stroke-width="2"/>
+
+        <!-- Game -->
+        <rect x="340" y="180" width="220" height="80" rx="10" fill="#0f172a" stroke="#fbbf24" stroke-width="2"/>
+        <text x="450" y="210" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">Game (進行モデル)</text>
+        <text x="450" y="230" fill="#e2e8f0" font-size="10" text-anchor="middle">DynamicSystem / Stage / Simulator</text>
+        <text x="450" y="246" fill="#94a3b8" font-size="10" text-anchor="middle">自機・敵・弾・天体・勝敗の正本</text>
+
+        <!-- GamePresentation -->
+        <rect x="670" y="180" width="220" height="80" rx="10" fill="#0f172a" stroke="#818cf8" stroke-width="2"/>
+        <text x="780" y="210" fill="#818cf8" font-size="13" font-weight="700" text-anchor="middle">GamePresentation (表示導出)</text>
+        <text x="780" y="230" fill="#e2e8f0" font-size="10" text-anchor="middle">入力解釈 / CameraSystem / HUD宣言</text>
+        <text x="780" y="246" fill="#94a3b8" font-size="10" text-anchor="middle">モデルから画面描画要求を純粋導出</text>
+      </svg>
+    </div>
+
+    <h3>主要サブシステムの役割一覧</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>サブシステム</th>
+          <th>配置ディレクトリ</th>
+          <th>責務の要約</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>起動・ページ装置</strong></td>
+          <td><code>src/main.ts</code></td>
+          <td>設定・WebGPUキャンバス・HUD・音声・セーブを生成し <code>PageDevices</code> に束ねる。</td>
+        </tr>
+        <tr>
+          <td><strong>周回・遷移管理</strong></td>
+          <td><code>src/launcher/launcher.ts</code></td>
+          <td>ステージ選択・タイトル復帰・セーブスロット切替・<code>Run</code> の生成と破棄。</td>
+        </tr>
+        <tr>
+          <td><strong>フレーム調停役</strong></td>
+          <td><code>src/run/run.ts</code></td>
+          <td>毎フレームの「入力解釈 ➔ 進行 ➔ 導出 ➔ 描画」の順序を固定するオーケストレータ。</td>
+        </tr>
+        <tr>
+          <td><strong>進行モデル</strong></td>
+          <td><code>src/game/game.ts</code></td>
+          <td>時間を進め、自機・敵・弾・天体・ステージルールを確定させる唯一の正本。</td>
+        </tr>
+        <tr>
+          <td><strong>表示導出・入力解釈</strong></td>
+          <td><code>src/game/presentation/</code></td>
+          <td>キー入力を命令へ変換し、モデルからカメラ・表示窓・HUD・音の宣言を導出する。</td>
+        </tr>
+        <tr>
+          <td><strong>物理計算層</strong></td>
+          <td><code>src/physics/</code></td>
+          <td>Three.js や DOM を知らない純粋計算層。軌道力学・重力・数値積分を提供。</td>
+        </tr>
+        <tr>
+          <td><strong>描画パイプライン</strong></td>
+          <td><code>src/render/</code></td>
+          <td>WebGPU/TSL による天体表面、大気散乱、雲レイマーチング、ポストプロセス。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>2. 毎フレームの処理順序：4つの大位相</h2>
+    <p>
+      <code>Run.frame()</code> は毎フレーム次の4つの位相を順番に実行します。
+    </p>
+
+    <div class="card">
+      <h3>1. 入力の解釈 (interpretInput)</h3>
+      <p>
+        ブラウザの生の <code>keydown</code> やマウス移動から、ゲーム側が理解できる <code>CommandQueue</code>（ブースト開始・武器発射などの命令列）と <code>PilotControls</code>（操舵量）を導出します。
+      </p>
+
+      <h3>2. モデル進行 (game.advance)</h3>
+      <p>
+        命令を適用し、物理シミュレーション時間 <code>simTime</code> を進めます。自機の推力積分、敵AIの判断、弾の移動、天体の公転、ステージの湧き・勝敗判定がここで一気に確定します。
+      </p>
+
+      <h3>3. 表示の導出 (derive)</h3>
+      <p>
+        進行後の確定したモデルを読み、カメラ位置、表示窓（表示時刻・天体中心）、軌道予測線、HUDやマーカー、音・通知の要求を関数的に導出します。
+      </p>
+
+      <h3>4. 装置同期・描画 (sync & render)</h3>
+      <p>
+        導出された要求を実際の画面とスピーカーへ反映します。WebGPU シーンを描画し、DOM HUD を更新します。
+      </p>
+    </div>
+
+    <div class="highlight-box">
+      <strong>なぜ「モデル進行」と「表示導出」を分けるのか？</strong><br>
+      物理計算の途中でカメラやHUDを直接更新してしまうと、「まだ弾が当たっていないのにHUDのHPバーが減る」「カメラの追随が1フレーム遅れて画面がガタつく」といったバグが多発します。
+      「まず物理世界を確定させ、その結果から画面表示を導出する」という単方向データフローにより、堅牢な動作を担保しています。
+    </div>
+  </section>
+
+  <footer>
+    <div>Dive into Tepui Architecture Lecture Series #1</div>
+    <div><a href="./2.html" style="color:var(--accent); text-decoration:none;">Next: Lecture 2 (main.ts とフレームループ) →</a></div>
+  </footer>
+</main>
+</body>
+</html>
