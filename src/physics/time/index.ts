@@ -213,10 +213,7 @@ export function j2000EphemerisSeconds(date: JulianDate<EphemerisScale> | Calenda
   return (jd.value - J2000_JULIAN_DATE) * SECONDS_PER_DAY;
 }
 
-/** Short name for the J2000-relative ephemeris-time quantity. */
-export const ephemerisSeconds = j2000EphemerisSeconds;
-
-export function ephemerisSecondsToJulianDate<S extends EphemerisScale>(seconds: number, scale: S): JulianDate<S> {
+export function j2000EphemerisSecondsToJulianDate<S extends EphemerisScale>(seconds: number, scale: S): JulianDate<S> {
   assertFinite(seconds, 'J2000 ephemeris seconds');
   return createJulianDate(scale, J2000_JULIAN_DATE + seconds / SECONDS_PER_DAY);
 }
