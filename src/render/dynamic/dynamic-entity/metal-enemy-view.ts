@@ -2,20 +2,20 @@ import * as THREE from 'three/webgpu';
 import { memoParseIndependent } from '../baked-model';
 import { DynamicView } from '../dynamic-view';
 import enemyData from '../../../assets/models/enemy.json';
-import stage0EnemyDataA from '../../../assets/models/stage0EnemyA.json';
-import stage0EnemyDataB from '../../../assets/models/stage0EnemyB.json';
-import stage0EnemyDataC from '../../../assets/models/stage0EnemyC.json';
+import enemyVariantDataA from '../../../assets/models/enemyVariantA.json';
+import enemyVariantDataB from '../../../assets/models/enemyVariantB.json';
+import enemyVariantDataC from '../../../assets/models/enemyVariantC.json';
 
 const parseEnemy = memoParseIndependent<THREE.Group>(enemyData);
-const parseStage0EnemyA = memoParseIndependent<THREE.Group>(stage0EnemyDataA);
-const parseStage0EnemyB = memoParseIndependent<THREE.Group>(stage0EnemyDataB);
-const parseStage0EnemyC = memoParseIndependent<THREE.Group>(stage0EnemyDataC);
+const parseEnemyVariantA = memoParseIndependent<THREE.Group>(enemyVariantDataA);
+const parseEnemyVariantB = memoParseIndependent<THREE.Group>(enemyVariantDataB);
+const parseEnemyVariantC = memoParseIndependent<THREE.Group>(enemyVariantDataC);
 
-// stage0 敵機の typeIndex(0〜2)の機体テンプレートを複製する。
-function parseStage0Enemy(typeIndex: number): THREE.Group {
-  if (typeIndex === 1) return parseStage0EnemyB();
-  if (typeIndex === 2) return parseStage0EnemyC();
-  return parseStage0EnemyA();
+// 型番付き敵機の typeIndex(0〜2)の機体テンプレートを複製する。
+function parseEnemyVariant(typeIndex: number): THREE.Group {
+  if (typeIndex === 1) return parseEnemyVariantB();
+  if (typeIndex === 2) return parseEnemyVariantC();
+  return parseEnemyVariantA();
 }
 
 // model の userData.role === 'accent' のマテリアルを accent 色へ塗り、modelScale 倍で物理寸法へ
@@ -42,11 +42,11 @@ export class MetalEnemyView extends DynamicView {
   }
 }
 
-export class Stage0MetalEnemyView extends DynamicView {
+export class VariantMetalEnemyView extends DynamicView {
   // typeIndex の機体テンプレートを、accent 色・modelScale 倍で組み立てる。
   public constructor(
     accent: string | number, typeIndex: number, modelScale: number, scene?: THREE.Scene,
   ) {
-    super(enemyModel(parseStage0Enemy(typeIndex), accent, modelScale), scene);
+    super(enemyModel(parseEnemyVariant(typeIndex), accent, modelScale), scene);
   }
 }
