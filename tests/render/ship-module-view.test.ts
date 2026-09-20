@@ -2,11 +2,9 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
-import { ShipAssembly } from '../../src/game/ship/ship-assembly';
-import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
-import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { ShipModuleView } from '../../src/render/dynamic/ship/ship-module-view';
+import type { ShipModuleRenderInput, ShipModuleRenderKind } from '../../src/render/dynamic/ship/ship-render-contract';
 import { test } from '../harness';
 
 function modelFactory(modelId: string): THREE.Group {
@@ -24,18 +22,28 @@ function modelFactory(modelId: string): THREE.Group {
   return root;
 }
 
-function instance(definitionId: string, id: string, hp?: number) {
-  const definition = SHIP_MODULE_CATALOG.require(definitionId);
-  return createShipModuleInstance(definition, id, hp === undefined ? {} : { hp });
+function moduleInput(
+  modelId: string, id: string, kind: ShipModuleRenderKind, hp = 100, maxHp = 100,
+  deployed: number | null = null,
+): ShipModuleRenderInput {
+  return {
+    id, modelId, kind, hp, maxHp, deployed,
+    transform: { position: v3(), rotation: Q_IDENTITY },
+  };
+}
+
+function at(input: ShipModuleRenderInput, position: ReturnType<typeof v3>): ShipModuleRenderInput {
+  return { ...input, transform: { position, rotation: input.transform.rotation } };
 }
 
 export function register(): void {
   test('ship module view: transform, semantic anchor, and state are synchronized', () => {
-    const definition = SHIP_MODULE_CATALOG.require('cockpit-standard');
-    const module = instance(definition.id, 'cockpit-1', 40);
-    const view = new ShipModuleView(module, definition, {
-      position: v3(2, 3, 4), rotation: qFromAxisAngle(v3(0, 1, 0), Math.PI / 2),
-    }, modelFactory);
+    const module = at(moduleInput('cockpit-standard', 'cockpit-1', 'cockpit', 40), v3(2, 3, 4));
+    const view = new ShipModuleView(module, modelFactory);
+    view.sync({
+      ...module,
+      transform: { position: v3(2, 3, 4), rotation: qFromAxisAngle(v3(0, 1, 0), Math.PI / 2) },
+    });
 
     assert.deepEqual(view.object.position.toArray(), [2, 3, 4]);
     assert.ok(view.semanticAnchor('connection:forward') !== null);
@@ -45,26 +53,23 @@ export function register(): void {
   });
 
   test('ship module view: COM offset keeps model and transform in the same meter frame', () => {
-    const definition = SHIP_MODULE_CATALOG.require('cockpit-standard');
-    const module = instance(definition.id, 'cockpit-1');
-    const view = new ShipModuleView(module, definition, { position: v3(), rotation: Q_IDENTITY }, modelFactory);
-    view.sync(module, { position: v3(10, 20, 30), rotation: Q_IDENTITY }, v3(1, 2, 3));
+    const module = moduleInput('cockpit-standard', 'cockpit-1', 'cockpit');
+    const view = new ShipModuleView(module, modelFactory);
+    view.sync(at(module, v3(10, 20, 30)), v3(1, 2, 3));
     assert.deepEqual(view.object.position.toArray(), [9, 18, 27]);
     view.dispose();
   });
 
   test('modular ship view: append/remove rebuilds only the changed module views', () => {
-    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
-    assembly.addRoot(instance('cockpit-standard', 'cockpit'));
-    assembly.append(instance('tank-3-main', 'tank'));
+    const cockpit = moduleInput('cockpit-standard', 'cockpit', 'cockpit');
+    const tank = at(moduleInput('tank-3-main', 'tank', 'tank'), v3(0, 0, 3));
     const view = new ModularShipView(modelFactory);
-    view.sync(assembly);
+    view.sync([cockpit, tank]);
     const tankView = view.module('tank');
     const cockpitView = view.module('cockpit');
     assert.equal(view.moduleCount, 2);
     assert.equal(view.object.children.length, 2);
-    assembly.removeTail();
-    view.sync(assembly);
+    view.sync([cockpit]);
     assert.equal(view.moduleCount, 1);
     assert.equal(view.module('tank'), null);
     assert.equal(view.module('cockpit'), cockpitView);
@@ -76,34 +81,27 @@ export function register(): void {
   });
 
   test('ship module view: definition replacement rebuilds the model and anchor index', () => {
-    const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
-    const tank = SHIP_MODULE_CATALOG.require('tank-3-main');
-    const first = instance(cockpit.id, 'module-1');
-    const second = instance(tank.id, 'module-1');
-    const view = new ShipModuleView(first, cockpit, { position: v3(), rotation: Q_IDENTITY }, modelFactory);
+    const first = moduleInput('cockpit-standard', 'module-1', 'cockpit');
+    const second = moduleInput('tank-3-main', 'module-1', 'tank');
+    const view = new ShipModuleView(first, modelFactory);
     assert.ok(view.semanticAnchor('connection:forward') !== null);
-    view.replaceDefinition(second, tank, { position: v3(1, 2, 3), rotation: Q_IDENTITY });
+    view.replaceModule(at(second, v3(1, 2, 3)));
     assert.equal(view.semanticAnchor('connection:forward'), null);
     assert.ok(view.semanticAnchor('tank-only') !== null);
-    assert.equal(view.object.userData.shipModuleModelId, tank.modelId);
+    assert.equal(view.object.userData.shipModuleModelId, 'tank-3-main');
     view.dispose();
   });
 
   test('modular ship view: deployment is exposed without mutating shared materials', () => {
-    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG);
-    const radiator = createShipModuleInstance(
-      SHIP_MODULE_CATALOG.require('radiator-standard'), 'radiator', { deployed: 1 },
-    );
-    assembly.addRoot(radiator);
+    const radiator = moduleInput('radiator-standard', 'radiator', 'radiator', 50, 50, 1);
     const view = new ModularShipView(modelFactory);
-    view.sync(assembly);
+    view.sync([radiator]);
     assert.equal(view.module('radiator')?.visualState.deployed, 1);
     view.dispose();
   });
 
   test('ship module view: panel-hinge は module state の展開度と全損状態へ同期する', () => {
-    const definition = SHIP_MODULE_CATALOG.require('radiator-standard');
-    const radiator = createShipModuleInstance(definition, 'radiator', { deployed: 0 });
+    const radiator = moduleInput('radiator-standard', 'radiator', 'radiator', 50, 50, 0);
     const panelFactory = () => {
       const root = new THREE.Group();
       const hinge = new THREE.Object3D();
@@ -113,26 +111,25 @@ export function register(): void {
       return root;
     };
     const view = new ShipModuleView(
-      radiator, definition, { position: v3(), rotation: Q_IDENTITY }, panelFactory,
+      radiator, panelFactory,
     );
     const hinge = view.semanticAnchor('panel-hinge');
     assert.ok(hinge !== null);
     assert.ok(Math.abs(hinge.rotation.y - Math.PI / 2) < 1e-12);
-    const deployed = createShipModuleInstance(definition, 'radiator', { deployed: 1 });
-    view.sync(deployed, { position: v3(), rotation: Q_IDENTITY });
+    const deployed = moduleInput('radiator-standard', 'radiator', 'radiator', 50, 50, 1);
+    view.sync(deployed);
     assert.ok(Math.abs(hinge.rotation.y) < 1e-12);
-    const destroyed = createShipModuleInstance(definition, 'radiator', { hp: 0, deployed: 1 });
-    view.sync(destroyed, { position: v3(), rotation: Q_IDENTITY });
+    const destroyed = moduleInput('radiator-standard', 'radiator', 'radiator', 0, 50, 1);
+    view.sync(destroyed);
     assert.equal(hinge.visible, false);
     view.dispose();
   });
 
   test('modular ship view: dispose は保持した scene から root を外し二重呼び出しできる', () => {
     const scene = new THREE.Scene();
-    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG);
-    assembly.addRoot(instance('cockpit-standard', 'cockpit'));
+    const cockpit = moduleInput('cockpit-standard', 'cockpit', 'cockpit');
     const view = new ModularShipView(modelFactory, scene);
-    view.sync(assembly);
+    view.sync([cockpit]);
     assert.equal(scene.children.includes(view.object), true);
     view.dispose();
     view.dispose();

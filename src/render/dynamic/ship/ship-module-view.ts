@@ -3,11 +3,11 @@ import * as THREE from 'three/webgpu';
 import type { Quat } from '../../../math/quat';
 import { qNormalize } from '../../../math/quat';
 import { sub, v3, type Vec3 } from '../../../math/vec3';
-import type { ModuleTransform } from '../../../game/ship/ship-assembly';
-import type { ShipModuleDefinition } from '../../../game/ship/ship-module-definition';
-import type { ShipModuleInstance } from '../../../game/ship/ship-module-instance';
 import { disposeOwnedRenderResources } from '../../dispose-owned-render-resources';
 import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
+import type {
+  ShipModuleRenderInput, ShipModuleRenderKind, ShipModuleRenderTransform,
+} from './ship-render-contract';
 
 // 呼び出しごとに、この view が所有できる model root を返す factory。
 export type ShipModuleModelFactory = (modelId: string) => THREE.Object3D;
@@ -15,7 +15,7 @@ export type ShipModuleModelFactory = (modelId: string) => THREE.Object3D;
 // module 表示 hook が読む損傷率と展開率。
 export interface ShipModuleVisualState {
   readonly id: string;
-  readonly kind: ShipModuleInstance['kind'];
+  readonly kind: ShipModuleRenderKind;
   readonly hp: number;
   readonly maxHp: number;
   readonly damage: number;
@@ -39,52 +39,45 @@ function semanticName(object: THREE.Object3D): string | null {
 export class ShipModuleView {
   public readonly object = new THREE.Group();
   private model: THREE.Object3D;
-  private definitionValue: ShipModuleDefinition;
-  private instanceValue: ShipModuleInstance;
-  private transformValue: ModuleTransform;
+  private inputValue: ShipModuleRenderInput;
   private centerOffsetValue: Vec3 = ZERO;
   private readonly anchors = new Map<string, THREE.Object3D>();
   private disposed = false;
 
   public constructor(
-    instance: ShipModuleInstance,
-    definition: ShipModuleDefinition,
-    transform: ModuleTransform,
+    input: ShipModuleRenderInput,
     private readonly modelFactory: ShipModuleModelFactory,
     centerOffset: Vec3 = ZERO,
   ) {
-    this.instanceValue = instance;
-    this.definitionValue = definition;
-    this.transformValue = transform;
-    this.model = this.buildModel(definition.modelId);
-    this.object.name = `ship-module:${instance.id}`;
+    this.inputValue = input;
+    this.model = this.buildModel(input.modelId);
+    this.object.name = `ship-module:${input.id}`;
     this.object.add(this.model);
     this.indexAnchors();
-    this.sync(instance, transform, centerOffset);
+    this.sync(input, centerOffset);
   }
 
-  public get id(): string { return this.instanceValue.id; }
-  public get instance(): ShipModuleInstance { return this.instanceValue; }
-  public get definition(): ShipModuleDefinition { return this.definitionValue; }
-  public get transform(): ModuleTransform { return this.transformValue; }
+  public get id(): string { return this.inputValue.id; }
+  public get input(): ShipModuleRenderInput { return this.inputValue; }
+  public get transform(): ShipModuleRenderTransform { return this.inputValue.transform; }
   public get centerOffset(): Vec3 { return this.centerOffsetValue; }
 
-  // assembly の module world transform を、ship の COM 原点からの表示位置へ反映する。
+  // module の transform を、ship の COM 原点からの表示位置へ反映する。
   public sync(
-    instance: ShipModuleInstance,
-    transform: ModuleTransform,
+    input: ShipModuleRenderInput,
     centerOffset: Vec3 = ZERO,
   ): void {
     if (this.disposed) throw new Error('cannot sync a disposed ShipModuleView');
-    const definition = this.definitionValue;
-    if (instance.definitionId !== definition.id) {
-      throw new Error(`module definition changed without rebuilding view: ${instance.id}`);
+    if (input.id !== this.inputValue.id) {
+      throw new Error(`module id changed without rebuilding view: ${input.id}`);
     }
-    this.instanceValue = instance;
-    this.transformValue = transform;
+    if (input.modelId !== this.inputValue.modelId) {
+      throw new Error(`module model changed without rebuilding view: ${input.id}`);
+    }
+    this.inputValue = input;
     this.centerOffsetValue = v3(centerOffset.x, centerOffset.y, centerOffset.z);
-    this.object.position.copy(toThreeVec(sub(transform.position, centerOffset)));
-    const q = copyQuat(transform.rotation);
+    this.object.position.copy(toThreeVec(sub(input.transform.position, centerOffset)));
+    const q = copyQuat(input.transform.rotation);
     this.object.quaternion.set(q.x, q.y, q.z, q.w);
     this.syncVisualState();
   }
@@ -100,18 +93,16 @@ export class ShipModuleView {
       .map(([, anchor]) => anchor);
   }
 
-  // 現在の instance を表示 hook 用の正規化状態へ畳む。
+  // 現在の表示入力を表示 hook 用の正規化状態へ畳む。
   public get visualState(): ShipModuleVisualState {
-    const maxHp = this.definitionValue.maxHp;
-    const deployed = this.instanceValue.kind === 'radiator' || this.instanceValue.kind === 'solar_panel'
-      ? this.instanceValue.deployed : null;
+    const maxHp = this.inputValue.maxHp;
     return {
-      id: this.instanceValue.id,
-      kind: this.instanceValue.kind,
-      hp: this.instanceValue.hp,
+      id: this.inputValue.id,
+      kind: this.inputValue.kind,
+      hp: this.inputValue.hp,
       maxHp,
-      damage: maxHp <= 0 ? 0 : 1 - this.instanceValue.hp / maxHp,
-      deployed,
+      damage: maxHp <= 0 ? 0 : 1 - this.inputValue.hp / maxHp,
+      deployed: this.inputValue.deployed,
     };
   }
 
@@ -168,30 +159,28 @@ export class ShipModuleView {
         }
       }
     }
-    this.object.userData.shipModuleId = this.instanceValue.id;
-    this.object.userData.shipModuleKind = this.instanceValue.kind;
-    this.object.userData.shipModuleModelId = this.definitionValue.modelId;
+    this.object.userData.shipModuleId = this.inputValue.id;
+    this.object.userData.shipModuleKind = this.inputValue.kind;
+    this.object.userData.shipModuleModelId = this.inputValue.modelId;
     this.object.userData.shipModuleVisualState = state;
     this.model.userData.shipModuleVisualState = state;
   }
 
-  // 同じ instance id の model 定義を置換し、所有資源と anchor index を更新する。
-  public replaceDefinition(
-    instance: ShipModuleInstance,
-    definition: ShipModuleDefinition,
-    transform: ModuleTransform,
+  // 同じ module id の表示モデルを置換し、anchor index を更新する。
+  public replaceModule(
+    input: ShipModuleRenderInput,
     centerOffset: Vec3 = ZERO,
   ): void {
     if (this.disposed) throw new Error('cannot replace a disposed ShipModuleView');
-    if (instance.id !== this.instanceValue.id) throw new Error(`module id changed during replacement: ${instance.id}`);
+    if (input.id !== this.inputValue.id) throw new Error(`module id changed during replacement: ${input.id}`);
     const old = this.model;
-    this.model = this.buildModel(definition.modelId);
-    this.definitionValue = definition;
+    this.model = this.buildModel(input.modelId);
+    this.inputValue = input;
     this.object.remove(old);
     disposeOwnedRenderResources(old);
     this.object.add(this.model);
     this.indexAnchors();
-    this.sync(instance, transform, centerOffset);
+    this.sync(input, centerOffset);
   }
 
   public dispose(): void {

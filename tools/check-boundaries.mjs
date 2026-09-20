@@ -101,15 +101,8 @@ const PRESENTATION_ROOTS = [
 // 判定の名前と、その目的を書いた規則(ref)。違反の行に ref を添え、読む先を示す。exempt は例外にする
 // import の辺 [import する側, される側] で、理由は各辺のコメントに書く(ARCHITECTURE「規則に合わないとき」)。
 const RULES = {
-  // モジュール船の device adapter は assembly の定義・状態を直接読む必要がある。ゲーム側へ
-  // 表示実装を移すと mesh 所有とモデル所有が逆転するため、この5本だけを境界として固定する。
-  deviceOut: { name: '装置の出ていく import', ref: 'ARCHITECTURE R2', exempt: [
-    ['src/render/dynamic/ship/modular-ship-dynamic-view.ts', 'src/game/ship/ship-assembly.ts'],
-    ['src/render/dynamic/ship/modular-ship-view.ts', 'src/game/ship/ship-assembly.ts'],
-    ['src/render/dynamic/ship/ship-module-view.ts', 'src/game/ship/ship-assembly.ts'],
-    ['src/render/dynamic/ship/ship-module-view.ts', 'src/game/ship/ship-module-definition.ts'],
-    ['src/render/dynamic/ship/ship-module-view.ts', 'src/game/ship/ship-module-instance.ts'],
-  ] },
+  // render はゲームの assembly・definition・instance を直接参照せず、表示契約だけを受け取る。
+  deviceOut: { name: '装置の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
   deviceToDevice: { name: '装置どうしの相互 import', ref: 'ARCHITECTURE R2', exempt: [] },
   timeOut: { name: '時刻層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
   definitionOut: { name: '定義層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
