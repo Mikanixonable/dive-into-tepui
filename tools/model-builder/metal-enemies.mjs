@@ -2,8 +2,8 @@
 import * as THREE from 'three';
 import { F0_STEEL, std } from './materials.mjs';
 
-// ステージ0の敵機のアクセント色。
-const STAGE0_ACCENT = 0x3dc6ff;
+// 型番付き敵機のアクセント色。
+const VARIANT_ACCENT = 0x3dc6ff;
 
 // 基本の敵機。アクセント色はプレースホルダ。
 export function buildEnemyShip() {
@@ -41,14 +41,14 @@ export function buildEnemyShip() {
   return g;
 }
 
-// ステージ0の敵機 A。正二十面体の核から6方向へ配位子が伸び、直交する2本の環が囲む。
-export function buildStage0EnemyA() {
+// 型番付き敵機 A。正二十面体の核から6方向へ配位子が伸び、直交する2本の環が囲む。
+export function buildEnemyVariantA() {
   const g = new THREE.Group();
 
   const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.2, 0), std(0x4a4f58));
   g.add(core);
 
-  const ligandMat = std(STAGE0_ACCENT, { roughness: 0.4 });
+  const ligandMat = std(VARIANT_ACCENT, { roughness: 0.4 });
   ligandMat.userData = { role: 'accent' };
   const bondMat = std(F0_STEEL, { metalness: 1, roughness: 0.5 });
 
@@ -86,15 +86,15 @@ export function buildStage0EnemyA() {
   return g;
 }
 
-// ステージ0の敵機 B。円盤の核を環が囲み、環の上に4つのポッドが載る。
-export function buildStage0EnemyB() {
+// 型番付き敵機 B。円盤の核を環が囲み、環の上に4つのポッドが載る。
+export function buildEnemyVariantB() {
   const g = new THREE.Group();
 
   const core = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.6, 8), std(0x4a4f58));
   core.rotation.x = Math.PI / 2;
   g.add(core);
 
-  const ligandMat = std(STAGE0_ACCENT, { roughness: 0.4 });
+  const ligandMat = std(VARIANT_ACCENT, { roughness: 0.4 });
   ligandMat.userData = { role: 'accent' };
 
   const ring = new THREE.Mesh(new THREE.TorusGeometry(2.5, 0.2, 8, 16), std(F0_STEEL, { metalness: 1, roughness: 0.5 }));
@@ -111,14 +111,14 @@ export function buildStage0EnemyB() {
   return g;
 }
 
-// ステージ0の敵機 C。正四面体の核の各頂点の向きへ棘が伸びる。
-export function buildStage0EnemyC() {
+// 型番付き敵機 C。正四面体の核の各頂点の向きへ棘が伸びる。
+export function buildEnemyVariantC() {
   const g = new THREE.Group();
 
   const core = new THREE.Mesh(new THREE.TetrahedronGeometry(1.8, 0), std(0x4a4f58));
   g.add(core);
 
-  const ligandMat = std(STAGE0_ACCENT, { roughness: 0.4 });
+  const ligandMat = std(VARIANT_ACCENT, { roughness: 0.4 });
   ligandMat.userData = { role: 'accent' };
 
   const positions = [
