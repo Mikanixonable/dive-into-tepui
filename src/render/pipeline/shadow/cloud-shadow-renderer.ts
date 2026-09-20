@@ -134,7 +134,7 @@ export class CloudShadowRenderer {
   // 描画座標のベクトルを、殻が雲を立てるのと同じ空間へ写す — 地表が半径 1、雲頂が半径
   // 1 + 雲頂高度 / 基準半径 の球面に乗る空間。天体固定の向きへ回してから半軸で割る。
   // 真球のつもりで中心距離から高度を測ると、扁平な天体では緯度ぶんの下駄が乗る(地球なら極で
-  // 21 km — 雲の層 15 km より厚いので、極の雲頂が自分の柱の内側に沈み、恒星の向きによらず影になる)。
+  // 21 km — 雲の層 20 km より厚いので、極の雲頂が自分の柱の内側に沈み、恒星の向きによらず影になる)。
   private toShellSpace(worldVec: Vec3Node): Vec3Node {
     return this.bodyFromWorld.mul(vec4(worldVec, 0)).xyz.div(this.axes);
   }

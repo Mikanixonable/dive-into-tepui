@@ -1,5 +1,6 @@
 // 2D雲場を球殻上の離散的な光学イベントへ変換する純粋計算モジュール。
 // Three/TSL に依存せず、Beer-Lambert 則と front-to-back 合成を独立して評価できる。
+import { CLOUD_MODEL_PARAMETERS } from './cloud-model-parameters';
 
 export interface CloudOpticalEvent {
   // 雲自身の局所散乱。イベント自身の透過を二重に掛けず、手前イベントだけで減衰させる。
@@ -18,7 +19,32 @@ export interface CloudOpticalComposite {
 // CPUの基準式とGPUのTSL式が共有する入力の上限。被覆率1は無限大のtauになるので、有限の雲を保つ。
 export const MAX_COLUMN_COVERAGE = 0.99;
 
-// 積雲のR(coverage)を鉛直柱光学深さへ変換する。Rは無次元の被覆率、戻り値は無次元のtau。
+export interface CloudBasisOptics {
+  readonly liquidColumn: number;
+  readonly iceColumn: number;
+  readonly singleScatteringAlbedo: number;
+  readonly asymmetry: number;
+}
+
+// basis と相の連続 weight から、render path 共通の最小光学量を求める CPU 基準式。
+export function cloudBasisOptics(
+  low: number, middle: number, convective: number, inSitu: number,
+  liquidWeight: number, iceWeight: number,
+): CloudBasisOptics {
+  const liquidColumn = columnOpticalDepthFromCoverage(low + middle + convective * 0.8)
+    * liquidWeight * CLOUD_MODEL_PARAMETERS.liquidTauScale;
+  const iceColumn = Math.max(0, inSitu + convective * 0.25)
+    * CLOUD_MODEL_PARAMETERS.iceTauScale * (0.35 + iceWeight * 0.65);
+  const total = liquidColumn + iceColumn;
+  return {
+    liquidColumn,
+    iceColumn,
+    singleScatteringAlbedo: total > 0 ? liquidColumn / total : 0,
+    asymmetry: 0.72 * liquidWeight + 0.55 * iceWeight,
+  };
+}
+
+// basis の不透明成分を鉛直柱光学深さへ変換する。coverage は basis の和から得る無次元量。
 // 巻雲のBはすでに鉛直柱光学深さなので、この変換を通さず値を使う。
 export function columnOpticalDepthFromCoverage(coverage: number): number {
   const bounded = Math.min(Math.max(coverage, 0), MAX_COLUMN_COVERAGE);

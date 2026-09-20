@@ -14,6 +14,12 @@ import { RossbyWave } from './rossby-wave';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
 import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
 import { weatherForcingField, type WeatherForcingField } from './weather-forcing-field';
+import { cycloneForcing } from './cyclone-forcing';
+import { frontForcing } from './front-forcing';
+import { geographicForcingPrior } from './geographic-forcing-field';
+import { itczForcing } from './itcz-forcing';
+import { orographicForcing } from './orographic-forcing';
+import type { CloudEnvironment } from './cloud-environment';
 import {
   temporalLodFor, type TemporalLodProfile,
 } from './temporal-lod';
@@ -21,9 +27,10 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
 import type { ClimateMap } from './climate-map';
-import type { FieldProjection } from './field-projection';
+import { equirectUvFromDirection, type FieldProjection } from './field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
+import { SIMULATION_DAY_SECONDS, splitSimulationTime } from './weather-time';
 
 // 単位方向における天気。
 export interface WeatherSample {
@@ -42,6 +49,10 @@ export interface WeatherSample {
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
   readonly landFraction: FloatNode; // 陸らしさ 0..1
   readonly tropopause: FloatNode; // その緯度の対流の天井(圏界面の高さ)[m]
+  readonly temperatureK: FloatNode;
+  readonly environment: CloudEnvironment;
+  readonly cellLifecycleWeight: FloatNode;
+  readonly anvilLifecycleWeight: FloatNode;
 }
 
 // 気圧フィールドからサンプリングした、風向風速の算出に必要な物理量。gradient は気圧勾配の接ベクトル [hPa/rad]、isobar は
@@ -168,6 +179,9 @@ export class WeatherModel {
   private readonly airMass: AirMass;
   private readonly cellWeight: FloatUniform = uniform(1);
   private readonly weatherObjectWeight: FloatUniform = uniform(1);
+  private readonly anvilLifecycleWeight: FloatUniform = uniform(1);
+  private readonly dailyPhase: FloatUniform = uniform(0);
+  private readonly dailyCycleWeight: FloatUniform = uniform(1);
 
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方、
   // surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
@@ -207,6 +221,11 @@ export class WeatherModel {
     this.transport.syncTime(seconds);
     this.cellWeight.value = temporal.cellWeight;
     this.weatherObjectWeight.value = temporal.weatherObjectWeight;
+    const dayTime = splitSimulationTime(seconds);
+    this.dailyPhase.value = (dayTime.secondsOfDay / SIMULATION_DAY_SECONDS) * 2 * Math.PI;
+    this.dailyCycleWeight.value = temporal.dailyCycleWeight;
+    this.anvilLifecycleWeight.value = temporal.mode === 'normal'
+      ? 1 : Math.max(0.35, temporal.cellWeight);
   }
 
   // 単位方向 direction における天気のグラフ。
@@ -214,6 +233,10 @@ export class WeatherModel {
     const latitude = latitudeOf(direction);
     const east = eastAt(direction);
     const north = northAt(direction);
+    // 日周期は low-frequency の humidity modulation にだけ使う。temporal LOD が係数を下げることで、
+    // intermediate / extreme の大きな simulation step が日周境界を点滅へ変換しない。
+    const diurnalPhase = equirectUvFromDirection(direction).x.mul(2 * Math.PI).add(this.dailyPhase);
+    const diurnalHumidity = sin(diurnalPhase).mul(0.025).mul(this.dailyCycleWeight);
 
     const { pressure, gradient, isobar, bend } = this.pressureFieldAt(direction, east, north);
 
@@ -247,8 +270,12 @@ export class WeatherModel {
     const airMass = this.airMass.at(direction, latitude);
     const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
     const warmth = airMass.warmth.mul(extratropical).mul(this.weatherObjectWeight);
-    const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
-      .mul(TERRAIN_LIFT_GAIN);
+    const slope = this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius);
+    const landFraction = this.climate.landFraction(direction);
+    const meanCloudiness = this.climate.meanCloudiness(direction);
+    const geographic = geographicForcingPrior(latitude, meanCloudiness, landFraction);
+    const terrain = orographicForcing(windComponents, slope, landFraction);
+    const terrainLift = terrain.lift.mul(TERRAIN_LIFT_GAIN / 0.35);
     // 折り目の帯: 温帯では前線(気団の圧縮へ、湿度の境目と気圧の上昇流を少し足す)、熱帯では雨帯の
     // 伝達関数が圧縮の稜線を降雨帯の強度へマッピングする。
     const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
@@ -258,8 +285,10 @@ export class WeatherModel {
       MOISTURE_GRADIENT_ONSET + MOISTURE_GRADIENT_WIDTH,
       moistureGradient,
     );
-    const front = temperatureFront.add(moistureFront.mul(0.2)).add(updraft.mul(0.15)).min(1)
-      .mul(extratropical).mul(this.weatherObjectWeight);
+    const frontProducer = frontForcing(
+      temperatureFront, moistureFront, updraft, extratropical.mul(this.weatherObjectWeight), warmth,
+    );
+    const front = frontProducer.organization;
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
       .mul(extratropical.oneMinus()).mul(this.weatherObjectWeight);
     const band = min(front.add(rainband), 1);
@@ -268,10 +297,11 @@ export class WeatherModel {
 
     // 湿度: 流した写しへ、dynamic anomaly(上昇流・帯・金床・目)を足し引きする。平均雲量は
     // condensationのparameterization weightとしてだけ使い、coverageへ直接加えない。
-    const meanCloudiness = this.climate.meanCloudiness(direction);
-    const landFraction = this.climate.landFraction(direction);
     const eye = this.cyclones.eyeAt(direction).mul(this.weatherObjectWeight);
     const anvil = this.cyclones.anvilAt(direction).mul(this.weatherObjectWeight);
+    const cyclonePrior = geographic.stormTrack.mul(0.65).add(0.35);
+    const cyclone = cycloneForcing(rainband, anvil, eye, windPerturbation, cyclonePrior);
+    const itcz = itczForcing(latitude, geographic.itcz, landFraction);
     const deviation = advected.surfaceHumidity.sub(SURFACE_HUMIDITY_BASE);
     const dynamicDeviation = deviation.mul(this.cellWeight);
     const dynamicSurfaceHumidity = float(SURFACE_HUMIDITY_BASE).add(dynamicDeviation);
@@ -280,20 +310,36 @@ export class WeatherModel {
       dynamicSurfaceHumidity.add(dynamicDeviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
         .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
         .add(warmth.mul(WARM_HUMIDITY)).add(band.mul(BAND_HUMIDITY))
-        .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(SURFACE_EYE_DRYNESS)), 0, 1);
+        .add(anvil.mul(ANVIL_HUMIDITY)).add(diurnalHumidity).sub(eye.mul(SURFACE_EYE_DRYNESS)), 0, 1);
     const upperHumidity = clamp(
       dynamicUpperHumidity
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
-        .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
+        .add(diurnalHumidity.mul(0.5)).sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
     const rawActivity = this.convectiveActivity.at(
       direction, lift, warmth, this.climate.landFraction(direction), band);
     const activity = float(0.5).add(rawActivity.sub(0.5).mul(this.cellWeight));
     const forcing = weatherForcingField(
-      surfaceHumidity,
-      lift,
-      activity.mul(0.65).add(band.mul(0.35)),
-      windPerturbation,
+      surfaceHumidity.add(itcz.moisture).add(cyclone.moisture)
+        .add(frontProducer.moisture).add(terrain.moisture)
+        .add(geographic.marineStratocumulus.mul(0.05))
+        .sub(geographic.drySubsidence.mul(0.12)),
+      lift.add(frontProducer.lift).add(itcz.lift).add(cyclone.lift),
+      activity.mul(0.55).add(band.mul(0.25)).add(frontProducer.organization.mul(0.1))
+        .add(itcz.organization.mul(0.1)).add(cyclone.organization.mul(0.15)),
+      windPerturbation.add(frontProducer.windPerturbation).add(itcz.windPerturbation)
+        .add(cyclone.windPerturbation).add(terrain.windPerturbation),
     );
+    const temperatureK = this.climate.temperatureK(direction);
+    const tropopause = tropopauseAt(latitude);
+    const environment: CloudEnvironment = {
+      latitude,
+      temperatureK,
+      meanCloudinessPrior: meanCloudiness,
+      landFraction,
+      elevationMeters: this.climate.elevation(direction),
+      slope,
+      tropopauseMeters: tropopause,
+    };
 
     return {
       forcing,
@@ -310,7 +356,11 @@ export class WeatherModel {
       anvil,
       meanCloudiness,
       landFraction,
-      tropopause: tropopauseAt(latitude),
+      tropopause,
+      temperatureK,
+      environment,
+      cellLifecycleWeight: this.cellWeight,
+      anvilLifecycleWeight: this.anvilLifecycleWeight,
     };
   }
 

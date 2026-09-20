@@ -5,12 +5,14 @@ import { dot, step, texture, uniform } from 'three/tsl';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { orthographicCapUv, type CapPlacement } from './field-projection';
 import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
+import type { CloudStateBinding } from './cloud-state';
 import type { FloatUniform, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
 
 // 焼いた雲場と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
 export interface CloudFieldBinding {
   readonly texture: THREE.Texture;
   readonly cap: CapPlacement;
+  readonly state: CloudStateBinding;
 }
 
 export class CloudFieldSampler {
@@ -23,6 +25,11 @@ export class CloudFieldSampler {
   private readonly north: Vec3Uniform = uniform(new THREE.Vector3(0, 1, 0));
   private readonly sinRadius: FloatUniform = uniform(1);
   private readonly cosRadius: FloatUniform = uniform(-1);
+  private state: CloudStateBinding = {
+    absoluteTimeSeconds: 0,
+    seed: 0,
+    temporalMode: 'normal',
+  };
 
   // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
   public bind(binding: CloudFieldBinding): void {
@@ -32,7 +39,10 @@ export class CloudFieldSampler {
     this.north.value.copy(binding.cap.north);
     this.sinRadius.value = binding.cap.sinRadius;
     this.cosRadius.value = binding.cap.cosRadius;
+    this.state = binding.state;
   }
+
+  public get stateBinding(): CloudStateBinding { return this.state; }
 
   // 単位方向 direction の雲標本を、生成時と同じ単位で読む。**cap の外は「雲なし」を返す** —
   // 返さないと縁の値が外へ伸び、裏側の半球では表側の雲を鏡映しに読む。

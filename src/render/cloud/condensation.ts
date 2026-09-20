@@ -2,6 +2,8 @@
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
 import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
 import type { CloudSample } from './cloud-field-sample';
+import { CLOUD_TOP_SPAN } from './cumulus-shape';
+import { cloudIceWeightNode, cloudLiquidWeightNode } from './cloud-temperature-profile';
 import type { WeatherSample } from './weather-model';
 export type { CloudSample } from './cloud-field-sample';
 
@@ -147,9 +149,26 @@ export function condense(weather: WeatherSample): CloudSample {
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
+  // 連続 basis: 低層→中層→対流上層の重なりを一つの RGBA field に収める。in-situ 上層雲だけは
+  // coverage と別の成分にし、MCS の周囲へ通常の巻雲が共存できるようにする。
+  const normalizedTop = scaledCloudTop.div(max(weather.tropopause, CLOUD_TOP_SPAN));
+  const liquidWeight = cloudLiquidWeightNode(weather.temperatureK);
+  const iceWeight = cloudIceWeightNode(weather.temperatureK);
+  const convectiveWeight = smoothstep(0.45, 0.88, normalizedTop);
+  const middleWeight = smoothstep(0.12, 0.58, normalizedTop).mul(float(1).sub(convectiveWeight));
+  const lowWeight = max(float(1).sub(middleWeight).sub(convectiveWeight), 0);
+  const basis = {
+    low: coverage.mul(lowWeight),
+    middle: coverage.mul(middleWeight),
+    convective: coverage.mul(convectiveWeight).mul(weather.cellLifecycleWeight)
+      .mul(liquidWeight.mul(0.35).add(0.65)),
+    inSitu: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT)
+      .mul(weather.anvilLifecycleWeight).mul(iceWeight.mul(0.45).add(0.55)),
+  };
   return {
+    basis,
     coverage,
     cloudTop: scaledCloudTop,
-    translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
+    translucent: basis.inSitu.add(basis.convective.mul(0.25)).min(1),
   };
 }

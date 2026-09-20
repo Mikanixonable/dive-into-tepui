@@ -266,17 +266,17 @@
               <div class="field-contract">
                 <button class="node field" type="button" data-stage="field">
                   <span class="node-title">CloudRenderInput.field</span>
-                  <span class="node-class">CloudFieldBinding = { texture, cap }</span>
+                  <span class="node-class">CloudFieldBinding = { texture, cap, state }</span>
                   <div class="io">
                     <div class="io-row"><span class="io-label">IN</span><span class="io-value">BakedField のテクスチャ / CapPlacement</span></div>
                     <div class="io-row"><span class="io-label">OUT</span><span class="io-value">CloudSample(direction)</span></div>
                   </div>
                   <table class="channel-table" aria-label="CloudSample channels">
                     <tbody>
-                      <tr><th class="channel-r">R</th><td><strong>coverage</strong><br>厚い雲の被覆率</td></tr>
-                      <tr><th class="channel-g">G</th><td><strong>cloudTop</strong><br>G × 15,000 m</td></tr>
-                      <tr><th class="channel-b">B</th><td><strong>translucent</strong><br>薄い雲の柱 τ</td></tr>
-                      <tr><th class="channel-a">A</th><td>予約値 1</td></tr>
+                      <tr><th class="channel-r">R</th><td><strong>low</strong><br>低層 basis</td></tr>
+                      <tr><th class="channel-g">G</th><td><strong>middle</strong><br>中層 basis</td></tr>
+                      <tr><th class="channel-b">B</th><td><strong>convective</strong><br>対流上層 basis</td></tr>
+                      <tr><th class="channel-a">A</th><td><strong>inSitu</strong><br>独立した上層 basis</td></tr>
                     </tbody>
                   </table>
                   <span class="source-ref"><code>CloudRenderInput</code></span>
@@ -308,7 +308,7 @@
                 <span class="node-class">8k_clouds.jpg → cloud-field.png</span>
                 <div class="io">
                   <div class="io-row"><span class="io-label">IN</span><span class="io-value">4096×2048 写真 / SeparationPipeline</span></div>
-                  <div class="io-row"><span class="io-label">OUT</span><span class="io-value">RGB: coverage / cloudTop / translucent</span></div>
+                  <div class="io-row"><span class="io-label">OUT</span><span class="io-value">RGBA: low / middle / convective / inSitu basis</span></div>
                 </div>
                 <span class="source-ref"><code>FIELD_VIEWS / packRgb</code></span>
               </button>
@@ -360,7 +360,7 @@
           <div class="sequence-row"><div class="step-number">03</div><div class="step-stage"><strong>CloudPresentation.bake</strong><span>選択した source が実際に寄与する場合だけ焼く。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value">WebGPURenderer / displayTime</span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value"><code>source.prepare()</code></span></div></div></div></div>
           <div class="sequence-row"><div class="step-number">04</div><div class="step-stage"><strong>GeneratedCloudField.prepare</strong><span>同じ時刻・気候世代・projection revision なら再利用。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value">displayTime / ClimateData / projection.revision</span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value"><code>WeatherModel.syncTime → WeatherModel.bake</code></span></div></div></div></div>
           <div class="sequence-row"><div class="step-number">05</div><div class="step-stage"><strong>WeatherModel.bake</strong><span>中間場を依存順に RenderTarget へ焼く。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value">pressure / circulation / noise sources</span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value">pressure / airMass / humidity / convection / instability</span></div></div></div></div>
-          <div class="sequence-row"><div class="step-number">06</div><div class="step-stage"><strong>CloudField.render</strong><span>各方向で WeatherSample を condense する。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value"><code>model.weatherAt(direction)</code></span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value"><code>vec4(coverage, cloudTop / 15000, translucent, 1)</code></span></div></div></div></div>
+          <div class="sequence-row"><div class="step-number">06</div><div class="step-stage"><strong>CloudField.render</strong><span>各方向で WeatherSample を condense する。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value"><code>model.weatherAt(direction)</code></span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value"><code>vec4(low, middle, convective, inSitu)</code></span></div></div></div></div>
         </div>
         <a class="source-ref" href="../../src/game/game-presentation.ts#L400"><code>GamePresentation.syncWorld</code></a>
         <span> · </span>
@@ -409,7 +409,7 @@
             <tr><td>約 5300 km</td><td><code>WeatherModel.pressureSourceAt</code><br><code>PRESSURE_NOISE</code></td><td>緯度帯 + 低周波ノイズ + cyclone</td><td>低気圧・高気圧、全球の雲の大配置</td></tr>
             <tr><td>100–3200 km</td><td><code>WeatherTransport.humiditySourceAt</code><br><code>SURFACE_HUMIDITY_NOISE</code></td><td><code>CirculatingNoise.at</code></td><td>雲塊、湿潤域、乾燥域</td></tr>
             <tr><td>24 / 48 km</td><td><code>CONVECTION_NOISE</code><br><code>CirculatingNoise.pairAt</code></td><td><code>gradientNoise(position)</code></td><td>細胞の網目と粒。生成雲の cellular pattern</td></tr>
-            <tr><td>15 km 上限</td><td><code>CloudShapeEvaluator.cloudTop</code><br><code>CLOUD_TOP_SPAN</code></td><td>fieldTop + grain × 0.15</td><td>雲頂の高さ場。雲底からの起伏</td></tr>
+            <tr><td>0–20 km</td><td><code>cloudVerticalProfileAt</code><br><code>CLOUD_MODEL_PARAMETERS</code></td><td>4 basis + temperature / tropopause</td><td>低層・中層・対流上層・in-situ 上層の連続支持</td></tr>
             <tr><td>6 km</td><td><code>OpaqueCloudSurfaceRenderer.grainAt</code><br><code>CUMULUS_GRAIN_SIZE</code></td><td>画面微分 <code>dFdx/dFdy</code> + direction</td><td>実写・生成どちらにも加わる sub-texel の粒と法線起伏</td></tr>
             <tr><td>2–4 px</td><td><code>grainAmplitudeAt</code></td><td>画面上の粒の波長</td><td>解像不能な粒を fade。遠景のモアレを抑える</td></tr>
           </tbody>
@@ -426,7 +426,7 @@
         <div class="subpanel">
           <div class="subpanel-head"><h3>OpaqueCloudSurfaceRenderer</h3><p>不透明な雲頂。G-buffer の雲殻レイヤーへ書く。</p></div>
           <div class="subpanel-body"><div class="mini-sequence">
-            <div class="mini-row"><div class="mini-number">IN</div><div><strong>fieldSampler.sampleCloud(direction)</strong><span>CloudSample: coverage / cloudTop / translucent</span></div></div>
+            <div class="mini-row"><div class="mini-number">IN</div><div><strong>fieldSampler.sampleCloud(direction)</strong><span>CloudSample: RGBA basis + derived coverage / cloudTop / translucent</span></div></div>
             <div class="mini-row"><div class="mini-number">01</div><div><strong>CloudShapeEvaluator.grainAt</strong><span>6 km gradientNoise。画面波長に応じて振幅 fade</span></div></div>
             <div class="mini-row"><div class="mini-number">02</div><div><strong>opaqueFraction</strong><span>coverage + grain × 0.25 をディザ帯へ変換</span></div></div>
             <div class="mini-row"><div class="mini-number">03</div><div><strong>clearanceAt / cloudTopRadius</strong><span>雲頂の内外を判定。最初の交点を探す</span></div></div>
@@ -437,7 +437,7 @@
           <div class="subpanel-head"><h3>CloudAtmosphereRenderer</h3><p>大気積分へ球殻イベントとして挿入する。</p></div>
           <div class="subpanel-body"><div class="mini-sequence">
             <div class="mini-row"><div class="mini-number">IN</div><div><strong>CloudFieldSampler.sampleCloud(up)</strong><span>交点方向の CloudSample</span></div></div>
-            <div class="mini-row"><div class="mini-number">01</div><div><strong>columnOpticalDepthOf</strong><span>cirrus は translucent、cumulus は coverage → τ</span></div></div>
+            <div class="mini-row"><div class="mini-number">01</div><div><strong>columnOpticalDepthOf</strong><span>cirrus は inSitu / convective、cumulus は liquid basis → τ</span></div></div>
             <div class="mini-row"><div class="mini-number">02</div><div><strong>shellAirmassNode</strong><span>視線角で airmass を増幅。ただし接線付近は有限化</span></div></div>
             <div class="mini-row"><div class="mini-number">03</div><div><strong>AtmosphereCloudLayers.build</strong><span>外殻から front-to-back のイベント列を作る</span></div></div>
             <div class="mini-row"><div class="mini-number">OUT</div><div><strong>AtmosphereCloudLayers.compose</strong><span>transmittance / inscatter を大気結果へ合成</span></div></div>
@@ -473,8 +473,8 @@
         <thead><tr><th>クラス / 関数</th><th>入力</th><th>出力</th><th>頻度</th></tr></thead>
         <tbody>
           <tr><td>GeneratedCloudField.prepare</td><td>renderer, displayTime, climate.generation, projection.revision</td><td>焼成済み cap texture / generation</td><td>時刻・cap変更時</td></tr>
-          <tr><td>WeatherModel.weatherAt</td><td>unit direction</td><td>WeatherSample: humidity / convection / lift / band / tropopause</td><td>CloudField の各 texel</td></tr>
-          <tr><td>condense</td><td>WeatherSample</td><td>CloudSample: coverage / cloudTop / translucent</td><td>CloudField の各 texel</td></tr>
+          <tr><td>WeatherModel.weatherAt</td><td>unit direction</td><td>WeatherSample: forcing / humidity / convection / lift / tropopause</td><td>CloudField の各 texel</td></tr>
+          <tr><td>condense</td><td>WeatherSample</td><td>CloudSample: low / middle / convective / inSitu basis</td><td>CloudField の各 texel</td></tr>
           <tr><td>BakedField.render</td><td>source(direction), FieldProjection</td><td>RenderTarget texture</td><td>各焼成パス</td></tr>
           <tr><td>CloudFieldSampler.sampleCloud</td><td>body-fixed unit direction</td><td>texture.sample(uv) → CloudSample</td><td>各消費側</td></tr>
           <tr><td>CloudShapeEvaluator.grainAt</td><td>direction, amplitude</td><td>6 km gradient noise</td><td>surface / shadow</td></tr>
@@ -491,11 +491,11 @@
   <script>
     const root = document.getElementById('cloud-explainer');
     const details = {
-      generated: { kicker: 'selected / generated source', title: 'GeneratedCloudField.prepare が、時刻付きの雲場を公開する', copy: 'ClimateData・displayTime・FieldProjection を入力し、WeatherModel の中間場を焼いてから CloudField を焼きます。読み手には texture と generation が残ります。', meta: [['class', 'GeneratedCloudField'], ['input', 'ClimateData / displayTime / projection'], ['output', 'CloudRenderInput.field.texture']] },
-      observed: { kicker: 'selected / observed source', title: 'ObservedCloudField.prepare は画像を cap へ写し直す', copy: 'cloud-field.png はすでに RGB の雲場です。ObservedCloudField は現在の OrthographicCap に合う uv で読み、BakedField の 512×512 texture として公開します。', meta: [['class', 'ObservedCloudField'], ['input', 'cloud-field.png / FieldProjection'], ['output', 'BakedField.texture']] },
-      field: { kicker: 'selected / shared contract', title: 'CloudFieldBinding が texture と cap の位置を同時に渡す', copy: 'texture だけを差し替えるのではなく、同じ texture を焼いた時の center / east / north / sinRadius / cosRadius も一緒に渡します。これで描画側の uv がずれません。', meta: [['class', 'CloudFieldSampler'], ['input', 'CloudFieldBinding'], ['output', 'CloudSample(direction)']] },
+      generated: { kicker: 'selected / generated source', title: 'GeneratedCloudField.prepare が、時刻付きの雲場を公開する', copy: 'ClimateData・displayTime・FieldProjection を入力し、WeatherModel の中間場を焼いてから CloudField を焼きます。読み手には texture・state・generation が残ります。', meta: [['class', 'GeneratedCloudField'], ['input', 'ClimateData / displayTime / projection'], ['output', 'CloudRenderInput.field.texture + state']] },
+      observed: { kicker: 'selected / observed source', title: 'ObservedCloudField.prepare は画像を cap へ写し直す', copy: 'cloud-field.png は観測由来の RGB 値を最小 basis adapter で解釈します。相や高度を断定せず、現在の OrthographicCap に合う RGBA basis として BakedField へ公開します。', meta: [['class', 'ObservedCloudField'], ['input', 'cloud-field.png / FieldProjection'], ['output', 'BakedField.texture + state']] },
+      field: { kicker: 'selected / shared contract', title: 'CloudFieldBinding が field と state を同時に渡す', copy: 'texture だけを差し替えるのではなく、同じ texture を焼いた時の center / east / north / sinRadius / cosRadius と absolute time / seed / temporal mode を一緒に渡します。これで3つの描画経路が別の時刻や uv を読みません。', meta: [['class', 'CloudFieldSampler'], ['input', 'CloudFieldBinding'], ['output', 'CloudSample(direction) + state']] },
       surface: { kicker: 'selected / opaque surface', title: 'OpaqueCloudSurfaceRenderer は depth と normal を同じ交点から出す', copy: 'coverage と grain から opaqueFraction を作り、cloudTopRadius との clearance をレイマーチします。最初の交点を二分探索で締め、同じ cloudTop から法線を出します。', meta: [['class', 'OpaqueCloudSurfaceRenderer'], ['input', 'CloudSample / camera ray / blue noise'], ['output', 'depthNode / normalNode']] },
-      atmosphere: { kicker: 'selected / atmosphere', title: 'CloudAtmosphereRenderer は CloudSample を光学イベントへ変換する', copy: 'cirrus は translucent をそのまま柱 τ として使い、cumulus は coverage を -log(1-coverage) へ変換します。球殻の厚みから airmass を求め、大気積分へ渡します。', meta: [['class', 'CloudAtmosphereRenderer'], ['input', 'species / shell / ray / sun'], ['output', 'transmittance / localRadiance']] },
+      atmosphere: { kicker: 'selected / atmosphere', title: 'CloudAtmosphereRenderer は共通 basis を光学イベントへ変換する', copy: 'inSitu と convective は薄い上層の柱へ、low / middle / convective は液相柱へ連続的に写します。球殻の厚みから airmass を求め、大気積分へ渡します。', meta: [['class', 'CloudAtmosphereRenderer'], ['input', 'species / shell / ray / sun'], ['output', 'transmittance / localRadiance']] },
       shadow: { kicker: 'selected / shadow', title: 'CloudShadowRenderer は太陽光路の透過率を出す', copy: 'worldPos と footprint を入力に、太陽方向の光路を6タップします。各タップで同じ雲場と雲頂形状を読み、光学的厚みを積算して exp(-τ) を返します。', meta: [['class', 'CloudShadowRenderer'], ['input', 'worldPos / footprint / sun ray'], ['output', 'receiver transmittance']] }
     };
 

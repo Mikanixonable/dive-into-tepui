@@ -2,7 +2,7 @@
 // プロシージャル生成雲場と一致する。読み出し側のサンプリング処理を球面キャップ1枚に統一するため、
 // 全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
 import * as THREE from 'three/webgpu';
-import { float, int, log2, max, texture } from 'three/tsl';
+import { float, int, log2, max, smoothstep, texture, vec4 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { BakedField } from './baked-field';
 import { equirectUvFromDirection, type FieldProjection } from './field-projection';
@@ -10,6 +10,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
 import type { Vec4Node } from '../tsl-types';
+import type { CloudStateBinding } from './cloud-state';
 
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
@@ -18,9 +19,14 @@ export class ObservedCloudField implements CloudFieldSource {
   private bakedGeneration = -1;
   private bakedRevision = -1;
   private generationValue = 0;
+  private readonly stateValue: CloudStateBinding = {
+    absoluteTimeSeconds: 0,
+    seed: 0,
+    temporalMode: 'normal',
+  };
 
-  // url は地表と同じ正距円筒の雲場画像(R = 被覆率、G = 雲頂高度、B = 薄い雲の光学的厚み)、
-  // projection は焼き直す先の持ち方。
+  // url は地表と同じ正距円筒の旧観測画像(R = 被覆率、G = 雲頂の proxy、B = 薄い雲の光学的厚み)、
+  // projection は焼き直す先の持ち方。旧 RGB は basis adapter を通してから runtime field へ入れる。
   public constructor(url: string, private readonly projection: FieldProjection) {
     this.map = new DeferredTexture(url, THREE.NoColorSpace);
     // 正距円筒の経度は周期的なので、画像は経度方向へ巻く。
@@ -33,12 +39,26 @@ export class ObservedCloudField implements CloudFieldSource {
     const lod = max(log2(projection.texelAngle.mul(imageHeight).div(Math.PI)), 0);
     this.field = new BakedField(
       'observedCloud', THREE.RGBAFormat, projection,
-      (direction) => image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node,
+      (direction) => {
+        // 観測画像だけから相を確定しない。旧 R/G/B の被覆率・雲頂・薄雲を
+        // low/middle/convective/in-situ basis へ連続変換する。
+        const observed = image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node;
+        const convectiveWeight = smoothstep(0.45, 0.88, observed.g);
+        const middleWeight = smoothstep(0.12, 0.58, observed.g).mul(float(1).sub(convectiveWeight));
+        const lowWeight = float(1).sub(middleWeight).sub(convectiveWeight);
+        return vec4(
+          observed.r.mul(max(lowWeight, 0)),
+          observed.r.mul(max(middleWeight, 0)),
+          observed.r.mul(max(convectiveWeight, 0)),
+          observed.b,
+        );
+      },
     );
   }
 
   public get texture(): THREE.Texture { return this.field.texture; }
   public get generation(): number { return this.generationValue; }
+  public get state(): CloudStateBinding { return this.stateValue; }
 
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
   public prepare(renderer: WebGPURenderer, _displayTime: number, gpu: GpuTimingSink | null, _nowMs: number): void {

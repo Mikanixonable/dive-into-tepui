@@ -2,9 +2,11 @@
 // field のテクスチャ所有権は source 側に残し、generation と topAltitude を同じ
 // スナップショットに束ねて、表現ごとの入力解釈を増やさない。
 import type { CloudFieldBinding } from './cloud-field-sampler';
+import type { CloudStateBinding } from './cloud-state';
 
 export interface CloudRenderInput {
   readonly field: CloudFieldBinding;
   readonly generation: number;
   readonly topAltitude: number;
+  readonly state: CloudStateBinding;
 }
