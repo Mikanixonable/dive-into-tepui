@@ -19,8 +19,8 @@ interface RowTreeActions {
 // 1件ぶんの行 + その子を畳めるトグル区画。子を持たない行(自艦/敵/弾薬/基地、および
 // 子のない天体)でも toggle/childrenContainer 自体は生成しておき、可視性だけ切り替える
 // (子の有無はフレームごとに変わりうるため、生成を後から差し込むより組み替えが少ない)。
-// 子への参照は持たない — 行は区画ごとの平坦な台帳(id → RowNode)が所有し、木の形は
-// 毎フレーム渡される childIds が決める。木の形が変わっても行そのものは作り直さない。
+// 行は区画ごとの平坦な台帳(id → RowNode)が所有し、木構造は毎フレーム渡される childIds が決める。
+// 木の形が変わっても行そのものは作り直さない。
 export interface RowNode {
   readonly row: HTMLElement;
   readonly toggle: HTMLElement;
