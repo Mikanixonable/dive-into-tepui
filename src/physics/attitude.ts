@@ -112,9 +112,8 @@ export function attitudeAlignError(desiredFwd: Vec3, desiredUp: Vec3, q: Quat): 
   return { angle, axisBody };
 }
 
-// desiredFwd/desiredUp へ機首を向けるPD制御トルクをボディフレームで返す。kp/kd は呼び出し側の
-// ゲイン(physics/ は game/ の調整値に依存しないため引数で受け取る)。特異姿勢(desiredFwd と
-// desiredUp が平行)なら制御せず v3() を返す。
+// desiredFwd/desiredUp へ機首を向けるPD制御トルクを機体座標系で算出する。kp/kd は制御ゲイン。
+// 特異姿勢（desiredFwd と desiredUp が平行）の場合はゼロベクトルを返す。
 export function attitudeAlignTorque(
   desiredFwd: Vec3, desiredUp: Vec3, att: Attitude, kp: number, kd: number,
 ): Vec3 {
