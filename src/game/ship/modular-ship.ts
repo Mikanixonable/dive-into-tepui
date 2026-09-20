@@ -41,6 +41,7 @@ import { PlayerEffects } from '../player/player-effects';
 import { ModularShipReactions } from './modular-ship-reactions';
 import { createDefaultCombatPreset } from './ship-presets';
 import type { ShipAssembly, ShipConnection } from './ship-assembly';
+import { shipRenderAssembly } from './ship-render-adapter';
 import { ShipCapabilities } from './ship-capabilities';
 import { shipPhysicsShape } from './ship-physics-shape';
 import {
@@ -856,7 +857,7 @@ export class ModularShip extends Ship implements Controllable {
     const thrustAcceleration = motion.thrust;
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
-      assembly: this.assembly,
+      assembly: shipRenderAssembly(this.assembly),
       centerOffset: motion.centerOffset,
       state: motion.state,
       active,

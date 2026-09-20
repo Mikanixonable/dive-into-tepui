@@ -34,6 +34,10 @@ const commonTypeScriptRules = {
   '@typescript-eslint/no-import-type-side-effects': 'error',
   '@typescript-eslint/array-type': ['error', { default: 'array' }],
   '@typescript-eslint/prefer-for-of': 'error',
+  // 現行規範は外部保証でない assertion だけを意味監査する。any と console も一律禁止しない。
+  '@typescript-eslint/no-non-null-assertion': 'off',
+  '@typescript-eslint/no-explicit-any': 'off',
+  'no-console': 'off',
   '@typescript-eslint/no-unused-vars': [
     'error',
     {
@@ -43,6 +47,24 @@ const commonTypeScriptRules = {
       varsIgnorePattern: '^_',
     },
   ],
+};
+
+const sourceTypeScriptRules = {
+  ...commonTypeScriptRules,
+  '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
+  '@typescript-eslint/prefer-function-type': 'error',
+  '@typescript-eslint/parameter-properties': ['error', { prefer: 'parameter-property' }],
+  '@typescript-eslint/explicit-member-accessibility': [
+    'error',
+    {
+      accessibility: 'explicit',
+    },
+  ],
+  'local/explicit-public-return-type': 'error',
+};
+
+const toolTypeScriptRules = {
+  ...commonTypeScriptRules,
 };
 
 export default defineConfig([
@@ -70,17 +92,7 @@ export default defineConfig([
       },
     },
     rules: {
-      ...commonTypeScriptRules,
-      '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
-      '@typescript-eslint/prefer-function-type': 'error',
-      '@typescript-eslint/parameter-properties': ['error', { prefer: 'parameter-property' }],
-      '@typescript-eslint/explicit-member-accessibility': [
-        'error',
-        {
-          accessibility: 'explicit',
-        },
-      ],
-      'local/explicit-public-return-type': 'error',
+      ...sourceTypeScriptRules,
     },
   },
   {
@@ -99,7 +111,7 @@ export default defineConfig([
       globals: globals.node,
     },
     rules: {
-      ...commonTypeScriptRules,
+      ...toolTypeScriptRules,
     },
   },
   {
