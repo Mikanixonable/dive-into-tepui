@@ -1,6 +1,6 @@
 // レンズ効果。画面の絵を、明るい点ほど広く見える淡い像として配り直す。
 // 核の総和を1に保つ線形処理なので、画面全体の光量と後段の分離可能性を保つ。
-// 広がりは画面上の角度で決まり、光源までの距離には依存しない。
+// 広がりは画面上の視野角に基づいて計算される。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
