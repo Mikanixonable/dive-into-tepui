@@ -124,7 +124,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return this.lifecycle.collectionRevision;
   }
 
-  // DynamicSystem はゲーム進行の根として、既存の EntityRegistry 契約を寿命所有者へ渡す。
+  // DynamicSystem はゲーム進行の起点として、EntityRegistry インターフェースをライフサイクル管理オブジェクトへ中継する。
   public add(entity: DynamicEntity): void { this.lifecycle.add(entity); }
   public spawnWhenReady(record: SpawnRecord): void { this.lifecycle.spawnWhenReady(record); }
   public get pendingEnemyCount(): number { return this.lifecycle.pendingEnemyCount; }

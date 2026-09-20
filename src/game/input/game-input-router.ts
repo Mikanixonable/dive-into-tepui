@@ -21,8 +21,8 @@ export function gameInputMode(paused: boolean, inputGated: boolean, construction
 /**
  * Input の生データをゲーム側へ渡す narrow port。
  *
- * 実装は後続移行時に Input を保持する adapter が担う。`takePressed` / `takePressedCodes` の消費単位や
- * `isDown` の押下判定は既存 Input の意味をそのまま委譲し、この契約では変更しない。
+ * 実装は Input を保持する adapter が担う。`takePressed` / `takePressedCodes` の消費単位や
+ * `isDown` の押下判定は Input クラスの仕様をそのまま委譲し、このインターフェース境界では改変しない。
  */
 export interface RawGameInputAdapter {
   isDown(binding: GameInputBinding): boolean;

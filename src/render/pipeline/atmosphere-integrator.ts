@@ -116,8 +116,8 @@ const depthToSpace = Fn((
 // レイリー散乱の位相関数。等方散乱を 1 とする目盛りなので、前後で 1.5、側方で 0.75 になる。
 const rayleighPhase = (cosTheta: FloatNode): FloatNode => cosTheta.mul(cosTheta).add(1).mul(0.75);
 
-// Henyey–Greenstein の位相関数。等方散乱を 1 とする目盛り。非対称因子 g が大きいほど
-// 前方へ尖り、太陽のまわりのグローが締まる。
+// Henyey–Greenstein の位相関数。等方散乱を 1 とする基準化値。非対称因子 g が大きいほど
+// 前方散乱の異方性が強まり、太陽周辺のフォワードグレアの集光度が高まる。
 const miePhase = Fn(([cosTheta, anisotropy]: readonly [FloatNode, FloatNode]) => {
   const squared = anisotropy.mul(anisotropy);
   const denominator = max(squared.add(1).sub(anisotropy.mul(cosTheta).mul(2)), 1e-4);
@@ -171,7 +171,7 @@ export class AtmosphereIntegrator {
     this.slot.center.value.copy(body.center);
     this.slot.surfaceRadius.value = body.surfaceRadius;
     this.slot.cutoffRadius.value = cutoffRadius;
-    // **軸は単位長でなければならない** — 長さが乗ると潰し量がその2乗で効く。
+    // **極軸は単位ベクトルでなければならない** — ノルムが 1 でない場合、扁平率の圧縮係数が二乗で過剰に掛かる。
     this.slot.polarAxis.value.copy(body.polarAxis).normalize();
     this.slot.polarStretch.value = 1 / Math.max(body.polarRatio, MIN_POLAR_RATIO) - 1;
     this.slot.rayleigh.value.copy(body.optics.rayleigh);
@@ -329,8 +329,8 @@ export class AtmosphereIntegrator {
     return this.cloudLayers.compose(march.transmittance, march.radiance, shells);
   }
 
-  // 雲 renderer へ渡す天体空間の契約。殻の交差順序と場の解釈は AtmosphereCloudLayers が持ち、
-  // 大気側は自分の球空間・太陽輝度・大気透過率だけを提供する。
+  // 雲 renderer へ渡す天体空間の幾何・光学パラメータ。殻の交差順序と場の解釈は AtmosphereCloudLayers が担い、
+  // 大気側は球空間幾何・太陽輝度・大気透過率を提供する。
   private cloudGeometry(): AtmosphereCloudGeometry {
     return {
       shellRadiusOf: (species) => this.slot.surfaceRadius.add(shellAltitudeOf(species)),

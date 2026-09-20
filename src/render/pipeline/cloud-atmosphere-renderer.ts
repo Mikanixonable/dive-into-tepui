@@ -93,11 +93,11 @@ export interface CloudShellSample {
   readonly radiance: Vec3Node;
 }
 
-// 場の意味契約はCloudSampleが持つ。巻雲はtranslucentをそのまま、積雲はcoverageを柱の厚みへ直す。
+// 雲場データの解釈仕様は CloudSample が定義する。巻雲は translucent を直接適用し、積雲は coverage を鉛直柱光学厚みへ換算する。
 //
-// **不透明な積雲として立てたぶんを引かない。** 不透明な殻は G バッファへ深度を書くので、その
-// 手前で終わる視線では殻の交点が区間の外へ落ちて寄与が消える — 引き算は同じ遮蔽を二重に効かせ、
-// 塔の周りに殻の抜けを作る。むしろ塔の側に残るディザの濃淡差を、この殻が跨いで埋める。
+// 不透明な積雲として描画された成分は減算しない。不透明な雲殻が G バッファに深度を書き込むため、その
+// 手前で終端するレイでは交点が積分区間外となり自然に寄与が除外される。減算を行うと同一遮蔽が二重に積算され、
+// 雲塔周囲に不自然なアーティファクトを生じる。
 function columnOpticalDepthOf(species: CloudSpecies, field: CloudSample): FloatNode {
   return shellDefinitionOf(species).columnOpticalDepth(field);
 }
