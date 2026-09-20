@@ -34,6 +34,12 @@ export async function packageEarthSurface({
     for (const climateMap of checked.climateMaps) await copyAsset(staging, climateMap);
     await mkdir(dirname(assetPath(staging, manifestName)), { recursive: true });
     await copyFile(checked.manifestPath, assetPath(staging, manifestName));
+    if (typeof checked.manifest.sourceManifest === 'string') {
+      await copyAsset(staging, {
+        absolutePath: assetPath(checked.root, checked.manifest.sourceManifest),
+        path: checked.manifest.sourceManifest,
+      });
+    }
     await writeFile(assetPath(staging, 'attribution.json'), `${JSON.stringify({
       datasetId: checked.manifest.datasetId, attribution: checked.manifest.attribution,
     }, null, 2)}\n`);
