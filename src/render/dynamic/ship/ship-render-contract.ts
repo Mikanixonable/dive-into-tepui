@@ -1,4 +1,4 @@
-// モジュール船の表示が読む不変な入力契約。ゲームの assembly はこの境界を越えない。
+// モジュール船の描画処理が参照する不変な入力データ仕様。
 import type { Quat } from '../../../math/quat';
 import type { Vec3 } from '../../../math/vec3';
 

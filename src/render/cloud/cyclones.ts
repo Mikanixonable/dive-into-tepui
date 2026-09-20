@@ -9,7 +9,7 @@ import { coreCrossingAngle } from './wind-law';
 import type { CyclonePlacement } from './cyclone-tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
-// 谷の効きが届く限界 [m]。裾は距離に反比例するので、1 つでは薄くても谷の数だけ足すと全球の
+// 気圧の谷による影響限界半径 [m]。裾野は距離に反比例するため、単体では微弱でも複数累積すると全球的な
 // 底上げになり、気圧から出る上昇流の基準がまるごと持ち上がる。ここで遠方を閉じる。最大の谷
 // (消えるときの中緯度の低気圧で短軸の半径 1800 km、温帯化した熱帯低気圧で約 1000 km)の裾を
 // 切らない長さ — 芯が 1/√2 に落ちる半径の外側で、ガウスは 1800 km でも e^(−0.52) = 0.59 に留まる。
@@ -110,8 +110,8 @@ class Trough {
     return core.mul(this.depth).negate();
   }
 
-  // 単位方向 direction での眼の濃さ 0..1(中心で最も濃く、外で 0)。気圧と違って裾を引かない
-  // ガウスなので、その半径より外へは効かない。眼を持たない谷では全域で 0。
+  // 単位方向 direction での台風の眼の強度 0..1（中心で最大、外縁で 0）。急峻なガウス分布のため、
+  // 半径外側の寄与は実質的に 0 となる。台風の眼が非形成の低気圧では全域で 0。
   public eyeAt(direction: Vec3Node): FloatNode {
     return exp(this.normalizedChordSquared(direction, EYE_FRACTION).negate()).mul(this.eyeStrength);
   }
@@ -133,7 +133,7 @@ class Trough {
 export class Cyclones {
   private readonly tropical: Trough;
   private readonly lows: readonly Trough[];
-  // 気圧も眼も種類を分けずに足す。熱帯低気圧も中緯度の低気圧も、同じ 1 つの規則で効く。
+  // 気圧降下および台風の眼の強度は種別を問わず累積する。熱帯低気圧・中緯度低気圧ともに同一の計算規則を適用する。
   private readonly troughs: readonly Trough[];
 
   // 谷を組み、時刻 0 の配置で始める。surfaceRadius は谷を置く天体の半径 [m]、rotationPeriod は
