@@ -426,9 +426,9 @@ export class ShipAssembly {
   }
 
   // 健全 module から seed 固定で標的を選ぶ。展開中 radiator への直撃は damage を 0.25 倍する。
-  public damage(amount: number, seed: number, targetModuleId?: string): string | null {
+  public damage(amount: number, seed: number, targetModuleId: string | null = null): string | null {
     if (!Number.isFinite(amount) || amount <= 0) return null;
-    const target = targetModuleId === undefined ? null : this.nodes.get(targetModuleId);
+    const target = targetModuleId === null ? null : this.nodes.get(targetModuleId);
     let targetNode = target;
     let effectiveAmount = amount;
     if (targetNode?.instance.kind === 'radiator' && targetNode.instance.hp > 0 && targetNode.instance.deployed > 0) {
