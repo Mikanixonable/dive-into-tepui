@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 本番の地表配信先を、データ配備とは独立して検査する。
-import { validateRuntimeManifest } from './contract.mjs';
+import { readBaseColorJpeg, validateRuntimeManifest } from './contract.mjs';
 
 const DATASET_ID = /^[a-z0-9-]+$/;
 
@@ -96,6 +96,16 @@ async function requireRemoteAsset(fetchImpl, url, name) {
     throw new EarthSurfaceReleaseConfigError(`${name} request failed: ${url}`, { cause: error });
   }
   if (!response.ok) throw new EarthSurfaceReleaseConfigError(`${name} HTTP ${response.status}: ${url}`);
+  return response;
+}
+
+async function requireRemoteBaseColor(fetchImpl, url) {
+  const response = await requireRemoteAsset(fetchImpl, url, 'baseColor');
+  try {
+    readBaseColorJpeg(Buffer.from(await response.arrayBuffer()));
+  } catch (error) {
+    throw new EarthSurfaceReleaseConfigError(`baseColor must be an 8192x4096 RGB JPEG: ${url}`, { cause: error });
+  }
 }
 
 // 公開manifestとLOD開始点の実体を同じrelease設定から検査する。
@@ -118,8 +128,13 @@ export async function checkEarthSurfaceRelease(config, fetchImpl = fetch) {
   if (manifest.datasetId !== normalized.datasetId) {
     throw new EarthSurfaceReleaseConfigError(`manifest datasetId mismatch: ${manifest.datasetId}`);
   }
-  const paths = [manifest.baseColor, manifest.baseTerrain, manifest.climateMaps[0], 'tiles/5/0/0.jpg', 'tiles/5/0/0.bin.gz'];
-  if (manifest.schemaVersion === 1) paths.push(manifest.tileIndexUrl);
+  if (manifest.schemaVersion !== 3) {
+    throw new EarthSurfaceReleaseConfigError(
+      `earth surface release requires manifest schema 3; received schema ${manifest.schemaVersion}`,
+    );
+  }
+  await requireRemoteBaseColor(fetchImpl, manifestAssetUrl(normalized.manifestUrl, manifest.baseColor));
+  const paths = [manifest.baseTerrain, manifest.climateMaps[0], 'tiles/5/0/0.jpg', 'tiles/5/0/0.bin.gz'];
   await Promise.all(paths.map((path, index) => requireRemoteAsset(
     fetchImpl, manifestAssetUrl(normalized.manifestUrl, path), `manifest asset ${index}`,
   )));
