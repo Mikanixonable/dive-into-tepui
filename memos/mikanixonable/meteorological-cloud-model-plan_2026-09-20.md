@@ -317,10 +317,12 @@ RGBA を basis 係数として共通 profile へ通し、相と光学量を見�
 | ファイル | 変更 |
 | --- | --- |
 | `src/render/cloud/cloud-field-sample.ts`、`src/render/cloud/cloud-field.ts`、`src/render/cloud/baked-field.ts` | 低層 / 中層 / 対流上層 / in-situ 上層の 4 basis を encode/decode する。 |
+| `src/render/cloud/cloud-model-parameters.ts`（新規） | 視覚調整用 fixture のうち採用済み runtime 値だけを immutable に保持し、描画経路から calibration 範囲を読まないようにする。 |
 | `src/render/cloud/cloud-environment.ts`（新規） | latitude、固定気候、地理 forcing、temperature anchor をまとめる。 |
 | `src/render/cloud/cloud-temperature-profile.ts`（新規） | 温度 anchor と tropopause を幾何高度へ変換し、相を連続補間する。 |
 | `src/render/cloud/cloud-vertical-profile.ts`（新規） | compact support の piecewise / smoothstep basis、雲底・雲頂、区間係数を返す。高さは 0〜20 km。 |
 | `src/render/cloud/cloud-optics.ts`、`src/render/cloud/cloud-optics-node.ts` | basis / phase から `tauScale`、散乱、非対称因子、opaque-like threshold を作る。既存の optics 経路を共通 state へ整理する。 |
+| `tools/cloud-lab/calibration-spec.ts`（新規） | regime ごとの調整範囲、単位、reference screenshot、採用理由を debug metadata として保持する。runtime bundle へ import しない。 |
 | `src/render/cloud/cloud-shape-evaluator.ts`、`src/render/cloud/cumulus-shape.ts` | shape と vertical profile の入力を共通 state へ移す。 |
 | `tests/render/cloud-vertical-profile.test.ts`、`tests/render/cloud-optics.test.ts` | phase の連続性、thin / thick の単調性、CPU / TSL parity、上端 20 km を検査する。 |
 
