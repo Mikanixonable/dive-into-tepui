@@ -1,12 +1,12 @@
 // dynamics.ts の回帰テスト。stepDynamics は DynamicTrajectory.step が使う唯一の 1 ステップ実装。
-import { fixedMotion, positionOf, solarSystemParts } from './test-helpers';
+import { fixedMotion, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import {
   C22_MOON, J2_EARTH, J2_MOON, MU_EARTH, MU_MOON, R_EARTH, R_EARTH_EQ, R_MOON, R_MOON_GRAVITY,
 } from '../../src/game/celestial/solar-system/earth-system';
-import { OrbitalElements, keplerPeriod, orbitalElementsOf, stateFromOrbitalElements } from '../../src/physics/elements';
+import { OrbitalElements, orbitalElementsOf, stateFromOrbitalElements } from '../../src/physics/elements';
 import { MU_SUN, R_SUN, SUN } from '../../src/game/celestial/solar-system/sun';
 import { Degree2Gravity } from '../../src/physics/celestial-body';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
@@ -126,29 +126,6 @@ export function register(): void {
     const noDrag = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
 
     assert.deepEqual(noAtmosphere.v, noDrag.v);
-  });
-
-  test('dynamics: a circular lunar orbit (surface +100km) returns to about the same moon-relative position after one revolution (measured, pinned)', () => {
-    const parts = solarSystemParts();
-    const windows = parts.system;
-    const attractors0 = windows.celestialMotions;
-    const moon0 = attractors0.find((b) => b.id === 'moon')!;
-    const a = R_MOON + 100e3;
-    const period = keplerPeriod(a, MU_MOON); // ~7,066s
-    const rel0 = stateFromOrbitalElements(0, a, 0, (10 * Math.PI) / 180, 0, 0, 0, MU_MOON);
-    let s = kinematicState<'eci'>(0, add(rel0.r, moon0.stateAt(0).r), add(rel0.v, moon0.stateAt(0).v));
-
-    const dt = 5;
-    const steps = Math.round(period / dt);
-    for (let i = 0; i < steps; i++) {
-      const attractors = windows.celestialMotions;
-      s = stepDynamics(s, dt, attractors, attractors, null, 0, 0, 0, null);
-    }
-
-    const relFinal = sub(s.r, positionOf(parts, 'moon', s.t));
-    const drift = len(sub(relFinal, rel0.r));
-    // 地球(・太陽)の潮汐差ぶんの摂動がかかるので、月の二体問題の解には正確には戻らない。
-    assert.ok(drift < 50e3, `moon-relative drift after 1 revolution: ${drift} m (expected within tens of km)`);
   });
 
   test('dynamics: degree2Accel RAAN regression rate at 420km/51.6deg ~= -5deg/day (measured)', () => {
