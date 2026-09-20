@@ -162,7 +162,7 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 | ファイル | 変更 |
 | --- | --- |
 | `tools/cloud-lab-reference.mjs` | 6 regime、object/mesoscale/synoptic の三時系列、約 2,000 km の大円窓、source pixel size、cadence、衛星・チャンネル・時刻・投影・出典を manifest 化し、参照画像と雲頂/光学プロダクトを再取得できるようにする。GOES ABI の 0.5/1/2 km と 10/5/1 分の条件を manifest の選択肢にする。 |
-| `tools/cloud-lab-compare.mjs` | object の 1〜5 分、mesoscale の 10〜30 分、synoptic の 3〜6 時間を別 capture set として比較する。0 / 6 / 12 / 24 / 48 / 72 時間 contact sheet は synoptic の補助出力とし、時刻 0 固定の比較を合否根拠にしない。 |
+| `tools/cloud-lab-compare.mjs`、`tools/cloud-lab/lab.ts` | object の 1〜5 分、mesoscale の 10〜30 分、synoptic の 3〜6 時間を別 capture set として比較する。検証 cap は現行の `CAP_RADIUS=20°`（直径約 4,450 km）から、地球半径に対して `radius≈9°`（直径 `2R sin(9°)≈1,990 km`、512 texel で約 3.9 km/texel）へ変更し、`km/texel` は実際の投影値から導出する。0 / 6 / 12 / 24 / 48 / 72 時間 contact sheet は synoptic の補助出力とし、時刻 0 固定の比較を合否根拠にしない。 |
 | `tools/cloud-temporal-metrics.mjs`（新規） | 相関、e-folding、クラス別物体寿命・面積・速度、雲頂圧/高度/温度/相、光学量、空間スペクトル、しきい値感度、cloud fraction/分散を計算する。 |
 | `tools/cloud-observation-envelope.mjs`（新規） | 観測時系列の分割から observation-to-observation 95% 包絡と前処理誤差を計算する。 |
 | `tools/cloud-lab/lab.ts`、`tools/cloud-lab/views.ts` | 絶対時刻の複数時点を同じ投影・露出・検証窓で出力する。`EquirectProjection(1024×512)` と `OrthographicCap(512×512)` を manifest 上で区別し、三つの capture set を別々に扱う。 |
