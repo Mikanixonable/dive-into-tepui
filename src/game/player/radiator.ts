@@ -1,172 +1,208 @@
-// 自機の展開式ラジエーター: 上下2枚それぞれの展開度・損耗度を持ち、
-// 今フレームの放熱面積と太陽入射を答える。
+// 展開式ラジエーターの状態・放熱面・接触代理を、搭載 module の変換から求める。
 import type { Attitude } from '../../physics/attitude';
-import { LOCAL_FORWARD, LOCAL_UP, qFromAxisAngle, qRotate } from '../../math/quat';
+import { qRotate } from '../../math/quat';
+import { add, cross, dot, v3, type Vec3 } from '../../math/vec3';
+import { radiatorPanelLayout } from '../../physics/ship-panel-layout';
+import { RADIATOR_FOLD_COUNT, RADIATOR_PANEL_WIDTH, RADIATOR_SEGMENT_LENGTH } from '../../physics/player-shape';
 import { kinematicState } from '../../physics/kinematic-state';
-import { add, cross, dot, rotateAxis, v3, type Vec3 } from '../../math/vec3';
-import {
-  RADIATOR_DEPLOY_TILT,
-  RADIATOR_FOLD_COUNT,
-  RADIATOR_HINGE,
-  RADIATOR_SEGMENT_LENGTH,
-} from '../../physics/player-shape';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import { ContactProxy } from '../dynamic/contact-proxy';
-import type {
-  DynamicReactionServices, EntityContactParticipant,
-} from '../dynamic/dynamic-simulation-participant';
+import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
+import type { ShipAssembly } from '../ship/ship-assembly';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
-
 const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 const RADIATOR_FOLD_MASS = 5; // 接触で押し合うときの、蛇腹1折りの質量 [kg]
 
 export type RadiatorSide = 'up' | 'down';
 
-// 収納時(deploy=0)の折り角。展開軸から ±90° で交互に折ると隣り合う折り目の変位が
-// 打ち消し合い、蛇腹全体が1セグメントぶんの位置へ畳まれる。
-const STOW_TILT = Math.PI / 2;
-
-// side の展開方向の符号。up は +X、down は -X へ伸びる。
-function sideSign(side: RadiatorSide): number {
-  return side === 'up' ? 1 : -1;
+export interface SerializedRadiatorPanel {
+  readonly id: string;
+  readonly state: SerializedDeployablePanelState;
 }
 
-// theta(Y軸回転)だけ振れた、機体座標系 X 方向長さ x の変位。
-function yRotatedOffset(theta: number, x: number): Vec3 {
-  return rotateAxis(v3(x, 0, 0), LOCAL_UP, theta);
+export interface SerializedRadiatorSystem {
+  readonly up: SerializedDeployablePanelState;
+  readonly down: SerializedDeployablePanelState;
+  readonly panels: readonly SerializedRadiatorPanel[] | null;
 }
 
-// side の fold 番目の折りの中心位置(機体座標系)。RADIATOR_HINGE から蛇腹を辿り、
-// 各折りの根本から半セグメント先を返す。
-function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: number): Vec3 {
-  const sign = sideSign(side);
-  let origin = v3(sign * RADIATOR_HINGE.x, RADIATOR_HINGE.y, RADIATOR_HINGE.z);
-  for (let i = 0; i < fold; i++) {
-    origin = add(origin, yRotatedOffset(i % 2 === 0 ? even : odd, sign * RADIATOR_SEGMENT_LENGTH));
-  }
-  return add(origin, yRotatedOffset(fold % 2 === 0 ? even : odd, sign * RADIATOR_SEGMENT_LENGTH / 2));
+interface RestoredRadiatorPanel {
+  readonly id: string;
+  readonly state: DeployablePanelState;
 }
 
-// 折りへの接触を艦側のゲーム上の反応へ渡す口。side は当たった放熱板。
 type RadiatorContactReaction = (
-  side: RadiatorSide,
+  moduleId: string,
   other: EntityContactParticipant,
   contact: Contact,
   services: DynamicReactionServices,
 ) => void;
 
-export interface SerializedRadiatorSystem {
-  readonly up: SerializedDeployablePanelState;
-  readonly down: SerializedDeployablePanelState;
-}
-
 export class RadiatorSystem {
-  private readonly panels: Record<RadiatorSide, DeployablePanelState>;
-  // side ごとの損耗率(0=無傷, 1=全損)。放熱板部品の残 HP から求め直すキャッシュ。
-  private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
-  // side ごとの蛇腹1折りぶんの接触代理。折り数まで遅延生成し、以後は使い回す。
-  private readonly foldProxies: Record<RadiatorSide, ContactProxy[]> = { up: [], down: [] };
-  // 直近の placeContactFolds で接触に加えた折りの代理(キャッシュ)。
+  private readonly panels = new Map<string, DeployablePanelState>();
+  private readonly wear = new Map<string, number>();
+  private readonly foldProxies = new Map<string, ContactProxy[]>();
   private activeFolds: readonly ContactProxy[] = [];
+  private assemblyValue: ShipAssembly | null;
 
-  // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。up・down は各側の展開状態で、
-  // 省いた側は収納から始める。
   public constructor(
     private readonly owner: EntityContactParticipant,
     private readonly onContact: RadiatorContactReaction,
     up = new DeployablePanelState(0, 0),
     down = new DeployablePanelState(0, 0),
+    assembly: ShipAssembly | null = null,
+    restoredPanels: readonly RestoredRadiatorPanel[] = [],
   ) {
-    this.panels = { up, down };
+    this.panels.set('up', up);
+    this.panels.set('down', down);
+    for (const panel of restoredPanels) {
+      if (panel.id.length > 0) this.panels.set(panel.id, panel.state);
+    }
+    this.assemblyValue = assembly;
   }
 
-  // side の展開/収納を切り替える。
-  public toggle(side: RadiatorSide): void {
-    const p = this.panels[side];
-    p.toggle();
+  public static deserialize(
+    serialized: SerializedRadiatorSystem,
+    owner: EntityContactParticipant,
+    onContact: RadiatorContactReaction,
+    assembly: ShipAssembly | null = null,
+  ): RadiatorSystem {
+    const up = DeployablePanelState.deserialize(serialized.up) ?? new DeployablePanelState(0, 0);
+    const down = DeployablePanelState.deserialize(serialized.down) ?? new DeployablePanelState(0, 0);
+    const restoredPanels: RestoredRadiatorPanel[] = [];
+    for (const panel of serialized.panels ?? []) {
+      const state = DeployablePanelState.deserialize(panel.state);
+      if (state !== null && panel.id.length > 0) restoredPanels.push({ id: panel.id, state });
+    }
+    return new RadiatorSystem(owner, onContact, up, down, assembly, restoredPanels);
   }
 
-  // side の展開目標を明示的に設定する。
-  public setDeployed(side: RadiatorSide, deployed: boolean): void {
-    const p = this.panels[side];
-    p.setTarget(deployed);
+  // assembly の radiator module ID へ状態を結び付ける。旧セーブの up/down は接続順へ一度だけ移す。
+  public syncAssembly(assembly: ShipAssembly = this.assemblyValue as ShipAssembly): void {
+    if (assembly === null || assembly === undefined) return;
+    this.assemblyValue = assembly;
+    const old = new Map(this.panels);
+    const radiators = assembly.modules.filter(module => module.kind === 'radiator');
+    const next = new Map<string, DeployablePanelState>();
+    for (const [index, module] of radiators.entries()) {
+      const legacy = index === 0 ? old.get('up') : index === 1 ? old.get('down') : undefined;
+      const state = old.get(module.id) ?? legacy
+        ?? new DeployablePanelState(module.deployed >= 0.5 ? 1 : 0, module.deployed);
+      next.set(module.id, state);
+    }
+    this.panels.clear();
+    for (const [id, state] of next) this.panels.set(id, state);
   }
 
-  // 展開度を指示値へ RADIATOR_DEPLOY_TIME 秒かけて近づける。wear は放熱板パーツの残 HP から
-  // 求めた side ごとの損耗率。
-  public update(dt: number, wear: Record<RadiatorSide, number>): void {
-    this.wear = wear;
-    for (const side of ['up', 'down'] as const) {
-      this.panels[side].update(dt, RADIATOR_DEPLOY_TIME);
+  private key(sideOrId: RadiatorSide | string): string | null {
+    if (this.panels.has(sideOrId)) return sideOrId;
+    if (this.assemblyValue === null) return null;
+    const radiators = this.assemblyValue.modules.filter(module => module.kind === 'radiator');
+    const index = sideOrId === 'up' ? 0 : sideOrId === 'down' ? 1 : -1;
+    return index >= 0 ? radiators[index]?.id ?? null : null;
+  }
+
+  public toggle(sideOrId: RadiatorSide | string): void {
+    const key = this.key(sideOrId);
+    if (key !== null) this.panels.get(key)?.toggle();
+  }
+
+  public setDeployed(sideOrId: RadiatorSide | string, deployed: boolean): void {
+    const key = this.key(sideOrId);
+    if (key !== null) this.panels.get(key)?.setTarget(deployed);
+  }
+
+  public update(dt: number, wear: Readonly<Record<string, number>>): void {
+    if (this.assemblyValue !== null) this.syncAssembly();
+    for (const [key, state] of this.panels) {
+      state.update(dt, RADIATOR_DEPLOY_TIME);
+      this.wear.set(key, Math.max(0, Math.min(1, wear[key] ?? 0)));
     }
   }
 
-  // 展開度 deploy(0..1)での折り角(展開軸からの傾き)[rad]。
-  private tilt(deploy: number): number {
-    return STOW_TILT + (RADIATOR_DEPLOY_TILT - STOW_TILT) * deploy;
+  // side の展開方向を残した互換 API。実際の配置は module local layout が所有する。
+  public foldThetas(sideOrId: RadiatorSide | string): { even: number; odd: number } {
+    const key = this.key(sideOrId);
+    const deploy = key === null ? 0 : this.panels.get(key)?.value ?? 0;
+    const tilt = Math.PI / 2 + (15 * Math.PI / 180 - Math.PI / 2) * deploy;
+    return { even: tilt, odd: -tilt };
   }
 
-  // side の偶数・奇数の折り目それぞれの、ヒンジ基準での回転角 [rad]。
-  public foldThetas(side: RadiatorSide): { even: number; odd: number } {
-    const sign = sideSign(side);
-    const psi = this.tilt(this.panels[side].value);
-    return { even: sign * psi, odd: -sign * psi };
+  private panelArea(key: string, totalCoolingRate: number): number {
+    if ((this.wear.get(key) ?? 0) >= 1) return 0;
+    if (this.assemblyValue !== null) {
+      const module = this.assemblyValue.module(key);
+      const definition = module === null ? null : this.assemblyValue.definition(key);
+      return definition?.abilities.radiationArea ?? 0;
+    }
+    return totalCoolingRate / 2;
   }
 
-  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和。全損した側は 0。
-  private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
-    if (this.wear[side] >= 1) return 0;
-    return (totalCoolingRate / 2) * this.panels[side].value;
-  }
-
-  // 放熱に使える面積 [m^2]。
   public radiatingArea(totalCoolingRate: number): number {
-    return this.panelArea('up', totalCoolingRate) + this.panelArea('down', totalCoolingRate);
+    return [...this.panels].reduce((sum, [key, state]) => sum + this.panelArea(key, totalCoolingRate) * state.value, 0);
   }
 
-  // theta で折れた放熱面の法線(world 座標、単位ベクトル)。
-  private worldNormal(theta: number, att: Attitude): Vec3 {
-    const foldQ = qFromAxisAngle(LOCAL_UP, theta);
-    const shipNormal = qRotate(foldQ, LOCAL_FORWARD);
-    return qRotate(att.q, shipNormal);
+  private worldPanel(key: string, layout: { readonly center: Vec3; readonly normal: Vec3 }, att: Attitude): {
+    readonly center: Vec3;
+    readonly normal: Vec3;
+  } {
+    const transform = this.assemblyValue?.worldTransformOf(key);
+    if (transform === null || transform === undefined) {
+      return { center: layout.center, normal: qRotate(att.q, layout.normal) };
+    }
+    return {
+      center: add(transform.position, qRotate(transform.rotation, layout.center)),
+      normal: qRotate(att.q, qRotate(transform.rotation, layout.normal)),
+    };
   }
 
-  // 日照面が太陽光を受ける実効面積 [m^2](日照面の吸収率を織り込む)。sunDir は太陽方向の
-  // 単位ベクトル(world)。
   public solarAbsorbArea(sunDir: Vec3, att: Attitude, totalCoolingRate: number): number {
-    return (['up', 'down'] as const).reduce((sum, side) => {
-      const halfArea = this.panelArea(side, totalCoolingRate) / 2;
-      const { even, odd } = this.foldThetas(side);
-      const cosEven = Math.abs(dot(this.worldNormal(even, att), sunDir));
-      const cosOdd = Math.abs(dot(this.worldNormal(odd, att), sunDir));
-      return sum + RADIATOR_SOLAR_ABSORB * halfArea * (cosEven + cosOdd);
-    }, 0);
+    let area = 0;
+    for (const [key, state] of this.panels) {
+      const panelArea = this.panelArea(key, totalCoolingRate) / RADIATOR_FOLD_COUNT;
+      for (const layout of radiatorPanelLayout(this.moduleLength(key), state.value)) {
+        const world = this.worldPanel(key, layout, att);
+        area += RADIATOR_SOLAR_ABSORB * panelArea * Math.abs(dot(world.normal, sunDir));
+      }
+    }
+    return area;
   }
 
-  // 直近の placeContactFolds で置いた折りの接触代理。
+  private moduleLength(key: string): number {
+    const module = this.assemblyValue?.module(key);
+    return module === null || module === undefined ? 1 : this.assemblyValue?.definition(key)?.length ?? 1;
+  }
+
   public get contactFolds(): readonly ContactProxy[] { return this.activeFolds; }
 
-  // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を置き直す。
-  // shipR・shipV は艦の ECI 位置・速度、t は現在時刻。
+  // shipR / shipV は assembly root の ECI 位置・速度。COMとの差は呼び出し側で除く。
   public placeContactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): void {
     const result: ContactProxy[] = [];
-    for (const side of ['up', 'down'] as const) {
-      if (this.panels[side].value < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
-      const proxies = this.foldProxies[side];
-      const { even, odd } = this.foldThetas(side);
-      // 折りの速度には、艦の角速度による接線速度も乗せる。
-      for (let i = 0; i < RADIATOR_FOLD_COUNT; i++) {
-        const bodyOffset = foldLocalPosition(side, i, even, odd);
-        const worldPos = add(shipR, qRotate(att.q, bodyOffset));
-        const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
-        const world = kinematicState<'eci'>(t, worldPos, worldVel);
+    for (const [key, state] of this.panels) {
+      if (state.value < RADIATOR_CONTACT_DEPLOY || (this.wear.get(key) ?? 0) >= 1) continue;
+      const proxies = this.foldProxies.get(key) ?? [];
+      this.foldProxies.set(key, proxies);
+      const layouts = radiatorPanelLayout(this.moduleLength(key), state.value);
+      const transform = this.assemblyValue?.worldTransformOf(key);
+      for (let i = 0; i < layouts.length; i++) {
+        const layout = layouts[i];
+        if (layout === undefined) continue;
+        const assemblyOffset = transform === null || transform === undefined
+          ? layout.center : add(transform.position, qRotate(transform.rotation, layout.center));
+        const worldPos = add(shipR, qRotate(att.q, assemblyOffset));
+        const worldVel = add(shipV, qRotate(att.q, cross(att.w, assemblyOffset)));
         const known = proxies[i];
+        const world = kinematicState<'eci'>(t, worldPos, worldVel);
         const fold = known ?? new ContactProxy(
-          this.owner, 'radiator-fold', RADIATOR_FOLD_MASS, RADIATOR_SEGMENT_LENGTH / 2, world,
-          (other, contact, services) => this.onContact(side, other, contact, services),
+          this.owner,
+          'radiator-fold',
+          RADIATOR_FOLD_MASS,
+          Math.hypot(RADIATOR_SEGMENT_LENGTH / 2, RADIATOR_PANEL_WIDTH / 2),
+          world,
+          (other, contact, services) => this.onContact(key, other, contact, services),
         );
         if (known === undefined) proxies.push(fold);
         else fold.reset(world);
@@ -176,17 +212,38 @@ export class RadiatorSystem {
     this.activeFolds = result;
   }
 
-  // side の蛇腹の一番先の折りの位置(world、shipR と同じ絶対座標系)。
-  public tipWorldPosition(side: RadiatorSide, shipR: Vec3, att: Attitude): Vec3 {
-    const { even, odd } = this.foldThetas(side);
-    return add(shipR, qRotate(att.q, foldLocalPosition(side, RADIATOR_FOLD_COUNT - 1, even, odd)));
+  public tipWorldPosition(sideOrId: RadiatorSide | string, shipR: Vec3, att: Attitude): Vec3 {
+    const key = this.key(sideOrId);
+    if (key === null) return v3(shipR.x, shipR.y, shipR.z);
+    const layouts = radiatorPanelLayout(this.moduleLength(key), this.panels.get(key)?.value ?? 0);
+    const layout = layouts[layouts.length - 1];
+    if (layout === undefined) return v3(shipR.x, shipR.y, shipR.z);
+    const transform = this.assemblyValue?.worldTransformOf(key);
+    const offset = transform === null || transform === undefined
+      ? layout.center : add(transform.position, qRotate(transform.rotation, layout.center));
+    return add(shipR, qRotate(att.q, offset));
   }
 
-  public deployOf(side: RadiatorSide): number { return this.panels[side].value; }
-  public wearOf(side: RadiatorSide): number { return this.wear[side]; }
+  public deployOf(sideOrId: RadiatorSide | string): number {
+    const key = this.key(sideOrId);
+    return key === null ? 0 : this.panels.get(key)?.value ?? 0;
+  }
 
-  // side ごとの展開目標と展開度の直列化。
+  public wearOf(sideOrId: RadiatorSide | string): number {
+    const key = this.key(sideOrId);
+    return key === null ? 1 : this.wear.get(key) ?? 0;
+  }
+
   public serialize(): SerializedRadiatorSystem {
-    return { up: this.panels.up.serialize(), down: this.panels.down.serialize() };
+    const up = this.panels.get('up') ?? new DeployablePanelState(0, 0);
+    const down = this.panels.get('down') ?? new DeployablePanelState(0, 0);
+    const panels = [...this.panels]
+      .filter(([id]) => id !== 'up' && id !== 'down')
+      .map(([id, state]) => ({ id, state: state.serialize() }));
+    return {
+      up: up.serialize(),
+      down: down.serialize(),
+      panels: panels.length === 0 ? null : panels,
+    };
   }
 }
