@@ -1,7 +1,7 @@
 // 船体モジュールの木構造、接続変換、可変状態と分割・統合操作を所有する。
 import { mulberry32 } from '../../math/random';
 import {
-  LOCAL_FORWARD, LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qInvert, qMul, qNormalize, qRotate, type Quat,
+  LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qRotate, type Quat,
 } from '../../math/quat';
 import { add, v3, type Vec3 } from '../../math/vec3';
 import {
@@ -9,159 +9,36 @@ import {
 } from './ship-module-catalog';
 import type { ShipModuleDefinition } from './ship-module-definition';
 import { cloneShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
+export type {
+  ConnectionKind, DockingMergeResult, ModuleTransform, ShipAssemblyNode as AssemblyNode, ShipAssemblyTotals,
+  ShipAssemblyValidation, ShipConnection, ShipRole, SideSlot,
+} from './ship-assembly-types';
+import {
+  isDockingModule, type ConnectionKind, type DockingMergeResult, type ModuleTransform,
+  type ShipAssemblyNode, type ShipAssemblyTotals, type ShipAssemblyValidation, type ShipConnection,
+  type ShipRole, type SideSlot,
+} from './ship-assembly-types';
+import type { ShipAssemblyNode as AssemblyNode } from './ship-assembly-types';
+import { shipAssemblyTotals } from './ship-assembly-totals';
+import { validateShipAssembly } from './ship-assembly-validation';
+import {
+  copyTransform, isIdentityRotation, normalizedTransform, sideMountTransform,
+  sideSlotFromTransform,
+} from './ship-assembly-transform';
 
-export type ShipRole = 'ship' | 'base' | 'material';
-export type ConnectionKind = 'axial' | 'side' | 'docking' | 'construction';
-export type SideSlot = 'side:+x' | 'side:-x' | 'side:+y' | 'side:-y';
-
-export const SIDE_SLOTS: readonly SideSlot[] = ['side:+x', 'side:-x', 'side:+y', 'side:-y'];
-
-export interface ModuleTransform {
-  readonly position: Vec3;
-  readonly rotation: Quat;
-}
-
-export interface ShipConnection {
-  readonly id: string;
-  readonly parentId: string;
-  readonly childId: string;
-  readonly kind: ConnectionKind;
-  readonly childTransform: ModuleTransform;
-  readonly sideSlot?: SideSlot;
-}
-
-export interface ShipAssemblyValidation {
-  readonly valid: boolean;
-  readonly errors: readonly string[];
-}
-
-export interface DockingMergeResult {
-  readonly assembly: ShipAssembly;
-  readonly connectionId: string;
-  readonly moduleIds: ReadonlyMap<string, string>;
-  readonly connectionIds: ReadonlyMap<string, string>;
-}
-
-export interface ShipAssemblyTotals {
-  readonly hp: number;
-  readonly maxHp: number;
-  readonly thrust: number;
-  readonly torque: number;
-  readonly mainFuel: number;
-  readonly rcsFuel: number;
-  readonly boosterFuel: number;
-  readonly maxMainFuel: number;
-  readonly maxRcsFuel: number;
-  readonly maxBoosterFuel: number;
-  readonly power: number;
-  readonly radiation: number;
-  readonly weaponDamage: number;
-  readonly fireRate: number;
-  readonly muzzleVelocity: number;
-  readonly dryMass: number;
-  readonly mass: number;
-}
-
-interface AssemblyNode {
-  instance: ShipModuleInstance;
-  transform: ModuleTransform;
-}
+export { isDockingModule, SIDE_SLOTS } from './ship-assembly-types';
+export { sideMountTransform, sideSlotDirection } from './ship-assembly-transform';
 
 const IDENTITY_TRANSFORM: ModuleTransform = Object.freeze({ position: v3(), rotation: Q_IDENTITY });
-
-function copyTransform(transform: ModuleTransform): ModuleTransform {
-  return { position: v3(transform.position.x, transform.position.y, transform.position.z), rotation: { ...transform.rotation } };
-}
-
-function normalizedTransform(transform: ModuleTransform): ModuleTransform {
-  if (!finiteVector(transform.position) || !finiteQuaternion(transform.rotation)) {
-    throw new Error('module transform must be finite');
-  }
-  const length = Math.hypot(transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w);
-  if (!(length > 1e-12)) throw new Error('module transform rotation must be nonzero');
-  return {
-    position: v3(transform.position.x, transform.position.y, transform.position.z),
-    rotation: qNormalize(transform.rotation),
-  };
-}
-
-function finiteVector(value: Vec3): boolean {
-  return Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
-}
-
-function finiteQuaternion(value: Quat): boolean {
-  return Number.isFinite(value.x) && Number.isFinite(value.y)
-    && Number.isFinite(value.z) && Number.isFinite(value.w);
-}
-
-function isIdentityRotation(value: Quat): boolean {
-  return value.x === 0 && value.y === 0 && value.z === 0 && value.w === 1;
-}
 
 function connectionCopy(connection: ShipConnection): ShipConnection {
   return { ...connection, childTransform: copyTransform(connection.childTransform) };
 }
 
-export function sideSlotDirection(slot: SideSlot): Vec3 {
-  switch (slot) {
-    case 'side:+x': return v3(1, 0, 0);
-    case 'side:-x': return v3(-1, 0, 0);
-    case 'side:+y': return v3(0, 1, 0);
-    case 'side:-y': return v3(0, -1, 0);
-  }
-}
-
-export function sideMountTransform(
-  parent: ShipModuleDefinition, child: ShipModuleDefinition, slot: SideSlot,
-): ModuleTransform {
-  const direction = sideSlotDirection(slot);
-  return {
-    position: v3(
-      direction.x * (parent.diameter / 2 + child.length / 2),
-      direction.y * (parent.diameter / 2 + child.length / 2),
-      0,
-    ),
-    rotation: qFromUnitVectors(LOCAL_FORWARD, direction),
-  };
-}
-
-function sideSlotFromTransform(transform: ModuleTransform): SideSlot | null {
-  const p = transform.position;
-  const values: readonly [SideSlot, number][] = [
-    ['side:+x', p.x], ['side:-x', -p.x], ['side:+y', p.y], ['side:-y', -p.y],
-  ];
-  const best = values.reduce((current, candidate) => candidate[1] > current[1] ? candidate : current);
-  if (best[1] <= 1e-9 || Math.abs(p.z) > 1e-9) return null;
-  return best[0];
-}
-
-function sameTransform(actual: ModuleTransform, expected: ModuleTransform): boolean {
-  const p = actual.position;
-  const e = expected.position;
-  if (Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z) > 1e-9) return false;
-  const a = actual.rotation;
-  const b = expected.rotation;
-  const quaternionDot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
-  return Math.abs(Math.abs(quaternionDot) - 1) < 1e-9;
-}
-
-function isSideParent(kind: ShipModuleInstance['kind']): boolean {
-  return kind === 'cockpit' || kind === 'tank';
-}
-
-function isSideChild(kind: ShipModuleInstance['kind']): boolean {
-  return kind === 'dock' || kind === 'docking_port' || kind === 'solar_panel' || kind === 'radiator';
-}
-
-export function isDockingModule(
-  module: ShipModuleInstance | null,
-): module is ShipModuleInstance & { readonly kind: 'dock' | 'docking_port' } {
-  return module?.kind === 'dock' || module?.kind === 'docking_port';
-}
 
 // 接続グラフと module state を一体で所有し、構造操作を原子的に行う。
 export class ShipAssembly {
-  private readonly nodes = new Map<string, AssemblyNode>();
+  private readonly nodes = new Map<string, ShipAssemblyNode>();
   private readonly connections: ShipConnection[] = [];
   private nextConnectionNumber = 1;
 
@@ -443,48 +320,7 @@ export class ShipAssembly {
   }
 
   public totals(): ShipAssemblyTotals {
-    let hp = 0, maxHp = 0, thrust = 0, torque = 0, mainFuel = 0, rcsFuel = 0, boosterFuel = 0;
-    let maxMainFuel = 0, maxRcsFuel = 0, maxBoosterFuel = 0, power = 0, radiation = 0, fireRate = 0;
-    let weaponDamage = 0, muzzleVelocityTotal = 0, weaponCount = 0, dryMass = 0, mass = 0;
-    for (const node of this.nodes.values()) {
-      const definition = this.catalog.require(node.instance.definitionId);
-      const abilities = definition.abilities;
-      dryMass += definition.dryMass;
-      mass += definition.dryMass;
-      if (node.instance.kind === 'tank' || node.instance.kind === 'booster') {
-        mass += node.instance.fuel * (abilities.fuelMassPerUnit ?? 1);
-      }
-      hp += node.instance.hp;
-      maxHp += definition.maxHp;
-      if (node.instance.hp <= 0) continue;
-      if (node.instance.kind !== 'booster') thrust += abilities.thrust ?? 0;
-      torque += abilities.torque ?? 0;
-      power += abilities.powerGeneration ?? 0;
-      radiation += abilities.radiationArea ?? 0;
-      const capacity = abilities.fuelCapacity ?? 0;
-      if (node.instance.kind === 'tank') {
-        if (node.instance.fuelKind === 'main') { mainFuel += node.instance.fuel; maxMainFuel += capacity; }
-        else { rcsFuel += node.instance.fuel; maxRcsFuel += capacity; }
-      } else if (node.instance.kind === 'booster') {
-        if (node.instance.ignited) thrust += abilities.thrust ?? 0;
-        boosterFuel += node.instance.fuel;
-        maxBoosterFuel += capacity;
-      }
-      if (node.instance.kind === 'weapon') {
-        weaponDamage = Math.max(weaponDamage, abilities.weaponDamage ?? 0);
-        fireRate += abilities.fireRate ?? 0;
-        if (abilities.muzzleVelocity !== undefined) {
-          muzzleVelocityTotal += abilities.muzzleVelocity;
-          weaponCount++;
-        }
-      }
-    }
-    return {
-      hp, maxHp, thrust, torque, mainFuel, rcsFuel, boosterFuel,
-      maxMainFuel, maxRcsFuel, maxBoosterFuel, power, radiation,
-      weaponDamage, fireRate, muzzleVelocity: weaponCount === 0 ? 0 : muzzleVelocityTotal / weaponCount,
-      dryMass, mass,
-    };
+    return shipAssemblyTotals(this.nodes, this.catalog);
   }
 
   public get totalHp(): number { return this.totals().hp; }
@@ -581,80 +417,7 @@ export class ShipAssembly {
   }
 
   public validate(): ShipAssemblyValidation {
-    const errors: string[] = [];
-    const childIds = new Set<string>();
-    const parentIds = new Set<string>();
-    for (const [id, node] of this.nodes) {
-      const definition = this.catalog.get(node.instance.definitionId);
-      if (definition === null) errors.push(`unknown definition: ${node.instance.definitionId}`);
-      else if (definition.kind !== node.instance.kind) errors.push(`kind mismatch: ${id}`);
-      if (!finiteVector(node.transform.position) || !finiteQuaternion(node.transform.rotation)) {
-        errors.push(`non-finite transform: ${id}`);
-      }
-    }
-    for (const connection of this.connections) {
-      if (!this.nodes.has(connection.parentId)) errors.push(`missing parent: ${connection.parentId}`);
-      if (!this.nodes.has(connection.childId)) errors.push(`missing child: ${connection.childId}`);
-      if (childIds.has(connection.childId)) errors.push(`multiple parents: ${connection.childId}`);
-      childIds.add(connection.childId);
-      if (parentIds.has(connection.id)) errors.push(`duplicate connection: ${connection.id}`);
-      parentIds.add(connection.id);
-      if (!finiteVector(connection.childTransform.position) || !finiteQuaternion(connection.childTransform.rotation)) {
-        errors.push(`non-finite connection transform: ${connection.id}`);
-      }
-      const parent = this.nodes.get(connection.parentId);
-      const child = this.nodes.get(connection.childId);
-      if (connection.kind === 'docking') {
-        if (!isDockingModule(parent?.instance ?? null) || !isDockingModule(child?.instance ?? null)) {
-          errors.push(`invalid docking endpoints: ${connection.id}`);
-        }
-      } else if (connection.kind === 'construction') {
-        if (parent?.instance.kind !== 'dock') errors.push(`invalid construction parent: ${connection.id}`);
-      } else if (connection.kind === 'axial' && parent !== undefined && child !== undefined) {
-        const parentDef = this.catalog.get(parent.instance.definitionId);
-        const childDef = this.catalog.get(child.instance.definitionId);
-        const expected = (parentDef?.length ?? 0) / 2 + (childDef?.length ?? 0) / 2;
-        const p = connection.childTransform.position;
-        if (Math.abs(p.x) > 1e-9 || Math.abs(p.y) > 1e-9 || Math.abs(Math.abs(p.z) - expected) > 1e-9
-          || !isIdentityRotation(connection.childTransform.rotation)) errors.push(`invalid axial snap: ${connection.id}`);
-      }
-      if (connection.kind === 'side' && parent !== undefined && child !== undefined) {
-        if (!isSideParent(parent.instance.kind)) errors.push(`invalid side parent: ${connection.id}`);
-        if (!isSideChild(child.instance.kind)) errors.push(`invalid side child: ${connection.id}`);
-        if (connection.sideSlot === undefined) errors.push(`missing side slot: ${connection.id}`);
-        else {
-          const expected = sideMountTransform(
-            this.catalog.require(parent.instance.definitionId),
-            this.catalog.require(child.instance.definitionId),
-            connection.sideSlot,
-          );
-          if (!sameTransform(connection.childTransform, expected)) errors.push(`invalid side mount: ${connection.id}`);
-          const duplicate = this.connections.some(other => other !== connection
-            && other.kind === 'side' && other.parentId === connection.parentId && other.sideSlot === connection.sideSlot);
-          if (duplicate) errors.push(`duplicate side slot: ${connection.id}`);
-        }
-      }
-    }
-    const occupied = new Set<string>();
-    for (const connection of this.connections.filter(edge => edge.kind === 'docking')) {
-      for (const moduleId of [connection.parentId, connection.childId]) {
-        if (occupied.has(moduleId)) errors.push(`docking module has multiple connections: ${moduleId}`);
-        occupied.add(moduleId);
-      }
-    }
-    const roots = [...this.nodes.keys()].filter(id => !childIds.has(id));
-    if (this.nodes.size > 0 && roots.length !== 1) errors.push(`assembly must have one root, got ${roots.length}`);
-    const visiting = new Set<string>(), visited = new Set<string>();
-    const visit = (id: string): void => {
-      if (visiting.has(id)) { errors.push(`connection cycle at: ${id}`); return; }
-      if (visited.has(id)) return;
-      visiting.add(id);
-      for (const edge of this.connections) if (edge.parentId === id && this.nodes.has(edge.childId)) visit(edge.childId);
-      visiting.delete(id); visited.add(id);
-    };
-    for (const root of roots) visit(root);
-    if (visited.size !== this.nodes.size) errors.push('assembly graph is disconnected');
-    return { valid: errors.length === 0, errors: Object.freeze(errors) };
+    return validateShipAssembly(this.nodes, this.connections, this.catalog);
   }
 
   public assertValid(): void {
