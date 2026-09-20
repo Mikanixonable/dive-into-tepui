@@ -34,7 +34,7 @@ const CLOUD_BASE_HEIGHT = 1000;
 const LAYER_TOP_SPAN = 6000;
 // 層状の深さを 0..1 へ収めるロジスティックの、上昇流 [per m/s] と対流の重み、そして底。
 // 上昇流が頭打ち(0.06 m/s)の谷の芯で 5.5 km、並の低気圧(0.02 m/s)で 2.7 km、上昇流の無い所で
-// 1.7 km(低い積雲の多数派)。**対流の重みは、同じ cap の中で雲頂が 1〜7 km に散る幅に取る**
+// 1.7 km(低い積雲の多数派)。**対流の重みは、同じ雲場の中で雲頂が 1〜7 km に散る幅に取る**
 // — 上昇流だけでは低気圧の上が一様な台地になる。ロジスティックは上端でも下端でも傾きが 0 に
 // ならないので、被覆率が飽和した所でも対流の起伏が雲頂に残る。
 const CLOUD_TOP_LIFT = 50;
@@ -160,10 +160,10 @@ export function condense(weather: WeatherSample): CloudSample {
   const basis = {
     low: coverage.mul(lowWeight),
     middle: coverage.mul(middleWeight),
-    convective: coverage.mul(convectiveWeight).mul(weather.cellLifecycleWeight)
+    convective: coverage.mul(convectiveWeight)
       .mul(liquidWeight.mul(0.35).add(0.65)),
     inSitu: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT)
-      .mul(weather.anvilLifecycleWeight).mul(iceWeight.mul(0.45).add(0.55)),
+      .mul(iceWeight.mul(0.45).add(0.55)),
   };
   return {
     basis,

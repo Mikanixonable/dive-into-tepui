@@ -21,10 +21,3 @@ export function splitSimulationTime(seconds: number): SimulationDayTime {
 export function splitEpochTime(epochUnixMs: number): SimulationDayTime {
   return splitSimulationTime(epochUnixMs / 1000);
 }
-
-// 2回の表示時刻から、1フレームで進んだシミュレーション時間を得る。時刻を逆向きに動かす
-// scrub は時間LOD上では同じ幅の評価として扱う。
-export function simulationSecondsPerFrame(previous: number | null, current: number): number {
-  if (previous === null || !Number.isFinite(previous) || !Number.isFinite(current)) return 0;
-  return Math.abs(current - previous);
-}

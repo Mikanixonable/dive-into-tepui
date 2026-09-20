@@ -43,7 +43,6 @@ const AURORA_PHASE_RATE = 0.02;
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
 const tmpSunDirection = new THREE.Vector3();
-const tmpCapDirection = new THREE.Vector3();
 const tmpBodySpin = new THREE.Quaternion();
 
 // 恒星から pos が受ける放射照度。恒星のない星系では、1AU の太陽光を使う。
@@ -111,7 +110,6 @@ export class PointCelestialView extends SphereCelestialView {
       this.cumulus?.setSource(graphics.cloudFieldSource);
       this.cumulus?.setDetail(graphics.cumulusDetail);
       this.cumulus?.syncLod(apparentDiameterPx);
-      this.aimCloudCap();
     } else {
       this.cumulus?.setCloudsVisible(false);
     }
@@ -164,10 +162,10 @@ export class PointCelestialView extends SphereCelestialView {
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
   public override bakeClouds(
-    renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number,
+    renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null,
   ): void {
     if (!this.cumulus?.cloudsVisible) return;
-    this.cumulus.bake(renderer, displayTime, gpu, nowMs);
+    this.cumulus.bake(renderer, displayTime, gpu);
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期し、高度ラベルを返す。
@@ -187,19 +185,6 @@ export class PointCelestialView extends SphereCelestialView {
       aurora.mesh.visible = visible;
       if (visible) aurora.sync(phase, sunDirection);
     }
-  }
-
-  // 雲場の cap を、いまのカメラから見た直下点へ置き直す。**殻の空間で測る** — 天体固定のまま
-  // 取ると、扁平のぶん(地球で最大 0.19 度)中心が読み手の空間と食い違う。
-  private aimCloudCap(): void {
-    if (this.cumulus === null) return;
-    // カメラは描画原点に立つので、天体中心からカメラへのベクトルは group の位置の逆向き。
-    tmpCapDirection.copy(this.group.position).negate()
-      .applyQuaternion(tmpBodySpin.copy(this.group.quaternion).invert())
-      .divide(this.axes);
-    const rho = tmpCapDirection.length();
-    if (!(rho > 0)) return;
-    this.cumulus.aim(tmpCapDirection.divideScalar(rho), rho);
   }
 
   // 天体固定で見た太陽の単位方向。**group の姿勢の逆で回す** — オーロラのメッシュは group の

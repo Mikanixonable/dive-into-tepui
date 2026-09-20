@@ -19,8 +19,7 @@ import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { AnnualClimateMap } from '../../../render/cloud/climate-map';
-import { OrthographicCap, type FieldProjection } from '../../../render/cloud/field-projection';
-import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
+import { EquirectProjection, type FieldProjection } from '../../../render/cloud/field-projection';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -37,6 +36,7 @@ export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
 export const R_EARTH = 6.371e6; // 平均半径 [m]
 export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
 export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
+export const EARTH_CLOUD_FIELD_HEIGHT = 512;
 // 2次の重力場係数(非正規化)。正規化係数を収録した外部データで更新する際は換算が要る。
 export const J2_EARTH = 1.08262668e-3;
 
@@ -213,12 +213,11 @@ export function earthGeneratedCloudField(projection: FieldProjection): Generated
   );
 }
 
-// 地球の雲場ぜんぶを組む。生成と実写を同じ 1 つの cap へ焼き、CloudPresentation がその cap を
-// 視点へ置き直す。
+// 地球の雲場ぜんぶを組む。生成と実写を同じ全球の正距円筒へ焼く。
 export function earthCloudPresentation(): CloudPresentation {
-  const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
+  const projection = new EquirectProjection(EARTH_CLOUD_FIELD_HEIGHT);
   return new CloudPresentation(
-    earthGeneratedCloudField(cap), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
+    earthGeneratedCloudField(projection), new ObservedCloudField(cloudFieldUrl, projection), R_EARTH_EQ,
   );
 }
 

@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { cloudLifecycleAt, bandLimitLifecycle } from '../../src/render/cloud/cloud-lifecycle';
+import { cloudLifecycleAt } from '../../src/render/cloud/cloud-lifecycle';
 import { cloudPhaseWeights, cloudTemperatureKAtAltitude } from '../../src/render/cloud/cloud-temperature-profile';
 import { cloudVerticalProfileAt, verticalProfileSupport } from '../../src/render/cloud/cloud-vertical-profile';
 import { observedCloudBasisFromRgba } from '../../src/render/cloud/observed-cloud-adapter';
@@ -8,12 +8,8 @@ import { backAdvectedCoordinate, subGridAmplitude } from '../../src/render/cloud
 import { test } from '../harness';
 
 export function register(): void {
-  test('cloud contracts: lifecycle is deterministic and high-frequency detail is band-limited', () => {
+  test('cloud contracts: lifecycle is deterministic', () => {
     assert.deepEqual(cloudLifecycleAt(3_600, 17, 0.8), cloudLifecycleAt(3_600, 17, 0.8));
-    const current = cloudLifecycleAt(3_600, 17, 0.8);
-    const averaged = bandLimitLifecycle(current, 6 * 3_600);
-    assert.ok(averaged.cell < current.cell);
-    assert.ok(averaged.meso === current.meso);
   });
 
   test('cloud contracts: temperature and profile are continuous and bounded', () => {
@@ -48,7 +44,7 @@ export function register(): void {
 
   test('cloud contracts: world-space sub-grid back-advection is camera independent', () => {
     assert.deepEqual(backAdvectedCoordinate([10, 20], [2, -1], 5), [0, 25]);
-    assert.equal(subGridAmplitude(1_000, 100, 0), 1);
-    assert.ok(subGridAmplitude(1_000, 100, 3_600) < 1);
+    assert.equal(subGridAmplitude(1_000, 100), 1);
+    assert.equal(subGridAmplitude(1_000, 2_000), 0.5);
   });
 }

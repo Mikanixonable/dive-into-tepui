@@ -38,7 +38,6 @@ const manifest = {
   capture: {
     cameraDistancesKm: [70, 100, 400],
     includeDistantView: true,
-    temporalLod: ['normal', 'intermediate', 'extreme'],
     regimes: [
       'trade-cumulus', 'marine-stratocumulus', 'temperate-front',
       'deep-convection-mcs', 'upper-cirrus', 'high-latitude-mixed-phase',

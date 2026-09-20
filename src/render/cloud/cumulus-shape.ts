@@ -1,5 +1,5 @@
 // 雲場と積雲表現が共有する定数と、雲場未設定の天体へ割り当てる空のダミーテクスチャ。被覆率・雲頂・粒・光学的厚みの
-// GPU 式は CloudShapeEvaluator へ、cap の uv でのテクスチャ読みは CloudFieldSampler へ置く。
+// GPU 式は CloudShapeEvaluator へ、雲場の uv でのテクスチャ読みは CloudFieldSampler へ置く。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { CLOUD_MODEL_PARAMETERS } from './cloud-model-parameters';
@@ -34,7 +34,7 @@ export const CUMULUS_DITHER_KNOB: {
   readonly halfWidth: FloatUniform;
 } = { center: uniform(0.34), halfWidth: uniform(0.12) };
 
-// 積雲の粒の一辺 [m]。場の texel(視点中心の cap なので視点の高さで変わり、低軌道で約 12 km)より
+// 積雲の粒の一辺 [m]。場の texel(全球正距円筒の赤道付近で約 12 km)より
 // 細かく、かつ低軌道から見下ろして解像できる大きさ(高度 900km 以下で全振幅)に取る。これより
 // 細かくすると、実際の積雲の塊には近づく代わりに軌道上のどの構図でも 1 画素を切って消える。
 export const CUMULUS_GRAIN_SIZE = 6000;

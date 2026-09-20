@@ -1,6 +1,5 @@
 import type { CloudEnvironment } from './cloud-environment';
 import type { CloudSample } from './cloud-field-sample';
-import type { TemporalLodMode } from './temporal-lod';
 import type { WeatherForcingField } from './weather-forcing-field';
 import type { WeatherSample } from './weather-model';
 
@@ -8,7 +7,6 @@ import type { WeatherSample } from './weather-model';
 export interface CloudState {
   readonly absoluteTimeSeconds: number;
   readonly seed: number;
-  readonly temporalMode: TemporalLodMode;
   readonly environment: CloudEnvironment;
   readonly forcing: WeatherForcingField;
   readonly field: CloudSample;
@@ -18,17 +16,14 @@ export interface CloudState {
 export interface CloudStateBinding {
   readonly absoluteTimeSeconds: number;
   readonly seed: number;
-  readonly temporalMode: TemporalLodMode;
 }
 
 export function cloudStateAt(
-  weather: WeatherSample, field: CloudSample, absoluteTimeSeconds: number,
-  seed: number, temporalMode: TemporalLodMode,
+  weather: WeatherSample, field: CloudSample, absoluteTimeSeconds: number, seed: number,
 ): CloudState {
   return {
     absoluteTimeSeconds,
     seed,
-    temporalMode,
     environment: weather.environment,
     forcing: weather.forcing,
     field,

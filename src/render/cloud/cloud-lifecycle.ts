@@ -30,18 +30,3 @@ export function cloudLifecycleAt(
     inSitu: 0.4 + 0.6 * periodicPulse(safeTime, SIMULATION_DAY_SECONDS, phase * 0.1),
   };
 }
-
-export function bandLimitLifecycle(
-  current: CloudLifecycleWeights, averagingWindowSeconds: number,
-): CloudLifecycleWeights {
-  if (averagingWindowSeconds <= 0) return current;
-  const highFrequencyWeight = Math.max(
-    0, Math.min(1, CLOUD_MODEL_PARAMETERS.cloudCellLifetimeSeconds / averagingWindowSeconds),
-  );
-  return {
-    cell: current.cell * highFrequencyWeight,
-    meso: current.meso,
-    anvil: current.anvil * (0.35 + 0.65 * highFrequencyWeight),
-    inSitu: current.inSitu,
-  };
-}
