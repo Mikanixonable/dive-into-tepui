@@ -45,7 +45,8 @@ import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-
 import { controlledLoopSfx } from './controlled-loop-sfx';
 import { UiSoundQueue } from './ui-sound-queue';
 import { GameInputPhase } from './runtime/game-input-phase';
-import { DisplayPhase } from './runtime/display-phase';
+import type { GameInputSource } from './input/game-input-ports';
+import { DisplayPhase, type DisplayPhaseSource } from './runtime/display-phase';
 import type { GameInputPort } from './input/game-input-router';
 import { ConfirmationOverlay } from '../hud/windows/confirmation-overlay';
 import type { Game } from './game';
@@ -240,12 +241,26 @@ export class GamePresentation {
       hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
       activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
     );
+    const inputSource: GameInputSource = {
+      commands: game.commands,
+      simSpeedManager: game.simSpeedManager,
+      view: game.viewer.view,
+      get activeControllable() { return game.activeControllable; },
+      get stageIsPlaying() { return game.activeStage.isPlaying; },
+    };
+    const displaySource: DisplayPhaseSource = {
+      get simTime() { return game.simTime; },
+      get activeControllable() { return game.activeControllable; },
+      get recentEvents() { return game.events.recent; },
+      celestialSystem: game.celestialSystem,
+      get navTargetId() { return game.viewer.navTarget.id; },
+    };
     this.inputPhase = new GameInputPhase(
-      game, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
+      inputSource, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
       this.shipConstruction, this.input, () => this.cameraFrame, sections,
     );
     this.displayPhase = new DisplayPhase(
-      game, this.displayWindowManager, this.viewManager, this.frameAnchors, this.cameraSystem,
+      displaySource, this.displayWindowManager, this.viewManager, this.frameAnchors, this.cameraSystem,
       this.flashPresenter, this.targeter, this.planDisplay, this.equatorNodes, sections,
     );
   }
