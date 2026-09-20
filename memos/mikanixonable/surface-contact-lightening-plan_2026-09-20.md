@@ -166,3 +166,28 @@ surface 用の球代理を primitive 単位で走査し、球同士の解析的�
 
 - この文書の更新 commit は、実装 commit 後の専用ブランチへ追加する。続いて `workspace3` へ統合し、統合を確認してから今回作成した worktree と一時ブランチだけを削除する。
 - 項目5（primitive 特徴量ごとの sweep 分割）と項目6（高倍率時の衝突 LOD / substep 上限再評価）は未実装。項目1〜4後の実測で exact sweep がまだ支配的かを確認してから着手する。
+
+## 残タスク追補
+
+### 実装結果
+
+- 起点は `workspace3` の `df9957426`、専用 worktree は `/Users/pandeaconica/lab/dive-into-tepui-surface-remaining`、ブランチは `codex/surface-contact-remaining-20260920`。
+- 項目5を実装した。`sweptCompoundCylinderSphereContact` は compound 全体の最小特徴量で一律に刻まず、各 primitive の移動量・回転角・外接半径・最小特徴量から個別の subdivision 数を決め、各 primitive の exact contact を最初の TOI と moduleId の決定規則で比較する。compound-compound sweep は変更していない。
+- 項目6は、同一 substep 内で複数物体が同じ天体の同じ時刻を読む状態を `SurfaceContactPhysics` 内で共有する安全なキャッシュを実装した。接触判定のLOD化、接触回数の削減、`SUBSTEP_MAX_COUNT` の縮小は行っていない。
+- 実装 commit: `0be8c1fcc perf(physics): split compound sweeps by primitive`
+
+### 実測とレビュー
+
+- 同一 Node プロセスの専用物理ベンチ（太い primitive + 細い primitive、空振り sweep 20回）では、項目5前 `824.2 ms`、項目5後 `533.1 ms`。約35.3%減、約1.55倍の改善だった。これは narrow phase の単体比較であり、x4096 / x65536 のブラウザ全体 wall-clock 改善率ではない。
+- レビューでは、primitive単位に分割しても各primitiveの運動量と特徴量から必要な刻みを計算するため、細い別primitiveの密度を太いprimitiveへ伝播しない一方、各primitiveの経路を落とさないことを確認した。
+- 同時TOIは moduleId の辞書順で決め、入力配列順に依存しない。球近似を最終接触へ使わず、最終結果は引き続き capped-cylinder から返す。
+- ORBIT の「生存物体はすべて天体接触へ参加」「経路全体」「最初の接触」「時間加速で計算が終わらない」を守るため、高倍率で接触を飛ばすLODやsubstep上限の縮小は採用しなかった。項目6の残る候補は、実ランの `SECTION.celestialContact` 計測を伴う別の仕様検討とする。
+
+### 検証
+
+- `npm run typecheck`: 成功
+- `npm run test:physics`: `509/509 passed`
+- `npm run test:game`: `306/306 passed`
+- 変更箇所の ESLint: エラー 0 件
+- `git diff --check`: 成功
+- `npm run check:boundaries`: 違反 0 件
