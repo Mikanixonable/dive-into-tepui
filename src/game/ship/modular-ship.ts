@@ -25,7 +25,6 @@ import {
 } from '../../render/dynamic/ship/modular-ship-dynamic-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
-import type { RadiatorSide } from '../player/radiator';
 import type { SerializedRadiatorSystem } from '../player/radiator';
 import type { SerializedPowerSystem } from '../player/power';
 import type { SerializedBeltController } from '../player/belt';
@@ -356,17 +355,13 @@ export class ModularShip extends Ship implements Controllable {
     this.syncDerivedRole();
   }
 
-  // 左右の展開操作を、接続順で先頭2枚の module state へ写す。
+  // 展開操作の状態を module ID へ戻す。配列順は旧セーブの移行にだけ使い、継続状態の対応付けには使わない。
   private syncModuleDeployments(): void {
-    const solar = this.capabilities.modules('solar_panel');
-    const radiators = this.capabilities.modules('radiator');
-    for (const [index, side] of (['up', 'down'] as const).entries()) {
-      const solarModule = solar[index];
-      if (solarModule !== undefined) this.assembly.setDeployment(solarModule.id, this.motion.power.deployOf(side));
-      const radiatorModule = radiators[index];
-      if (radiatorModule !== undefined) {
-        this.assembly.setDeployment(radiatorModule.id, this.motion.radiator.deployOf(side));
-      }
+    this.motion.power.syncAssembly(this.assembly);
+    this.motion.radiator.syncAssembly(this.assembly);
+    for (const module of this.assembly.modules) {
+      if (module.kind === 'solar_panel') this.assembly.setDeployment(module.id, this.motion.power.deployOf(module.id));
+      if (module.kind === 'radiator') this.assembly.setDeployment(module.id, this.motion.radiator.deployOf(module.id));
     }
   }
 
@@ -744,30 +739,30 @@ export class ModularShip extends Ship implements Controllable {
     }
   }
 
-  // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
-  private radiatorWear(): Record<RadiatorSide, number> {
-    const [up, down] = this.capabilities.modules('radiator');
-    const wearOf = (module: typeof up): number => {
-      if (module === undefined) return 1;
+  // 放熱板 module の残 HP から module ID ごとの損耗率を組む。パーツが欠けている module は全損扱い。
+  private radiatorWear(): Readonly<Record<string, number>> {
+    const wear: Record<string, number> = {};
+    for (const module of this.capabilities.modules('radiator')) {
       const maxHp = this.assembly.definition(module.id)?.maxHp ?? 0;
-      return maxHp > 0 ? 1 - module.hp / maxHp : 1;
-    };
-    return { up: wearOf(up), down: wearOf(down) };
+      wear[module.id] = maxHp > 0 ? 1 - module.hp / maxHp : 1;
+    }
+    return wear;
   }
 
-  // 被弾によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら
+  // 被弾によるダメージ・致死判定。radiator module ID を指定するとそのパーツへ、無指定なら
   // 無作為なパーツへダメージが入る。
   private attackedByBullet(
     bulletType: BulletType, shooter: Shooter, damage: number, impactPoint: Vec3,
     outcome: DamageOutcomeSink,
-    side: RadiatorSide | null = null,
+    radiatorId: string | null = null,
   ): void {
     // 熱とダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
     this.motion.absorbHeat(BULLET_IMPACT_HEAT / Math.max(this.motion.mass, 1e-9));
-    const radiator = side === null ? undefined : this.capabilities.modules('radiator')[side === 'up' ? 0 : 1];
-    this.damageAssembly(side === null ? damage : RADIATOR_BULLET_DAMAGE, radiator?.id);
-    if (side !== null && radiator && (this.assembly.module(radiator.id)?.hp ?? 0) <= 0) {
-      const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
+    const radiator = radiatorId === null ? undefined : this.assembly.module(radiatorId);
+    const targetId = radiator?.kind === 'radiator' ? radiator.id : undefined;
+    this.damageAssembly(radiatorId === null ? damage : RADIATOR_BULLET_DAMAGE, targetId);
+    if (radiatorId !== null && radiator?.kind === 'radiator' && (this.assembly.module(radiator.id)?.hp ?? 0) <= 0) {
+      const tip = this.motion.radiator.tipWorldPosition(radiator.id, this.motion.state.r, this.motion.att);
       this.effects.radiatorBreak(this.motion.state, tip);
     }
     this.effects.impact(bulletType, this.motion.state, impactPoint);
@@ -808,9 +803,9 @@ export class ModularShip extends Ship implements Controllable {
     );
   }
 
-  // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは side の放熱板パーツへ入る。
+  // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは指定された module へ入る。
   private receiveRadiatorContact(
-    side: RadiatorSide, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
+    moduleId: string, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void {
     if (!this.motion.alive) return;
 
@@ -819,30 +814,31 @@ export class ModularShip extends Ship implements Controllable {
     if (bullet !== null) {
       this.attackedByBullet(
         bullet.type, bullet.shooter, bullet.damage, contact.point,
-        this.outcomeOf(services), side,
+        this.outcomeOf(services), moduleId,
       );
       return;
     }
 
     // 弾以外との衝突
     this.damagedByContact(
-      contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した',
+      contactDamageSpeed(other, contact), moduleId, '高速接触により機体を喪失した',
       this.outcomeOf(services),
     );
   }
 
-  // 接触によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら無作為な
+  // 接触によるダメージ・致死判定。module ID を指定するとその放熱板パーツへ、無指定なら無作為な
   // パーツへダメージが入る。
   private damagedByContact(
-    damageSpeed: number, side: RadiatorSide | null, lossReason: string, outcome: DamageOutcomeSink,
+    damageSpeed: number, radiatorId: string | null, lossReason: string, outcome: DamageOutcomeSink,
   ): void {
     // ダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
     const fraction = collisionDamageFraction(damageSpeed);
     if (fraction <= 0) return;
-    const radiator = side === null ? undefined : this.capabilities.modules('radiator')[side === 'up' ? 0 : 1];
-    this.damageAssembly(this.maxHp * fraction, radiator?.id);
-    if (side !== null && radiator && (this.assembly.module(radiator.id)?.hp ?? 0) <= 0) {
-      const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
+    const radiator = radiatorId === null ? undefined : this.assembly.module(radiatorId);
+    const targetId = radiator?.kind === 'radiator' ? radiator.id : undefined;
+    this.damageAssembly(this.maxHp * fraction, targetId);
+    if (radiatorId !== null && radiator?.kind === 'radiator' && (this.assembly.module(radiator.id)?.hp ?? 0) <= 0) {
+      const tip = this.motion.radiator.tipWorldPosition(radiator.id, this.motion.state.r, this.motion.att);
       this.effects.radiatorBreak(this.motion.state, tip);
     }
     this.effects.contact(this.motion.state);

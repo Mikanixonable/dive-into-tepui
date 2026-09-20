@@ -1,32 +1,21 @@
 // 新規配置に使う既定戦闘船と基地の assembly preset を組み立てる。
-import { qFromUnitVectors, LOCAL_FORWARD, type Quat } from '../../math/quat';
-import { v3 } from '../../math/vec3';
 import { SHIP_MODULE_CATALOG, type ShipModuleCatalog } from './ship-module-catalog';
-import { ShipAssembly, type ModuleTransform } from './ship-assembly';
+import { ShipAssembly } from './ship-assembly';
 import { createShipModuleInstance, type ShipModuleState } from './ship-module-instance';
-
-function sideTransform(outward: ReturnType<typeof v3>): ModuleTransform {
-  const rotation: Quat = qFromUnitVectors(LOCAL_FORWARD, outward);
-  return { position: v3(outward.x * 3.5, outward.y * 3.5, outward.z * 3.5), rotation };
-}
 
 function instance(catalog: ShipModuleCatalog, definitionId: string, id: string, state?: ShipModuleState) {
   return createShipModuleInstance(catalog.require(definitionId), id, state);
 }
 
 function addSideEquipment(assembly: ShipAssembly, catalog: ShipModuleCatalog): void {
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'cockpit', sideTransform(v3(1, 0, 0)));
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'cockpit', sideTransform(v3(-1, 0, 0)));
-  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-left'), 'cockpit', {
-    position: v3(0, 3.5, 0), rotation: sideTransform(v3(0, 1, 0)).rotation,
-  });
-  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'cockpit', {
-    position: v3(0, -3.5, 0), rotation: sideTransform(v3(0, -1, 0)).rotation,
-  });
+  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'cockpit', 'side:+x');
+  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'cockpit', 'side:-x');
+  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-left'), 'cockpit', 'side:+y');
+  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'cockpit', 'side:-y');
 }
 
-// 既定戦闘船は HP 1,000、満載質量 1,000 kg、推力 400,000 N、トルク 24,000 N m、
-// 発電 100 W、放熱 84 m²、武装 damage 1 / 1,000 m/s に固定する。
+// 既定戦闘船は HP 1,000、満載質量 1,000 kg、推力 400,000 N、発電 1,650 W、
+// 放熱 9.6 m²、武装 damage 1 / 1,000 m/s に固定する。
 export function createDefaultCombatPreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALOG): ShipAssembly {
   const assembly = new ShipAssembly(catalog, true);
   assembly.addRoot(instance(catalog, 'cockpit-standard', 'cockpit'));
@@ -47,12 +36,12 @@ export function createBasePreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALO
   assembly.addRoot(instance(catalog, 'cockpit-standard', 'cockpit'));
   assembly.append(instance(catalog, 'tank-6-main', 'main-tank'));
   assembly.append(instance(catalog, 'tank-6-rcs', 'rcs-tank'));
-  assembly.connectSide(instance(catalog, 'dock-standard', 'dock-left'), 'cockpit', sideTransform(v3(1, 0, 0)), 'dock-left-edge');
-  assembly.connectSide(instance(catalog, 'dock-standard', 'dock-right'), 'cockpit', sideTransform(v3(-1, 0, 0)), 'dock-right-edge');
-  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-left'), 'main-tank', sideTransform(v3(1, 0, 0)));
-  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'main-tank', sideTransform(v3(-1, 0, 0)));
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'rcs-tank', sideTransform(v3(1, 0, 0)));
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'rcs-tank', sideTransform(v3(-1, 0, 0)));
+  assembly.connectSide(instance(catalog, 'dock-standard', 'dock-left'), 'cockpit', 'side:+x', 'dock-left-edge');
+  assembly.connectSide(instance(catalog, 'dock-standard', 'dock-right'), 'cockpit', 'side:-x', 'dock-right-edge');
+  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-left'), 'main-tank', 'side:+x');
+  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'main-tank', 'side:-x');
+  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'rcs-tank', 'side:+x');
+  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'rcs-tank', 'side:-x');
   assembly.assertValid();
   return assembly;
 }
