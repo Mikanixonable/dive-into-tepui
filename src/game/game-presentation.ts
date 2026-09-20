@@ -1,6 +1,6 @@
 // 1ランの表示の導出の根: 入力の解釈、表示窓・座標系の錨・カメラの導出、表示物と HUD への同期、
 // 描画を所有する。モデル層の根 Game を読み、命令の列へ積み、進行の末尾へ渡す材料を組む。
-import { SECTION, type FrameSections } from './frame-sections';
+import type { FrameSections } from './frame-sections';
 import { CameraSystem } from './camera/camera-system';
 import { controlSelectionCommands } from './control-selection-commands';
 import { simSpeedCommands } from './dynamic/sim-speed-commands';
@@ -13,7 +13,7 @@ import { EquatorNodeManager } from './marker/equator-node-manager';
 import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
 import { PlanGuide } from './plan/plan-guide';
-import { DisplayWindowManager, timeLabelSettingOf, trajectoryDemandOf } from './display-window-manager';
+import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
 import { RunEventPresenter, worldSoundCues } from './run-event-presenter';
 import { FlashPresenter } from './flash-presenter';
 import { FlashEffectsView } from '../render/vfx/flash-effects-view';
@@ -45,6 +45,7 @@ import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-
 import { controlledLoopSfx } from './controlled-loop-sfx';
 import { UiSoundQueue } from './ui-sound-queue';
 import { GameInputPhase } from './runtime/game-input-phase';
+import { DisplayPhase } from './runtime/display-phase';
 import type { GameInputPort } from './input/game-input-router';
 import type { Game } from './game';
 import type { PageDevices } from '../run/page-devices';
@@ -110,6 +111,7 @@ export class GamePresentation {
   private readonly frameControls: FrameControls;
   private readonly hudPanels: HudPanelPresenter;
   private readonly inputPhase: GameInputPhase;
+  private readonly displayPhase: DisplayPhase;
 
   // ポーズ中か。時間倍率とは独立に時間を止める。
   public get isPaused(): boolean { return this.devices.hud.overlayManager.isGamePaused(); }
@@ -123,7 +125,7 @@ export class GamePresentation {
     private readonly devices: PageDevices,
     private readonly viewOptionSettings: ViewOptionsSettings,
     private readonly themePalette: SettingValue<ThemePalette>,
-    private readonly sections: FrameSections,
+    sections: FrameSections,
   ) {
     const { scene, hud, markers, audioEngine, pauseMenu } = devices;
     const { commands, dynamicSystem, celestialSystem, controlSelection, viewer, activeStage } = game;
@@ -231,7 +233,11 @@ export class GamePresentation {
     );
     this.inputPhase = new GameInputPhase(
       game, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
-      this.shipConstruction, this.input, () => this.cameraFrame, this.sections,
+      this.shipConstruction, this.input, () => this.cameraFrame, sections,
+    );
+    this.displayPhase = new DisplayPhase(
+      game, this.displayWindowManager, this.viewManager, this.frameAnchors, this.cameraSystem,
+      this.flashPresenter, this.targeter, this.planDisplay, this.equatorNodes, sections,
     );
   }
 
@@ -291,63 +297,33 @@ export class GamePresentation {
   // 進行の直後に、ビューの切替とこのフレームの表示窓を確定させ、座標系の錨を表示時刻へ合わせる。
   // ポーズ中も決着後も通す — 決着後も積分は進むので、飛ばすと追従対象がカメラから流れ去る。
   public resolveFrame(): void {
-    this.viewManager.sync();
-    const displayWindow = this.displayWindowManager.resolve(
-      this.game.simTime, this.game.activeControllable, this.viewManager.current !== 'map',
-    );
-    this.anchorFrameAt(displayWindow.displayTime);
+    this.displayPhase.resolveFrame();
   }
 
   // 座標系の錨が天体を引く時刻 time [s] を差し込む。以降の座標系の変換はすべてこの錨を通す。
   public anchorFrameAt(time: number): void {
-    this.frameAnchors.update(time);
+    this.displayPhase.anchorFrameAt(time);
   }
 
   // 錨を合わせた時刻での、視点の追従の材料。
   public cameraSamples(): CameraFrameSamples {
-    return this.cameraSystem.sampleProgress(this.frameAnchors.bodiesPivot, this.frameAnchors);
+    return this.displayPhase.cameraSamples();
   }
 
   // 一時エフェクト・的通過マーク・計画表示を、進行が記録した出来事と計画から表示時刻で組み直す(R5)。
   public presentProgress(): void {
-    const displayWindow = this.displayWindowManager.current;
-    const events = this.game.events.recent;
-    this.sections.enter(SECTION.effects);
-    this.flashPresenter.present(events, displayWindow.displayTime, this.cameraSystem.zoomActive);
-    this.targeter.updateBoardMarks(events, this.game.activeControllable, displayWindow.displayTime);
-    this.sections.exit(SECTION.effects);
-    this.sections.enter(SECTION.plan);
-    this.planDisplay.update(displayWindow, this.frameAnchors, this.viewManager.current);
-    this.sections.exit(SECTION.plan);
+    this.displayPhase.presentProgress();
   }
 
   // 予測と履歴をどこまで計算してほしいかの需要(R4)。
   public trajectoryDemand(): TrajectoryDemand {
-    return trajectoryDemandOf(this.displayWindowManager.current, this.planDisplay.growableArcs());
+    return this.displayPhase.trajectoryDemand();
   }
 
   // 予測を伸ばした後の導出: 赤道交点、カメラ、選択候補をこの順に同じ時刻の状態へ更新する。
   // nowMs [ms] はフレームの実時刻。
   public update(nowMs: number, viewport: Viewport): void {
-    const displayWindow = this.displayWindowManager.current;
-    // 交点は計画折れ線か予測の楕円の上に置くので、両方を組み終えた後に通す。
-    this.sections.enter(SECTION.plan);
-    this.equatorNodes.update({
-      displayTime: displayWindow.displayTime,
-      celestialBodies: this.game.celestialSystem,
-      frameAnchors: this.frameAnchors,
-      paths: this.planDisplay,
-    }, this.game.activeControllable, this.game.viewer.navTarget.id, this.viewManager.current);
-    this.sections.exit(SECTION.plan);
-    this.sections.enter(SECTION.camera);
-    this.cameraSystem.update(
-      this.viewManager.activeView.pickables, this.game.activeControllable, viewport, nowMs,
-    );
-    this.sections.exit(SECTION.camera);
-    // 候補列は遮蔽判定にカメラ位置を読むので、カメラの更新より後に組む。
-    this.sections.enter(SECTION.mapPick);
-    this.viewManager.activeView.update(displayWindow);
-    this.sections.exit(SECTION.mapPick);
+    this.displayPhase.update(nowMs, viewport);
   }
 
   // ------------------------------------------------------------ 導出と同期・描画
