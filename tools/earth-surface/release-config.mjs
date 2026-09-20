@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // 本番の地表配信先を、データ配備とは独立して検査する。
+import { validateRuntimeManifest } from './contract.mjs';
 
 const DATASET_ID = /^[a-z0-9-]+$/;
 
@@ -55,7 +56,7 @@ function normalizeAllowedOrigins(allowedOrigins) {
   return [...new Set(origins)];
 }
 
-export function validateEarthSurfaceReleaseConfig({ baseUrl, datasetId, allowedOrigins } = {}) {
+export function validateEarthSurfaceReleaseConfig({ baseUrl, manifestUrl, datasetId, allowedOrigins } = {}) {
   const url = parseHttpsUrl(baseUrl, 'Earth surface base URL');
   if (typeof datasetId !== 'string' || !DATASET_ID.test(datasetId)) {
     throw new EarthSurfaceReleaseConfigError('Earth surface datasetId must match /^[a-z0-9-]+$/');
@@ -64,12 +65,65 @@ export function validateEarthSurfaceReleaseConfig({ baseUrl, datasetId, allowedO
   if (origins.length > 0 && !origins.includes(url.origin)) {
     throw new EarthSurfaceReleaseConfigError(`Earth surface base URL origin is not approved: ${url.origin}`);
   }
+  const manifest = manifestUrl === undefined
+    ? new URL('earth-surface.json', url)
+    : parseHttpsUrl(manifestUrl, 'Earth surface manifest URL');
+  if (origins.length > 0 && !origins.includes(manifest.origin)) {
+    throw new EarthSurfaceReleaseConfigError(`Earth surface manifest URL origin is not approved: ${manifest.origin}`);
+  }
   return {
     baseUrl: url.toString(),
+    manifestUrl: manifest.toString(),
     datasetId,
     origin: url.origin,
     allowedOrigins: origins,
   };
+}
+
+function manifestAssetUrl(manifestUrl, path) {
+  if (typeof path !== 'string' || path.length === 0 || path.startsWith('/') || path.includes('\\')
+    || path.split('/').some((part) => part === '.' || part === '..') || path.includes('?') || path.includes('#')) {
+    throw new EarthSurfaceReleaseConfigError(`manifest asset path is invalid: ${path}`);
+  }
+  return new URL(path, new URL('.', manifestUrl)).toString();
+}
+
+async function requireRemoteAsset(fetchImpl, url, name) {
+  let response;
+  try {
+    response = await fetchImpl(url, { redirect: 'error' });
+  } catch (error) {
+    throw new EarthSurfaceReleaseConfigError(`${name} request failed: ${url}`, { cause: error });
+  }
+  if (!response.ok) throw new EarthSurfaceReleaseConfigError(`${name} HTTP ${response.status}: ${url}`);
+}
+
+// 公開manifestとLOD開始点の実体を同じrelease設定から検査する。
+export async function checkEarthSurfaceRelease(config, fetchImpl = fetch) {
+  const normalized = validateEarthSurfaceReleaseConfig(config);
+  let response;
+  try {
+    response = await fetchImpl(normalized.manifestUrl, { redirect: 'error' });
+  } catch (error) {
+    throw new EarthSurfaceReleaseConfigError(`manifest request failed: ${normalized.manifestUrl}`, { cause: error });
+  }
+  if (!response.ok) throw new EarthSurfaceReleaseConfigError(`manifest HTTP ${response.status}: ${normalized.manifestUrl}`);
+  let manifest;
+  try {
+    manifest = validateRuntimeManifest(await response.json());
+  } catch (error) {
+    if (error instanceof EarthSurfaceReleaseConfigError) throw error;
+    throw new EarthSurfaceReleaseConfigError(`manifest validation failed: ${error.message}`, { cause: error });
+  }
+  if (manifest.datasetId !== normalized.datasetId) {
+    throw new EarthSurfaceReleaseConfigError(`manifest datasetId mismatch: ${manifest.datasetId}`);
+  }
+  const paths = [manifest.baseColor, manifest.baseTerrain, manifest.climateMaps[0], 'tiles/5/0/0.jpg', 'tiles/5/0/0.bin.gz'];
+  if (manifest.schemaVersion === 1) paths.push(manifest.tileIndexUrl);
+  await Promise.all(paths.map((path, index) => requireRemoteAsset(
+    fetchImpl, manifestAssetUrl(normalized.manifestUrl, path), `manifest asset ${index}`,
+  )));
+  return { ...normalized, manifestSchemaVersion: manifest.schemaVersion };
 }
 
 function optionValue(args, option) {
@@ -101,6 +155,7 @@ export function releaseConfigFromEnvironment(args = process.argv.slice(2), envir
   const allowedOrigins = [...(listValue ? listValue.split(',').map((value) => value.trim()).filter(Boolean) : []), ...cliAllowed];
   return validateEarthSurfaceReleaseConfig({
     baseUrl: optionValue(args, '--base-url') ?? environment.EARTH_SURFACE_BASE_URL,
+    manifestUrl: optionValue(args, '--manifest-url') ?? environment.EARTH_SURFACE_MANIFEST_URL,
     datasetId: optionValue(args, '--dataset-id') ?? environment.EARTH_SURFACE_DATASET_ID,
     allowedOrigins: [...envAllowed, ...allowedOrigins],
   });
@@ -108,7 +163,7 @@ export function releaseConfigFromEnvironment(args = process.argv.slice(2), envir
 
 if (process.argv[1] && new URL(`file://${process.argv[1]}`).href === import.meta.url) {
   try {
-    console.log(JSON.stringify(releaseConfigFromEnvironment(), null, 2));
+    console.log(JSON.stringify(await checkEarthSurfaceRelease(releaseConfigFromEnvironment()), null, 2));
   } catch (error) {
     console.error(`earth-surface:release-check: ${error.message}`);
     process.exitCode = 1;

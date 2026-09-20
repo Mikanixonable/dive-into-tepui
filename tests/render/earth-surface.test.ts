@@ -31,6 +31,7 @@ const SOURCE = {
   manifestUrl: 'https://example.test/earth/manifest.json',
   colorTileTemplate: 'https://example.test/earth/tiles/{z}/{x}/{y}.jpg',
   terrainTileTemplate: 'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',
+  terrainFormat: 'normal-xyz-rgb8-roughness-a8',
   baseColorUrl: 'https://example.test/earth/base-color.jpg',
   baseTerrainUrl: 'https://example.test/earth/base-terrain.bin.gz',
   climateMapUrls: [],
