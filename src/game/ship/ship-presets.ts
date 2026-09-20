@@ -14,8 +14,7 @@ function addSideEquipment(assembly: ShipAssembly, catalog: ShipModuleCatalog): v
   assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'cockpit', 'side:-y');
 }
 
-// 既定戦闘船は HP 1,000、満載質量 1,000 kg、推力 400,000 N、発電 1,650 W、
-// 放熱 9.6 m²、武装 damage 1 / 1,000 m/s に固定する。
+// 標準戦闘艦プリセットを構築する（諸元: HP 1,000、満載質量 1,000 kg、推力 400 kN、発電 1,650 W、放熱面積 9.6 m²、弾速 1,000 m/s）。
 export function createDefaultCombatPreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALOG): ShipAssembly {
   const assembly = new ShipAssembly(catalog, true);
   assembly.addRoot(instance(catalog, 'cockpit-standard', 'cockpit'));

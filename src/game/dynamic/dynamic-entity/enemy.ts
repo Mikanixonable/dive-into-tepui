@@ -108,8 +108,8 @@ export interface EnemyClass extends DynamicEntityClass {
   readonly kind: SerializedEnemy['kind'];
 }
 
-// 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
-// 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
+// 敵エンティティ基底クラス。識別、マーカー表示、射撃AI、被弾・撃破演出、および交戦圏離脱・消滅記録を統括する。
+// メッシュや当たり判定など具体的な機体構成は派生クラスが実装する。
 export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   public override readonly mapKind: DynamicEntityKind = 'enemy';
   public override readonly pickable = true;

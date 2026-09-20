@@ -1,4 +1,4 @@
-// 地表 render-lab の画像比較に使う、画像形式へ依存しない数値契約。
+// 地表 render-lab の画像比較に用いる、画像形式非依存の測定指標データ定義。
 // ここでは合否を決めず、観測値と目安のしきい値を同じ結果へ残す。
 
 export const EARTH_SURFACE_ADJACENT_THRESHOLD = 2 / 255;

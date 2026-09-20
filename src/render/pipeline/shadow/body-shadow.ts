@@ -53,7 +53,7 @@ const circleOverlapArea = Fn(([r1, r2, d]: readonly [FloatNode, FloatNode, Float
 // 戻るので、縁への接線条件が扁平な天体でも厳密に解ける — 日没は測地地平線(面の法線と恒星方向が
 // 直交する瞬間)にちょうど重なり、緯度によって早まることも遅れることもない。恒星の視半径だけは
 // 描画座標のまま渡してよい: この写像が角度を伸縮させる幅は扁平率ぶん(地球 0.3%・土星 10%)で、
-// 半影の幅にしか効かない。
+// 半影幅の決定にのみ限定的に寄与する。
 //
 // 表面より内側の受け手は表面に乗っているものとして扱う。天体は楕円体を折った多面体として描かれ、
 // 深度から復元した位置も誤差を持つので、地表の画素は普通に楕円体の内側へ入る — そこを本影と
@@ -62,7 +62,7 @@ const ellipsoidTransmittance = Fn((
   [p, sunDir, sunDist, sunAngRadius, center, axes, bodyFromWorld]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, Vec3Node, Mat4Node],
 ) => {
   const toCenter = center.sub(p);
-  // 空きスロットの半軸 0 で割らないための床。実在の天体の半軸は km の桁なので効かない。
+  // 空きスロットの半軸 0 による除算を防ぐ下限ガード。実在天体の半軸スケール（km オーダー）では本ガードは作用しない。
   const safeAxes = max(axes, vec3(1));
   const local = bodyFromWorld.mul(vec4(toCenter.negate(), 0)).xyz.div(safeAxes);
   const sunLocal = normalize(bodyFromWorld.mul(vec4(sunDir, 0)).xyz.div(safeAxes));

@@ -9,7 +9,7 @@ interface ProteinBrownianModeParameters {
   readonly rmsAmplitude: number;
 }
 
-/** 32bit 整数を [0, 1) へ写す除数。 */
+/** 32bit 符号なし整数を [0, 1) の区間へ正規化するための除数。 */
 export const UINT32_SCALE = 0x1_0000_0000;
 const TWO_PI = Math.PI * 2;
 const DEFAULT_SAMPLE_HZ = 30;
