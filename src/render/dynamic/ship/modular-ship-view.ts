@@ -1,4 +1,4 @@
-// 表示契約の module ごとの表示資源を所有し、COM 基準の表示ツリーへ同期する。
+// 描画モデルのモジュール別リソースを保持し、重心（COM）基準の表示ツリーへ同期する。
 import * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { ShipModuleView, type ShipModuleModelFactory } from './ship-module-view';
