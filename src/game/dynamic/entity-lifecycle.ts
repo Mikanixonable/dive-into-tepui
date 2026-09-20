@@ -19,7 +19,7 @@ import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { DynamicSimulationRoster, SimulationLifecycle } from './dynamic-simulation-participant';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 
-// pending spawn が実体化してよいかを決める条件。待つ理由はこの契約の外側に閉じ込める。
+// pending spawn が実体化可能かを判定する条件関数。待機理由は本関数の判定外にカプセル化する。
 export type EntitySpawnGate = () => boolean;
 
 // pending spawn 一件の内容。汎用 Options/Params ではなく、生成順序に必要な値だけを持つ。

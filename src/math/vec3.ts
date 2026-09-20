@@ -89,7 +89,7 @@ export function randVec(amp: number, rand: () => number = Math.random): Vec3 {
 }
 
 // fwd に直交するランダム単位ベクトル。rand は [0, 1) を返す生成器(既定 Math.random)。
-// 【契約】fwd は単位ベクトルであること。射影 r - fwd(r·fwd) は |fwd| = 1 を前提にしており、
+// 【前提条件】fwd は単位ベクトルであること。射影 r - fwd(r·fwd) は |fwd| = 1 を前提にしており、
 // 長いベクトル(位置ベクトル等)を渡すと第2項が第1項を飲み込んで、直交どころか ±fwd 方向が
 // 返る。
 export function randPerp(fwd: Vec3, rand: () => number = Math.random): Vec3 {

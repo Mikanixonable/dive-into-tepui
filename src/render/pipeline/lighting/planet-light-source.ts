@@ -12,12 +12,12 @@ import type { SunLight } from '../sun-light';
 import type { ShadingSample } from './shading-sample';
 
 // 用意するスロットの本数。同時に使う本数は描画設定 planetLightCount(0〜この値)で決まる。
-// 3 体目が絵に効くほど明るい構図は、低いイオ周回軌道(イオ本体 + 木星)のような場合に
+// 3 体目の放射照度が描画結果に視覚的影響を与えるほど明るい構図は、低高度のイオ周回軌道（イオ本体＋木星）のような場合に
 // 限られる。
 export const MAX_PLANET_LIGHT_SLOTS = 2;
 
 // 受け手から見えている地表のキャップの半角へ張る床 [rad]。球に接する受け手ではキャップが
-// 1 点へ潰れるので、床が無いと半角 0 の割り算が NaN を出す。床が効く幅は位相角にして 2 倍の
+// 1 点へ縮退するため、下限ガードが無いと半角 0 の除算で NaN が発生する。下限ガードが適用される区間は位相角にして 2 倍の
 // この値 — 地球の中心角で 1.3 km と、どの構図でも 1 画素を切る。
 const MIN_VISIBLE_CAP_ANGLE = 1e-4;
 
@@ -100,8 +100,8 @@ class PlanetLightSlot implements LightSource {
     const toStar = normalize(sample.viewPositionOf(this.sunLight.position).sub(center));
     const alpha = acos(clamp(dot(lightDir.negate(), toStar), -1, 1));
     const capAngle = max(acos(clamp(sqrt(sinSigmaSqr), 0, 1)), MIN_VISIBLE_CAP_ANGLE);
-    // 満ち欠けは「見えている面のうちどれだけが光っているか」なので、球の放射輝度を下げる形で
-    // 効かせる — 拡散と鏡面のどちらにも同じだけ掛かる。
+    // 満ち欠け（照射面積率）は球の等価放射輝度を低減させる係数として
+    // 適用する — 拡散反射と鏡面反射の双方へ一律に乗算される。
     const radiance: Vec3Node = this.slot.radiance.mul(receiverPhase(alpha, capAngle));
     // 一様球の放射照度 E = π·L̄·sin²σ × クリップ係数(全可視では saturate(cosβ) に一致)。
     const diffuse: Vec3Node = radiance.mul(PI).mul(sinSigmaSqr)
@@ -131,7 +131,7 @@ export class PlanetLightSource {
       (slot) => new PlanetLightSlot(sunLight, sphereSpecular, slot));
   }
 
-  // 同時に使うスロットの本数を差し替える。次の set() から効く。
+  // 同時に使用するスロット本数を変更する。次回の set() 呼び出し時から適用される。
   public setCount(count: number): void { this.count = count; }
 
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。
