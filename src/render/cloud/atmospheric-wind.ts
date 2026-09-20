@@ -1,6 +1,5 @@
-// Shared physical wind representation. Speeds are m/s and vary continuously
-// with latitude and altitude; rendering transports may derive their own phase
-// from this field without becoming another physical wind source.
+// 大気風の共有モデル。風速 [m/s] は緯度と高度に応じて連続的に変化する。
+// 描画側は本モデルから位相を導出する。
 import { abs, float, sign, smoothstep as nodeSmoothstep, vec2 } from 'three/tsl';
 import type { FloatNode, Vec2Node } from '../tsl-types';
 export type WindVector = { readonly east: number; readonly north: number };
@@ -25,9 +24,7 @@ export class AtmosphericWindField {
     };
   }
 
-  // The same profile for TSL weather graphs. Keeping the CPU and shader entry
-  // points on one field prevents cloud, front, and air-mass callers from
-  // growing separate fixed wind tables.
+  // TSL シェーダーグラフ向けサンプリング。CPU 側とシェーダー側の風速プロファイルを一元化する。
   public sampleNode(latitudeRad: FloatNode, heightM: number): Vec2Node {
     const absolute = abs(latitudeRad);
     const trade = nodeSmoothstep(float(0.18), float(0.32), absolute);
@@ -51,17 +48,14 @@ export class CloudPatternTransport {
     private readonly surfaceRadius: number, private readonly field = new AtmosphericWindField(),
   ) {}
 
-  // Pattern phase in radians. This is visual transport state, separate from
-  // the physical vector returned by AtmosphericWindField.sample().
+  // 模様の角位相 [rad]。物理風速から導出した描画用の移動状態を返す。
   public phaseAt(latitudeRad: number, heightM: number, seconds: number): number {
     const wind = this.field.sample(latitudeRad, heightM);
     const speed = Math.hypot(wind.east, wind.north);
     return (seconds * speed) / this.surfaceRadius;
   }
 
-  // Convert physical components to the angular displacement used by the
-  // spherical noise coordinate. This is the only place where m/s becomes a
-  // visual phase; the wind field itself remains in physical units.
+  // 物理風速成分 [m/s] を球面ノイズ座標系の角変位へ換算する。
   public angularPhase(eastMs: number, northMs: number, latitudeRad: number, seconds: number): {
     readonly east: number;
     readonly north: number;
