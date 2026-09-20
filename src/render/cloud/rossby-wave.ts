@@ -39,7 +39,7 @@ export class RossbyWave {
     this.syncTime(0);
   }
 
-  // 表示時刻 [s] の波の位相を uniform へ写す。位相は時刻だけで決まるので、巻き戻しやセーブ復帰でも
+  // 表示時刻 [s] における波の位相を uniform に反映する。位相は時刻だけで決まるので、巻き戻しやセーブ復帰でも
   // 同じ時刻には同じ波になる。
   public syncTime(seconds: number): void {
     this.phase.value = wrapAngle(WAVE_PHASE_RATE * seconds);

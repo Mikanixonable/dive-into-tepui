@@ -4,9 +4,9 @@ import { expandHitTarget, stopDragPropagation } from './widget-base';
 
 export type ValueInputType = 'text' | 'number' | 'search' | 'color';
 
-// Escape で編集をどう破棄するか。既定は 'revert'(確定済みの値へ戻す)。'clear'(空にする)を
-// 渡してよいのは検索フィールドに限る — 「なんとなく Escape でクリア」が他所へ広がらないよう、
-// 例外は呼び出し側にこの型で明示させる。
+// Escape で編集を破棄する際の挙動。既定は 'revert'(確定済みの値へ復帰)。'clear'(空にする)の
+// 指定は検索フィールドに限定する — 安易なクリア挙動の拡散を防ぐため、
+// 明示的な型指定を必須とする。
 export type EscapeBehavior = 'revert' | 'clear';
 
 export interface ValueInputOptions {
@@ -26,9 +26,9 @@ export class ValueInput {
   private committedValue = '';
   private suppressBlurCommit = false;
 
-  // onCommit は Enter・blur・commit() 呼び出しで、確定した値を渡して呼ばれる。
-  // onCancel は破棄(Escape・無効値での確定)で呼ばれる — 確定と破棄で別の後処理をしたい
-  // 呼び出し側(インライン編集欄を開いたままにするか閉じるか、など)のための任意コールバック。
+  // onCommit は Enter・blur・commit() 実行時に確定値を引数として発火する。
+  // onCancel は破棄時(Escape・無効値の入力)に発火する — 確定と破棄で別々の事後処理
+  // （インライン編集欄の開閉制御など）を行うための任意コールバック。
   public constructor(options: ValueInputOptions, onCommit: (value: string) => void, onCancel?: () => void) {
     this.escapeBehavior = options.escapeBehavior ?? 'revert';
     this.onCommit = onCommit;
@@ -74,7 +74,7 @@ export class ValueInput {
   }
 
   // 入力中の値を確定として通知する。前回確定した値と変わっていなければ何もしない —
-  // 何も編集せずフォーカスを外しただけで呼び出し側の状態(後続ノードなど)が壊れないようにする。
+  // 編集なしのフォーカス喪失だけで後続ノード等の外部状態が変化しないよう保護する。
   // 数値欄で非数値・空欄なら破棄扱いにする。
   public commit(): void {
     const text = this.element.value;

@@ -53,7 +53,7 @@ const MIN_VISIBLE_OPTICAL_DEPTH = 1e-5;
 
 // 散乱係数 beta [1/m]・スケールハイト scaleHeight [m] の成分だけを見たときの打ち切り高度 [m]。
 // 高度 h を最接近点とする地平線方向の視線が通る光学的厚みは beta·exp(−h/H)·√(2πRH) で
-// 近似できるので、これが閾値を切る h を解く。
+// 近似できるので、これが閾値を下回る高度 h を算出する。
 function speciesCutoff(beta: number, scaleHeight: number, surfaceRadius: number): number {
   const limbPath = Math.sqrt(2 * Math.PI * surfaceRadius * scaleHeight);
   return Math.max(scaleHeight * Math.log((beta * limbPath) / MIN_VISIBLE_OPTICAL_DEPTH), 0);
@@ -125,7 +125,7 @@ export interface AtmosphereCandidate {
   readonly metersPerPixel: number;
 }
 
-// 大気を描く指示 1 体ぶん。steps はその大気を解くサンプル点の数で、整数でない値も採る。
+// 大気を描く指示 1 体ぶん。steps はその大気のレイマーチングにおけるサンプル点数で、整数でない値も採る。
 export interface AtmosphereDraw {
   readonly body: AtmosphereBody;
   readonly steps: number;

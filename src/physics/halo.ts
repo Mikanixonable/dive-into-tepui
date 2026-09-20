@@ -110,13 +110,11 @@ export interface HaloParams {
 }
 
 // Richardson (1980) 三次近似の位置・速度(無次元、γスケール局所座標、τ1=位相引数での微分)。
-// axHat/azHat は gamma 単位(下記 centerManifoldState/lissajousLoop の呼び出し側で
-// R*gamma により無次元化して渡す)。deltaN は L1/L3 で 1、L2 で -1(Richardson の
+// axHat/azHat は gamma 単位(無次元振幅)。deltaN は L1/L3 で 1、L2 で -1(Richardson の
 // δn=2-n の符号規約、n=1: L1/L3、n=2: L2。共線点の局所 x 軸はどの点でも主天体→副天体
 // 向きに統一されているため、L2 だけ z 方向の符号が反転する)。
 // theta1/rate1 は面内(x,y)の位相とその角速度(dτ1/dτ)、psiZ/rateZ は面外(z)の位相と
-// その角速度 — ハロー軌道では面内と同じ位相・角速度(呼び出し側で theta1 に π/2 を
-// 足したものを渡す)、リサジューでは独立な値になる。
+// その角速度。ハロー軌道では面内と同期し(theta1 に π/2 を加えた位相)、リサジューでは独立な値となる。
 export function richardsonState(
   coeffs: RichardsonCoefficients,
   kappa: number,

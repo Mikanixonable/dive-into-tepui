@@ -52,7 +52,7 @@ export interface SerializedKinematicState {
   readonly v: SerializedVec3;
 }
 
-// ECI 運動状態を、直列化した時刻・位置・速度へ写す。
+// ECI 運動状態を、直列化用のプレーンオブジェクトへ変換する。
 export function serializeKinematicState(state: KinematicState<'eci'>): SerializedKinematicState {
   return { t: state.t, r: { ...state.r }, v: { ...state.v } };
 }

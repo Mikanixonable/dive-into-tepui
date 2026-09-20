@@ -61,7 +61,7 @@ class Trough {
   // surfaceRadius は谷を置く天体の半径 [m]、rotationPeriod はその自転周期 [s]。
   public constructor(private readonly surfaceRadius: number, private readonly rotationPeriod: number) {}
 
-  // 配置 placement を uniform へ写す。null(居ない)なら深さと眼の濃さを 0 にする。長軸は東と極側の
+  // 配置 placement を uniform へ設定する。null(存在しない)なら深さと眼の濃さを 0 にする。長軸は東と極側の
   // 北のあいだ — 北半球で南西–北東、南半球で北西–南東。
   public place(placement: CyclonePlacement | null): void {
     if (placement === null) {
@@ -145,7 +145,7 @@ export class Cyclones {
     this.syncTime(0);
   }
 
-  // 時刻 [s] の配置を uniform へ写す。
+  // 時刻 [s] における配置を uniform へ反映する。
   public syncTime(seconds: number): void {
     this.tropical.place(tropicalPlacementAt(seconds));
     for (const [i, low] of this.lows.entries()) {

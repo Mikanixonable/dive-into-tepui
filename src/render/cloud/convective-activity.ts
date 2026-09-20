@@ -13,7 +13,7 @@ import type { Circulation } from './circulation';
 import type { FieldProjection } from './field-projection';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
-// 気団のノイズの段の表と、その振れ幅。雲塊の配置(800 km)より粗い所から始めて、粒(48 km)の
+// 気団ノイズのオクターブ定義表と、その振幅。雲塊の配置(800 km)より粗い所から始めて、粒(48 km)の
 // 約 5 倍の 250 km まで届かせる — 活発度が粒ごとではなく粒の群れごとに振れるので、粒は数百 km の
 // 塊に群れ、塊のあいだは静かな隙間として晴れる(`DEVELOP/SPEC/RENDERING.md`「粒は数百キロの
 // 塊に群れ、塊のあいだは晴れる」)。積雲の粒(48〜24 km)には届かせない — 粒より細かい所で

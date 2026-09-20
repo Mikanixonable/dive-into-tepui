@@ -458,7 +458,7 @@ export class PredictPanel {
     this.panel.classList.toggle('hidden', !visible);
   }
 
-  // パネルの DOM を取り除き、折りたたみ状態変化の購読を解く。
+  // パネルの DOM を取り除き、折りたたみ状態変化の購読を解除する。
   public dispose(): void {
     this.unsubscribeCollapsedView();
     this.wrap.remove();

@@ -165,7 +165,7 @@ export class OrbitProjectionChart {
     ctx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
   }
 
-  // 経緯度(lonDeg, latDeg)を、表示範囲 win に対するプロット領域内のピクセル座標へ写す。
+  // 経緯度(lonDeg, latDeg)を、表示範囲 win に対するプロット領域内のピクセル座標へ変換する。
   // 経度は左から右、緯度は上(latMax)から下(latMin)へ向かって増えるので、y だけ向きを反転する。
   private toPx(
     lonDeg: number, latDeg: number, win: Window,

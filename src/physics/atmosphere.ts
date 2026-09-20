@@ -18,8 +18,8 @@ export type AtmosphereDef = {
   readonly layers: readonly AtmosphereLayer[];
 };
 
-// 実行時の大気。静的な記述に、時刻ごとに解決した自転軸を足したもの
-// (Degree2GravityDef → Degree2Gravity と同じ二段構え)。
+// 実行時の大気。静的な定義に、評価時刻における自転軸を付加したもの
+// (Degree2GravityDef → Degree2Gravity と同様の二段階構成)。
 export type Atmosphere = AtmosphereDef & {
   readonly pole: Vec3; // 自転軸(単位ベクトル、ECI)
 };

@@ -416,7 +416,7 @@ export class Curve {
     this.appliedStyle = style;
   }
 
-  // sample の座標系をワールドへ写す変換を渡す。
+  // サンプリング座標系をワールド座標系へ変換する位置・姿勢を指定する。
   public setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
     this.reqPosition.copy(position);
     if (quaternion) this.reqQuaternion.copy(quaternion);

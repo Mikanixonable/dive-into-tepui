@@ -231,7 +231,7 @@ export class HudPanelPresenter {
     const relative = relativeInfo(
       controlled, target, this.celestialSystem.celestialMotions, controlled.motion.state.t,
     );
-    // 距離・接近速度は、両者の基準天体に依らない相対量として解く。
+    // 距離および接近速度は、双方の基準天体に依存しない相対量として算出する。
     return {
       name: target.name,
       distanceM: relative.dist,
@@ -244,7 +244,7 @@ export class HudPanelPresenter {
     };
   }
 
-  // 生存している敵に、操作対象からの距離と固定の有無を添えて一覧の形へ写す。
+  // 生存中の敵情報に、操作対象からの距離とロック状態を付与してリスト形式へ変換する。
   private enemyContacts(controlled: Controllable): readonly EnemyContact[] {
     const viewerPos = controlled.motion.state.r;
     const primaryTarget = this.targeter.aliveTarget;

@@ -166,8 +166,8 @@ export class ShadowCasters {
   // box の中でカメラにいちばん近い点を、枝の代表点の候補として拾う。toWorld は box の座標系から
   // 描画座標への変換で、box が既に描画座標なら null を渡す。
   private takeBoxAnchor(box: THREE.Box3, toWorld: THREE.Matrix4 | null): void {
-    // カメラを box の座標系へ落として解く。行列 2 回で OBB に対する最近点が出るので、
-    // ワールドへ開いた AABB を相手にするより締まる。
+    // カメラ座標を box のローカル座標系へ変換して最近点を算出する。逆行列演算により OBB に対する
+    // 最近点が出るので、ワールド空間の AABB を相手にするよりタイトに定まる。
     const point = this.scratchCorner.copy(this.cameraPosition);
     if (toWorld !== null) point.applyMatrix4(this.scratchMatrix.copy(toWorld).invert());
     const { min, max } = box;

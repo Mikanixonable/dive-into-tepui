@@ -165,7 +165,7 @@ export function spinRateOf(def: CelestialBodyDef): number | null {
   return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
 }
 
-// 天体の宣言を、元期オフセットを畳み込んだ宣言へ写す。これを通した宣言だけが CelestialMotion
+// 天体定義の元期オフセットを畳み込み、simTime 基準の定義へ変換する。これを通した宣言だけが CelestialMotion
 // へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形になり、評価のたびに巨大な
 // 定数を足し直さずに済む。
 export function planetDefForSimZero(def: PlanetDef, simZeroEt: number): PlanetDef {
@@ -176,7 +176,7 @@ export function planetDefForSimZero(def: PlanetDef, simZeroEt: number): PlanetDe
   };
 }
 
-// 衛星の宣言を、同じ規約で simTime 基準の宣言へ写す。
+// 衛星の定義を、同様に simTime 基準の定義へ変換する。
 export function satelliteDefForSimZero(def: SatelliteDef, simZeroEt: number): SatelliteDef {
   return {
     ...def,

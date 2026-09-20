@@ -110,8 +110,8 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
   // 解析暦が答える主星中心の位置・速度。**解析経路の ECI 化はこちらどうしの差で組む。**
   abstract analyticStarRelStateAt(t: number): KinematicState<'starRel'>;
 
-  // 解析暦が答える加速度。用途は pivot から各段の時刻へ位置を外挿する2次項なので、**位置
-  // モデルの二階微分に揃える** — 二体部分は軌道の n²a³ から取り、惑星本体には衛星から受ける
+  // 解析暦が算出する加速度。用途は基準時刻 pivot から各積分ステージの時刻へ位置を外挿する2次項
+  // であるため、**位置モデルの二階微分に揃える** — 二体部分は軌道の n²a³ から取り、惑星本体には衛星から受ける
   // 加速度を入れる。二階微分に載らない衛星の周期補正項ぶんの残差は、外挿幅の2乗で効く
   // (月で 1 歩 20 s のとき数 mm)。
   abstract analyticAccelAt(t: number): Vec3;
@@ -294,8 +294,7 @@ export abstract class OrbitingMotion extends CelestialMotion implements Orbiting
 
   // 共線点(L1/L2/L3)が行き先として意味を持つか。副天体が軽いほどヒル半径が縮んで L1 が
   // 表面へ寄るので、副天体半径に対する余裕が minClearanceRatio 倍に満たない系は共線点を
-  // 持たないものとして扱う(しきい値はハロー軌道の振幅が収まるかの判断なので、物理定数では
-  // なく呼び出し側から受け取る)。
+  // 持たないものとして扱う(判定裕度 minClearanceRatio は引数で指定する)。
   hasUsableCollinearPoints(minClearanceRatio: number): boolean {
     const mu = this.massRatio;
     if (mu === null || mu <= 0) return false;

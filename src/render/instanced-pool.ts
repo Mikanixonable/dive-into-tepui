@@ -79,8 +79,8 @@ export class InstancedPool {
     this.pending.makeEmpty();
   }
 
-  // visible な renderObject を capacity まで受け付け、その変換・色・熱の状態をインスタンスへ
-  // 転写する。renderObject の matrixWorld はここで更新するが、親の matrixWorld は更新済みであること。
+  // visible な renderObject を capacity を上限として受け付け、その変換・色・熱の状態をインスタンスバッファへ
+  // コピーする。renderObject の matrixWorld は内部で更新するが、親の matrixWorld は更新済みであることを前提とする。
   public push(renderObject: THREE.Object3D, color?: THREE.Color): void {
     if (!renderObject.visible || this.count >= this.capacity) return;
     renderObject.updateMatrixWorld();

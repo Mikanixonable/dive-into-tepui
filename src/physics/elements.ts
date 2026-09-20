@@ -170,8 +170,8 @@ export function tofBetween(el: OrbitalElements, nu0: number, nu1: number): numbe
   return ((t % el.period) + el.period) % el.period;
 }
 
-// 軌道上の真近点角 nu における中心天体相対の位置(ECI 軸)。絶対 ECI 化は呼び出し側が
-// 中心天体の位置を加えて行う。
+// 軌道上の真近点角 nu における、中心天体を原点とした相対位置(ECI 座標系)。絶対 ECI 座標を得るには
+// 中心天体の位置を加算する。
 export function positionOnOrbit(el: OrbitalElements, nu: number): Vec3 {
   const r = el.p / (1 + el.e * Math.cos(nu));
   return addScaled(scale(el.pHat, r * Math.cos(nu)), el.qHat, r * Math.sin(nu));
@@ -219,8 +219,8 @@ export function orbitalElementsFromClassical(
   };
 }
 
-// 古典的軌道要素 → 時刻 t の位置(Y = 北極)。角度はすべて [rad]。主天体中心の相対位置で、
-// 絶対 ECI 化は呼び出し側が主天体の位置を加えて行う。
+// 古典的軌道要素 → 時刻 t の位置(Y = 北極)。角度はすべて [rad]。主天体中心の相対位置であり、
+// 絶対 ECI 座標を得るには主天体の位置を加算する。
 export function positionFromOrbitalElements(
   a: number, e: number, inc: number, raan: number, argp: number, nu: number,
 ): Vec3 {
@@ -230,9 +230,8 @@ export function positionFromOrbitalElements(
 }
 
 // 古典的軌道要素 → 時刻 t の状態ベクトル(Y = 北極)。角度はすべて [rad]。mu は主天体の
-// 重力定数 — 月中心の要素から状態を組む場合など地球以外が主天体のときはその値を渡す
-// (その場合の r/v は主天体中心の相対値であり、絶対 ECI 化は呼び出し側が主天体の位置・速度を
-// 加えて行う)。
+// 重力定数 — 月中心の要素から状態を組む場合など地球以外が主天体のときはその値を渡す。
+// 戻り値の r/v は主天体中心の相対値であり、絶対 ECI 座標を得るには主天体の位置・速度を加算する。
 export function stateFromOrbitalElements(
   t: number,
   a: number,
@@ -253,8 +252,8 @@ export function stateFromOrbitalElements(
   );
 }
 
-// 天体 center を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
-// strongestAttractor などで選んだ center をそのまま渡す。
+// 天体 center を中心とする接触軌道要素を算出する。時刻 pivot における center の運動状態との
+// 相対位置・相対速度に基づいて要素を導出する。
 export function orbitalElementsOf(
   s: KinematicState, center: CelestialBody, pivot: number,
 ): OrbitalElements | null {

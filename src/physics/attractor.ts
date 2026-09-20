@@ -1,6 +1,6 @@
-// 天体を重力源として読む計算。ある点に効く加速度、最も強く引く天体、抗力を及ぼす大気天体、
-// その場の軌道時間スケール。天体の位置は pivot で厳密に引いた値からその時刻へ外挿したものを
-// 使うので、呼び出し側は一覧を解決した時刻を pivot として渡す。
+// 天体を重力源として読む計算。ある点に生じる加速度、最も強く引く天体、抗力を及ぼす大気天体、
+// その場の軌道時間スケール。天体位置は基準時刻 pivot で取得した値から目標時刻へ外挿して用いるため、
+// 引数 pivot には天体一覧を解決した基準時刻を指定する。
 // THREE/DOM 非依存の純関数群。
 import { KinematicState } from './kinematic-state';
 import { keplerPeriod, orbitalElementsOf } from './elements';
@@ -43,8 +43,7 @@ export function attractorAccel(
 // 位置 r で最も強く重力を及ぼしている天体(|attractorAccel| が最大)。素の引力 μ/d² では
 // なく、ECI の運動方程式に実際に現れる寄与(attractorAccel)で比べる — 素の引力で比べると
 // ECI が太陽と共に自由落下していることを無視した比較になり、地心 2.6e5 km 以遠で太陽が
-// 地球に勝ってしまう。「何のためにどの天体を選ぶか」は呼び出し側の判断で、この関数は
-// 材料を一つ返すだけ。
+// 地球に勝ってしまう。運動方程式上で有効な摂動加速度が最大の天体を判定して返す。
 export function strongestAttractor(
   r: Vec3, attractors: readonly CelestialBody[], pivot: number,
 ): CelestialBody {
