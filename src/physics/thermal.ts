@@ -67,7 +67,7 @@ export function solarHeating(
 //
 // dt のあいだに捨てる量は、環境温度との差を埋めるところで頭打ちにする — 放熱は温度を環境
 // 温度へ近づけるだけで、通り越させることはできない。頭打ちに触れるのは刻みが比熱に対して
-// 既に広すぎるときだけだが、外すとそこで T⁴ が段どうしで増幅し合い、1歩で発散する。
+// 既に広すぎるときだけだが、外すとそこで T⁴ がステップ間で増幅し合い、1ステップで発散する。
 export function radiativeCooling(
   temperature: number,
   envTemp: number,

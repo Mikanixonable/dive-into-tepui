@@ -47,8 +47,8 @@ export class GeostationaryOverlay {
     this.label = altitudeLabel(semiMajorAxis - motion.def.radius);
   }
 
-  // 天体の重力定数と自転周期から同期軌道を解く。自転モデルを持たない天体、あるいは解が
-  // 表面より内側になる天体では同期軌道が引けないので null。
+  // 天体の重力定数と自転周期から同期軌道半径を算出する。自転モデルを持たない天体、あるいは軌道が
+  // 表面より内側になる天体では同期軌道が存在しないため null を返す。
   public static of(motion: CelestialBody): GeostationaryOverlay | null {
     const spinRate = motion.spinRate;
     if (spinRate === null || spinRate === 0) return null;

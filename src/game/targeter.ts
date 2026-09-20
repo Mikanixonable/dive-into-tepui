@@ -231,7 +231,7 @@ export class Targeter {
     this.combatMarkers.sync(
       this.markerItemScratch, camera, view, nowMs, celestialLabels, this.celestialBodies,
     );
-    // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。
+    // 見越し点は弾速に基づいて算出するため、砲を搭載した操作対象艦の制御時のみ表示される。
     const shooter = viewer instanceof ModularShip
       ? { state: viewer.motion.state, muzzleVelocity: viewer.averageMuzzleVelocity }
       : null;
