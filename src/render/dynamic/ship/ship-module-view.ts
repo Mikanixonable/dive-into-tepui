@@ -131,7 +131,7 @@ export class ShipModuleView {
         .filter((panel) => typeof panel.userData.panelIndex === 'number')
         .sort((a, b) => (a.userData.panelIndex as number) - (b.userData.panelIndex as number));
       if (panelHinges.length === 0) {
-        // 旧 asset は単一ヒンジの契約を使う。新 asset は下の個別ヒンジを使う。
+        // 単一ヒンジ構造のアセットではルートヒンジを一括回転させる。
         hinge.rotation.y = (1 - state.deployed) * Math.PI / 2;
       } else if (state.kind === 'solar_panel') {
         hinge.rotation.set(0, 0, 0);
