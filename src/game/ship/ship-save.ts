@@ -23,7 +23,7 @@ export interface SerializedShipConnection {
   readonly id: string;
   readonly parentId: string;
   readonly childId: string;
-  readonly kind: 'axial' | 'side' | 'docking';
+  readonly kind: 'axial' | 'side' | 'docking' | 'construction';
   readonly sideSlot?: SideSlot;
   readonly position: SerializedVec3;
   readonly rotation: Quat;
@@ -56,7 +56,7 @@ export interface SerializedCollisionGrace {
 function finite(value: number): boolean { return Number.isFinite(value); }
 
 function validConnectionKind(value: unknown): value is SerializedShipConnection['kind'] {
-  return value === 'axial' || value === 'side' || value === 'docking';
+  return value === 'axial' || value === 'side' || value === 'docking' || value === 'construction';
 }
 
 function validSideSlot(value: unknown): value is SideSlot {
@@ -179,19 +179,53 @@ export function restoreConstructionDrafts(
 ): readonly ShipConstructionDraftState[] {
   if (!Array.isArray(saved)) throw new Error('invalid ship dock state');
   const docks = new Set<string>();
+  const added = new Set<string>();
+  const firstConnections = new Set<string>();
   return saved.map((draft) => {
+    if (draft === null || typeof draft !== 'object') throw new Error('invalid construction draft');
     const dock = assembly.module(draft.dockId);
-    if (dock?.kind !== 'dock' || docks.has(draft.dockId)
-      || assembly.isDockingPortOccupied(draft.dockId)
-      || !Array.isArray(draft.addedIds)
-      || draft.addedIds.some((id: unknown) => typeof id !== 'string' || assembly.module(id) === null)
-      || assembly.module(draft.axialTailId) === null
-      || (draft.firstConnectionId !== null
-        && !assembly.graph.some(connection => connection.id === draft.firstConnectionId))) {
+    const hasAddedIds = Array.isArray(draft.addedIds);
+    const ids: readonly string[] = hasAddedIds ? draft.addedIds : [];
+    const edge = draft.firstConnectionId === null
+      ? undefined : assembly.graph.find(connection => connection.id === draft.firstConnectionId);
+    const idSet = new Set(ids);
+    const reachable = new Set<string>();
+    if (edge !== undefined) {
+      const pending = [edge.childId];
+      while (pending.length > 0) {
+        const id = pending.pop();
+        if (id === undefined || reachable.has(id)) continue;
+        reachable.add(id);
+        for (const child of assembly.graph.filter(connection => connection.parentId === id)) pending.push(child.childId);
+      }
+    }
+    const valid = dock?.kind === 'dock'
+      && typeof draft.dockId === 'string'
+      && typeof draft.axialTailId === 'string'
+      && (draft.firstConnectionId === null || typeof draft.firstConnectionId === 'string')
+      && hasAddedIds
+      && !docks.has(draft.dockId)
+      && !assembly.isPortConnected(draft.dockId)
+      && ids.length === idSet.size
+      && ids.every((id: unknown) => typeof id === 'string' && id.length > 0
+        && assembly.module(id) !== null && !added.has(id))
+      && (ids.length === 0
+        ? draft.firstConnectionId === null && draft.axialTailId === draft.dockId
+        : draft.firstConnectionId !== null && edge !== undefined
+          && !firstConnections.has(draft.firstConnectionId)
+          && edge.parentId === draft.dockId
+          && (edge.kind === 'axial' || edge.kind === 'side')
+          && edge.childId === ids[0]
+          && ids.every(id => reachable.has(id))
+          && (draft.axialTailId === draft.dockId || idSet.has(draft.axialTailId)))
+      && assembly.module(draft.axialTailId) !== null;
+    if (!valid) {
       throw new Error(`invalid construction draft: ${draft.dockId}`);
     }
     docks.add(draft.dockId);
-    return { ...draft, addedIds: [...draft.addedIds] };
+    for (const id of ids) added.add(id);
+    if (draft.firstConnectionId !== null) firstConnections.add(draft.firstConnectionId);
+    return { ...draft, addedIds: [...ids] };
   });
 }
 
@@ -201,14 +235,19 @@ export function restoreDockedVessels(
 ): readonly SerializedDockedVessel[] {
   if (!Array.isArray(saved)) throw new Error('invalid docked vessel state');
   const connectionIds = new Set(assembly.dockingConnections().map(connection => connection.id));
+  if (saved.length !== connectionIds.size) throw new Error('docked vessel records do not match docking connections');
   const seen = new Set<string>();
+  const vesselIds = new Set<string>();
   return saved.map((record) => {
-    if (!connectionIds.has(record.connectionId) || seen.has(record.connectionId)
+    if (record === null || typeof record !== 'object'
+      || typeof record.connectionId !== 'string'
+      || !connectionIds.has(record.connectionId) || seen.has(record.connectionId)
       || typeof record.id !== 'string' || record.id.length === 0
-      || typeof record.name !== 'string') {
+      || vesselIds.has(record.id) || typeof record.name !== 'string') {
       throw new Error(`invalid docked vessel record: ${record.connectionId}`);
     }
     seen.add(record.connectionId);
+    vesselIds.add(record.id);
     return { ...record };
   });
 }

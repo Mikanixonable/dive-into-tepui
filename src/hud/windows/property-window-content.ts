@@ -16,6 +16,7 @@ export interface PropertyWindowItem<A extends string = string> {
   readonly act: A;
   readonly shortcut?: string;
   readonly selected?: boolean;
+  readonly disabled?: boolean;
   readonly keepOpen?: boolean;
 }
 

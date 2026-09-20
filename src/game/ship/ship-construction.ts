@@ -97,7 +97,7 @@ export class ShipConstruction implements OverlayHandle {
     const module = ship.assembly.module(dockId);
     if (module?.kind !== 'dock') throw new Error(`not a construction dock: ${dockId}`);
     if (!ship.capabilities.controllable) throw new Error('健全なコックピットから操作できる船体が必要です');
-    if (module.hp <= 0 || ship.assembly.isDockingPortOccupied(dockId)) {
+    if (module.hp <= 0 || ship.assembly.isPortConnected(dockId)) {
       throw new Error('空いている健全な接舷部が必要です');
     }
     if (this.current !== null) this.close();
@@ -267,11 +267,11 @@ export class ShipConstruction implements OverlayHandle {
     this.finishConfirmed();
   }
 
-  // 確認済みの枝だけを通常の docking 接続へ昇格する。
+  // 確認済みの枝だけを docking edge と別の建造接続へ確定する。
   private finishConfirmed(): void {
     const draft = this.current;
     if (draft === null || draft.firstConnectionId === null) return;
-    draft.ship.assembly.promoteConnectionToDocking(draft.firstConnectionId);
+    draft.ship.assembly.completeConstructionConnection(draft.firstConnectionId);
     draft.ship.docks.finishBuilding(draft.dockId);
     this.drafts.delete(this.key(draft.ship, draft.dockId));
     this.synchronizeShip(draft.ship);

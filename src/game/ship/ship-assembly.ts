@@ -11,7 +11,7 @@ import type { ShipModuleDefinition } from './ship-module-definition';
 import { cloneShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
 
 export type ShipRole = 'ship' | 'base' | 'material';
-export type ConnectionKind = 'axial' | 'side' | 'docking';
+export type ConnectionKind = 'axial' | 'side' | 'docking' | 'construction';
 export type SideSlot = 'side:+x' | 'side:-x' | 'side:+y' | 'side:-y';
 
 export const SIDE_SLOTS: readonly SideSlot[] = ['side:+x', 'side:-x', 'side:+y', 'side:-y'];
@@ -153,7 +153,7 @@ function isSideChild(kind: ShipModuleInstance['kind']): boolean {
   return kind === 'dock' || kind === 'docking_port' || kind === 'solar_panel' || kind === 'radiator';
 }
 
-function isDockModule(
+export function isDockingModule(
   module: ShipModuleInstance | null,
 ): module is ShipModuleInstance & { readonly kind: 'dock' | 'docking_port' } {
   return module?.kind === 'dock' || module?.kind === 'docking_port';
@@ -273,20 +273,17 @@ export class ShipAssembly {
     this.addModule(instance, parentId, transform, 'side', connectionId, sideSlot);
   }
 
-  // 建造枝の根元を通常の接舷接続へ昇格する。親は健全な dock/port でなければならず、
-  // この命令の後はその接舷部から通常の undock を使える。
-  public promoteConnectionToDocking(connectionId: string): void {
+  // 建造枝の根元を、ポート対の docking edge とは別の分離可能な建造接続へ確定する。
+  public completeConstructionConnection(connectionId: string): void {
     const index = this.connections.findIndex(connection => connection.id === connectionId);
     const connection = index < 0 ? undefined : this.connections[index];
     if (connection === undefined) throw new Error(`unknown construction connection: ${connectionId}`);
-    if (connection.kind === 'docking') return;
-    if (!isDockModule(this.nodes.get(connection.parentId)?.instance ?? null)) {
+    if (connection.kind === 'construction') return;
+    if (connection.kind === 'docking') throw new Error(`docking connection is not a construction branch: ${connectionId}`);
+    if (this.nodes.get(connection.parentId)?.instance.kind !== 'dock') {
       throw new Error(`construction connection does not start at a docking module: ${connectionId}`);
     }
-    if (this.isDockingPortOccupied(connection.parentId)) {
-      throw new Error(`docking module is already occupied: ${connection.parentId}`);
-    }
-    this.connections[index] = { ...connection, kind: 'docking' };
+    this.connections[index] = { ...connection, kind: 'construction' };
   }
 
   /** 二つの接舷部を正対させ、other をこの assembly の dock branch として複製統合する。 */
@@ -295,25 +292,29 @@ export class ShipAssembly {
   ): DockingMergeResult {
     if (other === this) throw new Error('cannot dock an assembly to itself');
     if (other.catalog !== this.catalog) throw new Error('cannot dock assemblies from different catalogs');
+    this.assertValid();
+    other.assertValid();
     const localPort = this.module(localPortId);
     const otherPort = other.module(otherPortId);
-    if (!isDockModule(localPort) || !isDockModule(otherPort)) throw new Error('docking requires two ports');
+    if (!isDockingModule(localPort) || !isDockingModule(otherPort)) throw new Error('docking requires two ports');
     if (localPort.hp <= 0 || otherPort.hp <= 0) throw new Error('docking port is destroyed');
-    if (this.isDockingPortOccupied(localPortId) || other.isDockingPortOccupied(otherPortId)) {
+    if (this.isPortConnected(localPortId) || other.isPortConnected(otherPortId)) {
       throw new Error('docking port is already occupied');
     }
 
     const merged = this.clone();
     const moduleIds = new Map<string, string>();
     const connectionIds = new Map<string, string>();
+    const reservedModuleIds = new Set(merged.moduleIds);
     for (const id of other.moduleIds) {
       let candidate = id;
       let suffix = 2;
-      while (merged.nodes.has(candidate) || [...moduleIds.values()].includes(candidate)) {
+      while (reservedModuleIds.has(candidate)) {
         candidate = `${namespace}:${id}${suffix === 2 ? '' : `-${suffix}`}`;
         suffix++;
       }
       moduleIds.set(id, candidate);
+      reservedModuleIds.add(candidate);
     }
 
     const otherWorld = new Map<string, ModuleTransform>();
@@ -377,6 +378,7 @@ export class ShipAssembly {
       }
     }
     merged.assertValid();
+    if (visited.size !== other.moduleIds.length) throw new Error('docked assembly graph is disconnected');
     return { assembly: merged, connectionId: dockingConnectionId, moduleIds, connectionIds };
   }
 
@@ -384,8 +386,21 @@ export class ShipAssembly {
     return this.graph.filter(connection => connection.kind === 'docking');
   }
 
+  public constructionConnections(): readonly ShipConnection[] {
+    return this.graph.filter(connection => connection.kind === 'construction');
+  }
+
+  public detachableConnections(): readonly ShipConnection[] {
+    return this.graph.filter(connection => connection.kind === 'docking' || connection.kind === 'construction');
+  }
+
   public isDockingPortOccupied(moduleId: string): boolean {
     return this.connections.some(connection => connection.kind === 'docking'
+      && (connection.parentId === moduleId || connection.childId === moduleId));
+  }
+
+  public isPortConnected(moduleId: string): boolean {
+    return this.connections.some(connection => (connection.kind === 'docking' || connection.kind === 'construction')
       && (connection.parentId === moduleId || connection.childId === moduleId));
   }
 
@@ -589,7 +604,13 @@ export class ShipAssembly {
       }
       const parent = this.nodes.get(connection.parentId);
       const child = this.nodes.get(connection.childId);
-      if (connection.kind === 'axial' && parent !== undefined && child !== undefined) {
+      if (connection.kind === 'docking') {
+        if (!isDockingModule(parent?.instance ?? null) || !isDockingModule(child?.instance ?? null)) {
+          errors.push(`invalid docking endpoints: ${connection.id}`);
+        }
+      } else if (connection.kind === 'construction') {
+        if (parent?.instance.kind !== 'dock') errors.push(`invalid construction parent: ${connection.id}`);
+      } else if (connection.kind === 'axial' && parent !== undefined && child !== undefined) {
         const parentDef = this.catalog.get(parent.instance.definitionId);
         const childDef = this.catalog.get(child.instance.definitionId);
         const expected = (parentDef?.length ?? 0) / 2 + (childDef?.length ?? 0) / 2;
@@ -612,6 +633,13 @@ export class ShipAssembly {
             && other.kind === 'side' && other.parentId === connection.parentId && other.sideSlot === connection.sideSlot);
           if (duplicate) errors.push(`duplicate side slot: ${connection.id}`);
         }
+      }
+    }
+    const occupied = new Set<string>();
+    for (const connection of this.connections.filter(edge => edge.kind === 'docking')) {
+      for (const moduleId of [connection.parentId, connection.childId]) {
+        if (occupied.has(moduleId)) errors.push(`docking module has multiple connections: ${moduleId}`);
+        occupied.add(moduleId);
       }
     }
     const roots = [...this.nodes.keys()].filter(id => !childIds.has(id));

@@ -22,7 +22,7 @@ export class PropertyWindowItems<A extends string = string> {
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。クリップ済み
   // ウィンドウでは可変な状態(操作対象か等)に応じて呼び出し側から毎フレーム渡されうる。
   public sync(items: readonly PropertyWindowItem<A>[]): void {
-    const key = items.map((it) => `${it.act} ${it.label} ${it.shortcut ?? ''} ${it.selected ?? ''} ${it.keepOpen ?? ''}`).join('|');
+    const key = items.map((it) => `${it.act} ${it.label} ${it.shortcut ?? ''} ${it.selected ?? ''} ${it.disabled ?? ''} ${it.keepOpen ?? ''}`).join('|');
     if (key === this.lastItemsKey) return;
     this.lastItemsKey = key;
     this.element.innerHTML = '';
@@ -32,6 +32,8 @@ export class PropertyWindowItems<A extends string = string> {
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       row.classList.toggle('on', it.selected === true);
+      row.classList.toggle('disabled', it.disabled === true);
+      row.setAttribute('aria-disabled', String(it.disabled === true));
       const label = document.createElement('span');
       label.className = 'w-hit';
       label.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
@@ -40,8 +42,10 @@ export class PropertyWindowItems<A extends string = string> {
       row.dataset['act'] = it.act;
       row.dataset['shortcut'] = it.shortcut ?? '';
       row.dataset['keepOpen'] = it.keepOpen === true ? '1' : '';
+      row.dataset['disabled'] = it.disabled === true ? '1' : '';
       stopDragPropagation(row);
       bindActivation(row, () => {
+        if (it.disabled === true) return;
         this.onSelect?.(it.act, it.keepOpen === true);
       });
       this.element.appendChild(row);
@@ -54,6 +58,7 @@ export class PropertyWindowItems<A extends string = string> {
     const items = this.element.querySelectorAll<HTMLElement>('.prop-window-item');
     for (const item of Array.from(items)) {
       if (item.dataset['shortcut'] !== code) continue;
+      if (item.dataset['disabled'] === '1') return true;
       this.onSelect?.(item.dataset['act'] as A, item.dataset['keepOpen'] === '1');
       return true;
     }

@@ -47,6 +47,7 @@ import { UiSoundQueue } from './ui-sound-queue';
 import { GameInputPhase } from './runtime/game-input-phase';
 import { DisplayPhase } from './runtime/display-phase';
 import type { GameInputPort } from './input/game-input-router';
+import { ConfirmationOverlay } from '../hud/windows/confirmation-overlay';
 import type { Game } from './game';
 import type { PageDevices } from '../run/page-devices';
 import type { MarkerSink } from '../marker/marker-sink';
@@ -102,6 +103,7 @@ export class GamePresentation {
   private readonly objectWindows: ObjectWindows;
   private readonly moduleWindows: ModuleWindows;
   private readonly shipConstruction: ShipConstruction;
+  private readonly confirmation: ConfirmationOverlay;
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
   private readonly viewOptions: ViewOptionsControl;
   private readonly targeter: Targeter;
@@ -162,6 +164,7 @@ export class GamePresentation {
     this.displayWindowManager = new DisplayWindowManager(
       hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.predictPanel, predictCommands,
     );
+    this.confirmation = new ConfirmationOverlay(hud.layers.system, hud.overlayManager);
     this.shipConstruction = new ShipConstruction(
       scene.scene, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
       hud, hud.constructionConfirm,
@@ -170,6 +173,7 @@ export class GamePresentation {
     const viewSelectionCommands = viewCommands(commands, viewer.view);
     this.moduleWindows = new ModuleWindows(
       hud, controlSelection, dynamicSystem, this.shipConstruction,
+      this.confirmation,
       () => {
         if (!viewer.view.canSelect('combat')) return false;
         viewSelectionCommands.select('combat');
@@ -257,6 +261,7 @@ export class GamePresentation {
     this.combatView.dispose();
     this.moduleWindows.close();
     this.shipConstruction.dispose();
+    this.confirmation.dispose();
     this.objectWindows.dispose();
     this.worldSfx.dispose();
     this.touchControls.dispose();
