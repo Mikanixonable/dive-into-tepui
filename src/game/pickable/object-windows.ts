@@ -1,5 +1,5 @@
-// 開いているプロパティウィンドウ(被選択物・搭載部品)と空域メニューの台帳。中身を毎フレーム
-// 最新化し、被選択物が組んだメニュー項目のうちいま選べるものを絞って、選ばれた操作を実行する。
+// 開いているプロパティウィンドウ（選択対象・搭載部品）と空域メニューを管理する台帳。
+// 内容を毎フレーム更新し、選択対象の有効メニュー項目を絞り込んで選択された操作を処理する。
 import type { Hud } from '../hud/hud';
 import { ContextMenu, type MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
@@ -223,8 +223,8 @@ export class ObjectWindows implements PropertyWindowOpener {
     });
   }
 
-  // 選ばれた操作を実行する。視点と画面だけで完結する操作はここで済ませ、対象固有の操作は
-  // そのフレームに差し出していた編集口とともに列へ積む。
+  // 選択された操作を処理する。視点や画面表示で完結する操作はその場で実行し、対象固有の操作は
+  // 当該フレームの編集インターフェイスとともにコマンドキューへ積む。
   private runAct(target: InspectedObject, act: MenuAction): void {
     if (act === 'focus') this.focus(target.id, target.name);
     else if (act === 'target') this.navTargetCommands.toggle(target.id, target.name);

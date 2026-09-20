@@ -114,7 +114,7 @@ export class EnemyInspection implements InspectedObject {
       { label: '削除', act: 'delete' }, MenuCommon.cancel()];
   }
 
-  // 削除と複製を実行する。
+  // 削除または複製を行う。
   public runMenu(act: MenuAction, _selection: ControlSelection, authoring: ObjectAuthoring | null): void {
     if (act === 'delete') this.source.motion.kill();
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.source.mapKind, this.source.motion.state);

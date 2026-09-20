@@ -10,7 +10,7 @@ export type CatalogSystemId =
   | 'sun-jupiter' | 'sun-saturn'
   | 'jupiter-europa' | 'saturn-titan' | 'saturn-enceladus' | 'mars-phobos';
 
-// 軌道族の識別子。`<族>` または `<族>-<ラグランジュ点>` または `<族>-<ラグランジュ点>-<枝>`。
+// 軌道族の識別子。形式は `<族>`、`<族>-<ラグランジュ点>`、または `<族>-<ラグランジュ点>-<枝>`。
 // 例: 'lyapunov-L1'、'halo-L2-N'、'dro'、'resonant-12'(1:2 共鳴)。
 // 1本の連続した列にならない族は連続区間ごとに分かれ、末尾に `#1` `#2` … が付く
 // (例: 'axial-L1#2')。分かれなかった族には付かない。

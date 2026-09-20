@@ -76,7 +76,7 @@ class Trough {
     const cosLongitude = Math.cos(longitude);
     const sinLongitude = Math.sin(longitude);
     this.center.value.set(cosLatitude * sinLongitude, sinLatitude, cosLatitude * cosLongitude);
-    // 長軸: 東 (cos λ, 0, −sin λ) と北 (−sin φ sin λ, cos φ, −sin φ cos λ) の和。南半球では北の符号を返す。
+    // 長軸: 東方向ベクトルと北方向ベクトルの合成。南半球では北方向の符号を反転する。
     const hemisphere = latitude >= 0 ? 1 : -1;
     this.axis.value.set(
       cosLongitude - hemisphere * sinLatitude * sinLongitude,

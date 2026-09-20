@@ -1,8 +1,7 @@
-// ドラッグ移動とピン留め（クリップ）に対応したウィンドウの外枠。ヘッダー（タイトル・操作ボタン・
-// ピン・閉じる）を備え、ドラッグ移動、OverlayManager への登録更新、ビューポート変化時の再クランプ、
-// 最前面化を制御する。本文要素は呼び出し側から注入する。
-// #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
-// リセットに勝てるよう全セレクタを `#hud` で始める。
+// ドラッグ移動とピン留め（クリップ）に対応したウィンドウ枠。タイトルやピン留め・閉じるボタンを備え、
+// ドラッグ操作、OverlayManager への登録更新、ビューポート変化時の再クランプ、最前面化を制御する。
+// 本文要素は呼び出し側から注入する。
+// #hud 配下の window レイヤに配置するため、リセットスタイルを上書きできるようセレクタは `#hud` で始める。
 import { clampOverlayPosition, Point2 } from '../layout';
 import { bringToFront as bringOverlayToFront } from '../overlay-layer';
 import { onViewportChange } from '../viewport';

@@ -56,10 +56,9 @@ export interface Degree2GravityDef {
   readonly refRadius: number; // 係数が定義された基準半径 [m]
 }
 
-// 天体の形状(歪み)。省略時は `radius` による真球。'spheroid' は回転楕円体(赤道半径=極半径
-// の2値)、'triaxial' は三軸楕円体(a >= b >= c、a が最長の赤道軸、b が残りの赤道軸、
-// c が最短の極軸)。出典は pck00011.tpc の BODY_RADII。値はいずれも半径 [m](直径ではない)
-// — pck/SBDB の `extent` は直径で載ることが多いので登録時に 2 で割ること。
+// 天体の形状歪み定義。省略時は `radius` による真球。
+// 'spheroid' は回転楕円体（赤道半径と極半径を指定）、'triaxial' は三軸楕円体（a >= b >= c：長赤道軸、短赤道軸、極軸）。
+// 出典は pck00011.tpc の BODY_RADII。値はいずれも半径 [m]（直径ではないため、文献の extent 値は 2 で除算して登録する）。
 export type ShapeDef =
   | { readonly kind: 'spheroid'; readonly equatorRadius: number; readonly polarRadius: number }
   | { readonly kind: 'triaxial'; readonly a: number; readonly b: number; readonly c: number };
