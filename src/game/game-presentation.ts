@@ -403,6 +403,7 @@ export class GamePresentation {
     const controlled = this.game.activeControllable;
     const palette = this.themePalette.current;
     const displayWindow = this.displayWindowManager.current;
+    this.devices.hud.setConstructionMode(this.shipConstruction.active);
     this.hudPanels.syncViewBadge(
       this.viewManager.current, this.viewManager.selectableViews(), this.viewManager.activeView.pickables, style,
     );
