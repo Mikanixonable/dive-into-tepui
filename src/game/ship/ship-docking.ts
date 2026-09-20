@@ -2,6 +2,7 @@
 import { LOCAL_FORWARD, qMul, qRotate, type Quat } from '../../math/quat';
 import { add, cross, dot, len, norm, scale, sub, type Vec3 } from '../../math/vec3';
 import type { ModularShip } from './modular-ship';
+import { isDockingModule } from './ship-assembly';
 
 export const DOCKING_MAX_DISTANCE = 1;
 export const DOCKING_MAX_ANGLE = 10 * Math.PI / 180;
@@ -22,14 +23,12 @@ export interface DockingEligibility {
   readonly reasons: readonly string[];
 }
 
-function isDockKind(kind: string): boolean { return kind === 'dock' || kind === 'docking_port'; }
-
 /** module の外向き +Z 端面を world space の接舷点へ展開する。 */
 export function dockingPortPose(ship: ModularShip, moduleId: string): DockingPortPose | null {
   const module = ship.assembly.module(moduleId);
   const definition = ship.assembly.definition(moduleId);
   const transform = ship.assembly.worldTransformOf(moduleId);
-  if (module === null || definition === null || transform === null || !isDockKind(module.kind)) return null;
+  if (module === null || definition === null || transform === null || !isDockingModule(module)) return null;
   const root = sub(ship.motion.state.r, qRotate(ship.motion.att.q, ship.motion.centerOffset));
   const rotation = qMul(ship.motion.att.q, transform.rotation);
   const axis = norm(qRotate(rotation, LOCAL_FORWARD));
@@ -50,13 +49,14 @@ export function dockingEligibility(
   const secondPose = dockingPortPose(second, secondPortId);
   const reasons: string[] = [];
   if (first === second) reasons.push('同じ船体には接舷できません');
+  if (!first.motion.alive || !second.motion.alive) reasons.push('生存中の船体だけが接舷できます');
   if (!first.assembly.playerOwned || !second.assembly.playerOwned) reasons.push('player 所属の船体だけが接舷できます');
   if (firstPose === null || secondPose === null) reasons.push('接舷部ではありません');
-  if (firstPort !== null && firstPort.hp <= 0 || secondPort !== null && secondPort.hp <= 0) {
+  if ((firstPort !== null && firstPort.hp <= 0) || (secondPort !== null && secondPort.hp <= 0)) {
     reasons.push('接舷部が全損しています');
   }
-  if (first.assembly.isDockingPortOccupied(firstPortId)
-    || second.assembly.isDockingPortOccupied(secondPortId)) reasons.push('接舷部は使用中です');
+  if (first.assembly.isPortConnected(firstPortId)
+    || second.assembly.isPortConnected(secondPortId)) reasons.push('接舷部は使用中です');
   if (first.capabilities.modules('cockpit', true).length === 0
     && second.capabilities.modules('cockpit', true).length === 0) reasons.push('健全なコックピットがありません');
   const distance = firstPose && secondPose ? len(sub(firstPose.point, secondPose.point)) : Infinity;
