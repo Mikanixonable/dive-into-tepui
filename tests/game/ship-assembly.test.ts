@@ -19,7 +19,7 @@ export function register(): void {
     assert.equal(totals.hp, 1_000);
     assert.equal(totals.maxHp, 1_000);
     assert.equal(totals.thrust, 400_000);
-    assert.equal(totals.torque, 2.24);
+    assert.equal(totals.torque, 24_000);
     assert.equal(totals.power, 100);
     assert.equal(totals.radiation, 84);
     assert.equal(totals.weaponDamage, 1);

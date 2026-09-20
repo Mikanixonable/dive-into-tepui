@@ -4,12 +4,16 @@ import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
+import { stepAttitude } from '../../src/physics/attitude';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
+import type { FuelConsumer } from '../../src/game/dynamic/dynamic-entity/controllable';
 import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
+import type { PilotControls } from '../../src/game/dynamic/dynamic-entity/pilot-controls';
 import { createShipDefaultParts } from '../../src/game/dynamic/dynamic-entity/ship-default-parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
+import { Throttle } from '../../src/game/player/throttle';
 import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
@@ -54,7 +58,7 @@ export function register(): void {
     assert.equal(ship.hp, 1_000);
     assert.equal(ship.maxHp, 1_000);
     assert.equal(ship.totalThrust, 400_000);
-    assert.ok(Math.abs(ship.totalTorque - 2.24) < 1e-12);
+    assert.ok(Math.abs(ship.totalTorque - 24_000) < 1e-12);
     assert.equal(ship.totalFuel, 1_000);
     assert.equal(ship.totalMaxFuel, 1_000);
     assert.equal(ship.totalFuelConsumptionRate, 1);
@@ -63,6 +67,33 @@ export function register(): void {
     assert.equal(ship.weaponDamage, 1);
     assert.equal(ship.totalFireRate, 1 / 0.06);
     assert.equal(ship.averageMuzzleVelocity, 1_000);
+  });
+
+  test('default ship: 実慣性に対して RCS が姿勢を変える角加速度を出す', () => {
+    const assembly = createDefaultCombatPreset();
+    const totals = assembly.totals();
+    const motion = new ModularShipMotion(assembly, state, attitude);
+    const throttle = new Throttle(1, false, false);
+    const controls: PilotControls = {
+      thrust: new Set(), rotation: new Set(['rollRight']), firing: false, commands: [],
+    };
+    const fuelConsumer: FuelConsumer = {
+      totalThrust: assembly.totalThrust,
+      totalTorque: assembly.totalTorque,
+      totalFuelConsumptionRate: 1,
+      totalFuel: totals.mainFuel,
+      totalMaxFuel: totals.maxMainFuel,
+      motion,
+      consumeFuel: () => 1,
+      consumeRcsFuel: () => 1,
+    };
+
+    throttle.updateTorque(motion.att, v3(), v3(), controls, false, 0, 0, fuelConsumer, null);
+    const angularAcceleration = throttle.torque.z / motion.att.inertia.z;
+    assert.ok(angularAcceleration > 0.35 && angularAcceleration < 0.5);
+
+    const next = stepAttitude(motion.att, throttle.torque, 0.4);
+    assert.ok(Math.abs(next.q.z) > 1e-3);
   });
 
   test('player power: installedGeneration=0 は全損として発電しない', () => {
