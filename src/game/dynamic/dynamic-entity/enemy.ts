@@ -1,5 +1,5 @@
 import type { ViewMode } from '../../view/view-mode';
-import { Vessel } from './vessel';
+import { CombatShipEntity } from './combat-ship-entity';
 import type { DynamicEntity, SerializedDynamicEntityFields } from './dynamic-entity';
 import type { Contact } from './contact';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
@@ -110,7 +110,7 @@ export interface EnemyClass extends DynamicEntityClass {
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
-export abstract class Enemy extends Vessel implements CombatTarget {
+export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   public override readonly mapKind: DynamicEntityKind = 'enemy';
   public override readonly pickable = true;
   public readonly inspection = new EnemyInspection(this);
@@ -273,11 +273,11 @@ export abstract class Enemy extends Vessel implements CombatTarget {
 
   // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
   // 間は撃たない。
-  public behave(
+  public updateBehavior(
     simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
     mayFire: boolean, celestialBodies: CelestialBodies,
   ): void {
-    this.fireController.behave(simTime, player, registry, enemies, mayFire, celestialBodies);
+    this.fireController.updateBehavior(simTime, player, registry, enemies, mayFire, celestialBodies);
   }
 
   // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。

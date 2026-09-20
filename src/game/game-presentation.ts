@@ -24,8 +24,8 @@ import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import { CameraView } from '../render/camera/camera-view';
 import { ViewManager } from './view/view-manager';
-import { CombatView } from './view/combat-view';
-import { MapView } from './view/map-view';
+import { CombatFrame } from './view/combat-frame';
+import { MapFrame } from './view/map-frame';
 import { PlanPath } from './plan/plan-path';
 import { NavTargetPresenter } from './nav-target-presenter';
 import { AnchorEntities, FrameAnchors } from './frame-anchors';
@@ -98,8 +98,8 @@ export class GamePresentation {
   private readonly planGuide: PlanGuide;
   // このフレームの表示座標系と表示時刻窓。resolveFrame で確定させ、sync が読む。
   private readonly displayWindowManager: DisplayWindowManager;
-  private readonly combatView: CombatView;
-  private readonly mapView: MapView;
+  private readonly combatView: CombatFrame;
+  private readonly mapView: MapFrame;
   private readonly viewManager: ViewManager;
   private readonly objectWindows: ObjectWindows;
   private readonly moduleWindows: ModuleWindows;
@@ -217,12 +217,12 @@ export class GamePresentation {
       this.moduleWindows,
       objectMenuCommands(commands, controlSelection),
     );
-    this.combatView = new CombatView(
+    this.combatView = new CombatFrame(
       this.input, this.targeter, this.objectWindows, dynamicSystem,
       this.celestialMarkers, this.touchControls,
       controlSelection, this.planPath, this.planGuide,
     );
-    this.mapView = new MapView(
+    this.mapView = new MapFrame(
       this.input, this.cameraSystem, viewer.camera, this.objectWindows,
       dynamicSystem, this.equatorNodes, celestialSystem,
       this.celestialMarkers, markers, this.targeter,
