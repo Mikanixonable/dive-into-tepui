@@ -37,6 +37,7 @@ import { predictPanelCommands } from './viewer/predict-panel-commands';
 import { cameraCommands } from './viewer/camera-commands';
 import { entityDisplayCommands } from './viewer/entity-display-commands';
 import { ObjectWindows } from './pickable/object-windows';
+import { ObjectWindowActions } from './pickable/object-window-actions';
 import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
 import { FrameControls } from './hud/frame/frame-controls';
@@ -206,16 +207,20 @@ export class GamePresentation {
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls.setPointerKind(kind);
 
-    // ビューの表示実装は ObjectWindows より後に組む。
-    this.objectWindows = new ObjectWindows(
-      hud, dynamicSystem, celestialSystem,
+    const objectWindowActions = new ObjectWindowActions(
+      dynamicSystem, celestialSystem,
       viewer.navTarget, this.navTargetPresenter, targetCommands,
       viewer.entityDisplay, entityDisplayPort,
       viewer.camera, viewer.view, () => this.viewManager.activeView, pauseMenu,
       controlSelection, this.frameControls, cameraCommandPort.combat,
-      activeStage, this.targeter, this.displayWindowManager,
-      this.moduleWindows,
+      activeStage, this.targeter, this.moduleWindows,
       objectMenuCommands(commands, controlSelection),
+      (message) => hud.hint(message),
+    );
+    // ビューの表示実装は ObjectWindows より後に組む。
+    this.objectWindows = new ObjectWindows(
+      hud, celestialSystem, viewer.camera, controlSelection,
+      this.displayWindowManager, objectWindowActions,
     );
     this.combatView = new CombatFrame(
       this.input, this.targeter, this.objectWindows, dynamicSystem,

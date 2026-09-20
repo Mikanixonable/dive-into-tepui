@@ -50,6 +50,25 @@ def load_manifest(path):
         raise InvalidSource("hashAlgorithm/hashStateが不正です")
     if not isinstance(value.get("provenance"), dict) or not value["provenance"].get("generator"):
         raise InvalidSource("provenance.generatorが必要です")
+    calibration = value.get("colorCalibration")
+    if not isinstance(calibration, dict) or calibration.get("inputEncoding") != "sRGB8" \
+            or calibration.get("aggregation") != "linear_rgb_area_mean" \
+            or calibration.get("outputEncoding") != "sRGB8":
+        raise InvalidSource("colorCalibrationのRGB転送・集約契約が不正です")
+    if (not isinstance(calibration.get("diffuseAlbedoScale"), (int, float))
+            or not math.isfinite(calibration["diffuseAlbedoScale"])
+            or calibration["diffuseAlbedoScale"] <= 0
+            or not isinstance(calibration.get("meanLinearRgb"), list)
+            or len(calibration["meanLinearRgb"]) != 3
+            or not isinstance(calibration.get("averageHue"), list)
+            or len(calibration["averageHue"]) != 3
+            or not isinstance(calibration.get("meanRec709Albedo"), (int, float))
+            or not isinstance(calibration.get("bondAlbedo"), (int, float))
+            or not 0 < calibration["meanRec709Albedo"] <= 1
+            or not 0 < calibration["bondAlbedo"] <= 1
+            or any(not isinstance(item, (int, float)) or not math.isfinite(item) or item < 0
+                   for item in calibration["meanLinearRgb"] + calibration["averageHue"])):
+        raise InvalidSource("colorCalibrationの数値が不正です")
     grid = value.get("outputGrid", {})
     if (grid.get("rootColumns"), grid.get("rootRows"), grid.get("maxZoom"),
             grid.get("tileInterior"), grid.get("gutter")) != (2, 1, 7, 256, 2):

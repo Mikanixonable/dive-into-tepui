@@ -697,6 +697,7 @@ def global_manifest(manifest, source_manifest_path, source_manifest_hash, climat
         "sourceManifest": source_manifest_path,
         "provenance": {"generator": "earth-surface-bundle/3", "sourceManifestHash": source_manifest_hash,
                         "dataKind": data_provenance},
+        "colorCalibration": manifest["colorCalibration"],
         "terrainEncoding": {"formatVersion": TERRAIN_FORMAT_VERSION,
                              "layout": "normal-xyz-rgb8-roughness-a8",
                              "width": TERRAIN_WIDTH, "height": TERRAIN_HEIGHT,

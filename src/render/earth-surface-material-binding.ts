@@ -11,7 +11,6 @@ import { EARTH_TERRAIN_LAYOUT, type EarthSurfaceTerrainFormat } from './earth-su
 import type { EarthSurfaceGpuTextures } from './earth-surface-gpu';
 import { createEarthSurfaceNodeMaterial } from './earth-surface-material-node';
 import { configureEarthSurfaceTexture } from './earth-surface-texture';
-import { EARTH_TEXTURE } from './earth-surface-defaults';
 import type { Mat3Uniform, Vec3Node, Vec3Uniform, BoolUniform } from './tsl-types';
 
 export interface EarthSurfaceMaterialBinding {
@@ -64,6 +63,7 @@ function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; read
 export function createEarthSurfaceMaterialBinding(
   textures: EarthSurfaceGpuTextures, baseColorUrl: string, baseTerrainUrl: string, fetchImpl?: typeof fetch,
   terrainFormat: EarthSurfaceTerrainFormat = EARTH_TERRAIN_LAYOUT,
+  albedoScale = 1,
 ): EarthSurfaceMaterialBinding {
   let disposed = false;
   let baseFailureReason: string | null = null;
@@ -95,7 +95,7 @@ export function createEarthSurfaceMaterialBinding(
         geometricNormalView: normalView as unknown as Vec3Node,
         bodyToView,
         schematic,
-        albedoScale: EARTH_TEXTURE.albedoScale,
+        albedoScale,
       },
     );
   } catch (error) {
