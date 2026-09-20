@@ -46,6 +46,9 @@ const BINARY_SEARCH_ITERATIONS = 40;
 
 const IDENTITY_POSE: RigidPose = { position: v3(), rotation: { x: 0, y: 0, z: 0, w: 1 } };
 
+const sortedPrimitiveCache = new WeakMap<CompoundCylinderShape, readonly CompoundCylinderPrimitive[] | null>();
+const shapeMetricsCache = new WeakMap<CompoundCylinderShape, { readonly bound: number; readonly minFeature: number } | null>();
+
 function finiteVec(value: Vec3): boolean {
   return Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
 }
@@ -63,6 +66,8 @@ function preparePose(pose: RigidPose): RigidPose | null {
 }
 
 function sortedPrimitives(shape: CompoundCylinderShape): readonly CompoundCylinderPrimitive[] | null {
+  const cached = sortedPrimitiveCache.get(shape);
+  if (cached !== undefined) return cached;
   if (shape.primitives.length === 0) return null;
   // 1 module が突起を含む複数 primitive を持てるよう、moduleId の重複は許す。
   // module 内も幾何値で並べ、入力配列の順序を narrow phase の tie break にしない。
@@ -86,7 +91,17 @@ function sortedPrimitives(shape: CompoundCylinderShape): readonly CompoundCylind
     const axisLength = len(primitive.axis);
     if (!(axisLength > EPSILON) || !Number.isFinite(axisLength)) return null;
   }
-  return result;
+  const prepared = Object.freeze(result.map((primitive) => Object.freeze({
+    moduleId: primitive.moduleId,
+    center: Object.freeze(v3(primitive.center.x, primitive.center.y, primitive.center.z)),
+    axis: Object.freeze(v3(
+      primitive.axis.x, primitive.axis.y, primitive.axis.z,
+    )),
+    halfLength: primitive.halfLength,
+    radius: primitive.radius,
+  })));
+  sortedPrimitiveCache.set(shape, prepared);
+  return prepared;
 }
 
 // 局所 primitive をワールド相当座標へ変換する唯一の入口。
@@ -212,6 +227,8 @@ interface MotionMetrics {
 }
 
 function shapeMetrics(shape: CompoundCylinderShape): { readonly bound: number; readonly minFeature: number } | null {
+  const cached = shapeMetricsCache.get(shape);
+  if (cached !== undefined) return cached;
   const primitives = sortedPrimitives(shape);
   if (primitives === null) return null;
   let bound = 0;
@@ -220,7 +237,11 @@ function shapeMetrics(shape: CompoundCylinderShape): { readonly bound: number; r
     bound = Math.max(bound, len(primitive.center) + Math.hypot(primitive.halfLength, primitive.radius));
     minFeature = Math.min(minFeature, primitive.halfLength, primitive.radius);
   }
-  return Number.isFinite(bound) && Number.isFinite(minFeature) && minFeature > 0 ? { bound, minFeature } : null;
+  const result = Number.isFinite(bound) && Number.isFinite(minFeature) && minFeature > 0
+    ? { bound, minFeature }
+    : null;
+  shapeMetricsCache.set(shape, result);
+  return result;
 }
 
 function motionMetrics(start: RigidPose, end: RigidPose, shape: CompoundCylinderShape): MotionMetrics | null {
