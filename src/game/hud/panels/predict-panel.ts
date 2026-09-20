@@ -498,15 +498,15 @@ export class PredictPanel {
   private renderTicks(ticks: readonly DisplayTick[]): void {
     if (this.ticks.childElementCount !== ticks.length) {
       this.ticks.innerHTML = '';
-      for (let i = 0; i < ticks.length; i++) {
+      for (const _tick of ticks) {
         const tick = document.createElement('span');
         this.ticks.appendChild(tick);
       }
     }
     // 本数が変わらない限り要素は使い回し、変わった値だけ書く。
-    for (let i = 0; i < ticks.length; i++) {
-      const el = this.ticks.children[i];
-      const tick = ticks[i];
+    let i = 0;
+    for (const tick of ticks) {
+      const el = this.ticks.children[i++];
       if (el === undefined || tick === undefined || !(el instanceof HTMLElement)) continue;
       if (el.textContent !== tick.label) el.textContent = tick.label;
       const left = `${tick.t * 100}%`;

@@ -394,16 +394,15 @@ export class ObjectPlacerPanel implements OverlayHandle {
     lagrangePoint.setSelected(this.lagrangePointValue);
     lagrangeGroup.appendChild(lagrangePoint.element);
     // ハローの面内振幅は面外振幅から三次の振幅拘束で決まるので、入力欄自体を出さない。
-    let libAx: HTMLInputElement;
+    const defaultAmp = this.defaultLagrangeAmplitude(this.lagrangeSecondaryValue);
+    const libAx = numberField(lagrangeGroup, '面内振幅 ax [km]', defaultAmp.ax, 100, 0);
     const lagrangeOrbitKind = new SegmentedControl('軌道種別', LAGRANGE_ORBIT_KIND_ITEMS, (v) => {
       this.lagrangeOrbitKindValue = v;
       this.lagrangeOrbitKind.setSelected(v);
       setFieldVisible(libAx, v === 'lissajous');
       libAx.value = String(this.defaultLagrangeAmplitude(this.lagrangeSecondaryValue).ax);
     });
-    lagrangeGroup.appendChild(lagrangeOrbitKind.element);
-    const defaultAmp = this.defaultLagrangeAmplitude(this.lagrangeSecondaryValue);
-    libAx = numberField(lagrangeGroup, '面内振幅 ax [km]', defaultAmp.ax, 100, 0);
+    lagrangeGroup.insertBefore(lagrangeOrbitKind.element, libAx.parentElement);
     const libAz = numberField(lagrangeGroup, '面外振幅 az [km]', defaultAmp.az, 100, 0);
     lagrangeOrbitKind.setSelected(this.lagrangeOrbitKindValue);
     setFieldVisible(libAx, this.lagrangeOrbitKindValue === 'lissajous');

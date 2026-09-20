@@ -50,8 +50,7 @@ export function strongestAttractor(
 ): CelestialBody {
   let best: CelestialBody | null = null;
   let bestMagSq = -Infinity;
-  for (let i = 0; i < attractors.length; i++) {
-    const attractor = attractors[i]!;
+  for (const attractor of attractors) {
     const magSq = lenSq(attractorAccel(r, attractor, pivot));
     if (best === null || magSq > bestMagSq) { best = attractor; bestMagSq = magSq; }
   }
