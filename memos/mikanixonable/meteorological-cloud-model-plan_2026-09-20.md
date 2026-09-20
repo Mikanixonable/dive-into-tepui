@@ -1,20 +1,22 @@
 # 気象学的な雲モデルへの改修計画
 
-- 状態: 実装レビュー済み（基盤実装・残工程あり）
+- 状態: 残工程の実装完了（性能・人間視覚 qualification は実測環境待ち）
 - 作成日: 2026-09-20
-- 改訂日: 2026-09-20（基盤実装・レビュー反映）
+- 改訂日: 2026-09-20（残工程実装・レビュー反映）
 - 調査基準: `0114373a7`
 - 対象: 地球の生成雲、雲面・大気内雲・雲影、cloud-lab
 
 ## 実装状況（2026-09-20）
 
-計画全体を完了扱いにせず、今回の実装で検証できた基盤だけを完了として記録する。残る視覚調整・
-weather producer の分離・大気 / 雲面 / 雲影の共通 state 化は、下記の既存 Step を継続する。
+Step 1〜13 の実装を完了した。ここでいう完了は、契約・配線・テスト・診断出力をコードへ組み込んだ
+という意味であり、GPU timestamp を取得した性能 qualification と、6 regime の人間による最終視覚
+判定を合格扱いにしたものではない。
 
 - **実装済み:** Step 2 の時間境界。`weather-time` と `temporal-lod` を追加し、normal / intermediate /
   extreme を simulation 時間幅から分類する。`GeneratedCloudField` は target anchor へ直接到達し、
-  extreme の bake を実時間 1 秒あたり4回以下へ制限する。ゲーム本体と render-lab / cloud-lab は同じ
-  `nowMs` 契約を渡し、導出層が壁時計を直接読まない。
+  extreme の bake を実時間 1 秒あたり4回以下へ制限する。日周期は低周波 humidity modulation として
+  `dailyCycleWeight` へ接続し、intermediate / extreme で平均化する。ゲーム本体と render-lab / cloud-lab は
+  同じ `nowMs` 契約を渡し、導出層が壁時計を直接読まない。
 - **実装済み:** Step 3 の低次元 forcing。`WeatherForcingField` は `moisture`、`lift`、
   `organization`、`windPerturbation` の論理 field として `WeatherSample` から凝結へ渡る。追加の
   persistent 512² texture は作らない。平均雲量は最終 coverage へ直接加算せず、stratocumulus などの
@@ -24,12 +26,30 @@ weather producer の分離・大気 / 雲面 / 雲影の共通 state 化は、�
   `cloud-lab:baseline` は代表環境を Apple M4 Pro / Mac16,8 / arm64 + Google Chrome stable / WebGPU
   に固定し、70 / 100 / 400 km と遠景、3 temporal LOD の manifest を出力する。実測B0未取得のmanifestは
   合格扱いにしない。
-- **レビュー済み:** forcing を使う凝結と cloud-lab の診断表示を確認し、前線 / 雨帯 / stratocumulus は
-  既存の連続関数を維持した。0h / 25h の cloud-lab 画像を生成し、`npm run typecheck`、
-  `npm run test:render`、`npm run test:game`、`npm run check:boundaries`、build を通過した。
-- **残工程:** Step 1 の実測baseline / GPU timestamp、Step 4〜Step 11 の明示的な Front / Cyclone /
-  ITCZ producer、geography / orography、lifecycle / basis / vertical profile / optics、atmosphere /
-  surface / shadow の共通 state 接続と6 regimeの視覚調整。Step 12 / 13 は引き続き任意 / Phase 2 とする。
+- **実装済み:** Step 4〜5 の producer / geography。Front、Cyclone、ITCZ、storm-track、marine
+  stratocumulus、orographic の寄与を `WeatherForcingField` の連続 driver へ分離し、climatology を
+  発生 prior、dynamic weather を現在の anomaly として合成した。`meanCloudiness` は最終 coverage へ
+  直接加算しない。
+- **実装済み:** Step 6〜7 の lifecycle / basis / profile / optics。absolute time の lifecycle、world-space
+  back-advection、時間帯域制限、低層・中層・対流上層・in-situ 上層の RGBA basis、温度からの液相 / 混相 /
+  氷相 tendency、vertical profile、CPU / TSL optics を追加した。basis は既存の 512² RGBA field 一枚へ
+  収め、追加の persistent cloud texture は作らない。
+- **実装済み:** Step 8 / 10 の共有入力。`CloudState` / `CloudStateBinding` を導入し、CloudRenderInput
+  と CloudFieldBinding が同じ absolute time、seed、temporal mode、field を surface / atmosphere /
+  shadow へ渡す。各経路の積分器・サンプル密度は既存の責務を維持した。
+- **実装済み:** Step 9 / 11 の quality / fixture。low / standard / high の field update budget、固定
+  代表環境、6 regime metadata、cloud fraction / characteristic scale / advection / temporal correlation
+  の diagnostic-only metrics、比較 report を追加した。`headroom=0` または GPU timestamp / B0 未取得時は
+  `unqualified` のままである。
+- **実装済み:** Step 12 / 13 の任意拡張。追加 texture なしの wake / mountain-wave pattern と、画像から
+  convective phase を推定しない observed basis adapter を追加した。どちらも core renderer の必須入力ではない。
+- **検証済み:** `npm run typecheck`、`npm run test:render`（246件）、`npm run build`、
+  `npm run check:boundaries`、`npm run cloud-lab:shot` を通過した。cloud-lab は 0h / 25h の 46画像を生成し、
+  全球生成雲を目視確認した。render-lab は地球ケースを描画できたが、既存の protein fixture `pdb-5i4r` が
+  asset catalog に無いため全ケース撮影はそこで停止した。
+- **未 qualification:** 固定代表環境の no-cloud p95 / GPU timestamp を実測した manifest は未取得である。
+  そのため standard の性能合格、6 regime の人間による reference side-by-side 合格、max warp の長時間
+  目視合格は未判定として残す。
 
 ## 目的と優先順位
 
