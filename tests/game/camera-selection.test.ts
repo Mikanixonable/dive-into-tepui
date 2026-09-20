@@ -133,4 +133,16 @@ export function register(): void {
     camera.followProgress(events.recent, { combat: sample(), map: sample() }, 'combat');
     assert.deepEqual(camera.combat.focus, { kind: 'object', id: frameRoleAnchorId('controlled') });
   });
+
+  test('camera-selection: マップから戦闘へ戻ると、戦闘カメラは操作対象を注視する', () => {
+    const camera = CameraSelection.deserialize({
+      combat: serializedCamera({ focus: { kind: 'object', id: 'base' } }),
+      map: serializedCamera(),
+    }, solarSystemParts().system, { record: () => {} });
+
+    camera.followProgress([], { combat: sample(), map: sample() }, 'map');
+    camera.followProgress([], { combat: sample(), map: sample() }, 'combat');
+
+    assert.deepEqual(camera.combat.focus, { kind: 'object', id: frameRoleAnchorId('controlled') });
+  });
 }
