@@ -5,7 +5,7 @@ import { DraggableWindow } from '../../../hud/windows/draggable-window';
 import { MQ_COMPACT } from '../../../hud/breakpoints';
 import { TabBar } from '../../../hud/widgets';
 import { injectOnce } from '../../../hud/inject-style';
-import { TEMP_WINDOW_GROUP } from '../../../hud/overlay-manager';
+import { UNCLIPPED_WINDOW_GROUP } from '../../../hud/overlay-manager';
 import { AltitudeTab } from './orbit-altitude-tab';
 import { ApproachTab } from './orbit-approach-tab';
 import { ProjectionTab } from './orbit-projection-tab';
@@ -54,7 +54,7 @@ export class OrbitAnalysisWindow {
     injectOnce('orbit-analysis-window', STYLE);
     this.win = new DraggableWindow(
       root, clientX, clientY,
-      { title: '軌道分析', initiallyClipped: true, tempWindowGroup: TEMP_WINDOW_GROUP }, overlayManager,
+      { title: '軌道分析', initiallyClipped: true, unclippedWindowGroup: UNCLIPPED_WINDOW_GROUP }, overlayManager,
     );
     this.win.element.classList.add('orbit-analysis');
     this.win.onClose = () => this.onClose?.();

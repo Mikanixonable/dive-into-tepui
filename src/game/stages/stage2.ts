@@ -21,17 +21,17 @@ export class Stage2 extends Stage {
   public static create(...deps: StageDeps): Stage2 {
     const stage = new Stage2(deps);
     const player = stage.addPlayer();
-    const base = player.motion.state;
+    const referenceState = player.motion.state;
     const scene = stage._scene;
     const idAllocators = stage._dynamicSystem.idAllocators;
     const attractors = stage._celestialSystem.celestialMotions;
     // 通常軌道の敵
-    stage.addEnemy(generatePhasedEnemy('HOSTILE-α', base, attractors, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, attractors, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generatePhasedEnemy('HOSTILE-α', referenceState, attractors, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateCoellipticEnemy('HOSTILE-β', referenceState, attractors, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
     // モルニヤ級の高楕円軌道の敵
-    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base, attractors, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base, attractors, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base, attractors, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', referenceState, attractors, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', referenceState, attractors, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', referenceState, attractors, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
     stage.composeBriefing();
     return stage;
   }

@@ -22,14 +22,18 @@ import type { Vec3 } from '../../math/vec3';
 export class ObjectPickables {
   private readonly candidateItems: ObjectPickable[] = [];
   private readonly markerItems: ObjectPickable[] = [];
+  private readonly listItems: ObjectPickable[] = [];
   private _visibilityPolicy: MapVisibilityPolicy | null = null;
   private readonly nearbyTracker = new NearbySystemTracker();
 
   // このフレームの被選択物候補。refresh の後に読む。clear の後は空。
   public get pickables(): readonly ObjectPickable[] { return this.candidateItems; }
 
-  // そのうち、マップに記号を出している対象。一覧に並び、マーカー段のピックに当たる。
+  // そのうち、マップに記号を出している対象。マーカー段のピックに当たる。
   public get markerPickables(): readonly ObjectPickable[] { return this.markerItems; }
+
+  // 表示トグルの対象で、天体の背後に隠れているものも含む一覧用の候補。
+  public get listPickables(): readonly ObjectPickable[] { return this.listItems; }
 
   // このフレームの表示・選択可否。refresh の前と clear の後は null。
   public get visibilityPolicy(): MapVisibilityPolicy | null { return this._visibilityPolicy; }
@@ -51,6 +55,7 @@ export class ObjectPickables {
   public clear(): void {
     this.candidateItems.length = 0;
     this.markerItems.length = 0;
+    this.listItems.length = 0;
     this._visibilityPolicy = null;
   }
 
@@ -76,22 +81,25 @@ export class ObjectPickables {
       this.controlSelection.current, this.roster, this.celestialBodies, displayWindow, this.frameAnchors);
 
     const controlled = this.controlSelection.current;
-    // 候補1件を、消滅・位置の有無・所属系・遮蔽の順に通して積む。所属系と遮蔽を効かせるかは
-    // 候補自身が答える。記号を出している対象は、あわせてマーカー段の候補にもする。
+    // 候補1件を、消滅・位置の有無・所属系・可視性の順に一覧へ積む。遮蔽を効かせるかは
+    // 候補自身が答え、一覧からは外さずマップ上のピック候補だけを絞る。記号を出している対象は、
+    // あわせてマーカー段の候補にもする。
     const append = (item: ObjectPickable): void => {
       if (item.gone) return;
       const pos = item.posAt(displayTime);
       if (pos === null) return;
       if (item.onlyInFocusedSystem
         && !this.celestialBodies.isPositionInFocusedSystem(focusId, pos, displayTime)) return;
-      if (item.hiddenBehindBodies
-        && isOccluded(cameraPos, pos, occluders, displayTime)) return;
+      const visibility = item.mapVisibility(visibilityPolicy, controlled);
+      if (visibility.pickable) this.listItems.push(item);
+      if (item.hiddenBehindBodies && isOccluded(cameraPos, pos, occluders, displayTime)) return;
       this.candidateItems.push(item);
-      if (item.mapVisibility(visibilityPolicy, controlled).pickable) this.markerItems.push(item);
+      if (visibility.pickable) this.markerItems.push(item);
     };
 
     this.candidateItems.length = 0;
     this.markerItems.length = 0;
+    this.listItems.length = 0;
     for (const body of this.celestialMarkers.bodyPickables) append(body);
     for (const entity of this.roster.all()) {
       const pickable = objectPickableOf(entity);

@@ -7,6 +7,11 @@ import { type ContactGeometry, sphereContactGeometry } from './collision-respons
 import type { KinematicState } from './kinematic-state';
 import type { CelestialBody } from './celestial-body';
 import type { Attitude } from './attitude';
+import { sweptSphereContact } from './sphere-contact';
+import {
+  sweptCompoundSphereContact,
+  type CompoundSphereShape,
+} from './compound-sphere-contact';
 import {
   compoundCylinderSphereContact,
   sweptCompoundCylinderSphereContact,
@@ -19,6 +24,28 @@ const IDENTITY_ROTATION = { x: 0, y: 0, z: 0, w: 1 } as const;
 interface SurfaceContact {
   readonly body: CelestialBody;
   readonly geometry: ContactGeometry;
+}
+
+export type SurfaceBodyStateAt = (
+  body: CelestialBody, pivot: number, time: number,
+) => KinematicState;
+
+function defaultBodyStateAt(body: CelestialBody, pivot: number, time: number): KinematicState {
+  return body.stateAt(pivot, time);
+}
+
+function boundingSphereMayContact(
+  objectPrev: KinematicState,
+  objectNext: KinematicState,
+  bodyPrev: KinematicState,
+  bodyNext: KinematicState,
+  objectRadius: number,
+  bodyRadius: number,
+): boolean {
+  const contact = sweptSphereContact(
+    objectPrev, objectNext, bodyPrev, bodyNext, objectRadius + bodyRadius,
+  );
+  return contact !== null && (contact.startsInside || contact.crossing !== null);
 }
 
 // 区間 [prev, next] を渡る半径 radius の球が、bodies のうち最初に触れる天体。触れなければ null。
@@ -34,16 +61,26 @@ export function firstSurfaceContact(
   shape: CompoundCylinderShape | null = null,
   prevAtt?: Attitude,
   att?: Attitude,
+  surfaceShape: CompoundSphereShape | null = null,
+  bodyStateAt: SurfaceBodyStateAt = defaultBodyStateAt,
 ): SurfaceContact | null {
   const swept = prev.t < next.t;
   let earliest: SurfaceContact | null = null;
   // 跨いだのか、区間の終端で重なっているだけなのかは幾何の側が決める。ここはどちらの場合も
   // 同じ toi で比べて1体に絞るだけで、区別は幾何を受け取った呼び出し側が付ける。
   for (const body of bodies) {
-    const bodyNext = body.stateAt(pivot, next.t);
-    const bodyPrev = swept ? body.stateAt(pivot, prev.t) : bodyNext;
+    const bodyNext = bodyStateAt(body, pivot, next.t);
+    const bodyPrev = swept ? bodyStateAt(body, pivot, prev.t) : bodyNext;
     let geometry: ContactGeometry | null;
     if (shape !== null) {
+      const mayContact = surfaceShape !== null
+        ? sweptCompoundSphereContact(
+          surfaceShape, prev, next, bodyPrev, bodyNext, body.def.radius,
+        ) !== null
+        : boundingSphereMayContact(
+          prev, next, bodyPrev, bodyNext, radius, body.def.radius,
+        );
+      if (!mayContact) continue;
       // compound を宣言した参加者は外接球へ戻さない。古い試験用参加者が姿勢を持たない
       // 場合だけ単位姿勢とし、形状の空間を接触として扱う偽陽性を避ける。
       const endRotation = att?.q ?? IDENTITY_ROTATION;

@@ -1,5 +1,5 @@
 // モジュール船を一体剛体として進め、船体由来の形状・質量・補助システムを同期する。
-import { cross, add, v3, type Vec3 } from '../../math/vec3';
+import { cross, add, sub, v3, type Vec3 } from '../../math/vec3';
 import { LOCAL_RIGHT, qRotate } from '../../math/quat';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -22,8 +22,7 @@ import type { SerializedRadiatorSystem } from '../player/radiator';
 import { AeroLoad } from '../player/aero-load';
 import { BeltController, type SerializedBeltController } from '../player/belt';
 import { PowerSystem } from '../player/power';
-import { RadiatorSystem, type RadiatorSide } from '../player/radiator';
-import { DeployablePanelState } from '../player/deployable-panel-state';
+import { RadiatorSystem } from '../player/radiator';
 import type { ShipAssembly } from './ship-assembly';
 import { shipPhysicsShape, type ShipPhysicsShape } from './ship-physics-shape';
 
@@ -34,7 +33,7 @@ export interface ModularShipMotionReactions {
   roundsInMagazine?(): number;
   stepBarrelThermal?(dt: number): void;
   thrustAcceleration?(): Vec3;
-  radiatorWear?(): Record<RadiatorSide, number>;
+  radiatorWear?(): Readonly<Record<string, number>>;
   totalCoolingRate?(): number;
   totalPowerGeneration?(): number;
   updateAltitudeAlarm?(
@@ -47,7 +46,7 @@ export interface ModularShipMotionReactions {
     body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void;
   receiveRadiatorContact?(
-    side: RadiatorSide, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
+    moduleId: string, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void;
   receiveStructuralLoss?(services: DynamicReactionServices): void;
   receiveBurnUp?(services: DynamicReactionServices): void;
@@ -97,7 +96,7 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     );
     motion.radiator.update(
       dt,
-      this.reactions.radiatorWear?.() ?? { up: 1, down: 1 },
+      this.reactions.radiatorWear?.() ?? {},
     );
     this.reactions.stepBarrelThermal?.(dt);
     motion.aero.update(motion.state.r, motion.state.v, atmosphereBody, atmospherePivot);
@@ -111,7 +110,11 @@ class ModularShipBehavior implements DynamicMotionBehavior {
 
   public placeContactProxies(self: DynamicMotion, simTime: number, dt: number): void {
     const motion = modularShipMotionOf(self);
-    motion.radiator.placeContactFolds(motion.state.r, motion.state.v, motion.att, simTime);
+    const rootOffset = qRotate(motion.att.q, motion.centerOffset);
+    const rootVelocityOffset = qRotate(motion.att.q, cross(motion.att.w, motion.centerOffset));
+    motion.radiator.placeContactFolds(
+      sub(motion.state.r, rootOffset), sub(motion.state.v, rootVelocityOffset), motion.att, simTime,
+    );
     motion.belt.placeContactSections(motion, simTime, dt, motion.state.r, motion.state.v, motion.att);
   }
 
@@ -225,20 +228,24 @@ export class ModularShipMotion extends DynamicMotion {
       centerOfMass: shape.centerOffset,
       inertia: shape.mass.inertia,
       compoundShape: shape.shape,
+      surfaceShape: shape.surfaceShape,
     });
     this.belt = systems.beltSave
       ? BeltController.deserialize(systems.beltSave)
       : BeltController.create(systems.beltLinkCount ?? 18);
     this.synchronizeBeltMount(shape);
-    this.radiator = new RadiatorSystem(
-      this,
-      (side, other, contact, services) => (
-        reactions.receiveRadiatorContact?.(side, other, contact, services)
-      ),
-      systems.radiatorSave?.up ? DeployablePanelState.deserialize(systems.radiatorSave.up) ?? undefined : undefined,
-      systems.radiatorSave?.down ? DeployablePanelState.deserialize(systems.radiatorSave.down) ?? undefined : undefined,
-    );
-    this.power = systems.powerSave ? PowerSystem.deserialize(systems.powerSave) : new PowerSystem();
+    const onRadiatorContact = (moduleId: string, other: EntityContactParticipant, contact: Contact,
+      services: DynamicReactionServices): void => {
+      reactions.receiveRadiatorContact?.(moduleId, other, contact, services);
+    };
+    this.radiator = systems.radiatorSave === undefined
+      ? new RadiatorSystem(this, onRadiatorContact, undefined, undefined, assembly)
+      : RadiatorSystem.deserialize(systems.radiatorSave, this, onRadiatorContact, assembly);
+    this.power = systems.powerSave
+      ? PowerSystem.deserialize(systems.powerSave, assembly)
+      : new PowerSystem(undefined, undefined, undefined, assembly);
+    this.radiator.syncAssembly(assembly);
+    this.power.syncAssembly(assembly);
   }
 
   public get physicsShape(): ShipPhysicsShape { return this.physicsShapeValue; }
@@ -302,6 +309,7 @@ export class ModularShipMotion extends DynamicMotion {
       centerOfMass: next.centerOffset,
       inertia: next.mass.inertia,
       compoundShape: next.shape,
+      surfaceShape: next.surfaceShape,
     });
     this.physicsShapeValue = next;
     this.synchronizeBeltMount(next);

@@ -8,6 +8,7 @@ export const SHIP_MODULE_KINDS = [
 ] as const;
 export type ShipModuleKind = typeof SHIP_MODULE_KINDS[number];
 export type FuelKind = 'main' | 'rcs';
+export type ShipModuleCategory = 'command' | 'fuel' | 'propulsion' | 'combat' | 'utility';
 
 // 円柱は機体座標系で定義する。axis は単位ベクトル、半長 halfLength と半径 radius は m。
 export interface LocalCappedCylinder {
@@ -38,6 +39,7 @@ export interface ShipModuleDefinition {
   readonly id: string;
   readonly kind: ShipModuleKind;
   readonly name: string;
+  readonly category?: ShipModuleCategory;
   readonly length: number; // m, +Z 軸方向
   readonly diameter: number; // m
   readonly dryMass: number; // kg

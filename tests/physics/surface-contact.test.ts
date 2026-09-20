@@ -11,6 +11,7 @@ import { len, sub, v3 } from '../../src/math/vec3';
 import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
 import type { Attitude } from '../../src/physics/attitude';
 import type { CompoundCylinderShape } from '../../src/physics/compound-cylinder-contact';
+import type { CompoundSphereShape } from '../../src/physics/compound-sphere-contact';
 
 const ZERO = v3(0, 0, 0);
 const EARTH: CelestialMotion = fixedMotion({
@@ -24,6 +25,10 @@ function compound(
   moduleId = 'hull', center = ZERO, axis = v3(0, 1, 0), halfLength = 1, radius = 0.5,
 ): CompoundCylinderShape {
   return { primitives: [{ moduleId, center, axis, halfLength, radius }] };
+}
+
+function surfaceProxy(moduleId = 'hull', center = ZERO, radius = 1): CompoundSphereShape {
+  return { primitives: [{ moduleId, center, radius }] };
 }
 
 // 位置・速度・半径だけを持つ天体。重力も大気も表面判定には効かない。
@@ -153,7 +158,7 @@ export function register(): void {
     const next = kinematicState<'eci'>(1, v3(5, 0, 0), v3(10, 0, 0));
     const hit = firstSurfaceContact(
       prev, next, 6, [movingBody], 0, compound('tank', ZERO, v3(0, 1, 0), 0.5, 0.3),
-      IDENTITY_ATTITUDE, IDENTITY_ATTITUDE,
+      IDENTITY_ATTITUDE, IDENTITY_ATTITUDE, surfaceProxy('tank', ZERO, 0.3),
     );
     assert.ok(hit !== null);
     assert.ok(hit.geometry.toi > 0 && hit.geometry.toi < 1, `toi=${hit.geometry.toi}`);
@@ -172,7 +177,7 @@ export function register(): void {
     const hit = firstSurfaceContact(
       state0, state1, 5, [target], 0,
       compound('arm', v3(0, 0, 4), v3(0, 0, 1), 4, 0.15),
-      IDENTITY_ATTITUDE, rotated,
+      IDENTITY_ATTITUDE, rotated, surfaceProxy('arm', v3(0, 0, 4), 4.003),
     );
     assert.ok(hit !== null);
     assert.ok(hit.geometry.toi > 0 && hit.geometry.toi < 1, `toi=${hit.geometry.toi}`);
@@ -186,6 +191,23 @@ export function register(): void {
       firstSurfaceContact(state, state, 4, [target], 0, compound()),
       null,
     );
+    assert.equal(
+      firstSurfaceContact(
+        state, state, 0, [target], 0, compound(), undefined, undefined,
+        surfaceProxy('hull', ZERO, 1),
+      ),
+      null,
+    );
+  });
+
+  test('firstSurfaceContact: surface proxy の候補だけでは exact 接触を返さない', () => {
+    const target = body('target', v3(2.5, 0, 0), ZERO, 0.1);
+    const state = kinematicState<'eci'>(0, ZERO, ZERO);
+    const shape = compound('arm', ZERO, v3(0, 0, 1), 4, 0.15);
+    const proxy = surfaceProxy('arm', ZERO, Math.hypot(4, 0.15));
+    assert.equal(firstSurfaceContact(
+      state, state, 0, [target], 0, shape, IDENTITY_ATTITUDE, IDENTITY_ATTITUDE, proxy,
+    ), null);
   });
 
   test('firstSurfaceContact: 区間の無い compound 重なりは終端接触 toi=1 として返す', () => {

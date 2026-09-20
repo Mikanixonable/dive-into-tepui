@@ -46,6 +46,9 @@ const BINARY_SEARCH_ITERATIONS = 40;
 
 const IDENTITY_POSE: RigidPose = { position: v3(), rotation: { x: 0, y: 0, z: 0, w: 1 } };
 
+const sortedPrimitiveCache = new WeakMap<CompoundCylinderShape, readonly CompoundCylinderPrimitive[] | null>();
+const shapeMetricsCache = new WeakMap<CompoundCylinderShape, { readonly bound: number; readonly minFeature: number } | null>();
+
 function finiteVec(value: Vec3): boolean {
   return Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
 }
@@ -63,6 +66,8 @@ function preparePose(pose: RigidPose): RigidPose | null {
 }
 
 function sortedPrimitives(shape: CompoundCylinderShape): readonly CompoundCylinderPrimitive[] | null {
+  const cached = sortedPrimitiveCache.get(shape);
+  if (cached !== undefined) return cached;
   if (shape.primitives.length === 0) return null;
   // 1 module が突起を含む複数 primitive を持てるよう、moduleId の重複は許す。
   // module 内も幾何値で並べ、入力配列の順序を narrow phase の tie break にしない。
@@ -86,7 +91,17 @@ function sortedPrimitives(shape: CompoundCylinderShape): readonly CompoundCylind
     const axisLength = len(primitive.axis);
     if (!(axisLength > EPSILON) || !Number.isFinite(axisLength)) return null;
   }
-  return result;
+  const prepared = Object.freeze(result.map((primitive) => Object.freeze({
+    moduleId: primitive.moduleId,
+    center: Object.freeze(v3(primitive.center.x, primitive.center.y, primitive.center.z)),
+    axis: Object.freeze(v3(
+      primitive.axis.x, primitive.axis.y, primitive.axis.z,
+    )),
+    halfLength: primitive.halfLength,
+    radius: primitive.radius,
+  })));
+  sortedPrimitiveCache.set(shape, prepared);
+  return prepared;
 }
 
 // 局所 primitive をワールド相当座標へ変換する唯一の入口。
@@ -212,6 +227,8 @@ interface MotionMetrics {
 }
 
 function shapeMetrics(shape: CompoundCylinderShape): { readonly bound: number; readonly minFeature: number } | null {
+  const cached = shapeMetricsCache.get(shape);
+  if (cached !== undefined) return cached;
   const primitives = sortedPrimitives(shape);
   if (primitives === null) return null;
   let bound = 0;
@@ -220,7 +237,11 @@ function shapeMetrics(shape: CompoundCylinderShape): { readonly bound: number; r
     bound = Math.max(bound, len(primitive.center) + Math.hypot(primitive.halfLength, primitive.radius));
     minFeature = Math.min(minFeature, primitive.halfLength, primitive.radius);
   }
-  return Number.isFinite(bound) && Number.isFinite(minFeature) && minFeature > 0 ? { bound, minFeature } : null;
+  const result = Number.isFinite(bound) && Number.isFinite(minFeature) && minFeature > 0
+    ? { bound, minFeature }
+    : null;
+  shapeMetricsCache.set(shape, result);
+  return result;
 }
 
 function motionMetrics(start: RigidPose, end: RigidPose, shape: CompoundCylinderShape): MotionMetrics | null {
@@ -236,6 +257,23 @@ function motionMetrics(start: RigidPose, end: RigidPose, shape: CompoundCylinder
     angle: 2 * Math.acos(cosine),
     bound: shapeData.bound,
     minFeature: shapeData.minFeature,
+  };
+}
+
+function primitiveMotionMetrics(
+  start: RigidPose, end: RigidPose, primitive: CompoundCylinderPrimitive,
+): MotionMetrics | null {
+  const a = preparePose(start);
+  const b = preparePose(end);
+  if (a === null || b === null) return null;
+  const cosine = Math.max(-1, Math.min(1,
+    Math.abs(a.rotation.x * b.rotation.x + a.rotation.y * b.rotation.y
+      + a.rotation.z * b.rotation.z + a.rotation.w * b.rotation.w)));
+  return {
+    distance: len(sub(b.position, a.position)),
+    angle: 2 * Math.acos(cosine),
+    bound: len(primitive.center) + Math.hypot(primitive.halfLength, primitive.radius),
+    minFeature: Math.min(primitive.halfLength, primitive.radius),
   };
 }
 
@@ -288,28 +326,66 @@ function firstSweepHit(
   return null;
 }
 
+function sphereAt(start: Vec3, end: Vec3, t: number): Vec3 {
+  return v3(
+    start.x + (end.x - start.x) * t,
+    start.y + (end.y - start.y) * t,
+    start.z + (end.z - start.z) * t,
+  );
+}
+
+function earlierSweepHit(
+  current: SweptCompoundCylinderContact | null,
+  candidate: SweptCompoundCylinderContact | null,
+): SweptCompoundCylinderContact | null {
+  if (candidate === null) return current;
+  if (current === null || candidate.toi < current.toi) return candidate;
+  if (candidate.toi > current.toi) return current;
+  if (candidate.moduleIdA !== current.moduleIdA) {
+    return candidate.moduleIdA < current.moduleIdA ? candidate : current;
+  }
+  const candidateB = candidate.moduleIdB ?? '';
+  const currentB = current.moduleIdB ?? '';
+  return candidateB < currentB ? candidate : current;
+}
+
+function sweptPrimitiveSphereContact(
+  primitive: CompoundCylinderPrimitive, start: RigidPose, end: RigidPose,
+  sphereStart: Vec3, sphereEnd: Vec3, sphereRadius: number,
+): SweptCompoundCylinderContact | null {
+  const metrics = primitiveMotionMetrics(start, end, primitive);
+  if (metrics === null) return null;
+  const sphereDistance = len(sub(sphereEnd, sphereStart));
+  const sphereFeature: MotionMetrics = {
+    distance: sphereDistance, angle: 0, bound: sphereRadius,
+    // 半径0の点を相手にしても、primitive側の最小形状を刻み幅の基準にする。
+    minFeature: sphereRadius > EPSILON ? sphereRadius : metrics.minFeature,
+  };
+  const count = subdivisions([metrics, sphereFeature]);
+  if (count === null) return null;
+  const startPose = preparePose(start);
+  const endPose = preparePose(end);
+  if (startPose === null || endPose === null) return null;
+  return firstSweepHit(count, (t) => hitForSphere(
+    { moduleId: primitive.moduleId, cylinder: worldPrimitive(primitive, poseAt(startPose, endPose, t)) },
+    sphereAt(sphereStart, sphereEnd, t), sphereRadius,
+  ));
+}
+
 /** compound shape と移動球の接触。姿勢・並進から分割数を決め、最初の TOI を二分探索する。 */
 export function sweptCompoundCylinderSphereContact(
   shape: CompoundCylinderShape, start: RigidPose, end: RigidPose,
   sphereStart: Vec3, sphereEnd: Vec3, sphereRadius: number,
 ): SweptCompoundCylinderContact | null {
   if (!finiteSphere(sphereStart, sphereRadius) || !finiteVec(sphereEnd)) return null;
-  const metrics = motionMetrics(start, end, shape);
-  if (metrics === null) return null;
-  const sphereDistance = len(sub(sphereEnd, sphereStart));
-  const sphereFeature: MotionMetrics = {
-    distance: sphereDistance, angle: 0, bound: sphereRadius,
-    // 半径0の点を相手にしても、compound 側の最小形状を刻み幅の基準にする。
-    minFeature: sphereRadius > EPSILON ? sphereRadius : metrics.minFeature,
-  };
-  const count = subdivisions([metrics, sphereFeature]);
-  if (count === null) return null;
-  return firstSweepHit(count, (t) => compoundCylinderSphereContact(
-    shape, poseAt(start, end, t), v3(
-      sphereStart.x + (sphereEnd.x - sphereStart.x) * t,
-      sphereStart.y + (sphereEnd.y - sphereStart.y) * t,
-      sphereStart.z + (sphereEnd.z - sphereStart.z) * t,
-    ), sphereRadius));
+  const primitives = sortedPrimitives(shape);
+  if (primitives === null) return null;
+  let result: SweptCompoundCylinderContact | null = null;
+  for (const primitive of primitives) {
+    result = earlierSweepHit(result, sweptPrimitiveSphereContact(
+      primitive, start, end, sphereStart, sphereEnd, sphereRadius));
+  }
+  return result;
 }
 
 /** 2つの移動 compound shape の接触。両姿勢を slerp し、最初の TOI を二分探索する。 */

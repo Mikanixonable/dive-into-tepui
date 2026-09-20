@@ -5,8 +5,9 @@ import { normalView, positionLocal, uniform } from 'three/tsl';
 import type { CelestialSurfaceFrame } from './celestial/celestial-surface';
 import { DeferredTexture } from './deferred-texture';
 import {
-  EARTH_BASE_TERRAIN_HEIGHT, EARTH_BASE_TERRAIN_WIDTH, loadEarthBaseTerrain,
+  EARTH_BASE_TERRAIN_HEIGHT, EARTH_BASE_TERRAIN_WIDTH, loadEarthBaseTerrainForFormat,
 } from './earth-surface-terrain-codec';
+import { EARTH_TERRAIN_LAYOUT, type EarthSurfaceTerrainFormat } from './earth-surface-format';
 import type { EarthSurfaceGpuTextures } from './earth-surface-gpu';
 import { createEarthSurfaceNodeMaterial } from './earth-surface-material-node';
 import { configureEarthSurfaceTexture } from './earth-surface-texture';
@@ -62,7 +63,7 @@ function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; read
 // baseTerrainが届くまでは、同じ地理座標の楕円体法線と粗さ1で描く。
 export function createEarthSurfaceMaterialBinding(
   textures: EarthSurfaceGpuTextures, baseColorUrl: string, baseTerrainUrl: string, fetchImpl?: typeof fetch,
-  sharedBaseColor?: THREE.Texture,
+  sharedBaseColor?: THREE.Texture, terrainFormat: EarthSurfaceTerrainFormat = EARTH_TERRAIN_LAYOUT,
 ): EarthSurfaceMaterialBinding {
   let disposed = false;
   let baseFailureReason: string | null = null;
@@ -104,7 +105,7 @@ export function createEarthSurfaceMaterialBinding(
     throw error;
   }
   // baseTerrainは届いた時点で初期データへ上書きする。
-  void loadEarthBaseTerrain(baseTerrainUrl, fetchImpl ?? fetch, abortController.signal)
+  void loadEarthBaseTerrainForFormat(baseTerrainUrl, fetchImpl ?? fetch, abortController.signal, terrainFormat)
     .then((data) => {
       if (disposed) return;
       baseTerrain.data.set(data);

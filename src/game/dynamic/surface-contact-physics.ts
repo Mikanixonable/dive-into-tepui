@@ -3,7 +3,7 @@
 // 独立に解ける。
 import { distributeFixedContact } from '../../physics/collision-response';
 import { firstSurfaceContact } from '../../physics/surface-contact';
-import { kinematicState } from '../../physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { add, sameVec, scale } from '../../math/vec3';
 import type { DynamicReactionServices, SurfaceContactParticipant } from './dynamic-simulation-participant';
 import { contactTime, isFiniteSurfaceParticipant } from './contact-participant';
@@ -35,6 +35,22 @@ export class SurfaceContactPhysics {
   private readonly bodyScratch: CelestialBody[] = [];
   private readonly candidates = new SurfaceCandidates();
   private readonly nearbyScratch: CelestialBody[] = [];
+  // 同じサブステップの複数個体が同じ天体の同じ時刻を読むので、解析暦の外挿を共有する。
+  private readonly bodyStateCache = new Map<CelestialBody, Map<number, KinematicState>>();
+  private readonly cachedBodyStateAt = (
+    body: CelestialBody, pivot: number, time: number,
+  ): KinematicState => {
+    let states = this.bodyStateCache.get(body);
+    if (states === undefined) {
+      states = new Map<number, KinematicState>();
+      this.bodyStateCache.set(body, states);
+    }
+    const cached = states.get(time);
+    if (cached !== undefined) return cached;
+    const state = body.stateAt(pivot, time);
+    states.set(time, state);
+    return state;
+  };
   // 天体の位置を厳密に引く時刻(キャッシュ)。beginSubstep で受け、そのサブステップの解決すべてで使う。
   private pivot = 0;
   // 絞り込みを通した延べ候補天体数。resetCounts で 0 へ戻す。
@@ -60,6 +76,7 @@ export class SurfaceContactPhysics {
   // 参加者の位置で狭めた選び先は、参加者が進んだこの時点で捨てる。
   public beginSubstep(pivot: number): void {
     this.pivot = pivot;
+    this.bodyStateCache.clear();
     this.candidates.resetNarrow();
   }
 
@@ -85,7 +102,7 @@ export class SurfaceContactPhysics {
     this._candidateBodies += candidates.length;
     const hit = firstSurfaceContact(
       e.prevState, e.state, e.radius, candidates, this.pivot,
-      e.compoundShape, e.prevAtt, e.att,
+      e.compoundShape, e.prevAtt, e.att, e.surfaceShape, this.cachedBodyStateAt,
     );
     if (hit === null) return;
 

@@ -4,12 +4,16 @@ import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
+import { stepAttitude } from '../../src/physics/attitude';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
+import type { FuelConsumer } from '../../src/game/dynamic/dynamic-entity/controllable';
 import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
+import type { PilotControls } from '../../src/game/dynamic/dynamic-entity/pilot-controls';
 import { createShipDefaultParts } from '../../src/game/dynamic/dynamic-entity/ship-default-parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
+import { Throttle } from '../../src/game/player/throttle';
 import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
@@ -54,15 +58,42 @@ export function register(): void {
     assert.equal(ship.hp, 1_000);
     assert.equal(ship.maxHp, 1_000);
     assert.equal(ship.totalThrust, 400_000);
-    assert.ok(Math.abs(ship.totalTorque - 2.24) < 1e-12);
+    assert.ok(Math.abs(ship.totalTorque - 24_000) < 1e-12);
     assert.equal(ship.totalFuel, 1_000);
     assert.equal(ship.totalMaxFuel, 1_000);
     assert.equal(ship.totalFuelConsumptionRate, 1);
-    assert.equal(ship.totalPowerGeneration, 100);
-    assert.equal(ship.totalCoolingRate, 84);
+    assert.equal(ship.totalPowerGeneration, 1_650);
+    assert.equal(ship.totalCoolingRate, 9.6);
     assert.equal(ship.weaponDamage, 1);
     assert.equal(ship.totalFireRate, 1 / 0.06);
     assert.equal(ship.averageMuzzleVelocity, 1_000);
+  });
+
+  test('default ship: 実慣性に対して RCS が姿勢を変える角加速度を出す', () => {
+    const assembly = createDefaultCombatPreset();
+    const totals = assembly.totals();
+    const motion = new ModularShipMotion(assembly, state, attitude);
+    const throttle = new Throttle(1, false, false);
+    const controls: PilotControls = {
+      thrust: new Set(), rotation: new Set(['rollRight']), firing: false, commands: [],
+    };
+    const fuelConsumer: FuelConsumer = {
+      totalThrust: assembly.totalThrust,
+      totalTorque: assembly.totalTorque,
+      totalFuelConsumptionRate: 1,
+      totalFuel: totals.mainFuel,
+      totalMaxFuel: totals.maxMainFuel,
+      motion,
+      consumeFuel: () => 1,
+      consumeRcsFuel: () => 1,
+    };
+
+    throttle.updateTorque(motion.att, v3(), v3(), controls, false, 0, 0, fuelConsumer, null);
+    const angularAcceleration = throttle.torque.z / motion.att.inertia.z;
+    assert.ok(angularAcceleration > 0.35 && angularAcceleration < 0.5);
+
+    const next = stepAttitude(motion.att, throttle.torque, 0.4);
+    assert.ok(Math.abs(next.q.z) > 1e-3);
   });
 
   test('player power: installedGeneration=0 は全損として発電しない', () => {
@@ -74,6 +105,26 @@ export function register(): void {
     const defaultPower = new PowerSystem();
     defaultPower.update(1, 1, v3(0, 1, 0), attitude);
     assert.ok(defaultPower.chargeJ > start);
+  });
+
+  test('player systems: deploy state は solar/radiator の module ID を保持する', () => {
+    const assembly = createDefaultCombatPreset();
+    const power = new PowerSystem(undefined, undefined, undefined, assembly);
+    power.syncAssembly();
+    power.setDeployed('solar-right', false);
+    power.update(3, 0, v3(0, 1, 0), attitude);
+    assert.equal(power.deployOf('solar-left'), 1);
+    assert.equal(power.deployOf('solar-right'), 0);
+    assert.deepEqual(power.serialize().panels?.map(panel => panel.id), ['solar-left', 'solar-right']);
+
+    const radiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, assembly);
+    radiator.syncAssembly();
+    radiator.setDeployed('radiator-left', true);
+    assert.equal(radiator.deployOf('radiator-left'), 0);
+    radiator.update(3, {});
+    assert.equal(radiator.deployOf('radiator-left'), 1);
+    assert.equal(radiator.radiatingArea(0), 4.8);
+    assert.deepEqual(radiator.serialize().panels?.map(panel => panel.id), ['radiator-left', 'radiator-right']);
   });
 
   test('modular ship motion: booster module の質量で空力・輻射圧の質量あたり値が下がる', () => {
@@ -101,7 +152,7 @@ export function register(): void {
 
   test('player save: 電力・放熱板の不正値を安全な状態へ正規化する', () => {
     const powerOf = (charge: number): PowerSystem => PowerSystem.deserialize({
-      charge, up: { deployTarget: 1, deploy: 1 }, down: { deployTarget: 1, deploy: 1 },
+      charge, up: { deployTarget: 1, deploy: 1 }, down: { deployTarget: 1, deploy: 1 }, panels: null,
     });
     assert.equal(powerOf(POWER_CAPACITY * 2).chargeJ, POWER_CAPACITY);
 
@@ -115,7 +166,7 @@ export function register(): void {
     assert.equal(radiator.deployOf('down'), 1);
     // 太陽電池の初期値は展開。
     const power = PowerSystem.deserialize({
-      charge: 0, up: { deployTarget: 7 as 0 | 1, deploy: Number.NaN }, down: { deployTarget: 1, deploy: 1 },
+      charge: 0, up: { deployTarget: 7 as 0 | 1, deploy: Number.NaN }, down: { deployTarget: 1, deploy: 1 }, panels: null,
     });
     assert.equal(power.serialize().up.deploy, 1);
   });

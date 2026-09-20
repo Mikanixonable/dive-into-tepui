@@ -7,7 +7,7 @@ import { PlanetMotion } from '../../src/physics/celestial-motion';
 import { PlanetDef, SatelliteDef } from '../../src/physics/celestial-body-def';
 import { EARTH, MU_EARTH, MU_MOON, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { MU_SUN as MU_SUN_LOCAL } from '../../src/game/celestial/solar-system/sun';
-import { EPS } from '../../src/physics/ecliptic';
+import { ECLIPTIC_OBLIQUITY_RAD } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { NEGLIGIBLE_BODY_OFFSET } from '../../src/physics/planet-system';
 import {
@@ -641,5 +641,5 @@ function eclipticLongitude(p: { x: number; y: number; z: number }): number {
   const xs = p.x;
   const ys = -p.z;
   const zs = p.y;
-  return Math.atan2(ys * Math.cos(EPS) + zs * Math.sin(EPS), xs);
+  return Math.atan2(ys * Math.cos(ECLIPTIC_OBLIQUITY_RAD) + zs * Math.sin(ECLIPTIC_OBLIQUITY_RAD), xs);
 }

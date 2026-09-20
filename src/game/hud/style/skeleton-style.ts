@@ -45,6 +45,20 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 /* 表示/非表示ユーティリティ */
 #hud .hidden { display: none !important; }
+#hud.construction-mode #hud-view-options,
+#hud.construction-mode #hud-trajectory-frame,
+#hud.construction-mode #hud-stage-controls,
+#hud.construction-mode #hud-physical-object-list,
+#hud.construction-mode #hud-topbar,
+#hud.construction-mode #hud-viewbadge,
+#hud.construction-mode #hud-vessel-status,
+#hud.construction-mode #hud-orbit,
+#hud.construction-mode #burn-management-panel,
+#hud.construction-mode #hud-target,
+#hud.construction-mode #hud-enemies,
+#hud.construction-mode #hud-map-scale,
+#hud.construction-mode #hud-chase-reset,
+#hud.construction-mode #hud-help-badge { display: none !important; }
 #hud .hud-view-root { position: absolute; inset: 0; display: none; pointer-events: none; }
 #hud .hud-view-root.active { display: block; }
 

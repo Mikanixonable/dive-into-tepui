@@ -6,6 +6,7 @@ export const COMBAT_VIEW_STYLE = `
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status,
 #hud:not(.base-mode) .hud-combat-root.active #hud-orbit,
 #hud:not(.base-mode) .hud-combat-root.active #burn-management-panel,
+#hud:not(.base-mode) .hud-combat-root.active #ship-construction-panel,
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies,
 #hud:not(.base-mode) .hud-combat-root.active #hud-target,
 #hud:not(.base-mode) .hud-combat-root.active #hud-combat-camera-controls {
@@ -16,6 +17,7 @@ export const COMBAT_VIEW_STYLE = `
 #hud:not(.base-mode) .hud-combat-root.active .hud-rail-right > #hud-vessel-status,
 #hud:not(.base-mode) .hud-combat-root.active .hud-rail-left > #hud-orbit,
 #hud:not(.base-mode) .hud-combat-root.active .hud-rail-left > #burn-management-panel,
+#hud:not(.base-mode) .hud-combat-root.active .hud-rail-right > #ship-construction-panel,
 #hud:not(.base-mode) .hud-combat-root.active .hud-rail-right > #hud-enemies,
 #hud:not(.base-mode) .hud-combat-root.active .hud-rail-left > #hud-combat-camera-controls {
   width: 100%;

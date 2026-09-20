@@ -12,11 +12,26 @@ import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { Notifier } from '../../hud/notifier';
 import { dockingEligibility } from '../ship/ship-docking';
 import type { ShipConstruction } from '../ship/ship-construction';
+import type { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 
-interface ModuleWindowEntry {
-  readonly win: PropertyWindow<MenuAction>;
+type ModuleAction = MenuAction | `dockCandidate:${number}`;
+
+interface DockingCandidate {
   readonly ship: ModularShip;
   readonly moduleId: string;
+  readonly label: string;
+  readonly distance: number;
+  readonly angle: number;
+  readonly relativeSpeed: number;
+  readonly eligible: boolean;
+  readonly reason: string | null;
+}
+
+interface ModuleWindowEntry {
+  readonly win: PropertyWindow<ModuleAction>;
+  readonly ship: ModularShip;
+  readonly moduleId: string;
+  candidates: readonly DockingCandidate[] | null;
 }
 
 export interface ModuleWindowOpener {
@@ -30,7 +45,7 @@ function wearText(module: ShipModuleInstance, maxHp: number): string {
 }
 
 // 展開・収納を選べるモジュールにだけ操作項目を出す。
-function moduleItems(ship: ModularShip, module: ShipModuleInstance): PropertyWindowItem<MenuAction>[] {
+function moduleItems(ship: ModularShip, module: ShipModuleInstance): PropertyWindowItem<ModuleAction>[] {
   if (module.kind === 'radiator' || module.kind === 'solar_panel') return [
     { label: '展開', act: 'deployModule', keepOpen: true },
     { label: '収納', act: 'stowModule', keepOpen: true },
@@ -47,8 +62,10 @@ function moduleItems(ship: ModularShip, module: ShipModuleInstance): PropertyWin
     const status = ship.docks.status(ship.assembly, module.id);
     return status === 'connected'
       ? [
-        { label: '接続船体を修理', act: 'repairDockedModules', keepOpen: true },
-        { label: '接続を解除して発進', act: 'undockModule' },
+        ...(module.kind === 'dock' && ship.assembly.isDockingPortOccupied(module.id)
+          ? [{ label: '接続船体を修理', act: 'repairDockedModules' as const, keepOpen: true }]
+          : []),
+        { label: '接続を解除して発進', act: 'undockModule' as const },
       ]
       : [
         ...(module.kind === 'dock'
@@ -70,6 +87,7 @@ export class ModuleWindows implements ModuleWindowOpener {
     private readonly controlSelection: ControlSelection,
     private readonly roster: EntityRoster & EntityRegistry,
     private readonly construction: ShipConstruction,
+    private readonly confirmation: ConfirmationOverlay,
     private readonly enterCombatView: () => boolean,
     private readonly closeOtherWindows: () => void = () => {},
   ) {}
@@ -85,10 +103,11 @@ export class ModuleWindows implements ModuleWindowOpener {
       existing.win.bringToFront();
       return;
     }
-    const win = new PropertyWindow<MenuAction>(
+    const win = new PropertyWindow<ModuleAction>(
       this.hud.layers.window, clientX, clientY, this.content(ship, module), this.hud.overlayManager,
     );
-    this.windows.set(key, { win, ship, moduleId });
+    const entry: ModuleWindowEntry = { win, ship, moduleId, candidates: null };
+    this.windows.set(key, entry);
     win.onSelect = (act) => {
       if (!ship.inspection.hasModule(moduleId)) return;
       if (act === 'deployModule' || act === 'stowModule') {
@@ -96,28 +115,56 @@ export class ModuleWindows implements ModuleWindowOpener {
       } else if (act === 'toggleBoosterModule') {
         ship.toggleBoosterIgnition(moduleId);
       } else if (act === 'decoupleModule') {
-        if (typeof globalThis.confirm === 'function' && !globalThis.confirm(`${moduleId} を作動させますか？`)) return;
-        try {
-          ship.decouple(moduleId, this.roster);
-        } catch (error) {
-          this.hud.hint(error instanceof Error ? error.message : '分離できません');
-        }
+        this.confirmation.open(`${moduleId} を作動させますか？`, () => {
+          try {
+            ship.decouple(moduleId, this.roster);
+          } catch (error) {
+            this.hud.hint(error instanceof Error ? error.message : '分離できません');
+          }
+        });
       } else if (act === 'dockModule') {
-        this.dockNearest(ship, moduleId);
+        if (entry.candidates === null) this.showDockCandidates(entry);
+        else entry.candidates = null;
+        this.syncEntry(entry);
+      } else if (act === 'cancelDockCandidates') {
+        entry.candidates = null;
+        this.syncEntry(entry);
+      } else if (act.startsWith('dockCandidate:')) {
+        const index = Number(act.slice('dockCandidate:'.length));
+        const candidate = entry.candidates?.[index];
+        if (candidate === undefined) return;
+        const eligibility = !ship.motion.alive || !candidate.ship.motion.alive
+          || !this.roster.all().includes(candidate.ship)
+          ? { eligible: false, reasons: ['対象船体が存在しません'] }
+          : dockingEligibility(ship, moduleId, candidate.ship, candidate.moduleId);
+        if (!eligibility.eligible) {
+          this.hud.hint(eligibility.reasons[0] ?? '接舷条件を満たしていません');
+          this.showDockCandidates(entry);
+          this.syncEntry(entry);
+          return;
+        }
+        try {
+          ship.dock(candidate.ship, moduleId, candidate.moduleId, this.controlSelection);
+          this.close();
+        } catch (error) {
+          this.hud.hint(error instanceof Error ? error.message : '接舷できません');
+        }
       } else if (act === 'startConstructionModule') {
         try {
           if (!this.enterCombatView()) throw new Error('戦闘ビューへ切り替えられません');
           this.construction.start(ship, moduleId);
+          this.close();
           this.closeOtherWindows();
         } catch (error) {
           this.hud.hint(error instanceof Error ? error.message : '建造を開始できません');
         }
       } else if (act === 'undockModule') {
-        try {
-          ship.undock(moduleId, this.roster);
-        } catch (error) {
-          this.hud.hint(error instanceof Error ? error.message : '発進できません');
-        }
+        if (this.undockProducesMaterial(ship, moduleId)) {
+          this.confirmation.open(
+            'コックピットがないため操縦不能な物資として分離します。続けますか？',
+            () => this.undock(ship, moduleId),
+          );
+        } else this.undock(ship, moduleId);
       } else if (act === 'repairDockedModules') {
         try {
           ship.repairAtDock(moduleId);
@@ -159,8 +206,7 @@ export class ModuleWindows implements ModuleWindowOpener {
       }
       const label = ship.assembly.definition(moduleId)?.name ?? module.definitionId;
       entry.win.syncHeader(label, `取り付け艦: ${ship.name}`);
-      entry.win.syncRows(this.content(ship, module).rows);
-      entry.win.syncItems(moduleItems(ship, module));
+      this.syncEntry(entry, module);
     }
   }
 
@@ -170,7 +216,7 @@ export class ModuleWindows implements ModuleWindowOpener {
   }
 
   // ウィンドウ1枚ぶんの見出し・行・操作項目。
-  private content(ship: ModularShip, module: ShipModuleInstance): PropertyWindowContent<MenuAction> {
+  private content(ship: ModularShip, module: ShipModuleInstance): PropertyWindowContent<ModuleAction> {
     const definition = ship.assembly.definition(module.id);
     const label = definition?.name ?? module.definitionId;
     const resource = module.kind === 'tank' || module.kind === 'booster'
@@ -191,31 +237,64 @@ export class ModuleWindows implements ModuleWindowOpener {
     };
   }
 
-  private dockNearest(ship: ModularShip, moduleId: string): void {
-    let nearest: { readonly ship: ModularShip; readonly moduleId: string; readonly distance: number } | null = null;
-    let firstReason = '条件を満たす近傍船がありません';
+  private showDockCandidates(entry: ModuleWindowEntry): void {
+    entry.candidates = this.dockingCandidates(entry.ship, entry.moduleId);
+  }
+
+  private dockingCandidates(ship: ModularShip, moduleId: string): readonly DockingCandidate[] {
+    const candidates: DockingCandidate[] = [];
     for (const entity of this.roster.all()) {
       if (!(entity instanceof ModularShip) || entity === ship || !entity.motion.alive) continue;
       for (const module of entity.assembly.modules) {
         if (module.kind !== 'dock' && module.kind !== 'docking_port') continue;
         const eligibility = dockingEligibility(ship, moduleId, entity, module.id);
-        if (!eligibility.eligible) {
-          firstReason = eligibility.reasons[0] ?? firstReason;
-          continue;
-        }
-        if (nearest === null || eligibility.distance < nearest.distance) {
-          nearest = { ship: entity, moduleId: module.id, distance: eligibility.distance };
-        }
+        const definition = entity.assembly.definition(module.id);
+        candidates.push({
+          ship: entity, moduleId: module.id,
+          label: `${entity.name} / ${definition?.name ?? module.id}`,
+          distance: eligibility.distance, angle: eligibility.angle,
+          relativeSpeed: eligibility.relativeSpeed, eligible: eligibility.eligible,
+          reason: eligibility.reasons[0] ?? null,
+        });
       }
     }
-    if (nearest === null) {
-      this.hud.hint(firstReason);
-      return;
-    }
+    return candidates.sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.distance - b.distance);
+  }
+
+  private candidateItems(candidates: readonly DockingCandidate[]): PropertyWindowItem<ModuleAction>[] {
+    return [
+      { label: '接舷候補を閉じる', act: 'cancelDockCandidates', keepOpen: true },
+      ...candidates.map((candidate, index) => ({
+        label: candidate.eligible
+          ? `${candidate.label} (${candidate.distance.toFixed(1)} m / ${(candidate.angle * 180 / Math.PI).toFixed(1)}° / ${candidate.relativeSpeed.toFixed(2)} m/s)`
+          : `${candidate.label} — ${candidate.reason ?? '接舷不可'}`,
+        act: `dockCandidate:${index}` as const,
+        disabled: !candidate.eligible,
+      })),
+    ];
+  }
+
+  private syncEntry(entry: ModuleWindowEntry, module = entry.ship.assembly.module(entry.moduleId)): void {
+    if (module === null) return;
+    entry.win.syncRows(this.content(entry.ship, module).rows);
+    entry.win.syncItems(entry.candidates === null
+      ? moduleItems(entry.ship, module) : this.candidateItems(entry.candidates));
+  }
+
+  private undockProducesMaterial(ship: ModularShip, moduleId: string): boolean {
+    const connection = ship.assembly.detachableConnections().find(
+      edge => edge.parentId === moduleId || edge.childId === moduleId,
+    );
+    if (connection === undefined) return false;
+    return ship.assembly.clone().splitAt(connection.id)[1].role === 'material';
+  }
+
+  private undock(ship: ModularShip, moduleId: string): void {
     try {
-      ship.dock(nearest.ship, moduleId, nearest.moduleId, this.controlSelection);
+      ship.undock(moduleId, this.roster);
+      this.close();
     } catch (error) {
-      this.hud.hint(error instanceof Error ? error.message : '接舷できません');
+      this.hud.hint(error instanceof Error ? error.message : '発進できません');
     }
   }
 }

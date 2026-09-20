@@ -25,6 +25,7 @@ import type { HudShell } from '../../hud/hud-shell';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
 import type { Notifier } from '../../hud/notifier';
+import { ConstructionConfirmDialog } from './windows/construction-confirm-dialog';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
 const ANALYSIS_WINDOW_OPEN_X = 320;
@@ -61,6 +62,7 @@ export class Hud implements HudLayers, Notifier {
   private readonly enemiesPanel: EnemiesPanel;
   private readonly burnManagementPanel: BurnManagementPanel;
   public readonly shipConstructionPanel: ShipConstructionPanel;
+  public readonly constructionConfirm: ConstructionConfirmDialog;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
   private chromeView: ViewMode | null = null;
@@ -89,6 +91,7 @@ export class Hud implements HudLayers, Notifier {
     this.enemiesPanel = new EnemiesPanel(els);
     this.burnManagementPanel = new BurnManagementPanel(els);
     this.shipConstructionPanel = new ShipConstructionPanel(els);
+    this.constructionConfirm = new ConstructionConfirmDialog(this.layers.window, this.overlayManager);
 
     // ランがまだ無い状態の見た目で組み上げる。
     this.burnManagementPanel.sync(null, {});
@@ -114,9 +117,15 @@ export class Hud implements HudLayers, Notifier {
     this.root.classList.toggle('creative-mode', stageId === 'creative');
   }
 
+  // 建造モード中の HUD 表示ゲートを切り替える。
+  public setConstructionMode(active: boolean): void {
+    this.root.classList.toggle('construction-mode', active);
+  }
+
   // ランが畳まれたときに、ランの見た目とパネルが掴んでいるランの値・操作の口を落とす。
   public clearRunPanels(): void {
     this.root.classList.remove('creative-mode');
+    this.root.classList.remove('construction-mode');
     this.topBar.sync(null, 0);
     this.vesselPanel.sync(null, 0);
     this.orbitPanel.sync(null, 0);

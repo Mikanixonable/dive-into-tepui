@@ -5,6 +5,10 @@ import type {
   CompoundCylinderPrimitive,
   CompoundCylinderShape,
 } from '../../physics/compound-cylinder-contact';
+import type {
+  CompoundSpherePrimitive,
+  CompoundSphereShape,
+} from '../../physics/compound-sphere-contact';
 import {
   shipMassProperties,
   type ShipMassElement,
@@ -21,6 +25,7 @@ import type { ShipModuleInstance } from './ship-module-instance';
  */
 export interface ShipPhysicsShape {
   readonly shape: CompoundCylinderShape;
+  readonly surfaceShape: CompoundSphereShape;
   readonly mass: ShipMassProperties;
   readonly centerOffset: Vec3;
 }
@@ -73,9 +78,15 @@ export function shipPhysicsShape(assembly: ShipAssembly): ShipPhysicsShape | nul
     halfLength: shape.halfLength,
     radius: shape.radius,
   }));
+  const surfacePrimitives: CompoundSpherePrimitive[] = primitives.map((primitive) => ({
+    moduleId: primitive.moduleId,
+    center: v3(primitive.center.x, primitive.center.y, primitive.center.z),
+    radius: Math.hypot(primitive.halfLength, primitive.radius),
+  }));
 
   return {
     shape: { primitives: Object.freeze(primitives) },
+    surfaceShape: { primitives: Object.freeze(surfacePrimitives) },
     mass,
     centerOffset,
   };

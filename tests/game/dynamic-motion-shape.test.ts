@@ -6,6 +6,7 @@ import { v3 } from '../../src/math/vec3';
 import { qFromAxisAngle } from '../../src/math/quat';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import type { CompoundCylinderShape } from '../../src/physics/compound-cylinder-contact';
+import type { CompoundSphereShape } from '../../src/physics/compound-sphere-contact';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 
 function shape(): CompoundCylinderShape {
@@ -14,6 +15,10 @@ function shape(): CompoundCylinderShape {
       moduleId: 'tank-a', center: v3(1, 2, 3), axis: v3(0, 0, 2), halfLength: 2, radius: 1,
     }],
   };
+}
+
+function surfaceShape(): CompoundSphereShape {
+  return { primitives: [{ moduleId: 'tank-a', center: v3(1, 2, 3), radius: 3 }] };
 }
 
 function motion(): DynamicMotion {
@@ -34,6 +39,7 @@ export function register(): void {
       centerOfMass: v3(0.5, 0, -0.5),
       inertia: v3(4, 5, 6),
       compoundShape: input,
+      surfaceShape: surfaceShape(),
     });
 
     assert.equal(self.mass, 10);
@@ -43,6 +49,8 @@ export function register(): void {
     assert.equal(self.shapeRevision, 1);
     assert.equal(self.arc, null);
     assert.equal(self.compoundShape?.primitives[0]?.axis.z, 1, '軸は単位化される');
+    assert.equal(self.surfaceShape?.primitives[0]?.moduleId, 'tank-a');
+    assert.deepEqual(self.surfaceShape?.primitives[0]?.center, v3(1, 2, 3));
     assert.notEqual(self.compoundShape, input);
 
     const inputPrimitive = input.primitives[0];
@@ -112,6 +120,25 @@ export function register(): void {
     }));
     assert.equal(self.shapeRevision, beforeRevision);
     assert.equal(self.compoundShape, null);
+  });
+
+  test('dynamic motion: surface shape validation is atomic and null is the default', () => {
+    const self = motion();
+    assert.equal(self.surfaceShape, null);
+    assert.throws(() => self.replaceCollisionProperties({
+      mass: 1, radius: 1, centerOfMass: v3(), inertia: v3(1, 1, 1),
+      compoundShape: null,
+      surfaceShape: { primitives: [{ moduleId: 'bad', center: v3(), radius: 0 }] },
+    }));
+    assert.equal(self.surfaceShape, null);
+    assert.equal(self.shapeRevision, 0);
+    assert.throws(() => self.replaceCollisionProperties({
+      mass: 1, radius: 1, centerOfMass: v3(), inertia: v3(1, 1, 1),
+      compoundShape: shape(),
+      surfaceShape: { primitives: [{ moduleId: 'tank-a', center: v3(), radius: 1 }] },
+    }), /contain the compound shape/);
+    assert.equal(self.surfaceShape, null);
+    assert.equal(self.shapeRevision, 0);
   });
 
   test('dynamic motion: attitude step は compound sweep 用の直前姿勢を保持する', () => {

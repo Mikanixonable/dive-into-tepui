@@ -36,8 +36,8 @@ export function register(): void {
     assert.equal(capability.role, 'base');
     assert.equal(capability.fuel('main'), 160);
     assert.equal(capability.maxFuel('rcs'), 160);
-    assert.equal(capability.totalPowerGeneration, 100);
-    assert.equal(capability.totalCoolingRate, 84);
+    assert.equal(capability.totalPowerGeneration, 1_650);
+    assert.equal(capability.totalCoolingRate, 9.6);
     assert.equal(capability.consumeFuel('main', 12), 12);
     assert.equal(capability.fuel('main'), 148);
     assert.equal(capability.toggleDeployable('radiator', 0), true);

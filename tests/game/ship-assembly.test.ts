@@ -19,9 +19,9 @@ export function register(): void {
     assert.equal(totals.hp, 1_000);
     assert.equal(totals.maxHp, 1_000);
     assert.equal(totals.thrust, 400_000);
-    assert.equal(totals.torque, 2.24);
-    assert.equal(totals.power, 100);
-    assert.equal(totals.radiation, 84);
+    assert.equal(totals.torque, 24_000);
+    assert.equal(totals.power, 1_650);
+    assert.equal(totals.radiation, 9.6);
     assert.equal(totals.weaponDamage, 1);
     assert.equal(totals.fireRate, 1 / 0.06);
     assert.equal(totals.muzzleVelocity, 1_000);
@@ -56,6 +56,48 @@ export function register(): void {
     const sideEdge = assembly.graph[0];
     assert.ok(sideEdge !== undefined);
     assert.equal(sideEdge.id, 'side-edge');
+  });
+
+  test('ship assembly: side slot は parent/child 寸法から配置を導出し、module を差し替えられる', () => {
+    const assembly = new ShipAssembly();
+    assembly.addRoot(module('tank-6-main', 'tank'));
+    assembly.connectSide(module('solar-panel-standard', 'solar'), 'tank', 'side:+y');
+    const transform = assembly.transformOf('solar');
+    const edge = assembly.graph[0];
+    assert.ok(transform !== null && edge !== undefined);
+    assert.equal(edge.sideSlot, 'side:+y');
+    assert.deepEqual(transform.position, v3(0, 3.5, 0));
+    const forward = qRotate(transform.rotation, LOCAL_FORWARD);
+    assert.ok(Math.hypot(forward.x, forward.y - 1, forward.z) < 1e-9);
+    assert.equal(assembly.validate().valid, true);
+
+    const relocated = new ShipAssembly();
+    relocated.addRoot(module('tank-6-main', 'tank'));
+    relocated.connectSide(module('radiator-standard', 'radiator'), 'tank', 'side:-x');
+    const relocatedTransform = relocated.transformOf('radiator');
+    assert.ok(relocatedTransform !== null);
+    assert.deepEqual(relocatedTransform.position, v3(-3.5, 0, 0));
+    assert.equal(relocated.validate().valid, true);
+  });
+
+  test('ship assembly: 建造枝は docking edge と別の建造接続へ確定する', () => {
+    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    assembly.addRoot(module('cockpit-standard', 'cockpit'));
+    assembly.connectSide(module('dock-standard', 'dock'), 'cockpit', {
+      position: v3(3.5, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)),
+    });
+    assembly.addModule(module('tank-3-main', 'construction-tank'), 'dock', {
+      position: v3(0, 0, 2), rotation: { x: 0, y: 0, z: 0, w: 1 },
+    }, 'axial', 'construction-edge');
+
+    assembly.completeConstructionConnection('construction-edge');
+
+    assert.equal(assembly.dockingConnections().length, 0);
+    assert.equal(assembly.constructionConnections()[0]?.id, 'construction-edge');
+    assert.equal(assembly.isDockingPortOccupied('dock'), false);
+    assert.equal(assembly.isPortConnected('dock'), true);
+    assert.equal(assembly.graph.find(edge => edge.id === 'construction-edge')?.kind, 'construction');
+    assert.equal(assembly.validate().valid, true);
   });
 
   test('ship assembly: docking edge は接舷面を一致させ、重複IDを安定名へ写す', () => {

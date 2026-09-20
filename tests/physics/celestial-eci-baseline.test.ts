@@ -11,7 +11,7 @@ import { EphemerisPoints } from '../../src/physics/ephemeris/point';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { keplerOrbitForSimZero, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { scale, sub, v3 } from '../../src/math/vec3';
-import { ephemerisSeconds, SECONDS_PER_DAY } from '../../src/physics/time';
+import { j2000EphemerisSeconds, SECONDS_PER_DAY } from '../../src/physics/time';
 import { motionOf, solarSystemParts, stateOf, testEphemerisPoints, TEST_EPOCH } from './test-helpers';
 
 // 元期・1日後・1年後・1年前。永年変化と周期項の両方が効く幅を取る。
@@ -225,7 +225,7 @@ export function register(): void {
   }
 
   test('eci-baseline: 重心補正(太陽の地心位置と純ケプラー地球の差)が固定値と一致する', () => {
-    const orbit = keplerOrbitForSimZero(EARTH.orbit, ephemerisSeconds(TEST_EPOCH));
+  const orbit = keplerOrbitForSimZero(EARTH.orbit, j2000EphemerisSeconds(TEST_EPOCH));
     TIMES.slice(0, BARY_OFFSET.length).forEach((t, i) => {
       const d = sub(stateOf(analytic, 'sun', t).r, scale(keplerOrbitState(orbit, t).r, -1));
       assert.deepEqual([d.x, d.y, d.z], BARY_OFFSET[i], `bary t=${t}`);

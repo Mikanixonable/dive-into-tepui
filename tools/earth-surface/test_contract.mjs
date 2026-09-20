@@ -82,7 +82,7 @@ function jpegFixture({ width = EARTH_BASE_COLOR_WIDTH, height = EARTH_BASE_COLOR
 
 function manifest(sourceManifestSha256, datasetId = 'earth-fixture-a') {
   return {
-    schemaVersion: 3, datasetId, sourceManifestSha256,
+    schemaVersion: 3, datasetId, sourceManifestSha256, sourceManifest: 'sources.json',
     provenance: { generator: 'fixture/1' },
     terrainEncoding: { formatVersion: EARTH_TERRAIN_FORMAT_VERSION, layout: EARTH_TERRAIN_LAYOUT,
       width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8', normalFrame: 'body_fixed' },
@@ -143,6 +143,7 @@ async function run() {
     assert.match(cli.stdout, /earth-surface:check: earth-fixture-a/);
     for (const path of [
       'earth-surface.json', 'attribution.json', fixture.manifest.baseColor, fixture.manifest.baseTerrain,
+      'sources.json',
       ...fixture.manifest.climateMaps, 'tiles/5/0/0.jpg', 'tiles/5/0/0.bin.gz',
       'receipt.json',
     ]) await readFile(join(packaged, path));

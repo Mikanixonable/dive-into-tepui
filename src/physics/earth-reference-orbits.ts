@@ -33,7 +33,7 @@ function sunSynchronousElements(
   const requestedMeanMotion = (revsPerRepeat * 2 * Math.PI) / (repeatDays * 86400);
   const sunRate = (2 * Math.PI) / TROPICAL_YEAR_SEC;
   let a = semiMajorFromMeanMotion(requestedMeanMotion, planet.def.mu);
-  let cosInc = 0;
+  let cosInc: number;
   for (let i = 0; i < J2_MEAN_MOTION_ITERATIONS; i++) {
     const keplerMeanMotion = meanMotionFromSemiMajor(a, planet.def.mu);
     const precessionPerRad = -1.5 * keplerMeanMotion * degree2.j2 * (degree2.refRadius / a) ** 2;
