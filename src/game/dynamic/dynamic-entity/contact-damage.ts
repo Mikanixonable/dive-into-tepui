@@ -16,8 +16,7 @@ export function contactDamageSpeed(other: ContactDamageSource, contact: Contact)
   return closingSpeed(contact) * other.contactDamageWeight;
 }
 
-// Shared by every collidable ship. Below the minimum speed there is no damage;
-// damage reaches the full HP amount at the full closing speed with a linear ramp.
+// 接触速度に応じたダメージ割合 [0..1]。下限速度未満は 0、上限速度以上で 1、間は線形補間。
 export function collisionDamageFraction(speed: number): number {
   const span = COLLISION_DAMAGE_FULL_CLOSING_SPEED - COLLISION_DAMAGE_MIN_CLOSING_SPEED;
   return Math.min(1, Math.max(0, (speed - COLLISION_DAMAGE_MIN_CLOSING_SPEED) / span));
