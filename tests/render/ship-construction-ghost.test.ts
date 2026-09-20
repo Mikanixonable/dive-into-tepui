@@ -83,4 +83,21 @@ export function register(): void {
     guide.dispose();
     ghost.dispose();
   });
+
+  test('ship construction ghost: multiple guides keep independent transforms and validity', () => {
+    const guide = new DockSnapGuideView(undefined, false);
+    guide.syncAll([
+      { id: 'cockpit:side+x', position: v3(1, 0, 0), rotation: Q_IDENTITY, radius: 2, valid: true },
+      { id: 'tank:side-y', position: v3(0, 2, 0), rotation: Q_IDENTITY, radius: 3, valid: false },
+    ]);
+    assert.equal(guide.object.visible, true);
+    assert.equal(guide.object.parent?.children.length, 2);
+    const second = guide.object.parent?.children[1];
+    assert.ok(second);
+    assert.equal(second.userData.dockSnapGuideValid, false);
+    assert.deepEqual(second.scale.toArray(), [3, 3, 3]);
+    guide.syncAll([{ id: 'cockpit:side+x', position: v3(), rotation: Q_IDENTITY, radius: 2, valid: true }]);
+    assert.equal(guide.object.parent?.children.length, 1);
+    guide.dispose();
+  });
 }
