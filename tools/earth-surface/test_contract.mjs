@@ -139,6 +139,7 @@ async function run() {
   const before = await readFile(join(fixture.root, 'earth-surface.json'));
   try {
     assert.throws(() => validateManifest({ ...fixture.manifest, schemaVersion: 2 }), /unsupported earth surface manifest schema/);
+    assert.throws(() => validateManifest({ ...fixture.manifest, colorCalibration: null }), /colorCalibration must be an object/);
 
     await packageEarthSurface({ inputRoot: fixture.root, outputRoot: output, sourceManifestPath: 'sources.json' });
     const packaged = join(output, 'earth', fixture.manifest.datasetId);
