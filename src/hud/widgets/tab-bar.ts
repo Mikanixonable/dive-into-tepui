@@ -49,8 +49,8 @@ export class TabBar<T> {
     this.items = items.map(([value, label]) => [value, label] as const);
   }
 
-  // 値に対応するタブボタンの要素。タブ本体との aria-controls の紐付けなど、呼び出し側が
-  // ボタンへ直接属性を足したいときに使う。
+  // 値に対応するタブボタンの要素。タブパネルとの aria-controls 関連付けなど、
+  // ボタン要素へ直接属性を追加設定する際に用いる。
   public buttonFor(value: T): HTMLElement | undefined {
     return this.buttons.get(value)?.element;
   }
