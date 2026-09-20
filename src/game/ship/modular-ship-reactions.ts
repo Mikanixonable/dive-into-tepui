@@ -70,8 +70,8 @@ export class ModularShipReactions {
     bulletType: BulletType, damage: number, impactPoint: Contact['point'], radiatorId: string | null = null,
   ): void {
     this.port.motion.absorbHeat(BULLET_IMPACT_HEAT / Math.max(this.port.motion.mass, 1e-9));
-    const radiator = radiatorId === null ? undefined : this.port.assembly.module(radiatorId);
-    const targetId = radiator?.kind === 'radiator' ? radiator.id : undefined;
+    const radiator = radiatorId === null ? null : this.port.assembly.module(radiatorId);
+    const targetId = radiator?.kind === 'radiator' ? radiator.id : null;
     this.damageAssembly(radiatorId === null ? damage : RADIATOR_BULLET_DAMAGE, targetId);
     this.breakRadiatorIfDestroyed(radiatorId, radiator);
     this.port.effects.impact(bulletType, this.port.motion.state, impactPoint);
@@ -80,20 +80,20 @@ export class ModularShipReactions {
   private damagedByContact(damageSpeed: number, radiatorId: string | null): void {
     const fraction = collisionDamageFraction(damageSpeed);
     if (fraction <= 0) return;
-    const radiator = radiatorId === null ? undefined : this.port.assembly.module(radiatorId);
-    const targetId = radiator?.kind === 'radiator' ? radiator.id : undefined;
+    const radiator = radiatorId === null ? null : this.port.assembly.module(radiatorId);
+    const targetId = radiator?.kind === 'radiator' ? radiator.id : null;
     this.damageAssembly(this.port.assembly.maxHp * fraction, targetId);
     this.breakRadiatorIfDestroyed(radiatorId, radiator);
     this.port.effects.contact(this.port.motion.state);
   }
 
-  private damageAssembly(amount: number, targetModuleId: string | undefined): void {
+  private damageAssembly(amount: number, targetModuleId: string | null): void {
     this.port.assembly.damage(amount, Math.floor(Math.random() * 0x1_0000_0000), targetModuleId);
     this.port.syncAfterDamage();
   }
 
   private breakRadiatorIfDestroyed(
-    radiatorId: string | null, radiator: ReturnType<ShipAssembly['module']> | undefined,
+    radiatorId: string | null, radiator: ReturnType<ShipAssembly['module']>,
   ): void {
     if (radiatorId === null || radiator?.kind !== 'radiator') return;
     if ((this.port.assembly.module(radiator.id)?.hp ?? 0) <= 0) {
