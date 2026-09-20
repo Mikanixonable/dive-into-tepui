@@ -33,9 +33,9 @@ const LOGISTICS_AUTO_MAX_DIST = 625; // 同上限 [m]
 const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給をデスポーンさせる距離 [m]
 
 export class Logistics {
-  // 弾薬補給の自動投入を行うかどうか。回収・デスポーンはこの値によらず走る。
+  // 弾薬補給を自動投入するかどうか。回収・デスポーンはこの値によらず走る。
   private _resupplyEnabled: boolean;
-  // RCS燃料の自動投入を行うかどうか。弾薬のトグルとは独立している。
+  // RCS燃料を自動投入するかどうか。弾薬設定とは独立している。
   private _rcsFuelResupplyEnabled: boolean;
 
   // 次回投入判定時刻 resupplyCheckAt [sim s] と自動投入の有効/無効から始める。省いた値は新しいランの

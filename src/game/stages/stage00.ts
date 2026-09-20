@@ -64,7 +64,7 @@ export class Stage00 extends Stage {
     );
   }
 
-  // 補給と波状攻撃の更新を行う。
+  // 補給と波状攻撃を更新する。
   public update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
