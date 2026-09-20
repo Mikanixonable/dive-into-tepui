@@ -229,12 +229,28 @@ function buildShipConstructionPanel(rightRail: HTMLElement, collapse: PanelColla
   const construction = new PanelShell(rightRail, collapse, 'ship-construction-panel', '船体建造');
   configureCombatPanel(construction);
   construction.body.innerHTML = `
-    <div data-id="construction-controls"></div>
+    <header class="construction-target" aria-label="建造対象">
+      <strong data-id="construction-ship-name">—</strong>
+      <span class="construction-target-dock" data-id="construction-dock-name">—</span>
+    </header>
+    <section class="construction-catalog" aria-label="モジュールカタログ">
+      <div data-id="construction-category-tabs"></div>
+      <div class="construction-module-cards" data-id="construction-module-cards"></div>
+    </section>
+    <section class="construction-selection" aria-label="建造選択">
+      <div class="construction-selection-row"><span>部品</span><strong data-id="construction-selected-module">—</strong></div>
+      <div class="construction-selection-row"><span>接続先</span><strong data-id="construction-selected-slot">—</strong></div>
+      <div class="construction-slots" data-id="construction-slots" aria-label="接続候補"></div>
+    </section>
     <dl class="metric-list">
       <div class="row metric"><dt class="k">部品数</dt><dd class="v"><output data-id="construction-count">0</output></dd></div>
-      <div class="row metric"><dt class="k">総質量</dt><dd class="v"><output data-id="construction-mass">0 kg</output></dd></div>
-      <div class="row metric"><dt class="k">HP</dt><dd class="v"><output data-id="construction-hp">0 / 0</output></dd></div>
-      <div class="row metric"><dt class="k">能力</dt><dd class="v"><output data-id="construction-capabilities">—</output></dd></div>
+      <div class="row metric"><dt class="k">総質量</dt><dd class="v"><output data-id="construction-mass">0 kg</output><small data-id="construction-mass-preview"></small></dd></div>
+      <div class="row metric construction-hp-row"><dt class="k">HP</dt><dd class="v"><div data-id="construction-hp-meter"></div><output data-id="construction-hp">0 / 0</output><small data-id="construction-hp-preview"></small></dd></div>
+      <div class="row metric"><dt class="k">推力</dt><dd class="v"><output data-id="construction-thrust">0</output></dd></div>
+      <div class="row metric"><dt class="k">主燃料</dt><dd class="v"><output data-id="construction-main-fuel">0</output></dd></div>
+      <div class="row metric"><dt class="k">RCS燃料</dt><dd class="v"><output data-id="construction-rcs-fuel">0</output></dd></div>
+      <div class="row metric"><dt class="k">発電</dt><dd class="v"><output data-id="construction-power">0</output></dd></div>
+      <div class="row metric"><dt class="k">放熱</dt><dd class="v"><output data-id="construction-radiation">0</output></dd></div>
       <div class="row metric"><dt class="k">完成時の役割</dt><dd class="v"><output data-id="construction-role">物資</output></dd></div>
       <div class="row metric"><dt class="k">完成条件</dt><dd class="v"><output data-id="construction-completion">部品を1個以上配置</output></dd></div>
     </dl>

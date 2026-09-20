@@ -26,7 +26,7 @@ const RING_COLOR: readonly [number, number, number] = [0.72, 0.68, 0.58];
 
 // 環の見た目は XY 平面で組み、この回転で環面(モデル座標の XZ 平面)へ寝かせる。
 export const RING_TILT = -Math.PI / 2;
-const D2R = Math.PI / 180;
+const DEGREES_TO_RADIANS = Math.PI / 180;
 const FOUR_PI = 4 * Math.PI;
 // |N·V| の下限。環面を真横から見たときに光学的厚みが発散しないよう抑える。
 const MU_MIN = 0.015;
@@ -182,7 +182,7 @@ function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly RingSect
       const b = wrapDeg(arc.toDeg);
       if (a <= b ? mid >= a && mid < b : mid >= a || mid < b) scale *= arc.opticalDepthScale;
     }
-    parts.push({ start: from * D2R, length: (to - from) * D2R, scale });
+    parts.push({ start: from * DEGREES_TO_RADIANS, length: (to - from) * DEGREES_TO_RADIANS, scale });
   }
   return parts.length > 0 ? parts : [{ start: 0, length: Math.PI * 2, scale: 1 }];
 }

@@ -2,7 +2,7 @@ import { Q_IDENTITY } from '../../math/quat';
 import { hitsSphere, type Ray } from '../../math/ray';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
-import { sameVec, sub, type Vec3, v3 } from '../../math/vec3';
+import { len, sameVec, sub, type Vec3, v3 } from '../../math/vec3';
 import { type Attitude, stepAttitude } from '../../physics/attitude';
 import { airflow } from '../../physics/atmosphere';
 import { localOrbitPeriod } from '../../physics/attractor';
@@ -15,6 +15,7 @@ import {
   type CompoundCylinderRayHit,
   type CompoundCylinderShape,
 } from '../../physics/compound-cylinder-contact';
+import type { CompoundSphereShape } from '../../physics/compound-sphere-contact';
 import { isStar } from '../../physics/celestial-body-def';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
@@ -149,6 +150,7 @@ export interface DynamicCollisionProperties {
   readonly centerOfMass: Vec3;
   readonly inertia: Vec3;
   readonly compoundShape: CompoundCylinderShape | null;
+  readonly surfaceShape?: CompoundSphereShape | null;
 }
 
 export interface DynamicCollisionPropertiesSnapshot extends DynamicCollisionProperties {
@@ -222,6 +224,44 @@ function freezeCompoundShape(shape: CompoundCylinderShape | null): CompoundCylin
   return Object.freeze({ primitives: Object.freeze(primitives) });
 }
 
+function freezeSurfaceShape(
+  shape: CompoundSphereShape | null, exactShape: CompoundCylinderShape | null,
+): CompoundSphereShape | null {
+  if (shape === null) return null;
+  if (shape === undefined || !Array.isArray(shape.primitives) || shape.primitives.length === 0) {
+    throw new Error('dynamic surface shape must contain primitives');
+  }
+  const primitives = shape.primitives.map((primitive) => {
+    if (primitive === null || primitive === undefined || typeof primitive.moduleId !== 'string'
+      || primitive.moduleId.length === 0) throw new Error('dynamic surface primitive moduleId must be non-empty');
+    validateVec(primitive.center, 'surface primitive center');
+    if (!Number.isFinite(primitive.radius) || !(primitive.radius > 0)) {
+      throw new Error('dynamic surface primitive radius must be finite and positive');
+    }
+    return Object.freeze({
+      moduleId: primitive.moduleId,
+      center: frozenVec(primitive.center),
+      radius: primitive.radius,
+    });
+  });
+  if (exactShape !== null) {
+    let exactBound = 0;
+    for (const primitive of exactShape.primitives) {
+      exactBound = Math.max(exactBound, len(primitive.center) + Math.hypot(
+        primitive.halfLength, primitive.radius,
+      ));
+    }
+    let proxyBound = 0;
+    for (const primitive of primitives) {
+      proxyBound = Math.max(proxyBound, len(primitive.center) + primitive.radius);
+    }
+    if (!(proxyBound >= exactBound)) {
+      throw new Error('dynamic surface shape must contain the compound shape');
+    }
+  }
+  return Object.freeze({ primitives: Object.freeze(primitives) });
+}
+
 // 1歩ぶんの環境標本を平均した、日照率込みの太陽光の放射照度 [W/m²] と太陽方向(単位ベクトル)。
 // radiantIntensity は光源の放射強度 [W/sr]。
 function weightedEnvironment(samples: readonly DynamicsEnvironmentSample[], radiantIntensity: number): {
@@ -276,6 +316,7 @@ export class DynamicMotion {
   private _radius: number;
   private _centerOfMass: Vec3;
   private _compoundShape: CompoundCylinderShape | null;
+  private _surfaceShape: CompoundSphereShape | null;
   private _shapeRevision = 0;
   public readonly collides: boolean;
   public readonly engagementAnchor: boolean;
@@ -319,6 +360,7 @@ export class DynamicMotion {
     this._radius = validateRadius(properties.radius ?? 0);
     this._centerOfMass = frozenVec(v3());
     this._compoundShape = null;
+    this._surfaceShape = null;
     this.collides = properties.collides ?? false;
     this.engagementAnchor = properties.engagementAnchor ?? false;
     this.preciseReentry = properties.preciseReentry ?? false;
@@ -357,6 +399,7 @@ export class DynamicMotion {
   public get radius(): number { return this._radius; }
   public get centerOfMass(): Vec3 { return this._centerOfMass; }
   public get compoundShape(): CompoundCylinderShape | null { return this._compoundShape; }
+  public get surfaceShape(): CompoundSphereShape | null { return this._surfaceShape; }
   public get shapeRevision(): number { return this._shapeRevision; }
   public get collisionProperties(): DynamicCollisionPropertiesSnapshot {
     return Object.freeze({
@@ -365,6 +408,7 @@ export class DynamicMotion {
       centerOfMass: this._centerOfMass,
       inertia: this.att.inertia,
       compoundShape: this._compoundShape,
+      surfaceShape: this._surfaceShape,
       shapeRevision: this._shapeRevision,
     });
   }
@@ -377,11 +421,13 @@ export class DynamicMotion {
     const nextCenterOfMass = frozenVec(validateVec(properties.centerOfMass, 'centerOfMass'));
     const nextInertia = frozenVec(validateInertia(properties.inertia));
     const nextShape = freezeCompoundShape(properties.compoundShape);
+    const nextSurfaceShape = freezeSurfaceShape(properties.surfaceShape ?? null, nextShape);
 
     this._mass = nextMass;
     this._radius = nextRadius;
     this._centerOfMass = nextCenterOfMass;
     this._compoundShape = nextShape;
+    this._surfaceShape = nextSurfaceShape;
     this._att = { ...this._att, inertia: nextInertia };
     this._prevAtt = { ...this._prevAtt, inertia: nextInertia };
     this._shapeRevision++;

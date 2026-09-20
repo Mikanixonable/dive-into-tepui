@@ -29,6 +29,26 @@ function manifest(): EarthSurfaceAssetManifest {
   };
 }
 
+function legacyManifest(): EarthSurfaceAssetManifest {
+  return {
+    schemaVersion: 1, datasetId: 'earth-2026-09-09-a', sourceManifestSha256: '0'.repeat(64),
+    terrainEncoding: {
+      formatVersion: 2, layout: 'octahedral-rg8-roughness-r8-material-class-a8',
+      width: 260, height: 260, channels: 4, scalar: 'UInt8',
+      materialClasses: { water: 0, land: 1, ice: 2, unknown: 255 },
+    },
+    baseColor: 'earth.jpg', baseTerrain: 'base.bin.gz', tileIndexUrl: 'tile-index.json',
+    climateMaps: Array.from({ length: 12 }, (_, index) => `climate-${String(index + 1).padStart(2, '0')}.png`),
+    climateEncoding: {
+      temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
+      orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
+      waterOrthometricElevationM: 0,
+    },
+    coverage: { kind: 'complete', maxZoom: 7, expectedTiles: 43_690 },
+    attribution: ['fixture'],
+  };
+}
+
 function source() {
   return earthSurfaceSourceFromManifest('https://example.test/earth/', 'https://example.test/earth/earth-surface.json', manifest());
 }
@@ -97,7 +117,18 @@ export function register(): void {
     });
   });
 
-  test('earth runtime: schema1/2のmanifestは移行せず拒否する', async () => {
+  test('earth runtime: schema1のmanifestは現行の地形材質へ変換して受け入れる', async () => {
+    const result = await bootstrapEarthSurface({
+      manifestUrl: 'https://example.test/earth/earth-surface.json',
+      fetchImpl: async () => new Response(JSON.stringify(legacyManifest())),
+    });
+    assert.equal(result.state, 'ready');
+    assert.equal(result.source?.terrainFormat, 'octahedral-rg8-roughness-r8-material-class-a8');
+    assert.equal(result.tileSource?.urlFor(earthTileKey(5, 3, 7))?.terrain,
+      'https://example.test/earth/tiles/5/3/7.bin.gz');
+  });
+
+  test('earth runtime: schema2のmanifestは拒否する', async () => {
     const legacy = { ...manifest(), schemaVersion: 2 } as unknown as EarthSurfaceAssetManifest;
     const result = await bootstrapEarthSurface({
       manifestUrl: 'https://example.test/earth/earth-surface.json',
