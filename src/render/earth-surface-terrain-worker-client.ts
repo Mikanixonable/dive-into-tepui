@@ -50,7 +50,7 @@ function terrainWorker(): Worker {
   return worker;
 }
 
-// Workerが利用可能ならbufferを移譲し、それ以外の環境では同じ契約を現在のスレッドで実行する。
+// Web Worker が利用可能であればバッファを転送して並行デコードし、未対応環境ではメインスレッドでフォールバック実行する。
 export function decodeEarthTerrainOffThread(
   compressed: Uint8Array, key: EarthTileKey, limit: number, expectedSha256?: string,
   signal?: AbortSignal, format: EarthSurfaceTerrainFormat = EARTH_TERRAIN_LAYOUT,

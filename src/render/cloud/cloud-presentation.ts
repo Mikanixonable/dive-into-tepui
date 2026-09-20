@@ -99,7 +99,7 @@ export class CloudPresentation {
     else this.surface.hide();
   }
 
-  // 雲場が絵に効くフレームだけ、選んでいる出どころの場を表示時刻へ用意する。
+  // 雲場が画面描画に寄与する（可視状態にある）フレームのみ、選択中のデータソースを表示時刻に合わせて事前生成する。
   public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.fieldContributes) return;
     this.source.prepare(renderer, displayTime, gpu);
@@ -111,7 +111,7 @@ export class CloudPresentation {
     for (const source of Object.values(this.sources)) source.dispose();
   }
 
-  // 雲場がこのフレームの絵に効くか。雲を描き、不透明表面か大気の中の雲のどれかが見えているとき真。
+  // 雲場が当該フレームの描画に寄与するか判定。雲描画が有効で、不透明雲表面または大気中の雲のいずれかが可視の場合に true。
   private get fieldContributes(): boolean {
     return this.cloudVisible && (
       this.visible || this.cirrusVisible || this.translucentCumulusVisible);

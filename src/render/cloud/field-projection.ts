@@ -1,5 +1,5 @@
-// 単位方向とテクスチャの uv の対応を図法ごとに持つ。雲の場を焼く側と読む側は、この契約を通して
-// 同じ図法を共有する。
+// 単位方向とテクスチャの uv 座標の対応を図法ごとに定義する。雲場生成側と読み出し側は、
+// 本投影インターフェースを介して共通の図法定義を共有する。
 import * as THREE from 'three/webgpu';
 import { asin, atan, clamp, cos, dot, float, max, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';

@@ -74,7 +74,7 @@ export function balancedWind(
   const spinSense = tanh(sinLatitude.div(SPIN_SENSE_WIDTH));
   const spin = spinSquared.mul(2).div(denominator).mul(spinSense);
   const along = coriolis.add(spin);
-  // 向きだけに効く摩擦。上限はコリオリ力の弱い所で低気圧へ流れ込む風の角を maxCrossing に抑えるためのもの
+  // 風向にのみ作用する摩擦項。上限はコリオリパラメータが小さい低緯度域で低気圧への流入角を maxCrossing 以内に抑制するための設定
   // で、赤道へ向かっては渦の向きが決まらない幅で開く — 開かないと along の消える赤道で向きの長さが 0 に
   // なり(0/0)、along の符号が変わる所で風が 2 × maxCrossing 跳んで緯線に沿う継ぎ目が立つ。高気圧側では
   // along が赤道の外でも 0 を通るので尺度を |coriolis| で下から支える — その流れは勾配をまっすぐ下って

@@ -1,5 +1,5 @@
-// 天体1体を外から見たときの契約。分類の札・自転姿勢・回転基準系・2次重力場と、時刻を与えると
-// ECI の位置・速度・大気を答える口。
+// 天体1体の外部公開インターフェース。分類タグ・自転姿勢・回転基準系・2次重力場を統括し、時刻に応じた
+// ECI の位置・速度・大気モデルを提供する。
 import type { Quat } from '../math/quat';
 import type { Vec3 } from '../math/vec3';
 import type { Atmosphere } from './atmosphere';

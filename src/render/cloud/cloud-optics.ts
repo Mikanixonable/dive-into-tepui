@@ -1,5 +1,5 @@
-// 2D雲場を、球殻上の離散的な光学イベントへ変換する純粋な数値契約。
-// ここはThree/TSLを知らないので、Beer-Lambertとfront-to-back合成をCPUテストで固定できる。
+// 2D雲場を球殻上の離散的な光学イベントへ変換する純粋計算モジュール。
+// Three/TSL に依存せず、Beer-Lambert 則と front-to-back 合成を独立して評価できる。
 
 export interface CloudOpticalEvent {
   // 雲自身の局所散乱。イベント自身の透過を二重に掛けず、手前イベントだけで減衰させる。

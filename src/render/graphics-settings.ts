@@ -145,7 +145,7 @@ export const GRAPHICS_OPTIONS = {
       low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
     },
   },
-  // レンズ効果(滲み・条・ゴースト)。
+  // レンズ効果(ブルーム・光条・ゴースト)。
   lens: {
     kind: 'toggle', group: 'element', label: 'レンズ効果',
     presets: { low: false, medium: true, high: true },

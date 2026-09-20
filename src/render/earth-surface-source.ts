@@ -1,4 +1,4 @@
-// 地球の地表配信物を描画・気候共有契約へ正規化する。
+// 地球の地表配信データを描画および気候共有用の共通フォーマットへ正規化する。
 // URLの組み立てとdatasetIdの固定だけを持ち、タイル要求やGPU資源は別のrender層が所有する。
 import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from './earth-surface-tile-key';
 import {
@@ -123,7 +123,7 @@ function relativeTileTemplate(baseUrl: string, template: string): string {
   return relativeAsset(baseUrl, path).replace('LOD_Z', '{z}').replace('TILE_X', '{x}').replace('TILE_Y', '{y}');
 }
 
-// datasetIdをURLと契約で扱える文字列へ制限する。
+// datasetId を URL およびデータ仕様に適合する安全な文字列へ検証・制限する。
 function requireDatasetId(datasetId: string): void {
   if (!/^[a-z0-9-]+$/.test(datasetId)) throw new Error('Invalid Earth surface datasetId');
 }

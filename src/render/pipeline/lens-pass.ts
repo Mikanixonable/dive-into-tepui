@@ -41,7 +41,7 @@ type Filter = {
 type Stage = Filter & { readonly target: THREE.RenderTarget };
 
 // 色を作るシェーダを 1 枚のフィルタにする。色は総和 1 でなければならない。additive を立てると
-// 書き込み先へ加算で積む(条の軸ごとの鎖を 1 枚へまとめるため)。
+// 書き込み先へ加算合成する（各方向の光条フィルタチェーンを単一ターゲットへ集約するため）。
 //
 // **すべてのフィルタで transparent: true を有効化する。** 不透明マテリアルでは Three.js が
 // アルファ値を1に固定するコードを追加しシェーダ分岐が発生するため。書き込みは NoBlending で
@@ -80,8 +80,8 @@ export class LensPass {
   private readonly down: readonly Stage[];
   // 拡大チェーン。up[i] は down[i] と同じ解像度で、1 段粗いほうを混ぜ込んだもの。
   private readonly up: readonly Stage[];
-  // 条。**軸ごとに独立した鎖**で、鎖の途中は 2 枚の作業用ターゲットを往復し、最後のパスだけが
-  // 出力へ加算で積まれる。滲みとは別の核なので、読む側が滲みと配分を分け合う。
+  // 光条処理。**軸ごとに独立したフィルタチェーン**で構成し、ピンポンバッファ間を往復しながら処理して最終パスのみを
+  // 出力ターゲットへ加算合成する。ブルームとは独立したカーネルのため、合成段で配分比率を乗算して混合する。
   private readonly diffractionChains: readonly (readonly Filter[])[];
   private readonly diffractionScratch: readonly THREE.RenderTarget[];
   private readonly diffractionTarget = createTarget();
@@ -151,9 +151,9 @@ export class LensPass {
     return this.redistributed(GLARE_FRACTION);
   }
 
-  // 配り直された像。滲みと条は**足し合わせず、割合で分け合う** — どちらも総和 1 の核なので、
-  // 混ぜた結果もまた総和 1 になる。出力は縮小された段なので、読む側は screenUV の線形補間に
-  // 任せる(ぼけた像なのでそれで足りる)。
+  // 再配分されたグレア像。ブルームと光条は**単純加算せず、配分比率で混合する** — 双方ともに総和 1 のカーネルのため、
+  // 混合結果の総和も 1 を維持する。出力ターゲットはダウンサンプリング解像度のため、参照側は screenUV のバイリニア補間に
+  // 委ねる（ぼかし像のため補間精度は十分）。
   private redistributed(scale: number): Vec3Node {
     const glare = texture(this.up[0]!.target.texture, screenUV).rgb;
     const diffraction = texture(this.diffractionTarget.texture, screenUV).rgb;
@@ -197,7 +197,7 @@ export class LensPass {
 
   // 設定でレンズ効果が切られている間、render の代わりに呼ぶ。**切り替わった最初の 1 フレーム
   // だけ**、読まれる 3 枚を空へ戻す — 残しておくと「レンズ」デバッグ表示に切る直前の像が凍った
-  // まま出る。中間の縮小段・条の作業用は誰も読まないので触らない。
+  // まま出力される。中間のダウンサンプリング段および光条用作業ターゲットは参照されないため消去を省略する。
   clear(width: number, height: number): void {
     // 前フレームの出力を一度だけ消去し、無効中の残像を残さない。
     if (!this.drawn) return;
@@ -244,7 +244,7 @@ export class LensPass {
       const coarser = this.down[i + 1]!.target;
       stage.sourceTexel.value.set(1 / coarser.width, 1 / coarser.height);
     }
-    // 条の鎖はすべて読み元と同じ寸法で、往復するあいだ寸法が変わらない。
+    // 光条のフィルタチェーンはすべて入力段と同一解像度を維持し、ピンポンバッファ間での反復処理中も寸法を不変に保つ。
     const diffractionSource = this.down[DIFFRACTION_LEVEL]!.target;
     for (const target of [...this.diffractionScratch, this.diffractionTarget]) {
       target.setSize(diffractionSource.width, diffractionSource.height);

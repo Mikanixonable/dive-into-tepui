@@ -21,9 +21,9 @@ type CirculationBand = { readonly latitudeRad: number; readonly east: number; re
 const FIRST_LATITUDE = THREE.MathUtils.degToRad(75);
 const BAND_SPACING = THREE.MathUtils.degToRad(30);
 
-// 地表付近の帯。極偏東風・偏西風・貿易風が赤道を挟んで鏡像に並ぶ。**速さは、同じ場所で気圧から
-// 出る風より弱く取る。** 帯の風は経度に依らないので、これが勝つと空の模様は緯度で決まる縞へ
-// 揃い、渦と気団が作る構造がその下に埋もれる。
+// 地表付近の緯度帯循環風。極東風・偏西風・貿易風が赤道を挟んで対称に分布する。風速は気圧傾度風より
+// 控えめに設定する。帯状風成分が過度に卓越すると、雲パターンが緯度帯の縞模様に収斂して低気圧渦の構造が
+// 隠蔽されるため。
 export const SURFACE_BANDS: readonly CirculationBand[] = windBandsAt(SURFACE_HEIGHT);
 
 // 巻雲の高さ(≈200 hPa)の帯。南北はどの帯でも地表付近と逆向きで、東西は中緯度だけが同じ西風の
@@ -106,8 +106,7 @@ export class Circulation {
     })();
   }
 
-  // 単位方向 direction に効く帯 2 本。[0] がいちばん近い帯、[1] がその隣で、[1] の重みは混ざる
-  // 範囲の外では 0 になる。
+  // 単位方向 direction において寄与する緯度帯 2 本。[0] が最寄りの帯、[1] が隣接帯で、[1] の混合比率はブレンド範囲外で 0。
   private bandsAt(direction: Vec3Node): readonly [WeightedBand, WeightedBand] {
     const band = clamp(float(FIRST_LATITUDE).sub(latitudeOf(direction)).div(BAND_SPACING), 0, this.bands.length - 1);
     const nearest = round(band).toVar();

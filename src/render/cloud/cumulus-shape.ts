@@ -1,4 +1,4 @@
-// 雲場と積雲表現が共有する定数と、場を持たない天体へ結ぶ空の写し。被覆率・雲頂・粒・光学的厚みの
+// 雲場と積雲表現が共有する定数と、雲場未設定の天体へ割り当てる空のダミーテクスチャ。被覆率・雲頂・粒・光学的厚みの
 // GPU 式は CloudShapeEvaluator へ、cap の uv でのテクスチャ読みは CloudFieldSampler へ置く。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
@@ -8,7 +8,7 @@ import type { FloatUniform } from '../tsl-types';
 // 層の反射は拡散反射の極限へ漸近する。
 export const CLOUD_ALBEDO = 0.8;
 
-// 場を持たない天体のスロットへ結ぶ、被覆率 0 の写し。**読み方の契約は本物の場と揃える** —
+// 雲場未設定の天体スロットへ割り当てる、被覆率 0 のテクスチャ。**サンプリング仕様を実フィールドと統一する** —
 // シェーダグラフはここに結んだテクスチャのフィルタと巻きから組まれるので、既定の Nearest の
 // ままだと補間の無い texel フェッチが焼き込まれ、あとで本物へ差し替えても格子が出たままになる。
 export const EMPTY_CLOUD_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);

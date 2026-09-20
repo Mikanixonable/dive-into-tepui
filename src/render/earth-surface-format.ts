@@ -1,4 +1,4 @@
-// 地表配信物のランタイムwire契約。manifestとESTN/ESTBの検証・decodeが共有する。
+// 地表配信データのランタイムワイヤフォーマット仕様。manifest と ESTN/ESTB の検証・デコードで共有する。
 
 export const EARTH_SURFACE_MANIFEST_SCHEMA_VERSION = 3;
 export const EARTH_SURFACE_TERRAIN_FORMAT_VERSION = 3;
