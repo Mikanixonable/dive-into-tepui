@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dive into Tepui - 雲レンダリングシステムの詳細解説</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f17;
+      --panel: #131b26;
+      --panel-hover: #182230;
+      --panel-elevated: #1a2535;
+      --ink: #e6eef8;
+      --muted: #8ea4bb;
+      --accent: #5eead4;
+      --accent-dim: #14b8a6;
+      --accent-glow: rgba(94, 234, 212, 0.15);
+      --sun: #fcd34d;
+      --sky: #38bdf8;
+      --cloud: #f1f5f9;
+      --line: #223246;
+      --line-bright: #334b66;
+      --code-bg: #090d13;
+      --code-ink: #bae6fd;
+      --card-radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      line-height: 1.8;
+      letter-spacing: 0.015em;
+    }
+
+    main {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 56px 24px 96px;
+    }
+
+    header {
+      margin-bottom: 48px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 32px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      background: var(--accent-glow);
+      border: 1px solid rgba(94, 234, 212, 0.3);
+      padding: 3px 10px;
+      border-radius: 9999px;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      color: #fff;
+      font-size: clamp(2rem, 4.5vw, 3rem);
+      font-weight: 800;
+      line-height: 1.25;
+      background: linear-gradient(135deg, #ffffff 40%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 16px;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 1.15rem;
+      max-width: 920px;
+      line-height: 1.7;
+    }
+
+    h2 {
+      margin-top: 56px;
+      margin-bottom: 20px;
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2::before {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 1.25em;
+      background: var(--accent);
+      border-radius: 3px;
+    }
+
+    h3 {
+      margin-top: 28px;
+      margin-bottom: 12px;
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #f8fafc;
+    }
+
+    p {
+      margin: 12px 0 16px;
+      color: #cbd5e1;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.9em;
+      color: var(--code-ink);
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    pre code {
+      display: block;
+      padding: 18px 20px;
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow-x: auto;
+      line-height: 1.55;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--card-radius);
+      padding: 24px 28px;
+      margin: 24px 0;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+
+    .card:hover {
+      border-color: var(--line-bright);
+    }
+
+    /* System Overview Pipeline Diagram */
+    .pipeline-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin: 24px 0;
+    }
+
+    .pipeline-step {
+      background: var(--panel-elevated);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 20px;
+      position: relative;
+    }
+
+    .step-number {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--line);
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+    }
+
+    .step-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .step-desc {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* 3 Layer Rendering Concept Visualization */
+    .renderer-triad {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin: 24px 0;
+    }
+
+    .renderer-card {
+      background: linear-gradient(180deg, var(--panel-elevated) 0%, var(--panel) 100%);
+      border: 1px solid var(--line);
+      border-radius: var(--card-radius);
+      padding: 24px;
+      border-top: 4px solid var(--accent);
+    }
+
+    .renderer-card.opaque { border-top-color: #38bdf8; }
+    .renderer-card.atmosphere { border-top-color: #818cf8; }
+    .renderer-card.shadow { border-top-color: #fbbf24; }
+
+    .renderer-card h4 {
+      font-size: 1.15rem;
+      color: #fff;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .renderer-card .subtext {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* Visual Diagram Container */
+    .diagram-container {
+      background: #080c12;
+      border: 1px solid var(--line);
+      border-radius: var(--card-radius);
+      padding: 28px 20px;
+      margin: 28px 0;
+      text-align: center;
+      overflow-x: auto;
+    }
+
+    svg.diag {
+      max-width: 100%;
+      height: auto;
+      display: inline-block;
+    }
+
+    /* Tables */
+    .table-wrapper {
+      overflow-x: auto;
+      margin: 24px 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+      text-align: left;
+      background: var(--panel);
+    }
+
+    th, td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-elevated);
+      color: #f1f5f9;
+      font-weight: 600;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 600;
+      margin-right: 4px;
+    }
+    .tag-blue { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+    .tag-purple { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .tag-amber { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+    ul {
+      margin: 10px 0 16px 20px;
+      color: #cbd5e1;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .highlight-box {
+      background: rgba(94, 234, 212, 0.06);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin: 18px 0;
+      font-size: 0.95rem;
+    }
+
+    footer {
+      margin-top: 64px;
+      border-top: 1px solid var(--line);
+      padding-top: 24px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: gap;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; font-size: 0.85rem; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 16px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+      <a href="./1.html" style="color: var(--accent); text-decoration: none;">1: 地図</a>
+      <a href="./2.html" style="color: var(--accent); text-decoration: none;">2: 起動とループ</a>
+      <a href="./3.html" style="color: var(--accent); text-decoration: none;">3: 入力と進行</a>
+      <a href="./4.html" style="color: var(--accent); text-decoration: none;">4: Gameの責務</a>
+      <a href="./5.html" style="color: var(--accent); text-decoration: none;">5: 設計の4本軸</a>
+      <a href="./6.html" style="color: var(--accent); text-decoration: none;">6: システム概観</a>
+      <a href="./7.html" style="color: #fff; font-weight: 700; text-decoration: none; border-bottom: 2px solid var(--accent);">7: 雲レンダリング</a>
+      <a href="./8.html" style="color: var(--accent); text-decoration: none;">8: 8大アクター相関図</a>
+    </div>
+    <div>Dive into Tepui Architecture Series</div>
+  </div>
+
+  <header>
+    <div class="badge">Lecture 7 / Architecture & Graphics</div>
+    <h1>Dive into Tepui<br>雲レンダリングシステムの詳細解説</h1>
+    <p class="lead">
+      惑星規模のプロシージャル大気循環力学から、GPU 正射影キャップへの動的ベイク、そして不透明表面レイマーチング・大気散乱光路積分・動的雲影の3重描画パイプラインまで。WebGPU (TSL) で構築された雲システムの全容を、パラグラフライティングの原則に基づき解説する。
+    </p>
+  </header>
+
+  <!-- Section 1: Overview -->
+  <section>
+    <h2>1. システム概観と全体パイプライン</h2>
+    <p>
+      Dive into Tepui の雲システムは、地上付近から静止軌道に至る超広域な視点移動をシームレスかつ高精細に描画することを主目的として設計されている。地上を歩行・航行する際の局所的な立体雲から、宇宙から地球を見下ろす際の巨大な台風や前線帯までを同一の枠組みで表現するため、当システムは「気象力学シミュレーション」「視点追随型テクスチャベイク」「3系統の分業レンダリング」の3層構造を採用している。
+    </p>
+
+    <!-- Pipeline Step Grid -->
+    <div class="pipeline-grid">
+      <div class="pipeline-step">
+        <span class="step-number">1</span>
+        <div class="step-title">視線追随とキャップ配置</div>
+        <div class="step-desc">
+          <code>CloudPresentation.aim()</code> がカメラ直下点（Subpoint）と天体距離 $\rho$ から視野領域を覆う <code>OrthographicCap</code> の角半径と基底ベクトルを毎フレーム更新する。
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <span class="step-number">2</span>
+        <div class="step-title">気象計算と凝結ベイク</div>
+        <div class="step-desc">
+          <code>WeatherModel</code> が風・気圧・水蒸気を解き、<code>condense()</code> が被覆率・雲頂高度・薄い雲に変換。結果を <code>BakedField</code> が 512×512 RGBA テクスチャへ焼く。
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <span class="step-number">3</span>
+        <div class="step-title">3系統の並行レンダリング</div>
+        <div class="step-desc">
+          焼成された単一の雲場テクスチャから、<code>CloudShapeEvaluator</code> の共通評価規則を通して「不透明表面」「大気散乱」「雲影」へ同時に展開・描画される。
+        </div>
+      </div>
+    </div>
+
+    <!-- Pipeline Architecture SVG -->
+    <div class="diagram-container">
+      <svg class="diag" viewBox="0 0 920 340" width="920" height="340" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="grad-weather" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#1e293b"/>
+            <stop offset="100%" stop-color="#0f172a"/>
+          </linearGradient>
+          <linearGradient id="grad-bake" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#0f766e"/>
+            <stop offset="100%" stop-color="#115e59"/>
+          </linearGradient>
+          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.5"/>
+          </filter>
+        </defs>
+
+        <!-- Weather Simulation Block -->
+        <rect x="30" y="40" width="220" height="260" rx="12" fill="url(#grad-weather)" stroke="#334155" stroke-width="2" filter="url(#glow)"/>
+        <text x="140" y="70" fill="#38bdf8" font-size="15" font-weight="700" text-anchor="middle">1. 気象モデル (TSL)</text>
+        <rect x="50" y="95" width="180" height="36" rx="6" fill="#1e293b" stroke="#475569"/>
+        <text x="140" y="118" fill="#e2e8f0" font-size="12" text-anchor="middle">大循環 (Circulation)</text>
+        <rect x="50" y="140" width="180" height="36" rx="6" fill="#1e293b" stroke="#475569"/>
+        <text x="140" y="163" fill="#e2e8f0" font-size="12" text-anchor="middle">偏西風波動 (RossbyWave)</text>
+        <rect x="50" y="185" width="180" height="36" rx="6" fill="#1e293b" stroke="#475569"/>
+        <text x="140" y="208" fill="#e2e8f0" font-size="12" text-anchor="middle">台風・低気圧 (Cyclones)</text>
+        <rect x="50" y="230" width="180" height="36" rx="6" fill="#1e293b" stroke="#475569"/>
+        <text x="140" y="253" fill="#e2e8f0" font-size="12" text-anchor="middle">水蒸気輸送 (Transport)</text>
+
+        <!-- Arrow 1 -->
+        <path d="M 250 170 L 310 170" stroke="#5eead4" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+        <polygon points="310,165 320,170 310,175" fill="#5eead4"/>
+        <text x="285" y="158" fill="#5eead4" font-size="11" text-anchor="middle">condense()</text>
+
+        <!-- Bake Block -->
+        <rect x="325" y="60" width="220" height="220" rx="12" fill="url(#grad-bake)" stroke="#14b8a6" stroke-width="2" filter="url(#glow)"/>
+        <text x="435" y="92" fill="#fff" font-size="15" font-weight="700" text-anchor="middle">2. 動的ベイク (BakedField)</text>
+        <rect x="345" y="115" width="180" height="42" rx="6" fill="#042f2e" stroke="#0d9488"/>
+        <text x="435" y="134" fill="#a7f3d0" font-size="12" font-weight="600" text-anchor="middle">OrthographicCap</text>
+        <text x="435" y="149" fill="#6ee7b7" font-size="10" text-anchor="middle">視点直下点に高解像度配置</text>
+
+        <rect x="345" y="170" width="180" height="85" rx="6" fill="#042f2e" stroke="#0d9488"/>
+        <text x="435" y="190" fill="#99f6e4" font-size="11" font-weight="600" text-anchor="middle">RGBA Texture (512x512)</text>
+        <text x="355" y="210" fill="#cbd5e1" font-size="10">R: 被覆率 (Coverage)</text>
+        <text x="355" y="226" fill="#cbd5e1" font-size="10">G: 雲頂高度 (CloudTop / 15km)</text>
+        <text x="355" y="242" fill="#cbd5e1" font-size="10">B: 半透明度 (Translucent)</text>
+
+        <!-- Split Arrows -->
+        <path d="M 545 170 C 585 170, 585 85, 625 85" stroke="#38bdf8" stroke-width="2" fill="none"/>
+        <polygon points="625,81 635,85 625,89" fill="#38bdf8"/>
+
+        <path d="M 545 170 L 625 170" stroke="#818cf8" stroke-width="2" fill="none"/>
+        <polygon points="625,166 635,170 625,174" fill="#818cf8"/>
+
+        <path d="M 545 170 C 585 170, 585 255, 625 255" stroke="#fbbf24" stroke-width="2" fill="none"/>
+        <polygon points="625,251 635,255 625,259" fill="#fbbf24"/>
+
+        <!-- Render Outputs -->
+        <rect x="635" y="55" width="250" height="60" rx="8" fill="#111827" stroke="#38bdf8" stroke-width="1.5"/>
+        <text x="647" y="80" fill="#38bdf8" font-size="13" font-weight="700">OpaqueCloudSurfaceRenderer</text>
+        <text x="647" y="99" fill="#94a3b8" font-size="11">球殻レイマーチ + 法線・深度出力</text>
+
+        <rect x="635" y="140" width="250" height="60" rx="8" fill="#111827" stroke="#818cf8" stroke-width="1.5"/>
+        <text x="647" y="165" fill="#818cf8" font-size="13" font-weight="700">AtmosphereCloudLayers</text>
+        <text x="647" y="184" fill="#94a3b8" font-size="11">巻雲・半透明積雲の大気散乱合成</text>
+
+        <rect x="635" y="225" width="250" height="60" rx="8" fill="#111827" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="647" y="250" fill="#fbbf24" font-size="13" font-weight="700">CloudShadowRenderer</text>
+        <text x="647" y="269" fill="#94a3b8" font-size="11">太陽光路マルチタップによる動的雲影</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- Section 2: Weather Model -->
+  <section>
+    <h2>2. 気象モデルと水蒸気力学: WeatherModel</h2>
+    <p>
+      気象モデルは、天体固定座標系の空間単位方向ベクトルと時刻を受け取り、決定論的に気圧偏差・風向・風速・上昇流・湿度を導出する TSL 計算グラフである。<code>src/render/cloud/weather-model.ts</code> に実装された <code>WeatherModel</code> は、CPU のシミュレーションループを介さず、シェーダの閉じた関数として空間位置から直接物理量を評価する。
+    </p>
+
+    <div class="card">
+      <h3>WeatherSample の主要フィールドと役割</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>フィールド</th>
+              <th>型</th>
+              <th>物理的意味と役割</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>pressure</code></td>
+              <td><code>FloatNode</code></td>
+              <td>平年からの気圧偏差 [hPa]。等圧線の勾配から地衡風・旋衡風を解き、気圧の谷で強い上昇流を励起する。</td>
+            </tr>
+            <tr>
+              <td><code>surfaceWind</code></td>
+              <td><code>Vec2Node</code></td>
+              <td>地表の風ベクトル（東向き $u$、北向き $v$）[m/s]。水蒸気の風上バックトラッキング移流に使用。</td>
+            </tr>
+            <tr>
+              <td><code>lift</code></td>
+              <td><code>FloatNode</code></td>
+              <td>鉛直上昇流速度 [m/s]。低気圧の中心で強く狭く上昇し、高気圧で広く弱く下降（沈降）する。</td>
+            </tr>
+            <tr>
+              <td><code>surfaceHumidity</code></td>
+              <td><code>FloatNode</code></td>
+              <td>地表付近の相対湿度 [0..1]。凝結して厚い積雲を形成する主因となる。</td>
+            </tr>
+            <tr>
+              <td><code>upperHumidity</code></td>
+              <td><code>FloatNode</code></td>
+              <td>対流圏上部の湿度 [0..1]。薄い巻雲や靄の光学的厚みへ変換される。</td>
+            </tr>
+            <tr>
+              <td><code>convection</code></td>
+              <td><code>Vec2Node</code></td>
+              <td>高周波対流セル。$x$ 成分が細胞の芯（雲の粒）、$y$ 成分が細胞の境界（網目）を表す。</td>
+            </tr>
+            <tr>
+              <td><code>convectiveActivity</code></td>
+              <td><code>FloatNode</code></td>
+              <td>対流の活発度 [0..1]。日射・海面水温・大気安定度に応じて粒立ちの強さを決定。</td>
+            </tr>
+            <tr>
+              <td><code>band</code></td>
+              <td><code>FloatNode</code></td>
+              <td>温帯前線帯や熱帯収束帯の帯状集中度 [0..1]。雲頂を一気に押し上げる。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        気象場の骨格は、赤道から極への大気循環（<code>Circulation</code>）、偏西風の長波蛇行（<code>RossbyWave</code>）、熱帯低気圧（<code>Cyclones</code>）の重ね合わせで決まる。風向に沿って過去の位置を遡るラグランジュ的バックトラッキング（<code>WeatherTransport</code>）によって海洋からの水蒸気供給と前線形成がリアルに再現される。
+      </p>
+    </div>
+  </section>
+
+  <!-- Section 3: Condensation -->
+  <section>
+    <h2>3. 雲凝結アルゴリズム: condense()</h2>
+    <p>
+      気象条件から視覚的な雲のパラメータを導く中核が、<code>src/render/cloud/condensation.ts</code> の <code>condense()</code> 純粋関数である。湿度と対流強度の関係を非線形に圧縮し、厚い積雲の被覆率、雲頂の高度分布、および上層巻雲の光学的厚みへと変換する。
+    </p>
+
+    <h3>3.1 被覆率 (coverage) のガンマ分布モデル</h3>
+    <p>
+      被覆率は、単なるしきい値ステップではなく、雲粒密度の空間的なゆらぎをガンマ分布で混合した代数的裾野を持つ伝達関数によって算出される。指数関数的な減少 $\exp(-t^2)$ を用いた場合、台風の芯や前線のような高湿度域で被覆率が 1.0 に急峻に張り付き、8bit テクスチャ内で階調が飽和して一様な白い台地になってしまう。
+    </p>
+
+    <pre><code>// condensation.ts より抜粋: ガンマ分布による被覆率の階調保持
+const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
+// (1 + excess^2 / 2)^(-2) による代数的な裾野
+const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
+const coverage = clear.oneMinus();</code></pre>
+
+    <div class="highlight-box">
+      <strong>視覚的利点:</strong> この設計により、被覆率が最大でも 0.93 付近で緩やかに寝るため、前線の芯や渦巻きの内部でもテクセル値が飽和せず、積雲の塊や微細な起伏の濃淡が美しく保存される。
+    </div>
+
+    <h3>3.2 雲頂高度 (cloudTop) の多峰合成</h3>
+    <p>
+      雲頂高度は、3つの異なる大気物理機構（層状雲、積乱雲の塔、サイクロン天蓋）の競合（<code>max</code>）として決定される：
+    </p>
+    <ul>
+      <li><strong>層状の雲 (layered)</strong>: 上昇流 <code>lift</code> と暖気流入 <code>warmth</code> が押し上げる高さ（1〜7 km）。ロジスティック関数により低気圧の中心でも一様な平坦面にならず対流起伏が残る。</li>
+      <li><strong>対流の塔 (tower)</strong>: 対流セルの芯 <code>grain</code> が強い場所で、湿潤かつ上昇流域（<code>rising</code>）にのみ、圏界面（最大 15〜17 km）に向かって二乗則で突き抜ける塔を立てる。高気圧の吹きおろし地域では門（<code>TOWER_LIFT_GATE</code>）が閉じて塔の発生が抑制される。</li>
+      <li><strong>金床雲 (anvil)</strong>: 眼を持つ渦の中心部において、圏界面直下に広がる平坦な天蓋として展開する。</li>
+    </ul>
+    <p>
+      求まった雲頂高度は、孤立した小さな雲が不自然に高くならないよう、被覆率 <code>coverage</code> に応じて雲底（1,000 m）へ向けてスケールダウン（<code>scaledCloudTop</code>）される。
+    </p>
+  </section>
+
+  <!-- Section 4: Projection & Baking -->
+  <section>
+    <h2>4. 雲場のベイクと正射影キャップ: FieldProjection & CloudField</h2>
+    <p>
+      惑星全体の雲を均一な解像度で保持すると、低軌道や地上視点で見下ろした際にテクセルが粗大化し、解像度が破綻する。Dive into Tepui では、視点中心の領域を動的にカバーする正射影キャップ（<code>OrthographicCap</code>）を採用し、GPU レンダーターゲットに毎フレーム必要領域をベイクする。
+    </p>
+
+    <div class="diagram-container">
+      <svg class="diag" viewBox="0 0 860 220" width="860" height="220" xmlns="http://www.w3.org/2000/svg">
+        <!-- Planet Arc -->
+        <path d="M 50 200 A 400 400 0 0 1 810 200" fill="none" stroke="#334155" stroke-width="4"/>
+        <text x="430" y="195" fill="#64748b" font-size="13" text-anchor="middle">天体表面 (基準半径 bodyRadius)</text>
+
+        <!-- Cap Arc -->
+        <path d="M 180 140 A 420 420 0 0 1 680 140" fill="none" stroke="#5eead4" stroke-width="3" stroke-dasharray="6,4"/>
+        <text x="430" y="130" fill="#5eead4" font-size="12" font-weight="600" text-anchor="middle">OrthographicCap 領域 (高解像度ベイク)</text>
+
+        <!-- Camera and Subpoint -->
+        <circle cx="430" cy="30" r="6" fill="#fcd34d"/>
+        <text x="430" y="18" fill="#fcd34d" font-size="12" font-weight="700" text-anchor="middle">カメラ視点 (Camera)</text>
+
+        <!-- Line from Camera to Center -->
+        <line x1="430" y1="36" x2="430" y2="140" stroke="#fcd34d" stroke-width="1.5" stroke-dasharray="3,3"/>
+        <circle cx="430" cy="140" r="4" fill="#5eead4"/>
+        <text x="442" y="152" fill="#e2e8f0" font-size="11">直下点 (Subpoint / Cap 中心)</text>
+
+        <!-- Horizon rays -->
+        <line x1="430" y1="36" x2="180" y2="140" stroke="#94a3b8" stroke-width="1"/>
+        <line x1="430" y1="36" x2="680" y2="140" stroke="#94a3b8" stroke-width="1"/>
+        <text x="210" y="90" fill="#94a3b8" font-size="10">視線地平線 + 雲頂余裕角</text>
+      </svg>
+    </div>
+
+    <div class="card">
+      <h3>正射影 UV 導出式の一元化</h3>
+      <p>
+        キャップの幾何学は <code>src/render/cloud/field-projection.ts</code> の <code>orthographicCapUv()</code> 関数で厳密に一元化されている。ベイク側（GPU書き込み）とサンプリング側（レンダラー読み出し）が同一の数式を共有するため、視線がどれほど激しく動いても雲と影の位置が1画素たりともずれることはない。
+      </p>
+      <pre><code>// field-projection.ts: 共有される正射影 UV 変換式
+export function orthographicCapUv(
+  direction: Vec3Node, east: Vec3Node, north: Vec3Node, sinRadius: FloatNode,
+): Vec2Node {
+  const plane = vec2(dot(direction, east), dot(direction, north)).div(sinRadius);
+  return vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
+}</code></pre>
+      <p>
+        テクスチャのチャンネル割り当ては <code>CloudSample</code> の型定義と完全に一致しており、R に被覆率（0..1）、G に 15,000m で正規化した雲頂高度、B に上層の光学的厚み（translucent）が格納される。
+      </p>
+    </div>
+  </section>
+
+  <!-- Section 5: 3 Rendering Subsystems -->
+  <section>
+    <h2>5. 3系統の描画サブシステム</h2>
+    <p>
+      ベイクされた雲場は、役割の全く異なる3つのレンダラーへと配られる。この分業により、超長距離の軌道上景観から大気突入時の光学的表現までが、無駄のない最適な計算負荷で実現されている。
+    </p>
+
+    <div class="renderer-triad">
+      <!-- Opaque Renderer -->
+      <div class="renderer-card opaque">
+        <h4>① 不透明積雲表面 <span class="tag tag-blue">Opaque</span></h4>
+        <div class="subtext">OpaqueCloudSurfaceRenderer</div>
+        <p>
+          厚い積雲の上面を、球殻メッシュ＋シェーダ内レイマーチ（等間隔探索＋二分探索）で不透明なサーフェスとして描く。
+        </p>
+        <ul>
+          <li><strong>幾何 LOD</strong>: 見かけピクセル径に応じた球メッシュ分割段（0〜4段）</li>
+          <li><strong>Blue Noise ディザ</strong>: 被覆率に応じた確率的二値化による滑らかな網目エッジ</li>
+          <li><strong>微小粒度ノイズ</strong>: 6km周期のノイズを画面微分（Nyquist）でエイリアシング抑制</li>
+          <li><strong>PBR 出力</strong>: 勾配差分法による正確な法線（<code>normalNode</code>）と深度（<code>depthNode</code>）</li>
+        </ul>
+      </div>
+
+      <!-- Atmosphere Cloud Layers -->
+      <div class="renderer-card atmosphere">
+        <h4>② 大気統合レイヤー <span class="tag tag-purple">Atmosphere</span></h4>
+        <div class="subtext">AtmosphereCloudLayers & CloudAtmosphereRenderer</div>
+        <p>
+          上層の巻雲（15.5km）と半透明積雲（1.0km）を、大気散乱（レイリー／ミー散乱）の光路積分へ挟み込む。
+        </p>
+        <ul>
+          <li><strong>同心球殻モデル</strong>: 視線と球殻の交点を光学イベントとして検出</li>
+          <li><strong>Beer-Lambert 則</strong>: 鉛直光学的厚み $\tau$ とエアマス $M$ による透過率減衰</li>
+          <li><strong>Front-to-Back 合成</strong>: 大気散乱光・背景透過率と雲透過率の順序保存合成</li>
+        </ul>
+      </div>
+
+      <!-- Cloud Shadow -->
+      <div class="renderer-card shadow">
+        <h4>③ 動的雲影 <span class="tag tag-amber">Shadow</span></h4>
+        <div class="subtext">CloudShadowRenderer</div>
+        <p>
+          太陽方向への光路に沿って雲層をマルチタップサンプリングし、地表・大気・機体への直射光減衰マスクを算出。
+        </p>
+        <ul>
+          <li><strong>光路消散積分</strong>: 6タップ（<code>SHADOW_TAPS</code>）による高速レイサンプリング</li>
+          <li><strong>ステップブラー</strong>: タップ間を2倍のぼかし幅で補間し、影の縞抜けを防止</li>
+          <li><strong>完全同期</strong>: 雲表面と同じ雲頂・被覆率定義を参照し、影と実体が一致</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Deep Dive into Opaque Surface Raymarch -->
+    <div class="card">
+      <h3>不透明表面レイマーチの内部アルゴリズム（marchedSurface）</h3>
+      <p>
+        <code>OpaqueCloudSurfaceRenderer</code> のフラグメントシェーダは、球殻の入射点 <code>entry</code> から地表までの光路長 <code>marchEnd</code> を計算し、固定刻み数（標準6回）で進めながら <code>clearanceAt()</code> を評価する。空間点が雲頂高度の内側に入った瞬間を検知すると、その直前・直後の区間に対して3回の二分探索（<code>refine</code>）を実行し、微小な起伏の境界を高精度に絞り込む。
+      </p>
+      <pre><code>// opaque-cloud-surface-renderer.ts より抜粋: 雲頂法線の勾配差分算出
+const here = topAt(up);
+// 東と北へ粒の半波長ぶん微小角度を振った雲頂との差分
+const slopeEast = topAt(normalize(up.add(east.mul(this.gradientAngle)))).sub(here).div(this.gradientAngle);
+const slopeNorth = topAt(normalize(up.add(north.mul(this.gradientAngle)))).sub(here).div(this.gradientAngle);
+// 接平面の傾きから法線ベクトルを正規化
+return normalize(up.sub(east.mul(slopeEast)).sub(north.mul(slopeNorth)));</code></pre>
+      <p>
+        法線計算において「雲頂の交点中心距離」ではなく「その方向の雲頂高度を引き直した値（<code>here</code>）」を基準点とすることで、レイマーチの食い込み誤差が法線の傾きに下駄として乗る現象を防ぎ、惑星のリム際（地平線境界）で夜側の雲が不自然に光るアーティファクトを完全に排除している。
+      </p>
+    </div>
+  </section>
+
+  <!-- Section 6: CloudShapeEvaluator -->
+  <section>
+    <h2>6. 整合性の担保: CloudShapeEvaluator</h2>
+    <p>
+      3つの異なるレンダラーが別々のシェーダパスで雲を描くアーキテクチャにおいて最も致命的な問題は、しきい値や雲頂高度の計算式が食い違うことによる「影の形と雲の形が合わない」「大気中の半透明雲が不透明雲と重なった際に境界が二重化する」といった不整合である。
+    </p>
+
+    <div class="highlight-box">
+      <strong>単一責任の原則:</strong> <code>src/render/cloud/cloud-shape-evaluator.ts</code> の <code>CloudShapeEvaluator</code> は GPU 資源を一切所有せず、純粋な計算ノード関数（ディザ帯変換・実効雲頂・鉛直柱光学的厚み）のみを提供し、すべてのレンダラーがこのクラスの式を共通利用する。
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>提供関数</th>
+            <th>入力パラメータ</th>
+            <th>出力ノード</th>
+            <th>利用先と効果</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>opaqueFraction(coverage, grain)</code></td>
+            <td>被覆率, 雲粒ノイズ</td>
+            <td>不透明割合 [0..1]</td>
+            <td>不透明表面のディザリング判定、雲影の消散判定。雲の有無の境界が両者で完全一致。</td>
+          </tr>
+          <tr>
+            <td><code>cloudTop(fieldTop, grain)</code></td>
+            <td>正規化雲頂, 雲粒ノイズ</td>
+            <td>実効雲頂 [0..1]</td>
+            <td>不透明表面のレイマーチ交点、雲影の遮蔽高度。雲の頂上と影を落とす頂上が一致。</td>
+          </tr>
+          <tr>
+            <td><code>columnOpticalDepth(coverage)</code></td>
+            <td>被覆率</td>
+            <td>鉛直光学的厚み $\tau$</td>
+            <td>大気統合レイヤーの積雲透過率。不透明雲の縁と大気中の散乱光が自然に繋がる。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Section 7: Reference Summary -->
+  <section>
+    <h2>7. クラス・主要関数・データ型リファレンス</h2>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>クラス / モジュール</th>
+            <th>配置パス</th>
+            <th>主要シグネチャ</th>
+            <th>責務の要約</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong><code>WeatherModel</code></strong></td>
+            <td><code>src/render/cloud/weather-model.ts</code></td>
+            <td><code>weatherAt(dir: Vec3Node): WeatherSample</code></td>
+            <td>全球の大循環・ロスビー波・低気圧・水蒸気輸送を決定論的TSLで解く。</td>
+          </tr>
+          <tr>
+            <td><strong><code>condense</code></strong></td>
+            <td><code>src/render/cloud/condensation.ts</code></td>
+            <td><code>condense(w: WeatherSample): CloudSample</code></td>
+            <td>気象量からガンマ分布被覆率・多峰雲頂・薄い雲の光学的厚みへ凝結。</td>
+          </tr>
+          <tr>
+            <td><strong><code>OrthographicCap</code></strong></td>
+            <td><code>src/render/cloud/field-projection.ts</code></td>
+            <td><code>aimAt(subpoint, r)</code> / <code>uvAt(dir)</code></td>
+            <td>カメラ直下点周辺に解像度を集中させる正射影キャップの幾何を統括。</td>
+          </tr>
+          <tr>
+            <td><strong><code>CloudField</code></strong></td>
+            <td><code>src/render/cloud/cloud-field.ts</code></td>
+            <td><code>render(renderer)</code> / <code>at(dir)</code></td>
+            <td>凝結された雲場を 512×512 RGBA テクスチャに焼成し保持する。</td>
+          </tr>
+          <tr>
+            <td><strong><code>CloudPresentation</code></strong></td>
+            <td><code>src/render/cloud/cloud-presentation.ts</code></td>
+            <td><code>aim(subpoint, rho)</code> / <code>bake()</code></td>
+            <td>雲システムの最上位調停役。出どころ（生成/実写）と各レンダラーの寿命を管理。</td>
+          </tr>
+          <tr>
+            <td><strong><code>OpaqueCloudSurfaceRenderer</code></strong></td>
+            <td><code>src/render/opaque-cloud-surface-renderer.ts</code></td>
+            <td><code>marchedSurface()</code> / <code>syncLod()</code></td>
+            <td>球殻メッシュを用いたレイマーチングにより、不透明積雲の深度と法線を描画。</td>
+          </tr>
+          <tr>
+            <td><strong><code>CloudAtmosphereRenderer</code></strong></td>
+            <td><code>src/render/pipeline/cloud-atmosphere-renderer.ts</code></td>
+            <td><code>sampleShell(species, ray, pt)</code></td>
+            <td>巻雲・積雲の球殻と大気光路との交差、Beer-Lambert透過と局所放射輝度を計算。</td>
+          </tr>
+          <tr>
+            <td><strong><code>AtmosphereCloudLayers</code></strong></td>
+            <td><code>src/render/pipeline/atmosphere-cloud-layers.ts</code></td>
+            <td><code>compose(trans, rad, events)</code></td>
+            <td>大気散乱積分に雲イベント群を前後関係正しくアルファ合成（Beer-Lambert則）。</td>
+          </tr>
+          <tr>
+            <td><strong><code>CloudShadowRenderer</code></strong></td>
+            <td><code>src/render/pipeline/shadow/cloud-shadow-renderer.ts</code></td>
+            <td><code>transmittanceAt(point: Vec3Node)</code></td>
+            <td>太陽光路マルチタップにより、地表・大気・機体へ動的な雲影を投影。</td>
+          </tr>
+          <tr>
+            <td><strong><code>CloudShapeEvaluator</code></strong></td>
+            <td><code>src/render/cloud/cloud-shape-evaluator.ts</code></td>
+            <td><code>opaqueFraction</code> / <code>cloudTop</code></td>
+            <td>3系統のレンダラー間で幾何形状・ディザ・光学定数を一元管理し不整合を防止。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <div>Dive into Tepui Architecture Lecture Series #7</div>
+    <div>Document Generated: 2026-09-20</div>
+  </footer>
+</main>
+</body>
+</html>
