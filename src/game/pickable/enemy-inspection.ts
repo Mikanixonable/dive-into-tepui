@@ -43,7 +43,7 @@ export interface EnemyInspectionSource extends OrbitingObject {
   readonly maxHp: number;
   readonly pickable: boolean;
   readonly proteinInspection: EnemyProteinInspection | null;
-  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem;
+  markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem;
   hitBodyByRay(ray: Ray, pos: Vec3): boolean;
   mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility;
 }
@@ -68,7 +68,7 @@ export class EnemyInspection implements InspectedObject {
   public get protein(): EnemyProteinInspection | null { return this.source.proteinInspection; }
 
   // 表示位置 pos・速度 vel に置く敵のマーカー項目。
-  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, _isActive: boolean): GroupedMarkerItem {
+  public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode, _isActive: boolean): GroupedMarkerItem {
     return this.source.markerItem(viewerPos, pos, vel, view);
   }
 

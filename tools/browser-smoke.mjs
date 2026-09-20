@@ -457,7 +457,7 @@ async function constructMaterialFromBaseDock() {
   await devTools.evaluate(`(() => {
     const panel = document.getElementById('ship-construction-panel');
     [...panel.querySelectorAll('.construction-actions .w-btn')]
-      .find((item) => item.textContent?.includes('完成して発進'))?.click();
+      .find((item) => item.textContent?.trim() === '建造終了')?.click();
   })()`);
   await waitFor(
     `document.getElementById('ship-construction-panel')?.classList.contains('hidden') === true`,
