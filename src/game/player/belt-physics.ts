@@ -138,7 +138,7 @@ export class BeltPhysics {
     this._twists[n - 1] = this._twists[n - 2]!;
   }
 
-  // ベルトのたわみを dt 秒ぶん解く。軌道上は自由落下なので重力は効かず、機体の推力加速度と
+  // ベルトのたわみを dt 秒ぶん時間発展させる。軌道上は自由落下のため重力は作用せず、機体の推力加速度と
   // 回転が生む慣性力がベルトを機体座標系の中で揺らす。
   public update(dt: number, att: Attitude, thrustAccelVec: Vec3, beltFeed: number): void {
     // 前フレームとの角速度差から角加速度を推定する

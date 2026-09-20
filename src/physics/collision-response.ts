@@ -32,8 +32,7 @@ export interface CollisionResponse {
   // 有限の値を持つ。
   readonly specificEnergyLossA: number;
   readonly specificEnergyLossB: number;
-  // 種別固有メッシュが返した実接触点。通常の球接触では null とし、呼び出し側が
-  // 中心間法線から従来どおり近似する。
+  // 種別固有メッシュによる接触計算で得られた実接触点。通常の球接触では null（中心間法線から幾何学的に定まる）。
   readonly contactPoint: Vec3 | null;
   // compound 接触の module id。球／従来形状は null のまま通す。
   readonly moduleIdA: string | null;

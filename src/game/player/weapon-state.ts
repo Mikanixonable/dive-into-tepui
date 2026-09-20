@@ -95,7 +95,7 @@ export class WeaponState {
     this._cooldown = seconds;
   }
 
-  // トリガーを引いている状態にし、撃てないまま引いた記録を解く。
+  // トリガーを引いた状態へ移行し、空撃ち記録フラグをリセットする。
   public pullTrigger(): void {
     this._wasFiring = true;
     this._wasEmptyClick = false;

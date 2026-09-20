@@ -6,7 +6,7 @@ function keyBindingOf(binding: { readonly code: string; readonly altCodes?: read
   return { ...binding, label: binding.code };
 }
 
-// ゲーム層の契約へ raw Input を接続する唯一のadapter。Input自身はゲーム層を知らない。
+// ゲーム層の入力インターフェースへ生入力を適合・中継する adapter。
 export function rawGameInputAdapter(input: Input): RawGameInputAdapter {
   return {
     isDown: binding => input.down(keyBindingOf(binding)),

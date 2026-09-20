@@ -1,7 +1,6 @@
 // 軌道ガイドタブ「基本」群のうち、CR3BP の族を持たない地球専用の参照軌道(太陽同期準回帰・
 // ドーンダスク・モルニヤ・ツンドラ)の軌道要素を組む。いずれも中心天体の重心を原点とした
-// OrbitalElements を返し、実際の天体位置への配置は呼び出し側(orbit-guide.ts)が行う。
-// 中心天体の重力・扁平・自転周期は呼び出し側から受け取る。
+// OrbitalElements を生成する。中心天体の重力パラメータや扁平度は引数の天体定義から取得する。
 import {
   meanMotionFromSemiMajor, orbitalElementsFromClassical, OrbitalElements, semiMajorFromMeanMotion,
   semiMajorFromPeriod,
@@ -22,7 +21,7 @@ function j2MeanMotionFactor(j2: number, refRadius: number, a: number, cosInc: nu
 }
 
 // 回帰日数 repeatDays の間に revsPerRepeat 回(いずれも正の整数)中心天体を周回し、かつ昇交点が
-// 太陽と同じ角速度で歳差する円軌道の高度・傾斜角を解く。raanOffsetDeg は昇交点の初期位置
+// 太陽と同じ角速度で歳差する円軌道の高度・傾斜角を算出する。raanOffsetDeg は昇交点の初期位置
 // (太陽方向を基準にした角度)。両条件を同時に満たす実数の傾斜角が存在しなければ null。
 // 昇交点の歳差は扁平が生むので、2次重力場を持たない天体では解が存在しない。
 function sunSynchronousElements(
@@ -54,7 +53,7 @@ function sunSynchronousElements(
 }
 
 // sunSynchronousElements が null を返す2つの境界(cosInc=-1・a=天体半径)を、それぞれ平均運動 n
-// について解いた閉形式から求めた「1日あたり周回数」の範囲。repeatDays・revsPerRepeat 個々の値では
+// について解析的に導出した閉形式から求めた「1日あたり周回数」の範囲。repeatDays・revsPerRepeat 個々の値では
 // なく、その比だけで決まる。HUD がスライダーの有効域を示すのに使う。j2 は equatorRadius を基準
 // 半径とする2次帯球調和係数。
 export function sunSyncRevsPerDayRange(
@@ -83,7 +82,7 @@ export function sunSyncRepeatGroundTrackElements(
 export type LocalTime = 'dawn' | 'dusk';
 
 // ドーンダスク軌道。昇交点の地方太陽時を朝(6時)・夕(18時)に置く太陽同期軌道。sunRaanDeg は
-// その瞬間の太陽方向の昇交点赤経(呼び出し側が現在時刻の天体暦から求めて渡す)。
+// その瞬間の太陽方向の昇交点赤経 [deg]。
 export function dawnDuskElements(
   repeatDays: number, revsPerRepeat: number, localTime: LocalTime, sunRaanDeg: number,
   planet: CelestialBody, planetPivot: number,
