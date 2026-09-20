@@ -10,7 +10,7 @@ export interface ShipConstructionDraftState {
   readonly firstConnectionId: string | null;
 }
 
-// 建造予約を保持し、接舷状態は assembly の docking edge から導出する。
+// 建造予約を保持し、接続状態は assembly の detachable edge から導出する。
 export class ShipDockState {
   private readonly building = new Map<string, ShipConstructionDraftState>();
 
@@ -20,14 +20,14 @@ export class ShipDockState {
 
   // 接舷 edge を優先し、指定接舷部の現在状態を返す。
   public status(assembly: ShipAssembly, moduleId: string): ShipDockStatus {
-    if (assembly.isDockingPortOccupied(moduleId)) return 'connected';
+    if (assembly.isPortConnected(moduleId)) return 'connected';
     return this.building.has(moduleId) ? 'building' : 'empty';
   }
 
   // 健全で空いている接舷部に空の建造予約を作る。
   public beginBuilding(assembly: ShipAssembly, moduleId: string): void {
     const module = assembly.module(moduleId);
-    if (module === null || (module.kind !== 'dock' && module.kind !== 'docking_port')) {
+    if (module?.kind !== 'dock') {
       throw new Error(`not a docking module: ${moduleId}`);
     }
     if (module.hp <= 0) throw new Error(`docking module is destroyed: ${moduleId}`);
@@ -49,6 +49,51 @@ export class ShipDockState {
   public updateConstructionDraft(draft: ShipConstructionDraftState): void {
     if (!this.building.has(draft.dockId)) throw new Error(`docking module is not building: ${draft.dockId}`);
     this.building.set(draft.dockId, this.copy(draft));
+  }
+
+  // assembly の分割後に、その側へ完全に属する建造予約だけを引き継ぐ。
+  public copyForAssembly(assembly: ShipAssembly): ShipDockState {
+    return new ShipDockState(this.serialize().filter(draft => (
+      assembly.module(draft.dockId) !== null
+      && draft.addedIds.every(id => assembly.module(id) !== null)
+      && (draft.firstConnectionId === null
+        || assembly.graph.some(connection => connection.id === draft.firstConnectionId))
+    )));
+  }
+
+  public restrictToAssembly(assembly: ShipAssembly): void {
+    const kept = this.copyForAssembly(assembly);
+    this.building.clear();
+    for (const draft of kept.serialize()) this.building.set(draft.dockId, this.copy(draft));
+  }
+
+  // docking merge で remap された module/connection ID を使い、相手側の予約を移管する。
+  public mergeFrom(
+    other: ShipDockState, moduleIds: ReadonlyMap<string, string>, connectionIds: ReadonlyMap<string, string>,
+  ): void {
+    for (const draft of other.serialize()) {
+      const dockId = moduleIds.get(draft.dockId);
+      const axialTailId = moduleIds.get(draft.axialTailId);
+      const firstConnectionId = draft.firstConnectionId === null
+        ? null : connectionIds.get(draft.firstConnectionId);
+      if (dockId === undefined || axialTailId === undefined
+        || (draft.firstConnectionId !== null && firstConnectionId === undefined)) {
+        throw new Error(`cannot remap construction draft: ${draft.dockId}`);
+      }
+      const addedIds = draft.addedIds
+        .map(id => moduleIds.get(id))
+        .filter((id): id is string => id !== undefined);
+      if (addedIds.length !== draft.addedIds.length) {
+        throw new Error(`cannot remap construction modules: ${draft.dockId}`);
+      }
+      const remappedFirstConnectionId = firstConnectionId ?? null;
+      this.building.set(dockId, {
+        dockId,
+        addedIds,
+        axialTailId,
+        firstConnectionId: remappedFirstConnectionId,
+      });
+    }
   }
 
   // 全建造予約を保存用の独立した値へ複製する。
