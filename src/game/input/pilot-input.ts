@@ -96,9 +96,12 @@ export class PilotInput {
   }
 
   // 押下中のキーを軸の押下として受け取る口。
-  public get actionPort(): GameInputPort {
+  public get actionPort(): GameInputPort { return this.actionPortWith(() => true); }
+
+  public actionPortWith(isEnabled: () => boolean): GameInputPort {
     return {
       feature: 'controllable-action',
+      isEnabled,
       actions: PILOT_ACTIONS,
       handleAction: (action) => this.holdAction(action.id),
     };

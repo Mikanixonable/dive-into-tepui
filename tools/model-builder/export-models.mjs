@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDebrisChunk, buildDebrisPanel, buildDebrisRod } from './debris-fragments.mjs';
 import { buildBarrelMesh, buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
-import { buildEnemyShip, buildStage0EnemyA, buildStage0EnemyB, buildStage0EnemyC } from './metal-enemies.mjs';
+import { buildEnemyShip, buildEnemyVariantA, buildEnemyVariantB, buildEnemyVariantC } from './metal-enemies.mjs';
 import { buildAmmoPickup, buildRcsFuelPickup } from './pickups.mjs';
 import { buildBulletMesh, buildPlasmaBullet } from './projectiles.mjs';
 import { buildShipModules } from './ship-modules.mjs';
@@ -64,9 +64,9 @@ function mergeStaticChildren(root) {
 // ------------------------------------------------------------- 書き出し
 const models = {
   enemy:        buildEnemyShip(),
-  stage0EnemyA: buildStage0EnemyA(),
-  stage0EnemyB: buildStage0EnemyB(),
-  stage0EnemyC: buildStage0EnemyC(),
+  enemyVariantA: buildEnemyVariantA(),
+  enemyVariantB: buildEnemyVariantB(),
+  enemyVariantC: buildEnemyVariantC(),
   magazine:     buildMagazineMesh(),
   ammo:         buildAmmoPickup(),
   bullet:       buildBulletMesh(),

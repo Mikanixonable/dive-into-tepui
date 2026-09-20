@@ -9,3 +9,6 @@ export const EARTH_TERRAIN_CHANNELS = 4;
 export const EARTH_TERRAIN_SCALAR_UINT8 = 2;
 export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS;
 export const EARTH_TERRAIN_LAYOUT = 'normal-xyz-rgb8-roughness-a8';
+export const EARTH_TERRAIN_OCTAHEDRAL_LAYOUT = 'octahedral-rg8-roughness-r8-material-class-a8';
+
+export type EarthSurfaceTerrainFormat = typeof EARTH_TERRAIN_LAYOUT | typeof EARTH_TERRAIN_OCTAHEDRAL_LAYOUT;
