@@ -1,6 +1,5 @@
-// 雲場の読み値を各表現の形状・光学量へ変換する共有評価器。coverage、雲頂、粒、光学的厚みの式を
-// ここへ集約し、不透明表面・大気・雲影が別々の閾値や補間を持たないようにする。GPU ノードを
-// 受け取り、各 renderer のシェーダグラフへ展開するが、GPU 資源の所有は行わない。
+// 雲テクスチャ値を各表現の形状・光学量へ変換する共有評価器。被覆率・雲頂高度・粒子感・
+// 光学的厚みの計算式を集約し、各レンダラーのシェーダーグラフへ展開する。
 import { clamp, min, smoothstep } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import { columnOpticalDepthFromCoverageNode } from './cloud-optics-node';

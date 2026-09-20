@@ -66,7 +66,7 @@ const MAX_MOTION_MODES = PROTEIN_MOTION_LOD_MODE_COUNTS.near;
 // 粗い LOD の係数の更新周波数 [Hz]。
 const MEDIUM_UPDATE_HZ = 30;
 const FAR_UPDATE_HZ = 15;
-/** LOD 切替時、旧 LOD の変位から新 LOD の変位へ表示上ブレンドする時間 [s]。 */
+/** LOD 切替時、遷移元 LOD の変位から遷移先 LOD の変位へブレンド表示する時間 [s]。 */
 export const PROTEIN_MOTION_LOD_FADE_DURATION_SEC = 0.25;
 
 // value が undefined・非有限・負なら fallback を返す。

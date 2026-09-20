@@ -1,10 +1,10 @@
-// 雲を、大気の視線積分へ挟む厚み 0 の球殻として解く。どの種類の雲がどの高さに立つか、場のどの
+// 雲を、大気の視線積分へ挟み込む厚み 0 の球殻としてモデル化する。どの種類の雲がどの高さに立つか、場のどの
 // 成分から鉛直柱光学深さを引くか、掠める視線の光路をどこで頭打ちにするかを持ち、殻と交わる
 // 1つの入口/出口イベントが、雲自身の透過率と局所放射輝度を返す。
 //
-// **輝度は多重散乱の極限で解く。** 場の階調は覆われている割合なので、殻は「その割合ぶんが
-// 拡散反射する層」として振舞う。届く光は呼び出し側が渡すので、入射の減衰・影・地平線は
-// 大気と同じ1本の式が解く。イベント位置までの背景大気透過と、イベント間の雲透過の合成は
+// **輝度は多重散乱の極限近似で算出する。** 場の階調は被覆率を表すため、殻は「その被覆割合分が
+// 拡散反射する層」として振る舞う。到達光は引数で渡されるため、入射光の減衰・影・地平線は
+// 大気と同一の共通関数で評価される。イベント位置までの背景大気透過と、イベント間の雲透過の合成は
 // AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
 import { dot, greaterThan, max, min, uniform, vec4 } from 'three/tsl';
@@ -59,8 +59,8 @@ const CLOUD_SHELL_DEFINITIONS = [
 
 export type CloudSpecies = (typeof CLOUD_SHELL_DEFINITIONS)[number]['species'];
 
-// 大気の中へ殻として立てる雲の種類。外側の殻から順に並べる — 同心なので、視線が交わる順序は
-// 外へ入り、内へ入り、内から出て、外から出る、に決まる。
+// 大気内に多層球殻として配置する雲の種類。外側の層から順に並べる。同心球構造のため、
+// 視線との交差順序は「外殻進入 → 内殻進入 → 内殻退出 → 外殻退出」となる。
 export const CLOUD_SHELL_SPECIES: readonly CloudSpecies[] = CLOUD_SHELL_DEFINITIONS.map(
   ({ species }) => species,
 );
@@ -93,11 +93,11 @@ export interface CloudShellSample {
   readonly radiance: Vec3Node;
 }
 
-// 場の意味契約はCloudSampleが持つ。巻雲はtranslucentをそのまま、積雲はcoverageを柱の厚みへ直す。
+// 雲場データの解釈仕様は CloudSample が定義する。巻雲は translucent を直接適用し、積雲は coverage を鉛直柱光学厚みへ換算する。
 //
-// **不透明な積雲として立てたぶんを引かない。** 不透明な殻は G バッファへ深度を書くので、その
-// 手前で終わる視線では殻の交点が区間の外へ落ちて寄与が消える — 引き算は同じ遮蔽を二重に効かせ、
-// 塔の周りに殻の抜けを作る。むしろ塔の側に残るディザの濃淡差を、この殻が跨いで埋める。
+// 不透明な積雲として描画された成分は減算しない。不透明な雲殻が G バッファに深度を書き込むため、その
+// 手前で終端するレイでは交点が積分区間外となり自然に寄与が除外される。減算を行うと同一遮蔽が二重に積算され、
+// 雲塔周囲に不自然なアーティファクトを生じる。
 function columnOpticalDepthOf(species: CloudSpecies, field: CloudSample): FloatNode {
   return shellDefinitionOf(species).columnOpticalDepth(field);
 }
@@ -126,7 +126,7 @@ export class CloudAtmosphereRenderer {
     this.active = uniform(0);
   }
 
-  // いま解く雲。null なら殻は立たない。
+  // 評価対象の雲定義。null の場合は雲殻を生成しない。
   public set(clouds: AtmosphereClouds | null): void {
     this.active.value = clouds === null ? 0 : 1;
     if (clouds === null) return;

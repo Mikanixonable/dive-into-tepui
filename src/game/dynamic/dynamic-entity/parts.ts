@@ -58,8 +58,8 @@ export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTan
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
 
-// 旧 Ship が必要とする最小の部品集合。敵は PartInventory、移行中の自機は
-// ShipAssembly 側の adapter を渡せるよう、Ship から具体コンテナの生成を切り離す。
+// 船体が要求する最小限の部品コレクション定義。PartInventory や ShipAssembly のアダプタなど、
+// 具体的な部品コンテナの実装から Ship を疎結合に保つ。
 export interface ShipPartCollection {
   readonly parts: readonly AnyPart[];
   replace(parts: readonly Part[]): void;

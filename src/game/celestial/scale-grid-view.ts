@@ -11,7 +11,7 @@ import type { CelestialGridVisibility } from '../../render/celestial-grid';
 import type { FocusCameraSource } from '../viewer/focus-camera-selection';
 import type { ViewMode } from '../view/view-mode';
 
-// ECI の方向を描画フレームへ移す。方向は平行移動を受けないので成分をそのまま写す。
+// ECI の方向を描画フレームへ変換する。方向ベクトルは平行移動の影響を受けないため成分をそのままコピーする。
 function toThreeDirection(dir: Vec3): THREE.Vector3 {
   return new THREE.Vector3(dir.x, dir.y, dir.z);
 }

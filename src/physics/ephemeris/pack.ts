@@ -62,7 +62,7 @@ export class PackEphemeris {
 }
 
 // 評価器の1系列ぶんを PointEphemeris として見せる窓。id を構築時に固定し、ICRF 軸を
-// ゲーム ECI 軸へ写す。原点は太陽系重心のまま。
+// ゲーム ECI 軸へ変換する。原点は太陽系重心のまま。
 class ChebyshevPointEphemeris implements PointEphemeris {
   constructor(
     private readonly evaluator: ChebyshevEphemeris,

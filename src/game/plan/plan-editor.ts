@@ -88,7 +88,7 @@ export class PlanEditor {
   private pendingDvLocal: Vec3 | null = null;
 
   // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
-  // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
+  // path は描画対象の計画折れ線 — ノードの配置・移動・スクリーン座標はそのサンプル列から算出する。
   public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly uiSounds: UiSoundQueue,
@@ -186,7 +186,7 @@ export class PlanEditor {
     this.hud.hint('ノードを削除');
   }
 
-  // 選択中のノードを削除する。未選択なら計画全体を破棄し、進行中の自動ワープも解く。
+  // 選択中のノードを削除する。未選択なら計画全体を破棄し、進行中の自動ワープも解除する。
   private deleteSelectedNodeOrPlan(): void {
     if (this.selectedNodeIdx !== null) {
       this.deleteNode(this.selectedNodeIdx);
