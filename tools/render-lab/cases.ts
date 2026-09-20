@@ -123,7 +123,9 @@ export interface LabCase {
   // 影パスへ渡す積雲の殻。
   readonly cumulus?: ShadowCumulus;
   // 動的な雲場を表示時刻へ焼く。gpu を渡すと、焼いた GPU 時間をそこへ計上する。
-  readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
+  readonly bakeClouds?: (
+    renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number,
+  ) => void;
   // 動的な雲場を解放する。
   readonly disposeClouds?: () => void;
   // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
@@ -631,7 +633,9 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly cumulus: ShadowCumulus;
   readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
-  readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
+  readonly bakeClouds: (
+    renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number,
+  ) => void;
   readonly disposeClouds: () => void;
 } {
   const group = new THREE.Group();
@@ -692,7 +696,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
         cumulus.setCloudsVisible(false);
       }
     },
-    bakeClouds: (renderer, displayTime, gpu) => cumulus.bake(renderer, displayTime, gpu),
+    bakeClouds: (renderer, displayTime, gpu, nowMs) => cumulus.bake(renderer, displayTime, gpu, nowMs),
     disposeClouds: () => cumulus.dispose(),
   };
 }

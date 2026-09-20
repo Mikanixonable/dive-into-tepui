@@ -50,6 +50,7 @@ export class CloudLabCanvas {
   private capLatitude = DEFAULT_CAP_LATITUDE;
   private capLongitude = DEFAULT_CAP_LONGITUDE;
   private capRadius = DEFAULT_CAP_RADIUS;
+  private renderClockMs = 0;
 
   // レンダラを起こし、実写の雲と気候の画像を読み終えてから器を返す — 撮影は画像の到着を待たずに
   // 走るので、ここで待たないと最初の何枚かが空のテクスチャで焼かれる。
@@ -140,7 +141,8 @@ export class CloudLabCanvas {
   // いまの時刻の場を両面で焼き、選んだ量をキャンバスへ出す。
   public render(): void {
     DeferredTexture.publishOne(this.renderer);
-    for (const pane of this.panes) pane.bake(this.renderer, this.seconds);
+    for (const pane of this.panes) pane.bake(this.renderer, this.seconds, this.renderClockMs);
+    this.renderClockMs += 1000 / 60;
     this.quad.render(this.renderer);
   }
 
