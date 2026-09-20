@@ -58,8 +58,8 @@ export function register(): void {
     assert.equal(ship.totalFuel, 1_000);
     assert.equal(ship.totalMaxFuel, 1_000);
     assert.equal(ship.totalFuelConsumptionRate, 1);
-    assert.equal(ship.totalPowerGeneration, 100);
-    assert.equal(ship.totalCoolingRate, 84);
+    assert.equal(ship.totalPowerGeneration, 1_650);
+    assert.equal(ship.totalCoolingRate, 9.6);
     assert.equal(ship.weaponDamage, 1);
     assert.equal(ship.totalFireRate, 1 / 0.06);
     assert.equal(ship.averageMuzzleVelocity, 1_000);
@@ -74,6 +74,26 @@ export function register(): void {
     const defaultPower = new PowerSystem();
     defaultPower.update(1, 1, v3(0, 1, 0), attitude);
     assert.ok(defaultPower.chargeJ > start);
+  });
+
+  test('player systems: deploy state は solar/radiator の module ID を保持する', () => {
+    const assembly = createDefaultCombatPreset();
+    const power = new PowerSystem(undefined, undefined, undefined, assembly);
+    power.syncAssembly();
+    power.setDeployed('solar-right', false);
+    power.update(3, 0, v3(0, 1, 0), attitude);
+    assert.equal(power.deployOf('solar-left'), 1);
+    assert.equal(power.deployOf('solar-right'), 0);
+    assert.deepEqual(power.serialize().panels?.map(panel => panel.id), ['solar-left', 'solar-right']);
+
+    const radiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, assembly);
+    radiator.syncAssembly();
+    radiator.setDeployed('radiator-left', true);
+    assert.equal(radiator.deployOf('radiator-left'), 0);
+    radiator.update(3, {});
+    assert.equal(radiator.deployOf('radiator-left'), 1);
+    assert.equal(radiator.radiatingArea(0), 4.8);
+    assert.deepEqual(radiator.serialize().panels?.map(panel => panel.id), ['radiator-left', 'radiator-right']);
   });
 
   test('modular ship motion: booster module の質量で空力・輻射圧の質量あたり値が下がる', () => {
@@ -101,7 +121,7 @@ export function register(): void {
 
   test('player save: 電力・放熱板の不正値を安全な状態へ正規化する', () => {
     const powerOf = (charge: number): PowerSystem => PowerSystem.deserialize({
-      charge, up: { deployTarget: 1, deploy: 1 }, down: { deployTarget: 1, deploy: 1 },
+      charge, up: { deployTarget: 1, deploy: 1 }, down: { deployTarget: 1, deploy: 1 }, panels: null,
     });
     assert.equal(powerOf(POWER_CAPACITY * 2).chargeJ, POWER_CAPACITY);
 
@@ -115,7 +135,7 @@ export function register(): void {
     assert.equal(radiator.deployOf('down'), 1);
     // 太陽電池の初期値は展開。
     const power = PowerSystem.deserialize({
-      charge: 0, up: { deployTarget: 7 as 0 | 1, deploy: Number.NaN }, down: { deployTarget: 1, deploy: 1 },
+      charge: 0, up: { deployTarget: 7 as 0 | 1, deploy: Number.NaN }, down: { deployTarget: 1, deploy: 1 }, panels: null,
     });
     assert.equal(power.serialize().up.deploy, 1);
   });
