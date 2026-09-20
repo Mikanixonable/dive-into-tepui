@@ -202,28 +202,23 @@ export function register(): void {
     gpu.dispose();
   });
 
-  test('earth surface: 詳細材質は表示中の8K全球テクスチャを再利用して所有しない', () => {
+  test('earth surface: 詳細材質はmanifestのbase画像を自身で読み込む', () => {
     const gpu = new EarthSurfaceGpuThree({
       texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
       colorSrgbLinear: true, terrainRgba8Linear: true,
     });
-    const sharedBaseColor = new THREE.Texture();
-    let sharedDisposed = false;
-    sharedBaseColor.addEventListener('dispose', () => { sharedDisposed = true; });
     const binding = createEarthSurfaceMaterialBinding(
       gpu.textures!, SOURCE.baseColorUrl, SOURCE.baseTerrainUrl,
       async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
-      sharedBaseColor,
     );
 
-    assert.equal(binding.deferredTextures.length, 0);
-    assert.equal(binding.ready(), true);
+    assert.equal(binding.deferredTextures.length, 1);
+    assert.equal(binding.deferredTextures[0]?.texture.colorSpace, THREE.SRGBColorSpace);
+    assert.equal(binding.ready(), false);
     binding.prepare();
     binding.dispose();
     binding.material.dispose();
     for (const texture of binding.textures) texture.dispose();
-    assert.equal(sharedDisposed, false);
-    sharedBaseColor.dispose();
     gpu.dispose();
   });
 
