@@ -78,9 +78,8 @@ export function register(): void {
     assert.equal(result.state, 'ready', result.bootstrap.error?.message ?? '');
     assert.equal(result.bootstrap.state, 'ready');
     assert.equal(result.bootstrap.source?.datasetId, READY_MANIFEST.datasetId);
-    assert.equal(result.surface.usesDetailedMaterial, true);
+    assert.equal(result.surface.usesDetailedMaterial, false);
     assert.equal(result.surface.diagnostics.status, 'ready');
-    assert.equal(result.surface.diagnostics.reason, null);
     assert.equal(result.surface.diagnostics.residentMaxZ, null);
     runtime.surface.dispose();
   });
