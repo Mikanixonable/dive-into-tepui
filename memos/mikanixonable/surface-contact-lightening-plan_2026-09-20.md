@@ -136,12 +136,33 @@ surface 用の球代理を primitive 単位で走査し、球同士の解析的�
 
 ## 実施後の記録
 
-実装後に、ここへ以下を追記する。
+### 実装・レビュー結果
 
-- 専用 worktree / ブランチ名と commit 列
-- 項目1〜4の実装結果と、予定から変えた判断
-- コードレビューで見つけた指摘と修正 commit
-- バグ調査の再現条件、原因、修正、再検証結果
-- `npm run typecheck` / `npm run test:physics` / `npm run test:game` / `npm run check:boundaries` / `git diff --check` の結果
-- `workspace3` 統合 commit と worktree / 一時ブランチ削除結果
-- 項目5〜6を残した理由と、次に測るべき負荷計測点
+- 専用 worktree は `/Users/pandeaconica/lab/dive-into-tepui-surface-opt`、ブランチは `codex/surface-contact-optimization-20260920`。起点は計画 commit `3680655cf`。
+- 項目1: `compound-sphere-contact.ts` に、各円柱 primitive を COM まわりの回転不変 envelope 球へ広げる保守的 prepass を追加した。線形経路は二次解を先に使い、曲線経路を落とさない場合は既存 Hermite 掃引へ戻す。
+- 項目2: sphere proxy は候補検出だけに使い、候補がある場合も exact capped-cylinder sweep / endpoint overlap を実行する。proxy の TOI や moduleId は最終結果へ使わない。
+- 項目3: `DynamicMotion` が exact shape と surface proxy を同じ世代で交換・凍結し、proxy の外包が exact shape の全 primitive を含むことを検証する。ship の COM 基準 primitive から proxy を導出し、付属物 proxy は null のままとした。
+- 項目4: `compound-cylinder-contact.ts` の sorted primitive と shape metrics を shape identity の `WeakMap` へキャッシュした。入力検証・決定的 sort・不正 shape の null 扱いは維持した。
+- 物理結果を球近似へ置き換える判断は採用しなかった。円柱を複数球へ置換すると false positive だけでなく、単純な球集合では姿勢・円柱表面の接触点と moduleId を失うため、今回の段階では安全な候補絞り込みに限定した。
+
+### コードレビュー・バグ調査
+
+- レビュー指摘: surface proxy が exact shape を内包しないと prepass が false negative になる。`DynamicMotion` の交換時に `proxyBound >= exactBound` を検証して、更新を原子的に失敗させるよう修正した。
+- この検証を追加した直後、game test の proxy 半径 `2` が exact cylinder の外包半径を下回っていることを検出した。これは実装バグではなくテスト治具の契約違反だったため、半径を `3` へ修正し、過小 proxy を拒否するテストを追加した。
+- 回帰確認では、開始時のめり込み、区間終端 overlap、動く天体、回転途中の接触、最初の TOI、moduleId、proxy だけの false positive、姿勢なしの既存呼び出しを確認した。いずれも異常なし。
+- ESLint はエラー 0 件。`dynamic-motion.ts` の既存ファイル長警告（781行、上限500行）が残るが、今回の機能とは別の既存構造であり、この段階では分割しなかった。
+
+### 実装 commit と検証
+
+- 実装 commit: `7b10943ee perf(physics): add conservative surface contact prepass`
+- `npm run typecheck`: 成功
+- `npm run test:physics`: `507/507 passed`
+- `npm run test:game`: `297/297 passed`
+- `npm run check:boundaries`: 違反 0 件
+- `git diff --check`: 成功
+- 実行時ブラウザ計測は今回の依頼範囲では行っていない。したがって、x4096 / x65536 の wall-clock 改善率は未計測であり、次段では exact narrow phase 呼び出し回数と `update` の planet contact 時間を同じシナリオで比較する。
+
+### 統合・残課題
+
+- この文書の更新 commit は、実装 commit 後の専用ブランチへ追加する。続いて `workspace3` へ統合し、統合を確認してから今回作成した worktree と一時ブランチだけを削除する。
+- 項目5（primitive 特徴量ごとの sweep 分割）と項目6（高倍率時の衝突 LOD / substep 上限再評価）は未実装。項目1〜4後の実測で exact sweep がまだ支配的かを確認してから着手する。

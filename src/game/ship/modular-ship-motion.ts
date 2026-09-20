@@ -225,6 +225,7 @@ export class ModularShipMotion extends DynamicMotion {
       centerOfMass: shape.centerOffset,
       inertia: shape.mass.inertia,
       compoundShape: shape.shape,
+      surfaceShape: shape.surfaceShape,
     });
     this.belt = systems.beltSave
       ? BeltController.deserialize(systems.beltSave)
@@ -302,6 +303,7 @@ export class ModularShipMotion extends DynamicMotion {
       centerOfMass: next.centerOffset,
       inertia: next.mass.inertia,
       compoundShape: next.shape,
+      surfaceShape: next.surfaceShape,
     });
     this.physicsShapeValue = next;
     this.synchronizeBeltMount(next);

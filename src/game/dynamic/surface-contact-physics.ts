@@ -85,7 +85,7 @@ export class SurfaceContactPhysics {
     this._candidateBodies += candidates.length;
     const hit = firstSurfaceContact(
       e.prevState, e.state, e.radius, candidates, this.pivot,
-      e.compoundShape, e.prevAtt, e.att,
+      e.compoundShape, e.prevAtt, e.att, e.surfaceShape,
     );
     if (hit === null) return;
 
