@@ -906,8 +906,8 @@ export class ModularShip extends Ship implements Controllable {
 
   // 画面マーカー・一覧に出すこの艦の項目。isActive はマップ上で自艦と僚艦を塗り分ける
   // ための操作対象フラグ。
-  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
-    const dist = len(sub(pos, viewerPos));
+  public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
+    const distance = viewerPos === null ? null : len(sub(pos, viewerPos));
     const isBaseRole = this.capabilities.role === 'base';
     return {
       key: this.markerKey,
@@ -916,14 +916,17 @@ export class ModularShip extends Ship implements Controllable {
       sym: isBaseRole ? baseMarkerSvg() : (view === 'map' ? this.headingHpMarkerSvg() : this.hpMarkerSvg()),
       pos,
       vel,
-      priority: isBaseRole ? MARKER_PRIORITY.BASE - dist / 1e9 : MARKER_PRIORITY.PLAYER,
+      // 視点が無いフレームは距離を順位へ持ち込まず、全対象を同じ遠さとして扱う。
+      priority: isBaseRole
+        ? MARKER_PRIORITY.BASE - (distance ?? 0) / 1e9
+        : MARKER_PRIORITY.PLAYER,
       name: this.name,
       // 遠距離では画面外方位マーカーを畳み、密集を抑える。
       bearing: {
         color: COLOR_MARKER_ALLY,
         sym: DIRECTION_GLYPH.allyBearing,
         cls: 'mk-dir mk-ally-dir',
-        visible: dist <= ALLY_BEARING_MAX_DISTANCE,
+        visible: distance !== null && distance <= ALLY_BEARING_MAX_DISTANCE,
         clustered: true,
       },
       color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
