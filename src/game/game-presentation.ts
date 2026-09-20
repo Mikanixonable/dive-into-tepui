@@ -162,7 +162,7 @@ export class GamePresentation {
     );
     this.shipConstruction = new ShipConstruction(
       scene.scene, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
-      hud,
+      hud, hud.constructionConfirm,
       (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
     );
     const viewSelectionCommands = viewCommands(commands, viewer.view);
