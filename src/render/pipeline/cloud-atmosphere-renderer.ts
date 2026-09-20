@@ -59,8 +59,8 @@ const CLOUD_SHELL_DEFINITIONS = [
 
 export type CloudSpecies = (typeof CLOUD_SHELL_DEFINITIONS)[number]['species'];
 
-// 大気の中へ殻として立てる雲の種類。外側の殻から順に並べる — 同心なので、視線が交わる順序は
-// 外へ入り、内へ入り、内から出て、外から出る、に決まる。
+// 大気内に多層球殻として配置する雲の種類。外側の層から順に並べる。同心球構造のため、
+// 視線との交差順序は「外殻進入 → 内殻進入 → 内殻退出 → 外殻退出」となる。
 export const CLOUD_SHELL_SPECIES: readonly CloudSpecies[] = CLOUD_SHELL_DEFINITIONS.map(
   ({ species }) => species,
 );
