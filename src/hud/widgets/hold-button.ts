@@ -1,5 +1,5 @@
-// 押している間 isHeld が true になるボタン。呼び出し側がゲームループから毎フレーム isHeld を
-// 読み、押している間だけ処理を続ける形で使う。
+// 押下状態の間 isHeld が true を返す長押しボタン。毎フレームのポーリングにより、
+// 押下継続中の連続処理を駆動する用途に用いる。
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
 export class HoldButton {

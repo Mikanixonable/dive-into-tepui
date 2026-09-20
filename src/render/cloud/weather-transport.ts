@@ -87,13 +87,13 @@ export class WeatherTransport {
       (direction) => vec4(this.convectionSourceAt(direction), 0, 1));
   }
 
-  // 時刻[s]を移流位相へ写す。
+  // 時刻 [s] を移流位相へ変換する。
   public syncTime(seconds: number): void {
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
   }
 
-  // 移流前の場を写しへ焼く。advectedAt() と surfaceHumidityAt() のグラフを描く前に呼ぶ。
+  // 移流前の場をテクスチャへレンダリングする。advectedAt() と surfaceHumidityAt() のグラフを描く前に呼ぶ。
   public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
     this.humiditySource.render(renderer, gpu);
     this.convectionSource.render(renderer, gpu);
@@ -112,7 +112,7 @@ export class WeatherTransport {
     return this.convectionNoise.pairAt(direction).mul(CONVECTION_NOISE_AMPLITUDE);
   }
 
-  // 焼いた湿度の写しの、地表成分の標本(移流前)。
+  // レンダリング済み湿度テクスチャにおける地表成分のサンプリング値（移流前）。
   public surfaceHumidityAt(direction: Vec3Node): FloatNode {
     return this.humiditySource.at(direction).r;
   }
