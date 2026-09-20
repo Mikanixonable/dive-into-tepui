@@ -25,7 +25,7 @@ function addSideEquipment(assembly: ShipAssembly, catalog: ShipModuleCatalog): v
   });
 }
 
-// 既定戦闘船は HP 1,000、満載質量 1,000 kg、推力 400,000 N、トルク 2.24、
+// 既定戦闘船は HP 1,000、満載質量 1,000 kg、推力 400,000 N、トルク 24,000 N m、
 // 発電 100 W、放熱 84 m²、武装 damage 1 / 1,000 m/s に固定する。
 export function createDefaultCombatPreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALOG): ShipAssembly {
   const assembly = new ShipAssembly(catalog, true);
