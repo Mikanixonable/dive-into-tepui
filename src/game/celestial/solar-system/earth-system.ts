@@ -207,7 +207,7 @@ function earthAuroras(): readonly Aurora[] {
 // 地球の平年の気候から焼く雲場を組む。projection は場の持ち方。返した場の寿命は受け取った側が持つ。
 // **実験環境も本番もこの工場から組む** — 別の組み立てを書くと、実験環境が本番を映さなくなる。
 export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
-  // 天気を解く半径は、全球を一様な球とみなす平均半径。
+  // 気象シミュレーションに適用する半径は、全球を一様な球体とみなす平均半径。
   return new GeneratedCloudField(
     AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
   );

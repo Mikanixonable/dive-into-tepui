@@ -1,5 +1,5 @@
-// 雲の光学契約をTSLへ写すアダプター。数値の基準式はcloud-optics.tsに置き、ここでは同じ式を
-// シェーダグラフのノードとして組み立てる。CPUの光学テストへThree/TSLを持ち込まないための境界。
+// 雲の光学計算を TSL ノードへ接続するアダプタ。基準式は cloud-optics.ts で定義し、ここでは同じ式を
+// シェーダグラフのノードとして構成する。
 import { abs, exp, log, max, min, sqrt } from 'three/tsl';
 import { MAX_COLUMN_COVERAGE } from './cloud-optics';
 import type { FloatNode } from '../tsl-types';

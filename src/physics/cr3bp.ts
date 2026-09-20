@@ -1,6 +1,6 @@
-// 無次元の円制限三体問題(CR3BP)そのもの。回転系・重心原点で、主天体を (−μ,0,0)、副天体を
-// (1−μ,0,0) に置き、長さの単位を両天体間距離、時間の単位を平均運動の逆数(n=1)に取る。
-// 運動方程式と数値積分を持つ。質量比 μ だけで閉じた力学として書かれている。
+// 無次元の円制限三体問題（CR3BP）。回転系・重心原点を基準とし、主天体を (−μ,0,0)、副天体を
+// (1−μ,0,0) に配置する。長さの単位は両天体間距離、時間の単位は平均運動の逆数（n=1）。
+// 運動方程式と数値積分を提供し、質量比 μ のみで完結する力学モデルを構成する。
 
 // 回転系の状態 [x, y, z, ẋ, ẏ, ż](いずれも無次元)。
 type Cr3bpState = readonly [number, number, number, number, number, number];
@@ -17,7 +17,7 @@ function el(v: readonly number[], i: number): number {
 
 // 主天体・副天体それぞれからの距離と、その逆三乗・逆五乗。重力項と二階微分の共通因子。
 function attraction(mu: number, x: number, y: number, z: number) {
-  // 主天体は (-mu,0,0)、副天体は (1-mu,0,0) に固定されている。
+  // 主天体を (-mu,0,0)、副天体を (1-mu,0,0) に固定して計算する。
   const dx1 = x + mu;
   const dx2 = x - 1 + mu;
   const r1 = Math.sqrt(dx1 * dx1 + y * y + z * z);
@@ -43,7 +43,7 @@ function cr3bpDerivative(mu: number, s: Cr3bpState): Cr3bpState {
   ];
 }
 
-// 6 変数の RK4 一段。
+// 6 変数の RK4 1ステップ。
 function rk4StateStep(mu: number, s: Cr3bpState, dt: number): Cr3bpState {
   const shift = (base: Cr3bpState, k: Cr3bpState, f: number): Cr3bpState => [
     base[0] + f * k[0], base[1] + f * k[1], base[2] + f * k[2],
@@ -59,7 +59,7 @@ function rk4StateStep(mu: number, s: Cr3bpState, dt: number): Cr3bpState {
   return [combine(0), combine(1), combine(2), combine(3), combine(4), combine(5)];
 }
 
-// 状態を時間 duration だけ進める。steps は固定刻みの段数。
+// 状態を時間 duration だけ進める。steps は固定刻みのステップ数。
 export function cr3bpPropagate(mu: number, s: Cr3bpState, duration: number, steps: number): Cr3bpState {
   let state = s;
   const dt = duration / steps;
@@ -99,7 +99,7 @@ function resampleSpots(path: readonly Vec3Tuple[], samples: number, closeLoop: b
   return out;
 }
 
-// 折れ線の頂点の取り出し。範囲外は呼び出し側の索引計算の破綻なので投げる。
+// 折れ線の頂点の取り出し。インデックスが範囲外の場合は例外を送出する。
 function pointAt(path: readonly Vec3Tuple[], i: number): Vec3Tuple {
   const p = path[i];
   if (p === undefined) throw new RangeError(`cr3bp: 範囲外の頂点参照 ${i}`);

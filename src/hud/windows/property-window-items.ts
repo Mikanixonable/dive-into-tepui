@@ -20,7 +20,7 @@ export class PropertyWindowItems<A extends string = string> {
   }
 
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。クリップ済み
-  // ウィンドウでは可変な状態(操作対象か等)に応じて呼び出し側から毎フレーム渡されうる。
+  // ウィンドウでは操作対象の状態に応じて毎フレーム内容が更新されることがある。
   public sync(items: readonly PropertyWindowItem<A>[]): void {
     const key = items.map((it) => `${it.act} ${it.label} ${it.shortcut ?? ''} ${it.selected ?? ''} ${it.disabled ?? ''} ${it.keepOpen ?? ''}`).join('|');
     if (key === this.lastItemsKey) return;

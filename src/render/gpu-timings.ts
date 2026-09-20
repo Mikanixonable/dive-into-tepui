@@ -37,7 +37,7 @@ export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
 
 // 雲の計測対象と、単独のGPU時刻として読める範囲。表面雲は雲殻だけを描く2回目のGバッファ
 // render() として分けてあるので、単独の時刻印で読める。**大気だけは分けられない** — 積分器が
-// 雲を同じシェーダの中で解くので、雲のぶんだけを切り出した時刻は取れず、行の名前も
+// 雲を同一シェーダ内で評価して描画するため、雲のぶんだけを切り出した時刻は取れず、行の名前も
 // 「大気(雲あり)」にしてある。WebGPUのtimestamp-queryが無い場合は、既存のGpuTimingsが
 // すべて「未対応」へフォールバックする。
 export const CLOUD_GPU_MEASUREMENTS = {
@@ -132,7 +132,7 @@ export class GpuTimings {
     if (this.enabled && this.outerPass !== null) this.passByUid.set(uid, this.outerPass);
   }
 
-  // render() の終わりで入れ子の深さを戻し、いちばん外側が閉じたらパスの帰属を解く。
+  // render() の終わりで入れ子の深さを戻し、いちばん外側が閉じたらパスの帰属を解除する。
   private onFinishRender(): void {
     // 深さは enabled によらず戻す — 窓の開閉が描画の途中に挟まると、深さが釣り合わなくなる。
     if (this.renderDepth > 0) this.renderDepth--;
