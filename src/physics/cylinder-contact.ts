@@ -49,7 +49,7 @@ function closestPointsBetweenSegments(a: SegmentPair, b: SegmentPair): SegmentPa
   const ee = dot(d2, d2);
   const ff = dot(d2, between);
   let s = 0;
-  let t = 0;
+  let t: number;
 
   if (aa <= EPSILON && ee <= EPSILON) return { a: a.a, b: b.a };
   if (aa <= EPSILON) {

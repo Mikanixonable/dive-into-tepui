@@ -1,5 +1,28 @@
 # 残タスク一覧
 
+> 状態: 統合済み。現行の残件、実装順、受入条件は
+> [残タスク統合・実装計画](../remaining-work-consolidated-plan_2026-09-20.md) を正本とする。
+> この文書は元一覧の判断を保持する履歴として `done/` に移動した。
+
+## 統合時の再判定（2026-09-20）
+
+現行コードを確認し、次の項目は完了として閉じた。
+
+- 入力ルーターのゲームループ統合
+- Gameのフレーム処理のCoordinator/Runtime分割
+- Cloudの共通入力・field source・ライフサイクル境界
+
+次の項目は残件として統合計画へ引き継いだ。
+
+- Game/Render境界のうち、ship viewに残るrender→game型参照
+- lint設定・抑制・実違反の再整理
+- Earthの現行schema bundle、material/abort、実表示確認
+- Cloud cell organization、temporal stability、shadow/内部散乱、bakeコスト
+- 構造変更後の限定的な命名整理
+- 仕様判断後に着手するVessel customization / production
+
+以下は、基準日当時の原文を保持した履歴部分である。現在の判定は上記の再判定と統合計画を参照する。
+
 基準日: 2026-09-12  
 基準スナップショット: `5d523ca96`  
 対象: 現在のコードベースと、`memos/mikanixonable`直下に残した計画書
@@ -16,9 +39,9 @@ P3が将来機能または大規模な整理を示す。
 ゲーム層を直接参照する実装が残っている。HUD向けread modelまたは狭いportを導入し、描画入力の契約を
 ゲームのcomposition rootから切り離す。
 
-参照: [game-wide-refactoring-plan](./game-wide-refactoring-plan_2026-09-11.md)、
-[game-dependency-decoupling-plan](./suspended/game-dependency-decoupling-plan_2026-09-10.md)、
-[codebase-coupling-review](./suspended/codebase-coupling-review_2026-09-08.md)
+参照: [game-wide-refactoring-plan](../game-wide-refactoring-plan_2026-09-11.md)、
+[game-dependency-decoupling-plan](../suspended/game-dependency-decoupling-plan_2026-09-10.md)、
+[codebase-coupling-review](../suspended/codebase-coupling-review_2026-09-08.md)
 
 ### 2. 入力ルーターをゲームループへ統合する
 
@@ -26,8 +49,8 @@ P3が将来機能または大規模な整理を示す。
 `Input.takeKey`/`takeKeys`を直接呼んでいる。入力優先順を維持したままrouterへ集約し、raw inputの
 利用箇所を減らす。
 
-参照: [game-wide-refactoring-plan](./game-wide-refactoring-plan_2026-09-11.md)、
-[game-dependency-decoupling-plan](./suspended/game-dependency-decoupling-plan_2026-09-10.md)
+参照: [game-wide-refactoring-plan](../game-wide-refactoring-plan_2026-09-11.md)、
+[game-dependency-decoupling-plan](../suspended/game-dependency-decoupling-plan_2026-09-10.md)
 
 ## P1
 
@@ -36,38 +59,38 @@ P3が将来機能または大規模な整理を示す。
 `Game.update()`、`sync()`、`render()`に入力配分・シミュレーション前進・表示更新が集中している。
 `update → sync → render`の順序を変えず、Gameにはフェーズ順序と所有ライフサイクルを残す。
 
-参照: [game-wide-refactoring-plan](./game-wide-refactoring-plan_2026-09-11.md)
+参照: [game-wide-refactoring-plan](../game-wide-refactoring-plan_2026-09-11.md)
 
 ### 4. Cloudの共通入力・ライフサイクル境界を作る
 
 気候データ、雲場、Sampler、世代管理がまだ表現ごとに分散している。`ClimateData`、
 `CloudRenderInput`、共有runtime/Samplerの順に導入し、地表・大気・雲影が同じ入力を読む構造にする。
 
-参照: [cloud-climate-rendering-separation-plan](./cloud-climate-rendering-separation-plan_2026-09-11.md)、
-[cloud-rendering-refactor-followups](./suspended/cloud-rendering-refactor-followups_2026-09-10.md)
+参照: [cloud-climate-rendering-separation-plan](../suspended/cloud-climate-rendering-separation-plan_2026-09-11.md)、
+[cloud-rendering-refactor-followups](../suspended/cloud-rendering-refactor-followups_2026-09-10.md)
 
 ### 5. CloudのTemporal Stabilityを改善する
 
 Blue Noiseとexplicit LODの組み合わせでフレーム間差が大きい条件が残っている。まず比較fixtureで
 ちらつきとフレーム差を固定し、時間方向の安定化とLOD遷移を実測する。
 
-参照: [cloud-implementation-followups](./cloud-implementation-followups_2026-09-10.md)
+参照: [cloud-implementation-followups](../suspended/cloud-implementation-followups_2026-09-10.md)
 
 ### 6. Earth Surfaceのschema2 z4〜z7実bundleと実表示を確認する
 
 runtimeのz4最小LODは完了したが、ローカルに確認できるbundleは旧schema1互換入力である。z4〜z7の
 完全bundle、8K base color、実データmanifestを生成・検査し、可能な環境で実ブラウザ表示を確認する。
 
-参照: [earth-surface-min-display-lod-plan](./done/earth-surface-min-display-lod-plan_2026-09-12.md)、
-[earth-surface-review-findings](./earth-surface-review-findings_2026-09-10.md)
+参照: [earth-surface-min-display-lod-plan](./earth-surface-min-display-lod-plan_2026-09-12.md)、
+[earth-surface-review-findings](../earth-surface-review-findings_2026-09-10.md)
 
 ### 7. Cloud cell organizationを実装する
 
 現行のCloudVolumeは主に2D場を高さ方向へ押し出す構造で、cell profile、organization field、
 cellular evaluatorは未実装。共通入力境界を先に確定し、その後に地表・大気・雲影へ統合する。
 
-参照: [cloud-cell-organization-plan](./cloud-cell-organization-plan_2026-09-11.md)、
-[cloud-implementation-proposals](./suspended/cloud-implementation-proposals_2026-09-08.md)
+参照: [cloud-cell-organization-plan](../suspended/cloud-cell-organization-plan_2026-09-11.md)、
+[cloud-implementation-proposals](../suspended/cloud-implementation-proposals_2026-09-08.md)
 
 ## P2
 
@@ -76,22 +99,22 @@ cellular evaluatorは未実装。共通入力境界を先に確定し、その�
 ベースカラー補正、DeferredTextureの失敗・abort処理、source交換後のmaterial binding、
 実WebGPUのFloat16対応を現行コードと実機で再確認する。z4最小LODの完了とは別の品質・堅牢性課題。
 
-参照: [earth-surface-review-findings](./earth-surface-review-findings_2026-09-10.md)
+参照: [earth-surface-review-findings](../earth-surface-review-findings_2026-09-10.md)
 
 ### 9. Cloud shadow・内部散乱の品質と性能を改善する
 
 雲影の安定性、内部散乱、サンプル数、GPU負荷をrender-labで測定し、品質設定と性能予算を決める。
 
-参照: [cloud-implementation-followups](./cloud-implementation-followups_2026-09-10.md)、
-[cloud-rendering-refactor-followups](./suspended/cloud-rendering-refactor-followups_2026-09-10.md)
+参照: [cloud-implementation-followups](../suspended/cloud-implementation-followups_2026-09-10.md)、
+[cloud-rendering-refactor-followups](../suspended/cloud-rendering-refactor-followups_2026-09-10.md)
 
 ### 10. Cloud bake・天候更新時の再生成コストを抑える
 
 時刻変化や天候変化でのweather/intermediate/cloud field再生成を計測し、キャッシュ・更新間隔・
 可視性による停止条件を決める。
 
-参照: [cloud-implementation-followups](./cloud-implementation-followups_2026-09-10.md)、
-[cloud-implementation-proposals](./suspended/cloud-implementation-proposals_2026-09-08.md)
+参照: [cloud-implementation-followups](../suspended/cloud-implementation-followups_2026-09-10.md)、
+[cloud-implementation-proposals](../suspended/cloud-implementation-proposals_2026-09-08.md)
 
 ## P3
 
@@ -100,18 +123,18 @@ cellular evaluatorは未実装。共通入力境界を先に確定し、その�
 `DynamicEntity.obj`、`Player.behave`、`Ammo`などの候補を、依存境界と責務分割が固まった後に改名する。
 先に一括改名すると、構造変更時の再変更が増える。
 
-参照: [プラスチックワード命名調査・改善案](./suspended/プラスチックワード命名調査・改善案_2026-08-14.md)
+参照: [プラスチックワード命名調査・改善案](../suspended/プラスチックワード命名調査・改善案_2026-08-14.md)
 
 ### 12. Vesselカスタマイズ・生産機能を設計・実装する
 
 `VesselBlueprint`、`VesselFrame`、生産キュー、ハンガーワークベンチは現行コードに未実装。
 コア基盤の境界整理後に、機能要件と実装範囲を再確認して着手する。
 
-参照: [vessel customization proposal](./suspended/vessel_customization_and_production_proposal.md)
+参照: [vessel customization proposal](../suspended/vessel_customization_and_production_proposal.md)
 
 ## 今回完了として整理した計画
 
-- [opaque-cloud-climate-source-fix-plan](./done/opaque-cloud-climate-source-fix-plan_2026-09-10.md)
-- [earth-surface-min-display-lod-plan](./done/earth-surface-min-display-lod-plan_2026-09-12.md)
+- [opaque-cloud-climate-source-fix-plan](./opaque-cloud-climate-source-fix-plan_2026-09-10.md)
+- [earth-surface-min-display-lod-plan](./earth-surface-min-display-lod-plan_2026-09-12.md)
 
 実ERA5データの精度、実データbundleの公開、実ブラウザの見た目確認は、上記の完了判定に含めていない。
