@@ -2,6 +2,7 @@
 import { decodeEarthSurfaceTileBytes, downloadEarthSurfaceTile } from './earth-surface-tile-decode';
 import type { EarthSurfaceTilePayload } from './earth-surface-tile-decode';
 import { decodeEarthTerrainOffThread } from './earth-surface-terrain-worker-client';
+import type { EarthSurfaceTerrainFormat } from './earth-surface-format';
 import { earthTileId } from './earth-surface-tile-key';
 import type { EarthTileKey } from './earth-surface-tile-key';
 import { EarthSurfaceTileSource } from './earth-surface-tile-source';
@@ -33,6 +34,7 @@ export interface EarthSurfaceTileRequestMetricEvent {
 export interface EarthSurfaceTileRequestQueueOptions {
   readonly fetchImpl?: typeof fetch;
   readonly decodeImage?: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown>;
+  readonly terrainFormat?: EarthSurfaceTerrainFormat;
   readonly maxRetries?: number;
   readonly timeoutMs?: number;
   readonly onMetric?: (event: EarthSurfaceTileRequestMetricEvent) => void;
@@ -233,7 +235,11 @@ export class EarthSurfaceTileRequestQueue {
           key: item.key, colorUrl: descriptor.colorUrl, terrainUrl: descriptor.terrainUrl,
           generation: item.generation, signal: attemptController.signal,
           fetchImpl: this.limitedFetch(item.generation),
-          decodeImage: this.options.decodeImage, decodeTerrain: decodeEarthTerrainOffThread,
+          decodeImage: this.options.decodeImage,
+          decodeTerrain: (compressed: Uint8Array, key: EarthTileKey, limit: number,
+            expectedSha256?: string, signal?: AbortSignal) => decodeEarthTerrainOffThread(
+            compressed, key, limit, expectedSha256, signal, this.options.terrainFormat,
+          ),
         };
         let bytes;
         try {
