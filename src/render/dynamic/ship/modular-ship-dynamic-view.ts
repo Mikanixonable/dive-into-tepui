@@ -2,7 +2,6 @@
 import * as THREE from 'three/webgpu';
 import type { Vec3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import type { ShipAssembly } from '../../../game/ship/ship-assembly';
 import type { BeltNodes } from '../player/belt-view';
 import { BeltView } from '../player/belt-view';
 import { RcsEffects } from '../player/rcs-effects';
@@ -13,9 +12,10 @@ import {
 } from '../dynamic-view';
 import { buildShipModuleModel } from './ship-module-models';
 import { ModularShipView } from './modular-ship-view';
+import type { ShipModuleRenderInput, ShipRenderAssembly } from './ship-render-contract';
 
 export interface ModularShipRenderSource extends DynamicRenderSource {
-  readonly assembly: ShipAssembly;
+  readonly assembly: ShipRenderAssembly;
   readonly centerOffset: Vec3;
   readonly state: KinematicState;
   readonly active: boolean;
@@ -57,13 +57,13 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     displayed: KinematicState | null,
     viewFrame: DynamicViewFrame,
   ): void {
-    this.modules.sync(source.assembly, source.centerOffset);
+    this.modules.sync(source.assembly.modules, source.centerOffset);
     const origin = viewFrame.camera.floatingOrigin;
     const effectVisible = this.object.visible;
     const cameraQuat = viewFrame.camera.camera.quaternion;
     const zoomActive = viewFrame.camera.zoomed;
-    const thrustAnchor = this.firstAnchor(source.assembly, ['thruster', 'booster'], 'thrust');
-    const rcsAnchors = this.anchors(source.assembly, 'rcs', 'rcs:');
+    const thrustAnchor = this.firstAnchor(source.assembly.modules, ['thruster', 'booster'], 'thrust');
+    const rcsAnchors = this.anchors(source.assembly.modules, 'rcs', 'rcs:');
 
     this.object.updateWorldMatrix(true, true);
     this.thrustEffects.syncFromAnchor(
@@ -91,12 +91,12 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   }
 
   private anchors(
-    assembly: ShipAssembly,
+    modules: readonly ShipModuleRenderInput[],
     kind: 'rcs',
     prefix: string,
   ): readonly THREE.Object3D[] {
     const anchors: THREE.Object3D[] = [];
-    for (const module of assembly.modules) {
+    for (const module of modules) {
       if (module.kind !== kind || module.hp <= 0) continue;
       anchors.push(...this.modules.semanticAnchors(module.id, prefix));
     }
@@ -104,11 +104,11 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   }
 
   private firstAnchor(
-    assembly: ShipAssembly,
+    modules: readonly ShipModuleRenderInput[],
     kinds: readonly ('thruster' | 'booster')[],
     name: string,
   ): THREE.Object3D | null {
-    for (const module of assembly.modules) {
+    for (const module of modules) {
       if (!kinds.includes(module.kind as 'thruster' | 'booster') || module.hp <= 0) continue;
       const anchor = this.modules.semanticAnchor(module.id, name);
       if (anchor !== null) return anchor;
