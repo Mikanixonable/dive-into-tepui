@@ -22,6 +22,9 @@ function tank(
   );
 }
 
+// 既定船の実慣性に対して基準角加速度約 1.4 rad/s² を得る RCS 実トルク [N m]。
+const RCS_MODULE_TORQUE = 24_000;
+
 const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('cockpit-standard', 'cockpit', 3, 100, 100),
   tank('tank-3-main', 3, 'main', 80),
@@ -37,9 +40,9 @@ const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('thruster-standard', 'thruster', 1, 80, 50, {
     thrust: 400_000, fuelConsumptionRate: 1,
   }),
-  moduleDefinition('rcs-standard', 'rcs', 1, 50, 50, { torque: 2.24, fuelConsumptionRate: 1 }),
+  moduleDefinition('rcs-standard', 'rcs', 1, 50, 50, { torque: RCS_MODULE_TORQUE, fuelConsumptionRate: 1 }),
   moduleDefinition(
-    'rcs-combat', 'rcs', 1, 50, 25, { torque: 2.24, fuelConsumptionRate: 1 }, 3, 'rcs-standard',
+    'rcs-combat', 'rcs', 1, 50, 25, { torque: RCS_MODULE_TORQUE, fuelConsumptionRate: 1 }, 3, 'rcs-standard',
   ),
   moduleDefinition('weapon-gatling', 'weapon', 1, 80, 20, {
     weaponDamage: 1, fireRate: 1 / 0.06, muzzleVelocity: 1_000,
