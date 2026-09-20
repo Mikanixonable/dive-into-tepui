@@ -1,0 +1,215 @@
+# Dive into Tepui のシステム概観
+
+コード現状の読み取り。対象は `src/main.ts` から始まる通常のゲーム実行経路で、主要なアクター/サブシステムを6つに絞る。
+
+## 全体の流れ
+
+ページ起動時に `main.ts` が、ランをまたいで生きる設定・セーブ・描画・HUD・音声の装置を組み、`Launcher` に渡す。`Launcher` はステージを選び、`Run.create` または `Run.resume` で1ランを起こす。
+
+1フレームは、次の順で値を流す。
+
+    ブラウザ入力 + 設定 + viewport
+        │
+        ▼
+    1. 入力の解釈（GamePresentation / GameInputPhase）
+        │  CommandQueue、PilotControls、視点操作
+        ▼
+    2. 進行（Game / Stage / DynamicSystem / Simulator）
+        │  simTime、エンティティ、ステージ、RunEventLog
+        ▼
+    3. 導出（表示窓・カメラ・予測・選択候補）
+        │  表示時刻、CameraFrame、HUD/マーカー/音の宣言
+        ▼
+    4. 装置同期・描画（render / hud / marker / audio）
+
+`src/run/run.ts` の `Run.frame` がこの順序を所有する。ゲーム側で消費されなかった押下エッジは、`Run` が進行を終えたあとに、セーブ・ラン遷移・デバッグ用の外部ポートへ渡される。モデルを書き換える命令はその場ではなく `CommandQueue` に積まれ、次の進行位相の先頭で適用される。
+
+## 1. ページ寿命の組み立て役: `main.ts` / `Launcher` / `settings` / `launcher/save`
+
+### 責務
+
+ページ全体で1つだけ必要なものを生成し、現在のランを開始・終了・再開・交換する。`main.ts` は `UserSettings`、`GameScene`、HUD、マーカー装置、音声、セーブ関連を生成して `PageDevices` に束ね、`Launcher` を組む。`Launcher` はステージ選択、タイトル復帰、再出撃、スナップショットのロード、スロット切替を担当する。
+
+### やりとり
+
+- ブラウザ URL、ステージ選択、スロット情報から `StageClass` と開始元期を決める。
+- `Run.create` / `Run.resume` に、ページ寿命の装置、ラン跨ぎ設定、進行状況の読み取り役を渡す。
+- `Run` の `SnapshotSource` から `runSummary()` と `serialize()` を読み、`SnapshotService` / `AutoSave` 経由で保存する。
+- ステージ決着の `RunEventLog` を `followProgress()` で読み、解放状況更新と結果画面表示につなぐ。
+- `UserSettings` の変更を HUD、描画、BGM、ランの表示導出へ配る。設定値は `localStorage` の文字列と購読通知を持つ。
+
+### 管理する状態
+
+- `Launcher`: 現在の `Run`、最後に起動したステージ、遷移中フラグ。
+- `UserSettings`: 描画品質、レンダースタイル、BGM音量/ミュート、配色、マップ表示トグル、天球グリッド、HUDの折りたたみとタブ。
+- `SaveSlots` / `SnapshotService`: スロット索引、手動セーブのメタデータ、自動セーブ、保存形式の版。
+- `AutoSave`: 実時間で次の自動セーブまでを測る基準時刻。
+
+ここは「1ランのゲーム状態」の所有者ではない。ランを保持しているが、ゲーム内の `simTime`、艦、敵、ステージ進行は `Game` 側に属する。
+
+主な根拠: `src/main.ts:192-243`、`src/launcher/launcher.ts:46-188`、`src/settings/user-settings.ts:27-95`、`src/launcher/save/snapshot-service.ts:15-81`。
+
+## 2. フレームの交通整理役: `Run`
+
+### 責務
+
+1ランの `Game`（モデル）と `GamePresentation`（表示導出）を組み合わせ、毎フレームの位相と呼び出し順を固定する。`dt` は最大0.1秒に丸められ、フレーム先頭で読まれた `nowMs` と viewport が下流へ渡る。
+
+### やりとり
+
+通常フレームは次の呼び出しになる。
+
+1. `presentation.interpretInput(dt, nowMs, viewport)` — 生入力から命令と操作量を作る。
+2. `game.advance(dt, presentation.pilotControls, presentation.isPaused)` — モデルを進める。
+3. `resolveFrame` → `followCamera` → `presentProgress` → `game.extendPredictions(demand)` → `presentation.update` — 進行結果から表示を導出する。
+4. `progressReader.update(snapshot)` — モデルと視点を保存できる境界で外部へ見せる。
+5. `presentation.sync(...)` → `presentation.render(...)` — 装置へ同期し、描画する。
+
+このため、保存は表示の導出途中のキャッシュではなく、進行後の `Game.serialize()` から作られる。`Run.dispose()` は表示導出を先に、モデルを後に破棄する。
+
+### 管理する状態
+
+- `game` と `presentation` の所有関係。
+- ランが破棄済みかどうか (`disposed`)。
+- 現在の描画設定・見せ方への参照。
+- フレーム計測区間と、保存・デバッグへ渡す読み取り口。
+
+`Run` 自身は艦や敵を更新しない。どの順序で誰に何を渡すかだけを持つ、ラン内のオーケストレータである。
+
+主な根拠: `src/run/run.ts:1-28`、`src/run/run.ts:94-178`。
+
+## 3. 1ランの進行モデル: `Game` / `Stage` / `DynamicSystem`
+
+### 責務
+
+ゲーム内で捨てると再構成できない状態を持ち、命令と操作量を使って進行を確定する。`Game` は `CelestialSystem`、`DynamicSystem`、時間倍率、操作対象、ステージ、計画ノード規則、視点、出来事ログを束ねるモデルの根である。
+
+### やりとり
+
+- 外部の入力解釈から `CommandQueue` と `PilotControls` を受ける。
+- `advance` の先頭で `RunEventLog.beginStep()` と `commands.applyAll()` を行う。ポーズ中も命令は適用する。
+- 通常時は `SimSpeedManager` が倍率と操作/交戦可否を決め、`Stage.update` が湧き・勝敗・ステージ固有タイマーを更新する。
+- そのあと `DynamicSystem.update` が自律推力、操作対象の指令、全敵のAI、積分を順に処理する。
+- 積分中の `Simulator` は `simTime`、天体の重力/大気/表面、個体間接触、イベント時刻を使ってサブステップを進める。
+- ステージや物体が起こした一回きりの変化は `RunEventLog` に記録され、表示側が後で通知・音・エフェクトへ変換する。
+
+### 管理する状態
+
+`Game.serialize()` の `progress` に相当するのが進行の正本である。
+
+- `DynamicSystem`: `simTime`、全エンティティ、実体化待ちの spawn、ID採番器。
+- `SimSpeedManager`: 時間倍率とその段階。
+- `ControlSelection`: 現在操作している艦/基地。
+- `Stage`: `playing/won/lost/timeup`、スコア、補給、ステージ固有の波・タイマー・配置状態。
+- `PlanNodeRules`: 計画ノードの期限/達成に関する進行状態。
+
+表示から見た `Viewer` は同じ `SerializedGame` の `viewer` 側に分離される。`events.recent` と `CommandQueue.pending` はフレームをまたぐ保存状態ではなく、それぞれ直近ステップの出来事、次の進行位相へ渡す命令列である。
+
+主な根拠: `src/game/game.ts:25-69`、`src/game/game.ts:152-251`、`src/game/command-queue.ts:1-17`、`src/game/dynamic/dynamic-system.ts:59-136`、`src/game/stages/stage.ts:107-182`。
+
+## 4. 天体系と物理計算: `CelestialSystem` / `physics` / `Simulator`
+
+### 責務
+
+天体の階層、暦、運動、参照座標系、重力源・大気天体の索引を提供する。`physics/` は THREE や DOM を知らない計算層で、天体状態、軌道、接触、座標変換などを時刻から計算する。`CelestialSystem` はその値をまとめ、ゲーム側と表示側の両方に読み取り口を提供する。
+
+### やりとり
+
+- `Game.create/deserialize` がステージの元期から `CelestialSystem` を構築し、暦データを天体運動へ結び付ける。
+- `Simulator` は `CelestialSystem` から得た天体窓をサブステップで使い、各個体の近傍重力源、大気、表面接触を解く。
+- `Predictor` は `DynamicSystem` と `CelestialSystem` を読み、表示が要求する長さまで予測軌道を伸ばす。
+- `GamePresentation` は `stateAt`、参照フレーム、軌道ガイド、天体マーカーの材料を読み、同じ表示時刻で描画へ渡す。
+
+### 管理する状態
+
+- 天体エンティティの親子階層、`origin`、`epoch`、暦の結び先、`celestialMotions`。
+- 重力源と大気天体の構築時索引、参照フレーム、軌道ガイドの定義/表示モデル。
+- `CelestialSystem` 内の天体ビュー、星、照明、グリッド、GPU表示資源。
+- ただし進行の現在時刻 `simTime` の正本は `CelestialSystem` ではなく `DynamicSystem` 内の `Simulator`。天体は与えられた時刻へ問い合わせられる。
+
+ここを「天体が毎フレーム自分で進むシステム」と見ると誤る。進行が `simTime` を進め、天体系はその時刻の状態を計算・提供し、表示同期時には指定された `displayTime` の見た目を作る。
+
+主な根拠: `src/game/celestial/celestial-system.ts:85-169`、`src/game/celestial/celestial-system.ts:296-416`、`src/game/dynamic/simulator.ts:28-166`。
+
+## 5. 入力と表示の導出: `GamePresentation` / `GameInputPhase` / `DisplayPhase`
+
+### 責務
+
+モデルを直接描画せず、ブラウザ入力をモデルの命令/操作量へ変換し、モデルの結果をそのフレームに必要な表示宣言へ変換する。`GamePresentation` がこのラン内の表示導出の根で、内部を入力位相と表示位相に分けている。
+
+### やりとり
+
+入力側:
+
+- `Input` のキーボード・ポインタ状態を `rawGameInputAdapter` が狭い入力口へ変換する。
+- `GameInputRouter` が登録順の feature port へ連続操作と押下エッジを配る。カメラ、ビュー、建造、HUD、シミュレーションの優先順位はここで決まる。
+- `PilotInput` は艦の操縦量と操縦コマンドを `PilotControls` にまとめる。モデル状態はここでは直接書かず、所有者の命令を `CommandQueue` へ積む。
+
+進行後の導出側:
+
+- `DisplayWindowManager` が `simTime` とビューから表示時刻/期間を決め、`FrameAnchors` とカメラ視点を進行結果へ合わせる。
+- `trajectoryDemand` が予測・履歴の必要量を `Game` へ返す。`Game.extendPredictions` が需要を受けてから `Predictor` を更新する。
+- `DisplayPhase.update` が赤道交点、カメラ、ピック候補を同じ表示時刻へそろえる。
+- `GamePresentation.sync` が天体系、動的物体、計画、パネル、マーカー、効果音、通知を各装置の入力形式へ写す。
+
+### 管理する状態
+
+- `Viewer` 側: 戦闘/マップのビュー、カメラ、航法ターゲット、軌道ガイド、実体表示、軌道要素の基準、予測パネル。これはセーブ対象の視点状態。
+- `GamePresentation` 側: 直近の `CameraFrame`、表示窓、ピック候補、計画表示、マーカー宣言、UI音キュー、一時エフェクト、DOM入力の途中状態。
+- 予測軌道・表示線・マーカー・HUD view model は、モデルから毎フレーム再導出されるキャッシュで、進行の正本ではない。
+
+重要なのは、視点が進行へ渡すのは「どこまで計算してほしいか」という需要であり、進行の結果そのものを視点が改変しない点である。
+
+主な根拠: `src/game/game-presentation.ts:75-126`、`src/game/runtime/game-input-phase.ts:20-94`、`src/game/runtime/display-phase.ts:17-91`、`src/game/viewer/viewer.ts:17-105`。
+
+## 6. 外部装置: `render` / `hud` / `marker` / `audio`
+
+### 責務
+
+ゲームの意味を進めず、そのフレームに見せる・鳴らすべき内容を受けて、GPU、DOM、マーカー、WebAudioへ同期する。ページ寿命の装置は `main.ts` で一度だけ作られ、ラン固有の表示導出が宣言を差し出す。
+
+### やりとり
+
+- `GameScene` / `RenderPipeline` はカメラ、表示時刻、描画設定、Three.jsオブジェクトを受けてGPU資源を同期し、最後に描画する。
+- `Hud` は `HudPanelViewModels`、ビュー、トースト、モーダル状態を受けてDOMを同期する。
+- `MarkerDevice` は天体・ステージ・長押しなどの `MarkerDeclaration` 全体を受け、投影・重なり解決を行う。
+- `Bgm` / `WorldSfx` / `UiSfx` は、ゲーム中BGM、効果音、UI音の宣言を受け、前フレームとの差分を音へ変換する。
+- 装置の出力のうち、カメラの投影やピック結果など入力解釈に必要なものだけが次の入力位相へ戻る。
+
+### 管理する状態
+
+- `GameScene`: WebGPU renderer、Three.js scene、render pipeline、GPU計測、viewport。
+- `HudShell` / `Hud`: DOMのレイヤ、モーダル排他、各パネル、トースト期限、現在のビュー。
+- `MarkerDevice`: マーカー群、表示/投影の解決状態。
+- `AudioEngine` / `Bgm`: AudioContext、共有音素材、BGM conductor、音量、ラン内再生/試聴、タブ可視状態。
+
+これらはGPU/DOM/音声という外部資源と、その差分適用のためのキャッシュを持つが、艦のHP、敵の生死、勝敗、`simTime` は持たない。
+
+主な根拠: `src/run/page-devices.ts:1-18`、`src/render/scene.ts:11-73`、`src/game/hud/hud.ts:34-159`、`src/audio/audio-engine.ts:1-63`、`src/audio/bgm/bgm.ts:57-100`。
+
+## 状態の所有関係を一枚で見る
+
+| 状態 | 正本 | 他へ渡る形 | 寿命 |
+| --- | --- | --- | --- |
+| 描画品質・配色・音量・HUD共通選択 | `UserSettings` | 現在値 + callback/購読 | ページ/セーブをまたぐ |
+| 艦・敵・弾・`simTime` | `DynamicSystem` / `Simulator` | 読み取り面、`SerializedDynamicSystem` | 1ラン、セーブに入る |
+| 勝敗・スコア・補給・波 | `Stage` | `StageOutcome`、イベント、`SerializedStage` | 1ラン、セーブに入る |
+| 視点・ターゲット・カメラ選択 | `Viewer` | 命令 + 読み取り面、`SerializedViewer` | 1ラン、セーブに入る |
+| 直近の一回きりの変化 | `RunEventLog` | `recent` を表示導出が読む | 1進行ステップ |
+| 予測・表示窓・ピック候補・マーカー | `Predictor` / `GamePresentation` | 装置への宣言 | 毎フレーム再導出 |
+| GPU・DOM・音声資源 | `GameScene` / `Hud` / `AudioEngine` 等 | `sync` / `render` | ページまたはラン |
+
+つまり、情報の流れは「入力を命令へ変える → 進行モデルが正本を更新する → 表示導出が読み取り面から宣言を作る → 外部装置が同期する」で閉じている。`Game` と装置の間に `GamePresentation` を置くことで、描画・DOM・音声がゲーム進行の正本を直接書き換えない構造になっている。
+
+## 参照した入口
+
+- `src/main.ts`
+- `src/run/run.ts`
+- `src/game/game.ts`
+- `src/game/game-presentation.ts`
+- `src/game/runtime/game-input-phase.ts`
+- `src/game/runtime/display-phase.ts`
+- `src/game/dynamic/dynamic-system.ts`
+- `src/game/dynamic/simulator.ts`
+- `src/game/celestial/celestial-system.ts`
+- `src/game/viewer/viewer.ts`

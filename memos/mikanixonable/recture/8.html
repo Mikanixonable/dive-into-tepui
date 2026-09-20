@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dive into Tepui - 雲レンダリングシステム 8大アクター相関図</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090d14;
+      --bg-alt: #0e1520;
+      --panel: #131d2b;
+      --panel-hover: #19273a;
+      --panel-elevated: #1a2738;
+      --ink: #e6eef8;
+      --muted: #8ea4bc;
+      --accent: #5eead4;
+      --accent-dim: #14b8a6;
+      --accent-glow: rgba(94, 234, 212, 0.16);
+      --sky: #38bdf8;
+      --sky-glow: rgba(56, 189, 248, 0.18);
+      --purple: #a855f7;
+      --purple-glow: rgba(168, 85, 247, 0.16);
+      --amber: #fbbf24;
+      --amber-glow: rgba(251, 191, 36, 0.16);
+      --indigo: #818cf8;
+      --rose: #fb7185;
+      --line: #22344a;
+      --line-bright: #354e6e;
+      --code-bg: #070b10;
+      --code-ink: #bae6fd;
+      --card-radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      line-height: 1.75;
+      letter-spacing: 0.015em;
+    }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    header {
+      margin-bottom: 40px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 28px;
+    }
+
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .nav-links a {
+      color: var(--accent);
+      text-decoration: none;
+      margin-right: 16px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover {
+      text-decoration: underline;
+      color: #fff;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      background: var(--accent-glow);
+      border: 1px solid rgba(94, 234, 212, 0.3);
+      padding: 3px 12px;
+      border-radius: 9999px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      color: #fff;
+      font-size: clamp(2rem, 4vw, 2.8rem);
+      font-weight: 800;
+      line-height: 1.25;
+      background: linear-gradient(135deg, #ffffff 30%, var(--accent) 70%, var(--sky) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 16px;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 1.1rem;
+      max-width: 960px;
+      line-height: 1.7;
+    }
+
+    /* Tabs & Controls */
+    .controls-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 32px 0 20px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .filter-tabs {
+      display: flex;
+      gap: 8px;
+      background: var(--bg-alt);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab-btn.active {
+      background: var(--accent-dim);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(20, 184, 166, 0.35);
+    }
+
+    .hint-text {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    /* Interactive SVG Diagram Container */
+    .diagram-wrapper {
+      background: linear-gradient(180deg, #090e16 0%, #0c141f 100%);
+      border: 1px solid var(--line-bright);
+      border-radius: 16px;
+      padding: 24px 16px;
+      margin: 16px 0 40px;
+      box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      position: relative;
+      overflow-x: auto;
+    }
+
+    svg.actor-graph {
+      display: block;
+      margin: 0 auto;
+      width: 100%;
+      min-width: 960px;
+      max-width: 1120px;
+      height: auto;
+      user-select: none;
+    }
+
+    /* SVG Elements Styling */
+    .node-group {
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .node-group:hover {
+      transform: translateY(-2px);
+    }
+
+    .node-box {
+      transition: stroke 0.2s, stroke-width 0.2s, fill 0.2s, filter 0.2s;
+    }
+
+    .node-group.active .node-box {
+      stroke-width: 2.8px;
+      filter: drop-shadow(0 0 12px currentColor);
+    }
+
+    .node-group.dimmed {
+      opacity: 0.3;
+      transition: opacity 0.25s ease;
+    }
+
+    .conn-edge {
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: stroke 0.25s, stroke-width 0.25s, opacity 0.25s;
+    }
+
+    .conn-edge.flow-active {
+      stroke-width: 3.5px !important;
+      stroke-dasharray: 8, 4;
+      animation: dashFlow 1s linear infinite;
+    }
+
+    @keyframes dashFlow {
+      from { stroke-dashoffset: 24; }
+      to { stroke-dashoffset: 0; }
+    }
+
+    /* Actor Grid Sections */
+    h2.section-heading {
+      margin-top: 56px;
+      margin-bottom: 24px;
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2.section-heading::before {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 1.25em;
+      background: var(--accent);
+      border-radius: 3px;
+    }
+
+    .actor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 24px;
+      margin-bottom: 48px;
+    }
+
+    .actor-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--card-radius);
+      padding: 24px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.35);
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.25s ease;
+      scroll-margin-top: 24px;
+    }
+
+    .actor-card:hover {
+      border-color: var(--line-bright);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.45);
+    }
+
+    .actor-card.highlighted {
+      border-color: var(--accent);
+      box-shadow: 0 0 24px var(--accent-glow);
+    }
+
+    .actor-card.dimmed {
+      opacity: 0.35;
+    }
+
+    .actor-badge-num {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: var(--muted);
+    }
+
+    .actor-header {
+      margin-bottom: 16px;
+      padding-right: 40px;
+    }
+
+    .actor-category {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+      display: inline-block;
+    }
+
+    .cat-orchestrator { color: var(--rose); }
+    .cat-simulation { color: var(--sky); }
+    .cat-baking { color: var(--accent); }
+    .cat-render { color: var(--indigo); }
+    .cat-evaluator { color: var(--amber); }
+
+    .actor-name {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.35;
+    }
+
+    .actor-file {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .actor-file a {
+      color: var(--code-ink);
+      text-decoration: none;
+    }
+    .actor-file a:hover {
+      text-decoration: underline;
+    }
+
+    .actor-summary {
+      font-size: 0.92rem;
+      color: #cbd5e1;
+      margin-bottom: 16px;
+      line-height: 1.65;
+    }
+
+    .meta-block {
+      background: var(--bg-alt);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      font-size: 0.85rem;
+    }
+
+    .meta-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .meta-content {
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+
+    .meta-content code {
+      background: var(--code-bg);
+      color: var(--code-ink);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 0.88em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .collab-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .collab-tag {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .collab-tag:hover {
+      background: rgba(94, 234, 212, 0.12);
+      border-color: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    /* Architecture Flow Matrix Table */
+    .table-container {
+      overflow-x: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--card-radius);
+      margin: 24px 0 48px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-elevated);
+      color: #f1f5f9;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Key Insights Panel */
+    .callout-box {
+      background: linear-gradient(135deg, rgba(94, 234, 212, 0.08) 0%, rgba(56, 189, 248, 0.04) 100%);
+      border: 1px solid rgba(94, 234, 212, 0.3);
+      border-radius: var(--card-radius);
+      padding: 24px 28px;
+      margin: 36px 0;
+    }
+
+    .callout-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .callout-desc {
+      color: #cbd5e1;
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+
+    footer {
+      margin-top: 64px;
+      border-top: 1px solid var(--line);
+      padding-top: 24px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="nav-bar" style="border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 24px;">
+    <div class="nav-links" style="display: flex; flex-wrap: wrap; gap: 12px;">
+      <a href="./1.html">1: 地図</a>
+      <a href="./2.html">2: 起動とループ</a>
+      <a href="./3.html">3: 入力と進行</a>
+      <a href="./4.html">4: Gameの責務</a>
+      <a href="./5.html">5: 設計の4本軸</a>
+      <a href="./6.html">6: システム概観</a>
+      <a href="./7.html">7: 雲レンダリング</a>
+      <a href="./8.html" style="color:#fff; font-weight:700; border-bottom: 2px solid var(--accent);">8: 8大アクター相関図</a>
+    </div>
+    <div>Dive into Tepui Architecture Series</div>
+  </div>
+
+  <header>
+    <div class="badge">Lecture 8 / Component Topology & Data Flow</div>
+    <h1>雲レンダリングシステム<br>8大アクター相関図と協調フロー</h1>
+    <p class="lead">
+      惑星大気循環からGPUテクスチャベイク、そして3系統のシェーダによる並行レンダリングまで。雲システムを構成する8つのコアアクター間の依存関係・受け渡しデータ・制御フローを図案化し、一元評価器（<code>CloudShapeEvaluator</code>）をハブとする幾何・光学整合性の機構を解説する。
+    </p>
+  </header>
+
+  <!-- Interactive Controls -->
+  <div class="controls-bar">
+    <div class="filter-tabs">
+      <button class="tab-btn active" data-filter="all">全アクター表示 (1..8)</button>
+      <button class="tab-btn" data-filter="upstream">上流: 生成・ベイク系 (1..4)</button>
+      <button class="tab-btn" data-filter="downstream">下流: レンダリング系 (5..8)</button>
+    </div>
+    <div class="hint-text">💡 図上のノードをクリックすると、関連アクターと通信パスがハイライトされます</div>
+  </div>
+
+  <!-- SVG Architecture Graph -->
+  <div class="diagram-wrapper">
+    <svg class="actor-graph" viewBox="0 0 1060 620" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- Gradients -->
+        <linearGradient id="g-pres" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#881337"/>
+          <stop offset="100%" stop-color="#4c0519"/>
+        </linearGradient>
+        <linearGradient id="g-sim" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#0369a1"/>
+          <stop offset="100%" stop-color="#0c4a6e"/>
+        </linearGradient>
+        <linearGradient id="g-cond" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#0284c7"/>
+          <stop offset="100%" stop-color="#0369a1"/>
+        </linearGradient>
+        <linearGradient id="g-bake" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#0f766e"/>
+          <stop offset="100%" stop-color="#115e59"/>
+        </linearGradient>
+        <linearGradient id="g-eval" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#b45309"/>
+          <stop offset="100%" stop-color="#78350f"/>
+        </linearGradient>
+        <linearGradient id="g-opaque" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#1e3a8a"/>
+          <stop offset="100%" stop-color="#172554"/>
+        </linearGradient>
+        <linearGradient id="g-atmo" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#4338ca"/>
+          <stop offset="100%" stop-color="#312e81"/>
+        </linearGradient>
+        <linearGradient id="g-shadow" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#854d0e"/>
+          <stop offset="100%" stop-color="#713f12"/>
+        </linearGradient>
+
+        <!-- Arrowhead Markers -->
+        <marker id="arr-rose" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <polygon points="0 1, 8 4.5, 0 8" fill="#fb7185"/>
+        </marker>
+        <marker id="arr-sky" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <polygon points="0 1, 8 4.5, 0 8" fill="#38bdf8"/>
+        </marker>
+        <marker id="arr-teal" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <polygon points="0 1, 8 4.5, 0 8" fill="#5eead4"/>
+        </marker>
+        <marker id="arr-amber" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <polygon points="0 1, 8 4.5, 0 8" fill="#fbbf24"/>
+        </marker>
+        <marker id="arr-indigo" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <polygon points="0 1, 8 4.5, 0 8" fill="#818cf8"/>
+        </marker>
+
+        <!-- Glow filter -->
+        <filter id="shadow-drop" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.6"/>
+        </filter>
+      </defs>
+
+      <!-- Background Region Groupings -->
+      <g opacity="0.25">
+        <!-- Upstream Group Box -->
+        <rect x="20" y="15" width="1020" height="260" rx="14" fill="#042f2e" stroke="#14b8a6" stroke-width="1.5" stroke-dasharray="6,4"/>
+        <text x="36" y="40" fill="#5eead4" font-size="12" font-weight="700" letter-spacing="0.05em">PHASE 1: 視線追随・気象シミュレーション・動的テクスチャベイク (UPSTREAM PIPELINE)</text>
+
+        <!-- Downstream Group Box -->
+        <rect x="20" y="300" width="1020" height="300" rx="14" fill="#172554" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="6,4"/>
+        <text x="36" y="325" fill="#60a5fa" font-size="12" font-weight="700" letter-spacing="0.05em">PHASE 2: 形状・光学の一元評価と3系統並行レンダリング (DOWNSTREAM RENDERERS)</text>
+      </g>
+
+      <!-- Connection Edges (Data Paths) -->
+      <!-- 1 -> 4: Aim / Subpoint -->
+      <path id="edge-1-4" class="conn-edge" d="M 180 145 C 180 180, 240 180, 260 180" stroke="#fb7185" stroke-width="2" marker-end="url(#arr-rose)"/>
+      
+      <!-- 4 -> 2: Field Projection Dir -->
+      <path id="edge-4-2" class="conn-edge" d="M 440 180 C 470 180, 470 115, 500 115" stroke="#5eead4" stroke-width="2" marker-end="url(#arr-teal)"/>
+
+      <!-- 2 -> 3: WeatherSample -->
+      <path id="edge-2-3" class="conn-edge" d="M 680 115 L 740 115" stroke="#38bdf8" stroke-width="2.5" marker-end="url(#arr-sky)"/>
+
+      <!-- 3 -> 4: CloudSample loop to BakedField -->
+      <path id="edge-3-4" class="conn-edge" d="M 830 155 C 830 240, 410 240, 360 215" stroke="#5eead4" stroke-width="2" marker-end="url(#arr-teal)"/>
+
+      <!-- 1 -> Renderers: Frame Sync & CloudRenderInput -->
+      <path id="edge-1-renderers" class="conn-edge" d="M 100 145 C 100 480, 220 480, 260 480" stroke="#fb7185" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#arr-rose)"/>
+
+      <!-- 4 -> 8: Baked Texture (512x512 RGBA) -->
+      <path id="edge-4-8" class="conn-edge" d="M 350 215 C 350 285, 530 285, 530 355" stroke="#5eead4" stroke-width="3" marker-end="url(#arr-teal)"/>
+
+      <!-- 8 -> 5: Evaluator -> Opaque -->
+      <path id="edge-8-5" class="conn-edge" d="M 450 400 C 370 400, 370 450, 350 460" stroke="#fbbf24" stroke-width="2" marker-end="url(#arr-amber)"/>
+
+      <!-- 8 -> 6: Evaluator -> Atmosphere -->
+      <path id="edge-8-6" class="conn-edge" d="M 530 445 L 530 495" stroke="#fbbf24" stroke-width="2" marker-end="url(#arr-amber)"/>
+
+      <!-- 8 -> 7: Evaluator -> Shadow -->
+      <path id="edge-8-7" class="conn-edge" d="M 610 400 C 690 400, 690 450, 710 460" stroke="#fbbf24" stroke-width="2" marker-end="url(#arr-amber)"/>
+
+      <!-- Edge Labels -->
+      <g font-size="10" font-family="ui-monospace, monospace" font-weight="600" text-anchor="middle">
+        <text x="215" y="168" fill="#fb7185">aimAt(subpoint, ρ)</text>
+        <text x="470" y="145" fill="#5eead4">uv ➔ Vec3 dir</text>
+        <text x="710" y="105" fill="#38bdf8">WeatherSample</text>
+        <text x="600" y="232" fill="#5eead4">CloudSample ➔ 512² Texture Bake</text>
+        <text x="440" y="300" fill="#5eead4">RGBA Baked Texture</text>
+        <text x="360" y="425" fill="#fbbf24">opaqueFraction / top</text>
+        <text x="530" y="475" fill="#fbbf24">columnOpticalDepth</text>
+        <text x="700" y="425" fill="#fbbf24">cloudTop / shadow</text>
+      </g>
+
+      <!-- ACTOR 1: CloudPresentation -->
+      <g id="node-1" class="node-group" data-actor="1" transform="translate(40, 65)">
+        <rect class="node-box" x="0" y="0" width="180" height="80" rx="10" fill="url(#g-pres)" stroke="#fb7185" stroke-width="1.8" filter="url(#shadow-drop)"/>
+        <text x="14" y="24" fill="#fda4af" font-size="10" font-weight="700" letter-spacing="0.05em">ORCHESTRATOR</text>
+        <text x="14" y="44" fill="#ffffff" font-size="13" font-weight="700">1. CloudPresentation</text>
+        <text x="14" y="62" fill="#e2e8f0" font-size="10">パイプライン指揮 / 視線追随</text>
+      </g>
+
+      <!-- ACTOR 4: OrthographicCap & CloudField -->
+      <g id="node-4" class="node-group" data-actor="4" transform="translate(260, 140)">
+        <rect class="node-box" x="0" y="0" width="180" height="75" rx="10" fill="url(#g-bake)" stroke="#5eead4" stroke-width="1.8" filter="url(#shadow-drop)"/>
+        <text x="14" y="22" fill="#99f6e4" font-size="10" font-weight="700" letter-spacing="0.05em">FIELD BAKING & CAP</text>
+        <text x="14" y="40" fill="#ffffff" font-size="13" font-weight="700">4. OrthographicCap</text>
+        <text x="14" y="55" fill="#ffffff" font-size="11" font-weight="600">& CloudField</text>
+        <text x="14" y="68" fill="#ccfbf1" font-size="9">512×512 RGBA テクスチャ焼成</text>
+      </g>
+
+      <!-- ACTOR 2: WeatherModel -->
+      <g id="node-2" class="node-group" data-actor="2" transform="translate(500, 75)">
+        <rect class="node-box" x="0" y="0" width="180" height="80" rx="10" fill="url(#g-sim)" stroke="#38bdf8" stroke-width="1.8" filter="url(#shadow-drop)"/>
+        <text x="14" y="24" fill="#7dd3fc" font-size="10" font-weight="700" letter-spacing="0.05em">DETERMINISTIC SIM</text>
+        <text x="14" y="44" fill="#ffffff" font-size="13" font-weight="700">2. WeatherModel</text>
+        <text x="14" y="62" fill="#e0f2fe" font-size="10">大循環・波動・台風・移流</text>
+      </g>
+
+      <!-- ACTOR 3: condense -->
+      <g id="node-3" class="node-group" data-actor="3" transform="translate(740, 75)">
+        <rect class="node-box" x="0" y="0" width="180" height="80" rx="10" fill="url(#g-cond)" stroke="#38bdf8" stroke-width="1.8" filter="url(#shadow-drop)"/>
+        <text x="14" y="24" fill="#7dd3fc" font-size="10" font-weight="700" letter-spacing="0.05em">PHASE TRANSITION</text>
+        <text x="14" y="44" fill="#ffffff" font-size="13" font-weight="700">3. condense</text>
+        <text x="14" y="62" fill="#e0f2fe" font-size="10">ガンマ被覆・多峰雲頂・巻雲</text>
+      </g>
+
+      <!-- ACTOR 8: CloudShapeEvaluator (CENTRAL HUB) -->
+      <g id="node-8" class="node-group" data-actor="8" transform="translate(425, 355)">
+        <rect class="node-box" x="0" y="0" width="210" height="90" rx="12" fill="url(#g-eval)" stroke="#fbbf24" stroke-width="2.2" filter="url(#shadow-drop)"/>
+        <text x="14" y="24" fill="#fde68a" font-size="10" font-weight="800" letter-spacing="0.06em">SINGLE SOURCE OF TRUTH</text>
+        <text x="14" y="46" fill="#ffffff" font-size="14" font-weight="800">8. CloudShapeEvaluator</text>
+        <text x="14" y="64" fill="#fef3c7" font-size="10">形状・光学の一元評価器</text>
+        <text x="14" y="78" fill="#fde68a" font-size="9">ディザ帯・実効雲頂・光学的厚み</text>
+      </g>
+
+      <!-- ACTOR 5: OpaqueCloudSurfaceRenderer -->
+      <g id="node-5" class="node-group" data-actor="5" transform="translate(130, 495)">
+        <rect class="node-box" x="0" y="0" width="220" height="80" rx="10" fill="url(#g-opaque)" stroke="#38bdf8" stroke-width="1.8" filter="url(#shadow-drop)"/>
+        <text x="14" y="24" fill="#93c5fd" font-size="10" font-weight="700" letter-spacing="0.05em">SURFACE RENDERER</text>
+        <text x="14" y="44" fill="#ffffff" font-size="12" font-weight="700">5. OpaqueCloudSurface</text>
+        <text x="14" y="62" fill="#dbeafe" font-size="10">球殻レイマーチ / 法線・深度G-Buffer</text>
+      </g>
+
+      <!-- ACTOR 6: AtmosphereCloudLayers & CloudAtmosphereRenderer -->
+      <g id="node-6" class="node-group" data-actor="6" transform="translate(420, 495)">
+        <rect class="node-box" x="0" y="0" width="220" height="80" rx="10" fill="url(#g-atmo)" stroke="#818cf8" stroke-width="1.8" filter="url(#shadow-drop)"/>
+        <text x="14" y="24" fill="#c7d2fe" font-size="10" font-weight="700" letter-spacing="0.05em">OPTICAL SCATTERING</text>
+        <text x="14" y="44" fill="#ffffff" font-size="12" font-weight="700">6. AtmosphereCloudLayers</text>
+        <text x="14" y="62" fill="#e0e7ff" font-size="10">Beer-Lambert透過率・大気散乱光路積分</text>
+      </g>
+
+      <!-- ACTOR 7: CloudShadowRenderer -->
+      <g id="node-7" class="node-group" data-actor="7" transform="translate(710, 495)">
+        <rect class="node-box" x="0" y="0" width="220" height="80" rx="10" fill="url(#g-shadow)" stroke="#fbbf24" stroke-width="1.8" filter="url(#shadow-drop)"/>
+        <text x="14" y="24" fill="#fde047" font-size="10" font-weight="700" letter-spacing="0.05em">SHADOW PROJECTION</text>
+        <text x="14" y="44" fill="#ffffff" font-size="12" font-weight="700">7. CloudShadowRenderer</text>
+        <text x="14" y="62" fill="#fef08a" font-size="10">太陽光路6タップ消散積分・動的遮蔽</text>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Key Concept: CloudShapeEvaluator -->
+  <div class="callout-box">
+    <div class="callout-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+      </svg>
+      アーキテクチャの核心: なぜ CloudShapeEvaluator (8) が中心に座るのか？
+    </div>
+    <div class="callout-desc">
+      独立した3つのレンダラー（不透明表面レイマーチ、大気光路散乱積分、動的雲影投影）が、もしそれぞれ独自に「雲の境界」や「雲頂の高さ」を判定してしまうと、<strong>「雲があるのに影が落ちない」「雲の輪郭の外側に影ができる」「不透明雲の縁で大気の青空が不連続に途切れる」</strong>といった視覚的不整合（Artifact）が必ず発生します。<br>
+      Dive into Tepui では、<code>CloudShapeEvaluator</code> が数式グラフ（TSL ノード生成関数）の正本となり、ディザ帯の変換式・微小粒ノイズ凹凸・実効雲頂高度・鉛直光学的厚みの4つを一元提供することで、完全な物理的一致性を担保しています。
+    </div>
+  </div>
+
+  <!-- 8 Actors Detail Cards -->
+  <h2 class="section-heading">8大アクターの詳細定義・入出力仕様</h2>
+  
+  <div class="actor-grid">
+
+    <!-- Actor 1 -->
+    <div class="actor-card" id="card-1" data-actor="1">
+      <div>
+        <div class="actor-badge-num">1</div>
+        <div class="actor-header">
+          <span class="actor-category cat-orchestrator">統括 / オーケストレータ</span>
+          <h3 class="actor-name">CloudPresentation</h3>
+          <div class="actor-file"><a href="../src/render/cloud/cloud-presentation.ts">src/render/cloud/cloud-presentation.ts</a></div>
+        </div>
+        <p class="actor-summary">
+          雲描画システムの最上位調停役。カメラ位置と天体中心距離から視野領域を追随し、動的ベイクのキックおよび3系統のレンダラーへのパラメータ分配を行う。
+        </p>
+        <div class="meta-block">
+          <div class="meta-label">主要入力 (Inputs)</div>
+          <div class="meta-content">
+            <code>cameraPosition: Vector3</code> (カメラ世界座標)<br>
+            <code>bodyRadius: number</code>, <code>rho: number</code> (天体中心距離)<br>
+            <code>displayTime: number</code> (表示時刻)
+          </div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">主要出力 (Outputs)</div>
+          <div class="meta-content">
+            <code>CloudRenderInput</code> (ベイク済テクスチャ、日照方向、正射影キャップ行列)<br>
+            各レンダラーのライフサイクル同期シグナル
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="meta-label">直接連携するアクター</div>
+        <div class="collab-tags">
+          <span class="collab-tag" onclick="selectActor(4)">4. OrthographicCap</span>
+          <span class="collab-tag" onclick="selectActor(5)">5. OpaqueCloudSurface</span>
+          <span class="collab-tag" onclick="selectActor(6)">6. AtmosphereCloudLayers</span>
+          <span class="collab-tag" onclick="selectActor(7)">7. CloudShadow</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actor 2 -->
+    <div class="actor-card" id="card-2" data-actor="2">
+      <div>
+        <div class="actor-badge-num">2</div>
+        <div class="actor-header">
+          <span class="actor-category cat-simulation">気象力学 / 数値モデル</span>
+          <h3 class="actor-name">WeatherModel</h3>
+          <div class="actor-file"><a href="../src/render/cloud/weather-model.ts">src/render/cloud/weather-model.ts</a></div>
+        </div>
+        <p class="actor-summary">
+          天体固定座標系の空間単位方向ベクトルから、大循環・ロスビー波・低気圧渦・風上バックトラッキング水蒸気輸送を決定論的 TSL 閉関数として評価する。
+        </p>
+        <div class="meta-block">
+          <div class="meta-label">主要入力 (Inputs)</div>
+          <div class="meta-content">
+            <code>direction: Vec3Node</code> (天体表面単位方向)<br>
+            <code>displayTime: FloatNode</code> (時刻)
+          </div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">主要出力 (Outputs)</div>
+          <div class="meta-content">
+            <code>WeatherSample</code>: 気圧偏差 $p$, 風ベクトル $\vec{v}$, 鉛直上昇流 $w$, 地表湿度 $q_s$, 上層湿度 $q_u$, 対流セル強度 $c$, 前線帯 $f$
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="meta-label">直接連携するアクター</div>
+        <div class="collab-tags">
+          <span class="collab-tag" onclick="selectActor(4)">4. OrthographicCap</span>
+          <span class="collab-tag" onclick="selectActor(3)">3. condense</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actor 3 -->
+    <div class="actor-card" id="card-3" data-actor="3">
+      <div>
+        <div class="actor-badge-num">3</div>
+        <div class="actor-header">
+          <span class="actor-category cat-simulation">相転移 / 凝結アルゴリズム</span>
+          <h3 class="actor-name">condense</h3>
+          <div class="actor-file"><a href="../src/render/cloud/condensation.ts">src/render/cloud/condensation.ts</a></div>
+        </div>
+        <p class="actor-summary">
+          物理量（湿度・気圧・上昇流）を光学量・幾何形状へ転移させる。ガンマ分布混合による被覆率白飛び防止、3峰競合雲頂合成、巻雲の $\tanh$ 光学的厚み制限を担う。
+        </p>
+        <div class="meta-block">
+          <div class="meta-label">主要入力 (Inputs)</div>
+          <div class="meta-content">
+            <code>WeatherSample</code> (気圧、風、湿度、上昇流)
+          </div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">主要出力 (Outputs)</div>
+          <div class="meta-content">
+            <code>CloudSample</code>:<br>
+            ・<code>coverage: FloatNode</code> (被覆率 $[0, 1]$)<br>
+            ・<code>cloudTop: FloatNode</code> (正規化雲頂高度 $[0, 1]$)<br>
+            ・<code>translucent: FloatNode</code> (上層巻雲半透明度)
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="meta-label">直接連携するアクター</div>
+        <div class="collab-tags">
+          <span class="collab-tag" onclick="selectActor(2)">2. WeatherModel</span>
+          <span class="collab-tag" onclick="selectActor(4)">4. CloudField</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actor 4 -->
+    <div class="actor-card" id="card-4" data-actor="4">
+      <div>
+        <div class="actor-badge-num">4</div>
+        <div class="actor-header">
+          <span class="actor-category cat-baking">射影幾何 / テクスチャベイク</span>
+          <h3 class="actor-name">OrthographicCap & CloudField</h3>
+          <div class="actor-file"><a href="../src/render/cloud/field-projection.ts">src/render/cloud/field-projection.ts</a></div>
+        </div>
+        <p class="actor-summary">
+          視点直下点（Subpoint）に追随する適応角半径の接平面正射影キャップを構築し、気象凝結サンプルを 512×512 RGBA テクスチャへ毎フレーム焼成・保持する。
+        </p>
+        <div class="meta-block">
+          <div class="meta-label">主要入力 (Inputs)</div>
+          <div class="meta-content">
+            <code>subpoint: Vector3</code> (直下点単位ベクトル)<br>
+            <code>capRadius: number</code> (カメラ距離 $\rho$ に応じた適応半径)<br>
+            <code>CloudSample</code> (凝結演算ノード)
+          </div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">主要出力 (Outputs)</div>
+          <div class="meta-content">
+            <code>bakedTexture: TextureNode</code> (R: 被覆率, G: 雲頂/15km, B: 半透明度)<br>
+            正射影 UV ↔ 3D 球面方向の双方向変換写像
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="meta-label">直接連携するアクター</div>
+        <div class="collab-tags">
+          <span class="collab-tag" onclick="selectActor(1)">1. CloudPresentation</span>
+          <span class="collab-tag" onclick="selectActor(2)">2. WeatherModel</span>
+          <span class="collab-tag" onclick="selectActor(8)">8. CloudShapeEvaluator</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actor 5 -->
+    <div class="actor-card" id="card-5" data-actor="5">
+      <div>
+        <div class="actor-badge-num">5</div>
+        <div class="actor-header">
+          <span class="actor-category cat-render">幾何サーフェス描画</span>
+          <h3 class="actor-name">OpaqueCloudSurfaceRenderer</h3>
+          <div class="actor-file"><a href="../src/render/opaque-cloud-surface-renderer.ts">src/render/opaque-cloud-surface-renderer.ts</a></div>
+        </div>
+        <p class="actor-summary">
+          単位球メッシュの幾何 LOD とシェーダ内レイマーチング（粗探索＋二分探索）により、積雲頂面の正確な交点・法線・深度を算出して G-Buffer / Lit Pass へ出力する。
+        </p>
+        <div class="meta-block">
+          <div class="meta-label">主要入力 (Inputs)</div>
+          <div class="meta-content">
+            <code>bakedTexture</code> (雲場)<br>
+            <code>CloudShapeEvaluator</code> (ディザ帯・実効雲頂判定)<br>
+            画面ピクセル占有径 (LOD Ladder 選択用)
+          </div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">主要出力 (Outputs)</div>
+          <div class="meta-content">
+            G-Buffer 深度 (<code>depthNode</code>) & 法線 (<code>normalNode</code>)<br>
+            Nyquist エイリアシング抑制済みのライティング表面
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="meta-label">直接連携するアクター</div>
+        <div class="collab-tags">
+          <span class="collab-tag" onclick="selectActor(1)">1. CloudPresentation</span>
+          <span class="collab-tag" onclick="selectActor(8)">8. CloudShapeEvaluator</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actor 6 -->
+    <div class="actor-card" id="card-6" data-actor="6">
+      <div>
+        <div class="actor-badge-num">6</div>
+        <div class="actor-header">
+          <span class="actor-category cat-render">ボリューム光学積分</span>
+          <h3 class="actor-name">AtmosphereCloudLayers & Renderer</h3>
+          <div class="actor-file"><a href="../src/render/pipeline/atmosphere-cloud-layers.ts">src/render/pipeline/atmosphere-cloud-layers.ts</a></div>
+        </div>
+        <p class="actor-summary">
+          巻雲球殻（15.5km）と半透明積雲球殻（1.0km）の同心球モデル。大気散乱光路レイとの交差において Beer-Lambert 減衰と散乱放射輝度を Front-to-Back 正確に合成する。
+        </p>
+        <div class="meta-block">
+          <div class="meta-label">主要入力 (Inputs)</div>
+          <div class="meta-content">
+            <code>bakedTexture</code> (B: 巻雲半透明度, R: 積雲被覆率)<br>
+            <code>CloudShapeEvaluator.columnOpticalDepth()</code><br>
+            大気散乱視線光路パラメータ
+          </div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">主要出力 (Outputs)</div>
+          <div class="meta-content">
+            雲層透過率 $T = \exp(-\tau \cdot M)$<br>
+            前方散乱（ミー散乱）光と大気レイリー散乱のインスキャッタ合成
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="meta-label">直接連携するアクター</div>
+        <div class="collab-tags">
+          <span class="collab-tag" onclick="selectActor(1)">1. CloudPresentation</span>
+          <span class="collab-tag" onclick="selectActor(8)">8. CloudShapeEvaluator</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actor 7 -->
+    <div class="actor-card" id="card-7" data-actor="7">
+      <div>
+        <div class="actor-badge-num">7</div>
+        <div class="actor-header">
+          <span class="actor-category cat-render">動的影投影</span>
+          <h3 class="actor-name">CloudShadowRenderer</h3>
+          <div class="actor-file"><a href="../src/render/pipeline/shadow/cloud-shadow-renderer.ts">src/render/pipeline/shadow/cloud-shadow-renderer.ts</a></div>
+        </div>
+        <p class="actor-summary">
+          地表・大気・機体上の任意の評価点から太陽方向への光路に沿って 6 タップの消散積分を行い、実効雲頂と一致するシャドウファクターを投影する。
+        </p>
+        <div class="meta-block">
+          <div class="meta-label">主要入力 (Inputs)</div>
+          <div class="meta-content">
+            被照射点位置 <code>point: Vec3Node</code>, 太陽方向 $\vec{s}$<br>
+            <code>bakedTexture</code> (雲場)<br>
+            <code>CloudShapeEvaluator.cloudTop()</code>
+          </div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">主要出力 (Outputs)</div>
+          <div class="meta-content">
+            太陽光線透過率マスク <code>transmittanceNode: FloatNode</code> $[0, 1]$<br>
+            （地表シェーダ・大気シェーダ・機体シェーダへ直接乗算）
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="meta-label">直接連携するアクター</div>
+        <div class="collab-tags">
+          <span class="collab-tag" onclick="selectActor(1)">1. CloudPresentation</span>
+          <span class="collab-tag" onclick="selectActor(8)">8. CloudShapeEvaluator</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actor 8 -->
+    <div class="actor-card" id="card-8" data-actor="8">
+      <div>
+        <div class="actor-badge-num">8</div>
+        <div class="actor-header">
+          <span class="actor-category cat-evaluator">幾何・光学の一元評価器</span>
+          <h3 class="actor-name">CloudShapeEvaluator</h3>
+          <div class="actor-file"><a href="../src/render/cloud/cloud-shape-evaluator.ts">src/render/cloud/cloud-shape-evaluator.ts</a></div>
+        </div>
+        <p class="actor-summary">
+          雲の形状・ディザ帯・凹凸粒ノイズ・光学的厚みの全計算式を集約するハブ。3系統のレンダラーが同一の数式グラフを共有し、雲と影の輪郭不整合を防止する。
+        </p>
+        <div class="meta-block">
+          <div class="meta-label">提供メソッド群 (API)</div>
+          <div class="meta-content">
+            <code>opaqueFraction(coverage, grain)</code>: ディザ帯境界評価<br>
+            <code>cloudTop(fieldTop, grain)</code>: 凹凸加味の実効雲頂<br>
+            <code>cloudTopRadius(top, groundRadius)</code>: 天体物理半径換算<br>
+            <code>columnOpticalDepth(coverage)</code>: 鉛直光学的厚み
+          </div>
+        </div>
+        <div class="meta-block">
+          <div class="meta-label">主要利用先 (Clients)</div>
+          <div class="meta-content">
+            5. OpaqueCloudSurface, 6. AtmosphereCloudLayers, 7. CloudShadow
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="meta-label">直接連携するアクター</div>
+        <div class="collab-tags">
+          <span class="collab-tag" onclick="selectActor(5)">5. OpaqueCloudSurface</span>
+          <span class="collab-tag" onclick="selectActor(6)">6. AtmosphereCloudLayers</span>
+          <span class="collab-tag" onclick="selectActor(7)">7. CloudShadow</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Data Flow & Sequence Matrix Table -->
+  <h2 class="section-heading">データ交換・相互作用マトリクス</h2>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>送信元 (Source)</th>
+          <th>送信先 (Destination)</th>
+          <th>受け渡されるデータ / 型</th>
+          <th>物理的・グラフィックス的意味</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. CloudPresentation</strong></td>
+          <td><strong>4. OrthographicCap</strong></td>
+          <td><code>aimAt(subpoint, capRadius)</code></td>
+          <td>カメラ直下点へ正射影の原点を移動し、視野距離に応じた解像度集中キャップを形成。</td>
+        </tr>
+        <tr>
+          <td><strong>4. OrthographicCap</strong></td>
+          <td><strong>2. WeatherModel</strong></td>
+          <td><code>uv ➔ direction: Vec3Node</code></td>
+          <td>正射影キャップのテクセル UV から天体球面上の 3 次元単位方向ベクトルを復元。</td>
+        </tr>
+        <tr>
+          <td><strong>2. WeatherModel</strong></td>
+          <td><strong>3. condense</strong></td>
+          <td><code>WeatherSample</code></td>
+          <td>大循環・偏西風・台風・水蒸気移流から求めた気圧偏差・風・上昇流・湿度。</td>
+        </tr>
+        <tr>
+          <td><strong>3. condense</strong></td>
+          <td><strong>4. CloudField</strong></td>
+          <td><code>CloudSample</code></td>
+          <td>ガンマ被覆率・3峰競合雲頂・薄い雲厚みをテクセル (R, G, B) へパッキング。</td>
+        </tr>
+        <tr>
+          <td><strong>4. CloudField</strong></td>
+          <td><strong>8. CloudShapeEvaluator</strong></td>
+          <td><code>bakedTexture: TextureNode</code></td>
+          <td>512×512 RGBA テクスチャを幾何・光学評価器の入力標本として供給。</td>
+        </tr>
+        <tr>
+          <td><strong>8. CloudShapeEvaluator</strong></td>
+          <td><strong>5. OpaqueCloudSurface</strong></td>
+          <td><code>opaqueFraction</code>, <code>cloudTop</code></td>
+          <td>Blue Noise ディザ帯判定と雲粒凹凸を加味した不透明雲頂のレイマーチ交点を算出。</td>
+        </tr>
+        <tr>
+          <td><strong>8. CloudShapeEvaluator</strong></td>
+          <td><strong>6. AtmosphereCloudLayers</strong></td>
+          <td><code>columnOpticalDepth</code></td>
+          <td>被覆率から鉛直光学的厚み $\tau$ を求め、Beer-Lambert 透過率を正確に積分。</td>
+        </tr>
+        <tr>
+          <td><strong>8. CloudShapeEvaluator</strong></td>
+          <td><strong>7. CloudShadowRenderer</strong></td>
+          <td><code>cloudTop</code>, <code>cloudTopRadius</code></td>
+          <td>不透明表面の雲頂と完全に同一の高さから太陽光遮蔽シャドウを射出・計算。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <div>Dive into Tepui Architecture Lecture Series #8</div>
+    <div>Document Generated: 2026-09-20</div>
+  </footer>
+</main>
+
+<script>
+  // Interactive Node Selection & Highlight Logic
+  let activeActorId = null;
+
+  const nodeElements = document.querySelectorAll('.node-group');
+  const cardElements = document.querySelectorAll('.actor-card');
+  const edgeMap = {
+    1: ['edge-1-4', 'edge-1-renderers'],
+    2: ['edge-4-2', 'edge-2-3'],
+    3: ['edge-2-3', 'edge-3-4'],
+    4: ['edge-1-4', 'edge-4-2', 'edge-3-4', 'edge-4-8'],
+    5: ['edge-8-5', 'edge-1-renderers'],
+    6: ['edge-8-6', 'edge-1-renderers'],
+    7: ['edge-8-7', 'edge-1-renderers'],
+    8: ['edge-4-8', 'edge-8-5', 'edge-8-6', 'edge-8-7']
+  };
+
+  const collaboratorMap = {
+    1: [4, 5, 6, 7],
+    2: [4, 3],
+    3: [2, 4],
+    4: [1, 2, 3, 8],
+    5: [1, 8],
+    6: [1, 8],
+    7: [1, 8],
+    8: [4, 5, 6, 7]
+  };
+
+  function selectActor(id) {
+    if (activeActorId === id) {
+      clearSelection();
+      return;
+    }
+    activeActorId = id;
+
+    // Highlight nodes
+    nodeElements.forEach(node => {
+      const actorId = parseInt(node.getAttribute('data-actor'));
+      if (actorId === id) {
+        node.classList.add('active');
+        node.classList.remove('dimmed');
+      } else if (collaboratorMap[id] && collaboratorMap[id].includes(actorId)) {
+        node.classList.remove('active');
+        node.classList.remove('dimmed');
+      } else {
+        node.classList.remove('active');
+        node.classList.add('dimmed');
+      }
+    });
+
+    // Highlight edges
+    document.querySelectorAll('.conn-edge').forEach(edge => {
+      edge.classList.remove('flow-active');
+      edge.style.opacity = '0.15';
+    });
+    if (edgeMap[id]) {
+      edgeMap[id].forEach(edgeId => {
+        const edge = document.getElementById(edgeId);
+        if (edge) {
+          edge.classList.add('flow-active');
+          edge.style.opacity = '1';
+        }
+      });
+    }
+
+    // Highlight cards & scroll to card
+    cardElements.forEach(card => {
+      const actorId = parseInt(card.getAttribute('data-actor'));
+      if (actorId === id) {
+        card.classList.add('highlighted');
+        card.classList.remove('dimmed');
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (collaboratorMap[id] && collaboratorMap[id].includes(actorId)) {
+        card.classList.remove('highlighted');
+        card.classList.remove('dimmed');
+      } else {
+        card.classList.remove('highlighted');
+        card.classList.add('dimmed');
+      }
+    });
+  }
+
+  function clearSelection() {
+    activeActorId = null;
+    nodeElements.forEach(node => {
+      node.classList.remove('active', 'dimmed');
+    });
+    document.querySelectorAll('.conn-edge').forEach(edge => {
+      edge.classList.remove('flow-active');
+      edge.style.opacity = '1';
+    });
+    cardElements.forEach(card => {
+      card.classList.remove('highlighted', 'dimmed');
+    });
+  }
+
+  // Node click events
+  nodeElements.forEach(node => {
+    node.addEventListener('click', (e) => {
+      const id = parseInt(node.getAttribute('data-actor'));
+      selectActor(id);
+    });
+  });
+
+  // Filter Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.getAttribute('data-filter');
+
+      clearSelection();
+
+      cardElements.forEach(card => {
+        const actorId = parseInt(card.getAttribute('data-actor'));
+        if (filter === 'all') {
+          card.style.display = 'flex';
+        } else if (filter === 'upstream') {
+          card.style.display = (actorId <= 4) ? 'flex' : 'none';
+        } else if (filter === 'downstream') {
+          card.style.display = (actorId >= 5) ? 'flex' : 'none';
+        }
+      });
+    });
+  });
+</script>
+</body>
+</html>
