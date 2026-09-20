@@ -133,8 +133,8 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '半透明の積雲',
     presets: { low: true, medium: true, high: true },
   },
-  // 積雲の殻を解くレイマーチの細かさ。オフでは殻とその影が消える。「精細」は積雲の破綻を
-  // 地表側の破綻から切り分けるための段。
+  // 積雲の球殻を評価するレイマーチングの精細度。オフでは雲殻およびその影を描画しない。「精細」は
+  // 積雲の描画アーティファクトを地表側の乱れから切り分けるための設定レベル。
   cumulusDetail: {
     kind: 'choice', group: 'element', label: '積雲の精細さ',
     items: [
@@ -145,7 +145,7 @@ export const GRAPHICS_OPTIONS = {
       low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
     },
   },
-  // レンズ効果(滲み・条・ゴースト)。
+  // レンズ効果(ブルーム・光条・ゴースト)。
   lens: {
     kind: 'toggle', group: 'element', label: 'レンズ効果',
     presets: { low: false, medium: true, high: true },

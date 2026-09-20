@@ -83,8 +83,7 @@ export function evaluateChebyshevWithDerivative(
   };
 }
 
-// Segments are half-open except that the final segment includes its end. At a
-// shared boundary the later segment is selected, making the lookup deterministic.
+// 区間は最終区間を除き半開区間 [start, end)。境界値では後続区間を選び決定論性を保つ。
 export function findChebyshevSegmentIndex(segments: readonly ChebyshevSegment[], time: number): number {
   if (!Number.isFinite(time)) throw new RangeError(`Chebyshev time must be finite: ${time}`);
   if (segments.length === 0) throw new InvalidChebyshevPackError('a body must contain a segment');

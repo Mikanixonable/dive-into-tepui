@@ -12,7 +12,7 @@ export interface PlaneBasis {
   readonly pole: THREE.Vector3;
 }
 
-// math/vec3 の Vec3 を THREE.Vector3 へ写す。
+// math/vec3 の Vec3 を THREE.Vector3 へ変換する。
 function axis(v: Vec3): THREE.Vector3 {
   return new THREE.Vector3(v.x, v.y, v.z);
 }

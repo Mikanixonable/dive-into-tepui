@@ -357,12 +357,12 @@ export function decodePack(input: Uint8Array): DecodedPack {
   return { manifest, payload, payloadBytes, manifestJson };
 }
 
-// 復号済みの pack を評価器の入力へ写す。timeOriginSec を渡すと、セグメント境界をその原点
-// からの秒へ寄せる — 評価器はワイヤ形式の J2000 ET 秒を知らずに済み、呼び出し側が決めた
-// 時刻軸だけで引ける。**manifest 側と bodies 側は同じ segments から組むので、片方だけが
-// ずれることはない**(評価器の検証はこの一致を要求する)。
-// **係数は複製せず decoded.payload へのビューとして返す** — 返り値が生きているあいだ
-// payload も生き続ける。呼び出し側は payload を書き換えてはならない。
+// 復号済みの pack を評価器用データ構造 (ChebyshevPack) へ変換する。引数 timeOriginSec を渡すと、
+// セグメント境界を指定原点からの相対秒へ調整する — 評価器はワイヤ形式の J2000 ET 秒を意識せず、
+// 指定された時刻軸で直接評価できる。manifest 側と bodies 側は同一の segments から構築されるため、
+// 境界の不整合は生じない(評価器の検証はこの一致を要求する)。
+// **係数は複製せず decoded.payload へのビューとして参照する** — 返り値の利用中は元の payload を
+// 変更してはならない。
 export function toChebyshevPack(
   decoded: DecodedPack, timeOriginSec = 0,
 ): ChebyshevPack {

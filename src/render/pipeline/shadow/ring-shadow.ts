@@ -49,10 +49,10 @@ const ringBandTransmittance = Fn((
   const r0 = max(length(toIntersection), 1e-6);
   const radialDir = toIntersection.div(r0);
   // 恒星方向の環面内成分。μ = 1(真上から差す)では長さ 0 になるが、そのとき下の
-  // (1/μ² − 1) が 0 なので c は結果に効かない。
+  // (1/μ² − 1) が 0 となるため、c は計算結果に寄与しない。
   const inPlane = sunDir.sub(axis.mul(cosIncidence));
   const c = dot(inPlane.div(max(length(inPlane), 1e-9)), radialDir);
-  // footprint の径方向の半幅。**RING_GRAZING_MIN の床が μ 経由でここにも効く** — 無ければ
+  // footprint の径方向の半幅。**RING_GRAZING_MIN による下限ガードが μ を経由して本計算にも波及する** — 無ければ
   // 環が真横を向く構図で 1/μ² が発散し、環の影が画面全体を覆う。
   const w = max(sunAngRadius.mul(abs(planeDistance))
     .mul(sqrt(float(1).add(float(1).div(mu.mul(mu)).sub(1).mul(c.mul(c))))), 1e-6);

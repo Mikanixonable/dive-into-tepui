@@ -1,6 +1,6 @@
-// レンズ効果。画面の絵を、明るい点ほど広く見える淡い像として配り直す。
-// 核の総和を1に保つ線形処理なので、画面全体の光量と後段の分離可能性を保つ。
-// 広がりは画面上の角度で決まり、光源までの距離には依存しない。
+// レンズ効果。高輝度部ほど広く淡い光が広がる像として再配分する。
+// カーネルの総和を1に保つ線形処理のため、画面全体の総光量と後段の分離可能性を維持する。
+// 広がりは画面上の視野角に基づいて計算する。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
@@ -16,20 +16,20 @@ const LEVELS = 5;
 // レンズが本来の道から外す光の割合。実在のレンズの veiling glare が 1〜3%。
 const GLARE_FRACTION = 0.03;
 
-// 条を引く段。**この段のテクセル寸法がそのまま条の太さになる。** 長さはパス数が別に稼ぐので、
-// ここは太さだけで選んでよい(1/2 なら 2 画面px)。
+// 光条を生成するダウンサンプリング階層。**この階層のテクセル寸法がそのまま光条の太さになる。** 長さはパス数で確保するため、
+// 太さのみを基準に選択する（1/2 なら画面解像度 2px 相当）。
 const DIFFRACTION_LEVEL = 0;
-// 核のうち回折PSFの主ローブへ回す割合。**滲みの重みから引く**ので、核の総和は1のまま動かない。
+// カーネルのうち回折PSFの主ローブへ配分する割合。**滲みの重みから減算する**ため、総和は1を維持する。
 const DIFFRACTION_SHARE = 0.1;
 
-// ゴーストのいちばん締まった読み元の段。この段の解像度がそのままゴーストの出力の解像度になり、
-// **1 枚ごとのぼけ量の選択肢として、ここから 3 段ぶんの縮小段と、同じ段の滲みの像を読む。**
+// ゴースト生成の基準となる最高解像度の入力階層。この階層の解像度がそのままゴースト出力の解像度になる。
+// **各ゴーストのブラー処理には、ここから3段階のダウンサンプリング階層と同レベルのブルーム画像を参照する。**
 const GHOST_LEVEL = 2;
-// 核のうちゴーストへ回す割合。条と同じく滲みの重みから引く。
+// カーネルのうちゴーストへ配分する割合。光条と同様に滲みの重みから減算する。
 const GHOST_SHARE = 0.04;
 
-// 1 回の全画面描画。読み元のテクセル寸法だけが違うので、そこを uniform で持つ。**書き込み先は
-// 描く側が選ぶ** — 条の鎖のように、複数のフィルタが同じ 2 枚を往復して使うことがある。
+// 全画面描画フィルタ。入力元のテクセル寸法のみが異なるため uniform で保持する。
+// 描画先ターゲットは呼び出し側が選択し、光条のように複数フィルタが2枚のバッファを交互に利用する場合がある。
 type Filter = {
   readonly quad: QuadMesh;
   readonly material: THREE.MeshBasicNodeMaterial;
@@ -41,11 +41,11 @@ type Filter = {
 type Stage = Filter & { readonly target: THREE.RenderTarget };
 
 // 色を作るシェーダを 1 枚のフィルタにする。色は総和 1 でなければならない。additive を立てると
-// 書き込み先へ加算で積む(条の軸ごとの鎖を 1 枚へまとめるため)。
+// 書き込み先へ加算合成する（各方向の光条フィルタチェーンを単一ターゲットへ集約するため）。
 //
-// **透過はどのフィルタでも立てる。** 不透明なマテリアルには three がアルファを 1 へ固定する行を
-// 足すので、そこだけで本文が食い違って条の鎖が 2 本のシェーダへ割れる。書き込みは NoBlending で
-// 置き換えのままにするので、絵は変わらない(加算合成は透過を立てないと効かない)。
+// **すべてのフィルタで transparent: true を有効化する。** 不透明マテリアルでは Three.js が
+// アルファ値を1に固定するコードを追加しシェーダ分岐が発生するため。書き込みは NoBlending で
+// 上書きを維持するため出力結果は不透明描画と同等になる（加算合成には transparent 指定が必須）。
 function createFilter(colorOf: (sourceTexel: Vec2Uniform) => Vec3Node, additive = false): Filter {
   // 透過を有効にした全画面フィルタを作り、必要なら加算合成にする。
   const sourceTexel: Vec2Uniform = uniform(new THREE.Vector2());
@@ -80,8 +80,8 @@ export class LensPass {
   private readonly down: readonly Stage[];
   // 拡大チェーン。up[i] は down[i] と同じ解像度で、1 段粗いほうを混ぜ込んだもの。
   private readonly up: readonly Stage[];
-  // 条。**軸ごとに独立した鎖**で、鎖の途中は 2 枚の作業用ターゲットを往復し、最後のパスだけが
-  // 出力へ加算で積まれる。滲みとは別の核なので、読む側が滲みと配分を分け合う。
+  // 光条処理。**軸ごとに独立したフィルタチェーン**で構成し、ピンポンバッファ間を往復しながら処理して最終パスのみを
+  // 出力ターゲットへ加算合成する。ブルームとは独立したカーネルのため、合成段で配分比率を乗算して混合する。
   private readonly diffractionChains: readonly (readonly Filter[])[];
   private readonly diffractionScratch: readonly THREE.RenderTarget[];
   private readonly diffractionTarget = createTarget();
@@ -106,9 +106,9 @@ export class LensPass {
       const from = i === 0 ? source : down[i - 1]!.target.texture;
       down.push(createStage((texel) => downsample(from, texel)));
     }
-    // 粗いほうから順に組む。**各段の重みは「その下に何段積んであるか」で決まり**、
-    // 全体として 5 段が均等な 1/5 ずつを持つ — 1 オクターブあたり等エネルギー、つまり
-    // 実在のレンズのグレアと同じ 1/角度² の広がりになる。
+    // 低解像度側から順にアップサンプル合成を行う。**各階層の重みは累積階層数から決定され**、
+    // 全体として 5 つのレベルが均等に 1/5 ずつの重みを持つ。これにより 1 オクターブあたり等エネルギーとなり、
+    // 実在のレンズグレアと同様の 1/角度² に比例した光の広がりを再現する。
     const up: Stage[] = new Array<Stage>(LEVELS - 1);
     for (let i = LEVELS - 2; i >= 0; i--) {
       const coarser = (i === LEVELS - 2 ? down[LEVELS - 1]! : up[i + 1]!).target.texture;
@@ -151,9 +151,9 @@ export class LensPass {
     return this.redistributed(GLARE_FRACTION);
   }
 
-  // 配り直された像。滲みと条は**足し合わせず、割合で分け合う** — どちらも総和 1 の核なので、
-  // 混ぜた結果もまた総和 1 になる。出力は縮小された段なので、読む側は screenUV の線形補間に
-  // 任せる(ぼけた像なのでそれで足りる)。
+  // 再配分されたグレア像。ブルームと光条は**単純加算せず、配分比率で混合する** — 双方ともに総和 1 のカーネルのため、
+  // 混合結果の総和も 1 を維持する。出力ターゲットはダウンサンプリング解像度のため、参照側は screenUV のバイリニア補間に
+  // 委ねる（ぼかし像のため補間精度は十分）。
   private redistributed(scale: number): Vec3Node {
     const glare = texture(this.up[0]!.target.texture, screenUV).rgb;
     const diffraction = texture(this.diffractionTarget.texture, screenUV).rgb;
@@ -197,7 +197,7 @@ export class LensPass {
 
   // 設定でレンズ効果が切られている間、render の代わりに呼ぶ。**切り替わった最初の 1 フレーム
   // だけ**、読まれる 3 枚を空へ戻す — 残しておくと「レンズ」デバッグ表示に切る直前の像が凍った
-  // まま出る。中間の縮小段・条の作業用は誰も読まないので触らない。
+  // まま出力される。中間のダウンサンプリング段および光条用作業ターゲットは参照されないため消去を省略する。
   clear(width: number, height: number): void {
     // 前フレームの出力を一度だけ消去し、無効中の残像を残さない。
     if (!this.drawn) return;
@@ -244,7 +244,7 @@ export class LensPass {
       const coarser = this.down[i + 1]!.target;
       stage.sourceTexel.value.set(1 / coarser.width, 1 / coarser.height);
     }
-    // 条の鎖はすべて読み元と同じ寸法で、往復するあいだ寸法が変わらない。
+    // 光条のフィルタチェーンはすべて入力段と同一解像度を維持し、ピンポンバッファ間での反復処理中も寸法を不変に保つ。
     const diffractionSource = this.down[DIFFRACTION_LEVEL]!.target;
     for (const target of [...this.diffractionScratch, this.diffractionTarget]) {
       target.setSize(diffractionSource.width, diffractionSource.height);

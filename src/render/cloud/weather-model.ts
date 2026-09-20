@@ -39,7 +39,7 @@ export interface WeatherSample {
   readonly tropopause: FloatNode; // その緯度の対流の天井(圏界面の高さ)[m]
 }
 
-// 気圧の写しから読んだ、風を解くのに要る量。gradient は勾配の接ベクトル [hPa/rad]、isobar は
+// 気圧フィールドからサンプリングした、風向風速の算出に必要な物理量。gradient は気圧勾配の接ベクトル [hPa/rad]、isobar は
 // 等圧線方向の単位接ベクトル、bend は等圧線方向の 2 階微分 [hPa/rad²]。
 interface PressureField {
   readonly pressure: FloatNode;
@@ -48,12 +48,12 @@ interface PressureField {
   readonly bend: FloatNode;
 }
 
-// ノイズの段の表。周波数は 1 rad あたりの山の数で、角波長 [km] は 6371 ÷ 周波数。気圧は 1 段に
-// 取る — 上昇流が気圧そのものの関数なので、段を増やすとノイズの格子が雲へそのまま出る。
+// ノイズのオクターブ定義表。周波数は 1 rad あたりの山数で、角波長 [km] は 6371 ÷ 周波数。気圧は単一オクターブ
+// のみとする — 上昇流が気圧値の直接の関数であるため、オクターブを重ねると高周波の格子が雲へそのまま現れてしまうため。
 const PRESSURE_NOISE: readonly NoiseOctave[] = [
   { frequency: 1.2, amplitude: 1 }, // 5300 km
 ];
-// 場の振れ幅 [hPa]。段数によらない。
+// 場の振れ幅 [hPa]。オクターブ数によらない。
 const PRESSURE_NOISE_AMPLITUDE = 18;
 
 // 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限、低気圧側は尺度 [hPa] ごとに
@@ -64,15 +64,13 @@ const PRESSURE_LIFT_SCALE = 27;
 // 上昇流の頭打ち [m/s]。急な斜面と深い谷の芯では上昇流が並の何倍にもなり、線形のままだと湿度が
 // 0/1 で切れて硬い縁の白い塊になる。
 const LIFT_LIMIT = 0.06;
-// 前線の帯。気団の圧縮が効き始めから幅ぶん進む間に、帯の強さが 0 から 1 へ渡る。効き始めは 35〜60° の
-// 帯が背景として持つ圧縮(90 パーセンタイルで 1.19〜1.28)の 2 割上 — 下げると空の半分が前線になる。
-// 幅は、圧縮の稜線(幅 500〜600 km の丘、頂点は 99 パーセンタイルで 2.3〜2.7)が丘ごと飽和する狭さに
-// 取り、いちばん白い芯に帯の幅を持たせる(`DEVELOP/SPEC/RENDERING.md`「いちばん白い芯も帯の幅
-// いっぱいを占め」)。
+// 前線帯の強度計算。気団の圧縮度が立ち上がり閾値から遷移幅に達する間に、帯の強度が 0 から 1 へ推移する。開始閾値は 35〜60° 緯度帯の
+// 背景圧縮度（90パーセンタイルで 1.19〜1.28）の 2 割増に設定する。
+// 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
 const FRONT_ONSET = 1.45;
 const FRONT_WIDTH = 0.35;
-// 前線を強める湿度の水平勾配の効き始めと幅 [1/rad]。湿った空気と乾いた空気の境目にも雲帯を立てる。
-// 幅は湿度写しの量子化より十分広く取る — 狭いと線状の格子が出る。
+// 前線を強化する湿度水平勾配の開始閾値と遷移幅 [1/rad]。乾湿境界にも雲帯を生成する。
+// 遷移幅は湿度テクスチャの量子化誤差に対して十分なマージンを確保する。
 const MOISTURE_GRADIENT_ONSET = 0.12;
 const MOISTURE_GRADIENT_WIDTH = 0.28;
 // 雨帯。眼を持つ渦が周りの気団を巻き込んで折り畳んだ筋で、圧縮は前線より桁が大きい(腕の稜線で 5〜9)。
@@ -87,8 +85,8 @@ const BAND_LIFT = 0.06;
 // 上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き、途切れない帯になる
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
 const BAND_HUMIDITY = 0.3;
-// 温帯と熱帯を分ける緯度の門。温帯では前線の、熱帯では雨帯の伝達関数を使い、暖気の流入も温帯に
-// 効かせる — 熱帯では貿易風の収束が緯線に沿った圧縮の環を作り、流入を通すと熱帯全体が一律に乾く。
+// 温帯と熱帯の境界緯度。温帯では前線、熱帯では雨帯の伝達関数を使い、暖気流入の補正は温帯に
+// 限定して適用する。
 const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
 const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
 // 風が斜面を駆け上がる分の利得。等倍では偏西風や貿易風が山脈へ当たり続けるだけで上昇流が頭打ちに
@@ -96,8 +94,8 @@ const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
 const TERRAIN_LIFT_GAIN = 0.35;
 // 陸へ上乗せする高さ [m]。海と陸の比熱の差を、海岸へ吹き込む風が駆け上がる斜面として代用する。
 const LAND_HEIGHT_BIAS = 800;
-// 上昇流が湿度へ効く利得 [per m/s]。地表付近の上向きの湿りは、足す分(ここ)と偏差を増幅する分
-// (VORTEX_CONTRAST)に分ける — 足すだけでは渦の上に飽和した円盤を塗り、流入が巻き込んだ筋を消す。
+// 上昇流が湿度へ寄与する伝達利得 [per m/s]。地表付近の加湿は、底上げ成分（本項）と偏差増幅成分
+// (VORTEX_CONTRAST) に分離して計算する。
 // 地表付近の沈降の乾きは上昇より弱く取る — 海洋境界層は沈降の下でも層積雲を保ち、同じ利得では
 // 亜熱帯高圧帯の下の海が丸ごと晴れる。
 const SURFACE_LIFT_HUMIDITY = 1.3;
@@ -126,8 +124,8 @@ const PRESSURE_BAND_AMPLITUDE = 8;
 // 気圧の写しの 1 texel より粗い。写しは視点中心の cap なので texel の角は視点の高さで変わるが、
 // いちばん粗い置き方(半径 π/2)でも 2/512 ≈ 3.9e-3 rad で、この刻みを越えない。
 const GRADIENT_STEP = 0.01;
-// 等圧線方向の 2 階微分を取る刻み [rad]。写しは半精度で、2 階差分に乗る量子化の雑音は刻みの二乗で
-// 効く。勾配と同じ刻みで取ると、帯とノイズだけの平らな所で曲がりが雑音に埋もれる。
+// 等圧線方向の 2 階微分を取るサンプリング刻み [rad]。半精度テクスチャにおける 2 階差分の量子化ノイズは刻みの二乗で
+// 増幅される。勾配と同じ刻みで取ると、帯とノイズだけの平らな所で曲がりが雑音に埋もれる。
 const BEND_STEP = 0.02;
 // 対流を流す風の摩擦 [1/s]。湿度を流す風より強く取ると、等圧線を深く横切って 20〜30° 違う向きへ
 // 伸びる。同じ風で流すと 2 枚が同じ向きへ伸びて、掛け合わせても筋のままになる。
@@ -145,8 +143,8 @@ const UPPER_EYE_DRYNESS = 2;
 // 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の下の円盤が隙間なく埋まるよう、並の湿度からでも
 // 雲量が飽和する分を足す。
 const ANVIL_HUMIDITY = 0.5;
-// 暖気の流入が地表付近の湿度へ効く利得 [per rad]。並の流入(0.26 rad)で伝達関数の幅の半分ほど
-// 動く高さ。この項の平均は正なので、源の底上げ(SURFACE_HUMIDITY_BASE)をそのぶん下げて釣り合わせる。
+// 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
+// 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
 const WARM_HUMIDITY = 0.6;
 // 移流後に足す平年の雲量の重み(地表付近と上層)。雲量の地理的な差が凝結のしきい値をまたぐ幅に
 // 取る — 小さいと砂漠にも海と同じだけ雲が湧き、大きいと雲の多い海が覆われたまま平年の雲量図が
@@ -201,7 +199,7 @@ export class WeatherModel {
     this.convectiveActivity.bake(renderer, gpu);
   }
 
-  // 時刻 [s] を uniform へ写す。
+  // 時刻 [s] を各サブシステムの uniform へ反映する。
   public syncTime(seconds: number): void {
     this.surfaceCirculation.syncTime(seconds);
     this.upperCirculation.syncTime(seconds);
@@ -249,7 +247,7 @@ export class WeatherModel {
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
       .mul(TERRAIN_LIFT_GAIN);
     // 折り目の帯: 温帯では前線(気団の圧縮へ、湿度の境目と気圧の上昇流を少し足す)、熱帯では雨帯の
-    // 伝達関数が圧縮の稜線を帯の強さへ写す。
+    // 伝達関数が圧縮の稜線を降雨帯の強度へマッピングする。
     const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
     const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression);
     const moistureFront = smoothstep(

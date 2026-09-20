@@ -1,5 +1,5 @@
-// 天体表面のメッシュ。分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて
-// 1段を見せる。ライトプリパスの受け手として描かれる。テクスチャ画像は最初の syncLod で取りに行く。
+// 天体表面のメッシュ。LODレベルに応じた球メッシュを単一マテリアルで管理し、視直径に応じて
+// 適切な詳細度を選択して描画する。ライトプリパスの受け手として描かれる。テクスチャ画像は最初の syncLod で取りに行く。
 import * as THREE from 'three/webgpu';
 import { texture as textureNode, uv } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';

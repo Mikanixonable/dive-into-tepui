@@ -9,8 +9,8 @@ import { Vec3, cross, dot, len, scale, sub, v3 } from '../math/vec3';
 // ため単一の指数では表せず、層に区切って初めて成り立つ。
 type AtmosphereLayer = readonly [number, number, number];
 
-// 天体の大気の静的な記述。基準楕円体は「平均海面」であり、衝突判定の外接球
-// (天体の表面半径)とは別の理由で選ばれた別の量なので、別の宣言として持つ。
+// 天体大気の静的定義。基準楕円体（平均海面）は衝突外接球（天体表面半径）と独立した
+// 定義域を持つため、別パラメータとして管理する。
 export type AtmosphereDef = {
   readonly equatorRadius: number; // 基準楕円体の赤道半径 [m]
   readonly polarRadius: number; // 基準楕円体の極半径 [m]
@@ -18,8 +18,8 @@ export type AtmosphereDef = {
   readonly layers: readonly AtmosphereLayer[];
 };
 
-// 実行時の大気。静的な記述に、時刻ごとに解決した自転軸を足したもの
-// (Degree2GravityDef → Degree2Gravity と同じ二段構え)。
+// 実行時の大気。静的な定義に、評価時刻における自転軸を付加したもの
+// (Degree2GravityDef → Degree2Gravity と同様の二段階構成)。
 export type Atmosphere = AtmosphereDef & {
   readonly pole: Vec3; // 自転軸(単位ベクトル、ECI)
 };
@@ -75,11 +75,9 @@ export function airflow(
   };
 }
 
-// 大気抵抗の加速度。rRel/vRel はその大気を持つ天体の中心からの相対位置・速度、bcInv は
-// 弾道係数の逆数 Cd·A/m(0 なら抵抗なし = ゼロベクトル)。dt はこの加速度が積分される刻み [s]。
-// 抗力は対気速度を減らすだけで反転させることはできないので、dt のあいだに奪う量を対気速度
-// そのもので頭打ちにする。頭打ちに触れるのは刻みが抗力に対して既に広すぎるときだけだが、
-// 外すとそこで陽的な積分が段どうしで増幅し合い、1ステップで発散する。
+// 大気抗力加速度。rRel/vRel は天体中心からの相対位置・速度、bcInv は弾道係数の逆数 Cd·A/m。
+// 抗力は対気速度を減速させるのみで反転しないため、dt 間での減速度合を対気速度上限でクランプする
+// （刻み幅が抗力に対して過大な場合の数値発散を防止）。
 export function dragAccel(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere, dt: number): Vec3 {
   if (bcInv <= 0) return v3();
   const rho = atmosphericDensity(ellipsoidAltitude(rRel, atm), atm);
