@@ -4,13 +4,11 @@ import type * as THREE from 'three/webgpu';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import type { OrbitalElements } from '../../physics/elements';
-import { orbitalElementsOf, positionOnOrbit } from '../../physics/elements';
-import { atmosphericDensity, ellipsoidAltitude } from '../../physics/atmosphere';
+import { orbitalElementsOf } from '../../physics/elements';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
-import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
 import type { Projected } from '../../math/projection';
 import type { Vec3 } from '../../math/vec3';
-import { add, dot, len, sub, v3 } from '../../math/vec3';
+import { add, v3 } from '../../math/vec3';
 import { pickNearest } from '../pickable/object-pickable';
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
@@ -29,6 +27,9 @@ import { PlanPanel } from './plan-panel';
 import type { Plan } from './plan';
 import type { DisplayWindowManager } from '../display-window-manager';
 import type { PlanCommands } from './plan-commands';
+import {
+  bodyStateFor, nodeDeltaVLocal, nodeDeltaVMag, periapsisInAtmosphere, rebuildDraggedNode,
+} from './plan-node-editing';
 import type { SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
@@ -41,8 +42,6 @@ const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
 const NODE_MIN_DV = 0.5; // Δv がこれ未満のノードは空とみなし、編集の区切りで破棄する [m/s]
 const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカーの上限(HUD要素数の上限)
-
-const PE_WARN_DENSITY = 2.4e-8; // 噴射後の軌道の近点がこの大気密度に達したら警告する [kg/m^3]。地球の高度 120km 相当
 
 export class PlanEditor {
   // 編集対象として選択中のノード。index でなく参照で持つので、実行済みノードが列の前方から
@@ -107,7 +106,7 @@ export class PlanEditor {
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this.hud.layers.popup, this.hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D(scene);
     this.axisDrag = new AxisDragGizmo(
-      (state) => this.bodyState(state),
+      (state) => bodyStateFor(state, this.celestialBodies),
       (r, t) => this.path.projectPoint(r, t),
       (axis, sign, amount) => this.addPendingDv(axis, sign, amount),
     );
@@ -271,8 +270,8 @@ export class PlanEditor {
   // i 番目のノードに有意な Δv が入っていないか。到達状態を再計算できない間は判定を保留し、
   // 空とは見なさない(消してよいかどうかがまだ分からないため)。
   private isEmptyNode(i: number, arriving: readonly (KinematicState | null)[]): boolean {
-    const dv = this.nodeDv(i, arriving);
-    return dv !== null && len(dv) < NODE_MIN_DV;
+    const plan = this.plan;
+    return plan !== null && nodeDeltaVMag(plan, i, arriving) < NODE_MIN_DV;
   }
 
   // 選択中ノードが実質的に空なら、その index。選択が無いか、空でなければ null。
@@ -353,7 +352,9 @@ export class PlanEditor {
     );
     // Δv を保ったまま移動先へ置き換える
     if (picked) {
-      const moved = this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state;
+      const moved = rebuildDraggedNode(
+        ship.plan, picked.state, picked.arcIdx, idx, arriving, this.celestialBodies,
+      ) ?? picked.state;
       this.selectedNode = moved;
       this.planCommands.replaceNode(ship.plan, idx, moved);
     }
@@ -391,39 +392,13 @@ export class PlanEditor {
 
     // Δv を保ったまま置き換え、後続ノードがあれば再設定を促す
     const arriving = this.path.arrivalStates();
-    const moved = this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state;
+    const moved = rebuildDraggedNode(
+      plan, picked.state, picked.arcIdx, idx, arriving, this.celestialBodies,
+    ) ?? picked.state;
     this.selectedNode = moved;
     this.planCommands.replaceNode(plan, idx, moved);
     this.uiSounds.push('warp');
     if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
-  }
-
-  // idx 番目のノードを区間 arcIdx 上の sample へ移した新しいノード状態。Δv は到着軌道の
-  // ローカル成分を保つ。Δv や通過ノードの到着状態が求まらなければ null。
-  private rebuildDraggedNode(
-    sample: KinematicState,
-    arcIdx: number,
-    idx: number,
-    arriving: readonly (KinematicState | null)[],
-  ): KinematicState | null {
-    const plan = this.plan;
-    const dvLocal = this.nodeDvLocal(idx, arriving);
-    if (!plan || dvLocal === null) return null;
-
-    // サンプル速度は通過したノードの Δv を全部含む — 自ノードぶんだけ引くと中間ノードの Δv が残る。
-    let baseV: Vec3 = sample.v;
-    for (let i = idx; i < arcIdx; i++) {
-      const passed = plan.nodes[i];
-      const passedArr = arriving[i];
-      if (!passed || !passedArr) return null;
-      baseV = sub(baseV, sub(passed.v, passedArr.v));
-    }
-
-    // 到着軌道基準のローカル Δv 成分を、移動先のプレバーン状態基準へ組み直す。
-    const newPreBurnState = kinematicState<'eci'>(sample.t, sample.r, baseV);
-    const newDvWorld = fromOrbitAxes(this.bodyState(newPreBurnState), dvLocal);
-
-    return kinematicState<'eci'>(sample.t, sample.r, add(baseV, newDvWorld));
   }
 
   // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv 加算を積む。
@@ -447,7 +422,7 @@ export class PlanEditor {
     const arr = this.path.arrivalStates()[idx];
     const node = plan.nodes[idx];
     if (!arr || !node) return;
-    const dvWorld = fromOrbitAxes(this.bodyState(arr), local);
+    const dvWorld = fromOrbitAxes(bodyStateFor(arr, this.celestialBodies), local);
     const burned = kinematicState<'eci'>(node.t, node.r, add(node.v, dvWorld));
     this.selectedNode = burned;
     this.planCommands.replaceNode(plan, idx, burned);
@@ -463,51 +438,11 @@ export class PlanEditor {
     if (!arr || !node) return;
 
     // 到着状態の軌道基準枠で組んだ Δv を、到着速度へ足す。
-    const dvWorld = fromOrbitAxes(this.bodyState(arr), v3(pro, nrm, rad));
+    const dvWorld = fromOrbitAxes(bodyStateFor(arr, this.celestialBodies), v3(pro, nrm, rad));
     const burned = kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld));
     this.selectedNode = burned;
     this.planCommands.replaceNode(plan, idx, burned);
     this.uiSounds.push('warp');
-  }
-
-  // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を ECI で返す。ノードか到着状態が求まって
-  // いなければ null。中心天体相対の差にすると、影響圏の境界付近で噴射前後が別の天体を中心に
-  // 解決され、意味を持たない差になる。
-  private nodeDv(i: number, arriving: readonly (KinematicState | null)[]): Vec3 | null {
-    const node = this.plan?.nodes[i];
-    const arr = arriving[i];
-    return node && arr ? sub(node.v, arr.v) : null;
-  }
-
-  // i 番目のノードの Δv の大きさ [m/s]。到着状態が求まるまでは 0 と表示する。
-  private nodeDvMag(i: number, arriving: readonly (KinematicState | null)[]): number {
-    const dv = this.nodeDv(i, arriving);
-    return dv === null ? 0 : len(dv);
-  }
-
-  // i 番目のノードの Δv を、到着状態の軌道基準枠(PRO/NRM/RAD)成分へ分解する。
-  // ノードか到着状態が求まっていなければ null。
-  private nodeDvLocal(i: number, arriving: readonly (KinematicState | null)[]): Vec3 | null {
-    const arr = arriving[i];
-    const dvWorld = this.nodeDv(i, arriving);
-    if (!arr || dvWorld === null) return null;
-    const axes = orbitAxes(this.bodyState(arr));
-    return v3(dot(dvWorld, axes.pro), dot(dvWorld, axes.nrm), dot(dvWorld, axes.radOut));
-  }
-
-  // 軌道要素と Δv 方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
-  private bodyState(state: KinematicState): KinematicState {
-    const center = strongestAttractor(state.r, this.celestialBodies.celestialMotions, state.t);
-    const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
-    return kinematicState<'eci'>(state.t, rel.r, rel.v);
-  }
-
-  // 噴射後の軌道 el の近点が、中心天体の大気の中にあるか。大気の高度は基準楕円体から測るので、
-  // 真球基準の近点高度ではなく近点の位置そのものから測る。大気を持たない天体では false。
-  private peInAtmosphere(el: OrbitalElements, t: number): boolean {
-    const atm = el.center.atmosphereAt(t);
-    if (atm === null) return false;
-    return atmosphericDensity(ellipsoidAltitude(positionOnOrbit(el, 0), atm), atm) >= PE_WARN_DENSITY;
   }
 
   // 表示上限までのノードハンドルと、選択中ノードがあれば Δv アームの仕様を組み立ててギズモへ渡す。
@@ -521,7 +456,8 @@ export class PlanEditor {
       const p = this.nodeScreenPos(node);
       if (!p.front) continue;
       nodeSpecs.push({
-        idx: i, x: p.x, y: p.y, selected: i === this.selectedNodeIdx, dvMag: this.nodeDvMag(i, arriving),
+        idx: i, x: p.x, y: p.y, selected: i === this.selectedNodeIdx,
+        dvMag: nodeDeltaVMag(plan, i, arriving),
       });
     }
     // 選択中ノードがあれば Δv アームも組む
@@ -541,7 +477,7 @@ export class PlanEditor {
 
     // 3D 矢印は、選択中ノードとその到着状態が揃っているフレームだけ出す
     if (nodeFor3D && arrFor3D) {
-      const axes = orbitAxes(this.bodyState(arrFor3D));
+      const axes = orbitAxes(bodyStateFor(arrFor3D, this.celestialBodies));
       this.gizmo3d.sync({
         position: fo.RtoThreeV3(this.path.toDisplay(nodeFor3D.r, nodeFor3D.t)),
         prograde: this.path.toDisplayDir(axes.pro, nodeFor3D.t),
@@ -581,17 +517,21 @@ export class PlanEditor {
   private syncPanel(ship: Controllable): void {
     const plan = ship.plan;
     const arriving = this.path.arrivalStates();
-    const nodes = plan.nodes.map((n, i) => ({ tRel: n.t - this.simTime, dvMag: this.nodeDvMag(i, arriving) }));
+    const nodes = plan.nodes.map((n, i) => ({
+      tRel: n.t - this.simTime, dvMag: nodeDeltaVMag(plan, i, arriving),
+    }));
     const idx = this.selectedNodeIdx;
     const node = idx === null ? null : plan.nodes[idx];
-    const localDv = idx === null ? null : this.nodeDvLocal(idx, arriving);
+    const localDv = idx === null ? null : nodeDeltaVLocal(
+      plan, idx, arriving, this.celestialBodies,
+    );
     // 到着状態が求まっている選択中ノードについて、噴射後の軌道要素と近点の大気圏警告を出す
     let selEl: OrbitalElements | null = null;
     let peInAtmosphere = false;
     if (node && localDv) {
       const center = strongestAttractor(node.r, this.celestialBodies.celestialMotions, node.t);
       selEl = orbitalElementsOf(node, center, node.t);
-      peInAtmosphere = selEl !== null && this.peInAtmosphere(selEl, node.t);
+      peInAtmosphere = selEl !== null && periapsisInAtmosphere(selEl, node.t);
     }
     this.panel.sync(nodes, idx, selEl, localDv, peInAtmosphere);
   }
