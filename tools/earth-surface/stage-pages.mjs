@@ -56,6 +56,11 @@ function fixtureSource() {
 function fixtureManifest(sourceManifestSha256) {
   return {
     schemaVersion: 3, datasetId: DEFAULT_DATASET, sourceManifestSha256,
+    colorCalibration: {
+      inputEncoding: 'sRGB8', aggregation: 'linear_rgb_area_mean', outputEncoding: 'sRGB8',
+      diffuseAlbedoScale: 1, meanLinearRgb: [0.1, 0.1, 0.1], meanRec709Albedo: 0.1,
+      bondAlbedo: 0.294, averageHue: [1, 1, 1],
+    },
     sourceManifest: 'sources.json', provenance: { generator: 'pages-fixture/1' },
     terrainEncoding: { formatVersion: EARTH_TERRAIN_FORMAT_VERSION, layout: EARTH_TERRAIN_LAYOUT,
       width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8', normalFrame: 'body_fixed' },
