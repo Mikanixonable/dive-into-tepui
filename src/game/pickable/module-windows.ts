@@ -1,5 +1,5 @@
-// 自艦の搭載モジュールのプロパティウィンドウ。モジュール1つにつき高々1枚を保ち、展開できるものの
-// 展開/収納を実行する。排他グループを持たせず、被選択物のウィンドウと共存させる。
+// 自艦の搭載モジュールに関するプロパティウィンドウ。モジュール1つにつき最大1枚を維持し、
+// 展開可能なモジュールの展開や収納を制御する。排他グループは持たせず、選択対象ウィンドウと共存させる。
 import { PropertyWindow } from '../../hud/windows/property-window';
 import type { PropertyWindowContent, PropertyWindowItem } from '../../hud/windows/property-window-content';
 import type { MenuAction } from '../hud/windows/menu-actions';

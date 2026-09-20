@@ -211,7 +211,7 @@ function hiddenModel(): ShipConstructionPanelModel {
   };
 }
 
-// 古い定義データにも表示カテゴリを与えられるよう、kindを既定値へ写す。
+// 旧形式の定義データにも表示カテゴリを適用できるよう、kind から既定カテゴリを導出する。
 function moduleCategory(definition: ShipModuleDefinition): ShipModuleCategory {
   return definition.category ?? CATEGORY_BY_KIND[definition.kind];
 }

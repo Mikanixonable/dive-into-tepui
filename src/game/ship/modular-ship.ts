@@ -363,7 +363,7 @@ export class ModularShip extends Ship implements Controllable {
   public get magsLeft(): number { return this.fire.mags; }
   public get reloadTimer(): number { return this.fire.cooldown; }
 
-  // 展開操作の状態を module ID へ戻す。配列順は旧セーブの移行にだけ使い、継続状態の対応付けには使わない。
+  // 展開操作状態を module ID に反映する。配列順ではなくモジュールIDに基づいて継続状態を対応付ける。
   private syncModuleDeployments(): void {
     this.motion.power.syncAssembly(this.assembly);
     this.motion.radiator.syncAssembly(this.assembly);
@@ -872,7 +872,7 @@ export class ModularShip extends Ship implements Controllable {
     };
   }
 
-  // 自身に関するメッシュやエフェクトを解放する。
+  // 自身のメッシュやエフェクト等の表示資源を解放する。
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
