@@ -11,20 +11,20 @@ import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from './field-projection';
 
-// cap を置き直す前の仮の向き。aim() が最初に上書きするまでしか効かないので、どの向きでもよい。
+// aim() による初回更新までのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
 
-// 雲場の出どころの種類。generated は気候から時々刻々焼く場、observed は衛星写真から分けた静止した場。
-// 値は保存された描画設定を読む鍵なので動かさない。
+// 雲データの供給源種別。generated は気候モデルから時々刻々生成する動的場、observed は衛星画像に基づく静止場。
+// キー名は保存済み描画設定と対応するため変更しない。
 export const CLOUD_FIELD_SOURCE_KIND = { observed: 'observed', generated: 'generated' } as const;
 export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof CLOUD_FIELD_SOURCE_KIND];
 
-// 雲場の出どころ1つが供給するもの。texture は cap へ焼いた写しで、寿命は出どころが持つ。
+// 雲データ供給源のインターフェース。texture はキャップへ投影されたテクスチャであり、供給元が寿命を管理する。
 export interface CloudFieldSource {
   readonly texture: THREE.Texture;
-  // prepare() が公開した焼成済み場の世代。未準備の場は0。
+  // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
-  // 表示時刻 displayTime [s] の場を読める状態にする。GPU で焼くなら、その時間を gpu へ計上する。
+  // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
   prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
   // 保持している GPU 資源を解放する。
   dispose(): void;
@@ -33,15 +33,14 @@ export interface CloudFieldSource {
 export class CloudPresentation {
   private readonly surface: OpaqueCloudSurfaceRenderer;
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
-  // いま読んでいる雲場の出どころ。
+  // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
   private cloudVisible = false;
   private cirrusVisible = true;
   private translucentCumulusVisible = true;
 
-  // generated と observed は選べる雲場の出どころで、どちらの寿命もこのクラスが引き取る。はじめは
-  // generated を読む。cap は両方が焼く先の置き方で、このクラスが毎フレーム置き直す。
-  // bodyRadius は殻を載せる天体の基準半径 [m]。
+  // 各供給源（generated / observed）を管理し、キャップの視点追従と雲メッシュの描画を同期する。
+  // bodyRadius は雲層を配置する天体の基準半径 [m]。
   public constructor(
     generated: CloudFieldSource, observed: CloudFieldSource,
     private readonly cap: OrthographicCap, private readonly bodyRadius: number,
