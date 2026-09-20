@@ -46,15 +46,15 @@ export interface CelestialBody {
   stateAt(pivot: number, t?: number): KinematicState;
   // 同じ外挿で位置だけを答える。
   positionAt(pivot: number, t?: number): Vec3;
-  // pivot での大気。大気を持たない天体は null。
+  // pivot における大気状態。大気モデル未設定時は null。
   atmosphereAt(pivot: number): Atmosphere | null;
-  // pivot での2次重力場。質点として扱う天体は null。
+  // pivot における2次重力場。質点近似時は null。
   degree2At(pivot: number): Degree2Gravity | null;
-  // 時刻 t の自転姿勢。自転モデルを持たない天体は null。
+  // 時刻 t における自転姿勢。自転モデル未設定時は null。
   orientationAt(t: number): BodyOrientation | null;
-  // 時刻 t の自転に固定した回転基準系。自転モデルを持たない天体は null。
+  // 時刻 t の自転に同期した回転座標系。自転モデル未設定時は null。
   spinRotationAt(t: number): FrameRotation | null;
-  // 自転角速度 [rad/s]。逆行自転では負。自転モデルを持たない天体は null。
+  // 自転角速度 [rad/s]（逆行自転は負値）。自転モデル未設定時は null。
   readonly spinRate: number | null;
 }
 

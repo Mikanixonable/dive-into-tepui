@@ -80,7 +80,7 @@ export class RadiatorSystem {
     return new RadiatorSystem(owner, onContact, up, down, assembly, restoredPanels);
   }
 
-  // assembly の radiator module ID へ状態を結び付ける。旧セーブの up/down は接続順へ一度だけ移す。
+  // assembly の radiator module ID へ状態を結び付ける。互換スロット名（up/down）は接続順へ移譲する。
   public syncAssembly(assembly: ShipAssembly = this.assemblyValue as ShipAssembly): void {
     if (assembly === null || assembly === undefined) return;
     this.assemblyValue = assembly;
