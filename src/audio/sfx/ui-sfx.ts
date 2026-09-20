@@ -2,7 +2,7 @@
 import type { AudioEngine } from '../audio-engine';
 import type { SoundCue } from './sound-cue';
 
-// UI の効果音の種類。warp は時間加速の切り替え・計画ノードの操作・通知のブリップ。
+// UI 効果音の種別。'warp' は時間加速の切り替え、計画ノード操作、通知音に対応する。
 export type UiSound = 'warp';
 
 export class UiSfx {

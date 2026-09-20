@@ -73,8 +73,8 @@ function deserializePickupPlacement(serialized: SerializedPickup): PickupPlaceme
   };
 }
 
-// 軌道上の補給物に共通するもの — 配置、表示名、直列化、画面マーカー、被選択物としての一覧・
-// メニュー・プロパティ。何を補給するか(種別の識別・既定名・見た目・字形・取り込み距離)は具象が与える。
+// 軌道上補給物の基底クラス。配置、シリアライズ、画面マーカー、選択対象のメニュー・プロパティ表示を共通処理する。
+// 補給種別や外観、回収判定距離などの個別仕様は派生クラスが実装する。
 export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   public static spawnGate(): null { return null; }
 
