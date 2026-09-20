@@ -25,7 +25,7 @@ export interface CloudFieldSource {
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
-  prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
+  prepare(renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number): void;
   // 保持している GPU 資源を解放する。
   dispose(): void;
 }
@@ -100,9 +100,9 @@ export class CloudPresentation {
   }
 
   // 雲場が画面描画に寄与する（可視状態にある）フレームのみ、選択中のデータソースを表示時刻に合わせて事前生成する。
-  public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+  public bake(renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number): void {
     if (!this.fieldContributes) return;
-    this.source.prepare(renderer, displayTime, gpu);
+    this.source.prepare(renderer, displayTime, gpu, nowMs);
   }
 
   // 不透明表面と、選べる雲場の出どころをすべて解放する。

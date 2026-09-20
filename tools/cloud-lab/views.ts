@@ -84,17 +84,17 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'convectionSource', label: '移流前の対流', reads: 'weather',
     color: (d, model) => vec3(model.convectionSourceAt(d).y.div(2 * CONVECTION_SPAN).add(0.5)) },
   { id: 'surfaceHumidity', label: '地表の湿度', reads: 'weather',
-    color: (d, model) => vec3(model.weatherAt(d).surfaceHumidity) },
+    color: (d, model) => vec3(model.weatherAt(d).forcing.moisture) },
   { id: 'upperHumidity', label: '上層の湿度', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).upperHumidity) },
   { id: 'convection', label: '対流', reads: 'weather',
     color: (d, model) => vec3(model.weatherAt(d).convection.y.div(2 * CONVECTION_SPAN).add(0.5)) },
   { id: 'convectiveActivity', label: '対流の活発度', reads: 'weather',
-    color: (d, model) => vec3(model.weatherAt(d).convectiveActivity) },
+    color: (d, model) => vec3(model.weatherAt(d).forcing.organization) },
   { id: 'convectiveDepth', label: '対流の峰', reads: 'weather',
     color: (d, model) => {
       const weather = model.weatherAt(d);
-      return vec3(weather.convection.y.mul(weather.convectiveActivity).div(CONVECTIVE_DEPTH_SPAN));
+      return vec3(weather.convection.y.mul(weather.forcing.organization).div(CONVECTIVE_DEPTH_SPAN));
     } },
   { id: 'coverage', label: '被覆率', reads: 'cloud',
     color: (d, cloudAt) => vec3(cloudAt(d).coverage) },

@@ -9,16 +9,25 @@ import type { FieldProjection } from './field-projection';
 import type { CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
 import type { Vec3Node } from '../tsl-types';
+import {
+  canBakeInWindow, temporalLodFor, targetSimulationTime, type TemporalLodMode,
+} from './temporal-lod';
+import { simulationSecondsPerFrame, splitSimulationTime } from './weather-time';
 
 export class GeneratedCloudField implements CloudFieldSource {
   private readonly model: WeatherModel;
   private readonly field: CloudField;
-  // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
+  // 最後に焼いた target 時刻。極端な時間加速では表示時刻そのものを毎フレーム追わず、保持中の場を使う。
   private lastBakedDisplayTime: number | null = null;
   // 最後に焼いたときの気候の世代。読む画像が変われば、同じ表示時刻でも焼き直す。
   private lastBakedClimateGeneration: number | null = null;
   // 最後に焼いたときの投影の版。置き方が変われば、同じ表示時刻でも焼き直す。
   private lastBakedProjectionRevision: number | null = null;
+  private lastBakedTemporalMode: TemporalLodMode | null = null;
+  private lastRequestedDisplayTime: number | null = null;
+  private lastRequestedWallTimeMs: number | null = null;
+  private bakeWindowStartMs: number | null = null;
+  private bakeCountInWindow = 0;
   private generationValue = 0;
 
   // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
@@ -44,23 +53,42 @@ export class GeneratedCloudField implements CloudFieldSource {
   public get fieldProjection(): FieldProjection { return this.projection; }
 
   // 表示時刻の雲場を、天気の中間場から順に焼く。
-  public prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+  public prepare(renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number): void {
     // 気候画像の取得を始める。
     this.climate.request();
+    const realFrameSeconds = this.lastRequestedWallTimeMs === null
+      ? 0 : Math.max(0, nowMs - this.lastRequestedWallTimeMs) / 1000;
+    const simulationDelta = simulationSecondsPerFrame(this.lastRequestedDisplayTime, displayTime);
+    const temporal = temporalLodFor(simulationDelta, realFrameSeconds);
+    const targetTime = targetSimulationTime(displayTime, temporal, splitSimulationTime(displayTime));
+    // 次のフレームのLOD判定は、最後に要求した表示時刻から行う。bakeをrate limitした場合も
+    // 間の時刻をcatch-upして大量に焼かない。
+    this.lastRequestedDisplayTime = displayTime;
+    this.lastRequestedWallTimeMs = nowMs;
     // 表示時刻・気候の入力・投影の置き方が前回と同じなら、焼いた場をそのまま使う。
     const climateGeneration = this.climate.generation;
     const projectionRevision = this.projection.revision;
-    if (this.lastBakedDisplayTime === displayTime
+    if (this.lastBakedDisplayTime === targetTime
       && this.lastBakedClimateGeneration === climateGeneration
-      && this.lastBakedProjectionRevision === projectionRevision) return;
+      && this.lastBakedProjectionRevision === projectionRevision
+      && this.lastBakedTemporalMode === temporal.mode) return;
+    if (!canBakeInWindow(
+      nowMs, this.bakeWindowStartMs, this.bakeCountInWindow, temporal,
+    )) return;
+    if (this.bakeWindowStartMs === null || nowMs - this.bakeWindowStartMs >= 1000) {
+      this.bakeWindowStartMs = nowMs;
+      this.bakeCountInWindow = 0;
+    }
     // 天気の中間場から雲場まで順に焼く。
-    this.model.syncTime(displayTime);
-    this.model.bake(renderer, gpu);
-    this.field.render(renderer, gpu);
+    this.model.syncTime(targetTime, temporal);
+    this.model.bake(renderer, gpu ?? undefined);
+    this.field.render(renderer, gpu ?? undefined);
+    this.bakeCountInWindow += 1;
     this.generationValue += 1;
-    this.lastBakedDisplayTime = displayTime;
+    this.lastBakedDisplayTime = targetTime;
     this.lastBakedClimateGeneration = climateGeneration;
     this.lastBakedProjectionRevision = projectionRevision;
+    this.lastBakedTemporalMode = temporal.mode;
   }
 
   // 保持している雲場を解放する。

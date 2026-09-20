@@ -107,6 +107,8 @@ export class LabView {
   // 画面全体の見せ方。ゲーム本体と違い保存はせず、起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
   private lastRenderCpuMs = 0;
+  // 描画ラボの反復を、ゲーム本体から渡される実時間と同じ契約へ合わせるための仮想frame clock [ms]。
+  private renderClockMs = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
   // ケース既定のカメラ距離 [m]。cameraDistanceLog の基準になる。
@@ -314,7 +316,8 @@ export class LabView {
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     this.pipeline.cumulusShadow.set(
       castsCumulusShadow(this.graphicsData) ? this.current.cumulus ?? null : null);
-    this.current.bakeClouds?.(this.renderer, displayTime, this.gpu);
+    this.current.bakeClouds?.(this.renderer, displayTime, this.gpu, this.renderClockMs);
+    this.renderClockMs += 1000 / 60;
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     // 雲を切る設定では、大気へ立てる殻もゲーム本体と同じように外す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(

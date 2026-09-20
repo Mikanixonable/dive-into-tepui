@@ -15,8 +15,8 @@ export class CloudLabPane {
   public get climate(): ClimateMap { return this.field.climateMap; }
 
   // 表示時刻 seconds [s] の場を焼く。
-  public bake(renderer: WebGPURenderer, seconds: number): void {
-    this.field.prepare(renderer, seconds);
+  public bake(renderer: WebGPURenderer, seconds: number, nowMs: number): void {
+    this.field.prepare(renderer, seconds, null, nowMs);
   }
 
   // この面の uv(0..1)に出す表示値 0..1 の色。投影が値を持たない範囲は黒。

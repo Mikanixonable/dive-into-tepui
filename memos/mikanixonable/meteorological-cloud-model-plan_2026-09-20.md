@@ -1,10 +1,35 @@
 # 気象学的な雲モデルへの改修計画
 
-- 状態: 検査待ち（この文書の承認までは実装しない）
+- 状態: 実装レビュー済み（基盤実装・残工程あり）
 - 作成日: 2026-09-20
-- 改訂日: 2026-09-20（目的再設定版）
+- 改訂日: 2026-09-20（基盤実装・レビュー反映）
 - 調査基準: `0114373a7`
 - 対象: 地球の生成雲、雲面・大気内雲・雲影、cloud-lab
+
+## 実装状況（2026-09-20）
+
+計画全体を完了扱いにせず、今回の実装で検証できた基盤だけを完了として記録する。残る視覚調整・
+weather producer の分離・大気 / 雲面 / 雲影の共通 state 化は、下記の既存 Step を継続する。
+
+- **実装済み:** Step 2 の時間境界。`weather-time` と `temporal-lod` を追加し、normal / intermediate /
+  extreme を simulation 時間幅から分類する。`GeneratedCloudField` は target anchor へ直接到達し、
+  extreme の bake を実時間 1 秒あたり4回以下へ制限する。ゲーム本体と render-lab / cloud-lab は同じ
+  `nowMs` 契約を渡し、導出層が壁時計を直接読まない。
+- **実装済み:** Step 3 の低次元 forcing。`WeatherForcingField` は `moisture`、`lift`、
+  `organization`、`windPerturbation` の論理 field として `WeatherSample` から凝結へ渡る。追加の
+  persistent 512² texture は作らない。平均雲量は最終 coverage へ直接加算せず、stratocumulus などの
+  parameterization weight として一度だけ参照する。
+- **実装済み:** 性能条件の計算境界。`cloudPerformanceBudget` は `headroom=max(0,F-B0)` と
+  `Bcloud=min(0.20F,0.50headroom)` を実装し、headroom 0 または未計測値を `unqualified` とする。
+  `cloud-lab:baseline` は代表環境を Apple M4 Pro / Mac16,8 / arm64 + Google Chrome stable / WebGPU
+  に固定し、70 / 100 / 400 km と遠景、3 temporal LOD の manifest を出力する。実測B0未取得のmanifestは
+  合格扱いにしない。
+- **レビュー済み:** forcing を使う凝結と cloud-lab の診断表示を確認し、前線 / 雨帯 / stratocumulus は
+  既存の連続関数を維持した。0h / 25h の cloud-lab 画像を生成し、`npm run typecheck`、
+  `npm run test:render`、`npm run test:game`、`npm run check:boundaries`、build を通過した。
+- **残工程:** Step 1 の実測baseline / GPU timestamp、Step 4〜Step 11 の明示的な Front / Cyclone /
+  ITCZ producer、geography / orography、lifecycle / basis / vertical profile / optics、atmosphere /
+  surface / shadow の共通 state 接続と6 regimeの視覚調整。Step 12 / 13 は引き続き任意 / Phase 2 とする。
 
 ## 目的と優先順位
 
