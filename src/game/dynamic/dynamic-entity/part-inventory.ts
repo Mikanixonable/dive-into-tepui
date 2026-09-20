@@ -1,7 +1,7 @@
 import type { AnyPart, Part, PartType, ShipPartCollection } from './parts';
 
-// 旧形式の敵船部品を所有する実装。replace はロードアウト復元用の浅い配列コピーで、
-// module の split には使わない。split の状態所有権は ShipAssembly が移管する。
+// 敵船部品を保持・管理するコレクション。replace はロードアウト復元用の浅い配列コピーを提供し、
+// 分割時の状態所有権移管は ShipAssembly が担当する。
 export class PartInventory implements ShipPartCollection {
   private items: AnyPart[] = [];
 
