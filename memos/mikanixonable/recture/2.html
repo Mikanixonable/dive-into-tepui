@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lecture 2: main.ts と Launcher - Dive into Tepui</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090d14;
+      --bg-alt: #0e1520;
+      --panel: #131d2b;
+      --panel-hover: #19273a;
+      --panel-elevated: #1a2738;
+      --ink: #e6eef8;
+      --muted: #8ea4bc;
+      --accent: #5eead4;
+      --accent-dim: #14b8a6;
+      --accent-glow: rgba(94, 234, 212, 0.16);
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --indigo: #818cf8;
+      --rose: #fb7185;
+      --purple: #a855f7;
+      --line: #22344a;
+      --line-bright: #354e6e;
+      --code-bg: #070b10;
+      --code-ink: #bae6fd;
+      --card-radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      line-height: 1.8;
+      letter-spacing: 0.015em;
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 48px 24px 96px; }
+    
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 16px;
+    }
+    .nav-links { display: flex; flex-wrap: wrap; gap: 12px; }
+    .nav-links a { color: var(--accent); text-decoration: none; font-weight: 500; }
+    .nav-links a:hover { text-decoration: underline; color: #fff; }
+    .nav-links a.current { color: #fff; font-weight: 700; border-bottom: 2px solid var(--accent); }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      background: var(--accent-glow);
+      border: 1px solid rgba(94, 234, 212, 0.3);
+      padding: 3px 12px;
+      border-radius: 9999px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      color: #fff;
+      font-size: clamp(2rem, 4vw, 2.7rem);
+      font-weight: 800;
+      line-height: 1.25;
+      background: linear-gradient(135deg, #ffffff 30%, var(--accent) 70%, var(--sky) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 16px;
+    }
+
+    .lead { color: var(--muted); font-size: 1.1rem; line-height: 1.7; margin-bottom: 32px; }
+    
+    h2 {
+      margin-top: 48px;
+      margin-bottom: 20px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    h2::before {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 1.2em;
+      background: var(--accent);
+      border-radius: 3px;
+    }
+
+    h3 { margin-top: 24px; margin-bottom: 12px; font-size: 1.2rem; color: #f1f5f9; }
+    p { margin: 12px 0 16px; color: #cbd5e1; }
+    
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9em;
+      color: var(--code-ink);
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    pre code {
+      display: block;
+      padding: 16px 20px;
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow-x: auto;
+      line-height: 1.6;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--card-radius);
+      padding: 24px 28px;
+      margin: 24px 0;
+      box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.35);
+    }
+
+    .diagram-box {
+      background: #080d14;
+      border: 1px solid var(--line-bright);
+      border-radius: var(--card-radius);
+      padding: 24px;
+      margin: 24px 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+
+    .highlight-box {
+      background: linear-gradient(135deg, rgba(94, 234, 212, 0.08) 0%, rgba(56, 189, 248, 0.04) 100%);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 10px 10px 0;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    footer {
+      margin-top: 64px;
+      border-top: 1px solid var(--line);
+      padding-top: 24px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="nav-bar">
+    <div class="nav-links">
+      <a href="./1.html">1: 地図</a>
+      <a href="./2.html" class="current">2: 起動とループ</a>
+      <a href="./3.html">3: 入力と進行</a>
+      <a href="./4.html">4: Gameの責務</a>
+      <a href="./5.html">5: 設計の4本軸</a>
+      <a href="./6.html">6: システム概観</a>
+      <a href="./7.html">7: 雲レンダリング</a>
+      <a href="./8.html">8: 8大アクター相関図</a>
+    </div>
+    <div>Dive into Tepui Architecture Series</div>
+  </div>
+
+  <header>
+    <div class="badge">Lecture 2 / Lifecycle & Runtime Loop</div>
+    <h1>第2講：main.ts と Launcher<br>――起動・周回遷移・フレームループ</h1>
+    <p class="lead">
+      「ページ寿命で生きる装置」と「1ランで死ぬゲームモデル」の境界を明確に理解する。エントリーポイントから初期化シーケンス、周回オーケストレータ（Launcher）、そして requestAnimationFrame による毎フレームのループ駆動までを読み解く。
+    </p>
+  </header>
+
+  <section>
+    <h2>1. ページ寿命の装置 (PageDevices) と 1ラン (Run) の分離</h2>
+    <p>
+      <code>src/main.ts</code> はゲームルールを実装する場所ではありません。その本質は「工場の設備を組み立て、ラン（周回）へ貸し出す」ことです。
+    </p>
+
+    <div class="diagram-box">
+      <svg viewBox="0 0 840 250" width="840" height="250" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto;">
+        <!-- Page Lifetime Box -->
+        <rect x="20" y="20" width="460" height="210" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+        <text x="40" y="48" fill="#38bdf8" font-size="13" font-weight="700">ページ寿命の設備 (PageDevices / main.ts)</text>
+        
+        <rect x="40" y="65" width="200" height="40" rx="6" fill="#1e293b" stroke="#334155"/>
+        <text x="140" y="90" fill="#e2e8f0" font-size="11" text-anchor="middle">GameScene (WebGPU描画)</text>
+
+        <rect x="260" y="65" width="200" height="40" rx="6" fill="#1e293b" stroke="#334155"/>
+        <text x="360" y="90" fill="#e2e8f0" font-size="11" text-anchor="middle">UserSettings (各種設定)</text>
+
+        <rect x="40" y="115" width="200" height="40" rx="6" fill="#1e293b" stroke="#334155"/>
+        <text x="140" y="140" fill="#e2e8f0" font-size="11" text-anchor="middle">HudShell / PauseMenu</text>
+
+        <rect x="260" y="115" width="200" height="40" rx="6" fill="#1e293b" stroke="#334155"/>
+        <text x="360" y="140" fill="#e2e8f0" font-size="11" text-anchor="middle">AudioEngine / Bgm</text>
+
+        <rect x="40" y="165" width="420" height="45" rx="6" fill="#1e293b" stroke="#a855f7" stroke-width="1.5"/>
+        <text x="250" y="193" fill="#c084fc" font-size="13" font-weight="700" text-anchor="middle">Launcher (周回・ステージ選択・セーブ復元)</text>
+
+        <!-- Arrow -->
+        <path d="M 480 125 L 540 125" stroke="#5eead4" stroke-width="2.5"/>
+        <polygon points="540,120 550,125 540,130" fill="#5eead4"/>
+        <text x="515" y="115" fill="#5eead4" font-size="10" text-anchor="middle">create/resume</text>
+
+        <!-- Run Box -->
+        <rect x="550" y="35" width="270" height="180" rx="12" fill="#042f2e" stroke="#5eead4" stroke-width="2"/>
+        <text x="685" y="65" fill="#5eead4" font-size="14" font-weight="700" text-anchor="middle">1ランの寿命 (Run)</text>
+        <text x="685" y="85" fill="#99f6e4" font-size="10" text-anchor="middle">ステージクリアや死亡で破棄・再生成</text>
+
+        <rect x="570" y="105" width="230" height="40" rx="6" fill="#115e59"/>
+        <text x="685" y="130" fill="#fff" font-size="11" text-anchor="middle">Game (進行モデル)</text>
+
+        <rect x="570" y="155" width="230" height="40" rx="6" fill="#115e59"/>
+        <text x="685" y="180" fill="#fff" font-size="11" text-anchor="middle">GamePresentation (表示導出)</text>
+      </svg>
+    </div>
+
+    <div class="card">
+      <h3>なぜこの分離が重要なのか？</h3>
+      <p>
+        もし <code>Game</code> クラスが WebGPU キャンバスの初期化やオーディオエンジンの管理まで持ってしまうと、ステージをやり直す（リトライする）たびに 3D キャンバスを再構築したり音声を再読み込みしなければならず、ロード時間が膨大になりメモリリークの温床となります。
+      </p>
+      <p>
+        Dive into Tepui では、「重い装置（ページ寿命）」は <code>main.ts</code> が一度だけ作り、何回リトライしてもそのまま再利用します。死んだりステージを切り替えるときは <code>Run</code> だけをポイと捨てて新しく作るため、一瞬でシームレスに再出撃できます。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. 起動シーケンス：main() の非同期初期化</h2>
+    <p>
+      <code>src/main.ts</code> の <code>main()</code> は、画面にローディングオーバーレイを表示しながら、次の順番で初期化を進めます。
+    </p>
+
+    <pre><code>async function main(): Promise&lt;void&gt; {
+  // 1. 設定の復元と CSS カスタムプロパティ（テーマ）の適用
+  const settings = new UserSettings(browserSettingStorage());
+  applyThemeVariables(themePresetOf(settings.hudThemePreset.current));
+
+  // 2. WebGPU キャンバスの生成と非同期初期化
+  const gameScene = await initScene(settings.graphics.current);
+
+  // 3. 各種 HUD、音声、セーブ管理装置の生成
+  const hud = new Hud(new HudShell(), ...);
+  const audioEngine = new AudioEngine();
+  const saveSlots = await SaveSlots.create(new LocalStorageSaveStore());
+
+  // 4. Launcher の構築
+  const launcher = new Launcher(pageDevices, saveSlots, ...);
+
+  // 5. URLパラメータやセーブ状況に応じた初期ステージの起動
+  await launcher.launchInitialStage();
+
+  // 6. 毎フレームの描画ループ（rAF）を開始
+  startAnimationLoop(launcher, gameScene, settings, ...);
+}</code></pre>
+  </section>
+
+  <section>
+    <h2>3. フレームループと「外部ポート」の交通整理</h2>
+    <p>
+      <code>startAnimationLoop</code> 内の <code>animate(now)</code> は、毎フレーム <code>launcher.current</code>（アクティブな <code>Run</code>）を呼び出します。
+    </p>
+
+    <div class="highlight-box">
+      <strong>外部ポート（External Ports）の役割：</strong><br>
+      プレイヤーが「F5（クイックセーブ）」や「R（リトライ）」キーを押したとき、そのキー入力はゲーム内の自機操作ではなく「周回・セーブの制御」です。<br>
+      <code>run.frame()</code> はゲーム側で消費されなかった入力エッジを外部ポートへ返し、<code>SnapshotControls</code> や <code>Launcher</code> が外側で安全に処理します。
+    </div>
+
+    <pre><code>function animate(now: number) {
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+
+  const viewport = browserViewport();
+  gameScene.syncFrame(viewport, settings.graphics.current, ...);
+
+  const run = launcher.current;
+  if (run === null) {
+    requestAnimationFrame(animate); // 遷移中は待機
+    return;
+  }
+
+  // 1フレームを回し、未消費の操作を外部ポートで受け取る
+  run.frame(dt, now, viewport, [
+    {
+      feature: 'snapshot',
+      commands: [gameCommand(K.manualSave.code), gameCommand(K.openSaveBrowser.code)],
+      handleCommand: cmd => snapshotControls.handleCommand(cmd.id, run.snapshot),
+    },
+    {
+      feature: 'launcher',
+      isEnabled: () => !run.game.activeStage.isPlaying,
+      commands: [gameCommand(K.restart.code)],
+      handleCommand: cmd => launcher.handleCommand(cmd.id),
+    },
+  ]);
+
+  requestAnimationFrame(animate);
+}</code></pre>
+  </section>
+
+  <footer>
+    <div>Dive into Tepui Architecture Lecture Series #2</div>
+    <div style="display:flex; gap:16px;">
+      <a href="./1.html" style="color:var(--accent); text-decoration:none;">← Prev: Lecture 1</a>
+      <a href="./3.html" style="color:var(--accent); text-decoration:none;">Next: Lecture 3 (入力解釈と進行) →</a>
+    </div>
+  </footer>
+</main>
+</body>
+</html>
