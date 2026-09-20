@@ -114,9 +114,15 @@ export class Hud implements HudLayers, Notifier {
     this.root.classList.toggle('creative-mode', stageId === 'creative');
   }
 
+  // 建造モード中の HUD 表示ゲートを切り替える。
+  public setConstructionMode(active: boolean): void {
+    this.root.classList.toggle('construction-mode', active);
+  }
+
   // ランが畳まれたときに、ランの見た目とパネルが掴んでいるランの値・操作の口を落とす。
   public clearRunPanels(): void {
     this.root.classList.remove('creative-mode');
+    this.root.classList.remove('construction-mode');
     this.topBar.sync(null, 0);
     this.vesselPanel.sync(null, 0);
     this.orbitPanel.sync(null, 0);
