@@ -93,6 +93,25 @@ function expectClimateEncoding(value) {
   return encoding;
 }
 
+function expectColorCalibration(value) {
+  const calibration = expectObject(value, 'colorCalibration');
+  if (calibration.inputEncoding !== 'sRGB8' || calibration.aggregation !== 'linear_rgb_area_mean'
+    || calibration.outputEncoding !== 'sRGB8') fail('unsupported colorCalibration encoding');
+  if (typeof calibration.diffuseAlbedoScale !== 'number' || !Number.isFinite(calibration.diffuseAlbedoScale)
+    || calibration.diffuseAlbedoScale <= 0) fail('colorCalibration.diffuseAlbedoScale must be positive');
+  for (const name of ['meanLinearRgb', 'averageHue']) {
+    if (!Array.isArray(calibration[name]) || calibration[name].length !== 3
+      || calibration[name].some((item) => typeof item !== 'number' || !Number.isFinite(item) || item < 0)) {
+      fail(`colorCalibration.${name} must be a non-negative RGB triple`);
+    }
+  }
+  for (const name of ['meanRec709Albedo', 'bondAlbedo']) {
+    if (typeof calibration[name] !== 'number' || !Number.isFinite(calibration[name])
+      || calibration[name] <= 0 || calibration[name] > 1) fail(`colorCalibration.${name} is invalid`);
+  }
+  return calibration;
+}
+
 export function validateManifest(value) {
   const manifest = expectObject(value, 'earth-surface manifest');
   if (manifest.schemaVersion !== 3) fail('unsupported earth surface manifest schema');
@@ -138,6 +157,7 @@ export function validateManifest(value) {
   });
   if (new Set(manifest.climateMaps).size !== manifest.climateMaps.length) fail('climateMaps must not contain duplicate URLs');
   expectClimateEncoding(manifest.climateEncoding);
+  expectColorCalibration(manifest.colorCalibration);
   expectAttribution(manifest.attribution);
   return manifest;
 }
