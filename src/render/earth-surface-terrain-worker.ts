@@ -21,7 +21,7 @@ interface TerrainWorkerScope {
 
 const scope = globalThis as unknown as TerrainWorkerScope;
 
-// 要求ごとに独立して復号し、結果bufferの所有権を呼び出し側へ移す。
+// 要求ごとに独立して復号し、結果 buffer を転送可能オブジェクトとしてメインスレッドへ返送する。
 scope.onmessage = (event) => {
   const request = event.data;
   void decodeEarthTerrainBytesForFormat(

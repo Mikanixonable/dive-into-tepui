@@ -73,7 +73,7 @@ export abstract class Ship extends DynamicEntity {
   private hullPart: Part | null = null;
   private cockpitPart: CockpitPart | null = null;
 
-  // 基底の識別・Motion・View を組み、名前と HP を初期化する。ロードアウトは呼び出し側が渡す。
+  // 基底の識別・Motion・View を組み、名前と HP を初期化する。装備パーツ構成（ロードアウト）は引数で受け取る。
   public constructor(
     name: string,
     hp: number,

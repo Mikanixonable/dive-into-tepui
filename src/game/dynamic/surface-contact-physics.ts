@@ -72,7 +72,7 @@ export class SurfaceContactPhysics {
     this.candidates.resetSpan(this.bodyScratch, framePivot, tStart, tEnd, SPAN_REACH_MARGIN);
   }
 
-  // このサブステップで天体の位置を厳密に引く時刻を受け取る。接触の幾何はこの時刻から解く。
+  // このサブステップで天体の位置を厳密に引く時刻を受け取る。接触判定の幾何計算はこの時刻を基準に行う。
   // 参加者の位置で狭めた選び先は、参加者が進んだこの時点で捨てる。
   public beginSubstep(pivot: number): void {
     this.pivot = pivot;
@@ -86,7 +86,7 @@ export class SurfaceContactPhysics {
     this.resolveAgainstCandidates(e, services);
   }
 
-  // 区間を共有する個体をまとめて解く。顔ぶれで先に絞り込むぶん1体あたりが安くなるので、
+  // 区間を共有する個体をまとめて衝突処理する。顔ぶれで先に絞り込むぶん1体あたりが安くなるので、
   // **同じ区間を1歩で渡った個体をここへまとめる。** 絞り込みは次の beginSubstep まで残る。
   public resolveShared(entities: readonly SurfaceContactParticipant[], services: DynamicReactionServices): void {
     this.collectParticipants(entities, this.participantScratch);
@@ -95,7 +95,7 @@ export class SurfaceContactPhysics {
     for (const e of this.participantScratch) this.resolveAgainstCandidates(e, services);
   }
 
-  // 個体1つが区間内で最も早く触れる天体を1体だけ解き、反発を当ててから
+  // 個体1つが区間内で最も早く接触する天体を1体だけ特定し、反発を計算して適用してから
   // collideWithCelestialBody を呼ぶ。
   private resolveAgainstCandidates(e: SurfaceContactParticipant, services: DynamicReactionServices): void {
     const candidates = this.candidates.into(e, this.nearbyScratch);
@@ -132,7 +132,7 @@ export class SurfaceContactPhysics {
     }, services);
   }
 
-  // 参加者だけを out へ写す。out は呼び出し側が所有する。
+  // 参加者だけを out へ収集する。out は作業用配列。
   private collectParticipants(
     source: readonly SurfaceContactParticipant[], out: SurfaceContactParticipant[],
   ): void {
@@ -140,7 +140,7 @@ export class SurfaceContactPhysics {
     for (const entity of source) if (isParticipant(entity)) out.push(entity);
   }
 
-  // 判定できる天体だけを out へ写す。out は呼び出し側が所有する。
+  // 判定対象となる天体だけを out へ収集する。out は作業用配列。
   private collectCelestialBodies(
     source: readonly CelestialBody[], pivot: number, out: CelestialBody[],
   ): void {

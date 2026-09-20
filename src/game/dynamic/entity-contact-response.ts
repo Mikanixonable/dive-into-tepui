@@ -84,7 +84,7 @@ function compoundContactGeometry(
 
   if (shapeB === null) return null;
 
-  // primitive が返す B(compound) → A(sphere) を、呼び出し側の A → B へ反転する。
+  // 判定プリミティブが返す B(compound) → A(sphere) の法線・接触点を、本関数の引数順 A → B へ反転する。
   if (sweptValid) {
     const swept = sweptCompoundCylinderSphereContact(
       shapeB, poseOf(b, b.prevState, true), poseOf(b, bWork, false),

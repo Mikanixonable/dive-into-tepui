@@ -2,7 +2,7 @@
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 
 export interface EntityRoster {
-  // 保持する全エンティティを追加順に返す。呼び出し側は読み取り専用として扱う。
+  // 保持する全エンティティを追加順に返す（読み取り専用）。
   all(): readonly DynamicEntity[];
   // 顔ぶれの世代。追加・除去・prune のいずれでも増える。同じ世代なら顔ぶれは変わっていない。
   readonly collectionRevision: number;

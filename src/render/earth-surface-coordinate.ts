@@ -20,8 +20,8 @@ export function earthSurfaceNormal(position: THREE.Vector3, axes: THREE.Vector3)
   return normal.normalize();
 }
 
-// 実位置 [m] を正距円筒UVへ写す。u=0/1は西経/東経180度、v=0は北極。
-// 経度の両端を保持し、索引化する呼び出し側で周期を畳む。
+// 実位置 [m] を正距円筒UVへ変換する。u=0/1は西経/東経180度、v=0は北極。
+// 経度の両端（0 と 1）はそのまま保持し、インデックス化時に周期を折りたたむ。
 export function earthSurfaceUv(position: THREE.Vector3, axes: THREE.Vector3): THREE.Vector2 {
   const normal = earthSurfaceNormal(position, axes);
   return new THREE.Vector2(
@@ -50,17 +50,17 @@ export function earthPositionAtUv(u: number, v: number, axes: THREE.Vector3): TH
   return scaledNormal.clone().multiply(axes).divideScalar(scaledNormal.length());
 }
 
-// 地理UVから天体固定の放射方向へ写す。
+// 地理UVから天体固定の放射方向単位ベクトルを計算する。
 export function earthRadialAtUv(u: number, v: number, axes: THREE.Vector3): THREE.Vector3 {
   return earthPositionAtUv(u, v, axes).normalize();
 }
 
-// 天体固定の放射方向を地理UVへ写す。方向の長さは任意の正値。
+// 天体固定の放射方向から地理UVへ変換する。方向ベクトルの長さは任意の正値。
 export function earthUvFromRadial(direction: THREE.Vector3, axes: THREE.Vector3): THREE.Vector2 {
   return earthSurfaceUv(direction, axes);
 }
 
-// 天体固定の放射方向を、楕円体の地理緯度・経度へGPU上で写す。axesは天体固定XYZの半軸 [m]。
+// 天体固定の放射方向を、楕円体の地理緯度・経度UVへGPU上で変換する。axesは天体固定XYZの半軸 [m]。
 export function earthSurfaceUvFromRadialNode(direction: Vec3Node, axes: Vec3Node): Vec2Node {
   const normal = normalize(direction.div(axes.mul(axes)));
   const longitude = normal.z.atan(normal.x.negate());

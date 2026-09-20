@@ -31,7 +31,7 @@ export interface OutlineCircle {
   readonly dispose: () => void;
 }
 
-// 単位円の輪郭線を1つ作る。呼び出し側は scale/position/quaternion で半径・位置・向きを与える。
+// 単位円の輪郭線を1つ生成する。半径・位置・向きはメッシュの scale/position/quaternion で制御する。
 export function createOutlineCircle(): OutlineCircle {
   const material = new THREE.LineBasicMaterial({ color: OUTLINE_CIRCLE_COLOR });
   const line = new THREE.Line(getSharedGeometry(), material);

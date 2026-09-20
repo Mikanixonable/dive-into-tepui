@@ -160,7 +160,7 @@ export class NavTargetPresenter {
     if (attractor instanceof OrbitingMotion) {
       return { id, state: attractor.stateAt(t), hasMass: true, attractor, entity: null, fixed: true };
     }
-    // ラグランジュ点は副天体の回転系から解く。
+    // ラグランジュ点は副天体の回転座標系から計算する。
     const lagrange = lagrangePointOf(id);
     if (lagrange !== null) {
       const secondary = celestialBodies.findMotion(lagrange.parentId) ?? null;

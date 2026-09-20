@@ -38,7 +38,7 @@ const RING_COVERAGE_ATTRIBUTE = 'ringCoverage';
 
 export interface RingVisual {
   readonly object: THREE.Object3D;
-  // この表示物が組んだ geometry を解放する。object をシーンから外すのは呼び出し側が行う。
+  // この表示物が組んだ geometry を解放する。object のシーンからの削除は含まない。
   readonly dispose: () => void;
 }
 

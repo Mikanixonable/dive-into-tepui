@@ -199,7 +199,7 @@ export class Curve {
     this.line.position.copy(this.reqPosition).add(this.scratchCamWorld);
   }
 
-  // 位置 t の頂点を積み、その番号を返す。連結リストへの接続は呼び出し側が行う。
+  // 位置 t の頂点を追加し、そのインデックスを返す。連結リストの前後ポインタ更新はこれに含まない。
   private pushVertex(t: number, x: number, y: number, z: number, colorAt?: CurveColorSampler): number {
     const i = this.bakedCount++;
     this.ts[i] = t;

@@ -34,8 +34,8 @@ function standardMaterialParams(
   };
 }
 
-// 同じ見た目を持つ Node 版の標準マテリアル。渡されたものが既に Node 版ならそのまま返し、
-// そうでなければ移し替えたうえで元を破棄する — 呼び出し側は戻り値へ持ち替える。
+// 同じ見た目を持つ Node 版の標準マテリアルを取得する。渡されたものが既に Node 版ならそのまま返し、
+// そうでなければ新規作成して元マテリアルを破棄した上で、新規マテリアルを返す。
 export function toStandardNodeMaterial(material: THREE.Material): THREE.MeshStandardNodeMaterial {
   if ((material as THREE.MeshStandardNodeMaterial).isMeshStandardNodeMaterial) {
     return material as THREE.MeshStandardNodeMaterial;

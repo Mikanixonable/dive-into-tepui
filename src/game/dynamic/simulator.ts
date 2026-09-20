@@ -69,7 +69,7 @@ export class Simulator {
   }
 
   // simDt ぶんシミュレーションを進める。サブステップごとに全個体を進めてから、天体・物体どうしの
-  // 接触を解く。物体どうしの接触は canEngage のときに限り、交戦圏の内側で解く。
+  // 接触判定・衝突応答を処理する。物体どうしの接触は canEngage のときに限り、交戦圏の内側で処理する。
   public advance(
     dt: number,
     simDt: number,
@@ -129,18 +129,18 @@ export class Simulator {
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
       nanWatchdog.checkControlled('simulator.advance(個体の前進)', controlled, this._simTime, dt, subDt);
-      // 天体との接触を物体どうしより先に解く。細分した個体は内側で解き終えているので、ここでは
-      // 1歩で渡った個体に限る — 二重に解くと反発が二度当たる。
+      // 天体との接触を物体どうしより先に判定する。細分した個体は内側で処理を終えているので、ここでは
+      // 1歩で渡った個体に限る — 二重に判定すると反発が二度適用されてしまう。
       this.sections.enter(SECTION.celestialContact);
       this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, services);
       this.sections.exit(SECTION.celestialContact);
       nanWatchdog.checkControlled('simulator.advance(天体接触)', controlled, this._simTime, dt, subDt);
       // 接触代理は交戦圏があるときに限って組む — 交戦圏の組まれない倍率で組むと、代理が
-      // substep 幅そのままの粗い刻みで解かれて発散する。
+      // substep 幅そのままの粗い刻みで評価されて発散する。
       const zones = engagementZones(this.roster.allMotions(), canEngage);
       if (zones.length > 0) {
         this.sections.enter(SECTION.entityContact);
-        // 接触代理を参加者へ合流させて解き、解決後に本体へ書き戻す。
+        // 接触代理を参加者へ合流させて接触判定を処理し、解決後に本体へ書き戻す。
         this.contactEntitiesScratch.length = 0;
         for (const entity of this.roster.allMotions()) {
           this.contactEntitiesScratch.push(entity);
@@ -190,10 +190,10 @@ export class Simulator {
           this.bodies.pivot, services);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
-        // 細分した個体は各歩で表面到達を解く — 判定を粗いままにすると、加熱の山を踏み外し、
-        // 地表を跨いで地面の下を積み続ける。
+        // 細分した個体は各歩で表面到達判定を行う — 判定を粗いままにすると、加熱の山を踏み外し、
+        // 地表を跨いで地面の下を積分し続ける。
         if (divisions > 1) {
-          // 細分の各歩で解く天体接触も天体接触の値段なので、軌道積分を出てから計る。
+          // 細分の各歩で処理する天体接触も天体接触の負荷なので、軌道積分の計測区間を出てから計る。
           this.sections.switchTo(SECTION.orbit, SECTION.celestialContact);
           this.surfaceContactPhysics.resolveOne(e, services);
           this.sections.switchTo(SECTION.celestialContact, SECTION.orbit);
