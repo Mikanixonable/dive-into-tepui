@@ -7,14 +7,10 @@ import { deserializeKinematicState, kinematicState, type KinematicState } from '
 import { add, cross, norm, scale, v3, len, sub, type Vec3 } from '../../math/vec3';
 import { randSym } from '../../math/random';
 import { Ship } from '../dynamic/dynamic-entity/ship';
-import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity, SerializedDynamicEntityFields } from '../dynamic/dynamic-entity/dynamic-entity';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import type { EntityRegistry } from '../dynamic/entity-registry';
-import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
-import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
-import { collisionDamageFraction } from '../dynamic/dynamic-entity/contact-damage';
 import { generateRandomName } from '../random-name';
 import { Throttle, type SerializedThrottle } from '../player/throttle';
 import { FireControl, type SerializedFireControl } from '../player/fire-control';
@@ -39,11 +35,10 @@ import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { ModularShipMotion, type ModularShipMotionReactions } from './modular-ship-motion';
 import type { DynamicMotionThermal } from '../dynamic/dynamic-motion';
-import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
-import type { DamageOutcomeSink } from '../player/damage-outcome';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
 import { ShipInspection } from '../pickable/ship-inspection';
 import { PlayerEffects } from '../player/player-effects';
+import { ModularShipReactions } from './modular-ship-reactions';
 import { createDefaultCombatPreset } from './ship-presets';
 import type { ShipAssembly, ShipConnection } from './ship-assembly';
 import { ShipCapabilities } from './ship-capabilities';
@@ -68,10 +63,6 @@ const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLASMA_BULLET_DAMAGE)より軽い。
-const RADIATOR_BULLET_DAMAGE = 0.25;
-
-const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱量 [J]
-
 const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
 
 // 給弾ベルトの節点数。たわみ物理の鎖の長さと、表示するリンクメッシュの本数を揃える。
@@ -135,6 +126,7 @@ export class ModularShip extends Ship implements Controllable {
   public readonly fire: FireControl;
   public readonly altitudeAlarm: AltitudeAlarm;
   private readonly effects: PlayerEffects;
+  private readonly reactions: ModularShipReactions;
   private readonly scene: THREE.Scene;
   private readonly registry: EntityRegistry;
   private readonly dockedVessels = new Map<string, { readonly id: string; readonly name: string }>();
@@ -229,6 +221,11 @@ export class ModularShip extends Ship implements Controllable {
         ? ModularShip.progradeAttitude(state, physics.mass.inertia)
         : { ...placement.att, inertia: physics.mass.inertia });
 
+    let reactionHandler: ModularShipReactions | null = null;
+    const requiredReactions = (): ModularShipReactions => {
+      if (reactionHandler === null) throw new Error('modular ship reactions are not initialized');
+      return reactionHandler;
+    };
     const reactions = (owner: ModularShip): ModularShipMotionReactions => ({
       roundsInMagazine: () => owner.fire.rounds,
       stepBarrelThermal: dt => owner.fire.stepBarrelThermal(dt),
@@ -239,15 +236,15 @@ export class ModularShip extends Ship implements Controllable {
       updateAltitudeAlarm: (dt, position, body, pivot) => (
         owner.altitudeAlarm.update(dt, position, body, pivot)
       ),
-      receiveEntityContact: (other, contact, services) => (
-        owner.receiveEntityContact(other, contact, services)
-      ),
+      receiveEntityContact: (other, contact, services) => requiredReactions().receiveEntityContact(other, contact, services),
       receiveRadiatorContact: (side, other, contact, services) => (
-        owner.receiveRadiatorContact(side, other, contact, services)
+        requiredReactions().receiveRadiatorContact(side, other, contact, services)
       ),
-      receiveSurfaceContact: (_body, contact, services) => owner.receiveSurfaceContact(contact, services),
-      receiveStructuralLoss: services => owner.receiveStructuralLoss(services),
-      receiveBurnUp: services => owner.receiveBurnUp(services),
+      receiveSurfaceContact: (body, contact, services) => (
+        requiredReactions().receiveSurfaceContact(body, contact, services)
+      ),
+      receiveStructuralLoss: services => requiredReactions().receiveStructuralLoss(services),
+      receiveBurnUp: services => requiredReactions().receiveBurnUp(services),
     });
     super(
       name,
@@ -283,6 +280,18 @@ export class ModularShip extends Ship implements Controllable {
     this.scene = scene;
     this.throttle = saved?.throttle ? Throttle.deserialize(saved.throttle) : new Throttle();
     this.effects = new PlayerEffects(registry);
+    this.reactions = new ModularShipReactions({
+      motion: this.motion,
+      assembly: this.assembly,
+      effects: this.effects,
+      syncAfterDamage: () => {
+        this.hp = this.assembly.totalHp;
+        this.maxHp = this.assembly.maxHp;
+        this.capabilities.reconcileOperatingCockpit();
+        this.syncDerivedRole();
+      },
+    });
+    reactionHandler = this.reactions;
     this.plan = saved?.plan ? Plan.deserialize(saved.plan) : Plan.create();
     this._planExecution = saved?.planExecution ?? 'instant';
     this._fineAttitude = saved?.fineAttitude ?? false;
@@ -352,14 +361,6 @@ export class ModularShip extends Ship implements Controllable {
   public get roundsInMag(): number { return this.fire.rounds; }
   public get magsLeft(): number { return this.fire.mags; }
   public get reloadTimer(): number { return this.fire.cooldown; }
-
-  private damageAssembly(amount: number, targetModuleId?: string): void {
-    this.assembly.damage(amount, Math.floor(Math.random() * 0x1_0000_0000), targetModuleId);
-    this.hp = this.assembly.totalHp;
-    this.maxHp = this.assembly.maxHp;
-    this.capabilities.reconcileOperatingCockpit();
-    this.syncDerivedRole();
-  }
 
   // 展開操作の状態を module ID へ戻す。配列順は旧セーブの移行にだけ使い、継続状態の対応付けには使わない。
   private syncModuleDeployments(): void {
@@ -786,133 +787,6 @@ export class ModularShip extends Ship implements Controllable {
       wear[module.id] = maxHp > 0 ? 1 - module.hp / maxHp : 1;
     }
     return wear;
-  }
-
-  // 被弾によるダメージ・致死判定。radiator module ID を指定するとそのパーツへ、無指定なら
-  // 無作為なパーツへダメージが入る。
-  private attackedByBullet(
-    bulletType: BulletType, shooter: Shooter, damage: number, impactPoint: Vec3,
-    outcome: DamageOutcomeSink,
-    radiatorId: string | null = null,
-  ): void {
-    // 熱とダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
-    this.motion.absorbHeat(BULLET_IMPACT_HEAT / Math.max(this.motion.mass, 1e-9));
-    const radiator = radiatorId === null ? undefined : this.assembly.module(radiatorId);
-    const targetId = radiator?.kind === 'radiator' ? radiator.id : undefined;
-    this.damageAssembly(radiatorId === null ? damage : RADIATOR_BULLET_DAMAGE, targetId);
-    if (radiatorId !== null && radiator?.kind === 'radiator' && (this.assembly.module(radiator.id)?.hp ?? 0) <= 0) {
-      const tip = this.motion.radiator.tipWorldPosition(radiator.id, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(this.motion.state, tip);
-    }
-    this.effects.impact(bulletType, this.motion.state, impactPoint);
-    void shooter;
-    void outcome;
-  }
-
-  // 他の動体との接触の帰結。弾なら武装のダメージを、それ以外は接近速度と相手の種別を根拠に
-  // 無作為なパーツへダメージを入れる(ゲームバランスの量)。
-  private receiveEntityContact(
-    other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
-  ): void {
-    if (!this.motion.alive) return;
-
-    // 弾の命中
-    const bullet = bulletReactionOf(other);
-    if (bullet !== null) {
-      this.attackedByBullet(
-        bullet.type, bullet.shooter, bullet.damage, contact.point,
-        this.outcomeOf(services),
-      );
-      return;
-    }
-
-    // 弾以外との衝突
-    this.damagedByContact(
-      contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した',
-      this.outcomeOf(services),
-    );
-  }
-
-  // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
-  private receiveSurfaceContact(contact: Contact, services: DynamicReactionServices): void {
-    if (!this.motion.alive) return;
-    this.damagedByContact(
-      closingSpeed(contact), null, '天体の地表へ到達し機体は失われた',
-      this.outcomeOf(services),
-    );
-  }
-
-  // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは指定された module へ入る。
-  private receiveRadiatorContact(
-    moduleId: string, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
-  ): void {
-    if (!this.motion.alive) return;
-
-    // 弾の命中
-    const bullet = bulletReactionOf(other);
-    if (bullet !== null) {
-      this.attackedByBullet(
-        bullet.type, bullet.shooter, bullet.damage, contact.point,
-        this.outcomeOf(services), moduleId,
-      );
-      return;
-    }
-
-    // 弾以外との衝突
-    this.damagedByContact(
-      contactDamageSpeed(other, contact), moduleId, '高速接触により機体を喪失した',
-      this.outcomeOf(services),
-    );
-  }
-
-  // 接触によるダメージ・致死判定。module ID を指定するとその放熱板パーツへ、無指定なら無作為な
-  // パーツへダメージが入る。
-  private damagedByContact(
-    damageSpeed: number, radiatorId: string | null, lossReason: string, outcome: DamageOutcomeSink,
-  ): void {
-    // ダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
-    const fraction = collisionDamageFraction(damageSpeed);
-    if (fraction <= 0) return;
-    const radiator = radiatorId === null ? undefined : this.assembly.module(radiatorId);
-    const targetId = radiator?.kind === 'radiator' ? radiator.id : undefined;
-    this.damageAssembly(this.maxHp * fraction, targetId);
-    if (radiatorId !== null && radiator?.kind === 'radiator' && (this.assembly.module(radiator.id)?.hp ?? 0) <= 0) {
-      const tip = this.motion.radiator.tipWorldPosition(radiator.id, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(this.motion.state, tip);
-    }
-    this.effects.contact(this.motion.state);
-    void lossReason;
-    void outcome;
-  }
-
-  // 動圧が構造限界を超えたことによる喪失。
-  private receiveStructuralLoss(services: DynamicReactionServices): void {
-    if (!this.motion.alive) return;
-    this.lose(
-      '動圧が構造限界を超え、機体は空力的に分解した',
-      this.outcomeOf(services),
-    );
-  }
-
-  // 外殻の温度が上限を超えたときの喪失。理由は、そこで空力加熱が効いていたかで分ける。
-  private receiveBurnUp(services: DynamicReactionServices): void {
-    this.lose(
-      this.motion.aero.heatingAerodynamically
-        ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
-        : '排熱が追いつかず、機体は熱で機能不全に陥った',
-      this.outcomeOf(services),
-    );
-  }
-
-  // 喪失の共通処理。reason はステージの記録に残す喪失理由。
-  private lose(reason: string, outcome: DamageOutcomeSink): void {
-    this.motion.kill();
-    this.effects.destroy(this.motion.state);
-    outcome.playerLost(reason);
-  }
-
-  private outcomeOf(services: DynamicReactionServices): DamageOutcomeSink {
-    return { playerLost: reason => services.activeStage.recordPlayerLost(reason) };
   }
 
   // 入力から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
