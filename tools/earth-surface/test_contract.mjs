@@ -83,6 +83,11 @@ function jpegFixture({ width = EARTH_BASE_COLOR_WIDTH, height = EARTH_BASE_COLOR
 function manifest(sourceManifestSha256, datasetId = 'earth-fixture-a') {
   return {
     schemaVersion: 3, datasetId, sourceManifestSha256, sourceManifest: 'sources.json',
+    colorCalibration: {
+      inputEncoding: 'sRGB8', aggregation: 'linear_rgb_area_mean', outputEncoding: 'sRGB8',
+      diffuseAlbedoScale: 1, meanLinearRgb: [0.1, 0.1, 0.1], meanRec709Albedo: 0.1,
+      bondAlbedo: 0.294, averageHue: [1, 1, 1],
+    },
     provenance: { generator: 'fixture/1' },
     terrainEncoding: { formatVersion: EARTH_TERRAIN_FORMAT_VERSION, layout: EARTH_TERRAIN_LAYOUT,
       width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8', normalFrame: 'body_fixed' },
