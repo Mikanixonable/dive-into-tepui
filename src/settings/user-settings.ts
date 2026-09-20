@@ -49,13 +49,13 @@ export class UserSettings {
   // storage は設定一式を残す先。鍵は既存ユーザーの保存に残っている文字列なので、変えると
   // 保存済みの設定が読めなくなる。
   public constructor(storage: SettingStorage) {
-    // 画面全体に効く設定。
+    // 画面全体に適用される全域設定。
     this.graphics = new StoredSetting(storage, 'tepui.settings.graphics', parseGraphics, formatGraphics);
     this.renderStyle = new StoredSetting(storage, 'tepui.settings.renderStyle', parseRenderStyle, formatRenderStyle);
     this.bgmVolume = new StoredSetting(storage, 'tepui.settings.bgm_vol', parseBgmVolume, formatBgmVolume);
     this.bgmMuted = new StoredSetting(storage, 'tepui.settings.bgm_muted', parseBgmMuted, formatBgmMuted);
     this.themePalette = new StoredSetting(storage, 'tepui.theme-palette', parseThemePalette, formatThemePalette);
-    // マップ・天球の表示に効く設定。
+    // マップおよび天球の表示制御設定。
     this.mapDisplayToggles = new StoredSetting(
       storage, 'tepui.mapDisplayToggles', parseMapDisplayToggles, formatMapDisplayToggles,
     );
