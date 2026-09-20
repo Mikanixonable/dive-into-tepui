@@ -22,15 +22,15 @@ export class Stage1 extends Stage {
     const stage = new Stage1(deps);
     // 自機を置き、その状態を基準に敵を近傍軌道へ散らす
     const player = stage.addPlayer();
-    const base = player.motion.state;
+    const referenceState = player.motion.state;
     const scene = stage._scene;
     const idAllocators = stage._dynamicSystem.idAllocators;
     const attractors = stage._celestialSystem.celestialMotions;
-    stage.addEnemy(generatePhasedEnemy('HOSTILE-α', base, attractors, 1400, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, attractors, -2800, 2500, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, attractors, 2200, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, attractors, 5000, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, attractors, 60000, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generatePhasedEnemy('HOSTILE-α', referenceState, attractors, 1400, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateCoellipticEnemy('HOSTILE-β', referenceState, attractors, -2800, 2500, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateCrossingEnemy('HOSTILE-γ', referenceState, attractors, 2200, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateEllipticEnemy('HOSTILE-δ', referenceState, attractors, 5000, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generatePhasedEnemy('HOSTILE-ε', referenceState, attractors, 60000, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
     stage.composeBriefing();
     return stage;
   }

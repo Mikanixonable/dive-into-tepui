@@ -96,16 +96,16 @@ export class PropertyWindow<A extends string = string> {
   public onClipChange: ((clipped: boolean) => void) | null = null;
 
   // clientX/clientY を左上角として root の子として開き、content の内容で組み立てる。
-  // tempWindowGroup を渡すと、クリップされていない間だけ OverlayManager 上の排他グループに
+  // unclippedWindowGroup を渡すと、クリップされていない間だけ OverlayManager 上の排他グループに
   // 参加する一時ウィンドウになる(ESC・外側クリックで自動的に閉じ、同グループの他方も追い出す)。
   // 省略すると ESC・外側クリックのどちらでも閉じない常設ウィンドウになる。
   public constructor(
     root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>,
-    overlayManager: OverlayManager, tempWindowGroup?: string,
+    overlayManager: OverlayManager, unclippedWindowGroup?: string,
   ) {
     injectOnce('property-window', STYLE);
     this.win = new DraggableWindow(root, clientX, clientY, {
-      title: content.title, subtitle: content.subtitle, icon: content.icon, tempWindowGroup,
+      title: content.title, subtitle: content.subtitle, icon: content.icon, unclippedWindowGroup,
     }, overlayManager);
     this.win.onClose = () => this.onClose?.();
     this.win.onClipChange = (clipped) => this.onClipChange?.(clipped);

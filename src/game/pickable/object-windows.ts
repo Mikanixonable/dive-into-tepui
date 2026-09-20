@@ -8,7 +8,7 @@ import type { PauseMenu } from '../../hud/windows/pause-menu';
 import type {
   PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
 } from '../../hud/windows/property-window-content';
-import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
+import { UNCLIPPED_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { focusTargetId } from '../viewer/focus-target';
 import type { FocusCameraCommands } from '../viewer/camera-commands';
@@ -106,7 +106,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     const content = this.buildContent(target, this.displayWindowManager.current.simTime);
     const w = new PropertyWindow<MenuAction>(
       this.hud.layers.window, clientX, clientY, content,
-      this.hud.overlayManager, TEMP_WINDOW_GROUP,
+      this.hud.overlayManager, UNCLIPPED_WINDOW_GROUP,
     );
     const entry: WindowEntry = { win: w, target };
     this.windows.set(key, entry);

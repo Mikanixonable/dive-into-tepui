@@ -9,7 +9,7 @@ import { createShipDefaultParts } from './ship-default-parts';
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
 import { deserializeParts, type Part, type AnyPart } from './parts';
-import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
+import { MetalEnemyView, VariantMetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
 // 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。アセットの bounds を写した
 // 定数で、一致は描画テストが確かめる。
@@ -67,7 +67,7 @@ export class MetalEnemy extends PartBasedEnemy {
     // 型番の有無で見た目と慣性を選ぶ
     const metalView = typeIndex === null
       ? new MetalEnemyView(accent, ENEMY_MODEL_SCALE, scene)
-      : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
+      : new VariantMetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
       placement, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
       metalEnemyCollisionRadius(typeIndex), id, parts, alive,

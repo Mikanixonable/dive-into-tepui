@@ -125,12 +125,12 @@ export class GamePresentation {
   // このフレームの入力の解釈が組んだ操作量。
   public get pilotControls(): PilotControls { return this.inputPhase.pilotControls; }
 
-  // 各表示物・入力の受け口を、互いの依存関係が満たせる順に組んで game へ繋ぐ。viewOptionSettings は
+  // 各表示物・入力の受け口を、互いの依存関係が満たせる順に組んで game へ繋ぐ。viewOptionsSettings は
   // マップ・天球の表示設定と表示パネルのタブの選択、themePalette は選ばれている配色。
   public constructor(
     private readonly game: Game,
     private readonly devices: PageDevices,
-    private readonly viewOptionSettings: ViewOptionsSettings,
+    private readonly viewOptionsSettings: ViewOptionsSettings,
     private readonly themePalette: SettingValue<ThemePalette>,
     sections: FrameSections,
   ) {
@@ -142,7 +142,7 @@ export class GamePresentation {
     this.frameMarkers = markers.createGroup();
     this.playerMarkers = new PlayerMarkers(markers);
     this.flashEffectsView = new FlashEffectsView(scene.scene);
-    this.equatorNodes = new EquatorNodeManager(dynamicSystem, markers, viewOptionSettings.mapDisplay);
+    this.equatorNodes = new EquatorNodeManager(dynamicSystem, markers, viewOptionsSettings.mapDisplay);
     this.celestialMarkers = new CelestialMarkers(markers, celestialSystem);
     hud.beginRun(activeStage.id);
     const entityDisplayPort = entityDisplayCommands(commands, viewer.entityDisplay);
@@ -184,7 +184,7 @@ export class GamePresentation {
     // 表示パネル。左レールの並びはパネルを足した順で決まるので、同じレールへ足す座標系パネル
     // (FrameControls)より先に組む。
     this.viewOptions = new ViewOptionsControl(
-      hud.mapRoot, hud.panelCollapse, viewOptionSettings,
+      hud.mapRoot, hud.panelCollapse, viewOptionsSettings,
       viewer.orbitGuide, orbitGuideCommands(commands, viewer.orbitGuide),
     );
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。
@@ -230,7 +230,7 @@ export class GamePresentation {
       game.simSpeedManager, simSpeedCommands(commands, game.simSpeedManager),
       this.planDisplay, this.planPath, planCommands(commands),
       scene.scene, hud, this.uiSounds, this.navTargetPresenter, targetCommands,
-      viewOptionSettings.mapDisplay,
+      viewOptionsSettings.mapDisplay,
     );
     this.viewManager = new ViewManager(
       viewer.view, this.touchControls, { combat: this.combatView, map: this.mapView },
@@ -393,7 +393,7 @@ export class GamePresentation {
     celestialSystem.sync(
       displayTime, nowMs, camera, view, viewer.camera.map, this.cameraSystem.mapResolvedFocus,
       graphics, style,
-      this.viewOptionSettings.grid.current, viewer.orbitGuide.settings, visibilityPolicy,
+      this.viewOptionsSettings.grid.current, viewer.orbitGuide.settings, visibilityPolicy,
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
