@@ -45,7 +45,7 @@ async function readConfigs() {
       }
       configs.push({ config, configPath });
     } catch (error) {
-      throw new Error(relative(repositoryRoot, configPath) + ': ' + error.message);
+      throw new Error(relative(repositoryRoot, configPath) + ': ' + error.message, { cause: error });
     }
   }
   configs.sort((left, right) => right.configPath.localeCompare(left.configPath));
