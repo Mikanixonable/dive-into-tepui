@@ -246,7 +246,7 @@ export function register(): void {
     fixture.resident.reset();
     const next = fixture.resident.sync({ projection: new Projection(), timeMs: 1, generation: 2 });
     assert.deepEqual(next.requested.map(earthTileId), [earthTileId(key)]);
-    let retained = false;
+    let retained: boolean;
     try {
       await backend.secondFinished;
       for (let turn = 0; turn < 4 && fixture.resident.residentMaxZ === null; turn++) {

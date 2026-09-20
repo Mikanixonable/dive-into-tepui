@@ -149,7 +149,7 @@ function loadSeparated(file) {
   try {
     return decodeRedPng(readFileSync(path.join(root, file)));
   } catch (e) {
-    throw new Error(`${file} を読めない — 先に npm run cloud-lab:separate を実行する (${e.message})`);
+    throw new Error(`${file} を読めない — 先に npm run cloud-lab:separate を実行する (${e.message})`, { cause: e });
   }
 }
 
@@ -645,7 +645,7 @@ async function main() {
   });
   const shots = new Map();
   // 時刻 0 の低気圧の谷の配置(緯度・経度 [rad]、深さ [hPa]、半径 [m])。ページの進路モジュールから引く。
-  let cyclonesAtZero = { tropical: null, lows: [] };
+  let cyclonesAtZero;
   try {
     const { devTools } = session;
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
