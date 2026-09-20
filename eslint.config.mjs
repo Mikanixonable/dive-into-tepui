@@ -5,8 +5,45 @@ import js from '@eslint/js';
 import globals from 'globals';
 import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
+import explicitPublicReturnType from './tools/eslint-rules/explicit-public-return-type.mjs';
 
-const typescriptFiles = ['src/**/*.ts', 'tests/**/*.ts', 'tools/**/*.ts'];
+const sourceAndTestFiles = ['src/**/*.ts', 'tests/**/*.ts'];
+const toolTypeScriptFiles = ['tools/**/*.ts'];
+
+const commonTypeScriptRules = {
+  'no-var': 'error',
+  'prefer-const': 'error',
+  'no-restricted-syntax': [
+    'error',
+    {
+      selector: 'ExportDefaultDeclaration',
+      message: 'default export を使わず、named export を使う。',
+    },
+    {
+      selector: 'TSUnionType > TSUndefinedKeyword',
+      message: '不在は T | null で表す(CODING-RULE 1.6)。省略可能な欄 `?:` へ書き換えても不在は undefined のまま。',
+    },
+  ],
+  '@typescript-eslint/consistent-type-imports': [
+    'error',
+    {
+      fixStyle: 'inline-type-imports',
+      prefer: 'type-imports',
+    },
+  ],
+  '@typescript-eslint/no-import-type-side-effects': 'error',
+  '@typescript-eslint/array-type': ['error', { default: 'array' }],
+  '@typescript-eslint/prefer-for-of': 'error',
+  '@typescript-eslint/no-unused-vars': [
+    'error',
+    {
+      argsIgnorePattern: '^_',
+      caughtErrorsIgnorePattern: '^_',
+      destructuredArrayIgnorePattern: '^_',
+      varsIgnorePattern: '^_',
+    },
+  ],
+};
 
 export default defineConfig([
   {
@@ -20,36 +57,22 @@ export default defineConfig([
     ],
   },
   {
-    files: typescriptFiles,
+    files: sourceAndTestFiles,
     extends: [js.configs.recommended, tseslint.configs.recommended],
     languageOptions: {
       globals: globals.browser,
     },
+    plugins: {
+      local: {
+        rules: {
+          'explicit-public-return-type': explicitPublicReturnType,
+        },
+      },
+    },
     rules: {
-      'no-var': 'error',
-      'prefer-const': 'error',
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: 'ExportDefaultDeclaration',
-          message: 'default export を使わず、named export を使う。',
-        },
-        {
-          selector: 'TSUnionType > TSUndefinedKeyword',
-          message: '不在は T | null で表す(CODING-RULE 1.6)。省略可能な欄 `?:` へ書き換えても不在は undefined のまま。',
-        },
-      ],
-      '@typescript-eslint/consistent-type-imports': [
-        'error',
-        {
-          fixStyle: 'inline-type-imports',
-          prefer: 'type-imports',
-        },
-      ],
-      '@typescript-eslint/no-import-type-side-effects': 'error',
+      ...commonTypeScriptRules,
       '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
       '@typescript-eslint/prefer-function-type': 'error',
-      '@typescript-eslint/array-type': ['error', { default: 'array' }],
       '@typescript-eslint/parameter-properties': ['error', { prefer: 'parameter-property' }],
       '@typescript-eslint/explicit-member-accessibility': [
         'error',
@@ -57,14 +80,11 @@ export default defineConfig([
           accessibility: 'explicit',
         },
       ],
-      '@typescript-eslint/explicit-module-boundary-types': 'error',
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-non-null-assertion': 'error',
-      '@typescript-eslint/prefer-for-of': 'error',
+      'local/explicit-public-return-type': 'error',
     },
   },
   {
-    files: ['tests/**/*.ts', 'tools/**/*.ts'],
+    files: ['tests/**/*.ts'],
     languageOptions: {
       globals: {
         ...globals.browser,
@@ -73,9 +93,18 @@ export default defineConfig([
     },
   },
   {
+    files: toolTypeScriptFiles,
+    extends: [js.configs.recommended, tseslint.configs.recommended],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      ...commonTypeScriptRules,
+    },
+  },
+  {
     files: ['src/**/*.ts'],
     rules: {
-      'no-console': 'error',
       // 長さは責務が複数あることの徴候であって違反ではない(CODING-RULE 1.2)。診断の入口として警告に留める。
       'max-lines': ['warn', 500],
       'max-lines-per-function': ['warn', 100],

@@ -63,7 +63,7 @@ async function readJson(path) {
   try {
     return JSON.parse(await readFile(path, 'utf8'));
   } catch (error) {
-    throw new Error(`cannot read JSON fixture ${path}: ${error.message}`);
+    throw new Error(`cannot read JSON fixture ${path}: ${error.message}`, { cause: error });
   }
 }
 
