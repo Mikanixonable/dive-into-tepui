@@ -62,17 +62,17 @@ export class MapPicking {
     );
     // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md「軌道物体一覧パネル」)。
     this.listPanel.onFocus = (id) => {
-      this.focusTarget(id, this.pickables.pickables.find((i) => i.id === id));
+      this.focusTarget(id, this.pickables.listPickables.find((i) => i.id === id));
     };
     this.listPanel.onNavTarget = (id) => {
-      const target = this.pickables.pickables.find((i) => i.id === id);
+      const target = this.pickables.listPickables.find((i) => i.id === id);
       if (target && this.navTargetPresenter.canTarget(
         id, this.roster, this.celestialBodies, this.displayWindowManager.current.simTime)) {
         this.navTargetCommands.toggle(id, target.name);
       }
     };
     this.listPanel.onSelectRight = (id, clientX, clientY) => {
-      const target = this.pickables.pickables.find((i) => i.id === id);
+      const target = this.pickables.listPickables.find((i) => i.id === id);
       if (target) this.objectWindows.open(clientX, clientY, target);
     };
   }
@@ -183,7 +183,7 @@ export class MapPicking {
     }
     this.listPanel.setVisible(true);
     this.listPanel.sync(
-      this.pickables.markerPickables, focusTargetId(this.camera.map.focus),
+      this.pickables.listPickables, focusTargetId(this.camera.map.focus),
       parentOf, viewer, displayTime);
     this.orbitLineWindows.sync();
   }
