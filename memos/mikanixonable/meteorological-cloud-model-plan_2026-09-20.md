@@ -30,11 +30,28 @@
 
 ### 時間階層と時刻契約
 
-- シミュレーション上の時間を空間周波数の異なる四層に分ける。初期パラメータの探索範囲は、総観 forcing が 2〜7 日、組織化成分が 12〜36 時間、中間スケールの雲群が 2〜12 時間、解像する雲セル・雲塊が 0.25〜2 時間とする。これらは物体一個の見かけの寿命を一律に決める値ではなく、Step 2 の観測分布で regime 別に較正する。
+- シミュレーション上の時間を空間周波数の異なる四層に分ける。初期パラメータの探索範囲は、総観 forcing が 2〜5 日（長い tail は 5〜7 日）、メソ組織が 4〜24 時間、雲セルが 0.5〜3 時間、sub-grid detail が 0.25〜1 時間とする。かなとこは独立した周波数帯ではなく、対流セルから遅れて 4〜10 時間残る lifecycle tail として扱う。これらは物体一個の見かけの寿命を一律に決める値ではなく、Step 2 の観測分布で regime 別に較正する。
 - 2,000 km は固定カメラの画角ではなく、緯度経度を大円距離へ変換した検証窓の幅として固定する。runtime の cap 面積・投影はカメラから決まるため、検証窓と 512×512 cap の面積を同一視しない。
 - 生成関数は `displayTime` や前フレームの状態を入力にしない。CPU の入口は整数ミリ秒の `epochUnixMs` とし、GPU へは精度を保てる `dayIndex` と `secondsOfDay` へ正規化して渡す。`displayTime` は絶対時刻を選ぶ再生カーソルに限定する。
 - seed、forcing、cohort の年齢、日周期・季節周期は絶対時刻から算出する。時間倍率、フレーム刻み、任意時刻へのランダムアクセス、評価順が結果を変えないことを契約にする。
 - 長寿命の総観場と短寿命の雲模様は別の状態として生成する。同じ field を 7 日周期で cross-fade して雲の寿命を作る方式は採らない。
+
+初期値は仕様上の固定値ではなく、最初の較正走査を再現するための `CloudModelParameters` の既定値とする。下表の「探索範囲」は Step 2 の観測包絡へ合わせる範囲、「安全上限」は暴走を防ぐ境界である。時間定数だけでなく、鉛直 profile、対流圏界面、風の anchor、相別光学値も同じ object に収め、実装箇所へ数値を分散させない。
+
+| parameter | 初期値 | 探索範囲 / 安全上限 | 用途 |
+| --- | ---: | ---: | --- |
+| `tauSubgridDetail` | 30 min | 15〜45 min | 浅い積雲の shader detail decorrelation |
+| `tauConvectiveCore` | 60 min | 30〜90 min | 雷雨の単一 core |
+| `tauStratocumulusCell` | 2 h | 1.5〜3 h | 海洋層積雲の個別 cell |
+| `tauMesoOrganization` | 12 h | 6〜24 h | 雲群・前線帯の組織 |
+| `tauMcsEnvelope` | 7 h | 4〜12 h、強い組織は 24 h まで | MCS envelope |
+| `tauAnvil` | 6 h | 4〜10 h | B の上層残留 |
+| `tauSynopticForcing` | 3 d | 2〜5 d、長い tail は 5〜7 d | 低気圧・前線・総観背景 |
+| `rToGDelay` | 10 min | 5〜20 min | 液相塔から中層遷移 |
+| `gToBDelay` | 20 min | 10〜30 min | 中層から強い上層 B への遅れ |
+| `coreDecay` | 60 min | 30〜90 min | R/G の先行減衰 |
+
+`tau*` は同じ値を全域へ掛ける寿命ではなく、空間周波数・regime・seed ごとの decorrelation scale である。実装値と観測値を混同しないよう、manifest には初期値、探索範囲、採用値、採用根拠を別フィールドで保存する。
 
 ### 雲場データ契約
 
@@ -51,36 +68,67 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 - R/G/B は一つの対流起源に属する場合、同じ seed と履歴からピーク時刻をずらして生成する。A は上層湿度・上昇・温度から独立に生成し、B と合成しても因果を失わない。
 - 実行時の生成 cap は 512×512 の RGBA16F 一枚、約 2 MiB を上限とする。既存の 4096×2048 RGB/グレースケール画像は観測・見た目の初期化元であり、実行時 cap のメモリ契約ではない。追加の 3D 雲テクスチャは導入しない。
 - Earth の通常描画は `OrthographicCap(CLOUD_CAP_SIZE=512)` を runtime cap とする。一方 cloud-lab の全全球比較は `EquirectProjection(1024×512)` を使うため、lab の global projection は 2 MiB cap とは別の reference buffer として manifest・性能表へ記録する。
-- 512×512 の `cloud-field` は総観・メソスケールの envelope を担当する。典型的な浅い積雲より細かい形状・エッジは、同じ絶対時刻と seed から shader の deterministic sub-grid detail として補う。したがって、この cap の texel を個々の浅い雲セルそのものと解釈せず、cell-series の物体統計は field の解像度と sub-grid の担当範囲を manifest に明記する。
+- 512×512 の `cloud-field` は総観・メソスケールの envelope を担当する。典型的な浅い積雲より細かい形状・エッジは、同じ絶対時刻と seed から shader の deterministic sub-grid detail として補う。したがって、この cap の texel を個々の浅い雲セルそのものと解釈せず、object-series の物体統計は field の解像度と sub-grid の担当範囲を manifest に明記する。
 - `CloudState` は基底係数、絶対時刻に基づく seed、局所緯度・季節、対流圏界面、雲相別の光学パラメータを保持する。雲面・大気内雲・雲影には同じ state/binding を渡す。path ごとのサンプル密度・積分順・早期終了は共有しない。
 
 ### 鉛直プロファイル、相、風
 
 - `CloudVerticalProfile` は基底係数、緯度、季節、局地的な対流圏界面、温度プロファイルから、任意の高度で液相凝結量、氷相凝結量、雲底、雲頂、実効粒径を返す。点評価だけでなく区間積分または積分可能な係数を提供し、大気積分・雲影が profile を再実装しない。
-- 温度は少なくとも地表・融解層・上層・対流圏界面の連続 profile とし、緯度・季節・総観 anomaly を入力にする。融解・凍結高度を別の固定定数にせず、液相と氷相の切替を連続化する。
-- 対流圏界面は緯度・季節・総観場から変え、通常の B はその近傍で横へ広げる。強い芯の overshoot だけ `min(20 km, tropopause + overshootDepth)` で許す。
-- 風は少なくとも地表近く・中層・上層の 3 anchor を連続補間し、対流の outflow/divergence を別の補正として持つ。一つの対流起源を共有したまま、各高度の風で水平位置をずらす。
-- 光学量は coverage をそのまま `-log(1-coverage)` へ変換しない。液相・氷相の凝結量、実効粒径、密度、消散・散乱係数から光学的厚さを求め、低い厚い雲と高い薄い氷雲を同じ値域で表せる契約にする。
+- 高度帯は全球固定の low/mid/high ではなく、初期 profile の支持範囲を緯度帯で変える。low は全緯度で地表〜2 km、middle は極域 2〜4 km・温帯 2〜7 km・熱帯 2〜8 km、high は極域 3〜8 km・温帯 5〜13 km・熱帯 6〜18 km とする。これは基底の支持範囲であり、相の判定高度ではない。
+- 温度は少なくとも地表・融解層・上層・対流圏界面の連続 profile とし、緯度・季節・総観 anomaly を入力にする。0〜11 km の環境 lapse rate 初期値は 6.5 K/km、強い対流内部だけ 4〜5 K/km の補正を許す。融解・凍結高度を別の固定定数にせず、液相と氷相の切替を連続化する。
+- phase の初期 parameterization は、`T >= 0°C` を液相主体、`0..−10°C` を液相主体で氷を許可、`−10..−30°C` を混相、`−30..−40°C` を氷相主体、`T <= −40°C` をほぼ完全な氷相とする。境界は hard branch ではなく smoothstep で補間し、数値は観測の phase envelope で較正する。
+- 対流圏界面は緯度・季節・総観場から変える。初期値は極域 8 km、全球中緯度 12 km、赤道・熱帯 15〜18 km の間を補間し、通常の B はその近傍で横へ広げる。強い芯の overshoot は通常 0〜2 km、上端は `min(20 km, tropopause + overshootDepth)` とする。
+- 風の anchor は気圧面で定義する。850 hPa/約1.4 km、500 hPa/約5.5 km、250 hPa/約10.5 km の 3 点を連続な `U(z)` で補間し、初期速度はそれぞれ low 3〜10 m/s、mid 5〜15 m/s、upper 10〜30 m/s、強風 tail は 15〜25 / 20〜35 / 40〜60 m/s とする。9〜16 km の jet regime では 60〜90 m/s まで許す。対流の outflow/divergence を別の補正として持ち、一つの対流起源を共有したまま各高度の風で水平位置をずらす。
+- 光学量は coverage をそのまま `-log(1-coverage)` へ変換しない。液相は `τ ≈ 3 LWP / (2 ρw reLiquid)` を初期式とし、`reLiquid=10 µm`、`gLiquid=0.85`、`gIce=0.75`、可視 `τ=0..50` を主レンジ、`τ=3.6` と `τ=23` を thin/intermediate/thick の判定境界、`τ=20..30` を opaque-like の初期境界とする。氷相の実効粒径は phase/光学観測から較正するパラメータとして残す。
+- A は B と同じ上層基底でも同じ厚さにしない。中緯度の in-situ cirrus は中心 8〜11 km・厚さ 0.5〜2 km、熱帯は中心/頂部 12〜16 km・厚さ 0.5〜2 km、対流起源 B は ice-only anvil 厚さ 2〜4 km を初期値とし、観測で 10〜17 km の top envelope を確認する。
+
+液相の光学 fixture は `reLiquid=10 µm` で下表を基準にする。これは観測の ground truth ではなく、basis amplitude→疑似 LWP→τ の単位・単調性を検査するための初期 fixture である。
+
+| LWP | 期待する可視 optical depth τ | 判定 |
+| ---: | ---: | --- |
+| 10 g/m² | 1.5 | thin |
+| 20 g/m² | 3.0 | thin の上端付近 |
+| 50 g/m² | 7.5 | intermediate |
+| 100 g/m² | 15 | intermediate |
+| 200 g/m² | 30 | thick / opaque-like |
+| 300 g/m² | 45 | thick |
+
+時間表以外の較正値も、次のキーを `CloudModelParameters` に持たせる。`fixture` は単体テストで必ず再現する値、`range` は Step 2 の包絡へ合わせて走査する値であり、すべての値を単位付きで manifest に保存する。
+
+| key | 初期値 / fixture | 探索範囲・安全上限 |
+| --- | --- | --- |
+| `tropopauseByLatitude` | 極域 8 km / 中緯度 12 km / 熱帯 17 km | 熱帯は 15〜18 km、上端は 20 km |
+| `overshootDepth` | 1 km | 通常 0〜2 km、`tropopause + depth <= 20 km` |
+| `environmentLapseRate` | 6.5 K/km（0〜11 km） | profile fixture は 6.5 K/km |
+| `convectiveLapseRate` | 4.5 K/km | 4〜5 K/km |
+| `windAnchors` | 850/500/250 hPa = 1.4/5.5/10.5 km | 3 anchor を連続 `U(z)` へ補間 |
+| `windSpeedFixture` | low 5 / mid 10 / upper 25 m/s | low 3〜10、mid 5〜15、upper 10〜30 m/s |
+| `reLiquid` | 10 µm | 9.6〜11 µm |
+| `gLiquid` / `gIce` | 0.85 / 0.75 | liquid 0.84〜0.86、ice 0.73〜0.78 |
+| `visibleOpticalDepth` | 0〜50 | thin/intermediate 境界 3.6、intermediate/thick 境界 23 |
 
 ### 観測検証
 
 - 6 regime を用意する: 貿易風積雲、海洋層積雲、温帯低気圧・前線、熱帯の深い対流/MCS、上層巻雲、高緯度の混相雲。最後の regime は低い太陽高度や氷・液相の共存を含める。
-- 観測は二つの時系列に分ける。`cell-series` は 5〜15 分間隔で 1〜6 時間を追い、セル・塔の発生・衰弱・分裂を測る。`pattern-series` は 1〜3 時間間隔で 0〜72 時間を追い、総観配置・メソスケール組織・雲模様相関を測る。
+- 観測は三つの時系列に分ける。`object-series` は 1〜5 分間隔で 1〜3 時間を追い、セル・塔の発生・成長・分裂・消滅を測る。`mesoscale-series` は 10〜30 分間隔で 6〜24 時間を追い、object area、spacing、組織の相関を測る。`synoptic-series` は 3〜6 時間間隔で 72 時間〜5 日を追い、総観配置、風で移流した相関、cloud fraction、large-scale structure を測る。従来の 0 / 6 / 12 / 24 / 48 / 72 時間 contact sheet は synoptic-series の表示セットとして残す。
+- 観測 manifest には source pixel size、cadence、projection、downsample/filter を必ず残す。GOES ABI の初期条件は visible red 0.5 km、visible/NIR 1 km、IR 2 km、cadence は全球 10 分、CONUS/PACUS 5 分、mesoscale 1 分までとする。2,000 km / 512 texel の envelope は約 3.91 km/texel なので、0.3〜3 km の浅い積雲は source で検出しても runtime field の個別 texel とは比較せず、sub-grid 出力と同じ観測窓へ集約する。
 - 生成と観測だけでなく、観測を時系列の前半/後半や近接軌道へ分割した observation-to-observation envelope を算出する。モデルの合否は単一画像への一致ではなく、観測同士のばらつき、測器・投影誤差、前処理誤差を含む regime 別 95% 包絡と比較する。
-- 指標は時差相関、平均風で位置合わせした相関、相関 e-folding、クラス別の物体寿命・面積・移動速度、雲頂階級、光学量分布、空間スペクトル、cohort phase ごとの平均 cloud fraction/分散/スペクトルとする。寿命は浅いセルの 30/60/120 分、深い cell の 1/3 時間、MCS の 3/6/12/24 時間などクラス別の lag で評価し、相関だけでなく分布・スケールを必ず併記する。
+- forward-validation の観測量は cloud mask/fraction、cloud-top pressure/height、cloud-top temperature、cloud-top phase、visible optical depth、object size、移動速度、lagged spatial correlation とする。鉛直 layer structure を直接観測したとは扱わず、内部 RGBA へ逆変換しない。
+- 雲頂圧の集計 bin は ISCCP と揃えて low `CTP >= 680 hPa`、middle `440 <= CTP < 680 hPa`、high `CTP < 440 hPa` とする。光学厚は `τ < 3.6`、`3.6 <= τ <= 23`、`τ > 23` とし、雲頂 bin × optical-depth bin の 9-cell histogram を生成・観測で共通に出力する。
+- 指標は時差相関、平均風で位置合わせした相関、相関 e-folding、クラス別の物体寿命・面積・移動速度、雲頂階級、相・温度、光学量分布、空間スペクトル、cohort phase ごとの平均 cloud fraction/分散/スペクトルとする。寿命は浅いセルの 30/60/120 分、深い cell の 1/3 時間、MCS の 3/6/12/24 時間などクラス別の lag で評価し、相関だけでなく分布・スケールを必ず併記する。
 - 静止衛星画像から相・高度を一意に復元したとは扱わない。画像分離は art-initialization、衛星の雲頂・光学プロダクトは forward-validation と明示的に分ける。
 
 ## 達成目標
 
 1. 同じ天体・同じ絶対時刻・同じ座標を、異なる時間倍率・フレーム刻み・評価順で再計算しても同じ field/state になる。
-2. 6 regime の `cell-series` と `pattern-series` について、モデルの各指標が観測同士の 95% 包絡に、宣言した測定許容幅を加えた範囲へ入る。単一 regime の改善で全体合格にしない。
-3. 2,000 km の検証窓で、総観 forcing の 2〜7 日、組織化成分の 12〜36 時間、中間スケールの雲群の 2〜12 時間、雲セル cohort の 0.25〜2 時間が別々の統計として確認できる。物体クラス別 survival lag は浅いセル 30/60/120 分、深い cell 1/3 時間、MCS 3/6/12/24 時間で評価する。
-4. R/G/B の発達・衰弱順、B の上層風による残留、A の独立発生、高緯度の混相遷移を、同じ対流起源の追跡表示で確認できる。
-5. G 単独の中層雲、A 単独の巻雲、R 単独の低い厚い雲、R+G+B の深い対流が同じ基底契約で表現できる。密度の大小だけで雲底・雲頂が決まらない。
+2. 6 regime の `object-series`、`mesoscale-series`、`synoptic-series` について、モデルの各指標が観測同士の 95% 包絡に、宣言した測定許容幅を加えた範囲へ入る。単一 regime や単一 cadence の改善で全体合格にしない。
+3. 2,000 km の検証窓で、総観 forcing の初期 3 日（探索 2〜5 日、long tail 5〜7 日）、メソ組織の初期 12 時間（探索 4〜24 時間）、雲セルの初期 60 分（種類別 30〜180 分）、sub-grid detail の初期 30 分（探索 15〜45 分）が別々の統計として確認できる。物体クラス別 survival lag は浅いセル 30/60/120 分、深い cell 1/3 時間、MCS 3/6/12/24 時間で評価する。
+4. R→G の遅延 5〜20 分、G→B の追加遅延 10〜30 分、core decay 30〜90 分、B/anvil の残留 4〜10 時間が、同じ対流起源の追跡表示と時系列 metrics で確認できる。高緯度の混相遷移も含める。
+5. G 単独の中層雲、A 単独の巻雲、R 単独の低い厚い雲、R+G+B の深い対流が同じ基底契約で表現できる。密度の大小だけで雲底・雲頂が決まらず、雲頂圧 bin × τ bin の 9-cell histogram も生成できる。
 6. 雲面・大気内雲・雲影が同じ `CloudState` と `CloudVerticalProfile` を参照し、雲底、雲頂、相別光学量、水平位置が一致する。斜光、地平線、明暗境界で層の割れや影のずれがない。
 7. 高度 profile は 0〜20 km の安全範囲で積分可能であり、対流圏界面付近の水平拡散と overshoot の境界が連続する。
 8. 実行時雲 cap は 512×512 RGBA16F 一枚、約 2 MiB のまま。cloud-lab の 1024×512 標準設定・60 fps の 16.67 ms frame budget に対して、`cloudBake + cloudSurface + cloudShadow + (atmosphere on − atmosphere off)` で定義する雲追加コストの GPU p95 は 4.0 ms 以下かつ Step 2 baseline の 1.25 倍以下とする。`atmosphere` は現状 cloud-enabled composite なので on/off の対応測定を保存し、合成パス全体の値も併記する。通常・地平線・低太陽・最大雲量・深い対流多数の全ケースで判定し、GPU timestamp 非対応時は未計測として不合格にする。
-9. `npm run typecheck`、`npm run test:render`、6 regime の時系列比較、再現可能なスクリーンショットを同じ入力 manifest から生成できる。
+9. `npm run typecheck`、`npm run test:render`、6 regime × 3 cadence の時系列比較、観測可能量の forward metrics、再現可能なスクリーンショットを同じ入力 manifest から生成できる。
 
 ## 手順
 
@@ -113,20 +161,20 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 
 | ファイル | 変更 |
 | --- | --- |
-| `tools/cloud-lab-reference.mjs` | 6 regime、cell/pattern の二時系列、約 2,000 km の大円窓、衛星・チャンネル・時刻・投影・出典を manifest 化し、参照画像と雲頂/光学プロダクトを再取得できるようにする。 |
-| `tools/cloud-lab-compare.mjs` | 0〜72 時間の同一投影比較と、平均風で位置合わせした比較を追加する。時刻 0 固定の比較を合否根拠にしない。 |
-| `tools/cloud-temporal-metrics.mjs`（新規） | 相関、e-folding、物体寿命・面積・速度、雲頂階級、光学量、空間スペクトル、しきい値感度を計算する。 |
+| `tools/cloud-lab-reference.mjs` | 6 regime、object/mesoscale/synoptic の三時系列、約 2,000 km の大円窓、source pixel size、cadence、衛星・チャンネル・時刻・投影・出典を manifest 化し、参照画像と雲頂/光学プロダクトを再取得できるようにする。GOES ABI の 0.5/1/2 km と 10/5/1 分の条件を manifest の選択肢にする。 |
+| `tools/cloud-lab-compare.mjs` | object の 1〜5 分、mesoscale の 10〜30 分、synoptic の 3〜6 時間を別 capture set として比較する。0 / 6 / 12 / 24 / 48 / 72 時間 contact sheet は synoptic の補助出力とし、時刻 0 固定の比較を合否根拠にしない。 |
+| `tools/cloud-temporal-metrics.mjs`（新規） | 相関、e-folding、クラス別物体寿命・面積・速度、雲頂圧/高度/温度/相、光学量、空間スペクトル、しきい値感度、cloud fraction/分散を計算する。 |
 | `tools/cloud-observation-envelope.mjs`（新規） | 観測時系列の分割から observation-to-observation 95% 包絡と前処理誤差を計算する。 |
-| `tools/cloud-lab/lab.ts`、`tools/cloud-lab/views.ts` | 絶対時刻の複数時点を同じ投影・露出・検証窓で出力する。cell-series と pattern-series を別の capture set とする。 |
+| `tools/cloud-lab/lab.ts`、`tools/cloud-lab/views.ts` | 絶対時刻の複数時点を同じ投影・露出・検証窓で出力する。`EquirectProjection(1024×512)` と `OrthographicCap(512×512)` を manifest 上で区別し、三つの capture set を別々に扱う。 |
 | `tools/render-lab-measure.mjs`、`src/render/gpu-timings.ts` | cloudBake/cloudSurface/cloudShadow と、現状 cloud-enabled composite である atmosphere の on/off 対応 p50/p95 を、通常・地平線・低太陽・最大雲量・深い対流多数の同じ機器・構図・画質で保存する。timestamp 非対応を明示的に失敗扱いにする。 |
 | `package.json` | 観測取得、包絡計算、時系列比較、性能基準生成を再実行する script を追加する。 |
-| `tests/render/cloud-temporal-metrics.test.ts`（新規） | 静止、平行移動、短寿命、分裂・併合、しきい値変動の小配列で指標と包絡判定を固定する。 |
+| `tests/render/cloud-temporal-metrics.test.ts`（新規） | 静止、平行移動、短寿命、分裂・併合、しきい値変動、3 cadence の aliasing、CTP/τ 9-cell bin の小配列で指標と包絡判定を固定する。 |
 
 **達成条件と検証**
 
-- 6 regime × 2 時系列を manifest だけから再取得・再計測できる。
+- 6 regime × 3 cadence を manifest だけから再取得・再計測できる。source 解像度と model の 3.91 km/texel envelope を混同しない。
 - 静止模様、平行移動だけの模様、短寿命模様を指標が区別する。
-- 観測同士の 95% 包絡、モデル許容幅、物体クラス別 survival lag、しきい値感度、cohort phase に対する cloud fraction/分散/スペクトルの許容範囲、対応測定から求めた 4.0 ms の絶対 GPU p95 予算、2 MiB cap の基準値が JSON に保存される。
+- 観測同士の 95% 包絡、モデル許容幅、物体クラス別 survival lag、しきい値感度、cloud fraction/分散/スペクトルの許容範囲、CTP/τ 9-cell histogram、対応測定から求めた 4.0 ms の絶対 GPU p95 予算、2 MiB cap の基準値が JSON に保存される。
 - 既存モデルの基準値を保存し、改修後は同じ入力・同じ機器・同じ画質で比較する。
 - `npm run typecheck`
 - `npm run test:render`
@@ -137,7 +185,7 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 
 **目的**
 
-現在の表示用相対時刻が生成関数へ漏れないよう境界を作り、数日続く総観 forcing の上へ、12〜36 時間の組織化成分、2〜12 時間の雲群、0.25〜2 時間の cohort、対流の発達・衰弱を決定的に重ねる。
+現在の表示用相対時刻が生成関数へ漏れないよう境界を作り、数日続く総観 forcing の上へ、4〜24 時間のメソ組織、0.5〜3 時間の雲セル、0.25〜1 時間の sub-grid detail、対流から遅れて 4〜10 時間残る anvil を決定的に重ねる。
 
 **変更箇所**
 
@@ -146,20 +194,21 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 | `src/game/display-window-manager.ts`、`src/game/celestial/solar-system/earth-system.ts` | `epochUnixMs` と表示カーソルを分離し、雲モデルへ渡す絶対時刻を一箇所で組み立てる。既存の UTC 表示用秒は表示専用として残す。 |
 | `src/game/game-presentation.ts`、`src/game/celestial/celestial-system.ts`、`src/render/celestial/celestial-entity/point-celestial-view.ts`、`src/render/cloud/cloud-presentation.ts`、`src/render/cloud/generated-cloud-field.ts`、`src/render/cloud/observed-cloud-field.ts` | 現在の `displayTime` 配線を絶対時刻の受け渡しへ更新する。生成 field の cache key と `WeatherModel.syncTime()` を `dayIndex/secondsOfDay` を含む weather time へ移し、観測 field は絶対時刻に依存しない静的 source として同じ interface で受ける。 |
 | `src/render/cloud/weather-time.ts`（新規） | `epochUnixMs` を `dayIndex`、`secondsOfDay`、季節位相へ正規化する。GPU へは分解した値だけを渡し、整数精度を失う巨大 float を使わない。 |
-| `src/render/cloud/cloud-lifecycle.ts`（新規） | 絶対時刻と空間 seed から cohort の年齢、連続な発生・成長・衰弱の重み、メソ組織の envelope を返す純粋計算を置く。単一の 6 時間刻み・24 時間寿命に固定しない。 |
+| `src/render/cloud/cloud-model-parameters.ts`（新規） | 上表の時間定数、R→G→B の遅延、core/anvil の減衰、profile/phase、tropopause、wind anchor、optics、regime 別の初期値と探索範囲を唯一の parameter object として持つ。lifecycle、weather-model、vertical-profile、optics、sub-grid detail はここから読む。 |
+| `src/render/cloud/cloud-lifecycle.ts`（新規） | 絶対時刻と空間 seed から cohort の年齢、連続な発生・成長・衰弱の重み、メソ組織の envelope を返す純粋計算を置く。単一の固定刻み・24 時間寿命に固定しない。 |
 | `src/render/cloud/cloud-lifecycle-node.ts`（新規） | lifecycle と同じパラメータ化を TSL ノードへ写し、CPU/TSL の意味を共有する。 |
 | `src/render/cloud/circulating-noise.ts`、`src/render/cloud/circulation.ts` | 長寿命の循環・総観 forcing と、短寿命 cohort の seed を分離する。雲模様へ直接 7 日周期を掛ける項を除く。 |
 | `src/render/cloud/weather-transport.ts` | 上記の絶対時刻から各高度の発生源を後方移流する。単一模様の cross-fade で寿命を代用しない。 |
-| `src/render/cloud/atmospheric-wind.ts`、`src/render/cloud/wind-law.ts` | 地表近く・中層・上層の 3 anchor と outflow/divergence を持つ連続風へ拡張する。 |
-| `src/render/cloud/weather-model.ts`、`src/render/cloud/condensation.ts`、`src/render/cloud/cyclones.ts` | 総観 forcing、湿度、対流活動、cohort 年齢から基底係数を生成する。R/G/B の発達順と A の独立発生をここで確定する。 |
-| `tests/render/cloud-lifecycle.test.ts`（新規）、`tests/render/weather-time.test.ts`（新規）、`tests/render/weather-transport.test.ts`（新規） | ランダムアクセス、評価順、日境界、年境界、日付変更線・極付近、三高度の風、相ごとのピーク順、総観 forcing と雲寿命の独立性を固定する。cohort phase を走査した平均 cloud fraction、分散、空間スペクトルが許容範囲で定常になることも固定する。 |
+| `src/render/cloud/atmospheric-wind.ts`、`src/render/cloud/weather-model.ts`、`src/render/cloud/wind-law.ts`、`src/render/cloud/convective-activity.ts` | 地表/上層の 2 点補間を 850/500/250 hPa の 3 anchor を通る連続 `U(z)` へ拡張する。強風 tail と B の outflow/divergence を weather model の対流 activity から分離して適用する。 |
+| `src/render/cloud/weather-model.ts`、`src/render/cloud/condensation.ts`、`src/render/cloud/cyclones.ts` | 総観 forcing、湿度、対流活動、cohort 年齢から基底係数を生成する。R/G/B の初期値表にある遅延・減衰順と A の独立発生をここで確定する。 |
+| `tests/render/cloud-lifecycle.test.ts`（新規）、`tests/render/weather-time.test.ts`（新規）、`tests/render/weather-transport.test.ts`（新規）、`tests/render/atmospheric-wind.test.ts`、`tests/render/cyclones.test.ts` | ランダムアクセス、評価順、日境界、年境界、日付変更線・極付近、三高度の風、相ごとのピーク順、総観 forcing と雲寿命の独立性を固定する。上表の初期値・範囲、850/500/250 hPa の anchor、低層 5 m/s・上層 25 m/s で 3 時間に約 216 km 相対移動する fixture、cohort phase を走査した平均 cloud fraction、分散、空間スペクトルが許容範囲で定常になることも固定する。 |
 
 **達成条件と検証**
 
 - 同じ `epochUnixMs` を異なるフレーム刻み・時間倍率・評価順で求めても同じ値になる。`displayTime` 単独で生成結果が決まる入口がない。
 - dayIndex/secondsOfDay の日境界・季節境界、球面の dateline/pole で位置が跳ばない。
 - R の発達後に G/B が増え、衰弱時は R/G が B より先に消える。A は R/G がなくても発生する。
-- 6 regime の観測包絡へ近づく前提となる四つの時間・空間階層が、各指標で分離して出力される。物体クラス別 survival lag で 24 時間後の残存率を代用しない。
+- 6 regime の観測包絡へ近づく前提となる四つの時間・空間階層が、各指標で分離して出力される。初期値は上表どおりに再現でき、物体クラス別 survival lag で 24 時間後の残存率を代用しない。
 - `npm run typecheck`
 - `npm run test:render`
 - lifecycle と時刻境界を独立 commit にする。
@@ -181,7 +230,7 @@ RGBA を高度や雲種 ID として直接読む方式をやめ、温度・対�
 | `src/render/cloud/cloud-vertical-profile-node.ts`（新規） | `CloudState` の共通 parameter object を TSL へ渡す adapter を作る。式の二重実装は避けられない箇所を明記し、意味の source of truth は state/parameter に置く。 |
 | `src/render/cloud/cloud-shape-evaluator.ts`、`src/render/cloud/cumulus-shape.ts`、`src/render/cloud/cloud-cap.ts` | 単一の固定雲頂面から profile の占有率・密度・勾配へ移行する。cap は必要範囲を確保しつつ 20 km を超えない。 |
 | `src/render/cloud/cloud-render-input.ts`、`src/render/cloud/cloud-presentation.ts` | `CloudState`/profile binding を雲面・大気・影へ同一参照で渡す。path 固有に state を再生成しない。 |
-| `tests/render/cloud-field-sample.test.ts`（新規）、`tests/render/cloud-state.test.ts`（新規）、`tests/render/cloud-temperature-profile.test.ts`（新規）、`tests/render/cloud-vertical-profile.test.ts`（新規）、`tests/render/cloud-parity.test.ts`（新規） | RGBA 往復、単独/複合成分、温度による相遷移、積分可能性、20 km cap、共通 parameter object、1000 件以上の random input による CPU/TSL parity、経路間 state identity を固定する。 |
+| `tests/render/cloud-field-sample.test.ts`（新規）、`tests/render/cloud-state.test.ts`（新規）、`tests/render/cloud-temperature-profile.test.ts`（新規）、`tests/render/cloud-vertical-profile.test.ts`（新規）、`tests/render/cloud-parity.test.ts`（新規） | RGBA 往復、単独/複合成分、極域/温帯/熱帯の高度支持範囲、対流圏界面 8/12/17 km、6.5 K/km と対流 4〜5 K/km、`+0/-5/-20/-35/-45°C` の phase fixture、積分可能性、20 km cap、共通 parameter object、1000 件以上の random input による CPU/TSL parity、経路間 state identity を固定する。 |
 
 **達成条件と検証**
 
@@ -265,14 +314,14 @@ RGBA を高度や雲種 ID として直接読む方式をやめ、温度・対�
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/cloud/cloud-optics.ts`、`src/render/cloud/cloud-optics-node.ts` | 液相/氷相凝結量、LWP/IWP 相当、固定または regime 依存の実効粒径、消散・散乱から光学量を求める。coverage 直変換を新契約から除く。 |
+| `src/render/cloud/cloud-optics.ts`、`src/render/cloud/cloud-optics-node.ts` | 液相/氷相凝結量、LWP/IWP 相当、`reLiquid=10 µm`、`gLiquid=0.85`、`gIce=0.75`、固定または regime 依存の氷晶実効粒径、消散・散乱から光学量を求める。coverage 直変換を新契約から除く。 |
 | `src/render/graphics-settings.ts` | 既存の雲画質段階を profile 積分サンプル数・早期終了へ対応させ、データ契約は増やさない。 |
-| `tests/render/cloud-optics.test.ts` | 相別光学量、粒径感度、CPU/TSL parity、単独/複合基底の光学量を固定する。 |
+| `tests/render/cloud-optics.test.ts` | 相別光学量、粒径感度、CPU/TSL parity、単独/複合基底の光学量、LWP 10/20/50/100/200/300 g/m²→τ 1.5/3/7.5/15/30/45、τ 3.6/23 の bin 境界を固定する。 |
 | `tools/render-lab-measure.mjs`、`src/render/gpu-timings.ts` | 1024×512 の通常・地平線・低太陽・最大雲量・深い対流多数を測り、cloudBake/cloudSurface/cloudShadow と atmosphere on/off の p50/p95 を保存する。雲追加コストは `cloudBake + cloudSurface + cloudShadow + (on − off)` として計算し、合成パス全体も別に記録する。 |
 
 **達成条件と検証**
 
-- 同じ凝結量でも実効粒径の違いが光学量へ反映され、低い厚い雲と高い薄い氷雲が区別できる。
+- 同じ凝結量でも実効粒径の違いが光学量へ反映され、低い厚い雲と高い薄い氷雲が区別できる。LWP fixture の τ 誤差が宣言した近似許容内に収まり、τ 3.6/23 の bin が反転しない。
 - CPU と TSL の 1000 件以上の random input parity が許容誤差内にある。
 - 雲追加コストの GPU p95 が 4.0 ms 以下、かつ Step 2 baseline の 1.25 倍以下になる。通常・地平線・低太陽・最大雲量・深い対流多数の全ケースで判定し、timestamp 非対応は未計測として不合格にする。
 - 実行時 cap は 512×512 RGBA16F 一枚、約 2 MiB のまま。
@@ -294,15 +343,15 @@ RGBA を高度や雲種 ID として直接読む方式をやめ、温度・対�
 | `tools/cloud-lab/separation-pipeline.ts`、`tools/cloud-lab/separate-main.ts`、`tools/cloud-lab/separate.html` | 単一画像から R/G/B/A の初期基底を推定する。推定不確実性、未観測の高度、入力画像のチャンネルを metadata に残す。 |
 | `src/assets/cloud-field.png` | 見た目初期化用のフォーマットとチャンネル metadata を更新する。旧 RGB asset の alpha=1 を A として再利用しない。runtime の RGBA16F cap と混同しない。 |
 | `src/render/cloud/observed-cloud-field.ts` | 既存の観測 field を art-initialization の RGBA から `CloudState` へ変換する入口へ拡張し、生成雲と同じ全 0 の外側、線形フィルタ、profile 入力を使う。 |
-| `tools/cloud-lab/views.ts`、`tools/cloud-lab/pane.ts`、`tools/cloud-lab/lab.ts`、`tools/cloud-lab/index.html` | R/G/B/A、液相/氷相、雲底/雲頂、合成光学量、cohort 追跡、cell/pattern の時系列を別表示する。 |
+| `tools/cloud-lab/views.ts`、`tools/cloud-lab/pane.ts`、`tools/cloud-lab/lab.ts`、`tools/cloud-lab/index.html` | R/G/B/A、液相/氷相、雲底/雲頂、合成光学量、cohort 追跡、object/mesoscale/synoptic の三時系列、CTP/τ 9-cell histogram を別表示する。 |
 | `tools/cloud-lab/cloud-rendering-explainer.html` | 新しい基底契約、共有 state、三つの別積分器、art/validation の境界を説明する。 |
 | `tools/cloud-lab-compare.mjs`、`tools/cloud-lab-shot.mjs` | 6 regime、時系列 contact sheet、観測包絡、差分画像、GPU 基準を同じ manifest から出力する。 |
 
 **達成条件と検証**
 
 - 観測画像の初期推定と衛星の forward-validation が出力・説明・コマンド上で分離される。
-- 6 regime の 0 / 6 / 12 / 24 / 48 / 72 時間 pattern-series と、cell-series の短い contact sheet が生成される。
-- 達成目標 2〜4 の指標を regime 別に表示し、観測包絡を外れた regime は平均化せず失敗として出す。
+- 6 regime の object (1〜5 分、1〜3 h)、mesoscale (10〜30 分、6〜24 h)、synoptic (3〜6 h、72 h〜5 d) の contact sheet が生成され、0 / 6 / 12 / 24 / 48 / 72 時間表示も再現できる。
+- 達成目標 2〜4 の指標、cloud-top pressure/height/temperature/phase、visible optical depth、CTP/τ 9-cell histogram を regime 別に表示し、観測包絡を外れた regime は平均化せず失敗として出す。
 - 発達中の対流を追跡するビューで R→G→B、鉛直シア、B の残留、A の独立発生が連続して見える。
 - `npm run typecheck`
 - `npm run test:render`
@@ -343,16 +392,16 @@ RGBA を高度や雲種 ID として直接読む方式をやめ、温度・対�
 | Step | 導出 | 見積り |
 | --- | --- | ---: |
 | 1 | 仕様 5 項目 × 0.5 h + 整合確認 2 h | 4.5 h |
-| 2 | 6 regime × 2 時系列 × 0.75 h + 8 指標 × 1 h + 包絡/性能自動化 8 h + fixture 4 h | 25 h |
-| 3 | 時刻境界 6 h + 4 時間帯/ライフサイクル 12 h + 三高度風/球面境界 8 h + テスト 8 h | 34 h |
-| 4A | state/温度/profile 14 h + 基底/parity test 6 h | 20 h |
+| 2 | 6 regime × 3 時系列 × 0.75 h + 8 指標 × 1 h + 包絡/性能自動化 8 h + fixture 4 h | 34 h |
+| 3 | 時刻境界 6 h + 4 時間帯/ライフサイクル 14 h + 三高度風/球面境界 8 h + テスト 8 h | 36 h |
+| 4A | state/温度/profile 16 h + 基底/parity test 8 h | 24 h |
 | 4B | 大気 profile 積分 8 h + 順序/画面テスト 4 h | 12 h |
 | 4C | 雲面交点 5 h + surface テスト 3 h | 8 h |
 | 4D | 影の effective layer 4 h + 影テスト 3 h | 7 h |
 | 4E | optics/parity 7 h + 画質/性能 5 h + 再測定 2 h | 14 h |
-| 5 | 初期化分離 7 h + lab UI/capture 7 h + 6 regime 較正 × 1.5 h + 再測定 4 h | 27 h |
+| 5 | 初期化分離 7 h + lab UI/capture 8 h + 6 regime × 3 時系列の較正 18 h + 再測定 4 h | 37 h |
 | 6 | 規約/コメント/検索 4 h + 全目標の証跡確認 5 h + 性能再測定 4 h | 13 h |
-| **合計** | 4.5 + 25 + 34 + 20 + 12 + 8 + 7 + 14 + 27 + 13 | **164.5 h** |
+| **合計** | 4.5 + 34 + 36 + 24 + 12 + 8 + 7 + 14 + 37 + 13 | **189.5 h** |
 
 観測データの再取得、GPU 実機差、profile 積分の設計変更に 0〜25% の不確実性を見込む。Step 2 の実測後にだけ総額を更新し、値のない段階で縮めない。
 
@@ -360,10 +409,10 @@ RGBA を高度や雲種 ID として直接読む方式をやめ、温度・対�
 
 | リスク | 影響 | 表面化する Step / 対処 |
 | --- | --- | --- |
-| 総観場・組織化成分・雲群・雲セルを一つの寿命で扱う | 前線や低気圧まで消えるか、個々の雲が 7 日残る | Step 2/3。二時系列と四時間帯を別指標で測り、共通の寿命定数を置かない。 |
+| 総観場・組織化成分・雲群・雲セルを一つの寿命で扱う | 前線や低気圧まで消えるか、個々の雲が 7 日残る | Step 2/3。三時系列と四時間帯を別指標で測り、共通の寿命定数を置かない。 |
 | `displayTime` や巨大な absolute float が seed へ入る | 再生速度・日境界・遠い日付で非決定、GPU 精度差が出る | Step 3。CPU の整数ミリ秒、GPU の dayIndex/secondsOfDay、ランダムアクセス試験で検出する。 |
-| 6 時間ごとの cohort 境界が全球の脈動になる | 格子模様、発生日の帯、時刻境界の pop が見える | Step 3。空間 seed と連続窓、値と一階差分のテストを使う。 |
-| cohort の cross-fade で平均・分散・スペクトルが脈動する | 6 時間周期で雲量やコントラストが上下し、寿命統計だけでは見逃す | Step 2/3。cohort phase を走査し、cloud fraction、分散、空間スペクトルの定常性を invariant test にする。 |
+| 固定間隔の cohort 境界が全球の脈動になる | 格子模様、発生日の帯、時刻境界の pop が見える | Step 3。空間 seed と連続窓、値と一階差分のテストを使う。 |
+| cohort の cross-fade で平均・分散・スペクトルが脈動する | 固定周期で雲量やコントラストが上下し、寿命統計だけでは見逃す | Step 2/3。cohort phase を走査し、cloud fraction、分散、空間スペクトルの定常性を invariant test にする。 |
 | RGBA を相・高度へ直結する | 低い厚い雲、中層雲、高い薄い氷雲を誤る | Step 4A。基底は係数に限定し、温度/profile/実効粒径から相と光学量を導く。 |
 | profile が点評価だけで積分不能 | 大気と影が別の近似を持ち、同じ雲でも明暗がずれる | Step 4A〜4D。区間積分係数と profile fixture を先に固定し、経路ごとの state identity をテストする。 |
 | CPU と TSL が別の式になる | lab と本番 GPU だけ相境界・optics が変わる | Step 4A/4E。共通 parameter object、1000 件以上の random parity test、TSL evaluator の限界を越える GPU fixture を置く。 |
@@ -373,7 +422,7 @@ RGBA を高度や雲種 ID として直接読む方式をやめ、温度・対�
 | 画像分離結果を科学的な観測量と扱う | 擬似的な高度・相でモデルを誤較正する | Step 2/5。art-initialization と forward-validation の出力・コマンド・説明を分ける。 |
 | 観測誤差をモデル誤差と数える | 単一画像への過学習、regime 間の失敗の隠蔽 | Step 2/5。observation-to-observation envelope と threshold sensitivity を合否へ使う。 |
 | 既存 GPU 基準が大気全体しか測れない | 雲の追加コストを見誤り 4.0 ms を超える | Step 2/4E/6。cloudBake、surface、atmosphere、shadow の範囲を明示し、timestamp 非対応は未合格にする。 |
-| 512 cap を個別雲の解像度と誤認する | cell-series の寿命・面積を field texel の統計と誤比較する | Step 2/4A/5。mesoscale envelope と sub-grid detail の担当範囲、物体抽出の解像度を manifest に残す。 |
+| 512 cap を個別雲の解像度と誤認する | object-series の寿命・面積を field texel の統計と誤比較する | Step 2/4A/5。mesoscale envelope と sub-grid detail の担当範囲、物体抽出の解像度を manifest に残す。 |
 | 512 cap と 4096×2048 source asset を混同する | メモリ見積り、線形フィルタ、asset loader が不整合になる | Step 4A/6。runtime cap の 2 MiB と初期化元のファイル形式を manifest とテストで別管理する。 |
 | 球面の極・日付変更線で後方移流が不連続になる | 雲が極や seam で跳ぶ、相ごとの位置がずれる | Step 3。球面 position/transport を dateline/pole の property test と screenshot で検証する。 |
 
