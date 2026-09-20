@@ -135,9 +135,38 @@ export class ShipModuleView {
     const state = this.visualState;
     const hinge = this.semanticAnchor('panel-hinge');
     if (hinge !== null && state.deployed !== null) {
-      // asset は全開位置を 0 とし、収納時は module の長手軸へ90度畳む。
-      hinge.rotation.y = (1 - state.deployed) * Math.PI / 2;
       hinge.visible = state.hp > 0;
+      const panelHinges = this.semanticAnchors('panel-hinge:')
+        .filter((panel) => typeof panel.userData.panelIndex === 'number')
+        .sort((a, b) => (a.userData.panelIndex as number) - (b.userData.panelIndex as number));
+      if (panelHinges.length === 0) {
+        // 旧 asset は単一ヒンジの契約を使う。新 asset は下の個別ヒンジを使う。
+        hinge.rotation.y = (1 - state.deployed) * Math.PI / 2;
+      } else if (state.kind === 'solar_panel') {
+        hinge.rotation.set(0, 0, 0);
+        const deploy = state.deployed;
+        for (const panel of panelHinges) {
+          const index = panel.userData.panelIndex as number;
+          const width = panel.userData.panelWidth as number;
+          panel.position.set(index * width * deploy, 0, 0);
+          panel.rotation.set((1 - deploy) * Math.PI / 2, 0, 0);
+        }
+      } else {
+        hinge.rotation.set(0, 0, 0);
+        const deploy = state.deployed;
+        const tilt = (1 - deploy) * Math.PI / 2 + deploy * (15 * Math.PI / 180);
+        let originX = 0;
+        let originZ = 0;
+        for (const panel of panelHinges) {
+          const index = panel.userData.panelIndex as number;
+          const width = panel.userData.panelWidth as number;
+          const angle = index % 2 === 0 ? tilt : -tilt;
+          panel.position.set(originX, 0, originZ);
+          panel.rotation.set(0, angle, 0);
+          originX += Math.cos(angle) * width;
+          originZ -= Math.sin(angle) * width;
+        }
+      }
     }
     this.object.userData.shipModuleId = this.instanceValue.id;
     this.object.userData.shipModuleKind = this.instanceValue.kind;
