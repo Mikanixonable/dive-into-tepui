@@ -10,6 +10,17 @@
     "note": "入力ファイルを取得してsha256を記録するまで、全球bundle生成済みとは扱わない"
   },
   "excludedProducts": ["GEBCO", "ETOPO bed_elev"],
+  "colorCalibration": {
+    "inputEncoding": "sRGB8",
+    "aggregation": "linear_rgb_area_mean",
+    "outputEncoding": "sRGB8",
+    "diffuseAlbedoScale": 1.89,
+    "meanLinearRgb": [0.0627754, 0.05681936, 0.04729468],
+    "meanRec709Albedo": 0.05739793,
+    "bondAlbedo": 0.294,
+    "averageHue": [1.09368742, 0.98992, 0.82397886],
+    "note": "BMNG display RGB is decoded to linear RGB for area averaging; diffuseAlbedoScale is applied once in the renderer to reach the legacy surface-albedo target, while bondAlbedo remains whole-Earth photometry."
+  },
   "sources": [
     {
       "id": "bmng-july-2004",

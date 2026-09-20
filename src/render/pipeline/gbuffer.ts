@@ -59,10 +59,12 @@ export class GBufferPass {
     roughnessTex!.name = 'roughness';
     roughnessTex!.format = THREE.RedFormat;
     roughnessTex!.type = THREE.UnsignedByteType;
-    // ベース色は線形の 8bit。α へ金属度を同居させるのは、この2つを読む側が常に同時に使うため。
+    // ベース色は線形の半精度浮動小数点。深い海のような小さい線形RGBをRGBA8へ量子化すると
+    // ほぼ黒へ潰れ、色差とLOD差が失われる。αへ金属度を同居させるのは、この2つを読む側が
+    // 常に同時に使うため。
     basecolorTex!.name = 'basecolor';
     basecolorTex!.format = THREE.RGBAFormat;
-    basecolorTex!.type = THREE.UnsignedByteType;
+    basecolorTex!.type = THREE.HalfFloatType;
     // 自己発光は 1 を超えうる HDR 値なので半精度浮動小数点で持つ。
     emissiveTex!.name = 'emissive';
     emissiveTex!.format = THREE.RGBAFormat;

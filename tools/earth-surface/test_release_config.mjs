@@ -41,6 +41,11 @@ const manifest = {
   schemaVersion: 3,
   datasetId: 'earth-2026-09-09-a',
   sourceManifestSha256: '0'.repeat(64),
+  colorCalibration: {
+    inputEncoding: 'sRGB8', aggregation: 'linear_rgb_area_mean', outputEncoding: 'sRGB8',
+    diffuseAlbedoScale: 1, meanLinearRgb: [0.1, 0.1, 0.1], meanRec709Albedo: 0.1,
+    bondAlbedo: 0.294, averageHue: [1, 1, 1],
+  },
   sourceManifest: 'sources.json',
   provenance: { generator: 'release-fixture/1' },
   terrainEncoding: {

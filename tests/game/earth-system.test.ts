@@ -15,6 +15,11 @@ const READY_MANIFEST = {
   schemaVersion: 3,
   datasetId: 'earth-test-2026',
   sourceManifestSha256: '0'.repeat(64),
+  colorCalibration: {
+    inputEncoding: 'sRGB8', aggregation: 'linear_rgb_area_mean', outputEncoding: 'sRGB8',
+    diffuseAlbedoScale: 1, meanLinearRgb: [0.1, 0.1, 0.1], meanRec709Albedo: 0.1,
+    bondAlbedo: 0.294, averageHue: [1, 1, 1],
+  },
   terrainEncoding: {
     formatVersion: 3, layout: 'normal-xyz-rgb8-roughness-a8',
     width: 260, height: 260, channels: 4, scalar: 'UInt8',
@@ -105,7 +110,7 @@ export function register(): void {
     assert.equal(result.state, 'fallback');
     assert.equal(result.surface.usesDetailedMaterial, false);
     assert.equal(result.surface.diagnostics.reason, 'WebGPU detail features unavailable');
-    assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url);
+    assert.equal(result.surface.textureUrl, 'https://example.test/earth/base.jpg');
     result.surface.dispose();
   });
 

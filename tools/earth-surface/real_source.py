@@ -212,6 +212,11 @@ class RasterCatalog:
 
     def aggregate(self, grid, *, linear=False, fast=False):
         """Return row-major channels, streaming one target row at a time."""
+        # 色はsRGBを線形RGBで面積平均する必要がある。GDALの高速平均は表示RGBのまま
+        # 平均するため、低LODだけ別の明るさ・彩度になる。色だけ厳密経路へ戻し、
+        # 地形の高速経路はそのまま使う。
+        if fast and linear and self.color:
+            fast = False
         if fast:
             return self._aggregate_fast(grid, linear=linear)
         result = np.zeros((grid.height, grid.width, self.channels), dtype=np.float64)

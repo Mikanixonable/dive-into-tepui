@@ -8,10 +8,12 @@ import {
 } from '../../src/render/earth-surface-source';
 import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/render/earth-surface-runtime';
 import { earthTileKey } from '../../src/render/earth-surface-tile-key';
+import { EARTH_SURFACE_LEGACY_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
 
 function manifest(): EarthSurfaceAssetManifest {
   return {
     schemaVersion: 3, datasetId: 'earth-2026-09-09-a', sourceManifestSha256: '0'.repeat(64),
+    colorCalibration: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
     terrainEncoding: {
       formatVersion: 3, layout: 'normal-xyz-rgb8-roughness-a8',
       width: 260, height: 260, channels: 4, scalar: 'UInt8',
