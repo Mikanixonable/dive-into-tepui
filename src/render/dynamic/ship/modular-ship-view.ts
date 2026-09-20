@@ -1,8 +1,8 @@
-// ShipAssembly の module ごとの表示資源を所有し、COM 基準の表示ツリーへ同期する。
+// 表示契約の module ごとの表示資源を所有し、COM 基準の表示ツリーへ同期する。
 import * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
-import type { ShipAssembly } from '../../../game/ship/ship-assembly';
 import { ShipModuleView, type ShipModuleModelFactory } from './ship-module-view';
+import type { ShipModuleRenderInput } from './ship-render-contract';
 
 const ZERO = v3();
 
@@ -27,28 +27,23 @@ export class ModularShipView {
 
   public moduleViews(): readonly ShipModuleView[] { return [...this.modules.values()]; }
 
-  // assembly 座標を ship の COM 原点へ合わせて同期する。centerOffset は physics shape の
+  // module 座標を ship の COM 原点へ合わせて同期する。centerOffset は physics shape の
   // centerOfMass と同じ assembly-local 軸で渡すので、model/collider の +Z/m を保てる。
-  public sync(assembly: ShipAssembly, centerOffset: Vec3 = ZERO): void {
+  public sync(modules: readonly ShipModuleRenderInput[], centerOffset: Vec3 = ZERO): void {
     if (this.disposed) throw new Error('cannot sync a disposed ModularShipView');
     const live = new Set<string>();
-    for (const id of assembly.moduleIds) {
-      const instance = assembly.module(id);
-      const definition = assembly.definition(id);
-      const transform = assembly.worldTransformOf(id);
-      if (instance === null || definition === null || transform === null) {
-        throw new Error(`assembly module is incomplete: ${id}`);
-      }
-      live.add(id);
+    for (const module of modules) {
+      live.add(module.id);
+      const id = module.id;
       let view = this.modules.get(id);
       if (view === undefined) {
-        view = new ShipModuleView(instance, definition, transform, this.modelFactory, centerOffset);
+        view = new ShipModuleView(module, this.modelFactory, centerOffset);
         this.modules.set(id, view);
         this.object.add(view.object);
-      } else if (view.definition.id !== definition.id) {
-        view.replaceDefinition(instance, definition, transform, centerOffset);
+      } else if (view.input.modelId !== module.modelId) {
+        view.replaceModule(module, centerOffset);
       } else {
-        view.sync(instance, transform, centerOffset);
+        view.sync(module, centerOffset);
       }
     }
     for (const [id, view] of this.modules) {
