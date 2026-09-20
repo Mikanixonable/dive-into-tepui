@@ -96,6 +96,35 @@ export function register(): void {
     close(hit.toi, 2.5 / 6, 1e-6);
   });
 
+  test('compound-cylinder: thin primitive does not force a thick primitive to exceed the sweep cap', () => {
+    const shape: CompoundCylinderShape = {
+      primitives: [
+        { moduleId: 'thin', center: v3(0, 100, 0), axis: v3(0, 1, 0), halfLength: 0.001, radius: 0.0001 },
+        { moduleId: 'thick', center: v3(), axis: v3(0, 1, 0), halfLength: 50, radius: 5 },
+      ],
+    };
+    const hit = sweptCompoundCylinderSphereContact(
+      shape, IDENTITY, IDENTITY, v3(-500, 0, 0), v3(500, 0, 0), 1,
+    );
+    assert.ok(hit);
+    assert.equal(hit.moduleIdA, 'thick');
+    close(hit.toi, 494 / 1000, 1e-5);
+  });
+
+  test('compound-cylinder: primitive sweep tie keeps module id deterministic', () => {
+    const shape: CompoundCylinderShape = {
+      primitives: [
+        { moduleId: 'z', center: v3(), axis: v3(0, 1, 0), halfLength: 1, radius: 0.5 },
+        { moduleId: 'a', center: v3(), axis: v3(0, 1, 0), halfLength: 1, radius: 0.5 },
+      ],
+    };
+    const hit = sweptCompoundCylinderSphereContact(
+      shape, IDENTITY, IDENTITY, v3(-3, 0, 0), v3(3, 0, 0), 0.25,
+    );
+    assert.ok(hit);
+    assert.equal(hit.moduleIdA, 'a');
+  });
+
   test('compound-cylinder: rotating pose is interpolated and can hit during the interval', () => {
     const shape: CompoundCylinderShape = {
       primitives: [{ moduleId: 'arm', center: v3(0, 4, 0), axis: v3(0, 1, 0), halfLength: 4, radius: 0.1 }],
