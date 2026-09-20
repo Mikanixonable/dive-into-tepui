@@ -8,6 +8,7 @@ const STYLE = `
   position: absolute; inset: 0; display: grid; place-items: center; padding: var(--space-6);
   pointer-events: auto;
 }
+#hud .confirmation-overlay[hidden] { display: none !important; }
 #hud .confirmation-overlay-panel {
   width: min(32rem, calc(100vw - var(--space-6) * 2));
   padding: var(--space-6); color: var(--text); text-align: center;
