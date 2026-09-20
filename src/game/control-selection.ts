@@ -22,7 +22,10 @@ export class ControlSelection {
   // 始める。顔ぶれに無い id なら、新しく始めたときと同じく生存中の先頭を選ぶ。
   public static deserialize(serialized: SerializedControlSelection, dynamicSystem: DynamicSystem): ControlSelection {
     if (serialized === null) return new ControlSelection(dynamicSystem, null);
-    return new ControlSelection(dynamicSystem, dynamicSystem.controllables.find((c) => c.id === serialized));
+    const target = dynamicSystem.controllables.find((c) => c.id === serialized && c.motion.alive)
+      ?? dynamicSystem.controllables.find((c) => c.motion.alive)
+      ?? null;
+    return new ControlSelection(dynamicSystem, target);
   }
 
   // 直列化した形へ変換する。
