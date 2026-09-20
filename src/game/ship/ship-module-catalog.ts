@@ -1,14 +1,34 @@
 // 建造・preset・保存復元が共有する船体モジュール定義を検索可能な一覧として提供する。
 import {
-  bodyPrimitive, defineShipModule, type FuelKind, type ShipModuleDefinition, type ShipModuleKind,
+  bodyPrimitive, defineShipModule, type FuelKind, type ShipModuleCategory, type ShipModuleDefinition,
+  type ShipModuleKind,
 } from './ship-module-definition';
+
+const MODULE_NAMES: Readonly<Record<string, string>> = {
+  'cockpit-standard': 'コックピット',
+  'tank-3-main': '主燃料タンク 3m', 'tank-6-main': '主燃料タンク 6m',
+  'tank-12-main': '主燃料タンク 12m', 'tank-3-rcs': 'RCSタンク 3m',
+  'tank-6-rcs': 'RCSタンク 6m', 'tank-12-rcs': 'RCSタンク 12m',
+  'tank-combat-main': '戦闘用主燃料タンク', 'tank-combat-rcs': '戦闘用RCSタンク',
+  'thruster-standard': '主推進器', 'rcs-standard': 'RCSスラスター', 'rcs-combat': '戦闘用RCS',
+  'weapon-gatling': '機関砲', 'armor-standard': '装甲', 'armor-combat': '戦闘用装甲',
+  'radiator-standard': 'ラジエーター', 'solar-panel-standard': '太陽電池',
+  'booster-standard': 'ブースター', 'docking-port-standard': 'ドッキングポート',
+  'dock-standard': '建造ドック', 'decoupler-standard': 'デカプラー',
+};
+
+const CATEGORY_BY_KIND: Readonly<Record<ShipModuleKind, ShipModuleCategory>> = {
+  cockpit: 'command', dock: 'command', docking_port: 'utility',
+  tank: 'fuel', booster: 'propulsion', thruster: 'propulsion', rcs: 'propulsion',
+  weapon: 'combat', armor: 'combat', radiator: 'utility', solar_panel: 'utility', decoupler: 'utility',
+};
 
 function moduleDefinition(
   id: string, kind: ShipModuleKind, length: number, maxHp: number, dryMass: number,
   abilities: ShipModuleDefinition['abilities'] = {}, radius = 3, modelId = id,
 ): ShipModuleDefinition {
   return defineShipModule({
-    id, kind, name: id, length, diameter: 6, dryMass, maxHp, modelId,
+    id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter: 6, dryMass, maxHp, modelId,
     solidPrimitives: [bodyPrimitive(length, radius)], abilities,
   });
 }
@@ -21,6 +41,9 @@ function tank(
     id, 'tank', length, 80, dryMass, { fuelKind, fuelCapacity: capacity, fuelMassPerUnit }, 3, modelId,
   );
 }
+
+// 既定船の実慣性に対して基準角加速度約 1.4 rad/s² を得る RCS 実トルク [N m]。
+const RCS_MODULE_TORQUE = 24_000;
 
 const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('cockpit-standard', 'cockpit', 3, 100, 100),
@@ -37,17 +60,17 @@ const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('thruster-standard', 'thruster', 1, 80, 50, {
     thrust: 400_000, fuelConsumptionRate: 1,
   }),
-  moduleDefinition('rcs-standard', 'rcs', 1, 50, 50, { torque: 2.24, fuelConsumptionRate: 1 }),
+  moduleDefinition('rcs-standard', 'rcs', 1, 50, 50, { torque: RCS_MODULE_TORQUE, fuelConsumptionRate: 1 }),
   moduleDefinition(
-    'rcs-combat', 'rcs', 1, 50, 25, { torque: 2.24, fuelConsumptionRate: 1 }, 3, 'rcs-standard',
+    'rcs-combat', 'rcs', 1, 50, 25, { torque: RCS_MODULE_TORQUE, fuelConsumptionRate: 1 }, 3, 'rcs-standard',
   ),
   moduleDefinition('weapon-gatling', 'weapon', 1, 80, 20, {
     weaponDamage: 1, fireRate: 1 / 0.06, muzzleVelocity: 1_000,
   }),
   moduleDefinition('armor-standard', 'armor', 1, 100, 100, { armorReduction: 0.2 }),
   moduleDefinition('armor-combat', 'armor', 1, 370, 50, { armorReduction: 0.2 }),
-  moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 42 }),
-  moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 50 }),
+  moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 4.8 }),
+  moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 825 }),
   moduleDefinition('booster-standard', 'booster', 6, 100, 200, {
     fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 80,
   }),
