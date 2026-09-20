@@ -10,7 +10,7 @@ import { GameInputRouter, gameInputMode, type GameInputPort } from '../input/gam
 import { gameInputPorts, pilotInputPorts } from '../input/game-input-ports';
 import { rawGameInputAdapter } from '../input/raw-game-input-adapter';
 import { PilotInput } from '../input/pilot-input';
-import type { Game } from '../game';
+import type { GameInputSource } from '../input/game-input-ports';
 import type { PauseMenu } from '../../hud/windows/pause-menu';
 import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -23,7 +23,7 @@ export class GameInputPhase {
   private readonly pilotPorts: readonly GameInputPort[];
 
   public constructor(
-    private readonly game: Game,
+    private readonly source: GameInputSource,
     private readonly hud: Hud,
     pauseMenu: PauseMenu,
     private readonly cameraSystem: CameraSystem,
@@ -37,11 +37,11 @@ export class GameInputPhase {
     this.inputRouter = new GameInputRouter(
       rawGameInputAdapter(input),
       gameInputPorts(
-        game, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
+        source, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
         () => this.shipConstruction.active,
       ),
     );
-    this.pilotPorts = pilotInputPorts(this.pilotInput, game, hud, () => this.shipConstruction.active);
+    this.pilotPorts = pilotInputPorts(this.pilotInput, source, hud, () => this.shipConstruction.active);
   }
 
   // このフレームの入力解釈が組んだ操作量。
@@ -66,7 +66,7 @@ export class GameInputPhase {
     const overlays = this.hud.overlayManager;
     this.inputRouter.beginFrame();
     // 連打の判定には、直前の進行が確定させたワープ倍率で艦が動けるかを渡す(CONTROLS.md)。
-    this.pilotInput.beginFrame(nowMs, this.game.simSpeedManager.canShipAct);
+    this.pilotInput.beginFrame(nowMs, this.source.simSpeedManager.canShipAct);
     this.inputRouter.route();
     const inputMode = gameInputMode(
       overlays.isGamePaused(), overlays.isInputGated(), this.shipConstruction.active,
@@ -78,7 +78,7 @@ export class GameInputPhase {
     }
     this.inputRouter.routeAdditional(this.pilotPorts);
     if (inputMode.camera) {
-      this.cameraSystem.handleInput(this.input, dt, viewport, this.game.activeControllable);
+      this.cameraSystem.handleInput(this.input, dt, viewport, this.source.activeControllable);
     }
     // ピックは直前の sync が確定したカメラと候補列で解く — 入力の解釈はこのフレームの導出より前に走る。
     const cameraFrame = this.cameraFrameOf();
