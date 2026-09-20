@@ -5,6 +5,7 @@ import { createBasePreset } from '../../src/game/ship/ship-presets';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { enumerateConstructionSlots, placementForSlot } from '../../src/game/ship/ship-construction-rules';
+import { restoreConstructionDrafts, restoreDockedVessels } from '../../src/game/ship/ship-save';
 import { test } from '../harness';
 
 export function register(): void {
@@ -85,5 +86,44 @@ export function register(): void {
     assert.equal(SHIP_MODULE_CATALOG.require('cockpit-standard').name, 'コックピット');
     assert.equal(SHIP_MODULE_CATALOG.require('tank-6-main').category, 'fuel');
     assert.equal(SHIP_MODULE_CATALOG.require('weapon-gatling').category, 'combat');
+  });
+
+  test('ship construction: 保存ドラフトは追加枝と重複IDを検証する', () => {
+    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    assembly.addRoot(createShipModuleInstance(
+      SHIP_MODULE_CATALOG.require('dock-standard'), 'dock',
+    ));
+    assembly.append(createShipModuleInstance(
+      SHIP_MODULE_CATALOG.require('tank-3-main'), 'tank',
+    ), 'dock');
+    const edge = assembly.graph[0];
+    assert.ok(edge !== undefined);
+    assert.deepEqual(restoreConstructionDrafts([{
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+    }], assembly), [{
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+    }]);
+    assert.throws(() => restoreConstructionDrafts([{
+      dockId: 'dock', addedIds: ['tank', 'tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+    }], assembly), /invalid construction draft/);
+    assert.throws(() => restoreConstructionDrafts([{
+      dockId: 'dock', addedIds: 'tank' as unknown as readonly string[],
+      axialTailId: 'dock', firstConnectionId: null,
+    }], assembly), /invalid construction draft/);
+  });
+
+  test('ship construction: 保存された docking identity は全 edge と一対一である', () => {
+    const host = createBasePreset();
+    const guest = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    guest.addRoot(createShipModuleInstance(
+      SHIP_MODULE_CATALOG.require('docking-port-standard'), 'port',
+    ));
+    const merged = host.mergedAtDock(guest, 'dock-left', 'port', 'guest');
+    assert.deepEqual(restoreDockedVessels([{
+      connectionId: merged.connectionId, id: 'guest-ship', name: 'guest',
+    }], merged.assembly), [{
+      connectionId: merged.connectionId, id: 'guest-ship', name: 'guest',
+    }]);
+    assert.throws(() => restoreDockedVessels([], merged.assembly), /do not match docking connections/);
   });
 }
