@@ -15,6 +15,7 @@ import {
 export interface EarthSurfaceSource {
   readonly datasetId: string;
   readonly sourceManifestSha256: string;
+  readonly colorCalibration: EarthSurfaceColorCalibration;
   readonly climateEncoding: EarthSurfaceClimateEncoding;
   readonly baseUrl: string;
   readonly manifestUrl: string;
@@ -25,6 +26,32 @@ export interface EarthSurfaceSource {
   readonly baseTerrainUrl: string;
   readonly climateMapUrls: readonly string[];
 }
+
+// 地表色の入力転送、面積平均後の表現、表示用RGBから拡散アルベドへ合わせる校正値。
+// bondAlbedoは地表画像の平均輝度ではなく、地球を光源として扱うときの全地球測光値なので、
+// diffuseAlbedoScaleとは別の値として持つ。
+export interface EarthSurfaceColorCalibration {
+  readonly inputEncoding: 'sRGB8';
+  readonly aggregation: 'linear_rgb_area_mean';
+  readonly outputEncoding: 'sRGB8';
+  readonly diffuseAlbedoScale: number;
+  readonly meanLinearRgb: readonly [number, number, number];
+  readonly meanRec709Albedo: number;
+  readonly bondAlbedo: number;
+  readonly averageHue: readonly [number, number, number];
+}
+
+// schema 1と旧静的fallbackの校正。新しいBMNG配信物はmanifestの値を使い、これを再利用しない。
+export const EARTH_SURFACE_LEGACY_COLOR_CALIBRATION: EarthSurfaceColorCalibration = {
+  inputEncoding: 'sRGB8',
+  aggregation: 'linear_rgb_area_mean',
+  outputEncoding: 'sRGB8',
+  diffuseAlbedoScale: 0.9102,
+  meanLinearRgb: [0.10292704, 0.11685829, 0.19066737],
+  meanRec709Albedo: 0.11922552,
+  bondAlbedo: 0.306,
+  averageHue: [0.9703, 0.9940, 1.1471],
+};
 
 export interface EarthSurfaceClimateRange {
   readonly min: number;
@@ -59,6 +86,7 @@ export interface EarthSurfaceAssetManifestV1 extends EarthSurfaceAssetManifestBa
 export interface EarthSurfaceAssetManifestV3 extends EarthSurfaceAssetManifestBase {
   readonly schemaVersion: typeof EARTH_SURFACE_MANIFEST_SCHEMA_VERSION;
   readonly terrainEncoding: EarthSurfaceTerrainEncoding;
+  readonly colorCalibration: EarthSurfaceColorCalibration;
   readonly tileTemplates: EarthSurfaceTileTemplates;
   readonly coverage: EarthSurfaceCoverage;
 }
@@ -146,6 +174,24 @@ function validateClimateEncoding(encoding: EarthSurfaceClimateEncoding): void {
   }
 }
 
+// 表示RGBを線形作業色へ戻す経路と、地表・全地球測光の校正値を検査する。
+function validateColorCalibration(calibration: EarthSurfaceColorCalibration): void {
+  if (calibration === null || calibration === undefined
+    || calibration.inputEncoding !== 'sRGB8' || calibration.aggregation !== 'linear_rgb_area_mean'
+    || calibration.outputEncoding !== 'sRGB8') {
+    throw new Error('Unsupported Earth surface color calibration encoding');
+  }
+  const values = [...calibration.meanLinearRgb, ...calibration.averageHue,
+    calibration.diffuseAlbedoScale, calibration.meanRec709Albedo, calibration.bondAlbedo];
+  if (values.some((value) => !Number.isFinite(value))) throw new Error('Invalid Earth surface color calibration');
+  if (calibration.diffuseAlbedoScale <= 0 || calibration.meanRec709Albedo <= 0
+    || calibration.bondAlbedo <= 0 || calibration.bondAlbedo > 1
+    || calibration.meanLinearRgb.some((value) => value < 0)
+    || calibration.averageHue.some((value) => value < 0)) {
+    throw new Error('Invalid Earth surface color calibration range');
+  }
+}
+
 // 共通のmanifest項目を検査し、相対URLを解決できることを確認する。
 function validateManifestBase(baseUrl: string, manifest: EarthSurfaceAssetManifestBase): void {
   if (!/^[0-9a-f]{64}$/.test(manifest.sourceManifestSha256)) {
@@ -187,6 +233,7 @@ export function earthSurfaceSourceFromManifest(
     return {
       datasetId: manifest.datasetId,
       sourceManifestSha256: manifest.sourceManifestSha256,
+      colorCalibration: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
       climateEncoding: manifest.climateEncoding,
       baseUrl,
       manifestUrl,
@@ -209,9 +256,11 @@ export function earthSurfaceSourceFromManifest(
     || terrain.formatVersion !== EARTH_SURFACE_TERRAIN_FORMAT_VERSION || terrain.layout !== EARTH_TERRAIN_LAYOUT) {
     throw new Error('Unsupported Earth surface current manifest');
   }
+  validateColorCalibration(manifest.colorCalibration);
   return {
     datasetId: manifest.datasetId,
     sourceManifestSha256: manifest.sourceManifestSha256,
+    colorCalibration: manifest.colorCalibration,
     climateEncoding: manifest.climateEncoding,
     baseUrl,
     manifestUrl,

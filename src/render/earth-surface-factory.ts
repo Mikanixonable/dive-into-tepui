@@ -15,6 +15,7 @@ import { bootstrapEarthSurface } from './earth-surface-runtime';
 import type { EarthSurfaceBootstrapOptions, EarthSurfaceBootstrapResult } from './earth-surface-runtime';
 import type { EarthSurfaceSource } from './earth-surface-source';
 import { EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE } from './earth-surface-defaults';
+import type { CelestialTexture } from './celestial-textures';
 import earthSmoothnessUrl from '../assets/earth-smoothness.png';
 import { earthSurfaceColorToRgba8 } from './earth-surface-color';
 
@@ -46,6 +47,16 @@ function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
   );
 }
 
+// manifestのbase色と同じ校正値を即時全球表示にも使う。古い静的画像はmanifest失敗時だけ残る。
+function fallbackTextureFor(source: EarthSurfaceSource): CelestialTexture {
+  return {
+    url: source.baseColorUrl,
+    albedoScale: source.colorCalibration.diffuseAlbedoScale,
+    bondAlbedo: source.colorCalibration.bondAlbedo,
+    averageHue: source.colorCalibration.averageHue,
+  };
+}
+
 interface EarthSurfaceConnection {
   readonly coordinator: EarthSurfaceResidentCoordinator | null;
   readonly state: EarthSurfaceStatus;
@@ -60,6 +71,7 @@ function detailedMaterialFor(
   // 材質bindingの公開契約をruntime attachmentへ写す。
   const binding = createEarthSurfaceMaterialBinding(
     textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl, source.terrainFormat,
+    source.colorCalibration.diffuseAlbedoScale,
   );
   return {
     material: binding.material,
@@ -146,6 +158,9 @@ export function createEarthSurfaceRuntime(options: EarthSurfaceFactoryOptions = 
   }).then((bootstrap) => {
     // 起動結果をsurfaceへ反映し、詳細接続の待機を終える。
     const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
+    if (bootstrap.state === 'ready') {
+      surface.replaceFallback(CelestialSurface.textured(fallbackTextureFor(source), earthSmoothnessUrl));
+    }
     const connection = coordinatorFor(bootstrap, options);
     surface.attach(source, connection.coordinator, connection.state, connection.material, connection.reason);
     return { surface, state: connection.state, bootstrap };
