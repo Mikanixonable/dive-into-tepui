@@ -49,7 +49,7 @@ forcing、雲の基底、鉛直 profile、光学量を、実装可能な小さ�
 
 厳密なフレーム列一致や評価経路に依存しない完全一致を hard requirement にしない。絶対時刻は、
 時間倍率・フレーム刻み・日境界で数値が破綻しないための正規化と、安価な procedural seed の入力に
-使う。合否は同じ時刻の bit 単位比較ではなく、通常速度から最大倍率までの見た目と時間連続性で判定する。
+使う。合否は同じ時刻の bit 単位比較ではなく、時間 LOD ごとに定義した見た目の連続性と時間平均の自然さで判定する。
 
 最大倍率は `33,554,432×` とする。60 fps では約 6.47 日 / frame になるため、30 分単位の雲セルを
 忠実に replay することは目標にしない。現在時刻へ直接到達し、未解像の高周波は帯域制限または平均化
@@ -57,9 +57,9 @@ forcing、雲の基底、鉛直 profile、光学量を、実装可能な小さ�
 
 | 時間 LOD | 1 frame あたりの simulation 時間 | 生成方針 | bake 更新上限 |
 | --- | ---: | --- | ---: |
-| normal | `≤ 10 min` | cell / meso / sub-grid を通常評価 | 採用 anchor は最大 1 回 / frame |
-| intermediate | `>10 min〜6 h` | 高周波振幅と cell 更新を集約し、mesoscale envelope を保持 | 最大 1 回 / frame |
-| extreme | `>6 h` | mesoscale / synoptic を粗く直接評価し、未解像 cell を帯域制限・平均化 | 最大 4 field updates / 実時間 1 秒 |
+| normal | `≤ 10 min` | cell / meso / weather object を通常評価し、位置と identity の連続性を維持 | 採用 anchor は最大 1 回 / frame |
+| intermediate | `>10 min〜6 h` | mesoscale / synoptic structure を中心に表示し、高周波 cell と object 更新を集約 | 最大 1 回 / frame |
+| extreme | `>6 h` | 短寿命現象と個々の weather object identity を捨て、simulation 時間幅で平均・low-pass した cloud field を表示 | 最大 4 field updates / 実時間 1 秒 |
 
 - 時間 LOD は simulation 秒 / 実時間 frame から選ぶ。表示時刻や表示速度を大きくずらして帳尻を
   合わせない。
@@ -67,8 +67,13 @@ forcing、雲の基底、鉛直 profile、光学量を、実装可能な小さ�
   catch-up bake はしない。現在の target anchor を直接要求し、間にある anchor は捨てる。
 - anchor 間は保持中の field、world-space transport、lifecycle の集約係数を再利用する。時刻ジャンプ
   後に大量の bake を連続実行しない。
-- 正常系の bake 回数、極端な倍率での bake 回数・spike・帯域を測る。高倍率で自然な timelapse に
-  なること、前線・低気圧が瞬間移動しないこと、雲が突然全消失・再出現しないことを目標とする。
+- normal では cell、mesoscale、weather object の位置と identity の連続性を維持する。intermediate では
+  mesoscale / synoptic structure を優先し、短寿命 cell や object identity の保持を hard gate にしない。
+- intermediate / extreme では日周期を simulation 時間幅に応じて平均・low-pass し、日周境界を aliasing させない。
+  extreme / max warp では個々の前線・低気圧・雲セルの位置連続性を要求せず、全体が flash、急消失、周期的な
+  点滅をせず、時間平均された衛星 timelapse として自然になることを目標とする。
+- 正常系の bake 回数、極端な倍率での bake 回数・spike・帯域を測る。表示時刻と simulation 時刻を大きくずらして
+  帳尻を合わせず、target 時間幅に対応する平均 field を直接評価する。
 - procedural seed は絶対時刻から安価に導出する。numeric bug の回帰として日境界、浮動小数点の
   大きな値、日付変更線、極付近を検査するが、異なる再生経路の完全一致は検査しない。
 
@@ -77,20 +82,30 @@ forcing、雲の基底、鉛直 profile、光学量を、実装可能な小さ�
 - カレンダーの月・年・周期を雲の気象 forcing に直接使わない。
 - runtime は、代表的な基準気候、緯度、陸海、地形、静的 climate zone から分布を作る。
 - 絶対時刻は seed、lifecycle、日周期の入力には使えるが、月単位の環境遷移や年境界で cloud field を
-  切り替えない。
+  切り替えない。日周期は normal でのみ通常評価し、intermediate / extreme では時間幅に応じて平均する。
 - 既存の `AnnualClimateMap` が持つ温度、平均雲量、標高、陸地率、斜度を低解像度の入力として再利用し、
   必要な geographic forcing は bake する。ray ごとに地理データを再構築しない。
 
 ### 共通 forcing と weather object
 
 Front、Cyclone、ITCZ は残す。ただし白い雲や最終 alpha を直接描かず、低次元の
-`WeatherForcingField` を供給する producer とする。field は少なくとも moisture、ascent、
-convergence / divergence、vorticity、stability / convective activity、wind perturbation、
-orographic effect を持つ。
+`WeatherForcingField` を供給する dynamic anomaly producer とする。初期 MVP の driver は
+`moisture`、`lift`、`organization`、`windPerturbation` の 3〜4 個へまとめる。
+
+convergence / divergence と orographic effect はまず `lift`、vorticity・stability・convective activity は
+まず `organization` へ寄与させる。画面上の必要性が確認できた場合だけ専用 driver へ分離する。
+`WeatherForcingField` は論理的な field であり、追加の persistent 512² texture を必須にしない。
 
 各 producer の forcing を合成した後、共通の lifecycle、RGBA basis、sub-grid、鉛直 profile、optics
 を通して最終の雲を作る。regime ごとの parameterization は許すが、描画経路を分断する別モデルや
 統一流体 solver は作らない。
+
+### regime-specific parameterization の連続 blend
+
+trade cumulus、marine stratocumulus、temperate frontal cloud、deep convection / MCS、upper cirrus は
+排他的な雲種分類ではなく、environment と forcing から得る連続 weight で parameterization を blend する。
+`if regime === front` のような切替を基本経路にせず、前線の端を通常雲へ滑らかにつなぐ。MCS の周辺に
+通常の巻雲や別の basis が共存できるよう、producer、lifecycle、basis、profile、optics を共有する。
 
 ### 視覚調整用の初期 fixture
 
@@ -114,6 +129,17 @@ orographic effect を持つ。
 
 これらの fixture は Step 6〜Step 11 の比較入力にするが、scientific calibration の合否条件や公開 API の
 状態にはしない。疑似 LWP、実効粒径、詳細な粒径分布は debug / sanity 出力に限定する。
+
+### climatology と dynamic weather
+
+geographic / climate field は「現象が起きやすい場所」を表す static / slowly varying prior とし、
+Front、Cyclone、ITCZ などは「現在そこに存在する現象」の dynamic anomaly として扱う。
+
+- storm track は Cyclone 発生 prior、marine stratocumulus zone は stratocumulus parameterization の重み、
+  ITCZ climatology は ITCZ producer の位置・強度 prior とする。
+- terrain は現在の wind と組み合わせて orographic forcing を作る。地形だけで常時同じ雲を加えない。
+- `AnnualClimateMap.meanCloudiness` を最終 cloud coverage へ直接加算せず、prior / parameterization weight として
+  一度だけ使う。dynamic weather と平均雲量を二重計上しない。
 
 ### 地理・地形
 
@@ -153,8 +179,8 @@ orographic effect を持つ。
 | 契約 | 内容 | 持たないもの |
 | --- | --- | --- |
 | `CloudFieldSample` | RGBA basis、空間 seed、必要な lifecycle 入力 | 雲種 ID、絶対高度、観測由来の科学量 |
-| `CloudEnvironment` | 緯度、固定気候、陸海・地形、日周期、温度 anchor | 月単位の気象切替、最終 alpha |
-| `WeatherForcingField` | moisture、上昇、収束 / 渦度、安定度、風 perturbation、地形効果 | 最終の白い雲、renderer 固有の積分結果 |
+| `CloudEnvironment` | 緯度、固定気候 prior、陸海・地形、日周期、温度 anchor、連続 parameterization weight | 月単位の気象切替、最終 alpha |
+| `WeatherForcingField` | `moisture`、`lift`、`organization`、`windPerturbation` の論理的な合成値 | 最終の白い雲、renderer 固有の積分結果、必須の persistent texture |
 | `CloudState` | field、environment、forcing、絶対時刻、seed、lifecycle | calibration metadata、debug histogram |
 | `CloudVerticalProfile` | basis の高度支持、liquid / ice tendency、phase、雲底・雲頂、区間係数 | optics の実装、追加の科学的高度変換 |
 | `CloudOptics` | basis / phase からの optical column、散乱、非対称因子、不透明境界 | 雲の lifecycle、地理 forcing |
@@ -178,13 +204,14 @@ surface、atmosphere、shadow の各 renderer は、それぞれの積分器で�
 | `tools/render-lab/cases.ts` | 70 / 100 / 400 km / 遠景の衛星視点ケースを追加し、既存の 960×540 ケースを再利用する。 |
 | `tools/render-lab-measure.mjs`、`src/render/gpu-timings.ts` | no-cloud baseline と cloud-enabled composite を同じケースで記録する。 timestamp 非対応は `unqualified` とする。 |
 | `tools/cloud-lab/lab.ts`、`tools/cloud-lab/views.ts` | 6 regime の静止画・contact sheet 出力と、512 cap / 1024×512 reference buffer を区別する。 |
-| `tools/cloud-lab/baseline-manifest.mjs`（新規） | カメラ、機器、画質、実時間、simulation 時間、bake 回数、画像 hash を再現可能な manifest にする。 |
+| `tools/cloud-lab/baseline-manifest.mjs`（新規） | カメラ、機器、画質、実時間、simulation 時間、bake 回数、画像 hash を再現可能な manifest にする。最初の性能 gate は `Apple M4 Pro (Mac16,8, arm64)` + `Google Chrome stable / WebGPU`（既存の headless Chrome 起動経路）へ固定し、Chrome / OS / driver の version も保存する。 |
 | `package.json` | baseline 出力と比較の script を追加する。 |
 
 **達成条件と検証**
 
 - 70 / 100 / 400 km / 遠景で同じ入力から reference contact sheet と baseline manifest を生成できる。
 - cloud-enabled composite、no-cloud baseline、bake 回数を同じケースで保存できる。
+- 代表性能環境が上記の 1 環境へ固定され、同じ browser / WebGPU 条件で no-cloud p95 と cloud budget を比較できる。
 - `npm run typecheck`、`npm run test:render`
 
 ### Step 2 — 時間 LOD と最大時間ワープを先に実装する
@@ -209,7 +236,9 @@ surface、atmosphere、shadow の各 renderer は、それぞれの積分器で�
 
 - 最大倍率で simulation 約 6.47 日 / frame でも、frame ごとの catch-up bake が発生しない。
 - extreme で field 更新が実時間 1 秒あたり 4 回以下になり、同じ時刻の直接要求が表示時刻を大きく変更しない。
-- normal / intermediate / extreme の境界で雲が停止、全消失、急増しない。前線と低気圧の位置が連続する。
+- normal では cell、mesoscale、weather object の位置・identity が連続する。
+- intermediate では mesoscale / synoptic structure を中心に表示し、短寿命 cell や個々の object identity を保持しなくてよい。
+- extreme / max warp では simulation 時間幅で平均・low-pass した field を表示し、全体の flash、急消失、周期的な点滅、日周期の aliasing がない。個々の Front / Cyclone / cell の位置連続性は要求しない。
 - 異なる評価経路の一致を hard gate にせず、日境界・浮動小数点・seed の numeric 回帰だけを固定する。
 - `npm run typecheck`、`npm run test:render`
 
@@ -224,7 +253,7 @@ weather object の結果を最終の雲へ直結させず、共通の低次元 f
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/cloud/weather-forcing-field.ts`（新規） | moisture、ascent、convergence、vorticity、stability、convective activity、wind perturbation、terrain lift の宣言を定義する。 |
+| `src/render/cloud/weather-forcing-field.ts`（新規） | `moisture`、`lift`、`organization`、`windPerturbation` の 3〜4 driver と、論理 field としての合成・連続 blend を定義する。初期段階で専用 texture を確保しない。 |
 | `src/render/cloud/weather-model.ts` | object、地理、気候から forcing を合成し、最終 alpha や白い雲を直接返さない構造へ整理する。 |
 | `src/render/cloud/condensation.ts` | forcing から RGBA basis と lifecycle 入力を作る共通入口へ改める。 |
 | `src/render/cloud/cloud-state.ts`（新規） | forcing、field、environment、time、seed を所有する共有状態を定義する。 |
@@ -233,6 +262,8 @@ weather object の結果を最終の雲へ直結させず、共通の低次元 f
 **達成条件と検証**
 
 - `WeatherForcingField` の型と合成処理が最終 cloud color / alpha を持たない。
+- 初期 `WeatherForcingField` が上記 3〜4 driver で評価でき、convergence / orography は `lift`、vorticity などは `organization` に寄せられている。
+- field は論理的な入力として渡せ、追加の persistent 512² texture がなくても core path が成立する。
 - 雲面・大気内雲・雲影が同じ `CloudState` を参照できる配線ができる。
 - `npm run typecheck`、`npm run test:render`
 
@@ -256,7 +287,8 @@ weather object の結果を最終の雲へ直結させず、共通の低次元 f
 **達成条件と検証**
 
 - Front / Cyclone / ITCZ は共通 forcing の入力になり、basis / lifecycle / profile / optics は一つの経路を通る。
-- producer の位置変化が最大時間倍率でも瞬間移動せず、forcing の周辺で雲が自然に増減する。
+- normal では producer の位置と forcing が連続する。intermediate / extreme では producer の identity や位置連続性を hard gate にせず、時間幅に応じた forcing の平均・low-pass とする。
+- 前線の端が通常雲へ滑らかにつながり、MCS の周辺に通常の巻雲などが共存する。
 - `npm run typecheck`、`npm run test:render`
 
 ### Step 5 — 地理・気候・風上 / 風下の forcing を追加する
@@ -270,16 +302,17 @@ weather object の結果を最終の雲へ直結させず、共通の低次元 f
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/cloud/climate-map.ts`、`tools/export-climate.mjs` | 既存の温度・平均雲量・標高・陸地率・斜度を基礎に、低解像度の地理 field と静的 climate zone を出力する。 |
-| `src/render/cloud/geographic-forcing-field.ts`（新規） | 緯度循環、ITCZ、亜熱帯高圧帯、storm track、marine stratocumulus、land/ocean をまとめる。 |
-| `src/render/cloud/orographic-forcing.ts`（新規） | 風向と地形勾配から風上 ascent、風下 drying / suppression を求める。 |
-| `src/render/cloud/weather-model.ts` | geographic forcing を `WeatherForcingField` へ合成する。 |
+| `src/render/cloud/climate-map.ts`、`tools/export-climate.mjs` | 既存の温度・平均雲量・標高・陸地率・斜度を、現象発生 prior と parameterization weight として低解像度で出力する。平均雲量を最終 coverage へ直接加算しない。 |
+| `src/render/cloud/geographic-forcing-field.ts`（新規） | 緯度循環、ITCZ、亜熱帯高圧帯、storm track、marine stratocumulus、land/ocean の prior をまとめる。 |
+| `src/render/cloud/orographic-forcing.ts`（新規） | 現在の代表風と地形勾配から風上 ascent、風下 drying / suppression を `lift` へ寄せる。 |
+| `src/render/cloud/weather-model.ts` | geographic prior と Front / Cyclone / ITCZ の dynamic anomaly を二重計上せず `WeatherForcingField` へ合成する。 |
 | `tests/render/geographic-forcing.test.ts`（新規） | 赤道帯、亜熱帯海洋、storm track、風上 / 風下の符号と連続性を検査する。 |
 
 **達成条件と検証**
 
 - 陸海、地形高度、地形勾配、緯度 / climate zone が低解像度の入力として bake され、ray ごとの地理再計算がない。
 - 山岳の風上で cloud forcing が増え、風下で乾燥 / cloud suppression が出る。人工的な明るい帯や格子が出ない。
+- `AnnualClimateMap.meanCloudiness` は prior / weight として一度だけ寄与し、dynamic weather の coverage と二重計上されない。
 - `npm run typecheck`、`npm run test:render`、70 / 400 km の衛星視点 screenshot
 
 ### Step 6 — lifecycle、風、world-space sub-grid を整える
@@ -303,7 +336,7 @@ weather object の結果を最終の雲へ直結させず、共通の低次元 f
 
 - sub-grid が画面に貼り付かず、低 / 中 / 上層の風に沿って back-advect される。
 - R→G→B の発達遅延と B / anvil の残留が共通 lifecycle から得られ、A は独立した上層雲として残る。
-- `npm run typecheck`、`npm run test:render`、normal / extreme の連続 screenshot
+- `npm run typecheck`、`npm run test:render`、normal / intermediate / extreme の temporal LOD screenshot
 
 ### Step 7 — RGBA basis、温度、鉛直 profile、optics を実装する
 
@@ -366,24 +399,29 @@ no-cloud baseline から導出する。
 
 | ファイル | 変更 |
 | --- | --- |
-| `tools/render-lab/cases.ts`、`tools/cloud-lab/lab.ts` | 70 / 100 / 400 km / 遠景、6 regime、normal / extreme の撮影ケースを揃える。 |
+| `tools/render-lab/cases.ts`、`tools/cloud-lab/lab.ts` | 70 / 100 / 400 km / 遠景、6 regime、normal / intermediate / extreme の撮影ケースを揃える。 |
 | `src/render/gpu-timings.ts`、`tools/render-lab-measure.mjs` | cloud の追加 GPU 時間、bake spike、bandwidth、更新回数を品質段階別に記録する。 |
 | `src/render/cloud/cloud-quality.ts`（新規） | low / standard / high の sample、sub-grid、更新頻度を定義する。standard を性能 gate とする。 |
 | `tools/cloud-lab/compare-report.mjs`（新規） | screenshot contact sheet、cheap metrics、GPU baseline 比較をまとめる。 |
 
-追加 cloud budget は、代表機器で測った no-cloud frame の p95 を `B0`、1 frame の予算を `F=16.67 ms`
-として、
+追加 cloud budget は、Step 1 で固定した代表機器 / browser で測った no-cloud frame の p95 を `B0`、
+1 frame の予算を `F=16.67 ms` とする。まず
 
-`Bcloud = min(0.20 × F, 0.50 × (F - B0))`
+`headroom = max(0, F - B0)`
 
-から導く。standard がこの範囲、low がそれ以下、high は診断用として記録する。機器が違う場合は
-同じ式で再計算し、単一の 4 ms を移植しない。
+を求め、`headroom > 0` の場合だけ
+
+`Bcloud = min(0.20 × F, 0.50 × headroom)`
+
+とする。`headroom = 0` の場合は 60 fps の性能 qualification が不能であり、standard / low / high の
+いずれも qualified と判定しない。standard はこの budget 内、low はそれ以下、high は診断用として記録する。
+別の機器 / browser では同じ式を再計算するが、代表 gate の判定は固定環境の値だけで行う。
 
 **達成条件と検証**
 
-- standard が代表的なノート PC / Apple Silicon / iGPU で `Bcloud` を超えない。
+- Step 1 の固定環境で `headroom > 0` が確認でき、standard の追加 cloud cost が `Bcloud` を超えない。`headroom = 0` なら 60 fps qualification は `unqualified` と記録する。
 - max warp で field update が上限内、bake spike と帯域が baseline manifest に保存される。
-- 70 / 100 / 400 km と遠景で、正常速度・max warp、薄雲・最大雲量・深い対流を screenshot で比較できる。
+- 70 / 100 / 400 km と遠景で、normal / intermediate / max warp、薄雲・最大雲量・深い対流を screenshot で比較できる。
 - `npm run typecheck`、`npm run test:render`、`npm run cloud-lab:shot`、性能計測 script
 
 ### Step 10 — surface と cloud shadow を共通 state へ接続する
@@ -425,6 +463,7 @@ metrics を組み合わせ、過剰に細かい物体分類へ進まない。
 
 - 6 regime で reference と生成画像を同じ camera / exposure で比較できる。
 - thin cirrus、marine stratocumulus、deep convection、anvil、地形の風上 / 風下が見た目として識別できる。
+- 前線端が通常雲へ連続し、MCS 周辺に通常の巻雲などが共存する。regime 固有の weight による変化に seam や排他的な雲種切替がない。
 - cheap metrics は調整の手掛かりとして出力されるが、科学的な hard pass / fail にはしない。
 - `npm run typecheck`、`npm run test:render`、contact sheet の人間レビュー
 
@@ -482,13 +521,14 @@ solver や高解像度 texture を導入しない。
 
 - normal で自然な移流・発生・減衰が続く。
 - intermediate で模様の高周波だけが整理され、雲の性質が崩れない。
-- extreme / 最大倍率で粗い衛星 timelapse として自然に変化し、停止、急消失、急再出現、前線の瞬間移動がない。
+- extreme / 最大倍率で粗い衛星 timelapse として自然に変化し、時間平均 field 全体の flash、急消失、周期的な点滅がない。個々の前線・低気圧・雲セルの移動連続性は要求しない。
 - 未解像の高周波を band-limit / average し、最大倍率で細胞を忠実に再生しようとしない。
 
 ### 構造
 
 - weather object は forcing producer、最終の雲は共通 lifecycle / basis / profile / optics という責務分離になっている。
-- regime-specific parameterization は共通 pipeline の上でだけ許される。
+- regime-specific parameterization は連続 weight の blend として共通 pipeline の上でだけ許され、排他的な雲種切替を基本経路にしない。
+- climatology / geography は発生 prior、Front / Cyclone / ITCZ は dynamic anomaly として分離され、平均雲量を dynamic coverage と二重計上しない。
 - 雲面・大気内雲・雲影の三経路が、同じ basic state を参照する。
 - runtime cap は 512×512 RGBA16F 一枚で、追加 3D texture がない。
 
@@ -532,12 +572,14 @@ Step 12 と Step 13 を含める場合の計画上の合計は 172h だが、ど
 
 | リスク | 影響 | 露見する場所 / 対応 |
 | --- | --- | --- |
-| extreme で temporal LOD の切替が見える | 雲が階段状に変化する | Step 2 の最大倍率 contact sheet。切替を帯域制限と envelope 保持へ寄せる。 |
+| extreme で temporal LOD または日周期の aliasing が見える | 時間平均 field が階段状に変化、flash、周期的な点滅をする | Step 2 の最大倍率 contact sheet。simulation 時間幅に応じた low-pass と日周期の平均化を調整する。 |
 | target anchor へ直接飛ぶ処理が bake storm を起こす | 高倍率でゲームが停止する | Step 2 / Step 9 の bake 回数・spike・帯域。実時間更新上限と field 再利用を測る。 |
 | front / cyclone の forcing が局所的な明るい帯になる | 物体が浮いて見える | Step 4 / Step 11 の side-by-side。最終 alpha を producer から除く。 |
 | 低解像度の地理 field が格子や明るい帯を作る | 地形・海洋の分布が不自然になる | Step 5 の 70 / 400 km screenshot。filter と bake 解像度を調整する。 |
 | 風下抑制が強すぎる | 山脈の片側が不自然に消える | Step 5 / Step 11 の地形ケース。forcing の上限を調整する。 |
 | regime-specific parameter が増え続ける | 共通 pipeline の利点を失う | Step 3 / Step 7 の型レビュー。追加 parameter は basis / forcing の低次元項に限定する。 |
+| 離散 regime 分岐が前線端や MCS 周辺に seam を作る | 通常雲との接続や cirrus の共存が壊れる | Step 4 / Step 7 / Step 11 の screenshot。environment / forcing weight の連続 blend に戻す。 |
+| no-cloud baseline が frame budget を使い切る | 60 fps の性能 qualification ができない | Step 1 / Step 9 の `headroom=0`。`unqualified` と記録し、cloud budget を合格扱いにしない。 |
 | 70 km で horizon / sampling artefact が強い | 衛星視点の見た目が壊れる | Step 8 / Step 9 の 70 km ケース。inner view 対応を追加しない。 |
 | 共通 state が renderer 境界を越えて mutable になる | 雲面・大気・影が別状態になる | Step 3 / Step 8 / Step 10 の state ownership review。render 層の GPU resource とモデル state を分ける。 |
 | timestamp 非対応 GPU で性能値が比較不能 | 誤った性能判定をする | Step 1 / Step 9。`unqualified` として画面比較だけを有効にする。 |
@@ -549,9 +591,9 @@ Step 12 と Step 13 を含める場合の計画上の合計は 172h だが、ど
 | --- | --- | --- | --- | --- |
 | 科学的評価 | 詳細な観測統計と自動判定を中心にする | screenshot / contact sheet と 4 種の cheap metrics を tuning reference にする | 衛星視点の見た目と実装可能性を優先 | 減少 |
 | season / カレンダー依存 | カレンダー周期を環境変化へ結び付ける | 固定基準気候、緯度、陸海、地形、climate zone を使う | 月単位の切替を画面要件にしない | 減少 |
-| 決定性・時間 | 再生経路の厳密一致を要件にする | 絶対時刻の正規化、numeric 回帰、temporal LOD、見た目の連続性 | 最大時間倍率では未解像時間を再生しない | 増減（テストは減り、LOD 実装が増える） |
-| 地理・地形 | 気候・地形の影響を weather model の個別項に留める | 低解像度 geographic forcing と風上上昇 / 風下抑制を core 化 | 全球の衛星視点で地理的な説得力が必要 | 増加 |
-| weather object / front | object が最終 cloud pattern を直接作る | Front / Cyclone / ITCZ は `WeatherForcingField` producer | 浮いた白帯を防ぎ、共通 lifecycle を使う | 増加 |
+| 決定性・時間 | 再生経路の厳密一致を要件にする | 絶対時刻の正規化、normal の object 連続、intermediate の mesoscale/synoptic、extreme の時間平均 / low-pass | 最大時間倍率では未解像時間を再生しない | 増減（テストは減り、LOD 実装が増える） |
+| 地理・地形 | 気候・地形の影響を weather model の個別項に留める | 発生 prior と dynamic anomaly を分離し、低解像度 geographic forcing と風上上昇 / 風下抑制を core 化 | 全球の衛星視点で地理的な説得力が必要 | 増加 |
+| weather object / front | object が最終 cloud pattern を直接作る | Front / Cyclone / ITCZ は 3〜4 driver の `WeatherForcingField` producer。identity は extreme で捨てる | 浮いた白帯を防ぎ、共通 lifecycle を使う | 増加 |
 | observed cloud | 観測入力を core の評価経路に含める | 最小 basis / preset adapter を Phase 2 化 | 実写入力なしでも core を完成させる | 減少 |
 | 鉛直描画 | 科学的な高度変換・詳細な科学量を共有契約に含める | atmosphere slice を先行し、幾何高度、phase、optics を軽量に共有 | 見た目に必要な契約へ縮小 | 減少 |
 | 性能 | 固定の絶対 GPU budget を置く | no-cloud baseline から導く low / standard / high と最大倍率の更新上限 | 機器差を吸収し、ゲーム性能を gate にする | 増加 |
@@ -559,7 +601,7 @@ Step 12 と Step 13 を含める場合の計画上の合計は 172h だが、ど
 ## なお残る過剰設計かもしれない部分
 
 - 6 regime の contact sheet と 4 metrics でも、最初の画面調整には多い可能性がある。Step 1 は 3 regime で開始してよい。
-- `WeatherForcingField` の vorticity や stability が、初期の見た目に不要なら後続 parameter として遅らせられる。
+- `WeatherForcingField` の専用 driver 分離が初期の見た目に不要なら、3〜4 driver のまま後続へ遅らせられる。
 - 温度 anchor と phase の二重管理は profile が安定した後に一つへ縮約できる。
 - Step 12 の wake / Kármán / mountain wave は、通常の地形 forcing だけで十分なら実装しない。
 - Phase 2 の observed adapter は、基準画像を preset として手動登録できる間は延期できる。
