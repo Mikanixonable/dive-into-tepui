@@ -4,14 +4,12 @@ import type * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { type CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
 import { isStar, type StarCelestialBody } from '../../physics/celestial-body-def';
-import { attractorAccel, strongestAttractor } from '../../physics/attractor';
 import { type EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
-import { isLagrangeId, lagrangeParentId } from './lagrange-id';
 import { addTimeCacheStats } from '../../physics/time-ring';
 import type { KinematicState } from '../../physics/kinematic-state';
-import { lenSq, norm, sub, v3, type Vec3 } from '../../math/vec3';
+import { norm, sub, v3, type Vec3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_SCALE, createStars, type Stars } from '../../render/stars';
 import { CelestialGrid, type CelestialGridVisibility } from '../../render/celestial-grid';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -41,8 +39,11 @@ import type { CelestialBodies } from './celestial-bodies';
 import type { FocusCameraSource } from '../viewer/focus-camera-selection';
 import type { CelestialClass } from './celestial-entity/celestial-entity-def';
 import type { PerfCounts } from '../perf-counts';
-import { STICKY_MARGIN_SQ } from './nearby-system-tracker';
 import type { ViewMode } from '../view/view-mode';
+import {
+  ancestorsOf, bodyParentId, chainFrom, isPositionInFocusedSystem, membersFrom, orderedEntitiesOf,
+  sameSystemIds, systemChainAt, systemMembersAt,
+} from './celestial-system-query';
 
 // 数値暦が収録している点を、結び先のノードへ配る。暦は id ごとに天体本体を収録している場合と
 // 惑星系の重心を収録している場合があり、宣言と食い違う点へ結ぶとその系がまるごと重心オフセット
@@ -58,28 +59,6 @@ function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisP
   for (const system of systems) {
     system.bindEphemeris(ephemerisPointOf(points, system.id, 'systemBarycenter'));
   }
-}
-
-// 親を先に、その子を続けて並べた列と、主星を 0 とする階層の深さ。親子関係が循環していても
-// 停止し、主星を持たない孤立した天体は深さ 0 で拾う。
-function orderedEntitiesOf(
-  entities: readonly CelestialEntity[],
-): readonly { readonly entity: CelestialEntity; readonly depth: number }[] {
-  const ordered: { entity: CelestialEntity; depth: number }[] = [];
-  const added = new Set<string>();
-  // entity とその子孫を深さ優先で並べる。追加済みなら何もしない。
-  const append = (entity: CelestialEntity, depth: number): void => {
-    if (added.has(entity.id)) return;
-    added.add(entity.id);
-    ordered.push({ entity, depth });
-    for (const child of entities) {
-      if (child.motion.primary?.id === entity.id) append(child, depth + 1);
-    }
-  };
-  // 根(主天体を持たない天体)から辿り、残った孤立・循環の天体も深さ 0 で拾う。
-  for (const entity of entities) if (entity.motion.primary === null) append(entity, 0);
-  for (const entity of entities) append(entity, 0);
-  return ordered;
 }
 
 export class CelestialSystem implements CelestialBodies {
@@ -197,100 +176,47 @@ export class CelestialSystem implements CelestialBodies {
 
   // focusId と同じ親を持つ天体・その親・focusId 自身の id 集合。focusId 未指定なら空集合。
   public sameSystemIds(focusId: string | undefined): ReadonlySet<string> {
-    if (focusId === undefined) return new Set();
-    const parent = this.find(focusId)?.motion.primary?.id ?? null;
-    const ids = new Set<string>([focusId]);
-    if (parent !== null) ids.add(parent);
-    for (const motion of this.celestialMotions) {
-      const p = motion.primary?.id ?? null;
-      if (p === focusId || (parent !== null && p === parent)) ids.add(motion.id);
-    }
-    return ids;
+    return sameSystemIds(focusId ?? null, this.celestialMotions, this.entities);
   }
 
   // position の主引力天体が、focus 天体と同じ惑星系に属するか。衛星をフォーカスした場合は親惑星を
   // 系の代表として扱う。天体以外(艦船・固定点など)へフォーカスしている場合は、どの天体系を表示
   // するかを恣意的に決めないため常に真。
   public isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean {
-    const focus = focusId === undefined ? undefined : this.find(focusId)?.motion;
-    if (focus === undefined) return true;
-
-    const systemFocusId = focus.kind === 'satellite' ? focus.primary?.id ?? null : focus.id;
-    if (systemFocusId === null) return false;
-    const initial = strongestAttractor(position, this.celestialMotions, pivot).id;
-    // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
-    if (this.find(initial)?.motion.kind === 'star') return true;
-
-    // フォーカス系の天体と、それ以外の天体の最大加速度を同じ規則で比べる。フォーカス系側が
-    // 1.2倍まで弱い間は表示対象に残し、境界を往復する物体の表示が1フレームごとに切り替わるのを防ぐ。
-    let focusedAccelSq = 0;
-    let outsideAccelSq = 0;
-    for (const motion of this.celestialMotions) {
-      const accelSq = lenSq(attractorAccel(position, motion, pivot));
-      const inFocusedSystem = motion.id === systemFocusId || this.ancestorsOf(motion.id).includes(systemFocusId);
-      if (inFocusedSystem) focusedAccelSq = Math.max(focusedAccelSq, accelSq);
-      else outsideAccelSq = Math.max(outsideAccelSq, accelSq);
-    }
-    return outsideAccelSq === 0 || focusedAccelSq >= outsideAccelSq / STICKY_MARGIN_SQ;
+    return isPositionInFocusedSystem(focusId ?? null, position, pivot, this.celestialMotions, this.entities);
   }
 
   // 天体 id あるいはラグランジュ点 id の親。undefined は id が不正/古いこと、null は恒星など
   // 親を持たない天体を表す。ラグランジュ点は id の親部分へ戻してから引く。
   public bodyParentId(id: string): string | null | undefined {
-    const lagrangeParent = isLagrangeId(id) ? lagrangeParentId(id) : undefined;
-    if (lagrangeParent !== undefined) return this.has(lagrangeParent) ? lagrangeParent : undefined;
-    return this.find(id)?.motion.primary?.id ?? (this.has(id) ? null : undefined);
+    const parentId = bodyParentId(id, this.entities);
+    return this.has(id) || parentId !== null ? parentId : undefined;
   }
 
   // focusId の親を辿って主星まで遡った id の列(focusId 自身を含む)。
   public ancestorsOf(focusId: string): readonly string[] {
-    const chain: string[] = [];
-    let cur: string | null = focusId;
-    // 循環した親子定義でも止まるよう、登録数を上限にする。
-    for (let i = 0; cur !== null && i <= this.entities.length; i++) {
-      if (chain.includes(cur)) break;
-      chain.push(cur);
-      cur = this.find(cur)?.motion.primary?.id ?? null;
-    }
-    return chain;
+    return ancestorsOf(focusId, this.entities);
   }
 
   // id から主星まで遡った id の列。未登録の id(生存中の重力天体)なら、その id 1つだけを返す。
   public chainFrom(id: string): readonly string[] {
-    return this.has(id) ? this.ancestorsOf(id) : [id];
+    return chainFrom(id, this.entities);
   }
 
   // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。
   public systemChainAt(cameraPos: Vec3, pivot: number): readonly string[] {
-    if (this.entities.length === 0) return [];
-    return this.chainFrom(strongestAttractor(cameraPos, this.celestialMotions, pivot).id);
+    return systemChainAt(cameraPos, pivot, this.celestialMotions, this.entities);
   }
 
   // chain の列に、各天体の子(恒星の子は除く)を合わせた集合。近い順・各天体→その子の順に並ぶ
   // 配列で返す。
   public membersFrom(chain: readonly string[]): readonly string[] {
-    const seen = new Set<string>();
-    const result: string[] = [];
-    for (const id of chain) {
-      if (!seen.has(id)) {
-        seen.add(id);
-        result.push(id);
-      }
-      // 主天体を持たない = 恒星(か未登録)。恒星の子は足さない — 足すと太陽を含む列で
-      // 全惑星が並んでしまう。
-      if ((this.find(id)?.motion.primary ?? null) === null) continue;
-      for (const child of this.celestialMotions) {
-        if (seen.has(child.id) || (child.primary?.id ?? null) !== id) continue;
-        seen.add(child.id);
-        result.push(child.id);
-      }
-    }
-    return result;
+    return membersFrom(chain, this.celestialMotions, this.entities);
   }
 
   // systemChainAt の列に、各天体の子(恒星の子は除く)を合わせた集合。
   public systemMembersAt(cameraPos: Vec3, pivot: number): readonly string[] {
-    return this.membersFrom(this.systemChainAt(cameraPos, pivot));
+    return systemMembersAt(cameraPos, pivot, this.celestialMotions, this.entities);
   }
 
   // ---------------------------------------------------------- 系レベルの物理
