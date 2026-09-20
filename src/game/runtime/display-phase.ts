@@ -10,13 +10,23 @@ import type { Targeter } from '../targeter';
 import type { ViewManager } from '../view/view-manager';
 import { SECTION, type FrameSections } from '../frame-sections';
 import type { CameraFrameSamples } from '../viewer/camera-selection';
-import type { Game } from '../game';
 import type { TrajectoryDemand } from '../dynamic/trajectory-demand';
 import type { Viewport } from '../../render/viewport';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { RunEvent } from '../run-events';
+
+export interface DisplayPhaseSource {
+  readonly simTime: number;
+  readonly activeControllable: Controllable | null;
+  readonly recentEvents: readonly RunEvent[];
+  readonly celestialSystem: CelestialBodies;
+  readonly navTargetId: string | null;
+}
 
 export class DisplayPhase {
   public constructor(
-    private readonly game: Game,
+    private readonly source: DisplayPhaseSource,
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly viewManager: ViewManager,
     private readonly frameAnchors: FrameAnchors,
@@ -33,7 +43,7 @@ export class DisplayPhase {
   public resolveFrame(): void {
     this.viewManager.sync();
     const displayWindow = this.displayWindowManager.resolve(
-      this.game.simTime, this.game.activeControllable, this.viewManager.current !== 'map',
+      this.source.simTime, this.source.activeControllable, this.viewManager.current !== 'map',
     );
     this.anchorFrameAt(displayWindow.displayTime);
   }
@@ -51,10 +61,10 @@ export class DisplayPhase {
   // 一時エフェクト・的通過マーク・計画表示を、進行が記録した出来事と計画から表示時刻で組み直す(R5)。
   public presentProgress(): void {
     const displayWindow = this.displayWindowManager.current;
-    const events = this.game.events.recent;
+    const events = this.source.recentEvents;
     this.sections.enter(SECTION.effects);
     this.flashPresenter.present(events, displayWindow.displayTime, this.cameraSystem.zoomActive);
-    this.targeter.updateBoardMarks(events, this.game.activeControllable, displayWindow.displayTime);
+    this.targeter.updateBoardMarks(events, this.source.activeControllable, displayWindow.displayTime);
     this.sections.exit(SECTION.effects);
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, this.viewManager.current);
@@ -74,14 +84,14 @@ export class DisplayPhase {
     this.sections.enter(SECTION.plan);
     this.equatorNodes.update({
       displayTime: displayWindow.displayTime,
-      celestialBodies: this.game.celestialSystem,
+      celestialBodies: this.source.celestialSystem,
       frameAnchors: this.frameAnchors,
       paths: this.planDisplay,
-    }, this.game.activeControllable, this.game.viewer.navTarget.id, this.viewManager.current);
+    }, this.source.activeControllable, this.source.navTargetId, this.viewManager.current);
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
-      this.viewManager.activeView.pickables, this.game.activeControllable, viewport, nowMs,
+      this.viewManager.activeView.pickables, this.source.activeControllable, viewport, nowMs,
     );
     this.sections.exit(SECTION.camera);
     // 候補列は遮蔽判定にカメラ位置を読むので、カメラの更新より後に組む。
