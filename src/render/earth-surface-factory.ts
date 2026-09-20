@@ -62,7 +62,7 @@ function detailedMaterialFor(
 ): EarthSurfaceMaterialAttachment {
   // 材質bindingの公開契約をruntime attachmentへ写す。
   const binding = createEarthSurfaceMaterialBinding(
-    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl, sharedBaseColor,
+    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl, sharedBaseColor, source.terrainFormat,
   );
   return {
     material: binding.material,
@@ -104,6 +104,7 @@ function coordinatorFor(
   const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
     fetchImpl: options.fetchImpl,
     decodeImage: options.decodeImage,
+    terrainFormat: bootstrap.source?.terrainFormat,
   });
   const gpu = new EarthSurfaceGpuAdapter(createEarthSurfaceGpuThree(backend));
   if (gpu.mode === 'base') {
