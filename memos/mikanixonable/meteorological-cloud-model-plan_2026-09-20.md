@@ -282,7 +282,7 @@ weather object の結果を最終の雲へ直結させず、共通の低次元 f
 | `src/render/cloud/weather-model.ts`、`src/render/cloud/rossby-wave.ts` | storm track / wave を synoptic forcing へ変換し、雲の最終形状を直接生成しない。 |
 | `src/render/cloud/front-forcing.ts`（新規） | 温度・水分・収束の勾配から front forcing を作る。 |
 | `src/render/cloud/itcz-forcing.ts`（新規） | 緯度帯と地理 field から ITCZ forcing を作る。 |
-| `tests/render/cyclones.test.ts`、`tests/render/weather-producers.test.ts`（新規） | producer の連続性、force 合成、object 単独で白い雲を出さないことを検査する。 |
+| `tests/render/cyclones.test.ts`、`tests/render/weather-producers.test.ts`（新規） | normal の producer 連続性、LOD 別の force 合成、object 単独で白い雲を出さないことを検査する。 |
 
 **達成条件と検証**
 
@@ -330,7 +330,7 @@ weather object の結果を最終の雲へ直結させず、共通の低次元 f
 | `src/render/cloud/atmospheric-wind.ts`、`src/render/cloud/wind-law.ts` | 低 / 中 / 上層の高度 anchor と shear を共通 state へ接続する。 |
 | `src/render/cloud/weather-transport.ts`、`src/render/cloud/circulation.ts` | world-space back-advection、one-step spherical transport、field と cohort の分離を実装する。 |
 | `src/render/cloud/cloud-subgrid.ts`（新規） | 同じ state / seed から帯域制限された sub-grid detail を評価する。 |
-| `tests/render/cloud-lifecycle.test.ts`、`tests/render/weather-transport.test.ts`、`tests/render/atmospheric-wind.test.ts` | camera-motion invariance、高度別移流、dateline / pole、lifecycle の連続性を検査する。 |
+| `tests/render/cloud-lifecycle.test.ts`、`tests/render/weather-transport.test.ts`、`tests/render/atmospheric-wind.test.ts` | camera-motion invariance、高度別移流、dateline / pole、normal lifecycle の連続性と extreme の時間平均を検査する。 |
 
 **達成条件と検証**
 
