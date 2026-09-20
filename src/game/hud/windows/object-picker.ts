@@ -179,8 +179,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     this.trigger.element.setAttribute('aria-expanded', 'true');
     this.pop.style.display = 'block';
     bringToFront(this.pop);
-    // compact では下端シートとして CSS が位置を決めるので、トリガー直下への配置は行わない
-    // (前回の非 compact 時に付いた left/top が残っていると right/bottom を上書きしてしまうため消す)。
+    // compact モードでは CSS による下端シート配置を適用するためインライン位置をクリアする。
     if (isCompactViewport()) {
       this.pop.style.left = '';
       this.pop.style.top = '';

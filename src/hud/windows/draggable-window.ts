@@ -1,7 +1,6 @@
-// ドラッグして動かせる、📌 でクリップできるウィンドウの外枠。ヘッダ(タイトル・サブタイトル・
-// 呼び出し側が任意のボタンを差し込める枠・📌・✕)を持ち、ヘッダのドラッグによる移動、
-// クリップ状態に応じた OverlayManager への宣言更新、ビューポート変化への再クランプ、
-// 最前面化を行う。本文は呼び出し側が組み立てて置く。
+// ドラッグ移動とピン留め（クリップ）に対応したウィンドウの外枠。ヘッダー（タイトル・操作ボタン・
+// ピン・閉じる）を備え、ドラッグ移動、OverlayManager への登録更新、ビューポート変化時の再クランプ、
+// 最前面化を制御する。本文要素は呼び出し側から注入する。
 // #hud の子として window レイヤへ置くため、`#hud, #hud *` の margin/padding
 // リセットに勝てるよう全セレクタを `#hud` で始める。
 import { clampOverlayPosition, Point2 } from '../layout';
@@ -104,8 +103,7 @@ export class DraggableWindow implements OverlayHandle {
   // 閉じられた(dispose 済み)ことを呼び出し側へ知らせる。ESC・外側クリック・✕ ボタンの
   // どの経路で閉じても等しく発火する。
   public onClose: (() => void) | null = null;
-  // クリップボタンで状態が反転したことを通知する。排他は overlayManager 自身が持つので、
-  // これは呼び出し側が見た目の追従(一覧の表示等)を行うためだけの通知。
+  // クリップ状態変更の通知コールバック。一覧表示等の追従に利用する。
   public onClipChange: ((clipped: boolean) => void) | null = null;
   // 項目ショートカットの一致判定を呼び出し側へ委ねるコールバック。
   public onShortcut: ((code: string) => boolean) | null = null;

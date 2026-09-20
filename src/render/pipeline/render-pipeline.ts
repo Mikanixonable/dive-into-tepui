@@ -312,8 +312,7 @@ export class RenderPipeline {
     this.debugTarget = target;
   }
 
-  // 描画品質設定を各パスへ配り、影マップなどの GPU 資源を組み直す。設定が前回と別の値に
-  // なったフレームだけで呼ぶ — 同じ値で呼ぶと、資源を毎フレーム捨てて作り直すことになる。
+  // 描画品質設定を各パスへ配り、影マップ等の GPU 資源を再構築する（設定変更時のみ実行）。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
