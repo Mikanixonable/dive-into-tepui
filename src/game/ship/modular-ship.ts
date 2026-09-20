@@ -2,14 +2,12 @@
 import type * as THREE from 'three/webgpu';
 import type { ViewMode } from '../view/view-mode';
 import { deserializeAttitude, type Attitude } from '../../physics/attitude';
-import { LOCAL_FORWARD, qFromBasis, qInvert, qMul, qRotate } from '../../math/quat';
+import { LOCAL_FORWARD, qFromBasis, qRotate } from '../../math/quat';
 import { deserializeKinematicState, kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { add, cross, norm, scale, v3, len, sub, type Vec3 } from '../../math/vec3';
-import { randSym } from '../../math/random';
+import { add, scale, v3, len, sub, type Vec3 } from '../../math/vec3';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity, SerializedDynamicEntityFields } from '../dynamic/dynamic-entity/dynamic-entity';
-import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { generateRandomName } from '../random-name';
 import { Throttle, type SerializedThrottle } from '../player/throttle';
@@ -40,22 +38,18 @@ import { ShipInspection } from '../pickable/ship-inspection';
 import { PlayerEffects } from '../player/player-effects';
 import { ModularShipReactions } from './modular-ship-reactions';
 import { createDefaultCombatPreset } from './ship-presets';
-import type { ShipAssembly, ShipConnection } from './ship-assembly';
+import type { ShipAssembly } from './ship-assembly';
 import { shipRenderAssembly } from './ship-render-adapter';
 import { ShipCapabilities } from './ship-capabilities';
 import { shipPhysicsShape } from './ship-physics-shape';
-import {
-  SHIP_DECOUPLING_COLLISION_GRACE, decoupledMasses, separationImpulseVelocities, splitAtDecoupler,
-} from './ship-decoupling';
-import { dockingEligibility } from './ship-docking';
-import { repairDockedAssembly } from './ship-repair';
 import type { ControlSelection } from '../control-selection';
 import { ShipDockState } from './ship-dock-state';
 import {
-  restoreConstructionDrafts, restoreDockedVessels, restoreShipAssembly, serializeShipAssembly,
+  restoreConstructionDrafts, restoreShipAssembly, serializeShipAssembly,
   type SerializedCollisionGrace, type SerializedDockedVessel, type SerializedShipAssembly,
   type SerializedShipConstructionDraft,
 } from './ship-save';
+import { ModularShipConnectionOperations } from './modular-ship-connection-operations';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageRules } from '../stages/stage-rules';
@@ -123,15 +117,13 @@ export class ModularShip extends Ship implements Controllable {
   public readonly assembly: ShipAssembly;
   public readonly capabilities: ShipCapabilities;
   public readonly docks: ShipDockState;
+  public readonly connections: ModularShipConnectionOperations;
   public readonly throttle: Throttle;
   public readonly fire: FireControl;
   public readonly altitudeAlarm: AltitudeAlarm;
   private readonly effects: PlayerEffects;
   private readonly reactions: ModularShipReactions;
-  private readonly scene: THREE.Scene;
   private readonly registry: EntityRegistry;
-  private readonly dockedVessels = new Map<string, { readonly id: string; readonly name: string }>();
-  private readonly collisionGrace = new Map<string, number>();
   // この艦自身のマニューバ計画。
   public readonly plan: Plan;
   private _planExecution: PlanExecutionMode;
@@ -278,7 +270,6 @@ export class ModularShip extends Ship implements Controllable {
     this.hp = assembly.totalHp;
     this.maxHp = assembly.maxHp;
     this.registry = registry;
-    this.scene = scene;
     this.throttle = saved?.throttle ? Throttle.deserialize(saved.throttle) : new Throttle();
     this.effects = new PlayerEffects(registry);
     this.reactions = new ModularShipReactions({
@@ -293,18 +284,30 @@ export class ModularShip extends Ship implements Controllable {
       },
     });
     reactionHandler = this.reactions;
+    const thisShipName = (): string => this.name;
+    this.connections = new ModularShipConnectionOperations({
+      ship: this,
+      id: this.id,
+      get name(): string { return thisShipName(); },
+      scene,
+      assembly: this.assembly,
+      capabilities: this.capabilities,
+      docks: this.docks,
+      motion: this.motion,
+      createShip: (next, nextRegistry) => ModularShip.create(next, nextRegistry, scene),
+      clearTransientCommands: () => this.clearTransientCommands(),
+      syncAssemblyDerivedState: () => {
+        this.hp = this.assembly.totalHp;
+        this.maxHp = this.assembly.maxHp;
+        this.capabilities.reconcileOperatingCockpit();
+        this.syncDerivedRole();
+      },
+    });
     this.plan = saved?.plan ? Plan.deserialize(saved.plan) : Plan.create();
     this._planExecution = saved?.planExecution ?? 'instant';
     this._fineAttitude = saved?.fineAttitude ?? false;
     if (saved) {
-      for (const record of restoreDockedVessels(saved.dockedVessels, assembly)) {
-        this.dockedVessels.set(record.connectionId, { id: record.id, name: record.name });
-      }
-      for (const grace of saved.collisionGrace) {
-        if (typeof grace.otherId === 'string' && Number.isFinite(grace.until) && grace.until > state.t) {
-          this.collisionGrace.set(grace.otherId, grace.until);
-        }
-      }
+      this.connections.restore(saved.dockedVessels, saved.collisionGrace, state.t);
     }
     this.fire = new FireControl(
       this, registry, scene,
@@ -412,152 +415,20 @@ export class ModularShip extends Ship implements Controllable {
     return updated?.kind === 'booster' && updated.ignited;
   }
 
-  // 条件を満たす二船を質量の大きい側へ統合し、軽い側の entity を選択系から除去する。
+  // 接舷・分離・修理は接続 identity と衝突猶予を持つ専用所有者へ渡す。
   public dock(
     other: ModularShip, localPortId: string, otherPortId: string,
     selection: ControlSelection,
   ): ModularShip {
-    const eligibility = dockingEligibility(this, localPortId, other, otherPortId);
-    if (!eligibility.eligible) throw new Error(eligibility.reasons[0] ?? '接舷できません');
-    const anchor = other.motion.mass > this.motion.mass ? other : this;
-    const moving = anchor === this ? other : this;
-    const anchorPortId = anchor === this ? localPortId : otherPortId;
-    const movingPortId = anchor === this ? otherPortId : localPortId;
-    const anchorCockpitId = anchor.capabilities.operatingCockpitId;
-    const movingCockpitId = moving.capabilities.operatingCockpitId;
-    const merged = anchor.assembly.mergedAtDock(
-      moving.assembly, anchorPortId, movingPortId, moving.id,
-    );
-    const shape = shipPhysicsShape(merged.assembly);
-    if (shape === null) throw new Error('docking produced an empty ship');
-    const rootPosition = sub(anchor.motion.state.r, qRotate(anchor.motion.att.q, anchor.motion.centerOffset));
-    const position = add(rootPosition, qRotate(anchor.motion.att.q, shape.centerOffset));
-    const totalMass = anchor.motion.mass + moving.motion.mass;
-    const velocity = totalMass > 0
-      ? scale(add(scale(anchor.motion.state.v, anchor.motion.mass), scale(moving.motion.state.v, moving.motion.mass)), 1 / totalMass)
-      : anchor.motion.state.v;
-    const t = anchor.motion.state.t;
-    anchor.assembly.replaceWith(merged.assembly);
-    anchor.docks.mergeFrom(moving.docks, merged.moduleIds, merged.connectionIds);
-    anchor.motion.synchronizeAssembly();
-    anchor.motion.reset(kinematicState<'eci'>(t, position, velocity));
-    const anchorCockpit = anchorCockpitId === null ? null : anchor.assembly.module(anchorCockpitId);
-    const movingCockpit = movingCockpitId === null ? null : merged.moduleIds.get(movingCockpitId);
-    if (anchorCockpit?.kind === 'cockpit' && anchorCockpit.hp > 0) {
-      anchor.capabilities.selectOperatingCockpit(anchorCockpit.id);
-    } else if (movingCockpit !== null && movingCockpit !== undefined
-      && anchor.assembly.module(movingCockpit)?.kind === 'cockpit'
-      && (anchor.assembly.module(movingCockpit)?.hp ?? 0) > 0) {
-      anchor.capabilities.selectOperatingCockpit(movingCockpit);
-    } else {
-      anchor.capabilities.reconcileOperatingCockpit();
-    }
-    for (const [connectionId, vessel] of moving.dockedVessels) {
-      anchor.dockedVessels.set(merged.connectionIds.get(connectionId) ?? connectionId, vessel);
-    }
-    anchor.dockedVessels.set(merged.connectionId, { id: moving.id, name: moving.name });
-    anchor.clearTransientCommands();
-    moving.clearTransientCommands();
-    const selectedParticipant = selection.current === this || selection.current === other;
-    selection.remove(moving);
-    if (selectedParticipant) selection.select(anchor);
-    anchor.hp = anchor.assembly.totalHp;
-    anchor.maxHp = anchor.assembly.maxHp;
-    anchor.syncDerivedRole();
-    return anchor;
+    return this.connections.dock(other, localPortId, otherPortId, selection);
   }
 
-  // 指定ポートの docking/construction edge を切り、記録された identity で船を再登録する。
   public undock(portId: string, registry: EntityRegistry): ModularShip {
-    const connection = this.assembly.detachableConnections().find(
-      edge => edge.parentId === portId || edge.childId === portId,
-    );
-    if (connection === undefined) throw new Error(`docking module is not connected: ${portId}`);
-    return this.separateConnection(connection, registry);
+    return this.connections.undock(portId, registry);
   }
 
-  // 指定 edge の両側へ assembly と運動状態を分け、分離船を登録する。
-  private separateConnection(
-    connection: ShipConnection, registry: EntityRegistry,
-    identity?: { readonly id?: string; readonly name: string },
-  ): ModularShip {
-    const parentRoot = this.assembly.worldTransformOf(connection.parentId);
-    const detachedRoot = this.assembly.worldTransformOf(connection.childId);
-    if (parentRoot === null || detachedRoot === null) throw new Error('missing separated branch transform');
-    const operatingCockpitId = this.capabilities.operatingCockpitId;
-    const working = this.assembly.clone();
-    const [retainedAssembly, detachedAssembly] = working.splitAt(connection.id);
-    const retainedShape = shipPhysicsShape(retainedAssembly);
-    const detachedShape = shipPhysicsShape(detachedAssembly);
-    if (retainedShape === null || detachedShape === null) throw new Error('undocking produced an empty ship');
-    const q = this.motion.att.q;
-    const w = this.motion.att.w;
-    const t = this.motion.state.t;
-    const rootPosition = sub(this.motion.state.r, qRotate(q, this.motion.centerOffset));
-    const retainedPosition = add(rootPosition, qRotate(q, retainedShape.centerOffset));
-    const detachedQ = qMul(q, detachedRoot.rotation);
-    const detachedRootPosition = add(rootPosition, qRotate(q, detachedRoot.position));
-    const detachedPosition = add(detachedRootPosition, qRotate(detachedQ, detachedShape.centerOffset));
-    const omegaWorld = qRotate(q, w);
-    const retainedVelocity = add(this.motion.state.v, cross(omegaWorld, sub(retainedPosition, this.motion.state.r)));
-    const detachedBaseVelocity = add(this.motion.state.v, cross(omegaWorld, sub(detachedPosition, this.motion.state.r)));
-    const separationAxisLocal = norm(sub(detachedRoot.position, parentRoot.position));
-    const separationAxisWorld = len(separationAxisLocal) > 1e-12
-      ? qRotate(q, separationAxisLocal)
-      : qRotate(qMul(q, parentRoot.rotation), LOCAL_FORWARD);
-    const velocities = separationImpulseVelocities(
-      retainedVelocity, detachedBaseVelocity, separationAxisWorld,
-      retainedShape.mass.totalMass, detachedShape.mass.totalMass,
-    );
-    const record = identity ?? this.dockedVessels.get(connection.id);
-    const detached = ModularShip.create(
-      {
-        id: record?.id,
-        name: record?.name ?? `${this.name} 分離船`,
-        state: kinematicState<'eci'>(t, detachedPosition, velocities.detached),
-        att: {
-          q: detachedQ,
-          w: qRotate(qInvert(detachedRoot.rotation), w),
-          inertia: detachedShape.mass.inertia,
-        },
-        assembly: detachedAssembly,
-        dockState: this.docks.copyForAssembly(detachedAssembly).serialize(),
-        operatingCockpitId: operatingCockpitId !== null && detachedAssembly.module(operatingCockpitId) !== null
-          ? operatingCockpitId : null,
-      }, registry, this.scene,
-    );
-    const detachedDockingIds = new Set(
-      detachedAssembly.dockingConnections().map(edge => edge.id),
-    );
-    for (const [connectionId, vessel] of [...this.dockedVessels]) {
-      if (!detachedDockingIds.has(connectionId)) continue;
-      detached.dockedVessels.set(connectionId, vessel);
-      this.dockedVessels.delete(connectionId);
-    }
-    this.clearTransientCommands();
-    this.assembly.replaceWith(retainedAssembly);
-    this.docks.restrictToAssembly(retainedAssembly);
-    this.motion.synchronizeAssembly();
-    this.motion.reset(kinematicState<'eci'>(t, retainedPosition, velocities.retained));
-    this.hp = this.assembly.totalHp;
-    this.maxHp = this.assembly.maxHp;
-    this.capabilities.reconcileOperatingCockpit();
-    this.syncDerivedRole();
-    this.dockedVessels.delete(connection.id);
-    const collisionEnableAt = t + SHIP_DECOUPLING_COLLISION_GRACE;
-    this.ignoreCollisionsWith(detached, collisionEnableAt);
-    registry.add(detached);
-    return detached;
-  }
-
-  // 接舷済みの統合船体を指定接舷部から一括修理し、導出状態を同期する。
   public repairAtDock(portId: string): number {
-    const repaired = repairDockedAssembly(this.assembly, portId);
-    this.hp = this.assembly.totalHp;
-    this.maxHp = this.assembly.maxHp;
-    this.capabilities.reconcileOperatingCockpit();
-    this.syncDerivedRole();
-    return repaired;
+    return this.connections.repairAtDock(portId);
   }
 
   // assembly を直接編集する建造系の操作後に、質量特性・耐久値・能力・表示上の役割を一括更新する。
@@ -567,10 +438,7 @@ export class ModularShip extends Ship implements Controllable {
       return;
     }
     this.motion.synchronizeAssembly();
-    this.hp = this.assembly.totalHp;
-    this.maxHp = this.assembly.maxHp;
-    this.capabilities.reconcileOperatingCockpit();
-    this.syncDerivedRole();
+    this.connections.syncAssemblyDerivedState();
   }
 
   private syncDerivedRole(): void {
@@ -578,112 +446,12 @@ export class ModularShip extends Ship implements Controllable {
     this.showsEquatorNodesAlways = this.capabilities.role === 'base';
   }
 
-  // 健全なデカプラーで船体と運動量を二分し、分離船と火工品 debris を登録する。
   public decouple(decouplerId: string, registry: EntityRegistry): ModularShip {
-    const operatingCockpitId = this.capabilities.operatingCockpitId;
-    const before = this.motion.physicsShape;
-    const split = splitAtDecoupler(this.assembly, decouplerId);
-    const masses = decoupledMasses(split);
-    const retainedShape = shipPhysicsShape(split.retained);
-    const detachedShape = shipPhysicsShape(split.detached);
-    if (retainedShape === null || detachedShape === null) throw new Error('decoupling produced an empty ship');
-
-    const q = { ...this.motion.att.q };
-    const w = { ...this.motion.att.w };
-    const rootPosition = sub(this.motion.state.r, qRotate(q, before.centerOffset));
-    const retainedPosition = add(rootPosition, qRotate(q, retainedShape.centerOffset));
-    const detachedQ = qMul(q, split.detachedRoot.rotation);
-    const detachedRootPosition = add(rootPosition, qRotate(q, split.detachedRoot.position));
-    const decouplerPosition = add(rootPosition, qRotate(q, split.decouplerTransform.position));
-    const detachedPosition = add(detachedRootPosition, qRotate(detachedQ, detachedShape.centerOffset));
-    const angularVelocityWorld = qRotate(q, w);
-    const retainedBaseVelocity = add(
-      this.motion.state.v, cross(angularVelocityWorld, sub(retainedPosition, this.motion.state.r)),
-    );
-    const detachedBaseVelocity = add(
-      this.motion.state.v, cross(angularVelocityWorld, sub(detachedPosition, this.motion.state.r)),
-    );
-    const separationAxisWorld = qRotate(q, split.separationAxis);
-    const velocities = separationImpulseVelocities(
-      retainedBaseVelocity, detachedBaseVelocity, separationAxisWorld, masses.retained, masses.detached,
-    );
-    const t = this.motion.state.t;
-
-    const detachedW = qRotate(qInvert(split.detachedRoot.rotation), w);
-    const detached = ModularShip.create(
-      {
-        name: `${this.name} 分離体`,
-        id: `${this.id}-${decouplerId}`,
-        state: kinematicState<'eci'>(t, detachedPosition, velocities.detached),
-        att: { q: detachedQ, w: detachedW, inertia: detachedShape.mass.inertia },
-        assembly: split.detached,
-        dockState: this.docks.copyForAssembly(split.detached).serialize(),
-        operatingCockpitId: operatingCockpitId !== null && split.detached.module(operatingCockpitId) !== null
-          ? operatingCockpitId : null,
-      }, registry, this.scene,
-    );
-    // 分離船の構築成功後に live assembly を差し替え、途中失敗を原船へ反映させない。
-    this.clearTransientCommands();
-    this.assembly.replaceWith(split.retained);
-    this.docks.restrictToAssembly(split.retained);
-    this.motion.synchronizeAssembly();
-    this.motion.resetRigidState(
-      kinematicState<'eci'>(t, retainedPosition, velocities.retained),
-      { ...this.motion.att, q, w },
-    );
-    this.hp = this.assembly.totalHp;
-    this.maxHp = this.assembly.maxHp;
-    this.capabilities.reconcileOperatingCockpit();
-    this.syncDerivedRole();
-    const collisionEnableAt = t + SHIP_DECOUPLING_COLLISION_GRACE;
-    this.ignoreCollisionsWith(detached, collisionEnableAt);
-    registry.add(detached);
-    this.scatterDecouplerPanels(t, decouplerPosition, q, this.motion.state.v, registry);
-    registry.events.record({
-      kind: 'boosterDecoupled', stages: this.capabilities.modules('booster').length,
-      jointState: kinematicState<'eci'>(t, detachedRootPosition, this.motion.state.v),
-    });
-    return detached;
+    return this.connections.decouple(decouplerId, registry);
   }
 
-  // 消費したリングを周方向8枚の物理 debris として散らす。通常 snapshot には残さない。
-  private scatterDecouplerPanels(
-    t: number, center: Vec3, attitude: Attitude['q'], baseVelocity: Vec3, registry: EntityRegistry,
-  ): void {
-    const segments = 8;
-    for (let segment = 0; segment < segments; segment++) {
-      const angle = segment * Math.PI * 2 / segments;
-      const radial = qRotate(attitude, v3(Math.cos(angle), Math.sin(angle), 0));
-      registry.add(DebrisPiece.create(
-        kinematicState<'eci'>(t, add(center, scale(radial, 3)), add(baseVelocity, scale(radial, 5))),
-        { kind: 'decouplerPanel', segment, bornSim: t },
-        {
-          q: attitude,
-          w: v3(randSym(1.4), randSym(1.4), randSym(1.4)),
-          inertia: v3(1, 1.7, 2.4),
-        },
-        registry.idAllocators, 0.8, this.scene,
-      ));
-    }
-  }
-
-  private ignoreCollisionsWith(other: ModularShip, until: number): void {
-    this.motion.ignoreCollisionWith(other.motion, until);
-    other.motion.ignoreCollisionWith(this.motion, until);
-    this.collisionGrace.set(other.id, until);
-    other.collisionGrace.set(this.id, until);
-  }
-
-  // 復元した ID 参照を motion 参照へ結び、期限切れ・欠損記録を取り除く。
   public restoreCollisionGrace(ships: readonly ModularShip[]): void {
-    for (const [otherId, until] of [...this.collisionGrace]) {
-      const other = ships.find(ship => ship.id === otherId);
-      if (other === undefined || until <= this.motion.state.t) {
-        this.collisionGrace.delete(otherId);
-        continue;
-      }
-      this.motion.ignoreCollisionWith(other.motion, until);
-    }
+    this.connections.restoreCollisionGrace(ships);
   }
 
   // ブースターとデカプラーがある艦の燃焼管理表示を組み立てる。
@@ -887,10 +655,8 @@ export class ModularShip extends Ship implements Controllable {
       name: this.name,
       assembly: serializeShipAssembly(this.assembly),
       dockState: this.docks.serialize(),
-      dockedVessels: [...this.dockedVessels].map(([connectionId, vessel]) => ({ connectionId, ...vessel })),
-      collisionGrace: [...this.collisionGrace]
-        .filter(([, until]) => until > this.motion.state.t)
-        .map(([otherId, until]) => ({ otherId, until })),
+      dockedVessels: this.connections.serializeDockedVessels(),
+      collisionGrace: this.connections.serializeCollisionGrace(this.motion.state.t),
       operatingCockpitId: this.capabilities.operatingCockpitId,
       // 下位系の状態
       fire: this.fire.serialize(),
