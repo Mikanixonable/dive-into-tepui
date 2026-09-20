@@ -6,21 +6,33 @@ import { viewCommands } from '../viewer/view-commands';
 import { gameCommand } from './game-commands';
 import type { GameInputPort } from './game-input-router';
 import type { PilotInput } from './pilot-input';
-import type { Game } from '../game';
 import type { Hud } from '../hud/hud';
 import type { PauseMenu } from '../../hud/windows/pause-menu';
 import type { CameraSystem } from '../camera/camera-system';
 import type { ViewManager } from '../view/view-manager';
 import type { Targeter } from '../targeter';
+import type { CommandQueue } from '../command-queue';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import type { ViewSelection } from '../viewer/view-selection';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+
+// ゲーム全体ではなく、単発キーの解釈に必要な進行の読み取り口だけを渡す。
+export interface GameInputSource {
+  readonly commands: CommandQueue;
+  readonly simSpeedManager: SimSpeedManager;
+  readonly view: ViewSelection;
+  readonly activeControllable: Controllable | null;
+  readonly stageIsPlaying: boolean;
+}
 
 // 画面・カメラ・ターゲット・時間加速・ビューの単発キーを受ける口。
 export function gameInputPorts(
-  game: Game, hud: Hud, pauseMenu: PauseMenu,
+  source: GameInputSource, hud: Hud, pauseMenu: PauseMenu,
   cameraSystem: CameraSystem, viewManager: ViewManager, targeter: Targeter,
   constructionActive: () => boolean,
 ): readonly GameInputPort[] {
-  const speedCommands = simSpeedCommands(game.commands, game.simSpeedManager);
-  const viewSelectionCommands = viewCommands(game.commands, game.viewer.view);
+  const speedCommands = simSpeedCommands(source.commands, source.simSpeedManager);
+  const viewSelectionCommands = viewCommands(source.commands, source.view);
   const overlays = hud.overlayManager;
   // 一時停止メニュー・窓のショートカット・ヘルプを先に取り、ゲームの操作はモーダルが入力を塞ぐ間は閉じる。
   return [
@@ -53,7 +65,7 @@ export function gameInputPorts(
         && !overlays.isInputGated()
         && !constructionActive()
         && viewManager.current === 'combat'
-        && game.activeControllable !== null,
+        && source.activeControllable !== null,
       commands: [gameCommand(K.targetSelect.code, K.targetSelect)],
       handleCommand: () => targeter.requestTargetSelect(),
     },
@@ -87,13 +99,13 @@ export function gameInputPorts(
 // 操作対象の操作量と命令を受ける口。命令の口は、命令を適用できないフレームには閉じて他の受け手へ
 // 回す。ワープ倍率による可否は、このフレームの倍率が進行の位相の先頭で確定するので適用の側で見る。
 export function pilotInputPorts(
-  pilotInput: PilotInput, game: Game, hud: Hud, constructionActive: () => boolean,
+  pilotInput: PilotInput, source: GameInputSource, hud: Hud, constructionActive: () => boolean,
 ): readonly GameInputPort[] {
   return [
     pilotInput.actionPortWith(() => !hud.overlayManager.isInputGated() && !constructionActive()),
     pilotInput.commandPort(
       () => !hud.overlayManager.isGamePaused() && !constructionActive()
-        && game.activeStage.isPlaying && game.activeControllable !== null,
+        && source.stageIsPlaying && source.activeControllable !== null,
     ),
   ];
 }

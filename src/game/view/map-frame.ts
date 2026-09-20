@@ -41,7 +41,7 @@ interface CameraPositionSource {
   readonly activeCameraPos: Vec3;
 }
 
-export class MapView implements ViewFrame {
+export class MapFrame implements ViewFrame {
   private readonly picking: MapPicking;
   public readonly planEditor: PlanEditor;
   private readonly objectPickables: ObjectPickables;

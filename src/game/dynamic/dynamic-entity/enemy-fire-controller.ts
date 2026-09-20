@@ -10,7 +10,7 @@ import { add, len, norm, randPerp, rotateAxis, scale, sub, type Vec3 } from '../
 import { solveLeadTime } from '../../../physics/intercept';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { DynamicMotion } from '../dynamic-motion';
-import { MUZZLE_SPEED } from './vessel';
+import { MUZZLE_SPEED } from './combat-ship-entity';
 import { countAttackingEnemiesInGroup } from './enemy-attack-group';
 
 const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // プラズマ弾の初速 [m/s]
@@ -68,7 +68,7 @@ export class EnemyFireController {
 
   // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
   // 間は撃たない。
-  public behave(
+  public updateBehavior(
     simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
     mayFire: boolean, celestialBodies: CelestialBodies,
   ): void {
