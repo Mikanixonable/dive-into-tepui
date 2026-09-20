@@ -152,7 +152,7 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 5. G 単独の中層雲、A 単独の巻雲、R 単独の低い厚い雲、R+G+B の深い対流が同じ基底契約で表現できる。密度の大小だけで雲底・雲頂が決まらず、雲頂圧 bin × τ bin の 9-cell histogram も生成できる。
 6. 雲面・大気内雲・雲影が同じ `CloudState`、`CloudVerticalProfile`、`CloudOptics` を参照し、物理的な雲底・雲頂・相別光学量・水平位置を共有する。描画上の境界差は鉛直 300 m、水平 2 field texel 以内、影の重心は別の shadow tolerance 以内とする。斜光、地平線、明暗境界で層の割れや許容幅を超える影のずれがない。
 7. 高度 profile は 0〜20 km の安全範囲で積分可能であり、対流圏界面付近の水平拡散と overshoot の境界が連続する。
-8. 実行時雲 cap は 512×512 RGBA16F 一枚、約 2 MiB のまま。雲追加コストは cloud-lab の 1024×512 bake profile、既存 render-lab の 960×540 profile、代表ゲーム画面の 1920×1080 profile で測る。`cloudBake + cloudSurface + cloudShadow + (atmosphere on − atmosphere off)` の steady-frame p95、bake-spike p95、anchor 間の amortized cost を通常速度と最大 time warp について別々に保存し、最終の GPU p95 は 4.0 ms 以下かつ Step 2 baseline の 1.25 倍以下とする。`atmosphere` は現状 cloud-enabled composite なので on/off の対応測定を保存し、合成パス全体の値も併記する。通常・地平線・低太陽・最大雲量・深い対流多数の全ケースで判定する。GPU timestamp 非対応は機能テストを失敗させず、性能 qualification を `unqualified` とする。
+8. 実行時雲 cap は 512×512 RGBA16F 一枚、約 2 MiB のまま。雲追加コストは cloud-lab の 1024×512 bake profile、既存 render-lab の 960×540 profile、代表ゲーム画面の 1920×1080 profile で測る。`cloudBake + cloudSurface + cloudShadow + (atmosphere on − atmosphere off)` の steady-frame p95、bake-spike p95、anchor 間の amortized cost を通常速度と最大 time warp について別々に保存し、最終の GPU p95 は 4.0 ms 以下かつ Step 2 baseline の 1.25 倍以下とする。`atmosphere` は現状 cloud-enabled composite なので on/off の対応測定を保存し、合成パス全体の値も併記する。通常・地平線・solar elevation 5°以上の低太陽・最大雲量・深い対流多数を hard qualification とし、5°未満は診断値として別記録する。GPU timestamp 非対応は機能テストを失敗させず、性能 qualification を `unqualified` とする。
 9. `npm run typecheck`、`npm run test:render`、6 regime × 3 cadence の時系列比較、観測可能量の forward metrics、再現可能なスクリーンショットを同じ入力 manifest から生成できる。
 
 ## 手順
@@ -192,7 +192,7 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 | `tools/cloud-analysis-buffer.mjs`（新規） | field と world-space sub-grid を同じ state/epoch から評価する高解像度 deterministic buffer を出力し、object-series の入力とする。512² bake だけから浅い cell の物体寿命を測らない。 |
 | `tools/cloud-observation-envelope.mjs`（新規） | 初期は observation-to-observation の分割方法、欠測、前処理、metric applicability を manifest/JSON に保存する。q2.5〜q97.5 envelope と threshold sensitivity の詳細計算は Step 5 の較正段階で有効化する。 |
 | `tools/cloud-lab/lab.ts`、`tools/cloud-lab/views.ts` | 絶対時刻の複数時点を同じ投影・露出・検証窓で出力する。`EquirectProjection(1024×512)` と `OrthographicCap(512×512)` を manifest 上で区別し、三つの capture set を別々に扱う。 |
-| `tools/render-lab-measure.mjs`、`src/render/gpu-timings.ts` | 1024×512 bake profile、既存 render-lab の 960×540 profile、代表ゲーム画面の 1920×1080 profile で cloudBake/cloudSurface/cloudShadow と atmosphere の on/off 対応を保存する。通常速度・最大 time warp の steady p95、bake-spike p95、amortized cost を分け、timestamp 非対応は `unqualified` と記録する。 |
+| `tools/render-lab-measure.mjs`、`tools/perf-probe.mjs`、`src/render/gpu-timings.ts` | 1024×512 bake profile、既存 render-lab の 960×540 profile、代表ゲーム画面の 1920×1080 profile で cloudBake/cloudSurface/cloudShadow と atmosphere の on/off 対応を保存する。通常速度・最大 time warp の steady p95、bake-spike p95、amortized cost を分ける。最大 time warp は `src/game/dynamic/sim-speed-manager.ts` の `SIM_SPEED_LEVELS` から取得し、helper に古い写しを残さない。timestamp 非対応は `unqualified` と記録する。 |
 | `package.json` | 観測取得、包絡計算、時系列比較、性能基準生成を再実行する script を追加する。 |
 | `tests/render/cloud-temporal-metrics.test.ts`（新規） | 静止、平行移動、短寿命、3 cadence の aliasing、CTP/τ 9-cell bin の小配列で初期 5 指標を固定する。分裂・併合・しきい値変動は後段 fixture として追加する。 |
 
@@ -462,6 +462,7 @@ Step 4A の geometry / condensate basis / phase を、renderer が使う extinct
 | 総観場・組織化成分・雲群・雲セルを一つの寿命で扱う | 前線や低気圧まで消えるか、個々の雲が 7 日残る | Step 2/3。三時系列と四時間帯を別指標で測り、共通の寿命定数を置かない。 |
 | `displayTime` や巨大な absolute float が seed へ入る | 再生速度・日境界・遠い日付で非決定、GPU 精度差が出る | Step 3。CPU の整数ミリ秒、GPU の dayIndex/secondsOfDay、ランダムアクセス試験で検出する。 |
 | 秒ごとの weather time を bake cache key にする | 毎フレーム 512² bake、最大 warp で spike とメモリ帯域が破綻する | Step 3/4C。10 simulation 分の `CloudBakeAnchor`、anchor 間 transport、target-only bake、steady/spike/amortized の別計測を契約にする。 |
+| 性能 helper の time-warp 定数が本体とずれる | 最大 warp の負荷測定が 33,554,432×ではなく 131,072×になり、bake spike を過小評価する | Step 2/3。`tools/perf-probe.mjs` を `src/game/dynamic/sim-speed-manager.ts` の `SIM_SPEED_LEVELS` から生成・参照するか、少なくとも最大値一致を test する。 |
 | 固定間隔の cohort 境界が全球の脈動になる | 格子模様、発生日の帯、時刻境界の pop が見える | Step 3。空間 seed と連続窓、値と一階差分のテストを使う。 |
 | cohort の cross-fade で平均・分散・スペクトルが脈動する | 固定周期で雲量やコントラストが上下し、寿命統計だけでは見逃す | Step 2/3。cohort phase を走査し、cloud fraction、分散、空間スペクトルの定常性を invariant test にする。 |
 | RGBA を相・高度・質量へ直結する | 低い厚い雲、中層雲、高い薄い氷雲を誤る、任意 scale が隠れる | Step 4A/4B。基底は optical-column 係数に限定し、温度/profile から phase、`CloudOptics` の scale と粒径から光学量を導く。 |
