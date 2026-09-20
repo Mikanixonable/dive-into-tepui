@@ -4,8 +4,16 @@ import * as THREE from 'three';
 import { loadSourceModules } from '../compile-source.mjs';
 import { F0_BURNT_STEEL, F0_STEEL, std } from './materials.mjs';
 
-const source = loadSourceModules(['game/ship/ship-module-catalog']);
+const source = loadSourceModules(['game/ship/ship-module-catalog', 'physics/player-shape']);
 const { SHIP_MODULE_CATALOG } = source.shipModuleCatalog;
+const {
+  RADIATOR_FOLD_COUNT,
+  RADIATOR_PANEL_WIDTH,
+  RADIATOR_SEGMENT_LENGTH,
+  SOLAR_PANEL_COUNT,
+  SOLAR_PANEL_SPAN,
+  SOLAR_PANEL_WIDTH,
+} = source.playerShape;
 source.dispose();
 
 const materials = {
@@ -16,7 +24,7 @@ const materials = {
   tankMain: std(0xc7d1da, { metalness: 0.68, roughness: 0.42 }),
   tankRcs: std(0x5d93a8, { metalness: 0.58, roughness: 0.46 }),
   armor: std(0x6f7a88, { metalness: 0.9, roughness: 0.38 }),
-  radiator: std(0xd9e0e7, { metalness: 0.38, roughness: 0.78 }),
+  radiator: std(0xe4e9ee, { metalness: 0.28, roughness: 0.86 }),
   solar: std(0x163f91, { metalness: 0.18, roughness: 0.44 }),
   dock: std(0xd58b37, { metalness: 0.82, roughness: 0.4 }),
 };
@@ -128,11 +136,27 @@ function addKindDetails(root, definition) {
     case 'solar_panel': {
       cylinderBody(root, definition, materials.rim, radius * 0.22);
       const panelMaterial = definition.kind === 'radiator' ? materials.radiator : materials.solar;
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.08, Math.max(0.8, definition.length)), panelMaterial);
-      panel.name = 'deployable-panel';
-      const hinge = anchor(root, 'panel-hinge', -2.3, 0, 0);
-      panel.position.x = 2.3;
-      hinge.add(panel);
+      const count = definition.kind === 'radiator' ? RADIATOR_FOLD_COUNT : SOLAR_PANEL_COUNT;
+      const panelWidth = definition.kind === 'radiator' ? RADIATOR_SEGMENT_LENGTH : SOLAR_PANEL_WIDTH;
+      const panelSpan = definition.kind === 'radiator' ? RADIATOR_PANEL_WIDTH : SOLAR_PANEL_SPAN;
+      const panelThickness = definition.kind === 'radiator' ? 0.08 : 0.06;
+      const hinge = anchor(root, 'panel-hinge', 0, 0, definition.length / 2);
+      for (let index = 0; index < count; index++) {
+        const panelHinge = anchor(hinge, `panel-hinge:${index}`, index * panelWidth, 0, 0);
+        panelHinge.userData = {
+          ...panelHinge.userData,
+          panelIndex: index,
+          panelKind: definition.kind,
+          panelWidth,
+          panelSpan,
+        };
+        const panel = new THREE.Mesh(
+          new THREE.BoxGeometry(panelWidth * 0.96, panelThickness, panelSpan * 0.96), panelMaterial,
+        );
+        panel.name = index === 0 ? 'deployable-panel' : `deployable-panel:${index}`;
+        panel.position.x = panelWidth * 0.48;
+        panelHinge.add(panel);
+      }
       break;
     }
     case 'docking_port':
