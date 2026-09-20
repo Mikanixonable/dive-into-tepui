@@ -1,16 +1,16 @@
 # 気象学的な雲モデルへの改修計画
 
-- 状態: 残工程の実装完了（性能・人間視覚 qualification は実測環境待ち）
+- 状態: 残工程の実装・実測パッケージ生成完了（性能budget未達、人間視覚 qualification は判定待ち）
 - 作成日: 2026-09-20
-- 改訂日: 2026-09-20（残工程実装・レビュー反映）
+- 改訂日: 2026-09-20（残工程実装・実測・レビュー反映）
 - 調査基準: `0114373a7`
 - 対象: 地球の生成雲、雲面・大気内雲・雲影、cloud-lab
 
 ## 実装状況（2026-09-20）
 
-Step 1〜13 の実装を完了した。ここでいう完了は、契約・配線・テスト・診断出力をコードへ組み込んだ
-という意味であり、GPU timestamp を取得した性能 qualification と、6 regime の人間による最終視覚
-判定を合格扱いにしたものではない。
+Step 1〜13 と、残工程で実行可能だったqualification runner / visual review runnerの実装を完了した。
+ここでいう完了は、契約・配線・テスト・診断出力・比較用画像をコードへ組み込んだという意味であり、
+性能budgetを満たさない環境や、6 regime の人間による最終視覚判定を合格扱いにしたものではない。
 
 - **実装済み:** Step 2 の時間境界。`weather-time` と `temporal-lod` を追加し、normal / intermediate /
   extreme を simulation 時間幅から分類する。`GeneratedCloudField` は target anchor へ直接到達し、
@@ -21,11 +21,12 @@ Step 1〜13 の実装を完了した。ここでいう完了は、契約・配�
   `organization`、`windPerturbation` の論理 field として `WeatherSample` から凝結へ渡る。追加の
   persistent 512² texture は作らない。平均雲量は最終 coverage へ直接加算せず、stratocumulus などの
   parameterization weight として一度だけ参照する。
-- **実装済み:** 性能条件の計算境界。`cloudPerformanceBudget` は `headroom=max(0,F-B0)` と
-  `Bcloud=min(0.20F,0.50headroom)` を実装し、headroom 0 または未計測値を `unqualified` とする。
-  `cloud-lab:baseline` は代表環境を Apple M4 Pro / Mac16,8 / arm64 + Google Chrome stable / WebGPU
-  に固定し、70 / 100 / 400 km と遠景、3 temporal LOD の manifest を出力する。実測B0未取得のmanifestは
-  合格扱いにしない。
+- **実装済み:** 性能条件の計算境界と実測runner。`cloudPerformanceBudget` は
+  `headroom=max(0,F-B0)` と `Bcloud=min(0.20F,0.50headroom)` を実装し、headroom 0 または未計測値を
+  `unqualified` とする。`cloud-lab:qualification` は Apple M4 Pro / Mac16,8 / arm64 + Google Chrome
+  stable / WebGPU の70 / 100 / 400 km相当ケースでno-cloud / cloud-enabledの総GPU p95を同じ条件で測る。
+  今回のGPU timestampは取得できたが、B0はそれぞれ54.575 / 70.011 / 49.600 msで全ケースのheadroomが0のため、
+  性能qualificationは`unqualified`である。
 - **実装済み:** Step 4〜5 の producer / geography。Front、Cyclone、ITCZ、storm-track、marine
   stratocumulus、orographic の寄与を `WeatherForcingField` の連続 driver へ分離し、climatology を
   発生 prior、dynamic weather を現在の anomaly として合成した。`meanCloudiness` は最終 coverage へ
@@ -39,17 +40,20 @@ Step 1〜13 の実装を完了した。ここでいう完了は、契約・配�
   shadow へ渡す。各経路の積分器・サンプル密度は既存の責務を維持した。
 - **実装済み:** Step 9 / 11 の quality / fixture。low / standard / high の field update budget、固定
   代表環境、6 regime metadata、cloud fraction / characteristic scale / advection / temporal correlation
-  の diagnostic-only metrics、比較 report を追加した。`headroom=0` または GPU timestamp / B0 未取得時は
-  `unqualified` のままである。
+  の diagnostic-only metrics、比較 report、総GPU時間を含むqualification runnerを追加した。visual review runnerは
+  6 regime × normal / intermediate / extreme / max warp × 2時点の48画像とcontact sheetを生成し、
+  `humanReview.status=pending`として最終判定を人へ残す。`headroom=0` またはGPU timestamp / B0未取得時は
+  `unqualified`のままである。
 - **実装済み:** Step 12 / 13 の任意拡張。追加 texture なしの wake / mountain-wave pattern と、画像から
   convective phase を推定しない observed basis adapter を追加した。どちらも core renderer の必須入力ではない。
 - **検証済み:** `npm run typecheck`、`npm run test:render`（246件）、`npm run build`、
-  `npm run check:boundaries`、`npm run cloud-lab:shot` を通過した。cloud-lab は 0h / 25h の 46画像を生成し、
-  全球生成雲を目視確認した。render-lab は地球ケースを描画できたが、既存の protein fixture `pdb-5i4r` が
-  asset catalog に無いため全ケース撮影はそこで停止した。
-- **未 qualification:** 固定代表環境の no-cloud p95 / GPU timestamp を実測した manifest は未取得である。
-  そのため standard の性能合格、6 regime の人間による reference side-by-side 合格、max warp の長時間
-  目視合格は未判定として残す。
+  `npm run check:boundaries`、`npm run render-lab:shot`、`npm run cloud-lab:shot`、
+  `npm run cloud-lab:qualification`、`npm run cloud-lab:visual-review`を通過した。render-labは
+  `pdb-5i4r`のBackbone JSONをURL化する設定漏れを修正し、44ケースを全件撮影した。cloud-labは既存の
+  0h / 25hの46画像に加え、visual reviewの48画像と25 contact sheetを生成し、overviewとmax warp画像を目視確認した。
+- **未 qualification:** 今回の代表環境ではGPU timestampは取得できたが、B0が60fps予算を超えたためstandardの
+  性能合格には至っていない。6 regimeの最終的な自然さ、normal / intermediate / extreme / max warpの
+  長時間の人間視覚合格は、生成済みcontact sheetの`humanReview.status=pending`として残す。
 
 ## 目的と優先順位
 
@@ -448,6 +452,7 @@ no-cloud baseline から導出する。
 | `src/render/gpu-timings.ts`、`tools/render-lab-measure.mjs` | cloud の追加 GPU 時間、bake spike、bandwidth、更新回数を品質段階別に記録する。 |
 | `src/render/cloud/cloud-quality.ts`（新規） | low / standard / high の sample、sub-grid、更新頻度を定義する。standard を性能 gate とする。 |
 | `tools/cloud-lab/compare-report.mjs`（新規） | screenshot contact sheet、cheap metrics、GPU baseline 比較をまとめる。 |
+| `tools/render-lab/lab.ts`、`tools/render-lab-cloud-qualification.mjs`（新規） | no-cloud / cloud-enabled の総GPU p95を固定代表環境で測り、`headroom` と `Bcloud` を計算する。GPU timestamp 非対応時は CPU 代用せず `unqualified` とする。 |
 
 追加 cloud budget は、Step 1 で固定した代表機器 / browser で測った no-cloud frame の p95 を `B0`、
 1 frame の予算を `F=16.67 ms` とする。まず
@@ -502,6 +507,7 @@ metrics を組み合わせ、過剰に細かい物体分類へ進まない。
 | --- | --- |
 | `tools/cloud-lab/views.ts`、`tools/cloud-lab/compare-report.mjs` | 貿易風積雲、海洋層積雲、温帯 front、熱帯 deep convection / MCS、上層 cirrus、高緯度 mixed phase を side-by-side 出力する。 |
 | `tools/cloud-lab/metrics.mjs`（新規） | cloud fraction、spatial spectrum / characteristic scale、advection / motion speed、temporal correlation を計算する。 |
+| `tools/cloud-lab-visual-review.mjs`（新規） | 6 regime × 4 time-warp mode × 2時点の48 PNGとcontact sheetを生成し、機械的合否を行わず `humanReview.status=pending` のレビュー入力を残す。 |
 | `memos/mikanixonable/` の calibration manifest | 採用した見た目の preset、入力、機器、スクリーンショットの provenance を記録する。 |
 
 **達成条件と検証**
