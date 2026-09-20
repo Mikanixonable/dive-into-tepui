@@ -21,6 +21,7 @@ export type MenuAction =
   | 'toggleBoosterModule'
   | 'decoupleModule'
   | 'dockModule'
+  | 'cancelDockCandidates'
   | 'startConstructionModule'
   | 'undockModule'
   | 'repairDockedModules'
