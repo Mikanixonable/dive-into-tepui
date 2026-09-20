@@ -225,7 +225,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     const enemies = this.all().filter(isEnemy);
     for (const e of enemies) {
       if (e.motion.alive) {
-        e.behave(this.simTime, player, this, enemies, mayFire, this.celestialBodies);
+        e.updateBehavior(this.simTime, player, this, enemies, mayFire, this.celestialBodies);
       }
     }
   }
