@@ -1,5 +1,4 @@
-// 天体そのものの向き — 自転軸と、その軸まわりの自転位相(本初子午線の向き)。
-// 「天体がどこにいるか」とは別の問い。THREE/DOM 非依存の純関数。
+// 天体の姿勢（自転軸および本初子午線の自転位相）。位置計算から独立した純粋関数群。
 import { Quat, qFromAxisAngle, qFromForwardUp, qRotate } from '../math/quat';
 import { ECI_POLE } from './ecliptic';
 import { Vec3, cross, dot, len, norm, projectOntoPlane, v3 } from '../math/vec3';
@@ -41,8 +40,8 @@ export function meridianDirection(axis: Vec3, spinAngle: number): Vec3 {
   return norm(qRotate(qFromAxisAngle(axis, spinAngle), spinPhaseRef(axis)));
 }
 
-// 自転軸 axis を持つ天体の赤道面を基準面とする座標系(z = 自転軸、x = 自転位相 0 の方向)
-// から ECI への回転。軌道要素をこの面の上で測るときの基準面として使う。
+// 天体赤道面基準座標系（z: 自転軸、x: 自転位相0方向）から ECI への回転クォータニオン。
+// 軌道要素を当該赤道面基準で計測する際の変換に用いる。
 export function equatorBasisToEci(axis: Vec3): Quat {
   // 与える up は自転軸に直交するように組むので、qFromForwardUp の退化条件には当たらない。
   return qFromForwardUp(axis, cross(axis, spinPhaseRef(axis)))!;
