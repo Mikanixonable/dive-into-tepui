@@ -72,6 +72,9 @@ function mapCameraConfig(originId: string): FocusCameraConfig {
 }
 
 export class CameraSelection implements CameraSelectionSource {
+  // 直前に追従した表示ビュー。マップから戦闘へ入る瞬間の補正にだけ使う。
+  private followedView: ViewMode | null = null;
+
   // 2台の視点から組む。省いた視点はビューごとの既定から始まる。
   public constructor(
     celestialBodies: CelestialBodies,
@@ -102,8 +105,12 @@ export class CameraSelection implements CameraSelectionSource {
 
   // 進行の出来事と、その直後の姿勢・座標系へ視点を追従させる。通常は表示している view の
   // カメラだけを進めるが、操作対象の変更は次に戦闘ビューを開いた時にも反映できるよう戦闘
-  // カメラの注視を役割へ戻す。
+  // カメラの注視を役割へ戻す。マップから戦闘へ入るときも、前回の明示フォーカスを引き継がない。
   public followProgress(events: readonly RunEvent[], samples: CameraFrameSamples, view: ViewMode): void {
+    if (this.followedView === 'map' && view === 'combat') {
+      this.combat.setFocus({ kind: 'object', id: frameRoleAnchorId('controlled') });
+    }
+    this.followedView = view;
     let controlChanged = false;
     for (const { body } of events) {
       if (body.kind === 'controllableRemoved') this.map.clearFocusIf(body.id);
