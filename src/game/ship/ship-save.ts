@@ -2,7 +2,7 @@
 import { v3 } from '../../math/vec3';
 import type { Quat } from '../../math/quat';
 import type { SerializedVec3 } from '../../math/vec3';
-import { ShipAssembly } from './ship-assembly';
+import { SIDE_SLOTS, ShipAssembly, type SideSlot } from './ship-assembly';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { createShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
 import type { ShipConstructionDraftState } from './ship-dock-state';
@@ -24,6 +24,7 @@ export interface SerializedShipConnection {
   readonly parentId: string;
   readonly childId: string;
   readonly kind: 'axial' | 'side' | 'docking';
+  readonly sideSlot?: SideSlot;
   readonly position: SerializedVec3;
   readonly rotation: Quat;
 }
@@ -56,6 +57,10 @@ function finite(value: number): boolean { return Number.isFinite(value); }
 
 function validConnectionKind(value: unknown): value is SerializedShipConnection['kind'] {
   return value === 'axial' || value === 'side' || value === 'docking';
+}
+
+function validSideSlot(value: unknown): value is SideSlot {
+  return typeof value === 'string' && SIDE_SLOTS.includes(value as SideSlot);
 }
 
 function validTransform(connection: SerializedShipConnection): boolean {
@@ -103,6 +108,7 @@ export function serializeShipAssembly(assembly: ShipAssembly): SerializedShipAss
       parentId: connection.parentId,
       childId: connection.childId,
       kind: connection.kind,
+      ...(connection.sideSlot === undefined ? {} : { sideSlot: connection.sideSlot }),
       position: { ...connection.childTransform.position },
       rotation: { ...connection.childTransform.rotation },
     })),
@@ -130,6 +136,7 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
     if (typeof connection?.id !== 'string' || connection.id.length === 0
       || typeof connection.parentId !== 'string' || typeof connection.childId !== 'string'
       || !validConnectionKind(connection.kind)
+      || (connection.sideSlot !== undefined && !validSideSlot(connection.sideSlot))
       || connectionIds.has(connection.id) || incoming.has(connection.childId)
       || connection.parentId === connection.childId
       || !modules.has(connection.parentId) || !modules.has(connection.childId)
@@ -160,7 +167,7 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
     assembly.addModule(module, connection.parentId, {
       position: v3(connection.position.x, connection.position.y, connection.position.z),
       rotation: { ...connection.rotation },
-    }, connection.kind, connection.id);
+    }, connection.kind, connection.id, connection.sideSlot);
   }
   assembly.assertValid();
   return assembly;

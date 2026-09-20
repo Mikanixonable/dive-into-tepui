@@ -46,8 +46,8 @@ const definitions: readonly ShipModuleDefinition[] = [
   }),
   moduleDefinition('armor-standard', 'armor', 1, 100, 100, { armorReduction: 0.2 }),
   moduleDefinition('armor-combat', 'armor', 1, 370, 50, { armorReduction: 0.2 }),
-  moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 42 }),
-  moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 50 }),
+  moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 4.8 }),
+  moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 825 }),
   moduleDefinition('booster-standard', 'booster', 6, 100, 200, {
     fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 80,
   }),

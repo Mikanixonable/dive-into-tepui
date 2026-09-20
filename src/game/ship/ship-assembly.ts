@@ -1,7 +1,7 @@
 // 船体モジュールの木構造、接続変換、可変状態と分割・統合操作を所有する。
 import { mulberry32 } from '../../math/random';
 import {
-  LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate, type Quat,
+  LOCAL_FORWARD, LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qInvert, qMul, qNormalize, qRotate, type Quat,
 } from '../../math/quat';
 import { add, v3, type Vec3 } from '../../math/vec3';
 import {
@@ -12,6 +12,9 @@ import { cloneShipModuleInstance, type ShipModuleInstance } from './ship-module-
 
 export type ShipRole = 'ship' | 'base' | 'material';
 export type ConnectionKind = 'axial' | 'side' | 'docking';
+export type SideSlot = 'side:+x' | 'side:-x' | 'side:+y' | 'side:-y';
+
+export const SIDE_SLOTS: readonly SideSlot[] = ['side:+x', 'side:-x', 'side:+y', 'side:-y'];
 
 export interface ModuleTransform {
   readonly position: Vec3;
@@ -24,6 +27,7 @@ export interface ShipConnection {
   readonly childId: string;
   readonly kind: ConnectionKind;
   readonly childTransform: ModuleTransform;
+  readonly sideSlot?: SideSlot;
 }
 
 export interface ShipAssemblyValidation {
@@ -98,6 +102,57 @@ function connectionCopy(connection: ShipConnection): ShipConnection {
   return { ...connection, childTransform: copyTransform(connection.childTransform) };
 }
 
+export function sideSlotDirection(slot: SideSlot): Vec3 {
+  switch (slot) {
+    case 'side:+x': return v3(1, 0, 0);
+    case 'side:-x': return v3(-1, 0, 0);
+    case 'side:+y': return v3(0, 1, 0);
+    case 'side:-y': return v3(0, -1, 0);
+  }
+}
+
+export function sideMountTransform(
+  parent: ShipModuleDefinition, child: ShipModuleDefinition, slot: SideSlot,
+): ModuleTransform {
+  const direction = sideSlotDirection(slot);
+  return {
+    position: v3(
+      direction.x * (parent.diameter / 2 + child.length / 2),
+      direction.y * (parent.diameter / 2 + child.length / 2),
+      0,
+    ),
+    rotation: qFromUnitVectors(LOCAL_FORWARD, direction),
+  };
+}
+
+function sideSlotFromTransform(transform: ModuleTransform): SideSlot | null {
+  const p = transform.position;
+  const values: readonly [SideSlot, number][] = [
+    ['side:+x', p.x], ['side:-x', -p.x], ['side:+y', p.y], ['side:-y', -p.y],
+  ];
+  const best = values.reduce((current, candidate) => candidate[1] > current[1] ? candidate : current);
+  if (best[1] <= 1e-9 || Math.abs(p.z) > 1e-9) return null;
+  return best[0];
+}
+
+function sameTransform(actual: ModuleTransform, expected: ModuleTransform): boolean {
+  const p = actual.position;
+  const e = expected.position;
+  if (Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z) > 1e-9) return false;
+  const a = actual.rotation;
+  const b = expected.rotation;
+  const quaternionDot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+  return Math.abs(Math.abs(quaternionDot) - 1) < 1e-9;
+}
+
+function isSideParent(kind: ShipModuleInstance['kind']): boolean {
+  return kind === 'cockpit' || kind === 'tank';
+}
+
+function isSideChild(kind: ShipModuleInstance['kind']): boolean {
+  return kind === 'dock' || kind === 'docking_port' || kind === 'solar_panel' || kind === 'radiator';
+}
+
 function isDockModule(
   module: ShipModuleInstance | null,
 ): module is ShipModuleInstance & { readonly kind: 'dock' | 'docking_port' } {
@@ -143,7 +198,7 @@ export class ShipAssembly {
 
   public addModule(
     instance: ShipModuleInstance, parentId?: string, transform?: ModuleTransform,
-    kind: ConnectionKind = 'axial', connectionId?: string,
+    kind: ConnectionKind = 'axial', connectionId?: string, sideSlot?: SideSlot,
   ): void {
     if (this.nodes.has(instance.id)) throw new Error(`duplicate ship module instance: ${instance.id}`);
     const definition = this.catalog.get(instance.definitionId);
@@ -170,11 +225,18 @@ export class ShipAssembly {
       const id = connectionId ?? `connection-${this.nextConnectionNumber}`;
       if (this.connections.some(connection => connection.id === id)) throw new Error(`duplicate connection: ${id}`);
     }
-    this.nodes.set(instance.id, { instance: cloneShipModuleInstance(instance), transform: childTransform });
     if (parentId !== undefined) {
       const id = connectionId ?? `connection-${this.nextConnectionNumber++}`;
       if (connectionId !== undefined) this.nextConnectionNumber++;
-      this.connections.push({ id, parentId, childId: instance.id, kind, childTransform: copyTransform(childTransform) });
+      const resolvedSideSlot = kind === 'side' ? sideSlot ?? sideSlotFromTransform(childTransform) : undefined;
+      if (kind === 'side' && resolvedSideSlot == null) throw new Error(`side connection needs a valid side slot: ${instance.id}`);
+      this.nodes.set(instance.id, { instance: cloneShipModuleInstance(instance), transform: childTransform });
+      this.connections.push({
+        id, parentId, childId: instance.id, kind, childTransform: copyTransform(childTransform),
+        ...(resolvedSideSlot == null ? {} : { sideSlot: resolvedSideSlot }),
+      });
+    } else {
+      this.nodes.set(instance.id, { instance: cloneShipModuleInstance(instance), transform: childTransform });
     }
   }
 
@@ -198,9 +260,17 @@ export class ShipAssembly {
 
   // 明示 transform で module を側面接続する。
   public connectSide(
-    instance: ShipModuleInstance, parentId: string, transform: ModuleTransform, connectionId?: string,
+    instance: ShipModuleInstance, parentId: string, transformOrSlot: ModuleTransform | SideSlot, connectionId?: string,
   ): void {
-    this.addModule(instance, parentId, transform, 'side', connectionId);
+    const parent = this.nodes.get(parentId);
+    if (parent === undefined) throw new Error(`unknown parent module: ${parentId}`);
+    const child = this.catalog.require(instance.definitionId);
+    const parentDefinition = this.catalog.require(parent.instance.definitionId);
+    const sideSlot = typeof transformOrSlot === 'string' ? transformOrSlot : sideSlotFromTransform(transformOrSlot);
+    if (sideSlot === null) throw new Error(`side connection needs a valid side slot: ${instance.id}`);
+    const transform = typeof transformOrSlot === 'string'
+      ? sideMountTransform(parentDefinition, child, transformOrSlot) : transformOrSlot;
+    this.addModule(instance, parentId, transform, 'side', connectionId, sideSlot);
   }
 
   // 建造枝の根元を通常の接舷接続へ昇格する。親は健全な dock/port でなければならず、
@@ -526,6 +596,22 @@ export class ShipAssembly {
         const p = connection.childTransform.position;
         if (Math.abs(p.x) > 1e-9 || Math.abs(p.y) > 1e-9 || Math.abs(Math.abs(p.z) - expected) > 1e-9
           || !isIdentityRotation(connection.childTransform.rotation)) errors.push(`invalid axial snap: ${connection.id}`);
+      }
+      if (connection.kind === 'side' && parent !== undefined && child !== undefined) {
+        if (!isSideParent(parent.instance.kind)) errors.push(`invalid side parent: ${connection.id}`);
+        if (!isSideChild(child.instance.kind)) errors.push(`invalid side child: ${connection.id}`);
+        if (connection.sideSlot === undefined) errors.push(`missing side slot: ${connection.id}`);
+        else {
+          const expected = sideMountTransform(
+            this.catalog.require(parent.instance.definitionId),
+            this.catalog.require(child.instance.definitionId),
+            connection.sideSlot,
+          );
+          if (!sameTransform(connection.childTransform, expected)) errors.push(`invalid side mount: ${connection.id}`);
+          const duplicate = this.connections.some(other => other !== connection
+            && other.kind === 'side' && other.parentId === connection.parentId && other.sideSlot === connection.sideSlot);
+          if (duplicate) errors.push(`duplicate side slot: ${connection.id}`);
+        }
       }
     }
     const roots = [...this.nodes.keys()].filter(id => !childIds.has(id));

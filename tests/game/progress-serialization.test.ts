@@ -82,12 +82,17 @@ function roundTrips(): readonly RoundTrip[] {
     ),
     roundTrip<SerializedPowerSystem>(
       'PowerSystem',
-      { charge: POWER_CAPACITY / 2, up: { deployTarget: 0, deploy: 0.25 }, down: { deployTarget: 1, deploy: 0.5 } },
+      {
+        charge: POWER_CAPACITY / 2,
+        up: { deployTarget: 0, deploy: 0.25 },
+        down: { deployTarget: 1, deploy: 0.5 },
+        panels: null,
+      },
       (serialized) => PowerSystem.deserialize(serialized),
     ),
     roundTrip<SerializedRadiatorSystem>(
       'RadiatorSystem',
-      { up: { deployTarget: 1, deploy: 0.5 }, down: { deployTarget: 0, deploy: 0.75 } },
+      { up: { deployTarget: 1, deploy: 0.5 }, down: { deployTarget: 0, deploy: 0.75 }, panels: null },
       (serialized) => new RadiatorSystem(
         hull,
         noContact,

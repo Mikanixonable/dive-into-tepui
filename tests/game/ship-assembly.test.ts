@@ -20,8 +20,8 @@ export function register(): void {
     assert.equal(totals.maxHp, 1_000);
     assert.equal(totals.thrust, 400_000);
     assert.equal(totals.torque, 2.24);
-    assert.equal(totals.power, 100);
-    assert.equal(totals.radiation, 84);
+    assert.equal(totals.power, 1_650);
+    assert.equal(totals.radiation, 9.6);
     assert.equal(totals.weaponDamage, 1);
     assert.equal(totals.fireRate, 1 / 0.06);
     assert.equal(totals.muzzleVelocity, 1_000);
@@ -56,6 +56,28 @@ export function register(): void {
     const sideEdge = assembly.graph[0];
     assert.ok(sideEdge !== undefined);
     assert.equal(sideEdge.id, 'side-edge');
+  });
+
+  test('ship assembly: side slot は parent/child 寸法から配置を導出し、module を差し替えられる', () => {
+    const assembly = new ShipAssembly();
+    assembly.addRoot(module('tank-6-main', 'tank'));
+    assembly.connectSide(module('solar-panel-standard', 'solar'), 'tank', 'side:+y');
+    const transform = assembly.transformOf('solar');
+    const edge = assembly.graph[0];
+    assert.ok(transform !== null && edge !== undefined);
+    assert.equal(edge.sideSlot, 'side:+y');
+    assert.deepEqual(transform.position, v3(0, 3.5, 0));
+    const forward = qRotate(transform.rotation, LOCAL_FORWARD);
+    assert.ok(Math.hypot(forward.x, forward.y - 1, forward.z) < 1e-9);
+    assert.equal(assembly.validate().valid, true);
+
+    const relocated = new ShipAssembly();
+    relocated.addRoot(module('tank-6-main', 'tank'));
+    relocated.connectSide(module('radiator-standard', 'radiator'), 'tank', 'side:-x');
+    const relocatedTransform = relocated.transformOf('radiator');
+    assert.ok(relocatedTransform !== null);
+    assert.deepEqual(relocatedTransform.position, v3(-3.5, 0, 0));
+    assert.equal(relocated.validate().valid, true);
   });
 
   test('ship assembly: 建造枝の根元を通常の接舷接続へ昇格できる', () => {
