@@ -7,7 +7,14 @@ const { version } = require('./package.json');
 
 const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-09-09-a';
 const EARTH_SURFACE_DEV_PUBLIC_PATH = `/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID}/`;
-const EARTH_SURFACE_BUNDLE_ROOT = path.resolve(__dirname, '.earth-surface/bundle');
+const EARTH_SURFACE_BUNDLE_ROOT_CANDIDATES = [
+  // schema 3の生成物を優先し、R2へ未配備でも同じbundleを開発配信する。
+  path.resolve(__dirname, '.earth-surface/bundle-v3'),
+  path.resolve(__dirname, '.earth-surface/bundle'),
+];
+const EARTH_SURFACE_BUNDLE_ROOT = EARTH_SURFACE_BUNDLE_ROOT_CANDIDATES.find((root) => (
+  fs.existsSync(path.join(root, 'earth-surface.json'))
+)) ?? EARTH_SURFACE_BUNDLE_ROOT_CANDIDATES[1];
 const EARTH_SURFACE_LOCAL_MANIFEST_PATH = path.join(EARTH_SURFACE_BUNDLE_ROOT, 'earth-surface.json');
 const DEFAULT_EARTH_SURFACE_R2_BASE_URL = `https://assets.mikanixonable.net/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID}/`;
 const DEFAULT_EARTH_SURFACE_R2_MANIFEST_URL = `${DEFAULT_EARTH_SURFACE_R2_BASE_URL}earth-surface.json`;
