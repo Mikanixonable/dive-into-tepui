@@ -8,10 +8,10 @@
 
 `ShipAssembly` の接続グラフ、`ModularShip` の統合・切り離し、ドッキング可否判定、建造ドラフト、保存復元、入力境界、モジュール UI、関連仕様を確認した。
 
-現在の主経路は次のとおり。
+基準コミット時点の主経路は次のとおり。
 
 ```text
-ModuleWindows.dockNearest
+ModuleWindows.dockNearest（最寄り候補を自動確定）
   -> dockingEligibility
   -> ModularShip.dock
   -> ShipAssembly.mergedAtDock
@@ -198,3 +198,32 @@ ModuleWindows.undockModule
 - `dock` / `docking_port` の全入口が同じ能力判定を使う。
 - 保存の不正入力を部分適用せず、正常状態は round-trip する。
 - 既存の未コミット変更を統合へ巻き込まない。
+
+## 実装後レビュー・文書更新
+
+実装コミット: `9163d5e59`
+
+今回の修正では、上記の P0/P1 を次のように反映した。
+
+- P0-1: 現在質量の大きい側を anchor とし、同質量は操作開始側を残す。assembly の pose、COM、速度、cockpit、selection を統合後へ移管し、相手 entity を選択系・registry から除去する。
+- P0-2: 建造中は pilot action/command、時間加速、ターゲット、ビュー、通常 HUD を閉じ、カメラと建造操作だけを通す。建造開始時は module window も閉じる。
+- P0-3: dock draft、操作基準 cockpit、docked identity を merge/split/decouple で ID remap して移管し、entity 固有の一時操作状態は解除する。
+- P1-1: docking edge の分離にも decoupler と同じ質量比の分離速度と衝突猶予を適用する。
+- P1-2: 建造・再開・修理は `dock` 限定、`docking_port` は接続・分離専用とし、建造接続は修理用 docking edge と混同しない。
+- P1-3: `docking` edge の両端検証と、建造枝を `construction` edge として保存・分離する経路を追加した。
+- P1-4: 建造 draft の枝到達性・重複・参照関係、docked identity と docking edge の一対一を保存復元時に検証する。
+- P1-5: 最寄り自動確定を廃止し、候補船体・port・距離・角度・相対速度・拒否理由を表示して、選択時に再判定する。
+- P1-6: `globalThis.confirm()` を共通 `ConfirmationOverlay` に置換し、ESC キャンセル、入力ゲート、時間停止、run dispose を実装した。
+- P1-7/P1-8: 建造開始元の module window を閉じ、未使用の `launchConstruction()` を削除した。
+
+仕様・用語は `DEVELOP/SPEC/GAME.md`、`DEVELOP/SPEC/SAVE.md`、`CONTEXT.md` に反映した。コードレビューでは境界違反、lint、保存値の型穴、消滅した候補船体への確定、建造接続への誤修理経路を再確認し、追加修正した。
+
+検証結果:
+
+- `npm run typecheck` 成功
+- `npm run test:game` 成功（299/299）
+- `npm run lint` 成功
+- `npm run check:boundaries` 成功
+- `npm run verify:ui-style` は専用worktreeでは成功（132 source files）。workspace3統合後は、今回変更していない既存の `src/game/hud/style/ship-construction-style.ts` にある装飾border 3件で失敗したため、既存課題として残した。
+
+未実施の範囲は、ブラウザ実機での docking/undock 操作と、Three/registry を含む entity 単位の統合テストである。純粋な assembly・保存・分離速度の回帰テストは追加した。次の改善候補は、entity 統合テスト、弾薬・熱・電力・計画状態の merge/split 細則、接続済み dock の建造/更新 UI の仕様確定である。

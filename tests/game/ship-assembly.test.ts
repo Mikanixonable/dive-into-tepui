@@ -19,7 +19,7 @@ export function register(): void {
     assert.equal(totals.hp, 1_000);
     assert.equal(totals.maxHp, 1_000);
     assert.equal(totals.thrust, 400_000);
-    assert.equal(totals.torque, 2.24);
+    assert.equal(totals.torque, 24_000);
     assert.equal(totals.power, 1_650);
     assert.equal(totals.radiation, 9.6);
     assert.equal(totals.weaponDamage, 1);
@@ -80,7 +80,7 @@ export function register(): void {
     assert.equal(relocated.validate().valid, true);
   });
 
-  test('ship assembly: 建造枝の根元を通常の接舷接続へ昇格できる', () => {
+  test('ship assembly: 建造枝は docking edge と別の建造接続へ確定する', () => {
     const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
     assembly.addRoot(module('cockpit-standard', 'cockpit'));
     assembly.connectSide(module('dock-standard', 'dock'), 'cockpit', {
@@ -90,11 +90,13 @@ export function register(): void {
       position: v3(0, 0, 2), rotation: { x: 0, y: 0, z: 0, w: 1 },
     }, 'axial', 'construction-edge');
 
-    assembly.promoteConnectionToDocking('construction-edge');
+    assembly.completeConstructionConnection('construction-edge');
 
-    assert.equal(assembly.dockingConnections()[0]?.id, 'construction-edge');
-    assert.equal(assembly.isDockingPortOccupied('dock'), true);
-    assert.equal(assembly.graph.find(edge => edge.id === 'construction-edge')?.kind, 'docking');
+    assert.equal(assembly.dockingConnections().length, 0);
+    assert.equal(assembly.constructionConnections()[0]?.id, 'construction-edge');
+    assert.equal(assembly.isDockingPortOccupied('dock'), false);
+    assert.equal(assembly.isPortConnected('dock'), true);
+    assert.equal(assembly.graph.find(edge => edge.id === 'construction-edge')?.kind, 'construction');
     assert.equal(assembly.validate().valid, true);
   });
 
