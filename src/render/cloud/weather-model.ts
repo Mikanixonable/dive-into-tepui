@@ -48,12 +48,12 @@ interface PressureField {
   readonly bend: FloatNode;
 }
 
-// ノイズの段の表。周波数は 1 rad あたりの山の数で、角波長 [km] は 6371 ÷ 周波数。気圧は 1 段に
-// 取る — 上昇流が気圧そのものの関数なので、段を増やすとノイズの格子が雲へそのまま出る。
+// ノイズのオクターブ定義表。周波数は 1 rad あたりの山数で、角波長 [km] は 6371 ÷ 周波数。気圧は単一オクターブ
+// のみとする — 上昇流が気圧値の直接の関数であるため、オクターブを重ねると高周波の格子が雲へそのまま現れてしまうため。
 const PRESSURE_NOISE: readonly NoiseOctave[] = [
   { frequency: 1.2, amplitude: 1 }, // 5300 km
 ];
-// 場の振れ幅 [hPa]。段数によらない。
+// 場の振れ幅 [hPa]。オクターブ数によらない。
 const PRESSURE_NOISE_AMPLITUDE = 18;
 
 // 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限、低気圧側は尺度 [hPa] ごとに
@@ -199,7 +199,7 @@ export class WeatherModel {
     this.convectiveActivity.bake(renderer, gpu);
   }
 
-  // 時刻 [s] を uniform へ写す。
+  // 時刻 [s] を各サブシステムの uniform へ反映する。
   public syncTime(seconds: number): void {
     this.surfaceCirculation.syncTime(seconds);
     this.upperCirculation.syncTime(seconds);
@@ -247,7 +247,7 @@ export class WeatherModel {
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
       .mul(TERRAIN_LIFT_GAIN);
     // 折り目の帯: 温帯では前線(気団の圧縮へ、湿度の境目と気圧の上昇流を少し足す)、熱帯では雨帯の
-    // 伝達関数が圧縮の稜線を帯の強さへ写す。
+    // 伝達関数が圧縮の稜線を降雨帯の強度へマッピングする。
     const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
     const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression);
     const moistureFront = smoothstep(

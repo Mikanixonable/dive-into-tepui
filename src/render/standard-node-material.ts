@@ -2,7 +2,7 @@
 // 見た目を決める色・マップ・面の設定を移し替える 1 箇所を与える。
 import * as THREE from 'three/webgpu';
 
-// 標準マテリアルの見た目一式のうち、Node 版のコンストラクタが受け取れるものを写す。
+// 標準マテリアルの外観パラメータのうち、Node 版のコンストラクタが受け取れる設定を抽出してコピーする。
 function standardMaterialParams(
   src: THREE.MeshStandardMaterial,
 ): THREE.MeshStandardNodeMaterialParameters {

@@ -43,7 +43,7 @@ function cr3bpDerivative(mu: number, s: Cr3bpState): Cr3bpState {
   ];
 }
 
-// 6 変数の RK4 一段。
+// 6 変数の RK4 1ステップ。
 function rk4StateStep(mu: number, s: Cr3bpState, dt: number): Cr3bpState {
   const shift = (base: Cr3bpState, k: Cr3bpState, f: number): Cr3bpState => [
     base[0] + f * k[0], base[1] + f * k[1], base[2] + f * k[2],
@@ -59,7 +59,7 @@ function rk4StateStep(mu: number, s: Cr3bpState, dt: number): Cr3bpState {
   return [combine(0), combine(1), combine(2), combine(3), combine(4), combine(5)];
 }
 
-// 状態を時間 duration だけ進める。steps は固定刻みの段数。
+// 状態を時間 duration だけ進める。steps は固定刻みのステップ数。
 export function cr3bpPropagate(mu: number, s: Cr3bpState, duration: number, steps: number): Cr3bpState {
   let state = s;
   const dt = duration / steps;
@@ -99,7 +99,7 @@ function resampleSpots(path: readonly Vec3Tuple[], samples: number, closeLoop: b
   return out;
 }
 
-// 折れ線の頂点の取り出し。範囲外は呼び出し側の索引計算の破綻なので投げる。
+// 折れ線の頂点の取り出し。インデックスが範囲外の場合は例外を送出する。
 function pointAt(path: readonly Vec3Tuple[], i: number): Vec3Tuple {
   const p = path[i];
   if (p === undefined) throw new RangeError(`cr3bp: 範囲外の頂点参照 ${i}`);
