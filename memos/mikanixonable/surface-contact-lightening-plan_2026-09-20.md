@@ -159,6 +159,7 @@ surface 用の球代理を primitive 単位で走査し、球同士の解析的�
 - `npm run test:physics`: `507/507 passed`
 - `npm run test:game`: `297/297 passed`
 - `npm run check:boundaries`: 違反 0 件
+
 - `git diff --check`: 成功
 - 実行時ブラウザ計測は今回の依頼範囲では行っていない。したがって、x4096 / x65536 の wall-clock 改善率は未計測であり、次段では exact narrow phase 呼び出し回数と `update` の planet contact 時間を同じシナリオで比較する。
 
@@ -166,6 +167,7 @@ surface 用の球代理を primitive 単位で走査し、球同士の解析的�
 
 - この文書の更新 commit は、実装 commit 後の専用ブランチへ追加する。続いて `workspace3` へ統合し、統合を確認してから今回作成した worktree と一時ブランチだけを削除する。
 - 項目5（primitive 特徴量ごとの sweep 分割）と項目6（高倍率時の衝突 LOD / substep 上限再評価）は未実装。項目1〜4後の実測で exact sweep がまだ支配的かを確認してから着手する。
+
 
 ## 残タスク追補
 
@@ -191,3 +193,216 @@ surface 用の球代理を primitive 単位で走査し、球同士の解析的�
 - 変更箇所の ESLint: エラー 0 件
 - `git diff --check`: 成功
 - `npm run check:boundaries`: 違反 0 件
+
+## 高倍率向け衝突LOD導入計画
+
+### 対象スナップショット
+
+- 対象ブランチ: `workspace3`
+- 対象コミット: `2b24ed8af`
+- 対象: 天体表面接触の形状解像度。物体どうしの接触、予測軌道の積分、substep 上限は対象外とする。
+
+### 目的
+
+`x4096` を超える時間加速で、天体接触の exact compound sweep が生存物体数とサブステップ数に比例して膨らむ。天体への到達結果を保つ必要がある物体は exact のままにし、接触時刻や module 単位の精度がゲーム結果へ影響しない一時物体だけを、明示的な保守的球代理へ切り替えて `SECTION.celestialContact` の負荷を下げる。
+
+### 決めたこと
+
+- これは単なる内部最適化ではなく、既存の「時間加速倍率は判定の答えを変えない」という仕様に例外を加える変更である。実装前に `DEVELOP/SPEC/ORBIT.md` と `DEVELOP/SPEC/GAME.md` を単独の仕様コミットで更新する。
+- LOD は天体表面接触だけに適用する。物体どうしの接触は `MAX_PHYS_SIM_SPEED = 4` の既存ゲートを保ち、今回の計画で高倍率接触を再開したり、別形状へ置き換えたりしない。
+- 形状解像度は既定を `exact` とし、動的物体が構築時に `highWarpCoarse` を明示した場合だけ、`simSpeed > 4096` で `surfaceShape` を最終接触形状として使う。physics がグローバルな速度管理を読むのではなく、進行側がそのフレームのモードを引数で渡す。
+- `highWarpCoarse` は exact shape を内包する球集合だけを受け付ける。接触を見逃してはならないが、球代理が外側へ膨らむぶんだけ早く接触することは、明示的に許可された一時物体についてのみ認める。proxy の膨らみが物体の許容誤差を超える形状は opt-in を拒否する。
+- controlled ship、予測軌道を持つ物体、天体接触で module 単位の反応・ダメージ・出来事を生成する物体は `exact` を保つ。`highWarpCoarse` の参加者は予測弧を持たず、surface contact callback によるゲーム上の分岐を持たない一時物体に限定する。
+- サブステップ数を減らさない。大気抵抗、加熱、姿勢、経路全体の積分は従来どおり進め、LOD は候補後の exact capped-cylinder narrow phase を球代理へ置き換える部分だけに限定する。
+- 薬莢の物体間接触を今回の LOD で解決しようとしない。薬莢が surface shape を持たず既存の球経路を通る場合、surface LOD の追加効果はないため、残る負荷が物体間接触なら別計画へ切り出す。
+
+### 変えない挙動
+
+- `exact` 参加者について、経路全体、相手天体の移動、区間内の最初の接触、開始時・終端の重なり、回転途中の接触、moduleId、接触反応、反発と加熱を変えない。
+- どの LOD でも生存物体を天体接触の参加者から除外せず、天体候補の上限や処理打ち切りを導入しない。
+- exact shape と surface proxy の世代を分離せず、assembly 変更後に古い proxy を使わない。
+- `compoundShape` を物体どうしの接触、選択、module 単位の反応へ流用し、surface LOD を entity contact へ漏らさない。
+
+### LODによって変わる挙動
+
+- `highWarpCoarse` の一時物体は、exact shape なら接触しない proxy の外側で、最大で宣言した proxy 膨らみぶん早く天体接触として失われる可能性がある。球代理の内側にある exact 接触を落とすことは許可しない。
+- 同じ一時物体でも `simSpeed <= 4096` では exact を使う。したがって高倍率への切り替えは、その物体の接触時刻へ影響しうるが、対象は仕様で定める低重要度物体に限る。
+
+### 達成目標
+
+- x4096・x65536 の同一シナリオで、`SECTION.celestialContact` の中央値を、LOD導入前ベースライン比で 30% 以上削減する。削減率は `(baseline - lod) / baseline` で計算し、Node 単体の narrow phase ベンチと実シミュレーション計測を分けて記録する。
+- `highWarpCoarse` 参加者で exact narrow phase 呼び出しが 0 件になり、coarse proxy の接触数・接触天体・接触時刻が決定的になる。
+- 物体数、姿勢、天体移動、時間加速段を変えた回帰テストで、`exact` の結果が現行と一致する。
+- proxy の false negative が 0 件で、proxy の早期接触距離が各物体の宣言した許容誤差以内に収まる。
+- `npm run typecheck`、`npm run test:physics`、`npm run test:game`、`npm run check:boundaries`、`git diff --check` が成功する。
+
+### 手順
+
+#### 手順1. LODの仕様契約を先に確定する
+
+**目的**
+
+高倍率で接触時刻が変わりうる範囲を仕様として明文化し、実装が速度倍率を理由に任意の物体を近似しないようにする。
+
+**変更が必要な箇所**
+
+| ファイル | 変更内容 |
+| --- | --- |
+| `DEVELOP/SPEC/ORBIT.md` | exact 接触を要求する物体、保守的 proxy を許す一時物体、proxy の false negative 禁止、許容誤差、予測弧との関係、substep を削らないことを仕様として追加する。 |
+| `DEVELOP/SPEC/GAME.md` | 高倍率時の表面接触 LOD が時間加速倍率に対する明示的なゲーム上の例外であることを追加する。物体間接触の既存上限は変更しない。 |
+
+**達成条件と検証**
+
+- 仕様だけの `docs(spec): define high-warp surface contact lod` commit を作れる状態になる。
+- `ORBIT.md` の「時間加速倍率が判定の答えを変えない」と矛盾しないよう、低重要度の表面接触だけが例外として読める。
+- exact 参加者と coarse 参加者の分類、proxy の許容誤差、予測弧を coarse にしない条件が数値または観測可能な条件で書かれている。
+- 実装は行わず、仕様コミット後にのみ手順2へ進む。
+
+#### 手順2. ベースラインとLOD計測値を追加する
+
+**目的**
+
+LOD の採用でどの費用が減ったかを、候補数だけでなく exact narrow phase、coarse contact、サブステップ、`SECTION.celestialContact` の時間で比較できるようにする。
+
+**変更が必要な箇所**
+
+| ファイル | 変更内容 |
+| --- | --- |
+| `src/game/dynamic/surface-contact-physics.ts` | frame ごとに surface participant 数、候補数、exact 判定数、coarse 判定数、coarse hit 数を数える。接触の答えは変更しない。 |
+| `src/game/dynamic/simulator.ts` | surface contact の計数を `perfCounts()` へ差し出す。substep 数と integrated/followed 数は既存値を保つ。 |
+| `src/game/perf-counts.ts` | LOD計測値の読み取り専用フィールドを追加する。 |
+| `src/game/hud/windows/debug-info-window.ts` | デバッグ窓へ exact/coarse の計数を追加し、500ms 集計の既存方式で平均・最大を表示する。 |
+| `tools/bench/surface-contact-lod.mjs`（新規） | 固定した物体数・天体数・姿勢・時間区間で x4096 / x65536 を繰り返し、section時間と計数を比較する。 |
+| `package.json` | ベンチを再実行できる `bench:surface-contact-lod` script を追加する。 |
+| `tests/game/surface-contact-lod.test.ts`（新規） | 計数のリセット、exact/coarse の分類、同一フレーム内の集計を検証する。 |
+
+**達成条件と検証**
+
+- LOD未導入のベースラインを x4096 / x65536 各100フレーム以上で保存し、`SECTION.celestialContact`、候補数、exact 判定数を記録する。
+- 計数を有効にしても接触結果、サブステップ数、物体数、予測弧が変わらない。
+- `npm run typecheck`、`npm run test:game`、`npm run check:boundaries`、`npm run bench:surface-contact-lod`。
+
+#### 手順3. LODポリシーを進行から物理へ明示的に渡す
+
+**目的**
+
+時間加速の段、物体ごとの opt-in、予測弧の有無を一箇所で判定し、physics がゲーム状態やグローバル速度管理を直接参照しない構造を作る。この時点では全参加者を exact とし、挙動を変えない。
+
+**変更が必要な箇所**
+
+| ファイル | 変更内容 |
+| --- | --- |
+| `src/physics/surface-contact-lod.ts`（新規） | `exact` / `coarse` のモードと、proxy の許容誤差・モード選択に必要な不変型を定義する。ゲームの entity 種別は持ち込まない。 |
+| `src/game/dynamic/dynamic-motion.ts` | 物体ごとの `surfaceContactFidelity` と proxy 計測値を読み取り専用で持ち、既定を `exact` にする。coarse と予測弧・surface callback の不整合を構築時に拒否する。 |
+| `src/game/dynamic/dynamic-simulation-participant.ts` | surface contact が読む fidelity の狭い面を追加する。entity contact には渡さない。 |
+| `src/game/dynamic/sim-speed-manager.ts` | 現在の速度段から surface contact mode を純粋に返す。初期閾値は `simSpeed > 4096` とし、仕様とベンチ結果を根拠に変更できる一箇所へ置く。 |
+| `src/game/game.ts` | フレーム先頭で確定した速度段から surface contact mode を組み、進行へ一度だけ渡す。 |
+| `src/game/dynamic/dynamic-system.ts` | `simDt` と同じフレームの mode を `Simulator` へ受け渡す。 |
+| `src/game/dynamic/simulator.ts` | `SurfaceContactPhysics` へ mode を渡す。substep の数・積分・entity contact は変更しない。 |
+| `tests/game/sim-speed-manager.test.ts`、`tests/game/dynamic-motion-shape.test.ts` | 閾値、既定 exact、予測弧との不整合拒否、保存データに派生 mode を追加しないことを検証する。 |
+
+**達成条件と検証**
+
+- mode を渡しても全 participant が exact で、既存の surface contact テスト結果が変わらない。
+- `simSpeed` を physics 層から直接 import する箇所が 0 件になる。確認語: `rg -n "sim-speed-manager|SIM_SPEED_LEVELS" src/physics`。
+- `highWarpCoarse` を指定した予測弧持ち、surface callback 持ち、許容誤差を超える proxy は構築時に拒否される。
+- `npm run typecheck`、`npm run test:physics`、`npm run test:game`、`npm run check:boundaries`、`git diff --check`。
+
+#### 手順4. coarse surface contact を実装する
+
+**目的**
+
+high-warp mode かつ明示的な coarse participant に限り、既存 `surfaceShape` の球集合を最終接触として使い、exact capped-cylinder sweep を省く。exact participant の経路は変更しない。
+
+**変更が必要な箇所**
+
+| ファイル | 変更内容 |
+| --- | --- |
+| `src/physics/compound-sphere-contact.ts` | sphere union の swept hit が deterministic な最初の TOI と moduleId を返すこと、endpoint overlap と移動天体を扱えることを確認・補強する。 |
+| `src/physics/surface-contact.ts` | `exact` は現行の proxy prepass + capped-cylinder fallback、`coarse` は validated `surfaceShape` の hit を最終 geometry とする分岐を追加する。既定引数は `exact`。 |
+| `src/game/dynamic/surface-contact-physics.ts` | participant fidelity と frame mode の両方から実際の判定モードを決め、coarse の exact narrow phase 呼び出しを 0 件にする。coarse hit も既存の反発・熱・reaction 配線へ渡す。 |
+| `tests/physics/compound-sphere-contact.test.ts` | sphere union の最初の TOI、同時刻 moduleId tie-break、移動天体、開始時内部、非有限入力を検証する。 |
+| `tests/physics/surface-contact.test.ts` | exact と coarse の結果、coarse の早期接触、proxy-only hit、endpoint overlap、候補無し経路を検証する。 |
+| `tests/game/surface-contact-physics.test.ts` | high-warp coarse のみ exact geometry を呼ばないこと、exact participant は従来経路を通ること、計数が一致することを検証する。 |
+
+**達成条件と検証**
+
+- coarse proxy が exact shape を内包する入力で false negative が 0 件になる。
+- coarse participant の contact body、TOI、moduleId は入力順に依存せず、同一入力で常に同じになる。
+- exact participant の body、TOI、moduleId、push-out、反発、熱、reaction が導入前と一致する。
+- `npm run typecheck`、`npm run test:physics`、`npm run test:game`、`npm run check:boundaries`、`git diff --check`。
+
+#### 手順5. 一時物体へ段階的にopt-inし、実測で採否を決める
+
+**目的**
+
+ゲーム上の意味が小さい物体だけを coarse LOD へ切り替え、実シナリオで負荷削減と早期接触の許容範囲を確認する。まず薬莢・慣性を持たない一時破片を対象にし、宇宙船の近似は別の判定を通す。
+
+**変更が必要な箇所**
+
+| ファイル | 変更内容 |
+| --- | --- |
+| `src/game/dynamic/dynamic-entity/debris-motion.ts` | surface callback と予測弧を持たない、明示した一時破片だけへ `highWarpCoarse` を設定できる構築値を渡す。 |
+| `src/game/dynamic/dynamic-entity/debris-piece.ts` | 破片の種類から描画上の種別ではなく、物理上の surface fidelity を構築値として伝える。 |
+| `src/game/dynamic/dynamic-entity/debris-reaction.ts` | coarse contact で module 単位の反応を要求しない契約を保つ。薬莢の物体間接触 callback は変更しない。 |
+| `src/game/dynamic/dynamic-entity/enemy-motion.ts`、`src/game/ship/modular-ship-motion.ts` | 船体は初期段階で `exact` を明示し、surface LOD が船体へ漏れないことを固定する。 |
+| `tests/game/dynamic-motion-shape.test.ts`、`tests/game/debris-reaction.test.ts` | opt-in 対象、船体 exact、保存復元後の既定、coarse contact の反応を検証する。 |
+| `tools/bench/surface-contact-lod.mjs` | opt-in 前後を同一シナリオで比較し、section時間・exact/coarse件数・coarse早期接触距離を出す。 |
+
+**達成条件と検証**
+
+- x4096 では全 participant が exact、x65536 では opt-in 一時物体だけが coarse になる。
+- `SECTION.celestialContact` がベースライン比 30% 以上短くなる。届かない場合は宇宙船を無断で coarse にせず、計測結果をもとに別計画を起こす。
+- coarse participant の早期接触距離が仕様で定めた許容誤差以内で、対象外の物体の contact event・反発・温度が変わらない。
+- `npm run bench:surface-contact-lod`、`npm run typecheck`、`npm run test:physics`、`npm run test:game`、`npm run check:boundaries`、`git diff --check`。
+
+#### 手順6. コードレビュー、バグ調査、統合
+
+**目的**
+
+LOD の境界で exact/coarse が入れ替わる箇所、予測弧との不整合、proxy の false negative、別の接触経路への漏れを点検してから統合する。
+
+**変更が必要な箇所**
+
+| ファイル | 変更内容 |
+| --- | --- |
+| 変更された全 `src/physics/` / `src/game/dynamic/` | `DEVELOP/CODING-RULE.md` と `DEVELOP/ARCHITECTURE.md` を適用し、ゲーム種別分岐・physics からの速度管理 import・可変設定の越境を除く。 |
+| `tests/physics/surface-contact.test.ts`、`tests/game/surface-contact-lod.test.ts` | 次の6ケースを固定する: 直線通過、接線、移動天体、回転途中、開始時内部、LOD境界の切替。 |
+| `memos/mikanixonable/surface-contact-lightening-plan_2026-09-20.md` | 実測値、採用した対象、発見したバグ、未採用の宇宙船LOD・substep変更を追記する。 |
+
+**達成条件と検証**
+
+- exact participant の結果比較、coarse participant の許容誤差、preview/actual の整合、同時接触 tie-break をレビューで確認する。
+- `npm run typecheck`、`npm run test:physics`、`npm run test:game`、`npm run check:boundaries`、`git diff --check` を統合前後に実行する。
+- 専用 worktree で実装・レビュー・文書更新を行い、`workspace3` の未コミット変更を確認してから専用ブランチを統合する。別作業のファイルは stage しない。
+- 統合 commit を確認後、今回作成した worktree・一時ブランチだけを削除する。
+
+### 見積り
+
+- 手順1: SPEC 2ファイル + 単独 commit 1件。実装を伴わないため、検証は文面レビューと差分検査。
+- 手順2: 計数フィールド `5〜7` 個 × `surface-contact-physics` / `simulator` / `PerfCounts` / debug窓の4経路 + 固定ベンチ1本。計測値は x4096 / x65536 各100フレーム以上で取得する。
+- 手順3: mode の受け渡し `Game → DynamicSystem → Simulator → SurfaceContactPhysics` の4境界 + participant の読み取り面1つ。全参加者 exact のため、結果差分はゼロが合格条件。
+- 手順4: sphere geometry の候補数を `P`、subdivisionを `S` とすると、coarse path は `O(P)`、従来 exact path は `O(P × S)`。追加コストは coarse hit 時の既存 response 1回だけと見積もる。
+- 手順5: 実測の削減効果は `Δms = baseline celestialContact ms - coarse celestialContact ms`、削減率は `Δms / baseline ms` で算出する。目標は 30% 以上。
+- 手順6: 回帰6ケース × exact/coarse 2モード + 統合前後の検証一式。失敗ごとに該当層のテストを再実行する。
+
+### リスクと落とし穴
+
+| リスク | 影響 | 露見する場所 |
+| --- | --- | --- |
+| 時間加速を physics が直接読む | フレームの速度段と接触判定がずれ、層境界を破る | 手順3の `rg` 検査、boundary check |
+| coarse proxy が exact shape を内包しない | 一時物体が天体をすり抜ける | 手順3の構築検証、手順4の false-negative テスト |
+| coarse の早期接触を許容値なしで返す | 物体の消失時刻が大きく前倒しになる | 手順1の仕様レビュー、手順5の距離計測 |
+| coarse participant に surface callback や予測弧を許す | module反応・表示予測・実際の消失が食い違う | 手順3の構築拒否、手順5のゲーム回帰 |
+| surface LOD を entity contact に配線する | 物体どうしの exact 接触が球近似へ変わる | 手順4の import/呼び出しレビュー、物体接触回帰 |
+| `simSpeed <= 4096` の exact を崩す | 通常の再突入・操作中の結果が変わる | 手順5の速度段別テスト |
+| 薬莢の物体間接触を surface LOD で解決しようとする | 高倍率で無効な経路を復活させ、負荷と仕様が混ざる | 手順5の対象範囲レビュー |
+| coarse 時も substep を削る | 大気抵抗・加熱・姿勢の積分が粗くなり、別のバグになる | 手順3〜5の `SUBSTEP_MAX_COUNT` 差分レビューと回帰 |
+| debug計数の追加が hot path の負荷を増やす | 改善値を計測コード自身が汚染する | 手順2の計測ON/OFF比較 |
+| LOD導入だけで目標を達成できない | 宇宙船を無断近似しても負荷問題が残る | 手順5の30%ゲート。未達なら別計画へ戻す |
+
+### 今回の計画に含めないもの
+
+- 宇宙船の exact surface contact を high-warp で coarse へ切り替えること。船体の到達時刻、焼失、module反応への影響を別途評価する。
+- `SUBSTEP_MAX_COUNT` の縮小、天体接触の更新スキップ、物体間接触の高倍率再有効化。
+- sphere proxy を entity contact や選択判定の正確な形状へ置き換えること。
