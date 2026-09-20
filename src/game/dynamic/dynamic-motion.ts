@@ -2,9 +2,8 @@ import { Q_IDENTITY } from '../../math/quat';
 import { hitsSphere, type Ray } from '../../math/ray';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
-import { len, sameVec, sub, type Vec3, v3 } from '../../math/vec3';
+import { sameVec, type Vec3, v3 } from '../../math/vec3';
 import { type Attitude, stepAttitude } from '../../physics/attitude';
-import { airflow } from '../../physics/atmosphere';
 import { localOrbitPeriod } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
@@ -18,30 +17,37 @@ import {
 import type { CompoundSphereShape } from '../../physics/compound-sphere-contact';
 import { isStar } from '../../physics/celestial-body-def';
 import {
-  aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
-  stepThermalDeviation, sunlightIrradiance,
+  sunlightIrradiance,
 } from '../../physics/thermal';
 import { orbitalElementsOf, type OrbitalElements } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { Contact } from './dynamic-entity/contact';
 import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
+import {
+  collisionPropertiesOf,
+  type DynamicCollisionProperties,
+  type DynamicCollisionPropertiesSnapshot,
+} from './dynamic-motion-collision';
+import {
+  ENV_TEMP, HULL_EMISS, stepThermalState,
+  type DynamicMotionThermal,
+} from './dynamic-motion-thermal';
 import { PredictedArc, trajectorySampleInterval } from './predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from './time-step';
 
+export type {
+  DynamicCollisionProperties,
+  DynamicCollisionPropertiesSnapshot,
+} from './dynamic-motion-collision';
+export { ENV_TEMP, HULL_EMISS } from './dynamic-motion-thermal';
+export type { DynamicMotionThermal } from './dynamic-motion-thermal';
+
 // 弾道係数の逆数から断面積質量比を戻すときの抗力係数 Cd。
 const DRAG_COEFFICIENT = 2.2;
-// 空力加熱を受ける淀み点まわりの面積が、断面積に占める割合。
-const STAGNATION_AREA_FRACTION = 0.6;
-// Sutton–Graves の定数(地球大気) [kg^0.5/m]。
-const SG_CONST = 1.7415e-4;
 // 1歩ぶんの環境標本が RK4 の4段のとき、平均に掛ける重み。
 const RK4_WEIGHTS: readonly number[] = [1, 2, 2, 1];
 
-// 船体の放射率。
-export const HULL_EMISS = 0.85;
-// 放射冷却の相手とする環境温度 [K]。
-export const ENV_TEMP = 255;
 // 小さな金属片(アルミ相当)の物性。
 export const SMALL_DEBRIS_BCINV = 8e-3; // [m^2/kg]
 export const SMALL_DEBRIS_SRP_COEFF = 4.7e-3; // [m^2/kg]
@@ -142,125 +148,7 @@ export interface DynamicMotionProperties {
   readonly behavior?: DynamicMotionBehavior;
 }
 
-// 接触形状と、同じ形状に対応する剛体物性の一貫したスナップショット。
-// 交換時に全項目を検証するため、部分的に更新された物性は観測されない。
-export interface DynamicCollisionProperties {
-  readonly mass: number;
-  readonly radius: number;
-  readonly centerOfMass: Vec3;
-  readonly inertia: Vec3;
-  readonly compoundShape: CompoundCylinderShape | null;
-  readonly surfaceShape?: CompoundSphereShape | null;
-}
-
-export interface DynamicCollisionPropertiesSnapshot extends DynamicCollisionProperties {
-  readonly shapeRevision: number;
-}
-
 const PASSIVE_BEHAVIOR: DynamicMotionBehavior = Object.freeze({ contactKind: 'generic' });
-
-const COLLISION_EPSILON = 1e-12;
-
-function frozenVec(value: Vec3): Vec3 {
-  return Object.freeze(v3(value.x, value.y, value.z));
-}
-
-function finiteVec(value: Vec3): boolean {
-  return value !== null && value !== undefined
-    && Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
-}
-
-function validateMass(value: number): number {
-  if (!Number.isFinite(value) || value < 0) throw new Error('dynamic mass must be finite and nonnegative');
-  return value;
-}
-
-function validateRadius(value: number): number {
-  if (!Number.isFinite(value) || value < 0) throw new Error('dynamic radius must be finite and nonnegative');
-  return value;
-}
-
-function validateVec(value: Vec3, name: string): Vec3 {
-  if (!finiteVec(value)) throw new Error(`dynamic ${name} must be finite`);
-  return value;
-}
-
-function validateInertia(value: Vec3): Vec3 {
-  validateVec(value, 'inertia');
-  if (!(value.x > 0) || !(value.y > 0) || !(value.z > 0)) {
-    throw new Error('dynamic inertia must be finite and positive');
-  }
-  return value;
-}
-
-function freezeCompoundShape(shape: CompoundCylinderShape | null): CompoundCylinderShape | null {
-  if (shape === null) return null;
-  if (shape === undefined || !Array.isArray(shape.primitives) || shape.primitives.length === 0) {
-    throw new Error('dynamic compound shape must contain primitives');
-  }
-  const primitives = shape.primitives.map((primitive) => {
-    if (primitive === null || primitive === undefined || typeof primitive.moduleId !== 'string'
-      || primitive.moduleId.length === 0) throw new Error('dynamic primitive moduleId must be non-empty');
-    validateVec(primitive.center, 'primitive center');
-    validateVec(primitive.axis, 'primitive axis');
-    const axisLength = Math.hypot(primitive.axis.x, primitive.axis.y, primitive.axis.z);
-    if (!Number.isFinite(axisLength) || !(axisLength > COLLISION_EPSILON)) {
-      throw new Error('dynamic primitive axis must be nonzero');
-    }
-    if (!Number.isFinite(primitive.halfLength) || !(primitive.halfLength > 0)
-      || !Number.isFinite(primitive.radius) || !(primitive.radius > 0)) {
-      throw new Error('dynamic primitive dimensions must be finite and positive');
-    }
-    return Object.freeze({
-      moduleId: primitive.moduleId,
-      center: frozenVec(primitive.center),
-      axis: frozenVec(v3(
-        primitive.axis.x / axisLength, primitive.axis.y / axisLength, primitive.axis.z / axisLength,
-      )),
-      halfLength: primitive.halfLength,
-      radius: primitive.radius,
-    });
-  });
-  return Object.freeze({ primitives: Object.freeze(primitives) });
-}
-
-function freezeSurfaceShape(
-  shape: CompoundSphereShape | null, exactShape: CompoundCylinderShape | null,
-): CompoundSphereShape | null {
-  if (shape === null) return null;
-  if (shape === undefined || !Array.isArray(shape.primitives) || shape.primitives.length === 0) {
-    throw new Error('dynamic surface shape must contain primitives');
-  }
-  const primitives = shape.primitives.map((primitive) => {
-    if (primitive === null || primitive === undefined || typeof primitive.moduleId !== 'string'
-      || primitive.moduleId.length === 0) throw new Error('dynamic surface primitive moduleId must be non-empty');
-    validateVec(primitive.center, 'surface primitive center');
-    if (!Number.isFinite(primitive.radius) || !(primitive.radius > 0)) {
-      throw new Error('dynamic surface primitive radius must be finite and positive');
-    }
-    return Object.freeze({
-      moduleId: primitive.moduleId,
-      center: frozenVec(primitive.center),
-      radius: primitive.radius,
-    });
-  });
-  if (exactShape !== null) {
-    let exactBound = 0;
-    for (const primitive of exactShape.primitives) {
-      exactBound = Math.max(exactBound, len(primitive.center) + Math.hypot(
-        primitive.halfLength, primitive.radius,
-      ));
-    }
-    let proxyBound = 0;
-    for (const primitive of primitives) {
-      proxyBound = Math.max(proxyBound, len(primitive.center) + primitive.radius);
-    }
-    if (!(proxyBound >= exactBound)) {
-      throw new Error('dynamic surface shape must contain the compound shape');
-    }
-  }
-  return Object.freeze({ primitives: Object.freeze(primitives) });
-}
 
 // 1歩ぶんの環境標本を平均した、日照率込みの太陽光の放射照度 [W/m²] と太陽方向(単位ベクトル)。
 // radiantIntensity は光源の放射強度 [W/sr]。
@@ -291,13 +179,6 @@ function weightedEnvironment(samples: readonly DynamicsEnvironmentSample[], radi
 // 姿勢を与えられなかった個体の、静止した単位慣性の姿勢。
 function identityAttitude(): Attitude {
   return { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
-}
-
-// 熱の状態。直列化の形を兼ね、復元では DynamicMotionProperties の同名の項目として渡す。
-export interface DynamicMotionThermal {
-  readonly temperature: number; // 平均温度 [K]
-  readonly thermalDeviation: number; // 平均からの温度差 [K]
-  readonly pendingSpecificHeat: number; // 次の熱の歩で温度へ足す熱量 [J/kg]
 }
 
 // 1体の軌道・姿勢・熱を所有し、予測の弧をキャッシュとして持つ。
@@ -353,14 +234,21 @@ export class DynamicMotion {
     // 生死・姿勢・質量と接触
     this._alive = properties.alive ?? true;
     const attitude = properties.attitude ?? identityAttitude();
-    this._att = { ...attitude, inertia: frozenVec(validateInertia(attitude.inertia)) };
+    const initialCollision = collisionPropertiesOf({
+      mass: properties.mass ?? 1,
+      radius: properties.radius ?? 0,
+      centerOfMass: v3(),
+      inertia: attitude.inertia,
+      compoundShape: null,
+    });
+    this._att = { ...attitude, inertia: initialCollision.inertia };
     this._prevAtt = this._att;
     this.hasAttitude = properties.hasAttitude ?? true;
-    this._mass = validateMass(properties.mass ?? 1);
-    this._radius = validateRadius(properties.radius ?? 0);
-    this._centerOfMass = frozenVec(v3());
-    this._compoundShape = null;
-    this._surfaceShape = null;
+    this._mass = initialCollision.mass;
+    this._radius = initialCollision.radius;
+    this._centerOfMass = initialCollision.centerOfMass;
+    this._compoundShape = initialCollision.compoundShape;
+    this._surfaceShape = initialCollision.surfaceShape ?? null;
     this.collides = properties.collides ?? false;
     this.engagementAnchor = properties.engagementAnchor ?? false;
     this.preciseReentry = properties.preciseReentry ?? false;
@@ -416,20 +304,15 @@ export class DynamicMotion {
   // 形状・質量・重心・慣性を、検証済みのスナップショットとして一括交換する。
   // 検証中に例外が出ても、現在の物性と予測弧には触れない。
   public replaceCollisionProperties(properties: DynamicCollisionProperties): void {
-    const nextMass = validateMass(properties.mass);
-    const nextRadius = validateRadius(properties.radius);
-    const nextCenterOfMass = frozenVec(validateVec(properties.centerOfMass, 'centerOfMass'));
-    const nextInertia = frozenVec(validateInertia(properties.inertia));
-    const nextShape = freezeCompoundShape(properties.compoundShape);
-    const nextSurfaceShape = freezeSurfaceShape(properties.surfaceShape ?? null, nextShape);
+    const next = collisionPropertiesOf(properties);
 
-    this._mass = nextMass;
-    this._radius = nextRadius;
-    this._centerOfMass = nextCenterOfMass;
-    this._compoundShape = nextShape;
-    this._surfaceShape = nextSurfaceShape;
-    this._att = { ...this._att, inertia: nextInertia };
-    this._prevAtt = { ...this._prevAtt, inertia: nextInertia };
+    this._mass = next.mass;
+    this._radius = next.radius;
+    this._centerOfMass = next.centerOfMass;
+    this._compoundShape = next.compoundShape;
+    this._surfaceShape = next.surfaceShape ?? null;
+    this._att = { ...this._att, inertia: next.inertia };
+    this._prevAtt = { ...this._prevAtt, inertia: next.inertia };
     this._shapeRevision++;
     this.invalidatePrediction();
   }
@@ -745,36 +628,26 @@ export class DynamicMotion {
     services: DynamicReactionServices,
   ): void {
     if (this.specificHeat <= 0) return;
-    // 標本ごとの日射と空力加熱を重み付きで平均する。
-    let heating = 0;
-    let weightTotal = 0;
-    for (let i = 0; i < samples.length; i++) {
-      const weight = samples.length === 4 ? RK4_WEIGHTS[i]! : 1;
-      const sample = samples[i]!;
-      heating += weight * solarHeating(
-        radiantIntensity, sample.sunDist, sample.sunlit, this.solarAbsorbAreaPerMass(sample.sunDir));
-      if (sample.atmosphere !== null && sample.atmosphereState !== null && this.bcInv > 0) {
-        const { density, speed } = airflow(
-          sub(sample.r, sample.atmosphereState.r), sub(sample.v, sample.atmosphereState.v), sample.atmosphere);
-        heating += weight * aeroHeating(
-          density, speed, this.bcInv, SG_CONST,
-          sphereNoseRadius(this.bcInv, DRAG_COEFFICIENT, this.bulkDensity),
-          (STAGNATION_AREA_FRACTION * this.bcInv) / DRAG_COEFFICIENT);
-      }
-      weightTotal += weight;
-    }
-    if (weightTotal > 0) heating /= weightTotal;
-    // 放射冷却を差し引き、外から積まれた熱を足して温度を進める。
-    const area = this.radiatingAreaPerMass();
-    const cooling = radiativeCooling(
-      this._temperature, ENV_TEMP, this.emissivity, area, this.specificHeat, dt);
-    this._temperature = stepTemperature(this._temperature, heating - cooling, this.specificHeat, dt)
-      + this.pendingSpecificHeat / this.specificHeat;
-    this.pendingSpecificHeat = 0;
-    this._thermalDeviation = stepThermalDeviation(
-      this._thermalDeviation, this._temperature, this.emissivity, area, this.specificHeat, dt);
+    const next = stepThermalState({
+      dt,
+      samples,
+      radiantIntensity,
+      temperature: this._temperature,
+      thermalDeviation: this._thermalDeviation,
+      pendingSpecificHeat: this.pendingSpecificHeat,
+      specificHeat: this.specificHeat,
+      bulkDensity: this.bulkDensity,
+      emissivity: this.emissivity,
+      maxTemperature: this.maxTemperature,
+      bcInv: this.bcInv,
+      radiatingAreaPerMass: this.radiatingAreaPerMass(),
+      solarAbsorbAreaPerMass: (sunDir) => this.solarAbsorbAreaPerMass(sunDir),
+    });
+    this._temperature = next.temperature;
+    this._thermalDeviation = next.thermalDeviation;
+    this.pendingSpecificHeat = next.pendingSpecificHeat;
     // 上限を超えたら焼失の反応へ渡す。反応を持たない個体は消える。
-    if (this._temperature <= this.maxTemperature) return;
+    if (!next.burnedUp) return;
     if (this.behavior.onBurnUp !== undefined) this.behavior.onBurnUp(this, services);
     else this.kill();
   }
