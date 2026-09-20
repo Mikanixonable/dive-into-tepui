@@ -3,7 +3,7 @@
 import { EphemerisPoints } from '../../../physics/ephemeris/point';
 import { OrbitingMotion, StarMotion } from '../../../physics/celestial-motion';
 import { CelestialSystem } from '../celestial-system';
-import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';
+import { j2000EphemerisSeconds, TdbJulianDate } from '../../../physics/time';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { StarCelestialView } from '../../../render/celestial/celestial-entity/star-celestial-view';
 import { PointFieldView } from '../../../render/celestial/point-field-view';
@@ -54,7 +54,7 @@ export function solarSystem(
 ): CelestialSystem {
   // 要素・極モデルの元期(J2000)から simTime=0 までの秒数。epoch からその場で導く —
   // 別の値として持ち回ると、片方だけが古くなる。
-  const simZeroEt = ephemerisSeconds(epoch);
+  const simZeroEt = j2000EphemerisSeconds(epoch);
   const sunMotion = new StarMotion(SUN);
   const sun = new CelestialEntity(
     sunMotion, SOLAR_SYSTEM_BODY_NAMES.sun, 'star',

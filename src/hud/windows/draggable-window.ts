@@ -75,7 +75,7 @@ export interface DraggableWindowOptions {
   readonly initiallyClipped?: boolean;
   // 渡すとクリップされていない間だけこの排他グループに参加する一時ウィンドウになる。
   // 省略すると ESC・外側クリックのどちらでも閉じない常設ウィンドウになる。
-  readonly tempWindowGroup?: string;
+  readonly unclippedWindowGroup?: string;
 }
 
 export class DraggableWindow implements OverlayHandle {
@@ -200,16 +200,16 @@ export class DraggableWindow implements OverlayHandle {
     return this.onShortcut?.(code) ?? false;
   }
 
-  // 現在のクリップ状態から overlayManager へ渡す宣言を組む。tempWindowGroup が無ければ
+  // 現在のクリップ状態から overlayManager へ渡す宣言を組む。unclippedWindowGroup が無ければ
   // 常に ESC・外側クリックのどちらでも閉じない常設ウィンドウとして扱う。
   private currentSpec(): OverlaySpec {
-    const isTemp = this.options.tempWindowGroup !== undefined && !this._clipped;
+    const isUnclippedExclusive = this.options.unclippedWindowGroup !== undefined && !this._clipped;
     return {
       kind: 'window',
-      closeOnEscape: isTemp,
-      closeOnOutsideClick: isTemp,
+      closeOnEscape: isUnclippedExclusive,
+      closeOnOutsideClick: isUnclippedExclusive,
       gatesInput: false,
-      exclusiveGroup: isTemp ? this.options.tempWindowGroup : undefined,
+      exclusiveGroup: isUnclippedExclusive ? this.options.unclippedWindowGroup : undefined,
     };
   }
 

@@ -5,10 +5,10 @@
 import { Quat, qFromAxisAngle } from '../math/quat';
 import { Vec3, v3 } from '../math/vec3';
 
-export const EPS = (23.439291 * Math.PI) / 180; // 黄道傾斜角
+export const ECLIPTIC_OBLIQUITY_RAD = (23.439291 * Math.PI) / 180;
 
-const COS_EPS = Math.cos(EPS);
-const SIN_EPS = Math.sin(EPS);
+const COS_ECLIPTIC_OBLIQUITY = Math.cos(ECLIPTIC_OBLIQUITY_RAD);
+const SIN_ECLIPTIC_OBLIQUITY = Math.sin(ECLIPTIC_OBLIQUITY_RAD);
 
 // ECI の極軸(Y)。
 export const ECI_POLE: Vec3 = v3(0, 1, 0);
@@ -29,12 +29,12 @@ export function raDecToEci(raDeg: number, decDeg: number): Vec3 {
 
 // 黄道座標(xe,ye 黄道面内, ze 黄道北極) → 標準赤道座標 → ECI。
 export function eclToEci(xe: number, ye: number, ze: number): Vec3 {
-  return stdToEci(xe, ye * COS_EPS - ze * SIN_EPS, ye * SIN_EPS + ze * COS_EPS);
+  return stdToEci(xe, ye * COS_ECLIPTIC_OBLIQUITY - ze * SIN_ECLIPTIC_OBLIQUITY, ye * SIN_ECLIPTIC_OBLIQUITY + ze * COS_ECLIPTIC_OBLIQUITY);
 }
 
 // ECI → 黄道座標(eclToEci の逆変換)。
 export function eciToEcl(v: Vec3): Vec3 {
-  return v3(v.x, v.y * SIN_EPS - v.z * COS_EPS, v.y * COS_EPS + v.z * SIN_EPS);
+  return v3(v.x, v.y * SIN_ECLIPTIC_OBLIQUITY - v.z * COS_ECLIPTIC_OBLIQUITY, v.y * COS_ECLIPTIC_OBLIQUITY + v.z * SIN_ECLIPTIC_OBLIQUITY);
 }
 
 // 黄道座標系の基底軸(成分は黄道座標での値)。
@@ -43,11 +43,11 @@ export const ECL_POLE_ECI = eclToEci(0, 0, 1); // 黄道北極を ECI で表し�
 
 // Z 上向きの黄道基底(x,y=黄道面内, z=黄道北極)→ ECI。回転基準系の姿勢
 // (kepler-orbit.ts の keplerOrbitRotation が組む q)を表すのに使う。
-// eclToEci と同一の回転をクォータニオンで表したもの。春分点(X)まわりに EPS − 90° 回すと
+// eclToEci と同一の回転をクォータニオンで表したもの。春分点(X)まわりに黄道傾斜角 − 90° 回すと
 // 黄道基底が ECI 基底へ重なる。
-export const Q_ECL_TO_ECI: Quat = qFromAxisAngle(ECL_VERNAL, EPS - Math.PI / 2);
+export const Q_ECL_TO_ECI: Quat = qFromAxisAngle(ECL_VERNAL, ECLIPTIC_OBLIQUITY_RAD - Math.PI / 2);
 
 // Y 上向きの黄道基底(x=春分点, y=黄道北極, z=…)→ ECI。stateFromOrbitalElements は Y=極 の基底を
 // 前提にしているため、黄道基準の軌道要素(kepler-orbit.ts の keplerOrbitState)から
 // stateFromOrbitalElements で組んだ状態は、この回転で ECI へ移す。
-export const Q_ECLY_TO_ECI: Quat = qFromAxisAngle(v3(1, 0, 0), EPS);
+export const Q_ECLY_TO_ECI: Quat = qFromAxisAngle(v3(1, 0, 0), ECLIPTIC_OBLIQUITY_RAD);

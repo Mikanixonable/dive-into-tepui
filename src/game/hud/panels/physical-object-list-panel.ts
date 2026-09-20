@@ -9,7 +9,7 @@ import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../h
 import { injectOnce } from '../../../hud/inject-style';
 import type { PanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
-import { PhysicalObjectListRowTree as PhysicalObjectListTree } from './physical-object-list-row-tree';
+import { PhysicalObjectListRowTree } from './physical-object-list-row-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { RowNode } from './physical-object-list-row-tree';
@@ -82,12 +82,12 @@ const STYLE = `
 #hud-physical-object-list .physical-object-list-section-body { padding-left: var(--space-2); }
 #hud-physical-object-list .physical-object-list-section-body.collapsed { display: none !important; }
 #hud-physical-object-list .physical-object-list-section-body.hidden { display: none !important; }
-#hud-physical-object-list .physical-object-list-tree-controls { display: flex; gap: var(--space-2); padding: 0 var(--space-4) var(--space-1); }
+#hud-physical-object-list .physical-object-list-row-tree-controls { display: flex; gap: var(--space-2); padding: 0 var(--space-4) var(--space-1); }
 #hud-physical-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
 #hud-physical-object-list .physical-object-list-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
 #hud-physical-object-list .erow:hover { color: var(--text); }
-#hud-physical-object-list .erow.tgt {
+#hud-physical-object-list .erow.focus {
   color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 #hud-physical-object-list .erow.cluster { opacity: .55; }
@@ -111,7 +111,7 @@ export class PhysicalObjectListPanel {
   private readonly body: HTMLElement;
   private readonly sections = new Map<MapListSection, Section>();
   private readonly order: PhysicalObjectListOrder;
-  private readonly rowTree: PhysicalObjectListTree;
+  private readonly rowTree: PhysicalObjectListRowTree;
   private lastFocusId: string | undefined = undefined;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
@@ -135,7 +135,7 @@ export class PhysicalObjectListPanel {
   public constructor(root: HTMLElement, collapse: PanelCollapse, celestialBodies: CelestialBodies) {
     injectOnce('physical-object-list-panel', STYLE);
     this.order = new PhysicalObjectListOrder(celestialBodies);
-    this.rowTree = new PhysicalObjectListTree(celestialBodies, this.order, this.itemsByIdScratch, {
+    this.rowTree = new PhysicalObjectListRowTree(celestialBodies, this.order, this.itemsByIdScratch, {
       onFocus: (id) => this.onFocus?.(id),
       onNavTarget: (id) => this.onNavTarget?.(id),
       onSelectRight: (id, clientX, clientY) => this.onSelectRight?.(id, clientX, clientY),
@@ -408,7 +408,7 @@ export class PhysicalObjectListPanel {
   // 天体区画の見出しに添える「全展開」「全折りたたむ」ボタンの組。
   private buildTreeControls(section: Section): HTMLElement {
     const controls = document.createElement('div');
-    controls.className = 'physical-object-list-tree-controls';
+    controls.className = 'physical-object-list-row-tree-controls';
     const expandAll = new Button('全展開', () => this.rowTree.setAllRowsExpanded(section.rows, true));
     const collapseAll = new Button('全折りたたむ', () => this.rowTree.setAllRowsExpanded(section.rows, false));
     controls.appendChild(expandAll.element);
