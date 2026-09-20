@@ -78,7 +78,7 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 5. G 単独の中層雲、A 単独の巻雲、R 単独の低い厚い雲、R+G+B の深い対流が同じ基底契約で表現できる。密度の大小だけで雲底・雲頂が決まらない。
 6. 雲面・大気内雲・雲影が同じ `CloudState` と `CloudVerticalProfile` を参照し、雲底、雲頂、相別光学量、水平位置が一致する。斜光、地平線、明暗境界で層の割れや影のずれがない。
 7. 高度 profile は 0〜20 km の安全範囲で積分可能であり、対流圏界面付近の水平拡散と overshoot の境界が連続する。
-8. 実行時雲 cap は 512×512 RGBA16F 一枚、約 2 MiB のまま。cloud-lab の 1024×512 標準設定・60 fps の 16.67 ms frame budget に対して、雲関連 `cloudBake + cloudSurface + cloudAtmosphere + cloudShadow` の GPU p95 は 4.0 ms 以下かつ Step 2 baseline の 1.25 倍以下とする。通常・地平線・低太陽・最大雲量・深い対流多数の全ケースで判定し、GPU timestamp 非対応時は未計測として不合格にする。
+8. 実行時雲 cap は 512×512 RGBA16F 一枚、約 2 MiB のまま。cloud-lab の 1024×512 標準設定・60 fps の 16.67 ms frame budget に対して、`cloudBake + cloudSurface + cloudShadow + (atmosphere on − atmosphere off)` で定義する雲追加コストの GPU p95 は 4.0 ms 以下かつ Step 2 baseline の 1.25 倍以下とする。`atmosphere` は現状 cloud-enabled composite なので on/off の対応測定を保存し、合成パス全体の値も併記する。通常・地平線・低太陽・最大雲量・深い対流多数の全ケースで判定し、GPU timestamp 非対応時は未計測として不合格にする。
 9. `npm run typecheck`、`npm run test:render`、6 regime の時系列比較、再現可能なスクリーンショットを同じ入力 manifest から生成できる。
 
 ## 手順
@@ -117,7 +117,7 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 | `tools/cloud-temporal-metrics.mjs`（新規） | 相関、e-folding、物体寿命・面積・速度、雲頂階級、光学量、空間スペクトル、しきい値感度を計算する。 |
 | `tools/cloud-observation-envelope.mjs`（新規） | 観測時系列の分割から observation-to-observation 95% 包絡と前処理誤差を計算する。 |
 | `tools/cloud-lab/lab.ts`、`tools/cloud-lab/views.ts` | 絶対時刻の複数時点を同じ投影・露出・検証窓で出力する。cell-series と pattern-series を別の capture set とする。 |
-| `tools/render-lab-measure.mjs`、`src/render/gpu-timings.ts` | cloudBake/cloudSurface/cloudAtmosphere/cloudShadow の p50/p95 を同じ機器・構図・画質で保存する。timestamp 非対応を明示的に失敗扱いにする。 |
+| `tools/render-lab-measure.mjs`、`src/render/gpu-timings.ts` | cloudBake/cloudSurface/cloudShadow と、現状 cloud-enabled composite である atmosphere の on/off 対応 p50/p95 を、通常・地平線・低太陽・最大雲量・深い対流多数の同じ機器・構図・画質で保存する。timestamp 非対応を明示的に失敗扱いにする。 |
 | `package.json` | 観測取得、包絡計算、時系列比較、性能基準生成を再実行する script を追加する。 |
 | `tests/render/cloud-temporal-metrics.test.ts`（新規） | 静止、平行移動、短寿命、分裂・併合、しきい値変動の小配列で指標と包絡判定を固定する。 |
 
@@ -125,7 +125,7 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 
 - 6 regime × 2 時系列を manifest だけから再取得・再計測できる。
 - 静止模様、平行移動だけの模様、短寿命模様を指標が区別する。
-- 観測同士の 95% 包絡、モデル許容幅、物体クラス別 survival lag、しきい値感度、cohort phase に対する cloud fraction/分散/スペクトルの許容範囲、4.0 ms の絶対 GPU p95 予算、2 MiB cap の基準値が JSON に保存される。
+- 観測同士の 95% 包絡、モデル許容幅、物体クラス別 survival lag、しきい値感度、cohort phase に対する cloud fraction/分散/スペクトルの許容範囲、対応測定から求めた 4.0 ms の絶対 GPU p95 予算、2 MiB cap の基準値が JSON に保存される。
 - 既存モデルの基準値を保存し、改修後は同じ入力・同じ機器・同じ画質で比較する。
 - `npm run typecheck`
 - `npm run test:render`
@@ -143,6 +143,7 @@ RGBA は雲種 ID や絶対高度ではなく、鉛直プロファイルを再�
 | ファイル | 変更 |
 | --- | --- |
 | `src/game/display-window-manager.ts`、`src/game/celestial/solar-system/earth-system.ts` | `epochUnixMs` と表示カーソルを分離し、雲モデルへ渡す絶対時刻を一箇所で組み立てる。既存の UTC 表示用秒は表示専用として残す。 |
+| `src/game/game-presentation.ts`、`src/game/celestial/celestial-system.ts`、`src/render/celestial/celestial-entity/point-celestial-view.ts`、`src/render/cloud/cloud-presentation.ts`、`src/render/cloud/generated-cloud-field.ts`、`src/render/cloud/observed-cloud-field.ts` | 現在の `displayTime` 配線を絶対時刻の受け渡しへ更新する。生成 field の cache key と `WeatherModel.syncTime()` を `dayIndex/secondsOfDay` を含む weather time へ移し、観測 field は絶対時刻に依存しない静的 source として同じ interface で受ける。 |
 | `src/render/cloud/weather-time.ts`（新規） | `epochUnixMs` を `dayIndex`、`secondsOfDay`、季節位相へ正規化する。GPU へは分解した値だけを渡し、整数精度を失う巨大 float を使わない。 |
 | `src/render/cloud/cloud-lifecycle.ts`（新規） | 絶対時刻と空間 seed から cohort の年齢、連続な発生・成長・衰弱の重み、メソ組織の envelope を返す純粋計算を置く。単一の 6 時間刻み・24 時間寿命に固定しない。 |
 | `src/render/cloud/cloud-lifecycle-node.ts`（新規） | lifecycle と同じパラメータ化を TSL ノードへ写し、CPU/TSL の意味を共有する。 |
@@ -172,7 +173,7 @@ RGBA を高度や雲種 ID として直接読む方式をやめ、温度・対�
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/cloud/cloud-field-sample.ts`、`src/render/cloud/cloud-field.ts`、`src/render/cloud/cloud-field-sampler.ts` | `lowBasis / midBasis / convectiveAnvilBasis / inSituCirrusBasis` の 4 基底契約へ移行する。encode/decode を一箇所で対にし、空の既定値は RGBA 全て 0 とする。512 cap を mesoscale envelope、shader detail を sub-grid として扱う。 |
+| `src/render/cloud/cloud-field-sample.ts`、`src/render/cloud/cloud-field.ts`、`src/render/cloud/cloud-field-sampler.ts`、`src/render/cloud/baked-field.ts`、`src/render/cloud/field-projection.ts` | `lowBasis / midBasis / convectiveAnvilBasis / inSituCirrusBasis` の 4 基底契約へ移行する。encode/decode を一箇所で対にし、空の既定値は RGBA 全て 0 とする。HalfFloat の runtime cap、投影ごとの解像度、512 cap を mesoscale envelope、shader detail を sub-grid とする境界をここで確定する。 |
 | `src/render/cloud/cloud-state.ts`（新規） | 絶対時刻、基底、seed、局所環境、対流圏界面、相別光学パラメータを所有する共有 state を定義する。 |
 | `src/render/cloud/cloud-temperature-profile.ts`（新規） | 緯度・季節・総観 anomaly から連続温度、融解/凍結高度、対流圏界面を求める。 |
 | `src/render/cloud/cloud-vertical-profile.ts`（新規） | Gaussian/smoothstep/beta-like など積分可能な基底を選び、任意高度の液相/氷相凝結量、消散・散乱、実効粒径、雲底・雲頂、区間積分係数を返す。0〜20 km で積分可能にする。 |
@@ -266,13 +267,13 @@ RGBA を高度や雲種 ID として直接読む方式をやめ、温度・対�
 | `src/render/cloud/cloud-optics.ts`、`src/render/cloud/cloud-optics-node.ts` | 液相/氷相凝結量、LWP/IWP 相当、固定または regime 依存の実効粒径、消散・散乱から光学量を求める。coverage 直変換を新契約から除く。 |
 | `src/render/graphics-settings.ts` | 既存の雲画質段階を profile 積分サンプル数・早期終了へ対応させ、データ契約は増やさない。 |
 | `tests/render/cloud-optics.test.ts` | 相別光学量、粒径感度、CPU/TSL parity、単独/複合基底の光学量を固定する。 |
-| `tools/render-lab-measure.mjs`、`src/render/gpu-timings.ts` | 1024×512 の通常・地平線・低太陽・最大雲量・深い対流多数を測り、cloudBake/cloudSurface/cloudAtmosphere/cloudShadow の p50/p95 を保存する。 |
+| `tools/render-lab-measure.mjs`、`src/render/gpu-timings.ts` | 1024×512 の通常・地平線・低太陽・最大雲量・深い対流多数を測り、cloudBake/cloudSurface/cloudShadow と atmosphere on/off の p50/p95 を保存する。雲追加コストは `cloudBake + cloudSurface + cloudShadow + (on − off)` として計算し、合成パス全体も別に記録する。 |
 
 **達成条件と検証**
 
 - 同じ凝結量でも実効粒径の違いが光学量へ反映され、低い厚い雲と高い薄い氷雲が区別できる。
 - CPU と TSL の 1000 件以上の random input parity が許容誤差内にある。
-- 雲関連 GPU p95 が 4.0 ms 以下、かつ Step 2 baseline の 1.25 倍以下になる。timestamp 非対応は未計測として不合格にする。
+- 雲追加コストの GPU p95 が 4.0 ms 以下、かつ Step 2 baseline の 1.25 倍以下になる。通常・地平線・低太陽・最大雲量・深い対流多数の全ケースで判定し、timestamp 非対応は未計測として不合格にする。
 - 実行時 cap は 512×512 RGBA16F 一枚、約 2 MiB のまま。
 - `npm run typecheck`
 - `npm run test:render`
