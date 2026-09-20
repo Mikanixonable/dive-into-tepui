@@ -4,6 +4,7 @@ import { ShipDockState } from '../../src/game/ship/ship-dock-state';
 import { createBasePreset } from '../../src/game/ship/ship-presets';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
+import { enumerateConstructionSlots, placementForSlot } from '../../src/game/ship/ship-construction-rules';
 import { test } from '../harness';
 
 export function register(): void {
@@ -47,5 +48,42 @@ export function register(): void {
     }]);
 
     assert.equal(docks.status(merged.assembly, 'dock-left'), 'connected');
+  });
+
+  test('ship construction: all free cockpit and tank side slots are enumerated', () => {
+    const assembly = createBasePreset();
+    const slots = enumerateConstructionSlots(
+      assembly, ['dock-left', 'cockpit', 'main-tank', 'rcs-tank'], 'rcs-tank',
+    );
+    assert.equal(slots[0]?.id, 'axial');
+    assert.ok(slots.some(slot => slot.id === 'main-tank:side+y'));
+    assert.ok(slots.some(slot => slot.id === 'rcs-tank:side-y'));
+    assert.equal(slots.some(slot => slot.id === 'cockpit:side+x'), false);
+    assert.equal(new Set(slots.map(slot => slot.id)).size, slots.length);
+  });
+
+  test('ship construction: placement rules allow side equipment on any eligible parent', () => {
+    const assembly = createBasePreset();
+    const slot = enumerateConstructionSlots(
+      assembly, ['dock-left', 'cockpit', 'main-tank', 'rcs-tank'], 'rcs-tank',
+    ).find(candidate => candidate.id === 'main-tank:side+y');
+    assert.ok(slot);
+    const dockingPort = SHIP_MODULE_CATALOG.require('docking-port-standard');
+    const sidePlacement = placementForSlot(assembly, slot, dockingPort);
+    assert.equal(sidePlacement.valid, true);
+    assert.equal(sidePlacement.kind, 'side');
+
+    const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
+    const axial = enumerateConstructionSlots(assembly, ['dock-left'], 'rcs-tank')[0];
+    assert.ok(axial);
+    assert.equal(placementForSlot(assembly, axial, cockpit).valid, true);
+    const solar = SHIP_MODULE_CATALOG.require('solar-panel-standard');
+    assert.equal(placementForSlot(assembly, axial, solar).valid, false);
+  });
+
+  test('ship construction: catalog definitions expose presentation metadata', () => {
+    assert.equal(SHIP_MODULE_CATALOG.require('cockpit-standard').name, 'コックピット');
+    assert.equal(SHIP_MODULE_CATALOG.require('tank-6-main').category, 'fuel');
+    assert.equal(SHIP_MODULE_CATALOG.require('weapon-gatling').category, 'combat');
   });
 }
