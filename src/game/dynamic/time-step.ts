@@ -79,7 +79,7 @@ function dragMaxStep(rRel: Vec3, vRel: Vec3, bcInv: number, mu: number, atm: Atm
   const lambda = dragRate(rRel, vRel, bcInv, atm);
   const stiff = lambda > 0 ? DRAG_STEP_MAX_SPEED_LOSS / lambda : Infinity;
   // 沈み込みの許容深さ [m] と、そこへ達するまでの時間。2次方程式 ½g·dt² + 降下率·dt = depth を
-  // 有理化した形で解く — 遠方や薄い大気で g → 0 でも 0 除算にならない。
+  // 分子の有理化形式で算出する — 遠方や薄い大気で g → 0 でも 0 除算にならない。
   const depth = DRAG_STEP_MAX_SCALE_HEIGHTS * atmosphericScaleHeight(alt, atm);
   const descentRate = Math.max(0, -dot(rRel, vRel) / d);
   const g = mu / (d * d);
@@ -87,9 +87,9 @@ function dragMaxStep(rRel: Vec3, vRel: Vec3, bcInv: number, mu: number, atm: Atm
   return Math.min(stiff, sink);
 }
 
-// その状態を積むのに大気が要求する最大刻み [s]。相手は自分にとって最も近い大気天体ただ1体で、
-// それがいなければ Infinity(大気の無いところに上限は無い)。抵抗を受けない物体(bcInv = 0)も
-// 同じく Infinity。時間送りやイベント由来の上限との合成は呼び出し側が行う。
+// 現在の状態を積分するにあたって大気が要求する最大刻み幅 [s]。対象は最も近い大気天体1体で、
+// 該当天体がなければ Infinity（大気による制約なし）。抵抗を受けない物体(bcInv = 0)も
+// 同じく Infinity。他の要因（時間送りやイベントなど）による上限との統合は外部で行う。
 export function atmosphericMaxStep(
   state: KinematicState, bcInv: number,
   atmosphereBodies: readonly CelestialBody[], pivot: number,

@@ -51,7 +51,7 @@ export interface PilotCommandReceiver {
     controls: PilotControls | null, dt: number, simDt: number,
     activeStage: StageOutcome, stageRules: StageRules, celestialBodies: CelestialBodies,
   ): void;
-  // 推力・トルクの指令とスロットルの一時状態を解く。
+  // 推力・トルクの指令とスロットルの一時状態を解除（クリア）する。
   clearTransientCommands(): void;
   // 単発の命令 command のうち、備える操作を状態へ適用する。
   handleCommand(command: PilotCommand, registry: EntityRegistry): void;

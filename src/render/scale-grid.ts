@@ -38,7 +38,7 @@ const GRID_FULL_PX = 24;
 const GRID_FULL_OUT_PX = 80;
 const GRID_FADE_OUT_PX = 180;
 
-// 1段ぶんの十字群を描く LineSegments。頂点は呼び出し側が入れる。
+// 1段ぶんの十字群を描く LineSegments。頂点ジオメトリは別途割り当てる。
 function makeLine(color: number): { line: THREE.LineSegments; material: THREE.LineBasicMaterial } {
   const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false });
   const line = new THREE.LineSegments(new THREE.BufferGeometry(), material);

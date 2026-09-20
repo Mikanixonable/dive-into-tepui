@@ -445,8 +445,8 @@ export class RenderPipeline {
 
     // composite パス。
     this.writeDepthDebugCamera(camera);
-    // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影のために
-    // 呼び出し側が張った出力先を潰さないよう、退避してから戻す。
+    // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影用途などで
+    // 事前に設定された出力先を上書きしてしまわないよう、一時退避してから復元する。
     const outputTarget = this.renderer.getOutputRenderTarget();
     this.renderer.setOutputRenderTarget(this.displayTarget);
     this.gpu.beginPass(GPU_PASS.composite);
