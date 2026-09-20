@@ -35,9 +35,9 @@ export function fmtSpeed(ms: number): string {
   return `${ms.toFixed(1)} m/s`;
 }
 
-// ランの元期(simTime=0 が指す絶対時刻)を、fmtDateTime へ渡せる unix 秒相当へ写す。
+// ランの元期(simTime=0 が指す絶対時刻)を、fmtDateTime へ渡せる unix 秒相当へ変換する。
 // simTime を足せばその瞬間の表示用 unix 秒になる。**Date.UTC は西暦 0〜99 年を 1900+year
-// へ写す**ので、年だけは setUTCFullYear で入れ直す — 開始日時は西暦0年以降を受ける。
+// として解釈する**ため、年だけは setUTCFullYear で明示的に再設定する — 開始日時は西暦0年以降を受ける。
 export function epochUnixSeconds(epoch: TdbJulianDate): number {
   const c = julianDateToCalendarDate(epoch);
   const date = new Date(0);

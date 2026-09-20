@@ -178,8 +178,7 @@ export function calendarDateToJulianDate<S extends TimeScale>(date: CalendarDate
 function normalizeCalendarSeconds(secondsOfDay: number): { dayOffset: number; second: number } {
   let dayOffset = Math.floor(secondsOfDay / SECONDS_PER_DAY);
   let second = secondsOfDay - dayOffset * SECONDS_PER_DAY;
-  // A JD is a binary floating-point number, so an exact midnight can arrive
-  // just below or above the boundary after subtraction.
+  // 浮動小数点数誤差により、正子（00:00:00）直前直後の微小値が生じうるため境界を丸める。
   if (Math.abs(second) < 1e-9) second = 0;
   if (Math.abs(second - SECONDS_PER_DAY) < 1e-9) {
     dayOffset++;
@@ -201,8 +200,7 @@ export function julianDateToCalendarDate<S extends TimeScale>(date: JulianDate<S
   secondOfDay -= hour * 3600;
   const minute = Math.floor(secondOfDay / 60);
   secondOfDay -= minute * 60;
-  // Keep meaningful sub-second input while making ordinary integral seconds
-  // stable under a JD round trip.
+  // 秒未満の精度を保持しつつ、ユリウス日との相互変換での整数秒の安定性を確保する。
   const roundedSecond = Math.round(secondOfDay * 1e12) / 1e12;
   return createCalendarDate(date.scale, { ...civil, hour, minute, second: roundedSecond });
 }
@@ -241,9 +239,8 @@ export function ttToUtc(input: TtJulianDate, provider: UtcOffsetProvider): UtcJu
   if (input.scale !== 'TT') throw new RangeError('TT input required');
   assertFinite(input.value, 'Julian Date');
 
-  // The offset is a function of UTC, so solve the inverse at a UTC date. A
-  // leap-second table is piecewise constant; a few fixed-point iterations are
-  // enough and keep the provider responsible for all UTC knowledge.
+  // オフセットは UTC の関数であるため逆問題を解く。閏秒表は区分的に一定であり、
+  // 数回の不動点反復で収束する。
   let utcValue = input.value - TT_MINUS_TAI_SECONDS / SECONDS_PER_DAY;
   for (let i = 0; i < 4; i++) {
     const utc = julianDateToCalendarDate(createJulianDate('UTC', utcValue));

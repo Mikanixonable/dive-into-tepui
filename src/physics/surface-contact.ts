@@ -1,5 +1,5 @@
-// 天体の表面との接触。ある区間を渡る球が、渡された天体のうちどれに最初に触れるかを1体選ぶ。
-// 触れたあとどうなるか(跳ね返る / 経路を打ち切る)は呼び出し側が決める。
+// 天体表面との接触判定。指定区間を移動する球体または複合形状が、渡された天体群の中で
+// 最初に接触する天体およびその接触幾何情報を判定する。
 //
 // 天体を相手にするので天体の運動を読むが、**依存はこの向きだけ**である — 重力のモジュールは
 // 何が何を引くかにだけ答え、何が何に触れたかには答えない。
@@ -66,8 +66,7 @@ export function firstSurfaceContact(
 ): SurfaceContact | null {
   const swept = prev.t < next.t;
   let earliest: SurfaceContact | null = null;
-  // 跨いだのか、区間の終端で重なっているだけなのかは幾何の側が決める。ここはどちらの場合も
-  // 同じ toi で比べて1体に絞るだけで、区別は幾何を受け取った呼び出し側が付ける。
+  // 区間内の通過か終端での重なりかにかかわらず、接触時刻（toi）が最小となる天体を1体特定する。
   for (const body of bodies) {
     const bodyNext = bodyStateAt(body, pivot, next.t);
     const bodyPrev = swept ? bodyStateAt(body, pivot, prev.t) : bodyNext;

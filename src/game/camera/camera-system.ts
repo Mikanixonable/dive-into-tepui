@@ -69,7 +69,7 @@ export class CameraSystem {
   ) {
     this.combatRig = new CameraRig(celestialBodies);
     this.mapRig = new CameraRig(celestialBodies);
-    // 最初の sampleProgress までの材料は、天体を持たない錨で埋める。
+    // 初回 sampleProgress までの初期フレーム値として、空の天体アンカーを割り当てる。
     const initialAnchors = bodyAnchorSource([], 0);
     const initialSample: CameraFrameSample = {
       displayTime: 0,
