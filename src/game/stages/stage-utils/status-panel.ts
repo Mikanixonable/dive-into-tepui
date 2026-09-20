@@ -4,7 +4,7 @@
 import type { ModularShip } from '../../ship/modular-ship';
 import { fmtEnergy } from '../../../hud/utils';
 import { Meter } from '../../../hud/widgets';
-import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/vessel';
+import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
 import { POWER_CAPACITY } from '../../player/power';
 
 const LOW_HP_RATIO = 0.3;

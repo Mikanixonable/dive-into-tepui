@@ -17,7 +17,7 @@ import { objectPickableOf } from '../pickable/object-pickable';
 import type { PerfCounts } from '../perf-counts';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 
-export class CombatView implements ViewFrame {
+export class CombatFrame implements ViewFrame {
   public constructor(
     private readonly input: Input,
     private readonly targeter: Targeter,
