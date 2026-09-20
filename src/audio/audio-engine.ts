@@ -1,15 +1,13 @@
-// WebAudio の土台: AudioContext の生成・再開と、各音源が共有する合成素材
-// (ホワイトノイズバッファ)・基本ボイス(単発トーン/ノイズバースト)を1箇所で持つ。
-// ブラウザの制約 — 自動再生できないことと、非表示のタブで鳴らさないこと — はここで引き受け、
-// 外へは見せない。ctx は最初のユーザー操作まで null で、その間どの音源も無音のまま何もしない。
+// WebAudio の基盤モジュール。AudioContext の生成・再開、共有合成素材（ホワイトノイズバッファ）、
+// および基本ボイス（単発トーン・ノイズバースト）を一括管理する。
+// 自動再生制限や非アクティブタブのミュート制御をカプセル化する。初回のユーザー入力まで ctx は null を維持する。
 export class AudioEngine {
   private _ctx: AudioContext | null = null;
   private _noiseBuf: AudioBuffer | null = null;
   // ctx が開くのを待っている購読。開いた時点で呼び切って捨てる。
   private readonly pending: (() => void)[] = [];
 
-  // 最初のユーザー操作を自分で待つ。capture 段階で聞くので、ボタンの click ハンドラが
-  // その場で鳴らす音(設定画面の試聴)にも間に合う。
+  // 初回ユーザー入力をキャプチャフェーズで監視し、UIクリック時の即時発音に対応する。
   constructor() {
     const open = (): void => {
       document.removeEventListener('pointerdown', open, true);
