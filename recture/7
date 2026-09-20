@@ -1,0 +1,288 @@
+# 雲レンダリングシステムの詳細解説
+
+Dive into Tepui における雲の実装は、惑星規模の大気循環シミュレーションから、GPU 上での解像度適応型テクスチャベイク、そして不透明表面レイマーチング・大気散乱光路積分・動的雲影の3重レンダリングパイプラインまでを一貫して Three.js WebGPU (TSL: Three Shading Language) で構築した物理ベースの雲システムである。本稿では、システムの全体構造から各論のアルゴリズム、クラス、関数、変数、入出力をパラグラフライティングの原則に従って解説する。
+
+---
+
+## 1. システム概観と全体パイプライン
+
+### 1.1 雲システムの設計思想と多層アプローチ
+
+Dive into Tepui の雲システムは、地上付近から宇宙軌道（低軌道〜静止軌道）までの極端な視点移動に破綻なく耐えることを主目的に設計されている。単一のボリュームレンダリングでは軌道上の広域描画負荷が耐えられず、単なる2Dテクスチャマッピングでは低空や地平線通過時の立体感・影・大気との重なりが表現できない。そこで本作では、(1) 惑星スケールの動人気象モデル、(2) 視点中心に解像度を集中させる正射影キャップへの動的ベイク、(3) 遠景を効率よく描く球殻レイマーチングによる「不透明雲表面」、(4) 薄い雲や半透明エッジを大気散乱光路へ挟み込む「大気統合レイヤー」、(5) 地表・大気を遮蔽する「雲影レンダラー」という階層的分業を採用している。
+
+### 1.2 データフローとフレーム処理順序
+
+雲の1フレームの処理は、カメラ位置の追随からテクスチャの更新、そして3系統のシェーダへの展開へと順次進む。この流れは `src/render/cloud/cloud-presentation.ts` の `CloudPresentation` が調停し、描画パイプラインの各パスへ値を供給する。
+
+```text
+ カメラ位置 (CameraPosition) & 天体中心距離 (rho)
+     │
+     ▼
+ 1. 視線追随 (CloudPresentation.aim)
+     │  OrthographicCap.aimAt: 直下点 (subpoint) に正射影キャップを配置
+     ▼
+ 2. 雲場のベイク (CloudPresentation.bake / CloudField.render)
+     │  WeatherModel (気象) ──► condense (凝結) ──► BakedField (GPU描画)
+     │  RGBAテクスチャ (R: 被覆率, G: 正規化雲頂高度, B: 半透明度)
+     ▼
+ 3. レンダリングへの展開 (CloudRenderInput)
+     ├──► [不透明積雲表面] OpaqueCloudSurfaceRenderer
+     │       球殻メッシュ + シェーダ内レイマーチ + Blue Noise ディザ + G-Buffer法線/深度
+     │
+     ├──► [大気光路積分] AtmosphereCloudLayers & CloudAtmosphereRenderer
+     │       同心球殻交差 + Beer-Lambert透過率 + 大気散乱とのフロント・トゥ・バック合成
+     │
+     └──► [雲影] CloudShadowRenderer
+             太陽光路の多重タップサンプリング + 地表/大気/宇宙船への消散マスク
+```
+
+---
+
+## 2. 気象モデルと水蒸気循環: `WeatherModel`
+
+### 2.1 惑星大気力学のプロシージャル計算
+
+気象モデルは、天体固定の空間方向と時刻から決定論的に気圧・風・水蒸気場を構築する TSL ノードグラフである。`src/render/cloud/weather-model.ts` の `WeatherModel` クラスがこれを担い、毎フレーム CPU で乱数を回すのではなく、TSL の閉じた関数として空間座標から直接天気を評価する。
+
+- **入力**: 
+  - `direction: Vec3Node` (天体固定座標系における単位方向ベクトル)
+  - `displayTime: number` (表示時刻 [秒])
+- **出力**: `WeatherSample`
+  - `pressure: FloatNode`: 平年からの気圧偏差 [hPa]
+  - `surfaceWind: Vec2Node`: 地表風の東向き・北向き成分 [m/s]
+  - `lift: FloatNode`: 上昇流速度 [m/s] (負値は下降流・沈降)
+  - `surfaceHumidity: FloatNode`: 地表付近の相対湿度 [0..1]
+  - `upperHumidity: FloatNode`: 上層（対流圏上部）の相対湿度 [0..1]
+  - `convection: Vec2Node`: 対流セルの強弱（高周波ノイズ、x が細胞の芯・粒、y が細胞の壁・網目）
+  - `convectiveActivity: FloatNode`: 対流の活発度 [0..1]
+  - `band: FloatNode`: 気団前線帯および熱帯雨帯の強度 [0..1]
+  - `warmth: FloatNode`: 暖気流入量（起源緯度との差）[rad]
+  - `anvil: FloatNode`: 台風・低気圧の眼が広げる天蓋（金床雲）の濃さ [0..1]
+  - `meanCloudiness: FloatNode`: 気候マップから引いた平年雲量 [0..1]
+  - `landFraction: FloatNode`: 陸地率 [0..1]
+  - `tropopause: FloatNode`: 緯度に応じた圏界面高度 [m]
+
+### 2.2 大循環、ロスビー波、低気圧の連成
+
+気象の基本骨格は、物理的な地球流体力学の法則を模した複数の要素の重ね合わせで構成される。赤道から極への熱輸送を担うハドレー循環・フェレル循環・極循環は `src/render/cloud/circulation.ts` の `Circulation` が緯度帯ごとの風向と沈降・上昇流を規定する。中緯度の偏西風波動（偏西風の蛇行）は `src/render/cloud/rossby-wave.ts` の `RossbyWave` が波数4〜6の長波として生み出し、温帯低気圧の発生場を作る。さらに熱帯低気圧や台風は `src/render/cloud/cyclones.ts` の `Cyclones` が個別の渦核とスパイラル雨帯として合成する。
+
+### 2.3 水蒸気輸送と前線形成
+
+水蒸気は風によって移流され、温度差のある気団がぶつかる境界で前線を形成する。`src/render/cloud/weather-transport.ts` の `WeatherTransport` は、地表風に沿って風上方向へ光路を遡るラグランジュ的バックトラッキングを行い、海洋で蒸発した水蒸気が内陸や前線へ運ばれる過程をエミュレートする。また `src/render/cloud/air-mass.ts` の `AirMass` は、寒気団と暖気団の収束帯（`compression`）を検出し、そこで上昇流と急峻な雲帯（`band`）を励起する。
+
+---
+
+## 3. 雲凝結アルゴリズム: `condense()`
+
+### 3.1 湿度と対流から雲への伝達関数
+
+気象条件から目に見える雲の形状・高度・光学的厚みへの変換は、純粋なTSLノード関数 `condense()` が司る。`src/render/cloud/condensation.ts` に定義されたこの関数は、気象サンプルの連続的な値を非線形に圧縮・成形して視覚的に説得力のある雲パラメータを導出する。
+
+- **シグネチャ**: `condense(weather: WeatherSample): CloudSample`
+- **入力**: `WeatherSample`
+- **出力**: `CloudSample`
+  - `coverage: FloatNode`: 積雲の被覆率 [0..1]
+  - `cloudTop: FloatNode`: 雲頂高度（実寸メートル）[m]
+  - `translucent: FloatNode`: 上層の薄い雲（巻雲・靄）の光学的厚み $\tau$ [0..1]
+
+### 3.2 被覆率 (`coverage`) のガンマ分布モデル
+
+被覆率は、単なるしきい値処理（ステップ関数やクランプ）ではなく、乱れた雲粒集団の統計的性質を反映した代数的な裾野を持つ伝達関数で計算される。均一なポアソン過程による指数減衰 $\exp(-t^2)$ を用いると、湿度が飽和した瞬間に階調が潰れて前線や台風が一様な白い板になってしまう。
+
+```typescript
+const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
+const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
+const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
+const coverage = clear.oneMinus();
+```
+
+ここで `COVERAGE_ONSET = 0.50`, `COVERAGE_WIDTH = 0.22`, `COVERAGE_DISPERSION = 2` である。ガンマ分布による混合モデル $(1 + t^2/k)^{-k}$ を採用することで、湿度が極限まで高い台風の目周囲や前線の中心部でも被覆率が 0.93 付近で緩やかに飽和し、8bit テクスチャ内でも微細な階調の起伏が保持される。また、低湿度では細胞状の網目状対流（`network`）、高湿度では塊状の粒状対流（`shape`）へとスムーズに形状が移行する。
+
+### 3.3 雲頂高度 (`cloudTop`) の多峰合成
+
+雲頂高度は、層状雲（乱層雲）、対流による積乱雲の「塔」、台風や低気圧の眼が広げる「金床」の3つの異なる物理機構の競合として算出される。
+
+1. **層状雲 (`layered`)**: 上昇流 `weather.lift`、暖気流入 `weather.warmth`、前線帯 `weather.band`、および対流起伏をロジスティック関数へ通し、基本高度 1,000 m（`CLOUD_BASE_HEIGHT`）から最大 7,000 m までの厚みを決める。
+2. **対流の塔 (`tower`)**: 対流セルの芯 `grain` が強い場所で、湿潤条件（`moist`）かつ上昇気流域（`rising`）にのみ、圏界面 `weather.tropopause`（最大 15〜17 km）に向かって二乗則で突き抜ける塔を立てる。高気圧の下降流地域ではこのゲートが閉じ、塔は抑制される。
+3. **金床雲 (`anvil`)**: 強い回転渦の芯において、平らな天蓋として圏界面まで張り出す。
+
+最終的な雲頂高度は `cloudTop = max(tower, anvil)` となり、孤立した小さな雲が不自然に高く聳え立たないよう、被覆率 `coverage` を乗じて雲底高度（1,000 m）へ向けてスケールダウンされる。
+
+### 3.4 上層の薄い雲 (`translucent`)
+
+巻雲などの上層雲は不透明な表面を持たず、光学的厚み $\tau$ として計算される。上層湿度 `weather.upperHumidity` が `TRANSLUCENT_HAZE_ONSET` (0.38) を超えると広域に薄い「靄（もや）」が張り、さらに `TRANSLUCENT_STREAK_ONSET` (0.48) を超えると気流に沿った強い「筋（ストリーク）」が二乗の寄与で現れる。この合計値は `tanh` 関数によって `TRANSLUCENT_LIMIT` (0.63) 以下に漸近頭打ちされ、背景の地表が常に最低でも $\exp(-0.63) \approx 53\%$ 透けて見えることが保証される。
+
+---
+
+## 4. 雲場のベイクと投影: `FieldProjection` & `CloudField`
+
+### 4.1 視点追随型正射影キャップ: `OrthographicCap`
+
+惑星全体の雲を均一な正距円筒テクスチャ（Equirectangular）に焼くと、カメラが地表付近や低軌道に接近した際に極端なテクセル不足が生じる。これを解決するため、本作ではカメラの天体直下点（Subpoint）を中心とする正射影（Orthographic Projection）を用いた動的局所テクスチャ「キャップ（Cap）」を採用している。
+
+`src/render/cloud/field-projection.ts` の `OrthographicCap` は、中心方向 `center`、東ベクトル `east`、北ベクトル `north`、および視野を覆う角半径 `sinRadius` を管理する。キャップの角半径は `src/render/cloud/cloud-cap.ts` の `capRadiusFor(rho, topOverRadius)` によって求められ、カメラ中心距離 $\rho$（地表を1とする）から見える幾何学的地平線に、雲頂の飛び出し分とマージン（5度）を加えた角度（最大 $\pi/2$）に自動調整される。
+
+- **単位方向からUVへの投影**:
+  $$\text{plane} = \left( \frac{\mathbf{d} \cdot \mathbf{east}}{\sin R}, \frac{\mathbf{d} \cdot \mathbf{north}}{\sin R} \right)$$
+  $$\text{uv} = \left( 0.5 + 0.5 \cdot \text{plane}_x, \; 0.5 - 0.5 \cdot \text{plane}_y \right)$$
+  この式は `orthographicCapUv()` 関数に一元化されており、焼成側とサンプリング側で1画素の狂いもなく共有される。
+
+### 4.2 テクスチャパッキングとサンプリング: `CloudField`
+
+焼成処理は `src/render/cloud/cloud-field.ts` の `CloudField`（内部で `BakedField` を利用）が行い、512×512ピクセルの `RGBAFormat` レンダーターゲットへ凝結結果を描き込む。
+
+- **テクセルのパッキング構造 (`cloudFieldTexelFromSample`)**:
+  - **Rチャンネル**: 被覆率 `coverage` [0..1]
+  - **Gチャンネル**: 正規化雲頂高度 `cloudTop / CLOUD_TOP_SPAN` [0..1] (ここで `CLOUD_TOP_SPAN = 15,000` m)
+  - **Bチャンネル**: 半透明度（光学的厚み）`translucent` [0..1]
+  - **Aチャンネル**: 固定値 `1.0`
+
+読み出し側は `src/render/cloud/cloud-field-sampler.ts` の `CloudFieldSampler` を用い、天体固定の単位方向ベクトル `direction` からキャップ UV を逆算して `texture.sample(uv)` を実行する。
+
+---
+
+## 5. 不透明雲表面のレイマーチング: `OpaqueCloudSurfaceRenderer`
+
+### 5.1 球殻メッシュと幾何LOD階層
+
+厚い積雲を遠景から見下ろす際、ボリューム全体の密度場を毎ピクセル積分するのは計算資源の浪費である。`src/render/opaque-cloud-surface-renderer.ts` の `OpaqueCloudSurfaceRenderer` は、雲頂高度の上限（15 km）に相当する拡大球殻メッシュ（`MeshStandardNodeMaterial`）を1つ天体の子として配置し、その表面から地表に向かってフラグメントシェーダ内で下向きにレイを飛ばす方式をとる。
+
+天体の画面上での見かけ直径（ピクセル数）に応じて、`SphereLodLevel`（0〜4段）の単位球ジオメトリが `syncLod()` で動的に切り替えられ、無駄な頂点負荷を抑えつつ正確なシルエット境界を形成する。
+
+### 5.2 シェーダ内レイマーチと二分探索（`marchedSurface`）
+
+球殻メッシュの表面に入射した視線レイは、フラグメントシェーダ `marchedSurface()` 内で物体ローカル座標系に変換され、地表球または球殻出口までの区間をレイマーチされる。
+
+1. **粗い等間隔探索 (`march`)**:
+   - 精細度設定（`CumulusDetail`: coarse / standard / fine）に応じて、区間長 `marchEnd` を 1〜12 等分（`sampling.march`）して進む。
+   - 各ステップにおいて `clearanceAt(point)` を評価し、空間点が雲頂の内側（クリアランスが負）に入った最初の区間 `[above, below]` を捉える。
+2. **区間の二分探索精微化 (`refine`)**:
+   - 雲頂面をまたいだ微小区間に対し、3〜5回の二分探索（`sampling.refine`）を実行し、交点距離 `below` をサブテクセル精度まで追い込む。
+   - 雲頂にヒットしなかったピクセルは `Discard()` され、背後の地表メッシュがそのまま見える。
+
+### 5.3 Blue Noise ディザリングと境界フェード
+
+被覆率 $C$ に応じて雲が存在するか否かの判定は、ハードな境界ではなくディザリングによって表現される。`src/render/blue-noise.ts` から画面ピクセル座標に対応する Blue Noise 値（0..1）をフェッチし、`CloudShapeEvaluator.opaqueFraction(coverage, grain)` が返す不透明度と比較する。
+
+```typescript
+// cloud-shape-evaluator.ts: opaqueFraction
+const band = CUMULUS_DITHER_KNOB.halfWidth.mul(2);
+const center = CUMULUS_DITHER_KNOB.center; // 0.34
+const covered = coverage.add(grain.mul(GRAIN_COVERAGE_DEPTH));
+return clamp(covered.sub(center.sub(clampedBand.mul(0.5))).div(clampedBand), 0, 1);
+```
+
+ディザリング帯（幅 0.24）を通すことで、被覆率の勾配が滑らかな網目状の穴あきとなって表現され、モアレの極めて少ない自然な積雲の輪郭が形成される。
+
+### 5.4 微小粒度ノイズ（Grain）と画面微分フェード
+
+テクスチャの解像度（テクセルサイズ約12km）より細かい雲の起伏を表現するため、天体固定座標系で波長 6,000 m のグラディエントノイズ `grainAt(direction)` が加算される。この粒度ノイズは、カメラが遠ざかって1波長が画面上で2ピクセル（Nyquist周波数）未満になると、エイリアシングやモアレを防ぐために画面微分 `dFdx(entryDirection)` / `dFdy(entryDirection)` を用いて滑らかにゼロへフェードアウトされる。
+
+### 5.5 勾配差分法による法線と深度の出力
+
+交点における法線は、メッシュの幾何法線ではなく、雲頂高度場の空間微分から計算される。交点から東および北の接線方向へ粒の半波長分だけ微小角度 `gradientAngle` 振った位置での雲頂高度をサンプリングし、その差分から接平面の傾き `slopeEast`, `slopeNorth` を求める。
+
+$$\mathbf{N}_{\text{local}} = \text{normalize}\left( \mathbf{u} - \mathbf{east} \cdot \text{slopeEast} - \mathbf{north} \cdot \text{slopeNorth} \right)$$
+
+求めたローカル法線は `transformNormalToView()` でビュー空間へ写され、`material.normalNode` に出力される。同時に交点のクリップ空間深度 $z/w$ が `material.depthNode` へ書き出されるため、標準の PBR ライティング（シャドウマップ受光、太陽光の拡散反射）が正確に機能し、深度バッファにも完全な凹凸が記録される。
+
+---
+
+## 6. 大気統合光路積分: `AtmosphereCloudLayers` & `CloudAtmosphereRenderer`
+
+### 6.1 同心球殻モデルと大気散乱への割り込み
+
+不透明メッシュでは表現できない「上層の薄い巻雲」や「低層雲の半透明な縁」は、大気のレイリー散乱・ミー散乱の光路積分の中に組み込まれる。`src/render/pipeline/cloud-atmosphere-renderer.ts` は、大気圏内に同心円状の厚み 0 の球殻として2種類の雲種（`CloudSpecies`）を定義している：
+
+1. **巻雲 (`cirrus`)**: 高度 15,000〜16,000 m（代表高度 15.5 km）。場の B チャンネル（`translucent`）を直接鉛直光学的厚みとする。
+2. **積雲 (`cumulus`)**: 高度 0〜2,000 m（代表高度 1.0 km）。場の R チャンネル（`coverage`）から換算した鉛直光学的厚みを用いる。
+
+大気積分レイがこれらの球殻と交差する際、入口と出口の交点（`crossings`）が検出され、光学イベント（`CloudShellEvent`）としてキューイングされる。
+
+### 6.2 光学モデルと Beer-Lambert 透過
+
+雲の光学的厚みと散乱は `src/render/cloud/cloud-optics.ts` および `cloud-optics-node.ts` の契約に従う。被覆率 $C$ から鉛直柱光学的厚み $\tau_{\text{col}}$ への変換は次式で行われる：
+
+$$\tau_{\text{col}} = -\ln(1 - \min(C, 0.99))$$
+
+視線が球殻を斜めに通過する際の光路倍率（エアマス $M$）は、鉛直との余弦 $\cos\theta$ から求められるが、地平線接線付近で無限大に発散しないよう、球殻の物理的厚み $H$ と半径 $R$ を考慮した限界値でクランプされる：
+
+$$M = \frac{1}{\max\left( |\cos\theta|, \sqrt{\frac{H}{2R}} \right)}$$
+
+これにより、イベント1回あたりの雲の光路透過率 $T_{\text{cloud}}$ は Beer-Lambert の法則に基づき厳密に計算される：
+
+$$T_{\text{cloud}} = \exp\left( -\max(\tau_{\text{col}}, 0) \cdot M \right)$$
+
+### 6.3 フロント・トゥ・バック合成 (`compose`)
+
+`src/render/pipeline/atmosphere-cloud-layers.ts` の `compose()` は、カメラから奥に向かってソートされた雲イベント群と大気の散乱光（インスキャッター）を合成する。
+
+```typescript
+// composeCloudEvents の合成則
+let frontTransmittance = 1.0;
+let eventRadiance = 0.0;
+for (const event of events) {
+  eventRadiance += frontTransmittance * event.backgroundTransmittance * event.localRadiance;
+  frontTransmittance *= event.cloudTransmittance;
+}
+finalTransmittance = atmosphereTransmittance * frontTransmittance;
+finalRadiance = atmosphereRadiance + eventRadiance;
+```
+
+各雲イベントには、カメラからその位置までの「背景大気の透過率」が乗算され、手前にある雲イベントの透過率 `frontTransmittance` が順次蓄積されて減衰をかける。これにより、濃い雲の後方にある大気や別の雲層が破綻なく遮蔽される。
+
+---
+
+## 7. 動的雲影の投影: `CloudShadowRenderer`
+
+### 7.1 光路に沿った消散積分
+
+積雲が地表や大気、宇宙船に落とす影は、シャドウマップではなくプロシージャルな光路サンプリングによって計算される。`src/render/pipeline/shadow/cloud-shadow-renderer.ts` の `CloudShadowRenderer` は、任意の空間点から恒星（太陽）に向かう光線が雲層を通過する際の光路透過率を TSL ループで評価する。
+
+- **入力**: 空間座標 `point`、太陽方向ベクトル `sunDirection`
+- **出力**: 太陽直射光の透過率 [0..1]（0 で完全な影、1 で直射）
+
+### 7.2 マルチタップサンプリングとステップブラー
+
+光線が雲の球殻（地表〜15km）を横切る区間を検出し、その区間内を等間隔に 6 タップ（`SHADOW_TAPS = 6`）サンプリングする。各タップ位置における天体固定方向から雲場の被覆率と雲頂高度を取得し、光線が雲頂より下を通っている場合に消散（オパシティ）を積算する。
+
+隣り合うタップの隙間に影の抜け（ストライプ状のアーティファクト）が発生するのを防ぐため、各ステップの代表幅に `STEP_BLUR = 2` 倍のぼかしを適用したサンプリングが行われ、柔らかく自然な半影（ペナンブラ）を伴う雲影がリアルタイムに地表へ投影される。
+
+---
+
+## 8. 形状と光学の一元評価器: `CloudShapeEvaluator`
+
+### 8.1 複数レンダラー間の整合性問題の解決
+
+本作の雲システムにおいて最もアーキテクチャ上重要なクラスが、`src/render/cloud/cloud-shape-evaluator.ts` の `CloudShapeEvaluator` である。
+
+不透明表面レンダラー、大気統合レンダラー、雲影レンダラーの3者は、それぞれ全く異なる幾何とシェーダパス（G-Bufferパス、大気ポストプロセスパス、シャドウ計算）で動作する。もし各レンダラーが個別にしきい値や雲頂の計算式を持っていれば、「雲の本体がない場所に影が落ちる」「雲の輪郭と影の輪郭がずれる」「大気中の半透明雲と不透明雲の境界に隙間ができる」といった重大な不整合が発生する。
+
+### 8.2 共有される評価契約
+
+`CloudShapeEvaluator` は一切の GPU 資源（テクスチャやバッファ）を所有せず、純粋な計算ロジックのみを各レンダラーの TSL グラフへインライン展開する：
+
+- `grainAt(direction, amplitude)`: 共通の周波数と振幅によるディテールノイズ生成
+- `opaqueFraction(coverage, grain)`: ディザリング帯へのマッピング式
+- `cloudTop(fieldTop, grain)`: 雲頂高度への起伏加算式
+- `cloudTopRadius(cloudTop, groundRadius)`: 実寸半径への変換式
+- `columnOpticalDepth(coverage)`: 被覆率から光学的厚み $\tau$ への変換式
+
+この徹底したロジックの一元化により、不透明メッシュが判定した雲頂の位置と、雲影が光線を遮蔽する雲頂の位置、そして大気散乱が散乱光を挿入する高度が数学的に完全に一致し、極めて堅牢で破綻のない視覚的一貫性が保証されている。
+
+---
+
+## 9. クラス・主要関数・データ型のリファレンスまとめ
+
+| クラス / モジュール | ファイルパス | 主要メソッド / 関数 | 入力 | 出力 | 責務 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`WeatherModel`** | `src/render/cloud/weather-model.ts` | `weatherAt(direction)` | `direction: Vec3Node` | `WeatherSample` | 惑星規模の気象・循環・風・湿度・対流を決定論的TSLグラフで解く |
+| **`condense`** | `src/render/cloud/condensation.ts` | `condense(weather)` | `WeatherSample` | `CloudSample` | 気象値から被覆率・雲頂高度・薄い雲の光学的厚みへ凝結させる |
+| **`OrthographicCap`** | `src/render/cloud/field-projection.ts` | `aimAt(subpoint, radius)`<br>`uvAt(direction)` | 視点直下点・角半径<br>単位方向ベクトル | `CapPlacement`<br>`uv: Vec2Node` | カメラ周辺に解像度を集中させる正射影キャップの幾何を管理 |
+| **`CloudField`** | `src/render/cloud/cloud-field.ts` | `render(renderer)`<br>`at(direction)` | WebGPU Renderer<br>`direction: Vec3Node` | テクスチャ更新<br>`CloudSample` | 凝結された雲の場を RGBA テクスチャへベイクし、参照を提供する |
+| **`CloudPresentation`** | `src/render/cloud/cloud-presentation.ts` | `aim(subpoint, rho)`<br>`bake(...)`<br>`syncLod(...)` | 視点座標・カメラ距離<br>表示時刻・レンダラー<br>見かけピクセル直径 | 雲場更新と全レンダラーへの分配 | 雲システムの最上位調停役。出どころ（生成/実写）とレンダラー寿命を管理 |
+| **`OpaqueCloudSurfaceRenderer`** | `src/render/opaque-cloud-surface-renderer.ts` | `marchedSurface()`<br>`clearanceAt(...)`<br>`cloudTopNormalAt(...)` | 物体空間レイ<br>サンプリング点・閾値<br>交点座標 | `Vec4Node` (法線xyz, 深度w)<br>クリアランス (負で雲内)<br>物体空間法線 | 球殻メッシュを用いたレイマーチングにより、不透明積雲表面の深度と法線を描画 |
+| **`CloudAtmosphereRenderer`** | `src/render/pipeline/cloud-atmosphere-renderer.ts` | `sampleShell(...)`<br>`shellAltitudeOf(...)` | 雲種・光路交点<br>雲種 | `CloudShellSample`<br>代表高度 [m] | 巻雲・積雲の球殻と大気視線との交差判定、光学的厚みと局所放射輝度を算出 |
+| **`AtmosphereCloudLayers`** | `src/render/pipeline/atmosphere-cloud-layers.ts` | `compose(...)`<br>`transmittanceAt(...)` | 大気透過・輝度、雲イベント群<br>距離 | 合成後透過率・放射輝度<br>累積透過率 | 大気散乱積分に雲イベントを前後関係正しくアルファ合成（Beer-Lambert則） |
+| **`CloudShadowRenderer`** | `src/render/pipeline/shadow/cloud-shadow-renderer.ts` | `transmittanceAt(point)` | 描画点座標 | 直射光透過率 [0..1] | 太陽光路に沿ったマルチタップサンプリングにより、地表・大気へ雲影を落とす |
+| **`CloudShapeEvaluator`** | `src/render/cloud/cloud-shape-evaluator.ts` | `opaqueFraction(...)`<br>`cloudTop(...)`<br>`columnOpticalDepth(...)` | 被覆率・粒ノイズ<br>正規化雲頂・粒ノイズ<br>被覆率 | 不透明度 [0..1]<br>実効雲頂 [0..1]<br>柱光学的厚み $\tau$ | 3つのレンダラー間で雲の幾何形状・ディザ・光学定数を一元管理し不整合を防ぐ |
