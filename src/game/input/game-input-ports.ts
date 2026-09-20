@@ -37,11 +37,13 @@ export function gameInputPorts(
     },
     {
       feature: 'hud',
+      isEnabled: () => !constructionActive(),
       commands: [gameCommand(K.help.code, K.help)],
       handleCommand: command => hud.handleCommand(command.id),
     },
     {
       feature: 'camera-command',
+      isEnabled: () => !constructionActive(),
       commands: [gameCommand(K.followAttitudeToggle.code, K.followAttitudeToggle)],
       handleCommand: command => cameraSystem.handleCommand(command.id),
     },
