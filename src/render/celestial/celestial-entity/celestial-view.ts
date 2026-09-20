@@ -132,7 +132,7 @@ export abstract class CelestialView {
 
   // この天体が持つ動的な雲場を表示時刻へ焼く。
   public bakeClouds(
-    _renderer: WebGPURenderer, _displayTime: number, _gpu: GpuTimingSink | null, _nowMs: number,
+    _renderer: WebGPURenderer, _displayTime: number, _gpu: GpuTimingSink | null,
   ): void {}
 
   // 影パスへ渡す積雲の殻。積雲を持たない天体では null。

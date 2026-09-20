@@ -634,7 +634,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
   readonly bakeClouds: (
-    renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number,
+    renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null,
   ) => void;
   readonly disposeClouds: () => void;
 } {
@@ -645,12 +645,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const cumulus = earthCloudPresentation();
-  // 雲場の cap は、ケースのカメラ(原点)から見た直下点へ置く。**置き忘れると**、cap が既定の
-  // 向きに残ってケースに雲が出ない。
   const shellAxes = new THREE.Vector3(axes.x, axes.y, axes.z);
-  const toCamera = center.clone().negate().applyQuaternion(spin.clone().invert()).divide(shellAxes);
-  const rho = Math.max(toCamera.length(), 1);
-  cumulus.aim(toCamera.divideScalar(rho), rho);
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -696,7 +691,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
         cumulus.setCloudsVisible(false);
       }
     },
-    bakeClouds: (renderer, displayTime, gpu, nowMs) => cumulus.bake(renderer, displayTime, gpu, nowMs),
+    bakeClouds: (renderer, displayTime, gpu) => cumulus.bake(renderer, displayTime, gpu),
     disposeClouds: () => cumulus.dispose(),
   };
 }

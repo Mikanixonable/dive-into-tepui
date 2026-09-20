@@ -9,7 +9,6 @@ import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
 import type { WeatherModel } from './weather-model';
 import { cloudStateAt, type CloudState } from './cloud-state';
-import type { TemporalLodMode } from './temporal-lod';
 import type { Vec3Node } from '../tsl-types';
 
 export class CloudField {
@@ -31,17 +30,16 @@ export class CloudField {
   // 焼いた雲の場。テクスチャの所有権は BakedField に残す。
   public get texture(): THREE.Texture { return this.field.texture; }
 
-  // 単位方向 direction での雲を、投影自身の uv で直接サンプリングする。cap による領域切り出しを行わないため、テクスチャ
-  // 全域を参照できる。
+  // 単位方向 direction の雲を、投影自身の uv で直接サンプリングする。
   public at(direction: Vec3Node): CloudSample {
     return cloudSampleFromTexel(this.field.at(direction));
   }
 
   public stateAt(
-    direction: Vec3Node, absoluteTimeSeconds: number, seed: number, temporalMode: TemporalLodMode,
+    direction: Vec3Node, absoluteTimeSeconds: number, seed: number,
   ): CloudState {
     const weather = this.model.weatherAt(direction);
-    return cloudStateAt(weather, this.at(direction), absoluteTimeSeconds, seed, temporalMode);
+    return cloudStateAt(weather, this.at(direction), absoluteTimeSeconds, seed);
   }
 
   // 保持している GPU 資源を解放する。

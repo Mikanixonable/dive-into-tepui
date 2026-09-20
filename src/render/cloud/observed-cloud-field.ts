@@ -1,6 +1,6 @@
 // 衛星写真から被覆率・雲頂高度・薄層雲の光学的厚みに分離した静的雲場。チャンネル構成は
-// プロシージャル生成雲場と一致する。読み出し側のサンプリング処理を球面キャップ1枚に統一するため、
-// 全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
+// プロシージャル生成雲場と一致する。全球正距円筒画像を生成雲場と同じ RGBA basis へ変換し、
+// 共有する全球の投影テクスチャとして供給する。
 import * as THREE from 'three/webgpu';
 import { float, int, log2, max, smoothstep, texture, vec4 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
@@ -15,14 +15,13 @@ import type { CloudStateBinding } from './cloud-state';
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
   private readonly field: BakedField;
-  // 焼いたときの画像の世代と cap の版。どちらかが変わったときだけ焼き直す。
+  // 焼いたときの画像の世代と投影の版。どちらかが変わったときだけ焼き直す。
   private bakedGeneration = -1;
   private bakedRevision = -1;
   private generationValue = 0;
   private readonly stateValue: CloudStateBinding = {
     absoluteTimeSeconds: 0,
     seed: 0,
-    temporalMode: 'normal',
   };
 
   // url は地表と同じ正距円筒の旧観測画像(R = 被覆率、G = 雲頂の proxy、B = 薄い雲の光学的厚み)、
@@ -60,8 +59,8 @@ export class ObservedCloudField implements CloudFieldSource {
   public get generation(): number { return this.generationValue; }
   public get state(): CloudStateBinding { return this.stateValue; }
 
-  // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
-  public prepare(renderer: WebGPURenderer, _displayTime: number, gpu: GpuTimingSink | null, _nowMs: number): void {
+  // 画像の取得を始め、届いた画像か投影の置き方が変わっていれば写しを焼き直す。
+  public prepare(renderer: WebGPURenderer, _displayTime: number, gpu: GpuTimingSink | null): void {
     this.map.request();
     const generation = this.map.generation;
     const revision = this.projection.revision;

@@ -356,9 +356,9 @@ export class CelestialSystem implements CelestialBodies {
 
   // このフレームに積雲殻を描く天体の雲場を焼く。
   public bakeClouds(
-    renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null, nowMs: number,
+    renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null,
   ): void {
-    for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, gpu, nowMs);
+    for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, gpu);
   }
 
   // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。

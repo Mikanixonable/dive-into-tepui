@@ -4,7 +4,6 @@
 export interface CloudModelParameters {
   readonly cloudCellLifetimeSeconds: number;
   readonly mesoLifetimeSeconds: number;
-  readonly subGridLifetimeSeconds: number;
   readonly anvilLifetimeSeconds: number;
   readonly basisDelaySeconds: readonly [number, number];
   readonly maximumCloudAltitudeMeters: number;
@@ -15,7 +14,6 @@ export interface CloudModelParameters {
 export const CLOUD_MODEL_PARAMETERS: CloudModelParameters = Object.freeze({
   cloudCellLifetimeSeconds: 60 * 60,
   mesoLifetimeSeconds: 12 * 60 * 60,
-  subGridLifetimeSeconds: 30 * 60,
   anvilLifetimeSeconds: 6 * 60 * 60,
   basisDelaySeconds: Object.freeze([10 * 60, 20 * 60]) as readonly [number, number],
   maximumCloudAltitudeMeters: 20_000,
