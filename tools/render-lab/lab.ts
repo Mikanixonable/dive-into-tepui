@@ -7,7 +7,7 @@ import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '.
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { irradianceAtDistance, scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
 import { R_SUN, SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
-import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
+import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
@@ -49,6 +49,14 @@ const SUN_POSITION = new THREE.Vector3();
 // 恒星方向とカメラ位置を毎フレーム組み立てる書き込み先。
 const SUN_DIRECTION = new THREE.Vector3();
 const CAMERA_OFFSET = new THREE.Vector3();
+
+// 天体照のスロットへ渡す恒星の向きの置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
+const PLANET_LIGHT_STAR_DIRECTIONS = Array.from(
+  { length: MAX_PLANET_LIGHT_SLOTS }, () => new THREE.Vector3(),
+);
+
+// 自転姿勢を持たないケースの天体が使う、天体固定の向きへの行列。
+const IDENTITY_BODY_FROM_WORLD = new THREE.Matrix4();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
@@ -287,14 +295,28 @@ export class LabView {
     SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
     const sunIntensity = scaledRadiantIntensity(SUN.radiantIntensity);
     this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, sunIntensity);
-    // 天体照。ケースが置いた光源をスロットへ書く。放射輝度は恒星のつまみの距離に追随する。
-    this.pipeline.planetLight.set((this.current.planetLights ?? []).map((light) => ({
-      center: light.center,
-      radius: light.radius,
-      radiance: planetRadiance(
-        light.albedo, irradianceAtDistance(sunIntensity, SUN_POSITION.distanceTo(light.center)),
-      ),
-    })));
+    // 天体照。ケースが置いた光源をスロット本数まで書く。放射照度は恒星のつまみの距離に追随する。
+    this.pipeline.planetLight.set(
+      (this.current.planetLights ?? []).slice(0, MAX_PLANET_LIGHT_SLOTS).map((light, slot) => {
+        const sunIrradiance = irradianceAtDistance(sunIntensity, SUN_POSITION.distanceTo(light.center));
+        const map = light.lightSourceMap?.() ?? null;
+        const starDirection = PLANET_LIGHT_STAR_DIRECTIONS[slot]!
+          .subVectors(SUN_POSITION, light.center).normalize();
+        return {
+          center: light.center,
+          radius: light.radius,
+          radiance: planetRadiance(light.albedo, sunIrradiance),
+          appearance: {
+            map: map?.texture ?? null,
+            // 写しを持たないケースでは読まれないので、色をそのまま通す倍率を置く。
+            albedoScale: map?.albedoScale ?? 1,
+            albedo: light.albedo,
+            sunIrradiance,
+            starDirection,
+            bodyFromWorld: light.bodyFromWorld ?? IDENTITY_BODY_FROM_WORLD,
+          },
+        };
+      }));
     // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
     this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, sunIntensity);

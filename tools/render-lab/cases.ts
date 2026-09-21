@@ -3,7 +3,7 @@
 // スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
-import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
+import { CelestialSurface, type LightSourceMap } from '../../src/render/celestial/celestial-surface';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
@@ -109,7 +109,13 @@ export interface LabCase {
   // 天体照の光源として置く天体。中心は描画座標、albedo は輝度がボンドアルベドに一致する
   // 線形 RGB。省略すると天体照は無い。
   readonly planetLights?: readonly {
-    readonly center: THREE.Vector3; readonly radius: number; readonly albedo: Albedo;
+    readonly center: THREE.Vector3;
+    readonly radius: number;
+    readonly albedo: Albedo;
+    // 光源として焼く全球の正距円筒テクスチャを返す口。画像が GPU へ届くまでは null を返す。
+    readonly lightSourceMap?: () => LightSourceMap | null;
+    // 描画座標のベクトルを天体固定の向きへ回す行列。省略すると単位行列。
+    readonly bodyFromWorld?: THREE.Matrix4;
   }[];
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
@@ -640,6 +646,8 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly atmosphere: AtmosphereBody;
   readonly cumulus: ShadowCumulus;
   readonly shadowBody: ShadowBody;
+  readonly lightSourceMap: () => LightSourceMap | null;
+  readonly bodyFromWorld: THREE.Matrix4;
   readonly ready: () => boolean;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
   readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
@@ -691,6 +699,9 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     },
     // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
     shadowBody: { center, axes: shellAxes.clone(), bodyFromWorld },
+    // 光源として焼く地表のテクスチャ。ベース色の画像が GPU へ届くまでは null。
+    lightSourceMap: () => surface.lightSourceMap,
+    bodyFromWorld,
     // 地表が読む画像(ベース色と滑らかさ)がすべて GPU へ届いたか。
     ready: () => surface.imagesReady,
     // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
@@ -735,7 +746,13 @@ function earth(style: RenderStyle): LabCase {
     ],
     camera,
     atmospheres: [earthSphere.atmosphere],
-    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    planetLights: [{
+      center,
+      radius: R_EARTH,
+      albedo: EARTH_LIGHT_ALBEDO,
+      lightSourceMap: earthSphere.lightSourceMap,
+      bodyFromWorld: earthSphere.bodyFromWorld,
+    }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     ready: earthSphere.ready,
@@ -754,7 +771,13 @@ function earthOblique(style: RenderStyle): LabCase {
     objects: [earthSphere.object],
     camera: labCamera(6e7),
     atmospheres: [earthSphere.atmosphere],
-    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    planetLights: [{
+      center,
+      radius: R_EARTH,
+      albedo: EARTH_LIGHT_ALBEDO,
+      lightSourceMap: earthSphere.lightSourceMap,
+      bodyFromWorld: earthSphere.bodyFromWorld,
+    }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     ready: earthSphere.ready,
@@ -783,7 +806,13 @@ function earthPolar(style: RenderStyle): LabCase {
     camera: labCamera(6e7),
     sunDirection: EARTH_POLAR_SUN_DIR,
     atmospheres: [earthSphere.atmosphere],
-    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    planetLights: [{
+      center,
+      radius: R_EARTH,
+      albedo: EARTH_LIGHT_ALBEDO,
+      lightSourceMap: earthSphere.lightSourceMap,
+      bodyFromWorld: earthSphere.bodyFromWorld,
+    }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     ready: earthSphere.ready,
@@ -927,7 +956,13 @@ function leoMetal(style: RenderStyle, sunDirection: THREE.Vector3): LabCase {
     camera: labCamera(6e7),
     sunDirection,
     viewTarget: LEO_METAL_CENTER,
-    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    planetLights: [{
+      center,
+      radius: R_EARTH,
+      albedo: EARTH_LIGHT_ALBEDO,
+      lightSourceMap: earthSphere.lightSourceMap,
+      bodyFromWorld: earthSphere.bodyFromWorld,
+    }],
     shadowBodies: [earthSphere.shadowBody],
     ready: earthSphere.ready,
     disposeClouds: earthSphere.disposeClouds,
@@ -963,7 +998,13 @@ function leoDiffuse(style: RenderStyle, subCameraPoint: THREE.Vector3): LabCase 
     sunDirection: new THREE.Vector3(0, 1, 0),
     viewTarget: LEO_DIFFUSE_PLATE_CENTER,
     atmospheres: [earthSphere.atmosphere],
-    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    planetLights: [{
+      center,
+      radius: R_EARTH,
+      albedo: EARTH_LIGHT_ALBEDO,
+      lightSourceMap: earthSphere.lightSourceMap,
+      bodyFromWorld: earthSphere.bodyFromWorld,
+    }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     ready: earthSphere.ready,
@@ -1018,7 +1059,13 @@ function planetshineFar(style: RenderStyle): LabCase {
     camera: labCamera(1e13),
     sunDirection: PLANETSHINE_SUN_DIR,
     viewTarget: PLANETSHINE_VIEW_TARGET,
-    planetLights: [{ center: PLANETSHINE_EARTH_CENTER, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    planetLights: [{
+      center: PLANETSHINE_EARTH_CENTER,
+      radius: R_EARTH,
+      albedo: EARTH_LIGHT_ALBEDO,
+      lightSourceMap: earthSphere.lightSourceMap,
+      bodyFromWorld: earthSphere.bodyFromWorld,
+    }],
     ready: earthSphere.ready,
     disposeClouds: earthSphere.disposeClouds,
   };

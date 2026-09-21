@@ -21,9 +21,12 @@ interface PlanetLightCandidate<T extends CelestialBody> {
 // 光源として選ばれた天体 1 体。位置・半径は celestialBody(ECI)から読む。
 interface PlanetLight<T extends CelestialBody> {
   readonly celestialBody: T;
-  // 一様球としての放射輝度(色つき)。天体の食(sunlitFactor)は掛けてあり、満ち欠けは
-  // 受け手ごとに決まるので受け手が掛ける。
+  // 一様球として描くときの放射輝度(色つき)の正本。天体の食(sunlitFactor)は掛けてあり、
+  // 満ち欠けは受け手ごとに決まるので受け手が掛ける。
   readonly radiance: Albedo;
+  // 面ごとの色を写しから引いて描くときの明るさの正本。その天体の場所の太陽放射照度に、天体の
+  // 食(sunlitFactor)を掛けたもの。色はアルベドと写しの側が持つ。
+  readonly sunIrradiance: number;
 }
 
 // 基準点 reference(ECI)へ強く届く順に天体光源を MAX_PLANET_LIGHT_SLOTS 体まで返す。
@@ -53,7 +56,11 @@ export function selectPlanetLights<T extends CelestialBody>(
     const irradiance = Math.PI * rec709Luminance(base) * (celestialBody.def.radius / dist) ** 2
       * phase * sunlit;
     scored.push({
-      light: { celestialBody, radiance: [base[0] * sunlit, base[1] * sunlit, base[2] * sunlit] },
+      light: {
+        celestialBody,
+        radiance: [base[0] * sunlit, base[1] * sunlit, base[2] * sunlit],
+        sunIrradiance: sunIrradiance * sunlit,
+      },
       irradiance,
     });
   }

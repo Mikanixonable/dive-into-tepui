@@ -14,7 +14,7 @@ import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';
 import type { Albedo } from '../../celestial-albedo';
-import type { CelestialSurfaceDiagnostics } from '../celestial-surface';
+import type { CelestialSurfaceDiagnostics, LightSourceMap } from '../celestial-surface';
 import { withAirglowEnabled } from '../../atmosphere';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../atmosphere';
 import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
@@ -58,6 +58,9 @@ export interface StellarLightSource {
 export interface CelestialIlluminationView {
   // 光源として扱うときの色つきボンドアルベド。反射光を配らない天体では null。
   readonly lightSourceAlbedo: Albedo | null;
+  // 光源として焼くときに面ごとの色を引く全球のテクスチャ。持たない天体と、画像がまだ
+  // 届いていない天体では null。
+  readonly lightSourceMap: LightSourceMap | null;
   rings(motion: DefinedCelestialBody): RingSystemDef | null;
   cumulusShadowAt(
     motion: DefinedCelestialBody, floatingOrigin: FloatingOrigin, displayTime: number,
@@ -80,6 +83,7 @@ export abstract class CelestialView {
   public get stellarLight(): StellarLight | null { return null; }
   public get atmosphereOptics(): AtmosphereOptics | null { return null; }
   public get lightSourceAlbedo(): Albedo | null { return null; }
+  public get lightSourceMap(): LightSourceMap | null { return null; }
   public get surfaceTextureUrl(): string | null { return null; }
   public get surfaceDiagnostics(): CelestialSurfaceDiagnostics | null { return null; }
   public rings(_motion: DefinedCelestialBody): RingSystemDef | null { return null; }

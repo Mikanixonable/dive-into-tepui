@@ -10,6 +10,9 @@ import {
 } from '../../render/pipeline/sun-light';
 import { ambientFraction } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
+import {
+  MAX_PLANET_LIGHT_SLOTS, type PlanetLightValue,
+} from '../../render/pipeline/lighting/planet-light-source';
 import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../../render/pipeline/shadow/body-shadow';
 import {
   castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,
@@ -17,7 +20,6 @@ import {
 import { writeBodyFromWorld } from '../../render/celestial/body-frame';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import type { PlanetLightValue } from '../../render/pipeline/lighting/planet-light-source';
 import type { AtmosphereDraw } from '../../render/atmosphere';
 import type { RingBand } from '../../render/pipeline/shadow/ring-shadow';
 import type { ShadowCumulus } from '../../render/pipeline/shadow/cloud-shadow-renderer';
@@ -53,6 +55,11 @@ export class CelestialIllumination {
     axes: new THREE.Vector3(), bodyFromWorld: new THREE.Matrix4(),
   }));
 
+  // 天体照の光源へ渡す向きの置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
+  private readonly planetLightFrames = Array.from({ length: MAX_PLANET_LIGHT_SLOTS }, () => ({
+    starDirection: new THREE.Vector3(), bodyFromWorld: new THREE.Matrix4(),
+  }));
+
   // star はこの星系の主星の恒星光で、恒星光を持たない星系では null。
   public constructor(
     private readonly star: StellarLightSource | null,
@@ -86,15 +93,16 @@ export class CelestialIllumination {
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
       star?.stellarLight.color ?? STARLESS_SUN_COLOR, starIntensity);
     this.targets.ambient.setFraction(ambientFraction(graphics));
-    this.syncPlanetLights(sources, displayTime, camera);
+    this.syncPlanetLights(sources, displayTime, camera, sunPos);
     this.syncShadowSources(sources, fo, displayTime, focusPosition, graphics);
     this.syncAtmosphere(sources, displayTime, camera, graphics);
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
-  // スロットへ入れる。基準点は露出と同じ注視点。
+  // スロットへ入れる。基準点は露出と同じ注視点で、sunPos は描画座標の恒星の位置。
   private syncPlanetLights(
     sources: readonly CelestialIlluminationSource[], displayTime: number, camera: CameraFrame,
+    sunPos: THREE.Vector3,
   ): void {
     // 全天体を候補にし、注視点から見た明るさで選ぶ。
     const candidates = sources.map((source) => ({
@@ -102,12 +110,30 @@ export class CelestialIllumination {
       albedo: source.view.lightSourceAlbedo ?? DEFAULT_ALBEDO,
     }));
     const lights = selectPlanetLights(candidates, displayTime, camera.viewpoint.lookTarget);
-    // 選ばれた天体を描画座標へ移し、内接球の半径で渡す。
-    this.targets.planetLight.set(lights.map((light) => ({
-      center: camera.floatingOrigin.RtoThreeV3(light.celestialBody.positionAt(displayTime)),
-      radius: shapeInscribedRadius(light.celestialBody.def.radius, shapeOf(light.celestialBody.def)),
-      radiance: light.radiance,
-    })));
+    // 選ばれた天体を描画座標へ移し、内接球の半径と、写しへ焼く見た目を添えて渡す。
+    this.targets.planetLight.set(lights.map((light, slot): PlanetLightValue => {
+      const center = camera.floatingOrigin.RtoThreeV3(light.celestialBody.positionAt(displayTime));
+      // 選定は天体だけを返すので、見た目はその天体を差し出した源から引き直す。
+      const view = sources.find((source) => source.motion === light.celestialBody)?.view ?? null;
+      const map = view?.lightSourceMap ?? null;
+      const frame = this.planetLightFrames[slot]!;
+      frame.starDirection.subVectors(sunPos, center).normalize();
+      writeBodyFromWorld(frame.bodyFromWorld, light.celestialBody, displayTime);
+      return {
+        center,
+        radius: shapeInscribedRadius(light.celestialBody.def.radius, shapeOf(light.celestialBody.def)),
+        radiance: light.radiance,
+        appearance: {
+          map: map?.texture ?? null,
+          // 写しを持たない天体では読まれないので、色をそのまま通す倍率を置く。
+          albedoScale: map?.albedoScale ?? 1,
+          albedo: view?.lightSourceAlbedo ?? DEFAULT_ALBEDO,
+          sunIrradiance: light.sunIrradiance,
+          starDirection: frame.starDirection,
+          bodyFromWorld: frame.bodyFromWorld,
+        },
+      };
+    }));
   }
 
   // 影パスへ、この1フレームの影を落とす天体・環の帯・積雲の殻を渡す。

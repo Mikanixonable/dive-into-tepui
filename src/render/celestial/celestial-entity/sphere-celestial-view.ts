@@ -11,7 +11,7 @@ import { CelestialView, type DefinedCelestialBody, type StellarLightSource } fro
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Vec3 } from '../../../math/vec3';
 import type { CameraFrame } from '../../camera/camera-frame';
-import type { CelestialSurfaceDiagnostics, CelestialSurfaceLike } from '../celestial-surface';
+import type { CelestialSurfaceDiagnostics, CelestialSurfaceLike, LightSourceMap } from '../celestial-surface';
 import type { LineOverlay } from '../line-overlay';
 import type { AtmosphereOptics } from '../../atmosphere';
 import type { Albedo } from '../../celestial-albedo';
@@ -43,6 +43,8 @@ export class SphereCelestialView extends CelestialView {
   public override get atmosphereOptics(): AtmosphereOptics | null { return this.optics; }
 
   public override get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }
+
+  public override get lightSourceMap(): LightSourceMap | null { return this.surface.lightSourceMap; }
 
   public override get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
 
