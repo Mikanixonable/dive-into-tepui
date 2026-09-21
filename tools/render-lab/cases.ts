@@ -154,9 +154,9 @@ function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
       // 影の境界。**環面へ浅い角度で恒星が差す姿勢**(恒星の仰角 17°)で本体へ寄り、本体表面に落ちる
       // 環の影(カッシーニの間隙が明るい帯として出て、その縁は半影ぶんぼける)と、環が本体の影へ入る
       // 境界(天体の半影ぶんぼける)を同じ絵の中で読む。
-      'saturn-shadow': {},
+      'saturn-shadow': { view: {} },
       // 遠景。**環だけが本体より桁で明るくないか**を見る。本体は画面上 60 px ほどで、半影は読めない。
-      'saturn': SATURN_FAR_VIEW,
+      'saturn': { view: SATURN_FAR_VIEW },
     },
   };
 }
