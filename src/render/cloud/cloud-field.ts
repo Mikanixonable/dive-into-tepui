@@ -2,12 +2,13 @@
 // 出入りをどちらも CloudSample で受け渡す。テクスチャの G は雲頂高度を CLOUD_TOP_SPAN で
 // 正規化した値、CloudSample の cloudTop はメートルである。
 import * as THREE from 'three/webgpu';
-import { BakedField } from './baked-field';
+import { BakedField } from '../baked-field';
+import { GPU_PASS } from '../gpu-timings';
 import { condense } from './condensation';
 import { cloudFieldTexelFromSample, cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { FieldProjection } from './field-projection';
+import type { FieldProjection } from '../field-projection';
 import type { WeatherModel } from './weather-model';
 import type { Vec3Node } from '../tsl-types';
 
@@ -19,7 +20,7 @@ export class CloudField {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, (direction) => {
       const cloud = condense(model.weatherAt(direction));
       return cloudFieldTexelFromSample(cloud);
-    });
+    }, GPU_PASS.cloudBake);
   }
 
   // いまの時刻の雲を写しへ描く。at() で読む前に必ず一度呼ぶ。
