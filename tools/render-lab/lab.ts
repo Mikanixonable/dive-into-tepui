@@ -71,7 +71,8 @@ export const MIN_SUN_DISTANCE_LOG_AU = -2;
 export const MAX_SUN_DISTANCE_LOG_AU = 2;
 
 // 撮影がケースの ready を待つ上限 [ms]。超えたらそのまま撮り、撮影そのものは落とさない。
-const READY_TIMEOUT_MS = 10_000;
+// **重いケースの最初のフレームは、シェーダを組むあいだ 10 秒を超えて止まる**ので、上限は広く取る。
+const READY_TIMEOUT_MS = 60_000;
 
 // 観察の向き。角度は度、sunDistanceLogAu は恒星までの距離(天文単位)の常用対数、
 // cameraDistanceLog はケース既定の距離に対する倍率の常用対数、cameraZoomLog はケース既定の

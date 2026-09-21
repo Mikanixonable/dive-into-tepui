@@ -937,9 +937,8 @@ const LEO_METAL_CENTER = new THREE.Vector3(0, -600, -9000);
 const LEO_METAL_TERMINATOR_SUN_DIR = new THREE.Vector3(1, 0.2, 0).normalize();
 
 // 低軌道の金属球: 実写テクスチャの地球で画面を埋め、手前の金属球(粗さ 0.05・金属度 1)へ
-// 天体照がどう映るかを読む。**映り込みと、その隣に写る地表そのものを1枚の中で見比べる構図。**
-// **背景は地表だけに揃える** — 天体照が焼くのは地表のアルベドなので、見比べる相手もそこへ合わせる。
-// 大気と雲の殻は、どちらも高度 420km の直下視では地表を覆い隠す。直下点も陸へ置く。
+// 天体照がどう映るかを読む。**映り込みと、その隣に写る地球そのものを1枚の中で見比べる構図。**
+// 見比べる相手は実機に写る地球なので、大気と雲も実機と同じく組む。直下点は地表の色が読める陸へ置く。
 function leoMetal(style: RenderStyle, sunDirection: THREE.Vector3): LabCase {
   const center = new THREE.Vector3(0, 0, -LEO_CENTER_DISTANCE);
   const earthSphere = earthAt(center, style, spinForSubCameraPoint(center, SAHARA_DIRECTION));
@@ -956,6 +955,7 @@ function leoMetal(style: RenderStyle, sunDirection: THREE.Vector3): LabCase {
     camera: labCamera(6e7),
     sunDirection,
     viewTarget: LEO_METAL_CENTER,
+    atmospheres: [earthSphere.atmosphere],
     planetLights: [{
       center,
       radius: R_EARTH,
@@ -964,7 +964,10 @@ function leoMetal(style: RenderStyle, sunDirection: THREE.Vector3): LabCase {
       bodyFromWorld: earthSphere.bodyFromWorld,
     }],
     shadowBodies: [earthSphere.shadowBody],
+    cumulus: earthSphere.cumulus,
     ready: earthSphere.ready,
+    applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
