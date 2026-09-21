@@ -10,7 +10,9 @@ import { R_SUN, SUN, SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from '../../src/game/c
 import { createStarSphere } from '../../src/render/celestial/star-sphere';
 import { surfaceRadianceOf } from '../../src/render/celestial/celestial-entity/star-celestial-view';
 import { farClip } from '../../src/render/camera/camera-view';
-import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
+import {
+  MAX_PLANET_LIGHT_SLOTS, planetRadiance, type PlanetLightValue,
+} from '../../src/render/pipeline/lighting/planet-light-source';
 import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
@@ -18,8 +20,10 @@ import { atmosphereDraws, withAirglowEnabled, type AtmosphereBody } from '../../
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
+import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CASES, type CaseName } from './cases';
 import { sunDiameterPx, type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
+import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
@@ -61,7 +65,7 @@ const PLANET_LIGHT_STAR_DIRECTIONS = Array.from(
   { length: MAX_PLANET_LIGHT_SLOTS }, () => new THREE.Vector3(),
 );
 
-// 自転姿勢を持たないケースの天体が使う、天体固定の向きへの行列。
+// ケースが置く天体照の光源(自転姿勢を持たない一様な球)が使う、天体固定の向きへの行列。
 const IDENTITY_BODY_FROM_WORLD = new THREE.Matrix4();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
@@ -76,7 +80,7 @@ export const MAX_CAMERA_ZOOM_LOG = 2;
 export const MIN_SUN_DISTANCE_LOG_AU = -2;
 export const MAX_SUN_DISTANCE_LOG_AU = 2;
 
-// 撮影がケースの ready を待つ上限 [ms]。超えたらそのまま撮り、撮影そのものは落とさない。
+// 撮影がケースの部品と地球の揃いを待つ上限 [ms]。超えたらそのまま撮り、撮影そのものは落とさない。
 // **重いケースの最初のフレームは、シェーダを組むあいだ 10 秒を超えて止まる**ので、上限は広く取る。
 const READY_TIMEOUT_MS = 60_000;
 
@@ -106,6 +110,7 @@ export class LabView {
   private defaultAngles: LabViewAngles = {
     sunAzimuthDeg: 0, sunElevationDeg: 0, sunDistanceLogAu: 0,
     cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraDistanceLog: 0, cameraZoomLog: 0,
+    earthAzimuthDeg: 0, earthElevationDeg: 0, earthAltitudeLog: 0, earthLatitudeDeg: 0, earthLongitudeDeg: 0,
   };
   private angles: LabViewAngles = this.defaultAngles;
   private readonly scratchBox = new THREE.Box3();
@@ -118,6 +123,9 @@ export class LabView {
   private readonly star = createStarSphere(
     SUN_SURFACE_COLOR, surfaceRadianceOf(scaledRadiantIntensity(SUN.radiantIntensity), R_SUN),
   );
+  // 地球。実写の画像と雲場をケースの切り替えのたびに読み直さないよう 1 つだけ組み、地球を置く
+  // ケースのあいだだけシーンへ出して、観察のつまみの置き方へ描くたびに置き直す。
+  private readonly earth = new LabEarth();
 
   // 起動時の描画品質設定。撮影はこれへ差分を重ねる。
   private readonly startupGraphics: GraphicsSettingsData;
@@ -177,16 +185,23 @@ export class LabView {
   private build(name: CaseName): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
-      this.current.disposeClouds?.();
       disposeCaseObjects(this.current);
     }
     const built = CASES[name](this.style, this.ringMaterials);
-    this.scene.add(...built.objects);
+    // **1 つずつ足す** — 地球のほかに物体を持たないケースで空の引数を渡すと、three.js がエラーを出す。
+    for (const object of built.objects) this.scene.add(object);
     this.current = built;
     this.currentName = name;
-    // **カメラの既定を引く前に一度押し込む** — 環はここで姿勢が決まるので、押し込む前に
+    // 地球はケースが置き方を宣言したときだけ出し、まずその既定の置き方へ置く。
+    if (built.earth !== undefined) {
+      this.scene.add(this.earth.object);
+      this.earth.place(built.earth);
+    } else {
+      this.scene.remove(this.earth.object);
+    }
+    // **カメラの既定を引く前に一度同期する** — 環はここで姿勢が決まるので、同期する前に
     // 物体を包む箱を測ると注視点が原点へ寄る。
-    built.applyGraphics?.(this.graphics.current);
+    built.sync?.(this.graphics.current, built.earth === undefined ? null : this.earth.center);
   }
 
   // 描画品質設定の新しい値をパイプラインへ配り、その場で描き直す。
@@ -204,6 +219,9 @@ export class LabView {
 
   // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
   public get viewAngles(): LabViewAngles { return this.angles; }
+
+  // いまのケースが地球を置くか。置かないケースでは、観察の向きの地球のつまみは絵に効かない。
+  public get showsEarth(): boolean { return this.current?.earth !== undefined; }
 
   // 現在のカメラ距離 [m]。cameraDistanceLog は倍率の対数なので、実寸はここから読む。
   public get cameraDistance(): number { return this.defaultCameraDistance * 10 ** this.angles.cameraDistanceLog; }
@@ -243,10 +261,12 @@ export class LabView {
     this.defaultCameraDistance = Math.max(depth, camera.near);
     this.defaultCameraFovDeg = camera.fov;
     this.pivot.copy(camera.position).addScaledVector(this.forward, this.defaultCameraDistance);
-    // 恒星とカメラの向きを角度へ直す。
+    // 恒星とカメラの向きを角度へ直す。地球を置かないケースでは、地球のつまみを前のケースの値のまま保つ。
     const sun = anglesFromDirection(built.sunDirection ?? SUN_DIR);
     const eye = anglesFromDirection(this.scratchVector.copy(this.forward).negate());
     this.defaultAngles = {
+      ...this.angles,
+      ...built.earth,
       sunAzimuthDeg: sun.azimuthDeg,
       sunElevationDeg: sun.elevationDeg,
       sunDistanceLogAu: 0,
@@ -283,31 +303,6 @@ export class LabView {
     SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
     const sunIntensity = scaledRadiantIntensity(SUN.radiantIntensity);
     this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, sunIntensity);
-    // 天体照。ケースが置いた光源をスロット本数まで書く。放射照度は恒星のつまみの距離に追随する。
-    this.pipeline.planetLight.set(
-      (this.current.planetLights ?? []).slice(0, MAX_PLANET_LIGHT_SLOTS).map((light, slot) => {
-        const sunIrradiance = irradianceAtDistance(sunIntensity, SUN_POSITION.distanceTo(light.center));
-        const map = light.lightSourceMap?.() ?? null;
-        const starDirection = PLANET_LIGHT_STAR_DIRECTIONS[slot]!
-          .subVectors(SUN_POSITION, light.center).normalize();
-        return {
-          center: light.center,
-          radius: light.radius,
-          radiance: planetRadiance(light.albedo, sunIrradiance),
-          appearance: {
-            map: map?.texture ?? null,
-            // 写しを持たないケースでは読まれないので、色をそのまま通す倍率を置く。
-            albedoScale: map?.albedoScale ?? 1,
-            albedo: light.albedo,
-            sunIrradiance,
-            starDirection,
-            bodyFromWorld: light.bodyFromWorld ?? IDENTITY_BODY_FROM_WORLD,
-            atmosphere: light.atmosphere === undefined
-              ? null
-              : withAirglowSetting(light.atmosphere, graphics.airglow),
-          },
-        };
-      }));
     // 順応の基準点は描画原点。**恒星の距離のつまみはここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
     this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, sunIntensity);
@@ -321,8 +316,12 @@ export class LabView {
     camera.fov = this.cameraFovDeg;
     camera.far = farClip(this.cameraDistance);
     camera.updateProjectionMatrix();
-    // ケースの部品が読む設定は、このフレームのカメラを置いてから押し込む — 部品はそのカメラを読んでよい。
-    this.current.applyGraphics?.(graphics);
+    // 地球とケースの部品は、このフレームのカメラを置いてから合わせる — 部品はそのカメラを読んでよい。
+    // ケースの部品は地球の中心も読むので、地球を先に置く。
+    const earth = this.current.earth === undefined ? null : this.earth;
+    earth?.place(this.angles);
+    earth?.sync(camera, graphics, this.style);
+    this.current.sync?.(graphics, earth?.center ?? null);
     // 恒星の見た目は、光源と同じ位置から置き直す。**片方だけ動かさない** — 明るさの根拠と
     // 光点の位置が食い違うと、ちらつきの出どころを読み違える。詳細度の設定もゲーム本体と
     // 同じように掛ける(球と点像の切り替わる距離がここだけずれない)。
@@ -330,15 +329,17 @@ export class LabView {
       SUN_POSITION, R_SUN, sunDiameterPx(sunDistance, camera.fov) * graphics.lodBias, camera.quaternion,
       this.style,
     );
-    this.pipeline.bodyShadow.set(this.current.shadowBodies ?? []);
+    // 天体照・影・雲・大気の源は、地球のぶんとケースのぶんを合わせて渡す。
+    this.pipeline.planetLight.set(
+      planetLightValues(earth, this.current.planetLights ?? [], sunIntensity, graphics.airglow));
+    this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    this.pipeline.cumulusShadow.set(
-      castsCumulusShadow(graphics) ? this.current.cumulus ?? null : null);
-    this.current.bakeClouds?.(this.renderer, displayTime, this.gpu);
+    this.pipeline.cumulusShadow.set(castsCumulusShadow(graphics) ? earth?.cumulus ?? null : null);
+    earth?.bake(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
-      (this.current.atmospheres ?? []).map((body) => {
+      [...(earth === null ? [] : [earth.atmosphere]), ...(this.current.atmospheres ?? [])].map((body) => {
         const distance = camera.position.distanceTo(body.center);
         return {
           body: withAirglowSetting(body, graphics.airglow),
@@ -427,8 +428,8 @@ export class LabView {
 
   // ケースを表示し、ケースが宣言した撮影ごとに applyShot を当てて、キャンバスへ出るのと同じ絵
   // (トーンマッピングと sRGB 変換込み)を撮る。graphics は起動時の描画品質設定と撮影の差分のあいだへ
-  // 重ねる差分。返り値は撮影名から PNG のデータ URL への表。ケースが ready を持つなら、それが真に
-  // なるまで待ってから撮る。観察の向きと描画品質設定は最後の撮影のまま残る。
+  // 重ねる差分。返り値は撮影名から PNG のデータ URL への表。ケースの部品と地球が揃うまで待ってから
+  // 撮る。観察の向きと描画品質設定は最後の撮影のまま残る。
   public async shoot(
     name: CaseName, graphics: Partial<GraphicsSettingsData> = {},
   ): Promise<Readonly<Record<string, string>>> {
@@ -450,12 +451,17 @@ export class LabView {
     return pngs;
   }
 
-  // いまのケースの ready が真になるまで、1 フレームずつ描いて待つ。上限を過ぎたらそのまま戻る。
+  // いまのケースの部品と、地球を置くなら地球が揃い、絵として比べられる状態になったか。
+  private get ready(): boolean {
+    const built = this.current;
+    if (built === null) return true;
+    return (built.ready?.() ?? true) && (built.earth === undefined || this.earth.ready);
+  }
+
+  // ready が真になるまで、1 フレームずつ描いて待つ。上限を過ぎたらそのまま戻る。
   private async waitUntilReady(): Promise<void> {
-    const ready = this.current?.ready;
-    if (ready === undefined) return;
     const deadline = performance.now() + READY_TIMEOUT_MS;
-    while (!ready() && performance.now() < deadline) {
+    while (!this.ready && performance.now() < deadline) {
       // **描かずに待っても進まない** — テクスチャの GPU 投入は 1 回の描画につき 1 枚しか進まない。
       this.render();
       // **次を描く前に前のフレームの GPU 完了を待つ** — 待たずに回すと重いケースで命令が溜まり、
@@ -480,9 +486,46 @@ export class LabView {
 }
 
 // 大気 body を、描画設定の大気光の有無 airglow へ合わせた写し。**雲は写した時点で固定せず、読む
-// たびに body から引く** — 雲の有無は、ケースの部品が描画設定を押し込むたびに置き直される。
+// たびに body から引く** — 雲の有無は、地球が描画設定を押し込むたびに置き直される。
 function withAirglowSetting(body: AtmosphereBody, airglow: boolean): AtmosphereBody {
   return { ...body, optics: withAirglowEnabled(body.optics, airglow), get clouds() { return body.clouds; } };
+}
+
+// 天体照の光源の値。地球 earth(置かないケースでは null)を先に、ケースが置いた一様な球 spheres を
+// 後に並べ、スロット本数まで返す。放射照度は恒星の位置 SUN_POSITION と放射強度 sunIntensity から、
+// 大気は描画設定の大気光の有無 airglow へ合わせて渡す。
+function planetLightValues(
+  earth: LabEarth | null, spheres: NonNullable<LabCase['planetLights']>, sunIntensity: number, airglow: boolean,
+): PlanetLightValue[] {
+  const lights = [
+    ...(earth === null ? [] : [{
+      center: earth.center,
+      radius: R_EARTH,
+      albedo: EARTH_LIGHT_ALBEDO,
+      map: earth.lightSourceMap,
+      bodyFromWorld: earth.bodyFromWorld,
+      atmosphere: withAirglowSetting(earth.atmosphere, airglow),
+    }]),
+    ...spheres.map((sphere) => ({ ...sphere, map: null, bodyFromWorld: IDENTITY_BODY_FROM_WORLD, atmosphere: null })),
+  ];
+  return lights.slice(0, MAX_PLANET_LIGHT_SLOTS).map((light, slot) => {
+    const sunIrradiance = irradianceAtDistance(sunIntensity, SUN_POSITION.distanceTo(light.center));
+    return {
+      center: light.center,
+      radius: light.radius,
+      radiance: planetRadiance(light.albedo, sunIrradiance),
+      appearance: {
+        map: light.map?.texture ?? null,
+        // 写しを持たない光源では読まれないので、色をそのまま通す倍率を置く。
+        albedoScale: light.map?.albedoScale ?? 1,
+        albedo: light.albedo,
+        sunIrradiance,
+        starDirection: PLANET_LIGHT_STAR_DIRECTIONS[slot]!.subVectors(SUN_POSITION, light.center).normalize(),
+        bodyFromWorld: light.bodyFromWorld,
+        atmosphere: light.atmosphere,
+      },
+    };
+  });
 }
 
 // ケースが握る資源を解放する。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を
