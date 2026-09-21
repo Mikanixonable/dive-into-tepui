@@ -232,6 +232,8 @@ export class RenderPipeline {
 
     this.quad = new QuadMesh(this.compositeMaterials.off);
     this.syncTargetSize();
+    // 構築で渡さなかった値も含めて、構築時点の設定をすべてのパスへ配る。
+    this.rebuildForGraphics(graphics);
   }
 
   // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
@@ -319,7 +321,7 @@ export class RenderPipeline {
     this.debugTarget = target;
   }
 
-  // 描画品質設定を各パスへ配り、影マップ等の GPU 資源を再構築する（設定変更時のみ実行）。
+  // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
