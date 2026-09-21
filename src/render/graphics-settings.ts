@@ -4,7 +4,8 @@
 // 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
-import { CLOUD_FIELD_SOURCE_KIND, CUMULUS_DETAIL } from './cloud/cloud-presentation';
+import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
+import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
