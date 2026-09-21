@@ -7,6 +7,7 @@ import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { Albedo } from '../../celestial-albedo';
+import type { PlanetLightAppearance } from './planet-light-image';
 import type { ColorUniform, FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 import type { ShadingSample } from './shading-sample';
@@ -26,6 +27,8 @@ export interface PlanetLightValue {
   readonly center: THREE.Vector3;
   readonly radius: number;
   readonly radiance: Albedo;
+  // 写しへ焼くのに要る見た目。写しから描けない天体では null。
+  readonly appearance: PlanetLightAppearance | null;
 }
 
 // 一様球としての放射輝度(色つき)。albedo は輝度がボンドアルベドに一致する線形 RGB、
@@ -123,6 +126,10 @@ export class PlanetLightSource {
     () => ({ center: uniform(new THREE.Vector3()), radius: uniform(0), radiance: uniform(new THREE.Color(0, 0, 0)) }),
   );
   private readonly slotSources: readonly PlanetLightSlot[];
+  // スロットごとの、このフレームに写しへ焼く見た目。消灯しているスロットは null。
+  private readonly slotAppearances: (PlanetLightAppearance | null)[] = Array.from(
+    { length: MAX_PLANET_LIGHT_SLOTS }, () => null,
+  );
 
   // sunLight は満ち欠けを測る恒星、count は同時に使うスロットの本数(描画設定
   // planetLightCount の値をそのまま受ける)。
@@ -143,6 +150,7 @@ export class PlanetLightSource {
     for (const [i, slot] of this.slots.entries()) {
       const light = used[i];
       slot.radius.value = light === undefined ? 0 : light.radius;
+      this.slotAppearances[i] = light?.appearance ?? null;
       if (light === undefined) continue;
       slot.center.value.copy(light.center);
       slot.radiance.value.setRGB(light.radiance[0], light.radiance[1], light.radiance[2]);
