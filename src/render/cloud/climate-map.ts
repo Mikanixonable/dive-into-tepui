@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { smoothstep, texture, vec2 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
-import { equirectUvFromDirection } from './field-projection';
+import { equirectUvFromDirection } from '../field-projection';
 import { eastAt, northAt } from './sphere-frame';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
