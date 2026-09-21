@@ -47,7 +47,7 @@ export function epochUnixSeconds(epoch: TdbJulianDate): number {
 }
 
 // UTC 絶対時刻を ISO 8601 (例: "2026-08-08T14:16:00") で表記する。toISOString() の
-// 拡張年表記(4桁を超える年に符号を前置する形式)は遠未来の年代と噛み合わないので使わず、
+// 拡張年表記(4桁を超える年に符号を前置する形式)は遠未来の年代表記と整合しないため使わず、
 // 各成分を直接取り出して組む。
 export function fmtDateTime(unixSec: number): string {
   if (!isFinite(unixSec)) return '-------------------';

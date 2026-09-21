@@ -20,7 +20,7 @@ export class PackEphemeris {
   readonly payloadSha256: string | undefined;
 
   // **decoded は保持しない。** 係数は評価器が payload へのビューとして持ち、ここで要るのは
-  // manifest のごく一部だけ — 抱えたままにすると manifestJson(2.2 MB)と 10054 個の series
+  // manifest のごく一部だけ — 参照を保持し続けると manifestJson(2.2 MB)と 10054 個の series
   // オブジェクトが pack と同じ寿命で残る。
   constructor(decoded: DecodedPack, epoch: TdbJulianDate) {
     this.evaluator = new ChebyshevEphemeris(

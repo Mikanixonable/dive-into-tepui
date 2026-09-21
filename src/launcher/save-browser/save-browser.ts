@@ -218,7 +218,7 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // スロットを丸ごと複製し、成功したら複製先を表示対象にする。
+  // スロット全体を複製し、成功したら複製先を表示対象にする。
   private handleDuplicateSlot(id: string): void {
     const slot = this.slots.slots.find((s) => s.id === id);
     if (!slot) return;
