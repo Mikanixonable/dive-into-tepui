@@ -124,7 +124,7 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 - **熱い物体の自照も同じ目盛りに乗る。** 太陽面(5772 K の黒体)の輝度がこの目盛りで 46244
   になるので、赤熱の表示値はそこからの比で決まる(§2-4)。
 - **較正は `render-lab` で読む** — `albedo` ケース(アルベド 1 の白球を 1 天文単位、天体照なし)
-  の最も明るい画素が sRGB (240, 229, 210)、`saturn` ケースで環と本体の比が 0.2。
+  の最も明るい画素が sRGB (240, 229, 210)、`saturn` ケースの遠景(撮影 `saturn`)で環と本体の比が 0.2。
 
 ### 1-6. 露出
 
@@ -137,7 +137,8 @@ material / renderOrder / LOD / 色 / 影の可否を決めるのは禁止。**
 - **1 天文単位より内側では 1 で止まる。** 較正(表示値 = アルベド)はそこで不変のままで、
   太陽へ寄っても係数が発散しない — ゼロ除算も上限クランプも構造的に要らない。
 - **完全順応ではないので、遠いほど暗いことは画面に残る。** アルベド 0.3 の面の最も明るい画素は
-  1 / 5.2 / 9.6 / 30 天文単位で sRGB 139 / 100 / 83 / 59(`render-lab` の `outer-*` ケース)。
+  1 / 5.2 / 9.6 / 30 天文単位で sRGB 139 / 100 / 83 / 59(`render-lab` の `outer` ケースを恒星の
+  距離のつまみで読む。撮影は `outer-5au` / `outer-30au`)。
 - **基準点はカメラの注視点**(`activeViewpoint.lookTarget`)であって、カメラ位置ではない —
   マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
   天体照の光源選定(§1-5)も同じ基準点から引く。
@@ -455,13 +456,15 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
 
 ## 3. 確かめる器
 
-- **`render-lab`**(`npm run render-lab` / `render-lab:shot`)。960×540 固定、near=2、球は半径 =
-  距離/10。ケースは `tools/render-lab/cases.ts` の表で、**増やすのは表への追記だけ。**
-  較正ケースは `albedo` / `saturn`、描画順は `order`、深度は `depth-1e4`〜`depth-1e11`、
-  1px を切った光点は `sun-1au` / `sun-5au` / `sun-30au`、光源モデルは `sun-close` /
-  `metal-highlight` / `earthshine` / `crescent`、雲は `earth`(水平線)/ `earth-oblique`(斜視 —
-  積雲の塔と影)/ `earth-polar`(北極を真上から — 場の巻きと mip)/ `earth-terminator`(昼夜境界 —
-  長い影)/ `earth-polar-terminator`(高緯度を横切る昼夜境界 — 楕円体の遮蔽)。**雲の場を写す
+- **`render-lab`**(`npm run render-lab` / `render-lab:shot`)。960×540 固定、near=2。ケースは
+  `tools/render-lab/cases.ts` の表で、**1 ケースが物体の配置 1 つ**。カメラ違い・光源違いは
+  ケースを足さず、ケースの撮影の向き(`shots`)として足す — PNG は撮影名で出る。
+  較正は `albedo`(撮影 `albedo` / `eclipse`)/ `saturn`、描画順は `order`、
+  1px を切った光点は `outer` の撮影 `sun-1au` / `sun-5au` / `sun-30au`、光源モデルは `outer` の
+  撮影 `sun-close`・`leo-metal` の撮影 `metal-highlight`・`leo` の撮影 `earthshine`・`crescent`、
+  雲は `earth`(水平線)/ `earth-oblique`(斜視 — 積雲の塔と影)/ `earth-polar`(北極を真上から —
+  場の巻きと mip)/ `earth` の撮影 `earth-terminator`(昼夜境界 — 長い影)/ `earth-polar` の撮影
+  `earth-polar-terminator`(高緯度を横切る昼夜境界 — 楕円体の遮蔽)。**雲の場を写す
   ケースは `render-lab:shot` では単色になる**(テクスチャの読み込みを待たない)— 目視は対話の
   `render-lab` で、描画設定はゲーム本体と同じパネルを側柱に載せてある。**天体照の光源はケースが `planetLights`
   (中心・半径・色つきアルベド)で直に置く** — game 側の選定(順位付け・食)は通らないので、
@@ -570,7 +573,7 @@ instanceMatrix の受け渡し経路を `count` から決め、最初の描画�
 - **ライティングパスの `shadingUV`(`lighting/shading-sample.ts`)の根拠が失われている。**
   虚空の画素の uv を十字の隣の面へ寄せる処理で、根拠はマルチサンプルされた被覆との辻褄合わせ
   だった。マルチサンプルは廃止済みで、虚空の画素の照度はマテリアルパスが捨てるので効かない
-  はずだが、**外すと 1 画素幅の構造の陰影が動く**(`render-lab` の 32/35 ケース、画素の 0.1%
+  はずだが、**外すと 1 画素幅の構造の陰影が動く**(`render-lab` のほぼ全ケース、画素の 0.1%
   未満、最大 67/255)。面が写っている画素では候補列の先頭が必ず通るので恒等写像のはずで、
   そうならない理由が付いていない。コードに TODO を置いてある。
 - **`depthTest: false` が 2 箇所残っている**(`stars.ts` / `plan-gizmo-3d.ts`)。規約内へ回収したい。
