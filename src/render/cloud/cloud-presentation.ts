@@ -12,8 +12,11 @@ import type { CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
 
-// aim() による初回更新までのキャップ初期向き。
+// aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
+
+const tmpToObserver = new THREE.Vector3();
+const tmpInverseSpin = new THREE.Quaternion();
 
 // 雲データの供給源種別。generated は気候モデルから時々刻々生成する動的場、observed は衛星画像に基づく静止場。
 // キー名は保存済み描画設定と対応するため変更しない。
@@ -88,10 +91,24 @@ export class CloudPresentation {
     this.surface.bind(this.renderInput);
   }
 
+  // cap を、描画座標の観測点 observer から見た直下点へ置き直す。center・spin・axes は殻を持つ天体の
+  // 中心・自転姿勢・半軸(どれも描画座標)。**殻の空間で測る** — 天体固定のまま取ると、扁平のぶん
+  // (地球で最大 0.19 度)中心が読み手の空間と食い違う。
+  public aimFrom(
+    observer: THREE.Vector3, center: THREE.Vector3, spin: THREE.Quaternion, axes: THREE.Vector3,
+  ): void {
+    const toObserver = tmpToObserver.subVectors(observer, center)
+      .applyQuaternion(tmpInverseSpin.copy(spin).invert())
+      .divide(axes);
+    const rho = toObserver.length();
+    if (!(rho > 0)) return;
+    this.aim(toObserver.divideScalar(rho), rho);
+  }
+
   // cap を、天体固定・半軸で割った殻の空間で見た直下点 subpoint(単位方向)へ置き直す。
-  // rho は同じ空間で測ったカメラの中心距離(地表が 1)。置き直した結果は不透明表面のサンプリングへ
+  // rho は同じ空間で測った観測点の中心距離(地表が 1)。置き直した結果は不透明表面のサンプリングへ
   // 即座に反映する — 反映しないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
-  public aim(subpoint: THREE.Vector3, rho: number): void {
+  private aim(subpoint: THREE.Vector3, rho: number): void {
     this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
     this.surface.bind(this.renderInput);
   }
