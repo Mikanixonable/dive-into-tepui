@@ -381,7 +381,7 @@ export class AtmosphereIntegrator {
       max(densestRadius.mul(densestRadius).sub(this.slot.surfaceRadius.mul(this.slot.surfaceRadius)), 0),
     );
     // **分母には符号を保ったまま床を張る** — 視線が恒星方向と直交すると 0 になる。そのとき解は
-    // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま弾く。**視線は正規化せずに写す** —
+    // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま除外する。**視線は正規化せずに写す** —
     // 引き伸ばした長さが実寸 1 m あたりの進みなので、商がそのまま実寸の距離になる。
     const alongSun = dot(ray.unitDir, sunDir).mul(ray.unitsPerMeter);
     const towardSun = select(greaterThan(alongSun, 0), float(1), float(-1));

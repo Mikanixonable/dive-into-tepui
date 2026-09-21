@@ -6,7 +6,7 @@ import { SIM_SPEED_LEVELS } from '../../dynamic/sim-speed-manager';
 
 const SYNC_INTERVAL_MS = 100;
 
-// トップバーが1フレームに映す値と、時間加速セレクトが返す操作の口。
+// トップバーが1フレームに表示する値と、時間加速セレクトが通知する操作ハンドラ。
 export interface TopBarViewModel {
   // ランの元期の unix 秒。simTime を足すと表示用の日時になる。
   readonly epochUnixSec: number;

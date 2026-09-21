@@ -181,7 +181,7 @@ export class GpuTimings {
       .finally(() => { this.resolving = false; });
   }
 
-  // 直近の resolve() が届くまで待つ。非同期の結果を決まった時点で読みたい計測用の口。
+  // 直近の resolve() が完了するまで待機する。非同期の結果を特定のタイミングで取得したい計測用のインターフェース。
   public async waitForResolve(): Promise<void> {
     await this.resolvePromise;
   }
