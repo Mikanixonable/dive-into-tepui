@@ -172,6 +172,26 @@ function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Ob
 // 寄り切ったときの見かけ直径 [px] として天体へ渡す値。分割段ラダーの最上段が選ばれる。
 const CLOSE_UP_DIAMETER_PX = 6e4;
 
+// THREE.PlaneGeometry の面が向くローカルの向き。
+const PLATE_LOCAL_NORMAL = new THREE.Vector3(0, 0, 1);
+
+// 一辺 size [m] の白い正方形の板を、中心 center(描画座標)・法線 normal・粗さ roughness・
+// 金属度 metalness で置く。
+function whitePlate(
+  size: number, center: THREE.Vector3, normal: THREE.Vector3, roughness: number, metalness: number,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(size, size),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness, metalness }),
+  );
+  mesh.position.copy(center);
+  mesh.quaternion.setFromUnitVectors(PLATE_LOCAL_NORMAL, normal);
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  markLitOpaque(mesh);
+  return mesh;
+}
+
 // 実写テクスチャを貼った天体を、定義 def の扁平のまま中心 center(描画座標)へ置く。極は描画座標の
 // +Y。apparentDiameterPx は分割段を選ぶ見かけ直径で、寄れるケースでは寄り切った大きさを渡す。
 // axes は半軸 [m]、ready は地表の画像がすべて GPU へ届いたか。
@@ -445,20 +465,11 @@ function leo(style: RenderStyle): LabCase {
   const u = toShip.clone().normalize();
   const v = AHEAD.clone().projectOnPlane(u).normalize();
   const orbitStyle: LineStyle = { color: 0x6fd3ff, opacity: 0.9, renderOrder: LINE_RENDER_ORDER.shipOrbit };
-  const plate = new THREE.Mesh(
-    new THREE.PlaneGeometry(LEO_PLATE_SIZE, LEO_PLATE_SIZE),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 }),
-  );
-  plate.position.copy(LEO_PLATE_CENTER);
-  plate.quaternion.setFromUnitVectors(PLATE_LOCAL_NORMAL, LEO_PLATE_NORMAL);
-  plate.userData.ownsGeometry = true;
-  plate.userData.ownsMaterial = true;
-  markLitOpaque(plate);
   return {
     objects: [
       earthSphere.object,
       shipAt(LEO_SHIP_POSITION, SHIP_ROTATION_PORT),
-      plate,
+      whitePlate(LEO_PLATE_SIZE, LEO_PLATE_CENTER, LEO_PLATE_NORMAL, 1, 0),
       circle(center, toShip.length(), u, v, orbitStyle, camera),
     ],
     camera,
@@ -708,9 +719,13 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   };
 }
 
-// 斜視ケースのカメラ高度 [m] と、地平線を視線から下げる角 [rad]。負なので地平線は視線の上へ
-// 来る — 画面中央の地表を入射角およそ 45° で見下ろす向き。
-const EARTH_OBLIQUE_ALTITUDE = 420e3;
+// 低軌道の高度 [m] と、その高度から見た地球の中心距離 [m]。視半径が 69.7° あるので、地球を真正面へ
+// 置くと画面を埋める。
+const LEO_ALTITUDE = 420e3;
+const LEO_CENTER_DISTANCE = R_EARTH + LEO_ALTITUDE;
+
+// 斜視ケースの、地平線を視線から下げる角 [rad]。負なので地平線は視線の上へ来る — 画面中央の地表を
+// 入射角およそ 45° で見下ろす向き。
 const EARTH_OBLIQUE_MARGIN = -0.49;
 
 // 高度 altitude [m] のカメラ(原点)から見て、地球の地平線が視線から margin [rad] だけ下へ来る
@@ -722,7 +737,7 @@ function earthCenterBelowHorizon(altitude: number, margin: number): THREE.Vector
 }
 
 // 地球のケースの地球の中心(描画座標)。
-const EARTH_CENTER = earthCenterBelowHorizon(420e3, 0);
+const EARTH_CENTER = earthCenterBelowHorizon(LEO_ALTITUDE, 0);
 // 昼夜境界の撮影の恒星の向き。視線の先の地平線上。
 const EARTH_TERMINATOR_SUN = sunAnglesOf(AHEAD.clone().projectOnPlane(EARTH_CENTER.clone().negate().normalize()));
 // 日食の撮影の恒星の向き。食を起こす球はこの向きへ置くので、既定の向き(SUN_DIR)の撮影では影の軸が
@@ -773,7 +788,7 @@ function earth(style: RenderStyle): LabCase {
 // 斜視の地球: 低軌道の高度から、視線を地平線より下げて地表を斜めに見下ろす。**積雲の塔を
 // 真上からでも真横からでもなく見る向き**なので、雲頂の起伏と塔の側面はここで読む。
 function earthOblique(style: RenderStyle): LabCase {
-  const center = earthCenterBelowHorizon(EARTH_OBLIQUE_ALTITUDE, EARTH_OBLIQUE_MARGIN);
+  const center = earthCenterBelowHorizon(LEO_ALTITUDE, EARTH_OBLIQUE_MARGIN);
   const earthSphere = earthAt(center, style);
   return {
     objects: [earthSphere.object],
@@ -856,9 +871,6 @@ function earthMars(style: RenderStyle): LabCase {
   };
 }
 
-// 低軌道(高度 420km)の地球の中心距離 [m]。視半径が 69.7° あるので、真正面へ置くと画面を埋める。
-const LEO_CENTER_DISTANCE = 6.791e6;
-
 // 緯度・経度 [deg] から天体固定の向きへ。正距円筒テクスチャの取り決め(経度 0 が +Z、東が +X、
 // 北極が +Y)と同じ。
 function bodyDirection(latitudeDeg: number, longitudeDeg: number): THREE.Vector3 {
@@ -919,8 +931,6 @@ function leoMetal(style: RenderStyle): LabCase {
   };
 }
 
-// THREE.PlaneGeometry の面が向くローカルの向き。
-const PLATE_LOCAL_NORMAL = new THREE.Vector3(0, 0, 1);
 
 // 遠い天体照のケースの地球: 月軌道相当の視半径になる中心(描画座標)。**カメラの後方左に置く**
 // ので画面には写らない — 板の法線を地球へ向けると板はカメラ側を向くので、両立しない。
@@ -942,16 +952,7 @@ function planetshinePlate(center: THREE.Vector3, roughness: number, metalness: n
   // 拡散の板も地球への余弦を残したまま、恒星とは N·L < 0 になる。
   const toEarth = PLANETSHINE_EARTH_CENTER.clone().sub(center).normalize();
   const toCamera = center.clone().negate().normalize();
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(PLANETSHINE_PLATE_SIZE, PLANETSHINE_PLATE_SIZE),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness, metalness }),
-  );
-  mesh.position.copy(center);
-  mesh.quaternion.setFromUnitVectors(PLATE_LOCAL_NORMAL, toEarth.add(toCamera).normalize());
-  mesh.userData.ownsGeometry = true;
-  mesh.userData.ownsMaterial = true;
-  markLitOpaque(mesh);
-  return mesh;
+  return whitePlate(PLANETSHINE_PLATE_SIZE, center, toEarth.add(toCamera).normalize(), roughness, metalness);
 }
 
 // 遠い天体照: 月軌道相当の距離に置いた地球だけが照らす板を2枚並べ、**板に出る明るさを天体照だけで
