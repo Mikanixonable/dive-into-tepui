@@ -27,8 +27,8 @@ export type ShadowCaster = {
   // 決める** — 外接箱の最近点は、細長い部材を持つ艦では実体の無い空間を指す。
   readonly anchor: THREE.Vector3;
   readonly anchorDistance: number;
-  // 個体が箱いっぱいに散らばる枝(薬莢・破片のプール)か。**実体が箱のどこにあるか名指しできない
-  // ので、箱より小さい窓を置いても当たらない** — この枝には窓を作らない。
+  // 個体が箱いっぱいに散らばる枝(薬莢・破片のプール)か。**実体の位置を一意に特定できない
+  // ため、箱より小さい窓を置いても当たらない** — この枝には窓を作らない。
   readonly diffuse: boolean;
   // 箱の外接球の半径 [m]。柱の判定と要求精度をこれで測る。
   readonly radius: number;
@@ -146,7 +146,7 @@ export class ShadowCasters {
   }
 
   // メッシュ 1 本ぶんの実体の在りかを、枝の代表点の候補として取得する。個体が散らばる
-  // InstancedMesh は、名指しできる 1 点を持たない枝として branchDiffuse を立てる。
+  // InstancedMesh は、代表となる単一の点を特定できない枝として branchDiffuse を有効にする。
   private takeMeshAnchor(mesh: THREE.Mesh): void {
     const instanced = mesh as THREE.InstancedMesh;
     if (instanced.isInstancedMesh) {

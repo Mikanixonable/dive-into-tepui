@@ -286,7 +286,7 @@ export class Curve {
   // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数、camera と
   // viewportHeight [CSS px] は画面上の目標を実距離へ換算するための現在の描画カメラと描画先の
   // 高さ。initialSegments は適応分割を始める区間数 — 適応分割は弦の中点しか見ないので、1区間に
-  // 何周ぶんも入る曲線では中点がたまたま曲線上に乗り、区間まるごとが直線に化ける。「1区間が
+  // 何周分も入る曲線では中点が偶然曲線上に乗り、区間全体が誤って直線と判定されてしまう。「1区間が
   // 曲線の半周を超えない」下限を渡してそれを防ぐ。colorAt は線の中で色が変わるときだけ渡す。
   public setAnalyticCurve(
     sample: CurveSampler, camera: THREE.Camera, viewportHeight: number,

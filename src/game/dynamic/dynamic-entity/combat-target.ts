@@ -1,4 +1,4 @@
-// 戦闘の対象になれる個体(自艦・敵艦・基地)が答えるもの。
+// 戦闘の対象になれる個体(自艦・敵艦・基地)が提供する共通インターフェース。
 import type { Vec3 } from '../../../math/vec3';
 import type { ViewMode } from '../../view/view-mode';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
@@ -24,14 +24,14 @@ export function isCombatTarget(entity: DynamicEntity): entity is CombatTarget {
   return entity.combatTarget;
 }
 
-// id で名指しされた戦闘対象。生死は問わない。見つからなければ null。
+// 指定された ID の戦闘対象。生死は問わない。見つからなければ null。
 export function combatTargetById(
   entities: readonly DynamicEntity[], id: string,
 ): CombatTarget | null {
   return entities.find((e): e is CombatTarget => e.id === id && e.combatTarget) ?? null;
 }
 
-// id で名指しされた、生存中の戦闘対象。見つからないか死んでいれば null。
+// 指定された ID の、生存中の戦闘対象。見つからないか死んでいれば null。
 export function aliveCombatTarget(
   entities: readonly DynamicEntity[], id: string,
 ): CombatTarget | null {

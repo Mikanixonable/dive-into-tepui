@@ -511,7 +511,7 @@ export class GamePresentation {
     this.devices.scene.pipeline.render(this.devices.scene.scene, this.cameraFrame.camera, style);
   }
 
-  // 表示の導出が答える計測値。
+  // 表示生成処理から得られる計測値。
   public perfCounts(): Pick<PerfCounts, 'planArcs' | 'mapMode' | 'mapItems' | 'mapLabels' | 'displayDurationSec'> {
     return {
       ...this.planDisplay.perfCounts(),

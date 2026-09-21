@@ -172,7 +172,7 @@ export class HudPanelPresenter {
     const power = motion?.power ?? null;
     const radiator = motion?.radiator ?? null;
     const fire = controlled.fire ?? null;
-    // 積んでいない装備は null で答える。
+    // 搭載していない装備は null を返す。
     return {
       rcsDamp: controlled.throttle.rcsDamp,
       throttleIdx: controlled.throttle.throttleIdx,

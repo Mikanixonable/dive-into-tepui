@@ -24,7 +24,7 @@ export type ReferenceFrame = {
   readonly rotatingWith: FrameRotationSource | null;
 };
 
-// 参照フレームの基準・回転対象を、特定の対象を名指しせず役割で指すためのもの。予約 id では
+// 参照フレームの基準・回転対象を、特定の対象を直接指定せずロール（役割）で参照するためのもの。予約 id では
 // '@' を頭に付ける — 天体・機体の id は小文字 ASCII と '-'/':' だけで組まれる。
 export type FrameRole = 'controlled' | 'navTarget';
 

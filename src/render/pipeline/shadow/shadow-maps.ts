@@ -101,7 +101,7 @@ export class ShadowMaps {
   // 枠の 1 辺 [m]。相乗りの可否をこれで測る — **枠はこの大きさのまま平行移動するだけ。**
   private readonly clusterSizes: number[] = [];
   // 枠の半径の上限 [m]。**被覆の枠は箱ぜんたいを覆う必要があるので上限を持たない**(Infinity)。
-  // 細かい窓だけが、要求から決まる半径でここを縛る。
+  // 詳細な領域のみ、要求から決まる半径でこの上限を制限する。
   private readonly clusterCaps: number[] = [];
   private readonly scratchBox = new THREE.Box3();
   private readonly scratchCorner = new THREE.Vector3();
@@ -403,7 +403,7 @@ export class ShadowMaps {
   }
 
   // 箱を 1 枚へ収める枠の 1 辺 [m]。**世界軸ではなく対角で測る** — 計画の段では光の向きが
-  // 枠ごとに決まっていないので、どう回っても収まる側へ倒す。
+  // 枠ごとに決まっていないので、任意の回転で収まる安全側の値（外接球）を採用する。
   private frameSize(box: THREE.Box3): number {
     box.getSize(this.size);
     return this.size.length();
@@ -424,7 +424,7 @@ export class ShadowMaps {
     const radius = this.size.length() * 0.5;
     const eyeDistance = radius * 2;
     this.lightCamera.position.copy(this.center).addScaledVector(this.lightDirection, eyeDistance);
-    // 視線と平行な up は姿勢を決められないので、光の向きが縦に近いときだけ up を倒す。
+    // 視線と平行な up は姿勢を決められないので、光の向きが縦に近いときだけ up ベクトルを傾ける（切り替える）。
     this.lightCamera.up.set(
       Math.abs(this.lightDirection.y) < 0.9 ? 0 : 1,
       Math.abs(this.lightDirection.y) < 0.9 ? 1 : 0,

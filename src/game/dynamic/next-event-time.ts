@@ -1,5 +1,5 @@
 // サブステップを区切るべき次の絶対時刻。ステージ側(マニューバの点火・燃焼終了)と個体側
-// (弾の寿命など)の締切のうち、最も早いものを答える。
+// (弾の寿命など)の締切のうち、最も早いものを算出・返却する。
 import type { DynamicSimulationRoster } from './dynamic-simulation-participant';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 

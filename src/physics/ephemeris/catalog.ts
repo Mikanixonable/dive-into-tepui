@@ -41,7 +41,7 @@ async function readWithProgress(response: Response, onProgress?: (ratio: number)
 // onProgress は fetch の受信バイト量から算出した 0..1 の比率を渡す。Content-Length が
 // 得られない応答では呼ばない(偽の途中経過を出さないため)。
 // epoch はこのランの元期(simTime=0)。プロファイルの選択と要求期間の検査は絶対時刻
-// (JD_TDB)で行い、読み込んだ pack は元期起点の simTime で答えるようになる。
+// (JD_TDB)で行い、読み込んだ pack は元期起点の simTime で位置・速度を評価する。
 export async function loadEphemerisPoints(
   profileId: EphemerisProfileId,
   epoch: TdbJulianDate,

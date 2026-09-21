@@ -76,7 +76,7 @@ interface RaySegment {
   readonly far: FloatNode;
   // 区間のうち大気が最も濃い距離。地表で終わる視線では区間の奥、掠める視線では最接近点。
   readonly densest: FloatNode;
-  // 視線が大気に掛かるか。掛からない画素では素通しへ倒す。
+  // 視線が大気に掛かるか。掛からない画素では透過（素通し）として処理する。
   readonly hitsAtmosphere: BoolNode;
 }
 

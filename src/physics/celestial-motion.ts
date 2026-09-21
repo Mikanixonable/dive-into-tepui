@@ -1,5 +1,5 @@
 // 天体1体の運動。解析暦・数値暦のどちらでも太陽系重心中心の位置・速度・加速度を合成し、
-// 自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。答えるのは自分1体ぶんの値。
+// 自転姿勢・2次重力場・大気・公転回転基準系を時刻から算出・提供する。対象は自身1体分の値。
 // 数値暦が惑星系の重心しか収録していない系では、惑星本体と衛星はそこから重心オフセットを介して
 // 組む。恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
 import { Atmosphere } from './atmosphere';
@@ -67,12 +67,12 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
 
   private readonly eciCache = new TimeRing<EciValues>();
 
-  // 自分の暦を結ぶ。結ぶまでの間と、null を結んだ後は、解析暦が位置を答える。
+  // 自身の暦を関連付ける。関連付けるまでの間や null を設定した後は、解析暦が位置を算出する。
   bindEphemeris(ephemeris: PointEphemeris | null): void {
     this.bodyEphemeris = ephemeris;
   }
 
-  // ECI 化の変換器を結ぶ。結ぶまでは ECI の値を答えられない。
+  // ECI 化の変換器を結ぶ。結ぶまでは ECI の値を算出できない。
   bindEciTransform(transform: EciTransform): void {
     this.eciTransform = transform;
   }
@@ -83,7 +83,7 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
     return extrapolatedState(this.eciAt(pivot), t);
   }
 
-  // 同じ外挿で位置だけを答える。毎ステップ全エンティティぶん走る経路なので、位置だけで足りる
+  // 同等の外挿で位置のみを算出する。毎ステップ全エンティティ分走る経路なので、位置だけで足りる
   // ところではこちらを使う(stateAt より割り当てが 1 つ少ない)。
   positionAt(pivot: number, t: number = pivot): Vec3 {
     return extrapolatedPosition(this.eciAt(pivot), t);
@@ -104,10 +104,10 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
     return this.def.id;
   }
 
-  // 解析暦が答える太陽系重心中心の位置・速度。
+  // 解析暦が算出する太陽系重心中心の位置・速度。
   abstract analyticStateAt(t: number): KinematicState<'analytic'>;
 
-  // 解析暦が答える主星中心の位置・速度。**解析経路の ECI 化はこちらどうしの差で組む。**
+  // 解析暦が算出する主星中心の位置・速度。**解析経路の ECI 化はこちらどうしの差で組む。**
   abstract analyticStarRelStateAt(t: number): KinematicState<'starRel'>;
 
   // 解析暦が算出する加速度。用途は基準時刻 pivot から各積分ステージの時刻へ位置を外挿する2次項
@@ -172,7 +172,7 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
     return boundBaryStateAt(this.bodyEphemeris, t);
   }
 
-  // 数値暦が答えるこの天体の重心中心位置・速度。答えられなければ null。
+  // 数値暦が算出するこの天体の重心中心位置・速度。取得できなければ null。
   numericStateAt(t: number): KinematicState<'numeric'> | null {
     return this.ownNumericStateAt(t);
   }
@@ -365,7 +365,7 @@ export abstract class OrbitingMotion extends CelestialMotion implements Orbiting
   }
 
   // 自分の軌道要素が乗っている点を暦が直接収録している範囲での状態。既定は自分自身で、
-  // 惑星は系の重心を答える(惑星の要素は本体ではなく系の重心の軌道なので)。
+  // 惑星は系の重心位置・速度を返す(惑星の軌道要素は本体ではなく系の重心の軌道であるため)。
   protected orbitPointNumericStateAt(t: number): KinematicState<'numeric'> | null {
     return this.ownNumericStateAt(t);
   }
@@ -494,7 +494,7 @@ export class SatelliteMotion extends OrbitingMotion {
     );
   }
 
-  // 未収録の衛星は、数値暦が答える惑星本体へ惑星相対モデルを足して補う。
+  // 未収録の衛星は、数値暦から得られる惑星本体の位置へ惑星相対モデルを加算して補う。
   override numericStateAt(t: number): KinematicState<'numeric'> | null {
     const own = this.ownNumericStateAt(t);
     if (own !== null) return own;

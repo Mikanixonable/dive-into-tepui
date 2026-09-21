@@ -209,7 +209,7 @@ function evaluateSegment(segment: ChebyshevSegment, time: number): { position: V
   };
 }
 
-// 天体 id と時刻から位置・速度を答える評価器。**入力の係数配列はコピーせずそのまま参照する**
+// 天体 id と時刻から位置・速度を算出する評価器。**入力の係数配列はコピーせずそのまま参照する**
 // (4.3 MB の pack で複製が 13 MB を占めるため)。所有権は渡した側から移り、以後書き換えては
 // ならない。構築時に全セグメントを検査するので、壊れた pack はここで例外になる。
 export class ChebyshevEphemeris {

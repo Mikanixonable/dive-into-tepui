@@ -21,14 +21,14 @@ export interface DisplayedPath {
   readonly samples: readonly (readonly KinematicState[])[];
 }
 
-// ある個体について、いま画面に折れ線が出ているかを答える口。null は折れ線が出ていない
+// ある個体について、いま画面に折れ線が出ているかを判定するインターフェース。null は折れ線が出ていない
 // ことを意味し、その個体には解析軌道楕円が出ている。
 interface DisplayedPathSource {
   displayedPathOf(ownerId: string): DisplayedPath | null;
 }
 
 // 赤道交点の算出に必要な、そのフレームの材料。個体によって変わらないものだけを持ち、
-// 個体ごとの違いは paths が答える。
+// 個体ごとの差異は paths が提供する。
 export interface EquatorNodeInputs {
   readonly displayTime: number;
   readonly celestialBodies: CelestialBodies;

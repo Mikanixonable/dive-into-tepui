@@ -1,4 +1,4 @@
-// 自機が浴びている空力荷重。動圧と、それが構造限界を超えたか・空力加熱が効く流れの中にいるかを答える。
+// 自機が受ける空力荷重。動圧、およびそれが構造限界を超えたか・空力加熱が有効な領域にいるかを算出・判定する。
 import { airflow } from '../../physics/atmosphere';
 import { type Vec3, sub } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
