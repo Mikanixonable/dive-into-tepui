@@ -5,8 +5,10 @@ import { createAnnulusRing, type RingMaterials } from '../../src/render/celestia
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import { ringShadowBands } from '../../src/render/pipeline/shadow/ring-shadow';
+import { randSym } from '../../src/math/random';
 import {
-  GREY_SPHERE_ALBEDO, labCamera, OBLIQUE_SUN_DIR, shipAt, sphere, type CaseBuilder, type LabCase,
+  detachPoolMesh, GREY_SPHERE_ALBEDO, labCamera, OBLIQUE_SUN_DIR, SHIP_ROTATION_PORT, shipAt, sphere,
+  type CaseBuilder, type LabCase,
 } from './lab-case';
 import type { RingBandDef } from '../../src/physics/celestial-body-def';
 import type { RenderStyle } from '../../src/render/render-style';
@@ -40,8 +42,8 @@ function ringDisc(
   return group;
 }
 
-// SHIP_ROTATION_PORT を左右に映した姿勢。
-const SHIP_ROTATION_STARBOARD = new THREE.Euler(-0.5, -0.6, -0.12);
+// 機軸の片端と側面の両方が見える姿勢を、左右に映したもの。
+const SHIP_ROTATION_STARBOARD = new THREE.Euler(SHIP_ROTATION_PORT.x, -SHIP_ROTATION_PORT.y, -SHIP_ROTATION_PORT.z);
 // 操縦席側の端を右上の手前へ向けた姿勢。OBLIQUE_SUN_DIR のもとで、操縦席まわりの放熱器と
 // 太陽電池の影が、見えている船体の面へ落ちる。
 const SHIP_ROTATION_SELF_SHADOW = new THREE.Euler(1.85, -0.93, 1.0);
@@ -72,20 +74,15 @@ function debrisPool(center: THREE.Vector3, count: number): THREE.Object3D {
   pool.beginFrame();
   for (let i = 0; i < count; i++) {
     piece.position.set(
-      center.x + (random() * 2 - 1) * DEBRIS_SPREAD,
-      center.y + (random() * 2 - 1) * DEBRIS_SPREAD,
-      center.z + (random() * 2 - 1) * DEBRIS_SPREAD,
+      center.x + randSym(DEBRIS_SPREAD, random),
+      center.y + randSym(DEBRIS_SPREAD, random),
+      center.z + randSym(DEBRIS_SPREAD, random),
     );
     piece.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
     pool.push(piece);
   }
   pool.endFrame();
-  // 積んだ InstancedMesh を仮の親から外し、ケースの物体として返す。
-  const mesh = host.children[0]!;
-  host.remove(mesh);
-  mesh.userData.ownsGeometry = true;
-  mesh.userData.ownsMaterial = true;
-  return mesh;
+  return detachPoolMesh(host);
 }
 
 // 自機のケースで影を受ける艦の位置(描画座標)。艦の全体が画面に収まり、近い端が near 面より

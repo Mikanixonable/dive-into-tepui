@@ -3,12 +3,11 @@
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
-import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/game/protein/protein-motion-metrics';
+import {
+  ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
+} from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
-import { irradianceAtDistance, scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
-import { R_SUN, SUN, SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
-import { createStarSphere } from '../../src/render/celestial/star-sphere';
-import { surfaceRadianceOf } from '../../src/render/celestial/celestial-entity/star-celestial-view';
+import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { farClip } from '../../src/render/camera/camera-view';
 import { planetRadiance, type PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
@@ -16,12 +15,14 @@ import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pi
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws, withAirglowEnabled, type AtmosphereBody } from '../../src/render/atmosphere';
 import { RingMaterials } from '../../src/render/celestial/ring';
+import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
-import { AU } from '../../src/physics/astronomical-unit';
+import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CASES, type CaseName } from './cases';
-import { sunDiameterPx, type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
+import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
+import { LabSun } from './lab-sun';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
@@ -29,21 +30,13 @@ import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
 
-// 所要時間 [ms] の分布。
-export interface LabDistribution {
-  readonly avg: number;
-  readonly p50: number;
-  readonly p95: number;
-  readonly max: number;
-}
-
-// 1 ケースの計測結果。gpuPassMs はパスのラベルごと。
+// 1 ケースの計測結果。所要時間は [ms] の分布で、gpuPassMs はパスのラベルごと。
 export interface LabMeasurement {
   readonly caseName: CaseName;
   readonly frames: number;
-  readonly cpuRenderMs: LabDistribution;
+  readonly cpuRenderMs: SampleDistribution;
   readonly gpuSupported: boolean;
-  readonly gpuPassMs: Readonly<Record<string, LabDistribution>>;
+  readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
 }
@@ -51,11 +44,7 @@ export interface LabMeasurement {
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
-// 恒星を置く位置(描画座標)。向きも距離も観察のつまみが正本で、毎フレーム書き込む。
-const SUN_POSITION = new THREE.Vector3();
-
-// 恒星方向とカメラ位置を毎フレーム組み立てる書き込み先。
-const SUN_DIRECTION = new THREE.Vector3();
+// カメラ位置を毎フレーム組み立てる書き込み先。
 const CAMERA_OFFSET = new THREE.Vector3();
 
 // 地球の天体照へ渡す恒星の向きの置き場。毎フレーム書き換えて使い回す。
@@ -63,15 +52,6 @@ const EARTH_STAR_DIRECTION = new THREE.Vector3();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
-
-// カメラのズーム(画角を狭める倍率)の常用対数の上限。0 がケース既定の画角。
-export const MAX_CAMERA_ZOOM_LOG = 2;
-
-// 恒星までの距離(天文単位)の常用対数の下限・上限。**対数で持つ** — 見かけ径が 1px を切る
-// あたりの変化を読みたいので、AU を直に刻むと近距離側が粗すぎて追えない。下限の 0.01 AU は
-// 太陽が画角(50°)いっぱいに広がる距離、上限の 100 AU は海王星軌道の外側。
-export const MIN_SUN_DISTANCE_LOG_AU = -2;
-export const MAX_SUN_DISTANCE_LOG_AU = 2;
 
 // 撮影がケースの部品と地球の揃いを待つ上限 [ms]。超えたらそのまま撮り、撮影そのものは落とさない。
 // **重いケースの最初のフレームは、シェーダを組むあいだ 10 秒を超えて止まる**ので、上限は広く取る。
@@ -94,6 +74,7 @@ export class LabView {
   private currentName: CaseName | null = null;
   // 画面全体の見せ方。起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
+  // 直前の render がパイプラインの描画に費やした CPU 時間 [ms]。
   private lastRenderCpuMs = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
@@ -109,16 +90,10 @@ export class LabView {
     earthAzimuthDeg: 0, earthElevationDeg: 0, earthAltitudeLog: 0, earthLatitudeDeg: 0, earthLongitudeDeg: 0,
   };
   private angles: LabViewAngles = this.defaultAngles;
-  private readonly scratchBox = new THREE.Box3();
-  private readonly caseCenterVector = new THREE.Vector3();
-  private readonly scratchVector = new THREE.Vector3();
-  private readonly forward = new THREE.Vector3();
   // 全ケースの環の帯が共有するマテリアル。
   private readonly ringMaterials: RingMaterials;
-  // 恒星の見た目。ケースによらず、光源の恒星と同じ位置・半径へ描くたびに置き直す。
-  private readonly star = createStarSphere(
-    SUN_SURFACE_COLOR, surfaceRadianceOf(scaledRadiantIntensity(SUN.radiantIntensity), R_SUN),
-  );
+  // 恒星。ケースによらず、観察のつまみの置き方へ描くたびに置き直す。
+  private readonly sun = new LabSun();
   // 地球。実写の画像と雲場をケースの切り替えのたびに読み直さないよう 1 つだけ組み、地球を置く
   // ケースのあいだだけシーンへ出して、観察のつまみの置き方へ描くたびに置き直す。
   private readonly earth = new LabEarth();
@@ -137,9 +112,9 @@ export class LabView {
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
     this.ringMaterials = new RingMaterials(pipeline.bodyShadow, pipeline.sunLight);
-    this.star.addTo(this.scene);
+    this.sun.addTo(this.scene);
     this.startupGraphics = graphics.current;
-    graphics.subscribe((next) => this.applyGraphics(next));
+    graphics.subscribe((next) => this.rebuildForGraphics(next));
   }
 
   // graphics は描く描画品質設定の器。この時点の値を起動時の設定として控え、以後はその変更を受けて
@@ -181,7 +156,8 @@ export class LabView {
   private build(name: CaseName): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
-      disposeCaseObjects(this.current);
+      this.current.disposeProteinMotion?.();
+      for (const root of this.current.objects) disposeOwnedRenderResources(root);
     }
     const built = CASES[name](this.style, this.ringMaterials);
     // **1 つずつ足す** — 地球のほかに物体を持たないケースで空の引数を渡すと、three.js がエラーを出す。
@@ -200,8 +176,8 @@ export class LabView {
     built.sync?.(this.graphics.current, built.earth === undefined ? null : this.earth.center);
   }
 
-  // 描画品質設定の新しい値をパイプラインへ配り、その場で描き直す。
-  private applyGraphics(graphics: GraphicsSettingsData): void {
+  // 描画品質設定 graphics でパイプラインを組み直し、その場で描き直す。
+  private rebuildForGraphics(graphics: GraphicsSettingsData): void {
     this.pipeline.ambient.setFraction(ambientFraction(graphics));
     this.pipeline.rebuildForGraphics(graphics);
     this.render();
@@ -228,9 +204,6 @@ export class LabView {
     return THREE.MathUtils.radToDeg(2 * Math.atan(halfTangent / 10 ** this.angles.cameraZoomLog));
   }
 
-  // 現在の恒星までの距離 [m]。sunDistanceLogAu は天文単位の対数なので、実寸はここから読む。
-  public get sunDistance(): number { return AU * 10 ** this.angles.sunDistanceLogAu; }
-
   // 観察の向きを部分的に差し替え、その場で描き直す。仰角は姿勢が決まる範囲へ丸める。
   public setViewAngles(changes: Partial<LabViewAngles>): void {
     const merged = { ...this.angles, ...changes };
@@ -251,15 +224,15 @@ export class LabView {
     // から使う** — 視線から外れた点を注視させると、向きへ触れていないのに絵が回る。
     const camera = built.camera;
     camera.updateMatrixWorld(true);
-    camera.getWorldDirection(this.forward);
-    const pivot = built.viewTarget ?? this.caseCenter(built);
-    const depth = this.forward.dot(this.scratchVector.subVectors(pivot, camera.position));
+    const forward = camera.getWorldDirection(new THREE.Vector3());
+    const pivot = built.viewTarget ?? boundsCenterOf(built.objects) ?? camera.position.clone().add(forward);
+    const depth = forward.dot(new THREE.Vector3().subVectors(pivot, camera.position));
     this.defaultCameraDistance = Math.max(depth, camera.near);
     this.defaultCameraFovDeg = camera.fov;
-    this.pivot.copy(camera.position).addScaledVector(this.forward, this.defaultCameraDistance);
+    this.pivot.copy(camera.position).addScaledVector(forward, this.defaultCameraDistance);
     // 恒星とカメラの向きを角度へ直す。地球を置かないケースでは、地球のつまみを前のケースの値のまま保つ。
     const sun = anglesFromDirection(built.sunDirection ?? SUN_DIR);
-    const eye = anglesFromDirection(this.scratchVector.copy(this.forward).negate());
+    const eye = anglesFromDirection(forward.clone().negate());
     this.defaultAngles = {
       ...this.angles,
       ...built.earth,
@@ -274,59 +247,33 @@ export class LabView {
     this.angles = this.defaultAngles;
   }
 
-  // ケースの物体をすべて包む箱の中心。箱が空ならカメラの視線上の点を返すので、先に forward を
-  // 引いておくこと。
-  private caseCenter(built: LabCase): THREE.Vector3 {
-    this.scratchBox.makeEmpty();
-    for (const root of built.objects) {
-      root.updateWorldMatrix(true, true);
-      this.scratchBox.expandByObject(root);
-    }
-    if (this.scratchBox.isEmpty()) {
-      return this.caseCenterVector.copy(built.camera.position).addScaledVector(this.forward, 1);
-    }
-    return this.scratchBox.getCenter(this.caseCenterVector);
-  }
-
   // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
   public render(displayTime = 0): void {
     if (this.current === null) return;
     const graphics = this.graphics.current;
-    const sunDirection = directionFromAngles(
-      this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
-    );
-    const sunDistance = this.sunDistance;
-    SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
-    const sunIntensity = scaledRadiantIntensity(SUN.radiantIntensity);
-    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, sunIntensity);
-    // 順応の基準点は描画原点。**恒星の距離のつまみはここから恒星までの距離**なので、
-    // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
-    this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, sunIntensity);
+    // カメラを観察の向きへ置く。画角と遠クリップ距離の書き換えは、投影行列を組み直すまで無言で効かない。
+    // 遠クリップ距離は、周回の中心までの距離を注視距離としてゲーム本体と同じ式で引く。
     const camera = this.current.camera;
     directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
     camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);
     camera.lookAt(this.pivot);
     camera.updateMatrixWorld(true);
-    // 画角と遠クリップ距離の書き換えは、投影行列を組み直すまで無言で効かない。遠クリップ距離は、
-    // 周回の中心までの距離を注視距離としてゲーム本体と同じ式で引く。
     camera.fov = this.cameraFovDeg;
     camera.far = farClip(this.cameraDistance);
     camera.updateProjectionMatrix();
-    // 地球とケースの部品は、このフレームのカメラを置いてから合わせる — 部品はそのカメラを読んでよい。
+    // 恒星・地球・ケースの部品は、このフレームのカメラを置いてから合わせる — 部品はそのカメラを読んでよい。
     // ケースの部品は地球の中心も読むので、地球を先に置く。
+    this.sun.sync(this.angles, camera, graphics, this.style);
     const earth = this.current.earth === undefined ? null : this.earth;
     earth?.place(this.angles);
     earth?.sync(camera, graphics, this.style);
     this.current.sync?.(graphics, earth?.center ?? null);
-    // 恒星の見た目は、光源と同じ位置から置き直す。**片方だけ動かさない** — 明るさの根拠と
-    // 光点の位置が食い違うと、ちらつきの出どころを読み違える。詳細度の設定もゲーム本体と
-    // 同じように掛ける(球と点像の切り替わる距離がここだけずれない)。
-    this.star.sync(
-      SUN_POSITION, R_SUN, sunDiameterPx(sunDistance, camera.fov) * graphics.lodBias, camera.quaternion,
-      this.style,
-    );
+    // 恒星の光と露出。順応の基準点は描画原点 — **恒星の距離のつまみはここから恒星までの距離**なので、
+    // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
+    this.pipeline.sunLight.set(this.sun.position, R_SUN, SUN_LIGHT_COLOR, this.sun.intensity);
+    this.pipeline.exposure.setReference(ORIGIN, this.sun.position, this.sun.intensity);
     // 天体照の光源は地球だけ、影・大気の源は地球のぶんとケースのぶんを合わせて渡す。
-    this.pipeline.planetLight.set(earth === null ? [] : [earthLightValue(earth, sunIntensity, graphics.airglow)]);
+    this.pipeline.planetLight.set(earth === null ? [] : [earthLightValue(earth, this.sun, graphics.airglow)]);
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
@@ -379,17 +326,17 @@ export class LabView {
       this.render(displayTime);
       cpuSamples.push(this.lastRenderCpuMs);
       await this.gpu.waitForResolve();
-      const snapshot = this.gpu.snapshot();
-      for (const [index, samples] of gpuSamples.entries()) samples.push(snapshot.elapsedMs[index] ?? 0);
+      const timings = this.gpu.snapshot();
+      for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
       motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
     }
 
     return {
       caseName: name,
       frames: sampleFrames,
-      cpuRenderMs: distribution(cpuSamples),
+      cpuRenderMs: distributionOf(cpuSamples),
       gpuSupported: this.gpu.snapshot().supported,
-      gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distribution(gpuSamples[index]!)])),
+      gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distributionOf(gpuSamples[index]!)])),
       proteinMotion: motion.summary(),
       proteinCase: this.current?.proteinMotion,
     };
@@ -409,13 +356,13 @@ export class LabView {
   public applyShot(name: string, graphics: Partial<GraphicsSettingsData> = {}): void {
     const shot = this.shots[name];
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
-    this.syncGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
+    this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
   }
 
   // 描画品質設定を next にする。**設定の器は同値でも購読者へ配り、パイプラインを組み直す**ので、
   // いまの値と 1 項目でも違うときだけ書く。
-  private syncGraphics(next: GraphicsSettingsData): void {
+  private setGraphics(next: GraphicsSettingsData): void {
     const current = this.graphics.current;
     const changed = (Object.keys(next) as GraphicsOptionKey[]).some((key) => next[key] !== current[key]);
     if (changed) this.graphics.set(next);
@@ -430,7 +377,7 @@ export class LabView {
   ): Promise<Readonly<Record<string, string>>> {
     // **ケースは起動時の値へ graphics を重ねた設定で組んで待つ** — 描画設定が有効な間にしか読み込まない
     // 部品(雲など)があり、前の撮影の設定のまま待つと、読み込み前の姿を撮る。
-    this.syncGraphics({ ...this.startupGraphics, ...graphics });
+    this.setGraphics({ ...this.startupGraphics, ...graphics });
     this.show(name);
     this.current?.updateProteinMotion?.(1);
     await this.waitUntilReady();
@@ -490,16 +437,26 @@ export class LabView {
   }
 }
 
+// 物体 objects をすべて包む箱の中心(描画座標)。箱が空なら null。
+function boundsCenterOf(objects: readonly THREE.Object3D[]): THREE.Vector3 | null {
+  const box = new THREE.Box3();
+  for (const root of objects) {
+    root.updateWorldMatrix(true, true);
+    box.expandByObject(root);
+  }
+  return box.isEmpty() ? null : box.getCenter(new THREE.Vector3());
+}
+
 // 大気 body を、描画設定の大気光の有無 airglow へ合わせた写し。**雲は写した時点で固定せず、読む
 // たびに body から引く** — 雲の有無は、地球が描画設定を押し込むたびに置き直される。
 function withAirglowSetting(body: AtmosphereBody, airglow: boolean): AtmosphereBody {
   return { ...body, optics: withAirglowEnabled(body.optics, airglow), get clouds() { return body.clouds; } };
 }
 
-// 地球 earth を天体照の光源とした値。放射照度は恒星の位置 SUN_POSITION と放射強度 sunIntensity から、
-// 大気は描画設定の大気光の有無 airglow へ合わせて渡す。
-function earthLightValue(earth: LabEarth, sunIntensity: number, airglow: boolean): PlanetLightValue {
-  const sunIrradiance = irradianceAtDistance(sunIntensity, SUN_POSITION.distanceTo(earth.center));
+// 地球 earth を、恒星 sun に照らされた天体照の光源とした値。大気は描画設定の大気光の有無 airglow へ
+// 合わせて渡す。
+function earthLightValue(earth: LabEarth, sun: LabSun, airglow: boolean): PlanetLightValue {
+  const sunIrradiance = sun.irradianceAt(earth.center);
   const map = earth.lightSourceMap;
   return {
     center: earth.center,
@@ -511,47 +468,9 @@ function earthLightValue(earth: LabEarth, sunIntensity: number, airglow: boolean
       albedoScale: map?.albedoScale ?? 1,
       albedo: EARTH_LIGHT_ALBEDO,
       sunIrradiance,
-      starDirection: EARTH_STAR_DIRECTION.subVectors(SUN_POSITION, earth.center).normalize(),
+      starDirection: EARTH_STAR_DIRECTION.subVectors(sun.position, earth.center).normalize(),
       bodyFromWorld: earth.bodyFromWorld,
       atmosphere: withAirglowSetting(earth.atmosphere, airglow),
     },
-  };
-}
-
-// ケースが握る資源を解放する。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を
-// 立てた物体のものを捨てる。
-function disposeCaseObjects(built: LabCase): void {
-  built.disposeProteinMotion?.();
-  // 所有を立てていない資源は残す — 球の単位ジオメトリは LOD 段ごとに全利用元で共有されていて、
-  // 捨てると次のケースが壊れる。
-  for (const root of built.objects) {
-    root.traverse((object) => {
-      const mesh = object as THREE.Mesh;
-      if (!object.userData.ownsGeometry && !object.userData.ownsMaterial) return;
-      if (object.userData.ownsGeometry && 'geometry' in mesh && mesh.geometry) mesh.geometry.dispose();
-      if (!object.userData.ownsMaterial || !('material' in mesh)) return;
-      const material = mesh.material as THREE.Material | THREE.Material[];
-      if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
-      else material.dispose();
-    });
-  }
-}
-
-// 昇順に並んだ sorted の、割合 ratio(0..1)の位置にある値。空なら 0。
-function percentile(sorted: readonly number[], ratio: number): number {
-  if (sorted.length === 0) return 0;
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
-  return sorted[index] ?? 0;
-}
-
-// 標本の平均・中央値・95 パーセンタイル・最大。空なら全部 0。
-function distribution(values: readonly number[]): LabDistribution {
-  if (values.length === 0) return { avg: 0, p50: 0, p95: 0, max: 0 };
-  const sorted = [...values].sort((a, b) => a - b);
-  return {
-    avg: values.reduce((sum, value) => sum + value, 0) / values.length,
-    p50: percentile(sorted, 0.5),
-    p95: percentile(sorted, 0.95),
-    max: sorted[sorted.length - 1] ?? 0,
   };
 }
