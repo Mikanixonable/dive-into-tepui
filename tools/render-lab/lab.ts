@@ -62,6 +62,9 @@ export const MAX_CAMERA_ZOOM_LOG = 2;
 export const MIN_SUN_DISTANCE_LOG_AU = -2;
 export const MAX_SUN_DISTANCE_LOG_AU = 2;
 
+// 撮影がケースの ready を待つ上限 [ms]。超えたらそのまま撮り、撮影そのものは落とさない。
+const READY_TIMEOUT_MS = 10_000;
+
 // 観察の向き。角度は度、sunDistanceLogAu は恒星までの距離(天文単位)の常用対数、
 // cameraDistanceLog はケース既定の距離に対する倍率の常用対数、cameraZoomLog はケース既定の
 // 画角を狭める倍率の常用対数。
@@ -380,11 +383,27 @@ export class LabView {
   }
 
   // ケースを表示し、キャンバスへ出るのと同じ絵(トーンマッピングと sRGB 変換込み)を PNG の
-  // データ URL で返す。
+  // データ URL で返す。ケースが ready を持つなら、それが真になるまで待ってから撮る。
   public async shoot(name: CaseName): Promise<string> {
     this.show(name);
     this.current?.updateProteinMotion?.(1);
+    await this.waitUntilReady();
     return this.capture();
+  }
+
+  // いまのケースの ready が真になるまで、1 フレームずつ描いて待つ。**描かずに待っても進まない**
+  // — テクスチャの GPU 投入は 1 回の描画につき 1 枚しか進まない。**次を描く前に前のフレームの
+  // GPU 完了を待つ** — 待たずに回すと重いケースで命令が溜まり、デバイスごと落ちる。
+  // 上限を過ぎたらそのまま戻る。
+  private async waitUntilReady(): Promise<void> {
+    const ready = this.current?.ready;
+    if (ready === undefined) return;
+    const deadline = performance.now() + READY_TIMEOUT_MS;
+    while (!ready() && performance.now() < deadline) {
+      this.render();
+      await this.gpu.waitForResolve();
+      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
+    }
   }
 
   // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。

@@ -38,6 +38,13 @@ export interface SurfacePhotometry {
   readonly lightSourceAlbedo: Albedo;
 }
 
+// 全球の正距円筒テクスチャと、その色へ掛けてボンドアルベドへ合わせる倍率。天体を光源として
+// 焼くときに、面ごとの色をここから引く。
+export interface LightSourceMap {
+  readonly texture: THREE.Texture;
+  readonly albedoScale: number;
+}
+
 export type CelestialSurfaceStatus = 'loading' | 'ready' | 'error' | 'fallback';
 
 // 表面の読み込み状態の診断値。
@@ -101,6 +108,8 @@ export function createCelestialSurfaceFrame(
 // 天体表面の表示が満たす面。
 export interface CelestialSurfaceLike {
   readonly photometry: SurfacePhotometry | null;
+  // テクスチャの画像が届くまでと、テクスチャを持たない面では null。
+  readonly lightSourceMap: LightSourceMap | null;
   readonly textureUrl: string | null;
   readonly diagnostics: CelestialSurfaceDiagnostics | null;
   addTo(parent: THREE.Object3D): void;
@@ -126,10 +135,15 @@ export class CelestialSurface implements CelestialSurfaceLike {
   private activeAttachment: CelestialSurfaceMaterialAttachment;
 
   // material と deferred のテクスチャは解放までこの表面が持つ。photometry / textureUrl は静的事実。
+  // lightSource は光源として焼くときに読むベース色で、単色の面では null。
   private constructor(
     fallbackAttachment: CelestialSurfaceMaterialAttachment,
     public readonly photometry: SurfacePhotometry | null,
     public readonly textureUrl: string | null,
+    private readonly lightSource: {
+      readonly deferred: DeferredTexture;
+      readonly map: LightSourceMap;
+    } | null = null,
   ) {
     this.fallbackAttachment = fallbackAttachment;
     this.activeAttachment = fallbackAttachment;
@@ -150,11 +164,11 @@ export class CelestialSurface implements CelestialSurfaceLike {
   public static textured(
     texture: CelestialTexture, smoothnessUrl: string | null = null,
   ): CelestialSurface {
-    const map = new DeferredTexture(texture.url, THREE.SRGBColorSpace);
+    const baseMap = new DeferredTexture(texture.url, THREE.SRGBColorSpace);
     const smoothnessMap = smoothnessUrl === null
       ? null : new DeferredTexture(smoothnessUrl, THREE.NoColorSpace);
     const material = new THREE.MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
-    material.colorNode = textureNode(map.texture, uv()).mul(texture.albedoScale);
+    material.colorNode = textureNode(baseMap.texture, uv()).mul(texture.albedoScale);
     // **粗さではなく滑らかさで持つ** — 画像が届くまでテクスチャは 0 を返すので、0 が拡散側へ
     // 来る向きでなければ、届くまでの数フレームだけ地表が鏡面になる。
     if (smoothnessMap !== null) {
@@ -163,8 +177,9 @@ export class CelestialSurface implements CelestialSurfaceLike {
     return new CelestialSurface(
       {
         material,
-        deferred: smoothnessMap === null ? [map] : [map, smoothnessMap],
-      }, photometryOf(texture), texture.url);
+        deferred: smoothnessMap === null ? [baseMap] : [baseMap, smoothnessMap],
+      }, photometryOf(texture), texture.url,
+      { deferred: baseMap, map: { texture: baseMap.texture, albedoScale: texture.albedoScale } });
   }
 
   // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド。
@@ -175,6 +190,12 @@ export class CelestialSurface implements CelestialSurfaceLike {
     });
     return new CelestialSurface(
       { material, deferred: [] }, { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
+  }
+
+  // ベース色の画像が GPU へ届いてから、構築時に組んだ1つの組を返す。届く前は null。
+  public get lightSourceMap(): LightSourceMap | null {
+    return this.lightSource !== null && this.lightSource.deferred.generation > 0
+      ? this.lightSource.map : null;
   }
 
   public get diagnostics(): CelestialSurfaceDiagnostics | null { return null; }
