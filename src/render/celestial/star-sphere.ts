@@ -64,7 +64,7 @@ class StarSphereObject implements StarSphere {
     scene.add(this.mesh, this.point.mesh, this.outline.line);
   }
 
-  // 点像の明るさは、球で描いたときと同じ総光量になるよう距離から引く。
+  // style と見かけ直径で選んだ 1 つを見せ、残りを隠す。
   public sync(
     position: THREE.Vector3, radius: number, apparentDiameterPx: number,
     cameraQuaternion: THREE.Quaternion, style: RenderStyle,
