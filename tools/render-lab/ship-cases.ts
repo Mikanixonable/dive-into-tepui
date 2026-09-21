@@ -11,7 +11,7 @@ import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
-import { labCamera, shipObject, type LabCase } from './lab-case';
+import { labCamera, shipObject, type CaseBuilder, type LabCase } from './lab-case';
 
 // カタログの定義 definitionId から、識別子 id のモジュールを1つ作る。
 function module(definitionId: string, id: string) {
@@ -75,7 +75,7 @@ function separation(): LabCase {
   };
 }
 
-export const SHIP_CASES: Record<string, () => LabCase> = {
+export const SHIP_CASES = {
   'modular-ship-base': base,
   'modular-ship-separation': separation,
-};
+} as const satisfies Record<string, CaseBuilder>;
