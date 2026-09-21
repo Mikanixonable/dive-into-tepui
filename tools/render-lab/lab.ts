@@ -11,7 +11,7 @@ import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from '../../src/render/pipelin
 import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
-import { atmosphereDraws } from '../../src/render/atmosphere';
+import { atmosphereDraws, withAirglowEnabled, type AtmosphereBody } from '../../src/render/atmosphere';
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
@@ -122,8 +122,8 @@ export class LabView {
 
   // graphics は最初のフレームを描く描画品質設定。
   public static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettingsData): Promise<LabView> {
-    // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
-    // 分解能そのものが本番と別物になる。
+    // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、深度の分解能と
+    // 描画順の並べ替えが本番と別物になる。
     const renderer = new WebGPURenderer({
       canvas, trackTimestamp: true, reversedDepthBuffer: true,
     });
@@ -234,7 +234,7 @@ export class LabView {
     this.angles = {
       sunAzimuthDeg: sun.azimuthDeg,
       sunElevationDeg: sun.elevationDeg,
-      sunDistanceLogAu: Math.log10((built.sunDistance ?? AU) / AU),
+      sunDistanceLogAu: 0,
       cameraAzimuthDeg: eye.azimuthDeg,
       cameraElevationDeg: eye.elevationDeg,
       cameraDistanceLog: 0,
@@ -284,11 +284,13 @@ export class LabView {
             sunIrradiance,
             starDirection,
             bodyFromWorld: light.bodyFromWorld ?? IDENTITY_BODY_FROM_WORLD,
-            atmosphere: light.atmosphere ?? null,
+            atmosphere: light.atmosphere === undefined
+              ? null
+              : withAirglowSetting(light.atmosphere, this.graphicsData.airglow),
           },
         };
       }));
-    // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
+    // 順応の基準点は描画原点。**恒星の距離のつまみはここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
     this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, sunIntensity);
     const camera = this.current.camera;
@@ -318,7 +320,7 @@ export class LabView {
       (this.current.atmospheres ?? []).map((body) => {
         const distance = camera.position.distanceTo(body.center);
         return {
-          body,
+          body: withAirglowSetting(body, this.graphicsData.airglow),
           distance,
           metersPerPixel: metersPerPixelAtDepth(camera.fov, distance, VIEW_HEIGHT),
         };
@@ -425,6 +427,12 @@ export class LabView {
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
   }
+}
+
+// 大気 body を、描画設定の大気光の有無 airglow へ合わせた写し。**雲は写した時点で固定せず、読む
+// たびに body から引く** — 雲の有無は、ケースの部品が描画設定を押し込むたびに置き直される。
+function withAirglowSetting(body: AtmosphereBody, airglow: boolean): AtmosphereBody {
+  return { ...body, optics: withAirglowEnabled(body.optics, airglow), get clouds() { return body.clouds; } };
 }
 
 // ケースが握る資源を解放する。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を
