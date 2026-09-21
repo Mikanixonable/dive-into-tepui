@@ -140,11 +140,6 @@
       "count": 2
     }
   },
-  "src/game/celestial/solar-system/earth-system.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    }
-  },
   "src/game/celestial/solar-system/inner-planets.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
@@ -1058,16 +1053,6 @@
       "count": 2
     },
     "@typescript-eslint/parameter-properties": {
-      "count": 1
-    }
-  },
-  "src/render/celestial/celestial-entity/star-celestial-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
-  "src/render/celestial/celestial-illumination.ts": {
-    "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },
