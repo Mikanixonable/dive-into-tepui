@@ -104,7 +104,7 @@ export class Simulator {
         // eventTime との差が 1 ULP 未満に潰れたら、eventTime へ直接そろえて差を1回で消費する。
         if (eventTime !== null && eventTime > this._simTime) this._simTime = eventTime;
         // それでも進まない個体が残るなら、このフレームぶんを一括で消費して検知できる形で打ち切る。
-        // 微小量を足して逃げると、|simTime| が大きいとき ULP 未満の加算が no-op になる。
+        // 微小量を加算して回避しようとすると、|simTime| が大きいとき ULP 未満の加算が no-op になる。
         if (this.consecutiveZeroSteps > SIMULATION_STALL_MAX_ZERO_STEPS) {
           console.error(
             `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this._simTime} `
