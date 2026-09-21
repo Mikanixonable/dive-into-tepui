@@ -108,15 +108,15 @@ function ship(): LabCase {
     viewTarget: receiver,
     shots: {
       // 斜光。突起の影が船体へ落ちる。
-      'ship-selfshadow': {},
+      'ship-selfshadow': { view: {} },
       // 逆光(被写体の向こう側の低い空から)。暗い船体の縁が背景の虚空と接する 1 画素を見る。**照度は
       // 画素の中心でしか求まらない**ので、縁を跨ぐ画素の材質と照度が食い違うと、ここに輪郭が浮く。
-      'ship-backlit': { sunAzimuthDeg: 180, sunElevationDeg: 5.14 },
+      'ship-backlit': { view: { sunAzimuthDeg: 180, sunElevationDeg: 5.14 } },
       // +X から差す恒星で、2 隻目の影が受け手へ届く。本影は影を落とす断面の最も細い幅(船体の直径
       // 6.2 m)の 1/(太陽の視直径 9.3e-3 rad) = 107.5 倍、約 670 m で消えるので、3 km 先に届くのは
       // 半影だけ。濃さは +X から見た艦の断面積(約 86 m²)を、3 km 先での太陽円盤の広がり
       // π(4.65e-3 × 3000 m)² ≈ 610 m² で割った 0.14 ほどまで落ちていなければならない。
-      'ship-far-shadow': { sunAzimuthDeg: 90, sunElevationDeg: 0 },
+      'ship-far-shadow': { view: { sunAzimuthDeg: 90, sunElevationDeg: 0 } },
     },
   };
 }
