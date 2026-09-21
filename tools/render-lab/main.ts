@@ -14,7 +14,7 @@ import { applyThemeVariables } from '../../src/hud/style/theme-variables';
 import { CASE_NAMES, MAX_CAMERA_DISTANCE_LOG, sunDiameterPx, type CaseName } from './cases';
 import {
   LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM_LOG, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
-  type LabMeasurement, type LabViewAngles,
+  type LabMeasurement,
 } from './lab';
 import { AU } from '../../src/physics/astronomical-unit';
 import { parseThemePalette } from '../../src/theme';
@@ -25,6 +25,7 @@ import type { FloatUniform } from '../../src/render/tsl-types';
 import { createEarthSurfaceCaptureApi } from './earth-surface-capture';
 import type { EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
+import type { LabViewAngles } from './view-angles';
 
 // 殻の高度のつまみが届く上限 [m]。対流圏界面(極 8 km、熱帯 18 km)の上まで取る。
 const MAX_SHELL_ALTITUDE = 20e3;
@@ -42,7 +43,7 @@ declare global {
     renderLab?: {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
-      shoot: (name: CaseName) => Promise<string>;
+      shoot: (name: CaseName) => Promise<Readonly<Record<string, string>>>;
       capture: () => Promise<string>;
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
@@ -190,7 +191,7 @@ async function init(): Promise<void> {
   window.renderLab = {
     earthSurfaceCapture,
     cases: CASE_NAMES,
-    shoot: async (name) => { const png = await view.shoot(name); syncAngles(); return png; },
+    shoot: async (name) => { const pngs = await view.shoot(name); syncAngles(); return pngs; },
     capture: () => view.capture(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
