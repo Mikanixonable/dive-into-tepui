@@ -691,8 +691,8 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     },
     // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
     shadowBody: { center, axes: shellAxes.clone(), bodyFromWorld },
-    // 地表の実写テクスチャが GPU へ届いたか。届くまで地表は単色で写る。
-    ready: () => surface.lightSourceMap !== null,
+    // 地表が読む画像(ベース色と滑らかさ)がすべて GPU へ届いたか。
+    ready: () => surface.imagesReady,
     // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
     // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
@@ -908,10 +908,9 @@ const LEO_METAL_CENTER = new THREE.Vector3(0, -600, -9000);
 const LEO_METAL_TERMINATOR_SUN_DIR = new THREE.Vector3(1, 0.2, 0).normalize();
 
 // 低軌道の金属球: 実写テクスチャの地球で画面を埋め、手前の金属球(粗さ 0.05・金属度 1)へ
-// その姿が映るかを見る。**天体照をテクスチャ付きの面光源にする変更の目標そのものの構図**で、
-// 天体を一様な球として焼いているあいだは、映るものが単色の広がりになる。**背景は地表だけに
-// 揃える** — 天体照の写しが焼くのは地表のアルベドなので、映り込みと見比べる相手も地表にする。
-// 大気と雲の殻は、どちらも高度 420km の直下視では地表を覆い隠す。直下点は陸へ置く。
+// 天体照がどう映るかを読む。**映り込みと、その隣に写る地表そのものを1枚の中で見比べる構図。**
+// **背景は地表だけに揃える** — 天体照が焼くのは地表のアルベドなので、見比べる相手もそこへ合わせる。
+// 大気と雲の殻は、どちらも高度 420km の直下視では地表を覆い隠す。直下点も陸へ置く。
 function leoMetal(style: RenderStyle, sunDirection: THREE.Vector3): LabCase {
   const center = new THREE.Vector3(0, 0, -LEO_CENTER_DISTANCE);
   const earthSphere = earthAt(center, style, spinForSubCameraPoint(center, SAHARA_DIRECTION));
