@@ -4,13 +4,14 @@
 // 一枚板として覆う空にも細胞の起伏がある。値はすべて見えのための調整値。
 import * as THREE from 'three/webgpu';
 import { clamp, vec4 } from 'three/tsl';
-import { BakedField } from './baked-field';
+import { BakedField } from '../baked-field';
+import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
 import type { Circulation } from './circulation';
-import type { FieldProjection } from './field-projection';
+import type { FieldProjection } from '../field-projection';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
 // 気団ノイズのオクターブ定義表と、その振幅。雲塊の配置(800 km)より粗い所から始めて、粒(48 km)の
@@ -48,7 +49,8 @@ export class ConvectiveActivity {
     const noise = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle);
     this.instability = new BakedField(
       'instability', THREE.RedFormat, projection,
-      (direction) => vec4(noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1));
+      (direction) => vec4(noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1),
+      GPU_PASS.cloudBake);
   }
 
   // いまの時刻の気団を写しへ焼く。at() のグラフを描く前に呼ぶ。

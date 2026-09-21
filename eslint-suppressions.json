@@ -1025,6 +1025,11 @@
       "count": 3
     }
   },
+  "src/render/baked-field.ts": {
+    "@typescript-eslint/consistent-type-imports": {
+      "count": 1
+    }
+  },
   "src/render/billboard.ts": {
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 5
@@ -1122,11 +1127,6 @@
       "count": 1
     }
   },
-  "src/render/cloud/baked-field.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/cloud/circulating-noise.ts": {
     "@typescript-eslint/consistent-type-definitions": {
       "count": 1
@@ -1138,11 +1138,6 @@
     }
   },
   "src/render/cloud/cloud-field-sample.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    }
-  },
-  "src/render/cloud/field-projection.ts": {
     "@typescript-eslint/consistent-type-definitions": {
       "count": 1
     }
@@ -1194,6 +1189,11 @@
   },
   "src/render/earth-surface-tile-queue.ts": {
     "@typescript-eslint/consistent-type-imports": {
+      "count": 1
+    }
+  },
+  "src/render/field-projection.ts": {
+    "@typescript-eslint/consistent-type-definitions": {
       "count": 1
     }
   },

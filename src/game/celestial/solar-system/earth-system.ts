@@ -19,7 +19,7 @@ import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { AnnualClimateMap } from '../../../render/cloud/climate-map';
-import { OrthographicCap, type FieldProjection } from '../../../render/cloud/field-projection';
+import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
 import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';

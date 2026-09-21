@@ -7,7 +7,7 @@ import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
 import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
 import { DeferredTexture } from '../../src/render/deferred-texture';
-import { EquirectProjection, OrthographicCap } from '../../src/render/cloud/field-projection';
+import { EquirectProjection, OrthographicCap } from '../../src/render/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CloudLabPane } from './pane';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
