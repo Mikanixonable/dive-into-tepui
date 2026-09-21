@@ -176,7 +176,7 @@ async function tryCapture() {
     if (failure) return unavailableDocument(`render-lab initialisation failed: ${failure}`, environment);
 
     // Normal/depth/paging/fallback を同じ runtime から取り出す専用 API が必要である。
-    // 既存の renderLab.shoot は別の5ケースの色PNGだけを返すため、そこから代用しない。
+    // renderLab.shoot はケースの色 PNG だけを返すため、そこから代用しない。
     const supported = await devTools.evaluate(
       "typeof window.renderLab.earthSurfaceCapture === 'function'",
     );

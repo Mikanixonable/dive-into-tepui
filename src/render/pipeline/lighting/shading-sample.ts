@@ -9,7 +9,7 @@ import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../..
 // 照度を組み立てる画素の uv。面が写っている画素はそのまま、虚空の画素は十字に隣接する面へ寄せる。
 //
 // TODO: 虚空の画素の照度は読まれないので寄せる根拠が無いが、外すと 1 画素幅の構造の陰影が動く
-// (render-lab の 32/35 ケース、画素の 0.1% 未満、最大 67/255)。面が写っている画素で恒等写像に
+// (render-lab のほぼ全ケース、画素の 0.1% 未満、最大 67/255)。面が写っている画素で恒等写像に
 // ならない理由が付くまで残す。
 function shadingUV(gbuffer: GBufferPass, uv: Vec2Node): Vec2Node {
   const texel: Vec2Node = vec2(1).div(screenSize);
