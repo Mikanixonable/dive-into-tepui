@@ -29,7 +29,7 @@ export const SUBSTEP_MAX_COUNT = 64;
 const DRAG_STEP_MAX_SPEED_LOSS = 0.5;
 // もう1つは剛性と無関係に効く。RK4 の中間段は現在の速度と加速度からの直線外挿なので、
 // 重力だけで動径方向に g·dt²/4 沈む。刻み 204.8 s ではこれが 99.6 km になり、高度 91.5 km
-// (λ·dt = 0.006 で剛性は全く問題ない)でも段が地面の下を標本して海面密度を拾う。
+// (λ·dt = 0.006 で剛性は全く問題ない)でも中間段が地表下をサンプリングして海面密度を取得してしまう。
 // DRAG_STEP_MAX_SCALE_HEIGHTS は、その沈み込みが密度を e^N 倍までしか変えないよう縛る。
 const DRAG_STEP_MAX_SCALE_HEIGHTS = 0.5;
 
