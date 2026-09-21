@@ -1,24 +1,17 @@
 // モジュール船のケース。基地へ寄港した船と建造ゴースト、分離の前後を、ゲーム本体と同じ組み立てと
-// モデルで組む。既定戦闘船のモデルも組んで返す。
+// モデルで組む。
 import * as THREE from 'three/webgpu';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
-import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
-import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
+import { createBasePreset } from '../../src/game/ship/ship-presets';
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
-import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
-import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
-import type { LabCase } from './cases';
-
-const FOV_DEG = 50;
-const VIEW_WIDTH = 960;
-const VIEW_HEIGHT = 540;
+import { FOV_DEG, shipObject, VIEW_HEIGHT, VIEW_WIDTH, type LabCase } from './lab-case';
 
 // 原点から -Z を見るカメラ。
 function camera(): THREE.PerspectiveCamera {
@@ -51,22 +44,6 @@ function dockedPreset(): ShipAssembly {
   vessel.append(module('tank-3-main', 'docked-tank'));
   vessel.append(module('docking-port-standard', 'docked-port'));
   return createBasePreset().mergedAtDock(vessel, 'dock-left', 'docked-port', 'docked').assembly;
-}
-
-// 組み立てを、ゲーム本体と同じ表示部品で1つの物体にする。原点は組み立ての重心。
-function shipObject(assembly: ShipAssembly): THREE.Object3D {
-  const shape = shipPhysicsShape(assembly);
-  if (shape === null) throw new Error('render-lab ship assembly is empty');
-  const view = new ModularShipView(buildShipModuleModel, undefined, false);
-  view.sync(shipRenderAssembly(assembly).modules, shape.centerOffset);
-  // render-lab case の破棄時に view も解放できるよう所有者を紐付ける。
-  view.object.userData.renderLabShipView = view;
-  return view.object;
-}
-
-// 既定戦闘船のモデルを 1 つの物体で返す。原点は組み立ての重心。
-export function buildDefaultShipObject(): THREE.Object3D {
-  return shipObject(createDefaultCombatPreset());
 }
 
 // 物体を (x, y, z) [m] へ置き、機軸の端と側面の両方が見える姿勢へ回して返す。

@@ -15,7 +15,8 @@ import { atmosphereDraws, withAirglowEnabled, type AtmosphereBody } from '../../
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
-import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
+import { CASES, type CaseName } from './cases';
+import { sunDiameterPx, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';

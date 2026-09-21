@@ -11,7 +11,8 @@ import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
 import { SegmentedControl, WIDGET_STYLE } from '../../src/hud/widgets';
 import { injectOnce } from '../../src/hud/inject-style';
 import { applyThemeVariables } from '../../src/hud/style/theme-variables';
-import { CASE_NAMES, MAX_CAMERA_DISTANCE_LOG, sunDiameterPx, type CaseName } from './cases';
+import { CASE_NAMES, type CaseName } from './cases';
+import { MAX_CAMERA_DISTANCE_LOG, sunDiameterPx } from './lab-case';
 import {
   LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM_LOG, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
   type LabMeasurement,
