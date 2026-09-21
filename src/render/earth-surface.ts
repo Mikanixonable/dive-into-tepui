@@ -175,6 +175,8 @@ export class EarthSurface implements CelestialSurfaceLike {
 
   public get lightSourceMap(): LightSourceMap | null { return this.fallback.lightSourceMap; }
 
+  public get imagesReady(): boolean { return this.fallback.imagesReady; }
+
   public get textureUrl(): string | null { return this.fallback.textureUrl; }
 
   public addTo(parent: THREE.Object3D): void {
