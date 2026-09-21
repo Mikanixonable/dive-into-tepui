@@ -78,7 +78,8 @@ const METAL_HIGHLIGHT_DISTANCE = 3000;
 // なので、大気と雲も実機と同じく組む。直下点は地表の色が読める陸へ置く。
 function leoMetal(style: RenderStyle): LabCase {
   const center = new THREE.Vector3(0, 0, -LEO_CENTER_DISTANCE);
-  const earthSphere = earthAt(center, style, spinForSubCameraPoint(center, SAHARA_DIRECTION));
+  const camera = labCamera(6e7);
+  const earthSphere = earthAt(center, style, camera, spinForSubCameraPoint(center, SAHARA_DIRECTION));
   const metal = new THREE.Mesh(
     new THREE.SphereGeometry(LEO_METAL_RADIUS, 128, 96),
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 1 }),
@@ -89,7 +90,7 @@ function leoMetal(style: RenderStyle): LabCase {
   markLitOpaque(metal);
   return {
     objects: [earthSphere.object, metal],
-    camera: labCamera(6e7),
+    camera,
     viewTarget: LEO_METAL_CENTER,
     shots: {
       'leo-metal': {},

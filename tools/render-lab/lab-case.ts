@@ -100,8 +100,8 @@ export interface LabCase {
   // ケースの部品が揃い、絵として比べられる状態になったか。持たせると、撮影はこれが真になるまで
   // 1 フレームずつ描いて待つ。
   readonly ready?: () => boolean;
-  // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
-  // 同値なら何もしないこと。
+  // 描画品質設定のうち、ケースの部品が読む項目を押し込み、部品をこのフレームのカメラへ合わせる口。
+  // 毎フレーム、カメラを置いたあとに呼ばれるので、同値なら何もしないこと。
   readonly applyGraphics?: (graphics: GraphicsSettingsData) => void;
   // 計測結果へ添える、タンパク質ケースの識別。
   readonly proteinMotion?: ProteinLabCaseMetadata;
