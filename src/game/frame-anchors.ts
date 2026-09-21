@@ -104,7 +104,7 @@ export class FrameAnchors implements FrameAnchorSource {
   }
 }
 
-// 基準 id・役割トークンが指す実体を、このランの顔ぶれ・操作対象・航法ターゲットから引く。
+// 基準 id・役割トークンが指す実体を、登録エンティティ一覧・操作対象・航法ターゲットから取得する。
 export class AnchorEntities implements AnchorTargets {
   public constructor(
     private readonly roster: EntityRoster,
@@ -113,7 +113,7 @@ export class AnchorEntities implements AnchorTargets {
     private readonly celestialBodies: CelestialBodies,
   ) {}
 
-  // 顔ぶれのうち生存中の id の、時刻 t における状態。
+  // 登録エンティティのうち生存中の id の、時刻 t における状態。
   public entityState(id: string, t: number): KinematicState | null {
     return this.roster.all()
       .find((e) => e.id === id && e.motion.alive)

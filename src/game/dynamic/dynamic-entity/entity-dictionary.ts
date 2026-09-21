@@ -10,7 +10,7 @@ import { AmmoPickup, RcsFuelPickup, type SerializedAmmoPickup, type SerializedRc
 import type { DynamicEntity } from './dynamic-entity';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 
-// 顔ぶれ1体分の直列化した形。kind で具象を判別する。
+// エンティティ1体分のシリアライズ形式。kind で具象を判別する。
 export type SerializedDynamicEntity =
   | SerializedModularShip
   | SerializedMetalEnemy

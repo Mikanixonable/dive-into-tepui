@@ -100,7 +100,7 @@ export function randPerp(fwd: Vec3, rand: () => number = Math.random): Vec3 {
   }
 }
 
-// v から法線方向の成分を抜き、法線に垂直な平面へ落とす。planeNormal は単位ベクトルであること。
+// v から法線方向の成分を抜き、法線に垂直な平面へ射影する。planeNormal は単位ベクトルであること。
 export function projectOntoPlane(v: Vec3, planeNormal: Vec3): Vec3 {
   return sub(v, scale(planeNormal, dot(v, planeNormal)));
 }

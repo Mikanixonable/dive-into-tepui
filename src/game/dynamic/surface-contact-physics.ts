@@ -86,7 +86,7 @@ export class SurfaceContactPhysics {
     this.resolveAgainstCandidates(e, services);
   }
 
-  // 区間を共有する個体をまとめて衝突処理する。顔ぶれで先に絞り込むぶん1体あたりが安くなるので、
+  // 区間を共有する個体をまとめて衝突処理する。対象群で先に絞り込むことで個体あたりの計算負荷を低減できるため、
   // **同じ区間を1歩で渡った個体をここへまとめる。** 絞り込みは次の beginSubstep まで残る。
   public resolveShared(entities: readonly SurfaceContactParticipant[], services: DynamicReactionServices): void {
     this.collectParticipants(entities, this.participantScratch);

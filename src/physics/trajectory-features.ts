@@ -97,7 +97,7 @@ export class ApsisTrack {
     if (crossing?.kind === 'apoapsis') this.apoapsides.push({ state: crossing.state, center });
   }
 
-  // 両列から t より前(< t)の要素を先頭から落とす。
+  // 両配列から t より前(< t)の要素を先頭から除外する。
   public dropBefore(t: number): void {
     dropBefore(this.periapsides, t);
     dropBefore(this.apoapsides, t);

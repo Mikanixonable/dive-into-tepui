@@ -10,7 +10,7 @@ import {
 
 // 放熱板が全損したとき、その先端から出す破片の数。
 const RADIATOR_BREAK_FRAGMENTS = 4;
-// 放熱板の破片へ乗せる速度のばらつき [m/s]。
+// 放熱板の破片に付与する初速のばらつき [m/s]。
 const RADIATOR_BREAK_VELOCITY_SPREAD = 8.0;
 
 export class PlayerEffects {

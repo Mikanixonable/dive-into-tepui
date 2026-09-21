@@ -127,7 +127,7 @@ export class GamePresentation {
   // このフレームの入力の解釈が組んだ操作量。
   public get pilotControls(): PilotControls { return this.inputPhase.pilotControls; }
 
-  // 各表示物・入力の受け口を、互いの依存関係が満たせる順に組んで game へ繋ぐ。viewOptionsSettings は
+  // 各表示物・入力ハンドラを、互いの依存関係が満たせる順に組んで game へ繋ぐ。viewOptionsSettings は
   // マップ・天球の表示設定と表示パネルのタブの選択、themePalette は選ばれている配色。
   public constructor(
     private readonly game: Game,
@@ -274,7 +274,7 @@ export class GamePresentation {
   // 呼んだ後のこのインスタンスは使えない。構築の逆順で辿る — 後から組んだものほど先に組んだものを
   // 参照する。
   public dispose(): void {
-    // Hud はこのランより長生きするので、操作対象も操作の受け口も無い状態を1度宣言してから畳む。
+    // Hud はこのランより長生きするので、操作対象も操作ハンドラも無い状態を1度宣言してから破棄する。
     this.devices.hud.clearRunPanels();
     this.hudPanels.dispose();
     this.mapView.dispose();

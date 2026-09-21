@@ -26,7 +26,7 @@ export interface ProteinRenderSite {
   readonly residues?: readonly string[];
 }
 
-/** 表示が読む構造定義の面。 */
+/** 描画処理が参照する構造定義インターフェース。 */
 export interface ProteinRenderAsset {
   /** Å からオブジェクト座標への倍率。 */
   readonly coordinateScale: number;
@@ -40,7 +40,7 @@ export interface ProteinRenderAsset {
   readonly bonds: readonly { readonly from: string; readonly to: string }[];
 }
 
-/** 表示が読む残基変形の面。 */
+/** 描画処理が参照する残基変形インターフェース。 */
 export interface ProteinRenderMotion {
   readonly residueCount: number;
   readonly residues: {

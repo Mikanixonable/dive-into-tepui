@@ -12,7 +12,7 @@ import { contactDamageSpeed } from './contact-damage';
 import type { Vec3 } from '../../../math/vec3';
 import type { RunEventSink } from '../../run-events';
 
-// 帰結を受け取る敵1体の面。ダメージの入れ方と撃破の記録は個体ごとに実装する。
+// 帰結を受け取る敵1体のインターフェース。ダメージの適用方法と撃破の記録は個体ごとに実装する。
 export interface EnemyReactionPort {
   readonly motion: DynamicMotion;
   // 破片と爆散の大きさを決める機体模型の倍率。

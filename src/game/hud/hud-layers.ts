@@ -1,4 +1,4 @@
-// 窓・ポップアップ・パネルの置き場所と、折りたたみトグルの配線役をまとめた面。
+// 窓・ポップアップ・パネルの配置場所と、折りたたみトグルの配線役をまとめたインターフェース。
 import type { PanelCollapse } from './panel-shell';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { OverlayManager } from '../../hud/overlay-manager';

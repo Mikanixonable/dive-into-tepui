@@ -109,7 +109,7 @@ function lineEntry(
   };
 }
 
-// ガイド線の曲線を、基準点(パラメータ 0 の位置)相対の描画用の形へ落とす。解析曲線の初期区間数は
+// ガイド線の曲線を、基準点(パラメータ 0 の位置)相対の描画用データへ変換する。解析曲線の初期区間数は
 // 「1区間が半周を超えない」下限。
 function loopGeometry(loop: GuideLoop): GuideLineGeometry {
   const shape = loop.shape;
@@ -206,7 +206,7 @@ function geometrySignature(settings: OrbitGuideSettings): string {
   return parts.sort().join('|');
 }
 
-// 線の顔ぶれ(種類ごとの on・本数と系選択の直積)を決める設定だけを並べた識別子。
+// ガイド線の構成（種類ごとの有効状態・本数と選択星系の直積）を決定する設定を直列化した識別子。
 function structuralKey(settings: OrbitGuideSettings): string {
   // 族ごとの on と本数、選ばれた系、リサジューの点、参照軌道の on をつなぐ。
   const kindsKey = [...activeFamilyIds(settings)].sort()
@@ -225,7 +225,7 @@ export class OrbitGuideModel {
   private lines: GuideLineEntry[] = [];
   private readonly catalog = new OrbitGuideCatalog();
 
-  // 直近に線の顔ぶれ・点列を組んだときの識別子と、そのときの表示時刻・カタログ世代。
+  // 直近に線の構成・点列を構築したときの識別子と、その時点の表示時刻・カタログ世代。
   private structureKey = '';
   private geometryKey = '';
   private lastComputedTime: number | null = null;
@@ -248,7 +248,7 @@ export class OrbitGuideModel {
   ): readonly GuideLineDisplay[] {
     if (viewMode !== 'map') return NO_LINES;
 
-    // 種類ごとの on・本数と系選択が変わったときだけ線の顔ぶれを組み直す。
+    // 種類ごとの有効状態・本数または選択星系が変更された場合のみ線の構成を再構築する。
     const structureKey = structuralKey(settings);
     if (structureKey !== this.structureKey) {
       this.rebuildLines(settings);
@@ -422,7 +422,7 @@ export class OrbitGuideModel {
     };
   }
 
-  // 種類ごとの on と系選択から線の顔ぶれを組み直す。組み直した線はまだ曲線を持たない(geometry が null)。
+  // 種類ごとの有効状態と選択星系から線の構成を再構築する。再構築直後の線はまだ曲線データを持たない(geometry が null)。
   private rebuildLines(settings: OrbitGuideSettings): void {
     this.lines = [];
 

@@ -1,4 +1,4 @@
-// DynamicSystem がエンティティの顔ぶれと寿命を委譲するためのゲーム側ポート。生成済み個体の
+// DynamicSystem がエンティティの集合管理とライフサイクルを委譲するためのゲーム側ポート。生成済み個体の
 // 所有や表示資源の具体的な実装はここへ持ち込まず、追加・pending spawn・死亡・除去の順序を
 // 名前付きの境界として表す。
 
@@ -40,7 +40,7 @@ export interface PendingEntitySpawnPort {
   processPendingSpawns(): void;
 }
 
-// 死亡を顔ぶれからの除去へ進める前の境界。死亡判定そのものは DynamicEntity/Motion が持つ。
+// 死亡をエンティティ一覧からの除去へ進める前の境界。死亡判定そのものは DynamicEntity/Motion が持つ。
 export interface EntityDeathPort {
   markDead(entity: DynamicEntity): void;
 }

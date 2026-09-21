@@ -69,8 +69,8 @@ export function balancedWind(
   const denominator = damped.add(sqrt(max(damped.mul(damped).add(spinSquared.mul(4)), friction ** 2)));
   const speed = length(gradient).mul(2 * gradientToAcceleration(surfaceRadius)).div(denominator);
   // 流れが渦の中心のまわりを回る角速度 [rad/s]。等圧線に沿う成分はコリオリとこれの和が受け持ち、
-  // 受け持ち切れない残りを摩擦が受けて、等圧線を横切る流入になる。赤道で決まらなくなるのは向きだけ
-  // なので、落とすのはここだけ — 速さを決める denominator は spinSquared を持ったままにする。
+  // 負担しきれない残りを摩擦が受け、等圧線を横切る流入になる。赤道で未定義となるのは向きだけ
+  // なので、0 へ減衰させるのはここだけ — 速さを決める denominator は spinSquared を維持する。
   const spinSense = tanh(sinLatitude.div(SPIN_SENSE_WIDTH));
   const spin = spinSquared.mul(2).div(denominator).mul(spinSense);
   const along = coriolis.add(spin);

@@ -54,7 +54,7 @@ export class Viewer {
     return new Viewer(control, events, celestialBodies);
   }
 
-  // 直列化した形から視点を復元する。roster は復元を終えた顔ぶれ。
+  // 直列化した状態から視点を復元する。roster は復元完了時点のエンティティ一覧。
   public static deserialize(
     serialized: SerializedViewer,
     roster: EntityRoster,

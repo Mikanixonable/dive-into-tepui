@@ -169,7 +169,7 @@ export class ShipConstructionPanel {
     for (const [id, button] of this.moduleButtons) button.setOn(id === selectedId);
   }
 
-  // 候補の顔ぶれが変わったときだけボタンを作り直し、選択状態は毎回明示する。
+  // 候補一覧に変更があった場合のみボタンを再生成し、選択状態は毎フレーム反映する。
   private renderSlots(model: ShipConstructionPanelModel): void {
     const signature = model.slots.map(slot => `${slot.id}:${slot.valid}:${slot.reason ?? ''}`).join('|');
     if (signature !== this.slotSignature) {
