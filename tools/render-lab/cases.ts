@@ -9,13 +9,14 @@ import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { R_SUN, SUN, SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import {
-  EARTH, EARTH_ATMOSPHERE_OPTICS, earthCloudPresentation,
+  EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_COASTLINE, earthCloudPresentation,
 } from '../../src/game/celestial/solar-system/earth-system';
 import { EARTH_TEXTURE } from '../../src/render/earth-surface-defaults';
-import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
+import {
+  shapeAxes, shapeSpheroidRadii, type PlanetDef, type RingBandDef,
+} from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
-import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
-import coastlineData from '../../src/assets/earth-coastline.json';
+import { LineOverlay } from '../../src/render/celestial/line-overlay';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing, type RingMaterials } from '../../src/render/celestial/ring';
 import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
@@ -27,7 +28,7 @@ import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
 import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
-import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
+import { ringShadowBands, type RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import { RingView } from '../../src/render/celestial/ring-view';
@@ -59,24 +60,11 @@ const FOV_DEG = 50;
 // **寄り切った先へ物体を置くケースは、この値から距離を逆算する。**
 export const MAX_CAMERA_DISTANCE_LOG = 2;
 
-// 地球ケースが貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から
-// 焼き込んだ、緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。
-const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
-
 // 土星ケースが使う実データの環。
 const SATURN_RINGS = (() => {
   if (SATURN.rings === undefined) throw new Error('saturn has no rings');
   return SATURN.rings;
 })();
-
-// 環の帯を影パスへ渡す形へ直す。半径は描画座標と同じメートルのまま。
-function shadowBands(bands: readonly RingBandDef[]): readonly RingBand[] {
-  return bands.map((band) => ({
-    innerRadius: band.innerRadius,
-    outerRadius: band.outerRadius,
-    normalOpticalDepth: band.optics.normalOpticalDepth,
-  }));
-}
 
 // 太陽面の輝度。
 const SUN_SURFACE_RADIANCE = surfaceRadianceOf(scaledRadiantIntensity(SUN.radiantIntensity), R_SUN);
@@ -96,8 +84,6 @@ const MERCURY_PERIHELION_LOG_AU = Math.log10(0.31);
 // テスト用の球のアルベド。実在天体の値ではなく、線・陰影を読むための識別色。
 const BLUE_SPHERE_ALBEDO: Albedo = [0.0242, 0.15, 0.4342];
 const GREY_SPHERE_ALBEDO: Albedo = [0.521, 0.4793, 0.4179];
-// 土星本体。実写テクスチャの平均色の色みを、その天体のボンドアルベドの輝度へ合わせたもの。
-const SATURN_ALBEDO: Albedo = scaledToBondAlbedo([1, 0.812, 0.530], SATURN_TEXTURE.bondAlbedo);
 
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
 const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.averageHue, EARTH_TEXTURE.bondAlbedo);
@@ -183,18 +169,21 @@ function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): THREE.Ob
 // 寄り切ったときの見かけ直径 [px] として天体へ渡す値。分割段ラダーの最上段が選ばれる。
 const CLOSE_UP_DIAMETER_PX = 6e4;
 
-// 実写テクスチャを貼った天体の球。apparentDiameterPx は分割段を選ぶ見かけ直径で、寄れる
-// ケースでは寄り切った大きさを渡す。
-function texturedSphere(
-  texture: CelestialTexture, radius: number, center: THREE.Vector3, apparentDiameterPx: number,
-): THREE.Object3D {
+// 実写テクスチャを貼った天体を、定義 def の扁平のまま中心 center(描画座標)へ置く。極は描画座標の
+// +Y。apparentDiameterPx は分割段を選ぶ見かけ直径で、寄れるケースでは寄り切った大きさを渡す。
+// axes は半軸 [m]、ready は地表の画像がすべて GPU へ届いたか。
+function texturedBody(
+  texture: CelestialTexture, def: PlanetDef, center: THREE.Vector3, apparentDiameterPx: number,
+): { readonly object: THREE.Object3D; readonly axes: THREE.Vector3; readonly ready: () => boolean } {
+  const shape = shapeAxes(def.radius, def.shape);
+  const axes = new THREE.Vector3(shape.x, shape.y, shape.z);
   const group = new THREE.Group();
   group.position.copy(center);
-  group.scale.setScalar(radius);
+  group.scale.copy(axes);
   const surface = CelestialSurface.textured(texture);
   surface.addTo(group);
   surface.syncLod(apparentDiameterPx);
-  return group;
+  return { object: group, axes, ready: () => surface.imagesReady };
 }
 
 // 中心 center、半径 radius、平面 (u, v) の円を1本。分割はカメラで決まるので、カメラを作った
@@ -431,7 +420,7 @@ function shipBodyShadow(_style: RenderStyle, ringMaterials: RingMaterials): LabC
     sunDirection: sun,
     viewTarget: center,
     shadowBodies: [sphereShadowBody(center, SMALL_BODY_RADIUS)],
-    rings: { center, axis, bands: shadowBands(SMALL_BODY_RING_BANDS) },
+    rings: { center, axis, bands: ringShadowBands(SMALL_BODY_RING_BANDS) },
   };
 }
 
@@ -690,16 +679,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     ready: () => surface.imagesReady,
     // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
     // 絵の比較は最も細かい段で行う)。
-    applyGraphics: (graphics) => {
-      if (graphics.clouds) {
-        cumulus.setCloudsVisible(true);
-        cumulus.setSource(graphics.cloudFieldSource);
-        cumulus.setDetail(graphics.cumulusDetail);
-        cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
-      } else {
-        cumulus.setCloudsVisible(false);
-      }
-    },
+    applyGraphics: (graphics) => cumulus.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX),
     bakeClouds: (renderer, displayTime, gpu) => cumulus.bake(renderer, displayTime, gpu),
     disposeClouds: () => cumulus.dispose(),
   };
@@ -867,26 +847,25 @@ function earthMars(style: RenderStyle): LabCase {
   const margin = EARTH_MARS_HORIZON_CLEARANCE * Math.asin(MARS_RADIUS / EARTH_MARS_DISTANCE);
   const earthCenter = earthCenterBelowHorizon(EARTH_MARS_CAMERA_ALTITUDE, margin);
   const earthSphere = earthAt(earthCenter, style);
+  const mars = texturedBody(MARS_TEXTURE, MARS, marsCenter, CLOSE_UP_DIAMETER_PX);
+  const marsRadii = shapeSpheroidRadii(MARS.radius, MARS.shape);
   return {
-    objects: [
-      earthSphere.object,
-      texturedSphere(MARS_TEXTURE, MARS_RADIUS, marsCenter, CLOSE_UP_DIAMETER_PX),
-    ],
+    objects: [earthSphere.object, mars.object],
     camera,
     viewTarget: marsCenter,
-    // 火星の大気は真球で渡す。
     atmospheres: [
       earthSphere.atmosphere,
+      // 火星の大気の地表は、本体と同じ定義の扁平に採る。
       {
         center: marsCenter,
-        surfaceRadius: MARS_RADIUS,
+        surfaceRadius: marsRadii.equatorRadius,
         polarAxis: new THREE.Vector3(0, 1, 0),
-        polarRatio: 1,
+        polarRatio: marsRadii.polarRadius / marsRadii.equatorRadius,
         optics: MARS_ATMOSPHERE_OPTICS,
         clouds: null,
       },
     ],
-    ready: earthSphere.ready,
+    ready: () => earthSphere.ready() && mars.ready(),
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
     disposeClouds: earthSphere.disposeClouds,
@@ -1223,59 +1202,59 @@ function albedo(): LabCase {
   };
 }
 
-// 土星: 本体の球と実データの環を並べ、**環だけが本体より桁で明るくないか**を見る。恒星の
-// 放射照度は本体にも環にも同じだけ掛かる。本体を影を落とす天体に、環の帯を影を落とす環に登録するので、
-// **環が本体の影へ入る境界と、本体表面に落ちる環の影の境界の両方**が同じ 1 つの関数から
-// 出る。どちらもぼけていることを見る。
-function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
-  const camera = labCamera(1e13);
-  const radius = 6.0268e7;
-  const distance = 1.2e9;
-  const center = new THREE.Vector3(0, -0.15 * distance, -distance);
-  const axis = v3(0.3, 0.9, 0.32);
-  const view = new RingView(SATURN_RINGS, radius, 1, ringMaterials);
-  return {
-    objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
-    camera,
-    shadowBodies: [sphereShadowBody(center, radius)],
-    rings: {
-      center,
-      axis: new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
-      bands: shadowBands(SATURN_RINGS.bands),
-    },
-    // 環の見え方(表示の有無・帯の見かけ幅の段)は設定で変わるので、押し込みのたびに同期する。
-    applyGraphics: (graphics) => view.sync(
-      center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,
-    ),
-  };
-}
+// 土星のケースで本体の中心を置く距離 [m]。本体へ寄った既定の距離と、環の全体が収まる遠景の距離。
+const SATURN_NEAR_DISTANCE = 1.9e8;
+const SATURN_FAR_DISTANCE = 1.2134e9;
+// 本体の中心を環面(水平面)から持ち上げる角 [rad]。カメラは環面の 20° 下から本体を見上げる。
+const SATURN_CAMERA_TILT = 0.35;
 
-// 土星(近接): 影の境界だけを見るための構図。saturn では本体が画面上 62px しかなく、半影
-// (2px 未満)を目で読めない。**環面へ浅い角度で恒星が差す姿勢**(環軸を真上、恒星の仰角 17°)
-// で本体へ寄り、本体表面に落ちる環の影(カッシーニの間隙が明るい帯として出て、その縁は半影 4px
-// ぶんぼける)と、環が本体の影へ入る境界(天体の球の半影ぶんぼける)を同じ絵の中で読む。
-function saturnShadow(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
-  const distance = 1.9e8;
-  const radius = 6.0268e7;
-  // カメラは環面から 20° 傾けて、**恒星とは反対側**へ置く — 同じ側だと影が落ちる面は
-  // 常に手前の環の腕に隠れる。真横に置くと環が線に潰れて、影が環を横切る境界を読めない。
-  const elevation = 0.35;
-  const center = new THREE.Vector3(0, Math.sin(elevation), -Math.cos(elevation)).multiplyScalar(distance);
+// 遠景の撮影の向き。環面を 27° 上から見下ろし、恒星は環面から 41°、環軸まわりにカメラ(既定の方位
+// 0°)から 75° 回った方向に置く — 本体と環の全体が並んで収まり、昼面どうしの明るさを見比べられる。
+const SATURN_FAR_VIEW: Partial<LabViewAngles> = {
+  cameraElevationDeg: 26.7,
+  cameraDistanceLog: Math.log10(SATURN_FAR_DISTANCE / SATURN_NEAR_DISTANCE),
+  sunAzimuthDeg: 75.4,
+  sunElevationDeg: 41.4,
+};
+
+// 土星: 実写テクスチャの扁平な本体と実データの環を、環軸を真上(+Y)にして置く。本体を影を落とす
+// 天体に、環の帯を影を落とす環に登録するので、**環が本体の影へ入る境界と、本体表面に落ちる環の影の
+// 境界の両方**が同じ 1 つの関数から出る。恒星の放射照度は本体にも環にも同じだけ掛かる。
+function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
+  const center = new THREE.Vector3(0, Math.sin(SATURN_CAMERA_TILT), -Math.cos(SATURN_CAMERA_TILT))
+    .multiplyScalar(SATURN_NEAR_DISTANCE);
   // 他のケースと違い、視線は正面ではなく本体の中心へ向ける — 影が落ちるのは環面より南側の
   // 面なので、正面のままだと読みたい範囲が画面の下へ外れる。
   const camera = labCamera(1e13);
   camera.lookAt(center);
   camera.updateMatrixWorld(true);
+  const body = texturedBody(SATURN_TEXTURE, SATURN, center, CLOSE_UP_DIAMETER_PX);
   const axis = v3(0, 1, 0);
-  const view = new RingView(SATURN_RINGS, radius, 1, ringMaterials);
+  const view = new RingView(SATURN_RINGS, SATURN.radius, 1, ringMaterials);
   return {
-    objects: [sphere(SATURN_ALBEDO, radius, center), view.group],
+    objects: [body.object, view.group],
     camera,
-    shadowBodies: [sphereShadowBody(center, radius)],
-    rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: shadowBands(SATURN_RINGS.bands) },
+    viewTarget: center,
+    shadowBodies: [{ center, axes: body.axes, bodyFromWorld: new THREE.Matrix4() }],
+    rings: { center, axis: new THREE.Vector3(axis.x, axis.y, axis.z), bands: ringShadowBands(SATURN_RINGS.bands) },
+    ready: body.ready,
+    // 環の見え方(表示の有無・帯の見かけ幅の段)は設定とカメラの距離で変わるので、押し込みのたびに
+    // そのフレームのカメラから同期する。
     applyGraphics: (graphics) => view.sync(
-      center, axis, v3(center.x, center.y, center.z), () => distance / VIEW_HEIGHT, graphics, style,
+      center, axis, v3(center.x, center.y, center.z),
+      () => metersPerPixelAtDepth(camera.fov, camera.position.distanceTo(center), VIEW_HEIGHT),
+      graphics, style,
     ),
+    shots: {
+      // 影の境界。**環面へ浅い角度で恒星が差す姿勢**(恒星の仰角 17°)で本体へ寄り、本体表面に落ちる
+      // 環の影(カッシーニの間隙が明るい帯として出て、その縁は半影ぶんぼける)と、環が本体の影へ入る
+      // 境界(天体の半影ぶんぼける)を同じ絵の中で読む。カメラは**恒星とは反対側**の環面の下に置く —
+      // 同じ側だと影が落ちる面は常に手前の環の腕に隠れる。真横に置くと環が線に潰れて、影が環を横切る
+      // 境界を読めない。
+      'saturn-shadow': {},
+      // 遠景。**環だけが本体より桁で明るくないか**を見る。本体は画面上 60 px ほどで、半影は読めない。
+      'saturn': SATURN_FAR_VIEW,
+    },
   };
 }
 
@@ -1308,7 +1287,6 @@ export const CASES = {
   'earth-eclipse': earthEclipse,
   'earth-mars': earthMars,
   'saturn': saturn,
-  'saturn-shadow': saturnShadow,
   'albedo': albedo,
   'blackbody': blackbody,
   ...SHIP_CASES,
