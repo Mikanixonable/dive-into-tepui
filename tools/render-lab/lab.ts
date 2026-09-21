@@ -6,7 +6,10 @@ import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gp
 import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { irradianceAtDistance, scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
-import { R_SUN, SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
+import { R_SUN, SUN, SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
+import { createStarSphere } from '../../src/render/celestial/star-sphere';
+import { surfaceRadianceOf } from '../../src/render/celestial/celestial-entity/star-celestial-view';
+import { farClip } from '../../src/render/camera/camera-view';
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
@@ -107,6 +110,10 @@ export class LabView {
   private readonly forward = new THREE.Vector3();
   // 全ケースの環の帯が共有するマテリアル。
   private readonly ringMaterials: RingMaterials;
+  // 恒星の見た目。ケースによらず、光源の恒星と同じ位置・半径へ描くたびに置き直す。
+  private readonly star = createStarSphere(
+    SUN_SURFACE_COLOR, surfaceRadianceOf(scaledRadiantIntensity(SUN.radiantIntensity), R_SUN),
+  );
 
   // graphicsData はこのフレームを描くのに使う描画品質設定。applyGraphics で差し替わる。
   private constructor(
@@ -119,6 +126,7 @@ export class LabView {
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
     this.ringMaterials = new RingMaterials(pipeline.bodyShadow, pipeline.sunLight);
+    this.star.addTo(this.scene);
   }
 
   // graphics は最初のフレームを描く描画品質設定。
@@ -158,13 +166,11 @@ export class LabView {
   private build(name: CaseName): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
-      this.current.star?.dispose();
       this.current.disposeClouds?.();
       disposeCaseObjects(this.current);
     }
     const built = CASES[name](this.style, this.ringMaterials);
     this.scene.add(...built.objects);
-    built.star?.addTo(this.scene);
     this.current = built;
     this.currentName = name;
     // **カメラの既定を引く前に一度押し込む** — 環はここで姿勢が決まるので、押し込む前に
@@ -298,16 +304,19 @@ export class LabView {
     camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);
     camera.lookAt(this.pivot);
     camera.updateMatrixWorld(true);
-    // 画角の書き換えは、投影行列を組み直すまで無言で効かない。
+    // 画角と遠クリップ距離の書き換えは、投影行列を組み直すまで無言で効かない。遠クリップ距離は、
+    // 周回の中心までの距離を注視距離としてゲーム本体と同じ式で引く。
     camera.fov = this.cameraFovDeg;
+    camera.far = farClip(this.cameraDistance);
     camera.updateProjectionMatrix();
     // ケースの部品が読む設定は、このフレームのカメラを置いてから押し込む — 部品はそのカメラを読んでよい。
     this.current.applyGraphics?.(this.graphicsData);
     // 恒星の見た目は、光源と同じ位置から置き直す。**片方だけ動かさない** — 明るさの根拠と
     // 光点の位置が食い違うと、ちらつきの出どころを読み違える。詳細度の設定もゲーム本体と
     // 同じように掛ける(球と点像の切り替わる距離がここだけずれない)。
-    this.current.star?.sync(
+    this.star.sync(
       SUN_POSITION, R_SUN, sunDiameterPx(sunDistance, camera.fov) * this.graphicsData.lodBias, camera.quaternion,
+      this.style,
     );
     this.pipeline.bodyShadow.set(this.current.shadowBodies ?? []);
     const rings = this.current.rings;
