@@ -16,13 +16,13 @@ import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
+import { ATMOSPHERE_QUALITY, type AtmosphereBody, type AtmosphereClouds } from '../../src/render/atmosphere';
 import { directionFromAngles } from './view-angles';
 import {
   AHEAD, circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, GREY_SPHERE_ALBEDO, labCamera, MAX_CAMERA_DISTANCE_LOG,
   SHIP_ROTATION_PORT, shipAt, sphere, SUN_DIR_ANGLES, sunAnglesOf, texturedBody,
   type CaseBuilder, type LabCase,
 } from './lab-case';
-import type { AtmosphereBody, AtmosphereClouds } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
@@ -79,10 +79,10 @@ function leo(style: RenderStyle): LabCase {
     ...earthSphere.lightingAndClouds,
     shots: {
       // 軌道の線が自機と地球(地平線)に正しく隠れるかと、自機の陰影を見る。
-      'leo': {},
+      'leo': { view: {} },
       // 地球照。恒星は真上から差すので、自機の上面だけが直射を受け、下面と板は地球照だけで照らされる。
       // **板の色は直下のサハラの地表の色で決まる。** 横を向いた面はどちらの光も受けず桁で暗い。
-      'earthshine': { sunElevationDeg: 90 },
+      'earthshine': { view: { sunElevationDeg: 90 } },
     },
   };
 }
@@ -268,16 +268,16 @@ function earth(style: RenderStyle): LabCase {
       ...earthSphere.lightingAndClouds.shadowBodies,
     ],
     shots: {
-      'earth': {},
+      'earth': { view: {} },
       // 昼夜境界。**太陽光が最も長く大気を通って届く向き**なので、波長ごとの減衰だけで縁と霞が橙へ
       // 寄っていなければならない。前方散乱が効く向きでもあるので、太陽のまわりのグローもここで読む。
-      'earth-terminator': EARTH_TERMINATOR_SUN,
+      'earth-terminator': { view: EARTH_TERMINATOR_SUN },
       // 日食。**大気の明暗は入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた
       // 斑が出る。斑は本影(半径 60km)を半影(340km)が縁取る。
-      'earth-eclipse': EARTH_ECLIPSE_SUN,
+      'earth-eclipse': { view: EARTH_ECLIPSE_SUN },
       // カメラが周回の中心の反対側へ回り、直下点が元から 40° 離れた位置から地平線を見る。**雲場の cap は
       // カメラの直下点へ追従する**ので、ここでも手前の地表に雲が出なければならない。
-      'earth-camera-orbit': { cameraAzimuthDeg: 180 },
+      'earth-camera-orbit': { view: { cameraAzimuthDeg: 180 } },
     },
   };
 }
@@ -316,12 +316,12 @@ function earthPolar(style: RenderStyle): LabCase {
     sunDirection: EARTH_POLAR_SUN_DIR,
     ...earthSphere.lightingAndClouds,
     shots: {
-      'earth-polar': {},
+      'earth-polar': { view: {} },
       // 極の昼夜境界。恒星を視線と直交させ、昼夜境界を極の上へ通す。**扁平な天体でも影は地平線
       // どおりに落ちる** — 境界は半影ぶんに滑らかで、緯度によらない直線の縁は出ない。天体自身が影を
       // 落とす側に載っていて、地表も雲頂も低い高度の大気も、その内側ではなく表面より外に居ることを
       // ここで読む。
-      'earth-polar-terminator': sunAnglesOf(new THREE.Vector3(1, 0, 0)),
+      'earth-polar-terminator': { view: sunAnglesOf(new THREE.Vector3(1, 0, 0)) },
     },
   };
 }
@@ -437,6 +437,13 @@ function planetshineFar(style: RenderStyle): LabCase {
     }],
     ready: earthSphere.lightingAndClouds.ready,
     disposeClouds: earthSphere.lightingAndClouds.disposeClouds,
+    shots: {
+      // 天体照の光源に大気も雲も載せない構図なので、描画設定もそれに揃える。
+      'planetshine-far': {
+        view: {},
+        graphics: { atmosphere: ATMOSPHERE_QUALITY.off, clouds: false },
+      },
+    },
   };
 }
 
