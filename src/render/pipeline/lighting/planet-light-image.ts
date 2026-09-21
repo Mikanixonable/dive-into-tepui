@@ -2,7 +2,9 @@
 // 「方向の球面」の、天体が張る円錐ぶんの図法なので、地表の模様はその天体が空を占める広さのまま残る。
 // 焼く値は地表の放射輝度で、円板の被覆率を α に持つ。
 import * as THREE from 'three/webgpu';
-import { clamp, dot, float, int, length, log2, max, normalize, screenUV, sqrt, texture, uniform, vec4 } from 'three/tsl';
+import {
+  clamp, dot, float, int, length, log2, max, mix, normalize, screenUV, sqrt, texture, uniform, vec2, vec4,
+} from 'three/tsl';
 import { BakedField } from '../../baked-field';
 import { EquidistantCap, equirectUvFromDirection } from '../../field-projection';
 import { GPU_PASS } from '../../gpu-timings';
@@ -66,6 +68,9 @@ export class PlanetLightImage {
   // 地表のベース色と、それへ掛ける係数。テクスチャを持つ天体では albedoScale の灰色、
   // 持たない天体では一様アルベドそのものが係数になる。
   private readonly baseColor: THREE.TextureNode;
+  // ベース色の画像が flipY なら 1、でなければ 0。map は借り物で行の並びを変えられないので、読む側が
+  // その flipY に従う — flipY の画像は GPU 上で行が上下逆に並び、v = 0 が南極になる。
+  private readonly baseColorFlipY: FloatUniform = uniform(0);
   private readonly albedoFactor: ColorUniform = uniform(new THREE.Color(1, 1, 1));
   private readonly white = createWhiteTexture();
   private readonly sunIrradiance: FloatUniform = uniform(0);
@@ -99,7 +104,9 @@ export class PlanetLightImage {
     this.sunIrradiance.value = appearance.sunIrradiance;
     this.starDirection.value.copy(appearance.starDirection);
     this.bodyFromWorld.value.copy(appearance.bodyFromWorld);
-    this.baseColor.value = appearance.map ?? this.white;
+    const baseColor = appearance.map ?? this.white;
+    this.baseColor.value = baseColor;
+    this.baseColorFlipY.value = baseColor.flipY ? 1 : 0;
     if (appearance.map === null) {
       const [r, g, b] = appearance.albedo;
       this.albedoFactor.value.setRGB(r, g, b, THREE.LinearSRGBColorSpace);
@@ -148,8 +155,9 @@ export class PlanetLightImage {
     const surfaceAngle = this.projection.texelAngle.mul(distance.sub(this.radius)).div(this.radius);
     const imageHeight = float((this.baseColor.size(int(0)) as THREE.Node<'uvec2'>).y);
     const level = max(log2(surfaceAngle.mul(imageHeight).div(Math.PI)), 0);
-    const albedo = this.baseColor.sample(equirectUvFromDirection(bodyNormal)).level(level)
-      .rgb.mul(this.albedoFactor);
+    const uv = equirectUvFromDirection(bodyNormal);
+    const imageUv = vec2(uv.x, mix(uv.y, uv.y.oneMinus(), this.baseColorFlipY));
+    const albedo = this.baseColor.sample(imageUv).level(level).rgb.mul(this.albedoFactor);
     // ランバート面の放射輝度。昼側だけが光る。
     const radiance = albedo.mul(this.sunIrradiance).mul(max(dot(normal, this.starDirection), 0)).div(Math.PI);
     // 被覆率を持たせておき、読む側が割り戻す。**省くと、段が上がるほど写しが暗くなる** —
