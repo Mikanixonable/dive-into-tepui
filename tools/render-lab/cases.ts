@@ -36,7 +36,7 @@ const ORDER_COLORS = [0x5a6572, 0x4f8fd0, 0x59c3a5, 0xd8c24a, 0xff6a00] as const
 // 描画順: 同じ深度に置いた円が LINE_RENDER_ORDER の順に重なるか。
 // 交差点でどちらが上に出るかがそのまま答えになる。
 function order(): LabCase {
-  const camera = labCamera(6e7);
+  const camera = labCamera();
   const depth = 1e4;
   const radius = 3e3;
   const u = new THREE.Vector3(1, 0, 0);
@@ -78,7 +78,7 @@ const SLAB_ERROR_GAIN = 100;
 // **上3帯が同じ濃さで、最下段が黒なら、刻みが不均等でも同じ答えが出ている。**
 // 光学的厚みは画面の左から右へ 0.2 から 1.8 まで変える。
 function marchSlab(): LabCase {
-  const camera = labCamera(1e3);
+  const camera = labCamera();
   const plane = new THREE.Mesh(
     new THREE.PlaneGeometry(SLAB_PLANE_WIDTH, SLAB_PLANE_HEIGHT),
     new THREE.MeshBasicNodeMaterial(),
@@ -130,7 +130,7 @@ function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
     .multiplyScalar(SATURN_NEAR_DISTANCE);
   // 視線は正面ではなく本体の中心へ向ける — 影が落ちるのは環面より南側の面なので、正面のままだと
   // 読みたい範囲が画面の下へ外れる。
-  const camera = labCamera(1e13);
+  const camera = labCamera();
   camera.lookAt(center);
   camera.updateMatrixWorld(true);
   const body = texturedBody(SATURN_TEXTURE, SATURN, center, CLOSE_UP_DIAMETER_PX);

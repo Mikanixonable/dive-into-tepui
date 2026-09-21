@@ -11,16 +11,7 @@ import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
-import { FOV_DEG, shipObject, VIEW_HEIGHT, VIEW_WIDTH, type LabCase } from './lab-case';
-
-// 原点から -Z を見るカメラ。
-function camera(): THREE.PerspectiveCamera {
-  const result = new THREE.PerspectiveCamera(FOV_DEG, VIEW_WIDTH / VIEW_HEIGHT, 0.1, 1_000);
-  result.position.set(0, 0, 0);
-  result.lookAt(0, 0, -1);
-  result.updateMatrixWorld();
-  return result;
-}
+import { labCamera, shipObject, type LabCase } from './lab-case';
 
 // カタログの定義 definitionId から、識別子 id のモジュールを1つ作る。
 function module(definitionId: string, id: string) {
@@ -63,7 +54,7 @@ function base(): LabCase {
   guide.sync({ position: v3(12, 0, -39.5), rotation: Q_IDENTITY, radius: 3, valid: true });
   return {
     objects: [docked, ghost.object, guide.object],
-    camera: camera(),
+    camera: labCamera(),
     viewTarget: new THREE.Vector3(2, 0, -40),
   };
 }
@@ -79,7 +70,7 @@ function separation(): LabCase {
       at(shipObject(split.retained), 1, 0, -40),
       at(shipObject(split.detached), 16, 0, -40),
     ],
-    camera: camera(),
+    camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -40),
   };
 }

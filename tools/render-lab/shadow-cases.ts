@@ -103,7 +103,7 @@ function ship(): LabCase {
       shipAt(receiver, SHIP_ROTATION_SELF_SHADOW),
       shipAt(receiver.clone().setX(receiver.x + SHIP_FAR_CASTER_DISTANCE), SHIP_ROTATION_SELF_SHADOW),
     ],
-    camera: labCamera(6e7),
+    camera: labCamera(),
     sunDirection: OBLIQUE_SUN_DIR,
     viewTarget: receiver,
     shots: {
@@ -141,7 +141,7 @@ function shipCrowd(): LabCase {
       ...positions.map((position) => shipAt(position, SHIP_ROTATION_SELF_SHADOW)),
       debrisPool(positions[0]!, 512),
     ],
-    camera: labCamera(6e7),
+    camera: labCamera(),
     sunDirection: OBLIQUE_SUN_DIR,
     viewTarget: positions[0]!,
   };
@@ -185,7 +185,7 @@ const SMALL_BODY_SHADOW_DISTANCE = 200;
 // 浮かべた艦は影の深度マップを通って天体の表面へ影を落とし、後方へ置いた艦は天体の球が解析式で
 // 解く影の柱の縁をまたぐ。環の帯の影は昼面を横切る縞として出る。
 function shipBodyShadow(_style: RenderStyle, ringMaterials: RingMaterials): LabCase {
-  const camera = labCamera(6e7);
+  const camera = labCamera();
   const center = new THREE.Vector3(0, 0, -SMALL_BODY_DISTANCE);
   const sun = SMALL_BODY_SUN_DIR;
   // 恒星に直交する 2 つの向き。lateral はカメラ側を向き、edge は視線にも直交するので画面内で真横。

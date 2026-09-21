@@ -14,7 +14,6 @@ import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-
 import { anglesFromDirection, type LabViewAngles } from './view-angles';
 import type { Albedo } from '../../src/render/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
-import type { StarSphere } from '../../src/render/celestial/star-sphere';
 import type { ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
@@ -51,7 +50,7 @@ export const SUN_DIR_ANGLES = sunAnglesOf(SUN_DIR);
 // テスト用の球のアルベド。実在天体の値ではなく、線・陰影を読むための識別色。
 export const GREY_SPHERE_ALBEDO: Albedo = [0.521, 0.4793, 0.4179];
 
-// ケースのカメラの既定の位置と視線。near はゲーム本体と同じ 2 m(深度分解能の導出がこの値に乗る)。
+// ケースのカメラの既定の位置と視線、近クリップ距離 [m]。
 const EYE = new THREE.Vector3(0, 0, 0);
 export const AHEAD = new THREE.Vector3(0, 0, -1);
 const NEAR = 2;
@@ -60,12 +59,11 @@ export interface LabCase {
   // シーンへ載せる物体。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を立てた
   // 物体のものがケースを外すときに解放される。
   readonly objects: readonly THREE.Object3D[];
-  // 既定の観察の向き・距離・画角を与えるカメラ。描くたびに観察の向きへ動かされる。
+  // 既定の観察の向き・距離・画角を与えるカメラ。描くたびに観察の向きへ動かされ、遠クリップ距離も
+  // そのとき決まる。
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
-  // 恒星の見た目。持たせると、恒星の向きと距離のつまみに合わせて毎フレーム同期される。
-  readonly star?: StarSphere;
   // 天体照の光源として置く天体。中心は描画座標、albedo は輝度がボンドアルベドに一致する
   // 線形 RGB。省略すると天体照は無い。
   readonly planetLights?: readonly {
@@ -114,9 +112,9 @@ export interface LabCase {
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。
 export type CaseBuilder = (style: RenderStyle, ringMaterials: RingMaterials) => LabCase;
 
-// 原点から -Z を見るケース共通のカメラ。far [m] だけをケースが選ぶ。
-export function labCamera(far: number): THREE.PerspectiveCamera {
-  const camera = new THREE.PerspectiveCamera(FOV_DEG, VIEW_WIDTH / VIEW_HEIGHT, NEAR, far);
+// 原点から -Z を見るケース共通のカメラ。
+export function labCamera(): THREE.PerspectiveCamera {
+  const camera = new THREE.PerspectiveCamera(FOV_DEG, VIEW_WIDTH / VIEW_HEIGHT, NEAR);
   camera.position.copy(EYE);
   camera.lookAt(AHEAD);
   camera.updateMatrixWorld();
