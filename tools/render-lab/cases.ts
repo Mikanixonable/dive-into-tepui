@@ -1,6 +1,6 @@
-// 描画テスト環境が描くケースの表。ゲーム本体と同じ球・艦・線を組み、カメラと光源・大気・影の源の
-// 配置と一緒に返す。ケースを増やすのはこの表への追記で済む。style を受けるケースは、その表示
-// スタイルで組んだ姿を返す。
+// 描画テスト環境が描くケースの表。1 ケースは物体の配置 1 つで、ゲーム本体と同じ天体・艦・線を組み、
+// 既定のカメラと光源・大気・影の源、撮影で写す向きと一緒に返す。カメラ違い・光源違いはケースを
+// 足さず、撮影の向きとして足す。style を受けるケースは、その表示スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface, type LightSourceMap } from '../../src/render/celestial/celestial-surface';
@@ -77,6 +77,9 @@ function sunAnglesOf(direction: THREE.Vector3): Pick<LabViewAngles, 'sunAzimuthD
   const { azimuthDeg, elevationDeg } = anglesFromDirection(direction);
   return { sunAzimuthDeg: azimuthDeg, sunElevationDeg: elevationDeg };
 }
+
+// SUN_DIR を、観察の向きの恒星の方位・仰角で表したもの。
+const SUN_DIR_ANGLES = sunAnglesOf(SUN_DIR);
 
 // 水星近日点の距離(天文単位)の常用対数。太陽の視半径が 0.86° に広がる。
 const MERCURY_PERIHELION_LOG_AU = Math.log10(0.31);
@@ -730,8 +733,8 @@ const EARTH_TERMINATOR_SUN = sunAnglesOf(AHEAD.clone().projectOnPlane(EARTH_CENT
 // 置くので、既定の撮影では影の軸が地表点から約 5,000 km(3e7 m × sin 9.5°)外れ、地平線まで
 // (地表距離 約 2,300 km)に斑(半影の半径 約 340 km)は入らない。
 const EARTH_ECLIPSE_SUN = {
-  ...sunAnglesOf(SUN_DIR),
-  sunAzimuthDeg: sunAnglesOf(SUN_DIR).sunAzimuthDeg + 10,
+  ...SUN_DIR_ANGLES,
+  sunAzimuthDeg: SUN_DIR_ANGLES.sunAzimuthDeg + 10,
 };
 
 // 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもや、大気の外に居る物体を見る。日食の
@@ -1088,8 +1091,8 @@ function blackbody(): LabCase {
 // 置くので、較正の撮影では影の源の軸が受ける球から約 1.6 km(1e4 m × sin 9.5°)外れ、球
 // (半径 300 m)にも環の帯(外縁 320 m)の影にもかからない。
 const ALBEDO_ECLIPSE_SUN = {
-  ...sunAnglesOf(SUN_DIR),
-  sunAzimuthDeg: sunAnglesOf(SUN_DIR).sunAzimuthDeg + 10,
+  ...SUN_DIR_ANGLES,
+  sunAzimuthDeg: SUN_DIR_ANGLES.sunAzimuthDeg + 10,
 };
 
 // 較正と日食: アルベド 1 の完全拡散球を 1 天文単位の恒星で照らす。日食の撮影の恒星の方向へ

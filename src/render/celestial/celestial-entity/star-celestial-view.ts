@@ -1,10 +1,10 @@
 // 恒星の見た目: 実位置・実半径の自発光球体(遠くて球として描けないときは点像)と、
 // 模式図で代わりに出す輪郭円。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { isStar } from '../../../physics/celestial-body-def';
 import { createStarSphere, type StarSphere } from '../star-sphere';
-import { createOutlineCircle, OutlineCircle } from '../outline-circle';
+import { createOutlineCircle, type OutlineCircle } from '../outline-circle';
 import type { CameraFrame } from '../../camera/camera-frame';
 import { apparentSizePx } from '../../../math/projection';
 import type { GraphicsSettingsData } from '../../graphics-settings';
