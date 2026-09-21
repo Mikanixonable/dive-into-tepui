@@ -127,7 +127,7 @@ export class RenderPipeline {
     this.sunSource = new SunSource(
       this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
-      this._sunLight, this.sphereSpecular, graphics.planetLightCount);
+      this._sunLight, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel);
     this._ambient = new AmbientSource(this._sunLight);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
@@ -329,6 +329,7 @@ export class RenderPipeline {
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
+    this._planetLight.setModel(graphics.planetLightModel);
     this.antialiasPass.setMethod(graphics.antialias);
     this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
     this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
