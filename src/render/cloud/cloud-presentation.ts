@@ -83,7 +83,7 @@ export class CloudPresentation {
 
   // 雲場の出どころを選ぶ。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
   // **選び直したら結び直す** — 結び直さないと、不透明表面が前の出どころの写しを読み続ける。
-  public setSource(kind: CloudFieldSourceKind): void {
+  private setSource(kind: CloudFieldSourceKind): void {
     this.source = this.sources[kind];
     this.surface.bind(this.renderInput);
   }
@@ -96,7 +96,7 @@ export class CloudPresentation {
     this.surface.bind(this.renderInput);
   }
 
-  public setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
+  private setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
 
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   public setCloudsVisible(visible: boolean): void {
@@ -111,7 +111,7 @@ export class CloudPresentation {
   }
 
   // 見かけ直径 [px] から不透明表面の分割段を選ぶ。雲を描かないなら隠す。
-  public syncLod(apparentDiameterPx: number): void {
+  private syncLod(apparentDiameterPx: number): void {
     if (this.cloudVisible) this.surface.syncLod(apparentDiameterPx);
     else this.surface.hide();
   }
