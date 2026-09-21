@@ -56,7 +56,7 @@ export class OverlayManager {
   public constructor(private readonly shield: HTMLElement, private readonly gateLayer: HTMLElement) {
     shield.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
     shield.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
-    // 外側クリックを拾う唯一のキャプチャリスナ。登録済みの各オーバーレイの contains/close を
+    // 外側クリックを捕捉する唯一のキャプチャリスナ。登録済みの各オーバーレイの contains/close を
     // 通じて判定・応答する。
     document.addEventListener('pointerdown', this.handleOutsidePointerDown, true);
     this.sync();

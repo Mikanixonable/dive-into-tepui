@@ -1,5 +1,5 @@
 // src/assets/models/*.json へ焼いたモデルを初回だけパースしてテンプレートとし、その複製を作る。
-// メッシュが握る geometry/material に、個体の持ち物か全個体の共有物かの印を付ける。
+// メッシュが保持する geometry/material に、個体の持ち物か全個体の共有物かの印を付ける。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
 import { makeThermallyEmissive } from '../thermal-emissive';
@@ -50,7 +50,7 @@ export function memoParseShared<T extends THREE.Object3D>(data: unknown): () => 
   return () => template().clone(true) as T;
 }
 
-// root 配下のメッシュが握る geometry/material を、全個体の共有物として印す。
+// root 配下のメッシュが保持する geometry/material を、全個体の共有物として印す。
 export function markSharedResources(root: THREE.Object3D): void {
   root.traverse((child) => {
     const mesh = child as THREE.Mesh;

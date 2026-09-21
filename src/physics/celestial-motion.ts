@@ -235,7 +235,7 @@ export class StarMotion extends CelestialMotion {
     let r = v3();
     let v = v3();
     for (const system of this.systems) {
-      // 重力を無視すると宣言した系は重心を動かさないので、二体解を解く前に抜ける。
+      // 重力を無視すると宣言した系は重心を動かさないので、二体解を解く前にスキップする。
       const w = system.mu / muTotal;
       if (w === 0) continue;
       const rel = system.starRelStateAt(t);
@@ -384,7 +384,7 @@ export abstract class OrbitingMotion extends CelestialMotion implements Orbiting
   // 有効期間での相対位置・速度。引けなければ null。
   private numericOrbitRelStateAt(t: number): KinematicState<'primaryRel'> | null {
     // 合成した numericStateAt は使わない — 未収録の衛星では「収録済みの親 + 解析の相対」から
-    // 主天体を引いた差が解析の相対そのものになり、数値暦由来と名乗る値が解析由来になる。
+    // 主天体を引いた差が解析の相対そのものになり、数値暦由来として識別される値が解析由来になる。
     const own = this.orbitPointNumericStateAt(t);
     const primaryState = this.primary.ownNumericStateAt(t);
     if (own === null || primaryState === null) return null;

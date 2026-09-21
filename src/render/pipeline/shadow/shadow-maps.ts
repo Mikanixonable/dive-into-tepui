@@ -299,14 +299,14 @@ export class ShadowMaps {
     this.lightCamera.updateProjectionMatrix();
   }
 
-  // 要求の厳しい受け手から順に枠を配る。**枠は受け手のまわりに、要求どおりの大きさで開く** —
+  // 要求の厳しい受け手から順にスロットを割り当てる。**枠は受け手のまわりに、要求どおりの大きさで開く** —
   // 影を落とすメッシュは平行投影でちょうどその枠に重なるものなので、枠が受け手を覆えば必要な
   // メッシュだけが入る。低い要求のために広げると、その枠を起こした受け手まで一緒に粗くなるので
   // 広げない。既存の枠へ相乗りできるのは、枠の大きさを変えずに平行移動して収まるときだけで、
   // 枠が尽きていればその受け手は諦める(要求の緩い側から捨てられる)。
   //
   // **最後の 1 枚は被覆に取っておく。** 要求どおりに縮めた枠はメッシュを覆いきれないので、
-  // はみ出した部分を拾う粗い枠が要る。
+  // はみ出した部分をカバーする粗い枠が要る。
   private buildClusters(): void {
     const windowSlots = this.slotCount - 1;
     for (const receiver of this.casters) {
@@ -354,8 +354,8 @@ export class ShadowMaps {
     this.clusters.push(box.clone());
   }
 
-  // 最後の 1 枚へ、影を要求する受け手をすべて包む枠を置く。**縮めた枠がこぼした部分と、枠が
-  // 尽きて配れなかった受け手を、まとめてここが拾う。**
+  // 最後の 1 枚へ、影を要求する受け手をすべて包む枠を置く。**縮めた枠から漏れた部分と、スロット上限で
+  // 割り当てられなかった受け手を、ここで一括してカバーする。**
   private addCoverageFrame(): void {
     this.scratchBox.makeEmpty();
     for (const receiver of this.casters) {
@@ -433,7 +433,7 @@ export class ShadowMaps {
     this.lightCamera.lookAt(this.center);
     this.lightCamera.updateMatrixWorld(true);
 
-    // **上限で縛ると枠は箱より小さくなりうる。** はみ出した受け手は被覆の枠が拾う。
+    // **上限で制限すると枠は箱より小さくなりうる。** はみ出した受け手は被覆フレームがカバーする。
     this.measureLightSpaceBox(box);
     const frameFront = this.lightSpaceBox.front;
     const extent = Math.min(this.frameExtent(), extentCap);
@@ -480,7 +480,7 @@ export class ShadowMaps {
     return near <= far ? { near, far } : null;
   }
 
-  // 全スロットを空(active = 0)へ戻す。残りの値は次に配るときに上書きされる。
+  // 全スロットを空(active = 0)へ戻す。残りの値は次の割り当て時に上書きされる。
   private clearSlots(): void {
     for (const parameters of this.slotParameters) parameters.w = 0;
   }

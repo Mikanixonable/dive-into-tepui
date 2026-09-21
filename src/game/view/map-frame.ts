@@ -127,12 +127,12 @@ export class MapFrame implements ViewFrame {
     this.planEditor.handleCommand(commandId);
   }
 
-  // Δv 編集の押下中操作を編集セッションへ配る。
+  // Δv 編集の継続入力を編集セッションへ伝達（ディスパッチ）する。
   public updateActions(dt: number): void {
     this.planEditor.updateActions(this.input, dt);
   }
 
-  // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。
+  // クリック・右クリック入力を、ノード編集と被選択物・軌道線・空域のメニューへ先着順にルーティングする。
   public handlePointer(camera: CameraFrame): void {
     this.picking.handleRightClick(this.input, camera);
     this.picking.handleLeftClick(this.input, camera);
