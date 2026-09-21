@@ -1,16 +1,28 @@
 // 描画テスト環境の撮影。ヘッドレス Chrome で .render-lab/ を開き、ケースごとに
 // window.renderLab.shoot() を呼んで、ケースが宣言した向きごとの PNG を撮影名で書く。
+// 書き先は第 1 引数に撮影の組の名前を渡せば .render-lab-shots/<名前>/、省けば .render-lab/shots で、
+// 撮影の前に作り直す。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.render-lab');
-const outDir = path.join(buildDir, 'shots');
 const port = 8767;
 const debugPort = 9444;
 
+// 撮影の組の名前 setName(省けば undefined)の書き先。名前が /^[\w.-]+$/ に合わないか . / .. なら
+// 使い方を投げる。
+function outDirOf(setName) {
+  if (setName === undefined) return path.join(buildDir, 'shots');
+  if (!/^[\w.-]+$/.test(setName) || setName === '.' || setName === '..') {
+    throw new Error('usage: node tools/render-lab-shot.mjs [<shot-set-name>]');
+  }
+  return path.join(root, '.render-lab-shots', setName);
+}
+
 async function main() {
+  const outDir = outDirOf(process.argv[2]);
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-render-lab-', onEvent,
