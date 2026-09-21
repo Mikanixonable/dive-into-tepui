@@ -1,6 +1,6 @@
 // 描画テスト環境が描くケースの表。1 ケースは物体の配置 1 つで、ゲーム本体と同じ天体・艦・線を組み、
-// 既定のカメラと光源・大気・影の源、撮影で写す向きと一緒に返す。カメラ違い・光源違いはケースを
-// 足さず、撮影の向きとして足す。style を受けるケースは、その表示スタイルで組んだ姿を返す。
+// 既定のカメラと光源・大気・影の源、撮影で写す向きと一緒に返す。カメラ違い・光源違いは撮影の向き
+// として足す。style を受けるケースは、その表示スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface, type LightSourceMap } from '../../src/render/celestial/celestial-surface';
@@ -57,10 +57,9 @@ export const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
 
 // カメラの距離を、ケース既定の距離の何桁ぶんまで伸縮できるか(倍率の常用対数の絶対値の上限)。
-// **寄り切った先へ物体を置くケースは、この値から距離を逆算する。**
 export const MAX_CAMERA_DISTANCE_LOG = 2;
 
-// 土星ケースが使う実データの環。
+// 土星の実データの環。
 const SATURN_RINGS = (() => {
   if (SATURN.rings === undefined) throw new Error('saturn has no rings');
   return SATURN.rings;
@@ -69,7 +68,7 @@ const SATURN_RINGS = (() => {
 // 太陽面の輝度。
 const SUN_SURFACE_RADIANCE = surfaceRadianceOf(scaledRadiantIntensity(SUN.radiantIntensity), R_SUN);
 
-// 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
+// ケース既定の恒星方向(原点から見た単位ベクトル)。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();
 
 // 恒星の向き direction(長さは問わない)を、観察の向きの恒星の方位・仰角で表す。
@@ -78,7 +77,6 @@ function sunAnglesOf(direction: THREE.Vector3): Pick<LabViewAngles, 'sunAzimuthD
   return { sunAzimuthDeg: azimuthDeg, sunElevationDeg: elevationDeg };
 }
 
-// SUN_DIR を、観察の向きの恒星の方位・仰角で表したもの。
 const SUN_DIR_ANGLES = sunAnglesOf(SUN_DIR);
 
 // 水星近日点の距離(天文単位)の常用対数。太陽の視半径が 0.86° に広がる。
@@ -90,13 +88,16 @@ const GREY_SPHERE_ALBEDO: Albedo = [0.521, 0.4793, 0.4179];
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
 const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.averageHue, EARTH_TEXTURE.bondAlbedo);
 
-// カメラは常に原点から -Z を見る。near はゲーム本体と同じ 2 m(深度分解能の導出がこの値に乗る)。
+// ケースのカメラの既定の位置と視線。near はゲーム本体と同じ 2 m(深度分解能の導出がこの値に乗る)。
 const EYE = new THREE.Vector3(0, 0, 0);
 const AHEAD = new THREE.Vector3(0, 0, -1);
 const NEAR = 2;
 
 export interface LabCase {
+  // シーンへ載せる物体。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を立てた
+  // 物体のものがケースを外すときに解放される。
   readonly objects: readonly THREE.Object3D[];
+  // 既定の観察の向き・距離・画角を与えるカメラ。描くたびに観察の向きへ動かされる。
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
@@ -117,8 +118,8 @@ export interface LabCase {
   }[];
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
-  // 撮影で写す向き。鍵は PNG の名前、値はケース既定の観察の向きへ重ねる差分。省略すると
-  // ケースの名前で既定の向きを1枚撮る。
+  // 撮影で写す向き。鍵は PNG の名前で全ケースを通して重ならないこと、値はケース既定の観察の向きへ
+  // 重ねる差分。省略するとケースの名前で既定の向きを1枚撮る。
   readonly shots?: Readonly<Record<string, Partial<LabViewAngles>>>;
   // 大気パスへ渡す天体。中心は描画座標。並べ替えと濃い表現の重みは、カメラの位置から
   // 引き直される。
@@ -223,12 +224,12 @@ function ringDisc(
   bands: readonly RingBandDef[], bodyRadius: number, center: THREE.Vector3, axis: THREE.Vector3,
   ringMaterials: RingMaterials,
 ): THREE.Object3D {
+  // 帯は「本体半径 = 1」の単位で組み、群の拡大で本体半径へ戻す。
   const group = new THREE.Group();
   group.position.copy(center);
   group.scale.setScalar(bodyRadius);
   group.quaternion.setFromUnitVectors(RING_LOCAL_AXIS, axis);
   for (const band of bands) {
-    // 半径は「本体半径 = 1」の単位へ直して渡す。面の帯は常に画面上 1px より広く写る扱い。
     const visual = createAnnulusRing(
       band.optics, band.innerRadius / bodyRadius, band.outerRadius / bodyRadius, ringMaterials,
     );
@@ -241,7 +242,7 @@ function ringDisc(
   return group;
 }
 
-// 斜光のケースで使う恒星の向き。カメラは −Z を見るので、左上手前から差す。
+// 斜光の恒星の向き。カメラは −Z を見るので、左上手前から差す。
 const OBLIQUE_SUN_DIR = new THREE.Vector3(-0.70, 0.20, 0.68).normalize();
 // 機軸の片端と側面の両方が見える機体の姿勢。
 const SHIP_ROTATION_PORT = new THREE.Euler(-0.5, 0.6, 0.12);
@@ -299,8 +300,8 @@ const SHIP_RECEIVER_POSITION = new THREE.Vector3(0, 0, -28);
 // 影を落とす 2 隻目を、受け手から +X へ離す距離 [m]。
 const SHIP_FAR_CASTER_DISTANCE = 3000;
 
-// 自機: 艦 1 隻と、+X へ 3 km 離した 2 隻目。恒星の向きだけを変えて、影の 3 つの読み方を同じ
-// 配置で撮る。2 隻目はどの向きでも影の枠を求めるので、枠を奪われて自己影が消えないかもここで読む。
+// 自機: 影を受ける艦と、+X へ遠く離した 2 隻目。2 隻目はどの撮影でも影の枠を求めるので、枠を
+// 奪われて受け手の自己影が消えないかもここで読む。
 function ship(): LabCase {
   const receiver = SHIP_RECEIVER_POSITION;
   return {
@@ -312,9 +313,9 @@ function ship(): LabCase {
     sunDirection: OBLIQUE_SUN_DIR,
     viewTarget: receiver,
     shots: {
-      // 斜光。突起(放熱器・太陽電池)の影が船体へ落ちる。
+      // 斜光。突起の影が船体へ落ちる。
       'ship-selfshadow': {},
-      // 逆光(被写体の向こう側、仰角 5°)。暗い船体の縁が背景の虚空と接する 1 画素を見る。**照度は
+      // 逆光(被写体の向こう側の低い空から)。暗い船体の縁が背景の虚空と接する 1 画素を見る。**照度は
       // 画素の中心でしか求まらない**ので、縁を跨ぐ画素の材質と照度が食い違うと、ここに輪郭が浮く。
       'ship-backlit': { sunAzimuthDeg: 180, sunElevationDeg: 5.14 },
       // +X から差す恒星で、2 隻目の影が受け手へ届く。本影は影を落とす断面の最も細い幅(船体の直径
@@ -326,10 +327,9 @@ function ship(): LabCase {
   };
 }
 
-// 艦の群れ: 影の枠の上限(MAX_SHADOW_SLOTS)より多い 7 隻を、画面の上で互いを隠さない間隔に
-// 散らす。**枠が尽きたときに何が捨てられるか**を見るためのケースなので、艦の数は枠の数を上回って
-// いなければ意味がない。先頭の艦のまわりには小片群を 1 本の枝として散らし、広い小片群の中でも
-// 自己影が残るかを読む。
+// 艦の群れ: 影の枠の上限(MAX_SHADOW_SLOTS)より多い艦を、画面の上で互いを隠さない間隔に散らし、
+// **枠が尽きたときに何が捨てられるか**を見る — 艦の数が枠の数を上回っていなければ意味がない。
+// 先頭の艦のまわりには小片群を 1 本の枝として散らし、広い小片群の中でも自己影が残るかを読む。
 function shipCrowd(): LabCase {
   // 画面上の向き(視線に対する横・縦の正接)と奥行き [m] の組で置く。
   const placements: readonly (readonly [number, number, number])[] = [
@@ -387,9 +387,9 @@ const SMALL_BODY_SHIP_AZIMUTH = 0.68;
 // 影を受ける艦を天体の後方へ置く距離 [m]。
 const SMALL_BODY_SHADOW_DISTANCE = 200;
 
-// 小天体と艦: 環を持つ半径 60 m の天体のまわりへ艦を 2 隻置き、**影の 2 つの経路を同じ絵で
-// 読む**。昼面へ浮かべた艦は影の深度マップを通って天体の表面へ影を落とし、後方へ置いた艦は
-// 天体の球が解析式で解く影の柱の縁をまたぐ。環の帯の影は昼面を横切る縞として出る。
+// 小天体と艦: 環を持つ小天体のまわりへ艦を 2 隻置き、**影の 2 つの経路を同じ絵で読む**。昼面へ
+// 浮かべた艦は影の深度マップを通って天体の表面へ影を落とし、後方へ置いた艦は天体の球が解析式で
+// 解く影の柱の縁をまたぐ。環の帯の影は昼面を横切る縞として出る。
 function shipBodyShadow(_style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   const camera = labCamera(6e7);
   const center = new THREE.Vector3(0, 0, -SMALL_BODY_DISTANCE);
@@ -426,18 +426,16 @@ function shipBodyShadow(_style: RenderStyle, ringMaterials: RingMaterials): LabC
   };
 }
 
-// 低軌道のケースで自機と拡散板を置く位置(描画座標)。カメラは自機とほぼ同じ高度から軌道の接線
-// 方向を見る。自機はカメラより少し上へ置いて下面が見えるようにし、板は自機の右へ、恒星が真上でも
-// 自機の影に入らないよう横へ離す。
+// 低軌道のケースで自機と拡散板を置く位置(描画座標)。自機はカメラより少し上へ置いて下面が見える
+// ようにし、板は恒星が真上でも自機の影に入らないよう、自機の右へ離す。
 const LEO_SHIP_POSITION = new THREE.Vector3(-5, 3, -30);
 const LEO_PLATE_CENTER = new THREE.Vector3(9, 0, -26);
 // 拡散板の法線と一辺 [m]。法線は真下の地球を向きつつ、面がカメラからも見える向きへ傾けてある。
 const LEO_PLATE_NORMAL = new THREE.Vector3(0, -0.7, 0.7).normalize();
 const LEO_PLATE_SIZE = 8;
 
-// 地球低軌道: 直下がサハラの実写の地球(高度 420 km)の上に、自機・白い拡散板(粗さ 1・金属度 0)・
-// 自機の円軌道を置く。視線は軌道の接線方向なので、地平線と、そこへ伸びていく自分の軌道が入る
-// (真下を向けると地球が全画面を覆い、線も地平線も見えない)。
+// 地球低軌道: 直下がサハラの実写の地球の上に、自機・白い拡散板・自機の円軌道を置く。視線は軌道の
+// 接線方向なので、地平線と、そこへ伸びていく自分の軌道が入る。
 function leo(style: RenderStyle): LabCase {
   const camera = labCamera(6e7);
   const center = new THREE.Vector3(0, -LEO_CENTER_DISTANCE, 0);
@@ -486,10 +484,10 @@ const CRESCENT_CENTER_DISTANCE = 1.5 * R_EARTH;
 const CRESCENT_SUN_DIR = new THREE.Vector3(Math.sin((2 * Math.PI) / 3), Math.cos((2 * Math.PI) / 3), 0);
 
 // 三日月のケースで自機を置く位置(描画座標)。カメラより少し上へ置き、既定の水平な視線で下面を
-// 見上げる。地球は画面の外(真下)で、仰角のつまみを下げると見える。
+// 見上げる。地球は画面の外(真下)で、カメラの仰角を上げて見下ろすと見える。
 const CRESCENT_SHIP_POSITION = new THREE.Vector3(0, 3, -34);
 
-// 三日月: 実写の地球を真下に置き、自機が位相角 120° の三日月の地球照を受ける。恒星は水平から 30° 下に
+// 三日月: 実写の地球を真下に置き、自機が三日月の地球から地球照を受ける。恒星は水平から 30° 下に
 // あるので、下面のうち直射を受けない側が地球照だけで照らされる。
 function crescent(style: RenderStyle): LabCase {
   const center = new THREE.Vector3(0, -CRESCENT_CENTER_DISTANCE, 0);
@@ -511,9 +509,9 @@ const OUTER_BODY_RADIUS = 6.371e6;
 // 太陽を画面へ入れる撮影の恒星の向き。灰色球の縁の右上の外、艦から離れた位置に太陽が来る。
 const SUN_IN_VIEW = sunAnglesOf(new THREE.Vector3(0.2563, 0.1392, -0.9565));
 
-// 恒星と灰色球と艦: 灰色球と艦 1 隻を恒星の実球体と一緒に置き、恒星の距離と向きを撮影ごとに
-// 変える。灰色球はそのまま天体照の光源にもなる(艦の夜側を照らす)。艦は灰色球の外、画面の左上へ
-// 置く — 太陽に正対する面(球の右上)へ重なると、そこの画素が艦の鏡面反射に置き換わって読めない。
+// 恒星と灰色球と艦: 灰色球と艦 1 隻を恒星の実球体と一緒に置く。灰色球はそのまま天体照の光源にも
+// なる(艦の夜側を照らす)。艦は灰色球の外、画面の左上へ置く — 太陽に正対する面(球の右上)へ
+// 重なると、そこの画素が艦の鏡面反射に置き換わって読めない。
 function outer(): LabCase {
   const center = new THREE.Vector3(0, -0.5 * OUTER_BODY_RADIUS, -3 * OUTER_BODY_RADIUS);
   const shipPosition = new THREE.Vector3(-55, 22, -100);
@@ -524,7 +522,7 @@ function outer(): LabCase {
     star: createStarSphere(SUN_SURFACE_COLOR, SUN_SURFACE_RADIANCE),
     planetLights: [{ center, radius: OUTER_BODY_RADIUS, albedo: OUTER_ALBEDO }],
     shots: {
-      // 水星近日点の太陽。視半径 0.86° の太陽で、球の昼夜境界の幅が球光源のときだけ広がる。
+      // 水星近日点の太陽。球の昼夜境界の幅が球光源のときだけ広がる。
       'sun-close': { sunDistanceLogAu: MERCURY_PERIHELION_LOG_AU },
       // 外惑星圏。恒星を遠ざけ、**太陽に正対した面が黒へ潰れていないか**を読む。球の最も明るい
       // 画素が太陽に正対した面にあたるので、距離ごとの表示値はそこで測る。
@@ -543,7 +541,7 @@ function outer(): LabCase {
 // 描画順ケースの円の識別色。LINE_RENDER_ORDER の並びと同じ順で当てる。
 const ORDER_COLORS = [0x5a6572, 0x4f8fd0, 0x59c3a5, 0xd8c24a, 0xff6a00] as const;
 
-// 描画順: 同じ深度に置いた 5 本の円が LINE_RENDER_ORDER の順に重なるか。
+// 描画順: 同じ深度に置いた円が LINE_RENDER_ORDER の順に重なるか。
 // 交差点でどちらが上に出るかがそのまま答えになる。
 function order(): LabCase {
   const camera = labCamera(6e7);
@@ -561,7 +559,7 @@ function order(): LabCase {
   return { objects, camera };
 }
 
-// 星殻の代わりの背景板。深度を書かず、どの不透明物より先に描かれる。
+// 星殻の代わりの背景板。深度を比べず、どの不透明物より先に描かれる。
 function backdrop(depth: number): THREE.Object3D {
   const halfHeight = Math.tan((FOV_DEG / 2) * Math.PI / 180) * depth;
   const geometry = new THREE.PlaneGeometry(halfHeight * 2 * (VIEW_WIDTH / VIEW_HEIGHT) * 1.2, halfHeight * 2 * 1.2);
@@ -583,7 +581,7 @@ const ECLIPSE_SHADOW_BODY_DISTANCE = 3e7;
 const ABOVE_ATMOSPHERE_CENTER = new THREE.Vector3(0, 0, -5e4);
 const ABOVE_ATMOSPHERE_RADIUS = 1e3;
 
-// 検証用の板の置き方。画角(50°)いっぱいに広がる大きさを距離から出す。
+// 積分ヘルパの検証に使う板の距離と、画面いっぱいに広がる大きさ [m]。
 const SLAB_PLANE_DISTANCE = 100;
 const SLAB_PLANE_HEIGHT = 2 * SLAB_PLANE_DISTANCE * Math.tan(THREE.MathUtils.degToRad(FOV_DEG / 2));
 const SLAB_PLANE_WIDTH = (SLAB_PLANE_HEIGHT * VIEW_WIDTH) / VIEW_HEIGHT;
@@ -596,7 +594,7 @@ const SLAB_STEPS = 24;
 const SLAB_ERROR_GAIN = 100;
 
 // 積分ヘルパ: 一様な媒質を、サンプル点の刻みを変えて2通りに積分し、解析解と並べて映す。
-// 上から順に 解析解 / 等間隔の刻み / 前へ寄せた刻み / 解析解との差 ×100 の4帯。
+// 上から順に 解析解 / 等間隔の刻み / 前へ寄せた刻み / 解析解との差(拡大)の4帯。
 // **上3帯が同じ濃さで、最下段が黒なら、刻みが不均等でも同じ答えが出ている。**
 // 光学的厚みは画面の左から右へ 0.2 から 1.8 まで変える。
 function marchSlab(): LabCase {
@@ -627,11 +625,9 @@ function marchSlab(): LabCase {
   return { objects: [plane], camera };
 }
 
-// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。薄い雲を合成した地表と積雲の
-// 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。spin は天体固定の
-// 姿勢で、地表も殻も場も大気の扁平も一緒に回る。lightingAndClouds は、この地球が大気・天体照・影・
-// 積雲の影の源としてケースへ差し出す欄と、雲場の設定・焼き・解放と画像の揃いの口で、そのまま
-// ケースへ広げられる。
+// 地球を、中心 center(描画座標)・天体固定の姿勢 spin で、寄り切った分割段で組む。地表・積雲の殻・
+// 模式図でだけ出る経緯度グリッドと海岸線は、ゲーム本体と同じ部品から組む。lightingAndClouds は、この
+// 地球を大気・天体照・影・積雲の影の源とし、雲場と画像の揃いを扱うケースの欄で、そのまま広げられる。
 function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Quaternion()): {
   readonly object: THREE.Object3D;
   readonly atmosphere: AtmosphereBody;
@@ -713,31 +709,31 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
 }
 
 // 斜視ケースのカメラ高度 [m] と、地平線を視線から下げる角 [rad]。負なので地平線は視線の上へ
-// 来る — 画面中央の地表を入射角およそ 45° で見下ろす向きで、雲頂の起伏と塔の側面が同時に写る。
+// 来る — 画面中央の地表を入射角およそ 45° で見下ろす向き。
 const EARTH_OBLIQUE_ALTITUDE = 420e3;
 const EARTH_OBLIQUE_MARGIN = -0.49;
 
-// カメラ(原点)から見て、地球の地平線が視線から margin [rad] だけ下へ来る向きの地球中心。
-// 高度 altitude [m] のカメラから地球へ接する視線の角が、そのまま中心の向きの傾きになる。
+// 高度 altitude [m] のカメラ(原点)から見て、地球の地平線が視線から margin [rad] だけ下へ来る
+// 向きの地球中心。
 function earthCenterBelowHorizon(altitude: number, margin: number): THREE.Vector3 {
   const dist = R_EARTH + altitude;
   const tilt = Math.asin(R_EARTH / dist) + margin;
   return new THREE.Vector3(0, -Math.sin(tilt), -Math.cos(tilt)).multiplyScalar(dist);
 }
 
-// 地球のケースの地球の中心(描画座標)。カメラは高度 420 km から地平線の方向を見る。
+// 地球のケースの地球の中心(描画座標)。
 const EARTH_CENTER = earthCenterBelowHorizon(420e3, 0);
 // 昼夜境界の撮影の恒星の向き。視線の先の地平線上。
 const EARTH_TERMINATOR_SUN = sunAnglesOf(AHEAD.clone().projectOnPlane(EARTH_CENTER.clone().negate().normalize()));
-// 日食の撮影の恒星の向き。既定の向き(SUN_DIR)から方位だけを 10° 回す。食を起こす球はこの向きへ
-// 置くので、既定の撮影では影の軸が地表点から約 5,000 km(3e7 m × sin 9.5°)外れ、地平線まで
-// (地表距離 約 2,300 km)に斑(半影の半径 約 340 km)は入らない。
+// 日食の撮影の恒星の向き。食を起こす球はこの向きへ置くので、既定の向き(SUN_DIR)の撮影では影の軸が
+// 地表点から約 5,000 km(3e7 m × sin 9.5°)外れ、地平線まで(地表距離 約 2,300 km)に斑(半影の
+// 半径 約 340 km)は入らない。
 const EARTH_ECLIPSE_SUN = {
   ...SUN_DIR_ANGLES,
   sunAzimuthDeg: SUN_DIR_ANGLES.sunAzimuthDeg + 10,
 };
 
-// 地球: 高度 420km から地平線方向を見て、大気のリムと地表のもや、大気の外に居る物体を見る。日食の
+// 地球: 低軌道の高度から地平線方向を見て、大気のリムと地表のもや、大気の外に居る物体を見る。日食の
 // 撮影の恒星の方向には、食を起こす球を影の源として置く(画面には写らない)。
 function earth(style: RenderStyle): LabCase {
   const center = EARTH_CENTER.clone();
@@ -764,19 +760,17 @@ function earth(style: RenderStyle): LabCase {
     ],
     shots: {
       'earth': {},
-      // 昼夜境界。恒星を視線の先の地平線上へ置く。**太陽光が最も長く大気を通って届く向き**なので、
-      // 波長ごとの減衰だけで縁と霞が橙へ寄っていなければならない。前方散乱が効く向きでもあるので、
-      // 太陽のまわりのグローもここで読む。
+      // 昼夜境界。**太陽光が最も長く大気を通って届く向き**なので、波長ごとの減衰だけで縁と霞が橙へ
+      // 寄っていなければならない。前方散乱が効く向きでもあるので、太陽のまわりのグローもここで読む。
       'earth-terminator': EARTH_TERMINATOR_SUN,
       // 日食。**大気の明暗は入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた
-      // 斑が出る。食を起こす球の視半径は太陽よりわずかに大きく取ってあり、本影(半径 60km)を
-      // 半影(340km)が縁取る。
+      // 斑が出る。斑は本影(半径 60km)を半影(340km)が縁取る。
       'earth-eclipse': EARTH_ECLIPSE_SUN,
     },
   };
 }
 
-// 斜視の地球: earth と同じ高度から、地平線を視線より下げて地表を斜めに見下ろす。**積雲の塔を
+// 斜視の地球: 低軌道の高度から、視線を地平線より下げて地表を斜めに見下ろす。**積雲の塔を
 // 真上からでも真横からでもなく見る向き**なので、雲頂の起伏と塔の側面はここで読む。
 function earthOblique(style: RenderStyle): LabCase {
   const center = earthCenterBelowHorizon(EARTH_OBLIQUE_ALTITUDE, EARTH_OBLIQUE_MARGIN);
@@ -796,7 +790,7 @@ const EARTH_POLAR_SUN_DIR = new THREE.Vector3(1, 0, 1).normalize();
 // 北極を真上から見下ろす地球: 自転軸をカメラへ向け、極を中心に見下ろす。**正距円筒の場は極で
 // 経度が 1 点へ集まる**ので、場の引き方の破綻はこの構図に出る。
 function earthPolar(style: RenderStyle): LabCase {
-  // 地球の視半径 [rad]。半画角に割合を掛けたものが、そのまま視半径になる。
+  // 地球の視半径 [rad]。
   const apparentRadius = THREE.MathUtils.degToRad(FOV_DEG / 2) * EARTH_POLAR_SCREEN_FRACTION;
   const center = new THREE.Vector3(0, 0, -R_EARTH / Math.sin(apparentRadius));
   // 天体固定の +Y(北極)を、カメラの居る +Z へ倒す。
@@ -824,14 +818,13 @@ const MARS_RADIUS = MARS.radius;
 const MARS_ARRIVAL_ALTITUDE = 4e4;
 const EARTH_MARS_DISTANCE = (MARS_RADIUS + MARS_ARRIVAL_ALTITUDE) * 10 ** MAX_CAMERA_DISTANCE_LOG;
 const EARTH_MARS_CAMERA_ALTITUDE = 1e5;
-// 火星の円盤を地球の地平線から離す角。視半径のこの倍だけ持ち上げると、円盤の下縁が最も厚い
-// 大気を、上縁が薄い大気を通って見える構図になる。
+// 火星の円盤の中心を地球の地平線から持ち上げる角の、火星の視半径に対する倍率。
 const EARTH_MARS_HORIZON_CLEARANCE = 1.25;
 
 // 地球と火星: 大気を持つ天体が2体ある構図。カメラは地球の大気の中から、地平線のすぐ上へ出た
 // 火星を見る。**火星の円盤は下縁ほど厚い地球の大気越しに見える**ので、主天体の大気の下で遠くの
-// 大気天体がどう保たれるかが1枚の中の階調として出る。距離のつまみを縮めると火星の大気の中まで
-// 移動でき、その途中で主天体が入れ替わる。
+// 大気天体がどう保たれるかが1枚の中の階調として出る。距離のつまみを縮めていくと、途中で主天体が
+// 入れ替わる。
 function earthMars(style: RenderStyle): LabCase {
   const camera = labCamera(1e13);
   const marsCenter = new THREE.Vector3(0, 0, -EARTH_MARS_DISTANCE);
@@ -863,7 +856,7 @@ function earthMars(style: RenderStyle): LabCase {
   };
 }
 
-// 低軌道(高度 420km)の地球の中心距離 [m]。視半径が 69.6° あるので、真正面へ置くと画面を埋める。
+// 低軌道(高度 420km)の地球の中心距離 [m]。視半径が 69.7° あるので、真正面へ置くと画面を埋める。
 const LEO_CENTER_DISTANCE = 6.791e6;
 
 // 緯度・経度 [deg] から天体固定の向きへ。正距円筒テクスチャの取り決め(経度 0 が +Z、東が +X、
@@ -878,7 +871,7 @@ function bodyDirection(latitudeDeg: number, longitudeDeg: number): THREE.Vector3
   );
 }
 
-// 低軌道のケースがカメラの直下へ置く地点。サハラ(北緯 23°・東経 13°)。
+// サハラの地点(天体固定の向き)。
 const SAHARA_DIRECTION = bodyDirection(23, 13);
 
 // カメラ(原点)の直下点が、天体固定の subCameraPoint になる自転姿勢。center は天体の中心(描画座標)。
@@ -894,9 +887,9 @@ const LEO_METAL_TERMINATOR_SUN = sunAnglesOf(new THREE.Vector3(1, 0.2, 0));
 // 金属のハイライトの撮影で、周回の中心(金属球の奥行き)からカメラまでの距離 [m]。
 const METAL_HIGHLIGHT_DISTANCE = 3000;
 
-// 低軌道の金属球: 実写テクスチャの地球で画面を埋め、手前の金属球(粗さ 0.05・金属度 1)へ
-// 天体照がどう映るかを読む。**映り込みと、その隣に写る地球そのものを1枚の中で見比べる構図。**
-// 見比べる相手は実機に写る地球なので、大気と雲も実機と同じく組む。直下点は地表の色が読める陸へ置く。
+// 低軌道の金属球: 実写テクスチャの地球で画面を埋め、手前の金属球へ天体照がどう映るかを読む。
+// **映り込みと、その隣に写る地球そのものを1枚の中で見比べる構図。** 見比べる相手は実機に写る地球
+// なので、大気と雲も実機と同じく組む。直下点は地表の色が読める陸へ置く。
 function leoMetal(style: RenderStyle): LabCase {
   const center = new THREE.Vector3(0, 0, -LEO_CENTER_DISTANCE);
   const earthSphere = earthAt(center, style, spinForSubCameraPoint(center, SAHARA_DIRECTION));
@@ -915,8 +908,8 @@ function leoMetal(style: RenderStyle): LabCase {
     shots: {
       'leo-metal': {},
       'leo-metal-terminator': LEO_METAL_TERMINATOR_SUN,
-      // 金属のハイライト。金属球へ寄り、水星近日点の太陽で照らす。曲率のゆるい大きな球に、球光源
-      // では太陽の円盤が幅十数 px の像として映り、点光源の GGX では粗さぶんの数 px の点に潰れる。
+      // 金属のハイライト。曲率のゆるい大きな球に、球光源では太陽の円盤が幅十数 px の像として映り、
+      // 点光源の GGX では粗さぶんの数 px の点に潰れる。
       'metal-highlight': {
         sunDistanceLogAu: MERCURY_PERIHELION_LOG_AU,
         cameraDistanceLog: Math.log10(METAL_HIGHLIGHT_DISTANCE / -LEO_METAL_CENTER.z),
@@ -929,7 +922,7 @@ function leoMetal(style: RenderStyle): LabCase {
 // THREE.PlaneGeometry の面が向くローカルの向き。
 const PLATE_LOCAL_NORMAL = new THREE.Vector3(0, 0, 1);
 
-// 較正のケースの地球: 月軌道相当の視半径 0.95° になる中心(描画座標)。**カメラの後方左に置く**
+// 遠い天体照のケースの地球: 月軌道相当の視半径になる中心(描画座標)。**カメラの後方左に置く**
 // ので画面には写らない — 板の法線を地球へ向けると板はカメラ側を向くので、両立しない。
 const PLANETSHINE_EARTH_CENTER = new THREE.Vector3(-0.8, 0, 0.6).normalize()
   .multiplyScalar(R_EARTH / Math.sin(THREE.MathUtils.degToRad(0.95)));
@@ -943,9 +936,10 @@ const PLANETSHINE_DIFFUSE_CENTER = new THREE.Vector3(-PLANETSHINE_PLATE_OFFSET, 
 const PLANETSHINE_METAL_CENTER = new THREE.Vector3(PLANETSHINE_PLATE_OFFSET, 0, -PLANETSHINE_PLATE_DEPTH);
 const PLANETSHINE_VIEW_TARGET = new THREE.Vector3(0, 0, -PLANETSHINE_PLATE_DEPTH);
 
-// 較正のケースの受け手。**法線は地球への向きとカメラへの向きのちょうど半分**に取る — 鏡面の板が
-// 中心で地球を映し、拡散の板も地球への余弦を残したまま、恒星とは N·L < 0 になる。
+// 遠い天体照のケースの受け手の板を、center(描画座標)へ置く。
 function planetshinePlate(center: THREE.Vector3, roughness: number, metalness: number): THREE.Mesh {
+  // **法線は地球への向きとカメラへの向きのちょうど半分**に取る — 鏡面の板が中心で地球を映し、
+  // 拡散の板も地球への余弦を残したまま、恒星とは N·L < 0 になる。
   const toEarth = PLANETSHINE_EARTH_CENTER.clone().sub(center).normalize();
   const toCamera = center.clone().negate().normalize();
   const mesh = new THREE.Mesh(
@@ -960,9 +954,8 @@ function planetshinePlate(center: THREE.Vector3, roughness: number, metalness: n
   return mesh;
 }
 
-// 遠い天体照: 月軌道相当の距離に置いた地球だけが当たる板を2枚並べる。恒星は板の裏から差すので、
-// **板に出る明るさは天体照だけで決まる。** **以後の段で画素値を厳密に比べるケース**なので、
-// 撮り直しのたびに値が揺れる半影の源(大気・積雲・天体の影)を構図から外してある。
+// 遠い天体照: 月軌道相当の距離に置いた地球だけが照らす板を2枚並べ、**板に出る明るさを天体照だけで
+// 決める。** 画素値を厳密に比べるケース。
 function planetshineFar(style: RenderStyle): LabCase {
   const earthSphere = earthAt(PLANETSHINE_EARTH_CENTER, style);
   return {
@@ -974,6 +967,7 @@ function planetshineFar(style: RenderStyle): LabCase {
     camera: labCamera(1e13),
     sunDirection: PLANETSHINE_SUN_DIR,
     viewTarget: PLANETSHINE_VIEW_TARGET,
+    // 大気・積雲・天体の影は構図から外す — どれも撮り直しのたびに値が揺れる半影の源になる。
     planetLights: [{
       center: PLANETSHINE_EARTH_CENTER,
       radius: R_EARTH,
@@ -1045,13 +1039,12 @@ function blackbodyInstancedRow(center: THREE.Vector3, spacing: number): THREE.Ob
   return mesh;
 }
 
-// 温度による自照を読むケース。**球はすべて同じ 1 つのマテリアルを共有し、温度だけが個体ごとに
-// 違う** — 明るさが球ごとに違って見えることが、個体ごとの温度が届いていることの唯一の印で、
-// 全部同じ明るさなら配線が死んでいる。恒星は斜めから差すので、反射に埋もれる昼側と自照だけの
-// 夜側が同じ球の上に並ぶ。**円柱は頂点ごとの温度勾配**(左端が平均温度、右端が +550 K)で、
-// 赤熱が部品の切れ目ではなく勾配として終わることを見る。
+// 温度による自照を読むケース。恒星は斜めから差すので、反射に埋もれる昼側と自照だけの夜側が同じ
+// 物体の上に並ぶ。
 function blackbody(): LabCase {
-  // 温度の違う球の列。ジオメトリとマテリアルは先頭の球が所有する。
+  // 温度の違う球の列。**球はすべて同じ 1 つのマテリアルを共有し、温度だけが個体ごとに違う** —
+  // 明るさが球ごとに違って見えることが、個体ごとの温度が届いていることの唯一の印で、全部同じ
+  // 明るさなら配線が死んでいる。ジオメトリとマテリアルは先頭の球が所有する。
   const sphereGeometry = new THREE.SphereGeometry(1.1, 32, 16);
   const sphereMaterial = blackbodyMaterial(false);
   const objects: THREE.Object3D[] = [];
@@ -1065,7 +1058,8 @@ function blackbody(): LabCase {
     markLitOpaque(mesh);
     objects.push(mesh);
   }
-  // 温度勾配の円柱と、個体ごとの温度を持つ枝。
+  // 頂点ごとの温度勾配を持つ円柱と、個体ごとの温度を持つ枝。円柱では、**赤熱が部品の切れ目ではなく
+  // 勾配として終わる**ことを見る。
   const barMaterial = blackbodyMaterial(true);
   const bar = blackbodyGradientBar(barMaterial, 30, 1.0);
   bar.position.set(0, -3.4, -BLACKBODY_DEPTH);
@@ -1087,16 +1081,16 @@ function blackbody(): LabCase {
   return { objects, camera: labCamera(6e7), sunDirection: OBLIQUE_SUN_DIR };
 }
 
-// 日食の撮影の恒星の向き。較正の向き(SUN_DIR)から方位だけを 10° 回す。影の源はこの向きへ
-// 置くので、較正の撮影では影の源の軸が受ける球から約 1.6 km(1e4 m × sin 9.5°)外れ、球
-// (半径 300 m)にも環の帯(外縁 320 m)の影にもかからない。
+// 日食の撮影の恒星の向き。影の源はこの向きへ置くので、較正の向き(SUN_DIR)の撮影では影の源の軸が
+// 受ける球から約 1.6 km(1e4 m × sin 9.5°)外れ、球(半径 300 m)にも環の帯(外縁 320 m)の影にも
+// かからない。
 const ALBEDO_ECLIPSE_SUN = {
   ...SUN_DIR_ANGLES,
   sunAzimuthDeg: SUN_DIR_ANGLES.sunAzimuthDeg + 10,
 };
 
-// 較正と日食: アルベド 1 の完全拡散球を 1 天文単位の恒星で照らす。日食の撮影の恒星の方向へ
-// 1e4 m 離して、見えない影の源(太陽とほぼ同じ視半径の球と、それを巡る環の帯)を置く。
+// 較正と日食: アルベド 1 の完全拡散球を 1 天文単位の恒星で照らす。日食の撮影の恒星の方向には、
+// 見えない影の源(球と、それを巡る環の帯)を置く。
 function albedo(): LabCase {
   const center = new THREE.Vector3(0, 0, -1000);
   const surface = new THREE.Mesh(
@@ -1138,11 +1132,13 @@ function albedo(): LabCase {
 // 土星のケースで本体の中心を置く距離 [m]。本体へ寄った既定の距離と、環の全体が収まる遠景の距離。
 const SATURN_NEAR_DISTANCE = 1.9e8;
 const SATURN_FAR_DISTANCE = 1.2134e9;
-// 本体の中心を環面(水平面)から持ち上げる角 [rad]。カメラは環面の 20° 下から本体を見上げる。
+// 本体の中心を環面(水平面)から持ち上げる角 [rad]。カメラは環面の 20° 下、**恒星とは反対側**から
+// 本体を見上げる — 同じ側だと影が落ちる面は常に手前の環の腕に隠れ、真横だと環が線に潰れて、影が
+// 環を横切る境界を読めない。
 const SATURN_CAMERA_TILT = 0.35;
 
-// 遠景の撮影の向き。環面を 27° 上から見下ろし、恒星は環面から 41°、環軸まわりにカメラ(既定の方位
-// 0°)から 75° 回った方向に置く — 本体と環の全体が並んで収まり、昼面どうしの明るさを見比べられる。
+// 遠景の撮影の向き。環面の上から見下ろし、恒星を環軸まわりにカメラから回した方向に置く — 本体と
+// 環の全体が並んで収まり、昼面どうしの明るさを見比べられる。
 const SATURN_FAR_VIEW: Partial<LabViewAngles> = {
   cameraElevationDeg: 26.7,
   cameraDistanceLog: Math.log10(SATURN_FAR_DISTANCE / SATURN_NEAR_DISTANCE),
@@ -1156,8 +1152,8 @@ const SATURN_FAR_VIEW: Partial<LabViewAngles> = {
 function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   const center = new THREE.Vector3(0, Math.sin(SATURN_CAMERA_TILT), -Math.cos(SATURN_CAMERA_TILT))
     .multiplyScalar(SATURN_NEAR_DISTANCE);
-  // 他のケースと違い、視線は正面ではなく本体の中心へ向ける — 影が落ちるのは環面より南側の
-  // 面なので、正面のままだと読みたい範囲が画面の下へ外れる。
+  // 視線は正面ではなく本体の中心へ向ける — 影が落ちるのは環面より南側の面なので、正面のままだと
+  // 読みたい範囲が画面の下へ外れる。
   const camera = labCamera(1e13);
   camera.lookAt(center);
   camera.updateMatrixWorld(true);
@@ -1181,9 +1177,7 @@ function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
     shots: {
       // 影の境界。**環面へ浅い角度で恒星が差す姿勢**(恒星の仰角 17°)で本体へ寄り、本体表面に落ちる
       // 環の影(カッシーニの間隙が明るい帯として出て、その縁は半影ぶんぼける)と、環が本体の影へ入る
-      // 境界(天体の半影ぶんぼける)を同じ絵の中で読む。カメラは**恒星とは反対側**の環面の下に置く —
-      // 同じ側だと影が落ちる面は常に手前の環の腕に隠れる。真横に置くと環が線に潰れて、影が環を横切る
-      // 境界を読めない。
+      // 境界(天体の半影ぶんぼける)を同じ絵の中で読む。
       'saturn-shadow': {},
       // 遠景。**環だけが本体より桁で明るくないか**を見る。本体は画面上 60 px ほどで、半影は読めない。
       'saturn': SATURN_FAR_VIEW,
