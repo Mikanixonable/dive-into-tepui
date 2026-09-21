@@ -315,6 +315,7 @@ export class LabView {
             sunIrradiance,
             starDirection,
             bodyFromWorld: light.bodyFromWorld ?? IDENTITY_BODY_FROM_WORLD,
+            atmosphere: light.atmosphere ?? null,
           },
         };
       }));
@@ -342,12 +343,11 @@ export class LabView {
       castsCumulusShadow(this.graphicsData) ? this.current.cumulus ?? null : null);
     this.current.bakeClouds?.(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
-    // 雲を切る設定では、大気へ立てる殻もゲーム本体と同じように外す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
       (this.current.atmospheres ?? []).map((body) => {
         const distance = camera.position.distanceTo(body.center);
         return {
-          body: this.graphicsData.clouds ? body : { ...body, clouds: null },
+          body,
           distance,
           metersPerPixel: metersPerPixelAtDepth(camera.fov, distance, VIEW_HEIGHT),
         };

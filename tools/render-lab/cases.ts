@@ -40,7 +40,7 @@ import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
 import { PROTEIN_CASES, type ProteinLabCaseMetadata } from './protein-cases';
 import { HULL_EMISS } from '../../src/game/dynamic/dynamic-motion';
 import type { FloatNode } from '../../src/render/tsl-types';
-import type { AtmosphereBody } from '../../src/render/atmosphere';
+import type { AtmosphereBody, AtmosphereClouds } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { GpuTimingSink } from '../../src/render/gpu-timings';
@@ -116,6 +116,8 @@ export interface LabCase {
     readonly lightSourceMap?: () => LightSourceMap | null;
     // 描画座標のベクトルを天体固定の向きへ回す行列。省略すると単位行列。
     readonly bodyFromWorld?: THREE.Matrix4;
+    // 光源として焼く大気と、その中に立つ雲。省略すると地表だけを焼く。
+    readonly atmosphere?: AtmosphereBody;
   }[];
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
@@ -671,6 +673,8 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
   cumulus.addTo(group);
   const bodyFromWorld = new THREE.Matrix4().makeRotationFromQuaternion(spin.clone().invert());
+  // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
+  const clouds: AtmosphereClouds = { get cloud() { return cumulus.renderInput; }, bodyFromWorld };
   const graticule = new BodyGraticule();
   graticule.addTo(group);
   graticule.setVisible(style === 'schematic');
@@ -687,8 +691,8 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       polarAxis: new THREE.Vector3(0, 1, 0).applyQuaternion(spin),
       polarRatio: radii.polarRadius / radii.equatorRadius,
       optics: EARTH_ATMOSPHERE_OPTICS,
-      // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
-      clouds: { get cloud() { return cumulus.renderInput; }, bodyFromWorld },
+      // 雲を描かない間は雲を持たない(ゲーム本体の大気の候補と同じ規則)。
+      get clouds() { return cumulus.cloudsVisible ? clouds : null; },
     },
     cumulus: {
       center,
@@ -752,6 +756,7 @@ function earth(style: RenderStyle): LabCase {
       albedo: EARTH_LIGHT_ALBEDO,
       lightSourceMap: earthSphere.lightSourceMap,
       bodyFromWorld: earthSphere.bodyFromWorld,
+      atmosphere: earthSphere.atmosphere,
     }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
@@ -777,6 +782,7 @@ function earthOblique(style: RenderStyle): LabCase {
       albedo: EARTH_LIGHT_ALBEDO,
       lightSourceMap: earthSphere.lightSourceMap,
       bodyFromWorld: earthSphere.bodyFromWorld,
+      atmosphere: earthSphere.atmosphere,
     }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
@@ -812,6 +818,7 @@ function earthPolar(style: RenderStyle): LabCase {
       albedo: EARTH_LIGHT_ALBEDO,
       lightSourceMap: earthSphere.lightSourceMap,
       bodyFromWorld: earthSphere.bodyFromWorld,
+      atmosphere: earthSphere.atmosphere,
     }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
@@ -962,6 +969,7 @@ function leoMetal(style: RenderStyle, sunDirection: THREE.Vector3): LabCase {
       albedo: EARTH_LIGHT_ALBEDO,
       lightSourceMap: earthSphere.lightSourceMap,
       bodyFromWorld: earthSphere.bodyFromWorld,
+      atmosphere: earthSphere.atmosphere,
     }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
@@ -1007,6 +1015,7 @@ function leoDiffuse(style: RenderStyle, subCameraPoint: THREE.Vector3): LabCase 
       albedo: EARTH_LIGHT_ALBEDO,
       lightSourceMap: earthSphere.lightSourceMap,
       bodyFromWorld: earthSphere.bodyFromWorld,
+      atmosphere: earthSphere.atmosphere,
     }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,

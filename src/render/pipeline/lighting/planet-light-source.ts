@@ -13,10 +13,12 @@ import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { Albedo } from '../../celestial-albedo';
 import type { GpuTimingSink } from '../../gpu-timings';
-import type { PlanetLightAppearance } from './planet-light-image';
+import type { PlanetLightAppearance, PlanetLightSubject } from './planet-light-subject';
 import type {
   BoolUniform, ColorUniform, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform,
 } from '../../tsl-types';
+import type { CloudSpecies } from '../cloud-atmosphere-renderer';
+import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
 import type { ShadingSample } from './shading-sample';
 
@@ -103,20 +105,27 @@ class PlanetLightSlot implements LightSource {
   // フレームを止める。
   private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
   // このスロットの天体の見た目を持つ写しと、そこへ焼く内容。消灯している間は null。
-  private readonly image = new PlanetLightImage();
+  private readonly image: PlanetLightImage;
   private appearance: PlanetLightAppearance | null = null;
   // 写しへ焼く見た目があるか。無いスロットはテクスチャのモードでも一様球で描く。
   private readonly imaged: BoolUniform = uniform(false);
 
-  // sunLight からは、満ち欠けを測る恒星の位置を読む。model は描画設定 planetLightModel の値。
+  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は写しの大気が読む天体の影。
+  // model は描画設定 planetLightModel の値。
   public constructor(
     private readonly sunLight: SunLight,
+    bodyShadow: BodyShadow,
     private readonly sphereSpecular: SphereSpecular,
     private readonly slot: SlotUniforms,
     private model: number,
-  ) {}
+  ) {
+    this.image = new PlanetLightImage(sunLight, bodyShadow);
+  }
 
   public hasContribution(): boolean { return this.slot.radius.value > 0; }
+
+  // このスロットの写しが写す天体。
+  public get subject(): PlanetLightSubject { return this.image.subject; }
 
   // 描画設定 planetLightModel の値を設定する。次回の material() 取得時から適用される。
   public setModel(model: number): void { this.model = model; }
@@ -229,13 +238,14 @@ export class PlanetLightSource {
   );
   private readonly slotSources: readonly PlanetLightSlot[];
 
-  // sunLight は満ち欠けを測る恒星、count は同時に使うスロットの本数(描画設定
-  // planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
+  // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、count は同時に使う
+  // スロットの本数(描画設定 planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
   public constructor(
-    sunLight: SunLight, sphereSpecular: SphereSpecular, private count: number, model: number,
+    sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular, private count: number,
+    model: number,
   ) {
     this.slotSources = this.slots.map(
-      (slot) => new PlanetLightSlot(sunLight, sphereSpecular, slot, model));
+      (slot) => new PlanetLightSlot(sunLight, bodyShadow, sphereSpecular, slot, model));
   }
 
   // 同時に使用するスロット本数を変更する。次回の set() 呼び出し時から適用される。
@@ -244,6 +254,21 @@ export class PlanetLightSource {
   // 描画設定 planetLightModel の値を全スロットへ配る。
   public setModel(model: number): void {
     for (const source of this.slotSources) source.setModel(model);
+  }
+
+  // 写しへ大気を写すか(描画設定「大気」がオフでない)を全スロットへ配る。
+  public setAtmosphereEnabled(enabled: boolean): void {
+    for (const source of this.slotSources) source.subject.setAtmosphereEnabled(enabled);
+  }
+
+  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲の精細さ」がオフでない)を全スロットへ配る。
+  public setCumulusEnabled(enabled: boolean): void {
+    for (const source of this.slotSources) source.subject.setCumulusEnabled(enabled);
+  }
+
+  // 写しの大気の中に、種類ごとの雲の殻を描くかを全スロットへ配る。
+  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
+    for (const source of this.slotSources) source.subject.setCloudShellEnabled(species, enabled);
   }
 
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。
