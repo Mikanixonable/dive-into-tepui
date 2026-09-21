@@ -12,12 +12,8 @@ import { proteinMotionModeDisplacements } from '../../src/render/protein/protein
 import {
   createProteinMotionBinding, disposeProteinMotionBinding, updateProteinMotionCoefficients,
 } from '../../src/render/protein/protein-motion-material';
-import type { LabCase } from './cases';
+import { FOV_DEG, VIEW_HEIGHT, VIEW_WIDTH, type LabCase } from './lab-case';
 
-// 描画は cases.ts と同じ 960×540 固定。
-const VIEW_WIDTH = 960;
-const VIEW_HEIGHT = 540;
-const FOV_DEG = 50;
 const NEAR = 0.1;
 const FAR = 100;
 
