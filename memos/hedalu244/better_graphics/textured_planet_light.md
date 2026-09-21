@@ -13,7 +13,8 @@
 「不採用案」の 7。
 
 **進み具合**: 段 0〜5 は実施済み(写しを焼き、拡散・鏡面が色の倍率として読む。描画設定
-「天体照の光源モデル」)。残りは段 5.5 → 段 7 → 段 6 の順(§3)。
+「天体照の光源モデル」)。段 5.5(lab の地球を実機へ寄せる)と臨時の段 5.6(写しの南北の
+取り違えを直す)も実施済みで、実測は §0-2。残りは段 7 → 段 6 の順(§3)。
 
 ---
 
@@ -39,7 +40,18 @@
 | 穴 | 何が起きるか |
 |---|---|
 | 見た目 | 背景の地球は雲と青い霞に覆われているのに、金属面には雲の無い地表が映る。render-lab の `leo-metal` 系は地表だけを写すように組んであったので、見えていなかった |
-| 光量 | 地球のボンドアルベド 0.306 の大半は雲が作っている。地表だけの写しの平均は約 0.11 で、テクスチャのモードの地球照は一様球の**約 0.36 倍**しかない(§2-2。見積り、段 5.5 で実測) |
+| 光量 | 地球のボンドアルベド 0.306 の大半は雲が作っている。地表だけの写しの平均は全球で 0.1085(一様球の 0.355 倍)で、海の多い半球ではさらに下がる |
+
+**段 5.5・5.6 の実測**(`leo-metal` 系へ大気と雲を載せ、写しの南北を直したあと。段 7 の前後で
+比べる基準):
+
+| 何 | 値 |
+|---|---|
+| `planetshine-far`(西太平洋の半球、満相)のテクスチャ ÷ 一様球、線形の輝度 | **0.250**(R 0.203 / G 0.244 / B 0.422)。光源の写しの段 0 を Σrgb/Σa で読んでも 0.251、`earth.jpg` から CPU で積んでも 0.2498。読み方は、環境光を切って拡散板の中心の照度バッファを 2 つのモードで読む |
+| `leo-metal` の映り込み(金属球のうち地球を映す帯)と背景の地球、撮影の sRGB 輝度の平均 | 帯 119.6 / 背景 143.0 |
+| `leo-metal-terminator` の同じ比較 | 帯 34.4 / 背景 38.0 |
+
+絵でも、背景は雲と霞に覆われたサハラ、映り込みの縁は雲も霞も無い砂で、食い違いは見える。
 
 ---
 
@@ -224,7 +236,7 @@ LTC は拡散も鏡面も**同じ機構**(多角形を `M⁻¹` で変換して�
 月のように、地表の写真の平均をボンドアルベドへ合わせてある天体では成り立つ。**地球では
 成り立たない** — ボンドアルベド 0.306 の大半は雲が作っていて、地表だけの写しの平均は約 0.11
 (配信物の校正値: 地表の線形平均輝度 0.119 × 拡散アルベドの倍率 0.91)。地表だけの写しは一様球の
-**約 0.36 倍**の光しか届けない(段 5.5 で実測)。
+全球で 0.355 倍、`planetshine-far` の西太平洋の半球で **0.250 倍**の光しか届けない(§0-2)。
 
 雲と大気を載せる(§2-8)と写しの平均はボンドアルベドの側へ寄るが、**一致を目標にしない** —
 写しは「描かれている地球」を、一様球は「公表のボンドアルベド」を持つ。両者の差は、雲の場と
@@ -336,8 +348,9 @@ export interface PlanetLightAppearance {
   // …既存の map / albedoScale / albedo / sunIrradiance / starDirection / bodyFromWorld…
   // map の色へ掛けて、地表の拡散アルベドへ合わせる倍率(コメントを直す — §2-1)。
   readonly albedoScale: number;
-  // 大気と、その中に立つ雲(AtmosphereBody.clouds)。大気を持たない天体では null。
-  // **描画設定では落とさない** — 何を写すかは PlanetLightSource.setLayers() が決める。
+  // 大気と、その中に立つ雲(AtmosphereBody.clouds。雲を描かない設定では null — 大気パスへ渡す
+  // 天体と同じ)。大気を持たない天体では null。大気・積雲・殻を写すかは PlanetLightSource の
+  // setter が決める。
   readonly atmosphere: AtmosphereBody | null;
 }
 
@@ -350,20 +363,16 @@ export class PlanetLightSubject {
   public constructor(sunLight: SunLight, bodyShadow: BodyShadow);
   // このフレームの天体を置く。center は描画座標、radius は地表の球の半径 [m]。
   public set(center: THREE.Vector3, radius: number, appearance: PlanetLightAppearance): void;
-  // 写しへ載せる層を置き直す。
-  public setLayers(layers: PlanetLightLayers): void;
+  // 大気を積分するか(描画設定「大気」がオフでない)。
+  public setAtmosphereEnabled(enabled: boolean): void;
+  // 不透明な積雲を焼き込むか(描画設定「積雲の精細さ」がオフでない)。
+  public setCumulusEnabled(enabled: boolean): void;
+  // 大気の中の雲の殻を描くか(描画設定「巻雲」「半透明の積雲」。大気パスと同じ形)。
+  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void;
   // origin から向き direction(どちらも描画座標)の視線が受け取る放射輝度。texelAngle は写しの
   // 1 texel が張る角 [rad] で、地表の画像を読む段を決める。Fn の中から呼ぶ。
   public radianceAlong(origin: Vec3Node, direction: Vec3Node, texelAngle: FloatNode): Vec3Node;
   public dispose(): void;
-}
-
-// 写しへ載せる層。描画設定から render-pipeline.ts の rebuildForGraphics() が組む。
-export interface PlanetLightLayers {
-  readonly atmosphere: boolean;          // 「大気」がオフでない
-  readonly cumulus: boolean;             // 「雲」がオンで、「積雲の精細さ」がオフでない
-  readonly cirrus: boolean;              // 「巻雲」
-  readonly translucentCumulus: boolean;  // 「半透明の積雲」
 }
 
 // render/pipeline/lighting/planet-light-source.ts(改修)
@@ -372,10 +381,16 @@ export class PlanetLightSource {
   public constructor(
     sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular, count: number, model: number,
   );
-  // 全スロットの写しへ、載せる層を配る。
-  public setLayers(layers: PlanetLightLayers): void;
+  // 全スロットの写しへ配る。意味は PlanetLightSubject の同名のもの。
+  public setAtmosphereEnabled(enabled: boolean): void;
+  public setCumulusEnabled(enabled: boolean): void;
+  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void;
 }
 ```
+
+**3 つの setter は別個に持つ**(CODING-RULE 1.6「たまたま同時に切り替わるフラグは別個にする」、
+値を寄せ集めるだけの型を作らない)。「雲」がオフのときは、`appearance.atmosphere.clouds` が null に
+なることで表す — 大気パスへ渡す天体と同じ規則で、写しの側が「雲」の設定を読み直さない。
 
 `PlanetLightImage` は写しの器(投影・焼く・読む・視差の補正・被覆率)に専念し、1 texel ぶんの
 中身を `PlanetLightSubject.radianceAlong()` へ問う。**2 つの責務は分かれている** — 図法を変えても
@@ -387,10 +402,10 @@ export class PlanetLightSource {
 |---|---|---|
 | `src/render/pipeline/lighting/planet-light-subject.ts` | 装置 | 新規。写しが撮る天体の簡易な見え方 |
 | `src/render/pipeline/lighting/planet-light-image.ts` | 装置 | 地表の項を subject へ移し、器に専念する |
-| `src/render/pipeline/lighting/planet-light-source.ts` | 装置 | `setLayers()`、コンストラクタに `bodyShadow` |
-| `src/render/pipeline/render-pipeline.ts` | 装置 | `bodyShadow` を渡す。`rebuildForGraphics()` が層を配る |
+| `src/render/pipeline/lighting/planet-light-source.ts` | 装置 | 3 つの setter を配る、コンストラクタに `bodyShadow` |
+| `src/render/pipeline/render-pipeline.ts` | 装置 | `bodyShadow` を渡す。`rebuildForGraphics()` が 3 つの setter を呼ぶ(大気パスの `setCloudShellEnabled` と並べる) |
 | `src/render/celestial/celestial-illumination.ts` | 装置 | `appearance.atmosphere` を組む(大気パスへ渡すのと同じ天体を 2 度組まない) |
-| `tools/render-lab/cases.ts` / `lab.ts` | — | `planetLights` が大気を任意で持ち、lab が `appearance.atmosphere` を組む |
+| `tools/render-lab/cases.ts` / `lab.ts` | — | `planetLights` が大気を任意で持ち、lab が `appearance.atmosphere` を組む。`earthAt()` の大気は、雲を描かない間 `clouds` を null で返す(ゲーム本体の大気の候補と同じ) |
 
 **import の向き**: `lighting/` → `pipeline/atmosphere-integrator.ts`(同じ `pipeline/` の中)→
 `cloud/`(大気パスが既に読んでいる)。`lighting/` は `celestial/` を読まないまま — 大気は
@@ -426,11 +441,11 @@ L       = ground · T + S
 - **半透明の積雲を不透明な積雲の上にも重ねてしまうのは許す。** 実機では不透明な雲頂が深度を
   書くので、そこで大気の積分が止まり、その下の半透明の殻は通らない。写しは地表まで積分するので
   二重に白くなるが、そこは不透明な雲で既に白い場所なので差は小さい。
-- **何を写すかは、その天体の描画設定に従う。** 「大気」がオフなら積分しない。「雲」または
-  「積雲の精細さ」がオフなら積雲を焼かない。「巻雲」「半透明の積雲」は大気パスと同じ値を配る。
-  **出し分けは `rebuildForGraphics()` の 1 箇所で行う**(`PlanetLightLayers`)— 見た目
-  (`appearance.atmosphere`)は設定によらず天体が持つものをそのまま渡すので、ゲーム本体と
-  render-lab が同じ規則を二重に持たない。
+- **何を写すかは、その天体の描画設定に従う。** 「大気」がオフなら積分しない。「積雲の精細さ」が
+  オフなら積雲を焼かない。「巻雲」「半透明の積雲」は大気パスと同じ値を配る。この 3 つは
+  `rebuildForGraphics()` が大気パスへ配るのと並べて配る。「雲」がオフなら天体の
+  `AtmosphereBody.clouds` が null で届く(大気パスと同じ入口)ので、写しの側は読み直さない。
+  **見かけの大きさで殻が隠れても積雲は焼く** — 遠い天体の照り返しの明るさは雲込みで決まる。
 
 **大気の外殻(地平線の上に立つ縁の輝き)— 段 7b で判断する。** 7a の写しは円錐を地表の球の輪郭
 まで(`σ = asin(R/d)`)しか覆わないので、地平線より上の大気は写らない。ただし地平線ぎわの地表へ
@@ -455,35 +470,8 @@ L       = ground · T + S
 ## 3. 手順
 
 各段の終わりで `npm run typecheck`(ヒープ拡大が要る)と、触った層の回帰テストを通して commit する。
-**実施順は 5.5 → 7 → 6。** 段 6(負荷の実測)は写しを焼く中身が段 7 で変わるので、先に測ると
+**実施順は 7 → 6。** 段 6(負荷の実測)は写しを焼く中身が段 7 で変わるので、先に測ると
 測り直しになる。
-
-### 段 5.5. lab の地球を実機の見た目へ寄せ、食い違いを確かめる
-
-**目的**: 段 7 の前提 — §0-2 の 2 つの食い違い — を絵と数字で確かめる。
-
-**変更箇所**: `tools/render-lab/cases.ts` の `leoMetal()` だけ。
-
-- `leo-metal` / `leo-metal-terminator` の地球を、`leo-diffuse` と同じく大気・積雲の殻・雲の影・
-  雲場の焼き(`atmospheres` / `cumulus` / `applyGraphics` / `bakeClouds`)込みで組む。「背景は
-  地表だけに揃える」のコメントは理由ごと書き直す — 見比べる相手は、実機に写る地球そのもの。
-- `planetshine-far` は変えない(半影の源を外した較正のケース。§2-2)。
-- 地表は `CelestialSurface.textured` のまま。実機はタイルの地表だが、写しとの差は解像度だけで、
-  ここで確かめたいものではない。
-
-**測るもの**(コードへ残さない。数値はこの段へ書き戻す):
-
-- `render-lab:shot` の `leo-metal` / `leo-metal-terminator` — 背景の地球は雲と霞を持ち、金属球の
-  映り込みは雲の無い地表のまま、という食い違いが見えること。
-- 映り込みと背景の明るさ — 金属球の円板の中と、背景の地球の円板の中の画素の平均(撮影の sRGB 値。
-  トーンカーブは同じなので、段 7 の前後で比べる相対の目安になる)。
-- `planetshine-far` で、写しの平均(1×1 段の `rgb/a`、段 4 の較正と同じ読み方)と一様球の `L̄` の
-  輝度の比。§2-2 の見積り 0.36 の実測。
-
-**達成条件**: 上の 3 つの数値と、食い違いの見える 2 枚が揃っている。**食い違いが見えなければ、
-段 7 の必要をユーザーへ問う。**
-
-**検証**: `npm run typecheck`、`npm run render-lab:shot`。
 
 ### 段 7. 写しへ雲と大気を載せる
 
@@ -507,22 +495,24 @@ L       = ground · T + S
 **変更箇所**: §2-7 の表。API は §2-6。
 
 - `PlanetLightSubject` を新設し、`planet-light-image.ts` の地表の項(ベース色の段の選び方、1×1 の
-  白で一様色へ落とす扱い、レイ・球交差)を移す。**レイ・球交差は器(視差の補正)と subject
-  (地表の交点)の両方が使うので、1 つを共有する** — 2 つ書かない。
+  白で一様色へ落とす扱い、画像の `flipY` に従う読み方、レイ・球交差)を移す。**天体の中心・半径と
+  レイ・球交差は 1 箇所に持つ** — 器(視差の補正)と subject(地表の交点)の両方が使うが、2 つ書かない。
+- 雲の場を引く天体固定の向きは、大気の雲の殻が場を引くのと同じ取り方に揃える。
 - `celestial-illumination.ts` は、大気パスの候補を組むのと同じ `atmosphereCandidateAt()` の結果から
   `appearance.atmosphere` を取る(同じフレームに同じ天体を 2 度組まない)。
 - render-lab: `planetLights` の要素に `atmosphere?: AtmosphereBody` を足し、`earthAt()` の大気を
-  渡す(`planetshine-far` には渡さない)。
+  渡す(`planetshine-far` には渡さない)。`earthAt()` の大気の `clouds` は、雲を描かない間 null を
+  返す(ゲーム本体の `atmosphereCandidateAt()` と同じ規則。いまは設定によらず雲を返す)。
 
 **達成条件**:
 
 - `leo-metal` のデバッグ表示「天体照の光源テクスチャ」に、背景と同じ雲と霞が写る。
-- `leo-metal` / `leo-metal-terminator` の金属球に雲が映り、段 5.5 で読んだ「映り込みと背景の
-  明るさ」の差が縮む(数値を報告に書く)。
-- **写しの平均と一様球の比**(段 5.5 と同じ読み方。`planetshine-far` へ雲と大気を**一時的に**渡して
+- `leo-metal` / `leo-metal-terminator` の金属球に雲が映り、§0-2 の「映り込みと背景の明るさ」の
+  差が縮む(同じ読み方で測り、数値を報告に書く)。
+- **写しの平均と一様球の比**(§0-2 と同じ読み方。`planetshine-far` へ雲と大気を**一時的に**渡して
   1 回だけ読み、コードへ残さない)。0.7〜1.4 を外れたら、先に目盛り(積分器の太陽の輝度と `E_b` の
   単位)と雲の混ぜ方を疑う。
-- `planetshine-far`(雲も大気も渡さない)の絵が段 5.5 と画素で一致する — 雲と大気を持たない
+- `planetshine-far`(雲も大気も渡さない)の絵が段 5.6 の後と画素で一致する — 雲と大気を持たない
   経路が変わっていない。
 - 描画設定「雲」「大気」を切ると、映り込みからもそれが消える。
 - **輝点が噴かない** — 球の輪郭・雲頂のように視線へ倒れた面で、周囲より桁違いに明るい画素が
@@ -588,7 +578,7 @@ L       = ground · T + S
 | **最も重い設定(スロット 2 本)** | **+0.5 ms** | 上の合計。現行のライティング見積り 1.1 ms に対して +45% |
 | メモリ | +1.4 MB | 256²×RGBA16F×(1 + 1/3)×2 スロット |
 
-**作業量**: 段 5.5 が半日、段 7a が 1 日、段 7b が半日、段 6 が半日。**段 7a の「写しの平均と
+**作業量**: 段 7a が 1 日、段 7b が半日、段 6 が半日。**段 7a の「写しの平均と
 一様球の比」で詰まる可能性が最も高い** — 外れたら、積分器と地表の項の目盛りの食い違いか、
 雲の混ぜ方かを切り分けることになる。
 
@@ -655,6 +645,10 @@ L       = ground · T + S
 - **`npm run typecheck` は OOM する** — ヒープ拡大が要る。
 - **受け手がカメラより天体へ近いと、受け手の円錐が写しの外へはみ出す。** はみ出した向きは縁の色へ
   clamp されるだけで、明るさは受け手ごとの閉じた解が持つので壊れない(§2-4)。
+- **正距円筒の画像を向きから読むときは、画像の `flipY` に従う。** `equirectUvFromDirection()` は
+  v = 0 が北極だが、球のメッシュ用の画像は three の既定の `flipY = true` で、GPU 上では v = 0 が
+  南極になる。写しの画像はメッシュからの借り物なので、読む側が合わせている(段 5.6 で直した)。
+  写しを組み替えるとき、この合わせを落とさない。
 - **地球の `albedoScale` はボンドアルベドへ合わせる倍率ではない**(§2-2)。写しの平均と一様球の
   差を「正規化の誤り」と読まない。正規化は雲も大気も持たない `planetshine-far` で見る。
 - **積分器と地表の項の目盛りを揃える。** 写しの地表の項は選定が返す `E_b`、積分器の内部散乱は
@@ -664,7 +658,7 @@ L       = ground · T + S
   (`CloudFieldSampler`)。写しの基準点もカメラなので内側にほぼ収まるが、地平線の外側の縁は
   雲の無い地表として写る。
 - **写しの大気は描画設定「大気」の段(サンプル予算)に従わない。** 大気パスは段で予算を配るが、
-  写しは固定の少数で回す。段が効くのはオン/オフだけ(`PlanetLightLayers`)。
+  写しは固定の少数で回す。段が効くのはオン/オフだけ(`setAtmosphereEnabled`)。
 
 ---
 
