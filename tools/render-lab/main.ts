@@ -4,7 +4,9 @@
 import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
-import { withGraphicsOption, type ChoiceValue, type GraphicsOptionKey } from '../../src/render/graphics-settings';
+import {
+  withGraphicsOption, type ChoiceValue, type GraphicsOptionKey, type GraphicsSettingsData,
+} from '../../src/render/graphics-settings';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
 import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
@@ -31,6 +33,11 @@ import type { LabViewAngles } from './view-angles';
 // 殻の高度のつまみが届く上限 [m]。対流圏界面(極 8 km、熱帯 18 km)の上まで取る。
 const MAX_SHELL_ALTITUDE = 20e3;
 
+// 地球の高度のつまみ(描画原点の高度 [m] の常用対数)の下限・上限。下限の 1 km は大気の底、
+// 上限の 100 万 km は月軌道の外側。
+const MIN_EARTH_ALTITUDE_LOG = 3;
+const MAX_EARTH_ALTITUDE_LOG = 9;
+
 // 設定パネルに出さない項目。この環境が原理的に効かせられないものだけを入れる — 並べて何も
 // 起きないと、絵の違いの出どころを読み違える。
 const HIDDEN_GRAPHICS_KEYS: ReadonlySet<GraphicsOptionKey> = new Set<GraphicsOptionKey>([
@@ -44,7 +51,7 @@ declare global {
     renderLab?: {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
-      shoot: (name: CaseName) => Promise<Readonly<Record<string, string>>>;
+      shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
       capture: () => Promise<string>;
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
@@ -70,9 +77,7 @@ async function init(): Promise<void> {
   await Promise.all(PROTEIN_ASSET_IDS.map((id) => requestProteinAsset(id)));
   // **この実行の中だけで生きる設定**。残すと、撮影が「人間が最後に押した状態」に依存して黙って変わる。
   const settings = new UserSettings(new MemorySettingStorage());
-  const view = await LabView.create(
-    document.getElementById('view') as HTMLCanvasElement, settings.graphics.current,
-  );
+  const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement, settings.graphics);
 
   // つまみの位置は表示だけを担い、値の正本は LabView が持つ。**つまみの刻みへ丸めた値を
   // 書き戻さない** — ケース既定の向きが刻みに乗っていないので、丸めると絵が変わる。
@@ -106,7 +111,24 @@ async function init(): Promise<void> {
       setSunDistance(view.viewAngles.sunDistanceLogAu);
     });
 
-  // 観察のつまみの位置を LabView の現在値へ合わせる。
+  // 地球の置き方。方位・仰角は描画原点から地球の中心への向き、直下の緯度・経度は描画原点の真下に
+  // 来る地表の地点。
+  const setEarthAzimuth = buildSlider('earth-angles', '地球 方位', -180, 180, 0.5,
+    () => degrees(view.viewAngles.earthAzimuthDeg), (v) => view.setViewAngles({ earthAzimuthDeg: v }));
+  const setEarthElevation = buildSlider('earth-angles', '地球 仰角', -90, 90, 0.5,
+    () => degrees(view.viewAngles.earthElevationDeg), (v) => view.setViewAngles({ earthElevationDeg: v }));
+  const setEarthAltitude = buildSlider('earth-angles', '高度',
+    MIN_EARTH_ALTITUDE_LOG, MAX_EARTH_ALTITUDE_LOG, 0.01,
+    () => `${Number((10 ** view.viewAngles.earthAltitudeLog / 1e3).toPrecision(3))} km`,
+    (v) => view.setViewAngles({ earthAltitudeLog: v }));
+  const setEarthLatitude = buildSlider('earth-angles', '直下 緯度', -90, 90, 0.5,
+    () => degrees(view.viewAngles.earthLatitudeDeg), (v) => view.setViewAngles({ earthLatitudeDeg: v }));
+  const setEarthLongitude = buildSlider('earth-angles', '直下 経度', -180, 180, 0.5,
+    () => degrees(view.viewAngles.earthLongitudeDeg), (v) => view.setViewAngles({ earthLongitudeDeg: v }));
+  const earthSection = document.getElementById('earth-section')!;
+
+  // 観察のつまみの位置を LabView の現在値へ合わせる。地球を置かないケースでは、地球のつまみを
+  // 節ごと隠す。
   const syncAngles = (): void => {
     const current = view.viewAngles;
     setSunAzimuth(current.sunAzimuthDeg);
@@ -116,6 +138,12 @@ async function init(): Promise<void> {
     setCameraElevation(current.cameraElevationDeg);
     setCameraDistance(current.cameraDistanceLog);
     setCameraZoom(current.cameraZoomLog);
+    earthSection.hidden = !view.showsEarth;
+    setEarthAzimuth(current.earthAzimuthDeg);
+    setEarthElevation(current.earthElevationDeg);
+    setEarthAltitude(current.earthAltitudeLog);
+    setEarthLatitude(current.earthLatitudeDeg);
+    setEarthLongitude(current.earthLongitudeDeg);
   };
 
   const caseItems = CASE_NAMES.map((name) => [name, name] as const);
@@ -141,14 +169,11 @@ async function init(): Promise<void> {
   const styles = new SegmentedControl<RenderStyle>('スタイル', RENDER_STYLES, selectStyle);
   document.getElementById('modes')!.append(styles.element, targets.element);
 
-  // 描画品質設定のパネル。パネルの操作を設定へ流し、設定の現在値を絵とパネルの両方へ配る。
+  // 描画品質設定のパネル。パネルの操作を設定へ流し、設定の現在値をパネルへ映す。
   const panel = new GraphicsPanel(settings.graphics.current, HIDDEN_GRAPHICS_KEYS);
   document.getElementById('graphics')!.appendChild(panel.element);
   panel.onChange = (graphics) => settings.graphics.set(graphics);
-  settings.graphics.subscribe((graphics) => {
-    view.applyGraphics(graphics);
-    panel.sync(graphics);
-  });
+  settings.graphics.subscribe((graphics) => panel.sync(graphics));
 
   // **仮設**: 積雲の飽和とディザの幅。被覆率が 中央値±半幅 に入る柱だけがディザに掛かるので、
   // 半幅を広げるほど半透明として読める画素が増える。生成側の場へ差し替えたあとにもう一段の
@@ -192,7 +217,7 @@ async function init(): Promise<void> {
   window.renderLab = {
     earthSurfaceCapture,
     cases: CASE_NAMES,
-    shoot: async (name) => { const pngs = await view.shoot(name); syncAngles(); return pngs; },
+    shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
     capture: () => view.capture(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
