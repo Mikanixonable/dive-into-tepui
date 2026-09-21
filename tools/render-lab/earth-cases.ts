@@ -61,7 +61,7 @@ const LEO_PLATE_SIZE = 8;
 function leo(style: RenderStyle): LabCase {
   const camera = labCamera(6e7);
   const center = new THREE.Vector3(0, -LEO_CENTER_DISTANCE, 0);
-  const earthSphere = earthAt(center, style, spinForSubCameraPoint(center, SAHARA_DIRECTION));
+  const earthSphere = earthAt(center, style, camera, spinForSubCameraPoint(center, SAHARA_DIRECTION));
   // 自機の軌道は、地球の中心と自機を通り、視線の先(−Z)へ伸びる円。
   const toShip = new THREE.Vector3().subVectors(LEO_SHIP_POSITION, center);
   const u = toShip.clone().normalize();
@@ -104,10 +104,11 @@ const CRESCENT_SHIP_POSITION = new THREE.Vector3(0, 3, -34);
 // あるので、下面のうち直射を受けない側が地球照だけで照らされる。
 function crescent(style: RenderStyle): LabCase {
   const center = new THREE.Vector3(0, -CRESCENT_CENTER_DISTANCE, 0);
-  const earthSphere = earthAt(center, style);
+  const camera = labCamera(6e7);
+  const earthSphere = earthAt(center, style, camera);
   return {
     objects: [earthSphere.object, shipAt(CRESCENT_SHIP_POSITION, SHIP_ROTATION_PORT)],
-    camera: labCamera(6e7),
+    camera,
     sunDirection: CRESCENT_SUN_DIR,
     viewTarget: CRESCENT_SHIP_POSITION,
     ...earthSphere.lightingAndClouds,
@@ -129,7 +130,10 @@ const ABOVE_ATMOSPHERE_RADIUS = 1e3;
 // 地球を、中心 center(描画座標)・天体固定の姿勢 spin で、寄り切った分割段で組む。地表・積雲の殻・
 // 模式図でだけ出る経緯度グリッドと海岸線は、ゲーム本体と同じ部品から組む。lightingAndClouds は、この
 // 地球を大気・天体照・影・積雲の影の源とし、雲場と画像の揃いを扱うケースの欄で、そのまま広げられる。
-export function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Quaternion()): {
+// camera はケースのカメラで、雲場の cap はその直下点へ追従する。
+export function earthAt(
+  center: THREE.Vector3, style: RenderStyle, camera: THREE.Camera, spin = new THREE.Quaternion(),
+): {
   readonly object: THREE.Object3D;
   readonly atmosphere: AtmosphereBody;
   readonly lightSourceMap: () => LightSourceMap | null;
@@ -147,12 +151,7 @@ export function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new TH
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const cumulus = earthCloudPresentation();
-  // 雲場の cap は、ケースのカメラ(原点)から見た直下点へ置く。**置き忘れると**、cap が既定の
-  // 向きに残ってケースに雲が出ない。
   const shellAxes = new THREE.Vector3(axes.x, axes.y, axes.z);
-  const toCamera = center.clone().negate().applyQuaternion(spin.clone().invert()).divide(shellAxes);
-  const rho = Math.max(toCamera.length(), 1);
-  cumulus.aim(toCamera.divideScalar(rho), rho);
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -201,8 +200,12 @@ export function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new TH
       // 地表が読む画像(ベース色と滑らかさ)がすべて GPU へ届いたか。
       ready: () => surface.imagesReady,
       // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
-      // 絵の比較は最も細かい段で行う)。
-      applyGraphics: (graphics) => cumulus.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX),
+      // 絵の比較は最も細かい段で行う)。雲場の cap は、雲を描くフレームでこのフレームのカメラの
+      // 直下点へ置き直す — ゲーム本体と同じ規則。
+      applyGraphics: (graphics) => {
+        cumulus.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX);
+        if (graphics.clouds) cumulus.aimFrom(camera.position, center, spin, shellAxes);
+      },
       bakeClouds: (renderer, displayTime, gpu) => cumulus.bake(renderer, displayTime, gpu),
       disposeClouds: () => cumulus.dispose(),
     },
@@ -242,7 +245,8 @@ const EARTH_ECLIPSE_SUN = {
 // 撮影の恒星の方向には、食を起こす球を影の源として置く(画面には写らない)。
 function earth(style: RenderStyle): LabCase {
   const center = EARTH_CENTER.clone();
-  const earthSphere = earthAt(center, style);
+  const camera = labCamera(6e7);
+  const earthSphere = earthAt(center, style, camera);
   // 食を起こす球が影を落とす地表点。カメラ直下と地平線(地表距離 2,255km)の中間へ来るよう、
   // 直下の向きを視線側へ回す。
   const groundDir = center.clone().negate().normalize()
@@ -257,7 +261,7 @@ function earth(style: RenderStyle): LabCase {
       earthSphere.object,
       sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER),
     ],
-    camera: labCamera(6e7),
+    camera,
     ...earthSphere.lightingAndClouds,
     shadowBodies: [
       sphereShadowBody(eclipseBodyCenter, ECLIPSE_SHADOW_BODY_RADIUS),
@@ -271,6 +275,9 @@ function earth(style: RenderStyle): LabCase {
       // 日食。**大気の明暗は入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた
       // 斑が出る。斑は本影(半径 60km)を半影(340km)が縁取る。
       'earth-eclipse': EARTH_ECLIPSE_SUN,
+      // カメラが周回の中心の反対側へ回り、直下点が元から 40° 離れた位置から地平線を見る。**雲場の cap は
+      // カメラの直下点へ追従する**ので、ここでも手前の地表に雲が出なければならない。
+      'earth-camera-orbit': { cameraAzimuthDeg: 180 },
     },
   };
 }
@@ -279,10 +286,11 @@ function earth(style: RenderStyle): LabCase {
 // 真上からでも真横からでもなく見る向き**なので、雲頂の起伏と塔の側面はここで読む。
 function earthOblique(style: RenderStyle): LabCase {
   const center = earthCenterBelowHorizon(LEO_ALTITUDE, EARTH_OBLIQUE_MARGIN);
-  const earthSphere = earthAt(center, style);
+  const camera = labCamera(6e7);
+  const earthSphere = earthAt(center, style, camera);
   return {
     objects: [earthSphere.object],
-    camera: labCamera(6e7),
+    camera,
     ...earthSphere.lightingAndClouds,
   };
 }
@@ -300,10 +308,11 @@ function earthPolar(style: RenderStyle): LabCase {
   const center = new THREE.Vector3(0, 0, -R_EARTH / Math.sin(apparentRadius));
   // 天体固定の +Y(北極)を、カメラの居る +Z へ倒す。
   const spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-  const earthSphere = earthAt(center, style, spin);
+  const camera = labCamera(6e7);
+  const earthSphere = earthAt(center, style, camera, spin);
   return {
     objects: [earthSphere.object],
-    camera: labCamera(6e7),
+    camera,
     sunDirection: EARTH_POLAR_SUN_DIR,
     ...earthSphere.lightingAndClouds,
     shots: {
@@ -335,7 +344,7 @@ function earthMars(style: RenderStyle): LabCase {
   const marsCenter = new THREE.Vector3(0, 0, -EARTH_MARS_DISTANCE);
   const margin = EARTH_MARS_HORIZON_CLEARANCE * Math.asin(MARS_RADIUS / EARTH_MARS_DISTANCE);
   const earthCenter = earthCenterBelowHorizon(EARTH_MARS_CAMERA_ALTITUDE, margin);
-  const earthSphere = earthAt(earthCenter, style);
+  const earthSphere = earthAt(earthCenter, style, camera);
   const mars = texturedBody(MARS_TEXTURE, MARS, marsCenter, CLOSE_UP_DIAMETER_PX);
   const marsRadii = shapeSpheroidRadii(MARS.radius, MARS.shape);
   return {
@@ -407,14 +416,15 @@ function planetshinePlate(center: THREE.Vector3, roughness: number, metalness: n
 // 遠い天体照: 月軌道相当の距離に置いた地球だけが照らす板を2枚並べ、**板に出る明るさを天体照だけで
 // 決める。** 画素値を厳密に比べるケース。
 function planetshineFar(style: RenderStyle): LabCase {
-  const earthSphere = earthAt(PLANETSHINE_EARTH_CENTER, style);
+  const camera = labCamera(1e13);
+  const earthSphere = earthAt(PLANETSHINE_EARTH_CENTER, style, camera);
   return {
     objects: [
       earthSphere.object,
       planetshinePlate(PLANETSHINE_DIFFUSE_CENTER, 1, 0),
       planetshinePlate(PLANETSHINE_METAL_CENTER, 0.05, 1),
     ],
-    camera: labCamera(1e13),
+    camera,
     sunDirection: PLANETSHINE_SUN_DIR,
     viewTarget: PLANETSHINE_VIEW_TARGET,
     // 大気・積雲・天体の影は構図から外す — どれも撮り直しのたびに値が揺れる半影の源になる。
