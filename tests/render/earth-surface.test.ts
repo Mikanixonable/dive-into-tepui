@@ -41,6 +41,7 @@ const SOURCE = {
 
 class FallbackSpy implements CelestialSurfaceLike {
   public readonly photometry: SurfacePhotometry | null = null;
+  public readonly lightSourceMap = null;
   public readonly textureUrl = 'fallback.jpg';
   public readonly diagnostics = null;
   public readonly calls: string[] = [];
