@@ -1,5 +1,5 @@
-// 地球まわりのケース。低軌道・三日月・遠い天体照・地平線・斜視・極・火星との構図ごとに、観察の
-// つまみで置く地球の既定の置き方を宣言し、その地球に合わせて自機・板・試験球・火星を置く。
+// 地球まわりのケース。地球照を受ける自機と板・地平線の地球・火星との構図ごとに、観察のつまみで置く
+// 地球の既定の置き方と、置き方を変えた撮影を宣言し、その地球に合わせて自機・板・試験球・火星を置く。
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
@@ -49,25 +49,61 @@ const LEO_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
   earthLongitudeDeg: 13,
 };
 
-// 低軌道のケースで自機と拡散板を置く位置(描画座標)。自機はカメラより少し上へ置いて下面が見える
-// ようにし、板は恒星が真上でも自機の影に入らないよう、自機の右へ離す。
+// 低軌道のケースで自機と板を置く位置(描画座標)。自機はカメラより少し上へ置いて下面が見える
+// ようにし、板は恒星が真上でも自機の影に入らないよう、自機の右へ離す。金属板は拡散板の真下の、
+// 地平線とのあいだへ並べる。
 const LEO_SHIP_POSITION = new THREE.Vector3(-5, 3, -30);
-const LEO_PLATE_CENTER = new THREE.Vector3(9, 0, -26);
-// 拡散板の法線と一辺 [m]。法線は真下の地球を向きつつ、面がカメラからも見える向きへ傾けてある。
+const LEO_DIFFUSE_PLATE_CENTER = new THREE.Vector3(9, 0, -26);
+const LEO_METAL_PLATE_CENTER = new THREE.Vector3(9, -6.5, -26);
+// 板の法線と一辺 [m]。法線は真下の地球を向きつつ、面がカメラからも見える向きへ傾けてある。
 const LEO_PLATE_NORMAL = new THREE.Vector3(0, -0.7, 0.7).normalize();
 const LEO_PLATE_SIZE = 8;
 // 自機の軌道の線の見た目。
 const LEO_ORBIT_STYLE: LineStyle = { color: 0x6fd3ff, opacity: 0.9, renderOrder: LINE_RENDER_ORDER.shipOrbit };
 
-// 地球低軌道: 直下がサハラの実写の地球の上に、自機・白い拡散板・自機の円軌道を置く。視線は軌道の
-// 接線方向なので、地平線と、そこへ伸びていく自分の軌道が入る。
+// 三日月の撮影の描画原点の高度 [m]。天体照は受け手から見えている地表の日照で決まるので、位相角 φ の
+// 三日月から光が届くには、可視キャップの半角 acos(R/d) が φ − 90° を超える必要がある。中心距離
+// 1.5 地球半径では 48.2° あり、位相角 120° が要求する 30° を超える。
+const CRESCENT_ALTITUDE = 0.5 * R_EARTH;
+
+// 三日月の撮影の地球と恒星の置き方。地球は描画原点の真下に置いて直下点を北極にし、恒星は位相角
+// 120°(地球から見た恒星と自機のなす角)の三日月になる向きへ置く。
+const CRESCENT_VIEW: Partial<LabViewAngles> = {
+  earthAzimuthDeg: 0,
+  earthElevationDeg: -90,
+  earthAltitudeLog: Math.log10(CRESCENT_ALTITUDE),
+  earthLatitudeDeg: 90,
+  earthLongitudeDeg: 180,
+  ...sunAnglesOf(new THREE.Vector3(Math.sin((2 * Math.PI) / 3), Math.cos((2 * Math.PI) / 3), 0)),
+};
+
+// 遠い天体照の撮影の地球の向き。既定のカメラ(描画原点)から金属板の中心を見る向きを、板の法線で
+// 反射した向き — 金属板は中心に地球を映し、同じ法線の拡散板も地球への余弦を残す。
+const PLANETSHINE_EARTH_DIR = LEO_METAL_PLATE_CENTER.clone().normalize().reflect(LEO_PLATE_NORMAL);
+const PLANETSHINE_EARTH_ANGLES = anglesFromDirection(PLANETSHINE_EARTH_DIR);
+// 月軌道相当の視半径(0.95°)になる地球の中心距離 [m]。
+const PLANETSHINE_EARTH_DISTANCE = R_EARTH / Math.sin(THREE.MathUtils.degToRad(0.95));
+// 遠い天体照の撮影の地球と恒星の置き方。直下点は赤道上(東経 127°)に取り、両極を円盤の縁へ置く。
+// 恒星は地球のちょうど反対 — 板の裏から差すので、板に直射は1本も届かない。
+const PLANETSHINE_VIEW: Partial<LabViewAngles> = {
+  earthAzimuthDeg: PLANETSHINE_EARTH_ANGLES.azimuthDeg,
+  earthElevationDeg: PLANETSHINE_EARTH_ANGLES.elevationDeg,
+  earthAltitudeLog: Math.log10(PLANETSHINE_EARTH_DISTANCE - R_EARTH),
+  earthLatitudeDeg: 0,
+  earthLongitudeDeg: 127,
+  ...sunAnglesOf(PLANETSHINE_EARTH_DIR.clone().negate()),
+};
+
+// 地球低軌道: 直下がサハラの実写の地球の上に、自機・白い拡散板と金属板・自機の円軌道を置く。視線は
+// 軌道の接線方向なので、地平線と、そこへ伸びていく自分の軌道が入る。
 function leo(): LabCase {
   const camera = labCamera();
   const orbit = new Curve(LEO_ORBIT_STYLE);
   return {
     objects: [
       shipAt(LEO_SHIP_POSITION, SHIP_ROTATION_PORT),
-      whitePlate(LEO_PLATE_SIZE, LEO_PLATE_CENTER, LEO_PLATE_NORMAL, 1, 0),
+      whitePlate(LEO_PLATE_SIZE, LEO_DIFFUSE_PLATE_CENTER, LEO_PLATE_NORMAL, 1, 0),
+      whitePlate(LEO_PLATE_SIZE, LEO_METAL_PLATE_CENTER, LEO_PLATE_NORMAL, 0.05, 1),
       orbit.object,
     ],
     camera,
@@ -90,41 +126,17 @@ function leo(): LabCase {
       // 地球照。恒星は真上から差すので、自機の上面だけが直射を受け、下面と板は地球照だけで照らされる。
       // **板の色は直下のサハラの地表の色で決まる。** 横を向いた面はどちらの光も受けず桁で暗い。
       'earthshine': { view: { sunElevationDeg: 90 } },
+      // 三日月。真下の地球が位相角 120° の三日月になり、その地球照が自機の下面を照らす。恒星は水平から
+      // 30° 下にあるので、下面のうち直射を受けない側が地球照だけで照らされる。
+      'crescent': { view: CRESCENT_VIEW },
+      // 遠い天体照。月軌道相当の距離に置いた地球だけが板を照らし、**板に出る明るさを天体照だけで
+      // 決める。** 画素値を厳密に比べる撮影なので、撮り直しのたびに値が揺れる半影の源になる大気と雲は
+      // 描画設定で構図から外す。
+      'planetshine-far': {
+        view: PLANETSHINE_VIEW,
+        graphics: { atmosphere: ATMOSPHERE_QUALITY.off, clouds: false },
+      },
     },
-  };
-}
-
-// 三日月のケースの描画原点の高度 [m]。天体照は受け手から見えている地表の日照で決まるので、位相角 φ の
-// 三日月から光が届くには、可視キャップの半角 acos(R/d) が φ − 90° を超える必要がある。中心距離
-// 1.5 地球半径では 48.2° あり、位相角 120° が要求する 30° を超える。
-const CRESCENT_ALTITUDE = 0.5 * R_EARTH;
-
-// 三日月のケースの地球の置き方: 描画原点の真下に置き、直下点を北極にする。
-const CRESCENT_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
-  earthAzimuthDeg: 0,
-  earthElevationDeg: -90,
-  earthAltitudeLog: Math.log10(CRESCENT_ALTITUDE),
-  earthLatitudeDeg: 90,
-  earthLongitudeDeg: 180,
-};
-
-// 地球を自機の真下(−Y)に置いたとき、位相角 120°(地球から見た恒星と自機のなす角)の三日月に
-// なる恒星の向き。
-const CRESCENT_SUN_DIR = new THREE.Vector3(Math.sin((2 * Math.PI) / 3), Math.cos((2 * Math.PI) / 3), 0);
-
-// 三日月のケースで自機を置く位置(描画座標)。カメラより少し上へ置き、既定の水平な視線で下面を
-// 見上げる。地球は画面の外(真下)で、カメラの仰角を上げて見下ろすと見える。
-const CRESCENT_SHIP_POSITION = new THREE.Vector3(0, 3, -34);
-
-// 三日月: 実写の地球を真下に置き、自機が三日月の地球から地球照を受ける。恒星は水平から 30° 下に
-// あるので、下面のうち直射を受けない側が地球照だけで照らされる。
-function crescent(): LabCase {
-  return {
-    objects: [shipAt(CRESCENT_SHIP_POSITION, SHIP_ROTATION_PORT)],
-    camera: labCamera(),
-    sunDirection: CRESCENT_SUN_DIR,
-    viewTarget: CRESCENT_SHIP_POSITION,
-    earth: CRESCENT_PLACEMENT,
   };
 }
 
@@ -134,11 +146,6 @@ function crescent(): LabCase {
 const ECLIPSE_GROUND_ANGLE = 0.25;
 const ECLIPSE_SHADOW_BODY_RADIUS = 2e5;
 const ECLIPSE_SHADOW_BODY_DISTANCE = 3e7;
-
-// 大気の外に置く試験球の位置と半径。カメラと同じ高度帯(403km)に居るので、**カメラとの間に
-// 大気が無く、地表と違って霞んではならない。** 地平線を背にした輪郭で読む。
-const ABOVE_ATMOSPHERE_CENTER = new THREE.Vector3(0, 0, -5e4);
-const ABOVE_ATMOSPHERE_RADIUS = 1e3;
 
 // 高度 altitude [m] の描画原点から見て、地球の地平線が視線(−Z)から margin [rad] だけ下へ来る
 // 置き方。直下点は経度 0 の子午線上の、天体固定の軸を描画座標の軸へ揃える緯度に取る。
@@ -160,14 +167,45 @@ const EARTH_CENTER = earthCenterOf(EARTH_PLACEMENT);
 const EARTH_TERMINATOR_SUN = sunAnglesOf(AHEAD.clone().projectOnPlane(EARTH_CENTER.clone().negate().normalize()));
 // 日食の撮影の恒星の向き。食を起こす球はこの向きへ置くので、既定の向き(SUN_DIR)の撮影では影の軸が
 // 地表点から約 5,000 km(3e7 m × sin 9.5°)外れ、地平線まで(地表距離 約 2,300 km)に斑(半影の
-// 半径 約 340 km)は入らない。
+// 半径 約 340 km)は入らない。地球の置き方を変える撮影(斜視・極)では、影の軸は描画原点から見えない
+// 側へ落ちるか、地球を外れる。
 const EARTH_ECLIPSE_SUN = {
   ...SUN_DIR_ANGLES,
   sunAzimuthDeg: SUN_DIR_ANGLES.sunAzimuthDeg + 10,
 };
 
-// 地球: 低軌道の高度から地平線方向を見て、大気のリムと地表のもや、大気の外に居る物体を見る。日食の
-// 撮影の恒星の方向には、食を起こす球を影の源として置く(画面には写らない)。
+// 大気の外に置く試験球の半径 [m] と中心(描画座標)。カメラと同じ高度帯(403km)に居るので、
+// **カメラとの間に大気が無く、地表と違って霞んではならない。** 地平線を背にした輪郭で読む。中心は
+// 50km 先の、視線を描画原点の鉛直(地球の中心の向き)まわりに右へ 30° 回した向き — 地平線に接した
+// まま、斜視・極の撮影の中央を空け、極の撮影では地球の円盤(視半径 20°)の外へ出る。
+const ABOVE_ATMOSPHERE_RADIUS = 1e3;
+const ABOVE_ATMOSPHERE_CENTER = AHEAD.clone()
+  .applyAxisAngle(EARTH_CENTER.clone().normalize(), THREE.MathUtils.degToRad(30))
+  .multiplyScalar(5e4);
+
+// 斜視の撮影の、地平線を視線から下げる角 [rad]。負なので地平線は視線の上へ来る — 画面中央の地表を
+// 入射角およそ 45° で見下ろす向き。
+const EARTH_OBLIQUE_MARGIN = -0.49;
+const EARTH_OBLIQUE_PLACEMENT = placementBelowHorizon(LEO_ALTITUDE, EARTH_OBLIQUE_MARGIN);
+
+// 極の撮影の地球の視直径が画面の高さに占める割合と、恒星の向き。恒星は極を斜め上から照らす向きへ
+// 置き、雲の影が極域いっぱいに伸びるようにする。
+const EARTH_POLAR_SCREEN_FRACTION = 0.8;
+const EARTH_POLAR_SUN = sunAnglesOf(new THREE.Vector3(1, 0, 1));
+// 極の撮影の地球の視半径 [rad]。
+const EARTH_POLAR_APPARENT_RADIUS = THREE.MathUtils.degToRad(FOV_DEG / 2) * EARTH_POLAR_SCREEN_FRACTION;
+// 極の撮影の地球の置き方: 視線の先(−Z)に置き、北極を描画原点へ向ける。
+const EARTH_POLAR_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
+  earthAzimuthDeg: 180,
+  earthElevationDeg: 0,
+  earthAltitudeLog: Math.log10(R_EARTH / Math.sin(EARTH_POLAR_APPARENT_RADIUS) - R_EARTH),
+  earthLatitudeDeg: 90,
+  earthLongitudeDeg: 0,
+};
+
+// 地球: 描画原点から −Z を見て、地球の置き方を撮影ごとに変える。既定は低軌道の高度から地平線方向を
+// 見る構図で、大気のリムと地表のもや、大気の外に居る物体を見る。日食の撮影の恒星の方向には、食を
+// 起こす球を影の源として置く(画面には写らない)。
 function earth(): LabCase {
   // 食を起こす球が影を落とす地表点。カメラ直下と地平線(地表距離 2,255km)の中間へ来るよう、
   // 直下の向きを視線側へ回す。
@@ -195,57 +233,19 @@ function earth(): LabCase {
       // カメラが周回の中心(地球の中心)の反対側へ回り、直下点が元から 40° 離れた位置から地平線を見る。
       // **雲場の cap はカメラの直下点へ追従する**ので、ここでも手前の地表に雲が出なければならない。
       'earth-camera-orbit': { view: { cameraAzimuthDeg: 180 } },
-    },
-  };
-}
-
-// 斜視ケースの、地平線を視線から下げる角 [rad]。負なので地平線は視線の上へ来る — 画面中央の地表を
-// 入射角およそ 45° で見下ろす向き。
-const EARTH_OBLIQUE_MARGIN = -0.49;
-const EARTH_OBLIQUE_PLACEMENT = placementBelowHorizon(LEO_ALTITUDE, EARTH_OBLIQUE_MARGIN);
-
-// 斜視の地球: 低軌道の高度から、視線を地平線より下げて地表を斜めに見下ろす。**積雲の塔を
-// 真上からでも真横からでもなく見る向き**なので、雲頂の起伏と塔の側面はここで読む。
-function earthOblique(): LabCase {
-  return {
-    objects: [],
-    camera: labCamera(),
-    viewTarget: earthCenterOf(EARTH_OBLIQUE_PLACEMENT),
-    earth: EARTH_OBLIQUE_PLACEMENT,
-  };
-}
-
-// 極ケースの地球の視直径が画面の高さに占める割合と、恒星の向き。恒星は極を斜め上から
-// 照らす向きへ置き、雲の影が極域いっぱいに伸びるようにする。
-const EARTH_POLAR_SCREEN_FRACTION = 0.8;
-const EARTH_POLAR_SUN_DIR = new THREE.Vector3(1, 0, 1).normalize();
-// 極ケースの地球の視半径 [rad]。
-const EARTH_POLAR_APPARENT_RADIUS = THREE.MathUtils.degToRad(FOV_DEG / 2) * EARTH_POLAR_SCREEN_FRACTION;
-// 極ケースの地球の置き方: 視線の先(−Z)に置き、北極を描画原点へ向ける。
-const EARTH_POLAR_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
-  earthAzimuthDeg: 180,
-  earthElevationDeg: 0,
-  earthAltitudeLog: Math.log10(R_EARTH / Math.sin(EARTH_POLAR_APPARENT_RADIUS) - R_EARTH),
-  earthLatitudeDeg: 90,
-  earthLongitudeDeg: 0,
-};
-
-// 北極を真上から見下ろす地球: 自転軸をカメラへ向け、極を中心に見下ろす。**正距円筒の場は極で
-// 経度が 1 点へ集まる**ので、場の引き方の破綻はこの構図に出る。
-function earthPolar(): LabCase {
-  return {
-    objects: [],
-    camera: labCamera(),
-    sunDirection: EARTH_POLAR_SUN_DIR,
-    viewTarget: earthCenterOf(EARTH_POLAR_PLACEMENT),
-    earth: EARTH_POLAR_PLACEMENT,
-    shots: {
-      'earth-polar': { view: {} },
+      // 斜視。地平線を視線より上げて地表を斜めに見下ろす。**積雲の塔を真上からでも真横からでもなく
+      // 見る向き**なので、雲頂の起伏と塔の側面はここで読む。
+      'earth-oblique': { view: EARTH_OBLIQUE_PLACEMENT },
+      // 極。自転軸をカメラへ向け、北極を中心に見下ろす。**正距円筒の場は極で経度が 1 点へ集まる**ので、
+      // 場の引き方の破綻はこの構図に出る。
+      'earth-polar': { view: { ...EARTH_POLAR_PLACEMENT, ...EARTH_POLAR_SUN } },
       // 極の昼夜境界。恒星を視線と直交させ、昼夜境界を極の上へ通す。**扁平な天体でも影は地平線
       // どおりに落ちる** — 境界は半影ぶんに滑らかで、緯度によらない直線の縁は出ない。天体自身が影を
       // 落とす側に載っていて、地表も雲頂も低い高度の大気も、その内側ではなく表面より外に居ることを
       // ここで読む。
-      'earth-polar-terminator': { view: sunAnglesOf(new THREE.Vector3(1, 0, 0)) },
+      'earth-polar-terminator': {
+        view: { ...EARTH_POLAR_PLACEMENT, ...sunAnglesOf(new THREE.Vector3(1, 0, 0)) },
+      },
     },
   };
 }
@@ -290,68 +290,8 @@ function earthMars(): LabCase {
   };
 }
 
-// 遠い天体照のケースの地球の方位 [deg] と、月軌道相当の視半径(0.95°)になる中心距離 [m]。
-// **カメラの後方左に置く**ので画面には写らない — 板の法線を地球へ向けると板はカメラ側を向くので、
-// 両立しない。
-const PLANETSHINE_EARTH_AZIMUTH_DEG = anglesFromDirection(new THREE.Vector3(-0.8, 0, 0.6)).azimuthDeg;
-const PLANETSHINE_EARTH_DISTANCE = R_EARTH / Math.sin(THREE.MathUtils.degToRad(0.95));
-// 遠い天体照のケースの地球の置き方。直下点は、描画原点の向き(地球の向きの反対)にある赤道上の点に
-// 取り、天体固定の軸を描画座標の軸へ揃える。
-const PLANETSHINE_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
-  earthAzimuthDeg: PLANETSHINE_EARTH_AZIMUTH_DEG,
-  earthElevationDeg: 0,
-  earthAltitudeLog: Math.log10(PLANETSHINE_EARTH_DISTANCE - R_EARTH),
-  earthLatitudeDeg: 0,
-  earthLongitudeDeg: PLANETSHINE_EARTH_AZIMUTH_DEG + 180,
-};
-const PLANETSHINE_EARTH_CENTER = earthCenterOf(PLANETSHINE_PLACEMENT);
-// 恒星は地球のちょうど反対。板の裏から差すので、板に直射は1本も届かない。
-const PLANETSHINE_SUN_DIR = PLANETSHINE_EARTH_CENTER.clone().negate().normalize();
-// 受け手の板の一辺・横のずれ・奥行き [m]。左を拡散、右を金属にして同じ奥行きへ並べる。
-const PLANETSHINE_PLATE_SIZE = 1200;
-const PLANETSHINE_PLATE_OFFSET = 800;
-const PLANETSHINE_PLATE_DEPTH = 3000;
-const PLANETSHINE_DIFFUSE_CENTER = new THREE.Vector3(-PLANETSHINE_PLATE_OFFSET, 0, -PLANETSHINE_PLATE_DEPTH);
-const PLANETSHINE_METAL_CENTER = new THREE.Vector3(PLANETSHINE_PLATE_OFFSET, 0, -PLANETSHINE_PLATE_DEPTH);
-const PLANETSHINE_VIEW_TARGET = new THREE.Vector3(0, 0, -PLANETSHINE_PLATE_DEPTH);
-
-// 遠い天体照のケースの受け手の板を、center(描画座標)へ置く。
-function planetshinePlate(center: THREE.Vector3, roughness: number, metalness: number): THREE.Mesh {
-  // **法線は地球への向きとカメラへの向きのちょうど半分**に取る — 鏡面の板が中心で地球を映し、
-  // 拡散の板も地球への余弦を残したまま、恒星とは N·L < 0 になる。
-  const toEarth = PLANETSHINE_EARTH_CENTER.clone().sub(center).normalize();
-  const toCamera = center.clone().negate().normalize();
-  return whitePlate(PLANETSHINE_PLATE_SIZE, center, toEarth.add(toCamera).normalize(), roughness, metalness);
-}
-
-// 遠い天体照: 月軌道相当の距離に置いた地球だけが照らす板を2枚並べ、**板に出る明るさを天体照だけで
-// 決める。** 画素値を厳密に比べるケース。
-function planetshineFar(): LabCase {
-  return {
-    objects: [
-      planetshinePlate(PLANETSHINE_DIFFUSE_CENTER, 1, 0),
-      planetshinePlate(PLANETSHINE_METAL_CENTER, 0.05, 1),
-    ],
-    camera: labCamera(),
-    sunDirection: PLANETSHINE_SUN_DIR,
-    viewTarget: PLANETSHINE_VIEW_TARGET,
-    earth: PLANETSHINE_PLACEMENT,
-    shots: {
-      // 大気と雲は撮り直しのたびに値が揺れる半影の源になるので、描画設定で構図から外す。
-      'planetshine-far': {
-        view: {},
-        graphics: { atmosphere: ATMOSPHERE_QUALITY.off, clouds: false },
-      },
-    },
-  };
-}
-
 export const EARTH_CASES = {
   'leo': leo,
-  'planetshine-far': planetshineFar,
-  'crescent': crescent,
   'earth': earth,
-  'earth-oblique': earthOblique,
-  'earth-polar': earthPolar,
   'earth-mars': earthMars,
 } as const satisfies Record<string, CaseBuilder>;
