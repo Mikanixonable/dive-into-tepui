@@ -115,6 +115,7 @@ const TEST_OPTICS = {
 function atmosphereView(): CelestialIlluminationView {
   return {
     lightSourceAlbedo: null,
+    lightSourceMap: null,
     rings: () => null,
     cumulusShadowAt: () => null,
     atmosphereCandidateAt: (motion, floatingOrigin, displayTime) => ({
@@ -136,6 +137,7 @@ function atmosphereView(): CelestialIlluminationView {
 function plainView(): CelestialIlluminationView {
   return {
     lightSourceAlbedo: null,
+    lightSourceMap: null,
     rings: () => null,
     cumulusShadowAt: () => null,
     atmosphereCandidateAt: () => null,
