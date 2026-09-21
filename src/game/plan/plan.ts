@@ -19,7 +19,7 @@ export interface SerializedPlan {
 // ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。
 export const NODE_APPROACH_LEAD = 10;
 
-// 参照期間(公転周期)[s] から、表示する期間の長さ [s] を答える面。
+// 参照期間(公転周期)[s] から、表示する期間の長さ [s] を算出するインターフェース。
 export interface DisplayDurationSource {
   durationSec(referencePeriod: number): number;
 }

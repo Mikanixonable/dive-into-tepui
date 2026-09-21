@@ -414,7 +414,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     );
     const normal = norm(frameDirVector(toFrameDir(transform, this.framePlaneNormal(sample))));
     const currentOffset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
-    // 真上は法線から見下ろし、真横はいまの視線を面へ倒す。縮退したら春分方向、次に右軸で代える。
+    // 真上は法線から見下ろし、真横は現在の視線を基準面へ射影する。縮退した場合は春分方向、次に右軸を採用する。
     let offset: Vec3;
     let up: Vec3;
     if (view === 'above') {
