@@ -10,6 +10,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from '../field-projection';
+import type { GraphicsSettingsData } from '../graphics-settings';
 
 // aim() による初回更新までのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
@@ -64,6 +65,22 @@ export class CloudPresentation {
 
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
 
+  // 描画設定のうち雲にかかわる項目と、見かけ直径 apparentDiameterPx [px] を表示状態へ反映する。
+  public syncGraphics(graphics: GraphicsSettingsData, apparentDiameterPx: number): void {
+    // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
+    this.setCloudsVisible(graphics.clouds);
+    if (graphics.clouds) {
+      this.setSource(graphics.cloudFieldSource);
+      this.setDetail(graphics.cumulusDetail);
+      this.syncLod(apparentDiameterPx);
+    }
+    // 大気の中へ立てる巻雲と半透明の積雲。
+    this.setAtmosphereCloudsVisible(
+      graphics.clouds && graphics.cirrus,
+      graphics.clouds && graphics.translucentCumulus,
+    );
+  }
+
   // 雲場の出どころを選ぶ。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
   // **選び直したら結び直す** — 結び直さないと、不透明表面が前の出どころの写しを読み続ける。
   public setSource(kind: CloudFieldSourceKind): void {
@@ -88,7 +105,7 @@ export class CloudPresentation {
   }
 
   // 大気の中へ立てる巻雲と半透明の積雲を、それぞれ描くかを置き直す。
-  public setAtmosphereCloudsVisible(cirrusVisible: boolean, translucentCumulusVisible: boolean): void {
+  private setAtmosphereCloudsVisible(cirrusVisible: boolean, translucentCumulusVisible: boolean): void {
     this.cirrusVisible = cirrusVisible;
     this.translucentCumulusVisible = translucentCumulusVisible;
   }
