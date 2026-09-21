@@ -85,6 +85,8 @@ export class RenderPipeline {
   private readonly debugViewToWorld: Mat4Uniform;
   // getDrawingBufferSize の書き込み先。フレームごとに確保しない使い回し領域。
   private readonly drawingBufferSize = new THREE.Vector2();
+  // 天体照の写しの基準点(カメラの描画座標)の書き込み先。同じく使い回し領域。
+  private readonly cameraPosition = new THREE.Vector3();
   private readonly unregisterProteinMotionRenderer: () => void;
 
   // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。
@@ -125,7 +127,7 @@ export class RenderPipeline {
     this.sunSource = new SunSource(
       this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
-      this._sunLight, this.sphereSpecular, graphics.planetLightCount);
+      this._sunLight, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel);
     this._ambient = new AmbientSource(this._sunLight);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
@@ -210,6 +212,9 @@ export class RenderPipeline {
       material: inspectMaterial,
       atmosphere: inspectMaterial,
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
+      'planet-light': this.buildCompositeMaterial(
+        vec4(this.toneMapped(this._planetLight.imageRadianceAt(screenUV)), 1),
+      ),
     };
     this.lensCompositeMaterial = this.buildCompositeMaterial(
       vec4(
@@ -324,6 +329,7 @@ export class RenderPipeline {
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
+    this._planetLight.setModel(graphics.planetLightModel);
     this.antialiasPass.setMethod(graphics.antialias);
     this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
     this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
@@ -402,6 +408,9 @@ export class RenderPipeline {
 
     // 影パス。G バッファの深度を読む。
     this.shadowPass.render(camera, width, height);
+
+    // 天体照の写し。基準点はカメラの位置で、ライティングパスより前に焼く。
+    this._planetLight.bake(this.renderer, camera.getWorldPosition(this.cameraPosition), this.gpu);
 
     // ライティングパス。G バッファと影の透過率を読む。
     this.lightPrepass.render(camera, width, height);
