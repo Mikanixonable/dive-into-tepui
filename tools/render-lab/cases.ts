@@ -245,12 +245,13 @@ function ringDisc(
 
 // 斜光のケースで使う恒星の向き。カメラは −Z を見るので、左上手前から差す。
 const OBLIQUE_SUN_DIR = new THREE.Vector3(-0.70, 0.20, 0.68).normalize();
-// 逆光のケースで使う恒星の向き。カメラは −Z を見るので、被写体の向こう側から差す。
-const BACKLIT_SUN_DIR = new THREE.Vector3(0, 0.09, -1).normalize();
-// 上面と左舷の両方が見える機体の姿勢。突起の影が見えている面を横切る。
+// 機軸の片端と側面の両方が見える機体の姿勢。
 const SHIP_ROTATION_PORT = new THREE.Euler(-0.5, 0.6, 0.12);
-// 上面と右舷の両方が見える機体の姿勢。右手から差す恒星のもとで、突起の影が見えている面を横切る。
+// SHIP_ROTATION_PORT を左右に映した姿勢。
 const SHIP_ROTATION_STARBOARD = new THREE.Euler(-0.5, -0.6, -0.12);
+// 操縦席側の端を右上の手前へ向けた姿勢。OBLIQUE_SUN_DIR のもとで、操縦席まわりの放熱器と
+// 太陽電池の影が、見えている船体の面へ落ちる。
+const SHIP_ROTATION_SELF_SHADOW = new THREE.Euler(1.85, -0.93, 1.0);
 
 // 小片 1 個の一辺 [m] と、散らばる範囲の半幅 [m]。
 const DEBRIS_SIZE = 0.12;
@@ -294,106 +295,79 @@ function debrisPool(center: THREE.Vector3, count: number): THREE.Object3D {
   return mesh;
 }
 
-// 自己影: 艦 1 隻を斜光で照らし、突起(アンテナ・放熱板)の影が船体へ落ちるのを見る。
-function shipSelfShadow(): LabCase {
-  const shipPosition = new THREE.Vector3(0, -1, -10);
-  return {
-    objects: [shipAt(shipPosition, SHIP_ROTATION_PORT)],
-    camera: labCamera(6e7),
-    sunDirection: OBLIQUE_SUN_DIR,
-    viewTarget: shipPosition,
-  };
-}
+// 自機のケースで影を受ける艦の位置(描画座標)。艦の全体が画面に収まり、近い端が near 面より
+// 奥に来る距離に置く。
+const SHIP_RECEIVER_POSITION = new THREE.Vector3(0, 0, -28);
+// 影を落とす 2 隻目を、受け手から +X へ離す距離 [m]。
+const SHIP_FAR_CASTER_DISTANCE = 3000;
 
-// 逆光: 艦 1 隻を向こう側から照らし、暗い船体の縁が背景の虚空と接する 1 画素を見る。**照度は
-// 画素の中心でしか求まらない**ので、縁を跨ぐ画素の材質と照度が食い違うと、ここに輪郭が浮く。
-function shipBacklit(): LabCase {
-  const shipPosition = new THREE.Vector3(0, -1, -10);
-  return {
-    objects: [shipAt(shipPosition, SHIP_ROTATION_PORT)],
-    camera: labCamera(6e7),
-    sunDirection: BACKLIT_SUN_DIR,
-    viewTarget: shipPosition,
-  };
-}
-
-// 複数塊: 互いに離した艦を並べ、スロットが 2 枚以上へ分かれるのを見る。
-function shipCluster(): LabCase {
-  const positions = [
-    new THREE.Vector3(0, -1, -10),
-    new THREE.Vector3(9, 3, -18),
-    new THREE.Vector3(-8, 2, -16),
-    new THREE.Vector3(3, -7, -24),
-  ];
-  return {
-    objects: positions.map((position) => shipAt(position, SHIP_ROTATION_PORT)),
-    camera: labCamera(6e7),
-    sunDirection: OBLIQUE_SUN_DIR,
-    viewTarget: positions[0]!,
-  };
-}
-
-// スロットより影を落とすものが多い群: 艦をスロット数より多く並べ、カメラの背後にも置く。**枠が尽きた
-// ときに何が捨てられるか**を見るためのケースなので、艦の数はスロット数を上回っていなければ
-// 意味がない。
-function shipCrowd(): LabCase {
-  const positions = [
-    new THREE.Vector3(0, -1, -10),
-    new THREE.Vector3(9, 3, -18),
-    new THREE.Vector3(-8, 2, -16),
-    new THREE.Vector3(3, -7, -24),
-    new THREE.Vector3(-11, -5, -30),
-    new THREE.Vector3(14, 6, -34),
-    new THREE.Vector3(-2, 9, -42),
-  ];
-  return {
-    objects: positions.map((position) => shipAt(position, SHIP_ROTATION_PORT)),
-    camera: labCamera(6e7),
-    sunDirection: OBLIQUE_SUN_DIR,
-    viewTarget: positions[0]!,
-  };
-}
-
-// 遠くから伸びてくる影: 恒星方向へ 3 km 離した艦が、手前の艦へ影を落とす。**本影は艦の
-// 差し渡しの 107.5 倍(約 915 m)で消える**ので、3 km 先では影の濃さが (915/3000)² まで落ちて
-// いなければならない。遠方の半影の減衰を見るためのケース。
-function shipFarShadow(): LabCase {
-  const receiver = new THREE.Vector3(0, 0, -10);
+// 自機: 艦 1 隻と、+X へ 3 km 離した 2 隻目。恒星の向きだけを変えて、影の 3 つの読み方を同じ
+// 配置で撮る。2 隻目はどの向きでも影の枠を求めるので、枠を奪われて自己影が消えないかもここで読む。
+function ship(): LabCase {
+  const receiver = SHIP_RECEIVER_POSITION;
   return {
     objects: [
-      shipAt(receiver, SHIP_ROTATION_PORT),
-      shipAt(new THREE.Vector3(3000, 0, -10), SHIP_ROTATION_PORT),
+      shipAt(receiver, SHIP_ROTATION_SELF_SHADOW),
+      shipAt(receiver.clone().setX(receiver.x + SHIP_FAR_CASTER_DISTANCE), SHIP_ROTATION_SELF_SHADOW),
     ],
     camera: labCamera(6e7),
-    sunDirection: new THREE.Vector3(1, 0, 0),
+    sunDirection: OBLIQUE_SUN_DIR,
     viewTarget: receiver,
+    shots: {
+      // 斜光。突起(放熱器・太陽電池)の影が船体へ落ちる。
+      'ship-selfshadow': {},
+      // 逆光(被写体の向こう側、仰角 5°)。暗い船体の縁が背景の虚空と接する 1 画素を見る。**照度は
+      // 画素の中心でしか求まらない**ので、縁を跨ぐ画素の材質と照度が食い違うと、ここに輪郭が浮く。
+      'ship-backlit': { sunAzimuthDeg: 180, sunElevationDeg: 5.14 },
+      // +X から差す恒星で、2 隻目の影が受け手へ届く。本影は影を落とす断面の最も細い幅(船体の直径
+      // 6.2 m)の 1/(太陽の視直径 9.3e-3 rad) = 107.5 倍、約 670 m で消えるので、3 km 先に届くのは
+      // 半影だけ。濃さは +X から見た艦の断面積(約 86 m²)を、3 km 先での太陽円盤の広がり
+      // π(4.65e-3 × 3000 m)² ≈ 610 m² で割った 0.14 ほどまで落ちていなければならない。
+      'ship-far-shadow': { sunAzimuthDeg: 90, sunElevationDeg: 0 },
+    },
   };
 }
 
-// 小片群のなかの自己影: 自己影のケースへ、広く散らばった小片群を 1 本の枝として足す。
-function shipInDebris(): LabCase {
-  const shipPosition = new THREE.Vector3(0, -1, -10);
+// 艦の群れ: 影の枠の上限(MAX_SHADOW_SLOTS)より多い 7 隻を、画面の上で互いを隠さない間隔に
+// 散らす。**枠が尽きたときに何が捨てられるか**を見るためのケースなので、艦の数は枠の数を上回って
+// いなければ意味がない。先頭の艦のまわりには小片群を 1 本の枝として散らし、広い小片群の中でも
+// 自己影が残るかを読む。
+function shipCrowd(): LabCase {
+  // 画面上の向き(視線に対する横・縦の正接)と奥行き [m] の組で置く。
+  const placements: readonly (readonly [number, number, number])[] = [
+    [0, -0.02, 45],
+    [0.52, 0.24, 65],
+    [-0.52, 0.22, 60],
+    [0.5, -0.26, 80],
+    [-0.56, -0.26, 90],
+    [0.02, 0.34, 100],
+    [0.02, -0.36, 110],
+  ];
+  const positions = placements.map(([u, v, depth]) => new THREE.Vector3(u * depth, v * depth, -depth));
   return {
-    objects: [shipAt(shipPosition, SHIP_ROTATION_PORT), debrisPool(shipPosition, 512)],
+    objects: [
+      ...positions.map((position) => shipAt(position, SHIP_ROTATION_SELF_SHADOW)),
+      debrisPool(positions[0]!, 512),
+    ],
     camera: labCamera(6e7),
     sunDirection: OBLIQUE_SUN_DIR,
-    viewTarget: shipPosition,
+    viewTarget: positions[0]!,
   };
 }
 
-// 小天体のケースの寸法 [m]。艦(差し渡し 8.5 m)と天体が同じ画面へ収まる大きさに取る。
-const SMALL_BODY_RADIUS = 30;
-const SMALL_BODY_DISTANCE = 130;
+// 小天体のケースの寸法 [m]。艦(全長 16 m)と天体が同じ画面へ収まる大きさに取る。
+const SMALL_BODY_RADIUS = 60;
+const SMALL_BODY_DISTANCE = 260;
 
 // 小天体の環の帯。半径は天体の中心から [m]。**帯の影は環軸と恒星のなす角の余弦(0.55)ぶんへ
-// 縮む**ので、内縁 40 m の帯の影は中心から 22 m — 天体の半径 30 m の内側 — へ落ちる。
+// 縮む**ので、内縁 80 m の帯の影は中心から 44 m — 天体の半径 60 m の内側 — へ落ちる。
 const SMALL_BODY_RING_BANDS: readonly RingBandDef[] = [
   {
-    innerRadius: 40, outerRadius: 48, thickness: 0,
+    innerRadius: 80, outerRadius: 96, thickness: 0,
     optics: { normalOpticalDepth: 0.8, singleScatteringAlbedo: 0.6, phaseG: 0.3 },
   },
   {
-    innerRadius: 52, outerRadius: 58, thickness: 0,
+    innerRadius: 104, outerRadius: 116, thickness: 0,
     optics: { normalOpticalDepth: 1.6, singleScatteringAlbedo: 0.6, phaseG: 0.3 },
   },
 ];
@@ -408,14 +382,14 @@ const SMALL_BODY_RING_TILT = 0.9885;
 
 // 影を落とす艦を浮かべる高さ [m] と、その直下点の太陽天頂角・方位 [rad](方位 0 がカメラ側)。
 // 天頂角 0 の直下点はカメラから見て縁へ寄るので倒し、方位は帯の影を避ける側へ振る。
-const SMALL_BODY_SHIP_ALTITUDE = 20;
+const SMALL_BODY_SHIP_ALTITUDE = 40;
 const SMALL_BODY_SHIP_ZENITH = 0.7;
 const SMALL_BODY_SHIP_AZIMUTH = 0.68;
 
 // 影を受ける艦を天体の後方へ置く距離 [m]。
-const SMALL_BODY_SHADOW_DISTANCE = 100;
+const SMALL_BODY_SHADOW_DISTANCE = 200;
 
-// 小天体と艦: 環を持つ半径 30 m の天体のまわりへ艦を 2 隻置き、**影の 2 つの経路を同じ絵で
+// 小天体と艦: 環を持つ半径 60 m の天体のまわりへ艦を 2 隻置き、**影の 2 つの経路を同じ絵で
 // 読む**。昼面へ浮かべた艦は影の深度マップを通って天体の表面へ影を落とし、後方へ置いた艦は
 // 天体の球が解析式で解く影の柱の縁をまたぐ。環の帯の影は昼面を横切る縞として出る。
 function shipBodyShadow(_style: RenderStyle, ringMaterials: RingMaterials): LabCase {
@@ -1192,9 +1166,9 @@ function blackbody(): LabCase {
   syncThermalState(barrel, BLACKBODY_BARREL_TEMPERATURE, BLACKBODY_BARREL_DEVIATION, HULL_EMISS);
   objects.push(barrel);
   // 艦 1 隻を同じ絵へ。**モデルから読んだマテリアルにも温度が届く**ことを見る。
-  const ship = shipAt(new THREE.Vector3(14, -8, -30), SHIP_ROTATION_PORT);
-  syncThermalState(ship, BLACKBODY_SHIP_TEMPERATURE, 0, HULL_EMISS);
-  objects.push(ship);
+  const heatedShip = shipAt(new THREE.Vector3(22, -15, -50), SHIP_ROTATION_PORT);
+  syncThermalState(heatedShip, BLACKBODY_SHIP_TEMPERATURE, 0, HULL_EMISS);
+  objects.push(heatedShip);
   return { objects, camera: labCamera(6e7), sunDirection: OBLIQUE_SUN_DIR };
 }
 
@@ -1327,12 +1301,8 @@ export const CASES = {
   'outer-5au': () => outer(5 * AU),
   'outer-10au': () => outer(10 * AU),
   'outer-30au': () => outer(30 * AU),
-  'ship-selfshadow': shipSelfShadow,
-  'ship-backlit': shipBacklit,
-  'ship-cluster': shipCluster,
+  'ship': ship,
   'ship-crowd': shipCrowd,
-  'ship-far-shadow': shipFarShadow,
-  'ship-in-debris': shipInDebris,
   'ship-body-shadow': shipBodyShadow,
   'order': order,
   'eclipse': eclipse,
