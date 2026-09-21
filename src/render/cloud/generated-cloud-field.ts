@@ -5,7 +5,7 @@ import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { ClimateMap } from './climate-map';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { FieldProjection } from './field-projection';
+import type { FieldProjection } from '../field-projection';
 import type { CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
 import type { Vec3Node } from '../tsl-types';

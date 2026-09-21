@@ -9,7 +9,7 @@ import { capRadiusFor } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
-import type { OrthographicCap } from './field-projection';
+import type { OrthographicCap } from '../field-projection';
 
 // aim() による初回更新までのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
