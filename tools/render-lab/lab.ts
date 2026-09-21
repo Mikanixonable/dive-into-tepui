@@ -77,6 +77,9 @@ export const MAX_SUN_DISTANCE_LOG_AU = 2;
 // **重いケースの最初のフレームは、シェーダを組むあいだ 10 秒を超えて止まる**ので、上限は広く取る。
 const READY_TIMEOUT_MS = 60_000;
 
+// 撮影 1 枚が、絵の落ち着きを待って撮る回数の上限。実測では全撮影が 3 回以内に一致したので、その倍を取る。
+const MAX_SETTLE_CAPTURES = 6;
+
 export class LabView {
   private readonly scene = new THREE.Scene();
   // 撮影先。合成パスは sRGB へ変換済みの値を書くので素の RGBA8 で受ける(-srgb にすると二重変換で
@@ -421,7 +424,7 @@ export class LabView {
   // ケースを表示し、ケースが宣言した撮影ごとに applyShot を当てて、キャンバスへ出るのと同じ絵
   // (トーンマッピングと sRGB 変換込み)を撮る。graphics は起動時の描画品質設定と撮影の差分のあいだへ
   // 重ねる差分。返り値は撮影名から PNG のデータ URL への表。ケースの部品と地球が揃うまで待ってから
-  // 撮る。観察の向きと描画品質設定は最後の撮影のまま残る。
+  // 撮る。絵が落ち着かない撮影があれば投げる。観察の向きと描画品質設定は最後の撮影のまま残る。
   public async shoot(
     name: CaseName, graphics: Partial<GraphicsSettingsData> = {},
   ): Promise<Readonly<Record<string, string>>> {
@@ -434,13 +437,23 @@ export class LabView {
     const pngs: Record<string, string> = {};
     for (const shotName of this.shotNames) {
       this.applyShot(shotName, graphics);
-      // **撮る前に1フレーム捨てる。** 雲場は焼いたフレームの絵にはまだ載らず、次のフレームから
-      // 載る。これを省くと、雲の育ちきっていない絵を撮ることになる。
-      this.render();
-      await this.gpu.waitForResolve();
-      pngs[shotName] = await this.capture();
+      pngs[shotName] = await this.captureSettled(shotName);
     }
     return pngs;
+  }
+
+  // 連続する 2 回の capture が一致するまで撮り直し、一致した絵を返す。MAX_SETTLE_CAPTURES 回撮っても
+  // 一致しなければ、撮影名 shotName を添えて投げる。
+  private async captureSettled(shotName: string): Promise<string> {
+    // **一致を「絵が落ち着いた」ことの判定にする** — 同じセッションの中では、落ち着いたあとのフレームは
+    // 完全に決定的。雲場は焼いたフレームの次から載り、パイプラインを組み直した直後のフレームは崩れる。
+    let previous = await this.capture();
+    for (let count = 2; count <= MAX_SETTLE_CAPTURES; count++) {
+      const next = await this.capture();
+      if (next === previous) return next;
+      previous = next;
+    }
+    throw new Error(`render-lab: shot "${shotName}" did not settle within ${MAX_SETTLE_CAPTURES} captures`);
   }
 
   // いまのケースの部品と、地球を置くなら地球が揃い、絵として比べられる状態になったか。
