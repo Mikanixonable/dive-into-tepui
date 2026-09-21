@@ -122,8 +122,8 @@ export class LabView {
 
   // graphics は最初のフレームを描く描画品質設定。
   public static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettingsData): Promise<LabView> {
-    // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
-    // 分解能そのものが本番と別物になる。
+    // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、深度の分解能と
+    // 描画順の並べ替えが本番と別物になる。
     const renderer = new WebGPURenderer({
       canvas, trackTimestamp: true, reversedDepthBuffer: true,
     });
