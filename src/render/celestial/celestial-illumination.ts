@@ -5,7 +5,7 @@ import { shapeAxes, shapeInscribedRadius, shapeOf } from '../../physics/celestia
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { atmosphereDraws } from '../../render/atmosphere';
 import {
-  REFERENCE_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_RADIUS, SunLight,
+  REFERENCE_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_RADIUS, type SunLight,
   scaledRadiantIntensity,
 } from '../../render/pipeline/sun-light';
 import { ambientFraction } from '../../render/pipeline/lighting/ambient-source';
