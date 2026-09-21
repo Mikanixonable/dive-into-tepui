@@ -17,11 +17,11 @@ import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../../rende
 import {
   castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,
 } from '../../render/pipeline/shadow/shadow-select';
+import { ringShadowBands, type RingBand } from '../../render/pipeline/shadow/ring-shadow';
 import { writeBodyFromWorld } from '../../render/celestial/body-frame';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { AtmosphereCandidate, AtmosphereDraw } from '../../render/atmosphere';
-import type { RingBand } from '../../render/pipeline/shadow/ring-shadow';
 import type { ShadowCumulus } from '../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
@@ -185,11 +185,7 @@ export class CelestialIllumination {
         center: source.motion.stateAt(displayTime).r,
         axis: source.motion.orientationAt(displayTime)?.axis ?? null,
         radius: source.motion.def.radius,
-        bands: rings.bands.map((band) => ({
-          innerRadius: band.innerRadius,
-          outerRadius: band.outerRadius,
-          normalOpticalDepth: band.optics.normalOpticalDepth,
-        })),
+        bands: ringShadowBands(rings.bands),
       }];
     });
     // 選ばれた 1 体を描画座標へ移す。

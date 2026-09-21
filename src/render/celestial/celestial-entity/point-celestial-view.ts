@@ -106,19 +106,8 @@ export class PointCelestialView extends SphereCelestialView {
     star: StellarLightSource | null, graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     // 雲。
-    if (graphics.clouds) {
-      this.cumulus?.setCloudsVisible(true);
-      this.cumulus?.setSource(graphics.cloudFieldSource);
-      this.cumulus?.setDetail(graphics.cumulusDetail);
-      this.cumulus?.syncLod(apparentDiameterPx);
-      this.aimCloudCap();
-    } else {
-      this.cumulus?.setCloudsVisible(false);
-    }
-    this.cumulus?.setAtmosphereCloudsVisible(
-      graphics.clouds && graphics.cirrus,
-      graphics.clouds && graphics.translucentCumulus,
-    );
+    this.cumulus?.syncGraphics(graphics, apparentDiameterPx);
+    if (graphics.clouds) this.aimCloudCap();
     // オーロラと表面のフレーム値。
     this.syncAuroras(motion, displayTime, star, graphics.aurora);
     this.surface.syncFrame(createCelestialSurfaceFrame(
