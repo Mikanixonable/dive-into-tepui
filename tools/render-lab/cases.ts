@@ -126,6 +126,9 @@ export interface LabCase {
   readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
   // 動的な雲場を解放する。
   readonly disposeClouds?: () => void;
+  // ケースの部品が揃い、絵として比べられる状態になったか。持たせると、撮影はこれが真になるまで
+  // 1 フレームずつ描いて待つ。
+  readonly ready?: () => boolean;
   // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
   // 同値なら何もしないこと。
   readonly applyGraphics?: (graphics: GraphicsSettingsData) => void;
@@ -492,6 +495,13 @@ function crescent(): LabCase {
     1.5 * R_EARTH, new THREE.Vector3(Math.sin(phase), Math.cos(phase), 0));
 }
 
+// 細い三日月: crescent と同じ天体照の構図を位相角 150° で見る。**中心距離を 3 地球半径へ
+// 取る** — 可視キャップの半角 acos(R/d) が 70.5° あり、位相角が要求する 60° を超える。
+function crescent150(): LabCase {
+  const phase = (Math.PI * 5) / 6;
+  return earthLitShip(3 * R_EARTH, new THREE.Vector3(Math.sin(phase), Math.cos(phase), 0));
+}
+
 // 典型的な天体表面・艦の外殻の反射率。
 const OUTER_ALBEDO: Albedo = [0.3, 0.3, 0.3];
 // 灰色球の半径 [m]。
@@ -630,6 +640,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly atmosphere: AtmosphereBody;
   readonly cumulus: ShadowCumulus;
   readonly shadowBody: ShadowBody;
+  readonly ready: () => boolean;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
   readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
   readonly disposeClouds: () => void;
@@ -680,6 +691,8 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     },
     // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
     shadowBody: { center, axes: shellAxes.clone(), bodyFromWorld },
+    // 地表の実写テクスチャが GPU へ届いたか。届くまで地表は単色で写る。
+    ready: () => surface.lightSourceMap !== null,
     // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
     // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
@@ -725,6 +738,7 @@ function earth(style: RenderStyle): LabCase {
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
+    ready: earthSphere.ready,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
     disposeClouds: earthSphere.disposeClouds,
@@ -743,6 +757,7 @@ function earthOblique(style: RenderStyle): LabCase {
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
+    ready: earthSphere.ready,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
     disposeClouds: earthSphere.disposeClouds,
@@ -771,6 +786,7 @@ function earthPolar(style: RenderStyle): LabCase {
     planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
+    ready: earthSphere.ready,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
     disposeClouds: earthSphere.disposeClouds,
@@ -854,8 +870,157 @@ function earthMars(style: RenderStyle): LabCase {
         clouds: null,
       },
     ],
+    ready: earthSphere.ready,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
+    disposeClouds: earthSphere.disposeClouds,
+  };
+}
+
+// 低軌道(高度 420km)の地球の中心距離 [m]。視半径が 69.6° あるので、真正面へ置くと画面を埋める。
+const LEO_CENTER_DISTANCE = 6.791e6;
+
+// 緯度・経度 [deg] から天体固定の向きへ。正距円筒テクスチャの取り決め(経度 0 が +Z、東が +X、
+// 北極が +Y)と同じ。
+function bodyDirection(latitudeDeg: number, longitudeDeg: number): THREE.Vector3 {
+  const latitude = THREE.MathUtils.degToRad(latitudeDeg);
+  const longitude = THREE.MathUtils.degToRad(longitudeDeg);
+  return new THREE.Vector3(
+    Math.cos(latitude) * Math.sin(longitude),
+    Math.sin(latitude),
+    Math.cos(latitude) * Math.cos(longitude),
+  );
+}
+
+// 低軌道のケースがカメラの直下へ置く地点。サハラ(北緯 23°・東経 13°)と太平洋(赤道・西経 150°)。
+const SAHARA_DIRECTION = bodyDirection(23, 13);
+const PACIFIC_DIRECTION = bodyDirection(0, -150);
+
+// カメラ(原点)の直下点が、天体固定の subCameraPoint になる自転姿勢。center は天体の中心(描画座標)。
+function spinForSubCameraPoint(center: THREE.Vector3, subCameraPoint: THREE.Vector3): THREE.Quaternion {
+  return new THREE.Quaternion().setFromUnitVectors(subCameraPoint, center.clone().negate().normalize());
+}
+
+// 低軌道の手前へ置く金属球の半径 [m] と中心(描画座標)。画面の高さの半分ほどを占める。
+const LEO_METAL_RADIUS = 2000;
+const LEO_METAL_CENTER = new THREE.Vector3(0, -600, -9000);
+// 昼夜境界が地球の円盤を横切る位相になる恒星の向き。
+const LEO_METAL_TERMINATOR_SUN_DIR = new THREE.Vector3(1, 0.2, 0).normalize();
+
+// 低軌道の金属球: 実写テクスチャの地球で画面を埋め、手前の金属球(粗さ 0.05・金属度 1)へ
+// その姿が映るかを見る。**天体照をテクスチャ付きの面光源にする変更の目標そのものの構図**で、
+// 天体を一様な球として焼いているあいだは、映るものが単色の広がりになる。**背景は地表だけに
+// 揃える** — 天体照の写しが焼くのは地表のアルベドなので、映り込みと見比べる相手も地表にする。
+// 大気と雲の殻は、どちらも高度 420km の直下視では地表を覆い隠す。直下点は陸へ置く。
+function leoMetal(style: RenderStyle, sunDirection: THREE.Vector3): LabCase {
+  const center = new THREE.Vector3(0, 0, -LEO_CENTER_DISTANCE);
+  const earthSphere = earthAt(center, style, spinForSubCameraPoint(center, SAHARA_DIRECTION));
+  const metal = new THREE.Mesh(
+    new THREE.SphereGeometry(LEO_METAL_RADIUS, 128, 96),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 1 }),
+  );
+  metal.position.copy(LEO_METAL_CENTER);
+  metal.userData.ownsGeometry = true;
+  metal.userData.ownsMaterial = true;
+  markLitOpaque(metal);
+  return {
+    objects: [earthSphere.object, metal],
+    camera: labCamera(6e7),
+    sunDirection,
+    viewTarget: LEO_METAL_CENTER,
+    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    shadowBodies: [earthSphere.shadowBody],
+    ready: earthSphere.ready,
+    disposeClouds: earthSphere.disposeClouds,
+  };
+}
+
+// 拡散だけを受ける板の中心(描画座標)・法線・一辺 [m]。法線は真下の地球を向きつつ、面が
+// カメラからも見える向きへ傾けてある。
+const LEO_DIFFUSE_PLATE_CENTER = new THREE.Vector3(0, -1, -10);
+const LEO_DIFFUSE_PLATE_NORMAL = new THREE.Vector3(0, -0.7, 0.7).normalize();
+const LEO_DIFFUSE_PLATE_SIZE = 8;
+// THREE.PlaneGeometry の面が向くローカルの向き。
+const PLATE_LOCAL_NORMAL = new THREE.Vector3(0, 0, 1);
+
+// 拡散だけの天体照: 低軌道の地球を真下へ置き、粗さ 1・金属度 0 の白い板をその上へ傾けて浮かべる。
+// 恒星は真上なので板の面に直射は届かず、**板の色は地球照だけで決まる。** subCameraPoint は
+// カメラの直下へ来る天体固定の向きで、これだけが2本のケースの違いになる。
+function leoDiffuse(style: RenderStyle, subCameraPoint: THREE.Vector3): LabCase {
+  const center = new THREE.Vector3(0, -LEO_CENTER_DISTANCE, 0);
+  const earthSphere = earthAt(center, style, spinForSubCameraPoint(center, subCameraPoint));
+  const plate = new THREE.Mesh(
+    new THREE.PlaneGeometry(LEO_DIFFUSE_PLATE_SIZE, LEO_DIFFUSE_PLATE_SIZE),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 }),
+  );
+  plate.position.copy(LEO_DIFFUSE_PLATE_CENTER);
+  plate.quaternion.setFromUnitVectors(PLATE_LOCAL_NORMAL, LEO_DIFFUSE_PLATE_NORMAL);
+  plate.userData.ownsGeometry = true;
+  plate.userData.ownsMaterial = true;
+  markLitOpaque(plate);
+  return {
+    objects: [earthSphere.object, plate],
+    camera: labCamera(6e7),
+    sunDirection: new THREE.Vector3(0, 1, 0),
+    viewTarget: LEO_DIFFUSE_PLATE_CENTER,
+    atmospheres: [earthSphere.atmosphere],
+    planetLights: [{ center, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    shadowBodies: [earthSphere.shadowBody],
+    cumulus: earthSphere.cumulus,
+    ready: earthSphere.ready,
+    applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
+    disposeClouds: earthSphere.disposeClouds,
+  };
+}
+
+// 較正のケースの地球: 月軌道相当の視半径 0.95° になる中心(描画座標)。**カメラの後方左に置く**
+// ので画面には写らない — 板の法線を地球へ向けると板はカメラ側を向くので、両立しない。
+const PLANETSHINE_EARTH_CENTER = new THREE.Vector3(-0.8, 0, 0.6).normalize()
+  .multiplyScalar(R_EARTH / Math.sin(THREE.MathUtils.degToRad(0.95)));
+// 恒星は地球のちょうど反対。板の裏から差すので、板に直射は1本も届かない。
+const PLANETSHINE_SUN_DIR = PLANETSHINE_EARTH_CENTER.clone().negate().normalize();
+// 受け手の板の一辺・横のずれ・奥行き [m]。左を拡散、右を金属にして同じ奥行きへ並べる。
+const PLANETSHINE_PLATE_SIZE = 1200;
+const PLANETSHINE_PLATE_OFFSET = 800;
+const PLANETSHINE_PLATE_DEPTH = 3000;
+const PLANETSHINE_DIFFUSE_CENTER = new THREE.Vector3(-PLANETSHINE_PLATE_OFFSET, 0, -PLANETSHINE_PLATE_DEPTH);
+const PLANETSHINE_METAL_CENTER = new THREE.Vector3(PLANETSHINE_PLATE_OFFSET, 0, -PLANETSHINE_PLATE_DEPTH);
+const PLANETSHINE_VIEW_TARGET = new THREE.Vector3(0, 0, -PLANETSHINE_PLATE_DEPTH);
+
+// 較正のケースの受け手。**法線は地球への向きとカメラへの向きのちょうど半分**に取る — 鏡面の板が
+// 中心で地球を映し、拡散の板も地球への余弦を残したまま、恒星とは N·L < 0 になる。
+function planetshinePlate(center: THREE.Vector3, roughness: number, metalness: number): THREE.Mesh {
+  const toEarth = PLANETSHINE_EARTH_CENTER.clone().sub(center).normalize();
+  const toCamera = center.clone().negate().normalize();
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(PLANETSHINE_PLATE_SIZE, PLANETSHINE_PLATE_SIZE),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness, metalness }),
+  );
+  mesh.position.copy(center);
+  mesh.quaternion.setFromUnitVectors(PLATE_LOCAL_NORMAL, toEarth.add(toCamera).normalize());
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  markLitOpaque(mesh);
+  return mesh;
+}
+
+// 遠い天体照: 月軌道相当の距離に置いた地球だけが当たる板を2枚並べる。恒星は板の裏から差すので、
+// **板に出る明るさは天体照だけで決まる。** **以後の段で画素値を厳密に比べるケース**なので、
+// 撮り直しのたびに値が揺れる半影の源(大気・積雲・天体の影)を構図から外してある。
+function planetshineFar(style: RenderStyle): LabCase {
+  const earthSphere = earthAt(PLANETSHINE_EARTH_CENTER, style);
+  return {
+    objects: [
+      earthSphere.object,
+      planetshinePlate(PLANETSHINE_DIFFUSE_CENTER, 1, 0),
+      planetshinePlate(PLANETSHINE_METAL_CENTER, 0.05, 1),
+    ],
+    camera: labCamera(1e13),
+    sunDirection: PLANETSHINE_SUN_DIR,
+    viewTarget: PLANETSHINE_VIEW_TARGET,
+    planetLights: [{ center: PLANETSHINE_EARTH_CENTER, radius: R_EARTH, albedo: EARTH_LIGHT_ALBEDO }],
+    ready: earthSphere.ready,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
@@ -1122,8 +1287,14 @@ function sunAt(distance: number): LabCase {
 
 export const CASES = {
   'leo': leo,
+  'leo-metal': (style) => leoMetal(style, SUN_DIR),
+  'leo-metal-terminator': (style) => leoMetal(style, LEO_METAL_TERMINATOR_SUN_DIR),
+  'leo-diffuse-sahara': (style) => leoDiffuse(style, SAHARA_DIRECTION),
+  'leo-diffuse-ocean': (style) => leoDiffuse(style, PACIFIC_DIRECTION),
+  'planetshine-far': planetshineFar,
   'earthshine': earthshine,
   'crescent': crescent,
+  'crescent-150': crescent150,
   // 水星近日点。視半径 0.86° の太陽で、終端の幅が球光源のときだけ広がる。
   'sun-close': () => outer(0.31 * AU),
   'outer-5au': () => outer(5 * AU),
