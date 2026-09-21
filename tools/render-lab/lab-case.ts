@@ -72,13 +72,6 @@ export interface LabCase {
   // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・積雲の影の源になる。省略すると
   // 地球を置かない。
   readonly earth?: Pick<LabViewAngles, EarthAngleKey>;
-  // 地球のほかに天体照の光源として置く一様な球。中心は描画座標、albedo は輝度がボンドアルベドに
-  // 一致する線形 RGB。
-  readonly planetLights?: readonly {
-    readonly center: THREE.Vector3;
-    readonly radius: number;
-    readonly albedo: Albedo;
-  }[];
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
   // 撮影。鍵は PNG の名前で全ケースを通して重ならないこと。省略するとケースの名前で既定の向きを
