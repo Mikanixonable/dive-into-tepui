@@ -1,9 +1,7 @@
 // 天体ごとの雲テクスチャと表示状態を統括する境界クラス。雲データ供給源（生成／観測）を選択し、
 // テクスチャの準備および雲面レンダラーの寿命を管理する。
 import * as THREE from 'three/webgpu';
-import {
-  CUMULUS_DETAIL, OpaqueCloudSurfaceRenderer, type CumulusDetail,
-} from '../opaque-cloud-surface-renderer';
+import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../opaque-cloud-surface-renderer';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -15,6 +13,7 @@ import type { GraphicsSettingsData } from '../graphics-settings';
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
 
+// aimFrom の書き込み先。
 const tmpToObserver = new THREE.Vector3();
 const tmpInverseSpin = new THREE.Quaternion();
 
@@ -55,6 +54,7 @@ export class CloudPresentation {
     this.aim(INITIAL_CAP_DIRECTION, 1);
   }
 
+  // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
     return {
       field: { texture: this.source.texture, cap: this.cap.placement },
@@ -133,7 +133,8 @@ export class CloudPresentation {
     else this.surface.hide();
   }
 
-  // 雲場が画面描画に寄与する（可視状態にある）フレームのみ、選択中のデータソースを表示時刻に合わせて事前生成する。
+  // 雲場が描画に寄与するフレームで、選んでいる出どころの場を表示時刻 displayTime [s] へ焼く。gpu を
+  // 渡すと、焼いた GPU 時間をそこへ計上する。
   public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.fieldContributes) return;
     this.source.prepare(renderer, displayTime, gpu);
@@ -145,11 +146,9 @@ export class CloudPresentation {
     for (const source of Object.values(this.sources)) source.dispose();
   }
 
-  // 雲場が当該フレームの描画に寄与するか判定。雲描画が有効で、不透明雲表面または大気中の雲のいずれかが可視の場合に true。
+  // 雲場がこのフレームの描画に寄与するか。
   private get fieldContributes(): boolean {
     return this.cloudVisible && (
       this.visible || this.cirrusVisible || this.translucentCumulusVisible);
   }
 }
-
-export { CUMULUS_DETAIL };
