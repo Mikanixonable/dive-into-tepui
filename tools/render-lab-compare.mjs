@@ -1,9 +1,7 @@
 // 描画テスト環境の撮影の前後比較。新しいコードで撮った after の 1 組を、古いコードで撮った before の組
-// (1 組以上)と撮影名(PNG のファイル名)ごとに比べる。差はブロック差(BLOCK 画素四方の平均の差の最大)で
-// 測り、after に最も近い before の組とのブロック差が封筒(before どうしのブロック差の最大と BLOCK_FLOOR の
-// 大きいほう)を超えた撮影を封筒外とする。変化画素数・最大差・外接矩形は参考に並べる。封筒外の撮影は、
-// 最も近い組との差を増幅した画像を <after の親>/compare-<after の名前>/ へ書く(書く前に作り直す)。
-// dir は相対ならリポジトリ根から。
+// (1 組以上)と撮影名ごとに比べ、after に最も近い before の組とのブロック差が封筒(before どうしの
+// ブロック差の最大と BLOCK_FLOOR の大きいほう)を超えた撮影を封筒外とする。封筒外の撮影は、最も近い組との
+// 差を増幅した画像を <after の親>/compare-<after の名前>/ へ書く(書く前に作り直す)。dir は相対ならリポジトリ根から。
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { decodePng, encodeRgbPng } from './png.mjs';

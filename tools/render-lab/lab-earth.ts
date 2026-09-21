@@ -129,8 +129,8 @@ export class LabEarth {
   // 描画品質設定 graphics のうち雲の項目と、表示スタイル style の線の出し入れを押し込み、雲場の cap を
   // camera の直下点へ合わせる。毎フレーム、カメラと地球を置いたあとに呼ぶ。
   public sync(camera: THREE.Camera, graphics: GraphicsSettingsData, style: RenderStyle): void {
-    // 殻の分割段は寄り切った 1 段に固定する(カメラ距離は観察のつまみで動くが、絵の比較は最も
-    // 細かい段で行う)。cap を置き直すのは雲を描くフレームだけ — ゲーム本体と同じ規則。
+    // 殻の分割段は寄り切った 1 段に固定する — カメラ距離は観察のつまみで動くが、絵の比較は最も
+    // 細かい段で行う。
     this.clouds.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX);
     if (graphics.clouds) this.clouds.aimFrom(camera.position, this.center, this.object.quaternion, this.cumulus.axes);
     this.graticule.setVisible(style === 'schematic');
