@@ -5,10 +5,13 @@ import * as THREE from 'three/webgpu';
 import { Fn, PI, acos, clamp, cos, dot, float, length, max, normalize, sin, sqrt, uniform } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
+import { PlanetLightImage } from './planet-light-image';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
+import type { WebGPURenderer } from 'three/webgpu';
 import type { Albedo } from '../../celestial-albedo';
+import type { GpuTimingSink } from '../../gpu-timings';
 import type { PlanetLightAppearance } from './planet-light-image';
-import type { ColorUniform, FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
+import type { ColorUniform, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 import type { ShadingSample } from './shading-sample';
 
@@ -73,6 +76,9 @@ const receiverPhase = Fn(([alpha, capAngle]: readonly [FloatNode, FloatNode]) =>
 // TODO: 影を受けない — 受け手と天体の間に別の天体や艦の構造があっても届く。
 class PlanetLightSlot implements LightSource {
   private cached: THREE.MeshBasicNodeMaterial | null = null;
+  // このスロットの天体の見た目を持つ写しと、そこへ焼く内容。消灯している間は null。
+  private readonly image = new PlanetLightImage();
+  private appearance: PlanetLightAppearance | null = null;
 
   // sunLight からは、満ち欠けを測る恒星の位置を読む。
   public constructor(
@@ -82,6 +88,21 @@ class PlanetLightSlot implements LightSource {
   ) {}
 
   public hasContribution(): boolean { return this.slot.radius.value > 0; }
+
+  // このフレームに写しへ焼く見た目を置く。消灯するスロットへは null を置く。
+  public setAppearance(appearance: PlanetLightAppearance | null): void {
+    this.appearance = appearance;
+  }
+
+  // 置かれた見た目を写しへ焼く。reference は写しの基準点(描画座標)。
+  public bake(renderer: WebGPURenderer, reference: THREE.Vector3, gpu?: GpuTimingSink): void {
+    if (this.appearance === null) return;
+    this.image.set(reference, this.slot.center.value, this.slot.radius.value, this.appearance);
+    this.image.render(renderer, gpu);
+  }
+
+  // このスロットの写しを uv(0..1)で読んだ放射輝度。
+  public imageRadianceAt(uv: Vec2Node): Vec3Node { return this.image.radianceAtUv(uv); }
 
   // このスロットの寄与を描くマテリアル。初回の呼び出しで組み、以後は同じ 1 枚を返す。
   public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
@@ -114,9 +135,10 @@ class PlanetLightSlot implements LightSource {
     return { diffuse, specular };
   }
 
-  // 組んだマテリアルを解放する。
+  // 組んだマテリアルと写しを解放する。
   public dispose(): void {
     this.cached?.dispose();
+    this.image.dispose();
   }
 }
 
@@ -126,10 +148,6 @@ export class PlanetLightSource {
     () => ({ center: uniform(new THREE.Vector3()), radius: uniform(0), radiance: uniform(new THREE.Color(0, 0, 0)) }),
   );
   private readonly slotSources: readonly PlanetLightSlot[];
-  // スロットごとの、このフレームに写しへ焼く見た目。消灯しているスロットは null。
-  private readonly slotAppearances: (PlanetLightAppearance | null)[] = Array.from(
-    { length: MAX_PLANET_LIGHT_SLOTS }, () => null,
-  );
 
   // sunLight は満ち欠けを測る恒星、count は同時に使うスロットの本数(描画設定
   // planetLightCount の値をそのまま受ける)。
@@ -144,13 +162,21 @@ export class PlanetLightSource {
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。
   public get lightSources(): readonly LightSource[] { return this.slotSources; }
 
+  // スロット 0 の写しを uv(0..1)で読んだ放射輝度。
+  public imageRadianceAt(uv: Vec2Node): Vec3Node { return this.slotSources[0]!.imageRadianceAt(uv); }
+
+  // 各スロットの写しを、このフレームの見た目で焼き直す。reference は写しの基準点(描画座標)。
+  public bake(renderer: WebGPURenderer, reference: THREE.Vector3, gpu?: GpuTimingSink): void {
+    for (const source of this.slotSources) source.bake(renderer, reference, gpu);
+  }
+
   // このフレームの光源の列。本数を超えたぶんは捨て、足りないスロットは消灯する。
   public set(lights: readonly PlanetLightValue[]): void {
     const used = lights.slice(0, this.count);
     for (const [i, slot] of this.slots.entries()) {
       const light = used[i];
       slot.radius.value = light === undefined ? 0 : light.radius;
-      this.slotAppearances[i] = light?.appearance ?? null;
+      this.slotSources[i]!.setAppearance(light?.appearance ?? null);
       if (light === undefined) continue;
       slot.center.value.copy(light.center);
       slot.radiance.value.setRGB(light.radiance[0], light.radiance[1], light.radiance[2]);
