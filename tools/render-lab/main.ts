@@ -1,4 +1,4 @@
-// 描画テスト環境の画面。ケースと、表示スタイルと、画面へ出す中間バッファを選ぶと、その絵を
+// 描画テスト環境の画面。ケース(とその撮影)と、表示スタイルと、画面へ出す中間バッファを選ぶと、その絵を
 // ゲーム本体と同じ描画経路で描く。描画品質設定の操作はゲーム本体の設定パネル(GraphicsPanel)を
 // そのまま組む。
 import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
@@ -10,7 +10,7 @@ import {
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
 import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
-import { SegmentedControl, WIDGET_STYLE } from '../../src/hud/widgets';
+import { Pulldown, SegmentedControl, WIDGET_STYLE, type PulldownColumn } from '../../src/hud/widgets';
 import { injectOnce } from '../../src/hud/inject-style';
 import { applyThemeVariables } from '../../src/hud/style/theme-variables';
 import { CASE_NAMES, type CaseName } from './cases';
@@ -146,12 +146,28 @@ async function init(): Promise<void> {
     setEarthLongitude(current.earthLongitudeDeg);
   };
 
-  const caseItems = CASE_NAMES.map((name) => [name, name] as const);
-  const cases = new SegmentedControl<CaseName>('ケース', caseItems, (name) => {
+  // 撮影のプルダウンを、いまのケースの撮影名で組み直す。反映は **applyShot を通す** — 観察の向きだけを
+  // 合わせると、撮影が持つ描画品質設定の差分が落ちる。
+  const shotsRow = document.getElementById('shots')!;
+  const rebuildShots = (): void => {
+    const items = view.shotNames.map((name) => [name, name] as const);
+    const columns: readonly [PulldownColumn<string>] = [{ items }];
+    const shots = new Pulldown('撮影', columns, '反映', ([name]) => {
+      view.applyShot(name);
+      syncAngles();
+    });
+    shotsRow.replaceChildren(shots.element);
+  };
+
+  // ケースを選び、観察のつまみと撮影のプルダウンをそのケースへ合わせる。
+  const selectCase = (name: CaseName): void => {
     cases.setSelected(name);
     view.show(name);
     syncAngles();
-  });
+    rebuildShots();
+  };
+  const caseItems = CASE_NAMES.map((name) => [name, name] as const);
+  const cases = new SegmentedControl<CaseName>('ケース', caseItems, selectCase);
   document.getElementById('cases')!.appendChild(cases.element);
 
   const targets = new SegmentedControl<DebugTargetId>('デバッグ表示', DEBUG_TARGETS, (target) => {
@@ -208,11 +224,9 @@ async function init(): Promise<void> {
   buildShellSliders('cumulus-shell', 'cumulus');
   buildShellSliders('cirrus-shell', 'cirrus');
 
-  cases.setSelected(CASE_NAMES[0]!);
   targets.setSelected('off');
   selectStyle('realistic');
-  view.show(CASE_NAMES[0]!);
-  syncAngles();
+  selectCase(CASE_NAMES[0]!);
 
   window.renderLab = {
     earthSurfaceCapture,
