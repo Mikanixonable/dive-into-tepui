@@ -162,6 +162,12 @@ export const GRAPHICS_OPTIONS = {
     items: [[0, '点光源'], [1, '球光源']],
     presets: { low: 0, medium: 1, high: 1 },
   },
+  // 天体照の光源モデル。テクスチャでは、粗さの小さい面にその天体の地表と昼夜の明暗が映る。
+  planetLightModel: {
+    kind: 'choice', group: 'light', label: '天体照の光源モデル',
+    items: [[0, '一様球'], [1, 'テクスチャ']],
+    presets: { low: 0, medium: 0, high: 1 },
+  },
   // 同時に照らす天体の数。1 体につき描画命令 1 本。最大値は MAX_PLANET_LIGHT_SLOTS。
   planetLightCount: {
     kind: 'choice', group: 'light', label: '天体照の光源の数',
