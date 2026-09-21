@@ -10,9 +10,7 @@ import { R_SUN, SUN, SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from '../../src/game/c
 import { createStarSphere } from '../../src/render/celestial/star-sphere';
 import { surfaceRadianceOf } from '../../src/render/celestial/celestial-entity/star-celestial-view';
 import { farClip } from '../../src/render/camera/camera-view';
-import {
-  MAX_PLANET_LIGHT_SLOTS, planetRadiance, type PlanetLightValue,
-} from '../../src/render/pipeline/lighting/planet-light-source';
+import { planetRadiance, type PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
@@ -60,13 +58,8 @@ const SUN_POSITION = new THREE.Vector3();
 const SUN_DIRECTION = new THREE.Vector3();
 const CAMERA_OFFSET = new THREE.Vector3();
 
-// 天体照のスロットへ渡す恒星の向きの置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
-const PLANET_LIGHT_STAR_DIRECTIONS = Array.from(
-  { length: MAX_PLANET_LIGHT_SLOTS }, () => new THREE.Vector3(),
-);
-
-// ケースが置く天体照の光源(自転姿勢を持たない一様な球)が使う、天体固定の向きへの行列。
-const IDENTITY_BODY_FROM_WORLD = new THREE.Matrix4();
+// 地球の天体照へ渡す恒星の向きの置き場。毎フレーム書き換えて使い回す。
+const EARTH_STAR_DIRECTION = new THREE.Vector3();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
@@ -329,9 +322,8 @@ export class LabView {
       SUN_POSITION, R_SUN, sunDiameterPx(sunDistance, camera.fov) * graphics.lodBias, camera.quaternion,
       this.style,
     );
-    // 天体照・影・雲・大気の源は、地球のぶんとケースのぶんを合わせて渡す。
-    this.pipeline.planetLight.set(
-      planetLightValues(earth, this.current.planetLights ?? [], sunIntensity, graphics.airglow));
+    // 天体照の光源は地球だけ、影・大気の源は地球のぶんとケースのぶんを合わせて渡す。
+    this.pipeline.planetLight.set(earth === null ? [] : [earthLightValue(earth, sunIntensity, graphics.airglow)]);
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
@@ -491,41 +483,26 @@ function withAirglowSetting(body: AtmosphereBody, airglow: boolean): AtmosphereB
   return { ...body, optics: withAirglowEnabled(body.optics, airglow), get clouds() { return body.clouds; } };
 }
 
-// 天体照の光源の値。地球 earth(置かないケースでは null)を先に、ケースが置いた一様な球 spheres を
-// 後に並べ、スロット本数まで返す。放射照度は恒星の位置 SUN_POSITION と放射強度 sunIntensity から、
+// 地球 earth を天体照の光源とした値。放射照度は恒星の位置 SUN_POSITION と放射強度 sunIntensity から、
 // 大気は描画設定の大気光の有無 airglow へ合わせて渡す。
-function planetLightValues(
-  earth: LabEarth | null, spheres: NonNullable<LabCase['planetLights']>, sunIntensity: number, airglow: boolean,
-): PlanetLightValue[] {
-  const lights = [
-    ...(earth === null ? [] : [{
-      center: earth.center,
-      radius: R_EARTH,
+function earthLightValue(earth: LabEarth, sunIntensity: number, airglow: boolean): PlanetLightValue {
+  const sunIrradiance = irradianceAtDistance(sunIntensity, SUN_POSITION.distanceTo(earth.center));
+  const map = earth.lightSourceMap;
+  return {
+    center: earth.center,
+    radius: R_EARTH,
+    radiance: planetRadiance(EARTH_LIGHT_ALBEDO, sunIrradiance),
+    appearance: {
+      map: map?.texture ?? null,
+      // 写しが届くまでは読まれないので、色をそのまま通す倍率を置く。
+      albedoScale: map?.albedoScale ?? 1,
       albedo: EARTH_LIGHT_ALBEDO,
-      map: earth.lightSourceMap,
+      sunIrradiance,
+      starDirection: EARTH_STAR_DIRECTION.subVectors(SUN_POSITION, earth.center).normalize(),
       bodyFromWorld: earth.bodyFromWorld,
       atmosphere: withAirglowSetting(earth.atmosphere, airglow),
-    }]),
-    ...spheres.map((sphere) => ({ ...sphere, map: null, bodyFromWorld: IDENTITY_BODY_FROM_WORLD, atmosphere: null })),
-  ];
-  return lights.slice(0, MAX_PLANET_LIGHT_SLOTS).map((light, slot) => {
-    const sunIrradiance = irradianceAtDistance(sunIntensity, SUN_POSITION.distanceTo(light.center));
-    return {
-      center: light.center,
-      radius: light.radius,
-      radiance: planetRadiance(light.albedo, sunIrradiance),
-      appearance: {
-        map: light.map?.texture ?? null,
-        // 写しを持たない光源では読まれないので、色をそのまま通す倍率を置く。
-        albedoScale: light.map?.albedoScale ?? 1,
-        albedo: light.albedo,
-        sunIrradiance,
-        starDirection: PLANET_LIGHT_STAR_DIRECTIONS[slot]!.subVectors(SUN_POSITION, light.center).normalize(),
-        bodyFromWorld: light.bodyFromWorld,
-        atmosphere: light.atmosphere,
-      },
-    };
-  });
+    },
+  };
 }
 
 // ケースが握る資源を解放する。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を
