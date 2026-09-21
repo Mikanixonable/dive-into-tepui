@@ -110,6 +110,8 @@ export interface CelestialSurfaceLike {
   readonly photometry: SurfacePhotometry | null;
   // テクスチャの画像が届くまでと、テクスチャを持たない面では null。
   readonly lightSourceMap: LightSourceMap | null;
+  // この面が読む画像がすべて GPU へ届いたか。届くまでは、色や粗さを欠いたまま描かれる。
+  readonly imagesReady: boolean;
   readonly textureUrl: string | null;
   readonly diagnostics: CelestialSurfaceDiagnostics | null;
   addTo(parent: THREE.Object3D): void;
@@ -196,6 +198,11 @@ export class CelestialSurface implements CelestialSurfaceLike {
   public get lightSourceMap(): LightSourceMap | null {
     return this.lightSource !== null && this.lightSource.deferred.generation > 0
       ? this.lightSource.map : null;
+  }
+
+  // いま使っている材質が読む画像がすべて GPU へ届いたか。
+  public get imagesReady(): boolean {
+    return this.activeAttachment.deferred.every((deferred) => deferred.generation > 0);
   }
 
   public get diagnostics(): CelestialSurfaceDiagnostics | null { return null; }
