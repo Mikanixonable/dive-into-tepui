@@ -374,7 +374,5 @@ CODING-RULE 1.3 の層の向きに反するが、**色の所有者を `render/` 
 - **`tools/ephemeris/cli.mjs:15`** が `src/physics/ephemeris-pack/format.ts` をハードコードして
   いる。ディレクトリを畳むと CLI だけが壊れ、**`npm run typecheck` も `npm run test` も通ってしまう。**
   検査は `node tools/ephemeris/cli.mjs verify src/assets/ephemeris/modern-2026-10y.epk`。
-- **`npm run render-lab:shot` は毎回 `memos/mikanixonable/protein-motion-baseline.json` を
-  無条件に書き換える。** 撮影のたびに `git checkout --` で戻す。
 - **`node tools/export-lagrange-orbits.mjs` は 10 分以上かかり、途中で打ち切ると
   `src/assets/orbits/*.json` を部分的に書き換えたまま残す。再生成物は commit しない。**
