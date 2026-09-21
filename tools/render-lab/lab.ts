@@ -234,7 +234,7 @@ export class LabView {
     this.angles = {
       sunAzimuthDeg: sun.azimuthDeg,
       sunElevationDeg: sun.elevationDeg,
-      sunDistanceLogAu: Math.log10((built.sunDistance ?? AU) / AU),
+      sunDistanceLogAu: 0,
       cameraAzimuthDeg: eye.azimuthDeg,
       cameraElevationDeg: eye.elevationDeg,
       cameraDistanceLog: 0,
@@ -288,7 +288,7 @@ export class LabView {
           },
         };
       }));
-    // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
+    // 順応の基準点は描画原点。**恒星の距離のつまみはここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
     this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, sunIntensity);
     const camera = this.current.camera;
