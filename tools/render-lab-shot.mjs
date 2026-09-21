@@ -1,6 +1,6 @@
 // 描画テスト環境の撮影。ヘッドレス Chrome で .render-lab/ を開き、ケースごとに
-// window.renderLab.shoot() を呼んで PNG を書く。画素はページ側が合成パスの出力先から
-// 読み出しているので、WebGPU キャンバスの提示・Page.captureScreenshot はどこも通らない。
+// window.renderLab.shoot() を呼んで、ケースが宣言した向きごとの PNG を撮影名で書く。画素はページ側が
+// 合成パスの出力先から読み出しているので、WebGPU キャンバスの提示・Page.captureScreenshot はどこも通らない。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -31,30 +31,21 @@ async function main() {
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
     const names = await devTools.evaluate('window.renderLab.cases');
+    const shotNames = new Set();
     for (const name of names) {
-      const dataUrl = await devTools.evaluate(`window.renderLab.shoot(${JSON.stringify(name)})`);
-      writeFileSync(path.join(outDir, `${name}.png`), Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
-      console.log(`shot ${name}`);
+      const pngs = await devTools.evaluate(`window.renderLab.shoot(${JSON.stringify(name)})`);
+      for (const [shotName, dataUrl] of Object.entries(pngs)) {
+        // 撮影名が重なると、後の撮影が先の PNG を黙って上書きする。
+        if (shotNames.has(shotName)) throw new Error(`Shot name "${shotName}" (case ${name}) is used twice`);
+        shotNames.add(shotName);
+        writeFileSync(
+          path.join(outDir, `${shotName}.png`), Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'),
+        );
+        console.log(`shot ${shotName}`);
+      }
     }
-    const proteinNames = names.filter((name) => String(name).startsWith('protein-'));
-    const baselineCases = {};
-    for (const name of proteinNames) {
-      baselineCases[name] = await devTools.evaluate(`window.renderLab.measure(${JSON.stringify(name)})`);
-      console.log(`measure ${name}`);
-    }
-    const baselineFile = path.join(root, 'memos/mikanixonable/protein-motion-baseline.json');
-    writeFileSync(baselineFile, `${JSON.stringify({
-      schemaVersion: 2,
-      viewport: { width: 960, height: 540 },
-      warmupFrames: 6,
-      sampleFrames: 30,
-      gpuTimingSource: 'src/gpu-timings.ts:GpuTimings',
-      cpuTimingSource: 'performance.now() around RenderPipeline.render()',
-      cases: baselineCases,
-    }, null, 2)}\n`);
-    console.log(`Wrote protein baseline to ${path.relative(root, baselineFile)}`);
     if (fatalEvents.length > 0) throw new Error(`Page reported errors during shooting:\n${fatalEvents.join('\n')}`);
-    console.log(`Wrote ${names.length} PNGs to ${path.relative(root, outDir)}`);
+    console.log(`Wrote ${shotNames.size} PNGs to ${path.relative(root, outDir)}`);
   } finally {
     await session.close();
   }

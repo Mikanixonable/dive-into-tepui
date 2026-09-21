@@ -27,10 +27,10 @@ module.exports = {
         type: 'asset/source',
       },
       {
-        // タンパク質の構造・モーション JSON(数十MB)は本体と同じく別ファイルへ書き出し、
+        // タンパク質の主鎖・構造・モーション JSON(数十MB)は本体と同じく別ファイルへ書き出し、
         // import 元へは URL 文字列を渡す。ここを落とすと fetch 先が生成されず、
         // タンパク質のケースだけが「asset が無い」で落ちる。
-        test: /(Structure|Motion)\.json$/,
+        test: /(Backbone|Structure|Motion)\.json$/,
         include: path.resolve(__dirname, 'src/assets/models'),
         type: 'asset/resource',
         generator: { filename: 'assets/[hash][ext]' },
