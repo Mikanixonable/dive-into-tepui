@@ -1,11 +1,10 @@
 // 描画テスト環境のケースが共有する取り決め。ケースが返す形と組む関数の型、描画の大きさ、既定の
-// カメラ・恒星の向きと、ケースが物体を置く部品(試験球・円・実写テクスチャの天体・既定戦闘船)を持つ。
+// カメラ・恒星の向きと、ケースが物体を置く部品(試験球・円・実写テクスチャの天体・既定戦闘船・
+// インスタンスの枝)を持つ。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
-import { R_SUN } from '../../src/game/celestial/solar-system/sun';
 import { shapeAxes, type PlanetDef } from '../../src/physics/celestial-body-def';
 import { Curve, type CurveSampler } from '../../src/render/curve';
-import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection';
 import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
@@ -83,7 +82,11 @@ export interface LabCase {
   // 地球のほかに影パスへ渡す球。中心は描画座標。
   readonly shadowBodies?: readonly ShadowBody[];
   // 影パスへ渡す環。中心と法線軸は描画座標。
-  readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
+  readonly rings?: {
+    readonly center: THREE.Vector3;
+    readonly axis: THREE.Vector3;
+    readonly bands: readonly RingBand[];
+  };
   // ケースの部品が揃い、絵として比べられる状態になったか。持たせると、撮影はこれが真になるまで
   // 1 フレームずつ描いて待つ。
   readonly ready?: () => boolean;
@@ -144,6 +147,7 @@ export function texturedBody(
   group.scale.copy(axes);
   const surface = texturedSurfaces.get(texture) ?? CelestialSurface.textured(texture);
   texturedSurfaces.set(texture, surface);
+  // 使い回しの表面は、前に置いた群からこの群へ付け替わる。
   surface.addTo(group);
   surface.syncLod(apparentDiameterPx);
   return { object: group, axes, ready: () => surface.imagesReady };
@@ -178,19 +182,12 @@ export function shipObject(assembly: ShipAssembly): THREE.Object3D {
   if (shape === null) throw new Error('render-lab ship assembly is empty');
   const view = new ModularShipView(buildShipModuleModel, undefined, false);
   view.sync(shipRenderAssembly(assembly).modules, shape.centerOffset);
-  // render-lab case の破棄時に view も解放できるよう所有者を紐付ける。
-  view.object.userData.renderLabShipView = view;
   return view.object;
 }
 
-// 既定戦闘船のモデルを 1 つの物体で返す。原点は組み立ての重心。
-function buildDefaultShipObject(): THREE.Object3D {
-  return shipObject(createDefaultCombatPreset());
-}
-
-// 自機メッシュ 1 隻を、描画座標の position へ置く。rotation を渡すと機体の姿勢を回す。
+// 既定戦闘船 1 隻を、組み立ての重心が描画座標の position に来るよう置く。rotation を渡すと機体の姿勢を回す。
 export function shipAt(position: THREE.Vector3, rotation?: THREE.Euler): THREE.Object3D {
-  const group = buildDefaultShipObject();
+  const group = shipObject(createDefaultCombatPreset());
   group.position.copy(position);
   if (rotation !== undefined) group.rotation.copy(rotation);
   return group;
@@ -201,8 +198,12 @@ export const OBLIQUE_SUN_DIR = new THREE.Vector3(-0.70, 0.20, 0.68).normalize();
 // 機軸の片端と側面の両方が見える機体の姿勢。
 export const SHIP_ROTATION_PORT = new THREE.Euler(-0.5, 0.6, 0.12);
 
-// 恒星までの距離 [m] と画角 [deg] に対する、画面上での太陽の見かけ直径 [px]。**LOD の閾値判定と
-// 同じ換算を通す** — つまみの脇に出る数と、球/点像の切り替わる距離が食い違ってはならない。
-export function sunDiameterPx(distance: number, fovDeg: number): number {
-  return apparentSizePx(2 * R_SUN, metersPerPixelAtDepth(fovDeg, distance, VIEW_HEIGHT));
+// 仮の親 host へ組んで個体を積み終えた InstancedPool の枝を、host から外してケースの物体にする。
+// ジオメトリとマテリアルはケースが所有する。
+export function detachPoolMesh(host: THREE.Scene): THREE.Object3D {
+  const mesh = host.children[0]!;
+  host.remove(mesh);
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  return mesh;
 }
