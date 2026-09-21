@@ -59,7 +59,7 @@ const LEO_PLATE_SIZE = 8;
 // 地球低軌道: 直下がサハラの実写の地球の上に、自機・白い拡散板・自機の円軌道を置く。視線は軌道の
 // 接線方向なので、地平線と、そこへ伸びていく自分の軌道が入る。
 function leo(style: RenderStyle): LabCase {
-  const camera = labCamera(6e7);
+  const camera = labCamera();
   const center = new THREE.Vector3(0, -LEO_CENTER_DISTANCE, 0);
   const earthSphere = earthAt(center, style, camera, spinForSubCameraPoint(center, SAHARA_DIRECTION));
   // 自機の軌道は、地球の中心と自機を通り、視線の先(−Z)へ伸びる円。
@@ -104,7 +104,7 @@ const CRESCENT_SHIP_POSITION = new THREE.Vector3(0, 3, -34);
 // あるので、下面のうち直射を受けない側が地球照だけで照らされる。
 function crescent(style: RenderStyle): LabCase {
   const center = new THREE.Vector3(0, -CRESCENT_CENTER_DISTANCE, 0);
-  const camera = labCamera(6e7);
+  const camera = labCamera();
   const earthSphere = earthAt(center, style, camera);
   return {
     objects: [earthSphere.object, shipAt(CRESCENT_SHIP_POSITION, SHIP_ROTATION_PORT)],
@@ -245,7 +245,7 @@ const EARTH_ECLIPSE_SUN = {
 // 撮影の恒星の方向には、食を起こす球を影の源として置く(画面には写らない)。
 function earth(style: RenderStyle): LabCase {
   const center = EARTH_CENTER.clone();
-  const camera = labCamera(6e7);
+  const camera = labCamera();
   const earthSphere = earthAt(center, style, camera);
   // 食を起こす球が影を落とす地表点。カメラ直下と地平線(地表距離 2,255km)の中間へ来るよう、
   // 直下の向きを視線側へ回す。
@@ -286,7 +286,7 @@ function earth(style: RenderStyle): LabCase {
 // 真上からでも真横からでもなく見る向き**なので、雲頂の起伏と塔の側面はここで読む。
 function earthOblique(style: RenderStyle): LabCase {
   const center = earthCenterBelowHorizon(LEO_ALTITUDE, EARTH_OBLIQUE_MARGIN);
-  const camera = labCamera(6e7);
+  const camera = labCamera();
   const earthSphere = earthAt(center, style, camera);
   return {
     objects: [earthSphere.object],
@@ -308,7 +308,7 @@ function earthPolar(style: RenderStyle): LabCase {
   const center = new THREE.Vector3(0, 0, -R_EARTH / Math.sin(apparentRadius));
   // 天体固定の +Y(北極)を、カメラの居る +Z へ倒す。
   const spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-  const camera = labCamera(6e7);
+  const camera = labCamera();
   const earthSphere = earthAt(center, style, camera, spin);
   return {
     objects: [earthSphere.object],
@@ -340,7 +340,7 @@ const EARTH_MARS_HORIZON_CLEARANCE = 1.25;
 // 大気天体がどう保たれるかが1枚の中の階調として出る。距離のつまみを縮めていくと、途中で主天体が
 // 入れ替わる。
 function earthMars(style: RenderStyle): LabCase {
-  const camera = labCamera(1e13);
+  const camera = labCamera();
   const marsCenter = new THREE.Vector3(0, 0, -EARTH_MARS_DISTANCE);
   const margin = EARTH_MARS_HORIZON_CLEARANCE * Math.asin(MARS_RADIUS / EARTH_MARS_DISTANCE);
   const earthCenter = earthCenterBelowHorizon(EARTH_MARS_CAMERA_ALTITUDE, margin);
@@ -416,7 +416,7 @@ function planetshinePlate(center: THREE.Vector3, roughness: number, metalness: n
 // 遠い天体照: 月軌道相当の距離に置いた地球だけが照らす板を2枚並べ、**板に出る明るさを天体照だけで
 // 決める。** 画素値を厳密に比べるケース。
 function planetshineFar(style: RenderStyle): LabCase {
-  const camera = labCamera(1e13);
+  const camera = labCamera();
   const earthSphere = earthAt(PLANETSHINE_EARTH_CENTER, style, camera);
   return {
     objects: [

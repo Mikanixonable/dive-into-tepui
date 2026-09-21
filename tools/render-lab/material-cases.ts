@@ -1,10 +1,7 @@
-// 材質と較正のケース。金属球に映る天体照、恒星の実球体と灰色球、アルベド 1 の球による放射照度の
+// 材質と較正のケース。金属球に映る天体照、恒星の見え方と灰色球、アルベド 1 の球による放射照度の
 // 較正と日食、温度による自照を読む試験体を組む。
 import * as THREE from 'three/webgpu';
-import { R_SUN, SUN, SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
-import { createStarSphere } from '../../src/render/celestial/star-sphere';
-import { scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
@@ -13,7 +10,6 @@ import {
 import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import { directionFromAngles } from './view-angles';
 import { HULL_EMISS } from '../../src/game/dynamic/dynamic-motion';
-import { surfaceRadianceOf } from '../../src/render/celestial/celestial-entity/star-celestial-view';
 import { earthAt, LEO_CENTER_DISTANCE, SAHARA_DIRECTION, spinForSubCameraPoint } from './earth-cases';
 import {
   labCamera, OBLIQUE_SUN_DIR, SHIP_ROTATION_PORT, shipAt, sphere, SUN_DIR_ANGLES, sunAnglesOf,
@@ -21,9 +17,6 @@ import {
 } from './lab-case';
 import type { Albedo } from '../../src/render/celestial-albedo';
 import type { RenderStyle } from '../../src/render/render-style';
-
-// 太陽面の輝度。
-const SUN_SURFACE_RADIANCE = surfaceRadianceOf(scaledRadiantIntensity(SUN.radiantIntensity), R_SUN);
 
 // 水星近日点の距離(天文単位)の常用対数。太陽の視半径が 0.86° に広がる。
 const MERCURY_PERIHELION_LOG_AU = Math.log10(0.31);
@@ -36,7 +29,7 @@ const OUTER_BODY_RADIUS = 6.371e6;
 // 太陽を画面へ入れる撮影の恒星の向き。灰色球の縁の右上の外、艦から離れた位置に太陽が来る。
 const SUN_IN_VIEW = sunAnglesOf(new THREE.Vector3(0.2563, 0.1392, -0.9565));
 
-// 恒星と灰色球と艦: 灰色球と艦 1 隻を恒星の実球体と一緒に置く。灰色球はそのまま天体照の光源にも
+// 恒星と灰色球と艦: 灰色球と艦 1 隻を置き、恒星の距離を変えて見る。灰色球はそのまま天体照の光源にも
 // なる(艦の夜側を照らす)。艦は灰色球の外、画面の左上へ置く — 太陽に正対する面(球の右上)へ
 // 重なると、そこの画素が艦の鏡面反射に置き換わって読めない。
 function outer(): LabCase {
@@ -44,9 +37,8 @@ function outer(): LabCase {
   const shipPosition = new THREE.Vector3(-55, 22, -100);
   return {
     objects: [sphere(OUTER_ALBEDO, OUTER_BODY_RADIUS, center), shipAt(shipPosition, SHIP_ROTATION_PORT)],
-    camera: labCamera(1e13),
+    camera: labCamera(),
     viewTarget: shipPosition,
-    star: createStarSphere(SUN_SURFACE_COLOR, SUN_SURFACE_RADIANCE),
     planetLights: [{ center, radius: OUTER_BODY_RADIUS, albedo: OUTER_ALBEDO }],
     shots: {
       // 水星近日点の太陽。球の昼夜境界の幅が球光源のときだけ広がる。
@@ -78,7 +70,7 @@ const METAL_HIGHLIGHT_DISTANCE = 3000;
 // なので、大気と雲も実機と同じく組む。直下点は地表の色が読める陸へ置く。
 function leoMetal(style: RenderStyle): LabCase {
   const center = new THREE.Vector3(0, 0, -LEO_CENTER_DISTANCE);
-  const camera = labCamera(6e7);
+  const camera = labCamera();
   const earthSphere = earthAt(center, style, camera, spinForSubCameraPoint(center, SAHARA_DIRECTION));
   const metal = new THREE.Mesh(
     new THREE.SphereGeometry(LEO_METAL_RADIUS, 128, 96),
@@ -204,7 +196,7 @@ function blackbody(): LabCase {
   const heatedShip = shipAt(new THREE.Vector3(22, -15, -50), SHIP_ROTATION_PORT);
   syncThermalState(heatedShip, BLACKBODY_SHIP_TEMPERATURE, 0, HULL_EMISS);
   objects.push(heatedShip);
-  return { objects, camera: labCamera(6e7), sunDirection: OBLIQUE_SUN_DIR };
+  return { objects, camera: labCamera(), sunDirection: OBLIQUE_SUN_DIR };
 }
 
 // 日食の撮影の恒星の向き。影の源はこの向きへ置くので、較正の向き(SUN_DIR)の撮影では影の源の軸が
@@ -231,7 +223,7 @@ function albedo(): LabCase {
   const shadowSourceCenter = center.clone().addScaledVector(eclipseSunDirection, 1e4);
   return {
     objects: [surface],
-    camera: labCamera(6e7),
+    camera: labCamera(),
     shadowBodies: [sphereShadowBody(shadowSourceCenter, 50)],
     rings: {
       center: shadowSourceCenter,
