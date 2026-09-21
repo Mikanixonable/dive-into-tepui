@@ -77,6 +77,6 @@ export class StarCelestialView extends CelestialView {
 
 // 放射強度 I の恒星の、半径 radius の面の輝度。距離 d での放射照度 I/d² は恒星円盤が張る
 // 立体角 π(radius/d)² を通して届くので、面の輝度は I/(π·radius²) になる。
-function surfaceRadianceOf(radiantIntensity: number, radius: number): number {
+export function surfaceRadianceOf(radiantIntensity: number, radius: number): number {
   return radiantIntensity / (Math.PI * radius * radius);
 }
