@@ -388,6 +388,10 @@ export class LabView {
     this.show(name);
     this.current?.updateProteinMotion?.(1);
     await this.waitUntilReady();
+    // **撮る前に1フレーム捨てる。** 雲場は焼いたフレームの絵にはまだ載らず、次のフレームから
+    // 載る。これを省くと、雲の育ちきっていない絵を撮ることになる。
+    this.render();
+    await this.gpu.waitForResolve();
     return this.capture();
   }
 
