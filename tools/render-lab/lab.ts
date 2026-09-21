@@ -16,6 +16,7 @@ import { RingMaterials } from '../../src/render/celestial/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
 import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
+import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
@@ -73,36 +74,6 @@ export const MAX_SUN_DISTANCE_LOG_AU = 2;
 // 撮影がケースの ready を待つ上限 [ms]。超えたらそのまま撮り、撮影そのものは落とさない。
 // **重いケースの最初のフレームは、シェーダを組むあいだ 10 秒を超えて止まる**ので、上限は広く取る。
 const READY_TIMEOUT_MS = 60_000;
-
-// 観察の向き。角度は度、sunDistanceLogAu は恒星までの距離(天文単位)の常用対数、
-// cameraDistanceLog はケース既定の距離に対する倍率の常用対数、cameraZoomLog はケース既定の
-// 画角を狭める倍率の常用対数。
-export interface LabViewAngles {
-  readonly sunAzimuthDeg: number;
-  readonly sunElevationDeg: number;
-  readonly sunDistanceLogAu: number;
-  readonly cameraAzimuthDeg: number;
-  readonly cameraElevationDeg: number;
-  readonly cameraDistanceLog: number;
-  readonly cameraZoomLog: number;
-}
-
-// 方位角・仰角 [deg] から単位ベクトルを組む。方位角 0 が +Z、+90 度が +X。
-function directionFromAngles(azimuthDeg: number, elevationDeg: number, out: THREE.Vector3): THREE.Vector3 {
-  const azimuth = THREE.MathUtils.degToRad(azimuthDeg);
-  const elevation = THREE.MathUtils.degToRad(elevationDeg);
-  const horizontal = Math.cos(elevation);
-  return out.set(Math.sin(azimuth) * horizontal, Math.sin(elevation), Math.cos(azimuth) * horizontal);
-}
-
-// directionFromAngles の逆写像。長さ 0 でない任意のベクトルを受ける。
-function anglesFromDirection(v: THREE.Vector3): { azimuthDeg: number; elevationDeg: number } {
-  const unitY = THREE.MathUtils.clamp(v.y / Math.max(v.length(), 1e-12), -1, 1);
-  return {
-    azimuthDeg: THREE.MathUtils.radToDeg(Math.atan2(v.x, v.z)),
-    elevationDeg: THREE.MathUtils.radToDeg(Math.asin(unitY)),
-  };
-}
 
 export class LabView {
   private readonly scene = new THREE.Scene();
@@ -287,8 +258,6 @@ export class LabView {
   // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
   public render(displayTime = 0): void {
     if (this.current === null) return;
-    // ケースの部品が読む設定は、この1フレームを組む前に押し込む。
-    this.current.applyGraphics?.(this.graphicsData);
     const sunDirection = directionFromAngles(
       this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
     );
@@ -330,6 +299,8 @@ export class LabView {
     // 画角の書き換えは、投影行列を組み直すまで無言で効かない。
     camera.fov = this.cameraFovDeg;
     camera.updateProjectionMatrix();
+    // ケースの部品が読む設定は、このフレームのカメラを置いてから押し込む — 部品はそのカメラを読んでよい。
+    this.current.applyGraphics?.(this.graphicsData);
     // 恒星の見た目は、光源と同じ位置から置き直す。**片方だけ動かさない** — 明るさの根拠と
     // 光点の位置が食い違うと、ちらつきの出どころを読み違える。詳細度の設定もゲーム本体と
     // 同じように掛ける(球と点像の切り替わる距離がここだけずれない)。
@@ -405,17 +376,26 @@ export class LabView {
     };
   }
 
-  // ケースを表示し、キャンバスへ出るのと同じ絵(トーンマッピングと sRGB 変換込み)を PNG の
-  // データ URL で返す。ケースが ready を持つなら、それが真になるまで待ってから撮る。
-  public async shoot(name: CaseName): Promise<string> {
+  // ケースを表示し、ケースが宣言した撮影の向きごとに、キャンバスへ出るのと同じ絵(トーンマッピングと
+  // sRGB 変換込み)を撮る。返り値は撮影名から PNG のデータ URL への表。ケースが ready を持つなら、
+  // それが真になるまで待ってから撮る。観察の向きは最後に撮った向きのまま残る。
+  public async shoot(name: CaseName): Promise<Readonly<Record<string, string>>> {
     this.show(name);
+    // **ケース既定の向きは組んだ直後に控える** — resetView はケースのカメラから引き直すが、描くと
+    // そのカメラが動くので、撮影のあとに引き直すと前の撮影の向きを既定と取り違える。
+    const caseDefault = this.angles;
     this.current?.updateProteinMotion?.(1);
     await this.waitUntilReady();
-    // **撮る前に1フレーム捨てる。** 雲場は焼いたフレームの絵にはまだ載らず、次のフレームから
-    // 載る。これを省くと、雲の育ちきっていない絵を撮ることになる。
-    this.render();
-    await this.gpu.waitForResolve();
-    return this.capture();
+    const pngs: Record<string, string> = {};
+    for (const [shotName, changes] of Object.entries(this.current?.shots ?? { [name]: {} })) {
+      this.setViewAngles({ ...caseDefault, ...changes });
+      // **撮る前に1フレーム捨てる。** 雲場は焼いたフレームの絵にはまだ載らず、次のフレームから
+      // 載る。これを省くと、雲の育ちきっていない絵を撮ることになる。
+      this.render();
+      await this.gpu.waitForResolve();
+      pngs[shotName] = await this.capture();
+    }
+    return pngs;
   }
 
   // いまのケースの ready が真になるまで、1 フレームずつ描いて待つ。**描かずに待っても進まない**
