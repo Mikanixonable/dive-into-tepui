@@ -1,6 +1,5 @@
 // 描画テスト環境の撮影。ヘッドレス Chrome で .render-lab/ を開き、ケースごとに
-// window.renderLab.shoot() を呼んで、ケースが宣言した向きごとの PNG を撮影名で書く。画素はページ側が
-// 合成パスの出力先から読み出しているので、WebGPU キャンバスの提示・Page.captureScreenshot はどこも通らない。
+// window.renderLab.shoot() を呼んで、ケースが宣言した向きごとの PNG を撮影名で書く。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';

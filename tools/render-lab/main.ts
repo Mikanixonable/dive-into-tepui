@@ -56,8 +56,8 @@ declare global {
 
 // 画面を組み、最初のケースを描き、CDP の入口を window へ生やす。
 async function init(): Promise<void> {
-  // Earth surface の計測はproteinアセットに依存しない。先にAPIだけを公開することで、
-  // render-labの別ケースが404でも「データ未投入」を正しく返せる。
+  // 地表の計測の口は、タンパク質のアセットを待つ前に公開する — 別ケースのアセットが 404 でも
+  // 「データ未投入」を返せるように。
   const earthSurfaceCapture = createEarthSurfaceCaptureApi();
   window.renderLab = { earthSurfaceCapture } as Window['renderLab'];
 

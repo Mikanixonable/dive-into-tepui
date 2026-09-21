@@ -87,7 +87,7 @@ export class LabView {
   private current: LabCase | null = null;
   // スタイルを差し替えるとケースを組み直すので、いま出ているケースの名前も持つ。
   private currentName: CaseName | null = null;
-  // 画面全体の見せ方。ゲーム本体と違い保存はせず、起動のたびに写実から始める。
+  // 画面全体の見せ方。起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
   private lastRenderCpuMs = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
@@ -104,7 +104,7 @@ export class LabView {
   private readonly caseCenterVector = new THREE.Vector3();
   private readonly scratchVector = new THREE.Vector3();
   private readonly forward = new THREE.Vector3();
-  // 全ケースの環の帯が共有するマテリアル。ゲーム本体の CelestialSystem と同じく 1 つだけ持つ。
+  // 全ケースの環の帯が共有するマテリアル。
   private readonly ringMaterials: RingMaterials;
 
   // graphicsData はこのフレームを描くのに使う描画品質設定。applyGraphics で差し替わる。
@@ -153,9 +153,7 @@ export class LabView {
     this.render();
   }
 
-  // ケースをいまのスタイルで組み直してシーンへ載せ、それを現在のケースにする。前のケースの
-  // 物体は、ownsGeometry / ownsMaterial を立てたものだけ解放する — 球の単位ジオメトリは
-  // LOD 段ごとに全利用元で共有されていて、捨てると次のケースが壊れる。
+  // ケースをいまのスタイルで組み直してシーンへ載せ、それを現在のケースにする。前のケースは解放する。
   private build(name: CaseName): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
@@ -214,12 +212,12 @@ export class LabView {
     this.render();
   }
 
-  // ケースのカメラと注視点から、観察の向きの既定値を引き直す。**注視点はカメラの視線上へ
-  // 落としてから使う** — 視線から外れた点を注視させると、向きへ触れていないのに絵が回る。
+  // ケースのカメラと注視点から、観察の向きの既定値を引き直す。
   private resetView(): void {
     const built = this.current;
     if (built === null) return;
-    // ケースのカメラから、周回の中心と既定の距離・画角を引く。
+    // ケースのカメラから、周回の中心と既定の距離・画角を引く。**注視点はカメラの視線上へ落として
+    // から使う** — 視線から外れた点を注視させると、向きへ触れていないのに絵が回る。
     const camera = built.camera;
     camera.updateMatrixWorld(true);
     camera.getWorldDirection(this.forward);
@@ -242,7 +240,8 @@ export class LabView {
     };
   }
 
-  // ケースの物体をすべて包む箱の中心。viewTarget を持たないケースの注視点になる。
+  // ケースの物体をすべて包む箱の中心。箱が空ならカメラの視線上の点を返すので、先に forward を
+  // 引いておくこと。
   private caseCenter(built: LabCase): THREE.Vector3 {
     this.scratchBox.makeEmpty();
     for (const root of built.objects) {
@@ -400,16 +399,16 @@ export class LabView {
     return pngs;
   }
 
-  // いまのケースの ready が真になるまで、1 フレームずつ描いて待つ。**描かずに待っても進まない**
-  // — テクスチャの GPU 投入は 1 回の描画につき 1 枚しか進まない。**次を描く前に前のフレームの
-  // GPU 完了を待つ** — 待たずに回すと重いケースで命令が溜まり、デバイスごと落ちる。
-  // 上限を過ぎたらそのまま戻る。
+  // いまのケースの ready が真になるまで、1 フレームずつ描いて待つ。上限を過ぎたらそのまま戻る。
   private async waitUntilReady(): Promise<void> {
     const ready = this.current?.ready;
     if (ready === undefined) return;
     const deadline = performance.now() + READY_TIMEOUT_MS;
     while (!ready() && performance.now() < deadline) {
+      // **描かずに待っても進まない** — テクスチャの GPU 投入は 1 回の描画につき 1 枚しか進まない。
       this.render();
+      // **次を描く前に前のフレームの GPU 完了を待つ** — 待たずに回すと重いケースで命令が溜まり、
+      // デバイスごと落ちる。
       await this.gpu.waitForResolve();
       await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
     }
@@ -436,9 +435,11 @@ function withAirglowSetting(body: AtmosphereBody, airglow: boolean): AtmosphereB
 }
 
 // ケースが握る資源を解放する。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を
-// 立てた物体のものだけ捨てる。
+// 立てた物体のものを捨てる。
 function disposeCaseObjects(built: LabCase): void {
   built.disposeProteinMotion?.();
+  // 所有を立てていない資源は残す — 球の単位ジオメトリは LOD 段ごとに全利用元で共有されていて、
+  // 捨てると次のケースが壊れる。
   for (const root of built.objects) {
     root.traverse((object) => {
       const mesh = object as THREE.Mesh;

@@ -1,5 +1,5 @@
 // モジュール船のケース。基地へ寄港した船と建造ゴースト、分離の前後を、ゲーム本体と同じ組み立てと
-// モデルで組む。他のケースが置く既定戦闘船のモデルもここが組む。
+// モデルで組む。既定戦闘船のモデルも組んで返す。
 import * as THREE from 'three/webgpu';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
@@ -64,7 +64,7 @@ function shipObject(assembly: ShipAssembly): THREE.Object3D {
   return view.object;
 }
 
-// 共通の照明・影ケースへ、現在の既定戦闘船モデルを渡す。
+// 既定戦闘船のモデルを 1 つの物体で返す。原点は組み立ての重心。
 export function buildDefaultShipObject(): THREE.Object3D {
   return shipObject(createDefaultCombatPreset());
 }
@@ -76,12 +76,12 @@ function at(object: THREE.Object3D, x: number, y: number, z: number): THREE.Obje
   return object;
 }
 
-// 基地: 船を寄港させた基地と、その右に建造ゴーストと吸着ガイドを置く。ゴーストは寄港した船にも
-// 基地にも重ならない位置に離し、ガイドはゴーストの奥の面へ付ける。
+// 基地: 船を寄港させた基地と、その右に建造ゴーストと吸着ガイドを置く。
 function base(): LabCase {
   const docked = at(shipObject(dockedPreset()), -7, 0, -42);
   const ghost = new ShipGhostView(undefined, buildShipModuleModel, false);
   const guide = new DockSnapGuideView(undefined, false);
+  // ゴーストは寄港した船にも基地にも重ならない位置に離し、ガイドはゴーストの奥の面へ付ける。
   ghost.sync({ modelId: 'tank-6-main', position: v3(12, 0, -36), rotation: Q_IDENTITY, valid: true });
   guide.sync({ position: v3(12, 0, -39.5), rotation: Q_IDENTITY, radius: 3, valid: true });
   return {
@@ -91,11 +91,12 @@ function base(): LabCase {
   };
 }
 
-// 分離: 分離前の船と、分離機で分けた 2 隻を、互いに重ならないよう左から横一列に並べる。
+// 分離: 分離前の船と、分離機で分けた 2 隻を並べる。
 function separation(): LabCase {
   const source = separationPreset();
   const split = splitAtDecoupler(source, 'decoupler');
   return {
+    // 互いに重ならないよう、左から横一列に並べる。
     objects: [
       at(shipObject(source), -17, 0, -40),
       at(shipObject(split.retained), 1, 0, -40),
