@@ -5,6 +5,8 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
+import { ATMOSPHERE_QUALITY } from '../atmosphere';
+import { CUMULUS_DETAIL } from '../opaque-cloud-surface-renderer';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
@@ -127,7 +129,7 @@ export class RenderPipeline {
     this.sunSource = new SunSource(
       this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
-      this._sunLight, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel);
+      this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel);
     this._ambient = new AmbientSource(this._sunLight);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
@@ -230,6 +232,8 @@ export class RenderPipeline {
 
     this.quad = new QuadMesh(this.compositeMaterials.off);
     this.syncTargetSize();
+    // 構築で渡さなかった値も含めて、構築時点の設定をすべてのパスへ配る。
+    this.rebuildForGraphics(graphics);
   }
 
   // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
@@ -317,7 +321,7 @@ export class RenderPipeline {
     this.debugTarget = target;
   }
 
-  // 描画品質設定を各パスへ配り、影マップ等の GPU 資源を再構築する（設定変更時のみ実行）。
+  // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
@@ -333,6 +337,11 @@ export class RenderPipeline {
     this.antialiasPass.setMethod(graphics.antialias);
     this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
     this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
+    // 天体照の写しは、その天体の描画設定で見えている雲と大気を写す。
+    this._planetLight.setAtmosphereEnabled(graphics.atmosphere !== ATMOSPHERE_QUALITY.off);
+    this._planetLight.setCumulusEnabled(graphics.cumulusDetail !== CUMULUS_DETAIL.off);
+    this._planetLight.setCloudShellEnabled('cirrus', graphics.cirrus);
+    this._planetLight.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
     this.filmLut.select(graphics.filmLut);
   }
 
