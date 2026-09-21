@@ -1,6 +1,5 @@
-// 描画テスト環境が描くケースの表。1 ケースは物体の配置 1 つで、ゲーム本体と同じ天体・艦・線を組み、
-// 既定のカメラと光源・地球の置き方・大気・影の源、撮影で写す向きと一緒に返す。カメラ違い・光源違いは
-// 撮影の向きとして足す。style を受けるケースは、その表示スタイルで組んだ姿を返す。
+// 描画テスト環境のケースの表。分野ごとのファイルのケースを名前で並べ、線の描画順・光路の積分・
+// 土星のケースはここで組む。
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { ringShadowBands } from '../../src/render/pipeline/shadow/ring-shadow';

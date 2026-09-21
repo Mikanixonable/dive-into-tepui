@@ -11,7 +11,7 @@ import { proteinMotionModeDisplacements } from '../../src/render/protein/protein
 import {
   createProteinMotionBinding, disposeProteinMotionBinding, updateProteinMotionCoefficients,
 } from '../../src/render/protein/protein-motion-material';
-import { labCamera, type LabCase } from './lab-case';
+import { labCamera, type CaseBuilder, type LabCase } from './lab-case';
 
 // カメラから模型までの距離 [m]。形が判読できる画面占有率になる位置。
 const MODEL_DEPTH = 10;
@@ -62,6 +62,7 @@ function proteinCase(): LabCase {
       instanceCount: 1,
       baselineLod: 'near',
     },
+    // 変形の係数を表示時刻まで進めて GPU へ送り、それに掛かった CPU 時間と転送量を返す。
     updateProteinMotion(displayTime) {
       const startedAt = performance.now();
       controller.sampleAt(displayTime, 'near');
@@ -76,6 +77,6 @@ function proteinCase(): LabCase {
   };
 }
 
-export const PROTEIN_CASES: Record<string, () => LabCase> = {
+export const PROTEIN_CASES = {
   'protein-5i4r-molecular-1': proteinCase,
-};
+} as const satisfies Record<string, CaseBuilder>;

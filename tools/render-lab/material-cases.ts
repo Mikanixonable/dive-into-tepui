@@ -13,7 +13,7 @@ import {
 } from './view-angles';
 import { HULL_EMISS } from '../../src/game/dynamic/dynamic-motion';
 import {
-  labCamera, OBLIQUE_SUN_DIR, SHIP_ROTATION_PORT, shipAt, SUN_DIR_ANGLES, sunAnglesOf,
+  detachPoolMesh, labCamera, OBLIQUE_SUN_DIR, SHIP_ROTATION_PORT, shipAt, SUN_DIR_ANGLES, sunAnglesOf,
   type CaseBuilder, type LabCase, type LabShot,
 } from './lab-case';
 
@@ -66,9 +66,9 @@ const SMOOTH_METAL_CLOSE_UP = closeUpOf(SMOOTH_METAL, 1);
 const ROUGH_WHITE_CLOSE_UP = closeUpOf(ROUGH_WHITE, Math.log10(2));
 const ROUGH_GREY_CLOSE_UP = closeUpOf(ROUGH_GREY, Math.log10(2));
 
-// 地球の既定の置き方: 視線の先(−Z)で描画原点の高度を低軌道の 420 km にし、直下点を地表の色が読める陸
-// (サハラ、北緯 23°・東経 13°)にする。
-const LEO_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
+// 格子の背にする地球の既定の置き方: 視線の先(−Z)で描画原点の高度を低軌道の 420 km にし、直下点を
+// 地表の色が読める陸(サハラ、北緯 23°・東経 13°)にする。
+const BACKDROP_EARTH_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
   earthAzimuthDeg: 180,
   earthElevationDeg: 0,
   earthAltitudeLog: Math.log10(420e3),
@@ -135,7 +135,7 @@ function materials(): LabCase {
     objects,
     camera: labCamera(),
     viewTarget: GRID_CENTER,
-    earth: LEO_PLACEMENT,
+    earth: BACKDROP_EARTH_PLACEMENT,
     shadowBodies: [sphereShadowBody(shadowSourceCenter, 50 * ECLIPSE_UNIT)],
     rings: {
       center: shadowSourceCenter,
@@ -228,12 +228,7 @@ function blackbodyInstancedRow(center: THREE.Vector3, spacing: number): THREE.Ob
     pool.push(piece);
   }
   pool.endFrame();
-  // 積んだ InstancedMesh を仮の親から外し、ケースの物体として返す。
-  const mesh = host.children[0]!;
-  host.remove(mesh);
-  mesh.userData.ownsGeometry = true;
-  mesh.userData.ownsMaterial = true;
-  return mesh;
+  return detachPoolMesh(host);
 }
 
 // 温度による自照を読むケース。恒星は斜めから差すので、反射に埋もれる昼側と自照だけの夜側が同じ

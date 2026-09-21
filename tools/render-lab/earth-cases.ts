@@ -31,6 +31,7 @@ function whitePlate(
   );
   mesh.position.copy(center);
   mesh.quaternion.setFromUnitVectors(PLATE_LOCAL_NORMAL, normal);
+  // ジオメトリとマテリアルはケースが所有し、板は照明を受ける不透明物として描く。
   mesh.userData.ownsGeometry = true;
   mesh.userData.ownsMaterial = true;
   markLitOpaque(mesh);
