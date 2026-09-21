@@ -84,7 +84,7 @@ const SUN_SURFACE_RADIANCE = scaledRadiantIntensity(SUN.radiantIntensity) / (Mat
 // 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();
 
-// テスト用の球のアルベド。実在天体の値ではなく、線・深度・陰影を読むための識別色。
+// テスト用の球のアルベド。実在天体の値ではなく、線・陰影を読むための識別色。
 const BLUE_SPHERE_ALBEDO: Albedo = [0.0242, 0.15, 0.4342];
 const GREY_SPHERE_ALBEDO: Albedo = [0.521, 0.4793, 0.4179];
 // 土星本体。実写テクスチャの平均色の色みを、その天体のボンドアルベドの輝度へ合わせたもの。
@@ -566,25 +566,6 @@ function backdrop(depth: number): THREE.Object3D {
   mesh.position.set(0, 0, -depth);
   mesh.renderOrder = -10;
   return mesh;
-}
-
-// 深度プローブで試す、距離に対するずれの比 ε。
-const PROBE_EPSILONS = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7] as const;
-// 手前と奥をひと目で見分けるための赤・青。深度の判定だけが目的で、実在天体の値ではない。
-const PROBE_NEAR_ALBEDO: Albedo = [1.0, 0.0908, 0.0578];
-const PROBE_FAR_ALBEDO: Albedo = [0.0578, 0.2462, 1.0];
-
-// 深度プローブ: 距離 z に半径 z/10 の球を2個、視線方向へ δ = z·ε だけずらして重ねる。
-// 深度分解能が δ を下回る組だけが斑になる。見かけの大きさは z に依らない。
-function depthProbe(z: number, far: number): LabCase {
-  const camera = labCamera(far);
-  const objects: THREE.Object3D[] = [];
-  for (const [i, epsilon] of PROBE_EPSILONS.entries()) {
-    const x = (i - 2) * 0.3 * z;
-    objects.push(sphere(PROBE_NEAR_ALBEDO, z / 10, new THREE.Vector3(x, 0, -z)));
-    objects.push(sphere(PROBE_FAR_ALBEDO, z / 10, new THREE.Vector3(x, 0, -z * (1 + epsilon))));
-  }
-  return { objects, camera };
 }
 
 // 日食ケースで影を落とす球: 地表のどこへ影を落とすか(直下からの中心角 [rad])と、その球の半径・
@@ -1303,22 +1284,6 @@ function saturnShadow(style: RenderStyle, ringMaterials: RingMaterials): LabCase
   };
 }
 
-// 遠距離: 月と海王星の距離に球を置く。far=1e13 の外へ落ちないか、潰れたり消えたりしないか。
-// 半径は深度プローブと同じ z/10 — 実半径だと海王星の距離では 1px を大きく下回り、
-// 「出ているかどうか」自体が判定できない。
-function far(): LabCase {
-  const camera = labCamera(1e13);
-  const moon = 3.8e8;
-  const neptune = 4.5e12;
-  return {
-    objects: [
-      sphere(GREY_SPHERE_ALBEDO, moon / 10, new THREE.Vector3(-0.4 * moon, 0, -moon)),
-      sphere(BLUE_SPHERE_ALBEDO, neptune / 10, new THREE.Vector3(0.4 * neptune, 0, -neptune)),
-    ],
-    camera,
-  };
-}
-
 // 太陽の向き。**画面中心から外して置く** — 中心だと、注視点へ視線が固定されるぶんカメラ方位を
 // 回しても画面上で動かず、サブピクセルの移動そのものが作れない。
 const SUN_CASE_DIR = new THREE.Vector3(0.2563, 0.1392, -0.9565).normalize();
@@ -1370,10 +1335,6 @@ export const CASES = {
   'ship-in-debris': shipInDebris,
   'ship-body-shadow': shipBodyShadow,
   'order': order,
-  'depth-1e4': () => depthProbe(1e4, 6e7),
-  'depth-1e6': () => depthProbe(1e6, 6e7),
-  'depth-1e8': () => depthProbe(1e8, 1e13),
-  'depth-1e11': () => depthProbe(1e11, 1e13),
   'eclipse': eclipse,
   'march-slab': marchSlab,
   'earth': earth,
@@ -1383,7 +1344,6 @@ export const CASES = {
   'earth-terminator': earthTerminator,
   'earth-eclipse': earthEclipse,
   'earth-mars': earthMars,
-  'far': far,
   'saturn': saturn,
   'saturn-shadow': saturnShadow,
   'albedo': albedo,

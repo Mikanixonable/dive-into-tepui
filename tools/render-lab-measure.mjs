@@ -16,7 +16,6 @@ const FRAMINGS = [
   { label: 'earth', caseName: 'earth', angles: {} },
   { label: 'earth-mars', caseName: 'earth-mars', angles: {} },
   { label: 'earth-mars d=-2', caseName: 'earth-mars', angles: { cameraDistanceLog: -2 } },
-  { label: 'far', caseName: 'far', angles: {} },
 ];
 
 // 大気の品質(src/render/graphics-settings.ts の ATMOSPHERE_QUALITY)。
