@@ -19,10 +19,11 @@ import { RingMaterials } from '../../src/render/celestial/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
 import { CASES, type CaseName } from './cases';
-import { sunDiameterPx, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
+import { sunDiameterPx, type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
-import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
 
@@ -100,10 +101,13 @@ export class LabView {
   private defaultCameraDistance = 1;
   // ケース既定の画角 [deg]。cameraZoomLog の基準になる。
   private defaultCameraFovDeg = 1;
-  private angles: LabViewAngles = {
+  // ケース既定の観察の向き。**ケースを組んで向きを引き直した時点で控える** — 描くとケースのカメラが
+  // 動くので、あとから引き直すと動いたあとの向きを既定と取り違える。
+  private defaultAngles: LabViewAngles = {
     sunAzimuthDeg: 0, sunElevationDeg: 0, sunDistanceLogAu: 0,
     cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraDistanceLog: 0, cameraZoomLog: 0,
   };
+  private angles: LabViewAngles = this.defaultAngles;
   private readonly scratchBox = new THREE.Box3();
   private readonly caseCenterVector = new THREE.Vector3();
   private readonly scratchVector = new THREE.Vector3();
@@ -115,22 +119,30 @@ export class LabView {
     SUN_SURFACE_COLOR, surfaceRadianceOf(scaledRadiantIntensity(SUN.radiantIntensity), R_SUN),
   );
 
-  // graphicsData はこのフレームを描くのに使う描画品質設定。applyGraphics で差し替わる。
+  // 起動時の描画品質設定。撮影はこれへ差分を重ねる。
+  private readonly startupGraphics: GraphicsSettingsData;
+
+  // graphics は描く描画品質設定の器。
   private constructor(
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
-    private graphicsData: GraphicsSettingsData,
+    private readonly graphics: StoredSetting<GraphicsSettingsData>,
   ) {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
     this.ringMaterials = new RingMaterials(pipeline.bodyShadow, pipeline.sunLight);
     this.star.addTo(this.scene);
+    this.startupGraphics = graphics.current;
+    graphics.subscribe((next) => this.applyGraphics(next));
   }
 
-  // graphics は最初のフレームを描く描画品質設定。
-  public static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettingsData): Promise<LabView> {
+  // graphics は描く描画品質設定の器。この時点の値を起動時の設定として控え、以後はその変更を受けて
+  // 描き直す。
+  public static async create(
+    canvas: HTMLCanvasElement, graphics: StoredSetting<GraphicsSettingsData>,
+  ): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、深度の分解能と
     // 描画順の並べ替えが本番と別物になる。
     const renderer = new WebGPURenderer({
@@ -142,8 +154,7 @@ export class LabView {
     await renderer.init();
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
-    const pipeline = new RenderPipeline(renderer, graphics, gpu);
-    pipeline.ambient.setFraction(ambientFraction(graphics));
+    const pipeline = new RenderPipeline(renderer, graphics.current, gpu);
     return new LabView(renderer, pipeline, gpu, graphics);
   }
 
@@ -175,12 +186,11 @@ export class LabView {
     this.currentName = name;
     // **カメラの既定を引く前に一度押し込む** — 環はここで姿勢が決まるので、押し込む前に
     // 物体を包む箱を測ると注視点が原点へ寄る。
-    built.applyGraphics?.(this.graphicsData);
+    built.applyGraphics?.(this.graphics.current);
   }
 
-  // 描画品質設定を差し替える。受け取った値をパイプラインへ配り、その場で描き直す。
-  public applyGraphics(graphics: GraphicsSettingsData): void {
-    this.graphicsData = graphics;
+  // 描画品質設定の新しい値をパイプラインへ配り、その場で描き直す。
+  private applyGraphics(graphics: GraphicsSettingsData): void {
     this.pipeline.ambient.setFraction(ambientFraction(graphics));
     this.pipeline.rebuildForGraphics(graphics);
     this.render();
@@ -236,7 +246,7 @@ export class LabView {
     // 恒星とカメラの向きを角度へ直す。
     const sun = anglesFromDirection(built.sunDirection ?? SUN_DIR);
     const eye = anglesFromDirection(this.scratchVector.copy(this.forward).negate());
-    this.angles = {
+    this.defaultAngles = {
       sunAzimuthDeg: sun.azimuthDeg,
       sunElevationDeg: sun.elevationDeg,
       sunDistanceLogAu: 0,
@@ -245,6 +255,7 @@ export class LabView {
       cameraDistanceLog: 0,
       cameraZoomLog: 0,
     };
+    this.angles = this.defaultAngles;
   }
 
   // ケースの物体をすべて包む箱の中心。箱が空ならカメラの視線上の点を返すので、先に forward を
@@ -264,6 +275,7 @@ export class LabView {
   // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
   public render(displayTime = 0): void {
     if (this.current === null) return;
+    const graphics = this.graphics.current;
     const sunDirection = directionFromAngles(
       this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
     );
@@ -292,7 +304,7 @@ export class LabView {
             bodyFromWorld: light.bodyFromWorld ?? IDENTITY_BODY_FROM_WORLD,
             atmosphere: light.atmosphere === undefined
               ? null
-              : withAirglowSetting(light.atmosphere, this.graphicsData.airglow),
+              : withAirglowSetting(light.atmosphere, graphics.airglow),
           },
         };
       }));
@@ -310,31 +322,31 @@ export class LabView {
     camera.far = farClip(this.cameraDistance);
     camera.updateProjectionMatrix();
     // ケースの部品が読む設定は、このフレームのカメラを置いてから押し込む — 部品はそのカメラを読んでよい。
-    this.current.applyGraphics?.(this.graphicsData);
+    this.current.applyGraphics?.(graphics);
     // 恒星の見た目は、光源と同じ位置から置き直す。**片方だけ動かさない** — 明るさの根拠と
     // 光点の位置が食い違うと、ちらつきの出どころを読み違える。詳細度の設定もゲーム本体と
     // 同じように掛ける(球と点像の切り替わる距離がここだけずれない)。
     this.star.sync(
-      SUN_POSITION, R_SUN, sunDiameterPx(sunDistance, camera.fov) * this.graphicsData.lodBias, camera.quaternion,
+      SUN_POSITION, R_SUN, sunDiameterPx(sunDistance, camera.fov) * graphics.lodBias, camera.quaternion,
       this.style,
     );
     this.pipeline.bodyShadow.set(this.current.shadowBodies ?? []);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     this.pipeline.cumulusShadow.set(
-      castsCumulusShadow(this.graphicsData) ? this.current.cumulus ?? null : null);
+      castsCumulusShadow(graphics) ? this.current.cumulus ?? null : null);
     this.current.bakeClouds?.(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
       (this.current.atmospheres ?? []).map((body) => {
         const distance = camera.position.distanceTo(body.center);
         return {
-          body: withAirglowSetting(body, this.graphicsData.airglow),
+          body: withAirglowSetting(body, graphics.airglow),
           distance,
           metersPerPixel: metersPerPixelAtDepth(camera.fov, distance, VIEW_HEIGHT),
         };
       }),
-      this.graphicsData.atmosphere,
+      graphics.atmosphere,
     ));
     const startedAt = performance.now();
     this.pipeline.render(this.scene, camera, this.style);
@@ -387,19 +399,48 @@ export class LabView {
     };
   }
 
-  // ケースを表示し、ケースが宣言した撮影の向きごとに、キャンバスへ出るのと同じ絵(トーンマッピングと
-  // sRGB 変換込み)を撮る。返り値は撮影名から PNG のデータ URL への表。ケースが ready を持つなら、
-  // それが真になるまで待ってから撮る。観察の向きは最後に撮った向きのまま残る。
-  public async shoot(name: CaseName): Promise<Readonly<Record<string, string>>> {
+  // いまのケースの撮影。ケースが宣言していなければ、ケース名で既定の向きを 1 枚撮る。
+  private get shots(): Readonly<Record<string, LabShot>> {
+    if (this.current === null || this.currentName === null) return {};
+    return this.current.shots ?? { [this.currentName]: { view: {} } };
+  }
+
+  // いまのケースの撮影名。
+  public get shotNames(): readonly string[] { return Object.keys(this.shots); }
+
+  // いまのケースの撮影 name を当てて描き直す。描画品質設定は起動時の値へ graphics と撮影の差分を
+  // この順に重ねた値に、観察の向きはケース既定へ撮影の差分を重ねた値になる。name が撮影に無ければ投げる。
+  public applyShot(name: string, graphics: Partial<GraphicsSettingsData> = {}): void {
+    const shot = this.shots[name];
+    if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
+    this.syncGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
+    this.setViewAngles({ ...this.defaultAngles, ...shot.view });
+  }
+
+  // 描画品質設定を next にする。**設定の器は同値でも購読者へ配り、パイプラインを組み直す**ので、
+  // いまの値と 1 項目でも違うときだけ書く。
+  private syncGraphics(next: GraphicsSettingsData): void {
+    const current = this.graphics.current;
+    const changed = (Object.keys(next) as GraphicsOptionKey[]).some((key) => next[key] !== current[key]);
+    if (changed) this.graphics.set(next);
+  }
+
+  // ケースを表示し、ケースが宣言した撮影ごとに applyShot を当てて、キャンバスへ出るのと同じ絵
+  // (トーンマッピングと sRGB 変換込み)を撮る。graphics は起動時の描画品質設定と撮影の差分のあいだへ
+  // 重ねる差分。返り値は撮影名から PNG のデータ URL への表。ケースが ready を持つなら、それが真に
+  // なるまで待ってから撮る。観察の向きと描画品質設定は最後の撮影のまま残る。
+  public async shoot(
+    name: CaseName, graphics: Partial<GraphicsSettingsData> = {},
+  ): Promise<Readonly<Record<string, string>>> {
+    // **ケースは起動時の値へ graphics を重ねた設定で組んで待つ** — 描画設定が有効な間にしか読み込まない
+    // 部品(雲など)があり、前の撮影の設定のまま待つと、読み込み前の姿を撮る。
+    this.syncGraphics({ ...this.startupGraphics, ...graphics });
     this.show(name);
-    // **ケース既定の向きは組んだ直後に控える** — resetView はケースのカメラから引き直すが、描くと
-    // そのカメラが動くので、撮影のあとに引き直すと前の撮影の向きを既定と取り違える。
-    const caseDefault = this.angles;
     this.current?.updateProteinMotion?.(1);
     await this.waitUntilReady();
     const pngs: Record<string, string> = {};
-    for (const [shotName, changes] of Object.entries(this.current?.shots ?? { [name]: {} })) {
-      this.setViewAngles({ ...caseDefault, ...changes });
+    for (const shotName of this.shotNames) {
+      this.applyShot(shotName, graphics);
       // **撮る前に1フレーム捨てる。** 雲場は焼いたフレームの絵にはまだ載らず、次のフレームから
       // 載る。これを省くと、雲の育ちきっていない絵を撮ることになる。
       this.render();

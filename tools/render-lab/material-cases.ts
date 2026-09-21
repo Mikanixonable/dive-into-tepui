@@ -42,17 +42,17 @@ function outer(): LabCase {
     planetLights: [{ center, radius: OUTER_BODY_RADIUS, albedo: OUTER_ALBEDO }],
     shots: {
       // 水星近日点の太陽。球の昼夜境界の幅が球光源のときだけ広がる。
-      'sun-close': { sunDistanceLogAu: MERCURY_PERIHELION_LOG_AU },
+      'sun-close': { view: { sunDistanceLogAu: MERCURY_PERIHELION_LOG_AU } },
       // 外惑星圏。恒星を遠ざけ、**太陽に正対した面が黒へ潰れていないか**を読む。球の最も明るい
       // 画素が太陽に正対した面にあたるので、距離ごとの表示値はそこで測る。
-      'outer-5au': { sunDistanceLogAu: Math.log10(5) },
-      'outer-30au': { sunDistanceLogAu: Math.log10(30) },
+      'outer-5au': { view: { sunDistanceLogAu: Math.log10(5) } },
+      'outer-30au': { view: { sunDistanceLogAu: Math.log10(30) } },
       // 太陽の見かけ径。1 AU で円盤が分解され(5.4 px)、5.2 AU で 1 px、30 AU で 0.2 px になる。
       // **1 px を切ると**総光量がラスタライズの被覆率へ量子化される — サブピクセルの移動に対する
       // 画面のちらつきを、この向きでカメラ方位を回して測る。
-      'sun-1au': SUN_IN_VIEW,
-      'sun-5au': { ...SUN_IN_VIEW, sunDistanceLogAu: Math.log10(5.2) },
-      'sun-30au': { ...SUN_IN_VIEW, sunDistanceLogAu: Math.log10(30) },
+      'sun-1au': { view: SUN_IN_VIEW },
+      'sun-5au': { view: { ...SUN_IN_VIEW, sunDistanceLogAu: Math.log10(5.2) } },
+      'sun-30au': { view: { ...SUN_IN_VIEW, sunDistanceLogAu: Math.log10(30) } },
     },
   };
 }
@@ -85,13 +85,15 @@ function leoMetal(style: RenderStyle): LabCase {
     camera,
     viewTarget: LEO_METAL_CENTER,
     shots: {
-      'leo-metal': {},
-      'leo-metal-terminator': LEO_METAL_TERMINATOR_SUN,
+      'leo-metal': { view: {} },
+      'leo-metal-terminator': { view: LEO_METAL_TERMINATOR_SUN },
       // 金属のハイライト。曲率のゆるい大きな球に、球光源では太陽の円盤が幅十数 px の像として映り、
       // 点光源の GGX では粗さぶんの数 px の点に潰れる。
       'metal-highlight': {
-        sunDistanceLogAu: MERCURY_PERIHELION_LOG_AU,
-        cameraDistanceLog: Math.log10(METAL_HIGHLIGHT_DISTANCE / -LEO_METAL_CENTER.z),
+        view: {
+          sunDistanceLogAu: MERCURY_PERIHELION_LOG_AU,
+          cameraDistanceLog: Math.log10(METAL_HIGHLIGHT_DISTANCE / -LEO_METAL_CENTER.z),
+        },
       },
     },
     ...earthSphere.lightingAndClouds,
@@ -238,11 +240,11 @@ function albedo(): LabCase {
       // 線形値は 1.0 になる** — ランバート BRDF の 1/π が単位を打ち消すため。ここが動いたら光の単位か
       // BRDF のどちらかが崩れている。画面上の**最も明るい画素は sRGB (241, 241, 241)**: 白い恒星光に
       // 誘電体の鏡面(F0=0.04、粗さ 1)のわずかな持ち上がりが乗り、PBR Neutral と sRGB 符号化を通した値。
-      'albedo': {},
+      'albedo': { view: {} },
       // 日食。影の源の球は太陽とほぼ同じ視半径なので本影は点に近く、面の大半が半影の階調になる —
       // 影の縁がぼけて見えることが円盤の重なり面積を解いている証拠で、環の縞はそれとは別の経路の
       // 証拠になる。
-      'eclipse': ALBEDO_ECLIPSE_SUN,
+      'eclipse': { view: ALBEDO_ECLIPSE_SUN },
     },
   };
 }

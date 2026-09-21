@@ -55,6 +55,14 @@ const EYE = new THREE.Vector3(0, 0, 0);
 export const AHEAD = new THREE.Vector3(0, 0, -1);
 const NEAR = 2;
 
+// 撮影 1 枚ぶんの差分。
+export interface LabShot {
+  // ケース既定の観察の向きへ重ねる差分。
+  readonly view: Partial<LabViewAngles>;
+  // 起動時の描画品質設定へ重ねる差分。省略すると起動時の設定のまま撮る。
+  readonly graphics?: Partial<GraphicsSettingsData>;
+}
+
 export interface LabCase {
   // シーンへ載せる物体。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を立てた
   // 物体のものがケースを外すときに解放される。
@@ -79,9 +87,9 @@ export interface LabCase {
   }[];
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
-  // 撮影で写す向き。鍵は PNG の名前で全ケースを通して重ならないこと、値はケース既定の観察の向きへ
-  // 重ねる差分。省略するとケースの名前で既定の向きを1枚撮る。
-  readonly shots?: Readonly<Record<string, Partial<LabViewAngles>>>;
+  // 撮影。鍵は PNG の名前で全ケースを通して重ならないこと。省略するとケースの名前で既定の向きを
+  // 1枚撮る。
+  readonly shots?: Readonly<Record<string, LabShot>>;
   // 大気パスへ渡す天体。中心は描画座標。並べ替えと濃い表現の重みは、カメラの位置から
   // 引き直される。
   readonly atmospheres?: readonly AtmosphereBody[];
