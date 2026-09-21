@@ -33,6 +33,11 @@ import type { LabViewAngles } from './view-angles';
 // 殻の高度のつまみが届く上限 [m]。対流圏界面(極 8 km、熱帯 18 km)の上まで取る。
 const MAX_SHELL_ALTITUDE = 20e3;
 
+// 地球の高度のつまみ(描画原点の高度 [m] の常用対数)の下限・上限。下限の 1 km は大気の底、
+// 上限の 100 万 km は月軌道の外側。
+const MIN_EARTH_ALTITUDE_LOG = 3;
+const MAX_EARTH_ALTITUDE_LOG = 9;
+
 // 設定パネルに出さない項目。この環境が原理的に効かせられないものだけを入れる — 並べて何も
 // 起きないと、絵の違いの出どころを読み違える。
 const HIDDEN_GRAPHICS_KEYS: ReadonlySet<GraphicsOptionKey> = new Set<GraphicsOptionKey>([
@@ -106,7 +111,24 @@ async function init(): Promise<void> {
       setSunDistance(view.viewAngles.sunDistanceLogAu);
     });
 
-  // 観察のつまみの位置を LabView の現在値へ合わせる。
+  // 地球の置き方。方位・仰角は描画原点から地球の中心への向き、直下の緯度・経度は描画原点の真下に
+  // 来る地表の地点。
+  const setEarthAzimuth = buildSlider('earth-angles', '地球 方位', -180, 180, 0.5,
+    () => degrees(view.viewAngles.earthAzimuthDeg), (v) => view.setViewAngles({ earthAzimuthDeg: v }));
+  const setEarthElevation = buildSlider('earth-angles', '地球 仰角', -90, 90, 0.5,
+    () => degrees(view.viewAngles.earthElevationDeg), (v) => view.setViewAngles({ earthElevationDeg: v }));
+  const setEarthAltitude = buildSlider('earth-angles', '高度',
+    MIN_EARTH_ALTITUDE_LOG, MAX_EARTH_ALTITUDE_LOG, 0.01,
+    () => `${Number((10 ** view.viewAngles.earthAltitudeLog / 1e3).toPrecision(3))} km`,
+    (v) => view.setViewAngles({ earthAltitudeLog: v }));
+  const setEarthLatitude = buildSlider('earth-angles', '直下 緯度', -90, 90, 0.5,
+    () => degrees(view.viewAngles.earthLatitudeDeg), (v) => view.setViewAngles({ earthLatitudeDeg: v }));
+  const setEarthLongitude = buildSlider('earth-angles', '直下 経度', -180, 180, 0.5,
+    () => degrees(view.viewAngles.earthLongitudeDeg), (v) => view.setViewAngles({ earthLongitudeDeg: v }));
+  const earthSection = document.getElementById('earth-section')!;
+
+  // 観察のつまみの位置を LabView の現在値へ合わせる。地球を置かないケースでは、地球のつまみを
+  // 節ごと隠す。
   const syncAngles = (): void => {
     const current = view.viewAngles;
     setSunAzimuth(current.sunAzimuthDeg);
@@ -116,6 +138,12 @@ async function init(): Promise<void> {
     setCameraElevation(current.cameraElevationDeg);
     setCameraDistance(current.cameraDistanceLog);
     setCameraZoom(current.cameraZoomLog);
+    earthSection.hidden = !view.showsEarth;
+    setEarthAzimuth(current.earthAzimuthDeg);
+    setEarthElevation(current.earthElevationDeg);
+    setEarthAltitude(current.earthAltitudeLog);
+    setEarthLatitude(current.earthLatitudeDeg);
+    setEarthLongitude(current.earthLongitudeDeg);
   };
 
   const caseItems = CASE_NAMES.map((name) => [name, name] as const);

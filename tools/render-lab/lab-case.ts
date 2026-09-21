@@ -1,32 +1,29 @@
 // 描画テスト環境のケースが共有する取り決め。ケースが返す形と組む関数の型、描画の大きさ、既定の
 // カメラ・恒星の向きと、ケースが物体を置く部品(試験球・円・実写テクスチャの天体・既定戦闘船)を持つ。
 import * as THREE from 'three/webgpu';
-import { CelestialSurface, type LightSourceMap } from '../../src/render/celestial/celestial-surface';
+import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { R_SUN } from '../../src/game/celestial/solar-system/sun';
 import { shapeAxes, type PlanetDef } from '../../src/physics/celestial-body-def';
-import { Curve } from '../../src/render/curve';
+import { Curve, type CurveSampler } from '../../src/render/curve';
 import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection';
 import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
-import { anglesFromDirection, type LabViewAngles } from './view-angles';
+import { anglesFromDirection, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import type { Albedo } from '../../src/render/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
 import type { ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
-import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import type { LineStyle } from '../../src/render/line-style';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import type { ProteinLabCaseMetadata } from './protein-cases';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
-import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
-import type { WebGPURenderer } from 'three/webgpu';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -72,43 +69,35 @@ export interface LabCase {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
-  // 天体照の光源として置く天体。中心は描画座標、albedo は輝度がボンドアルベドに一致する
-  // 線形 RGB。省略すると天体照は無い。
+  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・積雲の影の源になる。省略すると
+  // 地球を置かない。
+  readonly earth?: Pick<LabViewAngles, EarthAngleKey>;
+  // 地球のほかに天体照の光源として置く一様な球。中心は描画座標、albedo は輝度がボンドアルベドに
+  // 一致する線形 RGB。
   readonly planetLights?: readonly {
     readonly center: THREE.Vector3;
     readonly radius: number;
     readonly albedo: Albedo;
-    // 光源として焼く全球の正距円筒テクスチャを返す口。画像が GPU へ届くまでは null を返す。
-    readonly lightSourceMap?: () => LightSourceMap | null;
-    // 描画座標のベクトルを天体固定の向きへ回す行列。省略すると単位行列。
-    readonly bodyFromWorld?: THREE.Matrix4;
-    // 光源として焼く大気と、その中に立つ雲。省略すると地表だけを焼く。
-    readonly atmosphere?: AtmosphereBody;
   }[];
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
   // 撮影。鍵は PNG の名前で全ケースを通して重ならないこと。省略するとケースの名前で既定の向きを
   // 1枚撮る。
   readonly shots?: Readonly<Record<string, LabShot>>;
-  // 大気パスへ渡す天体。中心は描画座標。並べ替えと濃い表現の重みは、カメラの位置から
+  // 地球のほかに大気パスへ渡す天体。中心は描画座標。並べ替えと濃い表現の重みは、カメラの位置から
   // 引き直される。
   readonly atmospheres?: readonly AtmosphereBody[];
-  // 影パスへ渡す球。中心は描画座標。
+  // 地球のほかに影パスへ渡す球。中心は描画座標。
   readonly shadowBodies?: readonly ShadowBody[];
   // 影パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
-  // 影パスへ渡す積雲の殻。
-  readonly cumulus?: ShadowCumulus;
-  // 動的な雲場を表示時刻へ焼く。gpu を渡すと、焼いた GPU 時間をそこへ計上する。
-  readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
-  // 動的な雲場を解放する。
-  readonly disposeClouds?: () => void;
   // ケースの部品が揃い、絵として比べられる状態になったか。持たせると、撮影はこれが真になるまで
   // 1 フレームずつ描いて待つ。
   readonly ready?: () => boolean;
-  // 描画品質設定のうち、ケースの部品が読む項目を押し込み、部品をこのフレームのカメラへ合わせる口。
-  // 毎フレーム、カメラを置いたあとに呼ばれるので、同値なら何もしないこと。
-  readonly applyGraphics?: (graphics: GraphicsSettingsData) => void;
+  // 描画品質設定のうち、ケースの部品が読む項目を押し込み、部品をこのフレームのカメラと地球へ合わせる口。
+  // earthCenter は地球の中心(描画座標)で、地球を置かないケースでは null。毎フレーム、カメラと地球を
+  // 置いたあとに呼ばれるので、同値なら何もしないこと。
+  readonly sync?: (graphics: GraphicsSettingsData, earthCenter: THREE.Vector3 | null) => void;
   // 計測結果へ添える、タンパク質ケースの識別。
   readonly proteinMotion?: ProteinLabCaseMetadata;
   // 表示時刻 displayTime [s] まで残基 motion を進め、そのフレームの計測値を返す。
@@ -144,9 +133,14 @@ export function sphere(albedo: Albedo, radius: number, center: THREE.Vector3): T
 // 寄り切ったときの見かけ直径 [px] として天体へ渡す値。分割段ラダーの最上段が選ばれる。
 export const CLOSE_UP_DIAMETER_PX = 6e4;
 
+// 実写テクスチャごとの天体表面。ケースを組み直すたびに画像を読み直さないよう、組んだ表面を
+// 使い回す。
+const texturedSurfaces = new Map<CelestialTexture, CelestialSurface>();
+
 // 実写テクスチャを貼った天体を、定義 def の扁平のまま中心 center(描画座標)へ置く。極は描画座標の
 // +Y。apparentDiameterPx は分割段を選ぶ見かけ直径で、寄れるケースでは寄り切った大きさを渡す。
-// axes は半軸 [m]、ready は地表の画像がすべて GPU へ届いたか。
+// axes は半軸 [m]、ready は地表の画像がすべて GPU へ届いたか。同じ texture の天体は表面を共有するので、
+// 1 つのケースに置けるのは 1 体まで。
 export function texturedBody(
   texture: CelestialTexture, def: PlanetDef, center: THREE.Vector3, apparentDiameterPx: number,
 ): { readonly object: THREE.Object3D; readonly axes: THREE.Vector3; readonly ready: () => boolean } {
@@ -155,10 +149,23 @@ export function texturedBody(
   const group = new THREE.Group();
   group.position.copy(center);
   group.scale.copy(axes);
-  const surface = CelestialSurface.textured(texture);
+  const surface = texturedSurfaces.get(texture) ?? CelestialSurface.textured(texture);
+  texturedSurfaces.set(texture, surface);
   surface.addTo(group);
   surface.syncLod(apparentDiameterPx);
   return { object: group, axes, ready: () => surface.imagesReady };
+}
+
+// 中心 center、半径 radius、平面 (u, v) の円を t∈[0,1] で一周する曲線。
+export function circleSampler(
+  center: THREE.Vector3, radius: number, u: THREE.Vector3, v: THREE.Vector3,
+): CurveSampler {
+  return (t, out) => {
+    const theta = 2 * Math.PI * t;
+    out.copy(center)
+      .addScaledVector(u, radius * Math.cos(theta))
+      .addScaledVector(v, radius * Math.sin(theta));
+  };
 }
 
 // 中心 center、半径 radius、平面 (u, v) の円を1本。分割はカメラで決まるので、カメラを作った
@@ -168,12 +175,7 @@ export function circle(
   style: LineStyle, camera: THREE.Camera,
 ): THREE.Object3D {
   const curve = new Curve(style);
-  curve.setAnalyticCurve((t, out) => {
-    const theta = 2 * Math.PI * t;
-    out.copy(center)
-      .addScaledVector(u, radius * Math.cos(theta))
-      .addScaledVector(v, radius * Math.sin(theta));
-  }, camera, VIEW_HEIGHT);
+  curve.setAnalyticCurve(circleSampler(center, radius, u, v), camera, VIEW_HEIGHT);
   return curve.object;
 }
 

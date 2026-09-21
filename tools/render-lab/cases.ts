@@ -1,6 +1,6 @@
 // 描画テスト環境が描くケースの表。1 ケースは物体の配置 1 つで、ゲーム本体と同じ天体・艦・線を組み、
-// 既定のカメラと光源・大気・影の源、撮影で写す向きと一緒に返す。カメラ違い・光源違いは撮影の向き
-// として足す。style を受けるケースは、その表示スタイルで組んだ姿を返す。
+// 既定のカメラと光源・地球の置き方・大気・影の源、撮影で写す向きと一緒に返す。カメラ違い・光源違いは
+// 撮影の向きとして足す。style を受けるケースは、その表示スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { ringShadowBands } from '../../src/render/pipeline/shadow/ring-shadow';
@@ -145,7 +145,7 @@ function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
     ready: body.ready,
     // 環の見え方(表示の有無・帯の見かけ幅の段)は設定とカメラの距離で変わるので、押し込みのたびに
     // そのフレームのカメラから同期する。
-    applyGraphics: (graphics) => view.sync(
+    sync: (graphics) => view.sync(
       center, axis, v3(center.x, center.y, center.z),
       () => metersPerPixelAtDepth(camera.fov, camera.position.distanceTo(center), VIEW_HEIGHT),
       graphics, style,

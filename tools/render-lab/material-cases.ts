@@ -8,15 +8,13 @@ import {
   attachThermalEmissive, syncThermalState, THERMAL_SHAPE_ATTRIBUTE, type ThermalSource,
 } from '../../src/render/thermal-emissive';
 import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
-import { directionFromAngles } from './view-angles';
+import { directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import { HULL_EMISS } from '../../src/game/dynamic/dynamic-motion';
-import { earthAt, LEO_CENTER_DISTANCE, SAHARA_DIRECTION, spinForSubCameraPoint } from './earth-cases';
 import {
   labCamera, OBLIQUE_SUN_DIR, SHIP_ROTATION_PORT, shipAt, sphere, SUN_DIR_ANGLES, sunAnglesOf,
   type CaseBuilder, type LabCase,
 } from './lab-case';
 import type { Albedo } from '../../src/render/celestial-albedo';
-import type { RenderStyle } from '../../src/render/render-style';
 
 // 水星近日点の距離(天文単位)の常用対数。太陽の視半径が 0.86° に広がる。
 const MERCURY_PERIHELION_LOG_AU = Math.log10(0.31);
@@ -57,6 +55,17 @@ function outer(): LabCase {
   };
 }
 
+// 低軌道の金属球のケースの描画原点の高度 [m]。
+const LEO_METAL_ALTITUDE = 420e3;
+// 低軌道の金属球のケースの地球の置き方: 視線の先(−Z)に置き、直下点を地表の色が読める陸
+// (サハラ、北緯 23°・東経 13°)にする。
+const LEO_METAL_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
+  earthAzimuthDeg: 180,
+  earthElevationDeg: 0,
+  earthAltitudeLog: Math.log10(LEO_METAL_ALTITUDE),
+  earthLatitudeDeg: 23,
+  earthLongitudeDeg: 13,
+};
 // 低軌道の手前へ置く金属球の半径 [m] と中心(描画座標)。画面の高さの半分ほどを占める。
 const LEO_METAL_RADIUS = 2000;
 const LEO_METAL_CENTER = new THREE.Vector3(0, -600, -9000);
@@ -67,11 +76,8 @@ const METAL_HIGHLIGHT_DISTANCE = 3000;
 
 // 低軌道の金属球: 実写テクスチャの地球で画面を埋め、手前の金属球へ天体照がどう映るかを読む。
 // **映り込みと、その隣に写る地球そのものを1枚の中で見比べる構図。** 見比べる相手は実機に写る地球
-// なので、大気と雲も実機と同じく組む。直下点は地表の色が読める陸へ置く。
-function leoMetal(style: RenderStyle): LabCase {
-  const center = new THREE.Vector3(0, 0, -LEO_CENTER_DISTANCE);
-  const camera = labCamera();
-  const earthSphere = earthAt(center, style, camera, spinForSubCameraPoint(center, SAHARA_DIRECTION));
+// なので、大気と雲も実機と同じく組む。
+function leoMetal(): LabCase {
   const metal = new THREE.Mesh(
     new THREE.SphereGeometry(LEO_METAL_RADIUS, 128, 96),
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 1 }),
@@ -81,9 +87,10 @@ function leoMetal(style: RenderStyle): LabCase {
   metal.userData.ownsMaterial = true;
   markLitOpaque(metal);
   return {
-    objects: [earthSphere.object, metal],
-    camera,
+    objects: [metal],
+    camera: labCamera(),
     viewTarget: LEO_METAL_CENTER,
+    earth: LEO_METAL_PLACEMENT,
     shots: {
       'leo-metal': { view: {} },
       'leo-metal-terminator': { view: LEO_METAL_TERMINATOR_SUN },
@@ -96,7 +103,6 @@ function leoMetal(style: RenderStyle): LabCase {
         },
       },
     },
-    ...earthSphere.lightingAndClouds,
   };
 }
 
