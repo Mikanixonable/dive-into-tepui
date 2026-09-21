@@ -47,6 +47,7 @@ import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 import type { WebGPURenderer } from 'three/webgpu';
+import type { LabViewAngles } from './view-angles';
 import { buildDefaultShipObject, SHIP_CASES } from './ship-cases';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
@@ -121,6 +122,9 @@ export interface LabCase {
   }[];
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
   readonly viewTarget?: THREE.Vector3;
+  // 撮影で写す向き。鍵は PNG の名前、値はケース既定の観察の向きへ重ねる差分。省略すると
+  // ケースの名前で既定の向きを1枚撮る。
+  readonly shots?: Readonly<Record<string, Partial<LabViewAngles>>>;
   // 大気パスへ渡す天体。中心は描画座標。並べ替えと濃い表現の重みは、カメラの位置から
   // 引き直される。
   readonly atmospheres?: readonly AtmosphereBody[];
