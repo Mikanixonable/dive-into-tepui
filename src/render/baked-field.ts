@@ -1,7 +1,7 @@
 // 単位方向の関数を投影法の写しへ焼き、単位方向で読み直す。1 texel を描くのに同じ場を何度も
 // 標本化するとき、式をその場で何度も展開する代わりに、1 回焼いて何度も読む。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { mrt, screenUV, texture } from 'three/tsl';
 import type { GpuPassId, GpuTimingSink } from './gpu-timings';
 import type { FieldProjection } from './field-projection';
