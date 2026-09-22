@@ -1,37 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img"><title>雲場と描画</title><desc>地球断面、低層雲、薄雲、大気散乱、太陽光、カメラ視線を重ねて最終描画を示す。</desc><defs>
-<style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>雲場と描画</title><defs><style>
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
-.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
-.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
 </style>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
-<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
-<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
-<rect width="1200" height="520" rx="22" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">雲場と描画</text><text x="55" y="72" class="m d k">気象場を、密度・高度・散乱・透過率を経て画面の光へ変える</text>
-<g transform="translate(410 300)">
-  <circle r="150" fill="url(#earth)" stroke="#d6d6d0"/>
-  <circle r="172" fill="none" stroke="#3478ff" stroke-width="12" opacity=".18"/>
-  <path d="M-118-70C-85-93-50-95-18-75C13-55 48-57 80-77C106-93 127-87 144-72" fill="none" stroke="#eeeaf5" stroke-width="20" stroke-linecap="round" opacity=".72"/>
-  <path d="M-92-116C-58-132-18-130 20-116C52-104 91-103 122-115" fill="none" stroke="#c3bec9" stroke-width="8" stroke-linecap="round" opacity=".36"/>
-  <text x="-142" y="-48" class="m t sm">不透明雲</text><text x="-80" y="-137" class="m b sm">薄雲</text>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">雲場と描画</text><text x="40" y="60" class="m d sm">地表・雲・大気を別レイヤーで積み、太陽光と視線方向へ積分する</text>
+<g transform="translate(330 158)">
+ <circle r="66" fill="url(#earth)" stroke="#c3bec9"/><circle r="82" fill="none" stroke="#3478ff" stroke-width="7" opacity=".16"/>
+ <path d="M-49-31C-28-46-5-47 16-34C36-21 58-22 76-35" fill="none" stroke="#eeeaf5" stroke-width="12" stroke-linecap="round" opacity=".7"/>
+ <path d="M-38-57C-15-67 13-67 36-57C54-50 69-51 80-56" fill="none" stroke="#c3bec9" stroke-width="6" stroke-linecap="round" opacity=".36"/>
+ <text x="-97" y="-22" class="m t xs">厚い雲</text><text x="-60" y="-76" class="m b xs">薄雲</text>
 </g>
-<g transform="translate(965 135)">
-  <circle r="42" fill="url(#sun)" filter="url(#glow)"/><text x="-25" y="70" class="m an sm">太陽</text>
-  <path d="M-45 35L-382 130M-35 45L-360 195M-55 20L-400 75" stroke="#ff6b82" stroke-width="2" opacity=".7"/>
+<g transform="translate(775 105)"><circle r="23" fill="url(#sun)"/><text x="-14" y="39" class="m a xs">太陽</text><path d="M-24 14L-330 82M-20 20L-300 108" stroke="#ff8798" stroke-width="1.6"/></g>
+<g transform="translate(970 174)">
+ <path d="M-15-7L20 0-15 7-4 0Z" fill="#eeeaf5"/><circle r="17" fill="none" stroke="#3478ff"/>
+ <path d="M-20-4L-560-58" class="bl dash"/><text x="-150" y="-30" class="m u xs">camera ray</text>
 </g>
-<g transform="translate(930 360)">
-  <path d="M-22-10L28 0-22 10-5 0Z" fill="#eeeaf5"/><circle r="24" fill="none" stroke="#3478ff"/>
-  <path d="M-26-5L-410-70" class="blue dash"/><text x="-165" y="-38" class="m sig sm">camera ray</text>
-</g>
-<g transform="translate(650 145)">
-  <path d="M0 0C52 28 86 68 108 118" class="soft"/><text x="0" y="-10" class="m d sm">Rayleigh / Mie</text>
-  <path d="M50 145C82 163 112 168 148 168" class="accent"/><text x="104" y="194" class="m a sm">ray marching</text>
-</g>
-<text x="55" y="480" class="m b sm">地表・雲・大気光・オーロラは別レイヤーで作り、最後に合成する。</text>
+<g transform="translate(680 158)"><path d="M0 0C44 15 77 37 101 66" class="g"/><text x="-5" y="-10" class="m d xs">scatter</text><text x="75" y="84" class="m a xs">composite</text></g>
 </svg>

@@ -1,33 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>太陽系の天体階層</title><desc>太陽を中心に惑星軌道、地球と月、木星系、小天体を描いた簡略太陽系図。</desc><defs>
-<style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>太陽系の天体階層</title><defs><style>
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
-.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
-.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
 </style>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
-<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
-<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
-<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">天体階層</text><text x="55" y="72" class="m d k">太陽・惑星・衛星・小天体を一つの CelestialSystem で束ねる</text>
-<g transform="translate(335 278)">
-  <circle r="54" fill="url(#sun)" filter="url(#glow)"/>
-  <ellipse rx="95" ry="44" class="soft"/><ellipse rx="145" ry="64" class="soft"/><ellipse rx="205" ry="90" class="soft"/><ellipse rx="285" ry="120" class="soft"/>
-  <circle cx="92" cy="-18" r="6" fill="#a8aec0"/><circle cx="142" cy="28" r="8" fill="#c3bec9"/>
-  <g transform="translate(197 -55)"><circle r="16" fill="url(#earth)" stroke="#d6d6d0"/><ellipse rx="34" ry="18" class="soft"/><circle cx="31" cy="-7" r="5" fill="#d6d6d0"/><text x="-20" y="46" class="m t sm">地球系</text></g>
-  <g transform="translate(273 96)"><circle r="28" fill="#7f786e" stroke="#c3bec9"/><ellipse rx="55" ry="23" class="soft"/><circle cx="49" cy="8" r="5" fill="#c3bec9"/><circle cx="-35" cy="-15" r="4" fill="#89838f"/><text x="-25" y="62" class="m t sm">木星系</text></g>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">天体階層</text><text x="40" y="60" class="m d sm">模式図・縮尺不同 — 太陽、惑星系、衛星、小天体を一つの CelestialSystem で束ねる</text>
+<g transform="translate(110 154)">
+ <circle r="34" fill="url(#sun)" stroke="#ff8798"/>
+ <path d="M34 0C155-58 278-58 400 0" class="g"/>
+ <path d="M34 0C190 78 345 78 500 0" class="g"/>
+ <circle cx="245" cy="-36" r="13" fill="url(#earth)" stroke="#c3bec9"/><ellipse cx="245" cy="-36" rx="28" ry="12" class="g"/><circle cx="272" cy="-41" r="4" fill="#c3bec9"/>
+ <circle cx="405" cy="48" r="19" fill="#81786e" stroke="#c3bec9"/><ellipse cx="405" cy="48" rx="36" ry="15" class="g"/><circle cx="438" cy="52" r="4" fill="#c3bec9"/>
+ <text x="216" y="-62" class="m t xs">地球–月</text><text x="385" y="80" class="m t xs">木星系</text>
 </g>
-<g transform="translate(690 130)">
-  <path d="M0 125C120 30 270 35 400 120C300 195 140 205 0 125Z" fill="none" stroke="#48506a" stroke-width="1.2" stroke-dasharray="3 8"/>
-  <circle cx="40" cy="130" r="3" fill="#89838f"/><circle cx="85" cy="88" r="4" fill="#a8aec0"/><circle cx="130" cy="155" r="3" fill="#89838f"/><circle cx="195" cy="74" r="3" fill="#a8aec0"/><circle cx="250" cy="168" r="4" fill="#89838f"/><circle cx="326" cy="104" r="3" fill="#c3bec9"/>
-  <text x="115" y="225" class="m b sm">準惑星・小天体</text>
+<g transform="translate(685 105)">
+ <path d="M0 55C110 5 250 8 360 56C250 104 110 106 0 55Z" class="g dash"/>
+ <circle cx="45" cy="56" r="3" fill="#89838f"/><circle cx="110" cy="29" r="3" fill="#c3bec9"/><circle cx="170" cy="76" r="4" fill="#89838f"/><circle cx="245" cy="34" r="3" fill="#c3bec9"/><circle cx="318" cy="67" r="3" fill="#89838f"/>
+ <text x="105" y="126" class="m b sm">準惑星・小天体</text>
 </g>
-<g transform="translate(770 340)">
-  <circle cx="0" cy="0" r="9" fill="#ff3155"/><circle cx="100" cy="0" r="9" fill="#3478ff"/><circle cx="200" cy="0" r="9" fill="#c3bec9"/>
-  <text x="-8" y="30" class="m d xs">星</text><text x="83" y="30" class="m d xs">惑星</text><text x="176" y="30" class="m d xs">衛星</text>
-</g>
+<text x="1060" y="232" class="m d xs">not to scale</text>
 </svg>

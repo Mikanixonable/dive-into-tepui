@@ -1,33 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>気候場と気象状態</title><desc>世界地図上に緯度帯、湿潤域、低気圧トラックを重ね、気候場から気象状態を作る図。</desc><defs>
-<style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>気候場と気象状態</title><defs><style>
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
-.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
-.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
 </style>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
-<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
-<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">気候場と気象状態</text><text x="55" y="72" class="m d k">平年気候は答えではなく、時変気象を作るための低周波な境界条件</text>
-<g transform="translate(80 125)">
-  <rect width="760" height="300" rx="16" fill="#0e1014" stroke="#48506a"/>
-  <path d="M0 75H760M0 150H760M0 225H760" class="soft"/>
-  <path d="M95 58C140 35 185 40 220 70C260 102 300 95 340 62C375 33 420 37 455 63C500 95 555 94 600 58C640 28 700 30 735 59" fill="none" stroke="#3478ff" stroke-width="18" opacity=".18"/>
-  <path d="M70 205C120 180 180 185 226 220C270 252 320 250 360 220C410 182 470 184 520 220C565 252 635 250 700 212" fill="none" stroke="#ff3155" stroke-width="22" opacity=".15"/>
-  <path d="M165 92C182 64 220 55 245 78C270 102 252 132 220 139C185 146 148 123 165 92Z" fill="#ff6b82" opacity=".22"/>
-  <path d="M510 170C535 135 585 131 610 161C632 188 615 221 579 228C540 236 486 207 510 170Z" fill="#3478ff" opacity=".18"/>
-  <path d="M125 40C205 20 275 30 340 55M425 55C500 20 580 20 655 48" class="stroke dash"/>
-  <path d="M165 260C240 235 310 240 370 266M455 260C530 235 620 240 700 272" class="stroke dash"/>
-  <text x="26" y="29" class="m d xs">北緯</text><text x="26" y="291" class="m d xs">南緯</text>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">気候場と気象状態</text><text x="40" y="60" class="m d sm">平年気候を低周波な境界条件として、時変 WeatherModel へ渡す</text>
+<g transform="translate(60 92)">
+ <rect width="760" height="132" rx="10" fill="#101217" stroke="#48506a"/>
+ <path d="M0 33H760M0 66H760M0 99H760" class="g"/>
+ <path d="M18 24C100 7 170 40 245 22C330 2 410 43 495 21C585 0 670 39 742 23" fill="none" stroke="#3478ff" stroke-width="14" opacity=".16"/>
+ <path d="M18 108C105 90 180 123 260 104C345 84 430 124 515 103C600 82 675 118 742 105" fill="none" stroke="#ff3155" stroke-width="16" opacity=".13"/>
+ <path d="M145 45C180 26 225 31 246 53C264 72 245 88 210 90C176 92 131 69 145 45Z" fill="#ff8798" opacity=".20"/>
+ <path d="M500 69C530 49 575 52 598 74C616 91 598 108 563 110C530 111 485 92 500 69Z" fill="#3478ff" opacity=".18"/>
+ <text x="14" y="18" class="m d xs">高緯度</text><text x="14" y="126" class="m d xs">低緯度</text>
 </g>
-<g transform="translate(900 150)">
-  <circle cx="85" cy="85" r="76" fill="none" stroke="#48506a"/>
-  <path d="M85 85C105 55 137 48 160 63C182 78 178 108 158 123C135 140 101 131 85 105C70 80 79 58 98 43" class="accent"/>
-  <text x="18" y="190" class="m t v">WeatherModel</text>
-  <text x="18" y="220" class="m d sm">湿度 · 上昇流</text><text x="18" y="244" class="m d sm">対流 · 前線帯</text><text x="18" y="268" class="m d sm">圏界面高度</text>
+<g transform="translate(880 103)">
+ <circle cx="72" cy="58" r="52" fill="#101217" stroke="#ff3155"/>
+ <path d="M72 58C87 35 115 33 128 51C141 69 130 91 108 98C84 106 60 92 54 71C49 53 57 38 72 28" class="r"/>
+ <text x="22" y="132" class="m t v">WeatherModel</text>
+ <text x="22" y="153" class="m d xs">湿度 · 上昇流 · 前線帯</text>
 </g>
 </svg>

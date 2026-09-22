@@ -1,33 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img"><title>CR3BP・ラグランジュ点・航法表示</title><desc>地球と月の回転座標系にL1からL5、ゼロ速度境界、Halo/NRHOを描く。</desc><defs>
-<style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="280" viewBox="0 0 1200 280" role="img"><title>CR3BP・ラグランジュ点・航法表示</title><defs><style>
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
-.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
-.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
 </style>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
-<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
-<rect width="1200" height="520" rx="22" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">CR3BP・ラグランジュ点・航法表示</text><text x="55" y="72" class="m d k">地球–月回転系では、L点と到達可能領域が幾何として見える</text>
-<g transform="translate(130 290)">
-  <circle cx="115" cy="0" r="58" fill="url(#earth)" stroke="#d6d6d0"/>
-  <circle cx="760" cy="0" r="26" fill="#a8aec0" stroke="#d6d6d0"/>
-  <path d="M115 0H760" class="soft"/>
-  <path d="M-25 0C110-130 315-180 472-112C592-62 628-10 653 0C628 10 592 62 472 112C315 180 110 130-25 0Z" class="soft dash"/>
-  <path d="M625 0C675-78 745-92 790-48C822-17 818 24 792 48C746 90 675 78 625 0Z" class="soft dash"/>
-  <circle cx="625" cy="0" r="6" fill="#ff3155"/><text x="604" y="-18" class="m a sm">L1</text>
-  <circle cx="835" cy="0" r="6" fill="#ff3155"/><text x="823" y="-18" class="m a sm">L2</text>
-  <circle cx="-80" cy="0" r="6" fill="#ff3155"/><text x="-92" y="-18" class="m a sm">L3</text>
-  <circle cx="438" cy="-190" r="6" fill="#3478ff"/><text x="425" y="-208" class="m sig sm">L4</text>
-  <circle cx="438" cy="190" r="6" fill="#3478ff"/><text x="425" y="212" class="m sig sm">L5</text>
-  <path d="M618-4C634-52 665-70 696-57C722-46 733-12 720 16C706 47 670 62 640 45C615 31 606 15 618-4Z" class="accent"/>
-  <path d="M742-2C752-73 788-105 821-85C851-67 856-13 838 30C820 70 784 85 757 65C735 48 731 28 742-2Z" class="blue"/>
-  <text x="584" y="-83" class="m a xs">Halo</text><text x="799" y="-114" class="m sig xs">NRHO</text>
-  <path d="M90-150C100-180 125-190 150-178" class="accent" marker-end="url(#ra)"/><text x="-5" y="-174" class="m d xs">回転方向</text>
+<rect width="1200" height="280" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">CR3BP・ラグランジュ点・航法表示</text><text x="40" y="60" class="m d sm">模式図・縮尺不同 — L4/L5 は主天体・副天体と正三角形を作る</text>
+<g transform="translate(0 2)">
+ <circle cx="520" cy="150" r="42" fill="url(#earth)" stroke="#c3bec9"/>
+ <circle cx="624" cy="150" r="18" fill="#b8b6b1" stroke="#c3bec9"/>
+ <path d="M520 150H624" class="g"/>
+ <circle cx="594" cy="150" r="5" fill="#ff3155"/><text x="582" y="136" class="m a xs">L1</text>
+ <circle cx="654" cy="150" r="5" fill="#ff3155"/><text x="646" y="136" class="m a xs">L2</text>
+ <circle cx="475" cy="150" r="5" fill="#ff3155"/><text x="464" y="136" class="m a xs">L3</text>
+ <circle cx="572" cy="60" r="5" fill="#3478ff"/><text x="560" y="48" class="m u xs">L4</text>
+ <circle cx="572" cy="240" r="5" fill="#3478ff"/><text x="560" y="258" class="m u xs">L5</text>
+ <path d="M520 150L572 60L624 150M520 150L572 240L624 150" class="g dash"/>
+ <path d="M644 150C648 126 666 117 680 130C694 143 689 166 674 174C659 182 643 171 644 150Z" class="r"/>
+ <path d="M649 150C657 106 683 93 701 113C721 136 713 180 690 196C671 209 650 193 649 150Z" class="bl"/>
+ <text x="682" y="115" class="m a xs">Halo</text><text x="707" y="200" class="m u xs">NRHO</text>
+ <path d="M450 150C465 91 500 76 535 89C554 96 566 111 572 130" class="g dash"/>
+ <path d="M572 170C560 194 543 207 522 211C486 218 456 195 450 150" class="g dash"/>
+ <text x="735" y="150" class="m b sm">回転座標系では L 点が固定</text>
+ <text x="735" y="174" class="m d xs">ECI 表示では時刻ごとに変換</text>
 </g>
-<text x="55" y="480" class="m b sm">L点は「自動遷移先」ではなく、三体力学の構造を読む航法基準。</text>
 </svg>

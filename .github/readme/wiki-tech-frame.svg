@@ -1,38 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>1フレームの流れ</title><desc>Run.frameを中心に、入力、進行、表示導出、描画が円環状に繰り返される様子。</desc><defs>
-<style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>1フレームの流れ</title><defs><style>
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
-.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
-.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
 </style>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
-<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
-<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
-<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">1フレームの流れ</text><text x="55" y="72" class="m d k">イベント順ではなく、決められた位相順に世界を進める</text>
-<g transform="translate(600 270)">
-  <circle r="145" fill="none" stroke="#48506a" stroke-width="32" opacity=".55"/>
-  <circle r="78" fill="#0e1014" stroke="#ff3155" stroke-width="2.2"/>
-  <text x="-40" y="-4" class="m a k">RUN</text><text x="-52" y="22" class="s t v">frame()</text>
-  <path d="M0-160A160 160 0 0 1 160 0" class="accent" marker-end="url(#ra)"/>
-  <path d="M160 0A160 160 0 0 1 0 160" class="accent" marker-end="url(#ra)"/>
-  <path d="M0 160A160 160 0 0 1 -160 0" class="accent" marker-end="url(#ra)"/>
-  <path d="M-160 0A160 160 0 0 1 0-160" class="accent" marker-end="url(#ra)"/>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">1フレームの流れ</text><text x="40" y="60" class="m d sm">同じ位相順を毎フレーム繰り返す</text>
+<g transform="translate(330 145)">
+ <circle r="72" fill="none" stroke="#48506a" stroke-width="18"/>
+ <circle r="36" fill="#101217" stroke="#ff3155"/><text x="-17" y="4" class="m a sm">frame()</text>
+ <path d="M0-82A82 82 0 0 1 82 0M82 0A82 82 0 0 1 0 82M0 82A82 82 0 0 1-82 0M-82 0A82 82 0 0 1 0-82" class="r" marker-end="url(#ra)"/>
+ <circle cx="0" cy="-82" r="20" fill="#15171c" stroke="#3478ff"/><circle cx="82" cy="0" r="20" fill="#15171c" stroke="#ff3155"/><circle cx="0" cy="82" r="20" fill="#15171c" stroke="#ff8798"/><circle cx="-82" cy="0" r="20" fill="#15171c" stroke="#3478ff"/>
+ <text x="-15" y="-78" class="m t xs">入力</text><text x="69" y="4" class="m t xs">進行</text><text x="-22" y="86" class="m t xs">導出</text><text x="-95" y="4" class="m t xs">描画</text>
 </g>
-<g class="m">
-  <circle cx="600" cy="105" r="38" fill="#15171c" stroke="#3478ff"/><text x="577" y="110" class="t sm">入力</text><text x="560" y="130" class="d xs">interpret</text>
-  <circle cx="765" cy="270" r="38" fill="#15171c" stroke="#ff3155"/><text x="742" y="275" class="t sm">進行</text><text x="736" y="295" class="d xs">advance</text>
-  <circle cx="600" cy="435" r="38" fill="#15171c" stroke="#ff6b82"/><text x="568" y="440" class="t sm">表示導出</text><text x="580" y="460" class="d xs">derive</text>
-  <circle cx="435" cy="270" r="38" fill="#15171c" stroke="#3478ff"/><text x="412" y="275" class="t sm">描画</text><text x="415" y="295" class="d xs">render</text>
+<g transform="translate(560 92)">
+ <path d="M0 0h510v112H0z" fill="#101217" stroke="#48506a" rx="12"/>
+ <text x="20" y="28" class="m a sm">進行後 / 表示同期前</text>
+ <path d="M22 50h100v42H22z" fill="none" stroke="#ff3155"/><path d="M138 53h330" class="g"/><path d="M138 72h250" class="g"/><path d="M138 91h190" class="g"/>
+ <text x="43" y="76" class="m t sm">SAVE</text><text x="138" y="45" class="m d xs">snapshot はモデル状態だけを読む</text>
 </g>
-<g transform="translate(855 335)">
-  <path d="M0 0h180v72H0z" fill="#0e1014" stroke="#48506a"/>
-  <path d="M20 20h48v32H20z" fill="none" stroke="#ff3155"/><path d="M76 20h84v8H76M76 37h62v8H76" class="soft"/>
-  <text x="18" y="-12" class="m d xs">SAVE POINT</text><text x="20" y="66" class="m b sm">進行後 / 同期前</text>
-</g>
-<g transform="translate(115 175)"><path d="M0 0C50-38 100-38 150 0C100 38 50 38 0 0Z" fill="none" stroke="#48506a"/><circle cx="75" cy="0" r="13" fill="#3478ff"/><text x="33" y="70" class="m b sm">browser events</text></g>
 </svg>
