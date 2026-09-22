@@ -56,6 +56,48 @@ const STYLE = `
   min-width: 0; overflow-wrap: anywhere; color: var(--text);
   text-align: right; font-variant-numeric: tabular-nums;
 }
+#hud .prop-window-summary {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
+}
+#hud .prop-window-summary .prop-window-row {
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1); padding: 0; box-shadow: none;
+}
+#hud .prop-window-summary .prop-window-row-label {
+  order: 2; color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .09em;
+}
+#hud .prop-window-summary .prop-window-row-value {
+  order: 1; text-align: left; color: var(--text-strong);
+  font-weight: 650; line-height: 1; letter-spacing: -.035em;
+}
+#hud .prop-window-summary .prop-window-row-hero {
+  grid-column: 1 / -1; padding-block: var(--space-1) var(--space-2);
+}
+#hud .prop-window-summary .prop-window-row-hero .prop-window-row-value {
+  font-size: var(--font-3xl);
+}
+#hud .prop-window-summary .prop-window-row-major .prop-window-row-value {
+  font-size: var(--font-xl);
+}
+#hud .prop-window-metrics {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-4); padding: var(--space-2) var(--space-5);
+}
+#hud .prop-window-metrics .prop-window-row {
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  padding-inline: 0;
+}
+#hud .prop-window-section,
+#hud .prop-window-details {
+  padding: 0 var(--space-5) var(--space-2);
+}
+#hud .prop-window-section .prop-window-row,
+#hud .prop-window-details .prop-window-row {
+  padding-inline: 0;
+}
 #hud .prop-window-row-toggle {
   padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
@@ -129,6 +171,32 @@ const STYLE = `
 }
 #hud .prop-window-item.disabled { opacity: var(--toggle-off-opacity); cursor: not-allowed; }
 #hud .prop-window-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+#hud .property-window.property-window-monitor {
+  width: 340px; max-width: 340px;
+}
+#hud .property-window.property-window-monitor .prop-window-kind {
+  padding-bottom: var(--space-1);
+}
+#hud .property-window.property-window-monitor .prop-window-summary {
+  padding-bottom: var(--space-3);
+}
+#hud .property-window.property-window-monitor .prop-window-metrics {
+  grid-template-columns: minmax(0, 1fr);
+}
+#hud .property-window.property-window-monitor .prop-window-row-group-toggle,
+#hud .property-window.property-window-monitor .prop-window-section,
+#hud .property-window.property-window-monitor .prop-window-row-toggle,
+#hud .property-window.property-window-monitor .prop-window-details,
+#hud .property-window.property-window-monitor .prop-window-related,
+#hud .property-window.property-window-monitor .prop-window-items,
+#hud .property-window.property-window-monitor .prop-window-controls {
+  display: none !important;
+}
+@media (max-width: 640px) {
+  #hud .dg-window.property-window { width: 100%; max-width: 100%; }
+  #hud .prop-window-summary,
+  #hud .prop-window-metrics { grid-template-columns: minmax(0, 1fr); }
+}
 `;
 
 export class PropertyWindow<A extends string = string> {
@@ -158,7 +226,13 @@ export class PropertyWindow<A extends string = string> {
       title: content.title, subtitle: content.subtitle, icon: content.icon, unclippedWindowGroup,
     }, overlayManager);
     this.win.onClose = () => this.onClose?.();
-    this.win.onClipChange = (clipped) => this.onClipChange?.(clipped);
+    this.win.onClipChange = (clipped) => {
+      if (content.monitorWhenClipped === true) {
+        this.win.element.classList.toggle('property-window-monitor', clipped);
+        this.reclamp();
+      }
+      this.onClipChange?.(clipped);
+    };
 
     // 4つの副概念を組み立てる。項目のショートカット配送だけは DraggableWindow からの
     // 呼び出しなのでここで配線する。
@@ -173,6 +247,9 @@ export class PropertyWindow<A extends string = string> {
     this.controlsEl = document.createElement('div');
     this.controlsEl.className = 'prop-window-controls';
     this.win.element.classList.add('property-window');
+    if (content.monitorWhenClipped === true && this.win.clipped) {
+      this.win.element.classList.add('property-window-monitor');
+    }
 
     const kind = document.createElement('div');
     kind.className = 'prop-window-kind';

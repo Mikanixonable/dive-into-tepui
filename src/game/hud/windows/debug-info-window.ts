@@ -330,10 +330,14 @@ export class DebugInfoWindow {
     const proteinSummary = this.proteinMotion.summary();
 
     return [
-      { key: 'fps', label: 'fps', value: ((frames * 1000) / elapsedMs).toFixed(0) },
+      {
+        key: 'fps', label: 'fps', value: ((frames * 1000) / elapsedMs).toFixed(0),
+        presentation: 'hero',
+      },
       {
         key: 'frame', label: 'frame',
         value: `${barText(totalAvg)} p95 ${percentile(totalSorted, 0.95).toFixed(1)}`,
+        presentation: 'major',
       },
       { key: 'warp', label: 'warp', value: `×${c.warp}` },
 
