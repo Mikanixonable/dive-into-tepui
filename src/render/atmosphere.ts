@@ -70,6 +70,11 @@ export function cutoffAltitude(optics: AtmosphereOptics, surfaceRadius: number):
   );
 }
 
+// 大気の裾を打ち切る球の、天体中心からの半径 [m]。surfaceRadius は赤道半径。
+export function cutoffRadius(optics: AtmosphereOptics, surfaceRadius: number): number {
+  return surfaceRadius + cutoffAltitude(optics, surfaceRadius);
+}
+
 // エアグローを切った光学。**打ち切り高度は動かさない** — cutoffAltitude が見るのは発光層の
 // 高度とスケールハイトだけなので、強さを 0 にすれば積分の範囲もサンプル点の配分もオンのままで、
 // 絵から消えるのは発光の項だけになる。そこが切り分けの条件である。
@@ -90,8 +95,7 @@ function verticalOpticalDepth(optics: AtmosphereOptics): number {
 // 裾球の円盤で採る。**カメラが裾球の中にいる構図では必ず画面 1 枚ぶんを超える**ので、地表から
 // 空を見上げて地面が画面に無い構図でも、空の色は予算に残る。
 function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPerPixel: number): number {
-  const cutoffRadius = surfaceRadius + cutoffAltitude(optics, surfaceRadius);
-  const radiusPx = apparentSizePx(cutoffRadius, metersPerPixel);
+  const radiusPx = apparentSizePx(cutoffRadius(optics, surfaceRadius), metersPerPixel);
   return Math.PI * radiusPx * radiusPx * -Math.expm1(-verticalOpticalDepth(optics));
 }
 

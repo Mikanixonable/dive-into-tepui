@@ -9,7 +9,7 @@ import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../..
 // 照度を組み立てる画素の uv。面が写っている画素はそのまま、虚空の画素は十字に隣接する面へ寄せる。
 //
 // TODO: 虚空の画素の照度は読まれないので寄せる根拠が無いが、外すと 1 画素幅の構造の陰影が動く
-// (render-lab の 32/35 ケース、画素の 0.1% 未満、最大 67/255)。面が写っている画素で恒等写像に
+// (render-lab のほぼ全ケース、画素の 0.1% 未満、最大 67/255)。面が写っている画素で恒等写像に
 // ならない理由が付くまで残す。
 function shadingUV(gbuffer: GBufferPass, uv: Vec2Node): Vec2Node {
   const texel: Vec2Node = vec2(1).div(screenSize);
@@ -26,10 +26,11 @@ function shadingUV(gbuffer: GBufferPass, uv: Vec2Node): Vec2Node {
 }
 
 export class ShadingSample {
-  // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と描画座標→view の行列は
-  // 毎フレーム自前で書き込む。
+  // QuadMesh は固定直交カメラで描かれるため、実カメラの逆射影行列と描画座標→view の行列、
+  // およびその逆行列は毎フレーム自前で書き込む。
   private readonly projMatrixInverse: Mat4Uniform;
   private readonly viewMatrix: Mat4Uniform;
+  private readonly viewMatrixInverse: Mat4Uniform;
   // G バッファを引く uv。影の透過率など、面に揃えて読むべきテクスチャはすべてこれで引く。
   public readonly uv: Vec2Node;
   // 十字の隣まで探しても面が無い虚空の画素では偽。照らす面が存在しないので、光源は寄与を
@@ -40,6 +41,8 @@ export class ShadingSample {
   public readonly roughness: FloatNode;
   // 深度から復元した view 空間位置。
   public readonly position: Vec3Node;
+  // 同じ点の描画座標。描画座標で置かれたものを引く光源はこちらを使う。
+  public readonly worldPosition: Vec3Node;
   // 面から視点へ向かう向き = 視線の逆向き。「復元位置の逆向き」は透視投影でしか成り立たない
   // ので、投影方式に依らない形(view-ray.ts)から取る。
   public readonly viewDir: Vec3Node;
@@ -48,12 +51,14 @@ export class ShadingSample {
   public constructor(gbuffer: GBufferPass) {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewMatrix = uniform(new THREE.Matrix4());
+    this.viewMatrixInverse = uniform(new THREE.Matrix4());
     const shadeUV = shadingUV(gbuffer, screenUV);
     this.uv = shadeUV;
     this.lit = gbuffer.covered(shadeUV);
     this.normal = octDecodeNormal(texture(gbuffer.normalTexture, shadeUV).rg);
     this.roughness = texture(gbuffer.roughnessTexture, shadeUV).r;
     this.position = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse, shadeUV);
+    this.worldPosition = this.viewMatrixInverse.mul(vec4(this.position, 1)).xyz;
     this.viewDir = viewRayAt(this.projMatrixInverse, shadeUV).direction.negate();
   }
 
@@ -63,9 +68,15 @@ export class ShadingSample {
     return this.viewMatrix.mul(vec4(worldPosition, 1)).xyz;
   }
 
+  // view 空間の向きを描画座標の向きへ戻す。回転だけが掛かる viewPositionOf の逆向き。
+  public worldDirectionOf(viewDirection: Vec3Node): Vec3Node {
+    return this.viewMatrixInverse.mul(vec4(viewDirection, 0)).xyz;
+  }
+
   // 実カメラの行列を書き込む。光源を描く前に毎フレーム呼ぶこと。
   public sync(camera: THREE.Camera): void {
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
     this.viewMatrix.value.copy(camera.matrixWorldInverse);
+    this.viewMatrixInverse.value.copy(camera.matrixWorld);
   }
 }

@@ -4,8 +4,9 @@
 import * as THREE from 'three/webgpu';
 import { float, int, log2, max, texture } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
-import { BakedField } from './baked-field';
-import { equirectUvFromDirection, type FieldProjection } from './field-projection';
+import { BakedField } from '../baked-field';
+import { GPU_PASS } from '../gpu-timings';
+import { equirectUvFromDirection, type FieldProjection } from '../field-projection';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
@@ -34,6 +35,7 @@ export class ObservedCloudField implements CloudFieldSource {
     this.field = new BakedField(
       'observedCloud', THREE.RGBAFormat, projection,
       (direction) => image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node,
+      GPU_PASS.cloudBake,
     );
   }
 

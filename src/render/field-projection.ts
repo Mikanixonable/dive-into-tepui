@@ -1,8 +1,8 @@
-// 単位方向とテクスチャの uv 座標の対応を図法ごとに定義する。雲場生成側と読み出し側は、
-// 本投影インターフェースを介して共通の図法定義を共有する。
+// 単位方向とテクスチャの uv(0..1)の対応を図法ごとに定義する。写しを焼く式と読む式が同じ図法を
+// 指すための契約で、投影面の解像度・巻き方・定義域もここが答える。
 import * as THREE from 'three/webgpu';
-import { asin, atan, clamp, cos, dot, float, max, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
-import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
+import { acos, asin, atan, clamp, cos, dot, float, max, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from './tsl-types';
 
 // cap の置き方。中心・東・北の単位方向と、円板の角半径の sin / cos。読み手はこの組を自身の
 // uniform に反映し、テクスチャ生成側と同じ uv でサンプリングする。**ベクトルは使い回しの実体**で、aim のたびに
@@ -25,7 +25,7 @@ export function orthographicCapUv(
   return vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
 }
 
-export type FieldProjection = {
+export interface FieldProjection {
   // 投影テクスチャの解像度 [texel]。図法が持つ縦横比が反映される。
   readonly width: number;
   readonly height: number;
@@ -43,7 +43,7 @@ export type FieldProjection = {
   uvAt(direction: Vec3Node): Vec2Node;
   // 指定の uv が定義域内であれば 1、域外であれば 0。正方形テクスチャ内に円板を投影する図法では四隅が 0 となる。
   insideAt(uv: Vec2Node): FloatNode;
-};
+}
 
 // 正距円筒図法の uv から単位方向へ。u は経度(0.5 が本初子午線 +Z、東が +X)、v は緯度
 // (0 が北極 +Y)。
@@ -94,6 +94,21 @@ export class EquirectProjection implements FieldProjection {
   }
 }
 
+// 緯度・経度 [rad] の方向を中心に据えた正規直交枠を、渡された 3 つのベクトルへ書く。枠を経度から
+// 直に組むので、中心が極にあっても東向きが退化しない。
+function setCapFrame(
+  latitude: number, longitude: number,
+  center: THREE.Vector3, east: THREE.Vector3, north: THREE.Vector3,
+): void {
+  const cosLatitude = Math.cos(latitude);
+  const sinLatitude = Math.sin(latitude);
+  const cosLongitude = Math.cos(longitude);
+  const sinLongitude = Math.sin(longitude);
+  center.set(cosLatitude * sinLongitude, sinLatitude, cosLatitude * cosLongitude);
+  east.set(cosLongitude, 0, -sinLongitude);
+  north.set(-sinLatitude * sinLongitude, cosLatitude, -sinLatitude * cosLongitude);
+}
+
 // 中心のまわりの円板だけを正方形のテクスチャで保持する正射影 — 中心からの球面上距離 θ を、投影面上の
 // 半径 sin θ へ射影する。遠方から球を見た画面そのものの写像なので、texel と画素の比が円板の全域で
 // ほぼ一定になる。円板の外側(四隅)は値を持たない。
@@ -125,8 +140,7 @@ export class OrthographicCap implements FieldProjection {
     this.aim(latitude, longitude, radius);
   }
 
-  // 中心の緯度・経度 [rad] と円板の半径 [rad](0 < radius ≤ π/2)を置き直す。枠は経度から直に
-  // 組むので、中心が極にあっても退化しない。
+  // 中心の緯度・経度 [rad] と円板の半径 [rad](0 < radius ≤ π/2)を置き直す。
   //
   // **同じ置き方なら版を進めない** — 進めると、カメラが止まっていても焼き手が毎フレーム焼き直す。
   public aim(latitude: number, longitude: number, radius: number): void {
@@ -135,20 +149,13 @@ export class OrthographicCap implements FieldProjection {
     this.aimedLatitude = latitude;
     this.aimedLongitude = longitude;
     this.aimedRadius = radius;
-    const cosLatitude = Math.cos(latitude);
-    const sinLatitude = Math.sin(latitude);
-    const cosLongitude = Math.cos(longitude);
-    const sinLongitude = Math.sin(longitude);
-    this.center.value.set(cosLatitude * sinLongitude, sinLatitude, cosLatitude * cosLongitude);
-    this.east.value.set(cosLongitude, 0, -sinLongitude);
-    this.north.value.set(-sinLatitude * sinLongitude, cosLatitude, -sinLatitude * cosLongitude);
+    setCapFrame(latitude, longitude, this.center.value, this.east.value, this.north.value);
     this.sinRadius.value = Math.sin(radius);
     this.cosRadiusValue = Math.cos(radius);
     this.revisionValue += 1;
   }
 
-  // 単位方向 direction を中心に置き直す。**緯度・経度へ直してから aim を呼ぶ** — 方向から
-  // 直に枠を組むと、中心が極に来たとき東向きが退化する。
+  // 単位方向 direction を中心に、円板の半径 [rad] を radius にして置き直す。
   public aimAt(direction: THREE.Vector3, radius: number): void {
     const latitude = Math.asin(Math.max(-1, Math.min(1, direction.y)));
     this.aim(latitude, Math.atan2(direction.x, direction.z), radius);
@@ -184,6 +191,99 @@ export class OrthographicCap implements FieldProjection {
   // 単位方向を中心の接平面へ正射影した uv。裏側の半球も表側と同じ uv へ写る。
   public uvAt(direction: Vec3Node): Vec2Node {
     return orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+  }
+
+  // uv が円板の内側なら 1、四隅なら 0。
+  public insideAt(uv: Vec2Node): FloatNode {
+    const offset = uv.mul(2).sub(1);
+    return step(dot(offset, offset), 1);
+  }
+}
+
+// 円板の中心で 0 除算に落ちないための、中心からの距離の下限。これを下回る範囲では面内成分が
+// 距離そのもので潰れるので、中心での極限値と一致する。
+const CAP_CENTER_EPSILON = 1e-6;
+
+// 中心のまわりの円錐を正方形のテクスチャで保持する方位等距離図法 — 中心からの球面上距離 θ を、
+// 投影面上の半径 θ / σ(σ は円錐の角半径)へ写す。dr/dθ が円板の全域で一定なので、1 texel が
+// 張る角も全域で一定になる。円板の外側(四隅)は値を持たない。
+export class EquidistantCap implements FieldProjection {
+  public readonly width: number;
+  public readonly height: number;
+  public readonly wrapS: THREE.Wrapping = THREE.ClampToEdgeWrapping;
+  public readonly wrapT: THREE.Wrapping = THREE.ClampToEdgeWrapping;
+  // 中心の単位方向と、そこでの接平面の枠。テクスチャ全域で定数なので CPU 側で組む。
+  private readonly center: Vec3Uniform = uniform(new THREE.Vector3());
+  private readonly east: Vec3Uniform = uniform(new THREE.Vector3());
+  private readonly north: Vec3Uniform = uniform(new THREE.Vector3());
+  // 円錐の角半径 σ [rad]。円板の縁がこの角に当たる。
+  private readonly radius: FloatUniform = uniform(0);
+  // 最後に置いた中心と半径。同じ置き方で呼ばれたら版を進めない。NaN で必ず 1 回目を通す。
+  private aimedLatitude = Number.NaN;
+  private aimedLongitude = Number.NaN;
+  private aimedRadius = Number.NaN;
+  private revisionValue = 0;
+  // 投影面は角 2σ ぶんの直径を size texel で割るので、1 texel は 2σ / size [rad]。
+  public readonly texelAngle: FloatNode;
+
+  // size は投影テクスチャの 1 辺の texel 数、radius は円錐の角半径 [rad]。中心は +Z から始まり、
+  // aimAt() で置き直す。
+  public constructor(size: number, radius: number) {
+    this.width = size;
+    this.height = size;
+    this.texelAngle = this.radius.mul(2 / size);
+    this.aim(0, 0, radius);
+  }
+
+  // 単位方向 direction を中心に、円錐の角半径 [rad](0 < radius ≤ π/2)を radius にして置き直す。
+  public aimAt(direction: THREE.Vector3, radius: number): void {
+    const latitude = Math.asin(Math.max(-1, Math.min(1, direction.y)));
+    this.aim(latitude, Math.atan2(direction.x, direction.z), radius);
+  }
+
+  // 中心の緯度・経度 [rad] と円錐の角半径 [rad] を置き直す。
+  //
+  // **同じ置き方なら版を進めない** — 進めると、中心が動いていなくても焼き手が毎フレーム焼き直す。
+  private aim(latitude: number, longitude: number, radius: number): void {
+    if (latitude === this.aimedLatitude && longitude === this.aimedLongitude
+      && radius === this.aimedRadius) return;
+    this.aimedLatitude = latitude;
+    this.aimedLongitude = longitude;
+    this.aimedRadius = radius;
+    setCapFrame(latitude, longitude, this.center.value, this.east.value, this.north.value);
+    this.radius.value = radius;
+    this.revisionValue += 1;
+  }
+
+  // 1 texel が張る角 [rad]。aimAt() で半径を置き直すと変わる。
+  public get texelAngleValue(): number {
+    return (this.radius.value * 2) / this.width;
+  }
+
+  // 置き方の版。置き方が実際に変わったときだけ進む。
+  public get revision(): number { return this.revisionValue; }
+
+  // 投影面上の uv から球面へ戻した単位方向。
+  public directionAt(uv: Vec2Node): Vec3Node {
+    // v は北から南へ増えるので、北成分の符号を返す。円板の縁が距離 1 で、そこが角 σ に当たる。
+    const plane = vec2(uv.x.mul(2).sub(1), float(1).sub(uv.y.mul(2)));
+    const distance = sqrt(dot(plane, plane));
+    const angle = distance.mul(this.radius);
+    // 面内の向きへ sin(角) ぶん倒す。中心では plane 自体が 0 なので、下限で割っても極限と合う。
+    const alongPlane = sin(angle).div(max(distance, CAP_CENTER_EPSILON));
+    return this.center.mul(cos(angle))
+      .add(this.east.mul(plane.x.mul(alongPlane)))
+      .add(this.north.mul(plane.y.mul(alongPlane)));
+  }
+
+  // 単位方向を、中心からの角に比例した半径で円板へ落とした uv。
+  public uvAt(direction: Vec3Node): Vec2Node {
+    const inPlane = vec2(dot(direction, this.east), dot(direction, this.north));
+    const angle = acos(clamp(dot(direction, this.center), -1, 1));
+    // 面内成分の長さは sin(角) なので、求める半径 角/σ との比を掛けて伸ばす。
+    const scale = angle.div(this.radius).div(max(sqrt(dot(inPlane, inPlane)), CAP_CENTER_EPSILON));
+    const plane = inPlane.mul(scale);
+    return vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
   }
 
   // uv が円板の内側なら 1、四隅なら 0。
