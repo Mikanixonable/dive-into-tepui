@@ -14,9 +14,9 @@
 </defs>
 <rect width="1200" height="500" rx="22" fill="url(#bg)"/>
 <text x="55" y="48" class="m t h">天体階層</text><text x="55" y="72" class="m d k">太陽・惑星・衛星・小天体を一つの CelestialSystem で束ねる</text>
-<g transform="translate(170 278)">
+<g transform="translate(335 278)">
   <circle r="54" fill="url(#sun)" filter="url(#glow)"/>
-  <circle r="95" class="soft"/><circle r="145" class="soft"/><circle r="205" class="soft"/><circle r="290" class="soft"/>
+  <ellipse rx="95" ry="44" class="soft"/><ellipse rx="145" ry="64" class="soft"/><ellipse rx="205" ry="90" class="soft"/><ellipse rx="285" ry="120" class="soft"/>
   <circle cx="92" cy="-18" r="6" fill="#a8aec0"/><circle cx="142" cy="28" r="8" fill="#c3bec9"/>
   <g transform="translate(197 -55)"><circle r="16" fill="url(#earth)" stroke="#d6d6d0"/><ellipse rx="34" ry="18" class="soft"/><circle cx="31" cy="-7" r="5" fill="#d6d6d0"/><text x="-20" y="46" class="m t sm">地球系</text></g>
   <g transform="translate(273 96)"><circle r="28" fill="#7f786e" stroke="#c3bec9"/><ellipse rx="55" ry="23" class="soft"/><circle cx="49" cy="8" r="5" fill="#c3bec9"/><circle cx="-35" cy="-15" r="4" fill="#89838f"/><text x="-25" y="62" class="m t sm">木星系</text></g>
