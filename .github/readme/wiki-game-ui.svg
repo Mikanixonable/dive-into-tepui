@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>UI・入力・カメラ</title><defs><style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">UI・入力・カメラ</text><text x="40" y="60" class="m d sm">ゲーム画面の周囲へ HUD を配置し、入力と Viewer は外側から接続する</text>
+<g transform="translate(265 82)">
+ <rect width="670" height="150" rx="12" fill="#0b0d11" stroke="#48506a"/>
+ <rect width="670" height="24" rx="12" fill="#15171c"/><text x="14" y="16" class="m t xs">TOP BAR · ORBIT · TARGET · TIME</text>
+ <rect x="12" y="38" width="128" height="50" rx="8" fill="#101217" stroke="#48506a"/><text x="24" y="56" class="m a xs">SHIP</text><text x="24" y="75" class="m b xs">fuel · thermal</text>
+ <rect x="530" y="38" width="128" height="50" rx="8" fill="#101217" stroke="#48506a"/><text x="542" y="56" class="m a xs">TARGET</text><text x="542" y="75" class="m b xs">range · rel-v</text>
+ <rect x="12" y="100" width="146" height="36" rx="8" fill="#101217" stroke="#48506a"/><text x="24" y="122" class="m u xs">FRAME · MAP</text>
+ <circle cx="335" cy="88" r="36" fill="url(#earth)" stroke="#c3bec9"/><ellipse cx="335" cy="88" rx="88" ry="38" class="g"/><circle cx="403" cy="60" r="5" fill="#ff3155"/>
+ <path d="M335 88L385 46" class="bl" marker-end="url(#ba)"/><path d="M335 88V35" class="r" marker-end="url(#ra)"/>
+</g>
+<g transform="translate(65 112)">
+ <circle cx="65" cy="50" r="38" fill="#15171c" stroke="#3478ff"/><path d="M42 50H88M65 27V73" class="g"/><circle cx="65" cy="50" r="7" fill="#3478ff"/>
+ <text x="30" y="105" class="m b xs">Raw Input</text><path d="M104 50H198" class="bl" marker-end="url(#ba)"/>
+</g>
+<g transform="translate(975 112)">
+ <circle cx="65" cy="50" r="38" fill="#15171c" stroke="#ff3155"/><path d="M65 22L83 50L65 78L47 50Z" class="r"/>
+ <text x="46" y="105" class="m b xs">Viewer</text><path d="M26 50H-40" class="r" marker-end="url(#ra)"/>
+</g>
+</svg>
