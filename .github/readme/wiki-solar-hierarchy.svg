@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="310" viewBox="0 0 1200 310" role="img"><title>天体階層</title><defs><style>
+.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}
+.t{fill:#eeeaf5}.d{fill:#9b96a2}.a{fill:#ff3155}.b{fill:#3478ff}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}
+.h{font-size:23px;font-weight:700}.k{font-size:12px;letter-spacing:1px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}
+.line{fill:none;stroke:#89838f;stroke-width:1.6}.acc{fill:none;stroke:#ff3155;stroke-width:2}.sig{fill:none;stroke:#3478ff;stroke-width:2}
+</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker></defs><rect width="1200" height="310" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">天体階層</text><text x="55" y="72" class="m d k">同じ太陽系を、階層と原点を分けて構成する</text>
+ <circle cx="160" cy="175" r="42" fill="#ff6b82"/><text x="139" y="181" class="s t v">太陽</text>
+ <circle cx="430" cy="175" r="34" fill="#48506a"/><text x="411" y="181" class="s t v">地球</text>
+ <circle cx="575" cy="175" r="18" fill="#a8aec0"/><text x="558" y="213" class="m d sm">月</text>
+ <circle cx="825" cy="175" r="32" fill="#48506a"/><text x="804" y="181" class="s t v">木星</text>
+ <circle cx="942" cy="137" r="12" fill="#a8aec0"/><circle cx="966" cy="174" r="10" fill="#a8aec0"/><circle cx="935" cy="210" r="9" fill="#a8aec0"/>
+ <path d="M205 175H388" class="acc" marker-end="url(#r)"/><path d="M464 175H550" class="line"/><path d="M607 175H791" class="acc" marker-end="url(#r)"/>
+ <text x="80" y="267" class="m d sm">CelestialSystem は天体集合・親子関係・ECI原点を束ねる</text></svg>
