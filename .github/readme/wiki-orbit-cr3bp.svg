@@ -22,8 +22,8 @@
   <circle cx="625" cy="0" r="6" fill="#ff3155"/><text x="604" y="-18" class="m a sm">L1</text>
   <circle cx="835" cy="0" r="6" fill="#ff3155"/><text x="823" y="-18" class="m a sm">L2</text>
   <circle cx="-80" cy="0" r="6" fill="#ff3155"/><text x="-92" y="-18" class="m a sm">L3</text>
-  <circle cx="438" cy="-220" r="6" fill="#3478ff"/><text x="425" y="-238" class="m sig sm">L4</text>
-  <circle cx="438" cy="220" r="6" fill="#3478ff"/><text x="425" y="244" class="m sig sm">L5</text>
+  <circle cx="438" cy="-190" r="6" fill="#3478ff"/><text x="425" y="-208" class="m sig sm">L4</text>
+  <circle cx="438" cy="190" r="6" fill="#3478ff"/><text x="425" y="212" class="m sig sm">L5</text>
   <path d="M618-4C634-52 665-70 696-57C722-46 733-12 720 16C706 47 670 62 640 45C615 31 606 15 618-4Z" class="accent"/>
   <path d="M742-2C752-73 788-105 821-85C851-67 856-13 838 30C820 70 784 85 757 65C735 48 731 28 742-2Z" class="blue"/>
   <text x="584" y="-83" class="m a xs">Halo</text><text x="799" y="-114" class="m sig xs">NRHO</text>
