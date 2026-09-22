@@ -38,7 +38,6 @@ import type { OrbitReference } from '../orbit-reference';
 import type { ViewMode } from '../view/view-mode';
 import type { Input } from '../../input/input';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { RenderStyle } from '../../render/render-style';
 import type { ThemePalette } from '../../theme';
 
 export class HudPanelPresenter {
@@ -68,7 +67,6 @@ export class HudPanelPresenter {
     this.viewBadge = new ViewBadge(
       hud.viewBadgeRow, hud.layers.notify, hud.overlayManager, viewCommands(commands, viewer.view),
     );
-    this.viewBadge.onRenderStyleChange = (style) => hud.setRenderStyle(style);
     this.simSpeedCommands = simSpeedCommands(commands, simSpeedManager);
     this.deployableCommands = deployableCommands(commands);
     this.orbitReferenceCommands = orbitReferenceCommands(commands, viewer.orbitReference);
@@ -84,7 +82,7 @@ export class HudPanelPresenter {
   // ビューバッジを、表に出ているビュー view・選べるビュー selectableViews・見せ方 style と、このランの
   // 注視・操作対象・航法ターゲットの名前へ合わせる。pickables は表のビューの被選択物候補。
   public syncViewBadge(
-    view: ViewMode, selectableViews: readonly ViewMode[], pickables: readonly ObjectPickable[], style: RenderStyle,
+    view: ViewMode, selectableViews: readonly ViewMode[], pickables: readonly ObjectPickable[],
   ): void {
     this.viewBadge.sync({
       modeLabel: this.stage.stageClass.selectLabel,
@@ -93,7 +91,6 @@ export class HudPanelPresenter {
       focusName: this.focusName(pickables),
       controlName: this.controlSelection.current?.name ?? null,
       targetName: this.viewer.navTarget.name,
-      renderStyle: style,
     });
   }
 
