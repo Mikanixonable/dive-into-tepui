@@ -17,7 +17,7 @@
 <rect x="225" y="0" width="200" height="120" rx="14" class="box"/><text x="243" y="34" class="sans t v">ゲームモデル</text><text x="243" y="63" class="m d sm">船 / 戦闘 / 軌道計画</text><text x="243" y="86" class="m d sm">正本状態</text>
 <rect x="470" y="0" width="210" height="120" rx="14" class="box"/><text x="488" y="34" class="sans t v">表示導出</text><text x="488" y="63" class="m d sm">HUD / マーカー / 軌道線</text><text x="488" y="86" class="m d sm">毎フレーム導出</text>
 <rect x="725" y="0" width="190" height="120" rx="14" class="box"/><text x="743" y="34" class="sans t v">描画</text><text x="743" y="63" class="m d sm">Three.js / WebGPU</text><text x="743" y="86" class="m d sm">GPU 資源</text>
-<rect x="960" y="0" width="185" height="120" rx="14" class="box"/><text x="978" y="34" class="sans t v">装置</text><text x="978" y="63" class="m d sm">DOM / 音声 / 入力</text><text x="978" y="86" class="m d sm">宣言的境界</text>
-<path d="M180 60H220M425 60H465M680 60H720M915 60H955" class="accent" marker-end="url(#arrR)"/>
+<rect x="945" y="0" width="160" height="120" rx="14" class="box"/><text x="963" y="34" class="sans t v">装置</text><text x="963" y="63" class="m d sm">DOM / 音声 / 入力</text><text x="963" y="86" class="m d sm">宣言的境界</text>
+<path d="M180 60H220M425 60H465M680 60H720M915 60H940" class="accent" marker-end="url(#arrR)"/>
 <rect x="0" y="165" width="1090" height="64" rx="12" class="soft"/><text x="18" y="191" class="m d xs">フレーム位相</text><text x="18" y="216" class="m t sm">入力 → シミュレーション → 表示同期 → 描画</text>
 </g></svg>
