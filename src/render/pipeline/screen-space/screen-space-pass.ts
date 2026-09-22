@@ -4,19 +4,18 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, abs, clamp, float, floor, max, mrt, normalize, screenSize, screenUV, select, struct, texture, uniform, vec2,
-  vec3, vec4,
+  Fn, abs, clamp, float, floor, getViewPosition, ivec2, log, max, mrt, screenSize, screenUV, select, struct, texture,
+  textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
-import { octDecodeNormal, type GBufferPass } from '../gbuffer';
+import { octEncodeNormal, type GBufferPass } from '../gbuffer';
 import { ShadingSample } from '../lighting/shading-sample';
-import { viewPositionAt } from '../view-ray';
 import { compileInto } from '../compile-into';
-import { scanHemisphere, type HemisphereScan, type SurfaceRadiance } from './hemisphere-scan';
+import { gbufferUVOf, scanHemisphere } from './hemisphere-scan';
 import { encodeVisibility } from './environment-occlusion';
 import type { SunSource } from '../lighting/sun-source';
-import type { Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node } from '../../tsl-types';
+import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node } from '../../tsl-types';
 
 // 描画設定「遮蔽と照り返し」の値。値は保存された設定を読む鍵なので、段を足しても既存の値は動かさない。
 export const SCREEN_SPACE_DIFFUSE = { off: 0, occlusion: 1, indirect: 2 } as const;
@@ -35,14 +34,20 @@ interface ScanTier {
 }
 const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
   [SCREEN_SPACE_QUALITY.low]: { scale: 0.5, sliceCount: 2, stepCount: 3 },
-  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.5, sliceCount: 3, stepCount: 4 },
-  [SCREEN_SPACE_QUALITY.high]: { scale: 1, sliceCount: 3, stepCount: 6 },
+  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.5, sliceCount: 2, stepCount: 6 },
+  [SCREEN_SPACE_QUALITY.high]: { scale: 1, sliceCount: 3, stepCount: 8 },
 };
 
-// 均しで隣の重みが 0 に落ちる、中心との view 深度の相対差。
+// 均しで隣の重みが 0 に落ちる、中心との奥行きの鍵の差(view 深度の相対差にほぼ等しい)。
 const EDGE_DEPTH_TOLERANCE = 0.05;
+// 面の写っていない画素の奥行きの鍵。どの面の鍵とも離れた、rgba16float に収まる値。
+const VOID_DEPTH_KEY = 60000;
+// 均しの 1 軸の、隣の画素のずれ [px] と二項係数の組。
+const DENOISE_TAPS = [[-1, 1], [0, 2], [1, 1]] as const;
 
-// 前処理より後の段が書く 1 画素 — 遮蔽と照り返し。描画先の同名の 2 枚へ stageOutput で書く。
+// 走査より後の段が書く 1 画素 — 遮蔽と照り返し。描画先の同名の 2 枚へ stageOutput で書く。遮蔽は rg = 曲げた
+// 法線(octEncodeNormal)、b = 可視率で、走査と均しでは a = 奥行きの鍵(depthKey)、拡大では可視率テクスチャの
+// 詰め方(encodeVisibility)。照り返しは rgb = 放射照度。
 const STAGE_TEXEL = struct({ occlusion: 'vec4', indirect: 'vec4' }, 'ScreenSpaceTexel');
 
 // 描画命令 1 本: material を全画面に描いて target へ書く。
@@ -51,8 +56,9 @@ interface Stage {
   readonly target: THREE.RenderTarget;
 }
 
-// 走査の解像度の面。textures は素の深度(r32float)、法線(oct 符号化、rg16float)、面が放つ放射輝度
-// (rgba16float)の順。
+// 走査の解像度の面。走査の画素が表す G バッファの画素の値を持ち、textures は素の深度(r32float)、法線(oct
+// 符号化、rg16float)、面が放つ放射輝度(rgba16float)の順。走査は標本ごとにこれを読む — G バッファの深度を
+// 直に読むより速い。
 function createSurfaceTarget(): THREE.RenderTarget {
   const target = new THREE.RenderTarget(1, 1, {
     count: 3, depthBuffer: false, samples: 0, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
@@ -71,8 +77,7 @@ function createSurfaceTarget(): THREE.RenderTarget {
   return target;
 }
 
-// 前処理より後の段の描画先。textures[0] が遮蔽、textures[1] が照り返し(どちらも rgba16float)。どの段も画素
-// ちょうどで読むので、補間しない。
+// 走査より後の段の描画先。textures[0] が遮蔽、textures[1] が照り返し(どちらも rgba16float)。
 function createTarget(): THREE.RenderTarget {
   const target = new THREE.RenderTarget(1, 1, {
     count: 2, type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
@@ -85,8 +90,7 @@ function createTarget(): THREE.RenderTarget {
   return target;
 }
 
-// 全画面で書くマテリアル。出力は呼び出し側が mrtNode へ置く。**合成を切る** — α に載せた値をそのまま書き、
-// 32 bit 浮動小数点の添付は合成できない。
+// 全画面で書くマテリアル。出力は呼び出し側が mrtNode へ置く。**合成を切る** — α に載せた値をそのまま書く。
 function stageMaterial(): THREE.MeshBasicNodeMaterial {
   return new THREE.MeshBasicNodeMaterial({
     depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
@@ -99,33 +103,35 @@ function stageOutput(texel: THREE.Node): ReturnType<typeof mrt> {
   return mrt({ occlusion: texel.get('occlusion'), indirect: texel.get('indirect') });
 }
 
-// 走査の結果(occlusion は rgb = 曲げた法線 × 0.5 + 0.5、a = 可視率。indirect は rgb = 照り返し)を 3×3 で均し、
-// STAGE_TEXEL で返す。indirect が null なら照り返しは 0 とする。重みは 1-2-1 の二項係数に、中心との view 深度の
-// 相対差で 0 へ落ちる係数を掛ける — 深度の段差を跨いで、手前の遮りを奥へ滲ませない。depth は走査の解像度の
-// 素の深度。
-function denoised(
-  occlusion: THREE.Texture, indirect: THREE.Texture | null, depth: THREE.Texture, projectionInverse: Mat4Uniform,
-): THREE.Node {
+// view 深度 viewDepth [m] を、均しと拡大が奥行きの比を差で比べられる鍵にする。covered が偽(面の写っていない
+// 画素)なら VOID_DEPTH_KEY。
+function depthKey(covered: BoolNode, viewDepth: FloatNode): FloatNode {
+  return select(covered, log(viewDepth), float(VOID_DEPTH_KEY));
+}
+
+// 走査の解像度の遮蔽 occlusion と照り返し indirect を 3×3 で均し、STAGE_TEXEL で返す。indirect が null なら照り返しは
+// 0 とする。重みは 1-2-1 の二項係数に、中心との奥行きの鍵の差で 0 へ落ちる係数を掛ける — 深度の段差を跨いで、
+// 手前の遮りを奥へ滲ませない。
+function denoised(occlusion: THREE.Texture, indirect: THREE.Texture | null): THREE.Node {
   return Fn(() => {
-    const texel = vec2(1).div(screenSize);
-    const centerDepth = viewPositionAt(depth, projectionInverse).z.toVar();
-    const occlusionSum = vec4(0).toVar();
-    const indirectSum = vec4(0).toVar();
+    const pixel = floor(screenUV.mul(screenSize)).toVar();
+    const center = textureLoad(occlusion, ivec2(pixel)).toVar();
+    const occlusionSum = vec3(0).toVar();
+    const indirectSum = vec3(0).toVar();
     const weightSum = float(0).toVar();
-    // 中心は深度の差が 0 なので、重みの和は 0 にならない。
-    for (const dy of [-1, 0, 1]) {
-      for (const dx of [-1, 0, 1]) {
-        const uv = screenUV.add(vec2(dx, dy).mul(texel));
-        const gap = abs(viewPositionAt(depth, projectionInverse, uv).z.sub(centerDepth))
-          .div(max(abs(centerDepth), 1e-6));
-        const weight = clamp(float(1).sub(gap.div(EDGE_DEPTH_TOLERANCE)), 0, 1)
-          .mul((2 - Math.abs(dx)) * (2 - Math.abs(dy)));
-        occlusionSum.addAssign(texture(occlusion, uv).mul(weight));
-        if (indirect !== null) indirectSum.addAssign(texture(indirect, uv).mul(weight));
+    // 中心は鍵の差が 0 なので、重みの和は 0 にならない。画面の外の隣は縁の画素で代える。
+    for (const [dy, binomialY] of DENOISE_TAPS) {
+      for (const [dx, binomialX] of DENOISE_TAPS) {
+        const neighborPixel = ivec2(clamp(pixel.add(vec2(dx, dy)), vec2(0), screenSize.sub(1)));
+        const neighbor = dx === 0 && dy === 0 ? center : textureLoad(occlusion, neighborPixel);
+        const weight = clamp(float(1).sub(abs(neighbor.w.sub(center.w)).div(EDGE_DEPTH_TOLERANCE)), 0, 1)
+          .mul(binomialX * binomialY);
+        occlusionSum.addAssign(neighbor.xyz.mul(weight));
+        if (indirect !== null) indirectSum.addAssign(textureLoad(indirect, neighborPixel).rgb.mul(weight));
         weightSum.addAssign(weight);
       }
     }
-    return STAGE_TEXEL(occlusionSum.div(weightSum), indirectSum.div(weightSum));
+    return STAGE_TEXEL(vec4(occlusionSum.div(weightSum), center.w), vec4(indirectSum.div(weightSum), 1));
   })();
 }
 
@@ -146,9 +152,10 @@ export class ScreenSpacePass {
   // 描画バッファと走査の解像度 [px]。解像度の違う段どうしで、対応する画素を引くのに使う。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly scanSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
-  // 前処理で描いている画素に当たる、G バッファの全解像度の画素の中心の uv。**G バッファは画素の中心で読む** —
-  // 画素の角で補間すると、輪郭で虚空の値が混ざり、面が自分自身を遮る。
-  private readonly gbufferUV: Vec2Node = floor(screenUV.mul(this.fullSize)).add(0.5).div(this.fullSize);
+  // 走査の解像度で描いている画素の整数座標と、その画素が表す G バッファの画素の中心の uv・整数座標。
+  private readonly scanPixel: Vec2Node = floor(screenUV.mul(screenSize));
+  private readonly gbufferUV: Vec2Node = gbufferUVOf(this.scanPixel, this.fullSize);
+  private readonly gbufferPixel = ivec2(floor(this.gbufferUV.mul(this.fullSize)));
   // 前処理で、遮る面が受ける太陽の直射を引くシェーディング入力。
   private readonly sample: ShadingSample;
   private readonly blueNoise = new BlueNoise();
@@ -233,42 +240,33 @@ export class ScreenSpacePass {
     const [surfaceDepth, surfaceNormal, surfaceRadiance] = this.surfaceTarget.textures;
     const [scanOcclusion, scanIndirect] = this.scanTarget.textures;
     const [blurOcclusion, blurIndirect] = this.blurTarget.textures;
-
-    // 前処理: 走査の画素ごとに、G バッファの深度と法線と、面が放つ放射輝度を同じ全解像度の画素から写す。
+    // 前処理: 走査の画素ごとに、その画素が表す G バッファの画素の深度と法線と、面が放つ放射輝度を写す。
     const prepass = stageMaterial();
     prepass.mrtNode = mrt({
-      surfaceDepth: texture(gbuffer.depthTexture, this.gbufferUV).r,
-      surfaceNormal: texture(gbuffer.normalTexture, this.gbufferUV).rg,
+      surfaceDepth: textureLoad(gbuffer.depthTexture, this.gbufferPixel).r,
+      surfaceNormal: textureLoad(gbuffer.normalTexture, this.gbufferPixel).rg,
       surfaceRadiance: vec4(sun === null ? vec3(0) : this.emittedRadiance(gbuffer, sun), 1),
     });
-    // 走査: 遮蔽は rgb = 曲げた法線 × 0.5 + 0.5、a = 可視率。照り返しは rgb = 放射照度。
-    const source: SurfaceRadiance | null = sun === null ? null : {
-      radianceAt: (uv) => texture(surfaceRadiance!, uv).rgb,
-      normalAt: (uv) => octDecodeNormal(texture(surfaceNormal!, uv).rg),
-    };
+    // 走査: 遮蔽は rg = 曲げた法線(oct 符号化)、b = 可視率、a = 奥行きの鍵。照り返しは rgb = 放射照度。
     const scan = stageMaterial();
     const noise = vec2(this.blueNoise.atScreenPixel(), this.blueNoise.atScreenPixel(0.5));
     scan.mrtNode = stageOutput(Fn(() => {
       const result = scanHemisphere(
-        surfaceDepth!, surfaceNormal!, this.projection, this.projectionInverse, this.sliceCount, this.stepCount, noise,
-        source,
+        surfaceDepth!, surfaceNormal!, this.fullSize, this.projection, this.projectionInverse,
+        this.sliceCount, this.stepCount, noise, sun === null ? null : surfaceRadiance!,
       );
-      // three の NodeMaterial は色の出力を 0 以上へ切るので、符号つきの法線はそのまま書くと負の成分を失う。
-      return STAGE_TEXEL(vec4(result.bentNormal.mul(0.5).add(0.5), result.visibility), vec4(result.indirect, 1));
+      const depth = textureLoad(surfaceDepth!, ivec2(this.scanPixel)).r;
+      const viewDepth = getViewPosition(this.gbufferUV, depth, this.projectionInverse).z.negate();
+      const key = depthKey(depth.greaterThan(0), viewDepth);
+      return STAGE_TEXEL(vec4(octEncodeNormal(result.bentNormal), result.visibility, key), vec4(result.indirect, 1));
     })());
     // 均しは走査と均しの 2 組を往復し、走査の組へ戻す。
     const blurred = stageMaterial();
-    blurred.mrtNode = stageOutput(
-      denoised(scanOcclusion!, sun === null ? null : scanIndirect!, surfaceDepth!, this.projectionInverse),
-    );
+    blurred.mrtNode = stageOutput(denoised(scanOcclusion!, sun === null ? null : scanIndirect!));
     const reblurred = stageMaterial();
-    reblurred.mrtNode = stageOutput(
-      denoised(blurOcclusion!, sun === null ? null : blurIndirect!, surfaceDepth!, this.projectionInverse),
-    );
+    reblurred.mrtNode = stageOutput(denoised(blurOcclusion!, sun === null ? null : blurIndirect!));
     const upsampled = stageMaterial();
-    upsampled.mrtNode = stageOutput(
-      this.upsampled(gbuffer, surfaceDepth!, scanOcclusion!, sun === null ? null : scanIndirect!),
-    );
+    upsampled.mrtNode = stageOutput(this.upsampled(gbuffer, scanOcclusion!, sun === null ? null : scanIndirect!));
     return [
       { material: prepass, target: this.surfaceTarget },
       { material: scan, target: this.scanTarget },
@@ -278,8 +276,7 @@ export class ScreenSpacePass {
     ];
   }
 
-  // 前処理の画素に写っている面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)— 太陽の直射を拡散で返す光と、
-  // 自己発光。
+  // 前処理の画素が表す面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)— 太陽の直射を拡散で返す光と、自己発光。
   private emittedRadiance(gbuffer: GBufferPass, sun: SunSource): Vec3Node {
     const material = texture(gbuffer.basecolorTexture, this.sample.uv);
     const albedo = material.rgb.mul(material.a.oneMinus());
@@ -287,40 +284,51 @@ export class ScreenSpacePass {
       .add(texture(gbuffer.emissiveTexture, this.sample.uv).rgb);
   }
 
-  // 全解像度の画素ごとに、近い 2×2 の走査の画素のうち view 深度が最も近いものの結果を採り、STAGE_TEXEL で返す。
-  // 遮蔽はアルベドと一緒に可視率テクスチャの詰め方で詰める。面の写っていない画素は遮られず、照り返しを受けない
-  // とする。surfaceDepth は走査の解像度の素の深度、occlusion / indirect は走査の解像度の遮蔽と照り返しで、
+  // 全解像度の画素ごとに、近い 2×2 の走査の画素の結果を、奥行きの鍵が近いものだけで双線形に混ぜ(どれも離れて
+  // いれば最も近いものを採り)、STAGE_TEXEL で返す。遮蔽はアルベドと一緒に可視率テクスチャの詰め方で詰める。面の
+  // 写っていない画素は遮られず、照り返しを受けないとする。occlusion / indirect は走査の解像度の遮蔽と照り返しで、
   // indirect が null なら照り返しは 0。
-  private upsampled(
-    gbuffer: GBufferPass, surfaceDepth: THREE.Texture, occlusion: THREE.Texture, indirect: THREE.Texture | null,
-  ): THREE.Node {
+  private upsampled(gbuffer: GBufferPass, occlusion: THREE.Texture, indirect: THREE.Texture | null): THREE.Node {
     return Fn(() => {
-      // 近い 2×2 の走査の画素から、view 深度の差が最も小さいものを採る。
-      const depth = viewPositionAt(gbuffer.depthTexture, this.projectionInverse).z.toVar();
-      const base = floor(screenUV.mul(this.scanSize).sub(0.5)).toVar();
-      // 走査の段と同じ詰め方(rgb = 曲げた法線 × 0.5 + 0.5)。初期値は視点を向いた遮りの無い画素。
-      const picked = vec4(0.5, 0.5, 1, 1).toVar();
-      const pickedIndirect = vec4(0).toVar();
-      const pickedGap = float(1e30).toVar();
+      const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
+      const depth = textureLoad(gbuffer.depthTexture, pixel).r.toVar();
+      const covered = depth.greaterThan(0);
+      const key = depthKey(covered, getViewPosition(screenUV, depth, this.projectionInverse).z.negate()).toVar();
+      // 双線形の重みに、奥行きの鍵の差で 0 へ落ちる係数を掛ける — 輪郭で手前の遮りを奥へ滲ませない。
+      const position = screenUV.mul(this.scanSize).sub(0.5).toVar();
+      const base = floor(position).toVar();
+      const fraction = position.sub(base).toVar();
+      const occlusionSum = vec3(0).toVar();
+      const indirectSum = vec3(0).toVar();
+      const weightSum = float(0).toVar();
+      const nearest = vec4(0).toVar();
+      const nearestIndirect = vec3(0).toVar();
+      const nearestGap = float(1e30).toVar();
       for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
-        const texel = clamp(base.add(vec2(dx, dy)), vec2(0), this.scanSize.sub(1));
-        const uv = texel.add(0.5).div(this.scanSize);
-        const gap = abs(viewPositionAt(surfaceDepth, this.projectionInverse, uv).z.sub(depth));
-        If(gap.lessThan(pickedGap), () => {
-          pickedGap.assign(gap);
-          picked.assign(texture(occlusion, uv));
-          if (indirect !== null) pickedIndirect.assign(texture(indirect, uv));
-        });
+        const texel = ivec2(clamp(base.add(vec2(dx, dy)), vec2(0), this.scanSize.sub(1))).toVar();
+        const candidate = textureLoad(occlusion, texel).toVar();
+        const candidateIndirect = indirect === null ? vec3(0) : textureLoad(indirect, texel).rgb.toVar();
+        const gap = abs(candidate.w.sub(key)).toVar();
+        const bilinear = (dx === 0 ? fraction.x.oneMinus() : fraction.x)
+          .mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
+        const weight = bilinear.mul(clamp(float(1).sub(gap.div(EDGE_DEPTH_TOLERANCE)), 0, 1)).toVar();
+        occlusionSum.addAssign(candidate.xyz.mul(weight));
+        indirectSum.addAssign(candidateIndirect.mul(weight));
+        weightSum.addAssign(weight);
+        const nearer = gap.lessThan(nearestGap);
+        nearest.assign(select(nearer, candidate, nearest));
+        nearestIndirect.assign(select(nearer, candidateIndirect, nearestIndirect));
+        nearestGap.assign(select(nearer, gap, nearestGap));
       }
+      const blended = weightSum.greaterThan(1e-3);
+      const picked = select(blended, occlusionSum.div(max(weightSum, 1e-3)), nearest.xyz);
       // 遮蔽は受け手のアルベド(拡散の色)と一緒に詰める。
-      const covered = gbuffer.covered();
-      const scan: HemisphereScan = {
-        visibility: select(covered, picked.w, float(1)),
-        bentNormal: normalize(picked.xyz.mul(2).sub(1)),
-        indirect: select(covered, pickedIndirect.rgb, vec3(0)),
-      };
-      const material = texture(gbuffer.basecolorTexture, screenUV);
-      return STAGE_TEXEL(encodeVisibility(scan, material.rgb.mul(material.a.oneMinus())), vec4(scan.indirect, 1));
+      const visibility = select(covered, picked.z, float(1));
+      const received = select(covered, select(blended, indirectSum.div(max(weightSum, 1e-3)), nearestIndirect), vec3(0));
+      const material = textureLoad(gbuffer.basecolorTexture, pixel);
+      return STAGE_TEXEL(
+        encodeVisibility(visibility, picked.xy, material.rgb.mul(material.a.oneMinus())), vec4(received, 1),
+      );
     })();
   }
 
