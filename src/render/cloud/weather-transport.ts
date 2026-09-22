@@ -2,14 +2,15 @@
 // 別々の風で運ぶが、すべて同じ2位相移流の規則と写しの寿命で管理する。
 import * as THREE from 'three/webgpu';
 import { abs, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } from 'three/tsl';
-import { BakedField } from './baked-field';
+import { BakedField } from '../baked-field';
+import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
-import { Circulation } from './circulation';
+import type { Circulation } from './circulation';
 import { windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
-import type { FieldProjection } from './field-projection';
+import type { FieldProjection } from '../field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
@@ -81,10 +82,12 @@ export class WeatherTransport {
     this.upperHumidityNoise = new CirculatingNoise(upperCirculation, UPPER_HUMIDITY_NOISE, texel);
     this.humiditySource = new BakedField(
       'humiditySource', THREE.RGFormat, projection,
-      (direction) => vec4(this.humiditySourceAt(direction), 0, 1));
+      (direction) => vec4(this.humiditySourceAt(direction), 0, 1),
+      GPU_PASS.cloudBake);
     this.convectionSource = new BakedField(
       'convectionSource', THREE.RGFormat, projection,
-      (direction) => vec4(this.convectionSourceAt(direction), 0, 1));
+      (direction) => vec4(this.convectionSourceAt(direction), 0, 1),
+      GPU_PASS.cloudBake);
   }
 
   // 時刻 [s] を移流位相へ変換する。

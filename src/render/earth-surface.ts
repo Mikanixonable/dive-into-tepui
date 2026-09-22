@@ -12,6 +12,7 @@ import type {
   CelestialSurfaceDiagnostics,
   CelestialSurfaceLike,
   CelestialSurfaceStatus,
+  LightSourceMap,
   SurfacePhotometry,
 } from './celestial/celestial-surface';
 import {
@@ -171,6 +172,10 @@ export class EarthSurface implements CelestialSurfaceLike {
   }
 
   public get photometry(): SurfacePhotometry | null { return this.photometryValue; }
+
+  public get lightSourceMap(): LightSourceMap | null { return this.fallback.lightSourceMap; }
+
+  public get imagesReady(): boolean { return this.fallback.imagesReady; }
 
   public get textureUrl(): string | null { return this.fallback.textureUrl; }
 
