@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460"><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.sans{font-family:system-ui,-apple-system,sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.f{fill:#5f5a65}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:7 7}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="460" rx="20" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">ORBITAL MANEUVERING</text><text x="55" y="72" class="m d k">MANEUVER NODES MODIFY FUTURE STATE; LAGRANGE POINTS ARE NAVIGATION REFERENCES</text>
+<g transform="translate(55 105)">
+<rect x="0" y="0" width="530" height="300" rx="16" class="box"/>
+<text x="22" y="34" class="m a k">LOW ORBIT TRANSFER</text>
+<circle cx="220" cy="166" r="63" fill="#48506a" stroke="#d6d6d0"/><ellipse cx="220" cy="166" rx="112" ry="78" class="line"/><ellipse cx="277" cy="147" rx="190" ry="92" class="accent" transform="rotate(-13 277 147)"/>
+<circle cx="320" cy="77" r="6" fill="#ff3155"/><text x="334" y="81" class="m t sm">NODE 1</text><path d="M320 77L356 55" class="accent" marker-end="url(#arrR)"/><text x="361" y="53" class="m d xs">PROGRADE Δv</text>
+<circle cx="454" cy="151" r="5" fill="#3478ff"/><text x="407" y="181" class="m b sm">predicted arc</text>
+<g transform="translate(28 232)"><text class="m d xs">AXES</text><text x="0" y="24" class="m a sm">PRO / RET</text><text x="110" y="24" class="m s sm">NRM / ANM</text><text x="230" y="24" class="m b sm">IN / OUT</text></g>
+</g>
+<g transform="translate(615 105)">
+<rect x="0" y="0" width="530" height="300" rx="16" class="box"/>
+<text x="22" y="34" class="m a k">EARTH–MOON ROTATING FRAME</text>
+<circle cx="145" cy="165" r="38" fill="#48506a" stroke="#d6d6d0"/><circle cx="400" cy="165" r="18" fill="#a8aec0"/>
+<path d="M145 165H400" class="line"/><circle cx="335" cy="165" r="6" fill="#ff3155" filter="url(#glow)"/><circle cx="455" cy="165" r="6" fill="#ff3155" filter="url(#glow)"/>
+<text x="318" y="143" class="m t sm">L1</text><text x="448" y="143" class="m t sm">L2</text>
+<path d="M250 251C284 220 303 192 335 165" class="accent dash" marker-end="url(#arrR)"/>
+<text x="41" y="69" class="m d xs">REFERENCE FRAME</text><text x="41" y="90" class="m b sm">primary → secondary fixed direction</text>
+<text x="41" y="275" class="m d xs">NO AUTO TRANSFER IMPLIED</text><text x="41" y="294" class="m b sm">nodes and displayed trajectories are edited by the player</text>
+</g></svg>
