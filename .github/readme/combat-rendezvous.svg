@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420"><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.sans{font-family:system-ui,-apple-system,sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.f{fill:#5f5a65}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:7 7}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="420" rx="20" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">RENDEZVOUS & COMBAT</text><text x="55" y="72" class="m d k">ORBITAL GEOMETRY CREATES THE FIRING OPPORTUNITY</text>
+<g transform="translate(60 108)">
+<path d="M40 208C226 40 480 44 678 185" class="line"/><path d="M40 236C240 94 482 98 706 210" class="accent"/>
+<g transform="translate(350 151)"><path d="M-18-9L25 0-18 9-5 0Z" fill="#eeeaf5"/><circle r="29" class="signal"/><text x="-32" y="52" class="m b sm">PLAYER</text></g>
+<g transform="translate(760 215)"><path d="M-14-10L22 0-14 10-3 0Z" fill="#ff6b82"/><circle r="25" class="accent"/><text x="-28" y="49" class="m b sm">TARGET</text></g>
+<circle cx="820" cy="165" r="7" class="signal"/><text x="835" y="168" class="m s sm">LEAD POINT</text>
+<path d="M375 151L813 165" class="signal dash" marker-end="url(#arrB)"/><path d="M760 215L812 173" class="line"/>
+<path d="M350 105L412 81" class="accent" marker-end="url(#arrR)"/><text x="420" y="81" class="m a sm">relative velocity</text>
+<g transform="translate(885 95)"><rect width="245" height="170" rx="14" class="box"/><text x="18" y="30" class="m a k">FIRE SOLUTION</text><text x="18" y="62" class="m d sm">range</text><text x="135" y="62" class="m t v">1.84 km</text><text x="18" y="91" class="m d sm">relative v</text><text x="135" y="91" class="m t v">224 m/s</text><text x="18" y="120" class="m d sm">lead</text><text x="135" y="120" class="m t v">projectile</text><text x="18" y="149" class="m d sm">time warp</text><text x="135" y="149" class="m an v">≤ ×4</text></g>
+</g></svg>

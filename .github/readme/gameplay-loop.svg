@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360"><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.sans{font-family:system-ui,-apple-system,sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.f{fill:#5f5a65}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:7 7}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="360" rx="20" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">GAMEPLAY LOOP</text><text x="55" y="72" class="m d k">MAP SCALE AND COMBAT SCALE ARE ONE CONTINUOUS SYSTEM</text>
+<g transform="translate(55 115)">
+<rect class="box" width="190" height="145" rx="16"/><text x="18" y="31" class="m a k">01 / TARGET</text><text x="18" y="61" class="sans t v">Acquire</text><text x="18" y="87" class="m d sm">target / range</text><text x="18" y="108" class="m d sm">relative motion</text><circle cx="148" cy="83" r="25" class="signal"/><path d="M148 48V62M148 104V118M113 83H127M169 83H183" stroke="#3478ff"/></g>
+<g transform="translate(275 115)"><rect class="box" width="190" height="145" rx="16"/><text x="18" y="31" class="m a k">02 / PLAN</text><text x="18" y="61" class="sans t v">Shape orbit</text><text x="18" y="87" class="m d sm">maneuver nodes</text><text x="18" y="108" class="m d sm">PRO / NRM / RAD</text><ellipse cx="147" cy="86" rx="31" ry="17" class="accent" transform="rotate(-18 147 86)"/><circle cx="168" cy="72" r="5" fill="#ff3155"/></g>
+<g transform="translate(495 115)"><rect class="box" width="190" height="145" rx="16"/><text x="18" y="31" class="m a k">03 / WARP</text><text x="18" y="61" class="sans t v">Advance time</text><text x="18" y="87" class="m d sm">coast phase</text><text x="18" y="108" class="m d sm">node timing</text><text x="128" y="93" class="m t h">×128</text></g>
+<g transform="translate(715 115)"><rect class="box" width="190" height="145" rx="16"/><text x="18" y="31" class="m a k">04 / RENDEZVOUS</text><text x="18" y="61" class="sans t v">Match motion</text><text x="18" y="87" class="m d sm">range closes</text><text x="18" y="108" class="m d sm">relative v matters</text><circle cx="137" cy="84" r="7" fill="#eeeaf5"/><circle cx="165" cy="66" r="7" fill="#ff3155"/><path d="M144 80L158 70" class="signal" marker-end="url(#arrB)"/></g>
+<g transform="translate(935 115)"><rect class="box" width="210" height="145" rx="16"/><text x="18" y="31" class="m a k">05 / ENGAGE</text><text x="18" y="61" class="sans t v">Fire solution</text><text x="18" y="87" class="m d sm">lead aim</text><text x="18" y="108" class="m d sm">projectile flight</text><path d="M126 101L180 60" class="accent" marker-end="url(#arrR)"/><circle cx="180" cy="60" r="9" class="signal"/></g>
+<path d="M245 187H270M465 187H490M685 187H710M905 187H930" class="accent" marker-end="url(#arrR)"/>
+<text x="55" y="315" class="m b sm">Combat view: attitude / thrust / fire</text><text x="420" y="315" class="m b sm">Map view: trajectory / frame / maneuver</text><text x="850" y="315" class="m b sm">Time warp connects both scales</text>
+</svg>
