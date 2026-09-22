@@ -73,8 +73,9 @@ function planPanelHtml(
   peInAtmosphere: boolean,
 ): string {
   const row = (k: string, v: string) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-  // ノード一覧
-  let s = nodes
+  // ノード一覧は索引として並べ、選択中ノードの主状態は固定DOM側で先に示す。
+  let s = '<div class="editorial-divider">PLAN NODES</div>';
+  s += nodes
     .map((n, i) => {
       const sign = n.tRel >= 0 ? 'T-' : 'T+';
       const mark = i === selectedIdx ? '▸ ' : '';
@@ -87,11 +88,11 @@ function planPanelHtml(
     const apSpec = getApsisLabelSpec('ap', selEl.center.id);
     const peSpec = getApsisLabelSpec('pe', selEl.center.id);
     s +=
-      `<div style="margin-top:${SPACE_2};color:var(--text);font-size:${FONT_XXS};letter-spacing:1px">噴射後の軌道</div>` +
+      `<div class="plan-post-orbit"><div class="editorial-divider">ORBIT AFTER BURN</div>` +
       row(`${apSpec.nameJa} ${apSpec.short}`, fmtDist(apsis.ap)) +
       row(`${peSpec.nameJa} ${peSpec.short}`, fmtDist(apsis.pe)) +
       row('傾斜角 INC', isFinite(selEl.incDeg) ? `${selEl.incDeg.toFixed(2)}°` : '---') +
-      row('周期 PRD', fmtTime(selEl.period));
+      row('周期 PRD', fmtTime(selEl.period)) + '</div>';
     if (peInAtmosphere) {
       s += `<div style="color:var(--color-warning);margin-top:${SPACE_1}">⚠ ${peSpec.nameJa}が大気圏内</div>`;
     }
@@ -99,7 +100,7 @@ function planPanelHtml(
   // 操作キーのヒント
   const dvKeys =
     `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
-  s += `<div style="margin-top:${SPACE_3};color:var(--text-dim);font-size:${FONT_XXS}">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [手動設定のΔT] 軌道上の位置を数値指定 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
+  s += `<div class="plan-help">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [手動設定のΔT] 軌道上の位置を数値指定 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
   return s;
 }
 
@@ -111,6 +112,13 @@ export class PlanPanel {
   private readonly panel: HTMLElement;
   private readonly body: HTMLElement;
   private readonly editForm: HTMLElement;
+  private readonly state: HTMLElement;
+  private readonly stateLabel: HTMLElement;
+  private readonly stateDv: HTMLElement;
+  private readonly stateTime: HTMLElement;
+  private readonly statePro: HTMLElement;
+  private readonly stateNrm: HTMLElement;
+  private readonly stateRad: HTMLElement;
   private readonly proInput: ValueInput;
   private readonly nrmInput: ValueInput;
   private readonly radInput: ValueInput;
@@ -121,9 +129,25 @@ export class PlanPanel {
     // 見出し・本文・編集フォームの器
     this.panel = document.createElement('div');
     this.panel.id = 'hud-plan';
-    this.panel.className = 'panel hidden';
+    this.panel.className = 'panel hidden editorial-control-sheet';
     this.panel.innerHTML = `
-      <h3>軌道計画 [${K.toggleMapMode.label}]</h3>
+      <div class="plan-panel-head">
+        <span class="ui-section-code" aria-hidden="true">PLN</span>
+        <h3 class="editorial-panel-title">MANEUVER PLAN</h3>
+        <span class="ui-data-context">[${K.toggleMapMode.label}]</span>
+      </div>
+      <section class="editorial-state plan-state hidden" data-id="planstate">
+        <div class="plan-node-hero">
+          <span class="ui-data-label" data-id="plan-state-label">MANEUVER</span>
+          <strong data-id="plan-state-dv">—</strong>
+          <span class="ui-annotation" data-id="plan-state-time">—</span>
+        </div>
+        <div class="editorial-state-grid">
+          <div class="editorial-state-cell"><span class="ui-data-label">PRO</span><span data-id="plan-state-pro">—</span></div>
+          <div class="editorial-state-cell"><span class="ui-data-label">NRM</span><span data-id="plan-state-nrm">—</span></div>
+          <div class="editorial-state-cell"><span class="ui-data-label">RAD</span><span data-id="plan-state-rad">—</span></div>
+        </div>
+      </section>
       <div data-id="planbody"></div>
       <div data-id="planedit" class="hidden" style="margin-top:${SPACE_4}; padding-top:${SPACE_4}; border-top:1px solid var(--fill-2)">
         <div style="font-size:${FONT_XXS}; color:var(--text-dim); margin-bottom:${SPACE_2};">ノード位置（現在時刻からの ΔT [s]）</div>
@@ -131,6 +155,13 @@ export class PlanPanel {
     `;
     this.body = this.panel.querySelector<HTMLElement>('[data-id="planbody"]')!;
     this.editForm = this.panel.querySelector<HTMLElement>('[data-id="planedit"]')!;
+    this.state = this.panel.querySelector<HTMLElement>('[data-id="planstate"]')!;
+    this.stateLabel = this.panel.querySelector<HTMLElement>('[data-id="plan-state-label"]')!;
+    this.stateDv = this.panel.querySelector<HTMLElement>('[data-id="plan-state-dv"]')!;
+    this.stateTime = this.panel.querySelector<HTMLElement>('[data-id="plan-state-time"]')!;
+    this.statePro = this.panel.querySelector<HTMLElement>('[data-id="plan-state-pro"]')!;
+    this.stateNrm = this.panel.querySelector<HTMLElement>('[data-id="plan-state-nrm"]')!;
+    this.stateRad = this.panel.querySelector<HTMLElement>('[data-id="plan-state-rad"]')!;
 
     // ノード位置(ΔT)の入力行
     const positionRow = document.createElement('div');
@@ -182,6 +213,15 @@ export class PlanPanel {
     if (this.body.innerHTML !== html) this.body.innerHTML = html;
 
     const selected = selectedIdx === null ? null : nodes[selectedIdx] ?? null;
+    this.state.classList.toggle('hidden', selected === null);
+    if (selected !== null) {
+      this.stateLabel.textContent = `MANEUVER / ${String((selectedIdx ?? 0) + 1).padStart(2, '0')}`;
+      this.stateDv.textContent = `${selected.dvMag.toFixed(1)} m/s`;
+      this.stateTime.textContent = `${selected.tRel >= 0 ? 'T-' : 'T+'}${fmtTime(Math.abs(selected.tRel))}`;
+      this.statePro.textContent = localDv === null ? '—' : `${localDv.x.toFixed(1)} m/s`;
+      this.stateNrm.textContent = localDv === null ? '—' : `${localDv.y.toFixed(1)} m/s`;
+      this.stateRad.textContent = localDv === null ? '—' : `${localDv.z.toFixed(1)} m/s`;
+    }
     this.editForm.classList.toggle('hidden', selected === null || localDv === null);
     if (selected === null || localDv === null) return;
     // 入力欄にフォーカスがない時だけ値を書き込む(ドラッグ操作での変動を反映する)
