@@ -169,7 +169,7 @@ export function resolveSphereCollision(
   prevB?: KinematicState,
 ): CollisionResponse | null {
   // 受け持ちの割合は逆質量の和を分母に取るので、非有限なら両側へ NaN が、0(両者とも
-  // 無限質量)なら両側へ Infinity が広がる。距離ガードと同じ `!(x > 0)` 形で弾く —
+  // 無限質量)なら両側へ Infinity が広がる。距離ガードと同じ `!(x > 0)` 条件で除外する —
   // `x <= 0` と書くと NaN に対する真偽が反転して非有限入力が通り抜ける。
   if (!(a.invMass + b.invMass > 0)) return null;
   const geometry = sphereContactGeometry(a, b, prevA, prevB);

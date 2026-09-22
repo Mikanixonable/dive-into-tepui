@@ -82,7 +82,7 @@ type OrbitLineResource =
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine };
 
 // 種別ごとの View の基底。1体ぶんの表示ツリー、オーバーレイ資源、再構築回避用キャッシュを所有する。
-// S は種別ごとの表示入力で、既定は全個体に共通する面。
+// S は種別ごとの表示入力で、既定は全個体に共通するインターフェース。
 export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderSource> {
   private orbitLineValue: OrbitLineResource | null = null;
   private predictedLineValue: TrajectoryLine | null = null;
