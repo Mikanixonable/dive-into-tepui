@@ -7,7 +7,8 @@ import type { FieldProjection } from '../field-projection';
 import type { CloudStateBinding } from './cloud-state';
 
 export interface CloudFieldSource {
-  readonly texture: THREE.Texture;
+  readonly basisTexture: THREE.Texture;
+  readonly shapeTexture: THREE.Texture;
   readonly projection: FieldProjection;
   readonly state: CloudStateBinding;
   readonly generation: number;

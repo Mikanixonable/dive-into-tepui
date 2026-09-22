@@ -37,7 +37,8 @@ export class GeneratedCloudField implements CloudFieldSource {
   }
 
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
-  public get texture(): THREE.Texture { return this.field.texture; }
+  public get basisTexture(): THREE.Texture { return this.field.basisTexture; }
+  public get shapeTexture(): THREE.Texture { return this.field.shapeTexture; }
   public get generation(): number { return this.generationValue; }
   public get state(): CloudStateBinding { return this.stateValue; }
 

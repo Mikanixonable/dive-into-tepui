@@ -11,8 +11,8 @@ export interface CloudBasis {
   readonly inSitu: FloatNode;
 }
 
-// 雲場の生成値と焼いたテクスチャの読み値。互換性のため coverage / cloudTop / translucent も公開するが、
-// それらは basis から導出され、RGBAの意味を各表現へ複製しない。
+// 雲場の生成値と焼いたテクスチャの読み値。coverage と cloudTop は basis の重み付け前の形状値なので、
+// basis から導出せず専用 shape テクスチャから読む。translucent は basis から導出する。
 export interface CloudSample {
   readonly basis: CloudBasis;
   readonly coverage: FloatNode;
@@ -21,31 +21,30 @@ export interface CloudSample {
 }
 
 const LOW_CLOUD_TOP = 1_000;
-const MIDDLE_CLOUD_TOP = 6_000;
-const CONVECTIVE_CLOUD_TOP = CLOUD_TOP_SPAN;
-
-// basis から既存の表現が必要とする連続量を導出する。4 成分は同じ CloudSample を surface / atmosphere /
-// shadow が読むため、どの経路も別々の channel 解釈を持たない。
-export function cloudSampleFromTexel(texel: Vec4Node): CloudSample {
+// basis テクスチャと shape テクスチャから、既存の表現が必要とする連続量を導出する。
+// 2 つは同じ CloudSample として surface / atmosphere / shadow が読むため、経路ごとの channel 解釈を増やさない。
+export function cloudSampleFromTexels(basisTexel: Vec4Node, shapeTexel: Vec4Node): CloudSample {
   const basis: CloudBasis = {
-    low: texel.r,
-    middle: texel.g,
-    convective: texel.b,
-    inSitu: texel.a,
+    low: basisTexel.r,
+    middle: basisTexel.g,
+    convective: basisTexel.b,
+    inSitu: basisTexel.a,
   };
-  const coverage = clamp(basis.low.add(basis.middle).add(basis.convective), 0, 1);
-  const weightedTop = basis.low.mul(LOW_CLOUD_TOP)
-    .add(basis.middle.mul(MIDDLE_CLOUD_TOP))
-    .add(basis.convective.mul(CONVECTIVE_CLOUD_TOP));
+  const coverage = clamp(shapeTexel.r, 0, 1);
   return {
     basis,
     coverage,
-    cloudTop: max(weightedTop.div(max(coverage, 1e-4)), LOW_CLOUD_TOP),
+    cloudTop: max(clamp(shapeTexel.g, 0, 1).mul(CLOUD_TOP_SPAN), LOW_CLOUD_TOP),
     translucent: basis.inSitu.add(basis.convective.mul(0.25)).min(1),
   };
 }
 
-// 雲標本を焼き込み用のRGBAへ戻す。読み出し側の復号と同じ契約をここで対にして持つ。
-export function cloudFieldTexelFromSample(sample: CloudSample): Vec4Node {
+// 雲標本の basis を焼き込み用のRGBAへ戻す。coverage / cloudTop は shape へ焼く。
+export function cloudBasisTexelFromSample(sample: CloudSample): Vec4Node {
   return vec4(sample.basis.low, sample.basis.middle, sample.basis.convective, sample.basis.inSitu);
+}
+
+// 雲標本の形状値をRGへ戻す。Rはcoverage、GはcloudTopの正規化値。
+export function cloudShapeTexelFromSample(sample: CloudSample): Vec4Node {
+  return vec4(sample.coverage, sample.cloudTop.div(CLOUD_TOP_SPAN), 0, 1);
 }
