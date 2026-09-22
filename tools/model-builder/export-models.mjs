@@ -77,7 +77,7 @@ const models = {
   debrisPanel:  buildDebrisPanel(),
   debrisRod:    buildDebrisRod(),
   rcsFuel:      buildRcsFuelPickup(),
-  shipModules: buildShipModules(),
+  shipModules:  await buildShipModules(),
 };
 
 // magazine は ammo の子としても使われるため、静的な子メッシュを材質ごとに統合する。
