@@ -75,7 +75,6 @@ export function evaluateShaderNode(input: unknown): ShaderValue {
       case 'atan': return Math.atan2(value as number, evaluateShaderNode(node.bNode) as number);
       case 'asin': return Math.asin(value as number);
       case 'clamp': return Math.min(Math.max(value as number, evaluateShaderNode(node.bNode) as number), evaluateShaderNode(node.cNode) as number);
-      case 'max': return Math.max(value as number, evaluateShaderNode(node.bNode) as number);
       case 'min': return Math.min(value as number, evaluateShaderNode(node.bNode) as number);
       case 'exp2': return 2 ** (value as number);
       case 'fract': return (value as number) - Math.floor(value as number);
