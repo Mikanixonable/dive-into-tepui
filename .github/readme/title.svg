@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="680" viewBox="0 0 1400 680" role="img" aria-labelledby="title desc">
+<title id="title">Dive into Tepui タイトル</title>
+<desc id="desc">ゲームのタイトル画面をもとに、黒、乳白、蛍光赤、電気青で構成したタイトルビジュアル。楔形文字、フランス語、マオリ語のフレーバーテキストを含む。</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset=".58" stop-color="#0e1014"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+  <radialGradient id="v" cx=".68" cy=".4" r=".58"><stop stop-color="#ff3155" stop-opacity=".12"/><stop offset=".55" stop-color="#3478ff" stop-opacity=".05"/><stop offset="1" stop-color="#08090d" stop-opacity="0"/></radialGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <style>
+    .sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+    .serif{font-family:"Times New Roman","Yu Mincho","Hiragino Mincho ProN",serif}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}
+    .cuneiform{font-family:"Noto Sans Cuneiform","Segoe UI Historic",serif}
+    .t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+  </style>
+</defs>
+<rect width="1400" height="680" rx="28" fill="url(#bg)"/><rect width="1400" height="680" rx="28" fill="url(#v)"/>
+<g opacity=".2" stroke="#48506a">
+  <path d="M0 112H1400M0 224H1400M0 336H1400M0 448H1400M0 560H1400"/>
+  <path d="M140 0V680M280 0V680M420 0V680M560 0V680M700 0V680M840 0V680M980 0V680M1120 0V680M1260 0V680"/>
+</g>
+<g transform="translate(915 305)" opacity=".95">
+  <path d="M-250 94C-172-18-65-127 78-118 213-110 287 3 222 108-11 31-76 161-250 94Z" fill="none" stroke="#48506a" stroke-width="2"/>
+  <path d="M-222 73C-141-46-27-89 83-76 197-62 244 18 196 91" fill="none" stroke="#ff3155" stroke-width="3" opacity=".72"/>
+  <circle cx="172" cy="-24" r="8" fill="#ff3155" filter="url(#glow)"/>
+  <circle cx="-83" cy="121" r="6" fill="#3478ff" filter="url(#glow)"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M-160-113C-119-72-72-61-29-88" stroke="#f1edf0" stroke-width="18"/>
+    <path d="M-7-157C33-119 68-126 96-164" stroke="#a8aec0" stroke-width="14"/>
+    <path d="M101 132C137 95 177 89 218 117" stroke="#d6d6d0" stroke-width="17"/>
+    <ellipse cx="219" cy="-125" rx="51" ry="28" stroke="#ff6b82" stroke-width="14" transform="rotate(-18 219 -125)"/>
+    <path d="M-257 2C-221-41-186-36-153 3M-205 8L-168 47" stroke="#48506a" stroke-width="13"/>
+  </g>
+</g>
+
+<g transform="translate(78 72)">
+  <text class="mono a" font-size="13" letter-spacing="2.4">SORTIE SELECT · 公暦20115年</text>
+  <text x="0" y="105" class="sans t" font-size="108" font-weight="650" letter-spacing="-7">Dive</text>
+  <text x="82" y="194" class="sans t" font-size="108" font-weight="650" letter-spacing="-7">into</text>
+  <text x="164" y="283" class="sans an" font-size="108" font-weight="650" letter-spacing="-7">Tepui</text>
+  <text x="264" y="46" class="mono s" font-size="15">∴03</text>
+  <text x="326" y="139" class="mono s" font-size="15">ECI₀</text>
+  <text x="505" y="228" class="mono s" font-size="15">Ω⁺</text>
+  <text x="6" y="341" class="serif a" font-size="28">軌道力学は、そのまま戦場になる。</text>
+</g>
+
+<g transform="translate(78 478)">
+  <text class="cuneiform t" font-size="26">𒀭𒂗𒆠 𒀀𒈾 𒀭𒊹</text>
+  <text y="45" class="serif an" font-size="24">L’orbite est le champ de bataille.</text>
+  <text y="88" class="serif b" font-size="24">Te ara o ngā whetū.</text>
+  <text y="126" class="mono d" font-size="12" letter-spacing="1.2">古い文字と航法の声を、静かな軌道計器の上へ重ねる。</text>
+</g>
+
+<g transform="translate(1006 527)">
+  <rect width="315" height="89" rx="15" fill="#0e1014" stroke="#48506a"/>
+  <text x="18" y="27" class="mono a" font-size="12" letter-spacing="1.4">リンク状態</text>
+  <text x="18" y="53" class="mono t" font-size="16">安定 · h = 420.2 km · i = 51.6°</text>
+  <text x="18" y="75" class="mono d" font-size="12">元期 06:14:28.03</text>
+</g>
+</svg>
