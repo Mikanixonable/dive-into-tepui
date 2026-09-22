@@ -128,7 +128,7 @@ export class Input {
     this.notePointerKind('mouse');
   };
 
-  // keyup を受け、Command キーなら押下中状態を丸ごと解除し、それ以外は押下中セットから外す。
+  // keyup を受け、Command キーなら押下中状態を一括解除し、それ以外は押下中セットから除外する。
   private readonly handleKeyUp = (e: KeyboardEvent): void => {
     if (META_CODES.includes(e.code)) this.releaseAll();
     else this.keys.delete(e.code);
