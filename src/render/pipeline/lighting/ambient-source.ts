@@ -9,7 +9,7 @@ import { REFERENCE_RADIANT_INTENSITY, type SunLight } from '../sun-light';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import type { ShadingSample } from './shading-sample';
-import type { EnvironmentOcclusion } from '../screen-space/environment-occlusion';
+import type { ScreenSpaceLight } from '../screen-space/screen-space-light';
 
 // 1 天文単位で SUN_IRRADIANCE_1AU になる放射照度へ掛ける割合。
 const AMBIENT_FRACTION = 0.03;
@@ -26,9 +26,9 @@ export class AmbientSource implements LightSource {
   // 描画設定「遮蔽と照り返し」がオフでないか。
   private occluded = false;
 
-  // sunLight からは減衰の中心となる位置を読む。occlusion は近くの構造が空を塞ぐ割合で、
+  // sunLight からは減衰の中心となる位置を読む。screenSpaceLight は近くの構造が空を塞ぐ割合で、
   // setOccluded(true) のあいだ読む。
-  constructor(private readonly sunLight: SunLight, private readonly occlusion: EnvironmentOcclusion) {}
+  constructor(private readonly sunLight: SunLight, private readonly screenSpaceLight: ScreenSpaceLight) {}
 
   // 基準の放射照度へ掛ける割合。0 で消灯。
   get fraction(): number { return this.fractionUniform.value; }
@@ -43,24 +43,25 @@ export class AmbientSource implements LightSource {
   material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     const cached = this.materials.get(this.occluded);
     if (cached !== undefined) return cached;
-    const material = contributionMaterial(sample, this.contribution(sample, this.occluded ? this.occlusion : null));
+    const material = contributionMaterial(
+      sample, this.contribution(sample, this.occluded ? this.screenSpaceLight : null));
     this.materials.set(this.occluded, material);
     return material;
   }
 
   // 拡散は、その画素へ届く環境光の放射照度そのもの。鏡面は同じ光を放射輝度 E/π の一様な環境と
   // して映したもので、粗さによらず一定 — 拡散を持たない金属面が影の中で真っ黒に残らないための項。
-  // occlusion が null でなければ、どちらも近くの構造が空を塞ぐぶん弱める。
-  private contribution(sample: ShadingSample, occlusion: EnvironmentOcclusion | null): LightContribution {
+  // screenSpaceLight が null でなければ、どちらも近くの構造が空を塞ぐぶん弱める。
+  private contribution(sample: ShadingSample, screenSpaceLight: ScreenSpaceLight | null): LightContribution {
     const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
     const irradiance: Vec3Node = vec3(REFERENCE_RADIANT_INTENSITY)
       .div(dot(toSun, toSun)).mul(this.fractionUniform);
     const radiance = irradiance.div(PI);
-    if (occlusion === null) return { diffuse: irradiance, specular: radiance };
+    if (screenSpaceLight === null) return { diffuse: irradiance, specular: radiance };
     // 拡散は空の見えている割合、鏡面は鏡の向きのローブの見えている割合で弱める。
     return {
-      diffuse: irradiance.mul(occlusion.uniformFactor(sample)),
-      specular: radiance.mul(occlusion.lobeFactor(sample, sample.reflected, sample.roughness)),
+      diffuse: irradiance.mul(screenSpaceLight.ambientVisibility(sample)),
+      specular: radiance.mul(screenSpaceLight.specularVisibility(sample)),
     };
   }
 
