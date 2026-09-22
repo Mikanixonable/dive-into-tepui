@@ -261,10 +261,29 @@ glTF 側のマテリアル名で自動マッピングするか、Blender 側で�
 
 ## 確認が必要な点
 
-- **Blender の利用可否**: この計画では Blender でモデルを手作業で作ることを前提としている。
-  Blender が使えない環境であれば、プロシージャルの精細化（現行方式の延長）に切り替える。
-- **Node.js での GLTFLoader**: `three/examples/jsm/loaders/GLTFLoader.js` は Node.js 環境では
-  FileLoader が動かない可能性がある。`fs.readFileSync` でバイナリを読み、
-  `GLTFLoader.parse()` でバッファから直接パースする方式を使う。
-- **shipModules.json のサイズ**: 現在 70KB。精細なモデルを入れると数百KB〜数MBになる可能性がある。
-  Web ゲームとしての初期ロード時間への影響を確認する。gzip 圧縮後のサイズで判断する。
+- **Blender の利用可否**: この計画では Blender でモデルを手作業で作ることを前提としていたが、
+  `/Applications/Blender.app` (Blender 5.0.1) の headless 自動実行スクリプト (`tools/model-builder/blender/build-ship-modules.py`)
+  を作成し、完全自動生成パイプラインとして完遂した。
+- **Node.js での GLTFLoader**: `three/examples/jsm/loaders/GLTFLoader.js` の `loader.parse()` が非同期
+  コールバックであるため、`Promise` ベースのローダー (`loadGlbScene`, `applyGlbModel`) を作成し、
+  `tools/model-builder/ship-modules.mjs` および `export-models.mjs` を async/await 化して統合した。
+- **shipModules.json のサイズ**: 現在 約 558KB でコンパクトに収まっており、Web ゲームのロードに支障ない範囲。
+
+## 実施結果 (2026-09-22)
+
+1. **太陽電池の対称性修正**:
+   - `src/game/ship/ship-assembly-transform.ts` の `sideMountTransform` を改修し、`sideSlotRotation(slot)` を導入。
+   - 4つの側面スロット（`+x`, `-x`, `+y`, `-y`）でローカル +X を船尾方向 `(0, 0, -1)` に統一することで、太陽電池およびラジエーターが船体に対して完全に線対称・鏡像対称に展開されるよう修正した。
+2. **モジュール形状の本格化と突起・板の全廃**:
+   - 以前のプロシージャル直方体・円柱突起を廃止し、Blender 5.0.1 スクリプトによる 18 種類の航空宇宙 GLB モデル（コックピット、タンク、ノズル、トラス、ドッキング機構など）へ全面移行。
+   - コックピット: ソユーズ・マーキュリー風のなめらかな曲面テーパーカプセル、ジェミニ風観察窓、アブレーションヒートシールド、CBMドッキングカラー。
+   - タンク: サドルクランプ付き極低温推進剤配管、エルボ継手、ドーム端面、構造トラス。
+   - 推進器: 放物線 Rao ノズルベルプロファイル、ジンバルアクチュエータ、環状マニホールド配管。
+   - RCS/ドッキング/兵装/装甲: 4ノズルクラスター、APASガイドペタル、リコイルダンパー付き砲身、複合装甲ボルト締め。
+3. **契約テスト・型検査の通過**:
+   - `npm run test:render`: 227/227 全テストパス（`tank-band`、`interface-ring`、semantic anchor、展開翼テスト完全一致）。
+   - `npm run test:game`: 317/317 全テストパス。
+   - `npm run typecheck`: エラー 0。
+4. **描画確認**:
+   - `npm run render-lab:shot` により、高精細なディテールと完全に対称な展開が確認された。
+
