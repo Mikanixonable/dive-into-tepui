@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420"><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.sans{font-family:system-ui,-apple-system,sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.f{fill:#5f5a65}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:7 7}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="420" rx="20" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">SHIP ASSEMBLY</text><text x="55" y="72" class="m d k">MODULE INSTANCES CONNECT INTO ONE PHYSICAL ASSEMBLY</text>
+<g transform="translate(75 118)">
+<rect x="0" y="85" width="155" height="80" rx="14" class="box"/><text x="20" y="116" class="sans t v">Cockpit</text><text x="20" y="141" class="m d sm">control</text>
+<rect x="205" y="70" width="165" height="110" rx="14" class="box"/><text x="225" y="107" class="sans t v">Tank</text><text x="225" y="132" class="m d sm">main / RCS fuel</text>
+<rect x="425" y="85" width="155" height="80" rx="14" class="box"/><text x="445" y="116" class="sans t v">Thruster</text><text x="445" y="141" class="m d sm">main propulsion</text>
+<rect x="205" y="-5" width="165" height="55" rx="12" class="box"/><text x="225" y="29" class="sans t v">Solar panel</text>
+<rect x="205" y="200" width="165" height="55" rx="12" class="box"/><text x="225" y="234" class="sans t v">Radiator</text>
+<rect x="635" y="70" width="155" height="110" rx="14" class="box"/><text x="655" y="107" class="sans t v">Dock</text><text x="655" y="132" class="m d sm">connect / build</text>
+<rect x="855" y="70" width="185" height="110" rx="14" class="box"/><text x="875" y="107" class="sans t v">Other assembly</text><text x="875" y="132" class="m d sm">merged on docking</text>
+<path d="M155 125H205M370 125H425M580 125H635M790 125H855M288 50V70M288 180V200" class="line"/>
+<circle cx="180" cy="125" r="5" fill="#ff3155"/><circle cx="397" cy="125" r="5" fill="#ff3155"/><circle cx="607" cy="125" r="5" fill="#3478ff"/><circle cx="822" cy="125" r="5" fill="#3478ff"/>
+<text x="4" y="298" class="m a k">STRUCTURAL GRAPH</text><text x="4" y="323" class="m b sm">damage, fuel, deployment and role live on the modules</text>
+</g></svg>

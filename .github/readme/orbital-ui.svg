@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="470" viewBox="0 0 1200 470"><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.sans{font-family:system-ui,-apple-system,sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.f{fill:#5f5a65}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:7 7}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="470" rx="20" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">ORBITAL UI & REFERENCE FRAMES</text><text x="55" y="72" class="m d k">CAMERA AND TRAJECTORY DISPLAY CAN USE INERTIAL OR ROTATING FRAMES</text>
+<g transform="translate(55 110)">
+<rect x="0" y="0" width="700" height="310" rx="16" class="box"/>
+<circle cx="325" cy="157" r="47" fill="#48506a" stroke="#d6d6d0"/><circle cx="515" cy="157" r="18" fill="#a8aec0"/><path d="M325 157H515" class="line"/>
+<circle cx="455" cy="157" r="5" fill="#ff3155"/><text x="444" y="136" class="m a sm">L1</text><circle cx="560" cy="157" r="5" fill="#ff3155"/><text x="552" y="136" class="m a sm">L2</text>
+<path d="M325 157L424 77" class="signal" marker-end="url(#arrB)"/><text x="427" y="73" class="m s sm">x̂ / orbital frame</text><path d="M325 157V54" class="accent" marker-end="url(#arrR)"/><text x="337" y="56" class="m a sm">ẑ normal</text>
+<ellipse cx="325" cy="157" rx="247" ry="115" class="line dash"/><circle cx="392" cy="55" r="6" fill="#eeeaf5"/><text x="400" y="49" class="m t sm">trajectory sample</text>
+<text x="22" y="287" class="m d sm">trajectory points are transformed at their own sample time</text>
+<g transform="translate(740 0)"><rect width="350" height="310" rx="16" class="box"/><text x="20" y="34" class="m a k">MAP VIEW / ORBIT FRAME</text>
+<text x="20" y="74" class="m d xs">ORIGIN</text><rect x="20" y="87" width="310" height="38" rx="10" class="soft"/><text x="34" y="112" class="m t sm">Earth / Moon / selected body</text>
+<text x="20" y="151" class="m d xs">ROTATION</text><rect x="20" y="164" width="310" height="38" rx="10" class="soft"/><text x="34" y="189" class="m t sm">inertial · orbital · spin</text>
+<text x="20" y="228" class="m d xs">MANEUVER GIZMO</text><text x="20" y="254" class="m a sm">PRO / RET</text><text x="122" y="254" class="m s sm">NRM / ANM</text><text x="235" y="254" class="m b sm">IN / OUT</text>
+<text x="20" y="286" class="m d sm">camera follow and trajectory frame are selectable</text></g>
+</g></svg>

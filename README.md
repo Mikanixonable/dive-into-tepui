@@ -1,194 +1,284 @@
-# Dive into Tepui
+<h1 align="center">Dive into Tepui</h1>
 
-軌道が戦場になる、WebGPU 製の 3D 軌道力学シューティングゲーム。
+<p align="center">
+  <strong>Orbital mechanics is the battlefield.</strong><br>
+  <sub>軌道遷移・姿勢制御・会合・迎撃を、そのままゲームプレイにする WebGPU 3D 軌道力学シューティング。</sub>
+</p>
 
-[ブラウザでプレイ](https://mikanixonable.github.io/dive-into-tepui/) ・ [GitHub リポジトリ](https://github.com/Mikanixonable/dive-into-tepui)
+<p align="center">
+  <a href="https://mikanixonable.github.io/dive-into-tepui/"><strong>▶ Play in Browser</strong></a>
+  ·
+  <a href="#gameplay">Gameplay</a>
+  ·
+  <a href="#orbital-maneuvering">Maneuvering</a>
+  ·
+  <a href="#earth-rendering">Rendering</a>
+  ·
+  <a href="#development">Development</a>
+</p>
 
-地球や月をはじめとする太陽系の天体を舞台に、宇宙船の姿勢と並進を制御しながら敵機を迎撃します。時間加速で軌道上の長距離移動を短縮し、必要に応じてマップビューでマニューバーを計画します。
+<p align="center">
+  <a href="https://github.com/Mikanixonable/dive-into-tepui/actions/workflows/build.yml">
+    <img alt="CI" src="https://github.com/Mikanixonable/dive-into-tepui/actions/workflows/build.yml/badge.svg">
+  </a>
+  <img alt="WebGPU" src="https://img.shields.io/badge/WebGPU-ff3155?logo=googlechrome&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3478ff?logo=typescript&logoColor=white">
+  <img alt="Three.js" src="https://img.shields.io/badge/Three.js-0.185.1-0e1014?logo=threedotjs&logoColor=white">
+  <img alt="Node.js 20+" src="https://img.shields.io/badge/Node.js-20%2B-48506a?logo=nodedotjs&logoColor=white">
+  <img alt="Last commit" src="https://img.shields.io/github/last-commit/Mikanixonable/dive-into-tepui?color=ff6b82">
+</p>
 
-## ゲームの全体像
+<p align="center">
+  <img src=".github/readme/hero-orbit.svg" alt="Dive into Tepui orbital combat overview" width="100%">
+</p>
 
-このゲームでは、敵機へ直進するだけでは勝てません。機首の向きや推力ベクトル、軌道上の位置と速度を考慮しながら、接近・離脱・軌道変更・射撃を行います。
+## At a glance
 
-- 機体座標系の並進と RCS による姿勢制御
-- 時間加速を使った軌道上の移動
-- 敵機の軌道と相対速度を考慮した迎撃
-- マップビューでの軌道表示とマニューバーノード編集
-- 大気抵抗や高次重力場を含むリアルタイム軌道シミュレーション
-- クリエイティブモードでの自由な物体配置と軌道実験
+| | |
+| --- | --- |
+| **Runtime** | Browser / WebGPU |
+| **Renderer** | Three.js WebGPU renderer + TSL |
+| **Language** | TypeScript |
+| **Simulation** | RK4, Kepler dynamics, degree-2 gravity, drag, SRP, rigid-body attitude |
+| **Navigation** | Maneuver nodes, Lagrange points, inertial / rotating reference frames |
+| **Persistence** | Browser local storage + export |
+| **Deployment** | GitHub Pages |
 
-## まず遊ぶ
+> [!TIP]
+> [GitHub Pages 版を起動](https://mikanixonable.github.io/dive-into-tepui/)し、ステージを選択してください。ゲーム中は <kbd>H</kbd> で操作説明を表示できます。
 
-### ブラウザ版
+---
 
-[https://mikanixonable.github.io/dive-into-tepui/](https://mikanixonable.github.io/dive-into-tepui/)
+<a id="gameplay"></a>
+## Gameplay
 
-WebGPU に対応したブラウザが必要です。起動後にステージを選択し、ゲーム中に `H` キーを押すと操作説明を表示できます。
+<p align="center">
+  <img src=".github/readme/gameplay-loop.svg" alt="Target, maneuver, time warp, rendezvous and combat gameplay loop" width="100%">
+</p>
 
-### 動作環境
+戦闘ビューでは姿勢・推力・照準を直接操作し、マップビューでは軌道・マニューバーノード・時間加速を扱います。**近距離戦と軌道遷移が同じゲーム状態の上で連続しています。**
 
-- WebGPU 対応ブラウザ（最新版の Chrome / Edge など）
-- 地球表面データを読み込むためのネットワーク接続
-- 開発する場合は Node.js 20 以上を推奨
+### Game modes
 
-### ローカルで起動する
+| Mode | Description |
+| --- | --- |
+| **stage 00** | 弾薬を回収してから始まる無限耐久サバイバル |
+| **stage 0** | 周囲 5 km の敵を相手にする 120 秒スコアアタック |
+| **stage 1** | 高度 420 km の LEO で近傍軌道の敵 5 機を撃破 |
+| **stage 2** | 通常軌道と高楕円軌道が混在する戦域 |
+| **CREATIVE** | 軌道要素・ラグランジュ点などを使って物体を配置するサンドボックス |
+
+---
+
+<a id="orbital-maneuvering"></a>
+## Orbital maneuvering
+
+<p align="center">
+  <img src=".github/readme/maneuver-navigation.svg" alt="Maneuver nodes for low orbit transfers and Lagrange-point navigation" width="100%">
+</p>
+
+マニューバーノードは噴射後の状態と実行時刻を持ち、**PRO / RET、NRM / ANM、IN / OUT** の3軸で Δv を編集できます。L1〜L5 は二天体系の回転座標から ECI 状態へ変換され、ナビゲーションやマップ表示の基準として使われます。
+
+自動で最適遷移を生成するのではなく、プレイヤーが予測軌道を見ながらノードを置いて軌道を組み立てます。
+
+---
+
+## Spacecraft assembly
+
+<p align="center">
+  <img src=".github/readme/ship-assembly.svg" alt="Graph-based spacecraft assembly" width="100%">
+</p>
+
+船体は **ShipAssembly** として、module instance と connection edge のグラフで保持されます。cockpit、tank、thruster、RCS、weapon、dock、solar panel、radiator、booster などが個別の状態を持ちます。
+
+ドッキングした船体は統合された assembly として扱われ、燃料・損傷・展開状態などもモジュール単位で保存されます。
+
+---
+
+## Rendezvous & combat
+
+<p align="center">
+  <img src=".github/readme/combat-rendezvous.svg" alt="Relative motion, lead aiming and projectile combat" width="100%">
+</p>
+
+敵との交戦では距離だけでなく**相対速度**が重要です。ターゲット運動と弾速からリード点を求め、実体弾を発射します。射撃は高倍率の時間加速中には行えません。
+
+---
+
+<a id="earth-rendering"></a>
+## Earth rendering
+
+<p align="center">
+  <img src=".github/readme/earth-rendering.svg" alt="Earth surface and atmospheric rendering layers" width="100%">
+</p>
+
+地球は一枚の画像ではなく、**surface tiles / terrain / atmosphere / clouds / airglow / aurora / illumination** を別系統として構成します。地表はタイル要求・resident cache・page table を経て GPU material へ渡されます。
+
+描画側には WebGPU / TSL、ray marching、blue noise、熱放射、雲の複数描画経路などの独立した実装があります。
+
+---
+
+## Orbit dynamics
+
+<p align="center">
+  <img src=".github/readme/orbital-perturbations.svg" alt="Orbital perturbations including J2, C22, atmospheric drag and solar radiation pressure" width="100%">
+</p>
+
+軌道伝播は単純な二体問題だけではありません。点質量重力に加えて **J2 / C22 の2次重力場、多体重力、大気抵抗、太陽放射圧、日照・遮蔽**を扱います。地球では主に J2、非軸対称性を持つ天体では C22 も評価できます。
+
+大気圏では空力荷重・加熱・燃え尽きも計算します。物理計算は `src/physics/` に分離され、Three.js に依存しません。
+
+---
+
+## Orbital UI & reference frames
+
+<p align="center">
+  <img src=".github/readme/orbital-ui.svg" alt="Orbital map UI with inertial and rotating reference frames" width="100%">
+</p>
+
+マップビューは表示原点と回転を分けて選択でき、**慣性系、公転回転系、自転系**を扱います。軌道線は各サンプル時刻で座標変換されるため、回転する基準系でも時間変化を保ったまま表示できます。
+
+同じ画面上でラグランジュ点、予測軌道、マニューバーノード、Δv gizmo を確認できます。
+
+---
+
+## Controls
+
+<details>
+<summary><strong>Flight & combat</strong></summary>
+
+| Key | Action |
+| --- | --- |
+| <kbd>W</kbd> / <kbd>S</kbd> | 前進 / 後退 |
+| <kbd>A</kbd> / <kbd>D</kbd> | 左 / 右並進 |
+| <kbd>Q</kbd> / <kbd>E</kbd> | 上 / 下並進 |
+| <kbd>I</kbd> / <kbd>K</kbd> | Pitch |
+| <kbd>J</kbd> / <kbd>L</kbd> | Yaw |
+| <kbd>U</kbd> / <kbd>O</kbd> | Roll |
+| <kbd>P</kbd> | RCS 回転制動 |
+| <kbd>F</kbd> | Prograde |
+| <kbd>C</kbd> | Prograde hold |
+| <kbd>1</kbd>〜<kbd>4</kbd> | 推力レベル |
+| <kbd>T</kbd> | ターゲット選択 |
+| <kbd>Z</kbd> | 照準ズーム |
+| <kbd>Space</kbd> / 左クリック | 射撃 |
+| <kbd>5</kbd> / <kbd>6</kbd> | ブースター分離 / 点火 |
+| <kbd>7</kbd> / <kbd>8</kbd> | 太陽電池パドル |
+| <kbd>9</kbd> / <kbd>0</kbd> | ラジエーター |
+
+</details>
+
+<details>
+<summary><strong>Orbit & map</strong></summary>
+
+| Key | Action |
+| --- | --- |
+| <kbd>,</kbd> / <kbd>.</kbd> | 時間倍率を下げる / 上げる |
+| <kbd>N</kbd> | 次のマニューバーノードまでワープ |
+| <kbd>M</kbd> | Combat / Map view |
+| <kbd>W</kbd> / <kbd>S</kbd> | Δv: PRO / RET |
+| <kbd>A</kbd> / <kbd>D</kbd> | Δv: NRM / ANM |
+| <kbd>Q</kbd> / <kbd>E</kbd> | Δv: IN / OUT |
+| <kbd>X</kbd> | ノード / 軌道計画を削除 |
+
+</details>
+
+<details>
+<summary><strong>Camera & save</strong></summary>
+
+| Key / gesture | Action |
+| --- | --- |
+| 矢印キー / ドラッグ | カメラ回転 |
+| 二本指 / 中ボタンドラッグ | Pan |
+| ピンチ / ホイール | Zoom |
+| ダブルタップ / ダブルクリック | Focus |
+| <kbd>G</kbd> | 機体姿勢へ追従 |
+| <kbd>H</kbd> | 操作説明 |
+| <kbd>ESC</kbd> | ポーズ / 設定 |
+| <kbd>F3</kbd> | デバッグ情報 |
+| <kbd>F5</kbd> | 手動セーブ |
+| <kbd>F9</kbd> | セーブ管理 |
+
+</details>
+
+---
+
+## Runtime structure
+
+<p align="center">
+  <img src=".github/readme/runtime-structure.svg" alt="Simulation, game model, presentation and rendering structure" width="100%">
+</p>
+
+物理・ゲーム状態を正本とし、HUD・軌道線・マーカーなどはそこから導出します。描画や DOM がゲーム状態の所有者にならないよう、フレーム処理は概ね **Input → Simulation → Presentation → Render** の順に進みます。
+
+### Repository map
+
+```text
+src/
+├─ math/       数学・幾何・数値処理
+├─ physics/    軌道力学・物理
+├─ game/       ゲーム状態・戦闘・船・軌道計画
+├─ render/     Three.js / WebGPU 描画
+├─ hud/        共通 UI
+├─ input/      入力
+├─ audio/      音声
+├─ settings/   ユーザー設定
+├─ launcher/   ステージ / セーブ
+└─ run/        フレーム処理
+```
+
+---
+
+<a id="development"></a>
+## Development
+
+### Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-開発サーバーが表示する URL をブラウザで開いてください。使用可能なポートが自動的に選択されるため、常に `8080` とは限りません。
+Node.js 20 以上、WebGPU 対応ブラウザを推奨します。
 
-### 本番ビルド
+### Useful commands
 
-```bash
-npm run build
-```
-
-生成物は `docs/` に出力されます。
-
-## ステージとゲームモード
-
-| モード | 内容 |
+| Command | Purpose |
 | --- | --- |
-| `stage 00` | 弾薬を回収してから始まる、敵の波状攻撃から生き残る無限耐久サバイバル |
-| `stage 0` | 周囲 5 km 以内の色分けされた敵集団を相手にする、制限時間 120 秒の撃墜数スコアアタック |
-| `stage 1` | 高度 420 km の地球低軌道戦域。近傍軌道にいる敵 5 機を撃破する |
-| `stage 2` | 通常軌道とモルニヤ級の高楕円軌道に敵が分布する戦域。`stage 1` クリア後に解放される |
-| `CREATIVE` | 艦艇、敵、弾薬、燃料、基地などを軌道要素やラグランジュ点を使って自由に配置する実験モード |
+| `npm run typecheck` | TypeScript 型チェック |
+| `npm run test` | 全テスト |
+| `npm run test:physics` | 物理テスト |
+| `npm run test:game` | ゲームテスト |
+| `npm run test:render` | 描画テスト |
+| `npm run lint` | ESLint |
+| `npm run check:boundaries` | アーキテクチャ境界検査 |
+| `npm run render-lab` | 描画実験環境 |
+| `npm run cloud-lab` | 雲の実験環境 |
+| `npm run bgm-lab` | BGM 試聴環境 |
+| `npm run ci` | 総合検証 |
 
-`stage 2` では、マップビューでの軌道遷移計画が攻略の鍵となります。`CREATIVE` では、補給や敵の波状攻撃のオン／オフを個別に切り替えられます。
+CI は UI style、lint、境界検査、型チェック、テスト、Earth surface contract、外部地表データ、production build などを検査します。
 
-## 基本のプレイサイクル
+---
 
-1. `T` キーで敵機をターゲットに選択
-2. `F` キーで機首をプログレード（順行）方向に向ける
-3. `W/S/A/D/Q/E` キーで推進し、敵の軌道へ接近
-4. `,` と `.` キーで時間加速を調整し、会合までの所要時間を短縮
-5. 必要に応じて `M` キーでマップビューを開き、計画軌道を編集
-6. 射撃可能な時間倍率（×4 以下）に戻し、照準を合わせて `Space` キーで射撃
-7. `H` キーで詳細操作を表示、`ESC` キーでポーズ・設定メニューを開く
+## Scientific data & credits
 
-## 操作方法
-
-### 機体と戦闘
-
-| キー | 動作 |
+| Data | Source / use |
 | --- | --- |
-| `W` / `S` | 機体座標系の前進 / 後退 |
-| `A` / `D` | 機体座標系の左 / 右 |
-| `Q` / `E` | 機体座標系の上 / 下 |
-| `I` / `K` | ピッチ下げ / 上げ |
-| `J` / `L` | ヨー右 / 左 |
-| `U` / `O` | ロール左 / 右 |
-| `P` | RCS 回転制動の切り替え |
-| `F` | 機首をプログレード方向へ向ける |
-| `V` | 姿勢微調整モードの切り替え |
-| `C` | プログレード方向への姿勢保持の切り替え |
-| `1` / `2` / `3` / `4` | 並進推進の出力レベルを切り替え |
-| `T` | ターゲット選択 |
-| `Z` | 照準ズーム |
-| `Space` / 左クリック | 機関砲を発射（時間倍率 ×4 以下） |
-| `R` | マニュアル装填。決着画面では同じステージへ再出撃 |
-| `5` / `6` | ブースター分離 / 点火・停止 |
-| `7` / `8` | 左右の太陽電池パドルを展開・収納 |
-| `9` / `0` | 左右のラジエーターを展開・収納 |
+| **Planet textures** | Solar System Scope — CC BY 4.0 |
+| **Planetary mosaics** | USGS Astrogeology Science Center |
+| **Earth surface / terrain / climate** | NASA Earth Observatory、NOAA NCEI ETOPO、ERA5 |
+| **Coastlines** | Natural Earth |
+| **Protein structures** | RCSB Protein Data Bank |
 
-### 時間とマップ
+---
 
-| キー | 動作 |
-| --- | --- |
-| `,` / `.` | 時間加速を 1 段下げる / 上げる |
-| `N` | 次のマニューバーノードまで自動ワープ |
-| `M` | 戦闘ビューとマップビューを切り替え |
-| `W` / `S` | ノードの Δv を PRO / RET 方向へ調整 |
-| `A` / `D` | ノードの Δv を NRM / ANM 方向へ調整 |
-| `Q` / `E` | ノードの Δv を IN / OUT 方向へ調整 |
-| `X` | 選択中のノード、または計画全体を削除 |
+## Known limitations
 
-マップビューでは、計画軌道をクリックしてノードを配置できます。円形ハンドルをドラッグして実行時刻を変更し、Δv ハンドルをドラッグして各推進成分を直接調整できます。
+- WebGPU 非対応ブラウザでは起動できません。
+- 地球表面の高精細データは実行時に読み込みます。
+- セーブデータはブラウザのローカルストレージに保存されます。
 
-### カメラ・画面・保存
-
-| キー・操作 | 動作 |
-| --- | --- |
-| 矢印キー | カメラのヨー / ピッチ |
-| `Num0` / `Num1`（`/` / `_`） | カメラのロール |
-| `G` | カメラを機体姿勢へ追従させる |
-| ドラッグ | カメラ回転 |
-| 二本指ドラッグ / 中ボタンドラッグ | 視点パン |
-| ピンチ / ホイール | ズーム。二本指のひねりはロール |
-| ダブルタップ / ダブルクリック | 対象へフォーカス |
-| `H` | 操作説明の開閉 |
-| `ESC` | ポーズ・設定メニュー |
-| `F3` | デバッグ情報 |
-| `F5` | 手動セーブ |
-| `F9` | セーブデータ画面 |
-
-## HUD とマップビュー
-
-- `SHIP STATUS`: ミッション経過時間、時間倍率、推進出力、RCS 状態など
-- `ORBIT`: 高度、速度、近地点・遠地点、軌道傾斜角、公転周期など
-- `TARGET`: ターゲットまでの距離、接近速度、相対速度、耐久値など
-- `CONTACTS`: 周囲の敵機と選択中のターゲット
-- 画面中央のマーカー: 機首方向、進行方向、ターゲット方向、リード照準
-
-マップビューでは、天体・機体・軌道・予測軌道を俯瞰でき、基準座標系や表示フレームを切り替えられます。計画したノードへは `N` キーで実行地点まで自動ワープできます。
-
-## セーブと設定
-
-セーブデータはブラウザのローカルストレージに保存されます。出撃時に保存されるほか、プレイ中も約60秒ごとに自動保存されます。`F5` キーで手動セーブ、`F9` キーでセーブデータ管理画面を開けます。
-
-セーブデータはブラウザのサイトデータ削除や環境変更で失われる可能性があります。必要に応じて、セーブデータ管理画面からエクスポートしてください。
-
-設定画面では、グラフィックス、BGM、テーマを変更できます。
-
-## 実装の特徴
-
-- RK4 積分による軌道運動のシミュレーション
-- 点質量重力に加えた J2 / C22 重力場
-- 大気抵抗、太陽放射圧、日照・影の判定
-- 大気圏突入時の空力荷重、加熱、燃え尽き
-- 敵機のリード照準と射撃 AI
-- 地球・月を含む太陽系の天体モデルと天体暦
-- 地表、雲、海岸線、オーロラなどの地球表現
-- Three.js WebGPU レンダラーによる 3D 描画
-- 破壊された機体や薬莢の剛体物理
-- クリエイティブモードで利用できるタンパク質構造モデル
-
-## 開発者向け
-
-| コマンド | 用途 |
-| --- | --- |
-| `npm run dev` | 開発サーバーを起動 |
-| `npm run typecheck` | TypeScript の型チェック |
-| `npm run test` | 全テストを実行 |
-| `npm run test:physics` | 物理層のテストを実行 |
-| `npm run test:math` | 数学層のテストを実行 |
-| `npm run test:game` | ゲーム層のテストを実行 |
-| `npm run test:render` | 描画層のテストを実行 |
-| `npm run lint` | ESLint を実行 |
-| `npm run ci` | CI 相当の総合チェックを実行 |
-| `npm run render-lab` | 描画の実験環境を起動 |
-| `npm run cloud-lab` | 雲の実験環境を起動 |
-| `npm run bgm-lab` | BGM の試聴環境を起動 |
-
-開発方針・仕様・ドキュメントの構成は [DEVELOP/README.md](DEVELOP/README.md) を参照してください。
-
-## 既知の注意事項
-
-- WebGPU 非対応のブラウザでは起動できません。
-- 地球表面の高精細データは実行時に読み込まれるため、初回起動や低速なネットワークでは表示に時間がかかる場合があります。
-- ステージやクリエイティブ機能は開発中の要素を含みます。
-- セーブデータはブラウザ単位で管理されます。
-
-## クレジットとデータ出典
-
-- 惑星テクスチャ: [Solar System Scope](https://www.solarsystemscope.com/textures/)（CC BY 4.0）。配信量削減のため、月面と雲のテクスチャは縮小し、雲はグレースケール化して収録しています。
-- 衛星テクスチャ（フォボス、イオ、エウロパ、ガニメデ、カリスト、タイタン）: [USGS Astrogeology Science Center](https://astrogeology.usgs.gov/) の実写全球モザイク（パブリックドメイン）
-- 地球表面・地形・気候データ: NASA Earth Observatory、NOAA NCEI ETOPO、GSHHG、Copernicus Climate Change Service / ERA5 など
-- 海岸線データ: Natural Earth および関連する収録データ
-- タンパク質構造データ: [RCSB Protein Data Bank](https://www.rcsb.org/)
-
-各データの利用条件は、配布元のライセンスと `assets-src/` 内の出典情報を確認してください。
+<p align="center">
+  <a href="https://mikanixonable.github.io/dive-into-tepui/"><strong>Launch Dive into Tepui →</strong></a>
+</p>
