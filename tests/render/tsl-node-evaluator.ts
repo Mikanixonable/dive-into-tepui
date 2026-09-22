@@ -1,9 +1,9 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 
 // このテスト層で値として評価する、TSLの定数・スカラー・ベクトルの狭い集合。
 export type ShaderValue = number | boolean | number[];
 
-type ShaderNode = {
+interface ShaderNode {
   readonly type?: string;
   readonly value?: unknown;
   readonly node?: ShaderNode;
@@ -17,7 +17,7 @@ type ShaderNode = {
   readonly condNode?: ShaderNode;
   readonly ifNode?: ShaderNode;
   readonly elseNode?: ShaderNode | null;
-};
+}
 
 type ShaderVector = number[];
 
@@ -41,7 +41,7 @@ export function evaluateShaderNode(input: unknown): ShaderValue {
     return [value.x, value.y, value.z];
   }
   if (node.type === 'VarNode') return evaluateShaderNode(node.node);
-  if (node.type === 'ConstNode') return evaluateShaderNode(node.value);
+  if (node.type === 'ConstNode' || node.type === 'UniformNode') return evaluateShaderNode(node.value);
   if (node.type === 'JoinNode') return node.nodes!.flatMap((child) => {
     const value = evaluateShaderNode(child);
     return Array.isArray(value) ? value : [value as number];
@@ -78,6 +78,16 @@ export function evaluateShaderNode(input: unknown): ShaderValue {
       case 'exp2': return 2 ** (value as number);
       case 'fract': return (value as number) - Math.floor(value as number);
       case 'negate': return -(value as number);
+      case 'sqrt': return Math.sqrt(value as number);
+      case 'sin': return Math.sin(value as number);
+      case 'cos': return Math.cos(value as number);
+      case 'acos': return Math.acos(value as number);
+      case 'max': return Math.max(value as number, evaluateShaderNode(node.bNode) as number);
+      case 'dot': {
+        const left = value as ShaderVector;
+        const right = evaluateShaderNode(node.bNode) as ShaderVector;
+        return left.reduce((sum, component, index) => sum + component * right[index]!, 0);
+      }
       default: throw new Error(`Unsupported shader math ${node.method}`);
     }
   }
