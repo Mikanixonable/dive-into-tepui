@@ -57,6 +57,30 @@ export const MAP_PANEL_STYLE = `
 #hud-view-options .view-options-tab-body.hidden { display: none !important; }
 
 /* 予測軌道パネル(#hud-predict / #hud-predict-wrap / #hud-predict-toggle)。 */
+#hud-predict .predict-head { margin-bottom: var(--space-2); }
+#hud-predict .predict-state {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end; gap: var(--space-5);
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+}
+#hud-predict .predict-state .editorial-state-hero strong {
+  font-size: var(--font-xl);
+}
+#hud-predict .predict-state-progress {
+  display: grid; justify-items: end; gap: 2px; min-width: 72px;
+}
+#hud-predict .predict-state-progress .ui-data-secondary {
+  color: var(--color-primary); font-size: var(--font-m); font-weight: 650;
+}
+#hud-predict .predict-controls {
+  display: grid; gap: var(--space-2); padding-top: var(--space-3);
+}
+#hud-predict .predict-controls .predict-row1 { margin-bottom: 0; }
+#hud-predict .predict-controls .predict-row2 {
+  margin-top: var(--space-1); padding-top: var(--space-2);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent);
+}
+
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
    トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
    #hud-stagestatus は常に非表示なので、他の下端揃えパネル(.hud-rail 等)と同じ bottom まで詰める。
@@ -192,11 +216,20 @@ export const MAP_PANEL_STYLE = `
 
 /* ステージ操作パネル(#hud-stage-controls、クリエイティブモードの敵/形状/タンパク質設定)。 */
 #hud-stage-controls { width: 100%; pointer-events: auto; }
-#hud-stage-controls .stage-controls-body { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+#hud-stage-controls .editorial-panel-head { margin-bottom: var(--space-3); }
+#hud-stage-controls .stage-controls-body {
+  display: grid; gap: var(--space-2); margin-top: 0; padding-top: var(--space-3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 20%, transparent);
+}
 #hud-stage-controls .stage-control-enemy-tabs { display: flex; gap: var(--space-2); }
 #hud-stage-controls .stage-control-enemy-tabs .w-btn { flex: 1 1 0; min-width: 0; }
-#hud-stage-controls .stage-control-section { display: grid; gap: var(--space-2); padding-top: var(--space-2); }
-#hud-stage-controls .stage-control-section-title { color: var(--text); font-size: var(--font-xxs); letter-spacing: .04em; }
+#hud-stage-controls .stage-control-section {
+  display: grid; gap: var(--space-2); margin-top: var(--space-2); padding-top: var(--space-3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent);
+}
+#hud-stage-controls .stage-control-section-title {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .1em; text-transform: uppercase;
+}
 #hud-stage-controls .stage-control-shapes { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 #hud-stage-controls .stage-control-shapes .w-group-title { flex: 0 0 100%; }
 #hud-stage-controls .stage-control-shapes .w-btn { flex: 1 1 0; min-width: 0; }
@@ -219,7 +252,13 @@ export const MAP_PANEL_STYLE = `
 
 /* 物体配置パネル(#hud-object-placer、クリエイティブモード限定): MANEUVER PLAN の下、
    右上に縦積みする。 */
-#hud-object-placer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
+#hud-object-placer {
+  width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto;
+}
+#hud-object-placer .editorial-panel-head {
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
+}
 #hud-object-placer .w-close { border-radius: 50%; }
 #hud-object-placer .shipplacer-btn-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
 #hud-object-placer .slider-field { margin-bottom: var(--space-4); }
@@ -235,4 +274,130 @@ export const MAP_PANEL_STYLE = `
 #hud-object-placer .field-issue { border: 0; border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); color: var(--color-error); }
 #hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 0; border-radius: var(--radius-s); background: var(--color-error-fill); }
 #hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--color-error); }
+
+
+/* DISPLAY INDEX — タイトル画面の stage list と同じ「名称 + 右端状態」の索引型。 */
+#hud-view-options .view-options-render-row {
+  grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  margin: var(--space-3) 0 var(--space-2);
+  padding-inline: var(--space-2);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 16%, transparent);
+}
+#hud-view-options .view-options-render-label { display: grid; gap: 2px; min-width: 0; }
+#hud-view-options .view-options-render-label > span {
+  color: var(--text); font-size: var(--font-xs); letter-spacing: .04em;
+}
+#hud-view-options .view-options-render-label > small {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
+}
+#hud-view-options .view-options-render-choices {
+  display: inline-flex; justify-self: end; align-items: stretch; gap: 1px;
+  min-width: 0;
+}
+#hud-view-options .view-options-render-choice {
+  min-width: 0; padding-inline: var(--space-3); border-radius: 0;
+  background: transparent; color: var(--text-dim);
+}
+#hud-view-options .view-options-render-choice.on {
+  background: var(--color-primary-fill-weak); color: var(--color-primary);
+}
+#hud-view-options .view-options-render-choice:first-child {
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+}
+#hud-view-options .view-options-render-choice:last-child {
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+}
+@media ${MQ_MEDIUM_DOWN} {
+  #hud-view-options .view-options-render-row {
+    grid-template-columns: 2.4em minmax(0, 1fr);
+  }
+  #hud-view-options .view-options-render-choices {
+    grid-column: 2; justify-self: stretch; width: 100%;
+  }
+  #hud-view-options .view-options-render-choice { flex: 1 1 0; text-align: center; }
+}
+
+#hud-view-options .view-options-title {
+  align-items: baseline; padding-bottom: var(--space-3);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
+}
+#hud-view-options .view-options-context {
+  min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#hud-view-options .view-options-title .view-options-collapse { margin-left: var(--space-2); }
+#hud-view-options .view-options-body > .w-tabs { margin-top: var(--space-3); }
+#hud-view-options .view-options-section-divider {
+  margin-top: var(--space-4); margin-bottom: var(--space-1);
+}
+#hud-view-options .target-class-group { display: grid; gap: 1px; }
+#hud-view-options .target-class-row {
+  display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  align-items: center; gap: var(--space-2);
+  margin: 0; min-height: var(--hit-target-min);
+}
+#hud-view-options .target-class-row .body-class-title {
+  display: flex; grid-column: 2 / 4; align-items: center; gap: var(--space-2);
+  width: 100%; min-width: 0; min-height: var(--hit-target-min); padding: var(--space-2) 0;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+#hud-view-options .target-class-row .body-class-title .w-btn-icon { display: none; }
+#hud-view-options .target-class-row .body-class-title::after {
+  content: attr(data-display-label); margin-left: auto;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
+}
+#hud-view-options .target-class-row .body-class-title.on {
+  color: var(--text); background: transparent;
+}
+#hud-view-options .target-class-row .body-class-title.on::after { color: var(--color-primary); }
+#hud-view-options .target-class-row:hover { background: var(--glass-control-hover); }
+#hud-view-options .view-options-section-heading {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em;
+}
+#hud-view-options .grid-class-row {
+  padding-block: var(--space-1); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 12%, transparent);
+}
+
+/* CAMERA / FRAME — 現在状態を先に読み、操作は下段へ分離する。 */
+#hud .hud-frame-controls .editorial-panel-head { margin-bottom: var(--space-3); }
+#hud .hud-frame-controls .editorial-state { margin-top: var(--space-1); }
+#hud .hud-frame-controls .camera-state-lens {
+  display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  align-items: end; gap: var(--space-3);
+}
+#hud .hud-frame-controls .camera-state-lens > div { display: grid; gap: var(--space-1); min-width: 0; }
+#hud .hud-frame-controls .camera-state-lens > div:last-child { text-align: right; }
+#hud .hud-frame-controls .camera-state-lens .ui-data-hero { font-size: var(--font-2xl); }
+#hud .hud-frame-controls .editorial-control-zone > :last-child { margin-bottom: 0; }
+#hud .hud-frame-controls-compact {
+  max-height: none; overflow: visible;
+}
+#hud .hud-frame-controls-compact .editorial-panel-head { margin-bottom: var(--space-2); }
+#hud .trajectory-frame-state [data-frame-hero="true"] {
+  text-transform: uppercase;
+}
+
+/* MANEUVER PLAN — 計画も同じ Control Sheet として扱う。 */
+#hud-plan.editorial-control-sheet .plan-panel-head {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
+}
+#hud-plan .plan-node-hero {
+  display: grid; gap: var(--space-1); margin-bottom: var(--space-3);
+}
+#hud-plan .plan-node-hero strong {
+  color: var(--text-strong); font-size: var(--font-2xl);
+  font-variant-numeric: tabular-nums; letter-spacing: -.03em;
+}
+#hud-plan .plan-state .editorial-state-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);
+}
+#hud-plan .plan-state .editorial-state-cell > :last-child { font-size: var(--font-xxs); }
+#hud-plan .plan-post-orbit {
+  margin-top: var(--space-3); padding-top: var(--space-3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
+}
+#hud-plan .plan-help {
+  margin-top: var(--space-3); color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.5;
+}
 `;

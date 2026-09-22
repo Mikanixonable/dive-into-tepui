@@ -68,8 +68,9 @@ export class TopBar {
     const nodeWarpEl = this.els.get('node-warp-remain');
     if (nodeWarpEl) {
       const remain = view.autoWarpSimRemainSec;
-      nodeWarpEl.textContent = remain === null ? '—' : fmtTime(remain);
+      nodeWarpEl.textContent = remain === null ? '' : fmtTime(remain);
       nodeWarpEl.classList.toggle('sim-speed-hot', remain !== null);
+      nodeWarpEl.closest('.gs-metric')?.classList.toggle('hidden', remain === null);
     }
   }
 }
