@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="310" viewBox="0 0 1200 310" role="img" aria-labelledby="title desc">
+<title id="title">Dive into Tepui 開発 Wiki</title><desc id="desc">コードベースの構造と開発方針を案内する開発 Wiki の表紙。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+</defs>
+<rect width="1200" height="310" rx="22" fill="url(#bg)"/>
+<g opacity=".22" stroke="#48506a"><path d="M0 78H1200M0 156H1200M0 234H1200"/><path d="M150 0V310M300 0V310M450 0V310M600 0V310M750 0V310M900 0V310M1050 0V310"/></g>
+<g transform="translate(58 56)">
+<text class="m a k">DIVE INTO TEPUI / 開発 WIKI</text>
+<text y="58" class="sans t" font-size="46" font-weight="700">コードベースを、責務と流れから読む。</text>
+<text y="99" class="m b sm">構造 · 物理 · ゲームモデル · 描画 · UI · 保存 · 開発規約 · 検証</text>
+</g>
+<g transform="translate(65 195)">
+<rect width="200" height="62" rx="12" class="box"/><text x="17" y="25" class="m d xs">入口</text><text x="17" y="47" class="m t v">README</text>
+<rect x="235" width="200" height="62" rx="12" class="box"/><text x="252" y="25" class="m d xs">構造</text><text x="252" y="47" class="m t v">WIKI</text>
+<rect x="470" width="200" height="62" rx="12" class="box"/><text x="487" y="25" class="m d xs">意図</text><text x="487" y="47" class="m t v">SPEC</text>
+<rect x="705" width="200" height="62" rx="12" class="box"/><text x="722" y="25" class="m d xs">境界</text><text x="722" y="47" class="m t v">ARCHITECTURE</text>
+<rect x="940" width="200" height="62" rx="12" class="box"/><text x="957" y="25" class="m d xs">書き方</text><text x="957" y="47" class="m t v">CODING-RULE</text>
+</g>
+</svg>
