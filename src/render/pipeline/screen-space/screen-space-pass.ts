@@ -185,6 +185,10 @@ export class ScreenSpacePass {
   // 全解像度。rgb = 照り返しの放射照度(SUN_IRRADIANCE_1AU の目盛り)。照り返しを集めないフレームは 0。
   public get indirectTexture(): THREE.Texture { return this.outputTarget.textures[1]!; }
 
+  // 走査の解像度。rgb = 照り返しの源として面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)。照り返しを集めない
+  // フレームは 0。
+  public get surfaceRadianceTexture(): THREE.Texture { return this.surfaceTarget.textures[2]!; }
+
   // 次の render から方式 mode で描く。
   public setMode(mode: ScreenSpaceDiffuse): void {
     this.mode = mode;
@@ -354,15 +358,18 @@ export class ScreenSpacePass {
     this.sample.sync(camera);
   }
 
-  // 方式がオフのフレームに render の代わりに走る。**オフへ切り替わった最初の 1 フレームだけ**可視率と照り返しを
-  // 空へ戻す — 残すと、デバッグ表示に切る直前の像が凍ったまま出る。
+  // 方式がオフのフレームに render の代わりに走る。**オフへ切り替わった最初の 1 フレームだけ**可視率と照り返しと
+  // 照り返しの源を空へ戻す — 残すと、デバッグ表示に切る直前の像が凍ったまま出る。
   private clearOutput(): void {
     if (!this.drawn) return;
+    // 消去色はレンダラーを共有する他のパスのものなので、退避して黒の透明で消し、戻す。
     const savedClearAlpha = this.renderer.getClearAlpha();
     this.renderer.getClearColor(this.savedClearColor);
     this.renderer.setClearColor(0x000000, 0);
-    this.renderer.setRenderTarget(this.outputTarget);
-    this.renderer.clear(true, false, false);
+    for (const target of [this.surfaceTarget, this.outputTarget]) {
+      this.renderer.setRenderTarget(target);
+      this.renderer.clear(true, false, false);
+    }
     this.renderer.setRenderTarget(null);
     this.renderer.setClearColor(this.savedClearColor, savedClearAlpha);
     this.drawn = false;
