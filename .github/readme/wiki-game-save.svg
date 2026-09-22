@@ -1,8 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="285" viewBox="0 0 1200 285" role="img"><title>保存・設定・起動</title><defs><style>
-.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}
-.t{fill:#eeeaf5}.d{fill:#9b96a2}.a{fill:#ff3155}.b{fill:#3478ff}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}
-.h{font-size:23px;font-weight:700}.k{font-size:12px;letter-spacing:1px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}
-.acc{fill:none;stroke:#ff3155;stroke-width:2}.sig{fill:none;stroke:#3478ff;stroke-width:2}
-</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker></defs><rect width="1200" height="285" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">保存・設定・起動</text><text x="55" y="72" class="m d k">再生成できない状態だけを残し、表示資源は作り直す</text><rect x="55" y="116" width="246.25" height="108" rx="14" class="box"/><text x="73" y="150" class="s t v">Game</text><text x="73" y="177" class="m d sm">位置・船・Stage</text><text x="73" y="200" class="m d sm">正本</text><rect x="336.25" y="116" width="246.25" height="108" rx="14" class="box"/><text x="354.25" y="150" class="s t v">Snapshot</text><text x="354.25" y="177" class="m d sm">serialize</text><text x="354.25" y="200" class="m d sm">元期を含む</text><rect x="617.5" y="116" width="246.25" height="108" rx="14" class="box"/><text x="635.5" y="150" class="s t v">Save slot</text><text x="635.5" y="177" class="m d sm">autosave / transfer</text><text x="635.5" y="200" class="m d sm">ブラウザ保存</text><rect x="898.75" y="116" width="246.25" height="108" rx="14" class="box"/><text x="916.75" y="150" class="s t v">Resume</text><text x="916.75" y="177" class="m d sm">deserialize</text><text x="916.75" y="200" class="m d sm">表示を再構築</text><path d="M307.25 170H330.25" class="acc" marker-end="url(#r)"/><path d="M588.5 170H611.5" class="acc" marker-end="url(#r)"/><path d="M869.75 170H892.75" class="acc" marker-end="url(#r)"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img"><title>保存・設定・起動</title><desc>Game、Viewer、Snapshot、Save Slot、Settings、Launcherの寿命を同心層として示す。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="520" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">保存・設定・起動</text><text x="55" y="72" class="m d k">ラン内・セーブ単位・アプリ全体で、値の寿命を分ける</text>
+<g transform="translate(420 285)">
+  <circle r="150" fill="#0e1014" stroke="#1d2026" stroke-width="48"/>
+  <circle r="100" fill="#15171c" stroke="#48506a" stroke-width="1.5"/>
+  <circle r="55" fill="#0e1014" stroke="#ff3155" stroke-width="2.2"/>
+  <text x="-24" y="-6" class="m a k">GAME</text><text x="-35" y="20" class="m t sm">model state</text>
+  <text x="-51" y="-116" class="m sig sm">VIEWER</text><text x="-62" y="-94" class="m d xs">save-specific</text>
+  <text x="-55" y="137" class="m b sm">derived / GPU</text>
+</g>
+<g transform="translate(730 130)">
+  <path d="M0 0h180v100H0z" fill="#15171c" stroke="#ff3155" rx="14"/><path d="M18 22h52v42H18z" fill="none" stroke="#ff3155"/><path d="M82 24h78v8H82M82 44h58v8H82M82 64h70v8H82" class="soft"/>
+  <text x="34" y="124" class="m t v">Snapshot</text>
+  <path d="M-160 135C-95 95-60 65 0 50" class="accent" marker-end="url(#ra)"/>
+</g>
+<g transform="translate(950 160)">
+  <path d="M0 0h140v180H0z" fill="#0e1014" stroke="#3478ff" rx="14"/>
+  <path d="M18 28h104v36H18zM18 76h104v36H18M18 124h104v36H18z" fill="#15171c" stroke="#48506a"/>
+  <text x="30" y="205" class="m b sm">Save Slots</text>
+  <path d="M-40 66H-5" class="blue" marker-end="url(#ba)"/>
+</g>
+<g transform="translate(760 365)">
+  <circle cx="80" cy="35" r="46" fill="#15171c" stroke="#3478ff"/><text x="54" y="40" class="m t sm">Settings</text>
+  <circle cx="270" cy="35" r="46" fill="#15171c" stroke="#ff6b82"/><text x="242" y="40" class="m t sm">Launcher</text>
+  <path d="M126 35H224" class="soft"/>
+</g>
+<text x="55" y="480" class="m b sm">Game = ラン内 · Viewer = セーブごと · Settings = アプリ全体 · GPU/DOM = 保存せず再構築</text>
+</svg>
