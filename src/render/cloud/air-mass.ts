@@ -42,12 +42,12 @@ export interface AirMassSample {
 }
 
 export class AirMass {
-  // 追跡の写し。R が出身の緯度のいまの緯度からの隔たり [rad]、G が追跡の風の速さ [m/s]。
-  // **出身の緯度そのものではなく隔たりを持つ** — 半精度の写しで絶対の緯度を持つと、量子化の刻み
+  // 気団追跡のベイクドフィールド。R が起源緯度と現在緯度の差分 [rad]、G が追跡風速 [m/s]。
+  // **起源緯度そのものではなく差分を保持する** — 半精度テクスチャで絶対緯度を保持すると、量子化誤差
   // (|緯度| 1 rad で 1e-3)が中心差分の分母(2 × GRADIENT_STEP)に対して大きく、圧縮が数 % 揺らぐ。
   private readonly trace: BakedField;
 
-  // projection は写しの持ち方、windAt は単位方向における追跡の風、surfaceRadius は気団が流れる
+  // projection は投影方式、windAt は単位方向における追跡の風、surfaceRadius は気団が流れる
   // 天体の半径 [m]。
   public constructor(
     projection: FieldProjection, windAt: (direction: Vec3Node) => BalancedWind,
@@ -62,7 +62,7 @@ export class AirMass {
       GPU_PASS.cloudBake);
   }
 
-  // いまの時刻の気団を写しへ焼く。at() のグラフを描く前に、気圧を焼いたあとで呼ぶ。
+  // 現在時刻の気団をベイクドフィールドへレンダリングする。at() の評価前に、気圧場のベイク後に呼び出す。
   public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
     this.trace.render(renderer, gpu);
   }
