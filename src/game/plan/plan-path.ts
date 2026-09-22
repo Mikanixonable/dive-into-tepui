@@ -1,5 +1,5 @@
 // 複数ノードからなる計画軌道を区間ごとの予測弧として算出する。計画を区間へ分解し、各区間の到達状態・
-// アプシス・衝突点と、画面上の最寄り点を答える。折れ線は PlanPathView へ宣言して描く。
+// アプシス・衝突点、および画面上の最寄り点を算出・提供する。折れ線は PlanPathView へ宣言して描く。
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -416,7 +416,7 @@ export class PlanPath {
     return result;
   }
 
-  // source が答える範囲を to でクリップしたうえでの時刻 t の状態。
+  // source の有効範囲を to でクリップした時刻 t における状態。
   private stateAtSource(source: SegmentSource, t: number): KinematicState | null {
     return source.arc ? stateAt(source.arc.trajectory, t, source.to) : null;
   }

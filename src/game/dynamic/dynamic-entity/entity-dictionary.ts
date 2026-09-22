@@ -24,7 +24,7 @@ export type SerializedDynamicEntity =
 export interface DynamicEntityClass {
   // 直列化した形の具象タグ。
   readonly kind: SerializedDynamicEntity['kind'];
-  // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
+  // 復元に外部リソースのロードが必要な場合、ロード完了を判定する述語関数。不要なら null。
   spawnGate(serialized: SerializedDynamicEntity): SpawnGate | null;
   // serialized を、記録した時刻の状態として復元する。id は registry の採番器から取り直す。gate が
   // あるなら、それが通ってから呼ぶこと。
