@@ -3,6 +3,7 @@ import { v3 } from '../../math/vec3';
 import type { Quat } from '../../math/quat';
 import type { SerializedVec3 } from '../../math/vec3';
 import { SIDE_SLOTS, ShipAssembly, type SideSlot } from './ship-assembly';
+import { sideMountTransform, sideSlotFromTransform } from './ship-assembly-transform';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { createShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
 import type { ShipConstructionDraftState } from './ship-dock-state';
@@ -164,10 +165,20 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
     pending.splice(index, 1);
     const module = modules.get(connection.childId);
     if (module === undefined) throw new Error(`saved ship module is missing: ${connection.childId}`);
-    assembly.addModule(module, connection.parentId, {
+    let childTransform = {
       position: v3(connection.position.x, connection.position.y, connection.position.z),
       rotation: { ...connection.rotation },
-    }, connection.kind, connection.id, connection.sideSlot);
+    };
+    let sideSlot = connection.sideSlot;
+    if (connection.kind === 'side') {
+      const parentDefinition = assembly.definition(connection.parentId);
+      const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
+      sideSlot = sideSlot ?? sideSlotFromTransform(childTransform) ?? undefined;
+      if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
+        childTransform = sideMountTransform(parentDefinition, childDefinition, sideSlot);
+      }
+    }
+    assembly.addModule(module, connection.parentId, childTransform, connection.kind, connection.id, sideSlot);
   }
   assembly.assertValid();
   return assembly;

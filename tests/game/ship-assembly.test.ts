@@ -6,6 +6,8 @@ import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
+import { restoreShipAssembly } from '../../src/game/ship/ship-save';
+import { sameTransform, sideSlotRotation } from '../../src/game/ship/ship-assembly-transform';
 import { test } from '../harness';
 
 function module(definitionId: string, id: string, state = {}) {
@@ -220,5 +222,38 @@ export function register(): void {
     assert.ok(radiator !== null);
     assert.equal(radiator.temperature, 500);
     assert.equal(radiator.kind, 'radiator');
+  });
+
+  test('ship assembly: 過去の非対称 rotation を持つセーブデータも対称姿勢へマイグレーションして復元できる', () => {
+    // 変更前の旧クォータニオン (qFromUnitVectors(LOCAL_FORWARD, direction))
+    // 例: side:-x は direction = (-1, 0, 0), 旧クォータニオンは { x: 0, y: Math.SQRT1_2, z: 0, w: Math.SQRT1_2 }
+    const oldSaved = {
+      playerOwned: true,
+      modules: [
+        { id: 'cockpit', definitionId: 'cockpit-standard', kind: 'cockpit' as const, hp: 100, temperature: 300 },
+        { id: 'solar-right', definitionId: 'solar-panel-standard', kind: 'solar_panel' as const, hp: 100, temperature: 300, deployed: 1 },
+      ],
+      connections: [
+        {
+          id: 'connection-8',
+          parentId: 'cockpit',
+          childId: 'solar-right',
+          kind: 'side' as const,
+          sideSlot: 'side:-x' as const,
+          position: { x: -3.5, y: 0, z: 0 },
+          // 旧ローテーション（現在の sideSlotRotation('side:-x') とは異なる）
+          rotation: { x: 0, y: Math.SQRT1_2, z: 0, w: Math.SQRT1_2 },
+        },
+      ],
+    };
+    const restored = restoreShipAssembly(oldSaved);
+    assert.equal(restored.validate().valid, true);
+    const edge = restored.graph.find(c => c.id === 'connection-8');
+    assert.ok(edge !== undefined);
+    const expected = {
+      position: v3(-3.5, 0, 0),
+      rotation: sideSlotRotation('side:-x'),
+    };
+    assert.equal(sameTransform(edge.childTransform, expected), true);
   });
 }
