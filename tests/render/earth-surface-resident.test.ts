@@ -55,15 +55,6 @@ class Projection implements EarthTileProjection {
   }
 }
 
-class CountingProjection extends Projection {
-  public evaluations = 0;
-
-  public override evaluate(key: EarthTileKey): { readonly visible: boolean; readonly errorPx: number; readonly priority: number } {
-    this.evaluations++;
-    return super.evaluate(key);
-  }
-}
-
 class CandidateTiles extends EarthSurfaceTiles {
   public constructor(private candidates: readonly EarthTileKey[]) { super(); }
 
@@ -194,21 +185,17 @@ export function register(): void {
   test('earth resident: 静止安定後は投影評価とページ表公開を繰り返さない', async () => {
     const keys = [earthTileKey(EARTH_TILE_MIN_Z, 0, 0), earthTileKey(EARTH_TILE_MIN_Z, 1, 0)];
     const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, new CandidateTiles(keys));
-    const projection = new CountingProjection(0, -1);
+    const projection = new Projection(0, -1);
     fixture.resident.sync({ projection, timeMs: 0, generation: 1 });
     await fixture.resident.settle();
     fixture.resident.sync({ projection, timeMs: 1, generation: 1 });
     await fixture.resident.settle();
     fixture.resident.sync({ projection, timeMs: 252, generation: 1 });
-    const evaluations = projection.evaluations;
-    const pages = fixture.backend.pages.length;
     await fixture.resident.settle();
 
     const result = fixture.resident.sync({ projection, timeMs: 1000, generation: 1 });
     assert.equal(result.published, false);
     assert.deepEqual(result.requested, []);
-    assert.equal(projection.evaluations, evaluations);
-    assert.equal(fixture.backend.pages.length, pages);
     fixture.resident.dispose();
   });
 

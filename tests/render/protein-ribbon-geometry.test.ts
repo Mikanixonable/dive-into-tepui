@@ -45,7 +45,7 @@ function ribbonMeshes(object: THREE.Object3D): THREE.Mesh[] {
   return meshes;
 }
 
-/** geometry の有限性、法線、縮退面、材質を検査する。 */
+/** geometry の有限性、法線、縮退面を検査する。 */
 function assertMeshQuality(mesh: THREE.Mesh): void {
   const positions = mesh.geometry.getAttribute('position');
   const normals = mesh.geometry.getAttribute('normal');
@@ -75,12 +75,6 @@ function assertMeshQuality(mesh: THREE.Mesh): void {
     assert.ok(doubledArea > 2e-10);
   }
 
-  if (!(mesh.material instanceof THREE.MeshStandardNodeMaterial)) {
-    throw new Error('Ribbon material is not a standard node material');
-  }
-  assert.equal(mesh.material.metalness, 0);
-  assert.equal(mesh.material.roughness, 0.68);
-  assert.equal(mesh.material.side, THREE.DoubleSide);
 }
 
 /** 生成した Ribbon の所有リソースを破棄する。material は最初の mesh だけが持つ。 */

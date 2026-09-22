@@ -1,7 +1,7 @@
 // LineOverlay(render/celestial/line-overlay.ts)の回帰テスト。頂点データの形ごとの繋ぎ方
 // (折れ線は隣接点どうし、ループは始点と終点も繋いで閉じる)、頂点が地表から浮く球面に載ること、
-// 同じ頂点データが geometry を共有することを見る。期待値の正本は、閉じた輪と開いた折れ線の
-// セグメント数という数え上げと、半径オフセットの定義で、線の形そのものは固定しない。
+// 期待値の正本は、閉じた輪と開いた折れ線のセグメント数という数え上げと、半径オフセットの定義で、
+// 線の形そのものは固定しない。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
@@ -12,11 +12,6 @@ import { SURFACE_LINE_RADIUS_RATIO } from '../../src/render/schematic-style';
 const POLYLINES: readonly LatLonPolyline[] = [
   [[0, 0], [35, 139], [-33, -70], [80, 179]],
   [[-90, 0], [0, 90], [90, 0]],
-];
-
-// 折れ線を1本だけ持つ別のデータ。共有表が頂点データごとに分かれていることを見るために使う。
-const OTHER_POLYLINES: readonly LatLonPolyline[] = [
-  [[10, 20], [11, 21]],
 ];
 
 // 緯度 30° の緯線を 5 分割した閉ループ1本。単位球面上の点として与える。
@@ -73,15 +68,19 @@ export function register(): void {
     assertOnOffsetSphere(geometryOf(LineOverlay.of({ kind: 'unitSphereLoops', loops: LOOPS })));
   });
 
-  test('line-overlay: 同じ頂点データは geometry を共有し、違う頂点データは共有しない', () => {
-    const first = geometryOf(LineOverlay.of({ kind: 'latLonPolylines', polylines: POLYLINES }));
-    const again = geometryOf(LineOverlay.of({ kind: 'latLonPolylines', polylines: POLYLINES }));
-    assert.equal(again, first, '同じ頂点データから geometry を組み直している');
+  test('line-overlay: 1本を破棄しても残った線は表示資源を使い続けられる', () => {
+    const first = LineOverlay.of({ kind: 'latLonPolylines', polylines: POLYLINES });
+    const second = LineOverlay.of({ kind: 'latLonPolylines', polylines: POLYLINES });
+    const parent = new THREE.Object3D();
+    first.addTo(parent);
+    second.addTo(parent);
+    first.dispose();
 
-    const other = geometryOf(LineOverlay.of({ kind: 'latLonPolylines', polylines: OTHER_POLYLINES }));
-    assert.notEqual(other, first, '違う頂点データが同じ geometry を引いている');
-
-    const loops = geometryOf(LineOverlay.of({ kind: 'unitSphereLoops', loops: LOOPS }));
-    assert.notEqual(loops, first, '形の違う頂点データが同じ geometry を引いている');
+    assert.equal(parent.children.length, 1);
+    const remaining = parent.children[0];
+    assert.ok(remaining instanceof THREE.LineSegments);
+    assert.equal(segmentCount(remaining.geometry), POLYLINES.reduce((sum, polyline) => sum + polyline.length - 1, 0));
+    second.dispose();
+    assert.equal(parent.children.length, 0);
   });
 }
