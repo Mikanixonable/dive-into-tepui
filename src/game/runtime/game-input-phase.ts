@@ -56,7 +56,7 @@ export class GameInputPhase {
     this.sections.exit(SECTION.input);
   }
 
-  // フレームの残りの入力エッジを、ports の優先順へ配る。
+  // フレームの残りの入力イベントを、ports の優先度順にディスパッチする。
   public routeInput(ports: readonly GameInputPort[]): void {
     this.inputRouter.routeAdditional(ports);
   }

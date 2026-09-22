@@ -28,7 +28,7 @@ export class SegmentedControl<T> {
     for (const btn of this.buttons.values()) btn.setEnabled(enabled);
   }
 
-  // ボタン列を items へ丸ごと差し替える(見出しは保持)。無効化ではなく
+  // ボタン列を items へ一括で差し替える(見出しは保持)。無効化ではなく
   // 状況に応じて選択肢の候補群自体を動的に絞り込む用途に用いる。
   public setItems(items: readonly (readonly [T, string, string?])[]): void {
     // 同じ内容なら作り直さない — 差し替えると押しかけのボタンが消えてクリックが届かなくなる。

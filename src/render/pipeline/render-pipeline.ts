@@ -65,7 +65,7 @@ export class RenderPipeline {
   // composite パスと 3D UI パスの描画先。トーンマッピングと表示用色空間への変換を終えた絵が入る。
   private readonly displayTarget: THREE.RenderTarget;
   private readonly quad: QuadMesh;
-  // 合成段の色へ当てるフィルムのルック。通常表示の2枚(compositeMaterials.off と
+  // 合成段の色へ適用するフィルム風ルック（LUT）。通常表示の2枚(compositeMaterials.off と
   // lensCompositeMaterial)が組み込む。
   private readonly filmLut = new FilmLut();
   private readonly visualEffectLut = new VisualEffectLut();
@@ -468,8 +468,8 @@ export class RenderPipeline {
 
     // composite パス。
     this.writeDepthDebugCamera(camera);
-    // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影のために
-    // 呼び出し側が張った出力先を潰さないよう、退避してから戻す。
+    // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影用途などで
+    // 事前に設定された出力先を上書きしてしまわないよう、一時退避してから復元する。
     const outputTarget = this.renderer.getOutputRenderTarget();
     this.renderer.setOutputRenderTarget(this.displayTarget);
     this.gpu.beginPass(GPU_PASS.composite);

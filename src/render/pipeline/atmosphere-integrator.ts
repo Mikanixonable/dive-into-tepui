@@ -29,7 +29,7 @@ const MIN_POLAR_RATIO = 1e-3;
 const NO_AIRGLOW_COLOR = new THREE.Vector3();
 
 // 天体 1 体ぶんの uniform。surfaceRadius は赤道半径、cutoffRadius は大気の裾を打ち切る半径
-// (赤道半径 + 打ち切り高度)、steps はこの層の積分におけるサンプル点数。polarAxis は扁平を潰す軸の
+// (赤道半径 + 打ち切り高度)、steps はこの層の積分におけるサンプル点数。polarAxis は扁平化する極軸方向の
 // 単位ベクトル、polarStretch はその向きへ引き伸ばす量(赤道半径/極半径 − 1。真球で 0)。
 interface BodySlot {
   readonly steps: FloatUniform;
@@ -76,7 +76,7 @@ interface RaySegment {
   readonly far: FloatNode;
   // 区間のうち大気が最も濃い距離。地表で終わる視線では区間の奥、掠める視線では最接近点。
   readonly densest: FloatNode;
-  // 視線が大気に掛かるか。掛からない画素では素通しへ倒す。
+  // 視線が大気に掛かるか。掛からない画素では透過（素通し）として処理する。
   readonly hitsAtmosphere: BoolNode;
 }
 
@@ -196,7 +196,7 @@ export class AtmosphereIntegrator {
   // 視線 1 本がこの層を通って受ける透過率と、この層が視線へ足す内部散乱。opaqueDist は視線が
   // 不透明面へ届くまでの距離 [m] で、積分はその手前で止まる。**Fn の中から呼ぶこと。**
   //
-  // **重い側はすべて分岐の中に置く。** 大気に掛からない視線は区間の判定だけで抜ける —
+  // **重い側はすべて分岐の中に置く。** 大気に掛からない視線は区間の判定だけで早期脱出する —
   // select で混ぜると、捨てるぶんまで毎画素走る。
   public contribution(
     rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
@@ -286,7 +286,7 @@ export class AtmosphereIntegrator {
   // **山は 1 つだけ選び、鋭いものを優先する。** 地表(または不透明面)での打ち切りと日没境界は
   // 被積分関数がそこで断ち切られるのに対し、最接近点は滑らかな極大でしかない。鋭い側を外すと、
   // その遷移が丸ごと 1 段の中へ収まって絵に帯が立つ。**最接近点しか無い視線では等間隔で取る**
-  // — 高度は最接近点から距離の 2 乗でしか増えず、寄せて山から離れた側を粗くする害のほうが勝つ。
+  // — 高度は最接近点から距離の 2 乗でしか増えず、特定点へ偏らせて離れた区間を粗くするデメリットのほうが上回るため。
   private integrated(
     ray: SphereSpaceRay, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
     shells: readonly CloudShellEvent[],
@@ -302,7 +302,7 @@ export class AtmosphereIntegrator {
     const sharpness = select(or(truncated, takesSunset), float(1), float(0));
 
     // 手前側は山へ向かって細かく、奥側はそこから離れるほど粗く。**段を分ける位置は、山が区間の
-    // どこに在るかで決める** — 段数を機械的に半分ずつ配ると、山が区間の端に重なる視線(地表で
+    // どこに在るかで決める** — ステップ数を機械的に等分に割り当てると、山が区間の端に重なる視線(地表で
     // 終わる視線 = 天体が写る画素すべて)で片側の段が長さ 0 に潰れ、サンプル点の半分が同じ 1 点に
     // 積まれて捨てられる。
     const span = max(segment.far.sub(segment.near), 1);
@@ -381,7 +381,7 @@ export class AtmosphereIntegrator {
       max(densestRadius.mul(densestRadius).sub(this.slot.surfaceRadius.mul(this.slot.surfaceRadius)), 0),
     );
     // **分母には符号を保ったまま床を張る** — 視線が恒星方向と直交すると 0 になる。そのとき解は
-    // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま弾く。**視線は正規化せずに写す** —
+    // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま除外する。**視線は正規化せずに写す** —
     // 引き伸ばした長さが実寸 1 m あたりの進みなので、商がそのまま実寸の距離になる。
     const alongSun = dot(ray.unitDir, sunDir).mul(ray.unitsPerMeter);
     const towardSun = select(greaterThan(alongSun, 0), float(1), float(-1));

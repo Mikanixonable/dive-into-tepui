@@ -199,13 +199,13 @@ export class CreativeStage extends Stage {
     for (const request of this.manualSpawn.proteinFormation(player)) this.addProteinEnemy(request);
   }
 
-  // 検証を通った配置の指定から物体を作り、顔ぶれへ入れて、配置したことを記録する。
+  // 検証を通過した配置指定からオブジェクトを生成し、システムへ追加して配置を記録する。
   // 自機の隻数が上限に達していれば、作らずに返る(SPEC GAME.md 9.1)。
   public placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void {
     if (reachesPlacedShipLimit(
       selection, this._dynamicSystem.all().filter(isModularShip).length,
     )) return;
-    // 自機は配置の指定から艦として置き、それ以外は作った実体をそのまま顔ぶれへ入れる。
+    // 自機は配置指定から艦として配置し、それ以外は生成した実体をそのままシステムへ追加する。
     const placed = this.objectPlacement.createObject(name, selection, state);
     if (placed.kind === 'ship') {
       const ship = this.addPlayer(placed.init);

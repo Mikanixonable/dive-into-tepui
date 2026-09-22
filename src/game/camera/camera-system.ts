@@ -57,7 +57,7 @@ export class CameraSystem {
     return velocity ?? v3();
   }
 
-  // 2台の導出器と入力の受け口を組む。
+  // 2台のリグと入力ハンドラを構成する。
   public constructor(
     hud: Pick<HudLayers, 'root'>,
     celestialBodies: CelestialBodies,
@@ -171,7 +171,7 @@ export class CameraSystem {
     this.combatViewpoint = { ...target, fovDeg: this.transitionFov(target.fovDeg, nowMs) };
   }
 
-  // 視点リセットボタンへ繋いだ受け口を外す。
+  // 視点リセットボタンへ登録したハンドラを解除する。
   public dispose(): void {
     this.viewResetButton?.removeEventListener('pointerdown', this.handleViewReset);
   }

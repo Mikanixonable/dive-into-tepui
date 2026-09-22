@@ -192,7 +192,7 @@ export class GroupedMarkers {
   }
 
   // 画面手前にあるものだけをクラスタ化し、優先度が最大のものを代表に据える。
-  // 天体ラベルと近接している船マーカーは天体優先(天体 > 船)でラベルを落とす。
+  // 天体ラベルと近接している船マーカーは天体優先(天体 > 船)でラベルを非表示にする。
   private groupNearby(placed: readonly PlacedItem[], celestialLabels: readonly ActiveCelestialLabel[]): void {
     // 画面座標が近いものを同じグループへまとめる
     const groups: PlacedItem[][] = [];
@@ -202,7 +202,7 @@ export class GroupedMarkers {
       if (near) near.push(m);
       else groups.push([m]);
     }
-    // グループ内は優先度最大を代表にし、残りはラベルを落とす
+    // グループ内は優先度最大を代表にし、残りはラベルを非表示にする
     for (const g of groups) {
       if (g.length <= 1) continue;
       g.sort((a, b) => b.item.priority - a.item.priority);

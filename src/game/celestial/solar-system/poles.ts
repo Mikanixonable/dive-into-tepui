@@ -6,7 +6,7 @@ import { PoleModel } from '../../../physics/celestial-body-def';
 
 export type IauPole = Extract<PoleModel, { readonly kind: 'iau' }>;
 
-// 衛星を抱える惑星の自転軸。衛星の軌道要素はこの軸が張る赤道面の上で与えるため、
+// 衛星を持つ惑星の自転軸。衛星の軌道要素はこの軸が張る赤道面の上で与えるため、
 // 惑星本体の pole と衛星の基準面が同じ1つの定義を読む。
 export const MARS_POLE: IauPole = {
   kind: 'iau',

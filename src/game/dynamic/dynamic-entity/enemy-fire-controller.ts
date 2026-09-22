@@ -23,7 +23,7 @@ const ENEMY_ATTACK_CHANCE = 0.6; // 射撃の機会ごとにバーストを始�
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト1回の弾数の候補
 const PLASMA_SPREAD_DEG = 0.05; // 太陽グレアの倍率が 1 のときの、プラズマ弾の散布角の最大 [deg]
 
-// 撃つ敵が、射撃の判断と弾の生成に差し出す面。
+// 射撃を行う敵ユニットが、射撃判定および弾丸生成のために提供するインターフェース。
 export interface EnemyFireControllerPort {
   readonly motion: DynamicMotion;
   readonly attackGroupId: string;

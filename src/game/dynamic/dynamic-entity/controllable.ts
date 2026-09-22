@@ -12,7 +12,7 @@ import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
 import type { StageRules } from '../../stages/stage-rules';
 
-// 操作量から推力とトルクを決め、推力のラッチ・RCS 減衰・プログレード保持を持つスロットルの面。
+// 操作量から推力とトルクを決め、推力のラッチ・RCS 減衰・プログレード保持を持つスロットルインターフェース。
 export interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
@@ -43,7 +43,7 @@ export interface FuelConsumer {
   readonly motion: DynamicEntity['motion'];
 }
 
-// フレームごとの操作量と、単発の命令を受ける面。
+// フレームごとの操作入力および単発コマンドを受け付けるインターフェース。
 export interface PilotCommandReceiver {
   // controls はこのフレームの操作量で、操作されない個体は null。dt [s] は実時間、simDt [sim s] は
   // シミュレーション時間の刻み。
@@ -51,7 +51,7 @@ export interface PilotCommandReceiver {
     controls: PilotControls | null, dt: number, simDt: number,
     activeStage: StageOutcome, stageRules: StageRules, celestialBodies: CelestialBodies,
   ): void;
-  // 推力・トルクの指令とスロットルの一時状態を解く。
+  // 推力・トルクの指令とスロットルの一時状態を解除（クリア）する。
   clearTransientCommands(): void;
   // 単発の命令 command のうち、備える操作を状態へ適用する。
   handleCommand(command: PilotCommand, registry: EntityRegistry): void;

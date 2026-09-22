@@ -1,4 +1,4 @@
-// ビュー(戦闘/マップ)固有のフレーム処理と遷移フックの口。
+// ビュー(戦闘/マップ)固有のフレーム処理と遷移フックのインターフェース。
 import type { DisplayWindow } from '../display-window-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
@@ -11,7 +11,7 @@ export interface ViewFrame {
   readonly pickables: readonly ObjectPickable[];
   // 同じ回の表示・選択可否。表示トグルを持たないビューは null。
   readonly visibilityPolicy: MapVisibilityPolicy | null;
-  // 軌道計画を編集できるビューだけが持つ編集口。持たないビューは null。
+  // 軌道計画を編集できるビューだけが持つ編集インターフェース。持たないビューは null。
   readonly planEditor: PlanEditor | null;
   // このビューの候補列/ラベル数。
   perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'>;
@@ -22,7 +22,7 @@ export interface ViewFrame {
   onLeave(): void;
   // ビュー固有の単発入力 commandId を実行する。
   handleCommand(commandId: string): void;
-  // 押下中の連続操作をこのビューへ配る。
+  // 押下中の継続入力をこのビューへ伝達する。
   updateActions(dt: number): void;
   // ポーズ・入力ゲートの判定後に呼ばれる。ポインタ入力の配分。
   handlePointer(camera: CameraFrame): void;

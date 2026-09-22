@@ -1,4 +1,4 @@
-// 持ち主がマーカー群へ触れる面。毎フレームの宣言を受け、出したかを答え、使い終えたら畳む。
+// 各所有者がマーカー群を操作するためのインターフェース。毎フレームの登録を受け、表示状態を問い合わせ、破棄処理を行う。
 import type { MarkerDeclaration } from './marker-declaration';
 import type { MarkerVisibility } from './marker-visibility';
 

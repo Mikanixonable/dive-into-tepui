@@ -1,5 +1,5 @@
 // マップ上で「何が選べるか」を1フレーム分組み立てる。被選択物(ObjectPickable)の候補集合と、
-// その回の表示可否(MapVisibilityPolicy)を答える。候補は2段のピック(SPEC/MAP.md
+// そのフレームの表示可否(MapVisibilityPolicy)を提供する。候補は2段のピック(SPEC/MAP.md
 // 「クリックとピック」)に対応して2本あり、記号を出していない対象は本体段だけに残る。
 import { objectPickableOf, ObjectPickable } from './object-pickable';
 import { focusTargetId } from '../viewer/focus-target';
@@ -60,7 +60,7 @@ export class ObjectPickables {
   }
 
   // 候補列と可視性ポリシーを組み直し、天体マーカーと航法ターゲットをこの表示時刻へ進める。
-  // 候補は天体・ラグランジュ点・被選択物を名乗る個体・航法ターゲット・AN/DN・近点。物理積分の
+  // 候補は天体・ラグランジュ点・選択対象となる個体・航法ターゲット・AN/DN・近点。物理積分の
   // 後に呼ぶ — 前だと同フレームのメッシュと1ステップずれる。
   public refresh(displayWindow: DisplayWindow, mapDisplay: MapDisplayToggles, cameraPos: Vec3): void {
     const { displayTime } = displayWindow;

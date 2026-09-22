@@ -18,7 +18,7 @@ export interface EntityDisplaySource {
 
 export class EntityDisplaySelection implements EntityDisplaySource {
   public constructor(
-    // 予測線・過去線を出す実体の id。アセット待ちで顔ぶれにまだいない個体の id も持つ。
+    // 予測線・過去線を表示する実体の id。アセットロード待機中で一覧にまだ存在しない個体の id も保持する。
     private readonly trajectoryLineIds: Set<string> = new Set(),
     private _proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY,
   ) {}

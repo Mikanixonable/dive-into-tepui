@@ -12,12 +12,12 @@ import { contactDamageSpeed } from './contact-damage';
 import type { Vec3 } from '../../../math/vec3';
 import type { RunEventSink } from '../../run-events';
 
-// 帰結を受け取る敵1体の面。ダメージの入れ方と撃破の記録は個体ごとに実装する。
+// 帰結を受け取る敵1体のインターフェース。ダメージの適用方法と撃破の記録は個体ごとに実装する。
 export interface EnemyReactionPort {
   readonly motion: DynamicMotion;
   // 破片と爆散の大きさを決める機体模型の倍率。
   readonly modelScale: number;
-  // 弾によるダメージを入れる。部位を持つ個体は impactPoint でどこに入ったかを解く。
+  // 弾によるダメージを適用する。部位を持つ個体は impactPoint から被弾部位を判定する。
   applyBulletDamage(damage: number, impactPoint: Vec3, events: RunEventSink): void;
   // 接触の相対速度によるダメージを入れる。ダメージが実際に入ったら true。
   applyImpactDamage(damageSpeed: number): boolean;

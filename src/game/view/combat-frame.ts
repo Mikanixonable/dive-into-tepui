@@ -47,7 +47,7 @@ export class CombatFrame implements ViewFrame {
 
   public updateActions(): void {}
 
-  // 照準キーと右クリックを配る。操作対象がいなければ照準先が無いので何もしない。
+  // 照準キーと右クリック入力をルーティングする。操作対象がいなければ照準先が無いので何もしない。
   public handlePointer(camera: CameraFrame): void {
     const controlled = this.controlSelection.current;
     if (!controlled) return;

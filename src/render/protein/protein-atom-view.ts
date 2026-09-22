@@ -60,7 +60,7 @@ export function proteinResidueBindingLookup(source: ProteinRenderSource): Protei
   const atomResidues = atomBackboneResidues(source, backboneByChain, atomPositions);
   const surfaceResidues = surfaceBackboneResidues(source, backboneByChain, atomPositions, atomResidues);
 
-  // motion asset の対応が要素数と合えばそれを使い、合わなければ主鎖の索引を motion の残基へ写す。
+  // motion asset の対応が要素数と合えばそれを使い、合わなければ主鎖のインデックスを motion の残基インデックスへ変換する。
   const backboneResidues = source.motion.bindings.backboneResidues;
   const mappedAtomResidues = source.motion.bindings.atomResidues.length === structure.atoms.count
     ? source.motion.bindings.atomResidues

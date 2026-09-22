@@ -29,7 +29,7 @@ export class TabBar<T> {
     }
   }
 
-  // タブ列を items へ丸ごと差し替える。SegmentedControl と同じく、同じ内容なら作り直さない。
+  // タブ列を items へ一括で差し替える。SegmentedControl と同じく、同じ内容なら作り直さない。
   public setItems(items: readonly (readonly [T, string])[]): void {
     // 同じ内容なら作り直さない — 差し替えると押しかけのタブが消えてクリックが届かなくなる。
     const same = (pair: readonly [T, string], i: number): boolean => {

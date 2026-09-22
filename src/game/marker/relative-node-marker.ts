@@ -9,7 +9,7 @@ import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
-// 交点種別ごとの、一覧やマーカーで名乗る呼称と、軌道要素としてのラベル。
+// 交点種別ごとの、一覧やマーカーで表示する呼称と、軌道要素としてのラベル。
 const RELATIVE_NODE_LABELS = {
   an: { name: 'AN', spec: ORBIT_ELEMENT_LABELS.an, glyph: ORBIT_POINT_GLYPH.ascendingNode },
   dn: { name: 'DN', spec: ORBIT_ELEMENT_LABELS.dn, glyph: ORBIT_POINT_GLYPH.descendingNode },

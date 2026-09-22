@@ -69,7 +69,7 @@ export class EntityContactPhysics {
     this._participants = 0;
   }
 
-  // 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触を解く。交戦圏どうしは
+  // 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触判定・衝突応答を処理する。交戦圏どうしは
   // 独立した系なので、解決回数の上限も交戦圏ごとに掛かる。
   public resolveEntityContacts(
     simTime: number, entities: readonly EntityContactParticipant[],
@@ -82,7 +82,7 @@ export class EntityContactPhysics {
     }
   }
 
-  // 交戦圏の内側にいて接触を解ける個体だけを out へ詰め直す。out の元の中身は捨てる。
+  // 交戦圏の内側にいて接触判定の対象となる個体だけを out へ詰め直す。out の元の中身は捨てる。
   private collectParticipants(
     source: readonly EntityContactParticipant[], zone: EngagementZone<EntityContactParticipant>,
     out: EntityContactParticipant[],
@@ -126,7 +126,7 @@ export class EntityContactPhysics {
     }
     // 書き戻しは全解決の後に一括で — 途中で置き換えると prevState が進み、区間の始点を失う。
     for (const i of changed) all[i]!.reset(working[i]!);
-    // 使わなかった末尾を落とし、抱えていた CollisionResponse を手放す。
+    // 未使用の末尾要素を切り捨て、保持していた CollisionResponse を解放する。
     this.candidateScratch.length = count;
   }
 

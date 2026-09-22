@@ -1,6 +1,5 @@
-// 天気が凝結する雲を焼いた写し。焼くときと読むときの成分の割り当てを一手に持ち、
-// 出入りをどちらも CloudSample で受け渡す。テクスチャの G は雲頂高度を CLOUD_TOP_SPAN で
-// 正規化した値、CloudSample の cloudTop はメートルである。
+// 気象モデルから凝結した雲テクスチャ（ベイクドフィールド）。ベイク時とサンプリング時の4基底割り当てを一括管理し、
+// 出入りをどちらも CloudSample で受け渡す。cloudTop は basis の連続重みから導出される。
 import * as THREE from 'three/webgpu';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
@@ -15,7 +14,7 @@ import type { Vec3Node } from '../tsl-types';
 export class CloudField {
   private readonly field: BakedField;
 
-  // model がいま指している時刻の雲を、projection の持ち方で焼く写し。読むときも projection の uv で読む。
+  // model の現在時刻における雲を、指定された projection に従ってベイクするテクスチャ。サンプリング時も projection の uv を参照する。
   public constructor(model: WeatherModel, projection: FieldProjection) {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, (direction) => {
       const cloud = condense(model.weatherAt(direction));
@@ -23,7 +22,7 @@ export class CloudField {
     }, GPU_PASS.cloudBake);
   }
 
-  // いまの時刻の雲を写しへ描く。at() で読む前に必ず一度呼ぶ。
+  // 現在時刻の雲をベイクドテクスチャへレンダリングする。at() でサンプリングする前に必ず一度呼び出す。
   public render(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
     this.field.render(renderer, gpu);
   }
@@ -31,8 +30,8 @@ export class CloudField {
   // 焼いた雲の場。テクスチャの所有権は BakedField に残す。
   public get texture(): THREE.Texture { return this.field.texture; }
 
-  // 単位方向 direction での雲を、投影自身の uv で直に読む。cap の窓ぎめを通さないので、写しの
-  // 全域が読める。
+  // 単位方向 direction での雲を、投影自身の uv で直接サンプリングする。cap による領域切り出しを行わないため、テクスチャ
+  // 全域を参照できる。
   public at(direction: Vec3Node): CloudSample {
     return cloudSampleFromTexel(this.field.at(direction));
   }

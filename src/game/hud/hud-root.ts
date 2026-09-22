@@ -20,7 +20,7 @@ import type { ViewMode } from '../view/view-mode';
 import type { CollapseToggleLabels } from '../../hud/widgets';
 import type { PanelCollapse } from './panel-shell';
 
-// 後に置いた規則が勝つので、トークン→骨格→パネル群→ビューの順に重ねる。
+// 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
 const STYLE =
   LAYOUT_TOKENS_STYLE + SKELETON_STYLE
   + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE

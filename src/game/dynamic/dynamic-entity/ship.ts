@@ -73,7 +73,7 @@ export abstract class Ship extends DynamicEntity {
   private hullPart: Part | null = null;
   private cockpitPart: CockpitPart | null = null;
 
-  // 基底の識別・Motion・View を組み、名前と HP を初期化する。ロードアウトは呼び出し側が渡す。
+  // 基底の識別・Motion・View を組み、名前と HP を初期化する。装備パーツ構成（ロードアウト）は引数で受け取る。
   public constructor(
     name: string,
     hp: number,
@@ -198,7 +198,7 @@ export abstract class Ship extends DynamicEntity {
   // 自然回復の対象外にする部品種別。外装パネルは機上で直せず、いまは直す手段がない。
   private static readonly SELF_REPAIR_EXCLUDED: readonly PartType[] = ['radiator', 'solar_panel'];
 
-  // amount [HP] を自然回復できる損傷部品へ均等に配る。全損した部品は対象外で、復旧しない。
+  // amount [HP] を自然回復可能な損傷部品へ均等に配分する。全損した部品は対象外で、復旧しない。
   protected selfRepair(amount: number): void {
     const targets = this.parts.filter(
       p => p.hp > 0 && p.hp < p.maxHp && !Ship.SELF_REPAIR_EXCLUDED.includes(p.type));

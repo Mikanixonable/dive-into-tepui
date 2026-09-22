@@ -93,7 +93,7 @@ export function makeThermallyEmissive<T extends THREE.Object3D>(root: T): T {
   return root;
 }
 
-// root と、その配下すべてへいまの熱の状態を配る。温度と過熱の振幅は [K]。
+// root とその配下すべてへ現在の熱状態を伝播（同期）する。温度と過熱の振幅は [K]。
 export function syncThermalState(
   root: THREE.Object3D, temperature: number, deviation: number, emissivity: number,
 ): void {

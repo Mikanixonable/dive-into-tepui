@@ -40,7 +40,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     this.menu.onSelect = (act, target) => this.actions.runAct(target, act);
   }
 
-  // id で名指しされた敵のプロパティウィンドウを開く。既に消えていれば開かない。
+  // 指定された ID の敵のプロパティウィンドウを開く。既に消えていれば開かない。
   public openEnemy(id: string, clientX: number, clientY: number): void {
     const inspected = this.actions.inspectedEnemy(id);
     if (inspected) this.open(clientX, clientY, inspected);

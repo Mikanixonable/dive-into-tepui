@@ -11,7 +11,7 @@ import {
   type DynamicMotionThermal,
 } from '../dynamic-motion';
 
-// 補給物の種別。接触の種別としても名乗る。
+// 補給物の種別。接触種別としても識別される。
 export type PickupKind = 'ammo' | 'rcs-fuel';
 
 const PICKUP_PHYSICAL_RADIUS = 1.3; // [m]

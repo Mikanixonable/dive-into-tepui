@@ -92,7 +92,7 @@ export function orbitingAttractorOf(
   return elements !== null && elements.e < 1 ? attractor : null;
 }
 
-// 天体一覧だけを情報源にする FrameAnchorSource。渡した天体に無い id へは null を答える。
+// 天体一覧だけを情報源にする FrameAnchorSource。渡した天体に無い id へは null を返す。
 export function bodyAnchorSource(
   bodies: readonly CelestialBody[], bodiesPivot: number,
 ): FrameAnchorSource {

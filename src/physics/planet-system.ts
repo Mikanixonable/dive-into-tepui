@@ -100,7 +100,7 @@ export class PlanetSystem {
   }
 
   // 惑星本体が衛星から受ける加速度。位置の重心補正 −Σ w_i·ρ_i の 2 階微分そのもので、
-  // **顔ぶれは補正と同じ** — 位置と加速度で入れる衛星がずれると、2 次外挿が位置モデルから外れる。
+  // **対象とする衛星集合は位置補正と同一** — 位置補正と加速度で考慮する衛星が食い違うと、2 次外挿が位置モデルから乖離する。
   bodyAccelFromSatellitesAt(t: number): Vec3 {
     const members = this.membersAt(t);
     const muTotal = this.mu;

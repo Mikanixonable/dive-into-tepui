@@ -71,7 +71,7 @@ function finiteUnit(value: number, label: string): number {
   return value;
 }
 
-// 全球UVを指定タイルの260x260画像へ写す。色・地形とも同じ座標を使う。
+// 全球UVを指定タイルの260x260画像内UVへ変換する。色・地形とも同じ座標を使う。
 // 経度は周期、緯度は極でクランプし、内側256画素の外側へ2画素のgutterを確保する。
 export function earthSurfaceTileLocalUv(u: number, v: number, key: EarthTileKey): EarthSurfaceTileLocalUv {
   // 全球UVをタイル格子へ移し、経度周期と緯度端点を適用する。
