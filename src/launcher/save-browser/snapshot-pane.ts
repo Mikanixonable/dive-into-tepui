@@ -134,7 +134,7 @@ function buildSnapshotCard(
   card.classList.toggle('ui-selectable', refusal === null);
   card.classList.toggle('sb-snap-loadable', refusal === null);
   card.title = refusal ?? 'ダブルクリックでロード';
-  // ボタンの click は自身で止まるが dblclick は素通りするので、カード自身の判定で弾く。
+  // ボタンの click は自身で止まるが dblclick は通過するため、カード自身の判定で除外する。
   card.addEventListener('dblclick', (e) => {
     if ((e.target as HTMLElement).closest('.w-btn')) return;
     callbacks.onLoadSnapshot(s.id, refusal);

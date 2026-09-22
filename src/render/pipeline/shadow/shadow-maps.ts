@@ -5,7 +5,7 @@
 // ので、**どのスロットも自分の枠に入るメッシュをすべて描く** — 受け手はそのうち 1 つを選ぶだけで
 // 答えが得られる。
 //
-// **1 スロットは深度マップを 2 枚持つ。** 光源にいちばん近いものが勝つ深度テストは 1 枚に 1 つの
+// **1 スロットは深度マップを 2 枚持つ。** 光源に最も近いものが手前として優先される通常の深度テストでは、1 ピクセルあたり1つの
 // メッシュしか残せないので、枠から見て本影が残るメッシュと、本影を失って淡い減光しか残さない
 // メッシュを、同じ枠・同じ uv の別の層へ分けて撮る。混ぜると、遠くて淡いものが至近の濃いものを
 // 追い出す。
@@ -98,10 +98,10 @@ export class ShadowMaps {
   private casters: readonly ShadowCaster[] = NO_CASTERS;
   // このフレームにスロットを与えた塊の枠(描画座標の AABB)。
   private readonly clusters: THREE.Box3[] = [];
-  // 枠の 1 辺 [m]。相乗りの可否をこれで測る — **枠はこの大きさのまま平行移動するだけ。**
+  // 枠の 1 辺 [m]。枠の共有可否をこれで判定する — **枠はこの大きさのまま平行移動するだけ。**
   private readonly clusterSizes: number[] = [];
   // 枠の半径の上限 [m]。**被覆の枠は箱ぜんたいを覆う必要があるので上限を持たない**(Infinity)。
-  // 細かい窓だけが、要求から決まる半径でここを縛る。
+  // 詳細な領域のみ、要求から決まる半径でこの上限を制限する。
   private readonly clusterCaps: number[] = [];
   private readonly scratchBox = new THREE.Box3();
   private readonly scratchCorner = new THREE.Vector3();
@@ -269,7 +269,7 @@ export class ShadowMaps {
   // 枠 1 つをスロット index へ描く。**枠に入るメッシュはすべて描く** — 枠の外は平行投影が落とす。
   //
   // 撮るのは 2 枚。**本影が残る距離に居るメッシュと、本影を失ったメッシュを、別の深度マップへ分ける**
-  // — 1 枚に混ぜると、光源にいちばん近いものが勝つ深度テストで、遠くて淡いメッシュが至近の濃い
+  // — 1 枚に混ぜると、光源に最も近いものが優先される深度テストにより、遠くて淡いメッシュが至近の濃い
   // メッシュを追い出してしまう。遠層に写るものが 1 つも無いときは空のまま残す。
   private drawSlot(
     scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
@@ -299,14 +299,14 @@ export class ShadowMaps {
     this.lightCamera.updateProjectionMatrix();
   }
 
-  // 要求の厳しい受け手から順に枠を配る。**枠は受け手のまわりに、要求どおりの大きさで開く** —
+  // 要求の厳しい受け手から順にスロットを割り当てる。**枠は受け手のまわりに、要求どおりの大きさで開く** —
   // 影を落とすメッシュは平行投影でちょうどその枠に重なるものなので、枠が受け手を覆えば必要な
   // メッシュだけが入る。低い要求のために広げると、その枠を起こした受け手まで一緒に粗くなるので
-  // 広げない。既存の枠へ相乗りできるのは、枠の大きさを変えずに平行移動して収まるときだけで、
-  // 枠が尽きていればその受け手は諦める(要求の緩い側から捨てられる)。
+  // 広げない。既存の枠を共有できるのは、枠の大きさを変えずに平行移動して収まるときだけで、
+  // 枠が枯渇した場合はシャドウ生成をスキップする（優先度の低い側から除外される）。
   //
   // **最後の 1 枚は被覆に取っておく。** 要求どおりに縮めた枠はメッシュを覆いきれないので、
-  // はみ出した部分を拾う粗い枠が要る。
+  // はみ出した部分をカバーする粗い枠が要る。
   private buildClusters(): void {
     const windowSlots = this.slotCount - 1;
     for (const receiver of this.casters) {
@@ -319,7 +319,7 @@ export class ShadowMaps {
     this.addCoverageFrame();
   }
 
-  // 既存の枠へ相乗りさせる。**枠の大きさは変えない** — 中身の和が今の大きさに収まるときだけ、
+  // 既存の枠を共有させる。**枠の大きさは変えない** — 中身の和が今の大きさに収まるときだけ、
   // 枠をずらして両方を入れる。粗い枠から試すのは、細かい枠をできるだけ手つかずで残すため。
   private shareFrame(receiver: ShadowCaster, limit: number): boolean {
     for (let index = this.clusters.length - 1; index >= 0; index--) {
@@ -335,7 +335,7 @@ export class ShadowMaps {
   // 受け手 1 つぶんの枠を開く。要求が箱より細かいときは、カメラにいちばん近い点へ寄せた窓を
   // 開き、**続けて箱ぜんたいの枠も開く。** 窓からはみ出した部分が最後の被覆枠(全受け手の和)
   // まで落ちると、そこだけ極端に粗くなる — 至近の艦の胴体に、遠くの艦まで含めた枠の texel が
-  // 出てしまう。以後の受け手は箱ぜんたいの枠のほうへ相乗りする。
+  // 出てしまう。以後の受け手は箱全体の枠を共有する。
   private openFrames(receiver: ShadowCaster, limit: number, budget: number): void {
     const boxSize = this.frameSize(receiver.box);
     const size = receiver.diffuse ? boxSize : Math.min(boxSize, limit);
@@ -354,8 +354,8 @@ export class ShadowMaps {
     this.clusters.push(box.clone());
   }
 
-  // 最後の 1 枚へ、影を要求する受け手をすべて包む枠を置く。**縮めた枠がこぼした部分と、枠が
-  // 尽きて配れなかった受け手を、まとめてここが拾う。**
+  // 最後の 1 枚へ、影を要求する受け手をすべて包む枠を置く。**縮めた枠から漏れた部分と、スロット上限で
+  // 割り当てられなかった受け手を、ここで一括してカバーする。**
   private addCoverageFrame(): void {
     this.scratchBox.makeEmpty();
     for (const receiver of this.casters) {
@@ -403,7 +403,7 @@ export class ShadowMaps {
   }
 
   // 箱を 1 枚へ収める枠の 1 辺 [m]。**世界軸ではなく対角で測る** — 計画の段では光の向きが
-  // 枠ごとに決まっていないので、どう回っても収まる側へ倒す。
+  // 枠ごとに決まっていないので、任意の回転で収まる安全側の値（外接球）を採用する。
   private frameSize(box: THREE.Box3): number {
     box.getSize(this.size);
     return this.size.length();
@@ -424,7 +424,7 @@ export class ShadowMaps {
     const radius = this.size.length() * 0.5;
     const eyeDistance = radius * 2;
     this.lightCamera.position.copy(this.center).addScaledVector(this.lightDirection, eyeDistance);
-    // 視線と平行な up は姿勢を決められないので、光の向きが縦に近いときだけ up を倒す。
+    // 視線と平行な up は姿勢を決められないので、光の向きが縦に近いときだけ up ベクトルを傾ける（切り替える）。
     this.lightCamera.up.set(
       Math.abs(this.lightDirection.y) < 0.9 ? 0 : 1,
       Math.abs(this.lightDirection.y) < 0.9 ? 1 : 0,
@@ -433,7 +433,7 @@ export class ShadowMaps {
     this.lightCamera.lookAt(this.center);
     this.lightCamera.updateMatrixWorld(true);
 
-    // **上限で縛ると枠は箱より小さくなりうる。** はみ出した受け手は被覆の枠が拾う。
+    // **上限で制限すると枠は箱より小さくなりうる。** はみ出した受け手は被覆フレームがカバーする。
     this.measureLightSpaceBox(box);
     const frameFront = this.lightSpaceBox.front;
     const extent = Math.min(this.frameExtent(), extentCap);
@@ -480,7 +480,7 @@ export class ShadowMaps {
     return near <= far ? { near, far } : null;
   }
 
-  // 全スロットを空(active = 0)へ戻す。残りの値は次に配るときに上書きされる。
+  // 全スロットを空(active = 0)へ戻す。残りの値は次の割り当て時に上書きされる。
   private clearSlots(): void {
     for (const parameters of this.slotParameters) parameters.w = 0;
   }

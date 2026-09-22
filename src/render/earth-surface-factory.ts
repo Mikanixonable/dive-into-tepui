@@ -85,7 +85,7 @@ function detailedMaterialFor(
   };
 }
 
-// bootstrap済み契約を、GPU能力に応じて詳細接続または全球表示へ落とす。
+// bootstrap済み契約を、GPU能力に応じて詳細接続または全球表示へフォールバックする。
 function coordinatorFor(
   bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions,
 ): EarthSurfaceConnection {

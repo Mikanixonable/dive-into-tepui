@@ -75,7 +75,7 @@ export class CloudShadowRenderer {
   // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
   //
   // 柱の光学的厚みも覆いの形も殻が雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、
-  // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配るので、柱を 1 本抜ける
+  // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配分するので、柱を 1 本抜ける
   // 合計はどれだけ斜めでも τ に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
   // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、粒の振幅を決める。
@@ -120,7 +120,7 @@ export class CloudShadowRenderer {
           const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
           const columnDepth = this.shape.columnOpticalDepth(this.shape.opaqueFraction(cloud.coverage, grain));
-          // **1 歩が雲頂をまたぐ割合で配る** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
+          // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
           opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1)));
@@ -133,7 +133,7 @@ export class CloudShadowRenderer {
 
   // 描画座標のベクトルを、殻が雲を立てるのと同じ空間へ写す — 地表が半径 1、雲頂が半径
   // 1 + 雲頂高度 / 基準半径 の球面に乗る空間。天体固定の向きへ回してから半軸で割る。
-  // 真球のつもりで中心距離から高度を測ると、扁平な天体では緯度ぶんの下駄が乗る(地球なら極で
+  // 真球のつもりで中心距離から高度を測ると、扁平な天体では緯度に応じたオフセット（誤差）が生じる(地球なら極で
   // 21 km — 雲の層 15 km より厚いので、極の雲頂が自分の柱の内側に沈み、恒星の向きによらず影になる)。
   private toShellSpace(worldVec: Vec3Node): Vec3Node {
     return this.bodyFromWorld.mul(vec4(worldVec, 0)).xyz.div(this.axes);

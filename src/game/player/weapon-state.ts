@@ -49,12 +49,12 @@ export class WeaponState {
     private _wasEmptyClick = false,
   ) {}
 
-  // 初期積載 ammo を積んで新しく作る。整数でないか範囲を外れた数は、既定の積載へ落とす。
+  // 初期積載 ammo を積んで新しく作る。整数でないか範囲を外れた数は、既定の積載へフォールバックする。
   public static create(ammo: AmmoLoad): WeaponState {
     return new WeaponState(nonNegativeInteger(ammo.mags), boundedInteger(ammo.rounds, 0, MAG_ROUNDS));
   }
 
-  // 直列化した弾薬・砲身の状態から復元する。壊れた値は既定へ落とす。
+  // 直列化した弾薬・砲身の状態から復元する。壊れた値は既定値へフォールバックする。
   public static deserialize(serialized: SerializedWeaponState): WeaponState {
     // 壊れた値は undefined として渡し、コンストラクタの既定引数に補わせる
     return new WeaponState(
@@ -208,12 +208,12 @@ export class WeaponState {
   }
 }
 
-// 真偽値ならその値、そうでなければ既定へ落とすための undefined。
+// 真偽値ならその値、そうでなければ既定値へフォールバックするための undefined。
 function booleanValue(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
 }
 
-// 有限な数ならその値、そうでなければ既定へ落とすための undefined。
+// 有限な数ならその値、そうでなければ既定値へフォールバックするための undefined。
 function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }

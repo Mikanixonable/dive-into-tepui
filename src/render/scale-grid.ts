@@ -38,7 +38,7 @@ const GRID_FULL_PX = 24;
 const GRID_FULL_OUT_PX = 80;
 const GRID_FADE_OUT_PX = 180;
 
-// 1段ぶんの十字群を描く LineSegments。頂点は呼び出し側が入れる。
+// 1段ぶんの十字群を描く LineSegments。頂点ジオメトリは別途割り当てる。
 function makeLine(color: number): { line: THREE.LineSegments; material: THREE.LineBasicMaterial } {
   const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false });
   const line = new THREE.LineSegments(new THREE.BufferGeometry(), material);
@@ -200,7 +200,7 @@ export class ScaleGrid {
   }
 
   // 4面ぶんの表示状態を反映する。origin は4面が共通して通る点(描画座標)。
-  // moonOrbitNormal / moonSpinAxis は向きが得られないとき null で、その面は黄道面へ倒す。
+  // moonOrbitNormal / moonSpinAxis は向きが得られないとき null で、その面は黄道面へ縮退（一致）させる。
   public sync(
     visibility: ScaleGridVisibility,
     moonOrbitNormal: THREE.Vector3 | null, moonSpinAxis: THREE.Vector3 | null,
