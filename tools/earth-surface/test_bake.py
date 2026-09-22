@@ -353,6 +353,8 @@ class BakeTests(unittest.TestCase):
                                               [b"\x89PNG\r\n\x1a\nfixture"] * 12,
                                               base_color=base_output.getvalue(), max_zoom=4)
             self.assertEqual(result["coverage"]["kind"], "sparse")
+            self.assertEqual(result["sourceManifestSha256"], FETCH.contract_hash(self.manifest))
+            self.assertEqual(result["colorCalibration"], self.manifest["colorCalibration"])
             self.assertTrue((output / "base/earth.bin.gz").is_file())
             self.assertTrue((output / "earth-surface.json").is_file())
 

@@ -139,4 +139,15 @@ export function register(): void {
     assert.equal(result.state, 'error');
     assert.match(result.error?.message ?? '', /Unsupported Earth surface manifest schema/);
   });
+
+  test('earth runtime: schema3のcolorCalibration欠落はLODを開始しない', async () => {
+    const invalid = { ...manifest(), colorCalibration: null } as unknown as EarthSurfaceAssetManifest;
+    const result = await bootstrapEarthSurface({
+      manifestUrl: 'https://example.test/earth/earth-surface.json',
+      fetchImpl: async () => new Response(JSON.stringify(invalid)),
+    });
+    assert.equal(result.state, 'error');
+    assert.match(result.error?.message ?? '', /Unsupported Earth surface color calibration encoding/);
+    assert.equal(result.tileSource, null);
+  });
 }

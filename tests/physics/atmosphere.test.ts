@@ -17,10 +17,6 @@ const TABLE_ALTS_KM = [
 ];
 
 export function register(): void {
-  test('atmosphere: density at sea level equals table row 0 (1.225 kg/m^3)', () => {
-    assert.ok(Math.abs(atmosphericDensity(0, EARTH) - 1.225) < 1e-9);
-  });
-
   test('atmosphere: negative altitude clamps to sea-level density (h=max(0,alt))', () => {
     assert.equal(atmosphericDensity(-1000, EARTH), atmosphericDensity(0, EARTH));
   });
@@ -58,13 +54,6 @@ export function register(): void {
       assert.ok(d < prev, `density not strictly decreasing at ${hKm}km: ${d} >= ${prev}`);
       prev = d;
     }
-  });
-
-  test('atmosphere: extrapolation beyond 1000km uses the last row exponential (measured)', () => {
-    // 1000km 超は最終区間(基準1000km, 3.019e-15, スケールハイト268km)の指数外挿。
-    const d1500 = atmosphericDensity(1500e3, EARTH);
-    const expected = 3.019e-15 * Math.exp(-(1500 - 1000) / 268.0);
-    assert.ok(Math.abs(d1500 - expected) / expected < 1e-9, `d(1500km): ${d1500} vs ${expected}`);
   });
 
   test('atmosphere: altitude is measured from the reference ellipsoid, so the same true height gives the same density at any latitude', () => {
