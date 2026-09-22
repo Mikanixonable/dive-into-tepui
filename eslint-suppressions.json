@@ -140,11 +140,6 @@
       "count": 2
     }
   },
-  "src/game/celestial/solar-system/earth-system.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    }
-  },
   "src/game/celestial/solar-system/inner-planets.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
@@ -1056,25 +1051,12 @@
       "count": 1
     }
   },
-  "src/render/celestial/celestial-entity/star-celestial-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
-  "src/render/celestial/celestial-illumination.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/celestial/celestial-surface-material.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
     }
   },
   "src/render/celestial/celestial-surface.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/parameter-properties": {
       "count": 1
     }
@@ -1122,11 +1104,6 @@
       "count": 1
     }
   },
-  "src/render/cloud/baked-field.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/cloud/circulating-noise.ts": {
     "@typescript-eslint/consistent-type-definitions": {
       "count": 1
@@ -1139,16 +1116,6 @@
   },
   "src/render/cloud/cloud-field-sample.ts": {
     "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    }
-  },
-  "src/render/cloud/field-projection.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    }
-  },
-  "src/render/cloud/weather-transport.ts": {
-    "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },
@@ -1240,11 +1207,6 @@
   },
   "src/render/pipeline/aperture-psf.ts": {
     "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    }
-  },
-  "src/render/pipeline/atmosphere-pass.ts": {
-    "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },
@@ -1765,14 +1727,6 @@
   },
   "tests/render/protein-motion-controller.test.ts": {
     "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tests/render/tsl-node-evaluator.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    },
-    "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },

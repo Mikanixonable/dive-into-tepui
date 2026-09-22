@@ -4,8 +4,9 @@
 import * as THREE from 'three/webgpu';
 import { float, int, log2, max, smoothstep, texture, vec4 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
-import { BakedField } from './baked-field';
-import { equirectUvFromDirection, type FieldProjection } from './field-projection';
+import { BakedField } from '../baked-field';
+import { GPU_PASS } from '../gpu-timings';
+import { equirectUvFromDirection, type FieldProjection } from '../field-projection';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
@@ -52,6 +53,7 @@ export class ObservedCloudField implements CloudFieldSource {
           observed.b,
         );
       },
+      GPU_PASS.cloudBake,
     );
   }
 
@@ -60,7 +62,7 @@ export class ObservedCloudField implements CloudFieldSource {
   public get state(): CloudStateBinding { return this.stateValue; }
 
   // 画像の取得を始め、届いた画像か投影の置き方が変わっていれば写しを焼き直す。
-  public prepare(renderer: WebGPURenderer, _displayTime: number, gpu: GpuTimingSink | null): void {
+  public prepare(renderer: WebGPURenderer, _displayTime: number, gpu?: GpuTimingSink | null): void {
     this.map.request();
     const generation = this.map.generation;
     const revision = this.projection.revision;

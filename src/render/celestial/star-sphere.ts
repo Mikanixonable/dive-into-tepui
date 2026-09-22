@@ -1,9 +1,12 @@
-// 恒星本体の見た目: 自己発光する実半径の球と、遠すぎて球として描けないときに置き換わる点像。
+// 恒星本体の見た目。写実では自己発光する実半径の球と、遠すぎて球として描けないときに置き換わる
+// 点像、模式図では実半径の輪郭円で描く。
 import * as THREE from 'three/webgpu';
 import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../billboard';
 import { glowMeanAlpha } from '../glow-texture';
+import { createOutlineCircle, type OutlineCircle } from './outline-circle';
 import { showsPhysicalSphere } from './screen-lod';
 import { CELESTIAL_SHELL_RADIUS, POINT_IMAGE_SIZE } from '../stars';
+import type { RenderStyle } from '../render-style';
 
 // 点像を天球殻上へ置くための書き込み先。
 const POINT_POSITION = new THREE.Vector3();
@@ -19,16 +22,14 @@ export function stellarLimbIntensity(mu: number): number {
 }
 
 export interface StarSphere {
-  // 実球体と点像をシーンへ一度だけ登録する。
+  // 実球体・点像・輪郭円をシーンへ一度だけ登録する。
   addTo(scene: THREE.Scene): void;
-  // 描画座標 position・実半径 radius [m] の恒星を、見かけ直径 apparentDiameterPx [px] に
-  // 応じて実球体か点像のどちらかで描く。
+  // 描画座標 position・実半径 radius [m] の恒星を style で描く。模式図ではカメラへ正対する輪郭円、
+  // 写実では見かけ直径 apparentDiameterPx [px] に応じて実球体か点像のどちらか。
   sync(
     position: THREE.Vector3, radius: number, apparentDiameterPx: number,
-    cameraQuaternion: THREE.Quaternion,
+    cameraQuaternion: THREE.Quaternion, style: RenderStyle,
   ): void;
-  // 実球体と点像をどちらも隠す。
-  hide(): void;
   // シーンから外し、GPU 資源を解放する。
   dispose(): void;
 }
@@ -39,13 +40,15 @@ export function createStarSphere(color: string | number, surfaceRadiance: number
   return new StarSphereObject(color, surfaceRadiance);
 }
 
-// 実球体と点像の組。遠ざかって球として描けなくなったら点像へ入れ替える — 1px を切った球は
+// 実球体・点像・輪郭円の組。遠ざかって球として描けなくなったら点像へ入れ替える — 1px を切った球は
 // 総光量がラスタライズの被覆率へ量子化され、サブピクセルの移動で明滅する。
 class StarSphereObject implements StarSphere {
   private readonly mesh: THREE.Mesh;
   // 点像。星殻上へ置く — 実位置では遠平面より遠い恒星が消える。addTo で作る(グローテクスチャの
   // 生成が DOM を要する)。
   private point!: Billboard;
+  // 模式図で実球体と点像の代わりに出す輪郭円。
+  private readonly outline: OutlineCircle = createOutlineCircle();
 
   // 実球体を組む。点像は addTo で作る。
   public constructor(
@@ -58,20 +61,24 @@ class StarSphereObject implements StarSphere {
   // 点像の描画順は星野の直後で、惑星の輝点と揃える。
   public addTo(scene: THREE.Scene): void {
     this.point = new Billboard(this.color, -9);
-    scene.add(this.mesh, this.point.mesh);
+    scene.add(this.mesh, this.point.mesh, this.outline.line);
   }
 
-  // 点像の明るさは、球で描いたときと同じ総光量になるよう距離から引く。
+  // style と見かけ直径で選んだ 1 つを見せ、残りを隠す。
   public sync(
     position: THREE.Vector3, radius: number, apparentDiameterPx: number,
-    cameraQuaternion: THREE.Quaternion,
+    cameraQuaternion: THREE.Quaternion, style: RenderStyle,
   ): void {
+    this.hide();
+    if (style === 'schematic') {
+      this.placeOutline(position, radius, cameraQuaternion);
+      return;
+    }
     if (showsPhysicalSphere(apparentDiameterPx)) {
-      this.syncSphere(position, radius, cameraQuaternion);
+      this.placeSphere(position, radius, cameraQuaternion);
       return;
     }
     // 点像は天球殻上へ、向きだけを保って置く。
-    this.mesh.visible = false;
     this.point.sync(
       POINT_POSITION.copy(position).setLength(CELESTIAL_SHELL_RADIUS),
       POINT_IMAGE_SIZE,
@@ -80,11 +87,10 @@ class StarSphereObject implements StarSphere {
     );
   }
 
-  // 点像を隠し、実球体を実位置・実半径へ置く。
-  private syncSphere(
+  // 実球体を実位置・実半径へ置いて見せる。
+  private placeSphere(
     position: THREE.Vector3, radius: number, cameraQuaternion: THREE.Quaternion,
   ): void {
-    this.point.hide();
     this.mesh.visible = true;
     this.mesh.position.copy(position);
     this.mesh.scale.setScalar(radius);
@@ -92,19 +98,32 @@ class StarSphereObject implements StarSphere {
     this.mesh.quaternion.copy(cameraQuaternion);
   }
 
-  // 実球体と点像をどちらも隠す。
-  public hide(): void {
-    this.mesh.visible = false;
-    this.point.hide();
+  // 輪郭円を実位置・実半径へ置いて見せる。球のシルエットとして見せるため、カメラへ正対させる。
+  private placeOutline(
+    position: THREE.Vector3, radius: number, cameraQuaternion: THREE.Quaternion,
+  ): void {
+    this.outline.line.visible = true;
+    this.outline.line.position.copy(position);
+    this.outline.line.scale.setScalar(radius);
+    this.outline.line.quaternion.copy(cameraQuaternion);
   }
 
-  // シーンから外し、実球体の geometry/material と点像を解放する。
+  // 実球体・点像・輪郭円をすべて隠す。
+  private hide(): void {
+    this.mesh.visible = false;
+    this.point.hide();
+    this.outline.line.visible = false;
+  }
+
+  // シーンから外し、実球体の geometry/material と点像・輪郭円を解放する。
   public dispose(): void {
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
     this.point.mesh.removeFromParent();
     this.point.dispose();
+    this.outline.line.removeFromParent();
+    this.outline.dispose();
   }
 
   // 距離 distance [m] の半径 radius [m] の恒星を点像で描くときの、板の面の明るさ。恒星円盤の

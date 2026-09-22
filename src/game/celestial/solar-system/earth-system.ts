@@ -6,9 +6,9 @@ import cloudFieldUrl from '../../../assets/cloud-field.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import coastlineData from '../../../assets/earth-coastline.json';
 import moonFeaturesData from '../../../assets/moon-features.json';
-import { AtmosphereDef } from '../../../physics/atmosphere';
-import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import type { AtmosphereDef } from '../../../physics/atmosphere';
+import { SatelliteMotion, type StarMotion } from '../../../physics/celestial-motion';
+import { type PlanetDef, planetDefForSimZero, type SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
@@ -19,7 +19,8 @@ import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { AnnualClimateMap } from '../../../render/cloud/climate-map';
-import { EquirectProjection, type FieldProjection } from '../../../render/cloud/field-projection';
+import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
+import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -36,7 +37,6 @@ export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
 export const R_EARTH = 6.371e6; // 平均半径 [m]
 export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
 export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
-export const EARTH_CLOUD_FIELD_HEIGHT = 512;
 // 2次の重力場係数(非正規化)。正規化係数を収録した外部データで更新する際は換算が要る。
 export const J2_EARTH = 1.08262668e-3;
 
@@ -161,7 +161,7 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
 // 地球へ貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から焼き込んだ、
 // 緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。形は焼き込み側が保証するので、
 // 型を持たない JSON にここで形を与える。
-const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
+export const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
 
 // 月へ貼る主要な海・クレーターの輪郭。tools/export-moon-features.mjs が assets-src/moon-features.json
 // の中心緯度経度・直径から円として焼き込んだ、単位球面上の xyz を1ループとして並べた配列の配列。
@@ -213,11 +213,12 @@ export function earthGeneratedCloudField(projection: FieldProjection): Generated
   );
 }
 
-// 地球の雲場ぜんぶを組む。生成と実写を同じ全球の正距円筒へ焼く。
+// 地球の雲場ぜんぶを組む。生成と実写を同じ 1 つの cap へ焼き、CloudPresentation がその cap を
+// 視点へ置き直す。
 export function earthCloudPresentation(): CloudPresentation {
-  const projection = new EquirectProjection(EARTH_CLOUD_FIELD_HEIGHT);
+  const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
   return new CloudPresentation(
-    earthGeneratedCloudField(projection), new ObservedCloudField(cloudFieldUrl, projection), R_EARTH_EQ,
+    earthGeneratedCloudField(cap), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
   );
 }
 

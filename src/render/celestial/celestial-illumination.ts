@@ -5,26 +5,28 @@ import { shapeAxes, shapeInscribedRadius, shapeOf } from '../../physics/celestia
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { atmosphereDraws } from '../../render/atmosphere';
 import {
-  REFERENCE_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_RADIUS, SunLight,
+  REFERENCE_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_RADIUS, type SunLight,
   scaledRadiantIntensity,
 } from '../../render/pipeline/sun-light';
 import { ambientFraction } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
+import {
+  MAX_PLANET_LIGHT_SLOTS, type PlanetLightValue,
+} from '../../render/pipeline/lighting/planet-light-source';
 import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../../render/pipeline/shadow/body-shadow';
 import {
   castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,
 } from '../../render/pipeline/shadow/shadow-select';
+import { ringShadowBands, type RingBand } from '../../render/pipeline/shadow/ring-shadow';
 import { writeBodyFromWorld } from '../../render/celestial/body-frame';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import type { PlanetLightValue } from '../../render/pipeline/lighting/planet-light-source';
-import type { AtmosphereDraw } from '../../render/atmosphere';
-import type { RingBand } from '../../render/pipeline/shadow/ring-shadow';
+import type { AtmosphereCandidate, AtmosphereDraw } from '../../render/atmosphere';
 import type { ShadowCumulus } from '../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
 import type {
-  CelestialIlluminationSource, StellarLightSource,
+  CelestialIlluminationSource, DefinedCelestialBody, StellarLightSource,
 } from './celestial-entity/celestial-view';
 
 const ZERO_VECTOR = new THREE.Vector3();
@@ -51,6 +53,11 @@ export class CelestialIllumination {
   // 影を落とす天体へ渡す形の置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
   private readonly shadowBodyShapes = Array.from({ length: MAX_SHADOW_BODIES }, () => ({
     axes: new THREE.Vector3(), bodyFromWorld: new THREE.Matrix4(),
+  }));
+
+  // 天体照の光源へ渡す向きの置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
+  private readonly planetLightFrames = Array.from({ length: MAX_PLANET_LIGHT_SLOTS }, () => ({
+    starDirection: new THREE.Vector3(), bodyFromWorld: new THREE.Matrix4(),
   }));
 
   // star はこの星系の主星の恒星光で、恒星光を持たない星系では null。
@@ -86,15 +93,20 @@ export class CelestialIllumination {
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
       star?.stellarLight.color ?? STARLESS_SUN_COLOR, starIntensity);
     this.targets.ambient.setFraction(ambientFraction(graphics));
-    this.syncPlanetLights(sources, displayTime, camera);
+    // 大気を持つ天体は、天体照の写しにも大気パスにも同じ 1 体として渡す。
+    const atmospheres = this.atmosphereCandidates(sources, displayTime, camera, graphics);
+    this.syncPlanetLights(sources, atmospheres, displayTime, camera, sunPos);
     this.syncShadowSources(sources, fo, displayTime, focusPosition, graphics);
-    this.syncAtmosphere(sources, displayTime, camera, graphics);
+    this.targets.atmosphere.setDraws(atmosphereDraws([...atmospheres.values()], graphics.atmosphere));
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
-  // スロットへ入れる。基準点は露出と同じ注視点。
+  // スロットへ入れる。基準点は露出と同じ注視点で、atmospheres は天体ごとの大気の候補、sunPos は
+  // 描画座標の恒星の位置。
   private syncPlanetLights(
-    sources: readonly CelestialIlluminationSource[], displayTime: number, camera: CameraFrame,
+    sources: readonly CelestialIlluminationSource[],
+    atmospheres: ReadonlyMap<DefinedCelestialBody, AtmosphereCandidate>, displayTime: number,
+    camera: CameraFrame, sunPos: THREE.Vector3,
   ): void {
     // 全天体を候補にし、注視点から見た明るさで選ぶ。
     const candidates = sources.map((source) => ({
@@ -102,12 +114,28 @@ export class CelestialIllumination {
       albedo: source.view.lightSourceAlbedo ?? DEFAULT_ALBEDO,
     }));
     const lights = selectPlanetLights(candidates, displayTime, camera.viewpoint.lookTarget);
-    // 選ばれた天体を描画座標へ移し、内接球の半径で渡す。
-    this.targets.planetLight.set(lights.map((light) => ({
-      center: camera.floatingOrigin.RtoThreeV3(light.celestialBody.positionAt(displayTime)),
-      radius: shapeInscribedRadius(light.celestialBody.def.radius, shapeOf(light.celestialBody.def)),
-      radiance: light.radiance,
-    })));
+    // 選ばれた天体を描画座標へ移し、内接球の半径と、写しへ焼く見た目を添えて渡す。
+    this.targets.planetLight.set(lights.map((light, slot): PlanetLightValue => {
+      const center = camera.floatingOrigin.RtoThreeV3(light.celestialBody.positionAt(displayTime));
+      // 選定は天体だけを返すので、見た目はその天体を差し出した源から引き直す。
+      const view = sources.find((source) => source.motion === light.celestialBody)?.view ?? null;
+      const frame = this.planetLightFrames[slot]!;
+      frame.starDirection.subVectors(sunPos, center).normalize();
+      writeBodyFromWorld(frame.bodyFromWorld, light.celestialBody, displayTime);
+      return {
+        center,
+        radius: shapeInscribedRadius(light.celestialBody.def.radius, shapeOf(light.celestialBody.def)),
+        radiance: light.radiance,
+        appearance: {
+          map: view?.lightSourceMap ?? null,
+          albedo: view?.lightSourceAlbedo ?? DEFAULT_ALBEDO,
+          sunIrradiance: light.sunIrradiance,
+          starDirection: frame.starDirection,
+          bodyFromWorld: frame.bodyFromWorld,
+          atmosphere: atmospheres.get(light.celestialBody)?.body ?? null,
+        },
+      };
+    }));
   }
 
   // 影パスへ、この1フレームの影を落とす天体・環の帯・積雲の殻を渡す。
@@ -154,11 +182,7 @@ export class CelestialIllumination {
         center: source.motion.stateAt(displayTime).r,
         axis: source.motion.orientationAt(displayTime)?.axis ?? null,
         radius: source.motion.def.radius,
-        bands: rings.bands.map((band) => ({
-          innerRadius: band.innerRadius,
-          outerRadius: band.outerRadius,
-          normalOpticalDepth: band.optics.normalOpticalDepth,
-        })),
+        bands: ringShadowBands(rings.bands),
       }];
     });
     // 選ばれた 1 体を描画座標へ移す。
@@ -174,18 +198,18 @@ export class CelestialIllumination {
     );
   }
 
-  // 大気パスへ、このフレームに大気を描く天体とそのサンプル点の数を渡す。
-  private syncAtmosphere(
+  // このフレームの大気の候補を、大気を持つ天体ごとに返す。
+  private atmosphereCandidates(
     sources: readonly CelestialIlluminationSource[], displayTime: number, camera: CameraFrame,
     graphics: GraphicsSettingsData,
-  ): void {
-    const scale = camera.radialScale;
-    const candidates = sources.flatMap((source) => {
+  ): ReadonlyMap<DefinedCelestialBody, AtmosphereCandidate> {
+    const candidates = new Map<DefinedCelestialBody, AtmosphereCandidate>();
+    for (const source of sources) {
       const candidate = source.view.atmosphereCandidateAt(
-        source.motion, camera.floatingOrigin, displayTime, camera.position, scale, graphics);
-      return candidate === null ? [] : [candidate];
-    });
-    this.targets.atmosphere.setDraws(atmosphereDraws(candidates, graphics.atmosphere));
+        source.motion, camera.floatingOrigin, displayTime, camera.position, camera.radialScale, graphics);
+      if (candidate !== null) candidates.set(source.motion, candidate);
+    }
+    return candidates;
   }
 
   // ECI の法線を描画座標のベクトルへ移し、単位長へそろえる。

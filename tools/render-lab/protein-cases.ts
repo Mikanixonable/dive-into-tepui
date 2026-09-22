@@ -1,6 +1,5 @@
 // Render Lab のタンパク質ケース。catalog へ登録済みの asset から、motion controller と GPU
 // binding 込みでゲーム本体と同じ描画経路を組み立て、1 体を固定構図で返す。
-import * as THREE from 'three/webgpu';
 import {
   proteinAssetBundleFor, type ProteinAssetBundle, type ProteinAssetId,
 } from '../../src/game/protein/protein-asset-loader';
@@ -12,14 +11,7 @@ import { proteinMotionModeDisplacements } from '../../src/render/protein/protein
 import {
   createProteinMotionBinding, disposeProteinMotionBinding, updateProteinMotionCoefficients,
 } from '../../src/render/protein/protein-motion-material';
-import type { LabCase } from './cases';
-
-// 描画は cases.ts と同じ 960×540 固定。
-const VIEW_WIDTH = 960;
-const VIEW_HEIGHT = 540;
-const FOV_DEG = 50;
-const NEAR = 0.1;
-const FAR = 100;
+import { labCamera, type CaseBuilder, type LabCase } from './lab-case';
 
 // カメラから模型までの距離 [m]。形が判読できる画面占有率になる位置。
 const MODEL_DEPTH = 10;
@@ -59,14 +51,9 @@ function proteinCase(): LabCase {
   const object = buildProteinEnemyShip(source, DISPLAY, binding);
   object.position.set(0, 0, -MODEL_DEPTH);
 
-  const camera = new THREE.PerspectiveCamera(FOV_DEG, VIEW_WIDTH / VIEW_HEIGHT, NEAR, FAR);
-  camera.position.set(0, 0, 0);
-  camera.lookAt(0, 0, -1);
-  camera.updateMatrixWorld();
-
   return {
     objects: [object],
-    camera,
+    camera: labCamera(),
     proteinMotion: {
       family: 'protein',
       assetId: ASSET_ID,
@@ -75,6 +62,7 @@ function proteinCase(): LabCase {
       instanceCount: 1,
       baselineLod: 'near',
     },
+    // 変形の係数を表示時刻まで進めて GPU へ送り、それに掛かった CPU 時間と転送量を返す。
     updateProteinMotion(displayTime) {
       const startedAt = performance.now();
       controller.sampleAt(displayTime, 'near');
@@ -89,6 +77,6 @@ function proteinCase(): LabCase {
   };
 }
 
-export const PROTEIN_CASES: Record<string, () => LabCase> = {
+export const PROTEIN_CASES = {
   'protein-5i4r-molecular-1': proteinCase,
-};
+} as const satisfies Record<string, CaseBuilder>;

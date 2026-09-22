@@ -1,7 +1,8 @@
 // render/pipeline/ の中間ターゲットを画面全体へ映すデバッグ表示の選択肢。
 export type DebugTargetId =
   | 'off' | 'normal' | 'roughness' | 'basecolor' | 'metalness' | 'emissive' | 'depth'
-  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'specular' | 'material' | 'atmosphere' | 'lens';
+  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'specular' | 'material' | 'atmosphere' | 'lens'
+  | 'planet-light';
 
 // 選べる値と表示ラベルの組。並びがそのまま UI 上の並び順になる。
 export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
@@ -20,4 +21,5 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['material', 'マテリアル'],
   ['atmosphere', '大気'],
   ['lens', 'レンズ'],
+  ['planet-light', '天体照の光源テクスチャ'],
 ];

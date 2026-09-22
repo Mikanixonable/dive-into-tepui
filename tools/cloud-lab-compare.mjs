@@ -187,7 +187,7 @@ function sampleBilinear(field, u, v) {
 
 // cap の面(正射影)の中央 362×362 を、緯度 extent.north..south・経度 extent.west..east [°] を張る
 // 正距円筒の場から再標本化する。cap は extent の内側に収まっていること。式は
-// src/render/cloud/field-projection.ts の OrthographicCap / equirectUvFromDirection と対。
+// src/render/field-projection.ts の OrthographicCap / equirectUvFromDirection と対。
 function resampleCap(field, extent, latitudeDeg, longitudeDeg) {
   const latitude = (latitudeDeg * Math.PI) / 180;
   const longitude = (longitudeDeg * Math.PI) / 180;

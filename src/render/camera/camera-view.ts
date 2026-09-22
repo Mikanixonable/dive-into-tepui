@@ -45,7 +45,7 @@ function nearClip(clipFovDeg: number, clipDistance: number, viewport: Viewport):
 }
 
 // 遠クリップ距離 [m]。引いたカメラでも、遠方天体と注視点より奥の軌道線を far の内に収める。
-function farClip(clipDistance: number): number {
+export function farClip(clipDistance: number): number {
   return Math.min(FAR_MAX, Math.max(FAR_MIN, clipDistance * FAR_RATIO));
 }
 
