@@ -1,1 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img"><title>軌道状態と伝播</title><desc>位置・速度を正本として未来を計算する</desc><defs><style>.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.accent{fill:none;stroke:#ff3155;stroke-width:2}.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient><marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker></defs><rect width="1200" height="360" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">軌道状態と伝播</text><text x="55" y="72" class="m d k">位置・速度を正本として未来を計算する</text><g transform="translate(55.0 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">01</text><text x="18" y="61" class="sans t v">状態</text><text x="18" y="90" class="m d sm">r, v, t</text><text x="18" y="114" class="m d sm">ECI</text></g><path d="M315.5 197H327.5" class="accent" marker-end="url(#arrR)"/><g transform="translate(332.5 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">02</text><text x="18" y="61" class="sans t v">外力</text><text x="18" y="90" class="m d sm">gravity / drag</text><text x="18" y="114" class="m d sm">SRP</text></g><path d="M593 197H605" class="accent" marker-end="url(#arrR)"/><g transform="translate(610.0 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">03</text><text x="18" y="61" class="sans t v">積分</text><text x="18" y="90" class="m d sm">RK4</text><text x="18" y="114" class="m d sm">段ごとに再評価</text></g><path d="M870.5 197H882.5" class="accent" marker-end="url(#arrR)"/><g transform="translate(887.5 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">04</text><text x="18" y="61" class="sans t v">結果</text><text x="18" y="90" class="m d sm">次状態</text><text x="18" y="114" class="m d sm">軌道要素は導出</text></g><text x="55" y="324" class="m b sm">予測軌道はキャッシュであり、実状態そのものではない。</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>状態と軌道伝播</title><desc>地球周回軌道上の宇宙機に位置ベクトルと速度ベクトルを示し、RK4の中間評価点を描く。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">状態と伝播</text><text x="55" y="72" class="m d k">正本は r・v・t。軌道要素はそこから導出する</text>
+<g transform="translate(420 285)">
+  <circle r="94" fill="url(#earth)" stroke="#d6d6d0"/>
+  <ellipse rx="265" ry="130" fill="none" stroke="#89838f" stroke-width="1.6" transform="rotate(-14)"/>
+  <g transform="translate(223 -92)">
+    <path d="M-15-7L24 0-15 7-4 0Z" fill="#eeeaf5"/>
+    <circle r="18" fill="none" stroke="#ff3155"/>
+  </g>
+  <path d="M0 0L223-92" class="blue" marker-end="url(#ba)"/><text x="108" y="-66" class="m sig sm">r [m]</text>
+  <path d="M223-92L292-42" class="accent" marker-end="url(#ra)"/><text x="280" y="-55" class="m a sm">v [m/s]</text>
+  <circle cx="238" cy="-80" r="4" fill="#ff6b82"/><circle cx="252" cy="-68" r="4" fill="#ff6b82"/><circle cx="268" cy="-54" r="4" fill="#ff6b82"/>
+  <text x="245" y="-115" class="m d xs">RK4 k1…k4</text>
+</g>
+<g transform="translate(790 165)">
+  <path d="M0 0C65 40 120 100 150 175" class="soft dash"/>
+  <text x="0" y="0" class="m t v">KinematicState</text>
+  <text x="0" y="34" class="m b sm">position r</text><text x="0" y="58" class="m b sm">velocity v</text><text x="0" y="82" class="m b sm">time t</text>
+  <text x="0" y="132" class="m d sm">→ elements</text><text x="0" y="156" class="m d sm">→ prediction</text><text x="0" y="180" class="m d sm">→ HUD</text>
+</g>
+</svg>

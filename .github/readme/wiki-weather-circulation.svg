@@ -1,1 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img"><title>大気循環</title><desc>大域風と局地対流を別のスケールで重ねる</desc><defs><style>.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.accent{fill:none;stroke:#ff3155;stroke-width:2}.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient><marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker></defs><rect width="1200" height="430" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">大気循環</text><text x="55" y="72" class="m d k">大域風と局地対流を別のスケールで重ねる</text><g transform="translate(55.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">大域風</text><text x="18" y="62" class="sans t v">緯度帯・偏西風</text><text x="18" y="91" class="m d sm">長波長の流れ</text><text x="18" y="115" class="m d sm">雲系を輸送</text></g><g transform="translate(333.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">Rossby 波</text><text x="18" y="62" class="sans t v">蛇行</text><text x="18" y="91" class="m d sm">中緯度変動</text><text x="18" y="115" class="m d sm">前線帯の形</text></g><g transform="translate(611.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">低気圧</text><text x="18" y="62" class="sans t v">cyclone tracks</text><text x="18" y="91" class="m d sm">渦度・収束</text><text x="18" y="115" class="m d sm">組織化した雲</text></g><g transform="translate(889.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">対流</text><text x="18" y="62" class="sans t v">convective activity</text><text x="18" y="91" class="m d sm">短寿命・局地</text><text x="18" y="115" class="m d sm">積雲の発達</text></g><text x="55" y="400" class="m b sm">一つのノイズ場だけで全球の雲運動を表さない。</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>循環・風・輸送</title><desc>世界地図上に偏西風、貿易風、ロスビー波、低気圧渦を流線で示す。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">循環・風・輸送</text><text x="55" y="72" class="m d k">全球を同じ速度で流さず、緯度帯・波動・渦を重ねる</text>
+<g transform="translate(65 125)">
+  <rect width="1070" height="300" rx="18" fill="#0e1014" stroke="#48506a"/>
+  <path d="M0 75H1070M0 150H1070M0 225H1070" class="soft"/>
+  <path d="M20 62C120 30 190 105 285 58C380 12 470 102 570 56C675 8 760 107 860 58C940 20 1005 40 1050 66" fill="none" stroke="#ff3155" stroke-width="3" marker-end="url(#ra)"/>
+  <path d="M1040 108C940 145 845 86 755 122C660 160 570 94 480 126C390 159 290 98 195 127C120 150 65 142 20 122" fill="none" stroke="#3478ff" stroke-width="2.4" marker-end="url(#ba)"/>
+  <path d="M20 195C125 165 210 238 310 193C410 148 510 235 610 192C720 145 805 238 910 190C970 163 1010 168 1050 185" fill="none" stroke="#3478ff" stroke-width="2.4" marker-end="url(#ba)"/>
+  <path d="M1045 246C930 278 850 223 760 252C660 285 570 226 470 256C370 286 275 225 180 254C110 275 60 270 20 255" fill="none" stroke="#ff3155" stroke-width="3" marker-end="url(#ra)"/>
+  <g transform="translate(330 150)"><path d="M0 0C18-28 50-35 76-20C100-6 100 24 78 42C54 62 20 53 4 28C-8 10-6-10 8-25" class="accent"/><circle r="5" fill="#ff3155"/></g>
+  <g transform="translate(800 168)"><path d="M0 0C18-28 50-35 76-20C100-6 100 24 78 42C54 62 20 53 4 28C-8 10-6-10 8-25" class="accent"/><circle r="5" fill="#ff3155"/></g>
+  <text x="30" y="42" class="m a xs">偏西風 + Rossby 波</text><text x="30" y="145" class="m sig xs">貿易風</text><text x="30" y="287" class="m a xs">偏西風</text>
+</g>
+</svg>
