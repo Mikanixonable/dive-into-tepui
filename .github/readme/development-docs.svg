@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+<title id="title">開発文書と検証の流れ</title><desc id="desc">仕様、アーキテクチャ、コーディング規約、実装、検証、PR の関係を示す図。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+</defs>
+<rect width="1200" height="420" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">開発文書と検証</text><text x="55" y="72" class="m d k">「何を作るか」「どこへ置くか」「どう書くか」を分ける</text>
+<g transform="translate(55 120)">
+<rect x="0" y="0" width="210" height="105" rx="14" class="box"/><text x="18" y="32" class="sans t v">SPEC</text><text x="18" y="59" class="m d sm">どう振る舞うべきか</text><text x="18" y="82" class="m d sm">意図の正本</text>
+<rect x="250" y="0" width="210" height="105" rx="14" class="box"/><text x="268" y="32" class="sans t v">ARCHITECTURE</text><text x="268" y="59" class="m d sm">層・境界・所有者</text><text x="268" y="82" class="m d sm">繋ぎ方の正本</text>
+<rect x="500" y="0" width="210" height="105" rx="14" class="box"/><text x="518" y="32" class="sans t v">CODING-RULE</text><text x="518" y="59" class="m d sm">設計・命名・コメント</text><text x="518" y="82" class="m d sm">テスト規約</text>
+<rect x="750" y="0" width="160" height="105" rx="14" class="box"/><text x="768" y="32" class="sans t v">実装</text><text x="768" y="59" class="m d sm">src/</text><text x="768" y="82" class="m d sm">コードが現状の原本</text>
+<rect x="950" y="0" width="160" height="105" rx="14" class="box"/><text x="968" y="32" class="sans t v">検証</text><text x="968" y="59" class="m d sm">型 / テスト / 境界</text><text x="968" y="82" class="m d sm">build / smoke</text>
+<path d="M210 53H245M460 53H495M710 53H745M910 53H945" class="accent" marker-end="url(#arrR)"/>
+<rect x="0" y="155" width="1110" height="94" rx="13" class="soft"/><text x="18" y="184" class="m a xs">ブランチ運用</text><text x="18" y="210" class="m t sm">main = 開発最新版 / release = CI が生成する公開側 / 作業は別ブランチから PR</text><text x="18" y="234" class="m d sm">memos/ は明示指示がない限り書き換えない。</text>
+</g>
+</svg>
