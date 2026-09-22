@@ -37,7 +37,7 @@ export function register(): void {
     assert.ok((hit?.pushOut ?? 0) > 0);
   });
 
-  test('casing-collision: 掃引区間で外接球が触れないペアは円柱判定を呼ばず早期棄却する', () => {
+  test('casing-collision: 掃引区間で外接球が触れないペアはカプセル判定を呼ばず早期棄却する', () => {
     const a = casingMotion(state(0, 0, 0));
     const b = casingMotion(state(5, 0, 0));
 
