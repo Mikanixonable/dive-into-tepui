@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
-<title id="title">Dive into Tepui orbital combat banner</title>
-<desc id="desc">A stylized Earth with multiple orbital trajectories, spacecraft markers, maneuver nodes and telemetry labels.</desc>
+<title id="title">hero-orbit 図解</title>
+<desc id="desc">Dive into Tepui の機能と構造を日本語で示す図。</desc>
 <defs>
   <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0" stop-color="#08090d"/>
@@ -51,15 +51,15 @@
   <path d="M-13 -7L21 0-13 7-4 0Z" fill="#eeeaf5"/>
   <circle r="21" fill="none" stroke="#ff3155" stroke-width="1.6" opacity=".75"/>
   <path d="M0-32V-20M0 20V32M-32 0H-20M20 0H32" stroke="#ff3155"/>
-  <text x="42" y="-4" class="mono label">PLAYER</text>
+  <text x="42" y="-4" class="mono label">自機</text>
   <text x="42" y="18" class="mono value">Δv  18.4 m/s</text>
 </g>
 
 <g transform="translate(995 324)">
   <path d="M-10 -10L12 0-10 10-3 0Z" fill="#ff6b82"/>
   <circle r="17" fill="none" stroke="#ff6b82" opacity=".7"/>
-  <text x="-145" y="-7" class="mono label">TARGET</text>
-  <text x="-145" y="16" class="mono value">REL  224 m/s</text>
+  <text x="-145" y="-7" class="mono label">目標</text>
+  <text x="-145" y="16" class="mono value">相対  224 m/s</text>
 </g>
 
 <path d="M790 201C850 228 918 267 983 316" fill="none" stroke="#ff6b82" stroke-width="1.6" stroke-dasharray="6 7" opacity=".78"/>
@@ -67,28 +67,28 @@
 
 <g transform="translate(72 70)">
   <text class="mono" font-size="16" fill="#ff3155" letter-spacing="3">DIVE INTO TEPUI</text>
-  <text y="47" font-family="system-ui,-apple-system,sans-serif" font-size="37" fill="#f1edf0" font-weight="700">ORBITAL MECHANICS</text>
-  <text y="87" font-family="system-ui,-apple-system,sans-serif" font-size="37" fill="#f1edf0" font-weight="700">IS THE BATTLEFIELD.</text>
+  <text y="47" font-family="system-ui,-apple-system,sans-serif" font-size="37" fill="#f1edf0" font-weight="700">軌道力学</text>
+  <text y="87" font-family="system-ui,-apple-system,sans-serif" font-size="37" fill="#f1edf0" font-weight="700">それ自体が戦場になる。</text>
   <text y="126" class="mono label">WEBGPU · TYPESCRIPT · THREE.JS · RK4 · CR3BP</text>
 </g>
 
 <g transform="translate(72 405)">
   <rect width="300" height="64" rx="10" fill="#0e1014" stroke="#48506a"/>
-  <text x="18" y="24" class="mono label">ALTITUDE</text>
+  <text x="18" y="24" class="mono label">高度</text>
   <text x="18" y="49" class="mono value">420.3 km</text>
-  <text x="150" y="24" class="mono label">SPEED</text>
+  <text x="150" y="24" class="mono label">速度</text>
   <text x="150" y="49" class="mono value">7.67 km/s</text>
 </g>
 <g transform="translate(392 405)">
   <rect width="300" height="64" rx="10" fill="#0e1014" stroke="#48506a"/>
-  <text x="18" y="24" class="mono label">TIME WARP</text>
+  <text x="18" y="24" class="mono label">時間加速</text>
   <text x="18" y="49" class="mono value">×128</text>
-  <text x="150" y="24" class="mono label">FRAME</text>
+  <text x="150" y="24" class="mono label">座標系</text>
   <text x="150" y="49" class="mono value">ECI</text>
 </g>
 <g transform="translate(712 405)">
   <rect width="416" height="64" rx="10" fill="#0e1014" stroke="#48506a"/>
-  <text x="18" y="24" class="mono label">MISSION PROFILE</text>
-  <text x="18" y="49" class="mono value">PLAN → BURN → RENDEZVOUS → ENGAGE</text>
+  <text x="18" y="24" class="mono label">基本サイクル</text>
+  <text x="18" y="49" class="mono value">計画 → 噴射 → 会合 → 交戦</text>
 </g>
 </svg>
