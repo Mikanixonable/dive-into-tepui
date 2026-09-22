@@ -1,5 +1,5 @@
 import {
-  LOCAL_FORWARD, qFromUnitVectors, qNormalize, type Quat,
+  qNormalize, type Quat,
 } from '../../math/quat';
 import { v3, type Vec3 } from '../../math/vec3';
 import type { ShipModuleDefinition } from './ship-module-definition';
@@ -47,6 +47,16 @@ export function sideSlotDirection(slot: SideSlot): Vec3 {
   }
 }
 
+export function sideSlotRotation(slot: SideSlot): Quat {
+  const INV_SQRT2 = Math.SQRT1_2;
+  switch (slot) {
+    case 'side:+x': return { x: 0, y: INV_SQRT2, z: 0, w: INV_SQRT2 };
+    case 'side:-x': return { x: INV_SQRT2, y: 0, z: -INV_SQRT2, w: 0 };
+    case 'side:+y': return { x: -0.5, y: 0.5, z: 0.5, w: 0.5 };
+    case 'side:-y': return { x: 0.5, y: 0.5, z: -0.5, w: 0.5 };
+  }
+}
+
 export function sideMountTransform(
   parent: ShipModuleDefinition, child: ShipModuleDefinition, slot: SideSlot,
 ): ModuleTransform {
@@ -57,7 +67,7 @@ export function sideMountTransform(
       direction.y * (parent.diameter / 2 + child.length / 2),
       0,
     ),
-    rotation: qFromUnitVectors(LOCAL_FORWARD, direction),
+    rotation: sideSlotRotation(slot),
   };
 }
 
