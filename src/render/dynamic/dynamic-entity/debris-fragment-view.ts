@@ -13,7 +13,7 @@ import type { InstancedPoolSet } from '../instanced-pools';
 import type { KinematicState } from '../../../physics/kinematic-state';
 
 // 飛散片ジオメトリのバリアント数。1つごとにプールが1本増え、起動時のシェーダのコンパイルが伸びる。
-// **7 未満にすると**、形の帯を等間隔に叩くので 6 つの形のどれかが 1 本も出なくなる。
+// **7 未満にすると**、形状空間を等間隔にサンプリングするため 6 つの形状のどれかが 1 つも生成されなくなる。
 const DEBRIS_FRAGMENT_VARIANT_COUNT = 7;
 // バリアントの寸法を決める乱数のシード(起動のたびに形が変わらないよう固定する)。
 const DEBRIS_FRAGMENT_SEED = 0xdeb71;
@@ -80,7 +80,7 @@ function debrisFragmentResources(): { geometries: readonly THREE.BufferGeometry[
   if (!debrisFragmentGeometries) {
     const rand = mulberry32(DEBRIS_FRAGMENT_SEED);
     debrisFragmentGeometries = [];
-    // 形の帯を等間隔に叩く。乱択だと本数が少ないときに同じ形へ偏る。
+    // 形状の区分（[0, 1) 区間）を等間隔にサンプリングする。乱択だとバリアント数が少ないときに同じ形状へ偏る。
     for (let i = 0; i < DEBRIS_FRAGMENT_VARIANT_COUNT; i++) {
       debrisFragmentGeometries.push(
         buildDebrisFragmentGeometry(rand, (i + 0.5) / DEBRIS_FRAGMENT_VARIANT_COUNT));

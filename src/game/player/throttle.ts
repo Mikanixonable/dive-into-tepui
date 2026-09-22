@@ -120,7 +120,7 @@ export class Throttle {
     this.latchedThrust.clear();
   }
 
-  // 段・制動・ホールド・回転の保持時間・噴射ラッチを直列化した形へ落とす。
+  // 段・制動・ホールド・回転の保持時間・噴射ラッチをシリアライズ形式へ変換する。
   public serialize(): SerializedThrottle {
     return {
       throttleIdx: this._throttleIdx,

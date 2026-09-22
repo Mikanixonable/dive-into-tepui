@@ -1,4 +1,4 @@
-// クリエイティブステージへ外から出せる命令の口と、それを列へ積む実装(R3)。
+// クリエイティブステージへ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { EnemySpawnShape } from '../creative/stage-controls-panel';
 import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
@@ -23,11 +23,11 @@ export interface CreativeStageCommands {
   spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void;
   // タンパク質陣形を自機の前方へ一括で出す。
   spawnProteinFormation(): void;
-  // 検証を通った配置の指定から物体を作り、顔ぶれへ入れる。
+  // 検証を通った配置の指定から物体を作り、シミュレーション対象へ追加する。
   placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void;
 }
 
-// stage への命令を queue へ積むだけの口を組む。
+// stage へのコマンドを queue へエンキューする実装を構築する。
 export function creativeStageCommands(queue: CommandQueue, stage: CreativeStage): CreativeStageCommands {
   return {
     setResupplyEnabled: (on) => queue.submit(() => stage.setResupplyEnabled(on)),
