@@ -311,7 +311,7 @@ export class WeatherModel {
     const pressureSouth = this.pressure.at(normalize(direction.sub(northStep))).r;
     const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
       .div(2 * GRADIENT_STEP);
-    // 曲がりは等圧線に沿って測る — 勾配の向きに測ると、谷の深さそのものを曲がりとして拾う。
+    // 曲がりは等圧線に沿って測る — 勾配の向きに測ると、谷の深さそのものを曲率として検出してしまう。
     const isobar = isobarAt(direction, gradient);
     const isobarStep = isobar.mul(BEND_STEP);
     const pressureAhead = this.pressure.at(normalize(direction.add(isobarStep))).r;

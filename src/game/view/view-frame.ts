@@ -22,7 +22,7 @@ export interface ViewFrame {
   onLeave(): void;
   // ビュー固有の単発入力 commandId を実行する。
   handleCommand(commandId: string): void;
-  // 押下中の連続操作をこのビューへ配る。
+  // 押下中の継続入力をこのビューへ伝達する。
   updateActions(dt: number): void;
   // ポーズ・入力ゲートの判定後に呼ばれる。ポインタ入力の配分。
   handlePointer(camera: CameraFrame): void;

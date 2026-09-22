@@ -38,10 +38,10 @@ const TOTAL_SAMPLES_OF_QUALITY: Readonly<Record<AtmosphereQuality, number>> = {
   [ATMOSPHERE_QUALITY.high]: 24,
 };
 
-// 描くと決めた天体へ必ず配るサンプル点の数。
+// 描画対象に決定した天体へ最低限割り当てるサンプル点の数。
 const MIN_SAMPLES = 2;
 
-// 1 体へ配るサンプル点の上限。ここを超えても絵はほとんど変わらないので、支配的な 1 体が予算を
+// 1 天体あたりに割り当てるサンプル点の上限。ここを超えても絵はほとんど変わらないので、支配的な 1 体が予算を
 // 吸い切る構図では余りを使わずに済ませる。
 const MAX_SAMPLES = 16;
 
@@ -135,7 +135,7 @@ export interface AtmosphereDraw {
   readonly steps: number;
 }
 
-// 予算 budget サンプルを、影響の大きい順に配る。**返す並びは視点に近い順**(合成の順序)。
+// 予算 budget サンプルを、影響度の大きい順に割り当てる。**返す並びは視点に近い順**(合成の順序)。
 // 予算で賄えない余剰候補は、影響度の小さい順に描画対象から除外される。
 function allocateSamples(
   scored: readonly (AtmosphereCandidate & { readonly score: number })[],
