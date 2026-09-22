@@ -31,7 +31,7 @@ export class NavTargetSelection implements NavTargetSource {
     private target: NavTarget | null = null,
   ) {}
 
-  // 直列化したターゲットを、戻せるなら戻して始める。roster は復元した時点の顔ぶれ。
+  // 直列化したターゲットを、復元可能な場合は復元して初期化する。roster は復元時点のエンティティ一覧。
   public static deserialize(
     serialized: NavTarget | null, roster: EntityRoster, events: RunEventSink,
   ): NavTargetSelection {

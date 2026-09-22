@@ -100,7 +100,7 @@ export class PhysicalObjectListOrder {
     return item instanceof CelestialEntity && item.bodyClass === this.filter;
   }
 
-  // 並べ替え・親子構造を決める入力(候補の顔ぶれ・表示名・種別・親・絞り込みの通過可否と
+  // 並べ替え・親子構造を決定する入力（候補一覧・表示名・種別・親ノード・フィルタ通過可否、および
   // 絞り込み/並び順の選択)を前フレームと突き合わせ、変化していれば真を返して記録を更新する。
   // 距離・所属系・優先度も候補列から導き直すので、他のメソッドより先に呼ぶこと。
   public refreshInputs(
@@ -202,7 +202,7 @@ export class PhysicalObjectListOrder {
     for (const id of displayIds) {
       const parent = parentOf.get(id);
       // 親が今フレーム同じ区画に見当たらない(遮蔽等で一時的に消えた等)行は根として扱う —
-      // 親が現れないせいで子ごと画面から消えてしまうより、ひとまず出す方に倒す。
+      // 親が現れないせいで子ごと画面から消えてしまうより、優先して表示する側にフォールバックする。
       if (parent === undefined || !idsInSection.has(parent)) { order.rootIds.push(id); continue; }
       const list = order.childIds.get(parent);
       if (list) list.push(id); else order.childIds.set(parent, [id]);
@@ -241,7 +241,7 @@ export class PhysicalObjectListOrder {
   }
 
   // ids の末尾へ、まだ登場していない親を追記する — 親自身はフィルタを通っていなくても、
-  // 親子ツリーにそのままクラスタ見出しとして乗せる。呼び出し元が渡した配列へ直接書き込むことで、
+  // 親子ツリーにそのままクラスタ見出しとして追加する。呼び出し元が渡した配列へ直接書き込むことで、
   // 返り値の所有者が条件によって変わる(scratch のことも呼び出し元の配列のこともある)のを避ける。
   // 追加分は選んだ並び順で意味を持つ見出しなので、ids への push 順ではなく compare() で整列する。
   private appendClusterParents(

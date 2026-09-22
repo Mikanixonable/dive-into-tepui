@@ -56,7 +56,7 @@ export class OverlayManager {
   public constructor(private readonly shield: HTMLElement, private readonly gateLayer: HTMLElement) {
     shield.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
     shield.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
-    // 外側クリックを拾う唯一のキャプチャリスナ。登録済みの各オーバーレイの contains/close を
+    // 外側クリックを捕捉する唯一のキャプチャリスナ。登録済みの各オーバーレイの contains/close を
     // 通じて判定・応答する。
     document.addEventListener('pointerdown', this.handleOutsidePointerDown, true);
     this.sync();
@@ -68,7 +68,7 @@ export class OverlayManager {
   }
 
   // 入力をゲートしているオーバーレイ(kind:'modal' かつ gatesInput:true)が1つでも開いているか。
-  // 個々のオーバーレイの id を名指しせずに「背景入力を遮るべきか」を答える。
+  // 個々のオーバーレイの ID を直接指定せずに「背景入力を遮蔽すべきか」を判定して返す。
   public isInputGated(): boolean {
     return this.stack.some((e) => e.spec.kind === 'modal' && e.spec.gatesInput);
   }

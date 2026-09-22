@@ -2,14 +2,14 @@
 import type { RunEventSink } from '../run-events';
 import type { ViewMode } from '../view/view-mode';
 
-// ビュー遷移の可否と、遷移時の計画件数を読む面。
+// ビュー遷移の可否判定および遷移時の計画件数を参照するインターフェース。
 export interface ViewControlSource {
   readonly current: {
     readonly plan: { readonly nodes: readonly unknown[] };
   } | null;
 }
 
-// ビュー選択を外から読む面。
+// ビュー選択状態を外部から参照するインターフェース。
 export interface ViewSelectionSource {
   readonly current: ViewMode;
   // view へいま遷移できるか。

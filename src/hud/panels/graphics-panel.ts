@@ -1,4 +1,4 @@
-// 描画品質の設定面。品質プリセットと、描画品質設定の各項目を GRAPHICS_GROUPS・GRAPHICS_OPTIONS
+// 描画品質の設定パネル。品質プリセットと、描画品質設定の各項目を GRAPHICS_GROUPS・GRAPHICS_OPTIONS
 // の表どおりに群ごとに並べる。表示中の設定値一式を持ち、操作のたびに新しい一式を onChange で外へ返す。
 import {
   GRAPHICS_GROUPS, GRAPHICS_OPTIONS, QUALITY_PRESETS, graphicsOptionKeys, matchingGraphicsPreset, withGraphicsOption,
@@ -96,7 +96,7 @@ export class GraphicsPanel {
     this.sync(graphics);
   }
 
-  // 外から設定値が変わったときに、全コントロールの点灯を引き直す。プリセットはどれとも
+  // 外部から設定値が変更されたときに、全コントロールの選択・点灯表示を更新する。プリセットはどれとも
   // 一致しなければ全消灯。
   public sync(graphics: GraphicsSettingsData): void {
     this.graphics = graphics;
@@ -129,7 +129,7 @@ export class GraphicsPanel {
     this.select(withGraphicsOption(this.graphics, key, value));
   }
 
-  // 選ばれた設定値一式へ移る。自分の点灯を引き直してから外へ返す。
+  // 選ばれた設定値一式へ遷移する。自身の選択・点灯表示を更新してから onChange コールバックで外部へ通知する。
   private select(graphics: GraphicsSettingsData): void {
     this.sync(graphics);
     this.onChange?.(graphics);

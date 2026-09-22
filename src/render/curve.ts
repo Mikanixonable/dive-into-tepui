@@ -27,7 +27,7 @@ const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 // 初期分割数の下限。閉曲線を1区間のままにすると、t=0/1 が同一点で弦が縮退する。
 const INITIAL_SEGMENTS = 8;
 
-// 頂点予算のうち初期頂点へ回してよい割合。残りを適応分割が逸脱の大きい区間へ配るので、
+// 頂点予算のうち初期頂点へ回してよい割合。残りを適応分割が逸脱の大きい区間へ配分するので、
 // 少し余らせたほうが細部の要る場所に頂点が集まる。
 const MAX_INITIAL_VERTEX_RATIO = 0.5;
 
@@ -179,7 +179,7 @@ export class Curve {
     this.appliedStyle = style;
   }
 
-  // sample の座標系の点における m/px。要求された変換でワールドへ写してから換算する。
+  // sample のローカル座標系における点での m/px。指定された変換行列でワールド座標系へ変換してから換算する。
   private scaleAtLocal(cam: CameraScale, lx: number, ly: number, lz: number): number {
     this.scratchWorld.set(lx, ly, lz).applyQuaternion(this.reqQuaternion).add(this.reqPosition);
     return cam.at(this.scratchWorld.x, this.scratchWorld.y, this.scratchWorld.z);
@@ -199,7 +199,7 @@ export class Curve {
     this.line.position.copy(this.reqPosition).add(this.scratchCamWorld);
   }
 
-  // 位置 t の頂点を積み、その番号を返す。連結リストへの接続は呼び出し側が行う。
+  // 位置 t の頂点を追加し、そのインデックスを返す。連結リストの前後ポインタ更新はこれに含まない。
   private pushVertex(t: number, x: number, y: number, z: number, colorAt?: CurveColorSampler): number {
     const i = this.bakedCount++;
     this.ts[i] = t;
@@ -286,7 +286,7 @@ export class Curve {
   // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数、camera と
   // viewportHeight [CSS px] は画面上の目標を実距離へ換算するための現在の描画カメラと描画先の
   // 高さ。initialSegments は適応分割を始める区間数 — 適応分割は弦の中点しか見ないので、1区間に
-  // 何周ぶんも入る曲線では中点がたまたま曲線上に乗り、区間まるごとが直線に化ける。「1区間が
+  // 何周分も入る曲線では中点が偶然曲線上に乗り、区間全体が誤って直線と判定されてしまう。「1区間が
   // 曲線の半周を超えない」下限を渡してそれを防ぐ。colorAt は線の中で色が変わるときだけ渡す。
   public setAnalyticCurve(
     sample: CurveSampler, camera: THREE.Camera, viewportHeight: number,
