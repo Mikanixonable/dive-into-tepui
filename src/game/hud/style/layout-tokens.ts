@@ -26,7 +26,7 @@ export const LAYOUT_TOKENS_STYLE = `
     --rail-w-left: min(220px, calc(46vw - 8px));
     --rail-w-right: min(260px, calc(54vw - 8px));
     --combat-panel-max-h: 116px;
-    --hud-rail-top: 40px;
+    --hud-rail-top: 52px;
     --hud-rail-bottom: 8px;
     --hud-map-scale-bottom: 8px;
   }

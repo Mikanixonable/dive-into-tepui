@@ -41,7 +41,8 @@ ${OVERLAY_LAYER_STYLE}
 
 #hud-overlay-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: var(--shade-1); }
 body.hud-overlay-dim-background #hud-overlay-shield { display: block; }
-body.hud-overlay-modal-open #touch-ui { display: none; }
+body.hud-overlay-modal-open #touch-ui,
+body.hud-construction-mode #touch-ui { display: none; }
 
 /* 表示/非表示ユーティリティ */
 #hud .hidden { display: none !important; }
@@ -58,7 +59,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud.construction-mode #hud-enemies,
 #hud.construction-mode #hud-map-scale,
 #hud.construction-mode #hud-chase-reset,
-#hud.construction-mode #hud-help-badge { display: none !important; }
+#hud.construction-mode #hud-help-badge,
+#hud.construction-mode .rail-toggle { display: none !important; }
 #hud .hud-view-root { position: absolute; inset: 0; display: none; pointer-events: none; }
 #hud .hud-view-root.active { display: block; }
 
@@ -138,15 +140,34 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
   border-radius: 0 0 var(--radius-panel) var(--radius-panel);
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-2) var(--space-5) var(--space-3);
   font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
   color: var(--text-dim);
-  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2);
+  width: min(820px, calc(100vw - var(--space-6) * 2));
   max-width: calc(100vw - var(--space-6) * 2);
 }
+#hud-topbar .gs-status-head {
+  display: flex; align-items: baseline; gap: var(--space-2);
+}
+#hud-topbar .gs-workspace { margin-left: auto; }
+#hud[data-workspace="flight"] #hud-topbar .gs-workspace::after { content: 'FLIGHT'; }
+#hud[data-workspace="map"] #hud-topbar .gs-workspace::after { content: 'MAP'; }
+#hud[data-workspace="construction"] #hud-topbar .gs-workspace::after { content: 'BUILD · PAUSED'; }
 #hud-topbar .gs-row {
   display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
   max-width: 100%; overflow-x: auto; scrollbar-width: none;
+}
+#hud-topbar .gs-metrics {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end; gap: var(--space-5);
+  padding-top: var(--space-2);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
+}
+#hud-topbar .gs-metric { display: grid; gap: 2px; min-width: 0; }
+#hud-topbar .gs-metric-time .v {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text); font-size: var(--font-s);
 }
 #hud-topbar .v { color: var(--text); }
 #hud-topbar .gs-speed-select {
@@ -242,6 +263,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
    モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる。 */
 @media ${MQ_MEDIUM_DOWN} {
   #hud { font-size: var(--font-s); }
+  #hud-topbar { padding-block: var(--space-1) var(--space-2); }
+  #hud-topbar .gs-status-head { display: none; }
+  #hud-topbar .gs-metrics { padding-top: 0; box-shadow: none; }
+  #hud-topbar .gs-metric .ui-data-label { display: none; }
   #hud .panel { padding: var(--space-3) var(--space-4); line-height: 1.4; }
   #hud .panel h3 { font-size: var(--font-xs); letter-spacing: 1.5px; margin-bottom: var(--space-2); }
   #hud .row { gap: var(--space-4); }
@@ -258,6 +283,14 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 @media ${MQ_COMPACT} {
   #hud .hud-rail { font-size: var(--font-xxs); }
   #hud .hud-map-root.active .hud-rail { bottom: var(--hud-map-rail-bottom); }
+  #hud-topbar {
+    width: calc(100vw - var(--space-4) * 2);
+    padding-inline: var(--space-3);
+  }
+  #hud-topbar .gs-status-head { gap: var(--space-1); }
+  #hud-topbar .gs-metrics { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); }
+  #hud-topbar .gs-metric:last-child { display: none; }
+  #hud-topbar .gs-metric-time .v { font-size: var(--font-xxs); }
 }
 @media ${MQ_COARSE_SHORT} {
   #hud-chase-reset { top: calc(40px + var(--space-4)); }
