@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://mikanixonable.github.io/dive-into-tepui/"><strong>▶ ブラウザで遊ぶ</strong></a>
   ·
-  <a href="WIKI.md"><strong>開発 WIKI</strong></a>
+  <a href="WIKI/README.md"><strong>開発 WIKI</strong></a>
   ·
   <a href="DEVELOP/SPEC/README.md"><strong>仕様書</strong></a>
   ·
@@ -28,7 +28,7 @@
   <img alt="Node.js 20以上" src="https://img.shields.io/badge/Node.js-20%2B-48506a?logo=nodedotjs&logoColor=white">
 </p>
 
-軌道遷移、姿勢制御、時間加速、会合、射撃を一つのゲーム状態の上で扱う、WebGPU 製の 3D 軌道力学シューティングです。詳細なコードベースの読み方は [開発 WIKI](WIKI.md)、ゲームが**どう振る舞うべきか**は [SPEC](DEVELOP/SPEC/README.md) を参照してください。
+軌道遷移、姿勢制御、時間加速、会合、射撃を一つのゲーム状態の上で扱う、WebGPU 製の 3D 軌道力学シューティングです。詳細なコードベースの読み方は [開発 WIKI](WIKI/README.md)、ゲームが**どう振る舞うべきか**は [SPEC](DEVELOP/SPEC/README.md) を参照してください。
 
 <p align="center">
   <img src=".github/readme/hero-orbit.svg" alt="軌道戦闘の概要" width="100%">
@@ -213,7 +213,7 @@
 
 物理・ゲーム状態を正本とし、HUD・軌道線・マーカーなどはそこから導出します。描画や DOM がゲーム状態の所有者にならないよう、フレーム処理は概ね **入力 → シミュレーション → 表示同期 → 描画** の順に進みます。
 
-コードベースを詳しく読む場合は [開発 WIKI](WIKI.md) を参照してください。層・import・正本の規則は [ARCHITECTURE](DEVELOP/ARCHITECTURE.md)、コードの書き方は [CODING-RULE](DEVELOP/CODING-RULE.md) が正本です。
+コードベースを詳しく読む場合は [開発 WIKI](WIKI/README.md) を参照してください。層・import・正本の規則は [ARCHITECTURE](DEVELOP/ARCHITECTURE.md)、コードの書き方は [CODING-RULE](DEVELOP/CODING-RULE.md) が正本です。
 
 ---
 
@@ -245,7 +245,7 @@ Node.js 20 以上、WebGPU 対応ブラウザを推奨します。
 | `npm run bgm-lab` | BGM 試聴環境 |
 | `npm run ci` | 総合検証 |
 
-より詳しい開発手順、ディレクトリ構造、テストの使い分けは [開発 WIKI](WIKI.md) にまとめています。
+より詳しい開発手順、ディレクトリ構造、テストの使い分けは [開発 WIKI](WIKI/README.md) にまとめています。
 
 ---
 
@@ -270,7 +270,7 @@ Node.js 20 以上、WebGPU 対応ブラウザを推奨します。
 <p align="center">
   <a href="https://mikanixonable.github.io/dive-into-tepui/"><strong>▶ Dive into Tepui を起動</strong></a>
   ·
-  <a href="WIKI.md"><strong>開発 WIKI を読む</strong></a>
+  <a href="WIKI/README.md"><strong>開発 WIKI を読む</strong></a>
   ·
   <a href="DEVELOP/SPEC/README.md"><strong>SPEC を読む</strong></a>
 </p>
