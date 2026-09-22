@@ -175,6 +175,7 @@ export class ShipConstruction implements OverlayHandle {
       rotation: candidate.rotationEci,
       radius: candidate.guideRadius,
       valid: candidate.placement.valid,
+      selected: candidate.slot.id === this.selectedSlotId,
     }));
     this.guide.syncAll(displays);
     const selected = candidates.find(candidate => candidate.slot.id === this.selectedSlotId) ?? null;
@@ -377,7 +378,8 @@ export class ShipConstruction implements OverlayHandle {
     const hit = add(ray.origin, scale(ray.dir, distance));
     const offset = sub(hit, candidate.guideEci);
     const radialSq = dot(offset, offset) - dot(offset, normal) ** 2;
-    return radialSq <= candidate.guideRadius ** 2;
+    const guideRadius = candidate.guideRadius * (candidate.slot.id === this.selectedSlotId ? 1.15 : 1);
+    return radialSq <= guideRadius ** 2;
   }
 
   private synchronizeShip(ship: ModularShip): void { ship.synchronizeAssemblyState(); }
