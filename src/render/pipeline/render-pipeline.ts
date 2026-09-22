@@ -15,11 +15,14 @@ import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
 import { AmbientSource } from './lighting/ambient-source';
+import { IndirectSource } from './lighting/indirect-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
 import { ShadowPass } from './shadow/shadow-pass';
+import { SCREEN_SPACE_DIFFUSE, ScreenSpacePass } from './screen-space/screen-space-pass';
+import { ScreenSpaceLight } from './screen-space/screen-space-light';
 import { BodyShadow } from './shadow/body-shadow';
 import { RingShadow } from './shadow/ring-shadow';
 import { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
@@ -47,6 +50,9 @@ export class RenderPipeline {
   private readonly _cumulusShadow: CloudShadowRenderer;
   private readonly meshShadow: MeshShadow;
   private readonly shadowMaps: ShadowMaps;
+  private readonly screenSpacePass: ScreenSpacePass;
+  // 遮蔽と照り返しのパスの結果。天体照・環境光・照り返し・デバッグ表示で 1 つを共有する。
+  private readonly screenSpaceLight: ScreenSpaceLight;
   private readonly lightPrepass: LightPrepass;
   // 球光源の鏡面が引く係数表。太陽と天体照で 1 つを共有する。
   private readonly sphereSpecular: SphereSpecular;
@@ -54,6 +60,7 @@ export class RenderPipeline {
   private readonly sunSource: SunSource;
   private readonly _planetLight: PlanetLightSource;
   private readonly _ambient: AmbientSource;
+  private readonly indirectSource: IndirectSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
@@ -128,11 +135,21 @@ export class RenderPipeline {
     this.sphereSpecular = new SphereSpecular();
     this.sunSource = new SunSource(
       this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
+    // 遮蔽と照り返しのパスは天体照の球冠を、天体照はパスの結果を要る。**結果の描画先を先に作る** —
+    // 持ち主を分けないと構築が循環する。
+    this.screenSpaceLight = new ScreenSpaceLight();
     this._planetLight = new PlanetLightSource(
-      this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel);
-    this._ambient = new AmbientSource(this._sunLight);
+      this._sunLight, this._bodyShadow, this.sphereSpecular, this.screenSpaceLight,
+      graphics.planetLightCount, graphics.planetLightModel,
+    );
+    this._ambient = new AmbientSource(this._sunLight, this.screenSpaceLight);
+    this.indirectSource = new IndirectSource(this.screenSpaceLight);
+    this.screenSpacePass = new ScreenSpacePass(
+      renderer, this.gbuffer, this.sunSource, this._planetLight, this._ambient, this.screenSpaceLight, gpu,
+      graphics.screenSpaceDiffuse, graphics.screenSpaceQuality,
+    );
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
-      this.sunSource, ...this._planetLight.lightSources, this._ambient,
+      this.sunSource, ...this._planetLight.lightSources, this._ambient, this.indirectSource,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
 
@@ -239,6 +256,13 @@ export class RenderPipeline {
       specular: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
+      occlusion: this.buildCompositeMaterial(vec4(vec3(this.screenSpaceLight.ambientVisibilityAt(screenUV)), 1)),
+      indirect: this.buildCompositeMaterial(
+        vec4(this.toneMapped(this.screenSpaceLight.indirectAt(screenUV)), 1),
+      ),
+      'bounce-source': this.buildCompositeMaterial(
+        vec4(this.toneMapped(texture(this.screenSpacePass.surfaceRadianceTexture, screenUV).rgb), 1),
+      ),
       material: inspectMaterial,
       atmosphere: inspectMaterial,
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
@@ -330,6 +354,13 @@ export class RenderPipeline {
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
+    this.screenSpacePass.setMode(graphics.screenSpaceDiffuse);
+    this.screenSpacePass.setQuality(graphics.screenSpaceQuality);
+    // 天体照と環境光は、遮蔽と照り返しのパスが描くあいだ可視率を読む。照り返しは、それを集める方式のあいだ足す。
+    const occluded = graphics.screenSpaceDiffuse !== SCREEN_SPACE_DIFFUSE.off;
+    this._planetLight.setOccluded(occluded);
+    this._ambient.setOccluded(occluded);
+    this.indirectSource.setEnabled(graphics.screenSpaceDiffuse === SCREEN_SPACE_DIFFUSE.indirect);
     this.shadowMaps.setQuality(
       graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
@@ -366,6 +397,7 @@ export class RenderPipeline {
       ['影マップ', () => this.shadowMaps.compile(scene, camera, height, this._sunLight)],
       ['G バッファ', () => this.gbuffer.compile(scene, camera, width, height)],
       ['影', () => this.shadowPass.compile(camera, width, height)],
+      ['遮蔽と照り返し', () => this.screenSpacePass.compile(camera, width, height)],
       ['照明', () => this.lightPrepass.compile(camera, width, height)],
     ];
 
@@ -398,10 +430,10 @@ export class RenderPipeline {
     onPass('完了', passes.length, passes.length);
   }
 
-  // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → ライティング → マテリアル → 大気 →
-  // world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
+  // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → ライティング → マテリアル →
+  // 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
   // マテリアル・大気・world・レンズの4つのパスをスキップする。デバッグ表示を選んでいてもパスは省略しない —
-  // 設定で切られているパス(影マップ・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
+  // 設定で切られているパス(影マップ・遮蔽と照り返し・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
   // 空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
   // フレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
@@ -422,6 +454,9 @@ export class RenderPipeline {
 
     // 影パス。G バッファの深度を読む。
     this.shadowPass.render(camera, width, height);
+
+    // 遮蔽と照り返しのパス。G バッファと影の透過率を読む。
+    this.screenSpacePass.render(camera, width, height);
 
     // 天体照の写し。基準点はカメラの位置で、ライティングパスより前に焼く。
     this._planetLight.bake(this.renderer, camera.getWorldPosition(this.cameraPosition), this.gpu);
@@ -489,6 +524,8 @@ export class RenderPipeline {
     this.gbuffer.dispose();
     this.shadowPass.dispose();
     this.shadowMaps.dispose();
+    this.screenSpacePass.dispose();
+    this.screenSpaceLight.dispose();
     this.lightPrepass.dispose();
     this.sphereSpecular.dispose();
     this.materialPass.dispose();

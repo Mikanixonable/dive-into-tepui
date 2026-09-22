@@ -22,7 +22,7 @@ function signNotZero(v: Vec2Node): Vec2Node {
 //   p = n.xy / (|n.x| + |n.y| + |n.z|)
 //   n.z < 0 のとき p = (1 - |p.yx|) * signNotZero(p)
 //   出力 = p * 0.5 + 0.5
-function octEncodeNormal(n: Vec3Node): Vec2Node {
+export function octEncodeNormal(n: Vec3Node): Vec2Node {
   const l1Norm = abs(n.x).add(abs(n.y)).add(abs(n.z));
   const p = n.xy.div(l1Norm);
   const folded = float(1).sub(p.yx.abs()).mul(signNotZero(p));
