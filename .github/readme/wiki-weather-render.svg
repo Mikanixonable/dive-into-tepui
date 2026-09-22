@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>雲場と描画</title><defs><style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">雲場と描画</text><text x="40" y="60" class="m d sm">地表・雲・大気を別レイヤーで積み、太陽光と視線方向へ積分する</text>
+<g transform="translate(330 158)">
+ <circle r="66" fill="url(#earth)" stroke="#c3bec9"/><circle r="82" fill="none" stroke="#3478ff" stroke-width="7" opacity=".16"/>
+ <path d="M-49-31C-28-46-5-47 16-34C36-21 58-22 76-35" fill="none" stroke="#eeeaf5" stroke-width="12" stroke-linecap="round" opacity=".7"/>
+ <path d="M-38-57C-15-67 13-67 36-57C54-50 69-51 80-56" fill="none" stroke="#c3bec9" stroke-width="6" stroke-linecap="round" opacity=".36"/>
+ <text x="-97" y="-22" class="m t xs">厚い雲</text><text x="-60" y="-76" class="m b xs">薄雲</text>
+</g>
+<g transform="translate(775 105)"><circle r="23" fill="url(#sun)"/><text x="-14" y="39" class="m a xs">太陽</text><path d="M-24 14L-330 82M-20 20L-300 108" stroke="#ff8798" stroke-width="1.6"/></g>
+<g transform="translate(970 174)">
+ <path d="M-15-7L20 0-15 7-4 0Z" fill="#eeeaf5"/><circle r="17" fill="none" stroke="#3478ff"/>
+ <path d="M-20-4L-560-58" class="bl dash"/><text x="-150" y="-30" class="m u xs">camera ray</text>
+</g>
+<g transform="translate(680 158)"><path d="M0 0C44 15 77 37 101 66" class="g"/><text x="-5" y="-10" class="m d xs">scatter</text><text x="75" y="84" class="m a xs">composite</text></g>
+</svg>
