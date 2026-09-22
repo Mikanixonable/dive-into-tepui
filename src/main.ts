@@ -181,11 +181,13 @@ function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
     grid: settings.gridVisibility,
     tab: settings.viewOptionsTab,
     orbitGuideGroupTab: settings.orbitGuideGroupTab,
+    renderStyle: settings.renderStyle,
     // 更新コールバック。設定の正本へ反映する。
     onMapDisplayChange: (value) => settings.mapDisplayToggles.set(value),
     onGridChange: (value) => settings.gridVisibility.set(value),
     onTabChange: (value) => settings.viewOptionsTab.set(value),
     onOrbitGuideGroupTabChange: (value) => settings.orbitGuideGroupTab.set(value),
+    onRenderStyleChange: (value) => settings.renderStyle.set(value),
   };
 }
 

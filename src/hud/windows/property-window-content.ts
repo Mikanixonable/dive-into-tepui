@@ -30,6 +30,9 @@ export interface PropertyWindowRelatedItem {
 export interface PropertyWindowContent<A extends string = string> {
   readonly title: string;
   readonly subtitle?: string;
+  // Technical Sheet 上で対象種別を示す短いコードと英字ラベル。
+  readonly kindCode?: string;
+  readonly kindLabel?: string;
   // タイトル前に添える対象種別のグリフ。省略すると添えない。
   readonly icon?: string;
   readonly rows: readonly PropertyRow[];
