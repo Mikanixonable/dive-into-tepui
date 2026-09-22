@@ -29,6 +29,9 @@ import type { ViewFrame } from '../view/view-frame';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
 import { ShipInspection } from './ship-inspection';
 import { EnemyInspection } from './enemy-inspection';
+import { Pickup } from '../dynamic/dynamic-entity/pickup';
+import { LagrangePointMarker } from '../marker/lagrange-point-marker';
+import { OrbitPointMarker } from '../marker/orbit-point-marker';
 import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
@@ -121,11 +124,18 @@ export class ObjectWindowActions {
         ? { kindCode: 'VSL', kindLabel: 'SPACECRAFT' }
         : target instanceof EnemyInspection
           ? { kindCode: 'CNT', kindLabel: 'CONTACT' }
-          : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
+          : target instanceof Pickup
+            ? { kindCode: 'SUP', kindLabel: 'SUPPLY' }
+            : target instanceof LagrangePointMarker
+              ? { kindCode: 'POI', kindLabel: 'REFERENCE POINT' }
+              : target instanceof OrbitPointMarker
+                ? { kindCode: 'EVT', kindLabel: 'ORBIT EVENT' }
+                : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
     return {
       title,
       subtitle,
       ...kind,
+      monitorWhenClipped: true,
       icon: target.glyphSvg ?? target.glyph,
       rows: [],
       items,

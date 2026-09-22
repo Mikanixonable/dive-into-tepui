@@ -54,7 +54,7 @@ export class EquatorNodeMarker extends OrbitPointMarker {
   ): readonly PropertyRow[] {
     return [
       ...this.ownerRows(),
-      { key: 'target', label: '対象', value: this.center ?? '対象' },
+      { key: 'target', label: '対象', value: this.center ?? '対象', presentation: 'major' },
       ...this.passTimeRows(simTime),
     ];
   }

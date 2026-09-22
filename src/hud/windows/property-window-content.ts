@@ -1,9 +1,14 @@
 // プロパティウィンドウの本文データ構造。表示行・操作項目・関連物体・改名ハンドラをまとめる。
 
+export type PropertyRowPresentation = 'hero' | 'major' | 'metric' | 'detail';
+
 export interface PropertyRow {
   readonly key: string;
   readonly label: string;
   readonly value: string;
+  // Inspection Sheet 上での情報階層。省略時は通常の metric として扱う。
+  // hero は対象を判断する最重要値、major は主要補助値、detail は明示的に詳細扱いする。
+  readonly presentation?: PropertyRowPresentation;
   // 立てると「詳細」トグルの下に畳まれ、既定では隠れる。
   readonly collapsible?: boolean;
   // 指定すると同名の行同士がグループ見出しの下にまとめられ、既定では畳まれる。
@@ -33,6 +38,8 @@ export interface PropertyWindowContent<A extends string = string> {
   // Technical Sheet 上で対象種別を示す短いコードと英字ラベル。
   readonly kindCode?: string;
   readonly kindLabel?: string;
+  // true の対象はクリップ時に主要値だけを残した Monitor 表示へ縮退する。
+  readonly monitorWhenClipped?: boolean;
   // タイトル前に添える対象種別のグリフ。省略すると添えない。
   readonly icon?: string;
   readonly rows: readonly PropertyRow[];

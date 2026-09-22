@@ -124,13 +124,13 @@ export class CelestialEntity implements ObjectPickable {
     const rows: PropertyRow[] = [];
     if (viewer !== null) {
       const dist = len(sub(this.posAt(displayTime), viewer.motion.state.r));
-      rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(dist) });
+      rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(dist), presentation: 'hero' });
     }
     const kindLabel = motion.kind === 'star' ? '恒星' : motion.kind === 'planet' ? '惑星' : '衛星';
     rows.push(
       { key: 'kind', label: '種別', value: kindLabel },
-      { key: 'mu', label: 'μ', value: `${def.mu.toExponential(3)} m³/s²` },
-      { key: 'radius', label: '半径', value: fmtDist(def.radius) },
+      { key: 'radius', label: '半径', value: fmtDist(def.radius), presentation: 'major' },
+      { key: 'mu', label: 'μ', value: `${def.mu.toExponential(3)} m³/s²`, presentation: 'major' },
     );
     // 軌道要素は公転天体だけが持つ。
     if (motion.kind === 'star') return rows;

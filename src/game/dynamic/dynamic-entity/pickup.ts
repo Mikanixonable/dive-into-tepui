@@ -206,8 +206,11 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     const rows: PropertyRow[] = [];
     if (viewer) rows.push({
       key: 'dist', label: '距離', value: fmtDist(len(sub(this.motion.state.r, viewer.motion.state.r))),
+      presentation: 'hero',
     });
-    rows.push(...this.supplyRows());
+    rows.push(...this.supplyRows().map((row) => ({
+      ...row, presentation: row.presentation ?? 'major' as const,
+    })));
     rows.push(...orbitRows(this, celestialBodies, simTime));
     return rows;
   }
