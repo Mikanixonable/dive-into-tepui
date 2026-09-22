@@ -10,12 +10,19 @@ import { mainBtn, smallBtn, stageLabel } from './shared';
 
 const STYLE = `
 #save-browser .sb-pane-slots { flex: 0 0 34%; }
-#save-browser .sb-slot-list { display: flex; flex-direction: column; gap: var(--space-2); }
+#save-browser .sb-slot-list { display: flex; flex-direction: column; gap: 1px; counter-reset: archive-slot; }
 /* アクティブ行の識別は色数を増やさず、左端 2px のオレンジ帯のみで示す。
    「見ている」行は背景をわずかに明るくするだけで区別する。 */
 #save-browser .sb-slot-row {
-  display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
-  border: 0; border-radius: var(--radius-m); cursor: pointer;
+  counter-increment: archive-slot;
+  display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-3);
+  border: 0; border-radius: 0; cursor: pointer;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
+}
+#save-browser .sb-slot-row::before {
+  content: counter(archive-slot, decimal-leading-zero);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
 }
 #save-browser .sb-slot-row.viewed { background: var(--fill-1); }
 #save-browser .sb-slot-row.on { background: var(--color-primary-fill-weak); color: var(--color-primary); }
@@ -28,6 +35,8 @@ const STYLE = `
 #save-browser span.sb-btn.sb-btn-play { color: var(--text); }
 @media ${MQ_COMPACT} {
   #save-browser .sb-pane-slots { flex: 1 1 0; }
+  #save-browser .sb-slot-row { grid-template-columns: 2.4em minmax(0, 1fr); }
+  #save-browser .sb-slot-actions { grid-column: 2; justify-content: flex-start; }
 }
 `;
 
@@ -53,7 +62,7 @@ export function buildSlotsPane(
   pane.className = 'sb-pane sb-pane-slots';
   const title = document.createElement('div');
   title.className = 'sb-pane-title';
-  title.textContent = 'セーブデータ';
+  title.textContent = `SLOTS / ${slots.length}`;
   pane.appendChild(title);
 
   // 1件も無ければ一覧の代わりに案内文を出す。
@@ -98,11 +107,11 @@ function buildSlotRow(
   info.className = 'sb-slot-info';
   const name = document.createElement('span');
   name.className = 'sb-slot-name';
-  name.textContent = s.name + (active ? ' ▶' : '');
+  name.textContent = s.name;
   const meta = document.createElement('span');
   meta.className = 'sb-slot-meta';
   const lastStage = s.lastRun === null ? '未プレイ' : stageLabel(s.lastRun.stageId);
-  meta.textContent = `${lastStage} / ${fmtDateTime(s.lastPlayedAtReal / 1000)} / ${totalSnapshots}件`;
+  meta.textContent = `${active ? 'ACTIVE · ' : ''}${lastStage} · ${fmtDateTime(s.lastPlayedAtReal / 1000)} · ${totalSnapshots} SNAPSHOTS`;
   info.append(name, meta);
   row.appendChild(info);
 

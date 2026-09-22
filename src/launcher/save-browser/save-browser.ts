@@ -26,17 +26,32 @@ const STYLE = `
   border-radius: var(--radius-window);
 }
 #save-browser .sb-header {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-5);
   padding: var(--space-5) var(--space-6); flex: 0 0 auto;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
 }
-#save-browser .sb-title { font-size: var(--font-l); font-weight: 700; letter-spacing: 0.12em; color: var(--text); }
+#save-browser .sb-heading { display: grid; gap: var(--space-1); }
+#save-browser .sb-kicker {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .12em;
+}
+#save-browser .sb-code { color: var(--color-primary); font-weight: 700; letter-spacing: .16em; }
+#save-browser .sb-title {
+  color: var(--text-strong); font-size: var(--font-2xl); font-weight: 650; letter-spacing: -.03em;
+}
+#save-browser .sb-subtitle { color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em; }
 #save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: var(--space-1); background: var(--glass-inset); }
 #save-browser .sb-pane {
   flex: 1 1 0; min-width: 0; overflow-y: auto; padding: var(--space-5) var(--space-5);
   display: flex; flex-direction: column; gap: var(--space-3); background: var(--glass-inset);
   scrollbar-width: thin;
 }
-#save-browser .sb-pane-title { font-size: var(--font-xs); letter-spacing: 1.5px; color: var(--text-dim); }
+#save-browser .sb-pane-title {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding-bottom: var(--space-2); color: var(--text-dim);
+  font-size: var(--font-xxs); letter-spacing: .12em; text-transform: uppercase;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
+}
 #save-browser .sb-empty { color: var(--text-dim); padding: var(--space-5); text-align: center; line-height: 1.7; font-size: var(--font-s); }
 #save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); }
 #save-browser .sb-status.error { color: var(--color-error); }
@@ -147,17 +162,26 @@ export class SaveBrowser implements OverlayHandle {
 
     const header = document.createElement('div');
     header.className = 'sb-header';
+    const heading = document.createElement('div');
+    heading.className = 'sb-heading';
+    const kicker = document.createElement('div');
+    kicker.className = 'sb-kicker';
+    kicker.innerHTML = '<span class="sb-code">ARC</span><span>MISSION ARCHIVE</span>';
     const title = document.createElement('span');
     title.className = 'sb-title';
-    title.textContent = 'セーブデータ';
-    header.appendChild(title);
+    title.textContent = 'MISSION ARCHIVE';
+    const subtitle = document.createElement('span');
+    subtitle.className = 'sb-subtitle';
+    subtitle.textContent = 'SAVE SLOTS / SNAPSHOT HISTORY';
+    heading.append(kicker, title, subtitle);
+    header.appendChild(heading);
     const closeBtn = new CloseButton(() => this.close());
     header.appendChild(closeBtn.element);
     panel.appendChild(header);
 
     // ペイン切替タブ。見せるかどうかは幅に応じて CSS が決める。
     const mobileTabs = new TabBar<'slots' | 'snapshots'>(
-      [['slots', 'セーブデータ'], ['snapshots', '手動セーブ']],
+      [['slots', 'SLOTS'], ['snapshots', 'SNAPSHOTS']],
       (pane) => { this.mobilePane = pane; this.rebuild(); },
     );
     mobileTabs.element.classList.add('sb-mobile-tabs');
