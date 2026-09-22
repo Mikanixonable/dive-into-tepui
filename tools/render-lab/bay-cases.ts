@@ -3,10 +3,12 @@
 // 内側でどれだけ明るさと色を変えるか(近くの構造による天体照と環境光の遮り、明るい面と自己発光する面の
 // 照り返し、滑らかな面への近くの物体の映り込み)を読む試験体。
 import * as THREE from 'three/webgpu';
+import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CasingPool } from '../../src/render/dynamic/dynamic-entity/casing-view';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
 import { directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import { EARTH_AWAY, labCamera, OBLIQUE_SUN_DIR, type CaseBuilder, type LabCase } from './lab-case';
+import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
 // 白い面の線形の灰色の値と粗さ。
 const WHITE = 0.8;
@@ -76,6 +78,16 @@ const BAY_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
 };
 // 恒星を床の真下に置く向き。見えている面はどれも直射を受けない。
 const SUN_BELOW: Partial<LabViewAngles> = { sunAzimuthDeg: 0, sunElevationDeg: -90 };
+// 天体照の遮られ方を読む撮影の、地球の仰角と方位 [deg]。方位は開いた +X の側と、−X・−Z の内隅の側。
+const LOW_EARTH_ELEVATION_DEG = 35;
+const OPEN_SIDE_AZIMUTH_DEG = 90;
+const CORNER_SIDE_AZIMUTH_DEG = -135;
+// 同じ撮影の、大きい地球と小さい地球の視半径 [deg]と、そのとき床が読める明るさになる恒星までの距離
+// [log10 天文単位]。
+const LARGE_EARTH_RADIUS_DEG = 30;
+const LARGE_EARTH_SUN_DISTANCE_LOG_AU = -0.16;
+const SMALL_EARTH_RADIUS_DEG = 3;
+const SMALL_EARTH_SUN_DISTANCE_LOG_AU = -1.14;
 
 // 観察の中心から方位 azimuthDeg・仰角 elevationDeg [deg]、距離 distance [m] に置くカメラの、観察の向きの差分。
 function cameraAt(azimuthDeg: number, elevationDeg: number, distance: number): Partial<LabViewAngles> {
@@ -84,6 +96,29 @@ function cameraAt(azimuthDeg: number, elevationDeg: number, distance: number): P
     cameraElevationDeg: elevationDeg,
     cameraDistanceLog: Math.log10(distance / CAMERA_DISTANCE),
   };
+}
+
+// 天体照の遮られ方を読む撮影の観察の向き。恒星は床の真下の距離 sunDistanceLogAu [log10 天文単位]、地球は
+// 描画原点から方位 azimuthDeg・仰角 LOW_EARTH_ELEVATION_DEG の向きへ、視半径 radiusDeg [deg] で見える高度に
+// 置く。**恒星を近づけるのは天体照を読める明るさにするため** — 床の真下の恒星は読みどころへ直射を与えず、
+// 露出の順応は 1 天文単位の内側で頭打ちなので、近づけたぶんは天体照だけを明るくする。
+function earthLightView(azimuthDeg: number, radiusDeg: number, sunDistanceLogAu: number): Partial<LabViewAngles> {
+  const altitude = R_EARTH / Math.sin(THREE.MathUtils.degToRad(radiusDeg)) - R_EARTH;
+  return {
+    ...SUN_BELOW,
+    sunDistanceLogAu,
+    earthAzimuthDeg: azimuthDeg,
+    earthElevationDeg: LOW_EARTH_ELEVATION_DEG,
+    earthAltitudeLog: Math.log10(altitude),
+  };
+}
+
+// 同じ撮影の描画設定。天体照だけを一様球で当て、床が拡散照度のデバッグ表示で線形 0.3〜0.6 に写る露出補正
+// exposureCompensation にする。レンズ効果は、暗い壁のそばの P_in を 1% 以上動かすので切る。
+function planetLightOnly(
+  exposureCompensation: GraphicsSettingsData['exposureCompensation'],
+): Partial<GraphicsSettingsData> {
+  return { ambient: false, planetLightModel: 0, exposureCompensation, lens: false };
 }
 
 // 線形 RGB color の標準マテリアル。
@@ -218,13 +253,19 @@ function casings(): THREE.Object3D {
 
 // 荷室。読みどころは既定の構図の 960×540 の PNG の画素 (x, y) で、読む撮影では他の部品の影と映り込みが
 // 掛からない。
-// - P_in (412, 179): −X の内隅に近い床(奥の壁と −X の端の壁から 0.4 m)。bay-earthshine で読む。
-// - P_out = P_open (186, 183): 荷室の外の床。どの壁・部品からも 4 m より遠い。bay-earthshine と bay で読む。
+// - P_in (412, 179): −X の内隅に近い床(奥の壁と −X の端の壁から 0.4 m)。bay-earthshine と、天体照の
+//   遮られ方の撮影(bay-earth-* / bay-moon-*)で読む。
+// - P_out = P_open (186, 183): 荷室の外の床。どの壁・部品からも 4 m より遠い。bay-earthshine・bay と、
+//   天体照の遮られ方の撮影で読む。
 // - P_base (507, 189): 奥の壁の足元の床(壁から 0.15 m、両端の壁から 2.8 m 以上)。bay と bay-bounce で読む。
 // - P_corner (404, 169): 奥の壁と −X の端の壁が床と交わる内隅(両方の壁から 3 画素)。bay で読む。
 // - P_bleed (704, 386): 日の当たる橙の壁から 0.4 m の白い床。トラスの影から外れる。bay で読む。
 // - P_glow (547, 225): 光る箱の画面に写っている面(+Z)の中央の手前 0.13 m の床。5×5 の窓がまるごと、箱と立方体の
 //   あいだに見える床に収まる(面から 0.2 m より先は立方体に隠れる)。bay-dark で読む。
+// 天体照の遮られ方の撮影の P_in / P_out は、拡散照度のデバッグ表示で線形の比として読む — 最終の絵には
+// 視線ごとに違う床の鏡面が混じり、遮りの無い床どうしでも比が 1 からずれる。遮りと照り返しを標本の数も
+// 画面の制約も無しに解いた比は、遮蔽で 0.32(overhead)/ 0.64(earth-open)/ 0.00(earth-corner)/
+// 1.00(moon-open)/ 0.00(moon-corner)、遮蔽と照り返しで 0.49 / 1.06 / 0.00 / 1.38 / 0.00(オフは 1.00)。
 // bay の P_base と P_corner は −X の端の壁の影に入るので、bay では遮蔽のデバッグ表示でだけ読む。
 // bay-bounce では恒星が +Z にあり、どの部品も真後ろの奥の壁へ影を落とす — 板を +X へ向け、薬莢を奥行きに
 // 沿って寝かせて、P_base の足元の壁(x = −1.8〜−0.6 m)を空けてある。
@@ -246,6 +287,25 @@ function bay(): LabCase {
       'bay': { view: {} },
       // 地球照だけ。**内側の床 P_in と外側の床 P_out は同じ材質・同じ向き**で、違いは周りの構造だけ。
       'bay-earthshine': { view: SUN_BELOW },
+      // 天体照の遮られ方。地球を真上の低軌道(視半径 70°)と、仰角 35° の開いた +X の側・−X・−Z の内隅の側へ
+      // 視半径 30° と 3° で置き、同じ床の P_in と P_out がどれだけ違うかを読む。
+      'bay-earth-overhead': { view: SUN_BELOW, graphics: planetLightOnly(1) },
+      'bay-earth-open': {
+        view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: planetLightOnly(4),
+      },
+      'bay-earth-corner': {
+        view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: planetLightOnly(4),
+      },
+      'bay-moon-open': {
+        view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, SMALL_EARTH_RADIUS_DEG, SMALL_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: planetLightOnly(4),
+      },
+      'bay-moon-corner': {
+        view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, SMALL_EARTH_RADIUS_DEG, SMALL_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: planetLightOnly(4),
+      },
       // 照り返しの較正。恒星を奥の壁の法線(+Z)に置く — 奥の壁は恒星へ正対し、床と端の壁は直射を掠める
       // だけ。天体照と環境光を切り、地球を遠ざけるので、壁の足元の床 P_base へ届くのは照り返しだけになる。
       'bay-bounce': {
