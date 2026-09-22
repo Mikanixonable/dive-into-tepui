@@ -63,9 +63,8 @@ export function earthUvFromRadial(direction: THREE.Vector3, axes: THREE.Vector3)
 // 天体固定の放射方向を、楕円体の地理緯度・経度UVへGPU上で変換する。axesは天体固定XYZの半軸 [m]。
 export function earthSurfaceUvFromRadialNode(direction: Vec3Node, axes: Vec3Node): Vec2Node {
   const normal = normalize(direction.div(axes.mul(axes)));
-  const longitude = normal.z.atan(normal.x.negate());
   return vec2(
-    longitude.add(Math.PI / 2).div(2 * Math.PI).fract(),
+    normal.x.atan(normal.z).div(2 * Math.PI).add(0.5),
     normal.y.clamp(-1, 1).asin().div(Math.PI).negate().add(0.5),
   );
 }
