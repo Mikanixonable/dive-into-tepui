@@ -1,4 +1,4 @@
-// [H] と常設の起動ボタンで開閉する操作説明のモーダル。操作の対応表を1枚の表として出す。
+// [H] と常設の起動ボタンで開閉する操作説明のモーダル。章ごとの2列Reference Listとして出す。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { injectOnce } from '../../../hud/inject-style';
 import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
@@ -72,24 +72,33 @@ export class HelpPanel implements OverlayHandle {
       section.dataset['category'] = category;
       section.setAttribute('role', 'tabpanel');
       section.setAttribute('aria-label', label);
-      const table = document.createElement('table');
-      section.appendChild(table);
+      const list = document.createElement('div');
+      list.className = 'help-reference-list';
+      section.appendChild(list);
       body.appendChild(section);
       this.sections.set(category, section);
     }
 
     for (const row of helpRows()) {
-      const table = this.sections.get(helpCategory(row))?.querySelector('table');
-      if (!(table instanceof HTMLTableElement)) continue;
-      const tr = table.insertRow();
-      const input = tr.insertCell();
-      input.innerHTML = '<span class="help-input-code"></span>';
-      input.querySelector<HTMLElement>('.help-input-code')!.textContent = row.input;
+      const list = this.sections.get(helpCategory(row))?.querySelector<HTMLElement>('.help-reference-list');
+      if (list === null || list === undefined) continue;
+      const item = document.createElement('div');
+      item.className = 'help-reference-row';
+      const input = document.createElement('div');
+      input.className = 'help-reference-input';
+      const inputCode = document.createElement('span');
+      inputCode.className = 'help-input-code';
+      inputCode.textContent = row.input;
+      input.appendChild(inputCode);
+      const command = document.createElement('div');
+      command.className = 'help-reference-command';
       const label = document.createElement('strong');
       label.textContent = row.label;
       const description = document.createElement('p');
       description.textContent = row.description;
-      tr.insertCell().append(label, description);
+      command.append(label, description);
+      item.append(input, command);
+      list.appendChild(item);
     }
     this.el.appendChild(body);
     this.setCategory('flight');
