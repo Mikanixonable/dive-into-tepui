@@ -13,7 +13,7 @@
 <text x="40" y="38" class="m t h">ラン・ステージ・時間</text><text x="40" y="60" class="m d sm">Run を結節点に、ラン内外の責務を分ける</text>
 <g transform="translate(600 146)">
  <circle r="44" fill="#101217" stroke="#ff3155" stroke-width="2"/><text x="-15" y="-4" class="m a xs">RUN</text><text x="-31" y="14" class="m t sm">1 session</text>
- <path d="M-36-25L-145-66M0-44V-94M36-25L145-66M44 6L164 20M25 36L94 78M-25 36L-94 78M-44 6L-164 20" class="g"/>
+ <path d="M-36-25L-119-55M0-44V-67M36-25L119-55M44 6L137 17M25 36L75 59M-25 36L-75 59M-44 6L-137 17" class="g"/>
 </g>
 <g class="m">
  <circle cx="455" cy="80" r="27" fill="#15171c" stroke="#3478ff"/><text x="433" y="84" class="t xs">Launcher</text>
@@ -24,5 +24,5 @@
  <circle cx="506" cy="224" r="27" fill="#15171c" stroke="#3478ff"/><text x="491" y="228" class="t xs">Result</text>
  <circle cx="435" cy="166" r="27" fill="#15171c" stroke="#ff8798"/><text x="417" y="170" class="t xs">Time</text>
 </g>
-<path d="M405 210C330 185 315 105 376 73" class="r" marker-end="url(#ra)"/><text x="270" y="228" class="m d xs">結果 → 次のラン</text>
+<path d="M405 210C350 184 348 111 428 82" class="r" marker-end="url(#ra)"/><text x="270" y="228" class="m d xs">結果 → 次のラン</text>
 </svg>
