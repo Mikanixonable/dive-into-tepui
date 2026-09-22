@@ -27,6 +27,11 @@ import type { Targeter } from '../targeter';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
+import { ShipInspection } from './ship-inspection';
+import { EnemyInspection } from './enemy-inspection';
+import { Pickup } from '../dynamic/dynamic-entity/pickup';
+import { LagrangePointMarker } from '../marker/lagrange-point-marker';
+import { OrbitPointMarker } from '../marker/orbit-point-marker';
 import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
@@ -113,9 +118,24 @@ export class ObjectWindowActions {
     target: InspectedObject, simTime: number, opener: PropertyWindowOpener,
   ): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
+    const kind = target instanceof CelestialEntity
+      ? { kindCode: 'BDY', kindLabel: 'CELESTIAL BODY' }
+      : target instanceof ShipInspection
+        ? { kindCode: 'VSL', kindLabel: 'SPACECRAFT' }
+        : target instanceof EnemyInspection
+          ? { kindCode: 'CNT', kindLabel: 'CONTACT' }
+          : target instanceof Pickup
+            ? { kindCode: 'SUP', kindLabel: 'SUPPLY' }
+            : target instanceof LagrangePointMarker
+              ? { kindCode: 'POI', kindLabel: 'REFERENCE POINT' }
+              : target instanceof OrbitPointMarker
+                ? { kindCode: 'EVT', kindLabel: 'ORBIT EVENT' }
+                : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
     return {
       title,
       subtitle,
+      ...kind,
+      monitorWhenClipped: true,
       icon: target.glyphSvg ?? target.glyph,
       rows: [],
       items,
@@ -186,7 +206,7 @@ export class ObjectWindowActions {
   public relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
     return controlled !== null && isModularShip(controlled) && target.id === controlled.id
-      ? '搭載モジュール' : '周回物体';
+      ? 'MODULES' : 'ORBITING';
   }
 
   // 表示中のビューのカメラの注視を id の対象へ移し、name で知らせる。

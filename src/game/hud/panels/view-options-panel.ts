@@ -8,6 +8,7 @@ import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
   TabBar,
+  ToggleSwitch,
   type CollapseToggleLabels,
 } from '../../../hud/widgets';
 import {
@@ -25,6 +26,7 @@ import { OrbitGuideTab } from './orbit-guide-tab';
 import { ZeroVelocitySection, zeroVelocityJacobiAt } from './zero-velocity-section';
 import type { PanelCollapse } from '../panel-shell';
 import type { OrbitGuideGroupTab, ViewOptionsTab } from '../hud-selection';
+import type { RenderStyle } from '../../../render/render-style';
 
 const TAB_ITEMS: readonly (readonly [ViewOptionsTab, string])[] = [
   ['target', '対象'],
@@ -123,7 +125,7 @@ const GRID_COLUMNS: readonly ViewOptionColumn[] = [
 // ラベルだけで区切る)。
 function appendSectionDivider(parent: HTMLElement, title: string): void {
   const divider = document.createElement('div');
-  divider.className = 'view-options-section-divider';
+  divider.className = 'view-options-section-divider editorial-divider';
   divider.textContent = title;
   parent.appendChild(divider);
 }
@@ -155,9 +157,11 @@ export class ViewOptionsPanel {
   public onTabChange: ((tab: ViewOptionsTab) => void) | null = null;
   // 軌道ガイドタブの群タブが選ばれたときに、選ばれたタブで呼ばれる。
   public onOrbitGuideGroupTabChange: ((tab: OrbitGuideGroupTab) => void) | null = null;
+  public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
 
   private readonly tabBar: TabBar<ViewOptionsTab>;
   private readonly tabBodies: ReadonlyMap<ViewOptionsTab, HTMLElement>;
+  private readonly renderStyleToggle: ToggleSwitch;
   // 軌道ガイド設定の鏡映し。軌道ガイドタブとゼロ速度曲線節はどちらも setOrbitGuideSettings で
   // これと揃え、ゼロ速度曲線節の編集はこれへ重ねて設定全体に組み戻す。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
@@ -186,13 +190,21 @@ export class ViewOptionsPanel {
     // パネル本体とタイトル。
     this.panel = document.createElement('div');
     this.panel.id = 'hud-view-options';
-    this.panel.className = 'panel hidden';
+    this.panel.className = 'panel hidden editorial-control-sheet editorial-index';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const titleRow = document.createElement('div');
     titleRow.className = 'view-options-title';
+    const code = document.createElement('span');
+    code.className = 'ui-section-code';
+    code.setAttribute('aria-hidden', 'true');
+    code.textContent = 'DSP';
     const title = document.createElement('h3');
-    title.textContent = '表示';
-    titleRow.appendChild(title);
+    title.className = 'editorial-panel-title';
+    title.textContent = 'DISPLAY';
+    const context = document.createElement('span');
+    context.className = 'ui-data-context view-options-context';
+    context.textContent = 'VISIBILITY / GUIDES / ORBITS';
+    titleRow.append(code, title, context);
     this.panel.appendChild(titleRow);
 
     const body = document.createElement('div');
@@ -208,6 +220,19 @@ export class ViewOptionsPanel {
       defaultCollapsed: true,
       extraHitEls: [title],
     });
+
+    const renderRow = document.createElement('div');
+    renderRow.className = 'view-options-render-row editorial-index-row';
+    renderRow.dataset['index'] = '00';
+    const renderLabel = document.createElement('div');
+    renderLabel.className = 'view-options-render-label';
+    renderLabel.innerHTML = '<span>RENDER STYLE</span><small>REALISTIC / SCHEMATIC</small>';
+    this.renderStyleToggle = new ToggleSwitch('SCHEMATIC', (on) => {
+      this.onRenderStyleChange?.(on ? 'schematic' : 'realistic');
+    });
+    this.renderStyleToggle.element.classList.add('view-options-render-toggle');
+    renderRow.append(renderLabel, this.renderStyleToggle.element);
+    body.appendChild(renderRow);
 
     this.tabBar = new TabBar<ViewOptionsTab>(TAB_ITEMS, (tab) => this.onTabChange?.(tab));
     this.tabBar.element.setAttribute('aria-label', '表示するものの種類');
@@ -236,6 +261,7 @@ export class ViewOptionsPanel {
     const targetBody = buildTabBody('target');
     body.appendChild(targetBody);
     const bodyClassModeButtons: (readonly [BodyClassRow, Button, HTMLElement])[] = [];
+    let itemIndex = 1;
 
     // 天体/機体と設備の2群を見出しで区切り、各行に循環ボタンを1つ置く。
     const rowGroups: readonly { readonly title: string; readonly rows: readonly BodyClassRow[] }[] = [
@@ -248,7 +274,8 @@ export class ViewOptionsPanel {
       groupEl.className = 'target-class-group';
       for (const row of group.rows) {
         const rowEl = document.createElement('div');
-        rowEl.className = 'body-class-row target-class-row';
+        rowEl.className = 'body-class-row target-class-row editorial-index-row';
+        rowEl.dataset['index'] = String(itemIndex++).padStart(2, '0');
         const modeButton = new Button(row.label, () => {
           const current = this.bodyClassModes.get(row.categoryKey) ?? 'hidden';
           const next = nextMapDisplayMode(current, row.orbitKey !== null);
@@ -387,6 +414,7 @@ export class ViewOptionsPanel {
     // 点灯・アイコン・aria 属性へ反映する。
     button.setOn(mode !== 'hidden');
     button.element.dataset.displayMode = mode;
+    button.element.dataset['displayLabel'] = mode === 'orbit' ? 'ORBIT' : mode === 'label' ? 'LABEL' : 'OFF';
     const icon = button.element.querySelector<HTMLElement>('.w-btn-icon');
     if (icon !== null) icon.innerHTML = bodyClassDisplayIcon(mode);
     button.element.title = description;
@@ -407,6 +435,10 @@ export class ViewOptionsPanel {
     btn.element.title = description;
     btn.element.setAttribute('aria-label', description);
     return btn;
+  }
+
+  public setRenderStyle(style: RenderStyle): void {
+    this.renderStyleToggle.setOn(style === 'schematic');
   }
 
   // パネルの表示/非表示を切り替える。
