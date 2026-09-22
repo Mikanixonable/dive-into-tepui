@@ -150,7 +150,7 @@ export class MarkerGroup implements MarkerSink {
       m.root.style.display = 'none';
       return;
     }
-    // 見えている要素を、透明への遷移に乗せる。
+    // 表示中の要素を、透明へのフェード遷移へ移行する。
     if (m.hidden) return;
     m.root.style.display = 'block';
     m.root.style.opacity = '0';

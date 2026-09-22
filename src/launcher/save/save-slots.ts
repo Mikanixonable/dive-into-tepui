@@ -112,7 +112,7 @@ export class SaveSlots {
   }
 
   // 元スロットの複製を新規スロットとして作る。upToSnapshotId を渡すとその時点(同時刻含む)
-  // までを残し、複製先はその時点から再開する。渡さなければ自動セーブごと丸ごと複製する。
+  // までを残し、複製先はその時点から再開する。渡さなければ自動セーブも含めてそのまま複製する。
   // 無い id を指したとき・取り込みに失敗したときは null。
   public duplicateSlot(id: string, upToSnapshotId?: string): SaveSlotMeta | null {
     const source = this.index.slots.find((s) => s.id === id);
@@ -136,7 +136,7 @@ export class SaveSlots {
       slot: { ...source, name: `${source.name} のコピー`, stages: [] },
       snapshots: {},
     };
-    // 複製先の自動セーブにする本体(ステージ履歴ごとに1つ)。分岐ならその時点、丸ごとなら複製元の自動セーブ。
+    // 複製先の自動セーブにする本体(ステージ履歴ごとに1つ)。分岐ならその時点、全体複製なら複製元の自動セーブ。
     const autoSaveSources = new Map<string, string>();
     for (const history of source.stages) {
       const kept = history.snapshots.filter((m) => m.createdAtReal <= cutoff);

@@ -60,7 +60,7 @@ interface RenderTimestampPool {
 }
 
 // resolve() を跨いで解決されないまま残る uid が際限なく育たないための上限。
-// 数フレーム分のパス数だけ許せば十分で、超えたら丸ごと捨てて次のフレームから数え直す。
+// 数フレーム分のパス数だけ許容すれば十分で、上限を超えたら一括破棄して次のフレームから計測し直す。
 const PENDING_UID_CAP = GPU_PASS_COUNT * 8;
 
 // renderer.render() 呼び出しの uid を、直前の GpuTimings.beginPass が宣言したパスへ結び付ける
@@ -171,7 +171,7 @@ export class GpuTimings {
           // 関わらず毎フレームここで空にする(さもないと無限に肥大化する)。
           pool.timestamps.clear();
         }
-        // 解決されないまま残った uid が際限なく育たないよう、閾値を超えたら丸ごと捨てる。
+        // 解決されないまま残った uid が肥大化しないよう、閾値を超えたら一括破棄する。
         if (this.passByUid.size > PENDING_UID_CAP) this.passByUid.clear();
       })
       .catch(() => {
@@ -181,7 +181,7 @@ export class GpuTimings {
       .finally(() => { this.resolving = false; });
   }
 
-  // 直近の resolve() が届くまで待つ。非同期の結果を決まった時点で読みたい計測用の口。
+  // 直近の resolve() が完了するまで待機する。非同期の結果を特定のタイミングで取得したい計測用のインターフェース。
   public async waitForResolve(): Promise<void> {
     await this.resolvePromise;
   }
