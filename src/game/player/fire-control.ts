@@ -64,7 +64,7 @@ export class FireControl {
   public get cooldown(): number { return this.weapon.cooldown; }
   public get isFiring(): boolean { return this.weapon.wasFiring; }
 
-  // 弾薬・砲身の状態を直列化した形へ落とす。
+  // 弾薬・砲身の状態をシリアライズ形式へ変換する。
   public serialize(): SerializedFireControl {
     return this.weapon.serialize();
   }

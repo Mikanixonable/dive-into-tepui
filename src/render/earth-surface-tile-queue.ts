@@ -72,7 +72,7 @@ class PermitPool {
     });
   }
 
-  // 待機列から中断されていない要求へ枠を配る。
+  // 待機列から中断されていない要求へ処理枠を割り当てる。
   private pump(): void {
     // 利用可能な枠を待機者へ順番に渡す。
     while (this.active < this.capacity && this.waiting.length > 0) {
@@ -188,7 +188,7 @@ export class EarthSurfaceTileRequestQueue {
     return item.promise;
   }
 
-  // 呼び出し側の参照を解放し、完了済み項目を索引から外す。
+  // タイル要求の参照を解放し、完了済み項目をインデックスから除去する。
   public release(key: EarthTileKey, generation?: number): void {
     const item = this.items.get(earthTileId(key));
     if (item === undefined || (generation !== undefined && item.generation !== generation)) return;

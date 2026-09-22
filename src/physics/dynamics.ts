@@ -206,7 +206,7 @@ export function stepDynamicsWithSamples(
   srpCoeff: number,
   thrust: Vec3 | null,
 ): { readonly state: KinematicState; readonly samples: readonly DynamicsEnvironmentSample[] } {
-  // 日照・輻射圧が見る恒星は重力源一覧から拾う。恒星を含まない一覧では日照率が恒等的に 0。
+  // 日照・輻射圧が見る恒星は重力源一覧から取得する。恒星を含まない一覧では日照率が恒等的に 0。
   const star = attractors.find(isStar) ?? null;
   const samples: DynamicsEnvironmentSample[] = [];
   const next = stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {

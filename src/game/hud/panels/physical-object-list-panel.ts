@@ -42,7 +42,7 @@ interface Section {
   savedExpanded: boolean | null;
 }
 
-// 区画見出しに添える内訳の見出し語。数える対象かどうかは候補自身(listCounted)が答える。
+// 区画見出しに添える内訳の見出し語。集計対象であるかは候補自身(listCounted)が判定する。
 const HEADER_SUMMARY: Partial<Record<MapListSection, string>> = {
   enemy: '接近', ammo: '回収可', fuel: '回収可',
 };

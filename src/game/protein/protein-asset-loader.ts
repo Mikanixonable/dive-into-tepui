@@ -120,7 +120,7 @@ export function isProteinAssetReady(id: string): boolean {
   return resolvedProteinAssetBundles.has(id as ProteinAssetId);
 }
 
-// この体の取得を起こし(副作用)、それが揃ったかを答える述語を返す。
+// 当該個体のアセット取得を開始し(副作用)、ロードが完了したかを判定する述語関数を返す。
 export function proteinAssetGate(id: ProteinAssetId): () => boolean {
   void requestProteinAsset(id);
   return () => isProteinAssetReady(id);
