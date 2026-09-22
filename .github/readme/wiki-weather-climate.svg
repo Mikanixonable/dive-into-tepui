@@ -1,1 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img"><title>気象データの役割</title><desc>観測・気候場を生成モデルの境界条件へ変換する</desc><defs><style>.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.accent{fill:none;stroke:#ff3155;stroke-width:2}.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient><marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker></defs><rect width="1200" height="360" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">気象データの役割</text><text x="55" y="72" class="m d k">観測・気候場を生成モデルの境界条件へ変換する</text><g transform="translate(55.0 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">01</text><text x="18" y="61" class="sans t v">外部データ</text><text x="18" y="90" class="m d sm">ERA5 / climate</text><text x="18" y="114" class="m d sm">粗い大域場</text></g><path d="M315.5 197H327.5" class="accent" marker-end="url(#arrR)"/><g transform="translate(332.5 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">02</text><text x="18" y="61" class="sans t v">正規化</text><text x="18" y="90" class="m d sm">map / scale</text><text x="18" y="114" class="m d sm">ゲーム座標へ</text></g><path d="M593 197H605" class="accent" marker-end="url(#arrR)"/><g transform="translate(610.0 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">03</text><text x="18" y="61" class="sans t v">境界条件</text><text x="18" y="90" class="m d sm">temperature / wind</text><text x="18" y="114" class="m d sm">湿潤度相当</text></g><path d="M870.5 197H882.5" class="accent" marker-end="url(#arrR)"/><g transform="translate(887.5 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">04</text><text x="18" y="61" class="sans t v">生成</text><text x="18" y="90" class="m d sm">weather model</text><text x="18" y="114" class="m d sm">時間変化へ接続</text></g><text x="55" y="324" class="m b sm">観測値をそのままテクスチャとして貼るのではなく、モデル入力へ変換する。</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>気候場と気象状態</title><desc>世界地図上に緯度帯、湿潤域、低気圧トラックを重ね、気候場から気象状態を作る図。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">気候場と気象状態</text><text x="55" y="72" class="m d k">平年気候は答えではなく、時変気象を作るための低周波な境界条件</text>
+<g transform="translate(80 125)">
+  <rect width="760" height="300" rx="16" fill="#0e1014" stroke="#48506a"/>
+  <path d="M0 75H760M0 150H760M0 225H760" class="soft"/>
+  <path d="M95 58C140 35 185 40 220 70C260 102 300 95 340 62C375 33 420 37 455 63C500 95 555 94 600 58C640 28 700 30 735 59" fill="none" stroke="#3478ff" stroke-width="18" opacity=".18"/>
+  <path d="M70 205C120 180 180 185 226 220C270 252 320 250 360 220C410 182 470 184 520 220C565 252 635 250 700 212" fill="none" stroke="#ff3155" stroke-width="22" opacity=".15"/>
+  <path d="M165 92C182 64 220 55 245 78C270 102 252 132 220 139C185 146 148 123 165 92Z" fill="#ff6b82" opacity=".22"/>
+  <path d="M510 170C535 135 585 131 610 161C632 188 615 221 579 228C540 236 486 207 510 170Z" fill="#3478ff" opacity=".18"/>
+  <path d="M125 40C205 20 275 30 340 55M425 55C500 20 580 20 655 48" class="stroke dash"/>
+  <path d="M165 260C240 235 310 240 370 266M455 260C530 235 620 240 700 272" class="stroke dash"/>
+  <text x="26" y="29" class="m d xs">北緯</text><text x="26" y="291" class="m d xs">南緯</text>
+</g>
+<g transform="translate(900 150)">
+  <circle cx="85" cy="85" r="76" fill="none" stroke="#48506a"/>
+  <path d="M85 85C105 55 137 48 160 63C182 78 178 108 158 123C135 140 101 131 85 105C70 80 79 58 98 43" class="accent"/>
+  <text x="18" y="190" class="m t v">WeatherModel</text>
+  <text x="18" y="220" class="m d sm">湿度 · 上昇流</text><text x="18" y="244" class="m d sm">対流 · 前線帯</text><text x="18" y="268" class="m d sm">圏界面高度</text>
+</g>
+</svg>

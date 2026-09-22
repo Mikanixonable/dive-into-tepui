@@ -1,8 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="285" viewBox="0 0 1200 285" role="img"><title>開発と検証</title><defs><style>
-.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}
-.t{fill:#eeeaf5}.d{fill:#9b96a2}.a{fill:#ff3155}.b{fill:#3478ff}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}
-.h{font-size:23px;font-weight:700}.k{font-size:12px;letter-spacing:1px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}
-.line{fill:none;stroke:#89838f;stroke-width:1.6}.acc{fill:none;stroke:#ff3155;stroke-width:2}.sig{fill:none;stroke:#3478ff;stroke-width:2}
-</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker></defs><rect width="1200" height="285" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">開発と検証</text><text x="55" y="72" class="m d k">文書の役割と検証段を分ける</text><rect x="55" y="116" width="246.25" height="108" rx="14" class="box"/><text x="73" y="150" class="s t v">SPEC</text><text x="73" y="177" class="m d sm">望ましい挙動</text><text x="73" y="200" class="m d sm">意図</text><rect x="336.25" y="116" width="246.25" height="108" rx="14" class="box"/><text x="354.25" y="150" class="s t v">コード</text><text x="354.25" y="177" class="m d sm">現在の実装</text><text x="354.25" y="200" class="m d sm">原本</text><rect x="617.5" y="116" width="246.25" height="108" rx="14" class="box"/><text x="635.5" y="150" class="s t v">検証</text><text x="635.5" y="177" class="m d sm">型・テスト・境界</text><text x="635.5" y="200" class="m d sm">層別</text><rect x="898.75" y="116" width="246.25" height="108" rx="14" class="box"/><text x="916.75" y="150" class="s t v">PR / CI</text><text x="916.75" y="177" class="m d sm">build / smoke</text><text x="916.75" y="200" class="m d sm">mainへ統合</text><path d="M307.25 170H330.25" class="acc" marker-end="url(#r)"/><path d="M588.5 170H611.5" class="acc" marker-end="url(#r)"/><path d="M869.75 170H892.75" class="acc" marker-end="url(#r)"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>開発・検証</title><desc>変更を中心に、仕様文書と検証手段が平面的なネットワークで支える。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">開発・検証</text><text x="55" y="72" class="m d k">変更は文書・境界・テスト・実行確認のネットワークで支える</text>
+<g transform="translate(600 270)">
+  <circle r="72" fill="#0e1014" stroke="#ff3155" stroke-width="2.4"/><text x="-34" y="-8" class="m a k">CHANGE</text><text x="-44" y="20" class="s t v">branch / PR</text>
+  <path d="M-58-42L-210-135M5-72L18-170M58-42L208-135M72 10L250 20M43 58L155 150M-43 58L-155 150M-72 10L-250 20" class="soft"/>
+</g>
+<g class="m">
+  <circle cx="390" cy="135" r="45" fill="#15171c" stroke="#3478ff"/><text x="366" y="140" class="t sm">SPEC</text>
+  <circle cx="618" cy="100" r="45" fill="#15171c" stroke="#3478ff"/><text x="576" y="105" class="t sm">ARCHITECTURE</text>
+  <circle cx="810" cy="135" r="45" fill="#15171c" stroke="#3478ff"/><text x="773" y="140" class="t sm">CODING</text>
+  <circle cx="870" cy="290" r="45" fill="#15171c" stroke="#ff6b82"/><text x="849" y="295" class="t sm">BUILD</text>
+  <circle cx="755" cy="425" r="45" fill="#15171c" stroke="#ff6b82"/><text x="732" y="430" class="t sm">SMOKE</text>
+  <circle cx="445" cy="425" r="45" fill="#15171c" stroke="#ff6b82"/><text x="424" y="430" class="t sm">LAB</text>
+  <circle cx="330" cy="290" r="45" fill="#15171c" stroke="#ff6b82"/><text x="312" y="295" class="t sm">TEST</text>
+</g>
+<text x="55" y="462" class="m b sm">コード = 現在 / SPEC = 振る舞い / ARCHITECTURE = 所有と境界 / CODING-RULE = 書き方</text>
+</svg>

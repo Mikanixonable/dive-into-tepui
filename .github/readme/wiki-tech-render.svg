@@ -1,8 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="285" viewBox="0 0 1200 285" role="img"><title>描画とデータ基盤</title><defs><style>
-.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}
-.t{fill:#eeeaf5}.d{fill:#9b96a2}.a{fill:#ff3155}.b{fill:#3478ff}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}
-.h{font-size:23px;font-weight:700}.k{font-size:12px;letter-spacing:1px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}
-.line{fill:none;stroke:#89838f;stroke-width:1.6}.acc{fill:none;stroke:#ff3155;stroke-width:2}.sig{fill:none;stroke:#3478ff;stroke-width:2}
-</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker></defs><rect width="1200" height="285" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">描画とデータ基盤</text><text x="55" y="72" class="m d k">大規模データは段階的にGPUへ渡す</text><rect x="55" y="116" width="246.25" height="108" rx="14" class="box"/><text x="73" y="150" class="s t v">表示需要</text><text x="73" y="177" class="m d sm">カメラ・LOD</text><text x="73" y="200" class="m d sm">必要範囲</text><rect x="336.25" y="116" width="246.25" height="108" rx="14" class="box"/><text x="354.25" y="150" class="s t v">取得</text><text x="354.25" y="177" class="m d sm">HTTP / worker</text><text x="354.25" y="200" class="m d sm">重複排除</text><rect x="617.5" y="116" width="246.25" height="108" rx="14" class="box"/><text x="635.5" y="150" class="s t v">常駐</text><text x="635.5" y="177" class="m d sm">cache / page table</text><text x="635.5" y="200" class="m d sm">世代管理</text><rect x="898.75" y="116" width="246.25" height="108" rx="14" class="box"/><text x="916.75" y="150" class="s t v">GPU</text><text x="916.75" y="177" class="m d sm">TSL / WebGPU</text><text x="916.75" y="200" class="m d sm">同期して描画</text><path d="M307.25 170H330.25" class="sig" marker-end="url(#u)"/><path d="M588.5 170H611.5" class="sig" marker-end="url(#u)"/><path d="M869.75 170H892.75" class="sig" marker-end="url(#u)"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>WebGPU・描画・データ基盤</title><desc>ゲームの表示宣言とタイルストリーミングがWebGPUシーンへ合流する構造。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">WebGPU・描画・データ基盤</text><text x="55" y="72" class="m d k">意味のある表示と、大量データの供給は別経路で GPU へ合流する</text>
+<g transform="translate(110 145)">
+  <circle cx="85" cy="65" r="42" fill="#15171c" stroke="#ff3155"/><text x="57" y="70" class="m t sm">SHIP</text>
+  <circle cx="85" cy="185" r="42" fill="#15171c" stroke="#ff3155"/><text x="51" y="190" class="m t sm">CLOUD</text>
+  <circle cx="220" cy="125" r="50" fill="#15171c" stroke="#ff6b82"/><text x="187" y="130" class="m t sm">CELESTIAL</text>
+  <path d="M122 84L180 112M123 168L181 140" class="soft"/>
+</g>
+<g transform="translate(455 145)">
+  <path d="M0 0h250v250H0z" fill="#0e1014" stroke="#48506a" rx="16"/>
+  <path d="M25 28h82v82H25zM118 28h107v82H118zM25 121h128v103H25zM164 121h61v103H164z" fill="#15171c" stroke="#3478ff"/>
+  <circle cx="86" cy="67" r="14" fill="#ff3155"/><path d="M44 182C78 150 108 158 139 183" class="accent"/><path d="M177 183h32M193 167v32" class="blue"/>
+  <text x="69" y="243" class="m b sm">SCENE GRAPH</text>
+</g>
+<g transform="translate(820 120)">
+  <rect x="0" y="0" width="240" height="285" rx="18" fill="#0e1014" stroke="#ff3155" stroke-width="2"/>
+  <g stroke="#48506a"><path d="M35 48H205M35 86H205M35 124H205M35 162H205M35 200H205M70 30V220M110 30V220M150 30V220M190 30V220"/></g>
+  <path d="M44 248H196" class="accent"/><text x="63" y="272" class="m t v">WebGPU</text>
+</g>
+<g transform="translate(210 385)">
+  <path d="M0 0h60v45H0zM72 0h60v45H72M144 0h60v45H144M216 0h60v45H216" fill="#0e1014" stroke="#3478ff"/>
+  <text x="0" y="-12" class="m d xs">TILE STREAM</text>
+  <path d="M276 22C365 22 416-5 470-72" class="blue" marker-end="url(#ba)"/>
+  <text x="300" y="56" class="m b sm">HTTP → decode → resident → page table</text>
+</g>
+<path d="M345 270C410 270 435 250 455 250" class="accent" marker-end="url(#ra)"/>
+<path d="M705 270C765 270 790 262 820 262" class="accent" marker-end="url(#ra)"/>
+</svg>

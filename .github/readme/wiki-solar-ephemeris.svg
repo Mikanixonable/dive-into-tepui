@@ -1,1 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img"><title>天体暦と時刻</title><desc>元期と時刻から天体状態を一意に決める</desc><defs><style>.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.accent{fill:none;stroke:#ff3155;stroke-width:2}.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient><marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker></defs><rect width="1200" height="360" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">天体暦と時刻</text><text x="55" y="72" class="m d k">元期と時刻から天体状態を一意に決める</text><g transform="translate(55.0 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">01</text><text x="18" y="61" class="sans t v">元期</text><text x="18" y="90" class="m d sm">TDB Julian Date</text><text x="18" y="114" class="m d sm">ラン開始時に確定</text></g><path d="M315.5 197H327.5" class="accent" marker-end="url(#arrR)"/><g transform="translate(332.5 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">02</text><text x="18" y="61" class="sans t v">暦データ</text><text x="18" y="90" class="m d sm">ephemeris pack</text><text x="18" y="114" class="m d sm">位置・速度の係数</text></g><path d="M593 197H605" class="accent" marker-end="url(#arrR)"/><g transform="translate(610.0 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">03</text><text x="18" y="61" class="sans t v">評価</text><text x="18" y="90" class="m d sm">state(t)</text><text x="18" y="114" class="m d sm">指定時刻へ展開</text></g><path d="M870.5 197H882.5" class="accent" marker-end="url(#arrR)"/><g transform="translate(887.5 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">04</text><text x="18" y="61" class="sans t v">利用</text><text x="18" y="90" class="m d sm">gravity / light / map</text><text x="18" y="114" class="m d sm">各系が同じ状態を読む</text></g><text x="55" y="324" class="m b sm">セーブは simTime と元期を含む暦文脈を保持する。</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>時刻と天体暦</title><desc>ラン元期からsimTimeを進め、数値暦または解析暦で天体状態を得るタイムライン。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">時刻と天体暦</text><text x="55" y="72" class="m d k">絶対時刻を一本に揃え、同じ天体状態を重力・光・地図で共有する</text>
+<g transform="translate(85 205)">
+  <path d="M0 90H1030" class="stroke"/>
+  <path d="M80 90V56M330 90V42M655 90V42M930 90V56" class="soft"/>
+  <circle cx="330" cy="90" r="8" fill="#ff3155"/><circle cx="655" cy="90" r="8" fill="#3478ff"/>
+  <text x="286" y="25" class="m a sm">ラン元期</text><text x="618" y="25" class="m sig sm">simTime</text>
+  <text x="35" y="132" class="m d xs">過去</text><text x="973" y="132" class="m d xs">未来</text>
+  <path d="M180 52H585" stroke="#ff6b82" stroke-width="10" stroke-linecap="round"/><text x="310" y="35" class="m t sm">DE440 範囲</text>
+  <path d="M535 155H950" stroke="#3478ff" stroke-width="10" stroke-linecap="round"/><text x="680" y="183" class="m t sm">DE441 接続範囲</text>
+  <path d="M0 205H1030" class="soft dash"/><text x="395" y="228" class="m b sm">範囲外は解析暦へフォールバック</text>
+</g>
+<g transform="translate(835 115)">
+  <circle cx="0" cy="0" r="28" fill="url(#sun)"/><ellipse cx="0" cy="0" rx="96" ry="42" class="soft"/><circle cx="88" cy="-13" r="10" fill="url(#earth)"/>
+  <path d="M88-13L132-45" class="blue"/><text x="138" y="-44" class="m d xs">state(t)</text>
+</g>
+<text x="55" y="452" class="m b sm">保存時は simTime だけでなく、どの元期から数えた時間かも保持する。</text>
+</svg>

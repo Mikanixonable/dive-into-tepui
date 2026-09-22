@@ -1,1 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img"><title>太陽系の基準座標</title><desc>物理状態を一つに保ち、用途ごとに変換する</desc><defs><style>.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.accent{fill:none;stroke:#ff3155;stroke-width:2}.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient><marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker></defs><rect width="1200" height="360" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">太陽系の基準座標</text><text x="55" y="72" class="m d k">物理状態を一つに保ち、用途ごとに変換する</text><g transform="translate(55.0 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">01</text><text x="18" y="61" class="sans t v">ECI / ICRF</text><text x="18" y="90" class="m d sm">慣性基準</text><text x="18" y="114" class="m d sm">シミュレーション</text></g><path d="M315.5 197H327.5" class="accent" marker-end="url(#arrR)"/><g transform="translate(332.5 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">02</text><text x="18" y="61" class="sans t v">天体中心</text><text x="18" y="90" class="m d sm">relative state</text><text x="18" y="114" class="m d sm">軌道要素</text></g><path d="M593 197H605" class="accent" marker-end="url(#arrR)"/><g transform="translate(610.0 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">03</text><text x="18" y="61" class="sans t v">自転系</text><text x="18" y="90" class="m d sm">body-fixed</text><text x="18" y="114" class="m d sm">経度・C22</text></g><path d="M870.5 197H882.5" class="accent" marker-end="url(#arrR)"/><g transform="translate(887.5 125)"><rect width="257.5" height="145" rx="15" class="box"/><text x="18" y="30" class="m a k">04</text><text x="18" y="61" class="sans t v">公転回転系</text><text x="18" y="90" class="m d sm">primary-secondary</text><text x="18" y="114" class="m d sm">L点・地図</text></g><text x="55" y="324" class="m b sm">表示座標を正本へ戻さず、変換として扱う。</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>基準座標系・照明・表示</title><desc>地球と月にECI軸、自転軸、公転回転系、太陽方向を重ねて示す。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">基準座標系・照明・表示</text><text x="55" y="72" class="m d k">同じ天体状態へ複数の「見方」を重ねる</text>
+<g transform="translate(510 275)">
+  <circle r="88" fill="url(#earth)" stroke="#d6d6d0"/>
+  <circle cx="300" cy="0" r="30" fill="#a8aec0"/>
+  <ellipse cx="0" cy="0" rx="330" ry="105" class="soft"/>
+  <path d="M0 0H160" class="accent" marker-end="url(#ra)"/><text x="80" y="-12" class="m a xs">公転 x</text>
+  <path d="M0 0V-150" class="blue" marker-end="url(#ba)"/><text x="10" y="-135" class="m sig xs">ECI z</text>
+  <path d="M-135 65L-235 118" class="stroke" marker-end="url(#ba)"/><text x="-290" y="145" class="m b xs">ECI x/y</text>
+  <g transform="rotate(-23)"><path d="M0 0V-118" class="accent" marker-end="url(#ra)"/></g>
+  <text x="-120" y="-104" class="m an xs">body-fixed</text>
+  <path d="M-430-120L-130-45" stroke="#ff6b82" stroke-width="3" marker-end="url(#ra)"/><text x="-450" y="-145" class="m an sm">太陽光</text>
+  <path d="M88-20C160-55 232-48 270-20" class="soft dash"/><text x="142" y="-65" class="m d xs">月方向</text>
+</g>
+<g transform="translate(940 350)">
+  <circle cx="0" cy="0" r="6" fill="#ff3155"/><text x="14" y="4" class="m b sm">慣性</text>
+  <circle cx="0" cy="30" r="6" fill="#3478ff"/><text x="14" y="34" class="m b sm">回転/自転</text>
+</g>
+</svg>
