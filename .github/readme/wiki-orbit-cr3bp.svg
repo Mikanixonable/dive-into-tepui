@@ -1,1 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img"><title>CR3BP とラグランジュ点</title><desc>二天体系の回転座標で航法構造を見る</desc><defs><style>.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.accent{fill:none;stroke:#ff3155;stroke-width:2}.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient><marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker></defs><rect width="1200" height="430" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">CR3BP とラグランジュ点</text><text x="55" y="72" class="m d k">二天体系の回転座標で航法構造を見る</text><g transform="translate(55.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">L1</text><text x="18" y="62" class="sans t v">主副天体の間</text><text x="18" y="91" class="m d sm">回転系で固定</text><text x="18" y="115" class="m d sm">通過・近傍軌道</text></g><g transform="translate(333.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">L2</text><text x="18" y="62" class="sans t v">副天体の外側</text><text x="18" y="91" class="m d sm">回転系で固定</text><text x="18" y="115" class="m d sm">Halo/NRHO 周辺</text></g><g transform="translate(611.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">L4 / L5</text><text x="18" y="62" class="sans t v">正三角形方向</text><text x="18" y="91" class="m d sm">条件付き安定</text><text x="18" y="115" class="m d sm">地図上の基準</text></g><g transform="translate(889.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">Jacobi</text><text x="18" y="62" class="sans t v">ゼロ速度境界</text><text x="18" y="91" class="m d sm">到達可能領域</text><text x="18" y="115" class="m d sm">エネルギー構造</text></g><text x="55" y="400" class="m b sm">L点は自動遷移先ではなく、航法と軌道設計の基準。</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img"><title>CR3BP・ラグランジュ点・航法表示</title><desc>地球と月の回転座標系にL1からL5、ゼロ速度境界、Halo/NRHOを描く。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="520" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">CR3BP・ラグランジュ点・航法表示</text><text x="55" y="72" class="m d k">地球–月回転系では、L点と到達可能領域が幾何として見える</text>
+<g transform="translate(130 290)">
+  <circle cx="115" cy="0" r="58" fill="url(#earth)" stroke="#d6d6d0"/>
+  <circle cx="760" cy="0" r="26" fill="#a8aec0" stroke="#d6d6d0"/>
+  <path d="M115 0H760" class="soft"/>
+  <path d="M-25 0C110-130 315-180 472-112C592-62 628-10 653 0C628 10 592 62 472 112C315 180 110 130-25 0Z" class="soft dash"/>
+  <path d="M625 0C675-78 745-92 790-48C822-17 818 24 792 48C746 90 675 78 625 0Z" class="soft dash"/>
+  <circle cx="625" cy="0" r="6" fill="#ff3155"/><text x="604" y="-18" class="m a sm">L1</text>
+  <circle cx="835" cy="0" r="6" fill="#ff3155"/><text x="823" y="-18" class="m a sm">L2</text>
+  <circle cx="-80" cy="0" r="6" fill="#ff3155"/><text x="-92" y="-18" class="m a sm">L3</text>
+  <circle cx="438" cy="-220" r="6" fill="#3478ff"/><text x="425" y="-238" class="m sig sm">L4</text>
+  <circle cx="438" cy="220" r="6" fill="#3478ff"/><text x="425" y="244" class="m sig sm">L5</text>
+  <path d="M618-4C634-52 665-70 696-57C722-46 733-12 720 16C706 47 670 62 640 45C615 31 606 15 618-4Z" class="accent"/>
+  <path d="M742-2C752-73 788-105 821-85C851-67 856-13 838 30C820 70 784 85 757 65C735 48 731 28 742-2Z" class="blue"/>
+  <text x="584" y="-83" class="m a xs">Halo</text><text x="799" y="-114" class="m sig xs">NRHO</text>
+  <path d="M90-150C100-180 125-190 150-178" class="accent" marker-end="url(#ra)"/><text x="-5" y="-174" class="m d xs">回転方向</text>
+</g>
+<text x="55" y="480" class="m b sm">L点は「自動遷移先」ではなく、三体力学の構造を読む航法基準。</text>
+</svg>
