@@ -11,17 +11,17 @@
 <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
 <rect width="1200" height="470" rx="20" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">ORBITAL UI & REFERENCE FRAMES</text><text x="55" y="72" class="m d k">CAMERA AND TRAJECTORY DISPLAY CAN USE INERTIAL OR ROTATING FRAMES</text>
+<text x="55" y="48" class="m t h">軌道 UI と基準座標系</text><text x="55" y="72" class="m d k">カメラと軌道表示は慣性系・回転系を選択できる</text>
 <g transform="translate(55 110)">
 <rect x="0" y="0" width="700" height="310" rx="16" class="box"/>
 <circle cx="325" cy="157" r="47" fill="#48506a" stroke="#d6d6d0"/><circle cx="515" cy="157" r="18" fill="#a8aec0"/><path d="M325 157H515" class="line"/>
 <circle cx="455" cy="157" r="5" fill="#ff3155"/><text x="444" y="136" class="m a sm">L1</text><circle cx="560" cy="157" r="5" fill="#ff3155"/><text x="552" y="136" class="m a sm">L2</text>
-<path d="M325 157L424 77" class="signal" marker-end="url(#arrB)"/><text x="427" y="73" class="m s sm">x̂ / orbital frame</text><path d="M325 157V54" class="accent" marker-end="url(#arrR)"/><text x="337" y="56" class="m a sm">ẑ normal</text>
-<ellipse cx="325" cy="157" rx="247" ry="115" class="line dash"/><circle cx="392" cy="55" r="6" fill="#eeeaf5"/><text x="400" y="49" class="m t sm">trajectory sample</text>
-<text x="22" y="287" class="m d sm">trajectory points are transformed at their own sample time</text>
-<g transform="translate(740 0)"><rect width="350" height="310" rx="16" class="box"/><text x="20" y="34" class="m a k">MAP VIEW / ORBIT FRAME</text>
-<text x="20" y="74" class="m d xs">ORIGIN</text><rect x="20" y="87" width="310" height="38" rx="10" class="soft"/><text x="34" y="112" class="m t sm">Earth / Moon / selected body</text>
-<text x="20" y="151" class="m d xs">ROTATION</text><rect x="20" y="164" width="310" height="38" rx="10" class="soft"/><text x="34" y="189" class="m t sm">inertial · orbital · spin</text>
-<text x="20" y="228" class="m d xs">MANEUVER GIZMO</text><text x="20" y="254" class="m a sm">PRO / RET</text><text x="122" y="254" class="m s sm">NRM / ANM</text><text x="235" y="254" class="m b sm">IN / OUT</text>
-<text x="20" y="286" class="m d sm">camera follow and trajectory frame are selectable</text></g>
+<path d="M325 157L424 77" class="signal" marker-end="url(#arrB)"/><text x="427" y="73" class="m s sm">x̂ / 公転フレーム</text><path d="M325 157V54" class="accent" marker-end="url(#arrR)"/><text x="337" y="56" class="m a sm">ẑ 軌道面法線</text>
+<ellipse cx="325" cy="157" rx="247" ry="115" class="line dash"/><circle cx="392" cy="55" r="6" fill="#eeeaf5"/><text x="400" y="49" class="m t sm">軌道サンプル</text>
+<text x="22" y="287" class="m d sm">各サンプル自身の時刻で座標変換</text>
+<g transform="translate(740 0)"><rect width="350" height="310" rx="16" class="box"/><text x="20" y="34" class="m a k">マップビュー / 軌道フレーム</text>
+<text x="20" y="74" class="m d xs">原点</text><rect x="20" y="87" width="310" height="38" rx="10" class="soft"/><text x="34" y="112" class="m t sm">地球 / 月 / 選択天体</text>
+<text x="20" y="151" class="m d xs">回転</text><rect x="20" y="164" width="310" height="38" rx="10" class="soft"/><text x="34" y="189" class="m t sm">慣性 · 公転 · 自転</text>
+<text x="20" y="228" class="m d xs">マニューバ操作</text><text x="20" y="254" class="m a sm">PRO / RET</text><text x="122" y="254" class="m s sm">NRM / ANM</text><text x="235" y="254" class="m b sm">IN / OUT</text>
+<text x="20" y="286" class="m d sm">カメラ追従と軌道表示の座標系を選択</text></g>
 </g></svg>
