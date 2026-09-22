@@ -1,7 +1,7 @@
 // 星系の全天体から、表示に使う座標系(ReferenceFrame)の集合と、その時刻ごとの剛体運動
 // (FrameTransform)を供給する。天体の ECI 値を入力に取り、参照フレーム相対への剛体運動を
-// 答える。座標系そのものの値の変換は physics/frame.ts の純関数群が担い、ここは
-// 「どの座標系があるか」と「その原点・姿勢・角速度が時刻 t で何になるか」を答える。
+// 算出・提供する。座標系そのものの値の変換は physics/frame.ts の純関数群が担い、ここは
+// 「どの座標系が存在するか」と「その原点・姿勢・角速度が時刻 t で何になるか」を提供する。
 // THREE/DOM 非依存。
 import { Q_IDENTITY, qFromBasis } from '../../math/quat';
 import { CelestialMotion, OrbitingMotion, SatelliteMotion } from '../../physics/celestial-motion';
@@ -82,7 +82,7 @@ export class ReferenceFrames {
   // rotatingWith が指す回転。恒等でよい(回転しない・回転を組めない)ときは null。'spin' は
   // その天体の自転基準系、'revolution' は登録天体なら解析的な公転回転基準系。
   // 登録されていない(= 生存中の重力天体・機体・役割トークンの)id は解析軌道を持たないので、
-  // source が答える主天体との瞬間の相対状態(x̂ = 主天体→id、ẑ = 相対角運動量方向)から
+  // source から得られる主天体との瞬間の相対状態(x̂ = 主天体→id、ẑ = 相対角運動量方向)から
   // 骨組みの基底を組む — 主天体は frame.center とは独立に source.attractorOf が決める
   // (CELESTIAL.md 8節: 原点をどこに選んでも回転対象自身の主天体まわりの公転になる)。
   private frameRotationAt(
