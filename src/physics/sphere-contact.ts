@@ -69,8 +69,8 @@ export function linearSphereContact(
   const dz = (bEnd.r.z - bStart.r.z) - (aEnd.r.z - aStart.r.z);
   const startDistSq = px * px + py * py + pz * pz;
   const aa = dx * dx + dy * dy + dz * dz;
-  // 非有限な入力をここで落とす。判定は `!(x >= 0)` の否定形で書く — NaN はどの比較でも
-  // false になるので、この形のときだけ自動的に null へ落ちる(`x < 0` では通り抜ける)。
+  // 非有限な入力をここで除外する。判定は `!(x >= 0)` の否定形で書く — NaN はどの比較でも
+  // false になるので、この形のときだけ自動的に null を返す(`x < 0` では通り抜ける)。
   if (!(radiusSum > 0) || !(startDistSq >= 0) || !(aa >= 0)) return null;
 
   const c = startDistSq - radiusSum * radiusSum;
@@ -89,8 +89,8 @@ export function linearSphereContact(
   };
 }
 
-// 曲線で解く実体。degree で二次・三次を選ぶ。
-// 区間端点の側だけを見ると、端点の両方が同じ側でも途中だけ反対側へ出る軌道を落とす。
+// 曲線による衝突判定の実装。degree で二次・三次を指定する。
+// 区間端点の内外判定だけを見ると、両端点が外側にあっても途中で球内へ侵入する軌道を見落とす恐れがある。
 // ここでは相対位置(b − a)をBezierへ変換し、Bezier制御点の凸包が表面を跨ぎ得る区間だけを
 // 左から再帰的に調べる。制御点の軸平行箱が丸ごと始点と同じ側にあれば、その区間に跨ぎはない。
 // したがって、単なる固定サンプル列より細い通過も拾いつつ、曲線上の clearance の符号反転を

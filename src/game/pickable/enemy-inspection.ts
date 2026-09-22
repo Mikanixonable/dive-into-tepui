@@ -34,7 +34,7 @@ export interface EnemyProteinInspection {
   siteMarkers(displayPos: Vec3, attitude: Quat): readonly ProteinSiteMarker[];
 }
 
-// 敵の表示・一覧・検査に要る面。
+// 敵の表示・一覧・検査に必要なインターフェース。
 export interface EnemyInspectionSource extends OrbitingObject {
   readonly name: string;
   readonly mapKind: DynamicEntityKind;

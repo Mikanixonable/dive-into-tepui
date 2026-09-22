@@ -42,7 +42,7 @@ export interface SerializedProgress {
 }
 
 export class Game {
-  // 顔ぶれの予測軌道のキャッシュ。需要が求める長さまで伸ばす。
+  // 各エンティティの予測軌道キャッシュ。要求に応じた長さまで伸長する。
   public readonly predictor: Predictor;
 
   // いま操作している対象。操作しているものが無ければ null。
@@ -87,7 +87,7 @@ export class Game {
     );
     const commands = new CommandQueue();
     const events = new RunEventLog();
-    // 顔ぶれを先に組む — 操作対象の選択・ステージの初期配置・視点は、組み上がった顔ぶれを読む。
+    // 動的システム(エンティティ群)を先に構築する — 操作対象の選択・ステージの初期配置・視点は、構築済みのエンティティ群を参照する。
     const dynamicSystem = DynamicSystem.create(scene.scene, events, celestialSystem, sections);
     const simSpeedManager = SimSpeedManager.create(events);
     const controlSelection = ControlSelection.create(dynamicSystem);
@@ -116,7 +116,7 @@ export class Game {
     );
     const commands = new CommandQueue();
     const events = new RunEventLog();
-    // 顔ぶれを先に組む — 操作対象の選択・ステージ・視点は、復元を終えた顔ぶれを読む。
+    // 動的システム(エンティティ群)を先に構築する — 操作対象の選択・ステージ・視点は、復元されたエンティティ群を参照する。
     const dynamicSystem = DynamicSystem.deserialize(
       serializedProgress.dynamicSystem, scene.scene, events, celestialSystem, sections,
     );
@@ -224,7 +224,7 @@ export class Game {
     this.sections.exit(SECTION.plan);
   }
 
-  // ステージ・顔ぶれ・操作対象の選択を、操作量 controls と dt [s] で1フレーム進める。boardTargetId は
+  // ステージ・エンティティ群・操作対象の選択を、操作入力 controls と dt [s] で1フレーム進める。boardTargetId は
   // 的面の通過を記録する対象の id。
   private advanceSimulation(dt: number, controls: PilotControls, boardTargetId: string | null): void {
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
@@ -234,7 +234,7 @@ export class Game {
     const canShipAct = this.simSpeedManager.canShipAct;
     const canEngage = this.simSpeedManager.canEngage;
     const controlled = this.activeControllable;
-    // 台本が世界を編集してから、その顔ぶれで1フレーム進める。湧いた個体もこのフレームの
+    // ステージロジックが世界を更新してから、そのエンティティ構成で1フレーム進める。生成された個体もこのフレームの
     // 指令決定と積分に乗る。
     this.sections.enter(SECTION.stage);
     this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);

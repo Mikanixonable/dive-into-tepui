@@ -16,7 +16,7 @@ import type { ModularShip } from '../../ship/modular-ship';
 import type { StageOutcome } from '../stage-outcome';
 import type { RunEventSink } from '../../run-events';
 
-// 波状攻撃が敵を足し、交戦圏外へ出た敵の消滅を記録するステージの面。
+// 波状攻撃が敵を追加し、交戦圏外へ出た敵の消滅を記録するステージのインターフェース。
 export interface WaveAttackStage extends StageOutcome {
   // 敵を登録し、出撃数をスコアへ記録する。
   addEnemy(enemy: Enemy): void;

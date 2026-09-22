@@ -95,7 +95,7 @@ export class Aurora {
     this.material.dispose();
   }
 
-  // phase 時点のカーテン形状を positions/colors へ書き込む(GPU への反映は呼び出し側)。
+  // phase 時点のカーテン形状を positions/colors 配列へ書き込む（頂点属性の needsUpdate フラグ更新は別段で行う）。
   private writeVertices(phase: number, solarMeridianRad = 0): void {
     const o = this.optics;
     for (let i = 0; i <= SEG; i++) {
