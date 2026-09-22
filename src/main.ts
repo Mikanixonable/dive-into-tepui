@@ -151,8 +151,10 @@ function bindSettings(
   const settingsView = pauseMenu.settingsView;
   settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
 
-  settings.renderStyle.subscribe((style) => debugInfo.syncRenderStyle(style));
-  hud.onRenderStyleChange = (style) => settings.renderStyle.set(style);
+  settings.renderStyle.subscribe((style) => {
+    debugInfo.syncRenderStyle(style);
+    hud.syncRenderStyle(style);
+  });
 
   // 音量は一時停止メニューと設定ビューの両方が書き換えるので、通知を受けた側で両方を引き直す。
   // どちらも消音中は音量を 0 と見せる。
