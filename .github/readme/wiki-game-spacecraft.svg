@@ -1,8 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="285" viewBox="0 0 1200 285" role="img"><title>船体・建造・ドッキング</title><defs><style>
-.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}
-.t{fill:#eeeaf5}.d{fill:#9b96a2}.a{fill:#ff3155}.b{fill:#3478ff}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}
-.h{font-size:23px;font-weight:700}.k{font-size:12px;letter-spacing:1px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}
-.acc{fill:none;stroke:#ff3155;stroke-width:2}.sig{fill:none;stroke:#3478ff;stroke-width:2}
-</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker></defs><rect width="1200" height="285" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">船体・建造・ドッキング</text><text x="55" y="72" class="m d k">接続グラフを一つの物理船体として評価する</text><rect x="55" y="116" width="246.25" height="108" rx="14" class="box"/><text x="73" y="150" class="s t v">Module</text><text x="73" y="177" class="m d sm">tank / cockpit</text><text x="73" y="200" class="m d sm">個別状態</text><rect x="336.25" y="116" width="246.25" height="108" rx="14" class="box"/><text x="354.25" y="150" class="s t v">Assembly</text><text x="354.25" y="177" class="m d sm">接続グラフ</text><text x="354.25" y="200" class="m d sm">構造</text><rect x="617.5" y="116" width="246.25" height="108" rx="14" class="box"/><text x="635.5" y="150" class="s t v">能力・質量</text><text x="635.5" y="177" class="m d sm">重心 / 慣性</text><text x="635.5" y="200" class="m d sm">導出</text><rect x="898.75" y="116" width="246.25" height="108" rx="14" class="box"/><text x="916.75" y="150" class="s t v">Dock / Split</text><text x="916.75" y="177" class="m d sm">統合 / 連結成分</text><text x="916.75" y="200" class="m d sm">再構成</text><path d="M307.25 170H330.25" class="sig" marker-end="url(#u)"/><path d="M588.5 170H611.5" class="sig" marker-end="url(#u)"/><path d="M869.75 170H892.75" class="sig" marker-end="url(#u)"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img"><title>船体・建造・ドッキング</title><desc>モジュール船の側面図、接続グラフ、ドッキング前後を同時に示す。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
+.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="520" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">船体・建造・ドッキング</text><text x="55" y="72" class="m d k">ShipAssembly は「見た目」ではなく、モジュールと接続の物理構造</text>
+<g transform="translate(70 150)">
+  <path d="M45 145L110 100H455L525 145L455 190H110Z" fill="#15171c" stroke="#c3bec9"/>
+  <path d="M45 145L0 145M525 145H585" class="stroke"/>
+  <rect x="112" y="113" width="95" height="64" rx="18" fill="#0e1014" stroke="#ff3155"/><text x="128" y="150" class="m t sm">cockpit</text>
+  <rect x="215" y="113" width="95" height="64" rx="18" fill="#0e1014" stroke="#48506a"/><text x="237" y="150" class="m t sm">tank</text>
+  <rect x="318" y="113" width="95" height="64" rx="18" fill="#0e1014" stroke="#48506a"/><text x="334" y="150" class="m t sm">weapon</text>
+  <rect x="421" y="113" width="66" height="64" rx="18" fill="#0e1014" stroke="#3478ff"/><text x="435" y="150" class="m t sm">dock</text>
+  <path d="M235 105V58H390V105M265 58V24M360 58V24" class="soft"/><path d="M245 24H180M380 24H445" class="blue"/><text x="178" y="12" class="m d xs">solar panel</text>
+  <path d="M0 130L-46 112V178L0 160Z" fill="#ff3155" opacity=".55"/><text x="-52" y="205" class="m a xs">thruster</text>
+</g>
+<g transform="translate(750 120)">
+  <text x="0" y="0" class="m a k">接続グラフ</text>
+  <circle cx="75" cy="90" r="25" fill="#0e1014" stroke="#ff3155"/><circle cx="180" cy="55" r="25" fill="#0e1014" stroke="#48506a"/><circle cx="185" cy="145" r="25" fill="#0e1014" stroke="#48506a"/><circle cx="285" cy="95" r="25" fill="#0e1014" stroke="#3478ff"/>
+  <path d="M97 82L156 63M99 102L161 137M205 61L264 86M209 139L264 104" class="soft"/>
+  <text x="50" y="132" class="m d xs">cockpit</text><text x="160" y="26" class="m d xs">tank</text><text x="153" y="190" class="m d xs">weapon</text><text x="270" y="137" class="m d xs">dock</text>
+</g>
+<g transform="translate(720 365)">
+  <path d="M0 25H120L150 45L120 65H0Z" fill="#15171c" stroke="#c3bec9"/><path d="M270 25H390L420 45L390 65H270Z" fill="#15171c" stroke="#c3bec9"/>
+  <path d="M150 45H270" class="accent" marker-end="url(#ra)"/>
+  <text x="88" y="92" class="m d xs">別 assembly</text><text x="305" y="92" class="m d xs">別 assembly</text>
+  <text x="170" y="14" class="m a sm">dock</text>
+</g>
+</svg>
