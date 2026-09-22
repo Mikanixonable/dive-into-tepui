@@ -1,10 +1,10 @@
 // サブステップを区切るべき次の絶対時刻。ステージ側(マニューバの点火・燃焼終了)と個体側
-// (弾の寿命など)の締切のうち、最も早いものを答える。
+// (弾の寿命など)の締切のうち、最も早いものを算出・返却する。
 import type { DynamicSimulationRoster } from './dynamic-simulation-participant';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 
 export class NextEventTime {
-  // 個体側の最小イベント時刻の控えと、それを求めたときの顔ぶれの世代。
+  // 個体側の最小イベント時刻のキャッシュと、それを算出した時点のリビジョン。
   private cached: number | null = null;
   private valid = false;
   private revision = -1;
@@ -19,8 +19,8 @@ export class NextEventTime {
     return Math.min(stage, entity);
   }
 
-  // 個体側の締切は固定の絶対時刻なので、控えた時刻を simTime が越えたときと、顔ぶれの世代が
-  // 変わったときにだけ全走査で引き直す。
+  // 個体側の締切は固定の絶対時刻であるため、キャッシュ時刻を simTime が超過した際と、エンティティ集合のリビジョンが
+  // 更新された際にのみ全走査で再取得する。
   private entityEventTime(simTime: number, roster: DynamicSimulationRoster): number | null {
     const revision = roster.collectionRevision;
     const stale = !this.valid

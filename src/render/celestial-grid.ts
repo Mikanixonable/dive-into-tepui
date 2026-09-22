@@ -302,7 +302,7 @@ class GridPlane {
         if (angle > 90) angle -= 180;
         if (angle < -90) angle += 180;
         if (sx < 8 || sx > w - 8 || sy < 8 || sy > h - 8) continue;
-        // ラベルは交点におけるグリッド接線の合成方向へ逃がす。グリッドの向きに追従するので、
+        // ラベルは交点におけるグリッド接線の合成方向へオフセットする。グリッドの向きに追従するので、
         // カメラの回転や投影が変わっても交点との対応が崩れない。
         const tangentX = dxLon + dxLat;
         const tangentY = dyLon + dyLat;

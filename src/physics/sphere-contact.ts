@@ -69,8 +69,8 @@ export function linearSphereContact(
   const dz = (bEnd.r.z - bStart.r.z) - (aEnd.r.z - aStart.r.z);
   const startDistSq = px * px + py * py + pz * pz;
   const aa = dx * dx + dy * dy + dz * dz;
-  // 非有限な入力をここで落とす。判定は `!(x >= 0)` の否定形で書く — NaN はどの比較でも
-  // false になるので、この形のときだけ自動的に null へ落ちる(`x < 0` では通り抜ける)。
+  // 非有限な入力をここで除外する。判定は `!(x >= 0)` の否定形で書く — NaN はどの比較でも
+  // false になるので、この形のときだけ自動的に null を返す(`x < 0` では通り抜ける)。
   if (!(radiusSum > 0) || !(startDistSq >= 0) || !(aa >= 0)) return null;
 
   const c = startDistSq - radiusSum * radiusSum;

@@ -34,7 +34,7 @@ import { EntityLifecycle } from './entity-lifecycle';
 
 export interface SerializedDynamicSystem {
   readonly simTime: number;
-  // 顔ぶれ。種別は各要素の kind が持つ。
+  // エンティティ一覧。種別は各要素の kind が持つ。
   readonly entities: readonly SerializedDynamicEntity[];
   readonly pendingSpawns: readonly SpawnRecord[];
   readonly idAllocators: SerializedEntityIdAllocators;
@@ -44,14 +44,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // エンティティの collection・pending spawn・上限・回収の正本。
   private readonly lifecycle: EntityLifecycle;
 
-  // 操作されうる個体。呼ぶたびに顔ぶれから数え直すので、フレームに何度も読むなら受けた配列を
+  // 操作されうる個体。呼ぶたびに登録一覧から走査し直すため、フレーム内で複数回参照する場合は取得した配列を
   // 持ち回る。
   public get controllables(): readonly Controllable[] { return this.lifecycle.controllables; }
 
   // プールで描く種別の描画資源。
   private readonly instancedPools: InstancedPools;
 
-  // 顔ぶれを1フレームずつ進める積分機構。simTime の正本はここが持つ。
+  // エンティティ群を1フレームずつ進める積分機構。simTime の正本はここが持つ。
   private readonly simulator: Simulator;
 
   // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。
@@ -60,7 +60,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 描画資源のプールと前進の機構を simTime [s] から組み、records の個体を足す(実体化に要る外部資源が
   // 揃わないものは待ち行列へ回す)。idAllocators はこのランの id 採番器で、省けば連番の初めから発番する。
   // 例外(ARCHITECTURE R12): 直列化された個体の記録を構築の引数で受け、ここで復元する。個体の復元は
-  // 顔ぶれそのもの(採番器・出来事の記録)を registry として要るので、組む前には復元できない。
+  // システム自身(採番器・出来事の記録)を registry として必要とするため、生成前には復元できない。
   private constructor(
     scene: THREE.Scene,
     public readonly events: RunEventSink,
@@ -80,14 +80,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     this.nanWatchdog = new NanWatchdog(events);
   }
 
-  // 新しいランの空の顔ぶれを組む。
+  // 新規セッション用の空の動的システムを生成する。
   public static create(
     scene: THREE.Scene, events: RunEventSink, celestialBodies: CelestialBodies, sections: FrameSections,
   ): DynamicSystem {
     return new DynamicSystem(scene, events, celestialBodies, sections);
   }
 
-  // 直列化した顔ぶれと実体化を待つ個体を、その先端時刻から復元する。知らない種別は読み飛ばす。
+  // 直列化したエンティティ一覧と実体化待機中の個体を、その先端時刻から復元する。未知の種別はスキップする。
   public static deserialize(
     serialized: SerializedDynamicSystem,
     scene: THREE.Scene,
@@ -107,8 +107,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     );
   }
 
-  // 顔ぶれと実体化を待つ個体、採番を直列化した形へ畳む。
-  // 例外(ARCHITECTURE R12): Simulator の値である先端時刻 simTime を、顔ぶれの記録へ平らに入れる。
+  // エンティティ一覧と実体化待機中の個体、採番器をシリアライズ形式へ変換する。
+  // 例外(ARCHITECTURE R12): Simulator の値である先端時刻 simTime を、直列化レコードへ平坦に含める。
   // Simulator の記録として分けると版 4 の記録が読めなくなるので、版を上げるときに直す。
   public serialize(): SerializedDynamicSystem {
     return {
@@ -119,7 +119,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     };
   }
 
-  // 保持するエンティティの顔ぶれの世代。顔ぶれが変わるたびに増える。
+  // 保持するエンティティ集合の世代（リビジョン）。集合に変更があるたびにインクリメントされる。
   public get collectionRevision(): number {
     return this.lifecycle.collectionRevision;
   }
@@ -149,7 +149,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     this.lifecycle.requestHistoryDuration(sec);
   }
 
-  // 顔ぶれをどこまで進めたか。積分の先端時刻と、直前のフレームで進めた長さ [sim s]。
+  // シミュレーションの進行状況。積分の先端時刻と、直前フレームの積分ステップ幅 [sim s]。
   public get simTime(): number { return this.simulator.simTime; }
   public get lastSimDt(): number { return this.simulator.lastSimDt; }
 
@@ -159,7 +159,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
-  // 顔ぶれを1フレーム進める。自律の推力、操縦の命令、操作・敵の指令を決めてから積分する。operable は
+  // 全エンティティを1フレーム進める。自律推力、操縦コマンド、操作・敵の指令を決定してから積分する。operable は
   // 操作と敵の射撃ができる倍率か、acceptsCommands は controls の命令を操作対象へ適用するか、
   // enemiesMayFire はステージが敵の射撃を許しているか、canEngage は交戦圏を組むか。
   public update(
@@ -235,7 +235,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return this.all().filter(isModularShip).find((p) => p.motion.alive) ?? null;
   }
 
-  // このフレームの表示物を、顔ぶれを1度辿って同期する。proteinDisplay はタンパク質の敵に
+  // 当該フレームの表示オブジェクトを、エンティティ一覧を走査して同期する。proteinDisplay はタンパク質の敵に
   // 共通の表示形態と着色。
   public sync(
     displayTime: number, active: Controllable | null, camera: CameraFrame, style: RenderStyle,

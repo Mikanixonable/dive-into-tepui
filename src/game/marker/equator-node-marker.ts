@@ -1,5 +1,5 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る点(EqAN/EqDN)を指す、実体を持たない
-// 被選択物。持ち主と中心天体を冠した呼称を答える。
+// 被選択物。所属と中心天体を含む呼称を提供する。
 import { ORBIT_ELEMENT_LABELS, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './marker-priority';

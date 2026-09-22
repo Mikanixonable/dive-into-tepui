@@ -54,7 +54,7 @@ export interface StellarLightSource {
   readonly stellarLight: StellarLight;
 }
 
-// 天体1体の表示が、照らす源・遮る源・霞ませる源として答える面。
+// 天体1体の表示が、照明・遮蔽・散乱の光源・遮蔽物として提供するインターフェース。
 export interface CelestialIlluminationView {
   // 光源として扱うときの色つきボンドアルベド。反射光を配らない天体では null。
   readonly lightSourceAlbedo: Albedo | null;
