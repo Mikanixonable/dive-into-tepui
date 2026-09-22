@@ -1,5 +1,5 @@
 // ラグランジュ点を指す、実体を持たない被選択物。生成元が解いた時刻の位置を持ち、天体と同じ
-// 名前空間の id と、マップのマーカーへ出す二行表記を答える。
+// 名前空間の id と、マップのマーカーへ出す二行表記テキストを提供する。
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';

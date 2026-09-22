@@ -1,5 +1,5 @@
 // 星系の天体を id で引く索引。天体の表示名・主天体・所属する系・時刻ごとの ECI 状態と、
-// 座標系の解決役を答える。1フレームぶんの積分が読む役割別の一覧もここが答える。
+// 座標系の解決役を提供する。1フレーム分の積分が参照する役割別の一覧もここから提供する。
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
@@ -7,7 +7,7 @@ import type { Vec3 } from '../../math/vec3';
 import type { CelestialClass } from './celestial-entity/celestial-entity-def';
 import type { ReferenceFrames } from './reference-frames';
 
-// 1フレームの積分が読む天体を、役割ごとの一覧として答える顔ぶれ。重力・接触判定・抗力は
+// 1フレームの積分が参照する天体を、役割ごとの一覧として提供するインターフェース。重力・接触判定・抗力は
 // 個体ではなくこの一覧に対して回る。並びは天体の宣言順で、時刻ごとの解決は天体1体が畳む。
 export interface FrameCelestialBodies {
   // 全登録天体。中心天体は原点に静止。

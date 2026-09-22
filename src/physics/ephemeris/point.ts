@@ -21,7 +21,7 @@ export interface PointEphemeris {
   baryStateAt(simTime: number): KinematicState<'numeric'>;
 }
 
-// 結ばれた暦が答える位置・速度。結ばれていない・有効期間の外では null。
+// 関連付けられた暦が提供する位置・速度。関連付けられていない・有効期間の外では null。
 export function boundBaryStateAt(ephemeris: PointEphemeris | null, t: number): KinematicState<'numeric'> | null {
   if (ephemeris === null) return null;
   if (t < ephemeris.validStartSimTime || t > ephemeris.validEndSimTime) return null;

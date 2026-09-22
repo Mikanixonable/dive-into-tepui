@@ -1,6 +1,6 @@
 // 交戦圏の組み立て(SPEC/COMBAT.md「交戦圏」)。自機と基地のそれぞれを中心とする半径
 // ENGAGEMENT_RANGE の球で、重なる球は1つの交戦圏にまとめる。戦闘が起こりうる範囲そのものを
-// 表し、位置がその範囲に入るかと、その範囲の基準変位を答える。
+// 表し、位置がその範囲に入るかの内外判定と、その範囲の基準変位を算出・提供する。
 import { Vec3, sub, distSq } from '../../math/vec3';
 import type { KinematicState } from '../../physics/kinematic-state';
 

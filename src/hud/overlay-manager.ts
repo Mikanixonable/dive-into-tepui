@@ -68,7 +68,7 @@ export class OverlayManager {
   }
 
   // 入力をゲートしているオーバーレイ(kind:'modal' かつ gatesInput:true)が1つでも開いているか。
-  // 個々のオーバーレイの id を名指しせずに「背景入力を遮るべきか」を答える。
+  // 個々のオーバーレイの ID を直接指定せずに「背景入力を遮蔽すべきか」を判定して返す。
   public isInputGated(): boolean {
     return this.stack.some((e) => e.spec.kind === 'modal' && e.spec.gatesInput);
   }
