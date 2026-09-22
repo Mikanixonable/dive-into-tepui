@@ -1,5 +1,4 @@
-// トップバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
-// 画面全体の見せ方(写実/模式図)を切り替えるトグル・注視/操作/ターゲットの対象名。
+// トップバー1行目のコンテキスト表示: 現在のモード・ビュー切替と、注視/操作/ターゲットの対象名。
 import type { ViewMode } from '../view/view-mode';
 import type { ViewCommands } from '../viewer/view-commands';
 import { ContextMenu, MenuItem } from './windows/context-menu';
@@ -39,7 +38,12 @@ function appendField(container: HTMLElement, label: string): HTMLElement {
 function setFieldValue(el: HTMLElement, value: string | null): void {
   const text = value ?? NO_VALUE;
   if (el.textContent !== text) el.textContent = text;
-  el.parentElement?.classList.toggle('hidden', value === null);
+  const field = el.parentElement;
+  field?.classList.toggle('hidden', value === null);
+  const separator = field?.previousElementSibling;
+  if (separator instanceof HTMLElement && separator.classList.contains('vb-sep')) {
+    separator.classList.toggle('hidden', value === null);
+  }
 }
 
 // ビューバッジが1フレームに映す値。名前の欄は、対象が定まっていなければ null。
@@ -65,14 +69,14 @@ export class ViewBadge {
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
   // 直近の sync が受けた値。遷移メニューはフレームの外で開くので、遷移先をここから引く。
   private view: ViewBadgeViewModel | null = null;
-  // container(トップバー1行目の行)へバッジの中身を、遷移メニューを popupLayer へ組み立てて配線する。
-  // 遷移メニューの選択は commands へ返す。見せ方のトグルは sync で合わせる。
+  // container(トップバー1行目の行)へコンテキスト表示を、popupLayer へビュー遷移メニューを組み立てる。
+  // 遷移メニューの選択は commands へ返す。
   public constructor(
     container: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager,
     private readonly commands: Pick<ViewCommands, 'select'>,
   ) {
     this.menu = new ContextMenu<true, ViewMode>(popupLayer, overlayManager);
-    // タイトル・モード名・ビュー切替ボタンと、現在の対象の欄を横に並べる。
+    // モード名・ビュー切替ボタンと、現在値がある対象欄を横に並べる。
     container.setAttribute('role', 'navigation');
     container.setAttribute('aria-label', 'ビュー切り替え');
     container.addEventListener('pointerdown', this.stopPointerDown);
@@ -102,7 +106,7 @@ export class ViewBadge {
     this.el.replaceChildren();
   }
 
-  // モード名・ビューボタン・見せ方のトグルと、注視対象・操作対象・ターゲットの名前を反映する。
+  // モード名・ビューボタンと、注視対象・操作対象・ターゲットの名前を反映する。
   public sync(view: ViewBadgeViewModel): void {
     this.view = view;
     this.modeEl.textContent = titleCase(view.modeLabel).toUpperCase();
