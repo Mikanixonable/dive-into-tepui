@@ -61,7 +61,7 @@ export function buildProteinCollisionSpheres(
         const nextMaxY = Math.max(maxY, coordinates[offset + 1]!);
         const nextMaxZ = Math.max(maxZ, coordinates[offset + 2]!);
         const grown = boxSphereRadius(nextMaxX - nextMinX, nextMaxY - nextMinY, nextMaxZ - nextMinZ);
-        // 上限を超えても、2残基目までは必ず飲む — 1残基しか含まない球は隣と残基を共有できず、
+        // 上限を超えても、2残基目までは必ず含める — 1残基しか含まない球は隣と残基を共有できず、
         // 間の線分がどの球にも入らなくなる。
         if (last > first && grown > radiusLimit) break;
         minX = nextMinX;

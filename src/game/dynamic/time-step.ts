@@ -11,7 +11,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 // 1サブステップの最大秒数 [s]。
 export const SUBSTEP_MAX_DT = 20;
 // 1フレームに許すサブステップ数の上限。これを超える時間送りが要求されたら刻み幅の側を伸ばす。
-// 刻み幅の上限が固定値だけだと substep 数がワープ倍率に正比例し、高ワープでは1フレームの値段が
+// 刻み幅の上限が固定値だけだと substep 数がタイムワープ倍率に正比例し、高倍率ワープでは1フレームあたりの計算コストが
 // そのまま倍率に比例して増える。再突入中の細分化はこれに優先する(加熱と動圧の積分結果が艦の
 // 生死を決め、それをプレイヤーが観測するため)。
 // 64 は最高ワープ(×65536)の LEO で1周あたり54歩。そこでの数値的な軌道減衰は 0.42 km/日で、
@@ -19,18 +19,18 @@ export const SUBSTEP_MAX_DT = 20;
 // 1周27歩(K=32)まで粗くすると数値減衰が実ドラッグと同等になり、待つだけで艦が倍の速さで落ちる。
 export const SUBSTEP_MAX_COUNT = 64;
 
-// 大気の中で刻みを縛る2つの上限(atmosphericMaxStep)。
+// 大気中でステップ幅を制限する2つの上限(atmosphericMaxStep)。
 // 抗力は陽的 RK4 にとって剛い項で、逆時定数 λ = ½ρ·s·bcInv が刻みに対して大きくなると、
 // 段ごとの抗力が増幅して1歩で発散する(抗力は速さの2乗なので振動ではなく暴走になる)。
 // DRAG_STEP_MAX_SPEED_LOSS は λ·dt の上限 = 1歩で抗力が奪ってよい対気速度の割合。
-// RK4 の実軸上の安定限界は λ·dt ≒ 2.78 だが、縛っているのは安定性ではなく精度である:
+// RK4 の実軸上の安定限界は λ·dt ≒ 2.78 だが、制約しているのは安定性ではなく精度である:
 // GTO からの再突入で外殻温度の最大は、刻み 0.25 s の基準 976 K に対し λ·dt = 1 で 1050 K
 // (+7.6%)、0.5 で 991 K(+1.5%)。限界 1300 K に対して 7.6% は艦の生死を変える。
 const DRAG_STEP_MAX_SPEED_LOSS = 0.5;
 // もう1つは剛性と無関係に効く。RK4 の中間段は現在の速度と加速度からの直線外挿なので、
 // 重力だけで動径方向に g·dt²/4 沈む。刻み 204.8 s ではこれが 99.6 km になり、高度 91.5 km
-// (λ·dt = 0.006 で剛性は全く問題ない)でも段が地面の下を標本して海面密度を拾う。
-// DRAG_STEP_MAX_SCALE_HEIGHTS は、その沈み込みが密度を e^N 倍までしか変えないよう縛る。
+// (λ·dt = 0.006 で剛性は全く問題ない)でも中間段が地表下をサンプリングして海面密度を取得してしまう。
+// DRAG_STEP_MAX_SCALE_HEIGHTS は、その沈み込みによる密度変化を e^N 倍以内に制限する。
 const DRAG_STEP_MAX_SCALE_HEIGHTS = 0.5;
 
 // 消費されない弧(計画の区間)の刻みの下限 [s]。消費されない弧は状態を
@@ -79,7 +79,7 @@ function dragMaxStep(rRel: Vec3, vRel: Vec3, bcInv: number, mu: number, atm: Atm
   const lambda = dragRate(rRel, vRel, bcInv, atm);
   const stiff = lambda > 0 ? DRAG_STEP_MAX_SPEED_LOSS / lambda : Infinity;
   // 沈み込みの許容深さ [m] と、そこへ達するまでの時間。2次方程式 ½g·dt² + 降下率·dt = depth を
-  // 有理化した形で解く — 遠方や薄い大気で g → 0 でも 0 除算にならない。
+  // 分子の有理化形式で算出する — 遠方や薄い大気で g → 0 でも 0 除算にならない。
   const depth = DRAG_STEP_MAX_SCALE_HEIGHTS * atmosphericScaleHeight(alt, atm);
   const descentRate = Math.max(0, -dot(rRel, vRel) / d);
   const g = mu / (d * d);
@@ -87,9 +87,9 @@ function dragMaxStep(rRel: Vec3, vRel: Vec3, bcInv: number, mu: number, atm: Atm
   return Math.min(stiff, sink);
 }
 
-// その状態を積むのに大気が要求する最大刻み [s]。相手は自分にとって最も近い大気天体ただ1体で、
-// それがいなければ Infinity(大気の無いところに上限は無い)。抵抗を受けない物体(bcInv = 0)も
-// 同じく Infinity。時間送りやイベント由来の上限との合成は呼び出し側が行う。
+// 現在の状態を積分するにあたって大気が要求する最大刻み幅 [s]。対象は最も近い大気天体1体で、
+// 該当天体がなければ Infinity（大気による制約なし）。抵抗を受けない物体(bcInv = 0)も
+// 同じく Infinity。他の要因（時間送りやイベントなど）による上限との統合は外部で行う。
 export function atmosphericMaxStep(
   state: KinematicState, bcInv: number,
   atmosphereBodies: readonly CelestialBody[], pivot: number,

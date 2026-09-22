@@ -1,5 +1,5 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・照明)の構築と毎フレームの同期。天体の索引と、
-// 系の所属・系レベルの物理量を答える。
+// 系の所属・系レベルの物理量を提供する。
 import type * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { type CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
@@ -45,7 +45,7 @@ import {
   sameSystemIds, systemChainAt, systemMembersAt,
 } from './celestial-system-query';
 
-// 数値暦が収録している点を、結び先のノードへ配る。暦は id ごとに天体本体を収録している場合と
+// 数値暦が収録している点を、結び先のノードへ割り当てる（バインドする）。暦は id ごとに天体本体を収録している場合と
 // 惑星系の重心を収録している場合があり、宣言と食い違う点へ結ぶとその系がまるごと重心オフセット
 // ぶんずれる。
 function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisPoints): void {
@@ -114,7 +114,7 @@ export class CelestialSystem implements CelestialBodies {
     );
     this.eciTransform = new EciTransform(origin.motion);
     this.referenceFrames = new ReferenceFrames(this.celestialMotions, this.eciTransform);
-    // 天体1体ぶんの値は運動が答えるので、その供給源(ECI 変換器・暦)はここで1度だけ配る。
+    // 天体1体分の値は運動モデルが算出するため、その供給源(ECI 変換器・暦)はここで1度だけバインド（設定）する。
     for (const motion of this.celestialMotions) motion.bindEciTransform(this.eciTransform);
     if (ephemerisPoints !== null) bindEphemerides(this.celestialMotions, ephemerisPoints);
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));
@@ -171,8 +171,8 @@ export class CelestialSystem implements CelestialBodies {
 
   // ---------------------------------------------------------------- 系の所属
 
-  // 天体の木を親子関係と重力の効き方から辿り、「何がどの系に属するか」「いまどの系にいるか」を
-  // 答える。
+  // 天体の木構造を親子関係と重力の影響度から辿り、「何がどの系に属するか」「現在どの系に位置するか」を
+  // 判定・提供する。
 
   // focusId と同じ親を持つ天体・その親・focusId 自身の id 集合。focusId 未指定なら空集合。
   public sameSystemIds(focusId: string | undefined): ReadonlySet<string> {
@@ -251,7 +251,7 @@ export class CelestialSystem implements CelestialBodies {
     return star === null ? v3(1, 0, 0) : norm(sub(star.stateAt(t).r, r));
   }
 
-  // 天体と地表が答える、デバッグ表示用の狭い計測値をまとめる。
+  // 天体と地表から得られる、デバッグ表示用の計測値をまとめる。
   public perfCounts(): Pick<PerfCounts, 'surfaces'> & { timeCacheHits: number; timeCacheMisses: number } {
     let time = this.eciTransform.cacheStats;
     for (const motion of this.celestialMotions) time = addTimeCacheStats(time, motion.cacheStats);

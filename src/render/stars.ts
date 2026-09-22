@@ -41,7 +41,7 @@ export function createStars(brightness: FixedBrightness): Stars {
     side: THREE.BackSide,
     depthWrite: false,
     // 殻がカメラから 0.9*far の距離にあり、深度クリア値付近の量子化丸めで LESS テストが
-    // 落ちて黒く抜けることがあるため、深度テストを明示的に無効化する。
+    // 失敗して黒く欠損することがあるため、深度テストを明示的に無効化する。
     depthTest: false,
   });
 
@@ -59,7 +59,7 @@ export function createStars(brightness: FixedBrightness): Stars {
       // 輝度の目盛りに載っていないため、どこから見ても同じ明るさで写らなければならない。
       mat.color.setScalar(brightness.fixedBrightnessScale);
     },
-    // GPU 資源を解放する。mesh をシーンから外すのは呼び出し側。
+    // GPU 資源を解放する。mesh 自体のシーングラフからの削除は含まない。
     dispose(): void {
       geo.dispose();
       mat.dispose();

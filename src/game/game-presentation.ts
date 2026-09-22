@@ -317,7 +317,7 @@ export class GamePresentation {
     this.inputPhase.interpret(dt, nowMs, viewport);
   }
 
-  // フレームの残りの入力エッジを、ports の優先順へ配る。
+  // フレームの残りの入力イベントを、ports の優先度順にディスパッチする。
   public routeInput(ports: readonly GameInputPort[]): void { this.inputPhase.routeInput(ports); }
 
   // ------------------------------------------------ 進行の材料と、進行の後の導出
@@ -511,7 +511,7 @@ export class GamePresentation {
     this.devices.scene.pipeline.render(this.devices.scene.scene, this.cameraFrame.camera, style);
   }
 
-  // 表示の導出が答える計測値。
+  // 表示生成処理から得られる計測値。
   public perfCounts(): Pick<PerfCounts, 'planArcs' | 'mapMode' | 'mapItems' | 'mapLabels' | 'displayDurationSec'> {
     return {
       ...this.planDisplay.perfCounts(),

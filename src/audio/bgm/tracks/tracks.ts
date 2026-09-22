@@ -1,5 +1,5 @@
 // BGM の曲データ。1エントリ = 1曲で、どの Composer で鳴らすか(kind)と、その Composer が
-// 食うパラメータを持つ。型と、パラメータの各フィールドの意味は types.ts。
+// 受け付けるパラメータを持つ。型と、パラメータの各フィールドの意味は types.ts。
 import { BgmTrack } from './types';
 import { section } from './suite-builder';
 
