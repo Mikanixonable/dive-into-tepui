@@ -1,5 +1,26 @@
 # 敵機・Protein敵 リファクタリング／バグ調査報告
 
+> **状態更新 — 2026-09-23 再監査:** この調査後に複数の修正・リファクタリングが入ったため、冒頭の未完了チェックリストを現状のまま実装指示として使わない。確認できた解消済み項目と残件を以下に整理する。
+
+## 2026-09-23 再監査
+
+### 解消済み
+
+- **攻撃グループと表示色の分離:** `attackGroupId` が独立した属性として導入済み。Protein 編隊は `formationId` を攻撃グループとして使い、`tests/game/protein-formation.test.ts` で異なるグループを独立に扱う経路が検証されている。
+- **Protein 掃引衝突の回転:** `ProteinSphereCollisionGeometry.testSweptSphereCollision()` は前回姿勢と現在姿勢を受け取り、ProteinEnemy 側も `previousSelfAttitude.q` / `selfAttitude.q` を渡す。
+- **Protein 戦闘状態の正本:** HP・機能部位・修飾・攻撃部位巡回は `ProteinCombatState` が所有する構造になっている。
+- **敵の責務分割の主要部分:** 射撃は `EnemyFireController`、反応は `EnemyReactions`、物理は `EnemyMotion` へ分離されている。2026-09-16 には enemy / protein 責務分離のリファクタリングも統合済み。
+
+### 引き続き確認が必要
+
+- **表示アンカー・銃口・命中点の座標契約:** 銃口と被弾は静止部位座標を基準にしている一方、表示は変形を持つため、統合テストで一致を保証する課題は残す。
+- **Protein の基底クラス境界:** `ProteinEnemy extends Enemy extends CombatShipEntity` であり、旧 `Ship` への不要な継承は解消したが、Protein と金属敵の共通基底をどこまで持たせるかは別の設計判断として残る。
+- **保存値の検証:** `ProteinCombatState.deserialize()` は定義に存在する部位・修飾へ写し直すが、数値範囲・cursor 等の不正値を全面的に拒否する検証は、この再監査では完了扱いにしない。
+- **spawn gate の失敗・取消、編隊生成の原子性、表示時刻と姿勢の整合:** 旧 P2 群は解消を確認できていないため残件とする。
+
+以下の旧チェックリストは **2026-09-12 時点の問題発見記録** として読む。
+
+
 調査日: 2026-09-12
 
 調査時点のHEAD: `4922f7403`
