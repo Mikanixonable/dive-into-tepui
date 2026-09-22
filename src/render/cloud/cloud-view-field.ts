@@ -2,8 +2,8 @@
 // カメラ移動では世界場を変えずに view texture だけを更新する。
 import * as THREE from 'three/webgpu';
 import { texture } from 'three/tsl';
-import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
+import { CloudFieldStorage } from './cloud-field-storage';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from '../field-projection';
@@ -11,7 +11,7 @@ import type { CloudFieldSource } from './cloud-field-source';
 import type { CloudStateBinding } from './cloud-state';
 
 export class CloudViewField implements CloudFieldSource {
-  private readonly field: BakedField;
+  private readonly field: CloudFieldStorage;
   private bakedWorldGeneration = -1;
   private bakedProjectionRevision = -1;
   private generationValue = 0;
@@ -19,15 +19,19 @@ export class CloudViewField implements CloudFieldSource {
   public constructor(
     private readonly world: CloudFieldSource, public readonly projection: FieldProjection,
   ) {
-    const worldTexture = texture(world.texture);
-    this.field = new BakedField(
-      'cloudView', THREE.RGBAFormat, projection,
-      (direction) => worldTexture.sample(world.projection.uvAt(direction)),
+    const worldBasis = texture(world.basisTexture);
+    const worldShape = texture(world.shapeTexture);
+    this.field = new CloudFieldStorage(
+      'cloudView',
+      projection,
+      (direction) => worldBasis.sample(world.projection.uvAt(direction)),
+      (direction) => worldShape.sample(world.projection.uvAt(direction)),
       GPU_PASS.cloudBake,
     );
   }
 
-  public get texture(): THREE.Texture { return this.field.texture; }
+  public get basisTexture(): THREE.Texture { return this.field.basisTexture; }
+  public get shapeTexture(): THREE.Texture { return this.field.shapeTexture; }
   public get generation(): number { return this.generationValue; }
   public get state(): CloudStateBinding { return this.world.state; }
 

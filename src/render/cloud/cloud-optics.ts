@@ -44,7 +44,8 @@ export function cloudBasisOptics(
   };
 }
 
-// basis の不透明成分を鉛直柱光学深さへ変換する。coverage は basis の和から得る無次元量。
+// basis の不透明成分を鉛直柱光学深さへ変換する。coverage は雲場の別チャンネルで保持する量で、
+// basis の光学重みとは混ぜない。
 // 巻雲のBはすでに鉛直柱光学深さなので、この変換を通さず値を使う。
 export function columnOpticalDepthFromCoverage(coverage: number): number {
   const bounded = Math.min(Math.max(coverage, 0), MAX_COLUMN_COVERAGE);

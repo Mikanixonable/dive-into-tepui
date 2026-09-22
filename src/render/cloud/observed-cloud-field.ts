@@ -4,18 +4,18 @@
 import * as THREE from 'three/webgpu';
 import { float, int, log2, max, smoothstep, texture, vec4 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
-import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
+import { CloudFieldStorage } from './cloud-field-storage';
 import { equirectUvFromDirection, type FieldProjection } from '../field-projection';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSource } from './cloud-field-source';
-import type { Vec4Node } from '../tsl-types';
+import type { Vec3Node, Vec4Node } from '../tsl-types';
 import type { CloudStateBinding } from './cloud-state';
 
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
-  private readonly field: BakedField;
+  private readonly field: CloudFieldStorage;
   // 焼いたときの画像の世代と投影の版。どちらかが変わったときだけ焼き直す。
   private bakedGeneration = -1;
   private bakedRevision = -1;
@@ -37,12 +37,14 @@ export class ObservedCloudField implements CloudFieldSource {
     // pi / 画像の高さ。
     const imageHeight = float((image.size(int(0)) as THREE.Node<'uvec2'>).y);
     const lod = max(log2(projection.texelAngle.mul(imageHeight).div(Math.PI)), 0);
-    this.field = new BakedField(
-      'observedCloud', THREE.RGBAFormat, projection,
+    const observedAt = (direction: Vec3Node): Vec4Node =>
+      image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node;
+    this.field = new CloudFieldStorage(
+      'observedCloud', projection,
       (direction) => {
         // 観測画像だけから相を確定しない。旧 R/G/B の被覆率・雲頂・薄雲を
         // low/middle/convective/in-situ basis へ連続変換する。
-        const observed = image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node;
+        const observed = observedAt(direction);
         const convectiveWeight = smoothstep(0.45, 0.88, observed.g);
         const middleWeight = smoothstep(0.12, 0.58, observed.g).mul(float(1).sub(convectiveWeight));
         const lowWeight = float(1).sub(middleWeight).sub(convectiveWeight);
@@ -53,11 +55,16 @@ export class ObservedCloudField implements CloudFieldSource {
           observed.b,
         );
       },
+      (direction) => {
+        const observed = observedAt(direction);
+        return vec4(observed.r, observed.g, 0, 1);
+      },
       GPU_PASS.cloudBake,
     );
   }
 
-  public get texture(): THREE.Texture { return this.field.texture; }
+  public get basisTexture(): THREE.Texture { return this.field.basisTexture; }
+  public get shapeTexture(): THREE.Texture { return this.field.shapeTexture; }
   public get generation(): number { return this.generationValue; }
   public get state(): CloudStateBinding { return this.stateValue; }
 
