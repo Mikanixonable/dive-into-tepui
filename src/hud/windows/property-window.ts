@@ -20,31 +20,61 @@ const STYLE = `
   width: 100%; background: var(--glass-control); border: 0; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
-#hud .property-window { width: 560px; max-width: 560px; }
+#hud .dg-window.property-window { width: 560px; max-width: 560px; }
+#hud .property-window .dg-window-header {
+  align-items: flex-start; padding-bottom: var(--space-4);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
+}
+#hud .property-window .dg-window-title::before {
+  display: block; margin-bottom: var(--space-1); color: var(--color-primary);
+  content: 'DATA SHEET'; font-size: var(--font-xxs); font-weight: 700; letter-spacing: .14em;
+}
+#hud .property-window .dg-window-title-main {
+  color: var(--text-strong); font-size: var(--font-xl); font-weight: 650;
+  letter-spacing: -.025em;
+}
+#hud .property-window .dg-window-title-sub {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em;
+}
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
-  display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);
+  display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  align-items: baseline; gap: var(--space-4); padding: var(--space-2) var(--space-5);
+  color: var(--text); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 9%, transparent);
 }
-#hud .prop-window-row-label { opacity: 0.7; }
-#hud .prop-window-row-value { text-align: right; }
+#hud .prop-window-row-label {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em; text-transform: uppercase;
+}
+#hud .prop-window-row-value {
+  min-width: 0; overflow-wrap: anywhere; color: var(--text);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
 #hud .prop-window-row-toggle {
   padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
 #hud .prop-window-row-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-row-group-toggle {
-  padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
+  display: flex; align-items: center; gap: var(--space-2);
+  margin-top: var(--space-2); padding: var(--space-3) var(--space-5) var(--space-2);
+  color: var(--text-dim); opacity: 1; cursor: pointer;
+  font-size: var(--font-xxs); letter-spacing: .08em; text-transform: uppercase;
+}
+#hud .prop-window-row-group-toggle::after {
+  content: ''; flex: 1 1 auto; height: 1px;
+  background: color-mix(in srgb, var(--text-dim) 22%, transparent);
 }
 #hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-controls {
   padding: var(--space-4) var(--space-5);
-  background: var(--glass-inset);
+  background: transparent;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
 }
 /* .w-btn の padding は #hud 修飾を持たないため、#hud 側のリセットに詳細度で負ける。
    詰まったボタンにならないよう、#hud 修飾つきで既定の余白へ戻す。 */
 #hud .prop-window-controls .w-btn { padding: var(--space-4) var(--space-5); }
 #hud .prop-window-items {
-  padding: var(--space-2);
-  background: var(--glass-inset);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  background: transparent;
 }
 #hud .prop-window-related {
   padding: var(--space-2);
