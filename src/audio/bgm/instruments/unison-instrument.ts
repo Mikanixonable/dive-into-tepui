@@ -60,7 +60,7 @@ export class UnisonInstrument implements Instrument {
   }
 }
 
-// voice 数ぶんのデチューン量を、0 を中心に ±cents へ均等に配る。
+// voice 数ぶんのデチューン量を、0 を中心に ±cents へ均等に配分する。
 // 1声なら 0 のみ。偶数声では中央に素の音程が立たず、うなりだけが残る。
 function spreadDetune(voices: number, cents: number): number[] {
   const count = Math.max(1, Math.floor(voices));

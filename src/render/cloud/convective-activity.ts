@@ -19,8 +19,8 @@ import type { FloatNode, Vec3Node } from '../tsl-types';
 // 塊に群れ、塊のあいだは静かな隙間として晴れる(`DEVELOP/SPEC/RENDERING.md`「粒は数百キロの
 // 塊に群れ、塊のあいだは晴れる」)。積雲の粒(48〜24 km)には届かせない — 粒より細かい所で
 // 活発度が振れると、粒が消え残るのではなく 1 つ 1 つが薄まる。振れ幅は、気団だけでは活発度が
-// 中間の階調に留まる高さに取る — 板と粒へ振り切るのは上昇流と気団の流入で、ノイズはそのあいだを
-// 配る。
+// 中間の階調に留まる高さに取る — 板と粒へ振り切るのは上昇流と気団の流入で、ノイズはその中間領域の
+// 分布を担う。
 const INSTABILITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 6.4, amplitude: 1 }, // 1000 km
   { frequency: 12.8, amplitude: 0.65 }, // 500 km
