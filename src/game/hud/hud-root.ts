@@ -12,6 +12,7 @@ import { STAGE_STATUS_STYLE } from './style/stage-status-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { SHIP_CONSTRUCTION_STYLE } from './style/ship-construction-style';
+import { EDITORIAL_DATA_STYLE } from './style/editorial-data-style';
 import { isCompactViewport } from '../../hud/breakpoints';
 import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
@@ -22,7 +23,7 @@ import type { PanelCollapse } from './panel-shell';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
 const STYLE =
-  LAYOUT_TOKENS_STYLE + SKELETON_STYLE
+  LAYOUT_TOKENS_STYLE + SKELETON_STYLE + EDITORIAL_DATA_STYLE
   + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE;
 
@@ -90,13 +91,20 @@ function buildViewRoot(parent: HTMLElement, collapse: PanelCollapse, id: string,
 }
 
 // PanelShell が組んだ見出し・本文・開閉ボタンを、アクセシブルな一領域として関連付ける。
-function configureCombatPanel(panel: PanelShell): void {
+function configureCombatPanel(panel: PanelShell, code?: string): void {
   const titleId = `${panel.el.id}-title`;
   const bodyId = `${panel.el.id}-body`;
   panel.el.classList.add('combat-panel');
   panel.el.setAttribute('role', 'region');
   panel.el.setAttribute('aria-labelledby', titleId);
   panel.titleEl.id = titleId;
+  if (code !== undefined) {
+    const codeEl = document.createElement('span');
+    codeEl.className = 'ui-section-code';
+    codeEl.setAttribute('aria-hidden', 'true');
+    codeEl.textContent = code;
+    panel.titleEl.prepend(codeEl);
+  }
   panel.body.id = bodyId;
 
   // 開閉ボタンへ aria 属性を与え、開閉状態が変わるたびに読み上げ名を更新する。
@@ -120,7 +128,7 @@ function injectStyle(): void {
 // 常設 VESSEL パネルを右レールへ組む。
 function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
   const status = new PanelShell(rightRail, collapse, 'hud-vessel-status', 'Vessel');
-  configureCombatPanel(status);
+  configureCombatPanel(status, 'VSL');
   // 計器の行(燃料・RCS・出力・動圧・各モード・弾薬)と、展開・スロットル・主要操作の置き場。
   status.body.innerHTML = `
     <dl class="metric-list">
@@ -165,31 +173,60 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
     <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
 }
 
-// 常設 ORBIT パネルを左レールへ組む。マップビューと compact 幅では畳んで始める。
+// 常設 ORBIT パネルを左レールへ組む。軌道は map の主情報なので、compact 以外では開いて始める。
 function buildOrbitInfoPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
   const orbit = new PanelShell(
-    leftRail, collapse, 'hud-orbit', 'Orbit', (view) => view === 'map' || isCompactViewport(),
+    leftRail, collapse, 'hud-orbit', 'Orbit', () => isCompactViewport(),
   );
-  configureCombatPanel(orbit);
-  // 基準天体・高度・速度・軌道要素・動圧・機体温度の行と、軌道の操作の置き場。
+  configureCombatPanel(orbit, 'ORB');
+  // Editorial な読み順: 文脈 → 高度/速度 → Ap/Pe → INC/PRD → 環境負荷 → 操作。
   orbit.body.innerHTML = `
-    <div class="row" data-id="reference-row"></div>
-    <dl class="metric-list">
-      <div class="row metric">
-        <dt class="k">基準</dt><dd class="v"><output data-id="center">—</output></dd>
+    <div class="orbit-context-row">
+      <span class="ui-data-context" data-id="orbit-context">—</span>
+      <output class="orbit-center-name" data-id="center">—</output>
+    </div>
+    <div class="orbit-primary-grid">
+      <div class="orbit-primary orbit-altitude">
+        <output class="ui-data-hero" data-id="alt">—</output>
+        <span class="ui-data-label">Altitude</span>
       </div>
-      <div class="row metric"><dt class="k">高度</dt><dd class="v"><output data-id="alt">—</output></dd></div>
-      <div class="row metric"><dt class="k">速度</dt><dd class="v"><output data-id="spd">—</output></dd></div>
-      <div class="row metric"><dt class="k" data-id="ap-label">遠地点 Ap</dt><dd class="v"><output data-id="ap">—</output></dd></div>
-      <div class="row metric"><dt class="k" data-id="pe-label">近地点 Pe</dt><dd class="v"><output data-id="pe">—</output></dd></div>
-      <div class="row metric"><dt class="k">傾斜角</dt><dd class="v"><output data-id="inc">—</output></dd></div>
-      <div class="row metric"><dt class="k">周期</dt><dd class="v"><output data-id="prd">—</output></dd></div>
-      <div class="row metric"><dt class="k">動圧 q</dt><dd class="v"><output data-id="qdyn">—</output></dd></div>
-      <div class="row metric">
-        <dt class="k">機体温度</dt><dd class="v"><output data-id="temp">—</output></dd>
+      <div class="orbit-primary orbit-speed">
+        <output class="ui-data-major" data-id="spd">—</output>
+        <span class="ui-data-label">Velocity</span>
       </div>
+    </div>
+    <div class="orbit-apsides">
+      <div class="orbit-apsis">
+        <span class="ui-data-label" data-id="ap-label">Ap</span>
+        <output class="ui-data-major" data-id="ap">—</output>
+      </div>
+      <div class="orbit-apsis">
+        <span class="ui-data-label" data-id="pe-label">Pe</span>
+        <output class="ui-data-major" data-id="pe">—</output>
+      </div>
+    </div>
+    <dl class="orbit-secondary-grid">
+      <div><dt class="ui-data-label">INC</dt><dd><output data-id="inc">—</output></dd></div>
+      <div><dt class="ui-data-label">PRD</dt><dd><output data-id="prd">—</output></dd></div>
     </dl>
-    <div class="panel-actions" data-id="orbit-actions" role="group" aria-label="軌道の操作"></div>`;
+    <div class="orbit-environment" aria-label="飛行環境">
+      <div class="orbit-env-row" data-id="orbit-qdyn-row">
+        <div class="orbit-env-head"><span class="ui-data-label">q · DYNAMIC PRESSURE</span><output data-id="qdyn">—</output></div>
+        <span class="orbit-env-meter w-meter-track" role="progressbar" aria-label="動圧">
+          <span class="w-meter-fill" data-id="qdyn-meter-fill"></span>
+        </span>
+      </div>
+      <div class="orbit-env-row" data-id="temp-row">
+        <div class="orbit-env-head"><span class="ui-data-label">T · HULL TEMP</span><output data-id="temp">—</output></div>
+        <span class="orbit-env-meter w-meter-track" role="progressbar" aria-label="機体温度">
+          <span class="w-meter-fill" data-id="temp-meter-fill"></span>
+        </span>
+      </div>
+    </div>
+    <div class="orbit-controls">
+      <div data-id="reference-row"></div>
+      <div class="panel-actions" data-id="orbit-actions" role="group" aria-label="軌道の操作"></div>
+    </div>`;
 }
 
 // ブースター燃焼管理パネルを左レールへ組む。
@@ -197,7 +234,7 @@ function buildBurnManagementPanel(leftRail: HTMLElement, collapse: PanelCollapse
   const burnManagement = new PanelShell(
     leftRail, collapse, 'burn-management-panel', '燃焼管理',
   );
-  configureCombatPanel(burnManagement);
+  configureCombatPanel(burnManagement, 'BRN');
   // 段数・総質量・最後尾燃料・燃焼状態の行と、ブースター操作の置き場。
   burnManagement.body.innerHTML = `
     <dl class="metric-list burn-management-metrics">
@@ -224,46 +261,71 @@ function buildBurnManagementPanel(leftRail: HTMLElement, collapse: PanelCollapse
     <div class="metric-list burn-module-list" data-id="burn-module-list" aria-label="ブースターとデカプラー"></div>`;
 }
 
-// 戦闘ビューの右レールへ、選択中 dock から船体を組み立てるパネルを組む。
-function buildShipConstructionPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
-  const construction = new PanelShell(rightRail, collapse, 'ship-construction-panel', '船体建造');
-  configureCombatPanel(construction);
-  construction.body.innerHTML = `
-    <header class="construction-target" aria-label="建造対象">
-      <strong data-id="construction-ship-name">—</strong>
-      <span class="construction-target-dock" data-id="construction-dock-name">—</span>
-    </header>
-    <section class="construction-catalog" aria-label="モジュールカタログ">
-      <div data-id="construction-category-tabs"></div>
-      <div class="construction-module-cards" data-id="construction-module-cards"></div>
-    </section>
-    <section class="construction-selection" aria-label="建造選択">
-      <div class="construction-selection-row"><span>部品</span><strong data-id="construction-selected-module">—</strong></div>
-      <div class="construction-selection-row"><span>接続先</span><strong data-id="construction-selected-slot">—</strong></div>
-      <div class="construction-slots" data-id="construction-slots" aria-label="接続候補"></div>
-    </section>
-    <dl class="metric-list">
-      <div class="row metric"><dt class="k">部品数</dt><dd class="v"><output data-id="construction-count">0</output></dd></div>
-      <div class="row metric"><dt class="k">総質量</dt><dd class="v"><output data-id="construction-mass">0 kg</output><small data-id="construction-mass-preview"></small></dd></div>
-      <div class="row metric construction-hp-row"><dt class="k">HP</dt><dd class="v"><div data-id="construction-hp-meter"></div><output data-id="construction-hp">0 / 0</output><small data-id="construction-hp-preview"></small></dd></div>
-      <div class="row metric"><dt class="k">推力</dt><dd class="v"><output data-id="construction-thrust">0</output></dd></div>
-      <div class="row metric"><dt class="k">主燃料</dt><dd class="v"><output data-id="construction-main-fuel">0</output></dd></div>
-      <div class="row metric"><dt class="k">RCS燃料</dt><dd class="v"><output data-id="construction-rcs-fuel">0</output></dd></div>
-      <div class="row metric"><dt class="k">発電</dt><dd class="v"><output data-id="construction-power">0</output></dd></div>
-      <div class="row metric"><dt class="k">放熱</dt><dd class="v"><output data-id="construction-radiation">0</output></dd></div>
-      <div class="row metric"><dt class="k">完成時の役割</dt><dd class="v"><output data-id="construction-role">物資</output></dd></div>
-      <div class="row metric"><dt class="k">完成条件</dt><dd class="v"><output data-id="construction-completion">部品を1個以上配置</output></dd></div>
-    </dl>
-    <p class="construction-warning hidden" data-id="construction-warning"></p>
-    <div class="construction-actions" data-id="construction-actions" role="group" aria-label="船体建造操作"></div>`;
-  construction.el.dataset.id = 'ship-construction-panel';
-  construction.el.classList.add('hidden');
+// 建造は右レールの一パネルではなく、中央3Dを空けた独立 Workspace として組む。
+function buildShipConstructionWorkspace(parent: HTMLElement): void {
+  const construction = createHudElement(
+    'section', 'ship-construction-panel', parent, 'construction-workspace hidden',
+  );
+  construction.dataset.id = 'ship-construction-panel';
+  construction.dataset['mobilePane'] = 'catalog';
+  construction.setAttribute('aria-label', '船体建造');
+
+  construction.innerHTML = `
+    <nav class="construction-mobile-tabs" data-id="construction-mobile-tabs" aria-label="建造表示切替"></nav>
+    <aside class="construction-pane construction-pane-left ui-surface-focus" aria-label="モジュールカタログ">
+      <header class="construction-target">
+        <span class="ui-section-code">BLD</span>
+        <span class="ui-data-context">CONSTRUCTION WORKSPACE</span>
+        <strong data-id="construction-ship-name">—</strong>
+        <span class="construction-target-dock" data-id="construction-dock-name">—</span>
+      </header>
+      <section class="construction-catalog" aria-label="モジュールカタログ">
+        <div data-id="construction-category-tabs"></div>
+        <div class="construction-module-cards" data-id="construction-module-cards"></div>
+      </section>
+    </aside>
+
+    <div class="construction-center" aria-hidden="true">
+      <span class="ui-section-code">ASM</span>
+      <span class="ui-data-context">3D ASSEMBLY / SELECT A MOUNT POINT</span>
+      <span class="construction-center-note">リングを選択 · 同じリングを再度選択して配置</span>
+    </div>
+
+    <aside class="construction-pane construction-pane-right ui-surface-focus" aria-label="建造結果">
+      <section class="construction-selection" aria-label="建造選択">
+        <div class="construction-selection-row"><span>部品</span><strong data-id="construction-selected-module">—</strong></div>
+        <div class="construction-selection-row"><span>接続先</span><strong data-id="construction-selected-slot">—</strong></div>
+        <div class="construction-slots" data-id="construction-slots" aria-label="接続候補"></div>
+      </section>
+      <div class="construction-metrics">
+        <div class="construction-metric">
+          <span class="ui-data-label">MODULES</span><output data-id="construction-count">0</output>
+        </div>
+        <div class="construction-metric">
+          <span class="ui-data-label">MASS</span><output data-id="construction-mass">0 kg</output>
+          <small class="ui-delta" data-id="construction-mass-preview"></small>
+        </div>
+        <div class="construction-metric construction-hp-row">
+          <span class="ui-data-label">HP</span><div data-id="construction-hp-meter"></div>
+          <output data-id="construction-hp">0 / 0</output><small class="ui-delta" data-id="construction-hp-preview"></small>
+        </div>
+        <div class="construction-metric"><span class="ui-data-label">THRUST</span><output data-id="construction-thrust">0</output><small class="ui-delta" data-id="construction-thrust-preview"></small></div>
+        <div class="construction-metric"><span class="ui-data-label">MAIN FUEL CAPACITY</span><output data-id="construction-main-fuel">0</output><small class="ui-delta" data-id="construction-main-fuel-preview"></small></div>
+        <div class="construction-metric"><span class="ui-data-label">RCS FUEL CAPACITY</span><output data-id="construction-rcs-fuel">0</output><small class="ui-delta" data-id="construction-rcs-fuel-preview"></small></div>
+        <div class="construction-metric"><span class="ui-data-label">POWER GENERATION</span><output data-id="construction-power">0</output><small class="ui-delta" data-id="construction-power-preview"></small></div>
+        <div class="construction-metric"><span class="ui-data-label">RADIATOR AREA</span><output data-id="construction-radiation">0</output><small class="ui-delta" data-id="construction-radiation-preview"></small></div>
+        <div class="construction-metric"><span class="ui-data-label">ROLE</span><output data-id="construction-role">物資</output></div>
+        <div class="construction-metric"><span class="ui-data-label">COMPLETION</span><output data-id="construction-completion">部品を1個以上配置</output></div>
+      </div>
+      <p class="construction-warning hidden" data-id="construction-warning"></p>
+      <div class="construction-actions" data-id="construction-actions" role="group" aria-label="船体建造操作"></div>
+    </aside>`;
 }
 
 // 常設 TARGET パネルを右レールへ組む。ロック対象が無い間は隠す。
 function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
   const target = new PanelShell(rightRail, collapse, 'hud-target', 'Target');
-  configureCombatPanel(target);
+  configureCombatPanel(target, 'TGT');
   target.setHidden(true);
   // 名前・距離・速度・装甲の行と、タンパク質標的の詳細欄。
   target.body.innerHTML = `
@@ -304,7 +366,7 @@ function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void
 // 常設 ENEMIES パネルを右レールへ組む。件数バッジを見出しへ添える。
 function buildEnemiesPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
   const enemies = new PanelShell(rightRail, collapse, 'hud-enemies', 'Enemies', isCompactViewport());
-  configureCombatPanel(enemies);
+  configureCombatPanel(enemies, 'CNT');
   const count = document.createElement('span');
   count.className = 'panel-count';
   count.dataset['id'] = 'count';
@@ -318,7 +380,6 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement, collapse
   buildVesselStatusPanel(rightRail, collapse);
   buildOrbitInfoPanel(leftRail, collapse);
   buildBurnManagementPanel(leftRail, collapse);
-  buildShipConstructionPanel(rightRail, collapse);
   buildTargetPanel(rightRail, collapse);
   buildEnemiesPanel(rightRail, collapse);
 }
@@ -342,15 +403,28 @@ function buildMapScale(root: HTMLElement): void {
 function buildTopBar(root: HTMLElement): void {
   const bar = createHudElement('section', 'hud-topbar', root, 'ui-surface-quiet');
   bar.setAttribute('aria-label', 'Mission status');
-  // 1行目はビュー切替と現在の対象バッジの置き場、2行目は MET・時間加速・NODE WARP。
+  // タイトル画面の status block と同じ語彙で、workspace → context → mission time の順に読む。
+  bar.classList.add('editorial-instrument');
   bar.innerHTML = `
+    <div class="gs-status-head">
+      <span class="ui-section-code" aria-hidden="true">MIS</span>
+      <span class="ui-data-context">MISSION STATUS</span>
+      <span class="gs-workspace ui-data-context" aria-label="現在のHUDワークスペース"></span>
+    </div>
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
-    <div class="gs-row">
-      <span class="k">Mission time</span><output class="v" data-id="met">—</output>
-      <span class="gs-sep" aria-hidden="true">·</span>
-      <span class="k">時間加速</span><select class="v gs-speed-select" data-id="sim-speed" aria-label="時間加速"></select>
-      <span class="gs-sep" aria-hidden="true">·</span>
-      <span class="k">Node warp</span><output class="v" data-id="node-warp-remain">—</output>
+    <div class="gs-metrics">
+      <div class="gs-metric gs-metric-time">
+        <span class="ui-data-label">MISSION TIME</span>
+        <output class="v" data-id="met">—</output>
+      </div>
+      <div class="gs-metric">
+        <span class="ui-data-label">SIM RATE</span>
+        <select class="v gs-speed-select" data-id="sim-speed" aria-label="時間加速"></select>
+      </div>
+      <div class="gs-metric">
+        <span class="ui-data-label">NODE WARP</span>
+        <output class="v" data-id="node-warp-remain">—</output>
+      </div>
     </div>`;
 }
 
@@ -407,6 +481,7 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
 
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, collapse);
+  buildShipConstructionWorkspace(layers.panel);
   buildTopBar(layers.panel);
   buildChaseReset(layers.panel);
   buildMapScale(mapRoot.element);
