@@ -216,7 +216,7 @@ export class ChebyshevEphemeris {
   private readonly bodiesById = new Map<string, IndexedBody>();
 
   // **manifest は保持しない。** 構築時の検証で使い切りで、以後読む者がいない —
-  // 抱えると 10054 個のセグメント metadata が pack と同じ寿命で残る。
+  // 保持し続けると 10054 個のセグメント metadata が pack と同じ寿命で残る。
   constructor(input: ChebyshevPack) {
     const bodies = input.bodies;
     for (const body of bodies) validateBody(body);
