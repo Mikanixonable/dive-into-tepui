@@ -369,37 +369,6 @@ E = E_env − ∫_塞がれた向き L_env (n·ω) dω + ∫_塞がれた向き 
 
 ## 手順
 
-### 手順 5.8. 照り返しの源に、天体照と環境光に照らされた面を入れる
-
-**目的** — D2 の `L_o` に天体照と一様な環境光を足し、D3 の第 3 項を原理どおりにする。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/lighting/planet-light-source.ts` | 全スロットの、遮られない一様球の拡散の放射照度の和 `uniformDiffuseIrradiance(sample)` を公開する。`contribution` の一様球の経路を使い、式を重複させない |
-| `src/render/pipeline/lighting/ambient-source.ts` L54–58 | `contribution` から放射照度の式を `irradiance(sample)` として切り出して公開する |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` L284–290 | `emittedRadiance` の太陽の直射へ、天体照と環境光の放射照度を足す。構築の引数に `AmbientSource` を足す |
-| `src/render/pipeline/render-pipeline.ts` L138 | パスへ環境光を渡す |
-
-```ts
-// planet-light-source.ts(PlanetLightSource)
-// 受け手 sample が全スロットから受ける、遮られないときの拡散の放射照度。光源モデルによらず一様球の式。
-public uniformDiffuseIrradiance(sample: ShadingSample): Vec3Node;
-// ambient-source.ts(AmbientSource)
-// 受け手 sample が受ける一様な環境光の放射照度(遮られないとき)。
-public irradiance(sample: ShadingSample): Vec3Node;
-```
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run test:render`。
-- 達成目標 1 の「遮蔽と照り返し」、3、4、5。
-- デバッグ表示「照り返しの源」で、撮影 `bay-earthshine` の荷室の壁と床が、太陽の当たらないところでも地球照で
-  光っている(この手順の前は黒)。
-- 達成目標 7・8 を before 2 組との比較で当てる(新しい 5 撮影は「追加」と出る)。
-- commit: `fix(render): 天体照と環境光に照らされた面も照り返す`
-
 ### 手順 5.9. フェードと広げ幅を追い込み、負荷を測る
 
 **目的** — 3 つのつまみを、物理との比較と粒で決める。負荷を測って「見積り」を実測で置き換える。
@@ -413,6 +382,10 @@ public irradiance(sample: ShadingSample): Vec3Node;
 | bay-earth-corner | 0.000 | 0.00 | 合う |
 | bay-moon-open | 0.646 | 1.00 | **σ_min**。σ_min = 0° で 1.000、5° で 0.726、10° で 0.646、20° で 0.503(CPU の再現)。大きい天体の 3 撮影は σ_min を変えても動かない |
 | bay-moon-corner | 0.000 | 0.00 | σ_min = 10° では合う。**0 にしたときの値を必ず測る** — 標本が 1 つも当たらないと「遮られない」になり、壁の陰の天体の光が壁を抜ける |
+
+照り返し(手順 5.8、`fb287c742`)は、**足した増分そのものはモデルの厳密値と ±0.02 で合う** — overhead
++0.159(厳密 +0.169)/ earth-open +0.408(+0.423)/ moon-open +0.361(+0.378)/ 内隅 +0.000(+0.003)。
+「遮蔽と照り返し」の残差は上の表の「遮蔽」の差がそのまま出たもので、この段の式ではない。
 
 3 つのつまみ:
 
