@@ -15,15 +15,23 @@ const CATEGORY_BY_KIND: Readonly<Record<ShipModuleDefinition['kind'], ShipModule
 
 const DEFAULT_CAPABILITIES = { thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0 };
 
-interface CapabilityElements {
-  readonly thrust: HTMLElement;
-  readonly mainFuel: HTMLElement;
-  readonly rcsFuel: HTMLElement;
-  readonly power: HTMLElement;
-  readonly radiation: HTMLElement;
+interface MetricPair {
+  readonly value: HTMLElement;
+  readonly preview: HTMLElement;
 }
 
-// 建造セッションのスナップショットを、部品選択・候補選択・結果確認へ分けて表示するパネル。
+interface CapabilityElements {
+  readonly thrust: MetricPair;
+  readonly mainFuel: MetricPair;
+  readonly rcsFuel: MetricPair;
+  readonly power: MetricPair;
+  readonly radiation: MetricPair;
+}
+
+type MobilePane = 'catalog' | 'status';
+
+// 建造セッションのスナップショットを、左右ペインと中央3D workspace に同期するUI。
+// 3D候補そのものは ShipConstruction が所有し、このクラスはゲーム状態を所有しない。
 export class ShipConstructionPanel {
   public get element(): HTMLElement { return this.panel; }
   public onSelectionChange: ((definitionId: string) => void) | null = null;
@@ -56,6 +64,8 @@ export class ShipConstructionPanel {
   private readonly remove: Button;
   private readonly finish: Button;
   private readonly discard: Button;
+  private readonly catalogPaneButton: Button;
+  private readonly statusPaneButton: Button;
   private readonly definitions: readonly ShipModuleDefinition[] = SHIP_MODULE_CATALOG.all();
   private activeCategory: ShipModuleCategory = 'command';
   private moduleSignature = '';
@@ -63,7 +73,7 @@ export class ShipConstructionPanel {
   private readonly moduleButtons = new Map<string, Button>();
   private readonly slotButtons = new Map<string, Button>();
 
-  // 静的な器へ既存Widgetを差し込み、動的なカタログ/候補の再構築点を固定する。
+  // 静的 workspace へ既存Widgetを差し込み、動的なカタログ/候補の再構築点を固定する。
   public constructor(els: ReadonlyMap<string, HTMLElement>) {
     this.panel = this.required(els, 'ship-construction-panel');
     this.shipName = this.required(els, 'construction-ship-name');
@@ -74,11 +84,11 @@ export class ShipConstructionPanel {
     this.hp = this.required(els, 'construction-hp');
     this.hpPreview = this.required(els, 'construction-hp-preview');
     this.capabilities = {
-      thrust: this.required(els, 'construction-thrust'),
-      mainFuel: this.required(els, 'construction-main-fuel'),
-      rcsFuel: this.required(els, 'construction-rcs-fuel'),
-      power: this.required(els, 'construction-power'),
-      radiation: this.required(els, 'construction-radiation'),
+      thrust: this.metricPair(els, 'construction-thrust'),
+      mainFuel: this.metricPair(els, 'construction-main-fuel'),
+      rcsFuel: this.metricPair(els, 'construction-rcs-fuel'),
+      power: this.metricPair(els, 'construction-power'),
+      radiation: this.metricPair(els, 'construction-radiation'),
     };
     this.role = this.required(els, 'construction-role');
     this.warning = this.required(els, 'construction-warning');
@@ -88,6 +98,7 @@ export class ShipConstructionPanel {
     this.categoryRoot = this.required(els, 'construction-category-tabs');
     this.moduleCards = this.required(els, 'construction-module-cards');
     this.slotList = this.required(els, 'construction-slots');
+
     this.hpMeter = new Meter();
     this.hpMeter.element.classList.add('construction-hp-meter');
     this.required(els, 'construction-hp-meter').appendChild(this.hpMeter.element);
@@ -99,6 +110,12 @@ export class ShipConstructionPanel {
     });
     this.categoryTabs.element.classList.add('construction-category-tabs');
     this.categoryRoot.appendChild(this.categoryTabs.element);
+
+    const mobileTabs = this.required(els, 'construction-mobile-tabs');
+    this.catalogPaneButton = new Button('部品', () => this.setMobilePane('catalog'), undefined, 'secondary');
+    this.statusPaneButton = new Button('性能', () => this.setMobilePane('status'), undefined, 'secondary');
+    mobileTabs.append(this.catalogPaneButton.element, this.statusPaneButton.element);
+    this.setMobilePane('catalog');
 
     const actions = this.required(els, 'construction-actions');
     this.place = new Button('配置', () => this.onPlace?.(), undefined, 'primary');
@@ -112,24 +129,28 @@ export class ShipConstructionPanel {
     this.sync(hiddenModel());
   }
 
-  // 毎フレームのsnapshotを、数値・候補・操作可能状態へ分解してDOMへ同期する。
+  // 毎フレームの snapshot を、現在値・配置後差分・候補・操作可能状態へ分解して同期する。
   public sync(model: ShipConstructionPanelModel): void {
     this.panel.classList.toggle('hidden', !model.visible);
     this.shipName.textContent = model.shipName;
     this.dockName.textContent = model.dockLabel;
     this.count.textContent = String(model.moduleCount);
-    this.mass.textContent = `${format(model.totalMass)} kg`;
-    this.massPreview.textContent = model.preview === null ? '' : `配置後 ${format(model.preview.mass)} kg`;
+
+    this.mass.textContent = formatMetric(model.totalMass, 'kg');
+    this.massPreview.textContent = previewText(model.totalMass, model.preview?.mass, 'kg');
+
     this.hp.textContent = `${format(model.hp)} / ${format(model.maxHp)}`;
-    this.hpPreview.textContent = model.preview === null ? '' : `配置後 最大HP ${format(model.preview.maxHp)}`;
+    this.hpPreview.textContent = previewText(model.maxHp, model.preview?.maxHp, '');
     this.hpMeter.setRatio(model.maxHp > 0 ? model.hp / model.maxHp : 0);
     this.hpMeter.setDanger(model.maxHp > 0 && model.hp / model.maxHp < 0.3);
     this.hpMeter.setLabel(`${format(model.hp)} / ${format(model.maxHp)}`);
-    this.capabilities.thrust.textContent = capabilityText(model.capabilities.thrust, model.preview?.capabilities.thrust);
-    this.capabilities.mainFuel.textContent = capabilityText(model.capabilities.mainFuel, model.preview?.capabilities.mainFuel);
-    this.capabilities.rcsFuel.textContent = capabilityText(model.capabilities.rcsFuel, model.preview?.capabilities.rcsFuel);
-    this.capabilities.power.textContent = capabilityText(model.capabilities.power, model.preview?.capabilities.power);
-    this.capabilities.radiation.textContent = capabilityText(model.capabilities.radiation, model.preview?.capabilities.radiation);
+
+    this.syncMetric(this.capabilities.thrust, model.capabilities.thrust, model.preview?.capabilities.thrust, 'N');
+    this.syncMetric(this.capabilities.mainFuel, model.capabilities.mainFuel, model.preview?.capabilities.mainFuel, '');
+    this.syncMetric(this.capabilities.rcsFuel, model.capabilities.rcsFuel, model.preview?.capabilities.rcsFuel, '');
+    this.syncMetric(this.capabilities.power, model.capabilities.power, model.preview?.capabilities.power, 'W');
+    this.syncMetric(this.capabilities.radiation, model.capabilities.radiation, model.preview?.capabilities.radiation, 'm²');
+
     this.role.textContent = roleLabel(model.role);
     this.role.dataset['role'] = model.role;
     this.warning.textContent = model.warning ?? '';
@@ -146,7 +167,7 @@ export class ShipConstructionPanel {
     this.discard.setEnabled(model.visible);
   }
 
-  // カテゴリが変わったときだけカードを組み直し、毎フレームのselection変更ではDOMを壊さない。
+  // カテゴリが変わったときだけカードを組み直し、毎フレームの selection 変更ではDOMを壊さない。
   private renderModules(selectedId: string): void {
     const definitions = this.definitions.filter(definition => moduleCategory(definition) === this.activeCategory);
     const signature = `${this.activeCategory}:${definitions.map(definition => definition.id).join(',')}`;
@@ -156,10 +177,16 @@ export class ShipConstructionPanel {
       for (const definition of definitions) {
         const card = document.createElement('div');
         card.className = 'construction-module-card';
-        const button = new Button(
-          moduleButtonLabel(definition), () => this.onSelectionChange?.(definition.id), undefined, 'secondary',
-        );
+        const button = new Button('', () => this.onSelectionChange?.(definition.id), undefined, 'secondary');
         button.element.title = moduleDescription(definition);
+        button.element.replaceChildren(
+          textSpan('construction-module-name', definition.name),
+          textSpan(
+            'construction-module-spec',
+            `${formatDimension(definition.length)} m · ${formatMetric(definition.dryMass, 'kg')} · HP ${format(definition.maxHp)}`,
+          ),
+          textSpan('construction-module-ability', moduleCardAbility(definition)),
+        );
         card.appendChild(button.element);
         this.moduleCards.appendChild(card);
         this.moduleButtons.set(definition.id, button);
@@ -193,6 +220,24 @@ export class ShipConstructionPanel {
     }
   }
 
+  private setMobilePane(pane: MobilePane): void {
+    this.panel.dataset['mobilePane'] = pane;
+    this.catalogPaneButton.setOn(pane === 'catalog');
+    this.statusPaneButton.setOn(pane === 'status');
+  }
+
+  private syncMetric(pair: MetricPair, value: number, preview: number | undefined, unit: MetricUnit): void {
+    pair.value.textContent = formatMetric(value, unit);
+    pair.preview.textContent = previewText(value, preview, unit);
+  }
+
+  private metricPair(els: ReadonlyMap<string, HTMLElement>, id: string): MetricPair {
+    return {
+      value: this.required(els, id),
+      preview: this.required(els, `${id}-preview`),
+    };
+  }
+
   // HUDの静的DOM契約を、null参照ではなく組み立て時の診断へ変換する。
   private required(els: ReadonlyMap<string, HTMLElement>, id: string): HTMLElement {
     const element = els.get(id);
@@ -216,27 +261,63 @@ function moduleCategory(definition: ShipModuleDefinition): ShipModuleCategory {
   return definition.category ?? CATEGORY_BY_KIND[definition.kind];
 }
 
-// カードの主ラベルは、選択時に比較しやすい名称・寸法・質量へ固定する。
-function moduleButtonLabel(definition: ShipModuleDefinition): string {
-  return `${definition.name}  ${format(definition.length)}m / ${format(definition.dryMass)}kg`;
+// カードでは主要能力を1行に圧縮し、詳細は title へ残す。
+function moduleCardAbility(definition: ShipModuleDefinition): string {
+  const abilities = definition.abilities;
+  const values: string[] = [];
+  if (abilities.thrust !== undefined) values.push(`推力 ${formatMetric(abilities.thrust, 'N')}`);
+  if (abilities.fuelCapacity !== undefined) {
+    values.push(`${abilities.fuelKind === 'rcs' ? 'RCS' : '主'}燃料 ${formatMetric(abilities.fuelCapacity, '')}`);
+  }
+  if (abilities.powerGeneration !== undefined) values.push(`発電 ${formatMetric(abilities.powerGeneration, 'W')}`);
+  if (abilities.radiationArea !== undefined) values.push(`放熱 ${formatMetric(abilities.radiationArea, 'm²')}`);
+  if (abilities.weaponDamage !== undefined) values.push(`威力 ${format(abilities.weaponDamage)}`);
+  if (abilities.armorReduction !== undefined) values.push(`装甲 ${Math.round(abilities.armorReduction * 100)}%`);
+  return values.slice(0, 2).join(' · ') || '構造モジュール';
 }
 
-// ホバー/読み上げ用に、部品が持つ主要能力だけを短い説明へまとめる。
+// ホバー/読み上げ用に、部品が持つ主要能力を短い説明へまとめる。
 function moduleDescription(definition: ShipModuleDefinition): string {
   const abilities = definition.abilities;
   const values: string[] = [];
-  if (abilities.thrust !== undefined) values.push(`推力 ${format(abilities.thrust)}N`);
-  if (abilities.fuelCapacity !== undefined) values.push(`容量 ${format(abilities.fuelCapacity)}`);
-  if (abilities.powerGeneration !== undefined) values.push(`発電 ${format(abilities.powerGeneration)}W`);
-  if (abilities.radiationArea !== undefined) values.push(`放熱 ${format(abilities.radiationArea)}m²`);
+  if (abilities.thrust !== undefined) values.push(`推力 ${formatMetric(abilities.thrust, 'N')}`);
+  if (abilities.fuelCapacity !== undefined) values.push(`容量 ${formatMetric(abilities.fuelCapacity, '')}`);
+  if (abilities.powerGeneration !== undefined) values.push(`発電 ${formatMetric(abilities.powerGeneration, 'W')}`);
+  if (abilities.radiationArea !== undefined) values.push(`放熱面積 ${formatMetric(abilities.radiationArea, 'm²')}`);
   return values.length === 0 ? definition.name : values.join(' / ');
 }
 
-// 現在値と配置後の値を同じ行で読めるよう、変化があるときだけ後値を添える。
-function capabilityText(value: number, preview?: number): string {
-  const base = format(value);
-  if (preview === undefined) return base;
-  return preview === value ? base : `${base}  (配置後 ${format(preview)})`;
+function textSpan(className: string, text: string): HTMLElement {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  return span;
+}
+
+type MetricUnit = '' | 'kg' | 'N' | 'W' | 'm²';
+
+function previewText(current: number, preview: number | undefined, unit: MetricUnit): string {
+  if (preview === undefined) return '';
+  const delta = preview - current;
+  if (Math.abs(delta) < 1e-9) return '';
+  return `→ ${formatMetric(preview, unit)} · ${delta > 0 ? '+' : ''}${formatMetric(delta, unit)}`;
+}
+
+function formatMetric(value: number, unit: MetricUnit): string {
+  const abs = Math.abs(value);
+  if (unit === 'N' && abs >= 1000) return `${formatDecimal(value / 1000)} kN`;
+  if (unit === 'W' && abs >= 1000) return `${formatDecimal(value / 1000)} kW`;
+  if (unit === 'm²') return `${formatDecimal(value)} m²`;
+  const body = format(value);
+  return unit === '' ? body : `${body} ${unit}`;
+}
+
+function formatDecimal(value: number): string {
+  return Math.abs(value) >= 100 ? Math.round(value).toLocaleString() : value.toFixed(1);
+}
+
+function formatDimension(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 // role の内部語彙をUIの短い日本語ラベルへ変換する。
