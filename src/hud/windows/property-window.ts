@@ -25,10 +25,17 @@ const STYLE = `
   align-items: flex-start; padding-bottom: var(--space-4);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
 }
-#hud .property-window .dg-window-title::before {
-  display: block; margin-bottom: var(--space-1); color: var(--color-primary);
-  content: 'DATA SHEET'; font-size: var(--font-xxs); font-weight: 700; letter-spacing: .14em;
+#hud .property-window .dg-window-title::before { display: none; }
+#hud .prop-window-kind {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) var(--space-2);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .11em;
+  text-transform: uppercase;
 }
+#hud .prop-window-kind-code {
+  color: var(--color-primary); font-weight: 700; letter-spacing: .16em;
+}
+#hud .prop-window-kind-label { color: var(--text-dim); }
 #hud .property-window .dg-window-title-main {
   color: var(--text-strong); font-size: var(--font-xl); font-weight: 650;
   letter-spacing: -.025em;
@@ -76,6 +83,29 @@ const STYLE = `
   padding: var(--space-2) var(--space-3) var(--space-3);
   background: transparent;
 }
+#hud .prop-window-items:not(:empty)::before {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin: var(--space-3) var(--space-2) var(--space-1);
+  color: var(--text-dim); content: 'ACTIONS';
+  font-size: var(--font-xxs); letter-spacing: .1em;
+}
+#hud .prop-window-items:not(:empty)::after { content: ''; }
+#hud .prop-window-item {
+  grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  border-radius: 0; background: transparent;
+}
+#hud .prop-window-item:hover { background: var(--glass-control-hover); }
+#hud .prop-window-item.on { background: transparent; color: var(--color-primary); }
+#hud .prop-window-item.disabled { opacity: var(--toggle-off-opacity); cursor: not-allowed; }
+#hud .prop-window-related { padding: 0 var(--space-3) var(--space-2); }
+#hud .prop-window-related-title {
+  margin-inline: var(--space-2); cursor: pointer;
+}
+#hud .prop-window-related-title::after { pointer-events: none; }
+#hud .prop-window-related-item {
+  grid-template-columns: 2.4em minmax(0, 1fr); border-radius: 0;
+}
+#hud .prop-window-related-item:hover { background: var(--glass-control-hover); }
 #hud .prop-window-related {
   padding: var(--space-2);
   background: var(--glass-inset);
@@ -153,6 +183,18 @@ export class PropertyWindow<A extends string = string> {
     this.controlsEl = document.createElement('div');
     this.controlsEl.className = 'prop-window-controls';
     this.win.element.classList.add('property-window');
+
+    const kind = document.createElement('div');
+    kind.className = 'prop-window-kind';
+    const kindCode = document.createElement('span');
+    kindCode.className = 'prop-window-kind-code';
+    kindCode.textContent = content.kindCode ?? 'DAT';
+    const kindLabel = document.createElement('span');
+    kindLabel.className = 'prop-window-kind-label';
+    kindLabel.textContent = content.kindLabel ?? 'TECHNICAL SHEET';
+    kind.append(kindCode, kindLabel);
+    this.win.body.appendChild(kind);
+
     this.win.body.appendChild(this.rows.element);
     this.win.body.appendChild(this.items.element);
 
