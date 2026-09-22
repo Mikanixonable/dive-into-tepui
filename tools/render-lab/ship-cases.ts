@@ -6,7 +6,7 @@ import { v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
-import { createBasePreset } from '../../src/game/ship/ship-presets';
+import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
@@ -75,7 +75,25 @@ function separation(): LabCase {
   };
 }
 
+// 戦闘艦: 展開された太陽電池とラジエーター、コックピット、タンク、推進器が美しく見える構図。
+function combat(): LabCase {
+  const combatShip = createDefaultCombatPreset();
+  for (const m of combatShip.modules) {
+    if (m.kind === 'solar_panel' || m.kind === 'radiator') {
+      combatShip.setDeployment(m.id, 1.0);
+    }
+  }
+  const obj = at(shipObject(combatShip), 0, -1, -25);
+  obj.rotation.set(0.35, -2.35, 0.1);
+  return {
+    objects: [obj],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, -1, -25),
+  };
+}
+
 export const SHIP_CASES = {
   'modular-ship-base': base,
   'modular-ship-separation': separation,
+  'modular-ship-combat': combat,
 } as const satisfies Record<string, CaseBuilder>;

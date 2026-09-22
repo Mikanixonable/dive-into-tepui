@@ -4,7 +4,7 @@ import {
   cappedCylinderCylinderContact, cappedCylinderRaycast, cappedCylinderSphereContact,
   type CappedCylinder,
 } from './capped-cylinder-contact';
-import { add, len, sub, v3, type Vec3 } from '../math/vec3';
+import { add, addScaled, dot, len, lenSq, sub, v3, type Vec3 } from '../math/vec3';
 import { qNormalize, qRotate, qSlerp, type Quat } from '../math/quat';
 
 export interface CompoundCylinderPrimitive extends CappedCylinder {
@@ -349,10 +349,32 @@ function earlierSweepHit(
   return candidateB < currentB ? candidate : current;
 }
 
+const MAX_SPHERE_SWEEP_SUBDIVISIONS = 32;
+
 function sweptPrimitiveSphereContact(
   primitive: CompoundCylinderPrimitive, start: RigidPose, end: RigidPose,
   sphereStart: Vec3, sphereEnd: Vec3, sphereRadius: number,
 ): SweptCompoundCylinderContact | null {
+  const startPose = preparePose(start);
+  const endPose = preparePose(end);
+  if (startPose === null || endPose === null) return null;
+
+  // primitive の外接球による高速早期棄却。球の軌道が primitive の外接球をかすめもしないなら即座に除外する。
+  const pCenterStart = add(startPose.position, qRotate(startPose.rotation, primitive.center));
+  const pCenterEnd = add(endPose.position, qRotate(endPose.rotation, primitive.center));
+  const primitiveBoundRadius = Math.hypot(primitive.halfLength, primitive.radius);
+  const maxCombinedRadius = primitiveBoundRadius + sphereRadius;
+
+  const r0 = sub(sphereStart, pCenterStart);
+  const r1 = sub(sphereEnd, pCenterEnd);
+  const v = sub(r1, r0);
+  const vSq = lenSq(v);
+  const tClosest = vSq > 1e-12 ? Math.max(0, Math.min(1, -dot(r0, v) / vSq)) : 0;
+  const closestRel = addScaled(r0, v, tClosest);
+  if (lenSq(closestRel) > maxCombinedRadius * maxCombinedRadius + 1e-6) {
+    return null;
+  }
+
   const metrics = primitiveMotionMetrics(start, end, primitive);
   if (metrics === null) return null;
   const sphereDistance = len(sub(sphereEnd, sphereStart));
@@ -361,11 +383,10 @@ function sweptPrimitiveSphereContact(
     // 半径0の点を相手にしても、primitive側の最小形状を刻み幅の基準にする。
     minFeature: sphereRadius > EPSILON ? sphereRadius : metrics.minFeature,
   };
-  const count = subdivisions([metrics, sphereFeature]);
-  if (count === null) return null;
-  const startPose = preparePose(start);
-  const endPose = preparePose(end);
-  if (startPose === null || endPose === null) return null;
+  const rawCount = subdivisions([metrics, sphereFeature]);
+  if (rawCount === null) return null;
+  const count = Math.min(MAX_SPHERE_SWEEP_SUBDIVISIONS, rawCount);
+
   return firstSweepHit(count, (t) => hitForSphere(
     { moduleId: primitive.moduleId, cylinder: worldPrimitive(primitive, poseAt(startPose, endPose, t)) },
     sphereAt(sphereStart, sphereEnd, t), sphereRadius,

@@ -58,7 +58,7 @@ export function enumerateConstructionSlots(
 ): readonly ConstructionSlot[] {
   const slots: ConstructionSlot[] = [{
     id: constructionSlotId(axialTailId, 'axial'), parentId: axialTailId, mount: 'axial', kind: 'axial',
-    label: constructionSlotLabel(axialTailId, 'axial'), direction: LOCAL_FORWARD,
+    label: constructionSlotLabel(axialTailId, 'axial'), direction: v3(0, 0, -1),
   }];
   for (const parentId of parentIds) {
     const definition = assembly.definition(parentId);
@@ -90,7 +90,7 @@ export function placementForSlot(
       rotation: qFromUnitVectors(LOCAL_FORWARD, slot.direction),
     }
     : {
-      position: v3(0, 0, parentDefinition.length / 2 + definition.length / 2),
+      position: v3(0, 0, -(parentDefinition.length / 2 + definition.length / 2)),
       rotation: Q_IDENTITY,
     };
   let reason: string | null = null;

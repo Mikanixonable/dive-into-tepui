@@ -139,4 +139,105 @@ export function register(): void {
     assert.equal(Math.abs(contactB.normal.y), 0);
     assert.equal(Math.abs(contactB.normal.z), 0);
   });
+
+  test('contact: 薬莢はアンカー(自艦)から30m以内のときだけ接触判定へ参加する', () => {
+    const ship = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(0, 0, 0), v3()),
+      { radius: 5, mass: 1000, collides: true, engagementAnchor: true },
+    );
+    const nearCasing = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(10, 0, 0), v3()),
+      { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+    );
+    const distantCasing = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(50, 0, 0), v3()),
+      { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+    );
+
+    const physics = new EntityContactPhysics();
+    physics.resolveEntityContacts(
+      0, [ship, nearCasing, distantCasing], [new EngagementZone([ship])], {} as DynamicReactionServices,
+    );
+
+    // 参加者は ship と nearCasing の 2 体だけで、50m 離れた distantCasing は除外される
+    assert.equal(physics.participants, 2);
+  });
+
+  test('contact: 薬莢同士の接触はアンカー(自艦)から15m以内のペアに限定される', () => {
+    const ship = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(0, 0, 0), v3()),
+      { radius: 5, mass: 1000, collides: true, engagementAnchor: true },
+    );
+    // どちらも 20m 地点（30m以内なので参加者には入るが、15m以遠なので薬莢同士のペアは作られない）
+    const casingA = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(20, 0, 0), v3()),
+      { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+    );
+    const casingB = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(20.5, 0, 0), v3()),
+      { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+    );
+
+    const physics = new EntityContactPhysics();
+    physics.resolveEntityContacts(
+      0, [ship, casingA, casingB], [new EngagementZone([ship])], {} as DynamicReactionServices,
+    );
+
+    // 参加者は3体だが、casingA と casingB のペアは15m以遠のため生成されず、ship とのペアも離れているため候補ペアは0
+    assert.equal(physics.participants, 3);
+    assert.equal(physics.candidatePairs, 0);
+  });
+
+  test('contact: 密集した薬莢同士のペア数は個体あたりの上限(4)でクリッピングされる', () => {
+    const ship = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(0, 0, 0), v3()),
+      { radius: 5, mass: 1000, collides: true, engagementAnchor: true },
+    );
+    // 自艦近傍(10m: 船体半径5mの外、15m以内)に10個の薬莢が密集(全組み合わせなら 45 ペア)
+    const casings: DynamicMotion[] = [];
+    for (let i = 0; i < 10; i++) {
+      casings.push(new DynamicMotion(
+        kinematicState<'eci'>(0, v3(10 + i * 0.05, 0, 0), v3()),
+        { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+      ));
+    }
+
+    const physics = new EntityContactPhysics();
+    physics.resolveEntityContacts(
+      0, [ship, ...casings], [new EngagementZone([ship])], {} as DynamicReactionServices,
+    );
+
+    // 10個の完全グラフ 45 ペアではなく、個体あたり最大4ペアに制限される(全ペア数は高々 10 * 4 / 2 = 20)
+    assert.ok(physics.candidatePairs <= 20);
+    assert.ok(physics.candidatePairs > 0);
+  });
+
+  test('contact: 弾(bullet)の接触は相手艦を押し出さず、相手の状態を変更しない', () => {
+    const ship = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(0, 0, 0), v3(10, 0, 0)),
+      { radius: 5, mass: 1000, collides: true, engagementAnchor: true },
+    );
+    let bulletKilled = false;
+    const bullet = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(4, 0, 0), v3(-100, 0, 0)),
+      {
+        radius: 0.1, mass: 0.01, collides: true,
+        behavior: {
+          contactKind: 'bullet',
+          onEntityContact: () => { bulletKilled = true; },
+        } as unknown as DynamicMotion['behavior'],
+      },
+    );
+
+    const physics = new EntityContactPhysics();
+    physics.resolveEntityContacts(
+      0, [ship, bullet], [new EngagementZone([ship])], {} as DynamicReactionServices,
+    );
+
+    // 弾の onEntityContact が呼ばれる
+    assert.equal(bulletKilled, true);
+    // 相手艦の位置と速度は剛体反発による押し出しを受けず、そのまま維持される
+    assert.equal(ship.state.r.x, 0);
+    assert.equal(ship.state.v.x, 10);
+  });
 }
