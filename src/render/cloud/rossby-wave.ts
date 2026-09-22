@@ -3,7 +3,7 @@
 import {
   abs, clamp, cos, float, max, sign, sin, smoothstep, uniform,
 } from 'three/tsl';
-import { equirectUvFromDirection } from './field-projection';
+import { equirectUvFromDirection } from '../field-projection';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
 

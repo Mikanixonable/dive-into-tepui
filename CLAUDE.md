@@ -130,7 +130,8 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 | `npm run ci` | 上記 + アセット・テーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
 | `npm run bgm-lab` | BGM の試聴環境(http://localhost:8081) | 曲を調整するとき |
 | `npm run render-lab` | 描画の実験環境(http://localhost:8082) | 描画を目で確かめるとき |
-| `npm run render-lab:shot` | 描画の実験環境の撮影(`.render-lab/shots/`) | 描画を画像で確かめるとき |
+| `npm run render-lab:shot` | 描画の実験環境の撮影(`-- <組の名前>` で `.render-lab-shots/<組の名前>/`、省くと `.render-lab/shots/`) | 描画を画像で確かめるとき |
+| `npm run render-lab:compare` | 描画の実験環境の撮影の前後比較(`.render-lab-shots/compare-<after の名前>/`) | 描画の変更の前後を見比べるとき |
 | `npm run cloud-lab` | 雲の実験環境(http://localhost:8083) | 雲の生成を目で確かめるとき |
 | `npm run cloud-lab:shot` | 雲の実験環境の撮影(`.cloud-lab/shots/`) | 雲を画像で確かめるとき |
 | `npm run cloud-lab:compare` | 生成と実写の統計比較(`.cloud-lab/compare/`) | 雲の生成を実写(8k_clouds)と見比べるとき |

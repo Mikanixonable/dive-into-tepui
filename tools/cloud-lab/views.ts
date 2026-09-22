@@ -2,7 +2,7 @@
 // 下流(雲)へ並ぶ。各ビューは表示値 0..1 の色を組み、その材料が天気のモデルなのか雲の写しなのかで
 // 2 種類に分かれる。
 import { exp, float, length, texture, vec3 } from 'three/tsl';
-import { equirectUvFromDirection } from '../../src/render/cloud/field-projection';
+import { equirectUvFromDirection } from '../../src/render/field-projection';
 import type * as THREE from 'three/webgpu';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
 import type { CloudSample } from '../../src/render/cloud/cloud-field-sample';

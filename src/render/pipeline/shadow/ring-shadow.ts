@@ -5,6 +5,7 @@ import {
   Fn, Loop, PI, abs, acos, and, clamp, dot, exp, float, greaterThan, length, max, min, select,
   sqrt, uniform, uniformArray,
 } from 'three/tsl';
+import type { RingBandDef } from '../../../physics/celestial-body-def';
 import type { FloatNode, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 
@@ -20,6 +21,15 @@ export interface RingBand {
   readonly innerRadius: number;
   readonly outerRadius: number;
   readonly normalOpticalDepth: number;
+}
+
+// 環の帯の定義を、影を落とす帯へ写す。半径は定義と同じメートルのまま。
+export function ringShadowBands(bands: readonly RingBandDef[]): readonly RingBand[] {
+  return bands.map((band) => ({
+    innerRadius: band.innerRadius,
+    outerRadius: band.outerRadius,
+    normalOpticalDepth: band.optics.normalOpticalDepth,
+  }));
 }
 
 // 半径 w の円盤のうち、半径座標が中心から u·w だけ離れた直線より内側にある面積の割合。

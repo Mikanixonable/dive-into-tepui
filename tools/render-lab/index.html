@@ -19,7 +19,7 @@
     font-size: var(--font-xxs, 11px); font-weight: 600; letter-spacing: 0.12em;
   }
 
-  /* 左=舞台(ケース選択とキャンバス)、右=側柱(観察の向きと描画品質設定)。 */
+  /* 左=舞台(ケース・撮影の選択とキャンバス)、右=側柱(観察の向き・地球の置き方と描画品質設定)。 */
   #layout { display: flex; align-items: flex-start; gap: var(--space-5, 12px); }
   /* 舞台の幅はキャンバス(960px 固定)が決める。**幅を与えないと**、ケースのボタン列が
      折り返さずに一直線へ伸びて版面が数千 px になる。 */
@@ -58,6 +58,7 @@
   <div id="layout">
     <div id="stage">
       <div class="row" id="cases"></div>
+      <div class="row" id="shots"></div>
       <div class="row" id="modes"></div>
       <div id="views">
         <figure><canvas id="view"></canvas></figure>
@@ -68,6 +69,10 @@
       <section>
         <h2>観察の向き</h2>
         <div class="row" id="view-angles"></div>
+      </section>
+      <section id="earth-section">
+        <h2>地球の置き方</h2>
+        <div class="row" id="earth-angles"></div>
       </section>
       <section>
         <h2>描画品質設定</h2>

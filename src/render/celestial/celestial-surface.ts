@@ -5,7 +5,7 @@ import { texture as textureNode, uv } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from '../celestial-albedo';
-import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
+import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './screen-lod';
 import {
   disposeCelestialSurfaceMaterialAttachment,
   type CelestialSurfaceMaterialAttachment,
@@ -36,6 +36,13 @@ export function unitSphereGeometry(level: SphereLodLevel): THREE.BufferGeometry 
 export interface SurfacePhotometry {
   readonly bondAlbedo: number;
   readonly lightSourceAlbedo: Albedo;
+}
+
+// 全球の正距円筒テクスチャと、その色へ掛けて面の拡散アルベドにする倍率(面の材質が掛けるのと
+// 同じ倍率)。天体を光源として焼くときに、面ごとの色をここから引く。
+export interface LightSourceMap {
+  readonly texture: THREE.Texture;
+  readonly albedoScale: number;
 }
 
 export type CelestialSurfaceStatus = 'loading' | 'ready' | 'error' | 'fallback';
@@ -101,6 +108,10 @@ export function createCelestialSurfaceFrame(
 // 天体表面の表示が満たす面。
 export interface CelestialSurfaceLike {
   readonly photometry: SurfacePhotometry | null;
+  // テクスチャの画像が届くまでと、テクスチャを持たない面では null。
+  readonly lightSourceMap: LightSourceMap | null;
+  // この面が読む画像がすべて GPU へ届いたか。届くまでは、色や粗さを欠いたまま描かれる。
+  readonly imagesReady: boolean;
   readonly textureUrl: string | null;
   readonly diagnostics: CelestialSurfaceDiagnostics | null;
   addTo(parent: THREE.Object3D): void;
@@ -126,10 +137,15 @@ export class CelestialSurface implements CelestialSurfaceLike {
   private activeAttachment: CelestialSurfaceMaterialAttachment;
 
   // material と deferred のテクスチャは解放までこの表面が持つ。photometry / textureUrl は静的事実。
+  // lightSource は光源として焼くときに読むベース色で、単色の面では null。
   private constructor(
     fallbackAttachment: CelestialSurfaceMaterialAttachment,
     public readonly photometry: SurfacePhotometry | null,
     public readonly textureUrl: string | null,
+    private readonly lightSource: {
+      readonly deferred: DeferredTexture;
+      readonly map: LightSourceMap;
+    } | null = null,
   ) {
     this.fallbackAttachment = fallbackAttachment;
     this.activeAttachment = fallbackAttachment;
@@ -150,11 +166,11 @@ export class CelestialSurface implements CelestialSurfaceLike {
   public static textured(
     texture: CelestialTexture, smoothnessUrl: string | null = null,
   ): CelestialSurface {
-    const map = new DeferredTexture(texture.url, THREE.SRGBColorSpace);
+    const baseMap = new DeferredTexture(texture.url, THREE.SRGBColorSpace);
     const smoothnessMap = smoothnessUrl === null
       ? null : new DeferredTexture(smoothnessUrl, THREE.NoColorSpace);
     const material = new THREE.MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
-    material.colorNode = textureNode(map.texture, uv()).mul(texture.albedoScale);
+    material.colorNode = textureNode(baseMap.texture, uv()).mul(texture.albedoScale);
     // **粗さではなく滑らかさで持つ** — 画像が届くまでテクスチャは 0 を返すので、0 が拡散側へ
     // 来る向きでなければ、届くまでの数フレームだけ地表が鏡面になる。
     if (smoothnessMap !== null) {
@@ -163,8 +179,9 @@ export class CelestialSurface implements CelestialSurfaceLike {
     return new CelestialSurface(
       {
         material,
-        deferred: smoothnessMap === null ? [map] : [map, smoothnessMap],
-      }, photometryOf(texture), texture.url);
+        deferred: smoothnessMap === null ? [baseMap] : [baseMap, smoothnessMap],
+      }, photometryOf(texture), texture.url,
+      { deferred: baseMap, map: { texture: baseMap.texture, albedoScale: texture.albedoScale } });
   }
 
   // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド。
@@ -175,6 +192,17 @@ export class CelestialSurface implements CelestialSurfaceLike {
     });
     return new CelestialSurface(
       { material, deferred: [] }, { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
+  }
+
+  // ベース色の画像が GPU へ届いてから、構築時に組んだ1つの組を返す。届く前は null。
+  public get lightSourceMap(): LightSourceMap | null {
+    return this.lightSource !== null && this.lightSource.deferred.generation > 0
+      ? this.lightSource.map : null;
+  }
+
+  // いま使っている材質が読む画像がすべて GPU へ届いたか。
+  public get imagesReady(): boolean {
+    return this.activeAttachment.deferred.every((deferred) => deferred.generation > 0);
   }
 
   public get diagnostics(): CelestialSurfaceDiagnostics | null { return null; }

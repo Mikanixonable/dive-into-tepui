@@ -4,7 +4,8 @@
 // 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
-import { CLOUD_FIELD_SOURCE_KIND, CUMULUS_DETAIL } from './cloud/cloud-presentation';
+import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
+import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
@@ -161,6 +162,12 @@ export const GRAPHICS_OPTIONS = {
     kind: 'choice', group: 'light', label: '太陽の光源モデル',
     items: [[0, '点光源'], [1, '球光源']],
     presets: { low: 0, medium: 1, high: 1 },
+  },
+  // 天体照の光源モデル。テクスチャでは、粗さの小さい面にその天体の地表と昼夜の明暗が映る。
+  planetLightModel: {
+    kind: 'choice', group: 'light', label: '天体照の光源モデル',
+    items: [[0, '一様球'], [1, 'テクスチャ']],
+    presets: { low: 0, medium: 0, high: 1 },
   },
   // 同時に照らす天体の数。1 体につき描画命令 1 本。最大値は MAX_PLANET_LIGHT_SLOTS。
   planetLightCount: {
