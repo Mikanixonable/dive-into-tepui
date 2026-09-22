@@ -1,7 +1,8 @@
 // 描画テスト環境の撮影。ヘッドレス Chrome で .render-lab/ を開き、ケースごとに
 // window.renderLab.shoot() を呼んで、ケースが宣言した向きごとの PNG を 1 枚ずつ受け取り、撮影名で書く。
 // 書き先は第 1 引数に撮影の組の名前を渡せば .render-lab-shots/<名前>/、省けば .render-lab/shots で、
-// 撮影の前に作り直す。
+// 撮影の前に作り直す。組の名前に続く「項目=値」(値は JSON。例: planetLightCount=0)は、全ケースの撮影へ
+// 重ねる描画品質設定の差分になる。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -13,18 +14,28 @@ const debugPort = 9444;
 // いまのケースの撮影結果(撮影名から PNG のデータ URL への表)を、取り出し終えるまでページ内に置く名前。
 const PENDING_PNGS = '__renderLabPendingPngs';
 
+const USAGE = 'usage: node tools/render-lab-shot.mjs [<shot-set-name> [<graphics-option>=<json> ...]]';
+
 // 撮影の組の名前 setName(省けば undefined)の書き先。名前が /^[\w.-]+$/ に合わないか . / .. なら
 // 使い方を投げる。
 function outDirOf(setName) {
   if (setName === undefined) return path.join(buildDir, 'shots');
-  if (!/^[\w.-]+$/.test(setName) || setName === '.' || setName === '..') {
-    throw new Error('usage: node tools/render-lab-shot.mjs [<shot-set-name>]');
-  }
+  if (!/^[\w.-]+$/.test(setName) || setName === '.' || setName === '..') throw new Error(USAGE);
   return path.join(root, '.render-lab-shots', setName);
+}
+
+// 「項目=値」の並び args を描画品質設定の差分へ。= の前が空の引数があれば使い方を投げる。
+function graphicsOf(args) {
+  return Object.fromEntries(args.map((arg) => {
+    const separator = arg.indexOf('=');
+    if (separator <= 0) throw new Error(USAGE);
+    return [arg.slice(0, separator), JSON.parse(arg.slice(separator + 1))];
+  }));
 }
 
 async function main() {
   const outDir = outDirOf(process.argv[2]);
+  const graphics = graphicsOf(process.argv.slice(3));
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-render-lab-', onEvent,
@@ -49,7 +60,7 @@ async function main() {
       // **PNG は 1 枚ずつ受け取る** — CDP の 1 メッセージが約 4 MB を超えると接続が閉じるので、ケースの
       // 全撮影をまとめて返させると、撮影の多いケースで落ちる。
       const caseShotNames = await devTools.evaluate(
-        `window.renderLab.shoot(${JSON.stringify(name)}).then((pngs) => {
+        `window.renderLab.shoot(${JSON.stringify(name)}, ${JSON.stringify(graphics)}).then((pngs) => {
           window.${PENDING_PNGS} = pngs;
           return Object.keys(pngs);
         })`,
