@@ -128,3 +128,4 @@ export const EDITORIAL_DATA_STYLE = `
   color: var(--text-strong); font-size: var(--font-3xl); font-weight: 650;
   letter-spacing: -.055em; line-height: .84;
 }
+`;
