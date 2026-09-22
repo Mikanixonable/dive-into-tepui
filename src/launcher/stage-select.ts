@@ -27,9 +27,9 @@ interface TitleFlavor {
 // 起動ごとに1組を選ぶ。実在文献・詩・格言は出典を note に残し、広東語だけは公暦20115年の
 // シスルナ口語という作中テキストとして創作する。シュメール語は原文の楔形文字と転写を併記する。
 const TITLE_FLAVORS: readonly TitleFlavor[] = [
-  // Sumerian literature: CDLI/ORACC composites. Unicode signs are cuneified from the cited lines.
+  // シュメール文学。CDLI/ORACC の複合テキストに対応する転写から Unicode 楔形文字を組む。
   {
-    primary: 'From the great heaven, toward the great below.',
+    primary: 'From the great heaven she set her mind on the great below.',
     original: '𒀭𒃲𒋫 𒆠𒃲𒂠 𒄑𒌆𒉿𒂵𒉌 𒈾𒀭𒁺',
     transliteration: 'an gal-ta ki gal-še₃ ĝeštug₂-ga-ni na-an-gub',
     lang: 'sux',
@@ -37,7 +37,7 @@ const TITLE_FLAVORS: readonly TitleFlavor[] = [
     note: 'INANA’S DESCENT · Old Babylonian · CDLI Q000343:1',
   },
   {
-    primary: 'Heaven and earth were parted.',
+    primary: 'When heaven had been separated from earth.',
     original: '𒀭𒆠𒋫 𒁀𒁕𒁁𒁺𒀀𒁀',
     transliteration: 'an ki-ta ba-da-ba₉-ra₂-a-ba',
     lang: 'sux',
@@ -45,7 +45,7 @@ const TITLE_FLAVORS: readonly TitleFlavor[] = [
     note: 'GILGAMEŠ, ENKIDU AND THE NETHERWORLD · CDLI Q000364:8',
   },
   {
-    primary: 'In those days, in those distant days.',
+    primary: 'In those days, in those far remote days.',
     original: '𒌓𒊑𒀀 𒌓𒋤𒁺𒊑𒀀',
     transliteration: 'u₄ re-a u₄ su₃-ra₂ re-a',
     lang: 'sux',
@@ -53,7 +53,7 @@ const TITLE_FLAVORS: readonly TitleFlavor[] = [
     note: 'INSTRUCTIONS OF ŠURUPPAK · Old Babylonian · CDLI Q000782:1',
   },
 
-  // Spoken Cantonese: deliberately colloquial future dialogue, not Standard Written Chinese.
+  // 口語広東語。標準書面中国語ではなく、公暦20115年の会話として粤語口語字を使う創作文。
   {
     primary: 'Just going home. Why is it so hard?',
     original: '返屋企啫，點解咁難？',
@@ -97,7 +97,7 @@ const TITLE_FLAVORS: readonly TitleFlavor[] = [
     note: 'CISLUNAR COMMON SPEECH · 公曆20115年',
   },
 
-  // English poetry: quoted verbatim in short fragments whose imagery can be reread as orbital travel and return.
+  // 英詩。軌道航行・帰還・遠望として読み替えられる短い原文断片をそのまま引用する。
   {
     primary: 'Is this mine own countree?',
     note: 'S. T. COLERIDGE · THE RIME OF THE ANCIENT MARINER · 1798',
@@ -123,7 +123,7 @@ const TITLE_FLAVORS: readonly TitleFlavor[] = [
     note: 'LORD BYRON · CHILDE HAROLD’S PILGRIMAGE IV · 1818',
   },
 
-  // Polynesian sayings: traditional or attested texts retained in their original language.
+  // ポリネシア諸語。伝承または資料で確認できる文を原語のまま置く。
   {
     primary: 'Homeless Matariki.',
     original: 'Matariki kāinga kore',
