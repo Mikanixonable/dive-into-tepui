@@ -1,5 +1,8 @@
 # リファクタリング実施計画: P0 / P1
 
+> **状態 — 完了 / 2026-09-23 再監査:** PR #92（`refactor(game): P0-P1の所有境界を整理する`）で、ShipAssembly の導出分離、ModularShip / DynamicSystem の責務整理、入力・表示 phase の port 縮小、Celestial query の分離、CombatShip 等の命名整理が統合された。PR #94 で船体描画契約も game 状態から分離されたため、この文書は実施計画の履歴として `done/` に移す。未解決の構造課題は `DEVELOP/ARCHITECTURE.md` と現行コードから再調査する。
+
+
 作成日: 2026-09-20  
 起点ブランチ: `workspace3`  
 起点コミット: `640099514`  

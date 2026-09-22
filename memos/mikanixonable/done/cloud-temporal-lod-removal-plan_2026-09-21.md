@@ -1,5 +1,8 @@
 # 雲の時間LOD・ベイク制限廃止 実装計画
 
+> **状態 — 完了 / 2026-09-23 再監査:** 計画対象だった `temporal-lod.ts`、時間 LOD の mode、実時間ベイク回数制限、品質由来の field 更新上限は現行ツリーから撤去済み。生成雲は `displayTime`・気候 generation・projection revision の同一入力キャッシュだけを使う。後続の雲モデル設計は `../meteorological-cloud-model-plan-v2_2026-09-22.md` が引き継ぐ。
+
+
 - 状態: 着手前
 - 作成日: 2026-09-21
 - 対象: 生成雲の時間評価、雲場ベイク、ゲーム本体・render-lab・cloud-lab
