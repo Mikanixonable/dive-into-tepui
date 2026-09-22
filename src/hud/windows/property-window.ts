@@ -97,47 +97,37 @@ const STYLE = `
 #hud .prop-window-item:hover { background: var(--glass-control-hover); }
 #hud .prop-window-item.on { background: transparent; color: var(--color-primary); }
 #hud .prop-window-item.disabled { opacity: var(--toggle-off-opacity); cursor: not-allowed; }
-#hud .prop-window-related { padding: 0 var(--space-3) var(--space-2); }
+#hud .prop-window-related {
+  padding: 0 var(--space-3) var(--space-2); background: transparent;
+}
 #hud .prop-window-related-title {
-  margin-inline: var(--space-2); cursor: pointer;
+  margin-inline: var(--space-2); padding: var(--space-2) 0;
+  color: var(--text-dim); opacity: 1; font-size: var(--font-xxs);
+  letter-spacing: .1em; cursor: pointer; text-transform: uppercase;
 }
 #hud .prop-window-related-title::after { pointer-events: none; }
+#hud .prop-window-related-title:hover { color: var(--color-primary-hover); }
+#hud .prop-window-related-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; }
 #hud .prop-window-related-item {
-  grid-template-columns: 2.4em minmax(0, 1fr); border-radius: 0;
+  grid-template-columns: 2.4em minmax(0, 1fr);
+  padding: var(--space-2) var(--space-3); color: var(--body); cursor: pointer;
+  border: 0; border-radius: 0; background: transparent;
 }
-#hud .prop-window-related-item:hover { background: var(--glass-control-hover); }
-#hud .prop-window-related {
-  padding: var(--space-2);
-  background: var(--glass-inset);
-}
-#hud .prop-window-related-title {
-  padding: var(--space-2) var(--space-5);
-  color: var(--text); opacity: 0.6; font-size: 0.9em;
-  cursor: pointer;
-}
-#hud .prop-window-related-title:hover { opacity: 1; color: var(--color-primary-hover); }
-#hud .prop-window-related-list {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1);
-}
-#hud .prop-window-related-item {
-  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
-  border: 0; border-radius: var(--radius-control);
-}
-#hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
-  background: var(--glass-control-hover); color: var(--color-primary-hover);
-}
+#hud .prop-window-related-item:hover,
+#hud .prop-window-related-item:active { background: var(--glass-control-hover); color: var(--color-primary-hover); }
 #hud .prop-window-related-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .prop-window-item {
-  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
-  border: 0; border-radius: var(--radius-control);
+  grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  padding: var(--space-2) var(--space-3); color: var(--body); cursor: pointer;
+  border: 0; border-radius: 0; background: transparent;
 }
-#hud .prop-window-item:hover, #hud .prop-window-item:active {
-  background: var(--glass-control-hover); color: var(--color-primary-hover);
-}
+#hud .prop-window-item:hover,
+#hud .prop-window-item:active { background: var(--glass-control-hover); color: var(--color-primary-hover); }
 #hud .prop-window-item.on {
-  color: var(--color-primary); background: var(--color-primary-fill);
+  color: var(--color-primary); background: transparent;
+  box-shadow: inset 2px 0 0 var(--color-primary);
 }
-#hud .prop-window-item.on::before { content: '▪ '; }
+#hud .prop-window-item.disabled { opacity: var(--toggle-off-opacity); cursor: not-allowed; }
 #hud .prop-window-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 `;
 
