@@ -127,6 +127,11 @@ export function register(): void {
     assert.deepEqual([...result.slice(0, 4)], [128, 128, 255, 64]);
     const base = decodeEarthBaseTerrainPayloadOctahedral(legacyBaseTerrainPayload());
     assert.deepEqual([...base.slice(0, 4)], [128, 128, 255, 64]);
+
+    // Nz < 0（八面体の裏側）の法線が正に反転せず負のZとして復号されることを検査する。
+    payload.subarray(EARTH_TERRAIN_HEADER_BYTES).set([255, 255, 64, 2], 0);
+    const resultNegativeZ = decodeEarthTerrainPayloadOctahedral(payload, KEY);
+    assert.deepEqual([...resultNegativeZ.slice(0, 4)], [128, 128, 0, 64]);
   });
 
   test('earth decode: 色とgzip地形を同じ世代でatomically decodeする', async () => {
