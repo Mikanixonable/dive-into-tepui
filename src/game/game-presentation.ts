@@ -358,7 +358,7 @@ export class GamePresentation {
     const displayWindow = this.displayWindowManager.current;
     this.devices.hud.setConstructionMode(this.shipConstruction.active);
     this.hudPanels.syncViewBadge(
-      this.viewManager.current, this.viewManager.selectableViews(), this.viewManager.activeView.pickables, style,
+      this.viewManager.current, this.viewManager.selectableViews(), this.viewManager.activeView.pickables,
     );
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
