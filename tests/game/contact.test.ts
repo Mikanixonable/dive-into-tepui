@@ -211,4 +211,33 @@ export function register(): void {
     assert.ok(physics.candidatePairs <= 20);
     assert.ok(physics.candidatePairs > 0);
   });
+
+  test('contact: 弾(bullet)の接触は相手艦を押し出さず、相手の状態を変更しない', () => {
+    const ship = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(0, 0, 0), v3(10, 0, 0)),
+      { radius: 5, mass: 1000, collides: true, engagementAnchor: true },
+    );
+    let bulletKilled = false;
+    const bullet = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(4, 0, 0), v3(-100, 0, 0)),
+      {
+        radius: 0.1, mass: 0.01, collides: true,
+        behavior: {
+          contactKind: 'bullet',
+          onEntityContact: () => { bulletKilled = true; },
+        } as unknown as DynamicMotion['behavior'],
+      },
+    );
+
+    const physics = new EntityContactPhysics();
+    physics.resolveEntityContacts(
+      0, [ship, bullet], [new EngagementZone([ship])], {} as DynamicReactionServices,
+    );
+
+    // 弾の onEntityContact が呼ばれる
+    assert.equal(bulletKilled, true);
+    // 相手艦の位置と速度は剛体反発による押し出しを受けず、そのまま維持される
+    assert.equal(ship.state.r.x, 0);
+    assert.equal(ship.state.v.x, 10);
+  });
 }

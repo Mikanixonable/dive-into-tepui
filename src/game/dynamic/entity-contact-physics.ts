@@ -322,6 +322,24 @@ export class EntityContactPhysics {
     const response = candidate.response!;
     const aBefore = working[ai]!;
     const bBefore = working[bi]!;
+
+    // 弾は物体へ命中した時点で消滅し、相手を押し出す剛体反発は起こさない(SPEC/COMBAT.md「弾の飛翔と寿命」)。
+    // 相手艦の速度や位置は変更せず、当事者が dirty になって後続の全候補が再評価される連鎖を防ぐ。
+    const isBullet = a.contactKind === 'bullet' || b.contactKind === 'bullet';
+    if (isBullet) {
+      const point = response.contactPoint ?? add(response.rA, scale(response.normal, a.radius));
+      const t = contactTime(a, response.toi);
+      a.collideWithEntity(b, {
+        t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
+        selfModuleId: response.moduleIdA, otherModuleId: response.moduleIdB,
+      }, services);
+      b.collideWithEntity(a, {
+        t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
+        selfModuleId: response.moduleIdB, otherModuleId: response.moduleIdA,
+      }, services);
+      return;
+    }
+
     replaceIfMoved(ai, { r: response.rA, v: response.vA }, working, changed);
     replaceIfMoved(bi, { r: response.rB, v: response.vB }, working, changed);
     if (!response.bounced) return;
