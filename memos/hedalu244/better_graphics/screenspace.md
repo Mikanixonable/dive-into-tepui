@@ -250,7 +250,9 @@ E = E_env − ∫_塞がれた向き L_env (n·ω) dω + ∫_塞がれた向き 
 | 近くの物体の映り込み(`screenSpaceSpecular`、後半) | 真偽 | オフ / オフ / オン |
 
 - 精細さの段: 低 = 半解像度・スライス 2 × 片側 3 歩、中 = 半解像度・2 × 6、高 = 全解像度・3 × 8
-  (`d34b32034` で追い込んだ値。V の期待値は片側の歩数で決まり、スライスの数はほとんど効かない)。**「高」は高プリセットでも選ばない切り分け用の段**(積雲の精細さの
+  (`d34b32034` で追い込んだ値。V の期待値は片側の歩数で決まる)。**光ごとの割合の粒はスライスの数でしか減らない** —
+  歩数を増やしても変わらない(手順 5.7 の実測。粗さ 0.7 の面のローブで、2 スライスでは画素ごとに 0.15〜1.00 を
+  跳び、3 で 0.51〜1.00、6 で 0.55〜0.78、12 で 0.56〜0.71)。**「高」は高プリセットでも選ばない切り分け用の段**(積雲の精細さの
   「精細」と同じ扱い)。
 - **鏡面の遮蔽(specular occlusion)は設定にしない。** 遮蔽がオフでなければ、環境光の鏡面も D3 の
   ローブの塞がれた割合で弱める。映り込みをオンにしても、粗い面ではこれが残る。
@@ -367,81 +369,6 @@ E = E_env − ∫_塞がれた向き L_env (n·ω) dω + ∫_塞がれた向き 
 
 ## 手順
 
-### 手順 5.7. 環境光を、光ごとに塞がれた向きの割合で弱める
-
-**目的** — D1 のフェードと、D3 の第 2 項・鏡面を入れ、曲げた法線・円錐・多重反射の持ち上げを消す。
-この手順のあと「遮蔽」がモデルの厳密値に合う。**照り返しの源はこの手順では変えない**(手順 5.8)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/screen-space/hemisphere-scan.ts` | 曲げた法線を消す(`meanSectorCoordinate`・`angleOfCoordinate`・`SECTOR_INDEX_DIGITS`・`ANGLE_BISECTION_STEPS`・`bentSum`)。球冠がスライスの平面を切る弧を扇形のビットにする関数を足す(σ_min まで広げる)。L103 の `distance.lessThanEqual(WORLD_RADIUS)` の打ち切りを、D1 の重み w へ(ビットは w によらず立てる)。σ_min は定数 1 つで持ち、0 なら広げない(手順 5.9 で比べる)。スライスごとに、空全体・球冠 2 つ・ローブの塞がれた測度と、球冠 2 つ・ローブの範囲の測度を、スライスの重みつきで積む。戻り値と引数を下の型へ |
-| `src/render/pipeline/screen-space/environment-occlusion.ts` → `screen-space-light.ts`(`git mv` して書き直す) | `ScreenSpaceLight`: 全解像度の結果の描画先を持ち、その詰め方(比を取って割合へ詰める `encode`)と、光源からの読み方の正本になる。`encodeVisibility`・`capOverlap`・`capArea`・`capFactor`・`uniformFactor`・`lobeFactor`・`bentNormal`・`apertureAngle` を消す |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` | 構築の引数に天体照(球冠)と `ScreenSpaceLight`(描画先)を受け、`outputTarget`・`visibilityTexture`・`indirectTexture` を消す。途中の段の 1 画素を `occluded`(空全体・球冠 0・球冠 1・ローブ)・`extent`(球冠 0・球冠 1・ローブ・奥行きの鍵)・`indirect` の 3 枚にし、均しは分子と分母を同じ重みで別々に足す。拡大は `ScreenSpaceLight.encode` で割合へ詰めて 2 枚へ書く。ローブは `this.sample.reflected` と `this.sample.roughness` から引く。`clearOutput` は `ScreenSpaceLight` の描画先を空へ戻す |
-| `src/render/pipeline/lighting/planet-light-source.ts` L166–207 | `contribution` から球冠(`lightDir`・`sinSigmaSqr`)を引く部分を切り出し、`capAt` として公開する。遮蔽を読むとき、拡散 × `planetVisibility(sample, スロットの番号)`、鏡面 × `specularVisibility(sample)`。テクスチャの拡散の読み方を遮蔽の有無によらず法線と `DIFFUSE_FILTER_ANGLE` へ戻す(L182–187)。スロットに番号を持たせる |
-| `src/render/pipeline/lighting/ambient-source.ts` L54–65 | 拡散 × `ambientVisibility`、鏡面 × `specularVisibility` |
-| `src/render/pipeline/lighting/indirect-source.ts` | `ScreenSpaceLight.indirect(sample)` を読む |
-| `src/render/pipeline/render-pipeline.ts` L136–147・L256・L524 | 構築の順を `ScreenSpaceLight` → 天体照 → 環境光 → 照り返し → パスへ(**パスが天体照を、天体照がパスの出力を要る循環を、出力の描画先を先に作って切る**)。デバッグ表示「遮蔽」は `ambientVisibilityAt(screenUV)`。`ScreenSpaceLight` を解放する |
-
-```ts
-// hemisphere-scan.ts
-// 受け手から見た球冠。direction は中心の向き(view 空間の単位ベクトル)、cosAngle は半角の余弦。
-export interface Cap {
-  readonly direction: Vec3Node;
-  readonly cosAngle: FloatNode;
-}
-// 1 画素の半球を走査した結果。測度は余弦重みで、半球全体を 1 とする。
-export interface HemisphereScan {
-  // 塞がれた測度(D1 の重み w つき)。x = 空全体、y・z = 球冠 0・1、w = ローブ。
-  readonly occluded: Vec4Node;
-  // 数える範囲の測度。x・y = 球冠 0・1、z = ローブ(空全体は 1 なので持たない)。
-  readonly extent: Vec3Node;
-  readonly indirect: Vec3Node;
-}
-export function scanHemisphere(
-  depth: THREE.Texture, normal: THREE.Texture, gbufferSize: Vec2Node, projection: Mat4Uniform,
-  projectionInverse: Mat4Uniform, sliceCount: IntNode, stepCount: IntNode, noise: Vec2Node,
-  caps: readonly [Cap, Cap], lobe: Cap, radiance: THREE.Texture | null,
-): HemisphereScan;
-
-// screen-space-light.ts
-export class ScreenSpaceLight {
-  public constructor();
-  // 遮蔽と照り返しのパスが拡大の段で書く描画先。textures[0] = 光ごとの遮られずに届く割合(r = 一様な
-  // 環境光、g・b = 天体照のスロット 0・1、a = 環境光の鏡面)、textures[1] = rgb 照り返しの放射照度。
-  public readonly target: THREE.RenderTarget;
-  // 塞がれた測度と範囲の測度を、textures[0] の 1 画素へ詰める。範囲が 0 なら遮られない。
-  public static encode(occluded: Vec4Node, extent: Vec3Node): Vec4Node;
-  public ambientVisibility(sample: ShadingSample): FloatNode;
-  public planetVisibility(sample: ShadingSample, slot: number): FloatNode;
-  public specularVisibility(sample: ShadingSample): FloatNode;
-  public indirect(sample: ShadingSample): Vec3Node;
-  // デバッグ表示「遮蔽」が読む、画面の uv の画素の ambientVisibility。
-  public ambientVisibilityAt(uv: Vec2Node): FloatNode;
-  public dispose(): void;
-}
-
-// planet-light-source.ts(PlanetLightSource)
-// スロット slot の天体の、受け手 sample から見た球冠。消灯したスロットは半角 0。
-public capAt(sample: ShadingSample, slot: number): Cap;
-
-// screen-space-pass.ts
-public constructor(
-  renderer: WebGPURenderer, gbuffer: GBufferPass, sun: SunSource, planetLight: PlanetLightSource,
-  output: ScreenSpaceLight, gpu: GpuTimings, mode: ScreenSpaceDiffuse, quality: ScreenSpaceQuality,
-);
-```
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run test:render` / `npm run check:boundaries`。
-- `bentNormal|apertureAngle|capFactor|uniformFactor|lobeFactor|encodeVisibility|capOverlap|EnvironmentOcclusion|visibilityTexture`
-  が `src/` から 0 件。
-- 達成目標 1 の「オフ」と「遮蔽」、2、6、7。
-- 撮影 `bay-metal` で、粗さ 0.8 の金属の板の天体照の映り込みが、板の壁に近い側ほど弱い(目で見る)。
-- commit: `fix(render): 環境光を、光ごとに塞がれた向きの割合で弱める`
-
 ### 手順 5.8. 照り返しの源に、天体照と環境光に照らされた面を入れる
 
 **目的** — D2 の `L_o` に天体照と一様な環境光を足し、D3 の第 3 項を原理どおりにする。
@@ -475,21 +402,42 @@ public irradiance(sample: ShadingSample): Vec3Node;
 
 ### 手順 5.9. フェードと広げ幅を追い込み、負荷を測る
 
-**目的** — R_f(フェードの始まり)を達成目標 2・9・10 で追い込む。σ_min を物理との比較で決める(D3 — 場当たりの
-近似なので、効くことを示せなければ入れない)。負荷を測って「見積り」を実測で置き換える。
+**目的** — 3 つのつまみを、物理との比較と粒で決める。負荷を測って「見積り」を実測で置き換える。
+
+手順 5.7 の実測(「遮蔽」、拡散照度のデバッグ表示、`7318b2946`)と、残っている差:
+
+| 撮影 | 実測 | モデルの厳密値 | 差の原因(CPU の走査の再現で切り分け済み) |
+| --- | --- | --- | --- |
+| bay-earth-overhead | 0.336 | 0.32 | 合う |
+| bay-earth-open | 0.495 | 0.64 | **板の厚み T**。T = 1.5 で 0.486、0.5 で 0.669、0.15 で 0.789(CPU の再現)。標本の数ではない(3 スライス × 8 歩でも 0.466)。この撮影は天体の球冠の縁が奥の壁の輪郭の面に重なる構図で、本当は 4 m の外へ抜ける向きを、厚み 1.5 m の板が塞ぐ |
+| bay-earth-corner | 0.000 | 0.00 | 合う |
+| bay-moon-open | 0.646 | 1.00 | **σ_min**。σ_min = 0° で 1.000、5° で 0.726、10° で 0.646、20° で 0.503(CPU の再現)。大きい天体の 3 撮影は σ_min を変えても動かない |
+| bay-moon-corner | 0.000 | 0.00 | σ_min = 10° では合う。**0 にしたときの値を必ず測る** — 標本が 1 つも当たらないと「遮られない」になり、壁の陰の天体の光が壁を抜ける |
+
+3 つのつまみ:
+
+- **T(板の厚み)**: 達成目標 1 の earth-open と、達成目標 2(V の期待値)・9(細い梁の暈)・リスク表の「厚い区画の
+  裏へ光が漏れる」の釣り合いで決める。**どれかを必ず外すなら、どれを外すかを判断として書く。**
+- **σ_min(球冠を数える半角の下限)**: 達成目標 1 の 5 撮影すべてで σ_min = 0・5°・10°・20° を測り、誤差の最大が
+  最も小さい値を採る。**0 が最もよければ、広げる処理ごと消す。**
+- **σ_min,lobe(鏡面のローブの半角の下限。新しい定数)**: ローブは球冠より細く、光ごとの割合の粒がそのまま
+  鏡面に出る(手順 5.7 で `bay-metal` の壁際の鏡面が画素ごとに 103〜164 を跳ぶのを確認)。ローブを広げると
+  粒は減り、向きの効きは鈍る(半球まで広げると空の可視率と同じになる)。`bay-metal` の粒と、壁際で天体照の
+  映り込みが弱まる効き(手順 5.7 で off 205 → on 84、遠い側は 209)の釣り合いで決める。スライスを増やす案は
+  費用が高い(1 本で走査 ≈ +1.1 の比)ので、まず広げ幅で当たる。
 
 **変更が必要な箇所**
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/render/pipeline/screen-space/hemisphere-scan.ts` | R_f と σ_min の定数。σ_min が 0 に決まったら、広げる処理ごと消す |
-| この計画ファイル | D1・D3 の初期値を確定値へ、達成目標 2 の期待値(R・R_f を変えたら)、「見積り」の前半を実測へ。σ_min を比べた表を D3 へ |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` | T・R_f・σ_min の定数と、鏡面のローブの半角の下限(新しい定数。`capSectors` の広げ幅を球冠とローブで分ける)。σ_min が 0 に決まったら、球冠側の広げる処理を消す |
+| この計画ファイル | D1・D3 の初期値を確定値へ、達成目標 2 の期待値(R・R_f・T を変えたら)、「見積り」の前半を実測へ。つまみを比べた表を D3 へ |
 
 **達成条件と検証**
 
-- **σ_min の比較**: σ_min = 0・5°・10°・20° のそれぞれで、`bay-earth-*` と `bay-moon-*` の 5 撮影を「遮蔽」で撮り、
-  `P_in` / `P_out` を D3 の表のモデルの厳密値と比べる。誤差の最大が最も小さい値を採り、表を D3 へ残す。
-  大きい天体(`bay-earth-*`)の誤差を悪くする値は採らない。
+- **つまみの比較**: 上の 3 つを、それぞれ複数の値で撮って表にし、採った値と理由を D3 へ残す。σ_min と T は
+  達成目標 1 の 5 撮影(「遮蔽」、拡散照度のデバッグ表示)とモデルの厳密値の差で、σ_min,lobe は `bay-metal` の
+  鏡面の粒と効きで。**測る前に値を決めない。**
 - 達成目標 1〜11 をすべて当て直す。11 は `node tools/render-lab-measure.mjs 3 screen-space`。
 - commit: `fix(render): 遮蔽と照り返しのフェードと広げ幅を追い込む`(定数を変えたとき)
 
@@ -679,6 +627,7 @@ intel の統合 GPU(gen-9)、render-lab 960×540、`node tools/render-lab-measur
 | リスク | 影響 | 露見する場所 |
 | --- | --- | --- |
 | 符号つきの値を `colorNode` でそのまま中間ターゲットへ書く | three の `NodeMaterial` は色の出力を 0 以上へ切るので、負の成分が黙って 0 になる | 手順 5.7・9(値を中間ターゲットへ書く段すべて) |
+| 暗黙の LOD を持つ読み(`texture()`。`ShadingSample` の G バッファの読みを含む)を、分岐やループの中で評価する | シェーダを組めず(FXC の E_FAIL)、パスが黙って無効になる — 出力は全部 1 のまま、JS の例外は出ない | 手順 5.8・5.9(走査へ渡す値は `toVar()` でループの外へ置く) |
 | 走査のループを展開してしまう、または和を左畳みで組む | 同じ絵で数倍遅い / WGSL のパーサが入れ子の上限に当たり、JS の例外なしにシェーダごと消える(コンソールに検証エラーだけ) | 手順 5.7(GPU の行、ブラウザのコンソール) |
 | 深度テクスチャを補間つきで読む、半解像度の view 深度を 16 bit にする | 前者は検証エラーで画面ごと黒くなる。後者は遠い平らな面に自己遮蔽の縞が出る | 手順 5.7(`bay` を遠ざけた構図、デバッグ表示「遮蔽」) |
 | オフの経路が今のシェーダと一致しない(マテリアルのキャッシュの鍵に遮蔽の有無が入っていない等) | オフでも絵が変わる / 設定を切り替えても古いマテリアルのまま | 手順 5.7・9(達成目標 7 の比較、設定パネルでの切り替え) |
