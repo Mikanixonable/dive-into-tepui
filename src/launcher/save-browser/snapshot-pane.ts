@@ -9,10 +9,18 @@ import { smallBtn, stageLabel } from './shared';
 
 const STYLE = `
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
-#save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: var(--space-2); }
+#save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: 1px; counter-reset: archive-snapshot; }
 #save-browser .sb-snap-card {
-  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4);
-  border: 0; border-radius: var(--radius-m);
+  counter-increment: archive-snapshot;
+  position: relative; display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) + 2.8em);
+  border: 0; border-radius: 0;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
+}
+#save-browser .sb-snap-card::before {
+  content: counter(archive-snapshot, decimal-leading-zero);
+  position: absolute; left: var(--space-3); top: var(--space-3);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
 }
 #save-browser .sb-snap-loadable { cursor: pointer; }
 #save-browser .sb-snap-loadable:hover { background: var(--fill-1); }
@@ -70,10 +78,10 @@ export function buildSnapshotPane(
 
   const title = document.createElement('div');
   title.className = 'sb-pane-title';
-  title.textContent = `手動セーブ (${manualSaves.length}/${MANUAL_SAVE_LIMIT})`;
+  title.textContent = `SNAPSHOTS / ${manualSaves.length} OF ${MANUAL_SAVE_LIMIT}`;
   wrap.appendChild(title);
 
-  const saveBtn = new Button('今の状態をセーブする', callbacks.onSaveNow, undefined, 'primary');
+  const saveBtn = new Button('CREATE SNAPSHOT', callbacks.onSaveNow, undefined, 'primary');
   saveBtn.element.id = 'sb-save-now';
   saveBtn.element.classList.add('sb-btn');
   saveBtn.setEnabled(canSaveNow);

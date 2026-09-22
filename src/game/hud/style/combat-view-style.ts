@@ -192,13 +192,12 @@ export const COMBAT_VIEW_STYLE = `
   font-weight: 500;
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-list {
-  display: grid;
-  gap: var(--space-1);
-  list-style: none;
+  display: grid; gap: 1px; list-style: none; counter-reset: contact-index;
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row {
+  counter-increment: contact-index;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: 2.2em minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 7px;
   min-height: 24px;
@@ -207,6 +206,10 @@ export const COMBAT_VIEW_STYLE = `
   color: var(--text-dim);
   font-size: var(--font-xs);
   font-variant-numeric: tabular-nums;
+}
+#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row::before {
+  content: counter(contact-index, decimal-leading-zero);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-name {
   overflow: hidden;
@@ -221,8 +224,8 @@ export const COMBAT_VIEW_STYLE = `
   text-align: right;
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row.primary {
-  background: var(--color-primary-fill-weak);
-  color: var(--color-primary);
+  background: transparent; color: var(--color-primary);
+  box-shadow: inset 2px 0 0 var(--color-primary);
 }
 #hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row.near {
   color: var(--color-primary-hover);

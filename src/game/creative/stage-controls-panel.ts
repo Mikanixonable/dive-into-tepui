@@ -80,11 +80,12 @@ export class StageControlsPanel implements ProteinDisplayControl {
     // パネルの外枠と、内容をまとめて畳めるコンパクト表示トグル。
     const panel = document.createElement('div');
     panel.id = 'hud-stage-controls';
-    panel.className = 'panel hidden';
+    panel.className = 'panel hidden editorial-control-sheet';
     panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-    const title = document.createElement('h3');
-    title.textContent = 'ステージ操作';
-    panel.appendChild(title);
+    const head = document.createElement('div');
+    head.className = 'editorial-panel-head';
+    head.innerHTML = '<span class="ui-section-code" aria-hidden="true">LAB</span><h3 class="editorial-panel-title">CREATIVE CONTROL</h3>';
+    panel.appendChild(head);
     const body = document.createElement('div');
     body.className = 'stage-controls-body';
     panel.appendChild(body);
