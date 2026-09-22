@@ -1,27 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>循環・風・輸送</title><desc>世界地図上に偏西風、貿易風、ロスビー波、低気圧渦を流線で示す。</desc><defs>
-<style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>循環・風・輸送</title><defs><style>
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
-.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
-.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
 </style>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
-<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
-<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">循環・風・輸送</text><text x="55" y="72" class="m d k">全球を同じ速度で流さず、緯度帯・波動・渦を重ねる</text>
-<g transform="translate(65 125)">
-  <rect width="1070" height="300" rx="18" fill="#0e1014" stroke="#48506a"/>
-  <path d="M0 75H1070M0 150H1070M0 225H1070" class="soft"/>
-  <path d="M20 62C120 30 190 105 285 58C380 12 470 102 570 56C675 8 760 107 860 58C940 20 1005 40 1050 66" fill="none" stroke="#ff3155" stroke-width="3" marker-end="url(#ra)"/>
-  <path d="M1040 108C940 145 845 86 755 122C660 160 570 94 480 126C390 159 290 98 195 127C120 150 65 142 20 122" fill="none" stroke="#3478ff" stroke-width="2.4" marker-end="url(#ba)"/>
-  <path d="M20 195C125 165 210 238 310 193C410 148 510 235 610 192C720 145 805 238 910 190C970 163 1010 168 1050 185" fill="none" stroke="#3478ff" stroke-width="2.4" marker-end="url(#ba)"/>
-  <path d="M1045 246C930 278 850 223 760 252C660 285 570 226 470 256C370 286 275 225 180 254C110 275 60 270 20 255" fill="none" stroke="#ff3155" stroke-width="3" marker-end="url(#ra)"/>
-  <g transform="translate(330 150)"><path d="M0 0C18-28 50-35 76-20C100-6 100 24 78 42C54 62 20 53 4 28C-8 10-6-10 8-25" class="accent"/><circle r="5" fill="#ff3155"/></g>
-  <g transform="translate(800 168)"><path d="M0 0C18-28 50-35 76-20C100-6 100 24 78 42C54 62 20 53 4 28C-8 10-6-10 8-25" class="accent"/><circle r="5" fill="#ff3155"/></g>
-  <text x="30" y="42" class="m a xs">偏西風 + Rossby 波</text><text x="30" y="145" class="m sig xs">貿易風</text><text x="30" y="287" class="m a xs">偏西風</text>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">循環・風・輸送</text><text x="40" y="60" class="m d sm">緯度帯の風、Rossby 波、低気圧渦を異なるスケールで重ねる</text>
+<g transform="translate(55 88)">
+ <rect width="1090" height="138" rx="10" fill="#101217" stroke="#48506a"/>
+ <path d="M0 34H1090M0 69H1090M0 104H1090" class="g"/>
+ <path d="M20 28C130 8 215 51 315 27C420 2 515 51 620 27C725 1 820 51 925 28C985 15 1035 18 1070 28" class="r" marker-end="url(#ra)"/>
+ <path d="M1070 60C955 80 865 48 765 63C665 78 570 50 470 63C365 79 270 50 170 64C100 73 55 70 20 64" class="bl" marker-end="url(#ba)"/>
+ <path d="M20 111C130 91 215 132 315 110C420 86 515 132 620 110C725 85 820 132 925 111C985 98 1035 100 1070 111" class="r" marker-end="url(#ra)"/>
+ <g transform="translate(350 70)"><path d="M0 0C12-20 34-24 52-13C69-3 68 17 54 29C36 44 12 36 3 20C-4 7-2-7 7-17" class="r"/><circle r="3" fill="#ff3155"/></g>
+ <g transform="translate(780 73)"><path d="M0 0C12-20 34-24 52-13C69-3 68 17 54 29C36 44 12 36 3 20C-4 7-2-7 7-17" class="r"/><circle r="3" fill="#ff3155"/></g>
+ <text x="18" y="16" class="m a xs">偏西風 + Rossby 波</text><text x="18" y="58" class="m u xs">貿易風</text><text x="18" y="129" class="m a xs">偏西風</text>
 </g>
 </svg>
