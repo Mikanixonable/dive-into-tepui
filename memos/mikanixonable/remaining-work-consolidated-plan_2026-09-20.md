@@ -147,8 +147,9 @@ explicit temporal LOD、target anchor、時間幅に応じた平均・low-pass�
 #### Q2: shadow / internal scattering / bake cost
 
 GPU timingのcloud行、`cloud-lab:qualification`、visual-review runner、diagnostic metrics、48枚のvisual-review
-画像は既に存在する。ただし qualification出力は現作業ツリーに確認できず、既存メモの代表環境測定はB0が
-60fps予算を使い切り `unqualified`、visual review manifestも `humanReview.status=pending` である。
+画像は既に存在する。ただし qualification出力は現作業ツリーに確認できず、旧memoの基準コミット
+(`0114373a7`)での代表環境測定はB0が60fps予算を使い切り `unqualified` だった。visual review manifestも
+`humanReview.status=pending` であり、現行HEADのqualificationは未実施である。
 
 1. 現行HEADでno-cloud / cloud-enabledの総GPU p95を再取得し、shadow、atmosphere、surface、bakeの行と品質設定を対応づける。GPU timestamp非対応時にCPU時間で代用しない。
 2. 時刻変更・気候変更・可視性変更で `CloudPresentation` のbakeとfield生成を測り、generation cache、visibility停止、追加cacheの要否を実測で決める。
