@@ -1,35 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>マニューバと予測</title><desc>現在軌道とマニューバ後の遷移軌道を重ね、ノードの局所三軸を示す。</desc><defs>
-<style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>マニューバと予測</title><defs><style>
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
-.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
-.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
 </style>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
-<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
-<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">マニューバと予測</text><text x="55" y="72" class="m d k">一つのノードが、その後ろに連なる未来軌道を変える</text>
-<g transform="translate(410 285)">
-  <circle r="88" fill="url(#earth)" stroke="#d6d6d0"/>
-  <ellipse rx="245" ry="118" class="stroke" transform="rotate(-10)"/>
-  <ellipse cx="68" cy="-6" rx="318" ry="145" class="accent" transform="rotate(8)"/>
-  <circle cx="222" cy="-96" r="7" fill="#ff3155" filter="url(#glow)"/>
-  <g transform="translate(222 -96)">
-    <path d="M0 0L72-18" class="accent" marker-end="url(#ra)"/><text x="76" y="-16" class="m a xs">PRO</text>
-    <path d="M0 0L-12-72" class="blue" marker-end="url(#ba)"/><text x="-28" y="-80" class="m sig xs">NRM</text>
-    <path d="M0 0L-38 48" class="stroke" marker-end="url(#ba)"/><text x="-66" y="66" class="m b xs">RAD</text>
-  </g>
-  <text x="-270" y="142" class="m d sm">現在軌道</text><text x="170" y="166" class="m a sm">計画後</text>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">マニューバと予測</text><text x="40" y="60" class="m d sm">ノードで Δv を加え、後続の予測軌道を再計算する</text>
+<g transform="translate(330 155)">
+ <circle r="52" fill="url(#earth)" stroke="#c3bec9"/>
+ <ellipse rx="178" ry="72" class="w" transform="rotate(-8)"/>
+ <ellipse cx="-55" cy="0" rx="235" ry="88" class="r" transform="rotate(7)"/>
+ <circle cx="158" cy="-53" r="5" fill="#ff3155"/>
+ <path d="M158-53L208-65" class="r" marker-end="url(#ra)"/><text x="213" y="-62" class="m a xs">PRO</text>
+ <path d="M158-53L151-100" class="bl" marker-end="url(#ba)"/><text x="137" y="-106" class="m u xs">NRM</text>
+ <text x="-225" y="86" class="m d xs">現在</text><text x="130" y="98" class="m a xs">計画後</text>
 </g>
-<g transform="translate(790 145)">
-  <circle cx="0" cy="0" r="7" fill="#ff3155"/><circle cx="80" cy="42" r="6" fill="#ff6b82"/><circle cx="160" cy="86" r="5" fill="#89838f"/>
-  <path d="M5 3C42 16 57 26 74 39M86 46C121 61 135 72 155 83" class="soft dash"/>
-  <text x="-20" y="-20" class="m t sm">NODE 1</text><text x="61" y="23" class="m b sm">NODE 2</text><text x="142" y="67" class="m d sm">NODE 3</text>
-  <text x="-5" y="130" class="m d sm">上流変更 → 下流予測を再計算</text>
+<g transform="translate(720 103)">
+ <circle cx="20" cy="30" r="6" fill="#ff3155"/><circle cx="120" cy="62" r="5" fill="#ff8798"/><circle cx="220" cy="92" r="4" fill="#89838f"/>
+ <path d="M26 32C62 40 88 51 114 59M126 64C164 73 190 83 215 90" class="g dash"/>
+ <text x="0" y="14" class="m t xs">NODE 1</text><text x="97" y="46" class="m b xs">NODE 2</text><text x="197" y="77" class="m d xs">NODE 3</text>
+ <text x="0" y="136" class="m d sm">上流変更 → 下流予測を破棄・再計算</text>
 </g>
-<text x="55" y="455" class="m b sm">予測軌道は表示のための導出。実状態の正本ではない。</text>
 </svg>
