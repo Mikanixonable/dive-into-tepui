@@ -19,5 +19,5 @@
 <circle cx="820" cy="165" r="7" class="signal"/><text x="835" y="168" class="m s sm">見越し点</text>
 <path d="M375 151L813 165" class="signal dash" marker-end="url(#arrB)"/><path d="M760 215L812 173" class="line"/>
 <path d="M350 105L412 81" class="accent" marker-end="url(#arrR)"/><text x="420" y="81" class="m a sm">相対速度</text>
-<g transform="translate(885 95)"><rect width="245" height="170" rx="14" class="box"/><text x="18" y="30" class="m a k">射撃諸元</text><text x="18" y="62" class="m d sm">距離</text><text x="135" y="62" class="m t v">1.84 km</text><text x="18" y="91" class="m d sm">相対速度</text><text x="135" y="91" class="m t v">224 m/s</text><text x="18" y="120" class="m d sm">見越し</text><text x="135" y="120" class="m t v">実体弾</text><text x="18" y="149" class="m d sm">時間加速</text><text x="135" y="149" class="m an v">≤ ×4</text></g>
+<g transform="translate(885 95)"><rect width="220" height="170" rx="14" class="box"/><text x="18" y="30" class="m a k">射撃諸元</text><text x="18" y="62" class="m d sm">距離</text><text x="122" y="62" class="m t v">1.84 km</text><text x="18" y="91" class="m d sm">相対速度</text><text x="122" y="91" class="m t v">224 m/s</text><text x="18" y="120" class="m d sm">見越し</text><text x="122" y="120" class="m t v">実体弾</text><text x="18" y="149" class="m d sm">時間加速</text><text x="122" y="149" class="m an v">≤ ×4</text></g>
 </g></svg>
