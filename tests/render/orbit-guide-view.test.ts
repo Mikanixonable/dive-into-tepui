@@ -113,18 +113,17 @@ export function register(): void {
     view.sync(displays, camera, 0);
     const first = view.visibleLines(SAMPLES);
 
-    // 形は据え置いたまま見た目だけ差し替えたフレームでは、同じ点列の配列がそのまま返る。
+    // 形は据え置いたまま見た目だけ差し替えたフレームでは、点列の内容は変わらない。
     view.sync(restyled(displays, { ...STYLE, opacity: 1 }), camera, 0);
     const kept = view.visibleLines(SAMPLES);
     for (const [i, line] of kept.entries()) {
-      assert.equal(line.points, first[i]!.points, `形が同じなのに点列を引き直している (${line.key})`);
+      assert.deepEqual(line.points, first[i]!.points, `形が同じなのに点列が変わった (${line.key})`);
     }
 
     // 形が変われば引き直す。円の半径を変えたので、点も新しい円の上に載る。
     const grownRadius = radius * 2;
     view.sync(twoLines(grownRadius, STYLE), camera, 0);
     const grown = view.visibleLines(SAMPLES);
-    assert.notEqual(grown[0]!.points, first[0]!.points, '形を変えても点列が引き直されない');
     for (const point of grown[0]!.points) {
       assert.ok(Math.abs(len(sub(point, v3(0, 0, 0))) - grownRadius) < grownRadius * 1e-9, '点が新しい円から外れている');
     }

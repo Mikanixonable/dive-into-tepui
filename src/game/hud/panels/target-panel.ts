@@ -7,7 +7,7 @@ import type { ProteinCombatReadout } from '../../protein/protein-schema';
 
 const SYNC_INTERVAL_MS = 100;
 
-// ロック中ターゲットの1フレームぶんの値と、パネル本体の右クリックを返す口。
+// ロック中ターゲットの1フレーム分の状態と、パネル本体の右クリック通知コールバック。
 export interface TargetPanelViewModel {
   readonly name: string;
   readonly distanceM: number;
@@ -23,10 +23,10 @@ export interface TargetPanelViewModel {
 
 export class TargetPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
-  // 直近の sync が受けた値。右クリックはフレームの外で起きるので、その時点の口をここから引く。
+  // 直近の sync で受け取った状態。右クリックはフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: TargetPanelViewModel | null = null;
 
-  // els を保持し、パネル本体の右クリックを直近の値が持つ口へ橋渡しする。
+  // els を保持し、パネル本体の右クリックイベントを最新のコールバックへ中継する。
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
     this.els.get('tgtbody')?.addEventListener('contextmenu', (e) => {
       e.preventDefault();
