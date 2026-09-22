@@ -8,7 +8,6 @@ import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
   TabBar,
-  ToggleSwitch,
   type CollapseToggleLabels,
 } from '../../../hud/widgets';
 import {
@@ -161,7 +160,7 @@ export class ViewOptionsPanel {
 
   private readonly tabBar: TabBar<ViewOptionsTab>;
   private readonly tabBodies: ReadonlyMap<ViewOptionsTab, HTMLElement>;
-  private readonly renderStyleToggle: ToggleSwitch;
+  private readonly renderStyleButtons: ReadonlyMap<RenderStyle, Button>;
   // 軌道ガイド設定の鏡映し。軌道ガイドタブとゼロ速度曲線節はどちらも setOrbitGuideSettings で
   // これと揃え、ゼロ速度曲線節の編集はこれへ重ねて設定全体に組み戻す。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
@@ -226,12 +225,27 @@ export class ViewOptionsPanel {
     renderRow.dataset['index'] = '00';
     const renderLabel = document.createElement('div');
     renderLabel.className = 'view-options-render-label';
-    renderLabel.innerHTML = '<span>RENDER STYLE</span><small>REALISTIC / SCHEMATIC</small>';
-    this.renderStyleToggle = new ToggleSwitch('SCHEMATIC', (on) => {
-      this.onRenderStyleChange?.(on ? 'schematic' : 'realistic');
-    });
-    this.renderStyleToggle.element.classList.add('view-options-render-toggle');
-    renderRow.append(renderLabel, this.renderStyleToggle.element);
+    renderLabel.innerHTML = '<span>RENDER STYLE</span><small>DISPLAY PIPELINE</small>';
+    const renderChoices = document.createElement('div');
+    renderChoices.className = 'view-options-render-choices';
+    renderChoices.setAttribute('role', 'group');
+    renderChoices.setAttribute('aria-label', '描画方式');
+    const realistic = new Button('REALISTIC', () => {
+      this.onRenderStyleChange?.('realistic');
+      this.setRenderStyle('realistic');
+    }, undefined, 'dense');
+    const schematic = new Button('SCHEMATIC', () => {
+      this.onRenderStyleChange?.('schematic');
+      this.setRenderStyle('schematic');
+    }, undefined, 'dense');
+    realistic.element.classList.add('view-options-render-choice');
+    schematic.element.classList.add('view-options-render-choice');
+    renderChoices.append(realistic.element, schematic.element);
+    this.renderStyleButtons = new Map<RenderStyle, Button>([
+      ['realistic', realistic],
+      ['schematic', schematic],
+    ]);
+    renderRow.append(renderLabel, renderChoices);
     body.appendChild(renderRow);
 
     this.tabBar = new TabBar<ViewOptionsTab>(TAB_ITEMS, (tab) => this.onTabChange?.(tab));
@@ -438,7 +452,7 @@ export class ViewOptionsPanel {
   }
 
   public setRenderStyle(style: RenderStyle): void {
-    this.renderStyleToggle.setOn(style === 'schematic');
+    for (const [candidate, button] of this.renderStyleButtons) button.setOn(candidate === style);
   }
 
   // パネルの表示/非表示を切り替える。
