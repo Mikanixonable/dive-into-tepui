@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="470" viewBox="0 0 1200 470"><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.sans{font-family:system-ui,-apple-system,sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.f{fill:#5f5a65}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:7 7}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="470" rx="20" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">EARTH RENDERING</text><text x="55" y="72" class="m d k">SURFACE DATA AND ATMOSPHERIC LAYERS ARE COMPOSED SEPARATELY</text>
+<g transform="translate(55 112)">
+<rect x="0" y="0" width="180" height="270" rx="16" class="box"/><text x="18" y="31" class="m a k">DATA</text><text x="18" y="68" class="sans t v">Surface tiles</text><text x="18" y="95" class="m d sm">terrain / albedo</text><text x="18" y="122" class="m d sm">coastline</text><text x="18" y="149" class="m d sm">climate fields</text><text x="18" y="190" class="sans t v">Streaming</text><text x="18" y="217" class="m d sm">queue / resident</text><text x="18" y="244" class="m d sm">page table / GPU</text>
+<rect x="225" y="0" width="220" height="270" rx="16" class="box"/><text x="243" y="31" class="m a k">SURFACE</text><circle cx="335" cy="151" r="75" fill="#48506a" stroke="#d6d6d0"/><path d="M278 132C307 96 353 87 390 118 365 135 343 146 321 156 301 165 286 155 278 132Z" fill="#a8aec0"/><text x="262" y="244" class="m d sm">TSL material / terrain</text>
+<rect x="490" y="0" width="655" height="270" rx="16" class="box"/><text x="508" y="31" class="m a k">ATMOSPHERIC COMPOSITION</text>
+<g transform="translate(555 150)"><circle r="70" fill="#48506a"/><circle r="82" fill="none" stroke="#3478ff" stroke-width="10" opacity=".28"/><circle r="91" fill="none" stroke="#ff3155" stroke-width="6" opacity=".22"/><path d="M-77-24C-40-51 10-48 53-13" fill="none" stroke="#d6d6d0" stroke-width="14" stroke-linecap="round" opacity=".7"/><path d="M-85 14C-42 2 9 10 74 41" fill="none" stroke="#eeeaf5" stroke-width="8" stroke-linecap="round" opacity=".45"/></g>
+<g transform="translate(690 73)"><text class="m s v">Atmosphere</text><text y="29" class="m d sm">scattering / limb</text><text y="75" class="m t v">Clouds</text><text y="104" class="m d sm">opaque + volumetric paths</text><text y="150" class="m an v">Airglow</text><text y="179" class="m d sm">night-side emission</text></g>
+<g transform="translate(915 73)"><text class="m a v">Aurora</text><text y="29" class="m d sm">field / curtains</text><text y="75" class="m t v">Illumination</text><text y="104" class="m d sm">sun / shadow</text><text y="150" class="m t v">Final compose</text><text y="179" class="m d sm">surface + layers</text></g>
+<path d="M180 135H218M445 135H483" class="accent" marker-end="url(#arrR)"/>
+</g></svg>
