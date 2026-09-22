@@ -1,33 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img"><title>凝結・対流・低気圧</title><desc>左に鉛直対流断面、右に低気圧の平面構造を描き、雲量と雲頂高度の生成要因を示す。</desc><defs>
-<style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>凝結・対流・低気圧</title><defs><style>
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
-.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
-.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
 </style>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
-<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
-<rect width="1200" height="520" rx="22" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">凝結・対流・低気圧</text><text x="55" y="72" class="m d k">湿度・上昇流・対流を分け、雲量と雲頂を別の量として作る</text>
-<g transform="translate(80 120)">
-  <path d="M0 320H500" class="stroke"/><path d="M55 320V30" class="soft"/>
-  <path d="M130 295C125 245 150 225 175 210C145 190 158 150 190 138C174 105 205 77 240 90C255 55 300 55 320 85C350 75 382 95 380 126C414 136 424 170 400 192C430 214 418 250 385 260C355 282 180 292 130 295Z" fill="#eeeaf5" opacity=".22" stroke="#c3bec9"/>
-  <path d="M250 314V192" class="accent" marker-end="url(#ra)"/><path d="M205 313V230" class="accent" marker-end="url(#ra)"/>
-  <path d="M295 118C340 95 382 102 420 120" class="blue"/><path d="M180 135C142 120 112 125 80 148" class="blue"/>
-  <text x="75" y="42" class="m d xs">圏界面</text><path d="M55 55H470" class="soft dash"/>
-  <text x="325" y="302" class="m a sm">暖湿気</text><text x="325" y="85" class="m b sm">雲頂</text><text x="80" y="215" class="m d sm">凝結</text>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">凝結・対流・低気圧</text><text x="40" y="60" class="m d sm">左: 鉛直発達 / 右: 水平組織化 — 雲量と雲頂を別の量として作る</text>
+<g transform="translate(70 88)">
+ <path d="M0 130H470" class="w"/><path d="M45 130V10" class="g"/>
+ <path d="M120 120C112 98 127 82 150 76C137 61 148 43 170 40C166 22 188 13 204 25C218 8 245 11 254 31C278 25 294 39 290 57C310 64 314 80 300 91C287 107 151 119 120 120Z" fill="#d7d5da" opacity=".24" stroke="#c3bec9"/>
+ <path d="M195 126V78M235 126V58" class="r" marker-end="url(#ra)"/>
+ <path d="M45 24H445" class="g dash"/><text x="52" y="18" class="m d xs">圏界面</text>
+ <text x="318" y="117" class="m a xs">暖湿気</text><text x="280" y="38" class="m b xs">雲頂</text>
 </g>
-<g transform="translate(700 150)">
-  <circle cx="180" cy="150" r="115" fill="none" stroke="#48506a"/>
-  <path d="M180 150C215 95 276 92 305 131C335 171 311 220 265 237C214 256 153 224 136 177C121 135 142 91 183 73" class="accent"/>
-  <path d="M180 150C143 185 100 192 63 176" class="blue" marker-end="url(#ba)"/>
-  <path d="M180 150C222 163 248 190 263 227" class="blue" marker-end="url(#ba)"/>
-  <circle cx="180" cy="150" r="6" fill="#ff3155"/>
-  <path d="M60 102C110 88 132 110 148 132" class="soft dash"/><path d="M248 78C232 110 224 127 210 139" class="soft dash"/>
-  <text x="119" y="292" class="m t v">低気圧 / 前線帯</text>
+<g transform="translate(720 92)">
+ <circle cx="130" cy="66" r="58" fill="none" stroke="#48506a"/>
+ <path d="M130 66C149 37 183 35 201 57C220 80 207 108 181 120C151 133 117 117 106 91C98 70 106 49 129 37" class="r"/>
+ <path d="M130 66C106 88 80 94 57 87" class="bl" marker-end="url(#ba)"/>
+ <path d="M130 66C158 75 176 93 187 119" class="bl" marker-end="url(#ba)"/>
+ <circle cx="130" cy="66" r="4" fill="#ff3155"/>
+ <text x="86" y="151" class="m t v">低気圧 / 前線帯</text>
 </g>
 </svg>

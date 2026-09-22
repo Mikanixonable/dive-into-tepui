@@ -1,31 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img"><title>ラン・ステージ・時間</title><desc>Runを中心にLauncher、Game、Stage、Presentation、Save、Resultが接続するネットワーク。</desc><defs>
-<style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>ラン・ステージ・時間</title><defs><style>
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
-.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.sig{fill:#3478ff}
-.stroke{fill:none;stroke:#89838f;stroke-width:1.6}.soft{fill:none;stroke:#48506a;stroke-width:1.2}.accent{fill:none;stroke:#ff3155;stroke-width:2.4}.blue{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:8 8}
-.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.2px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}.xs{font-size:10px}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
 </style>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<radialGradient id="earth" cx=".35" cy=".28" r=".8"><stop stop-color="#d6d6d0"/><stop offset=".55" stop-color="#48506a"/><stop offset="1" stop-color="#161a20"/></radialGradient>
-<radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop stop-color="#fff1f4"/><stop offset=".28" stop-color="#ff6b82"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
-<filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-<marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
-<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">ラン・ステージ・時間</text><text x="55" y="72" class="m d k">一回のプレイを Run が束ね、外側の Launcher が開始と終了を管理する</text>
-<g transform="translate(600 270)">
-  <circle r="78" fill="#0e1014" stroke="#ff3155" stroke-width="2.4"/><text x="-20" y="-8" class="m a k">RUN</text><text x="-44" y="22" class="s t v">1 play session</text>
-  <path d="M-65-42L-205-130M0-78V-175M65-42L205-130M78 10L250 22M45 64L150 155M-45 64L-150 155M-78 10L-250 22" class="soft"/>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">ラン・ステージ・時間</text><text x="40" y="60" class="m d sm">Run を結節点に、ラン内外の責務を分ける</text>
+<g transform="translate(600 146)">
+ <circle r="44" fill="#101217" stroke="#ff3155" stroke-width="2"/><text x="-15" y="-4" class="m a xs">RUN</text><text x="-31" y="14" class="m t sm">1 session</text>
+ <path d="M-36-25L-145-66M0-44V-94M36-25L145-66M44 6L164 20M25 36L94 78M-25 36L-94 78M-44 6L-164 20" class="g"/>
 </g>
 <g class="m">
-  <circle cx="395" cy="140" r="47" fill="#15171c" stroke="#3478ff"/><text x="365" y="145" class="t sm">Launcher</text>
-  <circle cx="600" cy="95" r="47" fill="#15171c" stroke="#ff6b82"/><text x="580" y="100" class="t sm">Game</text>
-  <circle cx="805" cy="140" r="47" fill="#15171c" stroke="#ff6b82"/><text x="783" y="145" class="t sm">Stage</text>
-  <circle cx="865" cy="292" r="47" fill="#15171c" stroke="#3478ff"/><text x="831" y="297" class="t sm">Presentation</text>
-  <circle cx="750" cy="425" r="47" fill="#15171c" stroke="#3478ff"/><text x="731" y="430" class="t sm">Save</text>
-  <circle cx="450" cy="425" r="47" fill="#15171c" stroke="#3478ff"/><text x="427" y="430" class="t sm">Result</text>
-  <circle cx="335" cy="292" r="47" fill="#15171c" stroke="#ff6b82"/><text x="306" y="297" class="t sm">SimSpeed</text>
+ <circle cx="455" cy="80" r="27" fill="#15171c" stroke="#3478ff"/><text x="433" y="84" class="t xs">Launcher</text>
+ <circle cx="600" cy="52" r="27" fill="#15171c" stroke="#ff8798"/><text x="586" y="56" class="t xs">Game</text>
+ <circle cx="745" cy="80" r="27" fill="#15171c" stroke="#ff8798"/><text x="730" y="84" class="t xs">Stage</text>
+ <circle cx="765" cy="166" r="27" fill="#15171c" stroke="#3478ff"/><text x="739" y="170" class="t xs">Presentation</text>
+ <circle cx="694" cy="224" r="27" fill="#15171c" stroke="#3478ff"/><text x="682" y="228" class="t xs">Save</text>
+ <circle cx="506" cy="224" r="27" fill="#15171c" stroke="#3478ff"/><text x="491" y="228" class="t xs">Result</text>
+ <circle cx="435" cy="166" r="27" fill="#15171c" stroke="#ff8798"/><text x="417" y="170" class="t xs">Time</text>
 </g>
-<path d="M280 368C170 334 135 235 185 150" class="accent" marker-end="url(#ra)"/><text x="105" y="390" class="m b sm">次のランへ</text>
+<path d="M405 210C330 185 315 105 376 73" class="r" marker-end="url(#ra)"/><text x="270" y="228" class="m d xs">結果 → 次のラン</text>
 </svg>
