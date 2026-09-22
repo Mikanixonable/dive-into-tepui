@@ -29,7 +29,7 @@ interface TitleFlavor {
 const TITLE_FLAVORS: readonly TitleFlavor[] = [
   // Sumerian literature: CDLI/ORACC composites. Unicode signs are cuneified from the cited lines.
   {
-    primary: 'From the great heaven, toward the great below.',
+    primary: 'From the great heaven she set her mind on the great below.',
     original: '𒀭𒃲𒋫 𒆠𒃲𒂠 𒄑𒌆𒉿𒂵𒉌 𒈾𒀭𒁺',
     transliteration: 'an gal-ta ki gal-še₃ ĝeštug₂-ga-ni na-an-gub',
     lang: 'sux',
@@ -37,7 +37,7 @@ const TITLE_FLAVORS: readonly TitleFlavor[] = [
     note: 'INANA’S DESCENT · Old Babylonian · CDLI Q000343:1',
   },
   {
-    primary: 'Heaven and earth were parted.',
+    primary: 'When heaven had been separated from earth.',
     original: '𒀭𒆠𒋫 𒁀𒁕𒁁𒁺𒀀𒁀',
     transliteration: 'an ki-ta ba-da-ba₉-ra₂-a-ba',
     lang: 'sux',
@@ -45,7 +45,7 @@ const TITLE_FLAVORS: readonly TitleFlavor[] = [
     note: 'GILGAMEŠ, ENKIDU AND THE NETHERWORLD · CDLI Q000364:8',
   },
   {
-    primary: 'In those days, in those distant days.',
+    primary: 'In those days, in those far remote days.',
     original: '𒌓𒊑𒀀 𒌓𒋤𒁺𒊑𒀀',
     transliteration: 'u₄ re-a u₄ su₃-ra₂ re-a',
     lang: 'sux',
