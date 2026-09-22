@@ -1,4 +1,4 @@
-// 地球表面。EarthSurfaceContext は配信版と、地表要求の世代・キャンセル信号を配る。EarthSurface は
+// 地球表面。EarthSurfaceContext は配信版と、地表要求の世代・キャンセル信号を管理・発行する。EarthSurface は
 // 天体表面の球へ、詳細な材質とタイルの常駐を接続する。
 import * as THREE from 'three/webgpu';
 import { scaledToBondAlbedo } from './celestial-albedo';
@@ -67,8 +67,8 @@ function photometryOf(source: EarthSurfaceSource): SurfacePhotometry {
   };
 }
 
-// 配信版(source)を持ち、地表要求へ世代とキャンセル信号を配る。世代を進めると、それまでに
-// 配った要求は中断される。
+// 配信版(source)を持ち、地表要求へ世代とキャンセル信号を発行する。世代を進めると、それまでに
+// 発行した要求は中断される。
 export class EarthSurfaceContext {
   private nextGenerationValue = 1;
   private readonly requests = new Set<AbortController>();

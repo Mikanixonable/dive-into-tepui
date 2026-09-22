@@ -317,7 +317,7 @@ export class GamePresentation {
     this.inputPhase.interpret(dt, nowMs, viewport);
   }
 
-  // フレームの残りの入力エッジを、ports の優先順へ配る。
+  // フレームの残りの入力イベントを、ports の優先度順にディスパッチする。
   public routeInput(ports: readonly GameInputPort[]): void { this.inputPhase.routeInput(ports); }
 
   // ------------------------------------------------ 進行の材料と、進行の後の導出
