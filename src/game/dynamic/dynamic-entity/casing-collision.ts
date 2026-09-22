@@ -1,6 +1,6 @@
 // 薬莢の表示寸法から組んだ円柱近似の物理形状と、その接触判定。
 import { qRotate } from '../../../math/quat';
-import { add, v3, type Vec3 } from '../../../math/vec3';
+import { add, addScaled, dot, lenSq, sub, v3, type Vec3 } from '../../../math/vec3';
 import type { ContactGeometry } from '../../../physics/collision-response';
 import {
   cylinderCylinderContact, sweptCylinderCylinderContact, cylinderSphereContact,
@@ -21,6 +21,9 @@ export const CASING_COLLISION_BOUND_RADIUS = Math.hypot(
   CASING_CYLINDER_HALF_LENGTH + Math.abs(CASING_LOCAL_CENTER_Y), CASING_CYLINDER_RADIUS,
 );
 
+// 薬莢同士の接触で外接球が触れうる最大距離の2乗 [m^2]。
+const CASING_PAIR_BOUND_DISTANCE_SQ = (2 * CASING_COLLISION_BOUND_RADIUS) ** 2;
+
 // 姿勢を持つ当事者 self の、状態 state・姿勢 attitude での薬莢の円柱。
 function casingCylinder(self: { readonly att: Attitude }, state: KinematicState, attitude = self.att): Cylinder {
   return {
@@ -36,6 +39,9 @@ export function casingSphereCollision(
   self: EntityContactParticipant, sphereCenter: Vec3,
   sphereRadius: number, selfState: KinematicState, selfAttitude = self.att,
 ) {
+  const d = sub(sphereCenter, selfState.r);
+  const maxDist = CASING_COLLISION_BOUND_RADIUS + sphereRadius;
+  if (lenSq(d) > maxDist * maxDist) return null;
   return cylinderSphereContact(casingCylinder(self, selfState, selfAttitude), sphereCenter, sphereRadius);
 }
 
@@ -64,6 +70,8 @@ export function casingEntityCollision(
   selfState: KinematicState, otherState: KinematicState,
 ): ContactGeometry | null {
   if (other.contactKind !== 'casing') return null;
+  const d = sub(otherState.r, selfState.r);
+  if (lenSq(d) > CASING_PAIR_BOUND_DISTANCE_SQ) return null;
   const hit = cylinderCylinderContact(casingCylinder(self, selfState), casingCylinder(other, otherState));
   return hit === null ? null : {
     normal: hit.normal,
@@ -80,6 +88,16 @@ export function casingSweptEntityCollision(
   previousOtherState: KinematicState, otherState: KinematicState,
 ): ContactGeometry | null {
   if (other.contactKind !== 'casing') return null;
+
+  // 区間内の相対重心間距離の最小値を求め、外接球の和を超える場合は円柱判定を呼ばず早期棄却する。
+  const r0 = sub(previousOtherState.r, previousSelfState.r);
+  const r1 = sub(otherState.r, selfState.r);
+  const v = sub(r1, r0);
+  const vSq = lenSq(v);
+  const t = vSq > 1e-12 ? Math.max(0, Math.min(1, -dot(r0, v) / vSq)) : 0;
+  const closest = addScaled(r0, v, t);
+  if (lenSq(closest) > CASING_PAIR_BOUND_DISTANCE_SQ) return null;
+
   // 今の歩の円柱どうしを、前の歩の中心から掃引する
   const currentSelf = casingCylinder(self, selfState);
   const currentOther = casingCylinder(other, otherState);
