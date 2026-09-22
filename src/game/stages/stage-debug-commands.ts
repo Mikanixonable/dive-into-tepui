@@ -1,4 +1,4 @@
-// デバッグステージへ外から出せる命令の口と、それを列へ積む実装(R3)。
+// デバッグステージへ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { StageDebug } from './stage-debug';
 
@@ -14,7 +14,7 @@ export interface StageDebugCommands {
   spawnRcsFuel(): void;
 }
 
-// stage への命令を queue へ積むだけの口を組む。
+// stage へのコマンドを queue へエンキューする実装を構築する。
 export function stageDebugCommands(queue: CommandQueue, stage: StageDebug): StageDebugCommands {
   return {
     setEnemyFireEnabled: (on) => queue.submit(() => stage.setEnemyFireEnabled(on)),
