@@ -290,7 +290,32 @@ export const MAP_PANEL_STYLE = `
 #hud-view-options .view-options-render-label > small {
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
 }
-#hud-view-options .view-options-render-toggle { justify-self: end; margin: 0; }
+#hud-view-options .view-options-render-choices {
+  display: inline-flex; justify-self: end; align-items: stretch; gap: 1px;
+  min-width: 0;
+}
+#hud-view-options .view-options-render-choice {
+  min-width: 0; padding-inline: var(--space-3); border-radius: 0;
+  background: transparent; color: var(--text-dim);
+}
+#hud-view-options .view-options-render-choice.on {
+  background: var(--color-primary-fill-weak); color: var(--color-primary);
+}
+#hud-view-options .view-options-render-choice:first-child {
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+}
+#hud-view-options .view-options-render-choice:last-child {
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+}
+@media ${MQ_MEDIUM_DOWN} {
+  #hud-view-options .view-options-render-row {
+    grid-template-columns: 2.4em minmax(0, 1fr);
+  }
+  #hud-view-options .view-options-render-choices {
+    grid-column: 2; justify-self: stretch; width: 100%;
+  }
+  #hud-view-options .view-options-render-choice { flex: 1 1 0; text-align: center; }
+}
 
 #hud-view-options .view-options-title {
   align-items: baseline; padding-bottom: var(--space-3);
