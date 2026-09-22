@@ -1,5 +1,5 @@
-// 候補の列に並ぶ物体の芯。id・表示名・形態記号・軌道要素の導出に使う現在状態と、
-// 表示時刻での ECI 位置を答える。
+// 候補リストに並ぶオブジェクトの基本要素。id・表示名・形態記号・軌道要素の算出に用いる現在状態、
+// および表示時刻での ECI 位置を提供する。
 import type { Vec3 } from '../../math/vec3';
 import type { KinematicState } from '../../physics/kinematic-state';
 
