@@ -181,12 +181,15 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'light', label: '環境光',
     presets: { low: true, medium: true, high: true },
   },
-  // 天体照と一様な環境光を、近くの構造の塞がり方で弱めるか。
+  // 天体照と一様な環境光を近くの構造の塞がり方で弱めるか、さらに明るい面と自己発光する面の照り返しを足すか。
   screenSpaceDiffuse: {
     kind: 'choice', group: 'light', label: '遮蔽と照り返し',
-    items: [[SCREEN_SPACE_DIFFUSE.off, 'オフ'], [SCREEN_SPACE_DIFFUSE.occlusion, '遮蔽']],
+    items: [
+      [SCREEN_SPACE_DIFFUSE.off, 'オフ'], [SCREEN_SPACE_DIFFUSE.occlusion, '遮蔽'],
+      [SCREEN_SPACE_DIFFUSE.indirect, '遮蔽と照り返し'],
+    ],
     presets: {
-      low: SCREEN_SPACE_DIFFUSE.off, medium: SCREEN_SPACE_DIFFUSE.occlusion, high: SCREEN_SPACE_DIFFUSE.occlusion,
+      low: SCREEN_SPACE_DIFFUSE.off, medium: SCREEN_SPACE_DIFFUSE.occlusion, high: SCREEN_SPACE_DIFFUSE.indirect,
     },
   },
   // 遮蔽と照り返しを求める解像度と標本数の段。「高」は描画のアーティファクトを切り分けるための段で、

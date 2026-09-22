@@ -1,5 +1,5 @@
 // 受け手 1 画素のまわりの半球を、画面に写った近くの構造に対して走査する。答えるのは、余弦重みで測った
-// 遮られない割合(可視率)と、遮られない向きの平均(曲げた法線)。
+// 遮られない割合(可視率)と、遮られない向きの平均(曲げた法線)と、遮る面が受け手へ返す光(照り返し)。
 //
 // 画面上の向き(スライス)を数本取り、それぞれ両側へ深度を引く。スライスの中の遮りは扇形のビットマスクで
 // 持ち、深度の標本を一定の厚みの板とみなして、板が覆う扇形を立てる(Therrien, Levesque, Gilet 2023
@@ -36,6 +36,16 @@ export interface HemisphereScan {
   readonly visibility: FloatNode;
   // 遮られない向きの余弦重みの平均(view 空間、正規化済み)。
   readonly bentNormal: Vec3Node;
+  // 遮る面が受け手へ返す光の放射照度(SUN_IRRADIANCE_1AU の目盛り)。照り返しを集めない走査では 0。
+  readonly indirect: Vec3Node;
+}
+
+// 遮る面の読み口。走査の標本の uv で、そこに写っている面を引く。
+export interface SurfaceRadiance {
+  // 標本 uv に写っている面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)。
+  radianceAt(uv: Vec2Node): Vec3Node;
+  // 同じ面の法線(view 空間の単位ベクトル)。受け手に背を向けた標本を捨てるのに使う。
+  normalAt(uv: Vec2Node): Vec3Node;
 }
 
 // スライス 1 枚 — 受け手の視線 V と画面上の向きが張る平面。角度はすべて V から測り、orthoDirection の側を
@@ -59,10 +69,11 @@ interface Slice {
 // 走査の解像度で写した面 — 素の深度 depth と法線 normal(view 空間、oct 符号化)— の上で、いま描いている
 // 画素を受け手として走査する。projection / projectionInverse は実カメラの射影行列とその逆、sliceCount は
 // スライスの数、stepCount は片側の歩数、noise は画素ごとの 0..1 の組(x がスライスの回転、y が歩みのずれ)。
-// 面と同じ解像度の描画先へ描くこと。**Fn の中から呼ぶこと。**
+// source は遮る面の読み口で、null なら照り返しを集めない。面と同じ解像度の描画先へ描くこと。
+// **Fn の中から呼ぶこと。**
 export function scanHemisphere(
   depth: THREE.Texture, normal: THREE.Texture, projection: Mat4Uniform, projectionInverse: Mat4Uniform,
-  sliceCount: IntNode, stepCount: IntNode, noise: Vec2Node,
+  sliceCount: IntNode, stepCount: IntNode, noise: Vec2Node, source: SurfaceRadiance | null,
 ): HemisphereScan {
   // 受け手。ループの中と外の両方から読むので、先に変数へ置く。視線は投影方式によらない形から取る。
   const uv = screenUV;
@@ -76,15 +87,19 @@ export function scanHemisphere(
 
   const visibility = float(1).toVar();
   const bentNormal = receiverNormal.toVar();
+  const indirect = vec3(0).toVar();
   // 虚空(深度 0)と、半径が画面上で 1 画素に満たない受け手(天体の表面)は走査せず、1〜2 画素で効きを
   // 0 から 1 へ渡す。
   If(receiverDepth.greaterThan(0).and(radius.greaterThanEqual(1)), () => {
     const weightedVisibility = float(0).toVar();
     const totalWeight = float(0).toVar();
     const bentSum = vec3(0).toVar();
+    const weightedIndirect = vec3(0).toVar();
     Loop({ start: 0, end: sliceCount, type: 'int', condition: '<' }, ({ i }) => {
       const slice = sliceAt(float(i).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiverNormal);
       const occluded = uint(0).toVar();
+      // スライスの扇形ごとに、その扇形を最初に塞いだ面が返す放射輝度 × 扇形の余弦重みの測度の和。
+      const sliceIndirect = vec3(0).toVar();
       // 両側へ、手前から奥の順に歩む。刻みは 2 乗で受け手へ寄せ、同じ画素は読まない。
       Loop({ start: 0, end: 2, type: 'int', condition: '<' }, ({ i: sideIndex }) => {
         const side = float(1).sub(float(sideIndex).mul(2)).toVar();
@@ -104,16 +119,26 @@ export function scanHemisphere(
             // 標本はスライスの平面から外れるので、受け手と同じ平面の上でも視線からの角が縁の内側へ入る。
             const aboveTangent = dot(toFront, receiverNormal).greaterThan(distance.mul(MIN_ELEVATION));
             If(distance.lessThanEqual(WORLD_RADIUS).and(aboveTangent), () => {
-              occluded.assign(occluded.bitOr(slabSectors(slice, view, toFront, side)));
+              const sectors = slabSectors(slice, view, toFront, side).toVar();
+              // 受け手へ面を向けた標本が、手前の標本に塞がれていなかった扇形から光を返す。**OR する前に引く**
+              // — 遮りの後ろの遮りを二重に数えない。
+              if (source !== null) {
+                If(dot(source.normalAt(sampleUV), toFront).lessThan(0), () => {
+                  const newlyOccluded = sectors.bitAnd(occluded.bitNot());
+                  sliceIndirect.addAssign(source.radianceAt(sampleUV).mul(bitCount(newlyOccluded).div(SECTOR_COUNT)));
+                });
+              }
+              occluded.assign(occluded.bitOr(sectors));
             });
           });
         });
       });
-      // スライスの可視率と、遮られない向きを重みつきで積む。
+      // スライスの可視率と、遮られない向きと、照り返しを重みつきで積む。
       const unoccluded = occluded.bitNot().toVar();
       const openCount = bitCount(unoccluded).toVar();
       const sliceVisibility = openCount.div(SECTOR_COUNT);
       weightedVisibility.addAssign(slice.weight.mul(sliceVisibility));
+      weightedIndirect.addAssign(sliceIndirect.mul(slice.weight));
       totalWeight.addAssign(slice.weight);
       If(openCount.greaterThan(0), () => {
         const openAngle = angleOfCoordinate(slice, meanSectorCoordinate(unoccluded, openCount));
@@ -122,13 +147,17 @@ export function scanHemisphere(
       });
     });
     const reach = smoothstep(1, 2, radius);
-    const scanned = select(totalWeight.greaterThan(1e-6), weightedVisibility.div(max(totalWeight, 1e-6)), float(1));
+    const hasWeight = totalWeight.greaterThan(1e-6);
+    const scanned = select(hasWeight, weightedVisibility.div(max(totalWeight, 1e-6)), float(1));
     const bentLength = length(bentSum);
     const scannedBent = select(bentLength.greaterThan(1e-6), bentSum.div(max(bentLength, 1e-6)), receiverNormal);
+    // 扇形の測度の平均が余弦重みの割合なので、π を掛けると放射照度になる — 放射輝度 L の面が半球を塞げば π L。
+    const scannedIndirect = select(hasWeight, weightedIndirect.mul(Math.PI).div(max(totalWeight, 1e-6)), vec3(0));
     visibility.assign(mix(float(1), scanned, reach));
     bentNormal.assign(normalize(mix(receiverNormal, scannedBent, reach)));
+    indirect.assign(scannedIndirect.mul(reach));
   });
-  return { visibility, bentNormal };
+  return { visibility, bentNormal, indirect };
 }
 
 // view 空間の点 position から WORLD_RADIUS 離れた点が、描いている画面の上で何画素離れて写るか。上限で頭打ち

@@ -41,16 +41,25 @@ export class SunSource implements LightSource {
     return material;
   }
 
-  // 恒星を点として扱う寄与。放射照度は差分ベクトルの逆二乗、鏡面は GGX。
-  private pointContribution(sample: ShadingSample): LightContribution {
-    const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
-    const lightDir = normalize(toSun);
-    const dotNL: FloatNode = saturate(dot(sample.normal, lightDir));
-    // 恒星から届く放射照度(影込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
-    const irradiance: Vec3Node = this.sunLight.color
+  // 恒星を点として扱った放射照度(影込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
+  public pointIrradiance(sample: ShadingSample): Vec3Node {
+    const toSun = this.toSunOf(sample);
+    const dotNL: FloatNode = saturate(dot(sample.normal, normalize(toSun)));
+    return this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
       .mul(dotNL).mul(texture(this.shadow.texture, sample.uv).r);
+  }
+
+  // 恒星を点として扱う寄与。鏡面は GGX。
+  private pointContribution(sample: ShadingSample): LightContribution {
+    const irradiance = this.pointIrradiance(sample);
+    const lightDir = normalize(this.toSunOf(sample));
     return { diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)) };
+  }
+
+  // 面から恒星の中心へ向かう view 空間の差分ベクトル [m]。
+  private toSunOf(sample: ShadingSample): Vec3Node {
+    return sample.viewPositionOf(this.sunLight.position).sub(sample.position);
   }
 
   // 恒星を有限の視半径を持つ均質球体光源として扱う寄与（sphere-light.ts）。1 天文単位の遠方では点光源の挙動へ漸近し、
