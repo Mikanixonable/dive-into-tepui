@@ -1,15 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="310" viewBox="0 0 1200 310" role="img"><title>天体階層</title><defs><style>
-.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}
-.t{fill:#eeeaf5}.d{fill:#9b96a2}.a{fill:#ff3155}.b{fill:#3478ff}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}
-.h{font-size:23px;font-weight:700}.k{font-size:12px;letter-spacing:1px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}
-.line{fill:none;stroke:#89838f;stroke-width:1.6}.acc{fill:none;stroke:#ff3155;stroke-width:2}.sig{fill:none;stroke:#3478ff;stroke-width:2}
-</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
-<marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
-<marker id="u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker></defs><rect width="1200" height="310" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">天体階層</text><text x="55" y="72" class="m d k">同じ太陽系を、階層と原点を分けて構成する</text>
- <circle cx="160" cy="175" r="42" fill="#ff6b82"/><text x="139" y="181" class="s t v">太陽</text>
- <circle cx="430" cy="175" r="34" fill="#48506a"/><text x="411" y="181" class="s t v">地球</text>
- <circle cx="575" cy="175" r="18" fill="#a8aec0"/><text x="558" y="213" class="m d sm">月</text>
- <circle cx="825" cy="175" r="32" fill="#48506a"/><text x="804" y="181" class="s t v">木星</text>
- <circle cx="942" cy="137" r="12" fill="#a8aec0"/><circle cx="966" cy="174" r="10" fill="#a8aec0"/><circle cx="935" cy="210" r="9" fill="#a8aec0"/>
- <path d="M205 175H388" class="acc" marker-end="url(#r)"/><path d="M464 175H550" class="line"/><path d="M607 175H791" class="acc" marker-end="url(#r)"/>
- <text x="80" y="267" class="m d sm">CelestialSystem は天体集合・親子関係・ECI原点を束ねる</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img"><title>太陽系モデル</title><desc>天体は定義・運動・表示を分けて扱う</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs><rect width="1200" height="430" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">太陽系モデル</text><text x="55" y="72" class="m d k">天体は定義・運動・表示を分けて扱う</text><g transform="translate(55.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">SUN</text><text x="18" y="62" class="sans t v">太陽</text><text x="18" y="91" class="m d sm">中心光源・重力源</text><text x="18" y="115" class="m d sm">天体暦の基準</text></g><g transform="translate(333.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">PLANETS</text><text x="18" y="62" class="sans t v">惑星</text><text x="18" y="91" class="m d sm">親子関係と軌道</text><text x="18" y="115" class="m d sm">固有の重力・自転</text></g><g transform="translate(611.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">SATELLITES</text><text x="18" y="62" class="sans t v">衛星</text><text x="18" y="91" class="m d sm">親天体中心の運動</text><text x="18" y="115" class="m d sm">月など</text></g><g transform="translate(889.0 115)"><rect width="256.0" height="220" rx="15" class="box"/><text x="18" y="30" class="m a k">SMALL BODIES</text><text x="18" y="62" class="sans t v">小天体</text><text x="18" y="91" class="m d sm">点群・個体表示</text><text x="18" y="115" class="m d sm">距離で表現を切替</text></g><text x="55" y="400" class="m b sm">CelestialSystem が天体系を束ね、物理と表示の共通入口になる。</text></svg>
