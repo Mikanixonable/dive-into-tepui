@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://mikanixonable.github.io/dive-into-tepui/"><strong>▶ ブラウザで遊ぶ</strong></a>
   ·
-  <a href="WIKI.md"><strong>開発 Wiki</strong></a>
+  <a href="WIKI.md"><strong>開発 WIKI</strong></a>
   ·
   <a href="DEVELOP/SPEC/README.md"><strong>仕様書</strong></a>
   ·
@@ -28,7 +28,7 @@
   <img alt="Node.js 20以上" src="https://img.shields.io/badge/Node.js-20%2B-48506a?logo=nodedotjs&logoColor=white">
 </p>
 
-軌道遷移、姿勢制御、時間加速、会合、射撃を一つのゲーム状態の上で扱う、WebGPU 製の 3D 軌道力学シューティングです。詳細なコードベースの読み方は [開発 Wiki](WIKI.md)、ゲームが**どう振る舞うべきか**は [SPEC](DEVELOP/SPEC/README.md) を参照してください。
+軌道遷移、姿勢制御、時間加速、会合、射撃を一つのゲーム状態の上で扱う、WebGPU 製の 3D 軌道力学シューティングです。詳細なコードベースの読み方は [開発 WIKI](WIKI.md)、ゲームが**どう振る舞うべきか**は [SPEC](DEVELOP/SPEC/README.md) を参照してください。
 
 <p align="center">
   <img src=".github/readme/hero-orbit.svg" alt="軌道戦闘の概要" width="100%">
@@ -39,7 +39,7 @@
 | 項目 | 内容 |
 | --- | --- |
 | **実行環境** | ブラウザ / WebGPU |
-| **描画** | Three.js WebGPU renderer + TSL |
+| **描画** | Three.js WebGPU 描画器 + TSL |
 | **言語** | TypeScript |
 | **物理** | RK4、Kepler 軌道、2次重力場、大気抵抗、太陽放射圧、剛体姿勢 |
 | **航法** | マニューバーノード、ラグランジュ点、慣性系 / 回転系 |
@@ -91,9 +91,9 @@
   <img src=".github/readme/ship-assembly.svg" alt="接続グラフとして表現された船体" width="100%">
 </p>
 
-船体は **ShipAssembly** として、module instance と connection edge のグラフで保持されます。cockpit、tank、thruster、RCS、weapon、dock、solar panel、radiator、booster などが個別の状態を持ちます。
+船体は **ShipAssembly** として、モジュール実体と接続辺からなるグラフで保持されます。`cockpit`、`tank`、`thruster`、`RCS`、`weapon`、`dock`、`solar_panel`、`radiator`、`booster` などが個別の状態を持ちます。
 
-ドッキングした船体は統合された assembly として扱われ、燃料・損傷・展開状態などもモジュール単位で保存されます。
+ドッキングした船体は一つの統合船体として扱われ、燃料・損傷・展開状態などもモジュール単位で保存されます。
 
 ---
 
@@ -116,7 +116,7 @@
 
 地球は一枚の画像ではなく、**地表タイル / 地形 / 大気 / 雲 / 大気光 / オーロラ / 照明**を別系統として構成します。地表はタイル要求・常駐キャッシュ・ページテーブルを経て GPU 材質へ渡されます。
 
-描画側には WebGPU / TSL、ray marching、blue noise、熱放射、複数の雲描画経路などの実装があります。
+描画側には WebGPU / TSL、レイマーチング、ブルーノイズ、熱放射、複数の雲描画経路などの実装があります。
 
 ---
 
@@ -213,7 +213,7 @@
 
 物理・ゲーム状態を正本とし、HUD・軌道線・マーカーなどはそこから導出します。描画や DOM がゲーム状態の所有者にならないよう、フレーム処理は概ね **入力 → シミュレーション → 表示同期 → 描画** の順に進みます。
 
-コードベースを詳しく読む場合は [開発 Wiki](WIKI.md) を参照してください。層・import・正本の規則は [ARCHITECTURE](DEVELOP/ARCHITECTURE.md)、コードの書き方は [CODING-RULE](DEVELOP/CODING-RULE.md) が正本です。
+コードベースを詳しく読む場合は [開発 WIKI](WIKI.md) を参照してください。層・import・正本の規則は [ARCHITECTURE](DEVELOP/ARCHITECTURE.md)、コードの書き方は [CODING-RULE](DEVELOP/CODING-RULE.md) が正本です。
 
 ---
 
@@ -245,7 +245,7 @@ Node.js 20 以上、WebGPU 対応ブラウザを推奨します。
 | `npm run bgm-lab` | BGM 試聴環境 |
 | `npm run ci` | 総合検証 |
 
-より詳しい開発手順、ディレクトリ構造、テストの使い分けは [開発 Wiki](WIKI.md) にまとめています。
+より詳しい開発手順、ディレクトリ構造、テストの使い分けは [開発 WIKI](WIKI.md) にまとめています。
 
 ---
 
@@ -270,7 +270,7 @@ Node.js 20 以上、WebGPU 対応ブラウザを推奨します。
 <p align="center">
   <a href="https://mikanixonable.github.io/dive-into-tepui/"><strong>▶ Dive into Tepui を起動</strong></a>
   ·
-  <a href="WIKI.md"><strong>開発 Wiki を読む</strong></a>
+  <a href="WIKI.md"><strong>開発 WIKI を読む</strong></a>
   ·
   <a href="DEVELOP/SPEC/README.md"><strong>SPEC を読む</strong></a>
 </p>
