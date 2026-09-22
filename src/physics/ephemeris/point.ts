@@ -16,7 +16,7 @@ export interface PointEphemeris {
 
   // 太陽系重心中心・ゲーム ECI 軸の位置・速度。範囲外の simTime を渡すと例外。
   // **戻り値のタグは 'numeric' に固定されている** — 数値暦でない供給源(例えば TLE/SGP4)を
-  // ここへ足すなら、その供給源のための FrameTag を新設すること。同じタグを名乗ると、
+  // ここへ足すなら、その供給源のための FrameTag を新設すること。同一のタグを指定すると、
   // 別々の供給源から引いた位置を差し引く取り違えを型が止められなくなる。
   baryStateAt(simTime: number): KinematicState<'numeric'>;
 }

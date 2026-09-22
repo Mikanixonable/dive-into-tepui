@@ -198,7 +198,7 @@ function combineSectors(visuals: readonly RingVisual[]): RingVisual {
   };
 }
 
-// 扇形ごとの線を 1 つへ束ねる。被覆率は帯ぜんぶで同じなので、全扇形へ配る。
+// 扇形ごとの線を 1 つへ束ねる。被覆率は帯全体で共通なため、全扇形へ適用する。
 function combineLineSectors(visuals: readonly RingLineVisual[]): RingLineVisual {
   return {
     ...combineSectors(visuals),

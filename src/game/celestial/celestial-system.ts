@@ -45,7 +45,7 @@ import {
   sameSystemIds, systemChainAt, systemMembersAt,
 } from './celestial-system-query';
 
-// 数値暦が収録している点を、結び先のノードへ配る。暦は id ごとに天体本体を収録している場合と
+// 数値暦が収録している点を、結び先のノードへ割り当てる（バインドする）。暦は id ごとに天体本体を収録している場合と
 // 惑星系の重心を収録している場合があり、宣言と食い違う点へ結ぶとその系がまるごと重心オフセット
 // ぶんずれる。
 function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisPoints): void {
@@ -114,7 +114,7 @@ export class CelestialSystem implements CelestialBodies {
     );
     this.eciTransform = new EciTransform(origin.motion);
     this.referenceFrames = new ReferenceFrames(this.celestialMotions, this.eciTransform);
-    // 天体1体ぶんの値は運動が答えるので、その供給源(ECI 変換器・暦)はここで1度だけ配る。
+    // 天体1体ぶんの値は運動が答えるので、その供給源(ECI 変換器・暦)はここで1度だけバインド（設定）する。
     for (const motion of this.celestialMotions) motion.bindEciTransform(this.eciTransform);
     if (ephemerisPoints !== null) bindEphemerides(this.celestialMotions, ephemerisPoints);
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));

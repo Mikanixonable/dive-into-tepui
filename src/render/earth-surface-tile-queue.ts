@@ -72,7 +72,7 @@ class PermitPool {
     });
   }
 
-  // 待機列から中断されていない要求へ枠を配る。
+  // 待機列から中断されていない要求へ処理枠を割り当てる。
   private pump(): void {
     // 利用可能な枠を待機者へ順番に渡す。
     while (this.active < this.capacity && this.waiting.length > 0) {

@@ -47,7 +47,7 @@ export class ShadowCasters {
   private readonly scratchBox = new THREE.Box3();
   private readonly scratchCorner = new THREE.Vector3();
   private readonly scratchMatrix = new THREE.Matrix4();
-  // 枝ごとに拾う、カメラにいちばん近い実体の点とその距離。
+  // 枝ごとに取得する、カメラに最も近い実体の点とその距離。
   private readonly branchAnchor = new THREE.Vector3();
   private branchDistance = Infinity;
   private branchDiffuse = false;
@@ -57,7 +57,7 @@ export class ShadowCasters {
   // 同じ配列を毎フレーム詰め直す。scene のワールド行列は呼び出し側が確定させておく。
   //
   // **層を見るだけでは足りず、Mesh であることまで見る。** シーンルートは全チャンネルを持つ
-  // (レンダラがカメラのチャンネルを絞る間も子を辿れるようにするため)ので、層だけで拾うと
+  // (レンダラがカメラのチャンネルを絞る間も子を辿れるようにするため)ので、レイヤ判定だけで抽出すると
   // ルートに当たり、Box3.expandByObject が子を再帰して天体ごと箱に入れてしまう。
   collect(
     scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight,
@@ -145,7 +145,7 @@ export class ShadowCasters {
     for (const child of object.children) this.expandVisibleCasters(child);
   }
 
-  // メッシュ 1 本ぶんの実体の在りかを、枝の代表点の候補として拾う。個体が散らばる
+  // メッシュ 1 本ぶんの実体の在りかを、枝の代表点の候補として取得する。個体が散らばる
   // InstancedMesh は、名指しできる 1 点を持たない枝として branchDiffuse を立てる。
   private takeMeshAnchor(mesh: THREE.Mesh): void {
     const instanced = mesh as THREE.InstancedMesh;
@@ -163,7 +163,7 @@ export class ShadowCasters {
     this.takeBoxAnchor(mesh.geometry.boundingBox, mesh.matrixWorld);
   }
 
-  // box の中でカメラにいちばん近い点を、枝の代表点の候補として拾う。toWorld は box の座標系から
+  // box の中でカメラに最も近い点を、枝の代表点の候補として取得する。toWorld は box の座標系から
   // 描画座標への変換で、box が既に描画座標なら null を渡す。
   private takeBoxAnchor(box: THREE.Box3, toWorld: THREE.Matrix4 | null): void {
     // カメラ座標を box のローカル座標系へ変換して最近点を算出する。逆行列演算により OBB に対する

@@ -70,7 +70,7 @@ function startAnimationLoop(
       inRun: run?.isPlaying ?? false,
       audition: pauseMenu.settingsView.bgmAudition,
     });
-    // 周回の切り替え中はランが無いので、次フレームを予約して抜ける。
+    // 周回の切り替え中はランが存在しないため、次フレームを予約して早期リターンする。
     if (run === null) {
       requestAnimationFrame(animate);
       return;
@@ -144,7 +144,7 @@ function initHud(settings: UserSettings): {
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
 }
 
-// 設定の変更を、通知から引き直す側へ配る。書き換えの入口はどれも設定へ戻す。
+// 設定の変更を、通知を受け取る各コンポーネントへ伝播する。書き換えの入口はどれも設定へ戻す。
 function bindSettings(
   settings: UserSettings, hud: Hud, pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {

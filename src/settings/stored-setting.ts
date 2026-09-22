@@ -1,5 +1,5 @@
 // ラン跨ぎで残るユーザー設定1つぶんの器と、その保存先。設定の現在値を持ち、書き換えを保存先へ
-// 流して購読者へ配る。
+// 流して購読者へ通知・配信する。
 
 import type { SettingValue } from './setting-value';
 
@@ -49,7 +49,7 @@ export class MemorySettingStorage implements SettingStorage {
   }
 }
 
-// 設定1つ。現在値を正本として持ち、書き換えを保存と購読者へ配る。
+// 設定1つ。現在値を正本として保持し、変更内容を保存先と購読者へ配信する。
 export class StoredSetting<T> implements SettingValue<T> {
   private value: T;
   private readonly listeners = new Set<(value: T) => void>();

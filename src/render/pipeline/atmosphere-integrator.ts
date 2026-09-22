@@ -196,7 +196,7 @@ export class AtmosphereIntegrator {
   // 視線 1 本がこの層を通って受ける透過率と、この層が視線へ足す内部散乱。opaqueDist は視線が
   // 不透明面へ届くまでの距離 [m] で、積分はその手前で止まる。**Fn の中から呼ぶこと。**
   //
-  // **重い側はすべて分岐の中に置く。** 大気に掛からない視線は区間の判定だけで抜ける —
+  // **重い側はすべて分岐の中に置く。** 大気に掛からない視線は区間の判定だけで早期脱出する —
   // select で混ぜると、捨てるぶんまで毎画素走る。
   public contribution(
     rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
@@ -302,7 +302,7 @@ export class AtmosphereIntegrator {
     const sharpness = select(or(truncated, takesSunset), float(1), float(0));
 
     // 手前側は山へ向かって細かく、奥側はそこから離れるほど粗く。**段を分ける位置は、山が区間の
-    // どこに在るかで決める** — 段数を機械的に半分ずつ配ると、山が区間の端に重なる視線(地表で
+    // どこに在るかで決める** — ステップ数を機械的に等分に割り当てると、山が区間の端に重なる視線(地表で
     // 終わる視線 = 天体が写る画素すべて)で片側の段が長さ 0 に潰れ、サンプル点の半分が同じ 1 点に
     // 積まれて捨てられる。
     const span = max(segment.far.sub(segment.near), 1);
