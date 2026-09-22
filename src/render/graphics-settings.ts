@@ -7,6 +7,7 @@ import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
+import { SCREEN_SPACE_DIFFUSE, SCREEN_SPACE_QUALITY } from './pipeline/screen-space/screen-space-pass';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 
@@ -179,6 +180,23 @@ export const GRAPHICS_OPTIONS = {
   ambient: {
     kind: 'toggle', group: 'light', label: '環境光',
     presets: { low: true, medium: true, high: true },
+  },
+  // 天体照と一様な環境光を、近くの構造の塞がり方で弱めるか。
+  screenSpaceDiffuse: {
+    kind: 'choice', group: 'light', label: '遮蔽と照り返し',
+    items: [[SCREEN_SPACE_DIFFUSE.off, 'オフ'], [SCREEN_SPACE_DIFFUSE.occlusion, '遮蔽']],
+    presets: {
+      low: SCREEN_SPACE_DIFFUSE.off, medium: SCREEN_SPACE_DIFFUSE.occlusion, high: SCREEN_SPACE_DIFFUSE.occlusion,
+    },
+  },
+  // 遮蔽と照り返しを求める解像度と標本数の段。「高」は描画のアーティファクトを切り分けるための段で、
+  // どのプリセットも選ばない。
+  screenSpaceQuality: {
+    kind: 'choice', group: 'light', label: '遮蔽と照り返しの精細さ',
+    items: [[SCREEN_SPACE_QUALITY.low, '低'], [SCREEN_SPACE_QUALITY.medium, '中'], [SCREEN_SPACE_QUALITY.high, '高']],
+    presets: {
+      low: SCREEN_SPACE_QUALITY.low, medium: SCREEN_SPACE_QUALITY.medium, high: SCREEN_SPACE_QUALITY.medium,
+    },
   },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {

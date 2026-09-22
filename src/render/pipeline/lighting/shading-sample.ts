@@ -1,7 +1,7 @@
 // ライティングパスの全光源が共有する、1 画素ぶんのシェーディング入力。法線・粗さ・深度は
 // 同じ 1 つの面から揃って引く必要があるので、光源からの G バッファ読み出しはここへ集める。
 import * as THREE from 'three/webgpu';
-import { screenSize, screenUV, select, texture, uniform, vec2, vec4 } from 'three/tsl';
+import { dot, screenSize, screenUV, select, texture, uniform, vec2, vec4 } from 'three/tsl';
 import { octDecodeNormal, type GBufferPass } from '../gbuffer';
 import { viewPositionAt, viewRayAt } from '../view-ray';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
@@ -46,20 +46,25 @@ export class ShadingSample {
   // 面から視点へ向かう向き = 視線の逆向き。「復元位置の逆向き」は透視投影でしか成り立たない
   // ので、投影方式に依らない形(view-ray.ts)から取る。
   public readonly viewDir: Vec3Node;
+  // 視線を法線で映した向き(view 空間、単位ベクトル)。
+  public readonly reflected: Vec3Node;
 
   // G バッファを引く uv を 1 度だけ組み、すべての入力をその uv から取る。
   public constructor(gbuffer: GBufferPass) {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewMatrix = uniform(new THREE.Matrix4());
     this.viewMatrixInverse = uniform(new THREE.Matrix4());
+    // 面の G バッファ。
     const shadeUV = shadingUV(gbuffer, screenUV);
     this.uv = shadeUV;
     this.lit = gbuffer.covered(shadeUV);
     this.normal = octDecodeNormal(texture(gbuffer.normalTexture, shadeUV).rg);
     this.roughness = texture(gbuffer.roughnessTexture, shadeUV).r;
+    // 深度から復元した位置と、視線の向き。
     this.position = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse, shadeUV);
     this.worldPosition = this.viewMatrixInverse.mul(vec4(this.position, 1)).xyz;
     this.viewDir = viewRayAt(this.projMatrixInverse, shadeUV).direction.negate();
+    this.reflected = this.normal.mul(dot(this.normal, this.viewDir).mul(2)).sub(this.viewDir);
   }
 
   // 描画座標の点を position・normal と同じ view 空間へ写す。光源の位置は描画座標で持たれる
