@@ -162,4 +162,53 @@ export function register(): void {
     // 参加者は ship と nearCasing の 2 体だけで、50m 離れた distantCasing は除外される
     assert.equal(physics.participants, 2);
   });
+
+  test('contact: 薬莢同士の接触はアンカー(自艦)から15m以内のペアに限定される', () => {
+    const ship = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(0, 0, 0), v3()),
+      { radius: 5, mass: 1000, collides: true, engagementAnchor: true },
+    );
+    // どちらも 20m 地点（30m以内なので参加者には入るが、15m以遠なので薬莢同士のペアは作られない）
+    const casingA = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(20, 0, 0), v3()),
+      { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+    );
+    const casingB = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(20.5, 0, 0), v3()),
+      { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+    );
+
+    const physics = new EntityContactPhysics();
+    physics.resolveEntityContacts(
+      0, [ship, casingA, casingB], [new EngagementZone([ship])], {} as DynamicReactionServices,
+    );
+
+    // 参加者は3体だが、casingA と casingB のペアは15m以遠のため生成されず、ship とのペアも離れているため候補ペアは0
+    assert.equal(physics.participants, 3);
+    assert.equal(physics.candidatePairs, 0);
+  });
+
+  test('contact: 密集した薬莢同士のペア数は個体あたりの上限(4)でクリッピングされる', () => {
+    const ship = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(0, 0, 0), v3()),
+      { radius: 5, mass: 1000, collides: true, engagementAnchor: true },
+    );
+    // 自艦近傍(10m: 船体半径5mの外、15m以内)に10個の薬莢が密集(全組み合わせなら 45 ペア)
+    const casings: DynamicMotion[] = [];
+    for (let i = 0; i < 10; i++) {
+      casings.push(new DynamicMotion(
+        kinematicState<'eci'>(0, v3(10 + i * 0.05, 0, 0), v3()),
+        { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+      ));
+    }
+
+    const physics = new EntityContactPhysics();
+    physics.resolveEntityContacts(
+      0, [ship, ...casings], [new EngagementZone([ship])], {} as DynamicReactionServices,
+    );
+
+    // 10個の完全グラフ 45 ペアではなく、個体あたり最大4ペアに制限される(全ペア数は高々 10 * 4 / 2 = 20)
+    assert.ok(physics.candidatePairs <= 20);
+    assert.ok(physics.candidatePairs > 0);
+  });
 }
