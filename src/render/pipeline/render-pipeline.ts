@@ -257,6 +257,9 @@ export class RenderPipeline {
       indirect: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.screenSpacePass.indirectTexture, screenUV).rgb), 1),
       ),
+      'bounce-source': this.buildCompositeMaterial(
+        vec4(this.toneMapped(texture(this.screenSpacePass.surfaceRadianceTexture, screenUV).rgb), 1),
+      ),
       material: inspectMaterial,
       atmosphere: inspectMaterial,
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
