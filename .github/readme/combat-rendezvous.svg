@@ -11,13 +11,13 @@
 <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
 <rect width="1200" height="420" rx="20" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">RENDEZVOUS & COMBAT</text><text x="55" y="72" class="m d k">ORBITAL GEOMETRY CREATES THE FIRING OPPORTUNITY</text>
+<text x="55" y="48" class="m t h">会合と戦闘</text><text x="55" y="72" class="m d k">軌道幾何が射撃機会をつくる</text>
 <g transform="translate(60 108)">
 <path d="M40 208C226 40 480 44 678 185" class="line"/><path d="M40 236C240 94 482 98 706 210" class="accent"/>
-<g transform="translate(350 151)"><path d="M-18-9L25 0-18 9-5 0Z" fill="#eeeaf5"/><circle r="29" class="signal"/><text x="-32" y="52" class="m b sm">PLAYER</text></g>
-<g transform="translate(760 215)"><path d="M-14-10L22 0-14 10-3 0Z" fill="#ff6b82"/><circle r="25" class="accent"/><text x="-28" y="49" class="m b sm">TARGET</text></g>
-<circle cx="820" cy="165" r="7" class="signal"/><text x="835" y="168" class="m s sm">LEAD POINT</text>
+<g transform="translate(350 151)"><path d="M-18-9L25 0-18 9-5 0Z" fill="#eeeaf5"/><circle r="29" class="signal"/><text x="-32" y="52" class="m b sm">自機</text></g>
+<g transform="translate(760 215)"><path d="M-14-10L22 0-14 10-3 0Z" fill="#ff6b82"/><circle r="25" class="accent"/><text x="-28" y="49" class="m b sm">目標</text></g>
+<circle cx="820" cy="165" r="7" class="signal"/><text x="785" y="144" class="m s sm">見越し点</text>
 <path d="M375 151L813 165" class="signal dash" marker-end="url(#arrB)"/><path d="M760 215L812 173" class="line"/>
-<path d="M350 105L412 81" class="accent" marker-end="url(#arrR)"/><text x="420" y="81" class="m a sm">relative velocity</text>
-<g transform="translate(885 95)"><rect width="245" height="170" rx="14" class="box"/><text x="18" y="30" class="m a k">FIRE SOLUTION</text><text x="18" y="62" class="m d sm">range</text><text x="135" y="62" class="m t v">1.84 km</text><text x="18" y="91" class="m d sm">relative v</text><text x="135" y="91" class="m t v">224 m/s</text><text x="18" y="120" class="m d sm">lead</text><text x="135" y="120" class="m t v">projectile</text><text x="18" y="149" class="m d sm">time warp</text><text x="135" y="149" class="m an v">≤ ×4</text></g>
+<path d="M350 105L412 81" class="accent" marker-end="url(#arrR)"/><text x="420" y="81" class="m a sm">相対速度</text>
+<g transform="translate(885 95)"><rect width="220" height="170" rx="14" class="box"/><text x="18" y="30" class="m a k">射撃諸元</text><text x="18" y="62" class="m d sm">距離</text><text x="122" y="62" class="m t v">1.84 km</text><text x="18" y="91" class="m d sm">相対速度</text><text x="122" y="91" class="m t v">224 m/s</text><text x="18" y="120" class="m d sm">見越し</text><text x="122" y="120" class="m t v">実体弾</text><text x="18" y="149" class="m d sm">時間加速</text><text x="122" y="149" class="m an v">≤ ×4</text></g>
 </g></svg>
