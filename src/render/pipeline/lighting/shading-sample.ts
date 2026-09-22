@@ -49,13 +49,14 @@ export class ShadingSample {
   // 視線を法線で映した向き(view 空間、単位ベクトル)。
   public readonly reflected: Vec3Node;
 
-  // G バッファを引く uv を 1 度だけ組み、すべての入力をその uv から取る。
-  public constructor(gbuffer: GBufferPass) {
+  // G バッファを引く uv を 1 度だけ組み、すべての入力をその uv から取る。uv は描いている画素に当たる G バッファの
+  // uv で、G バッファと同じ解像度で描くなら screenUV のまま。
+  public constructor(gbuffer: GBufferPass, uv: Vec2Node = screenUV) {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewMatrix = uniform(new THREE.Matrix4());
     this.viewMatrixInverse = uniform(new THREE.Matrix4());
     // 面の G バッファ。
-    const shadeUV = shadingUV(gbuffer, screenUV);
+    const shadeUV = shadingUV(gbuffer, uv);
     this.uv = shadeUV;
     this.lit = gbuffer.covered(shadeUV);
     this.normal = octDecodeNormal(texture(gbuffer.normalTexture, shadeUV).rg);

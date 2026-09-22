@@ -15,6 +15,7 @@ import { GBufferPass, octDecodeNormal } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
 import { AmbientSource } from './lighting/ambient-source';
+import { IndirectSource } from './lighting/indirect-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
@@ -59,6 +60,7 @@ export class RenderPipeline {
   private readonly sunSource: SunSource;
   private readonly _planetLight: PlanetLightSource;
   private readonly _ambient: AmbientSource;
+  private readonly indirectSource: IndirectSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
@@ -130,20 +132,21 @@ export class RenderPipeline {
       renderer, this.gbuffer,
       this._bodyShadow, this._ringShadow, this._cumulusShadow, this.meshShadow, gpu,
     );
-    this.screenSpacePass = new ScreenSpacePass(
-      renderer, this.gbuffer, gpu, graphics.screenSpaceDiffuse, graphics.screenSpaceQuality,
-    );
-    this.occlusion = new EnvironmentOcclusion(this.screenSpacePass.visibilityTexture);
     this.sphereSpecular = new SphereSpecular();
     this.sunSource = new SunSource(
       this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
+    this.screenSpacePass = new ScreenSpacePass(
+      renderer, this.gbuffer, this.sunSource, gpu, graphics.screenSpaceDiffuse, graphics.screenSpaceQuality,
+    );
+    this.occlusion = new EnvironmentOcclusion(this.screenSpacePass.visibilityTexture);
     this._planetLight = new PlanetLightSource(
       this._sunLight, this._bodyShadow, this.sphereSpecular, this.occlusion,
       graphics.planetLightCount, graphics.planetLightModel,
     );
     this._ambient = new AmbientSource(this._sunLight, this.occlusion);
+    this.indirectSource = new IndirectSource(this.screenSpacePass.indirectTexture);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
-      this.sunSource, ...this._planetLight.lightSources, this._ambient,
+      this.sunSource, ...this._planetLight.lightSources, this._ambient, this.indirectSource,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
 
@@ -251,6 +254,9 @@ export class RenderPipeline {
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
       occlusion: this.buildCompositeMaterial(vec4(vec3(this.occlusion.visibilityAt(screenUV)), 1)),
+      indirect: this.buildCompositeMaterial(
+        vec4(this.toneMapped(texture(this.screenSpacePass.indirectTexture, screenUV).rgb), 1),
+      ),
       material: inspectMaterial,
       atmosphere: inspectMaterial,
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
@@ -344,10 +350,11 @@ export class RenderPipeline {
     this.lensEnabled = graphics.lens;
     this.screenSpacePass.setMode(graphics.screenSpaceDiffuse);
     this.screenSpacePass.setQuality(graphics.screenSpaceQuality);
-    // 天体照と環境光は、遮蔽と照り返しのパスが描くあいだ可視率を読む。
+    // 天体照と環境光は、遮蔽と照り返しのパスが描くあいだ可視率を読む。照り返しは、それを集める方式のあいだ足す。
     const occluded = graphics.screenSpaceDiffuse !== SCREEN_SPACE_DIFFUSE.off;
     this._planetLight.setOccluded(occluded);
     this._ambient.setOccluded(occluded);
+    this.indirectSource.setEnabled(graphics.screenSpaceDiffuse === SCREEN_SPACE_DIFFUSE.indirect);
     this.shadowMaps.setQuality(
       graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
@@ -442,7 +449,7 @@ export class RenderPipeline {
     // 影パス。G バッファの深度を読む。
     this.shadowPass.render(camera, width, height);
 
-    // 遮蔽と照り返しのパス。G バッファの深度と法線を読む。
+    // 遮蔽と照り返しのパス。G バッファと影の透過率を読む。
     this.screenSpacePass.render(camera, width, height);
 
     // 天体照の写し。基準点はカメラの位置で、ライティングパスより前に焼く。
