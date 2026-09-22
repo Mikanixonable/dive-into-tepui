@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390"><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.sans{font-family:system-ui,-apple-system,sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.f{fill:#5f5a65}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:7 7}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="390" rx="20" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">RUNTIME STRUCTURE</text><text x="55" y="72" class="m d k">AUTHORITATIVE STATE FLOWS OUTWARD TO PRESENTATION AND DEVICES</text>
+<g transform="translate(55 120)">
+<rect x="0" y="0" width="180" height="120" rx="14" class="box"/><text x="18" y="34" class="sans t v">Physics</text><text x="18" y="63" class="m d sm">orbit / attitude</text><text x="18" y="86" class="m d sm">pure state updates</text>
+<rect x="225" y="0" width="200" height="120" rx="14" class="box"/><text x="243" y="34" class="sans t v">Game model</text><text x="243" y="63" class="m d sm">ship / combat / plan</text><text x="243" y="86" class="m d sm">authoritative state</text>
+<rect x="470" y="0" width="210" height="120" rx="14" class="box"/><text x="488" y="34" class="sans t v">Presentation</text><text x="488" y="63" class="m d sm">HUD / markers / lines</text><text x="488" y="86" class="m d sm">derived each frame</text>
+<rect x="725" y="0" width="190" height="120" rx="14" class="box"/><text x="743" y="34" class="sans t v">Render</text><text x="743" y="63" class="m d sm">Three.js / WebGPU</text><text x="743" y="86" class="m d sm">GPU resources</text>
+<rect x="960" y="0" width="185" height="120" rx="14" class="box"/><text x="978" y="34" class="sans t v">Devices</text><text x="978" y="63" class="m d sm">DOM / audio / input</text><text x="978" y="86" class="m d sm">declarative edges</text>
+<path d="M180 60H220M425 60H465M680 60H720M915 60H955" class="accent" marker-end="url(#arrR)"/>
+<rect x="0" y="165" width="1090" height="64" rx="12" class="soft"/><text x="18" y="191" class="m d xs">FRAME PHASES</text><text x="18" y="216" class="m t sm">INPUT → SIMULATION → PRESENTATION SYNC → RENDER</text>
+</g></svg>
