@@ -7,9 +7,8 @@ import type * as THREE from 'three/webgpu';
 import {
   abs, acos, clamp, dot, exp2, float, luminance, max, mix, select, smoothstep, sqrt, texture, vec4,
 } from 'three/tsl';
-import { octDecodeNormal, octEncodeNormal } from '../gbuffer';
+import { octDecodeNormal } from '../gbuffer';
 import type { ShadingSample } from '../lighting/shading-sample';
-import type { HemisphereScan } from './hemisphere-scan';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 0..π の角を、余弦と正弦の組で持ったもの。小さい角でも正弦が桁を失わない。
@@ -23,17 +22,17 @@ const MIN_SOLID_ANGLE = 1e-30;
 // 半球の縁の角 π/2。
 const RIGHT_ANGLE: Angle = { cos: float(0), sin: float(1) };
 
-// 走査の結果 scan と受け手のアルベド albedo(線形 RGB)を、可視率テクスチャの 1 画素へ詰める。
-export function encodeVisibility(scan: HemisphereScan, albedo: Vec3Node): Vec4Node {
+// 可視率 visibility と、octEncodeNormal で詰めた曲げた法線 encodedBentNormal と、受け手のアルベド albedo(線形
+// RGB)を、可視率テクスチャの 1 画素へ詰める。
+export function encodeVisibility(visibility: FloatNode, encodedBentNormal: Vec2Node, albedo: Vec3Node): Vec4Node {
   // GTAO の多重反射の当てはめ G = max(V, ((V·a + b)·V + c)·V)(Jimenez, Wu, Pesce, Jarabo 2016)を V で
   // 割った g = G / V。割らずに書くと V → 0 でもその極限へ落ちる。
-  const visibility = scan.visibility;
   const reflectance = luminance(albedo);
   const a = reflectance.mul(2.0404).sub(0.3324);
   const b = reflectance.mul(-4.7951).add(0.6417);
   const c = reflectance.mul(2.7552).add(0.6903);
   const lift = max(visibility.mul(a).add(b).mul(visibility).add(c), 1);
-  return vec4(octEncodeNormal(scan.bentNormal), visibility, lift);
+  return vec4(encodedBentNormal, visibility, lift);
 }
 
 export class EnvironmentOcclusion {

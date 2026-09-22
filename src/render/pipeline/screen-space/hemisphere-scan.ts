@@ -6,8 +6,8 @@
 // 「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, acos, clamp, cos, countOneBits, cross, dot, float, floor, getViewPosition, length, max, min, mix,
-  normalize, round, screenSize, screenUV, select, sign, sin, smoothstep, texture, uint, vec2, vec3, vec4,
+  If, Loop, acos, clamp, cos, countOneBits, cross, dot, float, floor, getViewPosition, ivec2, length, max, min, mix,
+  normalize, pow, round, screenSize, screenUV, select, sign, sin, smoothstep, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
@@ -15,8 +15,11 @@ import type { FloatNode, IntNode, Mat4Uniform, UintNode, Vec2Node, Vec3Node } fr
 
 // 遮りを探す距離 [m]。受け手からこれより遠い面は遮らない。
 const WORLD_RADIUS = 4;
-// 深度の標本 1 つが奥へ占める厚み [m]。
-const SLAB_THICKNESS = 0.5;
+// 深度の標本 1 つが奥へ占める厚み [m]。標本は疎らなので、同じ面の上で隣り合う標本の間の扇形は板が奥へ覆って
+// 埋める — 薄くすると壁の足元や内隅の遮りが抜け、厚くすると細い梁が奥の空まで塞ぐ。
+const SLAB_THICKNESS = 1.5;
+// 歩みの刻みの分布の指数。1 より大きいほど標本を受け手の近くへ寄せる。
+const STEP_DISTRIBUTION_EXPONENT = 1.25;
 // 画面上で探す半径の上限。走査の解像度の高さに対する比。
 const MAX_SCREEN_RADIUS = 0.25;
 // 受け手の接平面からの仰角の正弦がこれ以下の標本は、接平面の上に出ていないとみなす。法線の量子化の誤差を
@@ -40,14 +43,6 @@ export interface HemisphereScan {
   readonly indirect: Vec3Node;
 }
 
-// 遮る面の読み口。走査の標本の uv で、そこに写っている面を引く。
-export interface SurfaceRadiance {
-  // 標本 uv に写っている面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)。
-  radianceAt(uv: Vec2Node): Vec3Node;
-  // 同じ面の法線(view 空間の単位ベクトル)。受け手に背を向けた標本を捨てるのに使う。
-  normalAt(uv: Vec2Node): Vec3Node;
-}
-
 // スライス 1 枚 — 受け手の視線 V と画面上の向きが張る平面。角度はすべて V から測り、orthoDirection の側を
 // 正とする。半球はこの平面の中で [n − π/2, n + π/2] を占め、測度 cos(h − n)·|sin h| dh で量る。
 interface Slice {
@@ -67,19 +62,22 @@ interface Slice {
 }
 
 // 走査の解像度で写した面 — 素の深度 depth と法線 normal(view 空間、oct 符号化)— の上で、いま描いている
-// 画素を受け手として走査する。projection / projectionInverse は実カメラの射影行列とその逆、sliceCount は
-// スライスの数、stepCount は片側の歩数、noise は画素ごとの 0..1 の組(x がスライスの回転、y が歩みのずれ)。
-// source は遮る面の読み口で、null なら照り返しを集めない。面と同じ解像度の描画先へ描くこと。
-// **Fn の中から呼ぶこと。**
+// 画素を受け手として走査する。面の各画素は、寸法 gbufferSize [px] の G バッファのうちその画素が表す画素
+// (gbufferUVOf)の値を持つ。projection / projectionInverse は実カメラの射影行列とその逆、sliceCount はスライスの
+// 数、stepCount は片側の歩数、noise は画素ごとの 0..1 の組(x がスライスの回転、y が歩みのずれ)。radiance は
+// 同じ解像度の、面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)で、null なら照り返しを集めない。面と同じ
+// 解像度の描画先へ描くこと。**Fn の中から呼ぶこと。**
 export function scanHemisphere(
-  depth: THREE.Texture, normal: THREE.Texture, projection: Mat4Uniform, projectionInverse: Mat4Uniform,
-  sliceCount: IntNode, stepCount: IntNode, noise: Vec2Node, source: SurfaceRadiance | null,
+  depth: THREE.Texture, normal: THREE.Texture, gbufferSize: Vec2Node, projection: Mat4Uniform,
+  projectionInverse: Mat4Uniform, sliceCount: IntNode, stepCount: IntNode, noise: Vec2Node,
+  radiance: THREE.Texture | null,
 ): HemisphereScan {
   // 受け手。ループの中と外の両方から読むので、先に変数へ置く。視線は投影方式によらない形から取る。
-  const uv = screenUV;
-  const receiverDepth = texture(depth, uv).r.toVar();
+  const pixel = floor(screenUV.mul(screenSize)).toVar();
+  const uv = gbufferUVOf(pixel, gbufferSize).toVar();
+  const receiverDepth = textureLoad(depth, ivec2(pixel)).r.toVar();
   const position = getViewPosition(uv, receiverDepth, projectionInverse).toVar();
-  const receiverNormal = octDecodeNormal(texture(normal, uv).rg).toVar();
+  const receiverNormal = octDecodeNormal(textureLoad(normal, ivec2(pixel)).rg).toVar();
   const view = viewRayAt(projectionInverse, uv).direction.negate().toVar();
   const radius = screenRadius(position, projection).toVar();
   const rotation = noise.x.toVar();
@@ -100,20 +98,21 @@ export function scanHemisphere(
       const occluded = uint(0).toVar();
       // スライスの扇形ごとに、その扇形を最初に塞いだ面が返す放射輝度 × 扇形の余弦重みの測度の和。
       const sliceIndirect = vec3(0).toVar();
-      // 両側へ、手前から奥の順に歩む。刻みは 2 乗で受け手へ寄せ、同じ画素は読まない。
+      // 両側へ、手前から奥の順に歩む。同じ画素は読まない。
       Loop({ start: 0, end: 2, type: 'int', condition: '<' }, ({ i: sideIndex }) => {
         const side = float(1).sub(float(sideIndex).mul(2)).toVar();
         Loop({ start: 0, end: stepCount, type: 'int', condition: '<' }, ({ i: step }) => {
           const progress = float(step).add(jitter).div(float(stepCount));
-          const offset = max(progress.mul(progress).mul(radius), 1);
-          const target = uv.add(slice.screenDirection.mul(side.mul(offset)).div(screenSize));
-          const sampleUV = floor(target.mul(screenSize)).add(0.5).div(screenSize).toVar();
-          const rawDepth = texture(depth, sampleUV).r;
+          const offset = max(pow(progress, STEP_DISTRIBUTION_EXPONENT).mul(radius), 1);
+          const target = screenUV.add(slice.screenDirection.mul(side.mul(offset)).div(screenSize));
+          const samplePixel = floor(target.mul(screenSize)).toVar();
+          const rawDepth = textureLoad(depth, ivec2(samplePixel)).r;
           // 画面の外の標本と虚空(深度 0)の標本は遮らない。
           const onScreen = target.x.greaterThanEqual(0).and(target.y.greaterThanEqual(0))
             .and(target.x.lessThan(1)).and(target.y.lessThan(1));
           If(onScreen.and(rawDepth.greaterThan(0)), () => {
-            const toFront = getViewPosition(sampleUV, rawDepth, projectionInverse).sub(position).toVar();
+            const toFront = getViewPosition(gbufferUVOf(samplePixel, gbufferSize), rawDepth, projectionInverse)
+              .sub(position).toVar();
             const distance = length(toFront);
             // 接平面の上に出ていない標本は遮らない — 板はそこから奥へ、さらに低く伸びる。画素の中心へ寄せた
             // 標本はスライスの平面から外れるので、受け手と同じ平面の上でも視線からの角が縁の内側へ入る。
@@ -122,10 +121,11 @@ export function scanHemisphere(
               const sectors = slabSectors(slice, view, toFront, side).toVar();
               // 受け手へ面を向けた標本が、手前の標本に塞がれていなかった扇形から光を返す。**OR する前に引く**
               // — 遮りの後ろの遮りを二重に数えない。
-              if (source !== null) {
-                If(dot(source.normalAt(sampleUV), toFront).lessThan(0), () => {
+              if (radiance !== null) {
+                If(dot(octDecodeNormal(textureLoad(normal, ivec2(samplePixel)).rg), toFront).lessThan(0), () => {
                   const newlyOccluded = sectors.bitAnd(occluded.bitNot());
-                  sliceIndirect.addAssign(source.radianceAt(sampleUV).mul(bitCount(newlyOccluded).div(SECTOR_COUNT)));
+                  const emitted = textureLoad(radiance, ivec2(samplePixel)).rgb;
+                  sliceIndirect.addAssign(emitted.mul(bitCount(newlyOccluded).div(SECTOR_COUNT)));
                 });
               }
               occluded.assign(occluded.bitOr(sectors));
@@ -158,6 +158,13 @@ export function scanHemisphere(
     indirect.assign(scannedIndirect.mul(reach));
   });
   return { visibility, bentNormal, indirect };
+}
+
+// いま描いている解像度の画素 pixel(整数座標)が表す、寸法 gbufferSize [px] の G バッファの画素の中心の uv。
+// **G バッファはこの uv で読み、深度から位置を戻すのもこの uv で行う** — 画素の角で読むと輪郭で虚空の値が
+// 混ざり、読んだ画素と違う uv で位置を戻すと平らな面が自分自身を遮る。
+export function gbufferUVOf(pixel: Vec2Node, gbufferSize: Vec2Node): Vec2Node {
+  return floor(pixel.add(0.5).mul(gbufferSize).div(screenSize)).add(0.5).div(gbufferSize);
 }
 
 // view 空間の点 position から WORLD_RADIUS 離れた点が、描いている画面の上で何画素離れて写るか。上限で頭打ち
