@@ -9,53 +9,59 @@
 
 ## 基準スナップショットと検査結果
 
-- 調査日: 2026-09-20
-- 対象コミット: `9105b47cc`
+- 再調査日: 2026-09-22
+- 対象コミット: `bd085b8e9`
 - 作業ブランチ: `workspace3`
-- `npm run lint`: 成功（抑制ファイルによる成功）
+- `npm run lint`: 失敗。`src/render/cloud/cloud-field.ts` と `src/render/cloud/cloud-view-field.ts` の
+  `consistent-type-imports` が各1件、加えて抑制ファイルに未使用抑制が残っている
 - `npm run typecheck`: 成功
 - `npm run check:boundaries`: 成功。既存の検査対象では違反0件
-- `npm run test:game`: 成功
-- `npm run test:render`: 成功（224/224）
+- `npm run test:game`: 成功（308/308）
+- `npm run test:render`: 成功（238/238）
+- `npm run earth-surface:test`: 成功（contract / dev delivery / release config）
 - `npm run earth-surface:check`: 失敗。`.earth-surface/bundle/earth-surface.json` が旧schema 1で、現行契約のschema 3に合っていない
 
-現行 `eslint-suppressions.json` の集計は次のとおり。旧計画に書かれた件数は基準が異なるため、実装開始時にこの集計を再取得する。
+現行 `eslint-suppressions.json` は306ファイル、383ルール項目、915件の抑制である。旧計画の集計とは
+形式・基準が異なるため、L着手時にこの値をbeforeとして保存する。
 
 | ルール | 抑制件数 |
 | --- | ---: |
-| `@typescript-eslint/no-non-null-assertion` | 1055 |
-| `@typescript-eslint/consistent-type-imports` | 384 |
+| `@typescript-eslint/consistent-type-imports` | 373 |
 | `@typescript-eslint/explicit-member-accessibility` | 317 |
 | `no-restricted-syntax` | 124 |
-| `@typescript-eslint/consistent-type-definitions` | 59 |
-| `@typescript-eslint/no-unused-vars` | 71 |
-| `@typescript-eslint/explicit-module-boundary-types` | 16 |
+| `@typescript-eslint/consistent-type-definitions` | 56 |
+| `@typescript-eslint/no-unused-vars` | 11 |
+| `local/explicit-public-return-type` | 15 |
 | `@typescript-eslint/parameter-properties` | 14 |
-| `no-console` | 11 |
-| その他 | 29 |
+| `no-unused-vars` | 2 |
+| `@typescript-eslint/array-type` | 3 |
 
 ## 再分類
 
-### 完了として閉じる項目
+### 完了または今回の残件から外す項目
 
 旧 `remaining-tasks` の次の項目は、現在のコードで実装済みと判断する。
 
 1. 入力ルーター統合: rawな `Input.takeKey` / `takeKeys` の利用は `raw-game-input-adapter.ts` と入力実装・テストに限定され、ゲームループは `GameInputPhase` / `GameInputRouter` を経由している。
 2. Gameのフレーム処理分割: `Game.advance`、予測延長、`GamePresentation`、`run.ts` の入力→前進→導出→同期→描画のフェーズに分かれている。
 3. Cloudの共通入力・ライフサイクル境界: `ClimateData`、`CloudRenderInput`、`CloudFieldBinding` / `CloudFieldSampler`、`CloudPresentation` と field source のライフサイクルが存在する。
+4. Shipのrender表示境界: `ShipModuleRenderInput` / `ShipRenderAssembly` と
+   `src/game/ship/ship-render-adapter.ts` が存在し、3つのship viewから `src/game/ship` の型参照は消えている。
+   `npm run check:boundaries` も違反0件である。
+5. 命名整理の初回監査: `behave` の残存参照はなく、`Ammo` は弾薬ドメインの語彙、`obj` はJSON payloadやThree.jsの走査変数に限定される。
+   現時点で責務を誤認させる高信頼の一括改名候補はないため、Nを独立した残件として引き継がない。
 
 これらを再実装対象に戻さない。後続作業で回帰が起きた場合は、既存の `test:game`、`test:render`、境界検査の失敗として扱う。
 
-### 引き継ぐ残件
+### 再調査後に引き継ぐ残件
 
 | ID | 残件 | 現状判定 | 着手順 |
 | --- | --- | --- | ---: |
-| L | lint設定・抑制・実違反の再整理 | 設定と抑制が現行規範からずれている | 1 |
-| B | render→gameの残存参照を除去し境界を固定 | ship viewに3ファイルの型参照が残る | 2 |
-| E | Earth bundleとレビュー残件 | 実bundleが現行schema契約を満たさない | 3 |
-| C | Cloud cell organization | 実装なし。共通入力境界の上に追加する | 4 |
-| Q | Cloud temporal stability・品質・再生成コスト | fixtureと実測が不足 | 5 |
-| N | 命名整理 | 構造変更後に限定的に実施 | 6 |
+| L | lint設定・抑制・実違反の再整理 | 現行lintは2件の実違反と未使用抑制で失敗 | 1 |
+| E | Earth bundleのschema 3再生成と実表示ゲート | runtime/fixtureはschema 3、実bundleだけschema 1 | 2 |
+| C | Cloud cell organizationの明示的な評価 | lifecycleとorganization forcingはあるが、cell evaluator/統計fixtureは未確定 | 3 |
+| Q1 | Cloud temporal stability / explicit LOD | 時刻分解・キャッシュはあるが、normal/intermediate/extremeのruntime LODは未実装 | 4 |
+| Q2 | Cloud品質・shadow・内部散乱・bakeコスト | timing/比較基盤はあるが、性能qualification未達・視覚レビューpending | 5 |
 | V | Vessel customization / production | 仕様・所有・資源モデル未確定 | 判断ゲート後 |
 
 ## 実装計画
@@ -65,59 +71,49 @@
 対象は `eslint.config.mjs`、`package.json`、`eslint-suppressions.json`、および違反を直す範囲の
 `src/`・`tests/`・`tools/`。
 
-1. `src/`・`tests/` と `tools/` の設定を分離する。`tools/` にゲームコードと同じ規則を適用し続ける必要があるかを設定差分で明示する。
-2. `no-non-null-assertion`、`no-explicit-any`、`no-console` は、現行 `DEVELOP/CODING-RULE.md` が一律禁止していないため強制エラーから外す。`!` は外部保証でない箇所だけを別バッチで意味監査する。
-3. `explicit-module-boundary-types` は、すべての引数型を要求する設定として使わず、exportされた関数と public/protected method の戻り値型を検査する形へ置き換える。設定で表せない場合は小さいカスタム検査に分ける。
-4. `_` 接頭辞の未使用引数を意図的なプレースホルダーとして許可し、未使用のローカル変数・本当に不要な引数は残す。
-5. 設定確定後に抑制を再生成・pruneし、import、default export、`prefer-for-of`、`prefer-const`、不規則空白、不要代入、cause保持を機械的に確定できる単位で修正する。`no-restricted-syntax` は default export と `undefined` union を分けて判定する。
-6. `explicit-member-accessibility` はクラス単位で `private` / `protected` / `public` を決める。全件を `public` にする修正は禁止する。
-7. 残った戻り値型、未使用変数、非null assertionをコードの意味を確認しながら修正する。目標を「抑制0件」にはしない。
+現行設定では、source/test と tools のTypeScriptルールは既に分離されている。`no-non-null-assertion`、
+`no-explicit-any`、`no-console` は強制せず、`_` 接頭辞の未使用引数も許可している。旧計画にあった
+`explicit-module-boundary-types` は現行設定にはなく、公開戻り値を確認する `local/explicit-public-return-type`
+へ置き換わっている。したがって残りは設定の再設計ではなく、現行設定に対する違反と抑制の整合である。
+
+1. `src/render/cloud/cloud-field.ts` と `src/render/cloud/cloud-view-field.ts` の type-only importを修正する。
+2. 修正後に抑制を再集計・pruneし、未使用抑制が残らない状態へする。全体一括fixではなく変更単位で差分を確認する。
+3. `consistent-type-imports`、`explicit-member-accessibility`、`no-restricted-syntax`、`local/explicit-public-return-type`
+   など現行設定由来の残件を、責務を確認しながら減らす。全件public化、非null assertion全廃、抑制0件は目標にしない。
 
 受入条件:
 
 - 設定が現行規範と矛盾する一律禁止を強制しない。
-- `npm run lint`、`npm run typecheck` が成功する。
+- `npm run lint`、`npm run typecheck` が成功し、未使用抑制がない。
 - before/afterの抑制件数と、設定由来で除外した件数を記録できる。
 - `npm run lint:fix:all` の全体一括適用ではなく、差分をレビュー可能な単位で修正されている。
 
-### B. render→gameのship表示契約を分離する
+### B. render→gameのship表示契約を分離する（完了）
 
-現状、次の描画ファイルがゲーム層のship型を直接参照している。
+`src/render/dynamic/ship/ship-render-contract.ts` に描画所有の不変契約を定義し、
+`src/game/ship/ship-render-adapter.ts` が `ShipAssembly` から一度だけ変換する構造へ移行済みである。
+`ship-module-view.ts`、`modular-ship-view.ts`、`modular-ship-dynamic-view.ts` から
+`src/game/ship` のimportは0件。`tools/check-boundaries.mjs` の装置境界検査も違反0件で、
+`test:game` / `test:render` のship表示テストも通過している。
 
-- `src/render/dynamic/ship/ship-module-view.ts`
-- `src/render/dynamic/ship/modular-ship-view.ts`
-- `src/render/dynamic/ship/modular-ship-dynamic-view.ts`
-
-実装方針:
-
-1. `src/render/dynamic/ship/` 側に、描画に必要な不変の表示契約を定義する。module id、model id、kind、hp、deployed、transform、速度・姿勢など、実際に3ファイルが読む値だけを含める。`GameContext`、汎用Services、event busは作らない。
-2. `src/game/ship/` または composition root に、`ShipAssembly` / `ShipModuleInstance` から表示契約へ変換するadapterを置く。描画側へゲームオブジェクトを渡さず、既存の `ModularShip.renderSource` と `run.ts` の接続点で一度だけ変換する。
-3. 3つのviewから `src/game/ship/*` の型importを除去し、render viewはrender-owned contractだけを受け取る。Cloudは既存の共通field契約を別扱いとし、この変更で再設計しない。
-4. `tools/check-boundaries.mjs` に `src/render/** -> src/game/**` の検査を追加する。例外を残す場合はCloudなど対象と理由をコード上に限定して記録し、ship viewの例外は残さない。
-
-受入条件:
-
-- `rg` で対象ship viewから `src/game` のimportが0件。
-- 変換後もmoduleのモデル・transform・状態・動的効果が既存表示と同じ入力値になる。
-- 境界検査、`npm run typecheck`、`npm run test:game`、`npm run test:render` が成功する。
-- 既存のHUD/Input/Gameフレーム分割を巻き戻さず、Game全体を汎用contextへ置き換えない。
+この項目は再実装しない。今後の回帰は境界検査または表示層テストの失敗として扱う。
 
 ### E. Earth Surfaceのデータ契約とレビュー残件
 
 対象は `tools/earth-surface/contract.mjs`、bundle生成・検査ツール、`.earth-surface/bundle/`、
 `src/render/earth-surface-*`、earth関連テスト。
 
-1. 現行runtime契約を正本として、schema 3、z5〜z7の完全coverage、期待tile数、template、manifest hashの生成経路を確定する。古いschema 1 bundleに合わせてruntimeを後退させない。
-2. 検証済みのreal inputから8K base colorとz5〜z7 bundleを再生成し、出典・生成条件・hashをmanifestへ残す。入力データをコミットするかは既存のasset方針に従い、生成物だけを置く場合も再生成手順を計画書へ残す。
-3. `earth-surface-material-binding.ts` の固定 `EARTH_TEXTURE.albedoScale` がmanifest/datasetのphotometry契約と一致するか確認し、データ由来の値を渡す設計へ直す。固定値で正しい場合はその根拠をテストで固定する。
-4. `DeferredTexture` の失敗通知に加え、source交換・dispose時の読み込みabortが必要かを確認する。必要なら `fetch` + `AbortController` または同等のキャンセル可能なloaderにする。失敗後に古いmaterialが残らず、source交換後に新しいbindingだけが使われることをテストする。
-5. fake fixtureのテストに加えて、Game/StageのcompositionからEarth system、surface source、materialまでを通す最小統合テストを確認する。実WebGPUのFloat16対応とブラウザ表示は、対応GPU・ブラウザでのcaptureを完了条件にする。
+1. 現行runtime契約を正本として、schema 3、z5〜z7の完全coverage、期待tile数、template、manifest hashの生成経路を維持する。古いschema 1 bundleに合わせてruntimeを後退させない。現行 `.earth-surface/bundle/` は schema 1、z0〜z7相当の43,690タイルであり、この検査に落ちる。
+2. 検証済みのreal inputから8K base colorとz5〜z7の43,008タイルを再生成し、出典・生成条件・hashをschema 3 manifestへ残す。入力データをコミットするかは既存のasset方針に従い、生成物だけを置く場合も再生成手順を残す。
+3. 完了確認済み。`earth-surface-factory.ts` が manifest の `colorCalibration.diffuseAlbedoScale`、`bondAlbedo`、`averageHue` を受け取り、固定 `EARTH_TEXTURE.albedoScale` を実bundleの値として使う構造ではない。legacy fallbackの固定値はschema 1/fallback用に限定されている。
+4. 完了確認済み。material binding、tile queue、resident coordinatorに `AbortController` とsource交換/disposeの世代境界があり、失敗・abort・遅着・旧material解放をearth関連render testsで確認している。
+5. fake fixtureに加えてGame/StageからEarth systemまでのテストは通過している。残るのはschema 3実bundleを接続した実ブラウザ/WebGPU captureであり、対応GPU・ブラウザでの確認が終わるまで完了扱いにしない。
 
 受入条件:
 
-- `npm run earth-surface:check` が成功し、runtime schemaとbundle schemaが一致する。
+- `npm run earth-surface:check` が成功し、runtime schemaとbundle schemaが一致する（現状はschema 1 bundleのため失敗）。
 - `npm run earth-surface:test`、earth関連Pythonテスト、`npm run typecheck` が成功する。
-- 8K base、z5〜z7の完全coverage、base→detail遷移、source交換、失敗/abortの結果をfixtureまたはcaptureで確認できる。
+- 8K base、z5〜z7の完全coverage、base→detail遷移はschema 3 bundleで確認し、source交換、失敗/abortは既存fixture/testで維持する。
 - 実ブラウザcaptureを実施できない環境では「未実施」と記録し、完了扱いにしない。
 
 ### C/Q. Cloud cell organization、安定性、品質、再生成コスト
@@ -127,39 +123,49 @@
 
 #### C1: 組織場のモデルと評価
 
-1. 先にrender-lab用の固定seed・固定気象・固定LOD fixtureと統計出力を作り、被覆率、cell size、row strength/aspect、connectivityのbaselineを保存する。
-2. `src/render/cloud/` に cell profile、organization field、cellular evaluatorを追加する。F1/F2または同等の評価方法、seed、時間、LODを明示的な入力にし、暗黙の乱数と表現ごとの別実装を作らない。
-3. surface、atmosphere、shadowが同じ詳細fieldを参照できるよう、必要な値だけを既存のfield sampler契約へ追加する。巨大なcloud state bagは導入しない。
-4. CPUレベルの決定性、統計、LOD境界のテストを追加し、render-labで画像・統計を確認する。
+現行コードには `cloudLifecycleAt` のcell lifecycle、`WeatherForcingField.organization`、
+RGBA basis、vertical profile、world-space sub-gridが既にある。一方、これらを「cell organization」の
+評価として固定する cell profile / cellular evaluator（F1/F2相当または同等の定義）と、row strength/aspect・
+connectivityを保存する統計fixtureはまだない。共通fieldの再配線は残件ではない。
+
+1. 固定seed・固定気象・固定LODの入力を決め、被覆率、cell size、row strength/aspect、connectivityのbaselineを保存する。
+2. 既存のlifecycle/organization forcingで十分かを上記fixtureで評価し、不足する場合だけ `src/render/cloud/` にcell profileと評価器を追加する。seed、時間、LODを明示入力にし、暗黙の乱数と表現ごとの別実装を作らない。
+3. `CloudRenderInput` / `CloudFieldBinding` が surface、atmosphere、shadow に同じfield・generation・stateを渡す現行配線をテストで固定する。巨大なcloud state bagは導入しない。
+4. CPUレベルの決定性・統計・境界のテストを追加し、render-labの画像と統計を同じfixtureから確認する。
 
 #### Q1: temporal stability / explicit LOD
 
-1. 同じdisplay timeを異なるframe rate、seek、LOD遷移で評価する比較fixtureを作る。
-2. Blue Noise、時間シード、LOD切替のどこでフレーム差が増えるかを計測し、補間・履歴・遷移期間のいずれかを選ぶ。見た目だけで合格にしない。
-3. 同一入力の再現性と許容フレーム差をfixtureに記録する。閾値はbaselineを測ってから決め、任意の数値を先に置かない。
+現行コードには大きな時刻を分解する `weather-time.ts`、world-space transport、同一時刻・気候世代・
+projection revisionの再利用cacheがある。しかし `normal` / `intermediate` / `extreme` をruntimeで分類する
+explicit temporal LOD、target anchor、時間幅に応じた平均・low-passは確認できない。visual-review toolの
+モード名だけではruntime実装の受入条件を満たさない。
+
+1. 時間倍率から temporal LOD を決める契約をruntimeへ追加し、各LODの採用anchor・更新上限・時間幅の扱いを明示する。
+2. 同じdisplay timeを異なるframe rate、seek、LOD遷移で評価し、Blue Noise、時間seed、LOD切替のどこでフレーム差が増えるかを計測する。
+3. 補間・履歴・遷移期間・low-passのいずれを採るかを決め、同一入力の再現性と許容フレーム差をfixtureへ記録する。閾値はbaseline後に決める。
 
 #### Q2: shadow / internal scattering / bake cost
 
-1. 既存GPU timingのcloud行を使って、shadow、internal scattering、sample数、品質設定別のbaselineを取得する。
-2. 時刻変更・天候変更・可視性変更で `CloudPresentation` のbakeとfield生成にかかる時間を測り、現在のgeneration cacheを基準に更新間隔、visibility停止、追加cacheの必要性を決める。
-3. render-labの画像とGPU計測の両方で、品質低下・ちらつき・予算超過を判定する。実測前に固定の性能目標を捏造しない。
+GPU timingのcloud行、`cloud-lab:qualification`、visual-review runner、diagnostic metrics、48枚のvisual-review
+画像は既に存在する。ただし qualification出力は現作業ツリーに確認できず、既存メモの代表環境測定はB0が
+60fps予算を使い切り `unqualified`、visual review manifestも `humanReview.status=pending` である。
+
+1. 現行HEADでno-cloud / cloud-enabledの総GPU p95を再取得し、shadow、atmosphere、surface、bakeの行と品質設定を対応づける。GPU timestamp非対応時にCPU時間で代用しない。
+2. 時刻変更・気候変更・可視性変更で `CloudPresentation` のbakeとfield生成を測り、generation cache、visibility停止、追加cacheの要否を実測で決める。
+3. render-labの画像とGPU計測の両方で、品質低下・ちらつき・予算超過を判定する。性能合格と視覚合格を別々に記録し、未計測・pendingを完了扱いにしない。
 
 受入条件:
 
-- `npm run test:render` が成功し、cell統計・決定性・LOD・temporal fixtureが再現可能。
-- render-labの比較画像とGPU計測に、基準入力、変更内容、許容差が記録される。
-- surface、atmosphere、shadowが同じgeneration/inputを読むことをテストまたは計測で確認できる。
-- bake更新の変更は、再生成コストと可視性停止の測定結果に基づく。
+- `npm run test:render` が成功し、cell統計・決定性・explicit LOD・temporal fixtureが再現可能。
+- render-labの比較画像とGPU計測に、基準入力、変更内容、許容差、qualification状態が記録される。
+- surface、atmosphere、shadowが同じgeneration/inputを読むことをテストまたは計測で確認できる（共通入力配線は現状実装済み）。
+- bake更新の変更は、再生成コストと可視性停止の測定結果に基づく。性能または視覚レビューが未完了なら残件として残す。
 
-### N. 命名整理
+### N. 命名整理（今回の残件から外す）
 
-ship表示境界とCloud/Earthの構造変更後に、識別子ごとに呼び出し側と責務を確認して実施する。
-
-- `Player.behave` / enemy側の `behave` は、実際の責務に合わせて `updateBehavior`、`decideAndAct` 等の具体名を選ぶ。機械的に同じ名前へ置換しない。
-- `obj` は単なる走査用ローカルか、ドメイン上の保持メンバーかを分け、後者だけを意味のある名前へ変更する。
-- `Ammo` は弾薬というドメイン用語の場合があるため、一括改名しない。曖昧な変数名だけを対象にする。
-
-受入条件は、全参照の更新、`npm run typecheck`、変更した層の回帰テスト、lint抑制の増加がないこととする。
+現行コードを横断して確認した結果、`behave` の残存参照はなく、`Ammo` は弾薬のドメイン語彙、
+`obj` はJSON payloadやThree.jsの走査変数に限定される。構造変更に伴って必ず直すべき対象は見つからなかった。
+新たな責務変更で曖昧な識別子が現れた場合だけ、その変更の受入条件に含める。
 
 ### V. Vessel customization / production（判断ゲート）
 
@@ -180,32 +186,32 @@ build timeも未決定である。
 ## 実施順と並行作業
 
 1. Lの設定再基準化と抑制再集計。
-2. Bのship表示契約と境界検査。
-3. EのEarth bundle契約修正とレビュー残件。
-4. C1のCloud組織場。
-5. Q1/Q2のCloud安定性・品質・再生成計測。
-6. Nの限定的な命名整理。
-7. Vは仕様判断ゲートを通過した場合だけ別計画化。
+2. EのEarth schema 3 bundle再生成と実表示ゲート。
+3. C1のCloud組織場の評価と不足分の実装。
+4. Q1のCloud temporal LOD / stability。
+5. Q2のCloud品質・性能・再生成計測。
+6. Vは仕様判断ゲートを通過した場合だけ別計画化。
 
-Lの設定調整とEのデータ検証は同時に調査できるが、同じファイルを編集しない。B完了前にrenderの広域lint修正を混ぜず、C1は現在のCloud共通契約を再利用してB/Eと独立した差分にする。
+Lの設定調整とEのデータ検証は同時に調査できるが、同じファイルを編集しない。C1/Qは現在のCloud共通契約を再利用し、Eのbundle生成やLの全体修正と独立した差分にする。
 
 ## レビュー結果と除外事項
 
 - 既に完了した入力、Gameフレーム、Cloud共通境界を再計画から除外した。
-- `render -> game` は既存境界検査だけでは検出されないため、ship viewの3ファイルを具体的な移行対象として追加した。
+- `render -> game` のship view移行は完了し、現行の装置境界検査で0件を確認した。
 - lintの「抑制0件」、非null assertion全廃、console全廃、全引数の型注釈は現行規範から導けないため目標にしない。
 - Earthは旧schemaにruntimeを合わせず、現行schema 3の生成・検査経路を直す。
-- Cloudは既存の共通field契約を再構築せず、組織場・安定性・計測をその上に積む。
+- Earthのmaterial校正、abort、source交換、遅着防止はコードとfixtureで実装済みで、実bundle再生成と実表示だけを残す。
+- Cloudは既存の共通field契約を再構築せず、組織場の評価、explicit temporal LOD、性能/視覚qualificationをその上に積む。
+- Cloudの現行render testsは238/238で通るが、これはperformance qualificationや人間視覚reviewの完了を意味しない。
 - Vessel productionは、仕様・所有・資源・保存が未確定なので実装開始条件を満たしていない。
 - `npm run test`、`npm run build`、実ブラウザ起動確認は、mainへ送る段階または実行時確認を明示的に求められた段階の検証であり、この計画の各ローカル実装の既定検証には含めない。
 
 ## 進捗チェックリスト
 
 - [ ] L: lint設定を現行規範へ再基準化し、抑制を再集計
-- [ ] B: ship表示契約へ移行し、render→game境界を検査
-- [ ] E: Earth schema 3 bundle、material/abort、実表示ゲートを完了
-- [ ] C1: Cloud cell organizationと共通samplerを実装
-- [ ] Q1: Cloud temporal stability / LOD fixtureを実装
-- [ ] Q2: Cloud shadow・内部散乱・bakeコストを実測して判断
-- [ ] N: 構造変更後の限定的な命名整理
+- [x] B: ship表示契約へ移行し、render→game境界を検査
+- [ ] E: Earth schema 3 bundle再生成と実表示ゲートを完了（material/abortは完了）
+- [ ] C1: Cloud cell organizationをfixtureで評価し、不足分を実装
+- [ ] Q1: Cloud temporal stability / explicit LODを実装・検証
+- [ ] Q2: Cloud shadow・内部散乱・bakeコストをqualificationまで実測
 - [ ] V: Vessel productionの仕様判断ゲート
