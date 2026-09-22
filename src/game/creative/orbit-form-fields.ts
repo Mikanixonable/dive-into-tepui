@@ -1,5 +1,5 @@
 // 軌道の指定に要る、天体まわりの選択肢と諸元。基準天体とラグランジュ系の候補を登録天体から組み、
-// 主天体間距離と太陽同期軌道の傾斜角を答える。
+// 主天体間距離と太陽同期軌道の軌道傾斜角を算出・提供する。
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { EARTH, J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/earth-system';
 import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
