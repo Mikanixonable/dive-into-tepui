@@ -90,7 +90,7 @@ export function decodeEarthTerrainPayloadOctahedral(payload: Uint8Array, key: Ea
     const encodedY = (source[offset + 1] ?? 0) / 255 * 2 - 1;
     let normalX = encodedX;
     let normalY = encodedY;
-    let normalZ = 1 - Math.abs(normalX) - Math.abs(normalY);
+    const normalZ = 1 - Math.abs(normalX) - Math.abs(normalY);
     if (normalZ < 0) {
       normalX = (1 - Math.abs(encodedY)) * (encodedX < 0 ? -1 : 1);
       normalY = (1 - Math.abs(encodedX)) * (encodedY < 0 ? -1 : 1);
