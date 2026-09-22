@@ -39,7 +39,7 @@ P3が将来機能または大規模な整理を示す。
 ゲーム層を直接参照する実装が残っている。HUD向けread modelまたは狭いportを導入し、描画入力の契約を
 ゲームのcomposition rootから切り離す。
 
-参照: [game-wide-refactoring-plan](../game-wide-refactoring-plan_2026-09-11.md)、
+参照: [game-wide-refactoring-plan](../archived/game-wide-refactoring-plan_2026-09-11.md)、
 [game-dependency-decoupling-plan](../suspended/game-dependency-decoupling-plan_2026-09-10.md)、
 [codebase-coupling-review](../suspended/codebase-coupling-review_2026-09-08.md)
 
@@ -49,7 +49,7 @@ P3が将来機能または大規模な整理を示す。
 `Input.takeKey`/`takeKeys`を直接呼んでいる。入力優先順を維持したままrouterへ集約し、raw inputの
 利用箇所を減らす。
 
-参照: [game-wide-refactoring-plan](../game-wide-refactoring-plan_2026-09-11.md)、
+参照: [game-wide-refactoring-plan](../archived/game-wide-refactoring-plan_2026-09-11.md)、
 [game-dependency-decoupling-plan](../suspended/game-dependency-decoupling-plan_2026-09-10.md)
 
 ## P1
@@ -59,7 +59,7 @@ P3が将来機能または大規模な整理を示す。
 `Game.update()`、`sync()`、`render()`に入力配分・シミュレーション前進・表示更新が集中している。
 `update → sync → render`の順序を変えず、Gameにはフェーズ順序と所有ライフサイクルを残す。
 
-参照: [game-wide-refactoring-plan](../game-wide-refactoring-plan_2026-09-11.md)
+参照: [game-wide-refactoring-plan](../archived/game-wide-refactoring-plan_2026-09-11.md)
 
 ### 4. Cloudの共通入力・ライフサイクル境界を作る
 
