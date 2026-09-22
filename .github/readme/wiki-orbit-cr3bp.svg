@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img"><title>CR3BPとラグランジュ点</title><defs><style>
+.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}
+.t{fill:#eeeaf5}.d{fill:#9b96a2}.a{fill:#ff3155}.b{fill:#3478ff}.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}
+.h{font-size:23px;font-weight:700}.k{font-size:12px;letter-spacing:1px}.v{font-size:16px;font-weight:650}.sm{font-size:12px}
+.line{fill:none;stroke:#89838f;stroke-width:1.6}.acc{fill:none;stroke:#ff3155;stroke-width:2}.sig{fill:none;stroke:#3478ff;stroke-width:2}
+</style><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker></defs><rect width="1200" height="300" rx="22" fill="url(#bg)"/><text x="55" y="48" class="m t h">CR3BP・ラグランジュ点・航法表示</text><text x="55" y="72" class="m d k">回転系で固定される幾何を、時刻ごとのECIへ写す</text>
+ <circle cx="250" cy="170" r="43" fill="#48506a" stroke="#d6d6d0"/><circle cx="720" cy="170" r="20" fill="#a8aec0"/>
+ <path d="M250 170H720" class="line"/><circle cx="602" cy="170" r="7" fill="#ff3155"/><circle cx="805" cy="170" r="7" fill="#ff3155"/>
+ <text x="585" y="145" class="m t sm">L1</text><text x="790" y="145" class="m t sm">L2</text>
+ <path d="M410 247C475 222 540 195 602 170" class="acc" marker-end="url(#r)"/><text x="846" y="152" class="s t v">表示</text><text x="846" y="177" class="m d sm">各サンプル時刻で</text><text x="846" y="198" class="m d sm">ECI ↔ 回転系</text>
+ </svg>
