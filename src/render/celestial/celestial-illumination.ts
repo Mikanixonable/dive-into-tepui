@@ -119,7 +119,6 @@ export class CelestialIllumination {
       const center = camera.floatingOrigin.RtoThreeV3(light.celestialBody.positionAt(displayTime));
       // 選定は天体だけを返すので、見た目はその天体を差し出した源から引き直す。
       const view = sources.find((source) => source.motion === light.celestialBody)?.view ?? null;
-      const map = view?.lightSourceMap ?? null;
       const frame = this.planetLightFrames[slot]!;
       frame.starDirection.subVectors(sunPos, center).normalize();
       writeBodyFromWorld(frame.bodyFromWorld, light.celestialBody, displayTime);
@@ -128,9 +127,7 @@ export class CelestialIllumination {
         radius: shapeInscribedRadius(light.celestialBody.def.radius, shapeOf(light.celestialBody.def)),
         radiance: light.radiance,
         appearance: {
-          map: map?.texture ?? null,
-          // 写しを持たない天体では読まれないので、色をそのまま通す倍率を置く。
-          albedoScale: map?.albedoScale ?? 1,
+          map: view?.lightSourceMap ?? null,
           albedo: view?.lightSourceAlbedo ?? DEFAULT_ALBEDO,
           sunIrradiance: light.sunIrradiance,
           starDirection: frame.starDirection,
