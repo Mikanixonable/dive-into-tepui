@@ -239,10 +239,13 @@
    形態係数 0.447 は `P_base` から見た日の当たる奥の壁の、半径 4 m 以内のぶん(2 と同じレイキャスト。
    足元の極限では 0.5)。「遮蔽」だけでは同じ点が 10 以下。
 4. **照り返しが返す面の色を帯びる。** 撮影 `bay` で、日の当たる橙の端の壁のそばの白い床 `P_bleed` の
-   R/B 比が、「遮蔽と照り返し」で「遮蔽」の 1.2 倍以上。
-5. **自己発光が照り返す。** 撮影 `bay-dark`(太陽は床の真下、天体照なし)で、光る箱のそばの床 `P_glow` が
-   「遮蔽と照り返し」で「遮蔽」より 10 以上明るい(いまでも遠くの床より 3〜6 明るいが、それは光る箱の
-   レンズの滲みで、照り返しではない)。
+   R/B 比を**線形へ戻して**比べ、「遮蔽と照り返し」で「遮蔽」の 1.2 倍以上。sRGB のままでは読まない —
+   最終合成の暗部の彩度の抑え(環境光がオンのあいだ掛かる)が暗い色を灰色へ寄せ、照り返しの色と無関係に
+   比を縮める。
+5. **自己発光が照り返す。** 撮影 `bay-dark`(太陽は床の真下、天体照なし)で、光る箱の手前(+Z)の床
+   `P_glow` が、5×5 の平均で「遮蔽と照り返し」で「遮蔽」より 10 以上明るい。`P_glow` は箱の面のうち
+   **画面に写っている面の前**に取る — 写っていない面は照り返しの源にならない(画面に写っているものから
+   引く手法の性質)。
 6. **太陽の直射だけが当たっている面は変わらない。** 較正の撮影 `albedo` の右下の球の最も明るい画素が
    (241, 241, 241) のまま。
 7. **オフは今の絵と同じ。** 設定「遮蔽と照り返し」をオフにして撮った組が、before の 2 組に対して
@@ -273,68 +276,6 @@
 
 ## 手順
 
-### 手順 4. 照り返しを足す
-
-**目的** — 遮る面が太陽の直射と自己発光で返す光を集め、ライティングパスの光源の 1 つとして足す
-(設定「遮蔽と照り返し」)。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/lighting/sun-source.ts` L45–54 | 点光源としての放射照度(影込み)を `pointIrradiance` として切り出し、`pointContribution` もそれを使う(太陽の挙動は変えない) |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` | 構築に `sun: SunSource` を足す。前処理の MRT(いまは素の深度 r32float と法線 rg16float を、同じ全解像度の画素の中心から写している)へ、照り返しのモードでは放射輝度(rgba16float: `(1 − 金属度) × ベース色 / π × sun.pointIrradiance + 自己発光`)を足す。走査・均し・拡大を MRT にして照り返しも運び(符号の無い値なのでそのまま書いてよい)、`indirectTexture` を出す |
-| `src/render/pipeline/lighting/shading-sample.ts` | G バッファを引く uv を構築で受けられるようにする(既定は `screenUV`)。前処理の放射輝度は、全解像度の画素の中心へ寄せた uv で組んだ `ShadingSample` から `sun.pointIrradiance` を引く — `screenUV` のまま半解像度で組むと 4 画素の角で補間して読み、輪郭で虚空の値が混ざる(手順 3 で法線について踏んだ) |
-| `src/render/pipeline/screen-space/hemisphere-scan.ts` | 走査の中で、標本の扇形を OR する前に「新たに塞がった扇形の割合 × 標本の放射輝度」を積む(受け手に背を向けた標本は捨てる)。スライスの重みつき平均 × π で放射照度にする。いまの署名は `scanHemisphere(depth, normal, projection, projectionInverse, sliceCount, stepCount, noise)` で、末尾に `source` を足す |
-| `src/render/pipeline/lighting/indirect-source.ts`(新規) | 照り返しの光源。拡散 = `indirectTexture` の値、鏡面 = 0(金属の照り返しは後半の映り込みが担う)。`contributionMaterial` で包む |
-| `src/render/pipeline/render-pipeline.ts` L128–137 / L201–249 / L330–351 | `IndirectSource` を光源の列の末尾へ、`rebuildForGraphics()` で有無を配る、デバッグ表示「照り返し」の合成材質(トーンマッピングを通す) |
-| `src/render/graphics-settings.ts` | `screenSpaceDiffuse` へ `[2, '遮蔽と照り返し']` を足し、高プリセットを 2 にする |
-| `src/render/pipeline/debug-target.ts` | `'indirect'`「照り返し」を「遮蔽」の後ろへ |
-
-新しい API:
-
-```ts
-// sun-source.ts — 恒星を点として扱った放射照度(影込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
-public pointIrradiance(sample: ShadingSample): Vec3Node;
-
-// screen-space-pass.ts
-public constructor(
-  renderer: WebGPURenderer, gbuffer: GBufferPass, sun: SunSource, gpu: GpuTimings, mode: number, quality: number,
-);
-// 全解像度。rgb = 照り返しの放射照度(SUN_IRRADIANCE_1AU の目盛り)。照り返しを集めないフレームは読まれない。
-public get indirectTexture(): THREE.Texture;
-
-// hemisphere-scan.ts — scanHemisphere の末尾に足す引数。null なら照り返しを集めない。
-source: SurfaceRadiance | null,
-// 遮る面の読み口。前処理の半解像度のターゲットを読み、符号化の正本は screen-space-pass.ts が持つ。
-export interface SurfaceRadiance {
-  // 標本 uv に写っている面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)。
-  radianceAt(uv: Vec2Node): Vec3Node;
-  // 同じ面の法線(view 空間の単位ベクトル)。受け手に背を向けた標本を捨てるのに使う。
-  normalAt(uv: Vec2Node): Vec3Node;
-}
-
-// indirect-source.ts
-export class IndirectSource implements LightSource {
-  public constructor(indirectTexture: THREE.Texture);
-  // 描画設定「遮蔽と照り返し」が照り返しを集めるか。
-  public setEnabled(enabled: boolean): void;
-  public hasContribution(): boolean;
-  public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial;
-  public dispose(): void;
-}
-```
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run test:render` / `npm run test:settings`。
-- `npm run render-lab:shot -- ss-gi`(既定 = 高プリセット = 遮蔽と照り返し)を before 2 組と比べ、
-  達成目標 8 の範囲に収まる。その組で達成目標 3(`bay-bounce`)・4(`bay`)・5(`bay-dark`)・6(`albedo`)。
-  4 と 5 の「遮蔽」側は、同じセッションで `shoot(name, { screenSpaceDiffuse: 1 })` と撮り比べる
-  (手順 3 の組は `.render-lab-shots/ss3c-ao`)。
-- `npm run render-lab:shot -- ss-off screenSpaceDiffuse=0` が before 2 組に対して封筒外 0 件(達成目標 7)。
-- commit: `feat(render): 明るい面と自己発光する面の照り返しを足す`
-
 ### 手順 5. 半径・厚み・精細さの段を追い込み、負荷を測る
 
 **目的** — 手順 3・4 の初期値(R・T・画面上の半径の上限・刻みの分布・均しの回数・段の表)を、`bay` と
@@ -347,7 +288,16 @@ export class IndirectSource implements LightSource {
 | `src/render/pipeline/screen-space/screen-space-pass.ts` / `hemisphere-scan.ts` | 定数と段の表 |
 | `src/render/pipeline/screen-space/environment-occlusion.ts` | GTSO を 1 へ戻す粗さの範囲 |
 | `src/render/graphics-settings.ts` | プリセット(負荷が収まらなければ中プリセットを「遮蔽・低」へ下げる) |
+| `tools/render-lab/bay-cases.ts` | 読みどころの `P_glow` を、光る箱の画面に写っている面(+Z)の手前 0.25 m の床(`bay-dark` で (540, 222) 付近)へ移す。R を変えたら `P_base` / `P_corner` の期待値をレイキャストで引き直し、コメントの値も直す |
 | この計画ファイル | 「見積り」を実測値へ置き換える |
+
+手順 4 の時点の実測(`9f03a7a78`、同じセッションで「遮蔽」と撮り比べ):達成目標 3 は `P_base` 126(5×5 の
+平均 122.9、「遮蔽」だけでは 1〜2)で合格。4 は線形で 1.24 倍で合格(照り返しの表示では `P_bleed` が橙
+131,78,6)。5 は光る箱の手前の床 (540, 222) の 5×5 の平均が 20.7,29.7,29.7 → 69.0,97.5,97.5。GPU(intel、
+render-lab 960×540、マテリアル行 ≈ 1.03 ms)の中央値は 遮蔽 低 / 中 / 高 = 4.13 / 5.06 / 14.2 倍、遮蔽と照り返し
+低 / 中 / 高 = 5.45 / 6.26 / 19.8 倍 — 照り返しは低・中で +1.3〜1.4 ms、遮蔽・中は手順 3 から予算超過のまま。
+照り返しを足したことで走査・均し・拡大の描画先は「遮蔽」「照り返し」の 2 枚の MRT になり、「遮蔽」の方式でも
+照り返しへ 0 を書いている(three は MRT の一部の添付だけへ書けない)。均しの読みを減らすなら 2 枚とも考える。
 
 手順 3 の時点の実測(intel gen-9、render-lab 960×540、初期値のまま):
 
