@@ -139,4 +139,27 @@ export function register(): void {
     assert.equal(Math.abs(contactB.normal.y), 0);
     assert.equal(Math.abs(contactB.normal.z), 0);
   });
+
+  test('contact: 薬莢はアンカー(自艦)から30m以内のときだけ接触判定へ参加する', () => {
+    const ship = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(0, 0, 0), v3()),
+      { radius: 5, mass: 1000, collides: true, engagementAnchor: true },
+    );
+    const nearCasing = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(10, 0, 0), v3()),
+      { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+    );
+    const distantCasing = new DynamicMotion(
+      kinematicState<'eci'>(0, v3(50, 0, 0), v3()),
+      { radius: 0.5, mass: 0, collides: true, behavior: { contactKind: 'casing' } as DynamicMotion['behavior'] },
+    );
+
+    const physics = new EntityContactPhysics();
+    physics.resolveEntityContacts(
+      0, [ship, nearCasing, distantCasing], [new EngagementZone([ship])], {} as DynamicReactionServices,
+    );
+
+    // 参加者は ship と nearCasing の 2 体だけで、50m 離れた distantCasing は除外される
+    assert.equal(physics.participants, 2);
+  });
 }

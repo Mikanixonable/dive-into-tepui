@@ -1,7 +1,7 @@
 // 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた参加者どうしの
 // 接触を 1 substep ぶん TOI(接触時刻)昇順で解き、反発が起きた当事者へ collideWithEntity を呼ぶ。
 import { type KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { type Vec3, add, scale, sameVec } from '../../math/vec3';
+import { type Vec3, add, distSq, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
 import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 import type { EngagementZone } from './engagement-zone';
@@ -14,6 +14,10 @@ const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 
 // 接触の候補を引く階層グリッドの、最も細かい段の一辺 [m]。
 const CONTACT_GRID_MIN_CELL_SIZE = 1;
+
+// 薬莢の剛体接触を判定する艦(アンカー)からの最大距離 [m](SPEC/COMBAT.md「薬莢」)。
+export const CASING_CONTACT_MAX_DISTANCE = 30;
+const CASING_CONTACT_MAX_DISTANCE_SQ = CASING_CONTACT_MAX_DISTANCE ** 2;
 
 // 1 substep 分の接触候補1件。当事者は参加者列の添字 ai / bi で指す。response が null なのは
 // 現在の状態では接触しないという意味で、当事者の状態が変われば非 null になりうる。
@@ -46,6 +50,17 @@ function contactReach(entity: EntityContactParticipant, working: KinematicState,
   const w = working.r, p = entity.prevState.r;
   const dx = w.x - p.x - reference.x, dy = w.y - p.y - reference.y, dz = w.z - p.z - reference.z;
   return entity.radius + Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+// 薬莢が交戦圏のアンカー(艦)の近傍にいるか。薬莢以外の個体は常に true。
+function isCasingInContactRange(
+  entity: EntityContactParticipant, zone: EngagementZone<EntityContactParticipant>,
+): boolean {
+  if (entity.contactKind !== 'casing') return true;
+  for (const anchor of zone.anchors) {
+    if (distSq(anchor.state.r, entity.state.r) <= CASING_CONTACT_MAX_DISTANCE_SQ) return true;
+  }
+  return false;
 }
 
 export class EntityContactPhysics {
@@ -83,6 +98,7 @@ export class EntityContactPhysics {
   }
 
   // 交戦圏の内側にいて接触判定の対象となる個体だけを out へ詰め直す。out の元の中身は捨てる。
+  // 薬莢は艦の近傍(30m以内)にいる個体に限る(SPEC/COMBAT.md「薬莢」)。
   private collectParticipants(
     source: readonly EntityContactParticipant[], zone: EngagementZone<EntityContactParticipant>,
     out: EntityContactParticipant[],
@@ -90,7 +106,9 @@ export class EntityContactPhysics {
     out.length = 0;
     for (const entity of source) {
       if (!entity.alive || !entity.collides || !isFiniteParticipant(entity)) continue;
-      if (zone.contains(entity.state.r)) out.push(entity);
+      if (!zone.contains(entity.state.r)) continue;
+      if (!isCasingInContactRange(entity, zone)) continue;
+      out.push(entity);
     }
   }
 
