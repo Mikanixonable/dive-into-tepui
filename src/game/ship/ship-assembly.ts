@@ -119,7 +119,7 @@ export class ShipAssembly {
 
   public addRoot(instance: ShipModuleInstance): void { this.addModule(instance); }
 
-  // +Z の端面どうしを一致させる直列追加。端面の間隔は常に 0。
+  // -Z（船尾）方向へ端面どうしを一致させる直列追加。端面の間隔は常に 0。
   public append(instance: ShipModuleInstance, parentId?: string): void {
     const resolvedParentId = parentId ?? this.tailId();
     const parent = resolvedParentId === null ? undefined : this.nodes.get(resolvedParentId);
@@ -130,7 +130,7 @@ export class ShipAssembly {
     const parentDefinition = this.catalog.require(parent.instance.definitionId);
     const childDefinition = this.catalog.require(instance.definitionId);
     this.addModule(instance, parent.instance.id, {
-      position: v3(0, 0, parentDefinition.length / 2 + childDefinition.length / 2),
+      position: v3(0, 0, -(parentDefinition.length / 2 + childDefinition.length / 2)),
       rotation: Q_IDENTITY,
     }, 'axial');
   }

@@ -47,15 +47,16 @@ export function register(): void {
     assert.ok(normal.angleTo(point.clone().normalize()) > 0.1);
   });
 
-  test('earth coordinates: GPU地理UV nodeはCPU契約の南北を使う', () => {
+  test('earth coordinates: GPU地理UV nodeはCPU契約の経度・緯度と一致する', () => {
     const axes = new THREE.Vector3(9, 3, 6);
     for (const latitude of [90, 45, 0, -45, -90]) {
-      for (const longitude of [-180, -30, 0, 120, 180]) {
+      for (const longitude of [-180, -90, -30, 0, 90, 120, 180]) {
         const expected = earthSurfaceUv(earthPositionAtUv(longitude / 360 + 0.5, 0.5 - latitude / 180, axes), axes);
         const direction = earthRadialAtUv(expected.x, expected.y, axes);
         const actual = evaluateShaderNode(earthSurfaceUvFromRadialNode(
           vec3(direction.x, direction.y, direction.z), vec3(axes.x, axes.y, axes.z),
         )) as number[];
+        near(Math.sin(2 * Math.PI * (actual[0]! - expected.x)), 0);
         near(actual[1]!, expected.y);
       }
     }
