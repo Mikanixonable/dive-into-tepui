@@ -48,7 +48,7 @@ export class RingView {
     // 模式図の輪郭円は環全体の最内・最外の2本。
     const innerRadius = Math.min(...rings.bands.map((band) => band.innerRadius)) / bodyRadius;
     const outerRadius = Math.max(...rings.bands.map((band) => band.outerRadius)) / bodyRadius;
-    // 輪郭円は環メッシュと同じ回転で環面へ寝かせる — 単位円は XY 平面に組まれている。
+    // 輪郭円は環メッシュと同一の回転により環平面へ一致させる — 単位円は XY 平面上に構築されている。
     this.outlineInner.line.rotation.x = RING_TILT;
     this.outlineOuter.line.rotation.x = RING_TILT;
     this.outlineInner.line.scale.setScalar(innerRadius);

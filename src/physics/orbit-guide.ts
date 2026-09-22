@@ -97,8 +97,8 @@ function rotateToEci(frame: RotatingFrame, local: Vec3Tuple): Vec3 {
   );
 }
 
-// デコード済みの点列。族ごとに base64 を毎回ほどくと、1本引くたびに族まるごとのバイト列を
-// 走査することになる(1族=数十万バイト)。族の中身は焼き込みなので変わらない。
+// デコード済みの点列。族ごとに base64 を毎回デコードすると、1本描画するたびに族全体のバイト列を
+// 走査することになる(1族=数十万バイト)。族の中身は焼き込みデータのため不変。
 const decodedPoints = new WeakMap<CatalogFamily, Float32Array>();
 
 function familyPoints(family: CatalogFamily): Float32Array {
@@ -109,7 +109,7 @@ function familyPoints(family: CatalogFamily): Float32Array {
   return values;
 }
 
-// 族の s∈[0,1] を挟む2メンバーの添字と内分比。範囲外は端で頭打ちにする。
+// 族の s∈[0,1] を挟む2メンバーの添字と内分比。範囲外は区間端へクランプする。
 function bracketMember(family: CatalogFamily, s: number): { lo: number; hi: number; f: number } {
   const members = family.members;
   const last = members.length - 1;
@@ -124,7 +124,7 @@ function bracketMember(family: CatalogFamily, s: number): { lo: number; hi: numb
 }
 
 // 族の s の位置にある軌道を、ECI [m] のガイド線として返す。s は 0 が族の始端、1 が終端で、
-// 範囲外は端で頭打ちになる。系や族がカタログに無い、あるいはレジストリに天体が無ければ null。
+// 範囲外は端点へクランプされる。系や族がカタログに無い、あるいはレジストリに天体が無ければ null。
 export function catalogLoop(
   system: SecondaryFrame, catalog: CatalogSystem, familyId: string, s: number,
 ): GuideLoop | null {

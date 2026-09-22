@@ -13,7 +13,7 @@ import { Curve, CurveKnots } from '../curve';
 import { LineStyle } from '../line-style';
 import type { CelestialFrameSource } from './celestial-frame-source';
 
-// 頂点数の上限。数百周が重なる区間(28日表示など)は何頂点あっても収束しないので頭打ちにする。
+// 頂点数の上限。数百周が重なる区間(28日表示など)は何頂点あっても収束しないため、一定値で制限する。
 // 値は、マップの通常のズームで 99% の区間の残留誤差がサジッタ目標(0.5px)を下回る水準(400周の
 // 軌跡の内側から見ると 1.4px まで上がるが、軌跡が画面を埋める網目になり見分けられない)。
 const MAX_VERTICES = 4096;
@@ -81,7 +81,7 @@ export class TrajectoryLine {
 
   // このフレームに描く軌跡・区間・座標系・見た目を反映する。from/to はそれぞれ描画の下限/上限
   // 時刻で、null ならその側は無制限。displayTime は un-bake に使う表示時刻。
-  // trajectory が null か、描ける区間が潰れているときは線が消え、samplePoints も空になる。
+  // trajectory が null か、描画可能区間の長さが 0 以下に縮退しているときは線が消え、samplePoints も空になる。
   public sync(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null,
     frame: ReferenceFrame, displayTime: number, celestialBodies: CelestialFrameSource,

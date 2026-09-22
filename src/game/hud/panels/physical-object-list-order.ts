@@ -186,9 +186,9 @@ export class PhysicalObjectListOrder {
     matched.sort((a, b) => this.compare(a, b));
     order.ids.length = 0;
     for (const item of matched) order.ids.push(item.id);
-    // 衛星フィルタでは、衛星自身はフィルタを通っても親の惑星は通らない(親の bodyClass が
-    // 'planet' のため)。親を惑星ごとのクラスタ見出しとして拾い出す — フィルタの一致件数
-    // (ヘッダーの (N))には含めないので、order.ids は素通しのまま、木を組む先だけ displayIds へ分ける。
+    // 衛星フィルタでは、衛星自身はフィルタを通過しても親惑星は除外される(親の bodyClass が
+    // 'planet' のため)。親惑星をクラスタ見出しとして抽出し補完する — フィルタの一致件数
+    // (ヘッダーの (N))には含めないため、order.ids は変更せず、階層構築対象のみ displayIds へ分離する。
     const displayIds = this.displayIdsScratch;
     displayIds.length = 0;
     for (const id of order.ids) displayIds.push(id);

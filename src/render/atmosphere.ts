@@ -148,9 +148,9 @@ function allocateSamples(
     .slice(0, Math.min(MAX_ATMOSPHERE_BODIES, Math.floor(budget / MIN_SAMPLES)));
   const scoreSum = drawn.reduce((sum, { score }) => sum + score, 0);
   const shared = budget - MIN_SAMPLES * drawn.length;
-  // **上限で余った予算は捨てる。** 上限が効くのは 1 体が取り分を独占しているときで、そのとき
-  // 残りの候補は桁違いに小さい — 残りのスコアで割り直すと、その桁違いに小さい天体が余りを
-  // 丸ごと受け取ってしまう。
+  // **上限で余った予算は破棄する。** 上限が適用されるのは 1 天体が配分の大半を占有する場合であり、その状況下では
+  // 他の候補は極めてスコアが小さい — 余剰分を再配分すると、極小スコアの天体に不相応に過大なステップ数が
+  // 配分されてしまう。
   return drawn
     .map(({ body, distance, score }) => ({
       body,

@@ -27,8 +27,8 @@ export const CLOUD_TOP_SPAN = CLOUD_MODEL_PARAMETERS.maximumCloudAltitudeMeters;
 // center±halfWidth に入る柱だけがディザに掛かり、外は 0 か 1 へ飽和する。どちらも目で追い込んだ
 // 値で、場を差し替えたら追い込み直す。
 //
-// **仮設**: render-lab のつまみ(tools/render-lab/main.ts)から動かせるよう uniform にしてある。
-// 生成側の場へ差し替えたあとにもう一段の追い込みが要るので、それまでは畳まない。
+// **開発用パラメータ**: render-lab のUIスライダー(tools/render-lab/main.ts)から調整できるよう uniform として定義されている。
+// 生成側の雲場への置換後に最終調整が必要となるため、それまでは定数化しない。
 export const CUMULUS_DITHER_KNOB: {
   readonly center: FloatUniform;
   readonly halfWidth: FloatUniform;

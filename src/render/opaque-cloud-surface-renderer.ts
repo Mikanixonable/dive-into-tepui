@@ -32,13 +32,13 @@ const DITHER_LEVELS = 256;
 export const CUMULUS_DETAIL = { off: 0, coarse: 1, standard: 2, fine: 3 } as const;
 export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL];
 
-// 雲頂を探す標本の配り方。march は殻の中を等間隔にたどる刻みの数(どの交点を見つけるかを決める)、
+// 雲頂を探索するサンプリング構成。march は殻内を等間隔に走査するステップ数(交差検出用)、
 // refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を決める)。
 interface CumulusSampling { readonly march: number; readonly refine: number }
 
-// 段ごとの標本の配り方。費用は march + refine 回の標本化。march 0 は殻を描かない段。
-// いちばん粗い段は march を 1 本にして refine で補う — 粗い刻みを 2 本以上にすると、手前と奥で
-// 拾った雲頂が 2 枚の層に重なって見える。
+// 品質段ごとのサンプリング構成。計算量は march + refine 回のサンプル評価。march 0 は殻を描画しない設定。
+// 最も粗い段は march を 1 ステップにして refine で補間する — 粗い刻みを 2 ステップ以上にすると、手前と奥で
+// 検出された雲頂が 2 枚の不連続な層として視認されてしまう。
 const SAMPLING_OF_DETAIL = {
   [CUMULUS_DETAIL.off]: { march: 0, refine: 0 },
   [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5 },
@@ -53,7 +53,7 @@ const GRAIN_FADE_FULL_PIXELS = 4;
 
 export class OpaqueCloudSurfaceRenderer {
   private readonly shape: CloudShapeEvaluator;
-  // 標本の配り方と、その回数まで展開したマテリアル。
+  // サンプリング構成と、その評価回数が展開されたマテリアル。
   private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
   private readonly blueNoise = new BlueNoise();
@@ -116,14 +116,14 @@ export class OpaqueCloudSurfaceRenderer {
     this.fieldSampler.bind(input.field);
   }
 
-  // 標本の配り方を置き直す。回数はシェーダへ展開されるので、変わればマテリアルを組み直す。
+  // サンプリング構成を更新する。評価回数はシェーダ内に展開されるため、変更時はマテリアルを再構築する。
   private setSampling(sampling: CumulusSampling): void {
     if (sampling.march === this.sampling.march && sampling.refine === this.sampling.refine) return;
     this.sampling = sampling;
     this.rebuildMaterial();
   }
 
-  // いまの標本の配り方と雲場でマテリアルを組み直し、全段のメッシュへ張り替える。
+  // 現在のサンプリング構成と雲場に基づきマテリアルを再構築し、全段のメッシュへ適用する。
   private rebuildMaterial(): void {
     const previous = this.material;
     this.material = this.buildMaterial();

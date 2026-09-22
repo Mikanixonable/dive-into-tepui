@@ -1,4 +1,4 @@
-// 画面へ重ねるマーカーの装置。持ち主ごとの群を配り、群を跨いで重なったラベル・アイコンを
+// 画面へ重ねるマーカーの装置。コンポーネントごとの群を生成・提供し、群を跨いで重なったラベル・アイコンを
 // 間引き、残ったラベルを押し出して引き出し線を引く。
 import { LabelDeclutter } from './label-declutter';
 import { LabelLayout } from './label-layout';
@@ -70,7 +70,7 @@ export class MarkerDevice implements MarkerVisibility {
     this.svgOverlay.remove();
   }
 
-  // 畳まれた群を配り先の一覧から外す。
+  // 破棄された群を管理一覧から除外する。
   private forget(group: MarkerGroup): void {
     const index = this.groups.indexOf(group);
     if (index >= 0) this.groups.splice(index, 1);

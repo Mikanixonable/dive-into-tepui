@@ -20,7 +20,7 @@ export class Stage1 extends Stage {
   // 自機と5機の敵を初期配置して始める。
   public static create(...deps: StageDeps): Stage1 {
     const stage = new Stage1(deps);
-    // 自機を置き、その状態を基準に敵を近傍軌道へ散らす
+    // 自機を配置し、その運動状態を基準に敵機を近傍軌道へ分散配置する
     const player = stage.addPlayer();
     const referenceState = player.motion.state;
     const scene = stage._scene;

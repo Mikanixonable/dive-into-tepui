@@ -37,7 +37,7 @@ export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ船の�
 // 床が採用値になってこの値に依らない)。
 export const ARC_STEPS_PER_REV = 300;
 // 消費されない弧の積分ステップ数と、保持する列のサンプル数の上限。長い区間ではこれらが刻み幅と
-// 間引き間隔を決め、軌道の形の精度と引き換えに費用を頭打ちにする。
+// 間引き間隔を決定し、軌道精度の維持と計算コストの上限抑制を両立させる。
 export const ARC_MAX_STEPS = 20000;
 export const ARC_MAX_SAMPLES = 10000;
 
@@ -189,7 +189,7 @@ export class PredictedArc {
       if (closingRate <= 1e-9) continue;
       approachDt = Math.min(approachDt, (clearance / closingRate) * ARC_APPROACH_SAFETY);
     }
-    // 大気が要求する上限は下限 ARC_MIN_STEP_DT より優先する — 下限は接近項の潰れ(Zeno)を断つ
+    // 大気が要求する上限は下限 ARC_MIN_STEP_DT より優先する — 下限は接近項の縮退(Zeno)を断つ
     // ためのもので、抗力を積めない幅まで刻みを広げてはならない。
     const atmosphericDt = atmosphericMaxStep(tip, this.bcInv, collisionBodies, pivot);
     if (this.consumable) {

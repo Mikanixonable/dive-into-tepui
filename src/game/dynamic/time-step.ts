@@ -40,7 +40,7 @@ const DRAG_STEP_MAX_SCALE_HEIGHTS = 0.5;
 // 上書きする側にあることにある: 自然な刻みが下限を割るのは周期の短い領域 — LEO と、離心軌道の
 // 近地点通過 — で、そこはまさに細かく刻む必要がある場所である。表示期間の遠端に残る形状誤差は
 // 40s で LEO 0.2m・低月周回 0.0m・モルニヤ 105m、60s で 1.7m・0.1m・533m。
-// 刻みの下限は同時に、天体接近時の接近項が幾何級数的に潰れるのも防ぐ。
+// 刻みの下限は同時に、天体接近時の接近項が幾何級数的に微小化（縮退）するのも防ぐ。
 export const ARC_MIN_STEP_DT = 40;
 
 // targetTime・maxStep・nextEventTime のいずれよりも先へ進まない、今回のサブステップ幅 [s] を返す。
@@ -66,8 +66,8 @@ export function simulationMaxStep(simDt: number, maxDt: number, maxCount: number
 //   剛性: 抗力の逆時定数 λ = ½ρ·s·bcInv に対し λ·dt を DRAG_STEP_MAX_SPEED_LOSS で抑える。
 //   沈み込み: 中間段の直線外挿が動径方向へ沈む深さ(降下率·dt + ½g·dt²)を、密度が
 //     e^DRAG_STEP_MAX_SCALE_HEIGHTS 倍を超えない範囲に抑える。
-// 抗力の逆時定数 λ = ½ρ·s·bcInv [1/s]。刻み dt に対する λ·dt が、その1歩で抗力が奪う
-// 対気速度の割合になる。
+// 抗力の逆時定数 λ = ½ρ·s·bcInv [1/s]。刻み dt に対する λ·dt が、その1ステップで抗力により減衰する
+// 対気速度の割合となる。
 function dragRate(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere): number {
   return 0.5 * atmosphericDensity(ellipsoidAltitude(rRel, atm), atm)
     * len(airspeed(rRel, vRel, atm)) * bcInv;
@@ -103,8 +103,8 @@ export function atmosphericMaxStep(
     sub(state.r, bodyState.r), sub(state.v, bodyState.v), bcInv, body.def.mu, atmosphere);
 }
 
-// 刻み dt のあいだに、抗力がその物体の対気速度を丸ごと奪い切るか。奪い切る幅で積んだ軌道は
-// もはや正確ではない(dragAccel が対気速度で頭打ちにするので発散こそしない)。
+// 刻み dt の間に、抗力がその物体の対気速度を完全に減衰させ切るか。この時間幅で積分した軌道は
+// 精度を失う(dragAccel が対気速度上限でクランプするため数値発散は防がれる)。
 //
 // **見るのは剛性の項だけで、atmosphericMaxStep の合成値ではない。** 中間段の沈み込みの上限は
 // 密度にも bcInv にも依らず、高い倍率では大気から遥かに離れた低軌道でも下回る — それを根拠に

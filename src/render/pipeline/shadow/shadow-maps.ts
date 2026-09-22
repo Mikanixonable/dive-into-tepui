@@ -58,8 +58,8 @@ export type ShadowSlotUniformArrays = {
 
 // ライト空間の線形深度を書く 1 辺 size のレンダーターゲット。
 //
-// **r32float はレンダーターゲットとしては描けるがフィルタできない。** サンプラを明示して
-// おかないと three が線形フィルタを要求し、パイプライン生成が落ちて画面が丸ごと黒くなる。
+// **r32float はレンダーターゲットとしては描画可能だがフィルタリングは非対応。** サンプラを明示して
+// おかないと three が線形フィルタを要求し、パイプライン生成失敗により画面全体が黒転する。
 function createDepthTarget(size: number, name: string, layers = 1): THREE.RenderTarget {
   const target = new THREE.RenderTarget(size, size, {
     format: THREE.RedFormat, type: THREE.FloatType, depthBuffer: true, samples: 0,

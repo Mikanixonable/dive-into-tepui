@@ -20,11 +20,11 @@ import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '.
 // (被覆率 0.99 で ≈4.6)の上に置き、ゲイン 1 では効かない。
 const MAX_SHELL_OPTICAL_DEPTH = 5;
 
-// 層の厚みへ張る下限 [m]。掠める視線の光路は厚みぶんの弦で頭打ちにするので、厚み 0 では
-// 地平線ぎわの視線が飽和する。
+// 層の厚みへ設定する下限 [m]。掠める視線の光路長は層厚に対応する弦長で制限されるため、厚み 0 では
+// 地平線近傍の視線が飽和する。
 const MIN_SHELL_THICKNESS = 1;
 
-// 殻 1 枚の見え方。鉛直の光学的厚みは、場から引いた厚みを cutoff で足切りし、gain を掛けたもの。
+// 殻 1 枚の描画パラメータ。鉛直光学的厚みは、場から取得した厚みから cutoff 閾値を減算してクランプし、gain を乗じた値。
 // albedo は殻の拡散反射率、bottomAltitude と topAltitude はその殻が代表する層の高度 [m] で、
 // 殻は層の中央に立ち、層の厚みが掠める視線の光路を決める。
 export interface CloudShellKnob {
@@ -107,7 +107,7 @@ function columnOpticalDepthOf(species: CloudSpecies, field: CloudSample): FloatN
   return shellDefinitionOf(species).columnOpticalDepth(field);
 }
 
-// つまみを通した殻の鉛直の光学的厚み。足切りを引いた残りへゲインを掛け、上限で頭打ちにする。
+// パラメータ適用後の殻の鉛直光学的厚み。閾値減算後の値へゲインを乗じ、上限値でクランプする。
 function opticalDepthOf(species: CloudSpecies, field: CloudSample): FloatNode {
   const knob = cloudShellKnobOf(species);
   const raised = max(columnOpticalDepthOf(species, field).sub(knob.cutoff), 0).mul(knob.gain);

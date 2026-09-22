@@ -72,8 +72,8 @@ export class Predictor {
       interactiveBudget -= consumed;
     }
 
-    // 残額(interactive の使い残し込み)を残り訪問数で均等割りする — 1体が丸ごと使うと、後続の
-    // 個体の弧が ARC_MIN_ITEM_STEPS に届かないまま捨てられ、作り直しを繰り返す。
+    // 残額(interactive の余剰分含む)を残り対象数で均等配分する — 単一エンティティが全枠を独占消費すると、後続の
+    // 個体の弧が ARC_MIN_ITEM_STEPS に届かないまま破棄され、再生成ループに陥る。
     let visited = 0;
     while (budget > 0 && visited < targets.length) {
       const e = targets[(this.cursor + visited) % targets.length]!;

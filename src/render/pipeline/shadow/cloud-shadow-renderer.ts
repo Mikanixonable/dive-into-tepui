@@ -83,7 +83,7 @@ export class CloudShadowRenderer {
     const sunDir = this.sunLight.directionFrom(worldPos);
     return Fn(() => {
       const transmittance = float(1).toVar();
-      // 場を持たないフレームで、タップぶんのフェッチを丸ごと飛ばす。
+      // 雲場が存在しないフレームでは、全サンプリングフェッチを完全にバイパスする。
       If(greaterThan(this.active, 0.5), () => {
         const bodyRadius = max(this.surfaceRadius, 1);
         const offset = this.toShellSpace(worldPos.sub(this.center));

@@ -46,8 +46,8 @@ import {
 } from './celestial-system-query';
 
 // 数値暦が収録している点を、結び先のノードへ割り当てる（バインドする）。暦は id ごとに天体本体を収録している場合と
-// 惑星系の重心を収録している場合があり、宣言と食い違う点へ結ぶとその系がまるごと重心オフセット
-// ぶんずれる。
+// 惑星系の重心を収録している場合があり、宣言と食い違う点へ結ぶとその系全体が重心オフセット
+// 分変位する。
 function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisPoints): void {
   for (const motion of motions) {
     motion.bindEphemeris(ephemerisPointOf(points, motion.id, 'body'));
