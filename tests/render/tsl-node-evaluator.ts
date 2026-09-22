@@ -1,9 +1,9 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 
 // このテスト層で値として評価する、TSLの定数・スカラー・ベクトルの狭い集合。
 export type ShaderValue = number | boolean | number[];
 
-type ShaderNode = {
+interface ShaderNode {
   readonly type?: string;
   readonly value?: unknown;
   readonly node?: ShaderNode;
@@ -17,7 +17,7 @@ type ShaderNode = {
   readonly condNode?: ShaderNode;
   readonly ifNode?: ShaderNode;
   readonly elseNode?: ShaderNode | null;
-};
+}
 
 type ShaderVector = number[];
 

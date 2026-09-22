@@ -7,7 +7,7 @@
 // どの天体の見えも同じ 1 枚の板で解き、違うのは層へ書き込む光学パラメータと、呼び出し側が
 // 配ったサンプル点の数だけ。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { Fn, length, screenUV, sub, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffRadius } from '../atmosphere';

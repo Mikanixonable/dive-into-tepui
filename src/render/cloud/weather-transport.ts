@@ -5,7 +5,7 @@ import { abs, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } f
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
-import { Circulation } from './circulation';
+import type { Circulation } from './circulation';
 import { windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';

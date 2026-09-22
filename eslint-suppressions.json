@@ -1020,11 +1020,6 @@
       "count": 3
     }
   },
-  "src/render/baked-field.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/billboard.ts": {
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 5
@@ -1062,9 +1057,6 @@
     }
   },
   "src/render/celestial/celestial-surface.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/parameter-properties": {
       "count": 1
     }
@@ -1127,11 +1119,6 @@
       "count": 1
     }
   },
-  "src/render/cloud/weather-transport.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/dispose-owned-render-resources.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -1174,11 +1161,6 @@
   },
   "src/render/earth-surface-tile-queue.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/render/field-projection.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
       "count": 1
     }
   },
@@ -1225,11 +1207,6 @@
   },
   "src/render/pipeline/aperture-psf.ts": {
     "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    }
-  },
-  "src/render/pipeline/atmosphere-pass.ts": {
-    "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },
@@ -1750,14 +1727,6 @@
   },
   "tests/render/protein-motion-controller.test.ts": {
     "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tests/render/tsl-node-evaluator.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    },
-    "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },

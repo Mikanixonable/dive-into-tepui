@@ -25,7 +25,7 @@ export function orthographicCapUv(
   return vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
 }
 
-export type FieldProjection = {
+export interface FieldProjection {
   // 投影テクスチャの解像度 [texel]。図法が持つ縦横比が反映される。
   readonly width: number;
   readonly height: number;
@@ -43,7 +43,7 @@ export type FieldProjection = {
   uvAt(direction: Vec3Node): Vec2Node;
   // 指定の uv が定義域内であれば 1、域外であれば 0。正方形テクスチャ内に円板を投影する図法では四隅が 0 となる。
   insideAt(uv: Vec2Node): FloatNode;
-};
+}
 
 // 正距円筒図法の uv から単位方向へ。u は経度(0.5 が本初子午線 +Z、東が +X)、v は緯度
 // (0 が北極 +Y)。
