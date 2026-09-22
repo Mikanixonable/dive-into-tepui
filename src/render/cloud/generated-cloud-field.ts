@@ -5,7 +5,7 @@ import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { ClimateMap } from './climate-map';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { FieldProjection } from './field-projection';
+import type { FieldProjection } from '../field-projection';
 import type { CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
 import type { Vec3Node } from '../tsl-types';
@@ -57,7 +57,7 @@ export class GeneratedCloudField implements CloudFieldSource {
   public get fieldProjection(): FieldProjection { return this.projection; }
 
   // 表示時刻の雲場を、天気の中間場から順に焼く。
-  public prepare(renderer: WebGPURenderer, displayTime: number, gpu: GpuTimingSink | null): void {
+  public prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink | null): void {
     // 気候画像の取得を始める。
     this.climate.request();
     // 表示時刻・気候の入力・投影の置き方が前回と同じなら、焼いた場をそのまま使う。

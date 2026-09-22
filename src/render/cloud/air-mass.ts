@@ -5,12 +5,13 @@
 // 畳み込まれるので、そこの押し縮まりは溶かして 1 へ戻す。
 import * as THREE from 'three/webgpu';
 import { abs, float, length, normalize, smoothstep, vec2, vec4 } from 'three/tsl';
-import { BakedField } from './baked-field';
+import { BakedField } from '../baked-field';
+import { GPU_PASS } from '../gpu-timings';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { FieldProjection } from './field-projection';
+import type { FieldProjection } from '../field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
@@ -57,7 +58,8 @@ export class AirMass {
       (direction) => {
         const wind = windAt(direction);
         return vec4(this.driftAt(direction, wind), length(wind.velocity), 0, 1);
-      });
+      },
+      GPU_PASS.cloudBake);
   }
 
   // 現在時刻の気団をベイクドフィールドへレンダリングする。at() の評価前に、気圧場のベイク後に呼び出す。

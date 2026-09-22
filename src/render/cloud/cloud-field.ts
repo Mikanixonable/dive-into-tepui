@@ -1,12 +1,13 @@
 // 気象モデルから凝結した雲テクスチャ（ベイクドフィールド）。ベイク時とサンプリング時の4基底割り当てを一括管理し、
 // 出入りをどちらも CloudSample で受け渡す。cloudTop は basis の連続重みから導出される。
 import * as THREE from 'three/webgpu';
-import { BakedField } from './baked-field';
+import { BakedField } from '../baked-field';
+import { GPU_PASS } from '../gpu-timings';
 import { condense } from './condensation';
 import { cloudFieldTexelFromSample, cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { FieldProjection } from './field-projection';
+import type { FieldProjection } from '../field-projection';
 import type { WeatherModel } from './weather-model';
 import { cloudStateAt, type CloudState } from './cloud-state';
 import type { Vec3Node } from '../tsl-types';
@@ -19,7 +20,7 @@ export class CloudField {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, (direction) => {
       const cloud = condense(model.weatherAt(direction));
       return cloudFieldTexelFromSample(cloud);
-    });
+    }, GPU_PASS.cloudBake);
   }
 
   // 現在時刻の雲をベイクドテクスチャへレンダリングする。at() でサンプリングする前に必ず一度呼び出す。

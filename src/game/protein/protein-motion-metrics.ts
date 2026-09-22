@@ -2,6 +2,7 @@
 // 拾い、計測窓ぶんの分布へまとめる。
 
 import { LODS_FINE_TO_COARSE, type ProteinMotionLod } from '../../render/protein/protein-display';
+import { distributionOf, type SampleDistribution } from '../../math/sample-distribution';
 import type { ProteinMotionMetrics } from '../../render/dynamic/dynamic-entity/protein-enemy-view';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
@@ -40,41 +41,14 @@ export function proteinMotionFrameSample(
 
 export interface ProteinMotionMetricSummary {
   readonly frames: number;
-  readonly cpuMs: MetricDistribution;
-  readonly uploadBytes: MetricDistribution;
+  readonly cpuMs: SampleDistribution;
+  readonly uploadBytes: SampleDistribution;
   readonly lodCounts: ProteinMotionLodCounts;
-}
-
-interface MetricDistribution {
-  readonly avg: number;
-  readonly p50: number;
-  readonly p95: number;
-  readonly max: number;
 }
 
 // 有限値は 0 以上へ切り上げ、非有限値と undefined は 0 にする。
 function finiteNonNegative(value: number | undefined): number {
   return Number.isFinite(value) ? Math.max(0, value!) : 0;
-}
-
-// 昇順の sorted から ratio 分位の値を最近傍順位法で引く。空なら 0。
-function percentile(sorted: readonly number[], ratio: number): number {
-  if (sorted.length === 0) return 0;
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
-  return sorted[index] ?? 0;
-}
-
-// values の平均・中央値・95 パーセンタイル・最大。空なら全て 0。
-function distribution(values: readonly number[]): MetricDistribution {
-  if (values.length === 0) return { avg: 0, p50: 0, p95: 0, max: 0 };
-  const sorted = [...values].sort((a, b) => a - b);
-  const sum = values.reduce((total, value) => total + value, 0);
-  return {
-    avg: sum / values.length,
-    p50: percentile(sorted, 0.5),
-    p95: percentile(sorted, 0.95),
-    max: sorted[sorted.length - 1] ?? 0,
-  };
 }
 
 // 全 LOD の体数を 0 で埋めた新しい表。
@@ -115,8 +89,8 @@ export class ProteinMotionMetricsRecorder {
     }
     return {
       frames,
-      cpuMs: distribution(this.cpuSamples),
-      uploadBytes: distribution(this.uploadSamples),
+      cpuMs: distributionOf(this.cpuSamples),
+      uploadBytes: distributionOf(this.uploadSamples),
       lodCounts,
     };
   }

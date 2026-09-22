@@ -5,6 +5,8 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
+import { ATMOSPHERE_QUALITY } from '../atmosphere';
+import { CUMULUS_DETAIL } from '../opaque-cloud-surface-renderer';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
@@ -85,6 +87,8 @@ export class RenderPipeline {
   private readonly debugViewToWorld: Mat4Uniform;
   // getDrawingBufferSize の書き込み先。フレームごとに確保しない使い回し領域。
   private readonly drawingBufferSize = new THREE.Vector2();
+  // 天体照の写しの基準点(カメラの描画座標)の書き込み先。同じく使い回し領域。
+  private readonly cameraPosition = new THREE.Vector3();
   private readonly unregisterProteinMotionRenderer: () => void;
 
   // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。
@@ -125,7 +129,7 @@ export class RenderPipeline {
     this.sunSource = new SunSource(
       this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
-      this._sunLight, this.sphereSpecular, graphics.planetLightCount);
+      this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel);
     this._ambient = new AmbientSource(this._sunLight);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient,
@@ -165,12 +169,41 @@ export class RenderPipeline {
     this.depthDebugProjInv = uniform(new THREE.Matrix4());
     this.debugViewToWorld = uniform(new THREE.Matrix4());
 
+    this.compositeMaterials = this.buildDebugComposites();
+    this.lensCompositeMaterial = this.buildCompositeMaterial(
+      vec4(
+        this.visualEffectLut.apply(
+          this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        ),
+        1,
+      ),
+    );
+    // 模式図用の合成マテリアル。表示スタイルの切り替えなので、デバッグ表示の選択肢とは別に持つ。
+    this.schematicComposite = new SchematicComposite(this.gbuffer, this.depthDebugProjInv);
+    this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
+
+    this.quad = new QuadMesh(this.compositeMaterials.off);
+    this.syncTargetSize();
+    // 構築で渡さなかった値も含めて、構築時点の設定をすべてのパスへ配る。
+    this.rebuildForGraphics(graphics);
+  }
+
+  // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
+  // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
+  // そのまま読み取れる。
+  private toneMapped(color: Vec3Node): Vec3Node {
+    return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
+  }
+
+  // デバッグ表示の選択肢ごとの合成マテリアルの表。表示ごとに別マテリアルを持ち、quad.material の
+  // 差し替えで切り替える — 1 枚をユニフォームで分岐させると、通常プレイの毎フレームで G バッファの
+  // 全テクスチャを bind/sample することになる。
+  private buildDebugComposites(): Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>> {
+    // 「マテリアル」も「大気」も、大気パスが点検用に描く1枚を映すので、材質を共有する。
     const inspectMaterial = this.buildCompositeMaterial(
       vec4(this.toneMapped(texture(this.atmospherePass.inspectTexture, screenUV).rgb), 1),
     );
-    // 表示ごとに別マテリアルを持ち、quad.material の差し替えで切り替える。1 枚をユニフォームで
-    // 分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを bind/sample することになる。
-    this.compositeMaterials = {
+    return {
       off: this.buildCompositeMaterial(
         vec4(this.visualEffectLut.apply(
           this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)),
@@ -206,32 +239,13 @@ export class RenderPipeline {
       specular: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
-      // 「マテリアル」も「大気」も、大気パスが点検用に描く1枚を映すので、材質を共有する。
       material: inspectMaterial,
       atmosphere: inspectMaterial,
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
-    };
-    this.lensCompositeMaterial = this.buildCompositeMaterial(
-      vec4(
-        this.visualEffectLut.apply(
-          this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
-        ),
-        1,
+      'planet-light': this.buildCompositeMaterial(
+        vec4(this.toneMapped(this._planetLight.imageRadianceAt(screenUV)), 1),
       ),
-    );
-    // 模式図用の合成マテリアル。表示スタイルの切り替えなので、デバッグ表示の選択肢とは別に持つ。
-    this.schematicComposite = new SchematicComposite(this.gbuffer, this.depthDebugProjInv);
-    this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
-
-    this.quad = new QuadMesh(this.compositeMaterials.off);
-    this.syncTargetSize();
-  }
-
-  // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
-  // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
-  // そのまま読み取れる。
-  private toneMapped(color: Vec3Node): Vec3Node {
-    return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
+    };
   }
 
   // composite 用マテリアル。colorNode だけが表示ごとに異なる。深度は G バッファのものを描画先の
@@ -312,7 +326,7 @@ export class RenderPipeline {
     this.debugTarget = target;
   }
 
-  // 描画品質設定を各パスへ配り、影マップ等の GPU 資源を再構築する（設定変更時のみ実行）。
+  // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
@@ -324,9 +338,15 @@ export class RenderPipeline {
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
+    this._planetLight.setModel(graphics.planetLightModel);
     this.antialiasPass.setMethod(graphics.antialias);
     this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
     this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
+    // 天体照の写しは、その天体の描画設定で見えている雲と大気を写す。
+    this._planetLight.setAtmosphereEnabled(graphics.atmosphere !== ATMOSPHERE_QUALITY.off);
+    this._planetLight.setCumulusEnabled(graphics.cumulusDetail !== CUMULUS_DETAIL.off);
+    this._planetLight.setCloudShellEnabled('cirrus', graphics.cirrus);
+    this._planetLight.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
     this.filmLut.select(graphics.filmLut);
   }
 
@@ -402,6 +422,9 @@ export class RenderPipeline {
 
     // 影パス。G バッファの深度を読む。
     this.shadowPass.render(camera, width, height);
+
+    // 天体照の写し。基準点はカメラの位置で、ライティングパスより前に焼く。
+    this._planetLight.bake(this.renderer, camera.getWorldPosition(this.cameraPosition), this.gpu);
 
     // ライティングパス。G バッファと影の透過率を読む。
     this.lightPrepass.render(camera, width, height);

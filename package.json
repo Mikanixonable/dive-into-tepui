@@ -73,6 +73,7 @@
     "render-lab:shot": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-shot.mjs",
     "cloud-lab:qualification": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-cloud-qualification.mjs",
     "cloud-lab:visual-review": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-visual-review.mjs",
+    "render-lab:compare": "node tools/render-lab-compare.mjs",
     "cloud-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.cloud-lab.config.js --mode development",
     "cloud-lab:shot": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-shot.mjs",
     "cloud-lab:baseline": "node tools/cloud-lab/baseline-manifest.mjs",
