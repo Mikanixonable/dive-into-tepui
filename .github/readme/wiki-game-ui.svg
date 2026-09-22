@@ -22,7 +22,7 @@
 </g>
 <g transform="translate(65 112)">
  <circle cx="65" cy="50" r="38" fill="#15171c" stroke="#3478ff"/><path d="M42 50H88M65 27V73" class="g"/><circle cx="65" cy="50" r="7" fill="#3478ff"/>
- <text x="30" y="105" class="m b xs">Raw Input</text><path d="M104 50H185" class="bl" marker-end="url(#ba)"/>
+ <text x="30" y="105" class="m b xs">Raw Input</text><path d="M104 50H198" class="bl" marker-end="url(#ba)"/>
 </g>
 <g transform="translate(975 112)">
  <circle cx="65" cy="50" r="38" fill="#15171c" stroke="#ff3155"/><path d="M65 22L83 50L65 78L47 50Z" class="r"/>
