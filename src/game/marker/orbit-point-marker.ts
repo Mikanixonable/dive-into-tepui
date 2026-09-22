@@ -138,7 +138,10 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   protected passTimeRows(simTime: number): PropertyRow[] {
     return this.time === null
       ? []
-      : [{ key: 'time', label: '通過まで', value: `T+${fmtTime(this.time - simTime)}` }];
+      : [{
+        key: 'time', label: '通過まで', value: `T+${fmtTime(this.time - simTime)}`,
+        presentation: 'hero',
+      }];
   }
 
   public listDetail(): string { return ''; }
