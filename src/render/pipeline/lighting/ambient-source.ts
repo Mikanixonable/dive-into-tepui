@@ -49,13 +49,17 @@ export class AmbientSource implements LightSource {
     return material;
   }
 
+  // 受け手 sample へ届く環境光の放射照度。空が遮られないとしたときの値で、消灯していれば 0。
+  public irradiance(sample: ShadingSample): Vec3Node {
+    const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
+    return vec3(REFERENCE_RADIANT_INTENSITY).div(dot(toSun, toSun)).mul(this.fractionUniform);
+  }
+
   // 拡散は、その画素へ届く環境光の放射照度そのもの。鏡面は同じ光を放射輝度 E/π の一様な環境と
   // して映したもので、粗さによらず一定 — 拡散を持たない金属面が影の中で真っ黒に残らないための項。
   // screenSpaceLight が null でなければ、どちらも近くの構造が空を塞ぐぶん弱める。
   private contribution(sample: ShadingSample, screenSpaceLight: ScreenSpaceLight | null): LightContribution {
-    const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
-    const irradiance: Vec3Node = vec3(REFERENCE_RADIANT_INTENSITY)
-      .div(dot(toSun, toSun)).mul(this.fractionUniform);
+    const irradiance = this.irradiance(sample);
     const radiance = irradiance.div(PI);
     if (screenSpaceLight === null) return { diffuse: irradiance, specular: radiance };
     // 拡散は空の見えている割合、鏡面は鏡の向きのローブの見えている割合で弱める。
