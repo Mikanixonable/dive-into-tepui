@@ -375,3 +375,4 @@ export const MAP_PANEL_STYLE = `
 #hud-plan .plan-help {
   margin-top: var(--space-3); color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.5;
 }
+`;
