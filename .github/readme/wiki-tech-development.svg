@@ -14,7 +14,7 @@
 <text x="40" y="38" class="m t h">開発・検証</text><text x="40" y="60" class="m d sm">変更を、文書・境界・テスト・実行確認で囲む</text>
 <g transform="translate(600 145)">
  <circle r="46" fill="#101217" stroke="#ff3155" stroke-width="2"/><text x="-27" y="-4" class="m a xs">CHANGE</text><text x="-26" y="14" class="m t sm">branch / PR</text>
- <path d="M-38-28L-170-74M0-46V-100M38-28L170-74M46 8L185 30M27 38L108 82M-27 38L-108 82M-46 8L-185 30" class="g"/>
+ <path d="M-38-28L-143-65M0-46V-72M38-28L143-65M46 8L157 26M27 38L88 68M-27 38L-88 68M-46 8L-157 26" class="g"/>
 </g>
 <g class="m">
  <circle cx="430" cy="75" r="28" fill="#15171c" stroke="#3478ff"/><text x="414" y="79" class="t xs">SPEC</text>
