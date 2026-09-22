@@ -48,12 +48,12 @@ export function register(): void {
     assert.equal(cockpit.modelId, 'cockpit-standard');
     assert.equal(cockpit.hp, 40);
     assert.equal(cockpit.maxHp, 100);
-    assert.equal(tank.transform.position.z, 3);
+    assert.equal(tank.transform.position.z, -3);
     assert.equal(radiator.transform.position.x, 3.5);
     assert.equal(radiator.deployed, 1);
   });
 
-  test('ship assembly: +Z append は端面を隙間なく接続する', () => {
+  test('ship assembly: -Z append は端面を隙間なく接続する', () => {
     const assembly = new ShipAssembly();
     assembly.addRoot(module('cockpit-standard', 'root'));
     assembly.append(module('tank-12-main', 'tank'));
@@ -62,10 +62,10 @@ export function register(): void {
     assert.equal(edge.kind, 'axial');
     assert.equal(edge.childTransform.position.x, 0);
     assert.equal(edge.childTransform.position.y, 0);
-    assert.equal(edge.childTransform.position.z, 7.5);
+    assert.equal(edge.childTransform.position.z, -7.5);
     const tankTransform = assembly.worldTransformOf('tank');
     assert.ok(tankTransform !== null);
-    assert.equal(tankTransform.position.z, 7.5);
+    assert.equal(tankTransform.position.z, -7.5);
     assert.equal(assembly.validate().valid, true);
   });
 
@@ -255,5 +255,30 @@ export function register(): void {
       rotation: sideSlotRotation('side:-x'),
     };
     assert.equal(sameTransform(edge.childTransform, expected), true);
+  });
+
+  test('ship assembly: 過去の +Z axial を持つセーブデータも -Z 船尾方向へマイグレーションして復元できる', () => {
+    const oldSaved = {
+      playerOwned: true,
+      modules: [
+        { id: 'cockpit', definitionId: 'cockpit-standard', kind: 'cockpit' as const, hp: 100, temperature: 300 },
+        { id: 'tank', definitionId: 'tank-3-main', kind: 'tank' as const, hp: 100, temperature: 300, fuelKind: 'main' as const, fuel: 100 },
+      ],
+      connections: [
+        {
+          id: 'connection-1',
+          parentId: 'cockpit',
+          childId: 'tank',
+          kind: 'axial' as const,
+          position: { x: 0, y: 0, z: 3 },
+          rotation: { x: 0, y: 0, z: 0, w: 1 },
+        },
+      ],
+    };
+    const restored = restoreShipAssembly(oldSaved);
+    assert.equal(restored.validate().valid, true);
+    const edge = restored.graph.find(c => c.id === 'connection-1');
+    assert.ok(edge !== undefined);
+    assert.equal(edge.childTransform.position.z, -3);
   });
 }
