@@ -13,7 +13,7 @@ import {
 } from './view-angles';
 import { HULL_EMISS } from '../../src/game/dynamic/dynamic-motion';
 import {
-  detachPoolMesh, labCamera, OBLIQUE_SUN_DIR, SHIP_ROTATION_PORT, shipAt, SUN_DIR_ANGLES, sunAnglesOf,
+  detachPoolMesh, EARTH_AWAY, labCamera, OBLIQUE_SUN_DIR, SHIP_ROTATION_PORT, shipAt, SUN_DIR_ANGLES, sunAnglesOf,
   type CaseBuilder, type LabCase, type LabShot,
 } from './lab-case';
 
@@ -75,9 +75,6 @@ const BACKDROP_EARTH_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
   earthLatitudeDeg: 23,
   earthLongitudeDeg: 13,
 };
-// 地球を遠ざける置き方: 高度 1e9 m の真下。どの撮影の画面にも入らず、恒星と格子のあいだにも入らない。
-const EARTH_AWAY: Partial<LabViewAngles> = { earthElevationDeg: -90, earthAltitudeLog: 9 };
-
 // 昼夜境界が地球の円盤を横切る位相になる恒星の向き。
 const TERMINATOR_SUN = sunAnglesOf(new THREE.Vector3(1, 0.2, 0));
 // 金属のハイライトの恒星の向き。方位をカメラから 25° 回す(20° 離れる)と、ハイライトは球の中心からその半分
