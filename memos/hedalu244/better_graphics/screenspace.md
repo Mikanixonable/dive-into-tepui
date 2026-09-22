@@ -138,7 +138,10 @@
     照合)、低軌道の地球がそこに当たる。厳密式でも acos 3 つで済む。
 - **一様な環境光には V × g(= G)を掛ける。天体照は「重なりの割合 × g」。**
 - **環境光の鏡面は GTSO(Jimenez 2016)で弱める** — 鏡面のローブを半角 α_s の円錐
-  (`cos α_s = 2^(−3.32193·α²)`、α は GGX の α)とし、見えている円錐との重なり ÷ ローブの円錐。
+  (`cos α_s = 2^(−3.32193·α²)`、α は GGX の α)とし、**見えている円錐との重なり ÷ 遮りの無い半球との
+  重なり**(天体照の拡散と同じ分母)。GTSO の原形はローブの円錐全体で割るが、それでは遮りが無くても
+  地平線の下へ出たローブのぶん 1 を下回り、天体照の鏡面(LTC)がすでに持つ地平線の切れを二重に数える
+  — 粗い面・掠める面の縁から天体照の映り込みが消える。
   **粗さの小さい端では 1 へ戻す**(Filament の `SpecularAO_Cones` と同じ入れ方。鏡のような面では
   ローブの円錐が細すぎて、重なりが画素ごとに 0 と 1 を跳ぶ)。
 - **テクスチャの天体照は、拡散の写しを法線の向きではなく曲げた法線の向きで、見えている円錐の幅で
@@ -224,11 +227,12 @@
 1. **遮蔽が効いている。** 撮影 `bay-earthshine`(太陽は床の真下、天体照と環境光だけ)で、荷室の内隅に
    近い床 `P_in` が外側の床 `P_out`(同じ材質・同じ向き)より 20 以上暗い。設定「遮蔽と照り返し」をオフに
    した同じ撮影では差が 2 以下。
-2. **遮蔽の量が幾何の期待値に合う。** 撮影 `bay` をデバッグ表示「遮蔽」で撮り、半径 R の内側に遮りの
-   無い床 `P_open` が 255 ± 8、奥の壁の足元 `P_base` が 102 ± 20、奥の壁と端の壁が床と交わる内隅
-   `P_corner` が 60 ± 20。期待値は `bay` の配置を半径 R = 4 m で打ち切った余弦重みのレイキャスト
-   (コードの外で計算)の V = 0.40 / 0.235 — 壁だけなら 0.5 / 0.25 だが、半径の内側のトラス・端の壁・
-   薬莢・立方体・板・光る箱が残りを塞ぐ。**手順 5 で R を変えたら、同じレイキャストで期待値を引き直す。**
+2. **遮蔽の量が幾何の期待値に合う。** 撮影 `bay` をデバッグ表示「遮蔽」で撮り、PNG の値を線形へ戻して
+   (デバッグ表示の灰色は sRGB で出る)V で読む。半径 R の内側に遮りの無い床 `P_open` が 0.97 以上、
+   奥の壁の足元 `P_base` が 0.40 ± 0.08、奥の壁と端の壁が床と交わる内隅 `P_corner` が 0.235 ± 0.08
+   (PNG では 170 / 133 前後)。期待値は `bay` の配置を半径 R = 4 m で打ち切った余弦重みのレイキャスト
+   (コードの外で計算)— 壁だけなら 0.5 / 0.25 だが、半径の内側のトラス・端の壁・薬莢・立方体・板・
+   光る箱が残りを塞ぐ。**手順 5 で R を変えたら、同じレイキャストで期待値を引き直す。**
 3. **照り返しの明るさが幾何の期待値に合う。** 撮影 `bay-bounce`(照り返しの較正: 太陽は奥の壁へ正対し
    床を掠める、天体照と環境光なし、1 天文単位)で、壁の足元の床 `P_base` の線形値が
    `床のアルベド × 壁の放射輝度 × 形態係数 = 0.8 × 0.8 × 0.447 = 0.29` の ±20%(sRGB 120〜149)。
@@ -243,10 +247,11 @@
    (241, 241, 241) のまま。
 7. **オフは今の絵と同じ。** 設定「遮蔽と照り返し」をオフにして撮った組が、before の 2 組に対して
    `npm run render-lab:compare` で封筒外 0 件(`bay-*` を含む全撮影)。
-8. **天体と較正の撮影は動かない。** 既定の設定(高プリセット)で撮った組で、`earth*` / `leo-*` /
-   材質の格子の全撮影 / `saturn*` / `march-slab` / `order` が封筒内。封筒外に出るのは艦・基地
-   (`ship*` / `modular-ship-*`)・`protein-*`・`blackbody`・`bay*` の撮影だけで、差分画像の差は凹部・
-   付け根・部品どうしが向かい合う面に限られる。
+8. **天体と較正の撮影は動かない。** 既定の設定(高プリセット)で撮った組で、`earth*` / 材質の格子の
+   全撮影(`leo-metal*` を含む)/ `saturn*` / `march-slab` / `order` が封筒内。封筒外に出るのは艦・基地
+   (`ship*` / `modular-ship-*`、艦の写る `leo` ケースの `leo` / `earthshine` / `crescent` /
+   `planetshine-far`)・`protein-*`・`blackbody`・`bay*` の撮影だけで、差分画像の差は凹部・付け根・
+   部品どうしが向かい合う面に限られる(`leo` ケースでは艦の上だけ)。
 9. **細い遮りのまわりに暈が出ない。** 撮影 `bay-truss`(細い梁の格子を地球を背に写す)の差分画像
    (既定 − オフ)で、梁の輪郭から 4 px より外(地球の円盤・梁の向こうの床)に差が出ない。
 10. **画面の縁で段差が出ない。** 撮影 `bay-edge`(荷室が画面の左端で切れる)の差分画像(既定 − オフ)で、
@@ -268,104 +273,6 @@
 
 ## 手順
 
-### 手順 3. 遮蔽を足す
-
-**目的** — 天体照と一様な環境光を、近くの構造の塞がり方で弱める(設定「オフ / 遮蔽」)。走査・均し・
-拡大の器を作り、D3 の向きつきの遮蔽と GTSO を光源へ入れ、デバッグ表示と GPU の行を足す。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/pipeline/screen-space/screen-space-pass.ts`(新規) | パスの器。前処理(半解像度の view 深度 r32float)→ 走査 → 均し(縁を保つ 3×3 を 2 回)→ 拡大(全解像度の画素ごとに、2×2 の半解像度画素のうち view 深度が最も近いものを採る)。精細さ「高」は全解像度で走査し拡大を省く。オフのフレームは描画命令を出さず、オフへ切り替わった最初のフレームだけ出力を空へ戻す(残すとデバッグ表示に切る直前の像が凍る。レンズ段と同じ)。`GPU_PASS.screenSpace` で計上 |
-| `src/render/pipeline/screen-space/hemisphere-scan.ts`(新規) | 可視ビットマスクの走査(D1)。スライス数・歩数は実行時の値の動的ループ。刻みは 2 乗で手前へ寄せる。画面外の標本は遮らない |
-| `src/render/pipeline/screen-space/environment-occlusion.ts`(新規) | 可視率テクスチャの符号化(書く側)と、光源が読む係数(読む側)。円錐と球冠の重なり(D3)と GTSO |
-| `src/render/pipeline/lighting/planet-light-source.ts` L102 / L151–191 / L234–296 | 遮蔽の有無でマテリアルを分けて持つ(キャッシュの鍵を「モデル × 遮蔽の有無」に)。遮蔽ありでは拡散に `capFactor`、鏡面に `lobeFactor`、テクスチャの拡散は曲げた法線と円錐の幅で読む。L102 の TODO は「艦の構造は遮蔽が扱い、別の天体による遮りだけが残る」へ狭める |
-| `src/render/pipeline/lighting/ambient-source.ts` L20–51 | 遮蔽の有無でマテリアルを 2 枚持ち、拡散に `uniformFactor`、鏡面に `lobeFactor`(反射ベクトル・粗さ)を掛ける |
-| `src/render/pipeline/render-pipeline.ts` L109–189 / L201–249 / L330–351 / L365–370 / L423–430 / L487–506 | 生成(影パスの後。`EnvironmentOcclusion` を天体照と環境光へ渡す)、`render()` で影パスの後・天体照の写しの前に走らせる、`compile()` に段「遮蔽と照り返し」、`rebuildForGraphics()` で方式・精細さ・遮蔽の有無を一箇所から配る、デバッグ表示「遮蔽」の合成材質(V をそのまま灰色で)、`dispose()` |
-| `src/render/graphics-settings.ts` L159–182 | `screenSpaceDiffuse`(この手順では 0 オフ / 1 遮蔽。高プリセットも仮に 1)と `screenSpaceQuality` を「光源」群の `ambient` の後ろへ |
-| `src/render/gpu-timings.ts` L6–34 | `screenSpace: 15` と表示名「遮蔽と照り返し」 |
-| `src/render/pipeline/debug-target.ts` | `'occlusion'`「遮蔽」を「鏡面照度」の後ろへ |
-
-新しい API:
-
-```ts
-// screen-space-pass.ts
-export const SCREEN_SPACE_DIFFUSE = { off: 0, occlusion: 1, indirect: 2 } as const;
-export const SCREEN_SPACE_QUALITY = { low: 0, medium: 1, high: 2 } as const;
-
-export class ScreenSpacePass {
-  // mode / quality は構築時点の描画設定 screenSpaceDiffuse / screenSpaceQuality の値。
-  public constructor(
-    renderer: WebGPURenderer, gbuffer: GBufferPass, gpu: GpuTimings, mode: number, quality: number,
-  );
-  public setMode(mode: number): void;
-  public setQuality(quality: number): void;
-  // 全解像度。rg = 曲げた法線(view 空間、oct 符号化)、b = 余弦重みの可視率 V、a = 相互反射の持ち上げ g。
-  // 符号化の正本は environment-occlusion.ts。
-  public get visibilityTexture(): THREE.Texture;
-  public render(camera: THREE.Camera, width: number, height: number): void;
-  public compile(camera: THREE.Camera, width: number, height: number): Promise<void>;
-  public dispose(): void;
-}
-
-// hemisphere-scan.ts — 1 画素の半球を走査した結果。
-export interface HemisphereScan {
-  readonly visibility: FloatNode;  // 余弦重みの可視率 V 0..1
-  readonly bentNormal: Vec3Node;   // 遮られない向きの余弦重みの平均(view 空間、正規化済み)
-  readonly indirect: Vec3Node;     // 照り返しの放射照度。集めないときは 0(手順 4)
-}
-// 受け手(sample の位置・法線・視線)のまわりを、半解像度の view 深度 depth の上で走査する。
-// radius は R を画面の走査解像度の画素へ直した値、noise は画素ごとの 0..1 の組。
-export function scanHemisphere(
-  sample: ShadingSample, depth: THREE.Texture, projection: Mat4Uniform,
-  sliceCount: IntNode, stepCount: IntNode, radius: FloatNode, noise: Vec2Node,
-): HemisphereScan;
-
-// environment-occlusion.ts
-// 走査の結果と受け手のアルベド albedo(線形 RGB)を、可視率テクスチャの 1 画素へ詰める。
-export function encodeVisibility(scan: HemisphereScan, albedo: Vec3Node): Vec4Node;
-export class EnvironmentOcclusion {
-  public constructor(visibilityTexture: THREE.Texture);
-  // 球冠の光源(軸 lightDir は view 空間の単位ベクトル、sinSigmaSqr は視半径の正弦の 2 乗)の、
-  // 遮られないときの拡散へ掛ける係数。持ち上げ込みなので 1 を超えうる。
-  public capFactor(sample: ShadingSample, lightDir: Vec3Node, sinSigmaSqr: FloatNode): FloatNode;
-  // 一様な環境光の拡散へ掛ける係数(= G)。
-  public uniformFactor(sample: ShadingSample): FloatNode;
-  // 鏡面のローブ(峰 lobe は view 空間の単位ベクトル)が遮られずに届く割合 0..1(GTSO)。
-  public lobeFactor(sample: ShadingSample, lobe: Vec3Node, roughness: FloatNode): FloatNode;
-  // 拡散の写しを読む向き(view 空間の単位ベクトル)と、見えている円錐の半角 β [rad]。
-  public bentNormal(sample: ShadingSample): Vec3Node;
-  public apertureAngle(sample: ShadingSample): FloatNode;
-}
-
-// planet-light-source.ts / ambient-source.ts
-// 構築に occlusion: EnvironmentOcclusion を足し、次の口を持たせる。
-// 描画設定「遮蔽と照り返し」がオフでないか。次回の material() 取得時から適用される。
-public setOccluded(occluded: boolean): void;
-```
-
-走査の初期値(手順 5 で追い込む): 半径 R = 4 m、板の厚み T = 0.5 m、画面上の半径の上限は画面の
-高さの 1/4、刻みの分布は 2 乗。**深度の縮小列(XeGTAO の 5 段)は最初は持たない** — 手順 5 で負荷が
-キャッシュで頭打ちになっていると分かったときだけ足す。
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run check:boundaries` / `npm run test:render` / `npm run test:settings`。
-- `npm run render-lab:shot -- ss-off screenSpaceDiffuse=0` を before 2 組と
-  `npm run render-lab:compare -- .render-lab-shots/ss-off .render-lab-shots/ss-before-1 .render-lab-shots/ss-before-2`
-  で比べ、封筒外 0 件(達成目標 7)。
-- `npm run render-lab:shot -- ss-ao screenSpaceDiffuse=1` を同じく比べ、達成目標 8 の範囲に収まる。
-  その組の `bay-earthshine` で達成目標 1、`albedo` で 6。
-- 対話の render-lab の開発者コンソールで `renderLab.setTarget('occlusion'); await renderLab.shoot('bay')`
-  を撮り、達成目標 2 の 3 点を読む。
-- `bay-truss` と `bay-edge` の差分画像で達成目標 9・10(この段階で外れたら手順 5 へ持ち越してよい。
-  持ち越したことを commit の本文に書く)。
-- デバッグ情報ウィンドウに「GPU 遮蔽と照り返し」の行が出て、設定をオフにすると 0 になる。
-- `node tools/render-lab-measure.mjs 2 screen-space`(`06105ecf9` で軸を足し済み。照り返しの段は手順 4 まで
-  「遮蔽」と同じ設定として測られるので読まない)で「遮蔽と照り返し」行が出る。
-- commit: `feat(render): 天体照と環境光を近くの構造の塞がり方で弱める`
-
 ### 手順 4. 照り返しを足す
 
 **目的** — 遮る面が太陽の直射と自己発光で返す光を集め、ライティングパスの光源の 1 つとして足す
@@ -376,8 +283,9 @@ public setOccluded(occluded: boolean): void;
 | ファイル | 何をするか |
 | --- | --- |
 | `src/render/pipeline/lighting/sun-source.ts` L45–54 | 点光源としての放射照度(影込み)を `pointIrradiance` として切り出し、`pointContribution` もそれを使う(太陽の挙動は変えない) |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` | 構築に `sun: SunSource` を足す。照り返しのモードでは前処理を MRT にし、view 深度に加えて法線(rg16float)と放射輝度(rgba16float: `(1 − 金属度) × ベース色 / π × sun.pointIrradiance + 自己発光`)を書く。均しと拡大で照り返しも運び、`indirectTexture` を出す |
-| `src/render/pipeline/screen-space/hemisphere-scan.ts` | 新たに塞がった扇形の割合 × 標本の放射輝度を積む(受け手に背を向けた標本は捨てる)。スライスの平均 × π で放射照度にする |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | 構築に `sun: SunSource` を足す。前処理の MRT(いまは素の深度 r32float と法線 rg16float を、同じ全解像度の画素の中心から写している)へ、照り返しのモードでは放射輝度(rgba16float: `(1 − 金属度) × ベース色 / π × sun.pointIrradiance + 自己発光`)を足す。走査・均し・拡大を MRT にして照り返しも運び(符号の無い値なのでそのまま書いてよい)、`indirectTexture` を出す |
+| `src/render/pipeline/lighting/shading-sample.ts` | G バッファを引く uv を構築で受けられるようにする(既定は `screenUV`)。前処理の放射輝度は、全解像度の画素の中心へ寄せた uv で組んだ `ShadingSample` から `sun.pointIrradiance` を引く — `screenUV` のまま半解像度で組むと 4 画素の角で補間して読み、輪郭で虚空の値が混ざる(手順 3 で法線について踏んだ) |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` | 走査の中で、標本の扇形を OR する前に「新たに塞がった扇形の割合 × 標本の放射輝度」を積む(受け手に背を向けた標本は捨てる)。スライスの重みつき平均 × π で放射照度にする。いまの署名は `scanHemisphere(depth, normal, projection, projectionInverse, sliceCount, stepCount, noise)` で、末尾に `source` を足す |
 | `src/render/pipeline/lighting/indirect-source.ts`(新規) | 照り返しの光源。拡散 = `indirectTexture` の値、鏡面 = 0(金属の照り返しは後半の映り込みが担う)。`contributionMaterial` で包む |
 | `src/render/pipeline/render-pipeline.ts` L128–137 / L201–249 / L330–351 | `IndirectSource` を光源の列の末尾へ、`rebuildForGraphics()` で有無を配る、デバッグ表示「照り返し」の合成材質(トーンマッピングを通す) |
 | `src/render/graphics-settings.ts` | `screenSpaceDiffuse` へ `[2, '遮蔽と照り返し']` を足し、高プリセットを 2 にする |
@@ -421,9 +329,10 @@ export class IndirectSource implements LightSource {
 
 - `npm run typecheck` / `npm run test:render` / `npm run test:settings`。
 - `npm run render-lab:shot -- ss-gi`(既定 = 高プリセット = 遮蔽と照り返し)を before 2 組と比べ、
-  達成目標 8 の範囲に収まる。その組で達成目標 3(`bay-bounce`)・4(`bay`)・5(`bay-dark`、`ss-ao` の組と
-  比べる)・6(`albedo`)。
-- 手順 3 の `ss-off` の比較をこのコードで撮り直しても封筒外 0 件(達成目標 7)。
+  達成目標 8 の範囲に収まる。その組で達成目標 3(`bay-bounce`)・4(`bay`)・5(`bay-dark`)・6(`albedo`)。
+  4 と 5 の「遮蔽」側は、同じセッションで `shoot(name, { screenSpaceDiffuse: 1 })` と撮り比べる
+  (手順 3 の組は `.render-lab-shots/ss3c-ao`)。
+- `npm run render-lab:shot -- ss-off screenSpaceDiffuse=0` が before 2 組に対して封筒外 0 件(達成目標 7)。
 - commit: `feat(render): 明るい面と自己発光する面の照り返しを足す`
 
 ### 手順 5. 半径・厚み・精細さの段を追い込み、負荷を測る
@@ -440,10 +349,31 @@ export class IndirectSource implements LightSource {
 | `src/render/graphics-settings.ts` | プリセット(負荷が収まらなければ中プリセットを「遮蔽・低」へ下げる) |
 | この計画ファイル | 「見積り」を実測値へ置き換える |
 
+手順 3 の時点の実測(intel gen-9、render-lab 960×540、初期値のまま):
+
+- **遮蔽が弱い。** `bay` の V は 中 で `P_base` 0.57 / `P_corner` 0.38、低 で 0.63 / 0.46、高 で 0.52 / 0.30。
+  全解像度・16 スライス × 32 歩の密な走査では 0.46 / 0.24 とレイキャストへ寄るので、式ではなく**標本の
+  間隔に板の厚みが足りず、扇形が開いたまま残っている。**
+- **負荷が予算を超える。** 「遮蔽と照り返し」行の中央値がマテリアル行(≈ 1.2 ms)の 低 4.6 倍 / 中 5.6 倍 /
+  高 16.6 倍(達成目標 11 は 中 4.5 倍以下)。低から中で標本が倍になっても +1.3 ms しか増えず、**固定費
+  (≈ マテリアル行の 3.6 倍)が支配的** — 均し 2 回(3×3 の各画素で走査結果と深度を読む 18 読み)と、
+  全解像度の拡大(約 7 読み)。削る候補: 走査結果を「曲げた法線(oct 2 成分)・V・view 深度(16 bit で
+  均しの重みには足りる)」に詰め直して均しの読みを半分にする、均しを 1 回にする。
+- 静止画に残る粒: 拡大の 2×2 の塊と blue noise の残り(弱い)、`bay-edge` の掠める壁に 2〜4 LSB の縦縞、
+  `leo-*` の板に 1 LSB の筋。`leo` の平らな白い板は V が 0.973〜0.994 まで下がり、縁の内側に 1〜2 階調の
+  輪が出る(遮りが無いので 1 のはず)。
+- **達成目標 1 に届かない**(`f6db628ef` で `bay-earthshine` の `P_in` 181 / `P_out` 183)。`P_in` の V が
+  0.62(期待値 0.29)と弱いうえ、真上の地球は見えている円錐の中に入るので、重なりの割合 ≈ 0.7 を多重反射の
+  持ち上げ g ≈ 1.4 が打ち消す。V = 0.29 まで効けば割合 ≈ 0.35・g ≈ 2.07 で 27% 暗く(sRGB で約 26)なる
+  見込みなので、**先に V を期待値へ寄せてから読み直す。** 寄せても 20 に届かないなら、持ち上げ g を
+  向きのある光へ掛ける扱い(D3「天体照は重なりの割合 × g」)を見直す — そのときはユーザーに諮る。
+- 荷室の床の中ほどは、遮蔽オンで外の床より最大 23 明るくなる(重なりの割合 ≈ 1 に g > 1 が掛かる)。
+  天体照に照らされた白い壁が床へ返す光として向きは物理的に正しいが、V を寄せたあとで量を確かめる。
+
 追い込む順と、それぞれを決める撮影:
 
-1. **T** — `bay-truss` で梁のまわりに暈が出ず(達成目標 9)、`bay` の `P_base` / `P_corner` が期待値に
-   入る(立方体・壁のような厚い遮りの後ろへ光が漏れない)ところ。
+1. **T と歩数** — `bay` の `P_base` / `P_corner` が期待値に入り(立方体・壁のような厚い遮りの後ろへ
+   光が漏れない)、`bay-truss` で梁のまわりに暈が出ない(達成目標 9)ところ。
 2. **R** — `bay-bounce` の `P_base`(達成目標 3)と、`ship-selfshadow` の付け根の暗さ。R を変えると
    見え方が変わるので段ごとには変えない。
 3. **段の表と均しの回数** — 低で blue noise の網目が静止画で目立たないこと、段を上げたとき濃淡が
@@ -466,7 +396,7 @@ export class IndirectSource implements LightSource {
 
 | ファイル | 何をするか |
 | --- | --- |
-| 前半で触った `src/` のファイル | `/refactor` と `/comment-cleanup` を当てる |
+| 前半で触った `src/` のファイル | `/refactor` と `/comment-cleanup` を当てる。`render-pipeline.ts` は 522 行で lint の max-lines の警告が出ている(手順 3 で 507 → 522)— 行数ではなく原因(デバッグ表示の合成材質の組み立てが大半を占める)を診断して決める |
 | `memos/hedalu244/better_graphics/pipeline.md` | §2 のパスの表を 12 段にして行を足す、§2-7 の天体照の「遮蔽は受けない」を書き換える、§3 の render-lab のケースに `bay` を足す、§4 の穴の表の「AO / GI が無い」を「近くの物体が映らない」(引き取り先はこのファイル)へ、負荷の現況へ手順 5 の実測を足す |
 | この計画ファイル | 手順 1〜6 と、前半にだけ掛かる達成目標・決めたことを消す |
 
@@ -633,6 +563,7 @@ render-lab 960×540(全解像度 0.52 Mpx、半解像度 0.13 Mpx)での GPU 時
 
 | リスク | 影響 | 露見する場所 |
 | --- | --- | --- |
+| 符号つきの値(曲げた法線など)を `colorNode` でそのまま中間ターゲットへ書く | three の `NodeMaterial` は色の出力を 0 以上へ切るので、負の成分が黙って 0 になる。曲げた法線がカメラの方へ倒れ、画面の下を向いた面の鏡面が消える | 手順 3・4(`leo-metal` の球の下半分、デバッグ表示「法線」との見比べ) |
 | 走査のループを展開してしまう、または和を左畳みで組む | 同じ絵で数倍遅い / WGSL のパーサが入れ子の上限に当たり、JS の例外なしにシェーダごと消える(コンソールに検証エラーだけ) | 手順 3・4(GPU の行、ブラウザのコンソール) |
 | 深度テクスチャを補間つきで読む、半解像度の view 深度を 16 bit にする | 前者は検証エラーで画面ごと黒くなる。後者は遠い平らな面に自己遮蔽の縞が出る | 手順 3(`bay` を遠ざけた構図、デバッグ表示「遮蔽」) |
 | オフの経路が今のシェーダと一致しない(マテリアルのキャッシュの鍵に遮蔽の有無が入っていない等) | オフでも絵が変わる / 設定を切り替えても古いマテリアルのまま | 手順 3・4・9(達成目標 7 の比較、設定パネルでの切り替え) |
