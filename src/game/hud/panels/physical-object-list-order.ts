@@ -202,7 +202,7 @@ export class PhysicalObjectListOrder {
     for (const id of displayIds) {
       const parent = parentOf.get(id);
       // 親が今フレーム同じ区画に見当たらない(遮蔽等で一時的に消えた等)行は根として扱う —
-      // 親が現れないせいで子ごと画面から消えてしまうより、ひとまず出す方に倒す。
+      // 親が現れないせいで子ごと画面から消えてしまうより、優先して表示する側にフォールバックする。
       if (parent === undefined || !idsInSection.has(parent)) { order.rootIds.push(id); continue; }
       const list = order.childIds.get(parent);
       if (list) list.push(id); else order.childIds.set(parent, [id]);

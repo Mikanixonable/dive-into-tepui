@@ -1,5 +1,5 @@
-// 軌道物体一覧と選択ウィジェットに並ぶ物体。自分がどの区画・どのジャンルへ出るか、行に何を
-// 添えるか、検索に何を照合させるか、どの順に並ぶかを答える。
+// 軌道物体一覧と選択ウィジェットに並ぶオブジェクト。所属する区画・ジャンル、表示テキスト、
+// 検索照合文字列、ソート順序の情報を提供する。
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { PickCandidate } from './pick-candidate';

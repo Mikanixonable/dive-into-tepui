@@ -1,5 +1,5 @@
-// 右クリックメニューとプロパティウィンドウへ中身を差し出す物体。出す操作項目とプロパティ行、
-// 固有の操作の実行、改名の受け口を答える。
+// 右クリックメニューとプロパティウィンドウへ情報を提示するオブジェクト。表示する操作項目・プロパティ行、
+// 固有操作の実行処理、および名称変更のインターフェースを提供する。
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';

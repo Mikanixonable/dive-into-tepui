@@ -5,7 +5,7 @@ import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary
 import type { ProteinEnemyRequest } from './dynamic-entity/protein-enemy';
 import type { RunEventSink } from '../run-events';
 
-// 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
+// 個体を実体化可能かを判定する述語関数。何を待機するかは、待機を決定した側のみが保持する。
 export type SpawnGate = () => boolean;
 
 // 実体化を待てる個体の記録。直列化した個体を戻すものと、新しく置くタンパク質の敵の要求がある。

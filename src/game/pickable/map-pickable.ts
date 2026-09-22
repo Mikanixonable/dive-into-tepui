@@ -1,5 +1,5 @@
-// マップ上で掴める物体。候補に出る条件の自己申告と、左クリック・注視移動・視線判定への応答を
-// 答える。
+// マップ上で選択可能なオブジェクト。候補となる条件の判定と、左クリック・注視移動・視線交差への応答を
+// 提供する。
 import type { Ray } from '../../math/ray';
 import type { Vec3 } from '../../math/vec3';
 import type { ControlSelectionCommands } from '../control-selection-commands';

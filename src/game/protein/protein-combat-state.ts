@@ -194,7 +194,7 @@ export class ProteinCombatState {
       integrityHp: this._integrityHp,
       integrityMaxHp: this.integrityMaxHp,
       sites: this.siteStates.map((site) => {
-        // 攻撃可否は部位が攻撃 action を持つかで決まり、機能停止とは独立に答える。
+        // 攻撃可否は部位が攻撃 action を持つかで決定され、機能停止状態とは独立に判定する。
         const attackActionId = this.attackAction?.id;
         const attackable = attackActionId !== undefined && site.definition.actions.includes(attackActionId);
         return {

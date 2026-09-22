@@ -12,7 +12,7 @@ import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import type { EntityRoster } from './dynamic/entity-roster';
 import type { NavTargetPresenter } from './nav-target-presenter';
 
-// 解決に要る問い合わせをまとめた受け口。いずれも ECI 状態を答える。
+// 座標解決に必要な問い合わせをまとめたインターフェース。いずれも ECI 状態を返す。
 interface AnchorTargets {
   // 生存中のエンティティ id の時刻 t における状態。見つからなければ null。
   entityState(id: string, t: number): KinematicState | null;

@@ -200,7 +200,7 @@ export class ScaleGrid {
   }
 
   // 4面ぶんの表示状態を反映する。origin は4面が共通して通る点(描画座標)。
-  // moonOrbitNormal / moonSpinAxis は向きが得られないとき null で、その面は黄道面へ倒す。
+  // moonOrbitNormal / moonSpinAxis は向きが得られないとき null で、その面は黄道面へ縮退（一致）させる。
   public sync(
     visibility: ScaleGridVisibility,
     moonOrbitNormal: THREE.Vector3 | null, moonSpinAxis: THREE.Vector3 | null,

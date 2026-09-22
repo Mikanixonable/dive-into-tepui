@@ -126,7 +126,7 @@ export class EntityContactPhysics {
     }
     // 書き戻しは全解決の後に一括で — 途中で置き換えると prevState が進み、区間の始点を失う。
     for (const i of changed) all[i]!.reset(working[i]!);
-    // 使わなかった末尾を落とし、抱えていた CollisionResponse を手放す。
+    // 未使用の末尾要素を切り捨て、保持していた CollisionResponse を解放する。
     this.candidateScratch.length = count;
   }
 

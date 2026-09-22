@@ -87,7 +87,7 @@ export function sphereOctagonPoints(
   const cosSigma = sqrt(float(1).sub(sinSigma.mul(sinSigma)));
   const diskCenter = position.add(axis.mul(distance.mul(cosSigma).mul(cosSigma)));
   const rho = radius.mul(cosSigma).mul(OCTAGON_RADIUS_SCALE);
-  // 軸に直交する基底。軸が y に平行なときだけ種を x へ倒す。
+  // 軸に直交する基底。軸が y に平行なときだけ参照ベクトルを x 軸へ切り替える。
   const seed = select(abs(axis.y).lessThan(0.99), vec3(0, 1, 0), vec3(1, 0, 0));
   const u = normalize(cross(seed, axis));
   const v = cross(axis, u);

@@ -1,6 +1,6 @@
 // 天体の暦の値を ECI(原点に置いた1体を中心とする座標)へ移す平行移動。軸は変わらないので
 // 回転は起きず、時刻を持ったまま KinematicState として出る。
-// **供給源を揃える不変条件をここが負う** — 数値暦と解析暦は同じ天体に別の位置を答えるので、
+// **供給源を揃える不変条件をここが負う** — 数値暦と解析暦は同じ天体に異なる位置を算出するため、
 // 片方を数値・片方を解析で引くと、その差がそのまま相対位置の誤りになる。原点が数値暦で
 // 引ける時刻だけ両者を数値暦で引き、それ以外は両者を解析へ揃える。
 // THREE/DOM 非依存。
@@ -9,8 +9,8 @@ import { TimeCacheStats, TimeRing } from './time-ring';
 import { Vec3, sub } from '../math/vec3';
 import type { EphemerisBody } from './celestial-body';
 
-// ECI 原点天体が時刻 t に答える、原点を引くための一式。**供給源が違えば同じ天体に別の位置を
-// 答える**ので、ECI 化は必ず同じ経路どうしで差を取る。解析経路は主星相対で持つ
+// ECI 原点天体が時刻 t に提供する、原点を引くための一式。**供給源が違えば同じ天体に異なる位置を
+// 算出する**ため、ECI 化は必ず同じ経路どうしで差を取る。解析経路は主星相対で持つ
 // (kinematic-state の starRel)。numeric が null の時刻は、全天体が解析経路へ落ちる。
 type OriginState = {
   readonly numeric: KinematicState<'numeric'> | null;

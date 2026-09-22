@@ -48,7 +48,7 @@ export interface ProteinEnemyRequest {
   readonly formationRole: FormationRole | null;
 }
 
-// 同じ陣形に生存中のエネルギー役がいるかを答える。攻撃担当以外と、陣形に属さない敵
+// 同じ陣形に生存中のエネルギー役が存在するかを判定する。攻撃担当以外や、陣形に属さない敵
 // (formationId なし)は常に true。
 export function isFormationEnergyAvailable(
   formationRole: FormationRole | null,
@@ -91,7 +91,7 @@ export interface SerializedProteinEnemy extends SerializedEnemy {
 export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   public static readonly kind = 'protein-enemy';
   public declare readonly view: ProteinEnemyView;
-  // その体のアセットの取得を起こし、実体化してよいかを答える関門を返す。
+  // 当該アセットの取得を開始し、実体化可能かを判定するゲート関数を返す。
   public static spawnGate(serialized: SerializedProteinEnemy): SpawnGate {
     return proteinAssetGate(serialized.assetId);
   }
@@ -199,7 +199,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   public get combatReadout(): ProteinCombatReadout { return this.combat.combatReadout(); }
   public get proteinMotionMetrics(): ProteinMotionMetrics { return this.view.motionMetrics; }
 
-  // 機能部位の状態と、表示位置に置いた部位マーカーを答える面。
+  // 機能部位の状態と、表示位置に配置した部位マーカーを提供するインターフェース。
   public override get proteinInspection(): EnemyProteinInspection {
     return {
       combatReadout: () => this.combatReadout,

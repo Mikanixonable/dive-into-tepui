@@ -122,7 +122,7 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
       this.lod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.lod);
       if (this.lod !== 'marker') {
         const cpuStart = performance.now();
-        // 揺らぎの表示が切られている間は、LOD を保ったまま係数だけを静止へ倒す。
+        // 揺らぎの表示が無効化されている間は、LOD を保ったまま係数のみを静止状態（0）へ設定する。
         this.motionController.sampleAt(
           viewFrame.displayTime,
           viewFrame.visual.proteinVibration ? this.lod : 'marker',
