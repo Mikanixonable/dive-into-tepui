@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/readme/wiki-title.svg" alt="Dive into Tepui 開発 Wiki" width="100%">
+  <img src=".github/readme/wiki-title.svg" alt="Dive into Tepui 開発 WIKI" width="100%">
 </p>
 
 <p align="center">
@@ -208,9 +208,9 @@ J2 は扁平による軸対称な2次重力項、C22 は経度方向の非軸対
   <img src=".github/readme/ship-assembly.svg" alt="ShipAssembly とモジュール接続" width="100%">
 </p>
 
-船は単一の固定モデルではなく **ShipAssembly** として扱われます。cockpit、tank、thruster、RCS、weapon、dock、radiator、solar panel、booster などの module instance と、その接続 edge が船体構造を作ります。
+船は単一の固定モデルではなく **ShipAssembly** として扱われます。`cockpit`、`tank`、`thruster`、`RCS`、`weapon`、`dock`、`radiator`、`solar_panel`、`booster` などのモジュール実体と接続辺が船体構造を作ります。
 
-ドッキング後は接続された船体が統合された assembly になり、保存もモジュール単位の状態を含みます。用語の正本は [CONTEXT.md](CONTEXT.md) です。
+ドッキング後は接続された船体が一つの統合船体になり、保存もモジュール単位の状態を含みます。用語の正本は [CONTEXT.md](CONTEXT.md) です。
 
 ---
 
@@ -233,7 +233,7 @@ J2 は扁平による軸対称な2次重力項、C22 は経度方向の非軸対
 
 ### セーブ
 
-ゲーム状態の直列化と復元は、各状態所有者が自分の持ち物を保存する形で構成されています。ブラウザ側の保存管理は launcher の save 系モジュールが担当します。
+ゲーム状態の直列化と復元は、各状態所有者が自分の持ち物を保存する形で構成されています。ブラウザ側の保存管理は `launcher/save/` 系モジュールが担当します。
 
 ---
 
@@ -298,7 +298,7 @@ J2 は扁平による軸対称な2次重力項、C22 は経度方向の非軸対
 | `npm run cloud-lab` | 雲の独立検証 |
 | `npm run bgm-lab` | BGM 試聴 |
 
-地球表面やタンパク質には、取得・生成・検証のための専用 `tools/` と npm script があります。
+地球表面やタンパク質には、取得・生成・検証のための専用 `tools/` と npm スクリプトがあります。
 
 ---
 
