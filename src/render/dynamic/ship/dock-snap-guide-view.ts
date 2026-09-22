@@ -6,7 +6,8 @@ import { markOverlay } from '../../pipeline/lit-layer';
 
 const VALID_COLOR = 0x53f089;
 const INVALID_COLOR = 0xff5b63;
-const GUIDE_OPACITY = 0.9;
+const GUIDE_OPACITY_SELECTED = 1.0;
+const GUIDE_OPACITY_IDLE = 0.48;
 const GUIDE_SEGMENTS = 64;
 
 // dock の自由端に置く接続面を、world 座標で受け取る。rotation は module-local +Z を接続軸へ向ける。
@@ -16,6 +17,7 @@ export interface DockSnapGuideDisplay {
   readonly rotation: Quat;
   readonly radius: number;
   readonly valid: boolean;
+  readonly selected?: boolean;
 }
 
 interface GuidePart {
@@ -117,9 +119,11 @@ export class DockSnapGuideView {
     part.object.position.set(display.position.x, display.position.y, display.position.z);
     const q = qNormalize(display.rotation);
     part.object.quaternion.set(q.x, q.y, q.z, q.w);
-    part.object.scale.setScalar(display.radius);
+    part.object.scale.setScalar(display.radius * (display.selected ? 1.15 : 1));
     part.material.color.set(display.valid ? VALID_COLOR : INVALID_COLOR);
+    part.material.opacity = display.selected ? GUIDE_OPACITY_SELECTED : GUIDE_OPACITY_IDLE;
     part.object.userData.dockSnapGuideValid = display.valid;
+    part.object.userData.dockSnapGuideSelected = display.selected === true;
     part.object.userData.dockSnapGuideId = display.id;
   }
 }
@@ -127,7 +131,7 @@ export class DockSnapGuideView {
 // 候補ごとの色だけを持つ軽量な線材質を作る。
 function guideMaterial(): THREE.LineBasicMaterial {
   return new THREE.LineBasicMaterial({
-    color: VALID_COLOR, transparent: true, opacity: GUIDE_OPACITY, depthTest: true, depthWrite: false,
+    color: VALID_COLOR, transparent: true, opacity: GUIDE_OPACITY_IDLE, depthTest: true, depthWrite: false,
   });
 }
 
