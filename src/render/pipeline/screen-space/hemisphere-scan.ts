@@ -16,10 +16,10 @@ import type { FloatNode, IntNode, Mat4Uniform, UintNode, Vec2Node, Vec3Node, Vec
 // 遮りを探す距離 [m]。受け手からこれより遠い面は遮らない。
 const WORLD_RADIUS = 4;
 // 標本の寄与が 1 から 0 へ落ち始める距離 [m]。WORLD_RADIUS で遮りが急に途切れる段差を消す。
-const FADE_START_DISTANCE = 3;
+const FADE_START_DISTANCE = 2;
 // 深度の標本 1 つが奥へ占める厚み [m]。標本は疎らなので、同じ面の上で隣り合う標本の間の扇形は板が奥へ覆って
 // 埋める — 薄くすると壁の足元や内隅の遮りが抜け、厚くすると細い梁が奥の空まで塞ぐ。
-const SLAB_THICKNESS = 1.5;
+const SLAB_THICKNESS = 1.1;
 // 歩みの刻みの分布の指数。1 より大きいほど標本を受け手の近くへ寄せる。
 const STEP_DISTRIBUTION_EXPONENT = 1.25;
 // 画面上で探す半径の上限。走査の解像度の高さに対する比。
@@ -29,7 +29,10 @@ const MAX_SCREEN_RADIUS = 0.25;
 const MIN_ELEVATION = 0.01;
 // 球冠を数える半角の下限 [rad]。塞がれ方の推定の角の分解能で、光の大きさではない — これより細い光の
 // 塞がれ方は、その向きのまわりこの幅の塞がれ方として測る。0 なら広げない。
-const MIN_CAP_ANGLE = 10 * Math.PI / 180;
+const MIN_CAP_ANGLE = 5 * Math.PI / 180;
+// 鏡面のローブを数える半角の下限 [rad]。球冠と同じ役目だが、滑らかな面のローブは球冠よりずっと細く、
+// 塞がれ方の粒がそのまま鏡面の斑になるので、別の幅で測る。広げるほど粒は減り、向きの効きは鈍る。
+const MIN_LOBE_ANGLE = 20 * Math.PI / 180;
 // スライス 1 枚を刻む扇形の数。マスクの幅(uint のビット数)と一致させる。
 const SECTOR_COUNT = 32;
 const HALF_PI = Math.PI / 2;
@@ -111,8 +114,9 @@ export function scanHemisphere(
       const slice = sliceAt(float(i).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiverNormal);
       // 光ごとの、このスライスの平面に掛かる向きの範囲。
       const planetRange: readonly [UintNode, UintNode] = [
-        capSectors(slice, view, planetCap[0]).toVar(), capSectors(slice, view, planetCap[1]).toVar()];
-      const specularRange = capSectors(slice, view, specularCap).toVar();
+        capSectors(slice, view, planetCap[0], MIN_CAP_ANGLE).toVar(),
+        capSectors(slice, view, planetCap[1], MIN_CAP_ANGLE).toVar()];
+      const specularRange = capSectors(slice, view, specularCap, MIN_LOBE_ANGLE).toVar();
       const blocked = uint(0).toVar();
       // 新たに塞いだ扇形の数。空全体・球冠 0・1・ローブの順。
       const sliceOccluded = vec4(0).toVar();
@@ -233,10 +237,10 @@ function capVar(cap: Cap): Cap {
   return { direction: cap.direction.toVar(), cosAngle: cap.cosAngle.toVar() };
 }
 
-// スライスの平面が球冠 cap を切る弧が覆う扇形のビット。半角は MIN_CAP_ANGLE まで広げる。平面が球冠を
+// スライスの平面が球冠 cap を切る弧が覆う扇形のビット。半角は minAngle [rad] まで広げる。平面が球冠を
 // 外れていれば空。**Fn の中から呼ぶこと。**
-function capSectors(slice: Slice, view: Vec3Node, cap: Cap): UintNode {
-  const cosAngle = min(cap.cosAngle, Math.cos(MIN_CAP_ANGLE)).toVar();
+function capSectors(slice: Slice, view: Vec3Node, cap: Cap, minAngle: number): UintNode {
+  const cosAngle = min(cap.cosAngle, Math.cos(minAngle)).toVar();
   // 平面の法線の成分を落とすと弧の中心の向きになり、残った長さが弧の半幅を決める。
   const axisComponent = dot(cap.direction, slice.axis).toVar();
   const inPlane = sqrt(max(float(1).sub(axisComponent.mul(axisComponent)), 0)).toVar();
