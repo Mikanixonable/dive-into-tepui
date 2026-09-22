@@ -34,7 +34,6 @@ import { ShadowMaps } from './shadow/shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein/protein-motion-material';
 import { FilmLut } from './film-lut';
-import { VisualEffectLut } from './visual-effect-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
 import { setCelestialSurfaceViewport } from '../celestial/celestial-surface';
@@ -68,7 +67,6 @@ export class RenderPipeline {
   // 合成段の色へ適用するフィルム風ルック（LUT）。通常表示の2枚(compositeMaterials.off と
   // lensCompositeMaterial)が組み込む。
   private readonly filmLut = new FilmLut();
-  private readonly visualEffectLut = new VisualEffectLut();
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
   // レンズ効果を掛けた通常表示。**compositeMaterials とは別に持つ** — デバッグ表示の選択肢
   // (DebugTargetId)ではなく、描画品質設定でオン/オフする 'off' の別版だからである。
@@ -172,9 +170,7 @@ export class RenderPipeline {
     this.compositeMaterials = this.buildDebugComposites();
     this.lensCompositeMaterial = this.buildCompositeMaterial(
       vec4(
-        this.visualEffectLut.apply(
-          this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
-        ),
+        this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
         1,
       ),
     );
@@ -205,9 +201,7 @@ export class RenderPipeline {
     );
     return {
       off: this.buildCompositeMaterial(
-        vec4(this.visualEffectLut.apply(
-          this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)),
-        ), 1),
+        vec4(this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
       ),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
@@ -407,9 +401,6 @@ export class RenderPipeline {
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
-
-    // 物理環境光の有効状態を、そのフレームの通常合成だけへ伝える。模式図と3D UIは別経路。
-    this.visualEffectLut.setEnabled(this._ambient.hasContribution());
 
     // 影マップパスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
     flushProteinMotionComputes(this.renderer);
