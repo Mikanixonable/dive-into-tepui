@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>会合・戦闘・敵</title><defs><style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">会合・戦闘・敵</text><text x="40" y="60" class="m d sm">相対運動と弾の飛行時間から、現在位置ではなく見越し点を狙う</text>
+<g transform="translate(60 92)">
+ <path d="M10 110C210 0 450 2 700 108" class="w"/>
+ <path d="M10 136C220 40 455 43 728 125" class="r"/>
+ <g transform="translate(305 58)"><path d="M-11-5L17 0-11 5-3 0Z" fill="#eeeaf5"/><circle r="15" fill="none" stroke="#3478ff"/><text x="-16" y="32" class="m t xs">自機</text></g>
+ <g transform="translate(630 116)"><path d="M-10-6L16 0-10 6-3 0Z" fill="#ff8798"/><circle r="15" fill="none" stroke="#ff3155"/><text x="-16" y="31" class="m t xs">敵機</text></g>
+ <circle cx="690" cy="82" r="5" fill="#3478ff"/><text x="701" y="85" class="m u xs">見越し点</text>
+ <path d="M320 58L684 82" class="bl dash" marker-end="url(#ba)"/>
+ <path d="M630 116L686 85" class="g"/>
+ <path d="M305 39L355 18" class="r" marker-end="url(#ra)"/><text x="360" y="20" class="m a xs">相対速度</text>
+ <g fill="#ff3155"><circle cx="410" cy="64" r="2.5"/><circle cx="490" cy="69" r="2.5"/><circle cx="570" cy="75" r="2.5"/></g>
+</g>
+<g transform="translate(930 110)">
+ <circle cx="50" cy="50" r="38" fill="#101217" stroke="#48506a"/><path d="M20 50H80M50 20V80" class="g"/><circle cx="59" cy="42" r="5" fill="#ff3155"/>
+ <text x="14" y="105" class="m b sm">lead sight</text><text x="2" y="126" class="m d xs">projectile entity</text>
+</g>
+</svg>
