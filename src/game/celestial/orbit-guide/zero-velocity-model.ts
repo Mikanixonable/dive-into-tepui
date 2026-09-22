@@ -190,7 +190,7 @@ export class ZeroVelocityModel {
   }
 
   // キャッシュ済みの2次元形状を、その時刻の回転基底(rotatingFrame)で ECI へ埋め込み直す
-  // (軽い処理、表示時刻が動くたびに呼んでよい)。基底を組めない系の断面は落とす。
+  // (軽い処理、表示時刻が動くたびに呼んでよい)。基底を構築できない系の断面は除外する。
   private embed(displayTime: number): readonly EmbeddedContour[] {
     // 系ごとに rotatingFrame を1回だけ求めて使い回す。
     const frames = new Map<CatalogSystemId, ReturnType<typeof rotatingFrame>>();

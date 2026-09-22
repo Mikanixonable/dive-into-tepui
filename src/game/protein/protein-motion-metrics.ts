@@ -21,7 +21,7 @@ export interface ProteinMotionFrameSample {
   readonly lodCounts: Partial<ProteinMotionLodCounts>;
 }
 
-// 顔ぶれの中の全タンパク質敵から、直近の sync 時点の計測値を足し合わせ、LOD ごとの体数を数える。
+// 登録エンティティ中の全タンパク質敵から、直近の sync 時点の計測値を合算し、LOD ごとの個体数を集計する。
 export function proteinMotionFrameSample(
   entities: readonly DynamicEntity[],
 ): ProteinMotionFrameSample {
