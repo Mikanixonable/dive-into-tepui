@@ -21,16 +21,24 @@
   <a href="https://github.com/Mikanixonable/dive-into-tepui/actions/workflows/build.yml">
     <img alt="CI" src="https://github.com/Mikanixonable/dive-into-tepui/actions/workflows/build.yml/badge.svg">
   </a>
-  <img alt="WebGPU" src="https://img.shields.io/badge/rendering-WebGPU-5A4FCF?logo=googlechrome&logoColor=white">
-  <img alt="TypeScript" src="https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white">
-  <img alt="Three.js" src="https://img.shields.io/badge/Three.js-0.185.1-black?logo=threedotjs&logoColor=white">
-  <img alt="Node.js 20+" src="https://img.shields.io/badge/Node.js-20%2B-339933?logo=nodedotjs&logoColor=white">
+  <img alt="WebGPU" src="https://img.shields.io/badge/rendering-WebGPU-ff3155?logo=googlechrome&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/language-TypeScript-3478ff?logo=typescript&logoColor=white">
+  <img alt="Three.js" src="https://img.shields.io/badge/Three.js-0.185.1-0e1014?logo=threedotjs&logoColor=white">
+  <img alt="Node.js 20+" src="https://img.shields.io/badge/Node.js-20%2B-48506a?logo=nodedotjs&logoColor=white">
   <img alt="Last commit" src="https://img.shields.io/github/last-commit/Mikanixonable/dive-into-tepui">
   <img alt="Repository size" src="https://img.shields.io/github/repo-size/Mikanixonable/dive-into-tepui">
 </p>
 
 <p align="center">
   <sub>Browser-first · WebGPU · TypeScript · orbital mechanics · scientific visualization</sub>
+</p>
+
+<p align="center">
+  <img src=".github/readme/hero-orbit.svg" alt="Dive into Tepui orbital combat overview" width="100%">
+</p>
+
+<p align="center">
+  <sub>README visuals follow the default title-screen palette — <strong>Arcade Pulse</strong>: #08090D · #FF3155 · #FF6B82 · #3478FF</sub>
 </p>
 
 ---
@@ -149,6 +157,7 @@ npm run dev</code></pre>
 ### 基本ループ
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"background":"#08090d","primaryColor":"#0e1014","primaryTextColor":"#eeeaf5","primaryBorderColor":"#ff3155","lineColor":"#89838f","secondaryColor":"#15171c","secondaryTextColor":"#c3bec9","secondaryBorderColor":"#3478ff","tertiaryColor":"#1d2026","tertiaryTextColor":"#eeeaf5","tertiaryBorderColor":"#48506a","edgeLabelBackground":"#08090d","clusterBkg":"#0e1014","clusterBorder":"#48506a"}}}%%
 flowchart LR
     A[Detect] --> B[Plan orbit]
     B --> C[Burn Δv]
@@ -271,6 +280,7 @@ flowchart LR
 描画は Three.js の WebGPU renderer を中心に構成されています。地球表現は単一テクスチャではなく、地表ストリーミング、大気、雲、海岸線、オーロラ、airglow などを別の系として扱います。
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"background":"#08090d","primaryColor":"#0e1014","primaryTextColor":"#eeeaf5","primaryBorderColor":"#ff3155","lineColor":"#89838f","secondaryColor":"#15171c","secondaryTextColor":"#c3bec9","secondaryBorderColor":"#3478ff","tertiaryColor":"#1d2026","tertiaryTextColor":"#eeeaf5","tertiaryBorderColor":"#48506a","edgeLabelBackground":"#08090d","clusterBkg":"#0e1014","clusterBorder":"#48506a"}}}%%
 flowchart LR
     D[Earth / climate data] --> P[Offline processing]
     P --> T[Surface tiles / terrain]
@@ -310,6 +320,10 @@ flowchart LR
 
 現在のゲームデザインでは、NRHO から L1 / L2、そして LEO へ進出し、資源・生産設備・宇宙農場を拡張していく長期構造が検討されています。ペプチドをモチーフにした自動兵器や「執政官の結晶」などの世界設定も設計メモで検討中です。
 
+<p align="center">
+  <img src=".github/readme/cislunar-progression.svg" alt="Cislunar progression design direction" width="100%">
+</p>
+
 > [!NOTE]
 > この節は実装済みゲームルールの一覧ではなく、`memos/` で検討されている長期的なゲームデザインの方向性です。
 
@@ -336,6 +350,10 @@ flowchart LR
 
 この分離により、時間加速・セーブ・予測軌道・複数の表示経路が同じゲーム状態を参照しても、状態の書き手を追跡しやすくします。
 
+<p align="center">
+  <img src=".github/readme/simulation-stack.svg" alt="Simulation, presentation and device architecture" width="100%">
+</p>
+
 ---
 
 <a id="architecture"></a>
@@ -344,6 +362,7 @@ flowchart LR
 このプロジェクトでは「何を表示するか」と「ゲーム世界で何が起きたか」を分離します。捨てても再生成できない値をモデルの**正本**、毎フレーム作り直せる表示状態を導出値として扱います。
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"background":"#08090d","primaryColor":"#0e1014","primaryTextColor":"#eeeaf5","primaryBorderColor":"#ff3155","lineColor":"#89838f","secondaryColor":"#15171c","secondaryTextColor":"#c3bec9","secondaryBorderColor":"#3478ff","tertiaryColor":"#1d2026","tertiaryTextColor":"#eeeaf5","tertiaryBorderColor":"#48506a","edgeLabelBackground":"#08090d","clusterBkg":"#0e1014","clusterBorder":"#48506a"}}}%%
 flowchart TD
     I[Keyboard / Pointer] --> ID[Input interpretation]
     ID --> Q[Command Queue]
@@ -395,6 +414,7 @@ src/
 船体は **ShipAssembly** として扱い、module instance を node、構造接続・ドッキング接続などを edge とする接続グラフで表現します。
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"background":"#08090d","primaryColor":"#0e1014","primaryTextColor":"#eeeaf5","primaryBorderColor":"#ff3155","lineColor":"#89838f","secondaryColor":"#15171c","secondaryTextColor":"#c3bec9","secondaryBorderColor":"#3478ff","tertiaryColor":"#1d2026","tertiaryTextColor":"#eeeaf5","tertiaryBorderColor":"#48506a","edgeLabelBackground":"#08090d","clusterBkg":"#0e1014","clusterBorder":"#48506a"}}}%%
 graph LR
     C[Cockpit] --- T1[Main tank]
     T1 --- TH[Thruster]
@@ -438,6 +458,7 @@ graph LR
 ### Documentation model
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"background":"#08090d","primaryColor":"#0e1014","primaryTextColor":"#eeeaf5","primaryBorderColor":"#ff3155","lineColor":"#89838f","secondaryColor":"#15171c","secondaryTextColor":"#c3bec9","secondaryBorderColor":"#3478ff","tertiaryColor":"#1d2026","tertiaryTextColor":"#eeeaf5","tertiaryBorderColor":"#48506a","edgeLabelBackground":"#08090d","clusterBkg":"#0e1014","clusterBorder":"#48506a"}}}%%
 flowchart LR
     S[SPEC<br/>How it should behave] --> I[Implementation]
     A[ARCHITECTURE<br/>Where it belongs] --> I
@@ -504,6 +525,7 @@ CI では lint、境界検査、型チェック、各種データ検証、テス
 ### Quality gates
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"background":"#08090d","primaryColor":"#0e1014","primaryTextColor":"#eeeaf5","primaryBorderColor":"#ff3155","lineColor":"#89838f","secondaryColor":"#15171c","secondaryTextColor":"#c3bec9","secondaryBorderColor":"#3478ff","tertiaryColor":"#1d2026","tertiaryTextColor":"#eeeaf5","tertiaryBorderColor":"#48506a","edgeLabelBackground":"#08090d","clusterBkg":"#0e1014","clusterBorder":"#48506a"}}}%%
 flowchart LR
     L[Lint] --> B[Boundary check]
     B --> T[Typecheck]
