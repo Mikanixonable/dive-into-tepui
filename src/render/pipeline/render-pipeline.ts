@@ -169,12 +169,41 @@ export class RenderPipeline {
     this.depthDebugProjInv = uniform(new THREE.Matrix4());
     this.debugViewToWorld = uniform(new THREE.Matrix4());
 
+    this.compositeMaterials = this.buildDebugComposites();
+    this.lensCompositeMaterial = this.buildCompositeMaterial(
+      vec4(
+        this.visualEffectLut.apply(
+          this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        ),
+        1,
+      ),
+    );
+    // 模式図用の合成マテリアル。表示スタイルの切り替えなので、デバッグ表示の選択肢とは別に持つ。
+    this.schematicComposite = new SchematicComposite(this.gbuffer, this.depthDebugProjInv);
+    this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
+
+    this.quad = new QuadMesh(this.compositeMaterials.off);
+    this.syncTargetSize();
+    // 構築で渡さなかった値も含めて、構築時点の設定をすべてのパスへ配る。
+    this.rebuildForGraphics(graphics);
+  }
+
+  // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
+  // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
+  // そのまま読み取れる。
+  private toneMapped(color: Vec3Node): Vec3Node {
+    return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
+  }
+
+  // デバッグ表示の選択肢ごとの合成マテリアルの表。表示ごとに別マテリアルを持ち、quad.material の
+  // 差し替えで切り替える — 1 枚をユニフォームで分岐させると、通常プレイの毎フレームで G バッファの
+  // 全テクスチャを bind/sample することになる。
+  private buildDebugComposites(): Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>> {
+    // 「マテリアル」も「大気」も、大気パスが点検用に描く1枚を映すので、材質を共有する。
     const inspectMaterial = this.buildCompositeMaterial(
       vec4(this.toneMapped(texture(this.atmospherePass.inspectTexture, screenUV).rgb), 1),
     );
-    // 表示ごとに別マテリアルを持ち、quad.material の差し替えで切り替える。1 枚をユニフォームで
-    // 分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを bind/sample することになる。
-    this.compositeMaterials = {
+    return {
       off: this.buildCompositeMaterial(
         vec4(this.visualEffectLut.apply(
           this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)),
@@ -210,7 +239,6 @@ export class RenderPipeline {
       specular: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
-      // 「マテリアル」も「大気」も、大気パスが点検用に描く1枚を映すので、材質を共有する。
       material: inspectMaterial,
       atmosphere: inspectMaterial,
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
@@ -218,29 +246,6 @@ export class RenderPipeline {
         vec4(this.toneMapped(this._planetLight.imageRadianceAt(screenUV)), 1),
       ),
     };
-    this.lensCompositeMaterial = this.buildCompositeMaterial(
-      vec4(
-        this.visualEffectLut.apply(
-          this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
-        ),
-        1,
-      ),
-    );
-    // 模式図用の合成マテリアル。表示スタイルの切り替えなので、デバッグ表示の選択肢とは別に持つ。
-    this.schematicComposite = new SchematicComposite(this.gbuffer, this.depthDebugProjInv);
-    this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
-
-    this.quad = new QuadMesh(this.compositeMaterials.off);
-    this.syncTargetSize();
-    // 構築で渡さなかった値も含めて、構築時点の設定をすべてのパスへ配る。
-    this.rebuildForGraphics(graphics);
-  }
-
-  // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
-  // 下では色相・彩度を保ったまま素通しするため — 「表示値 = アルベド」という校正が中間調では
-  // そのまま読み取れる。
-  private toneMapped(color: Vec3Node): Vec3Node {
-    return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
   }
 
   // composite 用マテリアル。colorNode だけが表示ごとに異なる。深度は G バッファのものを描画先の
