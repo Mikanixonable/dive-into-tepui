@@ -11,7 +11,7 @@
 </defs>
 <rect width="1200" height="500" rx="22" fill="url(#bg)"/>
 <text x="55" y="48" class="m t h">コードベース地図</text><text x="55" y="72" class="m d k">ファイル名ではなく、責務から入口を選ぶ</text>
-<g transform="translate(55 112)">
+<g transform="translate(55 100)">
 <rect x="0" y="0" width="245" height="120" rx="14" class="box"/><text x="18" y="32" class="sans t v">math/</text><text x="18" y="60" class="m d sm">汎用数学・幾何・数値処理</text><text x="18" y="84" class="m d sm">ゲーム意味を持たない道具</text>
 <rect x="285" y="0" width="245" height="120" rx="14" class="box"/><text x="303" y="32" class="sans t v">physics/</text><text x="303" y="60" class="m d sm">軌道・姿勢・接触・大気</text><text x="303" y="84" class="m d sm">Three.js 非依存</text>
 <rect x="570" y="0" width="245" height="120" rx="14" class="box"/><text x="588" y="32" class="sans t v">game/</text><text x="588" y="60" class="m d sm">1ランの状態・規則・表示導出</text><text x="588" y="84" class="m d sm">船・戦闘・計画・天体</text>
@@ -20,6 +20,6 @@
 <rect x="285" y="160" width="245" height="120" rx="14" class="box"/><text x="303" y="192" class="sans t v">input/ · audio/</text><text x="303" y="220" class="m d sm">入力と音声の装置境界</text><text x="303" y="244" class="m d sm">ゲーム意味を持たせない</text>
 <rect x="570" y="160" width="245" height="120" rx="14" class="box"/><text x="588" y="192" class="sans t v">settings/</text><text x="588" y="220" class="m d sm">セーブを跨ぐユーザー設定</text><text x="588" y="244" class="m d sm">保存と購読の持ち主</text>
 <rect x="855" y="160" width="245" height="120" rx="14" class="box"/><text x="873" y="192" class="sans t v">launcher/ · run/</text><text x="873" y="220" class="m d sm">ランの外側と組み立て</text><text x="873" y="244" class="m d sm">起動・セーブ・フレーム位相</text>
-<rect x="0" y="320" width="1100" height="75" rx="12" class="soft"/><text x="18" y="348" class="m a xs">読む順番の目安</text><text x="18" y="376" class="m t sm">main.ts / run/ → game/ → physics/ と render/ → hud/・launcher/ → tests/</text>
+<rect x="0" y="300" width="1090" height="70" rx="12" class="soft"/><text x="18" y="325" class="m a xs">読む順番の目安</text><text x="18" y="350" class="m t sm">main.ts / run/ → game/ → physics/ と render/ → hud/・launcher/ → tests/</text>
 </g>
 </svg>
