@@ -33,9 +33,17 @@ function loadGlbScene(filename) {
   });
 }
 
+const ROTATE_BLENDER_TO_THREE = new THREE.Matrix4().makeRotationX(Math.PI / 2);
+
 async function applyGlbModel(root, filename) {
   const scene = await loadGlbScene(filename);
   if (!scene) return false;
+  scene.traverse((child) => {
+    if (child.isMesh && child.geometry) {
+      child.geometry.applyMatrix4(ROTATE_BLENDER_TO_THREE);
+      child.geometry.computeVertexNormals();
+    }
+  });
   while (scene.children.length > 0) {
     const child = scene.children[0];
     root.add(child);
