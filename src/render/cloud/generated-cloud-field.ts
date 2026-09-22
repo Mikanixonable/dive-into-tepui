@@ -7,7 +7,7 @@ import type { ClimateMap } from './climate-map';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from '../field-projection';
 import type { CloudSample } from './cloud-field-sample';
-import type { CloudFieldSource } from './cloud-presentation';
+import type { CloudFieldSource } from './cloud-field-source';
 import type { Vec3Node } from '../tsl-types';
 import type { CloudState, CloudStateBinding } from './cloud-state';
 
@@ -29,7 +29,7 @@ export class GeneratedCloudField implements CloudFieldSource {
   // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
   // 半径 [m]、rotationPeriod はその自転周期 [s]。
   public constructor(
-    private readonly climate: ClimateMap, private readonly projection: FieldProjection,
+    private readonly climate: ClimateMap, public readonly projection: FieldProjection,
     surfaceRadius: number, rotationPeriod: number,
   ) {
     this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);

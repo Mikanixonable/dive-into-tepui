@@ -9,7 +9,7 @@ import { GPU_PASS } from '../gpu-timings';
 import { equirectUvFromDirection, type FieldProjection } from '../field-projection';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { CloudFieldSource } from './cloud-presentation';
+import type { CloudFieldSource } from './cloud-field-source';
 import type { Vec4Node } from '../tsl-types';
 import type { CloudStateBinding } from './cloud-state';
 
@@ -27,7 +27,7 @@ export class ObservedCloudField implements CloudFieldSource {
 
   // url は地表と同じ正距円筒の旧観測画像(R = 被覆率、G = 雲頂の proxy、B = 薄い雲の光学的厚み)、
   // projection は焼き直す先の持ち方。旧 RGB は basis adapter を通してから runtime field へ入れる。
-  public constructor(url: string, private readonly projection: FieldProjection) {
+  public constructor(url: string, public readonly projection: FieldProjection) {
     this.map = new DeferredTexture(url, THREE.NoColorSpace);
     // 正距円筒の経度は周期的なので、画像は経度方向へ巻く。
     this.map.texture.wrapS = THREE.RepeatWrapping;
