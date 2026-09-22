@@ -4,7 +4,7 @@
 // 載せる天体とその値は、毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, PI, acos, asin, clamp, cos, dot, float, length, max, min, normalize, select, sin, sqrt, uniform,
+  Fn, PI, acos, asin, clamp, cos, dot, float, length, max, min, normalize, select, sin, sqrt, uniform, vec3,
 } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
@@ -182,7 +182,6 @@ class PlanetLightSlot implements LightSource {
     const toCenter = center.sub(sample.position);
     const sinSigmaSqr = this.sinSigmaSqrOf(toCenter);
     const lightDir = this.capOf(toCenter, sinSigmaSqr).direction;
-    const cosBeta = dot(sample.normal, lightDir);
     // 受け手へ届く放射輝度。テクスチャのモードでは、拡散はクランプドコサインの峰(法線)、
     // 鏡面は GGX のローブの峰(反射ベクトル)の向きで写しから読む。
     const sphereRadiance = this.uniformSphereRadiance(sample, center, lightDir, sinSigmaSqr);
@@ -195,11 +194,7 @@ class PlanetLightSlot implements LightSource {
         sample, sample.reflected, this.specularFilterAngle(sample, sinSigmaSqr), lightDir, sinSigmaSqr,
         sphereRadiance)
       : sphereRadiance;
-    // 一様球の放射照度 E = π·L̄·sin²σ × クリップ係数(全可視では saturate(cosβ) に一致)。
-    // **大きさを作るのはこの 2 つの係数だけ**で、写しは色の倍率としてしか効かない — 写しの値で
-    // エネルギーを作ると、高周波の地表で総光量が破れる。
-    const diffuse: Vec3Node = diffuseRadiance.mul(PI).mul(sinSigmaSqr)
-      .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr));
+    const diffuse = this.diffuseIrradiance(sample, diffuseRadiance, lightDir, sinSigmaSqr);
     const specular: Vec3Node = specularRadiance
       .mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
     if (screenSpaceLight === null) return { diffuse, specular };
@@ -208,6 +203,28 @@ class PlanetLightSlot implements LightSource {
       diffuse: diffuse.mul(screenSpaceLight.planetVisibility(sample, this.index)),
       specular: specular.mul(screenSpaceLight.specularVisibility(sample)),
     };
+  }
+
+  // 受け手 sample がこのスロットの天体から受ける拡散の放射照度。光源モデルの設定によらず一様球の式で、
+  // 空が遮られないとしたときの値を引く。消灯したスロット(半径 0)は 0 を返す。
+  public uniformDiffuseIrradiance(sample: ShadingSample): Vec3Node {
+    const center = sample.viewPositionOf(this.slot.center);
+    const toCenter = center.sub(sample.position);
+    const sinSigmaSqr = this.sinSigmaSqrOf(toCenter);
+    const lightDir = this.capOf(toCenter, sinSigmaSqr).direction;
+    return this.diffuseIrradiance(
+      sample, this.uniformSphereRadiance(sample, center, lightDir, sinSigmaSqr), lightDir, sinSigmaSqr);
+  }
+
+  // 放射輝度 radiance で届く球光源の放射照度 E = π·L̄·sin²σ × クリップ係数(全可視では saturate(cosβ)
+  // に一致)。lightDir は球冠の向き(view 空間)、sinSigmaSqr は視半径 σ の正弦の 2 乗。
+  // **大きさを作るのはこの 2 つの係数だけ**で、写しは色の倍率としてしか効かない — 写しの値で
+  // エネルギーを作ると、高周波の地表で総光量が破れる。
+  private diffuseIrradiance(
+    sample: ShadingSample, radiance: Vec3Node, lightDir: Vec3Node, sinSigmaSqr: FloatNode,
+  ): Vec3Node {
+    return radiance.mul(PI).mul(sinSigmaSqr)
+      .mul(sphereIrradianceFactor(dot(sample.normal, lightDir), sinSigmaSqr));
   }
 
   // 受け手から toCenter(view 空間)にあるこの天体の、視半径 σ の正弦の 2 乗。
@@ -285,6 +302,13 @@ export class PlanetLightSource {
   // 受け手 sample から見たスロット slot の天体の球冠。
   public capAt(sample: ShadingSample, slot: number): Cap {
     return this.slotSources[slot]!.capAt(sample);
+  }
+
+  // 受け手 sample が全スロットの天体から受ける拡散の放射照度の和。光源モデルの設定によらず一様球の式で、
+  // 空が遮られないとしたときの値を引く。
+  public uniformDiffuseIrradiance(sample: ShadingSample): Vec3Node {
+    return this.slotSources.reduce<Vec3Node>(
+      (sum, source) => sum.add(source.uniformDiffuseIrradiance(sample)), vec3(0));
   }
 
   // 同時に使用するスロット本数を変更する。次回の set() 呼び出し時から適用される。

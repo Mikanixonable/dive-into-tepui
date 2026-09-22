@@ -14,6 +14,7 @@ import { compileInto } from '../compile-into';
 import { gbufferUVOf, scanHemisphere, type Cap } from './hemisphere-scan';
 import { ScreenSpaceLight } from './screen-space-light';
 import type { GBufferPass } from '../gbuffer';
+import type { AmbientSource } from '../lighting/ambient-source';
 import type { PlanetLightSource } from '../lighting/planet-light-source';
 import type { SunSource } from '../lighting/sun-source';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node } from '../../tsl-types';
@@ -177,18 +178,19 @@ export class ScreenSpacePass {
   // 空へ戻すときに退避する消去色。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
-  // sun は照り返しの光源になる面が受ける直射を引く太陽、planetLight は塞がれ方を数える天体照の球冠の出どころ、
-  // output は結果の描画先。mode / quality は構築時点の描画設定 screenSpaceDiffuse / screenSpaceQuality の値。
+  // sun / ambient は照り返しの光源になる面を照らす太陽と環境光、planetLight は塞がれ方を数える天体照の
+  // 球冠の出どころであり、その面を照らす天体照でもある。output は結果の描画先。mode / quality は構築時点の
+  // 描画設定 screenSpaceDiffuse / screenSpaceQuality の値。
   public constructor(
     private readonly renderer: WebGPURenderer, gbuffer: GBufferPass, sun: SunSource, planetLight: PlanetLightSource,
-    private readonly output: ScreenSpaceLight, private readonly gpu: GpuTimings,
+    ambient: AmbientSource, private readonly output: ScreenSpaceLight, private readonly gpu: GpuTimings,
     private mode: ScreenSpaceDiffuse, private quality: ScreenSpaceQuality,
   ) {
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
     this.stages = {
       [SCREEN_SPACE_DIFFUSE.off]: [],
-      [SCREEN_SPACE_DIFFUSE.occlusion]: this.createStages(gbuffer, planetLight, null),
-      [SCREEN_SPACE_DIFFUSE.indirect]: this.createStages(gbuffer, planetLight, sun),
+      [SCREEN_SPACE_DIFFUSE.occlusion]: this.createStages(gbuffer, planetLight, ambient, null),
+      [SCREEN_SPACE_DIFFUSE.indirect]: this.createStages(gbuffer, planetLight, ambient, sun),
     };
   }
 
@@ -247,7 +249,9 @@ export class ScreenSpacePass {
   }
 
   // 前処理 → 走査 → 均し 2 回 → 拡大の描画命令を組む。sun が null なら照り返しを集めず、照り返しの出力は 0。
-  private createStages(gbuffer: GBufferPass, planetLight: PlanetLightSource, sun: SunSource | null): readonly Stage[] {
+  private createStages(
+    gbuffer: GBufferPass, planetLight: PlanetLightSource, ambient: AmbientSource, sun: SunSource | null,
+  ): readonly Stage[] {
     const [surfaceDepth, surfaceNormal, surfaceRadiance] = this.surfaceTarget.textures;
     const [scanOccluded, scanExtent, scanIndirect] = this.scanTarget.textures;
     const [blurOccluded, blurExtent, blurIndirect] = this.blurTarget.textures;
@@ -256,7 +260,8 @@ export class ScreenSpacePass {
     prepass.mrtNode = mrt({
       surfaceDepth: textureLoad(gbuffer.depthTexture, this.gbufferPixel).r,
       surfaceNormal: textureLoad(gbuffer.normalTexture, this.gbufferPixel).rg,
-      surfaceRadiance: vec4(sun === null ? vec3(0) : this.emittedRadiance(gbuffer, sun), 1),
+      surfaceRadiance: vec4(
+        sun === null ? vec3(0) : this.emittedRadiance(gbuffer, sun, planetLight, ambient), 1),
     });
     // 走査: 塞がれた測度と、それを数えた範囲の測度と、照り返しの放射照度。
     const scan = stageMaterial();
@@ -296,11 +301,20 @@ export class ScreenSpacePass {
     return { direction: this.sample.reflected, cosAngle: exp2(alpha.mul(alpha).mul(-3.32193)) };
   }
 
-  // 前処理の画素が表す面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)— 太陽の直射を拡散で返す光と、自己発光。
-  private emittedRadiance(gbuffer: GBufferPass, sun: SunSource): Vec3Node {
+  // 前処理の画素が表す面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)— 太陽の直射・天体照・環境光を
+  // 拡散で返す光と、自己発光。天体照と環境光は、その面の空が遮られないとしたときの放射照度で引く
+  // (その面自身の遮られ方はこのパスの出力そのものなので、1 パスの中では求まらない)。
+  private emittedRadiance(
+    gbuffer: GBufferPass, sun: SunSource, planetLight: PlanetLightSource, ambient: AmbientSource,
+  ): Vec3Node {
     const material = texture(gbuffer.basecolorTexture, this.sample.uv);
     const albedo = material.rgb.mul(material.a.oneMinus());
-    return albedo.div(Math.PI).mul(sun.pointIrradiance(this.sample))
+    // 天体照は光源モデルの設定によらず一様球の式で引く — 写しを焼くのはこのパスの後で、ここで読めるのは
+    // 前のフレームの像である。
+    const irradiance = sun.pointIrradiance(this.sample)
+      .add(planetLight.uniformDiffuseIrradiance(this.sample))
+      .add(ambient.irradiance(this.sample));
+    return albedo.div(Math.PI).mul(irradiance)
       .add(texture(gbuffer.emissiveTexture, this.sample.uv).rgb);
   }
 

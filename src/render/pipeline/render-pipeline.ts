@@ -145,7 +145,7 @@ export class RenderPipeline {
     this._ambient = new AmbientSource(this._sunLight, this.screenSpaceLight);
     this.indirectSource = new IndirectSource(this.screenSpaceLight);
     this.screenSpacePass = new ScreenSpacePass(
-      renderer, this.gbuffer, this.sunSource, this._planetLight, this.screenSpaceLight, gpu,
+      renderer, this.gbuffer, this.sunSource, this._planetLight, this._ambient, this.screenSpaceLight, gpu,
       graphics.screenSpaceDiffuse, graphics.screenSpaceQuality,
     );
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
