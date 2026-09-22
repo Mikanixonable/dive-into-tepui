@@ -63,7 +63,12 @@ export class OrbitLineWindows {
   private content(orbit: LinePickable): PropertyWindowContent<MenuAction> {
     return {
       title: KIND_LABEL[orbit.kind],
-      rows: [{ key: 'method', label: '計算方法', value: CALC_METHOD_LABEL[orbit.method] }],
+      kindCode: 'ORB',
+      kindLabel: 'TRAJECTORY',
+      monitorWhenClipped: true,
+      rows: [{
+        key: 'method', label: '計算方法', value: CALC_METHOD_LABEL[orbit.method], presentation: 'hero',
+      }],
       items: [],
       relatedItems: this.relatedItems(orbit),
       relatedTitle: '所属',

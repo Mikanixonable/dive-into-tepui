@@ -220,18 +220,30 @@ export class ModuleWindows implements ModuleWindowOpener {
     const definition = ship.assembly.definition(module.id);
     const label = definition?.name ?? module.definitionId;
     const resource = module.kind === 'tank' || module.kind === 'booster'
-      ? [{ key: 'fuel', label: '燃料', value: `${module.fuel.toFixed(1)} / ${definition?.abilities.fuelCapacity ?? 0}` }]
+      ? [{
+        key: 'fuel', label: '燃料',
+        value: `${module.fuel.toFixed(1)} / ${definition?.abilities.fuelCapacity ?? 0}`,
+        presentation: 'major' as const,
+      }]
       : [];
     return {
       title: label,
       subtitle: `取り付け艦: ${ship.name}`,
+      kindCode: 'MOD',
+      kindLabel: 'MODULE',
+      monitorWhenClipped: true,
       rows: [
-        { key: 'name', label: 'モジュール', value: label },
+        {
+          key: 'wear', label: '損耗度', value: wearText(module, definition?.maxHp ?? 0),
+          presentation: 'hero',
+        },
+        {
+          key: 'temperature', label: '温度', value: `${module.temperature.toFixed(0)} K`,
+          presentation: 'major',
+        },
+        ...resource,
         { key: 'kind', label: '種別', value: module.kind },
         { key: 'ship', label: '取り付け艦', value: ship.name },
-        { key: 'wear', label: '損耗度', value: wearText(module, definition?.maxHp ?? 0) },
-        { key: 'temperature', label: '温度', value: `${module.temperature.toFixed(0)} K` },
-        ...resource,
       ],
       items: moduleItems(ship, module),
     };
