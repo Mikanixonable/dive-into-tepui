@@ -12,7 +12,7 @@
 </defs>
 <rect width="1200" height="420" rx="20" fill="url(#bg)"/>
 <text x="55" y="48" class="m t h">船体アセンブリ</text><text x="55" y="72" class="m d k">モジュールインスタンスを接続して一つの物理船体を構成</text>
-<g transform="translate(75 90)">
+<g transform="translate(75 85)">
 <rect x="0" y="85" width="155" height="80" rx="14" class="box"/><text x="20" y="116" class="sans t v">コックピット</text><text x="20" y="141" class="m d sm">操縦</text>
 <rect x="205" y="70" width="165" height="110" rx="14" class="box"/><text x="225" y="107" class="sans t v">タンク</text><text x="225" y="132" class="m d sm">主推進 / RCS 燃料</text>
 <rect x="425" y="85" width="155" height="80" rx="14" class="box"/><text x="445" y="116" class="sans t v">主推進器</text><text x="445" y="141" class="m d sm">主推進</text>
@@ -22,5 +22,5 @@
 <rect x="855" y="70" width="185" height="110" rx="14" class="box"/><text x="875" y="107" class="sans t v">接続船体</text><text x="875" y="132" class="m d sm">ドッキング時に統合</text>
 <path d="M155 125H205M370 125H425M580 125H635M790 125H855M288 50V70M288 180V200" class="line"/>
 <circle cx="180" cy="125" r="5" fill="#ff3155"/><circle cx="397" cy="125" r="5" fill="#ff3155"/><circle cx="607" cy="125" r="5" fill="#3478ff"/><circle cx="822" cy="125" r="5" fill="#3478ff"/>
-<rect x="0" y="264" width="1040" height="54" rx="12" class="soft"/><text x="18" y="286" class="m a k">構造グラフ</text><text x="145" y="286" class="m b sm">損傷・燃料・展開状態・役割は各モジュールが持つ</text>
+<rect x="0" y="260" width="1040" height="54" rx="12" class="soft"/><text x="18" y="282" class="m a k">構造グラフ</text><text x="145" y="303" class="m b sm">損傷・燃料・展開状態・役割は各モジュールが持つ</text>
 </g></svg>
