@@ -12,7 +12,7 @@
 <rect width="1200" height="310" rx="22" fill="url(#bg)"/>
 <g opacity=".22" stroke="#48506a"><path d="M0 78H1200M0 156H1200M0 234H1200"/><path d="M150 0V310M300 0V310M450 0V310M600 0V310M750 0V310M900 0V310M1050 0V310"/></g>
 <g transform="translate(58 56)">
-<text class="m a k">DIVE INTO TEPUI / DEVELOPMENT WIKI</text>
+<text class="m a k">DIVE INTO TEPUI / 開発 WIKI</text>
 <text y="58" class="sans t" font-size="46" font-weight="700">コードベースを、責務と流れから読む。</text>
 <text y="99" class="m b sm">構造 · 物理 · ゲームモデル · 描画 · UI · 保存 · 開発規約 · 検証</text>
 </g>
