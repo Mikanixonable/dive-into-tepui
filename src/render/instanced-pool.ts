@@ -5,7 +5,7 @@ import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissiv
 import type { ShadowExtent } from './pipeline/shadow/shadow-casters';
 
 // 空き枠へ置くゼロ行列。three は instanceMatrix のバッファ長を最初の描画で確定するので、
-// count は容量のまま動かさず、空き枠はこれで潰す。
+// count は容量のまま固定し、空きスロットはこれで無効化（ゼロスケール）する。
 const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 // capacity 体までを1本の InstancedMesh で描く。beginFrame → push(...) → endFrame の順に
@@ -30,7 +30,7 @@ export class InstancedPool {
   private readonly scratchCenter = new THREE.Vector3();
   private readonly scratchCorner = new THREE.Vector3();
 
-  // capacity 体ぶんの枠を確保して scene へ登録する。geometry/material は呼び出し側が所有する
+  // capacity 体ぶんの枠を確保して scene へ登録する。geometry/material は外部から提供される
   // 共有資源で、perInstanceThermal なら geometry へ熱の状態の属性を足す。
   public constructor(
     scene: THREE.Scene,
@@ -112,7 +112,7 @@ export class InstancedPool {
   }
 
   // InstancedMesh をシーンから外し、そのインスタンスバッファを解放する。geometry/material は
-  // 呼び出し側から渡された共有資源なので、その所有者だけが破棄できる。
+  // 外部から渡された共有資源のため、本クラスでは破棄しない。
   public dispose(): void {
     this.mesh.removeFromParent();
     this.mesh.dispose();

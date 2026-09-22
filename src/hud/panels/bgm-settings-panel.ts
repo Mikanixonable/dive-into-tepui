@@ -9,7 +9,7 @@ function formatSeekTime(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// BGM の設定面。ゲーム中BGMの音量調整と、曲の試聴(選曲・再生位置のシーク・停止)を扱う。
+// BGM の設定パネル。ゲーム中BGMの音量調整と、曲の試聴(選曲・再生位置のシーク・停止)を扱う。
 // 音量の操作は onVolumeChange で外へ返し、試聴している曲は audition として宣言する。
 export class BgmSettingsPanel {
   public readonly element: HTMLElement;
@@ -139,7 +139,7 @@ export class BgmSettingsPanel {
     this.seekTimeLabel.textContent = formatSeekTime(elapsed);
   }
 
-  // 外から音量が変わったときに、スライダーと百分率表示を引き直す。
+  // 外部から音量が変更されたときに、スライダーと百分率表示を再描画して同期する。
   public syncVolume(volume: number): void {
     this.volumeSlider.setValue(volume);
     // つまみの位置と百分率を揃えるため、刻みへ丸めた後の値を出す。
@@ -175,7 +175,7 @@ export class BgmSettingsPanel {
     this.positionAnchorMs = null;
   }
 
-  // 選曲ボタンの点灯と停止ボタンの有効/無効を、試聴中の曲へ合わせて引き直す。
+  // 選曲ボタンのアクティブ状態と停止ボタンの有効/無効を、試聴中の曲に合わせて更新する。
   private updateTrackButtons(): void {
     for (const [index, button] of this.trackButtons.entries()) {
       const active = index === this.activeTrack;

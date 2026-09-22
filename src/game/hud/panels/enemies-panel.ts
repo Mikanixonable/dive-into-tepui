@@ -14,7 +14,7 @@ export interface EnemyContact {
   readonly targeted: boolean;
 }
 
-// CONTACTS パネルが1フレームに映す値と、単独行の右クリックを返す口。
+// CONTACTS パネルが1フレームに表示する値と、個別行の右クリック通知コールバック。
 export interface EnemiesPanelViewModel {
   readonly remainingCount: number;
   readonly totalCount: number;
@@ -42,7 +42,7 @@ type EnemyRow =
 export class EnemiesPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private hasContacts = false;
-  // 直近の sync が受けた値。右クリックはフレームの外で起きるので、その時点の口をここから引く。
+  // 直近の sync で受け取った状態。右クリックはフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: EnemiesPanelViewModel | null = null;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
