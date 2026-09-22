@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430"><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.sans{font-family:system-ui,-apple-system,sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.f{fill:#5f5a65}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:7 7}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="430" rx="20" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">ORBIT DYNAMICS</text><text x="55" y="72" class="m d k">THE PROPAGATOR INCLUDES MORE THAN POINT-MASS TWO-BODY MOTION</text>
+<g transform="translate(55 112)">
+<circle cx="210" cy="145" r="72" fill="#48506a" stroke="#d6d6d0"/><ellipse cx="210" cy="145" rx="145" ry="82" class="line" transform="rotate(-17 210 145)"/><path d="M210 73V217" stroke="#ff3155" stroke-width="2"/><text x="146" y="28" class="m a k">DEGREE-2 GRAVITY</text><text x="75" y="266" class="m t v">J2</text><text x="112" y="266" class="m d sm">oblateness → nodal precession</text><text x="75" y="291" class="m t v">C22</text><text x="122" y="291" class="m d sm">longitude-dependent tesseral term</text>
+<g transform="translate(455 0)"><rect width="300" height="310" rx="16" class="box"/><text x="20" y="34" class="m a k">ENVIRONMENTAL FORCES</text><text x="20" y="76" class="sans t v">Atmospheric drag</text><path d="M210 70H265" class="accent" marker-end="url(#arrR)"/><text x="20" y="121" class="sans t v">Solar radiation pressure</text><path d="M210 115H265" class="signal" marker-end="url(#arrB)"/><text x="20" y="166" class="sans t v">Eclipse / shadow</text><circle cx="243" cy="161" r="22" fill="#1d2026"/><circle cx="266" cy="161" r="7" fill="#ff3155"/><text x="20" y="211" class="sans t v">Multi-body gravity</text><text x="20" y="239" class="m d sm">attractors evaluated at RK4 stage time</text><text x="20" y="276" class="sans t v">Atmospheric entry</text><text x="20" y="300" class="m d sm">load / heating / burn-up</text></g>
+<g transform="translate(805 0)"><rect width="340" height="310" rx="16" class="box"/><text x="20" y="34" class="m a k">NUMERICAL STATE</text><text x="20" y="74" class="m d xs">POSITION</text><text x="20" y="98" class="m t v">r(t)</text><text x="110" y="74" class="m d xs">VELOCITY</text><text x="110" y="98" class="m t v">v(t)</text><text x="200" y="74" class="m d xs">ATTITUDE</text><text x="200" y="98" class="m t v">q(t)</text><text x="20" y="150" class="sans t v">RK4 propagation</text><path d="M20 180H290" class="line"/><circle cx="60" cy="180" r="5" fill="#ff3155"/><circle cx="125" cy="180" r="5" fill="#ff3155"/><circle cx="190" cy="180" r="5" fill="#ff3155"/><circle cx="255" cy="180" r="5" fill="#ff3155"/><text x="20" y="218" class="m d sm">forces are sampled inside the step</text><text x="20" y="258" class="m s sm">physics/ is independent of Three.js</text></g>
+</g></svg>
