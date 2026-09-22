@@ -82,7 +82,7 @@ export const KEY_MAPPING = {
   openSaveBrowser: { code: 'F9', label: 'F9' },
 } as const satisfies Record<string, KeyBinding>;
 
-// ブラウザ既定のスクロールを奪うキー(keydown で preventDefault する)。
+// ブラウザ既定のスクロール挙動を抑止するキー(keydown で preventDefault を呼ぶ)。
 export const SCROLL_GUARD_KEYS: readonly KeyBinding[] = [
   KEY_MAPPING.fire,
   KEY_MAPPING.warpSlower,

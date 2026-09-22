@@ -83,7 +83,7 @@ export function dragAccel(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere
   const rho = atmosphericDensity(ellipsoidAltitude(rRel, atm), atm);
   if (rho < 1e-15) return v3();
   const { x: vrx, y: vry, z: vrz } = airspeed(rRel, vRel, atm);
-  // a = k·v_air なので、dt で奪う量が対気速度を超えない条件は |k|·dt ≤ 1。
+  // a = k·v_air のため、dt の間に減衰させる速度量が対気速度を超えない条件は |k|·dt ≤ 1。
   const k = Math.max(
     -0.5 * rho * Math.sqrt(vrx * vrx + vry * vry + vrz * vrz) * bcInv,
     dt > 0 ? -1 / dt : -Infinity);

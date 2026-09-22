@@ -1,5 +1,5 @@
-// タンパク質の motion 更新の性能計測。1フレームぶんの CPU 時間・GPU 転送量・LOD ごとの体数を
-// 拾い、計測窓ぶんの分布へまとめる。
+// タンパク質の motion 更新の性能計測。1フレーム分の CPU 時間・GPU 転送量・LOD ごとの体数を
+// 収集し、計測区間の標本分布へ集約する。
 
 import { LODS_FINE_TO_COARSE, type ProteinMotionLod } from '../../render/protein/protein-display';
 import { distributionOf, type SampleDistribution } from '../../math/sample-distribution';

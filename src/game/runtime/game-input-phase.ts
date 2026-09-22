@@ -47,7 +47,7 @@ export class GameInputPhase {
   // このフレームの入力解釈が組んだ操作量。
   public get pilotControls(): PilotControls { return this.pilotInput.controls; }
 
-  // 生の入力を担当モジュールへ先着順で配り、命令とこのフレームの操作量を組む。dt [s] は進行へ渡す
+  // 生の入力を担当モジュールへ先着順でディスパッチし、命令とこのフレームの操作量を構築する。dt [s] は進行へ渡す
   // 刻み、nowMs [ms] はフレームの先頭で1度だけ読んだ実時刻。
   public interpret(dt: number, nowMs: number, viewport: Viewport): void {
     this.sections.enter(SECTION.input);

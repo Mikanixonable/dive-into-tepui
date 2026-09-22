@@ -10,7 +10,7 @@ import type { CyclonePlacement } from './cyclone-tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 気圧の谷による影響限界半径 [m]。裾野は距離に反比例するため、単体では微弱でも複数累積すると全球的な
-// 底上げになり、気圧から出る上昇流の基準がまるごと持ち上がる。ここで遠方を閉じる。最大の谷
+// ベースライン上昇となり、気圧起因の上昇流基準値全体が浮動してしまう。ここで遠方を遮断する。最大の谷
 // (消えるときの中緯度の低気圧で短軸の半径 1800 km、温帯化した熱帯低気圧で約 1000 km)の裾を
 // 切らない長さ — 芯が 1/√2 に落ちる半径の外側で、ガウスは 1800 km でも e^(−0.52) = 0.59 に留まる。
 const TROUGH_REACH = 2500e3;
@@ -26,7 +26,7 @@ const EYE_FRACTION = 0.3;
 const EYE_ANGLE_FULL = THREE.MathUtils.degToRad(12);
 const EYE_ANGLE_NONE = THREE.MathUtils.degToRad(16);
 
-// 金床(平らな天蓋)の広がりも谷自身の広がりに対する比で、眼と同じく芯に貼り付く。天蓋は
+// 金床(平坦な雲頂天蓋)の広がりも谷自体の広がりに対する比率で規定され、眼と同様に中心位置に追従する。天蓋は
 // 中心濃密雲域 — 直径 600〜800 km の平らな白い円盤 — なので、最盛期の熱帯低気圧(短軸の半径
 // 180〜240 km)で半径 245〜325 km になる比に取る。anvilAt の形では、この半径の 2/3 まで 0.9 以上に
 // 残り、5/6 で 0.72、1.17 倍で 0.08 に落ちる。
@@ -116,7 +116,7 @@ class Trough {
     return exp(this.normalizedChordSquared(direction, EYE_FRACTION).negate()).mul(this.eyeStrength);
   }
 
-  // 単位方向 direction での金床の濃さ 0..1(中心で最も濃く、外で 0)。眼と同じく芯に貼り付くが、
+  // 単位方向 direction での金床の濃さ 0..1(中心で最も濃く、外で 0)。眼と同様に中心位置に追従するが、
   // 形は距離の 6 乗の超ガウス — ガウスには縁が無く丘のまま裾へ流れるが、天蓋は半径まで平らに
   // 覆って縁で急に終わる。眼を持たない谷では全域で 0。
   public anvilAt(direction: Vec3Node): FloatNode {

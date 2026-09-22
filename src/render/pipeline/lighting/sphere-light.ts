@@ -23,7 +23,7 @@ export const sphereIrradianceFactor = Fn(
     const sinBetaSqrtY = sinBeta.mul(sqrt(max(float(1).sub(y.mul(y)), 0)));
     const clipped = cosBeta.mul(acos(y)).sub(x.mul(sinBetaSqrtY)).mul(safeSigmaSqr)
       .add(atan(sinBetaSqrtY, max(x, 1e-12)));
-    // cos²β > sin²σ は「球がまるごと地平線の上(cosβ > 0)か下(cosβ < 0)」を表す。
+    // cos²β > sin²σ は「球全体が地平線の上(cosβ > 0)または下(cosβ < 0)」にある状態を表す。
     return select(
       cosBeta.mul(cosBeta).greaterThan(safeSigmaSqr),
       clamp(cosBeta, 0, 1),

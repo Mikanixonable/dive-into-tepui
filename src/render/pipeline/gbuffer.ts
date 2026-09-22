@@ -60,8 +60,8 @@ export class GBufferPass {
     roughnessTex!.format = THREE.RedFormat;
     roughnessTex!.type = THREE.UnsignedByteType;
     // ベース色は線形の半精度浮動小数点。深い海のような小さい線形RGBをRGBA8へ量子化すると
-    // ほぼ黒へ潰れ、色差とLOD差が失われる。αへ金属度を同居させるのは、この2つを読む側が
-    // 常に同時に使うため。
+    // 黒レベルへクリッピングされ、色差とLOD差が失われる。αチャンネルへ金属度を格納するのは、この2つを読む側が
+    // 常に同時に参照するため。
     basecolorTex!.name = 'basecolor';
     basecolorTex!.format = THREE.RGBAFormat;
     basecolorTex!.type = THREE.HalfFloatType;

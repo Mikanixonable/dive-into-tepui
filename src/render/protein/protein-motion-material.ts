@@ -247,7 +247,7 @@ export function disposeProteinMotionBinding(binding: ProteinMotionBinding): void
   // 借りていた区間を返す。
   residueSlots.release(binding.residueBase.value, binding.residueCount);
   modeSlots.release(binding.modeBase.value, binding.modeCount);
-  // 他の binding が使っているうちに解放すると画面がまるごと黒くなる。
+  // 他の binding が参照中に解放すると画面全体が黒転する原因となる。
   if (!releaseModeDisplacements(binding.modeDisplacements)) return;
   const { attribute } = binding.modeDisplacements;
   // three は StorageBufferAttribute の解放 API を公開していないので、内部の属性レジストリから消す。

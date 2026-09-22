@@ -101,7 +101,7 @@ export class Simulator {
       // 進まないか」で見る — simTime の分解能は |simTime| に比例する(CODING-RULE 1.9)。
       if (this._simTime + subDt <= this._simTime) {
         this.consecutiveZeroSteps++;
-        // eventTime との差が 1 ULP 未満に潰れたら、eventTime へ直接そろえて差を1回で消費する。
+        // eventTime との差が浮動小数点数の 1 ULP 未満に縮小した場合は、eventTime へ直接一致させて時間差を消費する。
         if (eventTime !== null && eventTime > this._simTime) this._simTime = eventTime;
         // それでも進まない個体が残るなら、このフレームぶんを一括で消費して検知できる形で打ち切る。
         // 微小量を加算して回避しようとすると、|simTime| が大きいとき ULP 未満の加算が no-op になる。

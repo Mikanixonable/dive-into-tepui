@@ -113,7 +113,7 @@ export class CameraOrientation {
     this.following = following;
   }
 
-  // 合成に使う姿勢を最新へ。解決できないフレームは直前の姿勢を保つ(視点が跳ねない)。
+  // 合成に使う姿勢を最新へ更新する。解決できないフレームは直前の姿勢を維持する(視点の急変を防止)。
   public refreshAttitude(attitude: Quat | null): void {
     if (!this.following || attitude === null) return;
     this.attitude = attitude;

@@ -129,7 +129,7 @@ export class DebrisPiece extends DynamicEntity {
   }
 }
 
-// origin のまわりへ count 個の破片を散らす。速度は baseVel に最大 spread [m/s] のばらつきを足し、
+// origin 周囲へ count 個の破片を放射状に生成・分散配置する。速度は baseVel に最大 spread [m/s] のばらつきを足し、
 // 大きさは [sizeMin, sizeMax] から一様に選ぶ。
 export function buildDestroyFragments(
   t: number,

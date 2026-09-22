@@ -317,8 +317,8 @@ export class Curve {
     else out.set(0, 0, 0);
   }
 
-  // 渡された曲線を焼き、GPU バッファへ反映する。頂点の配り方も差し引く基準点もカメラに
-  // 依存するので、呼ぶたびに焼き直す。
+  // 渡された曲線を焼き、GPU バッファへ反映する。頂点の配置密度・配分も基準原点もカメラに
+  // 依存するため、呼ぶたびに再生成する。
   private setCurve(
     sample: CurveSampler, ts: ArrayLike<number>, camera: THREE.Camera, viewportHeight: number,
     colorAt?: CurveColorSampler,

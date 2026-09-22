@@ -142,8 +142,8 @@ export class PlanetSystem {
     return { body: kinematicState<'starRel'>(t, r, v), angles, rels };
   }
 
-  // この時刻の成員表。惑星本体は重心補正が系の衛星に依存するので、1体ぶんだけを引くことは
-  // できず、系まるごと1件へ畳む。
+  // この時刻の成員表。惑星本体は重心補正が系の衛星に依存するため、1体分のみを計算することは
+  // できず、系全体を1件のレコードへ集約する。
   private membersAt(t: number): SystemMembers {
     const cached = this.membersCache.get(t);
     if (cached !== undefined) return cached;
@@ -216,9 +216,9 @@ export class PlanetSystem {
   }
 
   // 衛星をこの系へ登録し、その登録順(satelliteStarRelStateAt に渡す index)を返す。**本体が μ を
-  // 持たない系へは登録できない** — 重心を分け合う比が衛星だけで決まって本体の質量比が 0 に
-  // なり、本体が衛星との距離ぶんまるごとずれる。衛星の軌道長半径と周期があれば系の μ は
-  // ケプラー第3法則で必ず決まるので、この制約はどの系でも満たせる。
+  // 持たない系へは登録できない** — 重心分配比が衛星のみで決定されて本体の質量比が 0 と
+  // なり、本体が衛星との距離分そのまま変位してしまう。衛星の軌道長半径と周期があれば系の μ は
+  // ケプラー第3法則で一意に求まるため、この制約はどの系でも満たせる。
   addSatellite(satellite: SatelliteMotion): number {
     if (this.body.def.mu <= 0) {
       throw new Error(`PlanetSystem: μ を持たない ${this.id} へ衛星 ${satellite.def.id} は登録できない`);

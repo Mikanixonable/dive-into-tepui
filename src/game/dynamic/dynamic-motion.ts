@@ -436,7 +436,7 @@ export class DynamicMotion {
     return innerDt >= dt ? 1 : Math.ceil(dt / innerDt);
   }
 
-  // dt のあいだに抗力が対気速度を奪い切るか。preciseReentry の個体は常に false。
+  // dt の間に抗力が対気速度を完全に減衰させ切るか。preciseReentry の個体は常に false。
   public outpacedByDrag(
     dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number,
   ): boolean {

@@ -9,8 +9,8 @@ import type { AperturePsfTap } from './aperture-psf';
 
 // scale と power を測る基準の半径 [画面の高さ]。半径写像はここで scale そのものになる。
 const GHOST_REFERENCE_RADIUS = 0.5;
-// 半径写像を丸める芯の半径 [画面の高さ]。power が 1 未満の枚は中心へ寄るほど光を集めるので、
-// **この芯で頭打ちにしないと画面中心の 1 画素だけが際限なく明るくなる。**
+// 半径写像を平滑化する中心核の半径 [画面の高さ]。power が 1 未満の要素は中心へ向かうほど光を集束させるため、
+// **この中心核で上限制限を行わないと画面中心の 1 画素のみが発散的に高輝度化する。**
 const GHOST_CORE_RADIUS = 0.12;
 
 // ゴースト 1 枚をぼかすタップの間隔 [読み元のテクセル] と、その配り方。縮小段の核は支持が四角い
@@ -119,8 +119,8 @@ function resampleAt(source: THREE.Texture, texel: Vec2Uniform, x: number, y: num
 // 核が丸みを帯び、ハローが滑らかで広くなる。
 //
 // 中央の群が 1/2、四隅の群が 1/8 ずつで**総和 1**。タップ位置が中心について対称なので、核の
-// 重心は動かない。**明るさで分岐する外れ値除去(Karis average)は入れない** — 非線形なので、
-// 核が光を配り直すだけの線形写像だという前提を壊す。
+// 重心は動かない。**輝度分岐による外れ値除去(Karis average)は採用しない** — 非線形処理となり、
+// フィルタ核が光エネルギーを再配分する線形写像であるという前提が破綻するため。
 export function downsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Node {
   const tap = (x: number, y: number): Vec3Node => resampleAt(source, texel, x, y);
   // 中央の 2x2(読み元の 1 テクセル刻み)と、それを囲む 3x3 の格子(2 テクセル刻み)。

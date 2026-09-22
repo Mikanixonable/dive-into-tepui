@@ -39,7 +39,7 @@ type EphemerisPoint = {
 };
 
 // id が期待した種別で収録されているときだけ、その暦を返す。**種別が食い違えば null** —
-// 系の重心の系列を惑星本体へ結ぶと、その系がまるごと重心オフセットぶんずれる
+// 系の重心の系列を惑星本体へ結ぶと、その系全体が重心オフセット分変位する
 // (木星系で 68 km、冥王星系で 2,128 km)。
 export function ephemerisPointOf(
   points: EphemerisPoints, id: string, kind: EphemerisPointKind,

@@ -155,7 +155,7 @@ export class Input {
   // target のポインタイベントを購読する。
   private attachPointerListeners(): void {
     this.target.addEventListener('contextmenu', this.handleContextMenu);
-    this.target.style.touchAction = 'none'; // ブラウザのスクロール/ピンチを奪う
+    this.target.style.touchAction = 'none'; // ブラウザ標準のスクロール/ピンチ操作を無効化
     this.target.addEventListener('pointerdown', this.handlePointerDown);
     this.target.addEventListener('pointermove', this.handlePointerMove);
     this.target.addEventListener('pointerup', this.handlePointerUp);
@@ -182,8 +182,8 @@ export class Input {
     if (isLeft) {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.pointers.size >= 2) {
-        // 2本目以降の指が増えるたびピンチ基準(距離・重心)を今の配置で取り直す —
-        // 3本目以降を古い基準のまま扱うと、置いた瞬間に重心が跳んでパンが暴れる。
+        // 2本目以降の指が増加するたびピンチ基準(距離・重心)を最新の配置で再取得する —
+        // 3本目以降を古い基準のまま扱うと、接地した瞬間に重心が不連続に移動しパン操作が不意に乱れる。
         this.dragging = false;
         this.pinchDist = this.currentPinchDist();
         this.pinchCentroid = this.currentCentroid();

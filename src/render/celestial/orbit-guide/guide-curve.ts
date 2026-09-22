@@ -52,7 +52,7 @@ export class GuideCurve {
     }
     this.curve.setStyle(display.style);
     this.curve.setTransform(camera.floatingOrigin.RtoThreeV3(display.origin));
-    // 頂点の配り方はカメラで変わるので、毎フレーム現在のカメラごと渡す。
+    // 頂点の適応的配分はカメラパラメータに依存するため、毎フレーム現在のカメラごと渡す。
     const viewportHeight = camera.viewport.height;
     const shape = display.shape;
     if (shape.kind === 'analytic') {

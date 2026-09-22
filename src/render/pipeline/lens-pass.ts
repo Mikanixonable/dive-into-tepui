@@ -146,7 +146,7 @@ export class LensPass {
     return mix(base, this.redistributed(1), GLARE_FRACTION);
   }
 
-  // 下地と合成する前の、レンズが配り直した光だけ。blendedWith が下地へ混ぜるのと同じ強さで返す。
+  // 下地と合成する前の、レンズ系により再配分された光成分のみ。blendedWith が下地へ混合するのと同等の強度で返す。
   redistributedLight(): Vec3Node {
     return this.redistributed(GLARE_FRACTION);
   }
