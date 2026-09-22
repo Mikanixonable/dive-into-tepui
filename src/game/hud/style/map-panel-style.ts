@@ -57,6 +57,30 @@ export const MAP_PANEL_STYLE = `
 #hud-view-options .view-options-tab-body.hidden { display: none !important; }
 
 /* 予測軌道パネル(#hud-predict / #hud-predict-wrap / #hud-predict-toggle)。 */
+#hud-predict .predict-head { margin-bottom: var(--space-2); }
+#hud-predict .predict-state {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end; gap: var(--space-5);
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+}
+#hud-predict .predict-state .editorial-state-hero strong {
+  font-size: var(--font-xl);
+}
+#hud-predict .predict-state-progress {
+  display: grid; justify-items: end; gap: 2px; min-width: 72px;
+}
+#hud-predict .predict-state-progress .ui-data-secondary {
+  color: var(--color-primary); font-size: var(--font-m); font-weight: 650;
+}
+#hud-predict .predict-controls {
+  display: grid; gap: var(--space-2); padding-top: var(--space-3);
+}
+#hud-predict .predict-controls .predict-row1 { margin-bottom: 0; }
+#hud-predict .predict-controls .predict-row2 {
+  margin-top: var(--space-1); padding-top: var(--space-2);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent);
+}
+
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
    トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
    #hud-stagestatus は常に非表示なので、他の下端揃えパネル(.hud-rail 等)と同じ bottom まで詰める。
@@ -238,6 +262,21 @@ export const MAP_PANEL_STYLE = `
 
 
 /* DISPLAY INDEX — タイトル画面の stage list と同じ「名称 + 右端状態」の索引型。 */
+#hud-view-options .view-options-render-row {
+  grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  margin: var(--space-3) 0 var(--space-2);
+  padding-inline: var(--space-2);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 16%, transparent);
+}
+#hud-view-options .view-options-render-label { display: grid; gap: 2px; min-width: 0; }
+#hud-view-options .view-options-render-label > span {
+  color: var(--text); font-size: var(--font-xs); letter-spacing: .04em;
+}
+#hud-view-options .view-options-render-label > small {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
+}
+#hud-view-options .view-options-render-toggle { justify-self: end; margin: 0; }
+
 #hud-view-options .view-options-title {
   align-items: baseline; padding-bottom: var(--space-3);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);

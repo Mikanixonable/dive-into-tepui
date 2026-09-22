@@ -27,6 +27,8 @@ import type { Targeter } from '../targeter';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
+import { ShipInspection } from './ship-inspection';
+import { EnemyInspection } from './enemy-inspection';
 import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
@@ -113,9 +115,17 @@ export class ObjectWindowActions {
     target: InspectedObject, simTime: number, opener: PropertyWindowOpener,
   ): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
+    const kind = target instanceof CelestialEntity
+      ? { kindCode: 'BDY', kindLabel: 'CELESTIAL BODY' }
+      : target instanceof ShipInspection
+        ? { kindCode: 'VSL', kindLabel: 'SPACECRAFT' }
+        : target instanceof EnemyInspection
+          ? { kindCode: 'CNT', kindLabel: 'CONTACT' }
+          : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
     return {
       title,
       subtitle,
+      ...kind,
       icon: target.glyphSvg ?? target.glyph,
       rows: [],
       items,

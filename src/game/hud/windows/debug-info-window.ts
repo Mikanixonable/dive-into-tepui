@@ -180,7 +180,9 @@ export class DebugInfoWindow {
     this.frames = 0;
     this.lastFlush = null;
     this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
-      title: 'デバッグ',
+      title: 'PERFORMANCE',
+      kindCode: 'DBG',
+      kindLabel: 'PERFORMANCE',
       rows: this.rows,
       items: [],
     }, this.overlayManager);

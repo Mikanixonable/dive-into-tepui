@@ -3,13 +3,38 @@ import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { injectOnce } from '../../../hud/inject-style';
 import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
 import { CloseButton } from '../../../hud/widgets/close-button';
+import { TabBar } from '../../../hud/widgets/tab-bar';
 import { stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { HELP_PANEL_STYLE } from '../style/help-panel-style';
-import { helpRows } from './help-content';
+import { helpRows, type HelpRow } from './help-content';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
+
+type HelpCategory = 'flight' | 'camera' | 'combat' | 'map' | 'system';
+
+const HELP_TABS: readonly (readonly [HelpCategory, string])[] = [
+  ['flight', 'FLIGHT'],
+  ['camera', 'CAMERA'],
+  ['combat', 'COMBAT'],
+  ['map', 'MAP & ORBIT'],
+  ['system', 'SYSTEM'],
+];
+
+function helpCategory(row: HelpRow): HelpCategory {
+  const label = row.label;
+  if (label.includes('視点') || label.includes('フォーカス')) return 'camera';
+  if (label.includes('ターゲット') || label.includes('照準') || label.includes('機関砲') || label.includes('装填')) return 'combat';
+  if (label.includes('ノード') || label.includes('時間加速') || label.includes('ビュー切替')
+    || label.includes('プロパティ・メニュー')) return 'map';
+  if (label.includes('ヘルプ') || label.includes('ESC') || label.includes('デバッグ')
+    || label.includes('セーブ') || label.includes('再出撃')) return 'system';
+  return 'flight';
+}
 
 export class HelpPanel implements OverlayHandle {
   private readonly el: HTMLElement;
+  private readonly tabs: TabBar<HelpCategory>;
+  private readonly sections = new Map<HelpCategory, HTMLElement>();
+  private readonly contextEl: HTMLElement;
   private _isOpen = false;
 
   // 操作説明の DOM を組み立てて root へ追加する。閉じた状態で始まる。
@@ -22,30 +47,65 @@ export class HelpPanel implements OverlayHandle {
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-modal', 'true');
     this.el.setAttribute('aria-labelledby', 'hud-help-title');
-    // 見出しと閉じるボタン、表の器。
-    this.el.innerHTML = `
-      <div class="help-header">
-        <h3 id="hud-help-title">操作説明 <span>[${K.help.label} / ${K.pauseMenu.label} で閉じる]</span></h3>
-      </div>
-      <div class="help-body"><table></table></div>
-    `;
-    this.el.querySelector('.help-header')!.appendChild(new CloseButton(() => this.close()).element);
-    // 対応表の行。文言は textContent で入れる。
-    const table = this.el.querySelector('table')!;
+    const header = document.createElement('div');
+    header.className = 'help-header';
+    header.innerHTML = `
+      <div class="help-heading">
+        <div><span class="ui-section-code" aria-hidden="true">HLP</span><span class="help-kicker">REFERENCE MANUAL</span></div>
+        <h3 id="hud-help-title">FLIGHT REFERENCE</h3>
+        <div class="help-context ui-data-context">CURRENT CONTEXT · <span>FLIGHT</span></div>
+      </div>`;
+    header.appendChild(new CloseButton(() => this.close()).element);
+    this.el.appendChild(header);
+    this.contextEl = header.querySelector<HTMLElement>('.help-context > span')!;
+
+    this.tabs = new TabBar<HelpCategory>(HELP_TABS, (category) => this.setCategory(category));
+    this.tabs.element.classList.add('help-tabs');
+    this.tabs.element.setAttribute('aria-label', 'ヘルプの章');
+    this.el.appendChild(this.tabs.element);
+
+    const body = document.createElement('div');
+    body.className = 'help-body';
+    for (const [category, label] of HELP_TABS) {
+      const section = document.createElement('section');
+      section.className = 'help-section';
+      section.dataset['category'] = category;
+      section.setAttribute('role', 'tabpanel');
+      section.setAttribute('aria-label', label);
+      const table = document.createElement('table');
+      section.appendChild(table);
+      body.appendChild(section);
+      this.sections.set(category, section);
+    }
+
     for (const row of helpRows()) {
+      const table = this.sections.get(helpCategory(row))?.querySelector('table');
+      if (!(table instanceof HTMLTableElement)) continue;
       const tr = table.insertRow();
-      tr.insertCell().textContent = row.input;
+      const input = tr.insertCell();
+      input.innerHTML = '<span class="help-input-code"></span>';
+      input.querySelector<HTMLElement>('.help-input-code')!.textContent = row.input;
       const label = document.createElement('strong');
       label.textContent = row.label;
       const description = document.createElement('p');
       description.textContent = row.description;
       tr.insertCell().append(label, description);
     }
+    this.el.appendChild(body);
+    this.setCategory('flight');
     root.appendChild(this.el);
     stopDragPropagation(this.el);
   }
 
   public get isOpen(): boolean { return this._isOpen; }
+
+  private setCategory(category: HelpCategory): void {
+    this.tabs.setSelected(category);
+    for (const [candidate, section] of this.sections) section.hidden = candidate !== category;
+    const label = HELP_TABS.find(([key]) => key === category)?.[1] ?? 'FLIGHT';
+    const title = this.el.querySelector<HTMLElement>('#hud-help-title');
+    if (title) title.textContent = `${label} REFERENCE`;
+  }
 
   // router から [H] の単発入力を受け取って開閉を切り替える。
   public handleCommand(commandId: string): void {
@@ -58,6 +118,10 @@ export class HelpPanel implements OverlayHandle {
   public open(): void {
     if (this._isOpen) return;
     this._isOpen = true;
+    const workspace = document.getElementById('hud')?.dataset['workspace'];
+    const category: HelpCategory = workspace === 'map' ? 'map' : 'flight';
+    this.contextEl.textContent = workspace === 'map' ? 'MAP' : workspace === 'construction' ? 'BUILD' : 'FLIGHT';
+    this.setCategory(category);
     this.el.style.display = 'flex';
     // 系のモーダル(ヘルプ・一時停止など)は同じ排他グループに属し、同時に1つしか開かない。
     this.overlayManager.open('help', this, {
