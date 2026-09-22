@@ -11,22 +11,22 @@
 <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
 <rect width="1200" height="460" rx="20" fill="url(#bg)"/>
-<text x="55" y="48" class="m t h">ORBITAL MANEUVERING</text><text x="55" y="72" class="m d k">MANEUVER NODES MODIFY FUTURE STATE; LAGRANGE POINTS ARE NAVIGATION REFERENCES</text>
+<text x="55" y="48" class="m t h">軌道マニューバ</text><text x="55" y="72" class="m d k">マニューバーノードで未来状態を変え、ラグランジュ点を航法基準に使う</text>
 <g transform="translate(55 105)">
 <rect x="0" y="0" width="530" height="300" rx="16" class="box"/>
-<text x="22" y="34" class="m a k">LOW ORBIT TRANSFER</text>
+<text x="22" y="34" class="m a k">低軌道への遷移</text>
 <circle cx="220" cy="166" r="63" fill="#48506a" stroke="#d6d6d0"/><ellipse cx="220" cy="166" rx="112" ry="78" class="line"/><ellipse cx="277" cy="147" rx="190" ry="92" class="accent" transform="rotate(-13 277 147)"/>
-<circle cx="320" cy="77" r="6" fill="#ff3155"/><text x="334" y="81" class="m t sm">NODE 1</text><path d="M320 77L356 55" class="accent" marker-end="url(#arrR)"/><text x="361" y="53" class="m d xs">PROGRADE Δv</text>
-<circle cx="454" cy="151" r="5" fill="#3478ff"/><text x="407" y="181" class="m b sm">predicted arc</text>
-<g transform="translate(28 232)"><text class="m d xs">AXES</text><text x="0" y="24" class="m a sm">PRO / RET</text><text x="110" y="24" class="m s sm">NRM / ANM</text><text x="230" y="24" class="m b sm">IN / OUT</text></g>
+<circle cx="320" cy="77" r="6" fill="#ff3155"/><text x="334" y="81" class="m t sm">ノード 1</text><path d="M320 77L356 55" class="accent" marker-end="url(#arrR)"/><text x="361" y="53" class="m d xs">順行 Δv</text>
+<circle cx="454" cy="151" r="5" fill="#3478ff"/><text x="407" y="181" class="m b sm">予測軌道</text>
+<g transform="translate(28 232)"><text class="m d xs">軸</text><text x="0" y="24" class="m a sm">PRO / RET</text><text x="110" y="24" class="m s sm">NRM / ANM</text><text x="230" y="24" class="m b sm">IN / OUT</text></g>
 </g>
 <g transform="translate(615 105)">
 <rect x="0" y="0" width="530" height="300" rx="16" class="box"/>
-<text x="22" y="34" class="m a k">EARTH–MOON ROTATING FRAME</text>
+<text x="22" y="34" class="m a k">地球–月 公転回転系</text>
 <circle cx="145" cy="165" r="38" fill="#48506a" stroke="#d6d6d0"/><circle cx="400" cy="165" r="18" fill="#a8aec0"/>
 <path d="M145 165H400" class="line"/><circle cx="335" cy="165" r="6" fill="#ff3155" filter="url(#glow)"/><circle cx="455" cy="165" r="6" fill="#ff3155" filter="url(#glow)"/>
 <text x="318" y="143" class="m t sm">L1</text><text x="448" y="143" class="m t sm">L2</text>
 <path d="M250 251C284 220 303 192 335 165" class="accent dash" marker-end="url(#arrR)"/>
-<text x="41" y="69" class="m d xs">REFERENCE FRAME</text><text x="41" y="90" class="m b sm">primary → secondary fixed direction</text>
-<text x="41" y="275" class="m d xs">NO AUTO TRANSFER IMPLIED</text><text x="41" y="294" class="m b sm">nodes and displayed trajectories are edited by the player</text>
+<text x="41" y="69" class="m d xs">基準座標系</text><text x="41" y="90" class="m b sm">主天体 → 副天体を固定方向に表示</text>
+<text x="41" y="275" class="m d xs">自動遷移ではない</text><text x="41" y="294" class="m b sm">ノードと表示軌道はプレイヤーが編集</text>
 </g></svg>
