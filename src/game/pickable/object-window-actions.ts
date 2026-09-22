@@ -206,7 +206,7 @@ export class ObjectWindowActions {
   public relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
     return controlled !== null && isModularShip(controlled) && target.id === controlled.id
-      ? '搭載モジュール' : '周回物体';
+      ? 'MODULES' : 'ORBITING';
   }
 
   // 表示中のビューのカメラの注視を id の対象へ移し、name で知らせる。

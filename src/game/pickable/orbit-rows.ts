@@ -19,7 +19,7 @@ export function orbitRows(
     (id: string) => celestialBodies.nameOf(id));
   const apSpec = getApsisLabelSpec('ap', oi.centerId);
   const peSpec = getApsisLabelSpec('pe', oi.centerId);
-  const group = '軌道';
+  const group = 'ORBIT';
   return [
     { key: 'center', label: '基準天体', value: oi.centerName, group },
     { key: 'alt', label: ORBIT_ELEMENT_LABELS.alt.full, value: fmtDist(oi.alt), group },

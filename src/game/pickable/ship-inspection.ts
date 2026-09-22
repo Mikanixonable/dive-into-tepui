@@ -120,7 +120,8 @@ export class ShipInspection implements InspectedObject {
       { key: 'operated', label: '操作対象か', value: this.ship === viewer ? 'はい' : 'いいえ', collapsible: true },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(this.ship.planExecution), collapsible: true },
       {
-        key: 'hp', label: '装甲', value: `${Math.floor(this.ship.hp)} / ${this.ship.maxHp}`,
+        key: 'hp', label: 'HULL',
+        value: `${Math.round((this.ship.hp / Math.max(1, this.ship.maxHp)) * 100)}% · ${Math.floor(this.ship.hp)} / ${this.ship.maxHp}`,
         presentation: 'hero',
       },
       {
