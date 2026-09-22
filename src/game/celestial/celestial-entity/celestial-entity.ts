@@ -141,10 +141,10 @@ export class CelestialEntity implements ObjectPickable {
     const apSpec = getApsisLabelSpec('ap', el.center.id);
     const peSpec = getApsisLabelSpec('pe', el.center.id);
     rows.push(
-      { key: 'ap', label: apSpec.full, value: fmtDist(apsis.ap), group: '軌道' },
-      { key: 'pe', label: peSpec.full, value: fmtDist(apsis.pe), group: '軌道' },
-      { key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full, value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
-      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(el.period), group: '軌道' },
+      { key: 'ap', label: apSpec.full, value: fmtDist(apsis.ap), group: 'ORBIT' },
+      { key: 'pe', label: peSpec.full, value: fmtDist(apsis.pe), group: 'ORBIT' },
+      { key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full, value: `${el.incDeg.toFixed(2)}°`, group: 'ORBIT' },
+      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(el.period), group: 'ORBIT' },
     );
     return rows;
   }

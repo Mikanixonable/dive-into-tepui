@@ -140,7 +140,7 @@ export class EnemyInspection implements InspectedObject {
     );
     rows.push(...orbitRows(this.source, bodies, simTime));
     if (rel) rows.push({ key: 'relinc', label: '相対傾斜 [AN/DN]',
-      value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: '軌道' });
+      value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: 'ORBIT' });
     return rows;
   }
 }
