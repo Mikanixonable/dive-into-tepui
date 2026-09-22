@@ -17,7 +17,7 @@ export interface EnemyReactionPort {
   readonly motion: DynamicMotion;
   // 破片と爆散の大きさを決める機体模型の倍率。
   readonly modelScale: number;
-  // 弾によるダメージを入れる。部位を持つ個体は impactPoint でどこに入ったかを解く。
+  // 弾によるダメージを適用する。部位を持つ個体は impactPoint から被弾部位を判定する。
   applyBulletDamage(damage: number, impactPoint: Vec3, events: RunEventSink): void;
   // 接触の相対速度によるダメージを入れる。ダメージが実際に入ったら true。
   applyImpactDamage(damageSpeed: number): boolean;

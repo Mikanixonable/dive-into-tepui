@@ -57,7 +57,7 @@ function isMaterialHost(
   return typeof candidate.replaceMaterial === 'function';
 }
 
-// manifestが宣言する地表データセットの測光を、天体表面の公開面へ写す。
+// manifestが宣言する地表データセットの測光値を、公開用の測光情報へ変換する。
 function photometryOf(source: EarthSurfaceSource): SurfacePhotometry {
   return {
     bondAlbedo: source.colorCalibration.bondAlbedo,

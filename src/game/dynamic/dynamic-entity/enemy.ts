@@ -205,11 +205,11 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   protected abstract muzzlePosition(): Vec3;
   // プラズマ弾1発のダメージ [HP]。
   protected abstract plasmaDamage(): number;
-  // 弾の被弾ダメージを hp へ当てる。撃破は、当てた後の hp から別に決まる。
+  // 弾の被弾ダメージを HP へ適用する。撃破判定は、適用後の残 HP に基づいて別途行われる。
   protected abstract applyBulletDamage(
     damage: number, impactPoint: Vec3, events: RunEventSink,
   ): void;
-  // 接触ダメージを当て、ダメージが発生したかを返す。しきい値未満なら false。
+  // 衝突ダメージを適用し、ダメージが発生したかを返す。しきい値未満なら false。
   protected abstract applyImpactDamage(damageSpeed: number): boolean;
   // 1発撃ったことを受ける。muzzleState は砲口の位置と機体の速度。
   protected abstract fired(muzzleState: KinematicState, events: RunEventSink): void;

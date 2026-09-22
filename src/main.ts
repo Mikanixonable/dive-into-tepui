@@ -76,7 +76,7 @@ function startAnimationLoop(
       return;
     }
     try {
-      // ランが消費しなかった入力エッジを、ランの外の優先順で受ける口。
+      // ランが消費しなかった入力エッジを、ラン外の優先度順で処理するハンドラ登録。
       const completed = run.frame(dt, now, viewport, [
         {
           feature: 'snapshot',
@@ -132,7 +132,7 @@ function initHud(settings: UserSettings): {
   );
   const hud = new Hud(shell, panelCollapse, settings.renderStyle.current);
   // マーカーの骨格は装置が、種別ごとの見た目は表示の導出が注入する。骨格を先に置き、
-  // 同じ詳細度なら種別ごとの指定が勝つ順序にする。
+  // 同じ詳細度であれば種別ごとのスタイル指定が優先される順序にする。
   const markers = new MarkerDevice(shell.layers.marker);
   injectMarkerIdentityStyle();
   const audioEngine = new AudioEngine();
@@ -173,15 +173,15 @@ function bindSettings(
   };
 }
 
-// 表示パネルが読み書きする設定を、読み取り専用の面と書き換えの口に分けて束ねる。
+// 表示パネルが読み書きする設定を、読み取り専用プロパティと更新コールバックに分けて束ねる。
 function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
   return {
-    // 読み取り専用の面。
+    // 読み取り専用プロパティ。
     mapDisplay: settings.mapDisplayToggles,
     grid: settings.gridVisibility,
     tab: settings.viewOptionsTab,
     orbitGuideGroupTab: settings.orbitGuideGroupTab,
-    // 書き換えの口。設定の正本へ戻す。
+    // 更新コールバック。設定の正本へ反映する。
     onMapDisplayChange: (value) => settings.mapDisplayToggles.set(value),
     onGridChange: (value) => settings.gridVisibility.set(value),
     onTabChange: (value) => settings.viewOptionsTab.set(value),
@@ -191,7 +191,7 @@ function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
 
 // 起動時に一度だけ走る、全システムの生成と配線。
 async function main() {
-  // 設定を読み、選ばれている配色を :root へ当ててからでなければ、ローディング表示も
+  // 設定を読み、選ばれている配色を :root へ適用してからでなければ、ローディング表示も
   // ステージ選択画面も色を引けない。
   const settings = new UserSettings(browserSettingStorage);
   settings.themePalette.subscribe((palette) => applyThemeVariables(palette));

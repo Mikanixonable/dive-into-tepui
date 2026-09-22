@@ -1,4 +1,4 @@
-// 操作対象の選択へ外から出せる命令の口と、それを列へ積む実装(R3)。
+// 操作対象の選択へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from './command-queue';
 import type { ControlSelection } from './control-selection';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
@@ -9,7 +9,7 @@ export interface ControlSelectionCommands {
   select(target: Controllable): void;
 }
 
-// selection への命令を queue へ積むだけの口を組む。
+// selection へのコマンドを queue へエンキューする実装を構築する。
 export function controlSelectionCommands(
   queue: CommandQueue, selection: ControlSelection,
 ): ControlSelectionCommands {

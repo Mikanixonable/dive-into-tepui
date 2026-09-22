@@ -1,4 +1,4 @@
-// 生んだ個体を顔ぶれへ入れる口。即座に入れるものと、条件が揃うのを待ってから入れるものを扱う。
+// 生成したエンティティを登録コレクションへ追加するインターフェース。即座に追加するものと、条件充足を待って追加するものを扱う。
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { EntityIdAllocators } from './dynamic-entity/entity-id';
 import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
@@ -17,13 +17,13 @@ export type SpawnRecord =
 export interface EntityRegistry {
   // このランの id 採番器。生む側はここから自分の種別の id を取る。
   readonly idAllocators: EntityIdAllocators;
-  // このランの出来事の記録。起きたことを積む側はここへ積む。
+  // このランのイベントログ。発生したイベントを記録するインターフェース。
   readonly events: RunEventSink;
-  // 個体をいまの顔ぶれへ入れる。枠の上限を超えたぶんは持ち主が古いものから落とす。
+  // 個体を現在のエンティティ一覧へ追加する。枠の上限を超えた分は所有者が古いものから破棄する。
   add(entity: DynamicEntity): void;
   // record の個体を実体化して add する。実体化に要る外部資源がいま揃っていればその場で、そうで
   // なければ揃ったフレームで入れる。
   spawnWhenReady(record: SpawnRecord): void;
-  // 外部資源が揃うのを待っていて、まだ顔ぶれに入っていない敵の数。
+  // 外部リソースが揃うのを待機中で、まだエンティティ一覧に追加されていない敵の数。
   readonly pendingEnemyCount: number;
 }

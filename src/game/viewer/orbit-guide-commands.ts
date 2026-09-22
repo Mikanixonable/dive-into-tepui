@@ -1,4 +1,4 @@
-// 軌道ガイドの選択へ外から出せる命令の口と、それを列へ積む実装(R3)。
+// 軌道ガイドの選択へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { OrbitGuideSelection } from './orbit-guide-selection';
 import type { OrbitGuideSettings } from './orbit-guide-settings';
@@ -9,7 +9,7 @@ export interface OrbitGuideCommands {
   setSettings(settings: OrbitGuideSettings): void;
 }
 
-// selection への命令を queue へ積むだけの口を組む。
+// selection へのコマンドを queue へエンキューする実装を構築する。
 export function orbitGuideCommands(queue: CommandQueue, selection: OrbitGuideSelection): OrbitGuideCommands {
   return {
     setSettings: (settings) => queue.submit(() => selection.setSettings(settings)),

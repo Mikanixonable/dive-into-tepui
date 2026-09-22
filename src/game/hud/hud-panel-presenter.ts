@@ -1,4 +1,4 @@
-// ビューバッジ・常設パネル・軌道分析窓へ、このランの状態から組んだ値と操作の口を毎フレーム渡す。
+// ビューバッジ・常設パネル・軌道分析窓へ、このランの状態から組んだ値と操作インターフェースを毎フレーム渡す。
 import { len, sub } from '../../math/vec3';
 import { frameRoleOf } from '../../physics/frame';
 import { orbitInfo, relativeInfo } from '../orbit-info';
@@ -43,11 +43,11 @@ import type { ThemePalette } from '../../theme';
 
 export class HudPanelPresenter {
   private readonly viewBadge: ViewBadge;
-  // パネルの操作を命令の列へ積む口。
+  // パネル操作コマンドをキューへエンキューするインターフェース。
   private readonly simSpeedCommands: SimSpeedCommands;
   private readonly deployableCommands: DeployableCommands;
   private readonly orbitReferenceCommands: OrbitReferenceCommands;
-  // ブースターの取り付け・点火・切り離しの口。
+  // ブースターの取り付け・点火・切り離しを扱うハンドラ。
   private readonly burnHandlers: BurnManagementPanelHandlers;
 
   // ビューバッジを組む。パネルの操作は commands へ積み、値は残りの持ち主から毎フレーム読む。
@@ -165,7 +165,7 @@ export class HudPanelPresenter {
     };
   }
 
-  // 操作対象の装備・燃料・姿勢の状態と、代替操作の口。
+  // 操作対象の装備・燃料・姿勢の状態と、代替操作用のコールバック。
   private vesselViewModel(controlled: Controllable): VesselPanelViewModel {
     const ship = isModularShip(controlled) ? controlled : null;
     const motion = ship?.motion ?? null;
@@ -197,7 +197,7 @@ export class HudPanelPresenter {
     };
   }
 
-  // 操作対象の軌道要素と、基準切替の口。航法ターゲット基準で対象が重力天体でない(艦・基地・
+  // 操作対象の軌道要素と、基準切替用のインターフェース。航法ターゲット基準で対象が重力天体でない(艦・基地・
   // ラグランジュ点)場合は、天体名の生 ID フォールバックより航法ターゲットの表示名を優先する。
   private orbitViewModel(controlled: Controllable, reference: OrbitReference): OrbitPanelViewModel {
     const info = orbitInfo(

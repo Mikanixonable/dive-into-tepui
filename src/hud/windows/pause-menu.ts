@@ -25,7 +25,7 @@ export class PauseMenu implements OverlayHandle {
   private readonly tabContent: HTMLElement;
   private readonly pauseTabPanel: HTMLElement;
   private readonly tabBar: TabBar<PauseMenuTab>;
-  // 設定タブへ埋め込んだ設定面。設定の変更の口はこれが持つ。
+  // 設定タブに配置された設定ビュー。設定変更の操作を受け持つ。
   private readonly _settingsView: SettingsView;
   public get settingsView(): SettingsView { return this._settingsView; }
   private readonly minimizeToggle: HTMLButtonElement;
@@ -219,7 +219,7 @@ export class PauseMenu implements OverlayHandle {
     this.reclamp();
   }
 
-  // 外側タブを切り替え、設定面の試聴と入力ゲートも同じ状態へ合わせる。
+  // 外側タブを切り替え、設定ビューの試聴と入力ゲートも状態を同期させる。
   private setActiveTab(tab: PauseMenuTab): void {
     this.activeTab = tab;
     this.tabBar.setSelected(tab);
@@ -333,14 +333,14 @@ export class PauseMenu implements OverlayHandle {
     this.dragStartClient = null;
   };
 
-  // 開いている間の設定面の表示を引き直す。nowMs [ms] はフレームの実時刻。毎フレーム呼ぶ。
+  // 開いている間、設定ビューの表示を更新する。nowMs [ms] はフレームの実時刻。毎フレーム呼ぶ。
   public sync(nowMs: number): void {
     if (!this._isOpen) return;
     this._settingsView.sync(nowMs);
   }
 
-  // 外から音量か消音が変わったときに、消音を織り込んだ音量 vol でスライダーと消音ボタンの点灯を
-  // 引き直す。
+  // 外部から音量または消音状態が変更されたときに、消音を反映した音量 vol でスライダーと消音ボタンの表示を
+  // 再描画する。
   public syncBgmVolume(vol: number): void {
     this.bgmSlider.setValue(vol);
     this.updateMuteState(vol);

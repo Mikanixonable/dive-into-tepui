@@ -7,7 +7,7 @@ import { TabBar } from '../widgets';
 
 type SettingsTab = 'theme' | 'graphics' | 'bgm';
 
-// 描画・BGM・配色の詳細設定面。内側タブで3面を切り替え、各面の変更を onXxx で外へ返す。
+// 描画・BGM・配色の詳細設定ビュー。内部タブで3つのパネルを切り替え、各設定の変更をコールバックで外部へ通知する。
 export class SettingsView {
   public readonly element: HTMLElement;
   private readonly bgmPanel: BgmSettingsPanel;
@@ -20,7 +20,7 @@ export class SettingsView {
   // BGM の音量が変わったときに呼ばれる。
   public onBgmVolumeChange: ((volume: number) => void) | null = null;
 
-  // 見出し・内側タブバーと、描画/BGM/配色の3面を組み立てる。graphics・bgmVolume・themeId は
+  // ヘッダー・タブバーおよび描画/BGM/配色の各パネルを構築する。graphics・bgmVolume・themeId は
   // 組み立て時の設定値。
   public constructor(graphics: GraphicsSettingsData, bgmVolume: number, themeId: string) {
     this.element = document.createElement('section');
@@ -33,7 +33,7 @@ export class SettingsView {
     description.textContent = '描画・BGM・配色の設定を切り替えられます。';
     this.element.appendChild(description);
 
-    // タブバー: 描画・BGM・配色の3面を切り替える。
+    // タブバー: 描画・BGM・配色の3パネルを切り替える。
     const tabPanels = new Map<SettingsTab, HTMLElement>();
     const tabs = new TabBar<SettingsTab>(
       [['graphics', '描画'], ['bgm', 'BGM'], ['theme', '配色']],
@@ -45,7 +45,7 @@ export class SettingsView {
     tabs.element.classList.add('sv-tabs', 'ui-surface-inset');
     this.element.appendChild(tabs.element);
 
-    // 見出し付きのタブ面を1つ作り、タブ切り替えで引けるよう tabPanels へ登録する。
+    // 見出し付きのタブパネル要素を生成し、タブ切り替え用に tabPanels へ登録する。
     const addTabPanel = (tab: SettingsTab, title: string): HTMLElement => {
       const section = document.createElement('section');
       section.className = 'sv-section sv-tab-panel ui-surface-inset';
@@ -63,7 +63,7 @@ export class SettingsView {
       return sectionBody;
     };
 
-    // 3面それぞれの操作を、対応する自分の口へ繋ぎ替える。
+    // 各パネルのイベントハンドラを、自身の通知コールバックへ中継する。
     const graphicsSectionBody = addTabPanel('graphics', '描画');
     const graphicsPanel = new GraphicsPanel(graphics);
     graphicsPanel.onChange = (changed) => this.onGraphicsChange?.(changed);
@@ -86,7 +86,7 @@ export class SettingsView {
     if (initialPanel !== undefined) initialPanel.hidden = false;
   }
 
-  // 設定詳細面の見出しと説明用 eyebrow を組み立てる。
+  // 設定ビューのヘッダー見出しと説明用テキストを構築する。
   private buildHeader(): HTMLElement {
     const header = document.createElement('div');
     header.className = 'sv-header';
@@ -105,18 +105,18 @@ export class SettingsView {
     return header;
   }
 
-  // 試聴の宣言。設定面を開いている間を試聴の期間とし、期間の外なら null、曲を止めていれば 'silent'。
+  // BGM試聴状態。設定ビューを開いている間を試聴期間とし、非表示時は null、停止時は 'silent'。
   public get bgmAudition(): BgmAudition | 'silent' | null {
     return this.active ? this.bgmPanel.audition ?? 'silent' : null;
   }
 
-  // 設定面の表示を、試聴の経過へ合わせる。nowMs [ms] はフレームの実時刻。毎フレーム呼ぶ。
+  // 設定ビューの表示を試聴の進行状況に同期する。nowMs [ms] はフレームの実時刻。毎フレーム呼ぶ。
   public sync(nowMs: number): void {
     if (!this.active) return;
     this.bgmPanel.sync(nowMs);
   }
 
-  // 外から音量が変わったときに、BGM タブの表示を引き直す。
+  // 外部から音量が変更されたときに、BGM タブの表示を再描画する。
   public syncBgmVolume(volume: number): void {
     this.bgmPanel.syncVolume(volume);
   }

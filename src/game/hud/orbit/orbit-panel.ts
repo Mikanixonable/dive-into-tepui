@@ -18,7 +18,7 @@ const REFERENCE_ITEMS: readonly (readonly [OrbitReferenceMode, string])[] = [
   ['target', '航法ターゲット'],
 ];
 
-// ORBIT パネルが1フレームに映す値と、基準切替が返す操作の口。
+// ORBIT パネルが1フレームに表示する値と、基準切替用のコールバック。
 // 軌道要素が求まらない状態(基準が重力中心でない・双曲線軌道)では ap/pe/inc/period が NaN。
 export interface OrbitPanelViewModel {
   readonly selectedMode: OrbitReferenceMode;
@@ -40,11 +40,11 @@ export interface OrbitPanelViewModel {
 export class OrbitPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private readonly referenceControl: SegmentedControl<OrbitReferenceMode>;
-  // 直近の sync が受けた値。基準の切替はフレームの外で起きるので、その時点の口をここから引く。
+  // 直近の sync で受け取った状態。基準切替はフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: OrbitPanelViewModel | null = null;
 
   // 基準切替のセグメントコントロールと軌道分析ボタンを els が指す DOM へ組み込む。
-  // openAnalysis は軌道分析ボタンが押されたときに呼ぶ口。
+  // openAnalysis は軌道分析ボタンが押されたときに呼ぶコールバック。
   public constructor(
     private readonly els: Map<string, HTMLElement>,
     private readonly openAnalysis: () => void,

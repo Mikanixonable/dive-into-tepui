@@ -1,4 +1,4 @@
-// 航法ターゲットの選択へ外から出せる命令の口と、それを列へ積む実装(R3)。
+// 航法ターゲットの選択へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { NavTargetSelection } from './nav-target-selection';
@@ -11,7 +11,7 @@ export interface NavTargetCommands {
   setCombatTarget(entity: CombatTarget | null): void;
 }
 
-// selection への命令を queue へ積むだけの口を組む。
+// selection へのコマンドを queue へエンキューする実装を構築する。
 export function navTargetCommands(queue: CommandQueue, selection: NavTargetSelection): NavTargetCommands {
   return {
     toggle: (id, name) => queue.submit(() => selection.toggle(id, name)),

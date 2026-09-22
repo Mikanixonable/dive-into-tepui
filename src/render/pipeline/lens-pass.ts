@@ -168,7 +168,7 @@ export class LensPass {
     for (const [axis, passes] of this.diffractionChains.entries()) {
       for (const [pass, filter] of passes.entries()) {
         const last = pass === APERTURE_PSF_PASSES.length - 1;
-        // 最後のパスは加算で積むので、**最初の 1 本だけがクリアする。** クリアを落とすと前の
+        // 最後のパスは加算合成するため、**最初の 1 軸だけがクリアを行う。** クリアを省略すると前
         // フレームの上へ積み上がり、半精度の上限を越えて画面が NaN になる。
         this.draw(
           filter, last ? this.diffractionTarget : this.diffractionScratch[pass]!, !last || axis === 0,
@@ -214,7 +214,7 @@ export class LensPass {
     this.drawn = false;
   }
 
-  // フィルタ 1 枚を target へ描く。clear を落とすと、既に入っている絵の上へ積む。
+  // フィルタ 1 枚を target へ描画する。clear を false（省略）にすると、既存の描画結果の上へ加算・ブレンドする。
   private draw(filter: Filter, target: THREE.RenderTarget, clear = true): void {
     this.renderer.setRenderTarget(target);
     this.renderer.autoClear = clear;

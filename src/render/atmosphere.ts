@@ -84,7 +84,7 @@ export function withAirglowEnabled(optics: AtmosphereOptics, enabled: boolean): 
 }
 
 // 大気を天頂方向へ通り抜ける光学的厚み。**濃さを1つの数で表すためだけの量**なので、波長ごとに
-// 違うレイリー散乱は3成分の平均で潰す。
+// 違うレイリー散乱は3成分の平均値で代表させる。
 function verticalOpticalDepth(optics: AtmosphereOptics): number {
   const rayleigh = (optics.rayleigh.x + optics.rayleigh.y + optics.rayleigh.z) / 3;
   return rayleigh * optics.rayleighScaleHeight + optics.mie * optics.mieScaleHeight;
@@ -108,7 +108,7 @@ export interface AtmosphereClouds {
 
 // 大気を持つ天体 1 体。中心は描画座標、半径は [m]。**地表も大気の等密度面も、自転軸まわりの
 // 相似な回転楕円体**で、surfaceRadius は赤道半径、polarRatio は極半径をそれで割った比。
-// polarAxis は潰す向き(描画座標の単位ベクトル)で、真球(polarRatio = 1)では効かない。
+// polarAxis は扁平化する主軸方向(描画座標の単位ベクトル)で、真球(polarRatio = 1)では影響しない。
 // clouds は大気の中に立てる雲で、雲を持たない天体では null。
 export interface AtmosphereBody {
   readonly center: THREE.Vector3;
@@ -136,7 +136,7 @@ export interface AtmosphereDraw {
 }
 
 // 予算 budget サンプルを、影響の大きい順に配る。**返す並びは視点に近い順**(合成の順序)。
-// 予算で賄えない数の候補は、影響の小さい側から落ちる。
+// 予算で賄えない余剰候補は、影響度の小さい順に描画対象から除外される。
 function allocateSamples(
   scored: readonly (AtmosphereCandidate & { readonly score: number })[],
   budget: number,

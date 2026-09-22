@@ -22,8 +22,8 @@ export class SchematicComposite {
 
   // 深度・法線を読む距離1画素ぶんの隣接判定を4方向ぶん組み、輪郭色/背景色を選ぶ1枚の
   // カラーグラフを一度だけ構築する。projectionMatrixInverse は composite パスの固定直交カメラ
-  // ではなく実カメラのものを毎フレーム書き込む必要があるため、呼び出し側が保持する uniform を
-  // そのまま受ける。
+  // ではなく実カメラのものを毎フレーム書き込む必要があるため、外部で管理される uniform を
+  // そのまま受け取る。
   constructor(gbuffer: GBufferPass, projectionMatrixInverse: Mat4Uniform) {
     this.texelSize = uniform(new THREE.Vector2());
 

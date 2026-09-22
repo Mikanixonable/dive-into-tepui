@@ -41,7 +41,7 @@ export class Billboard {
   }
 
   // position は描画フレーム(フローティングオリジン補正済み)の THREE.Vector3。
-  // 慣性座標 → 描画フレームの変換は呼び出し側が fo 経由で済ませておくこと。
+  // 慣性座標から描画フレームへの変換が済んでいることを前提とする。
   // brightness は 1 を超えうる明るさの倍率で、基準色へ掛かる。
   sync(position: THREE.Vector3, scale: number, brightness: number, cameraQuat: THREE.Quaternion): void {
     this.mesh.visible = true;
@@ -60,7 +60,7 @@ export class Billboard {
 }
 
 // InstancedPool が全フラッシュエフェクトで使い回す共有ジオメトリ/マテリアル。色は白のまま
-// 固定し、個体ごとの色は呼び出し側が InstancedPool の per-instance color で与える。
+// 固定し、個体ごとの色は InstancedPool の per-instance color 経由で適用する。
 export function flashResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
   const material = new THREE.MeshBasicMaterial({
     map: getGlowTexture(),

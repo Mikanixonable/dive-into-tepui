@@ -130,8 +130,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   public get pendingEnemyCount(): number { return this.lifecycle.pendingEnemyCount; }
   public remove(entity: DynamicEntity): void { this.lifecycle.remove(entity); }
 
-  // エンティティを登録する。上限を持つ枠の超過分は、次の cleanup で古いものから落ちる。
-  // 保持する全エンティティを追加順に返す。呼び出し側は読み取り専用として扱う。
+  // 保持する全エンティティを追加順に返す（読み取り専用）。
   public all(): readonly DynamicEntity[] { return this.lifecycle.all(); }
 
   // 全エンティティの Motion を追加順に並べた新しい配列。

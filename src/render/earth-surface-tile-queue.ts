@@ -188,7 +188,7 @@ export class EarthSurfaceTileRequestQueue {
     return item.promise;
   }
 
-  // 呼び出し側の参照を解放し、完了済み項目を索引から外す。
+  // タイル要求の参照を解放し、完了済み項目をインデックスから除去する。
   public release(key: EarthTileKey, generation?: number): void {
     const item = this.items.get(earthTileId(key));
     if (item === undefined || (generation !== undefined && item.generation !== generation)) return;

@@ -64,8 +64,8 @@ export function classifyAttractors(
   return { always, ranged };
 }
 
-// 位置 pos から見た重力源一覧 = 常に含める天体 + pos を到達量の内側に置く天体を、out へ
-// 書き込む。out は呼び出し側が所有する作業領域で、空にしてから書き込む。
+// 位置 pos から見た重力源一覧（常に含める天体 + pos が影響範囲内にある天体）を out へ
+// 書き込む。out は作業用配列で、内容をクリアしてから書き込む。
 export function attractorsNearInto(
   pos: Vec3, classified: ClassifiedAttractors, out: CelestialBody[],
 ): CelestialBody[] {

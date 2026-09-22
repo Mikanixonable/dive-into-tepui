@@ -4,9 +4,9 @@
 //
 // 二段構えで、段ごとに何に依存するかが違う。
 //  1. resetSpan — 区間だけで決まる。各天体の表面がその区間のあいだに届きうる範囲を求める。
-//     **部分区間の到達範囲はこの範囲に含まれる**ので、区間を内側でさらに割って解く個体も、
+//     **部分区間の到達範囲はこの範囲に含まれる**ので、区間を内側でさらに細分化して衝突処理する個体も、
 //     組み直さずにそのまま使える。
-//  2. narrow — 参加者の顔ぶれで決まる。区間を共有する多数を同じ窓で解くときだけ得になる
+//  2. narrow — 参加者の顔ぶれで決まる。区間を共有する多数を同じ時間枠で衝突処理するときだけ得になる
 //     (参加者が1つなら into と同じ判定を二度やることになる)。
 import { KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, distSq, len, scale, sub, v3 } from '../../math/vec3';
@@ -20,8 +20,8 @@ type BodyReach = {
 };
 
 // 三次曲線が弦から離れうる距離の上限 [m]。Bezier の制御点は弦上の対応点から高々この距離しか
-// 離れず、Bernstein 基底が単位分割なので曲線全体がその内側に収まる。掃引が解くのはこの曲線
-// なので、弦だけで測ると通過を落としうる。
+// 離れず、Bernstein 基底が単位分割なので曲線全体がその内側に収まる。掃引判定が対象とするのはこの曲線
+// なので、弦だけで測ると通過判定を見落とす恐れがある。
 function chordDeviationBound(start: KinematicState, end: KinematicState): number {
   const dt = end.t - start.t;
   const chord = sub(end.r, start.r);
@@ -43,16 +43,16 @@ export type SurfaceParticipant = {
 export class SurfaceCandidates {
   // 区間 [tStart, tEnd] のあいだに各天体の表面が届きうる範囲。
   private readonly spanning: BodyReach[] = [];
-  // そのうち、いま into が選び先とする一覧。narrow を掛けるまでは spanning と同じ顔ぶれ。
+  // そのうち、現在 into の抽出対象とする候補一覧。narrow を適用するまでは spanning と同じ要素構成。
   private readonly reachable: BodyReach[] = [];
 
   // into が選び先とする天体の数。
   get count(): number { return this.reachable.length; }
 
   // 区間 [tStart, tEnd] のあいだに各天体の表面が届きうる範囲を求める。以降の into と narrow は
-  // この上で答えるので、区間の内側をさらに細かく割って解く個体も組み直しを要さない。
-  // reachMargin は掃引ぶんに掛ける倍率で、1 が掃引そのもの — **絞り込みは通す側へ外れてよい**
-  // ので、区間より細かい刻みで引き直した位置とのずれを覆いたい呼び出し側が大きく取る。
+  // この上で判定するため、区間の内側をさらに細かく分割して判定する個体も再構築が不要。
+  // reachMargin は掃引ぶんに掛ける倍率で、1 が掃引そのもの — **絞り込みは安全側に倒してよい（見逃しがなければ過剰検出は許容される）**
+  // ため、区間より細かい刻みで再計算した位置とのズレを吸収したい場合は大きめの値を指定する。
   resetSpan(
     bodies: readonly CelestialBody[], pivot: number, tStart: number, tEnd: number,
     reachMargin = 1,
@@ -70,14 +70,14 @@ export class SurfaceCandidates {
     this.resetNarrow();
   }
 
-  // narrow で狭めた選び先を、区間の全候補へ戻す。**参加者の顔ぶれや位置が変わる区切りごとに
+  // narrow で狭めた候補を、区間の全候補へリセットする。**参加者リストや位置が変わる区切りごとに
   // 呼ぶ** — 狭めた結果はある1組の参加者に対してだけ正しい。
   resetNarrow(): void {
     this.reachable.length = 0;
     for (const candidate of this.spanning) this.reachable.push(candidate);
   }
 
-  // into の選び先を、この顔ぶれの誰かが触れうる天体だけへ狭める。狭めた結果は次の resetNarrow
+  // into の抽出対象を、参加者リストのいずれかが接触しうる天体のみに絞り込む。絞り込み結果は次の resetNarrow
   // まで残るので、**区間を共有する参加者へ続けて into を掛けるあいだにだけ掛ける。**
   narrow(participants: readonly SurfaceParticipant[]): void {
     this.reachable.length = 0;
@@ -97,7 +97,7 @@ export class SurfaceCandidates {
     }
   }
 
-  // 参加者1つが区間内に触れうる天体だけを out へ書く。out は呼び出し側が所有する。
+  // 参加者1つが区間内に接触しうる天体だけを out へ格納する。out は作業用配列。
   into(participant: SurfaceParticipant, out: CelestialBody[]): CelestialBody[] {
     out.length = 0;
     const { prevState } = participant;
