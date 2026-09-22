@@ -4,7 +4,8 @@ import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, 
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
 import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
-import { BakedField } from './baked-field';
+import { BakedField } from '../baked-field';
+import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
@@ -17,7 +18,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
 import type { ClimateMap } from './climate-map';
-import type { FieldProjection } from './field-projection';
+import type { FieldProjection } from '../field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
@@ -184,7 +185,8 @@ export class WeatherModel {
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius);
     this.pressure = new BakedField(
-      'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
+      'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1),
+      GPU_PASS.cloudBake);
     this.convectiveActivity = new ConvectiveActivity(this.surfaceCirculation, projection);
     this.airMass = new AirMass(projection, (direction) => this.traceFlowAt(direction), surfaceRadius);
     this.syncTime(0);

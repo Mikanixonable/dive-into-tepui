@@ -7,10 +7,10 @@
 // どの天体の見えも同じ 1 枚の板で解き、違うのは層へ書き込む光学パラメータと、呼び出し側が
 // 配ったサンプル点の数だけ。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { Fn, length, screenUV, sub, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffAltitude } from '../atmosphere';
+import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffRadius } from '../atmosphere';
 import { AtmosphereIntegrator } from './atmosphere-integrator';
 import { viewPositionAt, viewRayAt } from './view-ray';
 import type { CloudSpecies } from './cloud-atmosphere-renderer';
@@ -161,10 +161,9 @@ export class AtmospherePass {
     // 内部散乱へ掛かる形は、奥の出力を手前の下地にすることで出る。
     for (let index = this.draws.length - 1; index >= 0; index--) {
       const { body, steps } = this.draws[index]!;
-      const cutoffRadius = body.surfaceRadius + cutoffAltitude(body.optics, body.surfaceRadius);
-      this.cutoffSphere.set(body.center, cutoffRadius);
+      this.cutoffSphere.set(body.center, cutoffRadius(body.optics, body.surfaceRadius));
       if (!this.frustum.intersectsSphere(this.cutoffSphere)) continue;
-      this.layer.write(body, steps, cutoffRadius);
+      this.layer.write(body, steps, this.cutoffSphere.radius);
       this.syncSize(this.backdropTarget);
       this.copyInto(this.backdropTarget, backdropSource);
       // 雲を含む天体は、雲専用の計測行へ分ける。ただし積分器は大気散乱と雲散乱を同じ
