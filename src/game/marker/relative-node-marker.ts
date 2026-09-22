@@ -51,7 +51,7 @@ export class RelativeNodeMarker extends OrbitPointMarker {
   ): readonly PropertyRow[] {
     return [
       ...this.ownerRows(),
-      { key: 'target', label: '対象', value: this.targetName ?? '対象' },
+      { key: 'target', label: '対象', value: this.targetName ?? '対象', presentation: 'major' },
       ...this.passTimeRows(simTime),
     ];
   }

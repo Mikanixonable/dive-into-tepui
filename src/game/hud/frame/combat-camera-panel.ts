@@ -11,7 +11,8 @@ export class CombatCameraPanel {
   public constructor(
     panelRoot: HTMLElement, commands: CameraRotationModeCommands, initialMode: CameraRotationMode,
   ) {
-    this.panel = buildPanel(panelRoot, 'hud-combat-camera-controls', 'カメラ');
+    this.panel = buildPanel(panelRoot, 'hud-combat-camera-controls', 'CAMERA BASIS', 'CAM');
+    this.panel.classList.add('hud-frame-controls-compact');
     this.rotationModeControl = new CameraRotationModeControl(commands, initialMode);
     this.panel.appendChild(this.rotationModeControl.element);
   }

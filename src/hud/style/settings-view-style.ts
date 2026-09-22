@@ -4,6 +4,7 @@ import { MQ_MEDIUM_DOWN } from '../breakpoints';
 export const SETTINGS_VIEW_STYLE = `
 #hud-pause-menu .pm-settings-view {
   --sv-content-inset: var(--space-4);
+  counter-reset: settings-section;
   display: block; min-width: 0; pointer-events: auto; padding: var(--space-1) 0 var(--space-2);
 }
 #hud-pause-menu .pm-settings-view .sv-header,
@@ -20,8 +21,10 @@ export const SETTINGS_VIEW_STYLE = `
   color: var(--text-dim); font-size: var(--font-s); line-height: 1.6;
 }
 #hud-pause-menu .pm-settings-view .sv-section {
+  counter-increment: settings-section;
   margin-top: var(--space-4); padding: var(--sv-content-inset);
-  border: 0; border-radius: var(--radius-panel);
+  border: 0; border-radius: 0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
 }
 #hud-pause-menu .pm-settings-view .sv-section-body { min-width: 0; margin-top: var(--space-4); }
 #hud-pause-menu .pm-settings-view .sv-tab-panel[hidden] { display: none; }
@@ -30,7 +33,9 @@ export const SETTINGS_VIEW_STYLE = `
   color: var(--title); font-size: var(--font-m); letter-spacing: 0.08em;
 }
 #hud-pause-menu .pm-settings-view .sv-section h3::before {
-  width: var(--space-2); height: var(--font-m); border-radius: var(--radius-micro); background: var(--color-primary); content: '';
+  width: auto; height: auto; border-radius: 0; background: transparent;
+  color: var(--color-primary); content: counter(settings-section, decimal-leading-zero);
+  font-size: var(--font-xxs); font-variant-numeric: tabular-nums; letter-spacing: .08em;
 }
 #hud-pause-menu .pm-settings-view .sv-theme-options {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: var(--space-3);

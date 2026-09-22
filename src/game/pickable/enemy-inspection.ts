@@ -125,16 +125,22 @@ export class EnemyInspection implements InspectedObject {
     bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number, _displayTime: number,
   ): readonly PropertyRow[] {
     const rel = viewer ? relativeInfo(viewer, this.source, bodies.celestialMotions, simTime) : null;
-    const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.source.hp)} / ${this.source.maxHp}` }];
-    // 相対の行は、距離・速度を装甲の下へ、相対傾斜を軌道の群の末尾へ置く。
+    const rows: PropertyRow[] = [];
+    // 戦闘判断で最初に読む距離・接近速度を主状態へ上げる。
     if (rel) rows.push(
-      { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
-      { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing) },
-      { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), collapsible: true },
+      { key: 'dist', label: '距離', value: fmtDist(rel.dist), presentation: 'hero' },
+      { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing), presentation: 'major' },
+    );
+    rows.push({
+      key: 'hp', label: '装甲', value: `${Math.floor(this.source.hp)} / ${this.source.maxHp}`,
+      presentation: 'major',
+    });
+    if (rel) rows.push(
+      { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), presentation: 'detail' },
     );
     rows.push(...orbitRows(this.source, bodies, simTime));
     if (rel) rows.push({ key: 'relinc', label: '相対傾斜 [AN/DN]',
-      value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: '軌道' });
+      value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: 'ORBIT' });
     return rows;
   }
 }

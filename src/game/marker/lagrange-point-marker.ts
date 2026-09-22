@@ -91,6 +91,7 @@ export class LagrangePointMarker implements ObjectPickable {
       rows.push({
         key: 'dist', label: '自艦からの距離',
         value: fmtDist(len(sub(pos, viewer.motion.state.r))),
+        presentation: 'hero',
       });
     }
     rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });

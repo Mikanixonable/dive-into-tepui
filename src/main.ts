@@ -151,8 +151,10 @@ function bindSettings(
   const settingsView = pauseMenu.settingsView;
   settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
 
-  settings.renderStyle.subscribe((style) => debugInfo.syncRenderStyle(style));
-  hud.onRenderStyleChange = (style) => settings.renderStyle.set(style);
+  settings.renderStyle.subscribe((style) => {
+    debugInfo.syncRenderStyle(style);
+    hud.syncRenderStyle(style);
+  });
 
   // 音量は一時停止メニューと設定ビューの両方が書き換えるので、通知を受けた側で両方を引き直す。
   // どちらも消音中は音量を 0 と見せる。
@@ -181,11 +183,13 @@ function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
     grid: settings.gridVisibility,
     tab: settings.viewOptionsTab,
     orbitGuideGroupTab: settings.orbitGuideGroupTab,
+    renderStyle: settings.renderStyle,
     // 更新コールバック。設定の正本へ反映する。
     onMapDisplayChange: (value) => settings.mapDisplayToggles.set(value),
     onGridChange: (value) => settings.gridVisibility.set(value),
     onTabChange: (value) => settings.viewOptionsTab.set(value),
     onOrbitGuideGroupTabChange: (value) => settings.orbitGuideGroupTab.set(value),
+    onRenderStyleChange: (value) => settings.renderStyle.set(value),
   };
 }
 

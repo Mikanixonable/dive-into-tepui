@@ -119,10 +119,20 @@ export class ShipInspection implements InspectedObject {
       { key: 'role', label: '役割', value: ROLE_LABEL[this.ship.capabilities.role] },
       { key: 'operated', label: '操作対象か', value: this.ship === viewer ? 'はい' : 'いいえ', collapsible: true },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(this.ship.planExecution), collapsible: true },
-      { key: 'hp', label: '装甲', value: `${Math.floor(this.ship.hp)} / ${this.ship.maxHp}` },
-      { key: 'temp', label: '温度', value: `${this.ship.motion.temperature.toFixed(0)} K` },
-      { key: 'power', label: '電力', value: fmtEnergy(this.ship.motion.power.chargeJ) },
-      { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.ship.roundsInMag, this.ship.magsLeft, this.ship.reloadTimer) },
+      {
+        key: 'hp', label: 'HULL',
+        value: `${Math.round((this.ship.hp / Math.max(1, this.ship.maxHp)) * 100)}% · ${Math.floor(this.ship.hp)} / ${this.ship.maxHp}`,
+        presentation: 'hero',
+      },
+      {
+        key: 'temp', label: '温度', value: `${this.ship.motion.temperature.toFixed(0)} K`,
+        presentation: 'major',
+      },
+      { key: 'power', label: '電力', value: fmtEnergy(this.ship.motion.power.chargeJ), presentation: 'major' },
+      {
+        key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.ship.roundsInMag, this.ship.magsLeft, this.ship.reloadTimer),
+        presentation: 'major',
+      },
       ...dockRows,
       ...orbitRows(this.ship, bodies, simTime),
     ];

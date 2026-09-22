@@ -56,7 +56,11 @@ export class CameraFramePanel {
   private readonly fovInput: ValueInput;
   private readonly fovResetButton: Button;
   private readonly angleControl: Pulldown<typeof ANGLE_COLUMNS>;
-  private readonly cameraSummary: HTMLElement;
+  private readonly stateFocus: HTMLElement;
+  private readonly stateLens: HTMLElement;
+  private readonly stateFov: HTMLElement;
+  private readonly stateRotation: HTMLElement;
+  private readonly stateBasis: HTMLElement;
 
   public onSelectCenter: ((id: string | null) => void) | null = null;
 
@@ -70,25 +74,57 @@ export class CameraFramePanel {
     overlayManager: OverlayManager,
     initialRotationMode: CameraRotationMode,
   ) {
-    this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
+    this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'CAMERA', 'CAM');
+
+    const state = document.createElement('section');
+    state.className = 'editorial-state camera-state';
+    state.innerHTML = `
+      <div class="editorial-state-hero">
+        <span class="ui-data-label">FOCUS</span>
+        <strong data-camera-state="focus">—</strong>
+      </div>
+      <div class="camera-state-lens">
+        <div>
+          <span class="ui-data-label">LENS</span>
+          <strong class="ui-data-major" data-camera-state="lens">—</strong>
+        </div>
+        <div>
+          <span class="ui-data-label">FIELD OF VIEW</span>
+          <strong class="ui-data-hero" data-camera-state="fov">—</strong>
+        </div>
+      </div>
+      <div class="editorial-state-grid">
+        <div class="editorial-state-cell"><span class="ui-data-label">ROTATION</span><span data-camera-state="rotation">—</span></div>
+        <div class="editorial-state-cell"><span class="ui-data-label">ATTITUDE BASIS</span><span data-camera-state="basis">—</span></div>
+      </div>`;
+    this.panel.appendChild(state);
+    this.stateFocus = state.querySelector<HTMLElement>('[data-camera-state="focus"]')!;
+    this.stateLens = state.querySelector<HTMLElement>('[data-camera-state="lens"]')!;
+    this.stateFov = state.querySelector<HTMLElement>('[data-camera-state="fov"]')!;
+    this.stateRotation = state.querySelector<HTMLElement>('[data-camera-state="rotation"]')!;
+    this.stateBasis = state.querySelector<HTMLElement>('[data-camera-state="basis"]')!;
+
+    const controls = document.createElement('div');
+    controls.className = 'editorial-control-zone camera-control-zone';
+    this.panel.appendChild(controls);
 
     this.cameraCenterZone = new AnchorZone(popupRoot, '基準', celestialBodies, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
-    this.panel.appendChild(this.cameraCenterZone.element);
+    controls.appendChild(this.cameraCenterZone.element);
 
     this.cameraRotationZone = new CameraRotationZone('回転追従', celestialBodies);
     this.cameraRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (follow) => commands.setRotationFollow(follow);
-    this.panel.appendChild(this.cameraRotationZone.element);
+    controls.appendChild(this.cameraRotationZone.element);
 
     this.cameraRotationModeControl = new CameraRotationModeControl(commands, initialRotationMode);
-    this.panel.appendChild(this.cameraRotationModeControl.element);
+    controls.appendChild(this.cameraRotationModeControl.element);
 
     this.projectionToggle = new ToggleSwitch('平行投影', (on) => {
       commands.setProjectionMode(on ? 'orthographic' : 'perspective');
     });
-    this.panel.appendChild(this.projectionToggle.element);
+    controls.appendChild(this.projectionToggle.element);
 
     const fovGroup = document.createElement('div');
     fovGroup.className = 'camera-fov-control';
@@ -116,7 +152,7 @@ export class CameraFramePanel {
     this.fovResetButton = new Button('リセット', () => commands.resetFov());
     this.fovResetButton.element.title = '画角をデフォルトに戻す';
     fovGroup.appendChild(this.fovResetButton.element);
-    this.panel.appendChild(fovGroup);
+    controls.appendChild(fovGroup);
 
     // 面を確定させてから視点をジャンプさせる——真上/真横は現在の基準面からの相対視点のため。
     this.angleControl = new Pulldown('角度', ANGLE_COLUMNS, 'セット', ([plane, view]) => {
@@ -124,23 +160,15 @@ export class CameraFramePanel {
       commands.setReferenceView(view);
     });
     this.angleControl.element.classList.add('camera-angle-group');
-    this.panel.appendChild(this.angleControl.element);
+    controls.appendChild(this.angleControl.element);
 
-    this.cameraSummary = document.createElement('div');
-    this.cameraSummary.className = 'frame-summary';
-    this.panel.appendChild(this.cameraSummary);
   }
 
-  // パネル下部に表示するサマリ行の文字列を組み立てる。
-  private cameraSummaryText(view: CameraFrameViewModel): string {
+  private focusLabel(view: CameraFrameViewModel): string {
     const camId = view.focusId;
     const camRole = camId === null ? null : frameRoleOf(camId);
-    const camCenter = camId === null ? '固定なし'
+    return camId === null ? 'UNBOUND'
       : camRole !== null ? frameRoleName(camRole) : this.celestialBodies.nameOf(camId);
-    const modeText = view.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
-    const projectionText = view.projection === 'orthographic' ? '平行' : '透視';
-    const rotationText = rotationFollowLabel(this.celestialBodies, view.rotationFollow);
-    return `基準: ${camCenter}・${rotationText} / ${modeText}・${projectionText}・画角 ${view.fovDeg.toFixed(0)}°`;
   }
 
   // 各ウィジェットの選択・有効状態を、渡された候補列とカメラの状態へ合わせる。
@@ -170,9 +198,13 @@ export class CameraFramePanel {
       this.fovInput.setValue(view.fovDeg.toFixed(0));
     }
 
-    // 角度プルダウンの選択表示とサマリ行を最後に合わせる。
+    // 角度プルダウンと、上段の「現在状態」表示を最後に合わせる。
     this.angleControl.setSelected(0, view.referencePlane);
-    this.cameraSummary.textContent = this.cameraSummaryText(view);
+    this.stateFocus.textContent = this.focusLabel(view);
+    this.stateLens.textContent = view.projection === 'orthographic' ? 'ORTHOGRAPHIC' : 'PERSPECTIVE';
+    this.stateFov.textContent = isOrthographic ? 'N/A' : `${view.fovDeg.toFixed(0)}°`;
+    this.stateRotation.textContent = rotationFollowLabel(this.celestialBodies, view.rotationFollow);
+    this.stateBasis.textContent = view.cameraRotationMode === 'euler' ? 'EULER' : 'QUATERNION';
   }
 
   // 保持しているゾーンとパネル要素を片付ける。
