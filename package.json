@@ -15,7 +15,7 @@
     "lint": "eslint --quiet --suppressions-location eslint-suppressions.json src tests tools",
     "lint:fix:all": "eslint --fix --prune-suppressions --suppressions-location eslint-suppressions.json src tests tools",
     "smoke:browser": "node tools/browser-smoke.mjs",
-    "ci": "node tools/check-three-pin.mjs && npm run verify:source && npm run verify:theme && npm run verify:ui-style && npm run lint && npm run check:boundaries && npm run typecheck && npm run protein:generate:check && npm run protein:validate && npm run protein:validate-structure && npm run protein:catalog:check && npm run test && npm run build && npm run verify:release && npm run smoke:browser",
+    "ci": "node tools/check-three-pin.mjs && npm run verify:source && npm run verify:theme && npm run verify:ui-style && npm run lint && npm run check:boundaries && npm run typecheck && npm run protein:generate:check && npm run protein:validate && npm run protein:validate-structure && npm run protein:catalog:check && npm run test && npm run earth-surface:test && npm run build && npm run verify:release && npm run smoke:browser",
     "typecheck": "tsc --noEmit",
     "dep-metrics": "node tools/dep-metrics.mjs",
     "test:build": "node -e \"require('node:fs').rmSync('tests/dist', { recursive: true, force: true })\" && tsc -p tsconfig.test.json",

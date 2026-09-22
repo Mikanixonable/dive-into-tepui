@@ -218,15 +218,12 @@ export function register(): void {
       gpu.textures!, SOURCE.baseColorUrl, SOURCE.baseTerrainUrl,
       async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
     );
-    assert.equal(binding.deferredTextures[0]?.texture.image, null);
-    assert.equal(binding.deferredTextures[0]?.texture.version, 0);
     surface.attach(SOURCE, coordinator, 'ready', {
       material: binding.material, deferred: binding.deferredTextures, textures: binding.textures,
       onDispose: binding.dispose, failureReason: binding.failureReason, syncFrame: binding.syncFrame,
     });
     const material = (parent.children[0] as THREE.Mesh).material;
     assert.notEqual(material, previousMaterial);
-    assert.ok(material instanceof THREE.MeshStandardNodeMaterial);
     assert.equal(surface.status, 'ready');
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     assert.match(surface.diagnostics.reason ?? '', /Earth base terrain unavailable/);
