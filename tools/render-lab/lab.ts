@@ -457,15 +457,12 @@ function withAirglowSetting(body: AtmosphereBody, airglow: boolean): AtmosphereB
 // 合わせて渡す。
 function earthLightValue(earth: LabEarth, sun: LabSun, airglow: boolean): PlanetLightValue {
   const sunIrradiance = sun.irradianceAt(earth.center);
-  const map = earth.lightSourceMap;
   return {
     center: earth.center,
     radius: R_EARTH,
     radiance: planetRadiance(EARTH_LIGHT_ALBEDO, sunIrradiance),
     appearance: {
-      map: map?.texture ?? null,
-      // 写しが届くまでは読まれないので、色をそのまま通す倍率を置く。
-      albedoScale: map?.albedoScale ?? 1,
+      map: earth.lightSourceMap,
       albedo: EARTH_LIGHT_ALBEDO,
       sunIrradiance,
       starDirection: EARTH_STAR_DIRECTION.subVectors(sun.position, earth.center).normalize(),
