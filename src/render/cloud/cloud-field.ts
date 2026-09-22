@@ -31,7 +31,8 @@ export class CloudField {
   // 焼いた雲の場。テクスチャの所有権は BakedField に残す。
   public get texture(): THREE.Texture { return this.field.texture; }
 
-  // 単位方向 direction の雲を、投影自身の uv で直接サンプリングする。
+  // 単位方向 direction での雲を、投影自身の uv で直接サンプリングする。cap による領域切り出しを行わないため、テクスチャ
+  // 全域を参照できる。
   public at(direction: Vec3Node): CloudSample {
     return cloudSampleFromTexel(this.field.at(direction));
   }

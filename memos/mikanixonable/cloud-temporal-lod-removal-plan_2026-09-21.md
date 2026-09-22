@@ -200,4 +200,3 @@ GPU 実行時間は機器・ブラウザ・WebGPU timestamp の有無で変わ�
 | ベイク頻度が増えて GPU 負荷が急増する | 60fps を満たさなくなる可能性があるが、古い場を表示する隠れた制限で回避してはいけない | 手順 5。GPU の「雲の生成」計測、cloud budget の qualification 結果 |
 | 同一入力キャッシュまで削除する | camera / UI の同一フレーム再同期で同じ場を何度も焼き、不要な GPU 負荷が発生する | 手順 2、手順 5。`displayTime`・気候世代・投影版が同じ場合の generation と GPU 計測 |
 | 時刻ジャンプ後に field は更新されるが、CloudFieldSampler の binding が更新されない | 雲面・大気・影が新旧テクスチャを混在して読む | 手順 2、手順 5。render-lab の地球・ターミネーター・雲影 |
-
