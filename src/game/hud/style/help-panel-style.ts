@@ -28,19 +28,25 @@ export const HELP_PANEL_STYLE = `
 }
 #hud-help .help-body { min-height: 0; overflow-y: auto; padding-right: var(--space-2); }
 #hud-help .help-section[hidden] { display: none !important; }
-#hud-help table { width: 100%; border-collapse: collapse; }
-#hud-help tr {
+#hud-help .help-reference-list { display: grid; }
+#hud-help .help-reference-row {
+  display: grid; grid-template-columns: clamp(150px, 24%, 210px) minmax(0, 1fr);
+  align-items: start; gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
 }
-#hud-help td { padding: var(--space-3) var(--space-4); vertical-align: top; }
-#hud-help td:first-child {
-  width: 31%; color: var(--color-primary-hover);
+#hud-help .help-reference-input {
+  min-width: 0; color: var(--color-primary-hover);
   font-size: var(--font-xxs); font-weight: 700;
   font-variant-numeric: tabular-nums; letter-spacing: .04em;
 }
-#hud-help .help-input-code { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
-#hud-help td > strong { color: var(--text); font-size: var(--font-xs); }
-#hud-help td > p { margin: var(--space-1) 0 0; color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.55; }
+#hud-help .help-input-code { display: block; max-width: 100%; overflow-wrap: anywhere; }
+#hud-help .help-reference-command { min-width: 0; }
+#hud-help .help-reference-command > strong { color: var(--text); font-size: var(--font-xs); }
+#hud-help .help-reference-command > p {
+  margin: var(--space-1) 0 0; color: var(--text-dim);
+  font-size: var(--font-xxs); line-height: 1.55;
+}
 @media ${MQ_MEDIUM_DOWN} {
   #hud-help { width: 94vw; max-height: 88vh; max-height: 88dvh; }
 }
@@ -48,7 +54,9 @@ export const HELP_PANEL_STYLE = `
   #hud-help { width: calc(100vw - 16px); }
   #hud-help .help-header h3 { font-size: var(--font-xl); }
   #hud-help .help-tabs { margin-block: var(--space-2); }
-  #hud-help td { display: block; padding-inline: var(--space-3); }
-  #hud-help td:first-child { width: auto; padding-bottom: 0; }
+  #hud-help .help-reference-row {
+    grid-template-columns: minmax(0, 1fr); gap: var(--space-1);
+    padding-inline: var(--space-3);
+  }
 }
 `;
