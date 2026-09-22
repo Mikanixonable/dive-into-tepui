@@ -5,7 +5,7 @@ import { texture as textureNode, uv } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from '../celestial-albedo';
-import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
+import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './screen-lod';
 import {
   disposeCelestialSurfaceMaterialAttachment,
   type CelestialSurfaceMaterialAttachment,
@@ -38,8 +38,8 @@ export interface SurfacePhotometry {
   readonly lightSourceAlbedo: Albedo;
 }
 
-// 全球の正距円筒テクスチャと、その色へ掛けてボンドアルベドへ合わせる倍率。天体を光源として
-// 焼くときに、面ごとの色をここから引く。
+// 全球の正距円筒テクスチャと、その色へ掛けて面の拡散アルベドにする倍率(面の材質が掛けるのと
+// 同じ倍率)。天体を光源として焼くときに、面ごとの色をここから引く。
 export interface LightSourceMap {
   readonly texture: THREE.Texture;
   readonly albedoScale: number;

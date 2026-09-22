@@ -13,6 +13,7 @@ import { equirectUvFromDirection } from '../../field-projection';
 import { AtmosphereIntegrator } from '../atmosphere-integrator';
 import type { AtmosphereBody } from '../../atmosphere';
 import type { Albedo } from '../../celestial-albedo';
+import type { LightSourceMap } from '../../celestial/celestial-surface';
 import type {
   BoolUniform, ColorUniform, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform,
 } from '../../tsl-types';
@@ -25,11 +26,8 @@ import type { SunLight } from '../sun-light';
 // **starDirection と bodyFromWorld は使い回しの実体**で、渡し手がフレームごとに書き換える。
 // 受け取った側は掴んだまま持ち越さず、その場で写し取る。
 export interface PlanetLightAppearance {
-  // 全球の正距円筒テクスチャ。持たない天体と、画像がまだ届いていない天体は null。
-  readonly map: THREE.Texture | null;
-  // map の色へ掛けて、地表の拡散アルベドへ合わせる倍率。ボンドアルベドへ合わせる倍率ではない —
-  // 雲に覆われた天体では、ボンドアルベドは雲のぶんだけ地表より明るい。
-  readonly albedoScale: number;
+  // 地表の色を引く全球のテクスチャ。持たない天体と、画像がまだ届いていない天体は null。
+  readonly map: LightSourceMap | null;
   // map を持たない天体の一様な拡散アルベド(線形 RGB)。
   readonly albedo: Albedo;
   // その天体の場所の太陽放射照度に、天体の食を掛けたもの。
@@ -96,15 +94,15 @@ export class PlanetLightSubject {
     this.sunIrradiance.value = appearance.sunIrradiance;
     this.starDirection.value.copy(appearance.starDirection);
     this.bodyFromWorld.value.copy(appearance.bodyFromWorld);
-    const baseColor = appearance.map ?? this.white;
+    const map = appearance.map;
+    const baseColor = map?.texture ?? this.white;
     this.baseColor.value = baseColor;
     this.baseColorFlipY.value = baseColor.flipY ? 1 : 0;
-    if (appearance.map === null) {
+    if (map === null) {
       const [r, g, b] = appearance.albedo;
       this.albedoFactor.value.setRGB(r, g, b, THREE.LinearSRGBColorSpace);
     } else {
-      const scale = appearance.albedoScale;
-      this.albedoFactor.value.setRGB(scale, scale, scale, THREE.LinearSRGBColorSpace);
+      this.albedoFactor.value.setRGB(map.albedoScale, map.albedoScale, map.albedoScale, THREE.LinearSRGBColorSpace);
     }
     // 大気と、その中に立つ雲。
     const atmosphere = appearance.atmosphere;
