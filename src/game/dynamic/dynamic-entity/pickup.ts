@@ -88,7 +88,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   // 自艦がこの補給物を取り込める距離 [m]。
   protected abstract readonly pickupRadius: number;
 
-  // placement に置き、表示名が与えられていなければ defaultName で名乗る。id は採番器が配った識別子。
+  // placement に置き、表示名が与えられていなければ defaultName を用いる。id は採番器が割り当てた識別子。
   // pickupKind は接触の種別・マーカーキーの接頭辞・直列化の種別タグを兼ねる。alive は生死で、省くと
   // 生きた状態で始める。
   protected constructor(
