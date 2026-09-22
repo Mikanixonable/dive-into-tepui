@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>循環・風・輸送</title><defs><style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">循環・風・輸送</text><text x="40" y="60" class="m d sm">緯度帯の風、Rossby 波、低気圧渦を異なるスケールで重ねる</text>
+<g transform="translate(55 88)">
+ <rect width="1090" height="138" rx="10" fill="#101217" stroke="#48506a"/>
+ <path d="M0 34H1090M0 69H1090M0 104H1090" class="g"/>
+ <path d="M20 28C130 8 215 51 315 27C420 2 515 51 620 27C725 1 820 51 925 28C985 15 1035 18 1070 28" class="r" marker-end="url(#ra)"/>
+ <path d="M1070 60C955 80 865 48 765 63C665 78 570 50 470 63C365 79 270 50 170 64C100 73 55 70 20 64" class="bl" marker-end="url(#ba)"/>
+ <path d="M20 111C130 91 215 132 315 110C420 86 515 132 620 110C725 85 820 132 925 111C985 98 1035 100 1070 111" class="r" marker-end="url(#ra)"/>
+ <g transform="translate(350 70)"><path d="M0 0C12-20 34-24 52-13C69-3 68 17 54 29C36 44 12 36 3 20C-4 7-2-7 7-17" class="r"/><circle r="3" fill="#ff3155"/></g>
+ <g transform="translate(780 73)"><path d="M0 0C12-20 34-24 52-13C69-3 68 17 54 29C36 44 12 36 3 20C-4 7-2-7 7-17" class="r"/><circle r="3" fill="#ff3155"/></g>
+ <text x="18" y="16" class="m a xs">偏西風 + Rossby 波</text><text x="18" y="58" class="m u xs">貿易風</text><text x="18" y="129" class="m a xs">偏西風</text>
+</g>
+</svg>
