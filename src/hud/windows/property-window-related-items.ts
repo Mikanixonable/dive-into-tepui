@@ -41,7 +41,7 @@ export class PropertyWindowRelatedItems {
 
     // 折りたたみ見出し。クリック/Enter/Space のいずれでも開閉を切り替える。
     const titleEl = document.createElement('div');
-    titleEl.className = 'prop-window-related-title ui-selectable';
+    titleEl.className = 'prop-window-related-title ui-selectable editorial-divider';
     titleEl.setAttribute('role', 'button');
     titleEl.tabIndex = 0;
     titleEl.setAttribute('aria-expanded', String(this.expanded));
@@ -58,9 +58,11 @@ export class PropertyWindowRelatedItems {
     // 一覧本体。ダブルクリック/右クリックは引数で渡されたコールバックへ委譲する。
     const list = document.createElement('div');
     list.className = 'prop-window-related-list';
+    let index = 1;
     for (const it of items) {
       const row = document.createElement('div');
-      row.className = 'prop-window-related-item ui-selectable';
+      row.className = 'prop-window-related-item ui-selectable editorial-index-row';
+      row.dataset['index'] = String(index++).padStart(2, '0');
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       const rowLabel = document.createElement('span');
@@ -99,7 +101,7 @@ export class PropertyWindowRelatedItems {
   private syncToggleLabel(): void {
     if (!this.titleEl || !this.titleLabelEl) return;
     this.titleLabelEl.textContent =
-      `${this.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH} ${this.title} (${this.items.length})`;
+      `${this.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH} ${this.title.toUpperCase()} / ${this.items.length}`;
     this.titleEl.setAttribute('aria-expanded', String(this.expanded));
   }
 

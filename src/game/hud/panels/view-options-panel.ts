@@ -8,6 +8,7 @@ import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
   TabBar,
+  ToggleSwitch,
   type CollapseToggleLabels,
 } from '../../../hud/widgets';
 import {
@@ -25,6 +26,7 @@ import { OrbitGuideTab } from './orbit-guide-tab';
 import { ZeroVelocitySection, zeroVelocityJacobiAt } from './zero-velocity-section';
 import type { PanelCollapse } from '../panel-shell';
 import type { OrbitGuideGroupTab, ViewOptionsTab } from '../hud-selection';
+import type { RenderStyle } from '../../../render/render-style';
 
 const TAB_ITEMS: readonly (readonly [ViewOptionsTab, string])[] = [
   ['target', '対象'],
@@ -155,9 +157,11 @@ export class ViewOptionsPanel {
   public onTabChange: ((tab: ViewOptionsTab) => void) | null = null;
   // 軌道ガイドタブの群タブが選ばれたときに、選ばれたタブで呼ばれる。
   public onOrbitGuideGroupTabChange: ((tab: OrbitGuideGroupTab) => void) | null = null;
+  public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
 
   private readonly tabBar: TabBar<ViewOptionsTab>;
   private readonly tabBodies: ReadonlyMap<ViewOptionsTab, HTMLElement>;
+  private readonly renderStyleToggle: ToggleSwitch;
   // 軌道ガイド設定の鏡映し。軌道ガイドタブとゼロ速度曲線節はどちらも setOrbitGuideSettings で
   // これと揃え、ゼロ速度曲線節の編集はこれへ重ねて設定全体に組み戻す。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
@@ -216,6 +220,19 @@ export class ViewOptionsPanel {
       defaultCollapsed: true,
       extraHitEls: [title],
     });
+
+    const renderRow = document.createElement('div');
+    renderRow.className = 'view-options-render-row editorial-index-row';
+    renderRow.dataset['index'] = '00';
+    const renderLabel = document.createElement('div');
+    renderLabel.className = 'view-options-render-label';
+    renderLabel.innerHTML = '<span>RENDER STYLE</span><small>REALISTIC / SCHEMATIC</small>';
+    this.renderStyleToggle = new ToggleSwitch('SCHEMATIC', (on) => {
+      this.onRenderStyleChange?.(on ? 'schematic' : 'realistic');
+    });
+    this.renderStyleToggle.element.classList.add('view-options-render-toggle');
+    renderRow.append(renderLabel, this.renderStyleToggle.element);
+    body.appendChild(renderRow);
 
     this.tabBar = new TabBar<ViewOptionsTab>(TAB_ITEMS, (tab) => this.onTabChange?.(tab));
     this.tabBar.element.setAttribute('aria-label', '表示するものの種類');
@@ -418,6 +435,10 @@ export class ViewOptionsPanel {
     btn.element.title = description;
     btn.element.setAttribute('aria-label', description);
     return btn;
+  }
+
+  public setRenderStyle(style: RenderStyle): void {
+    this.renderStyleToggle.setOn(style === 'schematic');
   }
 
   // パネルの表示/非表示を切り替える。
