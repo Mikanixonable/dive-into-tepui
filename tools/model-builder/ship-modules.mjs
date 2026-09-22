@@ -4,8 +4,44 @@
 // 説得力と一貫性のある形状を生成する。
 // module と semantic anchor は Group/Object3D に置き、exporter の mesh 統合で境界が消えないようにする。
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadSourceModules } from '../compile-source.mjs';
 import { F0_ALUMINIUM, F0_BURNT_STEEL, F0_STEEL, std } from './materials.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const glbDir = join(__dirname, '..', '..', 'assets-src', 'ship-modules');
+
+function loadGlbScene(filename) {
+  const glbPath = join(glbDir, filename);
+  if (!existsSync(glbPath)) return Promise.resolve(null);
+  const buf = readFileSync(glbPath);
+  const arrayBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const loader = new GLTFLoader();
+  return new Promise((resolve) => {
+    loader.parse(
+      arrayBuf,
+      '',
+      (gltf) => resolve(gltf.scene),
+      (err) => {
+        console.error(`Failed to parse ${glbPath}:`, err);
+        resolve(null);
+      },
+    );
+  });
+}
+
+async function applyGlbModel(root, filename) {
+  const scene = await loadGlbScene(filename);
+  if (!scene) return false;
+  while (scene.children.length > 0) {
+    const child = scene.children[0];
+    root.add(child);
+  }
+  return true;
+}
 
 const source = loadSourceModules(['game/ship/ship-module-catalog', 'physics/player-shape']);
 const { SHIP_MODULE_CATALOG } = source.shipModuleCatalog;
@@ -682,25 +718,7 @@ function buildArmor(root, definition) {
 
 // ------------------------------------------------------------- 展開部材 (Radiator / Solar Panel)
 // 契約テスト 'ship module asset: 展開部品は実寸に対応する枚数と幅を持つ' を厳密に満たす
-function buildDeployable(root, definition) {
-  const radius = definition.diameter / 2;
-  const halfLen = definition.length / 2;
-
-  // 中央ハブシリンダー
-  root.add(axialMesh(new THREE.CylinderGeometry(radius * 0.22, radius * 0.22, definition.length, 24, 1), materials.rim, 0, 'body'));
-
-  // 構造サポートスポーク（ハブと外輪をつなぐトラス）
-  for (let i = 0; i < 4; i++) {
-    const ang = (i * Math.PI) / 2;
-    const spoke = boxMesh(new THREE.BoxGeometry(radius * 0.75, 0.06, 0.08), materials.dark,
-      Math.cos(ang) * (radius * 0.5), Math.sin(ang) * (radius * 0.5), 0, 0, 0, ang, 'hub-spoke');
-    root.add(spoke);
-  }
-
-  // デプロイキャニスター / モーターハウジング
-  const canister = axialMesh(new THREE.CylinderGeometry(0.35, 0.35, 0.28, 16), materials.dark, halfLen - 0.14, 'deploy-canister');
-  root.add(canister);
-
+function buildDeployablePanels(root, definition) {
   const panelMaterial = definition.kind === 'radiator' ? materials.radiator : materials.solar;
   const count = definition.kind === 'radiator' ? RADIATOR_FOLD_COUNT : SOLAR_PANEL_COUNT;
   const panelWidth = definition.kind === 'radiator' ? RADIATOR_SEGMENT_LENGTH : SOLAR_PANEL_WIDTH;
@@ -724,6 +742,30 @@ function buildDeployable(root, definition) {
     panel.position.x = panelWidth * 0.48;
     panelHinge.add(panel);
   }
+}
+
+// ------------------------------------------------------------- 展開部材 (Radiator / Solar Panel)
+// 契約テスト 'ship module asset: 展開部品は実寸に対応する枚数と幅を持つ' を厳密に満たす
+function buildDeployable(root, definition) {
+  const radius = definition.diameter / 2;
+  const halfLen = definition.length / 2;
+
+  // 中央ハブシリンダー
+  root.add(axialMesh(new THREE.CylinderGeometry(radius * 0.22, radius * 0.22, definition.length, 24, 1), materials.rim, 0, 'body'));
+
+  // 構造サポートスポーク（ハブと外輪をつなぐトラス）
+  for (let i = 0; i < 4; i++) {
+    const ang = (i * Math.PI) / 2;
+    const spoke = boxMesh(new THREE.BoxGeometry(radius * 0.75, 0.06, 0.08), materials.dark,
+      Math.cos(ang) * (radius * 0.5), Math.sin(ang) * (radius * 0.5), 0, 0, 0, ang, 'hub-spoke');
+    root.add(spoke);
+  }
+
+  // デプロイキャニスター / モーターハウジング
+  const canister = axialMesh(new THREE.CylinderGeometry(0.35, 0.35, 0.28, 16), materials.dark, halfLen - 0.14, 'deploy-canister');
+  root.add(canister);
+
+  buildDeployablePanels(root, definition);
 }
 
 // ------------------------------------------------------------- ドッキング / ドック / デカプラー
@@ -761,58 +803,99 @@ function buildDocking(root, definition) {
   anchor(root, semantic, 0, 0, halfLen, new THREE.Vector3(0, 0, 1));
 }
 
-function addKindDetails(root, definition) {
+async function addKindDetails(root, definition) {
+  const modelId = definition.modelId;
+  const glbName = `${modelId}.glb`;
+
   switch (definition.kind) {
     case 'cockpit':
+      if (await applyGlbModel(root, glbName)) return;
       buildCockpit(root, definition);
       break;
     case 'tank':
+      if (await applyGlbModel(root, glbName)) return;
       buildTank(root, definition);
       break;
     case 'thruster':
+      if (await applyGlbModel(root, glbName)) {
+        anchor(root, 'thrust', 0, 0, -definition.length / 2, new THREE.Vector3(0, 0, -1));
+        return;
+      }
       buildThruster(root, definition);
       break;
     case 'booster':
+      if (await applyGlbModel(root, glbName)) {
+        anchor(root, 'thrust', 0, 0, -definition.length / 2, new THREE.Vector3(0, 0, -1));
+        return;
+      }
       buildBooster(root, definition);
       break;
     case 'rcs':
+      if (await applyGlbModel(root, glbName)) {
+        anchor(root, 'rcs:1,0', 1, 0, 0, new THREE.Vector3(1, 0, 0));
+        anchor(root, 'rcs:-1,0', -1, 0, 0, new THREE.Vector3(-1, 0, 0));
+        anchor(root, 'rcs:0,1', 0, 1, 0, new THREE.Vector3(0, 1, 0));
+        anchor(root, 'rcs:0,-1', 0, -1, 0, new THREE.Vector3(0, -1, 0));
+        anchor(root, 'rcs:roll:+', 0, 1, 0, new THREE.Vector3(1, 0, 0));
+        anchor(root, 'rcs:roll:-', 0, -1, 0, new THREE.Vector3(-1, 0, 0));
+        return;
+      }
       buildRcs(root, definition);
       break;
     case 'weapon':
+      if (await applyGlbModel(root, glbName)) {
+        anchor(root, 'muzzle:left', -1.5, 0, definition.length / 2 + 0.25, new THREE.Vector3(0, 0, 1));
+        anchor(root, 'muzzle:right', 1.5, 0, definition.length / 2 + 0.25, new THREE.Vector3(0, 0, 1));
+        anchor(root, 'belt', 0, 0, 0);
+        return;
+      }
       buildWeapon(root, definition);
       break;
     case 'armor':
+      if (await applyGlbModel(root, glbName)) return;
       buildArmor(root, definition);
       break;
     case 'radiator':
-    case 'solar_panel':
+    case 'solar_panel': {
+      const baseGlb = definition.kind === 'solar_panel' ? 'solar-panel-base.glb' : 'radiator-base.glb';
+      if (await applyGlbModel(root, baseGlb)) {
+        buildDeployablePanels(root, definition);
+        return;
+      }
       buildDeployable(root, definition);
       break;
+    }
     case 'docking_port':
     case 'dock':
     case 'decoupler':
+      if (await applyGlbModel(root, glbName)) {
+        const semantic = definition.kind === 'dock' ? 'construction-dock'
+          : definition.kind === 'docking_port' ? 'docking-port' : 'decoupler';
+        anchor(root, semantic, 0, 0, definition.length / 2, new THREE.Vector3(0, 0, 1));
+        return;
+      }
       buildDocking(root, definition);
       break;
   }
 }
 
-function buildModule(definition) {
+async function buildModule(definition) {
   const root = new THREE.Group();
   root.name = `module:${definition.modelId}`;
   root.userData = { moduleModelId: definition.modelId, moduleKind: definition.kind };
   connectionAnchors(root, definition);
-  addKindDetails(root, definition);
+  await addKindDetails(root, definition);
   return root;
 }
 
-export function buildShipModules() {
+export async function buildShipModules() {
   const root = new THREE.Group();
   root.name = 'ship-modules';
   const modelIds = new Set();
   for (const definition of SHIP_MODULE_CATALOG.all()) {
     if (modelIds.has(definition.modelId)) continue;
     modelIds.add(definition.modelId);
-    root.add(buildModule(definition));
+    root.add(await buildModule(definition));
   }
   return root;
 }
