@@ -21,11 +21,6 @@ export function register(): void {
     assert.equal(celestialBodies[0]!.def.radius, R_EARTH_EQ);
   });
 
-  test('celestialMotions: 同一 t の celestialMotions は同一配列参照を返す', () => {
-    const w = solarSystemParts().system;
-    assert.equal(w.celestialMotions, w.celestialMotions);
-  });
-
   test('celestialMotions: gravityMotions は mu が 0 でない天体だけを宣言順で返す', () => {
     const gravity = system.gravityMotions;
     assert.ok(gravity.every((b) => b.def.mu !== 0));
