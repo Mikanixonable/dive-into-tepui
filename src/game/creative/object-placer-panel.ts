@@ -203,7 +203,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
     this.panel = document.createElement('div');
     this.panel.id = 'hud-object-placer';
-    this.panel.className = 'panel hidden';
+    this.panel.className = 'panel hidden editorial-control-sheet';
     // モーダルとして画面右上に配置
     this.panel.style.position = 'fixed';
     this.panel.style.top = '20px';
@@ -211,10 +211,15 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.style.width = 'max-content';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const header = document.createElement('div');
-    header.className = 'panel-shell-head';
+    header.className = 'panel-shell-head editorial-panel-head';
+    const code = document.createElement('span');
+    code.className = 'ui-section-code';
+    code.setAttribute('aria-hidden', 'true');
+    code.textContent = 'INS';
     const title = document.createElement('h3');
-    title.textContent = '物体配置';
-    header.appendChild(title);
+    title.className = 'editorial-panel-title';
+    title.textContent = 'OBJECT INSERT';
+    header.append(code, title);
     header.appendChild(new CloseButton(() => this.close()).element);
     this.panel.appendChild(header);
 

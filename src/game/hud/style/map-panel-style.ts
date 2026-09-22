@@ -216,11 +216,20 @@ export const MAP_PANEL_STYLE = `
 
 /* ステージ操作パネル(#hud-stage-controls、クリエイティブモードの敵/形状/タンパク質設定)。 */
 #hud-stage-controls { width: 100%; pointer-events: auto; }
-#hud-stage-controls .stage-controls-body { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+#hud-stage-controls .editorial-panel-head { margin-bottom: var(--space-3); }
+#hud-stage-controls .stage-controls-body {
+  display: grid; gap: var(--space-2); margin-top: 0; padding-top: var(--space-3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 20%, transparent);
+}
 #hud-stage-controls .stage-control-enemy-tabs { display: flex; gap: var(--space-2); }
 #hud-stage-controls .stage-control-enemy-tabs .w-btn { flex: 1 1 0; min-width: 0; }
-#hud-stage-controls .stage-control-section { display: grid; gap: var(--space-2); padding-top: var(--space-2); }
-#hud-stage-controls .stage-control-section-title { color: var(--text); font-size: var(--font-xxs); letter-spacing: .04em; }
+#hud-stage-controls .stage-control-section {
+  display: grid; gap: var(--space-2); margin-top: var(--space-2); padding-top: var(--space-3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent);
+}
+#hud-stage-controls .stage-control-section-title {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .1em; text-transform: uppercase;
+}
 #hud-stage-controls .stage-control-shapes { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 #hud-stage-controls .stage-control-shapes .w-group-title { flex: 0 0 100%; }
 #hud-stage-controls .stage-control-shapes .w-btn { flex: 1 1 0; min-width: 0; }
@@ -243,7 +252,13 @@ export const MAP_PANEL_STYLE = `
 
 /* 物体配置パネル(#hud-object-placer、クリエイティブモード限定): MANEUVER PLAN の下、
    右上に縦積みする。 */
-#hud-object-placer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
+#hud-object-placer {
+  width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto;
+}
+#hud-object-placer .editorial-panel-head {
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
+}
 #hud-object-placer .w-close { border-radius: 50%; }
 #hud-object-placer .shipplacer-btn-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
 #hud-object-placer .slider-field { margin-bottom: var(--space-4); }

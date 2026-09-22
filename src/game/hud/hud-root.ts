@@ -365,7 +365,7 @@ function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void
 
 // 常設 ENEMIES パネルを右レールへ組む。件数バッジを見出しへ添える。
 function buildEnemiesPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
-  const enemies = new PanelShell(rightRail, collapse, 'hud-enemies', 'Enemies', isCompactViewport());
+  const enemies = new PanelShell(rightRail, collapse, 'hud-enemies', 'CONTACTS', isCompactViewport());
   configureCombatPanel(enemies, 'CNT');
   const count = document.createElement('span');
   count.className = 'panel-count';
@@ -437,6 +437,7 @@ function buildChaseReset(root: HTMLElement): void {
   chaseReset.dataset.id = 'chase-reset';
   // リセットを示す矢印アイコンを描く。
   chaseReset.innerHTML = `
+    <span class="hud-mini-code" aria-hidden="true">CAM</span>
     <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2"
       fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
@@ -456,7 +457,7 @@ function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
   badge.setAttribute('type', 'button');
   badge.setAttribute('aria-label', '操作ガイドを開く');
   badge.setAttribute('title', '操作ガイドを開く');
-  badge.textContent = '?';
+  badge.innerHTML = '<span class="hud-mini-code" aria-hidden="true">HLP</span><span>?</span>';
   badge.addEventListener('click', () => helpPanel.open());
 }
 
