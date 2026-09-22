@@ -11,7 +11,7 @@
 <marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
 </defs>
 <rect width="1200" height="180" rx="20" fill="url(#bg)"/>
-<g transform="translate(74 90)">
+<g transform="translate(110 90)">
  <circle r="38" fill="url(#earth)" stroke="#c3bec9"/>
  <ellipse rx="94" ry="36" class="g" transform="rotate(-10)"/>
  <circle cx="88" cy="-14" r="5" fill="#ff3155"/>

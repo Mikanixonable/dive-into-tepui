@@ -19,7 +19,7 @@
  <circle cx="158" cy="-53" r="5" fill="#ff3155"/>
  <path d="M158-53L208-65" class="r" marker-end="url(#ra)"/><text x="213" y="-62" class="m a xs">PRO</text>
  <path d="M158-53L151-100" class="bl" marker-end="url(#ba)"/><text x="137" y="-106" class="m u xs">NRM</text>
- <text x="-225" y="86" class="m d xs">現在</text><text x="130" y="98" class="m a xs">計画後</text>
+ <text x="-225" y="86" class="m d xs">現在</text><text x="130" y="91" class="m a xs">計画後</text>
 </g>
 <g transform="translate(720 103)">
  <circle cx="20" cy="30" r="6" fill="#ff3155"/><circle cx="120" cy="62" r="5" fill="#ff8798"/><circle cx="220" cy="92" r="4" fill="#89838f"/>

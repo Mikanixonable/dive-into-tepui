@@ -25,6 +25,6 @@
  <circle cx="72" cy="58" r="52" fill="#101217" stroke="#ff3155"/>
  <path d="M72 58C87 35 115 33 128 51C141 69 130 91 108 98C84 106 60 92 54 71C49 53 57 38 72 28" class="r"/>
  <text x="22" y="132" class="m t v">WeatherModel</text>
- <text x="22" y="153" class="m d xs">湿度 · 上昇流 · 前線帯</text>
+ <text x="22" y="145" class="m d xs">湿度 · 上昇流 · 前線帯</text>
 </g>
 </svg>

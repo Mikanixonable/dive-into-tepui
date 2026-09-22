@@ -12,7 +12,7 @@
 </defs>
 <rect width="1200" height="260" rx="20" fill="url(#bg)"/>
 <text x="40" y="38" class="m t h">天体の物理モデル</text><text x="40" y="60" class="m d sm">模式図・縮尺不同 — 重力・形状・自転・大気を同じ天体定義へ束ねる</text>
-<g transform="translate(270 155)">
+<g transform="translate(270 145)">
  <ellipse rx="92" ry="82" fill="url(#earth)" stroke="#c3bec9"/>
  <ellipse rx="112" ry="28" class="g dash"/>
  <circle r="104" fill="none" stroke="#3478ff" stroke-width="6" opacity=".16"/>
