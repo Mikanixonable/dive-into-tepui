@@ -26,6 +26,7 @@ import type { OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
 import type { Notifier } from '../../hud/notifier';
 import { ConstructionConfirmDialog } from './windows/construction-confirm-dialog';
+import { hudAttention, hudWorkspace } from './hud-workspace';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
 const ANALYSIS_WINDOW_OPEN_X = 320;
@@ -66,6 +67,8 @@ export class Hud implements HudLayers, Notifier {
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
   private chromeView: ViewMode | null = null;
+  // 建造は ViewMode と独立した一時 workspace。ユーザーのパネル折りたたみ設定は変更しない。
+  private constructionMode = false;
   // 次の tick() で表示するトースト。
   private pendingToast: { readonly html: string; readonly durationMs: number } | null = null;
   // 表示中のトーストの期限 [ms, フレームの実時刻と同じ基準]。
@@ -96,6 +99,7 @@ export class Hud implements HudLayers, Notifier {
     // ランがまだ無い状態の見た目で組み上げる。
     this.burnManagementPanel.sync(null, {});
     this.applyView('combat');
+    this.applyHudProfile('combat', false);
   }
 
   // 軌道分析ウィンドウを開く。既に開いていれば、その1枚を最前面へ持ち上げる。
@@ -117,15 +121,22 @@ export class Hud implements HudLayers, Notifier {
     this.root.classList.toggle('creative-mode', stageId === 'creative');
   }
 
-  // 建造モード中の HUD 表示ゲートを切り替える。
+  // 建造モード中の HUD 表示ゲートを切り替える。ViewMode や折りたたみ保存値は書き換えない。
   public setConstructionMode(active: boolean): void {
+    if (this.constructionMode === active) return;
+    this.constructionMode = active;
     this.root.classList.toggle('construction-mode', active);
+    document.body.classList.toggle('hud-construction-mode', active);
+    this.applyHudProfile(this.chromeView ?? 'combat', false);
   }
 
   // ランが畳まれたときに、ランの見た目とパネルが掴んでいるランの値・操作の口を落とす。
   public clearRunPanels(): void {
     this.root.classList.remove('creative-mode');
     this.root.classList.remove('construction-mode');
+    document.body.classList.remove('hud-construction-mode');
+    this.constructionMode = false;
+    this.applyHudProfile(this.chromeView ?? 'combat', false);
     this.topBar.sync(null, 0);
     this.vesselPanel.sync(null, 0);
     this.orbitPanel.sync(null, 0);
@@ -142,6 +153,7 @@ export class Hud implements HudLayers, Notifier {
     const map = view === 'map';
     this.panelCollapse.sync(view);
     this.applyView(view);
+    this.applyHudProfile(view, panels.target !== null);
     // 両ビュー共通のパネル。
     this.burnManagementPanel.sync(panels.burnManagement, panels.burnHandlers);
     this.topBar.sync(panels.topBar, nowMs);
@@ -156,6 +168,13 @@ export class Hud implements HudLayers, Notifier {
     }
     this.orbitAnalysisWindow?.sync(panels.analysisSource, panels.analysisSubject, nowMs);
     this.tick(nowMs);
+  }
+
+  // workspace は画面の大分類、attention は flight 内の一時的な強調状態。DOM再配置ではなく
+  // dataset と CSS で表現し、ターゲット取得時にもパネル位置を揺らさない。
+  private applyHudProfile(view: ViewMode, hasCombatTarget: boolean): void {
+    this.root.dataset['workspace'] = hudWorkspace(view, this.constructionMode);
+    this.root.dataset['attention'] = hudAttention(view, this.constructionMode, hasCombatTarget);
   }
 
   // 表に出す HUD ルートと、両ビューで1つを使い回すパネルの置き場を view へ揃える。

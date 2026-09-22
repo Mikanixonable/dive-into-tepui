@@ -64,7 +64,7 @@ export class PauseMenu implements OverlayHandle {
     this._settingsView = new SettingsView(graphics, bgmVolume, themeId);
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
-    this.panel.className = 'panel ui-surface-focus';
+    this.panel.className = 'panel ui-surface-focus editorial-workspace';
 
     // ヘッダー: ロゴ・見出し・最小化トグル・✕ ボタンと、ドラッグ移動の配線。
     const header = document.createElement('div');
@@ -85,8 +85,12 @@ export class PauseMenu implements OverlayHandle {
     headerTop.appendChild(headerActions);
     header.appendChild(headerTop);
     const heading = document.createElement('h3');
-    heading.textContent = '一時停止 / 設定';
-    header.appendChild(heading);
+    heading.className = 'pm-system-heading';
+    heading.innerHTML = '<span class="ui-section-code" aria-hidden="true">SYS</span><span>SYSTEM / PAUSE</span>';
+    const subheading = document.createElement('div');
+    subheading.className = 'pm-system-sub ui-data-context';
+    subheading.textContent = 'APPLICATION STATE · SUSPENDED';
+    header.append(heading, subheading);
     header.addEventListener('pointerdown', this.handleHeaderPointerDown);
     header.addEventListener('pointermove', this.handleHeaderPointerMove);
     header.addEventListener('pointerup', this.handleHeaderPointerUp);
@@ -98,7 +102,7 @@ export class PauseMenu implements OverlayHandle {
     this.panel.appendChild(this.body);
 
     this.tabBar = new TabBar<PauseMenuTab>(
-      [['pause', '一時停止'], ['settings', '設定']], (tab) => this.setActiveTab(tab),
+      [['pause', 'PAUSE'], ['settings', 'SETTINGS']], (tab) => this.setActiveTab(tab),
     );
     this.tabBar.element.classList.add('pm-tabs', 'ui-surface-inset');
     this.body.appendChild(this.tabBar.element);
@@ -140,23 +144,32 @@ export class PauseMenu implements OverlayHandle {
   private buildBrand(): HTMLElement {
     const brand = document.createElement('div');
     brand.className = 'pm-brand';
+
+    const logotype = document.createElement('div');
+    logotype.className = 'pm-brand-logotype';
+    for (const line of ['DIVE', 'INTO', 'TEPUI']) {
+      const span = document.createElement('span');
+      span.textContent = line;
+      logotype.appendChild(span);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'pm-brand-meta';
+    const label = document.createElement('span');
+    label.className = 'ui-data-context';
+    label.textContent = 'CISLUNAR OPERATIONS';
+    const version = document.createElement('span');
+    version.className = 'pm-brand-version';
+    version.textContent = `v${__APP_VERSION__}`;
+    meta.append(label, version);
+
+    // favicon はアプリ同定の補助として残すが、ロゴタイプより弱く扱う。
     const brandLogo = document.createElement('img');
     brandLogo.className = 'pm-brand-logo';
     brandLogo.src = faviconUrl;
     brandLogo.alt = '';
-    brand.appendChild(brandLogo);
-    // タイトルとバージョンを1つの文字の塊にまとめる。
-    const brandText = document.createElement('div');
-    brandText.className = 'pm-brand-text';
-    const brandTitle = document.createElement('span');
-    brandTitle.className = 'pm-brand-title';
-    brandTitle.textContent = 'Dive into Tepui';
-    brandText.appendChild(brandTitle);
-    const brandVersion = document.createElement('span');
-    brandVersion.className = 'pm-brand-version';
-    brandVersion.textContent = `v${__APP_VERSION__}`;
-    brandText.appendChild(brandVersion);
-    brand.appendChild(brandText);
+
+    brand.append(logotype, meta, brandLogo);
     return brand;
   }
 
@@ -191,11 +204,12 @@ export class PauseMenu implements OverlayHandle {
       row.appendChild(btn.element);
       actionGrid.appendChild(row);
     };
-    addButtonRow('セーブ', () => this.onSave?.());
-    addButtonRow('セーブデータの管理', () => this.onOpenSaveBrowser?.());
-    addButtonRow(`デバッグを表示 [${K.toggleDebugInfoWindow.label}]`, () => this.onOpenDebugInfoWindow?.());
+    addButtonRow('01  ゲームに戻る', () => this.toggle(false));
+    addButtonRow('02  セーブ', () => this.onSave?.());
+    addButtonRow('03  セーブデータの管理', () => this.onOpenSaveBrowser?.());
+    addButtonRow(`04  デバッグ [${K.toggleDebugInfoWindow.label}]`, () => this.onOpenDebugInfoWindow?.());
 
-    const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
+    const quitBtn = new Button('05  タイトル画面に戻る', () => this.onQuitToTitle?.());
     quitBtn.element.classList.add('pm-menu-btn', 'pm-quit');
     actionGrid.appendChild(quitBtn.element);
     return actionGrid;
@@ -214,6 +228,7 @@ export class PauseMenu implements OverlayHandle {
   // 最小化状態を切り替える。パネルを閉じて再び開くと展開状態から始まる。
   private setMinimized(minimized: boolean): void {
     this.minimized = minimized;
+    this.panel.classList.toggle('minimized', minimized);
     this.body.classList.toggle('hidden', minimized);
     this.syncMinimizeToggle();
     this.reclamp();
@@ -270,7 +285,7 @@ export class PauseMenu implements OverlayHandle {
     // 閉じる前にタブを戻し、設定タブの試聴と入力遮断を解いておく。
     if (!show) this.setActiveTab('pause');
     this._isOpen = show;
-    this.panel.style.display = show ? 'flex' : 'none';
+    this.panel.style.display = show ? 'grid' : 'none';
     if (show) {
       // 開くたびに一時停止タブ・展開状態から始め、動かされていなければ中央へ置く。
       this.setActiveTab('pause');
