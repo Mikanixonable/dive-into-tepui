@@ -107,7 +107,7 @@ function standaloneLabel(p: ParsedGuideKindId): string {
 }
 
 // standalone種類の並び順キー。STANDALONE_BASE_ORDER・POINT_ORDER・BRANCH_ORDER・RESONANT_ORDER
-// を基に、群内で昇順に比較できる1つの数値へ落とす。
+// を基に、群内で昇順に比較できる単一の数値へマッピングする。
 function standaloneSortKey(p: ParsedGuideKindId): number {
   if (p.base === 'resonant') {
     const ratio = p.id.slice('resonant-'.length);
@@ -121,7 +121,7 @@ function standaloneSortKey(p: ParsedGuideKindId): number {
 }
 
 // 小題内でのメンバー(実在する族)の並び順キー。POINT_ORDER・BRANCH_ORDER・EW_ORDER と区間番号を
-// 基に、昇順に比較できる1つの数値へ落とす。
+// 基に、昇順に比較できる単一の数値へマッピングする。
 function memberSortKey(m: CombinedKindMember): number {
   const pointIndex = m.point ? (POINT_ORDER[m.point] ?? 9) : 0;
   const branchOrder = m.branch ? (BRANCH_ORDER[m.branch] ?? 9) : 0;

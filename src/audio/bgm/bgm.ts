@@ -27,7 +27,7 @@ export function formatBgmVolume(vol: number): string {
   return String(vol);
 }
 
-// 保存された文字列を消音の有無へ読み直す。読めない値は既定へ落とす。
+// 保存された文字列を消音の有無へ読み直す。読めない値は既定値へフォールバックする。
 export function parseBgmMuted(text: string | null): boolean {
   if (text === 'true') return true;
   if (text === 'false') return false;

@@ -75,7 +75,7 @@ export class OrbitGuideView {
   // 何も描かないフレームには空の列を渡す。nowMs はこのフレームの実時刻 [ms]で、マーカーの
   // アニメーションはこれだけで進む。
   public sync(displays: readonly GuideLineDisplay[], camera: CameraFrame, nowMs: number): void {
-    // 宣言の列が入れ替わったフレームだけ、線ごとの曲線の顔ぶれを合わせ直す。
+    // 宣言の配列参照が入れ替わったフレームのみ、線ごとの曲線オブジェクトを同期し直す。
     if (displays !== this.displays) {
       this.retainOnly(displays);
       this.displays = displays;

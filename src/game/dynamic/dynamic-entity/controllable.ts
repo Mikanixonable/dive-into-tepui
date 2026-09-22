@@ -12,7 +12,7 @@ import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
 import type { StageRules } from '../../stages/stage-rules';
 
-// 操作量から推力とトルクを決め、推力のラッチ・RCS 減衰・プログレード保持を持つスロットルの面。
+// 操作量から推力とトルクを決め、推力のラッチ・RCS 減衰・プログレード保持を持つスロットルインターフェース。
 export interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;

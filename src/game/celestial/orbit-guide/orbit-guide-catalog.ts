@@ -68,7 +68,7 @@ export function catalogFamilyIndex(): ReadonlyMap<CatalogSystemId, readonly stri
 }
 
 // 系ごとの軌道族カタログを保持し、未読み込みの系は取得しつつ null を返す。同じ系を
-// 二重に読み込まない。取得に失敗した系は一度だけログへ残し、以後は諦めて null を返し続ける。
+// 二重に読み込まない。取得に失敗した系は一度だけログへ記録し、以後は読み込みを中止して null を返し続ける。
 export class OrbitGuideCatalog {
   private readonly systems: Partial<Record<CatalogSystemId, CatalogSystem>> = {};
   private readonly loadState = new Map<CatalogSystemId, LoadState>();
@@ -92,7 +92,7 @@ export class OrbitGuideCatalog {
   // 系の族ファイルの取得を始める。取得の成否によらず、終わった時点で世代を1つ進める。
   private startLoad(id: CatalogSystemId): void {
     this.loadState.set(id, 'loading');
-    // 取得関数を持たない系は、取りに行かずその場で諦める。
+    // 取得関数を持たない系は、読み込みを試みず即座に終了する。
     const load = LAZY_IMPORTS[id];
     if (load === undefined) {
       this.loadState.set(id, 'failed');

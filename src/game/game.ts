@@ -42,7 +42,7 @@ export interface SerializedProgress {
 }
 
 export class Game {
-  // 顔ぶれの予測軌道のキャッシュ。需要が求める長さまで伸ばす。
+  // 各エンティティの予測軌道キャッシュ。要求に応じた長さまで伸長する。
   public readonly predictor: Predictor;
 
   // いま操作している対象。操作しているものが無ければ null。

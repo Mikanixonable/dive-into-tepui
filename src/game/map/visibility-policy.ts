@@ -74,7 +74,7 @@ export function alwaysFullyVisibleIds(
   const focusParent = celestialBodies.findMotion(focusId)?.primary ?? null;
   const siblingsMatter = focusParent !== null && focusParent.kind !== 'star';
   for (const id of celestialBodies.sameSystemIds(focusId)) {
-    // focusId 自身は未登録(生存中の重力天体)でもありうるので、親を引く前に弾く。
+    // focusId 自身は未登録(生存中の重力天体)でもありうるので、親の参照前に除外する。
     if ((siblingsMatter || id === focusId
       || (celestialBodies.findMotion(id)?.primary?.id ?? null) === focusId) && classVisible(id)) {
       ids.add(id);

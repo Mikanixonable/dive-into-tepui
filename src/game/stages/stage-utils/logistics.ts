@@ -109,7 +109,7 @@ export class Logistics {
       this._scene,
       this.dynamicSystem.idAllocators,
     );
-    // 顔ぶれへ入れ、投入したことを記録する
+    // エンティティ一覧へ追加し、投入を記録する
     this.dynamicSystem.add(ammoPickup);
     this.dynamicSystem.events.record({ kind: 'ammoResupplyDeployed' });
   }
@@ -142,7 +142,7 @@ export class Logistics {
       this._scene,
       this.dynamicSystem.idAllocators,
     );
-    // 顔ぶれへ入れ、投入したことを記録する
+    // エンティティ一覧へ追加し、投入を記録する
     this.dynamicSystem.add(fuelPickup);
     this.dynamicSystem.events.record({ kind: 'rcsFuelResupplyDeployed' });
   }

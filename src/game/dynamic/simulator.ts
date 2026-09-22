@@ -86,7 +86,7 @@ export class Simulator {
     this.entityContactPhysics.resetCounts();
     const services: DynamicReactionServices = { activeStage, registry: this.registry };
     const targetTime = this._simTime + simDt;
-    // 天体の顔ぶれと表面候補の絞り込みはこのフレームで1組だけ組んで全サブステップで使い回す。
+    // 天体セットと表面候補の絞り込みはこのフレームで1組だけ構築し全サブステップで再利用する。
     if (this._simTime < targetTime) {
       this.bodies.resetFrame(this.windows, this._simTime, simDt);
       this.lastGravitySourceCount = this.bodies.gravitySourceCount;
@@ -104,7 +104,7 @@ export class Simulator {
         // eventTime との差が 1 ULP 未満に潰れたら、eventTime へ直接そろえて差を1回で消費する。
         if (eventTime !== null && eventTime > this._simTime) this._simTime = eventTime;
         // それでも進まない個体が残るなら、このフレームぶんを一括で消費して検知できる形で打ち切る。
-        // 微小量を足して逃げると、|simTime| が大きいとき ULP 未満の加算が no-op になる。
+        // 微小量を加算して回避しようとすると、|simTime| が大きいとき ULP 未満の加算が no-op になる。
         if (this.consecutiveZeroSteps > SIMULATION_STALL_MAX_ZERO_STEPS) {
           console.error(
             `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this._simTime} `
@@ -176,7 +176,7 @@ export class Simulator {
         e.kill();
         continue;
       }
-      // 重力源と大気天体の選択は個体ごとに1回 — 顔ぶれはサブステップの中で変わらない。
+      // 重力源と大気天体の選択は個体ごとに1回 — 対象天体セットはサブステップの中で変わらない。
       const near = this.bodies.attractorsNear(e.state.r);
       const atmosphereBody = this.bodies.atmosphereBodyNear(e.state.r);
       const divisions = e.substepDivisions(dt, this.bodies.atmosphere, this.bodies.pivot);

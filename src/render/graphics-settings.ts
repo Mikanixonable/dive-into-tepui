@@ -52,7 +52,7 @@ export const GRAPHICS_OPTIONS = {
     items: [[0.5, '50%'], [0.75, '75%'], [1, '100%']],
     presets: { low: 0.5, medium: 0.75, high: 1 },
   },
-  // 見かけ直径へ掛ける詳細度の倍率。1 より小さいほど粗い LOD 段が選ばれ、球体を諦める距離も
+  // 見かけ直径へ掛ける詳細度の倍率。1 より小さいほど粗い LOD 段が選ばれ、球体メッシュ描画を打ち切る距離も
   // 手前になる。
   lodBias: {
     kind: 'choice', group: 'basic', label: '描画詳細度',
