@@ -22,7 +22,7 @@ interface DeployState {
   readonly wear: number;
 }
 
-// VESSEL パネルが1フレームに映す値と、ボタンが返す操作の口。
+// VESSEL パネルが1フレームに表示する値と、ボタン操作のコールバック。
 export interface VesselPanelViewModel {
   readonly rcsDamp: boolean;
   readonly throttleIdx: number;
@@ -78,7 +78,7 @@ interface DeployButtonDom {
 
 export class VesselPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
-  // 直近の sync が受けた値。ボタンの押下はフレームの外で起きるので、その時点の口をここから引く。
+  // 直近の sync で受け取った状態。ボタン押下はフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: VesselPanelViewModel | null = null;
   private followButton: Button | null = null;
   private readonly throttleControl: SegmentedControl<number> | null;
