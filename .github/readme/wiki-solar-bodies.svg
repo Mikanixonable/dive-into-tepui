@@ -18,7 +18,7 @@
  <circle r="104" fill="none" stroke="#3478ff" stroke-width="6" opacity=".16"/>
  <path d="M0-104V-84" class="bl" marker-end="url(#ba)"/>
  <path d="M-120 0H-98M98 0H120" class="r"/>
- <text x="-35" y="105" class="m t v">地球</text><text x="-138" y="-55" class="m u xs">大気</text><text x="101" y="55" class="m a xs">J2</text>
+ <text x="-35" y="98" class="m t v">地球</text><text x="-138" y="-55" class="m u xs">大気</text><text x="101" y="55" class="m a xs">J2</text>
 </g>
 <g transform="translate(690 155)">
  <circle r="64" fill="#81786e" stroke="#c3bec9"/>
