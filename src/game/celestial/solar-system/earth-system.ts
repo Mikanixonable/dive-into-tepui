@@ -19,7 +19,7 @@ import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { AnnualClimateMap } from '../../../render/cloud/climate-map';
-import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
+import { EquirectProjection, OrthographicCap, type FieldProjection } from '../../../render/field-projection';
 import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
@@ -213,12 +213,16 @@ export function earthGeneratedCloudField(projection: FieldProjection): Generated
   );
 }
 
-// 地球の雲場ぜんぶを組む。生成と実写を同じ 1 つの cap へ焼き、CloudPresentation がその cap を
-// 視点へ置き直す。
+// 地球の雲場ぜんぶを組む。生成と実写は天体固定の全球場へ焼き、CloudPresentation がその全球場を
+// 視点用 cap へ写す。カメラを動かしても、天体固定の雲場の世代は変わらない。
 export function earthCloudPresentation(): CloudPresentation {
+  const worldProjection = new EquirectProjection(CLOUD_CAP_SIZE);
   const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
   return new CloudPresentation(
-    earthGeneratedCloudField(cap), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
+    earthGeneratedCloudField(worldProjection),
+    new ObservedCloudField(cloudFieldUrl, worldProjection),
+    cap,
+    R_EARTH_EQ,
   );
 }
 

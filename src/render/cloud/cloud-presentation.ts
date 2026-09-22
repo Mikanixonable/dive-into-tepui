@@ -4,10 +4,11 @@ import * as THREE from 'three/webgpu';
 import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../opaque-cloud-surface-renderer';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor } from './cloud-cap';
+import { CloudViewField } from './cloud-view-field';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
-import type { CloudStateBinding } from './cloud-state';
+import type { CloudFieldSource } from './cloud-field-source';
 import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
 
@@ -23,35 +24,26 @@ const tmpInverseSpin = new THREE.Quaternion();
 export const CLOUD_FIELD_SOURCE_KIND = { observed: 'observed', generated: 'generated' } as const;
 export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof CLOUD_FIELD_SOURCE_KIND];
 
-// 雲データ供給源のインターフェース。texture の所有権は供給元が管理する。
-export interface CloudFieldSource {
-  readonly texture: THREE.Texture;
-  readonly state: CloudStateBinding;
-  // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
-  readonly generation: number;
-  // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
-  prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink | null): void;
-  // 保持している GPU 資源を解放する。
-  dispose(): void;
-}
-
 export class CloudPresentation {
   private readonly surface: OpaqueCloudSurfaceRenderer;
-  private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
-  // 現在選択されている雲データ供給源。
-  private source: CloudFieldSource;
+  private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudViewField>>;
+  // 現在選択されている視点用の雲場。
+  private source: CloudViewField;
   private cloudVisible = false;
   private cirrusVisible = true;
   private translucentCumulusVisible = true;
 
-  // 各供給源（generated / observed）を管理し、正距円筒の雲場と雲メッシュの描画を同期する。
+  // 各供給源（generated / observed）を管理し、世界場から視点用 cap へ写した雲場と雲メッシュを同期する。
   // bodyRadius は雲層を配置する天体の基準半径 [m]。
   public constructor(
     generated: CloudFieldSource, observed: CloudFieldSource,
     private readonly cap: OrthographicCap, private readonly bodyRadius: number,
   ) {
-    this.sources = { generated, observed };
-    this.source = generated;
+    this.sources = {
+      generated: new CloudViewField(generated, cap),
+      observed: new CloudViewField(observed, cap),
+    };
+    this.source = this.sources.generated;
     this.surface = new OpaqueCloudSurfaceRenderer(bodyRadius);
     this.aim(INITIAL_CAP_DIRECTION, 1);
   }
