@@ -144,5 +144,13 @@ await assert.rejects(checkEarthSurfaceRelease({
     ? new Response(jpegFixture(512, 256), { status: 200 })
     : new Response('ok', { status: 200 }),
 ), /8192x4096 RGB JPEG/);
+await assert.rejects(checkEarthSurfaceRelease({
+  baseUrl: 'https://cdn.example.test/earth/',
+  manifestUrl: releaseManifestUrl,
+  datasetId: manifest.datasetId,
+}, async (input) => String(input) === releaseManifestUrl
+  ? new Response(JSON.stringify({ ...manifest, colorCalibration: null }), { status: 200 })
+  : new Response('ok', { status: 200 }),
+), /manifest validation failed: colorCalibration must be an object/);
 
 console.log('earth-surface:release-check tests passed');

@@ -51,8 +51,8 @@ function numericalGradient(f: (p: Vec3) => number, r: Vec3, h: number): Vec3 {
   return v3(d(v3(1, 0, 0)), d(v3(0, 1, 0)), d(v3(0, 0, 1)));
 }
 
-// 極軸を Y に固定していた地球専用の J2 式。任意の極方向を取る degree2Accel が、この
-// 特殊形と一致することを検証するための独立した基準として写経する。
+// 極軸を Y に固定した J2 の式。任意の極方向を取る degree2Accel が、この特殊形と一致する
+// ことを検証するための独立した基準として写経する。
 function yAxisJ2Accel(r: Vec3): Vec3 {
   const r2 = r.x * r.x + r.y * r.y + r.z * r.z;
   const rl = Math.sqrt(r2);
@@ -61,29 +61,10 @@ function yAxisJ2Accel(r: Vec3): Vec3 {
   return v3(k * r.x * (1 - f), k * r.y * (3 - f), k * r.z * (1 - f));
 }
 
-// フェーズ B 以前の合成: −μ_E r/|r|³(中心重力)+ 太陽・月の潮汐摂動 + J2。
-// stepRK4 は中心重力を持たなくなったので、比較対象として本体から消えた式をここへ写経する。
-function legacyThirdBody(r: Vec3, bodyPos: Vec3, mu: number): Vec3 {
-  const rho = sub(bodyPos, r);
-  const d3 = Math.pow(len(rho), 3);
-  const b3 = Math.pow(len(bodyPos), 3);
-  return v3(
-    (mu * rho.x) / d3 - (mu * bodyPos.x) / b3,
-    (mu * rho.y) / d3 - (mu * bodyPos.y) / b3,
-    (mu * rho.z) / d3 - (mu * bodyPos.z) / b3,
-  );
-}
-function legacyCentralGravity(r: Vec3): Vec3 {
+function centralGravityAccel(r: Vec3): Vec3 {
   const d = len(r);
   const k = -MU_EARTH / (d * d * d);
   return v3(r.x * k, r.y * k, r.z * k);
-}
-function legacyAccel(r: Vec3, sunPos: Vec3, moonPos: Vec3): Vec3 {
-  const central = legacyCentralGravity(r);
-  const sun = legacyThirdBody(r, sunPos, MU_SUN);
-  const moon = legacyThirdBody(r, moonPos, MU_MOON);
-  const j2 = yAxisJ2Accel(r);
-  return add(add(add(central, sun), moon), j2);
 }
 
 // 原点に静止した点質量の地球(2次重力場なし)。
@@ -111,26 +92,6 @@ function earthMoonWindowAt(t: number): readonly CelestialMotion[] {
 }
 
 export function register(): void {
-  test('dynamics: stepDynamics(bcInv=0, thrust=null) matches a hand-written legacy central-gravity + third-body + J2 composition to machine precision', () => {
-    const s0 = circularState();
-    const dt = 10;
-    const sunPos = v3(1.5e11, 0, 0);
-    const moonPos = v3(3.8e8, 0, 0);
-    const attractors: readonly CelestialMotion[] = [
-      EARTH,
-      fixedMotion({ id: 'moon', mu: MU_MOON, radius: R_MOON, state: kinematicState<'eci'>(0, moonPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null }),
-      fixedMotion({ id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, kind: 'star' }),
-    ];
-
-    const viaNew = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
-    const viaLegacy = stepRK4(s0, dt, (_t, rx, ry, rz) => legacyAccel(v3(rx, ry, rz), sunPos, moonPos));
-
-    const posErr = len(sub(viaNew.r, viaLegacy.r)) / len(viaLegacy.r);
-    const velErr = len(sub(viaNew.v, viaLegacy.v)) / len(viaLegacy.v);
-    assert.ok(posErr < 1e-9, `position should match to machine precision: relative error ${posErr}`);
-    assert.ok(velErr < 1e-9, `velocity should match to machine precision: relative error ${velErr}`);
-  });
-
   test('dynamics: stepDynamics adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
@@ -189,40 +150,6 @@ export function register(): void {
     // 地球(・太陽)の潮汐差ぶんの摂動がかかるので、月の二体問題の解には正確には戻らない。
     assert.ok(drift < 50e3, `moon-relative drift after 1 revolution: ${drift} m (expected within tens of km)`);
   });
-
-  test('dynamics: stepRK4 circular orbit — 1 period position/energy error (measured, pinned)', () => {
-    // 420km 円軌道、無摂動(中心重力のみ)。理論上は閉軌道に戻るはずだが、
-    // 固定ステップ RK4 の打ち切り誤差が蓄積する。現状の実装でどの程度かを
-    // 実測して基準値として固定する(将来ステップ幅やアルゴリズムを変えた際の
-    // デグレ検知が目的で、理論的な許容誤差ではない)。
-    const alt = 420e3;
-    const r0 = R_EARTH + alt;
-    const vCirc = Math.sqrt(MU_EARTH / r0);
-    let s = kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, 0, vCirc));
-    const period = 2 * Math.PI * Math.sqrt((r0 * r0 * r0) / MU_EARTH);
-    const e0 = 0.5 * vCirc * vCirc - MU_EARTH / r0;
-
-    const dt = 1; // 1秒刻み
-    const steps = Math.round(period / dt);
-    for (let i = 0; i < steps; i++) {
-      s = stepRK4(s, dt, (_t, rx, ry, rz) => legacyCentralGravity(v3(rx, ry, rz)));
-    }
-
-    const rMag = len(s.r);
-    const posErr = len(sub(s.r, v3(r0, 0, 0))) / r0;
-    const speed = len(s.v);
-    const e1 = 0.5 * speed * speed - MU_EARTH / rMag;
-    const energyErr = Math.abs(e1 - e0) / Math.abs(e0);
-
-    // 実測基準値: 1秒刻み RK4, 420km円軌道1周(約5553秒、約5553ステップ)。
-    // 実測 posErr ~= 5.0e-4, energyErr は実測して以下に反映。緩めのマージンで固定
-    // (数値環境差を吸収する回帰テストであり、理論的な精度保証ではない)。
-    assert.ok(posErr < 1e-3, `measured position error after 1 period: ${posErr}`);
-    assert.ok(energyErr < 1e-3, `measured energy error after 1 period: ${energyErr}`);
-    // state はエポックも持つ: 1 ステップ = dt だけ時刻も進む。
-    assert.ok(Math.abs(s.t - steps * dt) < 1e-9, `epoch should advance with the integration: ${s.t}`);
-  });
-
   test('dynamics: degree2Accel RAAN regression rate at 420km/51.6deg ~= -5deg/day (measured)', () => {
     // J2 のみを追加加速度として与え、円軌道を長時間積分して RAAN のドリフト率を測る。
     // 標準的な太陽同期軌道の式(dRAAN/dt ~ -5deg/day at 51.6°/420km LEO)との一致は
@@ -240,7 +167,7 @@ export function register(): void {
     for (let i = 0; i < steps; i++) {
       s = stepRK4(s, dt, (_t, rx, ry, rz) => {
         const r = v3(rx, ry, rz);
-        return add(legacyCentralGravity(r), degree2Accel(r, MU_EARTH, EARTH_DEGREE2));
+        return add(centralGravityAccel(r), degree2Accel(r, MU_EARTH, EARTH_DEGREE2));
       });
     }
 

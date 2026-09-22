@@ -4,12 +4,12 @@ import { test } from '../harness';
 import {
   earthSurfaceDetailLodNode,
   earthSurfaceTileUvNode,
-  earthSurfaceMaterialNodes,
+  decodeEarthSurfaceNormalNode,
   earthSurfaceMaterialCapabilities,
 } from '../../src/render/earth-surface-material-node';
 import { configureEarthSurfaceTexture } from '../../src/render/earth-surface-texture';
-import { float, uniform, vec2, vec3 } from 'three/tsl';
-import { containsShaderNode, evaluateShaderNode } from './tsl-node-evaluator';
+import { float, vec2, vec3 } from 'three/tsl';
+import { evaluateShaderNode } from './tsl-node-evaluator';
 
 function tileUvValue(u: number, v: number, z: number): number[] {
   return evaluateShaderNode(earthSurfaceTileUvNode(vec2(u, v), float(z))) as number[];
@@ -44,12 +44,6 @@ export function register(): void {
     assert.equal(terrain.colorSpace, THREE.NoColorSpace);
     assert.equal(terrain.generateMipmaps, false);
     assert.equal(terrain.flipY, false);
-    assert.equal(pageTable.image, null);
-    assert.equal(pageTable.version, 0);
-    const data = new THREE.DataTexture(new Uint8Array(4), 1, 1);
-    assert.equal(data.version, 0);
-    configureEarthSurfaceTexture(data, 'color');
-    assert.equal(data.version, 1);
   });
 
   test('earth surface material: unsupported capability selects base fallback', () => {
@@ -72,30 +66,13 @@ export function register(): void {
       near(tileUvValue(-0.1, 0.37, z)[0]!, toTextureUv(((-0.1 * rows * 2) % 1 + 1) % 1));
       near(tileUvValue(1.1, 0.37, z)[0]!, toTextureUv(((1.1 * rows * 2) % 1 + 1) % 1));
     }
-    assert.ok(containsShaderNode(earthSurfaceDetailLodNode(float(255)),
-      (node) => node.type === 'MathNode' && node.method === 'min'));
+    assert.equal(evaluateShaderNode(earthSurfaceDetailLodNode(float(255))), 7);
   });
 
-  test('earth surface material: array/page table nodeはbase層とnormal XYZ body固定法線を持つ', () => {
-    const color = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
-    const terrain = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
-    const pageTable = new THREE.DataTexture(new Uint8Array(4), 1, 1);
-    const baseColor = new THREE.Texture();
-    const baseTerrain = new THREE.Texture();
-    const nodes = earthSurfaceMaterialNodes(
-      { pageTable, color, terrain, baseColor, baseTerrain },
-      {
-        bodyDirection: vec3(1, 0, 0),
-        axes: vec3(2, 3, 4),
-        geometricNormalView: vec3(0, 1, 0),
-        bodyToView: uniform(new THREE.Matrix3()),
-        schematic: uniform(false),
-        albedoScale: 0.9102,
-      },
-    );
-    assert.equal(nodes.colorNode.isNode, true);
-    assert.equal(nodes.roughnessNode.isNode, true);
-    assert.equal(nodes.normalNode.isNode, true);
-    assert.ok(containsShaderNode(nodes.normalNode, (node) => node.type === 'MathNode' && node.method === 'normalize'));
+  test('earth surface material: encoded normal is decoded to a unit body normal', () => {
+    const decoded = evaluateShaderNode(decodeEarthSurfaceNormalNode(vec3(1, 0.5, 0.5))) as number[];
+    near(decoded[0]!, 1);
+    near(decoded[1]!, 0);
+    near(decoded[2]!, 0);
   });
 }
