@@ -225,6 +225,8 @@ export class ModuleWindows implements ModuleWindowOpener {
     return {
       title: label,
       subtitle: `取り付け艦: ${ship.name}`,
+      kindCode: 'MOD',
+      kindLabel: 'MODULE',
       rows: [
         { key: 'name', label: 'モジュール', value: label },
         { key: 'kind', label: '種別', value: module.kind },

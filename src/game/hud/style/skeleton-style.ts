@@ -185,11 +185,15 @@ body.hud-construction-mode #touch-ui { display: none; }
   gap: var(--space-3);
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 1.2px; opacity: 0.9;
 }
-#hud-viewbadge .vb-title { color: var(--color-primary); }
-#hud-viewbadge .vb-mode { color: var(--text-dim); }
+#hud-viewbadge .vb-mode {
+  color: var(--color-primary); font-weight: 700; letter-spacing: .12em;
+}
 #hud-viewbadge .vb-field { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
 #hud-viewbadge .vb-field > span:first-child { color: var(--text-dim); }
-#hud-viewbadge .vb-field > span:last-child { color: var(--text); max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
+#hud-viewbadge .vb-field > span:last-child {
+  color: var(--text); max-width: 18em; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
 #hud-viewbadge .vb-sep { color: var(--edge); }
 #hud-viewbadge span.vb-view-btn {
   background: var(--glass-control);

@@ -10,14 +10,35 @@ export const HELP_PANEL_STYLE = `
 #hud-help .help-header {
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-5);
   padding-bottom: var(--space-4);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
 }
-#hud-help .help-header h3 { margin: 0; }
-#hud-help .help-header h3 > span { color: var(--text-dim); font-size: var(--font-xxs); font-weight: 400; letter-spacing: 0; }
+#hud-help .help-heading { display: grid; gap: var(--space-1); min-width: 0; }
+#hud-help .help-heading > div:first-child { display: flex; align-items: baseline; gap: var(--space-2); }
+#hud-help .help-kicker {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .12em;
+}
+#hud-help .help-header h3 {
+  margin: 0; color: var(--text-strong); font-size: var(--font-2xl);
+  font-weight: 650; letter-spacing: -.03em;
+}
+#hud-help .help-context { margin-top: var(--space-1); }
+#hud-help .help-tabs {
+  flex: 0 0 auto; display: flex; gap: var(--space-1);
+  margin: var(--space-3) 0; overflow-x: auto; scrollbar-width: none;
+}
 #hud-help .help-body { min-height: 0; overflow-y: auto; padding-right: var(--space-2); }
+#hud-help .help-section[hidden] { display: none !important; }
 #hud-help table { width: 100%; border-collapse: collapse; }
-#hud-help tr:nth-child(odd) { background: var(--surface-1); }
+#hud-help tr {
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
+}
 #hud-help td { padding: var(--space-3) var(--space-4); vertical-align: top; }
-#hud-help td:first-child { width: 30%; color: var(--color-primary-hover); font-size: var(--font-xxs); font-weight: 700; }
+#hud-help td:first-child {
+  width: 31%; color: var(--color-primary-hover);
+  font-size: var(--font-xxs); font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: .04em;
+}
+#hud-help .help-input-code { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 #hud-help td > strong { color: var(--text); font-size: var(--font-xs); }
 #hud-help td > p { margin: var(--space-1) 0 0; color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.55; }
 @media ${MQ_MEDIUM_DOWN} {
@@ -25,7 +46,9 @@ export const HELP_PANEL_STYLE = `
 }
 @media ${MQ_COMPACT} {
   #hud-help { width: calc(100vw - 16px); }
-  #hud-help td { display: block; }
+  #hud-help .help-header h3 { font-size: var(--font-xl); }
+  #hud-help .help-tabs { margin-block: var(--space-2); }
+  #hud-help td { display: block; padding-inline: var(--space-3); }
   #hud-help td:first-child { width: auto; padding-bottom: 0; }
 }
 `;
