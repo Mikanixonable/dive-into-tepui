@@ -23,6 +23,15 @@ import {
   reconstructCloudMaterialTrack,
 } from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
+import {
+  CLOUD_ICE_EDGE_M,
+  CLOUD_ICE_HALF_THICKNESS_M,
+  CLOUD_LIQUID_BASE_M,
+  CLOUD_LIQUID_EDGE_M,
+  cloudColumnExtinctionAtAltitude,
+  cloudLayerFractionAtAltitude,
+} from '../../src/render/cloud/cloud-density-evaluator';
+import { CLOUD_DETAIL_SCALE_M } from '../../src/render/cloud/cloud-detail-field';
 import { cross, dot, len, norm, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
 import type { MeteorologicalCaseId } from './meteorological-cases';
@@ -552,18 +561,90 @@ function evaluateC7(): MeteorologicalCaseEvaluation {
   };
 }
 
-function blockedCase(id: 'C8' | 'C9'): MeteorologicalCaseEvaluation {
-  const blockedMeasurements = id === 'C8'
-    ? [
-      blocked('hole-fraction', '1', 'Marine boundary-layer cell geometry is not implemented.'),
-      blocked('cell-size', 'km', 'Marine boundary-layer cell geometry is not implemented.'),
-      blocked('cell-lifetime', 'min', 'Marine boundary-layer event lifecycle is not implemented.'),
-    ]
-    : [
-      blocked('layer-gap', 'm', 'A multi-layer cloud density field is not implemented.'),
-      blocked('parallax', 'px', 'Projected multi-layer geometry is not implemented.'),
-      blocked('shadow-support', 'm2', 'Shared multi-layer density and shadow support are not implemented.'),
-    ];
+function projectedLayerParallaxPx(lowerAltitudeM: number, upperAltitudeM: number): number {
+  const cameraAltitudeM = 400_000;
+  const groundAngleRad = 10 * Math.PI / 180;
+  const viewportHeightPx = 540;
+  const verticalFovRad = 50 * Math.PI / 180;
+  const cameraRadiusM = EARTH_RADIUS_M + cameraAltitudeM;
+  const focalLengthPx = viewportHeightPx / (2 * Math.tan(verticalFovRad / 2));
+  const projectedCoordinate = (altitudeM: number): number => {
+    const radiusM = EARTH_RADIUS_M + altitudeM;
+    const cameraSpaceDepthM = cameraRadiusM - radiusM * Math.cos(groundAngleRad);
+    const cameraSpaceHorizontalM = radiusM * Math.sin(groundAngleRad);
+    return focalLengthPx * cameraSpaceHorizontalM / cameraSpaceDepthM;
+  };
+  return Math.abs(projectedCoordinate(upperAltitudeM) - projectedCoordinate(lowerAltitudeM));
+}
+
+function integratedLayerOpticalDepth(
+  columnOpticalDepth: number, bottomM: number, topM: number, edgeM: number,
+): number {
+  const stepM = 10;
+  let total = 0;
+  for (let altitudeM = bottomM; altitudeM < topM; altitudeM += stepM) {
+    total += cloudColumnExtinctionAtAltitude(
+      columnOpticalDepth, altitudeM + stepM / 2, bottomM, topM, edgeM,
+    ) * stepM;
+  }
+  return total;
+}
+
+function evaluateC9(): MeteorologicalCaseEvaluation {
+  const lowerTopM = 5_000;
+  const upperCenterM = 10_000;
+  const upperBottomM = upperCenterM - CLOUD_ICE_HALF_THICKNESS_M;
+  const upperTopM = upperCenterM + CLOUD_ICE_HALF_THICKNESS_M;
+  const gapMidpointM = (lowerTopM + upperBottomM) / 2;
+  const gapDensity = Math.max(
+    cloudLayerFractionAtAltitude(
+      gapMidpointM, CLOUD_LIQUID_BASE_M, lowerTopM, CLOUD_LIQUID_EDGE_M,
+    ),
+    cloudLayerFractionAtAltitude(
+      gapMidpointM, upperBottomM, upperTopM, CLOUD_ICE_EDGE_M,
+    ),
+  );
+  const layerGapM = gapDensity <= 1e-12 ? upperBottomM - lowerTopM : 0;
+  const parallaxPx = projectedLayerParallaxPx(1_000, upperCenterM);
+  const sharedColumnOpticalDepth = integratedLayerOpticalDepth(
+    2, CLOUD_LIQUID_BASE_M, lowerTopM, CLOUD_LIQUID_EDGE_M,
+  ) + integratedLayerOpticalDepth(
+    0.5, upperBottomM, upperTopM, CLOUD_ICE_EDGE_M,
+  );
+  const shadowSupportM2 = sharedColumnOpticalDepth > 1e-3
+    ? CLOUD_DETAIL_SCALE_M * CLOUD_DETAIL_SCALE_M
+    : 0;
+  return {
+    fixture: 'C9',
+    cpuDiagnosticsApplied: true,
+    generatedCloudImageFixtureApplied: false,
+    controls: {
+      lowerLayerTopM: lowerTopM,
+      upperLayerCenterM: upperCenterM,
+      standardDetailScaleM: CLOUD_DETAIL_SCALE_M,
+      cameraAltitudeM: 400_000,
+      obliqueGroundAngleDeg: 10,
+    },
+    measurements: [
+      compare('layer-gap', layerGapM, 'm', upperBottomM - lowerTopM, 1e-9,
+        'absolute-error',
+        'Separated liquid and ice supports retain the analytically prescribed empty altitude interval.'),
+      compare('parallax', parallaxPx, 'px', 1, 0,
+        'greater-than',
+        'A 9 km centroid-height separation produces resolvable perspective displacement in the fixed oblique camera.'),
+      compare('shadow-support', shadowSupportM2, 'm2', 0, 0,
+        'greater-than',
+        'A standard 2 km detail cell with nonzero shared 3D extinction contributes a nonzero shadow support area.'),
+    ],
+  };
+}
+
+function blockedCase(id: 'C8'): MeteorologicalCaseEvaluation {
+  const blockedMeasurements = [
+    blocked('hole-fraction', '1', 'Marine boundary-layer cell geometry is not implemented.'),
+    blocked('cell-size', 'km', 'Marine boundary-layer cell geometry is not implemented.'),
+    blocked('cell-lifetime', 'min', 'Marine boundary-layer event lifecycle is not implemented.'),
+  ];
   return {
     fixture: id,
     cpuDiagnosticsApplied: true,
@@ -582,7 +663,7 @@ export function evaluateMeteorologicalCase(id: MeteorologicalCaseId): Meteorolog
     case 'C5': return evaluateC5();
     case 'C6': return evaluateC6();
     case 'C7': return evaluateC7();
-    case 'C8':
-    case 'C9': return blockedCase(id);
+    case 'C8': return blockedCase(id);
+    case 'C9': return evaluateC9();
   }
 }

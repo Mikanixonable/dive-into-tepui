@@ -177,9 +177,9 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
     ] },
   C9: { id: 'C9', label: '二雲層の空隙と視差', ...CONTROLS.c9, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
-      measurement('layer-gap', '雲層間空隙', 'm', 'minimum density between layer supports', 'between-layer mask', 1e-3, '多層雲密度場がなく blocked'),
-      measurement('parallax', '高度による視差', 'px', 'projected centroid separation by layer', 'both layer masks', 0, '多層投影形状がなく blocked'),
-      measurement('shadow-support', '影の支持域', 'm2', 'shadow support from shared 3D field', 'shadow-valid mask', 1e-3, '共有3D密度と影形状がなく blocked'),
+      measurement('layer-gap', '雲層間空隙', 'm', 'minimum density between layer supports', 'between-layer mask', 1e-3, '既定二層の支持域間に 4000 m の空隙を保持', 'analytic'),
+      measurement('parallax', '高度による視差', 'px', 'projected centroid separation by layer', 'both layer masks', 0, '固定斜視カメラで 1 px より大きい', 'analytic'),
+      measurement('shadow-support', '影の支持域', 'm2', 'shadow support from shared 3D field', 'shadow-valid mask', 1e-3, '2 km detail cell の共有消散が非零なら 0 m2 より大きい', 'analytic'),
     ] },
 } as const;
 
