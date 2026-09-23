@@ -114,7 +114,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 
 /* 左右レール */
 #hud .hud-rail {
-  position: absolute; top: var(--hud-rail-top); bottom: var(--hud-rail-bottom);
+  position: absolute; top: calc(var(--hud-chrome-h) + var(--space-2)); bottom: var(--hud-rail-bottom);
   display: flex; flex-direction: column; align-items: stretch; gap: 7px;
   pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
   scrollbar-width: thin; overscroll-behavior: contain;
