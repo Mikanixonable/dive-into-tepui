@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, greaterThanEqual, length,
-  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, uniform, vec2,
+  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, uniform,
   vec3,
 } from 'three/tsl';
 import { rayMarch, type MediumSample } from '../ray-march';
@@ -14,7 +14,7 @@ import { airglowEmission } from '../airglow';
 import { AtmosphereCloudLayers } from './atmosphere-cloud-layers';
 import type { CloudSpecies } from './cloud-atmosphere-renderer';
 import type { AtmosphereBody } from '../atmosphere';
-import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
+import type { BoolNode, FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { BodyShadow } from './shadow/body-shadow';
 import type { SunLight } from './sun-light';
 
@@ -322,29 +322,6 @@ export class AtmosphereIntegrator {
       this.blueNoise.atScreenPixel(),
     );
     return { transmittance: march.transmittance, inscatter: march.radiance };
-  }
-
-  // 視線上の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。x はレイリー、
-  // y はミーのスケールハイトで測ったもので、長さはどちらも真球空間の目盛り。
-  private outwardDepthAt(ray: SphereSpaceRay, distance: FloatNode): Vec2Node {
-    const offset = ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(distance)));
-    const radius = max(length(offset), max(this.slot.surfaceRadius, 1));
-    const mu = dot(offset.div(radius), ray.unitDir);
-    return vec2(
-      depthToSpace(radius, mu, this.slot.surfaceRadius, this.slot.rayleighScaleHeight),
-      depthToSpace(radius, mu, this.slot.surfaceRadius, this.slot.mieScaleHeight),
-    );
-  }
-
-  // 視線の起点から distance までに視線が受ける大気の透過率。**区間を刻まずに求める** —
-  // 指数分布を通る光路の厚みは、両端から大気の外へ抜ける厚みの差になる。originDepth は
-  // 起点での outwardDepthAt。
-  private transmittanceTo(
-    originDepth: Vec2Node, ray: SphereSpaceRay, distance: FloatNode,
-  ): Vec3Node {
-    const path = max(originDepth.sub(this.outwardDepthAt(ray, distance)), vec2(0, 0))
-      .div(ray.unitsPerMeter);
-    return exp(this.slot.rayleigh.mul(path.x).add(vec3(this.slot.mie.mul(path.y))).negate());
   }
 
   // 視線上で、太陽がその天体の地平線へ沈む距離。**区間の外に落ちることも、区間を跨がない視線で
