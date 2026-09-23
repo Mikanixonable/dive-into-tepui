@@ -1,6 +1,11 @@
 // 雲の実験環境の画面。表示する量を選び、時刻を動かして、天気のモデルの写しを正距円筒で見る。
 import { CloudLabCanvas } from './lab';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
+import {
+  CLOUD_LAB_SERIES_TIMES_HOURS, METEOROLOGICAL_CASES, METEOROLOGICAL_CASE_IDS,
+  type MeteorologicalCaseId,
+} from './meteorological-cases';
+import { evaluateMeteorologicalCase, type MeteorologicalCaseEvaluation } from './meteorological-evaluator';
 import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
@@ -16,10 +21,19 @@ declare global {
     // 撮影の駆動(tools/cloud-lab-shot.mjs・tools/cloud-lab-compare.mjs)が CDP から読む入口。
     cloudLab?: {
       views: readonly CloudLabViewId[];
+      fixtures: readonly MeteorologicalCaseId[];
+      fixtureTimesHours: readonly number[];
+      fixture: MeteorologicalCaseId;
       show: (id: CloudLabViewId) => void;
+      selectFixture: (id: MeteorologicalCaseId) => void;
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
+      measureFixture: (id: MeteorologicalCaseId) => {
+        readonly fixture: MeteorologicalCaseId;
+        readonly measurements: typeof METEOROLOGICAL_CASES[MeteorologicalCaseId]['measurements'];
+        readonly result: MeteorologicalCaseEvaluation;
+      };
       // 時刻 [h] の低気圧の谷の配置。撮影の駆動が中心の位置を統計の範囲の切り分けに使う。
       cyclonesAt: (hours: number) => {
         readonly tropical: CyclonePlacement | null;
@@ -56,6 +70,49 @@ function buildTimeSlider(
 // 器を起こし、操作部品を配線し、撮影の入口を window へ出す。
 async function init(): Promise<void> {
   const canvas = await CloudLabCanvas.create(document.getElementById('view') as HTMLCanvasElement);
+
+  // 制御実験ごとの入力と計測契約を選択・表示する。
+  const fixtureRow = document.createElement('div');
+  fixtureRow.className = 'row';
+  fixtureRow.id = 'fixtures';
+  document.getElementById('views')!.before(fixtureRow);
+  const fixtureEntries = METEOROLOGICAL_CASE_IDS.map((id) => [id, `${id} ${METEOROLOGICAL_CASES[id].label}`] as const);
+  const fixtureReadout = document.createElement('section');
+  const fixtureTitle = document.createElement('h2');
+  fixtureTitle.textContent = '制御実験の入力と計測';
+  const fixtureStatus = document.createElement('p');
+  const fixtureInputs = document.createElement('pre');
+  const fixtureMeasurements = document.createElement('ul');
+  fixtureReadout.append(fixtureTitle, fixtureStatus, fixtureInputs, fixtureMeasurements);
+  fixtureRow.after(fixtureReadout);
+  const showFixture = (id: MeteorologicalCaseId): void => {
+    const fixture = METEOROLOGICAL_CASES[id];
+    const evaluation = evaluateMeteorologicalCase(id);
+    fixtureStatus.textContent = `${id} ${fixture.label} — CPU診断: 実行; 生成画像へfixture適用: なし`;
+    fixtureInputs.textContent = JSON.stringify({
+      controlledInputs: fixture.controlledInputs,
+      cpuDiagnosticControls: evaluation.controls,
+      atmosphericLayers: fixture.atmosphericLayers,
+      measurementWindow: fixture.measurementWindow,
+    }, null, 2);
+    const results = new Map(evaluation.measurements.map((result) => [result.measurementId, result]));
+    fixtureMeasurements.replaceChildren(...fixture.measurements.map((measurement) => {
+      const item = document.createElement('li');
+      const result = results.get(measurement.id);
+      const status = result?.status ?? 'blocked';
+      const value = result?.value === null || result === undefined ? '—' : `${result.value} ${result.unit}`;
+      const reference = result?.reference === null || result === undefined ? '—' : String(result.reference);
+      const tolerance = result?.tolerance === null || result === undefined ? '—' : String(result.tolerance);
+      item.textContent = `${status.toUpperCase()} — ${measurement.quantity}: ${value}; `
+        + `reference ${reference}; tolerance ${tolerance}; ${result?.detail ?? '診断結果がありません。'}`;
+      return item;
+    }));
+  };
+  const markFixture = buildButtonRow<MeteorologicalCaseId>('fixtures', fixtureEntries, (id) => {
+    canvas.selectFixture(id);
+    markFixture(id);
+    showFixture(id);
+  });
 
   const entries = CLOUD_LAB_VIEWS.map((view) => [view.id, view.label] as const);
   const markView = buildButtonRow<CloudLabViewId>('views', entries, (id) => {
@@ -123,11 +180,17 @@ async function init(): Promise<void> {
   setCapLatitude(canvas.capCenterLatitude);
   setCapLongitude(canvas.capCenterLongitude);
   setCapRadius(canvas.capAngularRadius);
+  markFixture(canvas.fixtureId);
+  showFixture(canvas.fixtureId);
   canvas.render();
 
   window.cloudLab = {
     views: CLOUD_LAB_VIEWS.map((view) => view.id),
+    fixtures: METEOROLOGICAL_CASE_IDS,
+    fixtureTimesHours: CLOUD_LAB_SERIES_TIMES_HOURS,
+    get fixture(): MeteorologicalCaseId { return canvas.fixtureId; },
     show: (id) => { markView(id); canvas.show(id); },
+    selectFixture: (id) => { canvas.selectFixture(id); markFixture(id); showFixture(id); },
     setTime,
     aimCap: (latitude, longitude, radius) => {
       canvas.aimCap(latitude, longitude, radius);
@@ -136,6 +199,13 @@ async function init(): Promise<void> {
       setCapRadius(radius);
     },
     capture: () => canvas.capture(),
+    measureFixture: (id) => {
+      return {
+        fixture: id,
+        measurements: METEOROLOGICAL_CASES[id].measurements,
+        result: evaluateMeteorologicalCase(id),
+      };
+    },
     cyclonesAt: (hours) => ({
       tropical: tropicalPlacementAt(hours * 3600),
       lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * 3600, R_EARTH)),
