@@ -1,26 +1,45 @@
 import path from 'node:path';
-import { attachExistingChromeSession, openChromeSession, sleep } from './chrome-session.mjs';
+import { openChromeSession, sleep } from './chrome-session.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const port = 8765;
 const debugPort = 9222;
-const query = process.env.SMOKE_QUERY ?? '?stage=00';
-if (!query.startsWith('?') || query.includes('#')) {
-  throw new Error('SMOKE_QUERY must be a query string beginning with "?" and must not contain a fragment.');
+let query = '?stage=00';
+let expectCreative = false;
+let creativePreset = 'combat';
+let smokeConstruction = false;
+
+function configureScenario(nextQuery, nextCreativePreset = 'combat', nextSmokeConstruction = false) {
+  if (!nextQuery.startsWith('?') || nextQuery.includes('#')) {
+    throw new Error('SMOKE_QUERY must be a query string beginning with "?" and must not contain a fragment.');
+  }
+  if (nextCreativePreset !== 'combat' && nextCreativePreset !== 'base') {
+    throw new Error('SMOKE_CREATIVE_PRESET must be either "combat" or "base".');
+  }
+  const nextExpectCreative = new URLSearchParams(nextQuery.slice(1)).get('stage') === 'creative';
+  if (nextSmokeConstruction && (!nextExpectCreative || nextCreativePreset !== 'base')) {
+    throw new Error('SMOKE_CONSTRUCTION=1 requires creative stage and base preset.');
+  }
+  query = nextQuery;
+  expectCreative = nextExpectCreative;
+  creativePreset = nextCreativePreset;
+  smokeConstruction = nextSmokeConstruction;
 }
-const expectCreative = new URLSearchParams(query.slice(1)).get('stage') === 'creative';
-const creativePreset = process.env.SMOKE_CREATIVE_PRESET ?? 'combat';
-if (creativePreset !== 'combat' && creativePreset !== 'base') {
-  throw new Error('SMOKE_CREATIVE_PRESET must be either "combat" or "base".');
-}
-const smokeConstruction = process.env.SMOKE_CONSTRUCTION === '1';
-if (smokeConstruction && (!expectCreative || creativePreset !== 'base')) {
-  throw new Error('SMOKE_CONSTRUCTION=1 requires creative stage and base preset.');
-}
+
+configureScenario(
+  process.env.SMOKE_QUERY ?? '?stage=00',
+  process.env.SMOKE_CREATIVE_PRESET ?? 'combat',
+  process.env.SMOKE_CONSTRUCTION === '1',
+);
+
+const layoutSuite = process.env.SMOKE_LAYOUT_SUITE === '1';
+const layoutScenarios = [
+  { query: '?stage=00', creativePreset: 'combat', smokeConstruction: false },
+  { query: '?stage=creative', creativePreset: 'combat', smokeConstruction: false },
+  { query: '?stage=creative', creativePreset: 'base', smokeConstruction: true },
+];
 const emulateTouch = process.env.SMOKE_TOUCH === '1';
 const layoutOnly = process.env.SMOKE_LAYOUT_ONLY === '1';
-const reuseSession = process.env.SMOKE_REUSE_SESSION === '1';
-const sharedBaseUrl = process.env.SMOKE_BASE_URL ?? `http://127.0.0.1:${port}`;
 let session;
 let devTools;
 const fatalEvents = [];
@@ -725,36 +744,7 @@ async function bootAndCheckReady() {
   throwIfFatal('Browser reported page exception(s) or console error(s) during boot');
 }
 
-const onBrowserEvent = (event) => {
-  if (isIgnorableLayoutGpuEvent(event)) return;
-  if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
-  if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
-  if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
-};
-
-try {
-  session = reuseSession
-    ? await attachExistingChromeSession({
-      baseUrl: sharedBaseUrl,
-      debugPort,
-      onEvent: onBrowserEvent,
-    })
-    : await openChromeSession({
-      serveDir: path.join(root, 'docs'),
-      port,
-      debugPort,
-      profilePrefix: 'tepui-smoke-',
-      extraLaunchArgs: layoutOnly ? [
-        '--use-webgpu-adapter=swiftshader',
-        '--enable-features=Vulkan',
-        '--use-gpu-in-tests',
-        '--enable-accelerated-2d-canvas',
-        '--disable-dawn-features=disallow_unsafe_apis',
-        '--enable-webgpu-developer-features',
-      ] : [],
-      onEvent: onBrowserEvent,
-    });
-  devTools = session.devTools;
+async function runConfiguredScenario() {
   if (emulateTouch) await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   const pageQuery = layoutOnly
     ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
@@ -949,6 +939,40 @@ try {
   throwIfFatal('Browser reported page exception(s) or console error(s) during interaction');
   const mode = expectCreative ? `creative ${creativePreset} placement` : query;
   console.log(`Browser smoke passed (${mode}): production build ran and its HUD held together without page/console fatal errors.`);
+}
+
+try {
+  session = await openChromeSession({
+    serveDir: path.join(root, 'docs'),
+    port,
+    debugPort,
+    profilePrefix: 'tepui-smoke-',
+    extraLaunchArgs: layoutOnly ? [
+      '--use-webgpu-adapter=swiftshader',
+      '--enable-features=Vulkan',
+      '--use-gpu-in-tests',
+      '--enable-accelerated-2d-canvas',
+      '--disable-dawn-features=disallow_unsafe_apis',
+      '--enable-webgpu-developer-features',
+    ] : [],
+    onEvent: (event) => {
+      if (isIgnorableLayoutGpuEvent(event)) return;
+      if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
+      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
+      if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+    },
+  });
+  devTools = session.devTools;
+  if (layoutSuite) {
+    for (const scenario of layoutScenarios) {
+      configureScenario(scenario.query, scenario.creativePreset, scenario.smokeConstruction);
+      fatalEvents.length = 0;
+      await runConfiguredScenario();
+    }
+  } else {
+    fatalEvents.length = 0;
+    await runConfiguredScenario();
+  }
 } finally {
   await session?.close();
 }
