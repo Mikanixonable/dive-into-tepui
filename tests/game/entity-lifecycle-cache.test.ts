@@ -1,7 +1,7 @@
 // EntityLifecycle の派生一覧キャッシュ。集合が同じ間は配列実体を再利用し、世代が変わったときは
 // 以前の読み手が保持する snapshot を書き換えず新しい配列へ切り替えることを固定する。
 import * as assert from 'node:assert/strict';
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { EntityLifecycle } from '../../src/game/dynamic/entity-lifecycle';
 import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
@@ -20,7 +20,7 @@ function fakeEntity(id: string, controllable: boolean): DynamicEntity {
 
 function lifecycle(): EntityLifecycle {
   return new EntityLifecycle(
-    new THREE.Scene(),
+    {} as unknown as THREE.Scene,
     {} as unknown as RunEventSink,
     {} as unknown as CelestialBodies,
   );
