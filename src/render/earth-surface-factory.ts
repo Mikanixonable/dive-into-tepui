@@ -138,7 +138,7 @@ function coordinatorFor(
   }
   return {
     coordinator: new EarthSurfaceResidentCoordinator({
-      tiles: new EarthSurfaceTiles(),
+      tiles: new EarthSurfaceTiles(bootstrap.source!.maxZoom),
       queue,
       gpu,
       colorToRgba8: options.colorToRgba8 ?? earthSurfaceColorToRgba8,
