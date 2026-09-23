@@ -17,7 +17,11 @@ import {
   type ConvectiveCloudCell,
   type ConvectiveCloudEvent,
 } from '../../src/game/cloud/cloud-events';
-import { reconstructCloudEventMaterialTracks } from '../../src/game/cloud/cloud-event-transport';
+import {
+  reconstructCloudEventMaterialCohorts,
+  reconstructCloudEventMaterialTracks,
+  reconstructCloudMaterialTrack,
+} from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
 import { cross, dot, len, norm, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
@@ -255,7 +259,13 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
   const speedMps = 10;
   const heightM = 1_000;
   const radiusM = EARTH_RADIUS_M + heightM;
-  const displacement = transportDisplacementM(environmentInput({ eastWindMps: speedMps }).levels, heightM);
+  const levels = environmentInput({ eastWindMps: speedMps }).levels;
+  const displacement = transportDisplacementM(levels, heightM);
+  const carriedMassKgM2 = 1;
+  const carried = reconstructCloudMaterialTrack(
+    v3(0, 0, 1), heightM, 0, SAMPLE_DURATION_SECONDS, EARTH_RADIUS_M,
+    SAMPLE_MAX_STEP_SECONDS, localWindAt(levels), carriedMassKgM2,
+  );
   const angleRad = speedMps * SAMPLE_DURATION_SECONDS / radiusM;
   const expected = v3(Math.sin(angleRad), 0, Math.cos(angleRad));
   return {
@@ -266,7 +276,9 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
     measurements: [
       compare('trajectory', distanceErrorM(displacement, expected, radiusM), 'm', 0, 0.01,
         'absolute-error', 'Great-circle displacement is compared with the analytic equatorial solution.'),
-      blocked('mass', '1', 'The parcel transport API returns position only and has no carried-mass state.'),
+      compare('mass', Math.abs(carried.massKgM2 - carriedMassKgM2) / carriedMassKgM2,
+        '1', 0, 1e-12, 'absolute-error',
+        'A carried cloud-material track preserves its declared mass independently of spherical advection.'),
     ],
   };
 }
@@ -294,11 +306,14 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
     iceReleaseHeightM: upperHeightM,
   })]));
   const releaseTimeSeconds = event.iceRelease.meanReleaseTimeSeconds;
-  const releasedIce = reconstructCloudEventMaterialTracks(
+  const representative = reconstructCloudEventMaterialTracks(
     event, EARTH_RADIUS_M, SAMPLE_MAX_STEP_SECONDS, localWindAt(env.levels),
   ).releasedIce;
-  if (releaseTimeSeconds === null || releasedIce === null) {
-    throw new Error('C2 controlled event must contain released ice and its representative release time');
+  const cohortSet = reconstructCloudEventMaterialCohorts(
+    event, EARTH_RADIUS_M, SAMPLE_MAX_STEP_SECONDS, 300, localWindAt(env.levels),
+  );
+  if (releaseTimeSeconds === null || representative === null || cohortSet.releasedIceCohorts.length < 2) {
+    throw new Error('C2 controlled event must contain multiple released-ice cohorts');
   }
   const preReleaseAngle = lowerWindMps * releaseTimeSeconds / lowerRadiusM;
   const postReleaseAngle = upperWindMps * (SAMPLE_DURATION_SECONDS - releaseTimeSeconds) / upperRadiusM;
@@ -306,6 +321,25 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
     Math.sin(preReleaseAngle) * Math.cos(postReleaseAngle),
     Math.sin(postReleaseAngle),
     Math.cos(preReleaseAngle) * Math.cos(postReleaseAngle),
+  );
+  const cohortTrackErrorM = Math.max(...cohortSet.releasedIceCohorts.map((cohort) => {
+    const lowerAngleAtRelease = lowerWindMps * cohort.representativeReleaseTimeSeconds / lowerRadiusM;
+    const upperAngleAfterRelease = upperWindMps
+      * (SAMPLE_DURATION_SECONDS - cohort.representativeReleaseTimeSeconds) / upperRadiusM;
+    const expected = v3(
+      Math.sin(lowerAngleAtRelease) * Math.cos(upperAngleAfterRelease),
+      Math.sin(upperAngleAfterRelease),
+      Math.cos(lowerAngleAtRelease) * Math.cos(upperAngleAfterRelease),
+    );
+    return distanceErrorM(cohort.directionUnitVector, expected, upperRadiusM);
+  }));
+  const cohortMassError = Math.abs(cohortSet.releasedIceCohorts
+    .reduce((sum, cohort) => sum + cohort.remainingKgM2, 0) - event.iceRelease.remainingKgM2)
+    / event.iceRelease.remainingKgM2;
+  const firstCohort = cohortSet.releasedIceCohorts[0]!;
+  const lastCohort = cohortSet.releasedIceCohorts[cohortSet.releasedIceCohorts.length - 1]!;
+  const releaseSpreadM = distanceErrorM(
+    firstCohort.directionUnitVector, lastCohort.directionUnitVector, upperRadiusM,
   );
   return {
     fixture: 'C2',
@@ -320,10 +354,15 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
     measurements: [
       compare('layer-displacement', errorM, 'm', 0, 0.05, 'absolute-error',
         'Lower eastward and upper northward tracks are each compared with analytic great-circle motion.'),
-      compare('released-ice-track', distanceErrorM(
-        releasedIce.directionUnitVector, expectedReleasedIce, upperRadiusM,
+      compare('released-ice-track', Math.max(
+        cohortTrackErrorM,
+        distanceErrorM(representative.directionUnitVector, expectedReleasedIce, upperRadiusM),
       ), 'm', 0, 0.05, 'absolute-error',
-      'Representative surviving ice cohort follows parent displacement before release and upper wind afterward.'),
+        'Every finite release cohort and the one-cohort representative follow the analytic lower-then-upper path.'),
+      compare('released-ice-mass', cohortMassError, '1', 0, 1e-10, 'absolute-error',
+        'Partitioning continuous release into cohorts preserves the event remaining-ice mass.'),
+      compare('release-spread', releaseSpreadM, 'm', 0, 0, 'greater-than',
+        'Different release times occupy distinct downwind positions instead of collapsing to one track.'),
     ],
   };
 }
