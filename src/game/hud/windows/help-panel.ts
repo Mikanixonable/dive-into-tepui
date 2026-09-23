@@ -51,7 +51,7 @@ export class HelpPanel implements OverlayHandle {
     header.className = 'help-header';
     header.innerHTML = `
       <div class="help-heading">
-        <div><span class="ui-section-code" aria-hidden="true">HLP</span><span class="help-kicker">REFERENCE MANUAL</span></div>
+        <div><span class="ui-section-code" aria-hidden="true">HLP</span><span class="help-kicker">REFERENCE</span></div>
         <h3 id="hud-help-title">FLIGHT REFERENCE</h3>
         <div class="help-context ui-data-context">CURRENT CONTEXT · <span>FLIGHT</span></div>
       </div>`;
