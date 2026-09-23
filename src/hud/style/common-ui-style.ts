@@ -43,6 +43,26 @@ const SURFACE_STYLE = `
   pointer-events: none;
 }
 
+/* 警告・エラー・補足メッセージの面だけを共通化する。配置(margin/width)は各画面が持つ。 */
+.ui-status-note {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-micro);
+  font-size: var(--font-s);
+  line-height: 1.45;
+}
+.ui-status-note--info {
+  color: var(--color-primary);
+  background: var(--color-primary-fill-weak);
+}
+.ui-status-note--warning {
+  color: var(--color-warning);
+  background: var(--color-warning-fill);
+}
+.ui-status-note--danger {
+  color: var(--color-error);
+  background: var(--color-error-fill);
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .ui-surface-quiet, #hud .panel, #hud .ui-surface-focus, .ui-surface-focus { background: var(--surface-opaque); }
 }
