@@ -58,6 +58,7 @@ function classifyL1b(value: number): AbiQualityResult {
 
 /** COD の bit 0 は day/night、bits 1..4 は取得品質として分けて読む。 */
 function classifyCod(value: number): AbiQualityResult {
+  // 実データの valid_range は 0..16 だが、PUG の独立 mask 1 と 30 は night + quality 16 (=17) を許す。
   const retrievalQuality = value & 30;
   const mode = (value & 1) === 0 ? 'day' : 'night';
   const categories: Readonly<Record<number, readonly [AbiQualityClass, string]>> = {
@@ -72,8 +73,8 @@ function classifyCod(value: number): AbiQualityResult {
     16: ['degraded', 'degraded_due_to_nonconvergence_qf'],
   };
   const category = categories[retrievalQuality];
-  if (!category || value > 16) {
-    return { ...result('L2_COD', value, 'unknown', 'outside the observed valid range 0..16'), mode };
+  if (!category || value > 17) {
+    return { ...result('L2_COD', value, 'unknown', 'unsupported COD DQF bit combination'), mode };
   }
   return { ...result('L2_COD', value, category[0], category[1]), mode };
 }
