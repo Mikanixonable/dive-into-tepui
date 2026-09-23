@@ -11,6 +11,11 @@ export const CLOUD_LIQUID_BASE_M = 700;
 export const CLOUD_LIQUID_EDGE_M = 300;
 export const CLOUD_ICE_HALF_THICKNESS_M = 1_000;
 export const CLOUD_ICE_EDGE_M = 400;
+// 全描画経路が積分・殻の外縁に使う上限。液相detailと上層氷雲のどちらも収める。
+export const CLOUD_DENSITY_TOP_M = CLOUD_TOP_SPAN + Math.max(
+  CLOUD_DETAIL_TOP_RELIEF_M,
+  CLOUD_ICE_HALF_THICKNESS_M,
+);
 
 export interface CloudDensitySample {
   readonly liquidFraction: FloatNode;
@@ -64,7 +69,7 @@ export function cloudColumnExtinctionAtAltitude(
 export class CloudDensityEvaluator {
   private readonly detail: CloudDetailField;
 
-  public constructor(private readonly surfaceRadiusM: FloatNode) {
+  public constructor(surfaceRadiusM: FloatNode) {
     this.detail = new CloudDetailField(surfaceRadiusM);
   }
 

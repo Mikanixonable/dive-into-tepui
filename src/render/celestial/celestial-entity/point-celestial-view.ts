@@ -149,6 +149,7 @@ export class PointCelestialView extends SphereCelestialView {
     return {
       cloud: this.cumulus.renderInput,
       bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), motion, displayTime),
+      surfaceRadius: motion.def.radius,
     };
   }
 
