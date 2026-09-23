@@ -35,16 +35,16 @@ jobs:
       - run: npm run build
 
       - name: Combat HUD geometry
-        run: npm run smoke:browser
+        run: npm run smoke:layout
 
       - name: Map HUD geometry
         env:
           SMOKE_QUERY: '?stage=creative'
-        run: npm run smoke:browser
+        run: npm run smoke:layout
 
       - name: Construction HUD geometry
         env:
           SMOKE_QUERY: '?stage=creative'
           SMOKE_CREATIVE_PRESET: base
           SMOKE_CONSTRUCTION: '1'
-        run: npm run smoke:browser
+        run: npm run smoke:layout

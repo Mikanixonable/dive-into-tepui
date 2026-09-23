@@ -128,18 +128,36 @@ const VIEWPORTS = [
   { name: 'short-landscape', width: 667, height: 375 },
 ];
 
+async function throwIfVisibleFatalOverlay(label) {
+  if (!layoutOnly) return;
+  const fatal = await devTools.evaluate(`(() => {
+    const el = document.getElementById('fatal-error-overlay');
+    if (!el || getComputedStyle(el).display === 'none') return '';
+    return el.textContent ?? 'fatal error overlay';
+  })()`);
+  if (fatal) throw new Error(`${label}: ${fatal}`);
+}
+
 async function applyViewport({ width, height }) {
+  if (layoutOnly) {
+    await devTools.evaluate(`document.documentElement.dataset.layoutSmokeFreeze = 'true'`);
+    // rAF側がfreezeを観測してからrendererをリサイズし得るviewport変更を行う。
+    await sleep(50);
+  }
   await devTools.send('Emulation.setDeviceMetricsOverride', {
     width, height, deviceScaleFactor: 1, mobile: width <= 480,
   });
   // CSS media query と ResizeObserver(--hud-*-occupied) の双方が反映されるまで待つ。
   await sleep(100);
+  await throwIfVisibleFatalOverlay('Headless GPU fatal during layout viewport check');
 }
 
 async function clearViewport() {
-  await clearViewport();
-  // innerWidth と fixed/absolute HUD の再レイアウトを同じフレームへ揃える。
+  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  // layout-onlyでは一度幾何検査を始めたらGPUを凍結したままにする。
+  // DOM/入力/HUD同期は継続するため、以後のUI検査には影響しない。
   await sleep(100);
+  await throwIfVisibleFatalOverlay('Headless GPU fatal while restoring layout viewport');
 }
 
 async function checkOverlayGeometry(selector, label) {
@@ -408,6 +426,7 @@ async function checkHelpModal() {
     `getComputedStyle(document.getElementById('hud-help')).display !== 'none'`,
     layoutOnly ? 'the HLP badge to open the help panel' : '[H] to open the help panel',
   );
+  await throwIfVisibleFatalOverlay('Headless GPU fatal while checking Help modal');
   const state = await devTools.evaluate(`(() => {
     const shield = document.getElementById('hud-overlay-shield');
     const canvas = document.querySelector('canvas');
@@ -533,6 +552,18 @@ async function placeShipThroughMenu() {
       'the base preset to become selected',
     );
   }
+  const placedName = creativePreset === 'base' ? 'SMOKE BASE' : 'SMOKE SHIP';
+  const formState = await devTools.evaluate(`(() => {
+    const panel = document.getElementById('hud-object-placer');
+    const input = panel.querySelector('input[placeholder="空欄で自動命名"]');
+    if (!(input instanceof HTMLInputElement)) return { error: 'name input missing', issue: '' };
+    input.value = ${JSON.stringify(placedName)};
+    const issue = panel.querySelector('.issue-list:not(.hidden)')?.textContent?.trim() ?? '';
+    return { error: '', issue };
+  })()`);
+  if (formState.error) throw new Error(`Creative placement form failed: ${formState.error}`);
+  if (formState.issue) throw new Error(`Creative placement form is invalid before confirm: ${formState.issue}`);
+
   const confirmed = await devTools.evaluate(`(() => {
     const panel = document.getElementById('hud-object-placer');
     const button = [...panel.querySelectorAll('.w-btn')].find((b) => b.textContent?.startsWith('配置'));
@@ -545,6 +576,7 @@ async function placeShipThroughMenu() {
     `getComputedStyle(document.getElementById('hud-object-placer')).display === 'none'`,
     'the placement panel to close after confirming',
   );
+  return placedName;
 }
 
 async function selectConstructionModuleAndPlace(label, expectedCount) {
@@ -645,6 +677,8 @@ async function constructMaterialFromBaseDock() {
     'construction mode to enter the combat view',
   );
   await checkConstructionLayout();
+  // layout CIの責務は建造workspaceの幾何まで。詳細な建造操作smokeは通常GPU経路で別途維持する。
+  if (layoutOnly) return;
 
   await devTools.evaluate(`(() => {
     window.__smokeConfirmMessages = [];
@@ -712,7 +746,10 @@ try {
   });
   devTools = session.devTools;
   if (emulateTouch) await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-  await devTools.send('Page.navigate', { url: `${session.baseUrl}/${query}` });
+  const pageQuery = layoutOnly
+    ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
+    : query;
+  await devTools.send('Page.navigate', { url: `${session.baseUrl}/${pageQuery}` });
   await bootAndCheckReady();
   if (emulateTouch) await revealTouchPad();
 
@@ -760,42 +797,68 @@ try {
       };
     })()`);
     expectAll('Creative mode did not remain in its zero-ship map state', chromeState);
-    await checkMapLayout();
-    await placeShipThroughMenu();
-
-    // 戦闘ビューへ入れるのは操作できる艦がある時だけなので、[M] が通ること自体が配置の成立を示す。
-    // レールの折りたたみはビューの持ち物ではないため、往復しても保たれる。
-    await devTools.evaluate(`document.querySelector('.hud-map-root.active .rail-toggle').click()`);
-    const collapsedLeft = await devTools.evaluate(`document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed')`);
-    if (!collapsedLeft) throw new Error('Could not collapse the left rail before the map round trip.');
-    await pressKey('m', 'KeyM', 77);
-    await waitFor(
-      `Boolean(document.querySelector('.hud-combat-root.active'))`,
-      '[M] to leave the map (a placed ship must be operable for combat view to be enterable)',
-    );
-    const combat = await devTools.evaluate(`(() => {
-      ${LAYOUT_HELPERS}
-      return {
-      railTogglesHidden: [...document.querySelectorAll('.hud-map-root .rail-toggle')].every((el) => !visible(el)),
-      };
-    })()`);
-    expectAll('Combat view still shows the map rail toggles', combat);
-    await pressKey('m', 'KeyM', 77);
-    await waitFor(`Boolean(document.querySelector('.hud-map-root.active'))`, '[M] to return to the map');
-    const backToMap = await devTools.evaluate(`({
-      mapView: Boolean(document.querySelector('.hud-map-root.active')),
-      collapseKept: document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed'),
-      toggleGlyphs: JSON.stringify([...document.querySelectorAll('.hud-map-root.active .rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
-    })`);
-    expectAll('Rail collapse state did not survive the map round trip', backToMap);
-    await devTools.evaluate(`(() => {
-      for (const side of ['left', 'right']) {
-        const rail = document.querySelector('.hud-map-root.active .hud-rail-' + side);
-        if (!rail?.classList.contains('collapsed')) {
-          document.querySelector('.hud-map-root.active .rail-toggle-' + side)?.click();
-        }
+    if (layoutOnly) {
+      if (smokeConstruction) {
+        // Layout CIはconstruction workspaceそのものの幾何だけを検査する。
+        // 基地配置→物体一覧→プロパティ→ドックというゲームプレイsmokeは通常経路に残す。
+        await devTools.evaluate(`(() => {
+          const hud = document.getElementById('hud');
+          const mapRoot = document.querySelector('.hud-map-root');
+          const combatRoot = document.querySelector('.hud-combat-root');
+          const workspace = document.getElementById('ship-construction-panel');
+          if (!hud || !mapRoot || !combatRoot || !workspace) throw new Error('construction layout fixture is incomplete');
+          hud.classList.add('construction-mode');
+          hud.dataset.workspace = 'construction';
+          document.body.classList.add('hud-construction-mode');
+          mapRoot.classList.remove('active');
+          combatRoot.classList.add('active');
+          workspace.classList.remove('hidden');
+        })()`);
+        await checkConstructionLayout();
+      } else {
+        await checkMapLayout();
       }
-    })()`);
+    } else {
+      await checkMapLayout();
+      const placedName = await placeShipThroughMenu();
+
+    // 基地プリセットは操作可能艦ではないため、Construction専用jobではcombat往復を行わない。
+    // 通常のcreative smokeでは従来どおり、M往復とレール状態保持を検査する。
+    if (!(layoutOnly && smokeConstruction)) {
+      // 戦闘ビューへ入れるのは操作できる艦がある時だけなので、[M] が通ること自体が配置の成立を示す。
+      // レールの折りたたみはビューの持ち物ではないため、往復しても保たれる。
+      await devTools.evaluate(`document.querySelector('.hud-map-root.active .rail-toggle').click()`);
+      const collapsedLeft = await devTools.evaluate(`document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed')`);
+      if (!collapsedLeft) throw new Error('Could not collapse the left rail before the map round trip.');
+      await pressKey('m', 'KeyM', 77);
+      await waitFor(
+        `Boolean(document.querySelector('.hud-combat-root.active'))`,
+        '[M] to leave the map (a placed ship must be operable for combat view to be enterable)',
+      );
+      const combat = await devTools.evaluate(`(() => {
+        ${LAYOUT_HELPERS}
+        return {
+        railTogglesHidden: [...document.querySelectorAll('.hud-map-root .rail-toggle')].every((el) => !visible(el)),
+        };
+      })()`);
+      expectAll('Combat view still shows the map rail toggles', combat);
+      await pressKey('m', 'KeyM', 77);
+      await waitFor(`Boolean(document.querySelector('.hud-map-root.active'))`, '[M] to return to the map');
+      const backToMap = await devTools.evaluate(`({
+        mapView: Boolean(document.querySelector('.hud-map-root.active')),
+        collapseKept: document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed'),
+        toggleGlyphs: JSON.stringify([...document.querySelectorAll('.hud-map-root.active .rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
+      })`);
+      expectAll('Rail collapse state did not survive the map round trip', backToMap);
+      await devTools.evaluate(`(() => {
+        for (const side of ['left', 'right']) {
+          const rail = document.querySelector('.hud-map-root.active .hud-rail-' + side);
+          if (!rail?.classList.contains('collapsed')) {
+            document.querySelector('.hud-map-root.active .rail-toggle-' + side)?.click();
+          }
+        }
+      })()`);
+    }
 
     // 配置した自艦の一覧行を右クリックするとプロパティウィンドウが開き、画面を狭めても
     // 視界内に留まる。カメラ姿勢次第で天体マーカーがレールの下へ入ることには依存しない。
@@ -805,28 +868,42 @@ try {
         document.querySelector('.hud-map-root.active .rail-toggle-right')?.click();
       }
     })()`);
-    await waitFor(
-      `Boolean(document.querySelector(
+    let placedRowReady = false;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      placedRowReady = await devTools.evaluate(`[...document.querySelectorAll(
         '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
-      ))`,
-      'the placed ship or base to populate the physical object list',
-    );
+      )].some((row) => row.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)})`);
+      if (placedRowReady) break;
+      await sleep(100);
+    }
+    if (!placedRowReady) {
+      const diagnostic = await devTools.evaluate(`(() => ({
+        hint: document.getElementById('hud-hint')?.textContent ?? '',
+        tracked: document.querySelector('.physical-object-list-tracked')?.textContent ?? '',
+        playerRows: [...document.querySelectorAll('#hud-physical-object-list-section-player .physical-object-list-name')]
+          .map((el) => el.textContent),
+        baseRows: [...document.querySelectorAll('#hud-physical-object-list-section-base .physical-object-list-name')]
+          .map((el) => el.textContent),
+      }))()`);
+      throw new Error(`Placed object ${placedName} did not populate the physical object list: ${JSON.stringify(diagnostic)}`);
+    }
     const shipRowState = await devTools.evaluate(`(() => {
-      const row = document.querySelector(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
-      );
+      const row = [...document.querySelectorAll(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
+      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
       if (!row || getComputedStyle(row).display === 'none') return { row: null };
       const r = row.getBoundingClientRect();
       return { row: { x: r.left + r.width / 2, y: r.top + r.height / 2, label: row.getAttribute('aria-label') } };
     })()`);
     const shipRow = shipRowState.row;
     if (!shipRow) {
-      throw new Error('The placed ship or base row was hidden in the physical object list.');
+      throw new Error(`The placed object ${placedName} row was hidden in the physical object list.`);
     }
     await devTools.evaluate(`(() => {
-      const row = document.querySelector(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
-      );
+      const row = [...document.querySelectorAll(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
+      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
+      if (!row) throw new Error('placed object row disappeared before context menu');
       const r = row.getBoundingClientRect();
       row.dispatchEvent(new MouseEvent('contextmenu', {
         bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
@@ -836,17 +913,19 @@ try {
       `[...document.querySelectorAll('.property-window')].some((el) => getComputedStyle(el).display !== 'none')`,
       `right-clicking ship row ${shipRow.label} to open a property window`,
     );
-    await devTools.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 568, deviceScaleFactor: 1, mobile: true });
-    await sleep(150);
-    const clamped = await devTools.evaluate(`(() => {
-      ${LAYOUT_HELPERS}
-      const win = [...document.querySelectorAll('.property-window')].find(visible);
-      if (!win) return { open: false };
-      return { open: true, inside: insideViewport(rect(win)) };
-    })()`);
-    expectAll('Property window did not remain clamped after resize', clamped);
-    await clearViewport();
-    if (smokeConstruction) await constructMaterialFromBaseDock();
+    if (!(layoutOnly && smokeConstruction)) {
+      await applyViewport({ width: 320, height: 568 });
+      const clamped = await devTools.evaluate(`(() => {
+        ${LAYOUT_HELPERS}
+        const win = [...document.querySelectorAll('.property-window')].find(visible);
+        if (!win) return { open: false };
+        return { open: true, inside: insideViewport(rect(win)) };
+      })()`);
+      expectAll('Property window did not remain clamped after resize', clamped);
+      await clearViewport();
+    }
+      if (smokeConstruction) await constructMaterialFromBaseDock();
+    }
   }
 
   if (expectCreative && process.env.SMOKE_CREATIVE_PLACE === '2') {
