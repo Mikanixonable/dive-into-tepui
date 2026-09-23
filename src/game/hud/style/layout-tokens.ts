@@ -10,10 +10,21 @@ export const LAYOUT_TOKENS_STYLE = `
   --rail-w-right: min(300px, 33vw);
   --combat-panel-max-h: none;
   --rail-panel-max-h: none;
-  /* レールと画面固定スケールの上下位置。ブレークポイントごとの再配置をここへ集約する。 */
-  --hud-rail-top: 78px;
+  /* 上部クロームは実寸を JS で同期する。初期描画前だけこの値をフォールバックとして使う。 */
+  --hud-chrome-h: 78px;
+  /* 中央HUDは rail-w を直接読まず、この実占有量だけを参照する。JSが描画後に実寸へ上書きする。 */
+  --hud-left-rail-occupied: calc(12px + var(--rail-w-left));
+  --hud-right-rail-occupied: calc(12px + var(--rail-w-right));
   --hud-rail-bottom: 12px;
   --hud-map-scale-bottom: 12px;
+  /* overlay の高さを役割別の3段階に揃える。 */
+  --overlay-max-h-s: min(56dvh, 520px);
+  --overlay-max-h-m: min(72dvh, 720px);
+  --overlay-max-h-l: min(88dvh, 900px);
+  /* Editorial UI の字間。局所的な .06/.11/.16em の増殖を避ける。 */
+  --tracking-label: .08em;
+  --tracking-code: .14em;
+  --tracking-title: -.025em;
   /* 画面右上の収納トグルと固定バッジを隣接させるための配置寸法。 */
   --hud-rail-toggle-size: 30px;
   /* 常設パネル1行の最小高さ(タブ・行系の見出しに共通)。 */
@@ -25,8 +36,10 @@ export const LAYOUT_TOKENS_STYLE = `
   :root {
     --rail-w-left: min(220px, calc(46vw - 8px));
     --rail-w-right: min(260px, calc(54vw - 8px));
-    --combat-panel-max-h: 116px;
-    --hud-rail-top: 40px;
+    --combat-panel-max-h: none;
+    --hud-chrome-h: 58px;
+    --hud-left-rail-occupied: calc(8px + var(--rail-w-left));
+    --hud-right-rail-occupied: calc(8px + var(--rail-w-right));
     --hud-rail-bottom: 8px;
     --hud-map-scale-bottom: 8px;
   }
@@ -35,14 +48,12 @@ export const LAYOUT_TOKENS_STYLE = `
   :root {
     --rail-w-left: calc(44vw - 8px);
     --rail-w-right: calc(56vw - 8px);
-    --hud-map-rail-bottom: calc(28vh + 16px);
-    --hud-map-rail-bottom: calc(28dvh + 16px);
   }
 }
 @media ${MQ_COARSE} {
   :root {
-    --combat-panel-max-h: min(140px, 22dvh);
-    --rail-panel-max-h: min(140px, 22dvh);
+    --combat-panel-max-h: none;
+    --rail-panel-max-h: none;
     --hud-rail-bottom: 62px;
     --hud-map-scale-bottom: 62px;
   }
@@ -52,8 +63,8 @@ export const LAYOUT_TOKENS_STYLE = `
 }
 @media ${MQ_SHORT} {
   :root {
-    --combat-panel-max-h: 82px;
-    --rail-panel-max-h: 82px;
+    --combat-panel-max-h: none;
+    --rail-panel-max-h: none;
     --hud-map-scale-bottom: 52px;
   }
 }

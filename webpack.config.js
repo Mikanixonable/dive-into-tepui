@@ -61,6 +61,13 @@ module.exports = {
         type: 'asset/source',
       },
       {
+        // 船モジュールの焼き込み JSON は 20MB 超なので main JS へ埋め込まず、起動時に fetch する。
+        test: /shipModules\.json$/,
+        include: path.resolve(__dirname, 'src/assets/models'),
+        type: 'asset/resource',
+        generator: { filename: 'assets/[hash][ext]' },
+      },
+      {
         // タンパク質の主鎖・構造・モーション JSON はバンドルへインライン化せず、
         // 別ファイルとして書き出して import 元へは URL 文字列を渡す(起動時ダウンロード量を
         // 抑えるため)。semantic など他の JSON は既定どおりバンドルへ含める。

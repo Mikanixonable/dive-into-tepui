@@ -46,7 +46,10 @@ export class TopBar {
   // view が null(ランが無い)なら、掴んでいる口を落として何も書かない。
   public sync(view: TopBarViewModel | null, nowMs: number): void {
     this.view = view;
-    if (!view) return;
+    if (!view) {
+      this.els.get('node-warp-remain')?.closest('#hud-topbar')?.classList.remove('node-warp-active');
+      return;
+    }
     const { simTime } = view;
     setElementText(
       this.els, 'met', `${fmtDateTime(view.epochUnixSec + simTime)} / T+ ${fmtElapsedUnits(simTime)}`,
@@ -68,8 +71,10 @@ export class TopBar {
     const nodeWarpEl = this.els.get('node-warp-remain');
     if (nodeWarpEl) {
       const remain = view.autoWarpSimRemainSec;
-      nodeWarpEl.textContent = remain === null ? '—' : fmtTime(remain);
+      nodeWarpEl.textContent = remain === null ? '' : fmtTime(remain);
       nodeWarpEl.classList.toggle('sim-speed-hot', remain !== null);
+      nodeWarpEl.closest('.gs-metric')?.classList.toggle('hidden', remain === null);
+      nodeWarpEl.closest('#hud-topbar')?.classList.toggle('node-warp-active', remain !== null);
     }
   }
 }

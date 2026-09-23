@@ -26,19 +26,28 @@ export class PropertyWindowItems<A extends string = string> {
     if (key === this.lastItemsKey) return;
     this.lastItemsKey = key;
     this.element.innerHTML = '';
+    let index = 1;
     for (const it of items) {
       const row = document.createElement('div');
-      row.className = 'prop-window-item ui-selectable';
+      row.className = 'prop-window-item ui-selectable editorial-index-row';
+      row.dataset['index'] = String(index++).padStart(2, '0');
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       row.classList.toggle('on', it.selected === true);
+      row.classList.toggle('is-active', it.selected === true);
       row.classList.toggle('disabled', it.disabled === true);
       row.setAttribute('aria-disabled', String(it.disabled === true));
       const label = document.createElement('span');
-      label.className = 'w-hit';
-      label.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
+      label.className = 'w-hit prop-window-item-label';
+      label.textContent = it.label;
       expandHitTarget(label);
       row.appendChild(label);
+      if (it.shortcut) {
+        const shortcut = document.createElement('span');
+        shortcut.className = 'prop-window-item-shortcut editorial-index-status';
+        shortcut.textContent = shortcutKeyLabel(it.shortcut);
+        row.appendChild(shortcut);
+      }
       row.dataset['act'] = it.act;
       row.dataset['shortcut'] = it.shortcut ?? '';
       row.dataset['keepOpen'] = it.keepOpen === true ? '1' : '';

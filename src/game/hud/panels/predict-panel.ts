@@ -272,6 +272,9 @@ export class PredictPanel {
   public onJumpToTime: ((sec: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
+  private readonly timelineElapsed: HTMLElement;
+  private readonly timelineAbsolute: HTMLElement;
+  private readonly timelinePrediction: HTMLElement;
   private readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
   private readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
   private readonly tickLabelModeSwitch: ToggleSwitch;
@@ -284,6 +287,7 @@ export class PredictPanel {
   private readonly ticks: HTMLElement;
   private readonly wrap: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
+  private readonly occupancyObserver: ResizeObserver | null;
 
   private sliderSteps = 1000;
   private currentDuration = APERIODIC_ARC_DURATION;
@@ -293,22 +297,45 @@ export class PredictPanel {
   public constructor(root: HTMLElement, collapse: PanelCollapse) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-predict';
-    this.panel.className = 'panel';
+    this.panel.className = 'panel editorial-instrument';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-    const title = document.createElement('h3');
-    title.textContent = '軌道予測';
-    this.panel.appendChild(title);
 
-    const durationRows = this.buildDurationRows();
+    const head = document.createElement('div');
+    head.className = 'editorial-panel-head predict-head';
+    head.innerHTML = '<span class="ui-section-code" aria-hidden="true">TML</span><h3 class="editorial-panel-title">ORBIT TIMELINE</h3>';
+    this.panel.appendChild(head);
+
+    const state = document.createElement('section');
+    state.className = 'predict-state editorial-state';
+    state.innerHTML = `
+      <div class="editorial-state-hero">
+        <span class="ui-data-label">DISPLAY TIME</span>
+        <strong data-predict-state="elapsed">T+00:00</strong>
+        <span class="ui-annotation" data-predict-state="absolute">—</span>
+      </div>
+      <div class="predict-state-progress">
+        <span class="ui-data-label">PREDICTED</span>
+        <span class="ui-data-secondary" data-predict-state="prediction">—</span>
+      </div>`;
+    this.panel.appendChild(state);
+    this.timelineElapsed = state.querySelector<HTMLElement>('[data-predict-state="elapsed"]')!;
+    this.timelineAbsolute = state.querySelector<HTMLElement>('[data-predict-state="absolute"]')!;
+    this.timelinePrediction = state.querySelector<HTMLElement>('[data-predict-state="prediction"]')!;
+
+    const controls = document.createElement('div');
+    controls.className = 'predict-controls editorial-control-zone';
+    this.panel.appendChild(controls);
+
+    const durationRows = this.buildDurationRows(controls);
     this.durationRow = durationRows.durationRow;
     this.pastDurationRow = durationRows.pastDurationRow;
 
-    const modeSwitches = this.buildModeRow();
+    const modeSwitches = this.buildModeRow(controls);
     this.tickLabelModeSwitch = modeSwitches.tickLabelModeSwitch;
     this.showTicksSwitch = modeSwitches.showTicksSwitch;
     this.showElementTimesSwitch = modeSwitches.showElementTimesSwitch;
 
-    const scrubberRow = this.buildScrubberRow();
+    const scrubberRow = this.buildScrubberRow(controls);
     this.slider = scrubberRow.slider;
     this.absoluteLabel = scrubberRow.absoluteLabel;
     this.elapsedLabel = scrubberRow.elapsedLabel;
@@ -317,7 +344,7 @@ export class PredictPanel {
     // 目盛り。スクラバーの直下に置く。
     this.ticks = document.createElement('div');
     this.ticks.className = 'slider-ticks';
-    this.panel.appendChild(this.ticks);
+    controls.appendChild(this.ticks);
 
     // トグルとバー本体を1つの縦積み flex にまとめ、バーを畳んでもトグルだけがその場に残るようにする。
     this.wrap = document.createElement('div');
@@ -332,10 +359,30 @@ export class PredictPanel {
       storageId: 'hud-predict',
     });
     root.appendChild(this.wrap);
+
+    // compactではPREDICTを下部sheetとして扱うため、wrapの上端から画面下端までの実占有量を
+    // map rootへ公開する。高さだけでなくbottom offsetも含め、touch UIの下端予約にも追従する。
+    const syncOccupancy = (): void => {
+      const rootRect = root.getBoundingClientRect();
+      const wrapRect = this.wrap.getBoundingClientRect();
+      root.style.setProperty(
+        '--hud-predict-bottom-occupied',
+        `${Math.max(0, Math.ceil(rootRect.bottom - wrapRect.top))}px`,
+      );
+    };
+    syncOccupancy();
+    requestAnimationFrame(syncOccupancy);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.occupancyObserver = new ResizeObserver(syncOccupancy);
+      this.occupancyObserver.observe(root);
+      this.occupancyObserver.observe(this.wrap);
+    } else {
+      this.occupancyObserver = null;
+    }
   }
 
   // 未来と過去、それぞれの期間ピル行を組む。過去は「なし」も選べる。
-  private buildDurationRows(): {
+  private buildDurationRows(container: HTMLElement): {
     readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
     readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
   } {
@@ -345,7 +392,7 @@ export class PredictPanel {
       (key) => this.onDurationSelect?.(key),
       (sec) => this.onCustomDurationConfirm?.(sec),
     );
-    this.panel.appendChild(durationRow.element);
+    container.appendChild(durationRow.element);
     // 過去の期間。
     const pastDurationRow = new DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>(
       '過去', FIXED_PAST_DURATIONS,
@@ -353,13 +400,13 @@ export class PredictPanel {
       (sec) => this.onPastCustomDurationConfirm?.(sec),
     );
     pastDurationRow.element.classList.add('predict-past');
-    this.panel.appendChild(pastDurationRow.element);
+    container.appendChild(pastDurationRow.element);
     return { durationRow, pastDurationRow };
   }
 
   // 目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)、目盛り行そのものの表示有無、
   // 軌道要素の時刻の表示有無を選ぶ行。
-  private buildModeRow(): {
+  private buildModeRow(container: HTMLElement): {
     readonly tickLabelModeSwitch: ToggleSwitch;
     readonly showTicksSwitch: ToggleSwitch;
     readonly showElementTimesSwitch: ToggleSwitch;
@@ -381,12 +428,12 @@ export class PredictPanel {
       (on) => this.onShowElementTimesChange?.(on),
     );
     modeRow.appendChild(showElementTimesSwitch.element);
-    this.panel.appendChild(modeRow);
+    container.appendChild(modeRow);
     return { tickLabelModeSwitch, showTicksSwitch, showElementTimesSwitch };
   }
 
   // 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)の行。
-  private buildScrubberRow(): {
+  private buildScrubberRow(container: HTMLElement): {
     readonly slider: Slider;
     readonly absoluteLabel: HTMLElement;
     readonly elapsedLabel: HTMLElement;
@@ -395,7 +442,7 @@ export class PredictPanel {
     const row2 = document.createElement('div');
     row2.className = 'predict-row2';
     const resetBtn = new Button('⏮', () => this.onResetToNow?.());
-    resetBtn.element.classList.add('predict-reset');
+    resetBtn.element.classList.add('predict-reset', 'w-btn--icon');
     resetBtn.element.title = '現在に戻す';
     resetBtn.element.setAttribute('aria-label', '現在に戻す');
     row2.appendChild(resetBtn.element);
@@ -430,7 +477,7 @@ export class PredictPanel {
     const jumpToggle = new ToggleValueEdit(elapsedLabel, jumpEditEl, 'hour', (sec) => this.onJumpToTime?.(sec));
     jumpEditEl.appendChild(jumpToggle.inputEl);
     row2.appendChild(jumpEditEl);
-    this.panel.appendChild(row2);
+    container.appendChild(row2);
 
     return { slider, absoluteLabel, elapsedLabel, jumpToggle };
   }
@@ -449,6 +496,10 @@ export class PredictPanel {
     this.renderSlider(state.sliderSteps, state.sliderT, state.predictionRatio);
     this.renderAbsoluteLabel(state.epochUnixSec + state.displayTime);
     if (!this.jumpToggle.editing) this.renderElapsedLabel(state.sliderT * state.duration);
+    const elapsed = state.sliderT * state.duration;
+    this.timelineElapsed.textContent = `T+${fmtDuration(elapsed, elapsed)}`;
+    this.timelineAbsolute.textContent = fmtDateTime(state.epochUnixSec + state.displayTime);
+    this.timelinePrediction.textContent = `${Math.round(state.predictionRatio * 100)}%`;
     this.ticks.classList.toggle('hidden', !state.showTicks);
     this.renderTicks(state.ticks);
   }
@@ -461,6 +512,8 @@ export class PredictPanel {
   // パネルの DOM を取り除き、折りたたみ状態変化の購読を解除する。
   public dispose(): void {
     this.unsubscribeCollapsedView();
+    this.occupancyObserver?.disconnect();
+    this.wrap.parentElement?.style.removeProperty('--hud-predict-bottom-occupied');
     this.wrap.remove();
   }
 

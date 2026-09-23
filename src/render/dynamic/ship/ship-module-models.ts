@@ -1,15 +1,48 @@
 // shipModules.json の template から module 境界ごとの表示インスタンスを作る。
-// geometry は template と共有し、可変 material は個体ごとに所有する。
-import type * as THREE from 'three/webgpu';
-import shipModulesData from '../../../assets/models/shipModules.json';
-import { memoTemplate } from '../baked-model';
+// production では巨大な JSON を asset/resource として別ファイルへ出し、起動時に一度だけ取得する。
+// tsc/node テストでは JSON import が実体の object のままなので、fetch を経ず同じ同期 factory を使える。
+import * as THREE from 'three/webgpu';
+import shipModulesSource from '../../../assets/models/shipModules.json';
 import { makeThermallyEmissive } from '../../thermal-emissive';
 import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
 
-const parsedShipModules = memoTemplate<THREE.Group>(shipModulesData);
+const loader = new THREE.ObjectLoader();
+let sourceData: unknown | null = typeof shipModulesSource === 'string' ? null : shipModulesSource;
+let parsedShipModules: THREE.Group | null = null;
+let loadPromise: Promise<void> | null = null;
+
+function parseSource(): THREE.Group {
+  if (parsedShipModules !== null) return parsedShipModules;
+  if (sourceData === null) {
+    throw new Error('ship module models are not loaded; call loadShipModuleModels() during startup');
+  }
+  parsedShipModules = loader.parse(sourceData) as THREE.Group;
+  sourceData = null;
+  return parsedShipModules;
+}
+
+// production の外部 asset を先読みする。複数の起動経路から呼ばれても fetch/parse は一度だけ。
+export function loadShipModuleModels(): Promise<void> {
+  if (parsedShipModules !== null || sourceData !== null) return Promise.resolve();
+  if (loadPromise !== null) return loadPromise;
+  if (typeof shipModulesSource !== 'string') {
+    sourceData = shipModulesSource;
+    return Promise.resolve();
+  }
+  loadPromise = fetch(shipModulesSource)
+    .then((response) => {
+      if (!response.ok) throw new Error(`ship module asset fetch failed: ${response.status} ${response.statusText}`);
+      return response.json() as Promise<unknown>;
+    })
+    .then((data) => {
+      sourceData = data;
+      parseSource();
+    });
+  return loadPromise;
+}
 
 function templateFor(modelId: string): THREE.Object3D {
-  const template = parsedShipModules().children.find(
+  const template = parseSource().children.find(
     child => child.userData.moduleModelId === modelId,
   );
   if (template === undefined) throw new Error(`unknown ship module model: ${modelId}`);

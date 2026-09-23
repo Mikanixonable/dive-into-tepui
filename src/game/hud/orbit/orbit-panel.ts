@@ -81,6 +81,7 @@ export class OrbitPanel {
     const apSpec = getApsisLabelSpec('ap', view.centerId);
     const peSpec = getApsisLabelSpec('pe', view.centerId);
     setElementText(this.els, 'center', view.centerName);
+    setElementText(this.els, 'orbit-context', `REFERENCE · ${referenceLabel(view.selectedMode)}`);
     setElementText(this.els, 'alt', fmtDist(view.altitudeM));
     this.els.get('alt')?.classList.toggle('warn-hot', view.descendWarned);
     setElementText(this.els, 'spd', fmtSpeed(view.speedMps));
@@ -90,22 +91,50 @@ export class OrbitPanel {
     setElementText(this.els, 'pe', fmtDist(view.peAltitudeM));
     setElementText(this.els, 'inc', isFinite(view.inclinationDeg) ? `${view.inclinationDeg.toFixed(2)}°` : '---');
     setElementText(this.els, 'prd', fmtTime(view.periodSec));
-    // 動圧・機体温度は閾値超過で警告表示にする。動圧は大気を受ける操作対象だけが持つ。
-    const qEl = this.els.get('qdyn');
+    // 動圧は大気を受ける機体だけ行自体を出す。値だけの赤字ではなく、閾値接近をバーでも示す。
     const qdyn = view.dynamicPressurePa;
-    if (qEl) {
-      if (qdyn !== null) {
+    const qEl = this.els.get('qdyn');
+    const qRow = this.els.get('orbit-qdyn-row');
+    const qFill = this.els.get('qdyn-meter-fill');
+    qRow?.classList.toggle('hidden', qdyn === null);
+    if (qdyn !== null) {
+      const qDanger = qdyn > 0.5 * MAX_DYN_PRESSURE;
+      if (qEl) {
         qEl.textContent = qdyn >= 10 ? `${(qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
-        qEl.classList.toggle('warn-hot', qdyn > 0.5 * MAX_DYN_PRESSURE);
-      } else {
-        qEl.textContent = '---';
-        qEl.classList.remove('warn-hot');
+        qEl.classList.toggle('warn-hot', qDanger);
       }
+      qRow?.classList.toggle('warn-hot', qDanger);
+      syncEnvironmentMeter(qFill ?? null, qdyn / MAX_DYN_PRESSURE, qDanger);
+    } else {
+      qEl?.classList.remove('warn-hot');
+      qRow?.classList.remove('warn-hot');
+      syncEnvironmentMeter(qFill ?? null, 0, false);
     }
+
+    const tDanger = view.temperatureK > 0.7 * MAX_HULL_TEMP;
     const tEl = this.els.get('temp');
     if (tEl) {
       tEl.textContent = `${view.temperatureK.toFixed(0)} K`;
-      tEl.classList.toggle('warn-hot', view.temperatureK > 0.7 * MAX_HULL_TEMP);
+      tEl.classList.toggle('warn-hot', tDanger);
     }
+    this.els.get('temp-row')?.classList.toggle('warn-hot', tDanger);
+    syncEnvironmentMeter(this.els.get('temp-meter-fill') ?? null, view.temperatureK / MAX_HULL_TEMP, tDanger);
   }
+}
+
+// 基準モードの内部値を、context line で短く読める表示名へ変換する。
+function referenceLabel(mode: OrbitReferenceMode): string {
+  return REFERENCE_ITEMS.find(([id]) => id === mode)?.[1] ?? mode;
+}
+
+// 環境バーは最大値基準で 0..1 に収め、危険域は既存 widget と同じ danger class を使う。
+function syncEnvironmentMeter(fill: HTMLElement | null, ratio: number, danger: boolean): void {
+  if (fill === null) return;
+  const clamped = Math.max(0, Math.min(1, ratio));
+  fill.style.width = `${clamped * 100}%`;
+  fill.classList.toggle('danger', danger);
+  const track = fill.parentElement;
+  track?.setAttribute('aria-valuemin', '0');
+  track?.setAttribute('aria-valuemax', '100');
+  track?.setAttribute('aria-valuenow', String(Math.round(clamped * 100)));
 }

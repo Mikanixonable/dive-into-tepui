@@ -1,0 +1,44 @@
+name: UI layout checks
+
+on:
+  pull_request:
+    paths:
+      - 'src/hud/**'
+      - 'src/game/hud/**'
+      - 'src/game/creative/object-placer-panel.ts'
+      - 'tools/browser-smoke.mjs'
+      - 'tools/chrome-session.mjs'
+      - 'tools/layout-smoke-retry.mjs'
+      - 'tools/verify-hud-layout.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ui-layout.yml'
+
+concurrency:
+  group: ui-layout-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  hud-layout:
+    runs-on: ubuntu-latest
+    env:
+      SMOKE_LAYOUT_ONLY: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run verify:ui-style
+      - run: npm run verify:hud-layout
+      - run: npm run typecheck
+      - run: npm run build
+
+      - name: HUD geometry suite
+        run: npm run smoke:layout-suite

@@ -178,10 +178,13 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
         childTransform = sideMountTransform(parentDefinition, childDefinition, sideSlot);
       }
     } else if (connection.kind === 'axial' && childTransform.position.z > 0) {
-      childTransform = {
-        position: v3(childTransform.position.x, childTransform.position.y, -childTransform.position.z),
-        rotation: childTransform.rotation,
-      };
+      const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
+      if (childDefinition?.kind !== 'weapon') {
+        childTransform = {
+          position: v3(childTransform.position.x, childTransform.position.y, -childTransform.position.z),
+          rotation: childTransform.rotation,
+        };
+      }
     }
     assembly.addModule(module, connection.parentId, childTransform, connection.kind, connection.id, sideSlot);
   }

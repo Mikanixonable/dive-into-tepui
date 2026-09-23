@@ -49,6 +49,7 @@ export class ApsisMarker extends OrbitPointMarker {
       key: 'alt',
       label: '高度',
       value: fmtDist(len(sub(pos, center.positionAt(simTime))) - center.def.radius),
+      presentation: 'major',
     }];
     return [...this.ownerRows(), ...altRows, ...this.passTimeRows(simTime)];
   }

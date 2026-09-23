@@ -1,14 +1,9 @@
-// トップバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
-// 画面全体の見せ方(写実/模式図)を切り替えるトグル・注視/操作/ターゲットの対象名。
+// トップバー1行目のコンテキスト表示: 現在のモード・ビュー切替と、注視/操作/ターゲットの対象名。
 import type { ViewMode } from '../view/view-mode';
 import type { ViewCommands } from '../viewer/view-commands';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from '../../hud/overlay-manager';
-import { Button, ToggleSwitch } from '../../hud/widgets';
-import type { RenderStyle } from '../../render/render-style';
-
-const GAME_TITLE = 'Dive into Tepui';
-const GAME_VERSION = `v${__APP_VERSION__}`;
+import { Button } from '../../hud/widgets';
 
 const VIEW_LABELS: Record<ViewMode, string> = { combat: 'Combat', map: 'Map' };
 
@@ -43,6 +38,12 @@ function appendField(container: HTMLElement, label: string): HTMLElement {
 function setFieldValue(el: HTMLElement, value: string | null): void {
   const text = value ?? NO_VALUE;
   if (el.textContent !== text) el.textContent = text;
+  const field = el.parentElement;
+  field?.classList.toggle('hidden', value === null);
+  const separator = field?.previousElementSibling;
+  if (separator instanceof HTMLElement && separator.classList.contains('vb-sep')) {
+    separator.classList.toggle('hidden', value === null);
+  }
 }
 
 // ビューバッジが1フレームに映す値。名前の欄は、対象が定まっていなければ null。
@@ -54,14 +55,12 @@ export interface ViewBadgeViewModel {
   readonly focusName: string | null;
   readonly controlName: string | null;
   readonly targetName: string | null;
-  readonly renderStyle: RenderStyle;
 }
 
 export class ViewBadge {
   private readonly el: HTMLElement;
   private readonly modeEl: HTMLElement;
   private readonly viewButton: Button;
-  private readonly styleToggle: ToggleSwitch;
   private readonly focusEl: HTMLElement;
   private readonly controlEl: HTMLElement;
   private readonly targetEl: HTMLElement;
@@ -70,24 +69,18 @@ export class ViewBadge {
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
   // 直近の sync が受けた値。遷移メニューはフレームの外で開くので、遷移先をここから引く。
   private view: ViewBadgeViewModel | null = null;
-  // 模式図トグルが操作されたときに、選ばれた見せ方で呼ばれる。
-  public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
-
-  // container(トップバー1行目の行)へバッジの中身を、遷移メニューを popupLayer へ組み立てて配線する。
-  // 遷移メニューの選択は commands へ返す。見せ方のトグルは sync で合わせる。
+  // container(トップバー1行目の行)へコンテキスト表示を、popupLayer へビュー遷移メニューを組み立てる。
+  // 遷移メニューの選択は commands へ返す。
   public constructor(
     container: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager,
     private readonly commands: Pick<ViewCommands, 'select'>,
   ) {
     this.menu = new ContextMenu<true, ViewMode>(popupLayer, overlayManager);
-    // タイトル・モード名・ビュー切替ボタンと、現在の対象の欄を横に並べる。
+    // モード名・ビュー切替ボタンと、現在値がある対象欄を横に並べる。
     container.setAttribute('role', 'navigation');
     container.setAttribute('aria-label', 'ビュー切り替え');
     container.addEventListener('pointerdown', this.stopPointerDown);
 
-    const title = document.createElement('span');
-    title.className = 'vb-title';
-    title.textContent = `${GAME_TITLE} ${GAME_VERSION}`;
     this.modeEl = document.createElement('span');
     this.modeEl.className = 'vb-mode';
     this.viewButton = new Button('', () => this.openMenu());
@@ -96,12 +89,7 @@ export class ViewBadge {
     this.viewButton.element.setAttribute('aria-label', '表示するビューを選ぶ');
     this.viewButton.element.setAttribute('aria-expanded', 'false');
 
-    this.styleToggle = new ToggleSwitch(
-      '模式図', (on) => this.onRenderStyleChange?.(on ? 'schematic' : 'realistic'),
-    );
-    this.styleToggle.element.classList.add('vb-style-toggle');
-
-    container.append(title, this.modeEl, this.viewButton.element, this.styleToggle.element);
+    container.append(this.modeEl, this.viewButton.element);
     this.focusEl = appendField(container, 'Focus');
     this.controlEl = appendField(container, 'Control');
     this.targetEl = appendField(container, 'Target');
@@ -118,12 +106,11 @@ export class ViewBadge {
     this.el.replaceChildren();
   }
 
-  // モード名・ビューボタン・見せ方のトグルと、注視対象・操作対象・ターゲットの名前を反映する。
+  // モード名・ビューボタンと、注視対象・操作対象・ターゲットの名前を反映する。
   public sync(view: ViewBadgeViewModel): void {
     this.view = view;
-    this.styleToggle.setOn(view.renderStyle === 'schematic');
-    this.modeEl.textContent = `Mode: ${titleCase(view.modeLabel)}`;
-    this.viewButton.setLabel(`View: ${VIEW_LABELS[view.view]} ▾`);
+    this.modeEl.textContent = titleCase(view.modeLabel).toUpperCase();
+    this.viewButton.setLabel(`${VIEW_LABELS[view.view].toUpperCase()} ▾`);
     setFieldValue(this.focusEl, view.focusName);
     setFieldValue(this.controlEl, view.controlName);
     setFieldValue(this.targetEl, view.targetName);

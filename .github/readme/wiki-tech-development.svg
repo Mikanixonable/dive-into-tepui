@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>開発・検証</title><defs><style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">開発・検証</text><text x="40" y="60" class="m d sm">変更を、文書・境界・テスト・実行確認で囲む</text>
+<g transform="translate(600 145)">
+ <circle r="46" fill="#101217" stroke="#ff3155" stroke-width="2"/><text x="-27" y="-4" class="m a xs">CHANGE</text><text x="-26" y="14" class="m t sm">branch / PR</text>
+ <path d="M-38-28L-143-65M0-46V-72M38-28L143-65M46 8L157 26M27 38L83 65M-27 38L-83 65M-46 8L-157 26" class="g"/>
+</g>
+<g class="m">
+ <circle cx="430" cy="75" r="28" fill="#15171c" stroke="#3478ff"/><text x="414" y="79" class="t xs">SPEC</text>
+ <circle cx="600" cy="45" r="28" fill="#15171c" stroke="#3478ff"/><text x="566" y="49" class="t xs">ARCHITECTURE</text>
+ <circle cx="770" cy="75" r="28" fill="#15171c" stroke="#3478ff"/><text x="750" y="79" class="t xs">RULES</text>
+ <circle cx="785" cy="175" r="28" fill="#15171c" stroke="#ff8798"/><text x="766" y="179" class="t xs">BUILD</text>
+ <circle cx="708" cy="222" r="28" fill="#15171c" stroke="#ff8798"/><text x="688" y="232" class="t xs">SMOKE</text>
+ <circle cx="492" cy="222" r="28" fill="#15171c" stroke="#ff8798"/><text x="478" y="232" class="t xs">LAB</text>
+ <circle cx="415" cy="175" r="28" fill="#15171c" stroke="#ff8798"/><text x="399" y="179" class="t xs">TEST</text>
+</g>
+<text x="40" y="236" class="m b xs">コード = 現在 · SPEC = 振る舞い · ARCHITECTURE = 所有と境界</text>
+</svg>

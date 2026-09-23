@@ -1,5 +1,19 @@
 # 残タスク統合・実装計画
 
+> **状態更新 — 2026-09-23 再監査:** 本文の「進捗チェックリスト」は 2026-09-20 時点の計画記録であり、現在の残件一覧としては使わない。後続の実装・計画で状態が変わった項目を以下に整理する。
+
+## 2026-09-23 再監査
+
+- **B: render → game の ship 表示契約** — 完了。PR #94 で不変な船体描画契約と adapter を導入し、ship view からゲーム状態型への直接依存を除去した。境界検査にも反映済み。
+- **C / Q: Cloud cell organization・temporal stability / LOD・shadow / scattering** — この文書からは継続しない。時間 LOD とベイク制限は後に撤去され、雲モデル全体の後続計画は `meteorological-cloud-model-plan-v2_2026-09-22.md` が引き継いでいる。
+- **N: 命名整理と P0/P1 の所有境界** — PR #92 で ShipAssembly、DynamicSystem、入力・表示 phase、Celestial query、CombatShip 等の主要整理を実施済み。残存する広域リファクタリングは、この文書の旧 N をそのまま実行しない。
+- **E: Earth surface** — PR #95 / #99 で色補正・配信・schema 契約・CI 検査が更新された。ただし、この文書が要求していた実ブラウザ capture を含む全完了条件を再検証していないため、完了とは断定しない。
+- **L: lint 方針** — この再監査では完了判定をしていない。
+- **V: Vessel production** — modular ship / dock / construction の MVP 以後は別計画で扱う。この文書を実装入口にしない。
+
+したがって、**この文書は統合計画の履歴として残し、現行の作業順序の正本にはしない。** 雲は第二版計画、船体建造は専用の残課題文書、アーキテクチャ境界は `DEVELOP/ARCHITECTURE.md` と現行コードを参照する。
+
+
 ## 目的と扱い
 
 `lint-violation-remediation-plan_2026-09-16.md` と

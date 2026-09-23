@@ -44,6 +44,13 @@ export function register(): void {
       color: 'https://example.test/earth/tiles/5/3/7.jpg',
       terrain: 'https://example.test/earth/tiles/5/3/7.bin.gz',
     });
+    assert.ok(source.urlFor(earthTileKey(8, 511, 255)) !== null);
+    const z7 = new EarthSurfaceTileSource(
+      'https://example.test/earth/tiles/{z}/{x}/{y}.jpg',
+      'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',
+      7,
+    );
+    assert.equal(z7.descriptorFor(earthTileKey(8, 0, 0)), null);
   });
 
   test('earth requests: fetchImplをreceiverなしで決定URLの色・地形へ使う', async () => {

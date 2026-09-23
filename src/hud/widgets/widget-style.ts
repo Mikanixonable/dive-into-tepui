@@ -34,10 +34,11 @@ export const WIDGET_STYLE = `
 .w-btn--secondary { background: var(--fill-1); color: var(--text-dim); }
 .w-btn--secondary:hover { background: var(--fill-2); color: var(--text); }
 .w-btn--dense { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
-.w-btn--icon {
-  width: var(--font-xl); height: var(--font-xl); padding: 0; display: inline-flex;
+.ui-icon-control, .w-btn--icon {
+  width: 24px; height: 24px; padding: 0; display: inline-flex;
   align-items: center; justify-content: center; border-radius: 50%; text-align: center;
 }
+.w-btn--icon { flex: 0 0 24px; }
 .w-btn.pressed { background: var(--fill-3); transform: translateY(1px); }
 .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
 .w-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
@@ -51,14 +52,14 @@ export const WIDGET_STYLE = `
 
 /* w-group: 見出し + 排他選択ボタン列(3択以上専用)。 */
 .w-group { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.w-group-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); min-width: 28px; }
+.w-group-title { font-size: var(--font-xs); letter-spacing: var(--tracking-label); color: var(--text-dim); min-width: 28px; }
 
 /* w-tabs: パネルの表示面を切り替えるタブ列。 */
 .w-tabs { display: flex; gap: var(--space-2); }
 
 /* w-toggle: 見出し + ON/OFF スイッチ。 */
 .w-toggle { display: flex; align-items: center; gap: var(--space-4); }
-.w-toggle-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); }
+.w-toggle-title { font-size: var(--font-xs); letter-spacing: var(--tracking-label); color: var(--text-dim); }
 .w-toggle-track {
   position: relative; display: inline-block; width: 34px; height: 18px;
   border-radius: var(--radius-pill); border: 0; background: var(--glass-control);
@@ -77,7 +78,7 @@ export const WIDGET_STYLE = `
 /* w-close: ✕ の閉じるボタン。 */
 .w-close {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; padding: 0; border-radius: 50%; font-size: var(--font-m);
+  width: 24px; height: 24px; padding: 0; border-radius: 50%; font-size: var(--font-m);
 }
 
 /* w-input: 数値/文字/検索入力。w-select: プルダウンのドロップダウン選択

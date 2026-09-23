@@ -3,8 +3,9 @@
 // 変わったときのはみ出し補正(reclamp)をいつ行うかを決める。表示専用で、プロパティの値を
 // 対応するコンポーネントが導出する。複数存続できる想定のため ContextMenu と異なり呼び出し
 // ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置くため、
-// `#hud, #hud *` の margin/padding リセットに勝てるよう全セレクタを `#hud` で始める。
+// HUD 内の他ウィンドウとスコープを分けるため、主要セレクタを `#hud` から始める。
 import { injectOnce } from '../inject-style';
+import { MQ_COMPACT } from '../breakpoints';
 import type { OverlayManager } from '../overlay-manager';
 import { DraggableWindow } from './draggable-window';
 import { PropertyWindowRows } from './property-window-rows';
@@ -20,65 +21,185 @@ const STYLE = `
   width: 100%; background: var(--glass-control); border: 0; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
-#hud .property-window { width: 560px; max-width: 560px; }
+#hud .dg-window.property-window {
+  width: min(560px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+}
+#hud .property-window .dg-window-header {
+  align-items: flex-start; padding-bottom: var(--space-4);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
+}
+#hud .property-window .dg-window-title::before { display: none; }
+#hud .prop-window-kind {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) var(--space-2);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+#hud .prop-window-kind-code {
+  color: var(--color-primary); font-weight: 700; letter-spacing: var(--tracking-code);
+}
+#hud .prop-window-kind-label { color: var(--text-dim); }
+#hud .property-window .dg-window-title-main {
+  color: var(--text-strong); font-size: var(--font-xl); font-weight: 650;
+  letter-spacing: var(--tracking-title);
+}
+#hud .property-window .dg-window-title-sub {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+}
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
-  display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);
+  display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  align-items: baseline; gap: var(--space-4); padding: var(--space-2) var(--space-5);
+  color: var(--text); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 9%, transparent);
 }
-#hud .prop-window-row-label { opacity: 0.7; }
-#hud .prop-window-row-value { text-align: right; }
+#hud .prop-window-row-label {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); text-transform: uppercase;
+}
+#hud .prop-window-row-value {
+  min-width: 0; overflow-wrap: anywhere; color: var(--text);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+#hud .prop-window-summary {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
+}
+#hud .prop-window-summary .prop-window-row {
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1); padding: 0; box-shadow: none;
+}
+#hud .prop-window-summary .prop-window-row-label {
+  order: 2; color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+}
+#hud .prop-window-summary .prop-window-row-value {
+  order: 1; text-align: left; color: var(--text-strong);
+  font-weight: 650; line-height: 1; letter-spacing: var(--tracking-title);
+}
+#hud .prop-window-summary .prop-window-row-hero {
+  grid-column: 1 / -1; padding-block: var(--space-1) var(--space-2);
+}
+#hud .prop-window-summary .prop-window-row-hero .prop-window-row-value {
+  font-size: var(--font-3xl);
+}
+#hud .prop-window-summary .prop-window-row-major .prop-window-row-value {
+  font-size: var(--font-xl);
+}
+#hud .prop-window-metrics {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-4); padding: var(--space-2) var(--space-5);
+}
+#hud .prop-window-metrics .prop-window-row {
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  padding-inline: 0;
+}
+#hud .prop-window-section,
+#hud .prop-window-details {
+  padding: 0 var(--space-5) var(--space-2);
+}
+#hud .prop-window-section .prop-window-row,
+#hud .prop-window-details .prop-window-row {
+  padding-inline: 0;
+}
 #hud .prop-window-row-toggle {
   padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
 }
 #hud .prop-window-row-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-row-group-toggle {
-  padding: var(--space-2) var(--space-5); color: var(--text); opacity: 0.6; cursor: pointer;
+  display: flex; align-items: center; gap: var(--space-2);
+  margin-top: var(--space-2); padding: var(--space-3) var(--space-5) var(--space-2);
+  color: var(--text-dim); opacity: 1; cursor: pointer;
+  font-size: var(--font-xxs); letter-spacing: .08em; text-transform: uppercase;
+}
+#hud .prop-window-row-group-toggle::after {
+  content: ''; flex: 1 1 auto; height: 1px;
+  background: color-mix(in srgb, var(--text-dim) 22%, transparent);
 }
 #hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-controls {
   padding: var(--space-4) var(--space-5);
-  background: var(--glass-inset);
+  background: transparent;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
 }
 /* .w-btn の padding は #hud 修飾を持たないため、#hud 側のリセットに詳細度で負ける。
    詰まったボタンにならないよう、#hud 修飾つきで既定の余白へ戻す。 */
 #hud .prop-window-controls .w-btn { padding: var(--space-4) var(--space-5); }
 #hud .prop-window-items {
-  padding: var(--space-2);
-  background: var(--glass-inset);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  background: transparent;
 }
+#hud .prop-window-items:not(:empty)::before {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin: var(--space-3) var(--space-2) var(--space-1);
+  color: var(--text-dim); content: 'ACTIONS';
+  font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+}
+#hud .prop-window-items:not(:empty)::after { content: ''; }
+#hud .prop-window-item {
+  grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  border-radius: 0; background: transparent;
+}
+#hud .prop-window-item:hover { background: var(--glass-control-hover); }
+#hud .prop-window-item.on { background: transparent; color: var(--color-primary); }
+#hud .prop-window-item.disabled { opacity: var(--toggle-off-opacity); cursor: not-allowed; }
 #hud .prop-window-related {
-  padding: var(--space-2);
-  background: var(--glass-inset);
+  padding: 0 var(--space-3) var(--space-2); background: transparent;
 }
 #hud .prop-window-related-title {
-  padding: var(--space-2) var(--space-5);
-  color: var(--text); opacity: 0.6; font-size: 0.9em;
-  cursor: pointer;
+  margin-inline: var(--space-2); padding: var(--space-2) 0;
+  color: var(--text-dim); opacity: 1; font-size: var(--font-xxs);
+  letter-spacing: var(--tracking-label); cursor: pointer; text-transform: uppercase;
 }
-#hud .prop-window-related-title:hover { opacity: 1; color: var(--color-primary-hover); }
-#hud .prop-window-related-list {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1);
-}
+#hud .prop-window-related-title::after { pointer-events: none; }
+#hud .prop-window-related-title:hover { color: var(--color-primary-hover); }
+#hud .prop-window-related-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; }
 #hud .prop-window-related-item {
-  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
-  border: 0; border-radius: var(--radius-control);
+  grid-template-columns: 2.4em minmax(0, 1fr);
+  padding: var(--space-2) var(--space-3); color: var(--body); cursor: pointer;
+  border: 0; border-radius: 0; background: transparent;
 }
-#hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
-  background: var(--glass-control-hover); color: var(--color-primary-hover);
-}
+#hud .prop-window-related-item:hover,
+#hud .prop-window-related-item:active { background: var(--glass-control-hover); color: var(--color-primary-hover); }
 #hud .prop-window-related-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .prop-window-item {
-  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
-  border: 0; border-radius: var(--radius-control);
+  grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  padding: var(--space-2) var(--space-3); color: var(--body); cursor: pointer;
+  border: 0; border-radius: 0; background: transparent;
 }
-#hud .prop-window-item:hover, #hud .prop-window-item:active {
-  background: var(--glass-control-hover); color: var(--color-primary-hover);
-}
+#hud .prop-window-item:hover,
+#hud .prop-window-item:active { background: var(--glass-control-hover); color: var(--color-primary-hover); }
 #hud .prop-window-item.on {
-  color: var(--color-primary); background: var(--color-primary-fill);
+  color: var(--color-primary); background: transparent;
+  box-shadow: inset 2px 0 0 var(--color-primary);
 }
-#hud .prop-window-item.on::before { content: '▪ '; }
+#hud .prop-window-item.disabled { opacity: var(--toggle-off-opacity); cursor: not-allowed; }
 #hud .prop-window-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+#hud .property-window.property-window-monitor {
+  width: 340px; max-width: 340px;
+}
+#hud .property-window.property-window-monitor .prop-window-kind {
+  padding-bottom: var(--space-1);
+}
+#hud .property-window.property-window-monitor .prop-window-summary {
+  padding-bottom: var(--space-3);
+}
+#hud .property-window.property-window-monitor .prop-window-metrics {
+  grid-template-columns: minmax(0, 1fr);
+}
+#hud .property-window.property-window-monitor .prop-window-row-group-toggle,
+#hud .property-window.property-window-monitor .prop-window-section,
+#hud .property-window.property-window-monitor .prop-window-row-toggle,
+#hud .property-window.property-window-monitor .prop-window-details,
+#hud .property-window.property-window-monitor .prop-window-related,
+#hud .property-window.property-window-monitor .prop-window-items,
+#hud .property-window.property-window-monitor .prop-window-controls {
+  display: none !important;
+}
+@media ${MQ_COMPACT} {
+  #hud .dg-window.property-window { width: 100%; max-width: 100%; }
+  #hud .prop-window-summary,
+  #hud .prop-window-metrics { grid-template-columns: minmax(0, 1fr); }
+}
 `;
 
 export class PropertyWindow<A extends string = string> {
@@ -108,7 +229,13 @@ export class PropertyWindow<A extends string = string> {
       title: content.title, subtitle: content.subtitle, icon: content.icon, unclippedWindowGroup,
     }, overlayManager);
     this.win.onClose = () => this.onClose?.();
-    this.win.onClipChange = (clipped) => this.onClipChange?.(clipped);
+    this.win.onClipChange = (clipped) => {
+      if (content.monitorWhenClipped === true) {
+        this.win.element.classList.toggle('property-window-monitor', clipped);
+        this.reclamp();
+      }
+      this.onClipChange?.(clipped);
+    };
 
     // 4つの副概念を組み立てる。項目のショートカット配送だけは DraggableWindow からの
     // 呼び出しなのでここで配線する。
@@ -123,6 +250,21 @@ export class PropertyWindow<A extends string = string> {
     this.controlsEl = document.createElement('div');
     this.controlsEl.className = 'prop-window-controls';
     this.win.element.classList.add('property-window');
+    if (content.monitorWhenClipped === true && this.win.clipped) {
+      this.win.element.classList.add('property-window-monitor');
+    }
+
+    const kind = document.createElement('div');
+    kind.className = 'prop-window-kind';
+    const kindCode = document.createElement('span');
+    kindCode.className = 'prop-window-kind-code';
+    kindCode.textContent = content.kindCode ?? 'DAT';
+    const kindLabel = document.createElement('span');
+    kindLabel.className = 'prop-window-kind-label';
+    kindLabel.textContent = content.kindLabel ?? 'TECHNICAL SHEET';
+    kind.append(kindCode, kindLabel);
+    this.win.body.appendChild(kind);
+
     this.win.body.appendChild(this.rows.element);
     this.win.body.appendChild(this.items.element);
 

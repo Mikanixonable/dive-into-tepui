@@ -135,6 +135,22 @@ export class ShipAssembly {
     }, 'axial');
   }
 
+  // +Z（船首）方向へ端面どうしを一致させる直列追加。端面の間隔は常に 0。
+  public prepend(instance: ShipModuleInstance, parentId?: string): void {
+    const resolvedParentId = parentId ?? this.headId();
+    const parent = resolvedParentId === null ? undefined : this.nodes.get(resolvedParentId);
+    if (parent === undefined) {
+      this.addModule(instance);
+      return;
+    }
+    const parentDefinition = this.catalog.require(parent.instance.definitionId);
+    const childDefinition = this.catalog.require(instance.definitionId);
+    this.addModule(instance, parent.instance.id, {
+      position: v3(0, 0, parentDefinition.length / 2 + childDefinition.length / 2),
+      rotation: Q_IDENTITY,
+    }, 'axial');
+  }
+
   // 明示 transform で module を側面接続する。
   public connectSide(
     instance: ShipModuleInstance, parentId: string, transformOrSlot: ModuleTransform | SideSlot, connectionId?: string,
@@ -310,11 +326,20 @@ export class ShipAssembly {
     return id === null ? null : this.removeModule(id);
   }
 
-  private tailId(): string | null {
+  public tailId(): string | null {
     for (const id of [...this.nodes.keys()].reverse()) {
-      if (this.connections.some(connection => connection.parentId === id)) continue;
-      const incoming = this.connections.find(connection => connection.childId === id);
-      if (incoming === undefined || incoming.kind === 'axial') return id;
+      if (this.connections.some(c => c.parentId === id && c.kind === 'axial' && c.childTransform.position.z <= 0)) continue;
+      const incoming = this.connections.find(c => c.childId === id);
+      if (incoming === undefined || (incoming.kind === 'axial' && incoming.childTransform.position.z <= 0)) return id;
+    }
+    return null;
+  }
+
+  public headId(): string | null {
+    for (const id of [...this.nodes.keys()].reverse()) {
+      if (this.connections.some(c => c.parentId === id && c.kind === 'axial' && c.childTransform.position.z >= 0)) continue;
+      const incoming = this.connections.find(c => c.childId === id);
+      if (incoming === undefined || (incoming.kind === 'axial' && incoming.childTransform.position.z >= 0)) return id;
     }
     return null;
   }

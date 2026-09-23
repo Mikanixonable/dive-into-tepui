@@ -4,6 +4,7 @@
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
 import { createGameScene, type GameScene } from './render/scene';
+import { loadShipModuleModels } from './render/dynamic/ship/ship-module-models';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { FrameSections } from './game/frame-sections';
@@ -41,7 +42,10 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
 
-  const gameScene = await createGameScene(canvas, graphics, browserViewport());
+  const [gameScene] = await Promise.all([
+    createGameScene(canvas, graphics, browserViewport()),
+    loadShipModuleModels(),
+  ]);
   hideLoading();
   return gameScene;
 }
@@ -51,6 +55,7 @@ function startAnimationLoop(
   launcher: Launcher, gameScene: GameScene, settings: UserSettings, bgm: Bgm,
   debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
 ): void {
+  const layoutSmoke = new URLSearchParams(window.location.search).has('layout-smoke');
   let lastTime = performance.now();
   let completedFrames = 0;
   // 1フレーム分: ランのフレームを回し、次フレームを予約する。
@@ -60,7 +65,11 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gameScene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
+    // layout smoke は起動完了後も入力・HUD同期を動かすが、viewport変更に伴う
+    // headless WebGPU の再確保だけ止める。通常実行では常に従来どおり同期・描画する。
+    const hudOnlyFrame = layoutSmoke
+      && document.documentElement.dataset.layoutSmokeFreeze === 'true';
+    if (!hudOnlyFrame) gameScene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
     pauseMenu.sync(now);
@@ -97,7 +106,7 @@ function startAnimationLoop(
           commands: [gameCommand(K.toggleDebugInfoWindow.code, K.toggleDebugInfoWindow)],
           handleCommand: command => debugInfo.handleCommand(command.id),
         },
-      ]);
+      ], !hudOnlyFrame);
       if (completed) {
         launcher.followProgress();
         completedFrames++;
@@ -151,8 +160,10 @@ function bindSettings(
   const settingsView = pauseMenu.settingsView;
   settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
 
-  settings.renderStyle.subscribe((style) => debugInfo.syncRenderStyle(style));
-  hud.onRenderStyleChange = (style) => settings.renderStyle.set(style);
+  settings.renderStyle.subscribe((style) => {
+    debugInfo.syncRenderStyle(style);
+    hud.syncRenderStyle(style);
+  });
 
   // 音量は一時停止メニューと設定ビューの両方が書き換えるので、通知を受けた側で両方を引き直す。
   // どちらも消音中は音量を 0 と見せる。
@@ -181,11 +192,13 @@ function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
     grid: settings.gridVisibility,
     tab: settings.viewOptionsTab,
     orbitGuideGroupTab: settings.orbitGuideGroupTab,
+    renderStyle: settings.renderStyle,
     // 更新コールバック。設定の正本へ反映する。
     onMapDisplayChange: (value) => settings.mapDisplayToggles.set(value),
     onGridChange: (value) => settings.gridVisibility.set(value),
     onTabChange: (value) => settings.viewOptionsTab.set(value),
     onOrbitGuideGroupTabChange: (value) => settings.orbitGuideGroupTab.set(value),
+    onRenderStyleChange: (value) => settings.renderStyle.set(value),
   };
 }
 

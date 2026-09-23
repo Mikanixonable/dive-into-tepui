@@ -111,6 +111,18 @@ export function register(): void {
     assert.deepEqual(grid.neighborsInto(v3(100, -100, 100), []), []);
   });
 
+  test('spatial-grid: 多数回 reset しても前回セルの要素を再利用 bucket から漏らさない', () => {
+    const grid = new SpatialGrid<number>(10);
+    for (let generation = 0; generation < 64; generation++) {
+      grid.reset(10 + (generation % 3));
+      const base = generation * 1e4;
+      grid.insert(generation, v3(base, -base, base));
+      grid.insert(generation + 1000, v3(base + 1, -base, base));
+      const near = grid.neighborsInto(v3(base, -base, base), []);
+      assert.deepEqual([...near].sort((a, b) => a - b), [generation, generation + 1000]);
+    }
+  });
+
   test('spatial-grid: 27近傍列挙は同じ要素を二重に返さない', () => {
     const rand = mulberry32(2);
     const cellSize = 10;
