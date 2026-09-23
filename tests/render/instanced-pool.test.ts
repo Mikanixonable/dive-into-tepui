@@ -79,7 +79,7 @@ export function register(): void {
 
     const thermal = geometry.getAttribute(INSTANCE_THERMAL_ATTRIBUTE);
     assert.ok(thermal !== undefined);
-    assert.deepEqual(firstRange(thermal), { start: 3, count: 3 });
+    assert.deepEqual(firstRange(thermal as THREE.BufferAttribute), { start: 3, count: 3 });
     pool.dispose();
     geometry.dispose();
     material.dispose();
