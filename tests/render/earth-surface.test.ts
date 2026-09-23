@@ -29,6 +29,7 @@ const SOURCE = {
     landFraction: { min: 0, max: 1 },
     waterOrthometricElevationM: 0,
   },
+  maxZoom: 7,
   baseUrl: 'https://example.test/earth/',
   manifestUrl: 'https://example.test/earth/manifest.json',
   colorTileTemplate: 'https://example.test/earth/tiles/{z}/{x}/{y}.jpg',
