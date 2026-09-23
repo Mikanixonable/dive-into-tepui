@@ -2,7 +2,7 @@
 // テクスチャの準備および雲面レンダラーの寿命を管理する。
 import * as THREE from 'three/webgpu';
 import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../opaque-cloud-surface-renderer';
-import { CLOUD_TOP_SPAN } from './cumulus-shape';
+import { CLOUD_DENSITY_TOP_M } from './cloud-density-evaluator';
 import { capRadiusFor } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
@@ -109,7 +109,7 @@ export class CloudPresentation {
   // rho は同じ空間で測った観測点の中心距離(地表が 1)。置き直した結果は不透明表面のサンプリングへ
   // 即座に反映する — 反映しないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
   private aim(subpoint: THREE.Vector3, rho: number): void {
-    this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
+    this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_DENSITY_TOP_M / this.bodyRadius));
     this.surface.bind(this.renderInput);
   }
 

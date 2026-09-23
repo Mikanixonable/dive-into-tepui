@@ -54,6 +54,7 @@
     "tests/game/**/*.ts",
     "tests/render/**/*.ts",
     "tests/settings/**/*.ts",
-    "tests/launcher/**/*.ts"
+    "tests/launcher/**/*.ts",
+    "tools/cloud-reconstruction-benchmark.ts"
   ]
 }

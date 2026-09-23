@@ -4,7 +4,10 @@ import {
   type CloudEventDomain,
   type ConvectiveCloudCell,
 } from '../../src/game/cloud/cloud-events';
-import { reconstructCloudEventMaterialTracks } from '../../src/game/cloud/cloud-event-transport';
+import {
+  reconstructCloudEventMaterialCohorts,
+  reconstructCloudEventMaterialTracks,
+} from '../../src/game/cloud/cloud-event-transport';
 import { cross, norm, v3 } from '../../src/math/vec3';
 import { advectSphericalPositionUnitVector } from '../../src/physics/cloud-spherical-transport';
 import {
@@ -423,4 +426,49 @@ export function register(): void {
       cells: [cell('epoch', { convectiveDurationSeconds: 0 })],
     })), /safe integer epochs/);
   });
+
+  test('cloud event transport: continuous release cohorts preserve mass and retain spatial spread', () => {
+    const source = cell('cohorts', {
+      sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
+      iceReleaseHeightM: 7_000,
+      upperRelativeHumidity: 0.7,
+    });
+    const event = eventAt(7_200, source);
+    const cohorts = reconstructCloudEventMaterialCohorts(
+      event, 6_371_000, 10, 120,
+      (direction, heightM) => altitudeSplitWind(direction, heightM),
+    );
+    assert.ok(cohorts.releasedIceCohorts.length > 1);
+    const remaining = cohorts.releasedIceCohorts.reduce((sum, cohort) => sum + cohort.remainingKgM2, 0);
+    closeTo(remaining, event.iceRelease.remainingKgM2, 1e-10);
+    closeTo(
+      cohorts.totalMassKgM2,
+      event.mass.initialKgM2 + event.mass.suppliedKgM2 - event.mass.lostKgM2,
+      1e-10,
+    );
+    const first = cohorts.releasedIceCohorts[0]!;
+    const last = cohorts.releasedIceCohorts[cohorts.releasedIceCohorts.length - 1]!;
+    assert.ok(first.representativeReleaseTimeSeconds < last.representativeReleaseTimeSeconds);
+    assert.ok(Math.hypot(
+      first.directionUnitVector.x - last.directionUnitVector.x,
+      first.directionUnitVector.y - last.directionUnitVector.y,
+      first.directionUnitVector.z - last.directionUnitVector.z,
+    ) > 1e-6);
+  });
+
+  test('cloud event transport: cohort duration changes spatial resolution but not total remaining ice', () => {
+    const source = cell('cohort-resolution', {
+      sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
+      iceReleaseHeightM: 7_000,
+      upperRelativeHumidity: 0.4,
+    });
+    const event = eventAt(7_200, source);
+    const wind = (direction: ReturnType<typeof v3>, heightM: number) => altitudeSplitWind(direction, heightM);
+    const coarse = reconstructCloudEventMaterialCohorts(event, 6_371_000, 30, 300, wind);
+    const fine = reconstructCloudEventMaterialCohorts(event, 6_371_000, 30, 60, wind);
+    assert.ok(fine.releasedIceCohorts.length > coarse.releasedIceCohorts.length);
+    closeTo(coarse.totalMassKgM2, fine.totalMassKgM2, 1e-10);
+    closeTo(coarse.totalMassKgM2, event.mass.liquidKgM2 + event.mass.iceKgM2, 1e-10);
+  });
+
 }

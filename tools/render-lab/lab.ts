@@ -2,7 +2,7 @@
 // 絵の撮影(PNG)と、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
-import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
+import { GPU_PASS, GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import {
   ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
 } from '../../src/game/protein/protein-motion-metrics';
@@ -35,12 +35,36 @@ export interface LabMeasurement {
   readonly caseName: CaseName;
   readonly frames: number;
   readonly cpuRenderMs: SampleDistribution;
+  readonly cpuCloudPrepareMs: SampleDistribution;
   readonly gpuSupported: boolean;
   readonly gpuPassTotalScope: 'instrumented-render-pass-sum';
   readonly gpuPassTotalMs: SampleDistribution;
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
+}
+
+export interface CloudPreparationFrame {
+  readonly displayTime: number;
+  readonly cold: {
+    readonly cpuCloudPrepareMs: number;
+    readonly gpuCloudBakeMs: number;
+    readonly generationBefore: number;
+    readonly generationAfter: number;
+  };
+  readonly warm: {
+    readonly cpuCloudPrepareMs: number;
+    readonly gpuCloudBakeMs: number;
+    readonly generationBefore: number;
+    readonly generationAfter: number;
+  };
+}
+
+export interface CloudPreparationMeasurement {
+  readonly caseName: CaseName;
+  readonly readyWaitMs: number;
+  readonly gpuSupported: boolean;
+  readonly frames: readonly CloudPreparationFrame[];
 }
 
 const ORIGIN = new THREE.Vector3();
@@ -78,6 +102,8 @@ export class LabView {
   private style: RenderStyle = 'realistic';
   // 直前の render がパイプラインの描画に費やした CPU 時間 [ms]。
   private lastRenderCpuMs = 0;
+  // 直前の render で雲場prepare/bakeに費やしたCPU側の発行時間 [ms]。
+  private lastCloudPrepareCpuMs = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
   // ケース既定のカメラ距離 [m]。cameraDistanceLog の基準になる。
@@ -280,7 +306,9 @@ export class LabView {
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     this.pipeline.cumulusShadow.set(castsCumulusShadow(graphics) ? earth?.cumulus ?? null : null);
+    const cloudPrepareStartedAt = performance.now();
     earth?.bake(this.renderer, displayTime, this.gpu);
+    this.lastCloudPrepareCpuMs = performance.now() - cloudPrepareStartedAt;
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
       [...(earth === null ? [] : [earth.atmosphere]), ...(this.current.atmospheres ?? [])].map((body) => {
@@ -322,6 +350,7 @@ export class LabView {
 
     // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
     const cpuSamples: number[] = [];
+    const cloudPrepareSamples: number[] = [];
     const gpuPassTotalSamples: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const motion = new ProteinMotionMetricsRecorder();
@@ -330,6 +359,7 @@ export class LabView {
       const motionSample = this.current?.updateProteinMotion?.(displayTime);
       this.render(displayTime);
       cpuSamples.push(this.lastRenderCpuMs);
+      cloudPrepareSamples.push(this.lastCloudPrepareCpuMs);
       await this.gpu.waitForResolve();
       const timings = this.gpu.snapshot();
       let passTotalMs = 0;
@@ -345,12 +375,56 @@ export class LabView {
       caseName: name,
       frames: sampleFrames,
       cpuRenderMs: distributionOf(cpuSamples),
+      cpuCloudPrepareMs: distributionOf(cloudPrepareSamples),
       gpuSupported: this.gpu.snapshot().supported,
       gpuPassTotalScope: 'instrumented-render-pass-sum',
       gpuPassTotalMs: distributionOf(gpuPassTotalSamples),
       gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distributionOf(gpuSamples[index]!)])),
       proteinMotion: motion.summary(),
       proteinCase: this.current?.proteinMotion,
+    };
+  }
+
+  // 任意時刻へのジャンプと同一時刻の再描画を対にして、雲場のcold/warm prepareを測る。
+  // coldは単世代キャッシュに無い時刻、warmは直後の同一時刻なので、generationがcoldだけ進むことも検査できる。
+  public async measureCloudPreparation(
+    name: CaseName, displayTimes: readonly number[], angles: Partial<LabViewAngles> = {},
+  ): Promise<CloudPreparationMeasurement> {
+    const readyStartedAt = performance.now();
+    this.show(name);
+    this.setViewAngles(angles);
+    await this.waitUntilReady();
+    const readyWaitMs = performance.now() - readyStartedAt;
+    if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for cloud preparation measurement`);
+    const earth = this.current?.earth === undefined ? null : this.earth;
+    if (earth === null) throw new Error(`render-lab: case "${name}" has no earth cloud field`);
+    await this.gpu.waitForResolve();
+
+    const frames: CloudPreparationFrame[] = [];
+    const measureOne = async (displayTime: number) => {
+      await this.gpu.waitForResolve();
+      this.gpu.reset();
+      const generationBefore = earth.cloudGeneration;
+      this.render(displayTime);
+      const cpuCloudPrepareMs = this.lastCloudPrepareCpuMs;
+      await this.gpu.waitForResolve();
+      return {
+        cpuCloudPrepareMs,
+        gpuCloudBakeMs: this.gpu.msOf(GPU_PASS.cloudBake),
+        generationBefore,
+        generationAfter: earth.cloudGeneration,
+      };
+    };
+    for (const displayTime of displayTimes) {
+      const cold = await measureOne(displayTime);
+      const warm = await measureOne(displayTime);
+      frames.push({ displayTime, cold, warm });
+    }
+    return {
+      caseName: name,
+      readyWaitMs,
+      gpuSupported: this.gpu.snapshot().supported,
+      frames,
     };
   }
 

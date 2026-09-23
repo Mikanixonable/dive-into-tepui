@@ -1,5 +1,5 @@
-// 衛星写真から被覆率・雲頂高度・薄層雲の光学的厚みに分離した静的雲場。チャンネル構成は
-// プロシージャル生成雲場と一致する。読み出し側のサンプリング処理を球面キャップ1枚に統一するため、
+// 衛星写真から液相被覆率・雲頂高度・上層氷雲の光学的厚み・氷雲中心高度に分離した静的雲場。
+// チャンネル構成はプロシージャル生成雲場と一致する。読み出し側のサンプリング処理を球面キャップ1枚に統一するため、
 // 全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
 import * as THREE from 'three/webgpu';
 import { float, int, log2, max, texture } from 'three/tsl';
@@ -20,8 +20,9 @@ export class ObservedCloudField implements CloudFieldSource {
   private bakedRevision = -1;
   private generationValue = 0;
 
-  // url は地表と同じ正距円筒の雲場画像(R = 被覆率、G = 雲頂高度、B = 薄い雲の光学的厚み)、
-  // projection は焼き直す先の持ち方。
+  // url は地表と同じ正距円筒の雲場画像(R = 液相被覆率、G = 雲頂高度/CLOUD_TOP_SPAN、
+  // B = 上層氷雲の鉛直光学深さ、A = 氷雲中心高度/CLOUD_TOP_SPAN)。従来画像のA=1は15kmとして
+  // 解釈できるので旧素材も同じ契約で読める。projection は焼き直す先の持ち方。
   public constructor(url: string, private readonly projection: FieldProjection) {
     this.map = new DeferredTexture(url, THREE.NoColorSpace);
     // 正距円筒の経度は周期的なので、画像は経度方向へ巻く。

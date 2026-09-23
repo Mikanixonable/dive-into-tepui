@@ -16,12 +16,20 @@ import { injectOnce } from '../../src/hud/inject-style';
 import { applyThemeVariables } from '../../src/hud/style/theme-variables';
 import { AU } from '../../src/physics/astronomical-unit';
 import { parseThemePalette } from '../../src/theme';
+import {
+  CLOUD_BAKED_WORKING_SET_BYTES,
+  CLOUD_CAP_SIZE,
+  CLOUD_GENERATED_BAKED_BYTES,
+  CLOUD_OBSERVED_BAKED_BYTES,
+} from '../../src/render/cloud/cloud-cap';
 import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
-import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
+import { cloudPhaseKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
-import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
+import {
+  LabView, MAX_CAMERA_ELEVATION_DEG, type CloudPreparationMeasurement, type LabMeasurement,
+} from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { FloatUniform } from '../../src/render/tsl-types';
@@ -41,9 +49,6 @@ const MAX_CAMERA_ZOOM_LOG = 2;
 // 上限の 100 万 km は月軌道の外側。
 const MIN_EARTH_ALTITUDE_LOG = 3;
 const MAX_EARTH_ALTITUDE_LOG = 9;
-
-// 殻の高度のつまみが届く上限 [m]。対流圏界面(極 8 km、熱帯 18 km)の上まで取る。
-const MAX_SHELL_ALTITUDE = 20e3;
 
 // 設定パネルに出さない項目。この環境が原理的に効かせられないものだけを入れる — 並べて何も
 // 起きないと、絵の違いの出どころを読み違える。
@@ -65,7 +70,19 @@ declare global {
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       graphicsSettings: () => Readonly<GraphicsSettingsData>;
-      measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
+      measure: (
+        name: CaseName, angles?: Partial<LabViewAngles>, warmupFrames?: number, sampleFrames?: number,
+      ) => Promise<LabMeasurement>;
+      measureCloudPreparation: (
+        name: CaseName, displayTimes: readonly number[], angles?: Partial<LabViewAngles>,
+      ) => Promise<CloudPreparationMeasurement>;
+      cloudResourceBudget: {
+        readonly capSize: number;
+        readonly generatedBakedBytes: number;
+        readonly observedBakedBytes: number;
+        readonly bakedWorkingSetBytes: number;
+        readonly analyticDetailTextureBytes: 0;
+      };
     };
   }
 }
@@ -157,26 +174,19 @@ function buildCloudSliders(view: LabView): void {
     () => `±${dither.halfWidth.value.toFixed(3)}`,
     (v) => redraw(dither.halfWidth, v))(dither.halfWidth.value);
 
-  // 半透明な殻の濃さ・立つ高さ・反射率。不透明な積雲との馴染みを目で追い込み終えるまで残す。
-  const kilometers = (value: number) => `${(value / 1000).toFixed(2)} km`;
-  // 種類 1 つぶんのつまみを row へ並べ、つまみの位置を殻の現在値へ合わせる。
-  const buildShellSliders = (rowId: string, species: CloudSpecies): void => {
-    const knob = cloudShellKnobOf(species);
-    // 濃さの2本は鉛直の光学的厚みの目盛りで、足切り・ゲインの順に掛かる。
+  // 種類 1 つぶんの局所密度と反射率のつまみ。高度は共有3D場が持つのでここでは動かさない。
+  const buildPhaseSliders = (rowId: string, species: CloudSpecies): void => {
+    const knob = cloudPhaseKnobOf(species);
+    // 足切りは局所密度率0..1、ゲインは消散係数への倍率。
     buildSlider(rowId, '足切り', 0, 1, 0.005,
       () => knob.cutoff.value.toFixed(3), (v) => redraw(knob.cutoff, v))(knob.cutoff.value);
     buildSlider(rowId, 'ゲイン', 0, 4, 0.01,
       () => `×${knob.gain.value.toFixed(2)}`, (v) => redraw(knob.gain, v))(knob.gain.value);
-    // 殻は上下の中央に立ち、上下の差が掠める視線の光路を決める。
-    buildSlider(rowId, '下端高度', 0, MAX_SHELL_ALTITUDE, 100, () => kilometers(knob.bottomAltitude.value),
-      (v) => redraw(knob.bottomAltitude, v))(knob.bottomAltitude.value);
-    buildSlider(rowId, '上端高度', 0, MAX_SHELL_ALTITUDE, 100, () => kilometers(knob.topAltitude.value),
-      (v) => redraw(knob.topAltitude, v))(knob.topAltitude.value);
     buildSlider(rowId, 'アルベド', 0, 1, 0.01,
       () => knob.albedo.value.toFixed(2), (v) => redraw(knob.albedo, v))(knob.albedo.value);
   };
-  buildShellSliders('cumulus-shell', 'cumulus');
-  buildShellSliders('cirrus-shell', 'cirrus');
+  buildPhaseSliders('cumulus-shell', 'cumulus');
+  buildPhaseSliders('cirrus-shell', 'cirrus');
 }
 
 // 画面を組み、最初のケースを描き、CDP の入口を window へ生やす。
@@ -263,7 +273,17 @@ async function init(): Promise<void> {
       settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
     },
     graphicsSettings: () => settings.graphics.current,
-    measure: (name, angles) => view.measure(name, angles),
+    measure: (name, angles, warmupFrames, sampleFrames) =>
+      view.measure(name, angles, warmupFrames, sampleFrames),
+    measureCloudPreparation: (name, displayTimes, angles) =>
+      view.measureCloudPreparation(name, displayTimes, angles),
+    cloudResourceBudget: {
+      capSize: CLOUD_CAP_SIZE,
+      generatedBakedBytes: CLOUD_GENERATED_BAKED_BYTES,
+      observedBakedBytes: CLOUD_OBSERVED_BAKED_BYTES,
+      bakedWorkingSetBytes: CLOUD_BAKED_WORKING_SET_BYTES,
+      analyticDetailTextureBytes: 0,
+    },
   };
 }
 
