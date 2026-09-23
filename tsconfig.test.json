@@ -3,7 +3,11 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "node",
-    "lib": ["ES2022", "DOM", "WebWorker"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "WebWorker"
+    ],
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -11,10 +15,19 @@
     "outDir": "tests/dist",
     "rootDir": ".",
     "paths": {
-      "three/webgpu": ["./node_modules/@types/three/build/three.webgpu.d.ts"],
-      "three/tsl": ["./node_modules/@types/three/build/three.tsl.d.ts"],
-      "three/addons/*": ["./node_modules/@types/three/examples/jsm/*"]
-    }
+      "three/webgpu": [
+        "./node_modules/@types/three/build/three.webgpu.d.ts"
+      ],
+      "three/tsl": [
+        "./node_modules/@types/three/build/three.tsl.d.ts"
+      ],
+      "three/addons/*": [
+        "./node_modules/@types/three/examples/jsm/*"
+      ]
+    },
+    "incremental": true,
+    "tsBuildInfoFile": "tests/dist/.tsbuildinfo",
+    "noEmitOnError": true
   },
   "include": [
     "src/types",
