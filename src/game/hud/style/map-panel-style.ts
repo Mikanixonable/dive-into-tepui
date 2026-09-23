@@ -137,6 +137,14 @@ export const MAP_PANEL_STYLE = `
   #hud-predict-wrap { bottom: 8px; }
 }
 @media ${MQ_COMPACT} {
+  /* compactは左右railの合計幅が中央領域をほぼ使い切るため、PREDICTは横の隙間ではなく
+     下部sheetとして配置し、その実占有量ぶんrailを上へ切る。 */
+  #hud .hud-map-root.active .hud-rail {
+    bottom: max(
+      var(--hud-rail-bottom),
+      calc(var(--hud-predict-bottom-occupied, 0px) + var(--space-2))
+    );
+  }
   #hud-predict .slider-ticks { display: none; }
   /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
   #hud-predict .predict-absolute { display: none; }
