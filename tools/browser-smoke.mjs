@@ -136,6 +136,12 @@ async function applyViewport({ width, height }) {
   await sleep(100);
 }
 
+async function clearViewport() {
+  await clearViewport();
+  // innerWidth と fixed/absolute HUD の再レイアウトを同じフレームへ揃える。
+  await sleep(100);
+}
+
 async function checkOverlayGeometry(selector, label) {
   for (const viewport of VIEWPORTS) {
     await applyViewport(viewport);
@@ -149,7 +155,7 @@ async function checkOverlayGeometry(selector, label) {
       throw new Error(`${label} geometry failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${JSON.stringify(state)}`);
     }
   }
-  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  await clearViewport();
 }
 
 // 戦闘ビューの常設パネルが、どの画面寸法でも視界の外へ出ず互いに重ならないことを見る。
@@ -165,10 +171,26 @@ async function checkCombatLayout() {
       const combatRoot = document.querySelector('.hud-combat-root.active');
       const shelf = rect(combatRoot);
       if (!insideViewport(shelf)) errors.push('combat root outside viewport');
+      const railEls = [...combatRoot.querySelectorAll('.hud-rail')].filter(visible);
+      const rails = railEls.map(rect);
+      for (const rail of rails) if (!insideViewport(rail)) errors.push('combat rail outside viewport: ' + rail.id);
       const shelfIds = ['hud-vessel-status', 'hud-orbit', 'burn-management-panel', 'hud-enemies', 'hud-target'];
       const shelfPanels = shelfIds.map((id) => document.getElementById(id)).filter(visible).map(rect);
       for (const panel of shelfPanels) {
-        if (!insideViewport(panel)) errors.push('outside combat root: ' + panel.id);
+        if (panel.left < -0.5 || panel.right > innerWidth + 0.5 || panel.width > innerWidth + 0.5) {
+          errors.push('combat panel horizontal overflow: ' + panel.id);
+        }
+      }
+      for (const railEl of railEls) {
+        const children = [...railEl.children].filter(visible);
+        if (railEl.scrollHeight > railEl.clientHeight && children.length > 0) {
+          railEl.scrollTop = railEl.scrollHeight;
+          const bottom = railEl.getBoundingClientRect().bottom;
+          if (children.at(-1).getBoundingClientRect().bottom > bottom + 1) {
+            errors.push('combat rail cannot scroll to final panel: ' + railEl.id);
+          }
+          railEl.scrollTop = 0;
+        }
       }
       for (let i = 0; i < shelfPanels.length; i++) {
         for (let j = i + 1; j < shelfPanels.length; j++) {
@@ -183,7 +205,21 @@ async function checkCombatLayout() {
       // 画面下端のステージ状態パネルと衝突しないこと。
       const stage = floating.find((item) => item.id === 'hud-stagestatus');
       if (innerWidth <= 1100 && stage) {
-        for (const panel of shelfPanels) if (overlaps(stage, panel)) errors.push('stage overlaps ' + panel.id);
+        for (const panel of shelfPanels) {
+          const panelEl = document.getElementById(panel.id);
+          const railEl = panelEl?.closest('.hud-rail');
+          if (!railEl) continue;
+          const rail = rect(railEl);
+          const visiblePanel = {
+            ...panel,
+            left: Math.max(panel.left, rail.left),
+            right: Math.min(panel.right, rail.right),
+            top: Math.max(panel.top, rail.top),
+            bottom: Math.min(panel.bottom, rail.bottom),
+          };
+          if (visiblePanel.left < visiblePanel.right && visiblePanel.top < visiblePanel.bottom
+            && overlaps(stage, visiblePanel)) errors.push('stage overlaps visible ' + panel.id);
+        }
       }
       // 仮想パッドは初回タッチまで不可視(opacity:0)なので、実際に出ている時だけ見る。
       const touchRoot = document.getElementById('touch-ui');
@@ -208,12 +244,27 @@ async function checkCombatLayout() {
       if (hint) {
         hint.style.opacity = '1';
         const h = rect(hint);
-        for (const panel of [...shelfPanels, ...floating]) if (overlaps(h, panel)) errors.push('hint overlaps ' + panel.id);
+        for (const panel of shelfPanels) {
+          const panelEl = document.getElementById(panel.id);
+          const railEl = panelEl?.closest('.hud-rail');
+          if (!railEl) continue;
+          const rail = rect(railEl);
+          const clipped = {
+            ...panel,
+            left: Math.max(panel.left, rail.left),
+            right: Math.min(panel.right, rail.right),
+            top: Math.max(panel.top, rail.top),
+            bottom: Math.min(panel.bottom, rail.bottom),
+          };
+          if (clipped.left < clipped.right && clipped.top < clipped.bottom && overlaps(h, clipped)) {
+            errors.push('hint overlaps visible ' + panel.id);
+          }
+        }
+        for (const item of floating) if (overlaps(h, item)) errors.push('hint overlaps ' + item.id);
         hint.style.opacity = '';
       }
       const chrome = document.getElementById('hud-chrome');
       const chromeRect = visible(chrome) ? rect(chrome) : null;
-      const railEls = [...combatRoot.querySelectorAll('.hud-rail')].filter(visible);
       if (chromeRect) {
         for (const rail of railEls) {
           if (rail.getBoundingClientRect().top < chromeRect.bottom - 1) errors.push('combat rail overlaps HUD chrome: ' + rail.id);
@@ -225,13 +276,13 @@ async function checkCombatLayout() {
       }
       const tiny = tinyInteractiveText(document.getElementById('hud'));
       if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
-      return { errors, shelf, shelfPanels, floating, chromeRect, tiny };
+      return { errors, shelf, rails, shelfPanels, floating, chromeRect, tiny };
     })()`);
     if (layout.errors.length) {
       throw new Error(`Combat layout failed at ${viewport.name} ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
     }
   }
-  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  await clearViewport();
 }
 
 // マップビューの左右レールが視界に収まり、互いに重ならず、最後のパネルまでスクロールで
@@ -334,7 +385,7 @@ async function checkMapLayout() {
     })()`);
     expectAll(`Rail occupied-area contract did not restore at ${viewport.name}`, occupiedAfterRestore);
   }
-  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  await clearViewport();
 }
 
 // 全画面モーダル(ヘルプ)は背景の入力を遮り、仮想パッドを隠し、押しっぱなしのタッチ入力を解放する。
@@ -348,8 +399,15 @@ async function checkHelpModal() {
     })()`);
     if (!zoomArmed) throw new Error('Could not arm touch ZOOM before modal release check.');
   }
-  await pressKey('h', 'KeyH', 72);
-  await waitFor(`getComputedStyle(document.getElementById('hud-help')).display !== 'none'`, '[H] to open the help panel');
+  if (layoutOnly) {
+    await devTools.evaluate(`document.getElementById('hud-help-badge')?.click()`);
+  } else {
+    await pressKey('h', 'KeyH', 72);
+  }
+  await waitFor(
+    `getComputedStyle(document.getElementById('hud-help')).display !== 'none'`,
+    layoutOnly ? 'the HLP badge to open the help panel' : '[H] to open the help panel',
+  );
   const state = await devTools.evaluate(`(() => {
     const shield = document.getElementById('hud-overlay-shield');
     const canvas = document.querySelector('canvas');
@@ -374,11 +432,15 @@ async function checkHelpModal() {
   })()`);
   expectAll('Help modal shielding failed', state);
   await checkOverlayGeometry('#hud-help', 'Help modal');
-  await pressKey('Escape', 'Escape', 27);
+  if (layoutOnly) {
+    await devTools.evaluate(`document.querySelector('#hud-help .w-close')?.click()`);
+  } else {
+    await pressKey('Escape', 'Escape', 27);
+  }
   await waitFor(
     `getComputedStyle(document.getElementById('hud-help')).display === 'none'
       && !document.body.classList.contains('hud-overlay-modal-open')`,
-    'Escape to close the help panel',
+    layoutOnly ? 'the Help close button to close the panel' : 'Escape to close the help panel',
   );
 }
 
@@ -546,7 +608,7 @@ async function checkConstructionLayout() {
       throw new Error(`Construction layout failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${state.errors.join('; ')}; ${JSON.stringify(state)}`);
     }
   }
-  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  await clearViewport();
 }
 
 async function constructMaterialFromBaseDock() {
@@ -783,7 +845,7 @@ try {
       return { open: true, inside: insideViewport(rect(win)) };
     })()`);
     expectAll('Property window did not remain clamped after resize', clamped);
-    await devTools.send('Emulation.clearDeviceMetricsOverride');
+    await clearViewport();
     if (smokeConstruction) await constructMaterialFromBaseDock();
   }
 

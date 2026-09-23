@@ -82,7 +82,6 @@ const STYLE = `
   }
   #touch-mode-col .tbtn { width: 38px !important; }
   #touch-util { max-width: 42vw; }
-  #hud-chase-reset { left: calc(50% + 20px) !important; }
 }
 
 /* 横画面(高さが低い端末): パッドを詰めて縦方向の衝突を避ける */
@@ -111,7 +110,6 @@ const STYLE = `
     grid-template-rows: repeat(2, 36px) !important; gap: 4px;
   }
   #touch-mode-col .tbtn { width: 38px !important; }
-  #hud-chase-reset { left: calc(50% + 20px) !important; }
 }
 `;
 
