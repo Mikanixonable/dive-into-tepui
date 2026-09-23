@@ -52,9 +52,17 @@ export function analyticC2ReleasedIceDirection(
   lowerEastWindMps: number,
   upperNorthWindMps: number,
 ): Vec3 {
+  requireFinite(releaseTimeSeconds, 'releaseTimeSeconds');
+  requireFinite(sampleTimeSeconds, 'sampleTimeSeconds');
+  requirePositive(sphereRadiusM + lowerHeightM, 'lower sphere radius plus height');
+  requirePositive(sphereRadiusM + upperHeightM, 'upper sphere radius plus height');
+  requireFinite(lowerEastWindMps, 'lowerEastWindMps');
+  requireFinite(upperNorthWindMps, 'upperNorthWindMps');
   const lowerAngleRad = lowerEastWindMps * releaseTimeSeconds / (sphereRadiusM + lowerHeightM);
   const upperAngleRad = upperNorthWindMps * (sampleTimeSeconds - releaseTimeSeconds)
     / (sphereRadiusM + upperHeightM);
+  requireFinite(lowerAngleRad, 'lowerAngleRad');
+  requireFinite(upperAngleRad, 'upperAngleRad');
   const lowerSine = Math.sin(lowerAngleRad);
   const lowerCosine = Math.cos(lowerAngleRad);
   return v3(
@@ -77,23 +85,40 @@ function continuousReleaseDistribution(
         input.lowerHeightM, input.upperHeightM,
         input.lowerEastWindMps, input.upperNorthWindMps,
       ),
-      massKgM2: input.releaseRateKgM2S
-        * Math.exp(-input.sublimationRatePerSecond * (input.sampleTimeSeconds - releaseTimeSeconds))
-        * intervalSeconds,
+      massKgM2: releaseMassKgM2(input, releaseTimeSeconds, intervalSeconds),
     };
   });
   const massKgM2 = samples.reduce((sum, sample) => sum + sample.massKgM2, 0);
+  requirePositive(massKgM2, 'quadrature release mass');
   const weightedDirection = samples.reduce((sum, sample) => v3(
     sum.x + sample.directionUnitVector.x * sample.massKgM2,
     sum.y + sample.directionUnitVector.y * sample.massKgM2,
     sum.z + sample.directionUnitVector.z * sample.massKgM2,
   ), v3(0, 0, 0));
+  if (len(weightedDirection) <= 64 * Number.EPSILON * massKgM2) {
+    throw new RangeError('continuous release centroid is undefined for this interval and wind field');
+  }
+  requireFinite(len(weightedDirection), 'continuous release first moment');
+  const spreadM = massWeightedSphericalRmsSpreadM(samples, input.sphereRadiusM + input.upperHeightM);
+  requireFinite(spreadM, 'continuous release RMS spread');
   return {
     centroid: norm(weightedDirection),
-    spreadM: massWeightedSphericalRmsSpreadM(samples, input.sphereRadiusM + input.upperHeightM),
+    spreadM,
     massKgM2,
     firstMomentMagnitudeSeconds: len(weightedDirection) / input.releaseRateKgM2S,
   };
+}
+
+function releaseMassKgM2(
+  input: C2ContinuousReleaseOracleInput,
+  releaseTimeSeconds: number,
+  intervalSeconds: number,
+): number {
+  const massKgM2 = input.releaseRateKgM2S
+    * Math.exp(-input.sublimationRatePerSecond * (input.sampleTimeSeconds - releaseTimeSeconds))
+    * intervalSeconds;
+  requireFinite(massKgM2, 'quadrature cohort mass');
+  return massKgM2;
 }
 
 function cohortErrorM(
@@ -106,9 +131,85 @@ function cohortErrorM(
     sum.y + cohort.directionUnitVector.y * cohort.massKgM2,
     sum.z + cohort.directionUnitVector.z * cohort.massKgM2,
   ), v3(0, 0, 0));
+  if (len(weightedDirection) === 0) throw new RangeError('cohort centroid is undefined');
   const centroidErrorM = sphericalDistanceM(norm(weightedDirection), reference.centroid, radiusM);
   const spreadErrorM = Math.abs(massWeightedSphericalRmsSpreadM(cohorts, radiusM) - reference.spreadM);
-  return Math.max(centroidErrorM, spreadErrorM);
+  const errorM = Math.max(centroidErrorM, spreadErrorM);
+  requireFinite(errorM, 'cohort distribution error');
+  return errorM;
+}
+
+function requireFinite(value: number, name: string): void {
+  if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite`);
+}
+
+function requirePositive(value: number, name: string): void {
+  requireFinite(value, name);
+  if (value <= 0) throw new RangeError(`${name} must be positive`);
+}
+
+function validateOracleInput(input: C2ContinuousReleaseOracleInput): void {
+  if (typeof input !== 'object' || input === null) throw new TypeError('input must be an object');
+  const finiteValues: readonly [number, string][] = [
+    [input.releaseStartTimeSeconds, 'releaseStartTimeSeconds'],
+    [input.releaseEndTimeSeconds, 'releaseEndTimeSeconds'],
+    [input.sampleTimeSeconds, 'sampleTimeSeconds'],
+    [input.lowerHeightM, 'lowerHeightM'],
+    [input.upperHeightM, 'upperHeightM'],
+    [input.lowerEastWindMps, 'lowerEastWindMps'],
+    [input.upperNorthWindMps, 'upperNorthWindMps'],
+    [input.sublimationRatePerSecond, 'sublimationRatePerSecond'],
+  ];
+  for (const [value, name] of finiteValues) requireFinite(value, name);
+  requirePositive(input.sphereRadiusM, 'sphereRadiusM');
+  requirePositive(input.sphereRadiusM + input.lowerHeightM, 'lower sphere radius plus height');
+  requirePositive(input.sphereRadiusM + input.upperHeightM, 'upper sphere radius plus height');
+  requirePositive(input.releaseRateKgM2S, 'releaseRateKgM2S');
+  if (input.sublimationRatePerSecond < 0) {
+    throw new RangeError('sublimationRatePerSecond must be non-negative');
+  }
+  if (input.releaseEndTimeSeconds <= input.releaseStartTimeSeconds) {
+    throw new RangeError('release interval must have positive duration');
+  }
+  requirePositive(input.releaseEndTimeSeconds - input.releaseStartTimeSeconds, 'release duration');
+  if (input.sampleTimeSeconds < input.releaseEndTimeSeconds) {
+    throw new RangeError('sampleTimeSeconds must not precede the end of release');
+  }
+  if (!Array.isArray(input.cohortsByCount) || input.cohortsByCount.length === 0) {
+    throw new RangeError('cohortsByCount must not be empty');
+  }
+  for (const cohortSet of input.cohortsByCount) {
+    if (typeof cohortSet !== 'object' || cohortSet === null) {
+      throw new TypeError('each cohort set must be an object');
+    }
+    const { count, cohorts } = cohortSet;
+    if (!Number.isSafeInteger(count) || count < 1) {
+      throw new RangeError('cohort count must be a positive safe integer');
+    }
+    if (!Array.isArray(cohorts) || cohorts.length !== count) {
+      throw new RangeError(`C2 expected ${count} cohorts, got ${cohorts?.length ?? 'non-array'}`);
+    }
+    let totalMassKgM2 = 0;
+    for (const cohort of cohorts) {
+      if (typeof cohort !== 'object' || cohort === null
+        || typeof cohort.directionUnitVector !== 'object' || cohort.directionUnitVector === null) {
+        throw new TypeError('each cohort must have a direction vector and mass');
+      }
+      const { directionUnitVector, massKgM2 } = cohort;
+      requireFinite(directionUnitVector.x, 'cohort direction x');
+      requireFinite(directionUnitVector.y, 'cohort direction y');
+      requireFinite(directionUnitVector.z, 'cohort direction z');
+      requireFinite(massKgM2, 'cohort massKgM2');
+      if (massKgM2 < 0) throw new RangeError('cohort massKgM2 must be non-negative');
+      if (Math.abs(len(directionUnitVector) - 1) > 1e-9) {
+        throw new RangeError('cohort direction must be a unit vector');
+      }
+      totalMassKgM2 += massKgM2;
+    }
+    if (!Number.isFinite(totalMassKgM2) || totalMassKgM2 <= 0) {
+      throw new RangeError('cohort masses must have a finite positive sum');
+    }
+  }
 }
 
 /**
@@ -118,14 +219,17 @@ function cohortErrorM(
 export function evaluateC2ContinuousReleaseOracle(
   input: C2ContinuousReleaseOracleInput,
 ): C2ContinuousReleaseOracleResult {
+  validateOracleInput(input);
   const oracle = continuousReleaseDistribution(input, C2_CONTINUOUS_ORACLE_INTERVALS);
   const coarse = continuousReleaseDistribution(input, C2_CONTINUOUS_ORACLE_INTERVALS / 2);
   const radiusM = input.sphereRadiusM + input.upperHeightM;
   const quadratureRefinementDeltaM = sphericalDistanceM(oracle.centroid, coarse.centroid, radiusM)
     + Math.abs(oracle.spreadM - coarse.spreadM);
+  requireFinite(quadratureRefinementDeltaM, 'quadrature refinement delta');
   const releaseDurationSeconds = input.releaseEndTimeSeconds - input.releaseStartTimeSeconds;
-  const maximumAngularRatePerSecond = input.lowerEastWindMps / (input.sphereRadiusM + input.lowerHeightM)
-    + input.upperNorthWindMps / radiusM;
+  const maximumAngularRatePerSecond = Math.abs(input.lowerEastWindMps)
+    / (input.sphereRadiusM + input.lowerHeightM)
+    + Math.abs(input.upperNorthWindMps) / radiusM;
   const maximumWeightedDirectionSecondDerivative = (
     input.sublimationRatePerSecond + maximumAngularRatePerSecond
   ) ** 2;
@@ -134,8 +238,18 @@ export function evaluateC2ContinuousReleaseOracle(
   const momentErrorBoundSeconds = releaseDurationSeconds ** 3
     * maximumWeightedDirectionSecondDerivative
     / (24 * C2_CONTINUOUS_ORACLE_INTERVALS ** 2);
+  requireFinite(oracle.firstMomentMagnitudeSeconds, 'continuous release first moment magnitude');
+  requireFinite(momentErrorBoundSeconds, 'centroid moment error bound');
+  if (momentErrorBoundSeconds >= oracle.firstMomentMagnitudeSeconds) {
+    throw new RangeError('midpoint error bound does not resolve the continuous release centroid');
+  }
+  const centroidAngleRatio = momentErrorBoundSeconds
+    / (oracle.firstMomentMagnitudeSeconds - momentErrorBoundSeconds);
+  if (!Number.isFinite(centroidAngleRatio) || centroidAngleRatio > 1) {
+    throw new RangeError('midpoint error bound is too large to bound the continuous release centroid angle');
+  }
   const centroidAngleErrorBoundRad = Math.asin(
-    momentErrorBoundSeconds / (oracle.firstMomentMagnitudeSeconds - momentErrorBoundSeconds),
+    centroidAngleRatio,
   );
   const convergenceErrorsM = input.cohortsByCount.map(({ count, cohorts }) => {
     if (cohorts.length !== count) throw new RangeError(`C2 expected ${count} cohorts, got ${cohorts.length}`);
