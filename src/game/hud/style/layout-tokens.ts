@@ -12,6 +12,9 @@ export const LAYOUT_TOKENS_STYLE = `
   --rail-panel-max-h: none;
   /* 上部クロームは実寸を JS で同期する。初期描画前だけこの値をフォールバックとして使う。 */
   --hud-chrome-h: 78px;
+  /* 中央HUDは rail-w を直接読まず、この実占有量だけを参照する。JSが描画後に実寸へ上書きする。 */
+  --hud-left-rail-occupied: calc(12px + var(--rail-w-left));
+  --hud-right-rail-occupied: calc(12px + var(--rail-w-right));
   --hud-rail-top: calc(var(--hud-chrome-h) + var(--space-2));
   --hud-rail-bottom: 12px;
   --hud-map-scale-bottom: 12px;
@@ -36,6 +39,8 @@ export const LAYOUT_TOKENS_STYLE = `
     --rail-w-right: min(260px, calc(54vw - 8px));
     --combat-panel-max-h: none;
     --hud-chrome-h: 58px;
+    --hud-left-rail-occupied: calc(8px + var(--rail-w-left));
+    --hud-right-rail-occupied: calc(8px + var(--rail-w-right));
     --hud-rail-bottom: 8px;
     --hud-map-scale-bottom: 8px;
   }
