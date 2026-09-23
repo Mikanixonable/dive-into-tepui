@@ -16,6 +16,9 @@ const BLOCK = 8;
 const BLOCK_FLOOR = 6;
 // 差分画像で RGB の差の絶対値 [LSB] に掛ける倍率。255 で飽和する。
 const DIFF_GAIN = 8;
+const REPEATED_EARTH_SHOTS = [
+  'earth-nadir', 'earth-oblique', 'earth-limb', 'earth-low-orbit', 'earth-low-sun', 'earth-twilight',
+];
 
 // コマンドライン引数から after と before の dir 群(どれも絶対パス)を取る。dir が 2 つ未満なら使い方を投げる。
 function parseArgs(args) {
@@ -128,6 +131,20 @@ function main() {
   const outDir = path.join(path.dirname(afterDir), `compare-${path.basename(afterDir)}`);
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
+
+  const repeatedSets = [afterDir, ...beforeDirs].filter((dir) => REPEATED_EARTH_SHOTS.every((name) =>
+    existsSync(path.join(dir, `${name}-r01.png`)) && existsSync(path.join(dir, `${name}-r02.png`))));
+  if (repeatedSets.length > 0) {
+    console.log('=== 地球ショットの同一組内反復差 [LSB] ===');
+    for (const dir of repeatedSets) {
+      const differences = REPEATED_EARTH_SHOTS.map((name) => {
+        const first = loadShot(dir, `${name}-r01`);
+        const second = loadShot(dir, `${name}-r02`);
+        return `${name} ${blockMaxOf(first, second).toFixed(2)}`;
+      });
+      console.log(`${path.basename(dir)}: ${differences.join('  ')}`);
+    }
+  }
 
   // after にも before のどれかの組にもある撮影を、最も近い組・封筒と並べて 1 行ずつ出す。
   console.log('| 撮影名 | 最も近い組 | ブロック差 | 封筒 | 判定 | 変化画素 | 最大差 | 外接矩形 |');
