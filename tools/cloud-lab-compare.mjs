@@ -656,6 +656,11 @@ async function main() {
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Cloud lab failed to initialise: ${failure}`);
+    const fixtureMeasurements = JSON.parse(await devTools.evaluate(
+      'JSON.stringify(window.cloudLab.fixtures.map((id) => window.cloudLab.measureFixture(id)))',
+    ));
+    const fixtureResultCount = fixtureMeasurements.filter((entry) => entry.result !== null).length;
+    console.log(`制御実験 C1〜C9: ${fixtureMeasurements.length} 件を宣言、実測結果 ${fixtureResultCount} 件`);
 
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
