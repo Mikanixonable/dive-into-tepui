@@ -108,7 +108,7 @@
         "catalogUrl": "https://noaa-goes18.s3.amazonaws.com/?list-type=2&prefix=ABI-L1b-RadF/2024/136/",
         "availabilityCheckedAt": "2026-09-22T09:29:09Z",
         "acquisitionCommand": "node tools/cloud-reference/acquire.mjs marine-cell-california-2024-05-15 reference/marine-cell-california-2024-05-15",
-        "checksum": { "algorithm": "sha256", "scope": "every retained NetCDF file after download", "value": null, "requiredBeforeEvaluation": true }
+        "checksum": { "algorithm": "sha256", "scope": "SHA-256 of SHA256SUMS containing a SHA-256 for every retained NetCDF file", "value": "019a745a696d56fdc3dbb944204bec9455f36aaa4d135ac7b3d77ef3d392f7a9", "requiredBeforeEvaluation": true }
       },
       "observation": {
         "observedAt": "2024-05-15T16:00:20Z",
