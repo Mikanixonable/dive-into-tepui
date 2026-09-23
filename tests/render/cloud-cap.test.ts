@@ -22,8 +22,8 @@ function rhoAtAltitude(altitude: number): number {
 export function register(): void {
   test('cloud cap: 高度 400 km では地平線 + 雲頂 + 余白', () => {
     const radius = capRadiusFor(rhoAtAltitude(400e3), TOP_OVER_RADIUS);
-    // 地表の地平線 19.75 度、雲頂が地平線より先まで見える分 3.93 度、余白 5 度。
-    assert.ok(Math.abs(radius / DEG - (19.75 + 3.93 + 5)) < 0.05, `${radius / DEG}`);
+    // 地表の地平線 19.78 度、16 km の共有密度上端が地平線より先まで見える分 4.05 度、余白 5 度。
+    assert.ok(Math.abs(radius / DEG - (19.78 + 4.05 + 5)) < 0.05, `${radius / DEG}`);
   });
 
   test('cloud cap: 遠方では pi/2 で止まる', () => {
