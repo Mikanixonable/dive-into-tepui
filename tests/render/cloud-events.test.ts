@@ -4,6 +4,9 @@ import {
   type CloudEventDomain,
   type ConvectiveCloudCell,
 } from '../../src/game/cloud/cloud-events';
+import { reconstructCloudEventMaterialTracks } from '../../src/game/cloud/cloud-event-transport';
+import { cross, norm, v3 } from '../../src/math/vec3';
+import { advectSphericalPositionUnitVector } from '../../src/physics/cloud-spherical-transport';
 import {
   iceEffectiveRadiusM,
   iceOpticalDepth,
@@ -51,6 +54,20 @@ function eventAt(timeSeconds: number, source = cell('cell-a')) {
 function closeTo(actual: number, expected: number, tolerance = 1e-12): void {
   assert.ok(Math.abs(actual - expected) <= tolerance * Math.max(1, Math.abs(expected)),
     `${actual} is not within ${tolerance} relative tolerance of ${expected}`);
+}
+
+function altitudeSplitWind(direction: ReturnType<typeof v3>, heightM: number, vertical = false) {
+  const horizontalRadius = Math.hypot(direction.x, direction.z);
+  const east = horizontalRadius > 1e-12
+    ? v3(direction.z / horizontalRadius, 0, -direction.x / horizontalRadius)
+    : v3(1, 0, 0);
+  const north = norm(cross(direction, east));
+  const lower = heightM < 5_000;
+  const horizontal = lower ? east : north;
+  return {
+    tangentVelocityMPerS: v3(horizontal.x * 10, horizontal.y * 10, horizontal.z * 10),
+    verticalVelocityMPerS: vertical && lower ? 0.1 : 0,
+  };
 }
 
 interface NumericallyIntegratedMass {
@@ -277,6 +294,102 @@ export function register(): void {
     assert.equal(initial.id, later.id);
     assert.notEqual(initial.id, otherSeed?.id);
     assert.notEqual(initial.id, otherCell?.id);
+  });
+
+  test('cloud event transport: shutdown後も親と放出氷を別高度の風で運び質量を保つ', () => {
+    const source = cell('located', {
+      sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
+      iceReleaseHeightM: 7_000,
+    });
+    const event = eventAt(7_200, source);
+    assert.equal(event.supplyActive, false);
+    assert.ok(event.iceRelease.remainingKgM2 > 0);
+    assert.ok(event.iceRelease.meanReleaseTimeSeconds! >= 15 * 60);
+    assert.ok(event.iceRelease.meanReleaseTimeSeconds! <= 30 * 60);
+    const tracks = reconstructCloudEventMaterialTracks(
+      event, 6_371_000, 30, (direction, heightM) => altitudeSplitWind(direction, heightM),
+    );
+    assert.ok(tracks.parent !== null);
+    assert.ok(tracks.releasedIce !== null);
+    assert.ok(tracks.parent!.directionUnitVector.x > tracks.parent!.directionUnitVector.y);
+    assert.ok(tracks.releasedIce!.directionUnitVector.y > tracks.releasedIce!.directionUnitVector.x);
+    closeTo(tracks.parent!.massKgM2, event.mass.liquidKgM2);
+    closeTo(tracks.releasedIce!.massKgM2, event.mass.iceKgM2);
+    closeTo(
+      tracks.totalMassKgM2,
+      event.mass.initialKgM2 + event.mass.suppliedKgM2 - event.mass.lostKgM2,
+    );
+  });
+
+  test('cloud event transport: 放出氷は放出時刻までに移流した親の位置から上層風へ渡る', () => {
+    const source = cell('located', {
+      sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
+      iceReleaseHeightM: 7_000,
+    });
+    const event = eventAt(7_200, source);
+    const tracks = reconstructCloudEventMaterialTracks(
+      event,
+      6_371_000,
+      10,
+      (direction, heightM) => {
+        const east = altitudeSplitWind(direction, heightM).tangentVelocityMPerS;
+        return { tangentVelocityMPerS: heightM < 5_000 ? east : v3(0, 0, 0), verticalVelocityMPerS: 0 };
+      },
+    );
+    const expectedReleaseDirection = advectSphericalPositionUnitVector(
+      v3(0, 0, 1), v3(10, 0, 0), 6_371_000 + 1_000,
+      event.iceRelease.meanReleaseTimeSeconds!,
+    );
+    assert.ok(tracks.releasedIce !== null);
+    assert.ok(Math.hypot(
+      tracks.releasedIce!.directionUnitVector.x - expectedReleaseDirection.x,
+      tracks.releasedIce!.directionUnitVector.y - expectedReleaseDirection.y,
+      tracks.releasedIce!.directionUnitVector.z - expectedReleaseDirection.z,
+    ) < 1e-12);
+    assert.ok(Math.hypot(
+      tracks.parent!.directionUnitVector.x - tracks.releasedIce!.directionUnitVector.x,
+      tracks.parent!.directionUnitVector.y - tracks.releasedIce!.directionUnitVector.y,
+      tracks.parent!.directionUnitVector.z - tracks.releasedIce!.directionUnitVector.z,
+    ) > 1e-4);
+  });
+
+  test('cloud event transport: 上昇が親を上層風へ移し、風層の切替高度を保つ', () => {
+    const source = cell('rising', {
+      sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
+      iceReleaseHeightM: 7_000,
+    });
+    const event = eventAt(7_200, source);
+    const tracks = reconstructCloudEventMaterialTracks(
+      event,
+      6_371_000,
+      10,
+      (direction, heightM) => ({
+        ...altitudeSplitWind(direction, heightM),
+        verticalVelocityMPerS: heightM < 5_000 ? 1 : 0,
+      }),
+    );
+    assert.ok(tracks.parent !== null);
+    closeTo(tracks.parent!.geometricHeightM, 5_000, 1e-10);
+    assert.ok(tracks.parent!.directionUnitVector.x > 0);
+    assert.ok(tracks.parent!.directionUnitVector.y > 0);
+  });
+
+  test('cloud event transport: same absolute time is deterministic after reverse-time cold evaluations', () => {
+    const source = cell('located', {
+      sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
+      iceReleaseHeightM: 7_000,
+    });
+    const evaluate = (timeSeconds: number) => {
+      const event = eventAt(timeSeconds, source);
+      return reconstructCloudEventMaterialTracks(
+        event, 6_371_000, 30, (direction, heightM) => altitudeSplitWind(direction, heightM, true),
+      );
+    };
+    const target = evaluate(7_200);
+    evaluate(28_800);
+    evaluate(600);
+    assert.deepEqual(evaluate(7_200), target);
+    assert.deepEqual(target, evaluate(7_200));
   });
 
   test('cloud events: 重複セル ID と探索上限超過は拒否する', () => {

@@ -17,6 +17,7 @@ import {
   type ConvectiveCloudCell,
   type ConvectiveCloudEvent,
 } from '../../src/game/cloud/cloud-events';
+import { reconstructCloudEventMaterialTracks } from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
 import { cross, dot, len, norm, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
@@ -288,15 +289,41 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
     distanceErrorM(lower, expectedLower, lowerRadiusM),
     distanceErrorM(upper, expectedUpper, upperRadiusM),
   );
+  const event = onlyEvent(eventDomain(SAMPLE_DURATION_SECONDS, [cell(1, {
+    sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: lowerHeightM },
+    iceReleaseHeightM: upperHeightM,
+  })]));
+  const releaseTimeSeconds = event.iceRelease.meanReleaseTimeSeconds;
+  const releasedIce = reconstructCloudEventMaterialTracks(
+    event, EARTH_RADIUS_M, SAMPLE_MAX_STEP_SECONDS, localWindAt(env.levels),
+  ).releasedIce;
+  if (releaseTimeSeconds === null || releasedIce === null) {
+    throw new Error('C2 controlled event must contain released ice and its representative release time');
+  }
+  const preReleaseAngle = lowerWindMps * releaseTimeSeconds / lowerRadiusM;
+  const postReleaseAngle = upperWindMps * (SAMPLE_DURATION_SECONDS - releaseTimeSeconds) / upperRadiusM;
+  const expectedReleasedIce = v3(
+    Math.sin(preReleaseAngle) * Math.cos(postReleaseAngle),
+    Math.sin(postReleaseAngle),
+    Math.cos(preReleaseAngle) * Math.cos(postReleaseAngle),
+  );
   return {
     fixture: 'C2',
     cpuDiagnosticsApplied: true,
     generatedCloudImageFixtureApplied: false,
-    controls: { lowerEastWindMps: lowerWindMps, upperNorthWindMps: upperWindMps, durationSeconds: SAMPLE_DURATION_SECONDS },
+    controls: {
+      lowerEastWindMps: lowerWindMps,
+      upperNorthWindMps: upperWindMps,
+      durationSeconds: SAMPLE_DURATION_SECONDS,
+      representativeReleaseTimeSeconds: releaseTimeSeconds,
+    },
     measurements: [
       compare('layer-displacement', errorM, 'm', 0, 0.05, 'absolute-error',
         'Lower eastward and upper northward tracks are each compared with analytic great-circle motion.'),
-      blocked('released-ice-track', 'deg', 'CloudIceRelease has mass but no birth position or transport track.'),
+      compare('released-ice-track', distanceErrorM(
+        releasedIce.directionUnitVector, expectedReleasedIce, upperRadiusM,
+      ), 'm', 0, 0.05, 'absolute-error',
+      'Representative surviving ice cohort follows parent displacement before release and upper wind afterward.'),
     ],
   };
 }
