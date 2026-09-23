@@ -51,7 +51,7 @@ export function sideSlotRotation(slot: SideSlot): Quat {
   const INV_SQRT2 = Math.SQRT1_2;
   switch (slot) {
     case 'side:+x': return { x: 0, y: INV_SQRT2, z: 0, w: INV_SQRT2 };
-    case 'side:-x': return { x: INV_SQRT2, y: 0, z: -INV_SQRT2, w: 0 };
+    case 'side:-x': return { x: 0, y: -INV_SQRT2, z: 0, w: INV_SQRT2 };
     case 'side:+y': return { x: -0.5, y: 0.5, z: 0.5, w: 0.5 };
     case 'side:-y': return { x: 0.5, y: 0.5, z: -0.5, w: 0.5 };
   }
