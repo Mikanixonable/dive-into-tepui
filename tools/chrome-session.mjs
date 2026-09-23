@@ -236,7 +236,7 @@ export function collectFatalEvents() {
 // onEvent には CDP のイベントがそのまま流れる。close() で接続・ブラウザ・サーバ・
 // プロファイルを畳む。
 export async function openChromeSession({
-  serveDir, port, debugPort, profilePrefix, windowSize = null, onEvent = () => {},
+  serveDir, port, debugPort, profilePrefix, windowSize = null, onEvent = () => {}, extraLaunchArgs = [],
 }) {
   const chrome = findChrome();
   const profile = mkdtempSync(path.join(tmpdir(), profilePrefix));
@@ -247,6 +247,7 @@ export async function openChromeSession({
     await waitForServer(`${baseUrl}/`);
     browser = spawn(chrome, [
       ...LAUNCH_ARGS,
+      ...extraLaunchArgs,
       ...(windowSize === null ? [] : [`--window-size=${windowSize.width},${windowSize.height}`, '--force-device-scale-factor=1']),
       `--remote-debugging-port=${debugPort}`,
       `--user-data-dir=${profile}`,
