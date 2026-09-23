@@ -6,6 +6,8 @@ on:
     paths:
       - tools/model-builder/blender/build-ship-modules.py
       - tools/model-builder/build-ship-modules.mjs
+      - tools/model-builder/export-models.mjs
+      - tools/model-builder/ship-modules.mjs
       - .github/workflows/ship-modules.yml
   workflow_dispatch:
 
@@ -51,6 +53,9 @@ jobs:
         env:
           BLENDER_BIN: ${{ github.workspace }}/.cache/blender-5.0.1-linux-x64/blender
         run: npm run ship-modules:build
+
+      - name: Lint ship module build tools
+        run: npx eslint --quiet tools/model-builder/build-ship-modules.mjs tools/model-builder/export-models.mjs tools/model-builder/ship-modules.mjs
 
       - name: Verify ship module render contracts
         run: npm run test:render
