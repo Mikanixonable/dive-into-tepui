@@ -14,16 +14,17 @@ export const COMBAT_PANEL_ROWS_STYLE = `
    SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */
 #hud:not(.creative-mode) .hud-map-root.active #hud-vessel-status { display: none; }
 #hud-orbit h3 { font-size: var(--font-xs); }
-#hud-vessel-status .v, #hud-orbit .v { min-width: 75px; }
+#hud-vessel-status .v, #hud-orbit .v { min-width: 0; }
 #hud-vessel-status .vessel-meter-readout {
   display: inline-grid;
   grid-template-columns: minmax(64px, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  width: 128px;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
 }
 #hud-vessel-status .vessel-meter-value {
-  min-width: 48px;
+  min-width: 0;
   color: var(--text);
   font-size: var(--font-xxs);
   text-align: right;
@@ -31,11 +32,11 @@ export const COMBAT_PANEL_ROWS_STYLE = `
 }
 #burn-management-panel .burn-management-metrics { gap: 1px; }
 #burn-management-panel .burn-fuel-readout {
-  display: inline-grid; grid-template-columns: minmax(64px, 1fr) auto;
-  align-items: center; gap: 6px; width: 128px;
+  display: inline-grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: var(--space-2); width: 100%; min-width: 0;
 }
 #burn-management-panel .burn-fuel-value {
-  min-width: 48px; color: var(--text); font-size: var(--font-xxs);
+  min-width: 0; color: var(--text); font-size: var(--font-xxs);
   text-align: right; white-space: nowrap;
 }
 #hud-vessel-status .vessel-deploy-controls {
