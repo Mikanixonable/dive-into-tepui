@@ -20,11 +20,16 @@ export class EarthSurfaceTileSource {
   public constructor(
     private readonly colorTemplate: string,
     private readonly terrainTemplate: string,
-  ) {}
+    private readonly maxZoom: number = EARTH_TILE_MAX_Z,
+  ) {
+    if (!Number.isInteger(maxZoom) || maxZoom < EARTH_TILE_MIN_Z || maxZoom > EARTH_TILE_MAX_Z) {
+      throw new RangeError('Invalid Earth surface source max zoom');
+    }
+  }
 
   // 配信範囲のキーを決定的なURLへ解決する。範囲外は基底表示へ戻すためnull。
   public descriptorFor(key: EarthTileKey): EarthSurfaceTileDescriptor | null {
-    if (key.z < EARTH_TILE_MIN_Z || key.z > EARTH_TILE_MAX_Z) return null;
+    if (key.z < EARTH_TILE_MIN_Z || key.z > this.maxZoom) return null;
     return {
       key,
       colorUrl: resolveTemplate(this.colorTemplate, key),
