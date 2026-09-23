@@ -6,9 +6,11 @@ import type { DynamicReactionServices, EntityContactParticipant } from '../dynam
 import type { Contact } from './contact';
 import { shipMotionProperties } from './combat-ship-entity';
 
-// 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
-const ENEMY_MAX_TEMP = 500; // [K]
-const ENEMY_MASS = 10000; // [kg]
+// 現在の敵機が共通して使う物性。質量 [kg]、構造が保たれる上限温度 [K]。
+const ENEMY_MOTION_PROFILE = Object.freeze({
+  mass: 10000,
+  maxTemperature: 500,
+});
 
 // 敵機の接触・焼失の結果を受け取る先。
 interface EnemyMotionReactions {
@@ -75,11 +77,11 @@ export class EnemyMotion extends DynamicMotion {
   ) {
     super(state, shipMotionProperties(attitude, radius, {
       alive,
-      mass: ENEMY_MASS,
+      mass: ENEMY_MOTION_PROFILE.mass,
       collides: true,
       preciseReentry: true,
       ...thermal,
-      maxTemperature: ENEMY_MAX_TEMP,
+      maxTemperature: ENEMY_MOTION_PROFILE.maxTemperature,
       behavior: new EnemyBehavior(reactions, shape),
     }));
   }
