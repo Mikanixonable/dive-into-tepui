@@ -724,7 +724,10 @@ try {
   });
   devTools = session.devTools;
   if (emulateTouch) await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-  await devTools.send('Page.navigate', { url: `${session.baseUrl}/${query}` });
+  const pageQuery = layoutOnly
+    ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
+    : query;
+  await devTools.send('Page.navigate', { url: `${session.baseUrl}/${pageQuery}` });
   await bootAndCheckReady();
   if (emulateTouch) await revealTouchPad();
 
