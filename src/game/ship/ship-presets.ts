@@ -35,12 +35,12 @@ export function createBasePreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALO
   assembly.addRoot(instance(catalog, 'cockpit-standard', 'cockpit'));
   assembly.append(instance(catalog, 'tank-6-main', 'main-tank'));
   assembly.append(instance(catalog, 'tank-6-rcs', 'rcs-tank'));
-  assembly.connectSide(instance(catalog, 'dock-standard', 'dock-left'), 'cockpit', 'side:+x', 'dock-left-edge');
-  assembly.connectSide(instance(catalog, 'dock-standard', 'dock-right'), 'cockpit', 'side:-x', 'dock-right-edge');
-  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-left'), 'main-tank', 'side:+x');
-  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'main-tank', 'side:-x');
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'rcs-tank', 'side:+x');
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'rcs-tank', 'side:-x');
+  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-left'), 'cockpit', 'side:+y');
+  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'cockpit', 'side:-y');
+  assembly.connectSide(instance(catalog, 'dock-standard', 'dock-left'), 'main-tank', 'side:-x', 'dock-left-edge');
+  assembly.connectSide(instance(catalog, 'dock-standard', 'dock-right'), 'main-tank', 'side:+x', 'dock-right-edge');
+  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'rcs-tank', 'side:-x');
+  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'rcs-tank', 'side:+x');
   assembly.assertValid();
   return assembly;
 }
