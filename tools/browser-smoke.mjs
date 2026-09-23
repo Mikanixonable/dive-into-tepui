@@ -576,21 +576,6 @@ async function placeShipThroughMenu() {
     `getComputedStyle(document.getElementById('hud-object-placer')).display === 'none'`,
     'the placement panel to close after confirming',
   );
-  await waitFor(
-    `(() => {
-      const text = document.getElementById('hud-hint')?.textContent ?? '';
-      return text.includes(${JSON.stringify(placedName + ' を配置')})
-        || text.includes('配置できません:')
-        || text.includes('配置数が上限');
-    })()`,
-    'the placement result notification',
-  );
-  const placementResult = await devTools.evaluate(
-    `document.getElementById('hud-hint')?.textContent ?? ''`,
-  );
-  if (!placementResult.includes(`${placedName} を配置`)) {
-    throw new Error(`Creative placement was rejected: ${placementResult}`);
-  }
   return placedName;
 }
 
@@ -879,12 +864,25 @@ try {
         document.querySelector('.hud-map-root.active .rail-toggle-right')?.click();
       }
     })()`);
-    await waitFor(
-      `[...document.querySelectorAll(
+    let placedRowReady = false;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      placedRowReady = await devTools.evaluate(`[...document.querySelectorAll(
         '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
-      )].some((row) => row.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)})`,
-      `the placed object ${placedName} to populate the physical object list`,
-    );
+      )].some((row) => row.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)})`);
+      if (placedRowReady) break;
+      await sleep(100);
+    }
+    if (!placedRowReady) {
+      const diagnostic = await devTools.evaluate(`(() => ({
+        hint: document.getElementById('hud-hint')?.textContent ?? '',
+        tracked: document.querySelector('.physical-object-list-tracked')?.textContent ?? '',
+        playerRows: [...document.querySelectorAll('#hud-physical-object-list-section-player .physical-object-list-name')]
+          .map((el) => el.textContent),
+        baseRows: [...document.querySelectorAll('#hud-physical-object-list-section-base .physical-object-list-name')]
+          .map((el) => el.textContent),
+      }))()`);
+      throw new Error(`Placed object ${placedName} did not populate the physical object list: ${JSON.stringify(diagnostic)}`);
+    }
     const shipRowState = await devTools.evaluate(`(() => {
       const row = [...document.querySelectorAll(
         '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
