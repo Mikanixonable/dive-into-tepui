@@ -150,7 +150,7 @@ export class DraggableWindow implements OverlayHandle {
     this.headerExtras.className = 'dg-window-header-extras';
 
     this.clipBtn = new Button('📌', () => this.setClipped(!this._clipped));
-    this.clipBtn.element.classList.add('dg-window-btn');
+    this.clipBtn.element.classList.add('dg-window-btn', 'ui-icon-control');
     this.clipBtn.element.title = 'クリップ';
     this.clipBtn.element.setAttribute('aria-label', 'クリップ');
     this.clipBtn.element.classList.toggle('clipped', this._clipped);
