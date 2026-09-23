@@ -5,7 +5,7 @@ import { test } from '../harness';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 import {
-  ENGAGEMENT_RANGE, engagementZones, type EngagementParticipant,
+  ENGAGEMENT_RANGE, EngagementZoneBuilder, engagementZones, type EngagementParticipant,
 } from '../../src/game/dynamic/engagement-zone';
 
 // x 軸上の x [m] にいる個体。prevX を渡すと区間 [prevX, x] を渡った個体になる。
@@ -57,5 +57,25 @@ export function register(): void {
     assert.equal(zones.length, 1);
     assert.deepEqual(zones[0]!.anchors[0]!.state.r, v3(70e3, 0, 0));
     assert.equal(engagementZones([at(0, true, 0, false)], true).length, 0);
+  });
+
+  test('engagement-zone: builder は返り値・zone・anchors の器を再利用する', () => {
+    const builder = new EngagementZoneBuilder<EngagementParticipant>();
+    const zones = builder.build([at(0, true), at(50e3, true)], true);
+    const zone = zones[0]!;
+    const anchors = zone.anchors;
+    assert.equal(zones.length, 1);
+    assert.equal(anchors.length, 2);
+
+    const rebuilt = builder.build([at(0, true), at(70e3, true)], true);
+    assert.equal(rebuilt, zones, 'active zone 配列を使い回す');
+    assert.equal(rebuilt[0], zone, 'zone 実体を使い回す');
+    assert.equal(rebuilt[0]!.anchors, anchors, 'anchors 配列を使い回す');
+    assert.equal(rebuilt.length, 2);
+    assert.deepEqual(rebuilt[0]!.anchors[0]!.state.r, v3(0, 0, 0));
+    assert.deepEqual(rebuilt[1]!.anchors[0]!.state.r, v3(70e3, 0, 0));
+
+    assert.equal(builder.build([at(0, true)], false), zones, '無効時も返り値の器は同じ');
+    assert.equal(zones.length, 0);
   });
 }
