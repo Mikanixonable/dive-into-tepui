@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { qFromUnitVectors, qRotate, LOCAL_FORWARD } from '../../src/math/quat';
+import { qFromUnitVectors, qRotate, LOCAL_FORWARD, LOCAL_UP } from '../../src/math/quat';
 import { add, scale, v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
@@ -141,6 +141,9 @@ export function register(): void {
     assert.ok(Math.hypot(
       hostPoint.x - guestPoint.x, hostPoint.y - guestPoint.y, hostPoint.z - guestPoint.z,
     ) < 1e-9);
+    const hostUp = qRotate(hostTransform.rotation, LOCAL_UP);
+    const guestUp = qRotate(guestTransform.rotation, LOCAL_UP);
+    assert.ok(Math.hypot(hostUp.x - guestUp.x, hostUp.y - guestUp.y, hostUp.z - guestUp.z) < 1e-9);
     const [retained, detached] = merged.assembly.splitAt(merged.connectionId);
     assert.ok(retained.module('dock'));
     assert.ok(detached.module('port'));
