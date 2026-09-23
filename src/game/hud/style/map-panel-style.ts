@@ -21,12 +21,11 @@ export const MAP_PANEL_STYLE = `
    見出しは幅を固定して縦に揃え、長い名前(ラグランジュ点など)は省略する。 */
 #hud .body-class-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 #hud .body-class-row .body-class-title {
-  width: 96px; min-width: 96px; text-align: left; font-size: var(--font-xs); letter-spacing: 1px;
+  width: 96px; min-width: 96px; text-align: left; font-size: var(--font-xs); letter-spacing: var(--tracking-label);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #hud .body-class-row .body-class-btns { display: flex; gap: var(--space-2); }
-/* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
-   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
+/* 旧全称リセットには依存せず、このパネル固有の密度として操作ボタン寸法を定義する。 */
 #hud span.body-class-icon-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
 @media ${MQ_COARSE} {
   #hud span.body-class-icon-btn { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
@@ -35,8 +34,8 @@ export const MAP_PANEL_STYLE = `
   #hud-plan { min-width: 0; max-width: none; }
 }
 @media ${MQ_COMPACT} {
-  #hud .w-group { gap: var(--space-2); }
-  #hud .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
+  #hud .hud-map-root.active .w-group { gap: var(--space-2); }
+  #hud .hud-map-root.active .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xs); }
 }
 
 /* 表示設定パネル(#hud-view-options)のコンテナ・タイトル・本体と、タブ本体。 */
@@ -87,7 +86,8 @@ export const MAP_PANEL_STYLE = `
    左右レール(.hud-rail-left/.hud-rail-right)の内側に収まる幅だけを使い、レールのパネルに重ねない。 */
 #hud-predict-wrap {
   position: absolute; bottom: 12px;
-  left: calc(12px + var(--rail-w-left) + 8px); right: calc(12px + var(--rail-w-right) + 8px);
+  left: calc(var(--hud-left-rail-occupied) + 8px);
+  right: calc(var(--hud-right-rail-occupied) + 8px);
   display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none;
 }
 /* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。
@@ -100,7 +100,7 @@ export const MAP_PANEL_STYLE = `
 #hud-predict.collapsed { display: none !important; }
 #hud-predict-toggle {
   display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
-  width: 26px; height: 26px; border: 0; border-radius: 50%;
+  border: 0; border-radius: 50%;
   background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
@@ -111,7 +111,7 @@ export const MAP_PANEL_STYLE = `
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-predict span.predict-reset {
   flex: 0 0 auto; padding: 0;
-  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
   font-size: var(--font-m);
 }
 #hud-predict span.predict-reset:hover { color: var(--color-primary); }
@@ -134,11 +134,7 @@ export const MAP_PANEL_STYLE = `
   font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
 @media ${MQ_MEDIUM_DOWN} {
-  /* このブレークポイントのレール幅に合わせて左右の隙間を再計算する。 */
-  #hud-predict-wrap {
-    bottom: 8px;
-    left: calc(8px + var(--rail-w-left) + 8px); right: calc(8px + var(--rail-w-right) + 8px);
-  }
+  #hud-predict-wrap { bottom: 8px; }
 }
 @media ${MQ_COMPACT} {
   #hud-predict .slider-ticks { display: none; }
@@ -157,8 +153,7 @@ export const MAP_PANEL_STYLE = `
 /* 座標系・カメラ FOV/角度操作パネル(.hud-frame-controls)。 */
 #hud .hud-frame-controls {
   width: 100%; pointer-events: auto;
-  max-height: min(360px, 48vh); max-height: min(360px, 48dvh); overflow-y: auto;
-  scrollbar-width: thin;
+  max-height: none; overflow: visible;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
 #hud .hud-frame-controls .hud-frame-origin-zone > .w-group:first-child > .w-group-title,
@@ -170,7 +165,7 @@ export const MAP_PANEL_STYLE = `
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);
 }
 #hud .hud-frame-controls .camera-control-label {
-  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: 1px;
+  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
 }
 #hud .hud-frame-controls .camera-fov-control .w-slider { flex: 1 1 auto; min-width: 60px; }
 #hud .hud-frame-controls .camera-fov-control .w-slider:disabled,
@@ -208,7 +203,7 @@ export const MAP_PANEL_STYLE = `
 .orbit-guide-color-row { align-items: center; }
 .orbit-guide-color-row .w-input { width: 44px; height: 24px; padding: 2px; }
 .orbit-guide-color-row.hidden { display: none; }
-.orbit-guide-line-count-warning { color: var(--color-error); font-size: var(--font-xs); margin-top: var(--space-2); }
+.orbit-guide-line-count-warning { margin-top: var(--space-2); }
 .orbit-guide-line-count-warning.hidden { display: none; }
 .orbit-guide-zero-velocity-range { display: flex; flex-direction: column; gap: var(--space-2); }
 .orbit-guide-zero-velocity-range.hidden { display: none; }
@@ -272,8 +267,8 @@ export const MAP_PANEL_STYLE = `
 #hud-object-placer input[type="text"] { flex: 1; width: auto; }
 #hud-object-placer .preset-row { flex-wrap: wrap; gap: var(--space-3); }
 #hud-object-placer .field-issue { border: 0; border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); color: var(--color-error); }
-#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 0; border-radius: var(--radius-s); background: var(--color-error-fill); }
-#hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--color-error); }
+#hud-object-placer .issue-list { margin: var(--space-4) 0; }
+#hud-object-placer .issue-list .issue-line { color: inherit; }
 
 
 /* DISPLAY INDEX — タイトル画面の stage list と同じ「名称 + 右端状態」の索引型。 */
@@ -285,10 +280,10 @@ export const MAP_PANEL_STYLE = `
 }
 #hud-view-options .view-options-render-label { display: grid; gap: 2px; min-width: 0; }
 #hud-view-options .view-options-render-label > span {
-  color: var(--text); font-size: var(--font-xs); letter-spacing: .04em;
+  color: var(--text); font-size: var(--font-xs); letter-spacing: 0;
 }
 #hud-view-options .view-options-render-label > small {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud-view-options .view-options-render-choices {
   display: inline-flex; justify-self: end; align-items: stretch; gap: 1px;
@@ -343,7 +338,7 @@ export const MAP_PANEL_STYLE = `
 #hud-view-options .target-class-row .body-class-title .w-btn-icon { display: none; }
 #hud-view-options .target-class-row .body-class-title::after {
   content: attr(data-display-label); margin-left: auto;
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud-view-options .target-class-row .body-class-title.on {
   color: var(--text); background: transparent;
@@ -351,7 +346,7 @@ export const MAP_PANEL_STYLE = `
 #hud-view-options .target-class-row .body-class-title.on::after { color: var(--color-primary); }
 #hud-view-options .target-class-row:hover { background: var(--glass-control-hover); }
 #hud-view-options .view-options-section-heading {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud-view-options .grid-class-row {
   padding-block: var(--space-1); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 12%, transparent);
@@ -386,8 +381,8 @@ export const MAP_PANEL_STYLE = `
   display: grid; gap: var(--space-1); margin-bottom: var(--space-3);
 }
 #hud-plan .plan-node-hero strong {
-  color: var(--text-strong); font-size: var(--font-2xl);
-  font-variant-numeric: tabular-nums; letter-spacing: -.03em;
+  color: var(--text-strong); font-size: var(--font-xl);
+  font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-title);
 }
 #hud-plan .plan-state .editorial-state-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);
