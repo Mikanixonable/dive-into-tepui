@@ -34,30 +34,78 @@ export interface EnemyFireControllerPort {
 }
 
 // 射撃判断の途中経過(バーストの残弾と次弾まで、射撃の機会と行動の時刻)の直列化した形。
-export interface SerializedEnemyFireController {
+export interface SerializedEnemyFireState {
   readonly burstLeft: number | null;
   readonly burstDelay: number | null;
   readonly lastFireSim: number | null;
   readonly lastBehaviorSim: number | null;
 }
 
-// 敵1体の射撃判断・バースト進行・弾の生成。
-export class EnemyFireController {
-  // port は撃つ敵。burstLeft・burstDelay はバースト射撃の残弾と次弾までの残り時間 [s] で、未着手なら
-  // 両方 null。lastFireSim・lastBehaviorSim は最後に射撃の機会が巡った時刻と最後に行動した
-  // 時刻 [sim s] で、まだなら null。
+// 敵1体の射撃判断でフレームを跨いで残る状態。Controller は判断を、State は値の整合性と復元を持つ。
+export class EnemyFireState {
   public constructor(
-    private readonly port: EnemyFireControllerPort,
     private burstLeft: number | null = null,
     private burstDelay: number | null = null,
     private lastFireSim: number | null = null,
     private lastBehaviorSim: number | null = null,
   ) {}
 
-  public get isBursting(): boolean { return this.burstLeft !== null && this.burstLeft > 0; }
+  public static deserialize(serialized: SerializedEnemyFireState): EnemyFireState {
+    const burstLeft = Number.isInteger(serialized.burstLeft) && (serialized.burstLeft ?? -1) >= 0
+      ? serialized.burstLeft : null;
+    const burstDelay = typeof serialized.burstDelay === 'number' && Number.isFinite(serialized.burstDelay)
+      ? Math.max(0, serialized.burstDelay) : null;
+    const lastFireSim = typeof serialized.lastFireSim === 'number' && Number.isFinite(serialized.lastFireSim)
+      ? serialized.lastFireSim : null;
+    const lastBehaviorSim = typeof serialized.lastBehaviorSim === 'number' && Number.isFinite(serialized.lastBehaviorSim)
+      ? serialized.lastBehaviorSim : null;
+    return new EnemyFireState(burstLeft, burstLeft === null ? null : burstDelay, lastFireSim, lastBehaviorSim);
+  }
 
-  // バースト射撃の途中経過と、射撃の機会・行動の時刻の直列化。
-  public serialize(): SerializedEnemyFireController {
+  public get isBursting(): boolean { return this.burstLeft !== null && this.burstLeft > 0; }
+  public get burstShotDue(): boolean {
+    return this.isBursting && (this.burstDelay ?? 0) <= 0;
+  }
+  public get hasFireOpportunityAnchor(): boolean { return this.lastFireSim !== null; }
+
+  public elapsedSinceBehavior(simTime: number): number {
+    return this.lastBehaviorSim === null ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
+  }
+
+  public recordBehavior(simTime: number): void { this.lastBehaviorSim = simTime; }
+
+  public cancelBurst(): void {
+    this.burstLeft = null;
+    this.burstDelay = null;
+  }
+
+  public elapseBurst(dt: number): void {
+    if (!this.isBursting) return;
+    this.burstDelay = (this.burstDelay ?? 0) - Math.max(0, dt);
+  }
+
+  public recordBurstShot(interval: number): void {
+    if (!this.isBursting) return;
+    this.burstLeft = Math.max(0, (this.burstLeft ?? 0) - 1);
+    this.burstDelay = (this.burstDelay ?? 0) + interval;
+  }
+
+  public seedFireOpportunity(time: number): void {
+    if (this.lastFireSim === null) this.lastFireSim = time;
+  }
+
+  public fireOpportunityDue(simTime: number, interval: number): boolean {
+    return this.lastFireSim !== null && simTime - this.lastFireSim > interval;
+  }
+
+  public recordFireOpportunity(simTime: number): void { this.lastFireSim = simTime; }
+
+  public startBurst(count: number, interval: number): void {
+    this.burstLeft = Math.max(0, Math.floor(count) - 1);
+    this.burstDelay = interval;
+  }
+
+  public serialize(): SerializedEnemyFireState {
     return {
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
@@ -65,6 +113,19 @@ export class EnemyFireController {
       lastBehaviorSim: this.lastBehaviorSim,
     };
   }
+}
+
+// 敵1体の射撃判断・バースト進行・弾の生成。
+export class EnemyFireController {
+  public constructor(
+    private readonly port: EnemyFireControllerPort,
+    private readonly state = new EnemyFireState(),
+  ) {}
+
+  public get isBursting(): boolean { return this.state.isBursting; }
+
+  // バースト射撃の途中経過と、射撃の機会・行動の時刻の直列化。
+  public serialize(): SerializedEnemyFireState { return this.state.serialize(); }
 
   // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
   // 間は撃たない。
@@ -72,39 +133,38 @@ export class EnemyFireController {
     simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
     mayFire: boolean, celestialBodies: CelestialBodies,
   ): void {
-    const behaviorDt = this.lastBehaviorSim === null ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
-    this.lastBehaviorSim = simTime;
+    const behaviorDt = this.state.elapsedSinceBehavior(simTime);
+    this.state.recordBehavior(simTime);
     if (!mayFire) return;
     if (!this.port.canFire(enemies)) {
-      this.burstLeft = null;
-      this.burstDelay = null;
+      this.state.cancelBurst();
       return;
     }
     // 近すぎず、交戦距離の内にいる間だけ撃つ
     const dist = len(sub(player.motion.state.r, this.port.motion.state.r));
     if (!(dist < ENGAGEMENT_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
 
-    // バーストの途中なら、次弾の時刻が来たら続きを撃つ
+    // バースト中に経過した射撃可能時間を引く。1フレームで複数間隔を跨いだ場合は、遅れを捨てず
+    // そのフレームで追いつく。射程外・mayFire=false の時間はここへ入らないのでバーストは一時停止する。
     if (this.isBursting) {
-      this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
-      if (this.burstDelay <= 0) {
+      this.state.elapseBurst(behaviorDt);
+      while (this.state.burstShotDue) {
         this.firePlasma(simTime, player, registry, celestialBodies);
-        const burstLeft = this.burstLeft;
-        this.burstLeft = burstLeft === null ? null : burstLeft - 1;
-        this.burstDelay = ENEMY_BURST_INTERVAL;
+        this.state.recordBurstShot(ENEMY_BURST_INTERVAL);
       }
       return;
     }
 
     // 射撃の機会が巡ったら、攻撃グループの同時発砲数と確率で新しいバーストを始める
-    if (this.lastFireSim === null) this.lastFireSim = simTime - Math.random() * ENEMY_FIRE_INTERVAL;
-    if (simTime - this.lastFireSim <= ENEMY_FIRE_INTERVAL) return;
-    this.lastFireSim = simTime;
+    if (!this.state.hasFireOpportunityAnchor) {
+      this.state.seedFireOpportunity(simTime - Math.random() * ENEMY_FIRE_INTERVAL);
+    }
+    if (!this.state.fireOpportunityDue(simTime, ENEMY_FIRE_INTERVAL)) return;
+    this.state.recordFireOpportunity(simTime);
     const countInGroup = countAttackingEnemiesInGroup(enemies, this.port.attackGroupId);
     if (countInGroup >= ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= ENEMY_ATTACK_CHANCE) return;
     const burstCount = ENEMY_BURST_COUNTS[Math.floor(Math.random() * ENEMY_BURST_COUNTS.length)] ?? 1;
-    this.burstLeft = burstCount - 1;
-    this.burstDelay = ENEMY_BURST_INTERVAL;
+    this.state.startBurst(burstCount, ENEMY_BURST_INTERVAL);
     this.firePlasma(simTime, player, registry, celestialBodies);
   }
 
