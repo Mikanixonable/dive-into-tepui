@@ -34,10 +34,11 @@ export const WIDGET_STYLE = `
 .w-btn--secondary { background: var(--fill-1); color: var(--text-dim); }
 .w-btn--secondary:hover { background: var(--fill-2); color: var(--text); }
 .w-btn--dense { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
-.w-btn--icon {
-  width: var(--font-xl); height: var(--font-xl); padding: 0; display: inline-flex;
+.ui-icon-control, .w-btn--icon {
+  width: 24px; height: 24px; padding: 0; display: inline-flex;
   align-items: center; justify-content: center; border-radius: 50%; text-align: center;
 }
+.w-btn--icon { flex: 0 0 24px; }
 .w-btn.pressed { background: var(--fill-3); transform: translateY(1px); }
 .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
 .w-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
@@ -77,7 +78,7 @@ export const WIDGET_STYLE = `
 /* w-close: ✕ の閉じるボタン。 */
 .w-close {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; padding: 0; border-radius: 50%; font-size: var(--font-m);
+  width: 24px; height: 24px; padding: 0; border-radius: 50%; font-size: var(--font-m);
 }
 
 /* w-input: 数値/文字/検索入力。w-select: プルダウンのドロップダウン選択
