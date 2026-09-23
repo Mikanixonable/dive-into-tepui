@@ -670,11 +670,11 @@ def build_tank_rcs(length, name):
                 make_sphere(sphere_radius, center=(tx, ty, z_sec), u_seg=24, v_seg=16),
                 mats.tank_rcs,
             )
-            add_mesh_obj(
-                f"rcs_vessel_weld_{sec}_{side}",
-                make_torus(major_r=sphere_radius, minor_r=0.012, z_center=z_sec, major_seg=28, minor_seg=6),
-                mats.fastener,
+            vessel_weld = make_torus(
+                major_r=sphere_radius, minor_r=0.012, z_center=z_sec, major_seg=28, minor_seg=6
             )
+            transform_bm(vessel_weld, Matrix.Translation(Vector((tx, ty, 0.0))))
+            add_mesh_obj(f"rcs_vessel_weld_{sec}_{side}", vessel_weld, mats.fastener)
             # Short branch line from vessel to centre manifold.
             add_mesh_obj(
                 f"rcs_branch_{sec}_{side}",
@@ -1249,38 +1249,23 @@ def build_weapon(name):
             make_box(0.52, 0.72, 0.46, center=(x_base, 0.0, 0.12)),
             mats.fastener,
         )
-        add_mesh_obj(
-            f"gun_housing_{sign}",
-            make_cylinder(0.40, 0.36, 0.70, z_center=0.30, segments=18),
-            mats.titanium,
-        )
+        housing = make_cylinder(0.40, 0.36, 0.58, z_center=0.16, segments=18)
+        transform_bm(housing, Matrix.Translation(Vector((x_base, 0.0, 0.0))))
+        add_mesh_obj(f"gun_housing_{sign}", housing, mats.titanium)
 
-        # Six barrels and two spider clamps.
+        # Six barrels end close to the gameplay muzzle anchor at z ≈ +0.75 m.
         for b in range(6):
             b_ang = b * math.pi / 3.0
             bx = x_base + 0.15 * math.cos(b_ang)
             by = 0.15 * math.sin(b_ang)
-            add_mesh_obj(
-                f"barrel_{sign}_{b}",
-                make_cylinder(0.030, 0.030, 1.06, z_center=0.62, segments=10),
-                mats.pipe,
-            )
-            # Shift the cylinder to its cluster location.
-            # make_cylinder already owns geometry, so translate afterwards.
-            obj = bpy.data.objects.get(f"barrel_{sign}_{b}")
-            if obj:
-                obj.location.x += bx
-                obj.location.y += by
+            barrel = make_cylinder(0.030, 0.030, 0.72, z_center=0.42, segments=10)
+            transform_bm(barrel, Matrix.Translation(Vector((bx, by, 0.0))))
+            add_mesh_obj(f"barrel_{sign}_{b}", barrel, mats.pipe)
 
-        for z in [0.43, 1.05]:
-            add_mesh_obj(
-                f"barrel_clamp_{sign}_{z}",
-                make_torus(major_r=0.17, minor_r=0.022, z_center=z, major_seg=18, minor_seg=6),
-                mats.fastener,
-            )
-            obj = bpy.data.objects.get(f"barrel_clamp_{sign}_{z}")
-            if obj:
-                obj.location.x += x_base
+        for z in [0.32, 0.73]:
+            clamp = make_torus(major_r=0.17, minor_r=0.022, z_center=z, major_seg=18, minor_seg=6)
+            transform_bm(clamp, Matrix.Translation(Vector((x_base, 0.0, 0.0))))
+            add_mesh_obj(f"barrel_clamp_{sign}_{z}", clamp, mats.fastener)
 
         # Feed motor and visible cable/harness.
         add_mesh_obj(
