@@ -21,12 +21,11 @@ export const MAP_PANEL_STYLE = `
    見出しは幅を固定して縦に揃え、長い名前(ラグランジュ点など)は省略する。 */
 #hud .body-class-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 #hud .body-class-row .body-class-title {
-  width: 96px; min-width: 96px; text-align: left; font-size: var(--font-xs); letter-spacing: 1px;
+  width: 96px; min-width: 96px; text-align: left; font-size: var(--font-xs); letter-spacing: var(--tracking-label);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #hud .body-class-row .body-class-btns { display: flex; gap: var(--space-2); }
-/* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
-   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
+/* 旧全称リセットには依存せず、このパネル固有の密度として操作ボタン寸法を定義する。 */
 #hud span.body-class-icon-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
 @media ${MQ_COARSE} {
   #hud span.body-class-icon-btn { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
@@ -169,7 +168,7 @@ export const MAP_PANEL_STYLE = `
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);
 }
 #hud .hud-frame-controls .camera-control-label {
-  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: 1px;
+  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
 }
 #hud .hud-frame-controls .camera-fov-control .w-slider { flex: 1 1 auto; min-width: 60px; }
 #hud .hud-frame-controls .camera-fov-control .w-slider:disabled,
