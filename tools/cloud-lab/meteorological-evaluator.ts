@@ -17,7 +17,10 @@ import {
   type ConvectiveCloudCell,
   type ConvectiveCloudEvent,
 } from '../../src/game/cloud/cloud-events';
-import { reconstructCloudEventMaterialTracks } from '../../src/game/cloud/cloud-event-transport';
+import {
+  reconstructCloudEventMaterialCohorts,
+  reconstructCloudEventMaterialTracks,
+} from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
 import { cross, dot, len, norm, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
@@ -258,15 +261,68 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
   const displacement = transportDisplacementM(environmentInput({ eastWindMps: speedMps }).levels, heightM);
   const angleRad = speedMps * SAMPLE_DURATION_SECONDS / radiusM;
   const expected = v3(Math.sin(angleRad), 0, Math.cos(angleRad));
+  const initialLiquidMassKgM2 = 0.00025;
+  const initialIceMassKgM2 = 0.00075;
+  const initialMassKgM2 = initialLiquidMassKgM2 + initialIceMassKgM2;
+  const massFixture: ConvectiveCloudEvent = {
+    id: 'c1-fixed-material',
+    cellId: 'c1-fixed-material',
+    birthEpoch: 0,
+    birthTimeSeconds: 0,
+    ageSeconds: SAMPLE_DURATION_SECONDS,
+    sourcePosition: {
+      directionUnitVector: v3(0, 0, 1),
+      geometricHeightM: heightM,
+    },
+    supplyActive: false,
+    mass: {
+      initialKgM2: initialMassKgM2,
+      suppliedKgM2: 0,
+      lostKgM2: 0,
+      liquidKgM2: initialLiquidMassKgM2,
+      iceKgM2: initialIceMassKgM2,
+    },
+    iceRelease: {
+      id: 'c1-fixed-material:ice',
+      parentEventId: 'c1-fixed-material',
+      releasedKgM2: initialIceMassKgM2,
+      remainingKgM2: initialIceMassKgM2,
+      meanReleaseTimeSeconds: SAMPLE_DURATION_SECONDS / 2,
+      releaseRateKgM2S: initialIceMassKgM2 / SAMPLE_DURATION_SECONDS,
+      releaseStartTimeSeconds: 0,
+      releaseEndTimeSeconds: SAMPLE_DURATION_SECONDS,
+      sublimationRatePerSecond: 0,
+      releaseHeightM: 10_000,
+    },
+  };
+  const transportedMaterial = reconstructCloudEventMaterialCohorts(
+    massFixture,
+    radiusM,
+    SAMPLE_MAX_STEP_SECONDS,
+    localWindAt(environmentInput({ eastWindMps: speedMps }).levels),
+    24,
+  );
+  const relativeMassError = Math.abs(transportedMaterial.totalMassKgM2 - initialMassKgM2)
+    / initialMassKgM2;
   return {
     fixture: 'C1',
     cpuDiagnosticsApplied: true,
     generatedCloudImageFixtureApplied: false,
-    controls: { equatorialEastWindMps: speedMps, durationSeconds: SAMPLE_DURATION_SECONDS, sphereRadiusM: EARTH_RADIUS_M },
+    controls: {
+      equatorialEastWindMps: speedMps,
+      durationSeconds: SAMPLE_DURATION_SECONDS,
+      sphereRadiusM: EARTH_RADIUS_M,
+      initialLiquidMassKgM2,
+      initialIceMassKgM2,
+      transportedMassKgM2: transportedMaterial.totalMassKgM2,
+      independentlyExpectedMassKgM2: initialMassKgM2,
+      reconstructedIceCohortCount: transportedMaterial.releasedIceCohorts.length,
+    },
     measurements: [
       compare('trajectory', distanceErrorM(displacement, expected, radiusM), 'm', 0, 0.01,
         'absolute-error', 'Great-circle displacement is compared with the analytic equatorial solution.'),
-      blocked('mass', '1', 'The parcel transport API returns position only and has no carried-mass state.'),
+      compare('mass', relativeMassError, '1', 0, 0.01, 'absolute-error',
+        'Passive liquid and ice cohorts are transported with no source or loss; the expected 0.001 kg m^-2 is fixed from the fixture inputs, independently of the event transport output.'),
     ],
   };
 }
