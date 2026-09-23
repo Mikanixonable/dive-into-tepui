@@ -1,0 +1,29 @@
+name: Cloud Step 3 CI
+
+on:
+  push:
+    branches: [workspace3-step3]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run check:boundaries
+      - run: npm run typecheck
+      - run: npm run test:render
+      - run: npm run test:game
+      - run: npm run cloud-reconstruction:measure
+      - run: npm run build
+      - run: npm run cloud-baseline:measure
+        env:
+          CLOUD_BASELINE_PROFILE: smoke

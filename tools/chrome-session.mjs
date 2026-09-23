@@ -6,8 +6,27 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import WebSocket from 'ws';
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function cleanupChromeProfile(profile) {
+  // Chrome can keep Crashpad/lock files alive briefly after exit, especially on CI tmpfs.
+  // Ephemeral cleanup must not hide the browser/test result.
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      rmSync(profile, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const retryable = error?.code === 'ENOTEMPTY' || error?.code === 'EBUSY' || error?.code === 'EPERM';
+      if (!retryable || attempt === 19) {
+        console.warn(`chrome-session: could not remove temporary profile ${profile}: ${error}`);
+        return;
+      }
+      await sleep(100 * (attempt + 1));
+    }
+  }
+}
 
 const candidates = [
   process.env.CHROME_PATH,
@@ -262,13 +281,14 @@ export async function openChromeSession({
         browser.kill('SIGTERM');
         await Promise.race([once(browser, 'exit'), sleep(2_000)]);
         server.close();
-        rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        await cleanupChromeProfile(profile);
       },
     };
   } catch (e) {
     browser?.kill('SIGTERM');
     server.close();
-    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    if (browser !== undefined) await Promise.race([once(browser, 'exit'), sleep(2_000)]);
+    await cleanupChromeProfile(profile);
     throw e;
   }
 }

@@ -90,7 +90,8 @@
     "cloud-lab:separate": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-separate.mjs",
     "cloud-lab:reference": "node tools/cloud-lab-reference.mjs",
     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
-    "smoke:layout": "node tools/layout-smoke-retry.mjs"
+    "smoke:layout": "node tools/layout-smoke-retry.mjs",
+    "cloud-reconstruction:measure": "npm run test:build && node tests/dist/tools/cloud-reconstruction-benchmark.js"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -107,7 +108,8 @@
     "typescript-eslint": "8.70.0",
     "webpack": "^5.94.0",
     "webpack-cli": "^5.1.4",
-    "webpack-dev-server": "^5.1.0"
+    "webpack-dev-server": "^5.1.0",
+    "ws": "8.21.1"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",
