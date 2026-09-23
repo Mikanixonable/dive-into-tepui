@@ -313,7 +313,6 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 @media ${MQ_COMPACT} {
   #hud .hud-rail { font-size: var(--font-xxs); }
-  #hud .hud-map-root.active .hud-rail { bottom: var(--hud-map-rail-bottom); }
   #hud-topbar {
     width: 100%;
     padding-inline: var(--space-3);
