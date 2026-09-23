@@ -129,6 +129,29 @@ export function register(): void {
       assert.ok(sources.some((source) => source.includes(`/${product}/2024/162/18/`)), product);
       assert.ok(sources.some((source) => source.includes(`/${product}/2024/163/06/`)), product);
     }
+
+    // NOAA filenames add variable seconds to each nominal scan start, so selectors match
+    // the scheduled UTC minute while excluding later scans in the endpoint hour.
+    const codSelectors = plan.flatMap((step) => {
+      if (!step.args[2]!.includes('/ABI-L2-CODF/')) return [];
+      return step.args.flatMap((argument, index) => argument === '--include' ? [step.args[index + 1]!] : []);
+    }).sort();
+    const expectedCodSelectors: string[] = [];
+    const seriesStartMs = Date.parse(target.series.start);
+    const seriesEndMs = Date.parse(target.series.end);
+    const intervalMs = target.series.intervalMinutes * 60_000;
+    for (let scanMs = seriesStartMs; scanMs <= seriesEndMs; scanMs += intervalMs) {
+      const scan = new Date(scanMs);
+      const yearStart = Date.UTC(scan.getUTCFullYear(), 0, 1);
+      const day = String(Math.floor((scanMs - yearStart) / 86_400_000) + 1).padStart(3, '0');
+      const hour = String(scan.getUTCHours()).padStart(2, '0');
+      const minute = String(scan.getUTCMinutes()).padStart(2, '0');
+      expectedCodSelectors.push(`OR_ABI-L2-CODF-M6_G18_s${scan.getUTCFullYear()}${day}${hour}${minute}*.nc`);
+    }
+    assert.deepEqual(codSelectors, expectedCodSelectors.sort());
+    assert.ok(codSelectors[0]!.includes('_s20241621800*.nc'));
+    assert.ok(codSelectors.at(-1)!.includes('_s20241630600*.nc'));
+    assert.ok(!codSelectors.some((selector) => selector.includes('_s20241630610')));
     assert.equal(
       target.source.acquisitionCommand,
       `node tools/cloud-reference/acquire.mjs ${target.id} reference/${target.id}`,
