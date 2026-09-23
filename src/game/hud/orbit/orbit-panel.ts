@@ -104,11 +104,11 @@ export class OrbitPanel {
         qEl.classList.toggle('warn-hot', qDanger);
       }
       qRow?.classList.toggle('warn-hot', qDanger);
-      syncEnvironmentMeter(qFill, qdyn / MAX_DYN_PRESSURE, qDanger);
+      syncEnvironmentMeter(qFill ?? null, qdyn / MAX_DYN_PRESSURE, qDanger);
     } else {
       qEl?.classList.remove('warn-hot');
       qRow?.classList.remove('warn-hot');
-      syncEnvironmentMeter(qFill, 0, false);
+      syncEnvironmentMeter(qFill ?? null, 0, false);
     }
 
     const tDanger = view.temperatureK > 0.7 * MAX_HULL_TEMP;
