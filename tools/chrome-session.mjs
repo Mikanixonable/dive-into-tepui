@@ -231,22 +231,6 @@ export function collectFatalEvents() {
   };
 }
 
-// 既に別プロセスが所有している静的サーバと Chrome へ CDP だけ接続する。
-// layout suite がブラウザを1回だけ起動し、複数シナリオから同じ実体を再利用するための入口。
-export async function attachExistingChromeSession({
-  baseUrl, debugPort, windowSize = null, onEvent = () => {},
-}) {
-  await waitForServer(`${baseUrl}/`);
-  const devTools = await attachSession(debugPort, onEvent, windowSize);
-  return {
-    devTools,
-    baseUrl,
-    async close() {
-      devTools.close();
-    },
-  };
-}
-
 // serveDir を port で配り、ヘッドレス Chrome を上げ、CDP を繋いだ状態を返す。
 // windowSize({width,height})を渡すと、その大きさの窓と等倍の device metrics で開く。
 // onEvent には CDP のイベントがそのまま流れる。close() で接続・ブラウザ・サーバ・
