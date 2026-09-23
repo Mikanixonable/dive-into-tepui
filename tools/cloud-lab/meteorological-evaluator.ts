@@ -220,6 +220,45 @@ function axisRotationPhaseRad(start: Vec3, end: Vec3, axis: Vec3): number {
     dot(startPerpendicular, endPerpendicular));
 }
 
+function analyticC2ReleasedIceDirection(
+  releaseTimeSeconds: number,
+  sampleTimeSeconds: number,
+  lowerHeightM: number,
+  upperHeightM: number,
+  lowerEastWindMps: number,
+  upperNorthWindMps: number,
+): Vec3 {
+  const lowerAngleRad = lowerEastWindMps * releaseTimeSeconds / (EARTH_RADIUS_M + lowerHeightM);
+  const upperAngleRad = upperNorthWindMps * (sampleTimeSeconds - releaseTimeSeconds)
+    / (EARTH_RADIUS_M + upperHeightM);
+  const lowerSine = Math.sin(lowerAngleRad);
+  const lowerCosine = Math.cos(lowerAngleRad);
+  return v3(
+    lowerSine * Math.cos(upperAngleRad),
+    Math.sin(upperAngleRad),
+    lowerCosine * Math.cos(upperAngleRad),
+  );
+}
+
+function massWeightedSphericalRmsSpreadM(
+  samples: readonly { readonly directionUnitVector: Vec3; readonly massKgM2: number }[],
+  sphereRadiusM: number,
+): number {
+  const totalMassKgM2 = samples.reduce((total, sample) => total + sample.massKgM2, 0);
+  if (totalMassKgM2 === 0) return 0;
+  const weightedDirection = samples.reduce((sum, sample) => v3(
+    sum.x + sample.directionUnitVector.x * sample.massKgM2,
+    sum.y + sample.directionUnitVector.y * sample.massKgM2,
+    sum.z + sample.directionUnitVector.z * sample.massKgM2,
+  ), v3(0, 0, 0));
+  const centroidDirection = norm(weightedDirection);
+  const weightedVarianceM2 = samples.reduce((total, sample) => {
+    const distanceM = distanceErrorM(sample.directionUnitVector, centroidDirection, sphereRadiusM);
+    return total + sample.massKgM2 * distanceM * distanceM;
+  }, 0) / totalMassKgM2;
+  return Math.sqrt(weightedVarianceM2);
+}
+
 function localWindAt(levels: readonly CloudEnvironmentLevelInput[]) {
   return (direction: Vec3, heightM: number) => {
     let lower = levels[0]!;
@@ -424,13 +463,44 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
   if (releaseTimeSeconds === null || releasedIce === null) {
     throw new Error('C2 controlled event must contain released ice and its representative release time');
   }
-  const preReleaseAngle = lowerWindMps * releaseTimeSeconds / lowerRadiusM;
-  const postReleaseAngle = upperWindMps * (SAMPLE_DURATION_SECONDS - releaseTimeSeconds) / upperRadiusM;
-  const expectedReleasedIce = v3(
-    Math.sin(preReleaseAngle) * Math.cos(postReleaseAngle),
-    Math.sin(postReleaseAngle),
-    Math.cos(preReleaseAngle) * Math.cos(postReleaseAngle),
+  const cohortCount = 16;
+  const releasedIceCohorts = reconstructCloudEventMaterialCohorts(
+    event,
+    EARTH_RADIUS_M,
+    SAMPLE_MAX_STEP_SECONDS,
+    localWindAt(env.levels),
+    cohortCount,
+  ).releasedIceCohorts;
+  if (releasedIceCohorts.length !== cohortCount) {
+    throw new Error(`C2 controlled event must retain all ${cohortCount} released-ice cohorts`);
+  }
+  const expectedReleasedIce = analyticC2ReleasedIceDirection(
+    releaseTimeSeconds,
+    SAMPLE_DURATION_SECONDS,
+    lowerHeightM,
+    upperHeightM,
+    lowerWindMps,
+    upperWindMps,
   );
+  const expectedCohorts = releasedIceCohorts.map((cohort) => ({
+    directionUnitVector: analyticC2ReleasedIceDirection(
+      cohort.meanReleaseTimeSeconds,
+      SAMPLE_DURATION_SECONDS,
+      lowerHeightM,
+      upperHeightM,
+      lowerWindMps,
+      upperWindMps,
+    ),
+    massKgM2: cohort.massKgM2,
+  }));
+  const maximumCohortTrajectoryErrorM = Math.max(...releasedIceCohorts.map((cohort, index) =>
+    distanceErrorM(cohort.directionUnitVector, expectedCohorts[index]!.directionUnitVector,
+      upperRadiusM)));
+  const cohortMassKgM2 = releasedIceCohorts.reduce((total, cohort) => total + cohort.massKgM2, 0);
+  const cohortMassErrorKgM2 = Math.abs(cohortMassKgM2 - event.iceRelease.remainingKgM2);
+  const actualCohortSpreadM = massWeightedSphericalRmsSpreadM(releasedIceCohorts, upperRadiusM);
+  const expectedCohortSpreadM = massWeightedSphericalRmsSpreadM(expectedCohorts, upperRadiusM);
+  const cohortSpreadErrorM = Math.abs(actualCohortSpreadM - expectedCohortSpreadM);
   return {
     fixture: 'C2',
     cpuDiagnosticsApplied: true,
@@ -440,6 +510,11 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
       upperNorthWindMps: upperWindMps,
       durationSeconds: SAMPLE_DURATION_SECONDS,
       representativeReleaseTimeSeconds: releaseTimeSeconds,
+      iceCohortCount: releasedIceCohorts.length,
+      eventRemainingIceKgM2: event.iceRelease.remainingKgM2,
+      reconstructedIceCohortMassKgM2: cohortMassKgM2,
+      actualIceCohortSpreadM: actualCohortSpreadM,
+      analyticIceCohortSpreadM: expectedCohortSpreadM,
     },
     measurements: [
       compare('layer-displacement', errorM, 'm', 0, 0.05, 'absolute-error',
@@ -448,6 +523,15 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
         releasedIce.directionUnitVector, expectedReleasedIce, upperRadiusM,
       ), 'm', 0, 0.05, 'absolute-error',
       'Representative surviving ice cohort follows parent displacement before release and upper wind afterward.'),
+      compare('released-ice-cohorts', maximumCohortTrajectoryErrorM, 'm', 0, 0.05,
+        'absolute-error',
+        'Every surviving ice cohort follows the analytic lower-east path until its own release time, then the upper-north path.'),
+      compare('released-ice-mass', cohortMassErrorKgM2, 'kg m^-2', 0, 1e-12,
+        'absolute-error',
+        'The sum of all reconstructed cohort masses matches the event remaining-ice ledger.'),
+      compare('released-ice-spread', cohortSpreadErrorM, 'm', 0, 0.05,
+        'absolute-error',
+        'Mass-weighted spherical RMS spread is compared with the spread of independently evaluated analytic cohort endpoints.'),
     ],
   };
 }
