@@ -18,6 +18,8 @@ permissions:
 jobs:
   hud-layout:
     runs-on: ubuntu-latest
+    env:
+      SMOKE_LAYOUT_ONLY: '1'
     steps:
       - uses: actions/checkout@v4
 
