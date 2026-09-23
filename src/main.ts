@@ -63,7 +63,8 @@ function startAnimationLoop(
     const viewport = browserViewport();
     // layout smoke は起動完了後も入力・HUD同期を動かすが、viewport変更に伴う
     // headless WebGPU の再確保だけ止める。通常実行では常に従来どおり同期・描画する。
-    const hudOnlyFrame = layoutSmoke && completedFrames >= 60;
+    const hudOnlyFrame = layoutSmoke
+      && document.documentElement.dataset.layoutSmokeFreeze === 'true';
     if (!hudOnlyFrame) gameScene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
