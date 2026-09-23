@@ -2,6 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
+  abiFixedGridToCloudTopGeodetic,
   abiFixedGridToGeodetic,
   decodeAbiFixedGridCoordinate,
   geodeticToAbiFixedGrid,
@@ -58,5 +59,56 @@ export function register(): void {
     assert.ok(abiFixedGridToGeodetic({ xAngleRadians: horizonAngle, yAngleRadians: 0 }, GOES_EAST));
     assert.equal(abiFixedGridToGeodetic({ xAngleRadians: horizonAngle + 1e-5, yAngleRadians: 0 }, GOES_EAST), null);
     assert.equal(geodeticToAbiFixedGrid({ latitudeRadians: 0, longitudeRadians: Math.PI }, GOES_EAST), null);
+  });
+
+  test('cloud reference ABI projection: cloud-top parallax matches an independent spherical ray solution', () => {
+    const radius = 6_371_000;
+    const height = 12_000;
+    const spherical = { ...GOES_WEST_SAMPLE, semiMajorAxisMeters: radius, semiMinorAxisMeters: radius };
+    const scan = { xAngleRadians: 0.05, yAngleRadians: 0.02 };
+    const satelliteDistance = radius + spherical.perspectivePointHeightMeters;
+    const rayTowardEarth = Math.cos(scan.xAngleRadians) * Math.cos(scan.yAngleRadians);
+    const distance = satelliteDistance * rayTowardEarth - Math.sqrt(
+      satelliteDistance ** 2 * rayTowardEarth ** 2
+      - (satelliteDistance ** 2 - (radius + height) ** 2),
+    );
+    const x = satelliteDistance - distance * rayTowardEarth;
+    const y = distance * Math.sin(scan.xAngleRadians);
+    const z = distance * Math.cos(scan.xAngleRadians) * Math.sin(scan.yAngleRadians);
+    const expectedLatitude = Math.atan2(z, Math.hypot(x, y));
+    const expectedLongitude = spherical.longitudeOfProjectionOriginRadians + Math.atan2(y, x);
+    const cloudTop = abiFixedGridToCloudTopGeodetic(scan, spherical, height);
+    const ground = abiFixedGridToCloudTopGeodetic(scan, spherical, 0);
+    assert.ok(cloudTop);
+    assert.ok(ground);
+    assert.ok(Math.abs(cloudTop.latitudeRadians - expectedLatitude) < 1e-10);
+    assert.ok(Math.abs(cloudTop.longitudeRadians - expectedLongitude) < 1e-10);
+    assert.ok(Math.abs(ground.longitudeRadians - expectedLongitude) > 1e-5);
+    assert.deepEqual(ground, abiFixedGridToGeodetic(scan, spherical));
+    assert.equal(abiFixedGridToCloudTopGeodetic({ xAngleRadians: 0.2, yAngleRadians: 0 }, spherical, height), null);
+    assert.throws(() => abiFixedGridToCloudTopGeodetic(scan, spherical, -1));
+  });
+
+  test('cloud reference ABI projection: ellipsoid cloud top recovers an independently positioned geodetic point', () => {
+    const latitude = 35 * Math.PI / 180;
+    const longitude = -125 * Math.PI / 180;
+    const geometricHeightMeters = 16_000;
+    const a = GOES_WEST_SAMPLE.semiMajorAxisMeters;
+    const b = GOES_WEST_SAMPLE.semiMinorAxisMeters;
+    const eccentricitySquared = 1 - b ** 2 / a ** 2;
+    const normalRadius = a / Math.sqrt(1 - eccentricitySquared * Math.sin(latitude) ** 2);
+    const relativeLongitude = longitude - GOES_WEST_SAMPLE.longitudeOfProjectionOriginRadians;
+    const earthX = (normalRadius + geometricHeightMeters) * Math.cos(latitude) * Math.cos(relativeLongitude);
+    const earthY = (normalRadius + geometricHeightMeters) * Math.cos(latitude) * Math.sin(relativeLongitude);
+    const earthZ = (normalRadius * (1 - eccentricitySquared) + geometricHeightMeters) * Math.sin(latitude);
+    const satelliteX = GOES_WEST_SAMPLE.perspectivePointHeightMeters + a - earthX;
+    const scan = {
+      xAngleRadians: Math.atan2(earthY, Math.hypot(satelliteX, earthZ)),
+      yAngleRadians: Math.atan2(earthZ, satelliteX),
+    };
+    const restored = abiFixedGridToCloudTopGeodetic(scan, GOES_WEST_SAMPLE, geometricHeightMeters);
+    assert.ok(restored);
+    assert.ok(Math.abs(restored.latitudeRadians - latitude) < 1e-10);
+    assert.ok(Math.abs(restored.longitudeRadians - longitude) < 1e-10);
   });
 }
