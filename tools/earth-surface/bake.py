@@ -23,22 +23,25 @@ _fetch = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_fetch)
 
 # ESTN/ESTB v3は天体固定XYZ法線RGB8とroughness A8を持つ。
-EARTH_BASE_COLOR_Z = 4
-EARTH_TILE_MIN_Z = 5
-EARTH_TILE_MAX_Z = 7
+_LAYOUT = json.loads(Path(__file__).with_name("layout.json").read_text())
+EARTH_BASE_COLOR_Z = _LAYOUT["baseColorZoom"]
+EARTH_TILE_MIN_Z = _LAYOUT["minZoom"]
+EARTH_TILE_MAX_Z = _LAYOUT["maxZoom"]
+EARTH_TILE_TEXELS = _LAYOUT["tileTexels"]
+EARTH_TILE_GUTTER = _LAYOUT["gutter"]
 TERRAIN_FORMAT_VERSION = 3
 UINT8_SCALAR = 2
-TERRAIN_WIDTH = 260
-TERRAIN_HEIGHT = 260
-TERRAIN_CHANNELS = 4
+TERRAIN_WIDTH = EARTH_TILE_TEXELS + 2 * EARTH_TILE_GUTTER
+TERRAIN_HEIGHT = TERRAIN_WIDTH
+TERRAIN_CHANNELS = _LAYOUT["terrainChannels"]
 TERRAIN_TEXELS = TERRAIN_WIDTH * TERRAIN_HEIGHT
 TERRAIN_BYTES = TERRAIN_TEXELS * TERRAIN_CHANNELS
 TERRAIN_HEADER = struct.Struct("<4sHHHHBBIIBBII")
 BASE_HEADER = struct.Struct("<4sHHHHBBIIBBII")
 BASE_COLOR_Z = EARTH_BASE_COLOR_Z
 BASE_COLOR_ROOT_COUNT = 2 ** (BASE_COLOR_Z + 1) * 2 ** BASE_COLOR_Z
-BASE_COLOR_TILE_TEXELS = 256
-BASE_COLOR_GUTTER_TEXELS = 2
+BASE_COLOR_TILE_TEXELS = EARTH_TILE_TEXELS
+BASE_COLOR_GUTTER_TEXELS = EARTH_TILE_GUTTER
 BASE_COLOR_TILE_SIZE = BASE_COLOR_TILE_TEXELS + 2 * BASE_COLOR_GUTTER_TEXELS
 BASE_COLOR_WIDTH = 2 ** (BASE_COLOR_Z + 1) * BASE_COLOR_TILE_TEXELS
 BASE_COLOR_HEIGHT = 2 ** BASE_COLOR_Z * BASE_COLOR_TILE_TEXELS
@@ -47,7 +50,7 @@ BASE_COLOR_HEIGHT = 2 ** BASE_COLOR_Z * BASE_COLOR_TILE_TEXELS
 # 全球の正規化されたWeb Mercatorではなく、計画書の経緯度四分木キーを列挙する。
 def global_tile_keys(max_zoom=EARTH_TILE_MAX_Z):
     if type(max_zoom) is not int or not EARTH_BASE_COLOR_Z <= max_zoom <= EARTH_TILE_MAX_Z:
-        raise ValueError("max_zoomは4..7の整数が必要です")
+        raise ValueError(f"max_zoomは{EARTH_BASE_COLOR_Z}..{EARTH_TILE_MAX_Z}の整数が必要です")
     return [(z, x, y) for z in range(EARTH_TILE_MIN_Z, max_zoom + 1)
             for y in range(2 ** z) for x in range(2 ** (z + 1))]
 
@@ -68,17 +71,17 @@ def global_tile_count(max_zoom=EARTH_TILE_MAX_Z):
     return len(global_tile_keys(max_zoom))
 
 
-def tile_grid(z, x, y, gutter=2):
-    """タイル内側256セルとgutterを含むセル中心格子を返す。"""
+def tile_grid(z, x, y, gutter=EARTH_TILE_GUTTER):
+    """タイル内側の固定texelとgutterを含むセル中心格子を返す。"""
     if (type(z) is not int or type(x) is not int or type(y) is not int
-            or not (0 <= z <= 7 and 0 <= x < 2 ** (z + 1) and 0 <= y < 2 ** z)):
+            or not (0 <= z <= EARTH_TILE_MAX_Z and 0 <= x < 2 ** (z + 1) and 0 <= y < 2 ** z)):
         raise ValueError("タイル座標が不正です")
     width = 180 / 2 ** z
     height = 180 / 2 ** z
-    step = width / 256
+    step = width / EARTH_TILE_TEXELS
     return Grid(-180 + x * width - gutter * step, 90 - (y + 1) * height - gutter * step,
                 -180 + (x + 1) * width + gutter * step, 90 - y * height + gutter * step,
-                256 + 2 * gutter, 256 + 2 * gutter, True)
+                EARTH_TILE_TEXELS + 2 * gutter, EARTH_TILE_TEXELS + 2 * gutter, True)
 
 
 def read_geotiff_window(path, window=None):
@@ -184,8 +187,8 @@ class Grid:
                           else -90 <= self.south < self.north <= 90)
         if not (0 < self.east - self.west <= longitude_limit and latitude_valid):
             raise ValueError("格子の経緯度範囲が不正です")
-        if any(type(value) is not int or not 1 <= value <= 260 for value in (self.width, self.height)):
-            raise ValueError("小領域格子は各辺1..260セルが必要です")
+        if any(type(value) is not int or not 1 <= value <= TERRAIN_WIDTH for value in (self.width, self.height)):
+            raise ValueError(f"小領域格子は各辺1..{TERRAIN_WIDTH}セルが必要です")
 
     # 指定セルの西・南・東・北端を返す。
     def bounds(self, x, y):
@@ -494,7 +497,7 @@ def decode_xyz_normal(encoded):
 
 # 有効なタイル座標と4 byte/texelから、32bytes固定ヘッダーを含む本文を作る。
 def encode_terrain_tile(normals, roughness, z, x, y):
-    if any(type(value) is not int for value in (z, x, y)) or not (0 <= z <= 7 and 0 <= x < 2 ** (z + 1) and 0 <= y < 2 ** z):
+    if any(type(value) is not int for value in (z, x, y)) or not (0 <= z <= EARTH_TILE_MAX_Z and 0 <= x < 2 ** (z + 1) and 0 <= y < 2 ** z):
         raise ValueError("タイル座標が不正です")
     if len(normals) != TERRAIN_TEXELS or len(roughness) != len(normals):
         raise ValueError("地形タイルはガター込み260×260が必要です")
@@ -515,7 +518,7 @@ def validate_terrain_tile(payload, key, expected_sha):
     magic, version, header_bytes, width, height, z, reserved, x, y, channels, scalar, data_bytes, reserved2 = TERRAIN_HEADER.unpack_from(payload)
     if (magic, version, header_bytes, width, height, channels, scalar, reserved, reserved2) != (b"ESTN", TERRAIN_FORMAT_VERSION, 32, TERRAIN_WIDTH, TERRAIN_HEIGHT, TERRAIN_CHANNELS, UINT8_SCALAR, 0, 0):
         raise ValueError("地形ヘッダーが不正です")
-    if (z, x, y) != tuple(key) or not (0 <= z <= 7 and x < 2 ** (z + 1) and y < 2 ** z):
+    if (z, x, y) != tuple(key) or not (0 <= z <= EARTH_TILE_MAX_Z and x < 2 ** (z + 1) and y < 2 ** z):
         raise ValueError("地形ヘッダーのキーが不一致です")
     if data_bytes != TERRAIN_BYTES or len(payload) != 32 + data_bytes:
         raise ValueError("地形本文のバイト数が不一致です")
@@ -705,8 +708,8 @@ def global_manifest(manifest, source_manifest_path, source_manifest_hash, climat
                              "normalFrame": "body_fixed"},
         "climateMap": manifest["climateMap"],
         "controlRegions": manifest["controlRegions"],
-        "coverage": {"kind": coverage_kind, "minZoom": EARTH_TILE_MIN_Z, "maxZoom": EARTH_TILE_MAX_Z,
-                      "expectedTiles": global_tile_count(EARTH_TILE_MAX_Z) if coverage_kind == "complete" else None},
+        "coverage": {"kind": coverage_kind, "minZoom": EARTH_TILE_MIN_Z, "maxZoom": max_zoom,
+                      "expectedTiles": global_tile_count(max_zoom) if coverage_kind == "complete" else None},
         "baseColor": "base/earth.jpg",
         "baseTerrain": "base/earth.bin.gz",
         "tileTemplates": {"color": "tiles/{z}/{x}/{y}.jpg", "terrain": "tiles/{z}/{x}/{y}.bin.gz"},
@@ -725,7 +728,7 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
     if validate_inputs:
         require_global_inputs(manifest, raw_root)
     if type(max_zoom) is not int or not EARTH_BASE_COLOR_Z <= max_zoom <= EARTH_TILE_MAX_Z:
-        raise ValueError("max_zoomは4..7の整数が必要です")
+        raise ValueError(f"max_zoomは{EARTH_BASE_COLOR_Z}..{EARTH_TILE_MAX_Z}の整数が必要です")
     output = Path(output_root)
     staging = output.with_name(f"{output.name}.staging-{os.getpid()}")
     if staging.exists():
@@ -738,7 +741,7 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
         raise GlobalInputError(f"source manifestがありません: {source_manifest_path}")
     coverage_kind = "complete" if max_zoom == EARTH_TILE_MAX_Z else "sparse"
     result_manifest = global_manifest(manifest, "sources.json", source_hash, climate_paths,
-                                      coverage_kind, EARTH_TILE_MAX_Z, data_provenance)
+                                      coverage_kind, max_zoom, data_provenance)
     try:
         climate_values = list(climate_maps)
         if (len(climate_values) != 12 or any(not isinstance(value, (bytes, bytearray)) or not value
@@ -799,14 +802,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input")
     parser.add_argument("--global", action="store_true", dest="global_bundle",
-                        help="z5..z7の全43008タイルbundle生成入口。入力不足は生成前に失敗する")
+                        help=f"z{EARTH_TILE_MIN_Z}..z{EARTH_TILE_MAX_Z}の全{global_tile_count()}タイルbundle生成入口。入力不足は生成前に失敗する")
     parser.add_argument("--fixture-global", metavar="PATH",
                         help="明示したsynthetic fixtureから小さなbundleを生成するテスト入口")
     parser.add_argument("--raw-root", default=".earth-surface/raw")
     parser.add_argument("--climate-dir", default=".earth-surface/climate")
     parser.add_argument("--manifest", default="assets-src/earth-surface/sources.json")
     parser.add_argument("--output", default=".earth-surface/intermediate/region")
-    parser.add_argument("--max-zoom", type=int, default=7)
+    parser.add_argument("--max-zoom", type=int, default=EARTH_TILE_MAX_Z)
     parser.add_argument("--tile", nargs=3, type=int, metavar=("Z", "X", "Y"))
     args = parser.parse_args()
     manifest = _fetch.load_manifest(args.manifest)
@@ -845,11 +848,12 @@ def main():
     if args.tile:
         z, x, y = args.tile
         span = 180 / 2 ** z
-        texel = span / 256
-        expected = (-180 + x * span - 2 * texel, 90 - (y + 1) * span - 2 * texel,
-                    -180 + (x + 1) * span + 2 * texel, 90 - y * span + 2 * texel)
-        if grid.width != 260 or grid.height != 260 or any(not math.isclose(actual, wanted, abs_tol=1e-10) for actual, wanted in zip((grid.west, grid.south, grid.east, grid.north), expected)):
-            raise ValueError("入力格子が指定タイルの2texelガター付き領域ではありません")
+        texel = span / EARTH_TILE_TEXELS
+        gutter = EARTH_TILE_GUTTER
+        expected = (-180 + x * span - gutter * texel, 90 - (y + 1) * span - gutter * texel,
+                    -180 + (x + 1) * span + gutter * texel, 90 - y * span + gutter * texel)
+        if grid.width != TERRAIN_WIDTH or grid.height != TERRAIN_HEIGHT or any(not math.isclose(actual, wanted, abs_tol=1e-10) for actual, wanted in zip((grid.west, grid.south, grid.east, grid.north), expected)):
+            raise ValueError(f"入力格子が指定タイルの{gutter}texelガター付き領域ではありません")
         payload = encode_terrain_tile(result["normals"], result["roughness"], *args.tile)
         digest = hashlib.sha256(payload).hexdigest()
         validate_terrain_tile(payload, args.tile, digest)
