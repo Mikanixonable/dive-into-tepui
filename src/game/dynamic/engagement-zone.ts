@@ -42,39 +42,74 @@ export class EngagementZone<E extends EngagementParticipant> {
   }
 }
 
-// 生存していて中心になる個体を、球が重なるものどうし連結成分にまとめて返す。交戦圏の並びと
-// 各交戦圏の中心の並びは entities の並びを保つ。
-// 中心が無いとき、および交戦できる倍率でないとき(canEngage が偽)は空。
+// サブステップごとに交戦圏を組む hot path 用の再利用ビルダ。
+// build() の返り値と各 zone/anchors は次の build() で上書きされるため、その場で使い切る。
+export class EngagementZoneBuilder<E extends EngagementParticipant> {
+  private readonly anchors: E[] = [];
+  private readonly component: number[] = [];
+  private readonly componentToZone: number[] = [];
+  private readonly memberPool: E[][] = [];
+  private readonly zonePool: EngagementZone<E>[] = [];
+  private readonly activeZones: EngagementZone<E>[] = [];
+
+  // 生存していて中心になる個体を、球が重なるものどうし連結成分にまとめる。
+  // 交戦圏と各中心の並びは entities の並びを保つ。
+  public build(entities: readonly E[], canEngage: boolean): readonly EngagementZone<E>[] {
+    this.activeZones.length = 0;
+    this.anchors.length = 0;
+    this.component.length = 0;
+    this.componentToZone.length = 0;
+    if (!canEngage) return this.activeZones;
+
+    for (const entity of entities) {
+      if (entity.alive && entity.engagementAnchor) this.anchors.push(entity);
+    }
+    const count = this.anchors.length;
+    if (count === 0) return this.activeZones;
+
+    // 重なる球を同じ成分番号へ寄せる。中心は数体なので総当たりで足りる。
+    this.component.length = count;
+    for (let i = 0; i < count; i++) this.component[i] = i;
+    for (let i = 0; i < count; i++) {
+      for (let j = i + 1; j < count; j++) {
+        if (this.component[i] === this.component[j] || !overlaps(this.anchors[i]!, this.anchors[j]!)) continue;
+        const merged = this.component[j]!, into = this.component[i]!;
+        for (let k = 0; k < count; k++) {
+          if (this.component[k] === merged) this.component[k] = into;
+        }
+      }
+    }
+
+    // Map を毎回作らず、成分番号(0..count-1)を直接 zone index へ写す。
+    this.componentToZone.length = count;
+    this.componentToZone.fill(-1);
+    let zoneCount = 0;
+    for (let i = 0; i < count; i++) {
+      const component = this.component[i]!;
+      let zoneIndex = this.componentToZone[component]!;
+      if (zoneIndex < 0) {
+        zoneIndex = zoneCount++;
+        this.componentToZone[component] = zoneIndex;
+        let members = this.memberPool[zoneIndex];
+        if (members === undefined) {
+          members = [];
+          this.memberPool.push(members);
+          this.zonePool.push(new EngagementZone(members));
+        } else {
+          members.length = 0;
+        }
+        this.activeZones.push(this.zonePool[zoneIndex]!);
+      }
+      this.memberPool[zoneIndex]!.push(this.anchors[i]!);
+    }
+    return this.activeZones;
+  }
+}
+
+// 単発利用向けの互換入口。Simulator のように毎サブステップ呼ぶ側は EngagementZoneBuilder を保持して
+// build() を繰り返し、作業配列と zone 実体を使い回す。
 export function engagementZones<E extends EngagementParticipant>(
   entities: readonly E[], canEngage: boolean,
 ): readonly EngagementZone<E>[] {
-  if (!canEngage) return [];
-  const anchors = entities.filter((e) => e.alive && e.engagementAnchor);
-
-  // 重なる球を同じ成分番号へ寄せる。中心は数体なので総当たりで足りる。
-  const component = anchors.map((_, i) => i);
-  for (let i = 0; i < anchors.length; i++) {
-    for (let j = i + 1; j < anchors.length; j++) {
-      if (component[i] === component[j] || !overlaps(anchors[i]!, anchors[j]!)) continue;
-      const merged = component[j]!, into = component[i]!;
-      for (let k = 0; k < anchors.length; k++) {
-        if (component[k] === merged) component[k] = into;
-      }
-    }
-  }
-
-  // 成分ごとに中心を集める。初めて現れた成分の位置が、そのまま交戦圏の並びになる。
-  const zones: EngagementZone<E>[] = [];
-  const membersOf = new Map<number, E[]>();
-  for (let i = 0; i < anchors.length; i++) {
-    const members = membersOf.get(component[i]!);
-    if (members !== undefined) {
-      members.push(anchors[i]!);
-      continue;
-    }
-    const created = [anchors[i]!];
-    membersOf.set(component[i]!, created);
-    zones.push(new EngagementZone(created));
-  }
-  return zones;
+  return new EngagementZoneBuilder<E>().build(entities, canEngage);
 }
