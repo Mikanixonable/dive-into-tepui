@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Blender 5.0 headless generator for ultra-realistic spacecraft modules.
-Uses bmesh, curved profiles, recessed equipment bays, beveled frames,
-authentic Rao nozzles, clamped feedlines, and aerospace structural geometry.
+Blender 5.0 headless generator for detailed spacecraft modules.
+Uses bmesh, curved profiles, recessed equipment bays, thin-panel skins,
+clamped feedlines, and aerospace structural geometry.
 """
 
 import sys
@@ -275,9 +275,10 @@ def make_sphere(radius, center=(0, 0, 0), u_seg=24, v_seg=16):
 
 
 def make_tangent_trapezoid(thickness, width_bottom, width_top, height, center, angle):
-    """Thin trapezoidal plate tangent to a cylindrical/conical surface.
+    """Thin trapezoidal plate tangent to a locally cylindrical surface.
 
     Local +X is radial, local Y is circumferential and local Z is axial.
+    Use make_conical_trapezoid for large parts that span a changing radius.
     """
     bm = bmesh.new()
     x0 = -thickness * 0.5
@@ -303,6 +304,52 @@ def make_tangent_trapezoid(thickness, width_bottom, width_top, height, center, a
     return bm
 
 
+def make_conical_trapezoid(
+    thickness, width_bottom, width_top, z_bottom, z_top, radius_bottom, radius_top, angle
+):
+    """Trapezoidal plate that follows a conical/frustum surface.
+
+    The bottom and top edges sit at independently specified radii. Widths are
+    measured as local circumferential chord lengths, while thickness is radial.
+    """
+    bm = bmesh.new()
+    radial = Vector((math.cos(angle), math.sin(angle), 0.0))
+    tangent = Vector((-math.sin(angle), math.cos(angle), 0.0))
+    verts = []
+    for radial_offset in [-thickness * 0.5, thickness * 0.5]:
+        rb = radius_bottom + radial_offset
+        rt = radius_top + radial_offset
+        verts.extend([
+            bm.verts.new(radial * rb - tangent * (width_bottom * 0.5) + Vector((0, 0, z_bottom))),
+            bm.verts.new(radial * rb + tangent * (width_bottom * 0.5) + Vector((0, 0, z_bottom))),
+            bm.verts.new(radial * rt + tangent * (width_top * 0.5) + Vector((0, 0, z_top))),
+            bm.verts.new(radial * rt - tangent * (width_top * 0.5) + Vector((0, 0, z_top))),
+        ])
+    for face in [
+        (0, 1, 2, 3), (4, 7, 6, 5),
+        (0, 4, 5, 1), (1, 5, 6, 2),
+        (2, 6, 7, 3), (3, 7, 4, 0),
+    ]:
+        bm.faces.new([verts[i] for i in face])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return bm
+
+
+def radius_at_profile(profile, z):
+    """Linearly interpolate a lathed profile radius at axial coordinate z."""
+    if z <= profile[0][1]:
+        return profile[0][0]
+    if z >= profile[-1][1]:
+        return profile[-1][0]
+    for index in range(len(profile) - 1):
+        r0, z0 = profile[index]
+        r1, z1 = profile[index + 1]
+        if z0 <= z <= z1:
+            fraction = (z - z0) / (z1 - z0)
+            return r0 + (r1 - r0) * fraction
+    raise ValueError(f"z outside profile: {z}")
+
+
 def add_lowpoly_fastener(name, center, material, radius=0.016):
     bm = make_sphere(radius, center=center, u_seg=8, v_seg=5)
     return add_mesh_obj(name, bm, material)
@@ -311,20 +358,27 @@ def add_lowpoly_fastener(name, center, material, radius=0.016):
 def add_radial_shingle_skin(mats, bands, sectors=18):
     """Add overlapping Mercury/Gemini-like heat-resistant outer shingles.
 
-    bands contains (z0, z1, r0, r1).  Small gaps and alternating oxide tones
-    provide the large-scale roughness cue without relying on non-exportable noise.
+    bands contains (z0, z1, r0, r1). Each panel follows the changing hull radius
+    instead of approximating a conical band with a constant-radius flat plate.
     """
     dtheta = 2.0 * math.pi / sectors
+    axial_gap = 0.012
     for b, (z0, z1, r0, r1) in enumerate(bands):
-        z_mid = (z0 + z1) * 0.5
-        r_mid = (r0 + r1) * 0.5
-        h = max(0.05, (z1 - z0) - 0.025)
-        chord = 2.0 * r_mid * math.sin(dtheta * 0.5) * 0.955
+        panel_z0 = z0 + axial_gap
+        panel_z1 = z1 - axial_gap
+        span = z1 - z0
+        bottom_fraction = (panel_z0 - z0) / span
+        top_fraction = (panel_z1 - z0) / span
+        panel_r0 = r0 + (r1 - r0) * bottom_fraction + 0.010
+        panel_r1 = r0 + (r1 - r0) * top_fraction + 0.010
+        width0 = 2.0 * panel_r0 * math.sin(dtheta * 0.5) * 0.955
+        width1 = 2.0 * panel_r1 * math.sin(dtheta * 0.5) * 0.955
         for i in range(sectors):
             ang = i * dtheta + (0.5 * dtheta if b % 2 else 0.0)
-            center = ((r_mid + 0.010) * math.cos(ang), (r_mid + 0.010) * math.sin(ang), z_mid)
             mat = mats.rene41 if (i + b) % 4 else mats.rene41_alt
-            plate = make_box(0.022, chord, h, center=center, rot_euler=(0, 0, ang))
+            plate = make_conical_trapezoid(
+                0.022, width0, width1, panel_z0, panel_z1, panel_r0, panel_r1, ang
+            )
             add_mesh_obj(f"heat_shingle_{b}_{i}", plate, mat)
 
 
@@ -385,48 +439,65 @@ def build_cockpit():
         )
 
     # Twin Gemini-like side hatches integrated into the shingle field.
-    # Each hatch carries a trapezoidal window, gasket and mechanical latches.
+    # Large hatch/window parts follow the conical hull rather than floating on a
+    # constant-radius tangent plane.
     for sign in [-1.0, 1.0]:
         ang = math.pi * 0.5 + sign * math.radians(22.0)
-        r_hatch = 2.66
-        z_hatch = 0.34
-        center = (r_hatch * math.cos(ang), r_hatch * math.sin(ang), z_hatch)
+        radial = Vector((math.cos(ang), math.sin(ang), 0.0))
+        tangent = Vector((-math.sin(ang), math.cos(ang), 0.0))
 
-        hatch = make_tangent_trapezoid(
-            0.050, 1.08, 0.90, 1.28, center, ang
+        hatch_z0 = -0.30
+        hatch_z1 = 0.98
+        hatch_r0 = radius_at_profile(profile, hatch_z0) + 0.020
+        hatch_r1 = radius_at_profile(profile, hatch_z1) + 0.020
+        hatch = make_conical_trapezoid(
+            0.050, 1.08, 0.90, hatch_z0, hatch_z1, hatch_r0, hatch_r1, ang
         )
         add_mesh_obj(f"crew_hatch_{sign}", hatch, mats.rene41_alt)
 
-        # Slightly larger black seal under the metal window frame.
-        window_z = 0.67
-        r_window = 2.705
-        wcenter = (r_window * math.cos(ang), r_window * math.sin(ang), window_z)
-        gasket = make_tangent_trapezoid(
-            0.036, 0.72, 0.58, 0.48, wcenter, ang
+        # Window stack follows the same local hull slope, with each layer moved
+        # radially outward only by its physical stand-off.
+        window_z0 = 0.43
+        window_z1 = 0.91
+        window_r0 = radius_at_profile(profile, window_z0)
+        window_r1 = radius_at_profile(profile, window_z1)
+        gasket = make_conical_trapezoid(
+            0.036, 0.72, 0.58, window_z0, window_z1,
+            window_r0 + 0.045, window_r1 + 0.045, ang
         )
         add_mesh_obj(f"window_gasket_{sign}", gasket, mats.gasket)
 
-        frame_center = ((r_window + 0.020) * math.cos(ang), (r_window + 0.020) * math.sin(ang), window_z)
-        frame = make_tangent_trapezoid(
-            0.030, 0.65, 0.51, 0.42, frame_center, ang
+        frame_z0 = 0.46
+        frame_z1 = 0.88
+        frame = make_conical_trapezoid(
+            0.030, 0.65, 0.51, frame_z0, frame_z1,
+            radius_at_profile(profile, frame_z0) + 0.070,
+            radius_at_profile(profile, frame_z1) + 0.070,
+            ang,
         )
         add_mesh_obj(f"window_frame_{sign}", frame, mats.window_frame)
 
-        glass_center = ((r_window + 0.038) * math.cos(ang), (r_window + 0.038) * math.sin(ang), window_z)
-        glass = make_tangent_trapezoid(
-            0.018, 0.53, 0.41, 0.31, glass_center, ang
+        glass_z0 = 0.515
+        glass_z1 = 0.825
+        glass = make_conical_trapezoid(
+            0.018, 0.53, 0.41, glass_z0, glass_z1,
+            radius_at_profile(profile, glass_z0) + 0.090,
+            radius_at_profile(profile, glass_z1) + 0.090,
+            ang,
         )
         add_mesh_obj(f"window_glass_{sign}", glass, mats.window)
 
         # Six compact external latch/fastener heads around the hatch perimeter.
-        for k, (dy, dz) in enumerate([
-            (-0.45, -0.43), (0.45, -0.43),
-            (-0.49,  0.02), (0.49,  0.02),
-            (-0.34,  0.49), (0.34,  0.49),
+        for k, (dy, z) in enumerate([
+            (-0.45, -0.09), (0.45, -0.09),
+            (-0.49,  0.34), (0.49,  0.34),
+            (-0.34,  0.78), (0.34,  0.78),
         ]):
-            tangent = Vector((-math.sin(ang), math.cos(ang), 0.0))
-            radial = Vector((math.cos(ang), math.sin(ang), 0.0))
-            p = Vector(center) + tangent * dy + Vector((0, 0, dz)) + radial * 0.045
+            p = (
+                radial * (radius_at_profile(profile, z) + 0.058)
+                + tangent * dy
+                + Vector((0, 0, z))
+            )
             add_lowpoly_fastener(f"hatch_latch_{sign}_{k}", p, mats.fastener, radius=0.022)
 
     # Compact rendezvous optical sight hood on the dorsal forward quadrant.
