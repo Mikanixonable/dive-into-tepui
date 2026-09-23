@@ -22,7 +22,7 @@ function isLayer(name: string): name is Layer {
 // register() を呼ぶ。incremental compile では削除済みJSが tests/dist に残り得るため、実行対象の
 // 正本はソース側に置く。register を持たないファイルは黙って走らないままになるので投げて気付かせる。
 function registerLayer(layer: Layer): void {
-  const sourceDir = join(process.cwd(), 'tests', layer);
+  const sourceDir = join(__dirname, '..', '..', layer);
   const compiledDir = join(__dirname, layer);
   for (const sourceFile of readdirSync(sourceDir).sort()) {
     if (!sourceFile.endsWith('.test.ts')) continue;
