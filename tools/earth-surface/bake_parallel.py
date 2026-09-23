@@ -50,7 +50,7 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
     climate_paths = [f"climate/{month:02d}.png" for month in range(1, 13)]
     coverage_kind = "complete" if max_zoom == bake.EARTH_TILE_MAX_Z else "sparse"
     result_manifest = bake.global_manifest(manifest, "sources.json", source_hash,
-                                           climate_paths, coverage_kind, max_zoom, "source")
+                                           climate_paths, coverage_kind, bake.EARTH_TILE_MAX_Z, "source")
     try:
         renderer = create_real_renderer(manifest, raw_root)
         climate_values = renderer.climate_maps()
