@@ -153,8 +153,8 @@ body.hud-construction-mode #touch-ui { display: none; }
   font-size: var(--font-s); letter-spacing: var(--tracking-label); font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2);
-  width: min(820px, calc(100vw - var(--space-6) * 2));
-  max-width: calc(100vw - var(--space-6) * 2);
+  width: 100%;
+  max-width: 820px;
 }
 #hud-topbar .gs-status-head {
   display: flex; align-items: baseline; gap: var(--space-2);
@@ -309,7 +309,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud .hud-rail { font-size: var(--font-xs); }
   #hud .hud-map-root.active .hud-rail { bottom: var(--hud-map-rail-bottom); }
   #hud-topbar {
-    width: calc(100vw - var(--space-4) * 2);
+    width: 100%;
     padding-inline: var(--space-3);
   }
   #hud-topbar .gs-status-head { gap: var(--space-1); }
