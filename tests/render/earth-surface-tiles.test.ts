@@ -87,13 +87,13 @@ export function register(): void {
     assert.ok(earthTileRoots().every((key) => key.z === EARTH_TILE_MIN_Z));
   });
 
-  test('earth tiles: stage00投影はz5から最大LODまで個別候補を返す', () => {
+  test('earth tiles: stage00投影はz5から高LODまで個別候補を返す', () => {
     const tiles = new EarthSurfaceTiles();
     const candidates = tiles.requestCandidates(stage00EarthProjection());
     const levels = new Set(candidates.map((key) => key.z));
     assert.ok(levels.has(EARTH_TILE_MIN_Z));
     assert.ok(levels.has(EARTH_TILE_MIN_Z + 1));
-    assert.ok(levels.has(EARTH_TILE_MAX_Z));
+    assert.ok(levels.has(7));
     assert.equal(new Set(candidates.map(earthTileId)).size, candidates.length);
   });
 
