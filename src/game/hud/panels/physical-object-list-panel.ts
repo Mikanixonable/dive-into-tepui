@@ -58,7 +58,7 @@ const COLLAPSE_LABELS: CollapseToggleLabels = {
 const STYLE = `
 #hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); display: flex; flex-direction: column; overflow: hidden; }
 /* 上半分(検索・フィルタ)は要素数ぶんの高さに縮め、下半分(項目一覧)が残りを占有する。互いに重ならないよう独立してスクロールさせる */
-#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: 50%; overflow-y: auto; overscroll-behavior: contain; }
+#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: none; overflow: visible; }
 #hud-physical-object-list .physical-object-list-body { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
 #hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
 #hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
@@ -75,7 +75,7 @@ const STYLE = `
    領域の先頭へ貼り付ける。背景の不透明化は map-view-style.ts 側(見た目のトークン)が持つ。 */
 #hud-physical-object-list .physical-object-list-section-header {
   display: block; width: 100%; text-align: left; margin: var(--space-2) 0 var(--space-1);
-  padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: 1px;
+  padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
   position: sticky; top: 0; z-index: 1;
 }
 #hud-physical-object-list .physical-object-list-section-header-glyph { margin-left: var(--space-2); }
@@ -96,6 +96,35 @@ const STYLE = `
 #hud-physical-object-list .physical-object-list-children { padding-left: var(--space-5); }
 #hud-physical-object-list .physical-object-list-children.collapsed { display: none !important; }
 #hud-physical-object-list .physical-object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
+#hud-physical-object-list .physical-object-list-title {
+  align-items: baseline; padding: var(--space-2) var(--space-3) var(--space-3);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
+}
+#hud-physical-object-list .physical-object-list-title h3 {
+  margin: 0; color: var(--text); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
+}
+#hud-physical-object-list .physical-object-list-tracked {
+  margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+#hud-physical-object-list .physical-object-list-search { margin-top: var(--space-2); }
+#hud-physical-object-list .physical-object-list-section-header {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  background: var(--surface-opaque);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+#hud-physical-object-list .physical-object-list-section-header-label { color: var(--text); }
+#hud-physical-object-list .erow {
+  min-height: var(--hit-target-min); margin-inline: var(--space-1);
+  padding-inline: var(--space-3); border-radius: 0;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
+}
+#hud-physical-object-list .erow.focus {
+  box-shadow: inset 2px 0 0 var(--color-primary), inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
+  background: transparent;
+}
+#hud-physical-object-list .physical-object-list-name { color: var(--text); }
+#hud-physical-object-list .erow.focus .physical-object-list-name { color: var(--color-primary); }
 @media ${MQ_COARSE} {
   /* 子を開閉するトグルは天体行にしかない小さな記号だが、タッチでは他の行と同じ最小寸法を要る。 */
   #hud-physical-object-list .physical-object-list-toggle { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
@@ -127,6 +156,7 @@ export class PhysicalObjectListPanel {
   private prevAutoExpandFilter: PhysicalObjectListFilter | null = null;
   private wasFilteringActive = false;
   private readonly breadcrumb: HTMLElement;
+  private readonly trackedCount: HTMLElement;
   private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
@@ -142,7 +172,7 @@ export class PhysicalObjectListPanel {
     });
     this.panel = document.createElement('div');
     this.panel.id = 'hud-physical-object-list';
-    this.panel.className = 'panel';
+    this.panel.className = 'panel editorial-index';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     const head = document.createElement('div');
@@ -150,9 +180,17 @@ export class PhysicalObjectListPanel {
 
     const titleRow = document.createElement('div');
     titleRow.className = 'physical-object-list-title';
+    const code = document.createElement('span');
+    code.className = 'ui-section-code';
+    code.setAttribute('aria-hidden', 'true');
+    code.textContent = 'OBJ';
     const title = document.createElement('h3');
-    title.textContent = '軌道物体';
-    titleRow.appendChild(title);
+    title.className = 'editorial-panel-title';
+    title.textContent = 'ORBITAL OBJECTS';
+    this.trackedCount = document.createElement('span');
+    this.trackedCount.className = 'physical-object-list-tracked ui-data-context';
+    this.trackedCount.textContent = '0 TRACKED';
+    titleRow.append(code, title, this.trackedCount);
     head.appendChild(titleRow);
     const searchWrap = document.createElement('div');
     searchWrap.className = 'physical-object-list-search';
@@ -285,6 +323,7 @@ export class PhysicalObjectListPanel {
     viewer: OrbitingObject | null,
     displayTime: number,
   ): void {
+    this.trackedCount.textContent = `${items.length.toLocaleString()} TRACKED`;
     // 本体が畳まれている間は完全に不可視なので、行ツリーの差分同期を止める。次に開いたときは
     // items/focusId の現在値から組み直されるため、この間の変化を取りこぼしても壊れない。
     if (this.body.classList.contains('collapsed')) return;

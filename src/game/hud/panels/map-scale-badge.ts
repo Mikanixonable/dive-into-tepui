@@ -10,7 +10,7 @@ export class MapScaleBadge {
     if (!panel || panel.querySelector('.map-scale-label')) return;
     const label = document.createElement('span');
     label.className = 'map-scale-label';
-    label.textContent = '縮尺';
+    label.textContent = 'SCL';
     panel.prepend(label);
   }
 
