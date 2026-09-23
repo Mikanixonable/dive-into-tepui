@@ -25,8 +25,11 @@ export class InstancedPool {
   private readonly extent: ShadowExtent = { worldBounds: new THREE.Box3() };
   // 個体ごとの熱の状態(温度・局所的な過熱・輻射率)。持たないプールでは null。
   private readonly thermal: THREE.InstancedBufferAttribute | null = null;
-  // 今フレームに積んだ熱の状態が前フレームと違ったか。同じなら転送し直さない。
-  private thermalChanged = false;
+  // 色・熱は実際にCPU側の配列を書き換えた範囲だけをGPUへ送る。matrix は push した先頭 count 枠と、
+  // 個体数が減ったときに PARKED へ戻す末尾だけが dirty になる。
+  private colorDirtyEnd = 0;
+  private thermalDirtyStart = Infinity;
+  private thermalDirtyEnd = 0;
   private readonly scratchCenter = new THREE.Vector3();
   private readonly scratchCorner = new THREE.Vector3();
 
@@ -76,6 +79,9 @@ export class InstancedPool {
   // このフレームぶんを積み始める。
   public beginFrame(): void {
     this.count = 0;
+    this.colorDirtyEnd = 0;
+    this.thermalDirtyStart = Infinity;
+    this.thermalDirtyEnd = 0;
     this.pending.makeEmpty();
   }
 
@@ -84,11 +90,16 @@ export class InstancedPool {
   public push(renderObject: THREE.Object3D, color?: THREE.Color): void {
     if (!renderObject.visible || this.count >= this.capacity) return;
     renderObject.updateMatrixWorld();
-    this.mesh.setMatrixAt(this.count, renderObject.matrixWorld);
-    if (color && this.mesh.instanceColor) this.mesh.setColorAt(this.count, color);
+    const index = this.count;
+    this.mesh.setMatrixAt(index, renderObject.matrixWorld);
+    if (color && this.mesh.instanceColor) {
+      this.mesh.setColorAt(index, color);
+      this.colorDirtyEnd = index + 1;
+    }
     if (this.thermal !== null
-      && writeThermalState(renderObject, this.thermal.array as Float32Array, this.count * 3)) {
-      this.thermalChanged = true;
+      && writeThermalState(renderObject, this.thermal.array as Float32Array, index * 3)) {
+      this.thermalDirtyStart = Math.min(this.thermalDirtyStart, index);
+      this.thermalDirtyEnd = index + 1;
     }
     // 個体の外接球をスケール倍し、今フレームの AABB へ積む。
     const reach = this.instanceRadius * renderObject.matrixWorld.getMaxScaleOnAxis();
@@ -101,13 +112,34 @@ export class InstancedPool {
   // このフレームぶんの転写を締める。余った枠を潰し、公開する広がりを今フレームの値へ入れ替える。
   public endFrame(): void {
     for (let i = this.count; i < this.lastCount; i++) this.mesh.setMatrixAt(i, PARKED);
-    this.lastCount = this.count;
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    if (this.thermal !== null && this.thermalChanged) {
-      this.thermal.needsUpdate = true;
-      this.thermalChanged = false;
+
+    // update range は「要素」ではなく属性配列の component 数で指定する。push は先頭から count 枠を
+    // 毎フレーム上書きし、縮んだときだけ [count,lastCount) を PARKED にするので、両者を包む1区間で足りる。
+    const matrixDirtyInstances = Math.max(this.count, this.lastCount);
+    if (matrixDirtyInstances > 0) {
+      const matrix = this.mesh.instanceMatrix;
+      matrix.clearUpdateRanges();
+      matrix.addUpdateRange(0, matrixDirtyInstances * matrix.itemSize);
+      matrix.needsUpdate = true;
     }
+
+    const color = this.mesh.instanceColor;
+    if (color !== null && this.colorDirtyEnd > 0) {
+      color.clearUpdateRanges();
+      color.addUpdateRange(0, this.colorDirtyEnd * color.itemSize);
+      color.needsUpdate = true;
+    }
+
+    if (this.thermal !== null && this.thermalDirtyEnd > this.thermalDirtyStart) {
+      this.thermal.clearUpdateRanges();
+      this.thermal.addUpdateRange(
+        this.thermalDirtyStart * this.thermal.itemSize,
+        (this.thermalDirtyEnd - this.thermalDirtyStart) * this.thermal.itemSize,
+      );
+      this.thermal.needsUpdate = true;
+    }
+
+    this.lastCount = this.count;
     this.extent.worldBounds.copy(this.pending);
   }
 
