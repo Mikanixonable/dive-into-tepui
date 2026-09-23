@@ -38,6 +38,12 @@ const LAYOUT_HELPERS = `
     && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
   const insideViewport = (r) => r.left >= -0.5 && r.top >= -0.5
     && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5;
+  const tinyInteractiveText = (scope = document) => [...scope.querySelectorAll('.w-btn, button, input, select')]
+    .filter(visible)
+    .filter((el) => !el.classList.contains('ui-icon-control'))
+    .filter((el) => el.tagName === 'INPUT' || el.tagName === 'SELECT' || (el.textContent?.trim().length ?? 0) > 0)
+    .map((el) => ({ tag: el.tagName, id: el.id, text: el.textContent?.trim().slice(0, 32) ?? '', size: parseFloat(getComputedStyle(el).fontSize) }))
+    .filter((item) => Number.isFinite(item.size) && item.size < 10);
 `;
 
 async function pressKey(key, code, keyCode) {
@@ -98,7 +104,37 @@ function throwIfFatal(label) {
   if (fatalEvents.length > 0) throw new Error(`${label} (${fatalEvents.length}):\n  ${describeFatalEvents()}`);
 }
 
-const VIEWPORTS = [[1280, 720], [800, 600], [480, 800], [320, 568], [667, 375]];
+const VIEWPORTS = [
+  { name: 'desktop', width: 1280, height: 720 },
+  { name: 'medium', width: 800, height: 600 },
+  { name: 'compact-portrait', width: 480, height: 800 },
+  { name: 'compact-narrow', width: 320, height: 568 },
+  { name: 'short-landscape', width: 667, height: 375 },
+];
+
+async function applyViewport({ width, height }) {
+  await devTools.send('Emulation.setDeviceMetricsOverride', {
+    width, height, deviceScaleFactor: 1, mobile: width <= 480,
+  });
+  // CSS media query と ResizeObserver(--hud-*-occupied) の双方が反映されるまで待つ。
+  await sleep(100);
+}
+
+async function checkOverlayGeometry(selector, label) {
+  for (const viewport of VIEWPORTS) {
+    await applyViewport(viewport);
+    const state = await devTools.evaluate(`(() => {
+      ${LAYOUT_HELPERS}
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!visible(el)) return { visible: false, inside: false, tiny: [] };
+      return { visible: true, inside: insideViewport(rect(el)), tiny: tinyInteractiveText(el) };
+    })()`);
+    if (!state.visible || !state.inside || state.tiny.length) {
+      throw new Error(`${label} geometry failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${JSON.stringify(state)}`);
+    }
+  }
+  await devTools.send('Emulation.clearDeviceMetricsOverride');
+}
 
 // 戦闘ビューの常設パネルが、どの画面寸法でも視界の外へ出ず互いに重ならないことを見る。
 // 戦闘シェルフは狭い幅で横スクロール領域になるので、その中のパネルはシェルフの
