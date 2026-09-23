@@ -22,7 +22,9 @@ export function register(): void {
     assert.equal(result.controls.lowerEastWindMps, 10);
     assert.equal(result.controls.upperNorthWindMps, 10);
     assert.equal(measurement(result, 'layer-displacement').status, 'pass');
-    assert.equal(measurement(result, 'released-ice-track').status, 'blocked');
+    assert.equal(measurement(result, 'released-ice-track').status, 'pass');
+    assert.ok(typeof result.controls.representativeReleaseTimeSeconds === 'number');
+    assert.ok(result.controls.representativeReleaseTimeSeconds > 0);
   });
 
   test('meteorological fixtures: C3 stops supply while event ice remains', () => {
