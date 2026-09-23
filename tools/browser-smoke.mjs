@@ -419,6 +419,18 @@ async function checkHelpModal() {
     const y = window.innerHeight - 2;
     const target = document.elementFromPoint(x, y);
     target?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y }));
+    const gate = document.getElementById('hud-layer-gate');
+    const hud = document.getElementById('hud');
+    const describe = (el) => {
+      if (!(el instanceof HTMLElement)) return null;
+      const style = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return {
+        tag: el.tagName, id: el.id, cls: el.className,
+        display: style.display, pointerEvents: style.pointerEvents, zIndex: style.zIndex,
+        rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height },
+      };
+    };
     return {
       open: getComputedStyle(document.getElementById('hud-help')).display !== 'none',
       modal: document.body.classList.contains('hud-overlay-modal-open'),
@@ -428,6 +440,13 @@ async function checkHelpModal() {
       backgroundEvent: backgroundEvents === 0,
       touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
       zoomReleased: !document.getElementById('touch-zoom') || !document.getElementById('touch-zoom').classList.contains('pressed'),
+      debug: {
+        hud: describe(hud),
+        gate: describe(gate),
+        shield: describe(shield),
+        target: describe(target),
+        stack: document.elementsFromPoint(x, y).slice(0, 8).map(describe),
+      },
     };
   })()`);
   expectAll('Help modal shielding failed', state);
