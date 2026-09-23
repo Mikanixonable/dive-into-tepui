@@ -1,6 +1,7 @@
 // 配信物が未設定の開発環境で使う地球表面の表示・入力初期値。
 import earthTextureUrl from '../assets/earth.jpg';
 import type { CelestialTexture } from './celestial-textures';
+import { EARTH_TILE_MAX_Z } from './earth-surface-tile-key';
 import {
   EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
   type EarthSurfaceSource,
@@ -24,6 +25,7 @@ export const EARTH_SURFACE_FIXTURE_SOURCE = {
     landFraction: { min: 0, max: 1 },
     waterOrthometricElevationM: 0,
   },
+  maxZoom: EARTH_TILE_MAX_Z,
   baseUrl: 'https://example.test/earth-surface/',
   manifestUrl: 'https://example.test/earth-surface/earth-surface.json',
   colorTileTemplate: 'https://example.test/earth-surface/tiles/{z}/{x}/{y}.jpg',

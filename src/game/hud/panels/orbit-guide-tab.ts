@@ -185,7 +185,7 @@ export class OrbitGuideTab {
     for (const tab of ORBIT_GUIDE_GROUP_TABS) this.groupTabBar.buttonFor(tab)?.setAttribute('aria-controls', `orbit-guide-group-${tab}`);
 
     this.lineCountEl = document.createElement('p');
-    this.lineCountEl.className = 'orbit-guide-line-count-warning hidden';
+    this.lineCountEl.className = 'orbit-guide-line-count-warning ui-status-note ui-status-note--warning hidden';
     this.element.appendChild(this.lineCountEl);
   }
 

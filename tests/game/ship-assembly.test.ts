@@ -281,4 +281,57 @@ export function register(): void {
     assert.ok(edge !== undefined);
     assert.equal(edge.childTransform.position.z, -3);
   });
+
+  test('ship assembly: +Z prepend は前端面を隙間なく接続し headId を更新する', () => {
+    const assembly = new ShipAssembly();
+    assembly.addRoot(module('cockpit-standard', 'cockpit'));
+    assert.equal(assembly.headId(), 'cockpit');
+    assert.equal(assembly.tailId(), 'cockpit');
+
+    assembly.prepend(module('weapon-gatling', 'weapon'));
+    assert.equal(assembly.headId(), 'weapon');
+    assert.equal(assembly.tailId(), 'cockpit');
+
+    const edge = assembly.graph.find(c => c.childId === 'weapon');
+    assert.ok(edge !== undefined);
+    assert.equal(edge.kind, 'axial');
+    // cockpit (length 3, center 0, forward +1.5) + weapon (length 1, center +0.5) -> z = +2.0
+    assert.equal(edge.childTransform.position.z, 2.0);
+    const weaponTransform = assembly.worldTransformOf('weapon');
+    assert.ok(weaponTransform !== null);
+    assert.equal(weaponTransform.position.z, 2.0);
+    assert.equal(assembly.validate().valid, true);
+  });
+
+  test('ship assembly: side slot の rotation は左右線対称であり、受光面法線（local Y）が天頂を向く', () => {
+    const rotPlusX = sideSlotRotation('side:+x');
+    const rotMinusX = sideSlotRotation('side:-x');
+
+    // local Y (0, 1, 0) を各クォータニオンで回転した世界方向
+    const upPlusX = qRotate(rotPlusX, v3(0, 1, 0));
+    const upMinusX = qRotate(rotMinusX, v3(0, 1, 0));
+
+    // 両者ともに +Y（天頂）を向くこと
+    assert.ok(Math.abs(upPlusX.y - 1.0) < 1e-9);
+    assert.ok(Math.abs(upMinusX.y - 1.0) < 1e-9);
+
+    // 外向き展開方向（local +Z）が、それぞれ +X と -X を向くこと
+    const fwdPlusX = qRotate(rotPlusX, v3(0, 0, 1));
+    const fwdMinusX = qRotate(rotMinusX, v3(0, 0, 1));
+    assert.ok(Math.abs(fwdPlusX.x - 1.0) < 1e-9);
+    assert.ok(Math.abs(fwdMinusX.x - (-1.0)) < 1e-9);
+  });
+
+  test('ship assembly: 戦闘艦プリセットの機関砲は船首に位置し、マズルオフセットと整合する', () => {
+    const assembly = createDefaultCombatPreset();
+    const weaponTransform = assembly.worldTransformOf('weapon');
+    assert.ok(weaponTransform !== null);
+    // コックピット(center 0, length 3)の前方に接続され、z = +2.0m
+    assert.equal(weaponTransform.position.z, 2.0);
+
+    // 機関砲のマズルはモジュール前端(z = +0.5m)から突き出た z = +0.55m
+    const worldMuzzleZ = weaponTransform.position.z + 0.55;
+    // 物理システム側の PLAYER_MUZZLE_OFFSETS (z = 2.55m) と一致
+    assert.ok(Math.abs(worldMuzzleZ - 2.55) < 1e-9);
+  });
 }

@@ -95,7 +95,9 @@ export async function bootstrapEarthSurface(
     const value = await response.json() as EarthSurfaceAssetManifest;
     const manifestBaseUrl = new URL('.', manifestUrl).toString();
     const source = earthSurfaceSourceFromManifest(manifestBaseUrl, manifestUrl, value);
-    const tileSource = new EarthSurfaceTileSource(source.colorTileTemplate, source.terrainTileTemplate);
+    const tileSource = new EarthSurfaceTileSource(
+      source.colorTileTemplate, source.terrainTileTemplate, source.maxZoom,
+    );
     return { state: 'ready', source, tileSource, error: null };
   } catch (error) {
     return { state: 'error', source: options.fallback ?? null, tileSource: null, error: errorOf(error) };

@@ -15,7 +15,7 @@ const STYLE = `
   position: fixed; display: none; pointer-events: auto;
   border-radius: var(--radius-window);
   font-family: var(--font-family); font-size: var(--font-m); color: var(--text);
-  width: min(520px, calc(100vw - 24px)); max-height: 60vh; max-height: 60dvh; overflow-y: auto; user-select: none;
+  width: min(520px, calc(100vw - 24px)); max-height: var(--overlay-max-h-m); overflow-y: auto; user-select: none;
   -webkit-user-select: none;
 }
 /* compact: トリガー直下ではなく画面下端のシートとして開く(left/top は付けない —
@@ -23,7 +23,7 @@ const STYLE = `
 @media ${MQ_COMPACT} {
   #hud .object-picker-pop {
     right: 0; bottom: 0; width: 100%;
-    max-height: 70vh; max-height: 70dvh; border-radius: var(--radius-window) var(--radius-window) 0 0;
+    max-height: var(--overlay-max-h-l); border-radius: var(--radius-window) var(--radius-window) 0 0;
   }
 }
 #hud .object-picker-pop .op-filter {
@@ -32,10 +32,17 @@ const STYLE = `
   color: var(--text); font-family: var(--font-family); font-size: var(--font-m); outline: none;
 }
 #hud .object-picker-pop .op-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
 }
 #hud .object-picker-pop .op-group {
-  grid-column: 1 / -1; padding: var(--space-3) var(--space-5) var(--space-2); font-size: var(--font-xs); letter-spacing: 1px; opacity: 0.55;
+  grid-column: 1 / -1; display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) var(--space-2);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+#hud .object-picker-pop .op-group::after {
+  content: ''; flex: 1 1 auto; height: 1px;
+  background: color-mix(in srgb, var(--text-dim) 22%, transparent);
 }
 #hud .object-picker-pop .op-row {
   margin: var(--space-1); padding: var(--space-3) var(--space-5); cursor: pointer;
