@@ -76,8 +76,8 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
   // collectionRevision が同じ間は、全個体から導く読み取り専用の一覧も同じ内容になる。
   // hot path から map/filter の一時配列を追い出すため、同じ世代では配列実体ごと使い回す。
   private derivedCollectionRevision = -1;
-  private readonly motionCache: DynamicMotion[] = [];
-  private readonly controllableCache: Controllable[] = [];
+  private motionCache: readonly DynamicMotion[] = [];
+  private controllableCache: readonly Controllable[] = [];
 
   public constructor(
     private readonly scene: THREE.Scene,
@@ -238,16 +238,20 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     if (changed) this.bumpCollectionRevision();
   }
 
-  // エンティティ集合からだけ決まる派生一覧を、世代が変わったときに1回だけ詰め直す。
+  // エンティティ集合からだけ決まる派生一覧を、世代が変わったときに1回だけ作り直す。
+  // 同じ世代では配列を使い回す一方、世代が変わったら新しい snapshot にする — 以前の allMotions()/
+  // controllables の返り値を保持している読み手まで、後から別の集合へ書き換わらないため。
   // alive の変化だけでは集合は変わらないため、従来どおり死亡個体も prune まで一覧に残る。
   private refreshDerivedCollections(): void {
     if (this.derivedCollectionRevision === this.collectionRevisionValue) return;
-    this.motionCache.length = 0;
-    this.controllableCache.length = 0;
+    const motions: DynamicMotion[] = [];
+    const controllables: Controllable[] = [];
     for (const entity of this.entities) {
-      this.motionCache.push(entity.motion);
-      if (isControllable(entity)) this.controllableCache.push(entity);
+      motions.push(entity.motion);
+      if (isControllable(entity)) controllables.push(entity);
     }
+    this.motionCache = motions;
+    this.controllableCache = controllables;
     this.derivedCollectionRevision = this.collectionRevisionValue;
   }
 
