@@ -11,6 +11,16 @@ import {
   cloudReferenceScalarDistance,
   validateCloudReferenceManifest,
 } from '../../tools/cloud-reference/metrics';
+import { abiPixelAngles } from '../../tools/cloud-reference/abi-angles';
+import { geodeticToAbiFixedGrid, abiFixedGridToGeodetic } from '../../tools/cloud-reference/abi-projection';
+
+const GOES_EAST_ANGLES = {
+  perspectivePointHeightMeters: 35_786_023,
+  semiMajorAxisMeters: 6_378_137,
+  semiMinorAxisMeters: 6_356_752.31414,
+  longitudeOfProjectionOriginRadians: -75 * Math.PI / 180,
+};
+const GOES_WEST_ANGLES = { ...GOES_EAST_ANGLES, longitudeOfProjectionOriginRadians: -137.2 * Math.PI / 180 };
 
 interface ReferenceCase {
   readonly id: string;
@@ -66,6 +76,102 @@ function manifest(): ReferenceManifest {
 
 /** 雲参照の manifest と指標契約を検査する。 */
 export function register(): void {
+  test('cloud reference metrics: ABI solar direction and zenith match independent NOAA GML samples', () => {
+    const samples = [
+      { latitudeDegrees: 0, longitudeDegrees: -75, time: '2024-03-20T16:00:00Z', projection: GOES_EAST_ANGLES },
+      { latitudeDegrees: 33.846162, longitudeDegrees: -84.690932, time: '2024-06-21T16:00:00Z', projection: GOES_EAST_ANGLES },
+      { latitudeDegrees: 35, longitudeDegrees: -125, time: '2024-06-10T20:00:00Z', projection: GOES_WEST_ANGLES },
+      { latitudeDegrees: 0, longitudeDegrees: -137.2, time: '2024-06-21T02:00:00Z', projection: GOES_WEST_ANGLES },
+      { latitudeDegrees: 58, longitudeDegrees: -135, time: '2024-12-21T20:00:00Z', projection: GOES_WEST_ANGLES },
+      { latitudeDegrees: -25, longitudeDegrees: -130, time: '2024-09-22T18:00:00Z', projection: GOES_WEST_ANGLES },
+    ];
+    let maximumZenithError = 0;
+    let maximumAzimuthError = 0;
+    let maximumDirectionError = 0;
+    let maximumDirectionSample = '';
+    let observedSeventyDegreeSample = false;
+    for (const sample of samples) {
+      const geodetic = {
+        latitudeRadians: sample.latitudeDegrees * Math.PI / 180,
+        longitudeRadians: sample.longitudeDegrees * Math.PI / 180,
+      };
+      const fixedGrid = geodeticToAbiFixedGrid(geodetic, sample.projection);
+      assert.ok(fixedGrid, `sample must be in view: ${JSON.stringify(sample)}`);
+      const actual = abiPixelAngles(fixedGrid, sample.projection, sample.time);
+      assert.ok(actual);
+      const expected = noaaGmlSolarReference(sample.time, geodetic.latitudeRadians, geodetic.longitudeRadians);
+      const zenithError = Math.abs(actual.solarZenithRadians - expected.zenithRadians);
+      const azimuthError = circularRadiansDistance(actual.solarAzimuthRadians, expected.azimuthRadians);
+      const directionError = solarDirectionSeparation(actual, expected);
+      if (zenithError > maximumZenithError) {
+        maximumZenithError = zenithError;
+      }
+      if (azimuthError > maximumAzimuthError) {
+        maximumAzimuthError = azimuthError;
+      }
+      if (directionError > maximumDirectionError) {
+        maximumDirectionError = directionError;
+        maximumDirectionSample = `${sample.time} ${sample.latitudeDegrees}N ${sample.longitudeDegrees}E`;
+      }
+      if (Math.abs(expected.zenithRadians * 180 / Math.PI - 70) < 8) observedSeventyDegreeSample = true;
+    }
+    assert.ok(observedSeventyDegreeSample, 'the reference sample set must exercise solar zenith near 70 degrees');
+    assert.ok(maximumZenithError < 0.5 * Math.PI / 180, `max zenith error ${maximumZenithError * 180 / Math.PI} deg`);
+    assert.ok(maximumDirectionError < 0.6 * Math.PI / 180,
+      `max solar direction error ${maximumDirectionError * 180 / Math.PI} deg at ${maximumDirectionSample}`);
+    // 方位角は天頂軸の周りの座標で、高仰角では 3D 方向より変化に敏感になる。
+    // この領域では NOAA の簡略式との角度差が相対的に大きくなる。
+    assert.ok(maximumAzimuthError < 1.2 * Math.PI / 180, `max azimuth coordinate error ${maximumAzimuthError * 180 / Math.PI} deg`);
+  });
+
+  test('cloud reference metrics: solar angles match the published NREL SPA worked example', () => {
+    // NREL/TP-560-34302 付録 A.5 の例: UTC−7 の 12:30:30 は 19:30:30Z。
+    // この関数では例にある観測点高度 1830 m と大気差を省略している。
+    const geodetic = { latitudeRadians: 39.742476 * Math.PI / 180, longitudeRadians: -105.1786 * Math.PI / 180 };
+    const fixedGrid = geodeticToAbiFixedGrid(geodetic, GOES_WEST_ANGLES);
+    assert.ok(fixedGrid);
+    const actual = abiPixelAngles(fixedGrid, GOES_WEST_ANGLES, '2003-10-17T19:30:30Z');
+    assert.ok(actual);
+    assert.ok(Math.abs(actual.solarZenithRadians * 180 / Math.PI - 50.11162) < 0.02);
+    assert.ok(circularDegreesDistance(actual.solarAzimuthRadians * 180 / Math.PI, 194.34024) < 0.001);
+  });
+
+  test('cloud reference metrics: ABI satellite zenith matches an independent ECEF ray and handles azimuth seam and limb', () => {
+    const sample = { latitudeRadians: 35 * Math.PI / 180, longitudeRadians: -125 * Math.PI / 180 };
+    const fixedGrid = geodeticToAbiFixedGrid(sample, GOES_WEST_ANGLES);
+    assert.ok(fixedGrid);
+    const geodetic = abiFixedGridToGeodetic(fixedGrid, GOES_WEST_ANGLES);
+    const actual = abiPixelAngles(fixedGrid, GOES_WEST_ANGLES, '2024-06-10T20:00:00Z');
+    assert.ok(geodetic);
+    assert.ok(actual);
+    const expectedViewingZenith = independentSatelliteZenith(geodetic.latitudeRadians, geodetic.longitudeRadians, GOES_WEST_ANGLES);
+    assert.ok(Math.abs(actual.satelliteZenithRadians - expectedViewingZenith) < 1e-10);
+
+    const nearNorth = geodeticToAbiFixedGrid({ latitudeRadians: 70 * Math.PI / 180, longitudeRadians: -75 * Math.PI / 180 }, GOES_EAST_ANGLES);
+    assert.ok(nearNorth);
+    let seamPair: readonly [NonNullable<ReturnType<typeof abiPixelAngles>>, NonNullable<ReturnType<typeof abiPixelAngles>>] | null = null;
+    for (let minute = 0; minute < 1_440 && seamPair === null; minute += 1) {
+      const beforeTime = new Date(Date.UTC(2024, 5, 21, 0, minute));
+      const afterTime = new Date(beforeTime.getTime() + 60_000);
+      const before = abiPixelAngles(nearNorth, GOES_EAST_ANGLES, beforeTime.toISOString());
+      const after = abiPixelAngles(nearNorth, GOES_EAST_ANGLES, afterTime.toISOString());
+      if (before !== null && after !== null && before.solarAzimuthRadians > 6 && after.solarAzimuthRadians < 0.3) {
+        seamPair = [before, after];
+      }
+    }
+    assert.ok(seamPair, 'summer high-latitude track must cross the north azimuth seam');
+    assert.ok(circularRadiansDistance(seamPair[0].solarAzimuthRadians, seamPair[1].solarAzimuthRadians) < 0.1);
+
+    const horizon = Math.asin(GOES_EAST_ANGLES.semiMajorAxisMeters
+      / (GOES_EAST_ANGLES.perspectivePointHeightMeters + GOES_EAST_ANGLES.semiMajorAxisMeters));
+    const limb = abiPixelAngles({ xAngleRadians: horizon, yAngleRadians: 0 }, GOES_EAST_ANGLES, '2024-06-21T12:00:00Z');
+    assert.ok(limb);
+    assert.ok(Math.abs(limb.satelliteZenithRadians - Math.PI / 2) < 1e-6);
+    assert.equal(abiPixelAngles({ xAngleRadians: horizon + 1e-5, yAngleRadians: 0 }, GOES_EAST_ANGLES, '2024-06-21T12:00:00Z'), null);
+    assert.throws(() => abiPixelAngles({ xAngleRadians: 0, yAngleRadians: 0 }, GOES_EAST_ANGLES, '2024-06-21T12:00:00'));
+    assert.throws(() => abiPixelAngles({ xAngleRadians: 0, yAngleRadians: 0 }, GOES_EAST_ANGLES, '2024-02-31T12:00:00Z'));
+  });
+
   test('cloud reference metrics: manifest fixes primary sources, geometry, calibration, and SHA-256 receipts', () => {
     const raw = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as unknown;
     assert.deepEqual(validateCloudReferenceManifest(raw), []);
@@ -250,4 +356,91 @@ export function register(): void {
     assert.throws(() => cloudReferenceFixedBinWassersteinDistance([0, 0], [1, 0], [0, 1, 2]));
     assert.throws(() => cloudReferenceFixedBinWassersteinDistance([1, -1], [0, 1], [0, 1, 2]));
   });
+}
+
+/** NOAA GML の分数年・均時差・太陽赤緯式を独立に計算する。 */
+function noaaGmlSolarReference(
+  timestamp: string,
+  latitudeRadians: number,
+  longitudeRadians: number,
+): { readonly east: number; readonly north: number; readonly up: number; readonly zenithRadians: number; readonly azimuthRadians: number } {
+  const instant = new Date(timestamp);
+  const year = instant.getUTCFullYear();
+  const dayOfYear = (Date.UTC(year, instant.getUTCMonth(), instant.getUTCDate()) - Date.UTC(year, 0, 1)) / 86_400_000 + 1;
+  const yearLength = new Date(Date.UTC(year + 1, 0, 1)).getTime() - Date.UTC(year, 0, 1) === 366 * 86_400_000 ? 366 : 365;
+  const utcHours = instant.getUTCHours() + instant.getUTCMinutes() / 60 + instant.getUTCSeconds() / 3600;
+  const gamma = 2 * Math.PI / yearLength * (dayOfYear - 1 + (utcHours - 12) / 24);
+  const equationOfTimeMinutes = 229.18 * (0.000075 + 0.001868 * Math.cos(gamma) - 0.032077 * Math.sin(gamma)
+    - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma));
+  const declination = 0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma)
+    - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma)
+    - 0.002697 * Math.cos(3 * gamma) + 0.00148 * Math.sin(3 * gamma);
+  const longitudeDegreesEast = longitudeRadians * 180 / Math.PI;
+  const utcMinutes = utcHours * 60;
+  const trueSolarMinutes = utcMinutes + equationOfTimeMinutes + 4 * longitudeDegreesEast;
+  const hourAngle = (trueSolarMinutes / 4 - 180) * Math.PI / 180;
+  const east = -Math.cos(declination) * Math.sin(hourAngle);
+  const north = Math.cos(latitudeRadians) * Math.sin(declination)
+    - Math.sin(latitudeRadians) * Math.cos(declination) * Math.cos(hourAngle);
+  const up = Math.sin(latitudeRadians) * Math.sin(declination)
+    + Math.cos(latitudeRadians) * Math.cos(declination) * Math.cos(hourAngle);
+  return {
+    east,
+    north,
+    up,
+    zenithRadians: Math.acos(Math.max(-1, Math.min(1, up))),
+    azimuthRadians: normalizeTestAngle(Math.atan2(east, north)),
+  };
+}
+
+/** 実装値と参照値の単位太陽方向ベクトル間の角度。 */
+function solarDirectionSeparation(
+  actual: NonNullable<ReturnType<typeof abiPixelAngles>>,
+  expected: ReturnType<typeof noaaGmlSolarReference>,
+): number {
+  const horizontal = Math.sin(actual.solarZenithRadians);
+  const east = horizontal * Math.sin(actual.solarAzimuthRadians);
+  const north = horizontal * Math.cos(actual.solarAzimuthRadians);
+  const up = Math.cos(actual.solarZenithRadians);
+  const dot = east * expected.east + north * expected.north + up * expected.up;
+  return Math.acos(Math.max(-1, Math.min(1, dot)));
+}
+
+/** 衛星観測角の独立検査用 ECEF 視線・測地法線計算。 */
+function independentSatelliteZenith(
+  latitude: number,
+  longitude: number,
+  projection: typeof GOES_WEST_ANGLES,
+): number {
+  const a = projection.semiMajorAxisMeters;
+  const b = projection.semiMinorAxisMeters;
+  const eccentricitySquared = (a * a - b * b) / (a * a);
+  const denominator = Math.sqrt(1 - eccentricitySquared * Math.sin(latitude) ** 2);
+  const surfaceX = a / denominator * Math.cos(latitude) * Math.cos(longitude);
+  const surfaceY = a / denominator * Math.cos(latitude) * Math.sin(longitude);
+  const surfaceZ = a * (1 - eccentricitySquared) / denominator * Math.sin(latitude);
+  const orbitRadius = a + projection.perspectivePointHeightMeters;
+  const satelliteX = orbitRadius * Math.cos(projection.longitudeOfProjectionOriginRadians);
+  const satelliteY = orbitRadius * Math.sin(projection.longitudeOfProjectionOriginRadians);
+  const dx = satelliteX - surfaceX;
+  const dy = satelliteY - surfaceY;
+  const dz = -surfaceZ;
+  const distance = Math.hypot(dx, dy, dz);
+  const normalProjection = dx * Math.cos(latitude) * Math.cos(longitude)
+    + dy * Math.cos(latitude) * Math.sin(longitude) + dz * Math.sin(latitude);
+  return Math.acos(Math.max(-1, Math.min(1, normalProjection / distance)));
+}
+
+function normalizeTestAngle(angle: number): number {
+  return ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+}
+
+function circularRadiansDistance(a: number, b: number): number {
+  const difference = Math.abs(normalizeTestAngle(a) - normalizeTestAngle(b));
+  return Math.min(difference, 2 * Math.PI - difference);
+}
+
+function circularDegreesDistance(a: number, b: number): number {
+  const difference = Math.abs(((a - b) % 360 + 360) % 360);
+  return Math.min(difference, 360 - difference);
 }
