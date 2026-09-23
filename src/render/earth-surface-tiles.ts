@@ -47,6 +47,12 @@ export class EarthSurfaceTiles {
   private fadeStarts = new Map<string, number>();
   private drawingTimeMs = 0;
 
+  public constructor(private readonly maxZoom: number = EARTH_TILE_MAX_Z) {
+    if (!Number.isInteger(maxZoom) || maxZoom < EARTH_TILE_MIN_Z || maxZoom > EARTH_TILE_MAX_Z) {
+      throw new RangeError('Invalid Earth surface display max zoom');
+    }
+  }
+
   public get frontier(): readonly EarthTileResident[] { return this.displayed; }
 
   // 現在見える地域について、基底から目標LODまでの詳細キーを優先度順に返す。
@@ -172,7 +178,7 @@ export class EarthSurfaceTiles {
         for (const child of earthTileChildren(key)) visit(child);
         return;
       }
-      if (metric.errorPx <= SPLIT_ERROR_PX || key.z === EARTH_TILE_MAX_Z) return;
+      if (metric.errorPx <= SPLIT_ERROR_PX || key.z === this.maxZoom) return;
       for (const child of earthTileChildren(key)) visit(child);
     };
     for (const root of selectionRoots()) visit(root);
