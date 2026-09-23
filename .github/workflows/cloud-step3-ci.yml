@@ -22,4 +22,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:render
       - run: npm run test:game
+      - run: npm run cloud-reconstruction:measure
       - run: npm run build
+      - run: npm run cloud-baseline:measure
