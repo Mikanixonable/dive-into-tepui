@@ -4,7 +4,7 @@ import {
   createCloudEnvironmentProfile,
   type CloudEnvironmentInput,
   type CloudEnvironmentLevelInput,
-} from '../../src/render/cloud/cloud-environment';
+} from '../../src/game/cloud/cloud-environment';
 
 function makeInput(options: {
   readonly inversionK?: number;
