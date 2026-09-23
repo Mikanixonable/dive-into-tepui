@@ -3,8 +3,9 @@ import { SHIP_MODULE_CATALOG } from '../../ship/ship-module-catalog';
 
 // 艦の既定の部品一式。推進器と機関砲の性能は、積む側が渡す。
 
-// 既定パーツへの HP 配分比。放熱板・太陽電池パドルを左右2枚ぶん数えて合計 1 になり、パーツ HP の
-// 合計が maxHp と一致する。
+// 既定パーツへの HP 配分比。放熱板・太陽電池パドルを左右2枚ぶん数えると比率は合計 1。
+// 各パーツは整数かつ最低 1 HP へ丸めるため、小さい maxHp では生成後のパーツ HP 合計が maxHp を
+// 上回りうる。機体の実際の最大 HP は、生成されたパーツの maxHp 合計を正本とする。
 const DEFAULT_PART_HP_RATIO = {
   hull: 0.40, cockpit: 0.10, thruster: 0.08, rcsTank: 0.08,
   radiator: 0.05, solarPanel: 0.03, weapon: 0.08, armor: 0.10,
