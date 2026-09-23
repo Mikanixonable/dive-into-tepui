@@ -1,5 +1,5 @@
 // 建造の接続候補と、選択した部品をその候補へ置けるかを判定する純粋な規則。
-import { Q_IDENTITY } from '../../math/quat';
+import { LOCAL_UP, Q_IDENTITY, qFromAxisAngle } from '../../math/quat';
 import { v3, type Vec3 } from '../../math/vec3';
 import type { ShipAssembly, ModuleTransform } from './ship-assembly';
 import { sideMountTransform } from './ship-assembly-transform';
@@ -62,9 +62,12 @@ export function isSideMount(mount: ConstructionMount): mount is Exclude<Construc
 export function enumerateConstructionSlots(
   assembly: ShipAssembly, parentIds: readonly string[], axialTailId: string,
 ): readonly ConstructionSlot[] {
+  const tailDefinition = assembly.definition(axialTailId);
+  const isDockTail = tailDefinition?.kind === 'dock' || tailDefinition?.kind === 'docking_port';
   const slots: ConstructionSlot[] = [{
     id: constructionSlotId(axialTailId, 'axial'), parentId: axialTailId, mount: 'axial', kind: 'axial',
-    label: constructionSlotLabel(axialTailId, 'axial'), direction: v3(0, 0, -1),
+    label: constructionSlotLabel(axialTailId, 'axial'),
+    direction: isDockTail ? v3(0, 0, 1) : v3(0, 0, -1),
   }];
   for (const parentId of parentIds) {
     const definition = assembly.definition(parentId);
@@ -90,12 +93,18 @@ export function placementForSlot(
     return invalidPlacement(slot, '接続先の部品が存在しません');
   }
   const side = isSideMount(slot.mount);
+  const isDockParent = !side && (parentDefinition.kind === 'dock' || parentDefinition.kind === 'docking_port');
   const transform: ModuleTransform = side
     ? sideMountTransform(parentDefinition, definition, toSideSlot(slot.mount))
-    : {
-      position: v3(0, 0, -(parentDefinition.length / 2 + definition.length / 2)),
-      rotation: Q_IDENTITY,
-    };
+    : isDockParent
+      ? {
+        position: v3(0, 0, (parentDefinition.length + definition.length) / 2),
+        rotation: qFromAxisAngle(LOCAL_UP, Math.PI),
+      }
+      : {
+        position: v3(0, 0, -(parentDefinition.length / 2 + definition.length / 2)),
+        rotation: Q_IDENTITY,
+      };
   let reason: string | null = null;
   if (side && (parentDefinition.kind !== 'cockpit' && parentDefinition.kind !== 'tank')) {
     reason = '側面部品は cockpit または tank にだけ取り付けられます';
