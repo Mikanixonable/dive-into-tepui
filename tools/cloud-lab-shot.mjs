@@ -50,8 +50,11 @@ async function main() {
     writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify({
       name: process.argv[2] ?? 'unnamed',
       source: 'current-generated-cloud-field',
-      fixtureInputsApplied: false,
-      fixtureResults: null,
+      cpuDiagnosticsApplied: true,
+      generatedCloudImageFixtureApplied: false,
+      fixtureResults: JSON.parse(await devTools.evaluate(
+        'JSON.stringify(window.cloudLab.fixtures.map((id) => window.cloudLab.measureFixture(id)))',
+      )),
       views: SERIES_VIEWS,
       timesHours: hoursList,
     }, null, 2)}\n`);

@@ -5,6 +5,7 @@ import {
   CLOUD_LAB_SERIES_TIMES_HOURS, METEOROLOGICAL_CASES, METEOROLOGICAL_CASE_IDS,
   type MeteorologicalCaseId,
 } from './meteorological-cases';
+import { evaluateMeteorologicalCase, type MeteorologicalCaseEvaluation } from './meteorological-evaluator';
 import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
@@ -31,7 +32,7 @@ declare global {
       measureFixture: (id: MeteorologicalCaseId) => {
         readonly fixture: MeteorologicalCaseId;
         readonly measurements: typeof METEOROLOGICAL_CASES[MeteorologicalCaseId]['measurements'];
-        readonly result: null;
+        readonly result: MeteorologicalCaseEvaluation;
       };
       // 時刻 [h] の低気圧の谷の配置。撮影の駆動が中心の位置を統計の範囲の切り分けに使う。
       cyclonesAt: (hours: number) => {
@@ -86,17 +87,24 @@ async function init(): Promise<void> {
   fixtureRow.after(fixtureReadout);
   const showFixture = (id: MeteorologicalCaseId): void => {
     const fixture = METEOROLOGICAL_CASES[id];
-    fixtureStatus.textContent = `${id} ${fixture.label} — 入力契約のみ。モデル出力と独立基準は未提供。`;
+    const evaluation = evaluateMeteorologicalCase(id);
+    fixtureStatus.textContent = `${id} ${fixture.label} — CPU診断: 実行; 生成画像へfixture適用: なし`;
     fixtureInputs.textContent = JSON.stringify({
       controlledInputs: fixture.controlledInputs,
+      cpuDiagnosticControls: evaluation.controls,
       atmosphericLayers: fixture.atmosphericLayers,
       measurementWindow: fixture.measurementWindow,
     }, null, 2);
+    const results = new Map(evaluation.measurements.map((result) => [result.measurementId, result]));
     fixtureMeasurements.replaceChildren(...fixture.measurements.map((measurement) => {
       const item = document.createElement('li');
-      item.textContent = `${measurement.quantity} [${measurement.unit}] — ${measurement.operator}; `
-        + `mask: ${measurement.mask}; 不確かさ床: ${measurement.uncertaintyFloor}; `
-        + `許容: ${measurement.acceptance}; 基準: 未提供; 実測: 未計測`;
+      const result = results.get(measurement.id);
+      const status = result?.status ?? 'blocked';
+      const value = result?.value === null || result === undefined ? '—' : `${result.value} ${result.unit}`;
+      const reference = result?.reference === null || result === undefined ? '—' : String(result.reference);
+      const tolerance = result?.tolerance === null || result === undefined ? '—' : String(result.tolerance);
+      item.textContent = `${status.toUpperCase()} — ${measurement.quantity}: ${value}; `
+        + `reference ${reference}; tolerance ${tolerance}; ${result?.detail ?? '診断結果がありません。'}`;
       return item;
     }));
   };
@@ -191,11 +199,13 @@ async function init(): Promise<void> {
       setCapRadius(radius);
     },
     capture: () => canvas.capture(),
-    measureFixture: (id) => ({
-      fixture: id,
-      measurements: METEOROLOGICAL_CASES[id].measurements,
-      result: null,
-    }),
+    measureFixture: (id) => {
+      return {
+        fixture: id,
+        measurements: METEOROLOGICAL_CASES[id].measurements,
+        result: evaluateMeteorologicalCase(id),
+      };
+    },
     cyclonesAt: (hours) => ({
       tropical: tropicalPlacementAt(hours * 3600),
       lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * 3600, R_EARTH)),
