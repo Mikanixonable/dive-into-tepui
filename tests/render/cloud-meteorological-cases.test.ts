@@ -9,12 +9,12 @@ function measurement(result: MeteorologicalCaseEvaluation, id: string) {
 }
 
 export function register(): void {
-  test('meteorological fixtures: C1 compares spherical transport with analytic motion and blocks unsupported mass', () => {
+  test('meteorological fixtures: C1 compares spherical transport and carried mass with analytic controls', () => {
     const result = evaluateMeteorologicalCase('C1');
     assert.equal(result.cpuDiagnosticsApplied, true);
     assert.equal(result.generatedCloudImageFixtureApplied, false);
     assert.equal(measurement(result, 'trajectory').status, 'pass');
-    assert.equal(measurement(result, 'mass').status, 'blocked');
+    assert.equal(measurement(result, 'mass').status, 'pass');
   });
 
   test('meteorological fixtures: C2 changes wind direction with height in one control profile', () => {
