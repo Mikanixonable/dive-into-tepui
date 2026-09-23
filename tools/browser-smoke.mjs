@@ -139,6 +139,11 @@ async function throwIfVisibleFatalOverlay(label) {
 }
 
 async function applyViewport({ width, height }) {
+  if (layoutOnly) {
+    await devTools.evaluate(`document.documentElement.dataset.layoutSmokeFreeze = 'true'`);
+    // rAF側がfreezeを観測してからrendererをリサイズし得るviewport変更を行う。
+    await sleep(50);
+  }
   await devTools.send('Emulation.setDeviceMetricsOverride', {
     width, height, deviceScaleFactor: 1, mobile: width <= 480,
   });
@@ -149,8 +154,13 @@ async function applyViewport({ width, height }) {
 
 async function clearViewport() {
   await devTools.send('Emulation.clearDeviceMetricsOverride');
-  // innerWidth と fixed/absolute HUD の再レイアウトを同じフレームへ揃える。
+  // 元viewportへ戻す処理もGPU停止中に済ませてから通常描画へ復帰する。
   await sleep(100);
+  if (layoutOnly) {
+    await devTools.evaluate(`delete document.documentElement.dataset.layoutSmokeFreeze`);
+    await sleep(100);
+    await throwIfVisibleFatalOverlay('Headless GPU fatal after restoring layout viewport');
+  }
 }
 
 async function checkOverlayGeometry(selector, label) {
