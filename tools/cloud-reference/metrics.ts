@@ -8,6 +8,13 @@ export interface CloudReferenceMetricSample {
 
 export type CloudReferenceMetricSampleDisposition = 'included' | 'masked' | 'missing-generated' | 'missing-reference';
 
+const REQUIRED_REFERENCE_FAMILIES = [
+  'marine-open-and-closed-cell',
+  'deep-convection-and-anvil',
+  'scalloped-and-undulatus-cloud',
+  'midlatitude-front-and-multilayer-cloud',
+] as const;
+
 /** 評価標本を mask と欠測から区別して判定する。 */
 export function cloudReferenceMetricSampleDisposition(
   sample: CloudReferenceMetricSample,
@@ -118,9 +125,10 @@ export function validateCloudReferenceManifest(value: unknown): readonly string[
       family.days.add(referenceCase.series.start.slice(0, 10));
       families.set(referenceCase.family, family);
     }
-    for (const [familyId, family] of families) {
-      if (family.tuning > 0 && family.heldOut > 0
-        && (family.tuning !== 1 || family.heldOut !== 1 || family.days.size !== 2)) {
+    for (const familyId of REQUIRED_REFERENCE_FAMILIES) {
+      const family = families.get(familyId);
+      if (family === undefined
+        || family.tuning !== 1 || family.heldOut !== 1 || family.days.size !== 2) {
         errors.push(`family ${familyId} must use distinct tuning and held-out observation days`);
       }
     }
