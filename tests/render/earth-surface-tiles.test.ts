@@ -97,6 +97,19 @@ export function register(): void {
     assert.equal(new Set(candidates.map(earthTileId)).size, candidates.length);
   });
 
+  test('earth tiles: dataset最大LODで候補分割を止める', () => {
+    const target = earthTileKey(EARTH_TILE_MAX_Z, 0, 0);
+    const projection: EarthTileProjection = {
+      evaluate: (key) => ({
+        visible: isAncestorOrSelf(key, target), errorPx: 3, priority: 1,
+      }),
+    };
+    const z7Tiles = new EarthSurfaceTiles(7);
+    assert.equal(Math.max(...z7Tiles.requestCandidates(projection).map((key) => key.z)), 7);
+    const z8Tiles = new EarthSurfaceTiles(EARTH_TILE_MAX_Z);
+    assert.equal(Math.max(...z8Tiles.requestCandidates(projection).map((key) => key.z)), EARTH_TILE_MAX_Z);
+  });
+
   test('earth tiles: 4子を待たず到着したz6タイルを個別に公開する', () => {
     const tiles = new EarthSurfaceTiles();
     const projection = new SyntheticProjection(3);
