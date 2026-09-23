@@ -552,6 +552,18 @@ async function placeShipThroughMenu() {
       'the base preset to become selected',
     );
   }
+  const placedName = creativePreset === 'base' ? 'SMOKE BASE' : 'SMOKE SHIP';
+  const formState = await devTools.evaluate(`(() => {
+    const panel = document.getElementById('hud-object-placer');
+    const input = panel.querySelector('input[placeholder="空欄で自動命名"]');
+    if (!(input instanceof HTMLInputElement)) return { error: 'name input missing', issue: '' };
+    input.value = ${JSON.stringify(placedName)};
+    const issue = panel.querySelector('.issue-list:not(.hidden)')?.textContent?.trim() ?? '';
+    return { error: '', issue };
+  })()`);
+  if (formState.error) throw new Error(`Creative placement form failed: ${formState.error}`);
+  if (formState.issue) throw new Error(`Creative placement form is invalid before confirm: ${formState.issue}`);
+
   const confirmed = await devTools.evaluate(`(() => {
     const panel = document.getElementById('hud-object-placer');
     const button = [...panel.querySelectorAll('.w-btn')].find((b) => b.textContent?.startsWith('配置'));
@@ -564,6 +576,7 @@ async function placeShipThroughMenu() {
     `getComputedStyle(document.getElementById('hud-object-placer')).display === 'none'`,
     'the placement panel to close after confirming',
   );
+  return placedName;
 }
 
 async function selectConstructionModuleAndPlace(label, expectedCount) {
@@ -784,10 +797,30 @@ try {
       };
     })()`);
     expectAll('Creative mode did not remain in its zero-ship map state', chromeState);
-    // Construction専用jobは、建造画面へ入るまで通常描画を保つ。
-    // Map幾何は独立jobで検査済みなので重複させない。
-    if (!(layoutOnly && smokeConstruction)) await checkMapLayout();
-    await placeShipThroughMenu();
+    if (layoutOnly) {
+      if (smokeConstruction) {
+        // Layout CIはconstruction workspaceそのものの幾何だけを検査する。
+        // 基地配置→物体一覧→プロパティ→ドックというゲームプレイsmokeは通常経路に残す。
+        await devTools.evaluate(`(() => {
+          const hud = document.getElementById('hud');
+          const mapRoot = document.querySelector('.hud-map-root');
+          const combatRoot = document.querySelector('.hud-combat-root');
+          const workspace = document.getElementById('ship-construction-panel');
+          if (!hud || !mapRoot || !combatRoot || !workspace) throw new Error('construction layout fixture is incomplete');
+          hud.classList.add('construction-mode');
+          hud.dataset.workspace = 'construction';
+          document.body.classList.add('hud-construction-mode');
+          mapRoot.classList.remove('active');
+          combatRoot.classList.add('active');
+          workspace.classList.remove('hidden');
+        })()`);
+        await checkConstructionLayout();
+      } else {
+        await checkMapLayout();
+      }
+    } else {
+      await checkMapLayout();
+      const placedName = await placeShipThroughMenu();
 
     // 基地プリセットは操作可能艦ではないため、Construction専用jobではcombat往復を行わない。
     // 通常のcreative smokeでは従来どおり、M往復とレール状態保持を検査する。
@@ -835,28 +868,42 @@ try {
         document.querySelector('.hud-map-root.active .rail-toggle-right')?.click();
       }
     })()`);
-    await waitFor(
-      `Boolean(document.querySelector(
+    let placedRowReady = false;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      placedRowReady = await devTools.evaluate(`[...document.querySelectorAll(
         '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
-      ))`,
-      'the placed ship or base to populate the physical object list',
-    );
+      )].some((row) => row.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)})`);
+      if (placedRowReady) break;
+      await sleep(100);
+    }
+    if (!placedRowReady) {
+      const diagnostic = await devTools.evaluate(`(() => ({
+        hint: document.getElementById('hud-hint')?.textContent ?? '',
+        tracked: document.querySelector('.physical-object-list-tracked')?.textContent ?? '',
+        playerRows: [...document.querySelectorAll('#hud-physical-object-list-section-player .physical-object-list-name')]
+          .map((el) => el.textContent),
+        baseRows: [...document.querySelectorAll('#hud-physical-object-list-section-base .physical-object-list-name')]
+          .map((el) => el.textContent),
+      }))()`);
+      throw new Error(`Placed object ${placedName} did not populate the physical object list: ${JSON.stringify(diagnostic)}`);
+    }
     const shipRowState = await devTools.evaluate(`(() => {
-      const row = document.querySelector(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
-      );
+      const row = [...document.querySelectorAll(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
+      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
       if (!row || getComputedStyle(row).display === 'none') return { row: null };
       const r = row.getBoundingClientRect();
       return { row: { x: r.left + r.width / 2, y: r.top + r.height / 2, label: row.getAttribute('aria-label') } };
     })()`);
     const shipRow = shipRowState.row;
     if (!shipRow) {
-      throw new Error('The placed ship or base row was hidden in the physical object list.');
+      throw new Error(`The placed object ${placedName} row was hidden in the physical object list.`);
     }
     await devTools.evaluate(`(() => {
-      const row = document.querySelector(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
-      );
+      const row = [...document.querySelectorAll(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
+      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
+      if (!row) throw new Error('placed object row disappeared before context menu');
       const r = row.getBoundingClientRect();
       row.dispatchEvent(new MouseEvent('contextmenu', {
         bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
@@ -877,7 +924,8 @@ try {
       expectAll('Property window did not remain clamped after resize', clamped);
       await clearViewport();
     }
-    if (smokeConstruction) await constructMaterialFromBaseDock();
+      if (smokeConstruction) await constructMaterialFromBaseDock();
+    }
   }
 
   if (expectCreative && process.env.SMOKE_CREATIVE_PLACE === '2') {
