@@ -121,8 +121,10 @@ export function register(): void {
   });
 
   test('earth runtime: schema3 z8 manifestはz8 URLを解決し、z7 manifestはz8を要求しない', async () => {
-    const high = manifest();
-    high.coverage = { kind: 'complete', minZoom: 5, maxZoom: 8, expectedTiles: 174_080 };
+    const high = {
+      ...manifest(),
+      coverage: { kind: 'complete', minZoom: 5, maxZoom: 8, expectedTiles: 174_080 },
+    } as EarthSurfaceAssetManifest;
     const highResult = await bootstrapEarthSurface({
       manifestUrl: 'https://example.test/earth/earth-surface.json',
       fetchImpl: async () => new Response(JSON.stringify(high)),
