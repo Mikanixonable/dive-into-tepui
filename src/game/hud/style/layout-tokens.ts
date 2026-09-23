@@ -48,8 +48,6 @@ export const LAYOUT_TOKENS_STYLE = `
   :root {
     --rail-w-left: calc(44vw - 8px);
     --rail-w-right: calc(56vw - 8px);
-    --hud-map-rail-bottom: calc(28vh + 16px);
-    --hud-map-rail-bottom: calc(28dvh + 16px);
   }
 }
 @media ${MQ_COARSE} {
