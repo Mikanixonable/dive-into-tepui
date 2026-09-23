@@ -1,12 +1,17 @@
 // SI-unit thermodynamics and bulk optical closures for a one-dimensional air parcel.
-// Saturation pressure follows WMO-No. 8 (2021), Annex 4.B equations 4.B.1/4.B.3;
-// those Magnus fits are limited to -45..60 °C over liquid water and -65..0 °C over ice.
-// The LCL temperature is Bolton (1980), eq. 15; moist ascent uses the reversible-free
-// pseudoadiabatic lapse rate (condensate immediately removed). This is a diagnostic
-// parcel model, not a cloud-resolving microphysics scheme or a global circulation model.
+// Liquid saturation uses WMO-No. 8 (2021), Annex 4.B; ice saturation uses Murphy & Koop
+// (2005), valid here from 110 K to 273.16 K. Between -40 and 0 °C, a smoothstep liquid
+// fraction blends the two pressures; this is a mixed-phase saturation closure, not a
+// prediction of cloud condensate partition. Its temperature derivative defines an
+// effective latent heat for pseudoadiabatic ascent (condensate immediately removed).
+// The LCL temperature is Bolton (1980), eq. 15. This is a diagnostic parcel model,
+// not a cloud-resolving microphysics scheme or a global circulation model.
 // Sources: https://community.wmo.int/site/knowledge-hub/programmes-and-initiatives/
 // instruments-and-methods-of-observation-programme-imop/guide-instruments-and-methods-
 // of-observation-wmo-no-8 ; https://doi.org/10.1175/1520-0493(1980)108<1046:TCOEPT>2.0.CO;2
+// https://doi.org/10.1256/qj.04.94 ; mixed-phase weighted vapor pressure follows the
+// parameterization class discussed by Fu et al. (2004), with smoothstep weights here:
+// https://doi.org/10.1175/1520-0469(2004)061<2083:TMCWVP>2.0.CO;2
 // Liquid optical depth is the Stephens (1978) geometric-optics closure:
 // https://doi.org/10.1175/1520-0469(1978)035<2111:RPIEWC>2.0.CO;2
 // CAPE/CIN definitions follow NOAA/NWS glossary terminology:
@@ -16,7 +21,7 @@ const EPSILON = 0.622; // molecular-mass ratio Mv/Md
 const GAS_CONSTANT_DRY_AIR_J_PER_KG_K = 287.05;
 const SPECIFIC_HEAT_DRY_AIR_J_PER_KG_K = 1004;
 const GRAVITY_M_PER_S2 = 9.80665;
-const LATENT_HEAT_VAPORIZATION_J_PER_KG = 2.5e6;
+const GAS_CONSTANT_VAPOR_J_PER_KG_K = GAS_CONSTANT_DRY_AIR_J_PER_KG_K / EPSILON;
 const WATER_DENSITY_KG_PER_M3 = 1000;
 const ICE_DENSITY_KG_PER_M3 = 917;
 const MAX_PARCEL_STEP_M = 100;
@@ -42,7 +47,7 @@ export interface LiftedParcelLevel {
 
 export interface ParcelBuoyancyDiagnostic {
   readonly profile: readonly LiftedParcelLevel[];
-  readonly lclHeightM: number;
+  readonly lclHeightM: number | null;
   readonly lfcHeightM: number | null;
   readonly equilibriumHeightM: number | null;
   readonly capeJPerKg: number;
@@ -65,6 +70,7 @@ function requireNonNegative(value: number, name: string): void {
 
 // Water/ice saturation pressure over a pure, flat phase surface [Pa].
 export function saturationVaporPressureOverLiquidPa(temperatureK: number): number {
+  requireFinite(temperatureK, 'temperatureK');
   const temperatureC = temperatureK - 273.15;
   if (temperatureC < -45 || temperatureC > 60) {
     throw new RangeError('liquid-water saturation fit applies from -45 °C to 60 °C');
@@ -73,11 +79,66 @@ export function saturationVaporPressureOverLiquidPa(temperatureK: number): numbe
 }
 
 export function saturationVaporPressureOverIcePa(temperatureK: number): number {
-  const temperatureC = temperatureK - 273.15;
-  if (temperatureC < -65 || temperatureC > 0) {
-    throw new RangeError('ice saturation fit applies from -65 °C to 0 °C');
+  requireFinite(temperatureK, 'temperatureK');
+  if (temperatureK < 110 || temperatureK > 273.16) {
+    throw new RangeError('Murphy-Koop ice saturation equation applies from 110 K to 273.16 K');
   }
-  return 611.2 * Math.exp((22.46 * temperatureC) / (272.62 + temperatureC));
+  return Math.exp(
+    9.550426 - 5723.265 / temperatureK + 3.53068 * Math.log(temperatureK) - 0.00728332 * temperatureK,
+  );
+}
+
+// Mixed-phase saturation pressure blends liquid and ice equilibrium pressures from
+// -40 °C to 0 °C. Smoothstep weights make both pressure and d(es)/dT continuous at
+// the all-ice and all-liquid joins; the interpolation is an explicit bulk closure.
+export function saturationVaporPressureOverMixedPhasePa(temperatureK: number): number {
+  return mixedPhaseSaturationPressureAndDerivative(temperatureK).vaporPressurePa;
+}
+
+function liquidSaturationPressureAndDerivative(temperatureK: number): {
+  readonly vaporPressurePa: number;
+  readonly derivativePaPerK: number;
+} {
+  const vaporPressurePa = saturationVaporPressureOverLiquidPa(temperatureK);
+  const temperatureC = temperatureK - 273.15;
+  return {
+    vaporPressurePa,
+    derivativePaPerK: vaporPressurePa * 17.62 * 243.12 / (243.12 + temperatureC) ** 2,
+  };
+}
+
+function iceSaturationPressureAndDerivative(temperatureK: number): {
+  readonly vaporPressurePa: number;
+  readonly derivativePaPerK: number;
+} {
+  const vaporPressurePa = saturationVaporPressureOverIcePa(temperatureK);
+  const logDerivativePerK = 5723.265 / temperatureK ** 2 + 3.53068 / temperatureK - 0.00728332;
+  return { vaporPressurePa, derivativePaPerK: vaporPressurePa * logDerivativePerK };
+}
+
+function mixedPhaseSaturationPressureAndDerivative(temperatureK: number): {
+  readonly vaporPressurePa: number;
+  readonly derivativePaPerK: number;
+} {
+  requireFinite(temperatureK, 'temperatureK');
+  const freezingK = 273.15;
+  const allIceK = 233.15;
+  if (temperatureK < allIceK || temperatureK > freezingK) {
+    throw new RangeError('mixed-phase saturation closure applies from -40 °C to 0 °C');
+  }
+  const liquid = liquidSaturationPressureAndDerivative(temperatureK);
+  const ice = iceSaturationPressureAndDerivative(temperatureK);
+  const liquidFractionCoordinate = (temperatureK - allIceK) / (freezingK - allIceK);
+  const liquidFraction = liquidFractionCoordinate ** 2 * (3 - 2 * liquidFractionCoordinate);
+  const liquidFractionDerivativePerK = 6 * liquidFractionCoordinate
+    * (1 - liquidFractionCoordinate) / (freezingK - allIceK);
+  return {
+    vaporPressurePa: liquidFraction * liquid.vaporPressurePa
+      + (1 - liquidFraction) * ice.vaporPressurePa,
+    derivativePaPerK: liquidFraction * liquid.derivativePaPerK
+      + (1 - liquidFraction) * ice.derivativePaPerK
+      + liquidFractionDerivativePerK * (liquid.vaporPressurePa - ice.vaporPressurePa),
+  };
 }
 
 // Specific humidity q = εe / (p - (1-ε)e), where ε = Mv/Md.
@@ -96,6 +157,15 @@ export function saturationSpecificHumidityOverIceKgPerKg(
 ): number {
   return saturationSpecificHumidityKgPerKg(
     saturationVaporPressureOverIcePa(temperatureK), pressurePa,
+  );
+}
+
+export function saturationSpecificHumidityOverMixedPhaseKgPerKg(
+  temperatureK: number,
+  pressurePa: number,
+): number {
+  return saturationSpecificHumidityKgPerKg(
+    saturationVaporPressureOverMixedPhasePa(temperatureK), pressurePa,
   );
 }
 
@@ -168,14 +238,44 @@ export function liftingCondensationLevel(
   };
 }
 
+function parcelSaturationPressureAndDerivative(temperatureK: number): {
+  readonly vaporPressurePa: number;
+  readonly derivativePaPerK: number;
+} {
+  if (temperatureK > 273.15) return liquidSaturationPressureAndDerivative(temperatureK);
+  if (temperatureK >= 233.15) return mixedPhaseSaturationPressureAndDerivative(temperatureK);
+  return iceSaturationPressureAndDerivative(temperatureK);
+}
+
+function parcelSaturationSpecificHumidityKgPerKg(temperatureK: number, pressurePa: number): number {
+  return saturationSpecificHumidityKgPerKg(
+    parcelSaturationPressureAndDerivative(temperatureK).vaporPressurePa,
+    pressurePa,
+  );
+}
+
+function parcelVirtualTemperatureK(temperatureK: number, pressurePa: number): number {
+  return virtualTemperatureK(
+    temperatureK,
+    parcelSaturationSpecificHumidityKgPerKg(temperatureK, pressurePa),
+    0,
+    0,
+  );
+}
+
 function moistAdiabaticLapseRateKPerM(temperatureK: number, pressurePa: number): number {
-  const vaporPressurePa = saturationVaporPressureOverLiquidPa(temperatureK);
+  const { vaporPressurePa, derivativePaPerK } = parcelSaturationPressureAndDerivative(temperatureK);
+  if (vaporPressurePa >= pressurePa) {
+    throw new RangeError('parcel saturation pressure must be below total pressure');
+  }
   const mixingRatioKgPerKg = EPSILON * vaporPressurePa / (pressurePa - vaporPressurePa);
-  const latentRatio = LATENT_HEAT_VAPORIZATION_J_PER_KG * mixingRatioKgPerKg
+  const effectiveLatentHeatJPerKg = GAS_CONSTANT_VAPOR_J_PER_KG_K
+    * temperatureK ** 2 * derivativePaPerK / vaporPressurePa;
+  const latentRatio = effectiveLatentHeatJPerKg * mixingRatioKgPerKg
     / (GAS_CONSTANT_DRY_AIR_J_PER_KG_K * temperatureK);
   const numerator = GRAVITY_M_PER_S2 * (1 + latentRatio);
   const denominator = SPECIFIC_HEAT_DRY_AIR_J_PER_KG_K
-    + (LATENT_HEAT_VAPORIZATION_J_PER_KG ** 2 * mixingRatioKgPerKg * EPSILON)
+    + (effectiveLatentHeatJPerKg ** 2 * mixingRatioKgPerKg * EPSILON)
       / (GAS_CONSTANT_DRY_AIR_J_PER_KG_K * temperatureK ** 2);
   return numerator / denominator;
 }
@@ -196,15 +296,30 @@ function integrateParcelTemperatureK(
   for (let step = 0; step < steps; step += 1) {
     const lapseAtStart = moistAdiabaticLapseRateKPerM(parcelTemperatureK, parcelPressurePa);
     const midpointTemperatureK = parcelTemperatureK - lapseAtStart * stepM / 2;
-    const midpointPressurePa = parcelPressurePa * Math.exp(
+    let midpointPressurePa = parcelPressurePa * Math.exp(
       -GRAVITY_M_PER_S2 * stepM
-        / (GAS_CONSTANT_DRY_AIR_J_PER_KG_K * midpointTemperatureK),
+        / (2 * GAS_CONSTANT_DRY_AIR_J_PER_KG_K * parcelVirtualTemperatureK(
+          parcelTemperatureK,
+          parcelPressurePa,
+        )),
     );
+    for (let iteration = 0; iteration < 2; iteration += 1) {
+      midpointPressurePa = parcelPressurePa * Math.exp(
+        -GRAVITY_M_PER_S2 * stepM
+          / (2 * GAS_CONSTANT_DRY_AIR_J_PER_KG_K * parcelVirtualTemperatureK(
+            midpointTemperatureK,
+            midpointPressurePa,
+          )),
+      );
+    }
     const midpointLapse = moistAdiabaticLapseRateKPerM(midpointTemperatureK, midpointPressurePa);
     parcelTemperatureK -= midpointLapse * stepM;
-    parcelPressurePa = midpointPressurePa * Math.exp(
+    parcelPressurePa *= Math.exp(
       -GRAVITY_M_PER_S2 * stepM
-        / (GAS_CONSTANT_DRY_AIR_J_PER_KG_K * parcelTemperatureK),
+        / (GAS_CONSTANT_DRY_AIR_J_PER_KG_K * parcelVirtualTemperatureK(
+          midpointTemperatureK,
+          midpointPressurePa,
+        )),
     );
   }
   return parcelTemperatureK;
@@ -243,12 +358,14 @@ export function parcelBuoyancyProfile(
 ): ParcelBuoyancyDiagnostic {
   validateProfile(profile);
   const start = profile[0]!;
-  const parcelLcl = liftingCondensationLevel(
-    start.temperatureK,
-    start.pressurePa,
-    dewPointFromSpecificHumidityK(start.temperatureK, start.pressurePa, start.waterVaporSpecificHumidityKgPerKg),
-  );
-  const lclHeightM = start.heightM + parcelLcl.heightM;
+  const parcelLcl = start.waterVaporSpecificHumidityKgPerKg === 0
+    ? null
+    : liftingCondensationLevel(
+      start.temperatureK,
+      start.pressurePa,
+      dewPointFromSpecificHumidityK(start.temperatureK, start.pressurePa, start.waterVaporSpecificHumidityKgPerKg),
+    );
+  const lclHeightM = parcelLcl === null ? null : start.heightM + parcelLcl.heightM;
   const levels: LiftedParcelLevel[] = [];
   let parcelTemperatureK = start.temperatureK;
   let parcelPressurePa = start.pressurePa;
@@ -262,7 +379,9 @@ export function parcelBuoyancyProfile(
   for (const environment of profile) {
     if (environment.heightM > start.heightM) {
       const segmentDepthM = environment.heightM - previousHeightM;
-      const lclWithinSegment = lclHeightM > previousHeightM && lclHeightM < environment.heightM;
+      const lclWithinSegment = lclHeightM !== null
+        && lclHeightM > previousHeightM
+        && lclHeightM < environment.heightM;
       if (lclWithinSegment) {
         const dryDepthM = lclHeightM - previousHeightM;
         parcelTemperatureK = integrateParcelTemperatureK(parcelTemperatureK, parcelPressurePa, dryDepthM, false);
@@ -274,13 +393,13 @@ export function parcelBuoyancyProfile(
         const saturatedDepthM = environment.heightM - lclHeightM;
         parcelTemperatureK = integrateParcelTemperatureK(parcelTemperatureK, parcelPressurePa, saturatedDepthM, true);
       } else {
-        const saturated = previousHeightM >= lclHeightM;
+        const saturated = lclHeightM !== null && previousHeightM >= lclHeightM;
         parcelTemperatureK = integrateParcelTemperatureK(parcelTemperatureK, parcelPressurePa, segmentDepthM, saturated);
       }
       parcelPressurePa = environment.pressurePa;
     }
-    const saturatedHumidity = environment.heightM >= lclHeightM
-      ? saturationSpecificHumidityOverLiquidKgPerKg(parcelTemperatureK, environment.pressurePa)
+    const saturatedHumidity = lclHeightM !== null && environment.heightM >= lclHeightM
+      ? parcelSaturationSpecificHumidityKgPerKg(parcelTemperatureK, environment.pressurePa)
       : start.waterVaporSpecificHumidityKgPerKg;
     const parcelTv = virtualTemperatureK(parcelTemperatureK, saturatedHumidity, 0, 0);
     const environmentTv = virtualTemperatureK(
@@ -383,17 +502,11 @@ function dewPointFromSpecificHumidityK(
   if (vaporPressurePa > saturationVaporPressureOverLiquidPa(temperatureK)) {
     throw new RangeError('parcel specific humidity must not be supersaturated over liquid water');
   }
-  let lowerK = 273.15 - 45;
-  let upperK = Math.min(temperatureK, 273.15 + 60);
-  if (vaporPressurePa < saturationVaporPressureOverLiquidPa(lowerK)) {
+  if (vaporPressurePa < saturationVaporPressureOverLiquidPa(273.15 - 45)) {
     throw new RangeError('parcel dew point is below the WMO liquid-water saturation fit range');
   }
-  for (let iteration = 0; iteration < 48; iteration += 1) {
-    const midpointK = (lowerK + upperK) / 2;
-    if (saturationVaporPressureOverLiquidPa(midpointK) < vaporPressurePa) lowerK = midpointK;
-    else upperK = midpointK;
-  }
-  return (lowerK + upperK) / 2;
+  const logVaporPressureRatio = Math.log(vaporPressurePa / 611.2);
+  return 273.15 + 243.12 * logVaporPressureRatio / (17.62 - logVaporPressureRatio);
 }
 
 // Bulk radius closures assume spherical-equivalent particles of one representative

@@ -9,8 +9,10 @@ import {
   parcelBuoyancyMPerS2,
   parcelBuoyancyProfile,
   saturationSpecificHumidityOverIceKgPerKg,
+  saturationSpecificHumidityOverMixedPhaseKgPerKg,
   saturationSpecificHumidityOverLiquidKgPerKg,
   saturationVaporPressureOverIcePa,
+  saturationVaporPressureOverMixedPhasePa,
   saturationVaporPressureOverLiquidPa,
   virtualTemperatureK,
 } from '../../src/physics/cloud-thermodynamics';
@@ -23,6 +25,27 @@ export function register(): void {
     assert.ok(Math.abs(saturationVaporPressureOverIcePa(253.15) - 103.3) < 0.5);
     assert.throws(() => saturationVaporPressureOverLiquidPa(220), RangeError);
     assert.throws(() => saturationVaporPressureOverIcePa(280), RangeError);
+    for (const temperatureK of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      assert.throws(() => saturationVaporPressureOverLiquidPa(temperatureK), RangeError);
+      assert.throws(() => saturationVaporPressureOverIcePa(temperatureK), RangeError);
+      assert.throws(() => saturationVaporPressureOverMixedPhasePa(temperatureK), RangeError);
+    }
+  });
+
+  test('cloud thermodynamics: mixed-phase saturation joins the pure-phase curves continuously', () => {
+    assert.equal(
+      saturationVaporPressureOverMixedPhasePa(233.15),
+      saturationVaporPressureOverIcePa(233.15),
+    );
+    assert.equal(
+      saturationVaporPressureOverMixedPhasePa(273.15),
+      saturationVaporPressureOverLiquidPa(273.15),
+    );
+    const ice = saturationVaporPressureOverIcePa(253.15);
+    const liquid = saturationVaporPressureOverLiquidPa(253.15);
+    const mixed = saturationVaporPressureOverMixedPhasePa(253.15);
+    assert.ok(mixed > ice && mixed < liquid);
+    assert.ok(saturationSpecificHumidityOverMixedPhaseKgPerKg(253.15, 80_000) > 0);
   });
 
   test('cloud thermodynamics: specific humidity uses vapor pressure and moist-air pressure', () => {
@@ -56,7 +79,7 @@ export function register(): void {
   test('cloud thermodynamics: dry-neutral sounding has no diagnosed CAPE, CIN, or LFC', () => {
     const baseTemperatureK = 290;
     const basePressurePa = 100_000;
-    const qv = 9e-5;
+    const qv = 0;
     const profile: CloudProfileLevel[] = [0, 100, 200, 300].map((heightM) => {
       const temperatureK = baseTemperatureK - 9.80665 / 1004 * heightM;
       const pressurePa = basePressurePa * (temperatureK / baseTemperatureK) ** (1004 / 287.05);
@@ -72,48 +95,82 @@ export function register(): void {
     const diagnostic = parcelBuoyancyProfile(profile);
     assert.ok(diagnostic.capeJPerKg < 1e-8);
     assert.ok(diagnostic.cinJPerKg < 1e-8);
+    assert.equal(diagnostic.lclHeightM, null);
     assert.equal(diagnostic.lfcHeightM, null);
     assert.equal(diagnostic.equilibriumHeightM, null);
     assert.equal(diagnostic.profile.length, profile.length);
   });
 
-  test('cloud thermodynamics: unstable sounding integrates CAPE to equilibrium height', () => {
+  test('cloud thermodynamics: dry analytic sounding has independently known CAPE, CIN, LFC, and EL', () => {
+    const baseTemperatureK = 300;
+    const gravityMPerS2 = 9.80665;
+    const dryLapseKPerM = gravityMPerS2 / 1004;
+    const knownBuoyancyMPerS2 = [0, -0.02, 0, 0.04, 0];
+    const profile: CloudProfileLevel[] = knownBuoyancyMPerS2.map((buoyancyMPerS2, index) => {
+      const heightM = index * 500;
+      const parcelTemperatureK = baseTemperatureK - dryLapseKPerM * heightM;
+      return {
+        heightM,
+        temperatureK: parcelTemperatureK / (1 + buoyancyMPerS2 / gravityMPerS2),
+        pressurePa: 100_000 * Math.exp(-gravityMPerS2 * heightM / (287.05 * baseTemperatureK)),
+        waterVaporSpecificHumidityKgPerKg: 0,
+        liquidWaterMixingRatioKgPerKg: 0,
+        iceMixingRatioKgPerKg: 0,
+      };
+    });
+    const diagnostic = parcelBuoyancyProfile(profile);
+    assert.equal(diagnostic.lclHeightM, null);
+    assert.equal(diagnostic.lfcHeightM, 1000);
+    assert.ok(diagnostic.equilibriumHeightM !== null);
+    assert.ok(Math.abs(diagnostic.equilibriumHeightM - 2000) < 1e-8);
+    assert.ok(Math.abs(diagnostic.capeJPerKg - 20) < 1e-8);
+    assert.ok(Math.abs(diagnostic.cinJPerKg - 10) < 1e-8);
+  });
+
+  test('cloud thermodynamics: mixed-phase deep sounding reaches the ice-phase ascent closure', () => {
     const profile: CloudProfileLevel[] = [];
-    for (let heightM = 0; heightM <= 8000; heightM += 250) {
+    for (let heightM = 0; heightM <= 16_000; heightM += 250) {
       const temperatureK = 300 - (heightM <= 1000
         ? 9.8 * heightM / 1000
         : 9.8 + 5.5 * (heightM - 1000) / 1000);
+      const pressurePa = 100_000 * Math.exp(-9.80665 * heightM / (287.05 * 285));
+      const environmentalSaturationKgPerKg = temperatureK > 273.15
+        ? saturationSpecificHumidityOverLiquidKgPerKg(temperatureK, pressurePa)
+        : temperatureK >= 233.15
+          ? saturationSpecificHumidityOverMixedPhaseKgPerKg(temperatureK, pressurePa)
+          : saturationSpecificHumidityOverIceKgPerKg(temperatureK, pressurePa);
       profile.push({
         heightM,
         temperatureK,
-        pressurePa: 100_000 * Math.exp(-9.80665 * heightM / (287.05 * 285)),
-        waterVaporSpecificHumidityKgPerKg: heightM < 1000 ? 0.012 : 0.002,
+        pressurePa,
+        waterVaporSpecificHumidityKgPerKg: heightM < 1000
+          ? 0.012
+          : Math.min(0.002, environmentalSaturationKgPerKg * 0.5),
         liquidWaterMixingRatioKgPerKg: heightM === 0 ? 0.002 : 0,
         iceMixingRatioKgPerKg: 0,
       });
     }
     const diagnostic = parcelBuoyancyProfile(profile);
+    assert.ok(diagnostic.lclHeightM !== null);
     assert.ok(diagnostic.lclHeightM > 1000 && diagnostic.lclHeightM < 1500);
     assert.equal(diagnostic.lfcHeightM, 0);
     assert.ok(diagnostic.equilibriumHeightM !== null);
     assert.ok(diagnostic.capeJPerKg > 100);
     assert.ok(diagnostic.cinJPerKg >= 0);
     assert.ok(diagnostic.equilibriumHeightM < profile[profile.length - 1]!.heightM);
+    assert.ok(diagnostic.profile[diagnostic.profile.length - 1]!.temperatureK < 233.15);
   });
 
   test('cloud thermodynamics: liquid and ice closures recover a specified monodisperse radius', () => {
-    const targetRadiusM = 10e-6;
-    const numberConcentrationPerM3 = 1e8;
-    const liquidMixingRatioKgPerKg = 4 * Math.PI * 1000 * numberConcentrationPerM3
-      * targetRadiusM ** 3 / 3;
-    const iceMixingRatioKgPerKg = 4 * Math.PI * 917 * numberConcentrationPerM3
-      * targetRadiusM ** 3 / 3;
-    const liquidRadiusM = liquidEffectiveRadiusM(1, liquidMixingRatioKgPerKg, numberConcentrationPerM3);
-    const iceRadiusM = iceEffectiveRadiusM(1, iceMixingRatioKgPerKg, numberConcentrationPerM3);
-    assert.ok(liquidRadiusM !== null && Math.abs(liquidRadiusM - targetRadiusM) < 1e-15);
-    assert.ok(iceRadiusM !== null && Math.abs(iceRadiusM - targetRadiusM) < 1e-15);
-    assert.equal(liquidEffectiveRadiusM(1, 0, numberConcentrationPerM3), null);
-    assert.equal(iceEffectiveRadiusM(1, 0, numberConcentrationPerM3), null);
+    // Fixed bulk references: 0.30 g/m³ liquid water at 100 cm⁻³ and 0.05 g/m³
+    // ice at 0.1 cm⁻³. Expected volume-equivalent radii are independently evaluated
+    // from mass per particle and spherical material density.
+    const liquidRadiusM = liquidEffectiveRadiusM(1.2, 0.00025, 1e8);
+    const iceRadiusM = iceEffectiveRadiusM(0.8, 0.0000625, 1e5);
+    assert.ok(liquidRadiusM !== null && Math.abs(liquidRadiusM - 8.947e-6) < 1e-9);
+    assert.ok(iceRadiusM !== null && Math.abs(iceRadiusM - 50.680e-6) < 1e-8);
+    assert.equal(liquidEffectiveRadiusM(1, 0, 1e8), null);
+    assert.equal(iceEffectiveRadiusM(1, 0, 1e5), null);
   });
 
   test('cloud thermodynamics: optical depth has the expected geometric path scaling', () => {
