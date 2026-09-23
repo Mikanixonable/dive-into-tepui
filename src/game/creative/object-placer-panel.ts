@@ -264,7 +264,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.appendChild(nameRow.element);
 
     this.issueList = document.createElement('div');
-    this.issueList.className = 'issue-list hidden';
+    this.issueList.className = 'issue-list ui-status-note ui-status-note--danger hidden';
     this.panel.appendChild(this.issueList);
 
     this.buildButtonsAndKeybinds();
