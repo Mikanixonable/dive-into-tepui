@@ -164,8 +164,24 @@ function placementBelowHorizon(altitude: number, margin: number): Pick<LabViewAn
 // 地球のケースの地球の置き方と、その中心(描画座標)。
 const EARTH_PLACEMENT = placementBelowHorizon(LEO_ALTITUDE, 0);
 const EARTH_CENTER = earthCenterOf(EARTH_PLACEMENT);
+const EARTH_NADIR_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
+  earthAzimuthDeg: 180,
+  earthElevationDeg: -90,
+  earthAltitudeLog: Math.log10(LEO_ALTITUDE),
+  earthLatitudeDeg: 23,
+  earthLongitudeDeg: 13,
+};
+const EARTH_LOW_ORBIT_ALTITUDE_M = 120e3;
+const EARTH_LOW_ORBIT_PLACEMENT = placementBelowHorizon(EARTH_LOW_ORBIT_ALTITUDE_M, 0);
 // 昼夜境界の撮影の恒星の向き。視線の先の地平線上。
 const EARTH_TERMINATOR_SUN = sunAnglesOf(AHEAD.clone().projectOnPlane(EARTH_CENTER.clone().negate().normalize()));
+const EARTH_LOW_SUN_ELEVATION_DEG = 8;
+const EARTH_VISIBLE_SURFACE_NORMAL = EARTH_CENTER.clone().negate().normalize();
+const EARTH_LOW_SUN_TANGENT = AHEAD.clone().projectOnPlane(EARTH_VISIBLE_SURFACE_NORMAL).normalize();
+const EARTH_LOW_SUN = sunAnglesOf(
+  EARTH_LOW_SUN_TANGENT.multiplyScalar(Math.cos(THREE.MathUtils.degToRad(EARTH_LOW_SUN_ELEVATION_DEG)))
+    .addScaledVector(EARTH_VISIBLE_SURFACE_NORMAL, Math.sin(THREE.MathUtils.degToRad(EARTH_LOW_SUN_ELEVATION_DEG))),
+);
 // 日食の撮影の恒星の向き。食を起こす球はこの向きへ置くので、既定の向き(SUN_DIR)の撮影では影の軸が
 // 地表点から約 5,000 km(3e7 m × sin 9.5°)外れ、地平線まで(地表距離 約 2,300 km)に斑(半影の
 // 半径 約 340 km)は入らない。地球の置き方を変える撮影(斜視・極)では、影の軸は描画原点から見えない
@@ -225,9 +241,14 @@ function earth(): LabCase {
     shadowBodies: [sphereShadowBody(eclipseBodyCenter, ECLIPSE_SHADOW_BODY_RADIUS)],
     shots: {
       'earth': { view: {} },
+      'earth-nadir': { view: EARTH_NADIR_PLACEMENT },
+      'earth-low-orbit': { view: EARTH_LOW_ORBIT_PLACEMENT },
+      'earth-limb': { view: {} },
       // 昼夜境界。**太陽光が最も長く大気を通って届く向き**なので、波長ごとの減衰だけで縁と霞が橙へ
       // 寄っていなければならない。前方散乱が効く向きでもあるので、太陽のまわりのグローもここで読む。
       'earth-terminator': { view: EARTH_TERMINATOR_SUN },
+      'earth-twilight': { view: EARTH_TERMINATOR_SUN },
+      'earth-low-sun': { view: EARTH_LOW_SUN },
       // 日食。**大気の明暗は入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた
       // 斑が出る。斑は本影(半径 60km)を半影(340km)が縁取る。
       'earth-eclipse': { view: EARTH_ECLIPSE_SUN },
