@@ -278,12 +278,12 @@ async function checkMapLayout() {
         left: parseFloat(style.getPropertyValue('--hud-left-rail-occupied')),
         right: parseFloat(style.getPropertyValue('--hud-right-rail-occupied')),
       };
-      const actual = {
+      const actual = railEls.length === 2 ? {
         left: Math.max(0, Math.ceil(railEls[0].getBoundingClientRect().right - rootRect.left)),
         right: Math.max(0, Math.ceil(rootRect.right - railEls[1].getBoundingClientRect().left)),
-      };
-      if (Math.abs(occupied.left - actual.left) > 2) errors.push('left occupied token mismatch');
-      if (Math.abs(occupied.right - actual.right) > 2) errors.push('right occupied token mismatch');
+      } : { left: NaN, right: NaN };
+      if (railEls.length === 2 && Math.abs(occupied.left - actual.left) > 2) errors.push('left occupied token mismatch');
+      if (railEls.length === 2 && Math.abs(occupied.right - actual.right) > 2) errors.push('right occupied token mismatch');
       for (const panel of railEls.flatMap((rail) => [...rail.querySelectorAll(':scope > .panel')].filter(visible))) {
         const overflowY = getComputedStyle(panel).overflowY;
         if (overflowY === 'auto' || overflowY === 'scroll') errors.push('direct map rail panel owns vertical scroll: ' + panel.id);
@@ -357,6 +357,7 @@ async function checkHelpModal() {
     };
   })()`);
   expectAll('Help modal shielding failed', state);
+  await checkOverlayGeometry('#hud-help', 'Help modal');
   await pressKey('Escape', 'Escape', 27);
   await waitFor(
     `getComputedStyle(document.getElementById('hud-help')).display === 'none'
@@ -388,6 +389,7 @@ async function checkPauseMenu() {
     };
   })()`);
   expectAll('Pause menu shielding failed', state);
+  await checkOverlayGeometry('#hud-pause-menu', 'Pause menu');
   await pressKey('Escape', 'Escape', 27);
   await waitFor(
     `getComputedStyle(document.getElementById('hud-pause-menu')).display === 'none'`,
@@ -499,6 +501,38 @@ async function selectConstructionModuleAndPlace(label, expectedCount) {
   );
 }
 
+async function checkConstructionLayout() {
+  for (const viewport of VIEWPORTS) {
+    await applyViewport(viewport);
+    const state = await devTools.evaluate(`(() => {
+      ${LAYOUT_HELPERS}
+      const errors = [];
+      const workspace = document.getElementById('ship-construction-panel');
+      if (!visible(workspace)) errors.push('construction workspace hidden');
+      else if (!insideViewport(rect(workspace))) errors.push('construction workspace outside viewport');
+      const parts = [
+        ...workspace.querySelectorAll('.construction-pane'),
+        workspace.querySelector('.construction-center'),
+        workspace.querySelector('.construction-mobile-tabs'),
+      ].filter(visible);
+      const rects = parts.map(rect);
+      for (const item of rects) if (!insideViewport(item)) errors.push('construction child outside viewport: ' + (item.id || 'anonymous'));
+      for (let i = 0; i < rects.length; i++) {
+        for (let j = i + 1; j < rects.length; j++) {
+          if (overlaps(rects[i], rects[j])) errors.push('construction regions overlap');
+        }
+      }
+      const tiny = tinyInteractiveText(workspace);
+      if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
+      return { errors, rects, tiny };
+    })()`);
+    if (state.errors.length) {
+      throw new Error(`Construction layout failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${state.errors.join('; ')}; ${JSON.stringify(state)}`);
+    }
+  }
+  await devTools.send('Emulation.clearDeviceMetricsOverride');
+}
+
 async function constructMaterialFromBaseDock() {
   await devTools.evaluate(`(() => {
     const title = [...document.querySelectorAll('.property-window .prop-window-related-title')]
@@ -532,6 +566,7 @@ async function constructMaterialFromBaseDock() {
       && !document.getElementById('ship-construction-panel')?.classList.contains('hidden')`,
     'construction mode to enter the combat view',
   );
+  await checkConstructionLayout();
 
   await devTools.evaluate(`(() => {
     window.__smokeConfirmMessages = [];
