@@ -6,7 +6,8 @@ import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile, rename } fr
 import { dirname, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  canonicalSha256, inspectEarthSurfaceBundle, EARTH_TERRAIN_BYTES, EARTH_TERRAIN_FORMAT_VERSION,
+  canonicalSha256, inspectEarthSurfaceBundle, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
+  EARTH_TERRAIN_BYTES, EARTH_TERRAIN_FORMAT_VERSION,
   EARTH_TERRAIN_LAYOUT, EARTH_TERRAIN_SCALAR_UINT8, EARTH_TERRAIN_CHANNELS,
 } from './contract.mjs';
 import { fixtureClimatePng } from './fixture-climate.mjs';
@@ -66,7 +67,7 @@ function fixtureManifest(sourceManifestSha256) {
       width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8', normalFrame: 'body_fixed' },
     climateMap: { width: 1024, height: 512, channels: 4, scalar: 'UInt8' },
     controlRegions: Array.from({ length: 16 }, (_, index) => ({ id: `region-${index}`, west: -180, south: -80, east: 180, north: 80 })),
-    coverage: { kind: 'sparse', minZoom: 5, maxZoom: 7, expectedTiles: null }, baseColor: 'base/earth.jpg',
+    coverage: { kind: 'sparse', minZoom: EARTH_TILE_MIN_Z, maxZoom: EARTH_TILE_MAX_Z, expectedTiles: null }, baseColor: 'base/earth.jpg',
     baseTerrain: 'base/earth.bin.gz', tileTemplates: { color: 'tiles/{z}/{x}/{y}.jpg', terrain: 'tiles/{z}/{x}/{y}.bin.gz' },
     climateMaps: Array.from({ length: 12 }, (_, index) => `climate/${String(index + 1).padStart(2, '0')}.png`),
     climateEncoding: {
@@ -189,7 +190,7 @@ function rejectPartialProduction(shape, report, allowFixture) {
   if (allowFixture) return;
   const coverage = shape.manifest?.coverage;
   if (coverage?.kind !== 'complete') {
-    throw new Error(`Pages package is partial production coverage: max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles, expected complete z5-z7 coverage`);
+    throw new Error(`Pages package is partial production coverage: max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles, expected complete z${EARTH_TILE_MIN_Z}-z${coverage?.maxZoom ?? EARTH_TILE_MAX_Z} coverage`);
   }
   if (report.tileCount !== coverage.expectedTiles) {
     throw new Error(`Pages package is partial production coverage: max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles, expected ${coverage.expectedTiles}`);
