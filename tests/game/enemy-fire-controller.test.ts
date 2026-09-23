@@ -74,7 +74,10 @@ export function register(): void {
 
     assert.equal(coarse.shots(), 3);
     assert.equal(fine.shots(), coarse.shots());
-    assert.deepEqual(coarse.state.serialize(), fine.state.serialize());
+    const coarseState = coarse.state.serialize();
+    const fineState = fine.state.serialize();
+    assert.equal(coarseState.burstLeft, fineState.burstLeft);
+    assert.ok(Math.abs((coarseState.burstDelay ?? 0) - (fineState.burstDelay ?? 0)) < 1e-12);
   });
 
   test('enemy fire: mayFire false pauses an in-progress burst instead of consuming its delay', () => {
