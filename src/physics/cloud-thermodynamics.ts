@@ -12,47 +12,34 @@
 // https://doi.org/10.1256/qj.04.94 ; mixed-phase weighted vapor pressure follows the
 // parameterization class discussed by Fu et al. (2004), with smoothstep weights here:
 // https://doi.org/10.1175/1520-0469(2004)061<2083:TMCWVP>2.0.CO;2
-// Liquid optical depth is the Stephens (1978) geometric-optics closure:
-// https://doi.org/10.1175/1520-0469(1978)035<2111:RPIEWC>2.0.CO;2
 // CAPE/CIN definitions follow NOAA/NWS glossary terminology:
 // https://forecast.weather.gov/glossary.php?word=cap
+
+import type {
+  CloudProfileLevel,
+  LiftedParcelLevel,
+  ParcelBuoyancyDiagnostic,
+} from './cloud-thermodynamics-types';
+
+export type {
+  CloudAirState,
+  CloudProfileLevel,
+  LiftedParcelLevel,
+  ParcelBuoyancyDiagnostic,
+} from './cloud-thermodynamics-types';
+export {
+  iceEffectiveRadiusM,
+  iceOpticalDepth,
+  liquidEffectiveRadiusM,
+  liquidOpticalDepth,
+} from './cloud-optical-closures';
 
 const EPSILON = 0.622; // molecular-mass ratio Mv/Md
 const GAS_CONSTANT_DRY_AIR_J_PER_KG_K = 287.05;
 const SPECIFIC_HEAT_DRY_AIR_J_PER_KG_K = 1004;
 const GRAVITY_M_PER_S2 = 9.80665;
 const GAS_CONSTANT_VAPOR_J_PER_KG_K = GAS_CONSTANT_DRY_AIR_J_PER_KG_K / EPSILON;
-const WATER_DENSITY_KG_PER_M3 = 1000;
-const ICE_DENSITY_KG_PER_M3 = 917;
 const MAX_PARCEL_STEP_M = 100;
-
-export interface CloudAirState {
-  readonly temperatureK: number;
-  readonly pressurePa: number;
-  readonly waterVaporSpecificHumidityKgPerKg: number;
-  readonly liquidWaterMixingRatioKgPerKg: number;
-  readonly iceMixingRatioKgPerKg: number;
-}
-
-export interface CloudProfileLevel extends CloudAirState {
-  readonly heightM: number;
-}
-
-export interface LiftedParcelLevel {
-  readonly heightM: number;
-  readonly temperatureK: number;
-  readonly waterVaporSpecificHumidityKgPerKg: number;
-  readonly buoyancyMPerS2: number;
-}
-
-export interface ParcelBuoyancyDiagnostic {
-  readonly profile: readonly LiftedParcelLevel[];
-  readonly lclHeightM: number | null;
-  readonly lfcHeightM: number | null;
-  readonly equilibriumHeightM: number | null;
-  readonly capeJPerKg: number;
-  readonly cinJPerKg: number;
-}
 
 function requireFinite(value: number, name: string): void {
   if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite`);
@@ -507,57 +494,4 @@ function dewPointFromSpecificHumidityK(
   }
   const logVaporPressureRatio = Math.log(vaporPressurePa / 611.2);
   return 273.15 + 243.12 * logVaporPressureRatio / (17.62 - logVaporPressureRatio);
-}
-
-// Bulk radius closures assume spherical-equivalent particles of one representative
-// number concentration. They do not predict a particle size distribution.
-export function liquidEffectiveRadiusM(
-  dryAirDensityKgPerM3: number,
-  liquidWaterMixingRatioKgPerKg: number,
-  dropletNumberConcentrationPerM3: number,
-): number | null {
-  requireNonNegative(dryAirDensityKgPerM3, 'dryAirDensityKgPerM3');
-  requireNonNegative(liquidWaterMixingRatioKgPerKg, 'liquidWaterMixingRatioKgPerKg');
-  requirePositive(dropletNumberConcentrationPerM3, 'dropletNumberConcentrationPerM3');
-  if (dryAirDensityKgPerM3 === 0 || liquidWaterMixingRatioKgPerKg === 0) return null;
-  return (3 * dryAirDensityKgPerM3 * liquidWaterMixingRatioKgPerKg
-    / (4 * Math.PI * WATER_DENSITY_KG_PER_M3 * dropletNumberConcentrationPerM3)) ** (1 / 3);
-}
-
-export function iceEffectiveRadiusM(
-  dryAirDensityKgPerM3: number,
-  iceMixingRatioKgPerKg: number,
-  iceNumberConcentrationPerM3: number,
-): number | null {
-  requireNonNegative(dryAirDensityKgPerM3, 'dryAirDensityKgPerM3');
-  requireNonNegative(iceMixingRatioKgPerKg, 'iceMixingRatioKgPerKg');
-  requirePositive(iceNumberConcentrationPerM3, 'iceNumberConcentrationPerM3');
-  if (dryAirDensityKgPerM3 === 0 || iceMixingRatioKgPerKg === 0) return null;
-  return (3 * dryAirDensityKgPerM3 * iceMixingRatioKgPerKg
-    / (4 * Math.PI * ICE_DENSITY_KG_PER_M3 * iceNumberConcentrationPerM3)) ** (1 / 3);
-}
-
-// Liquid geometric-optics closure: τ = 3 LWP/(2 ρw re), for visible wavelengths
-// and droplets much larger than the wavelength (extinction efficiency Qext ≈ 2).
-export function liquidOpticalDepth(
-  liquidWaterPathKgPerM2: number,
-  effectiveRadiusM: number,
-): number {
-  requireNonNegative(liquidWaterPathKgPerM2, 'liquidWaterPathKgPerM2');
-  requirePositive(effectiveRadiusM, 'effectiveRadiusM');
-  return 3 * liquidWaterPathKgPerM2 / (2 * WATER_DENSITY_KG_PER_M3 * effectiveRadiusM);
-}
-
-// Ice uses an explicit extinction efficiency to expose habit/spectral dependence;
-// the volume-equivalent sphere relation is not assumed to share liquid water's Qext.
-export function iceOpticalDepth(
-  iceWaterPathKgPerM2: number,
-  effectiveRadiusM: number,
-  extinctionEfficiency: number,
-): number {
-  requireNonNegative(iceWaterPathKgPerM2, 'iceWaterPathKgPerM2');
-  requirePositive(effectiveRadiusM, 'effectiveRadiusM');
-  requirePositive(extinctionEfficiency, 'extinctionEfficiency');
-  return 3 * extinctionEfficiency * iceWaterPathKgPerM2
-    / (4 * ICE_DENSITY_KG_PER_M3 * effectiveRadiusM);
 }
