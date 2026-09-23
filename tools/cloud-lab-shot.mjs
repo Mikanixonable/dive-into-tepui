@@ -1,18 +1,24 @@
-// 雲の実験環境の撮影。ヘッドレス Chrome で .cloud-lab/ を開き、表示の種類 × 時刻ごとに
-// window.cloudLab.capture() を呼んで PNG を書く。画素はページ側が撮影ターゲットから読み出す。
+// 雲の実験環境の時系列撮影。各成果物に、適用した入力と計測結果の有無を manifest として添える。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.cloud-lab');
-const outDir = path.join(buildDir, 'shots');
 const port = 8768;
 const debugPort = 9445;
-// 撮る時刻 [h]。0 と、移流の周期の整数倍でない 1 点。
-const SHOT_HOURS = [0, 25];
+const SERIES_VIEWS = ['coverage', 'cloudTop', 'translucent', 'composite'];
+
+function outDirOf(seriesName) {
+  if (seriesName === undefined) return path.join(buildDir, 'shots');
+  if (!/^[\w.-]+$/.test(seriesName) || seriesName === '.' || seriesName === '..') {
+    throw new Error('usage: node tools/cloud-lab-shot.mjs [<series-name>]');
+  }
+  return path.join(root, '.cloud-lab-shots', seriesName);
+}
 
 async function main() {
+  const outDir = outDirOf(process.argv[2]);
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-cloud-lab-', onEvent,
@@ -30,18 +36,27 @@ async function main() {
 
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
-    const views = await devTools.evaluate('window.cloudLab.views');
-    for (const hours of SHOT_HOURS) {
+    const hoursList = await devTools.evaluate('window.cloudLab.fixtureTimesHours');
+    for (const hours of hoursList) {
       await devTools.evaluate(`window.cloudLab.setTime(${hours})`);
-      for (const view of views) {
+      for (const view of SERIES_VIEWS) {
         await devTools.evaluate(`window.cloudLab.show(${JSON.stringify(view)})`);
         const dataUrl = await devTools.evaluate('window.cloudLab.capture()');
-        writeFileSync(path.join(outDir, `${view}-${hours}h.png`), Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
+        const timeLabel = String(hours).replace('.', 'p');
+        writeFileSync(path.join(outDir, `${view}-${timeLabel}h.png`), Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
         console.log(`shot ${view} at ${hours} h`);
       }
     }
+    writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify({
+      name: process.argv[2] ?? 'unnamed',
+      source: 'current-generated-cloud-field',
+      fixtureInputsApplied: false,
+      fixtureResults: null,
+      views: SERIES_VIEWS,
+      timesHours: hoursList,
+    }, null, 2)}\n`);
     if (fatalEvents.length > 0) throw new Error(`Page reported errors during shooting:\n${fatalEvents.join('\n')}`);
-    console.log(`Wrote ${views.length * SHOT_HOURS.length} PNGs to ${path.relative(root, outDir)}`);
+    console.log(`Wrote ${SERIES_VIEWS.length * hoursList.length} PNGs to ${path.relative(root, outDir)}`);
   } finally {
     await session.close();
   }

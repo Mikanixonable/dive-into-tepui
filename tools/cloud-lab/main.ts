@@ -1,6 +1,10 @@
 // 雲の実験環境の画面。表示する量を選び、時刻を動かして、天気のモデルの写しを正距円筒で見る。
 import { CloudLabCanvas } from './lab';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
+import {
+  CLOUD_LAB_SERIES_TIMES_HOURS, METEOROLOGICAL_CASES, METEOROLOGICAL_CASE_IDS,
+  type MeteorologicalCaseId,
+} from './meteorological-cases';
 import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
@@ -16,10 +20,19 @@ declare global {
     // 撮影の駆動(tools/cloud-lab-shot.mjs・tools/cloud-lab-compare.mjs)が CDP から読む入口。
     cloudLab?: {
       views: readonly CloudLabViewId[];
+      fixtures: readonly MeteorologicalCaseId[];
+      fixtureTimesHours: readonly number[];
+      fixture: MeteorologicalCaseId;
       show: (id: CloudLabViewId) => void;
+      selectFixture: (id: MeteorologicalCaseId) => void;
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
+      measureFixture: (id: MeteorologicalCaseId) => {
+        readonly fixture: MeteorologicalCaseId;
+        readonly measurements: typeof METEOROLOGICAL_CASES[MeteorologicalCaseId]['measurements'];
+        readonly result: null;
+      };
       // 時刻 [h] の低気圧の谷の配置。撮影の駆動が中心の位置を統計の範囲の切り分けに使う。
       cyclonesAt: (hours: number) => {
         readonly tropical: CyclonePlacement | null;
@@ -56,6 +69,42 @@ function buildTimeSlider(
 // 器を起こし、操作部品を配線し、撮影の入口を window へ出す。
 async function init(): Promise<void> {
   const canvas = await CloudLabCanvas.create(document.getElementById('view') as HTMLCanvasElement);
+
+  // 制御実験ごとの入力と計測契約を選択・表示する。
+  const fixtureRow = document.createElement('div');
+  fixtureRow.className = 'row';
+  fixtureRow.id = 'fixtures';
+  document.getElementById('views')!.before(fixtureRow);
+  const fixtureEntries = METEOROLOGICAL_CASE_IDS.map((id) => [id, `${id} ${METEOROLOGICAL_CASES[id].label}`] as const);
+  const fixtureReadout = document.createElement('section');
+  const fixtureTitle = document.createElement('h2');
+  fixtureTitle.textContent = '制御実験の入力と計測';
+  const fixtureStatus = document.createElement('p');
+  const fixtureInputs = document.createElement('pre');
+  const fixtureMeasurements = document.createElement('ul');
+  fixtureReadout.append(fixtureTitle, fixtureStatus, fixtureInputs, fixtureMeasurements);
+  fixtureRow.after(fixtureReadout);
+  const showFixture = (id: MeteorologicalCaseId): void => {
+    const fixture = METEOROLOGICAL_CASES[id];
+    fixtureStatus.textContent = `${id} ${fixture.label} — 入力契約のみ。モデル出力と独立基準は未提供。`;
+    fixtureInputs.textContent = JSON.stringify({
+      controlledInputs: fixture.controlledInputs,
+      atmosphericLayers: fixture.atmosphericLayers,
+      measurementWindow: fixture.measurementWindow,
+    }, null, 2);
+    fixtureMeasurements.replaceChildren(...fixture.measurements.map((measurement) => {
+      const item = document.createElement('li');
+      item.textContent = `${measurement.quantity} [${measurement.unit}] — ${measurement.operator}; `
+        + `mask: ${measurement.mask}; 不確かさ床: ${measurement.uncertaintyFloor}; `
+        + `許容: ${measurement.acceptance}; 基準: 未提供; 実測: 未計測`;
+      return item;
+    }));
+  };
+  const markFixture = buildButtonRow<MeteorologicalCaseId>('fixtures', fixtureEntries, (id) => {
+    canvas.selectFixture(id);
+    markFixture(id);
+    showFixture(id);
+  });
 
   const entries = CLOUD_LAB_VIEWS.map((view) => [view.id, view.label] as const);
   const markView = buildButtonRow<CloudLabViewId>('views', entries, (id) => {
@@ -123,11 +172,17 @@ async function init(): Promise<void> {
   setCapLatitude(canvas.capCenterLatitude);
   setCapLongitude(canvas.capCenterLongitude);
   setCapRadius(canvas.capAngularRadius);
+  markFixture(canvas.fixtureId);
+  showFixture(canvas.fixtureId);
   canvas.render();
 
   window.cloudLab = {
     views: CLOUD_LAB_VIEWS.map((view) => view.id),
+    fixtures: METEOROLOGICAL_CASE_IDS,
+    fixtureTimesHours: CLOUD_LAB_SERIES_TIMES_HOURS,
+    get fixture(): MeteorologicalCaseId { return canvas.fixtureId; },
     show: (id) => { markView(id); canvas.show(id); },
+    selectFixture: (id) => { canvas.selectFixture(id); markFixture(id); showFixture(id); },
     setTime,
     aimCap: (latitude, longitude, radius) => {
       canvas.aimCap(latitude, longitude, radius);
@@ -136,6 +191,11 @@ async function init(): Promise<void> {
       setCapRadius(radius);
     },
     capture: () => canvas.capture(),
+    measureFixture: (id) => ({
+      fixture: id,
+      measurements: METEOROLOGICAL_CASES[id].measurements,
+      result: null,
+    }),
     cyclonesAt: (hours) => ({
       tropical: tropicalPlacementAt(hours * 3600),
       lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * 3600, R_EARTH)),
