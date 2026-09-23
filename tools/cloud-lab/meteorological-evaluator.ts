@@ -22,9 +22,12 @@ import {
   reconstructCloudEventMaterialTracks,
 } from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
-import { cross, dot, len, norm, v3 } from '../../src/math/vec3';
+import { cross, dot, len, norm, scale, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
-import type { MeteorologicalCaseId } from './meteorological-cases';
+import {
+  METEOROLOGICAL_ERROR_FLOORS,
+  type MeteorologicalCaseId,
+} from './meteorological-cases';
 
 const EARTH_RADIUS_M = 6_371_000;
 const DRY_AIR_GAS_CONSTANT_J_PER_KG_K = 287.05;
@@ -190,6 +193,33 @@ function distanceErrorM(actual: Vec3, expected: Vec3, radiusM: number): number {
   return Math.atan2(sine, cosine) * radiusM;
 }
 
+function rotateAroundAxis(direction: Vec3, axis: Vec3, angleRad: number): Vec3 {
+  const cosine = Math.cos(angleRad);
+  const sine = Math.sin(angleRad);
+  const axialComponent = dot(axis, direction);
+  const perpendicularRotation = cross(axis, direction);
+  return norm(v3(
+    direction.x * cosine + perpendicularRotation.x * sine + axis.x * axialComponent * (1 - cosine),
+    direction.y * cosine + perpendicularRotation.y * sine + axis.y * axialComponent * (1 - cosine),
+    direction.z * cosine + perpendicularRotation.z * sine + axis.z * axialComponent * (1 - cosine),
+  ));
+}
+
+function axisRotationPhaseRad(start: Vec3, end: Vec3, axis: Vec3): number {
+  const startPerpendicular = v3(
+    start.x - axis.x * dot(start, axis),
+    start.y - axis.y * dot(start, axis),
+    start.z - axis.z * dot(start, axis),
+  );
+  const endPerpendicular = v3(
+    end.x - axis.x * dot(end, axis),
+    end.y - axis.y * dot(end, axis),
+    end.z - axis.z * dot(end, axis),
+  );
+  return Math.atan2(dot(axis, cross(startPerpendicular, endPerpendicular)),
+    dot(startPerpendicular, endPerpendicular));
+}
+
 function localWindAt(levels: readonly CloudEnvironmentLevelInput[]) {
   return (direction: Vec3, heightM: number) => {
     let lower = levels[0]!;
@@ -255,74 +285,112 @@ function residualIceAtHumidity(upperRelativeHumidity: number, timeSeconds: numbe
 }
 
 function evaluateC1(): MeteorologicalCaseEvaluation {
-  const speedMps = 10;
   const heightM = 1_000;
   const radiusM = EARTH_RADIUS_M + heightM;
-  const displacement = transportDisplacementM(environmentInput({ eastWindMps: speedMps }).levels, heightM);
-  const angleRad = speedMps * SAMPLE_DURATION_SECONDS / radiusM;
-  const expected = v3(Math.sin(angleRad), 0, Math.cos(angleRad));
+  const durationSeconds = SAMPLE_DURATION_SECONDS;
+  const rotationAngleRad = 1e-3;
+  const angularVelocityRadPerSecond = rotationAngleRad / durationSeconds;
+  const rotationAxisUnitVector = norm(v3(1, 2, -1));
+  const maximumTransportStepSeconds = 5;
   const initialLiquidMassKgM2 = 0.00025;
   const initialIceMassKgM2 = 0.00075;
   const initialMassKgM2 = initialLiquidMassKgM2 + initialIceMassKgM2;
-  const massFixture: ConvectiveCloudEvent = {
-    id: 'c1-fixed-material',
-    cellId: 'c1-fixed-material',
-    birthEpoch: 0,
-    birthTimeSeconds: 0,
-    ageSeconds: SAMPLE_DURATION_SECONDS,
-    sourcePosition: {
-      directionUnitVector: v3(0, 0, 1),
-      geometricHeightM: heightM,
-    },
-    supplyActive: false,
-    mass: {
-      initialKgM2: initialMassKgM2,
-      suppliedKgM2: 0,
-      lostKgM2: 0,
-      liquidKgM2: initialLiquidMassKgM2,
-      iceKgM2: initialIceMassKgM2,
-    },
-    iceRelease: {
-      id: 'c1-fixed-material:ice',
-      parentEventId: 'c1-fixed-material',
-      releasedKgM2: initialIceMassKgM2,
-      remainingKgM2: initialIceMassKgM2,
-      meanReleaseTimeSeconds: SAMPLE_DURATION_SECONDS / 2,
-      releaseRateKgM2S: initialIceMassKgM2 / SAMPLE_DURATION_SECONDS,
-      releaseStartTimeSeconds: 0,
-      releaseEndTimeSeconds: SAMPLE_DURATION_SECONDS,
-      sublimationRatePerSecond: 0,
-      releaseHeightM: 10_000,
-    },
-  };
-  const transportedMaterial = reconstructCloudEventMaterialCohorts(
-    massFixture,
-    radiusM,
-    SAMPLE_MAX_STEP_SECONDS,
-    localWindAt(environmentInput({ eastWindMps: speedMps }).levels),
-    24,
-  );
-  const relativeMassError = Math.abs(transportedMaterial.totalMassKgM2 - initialMassKgM2)
-    / initialMassKgM2;
+  const blobPoints = [
+    { direction: norm(v3(-0.018, -0.009, 1)), areaWeightM2: 1 },
+    { direction: norm(v3(-0.009, 0.014, 1)), areaWeightM2: 2 },
+    { direction: norm(v3(0.002, -0.016, 1)), areaWeightM2: 3 },
+    { direction: norm(v3(0.012, 0.011, 1)), areaWeightM2: 2 },
+    { direction: norm(v3(0.021, -0.004, 1)), areaWeightM2: 1 },
+  ];
+  const totalAreaWeightM2 = blobPoints.reduce((total, point) => total + point.areaWeightM2, 0);
+  const expectedIntegratedMassKg = totalAreaWeightM2 * initialMassKgM2;
+  let transportedIntegratedMassKg = 0;
+  let maximumTrajectoryErrorM = 0;
+  let maximumRotationAngleErrorRad = 0;
+  const windAt = (directionUnitVector: Vec3, geometricHeightM: number) => ({
+    tangentVelocityMPerS: scale(
+      cross(rotationAxisUnitVector, directionUnitVector),
+      angularVelocityRadPerSecond * (EARTH_RADIUS_M + geometricHeightM),
+    ),
+    verticalVelocityMPerS: 0,
+  });
+
+  for (const [index, point] of blobPoints.entries()) {
+    const eventId = `c1-rigid-blob-${index}`;
+    const event: ConvectiveCloudEvent = {
+      id: eventId,
+      cellId: eventId,
+      birthEpoch: 0,
+      birthTimeSeconds: 0,
+      ageSeconds: durationSeconds,
+      sourcePosition: { directionUnitVector: point.direction, geometricHeightM: heightM },
+      supplyActive: false,
+      mass: {
+        initialKgM2: initialMassKgM2,
+        suppliedKgM2: 0,
+        lostKgM2: 0,
+        liquidKgM2: initialLiquidMassKgM2,
+        iceKgM2: initialIceMassKgM2,
+      },
+      iceRelease: {
+        id: `${eventId}:ice`,
+        parentEventId: eventId,
+        releasedKgM2: initialIceMassKgM2,
+        remainingKgM2: initialIceMassKgM2,
+        meanReleaseTimeSeconds: durationSeconds / 2,
+        releaseRateKgM2S: initialIceMassKgM2 / durationSeconds,
+        releaseStartTimeSeconds: 0,
+        releaseEndTimeSeconds: durationSeconds,
+        sublimationRatePerSecond: 0,
+        releaseHeightM: heightM,
+      },
+    };
+    const material = reconstructCloudEventMaterialCohorts(
+      event,
+      EARTH_RADIUS_M,
+      maximumTransportStepSeconds,
+      windAt,
+      1,
+    );
+    transportedIntegratedMassKg += point.areaWeightM2 * material.totalMassKgM2;
+
+    const expectedDirection = rotateAroundAxis(point.direction, rotationAxisUnitVector, rotationAngleRad);
+    if (material.parent === null) throw new Error('C1 blob point must retain its liquid parent');
+    maximumTrajectoryErrorM = Math.max(maximumTrajectoryErrorM,
+      distanceErrorM(material.parent.directionUnitVector, expectedDirection, radiusM));
+    maximumRotationAngleErrorRad = Math.max(maximumRotationAngleErrorRad,
+      Math.abs(axisRotationPhaseRad(point.direction, material.parent.directionUnitVector,
+        rotationAxisUnitVector) - rotationAngleRad));
+    for (const cohort of material.releasedIceCohorts) {
+      maximumTrajectoryErrorM = Math.max(maximumTrajectoryErrorM,
+        distanceErrorM(cohort.directionUnitVector, expectedDirection, radiusM));
+    }
+  }
+  const relativeMassError = Math.abs(transportedIntegratedMassKg - expectedIntegratedMassKg)
+    / expectedIntegratedMassKg;
   return {
     fixture: 'C1',
     cpuDiagnosticsApplied: true,
     generatedCloudImageFixtureApplied: false,
     controls: {
-      equatorialEastWindMps: speedMps,
-      durationSeconds: SAMPLE_DURATION_SECONDS,
+      rotationAxisUnitVector: `${rotationAxisUnitVector.x.toFixed(6)},${rotationAxisUnitVector.y.toFixed(6)},${rotationAxisUnitVector.z.toFixed(6)}`,
+      rotationAngleRad,
+      durationSeconds,
       sphereRadiusM: EARTH_RADIUS_M,
       initialLiquidMassKgM2,
       initialIceMassKgM2,
-      transportedMassKgM2: transportedMaterial.totalMassKgM2,
-      independentlyExpectedMassKgM2: initialMassKgM2,
-      reconstructedIceCohortCount: transportedMaterial.releasedIceCohorts.length,
+      areaWeightedBlobMassKg: expectedIntegratedMassKg,
+      transportedAreaWeightedMassKg: transportedIntegratedMassKg,
+      materialPointCount: blobPoints.length,
+      maximumTransportStepSeconds,
     },
     measurements: [
-      compare('trajectory', distanceErrorM(displacement, expected, radiusM), 'm', 0, 0.01,
-        'absolute-error', 'Great-circle displacement is compared with the analytic equatorial solution.'),
-      compare('mass', relativeMassError, '1', 0, 0.01, 'absolute-error',
-        'Passive liquid and ice cohorts are transported with no source or loss; the expected 0.001 kg m^-2 is fixed from the fixture inputs, independently of the event transport output.'),
+      compare('trajectory', maximumTrajectoryErrorM, 'm', 0, 0.01, 'absolute-error',
+        'Every liquid and ice material point is compared with an independently evaluated Rodrigues axis rotation.'),
+      compare('rotation-angle', maximumRotationAngleErrorRad, 'rad', 0, 1e-9, 'absolute-error',
+        'The transported material point phase about the prescribed rotation axis is compared with angular velocity times elapsed time.'),
+      compare('mass', relativeMassError, '1', 0, METEOROLOGICAL_ERROR_FLOORS.relativeMass, 'absolute-error',
+        'Area-weighted liquid and ice mass is integrated over the finite blob and compared with independently fixed initial column mass.'),
     ],
   };
 }
