@@ -64,7 +64,12 @@ export interface CloudIceRelease {
   readonly parentEventId: string;
   readonly releasedKgM2: number;
   readonly remainingKgM2: number;
-  // Mass-weighted mean cohort release time, not a single physical release instant.
+  // Continuous release contract. The interval is null until the first ice is released.
+  readonly releaseStartTimeSeconds: number | null;
+  readonly releaseEndTimeSeconds: number | null;
+  readonly releaseRateKgM2S: number;
+  readonly lossRatePerSecond: number;
+  // Mass-weighted mean cohort release time, retained for diagnostics and backward compatibility.
   readonly meanReleaseTimeSeconds: number | null;
   readonly releaseHeightM: number | null;
 }
@@ -97,6 +102,11 @@ const MAX_DRY_AIR_MULTIPLIER = 5;
 const LIQUID_LOSS_TIME_SECONDS = 20 * 60;
 const ICE_RELEASE_DELAY_SECONDS = 15 * 60;
 const ICE_YIELD_FRACTION = 0.35;
+
+function iceLossRatePerSecond(upperRelativeHumidity: number): number {
+  const humidity = Math.min(Math.max(upperRelativeHumidity, 0), 1);
+  return (1 + (1 - humidity) * (MAX_DRY_AIR_MULTIPLIER - 1)) / ICE_SUBLIMATION_TIME_SECONDS;
+}
 
 function hash32(value: string): number {
   let hash = 0x811c9dc5;
@@ -139,9 +149,7 @@ function eventMass(
   const unreleasedDurationSeconds = suppliedDurationSeconds - releasedDurationSeconds;
   const unreleasedYieldKgM2 = cell.liquidSupplyRateKgM2S
     * ICE_YIELD_FRACTION * unreleasedDurationSeconds;
-  const humidity = Math.min(Math.max(cell.upperRelativeHumidity, 0), 1);
-  const iceLossRate = (1 + (1 - humidity) * (MAX_DRY_AIR_MULTIPLIER - 1))
-    / ICE_SUBLIMATION_TIME_SECONDS;
+  const iceLossRate = iceLossRatePerSecond(cell.upperRelativeHumidity);
   const iceKgM2 = cell.liquidSupplyRateKgM2S * ICE_YIELD_FRACTION
     * Math.exp(-iceLossRate * Math.max(ageSeconds - ICE_RELEASE_DELAY_SECONDS - releasedDurationSeconds, 0))
     * exponentialIntegral(releasedDurationSeconds, iceLossRate);
@@ -288,6 +296,14 @@ function createEvent(
       birthTimeSeconds, ageSeconds, releasedDurationSeconds, cell.upperRelativeHumidity,
     )
     : null;
+  const releaseStartTimeSeconds = releasedDurationSeconds > 0
+    ? birthTimeSeconds + ICE_RELEASE_DELAY_SECONDS
+    : null;
+  const releaseEndTimeSeconds = releasedDurationSeconds > 0
+    ? releaseStartTimeSeconds! + releasedDurationSeconds
+    : null;
+  const releaseRateKgM2S = cell.liquidSupplyRateKgM2S * ICE_YIELD_FRACTION;
+  const lossRatePerSecond = iceLossRatePerSecond(cell.upperRelativeHumidity);
   const id = `${cell.id}:${epoch}:${eventHash(domain.seed, cell.id, epoch).toString(16).padStart(8, '0')}`;
   return {
     id,
@@ -310,12 +326,12 @@ function createEvent(
     iceRelease: {
       id: `${id}:ice`,
       parentEventId: id,
-      releasedKgM2: cell.liquidSupplyRateKgM2S * ICE_YIELD_FRACTION
-        * Math.min(
-          Math.min(ageSeconds, cell.convectiveDurationSeconds),
-          Math.max(ageSeconds - ICE_RELEASE_DELAY_SECONDS, 0),
-        ),
+      releasedKgM2: releaseRateKgM2S * releasedDurationSeconds,
       remainingKgM2: mass.iceKgM2,
+      releaseStartTimeSeconds,
+      releaseEndTimeSeconds,
+      releaseRateKgM2S,
+      lossRatePerSecond,
       meanReleaseTimeSeconds,
       releaseHeightM: meanReleaseTimeSeconds === null ? null : cell.iceReleaseHeightM ?? null,
     },
@@ -330,9 +346,7 @@ function meanIceReleaseTimeSeconds(
   releasedDurationSeconds: number,
   upperRelativeHumidity: number,
 ): number {
-  const humidity = Math.min(Math.max(upperRelativeHumidity, 0), 1);
-  const lossRatePerSecond = (1 + (1 - humidity) * (MAX_DRY_AIR_MULTIPLIER - 1))
-    / ICE_SUBLIMATION_TIME_SECONDS;
+  const lossRatePerSecond = iceLossRatePerSecond(upperRelativeHumidity);
   const x = lossRatePerSecond * releasedDurationSeconds;
   const meanAgeAtReleaseEndSeconds = x < 1e-4
     ? releasedDurationSeconds / 2 - lossRatePerSecond * releasedDurationSeconds ** 2 / 12
