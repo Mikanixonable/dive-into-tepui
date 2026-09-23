@@ -82,6 +82,19 @@ export function register(): void {
     assert.equal(placementForSlot(assembly, axial, solar).valid, false);
   });
 
+  test('ship construction: dock axial slot points +Z outward with inverted rotation', () => {
+    const assembly = createBasePreset();
+    const dockSlots = enumerateConstructionSlots(assembly, ['dock-left'], 'dock-left');
+    assert.equal(dockSlots[0]?.id, 'axial');
+    assert.equal(dockSlots[0]?.direction.z, 1);
+
+    const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
+    const placement = placementForSlot(assembly, dockSlots[0], cockpit);
+    assert.equal(placement.valid, true);
+    assert.equal(placement.transform.position.z, (1 + 3) / 2);
+    assert.equal(placement.transform.rotation.y, 1);
+  });
+
   test('ship construction: catalog definitions expose presentation metadata', () => {
     assert.equal(SHIP_MODULE_CATALOG.require('cockpit-standard').name, 'コックピット');
     assert.equal(SHIP_MODULE_CATALOG.require('tank-6-main').category, 'fuel');
