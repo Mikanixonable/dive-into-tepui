@@ -129,7 +129,9 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
   C2: { id: 'C2', label: '高度別の風向', ...CONTROLS.c2, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
       measurement('layer-displacement', '解析解に対する高度別変位誤差', 'm', 'maximum distance error of lower/upper parcel tracks', 'lower and upper parcel tracks', 0, '各層の解析的大円移流に対し 0.05 m 以下', 'analytic'),
-      measurement('released-ice-track', '放出氷の移流方向', 'deg', 'wind-relative angular displacement', 'released ice mask', 0, 'CloudIceReleaseに位置がなく blocked'),
+      measurement('released-ice-track', '代表放出氷の軌跡誤差', 'm',
+        'distance from analytic lower-east-then-upper-north spherical transport',
+        'surviving ice representative cohort', 0, '解析的な二高度の球面軌跡との差 0.05 m 以下', 'analytic'),
     ] },
   C3: { id: 'C3', label: '供給停止後のかなとこ', ...CONTROLS.c3, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: { startMinutes: 0, endMinutes: 1_440, sampleIntervalMinutes: 10 }, measurements: [
