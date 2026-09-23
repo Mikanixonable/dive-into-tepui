@@ -1,11 +1,18 @@
 // 視点中心の cap の角半径の式を固定する。cap の外へ雲が出ない/内へ縮みすぎない境目はここで決まる。
 import * as assert from 'node:assert/strict';
-import { CLOUD_CAP_MARGIN, CLOUD_CAP_SIZE, capRadiusFor } from '../../src/render/cloud/cloud-cap';
-import { CLOUD_TOP_SPAN } from '../../src/render/cloud/cumulus-shape';
+import {
+  CLOUD_BAKED_WORKING_SET_BYTES,
+  CLOUD_CAP_MARGIN,
+  CLOUD_CAP_SIZE,
+  CLOUD_GENERATED_BAKED_BYTES,
+  CLOUD_OBSERVED_BAKED_BYTES,
+  capRadiusFor,
+} from '../../src/render/cloud/cloud-cap';
+import { CLOUD_DENSITY_TOP_M } from '../../src/render/cloud/cloud-density-evaluator';
 import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { test } from '../harness';
 
-const TOP_OVER_RADIUS = CLOUD_TOP_SPAN / R_EARTH_EQ;
+const TOP_OVER_RADIUS = CLOUD_DENSITY_TOP_M / R_EARTH_EQ;
 const DEG = Math.PI / 180;
 
 function rhoAtAltitude(altitude: number): number {
@@ -45,5 +52,11 @@ export function register(): void {
 
   test('cloud cap: 写しは正方形の 512 texel', () => {
     assert.equal(CLOUD_CAP_SIZE, 512);
+  });
+
+  test('cloud cap: core baked working set is fixed at 8 MiB and analytic detail adds no texture', () => {
+    assert.equal(CLOUD_GENERATED_BAKED_BYTES, 6 * 1024 * 1024);
+    assert.equal(CLOUD_OBSERVED_BAKED_BYTES, 2 * 1024 * 1024);
+    assert.equal(CLOUD_BAKED_WORKING_SET_BYTES, 8 * 1024 * 1024);
   });
 }
