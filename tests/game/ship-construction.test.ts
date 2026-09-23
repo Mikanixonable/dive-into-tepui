@@ -59,7 +59,7 @@ export function register(): void {
     assert.equal(slots[0]?.id, 'axial');
     assert.ok(slots.some(slot => slot.id === 'main-tank:side+y'));
     assert.ok(slots.some(slot => slot.id === 'rcs-tank:side-y'));
-    assert.equal(slots.some(slot => slot.id === 'cockpit:side+x'), false);
+    assert.equal(slots.some(slot => slot.id === 'cockpit:side+y'), false);
     assert.equal(new Set(slots.map(slot => slot.id)).size, slots.length);
   });
 
