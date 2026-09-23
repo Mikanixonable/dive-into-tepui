@@ -1,7 +1,7 @@
 // 船体モジュールの木構造、接続変換、可変状態と分割・統合操作を所有する。
 import { mulberry32 } from '../../math/random';
 import {
-  LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qRotate, type Quat,
+  LOCAL_UP, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qRotate, type Quat,
 } from '../../math/quat';
 import { add, v3, type Vec3 } from '../../math/vec3';
 import {
@@ -220,7 +220,7 @@ export class ShipAssembly {
     const pending: { readonly id: string; readonly parentId: string | null; readonly sourceEdge: ShipConnection | null }[] = [
       { id: otherPortId, parentId: null, sourceEdge: null },
     ];
-    const dockRotation = qFromAxisAngle(LOCAL_RIGHT, Math.PI);
+    const dockRotation = qFromAxisAngle(LOCAL_UP, Math.PI);
     const localDefinition = this.catalog.require(localPort.definitionId);
     const otherDefinition = this.catalog.require(otherPort.definitionId);
     const mappedOtherPortId = moduleIds.get(otherPortId);
