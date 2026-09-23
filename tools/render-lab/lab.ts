@@ -36,6 +36,8 @@ export interface LabMeasurement {
   readonly frames: number;
   readonly cpuRenderMs: SampleDistribution;
   readonly gpuSupported: boolean;
+  readonly gpuPassTotalScope: 'instrumented-render-pass-sum';
+  readonly gpuPassTotalMs: SampleDistribution;
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
@@ -303,6 +305,8 @@ export class LabView {
   ): Promise<LabMeasurement> {
     this.show(name);
     this.setViewAngles(angles);
+    await this.waitUntilReady();
+    if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for measurement`);
     await this.gpu.waitForResolve();
     this.gpu.reset();
 
@@ -318,6 +322,7 @@ export class LabView {
 
     // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
     const cpuSamples: number[] = [];
+    const gpuPassTotalSamples: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const motion = new ProteinMotionMetricsRecorder();
     for (let frame = 0; frame < sampleFrames; frame++) {
@@ -327,6 +332,11 @@ export class LabView {
       cpuSamples.push(this.lastRenderCpuMs);
       await this.gpu.waitForResolve();
       const timings = this.gpu.snapshot();
+      let passTotalMs = 0;
+      for (let index = 0; index < GPU_PASS_COUNT; index += 1) {
+        passTotalMs += timings.elapsedMs[index] ?? 0;
+      }
+      gpuPassTotalSamples.push(passTotalMs);
       for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
       motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
     }
@@ -336,6 +346,8 @@ export class LabView {
       frames: sampleFrames,
       cpuRenderMs: distributionOf(cpuSamples),
       gpuSupported: this.gpu.snapshot().supported,
+      gpuPassTotalScope: 'instrumented-render-pass-sum',
+      gpuPassTotalMs: distributionOf(gpuPassTotalSamples),
       gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distributionOf(gpuSamples[index]!)])),
       proteinMotion: motion.summary(),
       proteinCase: this.current?.proteinMotion,
