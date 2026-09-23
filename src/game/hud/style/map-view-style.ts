@@ -1,7 +1,7 @@
 // マップビュー固有の視覚階層。骨格配置は skeleton-style.ts、共通コントロールは
 // widgets/widget-style.ts が持ち、ここでは Quiet / Focus Glass とマップ内の意味色だけを上書きする。
 import {
-  MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
+  MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN,
 } from '../../../hud/breakpoints';
 
 export const MAP_VIEW_STYLE = `
