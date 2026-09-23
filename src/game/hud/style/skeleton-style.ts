@@ -150,7 +150,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   pointer-events: auto;
   border-radius: 0 0 var(--radius-panel) var(--radius-panel);
   padding: var(--space-2) var(--space-5) var(--space-3);
-  font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
+  font-size: var(--font-s); letter-spacing: var(--tracking-label); font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2);
   width: min(820px, calc(100vw - var(--space-6) * 2));
@@ -192,10 +192,10 @@ body.hud-construction-mode #touch-ui { display: none; }
 
 #hud-viewbadge {
   gap: var(--space-3);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 1.2px; opacity: 0.9;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); opacity: 0.9;
 }
 #hud-viewbadge .vb-mode {
-  color: var(--color-primary); font-weight: 700; letter-spacing: .12em;
+  color: var(--color-primary); font-weight: 700; letter-spacing: var(--tracking-label);
 }
 #hud-viewbadge .vb-field { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
 #hud-viewbadge .vb-field > span:first-child { color: var(--text-dim); }
@@ -218,7 +218,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
 }
 #hud-map-scale .map-scale-label {
-  margin-right: var(--space-2); color: var(--color-primary); font-weight: 700; letter-spacing: .14em;
+  margin-right: var(--space-2); color: var(--color-primary); font-weight: 700; letter-spacing: var(--tracking-code);
 }
 #hud-map-scale .map-scale-value { color: var(--text); }
 #hud-map-scale .map-scale-ruler { position: relative; height: 10px; margin-top: var(--space-1); margin-left: auto; }
@@ -258,7 +258,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 #hud-help-badge:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud .hud-mini-code {
-  color: var(--color-primary); font-size: var(--font-xxs); font-weight: 700; letter-spacing: .14em;
+  color: var(--color-primary); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
 }
 #hud-help-badge:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 @media ${MQ_COARSE} {
@@ -275,7 +275,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 #hud-toast .toast-code {
   flex: 0 0 auto; color: var(--color-primary); font-size: var(--font-xxs);
-  font-weight: 700; letter-spacing: .14em;
+  font-weight: 700; letter-spacing: var(--tracking-code);
 }
 #hud-toast.warn .toast-code { color: var(--color-warning); }
 #hud-toast .toast-message { min-width: 0; overflow-wrap: anywhere; }
