@@ -4,6 +4,7 @@
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
 import { createGameScene, type GameScene } from './render/scene';
+import { loadShipModuleModels } from './render/dynamic/ship/ship-module-models';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { FrameSections } from './game/frame-sections';
@@ -41,7 +42,10 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
 
-  const gameScene = await createGameScene(canvas, graphics, browserViewport());
+  const [gameScene] = await Promise.all([
+    createGameScene(canvas, graphics, browserViewport()),
+    loadShipModuleModels(),
+  ]);
   hideLoading();
   return gameScene;
 }
