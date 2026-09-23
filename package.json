@@ -27,7 +27,6 @@
     "test:settings": "npm run test:build && node tests/dist/tests/run.js settings",
     "test:launcher": "npm run test:build && node tests/dist/tests/run.js launcher",
     "export-assets": "node tools/model-builder/export-models.mjs",
-    "ship-modules:build": "node tools/model-builder/build-ship-modules.mjs",
     "export-ltc-table": "node tools/export-ltc-table.mjs",
     "export-blue-noise": "node tools/export-blue-noise.mjs",
     "orbits:fetch": "node tools/fetch-orbit-catalog.mjs",
