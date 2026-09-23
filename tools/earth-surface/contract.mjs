@@ -2,16 +2,23 @@
 // 地表マニフェストと決定パス上のタイル実体を検査する共有実装。
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
+import { readFileSync } from 'node:fs';
 import { access, readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 
-export const EARTH_BASE_COLOR_Z = 4;
-export const EARTH_TILE_MIN_Z = 5;
-export const EARTH_TILE_MAX_Z = 7;
-export const EARTH_TERRAIN_HEADER_BYTES = 32;
-export const EARTH_TERRAIN_WIDTH = 260;
-export const EARTH_TERRAIN_HEIGHT = 260;
-export const EARTH_TERRAIN_CHANNELS = 4;
+const EARTH_LAYOUT = Object.freeze(JSON.parse(
+  readFileSync(new URL('./layout.json', import.meta.url), 'utf8'),
+));
+
+export const EARTH_BASE_COLOR_Z = EARTH_LAYOUT.baseColorZoom;
+export const EARTH_TILE_MIN_Z = EARTH_LAYOUT.minZoom;
+export const EARTH_TILE_MAX_Z = EARTH_LAYOUT.maxZoom;
+export const EARTH_TILE_TEXELS = EARTH_LAYOUT.tileTexels;
+export const EARTH_TILE_GUTTER = EARTH_LAYOUT.gutter;
+export const EARTH_TERRAIN_HEADER_BYTES = EARTH_LAYOUT.terrainHeaderBytes;
+export const EARTH_TERRAIN_WIDTH = EARTH_TILE_TEXELS + 2 * EARTH_TILE_GUTTER;
+export const EARTH_TERRAIN_HEIGHT = EARTH_TERRAIN_WIDTH;
+export const EARTH_TERRAIN_CHANNELS = EARTH_LAYOUT.terrainChannels;
 export const EARTH_TERRAIN_FORMAT_VERSION = 3;
 export const EARTH_TERRAIN_SCALAR_UINT8 = 2;
 export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS;
@@ -20,10 +27,20 @@ export const EARTH_TERRAIN_PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TE
 export const EARTH_BASE_MAGIC = 'ESTB';
 export const EARTH_BASE_ROOT_COLUMNS = 2;
 export const EARTH_BASE_ROOT_ROWS = 1;
-export const EARTH_BASE_COLOR_WIDTH = 8192;
-export const EARTH_BASE_COLOR_HEIGHT = 4096;
+export const EARTH_BASE_COLOR_WIDTH = 2 ** (EARTH_BASE_COLOR_Z + 1) * EARTH_TILE_TEXELS;
+export const EARTH_BASE_COLOR_HEIGHT = 2 ** EARTH_BASE_COLOR_Z * EARTH_TILE_TEXELS;
 export const EARTH_BASE_COLOR_COMPONENTS = 3;
-export const EARTH_GLOBAL_TILE_COUNT = 43008;
+
+export function earthTileCount(maxZoom) {
+  if (!Number.isSafeInteger(maxZoom) || maxZoom < EARTH_TILE_MIN_Z || maxZoom > EARTH_TILE_MAX_Z) {
+    fail(`maxZoom must be ${EARTH_TILE_MIN_Z}..${EARTH_TILE_MAX_Z}`);
+  }
+  let count = 0;
+  for (let z = EARTH_TILE_MIN_Z; z <= maxZoom; z += 1) count += 2 ** (2 * z + 1);
+  return count;
+}
+
+export const EARTH_GLOBAL_TILE_COUNT = earthTileCount(EARTH_TILE_MAX_Z);
 
 const DATASET = /^[a-z0-9-]+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -130,11 +147,12 @@ export function validateManifest(value) {
     || climateMap.scalar !== 'UInt8') fail('climateMap must be 1024x512 RGBA8');
   const coverage = expectObject(manifest.coverage, 'coverage');
   if (!['complete', 'sparse'].includes(coverage.kind)
-    || coverage.minZoom !== EARTH_TILE_MIN_Z || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
-    fail('coverage must declare complete or sparse z5..z7 coverage');
+    || coverage.minZoom !== EARTH_TILE_MIN_Z || !Number.isSafeInteger(coverage.maxZoom)
+    || coverage.maxZoom < EARTH_TILE_MIN_Z || coverage.maxZoom > EARTH_TILE_MAX_Z) {
+    fail(`coverage must declare z${EARTH_TILE_MIN_Z}..z${EARTH_TILE_MAX_Z} compatible coverage`);
   }
-  if (coverage.kind === 'complete' && coverage.expectedTiles !== EARTH_GLOBAL_TILE_COUNT) {
-    fail('complete coverage must declare 43008 tiles');
+  if (coverage.kind === 'complete' && coverage.expectedTiles !== earthTileCount(coverage.maxZoom)) {
+    fail(`complete coverage must declare ${earthTileCount(coverage.maxZoom)} tiles`);
   }
   if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
     fail('sparse coverage must declare null expectedTiles');
@@ -179,7 +197,7 @@ export function validateRuntimeManifest(value) {
   if (materialClasses.water !== 0 || materialClasses.land !== 1 || materialClasses.ice !== 2
     || materialClasses.unknown !== 255) fail('unsupported legacy materialClasses');
   const coverage = expectObject(manifest.coverage, 'coverage');
-  if (coverage.kind !== 'complete' || coverage.maxZoom !== EARTH_TILE_MAX_Z || coverage.expectedTiles !== 43_690) {
+  if (coverage.kind !== 'complete' || coverage.maxZoom !== 7 || coverage.expectedTiles !== 43_690) {
     fail('legacy coverage must declare complete z0..z7 coverage');
   }
   for (const name of ['baseColor', 'baseTerrain', 'tileIndexUrl']) {
@@ -199,7 +217,7 @@ export function validateRuntimeManifest(value) {
 
 export function tileKeys(maxZoom = EARTH_TILE_MAX_Z) {
   if (!Number.isSafeInteger(maxZoom) || maxZoom < EARTH_BASE_COLOR_Z || maxZoom > EARTH_TILE_MAX_Z) {
-    fail('maxZoom must be 4..7');
+    fail(`maxZoom must be ${EARTH_BASE_COLOR_Z}..${EARTH_TILE_MAX_Z}`);
   }
   const keys = [];
   for (let z = EARTH_TILE_MIN_Z; z <= maxZoom; z += 1) {
@@ -465,9 +483,10 @@ export async function inspectEarthSurfaceBundle({ inputRoot, manifestName = 'ear
   try { baseTerrainPayload = gunzipSync(await readFile(baseTerrain.absolutePath)); } catch (error) { throw new EarthSurfaceContractError('baseTerrain gzip is invalid', { cause: error }); }
   readEstbHeader(baseTerrainPayload);
   const climateMaps = await Promise.all(manifest.climateMaps.map((path, index) => verifyClimateMap(root, path, index)));
-  const tiles = manifest.coverage.kind === 'complete' ? tileKeys() : await sparseTileKeys(root);
-  if (manifest.coverage.kind === 'complete' && tiles.length !== EARTH_GLOBAL_TILE_COUNT) {
-    fail(`complete bundle must contain ${EARTH_GLOBAL_TILE_COUNT} tiles`);
+  const tiles = manifest.coverage.kind === 'complete'
+    ? tileKeys(manifest.coverage.maxZoom) : await sparseTileKeys(root);
+  if (manifest.coverage.kind === 'complete' && tiles.length !== manifest.coverage.expectedTiles) {
+    fail(`complete bundle must contain ${manifest.coverage.expectedTiles} tiles`);
   }
   for (const key of tiles) {
     await verifyColor(root, key);
