@@ -552,6 +552,18 @@ async function placeShipThroughMenu() {
       'the base preset to become selected',
     );
   }
+  const placedName = creativePreset === 'base' ? 'SMOKE BASE' : 'SMOKE SHIP';
+  const formState = await devTools.evaluate(`(() => {
+    const panel = document.getElementById('hud-object-placer');
+    const input = panel.querySelector('input[placeholder="空欄で自動命名"]');
+    if (!(input instanceof HTMLInputElement)) return { error: 'name input missing', issue: '' };
+    input.value = ${JSON.stringify(placedName)};
+    const issue = panel.querySelector('.issue-list:not(.hidden)')?.textContent?.trim() ?? '';
+    return { error: '', issue };
+  })()`);
+  if (formState.error) throw new Error(`Creative placement form failed: ${formState.error}`);
+  if (formState.issue) throw new Error(`Creative placement form is invalid before confirm: ${formState.issue}`);
+
   const confirmed = await devTools.evaluate(`(() => {
     const panel = document.getElementById('hud-object-placer');
     const button = [...panel.querySelectorAll('.w-btn')].find((b) => b.textContent?.startsWith('配置'));
@@ -564,6 +576,22 @@ async function placeShipThroughMenu() {
     `getComputedStyle(document.getElementById('hud-object-placer')).display === 'none'`,
     'the placement panel to close after confirming',
   );
+  await waitFor(
+    `(() => {
+      const text = document.getElementById('hud-hint')?.textContent ?? '';
+      return text.includes(${JSON.stringify(placedName + ' を配置')})
+        || text.includes('配置できません:')
+        || text.includes('配置数が上限');
+    })()`,
+    'the placement result notification',
+  );
+  const placementResult = await devTools.evaluate(
+    `document.getElementById('hud-hint')?.textContent ?? ''`,
+  );
+  if (!placementResult.includes(`${placedName} を配置`)) {
+    throw new Error(`Creative placement was rejected: ${placementResult}`);
+  }
+  return placedName;
 }
 
 async function selectConstructionModuleAndPlace(label, expectedCount) {
@@ -787,7 +815,7 @@ try {
     // Construction専用jobは、建造画面へ入るまで通常描画を保つ。
     // Map幾何は独立jobで検査済みなので重複させない。
     if (!(layoutOnly && smokeConstruction)) await checkMapLayout();
-    await placeShipThroughMenu();
+    const placedName = await placeShipThroughMenu();
 
     // 基地プリセットは操作可能艦ではないため、Construction専用jobではcombat往復を行わない。
     // 通常のcreative smokeでは従来どおり、M往復とレール状態保持を検査する。
