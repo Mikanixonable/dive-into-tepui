@@ -71,6 +71,7 @@ export class TopBar {
       nodeWarpEl.textContent = remain === null ? '' : fmtTime(remain);
       nodeWarpEl.classList.toggle('sim-speed-hot', remain !== null);
       nodeWarpEl.closest('.gs-metric')?.classList.toggle('hidden', remain === null);
+      nodeWarpEl.closest('#hud-topbar')?.classList.toggle('node-warp-active', remain !== null);
     }
   }
 }
