@@ -9,7 +9,6 @@ on:
       - 'tools/browser-smoke.mjs'
       - 'tools/chrome-session.mjs'
       - 'tools/layout-smoke-retry.mjs'
-      - 'tools/ui-layout-smoke-suite.mjs'
       - 'tools/verify-hud-layout.mjs'
       - 'package.json'
       - 'package-lock.json'
