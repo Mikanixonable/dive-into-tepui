@@ -16,8 +16,8 @@ const modes = [
 
 const profile = process.env.CLOUD_BASELINE_PROFILE === 'smoke' ? 'smoke' : 'full';
 const preparationTimes = profile === 'smoke' ? [3_600] : [3_600, 86_400, -3_600];
-const warmupFrames = profile === 'smoke' ? 1 : 6;
-const sampleFrames = profile === 'smoke' ? 2 : 30;
+const warmupFrames = profile === 'smoke' ? 0 : 6;
+const sampleFrames = profile === 'smoke' ? 1 : 30;
 const roundCount = profile === 'smoke' ? 1 : 2;
 
 async function main() {
@@ -58,9 +58,11 @@ async function main() {
     const initialGraphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
     await devTools.evaluate("window.renderLab.setGraphicsOption('clouds', true)");
     await devTools.evaluate("window.renderLab.setGraphicsOption('cloudFieldSource', 'generated')");
-    const cloudPreparation = await devTools.evaluate(
-      `window.renderLab.measureCloudPreparation('earth', ${JSON.stringify(preparationTimes)})`,
-    );
+    const cloudPreparation = profile === 'smoke'
+      ? null
+      : await devTools.evaluate(
+        `window.renderLab.measureCloudPreparation('earth', ${JSON.stringify(preparationTimes)})`,
+      );
     const cloudResourceBudget = await devTools.evaluate('window.renderLab.cloudResourceBudget');
     console.log(`cloud resource budget: ${JSON.stringify(cloudResourceBudget)}`);
     console.log(`cloud preparation: ${JSON.stringify(cloudPreparation)}`);
