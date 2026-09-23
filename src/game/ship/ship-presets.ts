@@ -8,8 +8,8 @@ function instance(catalog: ShipModuleCatalog, definitionId: string, id: string, 
 }
 
 function addSideEquipment(assembly: ShipAssembly, catalog: ShipModuleCatalog): void {
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'cockpit', 'side:+x');
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'cockpit', 'side:-x');
+  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'cockpit', 'side:-x');
+  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'cockpit', 'side:+x');
   assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-left'), 'cockpit', 'side:+y');
   assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'cockpit', 'side:-y');
 }
@@ -18,12 +18,12 @@ function addSideEquipment(assembly: ShipAssembly, catalog: ShipModuleCatalog): v
 export function createDefaultCombatPreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALOG): ShipAssembly {
   const assembly = new ShipAssembly(catalog, true);
   assembly.addRoot(instance(catalog, 'cockpit-standard', 'cockpit'));
-  assembly.append(instance(catalog, 'weapon-gatling', 'weapon'));
-  assembly.append(instance(catalog, 'armor-combat', 'armor'));
-  assembly.append(instance(catalog, 'tank-combat-main', 'main-tank'));
-  assembly.append(instance(catalog, 'tank-combat-rcs', 'rcs-tank'));
-  assembly.append(instance(catalog, 'rcs-combat', 'rcs'));
-  assembly.append(instance(catalog, 'thruster-standard', 'main-thruster'));
+  assembly.prepend(instance(catalog, 'weapon-gatling', 'weapon'), 'cockpit');
+  assembly.append(instance(catalog, 'armor-combat', 'armor'), 'cockpit');
+  assembly.append(instance(catalog, 'tank-combat-main', 'main-tank'), 'armor');
+  assembly.append(instance(catalog, 'tank-combat-rcs', 'rcs-tank'), 'main-tank');
+  assembly.append(instance(catalog, 'rcs-combat', 'rcs'), 'rcs-tank');
+  assembly.append(instance(catalog, 'thruster-standard', 'main-thruster'), 'rcs');
   addSideEquipment(assembly, catalog);
   assembly.assertValid();
   return assembly;

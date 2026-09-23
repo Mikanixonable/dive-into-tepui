@@ -1,7 +1,9 @@
 // 建造の接続候補と、選択した部品をその候補へ置けるかを判定する純粋な規則。
-import { qFromUnitVectors, Q_IDENTITY, LOCAL_FORWARD } from '../../math/quat';
-import { scale, v3, type Vec3 } from '../../math/vec3';
+import { Q_IDENTITY } from '../../math/quat';
+import { v3, type Vec3 } from '../../math/vec3';
 import type { ShipAssembly, ModuleTransform } from './ship-assembly';
+import { sideMountTransform } from './ship-assembly-transform';
+import type { SideSlot } from './ship-assembly-types';
 import type { ShipModuleDefinition } from './ship-module-definition';
 import type { ConstructionMount, ConstructionSlotKind, ConstructionSlotState } from './ship-construction-types';
 
@@ -17,6 +19,10 @@ const SIDE_MOUNTS: readonly Exclude<ConstructionMount, 'axial'>[] = [
 ];
 
 const SIDE_KINDS = new Set(['dock', 'docking_port', 'solar_panel', 'radiator']);
+
+function toSideSlot(mount: Exclude<ConstructionMount, 'axial'>): SideSlot {
+  return `side:${mount.slice(4)}` as SideSlot;
+}
 
 export interface ConstructionSlot {
   readonly id: string;
@@ -83,12 +89,9 @@ export function placementForSlot(
   if (parentDefinition === null) {
     return invalidPlacement(slot, '接続先の部品が存在しません');
   }
-  const side = slot.kind === 'side';
+  const side = isSideMount(slot.mount);
   const transform: ModuleTransform = side
-    ? {
-      position: scale(slot.direction, parentDefinition.diameter / 2 + definition.length / 2),
-      rotation: qFromUnitVectors(LOCAL_FORWARD, slot.direction),
-    }
+    ? sideMountTransform(parentDefinition, definition, toSideSlot(slot.mount))
     : {
       position: v3(0, 0, -(parentDefinition.length / 2 + definition.length / 2)),
       rotation: Q_IDENTITY,
