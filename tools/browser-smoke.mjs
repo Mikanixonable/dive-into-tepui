@@ -864,27 +864,28 @@ try {
       }
     })()`);
     await waitFor(
-      `Boolean(document.querySelector(
+      `[...document.querySelectorAll(
         '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
-      ))`,
-      'the placed ship or base to populate the physical object list',
+      )].some((row) => row.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)})`,
+      `the placed object ${placedName} to populate the physical object list`,
     );
     const shipRowState = await devTools.evaluate(`(() => {
-      const row = document.querySelector(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
-      );
+      const row = [...document.querySelectorAll(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
+      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
       if (!row || getComputedStyle(row).display === 'none') return { row: null };
       const r = row.getBoundingClientRect();
       return { row: { x: r.left + r.width / 2, y: r.top + r.height / 2, label: row.getAttribute('aria-label') } };
     })()`);
     const shipRow = shipRowState.row;
     if (!shipRow) {
-      throw new Error('The placed ship or base row was hidden in the physical object list.');
+      throw new Error(`The placed object ${placedName} row was hidden in the physical object list.`);
     }
     await devTools.evaluate(`(() => {
-      const row = document.querySelector(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
-      );
+      const row = [...document.querySelectorAll(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
+      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
+      if (!row) throw new Error('placed object row disappeared before context menu');
       const r = row.getBoundingClientRect();
       row.dispatchEvent(new MouseEvent('contextmenu', {
         bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
