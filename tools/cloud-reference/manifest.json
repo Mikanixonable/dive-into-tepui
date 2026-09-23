@@ -29,9 +29,9 @@
     },
     {
       "id": "cloud-top-height",
-      "quantity": "cloud-top height above ellipsoid",
+      "quantity": "retrieved cloud-top geopotential height",
       "unit": "m",
-      "operator": "generated uppermost optically effective cloud height sampled on the satellite footprint and compared with the cloud-height retrieval",
+      "operator": "generated uppermost optically effective cloud height converted to the retrieval's geopotential-height definition, sampled on the satellite footprint, then compared with ACHA HT",
       "distance": "scalar-median-iqr-floor",
       "mask": "cloud-height-quality-valid-with-multilayer-stratum-reported-separately",
       "missingPolicy": "fail",
