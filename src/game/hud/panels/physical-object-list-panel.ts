@@ -58,7 +58,7 @@ const COLLAPSE_LABELS: CollapseToggleLabels = {
 const STYLE = `
 #hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); display: flex; flex-direction: column; overflow: hidden; }
 /* 上半分(検索・フィルタ)は要素数ぶんの高さに縮め、下半分(項目一覧)が残りを占有する。互いに重ならないよう独立してスクロールさせる */
-#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: 50%; overflow-y: auto; overscroll-behavior: contain; }
+#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: none; overflow: visible; }
 #hud-physical-object-list .physical-object-list-body { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
 #hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
 #hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
@@ -75,7 +75,7 @@ const STYLE = `
    領域の先頭へ貼り付ける。背景の不透明化は map-view-style.ts 側(見た目のトークン)が持つ。 */
 #hud-physical-object-list .physical-object-list-section-header {
   display: block; width: 100%; text-align: left; margin: var(--space-2) 0 var(--space-1);
-  padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: 1px;
+  padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
   position: sticky; top: 0; z-index: 1;
 }
 #hud-physical-object-list .physical-object-list-section-header-glyph { margin-left: var(--space-2); }
@@ -101,7 +101,7 @@ const STYLE = `
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
 }
 #hud-physical-object-list .physical-object-list-title h3 {
-  margin: 0; color: var(--text); font-size: var(--font-xs); letter-spacing: .08em;
+  margin: 0; color: var(--text); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
 }
 #hud-physical-object-list .physical-object-list-tracked {
   margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums;
@@ -110,7 +110,7 @@ const STYLE = `
 #hud-physical-object-list .physical-object-list-section-header {
   display: flex; align-items: baseline; gap: var(--space-2);
   background: var(--surface-opaque);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .1em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 #hud-physical-object-list .physical-object-list-section-header-label { color: var(--text); }

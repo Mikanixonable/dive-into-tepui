@@ -87,6 +87,7 @@ function buildViewRoot(parent: HTMLElement, collapse: PanelCollapse, id: string,
   );
   buildRailToggle(element, leftRail, collapse, 'left', view);
   buildRailToggle(element, rightRail, collapse, 'right', view);
+  trackHudRailOccupancy(element, leftRail, rightRail);
   return { element, leftRail, rightRail };
 }
 
@@ -317,7 +318,7 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
         <div class="construction-metric"><span class="ui-data-label">ROLE</span><output data-id="construction-role">物資</output></div>
         <div class="construction-metric"><span class="ui-data-label">COMPLETION</span><output data-id="construction-completion">部品を1個以上配置</output></div>
       </div>
-      <p class="construction-warning hidden" data-id="construction-warning"></p>
+      <p class="construction-warning ui-status-note ui-status-note--warning hidden" data-id="construction-warning"></p>
       <div class="construction-actions" data-id="construction-actions" role="group" aria-label="船体建造操作"></div>
     </aside>`;
 }
@@ -470,6 +471,42 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
+/* 上部クロームの実寸を HUD の配置トークンへ反映する。トップバーの行数が変わっても
+   レール・通知が固定px前提で重ならないよう、ResizeObserverで追従する。 */
+function trackHudChromeInset(root: HTMLElement, chrome: HTMLElement): void {
+  const sync = (): void => {
+    const height = Math.ceil(chrome.getBoundingClientRect().height);
+    if (height > 0) root.style.setProperty('--hud-chrome-h', `${height}px`);
+  };
+  sync();
+  requestAnimationFrame(sync);
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(sync);
+    observer.observe(chrome);
+  }
+}
+
+/* 左右レールが実際に占めている幅をビュー自身の CSS 変数へ反映する。
+   収納・幅変更・viewport変更を中央HUDが rail-w の手計算なしで追従できる。 */
+function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRail: HTMLElement): void {
+  const sync = (): void => {
+    const rootRect = root.getBoundingClientRect();
+    if (rootRect.width <= 0) return;
+    const leftRect = leftRail.getBoundingClientRect();
+    const rightRect = rightRail.getBoundingClientRect();
+    root.style.setProperty('--hud-left-rail-occupied', `${Math.max(0, Math.ceil(leftRect.right - rootRect.left))}px`);
+    root.style.setProperty('--hud-right-rail-occupied', `${Math.max(0, Math.ceil(rootRect.right - rightRect.left))}px`);
+  };
+  sync();
+  requestAnimationFrame(sync);
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(sync);
+    observer.observe(root);
+    observer.observe(leftRail);
+    observer.observe(rightRail);
+  }
+}
+
 // HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
 export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle): HudDomRefs {
   injectStyle();
@@ -483,13 +520,18 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, collapse);
   buildShipConstructionWorkspace(layers.panel);
-  buildTopBar(layers.panel);
-  buildChaseReset(layers.panel);
+
+  // 画面上端の状態・カメラ操作・ヘルプを一つのクロームへまとめる。各要素が独立した
+  // top 値を持たないため、トップバーが折り返しても互いに重ならない。
+  const helpPanel = new HelpPanel(layers.system, shell.overlayManager);
+  const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
+  buildTopBar(chrome);
+  buildChaseReset(chrome);
+  buildHelpBadge(chrome, helpPanel);
+  trackHudChromeInset(root, chrome);
+
   buildMapScale(mapRoot.element);
   createHudElement('div', 'hud-toast', layers.notify, 'ui-surface-focus');
-
-  const helpPanel = new HelpPanel(layers.system, shell.overlayManager);
-  buildHelpBadge(layers.panel, helpPanel);
 
   const els = collectDataIdElements(root);
   return { combatRoot, mapRoot, helpPanel, els };

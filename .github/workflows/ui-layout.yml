@@ -1,0 +1,50 @@
+name: UI layout checks
+
+on:
+  pull_request:
+    paths:
+      - 'src/hud/**'
+      - 'src/game/hud/**'
+      - 'src/game/creative/object-placer-panel.ts'
+      - 'tools/browser-smoke.mjs'
+      - 'tools/verify-hud-layout.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ui-layout.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  hud-layout:
+    runs-on: ubuntu-latest
+    env:
+      SMOKE_LAYOUT_ONLY: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run verify:ui-style
+      - run: npm run verify:hud-layout
+      - run: npm run typecheck
+      - run: npm run build
+
+      - name: Combat HUD geometry
+        run: npm run smoke:browser
+
+      - name: Map HUD geometry
+        env:
+          SMOKE_QUERY: '?stage=creative'
+        run: npm run smoke:browser
+
+      - name: Construction HUD geometry
+        env:
+          SMOKE_QUERY: '?stage=creative'
+          SMOKE_CREATIVE_PRESET: base
+          SMOKE_CONSTRUCTION: '1'
+        run: npm run smoke:browser

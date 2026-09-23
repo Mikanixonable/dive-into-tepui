@@ -15,17 +15,17 @@ const STYLE = `
 #hud .ctx-menu {
   position: fixed; display: none; min-width: 196px;
   pointer-events: auto; padding: var(--space-2);
-  border-radius: var(--radius-panel); overflow: hidden; font-size: var(--font-m);
+  border-radius: var(--radius-window); overflow: hidden; font-size: var(--font-m);
   font-family: var(--font-family); user-select: none;
   -webkit-user-select: none;
 }
 #hud .ctx-menu-code {
   display: flex; align-items: baseline; gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .1em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
 }
-#hud .ctx-menu-code > strong { color: var(--color-primary); letter-spacing: .16em; }
+#hud .ctx-menu-code > strong { color: var(--color-primary); letter-spacing: var(--tracking-code); }
 #hud .ctx-menu-item {
   display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto;
   align-items: baseline; gap: var(--space-2);
@@ -34,7 +34,7 @@ const STYLE = `
 }
 #hud .ctx-menu-item::before {
   content: attr(data-index); color: var(--text-dim); font-size: var(--font-xxs);
-  font-variant-numeric: tabular-nums; letter-spacing: .08em;
+  font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-label);
 }
 #hud .ctx-menu-item.w-hit { display: grid; }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
@@ -44,7 +44,7 @@ const STYLE = `
   box-shadow: inset 2px 0 0 var(--color-primary); background: transparent; color: var(--color-primary);
 }
 #hud .ctx-menu-item-shortcut {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud .ctx-menu-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .ctx-menu-header {

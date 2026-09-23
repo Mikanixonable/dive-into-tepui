@@ -10,7 +10,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
 }
 #ship-construction-panel.hidden { display: none !important; }
 #ship-construction-panel .construction-pane {
-  min-height: 0; overflow: hidden; pointer-events: auto;
+  min-height: 0; overflow: auto; pointer-events: auto;
   border-radius: var(--radius-panel); padding: var(--space-5);
 }
 #ship-construction-panel .construction-pane-left,
@@ -105,10 +105,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
   margin-top: auto; padding-top: var(--space-4);
 }
-#ship-construction-panel .construction-warning {
-  margin-top: var(--space-3); padding: var(--space-3); border-radius: var(--radius-micro);
-  color: var(--color-warning); background: var(--color-warning-fill); font-size: var(--font-xxs);
-}
+#ship-construction-panel .construction-warning { margin-top: var(--space-3); }
 #ship-construction-panel .construction-destructive-actions {
   grid-column: 1 / -1; margin-top: var(--space-1); padding-top: var(--space-2);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 25%, transparent);
@@ -121,9 +118,13 @@ export const SHIP_CONSTRUCTION_STYLE = `
 
 @media ${MQ_MEDIUM_DOWN} {
   #ship-construction-panel {
-    grid-template-columns: minmax(220px, 280px) minmax(140px, 1fr) minmax(240px, 300px);
+    grid-template-columns: minmax(220px, .9fr) minmax(240px, 1.1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     gap: var(--space-3); padding-inline: var(--space-3);
   }
+  #ship-construction-panel .construction-center { grid-column: 1 / -1; grid-row: 1; margin-top: 0; }
+  #ship-construction-panel .construction-pane-left { grid-column: 1; grid-row: 2; }
+  #ship-construction-panel .construction-pane-right { grid-column: 2; grid-row: 2; }
   #ship-construction-panel .construction-pane { padding: var(--space-4); }
   #ship-construction-panel .construction-metrics { grid-template-columns: minmax(0, 1fr); }
   #ship-construction-panel .construction-hp-row { grid-column: auto; }
@@ -162,7 +163,8 @@ export const SHIP_CONSTRUCTION_STYLE = `
 /* 確認ダイアログは workspace の上に独立して出す。 */
 #ship-construction-confirm {
   position: absolute; top: 50%; left: 50%;
-  width: min(420px, calc(100vw - var(--space-8))); transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - var(--space-8))); max-height: var(--overlay-max-h-s);
+  transform: translate(-50%, -50%); overflow-y: auto;
   gap: var(--space-4); padding: var(--space-6);
 }
 #ship-construction-confirm h3 { margin: 0; }
