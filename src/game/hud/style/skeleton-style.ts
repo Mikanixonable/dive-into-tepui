@@ -306,7 +306,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-map-scale { right: 8px; font-size: var(--font-xxs); }
 }
 @media ${MQ_COMPACT} {
-  #hud .hud-rail { font-size: var(--font-xs); }
+  #hud .hud-rail { font-size: var(--font-xxs); }
   #hud .hud-map-root.active .hud-rail { bottom: var(--hud-map-rail-bottom); }
   #hud-topbar {
     width: 100%;

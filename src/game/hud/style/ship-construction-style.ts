@@ -118,13 +118,9 @@ export const SHIP_CONSTRUCTION_STYLE = `
 
 @media ${MQ_MEDIUM_DOWN} {
   #ship-construction-panel {
-    grid-template-columns: minmax(220px, .9fr) minmax(240px, 1.1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(220px, 280px) minmax(140px, 1fr) minmax(240px, 300px);
     gap: var(--space-3); padding-inline: var(--space-3);
   }
-  #ship-construction-panel .construction-center { grid-column: 1 / -1; grid-row: 1; margin-top: 0; }
-  #ship-construction-panel .construction-pane-left { grid-column: 1; grid-row: 2; }
-  #ship-construction-panel .construction-pane-right { grid-column: 2; grid-row: 2; }
   #ship-construction-panel .construction-pane { padding: var(--space-4); }
   #ship-construction-panel .construction-metrics { grid-template-columns: minmax(0, 1fr); }
   #ship-construction-panel .construction-hp-row { grid-column: auto; }
