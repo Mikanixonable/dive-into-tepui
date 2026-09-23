@@ -23,14 +23,13 @@ import type { EntityContactParticipant } from '../dynamic-simulation-participant
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 import { EnemyInspection } from '../../pickable/enemy-inspection';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
-import { EnemyFireController, type SerializedEnemyFireController } from './enemy-fire-controller';
+import { EnemyFireController, EnemyFireState, type SerializedEnemyFireState } from './enemy-fire-controller';
 import { EnemyReactions } from './enemy-reactions';
 
 // 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
 // 全ての敵がこの1つの倍率を共有する。
 export const ENEMY_MODEL_SCALE = 20;
 
-export const ENEMY_MAX_HP = 6; // 敵機の総 HP
 
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
@@ -49,7 +48,7 @@ export interface SerializedEnemy extends SerializedDynamicEntityFields {
   // 陣形の識別子と役割。陣形に属さない敵は null。
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
-  readonly fireController: SerializedEnemyFireController;
+  readonly fireController: SerializedEnemyFireState;
 }
 
 // 敵の直列化した形が取る種別タグ。
@@ -130,8 +129,8 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   public get isBursting(): boolean { return this.fireController.isBursting; }
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を
-  // placement に置く。id は採番器が配った識別子。alive は生死、burstLeft から後ろは射撃の途中経過と
-  // 時刻で、省けば新しく置いたときの状態で始める。
+  // placement に置く。id は採番器が配った識別子。alive は生死、fireState は射撃判断の継続状態で、
+  // 省けば新しく置いたときの状態で始める。
   protected constructor(
     placement: EnemyPlacement,
     view: DynamicView,
@@ -140,16 +139,13 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
     id: string,
     shape: EnemyCollisionShape | null,
     alive?: boolean,
-    burstLeft?: number | null,
-    burstDelay?: number | null,
-    lastFireSim?: number | null,
-    lastBehaviorSim?: number | null,
+    fireState = new EnemyFireState(),
   ) {
     // 運動の接触・焼失をこの敵へ通知させる
     const attitude = { q: placement.q, w: placement.w, inertia };
     super(
       placement.name,
-      ENEMY_MAX_HP,
+      0,
       owner => new EnemyMotion(placement.state, attitude, radius, {
         receiveEntityContact: (other, contact, services) => (
           (owner as Enemy).receiveEntityContact(
@@ -181,7 +177,7 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
       muzzlePosition: () => this.muzzlePosition(),
       plasmaDamage: () => this.plasmaDamage(),
       fired: (muzzleState, events) => this.fired(muzzleState, events),
-    }, burstLeft, burstDelay, lastFireSim, lastBehaviorSim);
+    }, fireState);
     this.reactions = new EnemyReactions({
       motion: this.motion,
       modelScale: ENEMY_MODEL_SCALE,
