@@ -137,19 +137,19 @@ export class ShipConstructionPanel {
     this.count.textContent = String(model.moduleCount);
 
     this.mass.textContent = formatMetric(model.totalMass, 'kg');
-    this.massPreview.textContent = previewText(model.totalMass, model.preview?.mass, 'kg');
+    this.massPreview.textContent = previewText(model.totalMass, model.preview === null ? null : model.preview.mass, 'kg');
 
     this.hp.textContent = `${format(model.hp)} / ${format(model.maxHp)}`;
-    this.hpPreview.textContent = previewText(model.maxHp, model.preview?.maxHp, '');
+    this.hpPreview.textContent = previewText(model.maxHp, model.preview === null ? null : model.preview.maxHp, '');
     this.hpMeter.setRatio(model.maxHp > 0 ? model.hp / model.maxHp : 0);
     this.hpMeter.setDanger(model.maxHp > 0 && model.hp / model.maxHp < 0.3);
     this.hpMeter.setLabel(`${format(model.hp)} / ${format(model.maxHp)}`);
 
-    this.syncMetric(this.capabilities.thrust, model.capabilities.thrust, model.preview?.capabilities.thrust, 'N');
-    this.syncMetric(this.capabilities.mainFuel, model.capabilities.mainFuel, model.preview?.capabilities.mainFuel, '');
-    this.syncMetric(this.capabilities.rcsFuel, model.capabilities.rcsFuel, model.preview?.capabilities.rcsFuel, '');
-    this.syncMetric(this.capabilities.power, model.capabilities.power, model.preview?.capabilities.power, 'W');
-    this.syncMetric(this.capabilities.radiation, model.capabilities.radiation, model.preview?.capabilities.radiation, 'm²');
+    this.syncMetric(this.capabilities.thrust, model.capabilities.thrust, model.preview === null ? null : model.preview.capabilities.thrust, 'N');
+    this.syncMetric(this.capabilities.mainFuel, model.capabilities.mainFuel, model.preview === null ? null : model.preview.capabilities.mainFuel, '');
+    this.syncMetric(this.capabilities.rcsFuel, model.capabilities.rcsFuel, model.preview === null ? null : model.preview.capabilities.rcsFuel, '');
+    this.syncMetric(this.capabilities.power, model.capabilities.power, model.preview === null ? null : model.preview.capabilities.power, 'W');
+    this.syncMetric(this.capabilities.radiation, model.capabilities.radiation, model.preview === null ? null : model.preview.capabilities.radiation, 'm²');
 
     this.role.textContent = roleLabel(model.role);
     this.role.dataset['role'] = model.role;
@@ -226,7 +226,7 @@ export class ShipConstructionPanel {
     this.statusPaneButton.setOn(pane === 'status');
   }
 
-  private syncMetric(pair: MetricPair, value: number, preview: number | undefined, unit: MetricUnit): void {
+  private syncMetric(pair: MetricPair, value: number, preview: number | null, unit: MetricUnit): void {
     pair.value.textContent = formatMetric(value, unit);
     pair.preview.textContent = previewText(value, preview, unit);
   }
@@ -296,8 +296,8 @@ function textSpan(className: string, text: string): HTMLElement {
 
 type MetricUnit = '' | 'kg' | 'N' | 'W' | 'm²';
 
-function previewText(current: number, preview: number | undefined, unit: MetricUnit): string {
-  if (preview === undefined) return '';
+function previewText(current: number, preview: number | null, unit: MetricUnit): string {
+  if (preview === null) return '';
   const delta = preview - current;
   if (Math.abs(delta) < 1e-9) return '';
   return `→ ${formatMetric(preview, unit)} · ${delta > 0 ? '+' : ''}${formatMetric(delta, unit)}`;
