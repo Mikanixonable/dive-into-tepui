@@ -486,292 +486,417 @@ def build_cockpit():
 
 # ----------------------------------------------------------------------
 # 2. Main Propellant Tanks (tank-3-main, tank-6-main, tank-12-main)
+# Early-spaceflight service-module language: thin removable skin panels,
+# restrained external plumbing, compact umbilicals and visible fasteners.
 # ----------------------------------------------------------------------
 def build_tank_main(length, name):
     reset_scene()
     mats = MaterialLibrary()
     radius = 3.0
     half_len = length / 2.0
-    
-    # 1. Main Cylindrical Tank Hull with circumferential segments
-    # Outer hull is pristine aerospace aluminium
-    bm_hull = make_cylinder(radius, radius, length, z_center=0.0, segments=48)
-    add_mesh_obj("tank_hull", bm_hull, mats.hull)
-    
-    # 2. Structural Bulkhead Bands (CRITICAL: Named 'tank-band' to satisfy contract test!)
-    # Band count scaled with length (3m: 1 band, 6m: 2 bands, 12m: 4 bands)
+
+    # Structural pressure shell sits slightly below the removable exterior skin.
+    add_mesh_obj(
+        "tank_pressure_shell",
+        make_cylinder(radius * 0.965, radius * 0.965, length * 0.97, z_center=0.0, segments=48),
+        mats.titanium,
+    )
+
+    # Longitudinal removable sheet-metal panels.  Real visual richness comes from
+    # panel boundaries and material changes rather than arbitrary protrusions.
+    sector_count = 12
+    bay_count = max(2, int(math.ceil(length / 1.5)))
+    dz = length / bay_count
+    dtheta = 2.0 * math.pi / sector_count
+    panel_r = radius * 0.985
+    for bay in range(bay_count):
+        z0 = -half_len + bay * dz
+        z1 = min(half_len, z0 + dz)
+        zc = (z0 + z1) * 0.5
+        h = max(0.10, (z1 - z0) - 0.035)
+        for i in range(sector_count):
+            # Reserve a narrow +X service corridor for plumbing and access.
+            if i in (0, sector_count - 1):
+                continue
+            ang = i * dtheta
+            chord = 2.0 * panel_r * math.sin(dtheta * 0.5) * 0.965
+            mat = mats.aluminium if (bay + i) % 5 else mats.beryllium
+            panel = make_box(
+                0.030, chord, h,
+                center=((panel_r + 0.010) * math.cos(ang), (panel_r + 0.010) * math.sin(ang), zc),
+                rot_euler=(0, 0, ang),
+            )
+            add_mesh_obj(f"tank_skin_panel_{bay}_{i}", panel, mat)
+
+    # Structural bulkhead bands.  Keep the exact semantic mesh name required by
+    # the asset contract; subsequent duplicate names may receive Blender suffixes.
     band_count = 1 if length <= 3.5 else (2 if length <= 6.5 else 4)
     step = length / (band_count + 1)
     for b in range(band_count):
         zb = -half_len + step * (b + 1)
-        bm_band = make_torus(major_r=radius + 0.02, minor_r=0.04, z_center=zb, major_seg=48, minor_seg=12)
-        # Name MUST be 'tank-band' for test contract!
-        add_mesh_obj("tank-band", bm_band, mats.hull_dark)
+        add_mesh_obj(
+            "tank-band",
+            make_torus(major_r=radius * 0.984, minor_r=0.026, z_center=zb, major_seg=48, minor_seg=8),
+            mats.titanium,
+        )
 
-    # 3. Cryogenic Feedline with Saddle Clamps & Bolted Flanges
-    # High-pressure LOX/LH2 feedline running down the hull at radius R=3.06m
-    # Curve smoothly into the hull at both ends via 90-degree elbows!
-    pipe_r = 0.07
-    z_start = -half_len + 0.25
-    z_end = half_len - 0.25
+    # Recessed service corridor on +X: dark backplane with restrained feed line,
+    # valve blocks, clamps and electrical/pressure connectors.
+    corridor_h = max(0.60, length - 0.40)
+    add_mesh_obj(
+        "service_corridor",
+        make_box(0.035, 0.64, corridor_h, center=(radius * 0.965, 0.0, 0.0)),
+        mats.recessed,
+    )
+
+    pipe_x = radius * 0.995
     feedline_points = [
-        Vector((2.85, 0.0, z_start - 0.15)), # Inside hull bulkhead
-        Vector((3.08, 0.0, z_start + 0.10)), # Elbow to exterior
-        Vector((3.08, 0.0, z_end - 0.10)),   # Long straight run
-        Vector((2.85, 0.0, z_end + 0.15)),   # Elbow back into hull
+        Vector((pipe_x, -0.13, -half_len + 0.18)),
+        Vector((pipe_x + 0.06, -0.13, -half_len + 0.35)),
+        Vector((pipe_x + 0.06, -0.13,  half_len - 0.35)),
+        Vector((pipe_x, -0.13, half_len - 0.18)),
     ]
-    bm_pipe = make_pipe(feedline_points, radius=pipe_r, segments=16)
-    add_mesh_obj("cryo_feedline", bm_pipe, mats.pipe)
-    
-    # Saddle Clamps with Fastener Blocks along the feedline
-    clamp_step = 1.0
-    clamp_num = int((z_end - z_start) / clamp_step)
-    for c in range(clamp_num):
-        zc = z_start + 0.3 + c * clamp_step
-        if zc > z_end - 0.3: break
-        # Saddle clamp bracket hugging the pipe and welded to the hull
-        bm_clamp = make_box(0.08, 0.28, 0.12, center=(3.06, 0.0, zc))
-        add_mesh_obj(f"pipe_clamp_{c}", bm_clamp, mats.clamp)
-        # Fastener hex bolts on each side of the clamp
-        for by in [-0.10, 0.10]:
-            bm_bolt = make_cylinder(0.015, 0.015, 0.04, z_center=0, segments=8)
-            transform_bm(bm_bolt, Euler((0, math.radians(90), 0)).to_matrix().to_4x4())
-            transform_bm(bm_bolt, Matrix.Translation(Vector((3.10, by, zc))))
-            add_mesh_obj(f"clamp_bolt_{c}_{by}", bm_bolt, mats.hull_dark)
+    add_mesh_obj("cryo_feedline", make_pipe(feedline_points, radius=0.045, segments=12), mats.pipe)
 
-    # Mid-line In-line Cryogenic Isolation Ball Valve Actuator Housing
-    z_valve = 0.0
-    bm_valve = make_box(0.24, 0.22, 0.26, center=(3.12, 0.0, z_valve))
-    add_mesh_obj("feedline_valve", bm_valve, mats.hull_dark)
+    # Parallel smaller pressurization/sensor line.
+    sense_points = [
+        Vector((pipe_x + 0.02, 0.17, -half_len + 0.28)),
+        Vector((pipe_x + 0.02, 0.17,  half_len - 0.28)),
+    ]
+    add_mesh_obj("pressurization_line", make_pipe(sense_points, radius=0.020, segments=10), mats.pipe)
 
-    # 4. High-Pressure COPV Helium Pressurization Bottles
-    # Composite Overwrapped Pressure Vessels mounted in dedicated cradles
-    copv_z = -half_len * 0.4
-    copv_ang = math.radians(120)
-    for k in [-1.0, 1.0]:
-        pos_copv = (radius * math.cos(copv_ang * k), radius * math.sin(copv_ang * k), copv_z)
-        # Spherical / cylindrical bottle
-        bm_copv = make_cylinder(0.22, 0.22, 0.55, z_center=0.0, segments=16)
-        transform_bm(bm_copv, Matrix.Translation(Vector(pos_copv)))
-        add_mesh_obj(f"copv_bottle_{k}", bm_copv, mats.tank_rcs)
-        # Triangular mounting cradle brackets
-        bm_cradle = make_box(0.15, 0.35, 0.50, center=pos_copv, rot_euler=(0, 0, copv_ang * k))
-        add_mesh_obj(f"copv_cradle_{k}", bm_cradle, mats.clamp)
+    clamp_step = 0.75
+    clamp_num = max(1, int((length - 0.55) / clamp_step))
+    for cidx in range(clamp_num):
+        zc = -half_len + 0.38 + cidx * clamp_step
+        if zc > half_len - 0.32:
+            break
+        add_mesh_obj(
+            f"feedline_clamp_{cidx}",
+            make_box(0.075, 0.42, 0.075, center=(pipe_x + 0.02, -0.03, zc)),
+            mats.clamp,
+        )
+        for sy in [-0.20, 0.20]:
+            add_lowpoly_fastener(
+                f"feedline_fastener_{cidx}_{sy}",
+                (pipe_x + 0.065, sy, zc),
+                mats.fastener,
+                radius=0.014,
+            )
 
-    # 5. End Bulkhead Domes (visible torispherical dome inside end collars)
+    # Mid-body valve/umbilical cluster with deliberately different materials.
+    add_mesh_obj(
+        "feedline_valve_body",
+        make_box(0.18, 0.24, 0.24, center=(radius * 1.015, -0.13, 0.0)),
+        mats.titanium,
+    )
+    for y, r_conn in [(-0.22, 0.055), (0.02, 0.045), (0.20, 0.035)]:
+        connector = make_cylinder(r_conn, r_conn, 0.09, z_center=0.0, segments=12)
+        q = Vector((0, 0, 1)).rotation_difference(Vector((1, 0, 0)))
+        transform_bm(connector, q.to_matrix().to_4x4())
+        transform_bm(connector, Matrix.Translation(Vector((radius * 1.025, y, 0.20))))
+        add_mesh_obj(f"umbilical_connector_{y}", connector, mats.fastener)
+
+    # End collars and torispherical hints, kept inside the connection envelope.
     for sign in [-1.0, 1.0]:
-        z_end_rim = sign * half_len
-        # End connection rim
-        bm_rim = make_torus(major_r=radius * 0.92, minor_r=0.06, z_center=z_end_rim - sign * 0.05, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"tank_end_rim_{sign}", bm_rim, mats.hull_dark)
+        z = sign * (half_len - 0.055)
+        add_mesh_obj(
+            f"tank_end_rim_{sign}",
+            make_torus(major_r=radius * 0.91, minor_r=0.045, z_center=z, major_seg=44, minor_seg=8),
+            mats.titanium,
+        )
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
+
 # ----------------------------------------------------------------------
 # 3. RCS Propellant Tanks (tank-3-rcs, tank-6-rcs, tank-12-rcs)
+# Semi-enclosed service module: most pressure vessels are protected by a skin,
+# with two open maintenance bays revealing tanks, valves and cross-feed plumbing.
 # ----------------------------------------------------------------------
 def build_tank_rcs(length, name):
     reset_scene()
     mats = MaterialLibrary()
     radius = 3.0
     half_len = length / 2.0
-    
-    # 1. Structural Space Frame / Exoskeleton Truss Cage
-    # Outer diameter 6.0m ring stringers and diagonal tubular trusses
+
+    # End frames and hidden internal longitudinal structure.
     ring_count = max(3, int(length / 1.5) + 1)
     z_step = length / (ring_count - 1)
-    for r in range(ring_count):
-        zr = -half_len + r * z_step
-        bm_ring = make_torus(major_r=radius * 0.98, minor_r=0.05, z_center=zr, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"truss_ring_{r}", bm_ring, mats.truss)
-    
-    # Longitudinal and diagonal truss struts
-    longitudinal_count = 8
-    for i in range(longitudinal_count):
-        ang = i * 2.0 * math.pi / longitudinal_count
-        x = radius * 0.98 * math.cos(ang)
-        y = radius * 0.98 * math.sin(ang)
-        bm_strut = make_cylinder(0.04, 0.04, length, z_center=0.0, segments=8)
-        transform_bm(bm_strut, Matrix.Translation(Vector((x, y, 0.0))))
-        add_mesh_obj(f"truss_longitudinal_{i}", bm_strut, mats.truss)
+    for r_idx in range(ring_count):
+        zr = -half_len + r_idx * z_step
+        add_mesh_obj(
+            f"rcs_frame_ring_{r_idx}",
+            make_torus(major_r=radius * 0.95, minor_r=0.035, z_center=zr, major_seg=40, minor_seg=8),
+            mats.titanium,
+        )
 
-    # 2. Clusters of High-Pressure Titanium Spherical Propellant Tanks inside the cage
-    # 4 tanks per axial section
-    axial_sections = max(1, int(length / 2.5))
+    # Mostly closed exterior panels; +X and -X sectors remain open as service bays.
+    sectors = 10
+    dtheta = 2.0 * math.pi / sectors
+    panel_r = radius * 0.975
+    for i in range(sectors):
+        ang = i * dtheta
+        if abs(math.cos(ang)) > 0.80:
+            continue
+        chord = 2.0 * panel_r * math.sin(dtheta * 0.5) * 0.94
+        panel = make_box(
+            0.032, chord, max(0.10, length - 0.12),
+            center=((panel_r + 0.010) * math.cos(ang), (panel_r + 0.010) * math.sin(ang), 0.0),
+            rot_euler=(0, 0, ang),
+        )
+        add_mesh_obj(f"rcs_outer_panel_{i}", panel, mats.aluminium if i % 2 else mats.beryllium)
+
+    # Dark recessed service-bay backplanes emphasize depth.
+    for sign in [-1.0, 1.0]:
+        add_mesh_obj(
+            f"rcs_service_bay_{sign}",
+            make_box(0.035, 1.18, max(0.30, length - 0.28), center=(sign * radius * 0.935, 0.0, 0.0)),
+            mats.recessed,
+        )
+
+    # Titanium propellant spheres live inside the envelope, visible only through
+    # the two service corridors.  Keep them neutral metal instead of bright blue.
+    axial_sections = max(1, int(math.ceil(length / 2.4)))
     section_step = length / (axial_sections + 1)
-    sphere_radius = 0.85
+    sphere_radius = 0.66
     for sec in range(axial_sections):
         z_sec = -half_len + (sec + 1) * section_step
-        for t in range(4):
-            t_ang = t * math.pi / 2.0 + math.pi / 4.0
-            tx = (radius * 0.55) * math.cos(t_ang)
-            ty = (radius * 0.55) * math.sin(t_ang)
-            bm_sphere = make_sphere(sphere_radius, center=(tx, ty, z_sec), u_seg=24, v_seg=16)
-            add_mesh_obj(f"rcs_sphere_{sec}_{t}", bm_sphere, mats.tank_rcs)
-            
-            # Spherical tank equatorial weld seam
-            bm_seam = make_torus(major_r=sphere_radius, minor_r=0.02, z_center=z_sec, major_seg=24, minor_seg=6)
-            transform_bm(bm_seam, Matrix.Translation(Vector((tx, ty, 0.0))))
-            add_mesh_obj(f"rcs_seam_{sec}_{t}", bm_seam, mats.hull_dark)
+        for side in [-1.0, 1.0]:
+            tx = side * 1.70
+            ty = 0.0
+            add_mesh_obj(
+                f"rcs_pressure_vessel_{sec}_{side}",
+                make_sphere(sphere_radius, center=(tx, ty, z_sec), u_seg=24, v_seg=16),
+                mats.tank_rcs,
+            )
+            add_mesh_obj(
+                f"rcs_vessel_weld_{sec}_{side}",
+                make_torus(major_r=sphere_radius, minor_r=0.012, z_center=z_sec, major_seg=28, minor_seg=6),
+                mats.fastener,
+            )
+            # Short branch line from vessel to centre manifold.
+            add_mesh_obj(
+                f"rcs_branch_{sec}_{side}",
+                make_pipe([
+                    Vector((side * 1.05, 0.0, z_sec)),
+                    Vector((side * 0.15, 0.0, z_sec)),
+                ], radius=0.032, segments=10),
+                mats.pipe,
+            )
 
-    # 3. High-Pressure Manifold Manifold & Cross-feed Line
-    pipe_points = [
-        Vector((0, 0, -half_len + 0.2)),
-        Vector((0, 0, half_len - 0.2)),
-    ]
-    bm_spine = make_pipe(pipe_points, radius=0.08, segments=12)
-    add_mesh_obj("manifold_spine", bm_spine, mats.pipe)
+    # Central manifold and compact valve blocks.
+    add_mesh_obj(
+        "manifold_spine",
+        make_pipe([
+            Vector((0, 0, -half_len + 0.16)),
+            Vector((0, 0, half_len - 0.16)),
+        ], radius=0.060, segments=12),
+        mats.pipe,
+    )
+    for sec in range(axial_sections):
+        z_sec = -half_len + (sec + 1) * section_step
+        add_mesh_obj(
+            f"rcs_valve_block_{sec}",
+            make_box(0.24, 0.32, 0.18, center=(0.0, 0.0, z_sec)),
+            mats.titanium,
+        )
 
-    # End connection flanges
     for sign in [-1.0, 1.0]:
-        bm_end = make_torus(major_r=radius * 0.88, minor_r=0.06, z_center=sign * (half_len - 0.04), major_seg=36, minor_seg=8)
-        add_mesh_obj(f"rcs_end_{sign}", bm_end, mats.hull_dark)
+        add_mesh_obj(
+            f"rcs_end_{sign}",
+            make_torus(major_r=radius * 0.90, minor_r=0.050, z_center=sign * (half_len - 0.045), major_seg=40, minor_seg=8),
+            mats.titanium,
+        )
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
+
 # ----------------------------------------------------------------------
-# 4. Main Thruster (thruster-standard: length 3.5m, diameter 3.0m, radius 1.5m)
+# 4. Main Thruster (thruster-standard: catalog body length 1m)
+# The mount stays inside ±0.5m; the nozzle intentionally projects aft.
+# Visual language is closer to compact early pressure-fed/hypergolic hardware
+# than to a modern high-area-ratio cryogenic engine.
 # ----------------------------------------------------------------------
 def build_thruster():
     reset_scene()
     mats = MaterialLibrary()
-    half_len = 1.75
-    
-    # 1. Forward Thrust Structure & Gimbal Mount (z = +0.75m to +1.75m)
-    bm_thrust_cyl = make_cylinder(1.50, 1.50, 1.00, z_center=1.25, segments=36)
-    add_mesh_obj("thrust_structure", bm_thrust_cyl, mats.hull)
-    
-    # Thrust structure circumferential stiffeners
-    for zr in [0.85, 1.25, 1.65]:
-        bm_r = make_torus(major_r=1.51, minor_r=0.03, z_center=zr, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"thrust_ring_{zr}", bm_r, mats.hull_dark)
-        
-    # Injector Dome Head (dome inside thrust structure, z = 0.70m)
-    bm_dome = make_lathe([
-        (0.00, 0.95),
-        (0.40, 0.92),
-        (0.70, 0.85),
-        (0.90, 0.75),
-    ], segments=24)
-    add_mesh_obj("injector_dome", bm_dome, mats.hull_dark)
 
-    # 2. Spherical Gimbal Bearing Joint (z = 0.60m to 0.75m)
-    bm_gimbal = make_sphere(0.38, center=(0, 0, 0.68), u_seg=20, v_seg=12)
-    add_mesh_obj("gimbal_bearing", bm_gimbal, mats.hull_dark)
+    # Mounting/thrust structure inside the module envelope.
+    add_mesh_obj(
+        "thrust_structure",
+        make_cylinder(1.45, 1.45, 0.42, z_center=0.28, segments=40),
+        mats.titanium,
+    )
+    for zr in [0.11, 0.43]:
+        add_mesh_obj(
+            f"thrust_mount_ring_{zr}",
+            make_torus(major_r=1.43, minor_r=0.032, z_center=zr, major_seg=40, minor_seg=8),
+            mats.fastener,
+        )
 
-    # 3. Dual Hydraulic Gimbal Actuators with Pivot Clevises
-    # Mounted at 90 deg separation to provide pitch and yaw vectoring
-    for act_ang in [0.0, math.pi / 2.0]:
-        x_top = 0.90 * math.cos(act_ang)
-        y_top = 0.90 * math.sin(act_ang)
-        x_bot = 0.50 * math.cos(act_ang)
-        y_bot = 0.50 * math.sin(act_ang)
-        # Actuator cylinder
-        bm_act = make_cylinder(0.05, 0.05, 0.65, z_center=0.45, segments=12)
-        # Vector towards gimbal point
-        t_dir = (Vector((x_bot, y_bot, 0.20)) - Vector((x_top, y_top, 0.75))).normalized()
-        transform_bm(bm_act, Matrix.Translation(Vector(((x_top + x_bot) * 0.5, (y_top + y_bot) * 0.5, 0.45))))
-        add_mesh_obj(f"gimbal_actuator_{act_ang}", bm_act, mats.pipe)
+    # Injector dome and valve block.
+    add_mesh_obj(
+        "injector_dome",
+        make_lathe([
+            (0.00, 0.24),
+            (0.38, 0.22),
+            (0.62, 0.15),
+            (0.74, 0.06),
+        ], segments=32),
+        mats.titanium,
+    )
+    add_mesh_obj(
+        "engine_valve_block",
+        make_box(0.62, 0.48, 0.24, center=(0.0, 0.0, 0.37)),
+        mats.recessed,
+    )
 
-    # 4. Authentic Rao Parabolic Contour Bell Nozzle
-    # Smooth expansion curve from throat (R=0.35m at z=+0.50m) to exit (R=1.35m at z=-1.75m)
-    # Profile points derived from characteristic method of characteristics expansion
-    rao_points = [
-        (0.36,  0.50), # Throat entrance
-        (0.34,  0.42), # Throat minimum (choked flow)
-        (0.38,  0.30), # Initial expansion expansion flare
-        (0.48,  0.10), # Parabolic inflection
-        (0.62, -0.20),
-        (0.78, -0.55),
-        (0.96, -0.95),
-        (1.15, -1.35),
-        (1.35, -1.75), # Exit skirt rim
+    # Compact spherical gimbal bearing.
+    add_mesh_obj("gimbal_bearing", make_sphere(0.25, center=(0, 0, 0.02), u_seg=20, v_seg=12), mats.fastener)
+
+    # Ablative bell; less exaggerated than the former 3.5 m-long modern Rao unit.
+    bell_points = [
+        (0.31,  0.10),
+        (0.29,  0.04),
+        (0.34, -0.08),
+        (0.46, -0.28),
+        (0.64, -0.52),
+        (0.86, -0.77),
+        (1.08, -1.00),
     ]
-    bm_bell = make_lathe(rao_points, segments=48)
-    add_mesh_obj("nozzle_bell", bm_bell, mats.nozzle_bell)
+    add_mesh_obj("nozzle_bell", make_lathe(bell_points, segments=48), mats.nozzle_bell)
 
-    # 5. Regenerative Cooling Tube Ribs & Circumferential Hat Bands
-    # Exterior stiffener hat-bands along the nozzle bell
-    for zb, rb in [(0.10, 0.49), (-0.40, 0.71), (-1.00, 0.99), (-1.55, 1.25), (-1.74, 1.36)]:
-        bm_band = make_torus(major_r=rb, minor_r=0.025, z_center=zb, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"nozzle_band_{zb}", bm_band, mats.nozzle_rib)
+    # Bell retaining/stiffener bands and a metallic exit lip.
+    for z, r in [(-0.30, 0.47), (-0.58, 0.69), (-0.82, 0.90)]:
+        add_mesh_obj(
+            f"nozzle_retainer_{z}",
+            make_torus(major_r=r, minor_r=0.018, z_center=z, major_seg=40, minor_seg=6),
+            mats.nozzle_rib,
+        )
+    add_mesh_obj(
+        "nozzle_exit_lip",
+        make_torus(major_r=1.08, minor_r=0.028, z_center=-1.00, major_seg=48, minor_seg=8),
+        mats.nozzle_rib,
+    )
 
-    # 16 Longitudinal cooling manifold tube runs on the bell exterior
-    for i in range(16):
-        ang = i * 2.0 * math.pi / 16
-        c_pts = []
-        for r_p, z_p in rao_points[1:]:
-            c_pts.append(Vector(((r_p + 0.015) * math.cos(ang), (r_p + 0.015) * math.sin(ang), z_p)))
-        bm_tube = make_pipe(c_pts, radius=0.012, segments=6)
-        add_mesh_obj(f"cooling_tube_{i}", bm_tube, mats.nozzle_rib)
+    # Two large propellant feeds and two smaller control/pressurization lines.
+    feed_paths = [
+        [Vector((0.95, 0.25, 0.45)), Vector((0.72, 0.20, 0.18)), Vector((0.46, 0.14, 0.02))],
+        [Vector((-0.95, -0.25, 0.45)), Vector((-0.72, -0.20, 0.18)), Vector((-0.46, -0.14, 0.02))],
+    ]
+    for i, pts in enumerate(feed_paths):
+        add_mesh_obj(f"main_feed_{i}", make_pipe(pts, radius=0.055, segments=12), mats.pipe)
+    for i, y in enumerate([-0.46, 0.46]):
+        add_mesh_obj(
+            f"control_line_{i}",
+            make_pipe([
+                Vector((0.62, y, 0.44)),
+                Vector((0.46, y * 0.72, 0.16)),
+                Vector((0.34, y * 0.45, -0.02)),
+            ], radius=0.022, segments=10),
+            mats.pipe,
+        )
 
-    # Turbopump exhaust manifold torus wrapped around throat collar
-    bm_turbo = make_torus(major_r=0.55, minor_r=0.06, z_center=0.35, major_seg=24, minor_seg=8)
-    add_mesh_obj("turbopump_manifold", bm_turbo, mats.pipe)
+    # Two-axis gimbal actuators represented as actual endpoint-to-endpoint rods.
+    for i, (top, bottom) in enumerate([
+        (Vector((0.88, 0.0, 0.42)), Vector((0.34, 0.0, -0.10))),
+        (Vector((0.0, 0.88, 0.42)), Vector((0.0, 0.34, -0.10))),
+    ]):
+        add_mesh_obj(f"gimbal_actuator_{i}", make_pipe([top, bottom], radius=0.045, segments=12), mats.pipe)
+        add_lowpoly_fastener(f"gimbal_pivot_top_{i}", top, mats.fastener, radius=0.055)
+        add_lowpoly_fastener(f"gimbal_pivot_bottom_{i}", bottom, mats.fastener, radius=0.050)
 
     export_glb(os.path.join(OUT_DIR, "thruster-standard.glb"))
 
+
 # ----------------------------------------------------------------------
-# 5. Solid Rocket Booster (booster-standard: length 5.0m, diameter 3.5m, radius 1.75m)
+# 5. Solid Rocket Booster (booster-standard: catalog length 6m)
+# Early large solid-stage cues: segmented steel case, modest ogive cap,
+# service conduit, separation motors and a dark ablative nozzle.
 # ----------------------------------------------------------------------
 def build_booster():
     reset_scene()
     mats = MaterialLibrary()
     radius = 1.75
-    half_len = 2.50
-    
-    # 1. Main Casing Lathe Profile
-    # Forward aerodynamic nose cone (z = +1.5m to +2.5m)
-    # Cylindrical motor casing (z = -1.2m to +1.5m)
-    # Flared aft skirt (z = -2.5m to -1.2m)
+    half_len = 3.00
+
     booster_profile = [
-        (0.35,  2.50), # Nose tip cap
-        (0.90,  2.25), # Nose cone slope
-        (1.45,  1.85),
-        (1.75,  1.50), # Shoulder transition to cylinder
-        (1.75, -1.20), # Main solid propellant motor cylinder
-        (1.78, -1.60), # Aft skirt attachment joint
-        (1.85, -2.20), # Flared aerodynamic skirt
-        (1.90, -2.50), # Aft skirt exit base
+        (0.26,  3.00),
+        (0.78,  2.78),
+        (1.34,  2.42),
+        (1.68,  2.05),
+        (1.75,  1.82),
+        (1.75, -1.92),
+        (1.80, -2.20),
+        (1.91, -2.72),
+        (1.94, -3.00),
     ]
-    bm_casing = make_lathe(booster_profile, segments=48)
-    add_mesh_obj("booster_casing", bm_casing, mats.hull)
+    add_mesh_obj("booster_casing", make_lathe(booster_profile, segments=56), mats.aluminium)
 
-    # 2. Casing Segment Joint Bands (SRB field joints with O-ring band retainers)
-    for zj in [-0.50, 0.50, 1.45]:
-        bm_joint = make_torus(major_r=radius + 0.02, minor_r=0.035, z_center=zj, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"booster_joint_{zj}", bm_joint, mats.hull_dark)
+    # Field-joint / segment bands.
+    for zj in [-1.15, -0.10, 0.95, 1.80]:
+        add_mesh_obj(
+            f"booster_joint_{zj}",
+            make_torus(major_r=radius + 0.012, minor_r=0.030, z_center=zj, major_seg=44, minor_seg=8),
+            mats.titanium,
+        )
 
-    # 3. Forward Jettison / Separation Motor Pods
-    # 4 small canted solid rocket nozzles for stage separation
+    # Longitudinal instrumentation/service conduit with bolted covers.
+    add_mesh_obj(
+        "booster_service_conduit",
+        make_box(0.055, 0.30, 3.70, center=(radius * 0.992, 0.0, 0.05)),
+        mats.titanium,
+    )
+    for k in range(7):
+        z = -1.45 + k * 0.50
+        add_lowpoly_fastener(
+            f"booster_conduit_fastener_{k}",
+            (radius * 1.015, 0.0, z),
+            mats.fastener,
+            radius=0.016,
+        )
+
+    # Four canted separation motors near the forward shoulder.
     for k in range(4):
         ang = k * math.pi / 2.0
-        pos_sep = (1.50 * math.cos(ang), 1.50 * math.sin(ang), 1.85)
-        bm_sep = make_cylinder(0.10, 0.06, 0.25, z_center=0.0, segments=12)
-        # Cant 35 degrees outwards and forward
-        rot = Euler((math.radians(35) * math.sin(ang), -math.radians(35) * math.cos(ang), ang))
-        transform_bm(bm_sep, rot.to_matrix().to_4x4())
-        transform_bm(bm_sep, Matrix.Translation(Vector(pos_sep)))
-        add_mesh_obj(f"sep_motor_{k}", bm_sep, mats.nozzle_rib)
+        radial = Vector((math.cos(ang), math.sin(ang), 0.0))
+        pos = radial * 1.60 + Vector((0, 0, 2.17))
+        nozzle = make_cylinder(0.090, 0.048, 0.23, z_center=0.0, segments=12)
+        direction = (radial * 0.72 + Vector((0, 0, 0.69))).normalized()
+        q = Vector((0, 0, 1)).rotation_difference(direction)
+        transform_bm(nozzle, q.to_matrix().to_4x4())
+        transform_bm(nozzle, Matrix.Translation(pos))
+        add_mesh_obj(f"sep_motor_{k}", nozzle, mats.nozzle_bell)
 
-    # 4. Large Expansion Rao Nozzle inside the aft skirt
+    # Aft skirt and ablative nozzle.
     nozzle_profile = [
-        (0.45, -1.20), # Throat
-        (0.58, -1.50),
-        (0.80, -1.85),
-        (1.10, -2.20),
-        (1.40, -2.50), # Bell exit
+        (0.38, -1.88),
+        (0.47, -2.08),
+        (0.66, -2.35),
+        (0.91, -2.67),
+        (1.15, -2.95),
     ]
-    bm_srb_nozzle = make_lathe(nozzle_profile, segments=36)
-    add_mesh_obj("booster_nozzle", bm_srb_nozzle, mats.nozzle_bell)
-    
-    # Skirt reinforcement ribs
+    add_mesh_obj("booster_nozzle", make_lathe(nozzle_profile, segments=44), mats.nozzle_bell)
+    add_mesh_obj(
+        "booster_nozzle_lip",
+        make_torus(major_r=1.15, minor_r=0.028, z_center=-2.95, major_seg=44, minor_seg=8),
+        mats.nozzle_rib,
+    )
     for i in range(8):
         ang = i * math.pi / 4.0
-        bm_rib = make_box(0.08, 0.18, 1.20, center=(1.82 * math.cos(ang), 1.82 * math.sin(ang), -1.85), rot_euler=(0, 0, ang))
-        add_mesh_obj(f"skirt_rib_{i}", bm_rib, mats.hull_dark)
+        add_mesh_obj(
+            f"skirt_rib_{i}",
+            make_box(
+                0.055, 0.14, 0.76,
+                center=(1.86 * math.cos(ang), 1.86 * math.sin(ang), -2.55),
+                rot_euler=(0, 0, ang),
+            ),
+            mats.titanium,
+        )
 
     export_glb(os.path.join(OUT_DIR, "booster-standard.glb"))
+
 
 # ----------------------------------------------------------------------
 # 6. RCS Module (rcs-standard: length 1.5m, diameter 2.0m, radius 1.0m)
