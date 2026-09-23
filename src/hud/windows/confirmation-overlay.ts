@@ -10,8 +10,8 @@ const STYLE = `
 }
 #hud .confirmation-overlay[hidden] { display: none !important; }
 #hud .confirmation-overlay-panel {
-  width: min(32rem, calc(100vw - var(--space-6) * 2));
-  padding: var(--space-6); color: var(--text); text-align: center;
+  width: min(32rem, calc(100vw - var(--space-6) * 2)); max-height: var(--overlay-max-h-s);
+  overflow-y: auto; padding: var(--space-6); color: var(--text); text-align: center;
 }
 #hud .confirmation-overlay-message { margin-bottom: var(--space-5); white-space: pre-wrap; }
 #hud .confirmation-overlay-actions { display: flex; justify-content: center; gap: var(--space-3); }
