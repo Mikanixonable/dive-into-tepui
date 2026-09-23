@@ -625,6 +625,7 @@ try {
     port,
     debugPort,
     profilePrefix: 'tepui-smoke-',
+    extraLaunchArgs: layoutOnly ? ['--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader'] : [],
     onEvent: (event) => {
       if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
       if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error'
