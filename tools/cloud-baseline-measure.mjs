@@ -1,6 +1,7 @@
-// 雲なし／雲ありの計測対象描画パス合計を、反復ブロックで比較する。
-// フレーム全体の GPU 完了時刻や画面提示時刻とは区別する。
+// 雲なし／雲ありの観測済み render timestamp 合計を、反復ブロックで比較する。
+// すべての GPU 命令の完了時刻や画面提示時刻とは区別する。
 import { writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -14,6 +15,67 @@ const modes = [
   { id: 'generated-standard', source: 'generated' },
   { id: 'observed-standard', source: 'observed' },
 ];
+
+function distribution(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  const percentile = (ratio) => sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
+  return {
+    samples: values.length,
+    avg: values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length,
+    p50: percentile(0.5),
+    p95: percentile(0.95),
+    min: sorted[0] ?? 0,
+    max: sorted.at(-1) ?? 0,
+  };
+}
+
+function summarizeObservedRenderRepeats(blocks) {
+  const modesSummary = {};
+  for (const mode of modes) {
+    const deltas = [];
+    const noise = [];
+    for (const block of blocks) {
+      const runs = block.modes[mode.id];
+      const before = runs.offBefore.measurement.observedRenderTotalMs.p95;
+      const cloud = runs.cloudOn.measurement.observedRenderTotalMs.p95;
+      const after = runs.offAfter.measurement.observedRenderTotalMs.p95;
+      deltas.push(cloud - (before + after) / 2);
+      noise.push(Math.abs(after - before));
+    }
+    modesSummary[mode.id] = {
+      pairedObservedRenderP95DeltaMs: distribution(deltas),
+      offOffRepeatabilityNoiseFloorMs: distribution(noise),
+    };
+  }
+  return {
+    scope: 'observed-render-total',
+    pairedDeltaDefinition: 'cloud-on observed-render p95 minus the mean of the same block\'s surrounding cloud-off observed-render p95 values',
+    noiseFloorDefinition: 'absolute difference between the same block\'s surrounding cloud-off observed-render p95 values',
+    modes: modesSummary,
+  };
+}
+
+function systemGraphicsIdentity() {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const result = execFileSync('system_profiler', ['-json', 'SPDisplaysDataType'], {
+      encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const displays = JSON.parse(result).SPDisplaysDataType ?? [];
+    return displays.map((display) => ({
+      chipset: display.sppci_model ?? null,
+      vendor: display.sppci_vendor ?? null,
+      cores: display.sppci_cores ?? null,
+      metalSupport: display.spdisplays_mtlgpufamilysupport ?? null,
+      displays: (display.spdisplays_ndrvs ?? []).map((screen) => ({
+        resolution: screen._spdisplays_resolution ?? null,
+        pixelDepth: screen.spdisplays_pixels ?? null,
+      })),
+    }));
+  } catch {
+    return null;
+  }
+}
 
 async function main() {
   const { fatalEvents, onEvent } = collectFatalEvents();
@@ -77,10 +139,18 @@ async function main() {
           if (run.measurement.gpuSupported && !(run.measurement.gpuPassTotalMs.p95 > 0)) {
             throw new Error(`Timestamp queries returned no usable pass timings for ${mode.id}/${label}`);
           }
+          if (run.measurement.gpuSupported
+            && (run.measurement.observedRenderCompleteFrames !== run.measurement.frames
+              || !(run.measurement.observedRenderTotalMs.p95 > 0))) {
+            throw new Error(`Observed render timestamps were incomplete for ${mode.id}/${label}`);
+          }
         }
         block.modes[mode.id] = { offBefore: before, cloudOn: cloud, offAfter: after };
-        console.log(`${mode.id} block=${index + 1}/${BLOCK_COUNT}: instrumented pass p95 `
-          + `off=${before.measurement.gpuPassTotalMs.p95.toFixed(3)}/`
+        console.log(`${mode.id} block=${index + 1}/${BLOCK_COUNT}: observed render p95 `
+          + `off=${before.measurement.observedRenderTotalMs.p95.toFixed(3)}/`
+          + `${after.measurement.observedRenderTotalMs.p95.toFixed(3)} ms, `
+          + `cloud=${cloud.measurement.observedRenderTotalMs.p95.toFixed(3)} ms; `
+          + `instrumented pass p95 off=${before.measurement.gpuPassTotalMs.p95.toFixed(3)}/`
           + `${after.measurement.gpuPassTotalMs.p95.toFixed(3)} ms, `
           + `cloud=${cloud.measurement.gpuPassTotalMs.p95.toFixed(3)} ms`);
       }
@@ -92,9 +162,20 @@ async function main() {
       .every((entry) => entry.offBefore.measurement.gpuSupported
         && entry.cloudOn.measurement.gpuSupported
         && entry.offAfter.measurement.gpuSupported));
+    const computeQueryCount = blocks.reduce((sum, block) => sum + Object.values(block.modes).reduce((modeSum, entry) =>
+      modeSum + ['offBefore', 'cloudOn', 'offAfter'].reduce((runSum, key) =>
+        runSum + entry[key].measurement.observedComputeResolvedQueryCounts.reduce((count, queries) => count + queries, 0), 0), 0), 0);
+    const computeExpectedQueryCount = blocks.reduce((sum, block) => sum + Object.values(block.modes).reduce((modeSum, entry) =>
+      modeSum + ['offBefore', 'cloudOn', 'offAfter'].reduce((runSum, key) =>
+        runSum + entry[key].measurement.observedComputeExpectedQueryCounts.reduce((count, queries) => count + queries, 0), 0), 0), 0);
     const result = {
       recordedAt: new Date().toISOString(),
-      host: { platform: process.platform, architecture: process.arch, osRelease: os.release() },
+      host: {
+        platform: process.platform,
+        architecture: process.arch,
+        osRelease: os.release(),
+        systemGraphics: systemGraphicsIdentity(),
+      },
       browser: { product: browser.product, userAgent: browser.userAgent, jsVersion: browser.jsVersion },
       device,
       caseName: 'earth',
@@ -102,15 +183,36 @@ async function main() {
       blockCount: BLOCK_COUNT,
       quality: { cumulusDetail: 'standard' },
       initialGraphicsSettings,
-      measurementScope: 'instrumented-render-pass-sum',
+      measurementScope: 'observed-render-total',
+      passMeasurementScope: 'instrumented-render-pass-sum',
+      fullFrameGpuB0: {
+        status: 'not-measured',
+        reason: 'Renderer render timestamps omit GPU work outside renderer.render(), and presentation timing is not measured.',
+      },
       gpuSupported,
+      observedRenderSupported: blocks.every((block) => Object.values(block.modes)
+        .every((entry) => ['offBefore', 'cloudOn', 'offAfter'].every((key) =>
+          entry[key].measurement.observedRenderCompleteFrames === entry[key].measurement.frames))),
+      computeMeasurement: {
+        scope: 'renderer-compute-query-sum',
+        status: computeExpectedQueryCount === 0
+          ? 'no-renderer-compute-query-uids-issued'
+          : computeQueryCount === computeExpectedQueryCount
+            ? 'renderer-compute-query-uids-resolved' : 'renderer-compute-query-uids-incomplete',
+        queryResolutionComplete: blocks.every((block) => Object.values(block.modes)
+          .every((entry) => ['offBefore', 'cloudOn', 'offAfter'].every((key) =>
+            entry[key].measurement.observedComputeCompleteFrames === entry[key].measurement.frames))),
+        queryCount: computeQueryCount,
+        expectedQueryCount: computeExpectedQueryCount,
+      },
       qualification: {
         status: 'not-established',
-        reason: 'No target device/browser identity was specified for this run; timestamp-query support does not establish hardware suitability.',
+        reason: 'Hardware and browser identity are recorded when available; target suitability and acceptable baseline variance are not established.',
       },
       statistics: summarizeBaselineBlocks(blocks),
+      observedRenderStatistics: summarizeObservedRenderRepeats(blocks),
       blocks,
-      interpretation: 'These are instrumented render-pass sums, not whole-frame GPU B0. Paired p95 deltas compare per-measurement instrumented-pass p95 values; the off/off noise floor is reported separately. No pass/fail threshold is applied.',
+      interpretation: 'observed-render-total sums resolved GPU timestamp durations for every renderer.render() UID attributed to each measured lab frame, including calls without a named pass. It excludes GPU work outside renderer.render(), including compute and uninstrumented WebGPU operations, so it is not full-frame GPU B0. Compute renderer queries are reported separately. Both paired p95 deltas and off/off repeatability are descriptive only; no pass/fail threshold is applied.',
     };
     writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
     console.log(`Wrote ${path.relative(root, outputPath)}`);

@@ -38,6 +38,18 @@ export interface LabMeasurement {
   readonly gpuSupported: boolean;
   readonly gpuPassTotalScope: 'instrumented-render-pass-sum';
   readonly gpuPassTotalMs: SampleDistribution;
+  readonly observedRenderTotalScope: 'observed-render-total';
+  readonly observedRenderTotalMs: SampleDistribution;
+  readonly observedRenderTotalSamplesMs: readonly (number | null)[];
+  readonly observedRenderCompleteFrames: number;
+  readonly observedRenderExpectedQueryCounts: readonly number[];
+  readonly observedRenderResolvedQueryCounts: readonly number[];
+  readonly observedComputeScope: 'renderer-compute-query-sum';
+  readonly observedComputeMs: SampleDistribution;
+  readonly observedComputeSamplesMs: readonly (number | null)[];
+  readonly observedComputeCompleteFrames: number;
+  readonly observedComputeExpectedQueryCounts: readonly number[];
+  readonly observedComputeResolvedQueryCounts: readonly number[];
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
@@ -250,7 +262,7 @@ export class LabView {
   }
 
   // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
-  public render(displayTime = 0): void {
+  public render(displayTime = 0, observedFrame = false): void {
     if (this.current === null) return;
     const graphics = this.graphics.current;
     // カメラを観察の向きへ置く。画角と遠クリップ距離の書き換えは、投影行列を組み直すまで無言で効かない。
@@ -294,9 +306,13 @@ export class LabView {
       graphics.atmosphere,
     ));
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, camera, this.style);
-    this.lastRenderCpuMs = performance.now() - startedAt;
-    this.gpu.resolve();
+    try {
+      this.pipeline.render(this.scene, camera, this.style);
+    } finally {
+      this.lastRenderCpuMs = performance.now() - startedAt;
+      if (observedFrame) this.gpu.endObservedFrame();
+      this.gpu.resolve();
+    }
   }
 
   // ケースを表示して測る。angles を渡すと、ケース既定の観察の向きへそれを重ねてから測る。
@@ -323,15 +339,28 @@ export class LabView {
     // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
     const cpuSamples: number[] = [];
     const gpuPassTotalSamples: number[] = [];
+    const observedRenderSamples: Array<number | null> = [];
+    const observedRenderExpectedQueryCounts: number[] = [];
+    const observedRenderResolvedQueryCounts: number[] = [];
+    const observedComputeSamples: Array<number | null> = [];
+    const observedComputeExpectedQueryCounts: number[] = [];
+    const observedComputeResolvedQueryCounts: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const motion = new ProteinMotionMetricsRecorder();
     for (let frame = 0; frame < sampleFrames; frame++) {
       const displayTime = (warmupFrames + frame + 1) / 60;
+      this.gpu.beginObservedFrame();
       const motionSample = this.current?.updateProteinMotion?.(displayTime);
-      this.render(displayTime);
+      this.render(displayTime, true);
       cpuSamples.push(this.lastRenderCpuMs);
       await this.gpu.waitForResolve();
       const timings = this.gpu.snapshot();
+      observedRenderSamples.push(timings.observedRenderComplete ? timings.observedRenderTotalMs : null);
+      observedRenderExpectedQueryCounts.push(timings.observedRenderExpectedQueryCount);
+      observedRenderResolvedQueryCounts.push(timings.observedRenderQueryCount);
+      observedComputeSamples.push(timings.observedComputeComplete ? timings.observedComputeTotalMs : null);
+      observedComputeExpectedQueryCounts.push(timings.observedComputeExpectedQueryCount);
+      observedComputeResolvedQueryCounts.push(timings.observedComputeQueryCount);
       let passTotalMs = 0;
       for (let index = 0; index < GPU_PASS_COUNT; index += 1) {
         passTotalMs += timings.elapsedMs[index] ?? 0;
@@ -348,6 +377,22 @@ export class LabView {
       gpuSupported: this.gpu.snapshot().supported,
       gpuPassTotalScope: 'instrumented-render-pass-sum',
       gpuPassTotalMs: distributionOf(gpuPassTotalSamples),
+      observedRenderTotalScope: 'observed-render-total',
+      observedRenderTotalMs: distributionOf(observedRenderSamples.filter(
+        (sample): sample is number => sample !== null,
+      )),
+      observedRenderTotalSamplesMs: observedRenderSamples,
+      observedRenderCompleteFrames: observedRenderSamples.filter((sample) => sample !== null).length,
+      observedRenderExpectedQueryCounts,
+      observedRenderResolvedQueryCounts,
+      observedComputeScope: 'renderer-compute-query-sum',
+      observedComputeMs: distributionOf(observedComputeSamples.filter(
+        (sample): sample is number => sample !== null,
+      )),
+      observedComputeSamplesMs: observedComputeSamples,
+      observedComputeCompleteFrames: observedComputeSamples.filter((sample) => sample !== null).length,
+      observedComputeExpectedQueryCounts,
+      observedComputeResolvedQueryCounts,
       gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distributionOf(gpuSamples[index]!)])),
       proteinMotion: motion.summary(),
       proteinCase: this.current?.proteinMotion,
