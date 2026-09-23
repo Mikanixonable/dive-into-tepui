@@ -28,6 +28,10 @@ import { MenuCommon } from '../hud/windows/menu-actions';
 // 一覧で「接近」として数える、viewer からの距離 [m]。
 const ENEMY_APPROACH_DIST = 2e5;
 
+function fmtHp(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+}
+
 // タンパク質の敵が差し出す、戦闘状態の読み出しと部位マーカー。
 export interface EnemyProteinInspection {
   combatReadout(): ProteinCombatReadout;
@@ -88,15 +92,19 @@ export class EnemyInspection implements InspectedObject {
   // viewer から ENEMY_APPROACH_DIST 未満にいれば接近として数える。viewer が無ければ false。
   public listCounted(viewer: OrbitingObject | null, displayTime: number): boolean {
     if (viewer === null) return false;
-    return len(sub(this.posAt(displayTime) ?? this.source.motion.state.r, viewer.motion.state.r)) < ENEMY_APPROACH_DIST;
+    const sourceState = this.source.motion.stateAt(displayTime) ?? this.source.motion.state;
+    const viewerState = viewer.motion.stateAt(displayTime) ?? viewer.motion.state;
+    return len(sub(sourceState.r, viewerState.r)) < ENEMY_APPROACH_DIST;
   }
 
-  // viewer からの距離(接近中は「接近」と冠する)と相対速度。viewer が無ければ空文字。
-  public listDetail(_bodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number): string {
+  // viewer からの距離(接近中は「接近」と冠する)と相対速度。双方を同じ表示時刻で読む。
+  public listDetail(bodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number): string {
     if (viewer === null) return '';
-    const distance = len(sub(this.posAt(displayTime) ?? this.source.motion.state.r, viewer.motion.state.r));
-    const label = this.listCounted(viewer, displayTime) ? '接近' : '距離';
-    return `${label} ${fmtDist(distance)} · ${fmtSpeed(len(sub(this.source.motion.state.v, viewer.motion.state.v)))}`;
+    const sourceState = this.source.motion.stateAt(displayTime, bodies) ?? this.source.motion.state;
+    const viewerState = viewer.motion.stateAt(displayTime, bodies) ?? viewer.motion.state;
+    const distance = len(sub(sourceState.r, viewerState.r));
+    const label = distance < ENEMY_APPROACH_DIST ? '接近' : '距離';
+    return `${label} ${fmtDist(distance)} · ${fmtSpeed(len(sub(sourceState.v, viewerState.v)))}`;
   }
 
   // 検索は行の補助表示と同じ文字列に照合する。
@@ -122,9 +130,9 @@ export class EnemyInspection implements InspectedObject {
 
   // 装甲・viewer との相対距離と速度・軌道・相対傾斜の行。viewer が無ければ相対の行を省く。
   public propertyRows(
-    bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number, _displayTime: number,
+    bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number, displayTime: number,
   ): readonly PropertyRow[] {
-    const rel = viewer ? relativeInfo(viewer, this.source, bodies.celestialMotions, simTime) : null;
+    const rel = viewer ? relativeInfo(viewer, this.source, bodies, displayTime) : null;
     const rows: PropertyRow[] = [];
     // 戦闘判断で最初に読む距離・接近速度を主状態へ上げる。
     if (rel) rows.push(
@@ -132,7 +140,7 @@ export class EnemyInspection implements InspectedObject {
       { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing), presentation: 'major' },
     );
     rows.push({
-      key: 'hp', label: '装甲', value: `${Math.floor(this.source.hp)} / ${this.source.maxHp}`,
+      key: 'hp', label: '装甲', value: `${fmtHp(this.source.hp)} / ${fmtHp(this.source.maxHp)}`,
       presentation: 'major',
     });
     if (rel) rows.push(
