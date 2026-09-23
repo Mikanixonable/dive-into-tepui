@@ -21,7 +21,13 @@ def reset_scene():
     for block in bpy.data.materials: bpy.data.materials.remove(block)
     for block in bpy.data.objects: bpy.data.objects.remove(block)
 
-def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0):
+def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0, transmission=0.0, ior=1.45):
+    """Create a glTF-friendly Principled material.
+
+    Keep the authoritative appearance in values that survive glTF export.
+    Fine scratches, oxide mottling and cloth weave are represented by geometry
+    or later runtime textures rather than unsupported Blender-only procedural nodes.
+    """
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
@@ -30,42 +36,105 @@ def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0):
         bsdf.inputs["Base Color"].default_value = base_color
         bsdf.inputs["Roughness"].default_value = roughness
         bsdf.inputs["Metallic"].default_value = metallic
+        if "Transmission Weight" in bsdf.inputs:
+            bsdf.inputs["Transmission Weight"].default_value = transmission
+        if "IOR" in bsdf.inputs:
+            bsdf.inputs["IOR"].default_value = ior
     return mat
 
+
 class MaterialLibrary:
+    """1960s crewed-spacecraft material vocabulary with a few future modules.
+
+    Mercury/Gemini references are expressed primarily through material boundaries:
+    oxidized nickel-alloy shingles, titanium structure, bare aluminium/beryllium
+    panels, dark elastomer seals, glass, and ablative surfaces.  Generic aliases
+    are kept because the remaining module builders still use them.
+    """
+
     def __init__(self):
-        # Aerospace grade aluminium alloy hull (metalness 1.0)
-        self.hull = create_pbr_material("mat_hull", (0.72, 0.77, 0.82, 1.0), roughness=0.45, metallic=1.0)
-        # Dark titanium structural rings and brackets (metalness 1.0)
-        self.hull_dark = create_pbr_material("mat_hull_dark", (0.28, 0.32, 0.38, 1.0), roughness=0.40, metallic=1.0)
-        # Recessed avionics bay shadow interior (non-metal paint)
-        self.recessed = create_pbr_material("mat_recessed", (0.12, 0.14, 0.17, 1.0), roughness=0.75, metallic=0.0)
-        # Multi-Layer Insulation (Gold Mylar foil)
-        self.mli_gold = create_pbr_material("mat_mli_gold", (0.86, 0.66, 0.16, 1.0), roughness=0.25, metallic=1.0)
-        # Multi-Layer Insulation (Beta Cloth / White Quartz)
-        self.mli_white = create_pbr_material("mat_mli_white", (0.92, 0.94, 0.96, 1.0), roughness=0.70, metallic=0.0)
-        # Stainless steel / Inconel cryo pipes
-        self.pipe = create_pbr_material("mat_pipe", (0.88, 0.90, 0.93, 1.0), roughness=0.30, metallic=1.0)
-        # Pipe mounting clamps / saddle brackets
-        self.clamp = create_pbr_material("mat_clamp", (0.35, 0.40, 0.45, 1.0), roughness=0.35, metallic=1.0)
-        # Rao nozzle bell exterior (burnt high-temp alloy)
-        self.nozzle_bell = create_pbr_material("mat_nozzle_bell", (0.32, 0.28, 0.26, 1.0), roughness=0.42, metallic=1.0)
-        # Nozzle regenerative cooling channels & hat bands
-        self.nozzle_rib = create_pbr_material("mat_nozzle_rib", (0.52, 0.48, 0.44, 1.0), roughness=0.35, metallic=1.0)
-        # Optical quartz multi-layer window
-        self.window = create_pbr_material("mat_window", (0.04, 0.10, 0.18, 1.0), roughness=0.10, metallic=0.0)
-        # Beveled titanium window frame
-        self.window_frame = create_pbr_material("mat_window_frame", (0.22, 0.24, 0.28, 1.0), roughness=0.35, metallic=1.0)
-        # Titanium spherical propellant tanks (RCS)
-        self.tank_rcs = create_pbr_material("mat_tank_rcs", (0.32, 0.52, 0.62, 1.0), roughness=0.38, metallic=1.0)
-        # Space frame structural trusses
-        self.truss = create_pbr_material("mat_truss", (0.68, 0.72, 0.78, 1.0), roughness=0.35, metallic=1.0)
-        # Phenolic carbon-composite ablative heat shield
-        self.heatshield = create_pbr_material("mat_heatshield", (0.16, 0.12, 0.08, 1.0), roughness=0.90, metallic=0.0)
-        # CBM / APAS docking interface ring
-        self.cbm_ring = create_pbr_material("mat_cbm_ring", (0.76, 0.79, 0.84, 1.0), roughness=0.28, metallic=1.0)
-        # Dock construction highlight
-        self.dock = create_pbr_material("mat_dock", (0.84, 0.55, 0.22, 1.0), roughness=0.38, metallic=1.0)
+        # Oxidized Rene 41-like heat-resistant shingle skin: dark, metallic,
+        # slightly uneven-looking rather than "black paint".
+        self.rene41 = create_pbr_material(
+            "mat_rene41_oxidized", (0.050, 0.058, 0.066, 1.0), roughness=0.48, metallic=1.0
+        )
+        self.rene41_alt = create_pbr_material(
+            "mat_rene41_oxidized_alt", (0.075, 0.067, 0.064, 1.0), roughness=0.54, metallic=1.0
+        )
+        self.rene41_edge = create_pbr_material(
+            "mat_rene41_exposed_edge", (0.27, 0.29, 0.31, 1.0), roughness=0.34, metallic=1.0
+        )
+
+        self.titanium = create_pbr_material(
+            "mat_titanium_structure", (0.43, 0.46, 0.49, 1.0), roughness=0.38, metallic=1.0
+        )
+        self.aluminium = create_pbr_material(
+            "mat_aluminium_rolled", (0.72, 0.75, 0.77, 1.0), roughness=0.44, metallic=1.0
+        )
+        self.beryllium = create_pbr_material(
+            "mat_beryllium_skin", (0.56, 0.58, 0.57, 1.0), roughness=0.49, metallic=1.0
+        )
+        self.fastener = create_pbr_material(
+            "mat_fastener", (0.21, 0.23, 0.25, 1.0), roughness=0.30, metallic=1.0
+        )
+        self.gasket = create_pbr_material(
+            "mat_elastomer_gasket", (0.012, 0.014, 0.016, 1.0), roughness=0.82, metallic=0.0
+        )
+        self.recessed = create_pbr_material(
+            "mat_recessed_equipment", (0.055, 0.060, 0.064, 1.0), roughness=0.76, metallic=0.0
+        )
+        self.window = create_pbr_material(
+            "mat_window_glazing", (0.018, 0.028, 0.036, 1.0),
+            roughness=0.055, metallic=0.0, transmission=0.08, ior=1.52
+        )
+        self.window_frame = create_pbr_material(
+            "mat_window_frame_titanium", (0.24, 0.26, 0.27, 1.0), roughness=0.32, metallic=1.0
+        )
+
+        # Thermal/utility surfaces. Gold MLI is intentionally retained only as
+        # an occasional service-bay/internal accent, not a dominant cabin skin.
+        self.mli_gold = create_pbr_material(
+            "mat_mli_gold", (0.78, 0.57, 0.10, 1.0), roughness=0.31, metallic=1.0
+        )
+        self.mli_white = create_pbr_material(
+            "mat_white_thermal_fabric", (0.88, 0.89, 0.87, 1.0), roughness=0.82, metallic=0.0
+        )
+
+        self.pipe = create_pbr_material(
+            "mat_stainless_tubing", (0.70, 0.72, 0.73, 1.0), roughness=0.31, metallic=1.0
+        )
+        self.clamp = create_pbr_material(
+            "mat_pipe_clamp", (0.29, 0.31, 0.32, 1.0), roughness=0.37, metallic=1.0
+        )
+        self.nozzle_bell = create_pbr_material(
+            "mat_ablative_nozzle", (0.18, 0.15, 0.13, 1.0), roughness=0.67, metallic=0.35
+        )
+        self.nozzle_rib = create_pbr_material(
+            "mat_nozzle_hardware", (0.42, 0.40, 0.38, 1.0), roughness=0.38, metallic=1.0
+        )
+        self.tank_rcs = create_pbr_material(
+            "mat_titanium_pressure_vessel", (0.42, 0.45, 0.46, 1.0), roughness=0.40, metallic=1.0
+        )
+        self.truss = create_pbr_material(
+            "mat_titanium_truss", (0.52, 0.54, 0.55, 1.0), roughness=0.38, metallic=1.0
+        )
+        self.heatshield = create_pbr_material(
+            "mat_ablation_heatshield", (0.105, 0.073, 0.050, 1.0), roughness=0.94, metallic=0.0
+        )
+        self.heatshield_char = create_pbr_material(
+            "mat_ablation_char", (0.035, 0.028, 0.023, 1.0), roughness=0.98, metallic=0.0
+        )
+        self.cbm_ring = create_pbr_material(
+            "mat_docking_hardware", (0.57, 0.59, 0.60, 1.0), roughness=0.31, metallic=1.0
+        )
+        self.dock = create_pbr_material(
+            "mat_construction_marker", (0.72, 0.39, 0.10, 1.0), roughness=0.48, metallic=0.35
+        )
+
+        # Compatibility aliases used by non-cockpit builders.
+        self.hull = self.aluminium
+        self.hull_dark = self.titanium
+
 
 def add_mesh_obj(name, bm, material=None):
     me = bpy.data.meshes.new(name)
@@ -204,105 +273,216 @@ def make_sphere(radius, center=(0, 0, 0), u_seg=24, v_seg=16):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return bm
 
+
+def make_tangent_trapezoid(thickness, width_bottom, width_top, height, center, angle):
+    """Thin trapezoidal plate tangent to a cylindrical/conical surface.
+
+    Local +X is radial, local Y is circumferential and local Z is axial.
+    """
+    bm = bmesh.new()
+    x0 = -thickness * 0.5
+    x1 = thickness * 0.5
+    zb = -height * 0.5
+    zt = height * 0.5
+    verts = []
+    for x in [x0, x1]:
+        verts.extend([
+            bm.verts.new((x, -width_bottom * 0.5, zb)),
+            bm.verts.new((x,  width_bottom * 0.5, zb)),
+            bm.verts.new((x,  width_top * 0.5, zt)),
+            bm.verts.new((x, -width_top * 0.5, zt)),
+        ])
+    for face in [
+        (0, 1, 2, 3), (4, 7, 6, 5),
+        (0, 4, 5, 1), (1, 5, 6, 2),
+        (2, 6, 7, 3), (3, 7, 4, 0),
+    ]:
+        bm.faces.new([verts[i] for i in face])
+    mat = Matrix.Translation(Vector(center)) @ Euler((0, 0, angle)).to_matrix().to_4x4()
+    transform_bm(bm, mat)
+    return bm
+
+
+def add_lowpoly_fastener(name, center, material, radius=0.016):
+    bm = make_sphere(radius, center=center, u_seg=8, v_seg=5)
+    return add_mesh_obj(name, bm, material)
+
+
+def add_radial_shingle_skin(mats, bands, sectors=18):
+    """Add overlapping Mercury/Gemini-like heat-resistant outer shingles.
+
+    bands contains (z0, z1, r0, r1).  Small gaps and alternating oxide tones
+    provide the large-scale roughness cue without relying on non-exportable noise.
+    """
+    dtheta = 2.0 * math.pi / sectors
+    for b, (z0, z1, r0, r1) in enumerate(bands):
+        z_mid = (z0 + z1) * 0.5
+        r_mid = (r0 + r1) * 0.5
+        h = max(0.05, (z1 - z0) - 0.025)
+        chord = 2.0 * r_mid * math.sin(dtheta * 0.5) * 0.955
+        for i in range(sectors):
+            ang = i * dtheta + (0.5 * dtheta if b % 2 else 0.0)
+            center = ((r_mid + 0.010) * math.cos(ang), (r_mid + 0.010) * math.sin(ang), z_mid)
+            mat = mats.rene41 if (i + b) % 4 else mats.rene41_alt
+            plate = make_box(0.022, chord, h, center=center, rot_euler=(0, 0, ang))
+            add_mesh_obj(f"heat_shingle_{b}_{i}", plate, mat)
+
+
 # ----------------------------------------------------------------------
-# 1. Cockpit Module (cockpit-standard: length 4m, diameter 6m, radius 3m)
+# 1. Cockpit Module (cockpit-standard: catalog length 3m, diameter 6m)
+# Mercury/Gemini visual language: dark heat-resistant shingles, mechanical
+# hatch/window hardware, small recessed RCS jets and a compact docking collar.
 # ----------------------------------------------------------------------
 def build_cockpit():
     reset_scene()
     mats = MaterialLibrary()
-    
-    # 1. Re-entry capsule tapered lathe profile
-    # Smooth transition from aft R=3.0m to forward R=2.25m with aerodynamic curve
-    points = [
-        (2.98, -2.00), # Aft docking rim
-        (3.02, -1.85), # Heat shield transition flare
-        (3.00, -1.20), # Cylindrical aft section
-        (2.96, -0.40), # Mid fuselage taper start
-        (2.82,  0.40), # Forward conical taper
-        (2.55,  1.20), # Window / cockpit collar
-        (2.35,  1.75), # Forward nose taper
-        (2.15,  1.95), # CBM collar step
-        (2.10,  2.00), # Forward docking interface
+
+    half_len = 1.50
+
+    # Pressure-vessel / primary shape.  Keep the authoritative solid within the
+    # catalog's 3 m axial envelope; only tiny hardware may project beyond it.
+    profile = [
+        (2.92, -1.43),
+        (3.00, -1.32),
+        (2.98, -0.95),
+        (2.90, -0.35),
+        (2.70,  0.28),
+        (2.38,  0.82),
+        (1.98,  1.22),
+        (1.73,  1.43),
     ]
-    bm_hull = make_lathe(points, segments=48)
-    add_mesh_obj("cockpit_hull", bm_hull, mats.hull)
-    
-    # 2. Aft Phenolic Heat Shield (curved ablative dome)
-    bm_shield = make_lathe([
-        (0.00, -2.08),
-        (1.50, -2.06),
-        (2.50, -2.03),
-        (2.98, -2.00),
-    ], segments=36)
-    add_mesh_obj("cockpit_heatshield", bm_shield, mats.heatshield)
-    
-    # 3. Forward CBM / APAS Docking Flange Ring (torus)
-    bm_cbm = make_torus(major_r=2.12, minor_r=0.06, z_center=1.98, major_seg=36, minor_seg=12)
-    add_mesh_obj("cockpit_cbm_ring", bm_cbm, mats.cbm_ring)
-    
-    # 4. Beveled Dual Trapezoidal Windows (Gemini / Soyuz style)
-    # Positioned at +Y (top side) at angles +/- 22 degrees, z = 0.8m to 1.4m
+    add_mesh_obj("cockpit_pressure_shell", make_lathe(profile, segments=64), mats.titanium)
+
+    # Aft ablative shield: shallow, visibly separate, and darker at the centre.
+    shield = make_lathe([
+        (0.00, -1.49),
+        (1.10, -1.485),
+        (2.15, -1.465),
+        (2.82, -1.415),
+        (2.94, -1.37),
+    ], segments=56)
+    add_mesh_obj("cockpit_heatshield", shield, mats.heatshield)
+    char_disc = make_cylinder(1.05, 1.05, 0.018, z_center=-1.498, segments=40)
+    add_mesh_obj("cockpit_heatshield_char", char_disc, mats.heatshield_char)
+
+    # Heat-resistant shingle skin.  This replaces the previous single silver
+    # surface and the unrealistic external circumferential frame ribs.
+    add_radial_shingle_skin(mats, [
+        (-1.30, -0.88, 2.98, 2.97),
+        (-0.88, -0.38, 2.97, 2.91),
+        (-0.38,  0.16, 2.91, 2.75),
+        ( 0.16,  0.68, 2.75, 2.47),
+        ( 0.68,  1.10, 2.47, 2.08),
+        ( 1.10,  1.38, 2.08, 1.78),
+    ], sectors=18)
+
+    # Exposed aft and forward metal transition strips.
+    for z, r in [(-1.31, 2.96), (1.39, 1.76)]:
+        add_mesh_obj(
+            f"transition_strip_{z}",
+            make_torus(major_r=r, minor_r=0.025, z_center=z, major_seg=48, minor_seg=8),
+            mats.rene41_edge,
+        )
+
+    # Twin Gemini-like side hatches integrated into the shingle field.
+    # Each hatch carries a trapezoidal window, gasket and mechanical latches.
     for sign in [-1.0, 1.0]:
-        ang = sign * math.radians(22)
-        r_mid = 2.65
-        z_mid = 1.05
-        # Frame
-        rot = (math.radians(-18), 0, -ang)
-        pos = (r_mid * math.sin(ang), r_mid * math.cos(ang), z_mid)
-        bm_frame = make_box(0.55, 0.08, 0.70, center=pos, rot_euler=rot)
-        add_mesh_obj(f"window_frame_{sign}", bm_frame, mats.window_frame)
-        
-        # Inset Glass Pane (recessed inside frame)
-        pos_glass = (pos[0] * 0.98, pos[1] * 0.98, pos[2])
-        bm_glass = make_box(0.48, 0.03, 0.62, center=pos_glass, rot_euler=rot)
-        add_mesh_obj(f"window_glass_{sign}", bm_glass, mats.window)
+        ang = math.pi * 0.5 + sign * math.radians(22.0)
+        r_hatch = 2.66
+        z_hatch = 0.34
+        center = (r_hatch * math.cos(ang), r_hatch * math.sin(ang), z_hatch)
 
-    # 5. Recessed Avionics & Equipment Bay (Carved INTO the hull, NOT a plate!)
-    # Located on port & starboard sides (angles +/- 90 deg, z = -0.5m to +0.3m)
-    for sign in [-1.0, 1.0]:
-        ang = sign * math.pi / 2.0
-        r_bay = 2.92 # Inset by 0.08m below R=3.0m hull
-        pos_bay = (r_bay * math.cos(ang), r_bay * math.sin(ang), -0.10)
-        # Recessed cavity backplane
-        bm_cavity = make_box(0.12, 1.20, 0.80, center=pos_bay, rot_euler=(0, 0, ang))
-        add_mesh_obj(f"recessed_bay_{sign}", bm_cavity, mats.recessed)
-        # Internal avionics modules / connectors inside bay
-        for k in range(3):
-            zk = -0.35 + k * 0.25
-            pos_mod = ((r_bay + 0.02) * math.cos(ang), (r_bay + 0.02) * math.sin(ang), zk)
-            bm_mod = make_box(0.06, 0.90, 0.16, center=pos_mod, rot_euler=(0, 0, ang))
-            add_mesh_obj(f"bay_module_{sign}_{k}", bm_mod, mats.hull_dark)
+        hatch = make_tangent_trapezoid(
+            0.050, 1.08, 0.90, 1.28, center, ang
+        )
+        add_mesh_obj(f"crew_hatch_{sign}", hatch, mats.rene41_alt)
 
-    # 6. Integrated Optical Star Tracker Cowl
-    # Aerodynamic cowling blended into the forward dorsal hull
-    cowl_pos = (0.0, 2.70, 0.45)
-    bm_cowl = make_cylinder(0.20, 0.16, 0.35, z_center=0.45, segments=16)
-    # Tilt slightly forward
-    transform_bm(bm_cowl, Euler((math.radians(25), 0, 0)).to_matrix().to_4x4())
-    transform_bm(bm_cowl, Matrix.Translation(Vector((0.0, 2.72, 0.45))))
-    add_mesh_obj("star_tracker_cowl", bm_cowl, mats.hull_dark)
-    
-    # 7. Blended RCS Quad Pod Housings (Aerospace faired pods, not arbitrary cubes)
-    # Placed symmetrically around circumference at z = -0.7m
-    for i in range(4):
-        ang = i * math.pi / 2.0 + math.pi / 4.0
-        r_pod = 2.98
-        pos_pod = (r_pod * math.cos(ang), r_pod * math.sin(ang), -0.70)
-        bm_pod = make_box(0.28, 0.38, 0.32, center=pos_pod, rot_euler=(0, 0, ang))
-        add_mesh_obj(f"rcs_pod_{i}", bm_pod, mats.hull_dark)
-        
-        # 4 small conical nozzle clusters emerging from pod
-        for n_dir in [(0.12, 0, 0), (-0.12, 0, 0), (0, 0, 0.12), (0, 0, -0.12)]:
-            bm_noz = make_cylinder(0.04, 0.02, 0.08, z_center=0, segments=8)
-            transform_bm(bm_noz, Matrix.Translation(Vector(pos_pod) + Vector(n_dir)))
-            add_mesh_obj(f"rcs_noz_{i}_{n_dir}", bm_noz, mats.nozzle_rib)
+        # Slightly larger black seal under the metal window frame.
+        window_z = 0.67
+        r_window = 2.705
+        wcenter = (r_window * math.cos(ang), r_window * math.sin(ang), window_z)
+        gasket = make_tangent_trapezoid(
+            0.036, 0.72, 0.58, 0.48, wcenter, ang
+        )
+        add_mesh_obj(f"window_gasket_{sign}", gasket, mats.gasket)
 
-    # 8. Structural Circumferential Frame Ribs (Ring bulkheads)
-    for z_ring in [-1.50, 0.0, 1.50]:
-        bm_ring = make_torus(major_r=2.97, minor_r=0.035, z_center=z_ring, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"frame_ring_{z_ring}", bm_ring, mats.hull_dark)
+        frame_center = ((r_window + 0.020) * math.cos(ang), (r_window + 0.020) * math.sin(ang), window_z)
+        frame = make_tangent_trapezoid(
+            0.030, 0.65, 0.51, 0.42, frame_center, ang
+        )
+        add_mesh_obj(f"window_frame_{sign}", frame, mats.window_frame)
+
+        glass_center = ((r_window + 0.038) * math.cos(ang), (r_window + 0.038) * math.sin(ang), window_z)
+        glass = make_tangent_trapezoid(
+            0.018, 0.53, 0.41, 0.31, glass_center, ang
+        )
+        add_mesh_obj(f"window_glass_{sign}", glass, mats.window)
+
+        # Six compact external latch/fastener heads around the hatch perimeter.
+        for k, (dy, dz) in enumerate([
+            (-0.45, -0.43), (0.45, -0.43),
+            (-0.49,  0.02), (0.49,  0.02),
+            (-0.34,  0.49), (0.34,  0.49),
+        ]):
+            tangent = Vector((-math.sin(ang), math.cos(ang), 0.0))
+            radial = Vector((math.cos(ang), math.sin(ang), 0.0))
+            p = Vector(center) + tangent * dy + Vector((0, 0, dz)) + radial * 0.045
+            add_lowpoly_fastener(f"hatch_latch_{sign}_{k}", p, mats.fastener, radius=0.022)
+
+    # Compact rendezvous optical sight hood on the dorsal forward quadrant.
+    sight_ang = math.pi * 0.5
+    sight_r = 2.36
+    sight_center = (sight_r * math.cos(sight_ang), sight_r * math.sin(sight_ang), 0.98)
+    sight = make_tangent_trapezoid(0.11, 0.32, 0.25, 0.36, sight_center, sight_ang)
+    add_mesh_obj("rendezvous_sight_hood", sight, mats.titanium)
+    glass_center = (0.0, sight_r + 0.065, 1.00)
+    add_mesh_obj(
+        "rendezvous_sight_glass",
+        make_tangent_trapezoid(0.022, 0.20, 0.16, 0.20, glass_center, sight_ang),
+        mats.window,
+    )
+
+    # Recessed RCS jets: small dark wells with short ablative nozzles rather than
+    # modern external quad boxes.  Two axial bands give translation/attitude cues.
+    for band, (z_rcs, r_rcs) in enumerate([(-0.88, 2.99), (1.05, 2.18)]):
+        count = 8
+        for i in range(count):
+            ang = i * 2.0 * math.pi / count + (math.pi / count if band else 0.0)
+            radial = Vector((math.cos(ang), math.sin(ang), 0.0))
+            pos = radial * r_rcs + Vector((0, 0, z_rcs))
+            well = make_tangent_trapezoid(
+                0.035, 0.22, 0.22, 0.20, pos, ang
+            )
+            add_mesh_obj(f"rcs_recess_{band}_{i}", well, mats.recessed)
+            nozzle_pos = pos + radial * 0.055
+            nozzle = make_cylinder(0.046, 0.026, 0.075, z_center=0, segments=10)
+            # Cylinder local Z -> radial direction.
+            q = Vector((0, 0, 1)).rotation_difference(radial)
+            transform_bm(nozzle, q.to_matrix().to_4x4())
+            transform_bm(nozzle, Matrix.Translation(nozzle_pos))
+            add_mesh_obj(f"rcs_nozzle_{band}_{i}", nozzle, mats.nozzle_bell)
+
+    # Forward docking collar: intentionally much smaller and more mechanical
+    # than a CBM/APAS ring, with visible capture latches and connector blocks.
+    collar_r = 1.72
+    add_mesh_obj(
+        "cockpit_docking_collar",
+        make_cylinder(collar_r, collar_r, 0.12, z_center=1.43, segments=48),
+        mats.titanium,
+    )
+    add_mesh_obj(
+        "cockpit_docking_contact_ring",
+        make_torus(collar_r * 0.88, 0.055, z_center=1.495, major_seg=48, minor_seg=10),
+        mats.rene41_edge,
+    )
+    for i in range(6):
+        ang = i * math.pi / 3.0
+        p = (1.38 * math.cos(ang), 1.38 * math.sin(ang), 1.485)
+        latch = make_box(0.13, 0.25, 0.08, center=p, rot_euler=(0, 0, ang))
+        add_mesh_obj(f"docking_latch_{i}", latch, mats.fastener)
 
     export_glb(os.path.join(OUT_DIR, "cockpit-standard.glb"))
+
 
 # ----------------------------------------------------------------------
 # 2. Main Propellant Tanks (tank-3-main, tank-6-main, tank-12-main)
