@@ -46,7 +46,10 @@ export class TopBar {
   // view が null(ランが無い)なら、掴んでいる口を落として何も書かない。
   public sync(view: TopBarViewModel | null, nowMs: number): void {
     this.view = view;
-    if (!view) return;
+    if (!view) {
+      this.els.get('node-warp-remain')?.closest('#hud-topbar')?.classList.remove('node-warp-active');
+      return;
+    }
     const { simTime } = view;
     setElementText(
       this.els, 'met', `${fmtDateTime(view.epochUnixSec + simTime)} / T+ ${fmtElapsedUnits(simTime)}`,
