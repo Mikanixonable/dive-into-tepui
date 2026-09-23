@@ -287,6 +287,7 @@ export class PredictPanel {
   private readonly ticks: HTMLElement;
   private readonly wrap: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
+  private readonly occupancyObserver: ResizeObserver | null;
 
   private sliderSteps = 1000;
   private currentDuration = APERIODIC_ARC_DURATION;
@@ -358,6 +359,26 @@ export class PredictPanel {
       storageId: 'hud-predict',
     });
     root.appendChild(this.wrap);
+
+    // compactではPREDICTを下部sheetとして扱うため、wrapの上端から画面下端までの実占有量を
+    // map rootへ公開する。高さだけでなくbottom offsetも含め、touch UIの下端予約にも追従する。
+    const syncOccupancy = (): void => {
+      const rootRect = root.getBoundingClientRect();
+      const wrapRect = this.wrap.getBoundingClientRect();
+      root.style.setProperty(
+        '--hud-predict-bottom-occupied',
+        `${Math.max(0, Math.ceil(rootRect.bottom - wrapRect.top))}px`,
+      );
+    };
+    syncOccupancy();
+    requestAnimationFrame(syncOccupancy);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.occupancyObserver = new ResizeObserver(syncOccupancy);
+      this.occupancyObserver.observe(root);
+      this.occupancyObserver.observe(this.wrap);
+    } else {
+      this.occupancyObserver = null;
+    }
   }
 
   // 未来と過去、それぞれの期間ピル行を組む。過去は「なし」も選べる。
@@ -491,6 +512,8 @@ export class PredictPanel {
   // パネルの DOM を取り除き、折りたたみ状態変化の購読を解除する。
   public dispose(): void {
     this.unsubscribeCollapsedView();
+    this.occupancyObserver?.disconnect();
+    this.wrap.parentElement?.style.removeProperty('--hud-predict-bottom-occupied');
     this.wrap.remove();
   }
 
