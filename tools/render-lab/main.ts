@@ -26,7 +26,9 @@ import { cloudPhaseKnobOf, type CloudSpecies } from '../../src/render/pipeline/c
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
-import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
+import {
+  LabView, MAX_CAMERA_ELEVATION_DEG, type CloudPreparationMeasurement, type LabMeasurement,
+} from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { FloatUniform } from '../../src/render/tsl-types';
@@ -70,7 +72,7 @@ declare global {
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
       measureCloudPreparation: (
         name: CaseName, displayTimes: readonly number[], angles?: Partial<LabViewAngles>,
-      ) => Promise<import('./lab').CloudPreparationMeasurement>;
+      ) => Promise<CloudPreparationMeasurement>;
       cloudResourceBudget: {
         readonly capSize: number;
         readonly generatedBakedBytes: number;
