@@ -789,39 +789,43 @@ try {
     if (!(layoutOnly && smokeConstruction)) await checkMapLayout();
     await placeShipThroughMenu();
 
-    // 戦闘ビューへ入れるのは操作できる艦がある時だけなので、[M] が通ること自体が配置の成立を示す。
-    // レールの折りたたみはビューの持ち物ではないため、往復しても保たれる。
-    await devTools.evaluate(`document.querySelector('.hud-map-root.active .rail-toggle').click()`);
-    const collapsedLeft = await devTools.evaluate(`document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed')`);
-    if (!collapsedLeft) throw new Error('Could not collapse the left rail before the map round trip.');
-    await pressKey('m', 'KeyM', 77);
-    await waitFor(
-      `Boolean(document.querySelector('.hud-combat-root.active'))`,
-      '[M] to leave the map (a placed ship must be operable for combat view to be enterable)',
-    );
-    const combat = await devTools.evaluate(`(() => {
-      ${LAYOUT_HELPERS}
-      return {
-      railTogglesHidden: [...document.querySelectorAll('.hud-map-root .rail-toggle')].every((el) => !visible(el)),
-      };
-    })()`);
-    expectAll('Combat view still shows the map rail toggles', combat);
-    await pressKey('m', 'KeyM', 77);
-    await waitFor(`Boolean(document.querySelector('.hud-map-root.active'))`, '[M] to return to the map');
-    const backToMap = await devTools.evaluate(`({
-      mapView: Boolean(document.querySelector('.hud-map-root.active')),
-      collapseKept: document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed'),
-      toggleGlyphs: JSON.stringify([...document.querySelectorAll('.hud-map-root.active .rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
-    })`);
-    expectAll('Rail collapse state did not survive the map round trip', backToMap);
-    await devTools.evaluate(`(() => {
-      for (const side of ['left', 'right']) {
-        const rail = document.querySelector('.hud-map-root.active .hud-rail-' + side);
-        if (!rail?.classList.contains('collapsed')) {
-          document.querySelector('.hud-map-root.active .rail-toggle-' + side)?.click();
+    // 基地プリセットは操作可能艦ではないため、Construction専用jobではcombat往復を行わない。
+    // 通常のcreative smokeでは従来どおり、M往復とレール状態保持を検査する。
+    if (!(layoutOnly && smokeConstruction)) {
+      // 戦闘ビューへ入れるのは操作できる艦がある時だけなので、[M] が通ること自体が配置の成立を示す。
+      // レールの折りたたみはビューの持ち物ではないため、往復しても保たれる。
+      await devTools.evaluate(`document.querySelector('.hud-map-root.active .rail-toggle').click()`);
+      const collapsedLeft = await devTools.evaluate(`document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed')`);
+      if (!collapsedLeft) throw new Error('Could not collapse the left rail before the map round trip.');
+      await pressKey('m', 'KeyM', 77);
+      await waitFor(
+        `Boolean(document.querySelector('.hud-combat-root.active'))`,
+        '[M] to leave the map (a placed ship must be operable for combat view to be enterable)',
+      );
+      const combat = await devTools.evaluate(`(() => {
+        ${LAYOUT_HELPERS}
+        return {
+        railTogglesHidden: [...document.querySelectorAll('.hud-map-root .rail-toggle')].every((el) => !visible(el)),
+        };
+      })()`);
+      expectAll('Combat view still shows the map rail toggles', combat);
+      await pressKey('m', 'KeyM', 77);
+      await waitFor(`Boolean(document.querySelector('.hud-map-root.active'))`, '[M] to return to the map');
+      const backToMap = await devTools.evaluate(`({
+        mapView: Boolean(document.querySelector('.hud-map-root.active')),
+        collapseKept: document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed'),
+        toggleGlyphs: JSON.stringify([...document.querySelectorAll('.hud-map-root.active .rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
+      })`);
+      expectAll('Rail collapse state did not survive the map round trip', backToMap);
+      await devTools.evaluate(`(() => {
+        for (const side of ['left', 'right']) {
+          const rail = document.querySelector('.hud-map-root.active .hud-rail-' + side);
+          if (!rail?.classList.contains('collapsed')) {
+            document.querySelector('.hud-map-root.active .rail-toggle-' + side)?.click();
+          }
         }
-      }
-    })()`);
+      })()`);
+    }
 
     // 配置した自艦の一覧行を右クリックするとプロパティウィンドウが開き、画面を狭めても
     // 視界内に留まる。カメラ姿勢次第で天体マーカーがレールの下へ入ることには依存しない。
