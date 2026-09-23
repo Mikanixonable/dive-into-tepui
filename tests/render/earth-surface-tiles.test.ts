@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_MIN_Z,
+  EARTH_BASE_LAYER, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
   earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTileParent, earthTileRoots,
 } from '../../src/render/earth-surface-tile-key';
 import { earthPageAt, earthTileSampleUv } from '../../src/render/earth-surface-page-table';
@@ -72,7 +72,7 @@ function view(camera: THREE.PerspectiveCamera | THREE.OrthographicCamera, pixels
 // この層の回帰テストを登録する。
 export function register(): void {
   test('earth tiles: 経度周期と両極の隣接は相反する', () => {
-    for (const z of [0, 1, 3, 7]) {
+    for (const z of [0, 1, 3, EARTH_TILE_MAX_Z]) {
       const height = 2 ** z;
       assert.deepEqual(earthTileKey(z, -1, -1), earthTileKey(z, 2 * height - 1, 0));
       assert.deepEqual(earthTileKey(z, 2 * height, height), earthTileKey(z, 0, height - 1));
@@ -82,18 +82,18 @@ export function register(): void {
         }
       }
     }
-    assert.equal(earthTileChildren(earthTileKey(7, 0, 0)).length, 0);
+    assert.equal(earthTileChildren(earthTileKey(EARTH_TILE_MAX_Z, 0, 0)).length, 0);
     assert.equal(earthTileRoots().length, 2 ** (EARTH_TILE_MIN_Z + 1) * 2 ** EARTH_TILE_MIN_Z);
     assert.ok(earthTileRoots().every((key) => key.z === EARTH_TILE_MIN_Z));
   });
 
-  test('earth tiles: stage00投影はz5からz7まで個別候補を返す', () => {
+  test('earth tiles: stage00投影はz5から最大LODまで個別候補を返す', () => {
     const tiles = new EarthSurfaceTiles();
     const candidates = tiles.requestCandidates(stage00EarthProjection());
     const levels = new Set(candidates.map((key) => key.z));
     assert.ok(levels.has(EARTH_TILE_MIN_Z));
     assert.ok(levels.has(EARTH_TILE_MIN_Z + 1));
-    assert.ok(levels.has(7));
+    assert.ok(levels.has(EARTH_TILE_MAX_Z));
     assert.equal(new Set(candidates.map(earthTileId)).size, candidates.length);
   });
 
@@ -112,9 +112,9 @@ export function register(): void {
     assert.equal(outsideChild[2], root.z);
   });
 
-  test('earth tiles: 隣接がbaseのままでもz7タイルを公開する', () => {
+  test('earth tiles: 隣接がbaseのままでも最大LODタイルを公開する', () => {
     const tiles = new EarthSurfaceTiles();
-    const target = earthTileKey(7, 0, 0);
+    const target = earthTileKey(EARTH_TILE_MAX_Z, 0, 0);
     const projection: EarthTileProjection = {
       evaluate: (key) => ({
         visible: isAncestorOrSelf(key, target), errorPx: key.z < target.z ? 3 : 1, priority: 1,
@@ -162,11 +162,11 @@ export function register(): void {
     const camera = new THREE.PerspectiveCamera(60, 1, 0.01, 100);
     camera.position.z = 3;
     const projection = view(camera);
-    assert.equal(projection.evaluate(earthTileKey(7, 0, 63)).visible, false);
+    assert.equal(projection.evaluate(earthTileKey(EARTH_TILE_MAX_Z, 0, 2 ** (EARTH_TILE_MAX_Z - 1) - 1)).visible, false);
     assert.equal(projection.evaluate(earthTileKey(EARTH_TILE_MIN_Z, 30, 8)).visible, true);
-    assert.equal(projection.evaluate(earthTileKey(7, 127, 63)).visible, true);
+    assert.equal(projection.evaluate(earthTileKey(EARTH_TILE_MAX_Z, 2 ** EARTH_TILE_MAX_Z - 1, 2 ** (EARTH_TILE_MAX_Z - 1) - 1)).visible, true);
     camera.rotation.y = Math.PI;
-    assert.equal(view(camera).evaluate(earthTileKey(7, 127, 63)).visible, false);
+    assert.equal(view(camera).evaluate(earthTileKey(EARTH_TILE_MAX_Z, 2 ** EARTH_TILE_MAX_Z - 1, 2 ** (EARTH_TILE_MAX_Z - 1) - 1)).visible, false);
   });
 
   test('earth tiles: 未取得子はbaseまたは親を保持し、到着した子だけ遷移する', () => {
