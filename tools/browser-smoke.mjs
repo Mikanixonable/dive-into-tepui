@@ -140,16 +140,16 @@ async function checkOverlayGeometry(selector, label) {
 // 戦闘シェルフは狭い幅で横スクロール領域になるので、その中のパネルはシェルフの
 // スクロール内容に収まっていれば良い(視界の外に出ていること自体は正常)。
 async function checkCombatLayout() {
-  for (const [width, height] of VIEWPORTS) {
-    await devTools.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width <= 480 });
-    await sleep(100);
+  for (const viewport of VIEWPORTS) {
+    const { width, height } = viewport;
+    await applyViewport(viewport);
     const layout = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}
       const errors = [];
       const combatRoot = document.querySelector('.hud-combat-root.active');
       const shelf = rect(combatRoot);
       if (!insideViewport(shelf)) errors.push('combat root outside viewport');
-      const shelfIds = ['hud-status', 'hud-orbit', 'hud-enemies', 'hud-target'];
+      const shelfIds = ['hud-vessel-status', 'hud-orbit', 'burn-management-panel', 'hud-enemies', 'hud-target'];
       const shelfPanels = shelfIds.map((id) => document.getElementById(id)).filter(visible).map(rect);
       for (const panel of shelfPanels) {
         if (!insideViewport(panel)) errors.push('outside combat root: ' + panel.id);
@@ -160,7 +160,7 @@ async function checkCombatLayout() {
         }
       }
       // シェルフ外の常設要素は視界内に収まっていること。
-      const floatIds = ['hud-stagestatus', 'hud-chase-reset', 'hud-globalstatus'];
+      const floatIds = ['hud-stagestatus', 'hud-topbar', 'hud-chase-reset', 'hud-help-badge'];
       const floating = floatIds.map((id) => document.getElementById(id)).filter(visible).map(rect);
       for (const item of floating) if (!insideViewport(item)) errors.push('outside viewport: ' + item.id);
       // シェルフが画面上端側へ回る幅(breakpoints.ts の MQ_MEDIUM_DOWN)では、
@@ -195,10 +195,24 @@ async function checkCombatLayout() {
         for (const panel of [...shelfPanels, ...floating]) if (overlaps(h, panel)) errors.push('hint overlaps ' + panel.id);
         hint.style.opacity = '';
       }
-      return { errors, shelf, shelfPanels, floating };
+      const chrome = document.getElementById('hud-chrome');
+      const chromeRect = visible(chrome) ? rect(chrome) : null;
+      const railEls = [...combatRoot.querySelectorAll('.hud-rail')].filter(visible);
+      if (chromeRect) {
+        for (const rail of railEls) {
+          if (rail.getBoundingClientRect().top < chromeRect.bottom - 1) errors.push('combat rail overlaps HUD chrome: ' + rail.id);
+        }
+      }
+      for (const panel of railEls.flatMap((rail) => [...rail.querySelectorAll(':scope > .panel')].filter(visible))) {
+        const overflowY = getComputedStyle(panel).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll') errors.push('direct combat rail panel owns vertical scroll: ' + panel.id);
+      }
+      const tiny = tinyInteractiveText(document.getElementById('hud'));
+      if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
+      return { errors, shelf, shelfPanels, floating, chromeRect, tiny };
     })()`);
     if (layout.errors.length) {
-      throw new Error(`Combat layout failed at ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
+      throw new Error(`Combat layout failed at ${viewport.name} ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
     }
   }
   await devTools.send('Emulation.clearDeviceMetricsOverride');
@@ -207,9 +221,9 @@ async function checkCombatLayout() {
 // マップビューの左右レールが視界に収まり、互いに重ならず、最後のパネルまでスクロールで
 // 届くことを見る。レールは縦スクロール領域なので、パネルの縦のはみ出しは正常。
 async function checkMapLayout() {
-  for (const [width, height] of VIEWPORTS) {
-    await devTools.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width <= 480 });
-    await sleep(100);
+  for (const viewport of VIEWPORTS) {
+    const { width, height } = viewport;
+    await applyViewport(viewport);
     const layout = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}
       const errors = [];
@@ -245,10 +259,41 @@ async function checkMapLayout() {
       if (visible(objectList) && visible(plan) && overlaps(rect(objectList), rect(plan))) {
         errors.push('object list overlaps maneuver plan');
       }
-      return { errors, rails, panels };
+      const predict = document.getElementById('hud-predict-wrap');
+      const predictRect = visible(predict) ? rect(predict) : null;
+      if (predictRect) {
+        for (const rail of rails) if (overlaps(predictRect, rail)) errors.push('predict overlaps rail: ' + rail.id);
+      }
+      const chrome = document.getElementById('hud-chrome');
+      const chromeRect = visible(chrome) ? rect(chrome) : null;
+      if (chromeRect) {
+        for (const railEl of railEls) {
+          if (railEl.getBoundingClientRect().top < chromeRect.bottom - 1) errors.push('map rail overlaps HUD chrome: ' + railEl.id);
+        }
+      }
+      const root = document.querySelector('.hud-map-root.active');
+      const rootRect = root.getBoundingClientRect();
+      const style = getComputedStyle(root);
+      const occupied = {
+        left: parseFloat(style.getPropertyValue('--hud-left-rail-occupied')),
+        right: parseFloat(style.getPropertyValue('--hud-right-rail-occupied')),
+      };
+      const actual = {
+        left: Math.max(0, Math.ceil(railEls[0].getBoundingClientRect().right - rootRect.left)),
+        right: Math.max(0, Math.ceil(rootRect.right - railEls[1].getBoundingClientRect().left)),
+      };
+      if (Math.abs(occupied.left - actual.left) > 2) errors.push('left occupied token mismatch');
+      if (Math.abs(occupied.right - actual.right) > 2) errors.push('right occupied token mismatch');
+      for (const panel of railEls.flatMap((rail) => [...rail.querySelectorAll(':scope > .panel')].filter(visible))) {
+        const overflowY = getComputedStyle(panel).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll') errors.push('direct map rail panel owns vertical scroll: ' + panel.id);
+      }
+      const tiny = tinyInteractiveText(document.getElementById('hud'));
+      if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
+      return { errors, rails, panels, predictRect, chromeRect, occupied, actual, tiny };
     })()`);
     if (layout.errors.length) {
-      throw new Error(`Map layout failed at ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
+      throw new Error(`Map layout failed at ${viewport.name} ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
     }
     const collapse = await devTools.evaluate(`(() => {
       const toggles = [...document.querySelectorAll('.hud-map-root.active .rail-toggle')];
@@ -261,7 +306,17 @@ async function checkMapLayout() {
       const restored = rails.every((rail) => !rail.classList.contains('collapsed') && rail.getBoundingClientRect().width > 0);
       return { count: toggles.length === 2, collapsed, zeroWidth, restored };
     })()`);
-    expectAll(`Rail collapse check failed at ${width}x${height}`, collapse);
+    expectAll(`Rail collapse check failed at ${viewport.name} ${width}x${height}`, collapse);
+    await sleep(50);
+    const occupiedAfterRestore = await devTools.evaluate(`(() => {
+      const root = document.querySelector('.hud-map-root.active');
+      const style = getComputedStyle(root);
+      return {
+        left: parseFloat(style.getPropertyValue('--hud-left-rail-occupied')) > 0,
+        right: parseFloat(style.getPropertyValue('--hud-right-rail-occupied')) > 0,
+      };
+    })()`);
+    expectAll(`Rail occupied-area contract did not restore at ${viewport.name}`, occupiedAfterRestore);
   }
   await devTools.send('Emulation.clearDeviceMetricsOverride');
 }
