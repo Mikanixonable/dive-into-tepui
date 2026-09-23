@@ -127,6 +127,7 @@ export function acquisitionPlan(referenceCase, outputDirectory) {
           ...product.filenameProducts.flatMap((name) => slots.flatMap((slot) => [
             '--include', `OR_ABI-${name}_${satellite}_s${scanMinutePrefix(slot)}*.nc`,
           ])),
+          '--only-show-errors',
         ],
       });
     }
