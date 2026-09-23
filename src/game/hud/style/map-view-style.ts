@@ -1,7 +1,7 @@
 // マップビュー固有の視覚階層。骨格配置は skeleton-style.ts、共通コントロールは
 // widgets/widget-style.ts が持ち、ここでは Quiet / Focus Glass とマップ内の意味色だけを上書きする。
 import {
-  MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
+  MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN,
 } from '../../../hud/breakpoints';
 
 export const MAP_VIEW_STYLE = `
@@ -18,15 +18,11 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: var(--space-label-subtext); }
 
 /* Orbit は表示設定の上に置く。初期状態は PanelShell のビュー別既定値で収納される。 */
-#hud .hud-map-root.active .hud-rail-left > #hud-orbit {
-  width: 100%;
-  max-height: min(360px, 48dvh);
-  overflow-y: auto;
-}
+#hud .hud-map-root.active .hud-rail-left > #hud-orbit,
 #hud .hud-map-root.active .hud-rail-left > #burn-management-panel {
   width: 100%;
-  max-height: min(260px, 36dvh);
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
 }
 /* 軌道ガイドタブは項目数に応じて際限なく伸びうるため、他のレールパネル同様に自身の高さへ
    上限をかける——無いと下に続くカメラパネルをレールの下方へ押し出し、隠れて見える。
@@ -36,23 +32,9 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active .hud-rail-left > #hud-view-options {
   display: flex;
   flex-direction: column;
-  min-height: min(260px, 36dvh);
-  max-height: min(420px, 56dvh);
-}
-@media ${MQ_COARSE}, ${MQ_SHORT} {
-  #hud .hud-map-root.active .hud-rail-left > #hud-orbit,
-  #hud .hud-map-root.active .hud-rail-left > #burn-management-panel,
-  #hud .hud-map-root.active .hud-rail-left > #hud-view-options,
-  #hud .hud-map-root.active .hud-rail-left > .hud-frame-controls,
-  #hud .hud-map-root.active #hud-physical-object-list {
-    max-height: var(--rail-panel-max-h);
-  }
-  /* min-height は同格レールパネル間の高さの均整を保つ設定。ただし全パネルが
-     --rail-panel-max-h まで縮小する画面幅では下限値が優先され競合するため、
-     ここでは下限を解除する。 */
-  #hud .hud-map-root.active .hud-rail-left > #hud-view-options {
-    min-height: 0;
-  }
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
 }
 
 #hud .hud-map-root.active #hud-physical-object-list h3,

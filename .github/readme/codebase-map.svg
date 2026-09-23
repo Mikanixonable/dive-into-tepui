@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title desc">
+<title id="title">コードベース地図</title><desc id="desc">主要ディレクトリの責務を日本語で示す図。</desc><defs>
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.sans{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.an{fill:#ff6b82}.s{fill:#3478ff}
+.box{fill:#0e1014;stroke:#48506a;stroke-width:1.4}.soft{fill:#15171c}.line{fill:none;stroke:#89838f;stroke-width:1.5}.accent{fill:none;stroke:#ff3155;stroke-width:2}.signal{fill:none;stroke:#3478ff;stroke-width:2}
+.h{font-size:22px;font-weight:700}.k{font-size:13px;letter-spacing:1.1px}.v{font-size:16px;font-weight:600}.sm{font-size:12px}.xs{font-size:10px;letter-spacing:.8px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+</defs>
+<rect width="1200" height="500" rx="22" fill="url(#bg)"/>
+<text x="55" y="48" class="m t h">コードベース地図</text><text x="55" y="72" class="m d k">ファイル名ではなく、責務から入口を選ぶ</text>
+<g transform="translate(55 100)">
+<rect x="0" y="0" width="245" height="120" rx="14" class="box"/><text x="18" y="32" class="sans t v">math/</text><text x="18" y="60" class="m d sm">汎用数学・幾何・数値処理</text><text x="18" y="84" class="m d sm">ゲーム意味を持たない道具</text>
+<rect x="285" y="0" width="245" height="120" rx="14" class="box"/><text x="303" y="32" class="sans t v">physics/</text><text x="303" y="60" class="m d sm">軌道・姿勢・接触・大気</text><text x="303" y="84" class="m d sm">Three.js 非依存</text>
+<rect x="570" y="0" width="245" height="120" rx="14" class="box"/><text x="588" y="32" class="sans t v">game/</text><text x="588" y="60" class="m d sm">1ランの状態・規則・表示導出</text><text x="588" y="84" class="m d sm">船・戦闘・計画・天体</text>
+<rect x="855" y="0" width="245" height="120" rx="14" class="box"/><text x="873" y="32" class="sans t v">render/</text><text x="873" y="60" class="m d sm">WebGPU / Three.js 資源</text><text x="873" y="84" class="m d sm">地球・雲・線・VFX</text>
+<rect x="0" y="160" width="245" height="120" rx="14" class="box"/><text x="18" y="192" class="sans t v">hud/</text><text x="18" y="220" class="m d sm">UI の器・共通部品</text><text x="18" y="244" class="m d sm">窓・ウィジェット・レイヤー</text>
+<rect x="285" y="160" width="245" height="120" rx="14" class="box"/><text x="303" y="192" class="sans t v">input/ · audio/</text><text x="303" y="220" class="m d sm">入力と音声の装置境界</text><text x="303" y="244" class="m d sm">ゲーム意味を持たせない</text>
+<rect x="570" y="160" width="245" height="120" rx="14" class="box"/><text x="588" y="192" class="sans t v">settings/</text><text x="588" y="220" class="m d sm">セーブを跨ぐユーザー設定</text><text x="588" y="244" class="m d sm">保存と購読の持ち主</text>
+<rect x="855" y="160" width="245" height="120" rx="14" class="box"/><text x="873" y="192" class="sans t v">launcher/ · run/</text><text x="873" y="220" class="m d sm">ランの外側と組み立て</text><text x="873" y="244" class="m d sm">起動・セーブ・フレーム位相</text>
+<rect x="0" y="300" width="1090" height="70" rx="12" class="soft"/><text x="18" y="325" class="m a xs">読む順番の目安</text><text x="18" y="350" class="m t sm">main.ts / run/ → game/ → physics/ と render/ → hud/・launcher/ → tests/</text>
+</g>
+</svg>

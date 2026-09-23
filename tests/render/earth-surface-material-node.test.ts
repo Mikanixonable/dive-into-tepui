@@ -8,6 +8,7 @@ import {
   earthSurfaceMaterialCapabilities,
 } from '../../src/render/earth-surface-material-node';
 import { configureEarthSurfaceTexture } from '../../src/render/earth-surface-texture';
+import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from '../../src/render/earth-surface-tile-key';
 import { float, vec2, vec3 } from 'three/tsl';
 import { evaluateShaderNode } from './tsl-node-evaluator';
 
@@ -52,7 +53,7 @@ export function register(): void {
   });
 
   test('earth surface material: tile Vは各LOD行を走査し、全球南端を最終画素へ置く', () => {
-    for (const z of [5, 6, 7]) {
+    for (let z = EARTH_TILE_MIN_Z; z <= EARTH_TILE_MAX_Z; z++) {
       const rows = 2 ** z;
       const toTextureUv = (local: number): number => (2 + 0.5 + 256 * local) / 260;
       const expected = (v: number): number => toTextureUv(v === 1 ? 1 : v * rows - Math.floor(v * rows));
@@ -66,7 +67,7 @@ export function register(): void {
       near(tileUvValue(-0.1, 0.37, z)[0]!, toTextureUv(((-0.1 * rows * 2) % 1 + 1) % 1));
       near(tileUvValue(1.1, 0.37, z)[0]!, toTextureUv(((1.1 * rows * 2) % 1 + 1) % 1));
     }
-    assert.equal(evaluateShaderNode(earthSurfaceDetailLodNode(float(255))), 7);
+    assert.equal(evaluateShaderNode(earthSurfaceDetailLodNode(float(255))), EARTH_TILE_MAX_Z);
   });
 
   test('earth surface material: encoded normal is decoded to a unit body normal', () => {

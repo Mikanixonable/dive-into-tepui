@@ -42,7 +42,7 @@ export function buildCollapseToggle(
   const button = document.createElement('button');
   button.type = 'button';
   button.id = id;
-  button.className = [className, 'ui-selectable'].filter(Boolean).join(' ');
+  button.className = [className, 'ui-selectable', 'ui-icon-control'].filter(Boolean).join(' ');
   expandHitTarget(button);
   root.appendChild(button);
   // クリックのたびに collapsed を反転し、その結果へ見た目を合わせ直して知らせる。
