@@ -136,6 +136,12 @@ async function applyViewport({ width, height }) {
   await sleep(100);
 }
 
+async function clearViewport() {
+  await clearViewport();
+  // innerWidth と fixed/absolute HUD の再レイアウトを同じフレームへ揃える。
+  await sleep(100);
+}
+
 async function checkOverlayGeometry(selector, label) {
   for (const viewport of VIEWPORTS) {
     await applyViewport(viewport);
@@ -149,7 +155,7 @@ async function checkOverlayGeometry(selector, label) {
       throw new Error(`${label} geometry failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${JSON.stringify(state)}`);
     }
   }
-  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  await clearViewport();
 }
 
 // 戦闘ビューの常設パネルが、どの画面寸法でも視界の外へ出ず互いに重ならないことを見る。
@@ -276,7 +282,7 @@ async function checkCombatLayout() {
       throw new Error(`Combat layout failed at ${viewport.name} ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
     }
   }
-  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  await clearViewport();
 }
 
 // マップビューの左右レールが視界に収まり、互いに重ならず、最後のパネルまでスクロールで
@@ -379,7 +385,7 @@ async function checkMapLayout() {
     })()`);
     expectAll(`Rail occupied-area contract did not restore at ${viewport.name}`, occupiedAfterRestore);
   }
-  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  await clearViewport();
 }
 
 // 全画面モーダル(ヘルプ)は背景の入力を遮り、仮想パッドを隠し、押しっぱなしのタッチ入力を解放する。
@@ -602,7 +608,7 @@ async function checkConstructionLayout() {
       throw new Error(`Construction layout failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${state.errors.join('; ')}; ${JSON.stringify(state)}`);
     }
   }
-  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  await clearViewport();
 }
 
 async function constructMaterialFromBaseDock() {
@@ -839,7 +845,7 @@ try {
       return { open: true, inside: insideViewport(rect(win)) };
     })()`);
     expectAll('Property window did not remain clamped after resize', clamped);
-    await devTools.send('Emulation.clearDeviceMetricsOverride');
+    await clearViewport();
     if (smokeConstruction) await constructMaterialFromBaseDock();
   }
 
