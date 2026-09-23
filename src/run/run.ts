@@ -136,7 +136,10 @@ export class Run implements SnapshotSource, PerfCountSource {
   // 1フレームを回す。dtRaw [s] は実時間の経過、nowMs [ms] はフレームの先頭で1度だけ読んだ実時刻。
   // ports はランが消費しなかった入力エッジを処理するラン外部のハンドラ。入力の途中でランが破棄されたら
   // (再出撃キーなど)導出と同期の前に打ち切り、false を返す。
-  public frame(dtRaw: number, nowMs: number, viewport: Viewport, ports: readonly GameInputPort[]): boolean {
+  public frame(
+    dtRaw: number, nowMs: number, viewport: Viewport, ports: readonly GameInputPort[],
+    renderFrame = true,
+  ): boolean {
     const debugInfo = this.devices.debugInfo;
     const t0 = debugInfo.on ? performance.now() : 0;
     this.sections.beginFrame();
@@ -149,11 +152,13 @@ export class Run implements SnapshotSource, PerfCountSource {
     const t1 = debugInfo.on ? performance.now() : 0;
     this.presentation.sync(this.graphics.current, this.renderStyle.current, viewport, nowMs);
     const t2 = debugInfo.on ? performance.now() : 0;
-    this.presentation.render(this.renderStyle.current);
-    const t3 = debugInfo.on ? performance.now() : 0;
-    // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
-    // render 区間へ混ざらないよう、区間の外で呼ぶ。
-    this.devices.scene.gpu.resolve();
+    let t3 = t2;
+    if (renderFrame) {
+      this.presentation.render(this.renderStyle.current);
+      t3 = debugInfo.on ? performance.now() : t2;
+      // 時刻印クエリを溜めないため、描画したフレームだけ解決させる。
+      this.devices.scene.gpu.resolve();
+    }
     if (debugInfo.on) debugInfo.record(this, t1 - t0, t2 - t1, t3 - t2, t3);
     return true;
   }
