@@ -292,4 +292,43 @@ export function register(): void {
     runtime.dispose();
   });
 
+  test('protein combat: deserialize clamps HP and rejects invalid modification state', () => {
+    const site = asset.sites[0]!;
+    const slot = asset.modificationSlots[0]!;
+    const restored = ProteinCombatState.deserialize({
+      integrityHp: Number.POSITIVE_INFINITY,
+      sites: [
+        { id: site.id, hp: -5 },
+        { id: asset.sites[1]!.id, hp: Number.NaN },
+      ],
+      modifications: { [slot.id]: '__invalid__' },
+      attackSiteCursor: -4.5,
+    }, asset);
+    const serialized = restored.serialize();
+    assert.equal(serialized.integrityHp, asset.integrity.maxHp);
+    assert.equal(serialized.sites.find((entry) => entry.id === site.id)?.hp, 0);
+    assert.equal(
+      serialized.sites.find((entry) => entry.id === asset.sites[1]!.id)?.hp,
+      asset.sites[1]!.maxHp,
+    );
+    assert.equal(serialized.modifications[slot.id], slot.defaultState);
+    assert.equal(serialized.attackSiteCursor, 0);
+  });
+
+  test('protein combat: deserialize caps oversized HP and keeps valid saved state', () => {
+    const site = asset.sites[0]!;
+    const slot = asset.modificationSlots[0]!;
+    const validState = slot.states.at(-1)!;
+    const restored = ProteinCombatState.deserialize({
+      integrityHp: asset.integrity.maxHp * 3,
+      sites: [{ id: site.id, hp: site.maxHp * 3 }],
+      modifications: { [slot.id]: validState },
+      attackSiteCursor: 3.9,
+    }, asset).serialize();
+    assert.equal(restored.integrityHp, asset.integrity.maxHp);
+    assert.equal(restored.sites.find((entry) => entry.id === site.id)?.hp, site.maxHp);
+    assert.equal(restored.modifications[slot.id], validState);
+    assert.equal(restored.attackSiteCursor, 3);
+  });
+
 }
