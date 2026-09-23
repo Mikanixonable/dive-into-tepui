@@ -38,8 +38,6 @@ jobs:
       - run: npm run verify:ui-style
       - run: npm run verify:hud-layout
       - run: npm run typecheck
-      - name: One-off full regression validation
-        run: npm run test
       - run: npm run build
 
       - name: HUD geometry suite
