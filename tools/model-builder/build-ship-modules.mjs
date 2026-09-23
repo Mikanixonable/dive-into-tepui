@@ -52,7 +52,7 @@ if (blender === null) {
 } else {
   try {
     run(blender, ['--background', '--python', blenderScript], 'generate GLB modules');
-    run(process.execPath, [join(scriptDirectory, 'export-models.mjs')], 'bake JSON assets');
+    run(process.execPath, [join(scriptDirectory, 'export-models.mjs'), '--ship-modules-only'], 'bake JSON assets');
     console.log('[ship-modules] GLB generation and JSON asset bake completed');
   } catch (error) {
     console.error(`[ship-modules] ${error.message}`);
