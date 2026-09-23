@@ -18,6 +18,11 @@ const FORWARD_CELL_OFFSETS: readonly (readonly [number, number, number])[] = [
 
 export class SpatialGrid<T> {
   private readonly cells = new Map<number, YLevel<T>>();
+  // reset ごとにセル木を捨てると、接触判定の各 substep で Map と bucket 配列を大量生成する。
+  // 使い終えた器は高水位までプールして、次回の insert で再利用する。
+  private readonly yLevelPool: YLevel<T>[] = [];
+  private readonly zLevelPool: ZLevel<T>[] = [];
+  private readonly bucketPool: T[][] = [];
   private invCellSize: number;
 
   // セルの一辺の長さ cellSize でグリッドを構築する。単位は呼び出し側の座標系に従う。
@@ -27,6 +32,18 @@ export class SpatialGrid<T> {
 
   // 同じ所有者が同期的にグリッドを作り直す場合の再初期化。
   public reset(cellSize: number): void {
+    for (const yLevel of this.cells.values()) {
+      for (const zLevel of yLevel.values()) {
+        for (const bucket of zLevel.values()) {
+          bucket.length = 0;
+          this.bucketPool.push(bucket);
+        }
+        zLevel.clear();
+        this.zLevelPool.push(zLevel);
+      }
+      yLevel.clear();
+      this.yLevelPool.push(yLevel);
+    }
     this.cells.clear();
     this.invCellSize = 1 / cellSize;
   }
@@ -45,17 +62,17 @@ export class SpatialGrid<T> {
     // x → y → z と段を降り、まだ無い段はその場で作りながら進む。
     let yLevel = this.cells.get(cx);
     if (yLevel === undefined) {
-      yLevel = new Map<number, ZLevel<T>>();
+      yLevel = this.yLevelPool.pop() ?? new Map<number, ZLevel<T>>();
       this.cells.set(cx, yLevel);
     }
     let zLevel = yLevel.get(cy);
     if (zLevel === undefined) {
-      zLevel = new Map<number, T[]>();
+      zLevel = this.zLevelPool.pop() ?? new Map<number, T[]>();
       yLevel.set(cy, zLevel);
     }
     let bucket = zLevel.get(cz);
     if (bucket === undefined) {
-      bucket = [];
+      bucket = this.bucketPool.pop() ?? [];
       zLevel.set(cz, bucket);
     }
     bucket.push(item);
