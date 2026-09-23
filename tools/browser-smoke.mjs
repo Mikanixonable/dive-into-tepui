@@ -128,12 +128,23 @@ const VIEWPORTS = [
   { name: 'short-landscape', width: 667, height: 375 },
 ];
 
+async function throwIfVisibleFatalOverlay(label) {
+  if (!layoutOnly) return;
+  const fatal = await devTools.evaluate(`(() => {
+    const el = document.getElementById('fatal-error-overlay');
+    if (!el || getComputedStyle(el).display === 'none') return '';
+    return el.textContent ?? 'fatal error overlay';
+  })()`);
+  if (fatal) throw new Error(`${label}: ${fatal}`);
+}
+
 async function applyViewport({ width, height }) {
   await devTools.send('Emulation.setDeviceMetricsOverride', {
     width, height, deviceScaleFactor: 1, mobile: width <= 480,
   });
   // CSS media query と ResizeObserver(--hud-*-occupied) の双方が反映されるまで待つ。
   await sleep(100);
+  await throwIfVisibleFatalOverlay('Headless GPU fatal during layout viewport check');
 }
 
 async function clearViewport() {
@@ -408,6 +419,7 @@ async function checkHelpModal() {
     `getComputedStyle(document.getElementById('hud-help')).display !== 'none'`,
     layoutOnly ? 'the HLP badge to open the help panel' : '[H] to open the help panel',
   );
+  await throwIfVisibleFatalOverlay('Headless GPU fatal while checking Help modal');
   const state = await devTools.evaluate(`(() => {
     const shield = document.getElementById('hud-overlay-shield');
     const canvas = document.querySelector('canvas');
@@ -419,18 +431,6 @@ async function checkHelpModal() {
     const y = window.innerHeight - 2;
     const target = document.elementFromPoint(x, y);
     target?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y }));
-    const gate = document.getElementById('hud-layer-gate');
-    const hud = document.getElementById('hud');
-    const describe = (el) => {
-      if (!(el instanceof HTMLElement)) return null;
-      const style = getComputedStyle(el);
-      const r = el.getBoundingClientRect();
-      return {
-        tag: el.tagName, id: el.id, cls: el.className,
-        display: style.display, pointerEvents: style.pointerEvents, zIndex: style.zIndex,
-        rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height },
-      };
-    };
     return {
       open: getComputedStyle(document.getElementById('hud-help')).display !== 'none',
       modal: document.body.classList.contains('hud-overlay-modal-open'),
@@ -440,13 +440,6 @@ async function checkHelpModal() {
       backgroundEvent: backgroundEvents === 0,
       touchHidden: !document.getElementById('touch-ui') || getComputedStyle(document.getElementById('touch-ui')).display === 'none',
       zoomReleased: !document.getElementById('touch-zoom') || !document.getElementById('touch-zoom').classList.contains('pressed'),
-      debug: {
-        hud: describe(hud),
-        gate: describe(gate),
-        shield: describe(shield),
-        target: describe(target),
-        stack: document.elementsFromPoint(x, y).slice(0, 8).map(describe),
-      },
     };
   })()`);
   expectAll('Help modal shielding failed', state);
