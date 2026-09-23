@@ -14,8 +14,10 @@ export const SETTINGS_VIEW_STYLE = `
   display: flex; align-items: flex-start; padding: 0 var(--sv-content-inset) var(--space-2);
 }
 #hud-pause-menu .pm-settings-view .sv-heading-group { display: flex; flex-direction: column; gap: var(--space-2); }
-#hud-pause-menu .pm-settings-view .sv-header h2 { color: var(--title); font-size: var(--font-2xl); letter-spacing: 0.1em; }
-#hud-pause-menu .pm-settings-view .sv-eyebrow { color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: 0.12em; }
+#hud-pause-menu .pm-settings-view .sv-header h2 {
+  color: var(--title); font-size: var(--font-xl); letter-spacing: var(--tracking-title);
+}
+#hud-pause-menu .pm-settings-view .sv-eyebrow { color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); }
 #hud-pause-menu .pm-settings-view .sv-description {
   margin-top: var(--space-3); padding-inline: var(--sv-content-inset);
   color: var(--text-dim); font-size: var(--font-s); line-height: 1.6;
@@ -30,12 +32,12 @@ export const SETTINGS_VIEW_STYLE = `
 #hud-pause-menu .pm-settings-view .sv-tab-panel[hidden] { display: none; }
 #hud-pause-menu .pm-settings-view .sv-section h3 {
   display: flex; align-items: center; gap: var(--space-3); margin: 0;
-  color: var(--title); font-size: var(--font-m); letter-spacing: 0.08em;
+  color: var(--title); font-size: var(--font-m); letter-spacing: var(--tracking-label);
 }
 #hud-pause-menu .pm-settings-view .sv-section h3::before {
   width: auto; height: auto; border-radius: 0; background: transparent;
   color: var(--color-primary); content: counter(settings-section, decimal-leading-zero);
-  font-size: var(--font-xxs); font-variant-numeric: tabular-nums; letter-spacing: .08em;
+  font-size: var(--font-xxs); font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-label);
 }
 #hud-pause-menu .pm-settings-view .sv-theme-options {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: var(--space-3);
