@@ -44,8 +44,14 @@ export function validateShipAssembly(
       const childDef = catalog.get(child.instance.definitionId);
       const expected = (parentDef?.length ?? 0) / 2 + (childDef?.length ?? 0) / 2;
       const p = connection.childTransform.position;
+      const rot = connection.childTransform.rotation;
+      const isDockParent = parentDef?.kind === 'dock' || parentDef?.kind === 'docking_port';
+      const isDockTurn = isDockParent
+        && Math.abs(rot.x) < 1e-9 && Math.abs(Math.abs(rot.y) - 1) < 1e-9
+        && Math.abs(rot.z) < 1e-9 && Math.abs(rot.w) < 1e-9;
+      const validRotation = isIdentityRotation(rot) || isDockTurn;
       if (Math.abs(p.x) > 1e-9 || Math.abs(p.y) > 1e-9 || Math.abs(Math.abs(p.z) - expected) > 1e-9
-        || !isIdentityRotation(connection.childTransform.rotation)) errors.push(`invalid axial snap: ${connection.id}`);
+        || !validRotation) errors.push(`invalid axial snap: ${connection.id}`);
     }
     if (connection.kind === 'side' && parent !== undefined && child !== undefined) {
       if (!isSideParent(parent.instance.kind)) errors.push(`invalid side parent: ${connection.id}`);
