@@ -34,8 +34,8 @@ export const MAP_PANEL_STYLE = `
   #hud-plan { min-width: 0; max-width: none; }
 }
 @media ${MQ_COMPACT} {
-  #hud .w-group { gap: var(--space-2); }
-  #hud .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
+  #hud .hud-map-root.active .w-group { gap: var(--space-2); }
+  #hud .hud-map-root.active .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xs); }
 }
 
 /* 表示設定パネル(#hud-view-options)のコンテナ・タイトル・本体と、タブ本体。 */
@@ -86,7 +86,8 @@ export const MAP_PANEL_STYLE = `
    左右レール(.hud-rail-left/.hud-rail-right)の内側に収まる幅だけを使い、レールのパネルに重ねない。 */
 #hud-predict-wrap {
   position: absolute; bottom: 12px;
-  left: calc(12px + var(--rail-w-left) + 8px); right: calc(12px + var(--rail-w-right) + 8px);
+  left: calc(var(--hud-left-rail-occupied, calc(12px + var(--rail-w-left))) + 8px);
+  right: calc(var(--hud-right-rail-occupied, calc(12px + var(--rail-w-right))) + 8px);
   display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none;
 }
 /* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。
@@ -99,7 +100,7 @@ export const MAP_PANEL_STYLE = `
 #hud-predict.collapsed { display: none !important; }
 #hud-predict-toggle {
   display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
-  width: 26px; height: 26px; border: 0; border-radius: 50%;
+  border: 0; border-radius: 50%;
   background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
@@ -110,7 +111,7 @@ export const MAP_PANEL_STYLE = `
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-predict span.predict-reset {
   flex: 0 0 auto; padding: 0;
-  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
   font-size: var(--font-m);
 }
 #hud-predict span.predict-reset:hover { color: var(--color-primary); }
@@ -133,11 +134,7 @@ export const MAP_PANEL_STYLE = `
   font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
 @media ${MQ_MEDIUM_DOWN} {
-  /* このブレークポイントのレール幅に合わせて左右の隙間を再計算する。 */
-  #hud-predict-wrap {
-    bottom: 8px;
-    left: calc(8px + var(--rail-w-left) + 8px); right: calc(8px + var(--rail-w-right) + 8px);
-  }
+  #hud-predict-wrap { bottom: 8px; }
 }
 @media ${MQ_COMPACT} {
   #hud-predict .slider-ticks { display: none; }
