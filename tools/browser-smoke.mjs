@@ -183,7 +183,21 @@ async function checkCombatLayout() {
       // 画面下端のステージ状態パネルと衝突しないこと。
       const stage = floating.find((item) => item.id === 'hud-stagestatus');
       if (innerWidth <= 1100 && stage) {
-        for (const panel of shelfPanels) if (overlaps(stage, panel)) errors.push('stage overlaps ' + panel.id);
+        for (const panel of shelfPanels) {
+          const panelEl = document.getElementById(panel.id);
+          const railEl = panelEl?.closest('.hud-rail');
+          if (!railEl) continue;
+          const rail = rect(railEl);
+          const visiblePanel = {
+            ...panel,
+            left: Math.max(panel.left, rail.left),
+            right: Math.min(panel.right, rail.right),
+            top: Math.max(panel.top, rail.top),
+            bottom: Math.min(panel.bottom, rail.bottom),
+          };
+          if (visiblePanel.left < visiblePanel.right && visiblePanel.top < visiblePanel.bottom
+            && overlaps(stage, visiblePanel)) errors.push('stage overlaps visible ' + panel.id);
+        }
       }
       // 仮想パッドは初回タッチまで不可視(opacity:0)なので、実際に出ている時だけ見る。
       const touchRoot = document.getElementById('touch-ui');
