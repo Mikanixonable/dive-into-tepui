@@ -72,4 +72,77 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
 #hud-enemies h3 { font-size: var(--font-xxs); }
 #hud-enemies .erow { display: flex; justify-content: space-between; gap: var(--space-4); color: var(--text-dim); }
 #hud-enemies .erow.tgt { color: var(--color-primary); }
+
+/* ORBIT: 文脈 → 主値 → 軌道形状 → 二次要素 → 環境負荷の順に読む。 */
+#hud-orbit .panel-shell-head { margin-bottom: var(--space-2); }
+#hud-orbit .panel-shell-head h3 { margin-bottom: 0; }
+#hud-orbit .orbit-context-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  margin-bottom: var(--space-4); min-width: 0;
+}
+#hud-orbit .orbit-context-row .orbit-center-name {
+  min-width: 0; overflow: hidden; color: var(--text); font-size: var(--font-xxs);
+  text-overflow: ellipsis; white-space: nowrap;
+}
+#hud-orbit .orbit-primary-grid {
+  display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr);
+  align-items: end; gap: var(--space-4); margin-bottom: var(--space-5);
+}
+#hud-orbit .orbit-primary { display: grid; gap: var(--space-2); min-width: 0; }
+#hud-orbit .orbit-speed { text-align: right; }
+#hud-orbit .orbit-altitude .ui-data-hero,
+#hud-orbit .orbit-speed .ui-data-major { white-space: nowrap; }
+#hud-orbit .orbit-apsides {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+#hud-orbit .orbit-apsis {
+  display: grid; gap: var(--space-1); min-width: 0;
+  padding: var(--space-3); border-radius: var(--radius-micro); background: var(--glass-inset);
+}
+#hud-orbit .orbit-apsis output { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#hud-orbit .orbit-secondary-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+#hud-orbit .orbit-secondary-grid > div {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2);
+}
+#hud-orbit .orbit-secondary-grid dd {
+  color: var(--text); font-size: var(--font-xs); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+#hud-orbit .orbit-environment { display: grid; gap: var(--space-3); margin-bottom: var(--space-4); }
+#hud-orbit .orbit-env-row {
+  display: grid; gap: var(--space-1); padding: var(--space-2) 0;
+  transition: background var(--transition-fast), padding var(--transition-fast);
+}
+#hud-orbit .orbit-env-head {
+  display: flex; justify-content: space-between; gap: var(--space-3); align-items: baseline;
+}
+#hud-orbit .orbit-env-head output {
+  color: var(--text-muted); font-size: var(--font-xxs); font-variant-numeric: tabular-nums;
+}
+#hud-orbit .orbit-env-meter { width: 100%; height: 4px; overflow: hidden; }
+#hud-orbit .orbit-env-row.warn-hot {
+  margin-inline: calc(var(--space-2) * -1); padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-micro); background: var(--color-warning-fill);
+}
+#hud-orbit .orbit-controls {
+  display: grid; gap: var(--space-2); padding-top: var(--space-3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
+}
+#hud-orbit .orbit-controls .w-segmented { width: 100%; }
+#hud[data-workspace="map"] #hud-orbit .ui-data-hero { font-size: calc(var(--font-3xl) + 2px); }
+#hud[data-workspace="map"] #hud-orbit .orbit-apsis { background: var(--color-primary-fill-weak); }
+
+/* engagement はレイアウトを移動せず、現在の対象だけを強く見せる。 */
+#hud[data-attention="engagement"] #hud-target {
+  box-shadow: inset 2px 0 0 var(--color-primary), var(--glass-shadow);
+  background: var(--glass-focus);
+}
+#hud[data-attention="engagement"] #hud-target .target-primary-value {
+  color: var(--text-strong); font-size: var(--font-l);
+}
+#hud[data-attention="engagement"] #hud-orbit { opacity: .86; }
+#hud[data-attention="nominal"] #hud-orbit { opacity: 1; }
 `;
