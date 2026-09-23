@@ -69,7 +69,9 @@ declare global {
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       graphicsSettings: () => Readonly<GraphicsSettingsData>;
-      measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
+      measure: (
+        name: CaseName, angles?: Partial<LabViewAngles>, warmupFrames?: number, sampleFrames?: number,
+      ) => Promise<LabMeasurement>;
       measureCloudPreparation: (
         name: CaseName, displayTimes: readonly number[], angles?: Partial<LabViewAngles>,
       ) => Promise<CloudPreparationMeasurement>;
@@ -267,7 +269,8 @@ async function init(): Promise<void> {
       settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
     },
     graphicsSettings: () => settings.graphics.current,
-    measure: (name, angles) => view.measure(name, angles),
+    measure: (name, angles, warmupFrames, sampleFrames) =>
+      view.measure(name, angles, warmupFrames, sampleFrames),
     measureCloudPreparation: (name, displayTimes, angles) =>
       view.measureCloudPreparation(name, displayTimes, angles),
     cloudResourceBudget: {
