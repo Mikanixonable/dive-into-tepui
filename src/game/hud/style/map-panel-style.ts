@@ -203,7 +203,7 @@ export const MAP_PANEL_STYLE = `
 .orbit-guide-color-row { align-items: center; }
 .orbit-guide-color-row .w-input { width: 44px; height: 24px; padding: 2px; }
 .orbit-guide-color-row.hidden { display: none; }
-.orbit-guide-line-count-warning { color: var(--color-error); font-size: var(--font-xs); margin-top: var(--space-2); }
+.orbit-guide-line-count-warning { margin-top: var(--space-2); }
 .orbit-guide-line-count-warning.hidden { display: none; }
 .orbit-guide-zero-velocity-range { display: flex; flex-direction: column; gap: var(--space-2); }
 .orbit-guide-zero-velocity-range.hidden { display: none; }
@@ -267,8 +267,8 @@ export const MAP_PANEL_STYLE = `
 #hud-object-placer input[type="text"] { flex: 1; width: auto; }
 #hud-object-placer .preset-row { flex-wrap: wrap; gap: var(--space-3); }
 #hud-object-placer .field-issue { border: 0; border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); color: var(--color-error); }
-#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 0; border-radius: var(--radius-s); background: var(--color-error-fill); }
-#hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--color-error); }
+#hud-object-placer .issue-list { margin: var(--space-4) 0; }
+#hud-object-placer .issue-list .issue-line { color: inherit; }
 
 
 /* DISPLAY INDEX — タイトル画面の stage list と同じ「名称 + 右端状態」の索引型。 */
