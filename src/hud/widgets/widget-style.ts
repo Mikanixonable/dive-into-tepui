@@ -51,14 +51,14 @@ export const WIDGET_STYLE = `
 
 /* w-group: 見出し + 排他選択ボタン列(3択以上専用)。 */
 .w-group { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.w-group-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); min-width: 28px; }
+.w-group-title { font-size: var(--font-xs); letter-spacing: var(--tracking-label); color: var(--text-dim); min-width: 28px; }
 
 /* w-tabs: パネルの表示面を切り替えるタブ列。 */
 .w-tabs { display: flex; gap: var(--space-2); }
 
 /* w-toggle: 見出し + ON/OFF スイッチ。 */
 .w-toggle { display: flex; align-items: center; gap: var(--space-4); }
-.w-toggle-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); }
+.w-toggle-title { font-size: var(--font-xs); letter-spacing: var(--tracking-label); color: var(--text-dim); }
 .w-toggle-track {
   position: relative; display: inline-block; width: 34px; height: 18px;
   border-radius: var(--radius-pill); border: 0; background: var(--glass-control);
