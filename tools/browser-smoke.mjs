@@ -797,23 +797,27 @@ try {
       };
     })()`);
     expectAll('Creative mode did not remain in its zero-ship map state', chromeState);
-    if (layoutOnly && smokeConstruction) {
-      // Layout CIはconstruction workspaceそのものの幾何だけを検査する。
-      // 基地配置→物体一覧→プロパティ→ドックというゲームプレイsmokeは通常経路に残す。
-      await devTools.evaluate(`(() => {
-        const hud = document.getElementById('hud');
-        const mapRoot = document.querySelector('.hud-map-root');
-        const combatRoot = document.querySelector('.hud-combat-root');
-        const workspace = document.getElementById('ship-construction-panel');
-        if (!hud || !mapRoot || !combatRoot || !workspace) throw new Error('construction layout fixture is incomplete');
-        hud.classList.add('construction-mode');
-        hud.dataset.workspace = 'construction';
-        document.body.classList.add('hud-construction-mode');
-        mapRoot.classList.remove('active');
-        combatRoot.classList.add('active');
-        workspace.classList.remove('hidden');
-      })()`);
-      await checkConstructionLayout();
+    if (layoutOnly) {
+      if (smokeConstruction) {
+        // Layout CIはconstruction workspaceそのものの幾何だけを検査する。
+        // 基地配置→物体一覧→プロパティ→ドックというゲームプレイsmokeは通常経路に残す。
+        await devTools.evaluate(`(() => {
+          const hud = document.getElementById('hud');
+          const mapRoot = document.querySelector('.hud-map-root');
+          const combatRoot = document.querySelector('.hud-combat-root');
+          const workspace = document.getElementById('ship-construction-panel');
+          if (!hud || !mapRoot || !combatRoot || !workspace) throw new Error('construction layout fixture is incomplete');
+          hud.classList.add('construction-mode');
+          hud.dataset.workspace = 'construction';
+          document.body.classList.add('hud-construction-mode');
+          mapRoot.classList.remove('active');
+          combatRoot.classList.add('active');
+          workspace.classList.remove('hidden');
+        })()`);
+        await checkConstructionLayout();
+      } else {
+        await checkMapLayout();
+      }
     } else {
       await checkMapLayout();
       const placedName = await placeShipThroughMenu();
