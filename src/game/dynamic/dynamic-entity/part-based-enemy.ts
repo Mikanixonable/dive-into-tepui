@@ -4,6 +4,7 @@ import type { Part, AnyPart } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Enemy, type EnemyPlacement } from './enemy';
 import type { PartDamageTarget } from './damage-capabilities';
+import { EnemyFireState } from './enemy-fire-controller';
 
 // 部品式の被弾モデルを持つ敵に共通するもの。
 export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
@@ -18,15 +19,9 @@ export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
     id: string,
     parts: readonly Part[],
     alive?: boolean,
-    burstLeft?: number | null,
-    burstDelay?: number | null,
-    lastFireSim?: number | null,
-    lastBehaviorSim?: number | null,
+    fireState = new EnemyFireState(),
   ) {
-    super(
-      placement, view, inertia, radius, id, null, alive,
-      burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
-    );
+    super(placement, view, inertia, radius, id, null, alive, fireState);
     this.partModel = new PartDamageModel(parts);
     this.setHealth(this.partModel.overallHp(), this.partModel.maxHp);
   }
