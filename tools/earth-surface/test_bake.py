@@ -221,15 +221,23 @@ class BakeTests(unittest.TestCase):
         self.assertEqual(left_normal[259], right_normal[0])
         self.assertEqual(left_roughness[259], right_roughness[0])
 
-    # 全球z5..z7のキー数と経度連続性を固定する。
+    # 全球z5..z8のキー数と経度連続性を固定する。
     def test_global_tile_coverage(self):
         keys = bake.global_tile_keys()
-        self.assertEqual(len(keys), 43008)
-        self.assertEqual(keys[0], (5, 0, 0))
-        self.assertEqual(keys[-1], (7, 255, 127))
+        self.assertEqual(len(keys), 174080)
+        self.assertEqual(keys[0], (bake.EARTH_TILE_MIN_Z, 0, 0))
+        self.assertEqual(keys[-1], (
+            bake.EARTH_TILE_MAX_Z,
+            2 ** (bake.EARTH_TILE_MAX_Z + 1) - 1,
+            2 ** bake.EARTH_TILE_MAX_Z - 1,
+        ))
         self.assertEqual(len(set(keys)), len(keys))
-        self.assertEqual(bake.tile_grid(7, 0, 0).width, 260)
-        self.assertAlmostEqual(bake.tile_grid(7, 0, 0).west, -180 - 2 * (180 / 128 / 256))
+        self.assertEqual(bake.tile_grid(bake.EARTH_TILE_MAX_Z, 0, 0).width, bake.TERRAIN_WIDTH)
+        self.assertAlmostEqual(
+            bake.tile_grid(bake.EARTH_TILE_MAX_Z, 0, 0).west,
+            -180 - bake.EARTH_TILE_GUTTER
+            * (180 / 2 ** bake.EARTH_TILE_MAX_Z / bake.EARTH_TILE_TEXELS),
+        )
 
     # z=0の2枚をESTBへまとめ、壊れたpayloadを拒否する。
     def test_base_estb(self):
