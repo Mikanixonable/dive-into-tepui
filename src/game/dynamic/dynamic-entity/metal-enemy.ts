@@ -1,7 +1,7 @@
 import type * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import {
-  ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement,
+  ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement,
   type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
 import { PartBasedEnemy } from './part-based-enemy';
@@ -10,6 +10,7 @@ import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
 import { deserializeParts, type Part, type AnyPart } from './parts';
 import { MetalEnemyView, VariantMetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
+import { EnemyFireState } from './enemy-fire-controller';
 
 // 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。アセットの bounds を写した
 // 定数で、一致は描画テストが確かめる。
@@ -27,10 +28,13 @@ export function metalEnemyCollisionRadius(typeIndex: number | null): number {
 }
 
 // 機体テンプレートを持たない漂流機体は主慣性モーメントを非対称にして、ジャニベコフ効果
-// (中間軸不安定性)で無秩序に回らせる。型番を持つ機体は機首をプログレードへ向けたまま飛ぶので
-// 等方でよい。
+// (中間軸不安定性)で無秩序に回らせる。型番を持つ機体は生成時に機首をプログレードへ向けるが、
+// その後の姿勢追従制御は行わない。初期角速度が 0 のため等方慣性でよい。
 const DRIFTING_INERTIA = v3(1, 1.1, 1.05);
 const TYPED_INERTIA = v3(1, 1, 1);
+
+// 既定パーツへ HP を配分する基準値。各パーツを最低 1 HP に丸めるため、機体の総 HP ではない。
+const METAL_ENEMY_PART_HP_SCALE = 6;
 
 export interface SerializedMetalEnemy extends SerializedEnemy {
   readonly kind: 'metal-enemy';
@@ -55,13 +59,10 @@ export class MetalEnemy extends PartBasedEnemy {
     placement: MetalEnemyPlacement,
     id: string,
     scene: THREE.Scene | undefined,
-    // 金属の敵は、自機と同じ性能の推進器と機関砲を積む。
-    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP),
+    // parts は被弾モデルの構成。weapon を含むが、敵 AI のプラズマ射撃能力とは独立している。
+    parts: readonly Part[] = createShipDefaultParts(METAL_ENEMY_PART_HP_SCALE),
     alive?: boolean,
-    burstLeft?: number | null,
-    burstDelay?: number | null,
-    lastFireSim?: number | null,
-    lastBehaviorSim?: number | null,
+    fireState = new EnemyFireState(),
   ) {
     const { typeIndex, accent } = placement;
     // 型番の有無で見た目と慣性を選ぶ
@@ -70,8 +71,7 @@ export class MetalEnemy extends PartBasedEnemy {
       : new VariantMetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
       placement, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), id, parts, alive,
-      burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
+      metalEnemyCollisionRadius(typeIndex), id, parts, alive, fireState,
     );
     this.typeIndex = typeIndex;
   }
@@ -94,15 +94,11 @@ export class MetalEnemy extends PartBasedEnemy {
       scene,
       deserializeParts(serialized.parts),
       serialized.alive,
-      // 射撃の途中経過と時刻
-      serialized.fireController.burstLeft,
-      serialized.fireController.burstDelay,
-      serialized.fireController.lastFireSim,
-      serialized.fireController.lastBehaviorSim,
+      EnemyFireState.deserialize(serialized.fireController),
     );
   }
 
-  // 金属機体はいつでも撃てる。
+  // 金属機体のプラズマ射撃は、被弾モデル内の weapon パーツの損傷状態に依存しない。
   protected override canFire(): boolean {
     return true;
   }
