@@ -42,8 +42,14 @@ ${OVERLAY_LAYER_STYLE}
 #hud ::-webkit-scrollbar-thumb { background: var(--edge); border-radius: var(--radius-m); }
 #hud ::-webkit-scrollbar-thumb:hover { background: var(--color-primary-hover); }
 
-#hud-overlay-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: var(--shade-1); }
-body.hud-overlay-dim-background #hud-overlay-shield { display: block; }
+#hud-overlay-shield {
+  display: none; position: absolute; inset: 0; pointer-events: none; background: transparent;
+}
+/* 入力ゲートと背景暗転は別責務。gatesInput=true なら透明でも必ず全面shieldを実体化する。 */
+#hud-layer-gate.hud-overlay-gate #hud-overlay-shield { display: block; }
+body.hud-overlay-dim-background #hud-overlay-shield {
+  display: block; background: var(--shade-1);
+}
 body.hud-overlay-modal-open #touch-ui,
 body.hud-construction-mode #touch-ui { display: none; }
 
