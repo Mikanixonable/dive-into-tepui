@@ -63,6 +63,7 @@ declare global {
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
+      graphicsSettings: () => Readonly<GraphicsSettingsData>;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
     };
   }
@@ -257,6 +258,7 @@ async function init(): Promise<void> {
     setGraphicsOption: (key, value) => {
       settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
     },
+    graphicsSettings: () => settings.graphics.current,
     measure: (name, angles) => view.measure(name, angles),
   };
 }
