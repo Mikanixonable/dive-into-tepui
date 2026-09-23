@@ -121,13 +121,28 @@ const measurement = (
 
 const COMMON_WINDOW = { startMinutes: 0, endMinutes: 360, sampleIntervalMinutes: 10 } as const;
 
+export const METEOROLOGICAL_ERROR_FLOORS = {
+  c1TrajectoryFractionOfMinimumSample: 0.25,
+  relativeMass: 0.01,
+  normalizedMassBalance: 0.01,
+  normalizedDensity: 2e-3,
+  gpuComponentLeakage: 1e-3,
+  emptyCaseAbsolute: 1e-9,
+} as const;
+
 export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, MeteorologicalCaseFixture>> = {
   C1: { id: 'C1', label: '球面剛体回転', ...CONTROLS.c1, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
-      measurement('trajectory', '球面移流軌跡誤差', 'm', 'distance to analytic equatorial great-circle path', 'finite cloud mask', 0, '0.01 m 以下', 'analytic'),
+      measurement('trajectory', '有限雲塊の球面剛体回転軌跡誤差', 'm',
+        'maximum distance of area-weighted material points from independent analytic axis rotation',
+        'finite spherical cloud-blob material points', 0, '0.01 m 以下', 'analytic'),
+      measurement('rotation-angle', '球面剛体回転角誤差', 'rad',
+        'maximum phase-angle error about the prescribed rotation axis',
+        'finite spherical cloud-blob material points', 0, '1e-9 rad 以下', 'analytic'),
       measurement('mass', '相対質量誤差', '1',
-        'absolute difference between transported cohort mass and independently fixed initial mass, divided by initial mass',
-        'finite cloud material cohorts', 0, '初期質量 0.001 kg m^-2 に対し 1% 以下', 'analytic'),
+        'area-weighted absolute difference between transported material and independently fixed initial mass, divided by initial mass',
+        'finite spherical cloud-blob material points', 0,
+        `初期質量に対し ${(METEOROLOGICAL_ERROR_FLOORS.relativeMass * 100).toString()}% 以下`, 'analytic'),
     ] },
   C2: { id: 'C2', label: '高度別の風向', ...CONTROLS.c2, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
@@ -185,15 +200,6 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
 export const METEOROLOGICAL_CASE_IDS: readonly MeteorologicalCaseId[] = [
   'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9',
 ];
-
-export const METEOROLOGICAL_ERROR_FLOORS = {
-  c1TrajectoryFractionOfMinimumSample: 0.25,
-  relativeMass: 0.01,
-  normalizedMassBalance: 0.01,
-  normalizedDensity: 2e-3,
-  gpuComponentLeakage: 1e-3,
-  emptyCaseAbsolute: 1e-9,
-} as const;
 
 export type CloudReferenceSeriesId = 'marine-cell' | 'deep-convection' | 'wave-cloud' | 'midlatitude-front';
 
