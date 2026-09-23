@@ -421,7 +421,7 @@ export class PredictPanel {
     const row2 = document.createElement('div');
     row2.className = 'predict-row2';
     const resetBtn = new Button('⏮', () => this.onResetToNow?.());
-    resetBtn.element.classList.add('predict-reset');
+    resetBtn.element.classList.add('predict-reset', 'w-btn--icon');
     resetBtn.element.title = '現在に戻す';
     resetBtn.element.setAttribute('aria-label', '現在に戻す');
     row2.appendChild(resetBtn.element);
