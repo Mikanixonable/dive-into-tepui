@@ -2,6 +2,9 @@
 // 質量保存と任意時刻再構成を検査する決定論的 surrogate model。描画装置へ渡す場合も、
 // 装置側に出生・供給履歴の正本を持たせず、ここで導出した immutable な宣言だけを渡す。
 
+import { len, v3 } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
+
 const SECONDS_PER_HOUR = 3_600;
 const UINT32_RANGE = 0x1_0000_0000;
 const MAX_DOMAIN_EVENTS = 100_000;
@@ -20,6 +23,16 @@ export interface ConvectiveCloudCell {
   readonly liquidSupplyRateKgM2S: number;
   // 対流供給が続く時間。s。
   readonly convectiveDurationSeconds: number;
+  // Optional geographic placement for consumers that reconstruct material tracks.
+  // Diagnostic-only cells may omit it; no location is inferred from an ID.
+  readonly sourcePosition?: CloudEventSourcePosition;
+  // Geometric altitude [m] at which released ice enters the upper-level flow.
+  readonly iceReleaseHeightM?: number;
+}
+
+export interface CloudEventSourcePosition {
+  readonly directionUnitVector: Vec3;
+  readonly geometricHeightM: number;
 }
 
 export interface CloudEventDomain {
@@ -51,6 +64,9 @@ export interface CloudIceRelease {
   readonly parentEventId: string;
   readonly releasedKgM2: number;
   readonly remainingKgM2: number;
+  // Mass-weighted mean cohort release time, not a single physical release instant.
+  readonly meanReleaseTimeSeconds: number | null;
+  readonly releaseHeightM: number | null;
 }
 
 export interface ConvectiveCloudEvent {
@@ -59,6 +75,7 @@ export interface ConvectiveCloudEvent {
   readonly birthEpoch: number;
   readonly birthTimeSeconds: number;
   readonly ageSeconds: number;
+  readonly sourcePosition?: CloudEventSourcePosition;
   readonly supplyActive: boolean;
   readonly mass: CloudEventMassLedger;
   // 一つの有界な氷放出記録。再帰的な親子グラフは保持しない。
@@ -213,6 +230,22 @@ function validateDomain(domain: CloudEventDomain): number {
     if (cell.convectiveDurationSeconds > domain.birthIntervalSeconds) {
       throw new RangeError('convectiveDurationSeconds must not exceed birthIntervalSeconds');
     }
+    if (cell.sourcePosition !== undefined) {
+      const position = cell.sourcePosition.directionUnitVector;
+      if (![position.x, position.y, position.z, cell.sourcePosition.geometricHeightM].every(Number.isFinite)) {
+        throw new RangeError('sourcePosition values must be finite');
+      }
+      if (Math.abs(len(position) - 1) > 1e-10) {
+        throw new RangeError('sourcePosition.directionUnitVector must be normalized');
+      }
+      if (cell.sourcePosition.geometricHeightM < 0) {
+        throw new RangeError('sourcePosition.geometricHeightM must be non-negative');
+      }
+    }
+    if (cell.iceReleaseHeightM !== undefined
+      && (!(cell.iceReleaseHeightM >= 0) || !Number.isFinite(cell.iceReleaseHeightM))) {
+      throw new RangeError('iceReleaseHeightM must be finite and non-negative');
+    }
   }
   const omittedUpperBoundKgM2 = omittedMassUpperBoundKgM2(
     domain.cells,
@@ -246,6 +279,15 @@ function createEvent(
   const birthTimeSeconds = epoch * domain.birthIntervalSeconds;
   const ageSeconds = Math.max(domain.timeSeconds - birthTimeSeconds, 0);
   const mass = eventMass(cell, ageSeconds);
+  const releasedDurationSeconds = Math.min(
+    Math.min(ageSeconds, cell.convectiveDurationSeconds),
+    Math.max(ageSeconds - ICE_RELEASE_DELAY_SECONDS, 0),
+  );
+  const meanReleaseTimeSeconds = releasedDurationSeconds > 0
+    ? meanIceReleaseTimeSeconds(
+      birthTimeSeconds, ageSeconds, releasedDurationSeconds, cell.upperRelativeHumidity,
+    )
+    : null;
   const id = `${cell.id}:${epoch}:${eventHash(domain.seed, cell.id, epoch).toString(16).padStart(8, '0')}`;
   return {
     id,
@@ -253,6 +295,16 @@ function createEvent(
     birthEpoch: epoch,
     birthTimeSeconds,
     ageSeconds,
+    ...(cell.sourcePosition === undefined ? {} : {
+      sourcePosition: Object.freeze({
+        directionUnitVector: Object.freeze(v3(
+          cell.sourcePosition.directionUnitVector.x,
+          cell.sourcePosition.directionUnitVector.y,
+          cell.sourcePosition.directionUnitVector.z,
+        )),
+        geometricHeightM: cell.sourcePosition.geometricHeightM,
+      }),
+    }),
     supplyActive: ageSeconds < cell.convectiveDurationSeconds,
     mass,
     iceRelease: {
@@ -264,8 +316,35 @@ function createEvent(
           Math.max(ageSeconds - ICE_RELEASE_DELAY_SECONDS, 0),
         ),
       remainingKgM2: mass.iceKgM2,
+      meanReleaseTimeSeconds,
+      releaseHeightM: meanReleaseTimeSeconds === null ? null : cell.iceReleaseHeightM ?? null,
     },
   };
+}
+
+// Returns the mass-weighted mean timestamp of the surviving continuous release cohort.
+// It is a representative transport start time, not a claim that all ice was released then.
+function meanIceReleaseTimeSeconds(
+  birthTimeSeconds: number,
+  ageSeconds: number,
+  releasedDurationSeconds: number,
+  upperRelativeHumidity: number,
+): number {
+  const humidity = Math.min(Math.max(upperRelativeHumidity, 0), 1);
+  const lossRatePerSecond = (1 + (1 - humidity) * (MAX_DRY_AIR_MULTIPLIER - 1))
+    / ICE_SUBLIMATION_TIME_SECONDS;
+  const x = lossRatePerSecond * releasedDurationSeconds;
+  const meanAgeAtReleaseEndSeconds = x < 1e-4
+    ? releasedDurationSeconds / 2 - lossRatePerSecond * releasedDurationSeconds ** 2 / 12
+      + lossRatePerSecond ** 3 * releasedDurationSeconds ** 4 / 720
+    : x > 50
+      ? 1 / lossRatePerSecond
+      : 1 / lossRatePerSecond - releasedDurationSeconds / Math.expm1(x);
+  const tailAfterReleaseSeconds = Math.max(
+    ageSeconds - ICE_RELEASE_DELAY_SECONDS - releasedDurationSeconds, 0,
+  );
+  const meanAgeAtQuerySeconds = tailAfterReleaseSeconds + meanAgeAtReleaseEndSeconds;
+  return birthTimeSeconds + ageSeconds - meanAgeAtQuerySeconds;
 }
 
 // 同じ seed/cell ID/出生 epoch は常に同じイベントとなり、時刻・列挙順・カメラは ID に入らない。
