@@ -393,8 +393,15 @@ async function checkHelpModal() {
     })()`);
     if (!zoomArmed) throw new Error('Could not arm touch ZOOM before modal release check.');
   }
-  await pressKey('h', 'KeyH', 72);
-  await waitFor(`getComputedStyle(document.getElementById('hud-help')).display !== 'none'`, '[H] to open the help panel');
+  if (layoutOnly) {
+    await devTools.evaluate(`document.getElementById('hud-help-badge')?.click()`);
+  } else {
+    await pressKey('h', 'KeyH', 72);
+  }
+  await waitFor(
+    `getComputedStyle(document.getElementById('hud-help')).display !== 'none'`,
+    layoutOnly ? 'the HLP badge to open the help panel' : '[H] to open the help panel',
+  );
   const state = await devTools.evaluate(`(() => {
     const shield = document.getElementById('hud-overlay-shield');
     const canvas = document.querySelector('canvas');
@@ -419,11 +426,15 @@ async function checkHelpModal() {
   })()`);
   expectAll('Help modal shielding failed', state);
   await checkOverlayGeometry('#hud-help', 'Help modal');
-  await pressKey('Escape', 'Escape', 27);
+  if (layoutOnly) {
+    await devTools.evaluate(`document.querySelector('#hud-help .w-close')?.click()`);
+  } else {
+    await pressKey('Escape', 'Escape', 27);
+  }
   await waitFor(
     `getComputedStyle(document.getElementById('hud-help')).display === 'none'
       && !document.body.classList.contains('hud-overlay-modal-open')`,
-    'Escape to close the help panel',
+    layoutOnly ? 'the Help close button to close the panel' : 'Escape to close the help panel',
   );
 }
 
