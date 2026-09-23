@@ -212,93 +212,94 @@ def build_cockpit():
     mats = MaterialLibrary()
     
     # 1. Re-entry capsule tapered lathe profile
-    # Smooth transition from aft R=3.0m to forward R=2.25m with aerodynamic curve
+    # Smooth transition from aft R=3.0m to forward R=2.10m with aerodynamic curve
+    # Strictly fits within length 3.0m (z in [-1.50, +1.50])
     points = [
-        (2.98, -2.00), # Aft docking rim
-        (3.02, -1.85), # Heat shield transition flare
-        (3.00, -1.20), # Cylindrical aft section
-        (2.96, -0.40), # Mid fuselage taper start
-        (2.82,  0.40), # Forward conical taper
-        (2.55,  1.20), # Window / cockpit collar
-        (2.35,  1.75), # Forward nose taper
-        (2.15,  1.95), # CBM collar step
-        (2.10,  2.00), # Forward docking interface
+        (2.98, -1.48), # Aft docking rim
+        (3.02, -1.35), # Heat shield transition flare
+        (3.00, -0.90), # Cylindrical aft section
+        (2.96, -0.30), # Mid fuselage taper start
+        (2.82,  0.30), # Forward conical taper
+        (2.55,  0.90), # Window / cockpit collar
+        (2.35,  1.30), # Forward nose taper
+        (2.15,  1.46), # CBM collar step
+        (2.10,  1.50), # Forward docking interface
     ]
     bm_hull = make_lathe(points, segments=48)
     add_mesh_obj("cockpit_hull", bm_hull, mats.hull)
     
-    # 2. Aft Phenolic Heat Shield (curved ablative dome)
+    # 2. Aft Phenolic Heat Shield (curved ablative dome, convex within z=-1.50m)
     bm_shield = make_lathe([
-        (0.00, -2.08),
-        (1.50, -2.06),
-        (2.50, -2.03),
-        (2.98, -2.00),
+        (0.00, -1.50),
+        (1.50, -1.49),
+        (2.50, -1.48),
+        (2.98, -1.48),
     ], segments=36)
     add_mesh_obj("cockpit_heatshield", bm_shield, mats.heatshield)
     
     # 3. Forward CBM / APAS Docking Flange Ring (torus)
-    bm_cbm = make_torus(major_r=2.12, minor_r=0.06, z_center=1.98, major_seg=36, minor_seg=12)
+    bm_cbm = make_torus(major_r=2.12, minor_r=0.04, z_center=1.48, major_seg=36, minor_seg=12)
     add_mesh_obj("cockpit_cbm_ring", bm_cbm, mats.cbm_ring)
     
     # 4. Beveled Dual Trapezoidal Windows (Gemini / Soyuz style)
-    # Positioned at +Y (top side) at angles +/- 22 degrees, z = 0.8m to 1.4m
+    # Positioned at +Y (top side) at angles +/- 22 degrees, z = 0.6m to 1.1m
     for sign in [-1.0, 1.0]:
         ang = sign * math.radians(22)
-        r_mid = 2.65
-        z_mid = 1.05
+        r_mid = 2.60
+        z_mid = 0.80
         # Frame
         rot = (math.radians(-18), 0, -ang)
         pos = (r_mid * math.sin(ang), r_mid * math.cos(ang), z_mid)
-        bm_frame = make_box(0.55, 0.08, 0.70, center=pos, rot_euler=rot)
+        bm_frame = make_box(0.48, 0.08, 0.55, center=pos, rot_euler=rot)
         add_mesh_obj(f"window_frame_{sign}", bm_frame, mats.window_frame)
         
         # Inset Glass Pane (recessed inside frame)
         pos_glass = (pos[0] * 0.98, pos[1] * 0.98, pos[2])
-        bm_glass = make_box(0.48, 0.03, 0.62, center=pos_glass, rot_euler=rot)
+        bm_glass = make_box(0.42, 0.03, 0.48, center=pos_glass, rot_euler=rot)
         add_mesh_obj(f"window_glass_{sign}", bm_glass, mats.window)
 
     # 5. Recessed Avionics & Equipment Bay (Carved INTO the hull, NOT a plate!)
-    # Located on port & starboard sides (angles +/- 90 deg, z = -0.5m to +0.3m)
+    # Located on port & starboard sides (angles +/- 90 deg, z = -0.4m to +0.2m)
     for sign in [-1.0, 1.0]:
         ang = sign * math.pi / 2.0
         r_bay = 2.92 # Inset by 0.08m below R=3.0m hull
         pos_bay = (r_bay * math.cos(ang), r_bay * math.sin(ang), -0.10)
         # Recessed cavity backplane
-        bm_cavity = make_box(0.12, 1.20, 0.80, center=pos_bay, rot_euler=(0, 0, ang))
+        bm_cavity = make_box(0.12, 1.00, 0.60, center=pos_bay, rot_euler=(0, 0, ang))
         add_mesh_obj(f"recessed_bay_{sign}", bm_cavity, mats.recessed)
         # Internal avionics modules / connectors inside bay
         for k in range(3):
-            zk = -0.35 + k * 0.25
+            zk = -0.25 + k * 0.20
             pos_mod = ((r_bay + 0.02) * math.cos(ang), (r_bay + 0.02) * math.sin(ang), zk)
-            bm_mod = make_box(0.06, 0.90, 0.16, center=pos_mod, rot_euler=(0, 0, ang))
+            bm_mod = make_box(0.06, 0.75, 0.12, center=pos_mod, rot_euler=(0, 0, ang))
             add_mesh_obj(f"bay_module_{sign}_{k}", bm_mod, mats.hull_dark)
 
     # 6. Integrated Optical Star Tracker Cowl
     # Aerodynamic cowling blended into the forward dorsal hull
-    cowl_pos = (0.0, 2.70, 0.45)
-    bm_cowl = make_cylinder(0.20, 0.16, 0.35, z_center=0.45, segments=16)
+    cowl_pos = (0.0, 2.70, 0.35)
+    bm_cowl = make_cylinder(0.18, 0.14, 0.28, z_center=0.35, segments=16)
     # Tilt slightly forward
     transform_bm(bm_cowl, Euler((math.radians(25), 0, 0)).to_matrix().to_4x4())
-    transform_bm(bm_cowl, Matrix.Translation(Vector((0.0, 2.72, 0.45))))
+    transform_bm(bm_cowl, Matrix.Translation(Vector((0.0, 2.70, 0.35))))
     add_mesh_obj("star_tracker_cowl", bm_cowl, mats.hull_dark)
     
     # 7. Blended RCS Quad Pod Housings (Aerospace faired pods, not arbitrary cubes)
-    # Placed symmetrically around circumference at z = -0.7m
+    # Placed symmetrically around circumference at z = -0.55m
     for i in range(4):
         ang = i * math.pi / 2.0 + math.pi / 4.0
         r_pod = 2.98
-        pos_pod = (r_pod * math.cos(ang), r_pod * math.sin(ang), -0.70)
-        bm_pod = make_box(0.28, 0.38, 0.32, center=pos_pod, rot_euler=(0, 0, ang))
+        pos_pod = (r_pod * math.cos(ang), r_pod * math.sin(ang), -0.55)
+        bm_pod = make_box(0.24, 0.32, 0.26, center=pos_pod, rot_euler=(0, 0, ang))
         add_mesh_obj(f"rcs_pod_{i}", bm_pod, mats.hull_dark)
         
         # 4 small conical nozzle clusters emerging from pod
-        for n_dir in [(0.12, 0, 0), (-0.12, 0, 0), (0, 0, 0.12), (0, 0, -0.12)]:
-            bm_noz = make_cylinder(0.04, 0.02, 0.08, z_center=0, segments=8)
+        for n_dir in [(0.10, 0, 0), (-0.10, 0, 0), (0, 0, 0.10), (0, 0, -0.10)]:
+            bm_noz = make_cylinder(0.035, 0.018, 0.07, z_center=0, segments=8)
             transform_bm(bm_noz, Matrix.Translation(Vector(pos_pod) + Vector(n_dir)))
             add_mesh_obj(f"rcs_noz_{i}_{n_dir}", bm_noz, mats.nozzle_rib)
 
     # 8. Structural Circumferential Frame Ribs (Ring bulkheads)
-    for z_ring in [-1.50, 0.0, 1.50]:
+    for z_ring in [-1.10, 0.0, 1.10]:
         bm_ring = make_torus(major_r=2.97, minor_r=0.035, z_center=z_ring, major_seg=36, minor_seg=8)
         add_mesh_obj(f"frame_ring_{z_ring}", bm_ring, mats.hull_dark)
 
@@ -452,68 +453,74 @@ def build_tank_rcs(length, name):
 # ----------------------------------------------------------------------
 # 4. Main Thruster (thruster-standard: length 3.5m, diameter 3.0m, radius 1.5m)
 # ----------------------------------------------------------------------
+# 4. Main Thruster (thruster-standard: length 1.0m, diameter 6.0m, radius 3.0m)
+# ----------------------------------------------------------------------
 def build_thruster():
     reset_scene()
     mats = MaterialLibrary()
-    half_len = 1.75
+    radius = 3.0
+    half_len = 0.5
     
-    # 1. Forward Thrust Structure & Gimbal Mount (z = +0.75m to +1.75m)
-    bm_thrust_cyl = make_cylinder(1.50, 1.50, 1.00, z_center=1.25, segments=36)
-    add_mesh_obj("thrust_structure", bm_thrust_cyl, mats.hull)
+    # 1. Main Structural Shell / Thrust Ring (z = -0.5m to +0.5m, R = 3.0m)
+    # Strictly terminates at forward docking interface z = +0.50m (NO protrusion forward!)
+    bm_thrust_cyl = make_cylinder(radius, radius, 1.00, z_center=0.0, segments=48)
+    add_mesh_obj("thrust_structure", bm_thrust_cyl, mats.hull_dark)
     
-    # Thrust structure circumferential stiffeners
-    for zr in [0.85, 1.25, 1.65]:
-        bm_r = make_torus(major_r=1.51, minor_r=0.03, z_center=zr, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"thrust_ring_{zr}", bm_r, mats.hull_dark)
+    # Forward and aft structural stiffener rings
+    for zr in [-0.45, 0.45]:
+        bm_r = make_torus(major_r=radius * 0.98, minor_r=0.035, z_center=zr, major_seg=48, minor_seg=8)
+        add_mesh_obj(f"thrust_ring_{zr}", bm_r, mats.hull)
+
+    # 2. Conical Thrust Adapter & Radiation Heat Shield Baffle inside the ring
+    bm_adapter = make_cylinder(radius * 0.95, radius * 0.65, 0.45, z_center=-0.25, segments=36)
+    add_mesh_obj("thrust_adapter", bm_adapter, mats.hull_dark)
+
+    bm_baffle = make_cylinder(radius * 0.64, radius * 0.64, 0.06, z_center=-0.48, segments=36)
+    add_mesh_obj("heat_baffle", bm_baffle, mats.heatshield)
         
-    # Injector Dome Head (dome inside thrust structure, z = 0.70m)
+    # Injector Dome Head (inside thrust structure, z = 0.05m to 0.25m)
     bm_dome = make_lathe([
-        (0.00, 0.95),
-        (0.40, 0.92),
-        (0.70, 0.85),
-        (0.90, 0.75),
+        (0.00, 0.25),
+        (0.40, 0.22),
+        (0.70, 0.15),
+        (0.90, 0.05),
     ], segments=24)
     add_mesh_obj("injector_dome", bm_dome, mats.hull_dark)
 
-    # 2. Spherical Gimbal Bearing Joint (z = 0.60m to 0.75m)
-    bm_gimbal = make_sphere(0.38, center=(0, 0, 0.68), u_seg=20, v_seg=12)
+    # 3. Spherical Gimbal Bearing Joint (z = 0.0m)
+    bm_gimbal = make_sphere(0.42, center=(0, 0, 0.0), u_seg=20, v_seg=12)
     add_mesh_obj("gimbal_bearing", bm_gimbal, mats.hull_dark)
 
-    # 3. Dual Hydraulic Gimbal Actuators with Pivot Clevises
+    # 4. Dual Hydraulic Gimbal Actuators with Pivot Clevises
     # Mounted at 90 deg separation to provide pitch and yaw vectoring
     for act_ang in [0.0, math.pi / 2.0]:
-        x_top = 0.90 * math.cos(act_ang)
-        y_top = 0.90 * math.sin(act_ang)
-        x_bot = 0.50 * math.cos(act_ang)
-        y_bot = 0.50 * math.sin(act_ang)
+        x_top = 1.10 * math.cos(act_ang)
+        y_top = 1.10 * math.sin(act_ang)
+        x_bot = 0.60 * math.cos(act_ang)
+        y_bot = 0.60 * math.sin(act_ang)
         # Actuator cylinder
-        bm_act = make_cylinder(0.05, 0.05, 0.65, z_center=0.45, segments=12)
-        # Vector towards gimbal point
-        t_dir = (Vector((x_bot, y_bot, 0.20)) - Vector((x_top, y_top, 0.75))).normalized()
-        transform_bm(bm_act, Matrix.Translation(Vector(((x_top + x_bot) * 0.5, (y_top + y_bot) * 0.5, 0.45))))
+        bm_act = make_cylinder(0.06, 0.06, 0.50, z_center=-0.20, segments=12)
+        transform_bm(bm_act, Matrix.Translation(Vector(((x_top + x_bot) * 0.5, (y_top + y_bot) * 0.5, -0.20))))
         add_mesh_obj(f"gimbal_actuator_{act_ang}", bm_act, mats.pipe)
 
-    # 4. Authentic Rao Parabolic Contour Bell Nozzle
-    # Smooth expansion curve from throat (R=0.35m at z=+0.50m) to exit (R=1.35m at z=-1.75m)
-    # Profile points derived from characteristic method of characteristics expansion
+    # 5. Authentic Rao Parabolic Contour Bell Nozzle
+    # Smooth expansion curve expanding strictly rearward: throat at z = -0.35m to exit at z = -1.80m
     rao_points = [
-        (0.36,  0.50), # Throat entrance
-        (0.34,  0.42), # Throat minimum (choked flow)
-        (0.38,  0.30), # Initial expansion expansion flare
-        (0.48,  0.10), # Parabolic inflection
-        (0.62, -0.20),
-        (0.78, -0.55),
-        (0.96, -0.95),
-        (1.15, -1.35),
-        (1.35, -1.75), # Exit skirt rim
+        (0.48, -0.25), # Throat entrance
+        (0.44, -0.35), # Throat minimum (choked flow)
+        (0.50, -0.50), # Initial expansion flare
+        (0.65, -0.75), # Parabolic inflection
+        (0.85, -1.05),
+        (1.10, -1.35),
+        (1.40, -1.62),
+        (1.70, -1.80), # Exit skirt rim
     ]
     bm_bell = make_lathe(rao_points, segments=48)
     add_mesh_obj("nozzle_bell", bm_bell, mats.nozzle_bell)
 
-    # 5. Regenerative Cooling Tube Ribs & Circumferential Hat Bands
-    # Exterior stiffener hat-bands along the nozzle bell
-    for zb, rb in [(0.10, 0.49), (-0.40, 0.71), (-1.00, 0.99), (-1.55, 1.25), (-1.74, 1.36)]:
-        bm_band = make_torus(major_r=rb, minor_r=0.025, z_center=zb, major_seg=36, minor_seg=8)
+    # 6. Regenerative Cooling Tube Ribs & Circumferential Hat Bands
+    for zb, rb in [(-0.50, 0.51), (-0.80, 0.70), (-1.20, 0.98), (-1.55, 1.32), (-1.78, 1.68)]:
+        bm_band = make_torus(major_r=rb, minor_r=0.03, z_center=zb, major_seg=36, minor_seg=8)
         add_mesh_obj(f"nozzle_band_{zb}", bm_band, mats.nozzle_rib)
 
     # 16 Longitudinal cooling manifold tube runs on the bell exterior
@@ -526,48 +533,48 @@ def build_thruster():
         add_mesh_obj(f"cooling_tube_{i}", bm_tube, mats.nozzle_rib)
 
     # Turbopump exhaust manifold torus wrapped around throat collar
-    bm_turbo = make_torus(major_r=0.55, minor_r=0.06, z_center=0.35, major_seg=24, minor_seg=8)
+    bm_turbo = make_torus(major_r=0.68, minor_r=0.07, z_center=-0.38, major_seg=24, minor_seg=8)
     add_mesh_obj("turbopump_manifold", bm_turbo, mats.pipe)
 
     export_glb(os.path.join(OUT_DIR, "thruster-standard.glb"))
 
 # ----------------------------------------------------------------------
-# 5. Solid Rocket Booster (booster-standard: length 5.0m, diameter 3.5m, radius 1.75m)
+# 5. Solid Rocket Booster (booster-standard: length 6.0m, diameter 6.0m, radius 3.0m)
 # ----------------------------------------------------------------------
 def build_booster():
     reset_scene()
     mats = MaterialLibrary()
-    radius = 1.75
-    half_len = 2.50
+    radius = 3.0
+    half_len = 3.0
     
     # 1. Main Casing Lathe Profile
-    # Forward aerodynamic nose cone (z = +1.5m to +2.5m)
-    # Cylindrical motor casing (z = -1.2m to +1.5m)
-    # Flared aft skirt (z = -2.5m to -1.2m)
+    # Forward aerodynamic nose cone (z = +1.6m to +3.0m)
+    # Cylindrical motor casing (z = -1.6m to +1.6m)
+    # Flared aft skirt (z = -3.0m to -1.6m)
     booster_profile = [
-        (0.35,  2.50), # Nose tip cap
-        (0.90,  2.25), # Nose cone slope
-        (1.45,  1.85),
-        (1.75,  1.50), # Shoulder transition to cylinder
-        (1.75, -1.20), # Main solid propellant motor cylinder
-        (1.78, -1.60), # Aft skirt attachment joint
-        (1.85, -2.20), # Flared aerodynamic skirt
-        (1.90, -2.50), # Aft skirt exit base
+        (0.60,  3.00), # Nose tip cap
+        (1.50,  2.70), # Nose cone slope
+        (2.40,  2.20),
+        (3.00,  1.60), # Shoulder transition to cylinder
+        (3.00, -1.60), # Main solid propellant motor cylinder
+        (3.05, -2.10), # Aft skirt attachment joint
+        (3.15, -2.70), # Flared aerodynamic skirt
+        (3.20, -3.00), # Aft skirt exit base
     ]
     bm_casing = make_lathe(booster_profile, segments=48)
     add_mesh_obj("booster_casing", bm_casing, mats.hull)
 
     # 2. Casing Segment Joint Bands (SRB field joints with O-ring band retainers)
-    for zj in [-0.50, 0.50, 1.45]:
-        bm_joint = make_torus(major_r=radius + 0.02, minor_r=0.035, z_center=zj, major_seg=36, minor_seg=8)
+    for zj in [-0.80, 0.50, 1.55]:
+        bm_joint = make_torus(major_r=radius + 0.02, minor_r=0.035, z_center=zj, major_seg=48, minor_seg=8)
         add_mesh_obj(f"booster_joint_{zj}", bm_joint, mats.hull_dark)
 
     # 3. Forward Jettison / Separation Motor Pods
     # 4 small canted solid rocket nozzles for stage separation
     for k in range(4):
         ang = k * math.pi / 2.0
-        pos_sep = (1.50 * math.cos(ang), 1.50 * math.sin(ang), 1.85)
-        bm_sep = make_cylinder(0.10, 0.06, 0.25, z_center=0.0, segments=12)
+        pos_sep = (2.20 * math.cos(ang), 2.20 * math.sin(ang), 2.30)
+        bm_sep = make_cylinder(0.12, 0.07, 0.28, z_center=0.0, segments=12)
         # Cant 35 degrees outwards and forward
         rot = Euler((math.radians(35) * math.sin(ang), -math.radians(35) * math.cos(ang), ang))
         transform_bm(bm_sep, rot.to_matrix().to_4x4())
@@ -576,11 +583,11 @@ def build_booster():
 
     # 4. Large Expansion Rao Nozzle inside the aft skirt
     nozzle_profile = [
-        (0.45, -1.20), # Throat
-        (0.58, -1.50),
-        (0.80, -1.85),
-        (1.10, -2.20),
-        (1.40, -2.50), # Bell exit
+        (0.70, -1.60), # Throat
+        (0.95, -2.00),
+        (1.30, -2.40),
+        (1.80, -2.75),
+        (2.30, -3.00), # Bell exit inside skirt
     ]
     bm_srb_nozzle = make_lathe(nozzle_profile, segments=36)
     add_mesh_obj("booster_nozzle", bm_srb_nozzle, mats.nozzle_bell)
@@ -588,41 +595,41 @@ def build_booster():
     # Skirt reinforcement ribs
     for i in range(8):
         ang = i * math.pi / 4.0
-        bm_rib = make_box(0.08, 0.18, 1.20, center=(1.82 * math.cos(ang), 1.82 * math.sin(ang), -1.85), rot_euler=(0, 0, ang))
+        bm_rib = make_box(0.08, 0.22, 1.40, center=(3.10 * math.cos(ang), 3.10 * math.sin(ang), -2.35), rot_euler=(0, 0, ang))
         add_mesh_obj(f"skirt_rib_{i}", bm_rib, mats.hull_dark)
 
     export_glb(os.path.join(OUT_DIR, "booster-standard.glb"))
 
 # ----------------------------------------------------------------------
-# 6. RCS Module (rcs-standard: length 1.5m, diameter 2.0m, radius 1.0m)
+# 6. RCS Module (rcs-standard: length 1.0m, diameter 6.0m, radius 3.0m)
 # ----------------------------------------------------------------------
 def build_rcs_module():
     reset_scene()
     mats = MaterialLibrary()
-    radius = 1.0
-    half_len = 0.75
+    radius = 3.0
+    half_len = 0.5
     
     # Central structural core
-    bm_core = make_cylinder(radius * 0.75, radius * 0.75, 1.50, z_center=0.0, segments=32)
+    bm_core = make_cylinder(radius * 0.95, radius * 0.95, 1.00, z_center=0.0, segments=48)
     add_mesh_obj("rcs_core", bm_core, mats.hull)
     
     # End rings
     for sign in [-1.0, 1.0]:
-        bm_end = make_torus(major_r=radius * 0.90, minor_r=0.06, z_center=sign * (half_len - 0.05), major_seg=32, minor_seg=8)
+        bm_end = make_torus(major_r=radius * 0.98, minor_r=0.035, z_center=sign * (half_len - 0.05), major_seg=48, minor_seg=8)
         add_mesh_obj(f"rcs_end_ring_{sign}", bm_end, mats.hull_dark)
 
     # 4 Quad thruster pods radiating outward
     for i in range(4):
         ang = i * math.pi / 2.0
-        x = radius * math.cos(ang)
-        y = radius * math.sin(ang)
+        x = (radius - 0.05) * math.cos(ang)
+        y = (radius - 0.05) * math.sin(ang)
         # Pod housing
-        bm_box = make_box(0.30, 0.30, 0.40, center=(x, y, 0.0), rot_euler=(0, 0, ang))
+        bm_box = make_box(0.38, 0.38, 0.45, center=(x, y, 0.0), rot_euler=(0, 0, ang))
         add_mesh_obj(f"rcs_pod_{i}", bm_box, mats.hull_dark)
         
         # Conical nozzles pointing in orthogonal directions
-        for d in [(0.16, 0, 0), (-0.16, 0, 0), (0, 0, 0.16), (0, 0, -0.16)]:
-            bm_noz = make_cylinder(0.05, 0.025, 0.10, z_center=0.0, segments=8)
+        for d in [(0.22, 0, 0), (-0.22, 0, 0), (0, 0, 0.18), (0, 0, -0.18)]:
+            bm_noz = make_cylinder(0.08, 0.03, 0.16, z_center=0.0, segments=8)
             transform_bm(bm_noz, Matrix.Translation(Vector((x, y, 0.0)) + Vector(d)))
             add_mesh_obj(f"rcs_noz_{i}_{d}", bm_noz, mats.nozzle_rib)
 
@@ -634,35 +641,36 @@ def build_rcs_module():
 def build_docking_mechanism(name, kind):
     reset_scene()
     mats = MaterialLibrary()
-    radius = 3.0 if kind == 'decoupler' else 2.0
+    radius = 3.0
     half_len = 0.5
     
-    # 1. Main outer structural ring
+    # 1. Main outer structural ring (standard 6.0m diameter)
     mat_main = mats.dock if kind == 'dock' else mats.hull
-    bm_ring = make_cylinder(radius, radius, 1.0, z_center=0.0, segments=36)
+    bm_ring = make_cylinder(radius, radius, 1.0, z_center=0.0, segments=48)
     add_mesh_obj("ring", bm_ring, mat_main)
     
     # 2. Interface Ring (CRITICAL: Must have name 'interface-ring' and +Z normal!)
-    # Torus centered at z=0.45m with normal strictly along +Z
-    bm_int_ring = make_torus(major_r=radius * 0.78, minor_r=radius * 0.10, z_center=0.45, major_seg=36, minor_seg=12)
+    # Torus centered at z=0.40m with minor_r=0.08m (fits strictly within z <= 0.50m)
+    bm_int_ring = make_torus(major_r=2.40, minor_r=0.08, z_center=0.40, major_seg=48, minor_seg=12)
     add_mesh_obj("interface-ring", bm_int_ring, mats.cbm_ring)
 
-    # 3. APAS / CBM 3 Guide Petals (120 degrees apart)
-    for p in range(3):
-        ang = p * 2.0 * math.pi / 3.0
-        # Petal angled inwards
-        px = radius * 0.72 * math.cos(ang)
-        py = radius * 0.72 * math.sin(ang)
-        bm_petal = make_box(0.12, 0.35, 0.22, center=(px, py, 0.48), rot_euler=(math.radians(20) * math.sin(ang), -math.radians(20) * math.cos(ang), ang))
-        add_mesh_obj(f"guide_petal_{p}", bm_petal, mats.hull_dark)
+    # 3. APAS / CBM 3 Guide Petals (120 degrees apart, only for docking mechanisms)
+    if kind != 'decoupler':
+        for p in range(3):
+            ang = p * 2.0 * math.pi / 3.0
+            # Petal angled inwards
+            px = 2.20 * math.cos(ang)
+            py = 2.20 * math.sin(ang)
+            bm_petal = make_box(0.14, 0.40, 0.22, center=(px, py, 0.48), rot_euler=(math.radians(20) * math.sin(ang), -math.radians(20) * math.cos(ang), ang))
+            add_mesh_obj(f"guide_petal_{p}", bm_petal, mats.hull_dark)
 
     # Decoupler linear shaped charge cutting tape & separation springs
     if kind == 'decoupler':
-        bm_charge = make_torus(major_r=radius + 0.02, minor_r=0.025, z_center=0.0, major_seg=36, minor_seg=6)
+        bm_charge = make_torus(major_r=radius + 0.02, minor_r=0.025, z_center=0.0, major_seg=48, minor_seg=6)
         add_mesh_obj("shaped_charge", bm_charge, mats.dock)
         for s in range(6):
             s_ang = s * math.pi / 3.0
-            bm_spring = make_cylinder(0.04, 0.04, 0.15, z_center=0.42, segments=8)
+            bm_spring = make_cylinder(0.04, 0.04, 0.08, z_center=0.0, segments=8)
             transform_bm(bm_spring, Matrix.Translation(Vector((radius * 0.85 * math.cos(s_ang), radius * 0.85 * math.sin(s_ang), 0.42))))
             add_mesh_obj(f"pusher_spring_{s}", bm_spring, mats.pipe)
 
