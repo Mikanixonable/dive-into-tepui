@@ -18,6 +18,9 @@ import numpy as np
 
 from real_source import OutputGrid, RasterCatalog, RasterCoverage, regrid_era5
 
+_LAYOUT = json.loads(Path(__file__).with_name("layout.json").read_text())
+EARTH_TILE_MAX_Z = _LAYOUT["maxZoom"]
+
 
 class RendererUnavailable(RuntimeError):
     """A renderer cannot honestly produce a requested bundle."""
@@ -269,7 +272,7 @@ class FixtureSourceAdapter(SourceAdapter):
             if len(key) != 3 or any(type(value) is not int for value in key):
                 raise ValueError("fixtureタイルのkeyが不正です")
             z, x, y = key
-            if not (0 <= z <= 7 and 0 <= x < 2 ** (z + 1) and 0 <= y < 2 ** z):
+            if not (0 <= z <= EARTH_TILE_MAX_Z and 0 <= x < 2 ** (z + 1) and 0 <= y < 2 ** z):
                 raise ValueError(f"fixtureタイルの座標が不正です: {key}")
             if key in self._tiles:
                 raise ValueError(f"fixtureタイルが重複しています: {key}")

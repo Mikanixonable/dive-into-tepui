@@ -320,7 +320,7 @@ class RasterCoverage:
         signs = {1: 1, 2: -1, 3: 1, 4: -1, 5: 1}
         for shift in (-360.0, 0.0, 360.0):
             for level, _, layer in self.layers:
-                # GSHHGのfeature全体を毎タイルrasterizeすると、z7で同じ
+                # GSHHGのfeature全体を毎タイルrasterizeすると、高LODで同じ
                 # 全球ポリゴンを数万回走査することになる。経度wrapに使う
                 # shift後のtarget範囲で空間フィルタを先に掛け、タイルと
                 # 交差するfeatureだけをGDALへ渡す。

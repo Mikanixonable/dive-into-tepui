@@ -1,6 +1,6 @@
 // 地球の地表配信データを描画および気候共有用の共通フォーマットへ正規化する。
 // URLの組み立てとdatasetIdの固定だけを持ち、タイル要求やGPU資源は別のrender層が所有する。
-import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from './earth-surface-tile-key';
+import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z, earthSurfaceTileCount } from './earth-surface-tile-key';
 import {
   EARTH_SURFACE_MANIFEST_SCHEMA_VERSION,
   EARTH_SURFACE_TERRAIN_FORMAT_VERSION,
@@ -17,6 +17,7 @@ export interface EarthSurfaceSource {
   readonly sourceManifestSha256: string;
   readonly colorCalibration: EarthSurfaceColorCalibration;
   readonly climateEncoding: EarthSurfaceClimateEncoding;
+  readonly maxZoom: number;
   readonly baseUrl: string;
   readonly manifestUrl: string;
   readonly colorTileTemplate: string;
@@ -96,8 +97,8 @@ export type EarthSurfaceAssetManifest = EarthSurfaceAssetManifestV1 | EarthSurfa
 export interface EarthSurfaceCoverage {
   readonly kind: 'complete';
   readonly minZoom: 5;
-  readonly maxZoom: 7;
-  readonly expectedTiles: 43_008;
+  readonly maxZoom: number;
+  readonly expectedTiles: number;
 }
 
 export interface EarthSurfaceLegacyCoverage {
@@ -222,7 +223,7 @@ export function earthSurfaceSourceFromManifest(
   validateTerrainGeometry(manifest.terrainEncoding);
   if (manifest.schemaVersion === 1) {
     const terrain = manifest.terrainEncoding;
-    if (manifest.coverage.kind !== 'complete' || manifest.coverage.maxZoom !== EARTH_TILE_MAX_Z
+    if (manifest.coverage.kind !== 'complete' || manifest.coverage.maxZoom !== 7
       || manifest.coverage.expectedTiles !== 43_690 || terrain.formatVersion !== 2
       || terrain.layout !== EARTH_TERRAIN_OCTAHEDRAL_LAYOUT || terrain.materialClasses.water !== 0
       || terrain.materialClasses.land !== 1 || terrain.materialClasses.ice !== 2
@@ -235,6 +236,7 @@ export function earthSurfaceSourceFromManifest(
       sourceManifestSha256: manifest.sourceManifestSha256,
       colorCalibration: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
       climateEncoding: manifest.climateEncoding,
+      maxZoom: 7,
       baseUrl,
       manifestUrl,
       colorTileTemplate: relativeTileTemplate(baseUrl, 'tiles/{z}/{x}/{y}.jpg'),
@@ -248,8 +250,10 @@ export function earthSurfaceSourceFromManifest(
   const terrain = manifest.terrainEncoding;
   const coverage = manifest.coverage;
   if (coverage.kind !== 'complete' || coverage.minZoom !== EARTH_TILE_MIN_Z
-    || coverage.maxZoom !== EARTH_TILE_MAX_Z || coverage.expectedTiles !== 43_008) {
-    throw new Error('Earth surface coverage must be complete z5..z7');
+    || !Number.isInteger(coverage.maxZoom) || coverage.maxZoom < EARTH_TILE_MIN_Z
+    || coverage.maxZoom > EARTH_TILE_MAX_Z
+    || coverage.expectedTiles !== earthSurfaceTileCount(coverage.maxZoom)) {
+    throw new Error(`Earth surface coverage must be complete z${EARTH_TILE_MIN_Z}..z${coverage.maxZoom}`);
   }
   if (manifest.tileTemplates.color !== 'tiles/{z}/{x}/{y}.jpg'
     || manifest.tileTemplates.terrain !== 'tiles/{z}/{x}/{y}.bin.gz'
@@ -262,6 +266,7 @@ export function earthSurfaceSourceFromManifest(
     sourceManifestSha256: manifest.sourceManifestSha256,
     colorCalibration: manifest.colorCalibration,
     climateEncoding: manifest.climateEncoding,
+    maxZoom: coverage.maxZoom,
     baseUrl,
     manifestUrl,
     colorTileTemplate: relativeTileTemplate(baseUrl, manifest.tileTemplates.color),

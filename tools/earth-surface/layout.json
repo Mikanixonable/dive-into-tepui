@@ -1,0 +1,11 @@
+{
+  "baseColorZoom": 4,
+  "minZoom": 5,
+  "maxZoom": 8,
+  "tileTexels": 256,
+  "gutter": 2,
+  "residentLayers": 96,
+  "baseLayer": 255,
+  "terrainHeaderBytes": 32,
+  "terrainChannels": 4
+}

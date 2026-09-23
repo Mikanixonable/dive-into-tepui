@@ -5,7 +5,7 @@ import { test } from '../harness';
 import { EarthSurfaceGpuAdapter } from '../../src/render/earth-surface-gpu';
 import { EarthSurfaceGpuThree, earthSurfaceGpuCapabilitiesOf } from '../../src/render/earth-surface-gpu-three';
 import {
-  EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MIN_Z, earthTileKey,
+  EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z, earthTileKey,
 } from '../../src/render/earth-surface-tile-key';
 import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-page-table';
 import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
@@ -60,7 +60,7 @@ class FakeBackend implements EarthSurfaceGpuBackend {
 function page(layer = 255, key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0)): Uint8Array {
   const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
   if (layer === 255) return table;
-  const size = 2 ** (7 - key.z);
+  const size = 2 ** (EARTH_TILE_MAX_Z - key.z);
   for (let y = key.y * size; y < (key.y + 1) * size; y++) {
     for (let x = key.x * size; x < (key.x + 1) * size; x++) {
       table.set([layer, 255, key.z, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
@@ -168,7 +168,7 @@ export function register(): void {
     await Promise.all([parentUpload, childUpload]);
     assert.throws(() => adapter.stagePageTable(page(0, earthTileKey(4, 0, 0))), /wrong tile level/);
     const table = page(0, parent);
-    const size = 2 ** (7 - child.z);
+    const size = 2 ** (EARTH_TILE_MAX_Z - child.z);
     for (let y = child.y * size; y < (child.y + 1) * size; y++) {
       for (let x = child.x * size; x < (child.x + 1) * size; x++) {
         table.set([1, 0, child.z, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
