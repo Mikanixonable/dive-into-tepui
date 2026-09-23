@@ -627,11 +627,11 @@ try {
     profilePrefix: 'tepui-smoke-',
     extraLaunchArgs: layoutOnly ? [
       '--use-webgpu-adapter=swiftshader',
-      '--use-vulkan=swiftshader',
       '--enable-features=Vulkan',
       '--use-gpu-in-tests',
-      '--disable-vulkan-surface',
-      '--enable-unsafe-swiftshader',
+      '--enable-accelerated-2d-canvas',
+      '--disable-dawn-features=disallow_unsafe_apis',
+      '--enable-webgpu-developer-features',
     ] : [],
     onEvent: (event) => {
       if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
