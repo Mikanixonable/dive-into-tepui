@@ -7,34 +7,34 @@ export const EDITORIAL_DATA_STYLE = `
   color: var(--color-primary);
   font-size: var(--font-xxs);
   font-weight: 700;
-  letter-spacing: var(--tracking-code);
+  letter-spacing: .16em;
   vertical-align: baseline;
 }
 #hud .ui-data-context {
   color: var(--text-dim);
   font-size: var(--font-xxs);
-  letter-spacing: var(--tracking-label);
+  letter-spacing: .12em;
   text-transform: uppercase;
 }
 #hud .ui-data-hero {
   color: var(--text-strong);
-  font-size: var(--font-2xl);
+  font-size: var(--font-3xl);
   font-weight: 650;
   font-variant-numeric: tabular-nums;
-  letter-spacing: var(--tracking-title);
+  letter-spacing: -.045em;
   line-height: .95;
 }
 #hud .ui-data-major {
   color: var(--text);
-  font-size: var(--font-l);
+  font-size: var(--font-xl);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  letter-spacing: var(--tracking-title);
+  letter-spacing: -.02em;
 }
 #hud .ui-data-label {
   color: var(--text-dim);
   font-size: var(--font-xxs);
-  letter-spacing: var(--tracking-label);
+  letter-spacing: .11em;
   text-transform: uppercase;
 }
 #hud .ui-data-secondary {
@@ -70,7 +70,7 @@ export const EDITORIAL_DATA_STYLE = `
 #hud .editorial-panel-head h3,
 #hud h3.editorial-panel-title {
   margin: 0; color: var(--text); font-size: var(--font-xs);
-  font-weight: 600; letter-spacing: var(--tracking-label);
+  font-weight: 600; letter-spacing: .08em;
 }
 #hud .editorial-state {
   display: grid; gap: var(--space-3);
@@ -82,7 +82,7 @@ export const EDITORIAL_DATA_STYLE = `
 }
 #hud .editorial-state-hero strong {
   min-width: 0; overflow: hidden; color: var(--text-strong);
-  font-size: var(--font-xl); font-weight: 650; letter-spacing: var(--tracking-title);
+  font-size: var(--font-2xl); font-weight: 650; letter-spacing: -.035em;
   line-height: 1; text-overflow: ellipsis; white-space: nowrap;
 }
 #hud .editorial-state-grid {
@@ -99,7 +99,7 @@ export const EDITORIAL_DATA_STYLE = `
 #hud .editorial-divider {
   display: flex; align-items: center; gap: var(--space-2);
   margin: var(--space-4) 0 var(--space-2);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .1em;
   text-transform: uppercase;
 }
 #hud .editorial-divider::after {
@@ -112,13 +112,13 @@ export const EDITORIAL_DATA_STYLE = `
 }
 #hud .editorial-index-row::before {
   content: attr(data-index); color: var(--text-dim); font-size: var(--font-xxs);
-  font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-label);
+  font-variant-numeric: tabular-nums; letter-spacing: .08em;
 }
 #hud .editorial-index-row.is-active {
   box-shadow: inset 2px 0 0 var(--color-primary);
 }
 #hud .editorial-index-status {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
 }
 #hud .editorial-control-zone {
   padding-top: var(--space-3);
@@ -126,6 +126,6 @@ export const EDITORIAL_DATA_STYLE = `
 }
 #hud .editorial-workspace-title {
   color: var(--text-strong); font-size: var(--font-3xl); font-weight: 650;
-  letter-spacing: var(--tracking-title); line-height: .84;
+  letter-spacing: -.055em; line-height: .84;
 }
 `;
