@@ -286,6 +286,27 @@ export function register(): void {
     assert.equal(edge.childTransform.position.z, -3);
   });
 
+  test('ship assembly: +Z prepend は前端面を隙間なく接続し headId を更新する', () => {
+    const assembly = new ShipAssembly();
+    assembly.addRoot(module('cockpit-standard', 'cockpit'));
+    assert.equal(assembly.headId(), 'cockpit');
+    assert.equal(assembly.tailId(), 'cockpit');
+
+    assembly.prepend(module('weapon-gatling', 'weapon'));
+    assert.equal(assembly.headId(), 'weapon');
+    assert.equal(assembly.tailId(), 'cockpit');
+
+    const edge = assembly.graph.find(c => c.childId === 'weapon');
+    assert.ok(edge !== undefined);
+    assert.equal(edge.kind, 'axial');
+    // cockpit (length 3, center 0, forward +1.5) + weapon (length 1, center +0.5) -> z = +2.0
+    assert.equal(edge.childTransform.position.z, 2.0);
+    const weaponTransform = assembly.worldTransformOf('weapon');
+    assert.ok(weaponTransform !== null);
+    assert.equal(weaponTransform.position.z, 2.0);
+    assert.equal(assembly.validate().valid, true);
+  });
+
   test('ship assembly: side slot の rotation は左右線対称であり、受光面法線（local Y）が天頂を向く', () => {
     const rotPlusX = sideSlotRotation('side:+x');
     const rotMinusX = sideSlotRotation('side:-x');
@@ -314,5 +335,6 @@ export function register(): void {
       return transform.position.z + assembly.definition(module.id)!.length / 2;
     }));
     for (const muzzle of muzzles) assert.ok(muzzle.z > bow, `muzzle z ${muzzle.z} behind bow ${bow}`);
+=======
   });
 }

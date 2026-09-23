@@ -32,8 +32,8 @@ function separationPreset(): ShipAssembly {
 function dockedPreset(): ShipAssembly {
   const vessel = new ShipAssembly(SHIP_MODULE_CATALOG, true);
   vessel.addRoot(module('cockpit-standard', 'docked-cockpit'));
+  vessel.prepend(module('docking-port-standard', 'docked-port'));
   vessel.append(module('tank-3-main', 'docked-tank'));
-  vessel.append(module('docking-port-standard', 'docked-port'));
   return createBasePreset().mergedAtDock(vessel, 'dock-left', 'docked-port', 'docked').assembly;
 }
 
