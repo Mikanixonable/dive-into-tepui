@@ -64,9 +64,22 @@ export interface CloudIceRelease {
   readonly parentEventId: string;
   readonly releasedKgM2: number;
   readonly remainingKgM2: number;
-  // Mass-weighted mean cohort release time, not a single physical release instant.
+  // 生存氷質量で重み付けした代表放出時刻。
   readonly meanReleaseTimeSeconds: number | null;
+  // 連続放出と昇華の解析式を再現するための係数。
+  readonly releaseRateKgM2S: number;
+  readonly releaseStartTimeSeconds: number | null;
+  readonly releaseEndTimeSeconds: number | null;
+  readonly sublimationRatePerSecond: number;
   readonly releaseHeightM: number | null;
+}
+
+export interface CloudIceReleaseCohort {
+  readonly index: number;
+  readonly releaseStartTimeSeconds: number;
+  readonly releaseEndTimeSeconds: number;
+  readonly meanReleaseTimeSeconds: number;
+  readonly remainingKgM2: number;
 }
 
 export interface ConvectiveCloudEvent {
@@ -97,6 +110,13 @@ const MAX_DRY_AIR_MULTIPLIER = 5;
 const LIQUID_LOSS_TIME_SECONDS = 20 * 60;
 const ICE_RELEASE_DELAY_SECONDS = 15 * 60;
 const ICE_YIELD_FRACTION = 0.35;
+const MAX_ICE_RELEASE_COHORTS = 256;
+
+function iceSublimationRatePerSecond(upperRelativeHumidity: number): number {
+  const humidity = Math.min(Math.max(upperRelativeHumidity, 0), 1);
+  return (1 + (1 - humidity) * (MAX_DRY_AIR_MULTIPLIER - 1))
+    / ICE_SUBLIMATION_TIME_SECONDS;
+}
 
 function hash32(value: string): number {
   let hash = 0x811c9dc5;
@@ -139,9 +159,7 @@ function eventMass(
   const unreleasedDurationSeconds = suppliedDurationSeconds - releasedDurationSeconds;
   const unreleasedYieldKgM2 = cell.liquidSupplyRateKgM2S
     * ICE_YIELD_FRACTION * unreleasedDurationSeconds;
-  const humidity = Math.min(Math.max(cell.upperRelativeHumidity, 0), 1);
-  const iceLossRate = (1 + (1 - humidity) * (MAX_DRY_AIR_MULTIPLIER - 1))
-    / ICE_SUBLIMATION_TIME_SECONDS;
+  const iceLossRate = iceSublimationRatePerSecond(cell.upperRelativeHumidity);
   const iceKgM2 = cell.liquidSupplyRateKgM2S * ICE_YIELD_FRACTION
     * Math.exp(-iceLossRate * Math.max(ageSeconds - ICE_RELEASE_DELAY_SECONDS - releasedDurationSeconds, 0))
     * exponentialIntegral(releasedDurationSeconds, iceLossRate);
@@ -283,9 +301,17 @@ function createEvent(
     Math.min(ageSeconds, cell.convectiveDurationSeconds),
     Math.max(ageSeconds - ICE_RELEASE_DELAY_SECONDS, 0),
   );
+  const releaseStartTimeSeconds = releasedDurationSeconds > 0
+    ? birthTimeSeconds + ICE_RELEASE_DELAY_SECONDS
+    : null;
+  const releaseEndTimeSeconds = releaseStartTimeSeconds === null
+    ? null
+    : releaseStartTimeSeconds + releasedDurationSeconds;
+  const releaseRateKgM2S = cell.liquidSupplyRateKgM2S * ICE_YIELD_FRACTION;
   const meanReleaseTimeSeconds = releasedDurationSeconds > 0
-    ? meanIceReleaseTimeSeconds(
-      birthTimeSeconds, ageSeconds, releasedDurationSeconds, cell.upperRelativeHumidity,
+    ? survivingIceMeanReleaseTimeSeconds(
+      birthTimeSeconds + ICE_RELEASE_DELAY_SECONDS, releasedDurationSeconds,
+      iceSublimationRatePerSecond(cell.upperRelativeHumidity),
     )
     : null;
   const id = `${cell.id}:${epoch}:${eventHash(domain.seed, cell.id, epoch).toString(16).padStart(8, '0')}`;
@@ -310,41 +336,72 @@ function createEvent(
     iceRelease: {
       id: `${id}:ice`,
       parentEventId: id,
-      releasedKgM2: cell.liquidSupplyRateKgM2S * ICE_YIELD_FRACTION
-        * Math.min(
-          Math.min(ageSeconds, cell.convectiveDurationSeconds),
-          Math.max(ageSeconds - ICE_RELEASE_DELAY_SECONDS, 0),
-        ),
+      releasedKgM2: releaseRateKgM2S * releasedDurationSeconds,
       remainingKgM2: mass.iceKgM2,
       meanReleaseTimeSeconds,
+      releaseRateKgM2S,
+      releaseStartTimeSeconds,
+      releaseEndTimeSeconds,
+      sublimationRatePerSecond: iceSublimationRatePerSecond(cell.upperRelativeHumidity),
       releaseHeightM: meanReleaseTimeSeconds === null ? null : cell.iceReleaseHeightM ?? null,
     },
   };
 }
 
-// Returns the mass-weighted mean timestamp of the surviving continuous release cohort.
-// It is a representative transport start time, not a claim that all ice was released then.
-function meanIceReleaseTimeSeconds(
-  birthTimeSeconds: number,
-  ageSeconds: number,
-  releasedDurationSeconds: number,
-  upperRelativeHumidity: number,
+/** 生存質量で重み付けした連続放出区間の代表時刻を返す。 */
+function survivingIceMeanReleaseTimeSeconds(
+  startTimeSeconds: number,
+  durationSeconds: number,
+  lossRatePerSecond: number,
 ): number {
-  const humidity = Math.min(Math.max(upperRelativeHumidity, 0), 1);
-  const lossRatePerSecond = (1 + (1 - humidity) * (MAX_DRY_AIR_MULTIPLIER - 1))
-    / ICE_SUBLIMATION_TIME_SECONDS;
-  const x = lossRatePerSecond * releasedDurationSeconds;
+  const x = lossRatePerSecond * durationSeconds;
   const meanAgeAtReleaseEndSeconds = x < 1e-4
-    ? releasedDurationSeconds / 2 - lossRatePerSecond * releasedDurationSeconds ** 2 / 12
-      + lossRatePerSecond ** 3 * releasedDurationSeconds ** 4 / 720
+    ? durationSeconds / 2 - lossRatePerSecond * durationSeconds ** 2 / 12
+      + lossRatePerSecond ** 3 * durationSeconds ** 4 / 720
     : x > 50
       ? 1 / lossRatePerSecond
-      : 1 / lossRatePerSecond - releasedDurationSeconds / Math.expm1(x);
-  const tailAfterReleaseSeconds = Math.max(
-    ageSeconds - ICE_RELEASE_DELAY_SECONDS - releasedDurationSeconds, 0,
-  );
-  const meanAgeAtQuerySeconds = tailAfterReleaseSeconds + meanAgeAtReleaseEndSeconds;
-  return birthTimeSeconds + ageSeconds - meanAgeAtQuerySeconds;
+      : 1 / lossRatePerSecond - durationSeconds / Math.expm1(x);
+  return startTimeSeconds + durationSeconds - meanAgeAtReleaseEndSeconds;
+}
+
+/** 連続放出の解析質量を、有限個の時間コホートへ決定的に分割する。 */
+export function splitCloudIceReleaseIntoCohorts(
+  event: ConvectiveCloudEvent,
+  cohortCount = 32,
+): readonly CloudIceReleaseCohort[] {
+  if (!Number.isInteger(cohortCount) || cohortCount < 1 || cohortCount > MAX_ICE_RELEASE_COHORTS) {
+    throw new RangeError(`cohortCount must be an integer from 1 to ${MAX_ICE_RELEASE_COHORTS}`);
+  }
+  const { releaseStartTimeSeconds, releaseEndTimeSeconds, releaseRateKgM2S,
+    sublimationRatePerSecond } = event.iceRelease;
+  if (releaseStartTimeSeconds === null || releaseEndTimeSeconds === null
+    || releaseRateKgM2S === 0 || event.iceRelease.remainingKgM2 === 0) return [];
+  const sampleTimeSeconds = event.birthTimeSeconds + event.ageSeconds;
+  const durationSeconds = releaseEndTimeSeconds - releaseStartTimeSeconds;
+  const binDurationSeconds = durationSeconds / cohortCount;
+  const cohorts: CloudIceReleaseCohort[] = [];
+  for (let index = 0; index < cohortCount; index += 1) {
+    const start = releaseStartTimeSeconds + binDurationSeconds * index;
+    const end = index === cohortCount - 1
+      ? releaseEndTimeSeconds
+      : releaseStartTimeSeconds + binDurationSeconds * (index + 1);
+    const binDuration = end - start;
+    const tailSeconds = sampleTimeSeconds - end;
+    const remainingKgM2 = releaseRateKgM2S
+      * Math.exp(-sublimationRatePerSecond * tailSeconds)
+      * exponentialIntegral(binDuration, sublimationRatePerSecond);
+    if (remainingKgM2 === 0) continue;
+    cohorts.push({
+      index,
+      releaseStartTimeSeconds: start,
+      releaseEndTimeSeconds: end,
+      meanReleaseTimeSeconds: survivingIceMeanReleaseTimeSeconds(
+        start, binDuration, sublimationRatePerSecond,
+      ),
+      remainingKgM2,
+    });
+  }
+  return cohorts;
 }
 
 // 同じ seed/cell ID/出生 epoch は常に同じイベントとなり、時刻・列挙順・カメラは ID に入らない。

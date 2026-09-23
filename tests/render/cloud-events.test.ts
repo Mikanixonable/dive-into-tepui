@@ -4,8 +4,11 @@ import {
   type CloudEventDomain,
   type ConvectiveCloudCell,
 } from '../../src/game/cloud/cloud-events';
-import { reconstructCloudEventMaterialTracks } from '../../src/game/cloud/cloud-event-transport';
-import { cross, norm, v3 } from '../../src/math/vec3';
+import {
+  reconstructCloudEventMaterialCohorts,
+  reconstructCloudEventMaterialTracks,
+} from '../../src/game/cloud/cloud-event-transport';
+import { cross, norm, scale, v3 } from '../../src/math/vec3';
 import { advectSphericalPositionUnitVector } from '../../src/physics/cloud-spherical-transport';
 import {
   iceEffectiveRadiusM,
@@ -372,6 +375,99 @@ export function register(): void {
     closeTo(tracks.parent!.geometricHeightM, 5_000, 1e-10);
     assert.ok(tracks.parent!.directionUnitVector.x > 0);
     assert.ok(tracks.parent!.directionUnitVector.y > 0);
+  });
+
+  test('cloud event transport: 全放出氷コホートは解析質量と二層風の解析軌跡を保つ', () => {
+    const source = cell('cohort-track', {
+      sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
+      iceReleaseHeightM: 7_000,
+    });
+    const event = eventAt(7_200, source);
+    const windAt = (direction: ReturnType<typeof v3>, heightM: number) => ({
+      tangentVelocityMPerS: heightM < 5_000
+        ? scale(cross(v3(0, 1, 0), direction), 10)
+        : scale(cross(v3(-1, 0, 0), direction), 10),
+      verticalVelocityMPerS: 0,
+    });
+    const tracks = reconstructCloudEventMaterialCohorts(event, 6_371_000, 5, windAt, 32);
+    assert.equal(tracks.releasedIceCohorts.length, 32);
+    closeTo(
+      tracks.releasedIceCohorts.reduce((sum, cohort) => sum + cohort.massKgM2, 0),
+      event.mass.iceKgM2,
+      2e-14,
+    );
+    closeTo(tracks.totalMassKgM2, event.mass.liquidKgM2 + event.mass.iceKgM2, 2e-14);
+
+    for (const cohort of tracks.releasedIceCohorts) {
+      const lowerAngle = 10 * cohort.meanReleaseTimeSeconds / (6_371_000 + 1_000);
+      const upperAngle = 10 * (7_200 - cohort.meanReleaseTimeSeconds) / (6_371_000 + 7_000);
+      const expected = v3(
+        Math.sin(lowerAngle),
+        Math.cos(lowerAngle) * Math.sin(upperAngle),
+        Math.cos(lowerAngle) * Math.cos(upperAngle),
+      );
+      const error = Math.hypot(
+        cohort.directionUnitVector.x - expected.x,
+        cohort.directionUnitVector.y - expected.y,
+        cohort.directionUnitVector.z - expected.z,
+      ) * (6_371_000 + 7_000);
+      assert.ok(error < 0.05, `cohort ${cohort.cohortIndex} analytic path error ${error} m`);
+      assert.ok(cohort.meanReleaseTimeSeconds >= cohort.releaseStartTimeSeconds);
+      assert.ok(cohort.meanReleaseTimeSeconds <= cohort.releaseEndTimeSeconds);
+    }
+    assert.ok(tracks.releasedIceCohorts[0]!.directionUnitVector.y
+      > tracks.releasedIceCohorts.at(-1)!.directionUnitVector.y);
+  });
+
+  test('cloud event transport: 分割数を増やすと質量加重位置が収束する', () => {
+    const source = cell('cohort-convergence', {
+      sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
+      iceReleaseHeightM: 7_000,
+    });
+    const event = eventAt(7_200, source);
+    const windAt = (direction: ReturnType<typeof v3>, heightM: number) => ({
+      tangentVelocityMPerS: heightM < 5_000
+        ? scale(cross(v3(0, 1, 0), direction), 10)
+        : scale(cross(v3(-1, 0, 0), direction), 10),
+      verticalVelocityMPerS: 0,
+    });
+    const weightedDirection = (cohortCount: number) => {
+      const cohorts = reconstructCloudEventMaterialCohorts(
+        event, 6_371_000, 10, windAt, cohortCount,
+      ).releasedIceCohorts;
+      const mass = cohorts.reduce((sum, cohort) => sum + cohort.massKgM2, 0);
+      return v3(
+        cohorts.reduce((sum, cohort) => sum + cohort.directionUnitVector.x * cohort.massKgM2, 0) / mass,
+        cohorts.reduce((sum, cohort) => sum + cohort.directionUnitVector.y * cohort.massKgM2, 0) / mass,
+        cohorts.reduce((sum, cohort) => sum + cohort.directionUnitVector.z * cohort.massKgM2, 0) / mass,
+      );
+    };
+    const coarse = weightedDirection(4);
+    const fine = weightedDirection(32);
+    const reference = weightedDirection(128);
+    const error = (left: ReturnType<typeof v3>, right: ReturnType<typeof v3>) => Math.hypot(
+      left.x - right.x, left.y - right.y, left.z - right.z,
+    );
+    assert.ok(error(fine, reference) < error(coarse, reference));
+  });
+
+  test('cloud event transport: 放出境界とコホート上限を検査する', () => {
+    const source = cell('cohort-boundary', {
+      sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
+      iceReleaseHeightM: 7_000,
+    });
+    const beforeRelease = eventAt(900, source);
+    const atDelay = eventAt(15 * 60, source);
+    const stationaryWind = () => ({
+      tangentVelocityMPerS: v3(0, 0, 0), verticalVelocityMPerS: 0,
+    });
+    assert.equal(reconstructCloudEventMaterialCohorts(
+      beforeRelease, 6_371_000, 30, stationaryWind,
+    ).releasedIceCohorts.length, 0);
+    assert.equal(atDelay.iceRelease.releaseStartTimeSeconds, null);
+    assert.throws(() => reconstructCloudEventMaterialCohorts(
+      beforeRelease, 6_371_000, 30, stationaryWind, 257,
+    ), /cohortCount must be an integer/);
   });
 
   test('cloud event transport: same absolute time is deterministic after reverse-time cold evaluations', () => {
