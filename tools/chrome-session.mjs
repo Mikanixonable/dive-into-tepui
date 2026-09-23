@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import WebSocket from 'ws';
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
