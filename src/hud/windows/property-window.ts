@@ -3,7 +3,7 @@
 // 変わったときのはみ出し補正(reclamp)をいつ行うかを決める。表示専用で、プロパティの値を
 // 対応するコンポーネントが導出する。複数存続できる想定のため ContextMenu と異なり呼び出し
 // ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置くため、
-// `#hud, #hud *` の margin/padding リセットに勝てるよう全セレクタを `#hud` で始める。
+// HUD 内の他ウィンドウとスコープを分けるため、主要セレクタを `#hud` から始める。
 import { injectOnce } from '../inject-style';
 import { MQ_COMPACT } from '../breakpoints';
 import type { OverlayManager } from '../overlay-manager';
