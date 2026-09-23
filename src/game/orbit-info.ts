@@ -1,11 +1,12 @@
 // 軌道エンティティの基準・軌道要素・相対情報を導出する純粋関数群。
 import { strongestAttractor } from '../physics/attractor';
-import { apsisAltitudes } from '../physics/elements';
+import { apsisAltitudes, orbitalElementsOf } from '../physics/elements';
 import { kinematicState } from '../physics/kinematic-state';
 import { dot, len, sub, Vec3 } from '../math/vec3';
 import type { OrbitReference } from './orbit-reference';
 import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
 import type { CelestialBody } from '../physics/celestial-body';
+import type { CelestialBodies } from './celestial/celestial-bodies';
 
 interface OrbitInfo {
   centerId: string;
@@ -61,14 +62,17 @@ interface RelativeInfo {
 // 双方の基準天体(strongestAttractor)が一致するときのみ意味を持ち、異なる場合は NaN にする。
 export function relativeInfo(
   self: OrbitingObject, other: OrbitingObject,
-  celestialBodies: readonly CelestialBody[], pivot: number,
+  celestialBodies: CelestialBodies, pivot: number,
 ): RelativeInfo {
-  const selfCenter = strongestAttractor(self.motion.state.r, celestialBodies, pivot);
-  const otherCenter = strongestAttractor(other.motion.state.r, celestialBodies, pivot);
-  const selfEl = self.motion.orbitalElementsAround(selfCenter, pivot);
-  const otherEl = other.motion.orbitalElementsAround(otherCenter, pivot);
-  const relP = sub(other.motion.state.r, self.motion.state.r);
-  const relV = sub(other.motion.state.v, self.motion.state.v);
+  const selfState = self.motion.stateAt(pivot, celestialBodies) ?? self.motion.state;
+  const otherState = other.motion.stateAt(pivot, celestialBodies) ?? other.motion.state;
+  const motions = celestialBodies.celestialMotions;
+  const selfCenter = strongestAttractor(selfState.r, motions, pivot);
+  const otherCenter = strongestAttractor(otherState.r, motions, pivot);
+  const selfEl = orbitalElementsOf(selfState, selfCenter, pivot);
+  const otherEl = orbitalElementsOf(otherState, otherCenter, pivot);
+  const relP = sub(otherState.r, selfState.r);
+  const relV = sub(otherState.v, selfState.v);
   const dist = len(relP);
   // 基準天体が一致するときのみ hHat 同士を比較できる。
   const relIncDeg =
