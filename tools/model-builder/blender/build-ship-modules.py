@@ -502,30 +502,46 @@ def build_cockpit():
 
     # Compact rendezvous optical sight hood on the dorsal forward quadrant.
     sight_ang = math.pi * 0.5
-    sight_r = 2.36
-    sight_center = (sight_r * math.cos(sight_ang), sight_r * math.sin(sight_ang), 0.98)
-    sight = make_tangent_trapezoid(0.11, 0.32, 0.25, 0.36, sight_center, sight_ang)
+    sight_z0 = 0.80
+    sight_z1 = 1.16
+    sight = make_conical_trapezoid(
+        0.11, 0.32, 0.25, sight_z0, sight_z1,
+        radius_at_profile(profile, sight_z0) + 0.045,
+        radius_at_profile(profile, sight_z1) + 0.045,
+        sight_ang,
+    )
     add_mesh_obj("rendezvous_sight_hood", sight, mats.titanium)
-    glass_center = (0.0, sight_r + 0.065, 1.00)
+    glass_z0 = 0.90
+    glass_z1 = 1.10
     add_mesh_obj(
         "rendezvous_sight_glass",
-        make_tangent_trapezoid(0.022, 0.20, 0.16, 0.20, glass_center, sight_ang),
+        make_conical_trapezoid(
+            0.022, 0.20, 0.16, glass_z0, glass_z1,
+            radius_at_profile(profile, glass_z0) + 0.105,
+            radius_at_profile(profile, glass_z1) + 0.105,
+            sight_ang,
+        ),
         mats.window,
     )
 
     # Recessed RCS jets: small dark wells with short ablative nozzles rather than
-    # modern external quad boxes.  Two axial bands give translation/attitude cues.
-    for band, (z_rcs, r_rcs) in enumerate([(-0.88, 2.99), (1.05, 2.18)]):
+    # modern external quad boxes. Two axial bands give translation/attitude cues.
+    for band, z_rcs in enumerate([-0.88, 1.05]):
         count = 8
         for i in range(count):
             ang = i * 2.0 * math.pi / count + (math.pi / count if band else 0.0)
             radial = Vector((math.cos(ang), math.sin(ang), 0.0))
-            pos = radial * r_rcs + Vector((0, 0, z_rcs))
-            well = make_tangent_trapezoid(
-                0.035, 0.22, 0.22, 0.20, pos, ang
+            z0 = z_rcs - 0.10
+            z1 = z_rcs + 0.10
+            well = make_conical_trapezoid(
+                0.035, 0.22, 0.22, z0, z1,
+                radius_at_profile(profile, z0) + 0.018,
+                radius_at_profile(profile, z1) + 0.018,
+                ang,
             )
             add_mesh_obj(f"rcs_recess_{band}_{i}", well, mats.recessed)
-            nozzle_pos = pos + radial * 0.055
+            nozzle_radius = radius_at_profile(profile, z_rcs) + 0.075
+            nozzle_pos = radial * nozzle_radius + Vector((0, 0, z_rcs))
             nozzle = make_cylinder(0.046, 0.026, 0.075, z_center=0, segments=10)
             # Cylinder local Z -> radial direction.
             q = Vector((0, 0, 1)).rotation_difference(radial)
@@ -996,15 +1012,17 @@ def build_rcs_module():
     sectors = 8
     dtheta = 2.0 * math.pi / sectors
     for i in range(sectors):
+        # Cardinal sectors are open thruster bays, not covered access panels.
+        if i % 2 == 0:
+            continue
         ang = i * dtheta
         chord = 2.0 * radius * math.sin(dtheta * 0.5) * 0.88
         radial = Vector((math.cos(ang), math.sin(ang), 0.0))
         centre = radial * (radius * 0.92)
-        mat = mats.rene41 if i % 2 == 0 else mats.aluminium
         add_mesh_obj(
             f"rcs_access_panel_{i}",
             make_box(0.030, chord, 0.79, center=centre, rot_euler=(0, 0, ang)),
-            mat,
+            mats.aluminium,
         )
 
     # Four deeply recessed control stations.  Each has paired radial jets and
@@ -1131,7 +1149,7 @@ def build_docking_mechanism(name, kind):
 
         # External alignment target plate gives the otherwise symmetric mechanism
         # an operationally legible orientation.
-        target = make_box(0.035, 0.28, 0.20, center=(radius * 0.82, 0.0, 0.33))
+        target = make_box(0.035, 0.28, 0.20, center=(radius + 0.025, 0.0, 0.28))
         add_mesh_obj("alignment_target", target, mats.mli_white)
 
     else:
