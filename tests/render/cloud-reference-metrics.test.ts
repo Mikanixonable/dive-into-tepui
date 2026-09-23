@@ -1,5 +1,6 @@
 // 雲参照 manifest が、比較値の取り違えと欠測による見かけの合格を防ぐことを検査する。
 import * as assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test } from '../harness';
@@ -112,6 +113,28 @@ export function register(): void {
     assert.ok(reference.cases.some((entry) => entry.family === 'orographic-cloud-auxiliary'));
   });
 
+  test('cloud reference metrics: GOES acquisition spans the series and all required L1b/L2 products', () => {
+    const reference = manifest();
+    const target = reference.cases.find((entry) => entry.id === 'deep-convection-mexico-2024-06-10');
+    assert.ok(target);
+    const plan = JSON.parse(execFileSync(process.execPath, [
+      'tools/cloud-reference/acquire.mjs',
+      '--dry-run',
+      target.id,
+      `reference/${target.id}`,
+    ], { cwd: process.cwd(), encoding: 'utf8' })) as { readonly args: readonly string[] }[];
+    const sources = plan.map((step) => step.args[2]!);
+    assert.equal(plan.length, 13 * 5);
+    for (const product of ['ABI-L1b-RadF', 'ABI-L2-CODF', 'ABI-L2-ACHAF', 'ABI-L2-ACTPF', 'ABI-L2-ACMF']) {
+      assert.ok(sources.some((source) => source.includes(`/${product}/2024/162/18/`)), product);
+      assert.ok(sources.some((source) => source.includes(`/${product}/2024/163/06/`)), product);
+    }
+    assert.equal(
+      target.source.acquisitionCommand,
+      `node tools/cloud-reference/acquire.mjs ${target.id} reference/${target.id}`,
+    );
+  });
+
   test('cloud reference metrics: scalar, distribution, and direction distances retain their distinct definitions', () => {
     assert.equal(cloudReferenceScalarDistance(12, 10, 4, 3), 0.5);
     assert.equal(cloudReferenceScalarDistance(12, 10, 1, 3), 2 / 3);
@@ -173,6 +196,30 @@ export function register(): void {
     delete (observation.projection as Record<string, unknown>).epsg;
     assert.ok(validateCloudReferenceManifest(raw).some((error) => error.includes('required SHA-256 receipt')));
     assert.ok(validateCloudReferenceManifest(raw).some((error) => error.includes('projection, GSD')));
+  });
+
+  test('cloud reference metrics: schema rejects a missing required family or either split', () => {
+    const withoutFamily = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as {
+      cases: Record<string, unknown>[];
+    };
+    withoutFamily.cases = withoutFamily.cases.filter(
+      (entry) => entry.family !== 'marine-open-and-closed-cell',
+    );
+    assert.ok(validateCloudReferenceManifest(withoutFamily).some(
+      (error) => error.includes('family marine-open-and-closed-cell'),
+    ));
+
+    const withoutHeldOut = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as {
+      cases: Record<string, unknown>[];
+    };
+    const heldOut = withoutHeldOut.cases.find(
+      (entry) => entry.family === 'deep-convection-and-anvil' && entry.split === 'held-out',
+    );
+    assert.ok(heldOut);
+    heldOut.split = 'tuning';
+    assert.ok(validateCloudReferenceManifest(withoutHeldOut).some(
+      (error) => error.includes('family deep-convection-and-anvil'),
+    ));
   });
 
   test('cloud reference metrics: histogram distance rejects malformed or empty mass', () => {
