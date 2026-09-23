@@ -86,8 +86,8 @@ export const MAP_PANEL_STYLE = `
    左右レール(.hud-rail-left/.hud-rail-right)の内側に収まる幅だけを使い、レールのパネルに重ねない。 */
 #hud-predict-wrap {
   position: absolute; bottom: 12px;
-  left: calc(var(--hud-left-rail-occupied, calc(12px + var(--rail-w-left))) + 8px);
-  right: calc(var(--hud-right-rail-occupied, calc(12px + var(--rail-w-right))) + 8px);
+  left: calc(var(--hud-left-rail-occupied) + 8px);
+  right: calc(var(--hud-right-rail-occupied) + 8px);
   display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none;
 }
 /* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。
