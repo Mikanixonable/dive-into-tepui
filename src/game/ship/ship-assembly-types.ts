@@ -22,6 +22,7 @@ export interface ShipConnection {
   readonly kind: ConnectionKind;
   readonly childTransform: ModuleTransform;
   readonly sideSlot?: SideSlot;
+  readonly sideReversed?: boolean;
 }
 
 export interface ShipAssemblyValidation {
