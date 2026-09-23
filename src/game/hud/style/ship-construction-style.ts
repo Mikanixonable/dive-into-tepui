@@ -105,10 +105,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
   margin-top: auto; padding-top: var(--space-4);
 }
-#ship-construction-panel .construction-warning {
-  margin-top: var(--space-3); padding: var(--space-3); border-radius: var(--radius-micro);
-  color: var(--color-warning); background: var(--color-warning-fill); font-size: var(--font-xxs);
-}
+#ship-construction-panel .construction-warning { margin-top: var(--space-3); }
 #ship-construction-panel .construction-destructive-actions {
   grid-column: 1 / -1; margin-top: var(--space-1); padding-top: var(--space-2);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 25%, transparent);
