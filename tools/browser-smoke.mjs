@@ -812,10 +812,26 @@ try {
       };
     })()`);
     expectAll('Creative mode did not remain in its zero-ship map state', chromeState);
-    // Construction専用jobは、建造画面へ入るまで通常描画を保つ。
-    // Map幾何は独立jobで検査済みなので重複させない。
-    if (!(layoutOnly && smokeConstruction)) await checkMapLayout();
-    const placedName = await placeShipThroughMenu();
+    if (layoutOnly && smokeConstruction) {
+      // Layout CIはconstruction workspaceそのものの幾何だけを検査する。
+      // 基地配置→物体一覧→プロパティ→ドックというゲームプレイsmokeは通常経路に残す。
+      await devTools.evaluate(`(() => {
+        const hud = document.getElementById('hud');
+        const mapRoot = document.querySelector('.hud-map-root');
+        const combatRoot = document.querySelector('.hud-combat-root');
+        const workspace = document.getElementById('ship-construction-panel');
+        if (!hud || !mapRoot || !combatRoot || !workspace) throw new Error('construction layout fixture is incomplete');
+        hud.classList.add('construction-mode');
+        hud.dataset.workspace = 'construction';
+        document.body.classList.add('hud-construction-mode');
+        mapRoot.classList.remove('active');
+        combatRoot.classList.add('active');
+        workspace.classList.remove('hidden');
+      })()`);
+      await checkConstructionLayout();
+    } else {
+      await checkMapLayout();
+      const placedName = await placeShipThroughMenu();
 
     // 基地プリセットは操作可能艦ではないため、Construction専用jobではcombat往復を行わない。
     // 通常のcreative smokeでは従来どおり、M往復とレール状態保持を検査する。
@@ -906,7 +922,8 @@ try {
       expectAll('Property window did not remain clamped after resize', clamped);
       await clearViewport();
     }
-    if (smokeConstruction) await constructMaterialFromBaseDock();
+      if (smokeConstruction) await constructMaterialFromBaseDock();
+    }
   }
 
   if (expectCreative && process.env.SMOKE_CREATIVE_PLACE === '2') {
