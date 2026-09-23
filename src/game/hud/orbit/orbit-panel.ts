@@ -118,7 +118,7 @@ export class OrbitPanel {
       tEl.classList.toggle('warn-hot', tDanger);
     }
     this.els.get('temp-row')?.classList.toggle('warn-hot', tDanger);
-    syncEnvironmentMeter(this.els.get('temp-meter-fill'), view.temperatureK / MAX_HULL_TEMP, tDanger);
+    syncEnvironmentMeter(this.els.get('temp-meter-fill') ?? null, view.temperatureK / MAX_HULL_TEMP, tDanger);
   }
 }
 
@@ -128,8 +128,8 @@ function referenceLabel(mode: OrbitReferenceMode): string {
 }
 
 // 環境バーは最大値基準で 0..1 に収め、危険域は既存 widget と同じ danger class を使う。
-function syncEnvironmentMeter(fill: HTMLElement | undefined, ratio: number, danger: boolean): void {
-  if (!fill) return;
+function syncEnvironmentMeter(fill: HTMLElement | null, ratio: number, danger: boolean): void {
+  if (fill === null) return;
   const clamped = Math.max(0, Math.min(1, ratio));
   fill.style.width = `${clamped * 100}%`;
   fill.classList.toggle('danger', danger);
