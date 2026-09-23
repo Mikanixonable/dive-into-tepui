@@ -116,6 +116,9 @@ export class LabEarth {
     };
   }
 
+  // 現在選択中の雲場の世代。cold prepareでは進み、同時刻のwarm再利用では進まない。
+  public get cloudGeneration(): number { return this.clouds.renderInput.generation; }
+
   // 光源として焼く地表のテクスチャ。ベース色の画像が GPU へ届くまでは null。
   public get lightSourceMap(): LightSourceMap | null { return this.surface.lightSourceMap; }
 

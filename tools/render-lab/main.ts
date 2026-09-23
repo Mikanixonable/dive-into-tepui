@@ -15,6 +15,12 @@ import { injectOnce } from '../../src/hud/inject-style';
 import { applyThemeVariables } from '../../src/hud/style/theme-variables';
 import { AU } from '../../src/physics/astronomical-unit';
 import { parseThemePalette } from '../../src/theme';
+import {
+  CLOUD_BAKED_WORKING_SET_BYTES,
+  CLOUD_CAP_SIZE,
+  CLOUD_GENERATED_BAKED_BYTES,
+  CLOUD_OBSERVED_BAKED_BYTES,
+} from '../../src/render/cloud/cloud-cap';
 import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudPhaseKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
@@ -62,6 +68,16 @@ declare global {
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       graphicsSettings: () => Readonly<GraphicsSettingsData>;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
+      measureCloudPreparation: (
+        name: CaseName, displayTimes: readonly number[], angles?: Partial<LabViewAngles>,
+      ) => Promise<import('./lab').CloudPreparationMeasurement>;
+      cloudResourceBudget: {
+        readonly capSize: number;
+        readonly generatedBakedBytes: number;
+        readonly observedBakedBytes: number;
+        readonly bakedWorkingSetBytes: number;
+        readonly analyticDetailTextureBytes: 0;
+      };
     };
   }
 }
@@ -250,6 +266,15 @@ async function init(): Promise<void> {
     },
     graphicsSettings: () => settings.graphics.current,
     measure: (name, angles) => view.measure(name, angles),
+    measureCloudPreparation: (name, displayTimes, angles) =>
+      view.measureCloudPreparation(name, displayTimes, angles),
+    cloudResourceBudget: {
+      capSize: CLOUD_CAP_SIZE,
+      generatedBakedBytes: CLOUD_GENERATED_BAKED_BYTES,
+      observedBakedBytes: CLOUD_OBSERVED_BAKED_BYTES,
+      bakedWorkingSetBytes: CLOUD_BAKED_WORKING_SET_BYTES,
+      analyticDetailTextureBytes: 0,
+    },
   };
 }
 

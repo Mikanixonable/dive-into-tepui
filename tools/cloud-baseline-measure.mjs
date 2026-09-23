@@ -50,6 +50,20 @@ async function main() {
       };
     })()`);
     const initialGraphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
+    await devTools.evaluate("window.renderLab.setGraphicsOption('clouds', true)");
+    await devTools.evaluate("window.renderLab.setGraphicsOption('cloudFieldSource', 'generated')");
+    const cloudPreparation = await devTools.evaluate(
+      "window.renderLab.measureCloudPreparation('earth', [3600, 86400, -3600])",
+    );
+    const cloudResourceBudget = await devTools.evaluate('window.renderLab.cloudResourceBudget');
+    const jsHeap = await devTools.evaluate(`(() => {
+      const memory = performance.memory;
+      return memory ? {
+        usedJSHeapSize: memory.usedJSHeapSize,
+        totalJSHeapSize: memory.totalJSHeapSize,
+        jsHeapSizeLimit: memory.jsHeapSizeLimit,
+      } : null;
+    })()`);
     const rounds = [];
     for (let round = 0; round < 2; round += 1) {
       const order = round === 0 ? modes : [...modes].reverse();
@@ -77,9 +91,12 @@ async function main() {
       sampleFramesPerRound: rounds[0]?.measurement.frames ?? 0,
       quality: { cumulusDetail: 'standard' },
       initialGraphicsSettings,
+      cloudPreparation,
+      cloudResourceBudget,
+      jsHeap,
       rounds,
       gpuSupported: rounds.every((entry) => entry.measurement.gpuSupported),
-      interpretation: 'Cloud-off is a baseline of instrumented render passes, not a verified whole-frame B0. Cloud-on minus cloud-off is not a paired per-frame cost. Timestamp support alone does not establish target hardware suitability.',
+      interpretation: 'Cloud-off is a baseline of instrumented render passes, not a verified whole-frame B0. Cloud-on minus cloud-off is not a paired per-frame cost. cloudPreparation pairs a changed-time cold bake with an immediate same-time warm reuse; core baked bytes exclude source images and WebGPU driver overhead. Timestamp support alone does not establish target hardware suitability.',
     };
     writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
     console.log(`Wrote ${path.relative(root, outputPath)}`);
