@@ -149,6 +149,9 @@ export function condense(weather: WeatherSample): CloudSample {
   return {
     coverage,
     cloudTop: scaledCloudTop,
-    translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
+    iceOpticalDepth: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
+    // 上層氷雲は圏界面付近を中心に置く。RGBAのAに高度を保持するため、後段は固定 shell 高度に
+    // 依存せず、同じ柱契約から多層密度を再構成できる。
+    iceCenter: weather.tropopause,
   };
 }

@@ -44,7 +44,7 @@ const CLOUD_SHELL_DEFINITIONS = [
       cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
       bottomAltitude: uniform(15e3), topAltitude: uniform(16e3),
     },
-    columnOpticalDepth: (field: CloudSample): FloatNode => field.translucent,
+    columnOpticalDepth: (field: CloudSample): FloatNode => field.iceOpticalDepth,
   },
   {
     species: 'cumulus',
@@ -84,7 +84,7 @@ export function shellAltitudeOf(species: CloudSpecies): FloatNode {
 
 // 殻と交わる 1 点ぶんの、視線が受ける減衰と、その点が視線へ足す放射輝度。
 export interface CloudShellSample {
-  // 場から得た鉛直柱光学深さ。巻雲はtranslucentを直接、積雲はcoverageから変換する。
+  // 場から得た鉛直柱光学深さ。巻雲はiceOpticalDepthを直接、積雲はcoverageから変換する。
   readonly columnOpticalDepth: FloatNode;
   // 鉛直柱を視線へ写す倍率。球殻の厚みで接線側の発散を有限化する。
   readonly airmass: FloatNode;
@@ -93,7 +93,7 @@ export interface CloudShellSample {
   readonly radiance: Vec3Node;
 }
 
-// 雲場データの解釈仕様は CloudSample が定義する。巻雲は translucent を直接適用し、積雲は coverage を鉛直柱光学厚みへ換算する。
+// 雲場データの解釈仕様は CloudSample が定義する。巻雲は iceOpticalDepth を直接適用し、積雲は coverage を鉛直柱光学厚みへ換算する。
 //
 // 不透明な積雲として描画された成分は減算しない。不透明な雲殻が G バッファに深度を書き込むため、その
 // 手前で終端するレイでは交点が積分区間外となり自然に寄与が除外される。減算を行うと同一遮蔽が二重に積算され、
