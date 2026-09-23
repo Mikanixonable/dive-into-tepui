@@ -160,6 +160,10 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
       measurement('released-ice-spread', '放出氷コホートの質量加重広がり誤差', 'm',
         'absolute difference of mass-weighted spherical RMS spread from analytic cohort endpoints',
         'all surviving released-ice cohorts', 0, '0.05 m 以下', 'analytic'),
+      measurement('continuous-release-distribution', '連続放出分布に対するコホート近似誤差', 'm',
+        'maximum of mass-centroid displacement and mass-weighted spherical RMS spread error against independent release-time quadrature',
+        'continuous surviving-ice release interval', 0,
+        'blocked until a standard minimum spatial sample spacing or independent transport-error tolerance is fixed', 'numeric'),
     ] },
   C3: { id: 'C3', label: '供給停止後のかなとこ', ...CONTROLS.c3, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: { startMinutes: 0, endMinutes: 1_440, sampleIntervalMinutes: 10 }, measurements: [
