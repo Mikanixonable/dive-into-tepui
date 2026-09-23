@@ -33,14 +33,24 @@ export function register(): void {
     assert.deepEqual(repeated, result);
   });
 
-  test('meteorological fixtures: C2 changes wind direction with height in one control profile', () => {
+  test('meteorological fixtures: C2 validates every released-ice cohort against two-layer analytic transport', () => {
     const result = evaluateMeteorologicalCase('C2');
     assert.equal(result.controls.lowerEastWindMps, 10);
     assert.equal(result.controls.upperNorthWindMps, 10);
     assert.equal(measurement(result, 'layer-displacement').status, 'pass');
     assert.equal(measurement(result, 'released-ice-track').status, 'pass');
+    assert.equal(measurement(result, 'released-ice-cohorts').status, 'pass');
+    assert.equal(measurement(result, 'released-ice-mass').status, 'pass');
+    assert.equal(measurement(result, 'released-ice-spread').status, 'pass');
     assert.ok(typeof result.controls.representativeReleaseTimeSeconds === 'number');
     assert.ok(result.controls.representativeReleaseTimeSeconds > 0);
+    assert.ok(Number(result.controls.iceCohortCount) >= 16);
+    assert.ok(Number(result.controls.actualIceCohortSpreadM) > 0);
+    assert.ok(Math.abs(Number(result.controls.reconstructedIceCohortMassKgM2)
+      - Number(result.controls.eventRemainingIceKgM2)) <= 1e-12);
+
+    evaluateMeteorologicalCase('C1');
+    assert.deepEqual(evaluateMeteorologicalCase('C2'), result);
   });
 
   test('meteorological fixtures: C3 stops supply while event ice remains', () => {
