@@ -86,7 +86,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   padding: var(--space-5); line-height: 1.5;
 }
 #hud .panel h3 {
-  font-size: var(--font-s); letter-spacing: 0.06em; color: var(--text);
+  font-size: var(--font-s); letter-spacing: var(--tracking-label); color: var(--text);
   border: 0; margin-bottom: var(--space-4); padding: 0;
   font-weight: 600; text-transform: none;
 }
@@ -314,7 +314,8 @@ body.hud-construction-mode #touch-ui { display: none; }
   }
   #hud-topbar .gs-status-head { gap: var(--space-1); }
   #hud-topbar .gs-metrics { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); }
-  #hud-topbar .gs-metric:last-child { display: none; }
+  /* 通常は MET + SIM、ノードワープ中だけ SIM + NODE WARP を優先する。 */
+  #hud-topbar.node-warp-active .gs-metric-time { display: none; }
   #hud-topbar .gs-metric-time .v { font-size: var(--font-xxs); }
 }
 @media ${MQ_COARSE_SHORT} {
