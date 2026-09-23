@@ -157,8 +157,7 @@ export const MAP_PANEL_STYLE = `
 /* 座標系・カメラ FOV/角度操作パネル(.hud-frame-controls)。 */
 #hud .hud-frame-controls {
   width: 100%; pointer-events: auto;
-  max-height: min(360px, 48vh); max-height: min(360px, 48dvh); overflow-y: auto;
-  scrollbar-width: thin;
+  max-height: none; overflow: visible;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
 #hud .hud-frame-controls .hud-frame-origin-zone > .w-group:first-child > .w-group-title,
@@ -285,10 +284,10 @@ export const MAP_PANEL_STYLE = `
 }
 #hud-view-options .view-options-render-label { display: grid; gap: 2px; min-width: 0; }
 #hud-view-options .view-options-render-label > span {
-  color: var(--text); font-size: var(--font-xs); letter-spacing: .04em;
+  color: var(--text); font-size: var(--font-xs); letter-spacing: 0;
 }
 #hud-view-options .view-options-render-label > small {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud-view-options .view-options-render-choices {
   display: inline-flex; justify-self: end; align-items: stretch; gap: 1px;
@@ -343,7 +342,7 @@ export const MAP_PANEL_STYLE = `
 #hud-view-options .target-class-row .body-class-title .w-btn-icon { display: none; }
 #hud-view-options .target-class-row .body-class-title::after {
   content: attr(data-display-label); margin-left: auto;
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud-view-options .target-class-row .body-class-title.on {
   color: var(--text); background: transparent;
@@ -351,7 +350,7 @@ export const MAP_PANEL_STYLE = `
 #hud-view-options .target-class-row .body-class-title.on::after { color: var(--color-primary); }
 #hud-view-options .target-class-row:hover { background: var(--glass-control-hover); }
 #hud-view-options .view-options-section-heading {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud-view-options .grid-class-row {
   padding-block: var(--space-1); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 12%, transparent);
@@ -386,8 +385,8 @@ export const MAP_PANEL_STYLE = `
   display: grid; gap: var(--space-1); margin-bottom: var(--space-3);
 }
 #hud-plan .plan-node-hero strong {
-  color: var(--text-strong); font-size: var(--font-2xl);
-  font-variant-numeric: tabular-nums; letter-spacing: -.03em;
+  color: var(--text-strong); font-size: var(--font-xl);
+  font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-title);
 }
 #hud-plan .plan-state .editorial-state-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);
