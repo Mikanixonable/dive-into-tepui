@@ -1,6 +1,6 @@
 // ShipModuleCatalog の寸法から、メートル単位・長手軸 +Z の module model を組み立てる。
-// Mercury / Gemini 世代の有人宇宙船と初期ロケット機器を主参照に、薄板外皮、機械式ラッチ、
-// 埋込RCS、露出配管、窓枠、アブレーション材、分離モーター等のディテールを取り入れ、
+// 実在の宇宙船（ISS、ソユーズ、ジェミニ、マーキュリー、HTV、実在のロケットエンジン、SRB）の
+// ディテール（リブ、配管、断熱材、ハンドレール、窓枠、ベル曲線ノズル、分離モーター等）を取り入れ、
 // 説得力と一貫性のある形状を生成する。
 // module と semantic anchor は Group/Object3D に置き、exporter の mesh 統合で境界が消えないようにする。
 import * as THREE from 'three';
@@ -64,18 +64,18 @@ const {
 source.dispose();
 
 const materials = {
-  hull: std(0xb9bdc0, { metalness: 0.82, roughness: 0.46 }),
-  hullDark: std(0x171a1d, { metalness: 0.92, roughness: 0.5 }),
+  hull: std(0xb8c5d2, { metalness: 0.72, roughness: 0.48 }),
+  hullDark: std(0x4a525e, { metalness: 0.85, roughness: 0.42 }),
   rim: std(F0_STEEL, { metalness: 1, roughness: 0.28 }),
   dark: std(F0_BURNT_STEEL, { metalness: 1, roughness: 0.5 }),
   window: std(0x0a1c2d, { metalness: 0.05, roughness: 0.15 }),
   windowFrame: std(0x353b44, { metalness: 0.8, roughness: 0.35 }),
   tankMain: std(0xc7d3de, { metalness: 0.68, roughness: 0.42 }),
-  tankRcs: std(0x74797d, { metalness: 0.86, roughness: 0.43 }),
+  tankRcs: std(0x4a8296, { metalness: 0.58, roughness: 0.46 }),
   armor: std(0x626c7a, { metalness: 0.9, roughness: 0.38 }),
   radiator: std(0xe4e9ee, { metalness: 0.28, roughness: 0.86 }),
   solar: std(0x163f91, { metalness: 0.18, roughness: 0.44 }),
-  dock: std(0x777b7e, { metalness: 0.88, roughness: 0.38 }),
+  dock: std(0xd58b37, { metalness: 0.82, roughness: 0.4 }),
   mliGold: std(0xd4a843, { metalness: 0.85, roughness: 0.30 }),
   mliWhite: std(0xecf0f5, { metalness: 0.0, roughness: 0.75 }),
   heatshield: std(0x2d241d, { metalness: 0.0, roughness: 0.88 }),
@@ -777,52 +777,33 @@ function buildDeployable(root, definition) {
 }
 
 // ------------------------------------------------------------- ドッキング / ドック / デカプラー
-// 初期ランデブー機器風の小径接触輪 + 機械式ラッチ。interface-ring の契約は維持する。
+// APAS-95 / CBM 風のインターフェースリング + ガイドペタル + アライメントピン (interface-ring保持)
 function buildDocking(root, definition) {
   const radius = definition.diameter / 2;
   const halfLen = definition.length / 2;
   const color = definition.kind === 'dock' ? materials.dock : materials.rim;
 
-  root.add(axialMesh(new THREE.CylinderGeometry(radius, radius, definition.length * 0.84, 32, 1), color, -0.04, 'ring'));
+  // 主リング円筒
+  root.add(axialMesh(new THREE.CylinderGeometry(radius, radius, definition.length, 32, 1), color, 0, 'ring'));
 
-  const contactRadius = definition.kind === 'decoupler' ? radius * 0.78 : radius * 0.55;
-  root.add(ringMesh(
-    new THREE.TorusGeometry(contactRadius, 0.055, 8, 32),
-    materials.rim,
-    halfLen - 0.045,
-    'interface-ring',
-  ));
+  // インターフェースリング（契約テスト 'ship module asset: interface ring は接続面と同じ +Z 法線を持つ' に完全準拠）
+  root.add(ringMesh(new THREE.TorusGeometry(radius * 0.78, radius * 0.12, 8, 32), materials.dark,
+    halfLen + 0.02, 'interface-ring'));
 
-  if (definition.kind === 'decoupler') {
-    root.add(ringMesh(
-      new THREE.TorusGeometry(radius * 0.94, 0.025, 6, 32),
-      materials.dark,
-      0,
-      'severance-ring',
-    ));
-  } else {
-    for (let i = 0; i < 6; i++) {
-      const ang = (i * Math.PI) / 3;
-      root.add(boxMesh(
-        new THREE.BoxGeometry(0.16, 0.28, 0.10),
-        materials.dark,
-        Math.cos(ang) * contactRadius * 0.94,
-        Math.sin(ang) * contactRadius * 0.94,
-        halfLen - 0.02,
-        0,
-        0,
-        ang,
-        'capture-latch',
-      ));
-    }
+  // APAS/CBM風 ドッキングガイドペタル（3枚の三角形爪）
+  for (let i = 0; i < 3; i++) {
+    const ang = (i * Math.PI * 2) / 3;
+    const petal = boxMesh(new THREE.BoxGeometry(0.38, 0.18, 0.22), materials.dock,
+      Math.cos(ang) * (radius * 0.76), Math.sin(ang) * (radius * 0.76), halfLen + 0.12, 0.25, 0, ang, 'guide-petal');
+    root.add(petal);
+  }
 
-    const guideProbe = axialMesh(
-      new THREE.CylinderGeometry(0.065, 0.10, 0.24, 12),
-      materials.rim,
-      halfLen + 0.08,
-      'guide-probe',
-    );
-    root.add(guideProbe);
+  // アライメントピン & ラッチストライク
+  for (let i = 0; i < 6; i++) {
+    const ang = (i * Math.PI) / 3 + Math.PI / 6;
+    const pin = axialMesh(new THREE.CylinderGeometry(0.04, 0.04, 0.14, 8), materials.rim, halfLen + 0.08, 'alignment-pin');
+    pin.position.set(Math.cos(ang) * (radius * 0.72), Math.sin(ang) * (radius * 0.72), halfLen + 0.08);
+    root.add(pin);
   }
 
   const semantic = definition.kind === 'dock' ? 'construction-dock'
