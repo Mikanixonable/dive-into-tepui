@@ -708,8 +708,8 @@ def global_manifest(manifest, source_manifest_path, source_manifest_hash, climat
                              "normalFrame": "body_fixed"},
         "climateMap": manifest["climateMap"],
         "controlRegions": manifest["controlRegions"],
-        "coverage": {"kind": coverage_kind, "minZoom": EARTH_TILE_MIN_Z, "maxZoom": max_zoom,
-                      "expectedTiles": global_tile_count(max_zoom) if coverage_kind == "complete" else None},
+        "coverage": {"kind": coverage_kind, "minZoom": EARTH_TILE_MIN_Z, "maxZoom": EARTH_TILE_MAX_Z,
+                      "expectedTiles": global_tile_count(EARTH_TILE_MAX_Z) if coverage_kind == "complete" else None},
         "baseColor": "base/earth.jpg",
         "baseTerrain": "base/earth.bin.gz",
         "tileTemplates": {"color": "tiles/{z}/{x}/{y}.jpg", "terrain": "tiles/{z}/{x}/{y}.bin.gz"},
@@ -741,7 +741,7 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
         raise GlobalInputError(f"source manifestがありません: {source_manifest_path}")
     coverage_kind = "complete" if max_zoom == EARTH_TILE_MAX_Z else "sparse"
     result_manifest = global_manifest(manifest, "sources.json", source_hash, climate_paths,
-                                      coverage_kind, max_zoom, data_provenance)
+                                      coverage_kind, EARTH_TILE_MAX_Z, data_provenance)
     try:
         climate_values = list(climate_maps)
         if (len(climate_values) != 12 or any(not isinstance(value, (bytes, bytearray)) or not value
