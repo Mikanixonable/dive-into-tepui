@@ -6,9 +6,10 @@ import type { FloatNode, Vec3Node } from '../tsl-types';
 
 // 標準品質で残す最小の構造スケール[m]。Step 3 の2 km実証値。
 export const CLOUD_DETAIL_SCALE_M = 2_000;
-// 画面1pxまたは光路1歩の代表幅がこの値以下ならdetailを全振幅で残し、4 kmで0へ落とす。
-export const CLOUD_DETAIL_FULL_FOOTPRINT_M = 1_000;
-export const CLOUD_DETAIL_FADE_FOOTPRINT_M = 4_000;
+// 2 km 構造は standard 近距離で少なくとも4標本を要求するため、500 m/px 以下で全振幅。
+// 1 km/px は2 km波長のNyquist限界なので、そこまでに0へ落として未解像 detail のaliasを防ぐ。
+export const CLOUD_DETAIL_FULL_FOOTPRINT_M = CLOUD_DETAIL_SCALE_M / 4;
+export const CLOUD_DETAIL_FADE_FOOTPRINT_M = CLOUD_DETAIL_SCALE_M / 2;
 // 2 km水平構造が雲頂へ与える最大起伏[m]。柱の光学量は変えず、高度方向へ再配分するだけにする。
 export const CLOUD_DETAIL_TOP_RELIEF_M = 900;
 
