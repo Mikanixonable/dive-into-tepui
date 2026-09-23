@@ -15,7 +15,6 @@ export const LAYOUT_TOKENS_STYLE = `
   /* 中央HUDは rail-w を直接読まず、この実占有量だけを参照する。JSが描画後に実寸へ上書きする。 */
   --hud-left-rail-occupied: calc(12px + var(--rail-w-left));
   --hud-right-rail-occupied: calc(12px + var(--rail-w-right));
-  --hud-rail-top: calc(var(--hud-chrome-h) + var(--space-2));
   --hud-rail-bottom: 12px;
   --hud-map-scale-bottom: 12px;
   /* overlay の高さを役割別の3段階に揃える。 */
