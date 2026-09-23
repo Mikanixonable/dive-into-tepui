@@ -37,7 +37,13 @@ export function register(): void {
         assert.equal(result.goodOnly, expected === 'good');
       }
     }
-    assert.equal(classifyAbiQualityFlag(17, 'L2_COD').classification, 'unknown');
+    const nightNonconvergence = classifyAbiQualityFlag(17, 'L2_COD');
+    assert.equal(nightNonconvergence.classification, 'degraded');
+    assert.equal(nightNonconvergence.meaning, 'degraded_due_to_nonconvergence_qf');
+    assert.equal(nightNonconvergence.mode, 'night');
+    assert.equal(nightNonconvergence.goodOnly, false);
+    assert.equal(classifyAbiQualityFlag(18, 'L2_COD').classification, 'unknown');
+    assert.equal(classifyAbiQualityFlag(33, 'L2_COD').classification, 'unknown');
   });
 
   test('ABI quality: CTP overall bit classifies all observed six-bit combinations', () => {
