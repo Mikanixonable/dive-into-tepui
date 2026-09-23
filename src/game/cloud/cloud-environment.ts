@@ -1,10 +1,8 @@
 // Reproducible environmental inputs and diagnostics for display-side cloud experiments.
-// ARCHITECTURE R2 exception: placing this generator in game/ would require a second
-// THREE-independent declaration layer for per-column thermodynamic profiles, while
-// the renderer evaluates the same generated profile for local GPU work. Splitting
-// those would duplicate profile construction or expose renderer evaluation details.
-// This module is limited to immutable inputs and pure diagnostics; it owns no time,
-// camera, GPU, or model state. It is not a global circulation or cloud-resolving model.
+// This game-layer display derivation is limited to immutable inputs and pure
+// diagnostics; it owns no time, camera, GPU, or model state. The renderer will receive
+// derived declarations rather than importing game state. This is not a global
+// circulation or cloud-resolving model.
 // The upper-ice moisture factor is an input for event lifecycle code; this module does
 // not compute ice lifetime. Height-dependent winds are sampled inputs; material tracks
 // are integrated by transport code, not here.

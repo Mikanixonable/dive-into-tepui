@@ -3,7 +3,7 @@ import {
   sampleConvectiveCloudEvents,
   type CloudEventDomain,
   type ConvectiveCloudCell,
-} from '../../src/render/cloud/cloud-events';
+} from '../../src/game/cloud/cloud-events';
 import {
   iceEffectiveRadiusM,
   iceOpticalDepth,
