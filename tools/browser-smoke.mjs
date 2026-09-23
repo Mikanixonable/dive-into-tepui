@@ -18,6 +18,7 @@ if (smokeConstruction && (!expectCreative || creativePreset !== 'base')) {
   throw new Error('SMOKE_CONSTRUCTION=1 requires creative stage and base preset.');
 }
 const emulateTouch = process.env.SMOKE_TOUCH === '1';
+const layoutOnly = process.env.SMOKE_LAYOUT_ONLY === '1';
 let session;
 let devTools;
 const fatalEvents = [];
@@ -102,6 +103,13 @@ function describeFatalEvents() {
 
 function throwIfFatal(label) {
   if (fatalEvents.length > 0) throw new Error(`${label} (${fatalEvents.length}):\n  ${describeFatalEvents()}`);
+}
+
+function isIgnorableLayoutConsoleError(event) {
+  if (!layoutOnly || event.method !== 'Runtime.consoleAPICalled' || event.params?.type !== 'error') return false;
+  const message = event.params.args.map((arg) => arg.description ?? String(arg.value)).join(' ');
+  return message.includes('THREE.Error resolving queries: AbortError')
+    && message.includes("Failed to execute 'mapAsync' on 'GPUBuffer'");
 }
 
 const VIEWPORTS = [
@@ -617,9 +625,18 @@ try {
     port,
     debugPort,
     profilePrefix: 'tepui-smoke-',
+    extraLaunchArgs: layoutOnly ? [
+      '--use-webgpu-adapter=swiftshader',
+      '--enable-features=Vulkan',
+      '--use-gpu-in-tests',
+      '--enable-accelerated-2d-canvas',
+      '--disable-dawn-features=disallow_unsafe_apis',
+      '--enable-webgpu-developer-features',
+    ] : [],
     onEvent: (event) => {
       if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
-      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
+      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error'
+        && !isIgnorableLayoutConsoleError(event)) fatalEvents.push(event);
       if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
     },
   });
