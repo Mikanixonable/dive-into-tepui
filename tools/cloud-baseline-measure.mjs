@@ -1,17 +1,18 @@
-// Capture a paired cloud-off / observed / generated GPU baseline from the real
-// render pipeline. Every reported frame total sums passes from that frame before
-// taking a percentile; per-pass percentiles cannot be added to obtain a p95.
+// 雲なし／雲ありの計測対象描画パス合計を、反復ブロックで比較する。
+// フレーム全体の GPU 完了時刻や画面提示時刻とは区別する。
 import { writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
+import { summarizeBaselineBlocks } from './cloud-baseline-statistics.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.render-lab');
 const outputPath = path.join(buildDir, 'cloud-baseline.json');
+const BLOCK_COUNT = 8;
 const modes = [
-  { id: 'off', clouds: false, source: 'generated' },
-  { id: 'generated-standard', clouds: true, source: 'generated' },
-  { id: 'observed-standard', clouds: true, source: 'observed' },
+  { id: 'generated-standard', source: 'generated' },
+  { id: 'observed-standard', source: 'observed' },
 ];
 
 async function main() {
@@ -31,55 +32,85 @@ async function main() {
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
 
-    const device = await devTools.evaluate(`(async () => {
-      const adapter = await navigator.gpu?.requestAdapter();
-      const canvas = document.querySelector('canvas');
-      return {
-        adapter: adapter ? {
-          vendor: adapter.info.vendor,
-          architecture: adapter.info.architecture,
-          device: adapter.info.device,
-          description: adapter.info.description,
-          fallback: adapter.isFallbackAdapter,
-          timestampQueryAdvertised: adapter.features.has('timestamp-query'),
-        } : null,
-        userAgent: navigator.userAgent,
-        devicePixelRatio,
-        canvasWidth: canvas?.width ?? null,
-        canvasHeight: canvas?.height ?? null,
-      };
-    })()`);
+    const [device, browser] = await Promise.all([
+      devTools.evaluate(`(async () => {
+        const adapter = await navigator.gpu?.requestAdapter();
+        const canvas = document.querySelector('canvas');
+        return {
+          adapter: adapter ? {
+            vendor: adapter.info.vendor,
+            architecture: adapter.info.architecture,
+            device: adapter.info.device,
+            description: adapter.info.description,
+            fallback: adapter.isFallbackAdapter,
+            timestampQueryAdvertised: adapter.features.has('timestamp-query'),
+          } : null,
+          userAgent: navigator.userAgent,
+          devicePixelRatio,
+          canvasWidth: canvas?.width ?? null,
+          canvasHeight: canvas?.height ?? null,
+        };
+      })()`),
+      devTools.send('Browser.getVersion'),
+    ]);
     const initialGraphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
-    const rounds = [];
-    for (let round = 0; round < 2; round += 1) {
-      const order = round === 0 ? modes : [...modes].reverse();
-      for (const mode of order) {
-        await devTools.evaluate(`window.renderLab.setGraphicsOption('cloudFieldSource', ${JSON.stringify(mode.source)})`);
-        await devTools.evaluate("window.renderLab.setGraphicsOption('cumulusDetail', 2)");
-        await devTools.evaluate(`window.renderLab.setGraphicsOption('clouds', ${mode.clouds})`);
-        const graphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
-        const measurement = await devTools.evaluate("window.renderLab.measure('earth')");
-        if (measurement.gpuSupported && !(measurement.gpuPassTotalMs.p95 > 0)) {
-          throw new Error(`Timestamp queries returned no usable pass timings for ${mode.id}`);
+    const blocks = [];
+    const measure = async (source, clouds) => {
+      await devTools.evaluate(`window.renderLab.setGraphicsOption('cloudFieldSource', ${JSON.stringify(source)})`);
+      await devTools.evaluate("window.renderLab.setGraphicsOption('cumulusDetail', 2)");
+      await devTools.evaluate(`window.renderLab.setGraphicsOption('clouds', ${clouds})`);
+      return {
+        graphicsSettings: await devTools.evaluate('window.renderLab.graphicsSettings()'),
+        measurement: await devTools.evaluate("window.renderLab.measure('earth')"),
+      };
+    };
+
+    for (let index = 0; index < BLOCK_COUNT; index += 1) {
+      const block = { index, modes: {} };
+      const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
+      for (const mode of orderedModes) {
+        // 雲ありを挟む二つの雲なし計測から、局所的な反復誤差を求める。
+        const before = await measure(mode.source, false);
+        const cloud = await measure(mode.source, true);
+        const after = await measure(mode.source, false);
+        for (const [label, run] of [['offBefore', before], ['cloudOn', cloud], ['offAfter', after]]) {
+          if (run.measurement.gpuSupported && !(run.measurement.gpuPassTotalMs.p95 > 0)) {
+            throw new Error(`Timestamp queries returned no usable pass timings for ${mode.id}/${label}`);
+          }
         }
-        rounds.push({ round, mode: mode.id, graphicsSettings, measurement });
-        console.log(`${mode.id} round=${round + 1}: GPU pass total p95=${measurement.gpuSupported
-          ? measurement.gpuPassTotalMs.p95.toFixed(3) : 'unsupported'} ms`);
+        block.modes[mode.id] = { offBefore: before, cloudOn: cloud, offAfter: after };
+        console.log(`${mode.id} block=${index + 1}/${BLOCK_COUNT}: instrumented pass p95 `
+          + `off=${before.measurement.gpuPassTotalMs.p95.toFixed(3)}/`
+          + `${after.measurement.gpuPassTotalMs.p95.toFixed(3)} ms, `
+          + `cloud=${cloud.measurement.gpuPassTotalMs.p95.toFixed(3)} ms`);
       }
+      blocks.push(block);
     }
+
     if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
+    const gpuSupported = blocks.every((block) => Object.values(block.modes)
+      .every((entry) => entry.offBefore.measurement.gpuSupported
+        && entry.cloudOn.measurement.gpuSupported
+        && entry.offAfter.measurement.gpuSupported));
     const result = {
       recordedAt: new Date().toISOString(),
-      hostPlatform: process.platform,
-      hostArchitecture: process.arch,
+      host: { platform: process.platform, architecture: process.arch, osRelease: os.release() },
+      browser: { product: browser.product, userAgent: browser.userAgent, jsVersion: browser.jsVersion },
       device,
       caseName: 'earth',
-      sampleFramesPerRound: rounds[0]?.measurement.frames ?? 0,
+      sampleFramesPerMeasurement: blocks[0]?.modes[modes[0].id]?.cloudOn.measurement.frames ?? 0,
+      blockCount: BLOCK_COUNT,
       quality: { cumulusDetail: 'standard' },
       initialGraphicsSettings,
-      rounds,
-      gpuSupported: rounds.every((entry) => entry.measurement.gpuSupported),
-      interpretation: 'Cloud-off is a baseline of instrumented render passes, not a verified whole-frame B0. Cloud-on minus cloud-off is not a paired per-frame cost. Timestamp support alone does not establish target hardware suitability.',
+      measurementScope: 'instrumented-render-pass-sum',
+      gpuSupported,
+      qualification: {
+        status: 'not-established',
+        reason: 'No target device/browser identity was specified for this run; timestamp-query support does not establish hardware suitability.',
+      },
+      statistics: summarizeBaselineBlocks(blocks),
+      blocks,
+      interpretation: 'These are instrumented render-pass sums, not whole-frame GPU B0. Paired p95 deltas compare per-measurement instrumented-pass p95 values; the off/off noise floor is reported separately. No pass/fail threshold is applied.',
     };
     writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
     console.log(`Wrote ${path.relative(root, outputPath)}`);
