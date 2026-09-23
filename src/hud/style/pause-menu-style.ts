@@ -9,7 +9,7 @@ export const PAUSE_MENU_STYLE = `
   grid-template-columns: minmax(250px, .78fr) minmax(0, 1.22fr);
   gap: var(--space-6);
   width: min(var(--pm-expanded-width), calc(100vw - var(--space-6) - var(--space-6)));
-  max-height: calc(100dvh - var(--space-6) - var(--space-6));
+  max-height: var(--overlay-max-h-l);
   overflow: hidden; pointer-events: auto;
 }
 #hud #hud-pause-menu { padding: var(--space-6); }
@@ -29,11 +29,11 @@ export const PAUSE_MENU_STYLE = `
 }
 #hud-pause-menu .pm-brand {
   position: relative; display: grid; grid-column: 1; gap: var(--space-4);
-  min-height: 220px; align-content: end;
+  min-height: 150px; align-content: end;
 }
 #hud-pause-menu .pm-brand-logotype {
   display: grid; width: fit-content; color: var(--text-strong);
-  font-size: clamp(2.6rem, 6vw, 4.7rem); font-weight: 650; letter-spacing: -.075em; line-height: .78;
+  font-size: clamp(2.1rem, 4.6vw, 3.5rem); font-weight: 650; letter-spacing: var(--tracking-title); line-height: .84;
 }
 #hud-pause-menu .pm-brand-logotype span:nth-child(2) { margin-left: .36em; }
 #hud-pause-menu .pm-brand-logotype span:nth-child(3) { margin-left: .72em; color: var(--color-primary-hover); }
@@ -42,7 +42,7 @@ export const PAUSE_MENU_STYLE = `
   position: absolute; top: 0; left: 0; width: 2rem; height: 2rem; border-radius: var(--radius-control); opacity: .72;
 }
 #hud-pause-menu .pm-brand-version {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 0.06em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud-pause-menu .pm-header h3 { min-width: 0; margin: auto 0 0; }
 #hud-pause-menu .pm-system-heading { display: flex; align-items: baseline; gap: var(--space-2); color: var(--text); }
@@ -125,8 +125,8 @@ export const PAUSE_MENU_STYLE = `
     box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
   }
   #hud-pause-menu .pm-header-top { grid-template-columns: minmax(0, 1fr) auto; }
-  #hud-pause-menu .pm-brand { grid-column: 1; min-height: 112px; justify-self: start; }
-  #hud-pause-menu .pm-brand-logotype { font-size: clamp(2rem, 12vw, 3.3rem); }
+  #hud-pause-menu .pm-brand { grid-column: 1; min-height: 76px; justify-self: start; }
+  #hud-pause-menu .pm-brand-logotype { font-size: clamp(1.7rem, 9vw, 2.5rem); }
   #hud-pause-menu .pm-brand-meta { display: none; }
   #hud-pause-menu .pm-header-actions { grid-column: 2; }
   #hud-pause-menu .pm-actions { grid-template-columns: 1fr; }
