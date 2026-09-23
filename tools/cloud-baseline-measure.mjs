@@ -1,0 +1,91 @@
+// Capture a paired cloud-off / observed / generated GPU baseline from the real
+// render pipeline. Every reported frame total sums passes from that frame before
+// taking a percentile; per-pass percentiles cannot be added to obtain a p95.
+import { writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
+
+const root = path.resolve(import.meta.dirname, '..');
+const buildDir = path.join(root, '.render-lab');
+const outputPath = path.join(buildDir, 'cloud-baseline.json');
+const modes = [
+  { id: 'off', clouds: false, source: 'generated' },
+  { id: 'generated-standard', clouds: true, source: 'generated' },
+  { id: 'observed-standard', clouds: true, source: 'observed' },
+];
+
+async function main() {
+  const { fatalEvents, onEvent } = collectFatalEvents();
+  const session = await openChromeSession({
+    serveDir: buildDir, port: 8770, debugPort: 9447,
+    profilePrefix: 'tepui-cloud-baseline-', onEvent,
+  });
+  try {
+    const { devTools } = session;
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+    await waitFor(
+      devTools,
+      "(document.getElementById('error')?.textContent || typeof window.renderLab?.measure === 'function')",
+      'the render lab to initialise',
+    );
+    const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
+    if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
+
+    const device = await devTools.evaluate(`(async () => {
+      const adapter = await navigator.gpu?.requestAdapter();
+      const canvas = document.querySelector('canvas');
+      return {
+        adapter: adapter ? {
+          vendor: adapter.info.vendor,
+          architecture: adapter.info.architecture,
+          device: adapter.info.device,
+          description: adapter.info.description,
+          fallback: adapter.isFallbackAdapter,
+          timestampQueryAdvertised: adapter.features.has('timestamp-query'),
+        } : null,
+        userAgent: navigator.userAgent,
+        devicePixelRatio,
+        canvasWidth: canvas?.width ?? null,
+        canvasHeight: canvas?.height ?? null,
+      };
+    })()`);
+    const initialGraphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
+    const rounds = [];
+    for (let round = 0; round < 2; round += 1) {
+      const order = round === 0 ? modes : [...modes].reverse();
+      for (const mode of order) {
+        await devTools.evaluate(`window.renderLab.setGraphicsOption('cloudFieldSource', ${JSON.stringify(mode.source)})`);
+        await devTools.evaluate("window.renderLab.setGraphicsOption('cumulusDetail', 2)");
+        await devTools.evaluate(`window.renderLab.setGraphicsOption('clouds', ${mode.clouds})`);
+        const graphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
+        const measurement = await devTools.evaluate("window.renderLab.measure('earth')");
+        if (measurement.gpuSupported && !(measurement.gpuPassTotalMs.p95 > 0)) {
+          throw new Error(`Timestamp queries returned no usable pass timings for ${mode.id}`);
+        }
+        rounds.push({ round, mode: mode.id, graphicsSettings, measurement });
+        console.log(`${mode.id} round=${round + 1}: GPU pass total p95=${measurement.gpuSupported
+          ? measurement.gpuPassTotalMs.p95.toFixed(3) : 'unsupported'} ms`);
+      }
+    }
+    if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
+    const result = {
+      recordedAt: new Date().toISOString(),
+      hostPlatform: process.platform,
+      hostArchitecture: process.arch,
+      device,
+      caseName: 'earth',
+      sampleFramesPerRound: rounds[0]?.measurement.frames ?? 0,
+      quality: { cumulusDetail: 'standard' },
+      initialGraphicsSettings,
+      rounds,
+      gpuSupported: rounds.every((entry) => entry.measurement.gpuSupported),
+      interpretation: 'Cloud-off is a baseline of instrumented render passes, not a verified whole-frame B0. Cloud-on minus cloud-off is not a paired per-frame cost. Timestamp support alone does not establish target hardware suitability.',
+    };
+    writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
+    console.log(`Wrote ${path.relative(root, outputPath)}`);
+  } finally {
+    await session.close();
+  }
+}
+
+main().catch((error) => { console.error(error); process.exitCode = 1; });
