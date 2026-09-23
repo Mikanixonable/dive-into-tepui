@@ -116,9 +116,9 @@ async function waitForDebugPage(port) {
 }
 
 // 1リクエストの待ち時間の上限。ページのレンダラが落ちるとその接続宛の応答は二度と返らないので、
-// 上限が無いと待ち続けて呼び出し側がそこで永久に止まる(実際に止まった)。重い条件では
-// 1フレームが1秒を超えるため、フレーム数十回ぶんの余裕を見る。
-const REQUEST_TIMEOUT_MS = 60_000;
+// 上限が無いと待ち続けて呼び出し側がそこで永久に止まる(実際に止まった)。GitHub Actions の
+// ソフトウェア WebGPU では30フレーム計測が1分を超えるため、重い計測1回ぶんの余裕を持たせる。
+const REQUEST_TIMEOUT_MS = 180_000;
 
 function connectDevTools(url, onEvent) {
   const socket = new WebSocket(url);
