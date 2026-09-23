@@ -12,7 +12,7 @@ import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import { EntityContactPhysics } from './entity-contact-physics';
-import { engagementZones } from './engagement-zone';
+import { EngagementZoneBuilder } from './engagement-zone';
 import { SurfaceContactPhysics } from './surface-contact-physics';
 import { SubstepCelestialBodies } from './substep-celestial-bodies';
 import { NextEventTime } from './next-event-time';
@@ -43,6 +43,8 @@ export class Simulator {
   // ゼロ長サブステップが連続した回数(キャッシュ)。simTime が実際に進んだら 0 へ戻す。
   private consecutiveZeroSteps = 0;
   private readonly contactEntitiesScratch: EntityContactParticipant[] = [];
+  // 交戦圏の作業配列と zone 実体をサブステップ間で使い回す。
+  private readonly engagementZoneBuilder = new EngagementZoneBuilder<DynamicSimulationParticipant>();
   // このサブステップを1歩で渡った個体。区間が揃っているので、天体接触をまとめて解ける。
   private readonly sharedIntervalScratch: DynamicSimulationParticipant[] = [];
   // このサブステップの天体窓。
@@ -113,7 +115,10 @@ export class Simulator {
           this.consecutiveZeroSteps = 0;
         }
         activeStage.applySimulationEvents(this._simTime);
-        this.lifecycle.cleanup(0, this._simTime, activeStage, engagementZones(this.roster.allMotions(), canEngage));
+        this.lifecycle.cleanup(
+          0, this._simTime, activeStage,
+          this.engagementZoneBuilder.build(this.roster.allMotions(), canEngage),
+        );
         continue;
       }
       this.consecutiveZeroSteps = 0;
@@ -137,7 +142,7 @@ export class Simulator {
       nanWatchdog.checkControlled('simulator.advance(天体接触)', controlled, this._simTime, dt, subDt);
       // 接触代理は交戦圏があるときに限って組む — 交戦圏の組まれない倍率で組むと、代理が
       // substep 幅そのままの粗い刻みで評価されて発散する。
-      const zones = engagementZones(this.roster.allMotions(), canEngage);
+      const zones = this.engagementZoneBuilder.build(this.roster.allMotions(), canEngage);
       if (zones.length > 0) {
         this.sections.enter(SECTION.entityContact);
         // 接触代理を参加者へ合流させて接触判定を処理し、解決後に本体へ書き戻す。
