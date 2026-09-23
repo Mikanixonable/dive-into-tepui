@@ -62,32 +62,27 @@ function mergeStaticChildren(root) {
 }
 
 // ------------------------------------------------------------- 書き出し
-const shipModulesOnly = process.argv.includes('--ship-modules-only');
-const models = shipModulesOnly
-  ? { shipModules: await buildShipModules() }
-  : {
-      enemy:         buildEnemyShip(),
-      enemyVariantA: buildEnemyVariantA(),
-      enemyVariantB: buildEnemyVariantB(),
-      enemyVariantC: buildEnemyVariantC(),
-      magazine:      buildMagazineMesh(),
-      ammo:          buildAmmoPickup(),
-      bullet:        buildBulletMesh(),
-      plasma:        buildPlasmaBullet(),
-      barrel:        buildBarrelMesh(),
-      casing:        buildCasingMesh(),
-      debrisChunk:   buildDebrisChunk(),
-      debrisPanel:   buildDebrisPanel(),
-      debrisRod:     buildDebrisRod(),
-      rcsFuel:       buildRcsFuelPickup(),
-      shipModules:   await buildShipModules(),
-    };
+const models = {
+  enemy:        buildEnemyShip(),
+  enemyVariantA: buildEnemyVariantA(),
+  enemyVariantB: buildEnemyVariantB(),
+  enemyVariantC: buildEnemyVariantC(),
+  magazine:     buildMagazineMesh(),
+  ammo:         buildAmmoPickup(),
+  bullet:       buildBulletMesh(),
+  plasma:       buildPlasmaBullet(),
+  barrel:       buildBarrelMesh(),
+  casing:       buildCasingMesh(),
+  debrisChunk:  buildDebrisChunk(),
+  debrisPanel:  buildDebrisPanel(),
+  debrisRod:    buildDebrisRod(),
+  rcsFuel:      buildRcsFuelPickup(),
+  shipModules:  await buildShipModules(),
+};
 
-if (!shipModulesOnly) {
-  // magazine は ammo の子としても使われるため、静的な子メッシュを材質ごとに統合する。
-  mergeStaticChildren(models.magazine);
-  mergeStaticChildren(models.ammo);
-}
+// magazine は ammo の子としても使われるため、静的な子メッシュを材質ごとに統合する。
+mergeStaticChildren(models.magazine);
+mergeStaticChildren(models.ammo);
 
 for (const [name, object] of Object.entries(models)) {
   // toJSON() は各ノードの matrix をそのまま書き、position/quaternion/scale から組み直さない。
