@@ -73,6 +73,11 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
   private readonly deferredSpawns: PendingEntitySpawn[] = [];
   private collectionRevisionValue = 0;
   private capsUncheckedSinceAdd = false;
+  // collectionRevision が同じ間は、全個体から導く読み取り専用の一覧も同じ内容になる。
+  // hot path から map/filter の一時配列を追い出すため、同じ世代では配列実体ごと使い回す。
+  private derivedCollectionRevision = -1;
+  private readonly motionCache: DynamicMotion[] = [];
+  private readonly controllableCache: Controllable[] = [];
 
   public constructor(
     private readonly scene: THREE.Scene,
@@ -86,16 +91,24 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
 
   public get collectionRevision(): number { return this.collectionRevisionValue; }
 
-  public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
+  public get controllables(): readonly Controllable[] {
+    this.refreshDerivedCollections();
+    return this.controllableCache;
+  }
 
   public get pendingEnemyCount(): number {
-    return this.pendingSpawns.filter(isEnemyRecord).length;
+    let count = 0;
+    for (const record of this.pendingSpawns) {
+      if (isEnemyRecord(record)) count++;
+    }
+    return count;
   }
 
   public all(): readonly DynamicEntity[] { return this.entities; }
 
   public allMotions(): readonly DynamicMotion[] {
-    return this.entities.map(entity => entity.motion);
+    this.refreshDerivedCollections();
+    return this.motionCache;
   }
 
   public add(entity: DynamicEntity): void {
@@ -223,6 +236,19 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     }
     this.entities.length = write;
     if (changed) this.bumpCollectionRevision();
+  }
+
+  // エンティティ集合からだけ決まる派生一覧を、世代が変わったときに1回だけ詰め直す。
+  // alive の変化だけでは集合は変わらないため、従来どおり死亡個体も prune まで一覧に残る。
+  private refreshDerivedCollections(): void {
+    if (this.derivedCollectionRevision === this.collectionRevisionValue) return;
+    this.motionCache.length = 0;
+    this.controllableCache.length = 0;
+    for (const entity of this.entities) {
+      this.motionCache.push(entity.motion);
+      if (isControllable(entity)) this.controllableCache.push(entity);
+    }
+    this.derivedCollectionRevision = this.collectionRevisionValue;
   }
 
   private bumpCollectionRevision(): void { this.collectionRevisionValue++; }
