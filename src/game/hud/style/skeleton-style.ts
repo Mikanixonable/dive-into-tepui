@@ -9,7 +9,10 @@ import {
 
 export const SKELETON_STYLE = `
 /* レイアウト骨格: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レール。 */
-#hud, #hud * { box-sizing: border-box; margin: 0; padding: 0; }
+#hud, #hud * { box-sizing: border-box; }
+/* コンポーネントの padding まで消す全称リセットは避ける。文書要素だけを低詳細度で正規化する。 */
+#hud :where(h1, h2, h3, h4, p, dl, dd, ol, ul, figure) { margin: 0; padding: 0; }
+#hud :where(button, input, select, textarea) { font: inherit; }
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
   font-family: var(--font-family);
@@ -106,8 +109,8 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud .panel-shell-body.collapsed { display: none !important; }
 #hud .row { display: flex; justify-content: space-between; gap: var(--space-5); }
 #hud .row .k { color: var(--text-dim); }
-#hud .row .v { color: var(--text); min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
-#hud .panel input[type="number"], #hud .panel input[type="text"] { width: 64px; }
+#hud .row .v { color: var(--text); min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
+#hud .panel input[type="number"], #hud .panel input[type="text"] { max-width: 100%; }
 
 /* 左右レール */
 #hud .hud-rail {
@@ -136,8 +139,14 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.base-mode .rail-toggle { display: none; }
 
 /* 画面固定バッジ・ステータスバー・通知(視点バッジ・スケール定規・トースト・カメラリセット)。 */
+#hud-chrome {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 820px) minmax(0, 1fr);
+  grid-auto-rows: max-content; align-items: start;
+  padding-inline: 12px; pointer-events: none;
+}
 #hud-topbar {
-  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  position: relative; grid-column: 2; justify-self: center;
   pointer-events: auto;
   border-radius: 0 0 var(--radius-panel) var(--radius-panel);
   padding: var(--space-2) var(--space-5) var(--space-3);
@@ -155,8 +164,8 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud[data-workspace="map"] #hud-topbar .gs-workspace::after { content: 'MAP'; }
 #hud[data-workspace="construction"] #hud-topbar .gs-workspace::after { content: 'BUILD · PAUSED'; }
 #hud-topbar .gs-row {
-  display: flex; align-items: center; gap: var(--space-4); white-space: nowrap;
-  max-width: 100%; overflow-x: auto; scrollbar-width: none;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4);
+  max-width: 100%; min-width: 0; overflow: visible;
 }
 #hud-topbar .gs-metrics {
   display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
@@ -226,7 +235,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
 
 #hud-chase-reset {
-  position: absolute; top: calc(64px + var(--space-5)); left: 50%; transform: translateX(-50%);
+  position: relative; grid-column: 2; justify-self: center; margin-top: var(--space-2);
   pointer-events: auto; cursor: pointer;
   min-width: 0; width: auto; height: 30px; border-radius: var(--radius-micro);
   display: flex; justify-content: center; align-items: center; gap: var(--space-2);
@@ -239,8 +248,8 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 
 #hud-help-badge {
-  position: absolute; top: var(--space-5);
-  right: calc(var(--space-4) + var(--hud-rail-toggle-size) + var(--space-3));
+  position: absolute; top: var(--space-4);
+  right: calc(var(--space-4) + var(--hud-rail-toggle-size) + var(--space-2));
   pointer-events: auto; cursor: pointer;
   min-width: 0; width: auto; height: 30px; border-radius: var(--radius-micro);
   display: flex; justify-content: center; align-items: center; gap: var(--space-2);
@@ -257,7 +266,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 
 #hud-toast {
-  position: absolute; top: calc(64px + var(--space-5) + 32px + var(--space-1)); left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(var(--hud-chrome-h) + var(--space-2)); left: 50%; transform: translateX(-50%);
   display: flex; align-items: baseline; gap: var(--space-3);
   max-width: min(720px, calc(100vw - var(--space-6) * 2));
   border-radius: var(--radius-micro); padding: var(--space-3) var(--space-4);
@@ -286,18 +295,18 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud .panel { padding: var(--space-3) var(--space-4); line-height: 1.4; }
   #hud .panel h3 { font-size: var(--font-xs); letter-spacing: 1.5px; margin-bottom: var(--space-2); }
   #hud .row { gap: var(--space-4); }
-  #hud .row .v { min-width: 64px; }
+  #hud .row .v { min-width: 0; }
   #hud:not(.map-ui-active) #hud-viewbadge { display: none; }
   #hud-toast { max-width: 92vw; padding: var(--space-5) var(--space-5); font-size: var(--font-l); }
   #hud .hud-rail { gap: var(--space-3); }
   #hud .hud-rail-left { left: 8px; }
   #hud .hud-rail-right { right: 8px; }
-  #hud-chase-reset { top: calc(60px + var(--space-5)); width: 28px; height: 28px; }
+  #hud-chase-reset { width: auto; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
   #hud-map-scale { right: 8px; font-size: var(--font-xxs); }
 }
 @media ${MQ_COMPACT} {
-  #hud .hud-rail { font-size: var(--font-xxs); }
+  #hud .hud-rail { font-size: var(--font-xs); }
   #hud .hud-map-root.active .hud-rail { bottom: var(--hud-map-rail-bottom); }
   #hud-topbar {
     width: calc(100vw - var(--space-4) * 2);
@@ -309,7 +318,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-topbar .gs-metric-time .v { font-size: var(--font-xxs); }
 }
 @media ${MQ_COARSE_SHORT} {
-  #hud-chase-reset { top: calc(40px + var(--space-4)); }
+  #hud-chase-reset .hud-mini-code { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   #hud *, #hud *::before, #hud *::after {

@@ -470,6 +470,21 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
+/* 上部クロームの実寸を HUD の配置トークンへ反映する。トップバーの行数が変わっても
+   レール・通知が固定px前提で重ならないよう、ResizeObserverで追従する。 */
+function trackHudChromeInset(root: HTMLElement, chrome: HTMLElement): void {
+  const sync = (): void => {
+    const height = Math.ceil(chrome.getBoundingClientRect().height);
+    if (height > 0) root.style.setProperty('--hud-chrome-h', `${height}px`);
+  };
+  sync();
+  requestAnimationFrame(sync);
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(sync);
+    observer.observe(chrome);
+  }
+}
+
 // HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
 export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle): HudDomRefs {
   injectStyle();
@@ -483,13 +498,18 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, collapse);
   buildShipConstructionWorkspace(layers.panel);
-  buildTopBar(layers.panel);
-  buildChaseReset(layers.panel);
+
+  // 画面上端の状態・カメラ操作・ヘルプを一つのクロームへまとめる。各要素が独立した
+  // top 値を持たないため、トップバーが折り返しても互いに重ならない。
+  const helpPanel = new HelpPanel(layers.system, shell.overlayManager);
+  const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
+  buildTopBar(chrome);
+  buildChaseReset(chrome);
+  buildHelpBadge(chrome, helpPanel);
+  trackHudChromeInset(root, chrome);
+
   buildMapScale(mapRoot.element);
   createHudElement('div', 'hud-toast', layers.notify, 'ui-surface-focus');
-
-  const helpPanel = new HelpPanel(layers.system, shell.overlayManager);
-  buildHelpBadge(layers.panel, helpPanel);
 
   const els = collectDataIdElements(root);
   return { combatRoot, mapRoot, helpPanel, els };
