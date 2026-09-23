@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { openChromeSession, sleep } from './chrome-session.mjs';
+import { attachExistingChromeSession, openChromeSession, sleep } from './chrome-session.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const port = 8765;
@@ -19,6 +19,8 @@ if (smokeConstruction && (!expectCreative || creativePreset !== 'base')) {
 }
 const emulateTouch = process.env.SMOKE_TOUCH === '1';
 const layoutOnly = process.env.SMOKE_LAYOUT_ONLY === '1';
+const reuseSession = process.env.SMOKE_REUSE_SESSION === '1';
+const sharedBaseUrl = process.env.SMOKE_BASE_URL ?? `http://127.0.0.1:${port}`;
 let session;
 let devTools;
 const fatalEvents = [];
@@ -137,7 +139,7 @@ async function applyViewport({ width, height }) {
 }
 
 async function clearViewport() {
-  await clearViewport();
+  await devTools.send('Emulation.clearDeviceMetricsOverride');
   // innerWidth と fixed/absolute HUD の再レイアウトを同じフレームへ揃える。
   await sleep(100);
 }
@@ -689,27 +691,35 @@ async function bootAndCheckReady() {
   throwIfFatal('Browser reported page exception(s) or console error(s) during boot');
 }
 
+const onBrowserEvent = (event) => {
+  if (isIgnorableLayoutGpuEvent(event)) return;
+  if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
+  if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
+  if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+};
+
 try {
-  session = await openChromeSession({
-    serveDir: path.join(root, 'docs'),
-    port,
-    debugPort,
-    profilePrefix: 'tepui-smoke-',
-    extraLaunchArgs: layoutOnly ? [
-      '--use-webgpu-adapter=swiftshader',
-      '--enable-features=Vulkan',
-      '--use-gpu-in-tests',
-      '--enable-accelerated-2d-canvas',
-      '--disable-dawn-features=disallow_unsafe_apis',
-      '--enable-webgpu-developer-features',
-    ] : [],
-    onEvent: (event) => {
-      if (isIgnorableLayoutGpuEvent(event)) return;
-      if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
-      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
-      if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
-    },
-  });
+  session = reuseSession
+    ? await attachExistingChromeSession({
+      baseUrl: sharedBaseUrl,
+      debugPort,
+      onEvent: onBrowserEvent,
+    })
+    : await openChromeSession({
+      serveDir: path.join(root, 'docs'),
+      port,
+      debugPort,
+      profilePrefix: 'tepui-smoke-',
+      extraLaunchArgs: layoutOnly ? [
+        '--use-webgpu-adapter=swiftshader',
+        '--enable-features=Vulkan',
+        '--use-gpu-in-tests',
+        '--enable-accelerated-2d-canvas',
+        '--disable-dawn-features=disallow_unsafe_apis',
+        '--enable-webgpu-developer-features',
+      ] : [],
+      onEvent: onBrowserEvent,
+    });
   devTools = session.devTools;
   if (emulateTouch) await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await devTools.send('Page.navigate', { url: `${session.baseUrl}/${query}` });
