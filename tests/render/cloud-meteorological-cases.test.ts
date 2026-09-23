@@ -1,6 +1,10 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { evaluateMeteorologicalCase, type MeteorologicalCaseEvaluation } from '../../tools/cloud-lab/meteorological-evaluator';
+import {
+  areaWeightedMassKg,
+  evaluateMeteorologicalCase,
+  type MeteorologicalCaseEvaluation,
+} from '../../tools/cloud-lab/meteorological-evaluator';
 import { METEOROLOGICAL_ERROR_FLOORS } from '../../tools/cloud-lab/meteorological-cases';
 
 function measurement(result: MeteorologicalCaseEvaluation, id: string) {
@@ -14,23 +18,57 @@ export function register(): void {
     const result = evaluateMeteorologicalCase('C1');
     assert.equal(result.cpuDiagnosticsApplied, true);
     assert.equal(result.generatedCloudImageFixtureApplied, false);
-    assert.equal(measurement(result, 'trajectory').status, 'pass');
+    assert.equal(measurement(result, 'trajectory').status, 'blocked');
     assert.equal(measurement(result, 'rotation-angle').status, 'pass');
     assert.equal(measurement(result, 'mass').status, 'pass');
-    assert.ok(measurement(result, 'trajectory').value! <= 0.01);
+    assert.equal(measurement(result, 'trajectory').value, null);
+    assert.ok(Number(result.controls.maximumAnalyticTrajectoryErrorM) < 0.01,
+      'retain the measured analytic error for diagnostics without claiming the plan threshold passed');
     assert.ok(measurement(result, 'rotation-angle').value! <= 1e-9);
     assert.ok(measurement(result, 'mass').value! <= METEOROLOGICAL_ERROR_FLOORS.relativeMass);
     assert.ok(Number(result.controls.rotationAngleRad) > 0);
     assert.equal(result.controls.materialPointCount, 5);
-    const expectedIntegratedMassKg = 0.009;
-    const roundingToleranceKg = 16 * Number.EPSILON * expectedIntegratedMassKg;
-    assert.ok(Math.abs(Number(result.controls.areaWeightedBlobMassKg) - expectedIntegratedMassKg)
-      <= roundingToleranceKg);
-    assert.ok(Math.abs(Number(result.controls.transportedAreaWeightedMassKg) - expectedIntegratedMassKg)
-      <= roundingToleranceKg);
+    assert.equal(result.controls.areaWeightedBlobMassKg, 0.009);
+    assert.ok(Math.abs(Number(result.controls.transportedAreaWeightedMassKg) - 0.009) <= 1e-12);
 
     const repeated = evaluateMeteorologicalCase('C1');
     assert.deepEqual(repeated, result);
+  });
+
+  test('meteorological fixtures: C1 area integration detects omitted weights and lost material columns', () => {
+    const samples = [
+      { areaWeightM2: 1, massKgM2: 0.0006 },
+      { areaWeightM2: 2, massKgM2: 0.0008 },
+      { areaWeightM2: 3, massKgM2: 0.001 },
+      { areaWeightM2: 2, massKgM2: 0.0012 },
+      { areaWeightM2: 1, massKgM2: 0.0014 },
+    ];
+    assert.equal(areaWeightedMassKg(samples), 0.009);
+    assert.notEqual(samples.reduce((total, sample) => total + sample.massKgM2, 0), 0.009,
+      'unweighted point sums must not accidentally satisfy the independent quadrature oracle');
+    assert.notEqual(areaWeightedMassKg(samples.slice(0, -1)), 0.009,
+      'dropping a finite-blob material column must change integrated mass');
+    assert.notEqual(areaWeightedMassKg(samples.map((sample, index) => index === 2
+      ? { ...sample, areaWeightM2: 1 }
+      : sample)), 0.009,
+    'a corrupted area weight must change the integrated mass');
+    assert.throws(() => areaWeightedMassKg([
+      { areaWeightM2: 1, massKgM2: 1 },
+      { areaWeightM2: 1, massKgM2: -1 },
+    ]), RangeError, 'negative mass cannot cancel into an apparently conserved total');
+    assert.throws(() => areaWeightedMassKg([
+      { areaWeightM2: Number.NaN, massKgM2: 1 },
+    ]), RangeError, 'non-finite area weights cannot enter the integral');
+    assert.throws(() => areaWeightedMassKg([
+      { areaWeightM2: 1, massKgM2: Number.POSITIVE_INFINITY },
+    ]), RangeError, 'non-finite mass cannot enter the integral');
+    assert.throws(() => areaWeightedMassKg([
+      { areaWeightM2: Number.MAX_VALUE, massKgM2: 2 },
+    ]), RangeError, 'finite inputs whose product overflows cannot enter the integral');
+    assert.throws(() => areaWeightedMassKg([
+      { areaWeightM2: 1, massKgM2: Number.MAX_VALUE },
+      { areaWeightM2: 1, massKgM2: Number.MAX_VALUE },
+    ]), RangeError, 'finite products whose sum overflows cannot become a valid total');
   });
 
   test('meteorological fixtures: C2 validates every released-ice cohort against two-layer analytic transport', () => {
