@@ -899,173 +899,412 @@ def build_booster():
 
 
 # ----------------------------------------------------------------------
-# 6. RCS Module (rcs-standard: length 1.5m, diameter 2.0m, radius 1.0m)
+# 6. RCS Module (rcs-standard: catalog length 1m)
+# Compact annular control package with recessed jets and exposed manifold detail.
 # ----------------------------------------------------------------------
 def build_rcs_module():
     reset_scene()
     mats = MaterialLibrary()
-    radius = 1.0
-    half_len = 0.75
-    
-    # Central structural core
-    bm_core = make_cylinder(radius * 0.75, radius * 0.75, 1.50, z_center=0.0, segments=32)
-    add_mesh_obj("rcs_core", bm_core, mats.hull)
-    
-    # End rings
-    for sign in [-1.0, 1.0]:
-        bm_end = make_torus(major_r=radius * 0.90, minor_r=0.06, z_center=sign * (half_len - 0.05), major_seg=32, minor_seg=8)
-        add_mesh_obj(f"rcs_end_ring_{sign}", bm_end, mats.hull_dark)
+    radius = 1.12
+    half_len = 0.50
 
-    # 4 Quad thruster pods radiating outward
+    # Thin equipment drum with removable skin sectors.
+    add_mesh_obj(
+        "rcs_core",
+        make_cylinder(radius * 0.84, radius * 0.84, 0.90, z_center=0.0, segments=36),
+        mats.titanium,
+    )
+    for sign in [-1.0, 1.0]:
+        add_mesh_obj(
+            f"rcs_end_ring_{sign}",
+            make_torus(major_r=radius * 0.91, minor_r=0.035, z_center=sign * 0.455, major_seg=36, minor_seg=8),
+            mats.fastener,
+        )
+
+    # Eight removable panels; cardinal sectors become recessed thruster stations.
+    sectors = 8
+    dtheta = 2.0 * math.pi / sectors
+    for i in range(sectors):
+        ang = i * dtheta
+        chord = 2.0 * radius * math.sin(dtheta * 0.5) * 0.88
+        radial = Vector((math.cos(ang), math.sin(ang), 0.0))
+        centre = radial * (radius * 0.92)
+        mat = mats.rene41 if i % 2 == 0 else mats.aluminium
+        add_mesh_obj(
+            f"rcs_access_panel_{i}",
+            make_box(0.030, chord, 0.79, center=centre, rot_euler=(0, 0, ang)),
+            mat,
+        )
+
+    # Four deeply recessed control stations.  Each has paired radial jets and
+    # two axial jets, producing a dense but believable valve/nozzle cluster.
     for i in range(4):
         ang = i * math.pi / 2.0
-        x = radius * math.cos(ang)
-        y = radius * math.sin(ang)
-        # Pod housing
-        bm_box = make_box(0.30, 0.30, 0.40, center=(x, y, 0.0), rot_euler=(0, 0, ang))
-        add_mesh_obj(f"rcs_pod_{i}", bm_box, mats.hull_dark)
-        
-        # Conical nozzles pointing in orthogonal directions
-        for d in [(0.16, 0, 0), (-0.16, 0, 0), (0, 0, 0.16), (0, 0, -0.16)]:
-            bm_noz = make_cylinder(0.05, 0.025, 0.10, z_center=0.0, segments=8)
-            transform_bm(bm_noz, Matrix.Translation(Vector((x, y, 0.0)) + Vector(d)))
-            add_mesh_obj(f"rcs_noz_{i}_{d}", bm_noz, mats.nozzle_rib)
+        radial = Vector((math.cos(ang), math.sin(ang), 0.0))
+        tangent = Vector((-math.sin(ang), math.cos(ang), 0.0))
+        bay_center = radial * (radius * 0.955)
+        add_mesh_obj(
+            f"rcs_thruster_bay_{i}",
+            make_tangent_trapezoid(0.040, 0.38, 0.38, 0.56, bay_center, ang),
+            mats.recessed,
+        )
+
+        directions = [
+            (radial + tangent * 0.42).normalized(),
+            (radial - tangent * 0.42).normalized(),
+            (radial + Vector((0, 0, 0.55))).normalized(),
+            (radial + Vector((0, 0, -0.55))).normalized(),
+        ]
+        offsets = [
+            tangent * 0.10 + Vector((0, 0, 0.11)),
+            -tangent * 0.10 + Vector((0, 0, 0.11)),
+            tangent * 0.10 + Vector((0, 0, -0.12)),
+            -tangent * 0.10 + Vector((0, 0, -0.12)),
+        ]
+        for j, (direction, offset) in enumerate(zip(directions, offsets)):
+            nozzle = make_cylinder(0.044, 0.024, 0.090, z_center=0.0, segments=10)
+            q = Vector((0, 0, 1)).rotation_difference(direction)
+            transform_bm(nozzle, q.to_matrix().to_4x4())
+            transform_bm(nozzle, Matrix.Translation(bay_center + radial * 0.055 + offset))
+            add_mesh_obj(f"rcs_nozzle_{i}_{j}", nozzle, mats.nozzle_bell)
+
+        # Valve box and short visible manifold inside the bay.
+        valve_pos = bay_center - radial * 0.035 + Vector((0, 0, -0.05))
+        add_mesh_obj(
+            f"rcs_valve_box_{i}",
+            make_box(0.12, 0.22, 0.16, center=valve_pos, rot_euler=(0, 0, ang)),
+            mats.titanium,
+        )
+        add_mesh_obj(
+            f"rcs_manifold_{i}",
+            make_pipe([
+                valve_pos + tangent * -0.13,
+                valve_pos + tangent * 0.13,
+            ], radius=0.020, segments=8),
+            mats.pipe,
+        )
 
     export_glb(os.path.join(OUT_DIR, "rcs-standard.glb"))
 
+
 # ----------------------------------------------------------------------
 # 7. Docking & Decoupler Modules (docking-port, dock, decoupler)
+# Compact capture collar, exposed mechanical latches/contact pads and service
+# connectors; avoids the visually modern oversized CBM/APAS petal language.
 # ----------------------------------------------------------------------
 def build_docking_mechanism(name, kind):
     reset_scene()
     mats = MaterialLibrary()
-    radius = 3.0 if kind == 'decoupler' else 2.0
-    half_len = 0.5
-    
-    # 1. Main outer structural ring
-    mat_main = mats.dock if kind == 'dock' else mats.hull
-    bm_ring = make_cylinder(radius, radius, 1.0, z_center=0.0, segments=36)
-    add_mesh_obj("ring", bm_ring, mat_main)
-    
-    # 2. Interface Ring (CRITICAL: Must have name 'interface-ring' and +Z normal!)
-    # Torus centered at z=0.45m with normal strictly along +Z
-    bm_int_ring = make_torus(major_r=radius * 0.78, minor_r=radius * 0.10, z_center=0.45, major_seg=36, minor_seg=12)
-    add_mesh_obj("interface-ring", bm_int_ring, mats.cbm_ring)
+    radius = 2.95 if kind == 'decoupler' else 1.92
+    half_len = 0.50
 
-    # 3. APAS / CBM 3 Guide Petals (120 degrees apart)
-    for p in range(3):
-        ang = p * 2.0 * math.pi / 3.0
-        # Petal angled inwards
-        px = radius * 0.72 * math.cos(ang)
-        py = radius * 0.72 * math.sin(ang)
-        bm_petal = make_box(0.12, 0.35, 0.22, center=(px, py, 0.48), rot_euler=(math.radians(20) * math.sin(ang), -math.radians(20) * math.cos(ang), ang))
-        add_mesh_obj(f"guide_petal_{p}", bm_petal, mats.hull_dark)
+    body_mat = mats.dock if kind == 'dock' else mats.titanium
+    add_mesh_obj(
+        "ring",
+        make_cylinder(radius, radius, 0.84, z_center=-0.04, segments=48),
+        body_mat,
+    )
 
-    # Decoupler linear shaped charge cutting tape & separation springs
-    if kind == 'decoupler':
-        bm_charge = make_torus(major_r=radius + 0.02, minor_r=0.025, z_center=0.0, major_seg=36, minor_seg=6)
-        add_mesh_obj("shaped_charge", bm_charge, mats.dock)
-        for s in range(6):
-            s_ang = s * math.pi / 3.0
-            bm_spring = make_cylinder(0.04, 0.04, 0.15, z_center=0.42, segments=8)
-            transform_bm(bm_spring, Matrix.Translation(Vector((radius * 0.85 * math.cos(s_ang), radius * 0.85 * math.sin(s_ang), 0.42))))
-            add_mesh_obj(f"pusher_spring_{s}", bm_spring, mats.pipe)
+    # Thin removable outer cover panels around the mechanism drum.
+    panel_count = 12
+    dtheta = 2.0 * math.pi / panel_count
+    for i in range(panel_count):
+        ang = i * dtheta
+        chord = 2.0 * radius * math.sin(dtheta * 0.5) * 0.91
+        centre = ((radius + 0.012) * math.cos(ang), (radius + 0.012) * math.sin(ang), -0.05)
+        add_mesh_obj(
+            f"dock_cover_panel_{i}",
+            make_box(0.025, chord, 0.67, center=centre, rot_euler=(0, 0, ang)),
+            mats.aluminium if i % 4 else mats.rene41,
+        )
+
+    # Contract-critical interface ring: torus axis remains +Z.
+    contact_r = radius * (0.78 if kind == 'decoupler' else 0.74)
+    add_mesh_obj(
+        "interface-ring",
+        make_torus(major_r=contact_r, minor_r=0.055, z_center=0.455, major_seg=48, minor_seg=10),
+        mats.rene41_edge,
+    )
+
+    if kind != 'decoupler':
+        # Six exposed capture latches and alternating electrical/contact blocks.
+        for i in range(6):
+            ang = i * math.pi / 3.0
+            radial = Vector((math.cos(ang), math.sin(ang), 0.0))
+            tangent = Vector((-math.sin(ang), math.cos(ang), 0.0))
+            latch_pos = radial * (contact_r * 0.94) + Vector((0, 0, 0.445))
+            add_mesh_obj(
+                f"capture_latch_{i}",
+                make_box(0.16, 0.29, 0.10, center=latch_pos, rot_euler=(0, 0, ang)),
+                mats.fastener,
+            )
+            if i % 2 == 0:
+                connector_pos = radial * (contact_r * 0.72) + tangent * 0.05 + Vector((0, 0, 0.47))
+                add_mesh_obj(
+                    f"docking_connector_{i}",
+                    make_box(0.12, 0.18, 0.07, center=connector_pos, rot_euler=(0, 0, ang)),
+                    mats.recessed,
+                )
+
+        # Small central guide/probe rather than oversized petals.
+        add_mesh_obj(
+            "docking_guide_probe",
+            make_cylinder(0.10, 0.065, 0.26, z_center=0.43, segments=16),
+            mats.titanium,
+        )
+        add_mesh_obj(
+            "docking_probe_tip",
+            make_sphere(0.085, center=(0, 0, 0.57), u_seg=14, v_seg=8),
+            mats.fastener,
+        )
+
+        # External alignment target plate gives the otherwise symmetric mechanism
+        # an operationally legible orientation.
+        target = make_box(0.035, 0.28, 0.20, center=(radius * 0.82, 0.0, 0.33))
+        add_mesh_obj("alignment_target", target, mats.mli_white)
+
+    else:
+        # Decoupler retains a full-diameter severance path and multiple pushers.
+        add_mesh_obj(
+            "shaped_charge",
+            make_torus(major_r=radius * 0.985, minor_r=0.022, z_center=0.0, major_seg=48, minor_seg=6),
+            mats.dock,
+        )
+        for s in range(8):
+            ang = s * math.pi / 4.0
+            radial = Vector((math.cos(ang), math.sin(ang), 0.0))
+            p0 = radial * (radius * 0.79) + Vector((0, 0, 0.34))
+            p1 = radial * (radius * 0.79) + Vector((0, 0, 0.47))
+            add_mesh_obj(
+                f"pusher_spring_{s}",
+                make_pipe([p0, p1], radius=0.035, segments=8),
+                mats.pipe,
+            )
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
+
 # ----------------------------------------------------------------------
 # 8. Deployable Modules Support Base (solar-panel-standard, radiator-standard)
+# 1960s aerospace mechanism cues: machined gearbox, forked bearing yoke,
+# exposed cable loop, round connector and bolted inspection cover.
 # ----------------------------------------------------------------------
 def build_deployable_base(name, kind):
     reset_scene()
     mats = MaterialLibrary()
-    radius = 0.5 # 1.0m diameter base
-    length = 1.0
-    half_len = 0.5
-    
-    # 1. Solar Array Drive Mechanism (SADM) / Radiator Rotary Joint Housing
-    bm_core = make_cylinder(radius * 0.65, radius * 0.65, length, z_center=0.0, segments=24)
-    add_mesh_obj("drive_housing", bm_core, mats.hull_dark)
-    
-    # 2. Rotary Joint Bearings & Yoke Arms
-    bm_bearing = make_torus(major_r=radius * 0.70, minor_r=0.04, z_center=0.0, major_seg=24, minor_seg=8)
-    add_mesh_obj("rotary_bearing", bm_bearing, mats.pipe)
+    radius = 0.50
+    half_len = 0.50
 
-    # Yoke support forks reaching to forward deployment hinge
+    # Main machined housing and end covers.
+    add_mesh_obj(
+        "drive_housing",
+        make_cylinder(radius * 0.66, radius * 0.66, 0.82, z_center=-0.03, segments=28),
+        mats.titanium,
+    )
+    for z in [-0.39, 0.35]:
+        add_mesh_obj(
+            f"drive_cover_{z}",
+            make_torus(major_r=radius * 0.64, minor_r=0.028, z_center=z, major_seg=28, minor_seg=8),
+            mats.fastener,
+        )
+
+    add_mesh_obj(
+        "rotary_bearing",
+        make_torus(major_r=radius * 0.72, minor_r=0.045, z_center=0.10, major_seg=28, minor_seg=8),
+        mats.pipe,
+    )
+
+    # Forked yoke and hinge bosses.
     for y_sign in [-1.0, 1.0]:
-        bm_fork = make_box(0.06, 0.08, 0.45, center=(0.0, y_sign * 0.28, 0.25))
-        add_mesh_obj(f"yoke_fork_{y_sign}", bm_fork, mats.hull)
+        add_mesh_obj(
+            f"yoke_fork_{y_sign}",
+            make_box(0.075, 0.085, 0.48, center=(0.0, y_sign * 0.30, 0.22)),
+            mats.aluminium,
+        )
+        add_lowpoly_fastener(
+            f"yoke_pivot_{y_sign}",
+            (0.0, y_sign * 0.30, 0.43),
+            mats.fastener,
+            radius=0.045,
+        )
 
-    # Deployment Canister / Motor Actuator
-    bm_canister = make_cylinder(0.20, 0.20, 0.22, z_center=half_len - 0.10, segments=16)
-    add_mesh_obj("deploy_canister", bm_canister, mats.hull_dark)
+    # Compact electric actuator can and removable rectangular inspection cover.
+    add_mesh_obj(
+        "deploy_canister",
+        make_cylinder(0.18, 0.18, 0.24, z_center=0.34, segments=18),
+        mats.titanium,
+    )
+    add_mesh_obj(
+        "inspection_cover",
+        make_box(0.035, 0.34, 0.30, center=(radius * 0.68, 0.0, -0.08)),
+        mats.aluminium,
+    )
+    for y in [-0.13, 0.13]:
+        for z in [-0.18, 0.02]:
+            add_lowpoly_fastener(
+                f"inspection_fastener_{y}_{z}",
+                (radius * 0.71, y, z),
+                mats.fastener,
+                radius=0.013,
+            )
+
+    # Exposed service cable loop and round connector.
+    add_mesh_obj(
+        "deploy_cable_loop",
+        make_pipe([
+            Vector((-0.16, -0.34, -0.18)),
+            Vector((-0.27, -0.40, 0.02)),
+            Vector((-0.18, -0.34, 0.24)),
+        ], radius=0.018, segments=8),
+        mats.gasket,
+    )
+    connector = make_cylinder(0.055, 0.055, 0.07, z_center=0, segments=12)
+    q = Vector((0, 0, 1)).rotation_difference(Vector((1, 0, 0)))
+    transform_bm(connector, q.to_matrix().to_4x4())
+    transform_bm(connector, Matrix.Translation(Vector((radius * 0.70, 0.16, 0.12))))
+    add_mesh_obj("deploy_round_connector", connector, mats.fastener)
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
+
 # ----------------------------------------------------------------------
 # 9. Armor Modules (armor-standard, armor-combat)
+# Future protection rendered with the same fabrication language: overlapping
+# metallic bumper plates, dark stand-off gaps, retention straps and fasteners.
 # ----------------------------------------------------------------------
 def build_armor(name):
     reset_scene()
     mats = MaterialLibrary()
-    radius = 3.08 # Slightly thicker for composite armor
-    length = 1.0
-    half_len = 0.5
-    
-    # Main Whipple bumper shield
-    bm_hull = make_cylinder(radius, radius, length, z_center=0.0, segments=48)
-    add_mesh_obj("armor_hull", bm_hull, mats.hull_dark)
-    
-    # Ceramic armor tile seams & circumferential containment bands
-    for za in [-0.35, 0.0, 0.35]:
-        bm_band = make_torus(major_r=radius + 0.02, minor_r=0.03, z_center=za, major_seg=48, minor_seg=8)
-        add_mesh_obj(f"armor_band_{za}", bm_band, mats.clamp)
-        
-    # Axial bolt lines
-    for i in range(12):
-        ang = i * math.pi / 6.0
-        bm_strip = make_box(0.04, 0.08, 0.95, center=(radius * math.cos(ang), radius * math.sin(ang), 0.0), rot_euler=(0, 0, ang))
-        add_mesh_obj(f"armor_strip_{i}", bm_strip, mats.hull)
+    radius = 3.0
+
+    add_mesh_obj(
+        "armor_inner_shell",
+        make_cylinder(radius * 0.965, radius * 0.965, 0.92, z_center=0.0, segments=48),
+        mats.titanium,
+    )
+
+    sectors = 16
+    dtheta = 2.0 * math.pi / sectors
+    for i in range(sectors):
+        ang = i * dtheta
+        chord = 2.0 * radius * math.sin(dtheta * 0.5) * 0.91
+        centre = ((radius + 0.025) * math.cos(ang), (radius + 0.025) * math.sin(ang), 0.0)
+        mat = mats.rene41 if "combat" in name else mats.aluminium
+        add_mesh_obj(
+            f"armor_bumper_plate_{i}",
+            make_box(0.038, chord, 0.82, center=centre, rot_euler=(0, 0, ang)),
+            mat,
+        )
+
+        # A pair of visible retention fasteners per plate.
+        radial = Vector((math.cos(ang), math.sin(ang), 0.0))
+        tangent = Vector((-math.sin(ang), math.cos(ang), 0.0))
+        for z in [-0.31, 0.31]:
+            p = radial * (radius + 0.052) + tangent * (chord * 0.32) + Vector((0, 0, z))
+            add_lowpoly_fastener(f"armor_fastener_{i}_{z}", p, mats.fastener, radius=0.014)
+
+    for za in [-0.37, 0.37]:
+        add_mesh_obj(
+            f"armor_retention_band_{za}",
+            make_torus(major_r=radius + 0.045, minor_r=0.018, z_center=za, major_seg=48, minor_seg=6),
+            mats.clamp,
+        )
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
+
 # ----------------------------------------------------------------------
 # 10. Weapon Module (weapon-gatling)
+# Future weapon mechanism styled as exposed aerospace machinery rather than a
+# seamless sci-fi turret: sheet-metal fairings, machined supports and cable runs.
 # ----------------------------------------------------------------------
 def build_weapon(name):
     reset_scene()
     mats = MaterialLibrary()
     radius = 3.0
-    length = 1.0
-    half_len = 0.5
-    
-    # Weapon structural carrier ring
-    bm_ring = make_cylinder(radius, radius, length, z_center=0.0, segments=36)
-    add_mesh_obj("weapon_ring", bm_ring, mats.hull)
-    
-    # Dual Gatling clusters at Left (x=-1.5m) and Right (x=+1.5m)
+
+    # Structural carrier with segmented covers.
+    add_mesh_obj(
+        "weapon_ring",
+        make_cylinder(radius * 0.97, radius * 0.97, 0.92, z_center=0.0, segments=44),
+        mats.titanium,
+    )
+    for i in range(12):
+        ang = i * math.pi / 6.0
+        chord = 2.0 * radius * math.sin(math.pi / 12.0) * 0.90
+        centre = ((radius * 0.985) * math.cos(ang), (radius * 0.985) * math.sin(ang), 0.0)
+        add_mesh_obj(
+            f"weapon_access_panel_{i}",
+            make_box(0.028, chord, 0.76, center=centre, rot_euler=(0, 0, ang)),
+            mats.aluminium if i % 3 else mats.rene41,
+        )
+
+    # Twin rotary cannon units retain the established gameplay silhouettes.
     for sign in [-1.0, 1.0]:
-        x_base = sign * 1.5
-        # Gun housing cowl
-        bm_housing = make_cylinder(0.42, 0.38, 0.85, z_center=0.25, segments=16)
-        transform_bm(bm_housing, Matrix.Translation(Vector((x_base, 0.0, 0.25))))
-        add_mesh_obj(f"gun_housing_{sign}", bm_housing, mats.hull_dark)
-        
-        # 6-barrel rotary cluster
+        x_base = sign * 1.50
+
+        # Machined receiver block plus thin outer cowl.
+        add_mesh_obj(
+            f"gun_receiver_{sign}",
+            make_box(0.52, 0.72, 0.46, center=(x_base, 0.0, 0.12)),
+            mats.fastener,
+        )
+        add_mesh_obj(
+            f"gun_housing_{sign}",
+            make_cylinder(0.40, 0.36, 0.70, z_center=0.30, segments=18),
+            mats.titanium,
+        )
+
+        # Six barrels and two spider clamps.
         for b in range(6):
             b_ang = b * math.pi / 3.0
-            bx = x_base + 0.16 * math.cos(b_ang)
-            by = 0.16 * math.sin(b_ang)
-            bm_barrel = make_cylinder(0.035, 0.035, 1.20, z_center=0.60, segments=8)
-            transform_bm(bm_barrel, Matrix.Translation(Vector((bx, by, 0.60))))
-            add_mesh_obj(f"barrel_{sign}_{b}", bm_barrel, mats.pipe)
-            
-        # Muzzle clamp ring
-        bm_clamp = make_torus(major_r=0.18, minor_r=0.025, z_center=1.15, major_seg=16, minor_seg=6)
-        transform_bm(bm_clamp, Matrix.Translation(Vector((x_base, 0.0, 0.0))))
-        add_mesh_obj(f"muzzle_clamp_{sign}", bm_clamp, mats.hull_dark)
+            bx = x_base + 0.15 * math.cos(b_ang)
+            by = 0.15 * math.sin(b_ang)
+            add_mesh_obj(
+                f"barrel_{sign}_{b}",
+                make_cylinder(0.030, 0.030, 1.06, z_center=0.62, segments=10),
+                mats.pipe,
+            )
+            # Shift the cylinder to its cluster location.
+            # make_cylinder already owns geometry, so translate afterwards.
+            obj = bpy.data.objects.get(f"barrel_{sign}_{b}")
+            if obj:
+                obj.location.x += bx
+                obj.location.y += by
+
+        for z in [0.43, 1.05]:
+            add_mesh_obj(
+                f"barrel_clamp_{sign}_{z}",
+                make_torus(major_r=0.17, minor_r=0.022, z_center=z, major_seg=18, minor_seg=6),
+                mats.fastener,
+            )
+            obj = bpy.data.objects.get(f"barrel_clamp_{sign}_{z}")
+            if obj:
+                obj.location.x += x_base
+
+        # Feed motor and visible cable/harness.
+        add_mesh_obj(
+            f"feed_motor_{sign}",
+            make_cylinder(0.15, 0.15, 0.26, z_center=0.02, segments=16),
+            mats.titanium,
+        )
+        motor_obj = bpy.data.objects.get(f"feed_motor_{sign}")
+        if motor_obj:
+            motor_obj.location.x += x_base
+            motor_obj.location.y += 0.46
+
+        add_mesh_obj(
+            f"weapon_harness_{sign}",
+            make_pipe([
+                Vector((x_base, 0.48, 0.02)),
+                Vector((sign * 1.82, 0.44, -0.18)),
+                Vector((sign * 2.12, 0.30, -0.24)),
+            ], radius=0.022, segments=8),
+            mats.gasket,
+        )
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
+
 
 # ----------------------------------------------------------------------
 # Main Execution
