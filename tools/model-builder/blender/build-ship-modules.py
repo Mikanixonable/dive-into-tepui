@@ -240,6 +240,21 @@ def build_cockpit():
     # 3. Forward CBM / APAS Docking Flange Ring (torus)
     bm_cbm = make_torus(major_r=2.12, minor_r=0.04, z_center=1.48, major_seg=36, minor_seg=12)
     add_mesh_obj("cockpit_cbm_ring", bm_cbm, mats.cbm_ring)
+
+    # 3b. Forward Airtight Hatch & Viewport (closes the diameter 4.2m void)
+    bm_hatch = make_cylinder(2.08, 2.08, 0.05, z_center=1.46, segments=36)
+    add_mesh_obj("cockpit_hatch", bm_hatch, mats.hull_dark)
+
+    bm_hub = make_cylinder(0.65, 0.65, 0.04, z_center=1.48, segments=24)
+    add_mesh_obj("cockpit_hatch_hub", bm_hub, mats.hull)
+
+    bm_hatch_win = make_cylinder(0.24, 0.24, 0.03, z_center=1.49, segments=16)
+    add_mesh_obj("cockpit_hatch_window", bm_hatch_win, mats.window)
+
+    for i in range(8):
+        ang = i * math.pi / 4.0
+        bm_bolt = make_box(0.06, 0.06, 0.04, center=(1.80 * math.cos(ang), 1.80 * math.sin(ang), 1.48))
+        add_mesh_obj(f"cockpit_hatch_latch_{i}", bm_bolt, mats.clamp)
     
     # 4. Beveled Dual Trapezoidal Windows (Gemini / Soyuz style)
     # Positioned at +Y (top side) at angles +/- 22 degrees, z = 0.6m to 1.1m
@@ -648,21 +663,41 @@ def build_docking_mechanism(name, kind):
     mat_main = mats.dock if kind == 'dock' else mats.hull
     bm_ring = make_cylinder(radius, radius, 1.0, z_center=0.0, segments=48)
     add_mesh_obj("ring", bm_ring, mat_main)
-    
-    # 2. Interface Ring (CRITICAL: Must have name 'interface-ring' and +Z normal!)
-    # Torus centered at z=0.40m with minor_r=0.08m (fits strictly within z <= 0.50m)
-    bm_int_ring = make_torus(major_r=2.40, minor_r=0.08, z_center=0.40, major_seg=48, minor_seg=12)
+
+    # 2. Recessed Docking Vestibule / Tunnel (+Z forward face)
+    if kind != 'decoupler':
+        bm_tunnel = make_cylinder(2.20, 2.20, 0.20, z_center=0.40, segments=36)
+        add_mesh_obj("dock_tunnel", bm_tunnel, mats.recessed)
+
+        # Internal pressure hatch at bottom of vestibule (z = 0.32m)
+        bm_hatch = make_cylinder(2.05, 2.05, 0.04, z_center=0.32, segments=36)
+        add_mesh_obj("dock_hatch", bm_hatch, mats.hull_dark)
+
+        # Central optical alignment window
+        bm_win = make_cylinder(0.28, 0.28, 0.02, z_center=0.35, segments=16)
+        add_mesh_obj("dock_window", bm_win, mats.window)
+
+    # 3. Interface Ring (CRITICAL: Must have name 'interface-ring' and +Z normal!)
+    # Torus centered at z=0.44m with minor_r=0.05m (fits strictly within z <= 0.49m)
+    bm_int_ring = make_torus(major_r=2.35, minor_r=0.05, z_center=0.44, major_seg=48, minor_seg=12)
     add_mesh_obj("interface-ring", bm_int_ring, mats.cbm_ring)
 
-    # 3. APAS / CBM 3 Guide Petals (120 degrees apart, only for docking mechanisms)
+    # 4. APAS / CBM 3 Guide Petals (120 degrees apart, strictly terminating at z <= 0.49m)
     if kind != 'decoupler':
         for p in range(3):
             ang = p * 2.0 * math.pi / 3.0
-            # Petal angled inwards
-            px = 2.20 * math.cos(ang)
-            py = 2.20 * math.sin(ang)
-            bm_petal = make_box(0.14, 0.40, 0.22, center=(px, py, 0.48), rot_euler=(math.radians(20) * math.sin(ang), -math.radians(20) * math.cos(ang), ang))
+            px = 2.22 * math.cos(ang)
+            py = 2.22 * math.sin(ang)
+            bm_petal = make_box(0.12, 0.35, 0.14, center=(px, py, 0.42), rot_euler=(math.radians(18) * math.sin(ang), -math.radians(18) * math.cos(ang), ang))
             add_mesh_obj(f"guide_petal_{p}", bm_petal, mats.hull_dark)
+
+    # 5. Aft Hull Mounting Flange (-Z face, structural interface)
+    bm_aft_flange = make_torus(major_r=radius - 0.05, minor_r=0.04, z_center=-0.48, major_seg=48, minor_seg=8)
+    add_mesh_obj("aft_mount_flange", bm_aft_flange, mats.clamp)
+
+    # Circumferential alignment stripe / warning band on outer hull
+    bm_band = make_torus(major_r=radius + 0.015, minor_r=0.025, z_center=0.10, major_seg=48, minor_seg=6)
+    add_mesh_obj("dock_stripe", bm_band, mats.dock if kind != 'dock' else mats.clamp)
 
     # Decoupler linear shaped charge cutting tape & separation springs
     if kind == 'decoupler':
