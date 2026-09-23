@@ -51,6 +51,7 @@ function startAnimationLoop(
   launcher: Launcher, gameScene: GameScene, settings: UserSettings, bgm: Bgm,
   debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
 ): void {
+  const layoutSmoke = new URLSearchParams(window.location.search).has('layout-smoke');
   let lastTime = performance.now();
   let completedFrames = 0;
   // 1フレーム分: ランのフレームを回し、次フレームを予約する。
@@ -60,7 +61,11 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gameScene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
+    // layout smoke は起動完了後も入力・HUD同期を動かすが、viewport変更に伴う
+    // headless WebGPU の再確保だけ止める。通常実行では常に従来どおり同期・描画する。
+    const hudOnlyFrame = layoutSmoke
+      && document.documentElement.dataset.layoutSmokeFreeze === 'true';
+    if (!hudOnlyFrame) gameScene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
     pauseMenu.sync(now);
@@ -97,7 +102,7 @@ function startAnimationLoop(
           commands: [gameCommand(K.toggleDebugInfoWindow.code, K.toggleDebugInfoWindow)],
           handleCommand: command => debugInfo.handleCommand(command.id),
         },
-      ]);
+      ], !hudOnlyFrame);
       if (completed) {
         launcher.followProgress();
         completedFrames++;
