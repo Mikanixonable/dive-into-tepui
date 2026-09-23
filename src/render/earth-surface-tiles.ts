@@ -133,9 +133,9 @@ export class EarthSurfaceTiles {
     this.fadeStarts = nextStarts;
   }
 
-  // 現在の表示をz7セルへ展開する。細かいタイルほど後から同じ領域を上書きする。
+  // 現在の表示を最高LODセルへ展開する。細かいタイルほど後から同じ領域を上書きする。
   public pageTable(): Uint8Array {
-    // z7セルへ展開し、細かい候補が親の値を上書きする。
+    // 最高LODセルへ展開し、細かい候補が親の値を上書きする。
     const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(EARTH_BASE_LAYER);
     for (const tile of this.displayed) {
       const size = 2 ** (EARTH_TILE_MAX_Z - tile.key.z);
