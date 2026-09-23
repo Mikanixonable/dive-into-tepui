@@ -28,6 +28,17 @@ interface SiteState {
 // 部位は HP が尽きると機能を停止する。
 function isDisabled(site: SiteState): boolean { return site.hp <= 0; }
 
+function restoredHp(value: unknown, maxHp: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return maxHp;
+  return Math.max(0, Math.min(maxHp, value));
+}
+
+function restoredAttackSiteCursor(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : 0;
+}
+
 export class ProteinCombatState {
   public readonly integrityMaxHp: number;
   private readonly siteStates: SiteState[];
@@ -58,15 +69,23 @@ export class ProteinCombatState {
   public static deserialize(
     serialized: SerializedProteinCombatState, asset: ProteinAssetDefinition,
   ): ProteinCombatState {
+    const serializedSites = Array.isArray(serialized.sites) ? serialized.sites : [];
+    const serializedModifications = serialized.modifications !== null
+      && typeof serialized.modifications === 'object'
+      ? serialized.modifications
+      : {};
     return new ProteinCombatState(
       asset,
-      // null も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
-      serialized.integrityHp ?? undefined,
-      new Map(asset.sites.map((definition) => [
-        definition.id, serialized.sites.find((site) => site.id === definition.id)?.hp,
-      ])),
-      new Map(asset.modificationSlots.map((slot) => [slot.id, serialized.modifications[slot.id]])),
-      serialized.attackSiteCursor,
+      restoredHp(serialized.integrityHp, asset.integrity.maxHp),
+      new Map(asset.sites.map((definition) => {
+        const hp = serializedSites.find((site) => site?.id === definition.id)?.hp;
+        return [definition.id, restoredHp(hp, definition.maxHp)] as const;
+      })),
+      new Map(asset.modificationSlots.map((slot) => {
+        const state = serializedModifications[slot.id];
+        return [slot.id, typeof state === 'string' && slot.states.includes(state) ? state : slot.defaultState] as const;
+      })),
+      restoredAttackSiteCursor(serialized.attackSiteCursor),
     );
   }
 
