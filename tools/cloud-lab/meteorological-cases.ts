@@ -73,6 +73,7 @@ const CONTROLS = {
     operation: '非発散の剛体回転風・無供給・無損失の有限雲塊',
     controlledInputs: {
       windField: 'solid-body spherical rotation', supply: 0, loss: 0,
+      initialLiquidMassKgM2: 0.00025, initialIceMassKgM2: 0.00075,
     },
   },
   c2: {
@@ -124,7 +125,9 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
   C1: { id: 'C1', label: '球面剛体回転', ...CONTROLS.c1, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
       measurement('trajectory', '球面移流軌跡誤差', 'm', 'distance to analytic equatorial great-circle path', 'finite cloud mask', 0, '0.01 m 以下', 'analytic'),
-      measurement('mass', '相対質量誤差', '1', 'carried mass before/after transport', 'finite cloud mask', 0, '輸送APIに質量状態がなく blocked', 'analytic'),
+      measurement('mass', '相対質量誤差', '1',
+        'absolute difference between transported cohort mass and independently fixed initial mass, divided by initial mass',
+        'finite cloud material cohorts', 0, '初期質量 0.001 kg m^-2 に対し 1% 以下', 'analytic'),
     ] },
   C2: { id: 'C2', label: '高度別の風向', ...CONTROLS.c2, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
