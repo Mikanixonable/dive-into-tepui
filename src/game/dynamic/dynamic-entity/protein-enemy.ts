@@ -31,6 +31,7 @@ import type { OrbitReference } from '../../orbit-reference';
 import type { ProteinCombatTarget } from './damage-capabilities';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
 import type { ProteinMotionMetrics } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
+import { EnemyFireState } from './enemy-fire-controller';
 
 // 判定形状は構造の揺らぎによらず1つに固定するので、慣性も1つ。非対称にして、ジャニベコフ効果
 // (中間軸不安定性)で無秩序に回らせる。
@@ -110,10 +111,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     scene: THREE.Scene | undefined,
     private readonly combat = new ProteinCombatState(definition.asset),
     alive?: boolean,
-    burstLeft?: number | null,
-    burstDelay?: number | null,
-    lastFireSim?: number | null,
-    lastBehaviorSim?: number | null,
+    fireState = new EnemyFireState(),
   ) {
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
@@ -136,7 +134,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     };
     super(
       placement, proteinView, PROTEIN_INERTIA, collision.outerRadius, id, shape,
-      alive, burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
+      alive, fireState,
     );
     this.assetId = definition.assetId;
     this.coordinateScale = definition.asset.coordinateScale;
@@ -185,11 +183,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       scene,
       serialized.protein ? ProteinCombatState.deserialize(serialized.protein, definition.asset) : undefined,
       serialized.alive,
-      // 射撃の途中経過と時刻
-      serialized.fireController.burstLeft,
-      serialized.fireController.burstDelay,
-      serialized.fireController.lastFireSim,
-      serialized.fireController.lastBehaviorSim,
+      EnemyFireState.deserialize(serialized.fireController),
     );
   }
 
