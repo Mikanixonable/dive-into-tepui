@@ -154,13 +154,10 @@ async function applyViewport({ width, height }) {
 
 async function clearViewport() {
   await devTools.send('Emulation.clearDeviceMetricsOverride');
-  // 元viewportへ戻す処理もGPU停止中に済ませてから通常描画へ復帰する。
+  // layout-onlyでは一度幾何検査を始めたらGPUを凍結したままにする。
+  // DOM/入力/HUD同期は継続するため、以後のUI検査には影響しない。
   await sleep(100);
-  if (layoutOnly) {
-    await devTools.evaluate(`delete document.documentElement.dataset.layoutSmokeFreeze`);
-    await sleep(100);
-    await throwIfVisibleFatalOverlay('Headless GPU fatal after restoring layout viewport');
-  }
+  await throwIfVisibleFatalOverlay('Headless GPU fatal while restoring layout viewport');
 }
 
 async function checkOverlayGeometry(selector, label) {
@@ -667,6 +664,8 @@ async function constructMaterialFromBaseDock() {
     'construction mode to enter the combat view',
   );
   await checkConstructionLayout();
+  // layout CIの責務は建造workspaceの幾何まで。詳細な建造操作smokeは通常GPU経路で別途維持する。
+  if (layoutOnly) return;
 
   await devTools.evaluate(`(() => {
     window.__smokeConfirmMessages = [];
@@ -785,7 +784,9 @@ try {
       };
     })()`);
     expectAll('Creative mode did not remain in its zero-ship map state', chromeState);
-    await checkMapLayout();
+    // Construction専用jobは、建造画面へ入るまで通常描画を保つ。
+    // Map幾何は独立jobで検査済みなので重複させない。
+    if (!(layoutOnly && smokeConstruction)) await checkMapLayout();
     await placeShipThroughMenu();
 
     // 戦闘ビューへ入れるのは操作できる艦がある時だけなので、[M] が通ること自体が配置の成立を示す。
@@ -861,16 +862,17 @@ try {
       `[...document.querySelectorAll('.property-window')].some((el) => getComputedStyle(el).display !== 'none')`,
       `right-clicking ship row ${shipRow.label} to open a property window`,
     );
-    await devTools.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 568, deviceScaleFactor: 1, mobile: true });
-    await sleep(150);
-    const clamped = await devTools.evaluate(`(() => {
-      ${LAYOUT_HELPERS}
-      const win = [...document.querySelectorAll('.property-window')].find(visible);
-      if (!win) return { open: false };
-      return { open: true, inside: insideViewport(rect(win)) };
-    })()`);
-    expectAll('Property window did not remain clamped after resize', clamped);
-    await clearViewport();
+    if (!(layoutOnly && smokeConstruction)) {
+      await applyViewport({ width: 320, height: 568 });
+      const clamped = await devTools.evaluate(`(() => {
+        ${LAYOUT_HELPERS}
+        const win = [...document.querySelectorAll('.property-window')].find(visible);
+        if (!win) return { open: false };
+        return { open: true, inside: insideViewport(rect(win)) };
+      })()`);
+      expectAll('Property window did not remain clamped after resize', clamped);
+      await clearViewport();
+    }
     if (smokeConstruction) await constructMaterialFromBaseDock();
   }
 
