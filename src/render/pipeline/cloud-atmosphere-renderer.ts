@@ -1,7 +1,7 @@
 // 大気レイマーチの各標本点で、表面雲・影と同じ CloudDensityEvaluator を読む。
 // 固定高度の薄い殻は作らず、液相・氷相の連続3D消散場をそのまま参加媒質へ加える。
 import * as THREE from 'three/webgpu';
-import { clamp, dot, float, max, uniform, vec4 } from 'three/tsl';
+import { dot, max, step, uniform, vec4 } from 'three/tsl';
 import { CloudDensityEvaluator } from '../cloud/cloud-density-evaluator';
 import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
 import type { AtmosphereClouds } from '../atmosphere';
@@ -70,14 +70,12 @@ export class CloudAtmosphereRenderer {
 
     const liquidKnob = CLOUD_PHASE_KNOBS.cumulus;
     const iceKnob = CLOUD_PHASE_KNOBS.cirrus;
-    const liquidPresence = clamp(
-      density.liquidFraction.sub(liquidKnob.cutoff).mul(liquidKnob.gain),
-      0, 1,
-    ).mul(this.enabled.cumulus);
-    const icePresence = clamp(
-      density.iceFraction.sub(iceKnob.cutoff).mul(iceKnob.gain),
-      0, 1,
-    ).mul(this.enabled.cirrus);
+    // 既定cutoff=0では消散係数をそのまま通し、柱光学深さを保存する。phaseFractionを
+    // 連続倍率として再度掛けるとcoverageを二重適用してしまうため、cutoffはゲートにだけ使う。
+    const liquidPresence = step(liquidKnob.cutoff, density.liquidFraction)
+      .mul(liquidKnob.gain).mul(this.enabled.cumulus);
+    const icePresence = step(iceKnob.cutoff, density.iceFraction)
+      .mul(iceKnob.gain).mul(this.enabled.cirrus);
     const liquidExtinction = density.liquidExtinctionPerM.mul(liquidPresence);
     const iceExtinction = density.iceExtinctionPerM.mul(icePresence);
     const extinctionPerM = liquidExtinction.add(iceExtinction).mul(this.active).toVar();
