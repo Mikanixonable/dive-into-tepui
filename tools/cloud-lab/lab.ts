@@ -11,6 +11,9 @@ import { EquirectProjection, OrthographicCap } from '../../src/render/field-proj
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CloudLabPane } from './pane';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
+import {
+  METEOROLOGICAL_CASES, METEOROLOGICAL_CASE_IDS, type MeteorologicalCaseFixture, type MeteorologicalCaseId,
+} from './meteorological-cases';
 import type { Vec3Node } from '../../src/render/tsl-types';
 
 // 面の大きさ [px]。全球の面は正距円筒なので 2:1、cap の面は正方形。cap の写しは表示と同じ大きさに
@@ -50,6 +53,7 @@ export class CloudLabCanvas {
   private capLatitude = DEFAULT_CAP_LATITUDE;
   private capLongitude = DEFAULT_CAP_LONGITUDE;
   private capRadius = DEFAULT_CAP_RADIUS;
+  private selectedFixtureId: MeteorologicalCaseId = METEOROLOGICAL_CASE_IDS[0]!;
 
   // レンダラを起こし、実写の雲と気候の画像を読み終えてから器を返す — 撮影は画像の到着を待たずに
   // 走るので、ここで待たないと最初の何枚かが空のテクスチャで焼かれる。
@@ -113,6 +117,14 @@ export class CloudLabCanvas {
   public get capCenterLatitude(): number { return this.capLatitude; }
   public get capCenterLongitude(): number { return this.capLongitude; }
   public get capAngularRadius(): number { return this.capRadius; }
+  public get fixture(): MeteorologicalCaseFixture { return METEOROLOGICAL_CASES[this.selectedFixtureId]; }
+  public get fixtureId(): MeteorologicalCaseId { return this.selectedFixtureId; }
+
+  // 表示する制御実験の入力・計測契約を選ぶ。
+  public selectFixture(id: MeteorologicalCaseId): void {
+    if (!METEOROLOGICAL_CASES[id]) throw new Error(`cloud lab: unknown meteorological fixture "${id}"`);
+    this.selectedFixtureId = id;
+  }
 
   // 表示する量を切り替えて描き直す。
   public show(id: CloudLabViewId): void {
