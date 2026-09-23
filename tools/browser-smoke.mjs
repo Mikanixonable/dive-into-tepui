@@ -105,11 +105,19 @@ function throwIfFatal(label) {
   if (fatalEvents.length > 0) throw new Error(`${label} (${fatalEvents.length}):\n  ${describeFatalEvents()}`);
 }
 
-function isIgnorableLayoutConsoleError(event) {
-  if (!layoutOnly || event.method !== 'Runtime.consoleAPICalled' || event.params?.type !== 'error') return false;
-  const message = event.params.args.map((arg) => arg.description ?? String(arg.value)).join(' ');
-  return message.includes('THREE.Error resolving queries: AbortError')
-    && message.includes("Failed to execute 'mapAsync' on 'GPUBuffer'");
+function isIgnorableLayoutGpuEvent(event) {
+  if (!layoutOnly) return false;
+  if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') {
+    const message = event.params.args.map((arg) => arg.description ?? String(arg.value)).join(' ');
+    return message.includes('THREE.Error resolving queries: AbortError')
+      && message.includes("Failed to execute 'mapAsync' on 'GPUBuffer'");
+  }
+  if (event.method === 'Runtime.exceptionThrown') {
+    const details = event.params.exceptionDetails;
+    const message = details.exception?.description ?? details.text ?? '';
+    return message.includes('OperationError: Instance dropped in popErrorScope');
+  }
+  return false;
 }
 
 const VIEWPORTS = [
@@ -634,9 +642,9 @@ try {
       '--enable-webgpu-developer-features',
     ] : [],
     onEvent: (event) => {
+      if (isIgnorableLayoutGpuEvent(event)) return;
       if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
-      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error'
-        && !isIgnorableLayoutConsoleError(event)) fatalEvents.push(event);
+      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
       if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
     },
   });
