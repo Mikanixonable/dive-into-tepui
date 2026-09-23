@@ -87,17 +87,30 @@ const STAGE_SELECT_STYLE = `
 #stage-select .ss-subrow {
   display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-top: 20px;
 }
-#stage-select .ss-languages { display: flex; align-items: baseline; gap: 16px; margin: 12px 0 0 0.2em; }
+#stage-select .ss-languages {
+  display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 16px; margin: 12px 0 0 0.2em;
+}
+#stage-select .ss-script-block { min-width: 0; max-width: 100%; }
+#stage-select .ss-script-block[hidden] { display: none; }
 #stage-select .ss-script {
   margin: 0; color: var(--color-primary-hover); font-family: ${FONT_SCRIPT};
   max-width: 19em; font-size: clamp(21px, 2.8vw, 38px);
   font-weight: 700; line-height: 1.05; letter-spacing: 0.04em;
 }
-#stage-select .ss-script-cuneiform { font-family: "Noto Sans Cuneiform", "Segoe UI Historic", serif; font-size: clamp(19px, 2.4vw, 32px); letter-spacing: 0.12em; }
+#stage-select .ss-script-cuneiform {
+  font-family: "Noto Sans Cuneiform", "Segoe UI Historic", serif;
+  font-size: clamp(19px, 2.4vw, 32px); letter-spacing: 0.12em;
+}
 #stage-select .ss-script-polynesian { font-family: ${FONT_SERIF}; font-weight: 400; letter-spacing: 0.02em; }
+#stage-select .ss-transliteration {
+  margin: 5px 0 0; color: var(--text-dim); font-family: ${FONT_MONO};
+  font-size: clamp(10px, 1vw, 12px); font-weight: 500; line-height: 1.35; letter-spacing: 0.035em;
+}
+#stage-select .ss-transliteration[hidden] { display: none; }
 #stage-select .ss-flavor-note {
-  margin: 0; color: var(--text-muted); font-family: ${FONT_SANS};
-  max-width: 28em; font-size: clamp(13px, 1.4vw, 17px); font-weight: 500; line-height: 1.3;
+  flex: 1 1 16em; margin: 0; color: var(--text-muted); font-family: ${FONT_SANS};
+  max-width: 30em; font-size: clamp(11px, 1.15vw, 14px); font-weight: 500;
+  line-height: 1.35; letter-spacing: 0.025em;
 }
 #stage-select .ss-status {
   min-width: 190px; padding: 11px 13px; border-radius: var(--radius-panel);

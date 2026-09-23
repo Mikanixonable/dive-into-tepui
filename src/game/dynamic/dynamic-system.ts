@@ -44,8 +44,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // エンティティの collection・pending spawn・上限・回収の正本。
   private readonly lifecycle: EntityLifecycle;
 
-  // 操作されうる個体。呼ぶたびに登録一覧から走査し直すため、フレーム内で複数回参照する場合は取得した配列を
-  // 持ち回る。
+  // 操作されうる個体。同じ collectionRevision の間は lifecycle が同じ読み取り専用 snapshot を返す。
   public get controllables(): readonly Controllable[] { return this.lifecycle.controllables; }
 
   // プールで描く種別の描画資源。
@@ -133,7 +132,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 保持する全エンティティを追加順に返す（読み取り専用）。
   public all(): readonly DynamicEntity[] { return this.lifecycle.all(); }
 
-  // 全エンティティの Motion を追加順に並べた新しい配列。
+  // 全エンティティの Motion を追加順に並べた読み取り専用一覧。同じ collectionRevision の間は
+  // lifecycle が同じ snapshot を返す。
   public allMotions(): readonly DynamicMotion[] { return this.lifecycle.allMotions(); }
 
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。

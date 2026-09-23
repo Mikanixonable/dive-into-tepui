@@ -21,12 +21,11 @@ export const MAP_PANEL_STYLE = `
    見出しは幅を固定して縦に揃え、長い名前(ラグランジュ点など)は省略する。 */
 #hud .body-class-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 #hud .body-class-row .body-class-title {
-  width: 96px; min-width: 96px; text-align: left; font-size: var(--font-xs); letter-spacing: 1px;
+  width: 96px; min-width: 96px; text-align: left; font-size: var(--font-xs); letter-spacing: var(--tracking-label);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #hud .body-class-row .body-class-btns { display: flex; gap: var(--space-2); }
-/* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
-   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
+/* 旧全称リセットには依存せず、このパネル固有の密度として操作ボタン寸法を定義する。 */
 #hud span.body-class-icon-btn { min-width: 20px; padding: var(--space-2) var(--space-3); text-align: center; font-size: var(--font-m); }
 @media ${MQ_COARSE} {
   #hud span.body-class-icon-btn { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
@@ -35,8 +34,8 @@ export const MAP_PANEL_STYLE = `
   #hud-plan { min-width: 0; max-width: none; }
 }
 @media ${MQ_COMPACT} {
-  #hud .w-group { gap: var(--space-2); }
-  #hud .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
+  #hud .hud-map-root.active .w-group { gap: var(--space-2); }
+  #hud .hud-map-root.active .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
 }
 
 /* 表示設定パネル(#hud-view-options)のコンテナ・タイトル・本体と、タブ本体。 */
@@ -57,13 +56,38 @@ export const MAP_PANEL_STYLE = `
 #hud-view-options .view-options-tab-body.hidden { display: none !important; }
 
 /* 予測軌道パネル(#hud-predict / #hud-predict-wrap / #hud-predict-toggle)。 */
+#hud-predict .predict-head { margin-bottom: var(--space-2); }
+#hud-predict .predict-state {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end; gap: var(--space-5);
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+}
+#hud-predict .predict-state .editorial-state-hero strong {
+  font-size: var(--font-xl);
+}
+#hud-predict .predict-state-progress {
+  display: grid; justify-items: end; gap: 2px; min-width: 72px;
+}
+#hud-predict .predict-state-progress .ui-data-secondary {
+  color: var(--color-primary); font-size: var(--font-m); font-weight: 650;
+}
+#hud-predict .predict-controls {
+  display: grid; gap: var(--space-2); padding-top: var(--space-3);
+}
+#hud-predict .predict-controls .predict-row1 { margin-bottom: 0; }
+#hud-predict .predict-controls .predict-row2 {
+  margin-top: var(--space-1); padding-top: var(--space-2);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent);
+}
+
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
    トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
    #hud-stagestatus は常に非表示なので、他の下端揃えパネル(.hud-rail 等)と同じ bottom まで詰める。
    左右レール(.hud-rail-left/.hud-rail-right)の内側に収まる幅だけを使い、レールのパネルに重ねない。 */
 #hud-predict-wrap {
   position: absolute; bottom: 12px;
-  left: calc(12px + var(--rail-w-left) + 8px); right: calc(12px + var(--rail-w-right) + 8px);
+  left: calc(var(--hud-left-rail-occupied) + 8px);
+  right: calc(var(--hud-right-rail-occupied) + 8px);
   display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none;
 }
 /* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。
@@ -76,7 +100,7 @@ export const MAP_PANEL_STYLE = `
 #hud-predict.collapsed { display: none !important; }
 #hud-predict-toggle {
   display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
-  width: 26px; height: 26px; border: 0; border-radius: 50%;
+  border: 0; border-radius: 50%;
   background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
@@ -87,7 +111,7 @@ export const MAP_PANEL_STYLE = `
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-predict span.predict-reset {
   flex: 0 0 auto; padding: 0;
-  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
   font-size: var(--font-m);
 }
 #hud-predict span.predict-reset:hover { color: var(--color-primary); }
@@ -110,13 +134,17 @@ export const MAP_PANEL_STYLE = `
   font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
 @media ${MQ_MEDIUM_DOWN} {
-  /* このブレークポイントのレール幅に合わせて左右の隙間を再計算する。 */
-  #hud-predict-wrap {
-    bottom: 8px;
-    left: calc(8px + var(--rail-w-left) + 8px); right: calc(8px + var(--rail-w-right) + 8px);
-  }
+  #hud-predict-wrap { bottom: 8px; }
 }
 @media ${MQ_COMPACT} {
+  /* compactは左右railの合計幅が中央領域をほぼ使い切るため、PREDICTは横の隙間ではなく
+     下部sheetとして配置し、その実占有量ぶんrailを上へ切る。 */
+  #hud .hud-map-root.active .hud-rail {
+    bottom: max(
+      var(--hud-rail-bottom),
+      calc(var(--hud-predict-bottom-occupied, 0px) + var(--space-2))
+    );
+  }
   #hud-predict .slider-ticks { display: none; }
   /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
   #hud-predict .predict-absolute { display: none; }
@@ -133,8 +161,7 @@ export const MAP_PANEL_STYLE = `
 /* 座標系・カメラ FOV/角度操作パネル(.hud-frame-controls)。 */
 #hud .hud-frame-controls {
   width: 100%; pointer-events: auto;
-  max-height: min(360px, 48vh); max-height: min(360px, 48dvh); overflow-y: auto;
-  scrollbar-width: thin;
+  max-height: none; overflow: visible;
 }
 /* 座標系の候補が増えても、見出しの右側へボタンを押し出さない。 */
 #hud .hud-frame-controls .hud-frame-origin-zone > .w-group:first-child > .w-group-title,
@@ -146,7 +173,7 @@ export const MAP_PANEL_STYLE = `
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);
 }
 #hud .hud-frame-controls .camera-control-label {
-  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: 1px;
+  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
 }
 #hud .hud-frame-controls .camera-fov-control .w-slider { flex: 1 1 auto; min-width: 60px; }
 #hud .hud-frame-controls .camera-fov-control .w-slider:disabled,
@@ -184,7 +211,7 @@ export const MAP_PANEL_STYLE = `
 .orbit-guide-color-row { align-items: center; }
 .orbit-guide-color-row .w-input { width: 44px; height: 24px; padding: 2px; }
 .orbit-guide-color-row.hidden { display: none; }
-.orbit-guide-line-count-warning { color: var(--color-error); font-size: var(--font-xs); margin-top: var(--space-2); }
+.orbit-guide-line-count-warning { margin-top: var(--space-2); }
 .orbit-guide-line-count-warning.hidden { display: none; }
 .orbit-guide-zero-velocity-range { display: flex; flex-direction: column; gap: var(--space-2); }
 .orbit-guide-zero-velocity-range.hidden { display: none; }
@@ -192,11 +219,20 @@ export const MAP_PANEL_STYLE = `
 
 /* ステージ操作パネル(#hud-stage-controls、クリエイティブモードの敵/形状/タンパク質設定)。 */
 #hud-stage-controls { width: 100%; pointer-events: auto; }
-#hud-stage-controls .stage-controls-body { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+#hud-stage-controls .editorial-panel-head { margin-bottom: var(--space-3); }
+#hud-stage-controls .stage-controls-body {
+  display: grid; gap: var(--space-2); margin-top: 0; padding-top: var(--space-3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 20%, transparent);
+}
 #hud-stage-controls .stage-control-enemy-tabs { display: flex; gap: var(--space-2); }
 #hud-stage-controls .stage-control-enemy-tabs .w-btn { flex: 1 1 0; min-width: 0; }
-#hud-stage-controls .stage-control-section { display: grid; gap: var(--space-2); padding-top: var(--space-2); }
-#hud-stage-controls .stage-control-section-title { color: var(--text); font-size: var(--font-xxs); letter-spacing: .04em; }
+#hud-stage-controls .stage-control-section {
+  display: grid; gap: var(--space-2); margin-top: var(--space-2); padding-top: var(--space-3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent);
+}
+#hud-stage-controls .stage-control-section-title {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .1em; text-transform: uppercase;
+}
 #hud-stage-controls .stage-control-shapes { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 #hud-stage-controls .stage-control-shapes .w-group-title { flex: 0 0 100%; }
 #hud-stage-controls .stage-control-shapes .w-btn { flex: 1 1 0; min-width: 0; }
@@ -219,7 +255,13 @@ export const MAP_PANEL_STYLE = `
 
 /* 物体配置パネル(#hud-object-placer、クリエイティブモード限定): MANEUVER PLAN の下、
    右上に縦積みする。 */
-#hud-object-placer { width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
+#hud-object-placer {
+  width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto;
+}
+#hud-object-placer .editorial-panel-head {
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
+}
 #hud-object-placer .w-close { border-radius: 50%; }
 #hud-object-placer .shipplacer-btn-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
 #hud-object-placer .slider-field { margin-bottom: var(--space-4); }
@@ -233,6 +275,132 @@ export const MAP_PANEL_STYLE = `
 #hud-object-placer input[type="text"] { flex: 1; width: auto; }
 #hud-object-placer .preset-row { flex-wrap: wrap; gap: var(--space-3); }
 #hud-object-placer .field-issue { border: 0; border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); color: var(--color-error); }
-#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 0; border-radius: var(--radius-s); background: var(--color-error-fill); }
-#hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--color-error); }
+#hud-object-placer .issue-list { margin: var(--space-4) 0; }
+#hud-object-placer .issue-list .issue-line { color: inherit; }
+
+
+/* DISPLAY INDEX — タイトル画面の stage list と同じ「名称 + 右端状態」の索引型。 */
+#hud-view-options .view-options-render-row {
+  grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  margin: var(--space-3) 0 var(--space-2);
+  padding-inline: var(--space-2);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 16%, transparent);
+}
+#hud-view-options .view-options-render-label { display: grid; gap: 2px; min-width: 0; }
+#hud-view-options .view-options-render-label > span {
+  color: var(--text); font-size: var(--font-xs); letter-spacing: 0;
+}
+#hud-view-options .view-options-render-label > small {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+}
+#hud-view-options .view-options-render-choices {
+  display: inline-flex; justify-self: end; align-items: stretch; gap: 1px;
+  min-width: 0;
+}
+#hud-view-options .view-options-render-choice {
+  min-width: 0; padding-inline: var(--space-3); border-radius: 0;
+  background: transparent; color: var(--text-dim);
+}
+#hud-view-options .view-options-render-choice.on {
+  background: var(--color-primary-fill-weak); color: var(--color-primary);
+}
+#hud-view-options .view-options-render-choice:first-child {
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+}
+#hud-view-options .view-options-render-choice:last-child {
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+}
+@media ${MQ_MEDIUM_DOWN} {
+  #hud-view-options .view-options-render-row {
+    grid-template-columns: 2.4em minmax(0, 1fr);
+  }
+  #hud-view-options .view-options-render-choices {
+    grid-column: 2; justify-self: stretch; width: 100%;
+  }
+  #hud-view-options .view-options-render-choice { flex: 1 1 0; text-align: center; }
+}
+
+#hud-view-options .view-options-title {
+  align-items: baseline; padding-bottom: var(--space-3);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
+}
+#hud-view-options .view-options-context {
+  min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#hud-view-options .view-options-title .view-options-collapse { margin-left: var(--space-2); }
+#hud-view-options .view-options-body > .w-tabs { margin-top: var(--space-3); }
+#hud-view-options .view-options-section-divider {
+  margin-top: var(--space-4); margin-bottom: var(--space-1);
+}
+#hud-view-options .target-class-group { display: grid; gap: 1px; }
+#hud-view-options .target-class-row {
+  display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  align-items: center; gap: var(--space-2);
+  margin: 0; min-height: var(--hit-target-min);
+}
+#hud-view-options .target-class-row .body-class-title {
+  display: flex; grid-column: 2 / 4; align-items: center; gap: var(--space-2);
+  width: 100%; min-width: 0; min-height: var(--hit-target-min); padding: var(--space-2) 0;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+#hud-view-options .target-class-row .body-class-title .w-btn-icon { display: none; }
+#hud-view-options .target-class-row .body-class-title::after {
+  content: attr(data-display-label); margin-left: auto;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+}
+#hud-view-options .target-class-row .body-class-title.on {
+  color: var(--text); background: transparent;
+}
+#hud-view-options .target-class-row .body-class-title.on::after { color: var(--color-primary); }
+#hud-view-options .target-class-row:hover { background: var(--glass-control-hover); }
+#hud-view-options .view-options-section-heading {
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+}
+#hud-view-options .grid-class-row {
+  padding-block: var(--space-1); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 12%, transparent);
+}
+
+/* CAMERA / FRAME — 現在状態を先に読み、操作は下段へ分離する。 */
+#hud .hud-frame-controls .editorial-panel-head { margin-bottom: var(--space-3); }
+#hud .hud-frame-controls .editorial-state { margin-top: var(--space-1); }
+#hud .hud-frame-controls .camera-state-lens {
+  display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  align-items: end; gap: var(--space-3);
+}
+#hud .hud-frame-controls .camera-state-lens > div { display: grid; gap: var(--space-1); min-width: 0; }
+#hud .hud-frame-controls .camera-state-lens > div:last-child { text-align: right; }
+#hud .hud-frame-controls .camera-state-lens .ui-data-hero { font-size: var(--font-2xl); }
+#hud .hud-frame-controls .editorial-control-zone > :last-child { margin-bottom: 0; }
+#hud .hud-frame-controls-compact {
+  max-height: none; overflow: visible;
+}
+#hud .hud-frame-controls-compact .editorial-panel-head { margin-bottom: var(--space-2); }
+#hud .trajectory-frame-state [data-frame-hero="true"] {
+  text-transform: uppercase;
+}
+
+/* MANEUVER PLAN — 計画も同じ Control Sheet として扱う。 */
+#hud-plan.editorial-control-sheet .plan-panel-head {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
+}
+#hud-plan .plan-node-hero {
+  display: grid; gap: var(--space-1); margin-bottom: var(--space-3);
+}
+#hud-plan .plan-node-hero strong {
+  color: var(--text-strong); font-size: var(--font-2xl);
+  font-variant-numeric: tabular-nums; letter-spacing: -.03em;
+}
+#hud-plan .plan-state .editorial-state-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);
+}
+#hud-plan .plan-state .editorial-state-cell > :last-child { font-size: var(--font-xxs); }
+#hud-plan .plan-post-orbit {
+  margin-top: var(--space-3); padding-top: var(--space-3);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
+}
+#hud-plan .plan-help {
+  margin-top: var(--space-3); color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.5;
+}
 `;
