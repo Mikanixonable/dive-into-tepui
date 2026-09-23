@@ -22,8 +22,15 @@ import {
   reconstructCloudEventMaterialTracks,
 } from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
-import { cross, dot, len, norm, scale, v3 } from '../../src/math/vec3';
+import { cross, dot, norm, scale, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
+import {
+  analyticC2ReleasedIceDirection,
+  C2_CONTINUOUS_ORACLE_INTERVALS,
+  evaluateC2ContinuousReleaseOracle,
+} from './c2-continuous-release-oracle';
+import { massWeightedSphericalRmsSpreadM, sphericalDistanceM as distanceErrorM }
+  from './spherical-measures';
 import {
   METEOROLOGICAL_ERROR_FLOORS,
   type MeteorologicalCaseId,
@@ -37,6 +44,7 @@ const ICE_EXTINCTION_EFFICIENCY = 2;
 const SAMPLE_DURATION_SECONDS = 3_600;
 const SAMPLE_MAX_STEP_SECONDS = 30;
 const C1_EXPECTED_INTEGRATED_MASS_KG = 0.009;
+const C2_PLAN_MAXIMUM_SPATIAL_SAMPLE_SPACING_M = 500;
 
 export type FixtureComparison = 'absolute-error' | 'greater-than' | 'less-than' | 'non-negative';
 
@@ -214,12 +222,6 @@ function blocked(measurementId: string, unit: string, detail: string): FixtureMe
   };
 }
 
-function distanceErrorM(actual: Vec3, expected: Vec3, radiusM: number): number {
-  const sine = len(cross(actual, expected));
-  const cosine = Math.max(-1, Math.min(1, dot(actual, expected)));
-  return Math.atan2(sine, cosine) * radiusM;
-}
-
 function rotateAroundAxis(direction: Vec3, axis: Vec3, angleRad: number): Vec3 {
   const cosine = Math.cos(angleRad);
   const sine = Math.sin(angleRad);
@@ -245,45 +247,6 @@ function axisRotationPhaseRad(start: Vec3, end: Vec3, axis: Vec3): number {
   );
   return Math.atan2(dot(axis, cross(startPerpendicular, endPerpendicular)),
     dot(startPerpendicular, endPerpendicular));
-}
-
-function analyticC2ReleasedIceDirection(
-  releaseTimeSeconds: number,
-  sampleTimeSeconds: number,
-  lowerHeightM: number,
-  upperHeightM: number,
-  lowerEastWindMps: number,
-  upperNorthWindMps: number,
-): Vec3 {
-  const lowerAngleRad = lowerEastWindMps * releaseTimeSeconds / (EARTH_RADIUS_M + lowerHeightM);
-  const upperAngleRad = upperNorthWindMps * (sampleTimeSeconds - releaseTimeSeconds)
-    / (EARTH_RADIUS_M + upperHeightM);
-  const lowerSine = Math.sin(lowerAngleRad);
-  const lowerCosine = Math.cos(lowerAngleRad);
-  return v3(
-    lowerSine * Math.cos(upperAngleRad),
-    Math.sin(upperAngleRad),
-    lowerCosine * Math.cos(upperAngleRad),
-  );
-}
-
-function massWeightedSphericalRmsSpreadM(
-  samples: readonly { readonly directionUnitVector: Vec3; readonly massKgM2: number }[],
-  sphereRadiusM: number,
-): number {
-  const totalMassKgM2 = samples.reduce((total, sample) => total + sample.massKgM2, 0);
-  if (totalMassKgM2 === 0) return 0;
-  const weightedDirection = samples.reduce((sum, sample) => v3(
-    sum.x + sample.directionUnitVector.x * sample.massKgM2,
-    sum.y + sample.directionUnitVector.y * sample.massKgM2,
-    sum.z + sample.directionUnitVector.z * sample.massKgM2,
-  ), v3(0, 0, 0));
-  const centroidDirection = norm(weightedDirection);
-  const weightedVarianceM2 = samples.reduce((total, sample) => {
-    const distanceM = distanceErrorM(sample.directionUnitVector, centroidDirection, sphereRadiusM);
-    return total + sample.massKgM2 * distanceM * distanceM;
-  }, 0) / totalMassKgM2;
-  return Math.sqrt(weightedVarianceM2);
 }
 
 function localWindAt(levels: readonly CloudEnvironmentLevelInput[]) {
@@ -511,6 +474,7 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
   const expectedReleasedIce = analyticC2ReleasedIceDirection(
     releaseTimeSeconds,
     SAMPLE_DURATION_SECONDS,
+    EARTH_RADIUS_M,
     lowerHeightM,
     upperHeightM,
     lowerWindMps,
@@ -520,6 +484,7 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
     directionUnitVector: analyticC2ReleasedIceDirection(
       cohort.meanReleaseTimeSeconds,
       SAMPLE_DURATION_SECONDS,
+      EARTH_RADIUS_M,
       lowerHeightM,
       upperHeightM,
       lowerWindMps,
@@ -535,6 +500,31 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
   const actualCohortSpreadM = massWeightedSphericalRmsSpreadM(releasedIceCohorts, upperRadiusM);
   const expectedCohortSpreadM = massWeightedSphericalRmsSpreadM(expectedCohorts, upperRadiusM);
   const cohortSpreadErrorM = Math.abs(actualCohortSpreadM - expectedCohortSpreadM);
+  const releaseStartTimeSeconds = event.iceRelease.releaseStartTimeSeconds;
+  const releaseEndTimeSeconds = event.iceRelease.releaseEndTimeSeconds;
+  if (releaseStartTimeSeconds === null || releaseEndTimeSeconds === null) {
+    throw new Error('C2 controlled event must have a continuous ice release interval');
+  }
+  const convergenceCounts = [4, 16, 64, 256] as const;
+  const cohortsByCount = convergenceCounts.map((count) => ({
+    count,
+    cohorts: reconstructCloudEventMaterialCohorts(
+      event, EARTH_RADIUS_M, SAMPLE_MAX_STEP_SECONDS, localWindAt(env.levels), count,
+    ).releasedIceCohorts,
+  }));
+  const continuousOracle = evaluateC2ContinuousReleaseOracle({
+    releaseStartTimeSeconds,
+    releaseEndTimeSeconds,
+    sampleTimeSeconds: SAMPLE_DURATION_SECONDS,
+    sphereRadiusM: EARTH_RADIUS_M,
+    lowerHeightM,
+    upperHeightM,
+    lowerEastWindMps: lowerWindMps,
+    upperNorthWindMps: upperWindMps,
+    releaseRateKgM2S: event.iceRelease.releaseRateKgM2S,
+    sublimationRatePerSecond: event.iceRelease.sublimationRatePerSecond,
+    cohortsByCount,
+  });
   return {
     fixture: 'C2',
     cpuDiagnosticsApplied: true,
@@ -549,6 +539,15 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
       reconstructedIceCohortMassKgM2: cohortMassKgM2,
       actualIceCohortSpreadM: actualCohortSpreadM,
       analyticIceCohortSpreadM: expectedCohortSpreadM,
+      continuousReleaseOracleIntervals: C2_CONTINUOUS_ORACLE_INTERVALS,
+      continuousReleaseQuadratureErrorM: continuousOracle.quadratureRefinementDeltaM,
+      continuousReleasePlanMaximumSpatialSpacingM: C2_PLAN_MAXIMUM_SPATIAL_SAMPLE_SPACING_M,
+      continuousReleaseAbsoluteSpatialTolerance: 'blocked: plan specifies a maximum spacing, not a minimum or acceptance tolerance',
+      continuousReleaseCentroidQuadratureBoundM: continuousOracle.centroidQuadratureErrorBoundM,
+      continuousReleaseCohortCounts: convergenceCounts.join(','),
+      continuousReleaseConvergenceErrorsM: continuousOracle.convergenceErrorsM.join(','),
+      continuousReleaseOracleSpreadM: continuousOracle.spreadM,
+      continuousReleaseOracleMassKgM2: continuousOracle.massKgM2,
     },
     measurements: [
       compare('layer-displacement', errorM, 'm', 0, 0.05, 'absolute-error',
@@ -566,6 +565,8 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
       compare('released-ice-spread', cohortSpreadErrorM, 'm', 0, 0.05,
         'absolute-error',
         'Mass-weighted spherical RMS spread is compared with the spread of independently evaluated analytic cohort endpoints.'),
+      blocked('continuous-release-distribution', 'm',
+        'The fixed 32768-interval midpoint oracle reports raw cohort centroid/spread errors in controls, and its midpoint centroid quadrature has a second-derivative error bound. Absolute plan qualification is blocked: §2.7 specifies at most 0.5 km between spatial samples, not a minimum spacing or a permitted transport error.'),
     ],
   };
 }
