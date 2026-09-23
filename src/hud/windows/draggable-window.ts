@@ -20,12 +20,12 @@ const STYLE = `
   font-family: var(--font-family); user-select: none;
   -webkit-user-select: none;
 }
-/* compact: ドラッグで動かす小窓ではなく、画面下 40% のボトムシートとして開く
-   (クリップ概念は維持 — 📌 で複数枚並べられる点はそのまま)。 */
+/* compact: ドラッグ窓を画面下のボトムシートへ変える。高さは overlay 共通トークンで揃え、
+   長いプロパティでも 40% の狭い領域へ押し込まない。 */
 @media ${MQ_COMPACT} {
   #hud .dg-window {
     right: 0; bottom: 0; width: 100%; min-width: 0; max-width: 100%;
-    max-height: 40vh; max-height: 40dvh; overflow-y: auto;
+    max-height: var(--overlay-max-h-l); overflow-y: auto; overscroll-behavior: contain;
     border-radius: var(--radius-window) var(--radius-window) 0 0;
   }
 }
@@ -150,7 +150,7 @@ export class DraggableWindow implements OverlayHandle {
     this.headerExtras.className = 'dg-window-header-extras';
 
     this.clipBtn = new Button('📌', () => this.setClipped(!this._clipped));
-    this.clipBtn.element.classList.add('dg-window-btn');
+    this.clipBtn.element.classList.add('dg-window-btn', 'ui-icon-control');
     this.clipBtn.element.title = 'クリップ';
     this.clipBtn.element.setAttribute('aria-label', 'クリップ');
     this.clipBtn.element.classList.toggle('clipped', this._clipped);

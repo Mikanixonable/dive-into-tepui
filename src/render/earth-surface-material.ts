@@ -40,7 +40,7 @@ export interface EarthSurfacePageCell {
   readonly fade: number;
 }
 
-// ページ表はテクスチャ補間を使わず、地理UVが属するz=7セルをfloorで最近傍読取りする。
+// ページ表はテクスチャ補間を使わず、地理UVが属する最高LODセルをfloorで最近傍読取りする。
 // uは周期、vは極でクランプし、v=1だけは最終行へ置く。
 export function earthSurfacePageCell(table: Uint8Array, u: number, v: number): EarthSurfacePageCell {
   // ページ表の寸法・UV・base sentinelを検証して1セルへ復号する。

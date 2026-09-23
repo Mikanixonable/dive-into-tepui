@@ -164,4 +164,51 @@ export function register(): void {
     disposeOwnedRenderResources(first);
     disposeOwnedRenderResources(second);
   });
+
+  test('ship module asset: 各モジュールの寸法とバウンディングボックスはカタログ規格に整合する', () => {
+    const modules = moduleRoots(parsedRoot());
+
+    // 1. Cockpit: 全長 3.0m (z in [-1.5, +1.5])
+    const cockpit = modules.get('cockpit-standard');
+    assert.ok(cockpit !== undefined);
+    const boxCockpit = new THREE.Box3().setFromObject(cockpit);
+    assert.ok(boxCockpit.max.z <= 1.55, `cockpit max.z (${boxCockpit.max.z}) exceeds +1.5m`);
+    assert.ok(boxCockpit.min.z >= -1.55, `cockpit min.z (${boxCockpit.min.z}) extends below -1.5m`);
+
+    // 2. Thruster: 前面接続面 z = +0.50m を超えて前方に突き出ないこと (z <= 0.55m)
+    const thruster = modules.get('thruster-standard');
+    assert.ok(thruster !== undefined);
+    const boxThruster = new THREE.Box3().setFromObject(thruster);
+    assert.ok(boxThruster.max.z <= 0.55, `thruster max.z (${boxThruster.max.z}) protrudes forward of connection plane +0.5m`);
+
+    // 3. Booster: 全長 6.0m (z in [-3.0, +3.0])
+    const booster = modules.get('booster-standard');
+    assert.ok(booster !== undefined);
+    const boxBooster = new THREE.Box3().setFromObject(booster);
+    assert.ok(boxBooster.max.z <= 3.05, `booster max.z (${boxBooster.max.z}) exceeds +3.0m`);
+    assert.ok(boxBooster.min.z >= -3.05, `booster min.z (${boxBooster.min.z}) extends below -3.0m`);
+
+    // 4. RCS module: 全長 1.0m (z in [-0.5, +0.5])
+    const rcs = modules.get('rcs-standard');
+    assert.ok(rcs !== undefined);
+    const boxRcs = new THREE.Box3().setFromObject(rcs);
+    assert.ok(boxRcs.max.z <= 0.55, `rcs max.z (${boxRcs.max.z}) exceeds +0.5m`);
+    assert.ok(boxRcs.min.z >= -0.55, `rcs min.z (${boxRcs.min.z}) extends below -0.5m`);
+
+    // 5. Decoupler: 全長 1.0m (平坦な切断面, z in [-0.5, +0.5])
+    const decoupler = modules.get('decoupler-standard');
+    assert.ok(decoupler !== undefined);
+    const boxDecoupler = new THREE.Box3().setFromObject(decoupler);
+    assert.ok(boxDecoupler.max.z <= 0.55, `decoupler max.z (${boxDecoupler.max.z}) exceeds +0.5m`);
+    assert.ok(boxDecoupler.min.z >= -0.55, `decoupler min.z (${boxDecoupler.min.z}) extends below -0.5m`);
+
+    // 6. Docking port / Dock: 後端接続面 z=-0.5m (min.z >= -0.55m)、前端は嵌合ガイド爪が相手側へ突出 (max.z <= 0.75m)
+    for (const modelId of ['dock-standard', 'docking-port-standard']) {
+      const mod = modules.get(modelId);
+      assert.ok(mod !== undefined, modelId);
+      const box = new THREE.Box3().setFromObject(mod);
+      assert.ok(box.min.z >= -0.55, `${modelId} min.z (${box.min.z}) extends below -0.5m`);
+      assert.ok(box.max.z <= 0.75, `${modelId} guide petals max.z (${box.max.z}) exceed +0.75m`);
+    }
+  });
 }
