@@ -18,15 +18,17 @@ function isLayer(name: string): name is Layer {
   return (LAYERS as readonly string[]).includes(name);
 }
 
-// 層のディレクトリから *.test.js を集め、それぞれの register() を呼ぶ。手で並べた登録表を
-// 持たないので、テストを足しただけで走る。register を持たないファイルは黙って走らないままに
-// なるので、投げて気付かせる。
+// ソース側の層ディレクトリから *.test.ts を集め、対応するコンパイル済み *.test.js の
+// register() を呼ぶ。incremental compile では削除済みJSが tests/dist に残り得るため、実行対象の
+// 正本はソース側に置く。register を持たないファイルは黙って走らないままになるので投げて気付かせる。
 function registerLayer(layer: Layer): void {
-  const dir = join(__dirname, layer);
-  for (const file of readdirSync(dir).sort()) {
-    if (!file.endsWith('.test.js')) continue;
-    const mod = nodeRequire(join(dir, file)) as { register?: () => void };
-    if (typeof mod.register !== 'function') throw new Error(`${layer}/${file} does not export register()`);
+  const sourceDir = join(process.cwd(), 'tests', layer);
+  const compiledDir = join(__dirname, layer);
+  for (const sourceFile of readdirSync(sourceDir).sort()) {
+    if (!sourceFile.endsWith('.test.ts')) continue;
+    const compiledFile = sourceFile.replace(/\.ts$/, '.js');
+    const mod = nodeRequire(join(compiledDir, compiledFile)) as { register?: () => void };
+    if (typeof mod.register !== 'function') throw new Error(`${layer}/${compiledFile} does not export register()`);
     mod.register();
   }
 }
