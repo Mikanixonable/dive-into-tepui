@@ -1,11 +1,11 @@
-// 台風の実写を NASA Worldview のスナップショットから .cloud-lab/reference/ へ取り込み、cloud-lab:compare
-// が読む reference.json(名前・日付・レイヤ・BBOX・中心・ファイル)を書く。8k_clouds に台風は写って
-// いないので、台風の比較の相手はここから取る。既にある画像は取り直さない。
+// 台風の実写参照を cloud-lab:compare 用の索引へ登録する。Mawar は受領済み原本を照合して使う。
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { verifyMawarReference } from './cloud-reference/acquire-aux.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const outDir = path.join(root, '.cloud-lab', 'reference');
+const MAWAR_SOURCE_FILE = 'reference/tropical-cyclone-mawar-2023-05-25/mawar.png';
 
 // 取る台風。date は UTC の日付、bbox は南・西・北・東の縁 [°]、center は中心の緯度・経度 [°]。
 // 先頭の Mawar だけが外洋にいて、残り 2 つは陸を含む。
@@ -34,8 +34,15 @@ async function main() {
   mkdirSync(outDir, { recursive: true });
   const entries = [];
   for (const typhoon of TYPHOONS) {
-    // file はリポジトリ相対。
-    const file = path.posix.join('.cloud-lab', 'reference', `typhoon-${typhoon.name}.png`);
+    // file はリポジトリ相対。Mawar は別経路で画像を取り直さない。
+    const file = typhoon.name === 'mawar'
+      ? MAWAR_SOURCE_FILE
+      : path.posix.join('.cloud-lab', 'reference', `typhoon-${typhoon.name}.png`);
+    if (typhoon.name === 'mawar') {
+      verifyMawarReference(root);
+      entries.push({ ...typhoon, file });
+      continue;
+    }
     const target = path.join(root, file);
     if (existsSync(target)) {
       console.log(`skip ${file}(既にある)`);
