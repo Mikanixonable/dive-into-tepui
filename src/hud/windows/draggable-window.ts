@@ -59,8 +59,9 @@ const STYLE = `
 #hud .dg-window-btn:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
 #hud .dg-window-btn.clipped { background: var(--color-primary-fill); color: var(--color-primary); }
 #hud .dg-window.tgt {
-  background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus));
+  box-shadow: inset 2px 0 0 var(--color-primary), var(--glass-shadow);
 }
+#hud .dg-window.tgt .dg-window-title-main { color: var(--color-primary); }
 `;
 
 export interface DraggableWindowOptions {
