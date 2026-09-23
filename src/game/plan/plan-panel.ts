@@ -97,8 +97,10 @@ function planPanelHtml(
       s += `<div style="color:var(--color-warning);margin-top:${SPACE_1}">⚠ ${peSpec.nameJa}が大気圏内</div>`;
     }
   }
-  // 詳細な操作説明は Help に集約し、常設パネルでは次の行動だけを示す。
-  s += `<div class="plan-help">[${K.help.label}] 操作一覧 · [右クリック] ノードメニュー · [${K.toggleMapMode.label}] 戻る</div>`;
+  // 操作キーのヒント
+  const dvKeys =
+    `${K.dvPrograde.label}/${K.dvRetrograde.label}・${K.dvNormal.label}/${K.dvAntinormal.label}・${K.dvRadialOut.label}/${K.dvRadialIn.label}`;
+  s += `<div class="plan-help">[クリック] ノード配置/選択 [ノードをドラッグ] 時刻移動とマニューバ維持 [手動設定のΔT] 軌道上の位置を数値指定 [矢印ハンドル/${dvKeys}/パネルのボタン] 長押しでΔv調整、ハンドルは大きくドラッグし続けると加速 <br>[右クリック] メニュー(自動ワープ/削除) [${K.deleteNode.label}] 選択ノード削除 [${K.fineAttitudeToggle.label}] 微調整 [${K.toggleMapMode.label}] 確定して戻る(時間は進み続ける)</div>`;
   return s;
 }
 

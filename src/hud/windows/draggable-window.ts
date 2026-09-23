@@ -51,7 +51,7 @@ const STYLE = `
    自身はレイアウトに参加しない。 */
 #hud .dg-window-header-extras { display: contents; }
 #hud .dg-window-btn {
-  flex: none; width: 24px; height: 24px; line-height: 24px; text-align: center;
+  flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
   border: 0; border-radius: 50%;
   background: var(--glass-control); color: var(--text);
   cursor: pointer; font-size: var(--font-s); padding: 0;
@@ -59,9 +59,8 @@ const STYLE = `
 #hud .dg-window-btn:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
 #hud .dg-window-btn.clipped { background: var(--color-primary-fill); color: var(--color-primary); }
 #hud .dg-window.tgt {
-  box-shadow: inset 2px 0 0 var(--color-primary), var(--glass-shadow);
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus));
 }
-#hud .dg-window.tgt .dg-window-title-main { color: var(--color-primary); }
 `;
 
 export interface DraggableWindowOptions {
