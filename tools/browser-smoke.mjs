@@ -165,10 +165,26 @@ async function checkCombatLayout() {
       const combatRoot = document.querySelector('.hud-combat-root.active');
       const shelf = rect(combatRoot);
       if (!insideViewport(shelf)) errors.push('combat root outside viewport');
+      const railEls = [...combatRoot.querySelectorAll('.hud-rail')].filter(visible);
+      const rails = railEls.map(rect);
+      for (const rail of rails) if (!insideViewport(rail)) errors.push('combat rail outside viewport: ' + rail.id);
       const shelfIds = ['hud-vessel-status', 'hud-orbit', 'burn-management-panel', 'hud-enemies', 'hud-target'];
       const shelfPanels = shelfIds.map((id) => document.getElementById(id)).filter(visible).map(rect);
       for (const panel of shelfPanels) {
-        if (!insideViewport(panel)) errors.push('outside combat root: ' + panel.id);
+        if (panel.left < -0.5 || panel.right > innerWidth + 0.5 || panel.width > innerWidth + 0.5) {
+          errors.push('combat panel horizontal overflow: ' + panel.id);
+        }
+      }
+      for (const railEl of railEls) {
+        const children = [...railEl.children].filter(visible);
+        if (railEl.scrollHeight > railEl.clientHeight && children.length > 0) {
+          railEl.scrollTop = railEl.scrollHeight;
+          const bottom = railEl.getBoundingClientRect().bottom;
+          if (children.at(-1).getBoundingClientRect().bottom > bottom + 1) {
+            errors.push('combat rail cannot scroll to final panel: ' + railEl.id);
+          }
+          railEl.scrollTop = 0;
+        }
       }
       for (let i = 0; i < shelfPanels.length; i++) {
         for (let j = i + 1; j < shelfPanels.length; j++) {
@@ -222,12 +238,27 @@ async function checkCombatLayout() {
       if (hint) {
         hint.style.opacity = '1';
         const h = rect(hint);
-        for (const panel of [...shelfPanels, ...floating]) if (overlaps(h, panel)) errors.push('hint overlaps ' + panel.id);
+        for (const panel of shelfPanels) {
+          const panelEl = document.getElementById(panel.id);
+          const railEl = panelEl?.closest('.hud-rail');
+          if (!railEl) continue;
+          const rail = rect(railEl);
+          const clipped = {
+            ...panel,
+            left: Math.max(panel.left, rail.left),
+            right: Math.min(panel.right, rail.right),
+            top: Math.max(panel.top, rail.top),
+            bottom: Math.min(panel.bottom, rail.bottom),
+          };
+          if (clipped.left < clipped.right && clipped.top < clipped.bottom && overlaps(h, clipped)) {
+            errors.push('hint overlaps visible ' + panel.id);
+          }
+        }
+        for (const item of floating) if (overlaps(h, item)) errors.push('hint overlaps ' + item.id);
         hint.style.opacity = '';
       }
       const chrome = document.getElementById('hud-chrome');
       const chromeRect = visible(chrome) ? rect(chrome) : null;
-      const railEls = [...combatRoot.querySelectorAll('.hud-rail')].filter(visible);
       if (chromeRect) {
         for (const rail of railEls) {
           if (rail.getBoundingClientRect().top < chromeRect.bottom - 1) errors.push('combat rail overlaps HUD chrome: ' + rail.id);
@@ -239,7 +270,7 @@ async function checkCombatLayout() {
       }
       const tiny = tinyInteractiveText(document.getElementById('hud'));
       if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
-      return { errors, shelf, shelfPanels, floating, chromeRect, tiny };
+      return { errors, shelf, rails, shelfPanels, floating, chromeRect, tiny };
     })()`);
     if (layout.errors.length) {
       throw new Error(`Combat layout failed at ${viewport.name} ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
