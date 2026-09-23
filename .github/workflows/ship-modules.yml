@@ -67,7 +67,18 @@ jobs:
           git add assets-src/ship-modules src/assets/models/shipModules.json
           if git diff --cached --quiet; then
             echo "ship module assets are already current"
-          else
-            git commit -m "build: bake ship module assets [ship modules baked] [skip ci]"
-            git push origin HEAD:main
+            exit 0
           fi
+
+          git commit -m "build: bake ship module assets [ship modules baked] [skip ci]"
+          git fetch origin main
+
+          # Unrelated commits may land while Blender is running. Rebase over them,
+          # but never publish assets produced from an obsolete generator revision.
+          if ! git diff --quiet "$GITHUB_SHA"..origin/main --             tools/model-builder/blender/build-ship-modules.py             tools/model-builder/build-ship-modules.mjs             tools/model-builder/export-models.mjs             tools/model-builder/ship-modules.mjs             .github/workflows/ship-modules.yml; then
+            echo "ship module generator changed during this run; a newer run will bake it"
+            exit 0
+          fi
+
+          git rebase origin/main
+          git push origin HEAD:main
