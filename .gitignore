@@ -12,6 +12,7 @@ docs/
 .venv-protein-builder/
 __pycache__/
 .cloud-lab/
+.cloud-lab-shots/
 assets-src/climate/
 .earth-surface/raw/
 .earth-surface/raw-*/
