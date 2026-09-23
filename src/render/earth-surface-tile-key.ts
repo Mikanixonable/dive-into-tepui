@@ -1,14 +1,11 @@
 // 地表タイルの固定レイアウトと、周期境界を含むキー操作を定義する。
 import * as THREE from 'three/webgpu';
-
-export const EARTH_TILE_MIN_Z = 5;
-export const EARTH_TILE_MAX_Z = 7;
-export const EARTH_TILE_TEXELS = 256;
-export const EARTH_TILE_GUTTER = 2;
-export const EARTH_TILE_EXTENT = EARTH_TILE_TEXELS + 2 * EARTH_TILE_GUTTER;
-// 親子fadeを含むGPU配列の物理層数。WebGPUの最低保証256層内に収める。
-export const EARTH_TILE_LAYERS = 96;
-export const EARTH_BASE_LAYER = 255;
+import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from './earth-surface-layout';
+export {
+  EARTH_BASE_COLOR_Z, EARTH_BASE_LAYER, EARTH_GLOBAL_TILE_COUNT,
+  EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z,
+  EARTH_TILE_MIN_Z, EARTH_TILE_TEXELS, earthSurfaceTileCount,
+} from './earth-surface-layout';
 
 export interface EarthTileKey {
   readonly z: number;

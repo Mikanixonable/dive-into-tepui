@@ -48,9 +48,9 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
         raise RuntimeError(f"source manifestがありません: {manifest_path}")
     source_hash = bake._fetch.contract_hash(manifest)
     climate_paths = [f"climate/{month:02d}.png" for month in range(1, 13)]
-    coverage_kind = "complete" if max_zoom == 7 else "sparse"
+    coverage_kind = "complete" if max_zoom == bake.EARTH_TILE_MAX_Z else "sparse"
     result_manifest = bake.global_manifest(manifest, "sources.json", source_hash,
-                                           climate_paths, coverage_kind, 7, "source")
+                                           climate_paths, coverage_kind, max_zoom, "source")
     try:
         renderer = create_real_renderer(manifest, raw_root)
         climate_values = renderer.climate_maps()
@@ -119,12 +119,12 @@ def main():
     parser.add_argument("--manifest", default="../../assets-src/earth-surface/sources.json")
     parser.add_argument("--output", default="../../.earth-surface/bundle")
     parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--max-zoom", type=int, default=7)
+    parser.add_argument("--max-zoom", type=int, default=bake.EARTH_TILE_MAX_Z)
     args = parser.parse_args()
     if type(args.workers) is not int or args.workers < 1:
         parser.error("--workersは1以上の整数が必要です")
     if type(args.max_zoom) is not int or not bake.EARTH_BASE_COLOR_Z <= args.max_zoom <= bake.EARTH_TILE_MAX_Z:
-        parser.error("--max-zoomは4..7の整数が必要です")
+        parser.error(f"--max-zoomは{bake.EARTH_BASE_COLOR_Z}..{bake.EARTH_TILE_MAX_Z}の整数が必要です")
     manifest = bake._fetch.load_manifest(args.manifest)
     _write_parallel(manifest, args.manifest, args.raw_root, args.output, args.workers,
                     args.max_zoom)
