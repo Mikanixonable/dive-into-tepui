@@ -137,7 +137,7 @@ async function applyViewport({ width, height }) {
 }
 
 async function clearViewport() {
-  await clearViewport();
+  await devTools.send('Emulation.clearDeviceMetricsOverride');
   // innerWidth と fixed/absolute HUD の再レイアウトを同じフレームへ揃える。
   await sleep(100);
 }
