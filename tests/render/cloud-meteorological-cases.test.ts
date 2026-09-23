@@ -80,12 +80,23 @@ export function register(): void {
     assert.equal(measurement(result, 'released-ice-cohorts').status, 'pass');
     assert.equal(measurement(result, 'released-ice-mass').status, 'pass');
     assert.equal(measurement(result, 'released-ice-spread').status, 'pass');
+    assert.equal(measurement(result, 'continuous-release-distribution').status, 'blocked');
     assert.ok(typeof result.controls.representativeReleaseTimeSeconds === 'number');
     assert.ok(result.controls.representativeReleaseTimeSeconds > 0);
     assert.ok(Number(result.controls.iceCohortCount) >= 16);
     assert.ok(Number(result.controls.actualIceCohortSpreadM) > 0);
     assert.ok(Math.abs(Number(result.controls.reconstructedIceCohortMassKgM2)
       - Number(result.controls.eventRemainingIceKgM2)) <= 1e-12);
+    assert.equal(result.controls.continuousReleaseOracleIntervals, 32_768);
+    assert.equal(result.controls.continuousReleasePlanMaximumSpatialSpacingM, 500);
+    assert.ok(Number.isFinite(Number(result.controls.continuousReleaseQuadratureErrorM)));
+    assert.ok(Number.isFinite(Number(result.controls.continuousReleaseCentroidQuadratureBoundM)));
+    const convergenceErrors = String(result.controls.continuousReleaseConvergenceErrorsM)
+      .split(',').map(Number);
+    assert.equal(convergenceErrors.length, 4);
+    assert.ok(convergenceErrors[1]! < convergenceErrors[0]!);
+    assert.ok(convergenceErrors[2]! < convergenceErrors[1]!);
+    assert.ok(convergenceErrors[3]! < convergenceErrors[2]!);
 
     evaluateMeteorologicalCase('C1');
     assert.deepEqual(evaluateMeteorologicalCase('C2'), result);
