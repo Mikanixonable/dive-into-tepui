@@ -56,6 +56,8 @@ async function main() {
       "window.renderLab.measureCloudPreparation('earth', [3600, 86400, -3600])",
     );
     const cloudResourceBudget = await devTools.evaluate('window.renderLab.cloudResourceBudget');
+    console.log(`cloud resource budget: ${JSON.stringify(cloudResourceBudget)}`);
+    console.log(`cloud preparation: ${JSON.stringify(cloudPreparation)}`);
     const jsHeap = await devTools.evaluate(`(() => {
       const memory = performance.memory;
       return memory ? {
