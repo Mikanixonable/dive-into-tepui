@@ -35,7 +35,7 @@ export const MAP_PANEL_STYLE = `
 }
 @media ${MQ_COMPACT} {
   #hud .hud-map-root.active .w-group { gap: var(--space-2); }
-  #hud .hud-map-root.active .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xs); }
+  #hud .hud-map-root.active .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
 }
 
 /* 表示設定パネル(#hud-view-options)のコンテナ・タイトル・本体と、タブ本体。 */
@@ -381,8 +381,8 @@ export const MAP_PANEL_STYLE = `
   display: grid; gap: var(--space-1); margin-bottom: var(--space-3);
 }
 #hud-plan .plan-node-hero strong {
-  color: var(--text-strong); font-size: var(--font-xl);
-  font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-title);
+  color: var(--text-strong); font-size: var(--font-2xl);
+  font-variant-numeric: tabular-nums; letter-spacing: -.03em;
 }
 #hud-plan .plan-state .editorial-state-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);

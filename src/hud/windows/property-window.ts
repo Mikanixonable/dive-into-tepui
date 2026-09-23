@@ -80,10 +80,10 @@ const STYLE = `
   grid-column: 1 / -1; padding-block: var(--space-1) var(--space-2);
 }
 #hud .prop-window-summary .prop-window-row-hero .prop-window-row-value {
-  font-size: var(--font-2xl);
+  font-size: var(--font-3xl);
 }
 #hud .prop-window-summary .prop-window-row-major .prop-window-row-value {
-  font-size: var(--font-l);
+  font-size: var(--font-xl);
 }
 #hud .prop-window-metrics {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));

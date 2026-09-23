@@ -15,11 +15,11 @@ export const HELP_PANEL_STYLE = `
 #hud-help .help-heading { display: grid; gap: var(--space-1); min-width: 0; }
 #hud-help .help-heading > div:first-child { display: flex; align-items: baseline; gap: var(--space-2); }
 #hud-help .help-kicker {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .12em;
 }
 #hud-help .help-header h3 {
-  margin: 0; color: var(--text-strong); font-size: var(--font-xl);
-  font-weight: 650; letter-spacing: var(--tracking-title);
+  margin: 0; color: var(--text-strong); font-size: var(--font-2xl);
+  font-weight: 650; letter-spacing: -.03em;
 }
 #hud-help .help-context { margin-top: var(--space-1); }
 #hud-help .help-tabs {
