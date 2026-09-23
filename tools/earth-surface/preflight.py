@@ -20,6 +20,11 @@ _spec.loader.exec_module(_fetch)
 
 MODULES = ("osgeo", "netCDF4", "shapefile", "PIL")
 COMMANDS = ("gdalinfo", "ogrinfo", "ncdump")
+_LAYOUT = json.loads(Path(__file__).with_name("layout.json").read_text())
+
+
+def global_tile_count():
+    return sum(2 ** (2 * z + 1) for z in range(_LAYOUT["minZoom"], _LAYOUT["maxZoom"] + 1))
 
 
 def regions_for(source):
@@ -108,8 +113,9 @@ def dependency_report():
 
 def estimate(manifest, probes, raw_root):
     """入力実測値と、圧縮前に必ず必要な出力容量を分けて見積もる。"""
-    tile_count = 43008
-    terrain_payload = 32 + (256 + 2 * manifest["outputGrid"]["gutter"]) ** 2 * 4
+    tile_count = global_tile_count()
+    terrain_extent = _LAYOUT["tileTexels"] + 2 * _LAYOUT["gutter"]
+    terrain_payload = _LAYOUT["terrainHeaderBytes"] + terrain_extent ** 2 * _LAYOUT["terrainChannels"]
     terrain_bytes = tile_count * terrain_payload + 2 * terrain_payload
     input_bytes = sum(item.get("contentLengthBytes", 0) for item in probes)
     raw_path = Path(raw_root)
