@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 
 const MAX_ATTEMPTS = 3;
+const suite = process.argv.includes('--suite');
 const RETRYABLE = [
   "Failed to execute 'createBuffer' on 'GPUDevice'",
   'Instance dropped in popErrorScope',
@@ -10,7 +11,7 @@ const RETRYABLE = [
 function runOnce() {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ['tools/browser-smoke.mjs'], {
-      env: process.env,
+      env: suite ? { ...process.env, SMOKE_LAYOUT_ONLY: '1', SMOKE_LAYOUT_SUITE: '1' } : process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
