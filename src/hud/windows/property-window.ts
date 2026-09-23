@@ -5,6 +5,7 @@
 // ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置くため、
 // `#hud, #hud *` の margin/padding リセットに勝てるよう全セレクタを `#hud` で始める。
 import { injectOnce } from '../inject-style';
+import { MQ_COMPACT } from '../breakpoints';
 import type { OverlayManager } from '../overlay-manager';
 import { DraggableWindow } from './draggable-window';
 import { PropertyWindowRows } from './property-window-rows';
@@ -20,7 +21,9 @@ const STYLE = `
   width: 100%; background: var(--glass-control); border: 0; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
-#hud .dg-window.property-window { width: 560px; max-width: 560px; }
+#hud .dg-window.property-window {
+  width: min(560px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+}
 #hud .property-window .dg-window-header {
   align-items: flex-start; padding-bottom: var(--space-4);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
@@ -29,19 +32,19 @@ const STYLE = `
 #hud .prop-window-kind {
   display: flex; align-items: baseline; gap: var(--space-2);
   padding: var(--space-3) var(--space-5) var(--space-2);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .11em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 #hud .prop-window-kind-code {
-  color: var(--color-primary); font-weight: 700; letter-spacing: .16em;
+  color: var(--color-primary); font-weight: 700; letter-spacing: var(--tracking-code);
 }
 #hud .prop-window-kind-label { color: var(--text-dim); }
 #hud .property-window .dg-window-title-main {
   color: var(--text-strong); font-size: var(--font-xl); font-weight: 650;
-  letter-spacing: -.025em;
+  letter-spacing: var(--tracking-title);
 }
 #hud .property-window .dg-window-title-sub {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
@@ -50,7 +53,7 @@ const STYLE = `
   color: var(--text); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 9%, transparent);
 }
 #hud .prop-window-row-label {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); text-transform: uppercase;
 }
 #hud .prop-window-row-value {
   min-width: 0; overflow-wrap: anywhere; color: var(--text);
@@ -67,20 +70,20 @@ const STYLE = `
   gap: var(--space-1); padding: 0; box-shadow: none;
 }
 #hud .prop-window-summary .prop-window-row-label {
-  order: 2; color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .09em;
+  order: 2; color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud .prop-window-summary .prop-window-row-value {
   order: 1; text-align: left; color: var(--text-strong);
-  font-weight: 650; line-height: 1; letter-spacing: -.035em;
+  font-weight: 650; line-height: 1; letter-spacing: var(--tracking-title);
 }
 #hud .prop-window-summary .prop-window-row-hero {
   grid-column: 1 / -1; padding-block: var(--space-1) var(--space-2);
 }
 #hud .prop-window-summary .prop-window-row-hero .prop-window-row-value {
-  font-size: var(--font-3xl);
+  font-size: var(--font-2xl);
 }
 #hud .prop-window-summary .prop-window-row-major .prop-window-row-value {
-  font-size: var(--font-xl);
+  font-size: var(--font-l);
 }
 #hud .prop-window-metrics {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -129,7 +132,7 @@ const STYLE = `
   display: flex; align-items: center; gap: var(--space-2);
   margin: var(--space-3) var(--space-2) var(--space-1);
   color: var(--text-dim); content: 'ACTIONS';
-  font-size: var(--font-xxs); letter-spacing: .1em;
+  font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud .prop-window-items:not(:empty)::after { content: ''; }
 #hud .prop-window-item {
@@ -145,7 +148,7 @@ const STYLE = `
 #hud .prop-window-related-title {
   margin-inline: var(--space-2); padding: var(--space-2) 0;
   color: var(--text-dim); opacity: 1; font-size: var(--font-xxs);
-  letter-spacing: .1em; cursor: pointer; text-transform: uppercase;
+  letter-spacing: var(--tracking-label); cursor: pointer; text-transform: uppercase;
 }
 #hud .prop-window-related-title::after { pointer-events: none; }
 #hud .prop-window-related-title:hover { color: var(--color-primary-hover); }
@@ -192,7 +195,7 @@ const STYLE = `
 #hud .property-window.property-window-monitor .prop-window-controls {
   display: none !important;
 }
-@media (max-width: 640px) {
+@media ${MQ_COMPACT} {
   #hud .dg-window.property-window { width: 100%; max-width: 100%; }
   #hud .prop-window-summary,
   #hud .prop-window-metrics { grid-template-columns: minmax(0, 1fr); }
