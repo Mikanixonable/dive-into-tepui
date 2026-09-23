@@ -23,11 +23,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
       - run: npm run verify:ui-style
+      - run: npm run verify:hud-layout
       - run: npm run lint
       - run: npm run check:boundaries
       - run: npm run typecheck
