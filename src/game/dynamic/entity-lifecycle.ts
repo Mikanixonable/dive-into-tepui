@@ -19,25 +19,9 @@ import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { DynamicSimulationRoster, SimulationLifecycle } from './dynamic-simulation-participant';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 
-// pending spawn が実体化可能かを判定する条件関数。待機理由は本関数の判定外にカプセル化する。
-export type EntitySpawnGate = () => boolean;
-
-// pending spawn 一件の内容。汎用 Options/Params ではなく、生成順序に必要な値だけを持つ。
-export interface PendingEntitySpawn {
-  readonly gate: EntitySpawnGate;
-  readonly build: () => DynamicEntity;
-  readonly onSpawned?: () => void;
-}
-
 // 追加を担当する named port。
 export interface EntityAdditionPort {
   add(entity: DynamicEntity): void;
-}
-
-// pending spawn の待機と処理を担当する named port。
-export interface PendingEntitySpawnPort {
-  queuePendingSpawn(spawn: PendingEntitySpawn): void;
-  processPendingSpawns(): void;
 }
 
 // 死亡をエンティティ一覧からの除去へ進める前の境界。死亡判定そのものは DynamicEntity/Motion が持つ。
@@ -52,7 +36,7 @@ export interface EntityRemovalPort {
 
 // DynamicSystem が後続配線で実装を委譲できる寿命ポート。メソッド順が一体の寿命の流れを示す。
 export interface EntityLifecyclePort
-  extends EntityAdditionPort, PendingEntitySpawnPort, EntityDeathPort, EntityRemovalPort {}
+  extends EntityAdditionPort, EntityDeathPort, EntityRemovalPort {}
 
 function readyToSpawn(record: SpawnRecord): boolean {
   const gate: SpawnGate | null = record.kind === 'protein-enemy'
@@ -70,7 +54,6 @@ function isEnemyRecord(record: SpawnRecord): boolean {
 export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, DynamicSimulationRoster, SimulationLifecycle {
   private readonly entities: DynamicEntity[] = [];
   private readonly pendingSpawns: SpawnRecord[] = [];
-  private readonly deferredSpawns: PendingEntitySpawn[] = [];
   private collectionRevisionValue = 0;
   private capsUncheckedSinceAdd = false;
 
@@ -104,32 +87,12 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     this.bumpCollectionRevision();
   }
 
-  public queuePendingSpawn(spawn: PendingEntitySpawn): void {
-    if (spawn.gate()) {
-      const entity = spawn.build();
-      this.add(entity);
-      spawn.onSpawned?.();
-      return;
-    }
-    this.deferredSpawns.push(spawn);
-  }
-
   public spawnWhenReady(record: SpawnRecord): void {
     if (readyToSpawn(record)) this.materialize(record);
     else this.pendingSpawns.push(record);
   }
 
-  public processPendingSpawns(): void {
-    let deferredWrite = 0;
-    for (const spawn of this.deferredSpawns) {
-      if (spawn.gate()) {
-        this.add(spawn.build());
-        spawn.onSpawned?.();
-      } else {
-        this.deferredSpawns[deferredWrite++] = spawn;
-      }
-    }
-    this.deferredSpawns.length = deferredWrite;
+  private processPendingSpawns(): void {
     if (this.pendingSpawns.length === 0) return;
     let w = 0;
     for (const record of this.pendingSpawns) {
