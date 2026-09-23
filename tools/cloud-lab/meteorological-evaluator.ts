@@ -36,6 +36,7 @@ const ICE_NUMBER_CONCENTRATION_PER_M3 = 1e5;
 const ICE_EXTINCTION_EFFICIENCY = 2;
 const SAMPLE_DURATION_SECONDS = 3_600;
 const SAMPLE_MAX_STEP_SECONDS = 30;
+const C1_EXPECTED_INTEGRATED_MASS_KG = 0.009;
 
 export type FixtureComparison = 'absolute-error' | 'greater-than' | 'less-than' | 'non-negative';
 
@@ -56,6 +57,32 @@ export interface MeteorologicalCaseEvaluation {
   readonly generatedCloudImageFixtureApplied: false;
   readonly controls: Readonly<Record<string, number | string | boolean>>;
   readonly measurements: readonly FixtureMeasurementResult[];
+}
+
+export interface AreaWeightedMassSample {
+  readonly areaWeightM2: number;
+  readonly massKgM2: number;
+}
+
+// 面積重み付き質量を検査し、有限な総質量だけを返す。
+export function areaWeightedMassKg(samples: readonly AreaWeightedMassSample[]): number {
+  for (const sample of samples) {
+    if (!Number.isFinite(sample.areaWeightM2) || sample.areaWeightM2 < 0) {
+      throw new RangeError('areaWeightM2 must be finite and non-negative');
+    }
+    if (!Number.isFinite(sample.massKgM2) || sample.massKgM2 < 0) {
+      throw new RangeError('massKgM2 must be finite and non-negative');
+    }
+  }
+  const totalMassKg = samples.reduce((total, sample) => {
+    const weightedMassKg = sample.areaWeightM2 * sample.massKgM2;
+    const nextTotalMassKg = total + weightedMassKg;
+    if (!Number.isFinite(weightedMassKg) || !Number.isFinite(nextTotalMassKg)) {
+      throw new RangeError('area-weighted mass total must be finite');
+    }
+    return nextTotalMassKg;
+  }, 0);
+  return totalMassKg;
 }
 
 interface EnvironmentControls {
@@ -333,17 +360,14 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
   const maximumTransportStepSeconds = 5;
   const initialLiquidMassKgM2 = 0.00025;
   const initialIceMassKgM2 = 0.00075;
-  const initialMassKgM2 = initialLiquidMassKgM2 + initialIceMassKgM2;
   const blobPoints = [
-    { direction: norm(v3(-0.018, -0.009, 1)), areaWeightM2: 1 },
-    { direction: norm(v3(-0.009, 0.014, 1)), areaWeightM2: 2 },
-    { direction: norm(v3(0.002, -0.016, 1)), areaWeightM2: 3 },
-    { direction: norm(v3(0.012, 0.011, 1)), areaWeightM2: 2 },
-    { direction: norm(v3(0.021, -0.004, 1)), areaWeightM2: 1 },
+    { direction: norm(v3(-0.018, -0.009, 1)), areaWeightM2: 1, initialMassKgM2: 0.0006 },
+    { direction: norm(v3(-0.009, 0.014, 1)), areaWeightM2: 2, initialMassKgM2: 0.0008 },
+    { direction: norm(v3(0.002, -0.016, 1)), areaWeightM2: 3, initialMassKgM2: 0.001 },
+    { direction: norm(v3(0.012, 0.011, 1)), areaWeightM2: 2, initialMassKgM2: 0.0012 },
+    { direction: norm(v3(0.021, -0.004, 1)), areaWeightM2: 1, initialMassKgM2: 0.0014 },
   ];
-  const totalAreaWeightM2 = blobPoints.reduce((total, point) => total + point.areaWeightM2, 0);
-  const expectedIntegratedMassKg = totalAreaWeightM2 * initialMassKgM2;
-  let transportedIntegratedMassKg = 0;
+  const transportedMassSamples: AreaWeightedMassSample[] = [];
   let maximumTrajectoryErrorM = 0;
   let maximumRotationAngleErrorRad = 0;
   const windAt = (directionUnitVector: Vec3, geometricHeightM: number) => ({
@@ -365,19 +389,24 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
       sourcePosition: { directionUnitVector: point.direction, geometricHeightM: heightM },
       supplyActive: false,
       mass: {
-        initialKgM2: initialMassKgM2,
+        initialKgM2: point.initialMassKgM2,
         suppliedKgM2: 0,
         lostKgM2: 0,
-        liquidKgM2: initialLiquidMassKgM2,
-        iceKgM2: initialIceMassKgM2,
+        liquidKgM2: point.initialMassKgM2 * initialLiquidMassKgM2
+          / (initialLiquidMassKgM2 + initialIceMassKgM2),
+        iceKgM2: point.initialMassKgM2 * initialIceMassKgM2
+          / (initialLiquidMassKgM2 + initialIceMassKgM2),
       },
       iceRelease: {
         id: `${eventId}:ice`,
         parentEventId: eventId,
-        releasedKgM2: initialIceMassKgM2,
-        remainingKgM2: initialIceMassKgM2,
+        releasedKgM2: point.initialMassKgM2 * initialIceMassKgM2
+          / (initialLiquidMassKgM2 + initialIceMassKgM2),
+        remainingKgM2: point.initialMassKgM2 * initialIceMassKgM2
+          / (initialLiquidMassKgM2 + initialIceMassKgM2),
         meanReleaseTimeSeconds: durationSeconds / 2,
-        releaseRateKgM2S: initialIceMassKgM2 / durationSeconds,
+        releaseRateKgM2S: point.initialMassKgM2 * initialIceMassKgM2
+          / ((initialLiquidMassKgM2 + initialIceMassKgM2) * durationSeconds),
         releaseStartTimeSeconds: 0,
         releaseEndTimeSeconds: durationSeconds,
         sublimationRatePerSecond: 0,
@@ -391,7 +420,10 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
       windAt,
       1,
     );
-    transportedIntegratedMassKg += point.areaWeightM2 * material.totalMassKgM2;
+    transportedMassSamples.push({
+      areaWeightM2: point.areaWeightM2,
+      massKgM2: material.totalMassKgM2,
+    });
 
     const expectedDirection = rotateAroundAxis(point.direction, rotationAxisUnitVector, rotationAngleRad);
     if (material.parent === null) throw new Error('C1 blob point must retain its liquid parent');
@@ -405,8 +437,9 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
         distanceErrorM(cohort.directionUnitVector, expectedDirection, radiusM));
     }
   }
-  const relativeMassError = Math.abs(transportedIntegratedMassKg - expectedIntegratedMassKg)
-    / expectedIntegratedMassKg;
+  const transportedIntegratedMassKg = areaWeightedMassKg(transportedMassSamples);
+  const relativeMassError = Math.abs(transportedIntegratedMassKg - C1_EXPECTED_INTEGRATED_MASS_KG)
+    / C1_EXPECTED_INTEGRATED_MASS_KG;
   return {
     fixture: 'C1',
     cpuDiagnosticsApplied: true,
@@ -418,18 +451,19 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
       sphereRadiusM: EARTH_RADIUS_M,
       initialLiquidMassKgM2,
       initialIceMassKgM2,
-      areaWeightedBlobMassKg: expectedIntegratedMassKg,
+      areaWeightedBlobMassKg: C1_EXPECTED_INTEGRATED_MASS_KG,
       transportedAreaWeightedMassKg: transportedIntegratedMassKg,
+      maximumAnalyticTrajectoryErrorM: maximumTrajectoryErrorM,
       materialPointCount: blobPoints.length,
       maximumTransportStepSeconds,
     },
     measurements: [
-      compare('trajectory', maximumTrajectoryErrorM, 'm', 0, 0.01, 'absolute-error',
-        'Every liquid and ice material point is compared with an independently evaluated Rodrigues axis rotation.'),
+      blocked('trajectory', 'm',
+        'The standard near-range minimum sample spacing is not fixed in the fixture, so the planned quarter-spacing tolerance cannot be evaluated.'),
       compare('rotation-angle', maximumRotationAngleErrorRad, 'rad', 0, 1e-9, 'absolute-error',
         'The transported material point phase about the prescribed rotation axis is compared with angular velocity times elapsed time.'),
       compare('mass', relativeMassError, '1', 0, METEOROLOGICAL_ERROR_FLOORS.relativeMass, 'absolute-error',
-        'Area-weighted liquid and ice mass is integrated over the finite blob and compared with independently fixed initial column mass.'),
+        'Heterogeneous material columns are area-integrated after advection and compared with an independently fixed quadrature total.'),
     ],
   };
 }
