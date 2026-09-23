@@ -17,7 +17,7 @@ try {
   assert.ok(checked.capacity.measuredBytes > checked.bytes);
   assert.equal(checked.capacity.measuredBytes, staged.capacity.measuredBytes);
   assert.equal(staged.maxLod, 5);
-  assert.equal(staged.declaredMaxLod, 7);
+  assert.equal(staged.declaredMaxLod, 8);
   assert.equal(staged.tileCount, 1);
   assert.deepEqual(staged.missingManifest, []);
   assert.equal(staged.capacity.withinBudget, true);
@@ -49,11 +49,11 @@ try {
   await cp(staged.target, partialInput, { recursive: true });
   const partialManifestPath = join(partialInput, 'earth-surface.json');
   const partialManifest = JSON.parse(await readFile(partialManifestPath, 'utf8'));
-  partialManifest.coverage = { kind: 'complete', minZoom: 5, maxZoom: 7, expectedTiles: 43008 };
+  partialManifest.coverage = { kind: 'complete', minZoom: 5, maxZoom: 8, expectedTiles: 174080 };
   await writeFile(partialManifestPath, `${JSON.stringify(partialManifest)}\n`);
   await assert.rejects(
     () => stagePages({ inputRoot: partialInput, outputRoot: join(root, 'partial-output'), maxBytes: 4 * 1024 * 1024 }),
-    /partial production coverage.*1 tiles.*43008/,
+    /partial production coverage.*1 tiles.*174080/,
   );
 
   const missingInput = join(root, 'missing-input');
