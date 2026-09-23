@@ -6,7 +6,7 @@ import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
-import { restoreShipAssembly } from '../../src/game/ship/ship-save';
+import { restoreShipAssembly, serializeShipAssembly } from '../../src/game/ship/ship-save';
 import { sameTransform, sideSlotRotation } from '../../src/game/ship/ship-assembly-transform';
 import { test } from '../harness';
 
@@ -336,5 +336,84 @@ export function register(): void {
     const worldMuzzleZ = weaponTransform.position.z + 0.55;
     // 物理システム側の PLAYER_MUZZLE_OFFSETS (z = 2.55m) と一致
     assert.ok(Math.abs(worldMuzzleZ - 2.55) < 1e-9);
+  });
+
+  test('ship assembly: 側面接続された dock/port 同士のドッキングで逆流エッジ (sideReversed) を正しく保持し、合体・保存復元・切り離しができる', () => {
+    // 基地側: tank の側面に dock
+    const base = new ShipAssembly(SHIP_MODULE_CATALOG, false);
+    base.addRoot(module('cockpit-standard', 'base-cockpit'));
+    base.append(module('tank-3-main', 'main-tank'));
+    base.connectSide(module('dock-standard', 'base-dock'), 'main-tank', 'side:+x');
+
+    // 船側: cockpit の側面に docking_port
+    const ship = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    ship.addRoot(module('cockpit-standard', 'ship-cockpit'));
+    ship.connectSide(module('docking-port-standard', 'ship-port'), 'ship-cockpit', 'side:-x');
+    ship.append(module('tank-3-main', 'ship-tank'));
+    ship.append(module('thruster-standard', 'ship-thruster'));
+
+    // 方向1: 船 (guest) が 基地 (host) へドッキング
+    {
+      const mergedA = base.clone().mergedAtDock(ship.clone(), 'base-dock', 'ship-port', 'guest');
+      assert.equal(mergedA.assembly.validate().valid, true);
+
+      // ship-port から ship-cockpit への逆流側面エッジが sideReversed: true かつ sideSlot: 'side:-x'
+      const mappedCockpitId = mergedA.moduleIds.get('ship-cockpit')!;
+      const mappedPortId = mergedA.moduleIds.get('ship-port')!;
+      const reversedEdgeA = mergedA.assembly.graph.find(e => e.childId === mappedCockpitId);
+      assert.ok(reversedEdgeA !== undefined);
+      assert.equal(reversedEdgeA.parentId, mappedPortId);
+      assert.equal(reversedEdgeA.kind, 'side');
+      assert.equal(reversedEdgeA.sideReversed, true);
+      assert.equal(reversedEdgeA.sideSlot, 'side:-x');
+
+      // セーブ＆ロードの検証
+      const serializedA = serializeShipAssembly(mergedA.assembly);
+      const restoredA = restoreShipAssembly(serializedA);
+      assert.equal(restoredA.validate().valid, true);
+      const restoredEdgeA = restoredA.graph.find(e => e.childId === mappedCockpitId);
+      assert.ok(restoredEdgeA !== undefined);
+      assert.equal(restoredEdgeA.sideReversed, true);
+      assert.equal(restoredEdgeA.sideSlot, 'side:-x');
+
+      // 分離 (splitAt) の検証
+      const [retainedA, detachedA] = mergedA.assembly.splitAt(mergedA.connectionId);
+      assert.equal(retainedA.validate().valid, true);
+      assert.equal(detachedA.validate().valid, true);
+      assert.ok(retainedA.module('base-dock') !== null);
+      assert.ok(detachedA.module(mappedPortId) !== null);
+    }
+
+    // 方向2: 基地 (guest) が 船 (host) へドッキング（基地側 dock から main-tank へ逆流）
+    {
+      const mergedB = ship.clone().mergedAtDock(base.clone(), 'ship-port', 'base-dock', 'guest_base');
+      assert.equal(mergedB.assembly.validate().valid, true);
+
+      // base-dock から main-tank への逆流側面エッジが sideReversed: true かつ sideSlot: 'side:+x'
+      const mappedTankId = mergedB.moduleIds.get('main-tank')!;
+      const mappedDockId = mergedB.moduleIds.get('base-dock')!;
+      const reversedEdgeB = mergedB.assembly.graph.find(e => e.childId === mappedTankId);
+      assert.ok(reversedEdgeB !== undefined);
+      assert.equal(reversedEdgeB.parentId, mappedDockId);
+      assert.equal(reversedEdgeB.kind, 'side');
+      assert.equal(reversedEdgeB.sideReversed, true);
+      assert.equal(reversedEdgeB.sideSlot, 'side:+x');
+
+      // セーブ＆ロードの検証
+      const serializedB = serializeShipAssembly(mergedB.assembly);
+      const restoredB = restoreShipAssembly(serializedB);
+      assert.equal(restoredB.validate().valid, true);
+      const restoredEdgeB = restoredB.graph.find(e => e.childId === mappedTankId);
+      assert.ok(restoredEdgeB !== undefined);
+      assert.equal(restoredEdgeB.sideReversed, true);
+      assert.equal(restoredEdgeB.sideSlot, 'side:+x');
+
+      // 分離 (splitAt) の検証
+      const [retainedB, detachedB] = mergedB.assembly.splitAt(mergedB.connectionId);
+      assert.equal(retainedB.validate().valid, true);
+      assert.equal(detachedB.validate().valid, true);
+      assert.ok(retainedB.module('ship-port') !== null);
+      assert.ok(detachedB.module(mappedDockId) !== null);
+    }
   });
 }
