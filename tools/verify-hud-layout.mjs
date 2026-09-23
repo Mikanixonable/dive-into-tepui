@@ -40,6 +40,23 @@ for (const relative of files) {
   }
 }
 
+// Top Bar / CAM reset / Help badge は skeleton の chrome grid が位置を所有する。
+ // 別スタイルから left/right/top/bottom/transform を当てると、レスポンシブ時にgrid配置を破壊する。
+ const chromeOwnedSelectors = ['#hud-topbar', '#hud-chase-reset', '#hud-help-badge'];
+ for (const relative of files) {
+   if (relative === skeletonFile) continue;
+   const text = fs.readFileSync(path.join(root, relative), 'utf8');
+   for (const css of cssTemplateBodies(text)) {
+     for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+       const selector = rule[1].trim();
+       if (!chromeOwnedSelectors.some((owned) => selector.includes(owned))) continue;
+       if (/(?:^|;)\s*(?:left|right|top|bottom|transform)\s*:/.test(rule[2])) {
+         violations.push(`${relative}: HUD chrome positioning belongs to skeleton-style.ts: ${selector.replace(/\s+/g, ' ')}`);
+       }
+     }
+   }
+ }
+ 
 // rail自身が唯一の通常スクロール所有者であることをソースでも保証する。
 // 大量リスト等の内部スクロールは panel root ではなく、その本文要素が所有する。
 if (!/#hud \.hud-rail\s*\{[\s\S]*?overflow-y:\s*auto/.test(skeleton)) {
