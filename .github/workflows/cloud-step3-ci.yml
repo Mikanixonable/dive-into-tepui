@@ -25,3 +25,5 @@ jobs:
       - run: npm run cloud-reconstruction:measure
       - run: npm run build
       - run: npm run cloud-baseline:measure
+        env:
+          CLOUD_BASELINE_PROFILE: smoke

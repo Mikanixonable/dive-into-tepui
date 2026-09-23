@@ -14,6 +14,12 @@ const modes = [
   { id: 'observed-standard', clouds: true, source: 'observed' },
 ];
 
+const profile = process.env.CLOUD_BASELINE_PROFILE === 'smoke' ? 'smoke' : 'full';
+const preparationTimes = profile === 'smoke' ? [3_600] : [3_600, 86_400, -3_600];
+const warmupFrames = profile === 'smoke' ? 1 : 6;
+const sampleFrames = profile === 'smoke' ? 2 : 30;
+const roundCount = profile === 'smoke' ? 1 : 2;
+
 async function main() {
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
@@ -53,7 +59,7 @@ async function main() {
     await devTools.evaluate("window.renderLab.setGraphicsOption('clouds', true)");
     await devTools.evaluate("window.renderLab.setGraphicsOption('cloudFieldSource', 'generated')");
     const cloudPreparation = await devTools.evaluate(
-      "window.renderLab.measureCloudPreparation('earth', [3600, 86400, -3600])",
+      `window.renderLab.measureCloudPreparation('earth', ${JSON.stringify(preparationTimes)})`,
     );
     const cloudResourceBudget = await devTools.evaluate('window.renderLab.cloudResourceBudget');
     console.log(`cloud resource budget: ${JSON.stringify(cloudResourceBudget)}`);
@@ -67,14 +73,16 @@ async function main() {
       } : null;
     })()`);
     const rounds = [];
-    for (let round = 0; round < 2; round += 1) {
+    for (let round = 0; round < roundCount; round += 1) {
       const order = round === 0 ? modes : [...modes].reverse();
       for (const mode of order) {
         await devTools.evaluate(`window.renderLab.setGraphicsOption('cloudFieldSource', ${JSON.stringify(mode.source)})`);
         await devTools.evaluate("window.renderLab.setGraphicsOption('cumulusDetail', 2)");
         await devTools.evaluate(`window.renderLab.setGraphicsOption('clouds', ${mode.clouds})`);
         const graphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
-        const measurement = await devTools.evaluate("window.renderLab.measure('earth')");
+        const measurement = await devTools.evaluate(
+          `window.renderLab.measure('earth', {}, ${warmupFrames}, ${sampleFrames})`,
+        );
         if (measurement.gpuSupported && !(measurement.gpuPassTotalMs.p95 > 0)) {
           throw new Error(`Timestamp queries returned no usable pass timings for ${mode.id}`);
         }
@@ -86,6 +94,7 @@ async function main() {
     if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
     const result = {
       recordedAt: new Date().toISOString(),
+      measurementProfile: profile,
       hostPlatform: process.platform,
       hostArchitecture: process.arch,
       device,
@@ -98,7 +107,9 @@ async function main() {
       jsHeap,
       rounds,
       gpuSupported: rounds.every((entry) => entry.measurement.gpuSupported),
-      interpretation: 'Cloud-off is a baseline of instrumented render passes, not a verified whole-frame B0. Cloud-on minus cloud-off is not a paired per-frame cost. cloudPreparation pairs a changed-time cold bake with an immediate same-time warm reuse; core baked bytes exclude source images and WebGPU driver overhead. Timestamp support alone does not establish target hardware suitability.',
+      interpretation: profile === 'smoke'
+        ? 'CI smoke profile executes all cloud source paths with too few frames for performance acceptance. Use the full profile on target hardware for budgets.'
+        : 'Cloud-off is a baseline of instrumented render passes, not a verified whole-frame B0. Cloud-on minus cloud-off is not a paired per-frame cost. cloudPreparation pairs a changed-time cold bake with an immediate same-time warm reuse; core baked bytes exclude source images and WebGPU driver overhead. Timestamp support alone does not establish target hardware suitability.',
     };
     writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
     console.log(`Wrote ${path.relative(root, outputPath)}`);
