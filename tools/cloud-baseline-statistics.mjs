@@ -146,7 +146,7 @@ export function qualifyObservedRenderBaseline(blocks, hardware) {
     standardNearRange250kmMediumFixture: true,
     requiredCompleteBlocks: REQUIRED_QUALIFICATION_BLOCKS,
     timestampQuery: true,
-    nonFallbackAdapter: true,
+    appleMetalAdapterWithNoReportedFallback: true,
     pairedObservedRenderP95IncreaseLimitMs: OBSERVED_RENDER_INCREASE_LIMIT_MS,
     repeatabilityNoiseBelowMs: OBSERVED_RENDER_INCREASE_LIMIT_MS,
     uncertaintyIntervalUsesOffOffNoiseP95: true,
@@ -158,8 +158,11 @@ export function qualifyObservedRenderBaseline(blocks, hardware) {
   if (hardware.timestampQueryAdvertised !== true) {
     return { status: 'indeterminate', scope, prerequisites, reason: 'Timestamp queries are not advertised by the adapter.' };
   }
-  if (hardware.adapterFallback !== false) {
-    return { status: 'indeterminate', scope, prerequisites, reason: 'The browser adapter must be a confirmed non-fallback GPU.' };
+  if (hardware.adapterFallback === true
+    || hardware.adapterVendor !== 'apple'
+    || typeof hardware.adapterArchitecture !== 'string'
+    || !hardware.adapterArchitecture.startsWith('metal')) {
+    return { status: 'indeterminate', scope, prerequisites, reason: 'The browser adapter must identify as an Apple Metal GPU and not report fallback.' };
   }
   if (!fixtureMatches) {
     return {
