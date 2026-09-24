@@ -26,6 +26,28 @@ PRODUCTS = (
     ("ABI-L2-ACTPF", "L2-ACTPF-M6", "Phase", "L2_ACTP", None),
     ("ABI-L2-ACMF", "L2-ACMF-M6", "ACM", "L2_ACM", None),
 )
+
+MINIMUM_COD_INDICATOR_SUPPORT_FRACTION = 0.5
+
+
+def cod_indicator_availability(area_weighted_coverage_fraction: float | None) -> dict[str, Any]:
+    """COD の暫定支持域と最終指標ゲートを区別する。"""
+    sufficient = (
+        area_weighted_coverage_fraction is not None
+        and area_weighted_coverage_fraction >= MINIMUM_COD_INDICATOR_SUPPORT_FRACTION
+    )
+    return {
+        "status": "provisional_support_sufficient" if sufficient else "blocked_insufficient_support",
+        "minimumValidSupportFraction": MINIMUM_COD_INDICATOR_SUPPORT_FRACTION,
+        "diagnosticSupportFraction": area_weighted_coverage_fraction,
+        "supportBasis": "pixel-centre area-weighted COD-good coverage on eligible ACM cloud pixels",
+        "finalMetricStatus": "blocked",
+        "finalMetricBlockers": [
+            "area_overlap_collocation_not_implemented",
+            "solar_angle_mask_not_applied",
+            "cloud_top_parallax_not_corrected",
+        ],
+    }
 FILENAME = re.compile(r"^OR_ABI-(?P<product>[A-Za-z0-9-]+)_(?P<satellite>G\d{2})_s(?P<start>\d{14})_.*\.nc$")
 
 
@@ -128,7 +150,7 @@ def summarize_cod_cloud_eligible_coverage(
     dqf_counts: Counter[int] = Counter()
     for value, count in zip(*np.unique(cod_dqf[cloud_children > 0], return_counts=True), strict=True):
         dqf_counts[int(value)] += int(np.sum(cloud_children[cod_dqf == value]))
-    return {
+    result = {
         "eligibleCloudPixelCount": denominator,
         "goodCodCloudPixelCount": numerator,
         "coverageFraction": numerator / denominator if denominator else None,
@@ -143,6 +165,8 @@ def summarize_cod_cloud_eligible_coverage(
         "aggregation": "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; count coverage and pixel-centre area-weighted coverage are diagnostics, not polygon area overlap",
         "limitations": "diagnostic only; not the final metric gate or area-overlap collocation; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately",
     }
+    result["indicatorAvailability"] = cod_indicator_availability(result["areaWeightedCoverageFraction"])
+    return result
 
 
 def grid_pixel_area_weights(
@@ -638,7 +662,7 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
         cloud_dqf_counts: Counter[str] = Counter()
         for diagnostic in diagnostics:
             cloud_dqf_counts.update(diagnostic["codDqfRawCountsOnEligibleCloudPixels"])
-        aggregate_result["cloudEligibleCoverageDiagnostic"] = {
+        aggregate_diagnostic = {
             **{key: diagnostics[0][key] for key in (
                 "denominatorDefinition", "numeratorDefinition", "areaDenominatorDefinition",
                 "areaNumeratorDefinition", "aggregation", "limitations",
@@ -654,6 +678,10 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
                 sorted(cloud_dqf_counts.items(), key=lambda item: int(item[0])),
             ),
         }
+        aggregate_diagnostic["indicatorAvailability"] = cod_indicator_availability(
+            aggregate_diagnostic["areaWeightedCoverageFraction"],
+        )
+        aggregate_result["cloudEligibleCoverageDiagnostic"] = aggregate_diagnostic
         for slot, summary in zip(aggregate_result["slots"], summaries, strict=True):
             diagnostic = summary.get("cloudEligibleCoverageDiagnostic")
             if isinstance(diagnostic, dict):
