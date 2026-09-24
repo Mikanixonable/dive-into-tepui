@@ -205,6 +205,10 @@ export function register(): void {
     ).status, 'indeterminate');
     assert.equal(qualifyObservedRenderBaseline(
       qualificationBlocks({ generated: 1, observed: 1 }),
+      { ...qualificationHardware, adapterArchitecture: undefined, adapterFallback: undefined },
+    ).status, 'indeterminate');
+    assert.equal(qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 1, observed: 1 }),
       { ...qualificationHardware, adapterFallback: undefined },
     ).status, 'pass');
     const diagnostic = qualifyObservedRenderBaseline(
