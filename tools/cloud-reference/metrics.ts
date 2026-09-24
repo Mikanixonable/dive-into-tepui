@@ -100,10 +100,14 @@ export function validateCloudReferenceManifest(value: unknown): readonly string[
 
   const metrics = value.metrics;
   const metricIds = new Set<string>();
+  const metricsById = new Map<string, unknown>();
   if (!Array.isArray(metrics) || metrics.length === 0) {
     errors.push('metrics must be a non-empty array');
   } else {
-    for (const metric of metrics) validateMetric(metric, metricIds, errors);
+    for (const metric of metrics) {
+      validateMetric(metric, metricIds, errors);
+      if (isRecord(metric) && isNonEmptyString(metric.id)) metricsById.set(metric.id, metric);
+    }
   }
 
   // 系列の識別子と、調整／検証日の分離を検査する。
@@ -115,7 +119,7 @@ export function validateCloudReferenceManifest(value: unknown): readonly string[
     const systems = new Set<string>();
     const families = new Map<string, { tuning: number; heldOut: number; days: Set<string> }>();
     for (const referenceCase of cases) {
-      validateCase(referenceCase, caseIds, systems, metricIds, errors);
+      validateCase(referenceCase, caseIds, systems, metricsById, errors);
       if (!isRecord(referenceCase) || !isString(referenceCase.family)
         || (referenceCase.split !== 'tuning' && referenceCase.split !== 'held-out')
         || !isRecord(referenceCase.series) || !isIsoUtc(referenceCase.series.start)) continue;
@@ -198,7 +202,7 @@ function validateCase(
   referenceCase: unknown,
   caseIds: Set<string>,
   systems: Set<string>,
-  metricIds: Set<string>,
+  metricsById: ReadonlyMap<string, unknown>,
   errors: string[],
 ): void {
   if (!isRecord(referenceCase)) {
@@ -231,9 +235,35 @@ function validateCase(
   validateSource(referenceCase.source, id, errors);
   validateObservation(referenceCase.observation, id, errors);
   if (!Array.isArray(referenceCase.metricIds) || referenceCase.metricIds.length === 0
-    || referenceCase.metricIds.some((metricId) => !isString(metricId) || !metricIds.has(metricId))
+    || referenceCase.metricIds.some((metricId) => !isString(metricId) || !metricsById.has(metricId))
     || new Set(referenceCase.metricIds).size !== referenceCase.metricIds.length) {
     errors.push(`case ${id} must reference unique declared metrics`);
+    return;
+  }
+  validateTemporalMetricSupport(referenceCase, id, metricsById, errors);
+}
+
+/** 時系列指標が宣言された最低フレーム数を系列内に持つか検査する。 */
+function validateTemporalMetricSupport(
+  referenceCase: Readonly<Record<string, unknown>>,
+  id: string,
+  metricsById: ReadonlyMap<string, unknown>,
+  errors: string[],
+): void {
+  if (!Array.isArray(referenceCase.metricIds) || !isRecord(referenceCase.series)
+    || !isIsoUtc(referenceCase.series.start) || !isIsoUtc(referenceCase.series.end)
+    || !isPositiveNumber(referenceCase.series.intervalMinutes)) return;
+  for (const metricId of referenceCase.metricIds) {
+    if (metricId !== 'lag-correlation') continue;
+    const metric = metricsById.get(metricId);
+    const coverage = isRecord(metric) ? metric.coveragePolicy : null;
+    if (!isRecord(coverage) || !isPositiveNumber(coverage.minimumValidFrames)) continue;
+    const intervalMilliseconds = referenceCase.series.intervalMinutes * 60_000;
+    const durationMilliseconds = Date.parse(referenceCase.series.end) - Date.parse(referenceCase.series.start);
+    const availableFrames = Math.floor(durationMilliseconds / intervalMilliseconds) + 1;
+    if (!Number.isInteger(availableFrames) || availableFrames < coverage.minimumValidFrames) {
+      errors.push(`case ${id} metric ${metricId} requires at least ${coverage.minimumValidFrames} frames in its declared series`);
+    }
   }
 }
 

@@ -197,6 +197,19 @@ export function register(): void {
     assert.ok(reference.cases.every((entry) => Object.keys(entry.observation.calibration).length >= 2));
   });
 
+  test('cloud reference metrics: temporal metrics require enough frames in the case series', () => {
+    const raw = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as {
+      cases: { id: string; metricIds: string[] }[];
+    };
+    const mawar = raw.cases.find((entry) => entry.id === 'tropical-cyclone-mawar-2023-05-25');
+    assert.ok(mawar);
+    assert.ok(!mawar.metricIds.includes('lag-correlation'));
+
+    mawar.metricIds.push('lag-correlation');
+    assert.ok(validateCloudReferenceManifest(raw).some((error) =>
+      error.includes('case tropical-cyclone-mawar-2023-05-25 metric lag-correlation requires at least 24 frames')));
+  });
+
   test('cloud reference metrics: four required families split independent systems into tuning and held-out series', () => {
     const reference = manifest();
     const requiredFamilies = [
