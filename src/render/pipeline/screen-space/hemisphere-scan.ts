@@ -11,7 +11,7 @@ import {
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
-import type { FloatNode, IntNode, Mat4Uniform, UintNode, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
+import type { FloatNode, IntNode, Mat4Uniform, UintNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
 // 遮りを探す距離 [m]。受け手からこれより遠い面は遮らない。
 const WORLD_RADIUS = 4;
@@ -30,9 +30,6 @@ const MIN_ELEVATION = 0.01;
 // 球冠を数える半角の下限 [rad]。塞がれ方の推定の角の分解能で、光の大きさではない — これより細い光の
 // 塞がれ方は、その向きのまわりこの幅の塞がれ方として測る。0 なら広げない。
 const MIN_CAP_ANGLE = 5 * Math.PI / 180;
-// 鏡面のローブを数える半角の下限 [rad]。球冠と同じ役目だが、滑らかな面のローブは球冠よりずっと細く、
-// 塞がれ方の粒がそのまま鏡面の斑になるので、別の幅で測る。広げるほど粒は減り、向きの効きは鈍る。
-const MIN_LOBE_ANGLE = 20 * Math.PI / 180;
 // スライス 1 枚を刻む扇形の数。マスクの幅(uint のビット数)と一致させる。
 const SECTOR_COUNT = 32;
 const HALF_PI = Math.PI / 2;
@@ -45,10 +42,10 @@ export interface Cap {
 
 // 1 画素の半球を走査した結果。測度は余弦重みで、半球全体を 1 とする。
 export interface HemisphereScan {
-  // 塞がれた測度。x = 空全体、y・z = 球冠 0・1、w = ローブ。
-  readonly occluded: Vec4Node;
-  // 数える範囲の測度。x・y = 球冠 0・1、z = ローブ(空全体は 1)。
-  readonly extent: Vec3Node;
+  // 塞がれた測度。x = 空全体、y・z = 球冠 0・1。
+  readonly occluded: Vec3Node;
+  // 数える範囲の測度。x・y = 球冠 0・1(空全体は 1)。
+  readonly extent: Vec2Node;
   // 遮る面が受け手へ返す光の放射照度(SUN_IRRADIANCE_1AU の目盛り)。照り返しを集めない走査では 0。
   readonly indirect: Vec3Node;
 }
@@ -77,13 +74,13 @@ interface Slice {
 // 画素を受け手として走査する。面の各画素は、寸法 gbufferSize [px] の G バッファのうちその画素が表す画素
 // (gbufferUVOf)の値を持つ。projection / projectionInverse は実カメラの射影行列とその逆、sliceCount はスライスの
 // 数、stepCount は片側の歩数、noise は画素ごとの 0..1 の組(x がスライスの回転、y が歩みのずれ)。caps は
-// 塞がれ方を数える天体照の球冠、lobe は同じく鏡面のローブ(どれも受け手 1 画素から見た view 空間の向き)。
+// 塞がれ方を数える天体照の球冠(受け手 1 画素から見た view 空間の向き)。
 // radiance は同じ解像度の、面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)で、null なら照り返しを集めない。
 // 面と同じ解像度の描画先へ描くこと。**Fn の中から呼ぶこと。**
 export function scanHemisphere(
   depth: THREE.Texture, normal: THREE.Texture, gbufferSize: Vec2Node, projection: Mat4Uniform,
   projectionInverse: Mat4Uniform, sliceCount: IntNode, stepCount: IntNode, noise: Vec2Node,
-  caps: readonly [Cap, Cap], lobe: Cap, radiance: THREE.Texture | null,
+  caps: readonly [Cap, Cap], radiance: THREE.Texture | null,
 ): HemisphereScan {
   // 受け手。ループの中と外の両方から読むので、先に変数へ置く。視線は投影方式によらない形から取る。
   const pixel = floor(screenUV.mul(screenSize)).toVar();
@@ -98,16 +95,14 @@ export function scanHemisphere(
   // 球冠は面の値を読む式から組まれている。**走査へ入る前に変数へ置く** — 暗黙の LOD を持つ読みが
   // 分岐とループの中へ落ちると、シェーダを組めない。
   const planetCap: readonly [Cap, Cap] = [capVar(caps[0]), capVar(caps[1])];
-  const specularCap = capVar(lobe);
-
-  const occluded = vec4(0).toVar();
-  const extent = vec3(0).toVar();
+  const occluded = vec3(0).toVar();
+  const extent = vec2(0).toVar();
   const indirect = vec3(0).toVar();
   // 虚空(深度 0)と、半径が画面上で 1 画素に満たない受け手(天体の表面)は走査せず、1〜2 画素で効きを
   // 0 から 1 へ渡す。
   If(receiverDepth.greaterThan(0).and(radius.greaterThanEqual(1)), () => {
-    const weightedOccluded = vec4(0).toVar();
-    const weightedExtent = vec3(0).toVar();
+    const weightedOccluded = vec3(0).toVar();
+    const weightedExtent = vec2(0).toVar();
     const weightedIndirect = vec3(0).toVar();
     const totalWeight = float(0).toVar();
     Loop({ start: 0, end: sliceCount, type: 'int', condition: '<' }, ({ i }) => {
@@ -116,10 +111,9 @@ export function scanHemisphere(
       const planetRange: readonly [UintNode, UintNode] = [
         capSectors(slice, view, planetCap[0], MIN_CAP_ANGLE).toVar(),
         capSectors(slice, view, planetCap[1], MIN_CAP_ANGLE).toVar()];
-      const specularRange = capSectors(slice, view, specularCap, MIN_LOBE_ANGLE).toVar();
       const blocked = uint(0).toVar();
-      // 新たに塞いだ扇形の数。空全体・球冠 0・1・ローブの順。
-      const sliceOccluded = vec4(0).toVar();
+      // 新たに塞いだ扇形の数。空全体・球冠 0・1 の順。
+      const sliceOccluded = vec3(0).toVar();
       // スライスの扇形ごとに、その扇形を最初に塞いだ面が返す放射輝度 × 扇形の余弦重みの測度の和。
       const sliceIndirect = vec3(0).toVar();
       // 両側へ、手前から奥の順に歩む。同じ画素は読まない。
@@ -149,8 +143,8 @@ export function scanHemisphere(
               // 奥の標本が手前の遮りの後ろを塞ぎ直し、二重に数える。
               const fade = clamp(
                 float(WORLD_RADIUS).sub(distance).div(WORLD_RADIUS - FADE_START_DISTANCE), 0, 1).toVar();
-              sliceOccluded.addAssign(vec4(bitCount(newly), bitCount(newly.bitAnd(planetRange[0])),
-                bitCount(newly.bitAnd(planetRange[1])), bitCount(newly.bitAnd(specularRange))).mul(fade));
+              sliceOccluded.addAssign(vec3(bitCount(newly), bitCount(newly.bitAnd(planetRange[0])),
+                bitCount(newly.bitAnd(planetRange[1]))).mul(fade));
               // 受け手へ面を向けた標本だけが光を返す。
               if (radiance !== null) {
                 If(dot(octDecodeNormal(textureLoad(normal, ivec2(samplePixel)).rg), toFront).lessThan(0), () => {
@@ -166,7 +160,7 @@ export function scanHemisphere(
       // スライスの塞がれ方と範囲と照り返しを重みつきで積む。
       weightedOccluded.addAssign(sliceOccluded.mul(slice.weight));
       weightedExtent.addAssign(
-        vec3(bitCount(planetRange[0]), bitCount(planetRange[1]), bitCount(specularRange)).mul(slice.weight));
+        vec2(bitCount(planetRange[0]), bitCount(planetRange[1])).mul(slice.weight));
       weightedIndirect.addAssign(sliceIndirect.mul(slice.weight));
       totalWeight.addAssign(slice.weight);
     });

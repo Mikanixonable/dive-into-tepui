@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, abs, clamp, exp2, float, floor, getViewPosition, ivec2, log, max, mrt, screenSize, screenUV, select, struct,
+  Fn, abs, clamp, float, floor, getViewPosition, ivec2, log, max, mrt, screenSize, screenUV, select, struct,
   texture, textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
@@ -128,8 +128,8 @@ function denoised(occluded: THREE.Texture, extent: THREE.Texture, indirect: THRE
   return Fn(() => {
     const pixel = floor(screenUV.mul(screenSize)).toVar();
     const center = textureLoad(extent, ivec2(pixel)).toVar();
-    const occludedSum = vec4(0).toVar();
-    const extentSum = vec3(0).toVar();
+    const occludedSum = vec3(0).toVar();
+    const extentSum = vec2(0).toVar();
     const indirectSum = vec3(0).toVar();
     const weightSum = float(0).toVar();
     // 中心は鍵の差が 0 なので、重みの和は 0 にならない。画面の外の隣は縁の画素で代える。
@@ -139,14 +139,15 @@ function denoised(occluded: THREE.Texture, extent: THREE.Texture, indirect: THRE
         const neighborExtent = dx === 0 && dy === 0 ? center : textureLoad(extent, neighborPixel);
         const weight = clamp(float(1).sub(abs(neighborExtent.w.sub(center.w)).div(EDGE_DEPTH_TOLERANCE)), 0, 1)
           .mul(binomialX * binomialY);
-        occludedSum.addAssign(textureLoad(occluded, neighborPixel).mul(weight));
-        extentSum.addAssign(neighborExtent.xyz.mul(weight));
+        occludedSum.addAssign(textureLoad(occluded, neighborPixel).xyz.mul(weight));
+        extentSum.addAssign(neighborExtent.xy.mul(weight));
         if (indirect !== null) indirectSum.addAssign(textureLoad(indirect, neighborPixel).rgb.mul(weight));
         weightSum.addAssign(weight);
       }
     }
     return STAGE_TEXEL(
-      occludedSum.div(weightSum), vec4(extentSum.div(weightSum), center.w), vec4(indirectSum.div(weightSum), 1),
+      vec4(occludedSum.div(weightSum), 0), vec4(extentSum.div(weightSum), 0, center.w),
+      vec4(indirectSum.div(weightSum), 1),
     );
   })();
 }
@@ -271,12 +272,12 @@ export class ScreenSpacePass {
     scan.mrtNode = stageOutput(Fn(() => {
       const result = scanHemisphere(
         surfaceDepth!, surfaceNormal!, this.fullSize, this.projection, this.projectionInverse,
-        this.sliceCount, this.stepCount, noise, caps, this.specularLobe(), sun === null ? null : surfaceRadiance!,
+        this.sliceCount, this.stepCount, noise, caps, sun === null ? null : surfaceRadiance!,
       );
       const depth = textureLoad(surfaceDepth!, ivec2(this.scanPixel)).r;
       const viewDepth = getViewPosition(this.gbufferUV, depth, this.projectionInverse).z.negate();
       const key = depthKey(depth.greaterThan(0), viewDepth);
-      return STAGE_TEXEL(result.occluded, vec4(result.extent, key), vec4(result.indirect, 1));
+      return STAGE_TEXEL(vec4(result.occluded, 0), vec4(result.extent, 0, key), vec4(result.indirect, 1));
     })());
     // 均しは走査と均しの 2 組を往復し、走査の組へ戻す。
     const blurred = stageMaterial();
@@ -293,13 +294,6 @@ export class ScreenSpacePass {
       { material: reblurred, target: this.scanTarget, gpuPass: GPU_PASS.nearbyDiffuseReconstruct },
       { material: upsampled, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseReconstruct },
     ];
-  }
-
-  // 環境光の鏡面が映る向きの球冠。半角 α_s は cos α_s = 2^(−3.32193·α²)(α は GGX の α)で、BRDF の
-  // 広がりの近似として取る。
-  private specularLobe(): Cap {
-    const alpha = this.sample.roughness.mul(this.sample.roughness);
-    return { direction: this.sample.reflected, cosAngle: exp2(alpha.mul(alpha).mul(-3.32193)) };
   }
 
   // 前処理の画素が表す面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)— 太陽の直射・天体照・環境光を
@@ -335,17 +329,17 @@ export class ScreenSpacePass {
       const position = screenUV.mul(this.scanSize).sub(0.5).toVar();
       const base = floor(position).toVar();
       const fraction = position.sub(base).toVar();
-      const occludedSum = vec4(0).toVar();
-      const extentSum = vec3(0).toVar();
+      const occludedSum = vec3(0).toVar();
+      const extentSum = vec2(0).toVar();
       const indirectSum = vec3(0).toVar();
       const weightSum = float(0).toVar();
-      const nearestOccluded = vec4(0).toVar();
-      const nearestExtent = vec3(0).toVar();
+      const nearestOccluded = vec3(0).toVar();
+      const nearestExtent = vec2(0).toVar();
       const nearestIndirect = vec3(0).toVar();
       const nearestGap = float(1e30).toVar();
       for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
         const texel = ivec2(clamp(base.add(vec2(dx, dy)), vec2(0), this.scanSize.sub(1))).toVar();
-        const candidateOccluded = textureLoad(occluded, texel).toVar();
+        const candidateOccluded = textureLoad(occluded, texel).xyz.toVar();
         const candidateExtent = textureLoad(extent, texel).toVar();
         const candidateIndirect = indirect === null ? vec3(0) : textureLoad(indirect, texel).rgb.toVar();
         const gap = abs(candidateExtent.w.sub(key)).toVar();
@@ -353,18 +347,18 @@ export class ScreenSpacePass {
           .mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
         const weight = bilinear.mul(clamp(float(1).sub(gap.div(EDGE_DEPTH_TOLERANCE)), 0, 1)).toVar();
         occludedSum.addAssign(candidateOccluded.mul(weight));
-        extentSum.addAssign(candidateExtent.xyz.mul(weight));
+        extentSum.addAssign(candidateExtent.xy.mul(weight));
         indirectSum.addAssign(candidateIndirect.mul(weight));
         weightSum.addAssign(weight);
         const nearer = gap.lessThan(nearestGap);
         nearestOccluded.assign(select(nearer, candidateOccluded, nearestOccluded));
-        nearestExtent.assign(select(nearer, candidateExtent.xyz, nearestExtent));
+        nearestExtent.assign(select(nearer, candidateExtent.xy, nearestExtent));
         nearestIndirect.assign(select(nearer, candidateIndirect, nearestIndirect));
         nearestGap.assign(select(nearer, gap, nearestGap));
       }
       const blended = weightSum.greaterThan(1e-3);
       const share = max(weightSum, 1e-3);
-      const pickedOccluded = select(covered, select(blended, occludedSum.div(share), nearestOccluded), vec4(0));
+      const pickedOccluded = select(covered, select(blended, occludedSum.div(share), nearestOccluded), vec3(0));
       const pickedExtent = select(blended, extentSum.div(share), nearestExtent);
       const received = select(covered, select(blended, indirectSum.div(share), nearestIndirect), vec3(0));
       return LIGHT_TEXEL(ScreenSpaceLight.encode(pickedOccluded, pickedExtent), vec4(received, 1));
