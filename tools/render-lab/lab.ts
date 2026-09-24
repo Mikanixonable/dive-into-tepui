@@ -34,6 +34,8 @@ import type { RenderStyle } from '../../src/render/render-style';
 export interface LabMeasurement {
   readonly caseName: CaseName;
   readonly frames: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
   readonly cpuRenderMs: SampleDistribution;
   readonly gpuSupported: boolean;
   readonly gpuPassTotalScope: 'instrumented-render-pass-sum';
@@ -73,6 +75,35 @@ const READY_TIMEOUT_MS = 60_000;
 
 // 撮影 1 枚が、絵の落ち着きを待って撮る回数の上限。実測では全撮影が 3 回以内に一致したので、その倍を取る。
 const MAX_SETTLE_CAPTURES = 6;
+
+// 中プリセットの描画倍率。render-lab の論理寸法とカメラは変えず、内部キャンバスだけを縮小する。
+const MEDIUM_RENDER_PIXEL_RATIO = 0.75;
+
+interface LabPixelRatioRenderer {
+  readonly domElement: HTMLCanvasElement;
+  getPixelRatio(): number;
+  getSize(target: THREE.Vector2): THREE.Vector2;
+  setPixelRatio(value: number): void;
+  setSize(width: number, height: number): void;
+}
+
+// 描画倍率を一時的に変え、処理の成否にかかわらず元のキャンバス寸法へ戻す。
+export async function withLabPixelRatio<T>(
+  renderer: LabPixelRatioRenderer,
+  pixelRatio: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previousPixelRatio = renderer.getPixelRatio();
+  const previousSize = renderer.getSize(new THREE.Vector2());
+  try {
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(previousSize.x, previousSize.y);
+    return await operation();
+  } finally {
+    renderer.setPixelRatio(previousPixelRatio);
+    renderer.setSize(previousSize.x, previousSize.y);
+  }
+}
 
 export class LabView {
   private readonly scene = new THREE.Scene();
@@ -332,7 +363,11 @@ export class LabView {
     this.show(name);
     this.applyShot(shotName);
     this.setGraphics({ ...this.graphics.current, ...graphics });
-    return this.measureCurrent(name, warmupFrames, sampleFrames);
+    return withLabPixelRatio(
+      this.renderer,
+      MEDIUM_RENDER_PIXEL_RATIO,
+      () => this.measureCurrent(name, warmupFrames, sampleFrames),
+    );
   }
 
   // 現在のケースと shot の設定を保持したまま、準備待ち・ウォームアップ・標本収集を共通に行う。
@@ -391,6 +426,8 @@ export class LabView {
     return {
       caseName: name,
       frames: sampleFrames,
+      canvasWidth: this.renderer.domElement.width,
+      canvasHeight: this.renderer.domElement.height,
       cpuRenderMs: distributionOf(cpuSamples),
       gpuSupported: this.gpu.snapshot().supported,
       gpuPassTotalScope: 'instrumented-render-pass-sum',
