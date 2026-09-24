@@ -23,8 +23,10 @@ export function register(): void {
 
     const nadirShot = earthCase.shots?.['earth-nadir'];
     const nearRangeShot = earthCase.shots?.['cloud-standard-near-range-250km'];
+    const rasterDiagnosticShot = earthCase.shots?.['cloud-c1-raster-200km-medium-diagnostic'];
     assert.ok(nadirShot);
     assert.ok(nearRangeShot);
+    assert.ok(rasterDiagnosticShot);
 
     const nadirPlacement = { ...earthCase.earth, ...nadirShot.view };
     const nadirCenter = earthCenterOf(nadirPlacement);
@@ -42,6 +44,12 @@ export function register(): void {
     );
     const nearCameraDistance = baseCameraDistance * 10 ** nearRangeShot.view.cameraDistanceLog!;
     assert.ok(Math.abs(nearCameraDistance - 250e3) < 1e-6);
+    const diagnosticPlacement = { ...earthCase.earth, ...rasterDiagnosticShot.view };
+    const diagnosticCenter = earthCenterOf(diagnosticPlacement);
+    assert.ok(diagnosticCenter.clone().add(new THREE.Vector3(0, 0, R_EARTH_EQ)).distanceTo(pivot) < 1e-6);
+    const diagnosticCameraDistance = baseCameraDistance
+      * 10 ** rasterDiagnosticShot.view.cameraDistanceLog!;
+    assert.ok(Math.abs(diagnosticCameraDistance - 200e3) < 1e-6);
     assert.equal(FOV_DEG, 50);
     assert.equal(VIEW_WIDTH, 960);
     assert.equal(VIEW_HEIGHT, 540);
@@ -50,5 +58,6 @@ export function register(): void {
     assert.ok(2e3 / metersPerPixel >= 4);
     assert.equal(nearRangeShot.graphics?.clouds, true);
     assert.deepEqual(nearRangeShot.graphics, QUALITY_PRESETS.medium);
+    assert.deepEqual(rasterDiagnosticShot.graphics, QUALITY_PRESETS.medium);
   });
 }
