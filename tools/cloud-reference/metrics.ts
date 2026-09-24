@@ -14,6 +14,11 @@ const REQUIRED_REFERENCE_FAMILIES = [
   'scalloped-and-undulatus-cloud',
   'midlatitude-front-and-multilayer-cloud',
 ] as const;
+const SINGLE_SNAPSHOT_MORPHOLOGY_METRICS = new Set([
+  'cloud-fraction',
+  'structure-size-distribution',
+  'structure-orientation',
+]);
 
 /** 評価標本を mask と欠測から区別して判定する。 */
 export function cloudReferenceMetricSampleDisposition(
@@ -266,6 +271,9 @@ function validateMetricCoverageSupport(
     errors.push(`case ${id} must declare availableFrameCount when overriding metric frame coverage`);
     return;
   }
+  if (frameOverrides !== undefined && !isSingleSnapshotMorphologyCase(referenceCase)) {
+    errors.push(`case ${id} may lower metric frame coverage only for an auxiliary NASA VIIRS single-snapshot morphology case`);
+  }
   if (!Number.isInteger(availableFrames) || !isPositiveNumber(availableFrames)
     || availableFrames > scheduledFrames) {
     errors.push(`case ${id} availableFrameCount must be a positive integer within the declared series`);
@@ -305,6 +313,25 @@ function validateMetricCoverageSupport(
       }
     }
   }
+}
+
+/** 1枚の NASA VIIRS 合成画像だけで評価する補助形態ケースか判定する。 */
+function isSingleSnapshotMorphologyCase(referenceCase: Readonly<Record<string, unknown>>): boolean {
+  if (typeof referenceCase.family !== 'string' || REQUIRED_REFERENCE_FAMILIES.includes(
+    referenceCase.family as typeof REQUIRED_REFERENCE_FAMILIES[number],
+  )) return false;
+  if (referenceCase.availableFrameCount !== 1 || !Array.isArray(referenceCase.metricIds)
+    || referenceCase.metricIds.length === 0
+    || referenceCase.metricIds.some((metricId) => !isString(metricId) || !SINGLE_SNAPSHOT_MORPHOLOGY_METRICS.has(metricId))) {
+    return false;
+  }
+  const source = isRecord(referenceCase.source) ? referenceCase.source : null;
+  const observation = isRecord(referenceCase.observation) ? referenceCase.observation : null;
+  return source?.provider === 'NASA'
+    && isString(source.product) && source.product.includes('VIIRS')
+    && source.product.includes('Corrected Reflectance True Color')
+    && Array.isArray(observation?.bands) && observation.bands.length === 1
+    && observation.bands[0] === 'VIIRS true-color composite';
 }
 
 /** 取得再現性とライセンス確認に必要な出典情報を検査する。 */
