@@ -29,6 +29,8 @@ export function register(): void {
     assert.equal(result.controls.twoKmFeatureMaximumFieldSpacingM, 500);
     assert.ok(Number(result.controls.twoKmFeatureSamplesPerFieldWavelength) < 1);
     assert.ok(Number(result.controls.twoKmFeatureScreenSamples) >= 4);
+    assert.ok(Number(result.controls.twoKmFeatureInternalRasterSamples) < 4);
+    assert.equal(result.controls.twoKmInternalRasterResponseStatus, 'blocked');
     assert.equal(result.controls.twoKmCloudFieldResponseStatus, 'blocked');
     assert.ok(measurement(result, 'rotation-angle').value! <= 1e-9);
     assert.ok(measurement(result, 'mass').value! <= METEOROLOGICAL_ERROR_FLOORS.relativeMass);

@@ -320,11 +320,14 @@ function maximumPositiveBuoyancyHeightM(input: CloudEnvironmentInput): number {
 }
 
 // 名前付き近距離 shot のカメラ・cap から、生成場の中心標本間隔を導く。
-function standardNearRangeCloudFieldCenterSpacingM(): { spacingM: number; cameraDistanceM: number } {
+function standardNearRangeCloudFieldCenterSpacingM(): {
+  spacingM: number; cameraDistanceM: number; internalRasterScale: number;
+} {
   const earthCase = EARTH_CASES.earth();
   const shot = earthCase.shots?.['cloud-standard-near-range-250km'];
   if (earthCase.earth === undefined || earthCase.viewTarget === undefined
-    || shot?.view.cameraDistanceLog === undefined) {
+    || shot?.view.cameraDistanceLog === undefined
+    || shot.graphics?.resolutionScale === undefined) {
     throw new Error('standard near-range cloud shot must define Earth placement and camera distance');
   }
   const cameraForward = earthCase.camera.getWorldDirection(new THREE.Vector3());
@@ -345,7 +348,11 @@ function standardNearRangeCloudFieldCenterSpacingM(): { spacingM: number; camera
   const rho = (R_EARTH_EQ + nearDistance) / R_EARTH_EQ;
   const capRadius = capRadiusFor(rho, CLOUD_TOP_SPAN / R_EARTH_EQ);
   const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, capRadius);
-  return { spacingM: cap.texelAngleValue * R_EARTH_EQ, cameraDistanceM: nearDistance };
+  return {
+    spacingM: cap.texelAngleValue * R_EARTH_EQ,
+    cameraDistanceM: nearDistance,
+    internalRasterScale: shot.graphics.resolutionScale,
+  };
 }
 
 function residualIceAtHumidity(upperRelativeHumidity: number, timeSeconds: number): number {
@@ -367,6 +374,7 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
   const twoKmResponseMaximumSpacingM = C1_TWO_KM_FEATURE_WAVELENGTH_M / C1_MINIMUM_SAMPLES_PER_FEATURE;
   const twoKmFeatureScreenSamples = C1_TWO_KM_FEATURE_WAVELENGTH_M
     / metersPerPixelAtDepth(FOV_DEG, fieldSampling.cameraDistanceM, VIEW_HEIGHT);
+  const twoKmFeatureInternalRasterSamples = twoKmFeatureScreenSamples * fieldSampling.internalRasterScale;
   const twoKmResponseBlocked = fieldSampling.spacingM > twoKmResponseMaximumSpacingM;
   // 面積の違う材料点を同じ角速度で運び、軌跡と積分質量を別々に測る。
   const blobPoints = [
@@ -467,6 +475,9 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
       twoKmFeatureMaximumFieldSpacingM: twoKmResponseMaximumSpacingM,
       twoKmFeatureSamplesPerFieldWavelength: C1_TWO_KM_FEATURE_WAVELENGTH_M / fieldSampling.spacingM,
       twoKmFeatureScreenSamples,
+      twoKmFeatureInternalRasterSamples,
+      twoKmInternalRasterResponseStatus: twoKmFeatureInternalRasterSamples < C1_MINIMUM_SAMPLES_PER_FEATURE
+        ? 'blocked' : 'raster-resolution-sufficient',
       twoKmCloudFieldResponseStatus: twoKmResponseBlocked ? 'blocked' : 'field-resolution-sufficient',
       materialPointCount: blobPoints.length,
       maximumTransportStepSeconds,
