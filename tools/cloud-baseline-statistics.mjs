@@ -40,11 +40,19 @@ function observedRenderP95(run) {
   const measurement = run?.measurement;
   const frames = measurement?.frames;
   const result = measurement?.observedRenderTotalMs;
+  const samples = measurement?.observedRenderTotalSamplesMs;
+  const expected = measurement?.observedRenderExpectedQueryCounts;
+  const resolved = measurement?.observedRenderResolvedQueryCounts;
   return measurement?.gpuSupported === true
     && Number.isInteger(frames) && frames > 0
     && measurement.observedRenderCompleteFrames === frames
-    && result?.samples === frames
-    && typeof result.p95 === 'number' && Number.isFinite(result.p95) && result.p95 > 0
+    && Array.isArray(samples) && samples.length === frames
+    && samples.every((value) => typeof value === 'number' && Number.isFinite(value) && value > 0)
+    && Array.isArray(expected) && expected.length === frames
+    && Array.isArray(resolved) && resolved.length === frames
+    && expected.every((count, index) => Number.isInteger(count) && count > 0 && resolved[index] === count)
+    && typeof result?.p95 === 'number' && Number.isFinite(result.p95) && result.p95 > 0
+    && Math.abs(result.p95 - percentile([...samples].sort((a, b) => a - b), 0.95)) < 1e-6
     ? result.p95 : null;
 }
 
