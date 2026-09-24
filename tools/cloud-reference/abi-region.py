@@ -298,11 +298,26 @@ def case_from_manifest(manifest_path: Path, case_id: str) -> dict[str, Any]:
 def series_slots(case: dict[str, Any]) -> list[datetime]:
     """系列の開始・終了を含む、宣言間隔の UTC スロットを返す。"""
     series = case["series"]
-    start = datetime.fromisoformat(series["start"].replace("Z", "+00:00"))
-    end = datetime.fromisoformat(series["end"].replace("Z", "+00:00"))
-    interval = int(series["intervalMinutes"])
-    if start.utcoffset() is None or end.utcoffset() is None or interval <= 0 or end < start:
+    try:
+        start = datetime.fromisoformat(series["start"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(series["end"].replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        fail(f"{case['id']}: 系列の時刻形式が不正")
+    interval = series["intervalMinutes"]
+    if (
+        start.utcoffset() != timedelta(0)
+        or end.utcoffset() != timedelta(0)
+        or isinstance(interval, bool)
+        or not isinstance(interval, (int, float))
+        or (
+            isinstance(interval, float)
+            and (not math.isfinite(interval) or not interval.is_integer())
+        )
+        or interval <= 0
+        or end < start
+    ):
         fail(f"{case['id']}: 系列の時刻または間隔が不正")
+    interval = int(interval)
     step = timedelta(minutes=interval)
     elapsed = end - start
     if elapsed.total_seconds() % step.total_seconds() != 0:

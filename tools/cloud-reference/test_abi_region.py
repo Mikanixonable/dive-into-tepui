@@ -179,6 +179,45 @@ class AbiRegionSeriesTest(unittest.TestCase):
         with self.assertRaises(REGION.RegionError):
             REGION.series_slots(case)
 
+    def test_series_slots_reject_non_integer_or_non_positive_intervals(self) -> None:
+        for interval in (10.5, float("nan"), float("inf"), 0, -10, True, "10"):
+            with self.subTest(interval=interval):
+                case = {
+                    "id": "synthetic",
+                    "series": {
+                        "start": "2024-08-19T18:00:00Z",
+                        "end": "2024-08-19T18:20:00Z",
+                        "intervalMinutes": interval,
+                    },
+                }
+                with self.assertRaises(REGION.RegionError):
+                    REGION.series_slots(case)
+
+    def test_series_slots_require_explicit_utc_and_reject_reversed_bounds(self) -> None:
+        valid = {
+            "id": "synthetic",
+            "series": {
+                "start": "2024-08-19T18:00:00Z",
+                "end": "2024-08-19T18:00:00Z",
+                "intervalMinutes": 10,
+            },
+        }
+        self.assertEqual(len(REGION.series_slots(valid)), 1)
+
+        invalid_series = (
+            {"start": "2024-08-19T18:00:00", "end": "2024-08-19T18:10:00Z"},
+            {"start": "2024-08-19T19:00:00+01:00", "end": "2024-08-19T18:10:00Z"},
+            {"start": "2024-08-19T18:10:00Z", "end": "2024-08-19T18:00:00Z"},
+        )
+        for times in invalid_series:
+            with self.subTest(times=times):
+                case = {
+                    "id": "synthetic",
+                    "series": {**times, "intervalMinutes": 10},
+                }
+                with self.assertRaises(REGION.RegionError):
+                    REGION.series_slots(case)
+
     def test_product_aggregate_uses_pixel_weighted_joint_quality_counts(self) -> None:
         def summary(slot: str, region_pixels: int, joint_good: int) -> dict[str, object]:
             return {
