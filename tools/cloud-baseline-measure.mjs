@@ -64,6 +64,7 @@ function summarizeLensAblation(blocks) {
   for (const mode of modes) {
     const observedRenderInteractions = [];
     const lensPassInteractions = [];
+    const lensRenderCallCpuInteractions = [];
     for (const block of blocks) {
       const runs = block.modes[mode.id];
       observedRenderInteractions.push(
@@ -78,10 +79,17 @@ function summarizeLensAblation(blocks) {
           - (runs.cloudOffLensEnabled.measurement.gpuPassMs['レンズ'].p95
             - runs.cloudOffLensDisabled.measurement.gpuPassMs['レンズ'].p95),
       );
+      lensRenderCallCpuInteractions.push(
+        (runs.cloudOnLensEnabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95),
+      );
     }
     byMode[mode.id] = {
       pairedObservedRenderInteractionP95Ms: distribution(observedRenderInteractions),
       pairedLensPassInteractionP95Ms: distribution(lensPassInteractions),
+      pairedLensRenderCallCpuInteractionP95Ms: distribution(lensRenderCallCpuInteractions),
     };
   }
   return {
@@ -96,8 +104,9 @@ function summarizeLensAblation(blocks) {
     scope: {
       observedRender: 'interaction of summed resolved renderer.render() timestamp durations; includes composite changes and is not full-frame GPU B0',
       lensPass: 'interaction of p95 values for the instrumented render pass named レンズ; descriptive and may be unavailable when timestamp queries are unsupported',
+      lensRenderCallCpu: 'interaction of p95 synchronous CPU time inside renderer.render() calls attributed to レンズ; this measures synchronous JavaScript/CPU work only, does not isolate queue submission, does not replace GPU timestamps, and does not measure asynchronous GPU execution/queue waiting',
     },
-    interpretation: 'The difference of lens-toggle effects between cloud-on and cloud-off estimates cloud-specific lens interaction in these render scopes. It is descriptive and has no pass/fail threshold.',
+    interpretation: 'The difference of lens-toggle effects between cloud-on and cloud-off estimates cloud-specific lens interaction in these render scopes. It is descriptive and has no pass/fail threshold. GPU timestamp duration and synchronous renderer.render() CPU duration are separate measurements: the latter cannot substitute for GPU work, and these scopes do not distinguish shader execution from GPU dependency or scheduling waits.',
     modes: byMode,
     blocks,
   };
@@ -177,6 +186,20 @@ async function main() {
       })()`);
     };
 
+    // ソース切替直後に遅れて現れる初回処理を、主計測ブロックの外で一度だけ済ませる。
+    const prewarm = [];
+    for (const mode of modes) {
+      for (const clouds of [false, true]) {
+        const run = await measure(mode.source, clouds);
+        prewarm.push({
+          source: mode.source,
+          clouds,
+          frames: run.measurement.frames,
+          observedRenderP95Ms: run.measurement.observedRenderTotalMs.p95,
+        });
+      }
+    }
+
     for (let index = 0; index < BLOCK_COUNT; index += 1) {
       const block = { index, modes: {} };
       const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
@@ -235,9 +258,15 @@ async function main() {
           - runs.cloudOnLensDisabled.measurement.gpuPassMs['レンズ'].p95)
           - (runs.cloudOffLensEnabled.measurement.gpuPassMs['レンズ'].p95
             - runs.cloudOffLensDisabled.measurement.gpuPassMs['レンズ'].p95);
+        const lensRenderCallCpuInteraction = (
+          runs.cloudOnLensEnabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95);
         console.log(`${mode.id} cloud-lens-interaction block=${index + 1}/${BLOCK_COUNT}: `
           + `observed render p95 interaction=${interaction('observedRenderTotalMs')} ms; `
-          + `lens pass p95 interaction=${lensPassInteraction} ms`);
+          + `lens pass p95 interaction=${lensPassInteraction} ms; `
+          + `lens render-call CPU p95 interaction=${lensRenderCallCpuInteraction} ms`);
       }
       diagnosticBlocks.push(block);
     }
@@ -286,6 +315,10 @@ async function main() {
       },
       sampleFramesPerMeasurement: blocks[0]?.modes[modes[0].id]?.cloudOn.measurement.frames ?? 0,
       blockCount: BLOCK_COUNT,
+      prewarm: {
+        excludedFromPrimaryBlocks: true,
+        measurements: prewarm,
+      },
       quality: { requestedPreset: 'medium', requestedCumulusDetail: 'standard' },
       initialGraphicsSettings,
       measurementScope: 'observed-render-total',

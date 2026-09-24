@@ -53,6 +53,8 @@ export interface LabMeasurement {
   readonly observedComputeExpectedQueryCounts: readonly number[];
   readonly observedComputeResolvedQueryCounts: readonly number[];
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
+  readonly gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu';
+  readonly gpuPassRenderCallCpuMs: Readonly<Record<string, SampleDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
 }
@@ -396,28 +398,71 @@ export class LabView {
     const observedComputeExpectedQueryCounts: number[] = [];
     const observedComputeResolvedQueryCounts: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
+    const renderCallCpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => Array(sampleFrames).fill(0) as number[]);
     const motion = new ProteinMotionMetricsRecorder();
-    for (let frame = 0; frame < sampleFrames; frame++) {
-      const displayTime = (warmupFrames + frame + 1) / 60;
-      this.gpu.beginObservedFrame();
-      const motionSample = this.current?.updateProteinMotion?.(displayTime);
-      this.render(displayTime, true);
-      cpuSamples.push(this.lastRenderCpuMs);
-      await this.gpu.waitForResolve();
-      const timings = this.gpu.snapshot();
-      observedRenderSamples.push(timings.observedRenderComplete ? timings.observedRenderTotalMs : null);
-      observedRenderExpectedQueryCounts.push(timings.observedRenderExpectedQueryCount);
-      observedRenderResolvedQueryCounts.push(timings.observedRenderQueryCount);
-      observedComputeSamples.push(timings.observedComputeComplete ? timings.observedComputeTotalMs : null);
-      observedComputeExpectedQueryCounts.push(timings.observedComputeExpectedQueryCount);
-      observedComputeResolvedQueryCounts.push(timings.observedComputeQueryCount);
-      let passTotalMs = 0;
-      for (let index = 0; index < GPU_PASS_COUNT; index += 1) {
-        passTotalMs += timings.elapsedMs[index] ?? 0;
+    let measuredFrameIndex: number | null = null;
+    let pendingPass: number | null = null;
+    let activePass: number | null = null;
+    let renderDepth = 0;
+    let renderStartedAt = 0;
+    const inspector = this.renderer.inspector;
+    const originalBeginPass = this.gpu.beginPass;
+    const originalBeginRender = inspector.beginRender;
+    const originalFinishRender = inspector.finishRender;
+    this.gpu.beginPass = (id) => {
+      pendingPass = id;
+      originalBeginPass.call(this.gpu, id);
+    };
+    inspector.beginRender = (uid, scene, camera, target) => {
+      if (renderDepth === 0) {
+        activePass = pendingPass;
+        pendingPass = null;
+        renderStartedAt = performance.now();
       }
-      gpuPassTotalSamples.push(passTotalMs);
-      for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
-      motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
+      renderDepth += 1;
+      originalBeginRender.call(inspector, uid, scene, camera, target);
+    };
+    inspector.finishRender = (uid) => {
+      originalFinishRender.call(inspector, uid);
+      renderDepth -= 1;
+      if (renderDepth === 0) {
+        if (measuredFrameIndex !== null && activePass !== null) {
+          const samples = renderCallCpuSamples[activePass]!;
+          samples[measuredFrameIndex] = (samples[measuredFrameIndex] ?? 0) + performance.now() - renderStartedAt;
+        }
+        activePass = null;
+      }
+    };
+    try {
+      for (let frame = 0; frame < sampleFrames; frame++) {
+        measuredFrameIndex = frame;
+        const displayTime = (warmupFrames + frame + 1) / 60;
+        this.gpu.beginObservedFrame();
+        const motionSample = this.current?.updateProteinMotion?.(displayTime);
+        this.render(displayTime, true);
+        measuredFrameIndex = null;
+        cpuSamples.push(this.lastRenderCpuMs);
+        await this.gpu.waitForResolve();
+        const timings = this.gpu.snapshot();
+        observedRenderSamples.push(timings.observedRenderComplete ? timings.observedRenderTotalMs : null);
+        observedRenderExpectedQueryCounts.push(timings.observedRenderExpectedQueryCount);
+        observedRenderResolvedQueryCounts.push(timings.observedRenderQueryCount);
+        observedComputeSamples.push(timings.observedComputeComplete ? timings.observedComputeTotalMs : null);
+        observedComputeExpectedQueryCounts.push(timings.observedComputeExpectedQueryCount);
+        observedComputeResolvedQueryCounts.push(timings.observedComputeQueryCount);
+        let passTotalMs = 0;
+        for (let index = 0; index < GPU_PASS_COUNT; index += 1) {
+          passTotalMs += timings.elapsedMs[index] ?? 0;
+        }
+        gpuPassTotalSamples.push(passTotalMs);
+        for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
+        motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
+      }
+    } finally {
+      measuredFrameIndex = null;
+      this.gpu.beginPass = originalBeginPass;
+      inspector.beginRender = originalBeginRender;
+      inspector.finishRender = originalFinishRender;
     }
 
     return {
@@ -446,6 +491,10 @@ export class LabView {
       observedComputeExpectedQueryCounts,
       observedComputeResolvedQueryCounts,
       gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distributionOf(gpuSamples[index]!)])),
+      gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu',
+      gpuPassRenderCallCpuMs: Object.fromEntries(
+        GPU_PASS_LABELS.map((label, index) => [label, distributionOf(renderCallCpuSamples[index]!)]),
+      ),
       proteinMotion: motion.summary(),
       proteinCase: this.current?.proteinMotion,
     };
