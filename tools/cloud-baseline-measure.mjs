@@ -15,7 +15,6 @@ const CASE_NAME = 'earth';
 const SHOT_NAME = 'cloud-standard-near-range-250km';
 const FIXTURE_WIDTH = 960;
 const FIXTURE_HEIGHT = 540;
-const RUN_LENS_ABLATION = process.env.CLOUD_BASELINE_LENS_ABLATION === '1';
 const modes = [
   { id: 'generated-standard', source: 'generated' },
   { id: 'observed-standard', source: 'observed' },
@@ -83,7 +82,7 @@ function summarizeLensAblation(blocks) {
   }
   return {
     purpose: 'descriptive cloud-on lens toggle ablation; not part of baseline qualification',
-    fixture: { caseName: CASE_NAME, shotName: SHOT_NAME, clouds: true, qualityPreset: 'medium' },
+    fixture: { caseName: CASE_NAME, shotName: SHOT_NAME, clouds: true },
     comparison: 'lens-enabled p95 minus lens-disabled p95 within each additional block',
     scope: {
       observedRender: 'sum of resolved renderer.render() timestamp durations; includes composite changes and is not full-frame GPU B0',
@@ -199,33 +198,30 @@ async function main() {
       blocks.push(block);
     }
 
-    let lensAblation = null;
-    if (RUN_LENS_ABLATION) {
-      const diagnosticBlocks = [];
-      for (let index = 0; index < BLOCK_COUNT; index += 1) {
-        const block = { index, modes: {} };
-        const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
-        for (const mode of orderedModes) {
-          const runs = {};
-          const lensOrder = index % 2 === 0 ? [true, false] : [false, true];
-          for (const lens of lensOrder) {
-            const run = await measure(mode.source, true, { lens });
-            if (run.graphicsSettings.lens !== lens || run.graphicsSettings.clouds !== true) {
-              throw new Error(`Lens ablation did not apply requested cloud/lens settings for ${mode.id}`);
-            }
-            runs[lens ? 'lensEnabled' : 'lensDisabled'] = run;
+    const diagnosticBlocks = [];
+    for (let index = 0; index < BLOCK_COUNT; index += 1) {
+      const block = { index, modes: {} };
+      const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
+      for (const mode of orderedModes) {
+        const runs = {};
+        const lensOrder = index % 2 === 0 ? [true, false] : [false, true];
+        for (const lens of lensOrder) {
+          const run = await measure(mode.source, true, { lens });
+          if (run.graphicsSettings.lens !== lens || run.graphicsSettings.clouds !== true) {
+            throw new Error(`Lens ablation did not apply requested cloud/lens settings for ${mode.id}`);
           }
-          block.modes[mode.id] = runs;
-          console.log(`${mode.id} lens-ablation block=${index + 1}/${BLOCK_COUNT}: `
-            + `lens-on observed render p95=${runs.lensEnabled.measurement.observedRenderTotalMs.p95.toFixed(3)} ms, `
-            + `lens-off=${runs.lensDisabled.measurement.observedRenderTotalMs.p95.toFixed(3)} ms; `
-            + `lens pass p95 on=${runs.lensEnabled.measurement.gpuPassMs['レンズ'].p95.toFixed(3)} ms, `
-            + `off=${runs.lensDisabled.measurement.gpuPassMs['レンズ'].p95.toFixed(3)} ms`);
+          runs[lens ? 'lensEnabled' : 'lensDisabled'] = run;
         }
-        diagnosticBlocks.push(block);
+        block.modes[mode.id] = runs;
+        console.log(`${mode.id} lens-ablation block=${index + 1}/${BLOCK_COUNT}: `
+          + `lens-on observed render p95=${runs.lensEnabled.measurement.observedRenderTotalMs.p95.toFixed(3)} ms, `
+          + `lens-off=${runs.lensDisabled.measurement.observedRenderTotalMs.p95.toFixed(3)} ms; `
+          + `lens pass p95 on=${runs.lensEnabled.measurement.gpuPassMs['レンズ'].p95.toFixed(3)} ms, `
+          + `off=${runs.lensDisabled.measurement.gpuPassMs['レンズ'].p95.toFixed(3)} ms`);
       }
-      lensAblation = summarizeLensAblation(diagnosticBlocks);
+      diagnosticBlocks.push(block);
     }
+    const lensAblation = summarizeLensAblation(diagnosticBlocks);
 
     if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
     const gpuSupported = blocks.every((block) => Object.values(block.modes)
