@@ -57,7 +57,7 @@ export class CloudPresentation {
   // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
     return {
-      field: { texture: this.source.texture, cap: this.cap.placement },
+      field: { texture: this.source.texture, cap: this.cap.placement, detailTile: null },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
     };

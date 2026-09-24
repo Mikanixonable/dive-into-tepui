@@ -52,7 +52,7 @@ def cod_indicator_availability(
         "scope": assessment_scope,
         "status": status,
         "minimumValidSupportFraction": MINIMUM_COD_INDICATOR_SUPPORT_FRACTION,
-        "diagnosticSupportFraction": area_weighted_coverage_fraction,
+        "diagnosticSupportFraction": area_weighted_coverage_fraction if valid_fraction else None,
         "supportBasis": "pixel-centre area-weighted COD-good coverage on eligible ACM cloud pixels",
         "validFrameCountStatus": "not_assessed",
         "finalMetricStatus": "blocked",
