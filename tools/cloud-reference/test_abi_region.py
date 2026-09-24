@@ -193,9 +193,11 @@ class AbiRegionGeometryTest(unittest.TestCase):
         self.assertAlmostEqual(result["areaWeightedCoverageFraction"], 6 / 26)
         self.assertEqual(
             result["indicatorAvailability"]["status"],
-            "blocked_insufficient_support",
+            "provisional_area_threshold_not_met",
         )
         self.assertEqual(result["indicatorAvailability"]["finalMetricStatus"], "blocked")
+        self.assertEqual(result["indicatorAvailability"]["scope"], "single_slot")
+        self.assertEqual(result["indicatorAvailability"]["validFrameCountStatus"], "not_assessed")
         self.assertEqual(result["codDqfRawCountsOnEligibleCloudPixels"], {"0": 4, "6": 4, "14": 4})
         self.assertIn("raw 6 and raw 14 remain in the cloud denominator", result["limitations"])
 
@@ -359,21 +361,29 @@ class AbiRegionSeriesTest(unittest.TestCase):
         self.assertEqual(diagnostic["areaWeightedCoverageFraction"], 0.375)
         self.assertEqual(
             diagnostic["indicatorAvailability"]["status"],
-            "blocked_insufficient_support",
+            "provisional_area_threshold_not_met",
         )
+        self.assertEqual(diagnostic["indicatorAvailability"]["scope"], "aggregated_series")
         self.assertEqual(diagnostic["codDqfRawCountsOnEligibleCloudPixels"], {"0": 75, "6": 20, "14": 205})
         self.assertIn("cloudEligibleCoverageDiagnostic", result["slots"][0])
 
     def test_cod_support_threshold_is_provisional_and_never_passes_final_metric(self) -> None:
-        exact_threshold = REGION.cod_indicator_availability(0.5)
-        self.assertEqual(exact_threshold["status"], "provisional_support_sufficient")
+        exact_threshold = REGION.cod_indicator_availability(0.5, "single_slot")
+        self.assertEqual(exact_threshold["status"], "provisional_area_threshold_met")
         self.assertEqual(exact_threshold["minimumValidSupportFraction"], 0.5)
         self.assertEqual(exact_threshold["finalMetricStatus"], "blocked")
+        self.assertEqual(exact_threshold["validFrameCountStatus"], "not_assessed")
+        self.assertIn("valid_frame_count_not_assessed", exact_threshold["finalMetricBlockers"])
         self.assertIn("solar_angle_mask_not_applied", exact_threshold["finalMetricBlockers"])
 
-        missing = REGION.cod_indicator_availability(None)
-        self.assertEqual(missing["status"], "blocked_insufficient_support")
+        missing = REGION.cod_indicator_availability(None, "single_slot")
+        self.assertEqual(missing["status"], "blocked_invalid_or_missing_support_fraction")
         self.assertIsNone(missing["diagnosticSupportFraction"])
+        for invalid in (float("nan"), float("inf"), -0.01, 1.01):
+            with self.subTest(invalid=invalid):
+                result = REGION.cod_indicator_availability(invalid, "aggregated_series")
+                self.assertEqual(result["status"], "blocked_invalid_or_missing_support_fraction")
+                self.assertEqual(result["scope"], "aggregated_series")
 
 
 if __name__ == "__main__":
