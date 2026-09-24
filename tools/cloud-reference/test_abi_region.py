@@ -191,6 +191,11 @@ class AbiRegionGeometryTest(unittest.TestCase):
         self.assertEqual(result["eligibleCloudAreaM2"], 26.0)
         self.assertEqual(result["goodCodCloudAreaM2"], 6.0)
         self.assertAlmostEqual(result["areaWeightedCoverageFraction"], 6 / 26)
+        self.assertEqual(
+            result["indicatorAvailability"]["status"],
+            "blocked_insufficient_support",
+        )
+        self.assertEqual(result["indicatorAvailability"]["finalMetricStatus"], "blocked")
         self.assertEqual(result["codDqfRawCountsOnEligibleCloudPixels"], {"0": 4, "6": 4, "14": 4})
         self.assertIn("raw 6 and raw 14 remain in the cloud denominator", result["limitations"])
 
@@ -352,8 +357,23 @@ class AbiRegionSeriesTest(unittest.TestCase):
         self.assertEqual(diagnostic["eligibleCloudAreaM2"], 600.0)
         self.assertEqual(diagnostic["goodCodCloudAreaM2"], 225.0)
         self.assertEqual(diagnostic["areaWeightedCoverageFraction"], 0.375)
+        self.assertEqual(
+            diagnostic["indicatorAvailability"]["status"],
+            "blocked_insufficient_support",
+        )
         self.assertEqual(diagnostic["codDqfRawCountsOnEligibleCloudPixels"], {"0": 75, "6": 20, "14": 205})
         self.assertIn("cloudEligibleCoverageDiagnostic", result["slots"][0])
+
+    def test_cod_support_threshold_is_provisional_and_never_passes_final_metric(self) -> None:
+        exact_threshold = REGION.cod_indicator_availability(0.5)
+        self.assertEqual(exact_threshold["status"], "provisional_support_sufficient")
+        self.assertEqual(exact_threshold["minimumValidSupportFraction"], 0.5)
+        self.assertEqual(exact_threshold["finalMetricStatus"], "blocked")
+        self.assertIn("solar_angle_mask_not_applied", exact_threshold["finalMetricBlockers"])
+
+        missing = REGION.cod_indicator_availability(None)
+        self.assertEqual(missing["status"], "blocked_insufficient_support")
+        self.assertIsNone(missing["diagnosticSupportFraction"])
 
 
 if __name__ == "__main__":
