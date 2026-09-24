@@ -62,33 +62,42 @@ function summarizeObservedRenderRepeats(blocks) {
 function summarizeLensAblation(blocks) {
   const byMode = {};
   for (const mode of modes) {
-    const observedRenderDeltas = [];
-    const lensPassDeltas = [];
+    const observedRenderInteractions = [];
+    const lensPassInteractions = [];
     for (const block of blocks) {
       const runs = block.modes[mode.id];
-      observedRenderDeltas.push(
-        runs.lensEnabled.measurement.observedRenderTotalMs.p95
-          - runs.lensDisabled.measurement.observedRenderTotalMs.p95,
+      observedRenderInteractions.push(
+        (runs.cloudOnLensEnabled.measurement.observedRenderTotalMs.p95
+          - runs.cloudOnLensDisabled.measurement.observedRenderTotalMs.p95)
+          - (runs.cloudOffLensEnabled.measurement.observedRenderTotalMs.p95
+            - runs.cloudOffLensDisabled.measurement.observedRenderTotalMs.p95),
       );
-      lensPassDeltas.push(
-        runs.lensEnabled.measurement.gpuPassMs['レンズ'].p95
-          - runs.lensDisabled.measurement.gpuPassMs['レンズ'].p95,
+      lensPassInteractions.push(
+        (runs.cloudOnLensEnabled.measurement.gpuPassMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassMs['レンズ'].p95),
       );
     }
     byMode[mode.id] = {
-      pairedObservedRenderP95DeltaMs: distribution(observedRenderDeltas),
-      pairedLensPassP95DeltaMs: distribution(lensPassDeltas),
+      pairedObservedRenderInteractionP95Ms: distribution(observedRenderInteractions),
+      pairedLensPassInteractionP95Ms: distribution(lensPassInteractions),
     };
   }
   return {
-    purpose: 'descriptive cloud-on lens toggle ablation; not part of baseline qualification',
-    fixture: { caseName: CASE_NAME, shotName: SHOT_NAME, clouds: true },
-    comparison: 'lens-enabled p95 minus lens-disabled p95 within each additional block',
-    scope: {
-      observedRender: 'sum of resolved renderer.render() timestamp durations; includes composite changes and is not full-frame GPU B0',
-      lensPass: 'instrumented render pass named レンズ; descriptive and may be unavailable when timestamp queries are unsupported',
+    purpose: 'descriptive cloud-by-lens interaction; not part of baseline qualification',
+    fixture: {
+      caseName: CASE_NAME,
+      shotName: SHOT_NAME,
+      canvasWidth: blocks[0]?.modes[modes[0].id]?.cloudOnLensEnabled.measurement.canvasWidth ?? null,
+      canvasHeight: blocks[0]?.modes[modes[0].id]?.cloudOnLensEnabled.measurement.canvasHeight ?? null,
     },
-    interpretation: 'The observed-render delta estimates the cost of enabling the lens pipeline for this cloud-on fixture. It does not isolate cloud-specific work inside the lens kernels, and it has no pass/fail threshold.',
+    comparison: '(cloud-on lens-on − cloud-on lens-off) − (cloud-off lens-on − cloud-off lens-off) within each block',
+    scope: {
+      observedRender: 'interaction of summed resolved renderer.render() timestamp durations; includes composite changes and is not full-frame GPU B0',
+      lensPass: 'interaction of p95 values for the instrumented render pass named レンズ; descriptive and may be unavailable when timestamp queries are unsupported',
+    },
+    interpretation: 'The difference of lens-toggle effects between cloud-on and cloud-off estimates cloud-specific lens interaction in these render scopes. It is descriptive and has no pass/fail threshold.',
     modes: byMode,
     blocks,
   };
@@ -204,20 +213,31 @@ async function main() {
       const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
       for (const mode of orderedModes) {
         const runs = {};
-        const lensOrder = index % 2 === 0 ? [true, false] : [false, true];
-        for (const lens of lensOrder) {
-          const run = await measure(mode.source, true, { lens });
-          if (run.graphicsSettings.lens !== lens || run.graphicsSettings.clouds !== true) {
-            throw new Error(`Lens ablation did not apply requested cloud/lens settings for ${mode.id}`);
+        const settings = [
+          { clouds: true, lens: true, key: 'cloudOnLensEnabled' },
+          { clouds: true, lens: false, key: 'cloudOnLensDisabled' },
+          { clouds: false, lens: true, key: 'cloudOffLensEnabled' },
+          { clouds: false, lens: false, key: 'cloudOffLensDisabled' },
+        ];
+        const orderedSettings = index % 2 === 0 ? settings : [...settings].reverse();
+        for (const setting of orderedSettings) {
+          const run = await measure(mode.source, setting.clouds, { lens: setting.lens });
+          if (run.graphicsSettings.lens !== setting.lens || run.graphicsSettings.clouds !== setting.clouds) {
+            throw new Error(`Lens interaction diagnostic did not apply requested settings for ${mode.id}`);
           }
-          runs[lens ? 'lensEnabled' : 'lensDisabled'] = run;
+          runs[setting.key] = run;
         }
         block.modes[mode.id] = runs;
-        console.log(`${mode.id} lens-ablation block=${index + 1}/${BLOCK_COUNT}: `
-          + `lens-on observed render p95=${runs.lensEnabled.measurement.observedRenderTotalMs.p95.toFixed(3)} ms, `
-          + `lens-off=${runs.lensDisabled.measurement.observedRenderTotalMs.p95.toFixed(3)} ms; `
-          + `lens pass p95 on=${runs.lensEnabled.measurement.gpuPassMs['レンズ'].p95.toFixed(3)} ms, `
-          + `off=${runs.lensDisabled.measurement.gpuPassMs['レンズ'].p95.toFixed(3)} ms`);
+        const interaction = (field) =>
+          (runs.cloudOnLensEnabled.measurement[field].p95 - runs.cloudOnLensDisabled.measurement[field].p95)
+          - (runs.cloudOffLensEnabled.measurement[field].p95 - runs.cloudOffLensDisabled.measurement[field].p95);
+        const lensPassInteraction = (runs.cloudOnLensEnabled.measurement.gpuPassMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassMs['レンズ'].p95);
+        console.log(`${mode.id} cloud-lens-interaction block=${index + 1}/${BLOCK_COUNT}: `
+          + `observed render p95 interaction=${interaction('observedRenderTotalMs')} ms; `
+          + `lens pass p95 interaction=${lensPassInteraction} ms`);
       }
       diagnosticBlocks.push(block);
     }
