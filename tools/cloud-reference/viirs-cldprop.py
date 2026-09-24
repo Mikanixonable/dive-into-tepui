@@ -1,16 +1,7 @@
-"""Provisional decoder for daytime SNPP VIIRS Collection 1 COD pixels.
+"""SNPP VIIRS Collection 1 の昼間光学厚を品質 flag とともに復号する。
 
-The bit layout follows NASA's Collection 1 VIIRS file specification and its
-CLDPROP user guide. NASA's current product page identifies v1.1 as the active
-collection, but the public file-spec example is v1.0. Callers must pass the
-actual granule's version and embedded QA descriptions through
-``decode_daytime_cod``; processing stops unless they identify v1.1 and confirm
-the expected bit meanings. Synthetic tests do not validate a real granule.
-
-Inputs are unmasked raw packed COD, QA and cloud-mask values, packed solar
-zenith in centidegrees, and geolocation in degrees. NetCDF readers must disable
-automatic mask/scale for packed fields before calling this module. PCL edge
-retrievals are intentionally not accepted as primary COD.
+原本の処理版と品質記述を引数で照合する。入力は NetCDF の自動 mask/scale を
+無効にした packed 値であり、太陽天頂角は 1/100 度、測位は度で受ける。
 """
 
 from __future__ import annotations
@@ -22,11 +13,14 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 
+# NASA Collection 1 file spec の主光学厚 packed 値・尺度。
+# https://ladsweb.modaps.eosdis.nasa.gov/filespec/VIIRS/1/CLDPROP_L2_VIIRS_SNPP
 COD_FILL = -9999
 COD_MIN = 0
 COD_MAX = 15000
 COD_SCALE = 0.01
 PRIMARY_COD_FIELD = "Cloud_Optical_Thickness"
+# 太陽天頂角の packed 値は 1/100 度単位。
 SOLAR_ZENITH_FILL = -32768
 SOLAR_ZENITH_MAX_RAW = 18000
 SOLAR_ZENITH_DAY_MAX_RAW = 7000
@@ -36,7 +30,7 @@ LONGITUDE_FILL = -999.0
 
 @dataclass(frozen=True)
 class CodDecodeResult:
-    """Primary COD values, validity mask, and overlapping rejection counts."""
+    """主光学厚、採否 mask、重複を許す除外理由別画素数。"""
 
     cod: NDArray[np.float64]
     valid: NDArray[np.bool_]
@@ -77,6 +71,7 @@ _CLOUD_MASK_DESCRIPTION_FRAGMENTS = {
 
 
 def _description_text(value: object) -> str:
+    """品質記述の属性値を比較用の文字列へ変換する。"""
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return str(value)
@@ -87,6 +82,7 @@ def _check_descriptions(
     expected: Mapping[str, str | tuple[str, ...]],
     label: str,
 ) -> None:
+    """品質記述が必要なビットの意味を明示しているか調べる。"""
     for name, fragment in expected.items():
         actual = descriptions.get(name)
         fragments = (fragment,) if isinstance(fragment, str) else fragment
@@ -100,7 +96,7 @@ def _confirm_v11_qa_layout(
     qa_descriptions: Mapping[str, object],
     cloud_mask_descriptions: Mapping[str, object],
 ) -> None:
-    """Fail closed unless actual embedded attributes confirm the v1.1 layout."""
+    """原本の埋め込み属性で v1.1 の品質ビット解釈を照合する。"""
     if processing_version.strip().casefold() not in {"v1.1", "1.1"}:
         raise ValueError("CLDPROP processing_version must identify v1.1")
     _check_descriptions(qa_descriptions, _QA_DESCRIPTION_FRAGMENTS, "Quality_Assurance")
@@ -108,17 +104,20 @@ def _confirm_v11_qa_layout(
 
 
 def _raw_array(values: ArrayLike, label: str) -> NDArray:
+    """packed 値を配列として受け、masked な入力を拒否する。"""
     if np.ma.isMaskedArray(values) and np.any(np.ma.getmaskarray(values)):
         raise ValueError(f"{label} must be read with NetCDF automatic masking disabled")
     return np.asarray(values)
 
 
 def _same_shape(values: NDArray, expected: tuple[int, ...], label: str) -> None:
+    """画素軸の形が主光学厚と一致するか調べる。"""
     if values.shape != expected:
         raise ValueError(f"{label} shape {values.shape} must match COD shape {expected}")
 
 
 def _as_unsigned_byte(values: NDArray, label: str) -> NDArray[np.uint8]:
+    """符号付き byte のビット列を unsigned byte として解釈する。"""
     if not np.issubdtype(values.dtype, np.integer) or values.dtype.itemsize != 1:
         raise ValueError(f"{label} must contain packed one-byte integers")
     return values.astype(np.uint8, copy=False)
@@ -136,13 +135,11 @@ def decode_daytime_cod(
     qa_descriptions: Mapping[str, object],
     cloud_mask_descriptions: Mapping[str, object],
 ) -> CodDecodeResult:
-    """Decode strict daytime, confident-cloud, ice-free-ocean primary COD.
+    """昼間の確実な雲・氷のない海面における主光学厚を返す。
 
-    QA bytes and Cloud_Mask byte 0 use the bit numbers and values documented by
-    NASA (bit 7 is most significant; bit 0 is least significant). Arrays must
-    have matching pixel shapes, with trailing lengths four and two for QA and
-    Cloud_Mask respectively. Scalars are accepted as zero-dimensional pixels.
-    Rejection counts overlap when a pixel fails more than one criterion.
+    品質 byte は NASA のビット番号（7 が最上位、0 が最下位）に従う。
+    QA と Cloud_Mask の末尾次元はそれぞれ 4、2。scalar も一画素として扱う。
+    除外理由別画素数は重複して数える。
     """
     _confirm_v11_qa_layout(processing_version, qa_descriptions, cloud_mask_descriptions)
 
@@ -180,7 +177,7 @@ def decode_daytime_cod(
 
     cod_in_range = (cod_raw >= COD_MIN) & (cod_raw <= COD_MAX)
     cod_not_fill = cod_raw != COD_FILL
-    # QA byte 3 value 00 is the valid ice-free-ocean category, so it is not a fill test.
+    # QA byte 3 の 00 は氷のない海面を表す有効な分類である。
     quality_ok = (qa0 != 0) & (qa1 != 0)
     confidence = (qa0 >> 1) & 0b11
     band_used = (qa1 >> 4) & 0b11

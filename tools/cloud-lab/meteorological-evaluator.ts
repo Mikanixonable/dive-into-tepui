@@ -1,5 +1,4 @@
-// Deterministic CPU diagnostics for the cloud-lab fixtures. These evaluate declared
-// controls and physical response checks; no result is applied to the generated image.
+// 雲ラボの制御入力に対し、決定論的な CPU 物理診断と判定値を返す。
 import * as THREE from 'three/webgpu';
 import {
   iceEffectiveRadiusM,
@@ -320,6 +319,7 @@ function maximumPositiveBuoyancyHeightM(input: CloudEnvironmentInput): number {
   return maximumHeightM;
 }
 
+// 名前付き近距離 shot のカメラ・cap から、生成場の中心標本間隔を導く。
 function standardNearRangeCloudFieldCenterSpacingM(): { spacingM: number; cameraDistanceM: number } {
   const earthCase = EARTH_CASES.earth();
   const shot = earthCase.shots?.['cloud-standard-near-range-250km'];
@@ -337,6 +337,7 @@ function standardNearRangeCloudFieldCenterSpacingM(): { spacingM: number; camera
   ) * 10 ** shot.view.cameraDistanceLog;
   const nearPlacement = { ...earthCase.earth, ...shot.view };
   const surfacePoint = earthCenterOf(nearPlacement).add(new THREE.Vector3(0, 0, R_EARTH_EQ));
+  // 地表を注視する shot の契約が崩れた場合、投影尺度は意味を失う。
   if (surfacePoint.distanceTo(pivot) > 1e-6) {
     throw new Error('standard near-range cloud shot pivot must lie on the equatorial surface');
   }
@@ -351,6 +352,7 @@ function residualIceAtHumidity(upperRelativeHumidity: number, timeSeconds: numbe
   return onlyEvent(eventDomain(timeSeconds, [cell(upperRelativeHumidity)])).iceRelease.remainingKgM2;
 }
 
+// 剛体回転する有限雲塊の質量・軌跡を独立式と比べ、描画標本の成立性を添える。
 function evaluateC1(): MeteorologicalCaseEvaluation {
   const heightM = 1_000;
   const radiusM = EARTH_RADIUS_M + heightM;
@@ -366,6 +368,7 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
   const twoKmFeatureScreenSamples = C1_TWO_KM_FEATURE_WAVELENGTH_M
     / metersPerPixelAtDepth(FOV_DEG, fieldSampling.cameraDistanceM, VIEW_HEIGHT);
   const twoKmResponseBlocked = fieldSampling.spacingM > twoKmResponseMaximumSpacingM;
+  // 面積の違う材料点を同じ角速度で運び、軌跡と積分質量を別々に測る。
   const blobPoints = [
     { direction: norm(v3(-0.018, -0.009, 1)), areaWeightM2: 1, initialMassKgM2: 0.0006 },
     { direction: norm(v3(-0.009, 0.014, 1)), areaWeightM2: 2, initialMassKgM2: 0.0008 },

@@ -158,8 +158,11 @@ export function qualifyObservedRenderBaseline(blocks, hardware) {
   if (hardware.timestampQueryAdvertised !== true) {
     return { status: 'indeterminate', scope, prerequisites, reason: 'Timestamp queries are not advertised by the adapter.' };
   }
-  if (hardware.adapterFallback !== false) {
-    return { status: 'indeterminate', scope, prerequisites, reason: 'The browser adapter must be a confirmed non-fallback GPU.' };
+  if (hardware.adapterFallback === true
+    || hardware.adapterVendor !== 'apple'
+    || typeof hardware.adapterArchitecture !== 'string'
+    || !hardware.adapterArchitecture.startsWith('metal')) {
+    return { status: 'indeterminate', scope, prerequisites, reason: 'The browser adapter must identify as an Apple Metal GPU and not report fallback.' };
   }
   if (!fixtureMatches) {
     return {
