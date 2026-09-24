@@ -151,6 +151,56 @@ class AbiRegionGeometryTest(unittest.TestCase):
         with self.assertRaises(REGION.RegionError):
             REGION.grid_parameters(Dataset())
 
+    def test_cod_acm_alignment_requires_verified_two_by_two_fixed_grid(self) -> None:
+        projection = {"height": 35_786_023.0, "a": 6_378_137.0, "b": 6_356_752.31414, "lon0": -2.39}
+        REGION.validate_cod_acm_grid_alignment(
+            np.array([-1.0, 0.0]), np.array([0.5, -0.5]), projection,
+            np.array([-1.25, -0.75, -0.25, 0.25]),
+            np.array([0.75, 0.25, -0.25, -0.75]), projection,
+        )
+        with self.assertRaises(REGION.RegionError):
+            REGION.validate_cod_acm_grid_alignment(
+                np.array([-1.0, 0.0]), np.array([0.5, -0.5]), projection,
+                np.array([-1.25, -0.75, -0.24, 0.26]),
+                np.array([0.75, 0.25, -0.25, -0.75]), projection,
+            )
+        with self.assertRaises(REGION.RegionError):
+            REGION.validate_cod_acm_grid_alignment(
+                np.array([-1.0, 0.0]), np.array([0.5, -0.5]), projection,
+                np.array([-1.25, -0.75, -0.25, 0.25]),
+                np.array([0.75, 0.25, -0.25, -0.75]),
+                {**projection, "lon0": -2.3},
+            )
+
+    def test_cod_cloud_coverage_excludes_clear_acm_and_retains_raw6_and_raw14_clouds(self) -> None:
+        acm_field = np.array([[2, 3, 2, 3, 2, 3, 0, 1], [3, 2, 3, 2, 3, 2, 1, 0]], dtype=np.uint8)
+        acm_field_valid = np.ones((2, 8), dtype=bool)
+        acm_dqf = np.zeros((2, 8), dtype=np.uint8)
+        acm_dqf_valid = np.ones((2, 8), dtype=bool)
+        acm_inside = np.ones((2, 8), dtype=bool)
+        result = REGION.summarize_cod_cloud_eligible_coverage(
+            np.array([[True, True, True, True]]),
+            np.array([[0, 6, 14, 0]], dtype=np.uint8),
+            np.ones((1, 4), dtype=bool),
+            acm_field, acm_field_valid, acm_dqf, acm_dqf_valid, acm_inside,
+        )
+        self.assertEqual(result["eligibleCloudPixelCount"], 12)
+        self.assertEqual(result["goodCodCloudPixelCount"], 4)
+        self.assertAlmostEqual(result["coverageFraction"], 1 / 3)
+        self.assertEqual(result["codDqfRawCountsOnEligibleCloudPixels"], {"0": 4, "6": 4, "14": 4})
+        self.assertIn("raw 6 and raw 14 remain in the cloud denominator", result["limitations"])
+
+        acm_field_valid[0, 0] = False
+        acm_dqf_valid[0, 1] = False
+        masked = REGION.summarize_cod_cloud_eligible_coverage(
+            np.array([[True, True, True, True]]),
+            np.array([[0, 6, 14, 0]], dtype=np.uint8),
+            np.ones((1, 4), dtype=bool),
+            acm_field, acm_field_valid, acm_dqf, acm_dqf_valid, acm_inside,
+        )
+        self.assertEqual(masked["eligibleCloudPixelCount"], 10)
+        self.assertEqual(masked["goodCodCloudPixelCount"], 2)
+
 
 class AbiRegionSeriesTest(unittest.TestCase):
     def test_series_slots_include_start_and_end_at_declared_interval(self) -> None:
@@ -249,6 +299,33 @@ class AbiRegionSeriesTest(unittest.TestCase):
         self.assertAlmostEqual(result["pixelCoverageFraction"], 85 / 110)
         self.assertEqual(result["rawFieldCounts"]["128"], 2)
         self.assertEqual(len(result["slots"]), 2)
+
+    def test_product_aggregate_keeps_cod_cloud_eligible_diagnostic_separate(self) -> None:
+        def summary(slot: str, eligible: int, covered: int, raw_dqf: dict[str, int]) -> dict[str, object]:
+            return {
+                "slotStart": slot, "sourceFile": f"{slot}.nc", "product": "L2_COD", "field": "COD", "bandId": None,
+                "regionGridPixelCount": 100, "fieldFillCount": 0, "fieldOutOfRangeCount": 0,
+                "fieldValidCount": 100, "dqfFillCount": 0, "dqfOutOfRangeCount": 0,
+                "dqfGoodCount": 10, "jointGoodFieldAndDqfCount": 10, "pixelCoverageFraction": 0.1,
+                "dqfRawCounts": {"0": 10}, "cloudEligibleCoverageDiagnostic": {
+                    "eligibleCloudPixelCount": eligible, "goodCodCloudPixelCount": covered,
+                    "coverageFraction": covered / eligible, "codDqfRawCountsOnEligibleCloudPixels": raw_dqf,
+                    "denominatorDefinition": "ACM cloud pixels", "numeratorDefinition": "good COD over ACM clouds",
+                    "aggregation": "2x2 fixed-grid count", "limitations": "diagnostic only",
+                },
+            }
+
+        result = REGION.aggregate_product_slots("L2_COD", "COD", None, [
+            summary("2024-05-15T18:00:00Z", 100, 25, {"0": 25, "14": 75}),
+            summary("2024-05-15T18:10:00Z", 200, 50, {"0": 50, "6": 20, "14": 130}),
+        ])
+        diagnostic = result["cloudEligibleCoverageDiagnostic"]
+        self.assertEqual(diagnostic["slotCount"], 2)
+        self.assertEqual(diagnostic["eligibleCloudPixelCount"], 300)
+        self.assertEqual(diagnostic["goodCodCloudPixelCount"], 75)
+        self.assertEqual(diagnostic["coverageFraction"], 0.25)
+        self.assertEqual(diagnostic["codDqfRawCountsOnEligibleCloudPixels"], {"0": 75, "6": 20, "14": 205})
+        self.assertIn("cloudEligibleCoverageDiagnostic", result["slots"][0])
 
 
 if __name__ == "__main__":
