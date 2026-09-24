@@ -90,6 +90,15 @@ function modeQualification(blocks, modeId) {
     lower: pairedP95Delta.p95 - repeatabilityNoise.p95,
     upper: pairedP95Delta.p95 + repeatabilityNoise.p95,
   };
+  if (uncertaintyIntervalMs.lower > OBSERVED_RENDER_INCREASE_LIMIT_MS) {
+    return {
+      status: 'fail',
+      reason: 'The paired observed-render p95 lower bound exceeds the increase limit even after off/off noise.',
+      pairedObservedRenderP95DeltaMs: pairedP95Delta,
+      offOffRepeatabilityNoiseFloorMs: repeatabilityNoise,
+      uncertaintyIntervalMs,
+    };
+  }
   if (!(repeatabilityNoise.p95 < OBSERVED_RENDER_INCREASE_LIMIT_MS)) {
     return {
       status: 'indeterminate',
@@ -100,15 +109,12 @@ function modeQualification(blocks, modeId) {
     };
   }
   const status = uncertaintyIntervalMs.upper <= OBSERVED_RENDER_INCREASE_LIMIT_MS
-    ? 'pass'
-    : uncertaintyIntervalMs.lower > OBSERVED_RENDER_INCREASE_LIMIT_MS ? 'fail' : 'indeterminate';
+    ? 'pass' : 'indeterminate';
   return {
     status,
     reason: status === 'pass'
       ? 'The paired observed-render p95 upper bound is within the increase limit.'
-      : status === 'fail'
-        ? 'The paired observed-render p95 lower bound exceeds the increase limit.'
-        : 'The paired observed-render p95 uncertainty interval crosses the increase limit.',
+      : 'The paired observed-render p95 uncertainty interval crosses the increase limit.',
     pairedObservedRenderP95DeltaMs: pairedP95Delta,
     offOffRepeatabilityNoiseFloorMs: repeatabilityNoise,
     uncertaintyIntervalMs,

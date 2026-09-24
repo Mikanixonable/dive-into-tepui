@@ -195,6 +195,12 @@ export function register(): void {
     assert.equal(unsupportedResult.status, 'indeterminate');
     assert.equal(computeResult.status, 'indeterminate');
     assert.equal(noisyResult.status, 'indeterminate');
+    const noisyButClearlyAbove = qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 20, observed: 20 }, 6),
+      qualificationHardware,
+    );
+    assert.equal(noisyButClearlyAbove.status, 'fail');
+    assert.equal(noisyButClearlyAbove.modes?.['generated-standard']?.status, 'fail');
     assert.equal(qualifyObservedRenderBaseline(
       qualificationBlocks({ generated: 1, observed: 1 }).slice(0, 7),
       qualificationHardware,
