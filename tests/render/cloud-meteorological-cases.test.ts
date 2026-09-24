@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
+  areaWeightedMassBudget,
   areaWeightedMassKg,
   evaluateC1NearRangeRasterDiagnostic,
   evaluateMeteorologicalCase,
@@ -91,6 +92,31 @@ export function register(): void {
       { areaWeightM2: 1, massKgM2: Number.MAX_VALUE },
       { areaWeightM2: 1, massKgM2: Number.MAX_VALUE },
     ]), RangeError, 'finite products whose sum overflows cannot become a valid total');
+  });
+
+  test('meteorological fixtures: finite-area water budget integrates sources and losses across columns', () => {
+    const samples = [
+      { areaWeightM2: 2, initialKgM2: 0.4, sourceKgM2: 0.3, lossKgM2: 0.2, currentKgM2: 0.5 },
+      { areaWeightM2: 3, initialKgM2: 0.1, sourceKgM2: 0.5, lossKgM2: 0.1, currentKgM2: 0.5 },
+    ];
+    const budget = areaWeightedMassBudget(samples);
+    assert.equal(budget.initialKg, 1.1);
+    assert.equal(budget.sourceKg, 2.1);
+    assert.ok(Math.abs(budget.lossKg - 0.7) < 1e-12);
+    assert.equal(budget.currentKg, 2.5);
+    assert.ok(Math.abs(budget.residualKg) < 1e-12);
+    assert.ok(budget.relativeResidual < 1e-12);
+
+    const lostColumn = areaWeightedMassBudget(samples.slice(0, 1));
+    assert.ok(Math.abs(lostColumn.residualKg) < 1e-12);
+    const omittedSource = areaWeightedMassBudget(samples.map((sample, index) => index === 1
+      ? { ...sample, sourceKgM2: 0.4 }
+      : sample));
+    assert.notEqual(omittedSource.residualKg, 0,
+      'an omitted source in a finite-area column must appear in the integrated residual');
+    assert.throws(() => areaWeightedMassBudget([
+      { areaWeightM2: 1, initialKgM2: 0, sourceKgM2: 1, lossKgM2: 0, currentKgM2: -1 },
+    ]), RangeError);
   });
 
   test('meteorological fixtures: C2 validates every released-ice cohort against two-layer analytic transport', () => {
