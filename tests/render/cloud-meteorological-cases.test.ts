@@ -24,6 +24,12 @@ export function register(): void {
     assert.equal(measurement(result, 'trajectory').value, null);
     assert.ok(Number(result.controls.maximumAnalyticTrajectoryErrorM) < 0.01,
       'retain the measured analytic error for diagnostics without claiming the plan threshold passed');
+    assert.ok(Math.abs(Number(result.controls.standardNearRangeCloudFieldCenterSpacingM) - 10_416) < 1,
+      'derive field spacing from the standard near-range Earth shot and production cap projection');
+    assert.equal(result.controls.twoKmFeatureMaximumFieldSpacingM, 500);
+    assert.ok(Number(result.controls.twoKmFeatureSamplesPerFieldWavelength) < 1);
+    assert.ok(Number(result.controls.twoKmFeatureScreenSamples) >= 4);
+    assert.equal(result.controls.twoKmCloudFieldResponseStatus, 'blocked');
     assert.ok(measurement(result, 'rotation-angle').value! <= 1e-9);
     assert.ok(measurement(result, 'mass').value! <= METEOROLOGICAL_ERROR_FLOORS.relativeMass);
     assert.ok(Number(result.controls.rotationAngleRad) > 0);

@@ -1,5 +1,6 @@
 // Deterministic CPU diagnostics for the cloud-lab fixtures. These evaluate declared
 // controls and physical response checks; no result is applied to the generated image.
+import * as THREE from 'three/webgpu';
 import {
   iceEffectiveRadiusM,
   iceOpticalDepth,
@@ -24,6 +25,11 @@ import {
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
 import { cross, dot, norm, scale, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
+import { metersPerPixelAtDepth } from '../../src/math/projection';
+import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
+import { OrthographicCap } from '../../src/render/field-projection';
+import { CLOUD_CAP_SIZE, capRadiusFor } from '../../src/render/cloud/cloud-cap';
+import { CLOUD_TOP_SPAN } from '../../src/render/cloud/cumulus-shape';
 import {
   analyticC2ReleasedIceDirection,
   C2_CONTINUOUS_ORACLE_INTERVALS,
@@ -35,6 +41,9 @@ import {
   METEOROLOGICAL_ERROR_FLOORS,
   type MeteorologicalCaseId,
 } from './meteorological-cases';
+import { earthCenterOf } from '../render-lab/lab-earth';
+import { EARTH_CASES } from '../render-lab/earth-cases';
+import { FOV_DEG, VIEW_HEIGHT } from '../render-lab/lab-case';
 
 const EARTH_RADIUS_M = 6_371_000;
 const DRY_AIR_GAS_CONSTANT_J_PER_KG_K = 287.05;
@@ -44,6 +53,8 @@ const ICE_EXTINCTION_EFFICIENCY = 2;
 const SAMPLE_DURATION_SECONDS = 3_600;
 const SAMPLE_MAX_STEP_SECONDS = 30;
 const C1_EXPECTED_INTEGRATED_MASS_KG = 0.009;
+const C1_TWO_KM_FEATURE_WAVELENGTH_M = 2_000;
+const C1_MINIMUM_SAMPLES_PER_FEATURE = 4;
 const C2_PLAN_MAXIMUM_SPATIAL_SAMPLE_SPACING_M = 500;
 
 export type FixtureComparison = 'absolute-error' | 'greater-than' | 'less-than' | 'non-negative';
@@ -309,6 +320,33 @@ function maximumPositiveBuoyancyHeightM(input: CloudEnvironmentInput): number {
   return maximumHeightM;
 }
 
+function standardNearRangeCloudFieldCenterSpacingM(): { spacingM: number; cameraDistanceM: number } {
+  const earthCase = EARTH_CASES.earth();
+  const shot = earthCase.shots?.['cloud-standard-near-range-250km'];
+  if (earthCase.earth === undefined || earthCase.viewTarget === undefined
+    || shot?.view.cameraDistanceLog === undefined) {
+    throw new Error('standard near-range cloud shot must define Earth placement and camera distance');
+  }
+  const cameraForward = earthCase.camera.getWorldDirection(new THREE.Vector3());
+  const pivotDepth = cameraForward.dot(
+    new THREE.Vector3().subVectors(earthCase.viewTarget, earthCase.camera.position),
+  );
+  const pivot = earthCase.camera.position.clone().addScaledVector(cameraForward, pivotDepth);
+  const nearDistance = cameraForward.dot(
+    new THREE.Vector3().subVectors(pivot, earthCase.camera.position),
+  ) * 10 ** shot.view.cameraDistanceLog;
+  const nearPlacement = { ...earthCase.earth, ...shot.view };
+  const surfacePoint = earthCenterOf(nearPlacement).add(new THREE.Vector3(0, 0, R_EARTH_EQ));
+  if (surfacePoint.distanceTo(pivot) > 1e-6) {
+    throw new Error('standard near-range cloud shot pivot must lie on the equatorial surface');
+  }
+
+  const rho = (R_EARTH_EQ + nearDistance) / R_EARTH_EQ;
+  const capRadius = capRadiusFor(rho, CLOUD_TOP_SPAN / R_EARTH_EQ);
+  const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, capRadius);
+  return { spacingM: cap.texelAngleValue * R_EARTH_EQ, cameraDistanceM: nearDistance };
+}
+
 function residualIceAtHumidity(upperRelativeHumidity: number, timeSeconds: number): number {
   return onlyEvent(eventDomain(timeSeconds, [cell(upperRelativeHumidity)])).iceRelease.remainingKgM2;
 }
@@ -323,6 +361,11 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
   const maximumTransportStepSeconds = 5;
   const initialLiquidMassKgM2 = 0.00025;
   const initialIceMassKgM2 = 0.00075;
+  const fieldSampling = standardNearRangeCloudFieldCenterSpacingM();
+  const twoKmResponseMaximumSpacingM = C1_TWO_KM_FEATURE_WAVELENGTH_M / C1_MINIMUM_SAMPLES_PER_FEATURE;
+  const twoKmFeatureScreenSamples = C1_TWO_KM_FEATURE_WAVELENGTH_M
+    / metersPerPixelAtDepth(FOV_DEG, fieldSampling.cameraDistanceM, VIEW_HEIGHT);
+  const twoKmResponseBlocked = fieldSampling.spacingM > twoKmResponseMaximumSpacingM;
   const blobPoints = [
     { direction: norm(v3(-0.018, -0.009, 1)), areaWeightM2: 1, initialMassKgM2: 0.0006 },
     { direction: norm(v3(-0.009, 0.014, 1)), areaWeightM2: 2, initialMassKgM2: 0.0008 },
@@ -417,12 +460,17 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
       areaWeightedBlobMassKg: C1_EXPECTED_INTEGRATED_MASS_KG,
       transportedAreaWeightedMassKg: transportedIntegratedMassKg,
       maximumAnalyticTrajectoryErrorM: maximumTrajectoryErrorM,
+      standardNearRangeCloudFieldCenterSpacingM: fieldSampling.spacingM,
+      twoKmFeatureMaximumFieldSpacingM: twoKmResponseMaximumSpacingM,
+      twoKmFeatureSamplesPerFieldWavelength: C1_TWO_KM_FEATURE_WAVELENGTH_M / fieldSampling.spacingM,
+      twoKmFeatureScreenSamples,
+      twoKmCloudFieldResponseStatus: twoKmResponseBlocked ? 'blocked' : 'field-resolution-sufficient',
       materialPointCount: blobPoints.length,
       maximumTransportStepSeconds,
     },
     measurements: [
       blocked('trajectory', 'm',
-        'The standard near-range minimum sample spacing is not fixed in the fixture, so the planned quarter-spacing tolerance cannot be evaluated.'),
+        `The standard near-range field spacing is ${fieldSampling.spacingM.toFixed(1)} m; the 2 km response requires at most ${twoKmResponseMaximumSpacingM.toFixed(1)} m for four field samples per wavelength, so trajectory/2 km qualification remains blocked.`),
       compare('rotation-angle', maximumRotationAngleErrorRad, 'rad', 0, 1e-9, 'absolute-error',
         'The transported material point phase about the prescribed rotation axis is compared with angular velocity times elapsed time.'),
       compare('mass', relativeMassError, '1', 0, METEOROLOGICAL_ERROR_FLOORS.relativeMass, 'absolute-error',
