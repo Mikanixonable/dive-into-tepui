@@ -7,7 +7,7 @@ import {
   Fn, abs, clamp, exp2, float, floor, getViewPosition, ivec2, log, max, mrt, screenSize, screenUV, select, struct,
   texture, textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
 import { ShadingSample } from '../lighting/shading-sample';
 import { compileInto } from '../compile-into';
@@ -57,6 +57,7 @@ const LIGHT_TEXEL = struct({ visibility: 'vec4', indirect: 'vec4' }, 'ScreenSpac
 interface Stage {
   readonly material: THREE.MeshBasicNodeMaterial;
   readonly target: THREE.RenderTarget;
+  readonly gpuPass: GpuPassId;
 }
 
 // 走査の解像度の面。走査の画素が表す G バッファの画素の値を持ち、textures は素の深度(r32float)、法線(oct
@@ -217,10 +218,10 @@ export class ScreenSpacePass {
     }
     this.prepare(camera, width, height);
     // 前処理 → 走査 → 均し 2 回 → 拡大の順に、段ごとの描画先へ書く。
-    for (const { material, target } of this.stages[this.mode]) {
+    for (const { material, target, gpuPass } of this.stages[this.mode]) {
       this.renderer.setRenderTarget(target);
       this.quad.material = material;
-      this.gpu.beginPass(GPU_PASS.screenSpace);
+      this.gpu.beginPass(gpuPass);
       this.quad.render(this.renderer);
     }
     this.renderer.setRenderTarget(null);
@@ -286,11 +287,11 @@ export class ScreenSpacePass {
     upsampled.mrtNode = lightOutput(
       this.upsampled(gbuffer, scanOccluded!, scanExtent!, sun === null ? null : scanIndirect!));
     return [
-      { material: prepass, target: this.surfaceTarget },
-      { material: scan, target: this.scanTarget },
-      { material: blurred, target: this.blurTarget },
-      { material: reblurred, target: this.scanTarget },
-      { material: upsampled, target: this.output.target },
+      { material: prepass, target: this.surfaceTarget, gpuPass: GPU_PASS.bounceSource },
+      { material: scan, target: this.scanTarget, gpuPass: GPU_PASS.nearbyDiffuseScan },
+      { material: blurred, target: this.blurTarget, gpuPass: GPU_PASS.nearbyDiffuseReconstruct },
+      { material: reblurred, target: this.scanTarget, gpuPass: GPU_PASS.nearbyDiffuseReconstruct },
+      { material: upsampled, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseReconstruct },
     ];
   }
 

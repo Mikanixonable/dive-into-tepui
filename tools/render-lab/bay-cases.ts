@@ -88,6 +88,10 @@ const LARGE_EARTH_RADIUS_DEG = 30;
 const LARGE_EARTH_SUN_DISTANCE_LOG_AU = -0.16;
 const SMALL_EARTH_RADIUS_DEG = 3;
 const SMALL_EARTH_SUN_DISTANCE_LOG_AU = -1.14;
+const TINY_EARTH_RADIUS_DEG = 1;
+const TINY_EARTH_SUN_DISTANCE_LOG_AU = SMALL_EARTH_SUN_DISTANCE_LOG_AU
+  + Math.log10(Math.sin(THREE.MathUtils.degToRad(TINY_EARTH_RADIUS_DEG))
+    / Math.sin(THREE.MathUtils.degToRad(SMALL_EARTH_RADIUS_DEG)));
 
 // 観察の中心から方位 azimuthDeg・仰角 elevationDeg [deg]、距離 distance [m] に置くカメラの、観察の向きの差分。
 function cameraAt(azimuthDeg: number, elevationDeg: number, distance: number): Partial<LabViewAngles> {
@@ -294,9 +298,25 @@ function bay(): LabCase {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4),
       },
+      'bay-earth-open-diffuse': {
+        view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: planetLightOnly(4), debugTarget: 'diffuse',
+      },
+      'bay-earth-open-occlusion': {
+        view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'occlusion',
+      },
       'bay-earth-corner': {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4),
+      },
+      'bay-earth-corner-diffuse': {
+        view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: planetLightOnly(4), debugTarget: 'diffuse',
+      },
+      'bay-earth-corner-occlusion': {
+        view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'occlusion',
       },
       'bay-moon-open': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, SMALL_EARTH_RADIUS_DEG, SMALL_EARTH_SUN_DISTANCE_LOG_AU),
@@ -306,6 +326,18 @@ function bay(): LabCase {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, SMALL_EARTH_RADIUS_DEG, SMALL_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4),
       },
+      'bay-earth-radius-1deg': {
+        view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, TINY_EARTH_RADIUS_DEG, TINY_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: planetLightOnly(4), debugTarget: 'diffuse',
+      },
+      'bay-earth-radius-3deg': {
+        view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, SMALL_EARTH_RADIUS_DEG, SMALL_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: planetLightOnly(4), debugTarget: 'diffuse',
+      },
+      'bay-earth-radius-30deg': {
+        view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
+        graphics: planetLightOnly(4), debugTarget: 'diffuse',
+      },
       // 照り返しの較正。恒星を奥の壁の法線(+Z)に置く — 奥の壁は恒星へ正対し、床と端の壁は直射を掠める
       // だけ。天体照と環境光を切り、地球を遠ざけるので、壁の足元の床 P_base へ届くのは照り返しだけになる。
       'bay-bounce': {
@@ -314,6 +346,22 @@ function bay(): LabCase {
       },
       // 自己発光の照り返し。恒星を床の真下に置き、天体照を切る。光る箱のそばの床 P_glow と遠くの床を比べる。
       'bay-dark': { view: { ...SUN_BELOW, ...EARTH_AWAY }, graphics: { planetLightCount: 0 } },
+      'bay-bounce-source': {
+        view: { ...SUN_BELOW, ...EARTH_AWAY }, graphics: { planetLightCount: 0 }, debugTarget: 'bounce-source',
+      },
+      'bay-indirect': { view: {}, debugTarget: 'indirect' },
+      'bay-quality-low': { view: {}, graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse' },
+      'bay-quality-medium': { view: {}, graphics: { screenSpaceQuality: 1 }, debugTarget: 'diffuse' },
+      'bay-quality-high': { view: {}, graphics: { screenSpaceQuality: 2 }, debugTarget: 'diffuse' },
+      // 低設定は半解像度。距離約 1 km で半解像度の 4 m 半径が 1〜2 px に投影される。
+      'bay-radius-1px': {
+        view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 1100),
+        graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse',
+      },
+      'bay-radius-2px': {
+        view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 650),
+        graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse',
+      },
       // 細い梁のまわりの暈。後ろからトラスへ寄せて見下ろし、地球を真下へ移す — 奥の壁の上に出た段が、
       // 開口の先の地球の円盤と、その手前の床を背にする。
       'bay-truss': { view: { ...cameraAt(155, 28, 7.5), earthElevationDeg: -90 } },
@@ -322,6 +370,10 @@ function bay(): LabCase {
       // 映り込み。右手前から金属の板へ寄せる。地球を +X の地平の下へ移す — 手前の板(粗さ 0.05)が立方体と
       // 薬莢を映すはずの向きに、天体照の像が入る。
       'bay-metal': { view: { ...cameraAt(30, 20, 6.5), earthAzimuthDeg: 130, earthElevationDeg: -12 } },
+      'bay-metal-specular': {
+        view: { ...cameraAt(30, 20, 6.5), earthAzimuthDeg: 130, earthElevationDeg: -12 },
+        debugTarget: 'specular',
+      },
     },
   };
 }

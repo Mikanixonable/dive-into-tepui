@@ -15,6 +15,7 @@ import { EARTH_CASES } from './earth-cases';
 import { MATERIAL_CASES } from './material-cases';
 import { SHADOW_CASES } from './shadow-cases';
 import { BAY_CASES } from './bay-cases';
+import { BOUNCE_COSINE_CASES } from './bounce-cosine-case';
 import {
   circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, texturedBody, VIEW_HEIGHT, VIEW_WIDTH,
   type CaseBuilder, type LabCase,
@@ -167,6 +168,7 @@ export const CASES = {
   'saturn': saturn,
   ...SHADOW_CASES,
   ...BAY_CASES,
+  ...BOUNCE_COSINE_CASES,
   'order': order,
   'march-slab': marchSlab,
   ...SHIP_CASES,
