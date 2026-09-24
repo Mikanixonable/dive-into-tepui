@@ -1,7 +1,9 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
+  areaWeightedMassBudget,
   areaWeightedMassKg,
+  evaluateC1NearRangeRasterDiagnostic,
   evaluateMeteorologicalCase,
   type MeteorologicalCaseEvaluation,
 } from '../../tools/cloud-lab/meteorological-evaluator';
@@ -43,6 +45,19 @@ export function register(): void {
     assert.deepEqual(repeated, result);
   });
 
+  test('meteorological fixtures: 200 km medium raster probe remains diagnostic and does not unblock C1', () => {
+    const diagnostic = evaluateC1NearRangeRasterDiagnostic();
+    assert.equal(diagnostic.diagnosticOnly, true);
+    assert.equal(diagnostic.shot, 'cloud-c1-raster-200km-medium-diagnostic');
+    assert.ok(Math.abs(diagnostic.cameraDistanceM - 200e3) < 1e-6);
+    assert.ok(diagnostic.internalRasterSamplesPerTwoKm >= diagnostic.requiredSamplesPerTwoKm);
+    assert.equal(diagnostic.status, 'candidate-sufficient');
+
+    const formal = evaluateMeteorologicalCase('C1');
+    assert.equal(formal.controls.twoKmInternalRasterResponseStatus, 'blocked');
+    assert.equal(measurement(formal, 'trajectory').status, 'blocked');
+  });
+
   test('meteorological fixtures: C1 area integration detects omitted weights and lost material columns', () => {
     const samples = [
       { areaWeightM2: 1, massKgM2: 0.0006 },
@@ -77,6 +92,31 @@ export function register(): void {
       { areaWeightM2: 1, massKgM2: Number.MAX_VALUE },
       { areaWeightM2: 1, massKgM2: Number.MAX_VALUE },
     ]), RangeError, 'finite products whose sum overflows cannot become a valid total');
+  });
+
+  test('meteorological fixtures: finite-area water budget integrates sources and losses across columns', () => {
+    const samples = [
+      { areaWeightM2: 2, initialKgM2: 0.4, sourceKgM2: 0.3, lossKgM2: 0.2, currentKgM2: 0.5 },
+      { areaWeightM2: 3, initialKgM2: 0.1, sourceKgM2: 0.5, lossKgM2: 0.1, currentKgM2: 0.5 },
+    ];
+    const budget = areaWeightedMassBudget(samples);
+    assert.equal(budget.initialKg, 1.1);
+    assert.equal(budget.sourceKg, 2.1);
+    assert.ok(Math.abs(budget.lossKg - 0.7) < 1e-12);
+    assert.equal(budget.currentKg, 2.5);
+    assert.ok(Math.abs(budget.residualKg) < 1e-12);
+    assert.ok(budget.relativeResidual < 1e-12);
+
+    const lostColumn = areaWeightedMassBudget(samples.slice(0, 1));
+    assert.ok(Math.abs(lostColumn.residualKg) < 1e-12);
+    const omittedSource = areaWeightedMassBudget(samples.map((sample, index) => index === 1
+      ? { ...sample, sourceKgM2: 0.4 }
+      : sample));
+    assert.notEqual(omittedSource.residualKg, 0,
+      'an omitted source in a finite-area column must appear in the integrated residual');
+    assert.throws(() => areaWeightedMassBudget([
+      { areaWeightM2: 1, initialKgM2: 0, sourceKgM2: 1, lossKgM2: 0, currentKgM2: -1 },
+    ]), RangeError);
   });
 
   test('meteorological fixtures: C2 validates every released-ice cohort against two-layer analytic transport', () => {

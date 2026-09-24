@@ -82,6 +82,23 @@ export interface AreaWeightedMassSample {
   readonly massKgM2: number;
 }
 
+export interface AreaWeightedMassBudgetSample {
+  readonly areaWeightM2: number;
+  readonly initialKgM2: number;
+  readonly sourceKgM2: number;
+  readonly lossKgM2: number;
+  readonly currentKgM2: number;
+}
+
+export interface AreaWeightedMassBudget {
+  readonly initialKg: number;
+  readonly sourceKg: number;
+  readonly lossKg: number;
+  readonly currentKg: number;
+  readonly residualKg: number;
+  readonly relativeResidual: number;
+}
+
 // 面積重み付き質量を検査し、有限な総質量だけを返す。
 export function areaWeightedMassKg(samples: readonly AreaWeightedMassSample[]): number {
   for (const sample of samples) {
@@ -101,6 +118,42 @@ export function areaWeightedMassKg(samples: readonly AreaWeightedMassSample[]): 
     return nextTotalMassKg;
   }, 0);
   return totalMassKg;
+}
+
+// Integrate each column's complete water ledger before comparing the finite-area totals.
+export function areaWeightedMassBudget(
+  samples: readonly AreaWeightedMassBudgetSample[],
+): AreaWeightedMassBudget {
+  const totals = { initialKg: 0, sourceKg: 0, lossKg: 0, currentKg: 0 };
+  for (const sample of samples) {
+    if (!Number.isFinite(sample.areaWeightM2) || sample.areaWeightM2 < 0) {
+      throw new RangeError('areaWeightM2 must be finite and non-negative');
+    }
+    for (const [name, massKgM2] of Object.entries({
+      initialKg: sample.initialKgM2,
+      sourceKg: sample.sourceKgM2,
+      lossKg: sample.lossKgM2,
+      currentKg: sample.currentKgM2,
+    })) {
+      if (!Number.isFinite(massKgM2) || massKgM2 < 0) {
+        throw new RangeError(`${name} must be finite and non-negative`);
+      }
+      const weightedMassKg = sample.areaWeightM2 * massKgM2;
+      const nextTotalKg = totals[name as keyof typeof totals] + weightedMassKg;
+      if (!Number.isFinite(weightedMassKg) || !Number.isFinite(nextTotalKg)) {
+        throw new RangeError('area-weighted mass budget must be finite');
+      }
+      totals[name as keyof typeof totals] = nextTotalKg;
+    }
+  }
+  const residualKg = totals.initialKg + totals.sourceKg - totals.lossKg - totals.currentKg;
+  if (!Number.isFinite(residualKg)) throw new RangeError('mass budget residual must be finite');
+  const accountedMassKg = totals.initialKg + totals.sourceKg;
+  return {
+    ...totals,
+    residualKg,
+    relativeResidual: accountedMassKg === 0 ? Math.abs(residualKg) : Math.abs(residualKg) / accountedMassKg,
+  };
 }
 
 interface EnvironmentControls {
@@ -319,16 +372,16 @@ function maximumPositiveBuoyancyHeightM(input: CloudEnvironmentInput): number {
   return maximumHeightM;
 }
 
-// 名前付き近距離 shot のカメラ・cap から、生成場の中心標本間隔を導く。
-function standardNearRangeCloudFieldCenterSpacingM(): {
+// 名前付き近距離 shot のカメラ・cap から、生成場と内部ラスタの標本間隔を導く。
+function nearRangeCloudSampling(shotName: string): {
   spacingM: number; cameraDistanceM: number; internalRasterScale: number;
 } {
   const earthCase = EARTH_CASES.earth();
-  const shot = earthCase.shots?.['cloud-standard-near-range-250km'];
+  const shot = earthCase.shots?.[shotName];
   if (earthCase.earth === undefined || earthCase.viewTarget === undefined
     || shot?.view.cameraDistanceLog === undefined
     || shot.graphics?.resolutionScale === undefined) {
-    throw new Error('standard near-range cloud shot must define Earth placement and camera distance');
+    throw new Error(`near-range cloud shot ${shotName} must define Earth placement and camera distance`);
   }
   const cameraForward = earthCase.camera.getWorldDirection(new THREE.Vector3());
   const pivotDepth = cameraForward.dot(
@@ -355,6 +408,33 @@ function standardNearRangeCloudFieldCenterSpacingM(): {
   };
 }
 
+export interface C1NearRangeRasterDiagnostic {
+  readonly diagnosticOnly: true;
+  readonly shot: 'cloud-c1-raster-200km-medium-diagnostic';
+  readonly cameraDistanceM: number;
+  readonly internalRasterSamplesPerTwoKm: number;
+  readonly requiredSamplesPerTwoKm: number;
+  readonly status: 'candidate-sufficient' | 'insufficient';
+}
+
+// 将来の C1 条件選択に使う medium raster の診断値。C1 の正式判定へは適用しない。
+export function evaluateC1NearRangeRasterDiagnostic(): C1NearRangeRasterDiagnostic {
+  const shot = 'cloud-c1-raster-200km-medium-diagnostic';
+  const sampling = nearRangeCloudSampling(shot);
+  const screenSamples = C1_TWO_KM_FEATURE_WAVELENGTH_M
+    / metersPerPixelAtDepth(FOV_DEG, sampling.cameraDistanceM, VIEW_HEIGHT);
+  const internalRasterSamplesPerTwoKm = screenSamples * sampling.internalRasterScale;
+  return {
+    diagnosticOnly: true,
+    shot,
+    cameraDistanceM: sampling.cameraDistanceM,
+    internalRasterSamplesPerTwoKm,
+    requiredSamplesPerTwoKm: C1_MINIMUM_SAMPLES_PER_FEATURE,
+    status: internalRasterSamplesPerTwoKm < C1_MINIMUM_SAMPLES_PER_FEATURE
+      ? 'insufficient' : 'candidate-sufficient',
+  };
+}
+
 function residualIceAtHumidity(upperRelativeHumidity: number, timeSeconds: number): number {
   return onlyEvent(eventDomain(timeSeconds, [cell(upperRelativeHumidity)])).iceRelease.remainingKgM2;
 }
@@ -370,7 +450,7 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
   const maximumTransportStepSeconds = 5;
   const initialLiquidMassKgM2 = 0.00025;
   const initialIceMassKgM2 = 0.00075;
-  const fieldSampling = standardNearRangeCloudFieldCenterSpacingM();
+  const fieldSampling = nearRangeCloudSampling('cloud-standard-near-range-250km');
   const twoKmResponseMaximumSpacingM = C1_TWO_KM_FEATURE_WAVELENGTH_M / C1_MINIMUM_SAMPLES_PER_FEATURE;
   const twoKmFeatureScreenSamples = C1_TWO_KM_FEATURE_WAVELENGTH_M
     / metersPerPixelAtDepth(FOV_DEG, fieldSampling.cameraDistanceM, VIEW_HEIGHT);
@@ -385,6 +465,7 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
     { direction: norm(v3(0.021, -0.004, 1)), areaWeightM2: 1, initialMassKgM2: 0.0014 },
   ];
   const transportedMassSamples: AreaWeightedMassSample[] = [];
+  const transportedBudgetSamples: AreaWeightedMassBudgetSample[] = [];
   let maximumTrajectoryErrorM = 0;
   let maximumRotationAngleErrorRad = 0;
   const windAt = (directionUnitVector: Vec3, geometricHeightM: number) => ({
@@ -441,6 +522,13 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
       areaWeightM2: point.areaWeightM2,
       massKgM2: material.totalMassKgM2,
     });
+    transportedBudgetSamples.push({
+      areaWeightM2: point.areaWeightM2,
+      initialKgM2: point.initialMassKgM2,
+      sourceKgM2: 0,
+      lossKgM2: 0,
+      currentKgM2: material.totalMassKgM2,
+    });
 
     const expectedDirection = rotateAroundAxis(point.direction, rotationAxisUnitVector, rotationAngleRad);
     if (material.parent === null) throw new Error('C1 blob point must retain its liquid parent');
@@ -455,8 +543,8 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
     }
   }
   const transportedIntegratedMassKg = areaWeightedMassKg(transportedMassSamples);
-  const relativeMassError = Math.abs(transportedIntegratedMassKg - C1_EXPECTED_INTEGRATED_MASS_KG)
-    / C1_EXPECTED_INTEGRATED_MASS_KG;
+  const finiteAreaBudget = areaWeightedMassBudget(transportedBudgetSamples);
+  const relativeMassError = finiteAreaBudget.relativeResidual;
   return {
     fixture: 'C1',
     cpuDiagnosticsApplied: true,
@@ -470,6 +558,11 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
       initialIceMassKgM2,
       areaWeightedBlobMassKg: C1_EXPECTED_INTEGRATED_MASS_KG,
       transportedAreaWeightedMassKg: transportedIntegratedMassKg,
+      initialFiniteAreaMassKg: finiteAreaBudget.initialKg,
+      sourceFiniteAreaMassKg: finiteAreaBudget.sourceKg,
+      lossFiniteAreaMassKg: finiteAreaBudget.lossKg,
+      currentFiniteAreaMassKg: finiteAreaBudget.currentKg,
+      finiteAreaBudgetResidualKg: finiteAreaBudget.residualKg,
       maximumAnalyticTrajectoryErrorM: maximumTrajectoryErrorM,
       standardNearRangeCloudFieldCenterSpacingM: fieldSampling.spacingM,
       twoKmFeatureMaximumFieldSpacingM: twoKmResponseMaximumSpacingM,
