@@ -229,6 +229,11 @@ export function register(): void {
     goes.availableFrameCount = 23;
     assert.ok(validateCloudReferenceManifest(raw).some((error) =>
       error.includes('case deep-convection-mexico-2024-06-10 metric cloud-fraction requires at least 24 available frames')));
+
+    goes.availableFrameCount = 1;
+    goes.minimumValidFramesByMetric = Object.fromEntries(goes.metricIds.map((metricId) => [metricId, 1]));
+    assert.ok(validateCloudReferenceManifest(raw).some((error) =>
+      error.includes('may lower metric frame coverage only for an auxiliary NASA VIIRS single-snapshot morphology case')));
   });
 
   test('cloud reference metrics: four required families split independent systems into tuning and held-out series', () => {
