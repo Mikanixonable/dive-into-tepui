@@ -10,6 +10,8 @@ import json
 import math
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import sys
 from typing import Any
 
@@ -28,6 +30,111 @@ PRODUCTS = (
 )
 
 MINIMUM_COD_INDICATOR_SUPPORT_FRACTION = 0.5
+MAXIMUM_COD_SOLAR_ZENITH_DEGREES = 70.0
+
+
+class AbiSolarAngleEvaluator:
+    """既存 abiPixelAngles を Node 経由で呼び、ACM 画素中心の昼間 mask を作る。"""
+
+    def __init__(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            fail("COD solar-angle mask requires Node.js to call the canonical abiPixelAngles implementation")
+        bridge = r"""
+const fs = require('node:fs');
+const ts = require('typescript');
+require.extensions['.ts'] = (module, filename) => {
+  const source = fs.readFileSync(filename, 'utf8');
+  module._compile(ts.transpile(source, { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }), filename);
+};
+const { abiPixelAngles } = require('./tools/cloud-reference/abi-angles.ts');
+const readline = require('node:readline');
+const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+input.on('line', (line) => {
+  try {
+    const request = JSON.parse(line);
+    const result = request.y.map((y) => request.x.map((x) => {
+      const angles = abiPixelAngles(
+        { xAngleRadians: x, yAngleRadians: y },
+        request.projection,
+        request.scanTimeUtc,
+      );
+      return angles !== null && angles.solarZenithRadians <= request.maximumSolarZenithRadians;
+    }));
+    process.stdout.write(JSON.stringify(result) + '\n');
+  } catch (error) {
+    process.stdout.write(JSON.stringify({ error: String(error) }) + '\n');
+    input.close();
+    process.exitCode = 1;
+  }
+});
+process.stdout.write(JSON.stringify({ ready: true }) + '\n');
+"""
+        self.process = subprocess.Popen(
+            [node, "-e", bridge],
+            cwd=Path(__file__).resolve().parents[2],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if self.process.stdout is None:
+            fail("solar-angle bridge output pipe is unavailable")
+        ready_line = self.process.stdout.readline()
+        if not ready_line:
+            stderr = self.process.stderr.read() if self.process.stderr is not None else ""
+            fail(f"canonical solar-angle bridge failed to start: {stderr.strip()}")
+        ready = json.loads(ready_line)
+        if ready != {"ready": True}:
+            fail(f"canonical solar-angle bridge returned unexpected startup response: {ready}")
+
+    def daylight_mask(
+        self,
+        x_angles: np.ndarray,
+        y_angles: np.ndarray,
+        projection: dict[str, float],
+        scan_time_utc: str,
+    ) -> np.ndarray:
+        """ACM 中心座標とスロット UTC 時刻から 70° 以下の SZA mask を得る。"""
+        if self.process.stdin is None or self.process.stdout is None:
+            fail("solar-angle bridge pipes are unavailable")
+        request = {
+            "x": x_angles.tolist(),
+            "y": y_angles.tolist(),
+            "projection": {
+                "perspectivePointHeightMeters": projection["height"],
+                "semiMajorAxisMeters": projection["a"],
+                "semiMinorAxisMeters": projection["b"],
+                "longitudeOfProjectionOriginRadians": projection["lon0"],
+            },
+            "scanTimeUtc": scan_time_utc,
+            "maximumSolarZenithRadians": math.radians(MAXIMUM_COD_SOLAR_ZENITH_DEGREES),
+        }
+        self.process.stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
+        self.process.stdin.flush()
+        line = self.process.stdout.readline()
+        if not line:
+            stderr = self.process.stderr.read() if self.process.stderr is not None else ""
+            fail(f"canonical solar-angle calculation failed: {stderr.strip()}")
+        response = json.loads(line)
+        if isinstance(response, dict) and "error" in response:
+            fail(f"canonical solar-angle calculation failed: {response['error']}")
+        mask = np.asarray(response, dtype=bool)
+        if mask.shape != (len(y_angles), len(x_angles)):
+            fail("canonical solar-angle result dimensions disagree with ACM tile")
+        return mask
+
+    def close(self) -> None:
+        """角度計算プロセスを終了する。"""
+        if self.process.stdin is not None:
+            self.process.stdin.close()
+        if self.process.poll() is None:
+            self.process.terminate()
+        self.process.wait()
+        if self.process.stdout is not None:
+            self.process.stdout.close()
+        if self.process.stderr is not None:
+            self.process.stderr.close()
 
 
 def cod_indicator_availability(
@@ -59,9 +166,11 @@ def cod_indicator_availability(
         "finalMetricBlockers": [
             "valid_frame_count_not_assessed",
             "area_overlap_collocation_not_implemented",
-            "solar_angle_mask_not_applied",
+            "solar_angle_mask_not_assessed",
             "cloud_top_parallax_not_corrected",
         ],
+        "appliedMasks": {},
+        "unappliedCorrections": ["cloud_top_parallax"],
     }
 FILENAME = re.compile(r"^OR_ABI-(?P<product>[A-Za-z0-9-]+)_(?P<satellite>G\d{2})_s(?P<start>\d{14})_.*\.nc$")
 
@@ -134,6 +243,7 @@ def summarize_cod_cloud_eligible_coverage(
     acm_dqf_valid: np.ndarray,
     acm_inside_region: np.ndarray,
     acm_pixel_areas_m2: np.ndarray,
+    acm_solar_angle_valid: np.ndarray,
 ) -> dict[str, Any]:
     """good ACM cloud pixel centres上でCOD good coverageを固定格子集計する。"""
     height, width = cod_field_valid.shape
@@ -147,14 +257,20 @@ def summarize_cod_cloud_eligible_coverage(
         fail("ACM diagnostic grid is not four child pixels per COD pixel")
     if not np.all(np.isfinite(acm_pixel_areas_m2)) or np.any(acm_pixel_areas_m2 <= 0):
         fail("ACM pixel-area weights must be finite and positive")
+    if acm_solar_angle_valid.shape != child_shape:
+        fail("ACM solar-angle mask shape does not match the ACM diagnostic grid")
 
-    eligible_cloud = (
+    eligible_cloud_before_solar_mask = (
         acm_inside_region & acm_field_valid & acm_dqf_valid
         & good_dqf(acm_dqf, "L2_ACM") & np.isin(acm_field, (2, 3))
     )
+    eligible_cloud = eligible_cloud_before_solar_mask & acm_solar_angle_valid
     cloud_children = eligible_cloud.reshape(height, 2, width, 2).sum(axis=(1, 3))
     denominator = int(cloud_children.sum())
     eligible_area = np.where(eligible_cloud, acm_pixel_areas_m2, 0).sum(dtype=np.float64)
+    eligible_area_before_solar_mask = np.where(
+        eligible_cloud_before_solar_mask, acm_pixel_areas_m2, 0,
+    ).sum(dtype=np.float64)
     cod_good = cod_field_valid & cod_dqf_valid & good_dqf(cod_dqf, "L2_COD")
     numerator = int(cloud_children[cod_good].sum())
     good_cod_area = np.where(
@@ -167,22 +283,41 @@ def summarize_cod_cloud_eligible_coverage(
         dqf_counts[int(value)] += int(np.sum(cloud_children[cod_dqf == value]))
     result = {
         "eligibleCloudPixelCount": denominator,
+        "eligibleCloudPixelCountBeforeSolarMask": int(eligible_cloud_before_solar_mask.sum()),
+        "solarAngleExcludedEligibleCloudPixelCount": int(
+            eligible_cloud_before_solar_mask.sum() - eligible_cloud.sum(),
+        ),
         "goodCodCloudPixelCount": numerator,
         "coverageFraction": numerator / denominator if denominator else None,
         "eligibleCloudAreaM2": float(eligible_area),
+        "eligibleCloudAreaM2BeforeSolarMask": float(eligible_area_before_solar_mask),
+        "solarAngleExcludedEligibleCloudAreaM2": float(eligible_area_before_solar_mask - eligible_area),
         "goodCodCloudAreaM2": float(good_cod_area),
         "areaWeightedCoverageFraction": float(good_cod_area / eligible_area) if eligible_area else None,
         "codDqfRawCountsOnEligibleCloudPixels": {str(value): count for value, count in sorted(dqf_counts.items())},
-        "denominatorDefinition": "good-DQF valid ACM class 2/3 (probably-cloudy/cloudy) 1 km pixel centres inside the geographic region",
+        "denominatorDefinition": "good-DQF valid ACM class 2/3 1 km pixel centres inside the geographic region and with solar zenith <= 70 degrees",
         "numeratorDefinition": "eligible ACM cloud pixel centres whose enclosing 2 km COD pixel has valid in-range COD and good DQF raw 0/1",
         "areaDenominatorDefinition": "sum of local ENU quadrilateral areas for eligible cloud ACM pixel centres",
         "areaNumeratorDefinition": "area denominator pixels whose enclosing COD parent has valid in-range COD and good DQF raw 0/1",
         "aggregation": "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; count coverage and pixel-centre area-weighted coverage are diagnostics, not polygon area overlap",
-        "limitations": "diagnostic only; not the final metric gate or area-overlap collocation; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately",
+        "appliedMasks": {
+            "solarZenith": {
+                "maximumDegrees": MAXIMUM_COD_SOLAR_ZENITH_DEGREES,
+                "implementation": "tools/cloud-reference/abi-angles.ts:abiPixelAngles",
+                "sampling": "ACM fixed-grid pixel centres at product scan time",
+                "excludedEligibleCloudPixelCount": int(eligible_cloud_before_solar_mask.sum() - eligible_cloud.sum()),
+                "excludedEligibleCloudAreaM2": float(eligible_area_before_solar_mask - eligible_area),
+            },
+        },
+        "unappliedCorrections": ["cloud_top_parallax"],
+        "limitations": "diagnostic only; not the final metric gate or area-overlap collocation; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; cloud-top parallax is not corrected; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately",
     }
     result["indicatorAvailability"] = cod_indicator_availability(
         result["areaWeightedCoverageFraction"], "single_slot",
     )
+    result["indicatorAvailability"]["appliedMasks"] = result["appliedMasks"]
+    result["indicatorAvailability"]["unappliedCorrections"] = result["unappliedCorrections"]
+    result["indicatorAvailability"]["finalMetricBlockers"].remove("solar_angle_mask_not_assessed")
     return result
 
 
@@ -483,9 +618,14 @@ def summarize_product(path: Path, region: dict[str, float], product: str, field_
         return result
 
 
-def summarize_cod_cloud_coverage(cod_path: Path, acm_path: Path, region: dict[str, float]) -> dict[str, Any]:
+def summarize_cod_cloud_coverage(
+    cod_path: Path,
+    acm_path: Path,
+    region: dict[str, float],
+) -> dict[str, Any]:
     """同スロットの good ACM cloud domain に対する COD good coverage を診断する。"""
     with netCDF4.Dataset(cod_path, "r") as cod_dataset, netCDF4.Dataset(acm_path, "r") as acm_dataset:
+        scan_time_utc = acm_product_scan_time_utc(acm_dataset, acm_path)
         cod_field, cod_dqf = cod_dataset.variables["COD"], cod_dataset.variables["DQF"]
         acm_field, acm_dqf = acm_dataset.variables["ACM"], acm_dataset.variables["DQF"]
         cod_x, cod_y, cod_projection = grid_parameters(cod_dataset)
@@ -506,50 +646,65 @@ def summarize_cod_cloud_coverage(cod_path: Path, acm_path: Path, region: dict[st
         cod_y0, cod_y1 = index_window(cod_y, y_min, y_max)
         result: dict[str, Any] = {
             "eligibleCloudPixelCount": 0,
+            "eligibleCloudPixelCountBeforeSolarMask": 0,
+            "solarAngleExcludedEligibleCloudPixelCount": 0,
             "goodCodCloudPixelCount": 0,
             "eligibleCloudAreaM2": 0.0,
+            "eligibleCloudAreaM2BeforeSolarMask": 0.0,
+            "solarAngleExcludedEligibleCloudAreaM2": 0.0,
             "goodCodCloudAreaM2": 0.0,
             "codDqfRawCountsOnEligibleCloudPixels": {},
         }
         dqf_counts: Counter[str] = Counter()
-        for cod_row0 in range(cod_y0, cod_y1, CHUNK_ROWS):
-            cod_row1 = min(cod_row0 + CHUNK_ROWS, cod_y1)
-            acm_row0, acm_row1 = cod_row0 * 2, cod_row1 * 2
-            acm_col0, acm_col1 = cod_x0 * 2, cod_x1 * 2
-            cod_values = raw_slice(cod_field, cod_row0, cod_row1, cod_x0, cod_x1)
-            cod_dqf_values = raw_slice(cod_dqf, cod_row0, cod_row1, cod_x0, cod_x1)
-            acm_values = raw_slice(acm_field, acm_row0, acm_row1, acm_col0, acm_col1)
-            acm_dqf_values = raw_slice(acm_dqf, acm_row0, acm_row1, acm_col0, acm_col1)
-            xx, yy = np.meshgrid(acm_x[acm_col0:acm_col1], acm_y[acm_row0:acm_row1])
-            latitude, longitude, visible = grid_to_geodetic(xx, yy, acm_projection)
-            inside = (
-                visible
-                & (latitude >= math.radians(region["southLatDeg"]))
-                & (latitude <= math.radians(region["northLatDeg"]))
-                & (longitude >= math.radians(region["westLonDeg"]))
-                & (longitude <= math.radians(region["eastLonDeg"]))
-            )
-            pixel_areas = grid_pixel_area_weights(
-                acm_x, acm_y, acm_projection, acm_row0, acm_row1, acm_col0, acm_col1,
-            )
-            cod_valid, _ = raw_valid(cod_values, cod_field)
-            acm_valid, _ = raw_valid(acm_values, acm_field)
-            partial = summarize_cod_cloud_eligible_coverage(
-                cod_valid,
-                cod_dqf_values,
-                valid_dqf(cod_dqf_values, cod_dqf),
-                acm_values,
-                acm_valid,
-                acm_dqf_values,
-                valid_dqf(acm_dqf_values, acm_dqf),
-                inside,
-                pixel_areas,
-            )
-            result["eligibleCloudPixelCount"] += partial["eligibleCloudPixelCount"]
-            result["goodCodCloudPixelCount"] += partial["goodCodCloudPixelCount"]
-            result["eligibleCloudAreaM2"] += partial["eligibleCloudAreaM2"]
-            result["goodCodCloudAreaM2"] += partial["goodCodCloudAreaM2"]
-            dqf_counts.update(partial["codDqfRawCountsOnEligibleCloudPixels"])
+        angle_evaluator = AbiSolarAngleEvaluator()
+        try:
+            for cod_row0 in range(cod_y0, cod_y1, CHUNK_ROWS):
+                cod_row1 = min(cod_row0 + CHUNK_ROWS, cod_y1)
+                acm_row0, acm_row1 = cod_row0 * 2, cod_row1 * 2
+                acm_col0, acm_col1 = cod_x0 * 2, cod_x1 * 2
+                cod_values = raw_slice(cod_field, cod_row0, cod_row1, cod_x0, cod_x1)
+                cod_dqf_values = raw_slice(cod_dqf, cod_row0, cod_row1, cod_x0, cod_x1)
+                acm_values = raw_slice(acm_field, acm_row0, acm_row1, acm_col0, acm_col1)
+                acm_dqf_values = raw_slice(acm_dqf, acm_row0, acm_row1, acm_col0, acm_col1)
+                xx, yy = np.meshgrid(acm_x[acm_col0:acm_col1], acm_y[acm_row0:acm_row1])
+                latitude, longitude, visible = grid_to_geodetic(xx, yy, acm_projection)
+                inside = (
+                    visible
+                    & (latitude >= math.radians(region["southLatDeg"]))
+                    & (latitude <= math.radians(region["northLatDeg"]))
+                    & (longitude >= math.radians(region["westLonDeg"]))
+                    & (longitude <= math.radians(region["eastLonDeg"]))
+                )
+                solar_valid = angle_evaluator.daylight_mask(
+                    acm_x[acm_col0:acm_col1], acm_y[acm_row0:acm_row1], acm_projection, scan_time_utc,
+                )
+                pixel_areas = grid_pixel_area_weights(
+                    acm_x, acm_y, acm_projection, acm_row0, acm_row1, acm_col0, acm_col1,
+                )
+                cod_valid, _ = raw_valid(cod_values, cod_field)
+                acm_valid, _ = raw_valid(acm_values, acm_field)
+                partial = summarize_cod_cloud_eligible_coverage(
+                    cod_valid,
+                    cod_dqf_values,
+                    valid_dqf(cod_dqf_values, cod_dqf),
+                    acm_values,
+                    acm_valid,
+                    acm_dqf_values,
+                    valid_dqf(acm_dqf_values, acm_dqf),
+                    inside,
+                    pixel_areas,
+                    solar_valid,
+                )
+                for key in (
+                    "eligibleCloudPixelCount", "eligibleCloudPixelCountBeforeSolarMask",
+                    "solarAngleExcludedEligibleCloudPixelCount", "goodCodCloudPixelCount",
+                    "eligibleCloudAreaM2", "eligibleCloudAreaM2BeforeSolarMask",
+                    "solarAngleExcludedEligibleCloudAreaM2", "goodCodCloudAreaM2",
+                ):
+                    result[key] += partial[key]
+                dqf_counts.update(partial["codDqfRawCountsOnEligibleCloudPixels"])
+        finally:
+            angle_evaluator.close()
         result["coverageFraction"] = (
             result["goodCodCloudPixelCount"] / result["eligibleCloudPixelCount"]
             if result["eligibleCloudPixelCount"] else None
@@ -559,13 +714,42 @@ def summarize_cod_cloud_coverage(cod_path: Path, acm_path: Path, region: dict[st
             if result["eligibleCloudAreaM2"] else None
         )
         result["codDqfRawCountsOnEligibleCloudPixels"] = dict(sorted(dqf_counts.items(), key=lambda item: int(item[0])))
-        result["denominatorDefinition"] = "good-DQF valid ACM class 2/3 (probably-cloudy/cloudy) 1 km pixel centres inside the geographic region"
+        result["scanTimeUtc"] = scan_time_utc
+        result["denominatorDefinition"] = "good-DQF valid ACM class 2/3 1 km pixel centres inside the geographic region and with solar zenith <= 70 degrees"
         result["numeratorDefinition"] = "eligible ACM cloud pixel centres whose enclosing 2 km COD pixel has valid in-range COD and good DQF raw 0/1"
         result["areaDenominatorDefinition"] = "sum of local ENU quadrilateral areas for eligible cloud ACM pixel centres"
         result["areaNumeratorDefinition"] = "area denominator pixels whose enclosing COD parent has valid in-range COD and good DQF raw 0/1"
         result["aggregation"] = "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; reports counts and pixel-centre area weights, not polygon area overlap"
-        result["limitations"] = "diagnostic only; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; not solar-angle/parallax corrected or a final metric gate; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately"
+        result["appliedMasks"] = {
+            "solarZenith": {
+                "maximumDegrees": MAXIMUM_COD_SOLAR_ZENITH_DEGREES,
+                "implementation": "tools/cloud-reference/abi-angles.ts:abiPixelAngles",
+                "sampling": "ACM fixed-grid pixel centres at product scan time",
+                "excludedEligibleCloudPixelCount": result["solarAngleExcludedEligibleCloudPixelCount"],
+                "excludedEligibleCloudAreaM2": result["solarAngleExcludedEligibleCloudAreaM2"],
+            },
+        }
+        result["unappliedCorrections"] = ["cloud_top_parallax"]
+        result["limitations"] = "diagnostic only; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; cloud-top parallax is not corrected; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately"
+        result["indicatorAvailability"] = cod_indicator_availability(
+            result["areaWeightedCoverageFraction"], "single_slot",
+        )
+        result["indicatorAvailability"]["appliedMasks"] = result["appliedMasks"]
+        result["indicatorAvailability"]["unappliedCorrections"] = result["unappliedCorrections"]
+        result["indicatorAvailability"]["finalMetricBlockers"].remove("solar_angle_mask_not_assessed")
         return result
+
+
+def acm_product_scan_time_utc(dataset: Any, source: Path) -> str:
+    """ACM NetCDF の実 time_coverage_start を角度計算用 UTC として検証する。"""
+    try:
+        value = dataset.getncattr("time_coverage_start")
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        fail(f"{source.name}: ACM time_coverage_start is missing or invalid")
+    if not isinstance(value, str) or not value.endswith("Z") or parsed.utcoffset() != timedelta(0):
+        fail(f"{source.name}: ACM time_coverage_start must be explicit UTC ending in Z")
+    return value
 
 
 def case_from_manifest(manifest_path: Path, case_id: str) -> dict[str, Any]:
@@ -673,8 +857,12 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
                    if isinstance(summary.get("cloudEligibleCoverageDiagnostic"), dict)]
     if diagnostics:
         eligible = sum(diagnostic["eligibleCloudPixelCount"] for diagnostic in diagnostics)
+        eligible_before_solar = sum(diagnostic.get("eligibleCloudPixelCountBeforeSolarMask", diagnostic["eligibleCloudPixelCount"]) for diagnostic in diagnostics)
+        solar_excluded = sum(diagnostic.get("solarAngleExcludedEligibleCloudPixelCount", 0) for diagnostic in diagnostics)
         good_cod = sum(diagnostic["goodCodCloudPixelCount"] for diagnostic in diagnostics)
         eligible_area = sum(diagnostic["eligibleCloudAreaM2"] for diagnostic in diagnostics)
+        eligible_area_before_solar = sum(diagnostic.get("eligibleCloudAreaM2BeforeSolarMask", diagnostic["eligibleCloudAreaM2"]) for diagnostic in diagnostics)
+        solar_excluded_area = sum(diagnostic.get("solarAngleExcludedEligibleCloudAreaM2", 0.0) for diagnostic in diagnostics)
         good_cod_area = sum(diagnostic["goodCodCloudAreaM2"] for diagnostic in diagnostics)
         cloud_dqf_counts: Counter[str] = Counter()
         for diagnostic in diagnostics:
@@ -682,22 +870,40 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
         aggregate_diagnostic = {
             **{key: diagnostics[0][key] for key in (
                 "denominatorDefinition", "numeratorDefinition", "areaDenominatorDefinition",
-                "areaNumeratorDefinition", "aggregation", "limitations",
+                "areaNumeratorDefinition", "aggregation", "limitations", "appliedMasks",
+                "unappliedCorrections",
             )},
             "slotCount": len(diagnostics),
             "eligibleCloudPixelCount": eligible,
+            "eligibleCloudPixelCountBeforeSolarMask": eligible_before_solar,
+            "solarAngleExcludedEligibleCloudPixelCount": solar_excluded,
             "goodCodCloudPixelCount": good_cod,
             "coverageFraction": good_cod / eligible if eligible else None,
             "eligibleCloudAreaM2": eligible_area,
+            "eligibleCloudAreaM2BeforeSolarMask": eligible_area_before_solar,
+            "solarAngleExcludedEligibleCloudAreaM2": solar_excluded_area,
             "goodCodCloudAreaM2": good_cod_area,
             "areaWeightedCoverageFraction": good_cod_area / eligible_area if eligible_area else None,
             "codDqfRawCountsOnEligibleCloudPixels": dict(
                 sorted(cloud_dqf_counts.items(), key=lambda item: int(item[0])),
             ),
         }
+        first_solar_mask = dict(diagnostics[0].get("appliedMasks", {}).get("solarZenith", {
+            "maximumDegrees": MAXIMUM_COD_SOLAR_ZENITH_DEGREES,
+            "implementation": "tools/cloud-reference/abi-angles.ts:abiPixelAngles",
+            "sampling": "ACM fixed-grid pixel centres at product scan time",
+        }))
+        first_solar_mask.update({
+            "excludedEligibleCloudPixelCount": solar_excluded,
+            "excludedEligibleCloudAreaM2": solar_excluded_area,
+        })
+        aggregate_diagnostic["appliedMasks"] = {"solarZenith": first_solar_mask}
         aggregate_diagnostic["indicatorAvailability"] = cod_indicator_availability(
             aggregate_diagnostic["areaWeightedCoverageFraction"], "aggregated_series",
         )
+        aggregate_diagnostic["indicatorAvailability"]["appliedMasks"] = aggregate_diagnostic["appliedMasks"]
+        aggregate_diagnostic["indicatorAvailability"]["unappliedCorrections"] = aggregate_diagnostic["unappliedCorrections"]
+        aggregate_diagnostic["indicatorAvailability"]["finalMetricBlockers"].remove("solar_angle_mask_not_assessed")
         aggregate_result["cloudEligibleCoverageDiagnostic"] = aggregate_diagnostic
         for slot, summary in zip(aggregate_result["slots"], summaries, strict=True):
             diagnostic = summary.get("cloudEligibleCoverageDiagnostic")
@@ -733,7 +939,7 @@ def run(manifest_path: Path, case_id: str, case_dir: Path, all_slots: bool = Fal
         "observationEnd": case["series"]["end"] if all_slots else case["series"]["start"],
         "slotCount": len(slots),
         "region": region,
-        "scope": "all declared series slots; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD adds count and pixel-centre area-weighted ACM cloud diagnostics (not polygon-overlap or a metric gate); no scan-line timing, solar mask, cloud parallax, or calibrated radiance" if all_slots else "one manifest start slot; each product is summarized on its native grid; COD adds count and pixel-centre area-weighted ACM cloud diagnostics (not polygon-overlap or a metric gate); no scan-line timing, solar mask, cloud parallax, or calibrated radiance",
+        "scope": "all declared series slots; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD adds ACM-centre solar zenith <= 70 degree masked count and pixel-centre area diagnostics, not polygon-overlap or a final metric gate; no scan-line timing, cloud-top parallax correction, or calibrated radiance" if all_slots else "one manifest start slot; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD adds ACM-centre solar zenith <= 70 degree masked count and pixel-centre area diagnostics, not polygon-overlap or a final metric gate; no scan-line timing, cloud-top parallax correction, or calibrated radiance",
         "products": products,
     }
 

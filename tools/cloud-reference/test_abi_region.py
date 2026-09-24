@@ -184,6 +184,7 @@ class AbiRegionGeometryTest(unittest.TestCase):
             np.ones((1, 4), dtype=bool),
             acm_field, acm_field_valid, acm_dqf, acm_dqf_valid, acm_inside,
             np.tile(np.array([1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 1.0, 1.0]), (2, 1)),
+            np.ones((2, 8), dtype=bool),
         )
         self.assertEqual(result["eligibleCloudPixelCount"], 12)
         self.assertEqual(result["goodCodCloudPixelCount"], 4)
@@ -209,6 +210,7 @@ class AbiRegionGeometryTest(unittest.TestCase):
             np.ones((1, 4), dtype=bool),
             acm_field, acm_field_valid, acm_dqf, acm_dqf_valid, acm_inside,
             np.ones((2, 8)),
+            np.ones((2, 8), dtype=bool),
         )
         self.assertEqual(masked["eligibleCloudPixelCount"], 10)
         self.assertEqual(masked["goodCodCloudPixelCount"], 2)
@@ -228,6 +230,63 @@ class AbiRegionGeometryTest(unittest.TestCase):
         # At nadir, ground distance per small scan-angle increment tends to satellite altitude * dθ.
         expected = (self.projection["height"] * step) ** 2
         self.assertLess(abs(float(area) / expected - 1), 1e-5)
+
+    def test_solar_mask_uses_canonical_angle_at_pixel_centre_and_utc_time(self) -> None:
+        evaluator = REGION.AbiSolarAngleEvaluator()
+        try:
+            centre = np.array([0.0])
+            local_noon = evaluator.daylight_mask(
+                centre, centre, self.projection, "2024-03-20T21:08:00Z",
+            )
+            local_night = evaluator.daylight_mask(
+                centre, centre, self.projection, "2024-03-20T09:08:00Z",
+            )
+            beyond_zenith_limit = evaluator.daylight_mask(
+                centre, centre, self.projection, "2024-03-20T16:08:00Z",
+            )
+        finally:
+            evaluator.close()
+        self.assertTrue(bool(local_noon[0, 0]))
+        self.assertFalse(bool(local_night[0, 0]))
+        self.assertFalse(bool(beyond_zenith_limit[0, 0]))
+
+    def test_acm_scan_time_uses_fractional_utc_product_attribute(self) -> None:
+        class Dataset:
+            @staticmethod
+            def getncattr(name: str) -> str:
+                if name != "time_coverage_start":
+                    raise AssertionError(name)
+                return "2024-05-28T15:00:20.600Z"
+
+        self.assertEqual(
+            REGION.acm_product_scan_time_utc(Dataset(), Path("ACM.nc")),
+            "2024-05-28T15:00:20.600Z",
+        )
+        class OffsetDataset:
+            @staticmethod
+            def getncattr(name: str) -> str:
+                return "2024-05-28T15:00:20.600+00:00"
+
+        with self.assertRaises(REGION.RegionError):
+            REGION.acm_product_scan_time_utc(OffsetDataset(), Path("ACM.nc"))
+
+    def test_cod_cloud_coverage_reports_applied_solar_mask_separately(self) -> None:
+        acm_field = np.full((2, 4), 2, dtype=np.uint8)
+        area = np.ones((2, 4), dtype=np.float64)
+        solar_valid = np.array([[True, True, False, False], [True, False, False, True]])
+        result = REGION.summarize_cod_cloud_eligible_coverage(
+            np.ones((1, 2), dtype=bool), np.array([[0, 14]], dtype=np.uint8),
+            np.ones((1, 2), dtype=bool), acm_field, np.ones((2, 4), dtype=bool),
+            np.zeros((2, 4), dtype=np.uint8), np.ones((2, 4), dtype=bool),
+            np.ones((2, 4), dtype=bool), area, solar_valid,
+        )
+        self.assertEqual(result["eligibleCloudPixelCountBeforeSolarMask"], 8)
+        self.assertEqual(result["eligibleCloudPixelCount"], 4)
+        self.assertEqual(result["solarAngleExcludedEligibleCloudPixelCount"], 4)
+        self.assertAlmostEqual(result["areaWeightedCoverageFraction"], 0.75)
+        self.assertEqual(result["appliedMasks"]["solarZenith"]["maximumDegrees"], 70.0)
+        self.assertEqual(result["unappliedCorrections"], ["cloud_top_parallax"])
+        self.assertEqual(result["indicatorAvailability"]["finalMetricStatus"], "blocked")
 
 
 class AbiRegionSeriesTest(unittest.TestCase):
@@ -337,20 +396,31 @@ class AbiRegionSeriesTest(unittest.TestCase):
                 "dqfGoodCount": 10, "jointGoodFieldAndDqfCount": 10, "pixelCoverageFraction": 0.1,
                 "dqfRawCounts": {"0": 10}, "cloudEligibleCoverageDiagnostic": {
                     "eligibleCloudPixelCount": eligible, "goodCodCloudPixelCount": covered,
+                    "eligibleCloudPixelCountBeforeSolarMask": eligible,
+                    "solarAngleExcludedEligibleCloudPixelCount": 0,
                     "coverageFraction": covered / eligible, "codDqfRawCountsOnEligibleCloudPixels": raw_dqf,
                     "eligibleCloudAreaM2": eligible * 2.0, "goodCodCloudAreaM2": covered * 3.0,
+                    "eligibleCloudAreaM2BeforeSolarMask": eligible * 2.0,
+                    "solarAngleExcludedEligibleCloudAreaM2": 0.0,
                     "areaWeightedCoverageFraction": covered * 1.5 / eligible,
                     "denominatorDefinition": "ACM cloud pixels", "numeratorDefinition": "good COD over ACM clouds",
                     "areaDenominatorDefinition": "weighted eligible ACM cloud pixels",
                     "areaNumeratorDefinition": "weighted good COD over ACM clouds",
                     "aggregation": "2x2 fixed-grid count", "limitations": "diagnostic only",
+                    "appliedMasks": {"solarZenith": {
+                        "maximumDegrees": 70.0, "implementation": "canonical",
+                        "sampling": "ACM centres", "excludedEligibleCloudPixelCount": 0,
+                        "excludedEligibleCloudAreaM2": 0.0,
+                    }},
+                    "unappliedCorrections": ["cloud_top_parallax"],
                 },
             }
 
-        result = REGION.aggregate_product_slots("L2_COD", "COD", None, [
+        summaries = [
             summary("2024-05-15T18:00:00Z", 100, 25, {"0": 25, "14": 75}),
             summary("2024-05-15T18:10:00Z", 200, 50, {"0": 50, "6": 20, "14": 130}),
-        ])
+        ]
+        result = REGION.aggregate_product_slots("L2_COD", "COD", None, summaries)
         diagnostic = result["cloudEligibleCoverageDiagnostic"]
         self.assertEqual(diagnostic["slotCount"], 2)
         self.assertEqual(diagnostic["eligibleCloudPixelCount"], 300)
@@ -366,6 +436,10 @@ class AbiRegionSeriesTest(unittest.TestCase):
         self.assertEqual(diagnostic["indicatorAvailability"]["scope"], "aggregated_series")
         self.assertEqual(diagnostic["codDqfRawCountsOnEligibleCloudPixels"], {"0": 75, "6": 20, "14": 205})
         self.assertIn("cloudEligibleCoverageDiagnostic", result["slots"][0])
+        self.assertEqual(
+            summaries[0]["cloudEligibleCoverageDiagnostic"]["appliedMasks"]["solarZenith"]["excludedEligibleCloudPixelCount"],
+            0,
+        )
 
     def test_cod_support_threshold_is_provisional_and_never_passes_final_metric(self) -> None:
         exact_threshold = REGION.cod_indicator_availability(0.5, "single_slot")
@@ -374,7 +448,9 @@ class AbiRegionSeriesTest(unittest.TestCase):
         self.assertEqual(exact_threshold["finalMetricStatus"], "blocked")
         self.assertEqual(exact_threshold["validFrameCountStatus"], "not_assessed")
         self.assertIn("valid_frame_count_not_assessed", exact_threshold["finalMetricBlockers"])
-        self.assertIn("solar_angle_mask_not_applied", exact_threshold["finalMetricBlockers"])
+        self.assertEqual(exact_threshold["appliedMasks"], {})
+        self.assertIn("solar_angle_mask_not_assessed", exact_threshold["finalMetricBlockers"])
+        self.assertEqual(exact_threshold["unappliedCorrections"], ["cloud_top_parallax"])
 
         missing = REGION.cod_indicator_availability(None, "single_slot")
         self.assertEqual(missing["status"], "blocked_invalid_or_missing_support_fraction")
