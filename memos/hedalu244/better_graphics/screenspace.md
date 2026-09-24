@@ -1,8 +1,8 @@
 # 遮蔽・照り返し・映り込み — スクリーンスペースの二次光（立て直し計画）
 
 **計画ファイル。** `/run-plan` で上から実施し、完了した手順はこの文書から消す。この版は
-`b4b586fcd` 時点のコードと履歴を監査して書いた。**前半（残り手順 3〜9: 拡散の遮蔽と照り返し）と後半
-（手順 10〜13: 局所反射）は別の PR** とし、まず前半だけを実施する。
+`b4b586fcd` 時点のコードと履歴を監査して書き、手順6の途中と後で実測に基づき D3 を改訂した。**前半（残り
+手順 6.5〜9: 拡散の遮蔽と照り返し）と後半（手順 10〜13: 局所反射）は別の PR** とし、まず前半だけを実施する。
 
 後半の局所反射はまだ実装されていない。現存する鏡面遮蔽は局所反射の原型ではなく、前半へ誤って
 入った GTSO 風の別機能である。履歴から復元できるので退避ブランチは作らず、前半で削除する。
@@ -61,6 +61,72 @@ E_diffuse
 従って「光源ごとの走査を1回へまとめる」のではなく、**既に1回である走査を光源非依存の
 `-E_blocked_far + E_near_bounce` へ畳み、MRTと後段を減らす**のが手順6の意味である。
 
+### 手順3〜5の結果
+
+- 手順3 `3c9df35a1`、手順4 `dd0f8db85`、手順5 `827ad79a8`。手順5は手順4の撮影2組に対して封筒外 0/63、
+  鏡面照度は同一セッションの3方式で差0、補正 target は負値を保ち NaN / Inf なし、拡散照度 =
+  オフの拡散照度 + 補正が半精度 2 ulp 以内（readback）。−1/0/+1 の GPU probe はコミットしていない。
+- 手順5時点の P_in / P_out（拡散照度、遮蔽 / 遮蔽と照り返し）: corner 0.040 / 0.040、overhead 0.385 / 0.538、
+  open 0.624 / 1.005。標本数も画面の制約もない解析値は corner 0.00 / 0.00、overhead 0.32 / 0.49、
+  open 0.64 / 1.06（`tools/render-lab/bay-cases.ts` の P_in の注記）。
+
+### 手順6の最初の実装（`wip/step6-sol` `1b0f5e3bb`）の実測で分かったこと
+
+初版の D3（標本1画素の接平面四角形の角 footprint だけを塞ぐ、照り返しは面積 form factor × 1/pdf の求積、
+天体はスライス平面と球冠の弦）は、次の理由で退けた。数値は中設定・`bay-earth-corner` 系。
+
+- **遮蔽が痩せる。** 標本と標本のあいだの角度を誰も塞がないので、塞がれる測度が読んだ画素の割合まで
+  落ちる。歩数を 6→12→24 と倍にするたび遮蔽がほぼ倍になり、中設定は自身の 384 歩の 12%、手順5の約 7%。
+  先行研究でも厚み0で間を埋めない方式（Shanmugam & Arikan 2007）は「読む画素を減らすと AO が弱まる」と
+  既知で、HBAO/GTAO の地平線、SSILVB の厚み、Blender の角度厚みはどれも間を埋める仕組みである。
+- **384 歩でも corner の P_in が 0.45〜0.52（解析値 0）。** 距離窓 `1 − d/R` で 0.1 程度、残りは自己遮蔽を
+  避ける条件 `dot(toFront, N) > sqrt(A_patch)/2` と見る。斜めに見た壁では A_patch が膨らみ、壁の足元の標本を
+  高さ数十 cm まで捨てる。余弦重みの測度は地平線の近くで仰角の2乗で0になるので、この閾値自体が要らない。
+- **照り返しの1標本の重みに上限がない。** `A_patch/d² × 求積重み` が1標本で半球 2π を超える（最後の歩の
+  `1/q(ρ)` の発散と、近距離の標本の数十〜百画素ぶんの重み）。raw の最大が 345〜967（E_far は 0.1〜0.2）で、
+  これが明るい斑の本体。`firstHit = 新ビット数 / footprint` も {0, 1/footprint} の二値になる。先行研究で
+  画素の pdf で割って面積積分を推定する SSAO/SSGI は見つからず、HBIL・SSILVB は方向領域で有界に積む。
+- **遮蔽と照り返しが別の量を推定している。** 照り返しは 1/pdf で全画素、遮蔽は読んだ画素だけなので、
+  窪みで照り返し / 遮蔽が 5〜11 倍になり ΔE が正へ振れる（手順5は 0.40〜0.78）。歩数を増やすと照り返しは
+  単調に減り収束しない（重複標本を `firstHit` が0にし、求積は1画素未満しか割り当てない）。
+- **小天体の遮蔽が天体照そのものを超える。** 弦が当たったスライスの画素だけが大きく引く。視半径 1° で
+  blocked / E_planet が最大 88 倍、3° で 23 倍。さらに `capRange` の地平クリップが片側だけで、地平の外の
+  球冠からも引いていた（E_far = 0 の面で ΔE ≠ 0）。
+- 扇形ビットは画素ごとの `rotation` でずらして丸めるが、球冠の範囲はずらさずに数えていた。
+- ユーザーが懸念した「等方的なスライスが小さい光源を見落とす」ことは、上の弦の数え方として現れていた。
+  改訂 D3 は、楔の補間と比推定で、重点サンプリングも光源向きの追加走査もなしに有界にする。それでも
+  小天体の影が方位の離れたスライスの地平で決まることが目立つなら、光源の方位に揃えた走査を足す再設計
+  （SSDO の光源方向の線分）が要る。走査数が光源数に依存するので、その場合は別計画にする。
+
+### 改訂 D3 の実測（中設定、手順6の書き直し後）
+
+- 有界: raw 最大は 1.4〜1.8（照り返し源の最大 × π 以下）、天体照だけの blocked / E_p > 1 と、E_far = 0 の面の
+  ΔE ≠ 0 はどちらも raw で 0 画素。窪みの照り返し / 遮蔽は 0.70〜0.82（手順5は 0.74〜0.97）。
+- 標本の間が埋まる: 環境光だけの遮蔽の面平均は、6 歩が 384 歩の 0.90（初版は 0.12）。
+- 解析値へ収束する: W = 1 にして歩数を増やすと、corner 0.009〜0.015、open 0.627、moon-open 1.000。
+- 中設定の P_in / P_out（遮蔽 / 遮蔽と照り返し）: corner 0.150 / 0.150、open 0.582 / 0.911、overhead 0.386 / 0.520、
+  moon-corner 0.098 / 0.098、moon-open 0.723 / 1.008。corner は 6 / 24 / 96 歩で 0.14 / 0.065 / 0.036 と歩数で縮むので、
+  残る差は1区間を1標本で代表する離散化（標本が壁の上端の先に落ちた区間は、その区間の壁を取りこぼす）と、
+  W と 2 スライスの楔の補間による。高設定（全解像度 3×8）は corner 0.17〜0.19 で、中設定より悪い（原因は未調査）。
+- 全解像度の target では有界性が破れる。暫定の 3×3 は深度だけで重みを付けるので、受光点ごとの E_p が
+  すでに掛かった ΔE を、内隅の法線の不連続を越えて混ぜる。
+- 手順6は `46d2e9fac`。`ss-repair-before-1/2` に対する封筒外 35/63 はすべて説明済み（推定式の変更 23、照り返し源の
+  画素の選び方の修正 2、手順4の鏡面 10）。オフの組・太陽直射だけ・天体・材質の撮影に意図しない差はない。
+  鏡面照度は同一セッションの3方式で差0、走査の描画命令は光源の数とモデルによらず1本、視半径 sweep は単調、
+  `bay-truss` の暈と `bay-edge` の段差はない。`bounce-cosine` の比は受け手の中心で 1 / 0.64 / 0.03、受け手全体で
+  1 / 0.41 / 0.05（有限の面光源の解析値 1 / 0.58 / 0、1 / 0.37 / 0.05 に 0.07 以内）。
+- **中設定の壁際の遮蔽が偏って弱い。** `bay-earth-open` の +X 壁の内側 0.25〜0.95 m の、開けた床に対する比が
+  0.28〜0.52（解析値 × W で 0.02〜0.13、手順5で 0.003〜0.09、16 スライス × 96 歩で 0.03〜0.10）。床と壁の内隅を
+  またぐ区間で標本が床に落ちると、その区間の壁の下部を取りこぼし、標本が壁に落ちたときの延長は受け手の地平の
+  下へ切られて何も補わない。確率的に打ち消し合わない、凹んだ継ぎ目に特有の偏りである（手順6.5）。
+- 平らな面の細かい粒は手順5の 3〜10 倍（残差 RMS 0.15〜0.29 → 0.63〜1.76 LSB）で、光る箱のまわりに 2〜4 px の
+  色の点が残る。周囲の中央値から 32 LSB を超える斑は0で、レンズ効果にも拾われていない。
+- GPU（960×540、`bay`、1 セッション）: 遮蔽・中 10.0 倍、遮蔽と照り返し・中 10.6 倍（マテリアル行に対する比。
+  走査 8.0〜8.4 ms、復元 1.9 ms、照り返し源 1.0 ms、マテリアル 1.0 ms）。高設定（全解像度 3×8）は走査 51〜54 ms。
+  手順6より前の版（`b4b586fcd`）は3セッションの中央値で遮蔽・中 6.0 倍、遮蔽と照り返し・中 7.6 倍だった。
+- 半解像度で `gbufferUVOf` の float の floor が G バッファの画素を揺らしていた（受け手の読みと ShadingSample が
+  輪郭で別の面を読み、E_p が 1000 倍食い違う）。整数の割り算に直した。復元段の `candidateUv` に同じ式が残る。
+
 ---
 
 ## 変えるもの・変えないもの
@@ -81,7 +147,8 @@ E_diffuse
 - 天体の見かけの角を最低角まで広げない。小さく弱い天体の拡散影は自然に消える。
 - 深度標本を一定メートルの板として奥へ押し出さない。
 - 距離減衰は `d / R` だけで決まり、独立した `fadeStart` を持たない。
-- 照り返しだけに送り手側の余弦 `max(dot(n_source, -ω), 0)` を掛ける。遮蔽には掛けない。
+- 照り返しは、送り手の面が受け手から見て張る角度に比例する（斜めに向いた面ほど弱く、真横で連続に0）。
+  遮蔽は送り手の向きによらない。
 - 深度だけの 3×3 均し2回を、法線と再構成位置を案内にする joint bilateral の復元へ替える。
 - デバッグ表示をパイプライン順へ並べ、実在する各中間ターゲットを直接見せる。
 
@@ -91,11 +158,13 @@ E_diffuse
 
 | 論文・実装 | この計画で採るもの | 採らないもの |
 | --- | --- | --- |
-| [HBAO](https://rdimitrov.twistedsanity.net/HBAO_SIGGRAPH08.pdf) | 半径だけから決まる compact な距離窓、画面内スライスの走査 | 鏡面への流用 |
+| [HBAO](https://developer.download.nvidia.com/presentations/2008/SIGGRAPH/HBAO_SIG08b.pdf) | 画面内スライスの走査、新たに塞いだ増分へ掛ける標本ごとの距離重み `W(r) = 1 − r²`（r = d/R） | 高さ場（無限厚み）の仮定、鏡面への流用 |
 | [Scalable Ambient Obscurance](https://research.nvidia.com/publication/2012-06_scalable-ambient-obscurance) | 深度階層・低解像度化を使うなら、距離に合う LOD を読む考え方 | SAO の式を現在の扇形積分へそのまま移植すること |
-| [SSDO](https://phaazon.net/media/uploads/SSDO.pdf) | 照り返しの送り手余弦と、遮蔽・照り返しで重みを分けること | 遮りの後ろを二重に足す点標本のままの実装 |
-| [SSILVB](https://arxiv.org/abs/2301.11376) | 新たに塞いだ方向だけから照り返しを集めること | 単層深度から一定の物体厚みを仮定すること |
-| [GTAO / GTSO](https://www.activision.com/cdn/research/PracticalRealtimeStrategiesTRfinal.pdf) / [XeGTAO](https://github.com/GameTechDev/XeGTAO) | スライス数を優先する標本配分、空間ノイズとフィルターの評価方法 | GTSO。鏡面遮蔽は前半に入れない |
+| [SSDO](https://web.archive.org/web/2015/http://www.mpi-inf.mpg.de/~ritschel/Papers/SSDO.pdf) | 遮蔽・照り返しを同じ走査から求めること | 面積 form factor `A cos cos / d²` を疎な標本で積むこと（d のクランプと手調整の A が要る） |
+| [SSILVB](https://arxiv.org/abs/2301.11376) | 扇形ビットマスク、新たに塞いだ方向だけから照り返しを集めること | 単層深度から一定の物体厚みを仮定すること、`ceil` による最低1扇形 |
+| [HBIL](https://github.com/Patapom/GodComplex/tree/master/Tests/TestHBIL) | 照り返しを方向領域で「新たに塞いだ余弦測度 × 標本の放射輝度」として積むこと（1標本の寄与が有界） | 背を向けた標本へ前の標本の放射輝度を流用すること |
+| [GTAO / GTSO](https://www.activision.com/cdn/research/PracticalRealtimeStrategiesTRfinal.pdf) / [XeGTAO](https://github.com/GameTechDev/XeGTAO) | スライス数を優先する標本配分、近くへ寄せる二乗の歩み `ρ = u²R`、空間ノイズとフィルターの評価方法 | GTSO。鏡面遮蔽は前半に入れない。falloff range と最終値の累乗 |
+| [比推定 (Heitz et al. 2018)](https://research.nvidia.com/publication/2018-05_combining-analytic-direct-illumination-and-stochastic-shadows) | 解析的な非遮蔽照度 × 塞がれた割合で、天体照の遮蔽を有界にすること | 分子・分母を別 target にして復元すること |
 | [MSSAO](https://www.comp.nus.edu.sg/~lowkl/publications/mssao_visual_computer_2012.pdf) | 遠い帯を低解像度、近い帯を高解像度で扱う候補と、深度・法線による拡大 | scalar AO 用の octave 合成を符号付き RGB 補正へ流用すること |
 | [blue-noise sampling](https://perso.liris.cnrs.fr/david.coeurjolly/publication/heitz-19/) | 時間蓄積なしの空間標本を高周波へ寄せること | フレームごとに模様を動かしてちらつきを作ること |
 | [stochastic bilateral filter](https://doi.org/10.1109/TIP.2017.2777182) | 大きい窓を固定本数の疎な標本で近似する候補 | 「8×8だから64 spp相当」という品質の断定 |
@@ -145,54 +214,66 @@ export class DiffuseCorrectionSource implements LightSource {
 
 ### D3. 一回の幾何走査で `-blocked + bounce` を積む
 
-画面上の各スライス・各歩で深度と法線を一度読み、遮蔽は方向領域、照り返しは面積領域として同じ
-ループの別 accumulator へ積む。両者の測度を混ぜない。
+画面上の各スライス・各歩で深度と法線を一度読み、その標本が代表する面の切片が受け手から張る角度範囲を
+扇形ビットへ立てる。遮蔽と照り返しは**同じ新規ビットの余弦重み測度**で積む。近傍面の放射輝度が遠方光と
+等しければ標本ごとに ΔE = 0 になり、1標本の寄与は有界になる。
 
 ```text
-blocked += W(d/R)
-         * ∫newly-blocked L_far(ω) max(dot(n_receiver, ω), 0) dω
+スライス i、歩 k（手前から奥）:
+  newly    = bits(segment_k) & ~blocked
+  blocked |= bits(segment_k)
+  A_i     += W_k · μ(newly)                     環境光の塞がれ
+  P_ip    += W_k · μ(newly ∩ cap_ip)             天体 p の塞がれ
+  B_i     += W_k · L_k · μ(newly) · [segment_k が受け手へ表を向ける]
 
-bounce  += W(d/R) * L_source
-         * max(dot(n_receiver,  ω), 0)
-         * max(dot(n_source,   -ω), 0)
-         * A_patch / d²
-         * f_new
-
-ΔE_screen = -blocked + bounce
+a   = Σ w_i A_i / Σ w_i                          ∈ [0, 1]（μ は半球の余弦測度に対する割合）
+f_p = Σ t_ip · P_ip / μ(cap_ip)  /  Σ t_ip       ∈ [0, 1]
+ΔE  = π · Σ w_i B_i / Σ w_i − (a · E_ambient + Σ_p f_p · E_p)
 ```
 
-- `L_far(ω)` は一様環境光と有効な天体照をその方向で合成した放射輝度。有限の扇形を中央の一点で
-  評価しない。一様環境光は扇形の余弦重みつき立体角を解析的に掛ける。各天体は、既存ライティングと
-  同じ拡散用の代表放射輝度（uniform / textured の設定を含む）を受光点ごとに一度だけ求め、その値を
-  天体球冠と新規扇形の fractional overlap へ掛ける。走査中の planet texture fetch は増やさない。
-  これにより、1扇形より小さい天体も総エネルギーが球冠の立体角に比例し、最低角を必要としない。
-- `L_source` は太陽直射（影込み）、天体照、一様環境光で照らされた面の一回反射と自己発光を、走査前の
-  1枚へ焼いた放射輝度。現在フレームの天体光源テクスチャを使えるよう、その bake を走査より前へ移す。
-- `A_patch` は標本画素が表す有限の面積、`f_new = μ(newly covered) / μ(patch footprint)` はその patch の
-  余弦重みつき角 footprint のうち、手前の標本がまだ塞いでいなかった割合。扇形マスクは `f_new` と
-  前後関係だけを決め、bounce の form factor そのものには使わない。比の分子・分母に共通する角投影は
-  相殺されるので、送り手余弦と `1/d²` を二重計上しない。
-- 遮蔽は方向の可視性なので送り手余弦を掛けない。照り返しは面の投影面積なので掛ける。
-- 手前の標本が既に覆った方向は、奥の遮蔽にも照り返しにも再加算しない。
+- **標本の置き方。** 歩 k の標本は、層化した u の区間 [k/N, (k+1)/N) の中の jitter 位置に置く（ρ(u) = u²·R_px。
+  近くへ寄せる二乗は XeGTAO の配分）。配分は分解能だけを決め、重みには入らない。
+- **標本の切片（手順6.5）。** 受け手自身を最初の標本とみなし、画面上で隣り合う2標本のあいだを、2標本の
+  接平面へ次の規則で分ける。
+  - 互いに相手が自分の接平面の表側（法線の側）にあるとき、2平面はカメラから見える凹んだ継ぎ目で
+    交わっているので、スライス平面の中での2平面の交点で継ぐ。平らな面どうしの内隅は、歩数によらず正確に埋まる。
+  - そうでないとき（輪郭・凸の稜）は継ぎ目の位置が分からないので、2標本の画面上の中点で分ける。
+    面の写っていない標本・半径の外の標本の隣も中点で分ける。
+  - 最後の標本は R_px まで受け持つ。
 
-`A_patch` と角 footprint は次の一意な規則で作る。標本中心の view-space 位置と法線から接平面を作り、
-その標本が代表する full-resolution G バッファ画素領域の四隅の ray を接平面へ交差させる。得た四角形を
-受け手中心・半径 `R` の球で clip し、非有限またはカメラ後方の交点は捨てる。この四角形の面積が
-`A_patch`、受け手の半球へ投影した範囲が角 footprint になる。隣接標本を閾値で同一面へ連結しないので、
-新しい depth threshold は生まれない。
+  切片は、各標本の接平面の上で分割点を通る視線に挟まれた線分（凹の継ぎ目では交点そのもの）で、受け手中心・
+  半径 R の球で切る。視線と平行に近い端・カメラの後ろに出る端は標本自身の位置へ戻す。分割点の視線はスライス
+  平面に載るので、切片の角度範囲は両端の角度の間になる。厚みは持たない。
+  手順6の実装は、層化の区間の両端で切る形（`46d2e9fac`）。
+- **自己遮蔽の閾値を持たない。** 余弦重みの測度は地平線の近くで仰角の2乗で0になるので、受け手と同じ
+  平面の標本が数値誤差で立てるビットは寄与しない。受け手の接平面より下は角度の clamp で落とす。
+- **距離重み** `W = max(0, 1 − (d/R)²)`（HBAO の標本ごとの減衰。d は受け手から標本の中心までの 3D 距離）。
+  ビットには掛けない。立てそこねると、奥の標本が手前の遮りの後ろを塞ぎ直す。
+- **扇形ビットの丸め。** 端の扇形は、画素ごとに一定のずれ（スライスの回転・歩の jitter と独立な blue noise）で
+  確率的に丸める。同じずれを同じ画素の全標本と球冠の範囲に使う。これで隣り合う切片の丸めが継ぎ目なく
+  並び、球冠の範囲とビットが同じ座標で重なる。**単独標本へ最低1扇形を与えない。**
+- **照り返し** は方向領域で積む（HBIL / SSILVB）。`L_k` は走査前に焼いた照り返し源の放射輝度で、太陽直射
+  （影込み）・天体照・一様環境光で照らされた面の一回反射と、自己発光からなる。天体照は通常ライティングと
+  同じ uniform / textured の拡散照度を使う。送り手の向きは切片が張る角度にすでに含まれるので、余弦を別に
+  掛けない。切片が受け手へ裏を向けるなら塞ぐが返さない。その境で切片の角度は0へ縮むので、照り返しは
+  連続に消える。面積 form factor、1/pdf の求積、新規割合の割り算は使わない。
+- **環境光** は、通常ライティングと同じ一様環境光の照度 `E_ambient` に、塞がれた割合 a を掛けて引く。
+- **天体照** は比推定で引く。`E_p` は通常ライティングと同じ天体 p の拡散照度（uniform / textured、地平の
+  クリップ込み）で、受光点ごとに一度だけ求める。
+  - スライス i での球冠の範囲 `cap_ip` は、天体の中心の向きをスライス平面へ射影した角を中心とし、天体の
+    視半径を半幅とする区間である。**両端を受け手の半球 [n − π/2, n + π/2] へ切り**、空になれば寄与しない。
+  - スライスの地平の形は、その方位のまわりの楔を代表するとみなす。天体の方位とスライスの向きの角距離に
+    よる三角の重み `t_ip`（幅はスライスの間隔 π / sliceCount）で、近い2本を補間する。
+  - スライス平面が球冠と交わるかどうかに依らないので、小さな天体も見落とさず、最低角も要らない。
+    f_p ∈ [0, 1] なので、引く量は天体照そのものを超えない。
+- 手前の標本が既に覆った方向は、奥の遮蔽にも照り返しにも再加算しない。スライスの重み w_i は GTAO と同じ
+  射影法線の長さ × 半球の測度で、遮蔽と照り返しに同じものを使う。
+- 有界性: `−(E_ambient + Σ_p E_p) ≤ ΔE ≤ π · max L_k`。
 
-角 footprint の各扇形に対する被覆率は 0〜1 の連続値で求める。端の扇形は固定2D blue-noise で確率的に
-bit へ量子化し、期待値を被覆率へ一致させる。**単独標本へ最低1扇形を与えない。** 32 / 64 sector の
-収束を測り、平均照度と細い梁の差が許容内になる小さい方を固定する。sector 数は品質設定や人間向けの
-ノブにしない。
-
-`hemisphere-scan.ts:19-35` の `FADE_START_DISTANCE` / `SLAB_THICKNESS` / `MIN_CAP_ANGLE` /
-`MIN_LOBE_ANGLE` は削除する。距離窓だけを HBAO から借り、`W(t) = max(0, 1 - t)`、`t = d/R` として
-半径の外を0にする（estimator 全体が HBAO と同じという意味ではない）。`STEP_DISTRIBUTION_EXPONENT` は
-削除し、各層化標本 `u = (step + jitter) / stepCount` を線形窓の正規化 CDF の逆
-`t = 1 - sqrt(1 - u)` で距離へ写す。自己遮蔽を避ける深度 bias とゼロ除算回避 epsilon はバッファ精度
-と full-resolution pixel footprint から導き、`MIN_ELEVATION` の固定値を残さない。`MAX_SCREEN_RADIUS` の固定0.25も
-削除し、投影半径は viewport 境界で実際に読める距離だけに幾何的に clip する。
+`FADE_START_DISTANCE` / `SLAB_THICKNESS` / `MIN_CAP_ANGLE` / `MIN_LOBE_ANGLE` / `STEP_DISTRIBUTION_EXPONENT` /
+`MIN_ELEVATION` / `MAX_SCREEN_RADIUS` と同義の定数・閾値は置かない。ゼロ除算回避の epsilon だけは残してよい。
+投影半径は viewport 境界で実際に読める距離だけに幾何的に clip する。sector 数は 32 で始め、64 との差を
+達成目標5で測る。sector 数は品質設定や人間向けのノブにしない。
 
 ### D4. 一つの放射量を一つの target に持ち、すべての target を直接見せる
 
@@ -209,8 +290,9 @@ joint bilateral 復元 → full-resolution ΔE_screen rgba16f
 同じ段に光源別・鏡面用の MRT を足さない。raw と full-resolution は算法上別の中間段なので各1枚を
 持つ。フィルター用の一時 target が必要なら、それもデバッグ表示へ出し、寿命を上書きで隠さない。
 
-符号付き値の表示は、負の成分を赤、正の RGB をその色、ゼロを黒に写す。これは値の符号と表示レンジを
-見える形へ写すだけで、別の遮蔽を再計算したり、ambient だけを代用品として表示したりしない。
+符号付き値の表示は、成分ごとに `0.5 + 0.5·sign(v)·T(|v|)`（T は他のデバッグ表示が画面へ出す階調）とし、
+ゼロを中間灰（PNG で 127）に、照り返しを灰より明るい色に、遮蔽を灰より暗く写す。これは値の符号と
+表示レンジを見える形へ写すだけで、別の遮蔽を再計算したり、ambient だけを代用品として表示したりしない。
 「遮蔽」設定で raw / 復元後を見れば負項だけになり、地球を動かしたときの方向性を直接確認できる。
 
 ### D5. デバッグ表示と GPU 行はパイプライン順にする
@@ -219,8 +301,8 @@ joint bilateral 復元 → full-resolution ΔE_screen rgba16f
 
 ```text
 通常
-Gバッファ
-→ 影マップ / 影
+影マップ
+→ Gバッファ / 影
 → 天体照の光源テクスチャ
 → 照り返しの源
 → raw拡散補正 / 復元後の拡散補正
@@ -324,16 +406,21 @@ MSSAO の scalar AO は octave 間を max / average で混ぜるが、`-blocked 
 2. `bay-earth-overhead` / `bay-earth-open` / `bay-earth-corner` で、地球を左右へ動かすと raw と復元後の
    負の拡散補正が同じ方向へ動く。指定座標の 5×5 sRGB 平均を PBR Neutral から線形へ戻した輝度比
    `P_in / P_out` は、before の同じ撮影に対して大きい天体で ±0.06、小天体で ±0.10 を超えて退行しない。
+   中設定の遮蔽の面平均は、同じ撮影で歩数だけを 384 にした値の 80% 以上（標本の間が埋まっている）。
+   P_in / P_out は精細さの profile の歩数とスライス数で決まるので、手順8で profile を決めるときに判定する。
 3. `bounce-cosine` の同じ面積・距離・放射輝度で、実際の source 面を `cos θ = 1 / 0.5 / 0` にした3組の
-   線形照り返し輝度が `1 / 0.5 / 0` の ±0.10。環境光と天体照は切り、emissive の一回反射だけで測る。
-   角度 sweep は単調で、照り返し源側の地平線に直線状の境界が残らない。遮蔽 accumulator が source
-   normal を参照しないことは estimator test でも固定する。
+   線形照り返し輝度の比が、同じ配置の有限の面光源の解析値の ±0.10（点光源なら `1 / 0.5 / 0`）。環境光と
+   天体照は切り、emissive の一回反射だけで測る。
+   角度 sweep は単調で、照り返し源側の地平線に直線状の境界が残らない。遮蔽は送り手の余弦を掛けず、
+   送り手の法線は切片の幾何（接平面）としてだけ使う。
 4. `FADE_START_DISTANCE` / `SLAB_THICKNESS` / `MIN_CAP_ANGLE` / `MIN_LOBE_ANGLE` /
    `STEP_DISTRIBUTION_EXPONENT` / `MIN_ELEVATION` / `MAX_SCREEN_RADIUS` と同義の見た目調整定数・uniform・設定が0件。
    人間が調整する長さは半径だけ。
 5. 天体照の数とモデルを変えても、走査の dispatch 数、深度・法線の標本数、raw 補正 target の枚数が
    変わらない。小さな天体の角度を広げず、天体の視半径 sweep で blocked energy が立体角に対して単調、
-   かつ32 / 64 sector の線形輝度差が2%以下。
+   かつ扇形の数を半分にしても線形輝度差が2%以下。raw 補正は各画素で D3 の有界性の範囲に入る — 天体照だけの
+   「遮蔽」で blocked / E_p > 1 の画素と、E_far = 0 の面で ΔE ≠ 0 の画素が0、照り返しは照り返し源の最大の
+   π 倍以下。復元後は、拡散照度 + 補正が負になる画素が0（手順8で判定）。
 6. `bay-truss` で梁から4 pxより外へ暗い暈が出ず、`bay-edge` で画面端に直線状の段差が出ない。
 7. オフの組は before 2組に対する `render-lab:compare` の封筒外が0件。太陽直射だけの `albedo` の
    既存基準と、天体・材質の既存撮影も意図しない封筒外が0件。
@@ -364,101 +451,24 @@ MSSAO の scalar AO は octave 間を max / average で混ぜるが、`-blocked 
 
 ## 手順 — 前半（この PR）
 
-### 手順 3. 再現画像とパス別負荷の基準を固定する
+### 手順 6.5. 隣り合う標本の接平面で継ぎ目を埋める（臨時段）
 
-**目的** — 良い拡散影、悪い鏡面影、照り返しの地平線、品質別ノイズ、遠方棄却の境界を修正前に残し、
-以降の各段で比較できるようにする。同時に、算法を変えずに負荷の内訳を人間が見られるようにする。
-
-| ファイル | 変更 |
-| --- | --- |
-| `tools/render-lab/bay-cases.ts:254-327` | 既存 `bay` へ地球左右、天体視半径 sweep、投影半径1〜2 px、低/中/高の撮影を追加 |
-| `tools/render-lab/bounce-cosine-case.ts`（新規）/ `cases.ts` | 同じ world-space 面積・距離・emissive radiance で実際の面を `cos θ = 1 / 0.5 / 0` にした3組と対称な受け手を置く。新しい配置が必要なので較正専用ケースにする |
-| `tools/render-lab/lab-case.ts:54-60` / `lab.ts:350-389` | `LabShot.debugTarget` を足し、撮影ごとに通常像・拡散照度・鏡面照度・各中間 target を指定して自動撮影できるようにする |
-| `src/render/gpu-timings.ts:6-37` | `screenSpace` 1行を source / scan / reconstruct に分け、値とラベルを実行順へ並べる |
-| `src/render/pipeline/screen-space/screen-space-pass.ts:213-225` | 現在の prepass、scan、2回の blur、upsample を上の3行へ正しく計上する。算法は変えない |
-| `tools/render-lab/lab.ts:301-342` | sampling 本体を共有し、CLI用 `measure(case, angles)` は保ったまま、ケース・角度・設定を変えない `measureCurrent()` を足す |
-| `tools/render-lab/index.html:57-95` / `main.ts:180-260` | 既存 `Button` とテーマ token で「負荷」節、計測ボタン、median / p95 の行を足す。撮影適用時は debug target のボタンも同期する |
-| `tests/render/gpu-timings.test.ts:6-18` | IDとラベルの一対一に加え、実行順と3内訳を固定する |
-
-**完了条件と検証**
-
-- `/ui-design` に従い、既存 widget / token だけを使う。計測しない間に毎フレームの追加処理をしない。
-- `npm run typecheck` / `npm run test:render` / `npm run verify:ui-style`。
-- `npm run render-lab:shot -- ss-repair-before-1` と `-- ss-repair-before-2` を撮り、全追加撮影を目視する。
-- render-lab UI と `node tools/render-lab-measure.mjs 3 screen-space` の中央値が許容誤差内で一致する。
-- commit: `feat(render-lab): 近傍光輸送の再現撮影と負荷内訳を足す`
-
-### 手順 4. 鏡面遮蔽だけを除去する
-
-**目的** — 前半の責務を拡散へ戻す。拡散 estimator はまだ変えず、良い部分が不変かを単独で確認する。
+**目的** — 手順6の切片が凹んだ継ぎ目で作る偏り（前提の節「中設定の壁際の遮蔽が偏って弱い」）を、ノブを
+足さずに除く。同じ差分で1標本あたりの費用を下げ、手順8の profile に歩数の余地を作る。
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/pipeline/screen-space/hemisphere-scan.ts:117-119,152-153` | specular range、`occluded.w`、`extent.z`、`MIN_LOBE_ANGLE` を削除 |
-| `src/render/pipeline/screen-space/screen-space-pass.ts:269-299` | roughness / view / reflection から作る `specularLobe()` と入力を削除 |
-| `src/render/pipeline/screen-space/screen-space-light.ts:12-73` | alpha の鏡面可視率と `specularVisibility()` を削除 |
-| `src/render/pipeline/lighting/ambient-source.ts:61-69` | 鏡面は従来の環境放射輝度をそのまま返す |
-| `src/render/pipeline/lighting/planet-light-source.ts:180-205` | 天体照の鏡面へ近傍可視率を掛けない |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` | D3 の切片を隣り合う標本の分割へ替える。直前の標本の平面・位置・放射輝度・距離重み・表裏と下側の分割点を持ち越し、次の標本で上側の分割点が決まった時点でその切片を積む（手前から奥の順は保つ）。視線の起点と向きをスライスの中で画面距離の一次式として求め、標本ごとの逆射影を減らす |
+| `tests/render/screen-space-estimator.test.ts` | 分割の規則を理論値で固定する: 床と壁の内隅では壁の切片が床の地平から始まり、隙間なく継がれる。輪郭では中点で分かれる |
 
 **完了条件と検証**
 
 - `npm run typecheck` / `npm run test:render`。
-- 同一セッションで「オフ / 遮蔽 / 遮蔽と照り返し」のデバッグ「鏡面照度」が pixel diff 0。
-- before との比較で拡散照度・遮蔽・照り返しの撮影が封筒内。
-- commit: `fix(render): 近傍の遮蔽を鏡面照度から外す`
-
-### 手順 5. 消費側を符号付き拡散補正へ移す
-
-**目的** — estimator の数値を変えずに D2 の層境界へ移し、光源別の可視率をライティング source へ
-注入する循環を解く。
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/pipeline/screen-space/diffuse-correction.ts`（新規） | 全解像度の signed `ΔE_screen` target と読み口。負値 probe を含む |
-| `src/render/pipeline/lighting/diffuse-correction-source.ts`（新規） | diffuse にだけ補正を加える `LightSource` |
-| `src/render/pipeline/screen-space/screen-space-pass.ts:252-374` | 現行 visibility と indirect、通常 lighting と同じ ambient / planet diffuse irradiance から、upsample 時に同値の `-blocked + bounce` を出す |
-| `src/render/pipeline/lighting/ambient-source.ts` / `planet-light-source.ts` | `ScreenSpaceLight` 依存と occluded variant を削除し、uniform / textured を含め通常 lighting と同じ diffuse irradiance の読み口を screen pass へ公開 |
-| `src/render/pipeline/lighting/indirect-source.ts` | `DiffuseCorrectionSource` に置換して削除 |
-| `src/render/pipeline/screen-space/screen-space-light.ts` | 移行後に削除 |
-| `src/render/pipeline/render-pipeline.ts:138-153,357-365,459-465` | 構築を環境光源→screen pass→補正 source の一方向へ直し、planet-light bake を screen pass より前へ移す |
-| `src/render/pipeline/debug-target.ts:2-28` / `render-pipeline.ts:218-271` | ボタンを生成順へ並べ、最終 signed correction を実 target から直接表示する。raw は手順6で足す |
-| `tests/render/screen-space-correction.test.ts`（新規） | off の中立値、モード、signed encode、鏡面0の契約を固定 |
-| `tests/render/debug-target.test.ts`（新規） | `通常` の例外、トポロジカル順、最終 correction の対応を固定 |
-
-**完了条件と検証**
-
-- `npm run typecheck` / `npm run check:boundaries` / `npm run test:render`。
-- 遮蔽と照り返しの全 before 撮影が封筒内。鏡面は手順4の基準と pixel diff 0。
-- GPU probe と raw readback で負値が0へ clamp されない。NaN / Inf がない。
-- `AmbientSource` / `PlanetLightSource` から screen-space への import が0件。
-- estimator を変える前の最終 correction debug で、地球方向の負項と照り返しの正項を直接確認できる。
-- commit: `refactor(render): 近傍光輸送を符号付き拡散補正として渡す`
-
-### 手順 6. 走査を一枚の拡散補正へ畳み、不要ノブを削る
-
-**目的** — D3/D4 の式へ置き換え、固定2天体・鏡面ローブ用 MRT、厚み、独立フェード、最低角をなくす。
-ここでデバッグ表示も新しい中間 target へ直接つなぎ、以後の品質調整を観察可能にする。
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/pipeline/lighting/diffuse-environment.ts`（新規） | ambient radiance と、各 planet の cap＋既存ライティングと同じ代表 diffuse radiance を受光点ごとに組み、指定した有限角領域との fractional integral を返す境界 |
-| `src/render/pipeline/lighting/planet-light-source.ts:152-278` / `planet-light-image.ts:74-103` | uniform / textured の代表 diffuse radiance を lighting と correction で共有する読み口を作る。texture は受光点・天体ごとに一度評価し、走査標本ごとに読まない |
-| `src/render/pipeline/render-pipeline.ts:459-465` | 手順5で確定した planet-light bake → screen-space source / scan の順を保つ |
-| `src/render/pipeline/screen-space/hemisphere-scan.ts:19-35,83-173,259-263` | D3 の方向積分と patch form factor、接平面 footprint、fractional sector、半径だけの距離窓、signed RGB 1出力へ書き換える |
-| `src/render/pipeline/screen-space/screen-space-pass.ts:62-157,252-374` | source 1枚、raw correction 1枚、full correction 1枚へ target と段を減らす |
-| `src/render/pipeline/screen-space/diffuse-correction.ts` | raw / final の直接 debug access を公開 |
-| `src/render/pipeline/debug-target.ts:2-28` | 手順5の生成順へ raw を足し、配列順の不変条件をコメントする |
-| `src/render/pipeline/render-pipeline.ts:218-271` | 既存 target を直接読む debug composite。signed の表示変換以外をしない |
-| `tests/render/screen-space-estimator.test.ts`（新規） | 小天体 cap の fractional energy、patch form factor、partial sector の期待値、32/64 sector の収束を CPU reference で固定 |
-| `tests/render/debug-target.test.ts` | raw を加え、各 persistent target の対応を固定 |
-
-**完了条件と検証**
-
-- `npm run typecheck` / `npm run check:boundaries` / `npm run test:render`。
-- 達成目標2〜6、8。特に「遮蔽」で地球方向の raw / final が移動し、鏡面は不変。
-- `rg 'FADE_START_DISTANCE|SLAB_THICKNESS|MIN_CAP_ANGLE|MIN_LOBE_ANGLE|STEP_DISTRIBUTION_EXPONENT|MIN_ELEVATION|MAX_SCREEN_RADIUS|specularVisibility' src` が0件。
-- 走査 shader は光源数にかかわらず1 dispatch。scan / filter target は1 attachmentずつ。
-- commit: `refactor(render): 遮蔽と照り返しを一回の拡散補正走査へ畳む`
+- 中設定で、`bay-earth-open` の +X 壁の内側の比と、corner / moon-corner の P_in が解析値 × W に近づく。
+  少なくとも手順5のずれ以下。環境光だけの遮蔽の面平均は、6 歩 / 384 歩で 0.9 以上を保つ。
+- `bay-truss` の暈と `bay-edge` の段差が出ない。raw の有界性を保つ（達成目標5）。
+- 走査の GPU 中央値が、同じセッションの手順6より下がる。
+- commit: `fix(render): 近傍の拡散補正で凹んだ継ぎ目を隣の標本の接平面で埋める`
 
 ### 手順 7. 遠方・背景画素を処理の手前で棄却する
 
@@ -490,6 +500,16 @@ MSSAO の scalar AO は octave 間を max / average で混ぜるが、`-blocked 
 
 固定 dense 5×5 と8本 stochastic taps を同じ source / scan 結果で比較し、達成目標11・12を両方満たす
 最小の方を採る。視覚だけで標本数を増やさない。
+
+- profile の候補行列では達成目標2の P_in / P_out も測る。手順6の実測では中設定（半解像度 2×6）の corner が
+  0.150 で、歩数に対して 6 / 24 / 96 歩で 0.14 / 0.065 / 0.036 と縮む。高設定（全解像度 3×8）が中設定より悪い
+  理由を、profile を決める前に切り分ける。
+- 復元は受光点ごとの E_p が掛かった ΔE を混ぜるので、法線の重みで内隅の不連続を越えさせない。
+  全解像度で拡散照度 + 補正が負になる画素を数える（達成目標5）。
+- 復元段の G バッファの画素の選び方は `gbufferUVOf` と同じ整数の割り算にする。
+- 負荷は達成目標12まで下げる必要がある（手順6で遮蔽と照り返し・中が 10.6 倍、目標は 5 倍以下）。復元は
+  いま 1.9 倍で、タップごとに深度を読み直し、位置を戻し、log を取っている。高設定を全解像度のまま走査すると
+  50 ms を超えるので、解像度も profile の候補に入れる。
 
 **完了条件と検証**
 
@@ -626,17 +646,13 @@ export class ScreenSpaceReflection {
 
 | 手順 | 中央見積り | 根拠 |
 | --- | ---: | --- |
-| 3. 基準・計測UI | 5 h | 撮影5群、cosine較正ケース、GPU3行、既存 measure の UI 接続 |
-| 4. 鏡面遮蔽削除 | 2 h | 5ファイル、画像不変確認 |
-| 5. 層境界移行 | 6 h | signed target / source、同値な天体拡散入力、循環解消、probe |
-| 6. 一回走査 | 16 h | fractional角積分、patch form factor、planet bake 順、footprint、debug |
+| 6.5. 継ぎ目の分割 | 5 h | 持ち越しの状態、交点と中点、視線の一次式、テスト、壁際の再測定 |
 | 7. 棄却 | 2 h | 3段共通条件と距離スイープ |
 | 8. 復元 | 8 h | bilateral 2候補、品質profile、画像指標 |
 | 9. 最終監査 | 4 h | 前後比較、規約、関連検証 |
 
-**残り合計 43 h**。最大の不確実性は、fractional sector と接平面 footprint を TSL で組む費用、天体の
-representative radiance を correction と lighting で共有する境界、負の MRT 加算が backend で保持されるか
-である。最後の点は手順5の probe で早期に判定する。
+**残り合計 21 h**。最大の不確実性は、達成目標12の負荷へ収めつつ壁際の遮蔽と粒を保てる profile があるか、
+輪郭の中点の分割が作る暈（`bay-truss`）、楔の補間で小天体の影が方位の離れたスライスで決まる誤差である。
 
 ### 後半
 
@@ -655,19 +671,20 @@ edge fade と内訳を合わせて追い込む。
 
 | リスク | 影響 | 検出・対処 |
 | --- | --- | --- |
-| signed RGB が `colorNode` や blend で0へ切られる | 遮蔽が消え、照り返しだけ残る | 手順5の -1/0/+1 probe。`mrtNode` を使い、raw debug と readback を照合 |
 | textured planet の bake が前フレームになる | 地球を動かすと遮蔽と光源色が1フレームずれる | 手順6で bake→source→scan の順を timing / debug 両方で確認 |
-| `L_far` と lighting の天体モデルが違う | 塞いだ分以上に引く、色が変わる | 同じ `DiffuseEnvironment` を両者が使い、uniform/textured 切替の差分を撮る |
+| 走査が引く天体照と lighting の天体照が違う | 塞いだ分以上に引く、色が変わる | 両者が同じ天体ごとの拡散照度の読み口を使い、uniform/textured 切替の差分を撮る |
 | source cosine を遮蔽にも掛ける | 薄い面を掠めると環境光が不自然に透ける | 手順6の送り手角度スイープ。blocked は不変、bounce だけ連続変化 |
-| footprint が深度不連続をつなぐ | 梁・輪郭の外に暈が出る | `bay-truss` と法線/深度 edge 指標。連続判定は pixel footprint から導く |
+| 接平面の切片が輪郭の外へ区間の幅だけ延びる | 梁・輪郭の外に暈が出る | `bay-truss` と法線/深度 edge 指標。区間は近いほど細い（`u²`）。暈が目標6を超えるなら区間の決め方を見直す |
 | radius の端または1px棄却で pop | カメラ移動中に輪が走る | `bay-edge` と距離スイープ。補正全体へ同じ窓を一度だけ掛ける |
 | bilateral が符号の違う補正を混ぜる | 接触部が明滅・色漏れする | raw/final の直接表示、position/normal edge 指標、重み不足はcenter fallback |
 | blue noise をフレームごとに動かす | 静止画は良いが動画がちらつく | 固定2D pattern、連続フレーム readback の一致 |
 | debug のために段を再実行する | 見ている値と通常フレームが違う | 手順2の規則、手順6/9の target↔debug 一対一監査 |
 | raw を ping-pong で上書きする | 問題の発生段を見分けられない | 各 persistent target の寿命と debug getter を同じ表でレビュー |
 | GPU 行の順が実行順でない / 複数段が同じ行 | 重い場所を誤認する | `gpu-timings.test.ts` で順序と3行を固定、render-lab UI と CLI を照合 |
-| 小天体を扇形中央の一点で評価する | 影が全量か0になり、最低角を消しても energy を保存しない | coverage-premultiplied な角領域積分と視半径 sweep、32/64 sector 比較 |
-| footprint と source cosine を同じ角測度へ二重に入れる | 掠める面の bounce が過剰に弱る | sector は first-hit 比率、bounce は `cos_r cos_s A/d²` と役割を分離 |
+| 小天体をスライスとの弦の当たり外れで数える | 当たった画素だけ天体照を超えて引く | 楔の補間の比推定、blocked / E_p ≤ 1 の readback、視半径 sweep |
+| 楔の補間が天体の方位の地平を取り違える | 小天体の影が方位の離れたスライスの地平で決まる | 地球の方位 sweep と視半径 sweep。目立てば光源方位の走査を足す別計画 |
+| 照り返しを面積領域・1/pdf で積む | 1標本が半球を超える重みを持ち、明るい斑になる | 方向領域の測度だけで積み、raw 最大 ≤ π·max L_source を readback で確認 |
+| 球冠の範囲とビットを別の座標で丸める | 天体の塞がれ方が半扇形ずれる | 同じ丸めずれを両方へ使うことを estimator test で固定 |
 | multi-scale を occupancy の引き継ぎなしで足す | 近帯に隠れた遠帯を再加算する | 前半では禁止。別計画で near occupancy と整合する payload hierarchy を先に設計 |
 | 後半が削除した GTSO に再依存する | 不自然な鏡面影が復活する | 後半の entry review で `specularVisibility` 0件を確認し、LR所有の confidence だけを使う |
 | 局所反射の解決で書き込み中の共有 target を読む | WebGPU validation error で画面全体が失敗する | 手順12で copy / ownership を先に確定し、同じ描画命令の read-write を禁止 |
