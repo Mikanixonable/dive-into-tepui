@@ -146,7 +146,7 @@ export function qualifyObservedRenderBaseline(blocks, hardware) {
     standardNearRange250kmMediumFixture: true,
     requiredCompleteBlocks: REQUIRED_QUALIFICATION_BLOCKS,
     timestampQuery: true,
-    nonFallbackAdapter: true,
+    appleMetalAdapterWithNoReportedFallback: true,
     pairedObservedRenderP95IncreaseLimitMs: OBSERVED_RENDER_INCREASE_LIMIT_MS,
     repeatabilityNoiseBelowMs: OBSERVED_RENDER_INCREASE_LIMIT_MS,
     uncertaintyIntervalUsesOffOffNoiseP95: true,
