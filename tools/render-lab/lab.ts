@@ -76,15 +76,12 @@ const READY_TIMEOUT_MS = 60_000;
 // 撮影 1 枚が、絵の落ち着きを待って撮る回数の上限。実測では全撮影が 3 回以内に一致したので、その倍を取る。
 const MAX_SETTLE_CAPTURES = 6;
 
-// 中プリセットの描画倍率。render-lab の論理寸法とカメラは変えず、内部キャンバスだけを縮小する。
-const MEDIUM_RENDER_PIXEL_RATIO = 0.75;
-
 interface LabPixelRatioRenderer {
   readonly domElement: HTMLCanvasElement;
   getPixelRatio(): number;
   getSize(target: THREE.Vector2): THREE.Vector2;
   setPixelRatio(value: number): void;
-  setSize(width: number, height: number): void;
+  setSize(width: number, height: number, updateStyle?: boolean): void;
 }
 
 // 描画倍率を一時的に変え、処理の成否にかかわらず元のキャンバス寸法へ戻す。
@@ -97,11 +94,11 @@ export async function withLabPixelRatio<T>(
   const previousSize = renderer.getSize(new THREE.Vector2());
   try {
     renderer.setPixelRatio(pixelRatio);
-    renderer.setSize(previousSize.x, previousSize.y);
+    renderer.setSize(previousSize.x, previousSize.y, false);
     return await operation();
   } finally {
     renderer.setPixelRatio(previousPixelRatio);
-    renderer.setSize(previousSize.x, previousSize.y);
+    renderer.setSize(previousSize.x, previousSize.y, false);
   }
 }
 
@@ -365,7 +362,7 @@ export class LabView {
     this.setGraphics({ ...this.graphics.current, ...graphics });
     return withLabPixelRatio(
       this.renderer,
-      MEDIUM_RENDER_PIXEL_RATIO,
+      this.renderer.getPixelRatio() * this.graphics.current.resolutionScale,
       () => this.measureCurrent(name, warmupFrames, sampleFrames),
     );
   }

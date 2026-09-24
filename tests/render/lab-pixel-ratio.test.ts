@@ -5,6 +5,7 @@ import { withLabPixelRatio } from '../../tools/render-lab/lab';
 
 class TestRenderer {
   public readonly domElement = { width: 960, height: 540 } as HTMLCanvasElement;
+  public readonly style = { width: '960px', height: '540px' };
   private pixelRatio = 1;
   private width = 960;
   private height = 540;
@@ -17,11 +18,15 @@ class TestRenderer {
 
   public setPixelRatio(value: number): void { this.pixelRatio = value; }
 
-  public setSize(width: number, height: number): void {
+  public setSize(width: number, height: number, updateStyle = true): void {
     this.width = width;
     this.height = height;
     this.domElement.width = Math.floor(width * this.pixelRatio);
     this.domElement.height = Math.floor(height * this.pixelRatio);
+    if (updateStyle) {
+      this.style.width = `${width}px`;
+      this.style.height = `${height}px`;
+    }
   }
 }
 
@@ -32,13 +37,16 @@ export function register(): void {
       width: renderer.domElement.width,
       height: renderer.domElement.height,
       viewport: renderer.getSize(new THREE.Vector2()),
+      style: { ...renderer.style },
     }));
 
     assert.equal(dimensions.width, 720);
     assert.equal(dimensions.height, 405);
     assert.deepEqual(dimensions.viewport.toArray(), [960, 540]);
+    assert.deepEqual(dimensions.style, { width: '960px', height: '540px' });
     assert.equal(renderer.domElement.width, 960);
     assert.equal(renderer.domElement.height, 540);
+    assert.deepEqual(renderer.style, { width: '960px', height: '540px' });
     assert.equal(renderer.getPixelRatio(), 1);
   });
 
