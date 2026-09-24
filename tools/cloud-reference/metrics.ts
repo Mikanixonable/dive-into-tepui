@@ -177,6 +177,10 @@ function validateMetric(metric: unknown, metricIds: Set<string>, errors: string[
   } else if (!Number.isInteger(metric.coveragePolicy.minimumValidFrames)) {
     errors.push(`metric ${id} minimumValidFrames must be an integer`);
   }
+  if (metric.minimumSeriesDurationMinutes !== undefined
+    && !isPositiveNumber(metric.minimumSeriesDurationMinutes)) {
+    errors.push(`metric ${id} minimumSeriesDurationMinutes must be positive`);
+  }
   if (metric.id === 'visible-toa-reflectance'
     && (!isDegreeRange(metric.applicableSolarZenithDeg, 0, 90)
       || !isDegreeRange(metric.applicableSatelliteZenithDeg, 0, 90))) {
@@ -240,11 +244,11 @@ function validateCase(
     errors.push(`case ${id} must reference unique declared metrics`);
     return;
   }
-  validateTemporalMetricSupport(referenceCase, id, metricsById, errors);
+  validateMetricCoverageSupport(referenceCase, id, metricsById, errors);
 }
 
-/** 時系列指標が宣言された最低フレーム数を系列内に持つか検査する。 */
-function validateTemporalMetricSupport(
+/** 実在する参照フレーム数と指標ごとの最低有効フレーム数を検査する。 */
+function validateMetricCoverageSupport(
   referenceCase: Readonly<Record<string, unknown>>,
   id: string,
   metricsById: ReadonlyMap<string, unknown>,
@@ -253,16 +257,52 @@ function validateTemporalMetricSupport(
   if (!Array.isArray(referenceCase.metricIds) || !isRecord(referenceCase.series)
     || !isIsoUtc(referenceCase.series.start) || !isIsoUtc(referenceCase.series.end)
     || !isPositiveNumber(referenceCase.series.intervalMinutes)) return;
+  const intervalMilliseconds = referenceCase.series.intervalMinutes * 60_000;
+  const durationMilliseconds = Date.parse(referenceCase.series.end) - Date.parse(referenceCase.series.start);
+  const scheduledFrames = Math.floor(durationMilliseconds / intervalMilliseconds) + 1;
+  const availableFrames = referenceCase.availableFrameCount ?? scheduledFrames;
+  const frameOverrides = referenceCase.minimumValidFramesByMetric;
+  if (frameOverrides !== undefined && referenceCase.availableFrameCount === undefined) {
+    errors.push(`case ${id} must declare availableFrameCount when overriding metric frame coverage`);
+    return;
+  }
+  if (!Number.isInteger(availableFrames) || !isPositiveNumber(availableFrames)
+    || availableFrames > scheduledFrames) {
+    errors.push(`case ${id} availableFrameCount must be a positive integer within the declared series`);
+    return;
+  }
+  if (frameOverrides !== undefined && !isRecord(frameOverrides)) {
+    errors.push(`case ${id} minimumValidFramesByMetric must be an object`);
+    return;
+  }
+  if (isRecord(frameOverrides)) {
+    for (const [metricId, minimumFrames] of Object.entries(frameOverrides)) {
+      if (!referenceCase.metricIds.includes(metricId) || !Number.isInteger(minimumFrames)
+        || !isPositiveNumber(minimumFrames) || minimumFrames > availableFrames) {
+        errors.push(`case ${id} has an invalid minimumValidFramesByMetric entry for ${metricId}`);
+      }
+    }
+  }
   for (const metricId of referenceCase.metricIds) {
-    if (metricId !== 'lag-correlation') continue;
     const metric = metricsById.get(metricId);
     const coverage = isRecord(metric) ? metric.coveragePolicy : null;
     if (!isRecord(coverage) || !isPositiveNumber(coverage.minimumValidFrames)) continue;
-    const intervalMilliseconds = referenceCase.series.intervalMinutes * 60_000;
-    const durationMilliseconds = Date.parse(referenceCase.series.end) - Date.parse(referenceCase.series.start);
-    const availableFrames = Math.floor(durationMilliseconds / intervalMilliseconds) + 1;
-    if (!Number.isInteger(availableFrames) || availableFrames < coverage.minimumValidFrames) {
-      errors.push(`case ${id} metric ${metricId} requires at least ${coverage.minimumValidFrames} frames in its declared series`);
+    const minimumSeriesDurationMinutes = isRecord(metric) && isPositiveNumber(metric.minimumSeriesDurationMinutes)
+      ? metric.minimumSeriesDurationMinutes
+      : null;
+    const minimumFrames = minimumSeriesDurationMinutes !== null
+      ? coverage.minimumValidFrames
+      : (isRecord(frameOverrides) && frameOverrides[metricId] !== undefined
+        ? frameOverrides[metricId]
+        : coverage.minimumValidFrames);
+    if (!isPositiveNumber(minimumFrames) || availableFrames < minimumFrames) {
+      errors.push(`case ${id} metric ${metricId} requires at least ${minimumFrames} available frames`);
+    }
+    if (minimumSeriesDurationMinutes !== null) {
+      const availableDurationMinutes = (availableFrames - 1) * referenceCase.series.intervalMinutes;
+      if (availableDurationMinutes < minimumSeriesDurationMinutes) {
+        errors.push(`case ${id} metric ${metricId} requires at least ${minimumSeriesDurationMinutes} minutes of available temporal support`);
+      }
     }
   }
 }

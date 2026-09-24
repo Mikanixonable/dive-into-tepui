@@ -90,7 +90,8 @@
       "mask": "paired-cloud-mask-quality-valid",
       "missingPolicy": "fail",
       "uncertaintyFloor": 0.05,
-      "coveragePolicy": { "minimumValidFrames": 24, "minimumValidAreaFraction": 0.5 }
+      "coveragePolicy": { "minimumValidFrames": 24, "minimumValidAreaFraction": 0.5 },
+      "minimumSeriesDurationMinutes": 180
     }
   ],
   "cases": [
@@ -201,6 +202,8 @@
       "split": "held-out",
       "cloudSystemId": "mawar-2023-05-25",
       "series": { "start": "2023-05-25T00:00:00Z", "end": "2023-05-25T06:00:00Z", "intervalMinutes": 60 },
+      "availableFrameCount": 1,
+      "minimumValidFramesByMetric": { "cloud-fraction": 1, "structure-size-distribution": 1, "structure-orientation": 1 },
       "source": { "provider": "NASA", "product": "Worldview VIIRS NOAA-20 Corrected Reflectance True Color", "primaryDocumentationUrl": "https://www.earthdata.nasa.gov/worldview", "licenseUrl": "https://www.earthdata.nasa.gov/engage/open-data-services-and-software/data-and-information-policy", "catalogUrl": "https://wvs.earthdata.nasa.gov/api/v1/snapshot?REQUEST=GetSnapshot&TIME=2023-05-25T00:00:00Z&BBOX=-5,120,35,160&CRS=EPSG:4326&LAYERS=VIIRS_NOAA20_CorrectedReflectance_TrueColor&WRAP=day&FORMAT=image/png&WIDTH=1024&HEIGHT=1024", "availabilityCheckedAt": "2026-09-23T13:40:00Z", "acquisitionCommand": "node tools/cloud-reference/acquire-aux.mjs", "checksum": { "algorithm": "sha256", "scope": "retrieved PNG", "value": "a4ebc27e4a3b2b81538249a53c4364870e9ebc04954997f1e60b212e9529b6e2", "requiredBeforeEvaluation": true } },
       "observation": { "observedAt": "2023-05-25T00:00:00Z", "bands": ["VIIRS true-color composite"], "processingVersion": "Worldview rendering selected by the request URL", "qualityFlags": ["Data-Present=true", "daylight composite"], "region": { "westLonDeg": 120, "eastLonDeg": 160, "southLatDeg": -5, "northLatDeg": 35 }, "angles": { "satellite": "source-image metadata retained with acquired artifact", "solar": "source-image metadata retained with acquired artifact" }, "projection": { "name": "EPSG:4326", "epsg": "EPSG:4326", "resampling": "source snapshot grid" }, "effectiveGsdKm": 4.4, "parallaxCorrection": "not available from the rendered true-color snapshot; this auxiliary case is morphology-only", "validMask": "Data-Present=true, daylight pixels, and source alpha valid", "calibration": { "radiance": "not used", "reflectance": "not used", "toneMapping": "morphology only; excluded from radiance metrics" } },
       "metricIds": ["cloud-fraction", "structure-size-distribution", "structure-orientation"]
