@@ -96,6 +96,7 @@ def summarize_cod_cloud_eligible_coverage(
     acm_dqf: np.ndarray,
     acm_dqf_valid: np.ndarray,
     acm_inside_region: np.ndarray,
+    acm_pixel_areas_m2: np.ndarray,
 ) -> dict[str, Any]:
     """good ACM cloud pixel centres上でCOD good coverageを固定格子集計する。"""
     height, width = cod_field_valid.shape
@@ -104,8 +105,11 @@ def summarize_cod_cloud_eligible_coverage(
     child_shape = (height * 2, width * 2)
     if any(array.shape != child_shape for array in (
         acm_field, acm_field_valid, acm_dqf, acm_dqf_valid, acm_inside_region,
+        acm_pixel_areas_m2,
     )):
         fail("ACM diagnostic grid is not four child pixels per COD pixel")
+    if not np.all(np.isfinite(acm_pixel_areas_m2)) or np.any(acm_pixel_areas_m2 <= 0):
+        fail("ACM pixel-area weights must be finite and positive")
 
     eligible_cloud = (
         acm_inside_region & acm_field_valid & acm_dqf_valid
@@ -113,8 +117,14 @@ def summarize_cod_cloud_eligible_coverage(
     )
     cloud_children = eligible_cloud.reshape(height, 2, width, 2).sum(axis=(1, 3))
     denominator = int(cloud_children.sum())
+    eligible_area = np.where(eligible_cloud, acm_pixel_areas_m2, 0).sum(dtype=np.float64)
     cod_good = cod_field_valid & cod_dqf_valid & good_dqf(cod_dqf, "L2_COD")
     numerator = int(cloud_children[cod_good].sum())
+    good_cod_area = np.where(
+        cod_good.reshape(height, 1, width, 1),
+        np.where(eligible_cloud, acm_pixel_areas_m2, 0).reshape(height, 2, width, 2),
+        0,
+    ).sum(dtype=np.float64)
     dqf_counts: Counter[int] = Counter()
     for value, count in zip(*np.unique(cod_dqf[cloud_children > 0], return_counts=True), strict=True):
         dqf_counts[int(value)] += int(np.sum(cloud_children[cod_dqf == value]))
@@ -122,12 +132,90 @@ def summarize_cod_cloud_eligible_coverage(
         "eligibleCloudPixelCount": denominator,
         "goodCodCloudPixelCount": numerator,
         "coverageFraction": numerator / denominator if denominator else None,
+        "eligibleCloudAreaM2": float(eligible_area),
+        "goodCodCloudAreaM2": float(good_cod_area),
+        "areaWeightedCoverageFraction": float(good_cod_area / eligible_area) if eligible_area else None,
         "codDqfRawCountsOnEligibleCloudPixels": {str(value): count for value, count in sorted(dqf_counts.items())},
         "denominatorDefinition": "good-DQF valid ACM class 2/3 (probably-cloudy/cloudy) 1 km pixel centres inside the geographic region",
         "numeratorDefinition": "eligible ACM cloud pixel centres whose enclosing 2 km COD pixel has valid in-range COD and good DQF raw 0/1",
-        "aggregation": "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; pixel-centre counts, not polygon area overlap",
-        "limitations": "diagnostic only; not the final metric gate or area-weighted/solar-valid collocation; region eligibility uses pixel centres; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately",
+        "areaDenominatorDefinition": "sum of local ENU quadrilateral areas for eligible cloud ACM pixel centres",
+        "areaNumeratorDefinition": "area denominator pixels whose enclosing COD parent has valid in-range COD and good DQF raw 0/1",
+        "aggregation": "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; count coverage and pixel-centre area-weighted coverage are diagnostics, not polygon area overlap",
+        "limitations": "diagnostic only; not the final metric gate or area-overlap collocation; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately",
     }
+
+
+def grid_pixel_area_weights(
+    x_axis: np.ndarray,
+    y_axis: np.ndarray,
+    projection: dict[str, float],
+    row0: int,
+    row1: int,
+    col0: int,
+    col1: int,
+) -> np.ndarray:
+    """固定格子画素四隅を中心点の局所 ENU 平面へ写した面積 [m²] を返す。"""
+    x_edges = coordinate_edges(x_axis)
+    y_edges = coordinate_edges(y_axis)
+    center_x, center_y = np.meshgrid(x_axis[col0:col1], y_axis[row0:row1])
+    center_lat, center_lon, center_visible = grid_to_geodetic(center_x, center_y, projection)
+    if not np.all(center_visible):
+        fail("ACM area window contains a pixel centre beyond the geostationary limb")
+    center_ecef = geodetic_to_ecef_arrays(center_lat, center_lon, projection)
+    corner_coordinates = (
+        np.meshgrid(x_edges[col0:col1], y_edges[row0:row1]),
+        np.meshgrid(x_edges[col0 + 1:col1 + 1], y_edges[row0:row1]),
+        np.meshgrid(x_edges[col0 + 1:col1 + 1], y_edges[row0 + 1:row1 + 1]),
+        np.meshgrid(x_edges[col0:col1], y_edges[row0 + 1:row1 + 1]),
+    )
+    east_north: list[tuple[np.ndarray, np.ndarray]] = []
+    for corner_x, corner_y in corner_coordinates:
+        corner_lat, corner_lon, visible = grid_to_geodetic(corner_x, corner_y, projection)
+        if not np.all(visible):
+            fail("ACM area window contains a pixel corner beyond the geostationary limb")
+        corner_ecef = geodetic_to_ecef_arrays(corner_lat, corner_lon, projection)
+        delta = tuple(corner_ecef[index] - center_ecef[index] for index in range(3))
+        sin_lon, cos_lon = np.sin(center_lon), np.cos(center_lon)
+        sin_lat, cos_lat = np.sin(center_lat), np.cos(center_lat)
+        east = -sin_lon * delta[0] + cos_lon * delta[1]
+        north = -sin_lat * cos_lon * delta[0] - sin_lat * sin_lon * delta[1] + cos_lat * delta[2]
+        east_north.append((east, north))
+    twice_area = np.zeros(center_x.shape, dtype=np.float64)
+    for index, (east, north) in enumerate(east_north):
+        next_east, next_north = east_north[(index + 1) % len(east_north)]
+        twice_area += east * next_north - north * next_east
+    area = np.abs(twice_area) / 2
+    if not np.all(np.isfinite(area)) or np.any(area <= 0):
+        fail("ACM pixel area calculation produced non-positive or non-finite values")
+    return area
+
+
+def coordinate_edges(centres: np.ndarray) -> np.ndarray:
+    """一次元中心座標を隣接中点と端の半間隔で画素境界へ広げる。"""
+    if centres.ndim != 1 or centres.size < 2:
+        fail("fixed-grid axes need at least two pixel centres")
+    edges = np.empty(centres.size + 1, dtype=np.float64)
+    edges[1:-1] = (centres[:-1] + centres[1:]) / 2
+    edges[0] = centres[0] - (centres[1] - centres[0]) / 2
+    edges[-1] = centres[-1] + (centres[-1] - centres[-2]) / 2
+    return edges
+
+
+def geodetic_to_ecef_arrays(
+    latitude: np.ndarray,
+    longitude: np.ndarray,
+    projection: dict[str, float],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """測地緯度経度を楕円体表面の ECEF 座標へ変換する。"""
+    a, b = projection["a"], projection["b"]
+    eccentricity = 1 - b * b / (a * a)
+    sin_lat = np.sin(latitude)
+    normal = a / np.sqrt(1 - eccentricity * sin_lat * sin_lat)
+    return (
+        normal * np.cos(latitude) * np.cos(longitude),
+        normal * np.cos(latitude) * np.sin(longitude),
+        normal * (1 - eccentricity) * sin_lat,
+    )
 
 
 def geodetic_to_grid(latitude: np.ndarray, longitude: np.ndarray, projection: dict[str, float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -378,6 +466,8 @@ def summarize_cod_cloud_coverage(cod_path: Path, acm_path: Path, region: dict[st
         result: dict[str, Any] = {
             "eligibleCloudPixelCount": 0,
             "goodCodCloudPixelCount": 0,
+            "eligibleCloudAreaM2": 0.0,
+            "goodCodCloudAreaM2": 0.0,
             "codDqfRawCountsOnEligibleCloudPixels": {},
         }
         dqf_counts: Counter[str] = Counter()
@@ -398,6 +488,9 @@ def summarize_cod_cloud_coverage(cod_path: Path, acm_path: Path, region: dict[st
                 & (longitude >= math.radians(region["westLonDeg"]))
                 & (longitude <= math.radians(region["eastLonDeg"]))
             )
+            pixel_areas = grid_pixel_area_weights(
+                acm_x, acm_y, acm_projection, acm_row0, acm_row1, acm_col0, acm_col1,
+            )
             cod_valid, _ = raw_valid(cod_values, cod_field)
             acm_valid, _ = raw_valid(acm_values, acm_field)
             partial = summarize_cod_cloud_eligible_coverage(
@@ -409,19 +502,28 @@ def summarize_cod_cloud_coverage(cod_path: Path, acm_path: Path, region: dict[st
                 acm_dqf_values,
                 valid_dqf(acm_dqf_values, acm_dqf),
                 inside,
+                pixel_areas,
             )
             result["eligibleCloudPixelCount"] += partial["eligibleCloudPixelCount"]
             result["goodCodCloudPixelCount"] += partial["goodCodCloudPixelCount"]
+            result["eligibleCloudAreaM2"] += partial["eligibleCloudAreaM2"]
+            result["goodCodCloudAreaM2"] += partial["goodCodCloudAreaM2"]
             dqf_counts.update(partial["codDqfRawCountsOnEligibleCloudPixels"])
         result["coverageFraction"] = (
             result["goodCodCloudPixelCount"] / result["eligibleCloudPixelCount"]
             if result["eligibleCloudPixelCount"] else None
         )
+        result["areaWeightedCoverageFraction"] = (
+            result["goodCodCloudAreaM2"] / result["eligibleCloudAreaM2"]
+            if result["eligibleCloudAreaM2"] else None
+        )
         result["codDqfRawCountsOnEligibleCloudPixels"] = dict(sorted(dqf_counts.items(), key=lambda item: int(item[0])))
         result["denominatorDefinition"] = "good-DQF valid ACM class 2/3 (probably-cloudy/cloudy) 1 km pixel centres inside the geographic region"
         result["numeratorDefinition"] = "eligible ACM cloud pixel centres whose enclosing 2 km COD pixel has valid in-range COD and good DQF raw 0/1"
-        result["aggregation"] = "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; pixel-centre counts, not polygon area overlap"
-        result["limitations"] = "diagnostic only; not the final metric gate or area-weighted/solar-valid collocation; region eligibility uses pixel centres; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately"
+        result["areaDenominatorDefinition"] = "sum of local ENU quadrilateral areas for eligible cloud ACM pixel centres"
+        result["areaNumeratorDefinition"] = "area denominator pixels whose enclosing COD parent has valid in-range COD and good DQF raw 0/1"
+        result["aggregation"] = "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; reports counts and pixel-centre area weights, not polygon area overlap"
+        result["limitations"] = "diagnostic only; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; not solar-angle/parallax corrected or a final metric gate; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately"
         return result
 
 
@@ -531,17 +633,23 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
     if diagnostics:
         eligible = sum(diagnostic["eligibleCloudPixelCount"] for diagnostic in diagnostics)
         good_cod = sum(diagnostic["goodCodCloudPixelCount"] for diagnostic in diagnostics)
+        eligible_area = sum(diagnostic["eligibleCloudAreaM2"] for diagnostic in diagnostics)
+        good_cod_area = sum(diagnostic["goodCodCloudAreaM2"] for diagnostic in diagnostics)
         cloud_dqf_counts: Counter[str] = Counter()
         for diagnostic in diagnostics:
             cloud_dqf_counts.update(diagnostic["codDqfRawCountsOnEligibleCloudPixels"])
         aggregate_result["cloudEligibleCoverageDiagnostic"] = {
             **{key: diagnostics[0][key] for key in (
-                "denominatorDefinition", "numeratorDefinition", "aggregation", "limitations",
+                "denominatorDefinition", "numeratorDefinition", "areaDenominatorDefinition",
+                "areaNumeratorDefinition", "aggregation", "limitations",
             )},
             "slotCount": len(diagnostics),
             "eligibleCloudPixelCount": eligible,
             "goodCodCloudPixelCount": good_cod,
             "coverageFraction": good_cod / eligible if eligible else None,
+            "eligibleCloudAreaM2": eligible_area,
+            "goodCodCloudAreaM2": good_cod_area,
+            "areaWeightedCoverageFraction": good_cod_area / eligible_area if eligible_area else None,
             "codDqfRawCountsOnEligibleCloudPixels": dict(
                 sorted(cloud_dqf_counts.items(), key=lambda item: int(item[0])),
             ),
@@ -580,7 +688,7 @@ def run(manifest_path: Path, case_id: str, case_dir: Path, all_slots: bool = Fal
         "observationEnd": case["series"]["end"] if all_slots else case["series"]["start"],
         "slotCount": len(slots),
         "region": region,
-        "scope": "all declared series slots; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD adds a diagnostic ACM cloud-eligible 2x2 fixed-grid summary (not area-weighted or a metric gate); no scan-line timing, solar mask, cloud parallax, or calibrated radiance" if all_slots else "one manifest start slot; each product is summarized on its native grid; COD adds a diagnostic ACM cloud-eligible 2x2 fixed-grid summary (not area-weighted or a metric gate); no scan-line timing, solar mask, cloud parallax, or calibrated radiance",
+        "scope": "all declared series slots; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD adds count and pixel-centre area-weighted ACM cloud diagnostics (not polygon-overlap or a metric gate); no scan-line timing, solar mask, cloud parallax, or calibrated radiance" if all_slots else "one manifest start slot; each product is summarized on its native grid; COD adds count and pixel-centre area-weighted ACM cloud diagnostics (not polygon-overlap or a metric gate); no scan-line timing, solar mask, cloud parallax, or calibrated radiance",
         "products": products,
     }
 
