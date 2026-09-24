@@ -547,6 +547,31 @@ export class LabView {
     return pngs;
   }
 
+  // 指定 shot を品質設定の内部ラスタ寸法で撮る。通常の固定寸法 shot と計測の解像度を混同しない。
+  public async shootNative(
+    name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
+  ): Promise<string> {
+    this.setGraphics({ ...this.startupGraphics, ...graphics });
+    this.show(name);
+    this.current?.updateProteinMotion?.(1);
+    await this.waitUntilReady();
+    if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for native shooting`);
+    this.applyShot(shotName, graphics);
+    const pixelRatio = this.renderer.getPixelRatio() * this.graphics.current.resolutionScale;
+    const width = Math.round(VIEW_WIDTH * pixelRatio);
+    const height = Math.round(VIEW_HEIGHT * pixelRatio);
+    const previousWidth = this.captureTarget.width;
+    const previousHeight = this.captureTarget.height;
+    try {
+      return await withLabPixelRatio(this.renderer, pixelRatio, async () => {
+        this.captureTarget.setSize(width, height);
+        return this.captureSettled(shotName);
+      });
+    } finally {
+      this.captureTarget.setSize(previousWidth, previousHeight);
+    }
+  }
+
   // 連続する 2 回の capture が一致するまで撮り直し、一致した絵を返す。MAX_SETTLE_CAPTURES 回撮っても
   // 一致しなければ、撮影名 shotName を添えて投げる。
   private async captureSettled(shotName: string): Promise<string> {
@@ -590,8 +615,21 @@ export class LabView {
       // 戻し忘れると以後キャンバスに何も出なくなる(撮影だけは通るので気付きにくい)。
       this.renderer.setOutputRenderTarget(null);
     }
-    const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
-    return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
+    const { width, height } = this.captureTarget;
+    const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, width, height);
+    const rgba = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+    const rowBytes = width * 4;
+    if (rgba.byteLength === rowBytes * height) return pixelsToPngDataUrl(rgba, width, height);
+    // WebGPU の readback は 256-byte 行境界を持ち、末尾の余白だけは含まない。
+    const stride = Math.ceil(rowBytes / 256) * 256;
+    if (rgba.byteLength !== stride * (height - 1) + rowBytes) {
+      throw new Error(`render-lab: unexpected capture readback size ${rgba.byteLength} for ${width}x${height}`);
+    }
+    const packed = new Uint8Array(rowBytes * height);
+    for (let y = 0; y < height; y++) {
+      packed.set(rgba.subarray(y * stride, y * stride + rowBytes), y * rowBytes);
+    }
+    return pixelsToPngDataUrl(packed, width, height);
   }
 }
 
