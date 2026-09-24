@@ -335,6 +335,7 @@ export class LabView {
     return this.measureCurrent(name, warmupFrames, sampleFrames);
   }
 
+  // 現在のケースと shot の設定を保持したまま、準備待ち・ウォームアップ・標本収集を共通に行う。
   private async measureCurrent(
     name: CaseName, warmupFrames: number, sampleFrames: number,
   ): Promise<LabMeasurement> {
