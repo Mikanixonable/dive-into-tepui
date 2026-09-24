@@ -59,6 +59,50 @@ function summarizeObservedRenderRepeats(blocks) {
   };
 }
 
+function summarizeLensAblation(blocks) {
+  const byMode = {};
+  for (const mode of modes) {
+    const observedRenderInteractions = [];
+    const lensPassInteractions = [];
+    for (const block of blocks) {
+      const runs = block.modes[mode.id];
+      observedRenderInteractions.push(
+        (runs.cloudOnLensEnabled.measurement.observedRenderTotalMs.p95
+          - runs.cloudOnLensDisabled.measurement.observedRenderTotalMs.p95)
+          - (runs.cloudOffLensEnabled.measurement.observedRenderTotalMs.p95
+            - runs.cloudOffLensDisabled.measurement.observedRenderTotalMs.p95),
+      );
+      lensPassInteractions.push(
+        (runs.cloudOnLensEnabled.measurement.gpuPassMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassMs['レンズ'].p95),
+      );
+    }
+    byMode[mode.id] = {
+      pairedObservedRenderInteractionP95Ms: distribution(observedRenderInteractions),
+      pairedLensPassInteractionP95Ms: distribution(lensPassInteractions),
+    };
+  }
+  return {
+    purpose: 'descriptive cloud-by-lens interaction; not part of baseline qualification',
+    fixture: {
+      caseName: CASE_NAME,
+      shotName: SHOT_NAME,
+      canvasWidth: blocks[0]?.modes[modes[0].id]?.cloudOnLensEnabled.measurement.canvasWidth ?? null,
+      canvasHeight: blocks[0]?.modes[modes[0].id]?.cloudOnLensEnabled.measurement.canvasHeight ?? null,
+    },
+    comparison: '(cloud-on lens-on − cloud-on lens-off) − (cloud-off lens-on − cloud-off lens-off) within each block',
+    scope: {
+      observedRender: 'interaction of summed resolved renderer.render() timestamp durations; includes composite changes and is not full-frame GPU B0',
+      lensPass: 'interaction of p95 values for the instrumented render pass named レンズ; descriptive and may be unavailable when timestamp queries are unsupported',
+    },
+    interpretation: 'The difference of lens-toggle effects between cloud-on and cloud-off estimates cloud-specific lens interaction in these render scopes. It is descriptive and has no pass/fail threshold.',
+    modes: byMode,
+    blocks,
+  };
+}
+
 function systemGraphicsIdentity() {
   if (process.platform !== 'darwin') return null;
   try {
@@ -125,8 +169,8 @@ async function main() {
     }
     const initialGraphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
     const blocks = [];
-    const measure = async (source, clouds) => {
-      const graphics = { cloudFieldSource: source, clouds };
+    const measure = async (source, clouds, overrides = {}) => {
+      const graphics = { cloudFieldSource: source, clouds, ...overrides };
       return await devTools.evaluate(`(async () => {
         const measurement = await window.renderLab.measureShot(${JSON.stringify(CASE_NAME)}, ${JSON.stringify(SHOT_NAME)}, ${JSON.stringify(graphics)});
         return { graphicsSettings: window.renderLab.graphicsSettings(), measurement };
@@ -162,6 +206,42 @@ async function main() {
       }
       blocks.push(block);
     }
+
+    const diagnosticBlocks = [];
+    for (let index = 0; index < BLOCK_COUNT; index += 1) {
+      const block = { index, modes: {} };
+      const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
+      for (const mode of orderedModes) {
+        const runs = {};
+        const settings = [
+          { clouds: true, lens: true, key: 'cloudOnLensEnabled' },
+          { clouds: true, lens: false, key: 'cloudOnLensDisabled' },
+          { clouds: false, lens: true, key: 'cloudOffLensEnabled' },
+          { clouds: false, lens: false, key: 'cloudOffLensDisabled' },
+        ];
+        const orderedSettings = index % 2 === 0 ? settings : [...settings].reverse();
+        for (const setting of orderedSettings) {
+          const run = await measure(mode.source, setting.clouds, { lens: setting.lens });
+          if (run.graphicsSettings.lens !== setting.lens || run.graphicsSettings.clouds !== setting.clouds) {
+            throw new Error(`Lens interaction diagnostic did not apply requested settings for ${mode.id}`);
+          }
+          runs[setting.key] = run;
+        }
+        block.modes[mode.id] = runs;
+        const interaction = (field) =>
+          (runs.cloudOnLensEnabled.measurement[field].p95 - runs.cloudOnLensDisabled.measurement[field].p95)
+          - (runs.cloudOffLensEnabled.measurement[field].p95 - runs.cloudOffLensDisabled.measurement[field].p95);
+        const lensPassInteraction = (runs.cloudOnLensEnabled.measurement.gpuPassMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassMs['レンズ'].p95);
+        console.log(`${mode.id} cloud-lens-interaction block=${index + 1}/${BLOCK_COUNT}: `
+          + `observed render p95 interaction=${interaction('observedRenderTotalMs')} ms; `
+          + `lens pass p95 interaction=${lensPassInteraction} ms`);
+      }
+      diagnosticBlocks.push(block);
+    }
+    const lensAblation = summarizeLensAblation(diagnosticBlocks);
 
     if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
     const gpuSupported = blocks.every((block) => Object.values(block.modes)
@@ -229,6 +309,7 @@ async function main() {
       }),
       statistics: summarizeBaselineBlocks(blocks),
       observedRenderStatistics: summarizeObservedRenderRepeats(blocks),
+      lensAblation,
       blocks,
       interpretation: 'observed-render-total sums resolved GPU timestamp durations for every renderer.render() UID attributed to each measured lab frame, including calls without a named pass. It excludes GPU work outside renderer.render(), including compute and uninstrumented WebGPU operations, so it is not full-frame GPU B0. Compute renderer queries are reported separately. Qualification uses paired observed-render p95 deltas and off/off repeatability; instrumented pass and compute statistics remain descriptive.',
     };
