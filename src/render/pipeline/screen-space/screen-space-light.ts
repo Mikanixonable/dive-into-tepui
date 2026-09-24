@@ -23,17 +23,17 @@ function createTarget(): THREE.RenderTarget {
 
 export class ScreenSpaceLight {
   // 遮蔽と照り返しのパスが拡大の段で書く描画先。textures[0] = 光ごとの遮られずに届く割合(r = 一様な
-  // 環境光、g・b = 天体照のスロット 0・1、a = 環境光の鏡面)、textures[1] = rgb 照り返しの放射照度。
+  // 環境光、g・b = 天体照のスロット 0・1)、textures[1] = rgb 照り返しの放射照度。
   public readonly target = createTarget();
 
-  // 塞がれた測度 occluded(x = 空全体、y・z = 球冠 0・1、w = ローブ)と、数える範囲の測度 extent を、
+  // 塞がれた測度 occluded(x = 空全体、y・z = 球冠 0・1)と、数える範囲の測度 extent を、
   // 光ごとの遮られずに届く割合 0..1 へ詰める。範囲を 1 標本も数えていない光は遮られないとする。
-  public static encode(occluded: Vec4Node, extent: Vec3Node): Vec4Node {
+  public static encode(occluded: Vec3Node, extent: Vec2Node): Vec4Node {
     return vec4(
       clamp(occluded.x.oneMinus(), 0, 1),
       visibleFraction(occluded.y, extent.x),
       visibleFraction(occluded.z, extent.y),
-      visibleFraction(occluded.w, extent.z),
+      1,
     );
   }
 
@@ -46,11 +46,6 @@ export class ScreenSpaceLight {
   public planetVisibility(sample: ShadingSample, slot: number): FloatNode {
     const packed = this.packedAt(sample.uv);
     return slot === 0 ? packed.g : packed.b;
-  }
-
-  // 受け手 sample の鏡面のローブのうち、遮られていない割合 0..1。
-  public specularVisibility(sample: ShadingSample): FloatNode {
-    return this.packedAt(sample.uv).a;
   }
 
   // 受け手 sample が近くの面から受ける照り返しの放射照度(SUN_IRRADIANCE_1AU の目盛り)。

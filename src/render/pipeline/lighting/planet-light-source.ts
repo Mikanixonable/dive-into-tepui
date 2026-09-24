@@ -104,11 +104,9 @@ const clampedToCone = Fn((
 // 近くの構造が天体の方向の空を塞ぐぶん弱める。
 // TODO: 別の天体の影を受けない — 受け手と天体の間に別の天体があっても届く。
 class PlanetLightSlot implements LightSource {
-  // 光源モデルと遮蔽の有無の組ごとに 1 枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの
-  // 再コンパイルがフレームを止める。
-  private readonly materials = new Map<string, THREE.MeshBasicNodeMaterial>();
-  // 描画設定「遮蔽と照り返し」がオフでないか。
-  private occluded = false;
+  // 光源モデルごとに 1 枚を遅延生成して持つ。遮蔽は同じシェーダのユニフォームで切り替える。
+  private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
+  private readonly occluded: BoolUniform = uniform(false);
   // このスロットの天体の見た目を持つ写しと、そこへ焼く内容。消灯している間は null。
   private readonly image: PlanetLightImage;
   private appearance: PlanetLightAppearance | null = null;
@@ -138,8 +136,8 @@ class PlanetLightSlot implements LightSource {
   // 描画設定 planetLightModel の値を設定する。次回の material() 取得時から適用される。
   public setModel(model: number): void { this.model = model; }
 
-  // 遮蔽を読むか(描画設定「遮蔽と照り返し」がオフでないか)を設定する。次回の material() 取得時から適用される。
-  public setOccluded(occluded: boolean): void { this.occluded = occluded; }
+  // 遮蔽を読むか(描画設定「遮蔽と照り返し」がオフでないか)を設定する。
+  public setOccluded(occluded: boolean): void { this.occluded.value = occluded; }
 
   // このフレームに写しへ焼く見た目を置く。消灯するスロットへは null を置く。
   public setAppearance(appearance: PlanetLightAppearance | null): void {
@@ -164,20 +162,17 @@ class PlanetLightSlot implements LightSource {
     return this.capOf(toCenter, this.sinSigmaSqrOf(toCenter));
   }
 
-  // このスロットの寄与を描くマテリアル。光源モデルと遮蔽の有無の組ごとに初回だけ組む。
+  // このスロットの寄与を描くマテリアル。光源モデルごとに初回だけ組む。
   public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
-    const key = `${this.model}:${this.occluded}`;
-    const cached = this.materials.get(key);
+    const cached = this.materials.get(this.model);
     if (cached !== undefined) return cached;
-    const material = contributionMaterial(
-      sample, this.contribution(sample, this.occluded ? this.screenSpaceLight : null));
-    this.materials.set(key, material);
+    const material = contributionMaterial(sample, this.contribution(sample));
+    this.materials.set(this.model, material);
     return material;
   }
 
-  // このスロットの球光源がシェーディング点へ届ける照度。screenSpaceLight が null でなければ、近くの構造が
-  // 空を塞ぐぶん弱める。
-  private contribution(sample: ShadingSample, screenSpaceLight: ScreenSpaceLight | null): LightContribution {
+  // このスロットの球光源がシェーディング点へ届ける照度。遮蔽が有効なら拡散だけを弱める。
+  private contribution(sample: ShadingSample): LightContribution {
     const center = sample.viewPositionOf(this.slot.center);
     const toCenter = center.sub(sample.position);
     const sinSigmaSqr = this.sinSigmaSqrOf(toCenter);
@@ -197,11 +192,9 @@ class PlanetLightSlot implements LightSource {
     const diffuse = this.diffuseIrradiance(sample, diffuseRadiance, lightDir, sinSigmaSqr);
     const specular: Vec3Node = specularRadiance
       .mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
-    if (screenSpaceLight === null) return { diffuse, specular };
-    // 拡散はこの天体の向きの範囲の、鏡面は鏡の向きのローブの、塞がれていない割合で弱める。
     return {
-      diffuse: diffuse.mul(screenSpaceLight.planetVisibility(sample, this.index)),
-      specular: specular.mul(screenSpaceLight.specularVisibility(sample)),
+      diffuse: diffuse.mul(select(this.occluded, this.screenSpaceLight.planetVisibility(sample, this.index), 1)),
+      specular,
     };
   }
 
