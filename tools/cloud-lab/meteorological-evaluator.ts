@@ -82,6 +82,23 @@ export interface AreaWeightedMassSample {
   readonly massKgM2: number;
 }
 
+export interface AreaWeightedMassBudgetSample {
+  readonly areaWeightM2: number;
+  readonly initialKgM2: number;
+  readonly sourceKgM2: number;
+  readonly lossKgM2: number;
+  readonly currentKgM2: number;
+}
+
+export interface AreaWeightedMassBudget {
+  readonly initialKg: number;
+  readonly sourceKg: number;
+  readonly lossKg: number;
+  readonly currentKg: number;
+  readonly residualKg: number;
+  readonly relativeResidual: number;
+}
+
 // 面積重み付き質量を検査し、有限な総質量だけを返す。
 export function areaWeightedMassKg(samples: readonly AreaWeightedMassSample[]): number {
   for (const sample of samples) {
@@ -101,6 +118,58 @@ export function areaWeightedMassKg(samples: readonly AreaWeightedMassSample[]): 
     return nextTotalMassKg;
   }, 0);
   return totalMassKg;
+}
+
+// 各列の水収支を面積積分してから総量を比較する。
+export function areaWeightedMassBudget(
+  samples: readonly AreaWeightedMassBudgetSample[],
+): AreaWeightedMassBudget {
+  const totals = { initialKg: 0, sourceKg: 0, lossKg: 0, currentKg: 0 };
+  for (const sample of samples) {
+    if (!Number.isFinite(sample.areaWeightM2) || sample.areaWeightM2 < 0) {
+      throw new RangeError('areaWeightM2 must be finite and non-negative');
+    }
+    totals.initialKg = addWeightedMassKg(
+      totals.initialKg, sample.areaWeightM2, sample.initialKgM2, 'initialKgM2',
+    );
+    totals.sourceKg = addWeightedMassKg(
+      totals.sourceKg, sample.areaWeightM2, sample.sourceKgM2, 'sourceKgM2',
+    );
+    totals.lossKg = addWeightedMassKg(
+      totals.lossKg, sample.areaWeightM2, sample.lossKgM2, 'lossKgM2',
+    );
+    totals.currentKg = addWeightedMassKg(
+      totals.currentKg, sample.areaWeightM2, sample.currentKgM2, 'currentKgM2',
+    );
+  }
+  const residualKg = totals.initialKg + totals.sourceKg - totals.lossKg - totals.currentKg;
+  if (!Number.isFinite(residualKg)) throw new RangeError('mass budget residual must be finite');
+  const referenceMassKg = Math.max(
+    totals.initialKg + totals.sourceKg,
+    totals.lossKg + totals.currentKg,
+  );
+  return {
+    ...totals,
+    residualKg,
+    relativeResidual: referenceMassKg === 0 ? 0 : Math.abs(residualKg) / referenceMassKg,
+  };
+}
+
+function addWeightedMassKg(
+  currentTotalKg: number,
+  areaWeightM2: number,
+  massKgM2: number,
+  massName: string,
+): number {
+  if (!Number.isFinite(massKgM2) || massKgM2 < 0) {
+    throw new RangeError(`${massName} must be finite and non-negative`);
+  }
+  const weightedMassKg = areaWeightM2 * massKgM2;
+  const nextTotalKg = currentTotalKg + weightedMassKg;
+  if (!Number.isFinite(weightedMassKg) || !Number.isFinite(nextTotalKg)) {
+    throw new RangeError('area-weighted mass budget must be finite');
+  }
+  return nextTotalKg;
 }
 
 interface EnvironmentControls {
@@ -412,6 +481,7 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
     { direction: norm(v3(0.021, -0.004, 1)), areaWeightM2: 1, initialMassKgM2: 0.0014 },
   ];
   const transportedMassSamples: AreaWeightedMassSample[] = [];
+  const transportedBudgetSamples: AreaWeightedMassBudgetSample[] = [];
   let maximumTrajectoryErrorM = 0;
   let maximumRotationAngleErrorRad = 0;
   const windAt = (directionUnitVector: Vec3, geometricHeightM: number) => ({
@@ -468,6 +538,13 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
       areaWeightM2: point.areaWeightM2,
       massKgM2: material.totalMassKgM2,
     });
+    transportedBudgetSamples.push({
+      areaWeightM2: point.areaWeightM2,
+      initialKgM2: point.initialMassKgM2,
+      sourceKgM2: 0,
+      lossKgM2: 0,
+      currentKgM2: material.totalMassKgM2,
+    });
 
     const expectedDirection = rotateAroundAxis(point.direction, rotationAxisUnitVector, rotationAngleRad);
     if (material.parent === null) throw new Error('C1 blob point must retain its liquid parent');
@@ -482,8 +559,8 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
     }
   }
   const transportedIntegratedMassKg = areaWeightedMassKg(transportedMassSamples);
-  const relativeMassError = Math.abs(transportedIntegratedMassKg - C1_EXPECTED_INTEGRATED_MASS_KG)
-    / C1_EXPECTED_INTEGRATED_MASS_KG;
+  const finiteAreaBudget = areaWeightedMassBudget(transportedBudgetSamples);
+  const relativeMassError = finiteAreaBudget.relativeResidual;
   return {
     fixture: 'C1',
     cpuDiagnosticsApplied: true,
@@ -497,6 +574,11 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
       initialIceMassKgM2,
       areaWeightedBlobMassKg: C1_EXPECTED_INTEGRATED_MASS_KG,
       transportedAreaWeightedMassKg: transportedIntegratedMassKg,
+      initialFiniteAreaMassKg: finiteAreaBudget.initialKg,
+      sourceFiniteAreaMassKg: finiteAreaBudget.sourceKg,
+      lossFiniteAreaMassKg: finiteAreaBudget.lossKg,
+      currentFiniteAreaMassKg: finiteAreaBudget.currentKg,
+      finiteAreaBudgetResidualKg: finiteAreaBudget.residualKg,
       maximumAnalyticTrajectoryErrorM: maximumTrajectoryErrorM,
       standardNearRangeCloudFieldCenterSpacingM: fieldSampling.spacingM,
       twoKmFeatureMaximumFieldSpacingM: twoKmResponseMaximumSpacingM,
