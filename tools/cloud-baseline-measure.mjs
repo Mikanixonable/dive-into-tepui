@@ -177,6 +177,20 @@ async function main() {
       })()`);
     };
 
+    // ソース切替直後に遅れて現れる初回処理を、主計測ブロックの外で一度だけ済ませる。
+    const prewarm = [];
+    for (const mode of modes) {
+      for (const clouds of [false, true]) {
+        const run = await measure(mode.source, clouds);
+        prewarm.push({
+          source: mode.source,
+          clouds,
+          frames: run.measurement.frames,
+          observedRenderP95Ms: run.measurement.observedRenderTotalMs.p95,
+        });
+      }
+    }
+
     for (let index = 0; index < BLOCK_COUNT; index += 1) {
       const block = { index, modes: {} };
       const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
@@ -286,6 +300,10 @@ async function main() {
       },
       sampleFramesPerMeasurement: blocks[0]?.modes[modes[0].id]?.cloudOn.measurement.frames ?? 0,
       blockCount: BLOCK_COUNT,
+      prewarm: {
+        excludedFromPrimaryBlocks: true,
+        measurements: prewarm,
+      },
       quality: { requestedPreset: 'medium', requestedCumulusDetail: 'standard' },
       initialGraphicsSettings,
       measurementScope: 'observed-render-total',
