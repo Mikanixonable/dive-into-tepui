@@ -144,14 +144,13 @@ export function areaWeightedMassBudget(
   }
   const residualKg = totals.initialKg + totals.sourceKg - totals.lossKg - totals.currentKg;
   if (!Number.isFinite(residualKg)) throw new RangeError('mass budget residual must be finite');
-  const referenceMassKg = Math.max(
-    totals.initialKg + totals.sourceKg,
-    totals.lossKg + totals.currentKg,
-  );
+  const referenceMassKg = totals.initialKg + totals.sourceKg;
   return {
     ...totals,
     residualKg,
-    relativeResidual: referenceMassKg === 0 ? 0 : Math.abs(residualKg) / referenceMassKg,
+    relativeResidual: referenceMassKg === 0
+      ? (residualKg === 0 ? 0 : Number.POSITIVE_INFINITY)
+      : Math.abs(residualKg) / referenceMassKg,
   };
 }
 
