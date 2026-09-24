@@ -1,10 +1,10 @@
 // render/pipeline/ の中間ターゲットを画面全体へ映すデバッグ表示の選択肢。
 export type DebugTargetId =
   | 'off' | 'normal' | 'roughness' | 'basecolor' | 'metalness' | 'emissive' | 'depth'
-  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'specular' | 'correction' | 'bounce-source'
-  | 'material' | 'atmosphere' | 'lens' | 'planet-light';
+  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'specular' | 'correction' | 'raw-correction'
+  | 'bounce-source' | 'material' | 'atmosphere' | 'lens' | 'planet-light';
 
-// 通常だけを先頭の例外とし、以後は描画先が生成される順に並べる。
+// 通常だけを先頭の例外とし、以後は各 target が本番フレームで生成される依存順に並べる。
 export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['off', '通常'],
   ['shadow-map', '影マップ'],
@@ -18,6 +18,7 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['shadow', '影'],
   ['planet-light', '天体照の光源テクスチャ'],
   ['bounce-source', '照り返しの源'],
+  ['raw-correction', 'raw 拡散照度補正'],
   ['correction', '拡散照度補正'],
   ['diffuse', '拡散照度'],
   ['specular', '鏡面照度'],
