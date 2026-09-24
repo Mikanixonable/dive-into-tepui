@@ -321,6 +321,23 @@ export class LabView {
   ): Promise<LabMeasurement> {
     this.show(name);
     this.setViewAngles(angles);
+    return this.measureCurrent(name, warmupFrames, sampleFrames);
+  }
+
+  // ケースの撮影を適用してから計測する。graphics は撮影の品質設定を適用した後の上書き。
+  public async measureShot(
+    name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
+    warmupFrames = 6, sampleFrames = 30,
+  ): Promise<LabMeasurement> {
+    this.show(name);
+    this.applyShot(shotName);
+    this.setGraphics({ ...this.graphics.current, ...graphics });
+    return this.measureCurrent(name, warmupFrames, sampleFrames);
+  }
+
+  private async measureCurrent(
+    name: CaseName, warmupFrames: number, sampleFrames: number,
+  ): Promise<LabMeasurement> {
     await this.waitUntilReady();
     if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for measurement`);
     await this.gpu.waitForResolve();
@@ -339,10 +356,10 @@ export class LabView {
     // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
     const cpuSamples: number[] = [];
     const gpuPassTotalSamples: number[] = [];
-    const observedRenderSamples: Array<number | null> = [];
+    const observedRenderSamples: (number | null)[] = [];
     const observedRenderExpectedQueryCounts: number[] = [];
     const observedRenderResolvedQueryCounts: number[] = [];
-    const observedComputeSamples: Array<number | null> = [];
+    const observedComputeSamples: (number | null)[] = [];
     const observedComputeExpectedQueryCounts: number[] = [];
     const observedComputeResolvedQueryCounts: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);

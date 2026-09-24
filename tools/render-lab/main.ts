@@ -66,6 +66,9 @@ declare global {
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       graphicsSettings: () => Readonly<GraphicsSettingsData>;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
+      measureShot: (
+        name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
+      ) => Promise<LabMeasurement>;
     };
   }
 }
@@ -264,6 +267,7 @@ async function init(): Promise<void> {
     },
     graphicsSettings: () => settings.graphics.current,
     measure: (name, angles) => view.measure(name, angles),
+    measureShot: (name, shotName, graphics) => view.measureShot(name, shotName, graphics),
   };
 }
 

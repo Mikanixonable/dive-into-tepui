@@ -11,6 +11,10 @@ const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.render-lab');
 const outputPath = path.join(buildDir, 'cloud-baseline.json');
 const BLOCK_COUNT = 8;
+const CASE_NAME = 'earth';
+const SHOT_NAME = 'cloud-standard-near-range-250km';
+const FIXTURE_WIDTH = 960;
+const FIXTURE_HEIGHT = 540;
 const modes = [
   { id: 'generated-standard', source: 'generated' },
   { id: 'observed-standard', source: 'observed' },
@@ -115,16 +119,18 @@ async function main() {
       })()`),
       devTools.send('Browser.getVersion'),
     ]);
+    if (device.canvasWidth !== FIXTURE_WIDTH || device.canvasHeight !== FIXTURE_HEIGHT) {
+      throw new Error(`Expected ${FIXTURE_WIDTH}x${FIXTURE_HEIGHT} render-lab canvas, got `
+        + `${device.canvasWidth}x${device.canvasHeight}`);
+    }
     const initialGraphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
     const blocks = [];
     const measure = async (source, clouds) => {
-      await devTools.evaluate(`window.renderLab.setGraphicsOption('cloudFieldSource', ${JSON.stringify(source)})`);
-      await devTools.evaluate("window.renderLab.setGraphicsOption('cumulusDetail', 2)");
-      await devTools.evaluate(`window.renderLab.setGraphicsOption('clouds', ${clouds})`);
-      return {
-        graphicsSettings: await devTools.evaluate('window.renderLab.graphicsSettings()'),
-        measurement: await devTools.evaluate("window.renderLab.measure('earth')"),
-      };
+      const graphics = { cloudFieldSource: source, clouds };
+      return await devTools.evaluate(`(async () => {
+        const measurement = await window.renderLab.measureShot(${JSON.stringify(CASE_NAME)}, ${JSON.stringify(SHOT_NAME)}, ${JSON.stringify(graphics)});
+        return { graphicsSettings: window.renderLab.graphicsSettings(), measurement };
+      })()`);
     };
 
     for (let index = 0; index < BLOCK_COUNT; index += 1) {
@@ -179,10 +185,16 @@ async function main() {
       },
       browser: { product: browser.product, userAgent: browser.userAgent, jsVersion: browser.jsVersion },
       device,
-      caseName: 'earth',
+      caseName: CASE_NAME,
+      shotName: SHOT_NAME,
+      fixture: {
+        qualityPreset: 'medium',
+        canvasWidth: FIXTURE_WIDTH,
+        canvasHeight: FIXTURE_HEIGHT,
+      },
       sampleFramesPerMeasurement: blocks[0]?.modes[modes[0].id]?.cloudOn.measurement.frames ?? 0,
       blockCount: BLOCK_COUNT,
-      quality: { cumulusDetail: 'standard' },
+      quality: { preset: 'medium', cumulusDetail: 'standard' },
       initialGraphicsSettings,
       measurementScope: 'observed-render-total',
       passMeasurementScope: 'instrumented-render-pass-sum',
@@ -211,7 +223,9 @@ async function main() {
         systemGraphics,
         timestampQueryAdvertised: device.adapter?.timestampQueryAdvertised === true,
         adapterFallback: device.adapter?.fallback,
-        standardNearRange250kmFixture: false,
+        adapterVendor: device.adapter?.vendor,
+        adapterArchitecture: device.adapter?.architecture,
+        standardNearRange250kmFixture: true,
       }),
       statistics: summarizeBaselineBlocks(blocks),
       observedRenderStatistics: summarizeObservedRenderRepeats(blocks),
