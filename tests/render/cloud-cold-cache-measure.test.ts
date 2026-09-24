@@ -58,14 +58,14 @@ function measureSeekOrder(seekTimes: readonly number[]) {
   const startedAt = performance.now();
   const results = seekTimes.map(reconstructAt);
   const elapsedMilliseconds = performance.now() - startedAt;
-  const eventCount = results.reduce((count, result) => count + result.sample.events.length, 0);
+  const returnedEventCount = results.reduce((count, result) => count + result.sample.events.length, 0);
   const transportWindSamples = results.reduce((count, result) => count + result.material.reduce(
     (eventSamples, material) => eventSamples
       + (material.parent?.steps ?? 0)
       + material.releasedIceCohorts.reduce((cohortSamples, cohort) => cohortSamples + cohort.steps, 0),
     0,
   ), 0);
-  return { results, elapsedMilliseconds, eventCount, transportWindSamples };
+  return { results, elapsedMilliseconds, returnedEventCount, transportWindSamples };
 }
 
 export function register(): void {
@@ -76,7 +76,7 @@ export function register(): void {
     const first = forward.results;
     const reverse = backward.results.reverse();
     assert.deepEqual(reverse, first);
-    assert.equal(backward.eventCount, forward.eventCount);
+    assert.equal(backward.returnedEventCount, forward.returnedEventCount);
     assert.equal(backward.transportWindSamples, forward.transportWindSamples);
 
     for (const { sample, material } of first) {
@@ -100,7 +100,7 @@ export function register(): void {
       cacheMisses: null,
       cacheNote: 'event and cohort reconstruction expose no cache to measure',
       evaluationsPerOrder: seekTimes.length,
-      eventEvaluationsPerOrder: forward.eventCount,
+      returnedEventsPerOrder: forward.returnedEventCount,
       transportWindSamplesPerOrder: forward.transportWindSamples,
       forwardElapsedMilliseconds: forward.elapsedMilliseconds,
       reverseElapsedMilliseconds: backward.elapsedMilliseconds,
