@@ -254,6 +254,14 @@ async function main() {
     const computeExpectedQueryCount = blocks.reduce((sum, block) => sum + Object.values(block.modes).reduce((modeSum, entry) =>
       modeSum + ['offBefore', 'cloudOn', 'offAfter'].reduce((runSum, key) =>
         runSum + entry[key].measurement.observedComputeExpectedQueryCounts.reduce((count, queries) => count + queries, 0), 0), 0), 0);
+    const primaryRuns = blocks.flatMap((block) => Object.values(block.modes).flatMap((entry) =>
+      [entry.offBefore, entry.cloudOn, entry.offAfter]));
+    const standardFixtureMatches = device.devicePixelRatio === 1
+      && device.canvasWidth === FIXTURE_WIDTH && device.canvasHeight === FIXTURE_HEIGHT
+      && primaryRuns.every((run) => run.measurement.canvasWidth === 720
+        && run.measurement.canvasHeight === 405
+        && run.graphicsSettings.resolutionScale === 0.75
+        && run.graphicsSettings.cumulusDetail === 2);
     const systemGraphics = systemGraphicsIdentity();
     const result = {
       recordedAt: new Date().toISOString(),
@@ -268,13 +276,17 @@ async function main() {
       caseName: CASE_NAME,
       shotName: SHOT_NAME,
       fixture: {
-        qualityPreset: 'medium',
-        canvasWidth: FIXTURE_WIDTH,
-        canvasHeight: FIXTURE_HEIGHT,
+        requestedQualityPreset: 'medium',
+        cssCanvasWidth: FIXTURE_WIDTH,
+        cssCanvasHeight: FIXTURE_HEIGHT,
+        devicePixelRatio: device.devicePixelRatio,
+        internalRasterWidth: primaryRuns[0]?.measurement.canvasWidth ?? null,
+        internalRasterHeight: primaryRuns[0]?.measurement.canvasHeight ?? null,
+        standardNearRange250kmMediumMatches: standardFixtureMatches,
       },
       sampleFramesPerMeasurement: blocks[0]?.modes[modes[0].id]?.cloudOn.measurement.frames ?? 0,
       blockCount: BLOCK_COUNT,
-      quality: { preset: 'medium', cumulusDetail: 'standard' },
+      quality: { requestedPreset: 'medium', requestedCumulusDetail: 'standard' },
       initialGraphicsSettings,
       measurementScope: 'observed-render-total',
       passMeasurementScope: 'instrumented-render-pass-sum',
@@ -305,7 +317,7 @@ async function main() {
         adapterFallback: device.adapter?.fallback,
         adapterVendor: device.adapter?.vendor,
         adapterArchitecture: device.adapter?.architecture,
-        standardNearRange250kmFixture: true,
+        standardNearRange250kmFixture: standardFixtureMatches,
       }),
       statistics: summarizeBaselineBlocks(blocks),
       observedRenderStatistics: summarizeObservedRenderRepeats(blocks),
