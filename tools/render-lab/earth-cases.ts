@@ -177,10 +177,13 @@ const EARTH_NADIR_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
   earthLongitudeDeg: 0,
 };
 const EARTH_STANDARD_CLOUD_DISTANCE = 250e3;
-const EARTH_STANDARD_CLOUD_VIEW: Partial<LabViewAngles> = {
-  ...EARTH_NADIR_PLACEMENT,
-  cameraDistanceLog: Math.log10(EARTH_STANDARD_CLOUD_DISTANCE / EARTH_VIEW_TARGET_DEPTH),
-};
+const EARTH_C1_RASTER_DIAGNOSTIC_DISTANCE = 200e3;
+function earthStandardCloudView(cameraDistanceM: number): Partial<LabViewAngles> {
+  return {
+    ...EARTH_NADIR_PLACEMENT,
+    cameraDistanceLog: Math.log10(cameraDistanceM / EARTH_VIEW_TARGET_DEPTH),
+  };
+}
 const EARTH_LOW_ORBIT_ALTITUDE_M = 120e3;
 const EARTH_LOW_ORBIT_PLACEMENT = placementBelowHorizon(EARTH_LOW_ORBIT_ALTITUDE_M, 0);
 // 昼夜境界の撮影の恒星の向き。視線の先の地平線上。
@@ -253,7 +256,12 @@ function earth(): LabCase {
       'earth': { view: {} },
       'earth-nadir': { view: EARTH_NADIR_PLACEMENT },
       'cloud-standard-near-range-250km': {
-        view: EARTH_STANDARD_CLOUD_VIEW,
+        view: earthStandardCloudView(EARTH_STANDARD_CLOUD_DISTANCE),
+        graphics: QUALITY_PRESETS.medium,
+      },
+      // 2 km feature の medium 内部ラスタ条件を調べる診断専用。正式 C1 fixture や性能判定には使わない。
+      'cloud-c1-raster-200km-medium-diagnostic': {
+        view: earthStandardCloudView(EARTH_C1_RASTER_DIAGNOSTIC_DISTANCE),
         graphics: QUALITY_PRESETS.medium,
       },
       'earth-low-orbit': { view: EARTH_LOW_ORBIT_PLACEMENT },

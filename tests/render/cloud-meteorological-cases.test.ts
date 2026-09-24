@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   areaWeightedMassKg,
+  evaluateC1NearRangeRasterDiagnostic,
   evaluateMeteorologicalCase,
   type MeteorologicalCaseEvaluation,
 } from '../../tools/cloud-lab/meteorological-evaluator';
@@ -41,6 +42,19 @@ export function register(): void {
 
     const repeated = evaluateMeteorologicalCase('C1');
     assert.deepEqual(repeated, result);
+  });
+
+  test('meteorological fixtures: 200 km medium raster probe remains diagnostic and does not unblock C1', () => {
+    const diagnostic = evaluateC1NearRangeRasterDiagnostic();
+    assert.equal(diagnostic.diagnosticOnly, true);
+    assert.equal(diagnostic.shot, 'cloud-c1-raster-200km-medium-diagnostic');
+    assert.ok(Math.abs(diagnostic.cameraDistanceM - 200e3) < 1e-6);
+    assert.ok(diagnostic.internalRasterSamplesPerTwoKm >= diagnostic.requiredSamplesPerTwoKm);
+    assert.equal(diagnostic.status, 'candidate-sufficient');
+
+    const formal = evaluateMeteorologicalCase('C1');
+    assert.equal(formal.controls.twoKmInternalRasterResponseStatus, 'blocked');
+    assert.equal(measurement(formal, 'trajectory').status, 'blocked');
   });
 
   test('meteorological fixtures: C1 area integration detects omitted weights and lost material columns', () => {

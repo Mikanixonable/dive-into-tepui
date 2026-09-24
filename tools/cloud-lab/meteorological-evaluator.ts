@@ -319,16 +319,16 @@ function maximumPositiveBuoyancyHeightM(input: CloudEnvironmentInput): number {
   return maximumHeightM;
 }
 
-// 名前付き近距離 shot のカメラ・cap から、生成場の中心標本間隔を導く。
-function standardNearRangeCloudFieldCenterSpacingM(): {
+// 名前付き近距離 shot のカメラ・cap から、生成場と内部ラスタの標本間隔を導く。
+function nearRangeCloudSampling(shotName: string): {
   spacingM: number; cameraDistanceM: number; internalRasterScale: number;
 } {
   const earthCase = EARTH_CASES.earth();
-  const shot = earthCase.shots?.['cloud-standard-near-range-250km'];
+  const shot = earthCase.shots?.[shotName];
   if (earthCase.earth === undefined || earthCase.viewTarget === undefined
     || shot?.view.cameraDistanceLog === undefined
     || shot.graphics?.resolutionScale === undefined) {
-    throw new Error('standard near-range cloud shot must define Earth placement and camera distance');
+    throw new Error(`near-range cloud shot ${shotName} must define Earth placement and camera distance`);
   }
   const cameraForward = earthCase.camera.getWorldDirection(new THREE.Vector3());
   const pivotDepth = cameraForward.dot(
@@ -355,6 +355,33 @@ function standardNearRangeCloudFieldCenterSpacingM(): {
   };
 }
 
+export interface C1NearRangeRasterDiagnostic {
+  readonly diagnosticOnly: true;
+  readonly shot: 'cloud-c1-raster-200km-medium-diagnostic';
+  readonly cameraDistanceM: number;
+  readonly internalRasterSamplesPerTwoKm: number;
+  readonly requiredSamplesPerTwoKm: number;
+  readonly status: 'candidate-sufficient' | 'insufficient';
+}
+
+// 将来の C1 条件選択に使う medium raster の診断値。C1 の正式判定へは適用しない。
+export function evaluateC1NearRangeRasterDiagnostic(): C1NearRangeRasterDiagnostic {
+  const shot = 'cloud-c1-raster-200km-medium-diagnostic';
+  const sampling = nearRangeCloudSampling(shot);
+  const screenSamples = C1_TWO_KM_FEATURE_WAVELENGTH_M
+    / metersPerPixelAtDepth(FOV_DEG, sampling.cameraDistanceM, VIEW_HEIGHT);
+  const internalRasterSamplesPerTwoKm = screenSamples * sampling.internalRasterScale;
+  return {
+    diagnosticOnly: true,
+    shot,
+    cameraDistanceM: sampling.cameraDistanceM,
+    internalRasterSamplesPerTwoKm,
+    requiredSamplesPerTwoKm: C1_MINIMUM_SAMPLES_PER_FEATURE,
+    status: internalRasterSamplesPerTwoKm < C1_MINIMUM_SAMPLES_PER_FEATURE
+      ? 'insufficient' : 'candidate-sufficient',
+  };
+}
+
 function residualIceAtHumidity(upperRelativeHumidity: number, timeSeconds: number): number {
   return onlyEvent(eventDomain(timeSeconds, [cell(upperRelativeHumidity)])).iceRelease.remainingKgM2;
 }
@@ -370,7 +397,7 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
   const maximumTransportStepSeconds = 5;
   const initialLiquidMassKgM2 = 0.00025;
   const initialIceMassKgM2 = 0.00075;
-  const fieldSampling = standardNearRangeCloudFieldCenterSpacingM();
+  const fieldSampling = nearRangeCloudSampling('cloud-standard-near-range-250km');
   const twoKmResponseMaximumSpacingM = C1_TWO_KM_FEATURE_WAVELENGTH_M / C1_MINIMUM_SAMPLES_PER_FEATURE;
   const twoKmFeatureScreenSamples = C1_TWO_KM_FEATURE_WAVELENGTH_M
     / metersPerPixelAtDepth(FOV_DEG, fieldSampling.cameraDistanceM, VIEW_HEIGHT);
