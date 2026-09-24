@@ -30,19 +30,34 @@ PRODUCTS = (
 MINIMUM_COD_INDICATOR_SUPPORT_FRACTION = 0.5
 
 
-def cod_indicator_availability(area_weighted_coverage_fraction: float | None) -> dict[str, Any]:
-    """COD の暫定支持域と最終指標ゲートを区別する。"""
-    sufficient = (
+def cod_indicator_availability(
+    area_weighted_coverage_fraction: float | None,
+    assessment_scope: str,
+) -> dict[str, Any]:
+    """COD の面積閾値診断と未評価の最終指標条件を区別する。"""
+    if assessment_scope not in ("single_slot", "aggregated_series"):
+        raise ValueError(f"unknown COD diagnostic scope: {assessment_scope}")
+    valid_fraction = (
         area_weighted_coverage_fraction is not None
-        and area_weighted_coverage_fraction >= MINIMUM_COD_INDICATOR_SUPPORT_FRACTION
+        and math.isfinite(area_weighted_coverage_fraction)
+        and 0 <= area_weighted_coverage_fraction <= 1
     )
+    if not valid_fraction:
+        status = "blocked_invalid_or_missing_support_fraction"
+    elif area_weighted_coverage_fraction >= MINIMUM_COD_INDICATOR_SUPPORT_FRACTION:
+        status = "provisional_area_threshold_met"
+    else:
+        status = "provisional_area_threshold_not_met"
     return {
-        "status": "provisional_support_sufficient" if sufficient else "blocked_insufficient_support",
+        "scope": assessment_scope,
+        "status": status,
         "minimumValidSupportFraction": MINIMUM_COD_INDICATOR_SUPPORT_FRACTION,
         "diagnosticSupportFraction": area_weighted_coverage_fraction,
         "supportBasis": "pixel-centre area-weighted COD-good coverage on eligible ACM cloud pixels",
+        "validFrameCountStatus": "not_assessed",
         "finalMetricStatus": "blocked",
         "finalMetricBlockers": [
+            "valid_frame_count_not_assessed",
             "area_overlap_collocation_not_implemented",
             "solar_angle_mask_not_applied",
             "cloud_top_parallax_not_corrected",
@@ -165,7 +180,9 @@ def summarize_cod_cloud_eligible_coverage(
         "aggregation": "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; count coverage and pixel-centre area-weighted coverage are diagnostics, not polygon area overlap",
         "limitations": "diagnostic only; not the final metric gate or area-overlap collocation; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately",
     }
-    result["indicatorAvailability"] = cod_indicator_availability(result["areaWeightedCoverageFraction"])
+    result["indicatorAvailability"] = cod_indicator_availability(
+        result["areaWeightedCoverageFraction"], "single_slot",
+    )
     return result
 
 
@@ -679,7 +696,7 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
             ),
         }
         aggregate_diagnostic["indicatorAvailability"] = cod_indicator_availability(
-            aggregate_diagnostic["areaWeightedCoverageFraction"],
+            aggregate_diagnostic["areaWeightedCoverageFraction"], "aggregated_series",
         )
         aggregate_result["cloudEligibleCoverageDiagnostic"] = aggregate_diagnostic
         for slot, summary in zip(aggregate_result["slots"], summaries, strict=True):
