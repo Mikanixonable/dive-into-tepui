@@ -38,9 +38,12 @@ function run(p95: number, observedP95 = p95) {
     gpuPassTotalMs: { p95 },
     gpuSupported: true,
     frames: 30,
+    observedRenderTotalSamplesMs: Array.from({ length: 30 }, () => observedP95),
+    observedRenderExpectedQueryCounts: Array.from({ length: 30 }, () => 1),
+    observedRenderResolvedQueryCounts: Array.from({ length: 30 }, () => 1),
     observedComputeExpectedQueryCounts: Array.from({ length: 30 }, () => 0),
     observedRenderCompleteFrames: 30,
-    observedRenderTotalMs: { samples: 30, p95: observedP95 },
+    observedRenderTotalMs: { p95: observedP95 },
   } };
 }
 
@@ -176,6 +179,10 @@ export function register(): void {
     const computedRun = withCompute[0]?.modes['generated-standard']?.cloudOn.measurement;
     if (computedRun) computedRun.observedComputeExpectedQueryCounts[4] = 1;
     const incompleteResult = qualifyObservedRenderBaseline(incomplete, qualificationHardware);
+    const mismatchedQueryCounts = qualificationBlocks({ generated: 1, observed: 1 });
+    const mismatchedRun = mismatchedQueryCounts[0]?.modes['generated-standard']?.cloudOn.measurement;
+    if (mismatchedRun) mismatchedRun.observedRenderResolvedQueryCounts[4] = 0;
+    const mismatchedResult = qualifyObservedRenderBaseline(mismatchedQueryCounts, qualificationHardware);
     const unsupportedResult = qualifyObservedRenderBaseline(unsupported, qualificationHardware);
     const computeResult = qualifyObservedRenderBaseline(withCompute, qualificationHardware);
     const noisyResult = qualifyObservedRenderBaseline(
@@ -184,6 +191,7 @@ export function register(): void {
     );
 
     assert.equal(incompleteResult.status, 'indeterminate');
+    assert.equal(mismatchedResult.status, 'indeterminate');
     assert.equal(unsupportedResult.status, 'indeterminate');
     assert.equal(computeResult.status, 'indeterminate');
     assert.equal(noisyResult.status, 'indeterminate');
