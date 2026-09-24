@@ -98,6 +98,118 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 
 **main へ送るときの手順は `/send-pr` が正本。**
 
+### ブランチ命名規則
+
+新規ブランチ作成時は以下のプレフィックスを使用する:
+
+| プレフィックス | 用途 | 例 |
+| --- | --- | --- |
+| `feat/` | 新機能 | `feat/cloud-meteorological-model` |
+| `fix/` | バグ修正 | `fix/ship-docking-interference` |
+| `refactor/` | リファクタリング | `refactor/cloud-architecture` |
+| `perf/` | パフォーマンス改善 | `perf/render-pipeline` |
+| `docs/` | ドキュメント | `docs/api-reference` |
+| `test/` | テスト追加・修正 | `test/cloud-thermodynamics` |
+| `chore/` | その他作業 | `chore/dependency-update` |
+| `wip/` | 作業中（一時的） | `wip/experiment-xyz` |
+
+**ルール:**
+- 既存ブランチの改名は行わない（別エージェント作業中のため）
+- 新規ブランチは上記規則に従う
+- マージ完了後はローカル・リモート両方でブランチを削除
+- 日本語のブランチ名は避ける（ASCII推奨）
+
+### Commit Message規約
+
+Conventional Commitsに従い、**日本語を第一言語**とする:
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+**type（プレフィックス）:**
+- `feat`: 新機能
+- `fix`: バグ修正
+- `refactor`: リファクタリング
+- `perf`: パフォーマンス改善
+- `docs`: ドキュメント
+- `test`: テスト追加・修正
+- `chore`: その他作業
+- `style`: コードスタイル（ロジック変更なし）
+
+**scope（対象）:**
+- 変更対象のモジュール・ファイル・機能（省略可）
+- 例: `cloud`, `ship`, `render`, `physics`
+
+**subject（件名）:**
+- 簡潔な説明（日本語）
+- 50文字以内
+- 文末に句点「。」をつけない
+
+**body（本文）:**
+- 詳細な説明（必要な場合）
+- 日本語で記述
+- 「何を」「なぜ」「どう」を含める
+
+**footer（フッター）:**
+- 関連issue: `Refs: #123`
+- Breaking Changes: `BREAKING CHANGE: 説明`
+
+**例:**
+```
+feat(cloud): 気象モデルによる雲生成を追加
+
+- 大循環による気圧・風・湿度の計算を実装
+- 対流イベントのサンプリングと質量追跡を追加
+- 球面上での輸送計算を追加
+
+Refs: #45
+```
+
+```
+fix(ship): ドッキング時のモジュール干渉を修正
+
+モジュール配置時の干渉チェックを改善し、
+不正な配置を防止するようにした。
+```
+
+**ルール:**
+- プレフィックス以外は日本語を第一言語とする
+- subjectは簡潔に、bodyは詳細に
+- 1commitで1つの変更にする
+- 既存commitのmessage修正は避ける（force pushのリスク）
+
+### 定期的なメンテナンス
+
+リポジトリの健全性を保つため、以下のメンテナンスを定期的に行う:
+
+| 頻度 | 作業 | 手順 |
+| --- | --- | --- |
+| 月1回 | 古いブランチの削除 | `git branch --merged` でマージ済みブランチを確認し削除 |
+| 月1回 | リモートブランチの整理 | `git remote prune origin` で削除済みリモートブランチを整理 |
+| 四半期ごと | CI/CD設定の見直し | ワークフローの依存更新、テストカバレッジの確認 |
+| 四半期ごと | 依存パッケージの更新 | `npm audit` で脆弱性チェック、`npm outdated` で更新確認 |
+
+**手順:**
+```bash
+# マージ済みブランチの確認（main/releaseを除く）
+git branch --merged main | grep -v "main" | grep -v "release"
+
+# 古いブランチの削除（安全のため--dry-runで確認）
+git branch --merged main | grep -v "main" | grep -v "release" | xargs git branch -d
+
+# リモートブランチの整理
+git remote prune origin
+
+# 依存パッケージのチェック
+npm audit
+npm outdated
+```
+
 ## コマンド
 
 | コマンド | 用途 | いつ走らせるか |
