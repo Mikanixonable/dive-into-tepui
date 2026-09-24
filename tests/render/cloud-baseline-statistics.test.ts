@@ -32,6 +32,7 @@ interface BaselineStatistics {
 const importModule = new Function('specifier', 'return import(specifier)') as
   (specifier: string) => Promise<BaselineStatistics>;
 
+// 30 フレームすべての timestamp が解決した測定を作る。
 function run(p95: number, observedP95 = p95) {
   return { measurement: {
     gpuPassTotalMs: { p95 },
@@ -43,10 +44,12 @@ function run(p95: number, observedP95 = p95) {
   } };
 }
 
+// 雲ありを前後の雲なし測定で挟む一組を作る。
 function mode(before: number, cloud: number, after: number) {
   return { offBefore: run(before), cloudOn: run(cloud), offAfter: run(after) };
 }
 
+// 両系統へ指定した増分と off/off 差を持つ8ブロックを作る。
 function qualificationBlocks(deltas: { generated: number; observed: number }, noise = 0.5) {
   return Array.from({ length: 8 }, () => ({ modes: {
     'generated-standard': mode(10 - noise / 2, 10 + deltas.generated, 10 + noise / 2),
@@ -59,14 +62,19 @@ const qualificationHardware = {
   systemGraphics: [{ chipset: 'Apple M4 Pro' }],
   timestampQueryAdvertised: true,
   adapterFallback: false,
+  adapterVendor: 'apple',
+  adapterArchitecture: 'metal-3',
   standardNearRange250kmFixture: true,
 };
 
-function assertNear(actual: number | undefined, expected: number) {
+// 浮動小数点の丸めを許して境界値を照合する。
+function assertNear(actual: number | null, expected: number) {
   assert.ok(typeof actual === 'number' && Math.abs(actual - expected) < 1e-9);
 }
 
+// 集計値と、適格性を欠く測定の保留条件を検査する。
 export function register(): void {
+  // 記述統計の入力欠損と反復集約を検査する。
   test('cloud baseline statistics: paired p95 delta and off/off noise are separate exact distributions', async () => {
     const { summarizeBaselineBlocks } = await importModule(pathToFileURL(
       resolve(process.cwd(), 'tools/cloud-baseline-statistics.mjs'),
@@ -105,6 +113,7 @@ export function register(): void {
     assert.throws(() => summarizeBaselineBlocks([{ modes: {} }]), /Missing finite instrumented-pass p95/);
   });
 
+  // 判定の閾値・ノイズ・測定範囲を独立に検査する。
   test('cloud baseline qualification: paired observed-render p95 deltas pass within the limit', async () => {
     const { qualifyObservedRenderBaseline } = await importModule(pathToFileURL(
       resolve(process.cwd(), 'tools/cloud-baseline-statistics.mjs'),
@@ -135,8 +144,8 @@ export function register(): void {
 
     assert.equal(result.status, 'fail');
     assert.equal(result.modes?.['generated-standard']?.status, 'fail');
-    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.lower, 3.1);
-    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.upper, 4.1);
+    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.lower ?? null, 3.1);
+    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.upper ?? null, 4.1);
   });
 
   test('cloud baseline qualification: an uncertainty interval that crosses the limit is indeterminate', async () => {
@@ -149,8 +158,8 @@ export function register(): void {
     );
 
     assert.equal(result.status, 'indeterminate');
-    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.lower, 2.5);
-    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.upper, 3.5);
+    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.lower ?? null, 2.5);
+    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.upper ?? null, 3.5);
   });
 
   test('cloud baseline qualification: incomplete timestamps or noisy repeats are indeterminate', async () => {
@@ -190,6 +199,14 @@ export function register(): void {
       qualificationBlocks({ generated: 1, observed: 1 }),
       { ...qualificationHardware, adapterFallback: true },
     ).status, 'indeterminate');
+    assert.equal(qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 1, observed: 1 }),
+      { ...qualificationHardware, adapterVendor: 'google', adapterFallback: undefined },
+    ).status, 'indeterminate');
+    assert.equal(qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 1, observed: 1 }),
+      { ...qualificationHardware, adapterFallback: undefined },
+    ).status, 'pass');
     const diagnostic = qualifyObservedRenderBaseline(
       qualificationBlocks({ generated: 1, observed: 1 }),
       { ...qualificationHardware, standardNearRange250kmFixture: false },
