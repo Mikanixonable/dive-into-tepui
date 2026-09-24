@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
-import { summarizeBaselineBlocks } from './cloud-baseline-statistics.mjs';
+import { qualifyObservedRenderBaseline, summarizeBaselineBlocks } from './cloud-baseline-statistics.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.render-lab');
@@ -168,13 +168,14 @@ async function main() {
     const computeExpectedQueryCount = blocks.reduce((sum, block) => sum + Object.values(block.modes).reduce((modeSum, entry) =>
       modeSum + ['offBefore', 'cloudOn', 'offAfter'].reduce((runSum, key) =>
         runSum + entry[key].measurement.observedComputeExpectedQueryCounts.reduce((count, queries) => count + queries, 0), 0), 0), 0);
+    const systemGraphics = systemGraphicsIdentity();
     const result = {
       recordedAt: new Date().toISOString(),
       host: {
         platform: process.platform,
         architecture: process.arch,
         osRelease: os.release(),
-        systemGraphics: systemGraphicsIdentity(),
+        systemGraphics,
       },
       browser: { product: browser.product, userAgent: browser.userAgent, jsVersion: browser.jsVersion },
       device,
@@ -205,14 +206,17 @@ async function main() {
         queryCount: computeQueryCount,
         expectedQueryCount: computeExpectedQueryCount,
       },
-      qualification: {
-        status: 'not-established',
-        reason: 'Hardware and browser identity are recorded when available; target suitability and acceptable baseline variance are not established.',
-      },
+      qualification: qualifyObservedRenderBaseline(blocks, {
+        platform: process.platform,
+        systemGraphics,
+        timestampQueryAdvertised: device.adapter?.timestampQueryAdvertised === true,
+        adapterFallback: device.adapter?.fallback,
+        standardNearRange250kmFixture: false,
+      }),
       statistics: summarizeBaselineBlocks(blocks),
       observedRenderStatistics: summarizeObservedRenderRepeats(blocks),
       blocks,
-      interpretation: 'observed-render-total sums resolved GPU timestamp durations for every renderer.render() UID attributed to each measured lab frame, including calls without a named pass. It excludes GPU work outside renderer.render(), including compute and uninstrumented WebGPU operations, so it is not full-frame GPU B0. Compute renderer queries are reported separately. Both paired p95 deltas and off/off repeatability are descriptive only; no pass/fail threshold is applied.',
+      interpretation: 'observed-render-total sums resolved GPU timestamp durations for every renderer.render() UID attributed to each measured lab frame, including calls without a named pass. It excludes GPU work outside renderer.render(), including compute and uninstrumented WebGPU operations, so it is not full-frame GPU B0. Compute renderer queries are reported separately. Qualification uses paired observed-render p95 deltas and off/off repeatability; instrumented pass and compute statistics remain descriptive.',
     };
     writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
     console.log(`Wrote ${path.relative(root, outputPath)}`);
