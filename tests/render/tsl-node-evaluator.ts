@@ -92,7 +92,7 @@ function evaluateMath(node: ShaderNode, evaluate: Evaluate): ShaderValue {
     }
     case 'sign': return Math.sign(value as number);
     case 'abs': return Math.abs(value as number);
-    case 'negate': return -(value as number);
+    case 'negate': return Array.isArray(value) ? value.map((component) => -component) : -(value as number);
     case 'oneMinus': return 1 - (value as number);
     case 'sqrt': return Math.sqrt(value as number);
     case 'sin': return Math.sin(value as number);
