@@ -1,28 +1,27 @@
 // render/pipeline/ の中間ターゲットを画面全体へ映すデバッグ表示の選択肢。
 export type DebugTargetId =
   | 'off' | 'normal' | 'roughness' | 'basecolor' | 'metalness' | 'emissive' | 'depth'
-  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'specular' | 'occlusion' | 'indirect' | 'bounce-source'
+  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'specular' | 'correction' | 'bounce-source'
   | 'material' | 'atmosphere' | 'lens' | 'planet-light';
 
-// 選べる値と表示ラベルの組。並びがそのまま UI 上の並び順になる。
+// 通常だけを先頭の例外とし、以後は描画先が生成される順に並べる。
 export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['off', '通常'],
+  ['shadow-map', '影マップ'],
+  ['shadow-map-slot', '影マップのスロット'],
   ['normal', '法線'],
   ['roughness', '粗さ'],
   ['basecolor', 'ベース色'],
   ['metalness', '金属度'],
   ['emissive', '自己発光'],
   ['depth', '深度'],
-  ['shadow-map', '影マップ'],
-  ['shadow-map-slot', '影マップのスロット'],
   ['shadow', '影'],
+  ['planet-light', '天体照の光源テクスチャ'],
+  ['bounce-source', '照り返しの源'],
+  ['correction', '拡散照度補正'],
   ['diffuse', '拡散照度'],
   ['specular', '鏡面照度'],
-  ['occlusion', '遮蔽'],
-  ['indirect', '照り返し'],
-  ['bounce-source', '照り返しの源'],
   ['material', 'マテリアル'],
   ['atmosphere', '大気'],
   ['lens', 'レンズ'],
-  ['planet-light', '天体照の光源テクスチャ'],
 ];
