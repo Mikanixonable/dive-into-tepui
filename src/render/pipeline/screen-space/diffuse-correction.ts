@@ -9,22 +9,38 @@ export function signedDiffuseCorrection(received: Vec3Node, blocked: Vec3Node): 
   return received.sub(blocked);
 }
 
+// 符号付きの拡散照度補正 ΔE_screen の描画先 2 枚 — 走査の解像度で求めた生の値と、描画バッファの解像度へ
+// 復元した値。どちらも rgb = ΔE_screen で、負の遮蔽項を保つため半精度浮動小数に書く。
 export class DiffuseCorrection {
-  // rgb = ΔE_screen。負の遮蔽項を保つため半精度浮動小数のターゲットに書く。
+  // 走査の解像度の、復元前の補正。
+  public readonly rawTarget = new THREE.RenderTarget(1, 1, {
+    type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  });
+  // 描画バッファの解像度の、復元した補正。
   public readonly target = new THREE.RenderTarget(1, 1, {
     type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
     minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
   });
 
-  public constructor() { this.target.texture.name = 'diffuseCorrection'; }
+  // 2 枚の出力に名前を付ける。
+  public constructor() {
+    this.rawTarget.texture.name = 'rawDiffuseCorrection';
+    this.target.texture.name = 'diffuseCorrection';
+  }
 
   public get texture(): THREE.Texture { return this.target.texture; }
+  public get rawTexture(): THREE.Texture { return this.rawTarget.texture; }
 
+  // sample の画素の、復元した補正。
   public at(sample: ShadingSample): Vec3Node { return this.atUv(sample.uv); }
 
-  // デバッグ表示も光源も、最終補正の実テクスチャを直接読む。
+  // uv(0..1)の位置の、復元した補正。
   public atUv(uv: Vec2Node): Vec3Node { return texture(this.texture, uv).rgb; }
 
-  // signed 補正の描画先と、その1枚のテクスチャを解放する。
-  public dispose(): void { this.target.dispose(); }
+  // 2 枚の描画先を解放する。
+  public dispose(): void {
+    this.rawTarget.dispose();
+    this.target.dispose();
+  }
 }

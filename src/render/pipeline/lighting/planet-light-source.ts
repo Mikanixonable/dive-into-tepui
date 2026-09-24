@@ -63,7 +63,8 @@ interface SlotUniforms {
   readonly radiance: ColorUniform;
 }
 
-interface PlanetCap {
+// 受け手から見た天体の球冠。direction は中心の向き(view 空間の単位ベクトル)、cosAngle は視半径の余弦。
+export interface PlanetCap {
   readonly direction: Vec3Node;
   readonly cosAngle: FloatNode;
 }
@@ -193,7 +194,7 @@ class PlanetLightSlot implements LightSource {
     };
   }
 
-  // 通常ライティングと近傍補正が共有する、このスロットの拡散照度。
+  // 受け手 sample へこのスロットの天体が届ける拡散照度。contribution の拡散と同じ値。
   public diffuseIrradianceAt(sample: ShadingSample): Vec3Node {
     const center = sample.viewPositionOf(this.slot.center);
     const toCenter = center.sub(sample.position);
@@ -203,7 +204,8 @@ class PlanetLightSlot implements LightSource {
     return this.diffuseIrradianceFor(sample, lightDir, sinSigmaSqr, sphereRadiance);
   }
 
-  // 通常ライティングと遮蔽補正の双方で、モデル設定と写しの有無を同じ式に通す。
+  // 球冠の向き lightDir・視半径の正弦の 2 乗 sinSigmaSqr・一様球の放射輝度 sphereRadiance の天体が届ける拡散照度。
+  // 光源モデルがテクスチャなら、放射輝度を写しから法線のまわりで読む。
   private diffuseIrradianceFor(
     sample: ShadingSample, lightDir: Vec3Node,
     sinSigmaSqr: FloatNode, sphereRadiance: Vec3Node,
@@ -212,16 +214,6 @@ class PlanetLightSlot implements LightSource {
       this.imageRadiance(sample, sample.normal, float(DIFFUSE_FILTER_ANGLE), lightDir, sinSigmaSqr, sphereRadiance),
       sphereRadiance);
     return this.diffuseIrradiance(sample, radiance, lightDir, sinSigmaSqr);
-  }
-
-  // 照り返し源の面へ届く、このスロットの一様球照度。
-  public bounceSourceIrradiance(sample: ShadingSample): Vec3Node {
-    const center = sample.viewPositionOf(this.slot.center);
-    const toCenter = center.sub(sample.position);
-    const sinSigmaSqr = this.sinSigmaSqrOf(toCenter);
-    const lightDir = this.capOf(toCenter, sinSigmaSqr).direction;
-    return this.diffuseIrradiance(
-      sample, this.uniformSphereRadiance(sample, center, lightDir, sinSigmaSqr), lightDir, sinSigmaSqr);
   }
 
   // 放射輝度 radiance で届く球光源の放射照度 E = π·L̄·sin²σ × クリップ係数(全可視では saturate(cosβ)
@@ -311,13 +303,13 @@ export class PlanetLightSource {
     return this.slotSources[slot]!.capAt(sample);
   }
 
-  // 照り返し源の面へ届く、全スロットの一様球照度の和。
-  public bounceSourceIrradiance(sample: ShadingSample): Vec3Node {
+  // 受け手 sample へ全スロットの天体が届ける拡散照度の和。lightSources が寄与する拡散の和と同じ値。
+  public diffuseIrradiance(sample: ShadingSample): Vec3Node {
     return this.slotSources.reduce<Vec3Node>(
-      (sum, source) => sum.add(source.bounceSourceIrradiance(sample)), vec3(0));
+      (sum, source) => sum.add(source.diffuseIrradianceAt(sample)), vec3(0));
   }
 
-  // 遮蔽補正に使う各スロットの照度は、通常ライティングと同じモデル設定・写しで評価する。
+  // 受け手 sample へスロット slot の天体が届ける拡散照度。そのスロットの光源が寄与する拡散と同じ値。
   public diffuseIrradianceAtSlot(sample: ShadingSample, slot: number): Vec3Node {
     return this.slotSources[slot]!.diffuseIrradianceAt(sample);
   }

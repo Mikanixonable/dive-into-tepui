@@ -3,7 +3,10 @@
 // 選ぶと中間ターゲットの中身を画面いっぱいに映す。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
-import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
+import {
+  abs, float, int, log, max, neutralToneMapping, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign, texture,
+  uniform, vec3, vec4,
+} from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { ATMOSPHERE_QUALITY } from '../atmosphere';
 import { CUMULUS_DETAIL } from '../opaque-cloud-surface-renderer';
@@ -254,10 +257,10 @@ export class RenderPipeline {
       specular: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.lightPrepass.specularTexture, screenUV).rgb), 1),
       ),
+      'raw-correction': this.buildCompositeMaterial(vec4(
+        this.signedCorrectionDebug(texture(this.diffuseCorrection.rawTexture, screenUV)), 1)),
       correction: this.buildCompositeMaterial(vec4(
-        // 符号と大きさを保った値を、負を赤・正を緑で表示する。
-        this.toneMapped(this.diffuseCorrection.atUv(screenUV).negate().max(0)).mul(vec3(1, 0, 0))
-          .add(this.toneMapped(this.diffuseCorrection.atUv(screenUV).max(0)).mul(vec3(0, 1, 0))), 1)),
+        this.signedCorrectionDebug(texture(this.diffuseCorrection.texture, screenUV)), 1)),
       'bounce-source': this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.screenSpacePass.surfaceRadianceTexture, screenUV).rgb), 1),
       ),
@@ -268,6 +271,17 @@ export class RenderPipeline {
         vec4(this.toneMapped(this._planetLight.imageRadianceAt(screenUV)), 1),
       ),
     };
+  }
+
+  // 符号付きの値を成分ごとに、画面に出る値が 0 で中間灰、正で明るく、負で暗くなるよう写す。大きさの階調は
+  // 他の表示が画面に出す階調(トーンマッピングと sRGB 符号化)と同じにする。
+  // α が 0 の texel は黒にする。
+  private signedCorrectionDebug(texel: Vec4Node): Vec3Node {
+    const value = texel.rgb;
+    const magnitude = sRGBTransferOETF(this.toneMapped(abs(value))) as Vec3Node;
+    // 画面へ出るときの sRGB 符号化を打ち消す — 省くと 0 が中間灰より明るく出る。
+    const signed = sRGBTransferEOTF(sign(value).mul(magnitude).mul(0.5).add(0.5)) as Vec3Node;
+    return select(texel.a.equal(0), vec3(0), signed);
   }
 
   // composite 用マテリアル。colorNode だけが表示ごとに異なる。深度は G バッファのものを描画先の
