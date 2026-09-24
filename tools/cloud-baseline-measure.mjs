@@ -15,6 +15,7 @@ const CASE_NAME = 'earth';
 const SHOT_NAME = 'cloud-standard-near-range-250km';
 const FIXTURE_WIDTH = 960;
 const FIXTURE_HEIGHT = 540;
+const RUN_LENS_ABLATION = process.env.CLOUD_BASELINE_LENS_ABLATION === '1';
 const modes = [
   { id: 'generated-standard', source: 'generated' },
   { id: 'observed-standard', source: 'observed' },
@@ -56,6 +57,41 @@ function summarizeObservedRenderRepeats(blocks) {
     pairedDeltaDefinition: 'cloud-on observed-render p95 minus the mean of the same block\'s surrounding cloud-off observed-render p95 values',
     noiseFloorDefinition: 'absolute difference between the same block\'s surrounding cloud-off observed-render p95 values',
     modes: modesSummary,
+  };
+}
+
+function summarizeLensAblation(blocks) {
+  const byMode = {};
+  for (const mode of modes) {
+    const observedRenderDeltas = [];
+    const lensPassDeltas = [];
+    for (const block of blocks) {
+      const runs = block.modes[mode.id];
+      observedRenderDeltas.push(
+        runs.lensEnabled.measurement.observedRenderTotalMs.p95
+          - runs.lensDisabled.measurement.observedRenderTotalMs.p95,
+      );
+      lensPassDeltas.push(
+        runs.lensEnabled.measurement.gpuPassMs['レンズ'].p95
+          - runs.lensDisabled.measurement.gpuPassMs['レンズ'].p95,
+      );
+    }
+    byMode[mode.id] = {
+      pairedObservedRenderP95DeltaMs: distribution(observedRenderDeltas),
+      pairedLensPassP95DeltaMs: distribution(lensPassDeltas),
+    };
+  }
+  return {
+    purpose: 'descriptive cloud-on lens toggle ablation; not part of baseline qualification',
+    fixture: { caseName: CASE_NAME, shotName: SHOT_NAME, clouds: true, qualityPreset: 'medium' },
+    comparison: 'lens-enabled p95 minus lens-disabled p95 within each additional block',
+    scope: {
+      observedRender: 'sum of resolved renderer.render() timestamp durations; includes composite changes and is not full-frame GPU B0',
+      lensPass: 'instrumented render pass named レンズ; descriptive and may be unavailable when timestamp queries are unsupported',
+    },
+    interpretation: 'The observed-render delta estimates the cost of enabling the lens pipeline for this cloud-on fixture. It does not isolate cloud-specific work inside the lens kernels, and it has no pass/fail threshold.',
+    modes: byMode,
+    blocks,
   };
 }
 
@@ -125,8 +161,8 @@ async function main() {
     }
     const initialGraphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
     const blocks = [];
-    const measure = async (source, clouds) => {
-      const graphics = { cloudFieldSource: source, clouds };
+    const measure = async (source, clouds, overrides = {}) => {
+      const graphics = { cloudFieldSource: source, clouds, ...overrides };
       return await devTools.evaluate(`(async () => {
         const measurement = await window.renderLab.measureShot(${JSON.stringify(CASE_NAME)}, ${JSON.stringify(SHOT_NAME)}, ${JSON.stringify(graphics)});
         return { graphicsSettings: window.renderLab.graphicsSettings(), measurement };
@@ -161,6 +197,34 @@ async function main() {
           + `cloud=${cloud.measurement.gpuPassTotalMs.p95.toFixed(3)} ms`);
       }
       blocks.push(block);
+    }
+
+    let lensAblation = null;
+    if (RUN_LENS_ABLATION) {
+      const diagnosticBlocks = [];
+      for (let index = 0; index < BLOCK_COUNT; index += 1) {
+        const block = { index, modes: {} };
+        const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
+        for (const mode of orderedModes) {
+          const runs = {};
+          const lensOrder = index % 2 === 0 ? [true, false] : [false, true];
+          for (const lens of lensOrder) {
+            const run = await measure(mode.source, true, { lens });
+            if (run.graphicsSettings.lens !== lens || run.graphicsSettings.clouds !== true) {
+              throw new Error(`Lens ablation did not apply requested cloud/lens settings for ${mode.id}`);
+            }
+            runs[lens ? 'lensEnabled' : 'lensDisabled'] = run;
+          }
+          block.modes[mode.id] = runs;
+          console.log(`${mode.id} lens-ablation block=${index + 1}/${BLOCK_COUNT}: `
+            + `lens-on observed render p95=${runs.lensEnabled.measurement.observedRenderTotalMs.p95.toFixed(3)} ms, `
+            + `lens-off=${runs.lensDisabled.measurement.observedRenderTotalMs.p95.toFixed(3)} ms; `
+            + `lens pass p95 on=${runs.lensEnabled.measurement.gpuPassMs['レンズ'].p95.toFixed(3)} ms, `
+            + `off=${runs.lensDisabled.measurement.gpuPassMs['レンズ'].p95.toFixed(3)} ms`);
+        }
+        diagnosticBlocks.push(block);
+      }
+      lensAblation = summarizeLensAblation(diagnosticBlocks);
     }
 
     if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
@@ -229,6 +293,7 @@ async function main() {
       }),
       statistics: summarizeBaselineBlocks(blocks),
       observedRenderStatistics: summarizeObservedRenderRepeats(blocks),
+      lensAblation,
       blocks,
       interpretation: 'observed-render-total sums resolved GPU timestamp durations for every renderer.render() UID attributed to each measured lab frame, including calls without a named pass. It excludes GPU work outside renderer.render(), including compute and uninstrumented WebGPU operations, so it is not full-frame GPU B0. Compute renderer queries are reported separately. Qualification uses paired observed-render p95 deltas and off/off repeatability; instrumented pass and compute statistics remain descriptive.',
     };
