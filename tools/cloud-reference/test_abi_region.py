@@ -152,5 +152,104 @@ class AbiRegionGeometryTest(unittest.TestCase):
             REGION.grid_parameters(Dataset())
 
 
+class AbiRegionSeriesTest(unittest.TestCase):
+    def test_series_slots_include_start_and_end_at_declared_interval(self) -> None:
+        case = {
+            "id": "synthetic",
+            "series": {
+                "start": "2024-08-19T18:00:00Z",
+                "end": "2024-08-19T18:20:00Z",
+                "intervalMinutes": 10,
+            },
+        }
+        slots = REGION.series_slots(case)
+        self.assertEqual(len(slots), 3)
+        self.assertEqual([slot.minute for slot in slots], [0, 10, 20])
+        self.assertTrue(all(slot.utcoffset().total_seconds() == 0 for slot in slots))
+
+    def test_series_slots_reject_non_aligned_end(self) -> None:
+        case = {
+            "id": "synthetic",
+            "series": {
+                "start": "2024-08-19T18:00:00Z",
+                "end": "2024-08-19T18:21:00Z",
+                "intervalMinutes": 10,
+            },
+        }
+        with self.assertRaises(REGION.RegionError):
+            REGION.series_slots(case)
+
+    def test_series_slots_reject_non_integer_or_non_positive_intervals(self) -> None:
+        for interval in (10.5, float("nan"), float("inf"), 0, -10, True, "10"):
+            with self.subTest(interval=interval):
+                case = {
+                    "id": "synthetic",
+                    "series": {
+                        "start": "2024-08-19T18:00:00Z",
+                        "end": "2024-08-19T18:20:00Z",
+                        "intervalMinutes": interval,
+                    },
+                }
+                with self.assertRaises(REGION.RegionError):
+                    REGION.series_slots(case)
+
+    def test_series_slots_require_explicit_utc_and_reject_reversed_bounds(self) -> None:
+        valid = {
+            "id": "synthetic",
+            "series": {
+                "start": "2024-08-19T18:00:00Z",
+                "end": "2024-08-19T18:00:00Z",
+                "intervalMinutes": 10,
+            },
+        }
+        self.assertEqual(len(REGION.series_slots(valid)), 1)
+
+        invalid_series = (
+            {"start": "2024-08-19T18:00:00", "end": "2024-08-19T18:10:00Z"},
+            {"start": "2024-08-19T19:00:00+01:00", "end": "2024-08-19T18:10:00Z"},
+            {"start": "2024-08-19T18:10:00Z", "end": "2024-08-19T18:00:00Z"},
+        )
+        for times in invalid_series:
+            with self.subTest(times=times):
+                case = {
+                    "id": "synthetic",
+                    "series": {**times, "intervalMinutes": 10},
+                }
+                with self.assertRaises(REGION.RegionError):
+                    REGION.series_slots(case)
+
+    def test_product_aggregate_uses_pixel_weighted_joint_quality_counts(self) -> None:
+        def summary(slot: str, region_pixels: int, joint_good: int) -> dict[str, object]:
+            return {
+                "slotStart": slot,
+                "sourceFile": f"{slot}.nc",
+                "product": "L2_ACM",
+                "field": "ACM",
+                "bandId": None,
+                "regionGridPixelCount": region_pixels,
+                "fieldFillCount": 1,
+                "fieldOutOfRangeCount": 1,
+                "fieldValidCount": region_pixels - 2,
+                "dqfFillCount": 0,
+                "dqfOutOfRangeCount": 0,
+                "dqfGoodCount": region_pixels,
+                "jointGoodFieldAndDqfCount": joint_good,
+                "pixelCoverageFraction": joint_good / region_pixels,
+                "dqfRawCounts": {"0": region_pixels},
+                "rawFieldCounts": {"0": region_pixels - 2, "128": 1},
+            }
+
+        result = REGION.aggregate_product_slots(
+            "L2_ACM", "ACM", None,
+            [summary("2024-08-19T18:00:00Z", 100, 80), summary("2024-08-19T18:10:00Z", 10, 5)],
+        )
+        self.assertEqual(result["slotCount"], 2)
+        self.assertEqual(result["regionGridPixelCount"], 110)
+        self.assertEqual(result["jointGoodFieldAndDqfCount"], 85)
+        self.assertAlmostEqual(result["pixelCoverageFraction"], 85 / 110)
+        self.assertEqual(result["rawFieldCounts"]["128"], 2)
+        self.assertEqual(len(result["slots"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
