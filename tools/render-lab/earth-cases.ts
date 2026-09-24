@@ -1,12 +1,13 @@
 // 地球まわりのケース。地球照を受ける自機と板・地平線の地球・火星との構図ごとに、観察のつまみで置く
 // 地球の既定の置き方と、置き方を変えた撮影を宣言し、その地球に合わせて自機・板・試験球・火星を置く。
 import * as THREE from 'three/webgpu';
-import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { Curve } from '../../src/render/curve';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
+import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
 import { ATMOSPHERE_QUALITY } from '../../src/render/atmosphere';
 import { anglesFromDirection, directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
@@ -164,12 +165,21 @@ function placementBelowHorizon(altitude: number, margin: number): Pick<LabViewAn
 // 地球のケースの地球の置き方と、その中心(描画座標)。
 const EARTH_PLACEMENT = placementBelowHorizon(LEO_ALTITUDE, 0);
 const EARTH_CENTER = earthCenterOf(EARTH_PLACEMENT);
+const EARTH_VIEW_TARGET = new THREE.Vector3(0, 0, EARTH_CENTER.z);
+const EARTH_VIEW_TARGET_DEPTH = -EARTH_VIEW_TARGET.z;
+
+// 赤道面の地表をケースの固定 pivot へ重ねる地球配置。
 const EARTH_NADIR_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
   earthAzimuthDeg: 180,
-  earthElevationDeg: -90,
-  earthAltitudeLog: Math.log10(LEO_ALTITUDE),
-  earthLatitudeDeg: 23,
-  earthLongitudeDeg: 13,
+  earthElevationDeg: 0,
+  earthAltitudeLog: Math.log10(EARTH_VIEW_TARGET_DEPTH + R_EARTH_EQ - R_EARTH),
+  earthLatitudeDeg: 0,
+  earthLongitudeDeg: 0,
+};
+const EARTH_STANDARD_CLOUD_DISTANCE = 250e3;
+const EARTH_STANDARD_CLOUD_VIEW: Partial<LabViewAngles> = {
+  ...EARTH_NADIR_PLACEMENT,
+  cameraDistanceLog: Math.log10(EARTH_STANDARD_CLOUD_DISTANCE / EARTH_VIEW_TARGET_DEPTH),
 };
 const EARTH_LOW_ORBIT_ALTITUDE_M = 120e3;
 const EARTH_LOW_ORBIT_PLACEMENT = placementBelowHorizon(EARTH_LOW_ORBIT_ALTITUDE_M, 0);
@@ -236,12 +246,16 @@ function earth(): LabCase {
   return {
     objects: [sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER)],
     camera: labCamera(),
-    viewTarget: EARTH_CENTER,
+    viewTarget: EARTH_VIEW_TARGET,
     earth: EARTH_PLACEMENT,
     shadowBodies: [sphereShadowBody(eclipseBodyCenter, ECLIPSE_SHADOW_BODY_RADIUS)],
     shots: {
       'earth': { view: {} },
       'earth-nadir': { view: EARTH_NADIR_PLACEMENT },
+      'cloud-standard-near-range-250km': {
+        view: EARTH_STANDARD_CLOUD_VIEW,
+        graphics: QUALITY_PRESETS.medium,
+      },
       'earth-low-orbit': { view: EARTH_LOW_ORBIT_PLACEMENT },
       'earth-limb': { view: {} },
       // 昼夜境界。**太陽光が最も長く大気を通って届く向き**なので、波長ごとの減衰だけで縁と霞が橙へ
