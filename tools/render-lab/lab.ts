@@ -72,6 +72,7 @@ export class LabView {
   private current: LabCase | null = null;
   // スタイルを差し替えるとケースを組み直すので、いま出ているケースの名前も持つ。
   private currentName: CaseName | null = null;
+  private selectedDebugTarget: DebugTargetId = 'off';
   // 画面全体の見せ方。起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
   // 直前の render がパイプラインの描画に費やした CPU 時間 [ms]。
@@ -185,9 +186,12 @@ export class LabView {
 
   // 画面へ出す中間バッファを選び、その場で描き直す。
   public showDebugTarget(target: DebugTargetId): void {
+    this.selectedDebugTarget = target;
     this.pipeline.syncDebugTarget(target);
     this.render();
   }
+
+  public get debugTarget(): DebugTargetId { return this.selectedDebugTarget; }
 
   // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
   public get viewAngles(): LabViewAngles { return this.angles; }
@@ -303,6 +307,12 @@ export class LabView {
   ): Promise<LabMeasurement> {
     this.show(name);
     this.setViewAngles(angles);
+    return this.measureCurrent(warmupFrames, sampleFrames);
+  }
+
+  // 現在のケース・観察角・描画設定を保ったまま、CLI と同じ暖機と30標本で測る。
+  public async measureCurrent(warmupFrames = 6, sampleFrames = 30): Promise<LabMeasurement> {
+    if (this.currentName === null) throw new Error('render-lab: no case selected for measurement');
     await this.gpu.waitForResolve();
     this.gpu.reset();
 
@@ -332,7 +342,7 @@ export class LabView {
     }
 
     return {
-      caseName: name,
+      caseName: this.currentName,
       frames: sampleFrames,
       cpuRenderMs: distributionOf(cpuSamples),
       gpuSupported: this.gpu.snapshot().supported,
@@ -358,6 +368,8 @@ export class LabView {
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
+    const target = shot.debugTarget ?? 'off';
+    this.showDebugTarget(target);
   }
 
   // 描画品質設定を next にする。**設定の器は同値でも購読者へ配り、パイプラインを組み直す**ので、

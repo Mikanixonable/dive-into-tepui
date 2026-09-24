@@ -21,6 +21,7 @@ import type { ProteinLabCaseMetadata } from './protein-cases';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 
@@ -57,6 +58,8 @@ export interface LabShot {
   readonly view: Partial<LabViewAngles>;
   // 起動時の描画品質設定へ重ねる差分。省略すると起動時の設定のまま撮る。
   readonly graphics?: Partial<GraphicsSettingsData>;
+  // 撮影で表示する実際のパイプライン中間ターゲット。省略時は通常像。
+  readonly debugTarget?: DebugTargetId;
 }
 
 export interface LabCase {

@@ -10,7 +10,7 @@ import {
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
 import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
-import { Pulldown, SegmentedControl, WIDGET_STYLE, type PulldownColumn } from '../../src/hud/widgets';
+import { Button, Pulldown, SegmentedControl, WIDGET_STYLE, type PulldownColumn } from '../../src/hud/widgets';
 import { injectOnce } from '../../src/hud/inject-style';
 import { applyThemeVariables } from '../../src/hud/style/theme-variables';
 import { AU } from '../../src/physics/astronomical-unit';
@@ -64,6 +64,7 @@ declare global {
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
+      measureCurrent: () => Promise<LabMeasurement>;
     };
   }
 }
@@ -203,6 +204,7 @@ async function init(): Promise<void> {
     const columns: readonly [PulldownColumn<string>] = [{ items }];
     const shots = new Pulldown('撮影', columns, '反映', ([name]) => {
       view.applyShot(name);
+      targets.setSelected(view.debugTarget);
       syncAngles();
     });
     shotsRow.replaceChildren(shots.element);
@@ -240,6 +242,44 @@ async function init(): Promise<void> {
   panel.onChange = (graphics) => settings.graphics.set(graphics);
   settings.graphics.subscribe((graphics) => panel.sync(graphics));
 
+  const loadButton = new Button('計測', () => { void measureCurrent(); });
+  const loadResult = document.getElementById('load-result')!;
+  document.getElementById('load-controls')!.appendChild(loadButton.element);
+  const measureCurrent = async (): Promise<void> => {
+    loadButton.setEnabled(false);
+    loadResult.textContent = '計測中…';
+    try {
+      const result = await view.measureCurrent();
+      const table = document.createElement('table');
+      const head = document.createElement('tr');
+      for (const label of ['パス', 'median [ms]', 'p95 [ms]']) {
+        const cell = document.createElement('th');
+        cell.textContent = label;
+        head.appendChild(cell);
+      }
+      table.appendChild(head);
+      const addRow = (label: string, median: number | null, p95: number | null): void => {
+        const row = document.createElement('tr');
+        for (const value of [label, median?.toFixed(3) ?? '—', p95?.toFixed(3) ?? '—']) {
+          const cell = document.createElement('td');
+          cell.textContent = value;
+          row.appendChild(cell);
+        }
+        table.appendChild(row);
+      };
+      addRow('CPU 描画', result.cpuRenderMs.p50, result.cpuRenderMs.p95);
+      for (const [label, distribution] of Object.entries(result.gpuPassMs)) {
+        addRow(label, result.gpuSupported ? distribution.p50 : null, result.gpuSupported ? distribution.p95 : null);
+      }
+      loadResult.replaceChildren(table);
+      if (!result.gpuSupported) loadResult.prepend(document.createTextNode('GPU 計測未対応'));
+    } catch (error) {
+      loadResult.textContent = String(error);
+    } finally {
+      loadButton.setEnabled(true);
+    }
+  };
+
   buildCloudSliders(view);
 
   targets.setSelected('off');
@@ -249,7 +289,12 @@ async function init(): Promise<void> {
   window.renderLab = {
     earthSurfaceCapture,
     cases: CASE_NAMES,
-    shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
+    shoot: async (name, graphics) => {
+      const pngs = await view.shoot(name, graphics);
+      syncAngles();
+      targets.setSelected(view.debugTarget);
+      return pngs;
+    },
     capture: () => view.capture(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
@@ -258,6 +303,7 @@ async function init(): Promise<void> {
       settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
     },
     measure: (name, angles) => view.measure(name, angles),
+    measureCurrent: () => view.measureCurrent(),
   };
 }
 
