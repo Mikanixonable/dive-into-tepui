@@ -2,10 +2,13 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { bool, float, int, uint, uniform, vec2, vec3 } from 'three/tsl';
+import { clipToCircle } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
-  angleOf, capRange, clipToCircle, maskedMeasure, rayAt, sectorPosition, segmentSectors, sideRays, sliceAt,
-  splitSegments, toSliceCoordinates, wedgeWeight, type SideRays, type SlicePoint,
-} from '../../src/render/pipeline/screen-space/hemisphere-scan';
+  angleOf, capRange, maskedMeasure, sectorPosition, segmentSectors, sliceAt, toSliceCoordinates, wedgeWeight,
+} from '../../src/render/pipeline/screen-space/slice-sectors';
+import {
+  rayAt, sideRays, splitSegments, type SideRays, type SlicePoint,
+} from '../../src/render/pipeline/screen-space/tangent-segments';
 import { viewRayAt } from '../../src/render/pipeline/view-ray';
 import { test } from '../harness';
 import { evaluateShaderNode } from './tsl-node-evaluator';

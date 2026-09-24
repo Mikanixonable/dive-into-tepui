@@ -6,87 +6,32 @@
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, abs, acos, atan, bool, clamp, cos, countOneBits, cross, dot, float, floor, getViewPosition, ivec2, length,
-  max, min, normalize, round, screenSize, screenUV, select, sign, sin, sqrt, textureLoad, uint, vec2, vec3, vec4,
+  If, Loop, bool, dot, float, floor, getViewPosition, ivec2, length, max, min, screenSize, screenUV, select, sqrt,
+  textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
 import { signedDiffuseCorrection } from './diffuse-correction';
+import {
+  SECTOR_COUNT, angleOf, bitCount, capRange, maskedMeasure, sectorPosition, segmentSectors, sliceAt,
+  toSliceCoordinates, wedgeWeight, type SectorRange, type Slice,
+} from './slice-sectors';
+import {
+  angularlyHigher, angularlyLower, rayAt, sideRays, splitSegments, tangentHit, type SideRays, type SlicePoint,
+} from './tangent-segments';
 import type { PlanetCap } from '../lighting/planet-light-source';
 import type {
-  BoolNode, FloatNode, IntNode, Mat4Uniform, UintNode, Vec2Node, Vec3Node,
+  BoolNode, FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec3Node,
 } from '../../tsl-types';
 
 // 遮りを探す距離 [m]。受け手からこれより遠い面は遮らない。
 const WORLD_RADIUS = 4;
-// スライス 1 枚を刻む扇形の数。マスクの幅(uint のビット数)と一致させる。
-const SECTOR_COUNT = 32;
-const HALF_PI = Math.PI / 2;
 
 // 受け手を照らす天体照 1 つ。cap は受け手から見た球冠(view 空間)、irradiance は近くの構造に遮られないときに
 // 届く拡散照度(SUN_IRRADIANCE_1AU の目盛り)。
 export interface PlanetIllumination {
   readonly cap: PlanetCap;
   readonly irradiance: Vec3Node;
-}
-
-// スライス 1 枚 — 受け手の視線 V と画面上の向きが張る平面。平面の中の点は、受け手を原点に V の成分と
-// orthoDirection の成分を並べた 2 次元の座標(スライスの座標)で表す。角度はすべて V から測り、orthoDirection の
-// 側を正とする。半球はこの平面の中で [n − π/2, n + π/2] を占め、測度 cos(h − n)·|sin h| dh で量る。
-interface Slice {
-  // 画面上の向き(uv の単位ベクトル。y は下向き)。
-  readonly screenDirection: Vec2Node;
-  // 受け手の視線 V と、平面の中で V に直交する単位ベクトル(view 空間)。
-  readonly view: Vec3Node;
-  readonly orthoDirection: Vec3Node;
-  // 平面の単位法線(view 空間)。
-  readonly axis: Vec3Node;
-  // 法線を平面へ射影した向きの角 n と、その余弦・正弦。
-  readonly normalAngle: FloatNode;
-  readonly cosNormal: FloatNode;
-  readonly sinNormal: FloatNode;
-  // 0 から半球の下端 n − π/2 までの測度(負)と、半球全体の測度。
-  readonly lowerMeasure: FloatNode;
-  readonly totalMeasure: FloatNode;
-  // スライスの結果を平均するときの重み(射影した法線の長さ × 半球全体の測度)。
-  readonly weight: FloatNode;
-}
-
-// スライスの中の向きの区間を、扇形の座標(sectorPosition)で表したもの。lower ≤ upper。
-interface SectorRange {
-  readonly lower: FloatNode;
-  readonly upper: FloatNode;
-}
-
-// スライスの中の面の点 — スライス平面へ射影した位置(スライスの座標)と、接平面がスライス平面を切る直線
-// normal·x = offset(normal の長さは問わない)。offset は受け手から見た接平面の符号つきの高さで、負なら受け手へ
-// 面を向ける。
-export interface SlicePoint {
-  readonly position: Vec2Node;
-  readonly normal: Vec2Node;
-  readonly offset: FloatNode;
-}
-
-// 視線 — 起点 origin(近平面の点)から向き direction(正規化しない)へ延びる半直線(スライスの座標)。
-export interface Ray {
-  readonly origin: Vec2Node;
-  readonly direction: Vec2Node;
-}
-
-// スライスの片側で、受け手から画面上で距離 ρ [走査の画素] の点を通る視線を ρ の一次式で表したもの(スライスの
-// 座標)。ρ の視線は origin + ρ·originStep を起点に、direction + ρ·directionStep へ向かう。
-export interface SideRays {
-  readonly origin: Vec2Node;
-  readonly originStep: Vec2Node;
-  readonly direction: Vec2Node;
-  readonly directionStep: Vec2Node;
-}
-
-// 画面上で隣り合う 2 標本の切片の境目 — 手前の標本の切片の上端 nearUpper と、奥の標本の切片の下端 farLower
-// (スライスの座標。受け手の円で切る前)。
-export interface SegmentSplit {
-  readonly nearUpper: Vec2Node;
-  readonly farLower: Vec2Node;
 }
 
 // 天体 1 つの、受け手の画素での塞がれ方の和 — スライスごとの塞がれた割合を楔の重みで積んだ和 blocked と、
@@ -350,81 +295,6 @@ class SideWalk {
   }
 }
 
-// 画面上で隣り合う 2 標本 near(画面距離 nearRho)と far(farRho)の切片の境目。bothSurfaces は両方が面を持つか
-// で、偽なら境目は中点の視線で決める。near が受け手自身なら nearRho = 0。rays はこの側の視線。
-export function splitSegments(
-  rays: SideRays, near: SlicePoint, nearRho: FloatNode, far: SlicePoint, farRho: FloatNode, bothSurfaces: BoolNode,
-): SegmentSplit {
-  // 互いに相手が自分の接平面の表側にあれば、2 平面はカメラから見える凹んだ継ぎ目で交わる。継ぎ目は 2 平面が
-  // スライス平面を切る 2 直線の交点で、画面上で 2 標本のあいだに写るときに使う。
-  const concave = bothSurfaces
-    .and(dot(near.normal, far.position).greaterThanEqual(near.offset))
-    .and(dot(far.normal, near.position).greaterThanEqual(far.offset));
-  const determinant = cross2(near.normal, far.normal).toVar();
-  const solvable = abs(determinant).greaterThanEqual(1e-6);
-  const seam = perpendicular(far.normal).mul(near.offset).sub(perpendicular(near.normal).mul(far.offset))
-    .div(select(solvable, determinant, float(1))).toVar();
-  const atSeam = concave.and(solvable).and(seenBetween(rays, seam, nearRho, farRho));
-  // それ以外(輪郭・凸の稜・面のない標本)は継ぎ目の位置が分からないので、画面上の中点の視線で分ける。
-  const middle = rayAt(rays, nearRho.add(farRho).mul(0.5));
-  return {
-    nearUpper: select(atSeam, seam, tangentHit(middle, near)),
-    farLower: select(atSeam, seam, tangentHit(middle, far)),
-  };
-}
-
-// スライスの片側の視線 — 受け手の uv から uvStep [uv/走査の画素] ずつ画面距離 ρ だけ進んだ点を通る視線を、ρ の
-// 一次式として組む。receiver は受け手の位置。固定した NDC 深度で逆射影した点は、透視でも平行投影でも画面座標の
-// 一次式になる(逆射影の w 行が画面座標に依らない)ので、近平面と遠平面の点を ρ = 0 と 1 で引けば足りる。向きは
-// ρ = 0 で長さ 1 にそろえる。
-export function sideRays(
-  slice: Slice, receiver: Vec3Node, uv: Vec2Node, uvStep: Vec2Node, projectionInverse: Mat4Uniform,
-): SideRays {
-  // ρ = 0 と 1 の視線の、近平面の点と遠平面の点までの変位(view 空間)。
-  const near = getViewPosition(uv, float(1), projectionInverse).toVar();
-  const span = getViewPosition(uv, float(0), projectionInverse).sub(near).toVar();
-  const nextUv = uv.add(uvStep).toVar();
-  const nextNear = getViewPosition(nextUv, float(1), projectionInverse).toVar();
-  const nextSpan = getViewPosition(nextUv, float(0), projectionInverse).sub(nextNear);
-  // スライスの座標へ写す。
-  const scale = float(1).div(length(span)).toVar();
-  return {
-    origin: toSliceCoordinates(slice, near.sub(receiver)).toVar(),
-    originStep: toSliceCoordinates(slice, nextNear.sub(near)).toVar(),
-    direction: toSliceCoordinates(slice, span).mul(scale).toVar(),
-    directionStep: toSliceCoordinates(slice, nextSpan.sub(span)).mul(scale).toVar(),
-  };
-}
-
-// 画面距離 rho の視線。
-export function rayAt(rays: SideRays, rho: FloatNode): Ray {
-  return {
-    origin: rays.origin.add(rays.originStep.mul(rho)),
-    direction: rays.direction.add(rays.directionStep.mul(rho)),
-  };
-}
-
-// スライスの中の点 point が、画面距離 nearRho..farRho の視線に写るか。point が ρ の視線に乗る条件
-// (point − origin(ρ)) × direction(ρ) = 0 は ρ の一次式 c + ρ·k = 0 になる — ρ² の項は、透視では起点と向きの歩みが
-// 平行、平行投影では向きが一定なので消える。解 −c/k の範囲は、k を掛けて割らずに比べる。
-function seenBetween(rays: SideRays, point: Vec2Node, nearRho: FloatNode, farRho: FloatNode): BoolNode {
-  const offset = point.sub(rays.origin).toVar();
-  const constant = cross2(offset, rays.direction).toVar();
-  const slope = cross2(offset, rays.directionStep).sub(cross2(rays.originStep, rays.direction)).toVar();
-  return abs(slope).greaterThan(1e-12)
-    .and(constant.add(nearRho.mul(slope)).mul(slope).lessThanEqual(0))
-    .and(constant.add(farRho.mul(slope)).mul(slope).greaterThanEqual(0));
-}
-
-// 視線 ray と、面の点 point の接平面がスライスを切る直線の交点。視線がその直線と平行か、交点が視線の起点
-// (近平面)より手前にあれば point の位置。
-function tangentHit(ray: Ray, point: SlicePoint): Vec2Node {
-  const facing = dot(point.normal, ray.direction).toVar();
-  const parallel = abs(facing).lessThan(1e-6);
-  const along = point.offset.sub(dot(point.normal, ray.origin)).div(select(parallel, float(1), facing)).toVar();
-  return select(parallel.or(along.lessThanEqual(0)), point.position, ray.origin.add(ray.direction.mul(along)));
-}
-
 // 受け手を中心とする半径 WORLD_RADIUS の円の内側の点 from から、点 end へ向かう線分を円の内側で切った先の点
 // (スライスの座標)。
 export function clipToCircle(from: Vec2Node, end: Vec2Node): Vec2Node {
@@ -436,32 +306,6 @@ export function clipToCircle(from: Vec2Node, end: Vec2Node): Vec2Node {
     .sub(spanSqr.mul(dot(from, from).sub(WORLD_RADIUS * WORLD_RADIUS)));
   const exit = fromAlongSpan.negate().add(sqrt(max(discriminant, 0))).div(max(spanSqr, 1e-12));
   return from.add(span.mul(min(exit, 1)));
-}
-
-// view 空間の変位 offset をスライス平面へ射影した、スライスの座標。
-export function toSliceCoordinates(slice: Slice, offset: Vec3Node): Vec2Node {
-  return vec2(dot(offset, slice.view), dot(offset, slice.orthoDirection));
-}
-
-// スライスの座標の点 a と b のうち、受け手から見た角の小さい方。どちらもスライスの同じ側にあること — 角の差が
-// π 未満なので、角を求めずに外積の符号で比べられる。
-function angularlyLower(a: Vec2Node, b: Vec2Node): Vec2Node {
-  return select(cross2(a, b).greaterThanEqual(0), a, b);
-}
-
-// スライスの座標の点 a と b のうち、受け手から見た角の大きい方。どちらもスライスの同じ側にあること。
-function angularlyHigher(a: Vec2Node, b: Vec2Node): Vec2Node {
-  return select(cross2(a, b).greaterThanEqual(0), b, a);
-}
-
-// 2 次元の外積 a.x·b.y − a.y·b.x。
-function cross2(a: Vec2Node, b: Vec2Node): FloatNode {
-  return a.x.mul(b.y).sub(a.y.mul(b.x));
-}
-
-// v を 90° 回した (v.y, −v.x)。
-function perpendicular(v: Vec2Node): Vec2Node {
-  return vec2(v.y, v.x.negate());
 }
 
 // いま描いている解像度の画素 pixel(整数座標)の中心を含む、寸法 gbufferSize [px] の G バッファの画素の中心の uv。
@@ -481,104 +325,4 @@ function screenRadius(position: Vec3Node, projection: Mat4Uniform): FloatNode {
   const edge = projection.mul(vec4(position.add(vec3(WORLD_RADIUS, 0, 0)), 1));
   const ndcOffset = edge.xy.div(edge.w).sub(center.xy.div(center.w));
   return min(length(ndcOffset.mul(screenSize).mul(0.5)), length(screenSize));
-}
-
-// 画面上の角 angle [rad] の向きのスライスを、受け手の視線 view と法線 normal から組む。**Fn の中から呼ぶこと。**
-export function sliceAt(angle: FloatNode, view: Vec3Node, normal: Vec3Node): Slice {
-  // view 空間の x・y は画面の右・上に揃っている。uv の y は下向き。
-  const direction = vec3(cos(angle), sin(angle), 0).toVar();
-  const orthoDirection = normalize(direction.sub(view.mul(dot(direction, view)))).toVar();
-  const axis = normalize(cross(direction, view)).toVar();
-  const projectedNormal = normal.sub(axis.mul(dot(normal, axis))).toVar();
-  const projectedLength = length(projectedNormal).toVar();
-  const cosNormal = clamp(dot(projectedNormal, view).div(max(projectedLength, 1e-6)), 0, 1).toVar();
-  const normalAngle = sign(dot(orthoDirection, projectedNormal)).mul(acos(cosNormal)).toVar();
-  const sinNormal = sin(normalAngle).toVar();
-  const totalMeasure = cosNormal.add(normalAngle.mul(sinNormal)).toVar();
-  return {
-    screenDirection: vec2(direction.x, direction.y.negate()).toVar(),
-    view,
-    orthoDirection,
-    axis,
-    normalAngle,
-    cosNormal,
-    sinNormal,
-    // 0 から n − π/2 までの測度 −¼(2 cos n + (2n − π) sin n)。
-    lowerMeasure: cosNormal.mul(2).add(normalAngle.mul(2).sub(Math.PI).mul(sinNormal)).mul(-0.25).toVar(),
-    totalMeasure,
-    weight: projectedLength.mul(totalMeasure).toVar(),
-  };
-}
-
-// 受け手から、スライスの座標の点 point の向きの、視線から測った角 [rad]。半球の外は半球の縁へ寄せる。
-export function angleOf(slice: Slice, point: Vec2Node): FloatNode {
-  return clamp(atan(point.y, point.x), slice.normalAngle.sub(HALF_PI), slice.normalAngle.add(HALF_PI));
-}
-
-// 扇形の座標 — 視線から測った角 h を、スライスの半球の余弦重みの測度で 0..SECTOR_COUNT へ写し、画素ごとの
-// ずれ dither(0..1)− ½ だけずらしたもの。扇形 j はこの座標の [j, j + 1) を受け持ち、両端の扇形は半球の端までを
-// 受け持つ。
-export function sectorPosition(slice: Slice, h: FloatNode, dither: FloatNode): FloatNode {
-  // 0 から h までの測度 sign(h)·¼(cos n − cos(2h − n) + 2h sin n)。
-  const fromView = sign(h).mul(
-    slice.cosNormal.sub(cos(h.mul(2).sub(slice.normalAngle))).add(h.mul(2).mul(slice.sinNormal)).mul(0.25),
-  );
-  return fromView.sub(slice.lowerMeasure).div(slice.totalMeasure).mul(SECTOR_COUNT).add(dither).sub(0.5);
-}
-
-// 扇形の座標で lower..upper を覆う切片が立てるビット — 中心 j + ½ が区間に入る扇形 j。ずれ dither が一様なら
-// 立つビットの数の期待値は区間の測度に一致し、同じ端を持つ隣の切片とは継ぎ目なく並ぶ。
-export function segmentSectors(lower: FloatNode, upper: FloatNode): UintNode {
-  return sectorsBelow(floor(upper.add(0.5))).bitAnd(sectorsBelow(floor(lower.add(0.5))).bitNot());
-}
-
-// 球冠 cap をスライスへ写した区間 — 中心の向きを平面へ射影した角を中心とし、視半径を半幅とする — を半球で切り、
-// 扇形の座標(sectorPosition)で返す。半球の外にあれば幅 0。
-export function capRange(slice: Slice, cap: PlanetCap, dither: FloatNode): SectorRange {
-  const projected = toSliceCoordinates(slice, cap.direction).toVar();
-  const center = atan(projected.y, projected.x).toVar();
-  // 中心を半球の側へ寄せる。半球は π、区間は高々 π を占めるので、重なる区間は 1 つしかない。
-  const shifted = center.add(round(slice.normalAngle.sub(center).div(2 * Math.PI)).mul(2 * Math.PI)).toVar();
-  const halfWidth = acos(clamp(cap.cosAngle, -1, 1)).toVar();
-  const lowerEdge = slice.normalAngle.sub(HALF_PI);
-  const upperEdge = slice.normalAngle.add(HALF_PI);
-  return {
-    lower: sectorPosition(slice, clamp(shifted.sub(halfWidth), lowerEdge, upperEdge), dither).toVar(),
-    upper: sectorPosition(slice, clamp(shifted.add(halfWidth), lowerEdge, upperEdge), dither).toVar(),
-  };
-}
-
-// スライスが、向き direction(view 空間)の天体の方位のまわりの楔を代表する重み。視線の成分を除いた向きと
-// スライスの向きの角距離(mod π)が 0 で 1、スライスの間隔 π / sliceCount で 0 になる三角形で、隣り合う
-// スライスを補間する。
-export function wedgeWeight(slice: Slice, direction: Vec3Node, sliceCount: IntNode): FloatNode {
-  const across = direction.sub(slice.view.mul(dot(direction, slice.view))).toVar();
-  const cosDistance = abs(dot(across, slice.orthoDirection)).div(max(length(across), 1e-6));
-  return max(float(1).sub(acos(min(cosDistance, 1)).mul(float(sliceCount)).div(Math.PI)), 0);
-}
-
-// ビット bits の扇形が、扇形の座標で range を覆う測度(扇形 1 つが 1)。部分的に掛かる扇形は掛かった長さだけ
-// 数える。全ビットが立っていれば range の幅 upper − lower そのもの。
-export function maskedMeasure(bits: UintNode, range: SectorRange): FloatNode {
-  const first = clamp(floor(range.lower), 0, SECTOR_COUNT - 1).toVar();
-  const last = clamp(floor(range.upper), 0, SECTOR_COUNT - 1).toVar();
-  const firstBit = bitCount(bits.bitAnd(uint(1).shiftLeft(uint(first))));
-  const lastBit = bitCount(bits.bitAnd(uint(1).shiftLeft(uint(last))));
-  const between = bitCount(bits.bitAnd(sectorsBelow(last).bitAnd(sectorsBelow(first.add(1)).bitNot())));
-  return select(first.equal(last), firstBit.mul(range.upper.sub(range.lower)),
-    firstBit.mul(first.add(1).sub(range.lower)).add(between).add(lastBit.mul(range.upper.sub(last))));
-}
-
-// 番号が count(整数。0..SECTOR_COUNT の外は端へ寄せる)より小さい扇形のビット。幅いっぱいのシフトは WGSL で
-// 使えないので、count = SECTOR_COUNT は別に返す。
-function sectorsBelow(count: FloatNode): UintNode {
-  const bounded = clamp(count, 0, SECTOR_COUNT);
-  const partial = uint(1).shiftLeft(uint(min(bounded, SECTOR_COUNT - 1))).sub(uint(1));
-  return select(bounded.greaterThanEqual(SECTOR_COUNT), uint(0xffffffff), partial);
-}
-
-// bits の立っているビットの数。
-function bitCount(bits: UintNode): FloatNode {
-  // countOneBits の @types/three 上の戻り値型は値の型を持たないため、UintNode へ読み替える。
-  return float(countOneBits(bits) as unknown as UintNode);
 }
