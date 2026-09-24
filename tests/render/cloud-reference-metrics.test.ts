@@ -199,15 +199,36 @@ export function register(): void {
 
   test('cloud reference metrics: temporal metrics require enough frames in the case series', () => {
     const raw = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as {
-      cases: { id: string; metricIds: string[] }[];
+      cases: { id: string; metricIds: string[]; availableFrameCount?: number; minimumValidFramesByMetric?: Record<string, number> }[];
     };
     const mawar = raw.cases.find((entry) => entry.id === 'tropical-cyclone-mawar-2023-05-25');
     assert.ok(mawar);
+    assert.equal(mawar.availableFrameCount, 1);
     assert.ok(!mawar.metricIds.includes('lag-correlation'));
+    assert.deepEqual(validateCloudReferenceManifest(raw), []);
 
     mawar.metricIds.push('lag-correlation');
+    const temporalErrors = validateCloudReferenceManifest(raw);
+    assert.ok(temporalErrors.some((error) =>
+      error.includes('case tropical-cyclone-mawar-2023-05-25 metric lag-correlation requires at least 24 available frames')));
+    assert.ok(temporalErrors.some((error) =>
+      error.includes('requires at least 180 minutes of available temporal support')));
+
+    mawar.metricIds.pop();
+    delete mawar.minimumValidFramesByMetric;
     assert.ok(validateCloudReferenceManifest(raw).some((error) =>
-      error.includes('case tropical-cyclone-mawar-2023-05-25 metric lag-correlation requires at least 24 frames')));
+      error.includes('case tropical-cyclone-mawar-2023-05-25 metric cloud-fraction requires at least 24 available frames')));
+
+    mawar.minimumValidFramesByMetric = { 'cloud-fraction': 1, 'structure-size-distribution': 1, 'structure-orientation': 1 };
+    delete mawar.availableFrameCount;
+    assert.ok(validateCloudReferenceManifest(raw).some((error) =>
+      error.includes('must declare availableFrameCount when overriding metric frame coverage')));
+
+    const goes = raw.cases.find((entry) => entry.id === 'deep-convection-mexico-2024-06-10');
+    assert.ok(goes);
+    goes.availableFrameCount = 23;
+    assert.ok(validateCloudReferenceManifest(raw).some((error) =>
+      error.includes('case deep-convection-mexico-2024-06-10 metric cloud-fraction requires at least 24 available frames')));
   });
 
   test('cloud reference metrics: four required families split independent systems into tuning and held-out series', () => {
