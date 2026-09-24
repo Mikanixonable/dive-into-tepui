@@ -11,17 +11,59 @@ interface BaselineStatistics {
       readonly offOffRepeatabilityNoiseFloorMs: { readonly avg: number; readonly p50: number; readonly p95: number };
     }>;
   };
+  qualifyObservedRenderBaseline(blocks: readonly unknown[], hardware: unknown): {
+    readonly status: string;
+    readonly scope: string;
+    readonly prerequisites: {
+      readonly requiredCompleteBlocks: number;
+      readonly pairedObservedRenderP95IncreaseLimitMs: number;
+      readonly repeatabilityNoiseBelowMs: number;
+      readonly computeQueryCountPerMeasurement: number;
+    };
+    readonly modes?: Record<string, {
+      readonly status: string;
+      readonly pairedObservedRenderP95DeltaMs?: { readonly p95: number };
+      readonly offOffRepeatabilityNoiseFloorMs?: { readonly p95: number };
+      readonly uncertaintyIntervalMs?: { readonly lower: number; readonly upper: number };
+    }>;
+  };
 }
 
 const importModule = new Function('specifier', 'return import(specifier)') as
   (specifier: string) => Promise<BaselineStatistics>;
 
-function run(p95: number) {
-  return { measurement: { gpuPassTotalMs: { p95 } } };
+function run(p95: number, observedP95 = p95) {
+  return { measurement: {
+    gpuPassTotalMs: { p95 },
+    gpuSupported: true,
+    frames: 30,
+    observedComputeExpectedQueryCounts: Array.from({ length: 30 }, () => 0),
+    observedRenderCompleteFrames: 30,
+    observedRenderTotalMs: { samples: 30, p95: observedP95 },
+  } };
 }
 
 function mode(before: number, cloud: number, after: number) {
   return { offBefore: run(before), cloudOn: run(cloud), offAfter: run(after) };
+}
+
+function qualificationBlocks(deltas: { generated: number; observed: number }, noise = 0.5) {
+  return Array.from({ length: 8 }, () => ({ modes: {
+    'generated-standard': mode(10 - noise / 2, 10 + deltas.generated, 10 + noise / 2),
+    'observed-standard': mode(10 - noise / 2, 10 + deltas.observed, 10 + noise / 2),
+  } }));
+}
+
+const qualificationHardware = {
+  platform: 'darwin',
+  systemGraphics: [{ chipset: 'Apple M4 Pro' }],
+  timestampQueryAdvertised: true,
+  adapterFallback: false,
+  standardNearRange250kmFixture: true,
+};
+
+function assertNear(actual: number | undefined, expected: number) {
+  assert.ok(typeof actual === 'number' && Math.abs(actual - expected) < 1e-9);
 }
 
 export function register(): void {
@@ -61,5 +103,98 @@ export function register(): void {
     ).href);
     assert.throws(() => summarizeBaselineBlocks([]), /At least one baseline block/);
     assert.throws(() => summarizeBaselineBlocks([{ modes: {} }]), /Missing finite instrumented-pass p95/);
+  });
+
+  test('cloud baseline qualification: paired observed-render p95 deltas pass within the limit', async () => {
+    const { qualifyObservedRenderBaseline } = await importModule(pathToFileURL(
+      resolve(process.cwd(), 'tools/cloud-baseline-statistics.mjs'),
+    ).href);
+    const result = qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 2.5, observed: 1.5 }),
+      qualificationHardware,
+    );
+
+    assert.equal(result.scope, 'observed-render-total');
+    assert.equal(result.status, 'pass');
+    assert.equal(result.prerequisites.requiredCompleteBlocks, 8);
+    assert.equal(result.prerequisites.pairedObservedRenderP95IncreaseLimitMs, 3);
+    assert.equal(result.prerequisites.repeatabilityNoiseBelowMs, 3);
+    assert.equal(result.prerequisites.computeQueryCountPerMeasurement, 0);
+    assert.equal(result.modes?.['generated-standard']?.pairedObservedRenderP95DeltaMs?.p95, 2.5);
+    assert.deepEqual(result.modes?.['generated-standard']?.uncertaintyIntervalMs, { lower: 2.0, upper: 3 });
+  });
+
+  test('cloud baseline qualification: a measured increase above the limit fails', async () => {
+    const { qualifyObservedRenderBaseline } = await importModule(pathToFileURL(
+      resolve(process.cwd(), 'tools/cloud-baseline-statistics.mjs'),
+    ).href);
+    const result = qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 3.6, observed: 1.5 }),
+      qualificationHardware,
+    );
+
+    assert.equal(result.status, 'fail');
+    assert.equal(result.modes?.['generated-standard']?.status, 'fail');
+    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.lower, 3.1);
+    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.upper, 4.1);
+  });
+
+  test('cloud baseline qualification: an uncertainty interval that crosses the limit is indeterminate', async () => {
+    const { qualifyObservedRenderBaseline } = await importModule(pathToFileURL(
+      resolve(process.cwd(), 'tools/cloud-baseline-statistics.mjs'),
+    ).href);
+    const result = qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 3, observed: 1.5 }),
+      qualificationHardware,
+    );
+
+    assert.equal(result.status, 'indeterminate');
+    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.lower, 2.5);
+    assertNear(result.modes?.['generated-standard']?.uncertaintyIntervalMs?.upper, 3.5);
+  });
+
+  test('cloud baseline qualification: incomplete timestamps or noisy repeats are indeterminate', async () => {
+    const { qualifyObservedRenderBaseline } = await importModule(pathToFileURL(
+      resolve(process.cwd(), 'tools/cloud-baseline-statistics.mjs'),
+    ).href);
+    const incomplete = qualificationBlocks({ generated: 1, observed: 1 });
+    const run = incomplete[0]?.modes['generated-standard']?.cloudOn.measurement;
+    if (run) run.observedRenderCompleteFrames = 29;
+    const unsupported = qualificationBlocks({ generated: 1, observed: 1 });
+    const unsupportedRun = unsupported[0]?.modes['observed-standard']?.offBefore.measurement;
+    if (unsupportedRun) unsupportedRun.gpuSupported = false;
+    const withCompute = qualificationBlocks({ generated: 1, observed: 1 });
+    const computedRun = withCompute[0]?.modes['generated-standard']?.cloudOn.measurement;
+    if (computedRun) computedRun.observedComputeExpectedQueryCounts[4] = 1;
+    const incompleteResult = qualifyObservedRenderBaseline(incomplete, qualificationHardware);
+    const unsupportedResult = qualifyObservedRenderBaseline(unsupported, qualificationHardware);
+    const computeResult = qualifyObservedRenderBaseline(withCompute, qualificationHardware);
+    const noisyResult = qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 1, observed: 1 }, 3),
+      qualificationHardware,
+    );
+
+    assert.equal(incompleteResult.status, 'indeterminate');
+    assert.equal(unsupportedResult.status, 'indeterminate');
+    assert.equal(computeResult.status, 'indeterminate');
+    assert.equal(noisyResult.status, 'indeterminate');
+    assert.equal(qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 1, observed: 1 }).slice(0, 7),
+      qualificationHardware,
+    ).status, 'indeterminate');
+    assert.equal(qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 1, observed: 1 }),
+      { ...qualificationHardware, systemGraphics: [{ chipset: 'Apple M4 Max' }] },
+    ).status, 'indeterminate');
+    assert.equal(qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 1, observed: 1 }),
+      { ...qualificationHardware, adapterFallback: true },
+    ).status, 'indeterminate');
+    const diagnostic = qualifyObservedRenderBaseline(
+      qualificationBlocks({ generated: 1, observed: 1 }),
+      { ...qualificationHardware, standardNearRange250kmFixture: false },
+    );
+    assert.equal(diagnostic.scope, 'observed-render-engineering-diagnostic');
+    assert.equal(diagnostic.status, 'indeterminate');
   });
 }
