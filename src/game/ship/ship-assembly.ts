@@ -1,7 +1,7 @@
 // 船体モジュールの木構造、接続変換、可変状態と分割・統合操作を所有する。
 import { mulberry32 } from '../../math/random';
 import {
-  LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qRotate, type Quat,
+  LOCAL_UP, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qRotate, type Quat,
 } from '../../math/quat';
 import { add, v3, type Vec3 } from '../../math/vec3';
 import {
@@ -76,6 +76,7 @@ export class ShipAssembly {
   public addModule(
     instance: ShipModuleInstance, parentId?: string, transform?: ModuleTransform,
     kind: ConnectionKind = 'axial', connectionId?: string, sideSlot?: SideSlot,
+    sideReversed?: boolean,
   ): void {
     if (this.nodes.has(instance.id)) throw new Error(`duplicate ship module instance: ${instance.id}`);
     const definition = this.catalog.get(instance.definitionId);
@@ -105,12 +106,15 @@ export class ShipAssembly {
     if (parentId !== undefined) {
       const id = connectionId ?? `connection-${this.nextConnectionNumber++}`;
       if (connectionId !== undefined) this.nextConnectionNumber++;
-      const resolvedSideSlot = kind === 'side' ? sideSlot ?? sideSlotFromTransform(childTransform) : undefined;
+      const resolvedSideSlot = kind === 'side'
+        ? (sideReversed ? sideSlot : (sideSlot ?? sideSlotFromTransform(childTransform)))
+        : undefined;
       if (kind === 'side' && resolvedSideSlot == null) throw new Error(`side connection needs a valid side slot: ${instance.id}`);
       this.nodes.set(instance.id, { instance: cloneShipModuleInstance(instance), transform: childTransform });
       this.connections.push({
         id, parentId, childId: instance.id, kind, childTransform: copyTransform(childTransform),
         ...(resolvedSideSlot == null ? {} : { sideSlot: resolvedSideSlot }),
+        ...(sideReversed ? { sideReversed: true } : {}),
       });
     } else {
       this.nodes.set(instance.id, { instance: cloneShipModuleInstance(instance), transform: childTransform });
@@ -220,7 +224,7 @@ export class ShipAssembly {
     const pending: { readonly id: string; readonly parentId: string | null; readonly sourceEdge: ShipConnection | null }[] = [
       { id: otherPortId, parentId: null, sourceEdge: null },
     ];
-    const dockRotation = qFromAxisAngle(LOCAL_RIGHT, Math.PI);
+    const dockRotation = qFromAxisAngle(LOCAL_UP, Math.PI);
     const localDefinition = this.catalog.require(localPort.definitionId);
     const otherDefinition = this.catalog.require(otherPort.definitionId);
     const mappedOtherPortId = moduleIds.get(otherPortId);
@@ -258,8 +262,14 @@ export class ShipAssembly {
         };
         const edgeId = merged.uniqueConnectionId(sourceEdge.id);
         connectionIds.set(sourceEdge.id, edgeId);
+        const isTraversingBackwards = sourceEdge.parentId === current.id;
+        const isSide = sourceEdge.kind === 'side';
+        const sideReversed = isSide
+          ? (isTraversingBackwards ? !sourceEdge.sideReversed : (sourceEdge.sideReversed ?? false))
+          : undefined;
+        const sideSlot = isSide ? sourceEdge.sideSlot : undefined;
         merged.addModule(
-          instance, mappedParentId, relative, sourceEdge.kind, edgeId,
+          instance, mappedParentId, relative, sourceEdge.kind, edgeId, sideSlot, sideReversed,
         );
       }
       for (const edge of other.connections) {

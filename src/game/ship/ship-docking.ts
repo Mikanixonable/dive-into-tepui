@@ -4,7 +4,7 @@ import { add, cross, dot, len, norm, scale, sub, type Vec3 } from '../../math/ve
 import type { ModularShip } from './modular-ship';
 import { isDockingModule } from './ship-assembly';
 
-export const DOCKING_MAX_DISTANCE = 1;
+export const DOCKING_MAX_DISTANCE = 3;
 export const DOCKING_MAX_ANGLE = 10 * Math.PI / 180;
 export const DOCKING_MAX_RELATIVE_SPEED = 1;
 
