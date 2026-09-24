@@ -54,12 +54,30 @@ function reconstructAt(timeSeconds: number) {
   return { sample, material };
 }
 
+function measureSeekOrder(seekTimes: readonly number[]) {
+  const startedAt = performance.now();
+  const results = seekTimes.map(reconstructAt);
+  const elapsedMilliseconds = performance.now() - startedAt;
+  const eventCount = results.reduce((count, result) => count + result.sample.events.length, 0);
+  const transportWindSamples = results.reduce((count, result) => count + result.material.reduce(
+    (eventSamples, material) => eventSamples
+      + (material.parent?.steps ?? 0)
+      + material.releasedIceCohorts.reduce((cohortSamples, cohort) => cohortSamples + cohort.steps, 0),
+    0,
+  ), 0);
+  return { results, elapsedMilliseconds, eventCount, transportWindSamples };
+}
+
 export function register(): void {
   test('cloud cold-cache measurement: product event and material cohorts replay identically across seek order', () => {
     const seekTimes = [7_200, 1_800, 10_800, 4_500];
-    const first = seekTimes.map(reconstructAt);
-    const reverse = [...seekTimes].reverse().map(reconstructAt).reverse();
+    const forward = measureSeekOrder(seekTimes);
+    const backward = measureSeekOrder([...seekTimes].reverse());
+    const first = forward.results;
+    const reverse = backward.results.reverse();
     assert.deepEqual(reverse, first);
+    assert.equal(backward.eventCount, forward.eventCount);
+    assert.equal(backward.transportWindSamples, forward.transportWindSamples);
 
     for (const { sample, material } of first) {
       assert.equal(material.length, sample.events.length);
@@ -76,5 +94,16 @@ export function register(): void {
         ) < 1e-10);
       }
     }
+
+    console.log(JSON.stringify({
+      diagnostic: 'cloud-event-stateless-seek-reconstruction',
+      cacheMisses: null,
+      cacheNote: 'event and cohort reconstruction expose no cache to measure',
+      evaluationsPerOrder: seekTimes.length,
+      eventEvaluationsPerOrder: forward.eventCount,
+      transportWindSamplesPerOrder: forward.transportWindSamples,
+      forwardElapsedMilliseconds: forward.elapsedMilliseconds,
+      reverseElapsedMilliseconds: backward.elapsedMilliseconds,
+    }));
   });
 }
