@@ -59,6 +59,7 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
+      shootNative: (name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>) => Promise<string>;
       capture: () => Promise<string>;
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
@@ -258,6 +259,11 @@ async function init(): Promise<void> {
     earthSurfaceCapture,
     cases: CASE_NAMES,
     shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
+    shootNative: async (name, shotName, graphics) => {
+      const png = await view.shootNative(name, shotName, graphics);
+      syncAngles();
+      return png;
+    },
     capture: () => view.capture(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
