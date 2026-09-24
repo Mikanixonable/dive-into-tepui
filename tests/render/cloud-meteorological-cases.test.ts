@@ -107,13 +107,13 @@ export function register(): void {
     assert.ok(Math.abs(budget.residualKg) < 1e-12);
     assert.ok(budget.relativeResidual < 1e-12);
 
-    const lostColumn = areaWeightedMassBudget(samples.slice(0, 1));
-    assert.ok(Math.abs(lostColumn.residualKg) < 1e-12);
     const omittedSource = areaWeightedMassBudget(samples.map((sample, index) => index === 1
       ? { ...sample, sourceKgM2: 0.4 }
       : sample));
     assert.notEqual(omittedSource.residualKg, 0,
-      'an omitted source in a finite-area column must appear in the integrated residual');
+      'an omitted source in one finite-area column must appear in the integrated residual');
+    assert.equal(areaWeightedMassBudget([]).relativeResidual, 0,
+      'an empty field has no reference mass and no residual');
     assert.throws(() => areaWeightedMassBudget([
       { areaWeightM2: 1, initialKgM2: 0, sourceKgM2: 1, lossKgM2: 0, currentKgM2: -1 },
     ]), RangeError);

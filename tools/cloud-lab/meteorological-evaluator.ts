@@ -120,7 +120,7 @@ export function areaWeightedMassKg(samples: readonly AreaWeightedMassSample[]): 
   return totalMassKg;
 }
 
-// Integrate each column's complete water ledger before comparing the finite-area totals.
+// 各列の水収支を面積積分してから総量を比較する。
 export function areaWeightedMassBudget(
   samples: readonly AreaWeightedMassBudgetSample[],
 ): AreaWeightedMassBudget {
@@ -129,31 +129,47 @@ export function areaWeightedMassBudget(
     if (!Number.isFinite(sample.areaWeightM2) || sample.areaWeightM2 < 0) {
       throw new RangeError('areaWeightM2 must be finite and non-negative');
     }
-    for (const [name, massKgM2] of Object.entries({
-      initialKg: sample.initialKgM2,
-      sourceKg: sample.sourceKgM2,
-      lossKg: sample.lossKgM2,
-      currentKg: sample.currentKgM2,
-    })) {
-      if (!Number.isFinite(massKgM2) || massKgM2 < 0) {
-        throw new RangeError(`${name} must be finite and non-negative`);
-      }
-      const weightedMassKg = sample.areaWeightM2 * massKgM2;
-      const nextTotalKg = totals[name as keyof typeof totals] + weightedMassKg;
-      if (!Number.isFinite(weightedMassKg) || !Number.isFinite(nextTotalKg)) {
-        throw new RangeError('area-weighted mass budget must be finite');
-      }
-      totals[name as keyof typeof totals] = nextTotalKg;
-    }
+    totals.initialKg = addWeightedMassKg(
+      totals.initialKg, sample.areaWeightM2, sample.initialKgM2, 'initialKgM2',
+    );
+    totals.sourceKg = addWeightedMassKg(
+      totals.sourceKg, sample.areaWeightM2, sample.sourceKgM2, 'sourceKgM2',
+    );
+    totals.lossKg = addWeightedMassKg(
+      totals.lossKg, sample.areaWeightM2, sample.lossKgM2, 'lossKgM2',
+    );
+    totals.currentKg = addWeightedMassKg(
+      totals.currentKg, sample.areaWeightM2, sample.currentKgM2, 'currentKgM2',
+    );
   }
   const residualKg = totals.initialKg + totals.sourceKg - totals.lossKg - totals.currentKg;
   if (!Number.isFinite(residualKg)) throw new RangeError('mass budget residual must be finite');
-  const accountedMassKg = totals.initialKg + totals.sourceKg;
+  const referenceMassKg = Math.max(
+    totals.initialKg + totals.sourceKg,
+    totals.lossKg + totals.currentKg,
+  );
   return {
     ...totals,
     residualKg,
-    relativeResidual: accountedMassKg === 0 ? Math.abs(residualKg) : Math.abs(residualKg) / accountedMassKg,
+    relativeResidual: referenceMassKg === 0 ? 0 : Math.abs(residualKg) / referenceMassKg,
   };
+}
+
+function addWeightedMassKg(
+  currentTotalKg: number,
+  areaWeightM2: number,
+  massKgM2: number,
+  massName: string,
+): number {
+  if (!Number.isFinite(massKgM2) || massKgM2 < 0) {
+    throw new RangeError(`${massName} must be finite and non-negative`);
+  }
+  const weightedMassKg = areaWeightM2 * massKgM2;
+  const nextTotalKg = currentTotalKg + weightedMassKg;
+  if (!Number.isFinite(weightedMassKg) || !Number.isFinite(nextTotalKg)) {
+    throw new RangeError('area-weighted mass budget must be finite');
+  }
+  return nextTotalKg;
 }
 
 interface EnvironmentControls {
