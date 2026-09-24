@@ -66,6 +66,70 @@ def grid_parameters(dataset: Any) -> tuple[np.ndarray, np.ndarray, dict[str, flo
     return x_values, y_values, parameters
 
 
+def validate_cod_acm_grid_alignment(
+    cod_x: np.ndarray,
+    cod_y: np.ndarray,
+    cod_projection: dict[str, float],
+    acm_x: np.ndarray,
+    acm_y: np.ndarray,
+    acm_projection: dict[str, float],
+) -> None:
+    """2 km COD 格子が 1 km ACM 画素 2x2 の中心格子へ入れ子か検査する。"""
+    if acm_x.size != 2 * cod_x.size or acm_y.size != 2 * cod_y.size:
+        fail("COD/ACM grid dimensions are not aligned at a 2:1 ratio")
+    if cod_projection.keys() != acm_projection.keys() or any(
+        not math.isclose(cod_projection[key], acm_projection[key], rel_tol=0, abs_tol=1e-6)
+        for key in cod_projection
+    ):
+        fail("COD/ACM projections do not match")
+    if (not np.allclose(cod_x, (acm_x[::2] + acm_x[1::2]) / 2, rtol=0, atol=2e-9)
+        or not np.allclose(cod_y, (acm_y[::2] + acm_y[1::2]) / 2, rtol=0, atol=2e-9)):
+        fail("COD/ACM axes do not align as 2x2 child pixels")
+
+
+def summarize_cod_cloud_eligible_coverage(
+    cod_field_valid: np.ndarray,
+    cod_dqf: np.ndarray,
+    cod_dqf_valid: np.ndarray,
+    acm_field: np.ndarray,
+    acm_field_valid: np.ndarray,
+    acm_dqf: np.ndarray,
+    acm_dqf_valid: np.ndarray,
+    acm_inside_region: np.ndarray,
+) -> dict[str, Any]:
+    """good ACM cloud pixel centres上でCOD good coverageを固定格子集計する。"""
+    height, width = cod_field_valid.shape
+    if any(array.shape != (height, width) for array in (cod_dqf, cod_dqf_valid)):
+        fail("COD diagnostic field and DQF shapes disagree")
+    child_shape = (height * 2, width * 2)
+    if any(array.shape != child_shape for array in (
+        acm_field, acm_field_valid, acm_dqf, acm_dqf_valid, acm_inside_region,
+    )):
+        fail("ACM diagnostic grid is not four child pixels per COD pixel")
+
+    eligible_cloud = (
+        acm_inside_region & acm_field_valid & acm_dqf_valid
+        & good_dqf(acm_dqf, "L2_ACM") & np.isin(acm_field, (2, 3))
+    )
+    cloud_children = eligible_cloud.reshape(height, 2, width, 2).sum(axis=(1, 3))
+    denominator = int(cloud_children.sum())
+    cod_good = cod_field_valid & cod_dqf_valid & good_dqf(cod_dqf, "L2_COD")
+    numerator = int(cloud_children[cod_good].sum())
+    dqf_counts: Counter[int] = Counter()
+    for value, count in zip(*np.unique(cod_dqf[cloud_children > 0], return_counts=True), strict=True):
+        dqf_counts[int(value)] += int(np.sum(cloud_children[cod_dqf == value]))
+    return {
+        "eligibleCloudPixelCount": denominator,
+        "goodCodCloudPixelCount": numerator,
+        "coverageFraction": numerator / denominator if denominator else None,
+        "codDqfRawCountsOnEligibleCloudPixels": {str(value): count for value, count in sorted(dqf_counts.items())},
+        "denominatorDefinition": "good-DQF valid ACM class 2/3 (probably-cloudy/cloudy) 1 km pixel centres inside the geographic region",
+        "numeratorDefinition": "eligible ACM cloud pixel centres whose enclosing 2 km COD pixel has valid in-range COD and good DQF raw 0/1",
+        "aggregation": "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; pixel-centre counts, not polygon area overlap",
+        "limitations": "diagnostic only; not the final metric gate or area-weighted/solar-valid collocation; region eligibility uses pixel centres; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately",
+    }
+
+
 def geodetic_to_grid(latitude: np.ndarray, longitude: np.ndarray, projection: dict[str, float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """地表座標を GOES-R sweep=x の走査角へ投影し、可視性も返す。"""
     a, b, lon0 = projection["a"], projection["b"], projection["lon0"]
@@ -160,6 +224,12 @@ def raw_valid(values: np.ndarray, variable: Any) -> tuple[np.ndarray, np.ndarray
     else:
         fail(f"{variable.name}: 有効範囲の属性がない")
     return not_fill & valid, not_fill & ~valid
+
+
+def valid_dqf(values: np.ndarray, variable: Any) -> np.ndarray:
+    """DQF の fill と宣言範囲を除いた標本を返す。"""
+    valid, _ = raw_valid(values, variable)
+    return valid
 
 
 def unsigned_enabled(variable: Any) -> bool:
@@ -284,6 +354,77 @@ def summarize_product(path: Path, region: dict[str, float], product: str, field_
         return result
 
 
+def summarize_cod_cloud_coverage(cod_path: Path, acm_path: Path, region: dict[str, float]) -> dict[str, Any]:
+    """同スロットの good ACM cloud domain に対する COD good coverage を診断する。"""
+    with netCDF4.Dataset(cod_path, "r") as cod_dataset, netCDF4.Dataset(acm_path, "r") as acm_dataset:
+        cod_field, cod_dqf = cod_dataset.variables["COD"], cod_dataset.variables["DQF"]
+        acm_field, acm_dqf = acm_dataset.variables["ACM"], acm_dataset.variables["DQF"]
+        cod_x, cod_y, cod_projection = grid_parameters(cod_dataset)
+        acm_x, acm_y, acm_projection = grid_parameters(acm_dataset)
+        validate_cod_acm_grid_alignment(cod_x, cod_y, cod_projection, acm_x, acm_y, acm_projection)
+        if (cod_field.dimensions != ("y", "x") or cod_dqf.dimensions != ("y", "x")
+            or cod_field.shape != cod_dqf.shape or cod_field.shape != (len(cod_y), len(cod_x))):
+            fail(f"{cod_path.name}: COD/DQF/native-grid shapes disagree")
+        if (acm_field.dimensions != ("y", "x") or acm_dqf.dimensions != ("y", "x")
+            or acm_field.shape != acm_dqf.shape or acm_field.shape != (len(acm_y), len(acm_x))):
+            fail(f"{acm_path.name}: ACM/DQF/native-grid shapes disagree")
+        cod_field.set_auto_maskandscale(False)
+        cod_dqf.set_auto_maskandscale(False)
+        acm_field.set_auto_maskandscale(False)
+        acm_dqf.set_auto_maskandscale(False)
+        x_min, x_max, y_min, y_max = region_grid_bounds(region, cod_projection)
+        cod_x0, cod_x1 = index_window(cod_x, x_min, x_max)
+        cod_y0, cod_y1 = index_window(cod_y, y_min, y_max)
+        result: dict[str, Any] = {
+            "eligibleCloudPixelCount": 0,
+            "goodCodCloudPixelCount": 0,
+            "codDqfRawCountsOnEligibleCloudPixels": {},
+        }
+        dqf_counts: Counter[str] = Counter()
+        for cod_row0 in range(cod_y0, cod_y1, CHUNK_ROWS):
+            cod_row1 = min(cod_row0 + CHUNK_ROWS, cod_y1)
+            acm_row0, acm_row1 = cod_row0 * 2, cod_row1 * 2
+            acm_col0, acm_col1 = cod_x0 * 2, cod_x1 * 2
+            cod_values = raw_slice(cod_field, cod_row0, cod_row1, cod_x0, cod_x1)
+            cod_dqf_values = raw_slice(cod_dqf, cod_row0, cod_row1, cod_x0, cod_x1)
+            acm_values = raw_slice(acm_field, acm_row0, acm_row1, acm_col0, acm_col1)
+            acm_dqf_values = raw_slice(acm_dqf, acm_row0, acm_row1, acm_col0, acm_col1)
+            xx, yy = np.meshgrid(acm_x[acm_col0:acm_col1], acm_y[acm_row0:acm_row1])
+            latitude, longitude, visible = grid_to_geodetic(xx, yy, acm_projection)
+            inside = (
+                visible
+                & (latitude >= math.radians(region["southLatDeg"]))
+                & (latitude <= math.radians(region["northLatDeg"]))
+                & (longitude >= math.radians(region["westLonDeg"]))
+                & (longitude <= math.radians(region["eastLonDeg"]))
+            )
+            cod_valid, _ = raw_valid(cod_values, cod_field)
+            acm_valid, _ = raw_valid(acm_values, acm_field)
+            partial = summarize_cod_cloud_eligible_coverage(
+                cod_valid,
+                cod_dqf_values,
+                valid_dqf(cod_dqf_values, cod_dqf),
+                acm_values,
+                acm_valid,
+                acm_dqf_values,
+                valid_dqf(acm_dqf_values, acm_dqf),
+                inside,
+            )
+            result["eligibleCloudPixelCount"] += partial["eligibleCloudPixelCount"]
+            result["goodCodCloudPixelCount"] += partial["goodCodCloudPixelCount"]
+            dqf_counts.update(partial["codDqfRawCountsOnEligibleCloudPixels"])
+        result["coverageFraction"] = (
+            result["goodCodCloudPixelCount"] / result["eligibleCloudPixelCount"]
+            if result["eligibleCloudPixelCount"] else None
+        )
+        result["codDqfRawCountsOnEligibleCloudPixels"] = dict(sorted(dqf_counts.items(), key=lambda item: int(item[0])))
+        result["denominatorDefinition"] = "good-DQF valid ACM class 2/3 (probably-cloudy/cloudy) 1 km pixel centres inside the geographic region"
+        result["numeratorDefinition"] = "eligible ACM cloud pixel centres whose enclosing 2 km COD pixel has valid in-range COD and good DQF raw 0/1"
+        result["aggregation"] = "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; pixel-centre counts, not polygon area overlap"
+        result["limitations"] = "diagnostic only; not the final metric gate or area-weighted/solar-valid collocation; region eligibility uses pixel centres; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately"
+        return result
+
+
 def case_from_manifest(manifest_path: Path, case_id: str) -> dict[str, Any]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     cases = [case for case in manifest["cases"] if case["id"] == case_id]
@@ -333,12 +474,18 @@ def summarize_slot(case: dict[str, Any], case_id: str, case_dir: Path, observed_
         fail(f"{case_id}: 地理 bbox が不正")
     timestamp = f"{observed_time.year}{observed_time.timetuple().tm_yday:03d}{observed_time:%H%M}"
     products = []
+    paths: dict[str, Path] = {}
     for parent, product_name, field, dqf_product, band in PRODUCTS:
         path = locate_file(case_dir, product_name, satellite, timestamp, parent)
+        paths[dqf_product] = path
         summary = summarize_product(path, region, dqf_product, field, band)
         summary["caseId"] = case_id
         summary["slotStart"] = observed_time.isoformat().replace("+00:00", "Z")
         products.append(summary)
+    cod_summary = next(summary for summary in products if summary["product"] == "L2_COD")
+    cod_summary["cloudEligibleCoverageDiagnostic"] = summarize_cod_cloud_coverage(
+        paths["L2_COD"], paths["L2_ACM"], region,
+    )
     return products
 
 
@@ -379,6 +526,30 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
             for summary in summaries
         ],
     }
+    diagnostics = [summary["cloudEligibleCoverageDiagnostic"] for summary in summaries
+                   if isinstance(summary.get("cloudEligibleCoverageDiagnostic"), dict)]
+    if diagnostics:
+        eligible = sum(diagnostic["eligibleCloudPixelCount"] for diagnostic in diagnostics)
+        good_cod = sum(diagnostic["goodCodCloudPixelCount"] for diagnostic in diagnostics)
+        cloud_dqf_counts: Counter[str] = Counter()
+        for diagnostic in diagnostics:
+            cloud_dqf_counts.update(diagnostic["codDqfRawCountsOnEligibleCloudPixels"])
+        aggregate_result["cloudEligibleCoverageDiagnostic"] = {
+            **{key: diagnostics[0][key] for key in (
+                "denominatorDefinition", "numeratorDefinition", "aggregation", "limitations",
+            )},
+            "slotCount": len(diagnostics),
+            "eligibleCloudPixelCount": eligible,
+            "goodCodCloudPixelCount": good_cod,
+            "coverageFraction": good_cod / eligible if eligible else None,
+            "codDqfRawCountsOnEligibleCloudPixels": dict(
+                sorted(cloud_dqf_counts.items(), key=lambda item: int(item[0])),
+            ),
+        }
+        for slot, summary in zip(aggregate_result["slots"], summaries, strict=True):
+            diagnostic = summary.get("cloudEligibleCoverageDiagnostic")
+            if isinstance(diagnostic, dict):
+                slot["cloudEligibleCoverageDiagnostic"] = diagnostic
     if field_counts:
         aggregate_result["rawFieldCounts"] = dict(sorted(field_counts.items(), key=lambda item: int(item[0])))
     return aggregate_result
@@ -409,7 +580,7 @@ def run(manifest_path: Path, case_id: str, case_dir: Path, all_slots: bool = Fal
         "observationEnd": case["series"]["end"] if all_slots else case["series"]["start"],
         "slotCount": len(slots),
         "region": region,
-        "scope": "all declared series slots; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; no cross-product collocation, scan-line timing, solar mask, cloud parallax, area weighting, calibrated radiance, or evaluation metric" if all_slots else "one manifest start slot; each product is summarized on its native grid; no cross-product collocation, scan-line timing, solar mask, cloud parallax, area weighting, calibrated radiance, or evaluation metric",
+        "scope": "all declared series slots; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD adds a diagnostic ACM cloud-eligible 2x2 fixed-grid summary (not area-weighted or a metric gate); no scan-line timing, solar mask, cloud parallax, or calibrated radiance" if all_slots else "one manifest start slot; each product is summarized on its native grid; COD adds a diagnostic ACM cloud-eligible 2x2 fixed-grid summary (not area-weighted or a metric gate); no scan-line timing, solar mask, cloud parallax, or calibrated radiance",
         "products": products,
     }
 
