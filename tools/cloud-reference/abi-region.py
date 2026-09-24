@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import math
 from pathlib import Path
@@ -284,7 +284,7 @@ def summarize_product(path: Path, region: dict[str, float], product: str, field_
         return result
 
 
-def run(manifest_path: Path, case_id: str, case_dir: Path) -> dict[str, Any]:
+def case_from_manifest(manifest_path: Path, case_id: str) -> dict[str, Any]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     cases = [case for case in manifest["cases"] if case["id"] == case_id]
     if len(cases) != 1:
@@ -292,27 +292,109 @@ def run(manifest_path: Path, case_id: str, case_dir: Path) -> dict[str, Any]:
     case = cases[0]
     if case["source"].get("provider") != "NOAA" or "GOES-" not in case["source"].get("product", ""):
         fail(f"{case_id} は NOAA GOES の系列ではない")
+    return case
+
+
+def series_slots(case: dict[str, Any]) -> list[datetime]:
+    """系列の開始・終了を含む、宣言間隔の UTC スロットを返す。"""
+    series = case["series"]
+    start = datetime.fromisoformat(series["start"].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(series["end"].replace("Z", "+00:00"))
+    interval = int(series["intervalMinutes"])
+    if start.utcoffset() is None or end.utcoffset() is None or interval <= 0 or end < start:
+        fail(f"{case['id']}: 系列の時刻または間隔が不正")
+    step = timedelta(minutes=interval)
+    elapsed = end - start
+    if elapsed.total_seconds() % step.total_seconds() != 0:
+        fail(f"{case['id']}: 系列の終了時刻が intervalMinutes に整列していない")
+    return [start + step * index for index in range(int(elapsed / step) + 1)]
+
+
+def summarize_slot(case: dict[str, Any], case_id: str, case_dir: Path, observed_time: datetime) -> list[dict[str, Any]]:
     satellite_match = re.match(r"GOES-(\d+)", case["source"]["product"])
     satellite = f"G{int(satellite_match.group(1)):02d}"
     region = case["observation"]["region"]
     if not (-180 <= region["westLonDeg"] < region["eastLonDeg"] <= 180 and -90 <= region["southLatDeg"] < region["northLatDeg"] <= 90):
         fail(f"{case_id}: 地理 bbox が不正")
-    start = case["series"]["start"]
-    observed_time = datetime.fromisoformat(start.replace("Z", "+00:00"))
     timestamp = f"{observed_time.year}{observed_time.timetuple().tm_yday:03d}{observed_time:%H%M}"
     products = []
     for parent, product_name, field, dqf_product, band in PRODUCTS:
         path = locate_file(case_dir, product_name, satellite, timestamp, parent)
         summary = summarize_product(path, region, dqf_product, field, band)
         summary["caseId"] = case_id
+        summary["slotStart"] = observed_time.isoformat().replace("+00:00", "Z")
         products.append(summary)
+    return products
+
+
+AGGREGATE_COUNTS = (
+    "regionGridPixelCount", "fieldFillCount", "fieldOutOfRangeCount", "fieldValidCount",
+    "dqfFillCount", "dqfOutOfRangeCount", "dqfGoodCount", "jointGoodFieldAndDqfCount",
+)
+
+
+def aggregate_product_slots(product: str, field: str, band: int | None, summaries: list[dict[str, Any]]) -> dict[str, Any]:
+    """スロット別の品質系列と pixel-weighted coverage を集約する。"""
+    aggregate = {key: sum(summary[key] for summary in summaries) for key in AGGREGATE_COUNTS}
+    dqf_counts: Counter[str] = Counter()
+    field_counts: Counter[str] = Counter()
+    for summary in summaries:
+        dqf_counts.update(summary["dqfRawCounts"])
+        field_counts.update(summary.get("rawFieldCounts", {}))
+    aggregate_result: dict[str, Any] = {
+        "product": product,
+        "field": field,
+        "bandId": band,
+        "slotCount": len(summaries),
+        **aggregate,
+        "dqfRawCounts": dict(sorted(dqf_counts.items(), key=lambda item: int(item[0]))),
+        "pixelCoverageFraction": (
+            aggregate["jointGoodFieldAndDqfCount"] / aggregate["regionGridPixelCount"]
+            if aggregate["regionGridPixelCount"] else None
+        ),
+        "coverageDefinition": "sum of good DQF and non-fill in-range field pixel-centre counts / sum of region pixel-centre counts; not area weighted",
+        "slots": [
+            {
+                "slotStart": summary["slotStart"],
+                "sourceFile": summary["sourceFile"],
+                **{key: summary[key] for key in AGGREGATE_COUNTS},
+                "pixelCoverageFraction": summary["pixelCoverageFraction"],
+                "dqfRawCounts": summary["dqfRawCounts"],
+            }
+            for summary in summaries
+        ],
+    }
+    if field_counts:
+        aggregate_result["rawFieldCounts"] = dict(sorted(field_counts.items(), key=lambda item: int(item[0])))
+    return aggregate_result
+
+
+def run(manifest_path: Path, case_id: str, case_dir: Path, all_slots: bool = False) -> dict[str, Any]:
+    case = case_from_manifest(manifest_path, case_id)
+    region = case["observation"]["region"]
+    if not (-180 <= region["westLonDeg"] < region["eastLonDeg"] <= 180 and -90 <= region["southLatDeg"] < region["northLatDeg"] <= 90):
+        fail(f"{case_id}: 地理 bbox が不正")
+    slots = series_slots(case) if all_slots else [datetime.fromisoformat(case["series"]["start"].replace("Z", "+00:00"))]
+    per_slot = [summarize_slot(case, case_id, case_dir, observed_time) for observed_time in slots]
+    if not all_slots:
+        products = per_slot[0]
+    else:
+        products = [
+            aggregate_product_slots(
+                initial["product"], initial["field"], initial["bandId"],
+                [slot_products[index] for slot_products in per_slot],
+            )
+            for index, initial in enumerate(per_slot[0])
+        ]
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2 if all_slots else 1,
         "caseId": case_id,
         "split": case["split"],
-        "observationStart": start,
+        "observationStart": case["series"]["start"],
+        "observationEnd": case["series"]["end"] if all_slots else case["series"]["start"],
+        "slotCount": len(slots),
         "region": region,
-        "scope": "one manifest start slot; each product is summarized on its native grid; no cross-product collocation, scan-line timing, solar mask, cloud parallax, area weighting, calibrated radiance, or evaluation metric",
+        "scope": "all declared series slots; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; no cross-product collocation, scan-line timing, solar mask, cloud parallax, area weighting, calibrated radiance, or evaluation metric" if all_slots else "one manifest start slot; each product is summarized on its native grid; no cross-product collocation, scan-line timing, solar mask, cloud parallax, area weighting, calibrated radiance, or evaluation metric",
         "products": products,
     }
 
@@ -322,9 +404,10 @@ def main() -> int:
     parser.add_argument("case_id", help="manifest の NOAA case ID")
     parser.add_argument("case_dir", type=Path, help="取得済みケースのディレクトリ")
     parser.add_argument("--manifest", type=Path, default=Path(__file__).with_name("manifest.json"))
+    parser.add_argument("--all-slots", action="store_true", help="manifest の全系列スロットを集計する")
     args = parser.parse_args()
     try:
-        report = run(args.manifest, args.case_id, args.case_dir.resolve())
+        report = run(args.manifest, args.case_id, args.case_dir.resolve(), all_slots=args.all_slots)
     except (OSError, ValueError, KeyError, RegionError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 2
