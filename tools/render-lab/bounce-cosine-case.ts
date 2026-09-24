@@ -58,8 +58,8 @@ function bounceCosine(): LabCase {
       'bounce-cosine-diffuse': {
         view: EARTH_AWAY, graphics: GRAPHICS, debugTarget: 'diffuse',
       },
-      'bounce-cosine-indirect': {
-        view: EARTH_AWAY, graphics: GRAPHICS, debugTarget: 'indirect',
+      'bounce-cosine-correction': {
+        view: EARTH_AWAY, graphics: GRAPHICS, debugTarget: 'correction',
       },
       'bounce-cosine-source': {
         view: EARTH_AWAY, graphics: GRAPHICS, debugTarget: 'bounce-source',

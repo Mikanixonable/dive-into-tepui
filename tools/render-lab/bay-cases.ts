@@ -302,9 +302,9 @@ function bay(): LabCase {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4), debugTarget: 'diffuse',
       },
-      'bay-earth-open-occlusion': {
+      'bay-earth-open-correction': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
-        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'occlusion',
+        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'correction',
       },
       'bay-earth-corner': {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
@@ -314,9 +314,9 @@ function bay(): LabCase {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4), debugTarget: 'diffuse',
       },
-      'bay-earth-corner-occlusion': {
+      'bay-earth-corner-correction': {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
-        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'occlusion',
+        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'correction',
       },
       'bay-moon-open': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, SMALL_EARTH_RADIUS_DEG, SMALL_EARTH_SUN_DISTANCE_LOG_AU),
@@ -349,7 +349,7 @@ function bay(): LabCase {
       'bay-bounce-source': {
         view: { ...SUN_BELOW, ...EARTH_AWAY }, graphics: { planetLightCount: 0 }, debugTarget: 'bounce-source',
       },
-      'bay-indirect': { view: {}, debugTarget: 'indirect' },
+      'bay-correction': { view: {}, debugTarget: 'correction' },
       'bay-quality-low': { view: {}, graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse' },
       'bay-quality-medium': { view: {}, graphics: { screenSpaceQuality: 1 }, debugTarget: 'diffuse' },
       'bay-quality-high': { view: {}, graphics: { screenSpaceQuality: 2 }, debugTarget: 'diffuse' },

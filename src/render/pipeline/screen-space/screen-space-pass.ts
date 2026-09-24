@@ -1,6 +1,6 @@
 // 遮蔽と照り返しのパス。G バッファの深度と法線から、画素ごとに近くの構造が環境光ごとの向きの範囲を
-// どれだけ塞いでいるかと、照り返しを描く方式では塞いでいる面が返す光を求め、ScreenSpaceLight の
-// 描画先へ書く。描画設定の方式と精細さを受け、方式がオフのフレームは描画命令を出さない。
+// どれだけ塞いでいるかと、照り返しを描く方式では塞いでいる面が返す光を求め、符号付き拡散照度補正へ
+// 書く。描画設定の方式と精細さを受け、方式がオフのフレームは描画命令を出さない。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
@@ -12,7 +12,7 @@ import { BlueNoise } from '../../blue-noise';
 import { ShadingSample } from '../lighting/shading-sample';
 import { compileInto } from '../compile-into';
 import { gbufferUVOf, scanHemisphere, type Cap } from './hemisphere-scan';
-import { ScreenSpaceLight } from './screen-space-light';
+import { signedDiffuseCorrection, type DiffuseCorrection } from './diffuse-correction';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
 import type { PlanetLightSource } from '../lighting/planet-light-source';
@@ -42,6 +42,7 @@ const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
 
 // 均しで隣の重みが 0 に落ちる、中心との奥行きの鍵の差(view 深度の相対差にほぼ等しい)。
 const EDGE_DEPTH_TOLERANCE = 0.05;
+const MIN_EXTENT = 1e-3;
 // 面の写っていない画素の奥行きの鍵。どの面の鍵とも離れた、rgba16float に収まる値。
 const VOID_DEPTH_KEY = 60000;
 // 均しの 1 軸の、隣の画素のずれ [px] と二項係数の組。
@@ -50,8 +51,6 @@ const DENOISE_TAPS = [[-1, 1], [0, 2], [1, 1]] as const;
 // 走査と均しが書く 1 画素 — 塞がれた測度・数える範囲の測度と奥行きの鍵(w)・照り返しの放射照度。
 // 描画先の同名の 3 枚へ stageOutput で書く。
 const STAGE_TEXEL = struct({ occluded: 'vec4', extent: 'vec4', indirect: 'vec4' }, 'ScreenSpaceTexel');
-// 拡大が書く 1 画素。成員の名は ScreenSpaceLight の描画先の 2 枚と結び付く。
-const LIGHT_TEXEL = struct({ visibility: 'vec4', indirect: 'vec4' }, 'ScreenSpaceLightTexel');
 
 // 描画命令 1 本: material を全画面に描いて target へ書く。
 interface Stage {
@@ -107,11 +106,6 @@ function stageOutput(texel: THREE.Node): ReturnType<typeof mrt> {
   return mrt({
     occluded: texel.get('occluded'), extent: texel.get('extent'), indirect: texel.get('indirect'),
   });
-}
-
-// Fn が返した LIGHT_TEXEL の 2 つの値を、ScreenSpaceLight の描画先の 2 枚へ書く出力。
-function lightOutput(texel: THREE.Node): ReturnType<typeof mrt> {
-  return mrt({ visibility: texel.get('visibility'), indirect: texel.get('indirect') });
 }
 
 // view 深度 viewDepth [m] を、均しと拡大が奥行きの比を差で比べられる鍵にする。covered が偽(面の写っていない
@@ -174,9 +168,10 @@ export class ScreenSpacePass {
   private readonly gbufferPixel = ivec2(floor(this.gbufferUV.mul(this.fullSize)));
   // 走査の解像度の画素の、光の向きと面の向きを引くシェーディング入力。
   private readonly sample: ShadingSample;
+  private readonly fullSample: ShadingSample;
   private readonly blueNoise = new BlueNoise();
-  // 直前のフレームで出力を書いたか。方式がオフへ切り替わったあと 1 度だけ空へ戻すために持つ。
-  private drawn = false;
+  // オフのあいだ一度だけ中立値へ消したか。初回のオフでも未初期化の GPU メモリを読ませない。
+  private outputCleared = false;
   // 空へ戻すときに退避する消去色。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
@@ -185,10 +180,11 @@ export class ScreenSpacePass {
   // 描画設定 screenSpaceDiffuse / screenSpaceQuality の値。
   public constructor(
     private readonly renderer: WebGPURenderer, gbuffer: GBufferPass, sun: SunSource, planetLight: PlanetLightSource,
-    ambient: AmbientSource, private readonly output: ScreenSpaceLight, private readonly gpu: GpuTimings,
+    ambient: AmbientSource, private readonly output: DiffuseCorrection, private readonly gpu: GpuTimings,
     private mode: ScreenSpaceDiffuse, private quality: ScreenSpaceQuality,
   ) {
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
+    this.fullSample = new ShadingSample(gbuffer, screenUV);
     this.stages = {
       [SCREEN_SPACE_DIFFUSE.off]: [],
       [SCREEN_SPACE_DIFFUSE.occlusion]: this.createStages(gbuffer, planetLight, ambient, null),
@@ -226,7 +222,7 @@ export class ScreenSpacePass {
       this.quad.render(this.renderer);
     }
     this.renderer.setRenderTarget(null);
-    this.drawn = true;
+    this.outputCleared = false;
   }
 
   // いまの方式の全段のマテリアルを、それぞれの描画先へ事前コンパイルする。
@@ -285,8 +281,9 @@ export class ScreenSpacePass {
     const reblurred = stageMaterial();
     reblurred.mrtNode = stageOutput(denoised(blurOccluded!, blurExtent!, sun === null ? null : blurIndirect!));
     const upsampled = stageMaterial();
-    upsampled.mrtNode = lightOutput(
-      this.upsampled(gbuffer, scanOccluded!, scanExtent!, sun === null ? null : scanIndirect!));
+    upsampled.mrtNode = mrt({ diffuseCorrection: this.upsampled(
+      gbuffer, planetLight, ambient, scanOccluded!, scanExtent!, sun === null ? null : scanIndirect!,
+    ) });
     return [
       { material: prepass, target: this.surfaceTarget, gpuPass: GPU_PASS.bounceSource },
       { material: scan, target: this.scanTarget, gpuPass: GPU_PASS.nearbyDiffuseScan },
@@ -304,21 +301,20 @@ export class ScreenSpacePass {
   ): Vec3Node {
     const material = texture(gbuffer.basecolorTexture, this.sample.uv);
     const albedo = material.rgb.mul(material.a.oneMinus());
-    // 天体照は光源モデルの設定によらず一様球の式で引く — 写しを焼くのはこのパスの後で、ここで読めるのは
-    // 前のフレームの像である。
     const irradiance = sun.pointIrradiance(this.sample)
-      .add(planetLight.uniformDiffuseIrradiance(this.sample))
+      .add(planetLight.bounceSourceIrradiance(this.sample))
       .add(ambient.irradiance(this.sample));
     return albedo.div(Math.PI).mul(irradiance)
       .add(texture(gbuffer.emissiveTexture, this.sample.uv).rgb);
   }
 
   // 全解像度の画素ごとに、近い 2×2 の走査の画素の結果を、奥行きの鍵が近いものだけで双線形に混ぜ(どれも離れて
-  // いれば最も近いものを採り)、光ごとの割合へ詰めて LIGHT_TEXEL で返す。面の写っていない画素は遮られず、
+  // いれば最も近いものを採り)、遮られた拡散照度と照り返しの差を返す。面の写っていない画素は遮られず、
   // 照り返しを受けないとする。occluded / extent / indirect は走査の解像度の結果で、indirect が null なら
   // 照り返しは 0。
   private upsampled(
-    gbuffer: GBufferPass, occluded: THREE.Texture, extent: THREE.Texture, indirect: THREE.Texture | null,
+    gbuffer: GBufferPass, planetLight: PlanetLightSource, ambient: AmbientSource,
+    occluded: THREE.Texture, extent: THREE.Texture, indirect: THREE.Texture | null,
   ): THREE.Node {
     return Fn(() => {
       const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
@@ -361,7 +357,16 @@ export class ScreenSpacePass {
       const pickedOccluded = select(covered, select(blended, occludedSum.div(share), nearestOccluded), vec3(0));
       const pickedExtent = select(blended, extentSum.div(share), nearestExtent);
       const received = select(covered, select(blended, indirectSum.div(share), nearestIndirect), vec3(0));
-      return LIGHT_TEXEL(ScreenSpaceLight.encode(pickedOccluded, pickedExtent), vec4(received, 1));
+      const ambientBlocked = clamp(pickedOccluded.x, 0, 1);
+      const planetBlocked = (slot: number, component: FloatNode, range: FloatNode): Vec3Node => {
+        const fraction = select(range.greaterThan(MIN_EXTENT),
+          clamp(component.div(max(range, MIN_EXTENT)), 0, 1), float(0));
+        return planetLight.diffuseIrradianceAtSlot(this.fullSample, slot).mul(fraction);
+      };
+      const blocked = ambient.irradiance(this.fullSample).mul(ambientBlocked)
+        .add(planetBlocked(0, pickedOccluded.y, pickedExtent.x))
+        .add(planetBlocked(1, pickedOccluded.z, pickedExtent.y));
+      return vec4(signedDiffuseCorrection(received, blocked), 1);
     })();
   }
 
@@ -385,12 +390,13 @@ export class ScreenSpacePass {
     this.projection.value.copy(camera.projectionMatrix);
     this.projectionInverse.value.copy(camera.projectionMatrixInverse);
     this.sample.sync(camera);
+    this.fullSample.sync(camera);
   }
 
-  // 方式がオフのフレームに render の代わりに走る。**オフへ切り替わった最初の 1 フレームだけ**結果と
+  // 方式がオフのフレームに render の代わりに走る。**オフになった最初の 1 フレームだけ**結果と
   // 照り返しの源を空へ戻す — 残すと、デバッグ表示に切る直前の像が凍ったまま出る。
   private clearOutput(): void {
-    if (!this.drawn) return;
+    if (this.outputCleared) return;
     // 消去色はレンダラーを共有する他のパスのものなので、退避して黒の透明で消し、戻す。
     const savedClearAlpha = this.renderer.getClearAlpha();
     this.renderer.getClearColor(this.savedClearColor);
@@ -401,6 +407,6 @@ export class ScreenSpacePass {
     }
     this.renderer.setRenderTarget(null);
     this.renderer.setClearColor(this.savedClearColor, savedClearAlpha);
-    this.drawn = false;
+    this.outputCleared = true;
   }
 }
