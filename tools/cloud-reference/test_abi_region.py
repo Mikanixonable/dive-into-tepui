@@ -183,10 +183,14 @@ class AbiRegionGeometryTest(unittest.TestCase):
             np.array([[0, 6, 14, 0]], dtype=np.uint8),
             np.ones((1, 4), dtype=bool),
             acm_field, acm_field_valid, acm_dqf, acm_dqf_valid, acm_inside,
+            np.tile(np.array([1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 1.0, 1.0]), (2, 1)),
         )
         self.assertEqual(result["eligibleCloudPixelCount"], 12)
         self.assertEqual(result["goodCodCloudPixelCount"], 4)
         self.assertAlmostEqual(result["coverageFraction"], 1 / 3)
+        self.assertEqual(result["eligibleCloudAreaM2"], 26.0)
+        self.assertEqual(result["goodCodCloudAreaM2"], 6.0)
+        self.assertAlmostEqual(result["areaWeightedCoverageFraction"], 6 / 26)
         self.assertEqual(result["codDqfRawCountsOnEligibleCloudPixels"], {"0": 4, "6": 4, "14": 4})
         self.assertIn("raw 6 and raw 14 remain in the cloud denominator", result["limitations"])
 
@@ -197,9 +201,26 @@ class AbiRegionGeometryTest(unittest.TestCase):
             np.array([[0, 6, 14, 0]], dtype=np.uint8),
             np.ones((1, 4), dtype=bool),
             acm_field, acm_field_valid, acm_dqf, acm_dqf_valid, acm_inside,
+            np.ones((2, 8)),
         )
         self.assertEqual(masked["eligibleCloudPixelCount"], 10)
         self.assertEqual(masked["goodCodCloudPixelCount"], 2)
+
+    def test_fixed_grid_pixel_areas_grow_towards_scan_edge(self) -> None:
+        x = np.linspace(-0.12, -0.10, 5)
+        y = np.linspace(0.03, 0.01, 5)
+        areas = REGION.grid_pixel_area_weights(x, y, self.projection, 0, 4, 0, 4)
+        self.assertTrue(np.all(np.isfinite(areas)))
+        self.assertTrue(np.all(areas > 0))
+        self.assertGreater(float(areas[0, 0]), float(areas[0, -1]))
+
+    def test_nadir_pixel_area_matches_small_angle_metric(self) -> None:
+        step = 1e-5
+        axis = np.array([-step, 0.0, step])
+        area = REGION.grid_pixel_area_weights(axis, axis, self.projection, 1, 2, 1, 2)[0, 0]
+        # At nadir, ground distance per small scan-angle increment tends to satellite altitude * dθ.
+        expected = (self.projection["height"] * step) ** 2
+        self.assertLess(abs(float(area) / expected - 1), 1e-5)
 
 
 class AbiRegionSeriesTest(unittest.TestCase):
@@ -310,7 +331,11 @@ class AbiRegionSeriesTest(unittest.TestCase):
                 "dqfRawCounts": {"0": 10}, "cloudEligibleCoverageDiagnostic": {
                     "eligibleCloudPixelCount": eligible, "goodCodCloudPixelCount": covered,
                     "coverageFraction": covered / eligible, "codDqfRawCountsOnEligibleCloudPixels": raw_dqf,
+                    "eligibleCloudAreaM2": eligible * 2.0, "goodCodCloudAreaM2": covered * 3.0,
+                    "areaWeightedCoverageFraction": covered * 1.5 / eligible,
                     "denominatorDefinition": "ACM cloud pixels", "numeratorDefinition": "good COD over ACM clouds",
+                    "areaDenominatorDefinition": "weighted eligible ACM cloud pixels",
+                    "areaNumeratorDefinition": "weighted good COD over ACM clouds",
                     "aggregation": "2x2 fixed-grid count", "limitations": "diagnostic only",
                 },
             }
@@ -324,6 +349,9 @@ class AbiRegionSeriesTest(unittest.TestCase):
         self.assertEqual(diagnostic["eligibleCloudPixelCount"], 300)
         self.assertEqual(diagnostic["goodCodCloudPixelCount"], 75)
         self.assertEqual(diagnostic["coverageFraction"], 0.25)
+        self.assertEqual(diagnostic["eligibleCloudAreaM2"], 600.0)
+        self.assertEqual(diagnostic["goodCodCloudAreaM2"], 225.0)
+        self.assertEqual(diagnostic["areaWeightedCoverageFraction"], 0.375)
         self.assertEqual(diagnostic["codDqfRawCountsOnEligibleCloudPixels"], {"0": 75, "6": 20, "14": 205})
         self.assertIn("cloudEligibleCoverageDiagnostic", result["slots"][0])
 
