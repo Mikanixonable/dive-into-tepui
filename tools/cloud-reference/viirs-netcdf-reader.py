@@ -1,7 +1,7 @@
 """VIIRS CLDPROP L2 NetCDF から COD 復号器用の packed 入力を読む。
 
-版、寸法、属性、変数の期待値は NASA の v1.1 file spec 公開ページと
-アクセス可能な v1.0 CDL 例に基づく暫定契約である。実 v1.1 granule の
+版、寸法、属性、変数の期待値は NASA の Collection 1 file spec にある
+v1.0 CDL 例から v1.1 へ外挿した暫定契約である。実 v1.1 granule の
 検査は未実施であり、合成 NetCDF だけで検証している。
 """
 
