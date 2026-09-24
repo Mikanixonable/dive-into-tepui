@@ -384,6 +384,7 @@ class AbiRegionSeriesTest(unittest.TestCase):
                 result = REGION.cod_indicator_availability(invalid, "aggregated_series")
                 self.assertEqual(result["status"], "blocked_invalid_or_missing_support_fraction")
                 self.assertEqual(result["scope"], "aggregated_series")
+                self.assertIsNone(result["diagnosticSupportFraction"])
 
 
 if __name__ == "__main__":
