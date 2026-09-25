@@ -7,7 +7,7 @@
 // 大気と同一の共通関数で評価される。イベント位置までの背景大気透過と、イベント間の雲透過の合成は
 // AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
-import { dot, greaterThan, max, min, uniform, vec4 } from 'three/tsl';
+import { dot, greaterThan, max, min, normalize, uniform, vec4 } from 'three/tsl';
 import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
 import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../cloud/cloud-optics-node';
 import { CloudShapeEvaluator } from '../cloud/cloud-shape-evaluator';
@@ -89,6 +89,8 @@ export interface CloudShellSample {
   // 鉛直柱を視線へ写す倍率。球殻の厚みで接線側の発散を有限化する。
   readonly airmass: FloatNode;
   readonly transmittance: FloatNode;
+  // その交点から視線の前方へ局所光学場を抜ける消散。未結合では 0。
+  readonly localFieldTau: FloatNode;
   // イベント局所の放射輝度。背景大気透過と手前イベント透過はここでは掛けない。
   readonly radiance: Vec3Node;
 }
@@ -160,11 +162,19 @@ export class CloudAtmosphereRenderer {
     const thickness = max(knob.topAltitude.sub(knob.bottomAltitude), MIN_SHELL_THICKNESS);
     const airmass = shellAirmassNode(dot(up, rayDir), thickness, shellRadius);
     const transmittance = transmittanceFromColumnOpticalDepthNode(columnOpticalDepth, airmass);
+    // 局所光学場を抜ける消散は交点から視線の前方へ同じ場の光路で積分する。位置は |p|=1 が
+    // frame.sphereRadiusM の正規化空間へ — offset は真球にした空間の実寸なので基準半径(殻の
+    // 半径から殻の高度を引いたもの)で割り、天体固定の基底へ回すのは 2D の場と同じ規則。
+    const surfaceRadius = shellRadius.sub(shellAltitudeOf(species));
+    const positionN = this.bodyFromWorld.mul(vec4(offset, 0)).xyz.div(surfaceRadius);
+    const directionN = normalize(this.bodyFromWorld.mul(vec4(rayDir, 0)).xyz);
+    const localFieldTau = this.fieldSampler.localOpticalPathAt(positionN, directionN, 32).z;
     const covered = transmittance.oneMinus();
     return {
       columnOpticalDepth,
       airmass,
       transmittance,
+      localFieldTau,
       radiance: sunRadiance.mul(covered.mul(max(dot(up, sunDir), 0)).mul(knob.albedo)),
     };
   }

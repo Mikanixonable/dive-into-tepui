@@ -24,7 +24,9 @@ import {
   createCloudDetailDiagnosticTile, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM,
   estimateCloudDetailDiagnosticTexture, type CloudDetailDiagnosticTextureEstimate,
 } from './cloud-detail-diagnostic';
+import { createCloudLocalFieldDiagnostic } from './cloud-local-field-diagnostic';
 import type { CloudPresentationDetailTile } from '../../src/render/cloud/cloud-presentation';
+import type { CloudLocalFieldBinding } from '../../src/render/cloud/cloud-local-field';
 
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
 export const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.averageHue, EARTH_TEXTURE.bondAlbedo);
@@ -79,6 +81,7 @@ export class LabEarth {
   private readonly surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   private readonly clouds = earthCloudPresentation();
   private diagnosticCloudDetail: CloudPresentationDetailTile | null = null;
+  private diagnosticLocalField: CloudLocalFieldBinding | null = null;
   private diagnosticWavelengthKm: number | null = null;
   private diagnosticDirectionDeg = 0;
   private diagnosticPhaseDeg = 0;
@@ -162,6 +165,18 @@ export class LabEarth {
     this.diagnosticComposition = composition;
   }
 
+  // render-lab 専用の局所光学場を生成雲へ差し込む。無効化すると texture を解放して現行場へ戻す。
+  public setCloudLocalFieldDiagnostic(enabled: boolean): void {
+    if (!enabled) {
+      if (this.diagnosticLocalField === null) return;
+      this.diagnosticLocalField.texture.dispose();
+      this.diagnosticLocalField = null;
+      return;
+    }
+    if (this.diagnosticLocalField !== null) return;
+    this.diagnosticLocalField = createCloudLocalFieldDiagnostic();
+  }
+
   // 地球のつまみ angles の置き方へ、中心・自転姿勢・天体固定への行列・大気の極軸を置き直す。
   public place(angles: Pick<LabViewAngles, EarthAngleKey>): void {
     this.center.copy(earthCenterOf(angles));
@@ -175,7 +190,9 @@ export class LabEarth {
   public sync(camera: THREE.Camera, graphics: GraphicsSettingsData, style: RenderStyle): void {
     // 殻の分割段は寄り切った 1 段に固定する — カメラ距離は観察のつまみで動くが、絵の比較は最も
     // 細かい段で行う。
-    this.clouds.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX, this.diagnosticCloudDetail);
+    this.clouds.syncGraphics(
+      graphics, CLOSE_UP_DIAMETER_PX, this.diagnosticCloudDetail, this.diagnosticLocalField,
+    );
     if (graphics.clouds) this.clouds.aimFrom(camera.position, this.center, this.object.quaternion, this.cumulus.axes);
     this.graticule.setVisible(style === 'schematic');
     this.coastline.setVisible(style === 'schematic');
