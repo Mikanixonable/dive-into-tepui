@@ -124,14 +124,18 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
   C1: { id: 'C1', label: '球面剛体回転', ...CONTROLS.c1, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
       measurement('trajectory', '球面移流軌跡誤差', 'm', 'distance to analytic equatorial great-circle path', 'finite cloud mask', 0, '0.01 m 以下', 'analytic'),
-      measurement('mass', '相対質量誤差', '1', 'carried mass before/after transport', 'finite cloud mask', 0, '輸送APIに質量状態がなく blocked', 'analytic'),
+      measurement('mass', '相対質量誤差', '1', 'carried mass before/after transport', 'finite cloud parcel', 0, '1e-12 以下', 'analytic'),
     ] },
   C2: { id: 'C2', label: '高度別の風向', ...CONTROLS.c2, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
       measurement('layer-displacement', '解析解に対する高度別変位誤差', 'm', 'maximum distance error of lower/upper parcel tracks', 'lower and upper parcel tracks', 0, '各層の解析的大円移流に対し 0.05 m 以下', 'analytic'),
-      measurement('released-ice-track', '代表放出氷の軌跡誤差', 'm',
-        'distance from analytic lower-east-then-upper-north spherical transport',
-        'surviving ice representative cohort', 0, '解析的な二高度の球面軌跡との差 0.05 m 以下', 'analytic'),
+      measurement('released-ice-track', '放出氷 cohort の軌跡誤差', 'm',
+        'maximum distance from analytic lower-east-then-upper-north spherical transport',
+        'all released-ice cohorts', 0, '解析的な二高度の球面軌跡との差 0.05 m 以下', 'analytic'),
+      measurement('released-ice-mass', 'cohort 分割の相対質量誤差', '1',
+        'sum cohort remaining mass / event remaining mass', 'released ice', 0, '1e-10 以下', 'analytic'),
+      measurement('release-spread', '放出時刻差による空間広がり', 'm',
+        'distance between earliest and latest surviving cohorts', 'released ice', 0, '0 m より大きい', 'analytic'),
     ] },
   C3: { id: 'C3', label: '供給停止後のかなとこ', ...CONTROLS.c3, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: { startMinutes: 0, endMinutes: 1_440, sampleIntervalMinutes: 10 }, measurements: [
@@ -173,9 +177,9 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
     ] },
   C9: { id: 'C9', label: '二雲層の空隙と視差', ...CONTROLS.c9, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
-      measurement('layer-gap', '雲層間空隙', 'm', 'minimum density between layer supports', 'between-layer mask', 1e-3, '多層雲密度場がなく blocked'),
-      measurement('parallax', '高度による視差', 'px', 'projected centroid separation by layer', 'both layer masks', 0, '多層投影形状がなく blocked'),
-      measurement('shadow-support', '影の支持域', 'm2', 'shadow support from shared 3D field', 'shadow-valid mask', 1e-3, '共有3D密度と影形状がなく blocked'),
+      measurement('layer-gap', '雲層間空隙', 'm', 'minimum density between layer supports', 'between-layer mask', 1e-3, '既定二層の支持域間に 4000 m の空隙を保持', 'analytic'),
+      measurement('parallax', '高度による視差', 'px', 'projected centroid separation by layer', 'both layer masks', 0, '固定斜視カメラで 1 px より大きい', 'analytic'),
+      measurement('shadow-support', '影の支持域', 'm2', 'shadow support from shared 3D field', 'shadow-valid mask', 1e-3, '2 km detail cell の共有消散が非零なら 0 m2 より大きい', 'analytic'),
     ] },
 } as const;
 

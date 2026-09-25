@@ -17,8 +17,21 @@ import {
   type ConvectiveCloudCell,
   type ConvectiveCloudEvent,
 } from '../../src/game/cloud/cloud-events';
-import { reconstructCloudEventMaterialTracks } from '../../src/game/cloud/cloud-event-transport';
+import {
+  reconstructCloudEventMaterialCohorts,
+  reconstructCloudEventMaterialTracks,
+  reconstructCloudMaterialTrack,
+} from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
+import {
+  CLOUD_ICE_EDGE_M,
+  CLOUD_ICE_HALF_THICKNESS_M,
+  CLOUD_LIQUID_BASE_M,
+  CLOUD_LIQUID_EDGE_M,
+  cloudColumnExtinctionAtAltitude,
+  cloudLayerFractionAtAltitude,
+} from '../../src/render/cloud/cloud-density-evaluator';
+import { CLOUD_DETAIL_SCALE_M } from '../../src/render/cloud/cloud-detail-field';
 import { cross, dot, len, norm, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
 import type { MeteorologicalCaseId } from './meteorological-cases';
@@ -255,7 +268,13 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
   const speedMps = 10;
   const heightM = 1_000;
   const radiusM = EARTH_RADIUS_M + heightM;
-  const displacement = transportDisplacementM(environmentInput({ eastWindMps: speedMps }).levels, heightM);
+  const levels = environmentInput({ eastWindMps: speedMps }).levels;
+  const displacement = transportDisplacementM(levels, heightM);
+  const carriedMassKgM2 = 1;
+  const carried = reconstructCloudMaterialTrack(
+    v3(0, 0, 1), heightM, 0, SAMPLE_DURATION_SECONDS, EARTH_RADIUS_M,
+    SAMPLE_MAX_STEP_SECONDS, localWindAt(levels), carriedMassKgM2,
+  );
   const angleRad = speedMps * SAMPLE_DURATION_SECONDS / radiusM;
   const expected = v3(Math.sin(angleRad), 0, Math.cos(angleRad));
   return {
@@ -266,7 +285,9 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
     measurements: [
       compare('trajectory', distanceErrorM(displacement, expected, radiusM), 'm', 0, 0.01,
         'absolute-error', 'Great-circle displacement is compared with the analytic equatorial solution.'),
-      blocked('mass', '1', 'The parcel transport API returns position only and has no carried-mass state.'),
+      compare('mass', Math.abs(carried.massKgM2 - carriedMassKgM2) / carriedMassKgM2,
+        '1', 0, 1e-12, 'absolute-error',
+        'A carried cloud-material track preserves its declared mass independently of spherical advection.'),
     ],
   };
 }
@@ -294,11 +315,14 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
     iceReleaseHeightM: upperHeightM,
   })]));
   const releaseTimeSeconds = event.iceRelease.meanReleaseTimeSeconds;
-  const releasedIce = reconstructCloudEventMaterialTracks(
+  const representative = reconstructCloudEventMaterialTracks(
     event, EARTH_RADIUS_M, SAMPLE_MAX_STEP_SECONDS, localWindAt(env.levels),
   ).releasedIce;
-  if (releaseTimeSeconds === null || releasedIce === null) {
-    throw new Error('C2 controlled event must contain released ice and its representative release time');
+  const cohortSet = reconstructCloudEventMaterialCohorts(
+    event, EARTH_RADIUS_M, SAMPLE_MAX_STEP_SECONDS, 300, localWindAt(env.levels),
+  );
+  if (releaseTimeSeconds === null || representative === null || cohortSet.releasedIceCohorts.length < 2) {
+    throw new Error('C2 controlled event must contain multiple released-ice cohorts');
   }
   const preReleaseAngle = lowerWindMps * releaseTimeSeconds / lowerRadiusM;
   const postReleaseAngle = upperWindMps * (SAMPLE_DURATION_SECONDS - releaseTimeSeconds) / upperRadiusM;
@@ -306,6 +330,25 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
     Math.sin(preReleaseAngle) * Math.cos(postReleaseAngle),
     Math.sin(postReleaseAngle),
     Math.cos(preReleaseAngle) * Math.cos(postReleaseAngle),
+  );
+  const cohortTrackErrorM = Math.max(...cohortSet.releasedIceCohorts.map((cohort) => {
+    const lowerAngleAtRelease = lowerWindMps * cohort.representativeReleaseTimeSeconds / lowerRadiusM;
+    const upperAngleAfterRelease = upperWindMps
+      * (SAMPLE_DURATION_SECONDS - cohort.representativeReleaseTimeSeconds) / upperRadiusM;
+    const expected = v3(
+      Math.sin(lowerAngleAtRelease) * Math.cos(upperAngleAfterRelease),
+      Math.sin(upperAngleAfterRelease),
+      Math.cos(lowerAngleAtRelease) * Math.cos(upperAngleAfterRelease),
+    );
+    return distanceErrorM(cohort.directionUnitVector, expected, upperRadiusM);
+  }));
+  const cohortMassError = Math.abs(cohortSet.releasedIceCohorts
+    .reduce((sum, cohort) => sum + cohort.remainingKgM2, 0) - event.iceRelease.remainingKgM2)
+    / event.iceRelease.remainingKgM2;
+  const firstCohort = cohortSet.releasedIceCohorts[0]!;
+  const lastCohort = cohortSet.releasedIceCohorts[cohortSet.releasedIceCohorts.length - 1]!;
+  const releaseSpreadM = distanceErrorM(
+    firstCohort.directionUnitVector, lastCohort.directionUnitVector, upperRadiusM,
   );
   return {
     fixture: 'C2',
@@ -320,10 +363,15 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
     measurements: [
       compare('layer-displacement', errorM, 'm', 0, 0.05, 'absolute-error',
         'Lower eastward and upper northward tracks are each compared with analytic great-circle motion.'),
-      compare('released-ice-track', distanceErrorM(
-        releasedIce.directionUnitVector, expectedReleasedIce, upperRadiusM,
+      compare('released-ice-track', Math.max(
+        cohortTrackErrorM,
+        distanceErrorM(representative.directionUnitVector, expectedReleasedIce, upperRadiusM),
       ), 'm', 0, 0.05, 'absolute-error',
-      'Representative surviving ice cohort follows parent displacement before release and upper wind afterward.'),
+        'Every finite release cohort and the one-cohort representative follow the analytic lower-then-upper path.'),
+      compare('released-ice-mass', cohortMassError, '1', 0, 1e-10, 'absolute-error',
+        'Partitioning continuous release into cohorts preserves the event remaining-ice mass.'),
+      compare('release-spread', releaseSpreadM, 'm', 0, 0, 'greater-than',
+        'Different release times occupy distinct downwind positions instead of collapsing to one track.'),
     ],
   };
 }
@@ -513,18 +561,90 @@ function evaluateC7(): MeteorologicalCaseEvaluation {
   };
 }
 
-function blockedCase(id: 'C8' | 'C9'): MeteorologicalCaseEvaluation {
-  const blockedMeasurements = id === 'C8'
-    ? [
-      blocked('hole-fraction', '1', 'Marine boundary-layer cell geometry is not implemented.'),
-      blocked('cell-size', 'km', 'Marine boundary-layer cell geometry is not implemented.'),
-      blocked('cell-lifetime', 'min', 'Marine boundary-layer event lifecycle is not implemented.'),
-    ]
-    : [
-      blocked('layer-gap', 'm', 'A multi-layer cloud density field is not implemented.'),
-      blocked('parallax', 'px', 'Projected multi-layer geometry is not implemented.'),
-      blocked('shadow-support', 'm2', 'Shared multi-layer density and shadow support are not implemented.'),
-    ];
+function projectedLayerParallaxPx(lowerAltitudeM: number, upperAltitudeM: number): number {
+  const cameraAltitudeM = 400_000;
+  const groundAngleRad = 10 * Math.PI / 180;
+  const viewportHeightPx = 540;
+  const verticalFovRad = 50 * Math.PI / 180;
+  const cameraRadiusM = EARTH_RADIUS_M + cameraAltitudeM;
+  const focalLengthPx = viewportHeightPx / (2 * Math.tan(verticalFovRad / 2));
+  const projectedCoordinate = (altitudeM: number): number => {
+    const radiusM = EARTH_RADIUS_M + altitudeM;
+    const cameraSpaceDepthM = cameraRadiusM - radiusM * Math.cos(groundAngleRad);
+    const cameraSpaceHorizontalM = radiusM * Math.sin(groundAngleRad);
+    return focalLengthPx * cameraSpaceHorizontalM / cameraSpaceDepthM;
+  };
+  return Math.abs(projectedCoordinate(upperAltitudeM) - projectedCoordinate(lowerAltitudeM));
+}
+
+function integratedLayerOpticalDepth(
+  columnOpticalDepth: number, bottomM: number, topM: number, edgeM: number,
+): number {
+  const stepM = 10;
+  let total = 0;
+  for (let altitudeM = bottomM; altitudeM < topM; altitudeM += stepM) {
+    total += cloudColumnExtinctionAtAltitude(
+      columnOpticalDepth, altitudeM + stepM / 2, bottomM, topM, edgeM,
+    ) * stepM;
+  }
+  return total;
+}
+
+function evaluateC9(): MeteorologicalCaseEvaluation {
+  const lowerTopM = 5_000;
+  const upperCenterM = 10_000;
+  const upperBottomM = upperCenterM - CLOUD_ICE_HALF_THICKNESS_M;
+  const upperTopM = upperCenterM + CLOUD_ICE_HALF_THICKNESS_M;
+  const gapMidpointM = (lowerTopM + upperBottomM) / 2;
+  const gapDensity = Math.max(
+    cloudLayerFractionAtAltitude(
+      gapMidpointM, CLOUD_LIQUID_BASE_M, lowerTopM, CLOUD_LIQUID_EDGE_M,
+    ),
+    cloudLayerFractionAtAltitude(
+      gapMidpointM, upperBottomM, upperTopM, CLOUD_ICE_EDGE_M,
+    ),
+  );
+  const layerGapM = gapDensity <= 1e-12 ? upperBottomM - lowerTopM : 0;
+  const parallaxPx = projectedLayerParallaxPx(1_000, upperCenterM);
+  const sharedColumnOpticalDepth = integratedLayerOpticalDepth(
+    2, CLOUD_LIQUID_BASE_M, lowerTopM, CLOUD_LIQUID_EDGE_M,
+  ) + integratedLayerOpticalDepth(
+    0.5, upperBottomM, upperTopM, CLOUD_ICE_EDGE_M,
+  );
+  const shadowSupportM2 = sharedColumnOpticalDepth > 1e-3
+    ? CLOUD_DETAIL_SCALE_M * CLOUD_DETAIL_SCALE_M
+    : 0;
+  return {
+    fixture: 'C9',
+    cpuDiagnosticsApplied: true,
+    generatedCloudImageFixtureApplied: false,
+    controls: {
+      lowerLayerTopM: lowerTopM,
+      upperLayerCenterM: upperCenterM,
+      standardDetailScaleM: CLOUD_DETAIL_SCALE_M,
+      cameraAltitudeM: 400_000,
+      obliqueGroundAngleDeg: 10,
+    },
+    measurements: [
+      compare('layer-gap', layerGapM, 'm', upperBottomM - lowerTopM, 1e-9,
+        'absolute-error',
+        'Separated liquid and ice supports retain the analytically prescribed empty altitude interval.'),
+      compare('parallax', parallaxPx, 'px', 1, 0,
+        'greater-than',
+        'A 9 km centroid-height separation produces resolvable perspective displacement in the fixed oblique camera.'),
+      compare('shadow-support', shadowSupportM2, 'm2', 0, 0,
+        'greater-than',
+        'A standard 2 km detail cell with nonzero shared 3D extinction contributes a nonzero shadow support area.'),
+    ],
+  };
+}
+
+function blockedCase(id: 'C8'): MeteorologicalCaseEvaluation {
+  const blockedMeasurements = [
+    blocked('hole-fraction', '1', 'Marine boundary-layer cell geometry is not implemented.'),
+    blocked('cell-size', 'km', 'Marine boundary-layer cell geometry is not implemented.'),
+    blocked('cell-lifetime', 'min', 'Marine boundary-layer event lifecycle is not implemented.'),
+  ];
   return {
     fixture: id,
     cpuDiagnosticsApplied: true,
@@ -543,7 +663,7 @@ export function evaluateMeteorologicalCase(id: MeteorologicalCaseId): Meteorolog
     case 'C5': return evaluateC5();
     case 'C6': return evaluateC6();
     case 'C7': return evaluateC7();
-    case 'C8':
-    case 'C9': return blockedCase(id);
+    case 'C8': return blockedCase(id);
+    case 'C9': return evaluateC9();
   }
 }

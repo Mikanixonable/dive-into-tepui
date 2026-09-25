@@ -1,22 +1,20 @@
 // 大気 1 層ぶんの光学パラメータと、視線 1 本がその層を通って受ける透過率・内部散乱。
-// 指数分布の大気を通る区間の透過率と内部散乱をサンプル点で積み、雲の殻を解析の交点で挟む。
+// 指数分布の大気と共有3D雲密度を同じ参加媒質としてサンプル点で積む。
 // 天体本体による影も同一の視線と地表球面の交差判定から算出するため、深度バッファの精度に依存しない。
 // **扁平な天体は、自転軸方向へ引き伸ばして真球へ変換した空間で交差を算出する**(toSphereSpace)。
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, greaterThanEqual, length,
-  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, uniform, vec2,
+  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, uniform,
   vec3,
 } from 'three/tsl';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
 import { airglowEmission } from '../airglow';
-import {
-  AtmosphereCloudLayers, type CloudShellEvent, type AtmosphereCloudGeometry,
-} from './atmosphere-cloud-layers';
-import { shellAltitudeOf, type CloudSpecies } from './cloud-atmosphere-renderer';
+import { AtmosphereCloudLayers } from './atmosphere-cloud-layers';
+import type { CloudSpecies } from './cloud-atmosphere-renderer';
 import type { AtmosphereBody } from '../atmosphere';
-import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
+import type { BoolNode, FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { BodyShadow } from './shadow/body-shadow';
 import type { SunLight } from './sun-light';
 
@@ -206,8 +204,7 @@ export class AtmosphereIntegrator {
     const transmittance = vec3(1, 1, 1).toVar();
     const inscatter = vec3(0, 0, 0).toVar();
     If(segment.hitsAtmosphere, () => {
-      const shells = this.cloudLayers.build(ray, segment, rayOrigin, rayDir, this.cloudGeometry());
-      const layer = this.integrated(ray, segment, rayOrigin, rayDir, shells);
+      const layer = this.integrated(ray, segment, rayOrigin, rayDir);
       transmittance.assign(layer.transmittance);
       inscatter.assign(layer.inscatter);
     });
@@ -289,7 +286,6 @@ export class AtmosphereIntegrator {
   // — 高度は最接近点から距離の 2 乗でしか増えず、特定点へ偏らせて離れた区間を粗くするデメリットのほうが上回るため。
   private integrated(
     ray: SphereSpaceRay, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
-    shells: readonly CloudShellEvent[],
   ): LayerContribution {
     // 奥端が地表や不透明面で切れている視線では、最も濃い点がその奥端に重なる — 打ち切りが
     // いちばん鋭いので、これを最優先の山に採る。切れていない視線でだけ日没境界を見て、それも
@@ -321,50 +317,11 @@ export class AtmosphereIntegrator {
     };
     const march = rayMarch(
       this.slot.steps, distanceAt,
-      (distance) => this.mediumAt(
-        rayOrigin.add(rayDir.mul(distance)), rayDir, this.cloudLayers.transmittanceAt(shells, distance)),
+      (distance, stepLength) => this.mediumAt(
+        rayOrigin.add(rayDir.mul(distance)), rayDir, stepLength),
       this.blueNoise.atScreenPixel(),
     );
-    // 殻は区間を刻まず、雲層 renderer が合成した結果を大気積分へ適用する。
-    return this.cloudLayers.compose(march.transmittance, march.radiance, shells);
-  }
-
-  // 雲 renderer へ渡す天体空間の幾何・光学パラメータ。殻の交差順序と場の解釈は AtmosphereCloudLayers が担い、
-  // 大気側は球空間幾何・太陽輝度・大気透過率を提供する。
-  private cloudGeometry(): AtmosphereCloudGeometry {
-    return {
-      shellRadiusOf: (species) => this.slot.surfaceRadius.add(shellAltitudeOf(species)),
-      crossingsOf: (ray, radius) => this.crossingsOf(ray, radius),
-      outwardDepthAt: (ray, distance) => this.outwardDepthAt(ray, distance),
-      transmittanceTo: (originDepth, ray, distance) => this.transmittanceTo(originDepth, ray, distance),
-      pointAt: (origin, direction, distance) => origin.add(direction.mul(distance)),
-      offsetAt: (ray, distance) => ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(distance))),
-      sunDirectionAt: (point) => this.toSphereSpace(sub(this.sunLight.position, point)),
-      sunRadianceAt: (point) => this.sunRadianceAt(point),
-    };
-  }
-
-  // 視線上の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。x はレイリー、
-  // y はミーのスケールハイトで測ったもので、長さはどちらも真球空間の目盛り。
-  private outwardDepthAt(ray: SphereSpaceRay, distance: FloatNode): Vec2Node {
-    const offset = ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(distance)));
-    const radius = max(length(offset), max(this.slot.surfaceRadius, 1));
-    const mu = dot(offset.div(radius), ray.unitDir);
-    return vec2(
-      depthToSpace(radius, mu, this.slot.surfaceRadius, this.slot.rayleighScaleHeight),
-      depthToSpace(radius, mu, this.slot.surfaceRadius, this.slot.mieScaleHeight),
-    );
-  }
-
-  // 視線の起点から distance までに視線が受ける大気の透過率。**区間を刻まずに求める** —
-  // 指数分布を通る光路の厚みは、両端から大気の外へ抜ける厚みの差になる。originDepth は
-  // 起点での outwardDepthAt。
-  private transmittanceTo(
-    originDepth: Vec2Node, ray: SphereSpaceRay, distance: FloatNode,
-  ): Vec3Node {
-    const path = max(originDepth.sub(this.outwardDepthAt(ray, distance)), vec2(0, 0))
-      .div(ray.unitsPerMeter);
-    return exp(this.slot.rayleigh.mul(path.x).add(vec3(this.slot.mie.mul(path.y))).negate());
+    return { transmittance: march.transmittance, inscatter: march.radiance };
   }
 
   // 視線上で、太陽がその天体の地平線へ沈む距離。**区間の外に落ちることも、区間を跨がない視線で
@@ -389,35 +346,45 @@ export class AtmosphereIntegrator {
       .div(towardSun.mul(max(abs(alongSun), 1e-6)));
   }
 
-  // 視線上の 1 点の媒質。消散はレイリーとミーの和で、視線へ足す量は「散乱が消散に占める割合 ×
-  // 位相関数 × そこへ届く太陽光」。散乱と消散が等しい(吸収を持たない)ので、割合は位相関数の
-  // 重みそのものになる。shellTransmittance は、この点より手前にある雲の殻を通り抜ける割合。
-  private mediumAt(point: Vec3Node, rayDir: Vec3Node, shellTransmittance: FloatNode): MediumSample {
-    // 高度から成分ごとの散乱係数を引く。
+  // 視線上の 1 点の参加媒質。大気と雲を同じ消散係数へ足すため、雲の前後関係は
+  // rayMarch の front-to-back 透過率が自然に運び、固定高度の境界イベントを必要としない。
+  private mediumAt(point: Vec3Node, rayDir: Vec3Node, footprintM: FloatNode): MediumSample {
     const offset = this.toSphereSpace(sub(point, this.slot.center));
     const radius = max(length(offset), max(this.slot.surfaceRadius, 1));
     const altitude = radius.sub(this.slot.surfaceRadius);
-    const rayleigh: Vec3Node = this.slot.rayleigh.mul(exp(altitude.div(this.slot.rayleighScaleHeight).negate()));
+    const up = offset.div(radius);
+    const rayleigh: Vec3Node = this.slot.rayleigh.mul(
+      exp(altitude.div(this.slot.rayleighScaleHeight).negate()),
+    );
     const mie = this.slot.mie.mul(exp(altitude.div(this.slot.mieScaleHeight).negate()));
-    const extinction: Vec3Node = rayleigh.add(vec3(mie));
+    const airExtinction: Vec3Node = rayleigh.add(vec3(mie));
 
-    // 視線へ向かう散乱は、成分ごとの散乱係数に位相関数を掛けて重みを付けた和。
     const sunVector = sub(this.sunLight.position, point);
     const sunDir = normalize(sunVector);
+    const sphereSunDir = normalize(this.toSphereSpace(sunVector));
+    const sunRadiance = this.sunRadianceAt(point);
     const cosTheta = dot(rayDir, sunDir);
     const scattered: Vec3Node = rayleigh.mul(rayleighPhase(cosTheta))
       .add(vec3(mie.mul(miePhase(cosTheta, this.slot.mieAnisotropy))));
-    const sunMu = dot(offset.div(radius), normalize(this.toSphereSpace(sunVector)));
+    const sunMu = dot(up, sphereSunDir);
     const airglow = airglowEmission(
       altitude, sunMu, this.slot.airglowColor, this.slot.airglowStrength,
       this.slot.airglowAltitude, this.slot.airglowScaleHeight,
     );
+
+    const cloud = this.cloudLayers.mediumAt(
+      up, altitude, footprintM, sphereSunDir, sunRadiance,
+    );
+    const cloudExtinction = vec3(cloud.extinctionPerM);
+    const extinction = airExtinction.add(cloudExtinction);
+    const sourceNumerator = scattered.mul(sunRadiance)
+      .add(airglow)
+      .add(cloudExtinction.mul(cloud.sourceRadiance));
     return {
       extinction,
-      source: scattered.div(max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION)))
-        .mul(this.sunRadianceAt(point))
-        .add(airglow.div(max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION))))
-        .mul(shellTransmittance),
+      source: sourceNumerator.div(
+        max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION)),
+      ),
     };
   }
 

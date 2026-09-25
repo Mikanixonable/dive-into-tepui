@@ -5,6 +5,18 @@
 // texel は今より細かくなる。
 export const CLOUD_CAP_SIZE = 512;
 
+// BakedField は HalfFloatType なので1成分2 byte。生成側は pressure(R) + airMass(RG)
+// + humidity(RG) + convection(RG) + instability(R) + cloud(RGBA) = 12成分、観測側は
+// 再投影した cloud(RGBA) = 4成分を常駐させる。解析的2 km detailは追加テクスチャを持たない。
+const HALF_FLOAT_BYTES = 2;
+const capBytesForChannels = (channels: number): number =>
+  CLOUD_CAP_SIZE * CLOUD_CAP_SIZE * channels * HALF_FLOAT_BYTES;
+
+export const CLOUD_GENERATED_BAKED_BYTES = capBytesForChannels(12);
+export const CLOUD_OBSERVED_BAKED_BYTES = capBytesForChannels(4);
+export const CLOUD_BAKED_WORKING_SET_BYTES =
+  CLOUD_GENERATED_BAKED_BYTES + CLOUD_OBSERVED_BAKED_BYTES;
+
 // 外周の余白 [rad]。風上へ遡って中間場を読む処理が cap の外へ出るぶんの崩れを、見えている円板の
 // 外へ押し出すために足す。
 export const CLOUD_CAP_MARGIN = (5 * Math.PI) / 180;
