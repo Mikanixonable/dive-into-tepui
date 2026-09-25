@@ -10,8 +10,8 @@ const caseName = 'earth';
 const shotName = 'cloud-detail-residual-250km-cloudy-diagnostic';
 const directionsDeg = [0, 45, 90, 135];
 const productMediumRaster = { width: 720, height: 405 };
-const nativeRaster = { width: 832, height: 468 };
-const referenceRaster = { width: 1664, height: 936 };
+const nativeRaster = { width: 864, height: 486 };
+const referenceRaster = { width: 1728, height: 972 };
 const nativeScale = nativeRaster.width / 960;
 const referenceScale = referenceRaster.width / 960;
 const minimumSamplesPerWavelength = 4;
@@ -137,7 +137,7 @@ try {
   }
   if (fatalEvents.length) throw new Error(`page reported errors:\n${fatalEvents.join('\n')}`);
 
-  const projectedSamples = (wavelengthKm * 1000 / 432) * (nativeRaster.width / 960);
+  const estimatedSamples = (wavelengthKm * 1000 / 432) * (nativeRaster.width / 960);
   const rows = directionsDeg.map((directionDeg) => {
     const native = images.get(`native-${directionDeg}-0`);
     const invertedNative = images.get(`native-${directionDeg}-180`);
@@ -146,7 +146,7 @@ try {
     const response = retainedAmplitude(native, invertedNative, reference, invertedReference);
     return {
       wavelengthKm, directionDeg, ...response,
-      pass: projectedSamples >= minimumSamplesPerWavelength
+      diagnosticPass: estimatedSamples >= minimumSamplesPerWavelength
         && response.retainedAmplitude >= minimumRetainedAmplitude,
     };
   });
@@ -157,14 +157,19 @@ try {
     productSettingsChanged: false,
     productMediumRaster: {
       ...productMediumRaster,
-      projectedSamplesPerWavelength: (wavelengthKm * 1000 / 432) * (productMediumRaster.width / 960),
+      estimatedSamplesPerWavelength: (wavelengthKm * 1000 / 432) * (productMediumRaster.width / 960),
       qualifiesFourSampleGate: false,
     },
     nativeRaster, referenceRaster, referenceDownsampleFactor: 2, nativeScale, referenceScale,
-    projectedSurfaceMetresPerOutputPixelAt960CssPixels: 432,
-    projectedSamplesPerWavelength: projectedSamples,
+    sampleEstimate: {
+      method: 'approximate; derived from the plan nominal 432 m/output-pixel at 960 CSS pixels, then scaled by raster width',
+      nominalSurfaceMetresPerOutputPixelAt960CssPixels: 432,
+      nativeRasterEstimatedSamplesPerWavelength: estimatedSamples,
+      measuredProjection: false,
+    },
     fixedGate: { minimumSamplesPerWavelength, minimumRetainedAmplitude },
-    allDirectionsPass: rows.every((row) => row.pass),
+    resultScope: 'diagnostic raster only; retained-amplitude values and diagnosticPass flags are not physical-generation or product-performance qualifications',
+    allDirectionsDiagnosticPass: rows.every((row) => row.diagnosticPass),
     rows,
   };
   const output = path.join(root, '.render-lab', 'cloud-detail-250km-response.json');
