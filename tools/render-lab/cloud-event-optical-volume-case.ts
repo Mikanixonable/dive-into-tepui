@@ -8,7 +8,8 @@ import { depositCloudEventMaterialCohorts } from '../../src/game/cloud/cloud-eve
 import { extinctionFromCloudMass } from '../../src/game/cloud/cloud-mass-extinction';
 import { cloudOpticalVolumeFrameFromExtinction } from '../../src/game/cloud/cloud-optical-volume-frame';
 import {
-  CloudOpticalVolume, sampleCloudOpticalVolumeNode, type CloudOpticalVolumeStorageFormat,
+  CloudOpticalVolume, encodeCloudOpticalVolumeHalfFloat, sampleCloudOpticalVolumeNode,
+  type CloudOpticalVolumeStorageFormat,
 } from '../../src/render/cloud/cloud-optical-volume';
 import type { CloudOpticalVolumeData } from '../../src/render/cloud/cloud-optical-volume';
 import { labCamera, VIEW_HEIGHT } from './lab-case';
@@ -25,6 +26,136 @@ const CELL_WIDTH_M = 250;
 const CELL_HEIGHT_M = 250;
 const LAYER_EDGES_M = [0, 3_000, 9_000] as const;
 const OPTICAL_VISUAL_GAIN = 120_000;
+const READBACK_ROW_ALIGNMENT_BYTES = 256;
+
+function alignedReadbackRowBytes(width: number, bytesPerTexel: number): number {
+  const unpaddedRowBytes = width * bytesPerTexel;
+  return Math.ceil(unpaddedRowBytes / READBACK_ROW_ALIGNMENT_BYTES) * READBACK_ROW_ALIGNMENT_BYTES;
+}
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const input = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(input).set(bytes);
+  const digest = await crypto.subtle.digest('SHA-256', input);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function gpuTextureReadbackReport(
+  volume: CloudOpticalVolume,
+  source: CloudOpticalVolumeData,
+  readLayer: (
+    texture: THREE.Texture, width: number, height: number, layer: number,
+  ) => Promise<{ readonly data: ArrayBufferView; readonly format: string }>,
+): Promise<unknown> {
+  const bytesPerChannel = volume.storageFormat === 'rg16f' ? 2 : 4;
+  const bytesPerTexel = bytesPerChannel * 2;
+  const expectedFormat = volume.storageFormat === 'rg16f' ? 'rg16float' : 'rg32float';
+  const expected = volume.storageFormat === 'rg16f'
+    ? encodeCloudOpticalVolumeHalfFloat(source.liquidExtinctionPerM, source.iceExtinctionPerM).interleaved
+    : new Float32Array(source.liquidExtinctionPerM.length * 2);
+  if (expected instanceof Float32Array) {
+    for (let index = 0; index < source.liquidExtinctionPerM.length; index += 1) {
+      expected[index * 2] = source.liquidExtinctionPerM[index]!;
+      expected[index * 2 + 1] = source.iceExtinctionPerM[index]!;
+    }
+  }
+  const rowBytes = volume.width * bytesPerTexel;
+  const rowPitchBytes = alignedReadbackRowBytes(volume.width, bytesPerTexel);
+  const usefulLayerBytes = rowBytes * volume.height;
+  const expectedLayerBytes = rowPitchBytes * (volume.height - 1) + rowBytes;
+  const layers = [];
+  let rawReturnedBytes = 0;
+  for (let layer = 0; layer < volume.depth; layer += 1) {
+    const readback = await readLayer(volume.texture, volume.width, volume.height, layer);
+    const raw = readback.data;
+    const actualFormat = readback.format;
+    if (actualFormat !== expectedFormat) {
+      throw new Error(`GPU texture format mismatch: expected ${expectedFormat}, got ${actualFormat}`);
+    }
+    if (raw.byteLength !== expectedLayerBytes) {
+      throw new Error(`unexpected GPU readback size ${raw.byteLength}; expected ${expectedLayerBytes}`);
+    }
+    const packedBytes = new Uint8Array(usefulLayerBytes);
+    const actualBytes = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+    for (let y = 0; y < volume.height; y += 1) {
+      packedBytes.set(actualBytes.subarray(y * rowPitchBytes, y * rowPitchBytes + rowBytes), y * rowBytes);
+    }
+    const actual = volume.storageFormat === 'rg16f'
+      ? new Uint16Array(packedBytes.buffer)
+      : new Float32Array(packedBytes.buffer);
+    let exactBitMismatchCount = 0;
+    let maximumAbsoluteValueError = 0;
+    const phaseSummary = {
+      liquid: { sampleCount: 0, positiveSourceCount: 0, zeroRoundedPositiveCount: 0, exactBitMismatchCount: 0,
+        maximumAbsoluteValueError: 0 },
+      ice: { sampleCount: 0, positiveSourceCount: 0, zeroRoundedPositiveCount: 0, exactBitMismatchCount: 0,
+        maximumAbsoluteValueError: 0 },
+    };
+    for (let y = 0; y < volume.height; y += 1) {
+      for (let x = 0; x < volume.width; x += 1) {
+        const texel = layer * volume.width * volume.height + y * volume.width + x;
+        for (let phase = 0; phase < 2; phase += 1) {
+          const item = phase === 0 ? phaseSummary.liquid : phaseSummary.ice;
+          const actualChannel = (y * volume.width + x) * 2 + phase;
+          const expectedChannel = texel * 2 + phase;
+          const actualValue = volume.storageFormat === 'rg16f'
+            ? THREE.DataUtils.fromHalfFloat(actual[actualChannel]!)
+            : actual[actualChannel]!;
+          const expectedValue = volume.storageFormat === 'rg16f'
+            ? THREE.DataUtils.fromHalfFloat(expected[expectedChannel]!)
+            : expected[expectedChannel]!;
+          if (!Number.isFinite(actualValue) || !Number.isFinite(expectedValue)) {
+            throw new Error(`non-finite raw texture sample at layer ${layer}, texel ${y * volume.width + x}, phase ${phase}`);
+          }
+          const sourceValue = phase === 0
+            ? source.liquidExtinctionPerM[texel]!
+            : source.iceExtinctionPerM[texel]!;
+          const matchesBits = actual[actualChannel] === expected[expectedChannel];
+          const absoluteError = Math.abs(actualValue - expectedValue);
+          item.sampleCount += 1;
+          if (sourceValue > 0) item.positiveSourceCount += 1;
+          if (sourceValue > 0 && volume.storageFormat === 'rg16f' && actualValue === 0) {
+            item.zeroRoundedPositiveCount += 1;
+          }
+          if (!matchesBits) {
+            item.exactBitMismatchCount += 1;
+            exactBitMismatchCount += 1;
+          }
+          item.maximumAbsoluteValueError = Math.max(item.maximumAbsoluteValueError, absoluteError);
+          maximumAbsoluteValueError = Math.max(maximumAbsoluteValueError, absoluteError);
+        }
+      }
+    }
+    rawReturnedBytes += raw.byteLength;
+    layers.push({
+      layer,
+      actualBackendFormat: actualFormat,
+      rowPitchBytes,
+      usefulBytes: usefulLayerBytes,
+      returnedBytes: raw.byteLength,
+      packedReadbackSha256: await sha256(packedBytes),
+      exactBitMismatchCount,
+      maximumAbsoluteValueError,
+      phases: phaseSummary,
+    });
+  }
+  return {
+    storageFormat: volume.storageFormat,
+    actualBackendFormat: expectedFormat,
+    width: volume.width,
+    height: volume.height,
+    depth: volume.depth,
+    bytesPerTexel,
+    rowAlignmentBytes: READBACK_ROW_ALIGNMENT_BYTES,
+    expectedBytesPerLayer: expectedLayerBytes,
+    usefulBytesPerLayer: usefulLayerBytes,
+    totalReturnedBytes: rawReturnedBytes,
+    totalUsefulBytes: usefulLayerBytes * volume.depth,
+    zeroRoundedCpuDiagnosticsByPhase: volume.halfFloatDiagnosticsByPhase,
+    comparison: 'raw GPU texel bits versus CPU upload bits; no filtering, ray integration, or framebuffer color conversion',
+    layers,
+  };
+}
 
 export function sampleEventOpticalVolume(): CloudOpticalVolumeData {
   const event = sampleConvectiveCloudEvents({
@@ -108,7 +239,8 @@ export function cloudEventOpticalVolumeCase(
   storageFormat: CloudOpticalVolumeStorageFormat = 'rg32f',
 ): CaseBuilder {
   return (): LabCase => {
-    const volume = new CloudOpticalVolume(sampleEventOpticalVolume(), { storageFormat });
+    const source = sampleEventOpticalVolume();
+    const volume = new CloudOpticalVolume(source, { storageFormat });
     const camera = labCamera();
     const panelSize = VIEW_HEIGHT * 0.56;
     const panelGap = panelSize * 0.12;
@@ -133,7 +265,12 @@ export function cloudEventOpticalVolumeCase(
       );
       objects.push(mesh);
     }
-    return { objects, camera, dispose: () => volume.dispose() };
+    return {
+      objects,
+      camera,
+      readGpuTextureDiagnostic: (readLayer) => gpuTextureReadbackReport(volume, source, readLayer),
+      dispose: () => volume.dispose(),
+    };
   };
 }
 
