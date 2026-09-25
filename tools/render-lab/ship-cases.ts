@@ -75,20 +75,43 @@ function separation(): LabCase {
   };
 }
 
-// 戦闘艦: 展開された太陽電池とラジエーター、コックピット、タンク、推進器が美しく見える構図。
-function combat(): LabCase {
+// 太陽電池とラジエーターを展開度 deployed にした既定戦闘船。
+function combatShipDeployed(deployed: number): ShipAssembly {
   const combatShip = createDefaultCombatPreset();
   for (const m of combatShip.modules) {
-    if (m.kind === 'solar_panel' || m.kind === 'radiator') {
-      combatShip.setDeployment(m.id, 1.0);
-    }
+    if (m.kind === 'solar_panel' || m.kind === 'radiator') combatShip.setDeployment(m.id, deployed);
   }
-  const obj = at(shipObject(combatShip), 0, -1, -25);
+  return combatShip;
+}
+
+// 戦闘艦: 展開された太陽電池とラジエーター、コックピット、タンク、推進器が美しく見える構図。
+// 船尾の推進器と船首の機関砲へ寄った撮影も持つ。
+function combat(): LabCase {
+  const obj = at(shipObject(combatShipDeployed(1)), 0, -1, -25);
   obj.rotation.set(0.35, -2.35, 0.1);
   return {
     objects: [obj],
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, -1, -25),
+    shots: {
+      'modular-ship-combat': { view: {} },
+      'modular-ship-combat-aft': { view: { cameraAzimuthDeg: 20, cameraElevationDeg: -10, cameraDistanceLog: 0 } },
+      'modular-ship-combat-bow': { view: { cameraAzimuthDeg: -120, cameraElevationDeg: 25, cameraDistanceLog: -0.1, sunAzimuthDeg: -100, sunElevationDeg: 35 } },
+    },
+  };
+}
+
+// 展開途中: 太陽電池とラジエーターの展開度を変えた戦闘艦を並べ、ヒンジの繋がりと収納時の重なりを見る。
+function deploying(): LabCase {
+  const objects = [0, 0.4, 0.8].map((deployed, index) => {
+    const obj = at(shipObject(combatShipDeployed(deployed)), -22 + index * 22, 0, -45);
+    obj.rotation.set(0.9, 0.3, 0.1);
+    return obj;
+  });
+  return {
+    objects,
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -45),
   };
 }
 
@@ -96,4 +119,5 @@ export const SHIP_CASES = {
   'modular-ship-base': base,
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,
+  'modular-ship-deploying': deploying,
 } as const satisfies Record<string, CaseBuilder>;
