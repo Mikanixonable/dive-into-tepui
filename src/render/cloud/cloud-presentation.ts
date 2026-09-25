@@ -28,7 +28,9 @@ export interface CloudFieldSource {
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
-  prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
+  prepare(
+    renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink, temporalExposureSeconds?: number,
+  ): void;
   // 生成場は品質段に応じて時間キャッシュ幅を変えられる。観測場は実装しなくてよい。
   setQuality?(level: number): void;
   // 保持している GPU 資源を解放する。
@@ -140,9 +142,14 @@ export class CloudPresentation {
 
   // 雲場が描画に寄与するフレームで、選んでいる出どころの場を表示時刻 displayTime [s] へ焼く。gpu を
   // 渡すと、焼いた GPU 時間をそこへ計上する。
-  public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+  public bake(
+    renderer: WebGPURenderer,
+    displayTime: number,
+    gpu?: GpuTimingSink,
+    temporalExposureSeconds = 0,
+  ): void {
     if (!this.fieldContributes) return;
-    this.source.prepare(renderer, displayTime, gpu);
+    this.source.prepare(renderer, displayTime, gpu, temporalExposureSeconds);
   }
 
   // 不透明表面と、選べる雲場の出どころをすべて解放する。
