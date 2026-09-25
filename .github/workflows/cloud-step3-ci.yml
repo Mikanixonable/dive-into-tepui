@@ -23,5 +23,6 @@ jobs:
       - run: npm run test:game
       - run: npm run cloud-reconstruction:measure
       - run: npm run build
+      - run: node node_modules/webpack-cli/bin/cli.js --config webpack.cloud-lab.config.js --mode production
       # GPU baseline is intentionally not a push gate. Step 3/7 acceptance requires
       # target hardware; headless CI is kept for deterministic correctness checks.
