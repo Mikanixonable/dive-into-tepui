@@ -352,6 +352,7 @@ export class GamePresentation {
   // 確定した表示窓とカメラを表示物へ写す。nowMs はフレームの先頭で1度だけ読んだ実時刻 [ms]。
   public sync(
     graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport, nowMs: number,
+    prepareRenderResources = true,
   ): void {
     const { celestialSystem, dynamicSystem, viewer } = this.game;
     const controlled = this.game.activeControllable;
@@ -380,6 +381,7 @@ export class GamePresentation {
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.syncWorld(
       graphics, style, nowMs, displayTime, view, controlled, orbitRef ?? null, visibilityPolicy, timeLabel, camera,
+      prepareRenderResources,
     );
     this.syncEffectsAndTargets(
       nowMs, displayTime, view, controlled, visibilityPolicy, timeLabel, palette, camera,
@@ -409,6 +411,7 @@ export class GamePresentation {
     graphics: GraphicsSettingsData, style: RenderStyle, nowMs: number, displayTime: number, view: ViewMode,
     controlled: Controllable | null, orbitRef: OrbitReference | null, visibilityPolicy: MapVisibilityPolicy | null,
     timeLabel: ReturnType<typeof timeLabelSettingOf>, camera: CameraFrame,
+    prepareRenderResources: boolean,
   ): void {
     const { celestialSystem, dynamicSystem, viewer } = this.game;
     celestialSystem.sync(
@@ -418,10 +421,14 @@ export class GamePresentation {
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
-    const cloudTemporalExposure = cloudTemporalExposureSeconds(this.game.simSpeedManager.simSpeed);
-    celestialSystem.bakeClouds(
-      this.devices.scene.renderer, displayTime, this.devices.scene.gpu, cloudTemporalExposure,
-    );
+    // 描画しない HUD-only フレームでは GPU 雲場を更新しない。天体系のCPU同期とHUD同期は続けるので、
+    // レイアウト検証の意味を保ったままソフトウェアWebGPUを性能ゲートにしない。
+    if (prepareRenderResources) {
+      const cloudTemporalExposure = cloudTemporalExposureSeconds(this.game.simSpeedManager.simSpeed);
+      celestialSystem.bakeClouds(
+        this.devices.scene.renderer, displayTime, this.devices.scene.gpu, cloudTemporalExposure,
+      );
+    }
     dynamicSystem.sync(
       displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay, orbitRef ?? undefined,
     );

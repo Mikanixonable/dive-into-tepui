@@ -56,6 +56,9 @@ function startAnimationLoop(
   debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
 ): void {
   const layoutSmoke = new URLSearchParams(window.location.search).has('layout-smoke');
+  // レイアウト smoke は描画性能ではなく HUD/DOM の同期だけを検査する。CDP 側から属性を置くと
+  // navigation と競合して新しい document へ反映されないことがあるため、アプリ自身が最初から固定する。
+  if (layoutSmoke) document.documentElement.dataset.layoutSmokeFreeze = 'true';
   let lastTime = performance.now();
   let completedFrames = 0;
   // 1フレーム分: ランのフレームを回し、次フレームを予約する。

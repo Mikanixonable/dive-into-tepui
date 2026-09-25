@@ -750,11 +750,6 @@ async function runConfiguredScenario() {
     ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
     : query;
   await devTools.send('Page.navigate', { url: `${session.baseUrl}/${pageQuery}` });
-  if (layoutOnly) {
-    // Layout CI checks DOM/HUD geometry, not renderer throughput. Use the existing HUD-only path
-    // during the 60-frame readiness loop so software WebGPU cannot turn this into a GPU benchmark.
-    await devTools.evaluate("document.documentElement.dataset.layoutSmokeFreeze = 'true'");
-  }
   await bootAndCheckReady();
   if (emulateTouch) await revealTouchPad();
 
