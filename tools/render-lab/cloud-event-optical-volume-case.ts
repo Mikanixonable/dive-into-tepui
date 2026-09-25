@@ -7,7 +7,9 @@ import { reconstructCloudEventMaterialCohorts } from '../../src/game/cloud/cloud
 import { depositCloudEventMaterialCohorts } from '../../src/game/cloud/cloud-event-local-deposition';
 import { extinctionFromCloudMass } from '../../src/game/cloud/cloud-mass-extinction';
 import { cloudOpticalVolumeFrameFromExtinction } from '../../src/game/cloud/cloud-optical-volume-frame';
-import { CloudOpticalVolume, sampleCloudOpticalVolumeNode } from '../../src/render/cloud/cloud-optical-volume';
+import {
+  CloudOpticalVolume, sampleCloudOpticalVolumeNode, type CloudOpticalVolumeStorageFormat,
+} from '../../src/render/cloud/cloud-optical-volume';
 import type { CloudOpticalVolumeData } from '../../src/render/cloud/cloud-optical-volume';
 import { labCamera, VIEW_HEIGHT } from './lab-case';
 import type { CaseBuilder, LabCase } from './lab-case';
@@ -24,7 +26,7 @@ const CELL_HEIGHT_M = 250;
 const LAYER_EDGES_M = [0, 3_000, 9_000] as const;
 const OPTICAL_VISUAL_GAIN = 120_000;
 
-function sampleEventOpticalVolume(): CloudOpticalVolumeData {
+export function sampleEventOpticalVolume(): CloudOpticalVolumeData {
   const event = sampleConvectiveCloudEvents({
     seed: SEED,
     birthIntervalSeconds: 86_400,
@@ -102,31 +104,38 @@ function sampleEventOpticalVolume(): CloudOpticalVolumeData {
   return cloudOpticalVolumeFrameFromExtinction(WIDTH, HEIGHT, LAYER_EDGES_M, extinction);
 }
 
-export const CLOUD_EVENT_OPTICAL_VOLUME_CASE: CaseBuilder = (): LabCase => {
-  const volume = new CloudOpticalVolume(sampleEventOpticalVolume());
-  const camera = labCamera();
-  const panelSize = VIEW_HEIGHT * 0.56;
-  const panelGap = panelSize * 0.12;
-  const objects: THREE.Object3D[] = [];
-  for (let layer = 0; layer < volume.depth; layer += 1) {
-    const sample = sampleCloudOpticalVolumeNode(volume.texture, uv(), float(layer));
-    const liquid = sample.liquidExtinctionPerM.mul(OPTICAL_VISUAL_GAIN);
-    const ice = sample.iceExtinctionPerM.mul(OPTICAL_VISUAL_GAIN);
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = vec3(
-      liquid.add(ice.mul(0.1)),
-      liquid.mul(0.1).add(ice.mul(0.7)),
-      ice,
-    );
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(panelSize, panelSize), material);
-    mesh.userData.ownsGeometry = true;
-    mesh.userData.ownsMaterial = true;
-    mesh.position.set(
-      (layer === 0 ? -1 : 1) * (panelSize + panelGap) * 0.5,
-      0,
-      -VIEW_HEIGHT * 0.85,
-    );
-    objects.push(mesh);
-  }
-  return { objects, camera, dispose: () => volume.dispose() };
-};
+export function cloudEventOpticalVolumeCase(
+  storageFormat: CloudOpticalVolumeStorageFormat = 'rg32f',
+): CaseBuilder {
+  return (): LabCase => {
+    const volume = new CloudOpticalVolume(sampleEventOpticalVolume(), { storageFormat });
+    const camera = labCamera();
+    const panelSize = VIEW_HEIGHT * 0.56;
+    const panelGap = panelSize * 0.12;
+    const objects: THREE.Object3D[] = [];
+    for (let layer = 0; layer < volume.depth; layer += 1) {
+      const sample = sampleCloudOpticalVolumeNode(volume.texture, uv(), float(layer));
+      const liquid = sample.liquidExtinctionPerM.mul(OPTICAL_VISUAL_GAIN);
+      const ice = sample.iceExtinctionPerM.mul(OPTICAL_VISUAL_GAIN);
+      const material = new THREE.MeshBasicNodeMaterial();
+      material.colorNode = vec3(
+        liquid.add(ice.mul(0.1)),
+        liquid.mul(0.1).add(ice.mul(0.7)),
+        ice,
+      );
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(panelSize, panelSize), material);
+      mesh.userData.ownsGeometry = true;
+      mesh.userData.ownsMaterial = true;
+      mesh.position.set(
+        (layer === 0 ? -1 : 1) * (panelSize + panelGap) * 0.5,
+        0,
+        -VIEW_HEIGHT * 0.85,
+      );
+      objects.push(mesh);
+    }
+    return { objects, camera, dispose: () => volume.dispose() };
+  };
+}
+
+export const CLOUD_EVENT_OPTICAL_VOLUME_CASE: CaseBuilder = cloudEventOpticalVolumeCase();
+export const CLOUD_EVENT_OPTICAL_VOLUME_RG16F_CASE: CaseBuilder = cloudEventOpticalVolumeCase('rg16f');

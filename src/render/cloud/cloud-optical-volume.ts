@@ -18,6 +18,97 @@ export interface CloudOpticalVolumeSample {
   readonly iceExtinctionPerM: number;
 }
 
+export type CloudOpticalVolumeStorageFormat = 'rg32f' | 'rg16f';
+
+export interface CloudOpticalVolumeHalfFloatPhaseDiagnostics {
+  readonly positiveValueCount: number;
+  readonly zeroRoundedPositiveCount: number;
+  readonly maximumInputRoundedToZeroPerM: number;
+  readonly maximumSingleZeroRoundedOpticalDepthContributionAt20Km: number;
+  // Aggregate over all independent texels; this is not one physical 20 km path.
+  readonly sumAcrossTexelsOfZeroRoundedOpticalDepthContributionsAt20Km: number;
+}
+
+export interface CloudOpticalVolumeHalfFloatEncoding {
+  readonly interleaved: Uint16Array;
+  readonly liquidRoundTripPerM: Float32Array;
+  readonly iceRoundTripPerM: Float32Array;
+  readonly diagnosticsByPhase: Readonly<Record<'liquid' | 'ice', CloudOpticalVolumeHalfFloatPhaseDiagnostics>>;
+}
+
+const HALF_FLOAT_DIAGNOSTIC_PATH_LENGTH_M = 20_000; // 診断光路長 [m]。
+
+// THREE.DataUtils.toHalfFloat と同じビット切り捨て結果を返す。
+export function encodeCloudOpticalVolumeHalfFloat(
+  liquidPerM: Float32Array,
+  icePerM: Float32Array,
+): CloudOpticalVolumeHalfFloatEncoding {
+  if (!(liquidPerM instanceof Float32Array) || !(icePerM instanceof Float32Array)
+    || liquidPerM.length !== icePerM.length) {
+    throw new RangeError('half-float phase arrays must be equally sized Float32Arrays');
+  }
+  if (!Number.isSafeInteger(liquidPerM.length * 2)) {
+    throw new RangeError('half-float texture element count is too large');
+  }
+  const maximumFiniteHalfFloat = 65_504;
+  const interleaved = new Uint16Array(liquidPerM.length * 2);
+  const liquidRoundTripPerM = new Float32Array(liquidPerM.length);
+  const iceRoundTripPerM = new Float32Array(icePerM.length);
+  const liquidStats = { positiveValueCount: 0, zeroRoundedPositiveCount: 0,
+    maximumInputRoundedToZeroPerM: 0, maximumSingleZeroRoundedOpticalDepthContributionAt20Km: 0,
+    sumAcrossTexelsOfZeroRoundedOpticalDepthContributionsAt20Km: 0 };
+  const iceStats = { positiveValueCount: 0, zeroRoundedPositiveCount: 0,
+    maximumInputRoundedToZeroPerM: 0, maximumSingleZeroRoundedOpticalDepthContributionAt20Km: 0,
+    sumAcrossTexelsOfZeroRoundedOpticalDepthContributionsAt20Km: 0 };
+  for (let index = 0; index < liquidPerM.length; index += 1) {
+    const liquidValue = liquidPerM[index]!;
+    const iceValue = icePerM[index]!;
+    if (!Number.isFinite(liquidValue) || liquidValue < 0 || liquidValue > maximumFiniteHalfFloat) {
+      throw new RangeError('liquid extinction must be finite, non-negative, and within Float16 range');
+    }
+    if (!Number.isFinite(iceValue) || iceValue < 0 || iceValue > maximumFiniteHalfFloat) {
+      throw new RangeError('ice extinction must be finite, non-negative, and within Float16 range');
+    }
+    if (liquidValue > 0) liquidStats.positiveValueCount += 1;
+    if (iceValue > 0) iceStats.positiveValueCount += 1;
+    const liquidHalf = THREE.DataUtils.toHalfFloat(liquidValue);
+    const iceHalf = THREE.DataUtils.toHalfFloat(iceValue);
+    const liquidRoundTrip = THREE.DataUtils.fromHalfFloat(liquidHalf);
+    const iceRoundTrip = THREE.DataUtils.fromHalfFloat(iceHalf);
+    if (!Number.isFinite(liquidRoundTrip) || !Number.isFinite(iceRoundTrip)) {
+      throw new RangeError('extinction values must remain finite in Float16');
+    }
+    interleaved[index * 2] = liquidHalf;
+    interleaved[index * 2 + 1] = iceHalf;
+    liquidRoundTripPerM[index] = liquidRoundTrip;
+    iceRoundTripPerM[index] = iceRoundTrip;
+    if (liquidValue > 0 && liquidRoundTrip === 0) {
+      liquidStats.zeroRoundedPositiveCount += 1;
+      liquidStats.maximumInputRoundedToZeroPerM = Math.max(liquidStats.maximumInputRoundedToZeroPerM, liquidValue);
+      const opticalDepthContribution = liquidValue * HALF_FLOAT_DIAGNOSTIC_PATH_LENGTH_M;
+      liquidStats.maximumSingleZeroRoundedOpticalDepthContributionAt20Km = Math.max(
+        liquidStats.maximumSingleZeroRoundedOpticalDepthContributionAt20Km, opticalDepthContribution,
+      );
+      liquidStats.sumAcrossTexelsOfZeroRoundedOpticalDepthContributionsAt20Km += opticalDepthContribution;
+    }
+    if (iceValue > 0 && iceRoundTrip === 0) {
+      iceStats.zeroRoundedPositiveCount += 1;
+      iceStats.maximumInputRoundedToZeroPerM = Math.max(iceStats.maximumInputRoundedToZeroPerM, iceValue);
+      const opticalDepthContribution = iceValue * HALF_FLOAT_DIAGNOSTIC_PATH_LENGTH_M;
+      iceStats.maximumSingleZeroRoundedOpticalDepthContributionAt20Km = Math.max(
+        iceStats.maximumSingleZeroRoundedOpticalDepthContributionAt20Km, opticalDepthContribution,
+      );
+      iceStats.sumAcrossTexelsOfZeroRoundedOpticalDepthContributionsAt20Km += opticalDepthContribution;
+    }
+  }
+  return {
+    interleaved,
+    liquidRoundTripPerM,
+    iceRoundTripPerM,
+    diagnosticsByPhase: { liquid: liquidStats, ice: iceStats },
+  };
+}
+
 function requirePositiveInteger(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) throw new RangeError(`${label} must be a positive integer`);
 }
@@ -125,35 +216,54 @@ export class CloudOpticalVolume {
   // 単一mipのGPUデータ本体と、所有者が保持するCPUの相別配列・層境界の合計。
   public readonly estimatedGpuBaseLevelBytes: number;
   public readonly cpuBackingBytes: number;
+  public readonly storageFormat: CloudOpticalVolumeStorageFormat;
+  public readonly halfFloatDiagnosticsByPhase: CloudOpticalVolumeHalfFloatEncoding['diagnosticsByPhase'] | null;
   private readonly data: CloudOpticalVolumeData;
   private disposed = false;
 
-  // 入力を複製し、GPU資源をこの所有者の寿命へ閉じる。textureへはRGBA変換なしでRG32Fを渡す。
-  public constructor(source: CloudOpticalVolumeData) {
+  // 入力を複製し、GPU資源をこの所有者の寿命へ閉じる。相別RG textureへ選択形式で渡す。
+  public constructor(
+    source: CloudOpticalVolumeData,
+    options: { readonly storageFormat?: CloudOpticalVolumeStorageFormat } = {},
+  ) {
     validateCloudOpticalVolumeData(source);
+    this.storageFormat = options.storageFormat ?? 'rg32f';
+    if (this.storageFormat !== 'rg32f' && this.storageFormat !== 'rg16f') {
+      throw new RangeError('unsupported cloud optical volume storage format');
+    }
     this.width = source.width;
     this.height = source.height;
     this.depth = source.layerEdgesM.length - 1;
+    const halfEncoding = this.storageFormat === 'rg16f'
+      ? encodeCloudOpticalVolumeHalfFloat(source.liquidExtinctionPerM, source.iceExtinctionPerM)
+      : null;
+    this.halfFloatDiagnosticsByPhase = halfEncoding?.diagnosticsByPhase ?? null;
     this.data = {
       width: source.width,
       height: source.height,
       layerEdgesM: source.layerEdgesM.slice(),
-      liquidExtinctionPerM: source.liquidExtinctionPerM.slice(),
-      iceExtinctionPerM: source.iceExtinctionPerM.slice(),
+      liquidExtinctionPerM: halfEncoding?.liquidRoundTripPerM ?? source.liquidExtinctionPerM.slice(),
+      iceExtinctionPerM: halfEncoding?.iceRoundTripPerM ?? source.iceExtinctionPerM.slice(),
     };
-    const interleaved = new Float32Array(source.width * source.height * this.depth * 2);
-    for (let index = 0; index < source.liquidExtinctionPerM.length; index += 1) {
-      interleaved[index * 2] = source.liquidExtinctionPerM[index]!;
-      interleaved[index * 2 + 1] = source.iceExtinctionPerM[index]!;
+    let interleaved: Float32Array | Uint16Array;
+    if (halfEncoding !== null) {
+      interleaved = halfEncoding.interleaved;
+    } else {
+      const fullFloatInterleaved = new Float32Array(source.width * source.height * this.depth * 2);
+      for (let index = 0; index < source.liquidExtinctionPerM.length; index += 1) {
+        fullFloatInterleaved[index * 2] = source.liquidExtinctionPerM[index]!;
+        fullFloatInterleaved[index * 2 + 1] = source.iceExtinctionPerM[index]!;
+      }
+      interleaved = fullFloatInterleaved;
     }
     this.estimatedGpuBaseLevelBytes = interleaved.byteLength;
     this.cpuBackingBytes = this.data.layerEdgesM.byteLength
       + this.data.liquidExtinctionPerM.byteLength + this.data.iceExtinctionPerM.byteLength
       + interleaved.byteLength;
     const texture = new THREE.DataArrayTexture(interleaved, source.width, source.height, this.depth);
-    texture.name = 'generated-cloud-optical-volume-rg32f';
+    texture.name = `generated-cloud-optical-volume-${this.storageFormat}`;
     texture.format = THREE.RGFormat;
-    texture.type = THREE.FloatType;
+    texture.type = this.storageFormat === 'rg16f' ? THREE.HalfFloatType : THREE.FloatType;
     texture.colorSpace = THREE.NoColorSpace;
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
