@@ -1,7 +1,8 @@
 // ライティングパスの全光源が共有する、1 画素ぶんのシェーディング入力。法線・粗さ・深度は
 // 同じ 1 つの面から揃って引く必要があるので、光源からの G バッファ読み出しはここへ集める。
+// どの入力も、一様でない分岐の中から読んでよい。
 import * as THREE from 'three/webgpu';
-import { dot, screenSize, screenUV, select, texture, uniform, vec2, vec4 } from 'three/tsl';
+import { dot, float, screenSize, screenUV, select, texture, uniform, vec2, vec4 } from 'three/tsl';
 import { octDecodeNormal, type GBufferPass } from '../gbuffer';
 import { viewPositionAt, viewRayAt } from '../view-ray';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
@@ -55,12 +56,13 @@ export class ShadingSample {
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewMatrix = uniform(new THREE.Matrix4());
     this.viewMatrixInverse = uniform(new THREE.Matrix4());
-    // 面の G バッファ。
+    // 面の G バッファ。**段を明示して読む** — 暗黙の段は画素の間の微分で決まり、一様でない分岐の中では
+    // シェーダを組めない。G バッファの段は 1 つだけ。
     const shadeUV = shadingUV(gbuffer, uv);
     this.uv = shadeUV;
     this.lit = gbuffer.covered(shadeUV);
-    this.normal = octDecodeNormal(texture(gbuffer.normalTexture, shadeUV).rg);
-    this.roughness = texture(gbuffer.roughnessTexture, shadeUV).r;
+    this.normal = octDecodeNormal(texture(gbuffer.normalTexture, shadeUV).level(float(0)).rg);
+    this.roughness = texture(gbuffer.roughnessTexture, shadeUV).level(float(0)).r;
     // 深度から復元した位置と、視線の向き。
     this.position = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse, shadeUV);
     this.worldPosition = this.viewMatrixInverse.mul(vec4(this.position, 1)).xyz;

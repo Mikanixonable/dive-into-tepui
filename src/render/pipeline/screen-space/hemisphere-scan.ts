@@ -6,8 +6,8 @@
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, bool, dot, float, floor, getViewPosition, ivec2, length, max, min, screenSize, screenUV, select, sqrt,
-  textureLoad, uint, vec2, vec3, vec4,
+  If, Loop, bool, dot, float, floor, getViewPosition, ivec2, length, max, min, screenSize, screenUV, select,
+  smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
@@ -56,28 +56,30 @@ interface GBufferSurface {
 // その逆、sliceCount はスライスの数、stepCount は片側の歩数、noise は画素ごとの互いに独立な 0..1 の組(x が
 // スライスの回転、y が歩みのずれ、z が扇形の端の丸めのずれ)。ambientIrradiance と planets は、近くの構造に
 // 遮られないときに受け手へ届く一様な環境光の照度と天体照。radiance は走査と同じ解像度の、面が放つ放射輝度
-// (SUN_IRRADIANCE_1AU の目盛り)で、null なら照り返しは 0。虚空と、半径が画面上で 1 画素以下の受け手は 0。
-// **Fn の中から呼ぶこと。**
+// (SUN_IRRADIANCE_1AU の目盛り)で、null なら照り返しは 0。resolvesNearby が偽の受け手は 0。
+// **Fn の中から呼ぶこと。** noise・ambientIrradiance・planets は一様でない分岐の中で読むので、テクスチャを段を
+// 明示して読む式で渡すこと。
 export function scanHemisphere(
   depth: THREE.Texture, normal: THREE.Texture, gbufferSize: Vec2Node, projection: Mat4Uniform,
   projectionInverse: Mat4Uniform, sliceCount: IntNode, stepCount: IntNode, noise: Vec3Node,
   ambientIrradiance: Vec3Node, planets: readonly PlanetIllumination[], radiance: THREE.Texture | null,
 ): Vec3Node {
-  // 受け手。ループの中と外の両方から読むので、先に変数へ置く。視線は投影方式によらない形から取る。
+  // 受け手。ループの中と外の両方から読むので、先に変数へ置く。
   const receiver = surfaceAt(depth, normal, gbufferSize, projectionInverse, floor(screenUV.mul(screenSize)));
-  const view = viewRayAt(projectionInverse, receiver.uv).direction.negate().toVar();
-  const radius = screenRadius(receiver.position, projection).toVar();
-  const rotation = noise.x.toVar();
-  const jitter = noise.y.toVar();
-  const dither = noise.z.toVar();
-  // 遠方の光は面の値を読む式から組まれている。**走査へ入る前に変数へ置く** — 暗黙の LOD を持つ読みが
-  // 分岐とループの中へ落ちると、シェーダを組めない。
-  const ambient = ambientIrradiance.toVar();
-  const planetVars: readonly PlanetIllumination[] = planets.map(({ cap, irradiance }) => ({
-    cap: { direction: cap.direction.toVar(), cosAngle: cap.cosAngle.toVar() }, irradiance: irradiance.toVar(),
-  }));
+  const radius = projectedRadius(receiver.position, projection, screenSize).toVar();
   const correction = vec3(0).toVar();
-  If(receiver.depth.greaterThan(0).and(radius.greaterThan(1)), () => {
+  If(resolvesNearby(receiver.depth, radius), () => {
+    // 視線は投影方式によらない形から取る。
+    const view = viewRayAt(projectionInverse, receiver.uv).direction.negate().toVar();
+    const rotation = noise.x.toVar();
+    const jitter = noise.y.toVar();
+    const dither = noise.z.toVar();
+    // 遠方の光は面の値を読む式から組まれている。**ループへ入る前に変数へ置く** — ループの中で初めて組むと、
+    // スライスごとに面を読み直し、ループの後の照度もループの中で読んだ値に頼る。
+    const ambient = ambientIrradiance.toVar();
+    const planetVars: readonly PlanetIllumination[] = planets.map(({ cap, irradiance }) => ({
+      cap: { direction: cap.direction.toVar(), cosAngle: cap.cosAngle.toVar() }, irradiance: irradiance.toVar(),
+    }));
     // 塞がれた扇形の数と照り返しの、スライスの重みつきの和。
     const ambientSum = float(0).toVar();
     const bounceSum = vec3(0).toVar();
@@ -147,9 +149,26 @@ export function scanHemisphere(
     for (const { planet, blocked, wedge } of planetSums) {
       blockedIrradiance.addAssign(planet.irradiance.mul(blocked.div(max(wedge, 1e-6))));
     }
-    correction.assign(signedDiffuseCorrection(bounceSum.mul(Math.PI).div(average), blockedIrradiance));
+    // 半径が 1〜2 画素に写る受け手では、効きを 0 から 1 へ渡す — 走査を打ち切る 1 画素で補正が段を作らない。
+    correction.assign(signedDiffuseCorrection(bounceSum.mul(Math.PI).div(average), blockedIrradiance)
+      .mul(smoothstep(1, 2, radius)));
   });
   return correction;
+}
+
+// 受け手の近くを走査するか — 面が写っていて(素の深度 depth > 0)、半径が走査の画面へ 1 画素より大きく写る
+// (projectedRadius の radius > 1)。偽の受け手の補正は 0 で、その画素の照り返しの源も要らない。
+export function resolvesNearby(depth: FloatNode, radius: FloatNode): BoolNode {
+  return depth.greaterThan(0).and(radius.greaterThan(1));
+}
+
+// view 空間の点 position から WORLD_RADIUS 離れた点が、寸法 scanSize [px] の走査の画面の上で何画素離れて写るか。
+// 画面の対角より遠くは読めないので、対角で頭打ちにする。透視でも平行投影でも同じ式で測る。
+export function projectedRadius(position: Vec3Node, projection: Mat4Uniform, scanSize: Vec2Node): FloatNode {
+  const center = projection.mul(vec4(position, 1));
+  const edge = projection.mul(vec4(position.add(vec3(WORLD_RADIUS, 0, 0)), 1));
+  const ndcOffset = edge.xy.div(edge.w).sub(center.xy.div(center.w));
+  return min(length(ndcOffset.mul(scanSize).mul(0.5)), length(scanSize));
 }
 
 // 走査の解像度の画素 pixel(整数座標)が表す G バッファの画素の面。面が写っていない画素の法線は (0, 0, 1)。
@@ -316,13 +335,4 @@ export function gbufferUVOf(pixel: Vec2Node, gbufferSize: Vec2Node): Vec2Node {
   // 画素ごとに揺れる。
   const texel = ivec2(pixel).mul(2).add(1).mul(ivec2(gbufferSize)).div(ivec2(screenSize).mul(2));
   return vec2(texel).add(0.5).div(gbufferSize);
-}
-
-// view 空間の点 position から WORLD_RADIUS 離れた点が、描いている画面の上で何画素離れて写るか。画面の対角より
-// 遠くは読めないので、対角で頭打ちにする。透視でも平行投影でも同じ式で測る。
-function screenRadius(position: Vec3Node, projection: Mat4Uniform): FloatNode {
-  const center = projection.mul(vec4(position, 1));
-  const edge = projection.mul(vec4(position.add(vec3(WORLD_RADIUS, 0, 0)), 1));
-  const ndcOffset = edge.xy.div(edge.w).sub(center.xy.div(center.w));
-  return min(length(ndcOffset.mul(screenSize).mul(0.5)), length(screenSize));
 }
