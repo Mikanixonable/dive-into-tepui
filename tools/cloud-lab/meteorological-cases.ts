@@ -73,6 +73,7 @@ const CONTROLS = {
     operation: '非発散の剛体回転風・無供給・無損失の有限雲塊',
     controlledInputs: {
       windField: 'solid-body spherical rotation', supply: 0, loss: 0,
+      initialLiquidMassKgM2: 0.00025, initialIceMassKgM2: 0.00075,
     },
   },
   c2: {
@@ -120,11 +121,29 @@ const measurement = (
 
 const COMMON_WINDOW = { startMinutes: 0, endMinutes: 360, sampleIntervalMinutes: 10 } as const;
 
+export const METEOROLOGICAL_ERROR_FLOORS = {
+  c1TrajectoryFractionOfMinimumSample: 0.25,
+  relativeMass: 0.01,
+  normalizedMassBalance: 0.01,
+  normalizedDensity: 2e-3,
+  gpuComponentLeakage: 1e-3,
+  emptyCaseAbsolute: 1e-9,
+} as const;
+
 export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, MeteorologicalCaseFixture>> = {
   C1: { id: 'C1', label: '球面剛体回転', ...CONTROLS.c1, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
-      measurement('trajectory', '球面移流軌跡誤差', 'm', 'distance to analytic equatorial great-circle path', 'finite cloud mask', 0, '0.01 m 以下', 'analytic'),
-      measurement('mass', '相対質量誤差', '1', 'carried mass before/after transport', 'finite cloud mask', 0, '輸送APIに質量状態がなく blocked', 'analytic'),
+      measurement('trajectory', '有限雲塊の球面剛体回転軌跡誤差', 'm',
+        'maximum distance of area-weighted material points from independent analytic axis rotation',
+        'finite spherical cloud-blob material points', 0,
+        `標準近距離の最小標本間隔の ${(METEOROLOGICAL_ERROR_FLOORS.c1TrajectoryFractionOfMinimumSample * 100).toString()}% 以下。間隔の固定値が未宣言のため blocked`, 'analytic'),
+      measurement('rotation-angle', '球面剛体回転角誤差', 'rad',
+        'maximum phase-angle error about the prescribed rotation axis',
+        'finite spherical cloud-blob material points', 0, '1e-9 rad 以下', 'analytic'),
+      measurement('mass', '相対質量誤差', '1',
+        'area-weighted transported heterogeneous column mass versus a separately fixed finite-blob quadrature integral, divided by that integral',
+        'finite spherical cloud-blob material points', 0,
+        `初期質量に対し ${(METEOROLOGICAL_ERROR_FLOORS.relativeMass * 100).toString()}% 以下`, 'analytic'),
     ] },
   C2: { id: 'C2', label: '高度別の風向', ...CONTROLS.c2, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
@@ -132,6 +151,19 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
       measurement('released-ice-track', '代表放出氷の軌跡誤差', 'm',
         'distance from analytic lower-east-then-upper-north spherical transport',
         'surviving ice representative cohort', 0, '解析的な二高度の球面軌跡との差 0.05 m 以下', 'analytic'),
+      measurement('released-ice-cohorts', '全放出氷コホートの最大軌跡誤差', 'm',
+        'maximum endpoint distance for each surviving cohort using its own release time',
+        'all surviving released-ice cohorts', 0, '解析的な二高度の球面軌跡との差 0.05 m 以下', 'analytic'),
+      measurement('released-ice-mass', '放出氷コホートの質量残差', 'kg m^-2',
+        'absolute difference between summed cohort mass and event remaining ice ledger',
+        'all surviving released-ice cohorts', 0, '1e-12 kg m^-2 以下', 'analytic'),
+      measurement('released-ice-spread', '放出氷コホートの質量加重広がり誤差', 'm',
+        'absolute difference of mass-weighted spherical RMS spread from analytic cohort endpoints',
+        'all surviving released-ice cohorts', 0, '0.05 m 以下', 'analytic'),
+      measurement('continuous-release-distribution', '連続放出分布に対するコホート近似誤差', 'm',
+        'maximum of mass-centroid displacement and mass-weighted spherical RMS spread error against independent release-time quadrature',
+        'continuous surviving-ice release interval', 0,
+        'blocked until a standard minimum spatial sample spacing or independent transport-error tolerance is fixed', 'numeric'),
     ] },
   C3: { id: 'C3', label: '供給停止後のかなとこ', ...CONTROLS.c3, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: { startMinutes: 0, endMinutes: 1_440, sampleIntervalMinutes: 10 }, measurements: [
@@ -182,15 +214,6 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
 export const METEOROLOGICAL_CASE_IDS: readonly MeteorologicalCaseId[] = [
   'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9',
 ];
-
-export const METEOROLOGICAL_ERROR_FLOORS = {
-  c1TrajectoryFractionOfMinimumSample: 0.25,
-  relativeMass: 0.01,
-  normalizedMassBalance: 0.01,
-  normalizedDensity: 2e-3,
-  gpuComponentLeakage: 1e-3,
-  emptyCaseAbsolute: 1e-9,
-} as const;
 
 export type CloudReferenceSeriesId = 'marine-cell' | 'deep-convection' | 'wave-cloud' | 'midlatitude-front';
 
