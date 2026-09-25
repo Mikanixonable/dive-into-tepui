@@ -37,6 +37,7 @@ export class ModalOverlay<T> implements OverlayHandle {
     this.element = document.createElement('div');
     this.element.className = className;
     this.element.hidden = true;
+    // 題名・説明・本体・操作行の縦積みパネルを組む。
     const panel = document.createElement('div');
     panel.className = `${className}-panel ui-surface-focus`;
     panel.setAttribute('role', 'dialog');
@@ -55,6 +56,7 @@ export class ModalOverlay<T> implements OverlayHandle {
     this.actions.className = `${className}-actions`;
     panel.appendChild(this.actions);
     this.element.appendChild(panel);
+    // パネル内の押下を窓ごとのドラッグ・外側クリック判定と混ぜない。
     this.element.addEventListener('pointerdown', (event) => event.stopPropagation());
     root.appendChild(this.element);
   }
@@ -66,6 +68,7 @@ export class ModalOverlay<T> implements OverlayHandle {
     this.openState = true;
     this.cancelValue = cancelValue;
     this.onResult = onResult;
+    // 題名・説明は任意 — 無ければ行ごと畳む。
     this.title.textContent = request.title ?? '';
     this.title.hidden = request.title === undefined || request.title === '';
     this.message.textContent = request.message ?? '';
@@ -79,6 +82,7 @@ export class ModalOverlay<T> implements OverlayHandle {
 
   public contains(target: Node): boolean { return this.element.contains(target); }
 
+  // DOM と登録を取り除く。以後このインスタンスは使えない。
   public dispose(): void {
     this.close();
     this.element.remove();

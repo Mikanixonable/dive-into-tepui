@@ -12,6 +12,7 @@ export class Meter {
   public constructor(label?: string) {
     this.element = document.createElement('div');
     this.element.className = 'w-meter';
+    // トラック自体が progressbar — 値の aria はここへ書く。
     this.track = document.createElement('div');
     this.track.className = 'w-meter-track';
     this.track.setAttribute('role', 'progressbar');
@@ -27,6 +28,7 @@ export class Meter {
     this.fill.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
   }
 
+  // 満ちた部分の色を危険色へ切り替える。
   public setDanger(danger: boolean): void {
     this.fill.classList.toggle('danger', danger);
   }
@@ -46,6 +48,7 @@ export class Meter {
   public setProgress(now: number, max: number, valueText: string | null, danger: boolean): void {
     this.setRatio(max > 0 ? now / max : 0);
     this.setDanger(danger);
+    // progressbar の読み上げ値を見た目の値と揃える。
     this.track.setAttribute('aria-valuemin', '0');
     this.track.setAttribute('aria-valuemax', String(max));
     this.track.setAttribute('aria-valuenow', String(now));

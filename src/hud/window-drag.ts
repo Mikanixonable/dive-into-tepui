@@ -22,6 +22,7 @@ export function wireHeaderDrag(header: HTMLElement, session: WindowDragSession):
   let dragStartWindowPos: Point2 = { x: 0, y: 0 };
   let dragging = false;
 
+  // ヘッダー上のボタン以外を掴んだときに、ドラッグ開始点とポインタキャプチャを確保する。
   header.addEventListener('pointerdown', (e) => {
     if (session.enabled !== undefined && !session.enabled()) return;
     if (e.target instanceof Element && e.target.closest('button')) return;
@@ -32,6 +33,7 @@ export function wireHeaderDrag(header: HTMLElement, session: WindowDragSession):
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   });
 
+  // しきい値(CLICK_MOVE_THRESHOLD)を超えて初めて動いた時点でドラッグ開始とみなす。
   header.addEventListener('pointermove', (e) => {
     if (dragPointerId !== e.pointerId || dragStartClient === null) return;
     const dx = e.clientX - dragStartClient.x;
@@ -42,6 +44,7 @@ export function wireHeaderDrag(header: HTMLElement, session: WindowDragSession):
     session.moveTo(dragStartWindowPos.x + dx, dragStartWindowPos.y + dy);
   });
 
+  // ポインタキャプチャを解放してドラッグ状態を終える。
   const end = (e: PointerEvent): void => {
     if (dragPointerId !== e.pointerId) return;
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
