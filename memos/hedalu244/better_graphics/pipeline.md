@@ -12,7 +12,7 @@
 
 各計画ファイル: [`atmosphere_backlog.md`](atmosphere_backlog.md)(大気の残件) /
 [`volume.md`](volume.md)(大気以外の半透明) /
-[`screenspace.md`](screenspace.md)(AO と GI) / [`shadow_backlog.md`](shadow_backlog.md)(影の残件) /
+[`screenspace-diffuse.md`](screenspace-diffuse.md)(近傍の遮蔽と照り返し) / [`screenspace-specular.md`](screenspace-specular.md)(局所反射) / [`shadow_backlog.md`](shadow_backlog.md)(影の残件) /
 [`arealight_backlog.md`](arealight_backlog.md)(エリアライトの残件) /
 [`blackbody_backlog.md`](blackbody_backlog.md)(固体の黒体放射の残件) /
 [`exposure_backlog.md`](exposure_backlog.md)(露出の残件) /
@@ -361,7 +361,7 @@ out = mix(base, mix(mix(glare, streak, 0.1), ghosts, 0.08), 0.03)
   掛けてはならない** — 球冠の放射照度は光源の中心が地平線の下でも 0 にならないのに GGX の N·L
   は 0 になり、Smith の可視項が発散して輪郭と雲頂に周囲の 10⁴ 倍の輝点が出る。満ち欠けは放射
   輝度側に掛け、拡散と鏡面へ同じだけ効く(§1-5)。遮蔽は受けない(天体照の遮蔽は
-  [`screenspace.md`](screenspace.md))。描画設定は `planetLightCount`(なし / 1 / 2)で、
+  [`screenspace-diffuse.md`](screenspace-diffuse.md))。描画設定は `planetLightCount`(なし / 1 / 2)で、
   本数を超えたスロットは描画命令を出さない。
   スロットへ何を載せるかとその放射輝度は §1-5(`render/pipeline/lighting/planet-light-select.ts`)。
 - **GPU 計測は描画命令ごとに `beginPass(GPU_PASS.lighting)` を申告**し、計測側が同一パスの
@@ -555,7 +555,7 @@ instanceMatrix の受け渡し経路を `count` から決め、最初の描画�
 | レンズ像の見た目(ゴーストの分布・条の色分散・発行コスト)が詰め切れていない | [`lens_backlog.md`](lens_backlog.md) |
 | 点像に置き換えたあとも、ラスタライズ由来の振れが 0.24 LSB 残っている | [`lens_backlog.md`](lens_backlog.md) |
 | オーロラ・プルーム等が板ポリゴンのまま。手置きの明るさが残っている | [`volume.md`](volume.md) |
-| AO / GI が無い。二次反射の遮蔽を表せない | [`screenspace.md`](screenspace.md) |
+| AO / GI が無い。二次反射の遮蔽を表せない | [`screenspace-diffuse.md`](screenspace-diffuse.md) |
 | タンパク質型の敵と分離ブースターが、温度による自照の経路に乗っていない | [`blackbody_backlog.md`](blackbody_backlog.md) |
 | 巻雲と積雲の中間調が地表アルベドへの焼き込みのまま。入射の夕焼け色・「高い雲は遅く夜を迎える」・雲が日食を受けることが出ない。夜側の雲が黒 | [`translucent_cloud.md`](translucent_cloud.md)(優先度は下がっている — ディザの帯を広げて中間調の一部が出ている) |
 | 生成側の場がゲーム本体へ 1 texel も届いていない(仮テクスチャのまま。配信 +10.9 MB) | [`../cloud-generation/improvement.md`](../cloud-generation/improvement.md) |
