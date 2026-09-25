@@ -85,6 +85,7 @@
     "render-lab:shot:native": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-native-shot.mjs",
     "cloud-detail:sweep": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-sweep.mjs",
     "cloud-detail:path-shot": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-path-shot.mjs",
+    "cloud-detail:benchmark": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-benchmark.mjs",
     "render-lab:compare": "node tools/render-lab-compare.mjs",
     "cloud-baseline:measure": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-baseline-measure.mjs",
     "cloud-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.cloud-lab.config.js --mode development",
