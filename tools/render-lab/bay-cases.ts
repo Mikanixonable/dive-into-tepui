@@ -353,13 +353,13 @@ function bay(): LabCase {
       'bay-quality-low': { view: {}, graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse' },
       'bay-quality-medium': { view: {}, graphics: { screenSpaceQuality: 1 }, debugTarget: 'diffuse' },
       'bay-quality-high': { view: {}, graphics: { screenSpaceQuality: 2 }, debugTarget: 'diffuse' },
-      // 低設定は半解像度。距離約 1 km で半解像度の 4 m 半径が 1〜2 px に投影される。
+      // 近傍の半径が、低設定の走査の解像度で 1〜2 px に写る距離。1px は下端のすぐ上、2px は上端の手前。
       'bay-radius-1px': {
-        view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 1100),
+        view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 550),
         graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse',
       },
       'bay-radius-2px': {
-        view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 650),
+        view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 325),
         graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse',
       },
       // 細い梁のまわりの暈。後ろからトラスへ寄せて見下ろし、地球を真下へ移す — 奥の壁の上に出た段が、
