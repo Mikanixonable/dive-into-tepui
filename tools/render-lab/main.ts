@@ -73,6 +73,7 @@ declare global {
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       graphicsSettings: () => Readonly<GraphicsSettingsData>;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
+      readGpuTextureDiagnostic: (name: CaseName) => Promise<unknown>;
       measureShot: (
         name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
         cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
@@ -284,6 +285,7 @@ async function init(): Promise<void> {
     },
     graphicsSettings: () => settings.graphics.current,
     measure: (name, angles) => view.measure(name, angles),
+    readGpuTextureDiagnostic: (name) => view.readGpuTextureDiagnostic(name),
     measureShot: (name, shotName, graphics, cloudDetailDiagnostic) => view.measureShot(
       name, shotName, graphics, 6, 30, cloudDetailDiagnostic,
     ),
