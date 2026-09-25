@@ -1,7 +1,7 @@
 # 気象過程に基づく地球の雲モデル改修計画（第二版・改訂）
 
 - 作成・改訂日: 2026-09-22
-- 状態: 2026-09-23 時点で Step 1・2 の基盤と取得・代表軌跡の診断を部分実装。Step 1・2 の達成条件は未完了、Step 3〜7 は未着手
+- 状態: 2026-09-26 時点で Step 1〜7 の主要な実装経路を作業ブランチへ縦切り実装。制御実験 C1〜C9 は生成画像へ接続済み。ただし実観測系列による校正、対象 GPU の性能・ピークメモリ、最終画像／動画 matrix が未達のため、計画全体の完了判定は保留
 - 対象: 地球の生成雲、観測雲 adapter、雲の地表・大気・影描画、雲ラボ・描画ラボ
 
 ## 実施記録（2026-09-23）
@@ -12,13 +12,13 @@
 | --- | --- | --- |
 | Step 1 | 雲の期待する振る舞いを `DEVELOP/SPEC/RENDERING.md` に先行確定。C1〜C9 の制御入力と指標宣言、参照 manifest・距離関数・分割検証、雲／描画ラボの固定系列撮影を追加。GOES ABI の L1b C02/C13 と L2 COD/ACHA/ACTP/ACM を時系列で取得する手順を追加し、後続作業で指定枠の網羅性・ローカル受領 hash・計測 pass 合計の検査を追加 | 実際の参照 NetCDF と SHA-256 受領値、品質管理・観測演算子の実装、独立系列の数値分布と絶対許容域、動画、全フレーム B0・対象 GPU・ノイズ床。取得手順は dry-run・合成ファイル・stub AWS でのみ検証済み |
 | Step 2 | 物理層に飽和・混相・仮温度・parcel 浮力／CAPE/CIN・粒径／光学厚・球面移流の閉包を追加。表示導出層に不変の環境診断と質量収支付きイベント再構成を追加。高度・時刻依存の球面 parcel 輸送を追加し、ラボから C1〜C7 の対応済み CPU 診断を実行。後続作業で親と代表放出氷の位置履歴を結び C2 の解析的軌跡を検査 | 雲水供給を製品側へ接続した塔／かなとこの形状・放出群の全軌跡、C1 の輸送質量、寿命の観測校正、GPU 候補との誤差、冷キャッシュ費用、C2〜C9 の全量的許容域。C8/C9 は全項目 blocked |
-| Step 3〜7 | 未着手 | 共通多層密度・光学・地表／大気／影、2 km の画面応答、形態全種、GPU／メモリ予算、観測評価、旧生成経路の撤去 |
+| Step 3〜7 | `CloudSample` から共通3D密度へ展開する `CloudDensityEvaluator`、解析的 2 km detail、地表／大気／雲影の共通読み取り、二時刻キャッシュと時間平均、品質別 footprint、寿命・海洋セル・波状形態の driver、C1〜C9 の生成画像 fixture、専用 CI を実装。固定周期移流・固定薄雲制限の旧定数は現ブランチで残存していない | 実観測 NetCDF と品質 mask による形態・光学校正、全必須形態の独立系列評価、対象 GPU の B0/Bcloud/Bupdate、CPU/GPU ピークメモリ、時刻ジャンプ準備待ち、最終 matrix の画像・動画。これら未計測項目は pass と扱わない |
 
-Step 2 のラボ撮影は48枚。Step 1 と同条件の48枚は SHA-256 が全一致した。ラボの `measureFixture` は CPU 診断の値・基準・許容差・`pass/fail/blocked` を返すが、撮影 manifest の `generatedCloudImageFixtureApplied` は `false` であり、これらの画像を新モデルの視覚検証に数えない。現行の生成雲に残る固定周期移流などの旧経路は、Step 3 以降に新契約へ接続してから撤去する。
+初期の Step 2 ラボ撮影は CPU 診断だけで、生成画像へ fixture を適用していなかった。2026-09-26 の続行実装で `CloudSampleTransform` をラボ専用に追加し、C1〜C9 の制御値を実際の `GeneratedCloudField` 焼成へ接続した。通常ゲームは変換を渡さず恒等経路のまま、実写比較は `clearFixture()` で本番生成場へ戻す。`cloud-lab:shot` は各 fixture × 固定時刻 × coverage/cloudTop/translucent/composite を別成果物として撮影し、manifest の `generatedCloudImageFixtureApplied` は `true` となる。
 
 レビューで熱力学の混相・乾燥 parcel・仮温度気圧積分、イベント打切り質量予算、参照の held-out 検証と取得時間幅を修正した。`cloud-environment.ts` と `cloud-events.ts` は、現段階の実装が純粋な表示導出で GPU 装置へまだ接続されていないことを踏まえ、`src/game/cloud/` に配置した。ARCHITECTURE R2 の例外は採らない。作業ブランチでは `npm run check:boundaries`、`npm run typecheck`、`npm run lint`、`npm run test`（1154/1154）、`npm run build` を通過した。build の bundle size 警告は残るが失敗ではない。
 
-次に進む条件は、参照系列を取得して checksum・mask・独立分布・許容域を固定し、Step 2 のイベント質量と放出群の全量輸送を同じ出生／放出履歴で結び、C1〜C7 の未対応測定を埋めること。その後に Step 3 の共通密度・GPU 表現・性能の成立判定へ進む。未取得データや未計測の GPU 時間を合格として扱わない。
+次の主要な未達条件は、実参照系列を取得して checksum・品質 mask・観測演算子・独立分布・絶対許容域を固定すること、対象 GPU で B0/Bcloud/Bupdate とピークメモリ・準備待ちを測ること、C1〜C9 と広域／近距離 matrix の画像・動画を保存して観測基準へ照合することである。未取得データや未計測の GPU 時間を合格として扱わない。
 
 ### 続行記録（2026-09-23）
 
@@ -29,6 +29,19 @@ Step 1 の取得では、GOES ABI の系列開始・終了を含む 10 分枠だ
 Step 2 では、表示導出の対流イベントへ明示的な発生位置と放出高度を加え、親の下層移流後の位置から氷を上層風へ渡す決定論的 CPU 再構成を追加した。C2 の解析解との比較は放出氷の**残存質量で重み付けした代表軌跡**に限って通過した。レビューで、氷を出生位置から放出していた不整合を修正し、鉛直移動による風層の切替と質量収支を検査した。連続した放出群の空間的広がり、親子の完全な物質履歴、画像への接続は未実装であり、C2 全体や Step 2 の達成とは扱わない。
 
 今回の追加範囲では `npm run typecheck`、`npm run check:boundaries`、`npm run lint`、`npm run test:render`（291/291）、`npm run test:game`（319/319）を通過した。Step 3〜7 の形態・共通光学へ進む前に、Step 1 の実参照系列と観測指標・絶対許容域を確定し、Step 2 の C1 質量、放出群の全量輸送、冷キャッシュ費用と GPU 誤差を埋める必要がある。
+
+### 続行記録（2026-09-26）
+
+Step 3〜7 の実装縦切りを `workspace3-step7` で進めた。雲場の契約は coverage・cloudTop・iceOpticalDepth・iceCenter を共通入力とし、`CloudDensityEvaluator` が液相／氷相の鉛直密度と消散係数へ展開する。地表側の不透明雲、大気内の雲、太陽光路の雲影はこの共通密度を読むよう統一した。局所 detail は追加テクスチャを持たず、2 km を基準とする解析的帯域制限で footprint に応じて消える。C9 の二層空隙、柱光学深さ保存、detail の Nyquist 消失は render test で固定した。
+
+時間方向は生成場を二時刻キャッシュへ分け、通常は補間、高速時間では中心時刻と露光幅から決定的な標本を選ぶ。品質段は同じ policy から時間キャッシュ幅と空間 footprint を変える。不透明表面は coarse/standard/fine で march/refine の評価数が変わり、大気と雲影は同じ品質から detail footprint を変える。雲影は現在 6 タップ固定であり、段別タップ数へ変更する根拠となる対象 GPU 実測はまだ無い。
+
+対流寿命は `cloud-lifecycle.ts`、連続放出群は `cloud-event-transport.ts` で、親の供給停止後にも上層氷が残ること、上層が乾くほど消散が速いこと、放出群の空間的広がりと質量保存を検査した。海洋セル・波状雲などの形態 driver は環境量から連続的に決める純関数と生成側 driver を追加した。ただしこれらは観測系列への最終校正を済ませておらず、形態 Step の達成判定にはまだ使わない。
+
+C1〜C9 は `tools/cloud-lab/controlled-cloud-fixture.ts` から実際の生成テクスチャへ接続した。fixture は本番気象正本を変更せず、凝結後の `CloudSample` をラボだけで変換する。各キャッシュ時刻で `syncTime()` して寿命・輸送を決定的に再構成し、fixture 切替時は生成場の二時刻キャッシュを invalidate する。通常の `cloud-lab:compare` は fixture を解除してから本番生成場を実写と比較するため、制御画像が通常比較へ混入しない。
+
+専用 GitHub Actions `Cloud Step 3-7 CI` を追加し、2026-09-26 の commit `4b39ddef42c27aae1b0c11015e4b20420327e4bd` で lint、typecheck、render tests、game tests、cloud reconstruction benchmark、通常 production build、cloud-lab production build がすべて成功した。これは決定論的コード検証であり、対象 GPU の性能 gate や観測データ gate の代用ではない。
+
 
 ## 1. 目的と到達範囲
 
