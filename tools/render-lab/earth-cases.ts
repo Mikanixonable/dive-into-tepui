@@ -1,12 +1,13 @@
 // 地球まわりのケース。地球照を受ける自機と板・地平線の地球・火星との構図ごとに、観察のつまみで置く
 // 地球の既定の置き方と、置き方を変えた撮影を宣言し、その地球に合わせて自機・板・試験球・火星を置く。
 import * as THREE from 'three/webgpu';
-import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { Curve } from '../../src/render/curve';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
+import { QUALITY_PRESETS } from '../../src/render/graphics-settings';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
 import { ATMOSPHERE_QUALITY } from '../../src/render/atmosphere';
 import { anglesFromDirection, directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
@@ -164,13 +165,25 @@ function placementBelowHorizon(altitude: number, margin: number): Pick<LabViewAn
 // 地球のケースの地球の置き方と、その中心(描画座標)。
 const EARTH_PLACEMENT = placementBelowHorizon(LEO_ALTITUDE, 0);
 const EARTH_CENTER = earthCenterOf(EARTH_PLACEMENT);
+const EARTH_VIEW_TARGET = new THREE.Vector3(0, 0, EARTH_CENTER.z);
+const EARTH_VIEW_TARGET_DEPTH = -EARTH_VIEW_TARGET.z;
+
+// 赤道面の地表をケースの固定 pivot へ重ねる地球配置。
 const EARTH_NADIR_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
   earthAzimuthDeg: 180,
-  earthElevationDeg: -90,
-  earthAltitudeLog: Math.log10(LEO_ALTITUDE),
-  earthLatitudeDeg: 23,
-  earthLongitudeDeg: 13,
+  earthElevationDeg: 0,
+  earthAltitudeLog: Math.log10(EARTH_VIEW_TARGET_DEPTH + R_EARTH_EQ - R_EARTH),
+  earthLatitudeDeg: 0,
+  earthLongitudeDeg: 0,
 };
+const EARTH_STANDARD_CLOUD_DISTANCE = 250e3;
+const EARTH_C1_RASTER_DIAGNOSTIC_DISTANCE = 200e3;
+function earthStandardCloudView(cameraDistanceM: number): Partial<LabViewAngles> {
+  return {
+    ...EARTH_NADIR_PLACEMENT,
+    cameraDistanceLog: Math.log10(cameraDistanceM / EARTH_VIEW_TARGET_DEPTH),
+  };
+}
 const EARTH_LOW_ORBIT_ALTITUDE_M = 120e3;
 const EARTH_LOW_ORBIT_PLACEMENT = placementBelowHorizon(EARTH_LOW_ORBIT_ALTITUDE_M, 0);
 // 昼夜境界の撮影の恒星の向き。視線の先の地平線上。
@@ -236,12 +249,38 @@ function earth(): LabCase {
   return {
     objects: [sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER)],
     camera: labCamera(),
-    viewTarget: EARTH_CENTER,
+    viewTarget: EARTH_VIEW_TARGET,
     earth: EARTH_PLACEMENT,
     shadowBodies: [sphereShadowBody(eclipseBodyCenter, ECLIPSE_SHADOW_BODY_RADIUS)],
     shots: {
       'earth': { view: {} },
       'earth-nadir': { view: EARTH_NADIR_PLACEMENT },
+      'cloud-standard-near-range-250km': {
+        view: earthStandardCloudView(EARTH_STANDARD_CLOUD_DISTANCE),
+        graphics: QUALITY_PRESETS.medium,
+      },
+      // 2 km feature の medium 内部ラスタ条件を調べる診断専用。正式 C1 fixture や性能判定には使わない。
+      'cloud-c1-raster-200km-medium-diagnostic': {
+        view: earthStandardCloudView(EARTH_C1_RASTER_DIAGNOSTIC_DISTANCE),
+        graphics: QUALITY_PRESETS.medium,
+        cloudDetailDiagnostic: { wavelengthKm: 2, directionDeg: 0 },
+      },
+      // タイルの 2° 外縁が画面に入る距離で、境界合成の見た目を監査する専用 shot。
+      'cloud-detail-seam-500km-medium-diagnostic': {
+        view: earthStandardCloudView(500e3),
+        graphics: QUALITY_PRESETS.medium,
+        cloudDetailDiagnostic: { wavelengthKm: 4, directionDeg: 0, composition: 'coverage-residual' },
+      },
+      'cloud-detail-residual-200km-north-diagnostic': {
+        view: { ...earthStandardCloudView(200e3), earthLatitudeDeg: 1 },
+        graphics: QUALITY_PRESETS.medium,
+        cloudDetailDiagnostic: { wavelengthKm: 2, directionDeg: 0, composition: 'coverage-residual' },
+      },
+      'cloud-detail-residual-250km-cloudy-diagnostic': {
+        view: { ...earthStandardCloudView(250e3), earthLatitudeDeg: 1 },
+        graphics: QUALITY_PRESETS.medium,
+        cloudDetailDiagnostic: { wavelengthKm: 2, directionDeg: 0, composition: 'coverage-residual' },
+      },
       'earth-low-orbit': { view: EARTH_LOW_ORBIT_PLACEMENT },
       'earth-limb': { view: {} },
       // 昼夜境界。**太陽光が最も長く大気を通って届く向き**なので、波長ごとの減衰だけで縁と霞が橙へ
