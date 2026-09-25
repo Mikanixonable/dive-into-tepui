@@ -297,7 +297,7 @@ def make_shell_lathe(inner_points, wall, segments=48):
     return make_lathe(list(inner_points) + outer, segments=segments)
 
 # ----------------------------------------------------------------------
-# 1. Cockpit Module (cockpit-standard: length 4m, diameter 6m, radius 3m)
+# 1. Cockpit Module (cockpit-standard: length 3m, diameter 6m, radius 3m)
 # ----------------------------------------------------------------------
 def build_cockpit():
     reset_scene()
@@ -556,8 +556,6 @@ def build_tank_rcs(length, name):
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
-# ----------------------------------------------------------------------
-# 4. Main Thruster (thruster-standard: length 3.5m, diameter 3.0m, radius 1.5m)
 # ----------------------------------------------------------------------
 # 4. Main Thruster (thruster-standard: length 1.0m, diameter 6.0m, radius 3.0m)
 # ----------------------------------------------------------------------
