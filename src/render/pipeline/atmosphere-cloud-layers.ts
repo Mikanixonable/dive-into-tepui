@@ -1,6 +1,6 @@
 // 大気積分へ挿入する雲殻の交差判定・順序制御・合成処理を統括する。
 // AtmosphereIntegrator から天体空間の幾何配置と太陽放射輝度を入力パラメータとして受け取る。
-import { If, and, float, greaterThan, lessThan, mix, normalize, step, vec3 } from 'three/tsl';
+import { If, and, exp, float, greaterThan, lessThan, mix, normalize, step, vec3 } from 'three/tsl';
 import {
   CLOUD_SHELL_SPECIES, CloudAtmosphereRenderer, type CloudShellSample, type CloudSpecies,
 } from './cloud-atmosphere-renderer';
@@ -98,6 +98,9 @@ export class AtmosphereCloudLayers {
     const exits = shells.map((shell) => [shell, shell.crossings.exit] as const).reverse();
     const originDepth = geometry.outwardDepthAt(ray, float(0));
     const layers: CloudShellEvent[] = [];
+    // 局所光学場の消散は視線へ一度だけ掛ける — 交点から前方へ積分した値なので、後のイベントで
+    // もう一度掛けると同じ弦を重複して数える。
+    const localFieldApplied = float(0).toVar();
     // 同心殻は外側からentry、内側からexitの順に並べればfront-to-backになる。接線はcrosses=false
     // のためイベントを作らず、入口/出口を不安定に2つへ分けない。
     for (const [shell, crossing] of [...entries, ...exits]) {
@@ -116,6 +119,10 @@ export class AtmosphereCloudLayers {
           shell.species, shell.radius, offset, ray.unitDir, sunDir, geometry.sunRadianceAt(point),
         );
         cloudTransmittance.assign(sample.transmittance);
+        If(localFieldApplied.lessThan(0.5), () => {
+          localFieldApplied.assign(1);
+          cloudTransmittance.mulAssign(exp(sample.localFieldTau.negate()));
+        });
         localRadiance.assign(sample.radiance);
         backgroundTransmittance.assign(geometry.transmittanceTo(originDepth, ray, distance));
       });

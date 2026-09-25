@@ -125,6 +125,9 @@ export class CloudShadowRenderer {
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
           opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1)));
         });
+        // 局所光学場が張る域では、場を抜ける光路の消散を柱の推定へ足す。場は受け手から恒星へ
+        // 向かう同じ殻の空間の光路で積分する — 未結合では 0 を返すので分岐は要らない。
+        opticalDepth.addAssign(this.fieldSampler.localOpticalPathAt(offset, rayDir, 32).z);
         transmittance.assign(exp(opticalDepth.negate()));
       });
       return transmittance;

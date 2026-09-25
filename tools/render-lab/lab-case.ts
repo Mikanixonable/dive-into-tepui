@@ -57,6 +57,8 @@ export interface LabShot {
   readonly view: Partial<LabViewAngles>;
   // 起動時の描画品質設定へ重ねる差分。省略すると起動時の設定のまま撮る。
   readonly graphics?: Partial<GraphicsSettingsData>;
+  // 生成雲へ局所光学場の診断体積を差し込む。省略すると差し込まない。
+  readonly cloudLocalFieldDiagnostic?: boolean;
   // 局所タイルの既知周期を撮る診断条件。省略すると診断タイルを外す。
   readonly cloudDetailDiagnostic?: {
     readonly wavelengthKm: number;
@@ -109,12 +111,15 @@ export interface LabCase {
   readonly disposeProteinMotion?: () => void;
   // ケースが THREE のシーン資源所有走査で扱えない補助資源を解放する。
   readonly dispose?: () => void;
-  // 実テクスチャを対象にした render-lab 専用GPU診断。Three backend のtexture readback関数だけを受け取る。
+  // 実テクスチャやシェーダ出力を対象にした render-lab 専用GPU診断。Three backend の
+  // texture readback 関数と renderer を受け取る。renderer は診断用の float レンダーターゲットへの
+  // 描画と readRenderTargetPixelsAsync による生値の読み戻しに使う。
   readonly readGpuTextureDiagnostic?: (
     readLayer: (texture: THREE.Texture, width: number, height: number, layer: number) => Promise<{
       readonly data: ArrayBufferView;
       readonly format: string;
     }>,
+    renderer: THREE.WebGPURenderer,
   ) => Promise<unknown>;
 }
 
