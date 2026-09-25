@@ -1,5 +1,6 @@
 // 250 km・medium shot で局所診断タイルだけを切り替え、観測済み GPU pass 合計の増分を測る。
 import { writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 
@@ -14,6 +15,28 @@ const tile = {
 };
 const blockCount = 8;
 const lens = !process.argv.includes('--lens-off');
+const provisionalDeltaP95LimitMs = 5;
+
+function distribution(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  return { p50: sorted[Math.ceil(sorted.length * 0.5) - 1],
+    p95: sorted[Math.ceil(sorted.length * 0.95) - 1], min: sorted[0], max: sorted.at(-1) };
+}
+
+function hostGpu() {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const report = JSON.parse(execFileSync('system_profiler', ['-json', 'SPDisplaysDataType'], {
+      encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'],
+    }));
+    return (report.SPDisplaysDataType ?? []).map((display) => ({
+      model: display.sppci_model ?? display._name ?? null,
+      cores: display.sppci_cores ?? null,
+    }));
+  } catch {
+    return null;
+  }
+}
 const { fatalEvents, onEvent } = collectFatalEvents();
 const session = await openChromeSession({
   serveDir: path.join(root, '.render-lab'), port: 8788, debugPort: 9465,
@@ -60,9 +83,18 @@ try {
     console.log(JSON.stringify({ index, deltaMs: delta, offOffNoiseMs: noise }));
   }
   if (fatalEvents.length) throw new Error(fatalEvents.join('\n'));
+  const delta = distribution(blocks.map((block) => block.deltaMs));
+  const offOffNoise = distribution(blocks.map((block) => block.offOffNoiseMs));
   const result = {
     scope: 'observed-render-total (all resolved renderer.render GPU timestamp queries, not full-frame B0)',
     caseName: 'earth', shotName, internalRaster: [720, 405], lens, residual, adapter,
+    hostGpu: hostGpu(),
+    summary: {
+      pairedDeltaMs: delta, offOffNoiseMs: offOffNoise, provisionalDeltaP95LimitMs,
+      withinProvisionalLimitThisRun: delta.p95 <= provisionalDeltaP95LimitMs,
+      qualification: 'diagnostic-only; repeatability, CPU, full-frame GPU, cold exchange, and actual GPU allocation are separate',
+      fullFrameGpu: 'not-measured', actualGpuAllocation: 'not-measured',
+    },
     blocks,
   };
   const output = path.join(root, '.render-lab',
