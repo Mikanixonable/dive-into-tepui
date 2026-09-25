@@ -55,6 +55,7 @@ export class CameraFramePanel {
   private readonly fovSlider: Slider;
   private readonly fovInput: ValueInput;
   private readonly fovResetButton: Button;
+  private readonly fovNote: HTMLElement;
   private readonly angleControl: Pulldown<typeof ANGLE_COLUMNS>;
   private readonly stateFocus: HTMLElement;
   private readonly stateLens: HTMLElement;
@@ -152,6 +153,11 @@ export class CameraFramePanel {
     this.fovResetButton = new Button('リセット', () => commands.resetFov());
     this.fovResetButton.element.title = '画角をデフォルトに戻す';
     fovGroup.appendChild(this.fovResetButton.element);
+    // 平行投影で画角一式が効かない理由はホバー説明に置かず、常時表示の注記で示す。
+    this.fovNote = document.createElement('small');
+    this.fovNote.className = 'camera-fov-note hidden';
+    this.fovNote.textContent = '平行投影では画角は使用しません';
+    fovGroup.appendChild(this.fovNote);
     controls.appendChild(fovGroup);
 
     // 面を確定させてから視点をジャンプさせる——真上/真横は現在の基準面からの相対視点のため。
@@ -193,6 +199,7 @@ export class CameraFramePanel {
     this.fovResetButton.setEnabled(!isOrthographic);
     this.fovSlider.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
     this.fovInput.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
+    this.fovNote.classList.toggle('hidden', !isOrthographic);
     this.fovSlider.setValue(view.fovDeg);
     if (document.activeElement !== this.fovInput.element) {
       this.fovInput.setValue(view.fovDeg.toFixed(0));
