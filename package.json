@@ -83,6 +83,8 @@
     "render-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.render-lab.config.js --mode development",
     "render-lab:shot": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-shot.mjs",
     "render-lab:shot:native": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-native-shot.mjs",
+    "render-lab:cloud-optical-probe": "node tools/render-lab-cloud-optical-probe.mjs",
+    "test:render-lab:cloud-optical-probe": "node tools/render-lab-cloud-optical-probe.mjs --self-test",
     "cloud-detail:sweep": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-sweep.mjs",
     "cloud-detail:path-shot": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-path-shot.mjs",
     "cloud-detail:benchmark": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-benchmark.mjs",
