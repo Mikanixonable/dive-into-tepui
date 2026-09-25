@@ -40,6 +40,7 @@ export class ConfirmationOverlay implements OverlayHandle {
   private readonly confirm: Button;
   private readonly cancel: Button;
 
+  // モーダルの骨組みを組み、確定/取消ボタンを操作行へ置く。
   public constructor(root: HTMLElement, overlayManager: OverlayManager) {
     injectOnce('confirmation-overlay', STYLE);
     this.shell = new ModalOverlay<boolean>(root, overlayManager, 'confirmation-overlay');
@@ -65,10 +66,12 @@ export class ConfirmationOverlay implements OverlayHandle {
 
   public contains(target: Node): boolean { return this.shell.contains(target); }
 
+  // DOM と登録を取り除く。以後このインスタンスは使えない。
   public dispose(): void {
     this.shell.dispose();
   }
 
+  // ESCと取消ボタンを同じ取消結果(false)へ集約する。
   public close(): void {
     this.shell.close();
   }
