@@ -6,7 +6,7 @@ import type { CloudPresentationDetailTile } from '../../src/render/cloud/cloud-p
 
 export const CLOUD_DETAIL_DIAGNOSTIC_SIZE = 1024; // 一辺 [texel]。
 export const CLOUD_DETAIL_DIAGNOSTIC_RADIUS = THREE.MathUtils.degToRad(2); // 接平面タイルの外縁 [rad]。
-export const CLOUD_DETAIL_DIAGNOSTIC_BLEND_ANGLE = THREE.MathUtils.degToRad(1.6); // 全寄与へ達する角度 [rad]。
+export const CLOUD_DETAIL_DIAGNOSTIC_BLEND_ANGLE = THREE.MathUtils.degToRad(1); // 全寄与へ達する角度 [rad]。
 export const CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM = 2; // 基準被覆波長 [km]。
 // 診断時に設定する周期 [km] と波数方向 [deg]。
 export const CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTHS_KM = [1, 1.5, 2, 3, 4] as const;
