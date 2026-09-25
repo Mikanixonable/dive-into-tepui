@@ -18,8 +18,6 @@ import type {
   BoolUniform, ColorUniform, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform,
 } from '../../tsl-types';
 import type { CloudSpecies } from '../cloud-atmosphere-renderer';
-import type { Cap } from '../screen-space/hemisphere-scan';
-import type { ScreenSpaceLight } from '../screen-space/screen-space-light';
 import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
 import type { ShadingSample } from './shading-sample';
@@ -65,6 +63,12 @@ interface SlotUniforms {
   readonly radiance: ColorUniform;
 }
 
+// 受け手から見た天体の球冠。direction は中心の向き(view 空間の単位ベクトル)、cosAngle は視半径の余弦。
+export interface PlanetCap {
+  readonly direction: Vec3Node;
+  readonly cosAngle: FloatNode;
+}
+
 // 半角 capAngle のキャップのうち、日が当たっている面積の割合 0..1。alpha はキャップの中心が
 // 太陽直下点から離れた角で、昼夜境界は中心から π/2 − alpha の位置を通る。
 //
@@ -100,34 +104,29 @@ const clampedToCone = Fn((
 });
 
 // スロット 1 本ぶんの光源。拡散反射も鏡面反射も、視半径を持つ球光源モデルとして評価する
-// (sphere-light.ts)。大きさはその閉じた解が持ち、写しは色の倍率としてしか効かない。遮蔽を読むときは、
-// 近くの構造が天体の方向の空を塞ぐぶん弱める。
+// (sphere-light.ts)。大きさはその閉じた解が持ち、写しは色の倍率としてしか効かない。
 // TODO: 別の天体の影を受けない — 受け手と天体の間に別の天体があっても届く。
 class PlanetLightSlot implements LightSource {
-  // 光源モデルと遮蔽の有無の組ごとに 1 枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの
-  // 再コンパイルがフレームを止める。
-  private readonly materials = new Map<string, THREE.MeshBasicNodeMaterial>();
-  // 描画設定「遮蔽と照り返し」がオフでないか。
-  private occluded = false;
+  // 光源モデルごとに 1 枚を遅延生成して持つ。
+  private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
   // このスロットの天体の見た目を持つ写しと、そこへ焼く内容。消灯している間は null。
   private readonly image: PlanetLightImage;
   private appearance: PlanetLightAppearance | null = null;
   // 写しへ焼く見た目があるか。無いスロットはテクスチャのモードでも一様球で描く。
   private readonly imaged: BoolUniform = uniform(false);
+  private readonly textured: BoolUniform = uniform(false);
 
   // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は写しの大気が読む天体の影。
-  // screenSpaceLight は近くの構造がこの天体の向きを塞ぐ割合、index はその割合を引くスロットの番号。
   // model は描画設定 planetLightModel の値。
   public constructor(
     private readonly sunLight: SunLight,
     bodyShadow: BodyShadow,
     private readonly sphereSpecular: SphereSpecular,
-    private readonly screenSpaceLight: ScreenSpaceLight,
-    private readonly index: number,
     private readonly slot: SlotUniforms,
     private model: number,
   ) {
     this.image = new PlanetLightImage(sunLight, bodyShadow);
+    this.textured.value = model === PLANET_LIGHT_MODEL.textured;
   }
 
   public hasContribution(): boolean { return this.slot.radius.value > 0; }
@@ -136,10 +135,10 @@ class PlanetLightSlot implements LightSource {
   public get subject(): PlanetLightSubject { return this.image.subject; }
 
   // 描画設定 planetLightModel の値を設定する。次回の material() 取得時から適用される。
-  public setModel(model: number): void { this.model = model; }
-
-  // 遮蔽を読むか(描画設定「遮蔽と照り返し」がオフでないか)を設定する。次回の material() 取得時から適用される。
-  public setOccluded(occluded: boolean): void { this.occluded = occluded; }
+  public setModel(model: number): void {
+    this.model = model;
+    this.textured.value = model === PLANET_LIGHT_MODEL.textured;
+  }
 
   // このフレームに写しへ焼く見た目を置く。消灯するスロットへは null を置く。
   public setAppearance(appearance: PlanetLightAppearance | null): void {
@@ -159,61 +158,62 @@ class PlanetLightSlot implements LightSource {
   public imageRadianceAt(uv: Vec2Node): Vec3Node { return this.image.radianceAtUv(uv); }
 
   // 受け手 sample から見たこのスロットの天体の球冠。消灯したスロットは半角 0。
-  public capAt(sample: ShadingSample): Cap {
+  public capAt(sample: ShadingSample): PlanetCap {
     const toCenter = sample.viewPositionOf(this.slot.center).sub(sample.position);
     return this.capOf(toCenter, this.sinSigmaSqrOf(toCenter));
   }
 
-  // このスロットの寄与を描くマテリアル。光源モデルと遮蔽の有無の組ごとに初回だけ組む。
+  // このスロットの寄与を描くマテリアル。光源モデルごとに初回だけ組む。
   public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
-    const key = `${this.model}:${this.occluded}`;
-    const cached = this.materials.get(key);
+    const cached = this.materials.get(this.model);
     if (cached !== undefined) return cached;
-    const material = contributionMaterial(
-      sample, this.contribution(sample, this.occluded ? this.screenSpaceLight : null));
-    this.materials.set(key, material);
+    const material = contributionMaterial(sample, this.contribution(sample));
+    this.materials.set(this.model, material);
     return material;
   }
 
-  // このスロットの球光源がシェーディング点へ届ける照度。screenSpaceLight が null でなければ、近くの構造が
-  // 空を塞ぐぶん弱める。
-  private contribution(sample: ShadingSample, screenSpaceLight: ScreenSpaceLight | null): LightContribution {
+  // このスロットの球光源がシェーディング点へ届ける照度。
+  private contribution(sample: ShadingSample): LightContribution {
     const center = sample.viewPositionOf(this.slot.center);
     const toCenter = center.sub(sample.position);
     const sinSigmaSqr = this.sinSigmaSqrOf(toCenter);
     const lightDir = this.capOf(toCenter, sinSigmaSqr).direction;
-    // 受け手へ届く放射輝度。テクスチャのモードでは、拡散はクランプドコサインの峰(法線)、
-    // 鏡面は GGX のローブの峰(反射ベクトル)の向きで写しから読む。
     const sphereRadiance = this.uniformSphereRadiance(sample, center, lightDir, sinSigmaSqr);
     const textured = this.model === PLANET_LIGHT_MODEL.textured;
-    const diffuseRadiance = textured
-      ? this.imageRadiance(sample, sample.normal, float(DIFFUSE_FILTER_ANGLE), lightDir, sinSigmaSqr, sphereRadiance)
-      : sphereRadiance;
     const specularRadiance = textured
       ? this.imageRadiance(
         sample, sample.reflected, this.specularFilterAngle(sample, sinSigmaSqr), lightDir, sinSigmaSqr,
         sphereRadiance)
       : sphereRadiance;
-    const diffuse = this.diffuseIrradiance(sample, diffuseRadiance, lightDir, sinSigmaSqr);
+    const diffuse = this.diffuseIrradianceFor(sample, lightDir, sinSigmaSqr, sphereRadiance);
     const specular: Vec3Node = specularRadiance
       .mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
-    if (screenSpaceLight === null) return { diffuse, specular };
-    // 拡散はこの天体の向きの範囲の、鏡面は鏡の向きのローブの、塞がれていない割合で弱める。
     return {
-      diffuse: diffuse.mul(screenSpaceLight.planetVisibility(sample, this.index)),
-      specular: specular.mul(screenSpaceLight.specularVisibility(sample)),
+      diffuse,
+      specular,
     };
   }
 
-  // 受け手 sample がこのスロットの天体から受ける拡散の放射照度。光源モデルの設定によらず一様球の式で、
-  // 空が遮られないとしたときの値を引く。消灯したスロット(半径 0)は 0 を返す。
-  public uniformDiffuseIrradiance(sample: ShadingSample): Vec3Node {
+  // 受け手 sample へこのスロットの天体が届ける拡散照度。contribution の拡散と同じ値。
+  public diffuseIrradianceAt(sample: ShadingSample): Vec3Node {
     const center = sample.viewPositionOf(this.slot.center);
     const toCenter = center.sub(sample.position);
     const sinSigmaSqr = this.sinSigmaSqrOf(toCenter);
     const lightDir = this.capOf(toCenter, sinSigmaSqr).direction;
-    return this.diffuseIrradiance(
-      sample, this.uniformSphereRadiance(sample, center, lightDir, sinSigmaSqr), lightDir, sinSigmaSqr);
+    const sphereRadiance = this.uniformSphereRadiance(sample, center, lightDir, sinSigmaSqr);
+    return this.diffuseIrradianceFor(sample, lightDir, sinSigmaSqr, sphereRadiance);
+  }
+
+  // 球冠の向き lightDir・視半径の正弦の 2 乗 sinSigmaSqr・一様球の放射輝度 sphereRadiance の天体が届ける拡散照度。
+  // 光源モデルがテクスチャなら、放射輝度を写しから法線のまわりで読む。
+  private diffuseIrradianceFor(
+    sample: ShadingSample, lightDir: Vec3Node,
+    sinSigmaSqr: FloatNode, sphereRadiance: Vec3Node,
+  ): Vec3Node {
+    const radiance = select(this.textured,
+      this.imageRadiance(sample, sample.normal, float(DIFFUSE_FILTER_ANGLE), lightDir, sinSigmaSqr, sphereRadiance),
+      sphereRadiance);
+    return this.diffuseIrradiance(sample, radiance, lightDir, sinSigmaSqr);
   }
 
   // 放射輝度 radiance で届く球光源の放射照度 E = π·L̄·sin²σ × クリップ係数(全可視では saturate(cosβ)
@@ -233,7 +233,7 @@ class PlanetLightSlot implements LightSource {
   }
 
   // 受け手から toCenter(view 空間)にあり、視半径の正弦の 2 乗が sinSigmaSqr の天体の球冠。
-  private capOf(toCenter: Vec3Node, sinSigmaSqr: FloatNode): Cap {
+  private capOf(toCenter: Vec3Node, sinSigmaSqr: FloatNode): PlanetCap {
     return {
       direction: toCenter.div(max(length(toCenter), 1)),
       cosAngle: sqrt(max(sinSigmaSqr.oneMinus(), 0)),
@@ -288,27 +288,30 @@ export class PlanetLightSource {
   );
   private readonly slotSources: readonly PlanetLightSlot[];
 
-  // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、screenSpaceLight は近くの構造が
-  // 空を塞ぐ割合(setOccluded(true) のあいだ読む)、count は同時に使うスロットの本数(描画設定
+  // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、count は同時に使うスロットの本数(描画設定
   // planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
   public constructor(
-    sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular, screenSpaceLight: ScreenSpaceLight,
+    sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular,
     private count: number, model: number,
   ) {
-    this.slotSources = this.slots.map((slot, index) => new PlanetLightSlot(
-      sunLight, bodyShadow, sphereSpecular, screenSpaceLight, index, slot, model));
+    this.slotSources = this.slots.map((slot) => new PlanetLightSlot(
+      sunLight, bodyShadow, sphereSpecular, slot, model));
   }
 
   // 受け手 sample から見たスロット slot の天体の球冠。
-  public capAt(sample: ShadingSample, slot: number): Cap {
+  public capAt(sample: ShadingSample, slot: number): PlanetCap {
     return this.slotSources[slot]!.capAt(sample);
   }
 
-  // 受け手 sample が全スロットの天体から受ける拡散の放射照度の和。光源モデルの設定によらず一様球の式で、
-  // 空が遮られないとしたときの値を引く。
-  public uniformDiffuseIrradiance(sample: ShadingSample): Vec3Node {
+  // 受け手 sample へ全スロットの天体が届ける拡散照度の和。lightSources が寄与する拡散の和と同じ値。
+  public diffuseIrradiance(sample: ShadingSample): Vec3Node {
     return this.slotSources.reduce<Vec3Node>(
-      (sum, source) => sum.add(source.uniformDiffuseIrradiance(sample)), vec3(0));
+      (sum, source) => sum.add(source.diffuseIrradianceAt(sample)), vec3(0));
+  }
+
+  // 受け手 sample へスロット slot の天体が届ける拡散照度。そのスロットの光源が寄与する拡散と同じ値。
+  public diffuseIrradianceAtSlot(sample: ShadingSample, slot: number): Vec3Node {
+    return this.slotSources[slot]!.diffuseIrradianceAt(sample);
   }
 
   // 同時に使用するスロット本数を変更する。次回の set() 呼び出し時から適用される。
@@ -317,11 +320,6 @@ export class PlanetLightSource {
   // 描画設定 planetLightModel の値を全スロットへ配る。
   public setModel(model: number): void {
     for (const source of this.slotSources) source.setModel(model);
-  }
-
-  // 遮蔽を読むか(描画設定「遮蔽と照り返し」がオフでないか)を全スロットへ配る。
-  public setOccluded(occluded: boolean): void {
-    for (const source of this.slotSources) source.setOccluded(occluded);
   }
 
   // 写しへ大気を写すか(描画設定「大気」がオフでない)を全スロットへ配る。
