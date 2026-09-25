@@ -63,53 +63,60 @@ const STYLE = `
   position: absolute; left: calc(10px + var(--safe-l)); bottom: calc(138px + var(--safe-b));
   display: flex; gap: 6px; flex-wrap: wrap; max-width: 46vw;
 }
-#touch-util .tbtn { width: 46px; height: 42px; }
+#touch-util .tbtn { width: 46px; height: var(--hit-target-min); }
 #touch-ui.map-mode #touch-util {
   left: 50%; right: auto; bottom: 8px; transform: translateX(-50%);
   flex-wrap: nowrap; max-width: calc(100vw - 16px);
 }
-#touch-ui.map-mode #touch-util .tbtn { flex: 0 1 46px; min-width: 34px; }
+#touch-ui.map-mode #touch-util .tbtn { flex: 0 1 46px; min-width: var(--hit-target-min); }
 
 @media ${MQ_COARSE} {
   #touch-pad-move, #touch-pad-rot {
-    grid-template-columns: repeat(3, 36px) !important; grid-auto-rows: 36px !important; gap: 4px;
+    grid-template-columns: repeat(3, var(--hit-target-min)) !important;
+    grid-auto-rows: var(--hit-target-min) !important; gap: 4px;
   }
   #touch-pad-move { left: 6px; bottom: 6px; }
   #touch-pad-rot { right: 6px; bottom: 6px; }
   #touch-mode-col {
-    right: auto; left: calc(50% - 34px); bottom: 6px;
-    grid-template-rows: repeat(2, 36px) !important; gap: 4px;
+    right: auto; left: calc(50% - 38px); bottom: 6px;
+    grid-template-rows: repeat(2, var(--hit-target-min)) !important; gap: 4px;
   }
-  #touch-mode-col .tbtn { width: 38px !important; }
+  #touch-mode-col .tbtn { width: var(--hit-target-min) !important; }
   #touch-util { max-width: 42vw; }
 }
 
-/* 横画面(高さが低い端末): パッドを詰めて縦方向の衝突を避ける */
+/* 横画面(高さが低い端末): パッドを詰めて縦方向の衝突を避ける。タップ領域は最小寸法を下げられないので、
+   収まりはセル間の隙間と配置で調整する。 */
 @media ${MQ_SHORT} {
   #touch-pad-move, #touch-pad-rot {
-    grid-template-columns: repeat(3, 40px) !important; grid-auto-rows: 40px !important; gap: 4px;
+    grid-template-columns: repeat(3, var(--hit-target-min)) !important;
+    grid-auto-rows: var(--hit-target-min) !important; gap: 4px;
   }
   #touch-pad-move { left: 6px; bottom: 6px; }
   #touch-pad-rot { right: 6px; bottom: 6px; }
-  #touch-mode-col { right: auto; left: 180px; bottom: 6px; grid-template-rows: repeat(2, 40px) !important; }
-  #touch-mode-col .tbtn { width: 38px !important; }
+  #touch-mode-col {
+    right: auto; left: 180px; bottom: 6px;
+    grid-template-rows: repeat(2, var(--hit-target-min)) !important;
+  }
+  #touch-mode-col .tbtn { width: var(--hit-target-min) !important; }
   #touch-fire { width: 56px; height: 56px; right: 14px; bottom: 116px; }
   #touch-zoom { width: 44px; height: 44px; right: 76px; bottom: 124px; }
   #touch-util { bottom: 110px; max-width: 40vw; }
-  #touch-util .tbtn { width: 38px; height: 34px; }
+  #touch-util .tbtn { width: var(--hit-target-min); height: var(--hit-target-min); }
   #touch-ui.map-mode #touch-util { bottom: 4px; max-width: calc(100vw - 12px); }
 }
 @media ${MQ_COMPACT} {
   #touch-pad-move, #touch-pad-rot {
-    grid-template-columns: repeat(3, 36px) !important; grid-auto-rows: 36px !important; gap: 4px;
+    grid-template-columns: repeat(3, var(--hit-target-min)) !important;
+    grid-auto-rows: var(--hit-target-min) !important; gap: 4px;
   }
   #touch-pad-move { left: 6px; bottom: 6px; }
   #touch-pad-rot { right: 6px; bottom: 6px; }
   #touch-mode-col {
-    right: auto; left: calc(50% - 34px); bottom: 6px;
-    grid-template-rows: repeat(2, 36px) !important; gap: 4px;
+    right: auto; left: calc(50% - 38px); bottom: 6px;
+    grid-template-rows: repeat(2, var(--hit-target-min)) !important; gap: 4px;
   }
-  #touch-mode-col .tbtn { width: 38px !important; }
+  #touch-mode-col .tbtn { width: var(--hit-target-min) !important; }
 }
 `;
 
@@ -309,13 +316,13 @@ export class TouchControls {
     zoomBtn.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
       zoomOn = !zoomOn;
-      zoomBtn.classList.toggle('pressed', zoomOn);
+      zoomBtn.classList.toggle('on', zoomOn);
       this.input.setVirtualKey(K.gunsightZoom, zoomOn);
     });
     // ズームを OFF へ戻す。
     const releaseZoom = (): void => {
       zoomOn = false;
-      zoomBtn.classList.remove('pressed');
+      zoomBtn.classList.remove('on');
       this.input.setVirtualKey(K.gunsightZoom, false);
     };
     zoomBtn.addEventListener('pointercancel', releaseZoom);
