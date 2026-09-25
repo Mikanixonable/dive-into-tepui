@@ -9,17 +9,20 @@ export const RADIATOR_FOLD_COUNT = 6;
 export const SOLAR_PANEL_COUNT = 3;
 
 // 太陽電池1パネルの翼方向と長手方向の寸法 [m]。
-export const SOLAR_PANEL_WIDTH = 1.2;
-export const SOLAR_PANEL_SPAN = 1.0;
+// 面積を旧設計の10倍（縦横各 √10 倍）にしたリビジョン。
+export const SOLAR_PANEL_WIDTH = 1.2 * Math.sqrt(10); // ≈ 3.795 m
+export const SOLAR_PANEL_SPAN = 1.0 * Math.sqrt(10);  // ≈ 3.162 m
 
 // 太陽電池1パネルの厚み [m]。
 export const SOLAR_PANEL_THICKNESS = 0.06;
 
 // 太陽電池1モジュールの1 AU・正面入射・完全展開時の基準発電量 [W]。
-export const SOLAR_MODULE_GENERATION = 825;
+// 面積10倍のリビジョンに合わせて更新。
+export const SOLAR_MODULE_GENERATION = 8250;
 
 // 放熱板の蛇腹1折りの展開方向長さ [m]。
-export const RADIATOR_SEGMENT_LENGTH = 0.8;
+// 面積を旧設計の10倍（縦横各 √10 倍）にしたリビジョン。
+export const RADIATOR_SEGMENT_LENGTH = 0.8 * Math.sqrt(10); // ≈ 2.530 m
 
 // 放熱板1折りの横幅 [m]。放熱の有効面積は片面相当として一度だけ数える。
 export const RADIATOR_PANEL_WIDTH = 1.0 * Math.sqrt(10); // ≈ 3.162 m
