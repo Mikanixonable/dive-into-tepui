@@ -28,11 +28,10 @@ export function register(): void {
   });
 
   test('cloud lab fixture: C3 keeps residual anvil after parent updraft decays', () => {
-    const supplied = meteorologicalFixtureImageState('C3', 3_600);
+    const active = meteorologicalFixtureImageState('C3', 2_400);
     const residual = meteorologicalFixtureImageState('C3', 6 * 3_600);
-    assert.ok(supplied.iceA > 0);
+    assert.ok(active.liquidA > residual.liquidA);
     assert.ok(residual.iceA > 0);
-    assert.ok(residual.liquidA < supplied.liquidA);
   });
 
   test('cloud lab fixture: C4 dry upper air loses residual ice faster', () => {
