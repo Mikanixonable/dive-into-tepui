@@ -55,7 +55,7 @@ function mergeStaticChildren(root) {
   while (stack.length > 0) {
     const g = stack.pop();
     for (const child of g.children) {
-      if (child.isGroup) stack.push(child);
+      if (!child.isMesh && child.children.length > 0) stack.push(child);
     }
     mergeSiblingMeshesByMaterial(g);
   }
