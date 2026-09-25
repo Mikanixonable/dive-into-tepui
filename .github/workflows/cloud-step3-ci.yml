@@ -23,7 +23,5 @@ jobs:
       - run: npm run test:game
       - run: npm run cloud-reconstruction:measure
       - run: npm run build
-      - run: npm run cloud-baseline:measure
-        env:
-          CLOUD_BASELINE_PROFILE: smoke
-          CHROME_REQUEST_TIMEOUT_MS: 180000
+      # GPU baseline is intentionally not a push gate. Step 3/7 acceptance requires
+      # target hardware; headless CI is kept for deterministic correctness checks.
