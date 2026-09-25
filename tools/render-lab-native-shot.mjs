@@ -5,10 +5,11 @@ import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session
 
 const root = path.resolve(import.meta.dirname, '..');
 const [caseName, shotName, mode, wavelengthArg, directionArg, scaleArg] = process.argv.slice(2);
-const waveMode = mode === 'wave' || mode === 'wave-invert';
+const waveMode = ['wave', 'wave-invert', 'wave-residual', 'wave-residual-invert'].includes(mode);
 const wave = waveMode ? {
   wavelengthKm: Number(wavelengthArg), directionDeg: Number(directionArg),
-  phaseDeg: mode === 'wave-invert' ? 180 : 0,
+  phaseDeg: mode.endsWith('-invert') ? 180 : 0,
+  composition: mode.startsWith('wave-residual') ? 'coverage-residual' : 'absolute',
 } : undefined;
 const scaleValue = mode === 'base' ? wavelengthArg : scaleArg;
 const scale = scaleValue === undefined ? undefined : Number(scaleValue);
@@ -18,7 +19,7 @@ if (!caseName || !shotName || !/^[\w.-]+$/.test(caseName) || !/^[\w.-]+$/.test(s
     || (scale !== undefined && (!Number.isFinite(scale) || scale <= 0))))
   || (waveMode && (!Number.isFinite(wave.wavelengthKm) || wave.wavelengthKm <= 0
     || !Number.isFinite(wave.directionDeg) || (scale !== undefined && (!Number.isFinite(scale) || scale <= 0))))) {
-  throw new Error('usage: node tools/render-lab-native-shot.mjs <case-name> <shot-name> [base [resolution-scale] | wave|wave-invert <wavelength-km> <direction-deg> [resolution-scale]]');
+  throw new Error('usage: node tools/render-lab-native-shot.mjs <case-name> <shot-name> [base [resolution-scale] | wave|wave-invert|wave-residual|wave-residual-invert <wavelength-km> <direction-deg> [resolution-scale]]');
 }
 
 const { fatalEvents, onEvent } = collectFatalEvents();

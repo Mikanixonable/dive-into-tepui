@@ -62,6 +62,7 @@ export interface LabShot {
     readonly wavelengthKm: number;
     readonly directionDeg: number;
     readonly phaseDeg?: number;
+    readonly composition?: 'absolute' | 'coverage-residual';
   };
 }
 

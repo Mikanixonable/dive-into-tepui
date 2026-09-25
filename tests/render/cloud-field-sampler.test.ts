@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { cloudDetailTileWeight } from '../../src/render/cloud/cloud-field-sampler';
+import { cloudDetailResidualCoverage, cloudDetailTileWeight } from '../../src/render/cloud/cloud-field-sampler';
 import {
   cloudDetailDiagnosticCoverage, CLOUD_DETAIL_DIAGNOSTIC_DIRECTIONS_DEG,
   CLOUD_DETAIL_DIAGNOSTIC_SIZE, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTHS_KM, createCloudDetailDiagnosticTile,
@@ -24,6 +24,19 @@ export function register(): void {
     assert.throws(() => cloudDetailTileWeight(0, -1.1, 0), RangeError);
     assert.throws(() => cloudDetailTileWeight(0, 0, 1.1), RangeError);
     assert.throws(() => cloudDetailTileWeight(1.1, -0.5, 0.5), RangeError);
+  });
+
+  test('cloud detail tile: residual coverage preserves clear and opaque base, and its mean', () => {
+    for (const detail of [0, 0.25, 0.5, 0.75, 1]) {
+      assert.equal(cloudDetailResidualCoverage(0, detail), 0);
+      assert.equal(cloudDetailResidualCoverage(1, detail), 1);
+    }
+    for (const base of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+      assert.equal(cloudDetailResidualCoverage(base, 0.5), base);
+      assert.ok(Math.abs((cloudDetailResidualCoverage(base, 0)
+        + cloudDetailResidualCoverage(base, 1)) / 2 - base) < 1e-12);
+    }
+    assert.throws(() => cloudDetailResidualCoverage(-0.1, 0.5), RangeError);
   });
 
   test('cloud detail diagnostic: known 2 km wave repeats and rotates by its declared direction', () => {

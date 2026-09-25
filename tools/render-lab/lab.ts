@@ -371,6 +371,7 @@ export class LabView {
         cloudDetailDiagnostic?.wavelengthKm,
         cloudDetailDiagnostic?.directionDeg,
         cloudDetailDiagnostic?.phaseDeg,
+        cloudDetailDiagnostic?.composition,
       );
     }
     return withLabPixelRatio(
@@ -529,6 +530,7 @@ export class LabView {
     this.earth.setCloudDetailDiagnostic(
       diagnostic !== undefined, diagnostic?.wavelengthKm, diagnostic?.directionDeg,
       diagnostic?.phaseDeg,
+      diagnostic?.composition,
     );
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
@@ -581,6 +583,7 @@ export class LabView {
         cloudDetailDiagnostic?.wavelengthKm,
         cloudDetailDiagnostic?.directionDeg,
         cloudDetailDiagnostic?.phaseDeg,
+        cloudDetailDiagnostic?.composition,
       );
     }
     const pixelRatio = this.renderer.getPixelRatio() * this.graphics.current.resolutionScale;

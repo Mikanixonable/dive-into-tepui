@@ -79,6 +79,7 @@ export class LabEarth {
   private diagnosticWavelengthKm: number | null = null;
   private diagnosticDirectionDeg = 0;
   private diagnosticPhaseDeg = 0;
+  private diagnosticComposition: CloudPresentationDetailTile['composition'] = 'absolute';
   private readonly graticule = new BodyGraticule();
   private readonly coastline = LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE });
 
@@ -128,6 +129,7 @@ export class LabEarth {
   public setCloudDetailDiagnostic(
     enabled: boolean, wavelengthKm = CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM, directionDeg = 0,
     phaseDeg = 0,
+    composition: CloudPresentationDetailTile['composition'] = 'absolute',
   ): void {
     if (!enabled) {
       if (this.diagnosticCloudDetail === null) return;
@@ -139,14 +141,16 @@ export class LabEarth {
     if (this.diagnosticCloudDetail !== null
       && this.diagnosticWavelengthKm === wavelengthKm
       && this.diagnosticDirectionDeg === directionDeg
-      && this.diagnosticPhaseDeg === phaseDeg) return;
+      && this.diagnosticPhaseDeg === phaseDeg
+      && this.diagnosticComposition === composition) return;
 
-    const tile = createCloudDetailDiagnosticTile(wavelengthKm, directionDeg, phaseDeg);
+    const tile = createCloudDetailDiagnosticTile(wavelengthKm, directionDeg, phaseDeg, composition);
     this.diagnosticCloudDetail?.texture.dispose();
     this.diagnosticCloudDetail = tile;
     this.diagnosticWavelengthKm = wavelengthKm;
     this.diagnosticDirectionDeg = directionDeg;
     this.diagnosticPhaseDeg = phaseDeg;
+    this.diagnosticComposition = composition;
   }
 
   // 地球のつまみ angles の置き方へ、中心・自転姿勢・天体固定への行列・大気の極軸を置き直す。

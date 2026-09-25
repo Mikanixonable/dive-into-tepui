@@ -1,7 +1,7 @@
 // 雲場テクスチャを、天体固定の単位方向から読む。焼いた側と同じ cap の置き方を写し取り、同じ uv
 // で読む。差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
 import * as THREE from 'three/webgpu';
-import { dot, Fn, If, mix, smoothstep, step, texture, uniform } from 'three/tsl';
+import { clamp, dot, Fn, If, min, mix, smoothstep, step, texture, uniform, vec4 } from 'three/tsl';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { orthographicCapUv, type CapPlacement } from '../field-projection';
 import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
@@ -21,6 +21,16 @@ export interface CloudFieldDetailTileBinding {
   readonly texture: THREE.Texture;
   readonly cap: CapPlacement;
   readonly blendStartCos: number;
+  // 局所場が既存場に残差だけを重ねるときは晴天を保ち、低周波の被覆・雲頂を変えない。
+  readonly composition?: 'absolute' | 'coverage-residual';
+}
+
+// 局所被覆の残差を base の雲域内に制限する。shader の残差合成と同じスカラー契約。
+export function cloudDetailResidualCoverage(base: number, detail: number): number {
+  if (!Number.isFinite(base) || !Number.isFinite(detail) || base < 0 || base > 1 || detail < 0 || detail > 1) {
+    throw new RangeError('cloud detail residual coverage must be in [0, 1]');
+  }
+  return Math.min(1, Math.max(0, base + (detail - 0.5) * 2 * Math.min(base, 1 - base)));
 }
 
 // タイル外縁から blendStartCos までの角距離に対する寄与率。shader 側も TSL smoothstep で同じ補間を行う。
@@ -46,6 +56,7 @@ export class CloudFieldSampler {
   // シェーダグラフは先に組まれ、タイルは後から bind されるため、詳細側も一様値で切り替える。
   private readonly detailField = texture(EMPTY_CLOUD_FIELD);
   private readonly detailEnabled = uniform(0);
+  private readonly detailResidualEnabled = uniform(0);
   // 焼いた側の cap の置き方。グラフは一度組めば済み、値だけが毎フレーム入れ替わる。
   private readonly center: Vec3Uniform = uniform(new THREE.Vector3(0, 0, 1));
   private readonly east: Vec3Uniform = uniform(new THREE.Vector3(1, 0, 0));
@@ -70,6 +81,7 @@ export class CloudFieldSampler {
     const detail = binding.detailTile;
     if (detail === null) {
       this.detailEnabled.value = 0;
+      this.detailResidualEnabled.value = 0;
       return;
     }
     checkDetailTileBlendRange(0, detail.cap.cosRadius, detail.blendStartCos);
@@ -81,6 +93,7 @@ export class CloudFieldSampler {
     this.detailCosRadius.value = detail.cap.cosRadius;
     this.detailBlendStartCos.value = detail.blendStartCos;
     this.detailEnabled.value = 1;
+    this.detailResidualEnabled.value = detail.composition === 'coverage-residual' ? 1 : 0;
   }
 
   // 単位方向 direction の雲標本を、生成時と同じ単位で読む。**cap の外は「雲なし」を返す** —
@@ -97,7 +110,11 @@ export class CloudFieldSampler {
         const detailWeight = smoothstep(
           this.detailCosRadius as FloatNode, this.detailBlendStartCos as FloatNode, detailCosine,
         );
-        base.assign(mix(base, detail, detailWeight));
+        If(this.detailResidualEnabled.greaterThan(0), () => {
+          const residual = detail.r.sub(0.5).mul(2).mul(min(base.r, base.r.oneMinus()));
+          const coverage = clamp(base.r.add(residual), 0, 1);
+          base.assign(vec4(mix(base.r, coverage, detailWeight), base.g, base.b, base.a));
+        }).Else(() => { base.assign(mix(base, detail, detailWeight)); });
       });
       return base;
     })();

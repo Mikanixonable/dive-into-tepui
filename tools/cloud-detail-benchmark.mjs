@@ -4,8 +4,14 @@ import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const shotName = 'cloud-standard-near-range-250km';
-const tile = { wavelengthKm: 2, directionDeg: 0 };
+const shotName = process.argv.includes('--cloudy')
+  ? 'cloud-detail-residual-250km-cloudy-diagnostic'
+  : 'cloud-standard-near-range-250km';
+const residual = process.argv.includes('--residual');
+const tile = {
+  wavelengthKm: 2, directionDeg: 0,
+  composition: residual ? 'coverage-residual' : 'absolute',
+};
 const blockCount = 8;
 const lens = !process.argv.includes('--lens-off');
 const { fatalEvents, onEvent } = collectFatalEvents();
@@ -56,10 +62,11 @@ try {
   if (fatalEvents.length) throw new Error(fatalEvents.join('\n'));
   const result = {
     scope: 'observed-render-total (all resolved renderer.render GPU timestamp queries, not full-frame B0)',
-    caseName: 'earth', shotName, internalRaster: [720, 405], lens, adapter,
+    caseName: 'earth', shotName, internalRaster: [720, 405], lens, residual, adapter,
     blocks,
   };
-  const output = path.join(root, '.render-lab', `cloud-detail-benchmark-lens-${lens ? 'on' : 'off'}.json`);
+  const output = path.join(root, '.render-lab',
+    `cloud-detail-benchmark-${shotName}-${residual ? 'residual' : 'absolute'}-lens-${lens ? 'on' : 'off'}.json`);
   writeFileSync(output, JSON.stringify(result, null, 2));
   console.log(output);
 } finally {

@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { decodePng } from './png.mjs';
 
 const root = join(import.meta.dirname, '..', '.render-lab', 'native-shots');
-const stem = 'earth-cloud-c1-raster-200km-medium-diagnostic';
+const stem = process.argv[2] ?? 'earth-cloud-c1-raster-200km-medium-diagnostic';
+if (!/^earth-[\w.-]+$/.test(stem)) throw new Error('invalid shot stem');
+const mode = stem.includes('residual') ? 'wave-residual' : 'wave';
 const orientations = [0, 45, 90, 135];
 const minimumRetainedAmplitude = 0.50;
 let failed = false;
@@ -42,8 +44,8 @@ function luminance(image, factor) {
 }
 
 for (const direction of orientations) {
-  const suffix = `wave-2km-${direction}deg`;
-  const inverseSuffix = `wave-invert-2km-${direction}deg`;
+  const suffix = `${mode}-2km-${direction}deg`;
+  const inverseSuffix = `${mode}-invert-2km-${direction}deg`;
   const [native, inverseNative, reference, inverseReference] = await Promise.all([
     pixels(suffix).then((image) => luminance(image, 1)),
     pixels(inverseSuffix).then((image) => luminance(image, 1)),
