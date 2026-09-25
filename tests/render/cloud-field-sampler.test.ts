@@ -1,10 +1,26 @@
 import * as assert from 'node:assert/strict';
-import { cloudDetailResidualCoverage, cloudDetailTileWeight } from '../../src/render/cloud/cloud-field-sampler';
+import * as THREE from 'three/webgpu';
+import {
+  cloudDetailResidualCoverage, cloudDetailTileWeight, type CloudFieldDetailTileBinding,
+} from '../../src/render/cloud/cloud-field-sampler';
+import {
+  CLOUD_FIELD_SOURCE_KIND, CloudPresentation, type CloudFieldSource, type CloudFieldSourceKind,
+  type CloudPresentationDetailTile,
+} from '../../src/render/cloud/cloud-presentation';
+import { OrthographicCap } from '../../src/render/field-projection';
+import { DEFAULT_GRAPHICS } from '../../src/render/graphics-settings';
 import {
   cloudDetailDiagnosticCoverage, CLOUD_DETAIL_DIAGNOSTIC_DIRECTIONS_DEG,
   CLOUD_DETAIL_DIAGNOSTIC_SIZE, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTHS_KM, createCloudDetailDiagnosticTile,
 } from '../../tools/render-lab/cloud-detail-diagnostic';
 import { test } from '../harness';
+
+class TestCloudFieldSource implements CloudFieldSource {
+  public readonly texture = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat);
+  public readonly generation = 0;
+  public prepare(): void {}
+  public dispose(): void { this.texture.dispose(); }
+}
 
 export function register(): void {
   test('cloud detail tile: angular blend is zero outside, smooth at the seam, and full inside', () => {
@@ -17,6 +33,49 @@ export function register(): void {
     assert.ok(Math.abs(cloudDetailTileWeight(blendMidpoint, outerCos, fullDetailCos) - 0.5) < 1e-12);
     assert.equal(cloudDetailTileWeight(fullDetailCos, outerCos, fullDetailCos), 1);
     assert.equal(cloudDetailTileWeight(fullDetailCos + 0.001, outerCos, fullDetailCos), 1);
+  });
+
+  test('cloud detail tile: applies only to generated source and returns when generated is reselected', () => {
+    const generated = new TestCloudFieldSource();
+    const observed = new TestCloudFieldSource();
+    const presentation = new CloudPresentation(
+      generated, observed, new OrthographicCap(8, 0, 0, 0.4), 6_371_000,
+    );
+    const tileTexture = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat);
+    const tile: CloudPresentationDetailTile = {
+      texture: tileTexture,
+      cap: new OrthographicCap(8, 0, 0, 0.1),
+      radius: 0.1,
+      blendStartCos: Math.cos(0.05),
+      composition: 'coverage-residual',
+    };
+    const settings = (cloudFieldSource: CloudFieldSourceKind) => ({
+      ...DEFAULT_GRAPHICS,
+      clouds: true,
+      cloudFieldSource,
+    });
+
+    try {
+      presentation.syncGraphics(settings(CLOUD_FIELD_SOURCE_KIND.generated), 100, tile);
+      const generatedTile = presentation.renderInput.field.detailTile;
+      assert.ok(generatedTile !== null);
+      assert.equal(generatedTile.texture, tileTexture);
+
+      presentation.syncGraphics(settings(CLOUD_FIELD_SOURCE_KIND.observed), 100, tile);
+      assert.equal(presentation.renderInput.field.texture, observed.texture);
+      assert.equal(presentation.renderInput.field.detailTile, null);
+
+      presentation.syncGraphics(settings(CLOUD_FIELD_SOURCE_KIND.generated), 100, tile);
+      assert.equal(presentation.renderInput.field.texture, generated.texture);
+      const selectedTile = (): CloudFieldDetailTileBinding | null => presentation.renderInput.field.detailTile;
+      assert.equal(selectedTile()?.texture, tileTexture);
+
+      presentation.syncGraphics(settings(CLOUD_FIELD_SOURCE_KIND.generated), 100, null);
+      assert.equal(presentation.renderInput.field.detailTile, null);
+    } finally {
+      presentation.dispose();
+      tileTexture.dispose();
+    }
   });
 
   test('cloud detail tile: blend boundaries must describe a non-empty angular band', () => {
