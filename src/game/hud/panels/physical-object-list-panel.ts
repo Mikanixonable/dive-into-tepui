@@ -96,6 +96,10 @@ const STYLE = `
 #hud-physical-object-list .physical-object-list-children { padding-left: var(--space-5); }
 #hud-physical-object-list .physical-object-list-children.collapsed { display: none !important; }
 #hud-physical-object-list .physical-object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
+#hud-physical-object-list .physical-object-list-help {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.45;
+}
 #hud-physical-object-list .physical-object-list-title {
   align-items: baseline; padding: var(--space-2) var(--space-3) var(--space-3);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
@@ -298,6 +302,12 @@ export class PhysicalObjectListPanel {
     this.emptyState.className = 'physical-object-list-empty hidden';
     this.emptyState.textContent = '該当する物体がありません';
     body.appendChild(this.emptyState);
+
+    // 行の操作はホバーの説明文だけに置かず、常時表示の案内として一覧の末尾へ出す。
+    const help = document.createElement('div');
+    help.className = 'physical-object-list-help';
+    help.textContent = '行: ダブルクリック・F でフォーカス · T でナビ対象 · 右クリックでメニュー';
+    body.appendChild(help);
 
     hudRail(root, 'right').appendChild(this.panel);
     this.setVisible(false);
