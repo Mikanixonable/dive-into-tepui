@@ -12,9 +12,9 @@ let loadPromise: Promise<void> | null = null;
 
 async function fetchGlbArrayBuffer(): Promise<ArrayBuffer> {
   if (typeof window === 'undefined' && typeof process !== 'undefined' && process.versions?.node != null) {
-    // Node.js テスト環境: eval('require')('node:fs') で webpack の静的解析を回避
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const fs = (0, eval)('require')('node:fs') as typeof import('node:fs');
+    // Node.js テスト環境: new Function を用いて webpack の静的解析を完全に回避
+    const dynamicImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<unknown>;
+    const fs = (await dynamicImport('node:fs')) as typeof import('node:fs');
     const buf = fs.readFileSync(shipModulesSource);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
