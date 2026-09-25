@@ -260,6 +260,7 @@ export class MeteorologicalFixtureCloudControl {
   private readonly waveStrength: FloatUniform = uniform(0);
   private readonly marineStrength: FloatUniform = uniform(0);
   private readonly wavePhase: FloatUniform = uniform(0);
+  private readonly enabled: FloatUniform = uniform(1);
   private selectedFixture: MeteorologicalCaseId = 'C1';
   private lastTimeSeconds = 0;
 
@@ -268,12 +269,19 @@ export class MeteorologicalFixtureCloudControl {
     syncTime: (seconds) => this.syncTime(seconds),
   };
 
+  public get isEnabled(): boolean { return this.enabled.value > 0.5; }
+
   public setFixture(id: MeteorologicalCaseId): void {
     this.selectedFixture = id;
+    this.enabled.value = 1;
     for (const [fixture, weight] of Object.entries(this.weights) as [MeteorologicalCaseId, FloatUniform][]) {
       weight.value = fixture === id ? 1 : 0;
     }
     this.syncTime(this.lastTimeSeconds);
+  }
+
+  public clearFixture(): void {
+    this.enabled.value = 0;
   }
 
   public syncTime(seconds: number): void {
@@ -340,7 +348,8 @@ export class MeteorologicalFixtureCloudControl {
 
     const w = this.weights;
     const fixtureWeight = clamp(
-      w.C1.add(w.C2).add(w.C3).add(w.C4).add(w.C5).add(w.C6).add(w.C7).add(w.C8).add(w.C9),
+      w.C1.add(w.C2).add(w.C3).add(w.C4).add(w.C5).add(w.C6).add(w.C7).add(w.C8).add(w.C9)
+        .mul(this.enabled),
       0, 1,
     );
     const coverage = c1Coverage.mul(w.C1)
