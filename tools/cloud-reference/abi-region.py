@@ -246,6 +246,9 @@ def validate_cod_acm_grid_alignment(
     if (not np.allclose(cod_x, (acm_x[::2] + acm_x[1::2]) / 2, rtol=0, atol=2e-9)
         or not np.allclose(cod_y, (acm_y[::2] + acm_y[1::2]) / 2, rtol=0, atol=2e-9)):
         fail("COD/ACM axes do not align as 2x2 child pixels")
+    if (not np.allclose(coordinate_edges(cod_x), coordinate_edges(acm_x)[::2], rtol=0, atol=2e-9)
+        or not np.allclose(coordinate_edges(cod_y), coordinate_edges(acm_y)[::2], rtol=0, atol=2e-9)):
+        fail("COD/ACM pixel edges do not align as 2x2 child pixels")
 
 
 def summarize_cod_cloud_eligible_coverage(
