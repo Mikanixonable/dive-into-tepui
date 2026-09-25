@@ -15,6 +15,7 @@ import { EARTH_CASES } from './earth-cases';
 import { MATERIAL_CASES } from './material-cases';
 import { SHADOW_CASES } from './shadow-cases';
 import { CLOUD_OPTICAL_VOLUME_CASE } from './cloud-optical-volume-case';
+import { CLOUD_EVENT_OPTICAL_VOLUME_CASE } from './cloud-event-optical-volume-case';
 import {
   circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, texturedBody, VIEW_HEIGHT, VIEW_WIDTH,
   type CaseBuilder, type LabCase,
@@ -169,6 +170,7 @@ export const CASES = {
   'order': order,
   'march-slab': marchSlab,
   'cloud-optical-volume': CLOUD_OPTICAL_VOLUME_CASE,
+  'cloud-event-optical-volume': CLOUD_EVENT_OPTICAL_VOLUME_CASE,
   ...SHIP_CASES,
   ...PROTEIN_CASES,
 } as const satisfies Record<string, CaseBuilder>;
