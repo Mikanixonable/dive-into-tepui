@@ -6,20 +6,19 @@ import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../..
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../math/random';
 import type { Vec3 } from '../../math/vec3';
-import { add, addScaled, norm, randPerp, randVec, scale, v3 } from '../../math/vec3';
+import { add, addScaled, norm, randPerp, randVec, scale, sub, v3 } from '../../math/vec3';
 
 import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import type { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
-import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { ModularShip } from '../ship/modular-ship';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-collision';
 import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
 import {
-  WeaponState, type SerializedWeaponState, type WeaponFireCommand,
+  WeaponState, type SerializedWeaponState,
 } from './weapon-state';
 
 export type { AmmoLoad } from './weapon-state';
@@ -32,11 +31,9 @@ const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 // 1発あたりに砲身へ入る熱量 [J]。発射ガスの熱の大半は砲身の側が受け取る。
 const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
-// 砲口の位置とそのときの艦の速度。砲口は機首方向 fwd へ少し先を取る。
-function muzzleState(ship: Ship, muzzle: Vec3, fwd: Vec3): KinematicState {
-  return kinematicState<'eci'>(
-    ship.motion.state.t, addScaled(muzzle, fwd, 1.2), ship.motion.state.v,
-  );
+// 砲口の位置とそのときの艦の速度。
+function muzzleState(ship: Ship, muzzle: Vec3): KinematicState {
+  return kinematicState<'eci'>(ship.motion.state.t, muzzle, ship.motion.state.v);
 }
 
 const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
@@ -133,11 +130,12 @@ export class FireControl {
       return;
     }
 
-    const command = this.weapon.nextShot(PLAYER_MUZZLE_OFFSETS.length);
+    const muzzles = this.player.capabilities.muzzlePositions();
+    const command = this.weapon.nextShot(muzzles.length);
     if (command === null) return;
-    this.weapon.fire(PLAYER_MUZZLE_OFFSETS.length);
+    this.weapon.fire(muzzles.length);
 
-    this.fireGun(command, activeStage, celestialBodies);
+    this.fireGun(muzzles[command.muzzleIndex]!, activeStage, celestialBodies);
     // 装填の段階に応じて、次の発射までの間隔と排出物を決める
     switch (command.consumption) {
       case 'normal':
@@ -168,19 +166,17 @@ export class FireControl {
 
   // ---------------------------------------------------------------- entity管理
 
-  // 1発発射する: 弾丸と薬莢を出し、反動と熱を艦へ入れ、発射したことを記録する。
+  // 1発発射する: assembly 座標 [m] の砲身先端 muzzleOnAssembly から弾丸と薬莢を出し、反動と熱を艦へ入れ、
+  // 発射したことを記録する。
   private fireGun(
-    command: WeaponFireCommand,
+    muzzleOnAssembly: Vec3,
     activeStage: StageOutcome,
     celestialBodies: CelestialBodies,
   ): void {
     const fwd = qRotate(this.player.motion.att.q, LOCAL_FORWARD);
-
-    // 縦二連の砲口から交互に発射する
-    const mo = PLAYER_MUZZLE_OFFSETS[command.muzzleIndex]!;
     const muzzle = add(
       this.player.motion.state.r,
-      qRotate(this.player.motion.att.q, v3(mo.x, mo.y, mo.z)),
+      qRotate(this.player.motion.att.q, sub(muzzleOnAssembly, this.player.motion.centerOffset)),
     );
 
     this.spawnBullet(muzzle, fwd, celestialBodies);
@@ -195,7 +191,7 @@ export class FireControl {
     activeStage.recordShot();
     this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
     this.weapon.addBarrelHeat(GUN_BARREL_HEAT_PER_ROUND);
-    this.registry.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzle, fwd) });
+    this.registry.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzle) });
   }
 
   // 弾丸: 機首方向 + 散布界
