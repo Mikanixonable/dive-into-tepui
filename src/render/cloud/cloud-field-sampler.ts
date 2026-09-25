@@ -5,6 +5,9 @@ import { clamp, dot, Fn, If, min, mix, smoothstep, step, texture, uniform, vec4 
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { orthographicCapUv, type CapPlacement } from '../field-projection';
 import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
+import {
+  CloudLocalFieldSampler, type CloudLocalFieldBinding,
+} from './cloud-local-field';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
 
 // 焼いた雲場と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
@@ -13,6 +16,8 @@ export interface CloudFieldBinding {
   readonly cap: CapPlacement;
   // 任意の局所高解像度タイル。タイルの外縁と完全解像域の境界のあいだを滑らかに混ぜる。
   readonly detailTile: CloudFieldDetailTileBinding | null;
+  // 任意の局所光学場。相別・層別の消散を、log-map 座標と高度層選択で読む体積場。
+  readonly localField?: CloudLocalFieldBinding | null;
 }
 
 // 局所雲場タイルと、その内側で全詳細度へ達する境界。cosine は方向と cap 中心の内積で表す。
@@ -69,6 +74,8 @@ export class CloudFieldSampler {
   private readonly detailSinRadius: FloatUniform = uniform(1);
   private readonly detailCosRadius: FloatUniform = uniform(-1);
   private readonly detailBlendStartCos: FloatUniform = uniform(1);
+  // 局所光学場の読み手。2D の cap 場とは別の座標契約で、同じ binding の写しを受ける。
+  private readonly localFieldSampler = new CloudLocalFieldSampler();
 
   // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
   public bind(binding: CloudFieldBinding): void {
@@ -78,6 +85,7 @@ export class CloudFieldSampler {
     this.north.value.copy(binding.cap.north);
     this.sinRadius.value = binding.cap.sinRadius;
     this.cosRadius.value = binding.cap.cosRadius;
+    this.localFieldSampler.bind(binding.localField ?? null);
     const detail = binding.detailTile;
     if (detail === null) {
       this.detailEnabled.value = 0;
@@ -94,6 +102,20 @@ export class CloudFieldSampler {
     this.detailBlendStartCos.value = detail.blendStartCos;
     this.detailEnabled.value = 1;
     this.detailResidualEnabled.value = detail.composition === 'coverage-residual' ? 1 : 0;
+  }
+
+  // 単位方向 direction と高度 altitudeM [m] における局所光学場の消散。領域外・高度外・
+  // 未結合では透明を返す。
+  public sampleLocalOptical(
+    direction: Vec3Node, altitudeM: FloatNode,
+  ): { readonly liquidExtinctionPerM: FloatNode; readonly iceExtinctionPerM: FloatNode } {
+    return this.localFieldSampler.sampleLocalOptical(direction, altitudeM);
+  }
+
+  // 正規化空間(|位置|=1 が地表)の直線光路が局所光学場を抜ける消散。戻り値は
+  // (液水 tau, 氷 tau, 合計 tau, 透過率)。未結合では (0, 0, 0, 1)。
+  public localOpticalPathAt(positionN: Vec3Node, directionN: Vec3Node, steps = 32): Vec4Node {
+    return this.localFieldSampler.localOpticalPathAt(positionN, directionN, steps);
   }
 
   // 単位方向 direction の雲標本を、生成時と同じ単位で読む。**cap の外は「雲なし」を返す** —
