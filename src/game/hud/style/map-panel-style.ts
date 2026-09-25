@@ -335,6 +335,10 @@ export const MAP_PANEL_STYLE = `
 #hud-view-options .view-options-section-divider {
   margin-top: var(--space-4); margin-bottom: var(--space-1);
 }
+#hud-view-options .view-options-mode-legend {
+  margin: 0; padding: var(--space-2) var(--space-3) var(--space-3);
+  color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.45;
+}
 #hud-view-options .target-class-group { display: grid; gap: 1px; }
 #hud-view-options .target-class-row {
   display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto;
