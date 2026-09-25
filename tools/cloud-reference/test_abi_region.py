@@ -164,6 +164,14 @@ class AbiRegionGeometryTest(unittest.TestCase):
                 np.array([-1.25, -0.75, -0.24, 0.26]),
                 np.array([0.75, 0.25, -0.25, -0.75]), projection,
             )
+        # Child-centre pair averages alone are insufficient: unequal child widths
+        # can leave both parent centres correct while the outer pixel edges differ.
+        with self.assertRaises(REGION.RegionError):
+            REGION.validate_cod_acm_grid_alignment(
+                np.array([-1.0, 0.0]), np.array([0.5, -0.5]), projection,
+                np.array([-1.3, -0.7, -0.3, 0.3]),
+                np.array([0.75, 0.25, -0.25, -0.75]), projection,
+            )
         with self.assertRaises(REGION.RegionError):
             REGION.validate_cod_acm_grid_alignment(
                 np.array([-1.0, 0.0]), np.array([0.5, -0.5]), projection,
