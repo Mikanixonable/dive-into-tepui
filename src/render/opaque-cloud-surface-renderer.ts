@@ -3,7 +3,7 @@
 // 場の texel より細かい起伏は天体固定の粒で足す。
 import * as THREE from 'three/webgpu';
 import {
-  Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
+  Discard, Fn, If, cameraPosition, cameraProjectionMatrix, clamp, dFdx, dFdy, dot, float, length,
   max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select,
   sqrt, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
