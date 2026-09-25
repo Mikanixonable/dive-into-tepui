@@ -33,6 +33,8 @@ California 2024-05-15 の37枠を独立 ACM の雲クラスへ固定格子 2×2 
 
 NASA CMR 目録では `CLDPROP_L2_VIIRS_SNPP` v1.1 の沿岸セル同日昼間 granule と波状雲同日昼間 granule を特定できた。ただし波状雲の昼間通過は当初の GOES 比較時刻より約 6 時間遅く、同じ雲系の対応を画素と時刻で確かめる必要がある。LAADS 原本 URL の HEAD は 200 を返したが、実際の GET と Range GET は 401 だった。**目録上の存在や HEAD を原本受領とみなさず**、正式な取得経路と認証条件を確認するまで snapshot COD は `blocked` とする。
 
+NASA LAADS の[原本アーカイブ](https://ladsweb.modaps.eosdis.nasa.gov/archive/allData/5111/CLDPROP_L2_VIIRS_SNPP/2019/011/)はダウンロード例に Earthdata Download Token の Bearer 認証を明示し、[S3 直接取得手順](https://ladsweb.modaps.eosdis.nasa.gov/learn/how-to-access-laads-daac-data-files-using-s3-direct-access/)も一時認証情報の取得経路を示す。未認証 GET が失敗した現状で無関係な公開画像を v1.1 原本の代わりに使わない。正規の認証情報を安全に利用できるまでは VIIRS 候補の pixel QA に進めない。
+
 描画ラボには雲なし／生成／実写の同一構図を交互に計測し、同一フレームの計測済み GPU pass を合算してから p95 を取る入口を追加した。性能判定の対象 GPU は Apple M4 Pro とする。Headless Chrome 153、960×540、DPR 1、起動時 high 設定での雲なし描画 pass 合計 p95 は試行間で約 39〜79 ms と揺れた。Headed Chrome の pass-level timestamp も得られたが、転送・copy・mip・present 等を含む全フレーム B0 ではない。command-encoder queue marker は Apple Silicon 上で 50 ms 離しても `[0,0]` を返し、この端末には Metal System Trace がない。pass-level 値を全 GPU 時間と呼ばず、§4.5 の**計測範囲を限定した GPU gate**にだけ使う。
 
 近距離 fixture の監査では、従来の `earth-nadir` が地球だけを真下へ動かし、カメラは地平線を向いたままだったことを発見して修正した。250 km・960×540・FOV 50°・medium プリセット（雲 detail は standard）の専用 shot は、対象面で約 432 m/出力 px、2 km 構造で約 4.63 出力 px の投影条件を持つ。ただし medium の `resolutionScale=0.75` を製品と同じ DPR 1 で適用すると内部ラスタでは約 3.47 px / 2 km となり、4 標本条件の画像側にも届かない。DPR と内部解像度を固定して実画面応答を測るまで、C1 の「最小有効間隔の 1/4」の数値と 2 km 合格は `blocked` とする。
