@@ -3,6 +3,7 @@
 // 装置側に出生・供給履歴の正本を持たせず、ここで導出した immutable な宣言だけを渡す。
 
 import { len, v3 } from '../../math/vec3';
+import { cloudLifecycleAt, type CloudLifecycleState } from './cloud-lifecycle';
 import type { Vec3 } from '../../math/vec3';
 
 const SECONDS_PER_HOUR = 3_600;
@@ -82,6 +83,7 @@ export interface ConvectiveCloudEvent {
   readonly ageSeconds: number;
   readonly sourcePosition?: CloudEventSourcePosition;
   readonly supplyActive: boolean;
+  readonly lifecycle: CloudLifecycleState;
   readonly mass: CloudEventMassLedger;
   // 一つの有界な氷放出記録。再帰的な親子グラフは保持しない。
   readonly iceRelease: CloudIceRelease;
@@ -322,6 +324,12 @@ function createEvent(
       }),
     }),
     supplyActive: ageSeconds < cell.convectiveDurationSeconds,
+    lifecycle: cloudLifecycleAt({
+      eventId: id,
+      ageSeconds,
+      convectiveDurationSeconds: cell.convectiveDurationSeconds,
+      upperRelativeHumidity: cell.upperRelativeHumidity,
+    }),
     mass,
     iceRelease: {
       id: `${id}:ice`,
