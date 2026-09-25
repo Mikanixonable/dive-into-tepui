@@ -54,9 +54,9 @@ export function register(): void {
     assert.equal(CLOUD_CAP_SIZE, 512);
   });
 
-  test('cloud cap: core baked working set is fixed at 8 MiB and analytic detail adds no texture', () => {
-    assert.equal(CLOUD_GENERATED_BAKED_BYTES, 6 * 1024 * 1024);
+  test('cloud cap: temporal cache working set is fixed at 12 MiB and analytic detail adds no texture', () => {
+    assert.equal(CLOUD_GENERATED_BAKED_BYTES, 10 * 1024 * 1024);
     assert.equal(CLOUD_OBSERVED_BAKED_BYTES, 2 * 1024 * 1024);
-    assert.equal(CLOUD_BAKED_WORKING_SET_BYTES, 8 * 1024 * 1024);
+    assert.equal(CLOUD_BAKED_WORKING_SET_BYTES, 12 * 1024 * 1024);
   });
 }
