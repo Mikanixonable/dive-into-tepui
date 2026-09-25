@@ -2,12 +2,6 @@
 // 他モジュールを import してはならない — tools/model-builder/ がこのファイルを
 // TypeScript のまま transpile して読み込む。
 
-// 機関砲の銃口位置(機体座標系 [m])。発射、発光、薬莢排出はこの2点を交互に使う。
-export const PLAYER_MUZZLE_OFFSETS: readonly { x: number; y: number; z: number }[] = [
-  { x: 0, y: 0.55, z: 2.55 },
-  { x: 0, y: -0.55, z: 2.55 },
-];
-
 // 放熱板の蛇腹の折り数(1モジュールあたり)。
 export const RADIATOR_FOLD_COUNT = 6;
 
