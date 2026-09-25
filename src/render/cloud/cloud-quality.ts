@@ -73,16 +73,32 @@ function replacementSlot(
   return Math.abs(timeA - targetTime) >= Math.abs(timeB - targetTime) ? 'A' : 'B';
 }
 
-export function cloudTemporalCachePlan(
-  displayTimeSeconds: number,
-  qualityLevel: number,
+interface CloudTemporalPairPlan {
+  readonly writes: readonly CloudTemporalCacheWrite[];
+  readonly firstSlot: CloudTemporalCacheSlot;
+  readonly secondSlot: CloudTemporalCacheSlot;
+  readonly blendAtoB: number;
+}
+
+function cloudTemporalPairPlan(
+  firstTimeSeconds: number,
+  secondTimeSeconds: number,
+  secondWeight: number,
   state: CloudTemporalCacheState,
-): CloudTemporalCachePlan {
-  const sample = cloudTemporalSampleTimes(displayTimeSeconds, qualityLevel);
+): CloudTemporalPairPlan {
+  if (!Number.isFinite(firstTimeSeconds) || !Number.isFinite(secondTimeSeconds)) {
+    throw new RangeError('cloud temporal sample times must be finite');
+  }
+  if (!(secondTimeSeconds > firstTimeSeconds)) {
+    throw new RangeError('cloud temporal sample times must be strictly increasing');
+  }
+  if (!Number.isFinite(secondWeight) || secondWeight < 0 || secondWeight > 1) {
+    throw new RangeError('cloud temporal secondWeight must be within 0..1');
+  }
+
   let timeA = state.timeA;
   let timeB = state.timeB;
   const writes: CloudTemporalCacheWrite[] = [];
-
   const materialize = (timeSeconds: number, protectedTime: number | null): CloudTemporalCacheSlot => {
     if (timeA === timeSeconds) return 'A';
     if (timeB === timeSeconds) return 'B';
@@ -93,14 +109,84 @@ export function cloudTemporalCachePlan(
     return slot;
   };
 
-  const lowerSlot = materialize(sample.lowerTimeSeconds, sample.upperTimeSeconds);
-  const upperSlot = materialize(sample.upperTimeSeconds, sample.lowerTimeSeconds);
-  if (lowerSlot === upperSlot) throw new Error('cloud temporal cache requires two distinct sample slots');
+  const firstSlot = materialize(firstTimeSeconds, secondTimeSeconds);
+  const secondSlot = materialize(secondTimeSeconds, firstTimeSeconds);
+  if (firstSlot === secondSlot) throw new Error('cloud temporal cache requires two distinct sample slots');
+  return {
+    writes,
+    firstSlot,
+    secondSlot,
+    blendAtoB: firstSlot === 'A' ? secondWeight : 1 - secondWeight,
+  };
+}
+
+export function cloudTemporalCachePlan(
+  displayTimeSeconds: number,
+  qualityLevel: number,
+  state: CloudTemporalCacheState,
+): CloudTemporalCachePlan {
+  const sample = cloudTemporalSampleTimes(displayTimeSeconds, qualityLevel);
+  const pair = cloudTemporalPairPlan(
+    sample.lowerTimeSeconds, sample.upperTimeSeconds, sample.fraction, state,
+  );
   return {
     ...sample,
-    writes,
-    lowerSlot,
-    upperSlot,
-    blendAtoB: lowerSlot === 'A' ? sample.fraction : 1 - sample.fraction,
+    writes: pair.writes,
+    lowerSlot: pair.firstSlot,
+    upperSlot: pair.secondSlot,
+    blendAtoB: pair.blendAtoB,
   };
+}
+
+export interface CloudTemporalAveragePlan {
+  readonly firstTimeSeconds: number;
+  readonly secondTimeSeconds: number;
+  readonly writes: readonly CloudTemporalCacheWrite[];
+  readonly firstSlot: CloudTemporalCacheSlot;
+  readonly secondSlot: CloudTemporalCacheSlot;
+  readonly blendAtoB: number;
+}
+
+// 60 Hz の表示フレーム1枚が覆うシミュレーション時間を仮想シャッター幅とする。
+// 実フレーム間隔ではなく倍率だけから決めるため、同じ時刻・倍率なら再現結果が変わらない。
+export function cloudTemporalExposureSeconds(simSpeed: number): number {
+  if (!Number.isFinite(simSpeed) || simSpeed <= 0) {
+    throw new RangeError('simSpeed must be positive and finite');
+  }
+  return simSpeed / 60;
+}
+
+// 極端な時間加速では、露光窓の前半・後半の中点を2標本とする。
+// 雲場そのものを数値平均せず、描画用の焼成段でどちらか一方の瞬間場を決定的に選ぶ。
+export function cloudTemporalAveragePlan(
+  displayTimeSeconds: number,
+  temporalExposureSeconds: number,
+  state: CloudTemporalCacheState,
+): CloudTemporalAveragePlan {
+  if (!Number.isFinite(displayTimeSeconds)) throw new RangeError('displayTimeSeconds must be finite');
+  if (!Number.isFinite(temporalExposureSeconds) || temporalExposureSeconds <= 0) {
+    throw new RangeError('temporalExposureSeconds must be positive and finite');
+  }
+  const quarter = temporalExposureSeconds / 4;
+  const firstTimeSeconds = displayTimeSeconds - quarter;
+  const secondTimeSeconds = displayTimeSeconds + quarter;
+  const pair = cloudTemporalPairPlan(firstTimeSeconds, secondTimeSeconds, 0.5, state);
+  return {
+    firstTimeSeconds,
+    secondTimeSeconds,
+    writes: pair.writes,
+    firstSlot: pair.firstSlot,
+    secondSlot: pair.secondSlot,
+    blendAtoB: pair.blendAtoB,
+  };
+}
+
+export function cloudUsesTemporalAverage(
+  temporalExposureSeconds: number,
+  qualityLevel: number,
+): boolean {
+  if (!Number.isFinite(temporalExposureSeconds) || temporalExposureSeconds < 0) {
+    throw new RangeError('temporalExposureSeconds must be non-negative and finite');
+  }
+  return temporalExposureSeconds > cloudQualityPolicy(qualityLevel).temporalIntervalSeconds;
 }
