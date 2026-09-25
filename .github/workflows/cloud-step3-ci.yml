@@ -2,7 +2,9 @@ name: Cloud Step 3-7 CI
 
 on:
   push:
-    branches: [workspace3-step3, workspace3-step7]
+    branches: [workspace3, workspace3-step7]
+  pull_request:
+    branches: [workspace3]
 
 permissions:
   contents: read
@@ -14,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run lint
