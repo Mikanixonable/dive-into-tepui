@@ -1,5 +1,8 @@
 // 局所三次元格子の光路長と二相の消散を、解析的なセル交差長で検査する。
 import * as assert from 'node:assert/strict';
+import { cloudFootprintOverlap } from '../../src/game/cloud/cloud-footprint-overlap';
+import { depositCloudParcelMass } from '../../src/game/cloud/cloud-mass-deposition';
+import { extinctionFromCloudMass } from '../../src/game/cloud/cloud-mass-extinction';
 import { integrateCloudLocalOpticalPath } from '../../src/game/cloud/cloud-local-optical-path';
 import type { CloudExtinctionLayer } from '../../src/game/cloud/cloud-mass-extinction';
 import type { CloudFootprintGrid } from '../../src/game/cloud/cloud-footprint-overlap';
@@ -18,6 +21,31 @@ function near(actual: number, expected: number): void {
 }
 
 export function register(): void {
+  test('cloud local optical path: footprint mass reaches vertical attenuation without coverage conversion', () => {
+    const footprint = cloudFootprintOverlap(
+      { eastM: 50, northM: 50, radiusM: 40 }, GRID,
+    );
+    const cellAreaM2 = GRID.cellWidthM * GRID.cellHeightM;
+    const massKg = 0.2 * footprint.footprintAreaM2;
+    const deposition = depositCloudParcelMass([{
+      phase: 'liquid', massKg, altitudeM: 50,
+      footprintAreaM2: footprint.footprintAreaM2, overlaps: footprint.overlaps,
+    }], {
+      cells: [{ areaM2: cellAreaM2 }, { areaM2: cellAreaM2 }], layerEdgesM: [0, 100],
+    });
+    near(deposition.unassignedMassKgByPhase.liquid, 0);
+    const extinction = extinctionFromCloudMass(deposition, [{
+      liquidEffectiveRadiusM: 10e-6, iceEffectiveRadiusM: 30e-6, iceExtinctionEfficiency: 2,
+    }]);
+    const path = integrateCloudLocalOpticalPath(
+      { eastM: 50, northM: 50, altitudeM: 0 },
+      { eastM: 50, northM: 50, altitudeM: 100 }, GRID, extinction,
+    );
+    const expectedTau = 3 * massKg / (cellAreaM2 * 2 * 1000 * 10e-6);
+    near(path.liquidOpticalDepth, expectedTau);
+    near(path.transmittance, Math.exp(-expectedTau));
+  });
+
   test('cloud local optical path: vertical view and solar rays share two separated phases', () => {
     const from = { eastM: 50, northM: 50, altitudeM: 0 };
     const to = { eastM: 50, northM: 50, altitudeM: 200 };
