@@ -2,7 +2,7 @@
 // ドラッグ操作、OverlayManager への登録更新、ビューポート変化時の再クランプ、最前面化を制御する。
 // 本文要素はコンストラクタの引数として注入する。
 // #hud 配下の window レイヤに配置するため、リセットスタイルを上書きできるようセレクタは `#hud` で始める。
-import { clampOverlayPosition, Point2 } from '../layout';
+import { clampOverlayPosition } from '../layout';
 import { bringToFront as bringOverlayToFront } from '../overlay-layer';
 import { onViewportChange } from '../viewport';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
@@ -10,7 +10,7 @@ import { Button, CloseButton } from '../widgets';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
-import { CLICK_MOVE_THRESHOLD } from '../../input/input';
+import { wireHeaderDrag } from '../window-drag';
 
 const STYLE = `
 #hud .dg-window {
@@ -91,11 +91,6 @@ export class DraggableWindow implements OverlayHandle {
   private _clipped: boolean;
   private disposed = false;
 
-  private dragPointerId: number | null = null;
-  private dragStartClient: Point2 | null = null;
-  private dragStartWindowPos: Point2 = { x: 0, y: 0 };
-  private dragging = false;
-
   private readonly onResize: () => void;
   private readonly unsubscribeViewport: () => void;
 
@@ -162,10 +157,12 @@ export class DraggableWindow implements OverlayHandle {
     header.appendChild(this.headerExtras);
     header.appendChild(this.clipBtn.element);
     header.appendChild(closeBtn.element);
-    header.addEventListener('pointerdown', this.handleHeaderPointerDown);
-    header.addEventListener('pointermove', this.handleHeaderPointerMove);
-    header.addEventListener('pointerup', this.handleHeaderPointerUp);
-    header.addEventListener('pointercancel', this.handleHeaderPointerUp);
+    // compact ではボトムシート化しており、ドラッグの起点確保は不要になる。
+    wireHeaderDrag(header, {
+      position: () => ({ x: this.element.offsetLeft, y: this.element.offsetTop }),
+      moveTo: (x, y) => this.moveTo(x, y),
+      enabled: () => !isCompactViewport(),
+    });
 
     this.body = document.createElement('div');
 
@@ -274,37 +271,6 @@ export class DraggableWindow implements OverlayHandle {
     this.element.style.left = `${pos.x}px`;
     this.element.style.top = `${pos.y}px`;
   }
-
-  // ヘッダー上のボタン以外を掴んだときに、ドラッグ開始点とポインタキャプチャを確保する。
-  // compact ではボトムシート化しており、ドラッグの起点確保は不要になる。
-  private handleHeaderPointerDown = (e: PointerEvent): void => {
-    if (isCompactViewport()) return;
-    if (e.target instanceof Element && e.target.closest('button')) return;
-    this.dragPointerId = e.pointerId;
-    this.dragStartClient = { x: e.clientX, y: e.clientY };
-    this.dragStartWindowPos = { x: this.element.offsetLeft, y: this.element.offsetTop };
-    this.dragging = false;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
-
-  // しきい値(CLICK_MOVE_THRESHOLD)を超えて動くまではドラッグ開始とみなさない。
-  private handleHeaderPointerMove = (e: PointerEvent): void => {
-    if (this.dragPointerId !== e.pointerId || this.dragStartClient === null) return;
-    const dx = e.clientX - this.dragStartClient.x;
-    const dy = e.clientY - this.dragStartClient.y;
-    if (!this.dragging && Math.hypot(dx, dy) < CLICK_MOVE_THRESHOLD) return;
-    this.dragging = true;
-    this.moveTo(this.dragStartWindowPos.x + dx, this.dragStartWindowPos.y + dy);
-  };
-
-  // ポインタキャプチャを解放してドラッグ状態を終える。
-  private handleHeaderPointerUp = (e: PointerEvent): void => {
-    if (this.dragPointerId !== e.pointerId) return;
-    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    this.dragPointerId = null;
-    this.dragStartClient = null;
-    this.dragging = false;
-  };
 
   // DOM ノードと登録したグローバルリスナを取り除き、overlayManager からも外す。
   // 以後このインスタンスは使えない。
