@@ -288,7 +288,7 @@ export class WeatherModel {
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
         .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
-    // Morphology regimes are environment-driven, not latitude-selected.
+    // 形態レジームは緯度で選ばず、その地点の環境条件から連続的に決める。
     const ocean = landFraction.oneMinus();
     const subsidence = max(lift.negate(), 0);
     const marineCell = smoothstep(0.5, 0.78, surfaceHumidity)
@@ -296,8 +296,8 @@ export class WeatherModel {
       .mul(smoothstep(0.38, 0.68, meanCloudiness))
       .mul(ocean)
       .mul(band.oneMinus());
-    // A coherent gravity-wave-like stripe; its phase is independent of material advection.
-    // Longitude/latitude only provide coordinates—the amplitude gate is humidity and weak convection.
+    // 波状雲の位相は物質移流と分離する。経緯度は波の座標にだけ使い、存在条件は
+    // 上層湿度と弱い対流から決める。
     const uv = equirectUvFromDirection(direction);
     const wavePhase = uv.x.mul(2 * Math.PI * 24).add(uv.y.mul(2 * Math.PI * 5))
       .sub(this.waveMorphologyPhase);
