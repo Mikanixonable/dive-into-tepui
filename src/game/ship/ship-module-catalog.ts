@@ -27,10 +27,11 @@ const CATEGORY_BY_KIND: Readonly<Record<ShipModuleKind, ShipModuleCategory>> = {
 function moduleDefinition(
   id: string, kind: ShipModuleKind, length: number, maxHp: number, dryMass: number,
   abilities: ShipModuleDefinition['abilities'] = {}, radius = 3, modelId = id, muzzles: readonly Vec3[] = [],
+  feedPort: Vec3 = v3(),
 ): ShipModuleDefinition {
   return defineShipModule({
     id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter: 6, dryMass, maxHp, modelId,
-    solidPrimitives: [bodyPrimitive(length, radius)], muzzles, abilities,
+    solidPrimitives: [bodyPrimitive(length, radius)], muzzles, feedPort, abilities,
   });
 }
 
@@ -46,8 +47,10 @@ function tank(
 // 既定船の実慣性に対して基準角加速度約 1.4 rad/s² を得る RCS 実トルク [N m]。
 const RCS_MODULE_TORQUE = 24_000;
 
-// 機関砲の縦二連の砲身先端 [m]。モジュール局所で、前面 (+0.5) から砲身が 0.7 m 突き出る。
-const GATLING_MUZZLES = [v3(0, 0.55, 1.2), v3(0, -0.55, 1.2)];
+// 回転砲の砲身先端 [m]。モジュール局所で、前面 (+0.5) から砲身が 0.7 m 突き出る。
+const GATLING_MUZZLES = [v3(0, 0, 1.2)];
+// 給弾ベルトの取り込み口 [m]。砲架下の給弾塔の口で、ベルトはここから +X へ伸びる。
+const GATLING_FEED_PORT = v3(0, -1.95, 0);
 
 const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('cockpit-standard', 'cockpit', 3, 100, 100),
@@ -70,7 +73,7 @@ const definitions: readonly ShipModuleDefinition[] = [
   ),
   moduleDefinition('weapon-gatling', 'weapon', 1, 80, 20, {
     weaponDamage: 1, fireRate: 1 / 0.06, muzzleVelocity: 1_000,
-  }, 3, 'weapon-gatling', GATLING_MUZZLES),
+  }, 3, 'weapon-gatling', GATLING_MUZZLES, GATLING_FEED_PORT),
   moduleDefinition('armor-standard', 'armor', 1, 100, 100, { armorReduction: 0.2 }),
   moduleDefinition('armor-combat', 'armor', 1, 370, 50, { armorReduction: 0.2 }),
   moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 4.8 }),
