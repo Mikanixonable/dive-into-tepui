@@ -5,6 +5,7 @@ Uses bmesh, curved profiles, recessed equipment bays, beveled frames,
 authentic Rao nozzles, clamped feedlines, and aerospace structural geometry.
 """
 
+import json
 import sys
 import os
 import math
@@ -14,6 +15,16 @@ from mathutils import Vector, Matrix, Euler
 
 OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets-src", "ship-modules"))
 os.makedirs(OUT_DIR, exist_ok=True)
+
+# 寸法の正本(カタログと機体形状定数)を書き出した manifest。`--` の後ろの第1引数で受け取る。
+def load_manifest():
+    args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if len(args) != 1:
+        raise SystemExit("usage: blender -b --python build-ship-modules.py -- <manifest.json>")
+    with open(args[0], encoding="utf-8") as f:
+        return json.load(f)
+
+MANIFEST = load_manifest()
 
 def reset_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -87,6 +98,8 @@ def export_glb(filepath):
         export_format='GLB',
         use_selection=False,
         export_apply=True,
+        export_yup=False,
+        export_extras=True,
     )
     print(f"Exported: {filepath}")
 
@@ -208,6 +221,81 @@ def make_sphere(radius, center=(0, 0, 0), u_seg=24, v_seg=16):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return bm
 
+
+# ----------------------------------------------------------------------
+# 機能点の anchor、向きを持つノズル、Rao ベル
+# ----------------------------------------------------------------------
+def add_anchor(name, location, direction=None, parent=None, **props):
+    """形に結び付いた機能点の空オブジェクト。局所 +Z が direction(噴射口なら排気方向)を向く。"""
+    obj = bpy.data.objects.new(f"anchor:{name}", None)
+    bpy.context.collection.objects.link(obj)
+    obj.location = Vector(location)
+    if direction is not None:
+        obj.rotation_mode = 'QUATERNION'
+        obj.rotation_quaternion = Vector(direction).normalized().to_track_quat('Z', 'Y')
+    obj["semanticAnchor"] = name
+    for key, value in props.items():
+        obj[key] = value
+    if parent is not None:
+        obj.parent = parent
+    return obj
+
+def parent_to(obj, parent):
+    """obj の頂点座標を parent の局所座標のまま親子付けする。"""
+    obj.parent = parent
+    obj.matrix_parent_inverse = Matrix.Identity(4)
+    return obj
+
+def add_directed_nozzle(name, exit_point, direction, length, r_exit, r_throat, material, anchor_name=None):
+    """出口 exit_point から direction へ排気する円錐ノズル。anchor_name を渡すと出口に噴射口 anchor を置く。"""
+    d = Vector(direction).normalized()
+    bm = make_cylinder(r_throat, r_exit, length, z_center=-length / 2, segments=12)
+    transform_bm(bm, Matrix.Translation(Vector(exit_point)) @ d.to_track_quat('Z', 'Y').to_matrix().to_4x4())
+    add_mesh_obj(name, bm, material)
+    if anchor_name is not None:
+        add_anchor(anchor_name, exit_point, d)
+
+def rao_bell_profile(r_throat, z_throat, r_exit, z_exit, theta_n_deg, theta_e_deg, samples=24):
+    """喉から出口への Rao の放物線近似の内面輪郭 [(半径, z)]。排気は -Z 向き。
+    喉の下流は半径 0.382 Rt の円弧で θn まで広がり、そこから出口角 θe へ2次ベジエで繋ぐ。"""
+    theta_n = math.radians(theta_n_deg)
+    theta_e = math.radians(theta_e_deg)
+    arc = 0.382 * r_throat
+    points = []
+    for i in range(6):
+        a = theta_n * i / 5
+        points.append((r_throat + arc * (1 - math.cos(a)), z_throat - arc * math.sin(a)))
+    rn, zn = points[-1]
+    # 2本の接線 r = rn + tanθn·(zn - z)、r = r_exit - tanθe·(z - z_exit) の交点が制御点
+    tn, te = math.tan(theta_n), math.tan(theta_e)
+    zq = (r_exit + te * z_exit - rn - tn * zn) / (te - tn)
+    rq = rn + tn * (zn - zq)
+    if not (z_exit < zq < zn):
+        raise ValueError("Rao bell: tangent intersection outside the bell; adjust theta_n / theta_e")
+    for i in range(1, samples + 1):
+        t = i / samples
+        r = (1 - t) ** 2 * rn + 2 * (1 - t) * t * rq + t * t * r_exit
+        z = (1 - t) ** 2 * zn + 2 * (1 - t) * t * zq + t * t * z_exit
+        points.append((r, z))
+    return points
+
+def converging_profile(r_throat, z_throat, r_chamber, z_top, samples=6):
+    """燃焼室 (r_chamber, z_top) から喉までの内面輪郭。喉の上流は半径 1.5 Rt の円弧。"""
+    arc = 1.5 * r_throat
+    a_max = math.acos(max(-1.0, 1 - (r_chamber - r_throat) / arc))
+    if z_throat + arc * math.sin(a_max) >= z_top:
+        raise ValueError("converging section: chamber top must lie upstream of the throat arc")
+    points = [(r_chamber, z_top)]
+    for i in range(samples, -1, -1):
+        a = a_max * i / samples
+        points.append((r_throat + arc * (1 - math.cos(a)), z_throat + arc * math.sin(a)))
+    return points
+
+def make_shell_lathe(inner_points, wall, segments=48):
+    """内面輪郭 inner_points(上流→出口)に肉厚 wall の外面を足し、出口の縁で閉じた回転殻。"""
+    outer = [(r + wall, z) for r, z in reversed(inner_points)]
+    return make_lathe(list(inner_points) + outer, segments=segments)
+
 # ----------------------------------------------------------------------
 # 1. Cockpit Module (cockpit-standard: length 4m, diameter 6m, radius 3m)
 # ----------------------------------------------------------------------
@@ -311,11 +399,10 @@ def build_cockpit():
         bm_pod = make_box(0.24, 0.32, 0.26, center=pos_pod, rot_euler=(0, 0, ang))
         add_mesh_obj(f"rcs_pod_{i}", bm_pod, mats.hull_dark)
         
-        # 4 small conical nozzle clusters emerging from pod
-        for n_dir in [(0.10, 0, 0), (-0.10, 0, 0), (0, 0, 0.10), (0, 0, -0.10)]:
-            bm_noz = make_cylinder(0.035, 0.018, 0.07, z_center=0, segments=8)
-            transform_bm(bm_noz, Matrix.Translation(Vector(pos_pod) + Vector(n_dir)))
-            add_mesh_obj(f"rcs_noz_{i}_{n_dir}", bm_noz, mats.nozzle_rib)
+        # ポッドの接線 ±・軸 ± へ向いた4基のノズル
+        tangent = Vector((-math.sin(ang), math.cos(ang), 0))
+        for k, (d, reach) in enumerate([(tangent, 0.16), (-tangent, 0.16), (Vector((0, 0, 1)), 0.13), (Vector((0, 0, -1)), 0.13)]):
+            add_directed_nozzle(f"rcs_noz_{i}_{k}", Vector(pos_pod) + d * (reach + 0.07), d, 0.07, 0.035, 0.018, mats.nozzle_rib)
 
     # 8. Structural Circumferential Frame Ribs (Ring bulkheads)
     for z_ring in [-1.10, 0.0, 1.10]:
@@ -518,38 +605,26 @@ def build_thruster():
         x_bot = 0.60 * math.cos(act_ang)
         y_bot = 0.60 * math.sin(act_ang)
         # Actuator cylinder
-        bm_act = make_cylinder(0.06, 0.06, 0.50, z_center=-0.20, segments=12)
+        bm_act = make_cylinder(0.06, 0.06, 0.50, z_center=0.0, segments=12)
         transform_bm(bm_act, Matrix.Translation(Vector(((x_top + x_bot) * 0.5, (y_top + y_bot) * 0.5, -0.20))))
         add_mesh_obj(f"gimbal_actuator_{act_ang}", bm_act, mats.pipe)
 
-    # 5. Authentic Rao Parabolic Contour Bell Nozzle
-    # Smooth expansion curve expanding strictly rearward: throat at z = -0.35m to exit at z = -1.80m
-    rao_points = [
-        (0.48, -0.25), # Throat entrance
-        (0.44, -0.35), # Throat minimum (choked flow)
-        (0.50, -0.50), # Initial expansion flare
-        (0.65, -0.75), # Parabolic inflection
-        (0.85, -1.05),
-        (1.10, -1.35),
-        (1.40, -1.62),
-        (1.70, -1.80), # Exit skirt rim
-    ]
-    bm_bell = make_lathe(rao_points, segments=48)
-    add_mesh_obj("nozzle_bell", bm_bell, mats.nozzle_bell)
+    # 5. Rao 近似のベル・ノズル。喉 z = -0.35 m、出口 z = -1.80 m、肉厚付きの回転殻
+    throat_r, throat_z, exit_r, exit_z = 0.44, -0.35, 1.70, -1.80
+    bell = rao_bell_profile(throat_r, throat_z, exit_r, exit_z, 60.0, 25.0)
+    inner = converging_profile(throat_r, throat_z, 0.60, 0.20) + bell[1:]
+    add_mesh_obj("nozzle_bell", make_shell_lathe(inner, 0.025, segments=64), mats.nozzle_bell)
+    add_anchor("thrust", (0, 0, exit_z), (0, 0, -1))
 
-    # 6. Regenerative Cooling Tube Ribs & Circumferential Hat Bands
-    for zb, rb in [(-0.50, 0.51), (-0.80, 0.70), (-1.20, 0.98), (-1.55, 1.32), (-1.78, 1.68)]:
-        bm_band = make_torus(major_r=rb, minor_r=0.03, z_center=zb, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"nozzle_band_{zb}", bm_band, mats.nozzle_rib)
+    # 6. 再生冷却管の束ね帯と、ベル外面を走る冷却管
+    for k in (4, 10, 16, 22, len(bell) - 1):
+        rb, zb = bell[k]
+        add_mesh_obj(f"nozzle_band_{k}", make_torus(major_r=rb + 0.04, minor_r=0.03, z_center=zb, major_seg=48, minor_seg=8), mats.nozzle_rib)
 
-    # 16 Longitudinal cooling manifold tube runs on the bell exterior
     for i in range(16):
         ang = i * 2.0 * math.pi / 16
-        c_pts = []
-        for r_p, z_p in rao_points[1:]:
-            c_pts.append(Vector(((r_p + 0.015) * math.cos(ang), (r_p + 0.015) * math.sin(ang), z_p)))
-        bm_tube = make_pipe(c_pts, radius=0.012, segments=6)
-        add_mesh_obj(f"cooling_tube_{i}", bm_tube, mats.nozzle_rib)
+        c_pts = [Vector(((r_p + 0.04) * math.cos(ang), (r_p + 0.04) * math.sin(ang), z_p)) for r_p, z_p in bell[::2]]
+        add_mesh_obj(f"cooling_tube_{i}", make_pipe(c_pts, radius=0.012, segments=6), mats.nozzle_rib)
 
     # Turbopump exhaust manifold torus wrapped around throat collar
     bm_turbo = make_torus(major_r=0.68, minor_r=0.07, z_center=-0.38, major_seg=24, minor_seg=8)
@@ -601,15 +676,9 @@ def build_booster():
         add_mesh_obj(f"sep_motor_{k}", bm_sep, mats.nozzle_rib)
 
     # 4. Large Expansion Rao Nozzle inside the aft skirt
-    nozzle_profile = [
-        (0.70, -1.60), # Throat
-        (0.95, -2.00),
-        (1.30, -2.40),
-        (1.80, -2.75),
-        (2.30, -3.00), # Bell exit inside skirt
-    ]
-    bm_srb_nozzle = make_lathe(nozzle_profile, segments=36)
-    add_mesh_obj("booster_nozzle", bm_srb_nozzle, mats.nozzle_bell)
+    nozzle_profile = converging_profile(0.70, -1.75, 0.95, -0.95) + rao_bell_profile(0.70, -1.75, 2.30, -3.00, 70.0, 30.0)[1:]
+    add_mesh_obj("booster_nozzle", make_shell_lathe(nozzle_profile, 0.04, segments=48), mats.nozzle_bell)
+    add_anchor("thrust", (0, 0, -3.0), (0, 0, -1))
     
     # Skirt reinforcement ribs
     for i in range(8):
@@ -646,11 +715,11 @@ def build_rcs_module():
         bm_box = make_box(0.38, 0.38, 0.45, center=(x, y, 0.0), rot_euler=(0, 0, ang))
         add_mesh_obj(f"rcs_pod_{i}", bm_box, mats.hull_dark)
         
-        # Conical nozzles pointing in orthogonal directions
-        for d in [(0.22, 0, 0), (-0.22, 0, 0), (0, 0, 0.18), (0, 0, -0.18)]:
-            bm_noz = make_cylinder(0.08, 0.03, 0.16, z_center=0.0, segments=8)
-            transform_bm(bm_noz, Matrix.Translation(Vector((x, y, 0.0)) + Vector(d)))
-            add_mesh_obj(f"rcs_noz_{i}_{d}", bm_noz, mats.nozzle_rib)
+        # ポッドの接線 ±・軸 ± へ向いた4基のノズル。出口に噴射口 anchor を置く
+        tangent = Vector((-math.sin(ang), math.cos(ang), 0))
+        pod = Vector((x, y, 0.0))
+        for name, d, reach in [("t+", tangent, 0.19), ("t-", -tangent, 0.19), ("z+", Vector((0, 0, 1)), 0.225), ("z-", Vector((0, 0, -1)), 0.225)]:
+            add_directed_nozzle(f"rcs_noz_{i}_{name}", pod + d * (reach + 0.16), d, 0.16, 0.08, 0.03, mats.nozzle_rib, anchor_name=f"rcs:{i}:{name}")
 
     export_glb(os.path.join(OUT_DIR, "rcs-standard.glb"))
 
@@ -719,90 +788,80 @@ def build_docking_mechanism(name, kind):
 # ----------------------------------------------------------------------
 # 8. Deployable Modules (solar-panel-standard, radiator-standard)
 # ----------------------------------------------------------------------
-def build_solar_panel():
-    reset_scene()
-    mats = MaterialLibrary()
-    radius = 3.0  # 6.0m diameter base
-    length = 1.0
-    half_len = 0.5
+def build_deployable_chain(kind, half_len, build_panel):
+    """取付面 z = half_len のヒンジ panel-hinge の下へ、展開しきった一直線の姿勢で panel-hinge:i を並べる。
+    build_panel(i, side) は i 枚目のパネル局所(長手 +Z、厚み方向が法線、原点は根元の厚み中心)に
+    メッシュを作って返す。side = (-1)^i はそのパネルの根元ヒンジが載る面。姿勢は実行時に上書きされる。"""
+    spec = MANIFEST["deployables"][kind]
+    normal = Vector(spec["normalAxis"])
+    root = add_anchor("panel-hinge", (0, 0, half_len))
+    for index in range(spec["count"]):
+        hinge = add_anchor(
+            f"panel-hinge:{index}", normal * (spec["thickness"] / 2) + Vector((0, 0, index * spec["length"])),
+            parent=root, panelIndex=index, panelKind=kind,
+        )
+        for obj in build_panel(index, 1 if index % 2 == 0 else -1):
+            parent_to(obj, hinge)
 
-    # 1. Attachment Flange (thin structural plate at module interface)
+def build_deploy_base(mats, half_len, radius):
+    """取付面の円盤フランジとボルト環。"""
     bm_flange = make_cylinder(radius * 0.85, radius * 0.85, 0.12, z_center=half_len - 0.06, segments=36)
     add_mesh_obj("deploy_flange", bm_flange, mats.hull_dark)
-
-    # Flange perimeter bolt ring
     bm_bolts = make_torus(major_r=radius * 0.82, minor_r=0.025, z_center=half_len - 0.02, major_seg=36, minor_seg=8)
     add_mesh_obj("flange_bolts", bm_bolts, mats.clamp)
 
-    # 2. Photovoltaic Panels (3 panels extending +Z perpendicular to connection plane)
-    solar_count = 3
-    panel_width = 1.2 * math.sqrt(10)  # ≈ 3.7947 m (length along Z)
-    panel_span = 1.0 * math.sqrt(10)   # ≈ 3.1623 m (span along X)
-    thickness = 0.06                   # thickness along Y
-
-    for index in range(solar_count):
-        z_origin = half_len + index * panel_width
-        z_center = z_origin + panel_width * 0.48
-
-        # Solar cell panel main body
-        bm_panel = make_box(panel_span * 0.96, thickness, panel_width * 0.96, center=(0.0, 0.0, z_center))
-        add_mesh_obj(f"panel:{index}", bm_panel, mats.solar)
-
-        # Backside carbon composite reinforcement ribs
-        bm_ribs = make_box(panel_span * 0.94, 0.015, panel_width * 0.94, center=(0.0, -thickness * 0.52, z_center))
-        add_mesh_obj(f"panel_ribs:{index}", bm_ribs, mats.hull_dark)
-
-        # Hinge knuckle / pivot barrel at segment junction (oriented along X)
-        bm_hinge = make_cylinder(0.035, 0.035, panel_span * 0.98, z_center=0.0, segments=12)
-        rot_mat = Matrix.Translation(Vector((0.0, 0.0, z_origin))) @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4()
-        transform_bm(bm_hinge, rot_mat)
-        add_mesh_obj(f"panel_hinge_hardware:{index}", bm_hinge, mats.clamp)
-
-    export_glb(os.path.join(OUT_DIR, "solar-panel-standard.glb"))
-    export_glb(os.path.join(OUT_DIR, "solar-panel-base.glb"))
-
-
-def build_radiator():
+def build_solar_panel(name):
     reset_scene()
     mats = MaterialLibrary()
-    radius = 3.0  # 6.0m diameter base
-    length = 1.0
-    half_len = 0.5
+    half_len = MANIFEST["modules"][name]["length"] / 2
+    build_deploy_base(mats, half_len, 3.0)
+    spec = MANIFEST["deployables"]["solar_panel"]
+    length, span, thickness = spec["length"], spec["span"], spec["thickness"]
 
-    # 1. Attachment Flange
-    bm_flange = make_cylinder(radius * 0.85, radius * 0.85, 0.12, z_center=half_len - 0.06, segments=36)
-    add_mesh_obj("deploy_flange", bm_flange, mats.hull_dark)
+    def panel(index, side):
+        # おもて面 +Y が太陽電池、裏面に補強材、根元のヒンジ面にヒンジ胴
+        cells = add_mesh_obj(f"panel:{index}", make_box(span * 0.96, thickness, length * 0.96, center=(0.0, 0.0, length * 0.5)), mats.solar)
+        cells["name"] = "deployable-panel" if index == 0 else f"deployable-panel:{index}"
+        ribs = add_mesh_obj(f"panel_ribs:{index}", make_box(span * 0.94, 0.015, length * 0.94, center=(0.0, -thickness * 0.52, length * 0.5)), mats.hull_dark)
+        bm_hinge = make_cylinder(0.035, 0.035, span * 0.98, z_center=0.0, segments=12)
+        transform_bm(bm_hinge, Matrix.Translation(Vector((0.0, -side * thickness / 2, 0.0))) @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
+        knuckle = add_mesh_obj(f"panel_hinge_hardware:{index}", bm_hinge, mats.clamp)
+        return [cells, ribs, knuckle]
 
-    # Coolant manifold connection hub
+    build_deployable_chain("solar_panel", half_len, panel)
+    export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
+
+
+def build_radiator(name):
+    reset_scene()
+    mats = MaterialLibrary()
+    half_len = MANIFEST["modules"][name]["length"] / 2
+    build_deploy_base(mats, half_len, 3.0)
+
+    # 熱回転継手へ繋がる冷媒の集合管
     bm_manifold = make_cylinder(0.16, 0.16, 0.16, z_center=half_len - 0.02, segments=16)
     add_mesh_obj("coolant_manifold", bm_manifold, mats.pipe)
 
-    # 2. Accordion Radiator Panels (6 folds extending +Z)
-    fold_count = 6
-    segment_length = 0.8 * math.sqrt(10)  # ≈ 2.5298 m (length along Z)
-    panel_span = 1.0 * math.sqrt(10)      # ≈ 3.1623 m (radiation width along Y)
-    thickness = 0.08                      # thickness along X
+    spec = MANIFEST["deployables"]["radiator"]
+    length, span, thickness = spec["length"], spec["span"], spec["thickness"]
 
-    for index in range(fold_count):
-        z_origin = half_len + index * segment_length
-        z_center = z_origin + segment_length * 0.48
+    def panel(index, side):
+        # 両面が放熱面。流路管は両面に半分浮き出し、根元のヒンジ面に流体継手を兼ねるヒンジ胴
+        body = add_mesh_obj(f"panel:{index}", make_box(thickness, span * 0.96, length * 0.96, center=(0.0, 0.0, length * 0.5)), mats.radiator)
+        body["name"] = "deployable-panel" if index == 0 else f"deployable-panel:{index}"
+        parts = [body]
+        for face in (1, -1):
+            for lane in (-0.3, 0.0, 0.3):
+                bm_pipe = make_cylinder(0.022, 0.022, length * 0.96, z_center=length * 0.5, segments=8)
+                transform_bm(bm_pipe, Matrix.Translation(Vector((face * thickness / 2, lane * span, 0.0))))
+                parts.append(add_mesh_obj(f"radiator_pipe:{index}:{face}:{lane}", bm_pipe, mats.pipe))
+        bm_hinge = make_cylinder(0.04, 0.04, span * 0.98, z_center=0.0, segments=12)
+        transform_bm(bm_hinge, Matrix.Translation(Vector((-side * thickness / 2, 0.0, 0.0))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+        parts.append(add_mesh_obj(f"radiator_hinge_hardware:{index}", bm_hinge, mats.clamp))
+        return parts
 
-        # High-emissivity ceramic thermal panel body
-        bm_panel = make_box(thickness, panel_span * 0.96, segment_length * 0.96, center=(0.0, 0.0, z_center))
-        add_mesh_obj(f"panel:{index}", bm_panel, mats.radiator)
-
-        # Central heat pipe running down each fold
-        bm_pipe = make_cylinder(0.022, 0.022, segment_length * 0.96, z_center=z_center, segments=8)
-        add_mesh_obj(f"radiator_pipe:{index}", bm_pipe, mats.pipe)
-
-        # Hinge knuckle / fluid coupling joint at segment root (oriented along Y)
-        bm_hinge = make_cylinder(0.04, 0.04, panel_span * 0.98, z_center=0.0, segments=12)
-        rot_mat = Matrix.Translation(Vector((0.0, 0.0, z_origin))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4()
-        transform_bm(bm_hinge, rot_mat)
-        add_mesh_obj(f"radiator_hinge_hardware:{index}", bm_hinge, mats.clamp)
-
-    export_glb(os.path.join(OUT_DIR, "radiator-standard.glb"))
-    export_glb(os.path.join(OUT_DIR, "radiator-base.glb"))
+    build_deployable_chain("radiator", half_len, panel)
+    export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
 # ----------------------------------------------------------------------
 # 9. Armor Modules (armor-standard, armor-combat)
@@ -838,34 +897,26 @@ def build_weapon(name):
     reset_scene()
     mats = MaterialLibrary()
     radius = 3.0
-    length = 1.0
-    half_len = 0.5
-    
-    # Weapon structural carrier ring
+    length = MANIFEST["modules"][name]["length"]
+
+    # 砲架のリング
     bm_ring = make_cylinder(radius, radius, length, z_center=0.0, segments=36)
     add_mesh_obj("weapon_ring", bm_ring, mats.hull)
-    
-    # Dual Gatling clusters at Left (x=-1.5m) and Right (x=+1.5m)
-    for sign in [-1.0, 1.0]:
-        x_base = sign * 1.5
-        # Gun housing cowl
-        bm_housing = make_cylinder(0.42, 0.38, 0.85, z_center=0.25, segments=16)
-        transform_bm(bm_housing, Matrix.Translation(Vector((x_base, 0.0, 0.25))))
-        add_mesh_obj(f"gun_housing_{sign}", bm_housing, mats.hull_dark)
-        
-        # 6-barrel rotary cluster
+
+    # 定義の砲口ごとに、機関部の覆い・6連の回転砲身・砲口の締め環を置く。砲身先端が砲口に一致する
+    barrel_length = 1.20
+    for k, (mx, my, mz) in enumerate(MANIFEST["modules"][name]["muzzles"]):
+        bm_housing = make_cylinder(0.42, 0.38, 0.85, z_center=mz - 0.95, segments=16)
+        transform_bm(bm_housing, Matrix.Translation(Vector((mx, my, 0.0))))
+        add_mesh_obj(f"gun_housing_{k}", bm_housing, mats.hull_dark)
         for b in range(6):
             b_ang = b * math.pi / 3.0
-            bx = x_base + 0.16 * math.cos(b_ang)
-            by = 0.16 * math.sin(b_ang)
-            bm_barrel = make_cylinder(0.035, 0.035, 1.20, z_center=0.60, segments=8)
-            transform_bm(bm_barrel, Matrix.Translation(Vector((bx, by, 0.60))))
-            add_mesh_obj(f"barrel_{sign}_{b}", bm_barrel, mats.pipe)
-            
-        # Muzzle clamp ring
-        bm_clamp = make_torus(major_r=0.18, minor_r=0.025, z_center=1.15, major_seg=16, minor_seg=6)
-        transform_bm(bm_clamp, Matrix.Translation(Vector((x_base, 0.0, 0.0))))
-        add_mesh_obj(f"muzzle_clamp_{sign}", bm_clamp, mats.hull_dark)
+            bm_barrel = make_cylinder(0.035, 0.035, barrel_length, z_center=mz - barrel_length / 2, segments=8)
+            transform_bm(bm_barrel, Matrix.Translation(Vector((mx + 0.16 * math.cos(b_ang), my + 0.16 * math.sin(b_ang), 0.0))))
+            add_mesh_obj(f"barrel_{k}_{b}", bm_barrel, mats.pipe)
+        bm_clamp = make_torus(major_r=0.18, minor_r=0.025, z_center=mz - 0.05, major_seg=16, minor_seg=6)
+        transform_bm(bm_clamp, Matrix.Translation(Vector((mx, my, 0.0))))
+        add_mesh_obj(f"muzzle_clamp_{k}", bm_clamp, mats.hull_dark)
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
@@ -902,8 +953,8 @@ def main():
     build_docking_mechanism("decoupler-standard", "decoupler")
     
     # 7. Deployable modules
-    build_solar_panel()
-    build_radiator()
+    build_solar_panel("solar-panel-standard")
+    build_radiator("radiator-standard")
     
     # 8. Armor & Weapon
     build_armor("armor-standard")
