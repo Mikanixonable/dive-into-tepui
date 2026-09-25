@@ -107,19 +107,19 @@ export class RunEventPresenter {
         this.uiSounds.push('warp');
         // 操作できない倍率へ上げたときは、自機の操作が効かなくなったことを併記する。
         const gated = body.shipActs ? '' : `(自機の操作はワープ ×${MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
-        this.notifier.hint(`時間加速 ×${body.speed}${gated}`);
+        this.notifier.hint(`時間加速 ×${body.speed}${gated}`, undefined, 'nav');
         return;
       }
       case 'autoWarpStarted':
-        this.notifier.hint('ノードへ自動ワープ開始');
+        this.notifier.hint('ノードへ自動ワープ開始', undefined, 'nav');
         return;
       case 'autoWarpCancelled':
-        this.notifier.hint('自動ワープ解除');
+        this.notifier.hint('自動ワープ解除', undefined, 'nav');
         return;
       case 'autoWarpUnavailable':
         this.notifier.hint(body.reason === 'noNode'
           ? `マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`
-          : 'ノード時刻を通過しています');
+          : 'ノード時刻を通過しています', undefined, 'warn');
         return;
       case 'controlledStateCorrupted': {
         const detail = `controlled ${describeState(body.state)} ${describeAttitude(body.attitude)} simTime=${body.simTime}`;
@@ -133,10 +133,10 @@ export class RunEventPresenter {
       }
 
       case 'gunDisabled':
-        this.notifier.hint('武装が損傷しており発射できない', 3000);
+        this.notifier.hint('武装が損傷しており発射できない', 3000, 'warn');
         return;
       case 'gunOutOfAmmo':
-        this.notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
+        this.notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000, 'warn');
         return;
 
       case 'enemyDied':
@@ -145,11 +145,11 @@ export class RunEventPresenter {
           : `${body.name} ${ENEMY_LOSS_TEXT[body.cause]}`);
         return;
       case 'shipLost':
-        this.notifier.hint(body.reason);
+        this.notifier.hint(body.reason, undefined, 'warn');
         return;
 
       case 'altitudeWarned':
-        this.notifier.hint(`警告: 高度が${Math.round(body.threshold / 1000)}km以下です`, 3000);
+        this.notifier.hint(`警告: 高度が${Math.round(body.threshold / 1000)}km以下です`, 3000, 'warn');
         return;
       case 'rcsDampToggled':
         this.notifier.hint(`RCS 回転制動: ${body.on ? 'ON' : 'OFF'}`);
@@ -171,21 +171,21 @@ export class RunEventPresenter {
         return;
 
       case 'boosterLimitReached':
-        this.notifier.hint(`ブースターは最大 ${body.limit} 段です`);
+        this.notifier.hint(`ブースターは最大 ${body.limit} 段です`, undefined, 'warn');
         return;
       case 'boosterAttached':
         this.notifier.hint(`ブースターを追加: ${body.stages} 段`);
         return;
       case 'boosterIgnitionUnavailable':
-        this.notifier.hint('点火できるブースターがありません');
+        this.notifier.hint('点火できるブースターがありません', undefined, 'warn');
         return;
       case 'boosterIgnitionToggled':
         this.notifier.hint(body.fuelEmpty
           ? '最後尾ブースターは燃料切れです'
-          : `ブースター燃焼: ${body.on ? 'ON' : 'OFF'}`);
+          : `ブースター燃焼: ${body.on ? 'ON' : 'OFF'}`, undefined, body.fuelEmpty ? 'warn' : 'info');
         return;
       case 'boosterDecoupleUnavailable':
-        this.notifier.hint('分離できるブースターがありません');
+        this.notifier.hint('分離できるブースターがありません', undefined, 'warn');
         return;
       case 'boosterDecoupled':
         this.notifier.hint(`ブースター分離: 残り ${body.stages} 段`);
@@ -193,11 +193,11 @@ export class RunEventPresenter {
 
       case 'ammoResupplyDeployed':
         this.uiSounds.push('warp');
-        this.notifier.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
+        this.notifier.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000, 'nav');
         return;
       case 'rcsFuelResupplyDeployed':
         this.uiSounds.push('warp');
-        this.notifier.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
+        this.notifier.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000, 'nav');
         return;
       case 'ammoPickedUp':
         this.notifier.hint(`補給取り込み — ベルト +${body.mags} 連`, 3000);
@@ -207,27 +207,28 @@ export class RunEventPresenter {
         return;
 
       case 'maneuverNodeApproaching':
-        this.notifier.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
+        this.notifier.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000, 'plan');
         return;
       case 'maneuverNodeAchieved':
-        if (body.remaining === 0) this.notifier.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
-        else this.notifier.hint(`✓ ノード達成 — 残り ${body.remaining} 件`, 4000);
+        if (body.remaining === 0) this.notifier.hint('✓ マニューバ達成 — 計画軌道に到達', 5000, 'plan');
+        else this.notifier.hint(`✓ ノード達成 — 残り ${body.remaining} 件`, 4000, 'plan');
         this.uiSounds.push('warp');
         return;
       case 'planNodesDropped':
-        this.notifier.hint(`${body.ship}: 起点より前のマニューバノード ${body.count} 件を復元できません`);
+        this.notifier.hint(`${body.ship}: 起点より前のマニューバノード ${body.count} 件を復元できません`, undefined, 'warn');
         return;
 
       case 'combatViewUnavailable':
-        this.notifier.hint('操作できる艦または基地がいません');
+        this.notifier.hint('操作できる艦または基地がいません', undefined, 'warn');
         return;
       case 'maneuverPlanConfirmed':
-        this.notifier.hint(`マニューバ計画 ${body.nodeCount} 件確定`, 4500);
+        this.notifier.hint(`マニューバ計画 ${body.nodeCount} 件確定`, 4500, 'plan');
         return;
       case 'orbitPlanningOpened':
         this.notifier.hint(
           `軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [${K.toggleMapMode.label}] で確定`,
           5000,
+          'plan',
         );
         return;
 
@@ -253,10 +254,10 @@ export class RunEventPresenter {
         return;
 
       case 'navTargetToggled':
-        this.notifier.hint(body.name === null ? 'ターゲット解除' : `ターゲット: ${body.name}`);
+        this.notifier.hint(body.name === null ? 'ターゲット解除' : `ターゲット: ${body.name}`, undefined, 'nav');
         return;
       case 'navTargetLocked':
-        this.notifier.hint(body.name === null ? 'ターゲット固定解除' : `ターゲット固定: ${body.name}`);
+        this.notifier.hint(body.name === null ? 'ターゲット固定解除' : `ターゲット固定: ${body.name}`, undefined, 'nav');
         return;
 
       case 'waveAttackArmed':
@@ -270,16 +271,16 @@ export class RunEventPresenter {
         this.notifier.hint(`${body.name} を配置`);
         return;
       case 'objectPlacementRejected':
-        this.notifier.hint(`配置できません: ${body.reason}`, 5000);
+        this.notifier.hint(`配置できません: ${body.reason}`, 5000, 'warn');
         return;
       case 'shipPlacementLimitReached':
-        this.notifier.hint(`配置数が上限(${body.limit}隻)に達しています`);
+        this.notifier.hint(`配置数が上限(${body.limit}隻)に達しています`, undefined, 'warn');
         return;
       case 'orbitNotDuplicable':
-        this.notifier.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます');
+        this.notifier.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます', undefined, 'warn');
         return;
       case 'shipRequiredForAction':
-        this.notifier.hint(SHIP_REQUIRED_TEXT[body.action]);
+        this.notifier.hint(SHIP_REQUIRED_TEXT[body.action], undefined, 'warn');
         return;
     }
   }
