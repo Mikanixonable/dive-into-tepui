@@ -16,6 +16,36 @@ export interface CloudDetailDiagnosticTile extends CloudPresentationDetailTile {
   readonly texture: THREE.DataTexture;
 }
 
+export interface CloudDetailDiagnosticTextureEstimate {
+  readonly textureUuid: string;
+  readonly width: number;
+  readonly height: number;
+  readonly cpuBackingBytes: number | null;
+  readonly estimatedGpuBaseLevelBytes: number | null;
+}
+
+// 所有者が保持する診断テクスチャの CPU 配列実寸と、RGBA8 基底 mip の GPU 容量推定を返す。
+export function estimateCloudDetailDiagnosticTexture(
+  texture: THREE.Texture,
+): CloudDetailDiagnosticTextureEstimate {
+  const image = texture.image as { readonly data?: unknown; readonly width?: number; readonly height?: number };
+  if (!Number.isSafeInteger(image.width) || !Number.isSafeInteger(image.height)
+    || image.width! <= 0 || image.height! <= 0) {
+    throw new RangeError('cloud detail diagnostic texture has invalid dimensions');
+  }
+  const cpuBackingBytes = ArrayBuffer.isView(image.data) ? image.data.byteLength : null;
+  const estimatedGpuBaseLevelBytes = texture.format === THREE.RGBAFormat
+    && texture.type === THREE.UnsignedByteType
+    ? image.width! * image.height! * 4 : null;
+  return {
+    textureUuid: texture.uuid,
+    width: image.width!,
+    height: image.height!,
+    cpuBackingBytes,
+    estimatedGpuBaseLevelBytes,
+  };
+}
+
 // 周期と波数方向を固定した sinusoidal coverage。directionDeg は東から北への波数ベクトルの角度。
 export function cloudDetailDiagnosticCoverage(
   eastKm: number, northKm: number, wavelengthKm: number, directionDeg: number, phaseDeg = 0,
