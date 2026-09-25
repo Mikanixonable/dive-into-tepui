@@ -1167,9 +1167,6 @@
   "src/render/gpu-timings.ts": {
     "@typescript-eslint/array-type": {
       "count": 1
-    },
-    "no-restricted-syntax": {
-      "count": 1
     }
   },
   "src/render/instanced-pool.ts": {
@@ -1558,14 +1555,6 @@
   },
   "tests/physics/body-orientation.test.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "tests/physics/celestial-eci-baseline.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   },

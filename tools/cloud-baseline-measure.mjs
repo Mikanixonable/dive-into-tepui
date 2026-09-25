@@ -1,18 +1,138 @@
-// Capture a paired cloud-off / observed / generated GPU baseline from the real
-// render pipeline. Every reported frame total sums passes from that frame before
-// taking a percentile; per-pass percentiles cannot be added to obtain a p95.
+// 雲なし／雲ありの観測済み render timestamp 合計を、反復ブロックで比較する。
+// すべての GPU 命令の完了時刻や画面提示時刻とは区別する。
 import { writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
+import { qualifyObservedRenderBaseline, summarizeBaselineBlocks } from './cloud-baseline-statistics.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.render-lab');
 const outputPath = path.join(buildDir, 'cloud-baseline.json');
+const BLOCK_COUNT = 8;
+const CASE_NAME = 'earth';
+const SHOT_NAME = 'cloud-standard-near-range-250km';
+const FIXTURE_WIDTH = 960;
+const FIXTURE_HEIGHT = 540;
 const modes = [
-  { id: 'off', clouds: false, source: 'generated' },
-  { id: 'generated-standard', clouds: true, source: 'generated' },
-  { id: 'observed-standard', clouds: true, source: 'observed' },
+  { id: 'generated-standard', source: 'generated' },
+  { id: 'observed-standard', source: 'observed' },
 ];
+
+function distribution(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  const percentile = (ratio) => sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
+  return {
+    samples: values.length,
+    avg: values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length,
+    p50: percentile(0.5),
+    p95: percentile(0.95),
+    min: sorted[0] ?? 0,
+    max: sorted.at(-1) ?? 0,
+  };
+}
+
+function summarizeObservedRenderRepeats(blocks) {
+  const modesSummary = {};
+  for (const mode of modes) {
+    const deltas = [];
+    const noise = [];
+    for (const block of blocks) {
+      const runs = block.modes[mode.id];
+      const before = runs.offBefore.measurement.observedRenderTotalMs.p95;
+      const cloud = runs.cloudOn.measurement.observedRenderTotalMs.p95;
+      const after = runs.offAfter.measurement.observedRenderTotalMs.p95;
+      deltas.push(cloud - (before + after) / 2);
+      noise.push(Math.abs(after - before));
+    }
+    modesSummary[mode.id] = {
+      pairedObservedRenderP95DeltaMs: distribution(deltas),
+      offOffRepeatabilityNoiseFloorMs: distribution(noise),
+    };
+  }
+  return {
+    scope: 'observed-render-total',
+    pairedDeltaDefinition: 'cloud-on observed-render p95 minus the mean of the same block\'s surrounding cloud-off observed-render p95 values',
+    noiseFloorDefinition: 'absolute difference between the same block\'s surrounding cloud-off observed-render p95 values',
+    modes: modesSummary,
+  };
+}
+
+function summarizeLensAblation(blocks) {
+  const byMode = {};
+  for (const mode of modes) {
+    const observedRenderInteractions = [];
+    const lensPassInteractions = [];
+    const lensRenderCallCpuInteractions = [];
+    for (const block of blocks) {
+      const runs = block.modes[mode.id];
+      observedRenderInteractions.push(
+        (runs.cloudOnLensEnabled.measurement.observedRenderTotalMs.p95
+          - runs.cloudOnLensDisabled.measurement.observedRenderTotalMs.p95)
+          - (runs.cloudOffLensEnabled.measurement.observedRenderTotalMs.p95
+            - runs.cloudOffLensDisabled.measurement.observedRenderTotalMs.p95),
+      );
+      lensPassInteractions.push(
+        (runs.cloudOnLensEnabled.measurement.gpuPassMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassMs['レンズ'].p95),
+      );
+      lensRenderCallCpuInteractions.push(
+        (runs.cloudOnLensEnabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95),
+      );
+    }
+    byMode[mode.id] = {
+      pairedObservedRenderInteractionP95Ms: distribution(observedRenderInteractions),
+      pairedLensPassInteractionP95Ms: distribution(lensPassInteractions),
+      pairedLensRenderCallCpuInteractionP95Ms: distribution(lensRenderCallCpuInteractions),
+    };
+  }
+  return {
+    purpose: 'descriptive cloud-by-lens interaction; not part of baseline qualification',
+    fixture: {
+      caseName: CASE_NAME,
+      shotName: SHOT_NAME,
+      canvasWidth: blocks[0]?.modes[modes[0].id]?.cloudOnLensEnabled.measurement.canvasWidth ?? null,
+      canvasHeight: blocks[0]?.modes[modes[0].id]?.cloudOnLensEnabled.measurement.canvasHeight ?? null,
+    },
+    comparison: '(cloud-on lens-on − cloud-on lens-off) − (cloud-off lens-on − cloud-off lens-off) within each block',
+    scope: {
+      observedRender: 'interaction of summed resolved renderer.render() timestamp durations; includes composite changes and is not full-frame GPU B0',
+      lensPass: 'interaction of p95 values for the instrumented render pass named レンズ; descriptive and may be unavailable when timestamp queries are unsupported',
+      lensRenderCallCpu: 'interaction of p95 synchronous CPU time inside renderer.render() calls attributed to レンズ; this measures synchronous JavaScript/CPU work only, does not isolate queue submission, does not replace GPU timestamps, and does not measure asynchronous GPU execution/queue waiting',
+    },
+    interpretation: 'The difference of lens-toggle effects between cloud-on and cloud-off estimates cloud-specific lens interaction in these render scopes. It is descriptive and has no pass/fail threshold. GPU timestamp duration and synchronous renderer.render() CPU duration are separate measurements: the latter cannot substitute for GPU work, and these scopes do not distinguish shader execution from GPU dependency or scheduling waits.',
+    modes: byMode,
+    blocks,
+  };
+}
+
+function systemGraphicsIdentity() {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const result = execFileSync('system_profiler', ['-json', 'SPDisplaysDataType'], {
+      encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const displays = JSON.parse(result).SPDisplaysDataType ?? [];
+    return displays.map((display) => ({
+      chipset: display.sppci_model ?? null,
+      vendor: display.sppci_vendor ?? null,
+      cores: display.sppci_cores ?? null,
+      metalSupport: display.spdisplays_mtlgpufamilysupport ?? null,
+      displays: (display.spdisplays_ndrvs ?? []).map((screen) => ({
+        resolution: screen._spdisplays_resolution ?? null,
+        pixelDepth: screen.spdisplays_pixels ?? null,
+      })),
+    }));
+  } catch {
+    return null;
+  }
+}
 
 async function main() {
   const { fatalEvents, onEvent } = collectFatalEvents();
@@ -31,55 +151,212 @@ async function main() {
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
 
-    const device = await devTools.evaluate(`(async () => {
-      const adapter = await navigator.gpu?.requestAdapter();
-      const canvas = document.querySelector('canvas');
-      return {
-        adapter: adapter ? {
-          vendor: adapter.info.vendor,
-          architecture: adapter.info.architecture,
-          device: adapter.info.device,
-          description: adapter.info.description,
-          fallback: adapter.isFallbackAdapter,
-          timestampQueryAdvertised: adapter.features.has('timestamp-query'),
-        } : null,
-        userAgent: navigator.userAgent,
-        devicePixelRatio,
-        canvasWidth: canvas?.width ?? null,
-        canvasHeight: canvas?.height ?? null,
-      };
-    })()`);
+    const [device, browser] = await Promise.all([
+      devTools.evaluate(`(async () => {
+        const adapter = await navigator.gpu?.requestAdapter();
+        const canvas = document.querySelector('canvas');
+        return {
+          adapter: adapter ? {
+            vendor: adapter.info.vendor,
+            architecture: adapter.info.architecture,
+            device: adapter.info.device,
+            description: adapter.info.description,
+            fallback: adapter.isFallbackAdapter,
+            timestampQueryAdvertised: adapter.features.has('timestamp-query'),
+          } : null,
+          userAgent: navigator.userAgent,
+          devicePixelRatio,
+          canvasWidth: canvas?.width ?? null,
+          canvasHeight: canvas?.height ?? null,
+        };
+      })()`),
+      devTools.send('Browser.getVersion'),
+    ]);
+    if (device.canvasWidth !== FIXTURE_WIDTH || device.canvasHeight !== FIXTURE_HEIGHT) {
+      throw new Error(`Expected ${FIXTURE_WIDTH}x${FIXTURE_HEIGHT} render-lab canvas, got `
+        + `${device.canvasWidth}x${device.canvasHeight}`);
+    }
     const initialGraphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
-    const rounds = [];
-    for (let round = 0; round < 2; round += 1) {
-      const order = round === 0 ? modes : [...modes].reverse();
-      for (const mode of order) {
-        await devTools.evaluate(`window.renderLab.setGraphicsOption('cloudFieldSource', ${JSON.stringify(mode.source)})`);
-        await devTools.evaluate("window.renderLab.setGraphicsOption('cumulusDetail', 2)");
-        await devTools.evaluate(`window.renderLab.setGraphicsOption('clouds', ${mode.clouds})`);
-        const graphicsSettings = await devTools.evaluate('window.renderLab.graphicsSettings()');
-        const measurement = await devTools.evaluate("window.renderLab.measure('earth')");
-        if (measurement.gpuSupported && !(measurement.gpuPassTotalMs.p95 > 0)) {
-          throw new Error(`Timestamp queries returned no usable pass timings for ${mode.id}`);
-        }
-        rounds.push({ round, mode: mode.id, graphicsSettings, measurement });
-        console.log(`${mode.id} round=${round + 1}: GPU pass total p95=${measurement.gpuSupported
-          ? measurement.gpuPassTotalMs.p95.toFixed(3) : 'unsupported'} ms`);
+    const blocks = [];
+    const measure = async (source, clouds, overrides = {}) => {
+      const graphics = { cloudFieldSource: source, clouds, ...overrides };
+      return await devTools.evaluate(`(async () => {
+        const measurement = await window.renderLab.measureShot(${JSON.stringify(CASE_NAME)}, ${JSON.stringify(SHOT_NAME)}, ${JSON.stringify(graphics)});
+        return { graphicsSettings: window.renderLab.graphicsSettings(), measurement };
+      })()`);
+    };
+
+    // ソース切替直後に遅れて現れる初回処理を、主計測ブロックの外で一度だけ済ませる。
+    const prewarm = [];
+    for (const mode of modes) {
+      for (const clouds of [false, true]) {
+        const run = await measure(mode.source, clouds);
+        prewarm.push({
+          source: mode.source,
+          clouds,
+          frames: run.measurement.frames,
+          observedRenderP95Ms: run.measurement.observedRenderTotalMs.p95,
+        });
       }
     }
+
+    for (let index = 0; index < BLOCK_COUNT; index += 1) {
+      const block = { index, modes: {} };
+      const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
+      for (const mode of orderedModes) {
+        // 雲ありを挟む二つの雲なし計測から、局所的な反復誤差を求める。
+        const before = await measure(mode.source, false);
+        const cloud = await measure(mode.source, true);
+        const after = await measure(mode.source, false);
+        for (const [label, run] of [['offBefore', before], ['cloudOn', cloud], ['offAfter', after]]) {
+          if (run.measurement.gpuSupported && !(run.measurement.gpuPassTotalMs.p95 > 0)) {
+            throw new Error(`Timestamp queries returned no usable pass timings for ${mode.id}/${label}`);
+          }
+          if (run.measurement.gpuSupported
+            && (run.measurement.observedRenderCompleteFrames !== run.measurement.frames
+              || !(run.measurement.observedRenderTotalMs.p95 > 0))) {
+            throw new Error(`Observed render timestamps were incomplete for ${mode.id}/${label}`);
+          }
+        }
+        block.modes[mode.id] = { offBefore: before, cloudOn: cloud, offAfter: after };
+        console.log(`${mode.id} block=${index + 1}/${BLOCK_COUNT}: observed render p95 `
+          + `off=${before.measurement.observedRenderTotalMs.p95.toFixed(3)}/`
+          + `${after.measurement.observedRenderTotalMs.p95.toFixed(3)} ms, `
+          + `cloud=${cloud.measurement.observedRenderTotalMs.p95.toFixed(3)} ms; `
+          + `instrumented pass p95 off=${before.measurement.gpuPassTotalMs.p95.toFixed(3)}/`
+          + `${after.measurement.gpuPassTotalMs.p95.toFixed(3)} ms, `
+          + `cloud=${cloud.measurement.gpuPassTotalMs.p95.toFixed(3)} ms`);
+      }
+      blocks.push(block);
+    }
+
+    const diagnosticBlocks = [];
+    for (let index = 0; index < BLOCK_COUNT; index += 1) {
+      const block = { index, modes: {} };
+      const orderedModes = index % 2 === 0 ? modes : [...modes].reverse();
+      for (const mode of orderedModes) {
+        const runs = {};
+        const settings = [
+          { clouds: true, lens: true, key: 'cloudOnLensEnabled' },
+          { clouds: true, lens: false, key: 'cloudOnLensDisabled' },
+          { clouds: false, lens: true, key: 'cloudOffLensEnabled' },
+          { clouds: false, lens: false, key: 'cloudOffLensDisabled' },
+        ];
+        const orderedSettings = index % 2 === 0 ? settings : [...settings].reverse();
+        for (const setting of orderedSettings) {
+          const run = await measure(mode.source, setting.clouds, { lens: setting.lens });
+          if (run.graphicsSettings.lens !== setting.lens || run.graphicsSettings.clouds !== setting.clouds) {
+            throw new Error(`Lens interaction diagnostic did not apply requested settings for ${mode.id}`);
+          }
+          runs[setting.key] = run;
+        }
+        block.modes[mode.id] = runs;
+        const interaction = (field) =>
+          (runs.cloudOnLensEnabled.measurement[field].p95 - runs.cloudOnLensDisabled.measurement[field].p95)
+          - (runs.cloudOffLensEnabled.measurement[field].p95 - runs.cloudOffLensDisabled.measurement[field].p95);
+        const lensPassInteraction = (runs.cloudOnLensEnabled.measurement.gpuPassMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassMs['レンズ'].p95);
+        const lensRenderCallCpuInteraction = (
+          runs.cloudOnLensEnabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95
+          - runs.cloudOnLensDisabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95)
+          - (runs.cloudOffLensEnabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95
+            - runs.cloudOffLensDisabled.measurement.gpuPassRenderCallCpuMs['レンズ'].p95);
+        console.log(`${mode.id} cloud-lens-interaction block=${index + 1}/${BLOCK_COUNT}: `
+          + `observed render p95 interaction=${interaction('observedRenderTotalMs')} ms; `
+          + `lens pass p95 interaction=${lensPassInteraction} ms; `
+          + `lens render-call CPU p95 interaction=${lensRenderCallCpuInteraction} ms`);
+      }
+      diagnosticBlocks.push(block);
+    }
+    const lensAblation = summarizeLensAblation(diagnosticBlocks);
+
     if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
+    const gpuSupported = blocks.every((block) => Object.values(block.modes)
+      .every((entry) => entry.offBefore.measurement.gpuSupported
+        && entry.cloudOn.measurement.gpuSupported
+        && entry.offAfter.measurement.gpuSupported));
+    const computeQueryCount = blocks.reduce((sum, block) => sum + Object.values(block.modes).reduce((modeSum, entry) =>
+      modeSum + ['offBefore', 'cloudOn', 'offAfter'].reduce((runSum, key) =>
+        runSum + entry[key].measurement.observedComputeResolvedQueryCounts.reduce((count, queries) => count + queries, 0), 0), 0), 0);
+    const computeExpectedQueryCount = blocks.reduce((sum, block) => sum + Object.values(block.modes).reduce((modeSum, entry) =>
+      modeSum + ['offBefore', 'cloudOn', 'offAfter'].reduce((runSum, key) =>
+        runSum + entry[key].measurement.observedComputeExpectedQueryCounts.reduce((count, queries) => count + queries, 0), 0), 0), 0);
+    const primaryRuns = blocks.flatMap((block) => Object.values(block.modes).flatMap((entry) =>
+      [entry.offBefore, entry.cloudOn, entry.offAfter]));
+    const standardFixtureMatches = device.devicePixelRatio === 1
+      && device.canvasWidth === FIXTURE_WIDTH && device.canvasHeight === FIXTURE_HEIGHT
+      && primaryRuns.every((run) => run.measurement.canvasWidth === 720
+        && run.measurement.canvasHeight === 405
+        && run.graphicsSettings.resolutionScale === 0.75
+        && run.graphicsSettings.cumulusDetail === 2);
+    const systemGraphics = systemGraphicsIdentity();
     const result = {
       recordedAt: new Date().toISOString(),
-      hostPlatform: process.platform,
-      hostArchitecture: process.arch,
+      host: {
+        platform: process.platform,
+        architecture: process.arch,
+        osRelease: os.release(),
+        systemGraphics,
+      },
+      browser: { product: browser.product, userAgent: browser.userAgent, jsVersion: browser.jsVersion },
       device,
-      caseName: 'earth',
-      sampleFramesPerRound: rounds[0]?.measurement.frames ?? 0,
-      quality: { cumulusDetail: 'standard' },
+      caseName: CASE_NAME,
+      shotName: SHOT_NAME,
+      fixture: {
+        requestedQualityPreset: 'medium',
+        cssCanvasWidth: FIXTURE_WIDTH,
+        cssCanvasHeight: FIXTURE_HEIGHT,
+        devicePixelRatio: device.devicePixelRatio,
+        internalRasterWidth: primaryRuns[0]?.measurement.canvasWidth ?? null,
+        internalRasterHeight: primaryRuns[0]?.measurement.canvasHeight ?? null,
+        standardNearRange250kmMediumMatches: standardFixtureMatches,
+      },
+      sampleFramesPerMeasurement: blocks[0]?.modes[modes[0].id]?.cloudOn.measurement.frames ?? 0,
+      blockCount: BLOCK_COUNT,
+      prewarm: {
+        excludedFromPrimaryBlocks: true,
+        measurements: prewarm,
+      },
+      quality: { requestedPreset: 'medium', requestedCumulusDetail: 'standard' },
       initialGraphicsSettings,
-      rounds,
-      gpuSupported: rounds.every((entry) => entry.measurement.gpuSupported),
-      interpretation: 'Cloud-off is a baseline of instrumented render passes, not a verified whole-frame B0. Cloud-on minus cloud-off is not a paired per-frame cost. Timestamp support alone does not establish target hardware suitability.',
+      measurementScope: 'observed-render-total',
+      passMeasurementScope: 'instrumented-render-pass-sum',
+      fullFrameGpuB0: {
+        status: 'not-measured',
+        reason: 'Renderer render timestamps omit GPU work outside renderer.render(), and presentation timing is not measured.',
+      },
+      gpuSupported,
+      observedRenderSupported: blocks.every((block) => Object.values(block.modes)
+        .every((entry) => ['offBefore', 'cloudOn', 'offAfter'].every((key) =>
+          entry[key].measurement.observedRenderCompleteFrames === entry[key].measurement.frames))),
+      computeMeasurement: {
+        scope: 'renderer-compute-query-sum',
+        status: computeExpectedQueryCount === 0
+          ? 'no-renderer-compute-query-uids-issued'
+          : computeQueryCount === computeExpectedQueryCount
+            ? 'renderer-compute-query-uids-resolved' : 'renderer-compute-query-uids-incomplete',
+        queryResolutionComplete: blocks.every((block) => Object.values(block.modes)
+          .every((entry) => ['offBefore', 'cloudOn', 'offAfter'].every((key) =>
+            entry[key].measurement.observedComputeCompleteFrames === entry[key].measurement.frames))),
+        queryCount: computeQueryCount,
+        expectedQueryCount: computeExpectedQueryCount,
+      },
+      qualification: qualifyObservedRenderBaseline(blocks, {
+        platform: process.platform,
+        systemGraphics,
+        timestampQueryAdvertised: device.adapter?.timestampQueryAdvertised === true,
+        adapterFallback: device.adapter?.fallback,
+        adapterVendor: device.adapter?.vendor,
+        adapterArchitecture: device.adapter?.architecture,
+        standardNearRange250kmFixture: standardFixtureMatches,
+      }),
+      statistics: summarizeBaselineBlocks(blocks),
+      observedRenderStatistics: summarizeObservedRenderRepeats(blocks),
+      lensAblation,
+      blocks,
+      interpretation: 'observed-render-total sums resolved GPU timestamp durations for every renderer.render() UID attributed to each measured lab frame, including calls without a named pass. It excludes GPU work outside renderer.render(), including compute and uninstrumented WebGPU operations, so it is not full-frame GPU B0. Compute renderer queries are reported separately. Qualification uses paired observed-render p95 deltas and off/off repeatability; instrumented pass and compute statistics remain descriptive.',
     };
     writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
     console.log(`Wrote ${path.relative(root, outputPath)}`);

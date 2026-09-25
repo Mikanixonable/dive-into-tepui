@@ -9,6 +9,7 @@ import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
+import type { CloudFieldDetailTileBinding } from './cloud-field-sampler';
 
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
@@ -33,14 +34,25 @@ export interface CloudFieldSource {
   dispose(): void;
 }
 
+// sampler へ注入する局所タイル。cap は視点中心へ動かし、texture は設定元が寿命を持つ。
+export interface CloudPresentationDetailTile {
+  readonly texture: THREE.Texture;
+  readonly cap: OrthographicCap;
+  readonly radius: number; // [rad]
+  readonly blendStartCos: number;
+  readonly composition?: CloudFieldDetailTileBinding['composition'];
+}
+
 export class CloudPresentation {
   private readonly surface: OpaqueCloudSurfaceRenderer;
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
   // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
+  private sourceKind: CloudFieldSourceKind = CLOUD_FIELD_SOURCE_KIND.generated;
   private cloudVisible = false;
   private cirrusVisible = true;
   private translucentCumulusVisible = true;
+  private detailTile: CloudPresentationDetailTile | null = null;
 
   // 各供給源（generated / observed）を管理し、キャップの視点追従と雲メッシュの描画を同期する。
   // bodyRadius は雲層を配置する天体の基準半径 [m]。
@@ -56,8 +68,15 @@ export class CloudPresentation {
 
   // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
+    const detailTile: CloudFieldDetailTileBinding | null = this.sourceKind !== CLOUD_FIELD_SOURCE_KIND.generated
+      || this.detailTile === null ? null : {
+        texture: this.detailTile.texture,
+        cap: this.detailTile.cap.placement,
+        blendStartCos: this.detailTile.blendStartCos,
+        composition: this.detailTile.composition,
+      };
     return {
-      field: { texture: this.source.texture, cap: this.cap.placement },
+      field: { texture: this.source.texture, cap: this.cap.placement, detailTile },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
     };
@@ -69,7 +88,12 @@ export class CloudPresentation {
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
 
   // 描画設定のうち雲にかかわる項目と、見かけ直径 apparentDiameterPx [px] を表示状態へ反映する。
-  public syncGraphics(graphics: GraphicsSettingsData, apparentDiameterPx: number): void {
+  public syncGraphics(
+    graphics: GraphicsSettingsData, apparentDiameterPx: number,
+    detailTile: CloudPresentationDetailTile | null = null,
+  ): void {
+    this.detailTile = detailTile;
+    if (detailTile !== null) detailTile.cap.aimAt(this.cap.placement.center, detailTile.radius);
     // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
     this.setCloudsVisible(graphics.clouds);
     if (graphics.clouds) {
@@ -87,6 +111,7 @@ export class CloudPresentation {
   // 雲場の出どころを選ぶ。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
   // **選び直したら結び直す** — 結び直さないと、不透明表面が前の出どころの写しを読み続ける。
   private setSource(kind: CloudFieldSourceKind): void {
+    this.sourceKind = kind;
     this.source = this.sources[kind];
     this.surface.bind(this.renderInput);
   }
@@ -110,6 +135,7 @@ export class CloudPresentation {
   // 即座に反映する — 反映しないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
   private aim(subpoint: THREE.Vector3, rho: number): void {
     this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
+    this.detailTile?.cap.aimAt(subpoint, this.detailTile.radius);
     this.surface.bind(this.renderInput);
   }
 

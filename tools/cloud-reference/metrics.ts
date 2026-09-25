@@ -14,6 +14,11 @@ const REQUIRED_REFERENCE_FAMILIES = [
   'scalloped-and-undulatus-cloud',
   'midlatitude-front-and-multilayer-cloud',
 ] as const;
+const SINGLE_SNAPSHOT_MORPHOLOGY_METRICS = new Set([
+  'cloud-fraction',
+  'structure-size-distribution',
+  'structure-orientation',
+]);
 
 /** 評価標本を mask と欠測から区別して判定する。 */
 export function cloudReferenceMetricSampleDisposition(
@@ -100,10 +105,14 @@ export function validateCloudReferenceManifest(value: unknown): readonly string[
 
   const metrics = value.metrics;
   const metricIds = new Set<string>();
+  const metricsById = new Map<string, unknown>();
   if (!Array.isArray(metrics) || metrics.length === 0) {
     errors.push('metrics must be a non-empty array');
   } else {
-    for (const metric of metrics) validateMetric(metric, metricIds, errors);
+    for (const metric of metrics) {
+      validateMetric(metric, metricIds, errors);
+      if (isRecord(metric) && isNonEmptyString(metric.id)) metricsById.set(metric.id, metric);
+    }
   }
 
   // 系列の識別子と、調整／検証日の分離を検査する。
@@ -115,7 +124,7 @@ export function validateCloudReferenceManifest(value: unknown): readonly string[
     const systems = new Set<string>();
     const families = new Map<string, { tuning: number; heldOut: number; days: Set<string> }>();
     for (const referenceCase of cases) {
-      validateCase(referenceCase, caseIds, systems, metricIds, errors);
+      validateCase(referenceCase, caseIds, systems, metricsById, errors);
       if (!isRecord(referenceCase) || !isString(referenceCase.family)
         || (referenceCase.split !== 'tuning' && referenceCase.split !== 'held-out')
         || !isRecord(referenceCase.series) || !isIsoUtc(referenceCase.series.start)) continue;
@@ -173,6 +182,10 @@ function validateMetric(metric: unknown, metricIds: Set<string>, errors: string[
   } else if (!Number.isInteger(metric.coveragePolicy.minimumValidFrames)) {
     errors.push(`metric ${id} minimumValidFrames must be an integer`);
   }
+  if (metric.minimumSeriesDurationMinutes !== undefined
+    && !isPositiveNumber(metric.minimumSeriesDurationMinutes)) {
+    errors.push(`metric ${id} minimumSeriesDurationMinutes must be positive`);
+  }
   if (metric.id === 'visible-toa-reflectance'
     && (!isDegreeRange(metric.applicableSolarZenithDeg, 0, 90)
       || !isDegreeRange(metric.applicableSatelliteZenithDeg, 0, 90))) {
@@ -198,7 +211,7 @@ function validateCase(
   referenceCase: unknown,
   caseIds: Set<string>,
   systems: Set<string>,
-  metricIds: Set<string>,
+  metricsById: ReadonlyMap<string, unknown>,
   errors: string[],
 ): void {
   if (!isRecord(referenceCase)) {
@@ -231,10 +244,94 @@ function validateCase(
   validateSource(referenceCase.source, id, errors);
   validateObservation(referenceCase.observation, id, errors);
   if (!Array.isArray(referenceCase.metricIds) || referenceCase.metricIds.length === 0
-    || referenceCase.metricIds.some((metricId) => !isString(metricId) || !metricIds.has(metricId))
+    || referenceCase.metricIds.some((metricId) => !isString(metricId) || !metricsById.has(metricId))
     || new Set(referenceCase.metricIds).size !== referenceCase.metricIds.length) {
     errors.push(`case ${id} must reference unique declared metrics`);
+    return;
   }
+  validateMetricCoverageSupport(referenceCase, id, metricsById, errors);
+}
+
+/** 実在する参照フレーム数と指標ごとの最低有効フレーム数を検査する。 */
+function validateMetricCoverageSupport(
+  referenceCase: Readonly<Record<string, unknown>>,
+  id: string,
+  metricsById: ReadonlyMap<string, unknown>,
+  errors: string[],
+): void {
+  if (!Array.isArray(referenceCase.metricIds) || !isRecord(referenceCase.series)
+    || !isIsoUtc(referenceCase.series.start) || !isIsoUtc(referenceCase.series.end)
+    || !isPositiveNumber(referenceCase.series.intervalMinutes)) return;
+  const intervalMilliseconds = referenceCase.series.intervalMinutes * 60_000;
+  const durationMilliseconds = Date.parse(referenceCase.series.end) - Date.parse(referenceCase.series.start);
+  const scheduledFrames = Math.floor(durationMilliseconds / intervalMilliseconds) + 1;
+  const availableFrames = referenceCase.availableFrameCount ?? scheduledFrames;
+  const frameOverrides = referenceCase.minimumValidFramesByMetric;
+  if (frameOverrides !== undefined && referenceCase.availableFrameCount === undefined) {
+    errors.push(`case ${id} must declare availableFrameCount when overriding metric frame coverage`);
+    return;
+  }
+  if (frameOverrides !== undefined && !isSingleSnapshotMorphologyCase(referenceCase)) {
+    errors.push(`case ${id} may lower metric frame coverage only for an auxiliary NASA VIIRS single-snapshot morphology case`);
+  }
+  if (!Number.isInteger(availableFrames) || !isPositiveNumber(availableFrames)
+    || availableFrames > scheduledFrames) {
+    errors.push(`case ${id} availableFrameCount must be a positive integer within the declared series`);
+    return;
+  }
+  if (frameOverrides !== undefined && !isRecord(frameOverrides)) {
+    errors.push(`case ${id} minimumValidFramesByMetric must be an object`);
+    return;
+  }
+  if (isRecord(frameOverrides)) {
+    for (const [metricId, minimumFrames] of Object.entries(frameOverrides)) {
+      if (!referenceCase.metricIds.includes(metricId) || !Number.isInteger(minimumFrames)
+        || !isPositiveNumber(minimumFrames) || minimumFrames > availableFrames) {
+        errors.push(`case ${id} has an invalid minimumValidFramesByMetric entry for ${metricId}`);
+      }
+    }
+  }
+  for (const metricId of referenceCase.metricIds) {
+    const metric = metricsById.get(metricId);
+    const coverage = isRecord(metric) ? metric.coveragePolicy : null;
+    if (!isRecord(coverage) || !isPositiveNumber(coverage.minimumValidFrames)) continue;
+    const minimumSeriesDurationMinutes = isRecord(metric) && isPositiveNumber(metric.minimumSeriesDurationMinutes)
+      ? metric.minimumSeriesDurationMinutes
+      : null;
+    const minimumFrames = minimumSeriesDurationMinutes !== null
+      ? coverage.minimumValidFrames
+      : (isRecord(frameOverrides) && frameOverrides[metricId] !== undefined
+        ? frameOverrides[metricId]
+        : coverage.minimumValidFrames);
+    if (!isPositiveNumber(minimumFrames) || availableFrames < minimumFrames) {
+      errors.push(`case ${id} metric ${metricId} requires at least ${minimumFrames} available frames`);
+    }
+    if (minimumSeriesDurationMinutes !== null) {
+      const availableDurationMinutes = (availableFrames - 1) * referenceCase.series.intervalMinutes;
+      if (availableDurationMinutes < minimumSeriesDurationMinutes) {
+        errors.push(`case ${id} metric ${metricId} requires at least ${minimumSeriesDurationMinutes} minutes of available temporal support`);
+      }
+    }
+  }
+}
+
+/** 1枚の NASA VIIRS 合成画像だけで評価する補助形態ケースか判定する。 */
+function isSingleSnapshotMorphologyCase(referenceCase: Readonly<Record<string, unknown>>): boolean {
+  if (typeof referenceCase.family !== 'string' || REQUIRED_REFERENCE_FAMILIES.includes(
+    referenceCase.family as typeof REQUIRED_REFERENCE_FAMILIES[number],
+  )) return false;
+  if (referenceCase.availableFrameCount !== 1 || !Array.isArray(referenceCase.metricIds)
+    || referenceCase.metricIds.length === 0
+    || referenceCase.metricIds.some((metricId) => !isString(metricId) || !SINGLE_SNAPSHOT_MORPHOLOGY_METRICS.has(metricId))) {
+    return false;
+  }
+  const source = isRecord(referenceCase.source) ? referenceCase.source : null;
+  const observation = isRecord(referenceCase.observation) ? referenceCase.observation : null;
+  return source?.provider === 'NASA'
+    && isString(source.product) && source.product.includes('VIIRS')
+    && source.product.includes('Corrected Reflectance True Color')
+    && Array.isArray(observation?.bands) && observation.bands.length === 1
+    && observation.bands[0] === 'VIIRS true-color composite';
 }
 
 /** 取得再現性とライセンス確認に必要な出典情報を検査する。 */

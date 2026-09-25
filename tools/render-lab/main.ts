@@ -20,8 +20,11 @@ import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
-import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
-import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
+import { MAX_CAMERA_DISTANCE_LOG, type LabShot } from './lab-case';
+import {
+  LabView, MAX_CAMERA_ELEVATION_DEG,
+  type CloudDetailLifecycleMeasurement, type LabMeasurement,
+} from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { FloatUniform } from '../../src/render/tsl-types';
@@ -59,6 +62,10 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
+      shootNative: (
+        name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
+        cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
+      ) => Promise<string>;
       capture: () => Promise<string>;
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
@@ -66,6 +73,15 @@ declare global {
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       graphicsSettings: () => Readonly<GraphicsSettingsData>;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
+      readGpuTextureDiagnostic: (name: CaseName) => Promise<unknown>;
+      measureShot: (
+        name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
+        cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
+      ) => Promise<LabMeasurement>;
+      measureCloudDetailLifecycle: (
+        name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData>,
+        detail: NonNullable<LabShot['cloudDetailDiagnostic']>, sampleCount?: number,
+      ) => Promise<CloudDetailLifecycleMeasurement>;
     };
   }
 }
@@ -255,6 +271,11 @@ async function init(): Promise<void> {
     earthSurfaceCapture,
     cases: CASE_NAMES,
     shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
+    shootNative: async (name, shotName, graphics, cloudDetailDiagnostic) => {
+      const png = await view.shootNative(name, shotName, graphics, cloudDetailDiagnostic);
+      syncAngles();
+      return png;
+    },
     capture: () => view.capture(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
@@ -264,6 +285,12 @@ async function init(): Promise<void> {
     },
     graphicsSettings: () => settings.graphics.current,
     measure: (name, angles) => view.measure(name, angles),
+    readGpuTextureDiagnostic: (name) => view.readGpuTextureDiagnostic(name),
+    measureShot: (name, shotName, graphics, cloudDetailDiagnostic) => view.measureShot(
+      name, shotName, graphics, 6, 30, cloudDetailDiagnostic,
+    ),
+    measureCloudDetailLifecycle: (name, shotName, graphics, detail, sampleCount) =>
+      view.measureCloudDetailLifecycle(name, shotName, graphics, detail, sampleCount),
   };
 }
 

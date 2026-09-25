@@ -88,7 +88,7 @@ function parseReceipt(contents, sourceDirectory) {
 }
 
 /** 指定ディレクトリ内の NetCDF 一覧とレシートを照合し、欠測を状態として返す。 */
-export async function verifyReceipt(sourceDirectory) {
+export async function verifyReceipt(sourceDirectory, expectedReceiptDigest = undefined) {
   const absoluteDirectory = path.resolve(sourceDirectory);
   let directoryInfo;
   try {
@@ -111,6 +111,17 @@ export async function verifyReceipt(sourceDirectory) {
   }
   if (receiptInfo.isSymbolicLink() || !receiptInfo.isFile()) {
     return result('failed', ['SHA256SUMS is not a regular file']);
+  }
+  if (expectedReceiptDigest === null) {
+    return result('blocked', ['manifest SHA256SUMS digest has not been recorded']);
+  }
+  if (expectedReceiptDigest !== undefined) {
+    if (typeof expectedReceiptDigest !== 'string' || !/^[a-f0-9]{64}$/.test(expectedReceiptDigest)) {
+      return result('failed', ['manifest SHA256SUMS digest is malformed']);
+    }
+    if (await sha256(receiptPath) !== expectedReceiptDigest) {
+      return result('failed', ['manifest SHA256SUMS digest mismatch']);
+    }
   }
 
   try {
@@ -152,16 +163,29 @@ export async function verifyReceipt(sourceDirectory) {
 }
 
 function usage() {
-  return 'usage: node tools/cloud-reference/verify-receipt.mjs <acquisition-directory>';
+  return 'usage: node tools/cloud-reference/verify-receipt.mjs [--case <case-id>|--sha256 <digest>] <acquisition-directory>';
 }
 
 if (process.argv[1] !== undefined
   && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (process.argv.length !== 3) {
+  const args = process.argv.slice(2);
+  if (args.length !== 1 && !(args.length === 3 && (args[0] === '--case' || args[0] === '--sha256'))) {
     console.error(usage());
     process.exitCode = 1;
   } else {
-    const verification = await verifyReceipt(process.argv[2]);
+    let expectedReceiptDigest;
+    if (args[0] === '--sha256') {
+      expectedReceiptDigest = args[1];
+    } else if (args.length === 3) {
+      const manifestPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      const referenceCase = manifest.cases.find((entry) => entry.id === args[1]);
+      if (referenceCase?.source?.provider !== 'NOAA') {
+        throw new Error(`case is not a NOAA GOES reference: ${args[1]}`);
+      }
+      expectedReceiptDigest = referenceCase.source.checksum.value;
+    }
+    const verification = await verifyReceipt(args.at(-1), expectedReceiptDigest);
     console.log(JSON.stringify(verification, null, 2));
     if (verification.status === 'blocked') process.exitCode = 2;
     if (verification.status === 'failed') process.exitCode = 1;
