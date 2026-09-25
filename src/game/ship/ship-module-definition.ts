@@ -46,6 +46,8 @@ export interface ShipModuleDefinition {
   readonly maxHp: number;
   readonly modelId: string;
   readonly solidPrimitives: readonly LocalCappedCylinder[];
+  // 砲身先端の位置。モジュール局所 [m] で、発射はこの順に交互に巡る。
+  readonly muzzles: readonly Vec3[];
   readonly abilities: ShipModuleAbilities;
 }
 
@@ -72,6 +74,7 @@ function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinitio
   return Object.freeze({
     ...definition,
     solidPrimitives: Object.freeze(primitives),
+    muzzles: Object.freeze(definition.muzzles.map(frozenVector)),
     abilities: Object.freeze({ ...definition.abilities }),
   });
 }
@@ -97,6 +100,11 @@ export function defineShipModule(
       || !Number.isFinite(primitive.center.z)) throw new Error('primitive center must be finite');
     const axisLength = Math.hypot(primitive.axis.x, primitive.axis.y, primitive.axis.z);
     if (!(axisLength > 1e-12) || !Number.isFinite(axisLength)) throw new Error('primitive axis must be nonzero');
+  }
+  for (const muzzle of definition.muzzles) {
+    if (!Number.isFinite(muzzle.x) || !Number.isFinite(muzzle.y) || !Number.isFinite(muzzle.z)) {
+      throw new Error('muzzle position must be finite');
+    }
   }
   for (const value of Object.values(definition.abilities)) {
     if (typeof value === 'number' && (!Number.isFinite(value) || value < 0)) {
