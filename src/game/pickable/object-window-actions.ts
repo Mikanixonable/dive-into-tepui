@@ -1,6 +1,7 @@
 // 物体窓が扱う共通操作の規則。対象固有の表示台帳から切り離し、メニューの可否・命令の振り分け・
 // 関連対象の導出をここへ集める。
 import type { PauseMenu } from '../../hud/windows/pause-menu';
+import type { HintKind } from '../../hud/notifier';
 import type {
   PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
 } from '../../hud/windows/property-window-content';
@@ -63,7 +64,7 @@ export class ObjectWindowActions {
     private readonly targeter: Targeter,
     private readonly moduleWindows: ModuleWindowOpener,
     private readonly commands: ObjectMenuCommands,
-    private readonly hint: (message: string) => void,
+    private readonly hint: (message: string, durationMs?: number, kind?: HintKind) => void,
   ) {}
 
   public inspectedEnemy(id: string): InspectedObject | null {
@@ -194,7 +195,7 @@ export class ObjectWindowActions {
       label,
       onFocus: () => {
         this.mapFocusCommands.setFocus({ kind: 'object', id: item.id });
-        this.hint(`${label} にフォーカス`);
+        this.hint(`${label} にフォーカス`, undefined, 'nav');
       },
       onContextMenu: (clientX, clientY) => {
         const current = this.activeView().pickables.find((candidate) => candidate.id === item.id);
@@ -216,7 +217,7 @@ export class ObjectWindowActions {
     } else {
       this.combatFocusCommands.setFocus({ kind: 'object', id });
     }
-    this.hint(`${name} にフォーカス`);
+    this.hint(`${name} にフォーカス`, undefined, 'nav');
   }
 
   private get authoring(): ObjectAuthoring | null {
