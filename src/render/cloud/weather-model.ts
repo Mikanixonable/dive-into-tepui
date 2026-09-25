@@ -213,7 +213,6 @@ export class WeatherModel {
     this.upperCirculation.syncTime(seconds);
     this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
-    this.transport.syncTime(seconds);
     const waveTurns = seconds / (3 * 3600);
     this.waveMorphologyPhase.value = (waveTurns - Math.floor(waveTurns)) * 2 * Math.PI;
   }
