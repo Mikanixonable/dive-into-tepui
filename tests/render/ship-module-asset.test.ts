@@ -50,6 +50,16 @@ function objectByName(root: THREE.Object3D, name: string): THREE.Object3D | null
   return result;
 }
 
+// object の module 局所座標での位置と向き。anchor は可動部の子として入れ子になりうる。
+function transformInModule(module: THREE.Object3D, object: THREE.Object3D): { position: THREE.Vector3, quaternion: THREE.Quaternion } {
+  module.updateMatrixWorld(true);
+  const local = module.matrixWorld.clone().invert().multiply(object.matrixWorld);
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  local.decompose(position, quaternion, new THREE.Vector3());
+  return { position, quaternion };
+}
+
 export function register(): void {
   test('ship module asset: catalog の全 modelId が独立した等倍 Group を持つ', async () => {
     await loadShipModuleModels();
@@ -138,9 +148,10 @@ export function register(): void {
       assert.ok(module !== undefined);
       const thrust = semanticAnchor(module, 'thrust');
       assert.ok(thrust !== null);
+      const { position, quaternion } = transformInModule(module, thrust);
       const box = new THREE.Box3().setFromObject(module);
-      assert.ok(Math.abs(thrust.position.z - box.min.z) < 0.05, `${modelId} thrust z ${thrust.position.z} vs exit ${box.min.z}`);
-      const exhaust = new THREE.Vector3(0, 0, 1).applyQuaternion(thrust.quaternion);
+      assert.ok(Math.abs(position.z - box.min.z) < 0.05, `${modelId} thrust z ${position.z} vs exit ${box.min.z}`);
+      const exhaust = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion);
       assert.ok(exhaust.distanceTo(new THREE.Vector3(0, 0, -1)) < 1e-6);
     }
   });
@@ -175,6 +186,39 @@ export function register(): void {
     assert.ok(module !== undefined);
     const box = new THREE.Box3().setFromObject(module);
     for (const muzzle of definition.muzzles) assert.ok(Math.abs(box.max.z - muzzle.z) < 1e-3, `muzzle z ${muzzle.z} vs ${box.max.z}`);
+  });
+
+  test('ship module asset: 主推進器の噴射口はジンバルの支点と一緒に振れる', async () => {
+    await loadShipModuleModels();
+    const module = moduleRoots(parsedRoot()).get('thruster-standard');
+    assert.ok(module !== undefined);
+    const gimbal = semanticAnchor(module, 'engine-gimbal');
+    const thrust = semanticAnchor(module, 'thrust');
+    assert.ok(gimbal !== null && thrust !== null);
+    let ancestor = thrust.parent;
+    while (ancestor !== null && ancestor !== gimbal) ancestor = ancestor.parent;
+    assert.equal(ancestor, gimbal, 'thrust is not a descendant of engine-gimbal');
+  });
+
+  test('ship module asset: 機関砲は砲口ごとに砲口の軸上で機軸まわりに回る砲身束を持つ', async () => {
+    await loadShipModuleModels();
+    const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
+    const module = moduleRoots(parsedRoot()).get(definition.modelId);
+    assert.ok(module !== undefined);
+    const rotors: THREE.Object3D[] = [];
+    module.traverse((child) => {
+      if (child.userData.semanticAnchor?.startsWith('barrel-rotor:')) rotors.push(child);
+    });
+    assert.equal(rotors.length, definition.muzzles.length);
+    definition.muzzles.forEach((muzzle, index) => {
+      const rotor = semanticAnchor(module, `barrel-rotor:${index}`);
+      assert.ok(rotor !== null, `lacks barrel-rotor:${index}`);
+      const barrelCount: unknown = rotor.userData.barrelCount;
+      assert.ok(typeof barrelCount === 'number' && Number.isInteger(barrelCount) && barrelCount > 0, `barrelCount ${String(barrelCount)}`);
+      const { position, quaternion } = transformInModule(module, rotor);
+      assert.ok(Math.abs(position.x - muzzle.x) < 1e-6 && Math.abs(position.y - muzzle.y) < 1e-6, `rotor ${index} off muzzle axis`);
+      assert.ok(quaternion.angleTo(new THREE.Quaternion()) < 1e-6, `rotor ${index} spin axis is not module +Z`);
+    });
   });
 
   test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', async () => {
