@@ -1,6 +1,7 @@
 // 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
 import { fmtDist } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
+import type { HudEls } from '../hud-els';
 
 const SYNC_INTERVAL_MS = 250;
 
@@ -45,7 +46,7 @@ export class EnemiesPanel {
   // 直近の sync で受け取った状態。右クリックはフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: EnemiesPanelViewModel | null = null;
 
-  public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
+  public constructor(private readonly els: HudEls) {}
 
   // 残存数の見出しと、距離順の敵一覧を同期する。view が null(操作対象が無い)ならパネルごと隠す。
   public sync(view: EnemiesPanelViewModel | null, nowMs: number): void {
@@ -53,17 +54,15 @@ export class EnemiesPanel {
     const panel = this.els.get('hud-enemies');
     if (!view) {
       this.hasContacts = false;
-      panel?.classList.add('hidden');
+      panel.classList.add('hidden');
       return;
     }
 
     // 間引き周期でのみ一覧を組み直す。
     if (this.throttle.due(nowMs)) {
       const count = this.els.get('count');
-      if (count) {
-        count.textContent = `${view.remainingCount} / ${view.totalCount}`;
-        count.setAttribute('aria-label', `残存 ${view.remainingCount}、合計 ${view.totalCount}`);
-      }
+      count.textContent = `${view.remainingCount} / ${view.totalCount}`;
+      count.setAttribute('aria-label', `残存 ${view.remainingCount}、合計 ${view.totalCount}`);
       const rows = this.buildEnemyRows(view.contacts);
       this.hasContacts = rows.length > 0;
       this.syncEnemyList(rows);
@@ -71,7 +70,7 @@ export class EnemiesPanel {
 
     // 更新間隔中も直前の敵有無を維持する。毎フレーム敵の有無を見ると、
     // 敵0件で隠したパネルを次のフレームに再表示してしまう。
-    panel?.classList.toggle('hidden', !this.hasContacts);
+    panel.classList.toggle('hidden', !this.hasContacts);
   }
 
   // contacts を、波ごとの「第N波」1行と波に属さない敵の個別行へまとめ、距離順に並べる。
@@ -107,7 +106,6 @@ export class EnemiesPanel {
   // 距離順のリストへ同期する。ターゲット・隣接は色と状態語で識別する。
   private syncEnemyList(rows: readonly EnemyRow[]): void {
     const list = this.els.get('elist');
-    if (!list) return;
     if (rows.length === 0) {
       const empty = document.createElement('li');
       empty.className = 'contact-empty';
@@ -128,8 +126,8 @@ export class EnemiesPanel {
       const item = document.createElement('li');
       item.className = [
         'contact-row',
-        row.targeted ? 'primary' : '',
-        isAdjacent ? 'near' : '',
+        row.targeted ? 'ui-accent' : '',
+        isAdjacent ? 'ui-near' : '',
       ].filter(Boolean).join(' ');
       if (row.targeted) item.setAttribute('aria-current', 'true');
       item.setAttribute('aria-label', [label, distance, role ? `${role}ターゲット` : '未選択'].join('、'));
