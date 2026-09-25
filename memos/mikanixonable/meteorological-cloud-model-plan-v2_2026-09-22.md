@@ -33,6 +33,8 @@ California 2024-05-15 の37枠を独立 ACM の雲クラスへ固定格子 2×2 
 
 NASA CMR 目録では `CLDPROP_L2_VIIRS_SNPP` v1.1 の沿岸セル同日昼間 granule と波状雲同日昼間 granule を特定できた。ただし波状雲の昼間通過は当初の GOES 比較時刻より約 6 時間遅く、同じ雲系の対応を画素と時刻で確かめる必要がある。LAADS 原本 URL の HEAD は 200 を返したが、実際の GET と Range GET は 401 だった。**目録上の存在や HEAD を原本受領とみなさず**、正式な取得経路と認証条件を確認するまで snapshot COD は `blocked` とする。
 
+NASA LAADS の[原本アーカイブ](https://ladsweb.modaps.eosdis.nasa.gov/archive/allData/5111/CLDPROP_L2_VIIRS_SNPP/2019/011/)はダウンロード例に Earthdata Download Token の Bearer 認証を明示し、[S3 直接取得手順](https://ladsweb.modaps.eosdis.nasa.gov/learn/how-to-access-laads-daac-data-files-using-s3-direct-access/)も一時認証情報の取得経路を示す。未認証 GET が失敗した現状で無関係な公開画像を v1.1 原本の代わりに使わない。正規の認証情報を安全に利用できるまでは VIIRS 候補の pixel QA に進めない。
+
 描画ラボには雲なし／生成／実写の同一構図を交互に計測し、同一フレームの計測済み GPU pass を合算してから p95 を取る入口を追加した。性能判定の対象 GPU は Apple M4 Pro とする。Headless Chrome 153、960×540、DPR 1、起動時 high 設定での雲なし描画 pass 合計 p95 は試行間で約 39〜79 ms と揺れた。Headed Chrome の pass-level timestamp も得られたが、転送・copy・mip・present 等を含む全フレーム B0 ではない。command-encoder queue marker は Apple Silicon 上で 50 ms 離しても `[0,0]` を返し、この端末には Metal System Trace がない。pass-level 値を全 GPU 時間と呼ばず、§4.5 の**計測範囲を限定した GPU gate**にだけ使う。
 
 近距離 fixture の監査では、従来の `earth-nadir` が地球だけを真下へ動かし、カメラは地平線を向いたままだったことを発見して修正した。250 km・960×540・FOV 50°・medium プリセット（雲 detail は standard）の専用 shot は、対象面で約 432 m/出力 px、2 km 構造で約 4.63 出力 px の投影条件を持つ。ただし medium の `resolutionScale=0.75` を製品と同じ DPR 1 で適用すると内部ラスタでは約 3.47 px / 2 km となり、4 標本条件の画像側にも届かない。DPR と内部解像度を固定して実画面応答を測るまで、C1 の「最小有効間隔の 1/4」の数値と 2 km 合格は `blocked` とする。
@@ -60,6 +62,8 @@ NOAA の 9 ケース全 405 枠の COD-on-ACM 暫定品質率へ、固定格子�
 三描画経路の境界を監査すると、現在の GPU `CloudSample` は二次元の被覆率・雲頂・薄雲量だけを運び、液水/氷の層別消散や任意の三次元位置を表せない。質量から被覆率へ逆変換して既存 texture へ入れても相・高度・空隙の情報が失われるので、製品移行時には generated 側だけに相別局所光学場の binding と共通三次元 sampling 契約を追加し、material／atmosphere／shadow の三経路を同時に移す。observed 側の RGB を質量へ逆推定しない。監査時点でこの設計の GPU 実装・CPU/GPU 光路照合は未着手であり、既存の二次元 detail 経路の成功を流用しない。
 
 その GPU 搬送の最小診断として、液水/氷消散係数 [1/m] を R/G に保持する RG32F `DataArrayTexture` と、明示的な高度層境界・xy 双線形／z 離散の CPU 標本契約を実装した。32×32×4 層の合成場は base-level 推定 32 KiB、所有 CPU backing 65,556 byte（driver allocation・転送時 staging は含まない）。Apple M4 Pro 上の render-lab 実撮影では、TSL の配列テクスチャ標本で低層液水の赤い縞と高層氷の青い帯を別パネルとして表示でき、例外・console error・target crash は無かった。これは shader と texture の実行確認であって、画素 readback による GPU/CPU 数値一致、製品 250 km 解像度、メモリ実割当、三経路の共通光路、雲の写実性は未判定である。観測源には一切接続していない。
+
+同じ RG32F を仮に 1024²×4 層へ拡大すると GPU base-level **推定**だけで 32 MiB、二時刻保持なら 64 MiB となり、暫定 48 MiB の雲所有予算を他資源の前に超える。現在の小 fixture の成功からこの寸法へ拡大せず、層数・タイル範囲・半精度の量子化誤差・再利用/更新方式を先に比較し、実 GPU allocation と交換時ピークを別途測る。
 
 追加観測日を少数枠だけ正式な NOAA GOES-18 CODF/ACMF 原本で試した。SZA 70° mask 後の ACM 雲域に対する COD 良品質面積率は、2024-09-18 California が 9.2876%、2024-09-11 Gulf が 12.2329%、2024-08-28 Gulf/Mexico が 14.1733%（地域 bbox 部分面積診断）で、いずれも暫定50%条件に届かなかった。最大候補の同時刻 2024-08-28 18:00:21.7Z 原本は NOAA `noaa-goes18` の CODF SHA-256 `7e86c5387090d221d8cc7f1317323abdaa122a8cbb6be6f9440a0dadada15421`、ACMF SHA-256 `1df0b9ec3afed37e3bcdb41652ec03c87c8d115f741cb4af3805c6517c260d99`。当該日の37枠・6製品は公開目録上で各37件あるが、雲形態の独立性と24有効枠は確認しておらず約19.40 GBの全系列取得は行わない。3枠の不合格を他日すべての欠測と一般化せず、COD 指標は引き続き `blocked` とする。原本の `license` 属性と NOAA 公開配布の説明に齟齬があるため、正式参照採用前に出所の確認も要る。
 
