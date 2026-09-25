@@ -115,8 +115,6 @@ export function register(): void {
     const expected: Readonly<Record<string, readonly string[]>> = {
       thruster: ['thrust'],
       booster: ['thrust'],
-      rcs: ['rcs:1,0', 'rcs:-1,0', 'rcs:0,1', 'rcs:0,-1', 'rcs:roll:+', 'rcs:roll:-'],
-      weapon: ['muzzle:left', 'muzzle:right', 'belt'],
       radiator: ['panel-hinge'],
       solar_panel: ['panel-hinge'],
       docking_port: ['docking-port'],
@@ -130,6 +128,53 @@ export function register(): void {
         assert.ok(semanticAnchor(module, anchor) !== null, `${definition.modelId} lacks ${anchor}`);
       }
     }
+  });
+
+  test('ship module asset: 噴射口 anchor はノズル出口面にあり、排気は機軸の後方を向く', async () => {
+    await loadShipModuleModels();
+    const modules = moduleRoots(parsedRoot());
+    for (const modelId of ['thruster-standard', 'booster-standard']) {
+      const module = modules.get(modelId);
+      assert.ok(module !== undefined);
+      const thrust = semanticAnchor(module, 'thrust');
+      assert.ok(thrust !== null);
+      const box = new THREE.Box3().setFromObject(module);
+      assert.ok(Math.abs(thrust.position.z - box.min.z) < 0.05, `${modelId} thrust z ${thrust.position.z} vs exit ${box.min.z}`);
+      const exhaust = new THREE.Vector3(0, 0, 1).applyQuaternion(thrust.quaternion);
+      assert.ok(exhaust.distanceTo(new THREE.Vector3(0, 0, -1)) < 1e-6);
+    }
+  });
+
+  test('ship module asset: RCS の噴射口は6方向のトルクをどれも出せる', async () => {
+    await loadShipModuleModels();
+    const module = moduleRoots(parsedRoot()).get('rcs-standard');
+    assert.ok(module !== undefined);
+    const nozzles: THREE.Object3D[] = [];
+    module.traverse((child) => {
+      if (typeof child.userData.semanticAnchor === 'string' && child.userData.semanticAnchor.startsWith('rcs:')) nozzles.push(child);
+    });
+    // 軸まわり(roll)はモジュール中心、軸に直交する向き(pitch/yaw)はモジュール前方の重心を支点に測る
+    for (const [axis, pivot] of [
+      [new THREE.Vector3(0, 0, 1), new THREE.Vector3()], [new THREE.Vector3(0, 0, -1), new THREE.Vector3()],
+      [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 5)], [new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, 5)],
+      [new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 5)], [new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, 5)],
+    ] as const) {
+      const produced = nozzles.some((nozzle) => {
+        const exhaust = new THREE.Vector3(0, 0, 1).applyQuaternion(nozzle.quaternion);
+        const torque = nozzle.position.clone().sub(pivot).cross(exhaust.negate());
+        return torque.dot(axis) > 1e-3;
+      });
+      assert.ok(produced, `no nozzle produces torque about ${axis.toArray()}`);
+    }
+  });
+
+  test('ship module asset: 機関砲の砲身先端は定義の砲口に一致する', async () => {
+    await loadShipModuleModels();
+    const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
+    const module = moduleRoots(parsedRoot()).get(definition.modelId);
+    assert.ok(module !== undefined);
+    const box = new THREE.Box3().setFromObject(module);
+    for (const muzzle of definition.muzzles) assert.ok(Math.abs(box.max.z - muzzle.z) < 1e-3, `muzzle z ${muzzle.z} vs ${box.max.z}`);
   });
 
   test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', async () => {
