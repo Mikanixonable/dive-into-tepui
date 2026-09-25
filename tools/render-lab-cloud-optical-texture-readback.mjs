@@ -1,4 +1,5 @@
 // M4 Pro render-lab の DataArrayTexture 実upload後に、Three WebGPU backend のtexture→buffer copyを測る。
+import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
@@ -6,7 +7,7 @@ import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session
 
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.render-lab');
-const outputDirectory = path.resolve(root, process.argv[2] ?? '.render-lab/cloud-optical-texture-readback');
+const outputDirectory = path.resolve(root, process.argv[2] ?? '.render-lab-shots/cloud-optical-texture-readback');
 const port = 8793;
 const debugPort = 9473;
 const cases = ['cloud-event-optical-volume', 'cloud-event-optical-volume-rg16f'];
@@ -73,6 +74,15 @@ async function main() {
     };
     const reportPath = path.join(outputDirectory, 'cloud-optical-texture-readback.json');
     writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+    for (const [name, measurement] of Object.entries(measurements)) {
+      assert.equal(measurement.layers.length, measurement.depth, `${name}: missing GPU layer`);
+      for (const layer of measurement.layers) {
+        assert.equal(layer.exactBitMismatchCount, 0, `${name}: layer ${layer.layer} raw texel mismatch`);
+        assert.ok(Number.isFinite(layer.maximumAbsoluteValueError), `${name}: non-finite raw texel error`);
+        assert.equal(layer.phases.liquid.sampleCount, measurement.width * measurement.height);
+        assert.equal(layer.phases.ice.sampleCount, measurement.width * measurement.height);
+      }
+    }
     console.log(JSON.stringify({ reportPath, adapter, formats: Object.keys(measurements) }, null, 2));
   } finally {
     await session.close();
