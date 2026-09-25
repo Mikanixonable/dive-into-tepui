@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
-  max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
+  max, min, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
   sqrt, step, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
@@ -62,6 +62,9 @@ export class OpaqueCloudSurfaceRenderer {
   // 殻を半径 1 とする物体空間での地表の半径。天体ごとの値は uniform で渡す — 定数で焼くと
   // 殻を持つ天体の数だけシェーダが増える。
   private readonly groundRadius: FloatUniform;
+  // 物体空間の半径 1(殻の外側 = bodyRadius + 雲頂の張出し)が張る実寸 [m]。地表からの高度を
+  // 実寸へ写すのに使う。
+  private readonly objectRadiusM: FloatUniform;
   // 粒の 1 rad あたりの山の数と、雲頂の勾配を測る差分の幅 [rad]。差分は粒の半波長ぶんなので、
   // 場の起伏と粒の起伏が同じ 1 つの法線に出る。
   private readonly grainFrequency: FloatUniform;
@@ -77,6 +80,7 @@ export class OpaqueCloudSurfaceRenderer {
     const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
     const grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
     this.groundRadius = uniform(1 / shellScale);
+    this.objectRadiusM = uniform(bodyRadius + CLOUD_TOP_SPAN);
     this.grainFrequency = uniform(grainFrequency);
     this.shape = new CloudShapeEvaluator(this.grainFrequency);
     this.gradientAngle = uniform(0.5 / grainFrequency);
@@ -231,7 +235,17 @@ export class OpaqueCloudSurfaceRenderer {
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに粒が湧く。
     const clearance = radius.sub(this.shape.cloudTopRadius(
       this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain), this.groundRadius));
-    return select(present.greaterThan(0.5), clearance, float(1));
+    // 局所光学場のある柱も雲の内側とする — 2D の覆いと場はどちらかが内側と判じれば内側。
+    // 場の高度は地表からの実寸で、方向は 2D の場と同じ物体空間の単位方向で読む。未結合では
+    // 消散が 0 なので合成は変わらない。
+    const altitudeM = radius.sub(this.groundRadius).mul(this.objectRadiusM);
+    const local = this.fieldSampler.sampleLocalOptical(direction, altitudeM);
+    const localPresent = step(1e-9, local.liquidExtinctionPerM.add(local.iceExtinctionPerM));
+    // 局所場の中では clearance = -1。法線は高さ場を持たないこのスライスでは 2D 由来のままにする。
+    return min(
+      select(present.greaterThan(0.5), clearance, float(1)),
+      select(localPresent.greaterThan(0.5), float(-1), float(1)),
+    );
   }
 
   // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
