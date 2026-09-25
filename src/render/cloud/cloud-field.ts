@@ -11,11 +11,14 @@ import type { FieldProjection } from '../field-projection';
 import type { WeatherModel } from './weather-model';
 import type { Vec3Node } from '../tsl-types';
 
-export type CloudSampleTransform = (
-  direction: Vec3Node,
-  weather: ReturnType<WeatherModel['weatherAt']>,
-  sample: CloudSample,
-) => CloudSample;
+export interface CloudSampleTransform {
+  readonly sample: (
+    direction: Vec3Node,
+    weather: ReturnType<WeatherModel['weatherAt']>,
+    sample: CloudSample,
+  ) => CloudSample;
+  readonly syncTime?: (timeSeconds: number) => void;
+}
 
 export class CloudField {
   private readonly field: BakedField;
@@ -29,7 +32,7 @@ export class CloudField {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, (direction) => {
       const weather = model.weatherAt(direction);
       const condensed = condense(weather);
-      const cloud = transform?.(direction, weather, condensed) ?? condensed;
+      const cloud = transform?.sample(direction, weather, condensed) ?? condensed;
       return cloudFieldTexelFromSample(cloud);
     }, GPU_PASS.cloudBake);
   }
