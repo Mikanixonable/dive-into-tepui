@@ -13,8 +13,8 @@ import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
 import { signedDiffuseCorrection } from './diffuse-correction';
 import {
-  SECTOR_COUNT, angleOf, bitCount, capRange, maskedMeasure, sectorPosition, segmentSectors, sliceAt,
-  toSliceCoordinates, wedgeWeight, type SectorRange, type Slice,
+  SECTOR_COUNT, angleOf, bitCount, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt,
+  toSliceCoordinates, wedgeWeight, type RangeSectors, type SectorRange, type Slice,
 } from './slice-sectors';
 import {
   angularlyHigher, angularlyLower, rayAt, sideRays, splitSegments, tangentHit, type SideRays, type SlicePoint,
@@ -176,8 +176,8 @@ function surfaceAt(
   depth: THREE.Texture, normal: THREE.Texture, gbufferSize: Vec2Node, projectionInverse: Mat4Uniform,
   pixel: Vec2Node,
 ): GBufferSurface {
-  const uv = gbufferUVOf(pixel, gbufferSize).toVar();
-  const texel = ivec2(floor(uv.mul(gbufferSize))).toVar();
+  const texel = gbufferTexelOf(pixel, gbufferSize).toVar();
+  const uv = texelCenterUV(texel, gbufferSize).toVar();
   const rawDepth = textureLoad(depth, texel).r.toVar();
   const surfaceNormal = vec3(0, 0, 1).toVar();
   If(rawDepth.greaterThan(0), () => {
@@ -201,10 +201,12 @@ class SliceOcclusion {
   // 新しく塞いだ扇形の数に距離重みを掛けた和と、それに照り返しの源の放射輝度を掛けた和。
   public readonly ambient = float(0).toVar();
   public readonly bounce = vec3(0).toVar();
-  // 天体ごとの、球冠の範囲と、その中で新しく塞いだ測度に距離重みを掛けた和。sum は受け手の画素での和。
+  // 天体ごとの、球冠の範囲とそれをビットごとに測る形、その中で新しく塞いだ測度に距離重みを掛けた和。sum は受け手の
+  // 画素での和。
   public readonly planets: readonly {
     readonly sum: PlanetSum;
     readonly range: SectorRange;
+    readonly sectors: RangeSectors;
     readonly blocked: FloatNode;
   }[];
 
@@ -213,9 +215,10 @@ class SliceOcclusion {
     private readonly slice: Slice, planetSums: readonly PlanetSum[], private readonly dither: FloatNode,
     private readonly radiance: THREE.Texture | null,
   ) {
-    this.planets = planetSums.map((sum) => ({
-      sum, range: capRange(slice, sum.planet.cap, dither), blocked: float(0).toVar(),
-    }));
+    this.planets = planetSums.map((sum) => {
+      const range = capRange(slice, sum.planet.cap, dither);
+      return { sum, range, sectors: rangeSectors(range), blocked: float(0).toVar() };
+    });
   }
 
   // 受け手から見て角 lower..upper を占める切片を、手前の切片の後ろへ積む。falloff はその標本の距離重み、
@@ -231,7 +234,7 @@ class SliceOcclusion {
       // 後ろを塞ぎ直し、二重に数える。
       const newlyMeasure = bitCount(newly).mul(falloff).toVar();
       this.ambient.addAssign(newlyMeasure);
-      for (const planet of this.planets) planet.blocked.addAssign(maskedMeasure(newly, planet.range).mul(falloff));
+      for (const planet of this.planets) planet.blocked.addAssign(maskedMeasure(newly, planet.sectors).mul(falloff));
       // 光を返すのは受け手へ面を向けた切片。その向きの境で、切片の張る角は 0 へ縮む。
       const radiance = this.radiance;
       if (radiance !== null) {
@@ -328,11 +331,20 @@ export function clipToCircle(from: Vec2Node, end: Vec2Node): Vec2Node {
 }
 
 // いま描いている解像度の画素 pixel(整数座標)の中心を含む、寸法 gbufferSize [px] の G バッファの画素の中心の uv。
-// **G バッファはこの uv で読み、深度から位置を戻すのもこの uv で行う** — 画素の角で読むと輪郭で虚空の値が
-// 混ざり、読んだ画素と違う uv で位置を戻すと平らな面が自分自身を遮る。
+// **G バッファはこの画素(gbufferTexelOf)で読み、深度から位置を戻すのはこの uv で行う** — 画素の角で読むと輪郭で
+// 虚空の値が混ざり、読んだ画素と違う uv で位置を戻すと平らな面が自分自身を遮る。
 export function gbufferUVOf(pixel: Vec2Node, gbufferSize: Vec2Node): Vec2Node {
+  return texelCenterUV(gbufferTexelOf(pixel, gbufferSize), gbufferSize);
+}
+
+// gbufferUVOf が中心の uv を答える、G バッファの画素の整数座標。
+function gbufferTexelOf(pixel: Vec2Node, gbufferSize: Vec2Node): THREE.Node<'ivec2'> {
   // 整数で割る — 解像度が半分なら画素の中心は G バッファの画素の境に乗り、浮動小数の floor では採る画素が
   // 画素ごとに揺れる。
-  const texel = ivec2(pixel).mul(2).add(1).mul(ivec2(gbufferSize)).div(ivec2(screenSize).mul(2));
-  return vec2(texel).add(0.5).div(gbufferSize);
+  return ivec2(pixel).mul(2).add(1).mul(ivec2(gbufferSize)).div(ivec2(screenSize).mul(2));
+}
+
+// 寸法 size [px] のテクスチャの画素 texel(整数座標)の中心の uv。
+function texelCenterUV(texel: THREE.Node<'ivec2'>, size: Vec2Node): Vec2Node {
+  return vec2(texel).add(0.5).div(size);
 }

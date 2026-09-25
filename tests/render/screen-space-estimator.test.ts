@@ -4,7 +4,8 @@ import * as THREE from 'three/webgpu';
 import { bool, float, int, uint, uniform, vec2, vec3 } from 'three/tsl';
 import { clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
-  angleOf, capRange, maskedMeasure, sectorPosition, segmentSectors, sliceAt, toSliceCoordinates, wedgeWeight,
+  angleOf, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt, toSliceCoordinates,
+  wedgeWeight,
 } from '../../src/render/pipeline/screen-space/slice-sectors';
 import {
   rayAt, sideRays, splitSegments, type SideRays, type SlicePoint,
@@ -301,9 +302,35 @@ export function register(): void {
 
   test('screen space estimator: 全ビットの測度は範囲の幅、ビットなしは 0', () => {
     for (const [lower, upper] of [[-0.3, 12.6], [5.2, 5.7], [30.9, 32.4], [0.4, 31.2]] as const) {
-      const range = { lower: float(lower), upper: float(upper) };
-      near(valueOf(maskedMeasure(uint(0xffffffff), range)), upper - lower, 1e-12, `${lower}..${upper}`);
-      assert.equal(valueOf(maskedMeasure(uint(0), range)), 0);
+      const sectors = rangeSectors({ lower: float(lower), upper: float(upper) });
+      near(valueOf(maskedMeasure(uint(0xffffffff), sectors)), upper - lower, 1e-12, `${lower}..${upper}`);
+      assert.equal(valueOf(maskedMeasure(uint(0), sectors)), 0);
+    }
+  });
+
+  test('screen space estimator: ビットの測度は、立っている扇形が範囲に掛かる長さの和', () => {
+    // 扇形 j が受け持つ扇形の座標の区間。両端の扇形は半球の端まで。
+    const sectorSpan = (j: number): [number, number] =>
+      [j === 0 ? -Infinity : j, j === SECTOR_COUNT - 1 ? Infinity : j + 1];
+    const masks = [0x1, 0x80000000, 0x0000ff00, 0xaaaaaaaa, 0x55555555, 0x80000001, 0x7ffffffe];
+    // 決まった列の擬似乱数のビット。
+    let seed = 12345;
+    for (let k = 0; k < 24; k++) {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      masks.push(seed);
+    }
+    const ranges = [[-0.3, 12.6], [5.2, 5.7], [30.9, 32.4], [0.4, 31.2], [-0.4, 0.3], [31.1, 32.3], [7.5, 8.25]] as const;
+    for (const [lower, upper] of ranges) {
+      const sectors = rangeSectors({ lower: float(lower), upper: float(upper) });
+      for (const mask of masks) {
+        let expected = 0;
+        for (let j = 0; j < SECTOR_COUNT; j++) {
+          if (((mask >>> j) & 1) === 0) continue;
+          const [from, to] = sectorSpan(j);
+          expected += Math.max(0, Math.min(to, upper) - Math.max(from, lower));
+        }
+        near(valueOf(maskedMeasure(uint(mask), sectors)), expected, 1e-9, `${lower}..${upper} mask=${mask.toString(16)}`);
+      }
     }
   });
 
@@ -320,7 +347,7 @@ export function register(): void {
         // 外にある端の扇形が立たず、その分だけ幅に届かない。
         const first = sectorOf(valueOf(sectorPosition(slice, float(clipped[0]), float(dither))));
         const last = sectorOf(valueOf(sectorPosition(slice, float(clipped[1]), float(dither))));
-        const blocked = valueOf(maskedMeasure(segmentSectors(float(first), float(last + 1)), range));
+        const blocked = valueOf(maskedMeasure(segmentSectors(float(first), float(last + 1)), rangeSectors(range)));
         near(blocked, valueOf(range.upper) - valueOf(range.lower), 1e-9, `center=${cap.center} dither=${dither}`);
       }
     }
