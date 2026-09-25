@@ -621,17 +621,13 @@ export class ModularShip extends Ship implements Controllable {
   ): ModularShipRenderSource {
     const motion = this.motion;
     const { belt } = motion;
-    // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
-    const thrustAcceleration = motion.thrust;
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
       assembly: shipRenderAssembly(this.assembly),
       centerOffset: motion.centerOffset,
       state: motion.state,
       active,
-      thrustAcceleration: thrustAcceleration !== null && len(thrustAcceleration) > 0
-        ? thrustAcceleration
-        : null,
+      mainThrustAcceleration: this.throttle.thrust,
       maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,
