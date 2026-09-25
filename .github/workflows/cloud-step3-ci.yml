@@ -1,4 +1,4 @@
-name: Cloud Step 3 CI
+name: Cloud Step 3-7 CI
 
 on:
   push:
@@ -26,3 +26,4 @@ jobs:
       - run: npm run cloud-baseline:measure
         env:
           CLOUD_BASELINE_PROFILE: smoke
+          CHROME_REQUEST_TIMEOUT_MS: 180000
