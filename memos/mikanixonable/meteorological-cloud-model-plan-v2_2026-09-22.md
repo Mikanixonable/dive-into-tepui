@@ -337,6 +337,8 @@ Step 3A の render-lab 縦切りでは、既存 cap と共通 sampler へ 1024²
 
 残差方式を 250 km の雲のある診断 shot へ入れた M4 Pro の 8 ブロック計測は、lens 有効の2反復で観測済み render query 合計の増分 p95 がそれぞれ 3.87/5.17 ms、off/off 差 p95 が 3.38/4.21 ms だった。暫定 5 ms の安定した通過とは言えず `indeterminate` とする。lens 無効の 8 ブロックでは増分 p95 2.51 ms・off/off 差 p95 2.28 ms。レンズで増える分を GPU 演算と依存待ちへ分解する検証、冷交換・実 frame p95/p99・所有ピークが次の性能ゲートである。通常 shot 50 枚のうち新診断と直接変更した 200 km shot を除く共通 49 枚は変更前と byte 単位で一致した。
 
+同じ暖機 paired 計測の3回目は増分 p95 4.51 ms、off/off 差 p95 3.80 ms だった。計測器へホスト GPU 名・コア数、ブロック間 p50/p95、単回の 5 ms 線内外、全フレーム B0／実 GPU allocation の `not-measured` を明示した。3回の線内外が揺れるため、単回の `withinProvisionalLimitThisRun` を方式合格へ昇格しない。
+
 同じ雲域・残差方式・位相反転対で周波数 sweep を完了した。波長ごとの4方向保持振幅の範囲は、1 km が 0.166〜0.249、1.5 km が 0.611〜0.645、2 km が 0.801〜0.813、3 km が 0.907〜0.923、4 km が 0.943〜0.954。短波長ほど落ち、1 km の相関は 0.251〜0.377 と低い。これは 1 km の alias／帯域外挙動を含む診断であり、2 km の合格を 1.5/3/4 km の結果で代用しない。画像生成は `render-lab-native-shot.mjs`、線形輝度差の評価は `cloud-detail-response.mjs` で再実行できる。
 
 `npm run cloud-detail:sweep` に 5 波長×4方向×2位相×2ラスタの連続撮影と集計をまとめ、同じ 20 行・2 km の4判定すべて pass を再現した。出力 `.render-lab/cloud-detail-sweep.json` は build 時に消える一時測定物で、数値と条件はこの計画書に残す。これは製品局所場の検証ではなく、診断用残差タイルの帯域試験である。
