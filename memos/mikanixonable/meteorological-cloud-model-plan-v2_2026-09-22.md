@@ -341,6 +341,8 @@ Step 3A の render-lab 縦切りでは、既存 cap と共通 sampler へ 1024²
 
 同じ暖機 paired 計測の3回目は増分 p95 4.51 ms、off/off 差 p95 3.80 ms だった。計測器へホスト GPU 名・コア数、ブロック間 p50/p95、単回の 5 ms 線内外、全フレーム B0／実 GPU allocation の `not-measured` を明示した。3回の線内外が揺れるため、単回の `withinProvisionalLimitThisRun` を方式合格へ昇格しない。
 
+局所診断タイルの交換と再利用を、生成雲の表示時刻を固定した別計測で分離した。M4 Pro・720×405・8標本で、1024² RGBA8 タイルの冷交換 setter CPU 壁時計は平均 14.71 ms／p95 16.40 ms、setter から最初の描画と timestamp resolve 待ちまでの合計は平均 19.24 ms／p95 21.10 ms。同一パラメータの再適用は setter p95 0.10 ms、描画・resolve 待ち込み p95 3.70 ms で、8標本すべて同一 texture UUID を保持した。CPU backing 配列は実測 4,194,304 byte、GPU base level は RGBA8 寸法から同量の推定値で、旧新交換時ピークと実 GPU allocation・upload 完了待ち・全フレーム B0 は `not-measured`。冷時 16.40 ms はフレーム内同期生成としては大きく、製品用物理タイルの準備待ち・非同期化を別ゲートで設計する必要がある。`npm run cloud-detail:lifecycle` で再測定できる。この数値を既存の 5 ms 定常 scoped 増分へ加算したり、GPU の実使用量と呼んだりしない。
+
 同じ雲域・残差方式・位相反転対で周波数 sweep を完了した。波長ごとの4方向保持振幅の範囲は、1 km が 0.166〜0.249、1.5 km が 0.611〜0.645、2 km が 0.801〜0.813、3 km が 0.907〜0.923、4 km が 0.943〜0.954。短波長ほど落ち、1 km の相関は 0.251〜0.377 と低い。これは 1 km の alias／帯域外挙動を含む診断であり、2 km の合格を 1.5/3/4 km の結果で代用しない。画像生成は `render-lab-native-shot.mjs`、線形輝度差の評価は `cloud-detail-response.mjs` で再実行できる。
 
 250 km の同じ雲域に対し、製品 medium 720×405 は変更せず、内部ラスタだけ 864×486 へ上げた別診断を行った。公称 432 m/px からの 2 km 標本数は約 4.167（製品 medium は約 3.472）で、実投影の計測値ではない。1728×972 の参照を 2×2 面積縮小した位相反転対に対する保持振幅は 0°/45°/90°/135° で 0.783/0.795/0.793/0.797、固定した診断ゲートの 4 標本・0.50 を全方向で通過した。`node tools/cloud-detail-medium-250km-response.mjs` で再実行できる。これは診断用解析波に対する画面応答であり、製品設定・物理生成・GPU 性能の合格には転用しない。製品 medium 250 km の 4 標本条件は依然未達である。
