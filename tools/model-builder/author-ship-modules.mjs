@@ -33,6 +33,7 @@ function buildManifest() {
         kind: definition.kind,
         length: definition.length,
         muzzles: definition.muzzles.map(muzzle => [muzzle.x, muzzle.y, muzzle.z]),
+        feedPort: [definition.feedPort.x, definition.feedPort.y, definition.feedPort.z],
         thrust: definition.abilities.thrust ?? null,
       };
     }

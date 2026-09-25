@@ -48,6 +48,8 @@ export interface ShipModuleDefinition {
   readonly solidPrimitives: readonly LocalCappedCylinder[];
   // 砲身先端の位置。モジュール局所 [m] で、発射はこの順に交互に巡る。
   readonly muzzles: readonly Vec3[];
+  // 給弾ベルトの取り込み口。モジュール局所 [m] で、ベルトはここから +X 方向へ伸びる。
+  readonly feedPort: Vec3;
   readonly abilities: ShipModuleAbilities;
 }
 
@@ -75,6 +77,7 @@ function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinitio
     ...definition,
     solidPrimitives: Object.freeze(primitives),
     muzzles: Object.freeze(definition.muzzles.map(frozenVector)),
+    feedPort: frozenVector(definition.feedPort),
     abilities: Object.freeze({ ...definition.abilities }),
   });
 }
@@ -106,6 +109,8 @@ export function defineShipModule(
       throw new Error('muzzle position must be finite');
     }
   }
+  if (!Number.isFinite(definition.feedPort.x) || !Number.isFinite(definition.feedPort.y)
+    || !Number.isFinite(definition.feedPort.z)) throw new Error('feed port must be finite');
   for (const value of Object.values(definition.abilities)) {
     if (typeof value === 'number' && (!Number.isFinite(value) || value < 0)) {
       throw new Error(`ship module abilities must be finite and nonnegative: ${definition.id}`);
