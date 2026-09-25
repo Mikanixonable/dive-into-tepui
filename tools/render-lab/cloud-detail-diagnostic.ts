@@ -33,6 +33,7 @@ export function createCloudDetailDiagnosticTile(
   wavelengthKm = CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM,
   directionDeg = 0,
   phaseDeg = 0,
+  composition: CloudPresentationDetailTile['composition'] = 'absolute',
 ): CloudDetailDiagnosticTile {
   if (!Number.isFinite(wavelengthKm) || wavelengthKm <= 0 || !Number.isFinite(directionDeg)
     || !Number.isFinite(phaseDeg)) {
@@ -72,5 +73,6 @@ export function createCloudDetailDiagnosticTile(
     cap: new OrthographicCap(size, 0, 0, radius),
     radius,
     blendStartCos: Math.cos(blendAngle),
+    composition,
   };
 }
