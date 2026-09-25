@@ -88,7 +88,7 @@ async function init(): Promise<void> {
   const showFixture = (id: MeteorologicalCaseId): void => {
     const fixture = METEOROLOGICAL_CASES[id];
     const evaluation = evaluateMeteorologicalCase(id);
-    fixtureStatus.textContent = `${id} ${fixture.label} — CPU診断: 実行; 生成画像へfixture適用: なし`;
+    fixtureStatus.textContent = `${id} ${fixture.label} — CPU診断: 実行; 生成画像へfixture適用: ${canvas.fixtureAppliedToGeneratedImage ? 'あり' : 'なし'}`;
     fixtureInputs.textContent = JSON.stringify({
       controlledInputs: fixture.controlledInputs,
       cpuDiagnosticControls: evaluation.controls,

@@ -14,6 +14,7 @@ import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudL
 import {
   METEOROLOGICAL_CASES, METEOROLOGICAL_CASE_IDS, type MeteorologicalCaseFixture, type MeteorologicalCaseId,
 } from './meteorological-cases';
+import { MeteorologicalFixtureCloudControl } from './controlled-cloud-fixture';
 import type { Vec3Node } from '../../src/render/tsl-types';
 
 // 面の大きさ [px]。全球の面は正距円筒なので 2:1、cap の面は正方形。cap の写しは表示と同じ大きさに
@@ -73,7 +74,8 @@ export class CloudLabCanvas {
     photo.minFilter = THREE.LinearMipmapLinearFilter;
     photo.magFilter = THREE.LinearFilter;
     photo.colorSpace = THREE.NoColorSpace;
-    const lab = new CloudLabCanvas(renderer, photo);
+    const control = new MeteorologicalFixtureCloudControl();
+    const lab = new CloudLabCanvas(renderer, photo, control);
     await lab.awaitClimate();
     return lab;
   }
@@ -91,14 +93,21 @@ export class CloudLabCanvas {
   }
 
   // 2 面と、起動時に出す量のマテリアルを組む。
-  private constructor(private readonly renderer: WebGPURenderer, photo: THREE.Texture) {
+  private constructor(
+    private readonly renderer: WebGPURenderer,
+    photo: THREE.Texture,
+    private readonly fixtureControl: MeteorologicalFixtureCloudControl,
+  ) {
     this.capProjection = new OrthographicCap(
       CAP_SIZE, THREE.MathUtils.degToRad(this.capLatitude), THREE.MathUtils.degToRad(this.capLongitude),
       THREE.MathUtils.degToRad(this.capRadius));
     this.panes = [
-      new CloudLabPane(earthGeneratedCloudField(new EquirectProjection(VIEW_HEIGHT)), photo),
-      new CloudLabPane(earthGeneratedCloudField(this.capProjection), photo),
+      new CloudLabPane(
+        earthGeneratedCloudField(new EquirectProjection(VIEW_HEIGHT), fixtureControl.transform), photo,
+      ),
+      new CloudLabPane(earthGeneratedCloudField(this.capProjection, fixtureControl.transform), photo),
     ];
+    this.fixtureControl.setFixture(this.selectedFixtureId);
     this.quad = new QuadMesh(this.materialFor(this.view));
   }
 
@@ -119,11 +128,15 @@ export class CloudLabCanvas {
   public get capAngularRadius(): number { return this.capRadius; }
   public get fixture(): MeteorologicalCaseFixture { return METEOROLOGICAL_CASES[this.selectedFixtureId]; }
   public get fixtureId(): MeteorologicalCaseId { return this.selectedFixtureId; }
+  public get fixtureAppliedToGeneratedImage(): boolean { return true; }
 
   // 表示する制御実験の入力・計測契約を選ぶ。
   public selectFixture(id: MeteorologicalCaseId): void {
     if (!METEOROLOGICAL_CASES[id]) throw new Error(`cloud lab: unknown meteorological fixture "${id}"`);
     this.selectedFixtureId = id;
+    this.fixtureControl.setFixture(id);
+    for (const pane of this.panes) pane.invalidate();
+    this.render();
   }
 
   // 表示する量を切り替えて描き直す。
