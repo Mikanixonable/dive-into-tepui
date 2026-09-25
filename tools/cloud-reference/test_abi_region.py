@@ -231,6 +231,59 @@ class AbiRegionGeometryTest(unittest.TestCase):
         expected = (self.projection["height"] * step) ** 2
         self.assertLess(abs(float(area) / expected - 1), 1e-5)
 
+    def test_acm_bbox_overlap_area_is_full_half_or_zero_from_projected_corners(self) -> None:
+        step = 1e-5
+        axis = np.array([-step / 2, step / 2])
+        area = REGION.grid_pixel_area_weights(axis, axis, self.projection, 0, 1, 0, 1)
+        west_half = REGION.grid_to_geodetic(np.array([-step]), np.array([-step]), self.projection)
+        east_half = REGION.grid_to_geodetic(np.array([0.0]), np.array([-step]), self.projection)
+        west_lon, east_lon = float(west_half[1][0]), float(east_half[1][0])
+        south = float(REGION.grid_to_geodetic(np.array([-step]), np.array([-step]), self.projection)[0][0]) - 1e-5
+        north = float(REGION.grid_to_geodetic(np.array([-step]), np.array([0.0]), self.projection)[0][0]) + 1e-5
+
+        def overlap(west: float, east: float) -> float:
+            return REGION.acm_bbox_overlap_area_weights(
+                axis, axis, self.projection,
+                {"westLonDeg": np.rad2deg(west), "eastLonDeg": np.rad2deg(east),
+                 "southLatDeg": np.rad2deg(south), "northLatDeg": np.rad2deg(north)},
+                0, 1, 0, 1, area,
+            )[0, 0]
+
+        full = overlap(west_lon - 1e-5, east_lon + 1e-5)
+        half = overlap((west_lon + east_lon) / 2, east_lon + 1e-5)
+        outside = overlap(east_lon + 1e-5, east_lon + 2e-5)
+        self.assertAlmostEqual(full / area[0, 0], 1.0, places=5)
+        self.assertAlmostEqual(half / area[0, 0], 0.5, places=3)
+        self.assertEqual(outside, 0.0)
+
+    def test_acm_bbox_overlap_rejects_antimeridian_spanning_regions(self) -> None:
+        axis = np.array([-1e-5, 1e-5])
+        area = np.ones((1, 1))
+        region = {"westLonDeg": 170, "eastLonDeg": -170, "southLatDeg": -1, "northLatDeg": 1}
+        with self.assertRaisesRegex(REGION.RegionError, "antimeridian"):
+            REGION.acm_bbox_overlap_area_weights(
+                axis, axis, self.projection, region, 0, 1, 0, 1, area,
+            )
+
+    def test_bbox_overlap_diagnostic_does_not_change_center_based_cod_values(self) -> None:
+        acm_shape = (2, 4)
+        common = (
+            np.ones((1, 2), dtype=bool), np.array([[0, 14]], dtype=np.uint8),
+            np.ones((1, 2), dtype=bool), np.full(acm_shape, 2, dtype=np.uint8),
+            np.ones(acm_shape, dtype=bool), np.zeros(acm_shape, dtype=np.uint8),
+            np.ones(acm_shape, dtype=bool), np.ones(acm_shape, dtype=bool),
+            np.ones(acm_shape), np.ones(acm_shape, dtype=bool),
+        )
+        baseline = REGION.summarize_cod_cloud_eligible_coverage(*common)
+        overlap = np.zeros(acm_shape)
+        overlap[0, 0] = 0.25  # overlap can exist even when this centre is outside
+        diagnostic = REGION.summarize_cod_cloud_eligible_coverage(*common, overlap)
+        for key in ("eligibleCloudPixelCount", "goodCodCloudPixelCount", "eligibleCloudAreaM2", "goodCodCloudAreaM2", "areaWeightedCoverageFraction"):
+            self.assertEqual(diagnostic[key], baseline[key])
+        self.assertEqual(diagnostic["bboxOverlapEligibleCloudAreaM2"], 0.25)
+        self.assertEqual(diagnostic["bboxOverlapGoodCodCloudAreaM2"], 0.25)
+        self.assertEqual(diagnostic["indicatorAvailability"]["finalMetricStatus"], "blocked")
+
     def test_solar_mask_uses_canonical_angle_at_pixel_centre_and_utc_time(self) -> None:
         evaluator = REGION.AbiSolarAngleEvaluator()
         try:

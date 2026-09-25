@@ -259,6 +259,7 @@ def summarize_cod_cloud_eligible_coverage(
     acm_inside_region: np.ndarray,
     acm_pixel_areas_m2: np.ndarray,
     acm_solar_angle_valid: np.ndarray,
+    acm_bbox_overlap_areas_m2: np.ndarray | None = None,
 ) -> dict[str, Any]:
     """good ACM cloud pixel centres上でCOD good coverageを固定格子集計する。"""
     height, width = cod_field_valid.shape
@@ -274,6 +275,13 @@ def summarize_cod_cloud_eligible_coverage(
         fail("ACM pixel-area weights must be finite and positive")
     if acm_solar_angle_valid.shape != child_shape:
         fail("ACM solar-angle mask shape does not match the ACM diagnostic grid")
+    if acm_bbox_overlap_areas_m2 is not None and (
+        acm_bbox_overlap_areas_m2.shape != child_shape
+        or not np.all(np.isfinite(acm_bbox_overlap_areas_m2))
+        or np.any(acm_bbox_overlap_areas_m2 < 0)
+        or np.any(acm_bbox_overlap_areas_m2 - acm_pixel_areas_m2 > np.maximum(acm_pixel_areas_m2, 1) * 1e-8)
+    ):
+        fail("ACM bbox-overlap area weights must be finite, non-negative, and bounded by pixel area")
 
     eligible_cloud_before_solar_mask = (
         acm_inside_region & acm_field_valid & acm_dqf_valid
@@ -327,6 +335,22 @@ def summarize_cod_cloud_eligible_coverage(
         "unappliedCorrections": ["cloud_top_parallax"],
         "limitations": "diagnostic only; not the final metric gate or area-overlap collocation; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; cloud-top parallax is not corrected; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately",
     }
+    if acm_bbox_overlap_areas_m2 is not None:
+        overlap_cloud = (
+            (acm_bbox_overlap_areas_m2 > 0) & acm_field_valid & acm_dqf_valid
+            & good_dqf(acm_dqf, "L2_ACM") & np.isin(acm_field, (2, 3)) & acm_solar_angle_valid
+        )
+        overlap_eligible_area = np.where(overlap_cloud, acm_bbox_overlap_areas_m2, 0).sum(dtype=np.float64)
+        overlap_good_area = np.where(
+            cod_good.reshape(height, 1, width, 1),
+            np.where(overlap_cloud, acm_bbox_overlap_areas_m2, 0).reshape(height, 2, width, 2),
+            0,
+        ).sum(dtype=np.float64)
+        result["bboxOverlapEligibleCloudAreaM2"] = float(overlap_eligible_area)
+        result["bboxOverlapGoodCodCloudAreaM2"] = float(overlap_good_area)
+        result["bboxOverlapAreaWeightedCoverageFraction"] = (
+            float(overlap_good_area / overlap_eligible_area) if overlap_eligible_area else None
+        )
     result["indicatorAvailability"] = cod_indicator_availability(
         result["areaWeightedCoverageFraction"], "single_slot",
     )
@@ -334,6 +358,102 @@ def summarize_cod_cloud_eligible_coverage(
     result["indicatorAvailability"]["unappliedCorrections"] = result["unappliedCorrections"]
     result["indicatorAvailability"]["finalMetricBlockers"].remove("solar_angle_mask_not_assessed")
     return result
+
+
+def acm_bbox_overlap_area_weights(
+    x_axis: np.ndarray,
+    y_axis: np.ndarray,
+    projection: dict[str, float],
+    region: dict[str, float],
+    row0: int,
+    row1: int,
+    col0: int,
+    col1: int,
+    pixel_areas_m2: np.ndarray,
+) -> np.ndarray:
+    """Formal projected ACM corner polygons' bbox overlap area on local tangent planes.
+
+    Clipping is done in geodetic latitude/longitude against the declared bbox;
+    clipped vertices are then measured in the pixel-centred ENU plane and scaled
+    to the existing four-corner pixel area. This is a boundary diagnostic only.
+    """
+    if region["westLonDeg"] >= region["eastLonDeg"]:
+        fail("ACM bbox-overlap diagnostic does not support regions crossing the antimeridian")
+    shape = (row1 - row0, col1 - col0)
+    if pixel_areas_m2.shape != shape:
+        fail("ACM bbox-overlap and pixel-area window shapes disagree")
+    x_edges, y_edges = coordinate_edges(x_axis), coordinate_edges(y_axis)
+    corner_scans = (
+        np.meshgrid(x_edges[col0:col1], y_edges[row0:row1]),
+        np.meshgrid(x_edges[col0 + 1:col1 + 1], y_edges[row0:row1]),
+        np.meshgrid(x_edges[col0 + 1:col1 + 1], y_edges[row0 + 1:row1 + 1]),
+        np.meshgrid(x_edges[col0:col1], y_edges[row0 + 1:row1 + 1]),
+    )
+    corner_geo = []
+    for corner_x, corner_y in corner_scans:
+        latitude, longitude, visible = grid_to_geodetic(corner_x, corner_y, projection)
+        corner_geo.append((latitude, longitude, visible))
+
+    west, east = math.radians(region["westLonDeg"]), math.radians(region["eastLonDeg"])
+    south, north = math.radians(region["southLatDeg"]), math.radians(region["northLatDeg"])
+    center_lat, center_lon, center_visible = grid_to_geodetic(
+        *np.meshgrid(x_axis[col0:col1], y_axis[row0:row1]), projection,
+    )
+    if not np.all(center_visible):
+        fail("ACM bbox-overlap window contains a pixel centre beyond the geostationary limb")
+    center_ecef = geodetic_to_ecef_arrays(center_lat, center_lon, projection)
+    sin_lon, cos_lon = np.sin(center_lon), np.cos(center_lon)
+    sin_lat, cos_lat = np.sin(center_lat), np.cos(center_lat)
+    corner_latitudes = np.stack([corner[0] for corner in corner_geo])
+    corner_longitudes = np.stack([corner[1] for corner in corner_geo])
+    corners_visible = np.all(np.stack([corner[2] for corner in corner_geo]), axis=0)
+    fully_inside = corners_visible & np.all(
+        (corner_latitudes >= south) & (corner_latitudes <= north)
+        & (corner_longitudes >= west) & (corner_longitudes <= east), axis=0,
+    )
+    output = np.where(fully_inside, pixel_areas_m2, 0).astype(np.float64)
+    intersects_bbox = (
+        corners_visible
+        & (np.max(corner_longitudes, axis=0) >= west)
+        & (np.min(corner_longitudes, axis=0) <= east)
+        & (np.max(corner_latitudes, axis=0) >= south)
+        & (np.min(corner_latitudes, axis=0) <= north)
+        & ~fully_inside
+    )
+    for row, col in np.argwhere(intersects_bbox):
+        polygon = [(float(corner_geo[k][0][row, col]), float(corner_geo[k][1][row, col])) for k in range(4)]
+        for axis, bound, keep_greater in (
+            (1, west, True), (1, east, False), (0, south, True), (0, north, False),
+        ):
+            if not polygon:
+                break
+            clipped = []
+            previous = polygon[-1]
+            previous_inside = previous[axis] >= bound if keep_greater else previous[axis] <= bound
+            for current in polygon:
+                current_inside = current[axis] >= bound if keep_greater else current[axis] <= bound
+                if current_inside != previous_inside:
+                    amount = (bound - previous[axis]) / (current[axis] - previous[axis])
+                    intersection = (previous[0] + amount * (current[0] - previous[0]), previous[1] + amount * (current[1] - previous[1]))
+                    clipped.append(intersection)
+                if current_inside:
+                    clipped.append(current)
+                previous, previous_inside = current, current_inside
+            polygon = clipped
+        if len(polygon) < 3:
+            continue
+        latitude = np.array([point[0] for point in polygon])
+        longitude = np.array([point[1] for point in polygon])
+        ecef = geodetic_to_ecef_arrays(latitude, longitude, projection)
+        eastings = -sin_lon[row, col] * (ecef[0] - center_ecef[0][row, col]) + cos_lon[row, col] * (ecef[1] - center_ecef[1][row, col])
+        northings = (
+            -sin_lat[row, col] * cos_lon[row, col] * (ecef[0] - center_ecef[0][row, col])
+            - sin_lat[row, col] * sin_lon[row, col] * (ecef[1] - center_ecef[1][row, col])
+            + cos_lat[row, col] * (ecef[2] - center_ecef[2][row, col])
+        )
+        clipped_area = abs(float(np.dot(eastings, np.roll(northings, -1)) - np.dot(northings, np.roll(eastings, -1)))) / 2
+        output[row, col] = pixel_areas_m2[row, col] * min(1.0, clipped_area / pixel_areas_m2[row, col])
+    return output
 
 
 def grid_pixel_area_weights(
@@ -668,6 +788,8 @@ def summarize_cod_cloud_coverage(
             "eligibleCloudAreaM2BeforeSolarMask": 0.0,
             "solarAngleExcludedEligibleCloudAreaM2": 0.0,
             "goodCodCloudAreaM2": 0.0,
+            "bboxOverlapEligibleCloudAreaM2": 0.0,
+            "bboxOverlapGoodCodCloudAreaM2": 0.0,
             "codDqfRawCountsOnEligibleCloudPixels": {},
         }
         dqf_counts: Counter[str] = Counter()
@@ -696,6 +818,10 @@ def summarize_cod_cloud_coverage(
                 pixel_areas = grid_pixel_area_weights(
                     acm_x, acm_y, acm_projection, acm_row0, acm_row1, acm_col0, acm_col1,
                 )
+                overlap_areas = acm_bbox_overlap_area_weights(
+                    acm_x, acm_y, acm_projection, region,
+                    acm_row0, acm_row1, acm_col0, acm_col1, pixel_areas,
+                )
                 cod_valid, _ = raw_valid(cod_values, cod_field)
                 acm_valid, _ = raw_valid(acm_values, acm_field)
                 partial = summarize_cod_cloud_eligible_coverage(
@@ -709,12 +835,14 @@ def summarize_cod_cloud_coverage(
                     inside,
                     pixel_areas,
                     solar_valid,
+                    overlap_areas,
                 )
                 for key in (
                     "eligibleCloudPixelCount", "eligibleCloudPixelCountBeforeSolarMask",
                     "solarAngleExcludedEligibleCloudPixelCount", "goodCodCloudPixelCount",
                     "eligibleCloudAreaM2", "eligibleCloudAreaM2BeforeSolarMask",
                     "solarAngleExcludedEligibleCloudAreaM2", "goodCodCloudAreaM2",
+                    "bboxOverlapEligibleCloudAreaM2", "bboxOverlapGoodCodCloudAreaM2",
                 ):
                     result[key] += partial[key]
                 dqf_counts.update(partial["codDqfRawCountsOnEligibleCloudPixels"])
@@ -728,13 +856,24 @@ def summarize_cod_cloud_coverage(
             result["goodCodCloudAreaM2"] / result["eligibleCloudAreaM2"]
             if result["eligibleCloudAreaM2"] else None
         )
+        result["bboxOverlapAreaWeightedCoverageFraction"] = (
+            result["bboxOverlapGoodCodCloudAreaM2"] / result["bboxOverlapEligibleCloudAreaM2"]
+            if result["bboxOverlapEligibleCloudAreaM2"] else None
+        )
         result["codDqfRawCountsOnEligibleCloudPixels"] = dict(sorted(dqf_counts.items(), key=lambda item: int(item[0])))
         result["scanTimeUtc"] = scan_time_utc
         result["denominatorDefinition"] = "good-DQF valid ACM class 2/3 1 km pixel centres inside the geographic region and with solar zenith <= 70 degrees"
         result["numeratorDefinition"] = "eligible ACM cloud pixel centres whose enclosing 2 km COD pixel has valid in-range COD and good DQF raw 0/1"
         result["areaDenominatorDefinition"] = "sum of local ENU quadrilateral areas for eligible cloud ACM pixel centres"
         result["areaNumeratorDefinition"] = "area denominator pixels whose enclosing COD parent has valid in-range COD and good DQF raw 0/1"
-        result["aggregation"] = "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; reports counts and pixel-centre area weights, not polygon area overlap"
+        result["aggregation"] = "verified same-projection 2x2 fixed-grid ACM child-centre to COD parent grouping; existing count/pixel-centre weights are preserved; bbox-overlap area is a separate diagnostic from formally projected ACM corner polygons"
+        result["bboxOverlapDiagnostic"] = {
+            "areaWeightedCoverageFraction": result["bboxOverlapAreaWeightedCoverageFraction"],
+            "eligibleCloudAreaM2": result["bboxOverlapEligibleCloudAreaM2"],
+            "goodCodCloudAreaM2": result["bboxOverlapGoodCodCloudAreaM2"],
+            "geometry": "projected ACM scan-angle pixel-corner intersections clipped against the geographic bbox; clipped vertices measured in pixel-centred local ENU and scaled by the existing corner area",
+            "parallax": "not corrected; ACM corners use the ellipsoid surface, not cloud-top displacement",
+        }
         result["appliedMasks"] = {
             "solarZenith": {
                 "maximumDegrees": MAXIMUM_COD_SOLAR_ZENITH_DEGREES,
@@ -745,7 +884,7 @@ def summarize_cod_cloud_coverage(
             },
         }
         result["unappliedCorrections"] = ["cloud_top_parallax"]
-        result["limitations"] = "diagnostic only; pixel area is the four ellipsoid-intersection corners projected to a tangent ENU plane at the pixel centre; region eligibility uses pixel centres without boundary clipping; cloud-top parallax is not corrected; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately"
+        result["limitations"] = "diagnostic only; existing center-based values are unchanged; bbox-overlap diagnostic clips formal ellipsoid-intersection ACM corner polygons against the geographic bbox and measures on local ENU planes; cloud-top parallax is not corrected; excludes ACM-invalid pixels, but COD raw 6 and raw 14 remain in the cloud denominator and are reported separately"
         result["indicatorAvailability"] = cod_indicator_availability(
             result["areaWeightedCoverageFraction"], "single_slot",
         )
@@ -879,6 +1018,8 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
         eligible_area_before_solar = sum(diagnostic.get("eligibleCloudAreaM2BeforeSolarMask", diagnostic["eligibleCloudAreaM2"]) for diagnostic in diagnostics)
         solar_excluded_area = sum(diagnostic.get("solarAngleExcludedEligibleCloudAreaM2", 0.0) for diagnostic in diagnostics)
         good_cod_area = sum(diagnostic["goodCodCloudAreaM2"] for diagnostic in diagnostics)
+        bbox_overlap_eligible_area = sum(diagnostic.get("bboxOverlapEligibleCloudAreaM2", 0.0) for diagnostic in diagnostics)
+        bbox_overlap_good_cod_area = sum(diagnostic.get("bboxOverlapGoodCodCloudAreaM2", 0.0) for diagnostic in diagnostics)
         cloud_dqf_counts: Counter[str] = Counter()
         for diagnostic in diagnostics:
             cloud_dqf_counts.update(diagnostic["codDqfRawCountsOnEligibleCloudPixels"])
@@ -900,6 +1041,22 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
             "solarAngleExcludedEligibleCloudAreaM2": solar_excluded_area,
             "goodCodCloudAreaM2": good_cod_area,
             "areaWeightedCoverageFraction": good_cod_area / eligible_area if eligible_area else None,
+            "bboxOverlapEligibleCloudAreaM2": bbox_overlap_eligible_area,
+            "bboxOverlapGoodCodCloudAreaM2": bbox_overlap_good_cod_area,
+            "bboxOverlapAreaWeightedCoverageFraction": (
+                bbox_overlap_good_cod_area / bbox_overlap_eligible_area if bbox_overlap_eligible_area else None
+            ),
+            "bboxOverlapDiagnostic": {
+                "areaWeightedCoverageFraction": (
+                    bbox_overlap_good_cod_area / bbox_overlap_eligible_area if bbox_overlap_eligible_area else None
+                ),
+                "eligibleCloudAreaM2": bbox_overlap_eligible_area,
+                "goodCodCloudAreaM2": bbox_overlap_good_cod_area,
+                "geometry": diagnostics[0].get("bboxOverlapDiagnostic", {}).get(
+                    "geometry", "formal ACM corner polygons clipped against geographic bbox"
+                ),
+                "parallax": "not corrected; ACM corners use the ellipsoid surface, not cloud-top displacement",
+            },
             "codDqfRawCountsOnEligibleCloudPixels": dict(
                 sorted(cloud_dqf_counts.items(), key=lambda item: int(item[0])),
             ),
@@ -955,7 +1112,7 @@ def run(manifest_path: Path, case_id: str, case_dir: Path, all_slots: bool = Fal
         "observationEnd": case["series"]["end"] if all_slots else case["series"]["start"],
         "slotCount": len(slots),
         "region": region,
-        "scope": "all declared series slots; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD adds ACM-centre solar zenith <= 70 degree masked count and pixel-centre area diagnostics, not polygon-overlap or a final metric gate; no scan-line timing, cloud-top parallax correction, or calibrated radiance" if all_slots else "one manifest start slot; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD adds ACM-centre solar zenith <= 70 degree masked count and pixel-centre area diagnostics, not polygon-overlap or a final metric gate; no scan-line timing, cloud-top parallax correction, or calibrated radiance",
+        "scope": "all declared series slots; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD reports unchanged ACM-centre solar zenith and pixel-centre area diagnostics plus a separate ACM-corner geographic-bbox overlap diagnostic; this is not a final metric gate or COD/ACM area-overlap collocation; no scan-line timing, cloud-top parallax correction, or calibrated radiance" if all_slots else "one manifest start slot; each product is summarized on its native grid; raw science valid-range and product DQF are conjoined; COD reports unchanged ACM-centre solar zenith and pixel-centre area diagnostics plus a separate ACM-corner geographic-bbox overlap diagnostic; this is not a final metric gate or COD/ACM area-overlap collocation; no scan-line timing, cloud-top parallax correction, or calibrated radiance",
         "products": products,
     }
 
