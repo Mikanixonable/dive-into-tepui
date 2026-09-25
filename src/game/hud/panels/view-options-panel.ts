@@ -274,6 +274,11 @@ export class ViewOptionsPanel {
   ): { readonly element: HTMLElement; readonly buttons: readonly (readonly [BodyClassRow, Button, HTMLElement])[] } {
     const targetBody = buildTabBody('target');
     body.appendChild(targetBody);
+    // 循環の順序は常時表示しておく — ボタンのホバー説明だけに置くとタッチでは読めない。
+    const modeLegend = document.createElement('p');
+    modeLegend.className = 'view-options-mode-legend';
+    modeLegend.textContent = '表示はクリックで ORBIT → LABEL → OFF の順に切り替わる';
+    targetBody.appendChild(modeLegend);
     const bodyClassModeButtons: (readonly [BodyClassRow, Button, HTMLElement])[] = [];
     let itemIndex = 1;
 

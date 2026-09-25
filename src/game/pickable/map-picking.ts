@@ -162,14 +162,14 @@ export class MapPicking {
   // 軌道線ウィンドウの「所属」欄から、その持ち主へ注視を移す。
   private focusOwner(id: string, name: string): void {
     this.mapFocusCommands.setFocus({ kind: 'object', id });
-    this.hud.hint(`${name} にフォーカス`);
+    this.hud.hint(`${name} にフォーカス`, undefined, 'nav');
   }
 
   // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md「軌道物体一覧パネル」)。
   // target は候補列で見つかっていれば渡し、表示名と操作対象の切り替えに使う。
   private focusTarget(id: string, target: MapPickable | undefined): void {
     this.mapFocusCommands.setFocus({ kind: 'object', id });
-    this.hud.hint(`${target?.name ?? id} にフォーカス`);
+    this.hud.hint(`${target?.name ?? id} にフォーカス`, undefined, 'nav');
     target?.onMapFocus?.(this.controlCommands);
   }
 

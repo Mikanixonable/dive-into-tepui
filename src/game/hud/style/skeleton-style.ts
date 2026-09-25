@@ -193,7 +193,6 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 #hud-topbar .gs-speed-select:hover,
 #hud-topbar .gs-speed-select:focus { background: var(--glass-control-hover); }
-#hud-topbar .gs-speed-select.sim-speed-hot { color: var(--color-primary); }
 #hud-topbar .gs-sep { color: var(--edge); }
 
 #hud-viewbadge {
@@ -286,9 +285,14 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud-toast.warn .toast-code { color: var(--color-warning); }
 #hud-toast .toast-message { min-width: 0; overflow-wrap: anywhere; }
 
-#hud .sim-speed-hot { color: var(--color-primary); }
-#hud .mode-tgt { color: var(--color-primary); }
-#hud .warn-hot { color: var(--color-error); }
+/* 状態色の共有語彙: 読み値や行が持つ意味を、場所ごとの色名ではなく共通ロールで名付ける。
+   ui-danger は危険な値、ui-danger-fill は行ごとの危険強調、ui-accent は稼働中のモード、
+   ui-near / ui-signal はオンの状態の強弱。 */
+#hud .ui-danger { color: var(--color-error); }
+#hud .ui-danger-fill { background: var(--color-error-fill); }
+#hud .ui-accent { color: var(--color-primary); }
+#hud .ui-near { color: var(--color-primary-hover); }
+#hud .ui-signal { color: var(--color-signal); }
 
 /* ここから下はブレークポイントごとの上書きと prefers-reduced-motion。
    モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる。 */
