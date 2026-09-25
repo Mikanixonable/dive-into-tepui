@@ -1,8 +1,11 @@
 import * as assert from 'node:assert/strict';
 import {
   cloudQualityPolicy,
+  cloudTemporalAveragePlan,
   cloudTemporalCachePlan,
+  cloudTemporalExposureSeconds,
   cloudTemporalSampleTimes,
+  cloudUsesTemporalAverage,
   type CloudTemporalCacheState,
 } from '../../src/render/cloud/cloud-quality';
 import { test } from '../harness';
@@ -57,6 +60,30 @@ export function register(): void {
       new Set(jump.writes.map((write) => write.timeSeconds)),
       new Set([jump.lowerTimeSeconds, jump.upperTimeSeconds]),
     );
+  });
+
+
+  test('cloud quality: extreme warp switches from interpolation to temporal exposure', () => {
+    const normalExposure = cloudTemporalExposureSeconds(16_384);
+    const extremeExposure = cloudTemporalExposureSeconds(65_536);
+    assert.equal(cloudUsesTemporalAverage(normalExposure, 2), false);
+    assert.equal(cloudUsesTemporalAverage(extremeExposure, 2), true);
+    assert.throws(() => cloudTemporalExposureSeconds(0), RangeError);
+  });
+
+  test('cloud quality: temporal average uses centered stratified samples and bounded writes', () => {
+    const plan = cloudTemporalAveragePlan(3_600, 1_200, { timeA: null, timeB: null });
+    assert.equal(plan.firstTimeSeconds, 3_300);
+    assert.equal(plan.secondTimeSeconds, 3_900);
+    assert.equal(plan.blendAtoB, 0.5);
+    assert.equal(plan.writes.length, 2);
+    assert.notEqual(plan.firstSlot, plan.secondSlot);
+
+    const reused = cloudTemporalAveragePlan(3_600, 1_200, {
+      timeA: plan.firstSlot === 'A' ? plan.firstTimeSeconds : plan.secondTimeSeconds,
+      timeB: plan.firstSlot === 'B' ? plan.firstTimeSeconds : plan.secondTimeSeconds,
+    });
+    assert.equal(reused.writes.length, 0);
   });
 
   test('cloud quality: exact temporal boundary still materializes two adjacent samples', () => {
