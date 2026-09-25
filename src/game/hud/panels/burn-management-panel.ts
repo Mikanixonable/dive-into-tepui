@@ -1,5 +1,7 @@
 // ブースターの段構成・燃焼状態を表示する常設パネル。ゲーム側で作った表示用の
 // スナップショットを sync する。操作は各 module のプロパティウィンドウから行う。
+import { Meter } from '../../../hud/widgets';
+import type { HudEls } from '../hud-els';
 
 /** 燃焼管理パネルへ渡す、ゲーム状態から分離された表示モデル。 */
 export interface BurnManagementViewModel {
@@ -29,8 +31,7 @@ export type BurnManagementPanelHandlers = Record<string, never>;
 interface BurnManagementDom {
   readonly stageCount: HTMLElement;
   readonly totalMass: HTMLElement;
-  readonly fuelMeter: HTMLElement;
-  readonly fuelFill: HTMLElement;
+  readonly fuelMeter: Meter;
   readonly fuelValue: HTMLElement;
   readonly burnState: HTMLElement;
   readonly moduleList: HTMLElement;
@@ -73,24 +74,18 @@ export class BurnManagementPanel {
   private readonly dom: BurnManagementDom;
   private model: BurnManagementViewModel | null = null;
 
-  // 表示要素を els から取り出す。
-  public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
+  // 表示要素を els から取り出し、燃料バーを Meter ウィジェットで組み込む。
+  public constructor(private readonly els: HudEls) {
+    const fuelMeter = new Meter('最後尾ブースター燃料');
+    this.els.get('burn-active-fuel-meter').appendChild(fuelMeter.element);
     this.dom = {
-      stageCount: this.required('burn-stage-count'),
-      totalMass: this.required('burn-total-mass'),
-      fuelMeter: this.required('burn-active-fuel-meter'),
-      fuelFill: this.required('burn-active-fuel-fill'),
-      fuelValue: this.required('burn-active-fuel-value'),
-      burnState: this.required('burn-state'),
-      moduleList: this.required('burn-module-list'),
+      stageCount: this.els.get('burn-stage-count'),
+      totalMass: this.els.get('burn-total-mass'),
+      fuelMeter,
+      fuelValue: this.els.get('burn-active-fuel-value'),
+      burnState: this.els.get('burn-state'),
+      moduleList: this.els.get('burn-module-list'),
     };
-  }
-
-  // els から id の要素を取り出す。無ければ HUD の DOM 構成が壊れているので例外にする。
-  private required(id: string): HTMLElement {
-    const element = this.els.get(id);
-    if (!element) throw new Error(`BurnManagementPanel: missing HUD element ${id}`);
-    return element;
   }
 
   /** 表示モデルを同期する。null はブースターのない機体としてパネルを隠す。 */
@@ -98,7 +93,6 @@ export class BurnManagementPanel {
     void _handlers;
     this.model = view;
     const panel = this.els.get('burn-management-panel');
-    if (!panel) return;
     panel.classList.toggle('hidden', view === null);
     if (!view) {
       this.dom.moduleList.replaceChildren();
@@ -115,12 +109,7 @@ export class BurnManagementPanel {
     this.dom.stageCount.textContent = `${stageCount} 個`;
     this.dom.totalMass.textContent = formatMass(view.totalMass);
     this.dom.fuelValue.textContent = fuelText;
-    this.dom.fuelFill.style.width = `${(fuelRatio * 100).toFixed(1)}%`;
-    this.dom.fuelFill.classList.toggle('danger', fuelRatio <= 0.2);
-    this.dom.fuelMeter.setAttribute('aria-valuemin', '0');
-    this.dom.fuelMeter.setAttribute('aria-valuemax', String(activeFuelMax));
-    this.dom.fuelMeter.setAttribute('aria-valuenow', String(activeFuel));
-    this.dom.fuelMeter.setAttribute('aria-valuetext', fuelText);
+    this.dom.fuelMeter.setProgress(activeFuel, activeFuelMax, fuelText, fuelRatio <= 0.2);
     this.dom.burnState.textContent = stateLabel(state);
     this.dom.burnState.setAttribute('aria-label', view.burnStateDescription ?? stateLabel(state));
 
