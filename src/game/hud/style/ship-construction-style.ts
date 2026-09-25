@@ -84,6 +84,10 @@ export const SHIP_CONSTRUCTION_STYLE = `
   min-height: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #ship-construction-panel .construction-slot-button[data-valid="false"] { color: var(--color-warning); }
+#ship-construction-panel .construction-slot-reason {
+  display: block; color: var(--color-warning); font-size: var(--font-xxs); font-weight: 400;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 #ship-construction-panel .construction-metrics {
   display: grid; flex: 1 1 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
