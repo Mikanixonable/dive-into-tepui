@@ -255,6 +255,10 @@ function earth(): LabCase {
     shots: {
       'earth': { view: {} },
       'earth-nadir': { view: EARTH_NADIR_PLACEMENT },
+      // サングリント。恒星をカメラのほぼ背後(方位 0)に置き、直下点の水域へ太陽の円盤の鏡面
+      // 反射が乗る構図。滑らかな水面ではグリントの縁がメッシュ分割や地形標本の格子上で
+      // 折れてはならない。
+      'earth-glint': { view: { ...EARTH_NADIR_PLACEMENT, ...sunAnglesOf(new THREE.Vector3(0, 0.3, 1)) } },
       'cloud-standard-near-range-250km': {
         view: earthStandardCloudView(EARTH_STANDARD_CLOUD_DISTANCE),
         graphics: QUALITY_PRESETS.medium,
