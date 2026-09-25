@@ -41,7 +41,7 @@ export class GeneratedCloudField implements CloudFieldSource {
   public constructor(
     private readonly climate: ClimateMap, private readonly projection: FieldProjection,
     surfaceRadius: number, rotationPeriod: number,
-    transform?: CloudSampleTransform,
+    private readonly transform?: CloudSampleTransform,
   ) {
     this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
     this.fieldA = new CloudField(this.model, projection, transform);
@@ -132,9 +132,17 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.lastPreparedTemporalExposure = temporalExposureSeconds;
   }
 
+  public invalidate(): void {
+    this.timeA = null;
+    this.timeB = null;
+    this.lastPreparedDisplayTime = null;
+    this.lastPreparedTemporalExposure = null;
+  }
+
   private renderSlot(
     renderer: WebGPURenderer, slot: 'A' | 'B', timeSeconds: number, gpu?: GpuTimingSink,
   ): void {
+    this.transform?.syncTime?.(timeSeconds);
     this.model.syncTime(timeSeconds);
     this.model.bake(renderer, gpu);
     if (slot === 'A') {
