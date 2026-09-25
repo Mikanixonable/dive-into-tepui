@@ -176,7 +176,7 @@ function surfaceAt(
   depth: THREE.Texture, normal: THREE.Texture, gbufferSize: Vec2Node, projectionInverse: Mat4Uniform,
   pixel: Vec2Node,
 ): GBufferSurface {
-  const texel = gbufferTexelOf(pixel, gbufferSize).toVar();
+  const texel = gbufferTexelOf(pixel, gbufferSize, screenSize).toVar();
   const uv = texelCenterUV(texel, gbufferSize).toVar();
   const rawDepth = textureLoad(depth, texel).r.toVar();
   const surfaceNormal = vec3(0, 0, 1).toVar();
@@ -334,17 +334,18 @@ export function clipToCircle(from: Vec2Node, end: Vec2Node): Vec2Node {
 // **G バッファはこの画素(gbufferTexelOf)で読み、深度から位置を戻すのはこの uv で行う** — 画素の角で読むと輪郭で
 // 虚空の値が混ざり、読んだ画素と違う uv で位置を戻すと平らな面が自分自身を遮る。
 export function gbufferUVOf(pixel: Vec2Node, gbufferSize: Vec2Node): Vec2Node {
-  return texelCenterUV(gbufferTexelOf(pixel, gbufferSize), gbufferSize);
+  return texelCenterUV(gbufferTexelOf(pixel, gbufferSize, screenSize), gbufferSize);
 }
 
-// gbufferUVOf が中心の uv を答える、G バッファの画素の整数座標。
-function gbufferTexelOf(pixel: Vec2Node, gbufferSize: Vec2Node): THREE.Node<'ivec2'> {
+// 寸法 pixelSize [px] の画面の画素 pixel(整数座標)について、gbufferUVOf が中心の uv を答える G バッファの画素の
+// 整数座標。
+export function gbufferTexelOf(pixel: Vec2Node, gbufferSize: Vec2Node, pixelSize: Vec2Node): THREE.Node<'ivec2'> {
   // 整数で割る — 解像度が半分なら画素の中心は G バッファの画素の境に乗り、浮動小数の floor では採る画素が
   // 画素ごとに揺れる。
-  return ivec2(pixel).mul(2).add(1).mul(ivec2(gbufferSize)).div(ivec2(screenSize).mul(2));
+  return ivec2(pixel).mul(2).add(1).mul(ivec2(gbufferSize)).div(ivec2(pixelSize).mul(2));
 }
 
 // 寸法 size [px] のテクスチャの画素 texel(整数座標)の中心の uv。
-function texelCenterUV(texel: THREE.Node<'ivec2'>, size: Vec2Node): Vec2Node {
+export function texelCenterUV(texel: THREE.Node<'ivec2'>, size: Vec2Node): Vec2Node {
   return vec2(texel).add(0.5).div(size);
 }

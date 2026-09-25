@@ -4,8 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, abs, clamp, float, floor, getViewPosition, ivec2, log, max, mrt, screenSize, screenUV,
-  select, texture, textureLoad, uniform, vec2, vec3, vec4,
+  Fn, If, float, floor, getViewPosition, ivec2, mrt, screenSize, screenUV, texture, textureLoad, uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
@@ -15,11 +14,12 @@ import { compileInto } from '../compile-into';
 import {
   gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
 } from './hemisphere-scan';
+import { CorrectionReconstruction } from './correction-reconstruction';
 import type { DiffuseCorrection } from './diffuse-correction';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
 import type { SunSource } from '../lighting/sun-source';
-import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node } from '../../tsl-types';
+import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 描画設定「遮蔽と照り返し」の値。値は保存された設定を読む鍵なので、段を足しても既存の値は動かさない。
 export const SCREEN_SPACE_DIFFUSE = { off: 0, occlusion: 1, indirect: 2 } as const;
@@ -42,13 +42,6 @@ const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
   [SCREEN_SPACE_QUALITY.high]: { scale: 1, sliceCount: 3, stepCount: 8 },
 };
 
-// 均しで隣の重みが 0 に落ちる、中心との奥行きの鍵の差(view 深度の相対差にほぼ等しい)。
-const EDGE_DEPTH_TOLERANCE = 0.05;
-// 面の写っていない画素の奥行きの鍵。どの面の鍵とも離れた値。
-const VOID_DEPTH_KEY = 60000;
-// 均しの 1 軸の、隣の画素のずれ [走査の画素] と二項係数の組。
-const DENOISE_TAPS = [[-1, 1], [0, 2], [1, 1]] as const;
-
 // 描画命令 1 本: material を全画面に描いて target へ書く。
 interface Stage {
   readonly material: THREE.MeshBasicNodeMaterial;
@@ -56,13 +49,13 @@ interface Stage {
   readonly gpuPass: GpuPassId;
 }
 
-// 走査の解像度の、照り返しの源の描画先(rgba16float)。名前は MRT の出力と結び付く。
-function createSourceTarget(): THREE.RenderTarget {
+// 走査の解像度の描画先(rgba16float)。名前 name は MRT の出力と結び付く。
+function createScanTarget(name: string): THREE.RenderTarget {
   const target = new THREE.RenderTarget(1, 1, {
     type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
     minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
   });
-  target.texture.name = 'surfaceRadiance';
+  target.texture.name = name;
   return target;
 }
 
@@ -73,16 +66,10 @@ function stageMaterial(): THREE.MeshBasicNodeMaterial {
   });
 }
 
-// uv の画素の素の深度 depth を、均しが奥行きの比を差で比べられる鍵にする。面の写っていない画素(深度 0)は
-// VOID_DEPTH_KEY。
-function depthKey(depth: FloatNode, uv: Vec2Node, projectionInverse: Mat4Uniform): FloatNode {
-  return select(depth.greaterThan(0), log(getViewPosition(uv, depth, projectionInverse).z.negate()),
-    float(VOID_DEPTH_KEY));
-}
-
 export class ScreenSpacePass {
-  // 照り返しの源の描画先。
-  private readonly sourceTarget = createSourceTarget();
+  // 照り返しの源と、復元の途中で均した補正の描画先。
+  private readonly sourceTarget = createScanTarget('surfaceRadiance');
+  private readonly denoisedTarget = createScanTarget('denoisedDiffuseCorrection');
   // 方式ごとの描画命令の列。オフは空。
   private readonly stages: Readonly<Record<ScreenSpaceDiffuse, readonly Stage[]>>;
   private readonly quad = new QuadMesh();
@@ -99,6 +86,7 @@ export class ScreenSpacePass {
   private readonly gbufferUV: Vec2Node = gbufferUVOf(this.scanPixel, this.fullSize);
   // 走査の解像度の画素の、光の向きと面の向きを引くシェーディング入力。
   private readonly sample: ShadingSample;
+  private readonly reconstruction: CorrectionReconstruction;
   private readonly blueNoise = new BlueNoise();
   // 直前に render した方式。null はまだ render していないこと。
   private renderedMode: ScreenSpaceDiffuse | null = null;
@@ -114,15 +102,22 @@ export class ScreenSpacePass {
     private mode: ScreenSpaceDiffuse, private quality: ScreenSpaceQuality,
   ) {
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
+    this.reconstruction = new CorrectionReconstruction(
+      gbuffer, this.projection, this.projectionInverse, this.fullSize, this.scanSize);
+    // 復元の段は方式によらないので、両方の方式で同じ描画命令を使う。
+    const reconstruct = this.createReconstructStages(gbuffer);
     this.stages = {
       [SCREEN_SPACE_DIFFUSE.off]: [],
-      [SCREEN_SPACE_DIFFUSE.occlusion]: this.createStages(gbuffer, planetLight, ambient, null),
-      [SCREEN_SPACE_DIFFUSE.indirect]: this.createStages(gbuffer, planetLight, ambient, sun),
+      [SCREEN_SPACE_DIFFUSE.occlusion]: [...this.createScanStages(gbuffer, planetLight, ambient, null), ...reconstruct],
+      [SCREEN_SPACE_DIFFUSE.indirect]: [...this.createScanStages(gbuffer, planetLight, ambient, sun), ...reconstruct],
     };
   }
 
   // 走査の解像度。rgb = 照り返しの源として面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)。方式が遮蔽では 0。
   public get surfaceRadianceTexture(): THREE.Texture { return this.sourceTarget.texture; }
+
+  // 走査の解像度の、均した補正。rgb = ΔE_screen。
+  public get denoisedCorrectionTexture(): THREE.Texture { return this.denoisedTarget.texture; }
 
   // 次の render から方式 mode で描く。
   public setMode(mode: ScreenSpaceDiffuse): void {
@@ -141,7 +136,7 @@ export class ScreenSpacePass {
     this.renderedMode = this.mode;
     if (this.mode === SCREEN_SPACE_DIFFUSE.off) return;
     this.prepare(camera, width, height);
-    // 照り返しの源 → 走査 → 復元の順に、段ごとの描画先へ書く。
+    // 照り返しの源 → 走査 → 均し → 拡大の順に、段ごとの描画先へ書く。
     for (const { material, target, gpuPass } of this.stages[this.mode]) {
       this.renderer.setRenderTarget(target);
       this.quad.material = material;
@@ -164,29 +159,21 @@ export class ScreenSpacePass {
   // なので、ここでは解放しない。
   public dispose(): void {
     this.sourceTarget.dispose();
-    for (const stages of Object.values(this.stages)) {
-      for (const { material } of stages) material.dispose();
-    }
+    this.denoisedTarget.dispose();
+    const materials = new Set(Object.values(this.stages).flatMap((stages) => stages.map(({ material }) => material)));
+    for (const material of materials) material.dispose();
     this.blueNoise.dispose();
   }
 
-  // 照り返しの源 → 走査 → 復元の描画命令を組む。sun があれば照り返しを集める方式として、照り返しの源の段を
-  // 先頭に置く。
-  private createStages(
+  // 照り返しの源 → 走査の描画命令を組む。sun があれば照り返しを集める方式として、照り返しの源の段を先頭に置く。
+  private createScanStages(
     gbuffer: GBufferPass, planetLight: PlanetLightSource, ambient: AmbientSource, sun: SunSource | null,
   ): readonly Stage[] {
     const stages: Stage[] = [];
     if (sun !== null) {
-      // 照り返しの源は、補正を受ける画素(resolvesNearbyAt)で求め、ほかの画素は 0 とする。
       const source = stageMaterial();
-      source.mrtNode = mrt({ surfaceRadiance: Fn(() => {
-        const radiance = vec3(0).toVar();
-        const depth = textureLoad(gbuffer.depthTexture, ivec2(floor(this.gbufferUV.mul(this.fullSize)))).r.toVar();
-        If(this.resolvesNearbyAt(depth, this.gbufferUV), () => {
-          radiance.assign(this.emittedRadiance(gbuffer, sun, planetLight, ambient));
-        });
-        return vec4(radiance, 1);
-      })() });
+      source.mrtNode = mrt({ surfaceRadiance: this.whereResolved(gbuffer, this.gbufferUV,
+        () => this.emittedRadiance(gbuffer, sun, planetLight, ambient)) });
       stages.push({ material: source, target: this.sourceTarget, gpuPass: GPU_PASS.bounceSource });
     }
     // 走査: 受け手へ届く遠方の拡散光のうち塞がれた照度と照り返しの差。
@@ -202,10 +189,35 @@ export class ScreenSpacePass {
       sun === null ? null : this.sourceTarget.texture,
     ), 1))() });
     stages.push({ material: scan, target: this.output.rawTarget, gpuPass: GPU_PASS.nearbyDiffuseScan });
-    const reconstruct = stageMaterial();
-    reconstruct.mrtNode = mrt({ diffuseCorrection: this.reconstructed(gbuffer) });
-    stages.push({ material: reconstruct, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseReconstruct });
     return stages;
+  }
+
+  // 走査の結果を描画バッファの解像度へ復元する、均し → 拡大の描画命令を組む。均しは走査の解像度、拡大は描画
+  // バッファの解像度の受け手で、補正を受けるかを測り直す。
+  private createReconstructStages(gbuffer: GBufferPass): readonly Stage[] {
+    const denoise = stageMaterial();
+    denoise.mrtNode = mrt({ denoisedDiffuseCorrection: this.whereResolved(gbuffer, this.gbufferUV,
+      () => this.reconstruction.denoised(this.output.rawTexture)) });
+    const upsample = stageMaterial();
+    upsample.mrtNode = mrt({ diffuseCorrection: this.whereResolved(gbuffer, screenUV,
+      () => this.reconstruction.upsampled(this.denoisedTarget.texture)) });
+    return [
+      { material: denoise, target: this.denoisedTarget, gpuPass: GPU_PASS.nearbyDiffuseReconstruct },
+      { material: upsample, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseReconstruct },
+    ];
+  }
+
+  // 描いている画素を、uv(描いている画素に当たる G バッファの uv)の面が補正を受ける(resolvesNearbyAt)ときだけ
+  // value で塗り、ほかは 0 で塗る出力。value は一様でない分岐の中で組むので、テクスチャは段を明示して読むこと。
+  private whereResolved(gbuffer: GBufferPass, uv: Vec2Node, value: () => Vec3Node): Vec4Node {
+    return Fn(() => {
+      const result = vec3(0).toVar();
+      const depth = textureLoad(gbuffer.depthTexture, ivec2(floor(uv.mul(this.fullSize)))).r.toVar();
+      If(this.resolvesNearbyAt(depth, uv), () => {
+        result.assign(value());
+      });
+      return vec4(result, 1);
+    })();
   }
 
   // 走査の画素が表す面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)— 太陽の直射・天体照・環境光を拡散で
@@ -225,40 +237,6 @@ export class ScreenSpacePass {
       .add(texture(gbuffer.emissiveTexture, this.sample.uv).level(float(0)).rgb);
   }
 
-  // 全解像度の画素ごとに、走査の結果を近い 3×3 の走査の画素から均して返す。重みは 1-2-1 の二項係数に、中心との
-  // 奥行きの鍵の差で 0 へ落ちる係数を掛ける — 深度の段差を跨いで、手前の補正を奥へ滲ませない。補正を受けない
-  // 画素(resolvesNearbyAt)は 0。
-  private reconstructed(gbuffer: GBufferPass): THREE.Node {
-    return Fn(() => {
-      const pixel = ivec2(floor(screenUV.mul(screenSize)));
-      const depth = textureLoad(gbuffer.depthTexture, pixel).r.toVar();
-      const corrected = vec3(0).toVar();
-      // 中心の画素で測り直す — 近い走査の画素が補正を持っていても、補正を受けない画素へは均し込まない。
-      If(this.resolvesNearbyAt(depth, screenUV), () => {
-        const centerKey = depthKey(depth, screenUV, this.projectionInverse).toVar();
-        const center = floor(screenUV.mul(this.scanSize)).toVar();
-        const sum = vec3(0).toVar();
-        const weightSum = float(0).toVar();
-        // 隣の走査の画素が表す G バッファの画素の奥行きの鍵を、中心と比べる。画面の外の隣は縁の画素で代える。
-        for (const [dy, wy] of DENOISE_TAPS) {
-          for (const [dx, wx] of DENOISE_TAPS) {
-            const candidate = ivec2(clamp(center.add(vec2(dx, dy)), vec2(0), this.scanSize.sub(1)));
-            const candidateUv = floor(vec2(candidate).add(0.5).mul(this.fullSize).div(this.scanSize))
-              .add(0.5).div(this.fullSize);
-            const candidateDepth = textureLoad(gbuffer.depthTexture,
-              ivec2(floor(candidateUv.mul(this.fullSize)))).r;
-            const gap = abs(depthKey(candidateDepth, candidateUv, this.projectionInverse).sub(centerKey));
-            const weight = clamp(float(1).sub(gap.div(EDGE_DEPTH_TOLERANCE)), 0, 1).mul(wx * wy);
-            sum.addAssign(textureLoad(this.output.rawTexture, candidate).rgb.mul(weight));
-            weightSum.addAssign(weight);
-          }
-        }
-        corrected.assign(sum.div(max(weightSum, 1e-6)));
-      });
-      return vec4(corrected, 1);
-    })();
-  }
-
   // uv の画素の素の深度 depth の受け手が補正を受けるか(resolvesNearby)。半径は、描いている解像度によらず走査の
   // 画素で測る。
   private resolvesNearbyAt(depth: FloatNode, uv: Vec2Node): BoolNode {
@@ -274,7 +252,7 @@ export class ScreenSpacePass {
     const scanWidth = Math.max(1, Math.ceil(width * tier.scale));
     const scanHeight = Math.max(1, Math.ceil(height * tier.scale));
     // 描画先の寸法は、変わったときだけ確保し直す。
-    for (const target of [this.sourceTarget, this.output.rawTarget]) {
+    for (const target of [this.sourceTarget, this.output.rawTarget, this.denoisedTarget]) {
       if (target.width !== scanWidth || target.height !== scanHeight) target.setSize(scanWidth, scanHeight);
     }
     if (this.output.target.width !== width || this.output.target.height !== height) {
@@ -292,7 +270,7 @@ export class ScreenSpacePass {
   // 切る直前の像が凍ったまま出る。
   private clearUnwritten(): void {
     const unwritten = this.mode === SCREEN_SPACE_DIFFUSE.off
-      ? [this.sourceTarget, this.output.rawTarget, this.output.target]
+      ? [this.sourceTarget, this.output.rawTarget, this.denoisedTarget, this.output.target]
       : this.mode === SCREEN_SPACE_DIFFUSE.occlusion ? [this.sourceTarget] : [];
     if (unwritten.length === 0) return;
     // 消去色はレンダラーを共有する他のパスのものなので、退避して黒の透明で消し、戻す。

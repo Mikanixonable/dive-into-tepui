@@ -259,6 +259,8 @@ export class RenderPipeline {
       ),
       'raw-correction': this.buildCompositeMaterial(vec4(
         this.signedCorrectionDebug(texture(this.diffuseCorrection.rawTexture, screenUV)), 1)),
+      'denoised-correction': this.buildCompositeMaterial(vec4(
+        this.signedCorrectionDebug(texture(this.screenSpacePass.denoisedCorrectionTexture, screenUV)), 1)),
       correction: this.buildCompositeMaterial(vec4(
         this.signedCorrectionDebug(texture(this.diffuseCorrection.texture, screenUV)), 1)),
       'bounce-source': this.buildCompositeMaterial(
