@@ -184,6 +184,18 @@ function earthStandardCloudView(cameraDistanceM: number): Partial<LabViewAngles>
     cameraDistanceLog: Math.log10(cameraDistanceM / EARTH_VIEW_TARGET_DEPTH),
   };
 }
+// 局所光学場の診断を地平線へ載せる置き方。場は天体固定の赤道・本初子午線(緯度 0・経度 0)を
+// 中心に ±250 km 張られる。地球の視半径と直下点から場の中心への中心角がともに 45° になる高度
+// (√2−1 赤道半径)へ置き、直下点を南緯 45°・経度 0° に取ると、場の中心が視線上の地平線の
+// 接点へ来る — 画面中央で視線が場の体積をちょうど掠める構図。
+const EARTH_LOCAL_FIELD_LIMB_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
+  earthAzimuthDeg: 180,
+  earthElevationDeg: -45,
+  earthAltitudeLog: Math.log10((Math.SQRT2 - 1) * R_EARTH_EQ),
+  earthLatitudeDeg: -45,
+  earthLongitudeDeg: 0,
+};
+
 const EARTH_LOW_ORBIT_ALTITUDE_M = 120e3;
 const EARTH_LOW_ORBIT_PLACEMENT = placementBelowHorizon(EARTH_LOW_ORBIT_ALTITUDE_M, 0);
 // 昼夜境界の撮影の恒星の向き。視線の先の地平線上。
@@ -284,6 +296,33 @@ function earth(): LabCase {
         view: { ...earthStandardCloudView(250e3), earthLatitudeDeg: 1 },
         graphics: QUALITY_PRESETS.medium,
         cloudDetailDiagnostic: { wavelengthKm: 2, directionDeg: 0, composition: 'coverage-residual' },
+      },
+      // 局所光学場の診断の、差し込みなし側。直下点が場の中心(緯度 0・経度 0)を向く直上の構図で、
+      // ±250 km の場が画面の中央部分に収まる距離を取る。恒星は低く抑えて影を長く伸ばす。
+      'cloud-local-field-nadir-600km': {
+        view: { ...earthStandardCloudView(600e3), sunElevationDeg: 10 },
+        graphics: QUALITY_PRESETS.medium,
+      },
+      // 同じ構図へ場を差し込む。**地表経路では場のある柱が雲の内側と判じられて塊が現れ、影経路では
+      // その体積が恒星光を減衰させて地表へ影を落とす** — 場の縁の外側へ出る影は恒星と反対側の
+      // 細い帯として読む。
+      'cloud-local-field-nadir-600km-diagnostic': {
+        view: { ...earthStandardCloudView(600e3), sunElevationDeg: 10 },
+        graphics: QUALITY_PRESETS.medium,
+        cloudLocalFieldDiagnostic: true,
+      },
+      // 場を地平線へ載せる構図の、差し込みなし側。あり側との差分から大気経路の減衰を読む。
+      // 体積の高さは接点で 9 km しかないので、ズームして縁の帯を分解する。
+      'cloud-local-field-limb': {
+        view: { ...EARTH_LOCAL_FIELD_LIMB_PLACEMENT, cameraZoomLog: 1 },
+        graphics: QUALITY_PRESETS.medium,
+      },
+      // 局所光学場の診断: 場の中心が画面中央の地平線の接点に来る構図。**大気経路では場を掠める
+      // 視線の透過率が縁の中央へ効き**、地表経路では体積が縁へ盛り上がる塊として見えるはず。
+      'cloud-local-field-limb-diagnostic': {
+        view: { ...EARTH_LOCAL_FIELD_LIMB_PLACEMENT, cameraZoomLog: 1 },
+        graphics: QUALITY_PRESETS.medium,
+        cloudLocalFieldDiagnostic: true,
       },
       'earth-low-orbit': { view: EARTH_LOW_ORBIT_PLACEMENT },
       'earth-limb': { view: {} },
