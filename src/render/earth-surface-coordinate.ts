@@ -60,9 +60,14 @@ export function earthUvFromRadial(direction: THREE.Vector3, axes: THREE.Vector3)
   return earthSurfaceUv(direction, axes);
 }
 
+// 天体固定の放射方向が指す楕円体の外向き単位法線をGPU上で求める。方向ベクトルの長さは任意の正値。
+export function earthSurfaceNormalFromRadialNode(direction: Vec3Node, axes: Vec3Node): Vec3Node {
+  return normalize(direction.div(axes.mul(axes)));
+}
+
 // 天体固定の放射方向を、楕円体の地理緯度・経度UVへGPU上で変換する。axesは天体固定XYZの半軸 [m]。
 export function earthSurfaceUvFromRadialNode(direction: Vec3Node, axes: Vec3Node): Vec2Node {
-  const normal = normalize(direction.div(axes.mul(axes)));
+  const normal = earthSurfaceNormalFromRadialNode(direction, axes);
   return vec2(
     normal.x.atan(normal.z).div(2 * Math.PI).add(0.5),
     normal.y.clamp(-1, 1).asin().div(Math.PI).negate().add(0.5),
