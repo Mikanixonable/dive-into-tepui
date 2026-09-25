@@ -172,6 +172,21 @@ def cod_indicator_availability(
         "appliedMasks": {},
         "unappliedCorrections": ["cloud_top_parallax"],
     }
+
+
+def cod_frame_support_diagnostic(diagnostics: list[dict[str, Any]]) -> dict[str, int | float]:
+    """COD の枠別支持域を数える。必要枠数は別契約なので合否へは変換しない。"""
+    fractions = [item["areaWeightedCoverageFraction"] for item in diagnostics]
+    return {
+        "slotCount": len(diagnostics),
+        "solarEligibleFrameCount": sum(item["eligibleCloudAreaM2"] > 0 for item in diagnostics),
+        "goodCodFrameCount": sum(item["goodCodCloudAreaM2"] > 0 for item in diagnostics),
+        "provisionalAreaThreshold": MINIMUM_COD_INDICATOR_SUPPORT_FRACTION,
+        "provisionalAreaThresholdFrameCount": sum(
+            fraction is not None and fraction >= MINIMUM_COD_INDICATOR_SUPPORT_FRACTION
+            for fraction in fractions
+        ),
+    }
 FILENAME = re.compile(r"^OR_ABI-(?P<product>[A-Za-z0-9-]+)_(?P<satellite>G\d{2})_s(?P<start>\d{14})_.*\.nc$")
 
 
@@ -874,6 +889,7 @@ def aggregate_product_slots(product: str, field: str, band: int | None, summarie
                 "unappliedCorrections",
             )},
             "slotCount": len(diagnostics),
+            "frameSupportDiagnostic": cod_frame_support_diagnostic(diagnostics),
             "eligibleCloudPixelCount": eligible,
             "eligibleCloudPixelCountBeforeSolarMask": eligible_before_solar,
             "solarAngleExcludedEligibleCloudPixelCount": solar_excluded,
