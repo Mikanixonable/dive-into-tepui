@@ -118,16 +118,40 @@ export function wedgeWeight(slice: Slice, direction: Vec3Node, sliceCount: IntNo
   return max(float(1).sub(acos(min(cosDistance, 1)).mul(float(sliceCount)).div(Math.PI)), 0);
 }
 
-// ビット bits の扇形が、扇形の座標で range を覆う測度(扇形 1 つが 1)。部分的に掛かる扇形は掛かった長さだけ
-// 数える。全ビットが立っていれば range の幅 upper − lower そのもの。
-export function maskedMeasure(bits: UintNode, range: SectorRange): FloatNode {
+// 扇形の座標の区間を、立っているビットから測る形 — 区間の下端の扇形 first と上端の扇形 last のビット、そのあいだの
+// 扇形 between のビットと、両端の扇形が区間に掛かる長さ firstLength・lastLength。両端が同じ扇形なら、その扇形は
+// first だけが持つ。
+export interface RangeSectors {
+  readonly first: UintNode;
+  readonly between: UintNode;
+  readonly last: UintNode;
+  readonly firstLength: FloatNode;
+  readonly lastLength: FloatNode;
+}
+
+// 扇形の座標の区間 range を、立っているビットから測る形にする。同じ区間を何度も測るときは、一度だけ組んで使い回す。
+// **Fn の中から呼ぶこと。**
+export function rangeSectors(range: SectorRange): RangeSectors {
+  // 両端の扇形の番号。両端の扇形は半球の端までを受け持つ。
   const first = clamp(floor(range.lower), 0, SECTOR_COUNT - 1).toVar();
   const last = clamp(floor(range.upper), 0, SECTOR_COUNT - 1).toVar();
-  const firstBit = bitCount(bits.bitAnd(uint(1).shiftLeft(uint(first))));
-  const lastBit = bitCount(bits.bitAnd(uint(1).shiftLeft(uint(last))));
-  const between = bitCount(bits.bitAnd(sectorsBelow(last).bitAnd(sectorsBelow(first.add(1)).bitNot())));
-  return select(first.equal(last), firstBit.mul(range.upper.sub(range.lower)),
-    firstBit.mul(first.add(1).sub(range.lower)).add(between).add(lastBit.mul(range.upper.sub(last))));
+  const single = first.equal(last);
+  // 両端の扇形とそのあいだのビット、両端の扇形に掛かる長さ。
+  return {
+    first: uint(1).shiftLeft(uint(first)).toVar(),
+    between: sectorsBelow(last).bitAnd(sectorsBelow(first.add(1)).bitNot()).toVar(),
+    last: select(single, uint(0), uint(1).shiftLeft(uint(last))).toVar(),
+    firstLength: select(single, range.upper.sub(range.lower), first.add(1).sub(range.lower)).toVar(),
+    lastLength: range.upper.sub(last).toVar(),
+  };
+}
+
+// ビット bits の扇形が sectors の区間を覆う測度(扇形 1 つが 1)。部分的に掛かる扇形は掛かった長さだけ数える。
+// 全ビットが立っていれば区間の幅そのもの。
+export function maskedMeasure(bits: UintNode, sectors: RangeSectors): FloatNode {
+  return bitCount(bits.bitAnd(sectors.first)).mul(sectors.firstLength)
+    .add(bitCount(bits.bitAnd(sectors.between)))
+    .add(bitCount(bits.bitAnd(sectors.last)).mul(sectors.lastLength));
 }
 
 // 番号が count(整数。0..SECTOR_COUNT の外は端へ寄せる)より小さい扇形のビット。幅いっぱいのシフトは WGSL で
