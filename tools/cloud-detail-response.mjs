@@ -7,6 +7,8 @@ const root = join(import.meta.dirname, '..', '.render-lab', 'native-shots');
 const stem = process.argv[2] ?? 'earth-cloud-c1-raster-200km-medium-diagnostic';
 if (!/^earth-[\w.-]+$/.test(stem)) throw new Error('invalid shot stem');
 const mode = stem.includes('residual') ? 'wave-residual' : 'wave';
+const wavelengthKm = process.argv[3] === undefined ? 2 : Number(process.argv[3]);
+if (![1, 1.5, 2, 3, 4].includes(wavelengthKm)) throw new Error('unsupported diagnostic wavelength');
 const orientations = [0, 45, 90, 135];
 const minimumRetainedAmplitude = 0.50;
 let failed = false;
@@ -44,8 +46,8 @@ function luminance(image, factor) {
 }
 
 for (const direction of orientations) {
-  const suffix = `${mode}-2km-${direction}deg`;
-  const inverseSuffix = `${mode}-invert-2km-${direction}deg`;
+  const suffix = `${mode}-${wavelengthKm}km-${direction}deg`;
+  const inverseSuffix = `${mode}-invert-${wavelengthKm}km-${direction}deg`;
   const [native, inverseNative, reference, inverseReference] = await Promise.all([
     pixels(suffix).then((image) => luminance(image, 1)),
     pixels(inverseSuffix).then((image) => luminance(image, 1)),
@@ -76,12 +78,12 @@ for (const direction of orientations) {
   const nativeVariance = sumNN - sumN * sumN / count;
   const referenceVariance = sumRR - sumR * sumR / count;
   if (referenceVariance <= 0 || nativeVariance <= 0) {
-    throw new Error(`no measurable 2 km modulation at ${direction} degrees`);
+    throw new Error(`no measurable ${wavelengthKm} km modulation at ${direction} degrees`);
   }
   const slope = covariance / referenceVariance;
   const correlation = covariance / Math.sqrt(nativeVariance * referenceVariance);
-  const pass = slope >= minimumRetainedAmplitude;
-  failed ||= !pass;
-  console.log(JSON.stringify({ wavelengthKm: 2, directionDeg: direction, retainedAmplitude: slope, correlation, referenceRms: Math.sqrt(referenceVariance / count), pass }));
+  const pass = wavelengthKm === 2 ? slope >= minimumRetainedAmplitude : null;
+  failed ||= pass === false;
+  console.log(JSON.stringify({ wavelengthKm, directionDeg: direction, retainedAmplitude: slope, correlation, referenceRms: Math.sqrt(referenceVariance / count), pass }));
 }
 if (failed) process.exitCode = 1;
