@@ -89,6 +89,44 @@ export function register(): void {
     near(boundary.liquidOpticalDepth, 0);
   });
 
+  test('cloud local optical path: C9 separated layers match analytic vertical and 45-degree paths', () => {
+    const grid: CloudFootprintGrid = {
+      originEastM: -10_000, originNorthM: -10_000,
+      cellWidthM: 20_000, cellHeightM: 20_000, width: 1, height: 1,
+    };
+    const layers: readonly CloudExtinctionLayer[] = [
+      { lowerAltitudeM: 1_000, upperAltitudeM: 3_000,
+        liquidPerMByCell: [2e-4], icePerMByCell: [0] },
+      { lowerAltitudeM: 6_000, upperAltitudeM: 8_000,
+        liquidPerMByCell: [0], icePerMByCell: [1e-4] },
+    ];
+    const origin = { eastM: 0, northM: 0, altitudeM: 0 };
+    const vertical = integrateCloudLocalOpticalPath(origin,
+      { eastM: 0, northM: 0, altitudeM: 9_000 }, grid, layers);
+    near(vertical.liquidOpticalDepth, 0.4);
+    near(vertical.iceOpticalDepth, 0.2);
+    near(vertical.transmittance, Math.exp(-0.6));
+
+    const slant = integrateCloudLocalOpticalPath(origin,
+      { eastM: 9_000, northM: 0, altitudeM: 9_000 }, grid, layers);
+    near(slant.liquidOpticalDepth, 0.4 * Math.SQRT2);
+    near(slant.iceOpticalDepth, 0.2 * Math.SQRT2);
+    near(slant.transmittance, Math.exp(-0.6 * Math.SQRT2));
+
+    const gap = integrateCloudLocalOpticalPath(
+      { eastM: 3_000, northM: 0, altitudeM: 3_000 },
+      { eastM: 6_000, northM: 0, altitudeM: 6_000 }, grid, layers);
+    assert.deepEqual(gap, { liquidOpticalDepth: 0, iceOpticalDepth: 0, transmittance: 1 });
+    const lowerOnly = integrateCloudLocalOpticalPath(origin,
+      { eastM: 0, northM: 0, altitudeM: 9_000 }, grid, [layers[0]!]);
+    near(lowerOnly.liquidOpticalDepth, 0.4);
+    near(lowerOnly.iceOpticalDepth, 0);
+    const upperOnly = integrateCloudLocalOpticalPath(origin,
+      { eastM: 0, northM: 0, altitudeM: 9_000 }, grid, [layers[1]!]);
+    near(upperOnly.liquidOpticalDepth, 0);
+    near(upperOnly.iceOpticalDepth, 0.2);
+  });
+
   test('cloud local optical path: invalid coefficients and grid mismatch are rejected', () => {
     const from = { eastM: 50, northM: 50, altitudeM: 0 };
     const to = { eastM: 50, northM: 50, altitudeM: 200 };
