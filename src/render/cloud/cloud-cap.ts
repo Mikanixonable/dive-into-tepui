@@ -6,13 +6,14 @@
 export const CLOUD_CAP_SIZE = 512;
 
 // BakedField は HalfFloatType なので1成分2 byte。生成側は pressure(R) + airMass(RG)
-// + humidity(RG) + convection(RG) + instability(R) + cloud(RGBA) = 12成分、観測側は
-// 再投影した cloud(RGBA) = 4成分を常駐させる。解析的2 km detailは追加テクスチャを持たない。
+// + humidity(RG) + convection(RG) + instability(R) = 8成分に、時間補間用 cloud RGBA を
+// 2時刻 + 合成出力の3枚(12成分)持つ。観測側は再投影した cloud(RGBA) = 4成分。
+// 解析的2 km detailは追加テクスチャを持たない。
 const HALF_FLOAT_BYTES = 2;
 const capBytesForChannels = (channels: number): number =>
   CLOUD_CAP_SIZE * CLOUD_CAP_SIZE * channels * HALF_FLOAT_BYTES;
 
-export const CLOUD_GENERATED_BAKED_BYTES = capBytesForChannels(12);
+export const CLOUD_GENERATED_BAKED_BYTES = capBytesForChannels(20);
 export const CLOUD_OBSERVED_BAKED_BYTES = capBytesForChannels(4);
 export const CLOUD_BAKED_WORKING_SET_BYTES =
   CLOUD_GENERATED_BAKED_BYTES + CLOUD_OBSERVED_BAKED_BYTES;

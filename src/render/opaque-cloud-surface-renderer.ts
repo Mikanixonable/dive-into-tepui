@@ -13,6 +13,7 @@ import {
   CloudDensityEvaluator,
 } from './cloud/cloud-density-evaluator';
 import { CLOUD_DETAIL_SCALE_M } from './cloud/cloud-detail-field';
+import { cloudQualityPolicy } from './cloud/cloud-quality';
 import type { CloudSample } from './cloud/cloud-field-sample';
 import { CloudFieldSampler } from './cloud/cloud-field-sampler';
 import type { CloudRenderInput } from './cloud/cloud-render-input';
@@ -63,6 +64,7 @@ export class OpaqueCloudSurfaceRenderer {
   private readonly surfaceRadiusM: FloatUniform;
   // 2 km detail の半波長ぶん方向を振って雲頂法線を測る角度[rad]。
   private readonly gradientAngle: FloatUniform;
+  private readonly detailFootprintScale: FloatUniform = uniform(1);
   // 分割段ごとの球。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
@@ -104,6 +106,7 @@ export class OpaqueCloudSurfaceRenderer {
   // 積雲の精細さの段を置き直す。オフなら全段を隠す。
   public setDetail(detail: CumulusDetail): void {
     this.setSampling(SAMPLING_OF_DETAIL[detail]);
+    this.detailFootprintScale.value = cloudQualityPolicy(detail).detailFootprintScale;
     if (detail === CUMULUS_DETAIL.off) this.hide();
   }
 
@@ -263,7 +266,7 @@ export class OpaqueCloudSurfaceRenderer {
   // 画面1pxが地表付近で張る実寸[m]。共通detail evaluatorがこの幅から2 km成分を帯域制限する。
   private footprintAt(entryDirection: Vec3Node): FloatNode {
     const pixelAngle = max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
-    return pixelAngle.mul(this.surfaceRadiusM);
+    return pixelAngle.mul(this.surfaceRadiusM).mul(this.detailFootprintScale);
   }
 
   // 画素ごとに固定の、覆い尽くされている割合と比べるディザの閾値。

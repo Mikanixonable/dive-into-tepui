@@ -29,6 +29,8 @@ export interface CloudFieldSource {
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
   prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
+  // 生成場は品質段に応じて時間キャッシュ幅を変えられる。観測場は実装しなくてよい。
+  setQuality?(level: number): void;
   // 保持している GPU 資源を解放する。
   dispose(): void;
 }
@@ -113,7 +115,10 @@ export class CloudPresentation {
     this.surface.bind(this.renderInput);
   }
 
-  private setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
+  private setDetail(detail: CumulusDetail): void {
+    this.surface.setDetail(detail);
+    this.source.setQuality?.(detail);
+  }
 
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   public setCloudsVisible(visible: boolean): void {
