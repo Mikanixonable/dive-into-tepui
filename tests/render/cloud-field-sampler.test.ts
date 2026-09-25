@@ -1,5 +1,9 @@
 import * as assert from 'node:assert/strict';
 import { cloudDetailTileWeight } from '../../src/render/cloud/cloud-field-sampler';
+import {
+  cloudDetailDiagnosticCoverage, CLOUD_DETAIL_DIAGNOSTIC_DIRECTIONS_DEG,
+  CLOUD_DETAIL_DIAGNOSTIC_SIZE, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTHS_KM, createCloudDetailDiagnosticTile,
+} from '../../tools/render-lab/cloud-detail-diagnostic';
 import { test } from '../harness';
 
 export function register(): void {
@@ -20,5 +24,33 @@ export function register(): void {
     assert.throws(() => cloudDetailTileWeight(0, -1.1, 0), RangeError);
     assert.throws(() => cloudDetailTileWeight(0, 0, 1.1), RangeError);
     assert.throws(() => cloudDetailTileWeight(1.1, -0.5, 0.5), RangeError);
+  });
+
+  test('cloud detail diagnostic: known 2 km wave repeats and rotates by its declared direction', () => {
+    assert.deepEqual(CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTHS_KM, [1, 1.5, 2, 3, 4]);
+    assert.deepEqual(CLOUD_DETAIL_DIAGNOSTIC_DIRECTIONS_DEG, [0, 45, 90, 135]);
+    assert.equal(cloudDetailDiagnosticCoverage(0, 0, 2, 0), 1);
+    assert.ok(Math.abs(cloudDetailDiagnosticCoverage(0.5, 0, 2, 0) - 0.5) < 1e-12);
+    assert.equal(cloudDetailDiagnosticCoverage(1, 0, 2, 0), 0);
+    assert.equal(cloudDetailDiagnosticCoverage(2, 0, 2, 0), 1);
+    assert.equal(cloudDetailDiagnosticCoverage(0, 1, 2, 0), 1);
+    assert.equal(cloudDetailDiagnosticCoverage(0, 1, 2, 90), 0);
+    for (const direction of CLOUD_DETAIL_DIAGNOSTIC_DIRECTIONS_DEG) {
+      const original = cloudDetailDiagnosticCoverage(0.37, -0.18, 2, direction);
+      const inverted = cloudDetailDiagnosticCoverage(0.37, -0.18, 2, direction, 180);
+      assert.ok(Math.abs(original + inverted - 1) < 1e-12);
+    }
+    assert.throws(() => cloudDetailDiagnosticCoverage(0, 0, 0, 0), RangeError);
+  });
+
+  test('cloud detail diagnostic: RGBA8 tile stays within 4 MiB at its fixed 2 km resolution fixture', () => {
+    const tile = createCloudDetailDiagnosticTile();
+    const data = tile.texture.image.data;
+    assert.ok(data instanceof Uint8Array);
+    assert.equal(tile.texture.image.width, CLOUD_DETAIL_DIAGNOSTIC_SIZE);
+    assert.equal(tile.texture.image.height, CLOUD_DETAIL_DIAGNOSTIC_SIZE);
+    assert.equal(data.byteLength, 4 * 1024 * 1024);
+    assert.ok(tile.blendStartCos > tile.cap.placement.cosRadius);
+    tile.texture.dispose();
   });
 }

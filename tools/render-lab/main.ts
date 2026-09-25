@@ -20,7 +20,7 @@ import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
-import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
+import { MAX_CAMERA_DISTANCE_LOG, type LabShot } from './lab-case';
 import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
@@ -59,7 +59,10 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
-      shootNative: (name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>) => Promise<string>;
+      shootNative: (
+        name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
+        cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
+      ) => Promise<string>;
       capture: () => Promise<string>;
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
@@ -259,8 +262,8 @@ async function init(): Promise<void> {
     earthSurfaceCapture,
     cases: CASE_NAMES,
     shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
-    shootNative: async (name, shotName, graphics) => {
-      const png = await view.shootNative(name, shotName, graphics);
+    shootNative: async (name, shotName, graphics, cloudDetailDiagnostic) => {
+      const png = await view.shootNative(name, shotName, graphics, cloudDetailDiagnostic);
       syncAngles();
       return png;
     },

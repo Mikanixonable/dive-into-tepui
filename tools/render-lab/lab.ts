@@ -77,6 +77,8 @@ const READY_TIMEOUT_MS = 60_000;
 
 // 撮影 1 枚が、絵の落ち着きを待って撮る回数の上限。実測では全撮影が 3 回以内に一致したので、その倍を取る。
 const MAX_SETTLE_CAPTURES = 6;
+// captureTarget は毎回透明に消す。出力パスが上書きしなければ、readback にこの alpha が残る。
+const CAPTURE_CLEAR_COLOR = new THREE.Color(1, 0, 1);
 
 interface LabPixelRatioRenderer {
   readonly domElement: HTMLCanvasElement;
@@ -514,6 +516,11 @@ export class LabView {
   public applyShot(name: string, graphics: Partial<GraphicsSettingsData> = {}): void {
     const shot = this.shots[name];
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
+    const diagnostic = shot.cloudDetailDiagnostic;
+    this.earth.setCloudDetailDiagnostic(
+      diagnostic !== undefined, diagnostic?.wavelengthKm, diagnostic?.directionDeg,
+      diagnostic?.phaseDeg,
+    );
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
   }
@@ -550,6 +557,7 @@ export class LabView {
   // 指定 shot を品質設定の内部ラスタ寸法で撮る。通常の固定寸法 shot と計測の解像度を混同しない。
   public async shootNative(
     name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
+    cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
   ): Promise<string> {
     this.setGraphics({ ...this.startupGraphics, ...graphics });
     this.show(name);
@@ -557,6 +565,15 @@ export class LabView {
     await this.waitUntilReady();
     if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for native shooting`);
     this.applyShot(shotName, graphics);
+    this.setGraphics({ ...this.graphics.current, ...graphics });
+    if (cloudDetailDiagnostic !== undefined) {
+      this.earth.setCloudDetailDiagnostic(
+        cloudDetailDiagnostic !== null,
+        cloudDetailDiagnostic?.wavelengthKm,
+        cloudDetailDiagnostic?.directionDeg,
+        cloudDetailDiagnostic?.phaseDeg,
+      );
+    }
     const pixelRatio = this.renderer.getPixelRatio() * this.graphics.current.resolutionScale;
     const width = Math.round(VIEW_WIDTH * pixelRatio);
     const height = Math.round(VIEW_HEIGHT * pixelRatio);
@@ -579,6 +596,7 @@ export class LabView {
     // 完全に決定的。雲場は焼いたフレームの次から載り、パイプラインを組み直した直後のフレームは崩れる。
     let previous = await this.capture();
     for (let count = 2; count <= MAX_SETTLE_CAPTURES; count++) {
+      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
       const next = await this.capture();
       if (next === previous) return next;
       previous = next;
@@ -608,16 +626,33 @@ export class LabView {
 
   // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。
   public async capture(): Promise<string> {
-    this.renderer.setOutputRenderTarget(this.captureTarget);
+    // 前回の timestamp resolve を排出してから描く。render() の resolve がこのフレームを対象にできる。
+    await this.gpu.waitForResolve();
+    const previousOutput = this.renderer.getOutputRenderTarget();
+    const previousTarget = this.renderer.getRenderTarget();
+    const previousClearColor = this.renderer.getClearColor(new THREE.Color()).clone();
+    const previousClearAlpha = this.renderer.getClearAlpha();
     try {
+      // 同じ captureTarget を使い回しても、前 shot の画像を「新しい capture」として返さない。
+      this.renderer.setClearColor(CAPTURE_CLEAR_COLOR, 0);
+      this.renderer.setRenderTarget(this.captureTarget);
+      this.renderer.clear(true, true, true);
+      // sentinel は撮影先だけへ使う。scene/pipeline 内部の clear は元の色で行わせる。
+      this.renderer.setClearColor(previousClearColor, previousClearAlpha);
+      this.renderer.setRenderTarget(previousTarget);
+      this.renderer.setOutputRenderTarget(this.captureTarget);
       this.render();
+      // timestamp 解決後に readback する。readRenderTargetPixelsAsync は captureTarget の GPU 書き込みも待つ。
+      await this.gpu.waitForResolve();
     } finally {
-      // 戻し忘れると以後キャンバスに何も出なくなる(撮影だけは通るので気付きにくい)。
-      this.renderer.setOutputRenderTarget(null);
+      this.renderer.setRenderTarget(previousTarget);
+      this.renderer.setOutputRenderTarget(previousOutput);
+      this.renderer.setClearColor(previousClearColor, previousClearAlpha);
     }
     const { width, height } = this.captureTarget;
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, width, height);
     const rgba = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+    assertCaptureTargetWasRendered(rgba);
     const rowBytes = width * 4;
     if (rgba.byteLength === rowBytes * height) return pixelsToPngDataUrl(rgba, width, height);
     // WebGPU の readback は 256-byte 行境界を持ち、末尾の余白だけは含まない。
@@ -631,6 +666,14 @@ export class LabView {
     }
     return pixelsToPngDataUrl(packed, width, height);
   }
+}
+
+// 最終 composite は画面全体を不透明に書く。alpha が全て 0 なら透明 sentinel のままなので撮影を失敗させる。
+export function assertCaptureTargetWasRendered(pixels: Uint8Array): void {
+  for (let index = 3; index < pixels.length; index += 4) {
+    if (pixels[index] !== 0) return;
+  }
+  throw new Error('render-lab: capture target was not overwritten by the current frame');
 }
 
 // 物体 objects をすべて包む箱の中心(描画座標)。箱が空なら null。
