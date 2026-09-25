@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { dot, max, step, uniform, vec4 } from 'three/tsl';
 import { CloudDensityEvaluator } from '../cloud/cloud-density-evaluator';
+import { cloudQualityPolicy } from '../cloud/cloud-quality';
 import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
@@ -39,6 +40,7 @@ export class CloudAtmosphereRenderer {
   private readonly surfaceRadiusM: FloatUniform = uniform(1);
   private readonly density = new CloudDensityEvaluator(this.surfaceRadiusM);
   private readonly active: FloatUniform = uniform(0);
+  private readonly detailFootprintScale: FloatUniform = uniform(1);
   private readonly enabled: Readonly<Record<CloudSpecies, FloatUniform>> = {
     cirrus: uniform(1),
     cumulus: uniform(1),
@@ -57,6 +59,10 @@ export class CloudAtmosphereRenderer {
     this.enabled[species].value = enabled ? 1 : 0;
   }
 
+  public setQuality(level: number): void {
+    this.detailFootprintScale.value = cloudQualityPolicy(level).detailFootprintScale;
+  }
+
   public sampleAt(
     sphereDirection: Vec3Node,
     altitudeM: FloatNode,
@@ -66,7 +72,9 @@ export class CloudAtmosphereRenderer {
   ): CloudVolumeSample {
     const bodyDirection = this.bodyFromWorld.mul(vec4(sphereDirection, 0)).xyz;
     const field = this.fieldSampler.sampleCloud(bodyDirection);
-    const density = this.density.sample(field, bodyDirection, altitudeM, footprintM);
+    const density = this.density.sample(
+      field, bodyDirection, altitudeM, footprintM.mul(this.detailFootprintScale),
+    );
 
     const liquidKnob = CLOUD_PHASE_KNOBS.cumulus;
     const iceKnob = CLOUD_PHASE_KNOBS.cirrus;

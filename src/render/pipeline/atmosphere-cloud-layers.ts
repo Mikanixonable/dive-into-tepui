@@ -15,6 +15,10 @@ export class AtmosphereCloudLayers {
     this.clouds.setShellEnabled(species, enabled);
   }
 
+  public setQuality(level: number): void {
+    this.clouds.setQuality(level);
+  }
+
   public mediumAt(
     sphereDirection: Vec3Node,
     altitudeM: FloatNode,
