@@ -66,6 +66,10 @@ class MaterialLibrary:
         self.cbm_ring = create_pbr_material("mat_cbm_ring", (0.76, 0.79, 0.84, 1.0), roughness=0.28, metallic=1.0)
         # Dock construction highlight
         self.dock = create_pbr_material("mat_dock", (0.84, 0.55, 0.22, 1.0), roughness=0.38, metallic=1.0)
+        # High-efficiency photovoltaic solar cell array
+        self.solar = create_pbr_material("mat_solar", (0.06, 0.18, 0.45, 1.0), roughness=0.25, metallic=0.2)
+        # High-emissivity white thermal ceramic radiator paint
+        self.radiator = create_pbr_material("mat_radiator", (0.88, 0.90, 0.92, 1.0), roughness=0.85, metallic=0.0)
 
 def add_mesh_obj(name, bm, material=None):
     me = bpy.data.meshes.new(name)
@@ -712,33 +716,93 @@ def build_docking_mechanism(name, kind):
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
 # ----------------------------------------------------------------------
-# 8. Deployable Modules Support Base (solar-panel-standard, radiator-standard)
 # ----------------------------------------------------------------------
-def build_deployable_base(name, kind):
+# 8. Deployable Modules (solar-panel-standard, radiator-standard)
+# ----------------------------------------------------------------------
+def build_solar_panel():
     reset_scene()
     mats = MaterialLibrary()
-    radius = 0.5 # 1.0m diameter base
+    radius = 3.0  # 6.0m diameter base
     length = 1.0
     half_len = 0.5
-    
-    # 1. Solar Array Drive Mechanism (SADM) / Radiator Rotary Joint Housing
-    bm_core = make_cylinder(radius * 0.65, radius * 0.65, length, z_center=0.0, segments=24)
-    add_mesh_obj("drive_housing", bm_core, mats.hull_dark)
-    
-    # 2. Rotary Joint Bearings & Yoke Arms
-    bm_bearing = make_torus(major_r=radius * 0.70, minor_r=0.04, z_center=0.0, major_seg=24, minor_seg=8)
-    add_mesh_obj("rotary_bearing", bm_bearing, mats.pipe)
 
-    # Yoke support forks reaching to forward deployment hinge
-    for y_sign in [-1.0, 1.0]:
-        bm_fork = make_box(0.06, 0.08, 0.45, center=(0.0, y_sign * 0.28, 0.25))
-        add_mesh_obj(f"yoke_fork_{y_sign}", bm_fork, mats.hull)
+    # 1. Attachment Flange (thin structural plate at module interface)
+    bm_flange = make_cylinder(radius * 0.85, radius * 0.85, 0.12, z_center=half_len - 0.06, segments=36)
+    add_mesh_obj("deploy_flange", bm_flange, mats.hull_dark)
 
-    # Deployment Canister / Motor Actuator
-    bm_canister = make_cylinder(0.20, 0.20, 0.22, z_center=half_len - 0.10, segments=16)
-    add_mesh_obj("deploy_canister", bm_canister, mats.hull_dark)
+    # Flange perimeter bolt ring
+    bm_bolts = make_torus(major_r=radius * 0.82, minor_r=0.025, z_center=half_len - 0.02, major_seg=36, minor_seg=8)
+    add_mesh_obj("flange_bolts", bm_bolts, mats.clamp)
 
-    export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
+    # 2. Photovoltaic Panels (3 panels extending +Z perpendicular to connection plane)
+    solar_count = 3
+    panel_width = 1.2 * math.sqrt(10)  # ≈ 3.7947 m (length along Z)
+    panel_span = 1.0 * math.sqrt(10)   # ≈ 3.1623 m (span along X)
+    thickness = 0.06                   # thickness along Y
+
+    for index in range(solar_count):
+        z_origin = half_len + index * panel_width
+        z_center = z_origin + panel_width * 0.48
+
+        # Solar cell panel main body
+        bm_panel = make_box(panel_span * 0.96, thickness, panel_width * 0.96, center=(0.0, 0.0, z_center))
+        add_mesh_obj(f"panel:{index}", bm_panel, mats.solar)
+
+        # Backside carbon composite reinforcement ribs
+        bm_ribs = make_box(panel_span * 0.94, 0.015, panel_width * 0.94, center=(0.0, -thickness * 0.52, z_center))
+        add_mesh_obj(f"panel_ribs:{index}", bm_ribs, mats.hull_dark)
+
+        # Hinge knuckle / pivot barrel at segment junction (oriented along X)
+        bm_hinge = make_cylinder(0.035, 0.035, panel_span * 0.98, z_center=0.0, segments=12)
+        rot_mat = Matrix.Translation(Vector((0.0, 0.0, z_origin))) @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4()
+        transform_bm(bm_hinge, rot_mat)
+        add_mesh_obj(f"panel_hinge_hardware:{index}", bm_hinge, mats.clamp)
+
+    export_glb(os.path.join(OUT_DIR, "solar-panel-standard.glb"))
+    export_glb(os.path.join(OUT_DIR, "solar-panel-base.glb"))
+
+
+def build_radiator():
+    reset_scene()
+    mats = MaterialLibrary()
+    radius = 3.0  # 6.0m diameter base
+    length = 1.0
+    half_len = 0.5
+
+    # 1. Attachment Flange
+    bm_flange = make_cylinder(radius * 0.85, radius * 0.85, 0.12, z_center=half_len - 0.06, segments=36)
+    add_mesh_obj("deploy_flange", bm_flange, mats.hull_dark)
+
+    # Coolant manifold connection hub
+    bm_manifold = make_cylinder(0.16, 0.16, 0.16, z_center=half_len - 0.02, segments=16)
+    add_mesh_obj("coolant_manifold", bm_manifold, mats.pipe)
+
+    # 2. Accordion Radiator Panels (6 folds extending +Z)
+    fold_count = 6
+    segment_length = 0.8 * math.sqrt(10)  # ≈ 2.5298 m (length along Z)
+    panel_span = 1.0 * math.sqrt(10)      # ≈ 3.1623 m (radiation width along Y)
+    thickness = 0.08                      # thickness along X
+
+    for index in range(fold_count):
+        z_origin = half_len + index * segment_length
+        z_center = z_origin + segment_length * 0.48
+
+        # High-emissivity ceramic thermal panel body
+        bm_panel = make_box(thickness, panel_span * 0.96, segment_length * 0.96, center=(0.0, 0.0, z_center))
+        add_mesh_obj(f"panel:{index}", bm_panel, mats.radiator)
+
+        # Central heat pipe running down each fold
+        bm_pipe = make_cylinder(0.022, 0.022, segment_length * 0.96, z_center=z_center, segments=8)
+        add_mesh_obj(f"radiator_pipe:{index}", bm_pipe, mats.pipe)
+
+        # Hinge knuckle / fluid coupling joint at segment root (oriented along Y)
+        bm_hinge = make_cylinder(0.04, 0.04, panel_span * 0.98, z_center=0.0, segments=12)
+        rot_mat = Matrix.Translation(Vector((0.0, 0.0, z_origin))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4()
+        transform_bm(bm_hinge, rot_mat)
+        add_mesh_obj(f"radiator_hinge_hardware:{index}", bm_hinge, mats.clamp)
+
+    export_glb(os.path.join(OUT_DIR, "radiator-standard.glb"))
+    export_glb(os.path.join(OUT_DIR, "radiator-base.glb"))
 
 # ----------------------------------------------------------------------
 # 9. Armor Modules (armor-standard, armor-combat)
@@ -837,9 +901,9 @@ def main():
     build_docking_mechanism("dock-standard", "dock")
     build_docking_mechanism("decoupler-standard", "decoupler")
     
-    # 7. Deployable bases
-    build_deployable_base("solar-panel-base", "solar_panel")
-    build_deployable_base("radiator-base", "radiator")
+    # 7. Deployable modules
+    build_solar_panel()
+    build_radiator()
     
     # 8. Armor & Weapon
     build_armor("armor-standard")
