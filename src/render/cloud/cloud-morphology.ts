@@ -64,10 +64,12 @@ export function marineBoundaryLayerDiagnostics(input: MarineBoundaryLayerInput):
   const organization = clamp01(input.oceanFraction * moist * (0.3 + 0.7 * cooling)
     * (0.35 + 0.65 * inversion) * (0.4 + 0.6 * subsidence));
   // 湿潤・強い逆転・弱い対流では閉セル寄り、対流が強まるほど開セル寄りへ移る。
-  const closedCellFraction = clamp01(organization * (0.55 + 0.45 * quiet));
-  const openCellFraction = clamp01(organization * (0.25 + 0.75 * input.convectiveActivity));
-  const total = Math.max(openCellFraction + closedCellFraction, 1e-9);
-  const openShare = openCellFraction / total;
+  // open/closed は組織化した領域の内訳なので、両者の和を organization に揃える。
+  const closedWeight = 0.55 + 0.45 * quiet;
+  const openWeight = 0.25 + 0.75 * input.convectiveActivity;
+  const openShare = openWeight / Math.max(openWeight + closedWeight, 1e-9);
+  const openCellFraction = organization * openShare;
+  const closedCellFraction = organization * (1 - openShare);
   const holeFraction = clamp01(0.08 + organization * (0.12 + 0.52 * openShare));
   // セル径は緯度ではなく境界層の組織度から 20〜80 km の範囲で決める。
   const cellDiameterKm = 20 + 60 * organization * (0.65 + 0.35 * openShare);
