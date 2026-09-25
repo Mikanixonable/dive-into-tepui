@@ -1,4 +1,6 @@
 // 船体構成から役割・操作可否・装備能力・資源量を導出する。
+import { qRotate } from '../../math/quat';
+import { add, type Vec3 } from '../../math/vec3';
 import type { ShipAssembly, ShipAssemblyTotals, ShipRole } from './ship-assembly';
 import type { FuelKind, ShipModuleKind } from './ship-module-definition';
 import type { CockpitInstance, ShipModuleInstance } from './ship-module-instance';
@@ -53,6 +55,18 @@ export class ShipCapabilities {
         module.kind === kind && (!healthyOnly || module.hp > 0)
       ),
     );
+  }
+
+  // 健全な機関砲モジュールの砲身先端を、assembly 座標 [m] でモジュールの並び順に返す。
+  public muzzlePositions(): readonly Vec3[] {
+    const result: Vec3[] = [];
+    for (const weapon of this.modules('weapon', true)) {
+      const definition = this.assembly.definition(weapon.id);
+      const transform = this.assembly.worldTransformOf(weapon.id);
+      if (definition === null || transform === null) continue;
+      for (const muzzle of definition.muzzles) result.push(add(transform.position, qRotate(transform.rotation, muzzle)));
+    }
+    return result;
   }
 
   public has(kind: ShipModuleKind, healthyOnly = true): boolean {
