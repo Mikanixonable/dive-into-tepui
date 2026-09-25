@@ -336,6 +336,8 @@ export class RenderPipeline {
     this.antialiasPass.setMethod(graphics.antialias);
     this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
     this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
+    this.atmospherePass.setCloudQuality(graphics.cumulusDetail);
+    this._cumulusShadow.setQuality(graphics.cumulusDetail);
     // 天体照の写しは、その天体の描画設定で見えている雲と大気を写す。
     this._planetLight.setAtmosphereEnabled(graphics.atmosphere !== ATMOSPHERE_QUALITY.off);
     this._planetLight.setCumulusEnabled(graphics.cumulusDetail !== CUMULUS_DETAIL.off);

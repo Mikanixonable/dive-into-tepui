@@ -6,6 +6,7 @@ import {
   sqrt, uniform, vec4,
 } from 'three/tsl';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
+import { cloudQualityPolicy } from '../../cloud/cloud-quality';
 import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import {
@@ -42,6 +43,7 @@ export class CloudShadowRenderer {
   private readonly topAltitude: FloatUniform;
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
+  private readonly detailFootprintScale: FloatUniform;
   // 雲場の読み取りと3D密度式は共有入力層へ置く。ここは太陽光路の透過率だけを所有する。
   private readonly fieldSampler = new CloudFieldSampler();
   private readonly density: CloudDensityEvaluator;
@@ -55,6 +57,7 @@ export class CloudShadowRenderer {
     this.topAltitude = uniform(0);
     this.bodyFromWorld = uniform(new THREE.Matrix4());
     this.active = uniform(0);
+    this.detailFootprintScale = uniform(1);
     this.density = new CloudDensityEvaluator(this.surfaceRadius);
   }
 
@@ -72,6 +75,10 @@ export class CloudShadowRenderer {
 
   // このフレームに積雲の殻の影があるか。
   casts(): boolean { return this.active.value > 0; }
+
+  setQuality(level: number): void {
+    this.detailFootprintScale.value = cloudQualityPolicy(level).detailFootprintScale;
+  }
 
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
   // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
@@ -102,7 +109,8 @@ export class CloudShadowRenderer {
         const stepLength = clamp(exit, 0, MAX_LIGHT_PATH).div(SHADOW_TAPS);
         // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
         // 実寸と光路 1 歩の長さのうち粗いほうを取る。粒の振幅はこの幅が決める。
-        const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
+        const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR))
+          .mul(this.detailFootprintScale);
         const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius, sampleWidth);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();

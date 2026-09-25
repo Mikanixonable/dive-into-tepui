@@ -161,6 +161,10 @@ export class AtmosphereIntegrator {
     this.cloudLayers.setShellEnabled(species, enabled);
   }
 
+  public setCloudQuality(level: number): void {
+    this.cloudLayers.setQuality(level);
+  }
+
   // 描画対象とする天体 1 体分の光学パラメータと雲情報を設定する。cutoffRadius は大気の裾を
   // 打ち切る半径 [m]。
   public write(body: AtmosphereBody, steps: number, cutoffRadius: number): void {
