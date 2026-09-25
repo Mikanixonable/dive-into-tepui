@@ -1,5 +1,5 @@
-// Deterministic CPU diagnostics for the cloud-lab fixtures. These evaluate declared
-// controls and physical response checks; no result is applied to the generated image.
+// 雲ラボの制御入力に対し、決定論的な CPU 物理診断と判定値を返す。
+import * as THREE from 'three/webgpu';
 import {
   iceEffectiveRadiusM,
   iceOpticalDepth,
@@ -17,11 +17,32 @@ import {
   type ConvectiveCloudCell,
   type ConvectiveCloudEvent,
 } from '../../src/game/cloud/cloud-events';
-import { reconstructCloudEventMaterialTracks } from '../../src/game/cloud/cloud-event-transport';
+import {
+  reconstructCloudEventMaterialCohorts,
+  reconstructCloudEventMaterialTracks,
+} from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
-import { cross, dot, len, norm, v3 } from '../../src/math/vec3';
+import { cross, dot, norm, scale, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
-import type { MeteorologicalCaseId } from './meteorological-cases';
+import { metersPerPixelAtDepth } from '../../src/math/projection';
+import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
+import { OrthographicCap } from '../../src/render/field-projection';
+import { CLOUD_CAP_SIZE, capRadiusFor } from '../../src/render/cloud/cloud-cap';
+import { CLOUD_TOP_SPAN } from '../../src/render/cloud/cumulus-shape';
+import {
+  analyticC2ReleasedIceDirection,
+  C2_CONTINUOUS_ORACLE_INTERVALS,
+  evaluateC2ContinuousReleaseOracle,
+} from './c2-continuous-release-oracle';
+import { massWeightedSphericalRmsSpreadM, sphericalDistanceM as distanceErrorM }
+  from './spherical-measures';
+import {
+  METEOROLOGICAL_ERROR_FLOORS,
+  type MeteorologicalCaseId,
+} from './meteorological-cases';
+import { earthCenterOf } from '../render-lab/lab-earth';
+import { EARTH_CASES } from '../render-lab/earth-cases';
+import { FOV_DEG, VIEW_HEIGHT } from '../render-lab/lab-case';
 
 const EARTH_RADIUS_M = 6_371_000;
 const DRY_AIR_GAS_CONSTANT_J_PER_KG_K = 287.05;
@@ -30,6 +51,10 @@ const ICE_NUMBER_CONCENTRATION_PER_M3 = 1e5;
 const ICE_EXTINCTION_EFFICIENCY = 2;
 const SAMPLE_DURATION_SECONDS = 3_600;
 const SAMPLE_MAX_STEP_SECONDS = 30;
+const C1_EXPECTED_INTEGRATED_MASS_KG = 0.009;
+const C1_TWO_KM_FEATURE_WAVELENGTH_M = 2_000;
+const C1_MINIMUM_SAMPLES_PER_FEATURE = 4;
+const C2_PLAN_MAXIMUM_SPATIAL_SAMPLE_SPACING_M = 500;
 
 export type FixtureComparison = 'absolute-error' | 'greater-than' | 'less-than' | 'non-negative';
 
@@ -50,6 +75,100 @@ export interface MeteorologicalCaseEvaluation {
   readonly generatedCloudImageFixtureApplied: false;
   readonly controls: Readonly<Record<string, number | string | boolean>>;
   readonly measurements: readonly FixtureMeasurementResult[];
+}
+
+export interface AreaWeightedMassSample {
+  readonly areaWeightM2: number;
+  readonly massKgM2: number;
+}
+
+export interface AreaWeightedMassBudgetSample {
+  readonly areaWeightM2: number;
+  readonly initialKgM2: number;
+  readonly sourceKgM2: number;
+  readonly lossKgM2: number;
+  readonly currentKgM2: number;
+}
+
+export interface AreaWeightedMassBudget {
+  readonly initialKg: number;
+  readonly sourceKg: number;
+  readonly lossKg: number;
+  readonly currentKg: number;
+  readonly residualKg: number;
+  readonly relativeResidual: number;
+}
+
+// 面積重み付き質量を検査し、有限な総質量だけを返す。
+export function areaWeightedMassKg(samples: readonly AreaWeightedMassSample[]): number {
+  for (const sample of samples) {
+    if (!Number.isFinite(sample.areaWeightM2) || sample.areaWeightM2 < 0) {
+      throw new RangeError('areaWeightM2 must be finite and non-negative');
+    }
+    if (!Number.isFinite(sample.massKgM2) || sample.massKgM2 < 0) {
+      throw new RangeError('massKgM2 must be finite and non-negative');
+    }
+  }
+  const totalMassKg = samples.reduce((total, sample) => {
+    const weightedMassKg = sample.areaWeightM2 * sample.massKgM2;
+    const nextTotalMassKg = total + weightedMassKg;
+    if (!Number.isFinite(weightedMassKg) || !Number.isFinite(nextTotalMassKg)) {
+      throw new RangeError('area-weighted mass total must be finite');
+    }
+    return nextTotalMassKg;
+  }, 0);
+  return totalMassKg;
+}
+
+// 各列の水収支を面積積分してから総量を比較する。
+export function areaWeightedMassBudget(
+  samples: readonly AreaWeightedMassBudgetSample[],
+): AreaWeightedMassBudget {
+  const totals = { initialKg: 0, sourceKg: 0, lossKg: 0, currentKg: 0 };
+  for (const sample of samples) {
+    if (!Number.isFinite(sample.areaWeightM2) || sample.areaWeightM2 < 0) {
+      throw new RangeError('areaWeightM2 must be finite and non-negative');
+    }
+    totals.initialKg = addWeightedMassKg(
+      totals.initialKg, sample.areaWeightM2, sample.initialKgM2, 'initialKgM2',
+    );
+    totals.sourceKg = addWeightedMassKg(
+      totals.sourceKg, sample.areaWeightM2, sample.sourceKgM2, 'sourceKgM2',
+    );
+    totals.lossKg = addWeightedMassKg(
+      totals.lossKg, sample.areaWeightM2, sample.lossKgM2, 'lossKgM2',
+    );
+    totals.currentKg = addWeightedMassKg(
+      totals.currentKg, sample.areaWeightM2, sample.currentKgM2, 'currentKgM2',
+    );
+  }
+  const residualKg = totals.initialKg + totals.sourceKg - totals.lossKg - totals.currentKg;
+  if (!Number.isFinite(residualKg)) throw new RangeError('mass budget residual must be finite');
+  const referenceMassKg = totals.initialKg + totals.sourceKg;
+  return {
+    ...totals,
+    residualKg,
+    relativeResidual: referenceMassKg === 0
+      ? (residualKg === 0 ? 0 : Number.POSITIVE_INFINITY)
+      : Math.abs(residualKg) / referenceMassKg,
+  };
+}
+
+function addWeightedMassKg(
+  currentTotalKg: number,
+  areaWeightM2: number,
+  massKgM2: number,
+  massName: string,
+): number {
+  if (!Number.isFinite(massKgM2) || massKgM2 < 0) {
+    throw new RangeError(`${massName} must be finite and non-negative`);
+  }
+  const weightedMassKg = areaWeightM2 * massKgM2;
+  const nextTotalKg = currentTotalKg + weightedMassKg;
+  if (!Number.isFinite(weightedMassKg) || !Number.isFinite(nextTotalKg)) {
+    throw new RangeError('area-weighted mass budget must be finite');
+  }
+  return nextTotalKg;
 }
 
 interface EnvironmentControls {
@@ -181,10 +300,31 @@ function blocked(measurementId: string, unit: string, detail: string): FixtureMe
   };
 }
 
-function distanceErrorM(actual: Vec3, expected: Vec3, radiusM: number): number {
-  const sine = len(cross(actual, expected));
-  const cosine = Math.max(-1, Math.min(1, dot(actual, expected)));
-  return Math.atan2(sine, cosine) * radiusM;
+function rotateAroundAxis(direction: Vec3, axis: Vec3, angleRad: number): Vec3 {
+  const cosine = Math.cos(angleRad);
+  const sine = Math.sin(angleRad);
+  const axialComponent = dot(axis, direction);
+  const perpendicularRotation = cross(axis, direction);
+  return norm(v3(
+    direction.x * cosine + perpendicularRotation.x * sine + axis.x * axialComponent * (1 - cosine),
+    direction.y * cosine + perpendicularRotation.y * sine + axis.y * axialComponent * (1 - cosine),
+    direction.z * cosine + perpendicularRotation.z * sine + axis.z * axialComponent * (1 - cosine),
+  ));
+}
+
+function axisRotationPhaseRad(start: Vec3, end: Vec3, axis: Vec3): number {
+  const startPerpendicular = v3(
+    start.x - axis.x * dot(start, axis),
+    start.y - axis.y * dot(start, axis),
+    start.z - axis.z * dot(start, axis),
+  );
+  const endPerpendicular = v3(
+    end.x - axis.x * dot(end, axis),
+    end.y - axis.y * dot(end, axis),
+    end.z - axis.z * dot(end, axis),
+  );
+  return Math.atan2(dot(axis, cross(startPerpendicular, endPerpendicular)),
+    dot(startPerpendicular, endPerpendicular));
 }
 
 function localWindAt(levels: readonly CloudEnvironmentLevelInput[]) {
@@ -247,26 +387,216 @@ function maximumPositiveBuoyancyHeightM(input: CloudEnvironmentInput): number {
   return maximumHeightM;
 }
 
+// 名前付き近距離 shot のカメラ・cap から、生成場と内部ラスタの標本間隔を導く。
+function nearRangeCloudSampling(shotName: string): {
+  spacingM: number; cameraDistanceM: number; internalRasterScale: number;
+} {
+  const earthCase = EARTH_CASES.earth();
+  const shot = earthCase.shots?.[shotName];
+  if (earthCase.earth === undefined || earthCase.viewTarget === undefined
+    || shot?.view.cameraDistanceLog === undefined
+    || shot.graphics?.resolutionScale === undefined) {
+    throw new Error(`near-range cloud shot ${shotName} must define Earth placement and camera distance`);
+  }
+  const cameraForward = earthCase.camera.getWorldDirection(new THREE.Vector3());
+  const pivotDepth = cameraForward.dot(
+    new THREE.Vector3().subVectors(earthCase.viewTarget, earthCase.camera.position),
+  );
+  const pivot = earthCase.camera.position.clone().addScaledVector(cameraForward, pivotDepth);
+  const nearDistance = cameraForward.dot(
+    new THREE.Vector3().subVectors(pivot, earthCase.camera.position),
+  ) * 10 ** shot.view.cameraDistanceLog;
+  const nearPlacement = { ...earthCase.earth, ...shot.view };
+  const surfacePoint = earthCenterOf(nearPlacement).add(new THREE.Vector3(0, 0, R_EARTH_EQ));
+  // 地表を注視する shot の契約が崩れた場合、投影尺度は意味を失う。
+  if (surfacePoint.distanceTo(pivot) > 1e-6) {
+    throw new Error('standard near-range cloud shot pivot must lie on the equatorial surface');
+  }
+
+  const rho = (R_EARTH_EQ + nearDistance) / R_EARTH_EQ;
+  const capRadius = capRadiusFor(rho, CLOUD_TOP_SPAN / R_EARTH_EQ);
+  const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, capRadius);
+  return {
+    spacingM: cap.texelAngleValue * R_EARTH_EQ,
+    cameraDistanceM: nearDistance,
+    internalRasterScale: shot.graphics.resolutionScale,
+  };
+}
+
+export interface C1NearRangeRasterDiagnostic {
+  readonly diagnosticOnly: true;
+  readonly shot: 'cloud-c1-raster-200km-medium-diagnostic';
+  readonly cameraDistanceM: number;
+  readonly internalRasterSamplesPerTwoKm: number;
+  readonly requiredSamplesPerTwoKm: number;
+  readonly status: 'candidate-sufficient' | 'insufficient';
+}
+
+// 将来の C1 条件選択に使う medium raster の診断値。C1 の正式判定へは適用しない。
+export function evaluateC1NearRangeRasterDiagnostic(): C1NearRangeRasterDiagnostic {
+  const shot = 'cloud-c1-raster-200km-medium-diagnostic';
+  const sampling = nearRangeCloudSampling(shot);
+  const screenSamples = C1_TWO_KM_FEATURE_WAVELENGTH_M
+    / metersPerPixelAtDepth(FOV_DEG, sampling.cameraDistanceM, VIEW_HEIGHT);
+  const internalRasterSamplesPerTwoKm = screenSamples * sampling.internalRasterScale;
+  return {
+    diagnosticOnly: true,
+    shot,
+    cameraDistanceM: sampling.cameraDistanceM,
+    internalRasterSamplesPerTwoKm,
+    requiredSamplesPerTwoKm: C1_MINIMUM_SAMPLES_PER_FEATURE,
+    status: internalRasterSamplesPerTwoKm < C1_MINIMUM_SAMPLES_PER_FEATURE
+      ? 'insufficient' : 'candidate-sufficient',
+  };
+}
+
 function residualIceAtHumidity(upperRelativeHumidity: number, timeSeconds: number): number {
   return onlyEvent(eventDomain(timeSeconds, [cell(upperRelativeHumidity)])).iceRelease.remainingKgM2;
 }
 
+// 剛体回転する有限雲塊の質量・軌跡を独立式と比べ、描画標本の成立性を添える。
 function evaluateC1(): MeteorologicalCaseEvaluation {
-  const speedMps = 10;
   const heightM = 1_000;
   const radiusM = EARTH_RADIUS_M + heightM;
-  const displacement = transportDisplacementM(environmentInput({ eastWindMps: speedMps }).levels, heightM);
-  const angleRad = speedMps * SAMPLE_DURATION_SECONDS / radiusM;
-  const expected = v3(Math.sin(angleRad), 0, Math.cos(angleRad));
+  const durationSeconds = SAMPLE_DURATION_SECONDS;
+  const rotationAngleRad = 1e-3;
+  const angularVelocityRadPerSecond = rotationAngleRad / durationSeconds;
+  const rotationAxisUnitVector = norm(v3(1, 2, -1));
+  const maximumTransportStepSeconds = 5;
+  const initialLiquidMassKgM2 = 0.00025;
+  const initialIceMassKgM2 = 0.00075;
+  const fieldSampling = nearRangeCloudSampling('cloud-standard-near-range-250km');
+  const twoKmResponseMaximumSpacingM = C1_TWO_KM_FEATURE_WAVELENGTH_M / C1_MINIMUM_SAMPLES_PER_FEATURE;
+  const twoKmFeatureScreenSamples = C1_TWO_KM_FEATURE_WAVELENGTH_M
+    / metersPerPixelAtDepth(FOV_DEG, fieldSampling.cameraDistanceM, VIEW_HEIGHT);
+  const twoKmFeatureInternalRasterSamples = twoKmFeatureScreenSamples * fieldSampling.internalRasterScale;
+  const twoKmResponseBlocked = fieldSampling.spacingM > twoKmResponseMaximumSpacingM;
+  // 面積の違う材料点を同じ角速度で運び、軌跡と積分質量を別々に測る。
+  const blobPoints = [
+    { direction: norm(v3(-0.018, -0.009, 1)), areaWeightM2: 1, initialMassKgM2: 0.0006 },
+    { direction: norm(v3(-0.009, 0.014, 1)), areaWeightM2: 2, initialMassKgM2: 0.0008 },
+    { direction: norm(v3(0.002, -0.016, 1)), areaWeightM2: 3, initialMassKgM2: 0.001 },
+    { direction: norm(v3(0.012, 0.011, 1)), areaWeightM2: 2, initialMassKgM2: 0.0012 },
+    { direction: norm(v3(0.021, -0.004, 1)), areaWeightM2: 1, initialMassKgM2: 0.0014 },
+  ];
+  const transportedMassSamples: AreaWeightedMassSample[] = [];
+  const transportedBudgetSamples: AreaWeightedMassBudgetSample[] = [];
+  let maximumTrajectoryErrorM = 0;
+  let maximumRotationAngleErrorRad = 0;
+  const windAt = (directionUnitVector: Vec3, geometricHeightM: number) => ({
+    tangentVelocityMPerS: scale(
+      cross(rotationAxisUnitVector, directionUnitVector),
+      angularVelocityRadPerSecond * (EARTH_RADIUS_M + geometricHeightM),
+    ),
+    verticalVelocityMPerS: 0,
+  });
+
+  for (const [index, point] of blobPoints.entries()) {
+    const eventId = `c1-rigid-blob-${index}`;
+    const event: ConvectiveCloudEvent = {
+      id: eventId,
+      cellId: eventId,
+      birthEpoch: 0,
+      birthTimeSeconds: 0,
+      ageSeconds: durationSeconds,
+      sourcePosition: { directionUnitVector: point.direction, geometricHeightM: heightM },
+      supplyActive: false,
+      mass: {
+        initialKgM2: point.initialMassKgM2,
+        suppliedKgM2: 0,
+        lostKgM2: 0,
+        liquidKgM2: point.initialMassKgM2 * initialLiquidMassKgM2
+          / (initialLiquidMassKgM2 + initialIceMassKgM2),
+        iceKgM2: point.initialMassKgM2 * initialIceMassKgM2
+          / (initialLiquidMassKgM2 + initialIceMassKgM2),
+      },
+      iceRelease: {
+        id: `${eventId}:ice`,
+        parentEventId: eventId,
+        releasedKgM2: point.initialMassKgM2 * initialIceMassKgM2
+          / (initialLiquidMassKgM2 + initialIceMassKgM2),
+        remainingKgM2: point.initialMassKgM2 * initialIceMassKgM2
+          / (initialLiquidMassKgM2 + initialIceMassKgM2),
+        meanReleaseTimeSeconds: durationSeconds / 2,
+        releaseRateKgM2S: point.initialMassKgM2 * initialIceMassKgM2
+          / ((initialLiquidMassKgM2 + initialIceMassKgM2) * durationSeconds),
+        releaseStartTimeSeconds: 0,
+        releaseEndTimeSeconds: durationSeconds,
+        sublimationRatePerSecond: 0,
+        releaseHeightM: heightM,
+      },
+    };
+    const material = reconstructCloudEventMaterialCohorts(
+      event,
+      EARTH_RADIUS_M,
+      maximumTransportStepSeconds,
+      windAt,
+      1,
+    );
+    transportedMassSamples.push({
+      areaWeightM2: point.areaWeightM2,
+      massKgM2: material.totalMassKgM2,
+    });
+    transportedBudgetSamples.push({
+      areaWeightM2: point.areaWeightM2,
+      initialKgM2: point.initialMassKgM2,
+      sourceKgM2: 0,
+      lossKgM2: 0,
+      currentKgM2: material.totalMassKgM2,
+    });
+
+    const expectedDirection = rotateAroundAxis(point.direction, rotationAxisUnitVector, rotationAngleRad);
+    if (material.parent === null) throw new Error('C1 blob point must retain its liquid parent');
+    maximumTrajectoryErrorM = Math.max(maximumTrajectoryErrorM,
+      distanceErrorM(material.parent.directionUnitVector, expectedDirection, radiusM));
+    maximumRotationAngleErrorRad = Math.max(maximumRotationAngleErrorRad,
+      Math.abs(axisRotationPhaseRad(point.direction, material.parent.directionUnitVector,
+        rotationAxisUnitVector) - rotationAngleRad));
+    for (const cohort of material.releasedIceCohorts) {
+      maximumTrajectoryErrorM = Math.max(maximumTrajectoryErrorM,
+        distanceErrorM(cohort.directionUnitVector, expectedDirection, radiusM));
+    }
+  }
+  const transportedIntegratedMassKg = areaWeightedMassKg(transportedMassSamples);
+  const finiteAreaBudget = areaWeightedMassBudget(transportedBudgetSamples);
+  const relativeMassError = finiteAreaBudget.relativeResidual;
   return {
     fixture: 'C1',
     cpuDiagnosticsApplied: true,
     generatedCloudImageFixtureApplied: false,
-    controls: { equatorialEastWindMps: speedMps, durationSeconds: SAMPLE_DURATION_SECONDS, sphereRadiusM: EARTH_RADIUS_M },
+    controls: {
+      rotationAxisUnitVector: `${rotationAxisUnitVector.x.toFixed(6)},${rotationAxisUnitVector.y.toFixed(6)},${rotationAxisUnitVector.z.toFixed(6)}`,
+      rotationAngleRad,
+      durationSeconds,
+      sphereRadiusM: EARTH_RADIUS_M,
+      initialLiquidMassKgM2,
+      initialIceMassKgM2,
+      areaWeightedBlobMassKg: C1_EXPECTED_INTEGRATED_MASS_KG,
+      transportedAreaWeightedMassKg: transportedIntegratedMassKg,
+      initialFiniteAreaMassKg: finiteAreaBudget.initialKg,
+      sourceFiniteAreaMassKg: finiteAreaBudget.sourceKg,
+      lossFiniteAreaMassKg: finiteAreaBudget.lossKg,
+      currentFiniteAreaMassKg: finiteAreaBudget.currentKg,
+      finiteAreaBudgetResidualKg: finiteAreaBudget.residualKg,
+      maximumAnalyticTrajectoryErrorM: maximumTrajectoryErrorM,
+      standardNearRangeCloudFieldCenterSpacingM: fieldSampling.spacingM,
+      twoKmFeatureMaximumFieldSpacingM: twoKmResponseMaximumSpacingM,
+      twoKmFeatureSamplesPerFieldWavelength: C1_TWO_KM_FEATURE_WAVELENGTH_M / fieldSampling.spacingM,
+      twoKmFeatureScreenSamples,
+      twoKmFeatureInternalRasterSamples,
+      twoKmInternalRasterResponseStatus: twoKmFeatureInternalRasterSamples < C1_MINIMUM_SAMPLES_PER_FEATURE
+        ? 'blocked' : 'raster-resolution-sufficient',
+      twoKmCloudFieldResponseStatus: twoKmResponseBlocked ? 'blocked' : 'field-resolution-sufficient',
+      materialPointCount: blobPoints.length,
+      maximumTransportStepSeconds,
+    },
     measurements: [
-      compare('trajectory', distanceErrorM(displacement, expected, radiusM), 'm', 0, 0.01,
-        'absolute-error', 'Great-circle displacement is compared with the analytic equatorial solution.'),
-      blocked('mass', '1', 'The parcel transport API returns position only and has no carried-mass state.'),
+      blocked('trajectory', 'm',
+        `The standard near-range field spacing is ${fieldSampling.spacingM.toFixed(1)} m; the 2 km response requires at most ${twoKmResponseMaximumSpacingM.toFixed(1)} m for four field samples per wavelength, so trajectory/2 km qualification remains blocked.`),
+      compare('rotation-angle', maximumRotationAngleErrorRad, 'rad', 0, 1e-9, 'absolute-error',
+        'The transported material point phase about the prescribed rotation axis is compared with angular velocity times elapsed time.'),
+      compare('mass', relativeMassError, '1', 0, METEOROLOGICAL_ERROR_FLOORS.relativeMass, 'absolute-error',
+        'Heterogeneous material columns are area-integrated after advection and compared with an independently fixed quadrature total.'),
     ],
   };
 }
@@ -300,13 +630,71 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
   if (releaseTimeSeconds === null || releasedIce === null) {
     throw new Error('C2 controlled event must contain released ice and its representative release time');
   }
-  const preReleaseAngle = lowerWindMps * releaseTimeSeconds / lowerRadiusM;
-  const postReleaseAngle = upperWindMps * (SAMPLE_DURATION_SECONDS - releaseTimeSeconds) / upperRadiusM;
-  const expectedReleasedIce = v3(
-    Math.sin(preReleaseAngle) * Math.cos(postReleaseAngle),
-    Math.sin(postReleaseAngle),
-    Math.cos(preReleaseAngle) * Math.cos(postReleaseAngle),
+  const cohortCount = 16;
+  const releasedIceCohorts = reconstructCloudEventMaterialCohorts(
+    event,
+    EARTH_RADIUS_M,
+    SAMPLE_MAX_STEP_SECONDS,
+    localWindAt(env.levels),
+    cohortCount,
+  ).releasedIceCohorts;
+  if (releasedIceCohorts.length !== cohortCount) {
+    throw new Error(`C2 controlled event must retain all ${cohortCount} released-ice cohorts`);
+  }
+  const expectedReleasedIce = analyticC2ReleasedIceDirection(
+    releaseTimeSeconds,
+    SAMPLE_DURATION_SECONDS,
+    EARTH_RADIUS_M,
+    lowerHeightM,
+    upperHeightM,
+    lowerWindMps,
+    upperWindMps,
   );
+  const expectedCohorts = releasedIceCohorts.map((cohort) => ({
+    directionUnitVector: analyticC2ReleasedIceDirection(
+      cohort.meanReleaseTimeSeconds,
+      SAMPLE_DURATION_SECONDS,
+      EARTH_RADIUS_M,
+      lowerHeightM,
+      upperHeightM,
+      lowerWindMps,
+      upperWindMps,
+    ),
+    massKgM2: cohort.massKgM2,
+  }));
+  const maximumCohortTrajectoryErrorM = Math.max(...releasedIceCohorts.map((cohort, index) =>
+    distanceErrorM(cohort.directionUnitVector, expectedCohorts[index]!.directionUnitVector,
+      upperRadiusM)));
+  const cohortMassKgM2 = releasedIceCohorts.reduce((total, cohort) => total + cohort.massKgM2, 0);
+  const cohortMassErrorKgM2 = Math.abs(cohortMassKgM2 - event.iceRelease.remainingKgM2);
+  const actualCohortSpreadM = massWeightedSphericalRmsSpreadM(releasedIceCohorts, upperRadiusM);
+  const expectedCohortSpreadM = massWeightedSphericalRmsSpreadM(expectedCohorts, upperRadiusM);
+  const cohortSpreadErrorM = Math.abs(actualCohortSpreadM - expectedCohortSpreadM);
+  const releaseStartTimeSeconds = event.iceRelease.releaseStartTimeSeconds;
+  const releaseEndTimeSeconds = event.iceRelease.releaseEndTimeSeconds;
+  if (releaseStartTimeSeconds === null || releaseEndTimeSeconds === null) {
+    throw new Error('C2 controlled event must have a continuous ice release interval');
+  }
+  const convergenceCounts = [4, 16, 64, 256] as const;
+  const cohortsByCount = convergenceCounts.map((count) => ({
+    count,
+    cohorts: reconstructCloudEventMaterialCohorts(
+      event, EARTH_RADIUS_M, SAMPLE_MAX_STEP_SECONDS, localWindAt(env.levels), count,
+    ).releasedIceCohorts,
+  }));
+  const continuousOracle = evaluateC2ContinuousReleaseOracle({
+    releaseStartTimeSeconds,
+    releaseEndTimeSeconds,
+    sampleTimeSeconds: SAMPLE_DURATION_SECONDS,
+    sphereRadiusM: EARTH_RADIUS_M,
+    lowerHeightM,
+    upperHeightM,
+    lowerEastWindMps: lowerWindMps,
+    upperNorthWindMps: upperWindMps,
+    releaseRateKgM2S: event.iceRelease.releaseRateKgM2S,
+    sublimationRatePerSecond: event.iceRelease.sublimationRatePerSecond,
+    cohortsByCount,
+  });
   return {
     fixture: 'C2',
     cpuDiagnosticsApplied: true,
@@ -316,6 +704,20 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
       upperNorthWindMps: upperWindMps,
       durationSeconds: SAMPLE_DURATION_SECONDS,
       representativeReleaseTimeSeconds: releaseTimeSeconds,
+      iceCohortCount: releasedIceCohorts.length,
+      eventRemainingIceKgM2: event.iceRelease.remainingKgM2,
+      reconstructedIceCohortMassKgM2: cohortMassKgM2,
+      actualIceCohortSpreadM: actualCohortSpreadM,
+      analyticIceCohortSpreadM: expectedCohortSpreadM,
+      continuousReleaseOracleIntervals: C2_CONTINUOUS_ORACLE_INTERVALS,
+      continuousReleaseQuadratureErrorM: continuousOracle.quadratureRefinementDeltaM,
+      continuousReleasePlanMaximumSpatialSpacingM: C2_PLAN_MAXIMUM_SPATIAL_SAMPLE_SPACING_M,
+      continuousReleaseAbsoluteSpatialTolerance: 'blocked: plan specifies a maximum spacing, not a minimum or acceptance tolerance',
+      continuousReleaseCentroidQuadratureBoundM: continuousOracle.centroidQuadratureErrorBoundM,
+      continuousReleaseCohortCounts: convergenceCounts.join(','),
+      continuousReleaseConvergenceErrorsM: continuousOracle.convergenceErrorsM.join(','),
+      continuousReleaseOracleSpreadM: continuousOracle.spreadM,
+      continuousReleaseOracleMassKgM2: continuousOracle.massKgM2,
     },
     measurements: [
       compare('layer-displacement', errorM, 'm', 0, 0.05, 'absolute-error',
@@ -324,6 +726,17 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
         releasedIce.directionUnitVector, expectedReleasedIce, upperRadiusM,
       ), 'm', 0, 0.05, 'absolute-error',
       'Representative surviving ice cohort follows parent displacement before release and upper wind afterward.'),
+      compare('released-ice-cohorts', maximumCohortTrajectoryErrorM, 'm', 0, 0.05,
+        'absolute-error',
+        'Every surviving ice cohort follows the analytic lower-east path until its own release time, then the upper-north path.'),
+      compare('released-ice-mass', cohortMassErrorKgM2, 'kg m^-2', 0, 1e-12,
+        'absolute-error',
+        'The sum of all reconstructed cohort masses matches the event remaining-ice ledger.'),
+      compare('released-ice-spread', cohortSpreadErrorM, 'm', 0, 0.05,
+        'absolute-error',
+        'Mass-weighted spherical RMS spread is compared with the spread of independently evaluated analytic cohort endpoints.'),
+      blocked('continuous-release-distribution', 'm',
+        'The fixed 32768-interval midpoint oracle reports raw cohort centroid/spread errors in controls, and its midpoint centroid quadrature has a second-derivative error bound. Absolute plan qualification is blocked: §2.7 specifies at most 0.5 km between spatial samples, not a minimum spacing or a permitted transport error.'),
     ],
   };
 }

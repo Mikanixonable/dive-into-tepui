@@ -1,8 +1,11 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { cross, dot, len, norm, projectOntoPlane, rotateAxis, scale, v3 } from '../../src/math/vec3';
+import { add, cross, dot, len, norm, projectOntoPlane, rotateAxis, scale, v3 } from '../../src/math/vec3';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
 import type { CloudParcelWindAt } from '../../src/render/cloud/weather-transport';
+import { reconstructCloudEventMaterialCohorts } from '../../src/game/cloud/cloud-event-transport';
+import type { CloudEventWindAt } from '../../src/game/cloud/cloud-event-transport';
+import { sampleConvectiveCloudEvents } from '../../src/game/cloud/cloud-events';
 
 const SPHERE_RADIUS_M = 6_371_000;
 const START_DIRECTION = norm(v3(0.7, -0.2, 0.6855654600401044));
@@ -156,5 +159,70 @@ export function register(): void {
       v3(1, 0, 0), 0, SPHERE_RADIUS_M, 0, 1, 1,
       () => ({ tangentVelocityMPerS: v3(1, 0, 0), verticalVelocityMPerS: 0 }),
     ), RangeError);
+  });
+
+  test('cloud event transport: sampled ledger mass is conserved across analytic two-layer tracks', () => {
+    const event = sampleConvectiveCloudEvents({
+      seed: 17,
+      birthIntervalSeconds: 86_400,
+      historyHorizonSeconds: 10_000,
+      maximumOmittedMassKgM2: 1,
+      maxEventCount: 8,
+      timeSeconds: 7_200,
+      cells: [{
+        id: 'mass-conservation-cell',
+        supplySourceId: 'mass-conservation-source',
+        convectivePotential: 1,
+        upperRelativeHumidity: 0.8,
+        liquidSupplyRateKgM2S: 1e-5,
+        convectiveDurationSeconds: 3_600,
+        sourcePosition: { directionUnitVector: v3(1, 0, 0), geometricHeightM: 1_000 },
+        iceReleaseHeightM: 6_000,
+      }],
+    }).events[0];
+    assert.ok(event, 'the deterministic event must be sampled');
+    const lowerAngularVelocityRadPerS = 1e-5;
+    const upperAngularVelocityRadPerS = 1.5e-5;
+    const windAt: CloudEventWindAt = (direction, height) => ({
+      tangentVelocityMPerS: add(cross(
+        v3(0, 0, height < 5_000 ? lowerAngularVelocityRadPerS : 0),
+        scale(direction, SPHERE_RADIUS_M + height),
+      ), cross(
+        v3(0, height < 5_000 ? 0 : upperAngularVelocityRadPerS, 0),
+        scale(direction, SPHERE_RADIUS_M + height),
+      )),
+      verticalVelocityMPerS: 0,
+    });
+
+    const material = reconstructCloudEventMaterialCohorts(event, SPHERE_RADIUS_M, 10, windAt, 16);
+    const reconstructedIceMassKgM2 = material.releasedIceCohorts.reduce(
+      (total, cohort) => total + cohort.massKgM2,
+      0,
+    );
+    const expectedTotalMassKgM2 = event.mass.liquidKgM2 + event.iceRelease.remainingKgM2;
+    assert.ok(event.mass.liquidKgM2 > 0);
+    assert.ok(event.iceRelease.remainingKgM2 > 0);
+    assert.ok(Math.abs(reconstructedIceMassKgM2 - event.iceRelease.remainingKgM2) < 1e-12);
+    assert.ok(Math.abs(material.totalMassKgM2 - expectedTotalMassKgM2) < 1e-12);
+    assert.ok(material.parent);
+    const expectedParent = rotateAxis(
+      v3(1, 0, 0), v3(0, 0, 1), lowerAngularVelocityRadPerS * 7_200,
+    );
+    assert.ok(angularDistanceM(material.parent.directionUnitVector, expectedParent, SPHERE_RADIUS_M) < 1);
+
+    for (const cohort of material.releasedIceCohorts) {
+      const lowerTrack = rotateAxis(
+        v3(1, 0, 0), v3(0, 0, 1), lowerAngularVelocityRadPerS * cohort.meanReleaseTimeSeconds,
+      );
+      const expectedCohort = rotateAxis(
+        lowerTrack,
+        v3(0, 1, 0),
+        upperAngularVelocityRadPerS * (7_200 - cohort.meanReleaseTimeSeconds),
+      );
+      assert.ok(
+        angularDistanceM(cohort.directionUnitVector, expectedCohort, SPHERE_RADIUS_M) < 1,
+        `cohort ${cohort.cohortIndex} must switch to upper flow at its mass-weighted release time`,
+      );
+    }
   });
 }
