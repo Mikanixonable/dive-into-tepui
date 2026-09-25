@@ -2,7 +2,7 @@
 import type { Attitude } from '../../physics/attitude';
 import { qRotate } from '../../math/quat';
 import { add, cross, dot, v3, type Vec3 } from '../../math/vec3';
-import { radiatorPanelLayout } from '../../physics/ship-panel-layout';
+import { deployablePanelPoses } from '../../physics/ship-panel-layout';
 import { RADIATOR_FOLD_COUNT, RADIATOR_PANEL_WIDTH, RADIATOR_SEGMENT_LENGTH } from '../../physics/player-shape';
 import { kinematicState } from '../../physics/kinematic-state';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
@@ -163,7 +163,7 @@ export class RadiatorSystem {
     let area = 0;
     for (const [key, state] of this.panels) {
       const panelArea = this.panelArea(key, totalCoolingRate) / RADIATOR_FOLD_COUNT;
-      for (const layout of radiatorPanelLayout(this.moduleLength(key), state.value)) {
+      for (const layout of deployablePanelPoses('radiator', this.moduleLength(key) / 2, state.value)) {
         const world = this.worldPanel(key, layout, att);
         area += RADIATOR_SOLAR_ABSORB * panelArea * Math.abs(dot(world.normal, sunDir));
       }
@@ -185,7 +185,7 @@ export class RadiatorSystem {
       if (state.value < RADIATOR_CONTACT_DEPLOY || (this.wear.get(key) ?? 0) >= 1) continue;
       const proxies = this.foldProxies.get(key) ?? [];
       this.foldProxies.set(key, proxies);
-      const layouts = radiatorPanelLayout(this.moduleLength(key), state.value);
+      const layouts = deployablePanelPoses('radiator', this.moduleLength(key) / 2, state.value);
       const transform = this.assemblyValue?.worldTransformOf(key);
       for (let i = 0; i < layouts.length; i++) {
         const layout = layouts[i];
@@ -215,7 +215,7 @@ export class RadiatorSystem {
   public tipWorldPosition(sideOrId: RadiatorSide | string, shipR: Vec3, att: Attitude): Vec3 {
     const key = this.key(sideOrId);
     if (key === null) return v3(shipR.x, shipR.y, shipR.z);
-    const layouts = radiatorPanelLayout(this.moduleLength(key), this.panels.get(key)?.value ?? 0);
+    const layouts = deployablePanelPoses('radiator', this.moduleLength(key) / 2, this.panels.get(key)?.value ?? 0);
     const layout = layouts[layouts.length - 1];
     if (layout === undefined) return v3(shipR.x, shipR.y, shipR.z);
     const transform = this.assemblyValue?.worldTransformOf(key);
