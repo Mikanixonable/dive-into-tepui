@@ -72,6 +72,7 @@ declare global {
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
       measureShot: (
         name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
+        cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
       ) => Promise<LabMeasurement>;
     };
   }
@@ -276,7 +277,9 @@ async function init(): Promise<void> {
     },
     graphicsSettings: () => settings.graphics.current,
     measure: (name, angles) => view.measure(name, angles),
-    measureShot: (name, shotName, graphics) => view.measureShot(name, shotName, graphics),
+    measureShot: (name, shotName, graphics, cloudDetailDiagnostic) => view.measureShot(
+      name, shotName, graphics, 6, 30, cloudDetailDiagnostic,
+    ),
   };
 }
 
