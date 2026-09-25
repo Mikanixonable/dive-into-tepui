@@ -218,7 +218,9 @@ export class OpaqueCloudSurfaceRenderer {
     })();
   }
 
-  // 共通3D密度の液相体積率とディザ閾値の差。負なら不透明核の内側。
+  // 不透明な雲頂面の内外判定。被覆率がディザ閾値を超える柱では、局所雲頂より下を「内側」とする。
+  // 体積密度で判定すると雲底より下で再び 0 になり、粗い march が雲層を飛び越えたときに雲頂そのものを
+  // 見失う。表面探索では雲底は不要で、鉛直密度は大気・影の積分側だけが使う。
   private clearanceAt(point: Vec3Node, threshold: FloatNode, footprintM: FloatNode): FloatNode {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
@@ -229,9 +231,9 @@ export class OpaqueCloudSurfaceRenderer {
       0,
     );
     const cloud = this.fieldAt(direction);
-    return threshold.sub(
-      this.density.sample(cloud, direction, altitudeM, footprintM).liquidFraction,
-    );
+    const coverageClearance = threshold.sub(clamp(cloud.coverage, 0, 1));
+    const topClearance = altitudeM.sub(this.density.liquidTopM(cloud, direction, footprintM));
+    return max(coverageClearance, topClearance);
   }
 
   // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
