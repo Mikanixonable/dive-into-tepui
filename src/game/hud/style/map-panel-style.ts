@@ -180,6 +180,9 @@ export const MAP_PANEL_STYLE = `
 #hud .hud-frame-controls .camera-fov-control .w-input:disabled { opacity: .4; cursor: not-allowed; }
 #hud .hud-frame-controls .camera-fov-control .w-input { width: 54px; }
 #hud .hud-frame-controls .camera-control-unit { color: var(--text-dim); font-size: var(--font-xs); }
+#hud .hud-frame-controls .camera-fov-note {
+  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.45;
+}
 /* 「角度」プルダウン: 見出しを独立行にし、次の行へ選択欄とセットボタンを並べる。 */
 #hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
 #hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
