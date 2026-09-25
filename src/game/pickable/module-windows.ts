@@ -115,7 +115,8 @@ export class ModuleWindows implements ModuleWindowOpener {
       } else if (act === 'toggleBoosterModule') {
         ship.toggleBoosterIgnition(moduleId);
       } else if (act === 'decoupleModule') {
-        this.confirmation.open(`${moduleId} を作動させますか？`, () => {
+        this.confirmation.open({ message: `${moduleId} を作動させますか？` }, (confirmed) => {
+          if (!confirmed) return;
           try {
             ship.decouple(moduleId, this.roster);
           } catch (error) {
@@ -161,8 +162,8 @@ export class ModuleWindows implements ModuleWindowOpener {
       } else if (act === 'undockModule') {
         if (this.undockProducesMaterial(ship, moduleId)) {
           this.confirmation.open(
-            'コックピットがないため操縦不能な物資として分離します。続けますか？',
-            () => this.undock(ship, moduleId),
+            { message: 'コックピットがないため操縦不能な物資として分離します。続けますか？' },
+            (confirmed) => { if (confirmed) this.undock(ship, moduleId); },
           );
         } else this.undock(ship, moduleId);
       } else if (act === 'repairDockedModules') {

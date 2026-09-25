@@ -25,7 +25,7 @@ import type { HudShell } from '../../hud/hud-shell';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
 import type { HintKind, Notifier } from '../../hud/notifier';
-import { ConstructionConfirmDialog } from './windows/construction-confirm-dialog';
+import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 import { hudAttention, hudWorkspace } from './hud-workspace';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
@@ -63,7 +63,7 @@ export class Hud implements HudLayers, Notifier {
   private readonly enemiesPanel: EnemiesPanel;
   private readonly burnManagementPanel: BurnManagementPanel;
   public readonly shipConstructionPanel: ShipConstructionPanel;
-  public readonly constructionConfirm: ConstructionConfirmDialog;
+  public readonly constructionConfirm: ConfirmationOverlay;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
   private chromeView: ViewMode | null = null;
@@ -97,7 +97,7 @@ export class Hud implements HudLayers, Notifier {
     this.enemiesPanel = new EnemiesPanel(els);
     this.burnManagementPanel = new BurnManagementPanel(els);
     this.shipConstructionPanel = new ShipConstructionPanel(els);
-    this.constructionConfirm = new ConstructionConfirmDialog(this.layers.window, this.overlayManager);
+    this.constructionConfirm = new ConfirmationOverlay(this.layers.window, this.overlayManager);
 
     // ランがまだ無い状態の見た目で組み上げる。
     this.burnManagementPanel.sync(null, {});
