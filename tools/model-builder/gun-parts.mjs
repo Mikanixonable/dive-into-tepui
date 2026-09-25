@@ -11,7 +11,7 @@ thermalSource.dispose();
 // ------------------------------------------------------------- マガジン
 // 給弾方向(+Z)の奥行き [m] と、並べる弾の段数・列数。
 const MAG_DEPTH = MAG_THICKNESS * 3 * (2 / 3);
-const MAG_ROWS = 4;
+const MAG_ROWS = 3;
 const MAG_COLS = 8;
 
 const magPlateMat  = std(F0_STEEL, { metalness: 1, roughness: 0.42 });
@@ -19,8 +19,29 @@ const magRoundMat  = std(F0_BRASS, { metalness: 1, roughness: 0.32 }); // 真鍮
 const magTipMat    = std(F0_ALUMINIUM, { metalness: 1, roughness: 0.36 }); // シルバーチップ
 const magPlateGeo  = new THREE.BoxGeometry(MAG_WIDTH, 0.055, MAG_DEPTH);
 const magPostGeo   = new THREE.BoxGeometry(0.07, MAG_THICKNESS, 0.07);
-const magRoundGeo  = new THREE.CylinderGeometry(0.11, 0.11, MAG_DEPTH * 0.8, 8);
-const magTipGeo    = new THREE.ConeGeometry(0.11, 0.18, 8);
+
+// 実弾の輪郭 (半径, 長手位置) — 放出される薬莢と同族のボトルネック形状。
+// 太く短い薬室部(φ0.30・全長 0.7 ほど)に細い弾体(φ0.20)が +Z へ伸びる。
+const magCaseProfile = [
+  new THREE.Vector2(0.000, -0.72), // 底部中心
+  new THREE.Vector2(0.150, -0.72), // リム底面
+  new THREE.Vector2(0.150, -0.66), // リム側面
+  new THREE.Vector2(0.128, -0.62), // エクストラクターグルーブ
+  new THREE.Vector2(0.128, -0.58),
+  new THREE.Vector2(0.148, -0.55), // ボディ径に戻る
+  new THREE.Vector2(0.148, -0.06), // ボディ
+  new THREE.Vector2(0.100,  0.04), // ショルダー・ネック口
+];
+const magProjProfile = [
+  new THREE.Vector2(0.000, -0.02), // 弾体尾部(薬室内)
+  new THREE.Vector2(0.098, -0.02),
+  new THREE.Vector2(0.098,  0.55), // 弾体の円筒部
+  new THREE.Vector2(0.070,  0.78), // オジーブ
+  new THREE.Vector2(0.035,  0.90),
+  new THREE.Vector2(0.000,  0.97), // 弾先
+];
+const magCaseGeo = new THREE.LatheGeometry(magCaseProfile, 10);
+const magProjGeo = new THREE.LatheGeometry(magProjProfile, 10);
 
 // 実弾入りのマガジン。給弾口は +Z。弾と弾頭のメッシュは userData.role = 'round' を持つ。
 export function buildMagazineMesh() {
@@ -102,21 +123,21 @@ export function buildMagazineMesh() {
     g.add(rail);
   }
 
-  // 弾(実弾: 薬莢ボディ + シルバーチップ)
+  // 弾(実弾: ボトルネックの薬室部 + 弾体)
   for (let iy = 0; iy < MAG_ROWS; iy++) {
     for (let ix = 0; ix < MAG_COLS; ix++) {
       const x = (ix - (MAG_COLS - 1) / 2) * (MAG_WIDTH / (MAG_COLS * 1.1));
-      const y = (iy - (MAG_ROWS - 1) / 2) * (MAG_THICKNESS * 0.24);
+      const y = (iy - (MAG_ROWS - 1) / 2) * (MAG_THICKNESS * 0.29);
 
-      const round = new THREE.Mesh(magRoundGeo, magRoundMat);
+      const round = new THREE.Mesh(magCaseGeo, magRoundMat);
       round.rotation.x = Math.PI / 2;
       round.position.set(x, y, 0);
       round.userData = { role: 'round' };
       g.add(round);
 
-      const tip = new THREE.Mesh(magTipGeo, magTipMat);
+      const tip = new THREE.Mesh(magProjGeo, magTipMat);
       tip.rotation.x = Math.PI / 2;
-      tip.position.set(x, y, MAG_DEPTH * 0.40 + 0.08);
+      tip.position.set(x, y, 0);
       tip.userData = { role: 'round' };
       g.add(tip);
     }
