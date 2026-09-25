@@ -263,6 +263,7 @@ function earth(): LabCase {
       'cloud-c1-raster-200km-medium-diagnostic': {
         view: earthStandardCloudView(EARTH_C1_RASTER_DIAGNOSTIC_DISTANCE),
         graphics: QUALITY_PRESETS.medium,
+        cloudDetailDiagnostic: { wavelengthKm: 2, directionDeg: 0 },
       },
       'earth-low-orbit': { view: EARTH_LOW_ORBIT_PLACEMENT },
       'earth-limb': { view: {} },
