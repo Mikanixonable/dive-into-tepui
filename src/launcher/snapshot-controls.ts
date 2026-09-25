@@ -1,8 +1,8 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { Notifier } from '../hud/notifier';
-import { PauseMenu } from '../hud/windows/pause-menu';
-import { SaveBrowser } from './save-browser/save-browser';
-import { SnapshotService, type SnapshotSource } from './save/snapshot-service';
+import type { PauseMenu } from '../hud/windows/pause-menu';
+import type { SaveBrowser } from './save-browser/save-browser';
+import type { SnapshotService, SnapshotSource } from './save/snapshot-service';
 
 // F5(手動セーブ)/F9(一覧開閉)の単発入力を担う。router へはランの入力の解釈のあとに足す —
 // その回でランが消費しなかった入力エッジだけを見る。
