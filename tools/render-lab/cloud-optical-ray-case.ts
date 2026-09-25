@@ -6,12 +6,15 @@ import { integrateCloudOpticalVolumeRayNode } from '../../src/render/cloud/cloud
 import { labCamera, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
 import type { CaseBuilder, LabCase } from './lab-case';
 
-const WIDTH = 4;
-const HEIGHT = 4;
+const FOOTPRINT_RADIUS_M = 10_000;
+const CELL_SIZE_M = 250;
+const WIDTH = (2 * FOOTPRINT_RADIUS_M) / CELL_SIZE_M;
+const HEIGHT = WIDTH;
 const GRID_SPAN_M = 20_000;
 const LAYER_EDGES_M = new Float32Array([0, 1_000, 3_000, 6_000, 8_000]);
 const RAY_COUNT = 2;
 const VALUE_COUNT = 4;
+const CALIBRATION_VALUES = [0.1, 0.3, 0.5, 0.7, 0.9] as const;
 const SHOT_NAME = 'cloud-optical-ray-c9-gpu';
 const OUTPUTS = ['liquidTau', 'iceTau', 'totalTau', 'transmittance'] as const;
 
@@ -23,7 +26,19 @@ function diagnosticVolume(): CloudOpticalVolume {
     const extinction = LAYER_EDGES_M[layer] === 1_000 ? 2e-4
       : LAYER_EDGES_M[layer] === 6_000 ? 1e-4 : 0;
     const phase = LAYER_EDGES_M[layer] === 6_000 ? ice : liquid;
-    phase.fill(extinction, layer * WIDTH * HEIGHT, (layer + 1) * WIDTH * HEIGHT);
+    for (let y = 0; y < HEIGHT; y += 1) {
+      for (let x = 0; x < WIDTH; x += 1) {
+        const eastM = -FOOTPRINT_RADIUS_M + (x + 0.5) * CELL_SIZE_M;
+        const northM = -FOOTPRINT_RADIUS_M + (y + 0.5) * CELL_SIZE_M;
+        if (Math.hypot(eastM, northM) <= FOOTPRINT_RADIUS_M) {
+          phase[layer * WIDTH * HEIGHT + y * WIDTH + x] = extinction;
+        }
+      }
+    }
+  }
+  const raySupportMarginM = Math.SQRT2 * CELL_SIZE_M / 2;
+  if (8_000 > FOOTPRINT_RADIUS_M - raySupportMarginM) {
+    throw new RangeError('the entire C9 diagnostic ray must remain inside the disk with bilinear support');
   }
   return new CloudOpticalVolume({
     width: WIDTH,
@@ -44,6 +59,13 @@ function tileCenter(column: number, row: number, distanceM: number): THREE.Vecto
   );
 }
 
+function pixelCenterOnPlane(x: number, y: number, distanceM: number): THREE.Vector3 {
+  const halfHeight = Math.tan(THREE.MathUtils.degToRad(50) / 2) * distanceM;
+  const halfWidth = halfHeight * VIEW_WIDTH / VIEW_HEIGHT;
+  return new THREE.Vector3((2 * x / VIEW_WIDTH - 1) * halfWidth,
+    (1 - 2 * y / VIEW_HEIGHT) * halfHeight, -distanceM);
+}
+
 export const CLOUD_OPTICAL_RAY_CASE: CaseBuilder = (): LabCase => {
   const volume = diagnosticVolume();
   const camera = labCamera();
@@ -54,7 +76,7 @@ export const CLOUD_OPTICAL_RAY_CASE: CaseBuilder = (): LabCase => {
 
   for (let rayIndex = 0; rayIndex < RAY_COUNT; rayIndex += 1) {
     const ray = integrateCloudOpticalVolumeRayNode(volume.texture, LAYER_EDGES_M, {
-      originUv: vec2(0.25, 0.5),
+      originUv: vec2(0.5, 0.5),
       gridSpanEastM: GRID_SPAN_M,
       gridSpanNorthM: GRID_SPAN_M,
       uvDeltaPerAltitudeM: rayIndex === 0 ? vec2(0, 0) : vec2(1 / GRID_SPAN_M, 0),
@@ -76,6 +98,22 @@ export const CLOUD_OPTICAL_RAY_CASE: CaseBuilder = (): LabCase => {
     }
   }
 
+  const calibrationDistanceM = distanceM - 1;
+  const calibrationWidthM = 16 * (2 * Math.tan(THREE.MathUtils.degToRad(50) / 2)
+    * calibrationDistanceM * VIEW_WIDTH / VIEW_HEIGHT) / VIEW_WIDTH;
+  const calibrationHeightM = 12 * (2 * Math.tan(THREE.MathUtils.degToRad(50) / 2)
+    * calibrationDistanceM) / VIEW_HEIGHT;
+  CALIBRATION_VALUES.forEach((value, index) => {
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = vec3(float(value), float(value), float(value));
+    material.toneMapped = false;
+    const patch = new THREE.Mesh(new THREE.PlaneGeometry(calibrationWidthM, calibrationHeightM), material);
+    patch.userData.ownsGeometry = true;
+    patch.userData.ownsMaterial = true;
+    patch.position.copy(pixelCenterOnPlane(22, 18 + index * 16, calibrationDistanceM));
+    objects.push(patch);
+  });
+
   return {
     objects,
     camera,
@@ -91,4 +129,7 @@ export const CLOUD_OPTICAL_RAY_PROBE = {
   height: VIEW_HEIGHT,
   rayNames: ['vertical', '45deg'] as const,
   outputNames: OUTPUTS,
+  calibrationValues: CALIBRATION_VALUES,
+  footprintRadiusM: FOOTPRINT_RADIUS_M,
+  cellSizeM: CELL_SIZE_M,
 };
