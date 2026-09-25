@@ -150,7 +150,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     // ランを読む者へは、進行と導出の間のモデル層だけが確定した瞬間を渡す(R8)。
     this.progressReader.update(this.snapshot);
     const t1 = debugInfo.on ? performance.now() : 0;
-    this.presentation.sync(this.graphics.current, this.renderStyle.current, viewport, nowMs);
+    this.presentation.sync(this.graphics.current, this.renderStyle.current, viewport, nowMs, renderFrame);
     const t2 = debugInfo.on ? performance.now() : 0;
     let t3 = t2;
     if (renderFrame) {
