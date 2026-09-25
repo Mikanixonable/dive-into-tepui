@@ -429,6 +429,10 @@ class AbiRegionSeriesTest(unittest.TestCase):
         self.assertEqual(diagnostic["eligibleCloudAreaM2"], 600.0)
         self.assertEqual(diagnostic["goodCodCloudAreaM2"], 225.0)
         self.assertEqual(diagnostic["areaWeightedCoverageFraction"], 0.375)
+        self.assertEqual(diagnostic["frameSupportDiagnostic"], {
+            "slotCount": 2, "solarEligibleFrameCount": 2, "goodCodFrameCount": 2,
+            "provisionalAreaThreshold": 0.5, "provisionalAreaThresholdFrameCount": 0,
+        })
         self.assertEqual(
             diagnostic["indicatorAvailability"]["status"],
             "provisional_area_threshold_not_met",
@@ -461,6 +465,20 @@ class AbiRegionSeriesTest(unittest.TestCase):
                 self.assertEqual(result["status"], "blocked_invalid_or_missing_support_fraction")
                 self.assertEqual(result["scope"], "aggregated_series")
                 self.assertIsNone(result["diagnosticSupportFraction"])
+
+    def test_cod_frame_support_distinguishes_solar_eligibility_and_good_cod(self) -> None:
+        diagnostic = REGION.cod_frame_support_diagnostic([
+            {"eligibleCloudAreaM2": 0.0, "goodCodCloudAreaM2": 0.0,
+             "areaWeightedCoverageFraction": None},
+            {"eligibleCloudAreaM2": 10.0, "goodCodCloudAreaM2": 0.0,
+             "areaWeightedCoverageFraction": 0.0},
+            {"eligibleCloudAreaM2": 10.0, "goodCodCloudAreaM2": 6.0,
+             "areaWeightedCoverageFraction": 0.6},
+        ])
+        self.assertEqual(diagnostic["slotCount"], 3)
+        self.assertEqual(diagnostic["solarEligibleFrameCount"], 2)
+        self.assertEqual(diagnostic["goodCodFrameCount"], 1)
+        self.assertEqual(diagnostic["provisionalAreaThresholdFrameCount"], 1)
 
 
 if __name__ == "__main__":
