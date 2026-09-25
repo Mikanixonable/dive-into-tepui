@@ -87,7 +87,7 @@ export function register(): void {
     const transform = ship.worldTransformOf('weapon');
     const definition = ship.definition('weapon');
     assert.ok(transform !== null && definition !== null);
-    const localAnchor = v3(0, -definition.diameter * 0.325, 0);
+    const localAnchor = definition.feedPort;
     const assemblyAnchor = qRotate(transform.rotation, localAnchor);
     const expected = v3(
       transform.position.x + assemblyAnchor.x - motion.centerOffset.x,

@@ -326,10 +326,10 @@ export function register(): void {
     assert.ok(Math.abs(fwdMinusX.x - (-1.0)) < 1e-9);
   });
 
-  test('ship assembly: 戦闘艦プリセットは機首前面に2つの銃口を持つ', () => {
+  test('ship assembly: 戦闘艦プリセットは機首前面に砲口を持つ', () => {
     const assembly = createDefaultCombatPreset();
     const muzzles = new ShipCapabilities(assembly).muzzlePositions();
-    assert.equal(muzzles.length, 2);
+    assert.equal(muzzles.length, 1);
     const bow = Math.max(...assembly.modules.map((module) => {
       const transform = assembly.worldTransformOf(module.id)!;
       return transform.position.z + assembly.definition(module.id)!.length / 2;
