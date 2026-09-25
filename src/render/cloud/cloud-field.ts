@@ -11,13 +11,25 @@ import type { FieldProjection } from '../field-projection';
 import type { WeatherModel } from './weather-model';
 import type { Vec3Node } from '../tsl-types';
 
+export type CloudSampleTransform = (
+  direction: Vec3Node,
+  weather: ReturnType<WeatherModel['weatherAt']>,
+  sample: CloudSample,
+) => CloudSample;
+
 export class CloudField {
   private readonly field: BakedField;
 
   // model の現在時刻における雲を、指定された projection に従ってベイクするテクスチャ。サンプリング時も projection の uv を参照する。
-  public constructor(model: WeatherModel, projection: FieldProjection) {
+  public constructor(
+    model: WeatherModel,
+    projection: FieldProjection,
+    transform?: CloudSampleTransform,
+  ) {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, (direction) => {
-      const cloud = condense(model.weatherAt(direction));
+      const weather = model.weatherAt(direction);
+      const condensed = condense(weather);
+      const cloud = transform?.(direction, weather, condensed) ?? condensed;
       return cloudFieldTexelFromSample(cloud);
     }, GPU_PASS.cloudBake);
   }

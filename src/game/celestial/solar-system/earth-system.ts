@@ -17,6 +17,7 @@ import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
+import type { CloudSampleTransform } from '../../../render/cloud/cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { AnnualClimateMap } from '../../../render/cloud/climate-map';
 import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
@@ -206,10 +207,13 @@ function earthAuroras(): readonly Aurora[] {
 
 // 地球の平年の気候から焼く雲場を組む。projection は場の持ち方。返した場の寿命は受け取った側が持つ。
 // **実験環境も本番もこの工場から組む** — 別の組み立てを書くと、実験環境が本番を映さなくなる。
-export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
+export function earthGeneratedCloudField(
+  projection: FieldProjection,
+  transform?: CloudSampleTransform,
+): GeneratedCloudField {
   // 気象シミュレーションに適用する半径は、全球を一様な球体とみなす平均半径。
   return new GeneratedCloudField(
-    AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
+    AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY, transform,
   );
 }
 

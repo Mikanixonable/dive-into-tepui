@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { dot, fract, mix, select, sin, uniform, vec3 } from 'three/tsl';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
-import { CloudField } from './cloud-field';
+import { CloudField, type CloudSampleTransform } from './cloud-field';
 import {
   cloudFieldTexelFromSample, cloudSampleFromTexel, type CloudSample,
 } from './cloud-field-sample';
@@ -41,10 +41,11 @@ export class GeneratedCloudField implements CloudFieldSource {
   public constructor(
     private readonly climate: ClimateMap, private readonly projection: FieldProjection,
     surfaceRadius: number, rotationPeriod: number,
+    transform?: CloudSampleTransform,
   ) {
     this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
-    this.fieldA = new CloudField(this.model, projection);
-    this.fieldB = new CloudField(this.model, projection);
+    this.fieldA = new CloudField(this.model, projection, transform);
+    this.fieldB = new CloudField(this.model, projection, transform);
     this.blended = new BakedField(
       'cloud-temporal',
       THREE.RGBAFormat,
