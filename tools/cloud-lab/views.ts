@@ -14,6 +14,7 @@ export type CloudLabViewId =
   | 'pressure' | 'surfaceWind' | 'traceWind' | 'front' | 'airMass' | 'lift'
   | 'surfaceHumiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'surfaceHumidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
+  | 'marineCell' | 'waveCloud' | 'orographicCloud'
   | 'coverage' | 'cloudTop' | 'translucent' | 'iceCenter' | 'composite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
@@ -96,6 +97,12 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
       const weather = model.weatherAt(d);
       return vec3(weather.convection.y.mul(weather.convectiveActivity).div(CONVECTIVE_DEPTH_SPAN));
     } },
+  { id: 'marineCell', label: '海洋セル組織', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).marineCell) },
+  { id: 'waveCloud', label: '波状雲 driver', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).waveCloud) },
+  { id: 'orographicCloud', label: '地形性雲 driver', reads: 'weather',
+    color: (d, model) => vec3(model.weatherAt(d).orographicCloud) },
   { id: 'coverage', label: '被覆率', reads: 'cloud',
     color: (d, cloudAt) => vec3(cloudAt(d).coverage) },
   { id: 'cloudTop', label: '雲頂高度', reads: 'cloud',
