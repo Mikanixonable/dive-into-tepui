@@ -360,10 +360,19 @@ export class LabView {
   public async measureShot(
     name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
     warmupFrames = 6, sampleFrames = 30,
+    cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
   ): Promise<LabMeasurement> {
     this.show(name);
     this.applyShot(shotName);
     this.setGraphics({ ...this.graphics.current, ...graphics });
+    if (cloudDetailDiagnostic !== undefined) {
+      this.earth.setCloudDetailDiagnostic(
+        cloudDetailDiagnostic !== null,
+        cloudDetailDiagnostic?.wavelengthKm,
+        cloudDetailDiagnostic?.directionDeg,
+        cloudDetailDiagnostic?.phaseDeg,
+      );
+    }
     return withLabPixelRatio(
       this.renderer,
       this.renderer.getPixelRatio() * this.graphics.current.resolutionScale,
