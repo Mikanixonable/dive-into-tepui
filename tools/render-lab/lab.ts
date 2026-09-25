@@ -25,6 +25,7 @@ import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
 import { LabSun } from './lab-sun';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
+import type { CloudDetailDiagnosticTextureEstimate } from './cloud-detail-diagnostic';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
@@ -57,6 +58,54 @@ export interface LabMeasurement {
   readonly gpuPassRenderCallCpuMs: Readonly<Record<string, SampleDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
+}
+
+export interface CloudDetailLifecycleMeasurement {
+  readonly caseName: CaseName;
+  readonly shotName: string;
+  readonly sampleCount: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+  readonly sampleDisplayTimeSeconds: number;
+  readonly caseReadinessWaitWallMs: number;
+  readonly setupWarmupWallMs: number;
+  readonly caseReady: boolean;
+  readonly gpuTimestampResolveSupport: boolean;
+  readonly coldExchange: readonly {
+    readonly index: number;
+    readonly phaseDeg: number;
+    readonly previousOwnerEstimate: CloudDetailDiagnosticTextureEstimate | null;
+    readonly ownerEstimate: CloudDetailDiagnosticTextureEstimate | null;
+    readonly setterCpuWallMs: number;
+    readonly renderCallCpuWallMs: number;
+    readonly pipelineRenderCpuWallMs: number;
+    readonly timestampResolveAwaitWallMs: number;
+    readonly firstUseWallMs: number;
+  }[];
+  readonly warmReuse: readonly {
+    readonly index: number;
+    readonly phaseDeg: number;
+    readonly ownerEstimateBefore: CloudDetailDiagnosticTextureEstimate | null;
+    readonly ownerEstimateAfter: CloudDetailDiagnosticTextureEstimate | null;
+    readonly sameTextureRetained: boolean;
+    readonly setterCpuWallMs: number;
+    readonly renderCallCpuWallMs: number;
+    readonly pipelineRenderCpuWallMs: number;
+    readonly timestampResolveAwaitWallMs: number;
+    readonly reuseWallMs: number;
+  }[];
+  readonly fullFrameGpuB0: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
+  readonly actualGpuAllocation: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
+  readonly cloudTextureUploadReadyWait: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
 }
 
 const ORIGIN = new THREE.Vector3();
@@ -379,6 +428,149 @@ export class LabView {
       this.renderer.getPixelRatio() * this.graphics.current.resolutionScale,
       () => this.measureCurrent(name, warmupFrames, sampleFrames),
     );
+  }
+
+  // 局所タイルを異なる phase へ差し替える冷交換と、同じ設定を再適用する warm reuse を分けて測る。
+  public async measureCloudDetailLifecycle(
+    name: CaseName,
+    shotName: string,
+    graphics: Partial<GraphicsSettingsData>,
+    detail: NonNullable<LabShot['cloudDetailDiagnostic']>,
+    sampleCount = 8,
+  ): Promise<CloudDetailLifecycleMeasurement> {
+    if (!Number.isSafeInteger(sampleCount) || sampleCount < 1 || sampleCount > 64) {
+      throw new RangeError('cloud detail lifecycle sample count must be in [1, 64]');
+    }
+    this.show(name);
+    this.applyShot(shotName);
+    if (this.current?.earth === undefined) {
+      throw new Error(`render-lab: case "${name}" has no earth for cloud detail measurement`);
+    }
+    this.setGraphics({ ...this.graphics.current, ...graphics, clouds: true });
+    this.earth.setCloudDetailDiagnostic(false);
+
+    const readinessStartedAt = performance.now();
+    await this.waitUntilReady();
+    const caseReadinessWaitWallMs = performance.now() - readinessStartedAt;
+    const caseReady = this.ready;
+    const fallback = {
+      caseName: name,
+      shotName,
+      sampleCount,
+      canvasWidth: this.renderer.domElement.width,
+      canvasHeight: this.renderer.domElement.height,
+      sampleDisplayTimeSeconds: 0.1,
+      caseReadinessWaitWallMs,
+      setupWarmupWallMs: 0,
+      caseReady,
+      gpuTimestampResolveSupport: this.gpu.supported,
+      coldExchange: [],
+      warmReuse: [],
+      fullFrameGpuB0: {
+        status: 'not-measured' as const,
+        reason: 'render-lab cannot observe all GPU work and presentation for a full frame.',
+      },
+      actualGpuAllocation: {
+        status: 'not-measured' as const,
+        reason: 'The diagnostic sees the DataTexture CPU image and dimensions, not driver allocation or residency.',
+      },
+      cloudTextureUploadReadyWait: {
+        status: 'not-measured' as const,
+        reason: 'The render lab has no texture-specific upload-completion signal for this DataTexture.',
+      },
+    };
+    if (!caseReady) return fallback;
+
+    const setupWarmupFrames = 6;
+    const sampleDisplayTime = setupWarmupFrames / 60;
+    let setupWarmupWallMs = 0;
+    let canvasWidth = fallback.canvasWidth;
+    let canvasHeight = fallback.canvasHeight;
+    const coldExchange: CloudDetailLifecycleMeasurement['coldExchange'][number][] = [];
+    const warmReuse: CloudDetailLifecycleMeasurement['warmReuse'][number][] = [];
+    const renderAndResolve = async () => {
+      const renderStartedAt = performance.now();
+      this.render(sampleDisplayTime);
+      const renderCallCpuWallMs = performance.now() - renderStartedAt;
+      const pipelineRenderCpuWallMs = this.lastRenderCpuMs;
+      const resolveStartedAt = performance.now();
+      await this.gpu.waitForResolve();
+      return {
+        renderCallCpuWallMs,
+        pipelineRenderCpuWallMs,
+        timestampResolveAwaitWallMs: performance.now() - resolveStartedAt,
+      };
+    };
+
+    try {
+      const pixelRatio = this.renderer.getPixelRatio() * this.graphics.current.resolutionScale;
+      await withLabPixelRatio(this.renderer, pixelRatio, async () => {
+        canvasWidth = this.renderer.domElement.width;
+        canvasHeight = this.renderer.domElement.height;
+        const setupStartedAt = performance.now();
+        for (let frame = 0; frame < setupWarmupFrames; frame += 1) {
+          this.render((frame + 1) / 60);
+          await this.gpu.waitForResolve();
+        }
+        setupWarmupWallMs = performance.now() - setupStartedAt;
+        for (let index = 0; index < sampleCount; index += 1) {
+          const phaseDeg = ((detail.phaseDeg ?? 0) + index * 37) % 360;
+          const previousOwnerEstimate = this.earth.cloudDetailDiagnosticTextureEstimate;
+          const coldStartedAt = performance.now();
+          const setterStartedAt = performance.now();
+          this.earth.setCloudDetailDiagnostic(
+            true, detail.wavelengthKm, detail.directionDeg, phaseDeg, detail.composition,
+          );
+          const setterCpuWallMs = performance.now() - setterStartedAt;
+          const coldUse = await renderAndResolve();
+          coldExchange.push({
+            index,
+            phaseDeg,
+            previousOwnerEstimate,
+            ownerEstimate: this.earth.cloudDetailDiagnosticTextureEstimate,
+            setterCpuWallMs,
+            renderCallCpuWallMs: coldUse.renderCallCpuWallMs,
+            pipelineRenderCpuWallMs: coldUse.pipelineRenderCpuWallMs,
+            timestampResolveAwaitWallMs: coldUse.timestampResolveAwaitWallMs,
+            firstUseWallMs: performance.now() - coldStartedAt,
+          });
+
+          const ownerEstimateBefore = this.earth.cloudDetailDiagnosticTextureEstimate;
+          const warmStartedAt = performance.now();
+          const warmSetterStartedAt = performance.now();
+          this.earth.setCloudDetailDiagnostic(
+            true, detail.wavelengthKm, detail.directionDeg, phaseDeg, detail.composition,
+          );
+          const warmSetterCpuWallMs = performance.now() - warmSetterStartedAt;
+          const warmUse = await renderAndResolve();
+          const ownerEstimateAfter = this.earth.cloudDetailDiagnosticTextureEstimate;
+          warmReuse.push({
+            index,
+            phaseDeg,
+            ownerEstimateBefore,
+            ownerEstimateAfter,
+            sameTextureRetained: ownerEstimateBefore?.textureUuid === ownerEstimateAfter?.textureUuid,
+            setterCpuWallMs: warmSetterCpuWallMs,
+            renderCallCpuWallMs: warmUse.renderCallCpuWallMs,
+            pipelineRenderCpuWallMs: warmUse.pipelineRenderCpuWallMs,
+            timestampResolveAwaitWallMs: warmUse.timestampResolveAwaitWallMs,
+            reuseWallMs: performance.now() - warmStartedAt,
+          });
+        }
+      });
+    } finally {
+      this.earth.setCloudDetailDiagnostic(false);
+    }
+    return {
+      ...fallback,
+      canvasWidth,
+      canvasHeight,
+      sampleDisplayTimeSeconds: sampleDisplayTime,
+      setupWarmupWallMs,
+      gpuTimestampResolveSupport: this.gpu.supported,
+      coldExchange,
+      warmReuse,
+    };
   }
 
   // 現在のケースと shot の設定を保持したまま、準備待ち・ウォームアップ・標本収集を共通に行う。
