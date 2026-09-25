@@ -129,11 +129,11 @@ export class PlanEditor {
   // 時刻 t まで自動ワープを始める。既に通過した時刻ならその旨を出すだけで何もしない。
   public warpTo(t: number): void {
     if (!this.simSpeedManager.canAutoWarpTo(t, this.simTime)) {
-      this.hud.hint('この時刻は既に通過しています');
+      this.hud.hint('この時刻は既に通過しています', undefined, 'warn');
       return;
     }
     this.simSpeedCommands.startAutoWarpTo(t, this.simTime);
-    this.hud.hint('指定時刻まで自動ワープ開始');
+    this.hud.hint('指定時刻まで自動ワープ開始', undefined, 'nav');
   }
 
   // NodeGizmo の各種コールバックを配線する。
@@ -182,7 +182,7 @@ export class PlanEditor {
     this.planCommands.removeNode(plan, idx);
     this.closeMenu();
     this.simSpeedCommands.cancelAutoWarp();
-    this.hud.hint('ノードを削除');
+    this.hud.hint('ノードを削除', undefined, 'plan');
   }
 
   // 選択中のノードを削除する。未選択なら計画全体を破棄し、進行中の自動ワープも解除する。
@@ -195,7 +195,7 @@ export class PlanEditor {
     if (!plan || plan.nodes.length <= 0) return;
     this.planCommands.clear(plan);
     this.simSpeedCommands.cancelAutoWarp();
-    this.hud.hint('マニューバ計画を破棄');
+    this.hud.hint('マニューバ計画を破棄', undefined, 'plan');
   }
 
   // 計画キー([X] 削除・[N] 直近ノードへの自動ワープ)の単発入力 commandId を実行する。
@@ -296,7 +296,7 @@ export class PlanEditor {
     if (!ship) return;
     const sample = this.path.sampleAt(t);
     if (!sample) {
-      this.hud.hint('この時刻の計画軌道が求まりません');
+      this.hud.hint('この時刻の計画軌道が求まりません', undefined, 'warn');
       return;
     }
     this.placeNode(ship.plan, sample, ship.plan.anchorOr(ship.motion.state));
@@ -306,7 +306,7 @@ export class PlanEditor {
   // で、その時刻以前は計画の外なので理由を伝えて何もしない。
   private placeNode(plan: Plan, postState: KinematicState, anchor: KinematicState): void {
     if (plan.nodeIndexFor(postState.t, anchor) < 0) {
-      this.hud.hint('計画の起点より前にはノードを置けません');
+      this.hud.hint('計画の起点より前にはノードを置けません', undefined, 'warn');
       return;
     }
     this.selectedNode = postState;
@@ -378,7 +378,7 @@ export class PlanEditor {
     );
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
-      this.hud.hint('ノード位置は許可された軌道区間内で指定してください');
+      this.hud.hint('ノード位置は許可された軌道区間内で指定してください', undefined, 'warn');
       return;
     }
     if (Math.abs(targetT - node.t) <= epsilon) return;
@@ -386,7 +386,7 @@ export class PlanEditor {
     // その時刻の計画軌道のサンプル
     const picked = this.path.sampleAtWithArc(targetT);
     if (!picked) {
-      this.hud.hint('この時刻の計画軌道が求まりません');
+      this.hud.hint('この時刻の計画軌道が求まりません', undefined, 'warn');
       return;
     }
 
@@ -398,7 +398,7 @@ export class PlanEditor {
     this.selectedNode = moved;
     this.planCommands.replaceNode(plan, idx, moved);
     this.uiSounds.push('warp');
-    if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
+    if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください', undefined, 'plan');
   }
 
   // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv 加算を積む。
