@@ -20,7 +20,10 @@ import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { WebGPURenderer } from 'three/webgpu';
-import { createCloudDetailDiagnosticTile, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM } from './cloud-detail-diagnostic';
+import {
+  createCloudDetailDiagnosticTile, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM,
+  estimateCloudDetailDiagnosticTexture, type CloudDetailDiagnosticTextureEstimate,
+} from './cloud-detail-diagnostic';
 import type { CloudPresentationDetailTile } from '../../src/render/cloud/cloud-presentation';
 
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
@@ -124,6 +127,12 @@ export class LabEarth {
 
   // 地表が読む画像(ベース色と滑らかさ)がすべて GPU へ届いたか。
   public get ready(): boolean { return this.surface.imagesReady; }
+
+  // 所有者が保持する局所雲タイルの backing data 実寸と GPU 基底 mip 容量推定を返す。
+  public get cloudDetailDiagnosticTextureEstimate(): CloudDetailDiagnosticTextureEstimate | null {
+    return this.diagnosticCloudDetail === null
+      ? null : estimateCloudDetailDiagnosticTexture(this.diagnosticCloudDetail.texture);
+  }
 
   // render-lab 専用の既知周期タイルを sampler へ渡す。無効化すると texture を解放して現行場へ戻す。
   public setCloudDetailDiagnostic(

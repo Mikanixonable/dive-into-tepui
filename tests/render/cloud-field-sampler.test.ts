@@ -11,7 +11,8 @@ import { OrthographicCap } from '../../src/render/field-projection';
 import { DEFAULT_GRAPHICS } from '../../src/render/graphics-settings';
 import {
   cloudDetailDiagnosticCoverage, CLOUD_DETAIL_DIAGNOSTIC_DIRECTIONS_DEG,
-  CLOUD_DETAIL_DIAGNOSTIC_SIZE, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTHS_KM, createCloudDetailDiagnosticTile,
+  CLOUD_DETAIL_DIAGNOSTIC_SIZE, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTHS_KM,
+  createCloudDetailDiagnosticTile, estimateCloudDetailDiagnosticTexture,
 } from '../../tools/render-lab/cloud-detail-diagnostic';
 import { test } from '../harness';
 
@@ -123,6 +124,11 @@ export function register(): void {
     assert.equal(tile.texture.image.height, CLOUD_DETAIL_DIAGNOSTIC_SIZE);
     assert.equal(data.byteLength, 4 * 1024 * 1024);
     assert.ok(tile.blendStartCos > tile.cap.placement.cosRadius);
+    const estimate = estimateCloudDetailDiagnosticTexture(tile.texture);
+    assert.equal(estimate.width, CLOUD_DETAIL_DIAGNOSTIC_SIZE);
+    assert.equal(estimate.height, CLOUD_DETAIL_DIAGNOSTIC_SIZE);
+    assert.equal(estimate.cpuBackingBytes, data.byteLength);
+    assert.equal(estimate.estimatedGpuBaseLevelBytes, data.byteLength);
     tile.texture.dispose();
   });
 }
