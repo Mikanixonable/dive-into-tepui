@@ -61,9 +61,8 @@ module.exports = {
         type: 'asset/source',
       },
       {
-        // 船モジュールの焼き込み JSON は 20MB 超なので main JS へ埋め込まず、起動時に fetch する。
-        test: /shipModules\.json$/,
-        include: path.resolve(__dirname, 'src/assets/models'),
+        // 船モジュールの統合 GLB バイナリは main JS へ埋め込まず、起動時に fetch する。
+        test: /\.(glb|gltf)$/,
         type: 'asset/resource',
         generator: { filename: 'assets/[hash][ext]' },
       },
