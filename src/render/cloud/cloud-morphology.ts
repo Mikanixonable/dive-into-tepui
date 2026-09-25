@@ -1,5 +1,5 @@
-// Environment-driven cloud morphology diagnostics used by controlled cases and the
-// rendering closure. These are deterministic engineering closures, not a cloud-resolving model.
+// 環境条件から雲形態を導く縮約モデル。制御実験と描画側で同じ入力関係を使う。
+// 雲解像モデルではなく、決定的に再現できる工学的な閉包として扱う。
 
 export interface MarineBoundaryLayerInput {
   readonly oceanFraction: number;
@@ -63,13 +63,13 @@ export function marineBoundaryLayerDiagnostics(input: MarineBoundaryLayerInput):
   const quiet = 1 - input.convectiveActivity;
   const organization = clamp01(input.oceanFraction * moist * (0.3 + 0.7 * cooling)
     * (0.35 + 0.65 * inversion) * (0.4 + 0.6 * subsidence));
-  // Closed cells dominate a moist, strongly inverted, weakly precipitating/convective deck.
+  // 湿潤・強い逆転・弱い対流では閉セル寄り、対流が強まるほど開セル寄りへ移る。
   const closedCellFraction = clamp01(organization * (0.55 + 0.45 * quiet));
   const openCellFraction = clamp01(organization * (0.25 + 0.75 * input.convectiveActivity));
   const total = Math.max(openCellFraction + closedCellFraction, 1e-9);
   const openShare = openCellFraction / total;
   const holeFraction = clamp01(0.08 + organization * (0.12 + 0.52 * openShare));
-  // 20–80 km cells, controlled by boundary-layer organization rather than latitude.
+  // セル径は緯度ではなく境界層の組織度から 20〜80 km の範囲で決める。
   const cellDiameterKm = 20 + 60 * organization * (0.65 + 0.35 * openShare);
   const lifetimeMinutes = 30 + 240 * organization * (0.7 + 0.3 * inversion);
   return Object.freeze({
@@ -98,7 +98,7 @@ export function waveCloudDiagnostics(input: WaveCloudInput): WaveCloudDiagnostic
   const condensationFraction = clamp01(lift * humidity);
   return Object.freeze({
     condensationFraction,
-    // Power is directional because one prescribed wave vector owns the coherent component.
+    // 一つの波数ベクトルが秩序成分を持つため、凝結量から方向性パワーを作る。
     directionalPower: condensationFraction * condensationFraction,
     wavelengthKm: input.horizontalWavelengthM / 1_000,
     phaseTravelMPerHour: Math.abs(input.phaseSpeedMps) * 3_600,
