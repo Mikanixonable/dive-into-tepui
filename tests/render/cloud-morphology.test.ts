@@ -19,6 +19,9 @@ export function register(): void {
     assert.ok(organized.organization > dry.organization);
     assert.ok(organized.cellDiameterKm > 10);
     assert.ok(organized.holeFraction > 0);
+    assert.ok(Math.abs(
+      organized.openCellFraction + organized.closedCellFraction - organized.organization,
+    ) < 1e-12);
   });
 
   test('cloud morphology: coherent wave power requires humid lifted air', () => {
