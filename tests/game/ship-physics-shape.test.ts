@@ -23,6 +23,7 @@ const MULTI_TANK = defineShipModule({
     { center: v3(0, 0, -1), axis: v3(0, 0, 1), halfLength: 0.5, radius: 1 },
     { center: v3(0, 0, 1), axis: v3(0, 0, 1), halfLength: 0.5, radius: 1 },
   ],
+  muzzles: [],
   abilities: { fuelKind: 'main', fuelCapacity: 10, fuelMassPerUnit: 2 },
 });
 

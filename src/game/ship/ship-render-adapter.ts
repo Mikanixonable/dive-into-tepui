@@ -18,6 +18,7 @@ export function shipRenderAssembly(assembly: ShipAssembly): ShipRenderAssembly {
         hp: module.hp,
         maxHp: definition.maxHp,
         deployed: deploymentOf(module),
+        burning: module.kind === 'booster' ? module.ignited && module.fuel > 0 : null,
         transform,
       };
     }),
