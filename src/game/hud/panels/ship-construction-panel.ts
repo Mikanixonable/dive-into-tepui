@@ -203,10 +203,15 @@ export class ShipConstructionPanel {
       this.slotList.replaceChildren();
       this.slotButtons.clear();
       for (const slot of model.slots) {
-        const button = new Button(slot.label, () => this.onSlotChange?.(slot.id), undefined, 'dense');
+        const button = new Button('', () => this.onSlotChange?.(slot.id), undefined, 'dense');
         button.element.classList.add('construction-slot-button');
         button.element.dataset['valid'] = String(slot.valid);
         button.element.title = slot.reason ?? 'このスロットを選択';
+        button.element.replaceChildren(textSpan('construction-slot-label', slot.label));
+        // 無効なスロットは選べない。理由はホバーの説明文だけに置かず、ボタン内に明示する。
+        if (slot.reason !== null) {
+          button.element.appendChild(textSpan('construction-slot-reason', slot.reason));
+        }
         this.slotList.appendChild(button.element);
         this.slotButtons.set(slot.id, button);
       }
