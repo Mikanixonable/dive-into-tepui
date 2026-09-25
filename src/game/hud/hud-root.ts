@@ -420,7 +420,7 @@ function buildTopBar(root: HTMLElement): void {
       </div>
       <div class="gs-metric">
         <span class="ui-data-label">SIM RATE</span>
-        <select class="v gs-speed-select" data-id="sim-speed" aria-label="時間加速"></select>
+        <div class="gs-speed-holder" data-id="sim-speed"></div>
       </div>
       <div class="gs-metric">
         <span class="ui-data-label">NODE WARP</span>
