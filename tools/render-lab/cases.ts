@@ -18,6 +18,7 @@ import { CLOUD_OPTICAL_VOLUME_CASE } from './cloud-optical-volume-case';
 import {
   CLOUD_EVENT_OPTICAL_VOLUME_CASE, CLOUD_EVENT_OPTICAL_VOLUME_RG16F_CASE,
 } from './cloud-event-optical-volume-case';
+import { CLOUD_EVENT_LOCAL_FIELD_CASE } from './cloud-event-local-field-case';
 import {
   circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, texturedBody, VIEW_HEIGHT, VIEW_WIDTH,
   type CaseBuilder, type LabCase,
@@ -174,6 +175,7 @@ export const CASES = {
   'cloud-optical-volume': CLOUD_OPTICAL_VOLUME_CASE,
   'cloud-event-optical-volume': CLOUD_EVENT_OPTICAL_VOLUME_CASE,
   'cloud-event-optical-volume-rg16f': CLOUD_EVENT_OPTICAL_VOLUME_RG16F_CASE,
+  'cloud-event-local-field': CLOUD_EVENT_LOCAL_FIELD_CASE,
   ...SHIP_CASES,
   ...PROTEIN_CASES,
 } as const satisfies Record<string, CaseBuilder>;
