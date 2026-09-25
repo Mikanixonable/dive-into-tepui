@@ -119,7 +119,7 @@ export class ModuleWindows implements ModuleWindowOpener {
           try {
             ship.decouple(moduleId, this.roster);
           } catch (error) {
-            this.hud.hint(error instanceof Error ? error.message : '分離できません');
+            this.hud.hint(error instanceof Error ? error.message : '分離できません', undefined, 'warn');
           }
         });
       } else if (act === 'dockModule') {
@@ -138,7 +138,7 @@ export class ModuleWindows implements ModuleWindowOpener {
           ? { eligible: false, reasons: ['対象船体が存在しません'] }
           : dockingEligibility(ship, moduleId, candidate.ship, candidate.moduleId);
         if (!eligibility.eligible) {
-          this.hud.hint(eligibility.reasons[0] ?? '接舷条件を満たしていません');
+          this.hud.hint(eligibility.reasons[0] ?? '接舷条件を満たしていません', undefined, 'warn');
           this.showDockCandidates(entry);
           this.syncEntry(entry);
           return;
@@ -147,7 +147,7 @@ export class ModuleWindows implements ModuleWindowOpener {
           ship.dock(candidate.ship, moduleId, candidate.moduleId, this.controlSelection);
           this.close();
         } catch (error) {
-          this.hud.hint(error instanceof Error ? error.message : '接舷できません');
+          this.hud.hint(error instanceof Error ? error.message : '接舷できません', undefined, 'warn');
         }
       } else if (act === 'startConstructionModule') {
         try {
@@ -156,7 +156,7 @@ export class ModuleWindows implements ModuleWindowOpener {
           this.close();
           this.closeOtherWindows();
         } catch (error) {
-          this.hud.hint(error instanceof Error ? error.message : '建造を開始できません');
+          this.hud.hint(error instanceof Error ? error.message : '建造を開始できません', undefined, 'warn');
         }
       } else if (act === 'undockModule') {
         if (this.undockProducesMaterial(ship, moduleId)) {
@@ -169,10 +169,10 @@ export class ModuleWindows implements ModuleWindowOpener {
         try {
           ship.repairAtDock(moduleId);
         } catch (error) {
-          this.hud.hint(error instanceof Error ? error.message : '修理できません');
+          this.hud.hint(error instanceof Error ? error.message : '修理できません', undefined, 'warn');
         }
       } else if (act === 'selectCockpitModule') {
-        if (!ship.capabilities.selectOperatingCockpit(moduleId)) this.hud.hint('全損したコックピットは選択できません');
+        if (!ship.capabilities.selectOperatingCockpit(moduleId)) this.hud.hint('全損したコックピットは選択できません', undefined, 'warn');
       }
     };
     win.onClose = () => { this.windows.delete(key); };
@@ -306,7 +306,7 @@ export class ModuleWindows implements ModuleWindowOpener {
       ship.undock(moduleId, this.roster);
       this.close();
     } catch (error) {
-      this.hud.hint(error instanceof Error ? error.message : '発進できません');
+      this.hud.hint(error instanceof Error ? error.message : '発進できません', undefined, 'warn');
     }
   }
 }
