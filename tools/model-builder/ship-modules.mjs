@@ -735,7 +735,7 @@ function buildDeployablePanels(root, definition) {
   const hinge = anchor(root, 'panel-hinge', 0, 0, definition.length / 2);
 
   for (let index = 0; index < count; index++) {
-    const panelHinge = anchor(hinge, `panel-hinge:${index}`, index * panelWidth, 0, 0);
+    const panelHinge = anchor(hinge, `panel-hinge:${index}`, 0, 0, index * panelWidth);
     panelHinge.userData = {
       ...panelHinge.userData,
       panelIndex: index,
@@ -743,11 +743,12 @@ function buildDeployablePanels(root, definition) {
       panelWidth,
       panelSpan,
     };
-    const panel = new THREE.Mesh(
-      new THREE.BoxGeometry(panelWidth * 0.96, panelThickness, panelSpan * 0.96), panelMaterial,
-    );
+    const geo = definition.kind === 'radiator'
+      ? new THREE.BoxGeometry(panelThickness, panelSpan * 0.96, panelWidth * 0.96)
+      : new THREE.BoxGeometry(panelSpan * 0.96, panelThickness, panelWidth * 0.96);
+    const panel = new THREE.Mesh(geo, panelMaterial);
     panel.name = index === 0 ? 'deployable-panel' : `deployable-panel:${index}`;
-    panel.position.x = panelWidth * 0.48;
+    panel.position.set(0, 0, panelWidth * 0.48);
     panelHinge.add(panel);
   }
 }
