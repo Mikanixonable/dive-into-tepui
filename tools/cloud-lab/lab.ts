@@ -128,13 +128,20 @@ export class CloudLabCanvas {
   public get capAngularRadius(): number { return this.capRadius; }
   public get fixture(): MeteorologicalCaseFixture { return METEOROLOGICAL_CASES[this.selectedFixtureId]; }
   public get fixtureId(): MeteorologicalCaseId { return this.selectedFixtureId; }
-  public get fixtureAppliedToGeneratedImage(): boolean { return true; }
+  public get fixtureAppliedToGeneratedImage(): boolean { return this.fixtureControl.isEnabled; }
 
   // 表示する制御実験の入力・計測契約を選ぶ。
   public selectFixture(id: MeteorologicalCaseId): void {
     if (!METEOROLOGICAL_CASES[id]) throw new Error(`cloud lab: unknown meteorological fixture "${id}"`);
     this.selectedFixtureId = id;
     this.fixtureControl.setFixture(id);
+    for (const pane of this.panes) pane.invalidate();
+    this.render();
+  }
+
+  // 制御実験を外し、本番と同じ生成場へ戻す。実写との統計比較はこの状態で行う。
+  public clearFixture(): void {
+    this.fixtureControl.clearFixture();
     for (const pane of this.panes) pane.invalidate();
     this.render();
   }

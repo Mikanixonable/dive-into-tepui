@@ -664,6 +664,8 @@ async function main() {
 
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
+    // 実写比較は制御実験ではなく、本番と同じ生成場に対して行う。
+    await devTools.evaluate('window.cloudLab.clearFixture()');
     await devTools.evaluate('window.cloudLab.setTime(0)');
     cyclonesAtZero = JSON.parse(await devTools.evaluate('JSON.stringify(window.cloudLab.cyclonesAt(0))'));
     for (const region of REGIONS) {

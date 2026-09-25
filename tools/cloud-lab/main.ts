@@ -26,6 +26,7 @@ declare global {
       fixture: MeteorologicalCaseId;
       show: (id: CloudLabViewId) => void;
       selectFixture: (id: MeteorologicalCaseId) => void;
+      clearFixture: () => void;
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
@@ -191,6 +192,7 @@ async function init(): Promise<void> {
     get fixture(): MeteorologicalCaseId { return canvas.fixtureId; },
     show: (id) => { markView(id); canvas.show(id); },
     selectFixture: (id) => { canvas.selectFixture(id); markFixture(id); showFixture(id); },
+    clearFixture: () => { canvas.clearFixture(); showFixture(canvas.fixtureId); },
     setTime,
     aimCap: (latitude, longitude, radius) => {
       canvas.aimCap(latitude, longitude, radius);
