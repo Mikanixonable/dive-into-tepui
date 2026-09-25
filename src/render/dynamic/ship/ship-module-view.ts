@@ -139,7 +139,7 @@ export class ShipModuleView {
         for (const panel of panelHinges) {
           const index = panel.userData.panelIndex as number;
           const width = panel.userData.panelWidth as number;
-          panel.position.set(index * width * deploy, 0, 0);
+          panel.position.set(0, 0, index * width * deploy);
           panel.rotation.set((1 - deploy) * Math.PI / 2, 0, 0);
         }
       } else {
@@ -154,8 +154,8 @@ export class ShipModuleView {
           const angle = index % 2 === 0 ? tilt : -tilt;
           panel.position.set(originX, 0, originZ);
           panel.rotation.set(0, angle, 0);
-          originX += Math.cos(angle) * width;
-          originZ -= Math.sin(angle) * width;
+          originX += Math.sin(angle) * width;
+          originZ += Math.cos(angle) * width;
         }
       }
     }

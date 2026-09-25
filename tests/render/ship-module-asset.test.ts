@@ -6,6 +6,14 @@ import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import shipModulesData from '../../src/assets/models/shipModules.json';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
 import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
+import {
+  RADIATOR_FOLD_COUNT,
+  RADIATOR_PANEL_WIDTH,
+  RADIATOR_SEGMENT_LENGTH,
+  SOLAR_PANEL_COUNT,
+  SOLAR_PANEL_SPAN,
+  SOLAR_PANEL_WIDTH,
+} from '../../src/physics/player-shape';
 import { test } from '../harness';
 
 function parsedRoot(): THREE.Group {
@@ -119,11 +127,23 @@ export function register(): void {
   test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', () => {
     const modules = moduleRoots(parsedRoot());
     const expected = [
-      ['radiator-standard', 6, 0.8, 1.0],
-      ['solar-panel-standard', 3, 1.2, 1.0],
+      {
+        modelId: 'radiator-standard',
+        count: RADIATOR_FOLD_COUNT,
+        width: 0.08, // 厚み (X)
+        height: RADIATOR_PANEL_WIDTH * 0.96, // 放熱幅 (Y)
+        depth: RADIATOR_SEGMENT_LENGTH * 0.96, // 展開長 (Z)
+      },
+      {
+        modelId: 'solar-panel-standard',
+        count: SOLAR_PANEL_COUNT,
+        width: SOLAR_PANEL_SPAN * 0.96, // 翼幅 (X)
+        height: 0.06, // 厚み (Y)
+        depth: SOLAR_PANEL_WIDTH * 0.96, // 展開長 (Z)
+      },
     ] as const;
-    for (const [modelId, count, width, span] of expected) {
-      const module = modules.get(modelId);
+    for (const spec of expected) {
+      const module = modules.get(spec.modelId);
       assert.ok(module !== undefined);
       const panels: THREE.Mesh[] = [];
       module.traverse((child) => {
@@ -132,21 +152,22 @@ export function register(): void {
           panels.push(child as THREE.Mesh);
         }
       });
-      assert.equal(panels.length, count, `${modelId} panel count`);
+      assert.equal(panels.length, spec.count, `${spec.modelId} panel count`);
       for (const panel of panels) {
         const geometry = panel.geometry as THREE.BoxGeometry;
         const parameters = geometry.parameters;
-        assert.ok(Math.abs(parameters.width - width * 0.96) < 1e-9, `${modelId} width`);
-        assert.ok(Math.abs(parameters.depth - span * 0.96) < 1e-9, `${modelId} span`);
+        assert.ok(Math.abs(parameters.width - spec.width) < 1e-9, `${spec.modelId} width`);
+        assert.ok(Math.abs(parameters.height - spec.height) < 1e-9, `${spec.modelId} height`);
+        assert.ok(Math.abs(parameters.depth - spec.depth) < 1e-9, `${spec.modelId} depth`);
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {
         if (child.userData.semanticAnchor?.startsWith('panel-hinge:')) hinges.push(child);
       });
-      assert.equal(hinges.length, count, `${modelId} hinge count`);
+      assert.equal(hinges.length, spec.count, `${spec.modelId} hinge count`);
       assert.deepEqual(
         hinges.map((hinge) => hinge.userData.panelIndex),
-        [...Array(count).keys()],
+        [...Array(spec.count).keys()],
       );
     }
   });
