@@ -6,6 +6,8 @@ import type { SnapshotService, SnapshotSource } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta } from '../save/slot-data';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
+import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
+import { TextPromptOverlay } from '../../hud/windows/text-prompt-overlay';
 import { CloseButton, TabBar } from '../../hud/widgets';
 import { injectOnce } from '../../hud/inject-style';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
@@ -84,6 +86,8 @@ export class SaveBrowser implements OverlayHandle {
   private statusIsError = false;
   // compact 幅でだけ、左右ペインのどちらを表示するか(タブで切り替える)。
   private mobilePane: 'slots' | 'snapshots' = 'slots';
+  private readonly confirmDialog: ConfirmationOverlay;
+  private readonly textPrompt: TextPromptOverlay;
 
   // アクティブスロットを切り替えて自分を閉じた後に呼ぶ。
   public onSlotSwitched: (() => void) | null = null;
@@ -106,6 +110,9 @@ export class SaveBrowser implements OverlayHandle {
     this.el.id = 'save-browser';
     this.el.style.display = 'none';
     root.appendChild(this.el);
+    // 確認・入力のモーダルはブラウザの開閉と独立させ、rebuild が作り直す DOM の外へ置く。
+    this.confirmDialog = new ConfirmationOverlay(root, overlayManager);
+    this.textPrompt = new TextPromptOverlay(root, overlayManager);
   }
 
   // パネルを開く。開いている間はゲームを止める。
@@ -124,8 +131,10 @@ export class SaveBrowser implements OverlayHandle {
     });
   }
 
-  // パネルを閉じる。
+  // パネルを閉じる。開いている確認・入力もあわせて取消として解決する。
   public close(): void {
+    this.confirmDialog.close();
+    this.textPrompt.close();
     this.el.style.display = 'none';
     this._visible = false;
     this.overlayManager.close('save-browser');
@@ -232,14 +241,15 @@ export class SaveBrowser implements OverlayHandle {
     this.el.appendChild(panel);
   }
 
-  // 新しい名前を prompt で尋ねてスロット名を書き換える。キャンセル・空文字なら何もしない。
+  // 新しい名前を入力モーダルで尋ねてスロット名を書き換える。キャンセル・空文字なら何もしない。
   private handleRenameSlot(id: string): void {
     const slot = this.slots.slots.find((s) => s.id === id);
     if (!slot) return;
-    const name = prompt('セーブデータの名前', slot.name);
-    if (!name) return;
-    this.slots.renameSlot(id, name);
-    this.rebuild();
+    this.textPrompt.open({ title: 'セーブデータの名前', value: slot.name }, (name) => {
+      if (name === null || name === '') return;
+      this.slots.renameSlot(id, name);
+      this.rebuild();
+    });
   }
 
   // スロット全体を複製し、成功したら複製先を表示対象にする。
@@ -258,15 +268,20 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // confirm で確認してからスロットを削除する。表示中のスロットを削除した場合はアクティブ
+  // 確認モーダルで確認してからスロットを削除する。表示中のスロットを削除した場合はアクティブ
   // スロットへ表示を戻す。
   private handleDeleteSlot(id: string): void {
     const slot = this.slots.slots.find((s) => s.id === id);
     if (!slot) return;
-    if (!confirm(`「${slot.name}」を削除します。よろしいですか?`)) return;
-    this.slots.deleteSlot(id);
-    if (this.viewedSlotId === id) this.viewedSlotId = this.slots.activeSlotId;
-    this.rebuild();
+    this.confirmDialog.open(
+      { title: 'スロットを削除', message: `「${slot.name}」を削除します。よろしいですか?`, confirmLabel: '削除', destructive: true },
+      (confirmed) => {
+        if (!confirmed) return;
+        this.slots.deleteSlot(id);
+        if (this.viewedSlotId === id) this.viewedSlotId = this.slots.activeSlotId;
+        this.rebuild();
+      },
+    );
   }
 
   // スロット id をアクティブにして遊び始める。遷移を要求する前に閉じる — 開いたままだと次の周回でも
@@ -277,14 +292,15 @@ export class SaveBrowser implements OverlayHandle {
     this.onSlotSwitched?.();
   }
 
-  // 名前を prompt で尋ねて空のスロットを作り、アクティブにして遊び始める。キャンセル・空文字なら何もしない。
+  // 名前を入力モーダルで尋ねて空のスロットを作り、アクティブにして遊び始める。キャンセル・空文字なら何もしない。
   private handleNewSlot(): void {
-    const name = prompt('新しいセーブデータの名前', '新しいセーブデータ');
-    if (!name) return;
-    const slot = this.slots.createSlot(name);
-    this.slots.setActiveSlot(slot.id);
-    this.close();
-    this.onSlotSwitched?.();
+    this.textPrompt.open({ title: '新しいセーブデータの名前', value: '新しいセーブデータ' }, (name) => {
+      if (name === null || name === '') return;
+      const slot = this.slots.createSlot(name);
+      this.slots.setActiveSlot(slot.id);
+      this.close();
+      this.onSlotSwitched?.();
+    });
   }
 
   // ファイルを選択して取り込む。成功したら取り込んだスロットを表示対象にし、失敗理由を
@@ -300,17 +316,18 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // 今の状態を手動セーブとして残す。名前は prompt で尋ね、成否をステータス行へ表示する。
-  // 残せない状態(canSaveNow が false)なら何もしない。
+  // 今の状態を手動セーブとして残す。名前は入力モーダルで尋ね、成否をステータス行へ表示する。
+  // 残せない状態(canSaveNow が false)なら何もしない。キャンセルは「名前なしで残す」。
   private handleSaveNow(): void {
     const game = this.gameSource.current;
     if (game === null || !this.canSaveNow()) return;
-    const name = prompt('セーブの名前', '');
-    const snap = this.service.addManualSave(
-      game.snapshot.runSummary(), game.snapshot.serialize(), name || null,
-    );
-    this.setStatus(snap ? 'セーブしました。' : 'セーブに失敗しました。', !snap);
-    this.rebuild();
+    this.textPrompt.open({ title: 'セーブの名前' }, (name) => {
+      const snap = this.service.addManualSave(
+        game.snapshot.runSummary(), game.snapshot.serialize(), name || null,
+      );
+      this.setStatus(snap ? 'セーブしました。' : 'セーブに失敗しました。', !snap);
+      this.rebuild();
+    });
   }
 
   // 手動セーブ snapId の復元を求める。読み込めない理由 refusal があれば、それをステータス行へ出して
@@ -329,25 +346,34 @@ export class SaveBrowser implements OverlayHandle {
   private handleTogglePin(snapId: string, currentlyPinned: boolean): void {
     this.slots.setPinned(snapId, !currentlyPinned);
     if (!currentlyPinned) {
-      const name = prompt('クリップする名前(空欄なら変更しません)', '');
-      if (name) this.slots.renameSnapshot(snapId, name);
+      this.textPrompt.open({ title: 'クリップする名前(空欄なら変更しません)' }, (name) => {
+        if (name !== null && name !== '') this.slots.renameSnapshot(snapId, name);
+        this.rebuild();
+      });
+      return;
     }
     this.rebuild();
   }
 
-  // 新しい名前を prompt で尋ねて手動セーブ名を書き換える。キャンセル・空文字なら何もしない。
+  // 新しい名前を入力モーダルで尋ねて手動セーブ名を書き換える。キャンセル・空文字なら何もしない。
   private handleRenameSnapshot(id: string): void {
-    const name = prompt('セーブの名前', '');
-    if (!name) return;
-    this.slots.renameSnapshot(id, name);
-    this.rebuild();
+    this.textPrompt.open({ title: 'セーブの名前' }, (name) => {
+      if (name === null || name === '') return;
+      this.slots.renameSnapshot(id, name);
+      this.rebuild();
+    });
   }
 
-  // confirm で確認してから手動セーブを削除する。
+  // 確認モーダルで確認してから手動セーブを削除する。
   private handleDeleteSnapshot(id: string): void {
-    if (!confirm('この手動セーブを削除します。よろしいですか?')) return;
-    this.slots.deleteSnapshot(id);
-    this.rebuild();
+    this.confirmDialog.open(
+      { title: '手動セーブを削除', message: 'この手動セーブを削除します。よろしいですか?', confirmLabel: '削除', destructive: true },
+      (confirmed) => {
+        if (!confirmed) return;
+        this.slots.deleteSnapshot(id);
+        this.rebuild();
+      },
+    );
   }
 
   // 指定した手動セーブの時点でスロットを複製(分岐)し、成否をステータス行へ表示する。
