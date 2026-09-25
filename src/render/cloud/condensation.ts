@@ -1,6 +1,6 @@
 // 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
-import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
+import { exp, float, inverseSqrt, max, mix, smoothstep } from 'three/tsl';
 import type { CloudSample } from './cloud-field-sample';
 import type { WeatherSample } from './weather-model';
 export type { CloudSample } from './cloud-field-sample';
@@ -57,21 +57,14 @@ const TOWER_LIFT_GATE = 0.005;
 // ので、粒を足す前の湿度で決める。渡り始めは覆いの効き始めの少し下、渡り終わりはその 1 単位ぶん上。
 const SHAPE_NETWORK_HUMIDITY = 0.45;
 const SHAPE_GRAIN_HUMIDITY = 0.70;
-// 薄層雲の光学的厚み τ は 2 項の和。ヘイズ成分は上層湿度が発生閾値を超過した量に比例して広域に薄い幕を形成する。
-// ストリーク成分は発生閾値の超過量の二乗に比例し、湿度のピーク部にのみ高密度の筋状構造を生成する。
-// 膝は、二乗の τ が筋の利得を傾きにした直線と交わる超過量。上限は τ をそこへ
-// 漸近させる tanh の頭打ちで、下地が常に e^−τ だけ透けることを保証する — 巻雲は不透明にならない。
-// **2 つの利得と上限は同じ率で動かす** — そうすると τ がそのまま定数倍になり、靄と筋の濃さの比も
-// 階調の順番も変わらないまま、薄い雲だけが一様に薄くなる。率は、±60° の輝度の平均が実写(分離した
-// 薄い雲、0.135)の 3 分の 2 に収まる高さに取る — 薄い雲は下地を隠す幕ではなく、地表の色をわずかに
-// 白ませるものとして見える(`DEVELOP/SPEC/RENDERING.md`「薄い雲の大半はごく薄い靄」)。いまの率では
-// 上層の湿度 0.5 で τ 0.06、0.6 で 0.20、0.7 で 0.41、上端でも下地が半分以上透ける。
+// 上層氷雲の光学的厚み τ は、広域のヘイズ成分と湿度ピークに出る筋状成分を足して得る。
+// 雲種ごとの固定上限は置かない。上層湿度・波状雲・地形性雲・前線の寄与が増えれば τ も連続して
+// 増え、薄い巻雲から厚い氷雲まで同じ消散契約へ渡す。
 const TRANSLUCENT_HAZE_ONSET = 0.38;
 const TRANSLUCENT_HAZE_GAIN = 0.49;
 const TRANSLUCENT_STREAK_ONSET = 0.48;
 const TRANSLUCENT_STREAK_GAIN = 1.75;
 const TRANSLUCENT_KNEE = 0.25;
-const TRANSLUCENT_LIMIT = 0.63;
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
 // 雲頂高度は層状の雲から立つ塔と、渦の芯が敷く金床の高いほうを雲底からの高さへ写して出す —
@@ -133,7 +126,7 @@ export function condense(weather: WeatherSample): CloudSample {
   return {
     coverage,
     cloudTop: scaledCloudTop,
-    iceOpticalDepth: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
+    iceOpticalDepth: haze.add(streak),
     // 上層氷雲は圏界面付近を中心に置く。RGBAのAに高度を保持するため、後段は固定 shell 高度に
     // 依存せず、同じ柱契約から多層密度を再構成できる。
     // Front/orographic/wave ice may live below the tropopause; deep-convective anvils keep the high center.

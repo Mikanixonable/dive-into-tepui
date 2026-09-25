@@ -8,7 +8,7 @@ import { CloudField } from './cloud-field';
 import {
   cloudFieldTexelFromSample, cloudSampleFromTexel, type CloudSample,
 } from './cloud-field-sample';
-import { cloudTemporalSampleTimes } from './cloud-quality';
+import { cloudTemporalCachePlan, cloudTemporalSampleTimes } from './cloud-quality';
 import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { ClimateMap } from './climate-map';
@@ -85,38 +85,18 @@ export class GeneratedCloudField implements CloudFieldSource {
     }
     if (this.lastPreparedDisplayTime === displayTime && !sourceChanged) return;
 
-    const sample = cloudTemporalSampleTimes(displayTime, this.qualityLevel);
-    const lowerInA = this.timeA === sample.lowerTimeSeconds;
-    const lowerInB = this.timeB === sample.lowerTimeSeconds;
-    const upperInA = this.timeA === sample.upperTimeSeconds;
-    const upperInB = this.timeB === sample.upperTimeSeconds;
-
-    if (!lowerInA && !lowerInB) {
-      // Prefer overwriting the slot that is not needed as the upper sample.
-      const useA = upperInB || (!upperInA && this.olderSlotIsA());
-      this.renderSlot(renderer, useA ? 'A' : 'B', sample.lowerTimeSeconds, gpu);
+    const plan = cloudTemporalCachePlan(displayTime, this.qualityLevel, {
+      timeA: this.timeA,
+      timeB: this.timeB,
+    });
+    for (const write of plan.writes) {
+      this.renderSlot(renderer, write.slot, write.timeSeconds, gpu);
     }
-    if (this.timeA !== sample.upperTimeSeconds && this.timeB !== sample.upperTimeSeconds) {
-      const useA = this.timeB === sample.lowerTimeSeconds;
-      this.renderSlot(renderer, useA ? 'A' : 'B', sample.upperTimeSeconds, gpu);
-    }
-
-    const lowerIsA = this.timeA === sample.lowerTimeSeconds;
-    const upperIsB = this.timeB === sample.upperTimeSeconds;
-    if (!(lowerIsA && upperIsB) && !(this.timeB === sample.lowerTimeSeconds && this.timeA === sample.upperTimeSeconds)) {
-      throw new Error('cloud temporal cache failed to materialize adjacent samples');
-    }
-    this.blendAtoB.value = lowerIsA && upperIsB ? sample.fraction : 1 - sample.fraction;
+    this.blendAtoB.value = plan.blendAtoB;
     this.blended.render(renderer, gpu);
     this.model.syncTime(displayTime);
     this.generationValue += 1;
     this.lastPreparedDisplayTime = displayTime;
-  }
-
-  private olderSlotIsA(): boolean {
-    if (this.timeA === null) return true;
-    if (this.timeB === null) return false;
-    return this.timeA <= this.timeB;
   }
 
   private renderSlot(

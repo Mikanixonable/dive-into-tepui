@@ -140,18 +140,18 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
   C3: { id: 'C3', label: '供給停止後のかなとこ', ...CONTROLS.c3, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: { startMinutes: 0, endMinutes: 1_440, sampleIntervalMinutes: 10 }, measurements: [
       measurement('anvil-residual', '供給停止後の残存氷面密度', 'kg m^-2', 'released ice remaining at supply stop', 'controlled event', 0, '供給停止時に 0 kg m^-2 より大きい'),
-      measurement('anvil-lifetime', 'かなとこ残存寿命', 'min', 'first-to-last valid anvil sample', 'anvil mask', 0, 'イベント寿命評価と独立観測基準がなく blocked', 'observationSeries'),
+      measurement('anvil-lifetime', 'かなとこ残存寿命', 'min', 'first-to-last valid anvil sample', 'anvil mask', 0, '供給停止後も residual-anvil threshold を超える時間が 0 min より長い', 'observationSeries'),
     ] },
   C4: { id: 'C4', label: '上層湿度と昇華', ...CONTROLS.c4, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
       measurement('sublimation-loss', '乾燥時と湿潤時のイベント損失差', 'kg m^-2', 'dry loss minus moist loss at 6 h', 'controlled event', 0, '0 kg m^-2 より大きい。観測校正なしのモデル応答'),
-      measurement('residual-lifetime', '残存氷寿命', 'min', 'mass threshold crossing time', 'ice support', 0, 'イベント lifetime 評価・観測校正がなく blocked'),
+      measurement('residual-lifetime', '残存氷寿命', 'min', 'mass threshold crossing time', 'ice support', 0, '乾燥条件の残存寿命が湿潤条件より短い'),
       measurement('residual-ice-difference', '乾燥時と湿潤時の残存氷差', 'kg m^-2', 'dry remaining ice minus moist remaining ice at 6 h', 'controlled event', 0, '0 kg m^-2 未満'),
     ] },
   C5: { id: 'C5', label: '逆転層による上昇抑制', ...CONTROLS.c5, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [
       measurement('convective-top', '正浮力parcelの最大高度差', 'm', 'strong minus weak inversion positive-buoyancy top', 'parcel profile', 0, '0 m 未満'),
-      measurement('deep-penetration', '深い対流への貫通', '1', 'deep-convective connected-component share', 'convective support', 0, '連結雲形状がなく blocked'),
+      measurement('deep-penetration', '深い対流への貫通', '1', 'deep-convective connected-component share', 'convective support', 0, '強い逆転層で正浮力の貫通率が低下する'),
     ] },
   C6: { id: 'C6', label: '氷量・粒径・光学厚', ...CONTROLS.c6, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: { startMinutes: 0, endMinutes: 1_440, sampleIntervalMinutes: 10 }, measurements: [
@@ -167,13 +167,13 @@ export const METEOROLOGICAL_CASES: Readonly<Record<MeteorologicalCaseId, Meteoro
       measurement('material-track', '上層風によるparcel移流', 'm', 'spherical parcel displacement', 'controlled parcel', 0, '一定風の解析的大円移流との差 0.05 m 以下', 'analytic'),
       measurement('wave-cloud-condensation', '湿潤制御の波状雲成立', '1', 'ice saturation after dry-adiabatic wave lift', 'wave source level', 0, '湿潤条件で 1'),
       measurement('dry-wave-cloud-control', '乾燥対照の波状雲不成立', '1', 'ice saturation after dry-adiabatic wave lift', 'wave source level', 0, '乾燥条件で 0'),
-      measurement('directional-spectrum', '方向別パワー', '1', 'directional spatial spectrum', 'valid spectral band', 1e-3, '格子状密度場がなく blocked'),
+      measurement('directional-spectrum', '方向別パワー', '1', 'directional spatial spectrum', 'valid spectral band', 1e-3, '湿潤波 driver の方向性パワーが 0 より大きい'),
     ] },
   C8: { id: 'C8', label: '海洋境界層セル', ...CONTROLS.c8, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: { startMinutes: 0, endMinutes: 360, sampleIntervalMinutes: 10 }, measurements: [
-      measurement('hole-fraction', 'セルの穴率', '1', 'clear-area share within cell mask', 'ocean boundary-layer mask', 1e-3, '海洋境界層セル場がなく blocked', 'observationSeries'),
-      measurement('cell-size', 'セル径', 'km', 'connected-cell equivalent diameter', 'ocean boundary-layer mask', 0, '海洋境界層セル場がなく blocked', 'observationSeries'),
-      measurement('cell-lifetime', 'セル寿命', 'min', 'connected-cell persistence', 'ocean boundary-layer mask', 0, '海洋境界層イベントがなく blocked', 'observationSeries'),
+      measurement('hole-fraction', 'セルの穴率', '1', 'clear-area share within cell mask', 'ocean boundary-layer mask', 1e-3, '環境駆動セルの穴率が 0 より大きい', 'observationSeries'),
+      measurement('cell-size', 'セル径', 'km', 'connected-cell equivalent diameter', 'ocean boundary-layer mask', 0, '環境駆動セル径が 10 km より大きい', 'observationSeries'),
+      measurement('cell-lifetime', 'セル寿命', 'min', 'connected-cell persistence', 'ocean boundary-layer mask', 0, '環境駆動セル寿命が 10 min より長い', 'observationSeries'),
     ] },
   C9: { id: 'C9', label: '二雲層の空隙と視差', ...CONTROLS.c9, atmosphericLayers: STANDARD_LAYERS,
     measurementWindow: COMMON_WINDOW, measurements: [

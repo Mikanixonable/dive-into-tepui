@@ -42,3 +42,68 @@ export function cloudTemporalSampleTimes(
     fraction: (displayTimeSeconds - lowerTimeSeconds) / interval,
   };
 }
+
+
+export type CloudTemporalCacheSlot = 'A' | 'B';
+
+export interface CloudTemporalCacheState {
+  readonly timeA: number | null;
+  readonly timeB: number | null;
+}
+
+export interface CloudTemporalCacheWrite {
+  readonly slot: CloudTemporalCacheSlot;
+  readonly timeSeconds: number;
+}
+
+export interface CloudTemporalCachePlan extends CloudTemporalSampleTimes {
+  readonly writes: readonly CloudTemporalCacheWrite[];
+  readonly lowerSlot: CloudTemporalCacheSlot;
+  readonly upperSlot: CloudTemporalCacheSlot;
+  readonly blendAtoB: number;
+}
+
+function replacementSlot(
+  timeA: number | null,
+  timeB: number | null,
+  protectedTime: number | null,
+  targetTime: number,
+): CloudTemporalCacheSlot {
+  if (timeA === protectedTime) return 'B';
+  if (timeB === protectedTime) return 'A';
+  if (timeA === null) return 'A';
+  if (timeB === null) return 'B';
+  return Math.abs(timeA - targetTime) >= Math.abs(timeB - targetTime) ? 'A' : 'B';
+}
+
+export function cloudTemporalCachePlan(
+  displayTimeSeconds: number,
+  qualityLevel: number,
+  state: CloudTemporalCacheState,
+): CloudTemporalCachePlan {
+  const sample = cloudTemporalSampleTimes(displayTimeSeconds, qualityLevel);
+  let timeA = state.timeA;
+  let timeB = state.timeB;
+  const writes: CloudTemporalCacheWrite[] = [];
+
+  const materialize = (timeSeconds: number, protectedTime: number | null): CloudTemporalCacheSlot => {
+    if (timeA === timeSeconds) return 'A';
+    if (timeB === timeSeconds) return 'B';
+    const slot = replacementSlot(timeA, timeB, protectedTime, timeSeconds);
+    writes.push({ slot, timeSeconds });
+    if (slot === 'A') timeA = timeSeconds;
+    else timeB = timeSeconds;
+    return slot;
+  };
+
+  const lowerSlot = materialize(sample.lowerTimeSeconds, sample.upperTimeSeconds);
+  const upperSlot = materialize(sample.upperTimeSeconds, sample.lowerTimeSeconds);
+  if (lowerSlot === upperSlot) throw new Error('cloud temporal cache requires two distinct sample slots');
+  return {
+    ...sample,
+    writes,
+    lowerSlot,
+    upperSlot,
+    blendAtoB: lowerSlot === 'A' ? sample.fraction : 1 - sample.fraction,
+  };
+}

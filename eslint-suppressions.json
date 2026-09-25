@@ -1311,11 +1311,6 @@
       "count": 4
     }
   },
-  "src/render/pipeline/shadow/cloud-shadow-renderer.ts": {
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
-    }
-  },
   "src/render/pipeline/shadow/mesh-shadow.ts": {
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 4
