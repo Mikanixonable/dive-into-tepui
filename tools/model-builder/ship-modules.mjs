@@ -105,15 +105,19 @@ function setupDeployablePanels(root, definition) {
       panelSpan,
     };
 
-    const targetPrefix = `panel${index}`;
+    const targetNames = new Set([`panel${index}`, `panel:${index}`]);
     const toMove = [];
     for (const child of [...root.children]) {
       if (child.isMesh && (
-        child.name === targetPrefix ||
+        targetNames.has(child.name) ||
         child.name.startsWith(`panel_ribs${index}`) ||
+        child.name.startsWith(`panel_ribs:${index}`) ||
         child.name.startsWith(`panel_hinge_hardware${index}`) ||
+        child.name.startsWith(`panel_hinge_hardware:${index}`) ||
         child.name.startsWith(`radiator_pipe${index}`) ||
-        child.name.startsWith(`radiator_hinge_hardware${index}`)
+        child.name.startsWith(`radiator_pipe:${index}`) ||
+        child.name.startsWith(`radiator_hinge_hardware${index}`) ||
+        child.name.startsWith(`radiator_hinge_hardware:${index}`)
       )) {
         toMove.push(child);
       }
@@ -124,8 +128,12 @@ function setupDeployablePanels(root, definition) {
       root.remove(mesh);
       mesh.geometry.translate(0, 0, zOffset);
       mesh.geometry.computeBoundingBox();
-      if (mesh.name === targetPrefix) {
-        mesh.name = index === 0 ? 'deployable-panel' : `deployable-panel:${index}`;
+      if (targetNames.has(mesh.name)) {
+        const newName = index === 0 ? 'deployable-panel' : `deployable-panel:${index}`;
+        mesh.name = newName;
+        mesh.userData.name = newName;
+      } else {
+        mesh.userData.name = mesh.name;
       }
       panelHinge.add(mesh);
     }
@@ -189,7 +197,10 @@ async function buildModule(definition) {
 export async function buildShipModules() {
   const root = new THREE.Group();
   root.name = 'ship-modules';
+  const modelIds = new Set();
   for (const definition of SHIP_MODULE_CATALOG.all()) {
+    if (modelIds.has(definition.modelId)) continue;
+    modelIds.add(definition.modelId);
     root.add(await buildModule(definition));
   }
   return root;

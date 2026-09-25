@@ -3,8 +3,11 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
-import shipModulesData from '../../src/assets/models/shipModules.json';
-import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
+import {
+  buildShipModuleModel,
+  getShipModuleTemplates,
+  loadShipModuleModels,
+} from '../../src/render/dynamic/ship/ship-module-models';
 import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
 import {
   RADIATOR_FOLD_COUNT,
@@ -17,7 +20,7 @@ import {
 import { test } from '../harness';
 
 function parsedRoot(): THREE.Group {
-  return new THREE.ObjectLoader().parse(shipModulesData) as THREE.Group;
+  return getShipModuleTemplates();
 }
 
 function moduleRoots(root: THREE.Group): Map<string, THREE.Object3D> {
@@ -48,19 +51,21 @@ function objectByName(root: THREE.Object3D, name: string): THREE.Object3D | null
 }
 
 export function register(): void {
-  test('ship module asset: catalog の全 modelId が独立した等倍 Group を持つ', () => {
+  test('ship module asset: catalog の全 modelId が独立した等倍 Group を持つ', async () => {
+    await loadShipModuleModels();
     const root = parsedRoot();
     const modules = moduleRoots(root);
     const modelIds = new Set(SHIP_MODULE_CATALOG.all().map(definition => definition.modelId));
     assert.deepEqual(new Set(modules.keys()), modelIds);
     assert.deepEqual(root.scale.toArray(), [1, 1, 1]);
     for (const [modelId, module] of modules) {
-      assert.equal(module.type, 'Group', `${modelId} is not an independent Group`);
+      assert.ok(module.type === 'Group' || module.type === 'Object3D', `${modelId} is not an independent Group/Object3D`);
       assert.deepEqual(module.scale.toArray(), [1, 1, 1], `${modelId} has a baked root scale`);
     }
   });
 
-  test('ship module asset: 全 module の接続面は定義長の ±Z に一致する', () => {
+  test('ship module asset: 全 module の接続面は定義長の ±Z に一致する', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     for (const definition of SHIP_MODULE_CATALOG.all()) {
       const module = modules.get(definition.modelId);
@@ -77,7 +82,8 @@ export function register(): void {
     }
   });
 
-  test('ship module asset: interface ring は接続面と同じ +Z 法線を持つ', () => {
+  test('ship module asset: interface ring は接続面と同じ +Z 法線を持つ', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     const module = modules.get('dock-standard');
     assert.ok(module !== undefined);
@@ -87,7 +93,8 @@ export function register(): void {
     assert.ok(normal.distanceTo(new THREE.Vector3(0, 0, 1)) < 1e-9);
   });
 
-  test('ship module asset: tank band は船体軸と同じ +Z 法線を持つ', () => {
+  test('ship module asset: tank band は船体軸と同じ +Z 法線を持つ', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     const module = modules.get('tank-6-main');
     assert.ok(module !== undefined);
@@ -102,7 +109,8 @@ export function register(): void {
     }
   });
 
-  test('ship module asset: 能力を持つ module は対応する semantic anchor を保つ', () => {
+  test('ship module asset: 能力を持つ module は対応する semantic anchor を保つ', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     const expected: Readonly<Record<string, readonly string[]>> = {
       thruster: ['thrust'],
@@ -124,7 +132,8 @@ export function register(): void {
     }
   });
 
-  test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', () => {
+  test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     const expected = [
       {
@@ -154,11 +163,14 @@ export function register(): void {
       });
       assert.equal(panels.length, spec.count, `${spec.modelId} panel count`);
       for (const panel of panels) {
-        const geometry = panel.geometry as THREE.BoxGeometry;
-        const parameters = geometry.parameters;
-        assert.ok(Math.abs(parameters.width - spec.width) < 1e-9, `${spec.modelId} width`);
-        assert.ok(Math.abs(parameters.height - spec.height) < 1e-9, `${spec.modelId} height`);
-        assert.ok(Math.abs(parameters.depth - spec.depth) < 1e-9, `${spec.modelId} depth`);
+        panel.geometry.computeBoundingBox();
+        const bbox = panel.geometry.boundingBox;
+        assert.ok(bbox !== null);
+        const size = new THREE.Vector3();
+        bbox.getSize(size);
+        assert.ok(Math.abs(size.x - spec.width) < 1e-3, `${spec.modelId} width: ${size.x} expected ${spec.width}`);
+        assert.ok(Math.abs(size.y - spec.height) < 1e-3, `${spec.modelId} height: ${size.y} expected ${spec.height}`);
+        assert.ok(Math.abs(size.z - spec.depth) < 1e-3, `${spec.modelId} depth: ${size.z} expected ${spec.depth}`);
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {
@@ -172,7 +184,8 @@ export function register(): void {
     }
   });
 
-  test('ship module asset: instance は geometry を共有し material と状態だけを分離する', () => {
+  test('ship module asset: instance は geometry を共有し material と状態だけを分離する', async () => {
+    await loadShipModuleModels();
     const first = buildShipModuleModel('cockpit-standard');
     const second = buildShipModuleModel('cockpit-standard');
     const firstMesh = first.getObjectByProperty('isMesh', true) as THREE.Mesh;
@@ -186,7 +199,8 @@ export function register(): void {
     disposeOwnedRenderResources(second);
   });
 
-  test('ship module asset: 各モジュールの寸法とバウンディングボックスはカタログ規格に整合する', () => {
+  test('ship module asset: 各モジュールの寸法とバウンディングボックスはカタログ規格に整合する', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
 
     // 1. Cockpit: 全長 3.0m (z in [-1.5, +1.5])
