@@ -7,7 +7,10 @@ import {
   RADIATOR_PANEL_THICKNESS,
   RADIATOR_SEGMENT_LENGTH,
   SOLAR_PANEL_COUNT,
+<<<<<<< HEAD
   SOLAR_PANEL_THICKNESS,
+=======
+>>>>>>> 40e7e8818 (feat(ship): 太陽電池・放熱板の展開方向を接続面垂直(+Z)に変更)
   SOLAR_PANEL_WIDTH,
 } from './player-shape';
 import { qFromAxisAngle, type Quat } from '../math/quat';
@@ -60,6 +63,7 @@ function lift(shape: ChainShape, u: number, w: number, faceZ: number): Vec3 {
   return v3(shape.normalAxis.x * u, shape.normalAxis.y * u, faceZ + w);
 }
 
+<<<<<<< HEAD
 // kind のパネル列の姿勢を、根元側から順に返す。faceZ は取付面の Z [m]、deployed は展開度 0..1。
 export function deployablePanelPoses(
   kind: DeployablePanelKind, faceZ: number, deployed: number,
@@ -81,15 +85,59 @@ export function deployablePanelPoses(
     const mw = Math.sin(angle);
     const originU = hingeU + side * mu * halfThickness;
     const originW = hingeW + side * mw * halfThickness;
+=======
+function add(a: Vec3, b: Vec3): Vec3 {
+  return v3(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+function zRotatedOffset(angle: number, length: number): Vec3 {
+  return rotateY(v3(0, 0, length), angle);
+}
+
+// 太陽電池の3枚を、モジュール端面のヒンジから接続面に垂直（+Z方向）へ順に配置する。
+// 完全展開時は接続面法線方向へ連なり、収納時はフランジ面へ折りたたまれた薄い束になる。
+export function solarPanelLayout(moduleLength: number, deployed: number): readonly PanelLayout[] {
+  const fraction = Math.max(0, Math.min(1, deployed));
+  const tilt = (1 - fraction) * Math.PI / 2;
+  const result: PanelLayout[] = [];
+  for (let index = 0; index < SOLAR_PANEL_COUNT; index++) {
+    const distance = (index + 0.5) * SOLAR_PANEL_WIDTH * fraction;
+    const center = add(
+      v3(0, 0, moduleLength / 2),
+      v3(0, 0, distance),
+    );
+>>>>>>> 40e7e8818 (feat(ship): 太陽電池・放熱板の展開方向を接続面垂直(+Z)に変更)
     result.push({
       origin: lift(shape, originU, originW, faceZ),
       rotation: qFromAxisAngle(shape.foldAxis, angle),
       center: lift(shape, originU + du * shape.length / 2, originW + dw * shape.length / 2, faceZ),
       normal: lift(shape, mu, mw, 0),
     });
+<<<<<<< HEAD
     // 次のヒンジは先端の、このパネルの side 側の面にある
     hingeU = originU + du * shape.length + side * mu * halfThickness;
     hingeW = originW + dw * shape.length + side * mw * halfThickness;
+=======
+  }
+  return result;
+}
+
+// ラジエーターの6枚を、モジュール端面から接続面に垂直（+Z方向）へ展開する蛇腹として配置する。
+// パネル面の法線は収納時に接続面法線方向、完全展開時に左右（X方向）に近い面を向く。
+export function radiatorPanelLayout(moduleLength: number, deployed: number): readonly PanelLayout[] {
+  const fraction = Math.max(0, Math.min(1, deployed));
+  const tilt = STOW_TILT + (RADIATOR_DEPLOY_TILT - STOW_TILT) * fraction;
+  const result: PanelLayout[] = [];
+  let origin: Vec3 = v3(0, 0, moduleLength / 2);
+  for (let index = 0; index < RADIATOR_FOLD_COUNT; index++) {
+    const angle = index % 2 === 0 ? tilt : -tilt;
+    const center = add(origin, zRotatedOffset(angle, RADIATOR_SEGMENT_LENGTH / 2));
+    result.push({
+      center,
+      normal: rotateY(v3(1, 0, 0), angle),
+    });
+    origin = add(origin, zRotatedOffset(angle, RADIATOR_SEGMENT_LENGTH));
+>>>>>>> 40e7e8818 (feat(ship): 太陽電池・放熱板の展開方向を接続面垂直(+Z)に変更)
   }
   return result;
 }

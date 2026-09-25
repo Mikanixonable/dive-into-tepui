@@ -252,6 +252,7 @@ export function register(): void {
       });
       assert.equal(panels.length, spec.count, `${spec.modelId} panel count`);
       for (const panel of panels) {
+<<<<<<< HEAD
         panel.geometry.computeBoundingBox();
         const bbox = panel.geometry.boundingBox;
         assert.ok(bbox !== null);
@@ -260,6 +261,13 @@ export function register(): void {
         assert.ok(Math.abs(size.x - spec.width) < 1e-3, `${spec.modelId} width: ${size.x} expected ${spec.width}`);
         assert.ok(Math.abs(size.y - spec.height) < 1e-3, `${spec.modelId} height: ${size.y} expected ${spec.height}`);
         assert.ok(Math.abs(size.z - spec.depth) < 1e-3, `${spec.modelId} depth: ${size.z} expected ${spec.depth}`);
+=======
+        const geometry = panel.geometry as THREE.BoxGeometry;
+        const parameters = geometry.parameters;
+        assert.ok(Math.abs(parameters.width - spec.width) < 1e-9, `${spec.modelId} width`);
+        assert.ok(Math.abs(parameters.height - spec.height) < 1e-9, `${spec.modelId} height`);
+        assert.ok(Math.abs(parameters.depth - spec.depth) < 1e-9, `${spec.modelId} depth`);
+>>>>>>> 40e7e8818 (feat(ship): 太陽電池・放熱板の展開方向を接続面垂直(+Z)に変更)
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {
