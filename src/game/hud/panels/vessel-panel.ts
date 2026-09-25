@@ -4,10 +4,10 @@
 // キー押下と同じ経路で発火するボタンとしてここに持つ — タッチでも到達できるようにするための、
 // キー入力の代替 UI。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import { Button, SegmentedControl } from '../../../hud/widgets';
+import { Button, Meter, SegmentedControl } from '../../../hud/widgets';
 import { fmtAmmoStatus } from '../ammo-status';
-import { setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
+import type { HudEls, HudElId } from '../hud-els';
 import type { KeyBinding } from '../../../input/key-mapping';
 import type { RadiatorSide } from '../../player/radiator';
 import type { SolarSide } from '../../player/power';
@@ -59,10 +59,9 @@ const SOLAR_UI: Record<SolarSide, { label: string; key: string }> = {
   down: { label: '右', key: K.solarDeployRight.label },
 };
 
-// バー1本ぶんの表示要素(トラック・塗り・右寄せの数値)。
+// バー1本ぶんの表示要素(メーター・右寄せの数値)。
 interface VesselMeterDom {
-  readonly meter: HTMLElement;
-  readonly fill: HTMLElement;
+  readonly meter: Meter;
   readonly value: HTMLElement;
 }
 
@@ -81,16 +80,18 @@ export class VesselPanel {
   // 直近の sync で受け取った状態。ボタン押下はフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: VesselPanelViewModel | null = null;
   private followButton: Button | null = null;
-  private readonly throttleControl: SegmentedControl<number> | null;
-  private readonly throttleMeter: VesselMeterDom | null;
-  private readonly qdynMeter: VesselMeterDom | null;
-  private readonly solarButtons: Record<SolarSide, DeployButtonDom> | null;
-  private readonly radiatorButtons: Record<RadiatorSide, DeployButtonDom> | null;
+  private readonly throttleControl: SegmentedControl<number>;
+  private readonly throttleMeter: VesselMeterDom;
+  private readonly qdynMeter: VesselMeterDom;
+  private readonly fuelMeter: Meter;
+  private readonly solarButtons: Record<SolarSide, DeployButtonDom>;
+  private readonly radiatorButtons: Record<RadiatorSide, DeployButtonDom>;
 
   // els が指す DOM の中へ、計器のバー・代替操作ボタン・展開ボタンを組み込む。
-  public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
+  public constructor(private readonly els: HudEls) {
     this.throttleMeter = this.buildMeter('throttle-readout', '並進出力');
     this.qdynMeter = this.buildMeter('qdyn-readout', '動圧');
+    this.fuelMeter = this.mountMeter('rcs-fuel-meter', 'RCS燃料');
     this.buildActionButtons();
     this.throttleControl = this.buildThrottleControl();
     const deployContainer = this.els.get('vessel-deploy-controls');
@@ -98,30 +99,29 @@ export class VesselPanel {
     this.radiatorButtons = this.buildRadiatorButtons(deployContainer);
   }
 
-  // Vessel パネルの既存バー(RCS燃料)と同じ、トラック+右寄せ値のバーを組み立てる。
-  private buildMeter(readoutId: string, label: string): VesselMeterDom | null {
+  // Meter ウィジェットを容器要素へ差し込む。
+  private mountMeter(containerId: HudElId, label: string): Meter {
+    const meter = new Meter(label);
+    this.els.get(containerId).appendChild(meter.element);
+    return meter;
+  }
+
+  // トラック+右寄せ値のバーを Meter ウィジェットで組み立てる。
+  private buildMeter(readoutId: HudElId, label: string): VesselMeterDom {
     const readout = this.els.get(readoutId);
-    if (!readout) return null;
-    const meter = document.createElement('span');
-    meter.className = 'vessel-meter w-meter-track';
-    meter.setAttribute('role', 'progressbar');
-    meter.setAttribute('aria-label', label);
-    meter.setAttribute('aria-valuemin', '0');
-    const fill = document.createElement('span');
-    fill.className = 'w-meter-fill';
+    const meter = new Meter(label);
+    meter.element.classList.add('vessel-meter');
     const value = document.createElement('output');
     value.className = 'vessel-meter-value';
     value.textContent = '—';
-    meter.appendChild(fill);
-    readout.appendChild(meter);
+    readout.appendChild(meter.element);
     readout.appendChild(value);
-    return { meter, fill, value };
+    return { meter, value };
   }
 
   // R/F/G/T の代替操作ボタンを組み立てて status-actions プレースホルダへ足す。
   private buildActionButtons(): void {
     const container = this.els.get('status-actions');
-    if (!container) return;
     // ラベルとキーを結んだボタンを1つ足す。isPrimary は目立たせたい操作に付ける。
     const addAction = (label: string, title: string, key: KeyBinding, isPrimary = false): Button => {
       const variants = isPrimary ? (['dense', 'primary'] as const) : (['dense', 'secondary'] as const);
@@ -153,9 +153,8 @@ export class VesselPanel {
 
   // スロットル 1-4 の SegmentedControl を組み立てて status-throttle-touch プレースホルダへ足す。
   // 表示可否は CSS(body.touch-ui-active)側が持つ — ここでは常に組む。
-  private buildThrottleControl(): SegmentedControl<number> | null {
+  private buildThrottleControl(): SegmentedControl<number> {
     const container = this.els.get('status-throttle-touch');
-    if (!container) return null;
     const control = new SegmentedControl<number>(
       '推力段', THROTTLE_KEYS.map((key, i) => [i, key.label] as const),
       (index) => this.view?.tapKey(THROTTLE_KEYS[index]!),
@@ -164,18 +163,16 @@ export class VesselPanel {
     return control;
   }
 
-  // 太陽電池パドル(左右)の展開/収納ボタン2つを組み立てる。container が無ければ組まない。
-  private buildSolarButtons(container: HTMLElement | undefined): Record<SolarSide, DeployButtonDom> | null {
-    if (!container) return null;
+  // 太陽電池パドル(左右)の展開/収納ボタン2つを組み立てる。
+  private buildSolarButtons(container: HTMLElement): Record<SolarSide, DeployButtonDom> {
     return {
       up: this.buildDeployButton(container, () => this.view?.toggleSolar('up')),
       down: this.buildDeployButton(container, () => this.view?.toggleSolar('down')),
     };
   }
 
-  // 放熱板(左右)の展開/収納ボタン2つを組み立てる。container が無ければ組まない。
-  private buildRadiatorButtons(container: HTMLElement | undefined): Record<RadiatorSide, DeployButtonDom> | null {
-    if (!container) return null;
+  // 放熱板(左右)の展開/収納ボタン2つを組み立てる。
+  private buildRadiatorButtons(container: HTMLElement): Record<RadiatorSide, DeployButtonDom> {
     return {
       up: this.buildDeployButton(container, () => this.view?.toggleRadiator('up')),
       down: this.buildDeployButton(container, () => this.view?.toggleRadiator('down')),
@@ -203,11 +200,11 @@ export class VesselPanel {
   public sync(view: VesselPanelViewModel | null, nowMs: number): void {
     this.view = view;
     if (!view) {
-      this.els.get('hud-vessel-status')?.classList.add('hidden');
+      this.els.get('hud-vessel-status').classList.add('hidden');
       return;
     }
     // CSS 側でも表示条件を持つが、未配置状態からの復帰時は JS で明示的に戻す。
-    this.els.get('hud-vessel-status')?.classList.remove('hidden');
+    this.els.get('hud-vessel-status').classList.remove('hidden');
 
     if (!this.throttle.due(nowMs)) return;
 
@@ -217,25 +214,23 @@ export class VesselPanel {
     const throttleIdx = view.throttleIdx;
     this.syncMeter(
       this.throttleMeter,
-      (throttleIdx + 1) / THROTTLE_LEVELS.length,
-      `${THROTTLE_LABELS[throttleIdx]} (${THROTTLE_LEVELS[throttleIdx]!.toFixed(1)} m/s²)`,
-      THROTTLE_LEVELS.length,
       throttleIdx + 1,
+      THROTTLE_LEVELS.length,
+      `${THROTTLE_LABELS[throttleIdx]} (${THROTTLE_LEVELS[throttleIdx]!.toFixed(1)} m/s²)`,
       false,
     );
-    this.throttleControl?.setSelected(throttleIdx);
+    this.throttleControl.setSelected(throttleIdx);
 
     // 動圧の行は、大気を受ける操作対象のときだけ出す。
     const qdyn = view.dynamicPressurePa;
-    this.els.get('qdyn-row')?.classList.toggle('hidden', qdyn === null);
+    this.els.get('qdyn-row').classList.toggle('hidden', qdyn === null);
     if (qdyn !== null) {
       const qdynText = qdyn >= 1000 ? `${(qdyn / 1000).toFixed(2)} kPa` : `${qdyn.toFixed(0)} Pa`;
       this.syncMeter(
         this.qdynMeter,
-        qdyn / MAX_DYN_PRESSURE,
-        qdynText,
-        MAX_DYN_PRESSURE,
         qdyn,
+        MAX_DYN_PRESSURE,
+        qdynText,
         qdyn > 0.5 * MAX_DYN_PRESSURE,
       );
     }
@@ -248,45 +243,30 @@ export class VesselPanel {
 
     const maxFuel = view.totalMaxFuel;
     const clampedFuel = Math.max(0, Math.min(maxFuel, view.totalFuel));
-    const fuelPercent = maxFuel > 0 ? (clampedFuel / maxFuel) * 100 : 0;
     const fuelValueText = `${Math.round(clampedFuel)} / ${Math.round(maxFuel)}`;
 
-    const fuelMeter = this.els.get('rcs-fuel-meter');
-    if (fuelMeter) {
-      fuelMeter.setAttribute('aria-valuemax', String(maxFuel));
-      fuelMeter.setAttribute('aria-valuenow', String(clampedFuel));
-      fuelMeter.setAttribute('aria-valuetext', fuelValueText);
-    }
-    const fuelFill = this.els.get('rcs-fuel-fill');
-    if (fuelFill) {
-      fuelFill.style.width = `${fuelPercent.toFixed(1)}%`;
-      fuelFill.classList.toggle('danger', maxFuel > 0 && clampedFuel < maxFuel * 0.2);
-    }
-    setElementText(this.els, 'rcs-fuel-value', fuelValueText);
+    this.fuelMeter.setProgress(
+      clampedFuel, maxFuel, fuelValueText, maxFuel > 0 && clampedFuel < maxFuel * 0.2,
+    );
+    this.els.setText('rcs-fuel-value', fuelValueText);
 
     // 機関砲を持たない操作対象では、同じ行に燃料の読み値を出す。
     const ammoEl = this.els.get('ammo');
     const ammo = view.ammo;
-    if (ammoEl && ammo) {
+    if (ammo) {
       ammoEl.textContent = fmtAmmoStatus(ammo.rounds, ammo.mags, ammo.cooldown);
-      ammoEl.classList.toggle('warn-hot', ammo.cooldown > 0 || ammo.mags < 4);
-    } else if (ammoEl) {
+      ammoEl.classList.toggle('ui-danger', ammo.cooldown > 0 || ammo.mags < 4);
+    } else {
       ammoEl.textContent = `Fuel: ${Math.round(view.totalFuel)} / ${maxFuel}`;
-      ammoEl.classList.toggle('warn-hot', view.totalFuel < maxFuel * 0.2);
+      ammoEl.classList.toggle('ui-danger', view.totalFuel < maxFuel * 0.2);
     }
   }
 
-  // ratio(0〜1)からメーターの塗り幅・危険表示・aria 属性を反映する。
+  // now/max の実数からメーターの満ち幅・危険表示・aria 属性と右寄せの数値を反映する。
   private syncMeter(
-    dom: VesselMeterDom | null, ratio: number, label: string, max: number, valueNow: number, critical: boolean,
+    dom: VesselMeterDom, now: number, max: number, label: string, critical: boolean,
   ): void {
-    if (!dom) return;
-    const clampedRatio = Math.max(0, Math.min(1, ratio));
-    dom.fill.style.width = `${(clampedRatio * 100).toFixed(1)}%`;
-    dom.fill.classList.toggle('danger', critical);
-    dom.meter.setAttribute('aria-valuemax', String(max));
-    dom.meter.setAttribute('aria-valuenow', String(valueNow));
-    dom.meter.setAttribute('aria-valuetext', label);
+    dom.meter.setProgress(now, max, label, critical);
     if (dom.value.textContent !== label) dom.value.textContent = label;
   }
 
@@ -329,8 +309,8 @@ export class VesselPanel {
   private syncDeployButtons(view: VesselPanelViewModel): void {
     const { solar, radiator } = view;
     const container = this.els.get('vessel-deploy-controls');
-    container?.classList.toggle('hidden', solar === null || radiator === null);
-    if (!solar || !radiator || !this.solarButtons || !this.radiatorButtons) return;
+    container.classList.toggle('hidden', solar === null || radiator === null);
+    if (!solar || !radiator) return;
 
     this.syncDeployButton(this.solarButtons.up, solar.up, 'パドル', SOLAR_UI.up);
     this.syncDeployButton(this.solarButtons.down, solar.down, 'パドル', SOLAR_UI.down);
@@ -340,11 +320,10 @@ export class VesselPanel {
 
   // 機体モードの状態語と色ロールを同期する。
   // Near は隣接する操縦支援、Signal は視点同期に使う。
-  private syncState(id: string, isActive: boolean, role: 'near' | 'signal'): void {
+  private syncState(id: HudElId, isActive: boolean, role: 'near' | 'signal'): void {
     const element = this.els.get(id);
-    if (!element) return;
     element.textContent = isActive ? 'On' : 'Off';
-    element.classList.toggle('state-near', isActive && role === 'near');
-    element.classList.toggle('state-signal', isActive && role === 'signal');
+    element.classList.toggle('ui-near', isActive && role === 'near');
+    element.classList.toggle('ui-signal', isActive && role === 'signal');
   }
 }
