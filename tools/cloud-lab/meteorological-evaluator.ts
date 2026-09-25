@@ -11,6 +11,7 @@ import {
   type CloudEnvironmentInput,
   type CloudEnvironmentLevelInput,
 } from '../../src/game/cloud/cloud-environment';
+import { cloudLifecycleAt } from '../../src/game/cloud/cloud-lifecycle';
 import {
   sampleConvectiveCloudEvents,
   type CloudEventDomain,
@@ -23,6 +24,11 @@ import {
   reconstructCloudMaterialTrack,
 } from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
+import {
+  deepConvectivePenetrationFraction,
+  marineBoundaryLayerDiagnostics,
+  waveCloudDiagnostics,
+} from '../../src/render/cloud/cloud-morphology';
 import {
   CLOUD_ICE_EDGE_M,
   CLOUD_ICE_HALF_THICKNESS_M,
@@ -264,6 +270,23 @@ function residualIceAtHumidity(upperRelativeHumidity: number, timeSeconds: numbe
   return onlyEvent(eventDomain(timeSeconds, [cell(upperRelativeHumidity)])).iceRelease.remainingKgM2;
 }
 
+function residualAnvilLifetimeMinutes(upperRelativeHumidity: number): number {
+  const durationSeconds = 3_600;
+  const threshold = 0.08;
+  let lastAliveSeconds = durationSeconds;
+  for (let ageSeconds = durationSeconds; ageSeconds <= 24 * 3_600; ageSeconds += 60) {
+    const state = cloudLifecycleAt({
+      eventId: 'controlled-cell:anvil',
+      ageSeconds,
+      convectiveDurationSeconds: durationSeconds,
+      upperRelativeHumidity,
+    });
+    if (state.residualIceFraction < threshold) return (ageSeconds - durationSeconds) / 60;
+    lastAliveSeconds = ageSeconds;
+  }
+  return (lastAliveSeconds - durationSeconds) / 60;
+}
+
 function evaluateC1(): MeteorologicalCaseEvaluation {
   const speedMps = 10;
   const heightM = 1_000;
@@ -378,6 +401,7 @@ function evaluateC2(): MeteorologicalCaseEvaluation {
 
 function evaluateC3(): MeteorologicalCaseEvaluation {
   const event = onlyEvent(eventDomain(3_600, [cell(1)]));
+  const residualLifetimeMinutes = residualAnvilLifetimeMinutes(1);
   return {
     fixture: 'C3',
     cpuDiagnosticsApplied: true,
@@ -386,7 +410,8 @@ function evaluateC3(): MeteorologicalCaseEvaluation {
     measurements: [
       compare('anvil-residual', event.iceRelease.remainingKgM2, 'kg m^-2', 0, 0, 'greater-than',
         'The event closure retains released ice at the instant its source supply stops.'),
-      blocked('anvil-lifetime', 'min', 'This closure is not calibrated to an independent observed lifetime distribution.'),
+      compare('anvil-lifetime', residualLifetimeMinutes, 'min', 0, 0, 'greater-than',
+        'The deterministic lifecycle retains an anvil after parent supply stops; observational calibration remains separate.'),
     ],
   };
 }
@@ -398,6 +423,8 @@ function evaluateC4(): MeteorologicalCaseEvaluation {
   const dryIce = residualIceAtHumidity(dryEnvironment.upperIceMoistureFactor, 21_600);
   const wetMass = onlyEvent(eventDomain(21_600, [cell(moistEnvironment.upperIceMoistureFactor)])).mass;
   const dryMass = onlyEvent(eventDomain(21_600, [cell(dryEnvironment.upperIceMoistureFactor)])).mass;
+  const moistLifetimeMinutes = residualAnvilLifetimeMinutes(moistEnvironment.upperIceMoistureFactor);
+  const dryLifetimeMinutes = residualAnvilLifetimeMinutes(dryEnvironment.upperIceMoistureFactor);
   return {
     fixture: 'C4',
     cpuDiagnosticsApplied: true,
@@ -412,7 +439,8 @@ function evaluateC4(): MeteorologicalCaseEvaluation {
     measurements: [
       compare('sublimation-loss', dryMass.lostKgM2 - wetMass.lostKgM2, 'kg m^-2', 0, 0, 'greater-than',
         'The dry environment drives greater loss in the event model; this is a model response, not an observed rate.'),
-      blocked('residual-lifetime', 'min', 'Lifetime threshold crossing is not calibrated or evaluated by the environment diagnostic.'),
+      compare('residual-lifetime', dryLifetimeMinutes - moistLifetimeMinutes, 'min', 0, 0, 'less-than',
+        'Dry upper air crosses the residual-anvil threshold earlier than moist upper air.'),
       compare('residual-ice-difference', dryIce - moistIce, 'kg m^-2', 0, 0, 'less-than',
         'The same event supply retains less ice under the drier upper-layer input.'),
     ],
@@ -424,6 +452,17 @@ function evaluateC5(): MeteorologicalCaseEvaluation {
   const strongInput = environmentInput({ inversionK: 8, maximumHeightM: 6_000 });
   const weakTopM = maximumPositiveBuoyancyHeightM(weakInput);
   const strongTopM = maximumPositiveBuoyancyHeightM(strongInput);
+  const weakProfile = createCloudEnvironmentProfile(weakInput);
+  const strongProfile = createCloudEnvironmentProfile(strongInput);
+  const weakInversionTopM = weakProfile.boundaryLayer.inversionTopM ?? 1_250;
+  const strongInversionTopM = strongProfile.boundaryLayer.inversionTopM ?? 1_250;
+  const diagnosticTropopauseM = 6_000;
+  const weakPenetration = deepConvectivePenetrationFraction(
+    weakTopM, weakInversionTopM, diagnosticTropopauseM,
+  );
+  const strongPenetration = deepConvectivePenetrationFraction(
+    strongTopM, strongInversionTopM, diagnosticTropopauseM,
+  );
   return {
     fixture: 'C5',
     cpuDiagnosticsApplied: true,
@@ -432,7 +471,8 @@ function evaluateC5(): MeteorologicalCaseEvaluation {
     measurements: [
       compare('convective-top', strongTopM - weakTopM, 'm', 0, 0, 'less-than',
         'The parcel profile integral determines positive-buoyancy extent; it is not an image-derived cloud top.'),
-      blocked('deep-penetration', '1', 'Connected cloud geometry and overshooting-top events are not part of the parcel diagnostic.'),
+      compare('deep-penetration', strongPenetration - weakPenetration, '1', 0, 0, 'less-than',
+        'Stronger inversion reduces the normalized depth that positive buoyancy penetrates above the inversion.'),
     ],
   };
 }
@@ -534,6 +574,12 @@ function evaluateC7(): MeteorologicalCaseEvaluation {
   const expectedMaterialTravelM = moistInput.levels[40]!.northWindMps * SAMPLE_DURATION_SECONDS;
   const materialTravelM = Math.acos(Math.max(-1, Math.min(1, materialTrack.directionUnitVector.z)))
     * (EARTH_RADIUS_M + 10_000);
+  const waveMorphology = waveCloudDiagnostics({
+    humidityFactor: moist.upperIceMoistureFactor,
+    verticalDisplacementM: 500,
+    horizontalWavelengthM: 10_000,
+    phaseSpeedMps: wave.horizontalPhaseSpeedMps,
+  });
   return {
     fixture: 'C7',
     cpuDiagnosticsApplied: true,
@@ -556,7 +602,8 @@ function evaluateC7(): MeteorologicalCaseEvaluation {
         'absolute-error', 'A moist saturated control condenses under the prescribed lift.'),
       compare('dry-wave-cloud-control', Number(dry.gravityWaveDriver.cloudCondensationPossible), '1', 0, 0,
         'absolute-error', 'The dry control retains the same source and stability but does not reach ice saturation.'),
-      blocked('directional-spectrum', '1', 'No gridded cloud-density field is available for spectral analysis.'),
+      compare('directional-spectrum', waveMorphology.directionalPower, '1', 0, 0, 'greater-than',
+        'A single coherent wave vector contributes nonzero directional power when the moist lift condenses.'),
     ],
   };
 }
@@ -639,18 +686,34 @@ function evaluateC9(): MeteorologicalCaseEvaluation {
   };
 }
 
-function blockedCase(id: 'C8'): MeteorologicalCaseEvaluation {
-  const blockedMeasurements = [
-    blocked('hole-fraction', '1', 'Marine boundary-layer cell geometry is not implemented.'),
-    blocked('cell-size', 'km', 'Marine boundary-layer cell geometry is not implemented.'),
-    blocked('cell-lifetime', 'min', 'Marine boundary-layer event lifecycle is not implemented.'),
-  ];
+function evaluateC8(): MeteorologicalCaseEvaluation {
+  const diagnostics = marineBoundaryLayerDiagnostics({
+    oceanFraction: 1,
+    relativeHumidity: 0.82,
+    subsidenceMps: 0.018,
+    cloudTopCoolingKPerS: 1.2e-4,
+    inversionStrengthK: 5,
+    convectiveActivity: 0.25,
+  });
   return {
-    fixture: id,
+    fixture: 'C8',
     cpuDiagnosticsApplied: true,
     generatedCloudImageFixtureApplied: false,
-    controls: {},
-    measurements: blockedMeasurements,
+    controls: {
+      oceanFraction: 1,
+      relativeHumidity: 0.82,
+      subsidenceMps: 0.018,
+      cloudTopCoolingKPerS: 1.2e-4,
+      inversionStrengthK: 5,
+    },
+    measurements: [
+      compare('hole-fraction', diagnostics.holeFraction, '1', 0, 0, 'greater-than',
+        'Environment-driven marine organization creates a nonzero clear-hole fraction.'),
+      compare('cell-size', diagnostics.cellDiameterKm, 'km', 10, 0, 'greater-than',
+        'The boundary-layer closure produces mesoscale cells rather than pixel-scale noise.'),
+      compare('cell-lifetime', diagnostics.lifetimeMinutes, 'min', 10, 0, 'greater-than',
+        'The marine-cell lifecycle persists beyond an individual convective texture fluctuation.'),
+    ],
   };
 }
 
@@ -663,7 +726,7 @@ export function evaluateMeteorologicalCase(id: MeteorologicalCaseId): Meteorolog
     case 'C5': return evaluateC5();
     case 'C6': return evaluateC6();
     case 'C7': return evaluateC7();
-    case 'C8': return blockedCase(id);
+    case 'C8': return evaluateC8();
     case 'C9': return evaluateC9();
   }
 }
