@@ -136,7 +136,6 @@ export function rangeSectors(range: SectorRange): RangeSectors {
   const first = clamp(floor(range.lower), 0, SECTOR_COUNT - 1).toVar();
   const last = clamp(floor(range.upper), 0, SECTOR_COUNT - 1).toVar();
   const single = first.equal(last);
-  // 両端の扇形とそのあいだのビット、両端の扇形に掛かる長さ。
   return {
     first: uint(1).shiftLeft(uint(first)).toVar(),
     between: sectorsBelow(last).bitAnd(sectorsBelow(first.add(1)).bitNot()).toVar(),

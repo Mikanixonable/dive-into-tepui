@@ -15,7 +15,8 @@ export function register(): void {
     before('shadow', 'planet-light');
     before('planet-light', 'bounce-source');
     before('bounce-source', 'raw-correction');
-    before('raw-correction', 'correction');
+    before('raw-correction', 'denoised-correction');
+    before('denoised-correction', 'correction');
     before('correction', 'diffuse');
     before('diffuse', 'material');
     before('material', 'atmosphere');
