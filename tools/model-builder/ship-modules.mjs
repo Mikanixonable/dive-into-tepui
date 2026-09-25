@@ -1,6 +1,6 @@
 // ShipModuleCatalog の各 modelId について、assets-src/ship-modules/<modelId>.glb(Blender 製の原型)を
 // メートル単位・長手軸 +Z の module model へ取り込み、定義だけから決まる接続面 anchor を足す。
-// 形に結び付いた機能 anchor(噴射口・RCS・展開ヒンジ)は原型が持ち、ここでは揃っているかを検査する。
+// 形に結び付いた機能 anchor(噴射口・ジンバル・RCS・回転砲身・展開ヒンジ)は原型が持ち、ここでは揃っているかを検査する。
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { readFileSync } from 'node:fs';
@@ -53,22 +53,29 @@ function definitionAnchors(root, definition) {
   if (coupling !== undefined) anchor(root, coupling, 0, 0, definition.length / 2, new THREE.Vector3(0, 0, 1));
 }
 
-// 種別ごとに原型が持つべき機能 anchor の数。semantic anchor 名の接頭辞で数える。
+// 種別ごとに原型が持つべき機能 anchor の数。semantic anchor 名(末尾が ':' なら接頭辞)で数える。
 const REQUIRED_ANCHORS = {
-  thruster: { thrust: 1 },
+  thruster: { thrust: 1, 'engine-gimbal': 1 },
   booster: { thrust: 1 },
   rcs: { 'rcs:': 16 },
   radiator: { 'panel-hinge': 1, 'panel-hinge:': RADIATOR_FOLD_COUNT },
   solar_panel: { 'panel-hinge': 1, 'panel-hinge:': SOLAR_PANEL_COUNT },
 };
 
-// 原型の機能 anchor が種別の要求を満たすか確かめる。欠けていれば投げる。
+// definition の原型が持つべき機能 anchor の数。種別の表に、機関砲なら砲口ごとの回転砲身を足す。
+function requiredAnchors(definition) {
+  const required = { ...(REQUIRED_ANCHORS[definition.kind] ?? {}) };
+  if (definition.kind === 'weapon') required['barrel-rotor:'] = definition.muzzles.length;
+  return required;
+}
+
+// 原型の機能 anchor が definition の要求を満たすか確かめる。過不足があれば投げる。
 function validateAnchors(root, definition) {
   const names = [];
   root.traverse((child) => {
     if (typeof child.userData.semanticAnchor === 'string') names.push(child.userData.semanticAnchor);
   });
-  for (const [prefix, count] of Object.entries(REQUIRED_ANCHORS[definition.kind] ?? {})) {
+  for (const [prefix, count] of Object.entries(requiredAnchors(definition))) {
     const found = prefix.endsWith(':') ? names.filter(name => name.startsWith(prefix)).length
       : names.filter(name => name === prefix).length;
     if (found !== count) {
