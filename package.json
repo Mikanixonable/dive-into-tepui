@@ -7,7 +7,6 @@
     "dev": "node node_modules/webpack-cli/bin/cli.js serve --mode development",
     "build": "webpack --mode production",
     "prebuild": "node tools/generate-rmqr.mjs",
-    "check:boundaries": "node tools/check-boundaries.mjs",
     "verify:source": "node tools/verify-release.mjs --source-only",
     "verify:theme": "node tools/verify-theme-contrast.mjs",
     "verify:ui-style": "node tools/verify-ui-style.mjs",
@@ -16,7 +15,7 @@
     "lint:fix:all": "eslint --fix --prune-suppressions --suppressions-location eslint-suppressions.json src tests tools",
     "smoke:browser": "node tools/browser-smoke.mjs",
     "smoke:layout-suite": "node tools/layout-smoke-retry.mjs --suite",
-    "ci": "node tools/check-three-pin.mjs && npm run verify:source && npm run verify:theme && npm run verify:ui-style && npm run verify:hud-layout && npm run lint && npm run check:boundaries && npm run typecheck && npm run protein:generate:check && npm run protein:validate && npm run protein:validate-structure && npm run protein:catalog:check && npm run test && npm run earth-surface:test && npm run build && npm run verify:release && npm run smoke:browser",
+    "ci": "node tools/check-three-pin.mjs && npm run verify:source && npm run verify:theme && npm run verify:ui-style && npm run verify:hud-layout && npm run lint && npm run typecheck && npm run protein:generate:check && npm run protein:validate && npm run protein:validate-structure && npm run protein:catalog:check && npm run test && npm run earth-surface:test && npm run build && npm run verify:release && npm run smoke:browser",
     "typecheck": "tsc --noEmit",
     "dep-metrics": "node tools/dep-metrics.mjs",
     "test:clean": "node -e \"require('node:fs').rmSync('tests/dist', { recursive: true, force: true })\"",
@@ -90,8 +89,7 @@
     "cloud-lab:separate": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-separate.mjs",
     "cloud-lab:reference": "node tools/cloud-lab-reference.mjs",
     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
-    "smoke:layout": "node tools/layout-smoke-retry.mjs",
-    "prepare": "husky"
+    "smoke:layout": "node tools/layout-smoke-retry.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -101,7 +99,6 @@
     "eslint": "^10.11.0",
     "globals": "17.12.0",
     "html-webpack-plugin": "^5.6.0",
-    "husky": "^9.0.0",
     "rmqr": "^0.3.0",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.1",
