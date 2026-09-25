@@ -465,37 +465,57 @@ MSSAO の scalar AO は octave 間を max / average で混ぜるが、`-blocked 
 
 ## 手順 — 前半（この PR）
 
-### 手順 8. joint bilateral 復元と品質 profile を決める
+### 手順 8. 走査・復元の費用を下げ、復元と品質 profile を決める
 
-**目的** — D7 に従って粒を減らし、低設定でも大粒にせず、2回3×3 blur の帯域を減らす。
+**目的** — D7 に従って粒を減らし、低設定でも大粒にせず、達成目標12の負荷へ収める。手順7の後の `bay` の
+遮蔽と照り返し・中はマテリアル比 11 倍前後で、走査が大半を占める（標本を読むだけで走査の約 0.28、切片の分割で
+約 0.3）。費用・復元・profile は互いに依存するので、次の順に3つのコミットへ分ける。
+
+#### 8.1 走査の結果を変えない計算を省く
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` | depth-only blur 2回を、位置・法線・空間距離で重みづける denoise + upsample へ置換 |
-| `src/render/pipeline/screen-space/hemisphere-scan.ts` | 固定2D blue-noise の方位・歩幅への使い方を整理 |
-| `src/render/pipeline/screen-space/quality-profile.ts`（必要なら新規） | 低/中/高の解像度・slice・step・tap の組を1箇所に置く |
-| `tools/render-lab-screen-space-metrics.mjs`（新規） | 逆 tone-map 後の mean bias / RMSE / 分散、contrast / edge spread、色エネルギー、edge 漏れ、連続 frame 差を報告 |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` ほか走査のモジュール | 結果を変えない省略: 新しく立ったビットが球冠の扇形と交わるときだけ天体の `maskedMeasure` を評価する、遮られないときの照度が0の天体の積算を飛ばす、標本ごとの行列演算を減らす。浮動小数の丸めの差より大きく値を変えるものは入れない |
 
-固定 dense 5×5 と8本 stochastic taps を同じ source / scan 結果で比較し、達成目標11・12を両方満たす
-最小の方を採る。視覚だけで標本数を増やさない。
+- 完了条件: raw の readback が変更前と丸めの差（相対 1e-3 程度）以内で一致。同じビルドで交互に測った走査の
+  GPU 中央値の低・中・高それぞれの比を記録する。
+- commit: `perf(render): 近傍拡散補正の走査で結果を変えない計算を省く`
 
-- profile の候補行列では達成目標2の P_in / P_out も測る。手順6.5 の後、歩数による偏りはほぼ消え、壁際と小天体の
-  残りの差はスライス数（楔の補間）で決まる。スライスを増やす候補と歩数を減らす候補を組にして測る。
-- 1標本あたりの費用は、標本を読むだけで走査の約 0.28、切片の分割で約 0.3。天体ごとの `maskedMeasure` は、
-  新しく立ったビットが球冠の扇形と交わるときだけ評価すれば、結果を変えずに省ける。
-- 復元は受光点ごとの E_p が掛かった ΔE を混ぜるので、法線の重みで内隅の不連続を越えさせない。
-  全解像度で拡散照度 + 補正が負になる画素を数える（達成目標5）。
-- 復元段の G バッファの画素の選び方は `gbufferUVOf` と同じ整数の割り算にする。
-- 負荷は達成目標12まで下げる必要がある（手順6で遮蔽と照り返し・中が 10.6 倍、目標は 5 倍以下）。復元は
-  いま 1.9 倍で、タップごとに深度を読み直し、位置を戻し、log を取っている。高設定を全解像度のまま走査すると
-  50 ms を超えるので、解像度も profile の候補に入れる。
+#### 8.2 joint bilateral 復元
 
-**完了条件と検証**
+| ファイル | 変更 |
+| --- | --- |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | 深度だけの 3×3 を、D7 の位置（接平面からの距離 / 全解像度の画素の足跡）・法線（30° で半分）・空間の重みの denoise + upsample へ置き換える。重みの和が数値 ε 以下なら中心へ戻す |
+| `tools/render-lab-screen-space-metrics.mjs`（新規） | 逆トーンマップ後の mean bias / RMSE / 分散、接触影の contrast / edge spread、照り返しの色エネルギー、法線・深度の境界の漏れ、カメラを動かしたときの連続フレーム差を報告する |
+
+- 候補: 全解像度の dense 5×5、全解像度の stochastic 8 tap、走査解像度での denoise + 全解像度の 2×2 upsample
+  （一時 target を作るなら、それもデバッグ表示へ出す）。同じ source / scan の結果で比べ、達成目標11・12を
+  両方満たす最小のものを採る。視覚だけで標本数を増やさない。
+- 復元は受光点ごとの E_p が掛かった ΔE を混ぜるので、法線の重みで内隅の不連続を越えさせない。全解像度で
+  拡散照度 + 補正が負になる画素を数える（達成目標5）。
+- 復元段の G バッファの画素の選び方は `gbufferUVOf` と同じ整数の割り算にする。いまの復元は、タップごとに深度を
+  読み直して位置を戻し log を取るので、全解像度の 3×3 で 1.3〜1.9 倍かかっている。
+- commit: `perf(render): 近傍拡散補正をバイラテラル復元する`
+
+#### 8.3 精細さの profile を実測で決める
+
+| ファイル | 変更 |
+| --- | --- |
+| `src/render/pipeline/screen-space/screen-space-pass.ts`（または `quality-profile.ts`） | 低 / 中 / 高の解像度・スライス数・歩数・復元の tap の組 |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` | 固定 2D blue-noise の方位・歩み・丸めのずれへの使い方を整理する |
+
+- 候補行列で、達成目標2（P_in / P_out）、11、12 を測る。手順6.5 の後、歩数による偏りはほぼ消え、壁際と小天体の
+  残りの差はスライス数（楔の補間）で決まる。スライスを増やす候補と歩数を減らす候補を組にして測る。高設定は
+  全解像度のまま走査すると 50 ms を超えるので、解像度も候補に入れる。
+- 最終の profile 値は候補行列を実測して固定し、コードコメントには実測から選んだことを書く。
+- commit: `perf(render): 近傍拡散補正の精細さの段を実測で決める`
+
+**完了条件と検証**（8.3 の後に全体で）
 
 - `npm run typecheck` / `npm run test:render`。
-- `npm run render-lab:shot -- ss-repair-filter` を撮り、達成目標3、6、10、11を確認。
-- render-lab UI で source / scan / reconstruct のどこが減ったかを記録し、達成目標12を満たす。
-- commit: `perf(render): 近傍拡散補正をバイラテラル復元する`
+- `npm run render-lab:shot -- ss-repair-filter` を撮り、達成目標2、3、6、10、11を確認。
+- render-lab UI で source / scan / reconstruct のどこが減ったかを記録し、達成目標12を満たす。満たせないなら、
+  満たせない理由と、品質との交換条件を実測で示して計画へ書く（達成したことにしない）。
 
 ### 手順 9. 前半を監査し、比較して main へ送る
 
