@@ -89,7 +89,7 @@ export class Hud implements HudLayers, Notifier {
 
     // 常設パネルを、data-id で引ける要素の一覧から組む。
     this.topBar = new TopBar(els);
-    this.viewBadgeRow = els.get('gs-viewrow')!;
+    this.viewBadgeRow = els.get('gs-viewrow');
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
     this.orbitPanel = new OrbitPanel(els, () => this.openOrbitAnalysis());
