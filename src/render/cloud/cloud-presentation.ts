@@ -10,6 +10,7 @@ import type { CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { CloudFieldDetailTileBinding } from './cloud-field-sampler';
+import type { CloudLocalFieldBinding } from './cloud-local-field';
 
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
@@ -53,6 +54,7 @@ export class CloudPresentation {
   private cirrusVisible = true;
   private translucentCumulusVisible = true;
   private detailTile: CloudPresentationDetailTile | null = null;
+  private localField: CloudLocalFieldBinding | null = null;
 
   // 各供給源（generated / observed）を管理し、キャップの視点追従と雲メッシュの描画を同期する。
   // bodyRadius は雲層を配置する天体の基準半径 [m]。
@@ -75,8 +77,10 @@ export class CloudPresentation {
         blendStartCos: this.detailTile.blendStartCos,
         composition: this.detailTile.composition,
       };
+    // 局所光学場も detailTile と同じ門を通す — observed 供給源は体積場を持たない。
+    const localField = this.sourceKind === CLOUD_FIELD_SOURCE_KIND.generated ? this.localField : null;
     return {
-      field: { texture: this.source.texture, cap: this.cap.placement, detailTile },
+      field: { texture: this.source.texture, cap: this.cap.placement, detailTile, localField },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
     };
@@ -88,11 +92,14 @@ export class CloudPresentation {
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
 
   // 描画設定のうち雲にかかわる項目と、見かけ直径 apparentDiameterPx [px] を表示状態へ反映する。
+  // localField は生成場へ差し込む局所光学場で、三経路が同じ写しを読む。
   public syncGraphics(
     graphics: GraphicsSettingsData, apparentDiameterPx: number,
     detailTile: CloudPresentationDetailTile | null = null,
+    localField: CloudLocalFieldBinding | null = null,
   ): void {
     this.detailTile = detailTile;
+    this.localField = localField;
     if (detailTile !== null) detailTile.cap.aimAt(this.cap.placement.center, detailTile.radius);
     // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
     this.setCloudsVisible(graphics.clouds);
