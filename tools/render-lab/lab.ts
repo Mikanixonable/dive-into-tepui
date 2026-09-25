@@ -258,7 +258,7 @@ export class LabView {
     return diagnostic(async (texture, width, height, layer) => ({
       data: await backend.copyTextureToBuffer(texture, 0, 0, width, height, layer),
       format: backend.get(texture).textureDescriptorGPU.format,
-    }));
+    }), this.renderer);
   }
 
   // 表示スタイルを差し替え、いま出ているケースをそのスタイルで組み直す。観察の向きは保つ —
@@ -747,6 +747,7 @@ export class LabView {
       diagnostic?.phaseDeg,
       diagnostic?.composition,
     );
+    this.earth.setCloudLocalFieldDiagnostic(shot.cloudLocalFieldDiagnostic === true);
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
   }
