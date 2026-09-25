@@ -1,7 +1,9 @@
 // 球面イベント材料を明示面積で局所格子へ写すadapterの収支と適用域を検査する。
 import * as assert from 'node:assert/strict';
 import { v3 } from '../../src/math/vec3';
+import { reconstructCloudEventMaterialCohorts } from '../../src/game/cloud/cloud-event-transport';
 import type { CloudEventMaterialCohorts, CloudIceMaterialCohort, CloudMaterialTrack } from '../../src/game/cloud/cloud-event-transport';
+import { sampleConvectiveCloudEvents } from '../../src/game/cloud/cloud-events';
 import {
   depositCloudEventMaterialCohorts,
   type CloudEventFootprintAreas,
@@ -9,6 +11,8 @@ import {
 } from '../../src/game/cloud/cloud-event-local-deposition';
 import type { CloudFootprintGrid } from '../../src/game/cloud/cloud-footprint-overlap';
 import type { CloudMassGrid } from '../../src/game/cloud/cloud-mass-deposition';
+import { extinctionFromCloudMass } from '../../src/game/cloud/cloud-mass-extinction';
+import { integrateCloudLocalOpticalPath } from '../../src/game/cloud/cloud-local-optical-path';
 import { test } from '../harness';
 
 const CENTER = v3(0, 0, 1);
@@ -73,6 +77,67 @@ function footprintAreas(
 }
 
 export function register(): void {
+  test('cloud event local deposition: sampled event reaches phase-separated local optical paths', () => {
+    const sphereRadiusM = 6_371_000;
+    const event = sampleConvectiveCloudEvents({
+      seed: 17, birthIntervalSeconds: 86_400, historyHorizonSeconds: 10_000,
+      maximumOmittedMassKgM2: 1, maxEventCount: 8, timeSeconds: 7_200,
+      cells: [{
+        id: 'local-optical-cell', supplySourceId: 'local-optical-source',
+        convectivePotential: 1, upperRelativeHumidity: 0.8,
+        liquidSupplyRateKgM2S: 1e-5, convectiveDurationSeconds: 3_600,
+        sourcePosition: { directionUnitVector: v3(1, 0, 0), geometricHeightM: 1_000 },
+        iceReleaseHeightM: 6_000,
+      }],
+    }).events[0];
+    assert.ok(event);
+    const materialTracks = reconstructCloudEventMaterialCohorts(
+      event, sphereRadiusM, 20,
+      () => ({ tangentVelocityMPerS: v3(0, 0, 0), verticalVelocityMPerS: 0 }), 8,
+    );
+    const sourceAreaM2 = 1_000_000;
+    const localGrid: CloudFootprintGrid = {
+      originEastM: -1_000, originNorthM: -1_000,
+      cellWidthM: 100, cellHeightM: 100, width: 20, height: 20,
+    };
+    const massGrid: CloudMassGrid = {
+      cells: Array.from({ length: 400 }, () => ({ areaM2: 10_000 })),
+      layerEdgesM: [0, 3_000, 9_000],
+    };
+    const footprintAreaM2 = Math.PI * 500 ** 2;
+    const deposition = depositCloudEventMaterialCohorts(
+      materialTracks, sourceAreaM2,
+      {
+        parentLiquidM2: footprintAreaM2,
+        releasedIceCohorts: materialTracks.releasedIceCohorts.map((cohort) => ({
+          cohortIndex: cohort.cohortIndex, areaM2: footprintAreaM2,
+        })),
+      },
+      {
+        centerDirectionUnitVector: v3(1, 0, 0),
+        eastUnitVector: v3(0, 1, 0), northUnitVector: v3(0, 0, 1),
+        sphereRadiusM, maxAngularDistanceRad: 0.001,
+      }, localGrid, massGrid,
+    );
+    const liquidKg = integratedMassKg(deposition.columnsByLayer[0]!.liquidKgM2ByCell, massGrid);
+    const iceKg = integratedMassKg(deposition.columnsByLayer[1]!.iceKgM2ByCell, massGrid);
+    assert.ok(Math.abs(liquidKg - event.mass.liquidKgM2 * sourceAreaM2) < 1e-8);
+    assert.ok(Math.abs(iceKg - event.iceRelease.remainingKgM2 * sourceAreaM2) < 1e-8);
+    assert.ok(deposition.unassignedMassKgByPhase.liquid < 1e-8);
+    assert.ok(deposition.unassignedMassKgByPhase.ice < 1e-8);
+    const extinction = extinctionFromCloudMass(deposition, [
+      { liquidEffectiveRadiusM: 10e-6, iceEffectiveRadiusM: 30e-6, iceExtinctionEfficiency: 2 },
+      { liquidEffectiveRadiusM: 10e-6, iceEffectiveRadiusM: 30e-6, iceExtinctionEfficiency: 2 },
+    ]);
+    const path = integrateCloudLocalOpticalPath(
+      { eastM: 50, northM: 50, altitudeM: 0 },
+      { eastM: 50, northM: 50, altitudeM: 9_000 }, localGrid, extinction,
+    );
+    assert.ok(path.liquidOpticalDepth > 0);
+    assert.ok(path.iceOpticalDepth > 0);
+    assert.ok(path.transmittance > 0 && path.transmittance < 1);
+  });
+
   test('cloud event local deposition: source-area-scaled liquid and ice conserve mass in altitude layers', () => {
     const result = depositCloudEventMaterialCohorts(
       material(), 2, footprintAreas(), CHART, FOOTPRINT_GRID, MASS_GRID,
