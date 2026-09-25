@@ -79,7 +79,7 @@ export class GeneratedCloudField implements CloudFieldSource {
 
   public setQuality(level: number): void {
     if (level === this.qualityLevel) return;
-    // Validation and policy ownership live in cloud-quality.ts.
+    // 品質値の検証と時間ポリシーの正本は cloud-quality.ts に置く。
     cloudTemporalSampleTimes(0, level);
     this.qualityLevel = level;
     this.lastPreparedDisplayTime = null;
@@ -101,6 +101,7 @@ export class GeneratedCloudField implements CloudFieldSource {
       this.timeA = null;
       this.timeB = null;
       this.lastPreparedDisplayTime = null;
+      this.lastPreparedTemporalExposure = null;
       this.cachedClimateGeneration = climateGeneration;
       this.cachedProjectionRevision = projectionRevision;
     }

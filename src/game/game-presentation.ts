@@ -56,6 +56,7 @@ import type { MarkerSink } from '../marker/marker-sink';
 import type { MarkerDeclaration } from '../marker/marker-declaration';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
+import { cloudTemporalExposureSeconds } from '../render/cloud/cloud-quality';
 import type { RenderStyle } from '../render/render-style';
 import type { Viewport } from '../render/viewport';
 import type { SettingValue } from '../settings/setting-value';
@@ -417,7 +418,10 @@ export class GamePresentation {
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
-    celestialSystem.bakeClouds(this.devices.scene.renderer, displayTime, this.devices.scene.gpu);
+    const cloudTemporalExposure = cloudTemporalExposureSeconds(this.game.simSpeedManager.simSpeed);
+    celestialSystem.bakeClouds(
+      this.devices.scene.renderer, displayTime, this.devices.scene.gpu, cloudTemporalExposure,
+    );
     dynamicSystem.sync(
       displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay, orbitRef ?? undefined,
     );

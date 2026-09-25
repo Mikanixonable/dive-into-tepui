@@ -135,7 +135,12 @@ export abstract class CelestialView {
   ): AtmosphereClouds | null { return null; }
 
   // この天体が持つ動的な雲場を表示時刻へ焼く。
-  public bakeClouds(_renderer: WebGPURenderer, _displayTime: number, _gpu?: GpuTimingSink): void {}
+  public bakeClouds(
+    _renderer: WebGPURenderer,
+    _displayTime: number,
+    _gpu?: GpuTimingSink,
+    _temporalExposureSeconds = 0,
+  ): void {}
 
   // 影パスへ渡す積雲の殻。積雲を持たない天体では null。
   public cumulusShadowAt(
