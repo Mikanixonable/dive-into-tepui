@@ -57,6 +57,10 @@ function validate(
     || grid.cellWidthM <= 0 || grid.cellHeightM <= 0) {
     throw new RangeError('grid dimensions must be finite and positive');
   }
+  if (!Number.isFinite(grid.originEastM + grid.width * grid.cellWidthM)
+    || !Number.isFinite(grid.originNorthM + grid.height * grid.cellHeightM)) {
+    throw new RangeError('grid extent must be finite');
+  }
   let previousTopM = Number.NEGATIVE_INFINITY;
   for (const layer of layers) {
     requireFinite(layer.lowerAltitudeM, 'lowerAltitudeM');
@@ -96,14 +100,26 @@ export function integrateCloudLocalOpticalPath(
   if (lengthM === 0 || layers.length === 0) {
     return { liquidOpticalDepth: 0, iceOpticalDepth: 0, transmittance: 1 };
   }
+  const firstColumn = Math.max(0, Math.floor(
+    (Math.min(from.eastM, to.eastM) - grid.originEastM) / grid.cellWidthM,
+  ));
+  const lastColumn = Math.min(grid.width - 1, Math.floor(
+    (Math.max(from.eastM, to.eastM) - grid.originEastM) / grid.cellWidthM,
+  ));
+  const firstRow = Math.max(0, Math.floor(
+    (Math.min(from.northM, to.northM) - grid.originNorthM) / grid.cellHeightM,
+  ));
+  const lastRow = Math.min(grid.height - 1, Math.floor(
+    (Math.max(from.northM, to.northM) - grid.originNorthM) / grid.cellHeightM,
+  ));
   let liquidOpticalDepth = 0;
   let iceOpticalDepth = 0;
-  for (let row = 0; row < grid.height; row += 1) {
+  for (let row = firstRow; row <= lastRow; row += 1) {
     const south = grid.originNorthM + row * grid.cellHeightM;
     const north = south + grid.cellHeightM;
     const yInterval = intersectAxis(from.northM, dn, south, north, { start: 0, end: 1 });
     if (yInterval === null) continue;
-    for (let column = 0; column < grid.width; column += 1) {
+    for (let column = firstColumn; column <= lastColumn; column += 1) {
       const west = grid.originEastM + column * grid.cellWidthM;
       const east = west + grid.cellWidthM;
       const xyInterval = intersectAxis(from.eastM, de, west, east, yInterval);
