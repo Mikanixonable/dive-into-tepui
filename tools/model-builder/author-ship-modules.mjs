@@ -21,7 +21,7 @@ function blenderPath() {
   throw new Error('Blender was not found; set BLENDER to its executable');
 }
 
-// Blender スクリプトが読む寸法表。ベクトルは [x, y, z] [m]。
+// Blender スクリプトが読む寸法表。ベクトルは [x, y, z] [m]、推力は [N](推力を持たない module は null)。
 function buildManifest() {
   const source = loadSourceModules(['game/ship/ship-module-catalog', 'physics/player-shape']);
   try {
@@ -33,6 +33,7 @@ function buildManifest() {
         kind: definition.kind,
         length: definition.length,
         muzzles: definition.muzzles.map(muzzle => [muzzle.x, muzzle.y, muzzle.z]),
+        thrust: definition.abilities.thrust ?? null,
       };
     }
     return {
