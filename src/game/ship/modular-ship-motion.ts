@@ -322,7 +322,7 @@ export class ModularShipMotion extends DynamicMotion {
     const definition = this.assembly.definition(weapon.id);
     const transform = this.assembly.worldTransformOf(weapon.id);
     if (definition === null || transform === null) return;
-    const moduleAnchor = v3(0, -definition.diameter * 0.325, 0);
+    const moduleAnchor = definition.feedPort;
     const anchor = add(
       transform.position,
       qRotate(transform.rotation, moduleAnchor),
