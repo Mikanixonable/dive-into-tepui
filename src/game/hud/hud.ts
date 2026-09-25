@@ -24,7 +24,7 @@ import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
-import type { Notifier } from '../../hud/notifier';
+import type { HintKind, Notifier } from '../../hud/notifier';
 import { ConstructionConfirmDialog } from './windows/construction-confirm-dialog';
 import { hudAttention, hudWorkspace } from './hud-workspace';
 
@@ -210,13 +210,11 @@ export class Hud implements HudLayers, Notifier {
     this.root.dataset['renderStyle'] = style;
   }
 
-  // 本文だけのトーストを durationMs 表示する。
-  public hint(text: string, durationMs = 1800): void {
-    const warning = /できません|失敗|警告|危険|全損|大気圏/.test(text);
-    const code = warning ? 'WARN'
-      : /フォーカス|ターゲット|航法/.test(text) ? 'NAV'
-        : /ノード|マニューバ|軌道計画/.test(text) ? 'PLN' : 'SYS';
-    this.requestToast(text, durationMs, code, warning, false);
+  // 本文だけのトーストを durationMs 表示する。kind は通知の意味上の種別で、
+  // バッジの記号と警告色をここで導く — 表示側が本文の文言から類推しない。
+  public hint(text: string, durationMs = 1800, kind: HintKind = 'info'): void {
+    const code = kind === 'warn' ? 'WARN' : kind === 'nav' ? 'NAV' : kind === 'plan' ? 'PLN' : 'SYS';
+    this.requestToast(text, durationMs, code, kind === 'warn', false);
   }
 
   // 見出しと本文を持つ HTML のトーストを durationMs 表示する。
