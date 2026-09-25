@@ -3,8 +3,14 @@
 import { SyncThrottle } from '../sync-throttle';
 import { fmtDateTime, fmtElapsedUnits, setElementText, fmtTime } from '../../../hud/utils';
 import { SIM_SPEED_LEVELS } from '../../dynamic/sim-speed-manager';
+import { Pulldown } from '../../../hud/widgets';
 
 const SYNC_INTERVAL_MS = 100;
+
+const SPEED_COLUMN = {
+  items: SIM_SPEED_LEVELS.map((speed) => [speed, `×${speed}`] as const),
+  description: '時間加速',
+} as const;
 
 // トップバーが1フレームに表示する値と、時間加速セレクトが通知する操作ハンドラ。
 export interface TopBarViewModel {
@@ -23,23 +29,25 @@ export interface TopBarViewModel {
 export class TopBar {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private readonly simSpeedEl: HTMLSelectElement | null;
+  private readonly simSpeedPulldown: Pulldown<readonly [typeof SPEED_COLUMN]> | null;
   // 直近の sync が受けた値。セレクトの操作はフレームの外で起きるので、その時点の口をここから引く。
   private view: TopBarViewModel | null = null;
 
-  // 時間加速セレクトへ選択肢を並べ、選択の変更を直近の値が持つ口へ返す。
+  // 時間加速ドロップダウンを差し込み、選択の変更を直近の値が持つ口へ返す。
   public constructor(private readonly els: Map<string, HTMLElement>) {
-    const el = this.els.get('sim-speed');
-    const select = el instanceof HTMLSelectElement ? el : null;
-    this.simSpeedEl = select;
-    if (!select) return;
-    // 選択肢はランを跨いで変わらないので、ここで一度だけ並べる。
-    for (const speed of SIM_SPEED_LEVELS) {
-      const option = document.createElement('option');
-      option.value = String(speed);
-      option.textContent = `×${speed}`;
-      select.appendChild(option);
+    const holder = this.els.get('sim-speed');
+    if (!holder) {
+      this.simSpeedEl = null;
+      this.simSpeedPulldown = null;
+      return;
     }
-    select.addEventListener('change', () => this.view?.setSimSpeed(Number(select.value)));
+    const pulldown = new Pulldown<readonly [typeof SPEED_COLUMN]>(
+      '', [SPEED_COLUMN], null, ([speed]) => this.view?.setSimSpeed(speed),
+    );
+    holder.appendChild(pulldown.element);
+    this.simSpeedPulldown = pulldown;
+    this.simSpeedEl = pulldown.element.querySelector('select');
+    this.simSpeedEl?.classList.add('gs-speed-select');
   }
 
   // MET を毎フレーム、時間加速と NODE WARP の残りを間引いて反映する。
@@ -57,10 +65,10 @@ export class TopBar {
 
     if (!this.throttle.due(nowMs)) return;
 
-    // 時間加速セレクトの選択値と表示を、現在の速度へ合わせる。
+    // 時間加速ドロップダウンの選択値と表示を、現在の速度へ合わせる。
     const simSpeedLabel = `×${view.simSpeed}`;
+    this.simSpeedPulldown?.setSelected(0, view.simSpeed);
     if (this.simSpeedEl) {
-      this.simSpeedEl.value = String(view.simSpeed);
       const warpRemain = view.autoWarpRealRemainSec !== null
         ? ` (残り ${fmtTime(view.autoWarpRealRemainSec)})`
         : '';
