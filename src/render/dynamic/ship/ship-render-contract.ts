@@ -18,6 +18,8 @@ export interface ShipModuleRenderInput {
   readonly hp: number;
   readonly maxHp: number;
   readonly deployed: number | null;
+  // 固体ブースターが燃焼中か。ブースター以外は null。
+  readonly burning: boolean | null;
   readonly transform: ShipModuleRenderTransform;
 }
 
