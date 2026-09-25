@@ -57,6 +57,13 @@ export interface LabShot {
   readonly view: Partial<LabViewAngles>;
   // 起動時の描画品質設定へ重ねる差分。省略すると起動時の設定のまま撮る。
   readonly graphics?: Partial<GraphicsSettingsData>;
+  // 局所タイルの既知周期を撮る診断条件。省略すると診断タイルを外す。
+  readonly cloudDetailDiagnostic?: {
+    readonly wavelengthKm: number;
+    readonly directionDeg: number;
+    readonly phaseDeg?: number;
+    readonly composition?: 'absolute' | 'coverage-residual';
+  };
 }
 
 export interface LabCase {
@@ -100,6 +107,15 @@ export interface LabCase {
   readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
   // 残基 motion が握る資源を解放する。
   readonly disposeProteinMotion?: () => void;
+  // ケースが THREE のシーン資源所有走査で扱えない補助資源を解放する。
+  readonly dispose?: () => void;
+  // 実テクスチャを対象にした render-lab 専用GPU診断。Three backend のtexture readback関数だけを受け取る。
+  readonly readGpuTextureDiagnostic?: (
+    readLayer: (texture: THREE.Texture, width: number, height: number, layer: number) => Promise<{
+      readonly data: ArrayBufferView;
+      readonly format: string;
+    }>,
+  ) => Promise<unknown>;
 }
 
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。
