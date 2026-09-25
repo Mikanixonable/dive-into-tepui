@@ -239,6 +239,28 @@ export class LabView {
     this.render();
   }
 
+  // 指定ケースをGPUへ描画してから、ケース固有の実テクスチャ診断を実行する。
+  public async readGpuTextureDiagnostic(name: CaseName): Promise<unknown> {
+    this.build(name);
+    this.resetView();
+    await this.waitUntilReady();
+    if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for GPU texture diagnostic`);
+    this.render();
+    await this.gpu.waitForResolve();
+    const diagnostic = this.current?.readGpuTextureDiagnostic;
+    if (diagnostic === undefined) throw new Error(`render-lab: case "${name}" has no GPU texture diagnostic`);
+    const backend = this.renderer.backend as unknown as {
+      get: (texture: THREE.Texture) => { readonly textureDescriptorGPU: { readonly format: string } };
+      copyTextureToBuffer: (
+        texture: THREE.Texture, x: number, y: number, width: number, height: number, layer: number,
+      ) => Promise<ArrayBufferView>;
+    };
+    return diagnostic(async (texture, width, height, layer) => ({
+      data: await backend.copyTextureToBuffer(texture, 0, 0, width, height, layer),
+      format: backend.get(texture).textureDescriptorGPU.format,
+    }));
+  }
+
   // 表示スタイルを差し替え、いま出ているケースをそのスタイルで組み直す。観察の向きは保つ —
   // 写実と模式図を同じ構図で見比べるための切り替え。
   public setStyle(style: RenderStyle): void {
