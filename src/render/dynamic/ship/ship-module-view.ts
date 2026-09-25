@@ -128,6 +128,7 @@ export class ShipModuleView {
     const hinge = this.semanticAnchor('panel-hinge');
     if (hinge !== null && state.deployed !== null) {
       hinge.visible = state.hp > 0;
+<<<<<<< HEAD
       const panels = this.semanticAnchors('panel-hinge:');
       const kind = (panels[0]?.userData.panelKind ?? null) as DeployablePanelKind | null;
       const poses = kind === null ? [] : deployablePanelPoses(kind, 0, state.deployed);
@@ -137,6 +138,38 @@ export class ShipModuleView {
         if (pose === undefined) throw new Error(`panel index out of range: ${this.inputValue.modelId}#${panelIndex}`);
         panel.position.set(pose.origin.x, pose.origin.y, pose.origin.z);
         panel.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
+=======
+      const panelHinges = this.semanticAnchors('panel-hinge:')
+        .filter((panel) => typeof panel.userData.panelIndex === 'number')
+        .sort((a, b) => (a.userData.panelIndex as number) - (b.userData.panelIndex as number));
+      if (panelHinges.length === 0) {
+        // 単一ヒンジ構造のアセットではルートヒンジを一括回転させる。
+        hinge.rotation.y = (1 - state.deployed) * Math.PI / 2;
+      } else if (state.kind === 'solar_panel') {
+        hinge.rotation.set(0, 0, 0);
+        const deploy = state.deployed;
+        for (const panel of panelHinges) {
+          const index = panel.userData.panelIndex as number;
+          const width = panel.userData.panelWidth as number;
+          panel.position.set(0, 0, index * width * deploy);
+          panel.rotation.set((1 - deploy) * Math.PI / 2, 0, 0);
+        }
+      } else {
+        hinge.rotation.set(0, 0, 0);
+        const deploy = state.deployed;
+        const tilt = (1 - deploy) * Math.PI / 2 + deploy * (15 * Math.PI / 180);
+        let originX = 0;
+        let originZ = 0;
+        for (const panel of panelHinges) {
+          const index = panel.userData.panelIndex as number;
+          const width = panel.userData.panelWidth as number;
+          const angle = index % 2 === 0 ? tilt : -tilt;
+          panel.position.set(originX, 0, originZ);
+          panel.rotation.set(0, angle, 0);
+          originX += Math.sin(angle) * width;
+          originZ += Math.cos(angle) * width;
+        }
+>>>>>>> 40e7e8818 (feat(ship): 太陽電池・放熱板の展開方向を接続面垂直(+Z)に変更)
       }
     }
     this.object.userData.shipModuleId = this.inputValue.id;
