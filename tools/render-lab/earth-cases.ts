@@ -225,6 +225,16 @@ function earth(): LabCase {
     shadowBodies: [sphereShadowBody(eclipseBodyCenter, ECLIPSE_SHADOW_BODY_RADIUS)],
     shots: {
       'earth': { view: {} },
+      // サングリント。地球を視線の先へ置き、直下点を赤道・経度0の水域に取り、恒星をカメラの
+      // ほぼ背後(方位 0)へ置く構図。滑らかな水面ではグリントの縁がメッシュ分割や地形標本の
+      // 格子上で折れてはならない。
+      'earth-glint': {
+        view: {
+          earthAzimuthDeg: 180, earthElevationDeg: 0,
+          earthAltitudeLog: Math.log10(LEO_ALTITUDE), earthLatitudeDeg: 0, earthLongitudeDeg: 0,
+          ...sunAnglesOf(new THREE.Vector3(0, 0.3, 1)),
+        },
+      },
       // 昼夜境界。**太陽光が最も長く大気を通って届く向き**なので、波長ごとの減衰だけで縁と霞が橙へ
       // 寄っていなければならない。前方散乱が効く向きでもあるので、太陽のまわりのグローもここで読む。
       'earth-terminator': { view: EARTH_TERMINATOR_SUN },
