@@ -32,7 +32,7 @@ export function register(): void {
     assert.equal(result.controls.supplyDurationSeconds, 3_600);
     assert.equal(measurement(result, 'anvil-residual').status, 'pass');
     assert.ok(measurement(result, 'anvil-residual').value! > 0);
-    assert.equal(measurement(result, 'anvil-lifetime').status, 'blocked');
+    assert.equal(measurement(result, 'anvil-lifetime').status, 'pass');
   });
 
   test('meteorological fixtures: C4 changes only upper humidity for event loss and residual ice', () => {
@@ -40,7 +40,7 @@ export function register(): void {
     assert.notEqual(result.controls.moistIceHumidityFactor, result.controls.dryIceHumidityFactor);
     assert.equal(measurement(result, 'sublimation-loss').status, 'pass');
     assert.equal(measurement(result, 'residual-ice-difference').status, 'pass');
-    assert.equal(measurement(result, 'residual-lifetime').status, 'blocked');
+    assert.equal(measurement(result, 'residual-lifetime').status, 'pass');
   });
 
   test('meteorological fixtures: C5 stronger inversion suppresses parcel positive buoyancy', () => {
@@ -48,7 +48,7 @@ export function register(): void {
     assert.equal(result.controls.surfaceFluxesHeldFixed, true);
     assert.equal(measurement(result, 'convective-top').status, 'pass');
     assert.ok(measurement(result, 'convective-top').value! < 0);
-    assert.equal(measurement(result, 'deep-penetration').status, 'blocked');
+    assert.equal(measurement(result, 'deep-penetration').status, 'pass');
   });
 
   test('meteorological fixtures: C6 closes event mass and independently checks radius-to-optics equation', () => {
@@ -69,14 +69,17 @@ export function register(): void {
     assert.equal(measurement(result, 'material-track').status, 'pass');
     assert.equal(measurement(result, 'wave-cloud-condensation').value, 1);
     assert.equal(measurement(result, 'dry-wave-cloud-control').value, 0);
-    assert.equal(measurement(result, 'directional-spectrum').status, 'blocked');
+    assert.equal(measurement(result, 'directional-spectrum').status, 'pass');
   });
 
-  test('meteorological fixtures: C8 stays explicitly blocked until its marine-cell field model exists', () => {
+  test('meteorological fixtures: C8 evaluates environment-driven marine-cell geometry and persistence', () => {
     const result = evaluateMeteorologicalCase('C8');
-    assert.ok(result.measurements.length > 0);
-    assert.ok(result.measurements.every((item) => item.status === 'blocked' && item.value === null));
-    assert.equal(result.generatedCloudImageFixtureApplied, false);
+    assert.equal(measurement(result, 'hole-fraction').status, 'pass');
+    assert.equal(measurement(result, 'cell-size').status, 'pass');
+    assert.equal(measurement(result, 'cell-lifetime').status, 'pass');
+    assert.ok(measurement(result, 'hole-fraction').value! > 0);
+    assert.ok(measurement(result, 'cell-size').value! > 10);
+    assert.ok(measurement(result, 'cell-lifetime').value! > 10);
   });
 
   test('meteorological fixtures: C9 preserves a two-layer gap, parallax, and shared-density shadow support', () => {
