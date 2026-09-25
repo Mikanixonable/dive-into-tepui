@@ -265,6 +265,12 @@ function earth(): LabCase {
         graphics: QUALITY_PRESETS.medium,
         cloudDetailDiagnostic: { wavelengthKm: 2, directionDeg: 0 },
       },
+      // タイルの 2° 外縁が画面に入る距離で、境界合成の見た目を監査する専用 shot。
+      'cloud-detail-seam-500km-medium-diagnostic': {
+        view: earthStandardCloudView(500e3),
+        graphics: QUALITY_PRESETS.medium,
+        cloudDetailDiagnostic: { wavelengthKm: 4, directionDeg: 0 },
+      },
       'earth-low-orbit': { view: EARTH_LOW_ORBIT_PLACEMENT },
       'earth-limb': { view: {} },
       // 昼夜境界。**太陽光が最も長く大気を通って届く向き**なので、波長ごとの減衰だけで縁と霞が橙へ
