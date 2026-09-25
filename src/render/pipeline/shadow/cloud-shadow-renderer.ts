@@ -83,9 +83,9 @@ export class CloudShadowRenderer {
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
   // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
   //
-  // 柱の光学的厚みも覆いの形も殻が雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、
-  // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配分するので、柱を 1 本抜ける
-  // 合計はどれだけ斜めでも τ に一致する。
+  // 柱の光学的厚みも覆いの形も表面・大気と同じ CloudDensityEvaluator から引くので、
+  // 影は同じ3D support の下へ落ちる。消散係数 [1/m] を実光路長で積分するため、鉛直に抜ければ
+  // 柱光学深さ τ、斜めに抜ければ通過距離に応じてそれより大きい slant optical depth になる。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
   // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、粒の振幅を決める。
   public transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
