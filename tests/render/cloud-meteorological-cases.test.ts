@@ -9,12 +9,12 @@ function measurement(result: MeteorologicalCaseEvaluation, id: string) {
 }
 
 export function register(): void {
-  test('meteorological fixtures: C1 compares spherical transport with analytic motion and blocks unsupported mass', () => {
+  test('meteorological fixtures: C1 compares spherical transport and carried mass with analytic controls', () => {
     const result = evaluateMeteorologicalCase('C1');
     assert.equal(result.cpuDiagnosticsApplied, true);
     assert.equal(result.generatedCloudImageFixtureApplied, false);
     assert.equal(measurement(result, 'trajectory').status, 'pass');
-    assert.equal(measurement(result, 'mass').status, 'blocked');
+    assert.equal(measurement(result, 'mass').status, 'pass');
   });
 
   test('meteorological fixtures: C2 changes wind direction with height in one control profile', () => {
@@ -72,12 +72,20 @@ export function register(): void {
     assert.equal(measurement(result, 'directional-spectrum').status, 'blocked');
   });
 
-  test('meteorological fixtures: C8 and C9 stay explicitly blocked until their field models exist', () => {
-    for (const id of ['C8', 'C9'] as const) {
-      const result = evaluateMeteorologicalCase(id);
-      assert.ok(result.measurements.length > 0);
-      assert.ok(result.measurements.every((item) => item.status === 'blocked' && item.value === null));
-      assert.equal(result.generatedCloudImageFixtureApplied, false);
-    }
+  test('meteorological fixtures: C8 stays explicitly blocked until its marine-cell field model exists', () => {
+    const result = evaluateMeteorologicalCase('C8');
+    assert.ok(result.measurements.length > 0);
+    assert.ok(result.measurements.every((item) => item.status === 'blocked' && item.value === null));
+    assert.equal(result.generatedCloudImageFixtureApplied, false);
+  });
+
+  test('meteorological fixtures: C9 preserves a two-layer gap, parallax, and shared-density shadow support', () => {
+    const result = evaluateMeteorologicalCase('C9');
+    assert.equal(measurement(result, 'layer-gap').status, 'pass');
+    assert.equal(measurement(result, 'parallax').status, 'pass');
+    assert.equal(measurement(result, 'shadow-support').status, 'pass');
+    assert.ok(measurement(result, 'layer-gap').value! > 0);
+    assert.ok(measurement(result, 'parallax').value! > 1);
+    assert.ok(measurement(result, 'shadow-support').value! > 0);
   });
 }

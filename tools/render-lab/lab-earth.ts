@@ -89,7 +89,11 @@ export class LabEarth {
     const clouds = this.clouds;
     const bodyFromWorld = this.bodyFromWorld;
     // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
-    const atmosphereClouds: AtmosphereClouds = { get cloud() { return clouds.renderInput; }, bodyFromWorld };
+    const atmosphereClouds: AtmosphereClouds = {
+      get cloud() { return clouds.renderInput; },
+      bodyFromWorld,
+      surfaceRadius: R_EARTH_EQ,
+    };
     // 大気の地表は地表メッシュと同じ楕円体に採る。**真球で渡すと**、極で地表と空のあいだに
     // 隙間が開く。
     const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
@@ -111,6 +115,9 @@ export class LabEarth {
       get cloud() { return clouds.renderInput; },
     };
   }
+
+  // 現在選択中の雲場の世代。cold prepareでは進み、同時刻のwarm再利用では進まない。
+  public get cloudGeneration(): number { return this.clouds.renderInput.generation; }
 
   // 光源として焼く地表のテクスチャ。ベース色の画像が GPU へ届くまでは null。
   public get lightSourceMap(): LightSourceMap | null { return this.surface.lightSourceMap; }
