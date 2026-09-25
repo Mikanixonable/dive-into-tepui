@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { bool, float, int, uint, uniform, vec2, vec3 } from 'three/tsl';
-import { clipToCircle } from '../../src/render/pipeline/screen-space/hemisphere-scan';
+import { clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
   angleOf, capRange, maskedMeasure, sectorPosition, segmentSectors, sliceAt, toSliceCoordinates, wedgeWeight,
 } from '../../src/render/pipeline/screen-space/slice-sectors';
@@ -448,6 +448,34 @@ export function register(): void {
       assertOnRay(lower, bay, middle, `${label} 壁の下端`);
       assert.ok(lower.length() > upper.length() + 1, `${label} 壁は箱の奥`);
     }
+  });
+
+  test('screen space estimator: 半径の投影は渡した寸法の画素で測り、透視では奥行きに反比例し、平行投影では一定', () => {
+    const projections = {
+      '中心のずれた透視': new THREE.Matrix4()
+        .makePerspective(-0.03, 0.07, 0.06, -0.04, 0.1, 100, THREE.WebGPUCoordinateSystem, true),
+      '平行投影': new THREE.Matrix4()
+        .makeOrthographic(-2, 3, 4, -1, 0.1, 100, THREE.WebGPUCoordinateSystem, true),
+    };
+    const full = new THREE.Vector2(960, 540);
+    const half = full.clone().multiplyScalar(0.5);
+    // view 空間の点 point の半径を、寸法 size の画面の画素で測ったもの。
+    const radiusOf = (projection: THREE.Matrix4, point: THREE.Vector3, size: THREE.Vector2): number =>
+      valueOf(projectedRadius(vectorNode(point), uniform(projection), vec2(size.x, size.y)));
+    // 比べる点は、どれも半径が画面の対角より小さく写る奥行きに置く。
+    const reference = new THREE.Vector3(0.3, -0.2, -50);
+    for (const [label, projection] of Object.entries(projections)) {
+      const perspective = projection.elements[11] !== 0;
+      const expected = radiusOf(projection, reference, full);
+      near(radiusOf(projection, reference, half), expected / 2, 1e-9 * expected, `${label} 半分の寸法`);
+      for (const point of [new THREE.Vector3(-1.5, 0.8, -50), new THREE.Vector3(0.3, -0.2, -80)]) {
+        const depthRatio = perspective ? reference.z / point.z : 1;
+        near(radiusOf(projection, point, full), expected * depthRatio, 1e-6 * expected, `${label} ${point.toArray()}`);
+      }
+    }
+    // 画面の対角で頭打ちにする。
+    const close = radiusOf(projections['中心のずれた透視'], new THREE.Vector3(0, 0, -0.2), half);
+    near(close, half.length(), 1e-9, '対角');
   });
 
   test('screen space estimator: 受け手と同じ平面の標本の切片は、その平面に留まり測度を持たない', () => {

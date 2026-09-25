@@ -1,7 +1,7 @@
 // 恒星の直射光の寄与。光源モデルの設定で「点光源 + GGX」と「一様球の閉じた解 + LTC」を
 // 選ぶ。どちらも影パスの透過率を掛けて出す。
 import * as THREE from 'three/webgpu';
-import { PI, clamp, dot, length, max, normalize, saturate, texture } from 'three/tsl';
+import { PI, clamp, dot, float, length, max, normalize, saturate, texture } from 'three/tsl';
 import { ggxSpecularFactor } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
@@ -47,7 +47,13 @@ export class SunSource implements LightSource {
     const dotNL: FloatNode = saturate(dot(sample.normal, normalize(toSun)));
     return this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
-      .mul(dotNL).mul(texture(this.shadow.texture, sample.uv).r);
+      .mul(dotNL).mul(this.transmittanceAt(sample));
+  }
+
+  // 受け手 sample の画素へ恒星の光が届く割合(影パスの透過率)。
+  private transmittanceAt(sample: ShadingSample): FloatNode {
+    // 段を明示して読む — 暗黙の段は画素の間の微分で決まり、一様でない分岐の中では組めない。透過率の段は 1 つだけ。
+    return texture(this.shadow.texture, sample.uv).level(float(0)).r;
   }
 
   // 恒星を点として扱う寄与。鏡面は GGX。
@@ -71,7 +77,7 @@ export class SunSource implements LightSource {
     const dist = max(length(toSun), 1);
     // 半径 0(主星の無いレジストリの置き光源)でも放射輝度が定義されるよう 1 m を床にする。
     const radius = max(this.sunLight.radius, 1);
-    const transmittance = texture(this.shadow.texture, sample.uv).r;
+    const transmittance = this.transmittanceAt(sample);
 
     const cosBeta = dot(sample.normal, toSun.div(dist));
     const sinSigmaSqr = clamp(radius.mul(radius).div(distSqr), 0, 1);

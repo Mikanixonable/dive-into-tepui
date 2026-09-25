@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, abs, clamp, float, floor, getViewPosition, ivec2, log, max, mrt, screenSize, screenUV,
+  Fn, If, abs, clamp, float, floor, getViewPosition, ivec2, log, max, mrt, screenSize, screenUV,
   select, texture, textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
@@ -12,12 +12,14 @@ import { BlueNoise } from '../../blue-noise';
 import { ShadingSample } from '../lighting/shading-sample';
 import { MAX_PLANET_LIGHT_SLOTS, type PlanetLightSource } from '../lighting/planet-light-source';
 import { compileInto } from '../compile-into';
-import { gbufferUVOf, scanHemisphere, type PlanetIllumination } from './hemisphere-scan';
+import {
+  gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
+} from './hemisphere-scan';
 import type { DiffuseCorrection } from './diffuse-correction';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
 import type { SunSource } from '../lighting/sun-source';
-import type { FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node } from '../../tsl-types';
+import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node } from '../../tsl-types';
 
 // 描画設定「遮蔽と照り返し」の値。値は保存された設定を読む鍵なので、段を足しても既存の値は動かさない。
 export const SCREEN_SPACE_DIFFUSE = { off: 0, occlusion: 1, indirect: 2 } as const;
@@ -175,8 +177,16 @@ export class ScreenSpacePass {
   ): readonly Stage[] {
     const stages: Stage[] = [];
     if (sun !== null) {
+      // 照り返しの源は、補正を受ける画素(resolvesNearbyAt)で求め、ほかの画素は 0 とする。
       const source = stageMaterial();
-      source.mrtNode = mrt({ surfaceRadiance: vec4(this.emittedRadiance(gbuffer, sun, planetLight, ambient), 1) });
+      source.mrtNode = mrt({ surfaceRadiance: Fn(() => {
+        const radiance = vec3(0).toVar();
+        const depth = textureLoad(gbuffer.depthTexture, ivec2(floor(this.gbufferUV.mul(this.fullSize)))).r.toVar();
+        If(this.resolvesNearbyAt(depth, this.gbufferUV), () => {
+          radiance.assign(this.emittedRadiance(gbuffer, sun, planetLight, ambient));
+        });
+        return vec4(radiance, 1);
+      })() });
       stages.push({ material: source, target: this.sourceTarget, gpuPass: GPU_PASS.bounceSource });
     }
     // 走査: 受け手へ届く遠方の拡散光のうち塞がれた照度と照り返しの差。
@@ -200,46 +210,60 @@ export class ScreenSpacePass {
 
   // 走査の画素が表す面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)— 太陽の直射・天体照・環境光を拡散で
   // 返す光と、自己発光。天体照と環境光は、その面の空が遮られないとしたときの照度で引く(その面自身の
-  // 遮られ方はこのパスの出力そのものなので、1 パスの中では求まらない)。
+  // 遮られ方はこのパスの出力そのものなので、1 パスの中では求まらない)。一様でない分岐の中から呼んでよい。
   private emittedRadiance(
     gbuffer: GBufferPass, sun: SunSource, planetLight: PlanetLightSource, ambient: AmbientSource,
   ): Vec3Node {
-    const material = texture(gbuffer.basecolorTexture, this.sample.uv);
+    // G バッファは段を明示して読む — 暗黙の段は画素の間の微分で決まり、一様でない分岐の中では組めない。
+    // G バッファの段は 1 つだけ。
+    const material = texture(gbuffer.basecolorTexture, this.sample.uv).level(float(0));
     const albedo = material.rgb.mul(material.a.oneMinus());
     const irradiance = sun.pointIrradiance(this.sample)
       .add(planetLight.diffuseIrradiance(this.sample))
       .add(ambient.irradiance(this.sample));
     return albedo.div(Math.PI).mul(irradiance)
-      .add(texture(gbuffer.emissiveTexture, this.sample.uv).rgb);
+      .add(texture(gbuffer.emissiveTexture, this.sample.uv).level(float(0)).rgb);
   }
 
   // 全解像度の画素ごとに、走査の結果を近い 3×3 の走査の画素から均して返す。重みは 1-2-1 の二項係数に、中心との
-  // 奥行きの鍵の差で 0 へ落ちる係数を掛ける — 深度の段差を跨いで、手前の補正を奥へ滲ませない。面の写っていない
-  // 画素は 0。
+  // 奥行きの鍵の差で 0 へ落ちる係数を掛ける — 深度の段差を跨いで、手前の補正を奥へ滲ませない。補正を受けない
+  // 画素(resolvesNearbyAt)は 0。
   private reconstructed(gbuffer: GBufferPass): THREE.Node {
     return Fn(() => {
       const pixel = ivec2(floor(screenUV.mul(screenSize)));
       const depth = textureLoad(gbuffer.depthTexture, pixel).r.toVar();
-      const centerKey = depthKey(depth, screenUV, this.projectionInverse).toVar();
-      const center = floor(screenUV.mul(this.scanSize)).toVar();
-      const sum = vec3(0).toVar();
-      const weightSum = float(0).toVar();
-      // 隣の走査の画素が表す G バッファの画素の奥行きの鍵を、中心と比べる。画面の外の隣は縁の画素で代える。
-      for (const [dy, wy] of DENOISE_TAPS) {
-        for (const [dx, wx] of DENOISE_TAPS) {
-          const candidate = ivec2(clamp(center.add(vec2(dx, dy)), vec2(0), this.scanSize.sub(1)));
-          const candidateUv = floor(vec2(candidate).add(0.5).mul(this.fullSize).div(this.scanSize))
-            .add(0.5).div(this.fullSize);
-          const candidateDepth = textureLoad(gbuffer.depthTexture,
-            ivec2(floor(candidateUv.mul(this.fullSize)))).r;
-          const gap = abs(depthKey(candidateDepth, candidateUv, this.projectionInverse).sub(centerKey));
-          const weight = clamp(float(1).sub(gap.div(EDGE_DEPTH_TOLERANCE)), 0, 1).mul(wx * wy);
-          sum.addAssign(textureLoad(this.output.rawTexture, candidate).rgb.mul(weight));
-          weightSum.addAssign(weight);
+      const corrected = vec3(0).toVar();
+      // 中心の画素で測り直す — 近い走査の画素が補正を持っていても、補正を受けない画素へは均し込まない。
+      If(this.resolvesNearbyAt(depth, screenUV), () => {
+        const centerKey = depthKey(depth, screenUV, this.projectionInverse).toVar();
+        const center = floor(screenUV.mul(this.scanSize)).toVar();
+        const sum = vec3(0).toVar();
+        const weightSum = float(0).toVar();
+        // 隣の走査の画素が表す G バッファの画素の奥行きの鍵を、中心と比べる。画面の外の隣は縁の画素で代える。
+        for (const [dy, wy] of DENOISE_TAPS) {
+          for (const [dx, wx] of DENOISE_TAPS) {
+            const candidate = ivec2(clamp(center.add(vec2(dx, dy)), vec2(0), this.scanSize.sub(1)));
+            const candidateUv = floor(vec2(candidate).add(0.5).mul(this.fullSize).div(this.scanSize))
+              .add(0.5).div(this.fullSize);
+            const candidateDepth = textureLoad(gbuffer.depthTexture,
+              ivec2(floor(candidateUv.mul(this.fullSize)))).r;
+            const gap = abs(depthKey(candidateDepth, candidateUv, this.projectionInverse).sub(centerKey));
+            const weight = clamp(float(1).sub(gap.div(EDGE_DEPTH_TOLERANCE)), 0, 1).mul(wx * wy);
+            sum.addAssign(textureLoad(this.output.rawTexture, candidate).rgb.mul(weight));
+            weightSum.addAssign(weight);
+          }
         }
-      }
-      return vec4(select(depth.greaterThan(0), sum.div(max(weightSum, 1e-6)), vec3(0)), 1);
+        corrected.assign(sum.div(max(weightSum, 1e-6)));
+      });
+      return vec4(corrected, 1);
     })();
+  }
+
+  // uv の画素の素の深度 depth の受け手が補正を受けるか(resolvesNearby)。半径は、描いている解像度によらず走査の
+  // 画素で測る。
+  private resolvesNearbyAt(depth: FloatNode, uv: Vec2Node): BoolNode {
+    const position = getViewPosition(uv, depth, this.projectionInverse);
+    return resolvesNearby(depth, projectedRadius(position, this.projection, this.scanSize));
   }
 
   // 描画先と標本数を精細さの段へ合わせ、深度から位置を復元する行列を書き込む。
