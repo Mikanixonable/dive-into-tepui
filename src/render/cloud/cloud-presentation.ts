@@ -48,6 +48,7 @@ export class CloudPresentation {
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
   // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
+  private sourceKind: CloudFieldSourceKind = CLOUD_FIELD_SOURCE_KIND.generated;
   private cloudVisible = false;
   private cirrusVisible = true;
   private translucentCumulusVisible = true;
@@ -67,12 +68,13 @@ export class CloudPresentation {
 
   // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
-    const detailTile: CloudFieldDetailTileBinding | null = this.detailTile === null ? null : {
-      texture: this.detailTile.texture,
-      cap: this.detailTile.cap.placement,
-      blendStartCos: this.detailTile.blendStartCos,
-      composition: this.detailTile.composition,
-    };
+    const detailTile: CloudFieldDetailTileBinding | null = this.sourceKind !== CLOUD_FIELD_SOURCE_KIND.generated
+      || this.detailTile === null ? null : {
+        texture: this.detailTile.texture,
+        cap: this.detailTile.cap.placement,
+        blendStartCos: this.detailTile.blendStartCos,
+        composition: this.detailTile.composition,
+      };
     return {
       field: { texture: this.source.texture, cap: this.cap.placement, detailTile },
       generation: this.source.generation,
@@ -109,6 +111,7 @@ export class CloudPresentation {
   // 雲場の出どころを選ぶ。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
   // **選び直したら結び直す** — 結び直さないと、不透明表面が前の出どころの写しを読み続ける。
   private setSource(kind: CloudFieldSourceKind): void {
+    this.sourceKind = kind;
     this.source = this.sources[kind];
     this.surface.bind(this.renderInput);
   }
