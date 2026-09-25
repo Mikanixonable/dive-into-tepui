@@ -49,8 +49,12 @@ function validate(circle: CloudFootprintCircle, grid: CloudFootprintGrid): numbe
     throw new RangeError('grid dimensions must be positive safe integers');
   }
   const footprintAreaM2 = Math.PI * circle.radiusM * circle.radiusM;
+  const cellAreaM2 = grid.cellWidthM * grid.cellHeightM;
   if (!Number.isFinite(footprintAreaM2) || footprintAreaM2 <= 0) {
     throw new RangeError('circle footprint area must be finite and positive');
+  }
+  if (!Number.isFinite(cellAreaM2) || cellAreaM2 <= 0) {
+    throw new RangeError('grid cell area must be finite and positive');
   }
   return footprintAreaM2;
 }
@@ -147,9 +151,15 @@ export function cloudFootprintOverlap(
     const bottomM = grid.originNorthM + row * grid.cellHeightM;
     for (let column = firstColumn; column <= lastColumn; column += 1) {
       const leftM = grid.originEastM + column * grid.cellWidthM;
-      const areaM2 = circleRectangleAreaM2(
+      const rawAreaM2 = circleRectangleAreaM2(
         circle, leftM, bottomM, leftM + grid.cellWidthM, bottomM + grid.cellHeightM,
       );
+      const geometricAreaLimitM2 = Math.min(grid.cellWidthM * grid.cellHeightM, footprintAreaM2);
+      const roundingToleranceM2 = 32 * Number.EPSILON * Math.max(rawAreaM2, geometricAreaLimitM2);
+      if (rawAreaM2 - geometricAreaLimitM2 > roundingToleranceM2) {
+        throw new RangeError('circle-rectangle overlap exceeds its geometric area limit');
+      }
+      const areaM2 = Math.min(rawAreaM2, geometricAreaLimitM2);
       if (areaM2 > 0) overlaps.push({ cellIndex: row * grid.width + column, areaM2 });
     }
   }

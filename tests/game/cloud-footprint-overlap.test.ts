@@ -119,6 +119,29 @@ export function register(): void {
     assert.equal(result.columnsByLayer[0]!.liquidKgM2ByCell[0], 1 / coverage.footprintAreaM2);
   });
 
+  test('cloud footprint overlap: 4 km disk on 250 m cells clamps ULP overshoot and conserves full-grid mass', () => {
+    const footprint = { eastM: 0, northM: 0, radiusM: 4_000 };
+    const gridGeometry = grid(-8_000, -8_000, 64, 64, 250, 250);
+    const coverage = cloudFootprintOverlap(footprint, gridGeometry);
+    const cellAreaM2 = 250 ** 2;
+    assert.ok(coverage.overlaps.every(({ areaM2 }) => areaM2 <= cellAreaM2));
+    withinRelativeError(overlapAreaM2(coverage.overlaps), coverage.footprintAreaM2, 1e-12);
+
+    const massGrid = {
+      cells: Array.from({ length: 64 * 64 }, () => ({ areaM2: cellAreaM2 })),
+      layerEdgesM: [0, 10_000],
+    };
+    const deposition = depositCloudParcelMass([{
+      phase: 'liquid', massKg: 123_456, altitudeM: 5_000,
+      footprintAreaM2: coverage.footprintAreaM2, overlaps: coverage.overlaps,
+    }], massGrid);
+    const assignedMassKg = deposition.columnsByLayer[0]!.liquidKgM2ByCell.reduce(
+      (total, columnKgM2, index) => total + columnKgM2 * massGrid.cells[index]!.areaM2, 0,
+    );
+    withinRelativeError(assignedMassKg, 123_456, 1e-12);
+    assert.equal(deposition.unassignedMassKgByPhase.liquid, 0);
+  });
+
   test('cloud footprint overlap: clipped region leaves uncovered mass in deposition', () => {
     const coverage = cloudFootprintOverlap(UNIT_CIRCLE, grid(0, -0.5, 1, 1));
     const gridForMass = {
