@@ -57,6 +57,12 @@ export interface LabShot {
   readonly view: Partial<LabViewAngles>;
   // 起動時の描画品質設定へ重ねる差分。省略すると起動時の設定のまま撮る。
   readonly graphics?: Partial<GraphicsSettingsData>;
+  // 局所タイルの既知周期を撮る診断条件。省略すると診断タイルを外す。
+  readonly cloudDetailDiagnostic?: {
+    readonly wavelengthKm: number;
+    readonly directionDeg: number;
+    readonly phaseDeg?: number;
+  };
 }
 
 export interface LabCase {

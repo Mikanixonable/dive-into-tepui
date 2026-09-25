@@ -516,6 +516,11 @@ export class LabView {
   public applyShot(name: string, graphics: Partial<GraphicsSettingsData> = {}): void {
     const shot = this.shots[name];
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
+    const diagnostic = shot.cloudDetailDiagnostic;
+    this.earth.setCloudDetailDiagnostic(
+      diagnostic !== undefined, diagnostic?.wavelengthKm, diagnostic?.directionDeg,
+      diagnostic?.phaseDeg,
+    );
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
   }
@@ -552,6 +557,7 @@ export class LabView {
   // 指定 shot を品質設定の内部ラスタ寸法で撮る。通常の固定寸法 shot と計測の解像度を混同しない。
   public async shootNative(
     name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
+    cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
   ): Promise<string> {
     this.setGraphics({ ...this.startupGraphics, ...graphics });
     this.show(name);
@@ -559,6 +565,15 @@ export class LabView {
     await this.waitUntilReady();
     if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for native shooting`);
     this.applyShot(shotName, graphics);
+    this.setGraphics({ ...this.graphics.current, ...graphics });
+    if (cloudDetailDiagnostic !== undefined) {
+      this.earth.setCloudDetailDiagnostic(
+        cloudDetailDiagnostic !== null,
+        cloudDetailDiagnostic?.wavelengthKm,
+        cloudDetailDiagnostic?.directionDeg,
+        cloudDetailDiagnostic?.phaseDeg,
+      );
+    }
     const pixelRatio = this.renderer.getPixelRatio() * this.graphics.current.resolutionScale;
     const width = Math.round(VIEW_WIDTH * pixelRatio);
     const height = Math.round(VIEW_HEIGHT * pixelRatio);
@@ -581,6 +596,7 @@ export class LabView {
     // 完全に決定的。雲場は焼いたフレームの次から載り、パイプラインを組み直した直後のフレームは崩れる。
     let previous = await this.capture();
     for (let count = 2; count <= MAX_SETTLE_CAPTURES; count++) {
+      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
       const next = await this.capture();
       if (next === previous) return next;
       previous = next;

@@ -20,6 +20,8 @@ import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { WebGPURenderer } from 'three/webgpu';
+import { createCloudDetailDiagnosticTile, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM } from './cloud-detail-diagnostic';
+import type { CloudPresentationDetailTile } from '../../src/render/cloud/cloud-presentation';
 
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
 export const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.averageHue, EARTH_TEXTURE.bondAlbedo);
@@ -73,6 +75,10 @@ export class LabEarth {
   public readonly cumulus: ShadowCumulus;
   private readonly surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   private readonly clouds = earthCloudPresentation();
+  private diagnosticCloudDetail: CloudPresentationDetailTile | null = null;
+  private diagnosticWavelengthKm: number | null = null;
+  private diagnosticDirectionDeg = 0;
+  private diagnosticPhaseDeg = 0;
   private readonly graticule = new BodyGraticule();
   private readonly coastline = LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE });
 
@@ -118,6 +124,31 @@ export class LabEarth {
   // 地表が読む画像(ベース色と滑らかさ)がすべて GPU へ届いたか。
   public get ready(): boolean { return this.surface.imagesReady; }
 
+  // render-lab 専用の既知周期タイルを sampler へ渡す。無効化すると texture を解放して現行場へ戻す。
+  public setCloudDetailDiagnostic(
+    enabled: boolean, wavelengthKm = CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM, directionDeg = 0,
+    phaseDeg = 0,
+  ): void {
+    if (!enabled) {
+      if (this.diagnosticCloudDetail === null) return;
+      this.diagnosticCloudDetail.texture.dispose();
+      this.diagnosticCloudDetail = null;
+      this.diagnosticWavelengthKm = null;
+      return;
+    }
+    if (this.diagnosticCloudDetail !== null
+      && this.diagnosticWavelengthKm === wavelengthKm
+      && this.diagnosticDirectionDeg === directionDeg
+      && this.diagnosticPhaseDeg === phaseDeg) return;
+
+    const tile = createCloudDetailDiagnosticTile(wavelengthKm, directionDeg, phaseDeg);
+    this.diagnosticCloudDetail?.texture.dispose();
+    this.diagnosticCloudDetail = tile;
+    this.diagnosticWavelengthKm = wavelengthKm;
+    this.diagnosticDirectionDeg = directionDeg;
+    this.diagnosticPhaseDeg = phaseDeg;
+  }
+
   // 地球のつまみ angles の置き方へ、中心・自転姿勢・天体固定への行列・大気の極軸を置き直す。
   public place(angles: Pick<LabViewAngles, EarthAngleKey>): void {
     this.center.copy(earthCenterOf(angles));
@@ -131,7 +162,7 @@ export class LabEarth {
   public sync(camera: THREE.Camera, graphics: GraphicsSettingsData, style: RenderStyle): void {
     // 殻の分割段は寄り切った 1 段に固定する — カメラ距離は観察のつまみで動くが、絵の比較は最も
     // 細かい段で行う。
-    this.clouds.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX);
+    this.clouds.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX, this.diagnosticCloudDetail);
     if (graphics.clouds) this.clouds.aimFrom(camera.position, this.center, this.object.quaternion, this.cumulus.axes);
     this.graticule.setVisible(style === 'schematic');
     this.coastline.setVisible(style === 'schematic');
