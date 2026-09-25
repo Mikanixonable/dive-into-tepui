@@ -80,26 +80,6 @@ function layerOfAltitude(altitudeM) {
   throw new RangeError(`no layer for altitude ${altitudeM} m`);
 }
 
-// Same normalized-UV texel-center convention as DataArrayTexture LinearFilter + ClampToEdge.
-function sampleCpu(values, layer, u, v, widthValue = 32, heightValue = 32) {
-  const x = Math.min(Math.max(u, 0), 1) * widthValue - 0.5;
-  const y = Math.min(Math.max(v, 0), 1) * heightValue - 0.5;
-  const xRaw = Math.floor(x);
-  const yRaw = Math.floor(y);
-  const tx = x - xRaw;
-  const ty = y - yRaw;
-  const x0 = Math.min(Math.max(xRaw, 0), widthValue - 1);
-  const x1 = Math.min(Math.max(xRaw + 1, 0), widthValue - 1);
-  const y0 = Math.min(Math.max(yRaw, 0), heightValue - 1);
-  const y1 = Math.min(Math.max(yRaw + 1, 0), heightValue - 1);
-  const offset = layer * widthValue * heightValue;
-  const a = values[offset + y0 * widthValue + x0];
-  const b = values[offset + y0 * widthValue + x1];
-  const c = values[offset + y1 * widthValue + x0];
-  const d = values[offset + y1 * widthValue + x1];
-  return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
-}
-
 function pixelCenter(column, row) {
   return {
     x: Math.floor((column + 0.5) * width / columns),
@@ -201,7 +181,6 @@ function selfTest() {
     liquidExtinctionPerM: new Float32Array([1, 2, 3, 4, 10, 20, 30, 40]),
     iceExtinctionPerM: new Float32Array([5, 6, 7, 8, 50, 60, 70, 80]),
   };
-  assert.equal(sampleCpu(knownData.liquidExtinctionPerM, 0, 0.5, 0.5, 2, 2), 2.5);
   assert.deepEqual(sampleCloudOpticalVolumeCpu(knownData, 0.5, 0.5, 0), {
     liquidExtinctionPerM: 2.5, iceExtinctionPerM: 6.5,
   });
@@ -214,7 +193,6 @@ function selfTest() {
   assert.deepEqual(sampleCloudOpticalVolumeCpu(knownData, 0.625, 0.625, 0), {
     liquidExtinctionPerM: 3.25, iceExtinctionPerM: 7.25,
   });
-  assert.equal(sampleCpu(knownData.liquidExtinctionPerM, 0, 0.625, 0.625, 2, 2), 3.25);
   assert.ok(Math.abs(linearOfSrgb8(188) - 0.502886458) < 1e-8);
   const fixtureData = extinctionData();
   const activeLiquid = sampleCloudOpticalVolumeCpu(fixtureData, probeUVs[0][0], probeUVs[0][1], 0);
