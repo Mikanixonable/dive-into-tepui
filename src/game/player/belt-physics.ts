@@ -21,11 +21,6 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-// 給弾進み feed(0..1)に応じて動く根本の固定点(機体座標系)。
-export function beltAnchor(feed: number): Vec3 {
-  return v3(MAG_BELT_ANCHOR_X - feed * MAG_BELT_PITCH, 0, 0);
-}
-
 // 鎖の節点の直列化した形。位置・前の位置・ねじれは吊り元から順に並ぶ。
 export interface SerializedBeltPhysics {
   readonly positions: SerializedVec3[];
