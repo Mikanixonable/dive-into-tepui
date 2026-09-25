@@ -21,7 +21,10 @@ import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/c
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
 import { MAX_CAMERA_DISTANCE_LOG, type LabShot } from './lab-case';
-import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
+import {
+  LabView, MAX_CAMERA_ELEVATION_DEG,
+  type CloudDetailLifecycleMeasurement, type LabMeasurement,
+} from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { FloatUniform } from '../../src/render/tsl-types';
@@ -74,6 +77,10 @@ declare global {
         name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
         cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
       ) => Promise<LabMeasurement>;
+      measureCloudDetailLifecycle: (
+        name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData>,
+        detail: NonNullable<LabShot['cloudDetailDiagnostic']>, sampleCount?: number,
+      ) => Promise<CloudDetailLifecycleMeasurement>;
     };
   }
 }
@@ -280,6 +287,8 @@ async function init(): Promise<void> {
     measureShot: (name, shotName, graphics, cloudDetailDiagnostic) => view.measureShot(
       name, shotName, graphics, 6, 30, cloudDetailDiagnostic,
     ),
+    measureCloudDetailLifecycle: (name, shotName, graphics, detail, sampleCount) =>
+      view.measureCloudDetailLifecycle(name, shotName, graphics, detail, sampleCount),
   };
 }
 
