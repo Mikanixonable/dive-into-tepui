@@ -754,24 +754,16 @@ function buildDeployablePanels(root, definition) {
 
 // ------------------------------------------------------------- 展開部材 (Radiator / Solar Panel)
 // 契約テスト 'ship module asset: 展開部品は実寸に対応する枚数と幅を持つ' を厳密に満たす
+// 取り付け面から直接直立する設計—蛇腹式の円筒ハブ構造は持たない。
 function buildDeployable(root, definition) {
-  const radius = definition.diameter / 2;
   const halfLen = definition.length / 2;
 
-  // 中央ハブシリンダー
-  root.add(axialMesh(new THREE.CylinderGeometry(radius * 0.22, radius * 0.22, definition.length, 24, 1), materials.rim, 0, 'body'));
-
-  // 構造サポートスポーク（ハブと外輪をつなぐトラス）
-  for (let i = 0; i < 4; i++) {
-    const ang = (i * Math.PI) / 2;
-    const spoke = boxMesh(new THREE.BoxGeometry(radius * 0.75, 0.06, 0.08), materials.dark,
-      Math.cos(ang) * (radius * 0.5), Math.sin(ang) * (radius * 0.5), 0, 0, 0, ang, 'hub-spoke');
-    root.add(spoke);
-  }
-
-  // デプロイキャニスター / モーターハウジング
-  const canister = axialMesh(new THREE.CylinderGeometry(0.35, 0.35, 0.28, 16), materials.dark, halfLen - 0.14, 'deploy-canister');
-  root.add(canister);
+  // 取り付けフランジ（モジュール接合面に薄い板）
+  const flangeR = definition.diameter / 2 * 0.85;
+  root.add(axialMesh(
+    new THREE.CylinderGeometry(flangeR, flangeR, 0.12, 24, 1),
+    materials.rim, halfLen - 0.06, 'deploy-flange',
+  ));
 
   buildDeployablePanels(root, definition);
 }
