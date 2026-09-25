@@ -1,5 +1,5 @@
 // HUD 表示用の数値整形。
-import { julianDateToCalendarDate, TdbJulianDate } from '../physics/time';
+import { julianDateToCalendarDate, type TdbJulianDate } from '../physics/time';
 
 // パネル用距離表記(例: "420 m" / "1.23 km" / "1.50 Mm")
 export function fmtDist(m: number): string {
