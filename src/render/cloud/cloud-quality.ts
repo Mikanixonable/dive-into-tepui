@@ -1,19 +1,17 @@
-// Cloud quality policy shared by temporal preparation and spatial detail filtering.
-// Numeric levels intentionally match the persisted cumulusDetail values.
+// 時間方向の更新間隔と空間 detail の帯域制限をまとめた雲品質ポリシー。
+// 数値は保存済み cumulusDetail と同じ 0..3 を使う。
 export type CloudQualityLevel = 0 | 1 | 2 | 3;
 
 export interface CloudQualityPolicy {
   readonly temporalIntervalSeconds: number;
   readonly detailFootprintScale: number;
-  readonly atmosphereStepScale: number;
-  readonly shadowStepScale: number;
 }
 
 const POLICY: Readonly<Record<CloudQualityLevel, CloudQualityPolicy>> = {
-  0: { temporalIntervalSeconds: 3_600, detailFootprintScale: 4, atmosphereStepScale: 2, shadowStepScale: 2 },
-  1: { temporalIntervalSeconds: 1_800, detailFootprintScale: 2, atmosphereStepScale: 1.5, shadowStepScale: 1.5 },
-  2: { temporalIntervalSeconds: 900, detailFootprintScale: 1, atmosphereStepScale: 1, shadowStepScale: 1 },
-  3: { temporalIntervalSeconds: 300, detailFootprintScale: 0.5, atmosphereStepScale: 0.75, shadowStepScale: 0.75 },
+  0: { temporalIntervalSeconds: 3_600, detailFootprintScale: 4 },
+  1: { temporalIntervalSeconds: 1_800, detailFootprintScale: 2 },
+  2: { temporalIntervalSeconds: 900, detailFootprintScale: 1 },
+  3: { temporalIntervalSeconds: 300, detailFootprintScale: 0.5 },
 };
 
 export function cloudQualityPolicy(level: number): CloudQualityPolicy {
@@ -42,7 +40,6 @@ export function cloudTemporalSampleTimes(
     fraction: (displayTimeSeconds - lowerTimeSeconds) / interval,
   };
 }
-
 
 export type CloudTemporalCacheSlot = 'A' | 'B';
 
