@@ -252,6 +252,7 @@ export class LabView {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
       this.current.disposeProteinMotion?.();
+      this.current.dispose?.();
       for (const root of this.current.objects) disposeOwnedRenderResources(root);
     }
     const built = CASES[name](this.style, this.ringMaterials);

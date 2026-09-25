@@ -107,6 +107,8 @@ export interface LabCase {
   readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
   // 残基 motion が握る資源を解放する。
   readonly disposeProteinMotion?: () => void;
+  // ケースが THREE のシーン資源所有走査で扱えない補助資源を解放する。
+  readonly dispose?: () => void;
 }
 
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。
