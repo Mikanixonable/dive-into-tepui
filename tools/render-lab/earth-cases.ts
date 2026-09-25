@@ -269,7 +269,17 @@ function earth(): LabCase {
       'cloud-detail-seam-500km-medium-diagnostic': {
         view: earthStandardCloudView(500e3),
         graphics: QUALITY_PRESETS.medium,
-        cloudDetailDiagnostic: { wavelengthKm: 4, directionDeg: 0 },
+        cloudDetailDiagnostic: { wavelengthKm: 4, directionDeg: 0, composition: 'coverage-residual' },
+      },
+      'cloud-detail-residual-200km-north-diagnostic': {
+        view: { ...earthStandardCloudView(200e3), earthLatitudeDeg: 1 },
+        graphics: QUALITY_PRESETS.medium,
+        cloudDetailDiagnostic: { wavelengthKm: 2, directionDeg: 0, composition: 'coverage-residual' },
+      },
+      'cloud-detail-residual-250km-cloudy-diagnostic': {
+        view: { ...earthStandardCloudView(250e3), earthLatitudeDeg: 1 },
+        graphics: QUALITY_PRESETS.medium,
+        cloudDetailDiagnostic: { wavelengthKm: 2, directionDeg: 0, composition: 'coverage-residual' },
       },
       'earth-low-orbit': { view: EARTH_LOW_ORBIT_PLACEMENT },
       'earth-limb': { view: {} },

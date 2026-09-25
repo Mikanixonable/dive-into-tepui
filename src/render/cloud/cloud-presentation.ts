@@ -40,6 +40,7 @@ export interface CloudPresentationDetailTile {
   readonly cap: OrthographicCap;
   readonly radius: number; // [rad]
   readonly blendStartCos: number;
+  readonly composition?: CloudFieldDetailTileBinding['composition'];
 }
 
 export class CloudPresentation {
@@ -70,6 +71,7 @@ export class CloudPresentation {
       texture: this.detailTile.texture,
       cap: this.detailTile.cap.placement,
       blendStartCos: this.detailTile.blendStartCos,
+      composition: this.detailTile.composition,
     };
     return {
       field: { texture: this.source.texture, cap: this.cap.placement, detailTile },
