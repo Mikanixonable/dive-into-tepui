@@ -133,7 +133,7 @@ try {
     },
     ownerTexture: {
       resource: 'The render-lab diagnostic tile only; other render-pipeline textures are excluded.',
-      diagnosticTileOwnerResidentTextureCount: textureEstimate === null ? 0 : 1,
+      diagnosticTileOwnerHeldTextureCount: textureEstimate === null ? 0 : 1,
       cpuBackingArrayBytes: {
         status: textureEstimate?.cpuBackingBytes === null ? 'not-measured' : 'measured',
         value: textureEstimate?.cpuBackingBytes ?? null,
