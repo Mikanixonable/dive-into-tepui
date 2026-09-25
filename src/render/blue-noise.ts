@@ -27,6 +27,7 @@ export class BlueNoise {
   // いま塗っている画素の 0..1。**テクセルを整数で直に読む** — 補間もラップ設定も挟まないので、
   // 画面の向きや解像度がどうであれ、1画素が必ずタイルの1テクセルに対応する。tileShift はタイルの幅に
   // 対する割合で、読む位置を斜めにずらす。同じ画素にもう 1 つ別の値が要るときは 0.5 にする。
+  // 3 つ目以降の tileShift は、同じ画素で使うほかの tileShift との差が、どれもタイルの自己相関の小さい所に来る値にする。
   public atScreenPixel(tileShift = 0): FloatNode {
     const texel = mod(floor(screenCoordinate.xy).add(tileShift * BLUE_NOISE_TILE_SIZE), BLUE_NOISE_TILE_SIZE);
     return textureLoad(this.tile, ivec2(texel)).r;

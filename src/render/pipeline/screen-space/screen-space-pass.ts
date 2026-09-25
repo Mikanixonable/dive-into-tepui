@@ -36,10 +36,11 @@ interface ScanTier {
   readonly sliceCount: number;
   readonly stepCount: number;
 }
+// 段の値は、解像度・スライス数・歩数の候補の組の費用と画質の指標を実測して選んだ。
 const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
-  [SCREEN_SPACE_QUALITY.low]: { scale: 0.5, sliceCount: 2, stepCount: 3 },
-  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.5, sliceCount: 2, stepCount: 6 },
-  [SCREEN_SPACE_QUALITY.high]: { scale: 1, sliceCount: 3, stepCount: 8 },
+  [SCREEN_SPACE_QUALITY.low]: { scale: 0.25, sliceCount: 2, stepCount: 3 },
+  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.25, sliceCount: 3, stepCount: 4 },
+  [SCREEN_SPACE_QUALITY.high]: { scale: 0.25, sliceCount: 4, stepCount: 6 },
 };
 
 // 描画命令 1 本: material を全画面に描いて target へ書く。
@@ -178,8 +179,9 @@ export class ScreenSpacePass {
     }
     // 走査: 受け手へ届く遠方の拡散光のうち塞がれた照度と照り返しの差。
     const scan = stageMaterial();
+    // 丸めのずれのタイルのずれ 27/64 は、回転(0)・歩みのずれ(½)と画素ごとに相関しないものを実測で選んだ。
     const noise = vec3(
-      this.blueNoise.atScreenPixel(), this.blueNoise.atScreenPixel(0.5), this.blueNoise.atScreenPixel(0.25));
+      this.blueNoise.atScreenPixel(), this.blueNoise.atScreenPixel(0.5), this.blueNoise.atScreenPixel(27 / 64));
     const planets: readonly PlanetIllumination[] = Array.from({ length: MAX_PLANET_LIGHT_SLOTS }, (_, slot) => ({
       cap: planetLight.capAt(this.sample, slot), irradiance: planetLight.diffuseIrradianceAtSlot(this.sample, slot),
     }));
