@@ -1,10 +1,11 @@
 // 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流の天気を TSL の
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
-import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
+import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, uniform, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
 import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
 import { BakedField } from '../baked-field';
+import { equirectUvFromDirection } from '../field-projection';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
@@ -20,7 +21,7 @@ import type { NoiseOctave } from './circulating-noise';
 import type { ClimateMap } from './climate-map';
 import type { FieldProjection } from '../field-projection';
 import type { BalancedWind } from './wind-law';
-import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 単位方向における天気。
 export interface WeatherSample {
@@ -38,6 +39,9 @@ export interface WeatherSample {
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
   readonly landFraction: FloatNode; // 陸らしさ 0..1
   readonly tropopause: FloatNode; // その緯度の対流の天井(圏界面の高さ)[m]
+  readonly marineCell: FloatNode; // 海洋境界層のセル組織 0..1
+  readonly waveCloud: FloatNode; // 安定層の波状雲 driver 0..1
+  readonly orographicCloud: FloatNode; // 地形性上昇に伴う層状/波状雲 0..1
 }
 
 // 気圧フィールドからサンプリングした、風向風速の算出に必要な物理量。gradient は気圧勾配の接ベクトル [hPa/rad]、isobar は
@@ -170,6 +174,8 @@ export class WeatherModel {
   private readonly pressure: BakedField;
   private readonly convectiveActivity: ConvectiveActivity;
   private readonly airMass: AirMass;
+  // 波の位相は物質移流と別に持つ。時刻から直接決まり、巻き戻しでも同じ位相へ戻る。
+  private readonly waveMorphologyPhase: FloatUniform = uniform(0);
 
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方、
   // surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
@@ -208,6 +214,8 @@ export class WeatherModel {
     this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     this.transport.syncTime(seconds);
+    const waveTurns = seconds / (3 * 3600);
+    this.waveMorphologyPhase.value = (waveTurns - Math.floor(waveTurns)) * 2 * Math.PI;
   }
 
   // 単位方向 direction における天気のグラフ。
@@ -281,6 +289,26 @@ export class WeatherModel {
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
         .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
+    // Morphology regimes are environment-driven, not latitude-selected.
+    const ocean = landFraction.oneMinus();
+    const subsidence = max(lift.negate(), 0);
+    const marineCell = smoothstep(0.5, 0.78, surfaceHumidity)
+      .mul(smoothstep(0.002, 0.035, subsidence))
+      .mul(smoothstep(0.38, 0.68, meanCloudiness))
+      .mul(ocean)
+      .mul(band.oneMinus());
+    // A coherent gravity-wave-like stripe; its phase is independent of material advection.
+    // Longitude/latitude only provide coordinates—the amplitude gate is humidity and weak convection.
+    const uv = equirectUvFromDirection(direction);
+    const wavePhase = uv.x.mul(2 * Math.PI * 24).add(uv.y.mul(2 * Math.PI * 5))
+      .sub(this.waveMorphologyPhase);
+    const waveCloud = max(sin(wavePhase), 0)
+      .mul(smoothstep(0.48, 0.78, upperHumidity))
+      .mul(smoothstep(0.35, 0.8, this.convectiveActivity.at(
+        direction, lift, warmth, landFraction, band)).oneMinus());
+    const orographicCloud = smoothstep(0.002, 0.03, max(terrainLift, 0))
+      .mul(smoothstep(0.4, 0.75, upperHumidity));
+
     return {
       pressure,
       surfaceWind: windComponents,
@@ -297,6 +325,9 @@ export class WeatherModel {
       meanCloudiness,
       landFraction,
       tropopause: tropopauseAt(latitude),
+      marineCell,
+      waveCloud,
+      orographicCloud,
     };
   }
 
