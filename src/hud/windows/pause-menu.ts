@@ -6,6 +6,7 @@ import { clampOverlayPosition } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';
+import { injectTitleLogotypeStyle, TITLE_LOGOTYPE_HTML } from '../title-logotype';
 import { PAUSE_MENU_STYLE } from '../style/pause-menu-style';
 import { SETTINGS_VIEW_STYLE } from '../style/settings-view-style';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
@@ -54,6 +55,7 @@ export class PauseMenu implements OverlayHandle {
     graphics: GraphicsSettingsData, bgmVolume: number, themeId: string,
   ) {
     injectCommonUiStyle();
+    injectTitleLogotypeStyle();
     injectOnce('pause-menu', PAUSE_MENU_STYLE);
     injectOnce('settings-view', SETTINGS_VIEW_STYLE);
     this.overlayManager = overlayManager;
@@ -143,12 +145,8 @@ export class PauseMenu implements OverlayHandle {
     brand.className = 'pm-brand';
 
     const logotype = document.createElement('div');
-    logotype.className = 'pm-brand-logotype';
-    for (const line of ['DIVE', 'INTO', 'TEPUI']) {
-      const span = document.createElement('span');
-      span.textContent = line;
-      logotype.appendChild(span);
-    }
+    logotype.className = 'title-logotype';
+    logotype.innerHTML = TITLE_LOGOTYPE_HTML;
 
     const meta = document.createElement('div');
     meta.className = 'pm-brand-meta';
