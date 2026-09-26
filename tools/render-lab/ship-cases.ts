@@ -6,6 +6,7 @@ import { v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
+import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
@@ -59,11 +60,23 @@ function dock(): LabCase {
   assembly.connectSide(module('docking-port-standard', 'port-top'), 'main-tank', 'side:+y');
   const obj = shipObject(assembly);
   obj.position.set(0, 0, -14);
+  const dockTransform = assembly.worldTransformOf('dock-left');
+  const shape = shipPhysicsShape(assembly);
+  if (dockTransform === null || shape === null) throw new Error('dock detail target is missing');
+  const viewTarget = new THREE.Vector3(
+    dockTransform.position.x - shape.centerOffset.x,
+    dockTransform.position.y - shape.centerOffset.y,
+    dockTransform.position.z - shape.centerOffset.z,
+  ).add(obj.position);
+  const camera = labCamera();
+  camera.position.set(viewTarget.x, viewTarget.y, viewTarget.z + 10.6);
+  camera.lookAt(viewTarget);
+  camera.updateMatrixWorld(true);
   return {
     objects: [obj],
-    camera: labCamera(),
-    // 側面ドックの取付部(左舷 -x、main-tank 中央)をターゲットに据える。
-    viewTarget: new THREE.Vector3(-3.5, 0, -9.5),
+    camera,
+    // COM から戻した左舷ドックの位置へ焦点を置き、視線を船体表面へ向ける。
+    viewTarget,
     shots: {
       // 側面ドックの取付構造: 左舷の斜め下から、脚と座板が船体曲面へ伏せる様子を見る。
       'modular-ship-dock-mount': {
@@ -72,7 +85,7 @@ function dock(): LabCase {
       },
       // 船体軸に沿って見る: ポート下面と船体曲面の隙間(浮き)が最も読める向き。
       'modular-ship-dock-gap': {
-        view: { cameraAzimuthDeg: 170, cameraElevationDeg: 10, cameraDistanceLog: -0.15,
+        view: { cameraAzimuthDeg: -110, cameraElevationDeg: 10, cameraDistanceLog: -0.15,
           sunAzimuthDeg: -85, sunElevationDeg: 45 },
       },
       // 結合面の機構: ポート正面から捕捉環・ペタル・気閘を見る。
@@ -117,6 +130,31 @@ function separation(): LabCase {
     ],
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -40),
+  };
+}
+
+// 船殻だけを単体で置き、全長・断面・側面ディテールを多方向から観察する。
+function cockpit(): LabCase {
+  const model = buildShipModuleModel('cockpit-standard');
+  model.position.set(0, 0, -20);
+  return {
+    objects: [model],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -20),
+    shots: {
+      'cockpit-rich-side': {
+        view: { cameraAzimuthDeg: -90, cameraElevationDeg: 10, cameraDistanceLog: -0.4,
+          sunAzimuthDeg: -65, sunElevationDeg: 28 },
+      },
+      'cockpit-rich-oblique': {
+        view: { cameraAzimuthDeg: -42, cameraElevationDeg: 20, cameraDistanceLog: -0.4,
+          sunAzimuthDeg: -55, sunElevationDeg: 34 },
+      },
+      'cockpit-rich-bow': {
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 14, cameraDistanceLog: -0.4,
+          sunAzimuthDeg: -35, sunElevationDeg: 32 },
+      },
+    },
   };
 }
 
@@ -322,6 +360,7 @@ function deployablesStowed(): LabCase {
 }
 
 export const SHIP_CASES = {
+  'modular-ship-cockpit': cockpit,
   'modular-ship-dock': dock,
   'modular-ship-base': base,
   'modular-ship-separation': separation,
