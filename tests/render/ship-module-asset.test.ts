@@ -14,6 +14,7 @@ import {
   RADIATOR_PANEL_WIDTH,
   RADIATOR_SEGMENT_LENGTH,
   SOLAR_PANEL_COUNT,
+  SOLAR_PANEL_COLUMNS,
   SOLAR_PANEL_SPAN,
   SOLAR_PANEL_WIDTH,
 } from '../../src/physics/player-shape';
@@ -297,7 +298,7 @@ export function register(): void {
       {
         modelId: 'solar-panel-standard',
         count: SOLAR_PANEL_COUNT,
-        width: SOLAR_PANEL_SPAN * 0.96, // 翼幅 (X)
+        width: SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS * 0.96, // 1枚の翼幅 (X)
         height: 0.06, // 厚み (Y)
         depth: SOLAR_PANEL_WIDTH * 0.96, // 展開長 (Z)
       },
@@ -313,15 +314,28 @@ export function register(): void {
         }
       });
       assert.equal(panels.length, spec.count, `${spec.modelId} panel count`);
+      const solarWidths: number[] = [];
+      const solarDepths: number[] = [];
       for (const panel of panels) {
         panel.geometry.computeBoundingBox();
         const bbox = panel.geometry.boundingBox;
         assert.ok(bbox !== null);
         const size = new THREE.Vector3();
         bbox.getSize(size);
-        assert.ok(Math.abs(size.x - spec.width) < 1e-3, `${spec.modelId} width: ${size.x} expected ${spec.width}`);
+        if (spec.modelId === 'solar-panel-standard') {
+          assert.ok(Math.abs(size.x - spec.width) < spec.width * 0.04, `${spec.modelId} width: ${size.x}`);
+          assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.04, `${spec.modelId} depth: ${size.z}`);
+          solarWidths.push(size.x);
+          solarDepths.push(size.z);
+        } else {
+          assert.ok(Math.abs(size.x - spec.width) < 1e-3, `${spec.modelId} width: ${size.x} expected ${spec.width}`);
+          assert.ok(Math.abs(size.z - spec.depth) < 1e-3, `${spec.modelId} depth: ${size.z} expected ${spec.depth}`);
+        }
         assert.ok(Math.abs(size.y - spec.height) < 1e-3, `${spec.modelId} height: ${size.y} expected ${spec.height}`);
-        assert.ok(Math.abs(size.z - spec.depth) < 1e-3, `${spec.modelId} depth: ${size.z} expected ${spec.depth}`);
+      }
+      if (spec.modelId === 'solar-panel-standard') {
+        assert.ok(Math.max(...solarWidths) > Math.min(...solarWidths));
+        assert.ok(Math.max(...solarDepths) > Math.min(...solarDepths));
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {
