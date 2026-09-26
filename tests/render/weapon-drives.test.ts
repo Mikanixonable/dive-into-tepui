@@ -270,7 +270,7 @@ export function register(): void {
     drives.sync(ship, modules, FIRE_RATE, 0);
     const basePos = shoe.position.clone();
     const baseQuat = shoe.quaternion.clone();
-    // 案内爪は1リンク(32発)で1往復する。起動の遅れを見越して1往復ぶんより長く進め、
+    // 案内爪は1リンク(8発)で1往復する。起動の遅れを見越して1往復ぶんより長く進め、
     // 最大変位を追う
     let maxDisplacement = 0, minX = basePos.x, maxX = basePos.x;
     for (let i = 1; i <= 200; i++) {
@@ -284,6 +284,12 @@ export function register(): void {
     assert.ok(maxX - basePos.x < 0.01, `shoe moved the wrong way: ${maxX - basePos.x}`);
     assert.ok(shoe.quaternion.angleTo(baseQuat) < 1e-6, 'shoe rotated');
     assert.ok(maxDisplacement < 0.23, `stroke too large: ${maxDisplacement}`);
+    const settledPosition = shoe.position.clone();
+    for (let i = 1; i <= 8 / FIRE_RATE / FRAME; i++) {
+      drives.sync(ship, modules, FIRE_RATE, 200 * FRAME + i * FRAME);
+    }
+    assert.ok(shoe.position.distanceTo(settledPosition) < 1e-3,
+      'feed shoe did not complete one cycle in eight rounds');
     ship.dispose();
   });
 }

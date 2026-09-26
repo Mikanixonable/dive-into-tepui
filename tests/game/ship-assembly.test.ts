@@ -62,8 +62,21 @@ export function register(): void {
     assert.equal(cockpit.hp, 40);
     assert.equal(cockpit.maxHp, 100);
     assert.equal(tank.transform.position.z, -3);
-    assert.equal(radiator.transform.position.x, 3.5);
+    assert.equal(radiator.transform.position.x, 2.75);
     assert.equal(radiator.deployed, 1);
+  });
+
+  test('ship assembly: cockpit は後端直径6m・前端直径3mで、側面取付点は中央断面にある', () => {
+    const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
+    assert.equal(cockpit.length, 3);
+    assert.equal(cockpit.diameter, 6);
+    const assembly = new ShipAssembly();
+    assembly.addRoot(module('cockpit-standard', 'cockpit'));
+    assembly.connectSide(module('docking-port-standard', 'port'), 'cockpit', 'side:+x');
+    const transform = assembly.transformOf('port');
+    assert.ok(transform !== null);
+    // 中央断面半径 2.25m とポート半長 0.5m の和。
+    assert.deepEqual(transform.position, v3(2.75, 0, 0));
   });
 
   test('ship assembly: -Z append は端面を隙間なく接続する', () => {
@@ -119,7 +132,7 @@ export function register(): void {
     const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
     assembly.addRoot(module('cockpit-standard', 'cockpit'));
     assembly.connectSide(module('dock-standard', 'dock'), 'cockpit', {
-      position: v3(3.5, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)),
+      position: v3(2.75, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)),
     });
     assembly.addModule(module('tank-3-main', 'construction-tank'), 'dock', {
       position: v3(0, 0, 2), rotation: { x: 0, y: 0, z: 0, w: 1 },
@@ -170,7 +183,7 @@ export function register(): void {
     assert.equal(assembly.role, 'material');
     assembly.append(module('cockpit-standard', 'cockpit'));
     assert.equal(assembly.role, 'ship');
-    assembly.connectSide(module('dock-standard', 'dock'), 'cockpit', { position: v3(3.5, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)) });
+    assembly.connectSide(module('dock-standard', 'dock'), 'cockpit', { position: v3(2.75, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)) });
     assert.equal(assembly.role, 'base');
     assembly.damage(200, 1, 'cockpit');
     assert.equal(assembly.role, 'material');
@@ -312,11 +325,11 @@ export function register(): void {
     const edge = assembly.graph.find(c => c.childId === 'weapon');
     assert.ok(edge !== undefined);
     assert.equal(edge.kind, 'axial');
-    // cockpit (length 3, center 0, forward +1.5) + weapon (length 1, center +0.5) -> z = +2.0
-    assert.equal(edge.childTransform.position.z, 2.0);
+    // cockpit 前端 +1.5m と砲の後端 -4.5m を接続するため、砲中心は +6m。
+    assert.equal(edge.childTransform.position.z, 6.0);
     const weaponTransform = assembly.worldTransformOf('weapon');
     assert.ok(weaponTransform !== null);
-    assert.equal(weaponTransform.position.z, 2.0);
+    assert.equal(weaponTransform.position.z, 6.0);
     assert.equal(assembly.validate().valid, true);
   });
 
@@ -347,7 +360,10 @@ export function register(): void {
       const transform = assembly.worldTransformOf(module.id)!;
       return transform.position.z + assembly.definition(module.id)!.length / 2;
     }));
-    for (const muzzle of muzzles) assert.ok(muzzle.position.z > bow, `muzzle z ${muzzle.position.z} behind bow ${bow}`);
+    for (const muzzle of muzzles) {
+      assert.ok(Math.abs(muzzle.position.z - bow) < 1e-9,
+        `muzzle z ${muzzle.position.z} does not meet bow plane ${bow}`);
+    }
   });
 
   test('ship assembly: 側面接続された dock/port 同士のドッキングで逆流エッジ (sideReversed) を正しく保持し、合体・保存復元・切り離しができる', () => {
