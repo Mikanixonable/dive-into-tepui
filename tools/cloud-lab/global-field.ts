@@ -24,14 +24,16 @@ import type { GlobalMassFieldJob, GlobalMassFieldSupply } from '../../src/render
 import type { CloudSample } from '../../src/render/cloud/cloud-field-sample';
 import type { FloatNode, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
-// earth-system.ts の私有定数(EARTH_CLOUD_GLOBAL_SEED・equirect 格子の寸法)と揃える —
-// 私有なので値をここへ写す。ずれるとこの環境が製品とは別の場を出す。
+// earth-system.ts の私有定数(EARTH_CLOUD_GLOBAL_SEED・equirect 格子の寸法・
+// イベントセル間隔)と揃える — 私有なので値をここへ写す。ずれるとこの環境が製品とは
+// 別の場を出す。
 const GLOBAL_SEED = 137;
-const GRID_WIDTH = 128;
-const GRID_HEIGHT = 64;
+const GRID_WIDTH = 512;
+const GRID_HEIGHT = 256;
+const EVENT_CELL_SPACING_M = 100e3;
 
-// CPU 診断場の equirect 格子の寸法 [texel]。質量格子より細かく取る — 気圧の谷や気団の
-// 折り目はイベントセル(約450km)より細いので、診断場だけは質量格子の2倍で持つ。
+// CPU 診断場の equirect 格子の寸法 [texel]。気圧の谷や気団の折り目はイベントセル
+// (約100km)より細いので、質量格子とは独立したこの細かさで持つ。
 const DIAG_WIDTH = 256;
 const DIAG_HEIGHT = 128;
 
@@ -132,7 +134,7 @@ export class CloudLabGlobalField {
       (direction, timeSeconds) => earthGlobalEnvironmentAt(
         direction, this.climate, timeSeconds, R_EARTH, SIDEREAL_DAY),
       GLOBAL_SEED, R_EARTH_EQ, GRID_WIDTH, GRID_HEIGHT,
-      makeWindAt(this.windField)));
+      makeWindAt(this.windField), EVENT_CELL_SPACING_M));
     this.field = new MeteorologicalCloudField(this.supply, this.projection, this.climate);
     const makeDiagTexture = (): THREE.DataTexture => {
       const map = new THREE.DataTexture(
