@@ -1,7 +1,7 @@
-// 湿度・対流の源を表示時刻の写しへ焼き、有限時間だけ風上へ遡って読む。元の写し自体が
-// Circulation の絶対時刻で連続移動するため、表示時刻を周期で折り返さずに伸長と変形を加える。
+// 湿度・対流の源を写しへ焼き、天気の風で風上へ遡って読む。湿度の地表成分と上層成分、対流を
+// 別々の風で運ぶが、すべて同じ2位相移流の規則と写しの寿命で管理する。
 import * as THREE from 'three/webgpu';
-import { abs, float, inverseSqrt, mix, normalize, vec2, vec4 } from 'three/tsl';
+import { abs, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } from 'three/tsl';
 import { advectSphericalPositionUnitVector } from '../../physics/cloud-spherical-transport';
 import { cross, len, norm, rotateAxis, scale, v3 } from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
@@ -15,7 +15,7 @@ import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
 import type { FieldProjection } from '../field-projection';
 import type { BalancedWind } from './wind-law';
-import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
 export interface CloudParcelWind {
   readonly tangentVelocityMPerS: Vec3;
@@ -179,12 +179,13 @@ const SURFACE_HUMIDITY_NOISE_AMPLITUDE = 0.5625;
 const CONVECTION_NOISE_AMPLITUDE = 0.30;
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.65625;
 
-// 源場から遡る有限時間 [s]。絶対時刻を周期で折り返さず、現在時刻の場からこの範囲だけ
-// 風上へ標本化する。上層ほど長い窓を取り、氷雲の繊維を長く引き伸ばす。
-const SURFACE_BACKTRACE_SECONDS = 8 * 3600;
-const CONVECTION_BACKTRACE_SECONDS = 10 * 3600;
-const UPPER_BACKTRACE_SECONDS = 14 * 3600;
-const NEAR_TRACE_FRACTION = 0.35;
+// 移流の源を風で流す2位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が
+// 目に付く。背景の雲がどれだけ伸びるかは、1歩のあいだに風が空間で変わる量から決まる。
+const ADVECTION_PERIOD = 20 * 3600;
+// 対流を流す1歩を、湿度の1歩の何倍の長さに取るか。
+const CONVECTION_ADVECTION = 1.3;
+// 上層の湿度の1歩を、地表付近の1歩の何倍の長さに取るか。巻雲の繊維を長く引き伸ばす。
+const UPPER_ADVECTION = 1.6;
 // 対流の1歩が渦のまわりを巻く角の上限 [rad]。強く巻く渦の中だけ歩幅を縮める。
 const CONVECTION_WINDING = 2.5;
 
@@ -201,6 +202,8 @@ export class WeatherTransport {
   private readonly upperHumidityNoise: CirculatingNoise;
   private readonly humiditySource: BakedField;
   private readonly convectionSource: BakedField;
+  // 2位相移流の周期の中の位置0..1。
+  private readonly advectionCycle: FloatUniform = uniform(0);
 
   // 地表付近と上層の循環が流すノイズから、projection の持ち方で源の写しを組む。surfaceRadius は
   // 湿度と対流を運ぶ天体の半径 [m]。
@@ -220,6 +223,12 @@ export class WeatherTransport {
       'convectionSource', THREE.RGFormat, projection,
       (direction) => vec4(this.convectionSourceAt(direction), 0, 1),
       GPU_PASS.cloudBake);
+  }
+
+  // 時刻 [s] を移流位相へ変換する。
+  public syncTime(seconds: number): void {
+    const cycle = (seconds / ADVECTION_PERIOD) % 1;
+    this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
   }
 
   // 移流前の場をテクスチャへレンダリングする。advectedAt() と surfaceHumidityAt() のグラフを描く前に呼ぶ。
@@ -246,32 +255,33 @@ export class WeatherTransport {
     return this.humiditySource.at(direction).r;
   }
 
-  // 現在時刻の源場を有限の風上窓で2点標本化して伸長する。時刻を周期で折り返さないため、
-  // 20時間ごとの同時リセットは起きない。窓を有限にすることで強い渦でも無限に細線化しない。
+  // 移流前の写しを風で流したもの。周期の半分ずれた2位相を三角波で混ぜるので、流れの変位が
+  // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならない。
   public advectedAt(
     direction: Vec3Node, surfaceWind: BalancedWind, upperWind: BalancedWind, convectionWind: BalancedWind,
   ): AdvectedFields {
+    const phaseA = this.advectionCycle;
+    const phaseB = fract(phaseA.add(0.5));
+    const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
+    // seconds秒だけflowに流された点のsource。負に取れば風上へ遡る。
     const sourceAt = (source: BakedField, flow: BalancedWind, seconds: FloatNode): Vec4Node =>
       source.at(normalize(direction.add(windStep(flow, direction, seconds).div(this.surfaceRadius))));
-    const surfaceFar = float(-SURFACE_BACKTRACE_SECONDS);
-    const surfaceNear = surfaceFar.mul(NEAR_TRACE_FRACTION);
-    const upperFar = float(-UPPER_BACKTRACE_SECONDS);
-    const upperNear = upperFar.mul(NEAR_TRACE_FRACTION);
-    // 強く巻く渦では、対流の風上窓だけを短くして過剰な細線化を防ぐ。
-    const winding = abs(convectionWind.turn).mul(CONVECTION_BACKTRACE_SECONDS / CONVECTION_WINDING);
-    const convectionScale = inverseSqrt(winding.mul(winding).add(1));
-    const convectionFar = convectionScale.mul(-CONVECTION_BACKTRACE_SECONDS);
-    const convectionNear = convectionFar.mul(NEAR_TRACE_FRACTION);
+    // 遡る秒数[s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
+    const stepA = phaseA.mul(-ADVECTION_PERIOD);
+    const stepB = phaseB.mul(-ADVECTION_PERIOD);
+    // 対流の1歩の倍率。巻きがCONVECTION_WINDINGを超える渦の中だけ縮む。
+    const winding = abs(convectionWind.turn).mul(ADVECTION_PERIOD * CONVECTION_ADVECTION / CONVECTION_WINDING);
+    const convectionStep = inverseSqrt(winding.mul(winding).add(1)).mul(CONVECTION_ADVECTION);
     return {
       surfaceHumidity: mix(
-        sourceAt(this.humiditySource, surfaceWind, surfaceNear).x,
-        sourceAt(this.humiditySource, surfaceWind, surfaceFar).x, 0.5),
+        sourceAt(this.humiditySource, surfaceWind, stepB).x,
+        sourceAt(this.humiditySource, surfaceWind, stepA).x, weightA),
       upperHumidity: mix(
-        sourceAt(this.humiditySource, upperWind, upperNear).y,
-        sourceAt(this.humiditySource, upperWind, upperFar).y, 0.5),
+        sourceAt(this.humiditySource, upperWind, stepB.mul(UPPER_ADVECTION)).y,
+        sourceAt(this.humiditySource, upperWind, stepA.mul(UPPER_ADVECTION)).y, weightA),
       convection: mix(
-        sourceAt(this.convectionSource, convectionWind, convectionNear).rg,
-        sourceAt(this.convectionSource, convectionWind, convectionFar).rg, 0.5),
+        sourceAt(this.convectionSource, convectionWind, stepB.mul(convectionStep)).rg,
+        sourceAt(this.convectionSource, convectionWind, stepA.mul(convectionStep)).rg, weightA),
     };
   }
 

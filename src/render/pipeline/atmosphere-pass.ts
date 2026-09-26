@@ -110,10 +110,6 @@ export class AtmospherePass {
     this.layer.setCloudShellEnabled(species, enabled);
   }
 
-  public setCloudQuality(level: number): void {
-    this.layer.setCloudQuality(level);
-  }
-
   // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
   // 合成の前後はこの並びで決まる。MAX_ATMOSPHERE_BODIES を超えた分は描かれない。
   public setDraws(draws: readonly AtmosphereDraw[]): void {

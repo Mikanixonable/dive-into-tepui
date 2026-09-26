@@ -26,7 +26,6 @@ declare global {
       fixture: MeteorologicalCaseId;
       show: (id: CloudLabViewId) => void;
       selectFixture: (id: MeteorologicalCaseId) => void;
-      clearFixture: () => void;
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
@@ -89,7 +88,7 @@ async function init(): Promise<void> {
   const showFixture = (id: MeteorologicalCaseId): void => {
     const fixture = METEOROLOGICAL_CASES[id];
     const evaluation = evaluateMeteorologicalCase(id);
-    fixtureStatus.textContent = `${id} ${fixture.label} — CPU診断: 実行; 生成画像へfixture適用: ${canvas.fixtureAppliedToGeneratedImage ? 'あり' : 'なし'}`;
+    fixtureStatus.textContent = `${id} ${fixture.label} — CPU診断: 実行; 生成画像へfixture適用: なし`;
     fixtureInputs.textContent = JSON.stringify({
       controlledInputs: fixture.controlledInputs,
       cpuDiagnosticControls: evaluation.controls,
@@ -192,7 +191,6 @@ async function init(): Promise<void> {
     get fixture(): MeteorologicalCaseId { return canvas.fixtureId; },
     show: (id) => { markView(id); canvas.show(id); },
     selectFixture: (id) => { canvas.selectFixture(id); markFixture(id); showFixture(id); },
-    clearFixture: () => { canvas.clearFixture(); showFixture(canvas.fixtureId); },
     setTime,
     aimCap: (latitude, longitude, radius) => {
       canvas.aimCap(latitude, longitude, radius);
