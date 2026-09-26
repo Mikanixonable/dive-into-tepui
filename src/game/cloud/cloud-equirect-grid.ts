@@ -7,6 +7,7 @@ import { dot, len, v3 } from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
 import {
   cloudFootprintQuadraticAt,
+  cloudFootprintQuadraticForm,
   type CloudFootprint,
   type CloudFootprintCoverage,
   type CloudFootprintOverlap,
@@ -196,6 +197,8 @@ export function cloudEquirectFootprintOverlap(
   validateCloudEquirectGrid(grid);
   validateUnitVector(centerDirectionUnitVector, 'centerDirectionUnitVector');
   const metrics = footprintMetricsM(footprint);
+  // 副セル評価は全点で同じ footprint を当たるので、2次形式はここで1度だけ立てる。
+  const quadratic = cloudFootprintQuadraticForm(footprint);
   const { eastUnitVector, northUnitVector } = cloudEquirectTangentBasisAt(centerDirectionUnitVector);
 
   // footprint は接平面上で中心から オフセット+長半径 の内側に収まるので、覆いうる
@@ -278,7 +281,7 @@ export function cloudEquirectFootprintOverlap(
           const point = projectToTangentPlane(
             v3(flat * Math.sin(longitudeRad), sinSubLatitude, flat * Math.cos(longitudeRad)),
             centerDirectionUnitVector, eastUnitVector, northUnitVector, grid.sphereRadiusM);
-          if (cloudFootprintQuadraticAt(footprint, point.x, point.y) <= 1) {
+          if (cloudFootprintQuadraticAt(quadratic, point.x, point.y) <= 1) {
             coveredCellAreaM2 += subCellAreaM2;
           }
         }

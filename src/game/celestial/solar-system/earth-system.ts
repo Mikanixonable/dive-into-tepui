@@ -17,7 +17,6 @@ import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { CloudLocalFieldBaker } from '../../../render/cloud/cloud-local-field-baker';
-import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { MeteorologicalCloudField } from '../../../render/cloud/meteorological-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { AtmosphericWindField } from '../../../render/cloud/atmospheric-wind';
@@ -26,8 +25,8 @@ import {
 } from '../../cloud/cloud-local-field-supply';
 import { ConvectiveCloudGlobalFieldSupply } from '../../cloud/cloud-global-field-supply';
 import { earthGlobalEnvironmentAt } from '../../cloud/earth-global-environment';
-import { AnnualClimateMap, type ClimateMap } from '../../../render/cloud/climate-map';
-import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
+import { AnnualClimateMap } from '../../../render/cloud/climate-map';
+import { OrthographicCap } from '../../../render/field-projection';
 import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
@@ -227,16 +226,6 @@ const EARTH_LOCAL_FIELD_RECENTER_RAD =
 // 局所場の再焼間隔 [s]。
 const EARTH_LOCAL_FIELD_REBUILD_SECONDS = 300;
 
-// 地球の平年の気候から焼く雲場を組む。projection は場の持ち方、climate は読む気候源
-// (既定は気候テクスチャの遅延読み込み)。返した場の寿命は受け取った側が持つ。
-// **実験環境も本番もこの工場から組む** — 別の組み立てを書くと、実験環境が本番を映さなくなる。
-export function earthGeneratedCloudField(
-  projection: FieldProjection, climate: ClimateMap = AnnualClimateMap.fromDeferredUrl(climateTextureUrl),
-): GeneratedCloudField {
-  // 気象シミュレーションに適用する半径は、全球を一様な球体とみなす平均半径。
-  return new GeneratedCloudField(climate, projection, R_EARTH, SIDEREAL_DAY);
-}
-
 // 地球の雲場ぜんぶを組む。全球質量場から導く生成雲と実写を同じ 1 つの cap へ焼き、
 // CloudPresentation がその cap を視点へ置き直す。
 export function earthCloudPresentation(): CloudPresentation {
@@ -257,13 +246,14 @@ export function earthCloudPresentation(): CloudPresentation {
       makeWindAt(new AtmosphericWindField())),
     cap, climate);
   // 局所光学場は対流イベントの生成経路から供給する。環境の天気は、生成場が prepare で
-  // 受けた表示時刻をそのまま読む。
+  // 受けた表示時刻をそのまま読む。気候画像を inputReadiness として渡し、CPU で読める
+  // ようになるまで最初の焼き上げを遅らせる — 緯度近似と実気候の混在する場を採らない。
   const localFieldBaker = new CloudLocalFieldBaker(
     new ConvectiveCloudLocalFieldSupply(
       (direction) => earthGlobalEnvironmentAt(
         direction, climate, generated.displayTimeSeconds, R_EARTH, SIDEREAL_DAY),
       EARTH_CLOUD_LOCAL_SEED, R_EARTH_EQ),
-    EARTH_LOCAL_FIELD_REBUILD_SECONDS, EARTH_LOCAL_FIELD_RECENTER_RAD);
+    EARTH_LOCAL_FIELD_REBUILD_SECONDS, EARTH_LOCAL_FIELD_RECENTER_RAD, climate);
   return new CloudPresentation(
     generated, new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
     localFieldBaker,

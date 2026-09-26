@@ -15,4 +15,7 @@ export interface PageDevices {
   readonly pauseMenu: PauseMenu;
   // フレームの所要時間と計測値を集めて見せる窓。
   readonly debugInfo: DebugInfoWindow;
+  // 組み立て中のランが自分を置く、ランが無いフレームで前倒し駆動する口。
+  // 起動の完了・失敗のどちらでも null へ戻す。
+  loadingJobs: { drivePendingJobs(timeBudgetMs: number): void } | null;
 }
