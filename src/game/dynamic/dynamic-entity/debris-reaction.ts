@@ -8,7 +8,7 @@ import type { SphereHit } from '../../../math/triangle-mesh';
 import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
 import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic-simulation-participant';
 import type { Contact } from './contact';
-import type { DebrisKind, DebrisSlide } from './debris-kind';
+import type { SerializedDebrisKind, DebrisSlide } from './debris-kind';
 import { bulletReactionOf } from './bullet-reaction';
 import {
   casingEntityCollision, casingSphereCollision, casingSweptEntityCollision,
@@ -34,7 +34,7 @@ export class DebrisReaction implements DynamicMotionBehavior {
   // bornSim が null の破片は寿命で消えない。薬莢は円筒の形に沿った当たり判定を備える — 判定の
   // 有無が個体差なので、メソッドでなくフィールドで持つ。
   public constructor(
-    private readonly kind: DebrisKind['kind'],
+    private readonly kind: SerializedDebrisKind['kind'],
     private readonly bornSim: number | null,
     slide: DebrisSlide | null = null,
   ) {
