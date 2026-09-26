@@ -222,7 +222,6 @@ export class ModularShip extends Ship implements Controllable {
     const reactions = (owner: ModularShip): ModularShipMotionReactions => ({
       roundsInMagazine: () => owner.fire.rounds,
       magsLeft: () => owner.fire.mags,
-      stepBarrelThermal: dt => owner.fire.stepBarrelThermal(dt),
       thrustAcceleration: () => owner.motion.thrust ?? v3(),
       radiatorWear: () => owner.radiatorWear(),
       totalCoolingRate: () => owner.totalCoolingRate,

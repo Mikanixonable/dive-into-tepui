@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { buildDebrisChunk, buildDebrisPanel, buildDebrisRod } from './debris-fragments.mjs';
-import { buildBarrelMesh, buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
+import { buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
 import { buildEnemyShip, buildEnemyVariantA, buildEnemyVariantB, buildEnemyVariantC } from './metal-enemies.mjs';
 import { buildAmmoPickup, buildRcsFuelPickup } from './pickups.mjs';
 import { buildBulletMesh, buildPlasmaBullet } from './projectiles.mjs';
@@ -87,7 +87,7 @@ const models = {
   ammo:         buildAmmoPickup(),
   bullet:       buildBulletMesh(),
   plasma:       buildPlasmaBullet(),
-  barrel:       buildBarrelMesh(),
+
   casing:       buildCasingMesh(),
   debrisChunk:  buildDebrisChunk(),
   debrisPanel:  buildDebrisPanel(),
