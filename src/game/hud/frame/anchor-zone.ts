@@ -8,7 +8,7 @@ import { injectOnce } from '../../../hud/inject-style';
 import { frameRoleName } from './frame-labels';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { groupPickables } from '../object-groups';
-import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
+import { ObjectPicker, type ObjectPickerGroup } from '../windows/object-picker';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { ListedObject } from '../../pickable/listed-object';
 
@@ -31,10 +31,10 @@ export class AnchorZone {
   private readonly picker: ObjectPicker<string | null>;
   private readonly quick: SegmentedControl<string | null>;
 
-  // popupRoot は ObjectPicker のポップアップの親、title はプルダウンの見出し。releaseLabel が
-  // null なら「解除」の選択肢そのものを出さない(プルダウン先頭・クイックボタン先頭の両方)。
+  // title はプルダウンの見出し。releaseLabel が null なら「解除」の選択肢そのものを出さない
+  // (プルダウン先頭・クイックボタン先頭の両方)。
   public constructor(
-    popupRoot: HTMLElement, title: string, private readonly celestialBodies: CelestialBodies,
+    title: string, private readonly celestialBodies: CelestialBodies,
     private readonly releaseLabel: string | null,
     overlayManager: OverlayManager,
   ) {
@@ -43,7 +43,7 @@ export class AnchorZone {
     this.element = document.createElement('div');
     this.element.className = 'hud-anchor-zone';
 
-    this.picker = new ObjectPicker<string | null>(popupRoot, title, (id) => this.onSelect?.(id), overlayManager);
+    this.picker = new ObjectPicker<string | null>(title, (id) => this.onSelect?.(id), overlayManager);
     this.element.appendChild(this.picker.element);
 
     this.quick = new SegmentedControl<string | null>('', [], (id) => this.onSelect?.(id));
