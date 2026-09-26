@@ -6,15 +6,21 @@
 // step で分割して進めるジョブの両方を出す。
 
 import { mulberry32 } from '../../math/random';
-import { v3 } from '../../math/vec3';
 import { AtmosphericWindField } from '../../render/cloud/atmospheric-wind';
 import {
   cloudLocalDirectionAt, validateCloudLocalFieldFrame,
 } from '../../render/cloud/cloud-local-field';
 import { sampleConvectiveCloudEvents } from './cloud-events';
 import { deriveCloudEventAreas } from './cloud-event-area-closure';
-import { reconstructCloudEventMaterialCohorts } from './cloud-event-transport';
+import {
+  cloudEventWindAt, reconstructCloudEventMaterialCohorts,
+} from './cloud-event-transport';
 import { depositCloudEventMaterialCohorts } from './cloud-event-local-deposition';
+import { cloudEquirectTangentBasisAt } from './cloud-equirect-grid';
+import {
+  CLOUD_MASS_LAYER_EDGES_M, CONVECTIVE_POTENTIAL_MIN, CONVECTIVE_POTENTIAL_RANGE,
+  convectiveCellSupplyValues,
+} from './convective-cell-supply';
 import { extinctionFromCloudMass } from './cloud-mass-extinction';
 import {
   cloudGravityWaveFieldFromEnvironment, displaceCloudMassByWave,
@@ -43,7 +49,6 @@ const CELL_SIZE_M = CONVECTIVE_LOCAL_FIELD_SPAN_M / GRID_SIZE;
 // 中心のまわりへ置くイベントセルの数と間隔。間隔の半対角は格子の半対角より小さく保つ。
 const EVENT_CELL_COUNT = 9;
 const EVENT_CELL_SPACING_M = 50e3;
-const LAYER_EDGES_M = [0, 1_500, 4_000, 7_000, 10_000] as const;
 // 堆積 chart の有効角距離 [rad]。輸送された材料が格子の外へ出ても、はみ出た質量は
 // unassigned へ積まれて保存されるよう、格子よりはるかに広く取る。frame 側の有効角距離は
 // 格子の半対角だけなので、読み手には格子域だけが見える。
@@ -54,18 +59,11 @@ const MAX_EVENT_COUNT = 256;
 const MAX_OMITTED_MASS_KG_M2 = 0.01;
 const TRANSPORT_STEP_SECONDS = 300;
 const ICE_COHORT_COUNT = 8;
-// 0°C の水の蒸発潜熱 [J/kg]。地表の潜熱フラックスをそのまま対流の水供給率へ換算する近似。
-const LATENT_HEAT_VAPORIZATION_J_PER_KG = 2.501e6;
-const MIN_CONVECTIVE_DURATION_SECONDS = 900;
-const MAX_CONVECTIVE_DURATION_SECONDS = 7_200;
-// セルの対流ポテンシャルの幅。均一格子にしないため seed とセル番号から散らす。
-const CONVECTIVE_POTENTIAL_MIN = 0.05;
-const CONVECTIVE_POTENTIAL_RANGE = 0.8;
 
 // 高度層の微物理。液水・氷の有効粒径と氷の消散効率は層で分けず一定 — 粒径の高度依存は
 // 質量収支とは独立に後から層別へ変えられる。
 const LAYER_MICROPHYSICS: readonly CloudLayerMicrophysics[] =
-  LAYER_EDGES_M.slice(0, -1).map(() => ({
+  CLOUD_MASS_LAYER_EDGES_M.slice(0, -1).map(() => ({
     liquidEffectiveRadiusM: 10e-6,
     iceEffectiveRadiusM: 30e-6,
     iceExtinctionEfficiency: 2,
@@ -84,80 +82,9 @@ function requireUnitVector(vector: Vec3, name: string): void {
   }
 }
 
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(Math.max(value, low), high);
-}
-
-// 天体固定の中心方向から、接平面の東・北の右手系を組む。経度から直接基底を作るので、
-// 中心が極でも東向きが退化しない(正距円筒の取り決め: 経度 0 が +Z、東が +X、北極が +Y)。
-function tangentBasis(centerDirection: Vec3): { readonly east: Vec3; readonly north: Vec3 } {
-  const latitudeRad = Math.asin(clamp(centerDirection.y, -1, 1));
-  const longitudeRad = Math.atan2(centerDirection.x, centerDirection.z);
-  const cosLatitude = Math.cos(latitudeRad);
-  const sinLatitude = Math.sin(latitudeRad);
-  const cosLongitude = Math.cos(longitudeRad);
-  const sinLongitude = Math.sin(longitudeRad);
-  return {
-    east: v3(cosLongitude, 0, -sinLongitude),
-    north: v3(-sinLatitude * sinLongitude, cosLatitude, -sinLatitude * cosLongitude),
-  };
-}
-
 // 単位方向からその地点の環境プロファイルを引く口。供給側はセル・イベントの位置ごとに
 // 呼ぶので、実装側は方向から決定的にプロファイルを返す純関数であること。
 export type CloudEnvironmentAt = (direction: Vec3) => CloudEnvironmentProfile;
-
-// 環境プロファイルから、セルへ与える供給系の値を導く。雲底はパーセルの LCL(無ければ境界層
-// の深さ)、氷放出高は平衡高度(無ければプロファイル上端)、供給率は潜熱フラックスの蒸発量換算、
-// 対流の継続時間は雲の深さを CAPE 由来の上昇速度で渡る時間の数倍で近似する。
-function environmentCellValues(environment: CloudEnvironmentProfile): {
-  readonly upperRelativeHumidity: number;
-  readonly liquidSupplyRateKgM2S: number;
-  readonly convectiveDurationSeconds: number;
-  readonly sourceHeightM: number;
-  readonly iceReleaseHeightM: number;
-} {
-  const topEdgeM = LAYER_EDGES_M[LAYER_EDGES_M.length - 1]!;
-  const parcel = environment.parcel;
-  const cloudBaseM = clamp(
-    parcel.lclHeightM ?? environment.boundaryLayer.depthM, LAYER_EDGES_M[0]!, topEdgeM - 1);
-  const releaseM = clamp(
-    parcel.equilibriumHeightM ?? environment.levels[environment.levels.length - 1]!.heightM,
-    LAYER_EDGES_M[0]!, topEdgeM - 1);
-  const updraftMPerS = Math.sqrt(2 * Math.max(0, parcel.capeJPerKg));
-  // 上昇流で雲の深さを渡る時間の約4倍を対流の一生とみなす。CAPE が小さい環境では
-  // 供給の細い短命なイベントだけが残る。
-  const convectiveDurationSeconds = updraftMPerS >= 0.5 && releaseM > cloudBaseM
-    ? clamp(4 * (releaseM - cloudBaseM) / updraftMPerS,
-      MIN_CONVECTIVE_DURATION_SECONDS, MAX_CONVECTIVE_DURATION_SECONDS)
-    : MIN_CONVECTIVE_DURATION_SECONDS;
-  return {
-    upperRelativeHumidity: clamp(environment.upperIceMoistureFactor, 0, 1),
-    liquidSupplyRateKgM2S: environment.surfaceLatentHeatFluxWPerM2
-      / LATENT_HEAT_VAPORIZATION_J_PER_KG,
-    convectiveDurationSeconds,
-    sourceHeightM: cloudBaseM,
-    iceReleaseHeightM: releaseM,
-  };
-}
-
-// 輸送に使う風。大気風モデルをイベント位置の緯度と高さで評価し、位置の接平面基底で
-// 東・北成分から接線速度へ戻す。鉛直流は surrogate では扱わない。
-export function makeWindAt(windField: AtmosphericWindField): CloudEventWindAt {
-  return (directionUnitVector, geometricHeightM) => {
-    const latitudeRad = Math.asin(clamp(directionUnitVector.y, -1, 1));
-    const { east, north } = tangentBasis(directionUnitVector);
-    const wind = windField.sample(latitudeRad, geometricHeightM);
-    return {
-      tangentVelocityMPerS: v3(
-        east.x * wind.east + north.x * wind.north,
-        east.y * wind.east + north.y * wind.north,
-        east.z * wind.east + north.z * wind.north,
-      ),
-      verticalVelocityMPerS: 0,
-    };
-  };
-}
 
 // イベント1件分の堆積結果を、格子へ加算する形で畳み込む。個々の堆積は格子域の外の質量を
 // unassigned として保存するので、畳み込み側もそれを累計して返す。
@@ -223,11 +150,11 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
 
   // 場を張る frame。格子は中心のまわりに正方形で、有効角距離は格子の半対角まで届く。
   private frame(centerDirection: Vec3): CloudLocalFieldFrame {
-    const { east, north } = tangentBasis(centerDirection);
+    const { eastUnitVector, northUnitVector } = cloudEquirectTangentBasisAt(centerDirection);
     return {
       centerDirection,
-      eastDirection: east,
-      northDirection: north,
+      eastDirection: eastUnitVector,
+      northDirection: northUnitVector,
       sphereRadiusM: this.sphereRadiusM,
       gridOriginEastM: -CONVECTIVE_LOCAL_FIELD_SPAN_M / 2,
       gridOriginNorthM: -CONVECTIVE_LOCAL_FIELD_SPAN_M / 2,
@@ -238,7 +165,7 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
       maxAngularDistanceRad: Math.hypot(
         CONVECTIVE_LOCAL_FIELD_SPAN_M / 2, CONVECTIVE_LOCAL_FIELD_SPAN_M / 2)
         / this.sphereRadiusM,
-      layerEdgesM: LAYER_EDGES_M,
+      layerEdgesM: CLOUD_MASS_LAYER_EDGES_M,
     };
   }
 }
@@ -320,7 +247,7 @@ class ConvectiveCloudLocalFieldJob implements CloudLocalFieldJob {
     const half = (EVENT_CELL_COUNT - 1) / 2;
     const direction = cloudLocalDirectionAt(
       (i - half) * EVENT_CELL_SPACING_M, (j - half) * EVENT_CELL_SPACING_M, this.frame);
-    const values = environmentCellValues(this.environmentAt(direction));
+    const values = convectiveCellSupplyValues(this.environmentAt(direction));
     this.cells.push({
       id: `local-${i}-${j}`,
       supplySourceId: `local-source-${i}-${j}`,
@@ -404,7 +331,7 @@ class ConvectiveCloudLocalFieldJob implements CloudLocalFieldJob {
       },
       massGrid: {
         cells: Array.from({ length: cellCount }, () => ({ areaM2: CELL_SIZE_M * CELL_SIZE_M })),
-        layerEdgesM: LAYER_EDGES_M,
+        layerEdgesM: CLOUD_MASS_LAYER_EDGES_M,
       },
       chart: {
         centerDirectionUnitVector: this.frame.centerDirection,
@@ -413,11 +340,11 @@ class ConvectiveCloudLocalFieldJob implements CloudLocalFieldJob {
         sphereRadiusM: this.sphereRadiusM,
         maxAngularDistanceRad: DEPOSITION_MAX_ANGULAR_RAD,
       },
-      windAt: makeWindAt(this.windField),
+      windAt: cloudEventWindAt(this.windField),
       liquidKgM2ByLayer:
-        LAYER_EDGES_M.slice(0, -1).map(() => new Array<number>(cellCount).fill(0)),
+        CLOUD_MASS_LAYER_EDGES_M.slice(0, -1).map(() => new Array<number>(cellCount).fill(0)),
       iceKgM2ByLayer:
-        LAYER_EDGES_M.slice(0, -1).map(() => new Array<number>(cellCount).fill(0)),
+        CLOUD_MASS_LAYER_EDGES_M.slice(0, -1).map(() => new Array<number>(cellCount).fill(0)),
       unassignedMassKgByPhase: { liquid: 0, ice: 0 },
     };
   }
@@ -425,10 +352,10 @@ class ConvectiveCloudLocalFieldJob implements CloudLocalFieldJob {
   // 累積した層別質量を堆積の形へ束ねる。
   private stepMerge(): void {
     const work = this.deposition!;
-    const columnsByLayer: CloudMassLayerColumns[] = LAYER_EDGES_M.slice(0, -1).map(
+    const columnsByLayer: CloudMassLayerColumns[] = CLOUD_MASS_LAYER_EDGES_M.slice(0, -1).map(
       (lowerAltitudeM, layerIndex) => ({
         lowerAltitudeM,
-        upperAltitudeM: LAYER_EDGES_M[layerIndex + 1]!,
+        upperAltitudeM: CLOUD_MASS_LAYER_EDGES_M[layerIndex + 1]!,
         liquidKgM2ByCell: work.liquidKgM2ByLayer[layerIndex]!,
         iceKgM2ByCell: work.iceKgM2ByLayer[layerIndex]!,
       }),

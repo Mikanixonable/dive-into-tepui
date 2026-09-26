@@ -1,10 +1,13 @@
-// Reconstructs independent material tracks for a sampled convective event. This is a
-// deterministic CPU display derivation; it does not change the event's mass ledger.
+// 標本した対流イベントの独立した材料軌道を復元する。決定的な CPU の表示導出で、
+// イベントの質量 ledger には触れない。輸送へ渡す風の標準供給 — 共有の大気風モデルを
+// 輸送風の口へ写すアダプタ — もここに置く。
 
 import { advectSphericalPositionUnitVector } from '../../physics/cloud-spherical-transport';
 import { v3 } from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
 import { splitCloudIceReleaseIntoCohorts, type ConvectiveCloudEvent } from './cloud-events';
+import { cloudEquirectTangentBasisAt } from './cloud-equirect-grid';
+import type { AtmosphericWindField } from '../../render/cloud/atmospheric-wind';
 
 export interface CloudEventWind {
   readonly tangentVelocityMPerS: Vec3;
@@ -92,11 +95,35 @@ function reconstructTrack(
   return { directionUnitVector: direction, geometricHeightM: height, massKgM2, steps: stepCount };
 }
 
-// Samples the same event at the same time to reconstruct the same two tracks. Parent
-// condensate starts at birth. The aggregate released-ice cohort inherits the parent's
-// advected source position at its mass-weighted mean release time, then follows the upper
-// flow from its configured release altitude. Because the ledger aggregates continuous
-// releases, this representative path does not reproduce the full spatial spread of ice.
+// 液水の親の軌道。親の凝結物は出生の位置から標本時刻までの軌道を復元する。
+// 液水を持たないイベントでは null。
+function reconstructParentTrack(
+  event: ConvectiveCloudEvent,
+  sampleTimeSeconds: number,
+  sphereRadiusM: number,
+  maxStepSeconds: number,
+  windAt: CloudEventWindAt,
+): CloudMaterialTrack | null {
+  if (event.mass.liquidKgM2 <= 0) return null;
+  if (event.sourcePosition === undefined) {
+    throw new RangeError('event sourcePosition is required to reconstruct its parent track');
+  }
+  return reconstructTrack(
+    event.sourcePosition.directionUnitVector,
+    event.sourcePosition.geometricHeightM,
+    event.birthTimeSeconds,
+    sampleTimeSeconds,
+    sphereRadiusM,
+    maxStepSeconds,
+    windAt,
+    event.mass.liquidKgM2,
+  );
+}
+
+// 同じイベントを同じ時刻で標本すると常に同じ2本の軌道が返る。親の凝結物は出生から
+// 追う。集約した氷放出コホートは、質量重み付けの代表放出時刻に親の移流済み源位置を
+// 継ぎ、設定された放出高度から上層の流れを辿る。ledger は連続放出を集約しているので、
+// この代表軌道は氷の空間的な広がり全体は再現しない。
 export function reconstructCloudEventMaterialTracks(
   event: ConvectiveCloudEvent,
   sphereRadiusM: number,
@@ -108,23 +135,7 @@ export function reconstructCloudEventMaterialTracks(
   if (typeof windAt !== 'function') throw new TypeError('windAt must be a function');
   const sampleTimeSeconds = event.birthTimeSeconds + event.ageSeconds;
   requireFinite(sampleTimeSeconds, 'sampleTimeSeconds');
-
-  let parent: CloudMaterialTrack | null = null;
-  if (event.mass.liquidKgM2 > 0) {
-    if (event.sourcePosition === undefined) {
-      throw new RangeError('event sourcePosition is required to reconstruct its parent track');
-    }
-    parent = reconstructTrack(
-      event.sourcePosition.directionUnitVector,
-      event.sourcePosition.geometricHeightM,
-      event.birthTimeSeconds,
-      sampleTimeSeconds,
-      sphereRadiusM,
-      maxStepSeconds,
-      windAt,
-      event.mass.liquidKgM2,
-    );
-  }
+  const parent = reconstructParentTrack(event, sampleTimeSeconds, sphereRadiusM, maxStepSeconds, windAt);
 
   let releasedIce: CloudMaterialTrack | null = null;
   const iceMassKgM2 = event.iceRelease.remainingKgM2;
@@ -177,23 +188,7 @@ export function reconstructCloudEventMaterialCohorts(
   if (typeof windAt !== 'function') throw new TypeError('windAt must be a function');
   const sampleTimeSeconds = event.birthTimeSeconds + event.ageSeconds;
   requireFinite(sampleTimeSeconds, 'sampleTimeSeconds');
-
-  let parent: CloudMaterialTrack | null = null;
-  if (event.mass.liquidKgM2 > 0) {
-    if (event.sourcePosition === undefined) {
-      throw new RangeError('event sourcePosition is required to reconstruct its parent track');
-    }
-    parent = reconstructTrack(
-      event.sourcePosition.directionUnitVector,
-      event.sourcePosition.geometricHeightM,
-      event.birthTimeSeconds,
-      sampleTimeSeconds,
-      sphereRadiusM,
-      maxStepSeconds,
-      windAt,
-      event.mass.liquidKgM2,
-    );
-  }
+  const parent = reconstructParentTrack(event, sampleTimeSeconds, sphereRadiusM, maxStepSeconds, windAt);
 
   const releaseCohorts = splitCloudIceReleaseIntoCohorts(event, cohortCount);
   const sourcePosition = event.sourcePosition;
@@ -248,5 +243,24 @@ export function reconstructCloudEventMaterialCohorts(
     parent,
     releasedIceCohorts,
     totalMassKgM2: (parent?.massKgM2 ?? 0) + releasedIceMassKgM2,
+  };
+}
+
+// 共有の大気風モデルを輸送風の口へ写す。大気風モデルをイベント位置の緯度と高さで
+// 評価し、位置の接平面基底で東・北成分から接線速度へ戻す。鉛直流は surrogate では
+// 扱わない。
+export function cloudEventWindAt(windField: AtmosphericWindField): CloudEventWindAt {
+  return (directionUnitVector, geometricHeightM) => {
+    const latitudeRad = Math.asin(Math.min(Math.max(directionUnitVector.y, -1), 1));
+    const { eastUnitVector, northUnitVector } = cloudEquirectTangentBasisAt(directionUnitVector);
+    const wind = windField.sample(latitudeRad, geometricHeightM);
+    return {
+      tangentVelocityMPerS: v3(
+        eastUnitVector.x * wind.east + northUnitVector.x * wind.north,
+        eastUnitVector.y * wind.east + northUnitVector.y * wind.north,
+        eastUnitVector.z * wind.east + northUnitVector.z * wind.north,
+      ),
+      verticalVelocityMPerS: 0,
+    };
   };
 }

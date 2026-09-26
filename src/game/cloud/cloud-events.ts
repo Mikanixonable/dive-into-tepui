@@ -31,10 +31,10 @@ export interface ConvectiveCloudCell {
   // 全セルが同じ epoch グリッドを共有する。独立した対流の出生はセルごとに別の時刻へ
   // 起きるので、セル間で出生を同期させたくない供給源がここへ位相を置く。
   readonly birthPhaseSeconds?: number;
-  // Optional geographic placement for consumers that reconstruct material tracks.
-  // Diagnostic-only cells may omit it; no location is inferred from an ID.
+  // 材料軌道を復元する消費者が読む地理的な配置。診断だけのセルは省略してよく、
+  // ID から位置は推定されない。
   readonly sourcePosition?: CloudEventSourcePosition;
-  // Geometric altitude [m] at which released ice enters the upper-level flow.
+  // 放出された氷が上層の流れへ入る幾何高度 [m]。
   readonly iceReleaseHeightM?: number;
 }
 
