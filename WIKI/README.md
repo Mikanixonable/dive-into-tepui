@@ -13,6 +13,6 @@
 | [ゲームシステム](05-game-systems.md) | プレイループ、船体、戦闘、ラン管理、入力 | `src/game/`, `src/launcher/` |
 
 > [!IMPORTANT]
-> コードの現在はコード自身が原本である。ゲームが**どう振る舞うべきか**は [SPEC](../DEVELOP/SPEC/README.md)、層・状態所有・import の規則は [ARCHITECTURE](../DEVELOP/ARCHITECTURE.md)、コードの書き方は [CODING-RULE](../DEVELOP/CODING-RULE.md) を参照する。
+> コードの現状は、コードそのものが正本である。ゲームが**どう振る舞うべきか**は [SPEC](../DEVELOP/SPEC/README.md)、層・状態所有・import の規則は [ARCHITECTURE](../DEVELOP/ARCHITECTURE.md)、コードの書き方は [CODING-RULE](../DEVELOP/CODING-RULE.md) を参照する。
 
 <p align="center"><a href="../README.md"><strong>← README</strong></a> · <a href="01-technology.md"><strong>技術 →</strong></a></p>
