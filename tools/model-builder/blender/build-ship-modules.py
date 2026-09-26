@@ -1068,6 +1068,8 @@ def build_cockpit():
 # ----------------------------------------------------------------------
 # 2. Main Propellant Tanks (tank-3-main, tank-6-main, tank-12-main)
 # ----------------------------------------------------------------------
+TANK_ROLL_SECTOR_COUNT = 12
+
 def tank_roll_pattern_bounds(length):
     """端部の市松帯・長手帯と中央黒帯の位置を返す。"""
     half_len = length / 2.0
@@ -1090,8 +1092,7 @@ def tank_roll_pattern_bounds(length):
 
 def paint_roll_pattern(bm, length):
     """円筒側面へ端部の市松帯・交互の長手帯・中央黒帯を割り当てる。"""
-    sector_count = 24
-    sector_arc = 2.0 * math.pi / sector_count
+    sector_arc = 2.0 * math.pi / TANK_ROLL_SECTOR_COUNT
     bounds = tank_roll_pattern_bounds(length)
     for z in (bounds["top"], bounds["checker_mid"], bounds["roll_top"],
               bounds["roll_bottom"], bounds["stripe_half_height"], -bounds["stripe_half_height"]):
@@ -1106,7 +1107,7 @@ def paint_roll_pattern(bm, length):
         if abs(face.normal.z) > 0.5:
             continue
         center = face.calc_center_median()
-        sector = int((math.atan2(center.y, center.x) + math.pi) / sector_arc) % sector_count
+        sector = int((math.atan2(center.y, center.x) + math.pi) / sector_arc) % TANK_ROLL_SECTOR_COUNT
         if bounds["roll_top"] < center.z < bounds["top"]:
             row = 0 if center.z > bounds["checker_mid"] else 1
             if (sector + row) % 2 == 0:
@@ -1201,7 +1202,7 @@ def add_tank_surface_details(mats, length, bounds):
                                radius, white_index, seam_index)
 
     # 前方の黒い市松セル上へ、塗装色を保った小さな白い識別板を置く。
-    sector_count = 24
+    sector_count = TANK_ROLL_SECTOR_COUNT
     white_patch_sector = 0
     white_patch_angle = -math.pi + (white_patch_sector + 0.5) * 2.0 * math.pi / sector_count
     white_patch_z = bounds["top"] - 0.45 * bounds["checker_row_height"]
