@@ -1068,39 +1068,33 @@ def build_cockpit():
 # ----------------------------------------------------------------------
 # 2. Main Propellant Tanks (tank-3-main, tank-6-main, tank-12-main)
 # ----------------------------------------------------------------------
-def tank_checker_bounds(length):
-    """+Z 側の短い塗装帯を返す。黒いリブ帯が囲うのは前方チェッカーだけ。"""
+def tank_roll_pattern_bounds(length):
+    """端部の市松帯・長手帯と中央黒帯の位置を返す。"""
     half_len = length / 2.0
-    row_height = max(0.12, 0.035 * length)
-    belt_width = max(0.065, 0.020 * length)
-    group_gap = max(0.07, 0.025 * length)
-    top = half_len - 0.15
-    first_high = top - belt_width
-    first_low = first_high - 2.0 * row_height
-    second_high = first_low - belt_width - group_gap
-    second_low = second_high - 2.0 * row_height
+    end_margin = 0.15
+    checker_row_height = min(0.75, max(0.30, 0.085 * length))
+    roll_bar_height = min(1.60, max(0.55, 0.16 * length))
+    stripe_half_height = min(0.25, max(0.08, 0.025 * length)) * 0.5
+    top = half_len - end_margin
+    checker_mid = top - checker_row_height
+    roll_top = top - 2.0 * checker_row_height
+    roll_bottom = roll_top - roll_bar_height
     return {
         "top": top,
-        "row_height": row_height,
-        "belt_width": belt_width,
-        "first_high": first_high,
-        "first_low": first_low,
-        "second_high": second_high,
-        "second_low": second_low,
+        "checker_mid": checker_mid,
+        "checker_row_height": checker_row_height,
+        "roll_top": roll_top,
+        "roll_bottom": roll_bottom,
+        "stripe_half_height": stripe_half_height,
     }
 
 def paint_roll_pattern(bm, length):
-    """前方の2区画だけに、正方形と長手方向の長方形を混ぜた白黒模様を割り当てる。"""
-    sector_count = 48
+    """円筒側面へ端部の市松帯・交互の長手帯・中央黒帯を割り当てる。"""
+    sector_count = 24
     sector_arc = 2.0 * math.pi / sector_count
-    bounds = tank_checker_bounds(length)
-    cuts = (
-        bounds["top"], bounds["first_high"], bounds["first_low"],
-        bounds["first_low"] - bounds["belt_width"], bounds["second_high"],
-        bounds["second_high"] - bounds["row_height"], bounds["second_low"],
-        bounds["first_high"] - bounds["row_height"],
-    )
-    for z in cuts:
+    bounds = tank_roll_pattern_bounds(length)
+    for z in (bounds["top"], bounds["checker_mid"], bounds["roll_top"],
+              bounds["roll_bottom"], bounds["stripe_half_height"], -bounds["stripe_half_height"]):
         bmesh.ops.bisect_plane(
             bm,
             geom=list(bm.verts) + list(bm.edges) + list(bm.faces),
@@ -1113,22 +1107,14 @@ def paint_roll_pattern(bm, length):
             continue
         center = face.calc_center_median()
         sector = int((math.atan2(center.y, center.x) + math.pi) / sector_arc) % sector_count
-        if (bounds["first_high"] < center.z < bounds["top"]
-                or bounds["first_low"] - bounds["belt_width"] < center.z < bounds["first_low"]):
-            face.material_index = 1
-            continue
-        group = None
-        if bounds["first_low"] < center.z < bounds["first_high"]:
-            group = ("first", bounds["first_high"])
-        elif bounds["second_low"] < center.z < bounds["second_high"]:
-            group = ("second", bounds["second_high"])
-        if group is None:
-            continue
-        group_name, group_top = group
-        row = min(1, int((group_top - center.z) / bounds["row_height"]))
-        elongated_column = sector % (7 if group_name == "first" else 8) in ((1, 2) if group_name == "first" else (4, 5))
-        black = (sector % 2 == 0) if elongated_column else ((sector + row + (group_name == "second")) % 2 == 0)
-        if black:
+        if bounds["roll_top"] < center.z < bounds["top"]:
+            row = 0 if center.z > bounds["checker_mid"] else 1
+            if (sector + row) % 2 == 0:
+                face.material_index = 1
+        elif bounds["roll_bottom"] < center.z <= bounds["roll_top"]:
+            if sector % 2 == 0:
+                face.material_index = 1
+        elif abs(center.z) < bounds["stripe_half_height"]:
             face.material_index = 1
 
 def rounded_panel_outline(width, height, corner_radius, corner_steps=5):
@@ -1215,10 +1201,10 @@ def add_tank_surface_details(mats, length, bounds):
                                radius, white_index, seam_index)
 
     # 前方の黒い市松セル上へ、塗装色を保った小さな白い識別板を置く。
-    sector_count = 48
+    sector_count = 24
     white_patch_sector = 0
     white_patch_angle = -math.pi + (white_patch_sector + 0.5) * 2.0 * math.pi / sector_count
-    white_patch_z = bounds["first_high"] - 0.45 * bounds["row_height"]
+    white_patch_z = bounds["top"] - 0.45 * bounds["checker_row_height"]
     append_raised_tank_panel(details, white_patch_angle, white_patch_z, 0.42, 0.28,
                              radius, white_index)
 
@@ -1230,7 +1216,7 @@ def add_tank_surface_details(mats, length, bounds):
     selected = []
     candidate_limit = panel_count * 80
     z_min = -half_len + 0.46
-    z_max = bounds["second_low"] - 0.24
+    z_max = bounds["roll_bottom"] - 0.24
     copv_z = -half_len * 0.4
     copv_angles = (math.radians(120), math.radians(240))
     for _ in range(candidate_limit):
@@ -1317,7 +1303,7 @@ def build_tank_main(length, name):
     mats = MaterialLibrary()
     radius = 3.0
     half_len = length / 2.0
-    checker_bounds = tank_checker_bounds(length)
+    pattern_bounds = tank_roll_pattern_bounds(length)
 
     # 1. Main Cylindrical Tank Hull with circumferential segments
     # ベース色を保った白塗膜へ、前方だけの白黒チェッカーを面割当する。
@@ -1325,19 +1311,6 @@ def build_tank_main(length, name):
     paint_roll_pattern(bm_hull, length)
     add_mesh_obj("tank_hull", bm_hull, (mats.tank_paint_white, mats.tank_paint_black))
 
-    # 前方の片方のチェッカー帯だけを黒いリブ帯で挟み、反対側の短い帯は単独にする。
-    for band_index, band_center in enumerate((
-            checker_bounds["top"] - checker_bounds["belt_width"] * 0.5,
-            checker_bounds["first_low"] - checker_bounds["belt_width"] * 0.5)):
-        rib_count = 4 if checker_bounds["belt_width"] >= 0.09 else 2
-        for rib_index in range(rib_count):
-            axial = band_center + checker_bounds["belt_width"] * (
-                (rib_index + 0.5) / rib_count - 0.5
-            )
-            add_mesh_obj(f"tank_checker_belt_{band_index}_{rib_index}",
-                         make_torus(radius + 0.002, 0.006, z_center=axial, major_seg=48, minor_seg=6),
-                         mats.tank_paint_black)
-    
     # 2. Structural Bulkhead Bands (CRITICAL: Named 'tank-band' to satisfy contract test!)
     # Band count scaled with length (3m: 1 band, 6m: 2 bands, 12m: 4 bands)
     band_count = 1 if length <= 3.5 else (2 if length <= 6.5 else 4)
@@ -1354,7 +1327,7 @@ def build_tank_main(length, name):
                      make_spheres(fastener_centers, 0.018, u_seg=8, v_seg=6), mats.tank_fastener)
 
     # 塗装に馴染む前後・周方向の継ぎ目、浅いハッチ、リベット穴を追加する。
-    add_tank_surface_details(mats, length, checker_bounds)
+    add_tank_surface_details(mats, length, pattern_bounds)
 
     # 3. Cryogenic Feedline with Saddle Clamps & Bolted Flanges
     # High-pressure LOX/LH2 feedline running down the hull at radius R=3.06m
