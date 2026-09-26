@@ -29,11 +29,13 @@ function weaponModel(): THREE.Group {
   for (const [name, targetAxis] of [
     ['feed-sprocket:0', new THREE.Vector3(0, 1, 0)],
     ['feed-drum', new THREE.Vector3(1, 0, 0)],
+    ['feed-shoe', new THREE.Vector3(-1, 0, 0)],
   ] as const) {
     const anchor = new THREE.Object3D();
     anchor.name = `anchor:${name}`;
     anchor.userData.semanticAnchor = name;
     anchor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), targetAxis);
+    anchor.position.set(0.3, -1.9, 0.4);
     root.add(anchor);
   }
   return root;
@@ -193,6 +195,32 @@ export function register(): void {
     // デリンクドラムは1発ごとに1ステーション(2π/6)回る
     const drumTarget = (2 * Math.PI / 6) * FIRE_RATE;
     assert.ok(Math.abs(speeds[speeds.length - 1]! - drumTarget) < drumTarget * 1e-3);
+    ship.dispose();
+  });
+
+  test('weapon drives: the feed shoe reciprocates along its declared axis without rotating', () => {
+    const ship = new ModularShipView(weaponModel);
+    const modules = [weapon('gun-1', 100)];
+    ship.sync(modules);
+    const shoe = anchors(ship, 'gun-1', 'feed-shoe')[0]!;
+    const drives = new WeaponDrives();
+    drives.sync(ship, modules, FIRE_RATE, 0);
+    const basePos = shoe.position.clone();
+    const baseQuat = shoe.quaternion.clone();
+    // 案内爪は1リンク(32発)で1往復する。起動の遅れを見越して1往復ぶんより長く進め、
+    // 最大変位を追う
+    let maxDisplacement = 0, minX = basePos.x, maxX = basePos.x;
+    for (let i = 1; i <= 200; i++) {
+      drives.sync(ship, modules, FIRE_RATE, i * FRAME);
+      maxDisplacement = Math.max(maxDisplacement, shoe.position.distanceTo(basePos));
+      minX = Math.min(minX, shoe.position.x);
+      maxX = Math.max(maxX, shoe.position.x);
+    }
+    // 変位は -X 向き(anchor 局所 +Z の向き)にだけ出て、回転はしない
+    assert.ok(basePos.x - minX > 0.15, `shoe did not stroke inward: ${basePos.x - minX}`);
+    assert.ok(maxX - basePos.x < 0.01, `shoe moved the wrong way: ${maxX - basePos.x}`);
+    assert.ok(shoe.quaternion.angleTo(baseQuat) < 1e-6, 'shoe rotated');
+    assert.ok(maxDisplacement < 0.23, `stroke too large: ${maxDisplacement}`);
     ship.dispose();
   });
 }
