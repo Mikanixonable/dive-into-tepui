@@ -1,12 +1,13 @@
 // 展開部品(太陽電池・ラジエーター)のパネル列を、取付面のヒンジから連なる蛇腹の剛体鎖として置く。
-// パネル i の根元ヒンジは直前のパネルの交互の面にあり、隣り合うパネルは相対角 2ψ で折れる。
-// 収納(ψ = 90°)では厚みの分だけずれて取付面の上へ積み重なり、展開では一枚の帯へ伸びる。
+// 太陽電池は3列それぞれが2枚の鎖を持ち、ラジエーターは1列の鎖を持つ。
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_FOLD_COUNT,
   RADIATOR_PANEL_THICKNESS,
   RADIATOR_SEGMENT_LENGTH,
   SOLAR_PANEL_COUNT,
+  SOLAR_PANEL_COLUMNS,
+  SOLAR_PANEL_SPAN,
   SOLAR_PANEL_THICKNESS,
   SOLAR_PANEL_WIDTH,
 } from './player-shape';
@@ -72,6 +73,32 @@ export function deployablePanelPoses(
   kind: DeployablePanelKind, faceZ: number, deployed: number,
 ): readonly PanelPose[] {
   const shape = CHAINS[kind];
+  if (kind === 'solar_panel') return solarPanelPoses(shape, faceZ, deployed);
+  return chainPoses(shape, faceZ, deployed);
+}
+
+// 太陽電池は3列それぞれに2枚の剛体鎖を持つ。列ごとに同じ展開姿勢を取り、全体を3×2へ並べる。
+function solarPanelPoses(shape: ChainShape, faceZ: number, deployed: number): readonly PanelPose[] {
+  const rows = shape.count / SOLAR_PANEL_COLUMNS;
+  const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;
+  const columnShape = { ...shape, count: rows };
+  const result: PanelPose[] = [];
+  for (let column = 0; column < SOLAR_PANEL_COLUMNS; column++) {
+    const x = (column - (SOLAR_PANEL_COLUMNS - 1) / 2) * tileSpan;
+    for (const pose of chainPoses(columnShape, faceZ, deployed)) {
+      result.push({
+        origin: v3(pose.origin.x + x, pose.origin.y, pose.origin.z),
+        rotation: pose.rotation,
+        center: v3(pose.center.x + x, pose.center.y, pose.center.z),
+        normal: pose.normal,
+      });
+    }
+  }
+  return result;
+}
+
+// 1列ぶんのパネル鎖を、根元から順に並べる。
+function chainPoses(shape: ChainShape, faceZ: number, deployed: number): readonly PanelPose[] {
   const psi = shape.halfFold(Math.max(0, Math.min(1, deployed)));
   const halfThickness = shape.thickness / 2;
   const result: PanelPose[] = [];

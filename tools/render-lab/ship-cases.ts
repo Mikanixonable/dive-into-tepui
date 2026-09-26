@@ -6,6 +6,7 @@ import { v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
+import { deployablePanelPoses } from '../../src/physics/ship-panel-layout';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
@@ -157,15 +158,20 @@ function mainTank(): LabCase {
 
 // 太陽電池翼の表面と裏面を、同じ照明・縮尺で並べて観察する。
 function solarPanelSurface(): LabCase {
+  const panels = deployablePanelPoses('solar_panel', 0, 1);
+  const panelCenterZ = panels.reduce((sum, panel) => sum + panel.center.z, 0) / panels.length;
   const front = new ShipModuleView({
     id: 'solar-front', modelId: 'solar-panel-standard', kind: 'solar_panel',
     hp: 100, maxHp: 100, deployed: 1, burning: null,
-    transform: { position: v3(-3.4, 0, -25), rotation: Q_IDENTITY },
+    transform: { position: v3(-1.8, 0, -25), rotation: Q_IDENTITY },
   }, buildShipModuleModel);
   const back = new ShipModuleView({
     id: 'solar-back', modelId: 'solar-panel-standard', kind: 'solar_panel',
     hp: 100, maxHp: 100, deployed: 1, burning: null,
-    transform: { position: v3(3.4, 0, -25), rotation: qFromAxisAngle(v3(1, 0, 0), Math.PI) },
+    transform: {
+      position: v3(1.8, 0, -25 + panelCenterZ * 2),
+      rotation: qFromAxisAngle(v3(1, 0, 0), Math.PI),
+    },
   }, buildShipModuleModel);
   return {
     objects: [front.object, back.object],
@@ -173,7 +179,12 @@ function solarPanelSurface(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -25),
     shots: {
       'solar-panel-array-closeup': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 78, sunAzimuthDeg: 12, sunElevationDeg: 58 },
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.4,
+          sunAzimuthDeg: 3, sunElevationDeg: 75 },
+      },
+      'solar-panel-array-detail': {
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.7,
+          sunAzimuthDeg: 3, sunElevationDeg: 75 },
       },
     },
   };
