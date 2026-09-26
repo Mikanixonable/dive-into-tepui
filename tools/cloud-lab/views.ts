@@ -9,7 +9,7 @@ import { latitudeOf } from '../../src/render/cloud/sphere-frame';
 import { SURFACE_HEIGHT } from '../../src/render/cloud/atmospheric-wind';
 import type { AtmosphericWindField } from '../../src/render/cloud/atmospheric-wind';
 import type * as THREE from 'three/webgpu';
-import type { ClimateMap } from '../../src/render/cloud/climate-map';
+import type { ClimateData } from '../../src/render/cloud/climate-map';
 import type { CloudSample } from '../../src/render/cloud/cloud-field-sample';
 import type { GlobalDiagnosticSample, GlobalMassSample } from './global-field';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
@@ -28,7 +28,7 @@ export type CloudLabView = {
   readonly id: CloudLabViewId;
   readonly label: string;
 } & (
-  | { readonly reads: 'climate'; readonly color: (d: Vec3Node, climate: ClimateMap) => Vec3Node }
+  | { readonly reads: 'climate'; readonly color: (d: Vec3Node, climate: ClimateData) => Vec3Node }
   | { readonly reads: 'wind'; readonly color: (d: Vec3Node, wind: AtmosphericWindField) => Vec3Node }
   | {
       readonly reads: 'diagnostic';
