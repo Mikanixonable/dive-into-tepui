@@ -25,7 +25,7 @@ export interface CloudOpticalVolumeHalfFloatPhaseDiagnostics {
   readonly zeroRoundedPositiveCount: number;
   readonly maximumInputRoundedToZeroPerM: number;
   readonly maximumSingleZeroRoundedOpticalDepthContributionAt20Km: number;
-  // 独立した texel 全体の合計 — 1本の物理的な 20 km 光路ではない。
+  // Aggregate over all independent texels; this is not one physical 20 km path.
   readonly sumAcrossTexelsOfZeroRoundedOpticalDepthContributionsAt20Km: number;
 }
 
@@ -181,7 +181,6 @@ function sampleValidatedCloudOpticalVolume(
   };
 }
 
-// 場の寸法・層境界・相別の消散配列の形を検査する。
 export function validateCloudOpticalVolumeData(data: CloudOpticalVolumeData): void {
   requirePositiveInteger(data.width, 'width');
   requirePositiveInteger(data.height, 'height');
@@ -279,7 +278,6 @@ export class CloudOpticalVolume {
 
   public get layerEdgesM(): Float32Array { return this.data.layerEdgesM.slice(); }
 
-  // CPU 側の層選択と双線形標本。
   public sampleCpu(u: number, v: number, altitudeM: number): CloudOpticalVolumeSample {
     this.requireActive();
     return sampleValidatedCloudOpticalVolume(this.data, u, v, altitudeM);

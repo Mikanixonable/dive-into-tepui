@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import { cross, lenSq, v3 } from '../../src/math/vec3';
 import { deriveCloudEventAreas } from '../../src/game/cloud/cloud-event-area-closure';
 import { depositCloudEventMaterialCohorts } from '../../src/game/cloud/cloud-event-local-deposition';
-import type { CloudEventFootprintShape } from '../../src/game/cloud/cloud-event-deposition';
+import type { CloudEventFootprintShape } from '../../src/game/cloud/cloud-event-local-deposition';
 import type { CloudEnvironmentProfile } from '../../src/game/cloud/cloud-environment';
 import type { ConvectiveCloudEvent, CloudEventSourcePosition } from '../../src/game/cloud/cloud-events';
 import type { CloudEventMaterialCohorts, CloudEventWindAt, CloudIceMaterialCohort } from '../../src/game/cloud/cloud-event-transport';

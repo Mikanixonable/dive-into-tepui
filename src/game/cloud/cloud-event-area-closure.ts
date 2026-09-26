@@ -29,7 +29,7 @@ import { cross, lenSq, scale, v3 } from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
 import type { CloudEnvironmentProfile } from './cloud-environment';
 import type { ConvectiveCloudEvent } from './cloud-events';
-import type { CloudEventFootprintShape, CloudEventFootprintShapes } from './cloud-event-deposition';
+import type { CloudEventFootprintShape, CloudEventFootprintShapes } from './cloud-event-local-deposition';
 import type { CloudEventMaterialCohorts, CloudEventWindAt } from './cloud-event-transport';
 
 // 平衡高度の安定度が取れないときの混合時定数。自由対流圏の代表的な
