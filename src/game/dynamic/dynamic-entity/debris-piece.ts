@@ -78,6 +78,7 @@ export class DebrisPiece extends DynamicEntity {
         behavior: new DebrisReaction(
           debrisKind.kind,
           'bornSim' in debrisKind ? debrisKind.bornSim : null,
+          'slide' in debrisKind ? debrisKind.slide ?? null : null,
         ),
         radius,
         thermal,
