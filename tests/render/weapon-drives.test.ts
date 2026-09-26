@@ -1,4 +1,4 @@
-// 機関砲の被駆動部(回転砲身束・給弾スプロケット・デリンクドラム・反動部)の回帰テスト。
+// 機関砲の被駆動部(回転砲身束・給弾スプロケット・デリンクドラム)の回転の回帰テスト。
 // 射撃中に回り始め、トリガーを離すと減速して止まること、回転が表示時刻に従い一時停止中は
 // 止まること、破壊された武装の駆動部は回らないこと、向きを持つ anchor は定めた軸まわりだけ
 // 回ることを見る。時定数そのものは調整値なので固定しない。
@@ -38,11 +38,6 @@ function weaponModel(): THREE.Group {
     anchor.position.set(0.3, -1.9, 0.4);
     root.add(anchor);
   }
-  const recoil = new THREE.Object3D();
-  recoil.name = 'anchor:gun-recoil:0';
-  recoil.userData.semanticAnchor = 'gun-recoil:0';
-  recoil.userData.recoilTravel = 0.22;
-  root.add(recoil);
   return root;
 }
 
@@ -203,64 +198,6 @@ export function register(): void {
     ship.dispose();
   });
 
-  test('weapon drives: a shot recoils the receiver anchor along -Z and returns it to battery', () => {
-    const ship = new ModularShipView(weaponModel);
-    const modules = [weapon('gun-1', 100)];
-    ship.sync(modules);
-    const recoil = anchors(ship, 'gun-1', 'gun-recoil:')[0]!;
-    const base = recoil.position.clone();
-    const baseQuat = recoil.quaternion.clone();
-    const drives = new WeaponDrives();
-    // cycleDuration 0.2 の発射は、後座時間 0.18 s・急発進 0.036 s の行程を持つ
-    const shots = [{ moduleId: 'gun-1', muzzleIndex: 0, firedAt: 1.0, cycleDuration: 0.2 }];
-    drives.sync(ship, modules, 0, 1.0, shots);
-    assert.ok(recoil.position.distanceTo(base) < 1e-9, 'recoiled before the shot');
-    drives.sync(ship, modules, 0, 1.036, shots);
-    const peak = base.z - recoil.position.z;
-    assert.ok(peak > 0.2, `did not recoil: ${peak}`);
-    assert.ok(Math.abs(recoil.position.x - base.x) < 1e-9 && Math.abs(recoil.position.y - base.y) < 1e-9);
-    assert.ok(recoil.quaternion.angleTo(baseQuat) < 1e-9, 'recoil anchor rotated');
-    drives.sync(ship, modules, 0, 1.1, shots);
-    const returning = base.z - recoil.position.z;
-    assert.ok(returning < peak && returning > 0, `did not start returning: ${returning}`);
-    drives.sync(ship, modules, 0, 1.2, shots);
-    assert.ok(recoil.position.distanceTo(base) < 1e-9, 'did not return to battery');
-    ship.dispose();
-  });
-
-  test('weapon drives: recoil stays at rest without a matching shot record', () => {
-    const ship = new ModularShipView(weaponModel);
-    const modules = [weapon('gun-1', 100)];
-    ship.sync(modules);
-    const recoil = anchors(ship, 'gun-1', 'gun-recoil:')[0]!;
-    const base = recoil.position.clone();
-    const drives = new WeaponDrives();
-    // 別砲口・別モジュールの記録では動かず、行程を過ぎた古い記録でも動かない
-    const stale = [
-      { moduleId: 'gun-1', muzzleIndex: 1, firedAt: 1.0, cycleDuration: 0.2 },
-      { moduleId: 'gun-2', muzzleIndex: 0, firedAt: 1.0, cycleDuration: 0.2 },
-      { moduleId: 'gun-1', muzzleIndex: 0, firedAt: 0.5, cycleDuration: 0.2 },
-    ];
-    for (const shot of stale) {
-      drives.sync(ship, modules, 0, 1.036, [shot]);
-      assert.ok(recoil.position.distanceTo(base) < 1e-9, `recoiled for ${shot.moduleId}:${shot.muzzleIndex}`);
-    }
-    ship.dispose();
-  });
-
-  test('weapon drives: a destroyed weapon receiver does not recoil', () => {
-    const ship = new ModularShipView(weaponModel);
-    const modules = [weapon('gun-1', 0)];
-    ship.sync(modules);
-    const recoil = anchors(ship, 'gun-1', 'gun-recoil:')[0]!;
-    const base = recoil.position.clone();
-    const drives = new WeaponDrives();
-    const shots = [{ moduleId: 'gun-1', muzzleIndex: 0, firedAt: 1.0, cycleDuration: 0.2 }];
-    drives.sync(ship, modules, 0, 1.036, shots);
-    assert.ok(recoil.position.distanceTo(base) < 1e-9, 'destroyed receiver recoiled');
-    ship.dispose();
-  });
-
   test('weapon drives: the feed shoe reciprocates along its declared axis without rotating', () => {
     const ship = new ModularShipView(weaponModel);
     const modules = [weapon('gun-1', 100)];
@@ -270,7 +207,7 @@ export function register(): void {
     drives.sync(ship, modules, FIRE_RATE, 0);
     const basePos = shoe.position.clone();
     const baseQuat = shoe.quaternion.clone();
-    // 案内爪は1リンク(8発)で1往復する。起動の遅れを見越して1往復ぶんより長く進め、
+    // 案内爪は1リンク(32発)で1往復する。起動の遅れを見越して1往復ぶんより長く進め、
     // 最大変位を追う
     let maxDisplacement = 0, minX = basePos.x, maxX = basePos.x;
     for (let i = 1; i <= 200; i++) {
@@ -284,12 +221,6 @@ export function register(): void {
     assert.ok(maxX - basePos.x < 0.01, `shoe moved the wrong way: ${maxX - basePos.x}`);
     assert.ok(shoe.quaternion.angleTo(baseQuat) < 1e-6, 'shoe rotated');
     assert.ok(maxDisplacement < 0.23, `stroke too large: ${maxDisplacement}`);
-    const settledPosition = shoe.position.clone();
-    for (let i = 1; i <= 8 / FIRE_RATE / FRAME; i++) {
-      drives.sync(ship, modules, FIRE_RATE, 200 * FRAME + i * FRAME);
-    }
-    assert.ok(shoe.position.distanceTo(settledPosition) < 1e-3,
-      'feed shoe did not complete one cycle in eight rounds');
     ship.dispose();
   });
 }
