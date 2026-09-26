@@ -16,14 +16,17 @@ interface CartridgeView {
   readonly baseY: number;
 }
 
-// 装填中のマガジンをレールの基準点へ取り付け、残弾と給弾時刻から表示を組み立てる。
+// 給弾中のカートリッジ段をレールへ取り付け、残弾数と給弾時刻から表示を組み立てる。
 export class GunFeedView {
   private readonly magazine = parseMagazine();
   private readonly cartridges: readonly CartridgeView[];
   private disposed = false;
 
-  // magazine-rail の局所原点へ、装填中の1箱と3段の表示を保持する。
+  // magazine-rail の局所原点へ、給弾中の3段のカートリッジ表示を保持する。
   public constructor(anchor: THREE.Object3D) {
+    const magazineFrame = this.magazine.getObjectByName('magazineFrame');
+    if (magazineFrame !== undefined) magazineFrame.visible = false;
+    // 残弾表示を段ごとに扱えるよう、各段の弾と基準位置をまとめる。
     const cartridges: CartridgeView[] = [];
     for (let stage = 0; stage < 3; stage++) {
       const found = this.magazine.getObjectByName(`cartridge:${stage}`);
@@ -38,7 +41,7 @@ export class GunFeedView {
     this.attach(anchor);
   }
 
-  // レールの anchor が再構築されたときに同じ装填箱を移す。
+  // レールの anchor が再構築されたときに同じカートリッジ表示を移す。
   public attach(anchor: THREE.Object3D): void {
     if (this.disposed) return;
     if (this.magazine.parent !== anchor) anchor.add(this.magazine);
@@ -74,10 +77,10 @@ export class GunFeedView {
     }
 
     const feedProgress = animationProgress(displayTime, magazineFedAt, MAGAZINE_FEED_TIME);
-    this.magazine.position.z = -MAGAZINE_FEED_DISTANCE * (1 - feedProgress);
+    this.magazine.position.x = MAGAZINE_FEED_DISTANCE * (1 - feedProgress);
   }
 
-  // 独立解析した装填箱の描画資源を、武装表示とともに解放する。
+  // 独立解析したカートリッジ表示の描画資源を解放する。
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
