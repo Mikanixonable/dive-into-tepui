@@ -7,7 +7,7 @@ import { deserializeKinematicState, kinematicState, type KinematicState } from '
 import type { CapKind } from './entity-kind';
 import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
 import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
-import { MagazineFrameView } from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
+import { CartridgeFrameView, MagazineFrameView } from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DebrisKind, SerializedDebrisKind } from './debris-kind';
@@ -30,6 +30,7 @@ function debrisPieceView(debrisKind: SerializedDebrisKind, scene?: THREE.Scene):
     case 'fragment': return new DebrisFragmentView(debrisKind.accent, debrisKind.size, scene);
     case 'barrel': return new DebrisFragmentView('#9aa6ad', 0.8, scene);
     case 'magazineFrame': return new MagazineFrameView(scene);
+    case 'cartridgeFrame': return new CartridgeFrameView(scene);
     case 'casing': return new CasingView(scene);
     case 'decouplerPanel': return new DebrisFragmentView('#a9c8d6', 0.8, scene);
   }

@@ -10,12 +10,12 @@ import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { EntityContactParticipant } from '../dynamic-simulation-participant';
 
-// casing.json の縦方向の外形を、表示側の y 軸補正後の長さへ合わせる [m]。
-export const CASING_CAPSULE_HALF_LENGTH = 0.7333333333333334;
-export const CASING_CAPSULE_RADIUS = 0.231;
+// casing.json の y 軸を表示側で2倍した薬莢輪郭に外接するカプセル寸法 [m]。
+export const CASING_CAPSULE_HALF_LENGTH = 0.154;
+export const CASING_CAPSULE_RADIUS = 0.066;
 export const CASING_CYLINDER_HALF_LENGTH = CASING_CAPSULE_HALF_LENGTH;
 export const CASING_CYLINDER_RADIUS = CASING_CAPSULE_RADIUS;
-const CASING_LOCAL_CENTER_Y = -0.013333333333333308;
+const CASING_LOCAL_CENTER_Y = -0.004;
 const CASING_LOCAL_AXIS = v3(0, 1, 0);
 
 // 原点から見た物理形状の外接半径 [m]。形状の中心が原点からずれるぶんを含む。
