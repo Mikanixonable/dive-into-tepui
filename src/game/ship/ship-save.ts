@@ -1,6 +1,6 @@
 // ship v4 の assembly・建造予約・接舷 identity を検証し、実行時状態と相互変換する。
 import { v3 } from '../../math/vec3';
-import type { Quat } from '../../math/quat';
+import { qInvert, qRotate, type Quat } from '../../math/quat';
 import type { SerializedVec3 } from '../../math/vec3';
 import { SIDE_SLOTS, ShipAssembly, type SideSlot } from './ship-assembly';
 import { sideMountTransform, sideSlotFromTransform } from './ship-assembly-transform';
@@ -26,6 +26,7 @@ export interface SerializedShipConnection {
   readonly childId: string;
   readonly kind: 'axial' | 'side' | 'docking' | 'construction';
   readonly sideSlot?: SideSlot;
+  readonly sideReversed?: boolean;
   readonly position: SerializedVec3;
   readonly rotation: Quat;
 }
@@ -110,6 +111,7 @@ export function serializeShipAssembly(assembly: ShipAssembly): SerializedShipAss
       childId: connection.childId,
       kind: connection.kind,
       ...(connection.sideSlot === undefined ? {} : { sideSlot: connection.sideSlot }),
+      ...(connection.sideReversed ? { sideReversed: true } : {}),
       position: { ...connection.childTransform.position },
       rotation: { ...connection.childTransform.rotation },
     })),
@@ -138,6 +140,7 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
       || typeof connection.parentId !== 'string' || typeof connection.childId !== 'string'
       || !validConnectionKind(connection.kind)
       || (connection.sideSlot !== undefined && !validSideSlot(connection.sideSlot))
+      || (connection.sideReversed !== undefined && typeof connection.sideReversed !== 'boolean')
       || connectionIds.has(connection.id) || incoming.has(connection.childId)
       || connection.parentId === connection.childId
       || !modules.has(connection.parentId) || !modules.has(connection.childId)
@@ -173,17 +176,33 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
     if (connection.kind === 'side') {
       const parentDefinition = assembly.definition(connection.parentId);
       const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
-      sideSlot = sideSlot ?? sideSlotFromTransform(childTransform) ?? undefined;
-      if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
-        childTransform = sideMountTransform(parentDefinition, childDefinition, sideSlot);
+      if (connection.sideReversed) {
+        if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
+          const forward = sideMountTransform(childDefinition, parentDefinition, sideSlot);
+          const invRot = qInvert(forward.rotation);
+          childTransform = {
+            position: qRotate(invRot, v3(-forward.position.x, -forward.position.y, -forward.position.z)),
+            rotation: invRot,
+          };
+        }
+      } else {
+        sideSlot = sideSlot ?? sideSlotFromTransform(childTransform) ?? undefined;
+        if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
+          childTransform = sideMountTransform(parentDefinition, childDefinition, sideSlot);
+        }
       }
     } else if (connection.kind === 'axial' && childTransform.position.z > 0) {
-      childTransform = {
-        position: v3(childTransform.position.x, childTransform.position.y, -childTransform.position.z),
-        rotation: childTransform.rotation,
-      };
+      const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
+      if (childDefinition?.kind !== 'weapon') {
+        childTransform = {
+          position: v3(childTransform.position.x, childTransform.position.y, -childTransform.position.z),
+          rotation: childTransform.rotation,
+        };
+      }
     }
-    assembly.addModule(module, connection.parentId, childTransform, connection.kind, connection.id, sideSlot);
+    assembly.addModule(
+      module, connection.parentId, childTransform, connection.kind, connection.id, sideSlot, connection.sideReversed,
+    );
   }
   assembly.assertValid();
   return assembly;

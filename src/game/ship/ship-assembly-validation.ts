@@ -1,3 +1,5 @@
+import { qInvert, qRotate } from '../../math/quat';
+import { v3 } from '../../math/vec3';
 import type { ShipModuleCatalog } from './ship-module-catalog';
 import {
   finiteQuaternion, finiteVector, isIdentityRotation, isSideChild, isSideParent, sameTransform,
@@ -44,22 +46,49 @@ export function validateShipAssembly(
       const childDef = catalog.get(child.instance.definitionId);
       const expected = (parentDef?.length ?? 0) / 2 + (childDef?.length ?? 0) / 2;
       const p = connection.childTransform.position;
+      const rot = connection.childTransform.rotation;
+      const isDockParent = parentDef?.kind === 'dock' || parentDef?.kind === 'docking_port';
+      const isDockTurn = isDockParent
+        && Math.abs(rot.x) < 1e-9 && Math.abs(Math.abs(rot.y) - 1) < 1e-9
+        && Math.abs(rot.z) < 1e-9 && Math.abs(rot.w) < 1e-9;
+      const validRotation = isIdentityRotation(rot) || isDockTurn;
       if (Math.abs(p.x) > 1e-9 || Math.abs(p.y) > 1e-9 || Math.abs(Math.abs(p.z) - expected) > 1e-9
-        || !isIdentityRotation(connection.childTransform.rotation)) errors.push(`invalid axial snap: ${connection.id}`);
+        || !validRotation) errors.push(`invalid axial snap: ${connection.id}`);
     }
     if (connection.kind === 'side' && parent !== undefined && child !== undefined) {
-      if (!isSideParent(parent.instance.kind)) errors.push(`invalid side parent: ${connection.id}`);
-      if (!isSideChild(child.instance.kind)) errors.push(`invalid side child: ${connection.id}`);
+      const slotOwnerId = connection.sideReversed ? connection.childId : connection.parentId;
+      if (connection.sideReversed) {
+        if (!isSideChild(parent.instance.kind)) errors.push(`invalid side parent: ${connection.id}`);
+        if (!isSideParent(child.instance.kind)) errors.push(`invalid side child: ${connection.id}`);
+      } else {
+        if (!isSideParent(parent.instance.kind)) errors.push(`invalid side parent: ${connection.id}`);
+        if (!isSideChild(child.instance.kind)) errors.push(`invalid side child: ${connection.id}`);
+      }
       if (connection.sideSlot === undefined) errors.push(`missing side slot: ${connection.id}`);
       else {
-        const expected = sideMountTransform(
-          catalog.require(parent.instance.definitionId),
-          catalog.require(child.instance.definitionId),
-          connection.sideSlot,
-        );
+        const expected = connection.sideReversed
+          ? (() => {
+            const forward = sideMountTransform(
+              catalog.require(child.instance.definitionId),
+              catalog.require(parent.instance.definitionId),
+              connection.sideSlot,
+            );
+            const invRot = qInvert(forward.rotation);
+            return {
+              position: qRotate(invRot, v3(-forward.position.x, -forward.position.y, -forward.position.z)),
+              rotation: invRot,
+            };
+          })()
+          : sideMountTransform(
+            catalog.require(parent.instance.definitionId),
+            catalog.require(child.instance.definitionId),
+            connection.sideSlot,
+          );
         if (!sameTransform(connection.childTransform, expected)) errors.push(`invalid side mount: ${connection.id}`);
         const duplicate = connections.some(other => other !== connection
-          && other.kind === 'side' && other.parentId === connection.parentId && other.sideSlot === connection.sideSlot);
+          && other.kind === 'side'
+          && (other.sideReversed ? other.childId : other.parentId) === slotOwnerId
+          && other.sideSlot === connection.sideSlot);
         if (duplicate) errors.push(`duplicate side slot: ${connection.id}`);
       }
     }

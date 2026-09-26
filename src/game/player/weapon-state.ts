@@ -65,7 +65,7 @@ export class WeaponState {
       finiteNumber(serialized.barrelDeviation),
       nonNegativeNumber(serialized.pendingBarrelJoules),
       nonNegativeNumber(serialized.cooldown),
-      boundedInteger(serialized.muzzleIdx, 0, 1),
+      nonNegativeInteger(serialized.muzzleIdx),
       booleanValue(serialized.wasFiring),
       booleanValue(serialized.wasEmptyClick),
     );

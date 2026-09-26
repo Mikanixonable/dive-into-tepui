@@ -59,7 +59,7 @@ export function register(): void {
     assert.equal(slots[0]?.id, 'axial');
     assert.ok(slots.some(slot => slot.id === 'main-tank:side+y'));
     assert.ok(slots.some(slot => slot.id === 'rcs-tank:side-y'));
-    assert.equal(slots.some(slot => slot.id === 'cockpit:side+x'), false);
+    assert.equal(slots.some(slot => slot.id === 'cockpit:side+y'), false);
     assert.equal(new Set(slots.map(slot => slot.id)).size, slots.length);
   });
 
@@ -80,6 +80,19 @@ export function register(): void {
     assert.equal(placementForSlot(assembly, axial, cockpit).valid, true);
     const solar = SHIP_MODULE_CATALOG.require('solar-panel-standard');
     assert.equal(placementForSlot(assembly, axial, solar).valid, false);
+  });
+
+  test('ship construction: dock axial slot points +Z outward with inverted rotation', () => {
+    const assembly = createBasePreset();
+    const dockSlots = enumerateConstructionSlots(assembly, ['dock-left'], 'dock-left');
+    assert.equal(dockSlots[0]?.id, 'axial');
+    assert.equal(dockSlots[0]?.direction.z, 1);
+
+    const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
+    const placement = placementForSlot(assembly, dockSlots[0], cockpit);
+    assert.equal(placement.valid, true);
+    assert.equal(placement.transform.position.z, (1 + 3) / 2);
+    assert.equal(placement.transform.rotation.y, 1);
   });
 
   test('ship construction: catalog definitions expose presentation metadata', () => {
