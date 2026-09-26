@@ -833,39 +833,35 @@ def build_thruster():
     for zr in (ring_bottom + 0.025, half_len - 0.025):
         add_mesh_obj(f"thrust_ring_flange_{zr:.3f}", make_torus(radius + 0.005, 0.025, zr, major_seg=64, minor_seg=10), mats.hull)
 
-    # 2. タンク端を模した楕円ドーム隔壁。後方へ張り出した凹面がエンジン区画の天井になり、
-    #    実機と同じくトラス・容器・配管はこの腔の内側へ収まる
+    # 2. タンク端を模した楕円ドーム隔壁。結合環の側から後方へ張り出した外面が
+    #    区画を閉じ、外面の子午線リブと赤道補強環が殻を支える
     dome_depth = 1.20
     dome = [(radius * math.cos(i * math.pi / 40.0),
-             ring_bottom - dome_depth * (1.0 - math.sin(i * math.pi / 40.0))) for i in range(21)]
+             ring_bottom - dome_depth * math.sin(i * math.pi / 40.0)) for i in range(21)]
     add_mesh_obj("aft_dome", make_shell_lathe(dome, 0.05, segments=64), mats.mli_white)
     add_mesh_obj("bay_top_rim", make_torus(radius - 0.03, 0.05, ring_bottom - 0.04, major_seg=64, minor_seg=10), mats.hull_dark)
-    add_mesh_obj("aft_dome_rim", make_torus(radius - 0.03, 0.05, ring_bottom - dome_depth + 0.02, major_seg=64, minor_seg=10), mats.hull_dark)
-    # ドーム入口部の内張り断熱。実機区画の内壁に残る MLI の帯
+    # ドーム外面の断熱帯と、殻の形を支える子午線の補強リブ・赤道補強環
     add_mesh_obj("aft_dome_mli", make_lathe([
-        (2.95, -0.74), (2.72, -0.46), (2.66, -0.51), (2.88, -0.78),
+        (2.92, -0.08), (2.70, -0.27), (2.65, -0.32), (2.85, -0.14),
     ], segments=64, closed=True), mats.mli_gold)
-    # ドーム内面の子午線補強リブ。実機タンクの後部ドームと同じく、殻の形を支える
-    # 縦の骨で、影の中でも曲率が読めるようにする
     for k in range(10):
         a = k * math.pi / 5.0
         rib_pts = [Vector((r * math.cos(a), r * math.sin(a), z - 0.03)) for r, z in dome[4:18]]
         add_mesh_obj(f"dome_rib_{k}", make_pipe(rib_pts, radius=0.035, segments=8), mats.truss)
+    add_mesh_obj("dome_equator_ring", make_torus(1.90, 0.04, -0.66, major_seg=64, minor_seg=10), mats.truss)
 
-    # 3. 逆円錐のトラス推力構造: ドーム縁部からエンジンマウント環へ推力を集める(S-IVB 型)
-    truss_top_r, truss_top_z = 2.72, -0.40
-    mount_r, mount_z = 0.58, -0.80
+    # 3. 推力構造: ドーム頂の推力受け(基座)からエンジンマウント環へ荷重を受け渡す
+    mount_r, mount_z = 0.58, -0.95
     add_mesh_obj("engine_mount_ring", make_torus(mount_r, 0.045, mount_z, major_seg=40, minor_seg=10), mats.hull_dark)
-    mid_r = (truss_top_r + mount_r) / 2.0
-    mid_z = (truss_top_z + mount_z) / 2.0
-    add_mesh_obj("thrust_cone_ring", make_torus(mid_r, 0.035, mid_z, major_seg=48, minor_seg=8), mats.truss)
+    add_mesh_obj("thrust_pedestal", make_lathe([
+        (0.60, mount_z + 0.02), (0.60, mount_z + 0.06), (0.72, mount_z + 0.10), (0.74, mount_z + 0.07),
+    ], segments=48, closed=True), mats.hull_dark)
     for k in range(8):
         a = k * math.pi / 4.0
-        top = Vector((truss_top_r * math.cos(a), truss_top_r * math.sin(a), truss_top_z))
-        lower = Vector((mount_r * math.cos(a), mount_r * math.sin(a), mount_z))
-        add_mesh_obj(f"thrust_strut_{k}", make_strut(top, lower, 0.05), mats.truss)
-        add_mesh_obj(f"thrust_strut_fitting_{k}", make_sphere(0.07, center=top, u_seg=12, v_seg=8), mats.clamp)
-    # 対角の張り出し腕。先端は中間環からの支柱と繋がる節点で、ジンバル作動器の上端を受ける
+        inner = Vector((0.62 * math.cos(a), 0.62 * math.sin(a), mount_z + 0.04))
+        outer = Vector((1.15 * math.cos(a), 1.15 * math.sin(a), mount_z + 0.13))
+        add_mesh_obj(f"pedestal_gusset_{k}", make_strut(inner, outer, 0.03, segments=10), mats.truss)
+    # 対角の張り出し腕。先端はドーム面へ立つ支柱の節点で、ジンバル作動器の上端を受ける
     outrigger_r = 0.88
     outrigger_tips = []
     for k in range(4):
@@ -876,30 +872,30 @@ def build_thruster():
         span = outrigger_r - mount_r
         center = direction * (mount_r + span / 2) + Vector((0, 0, mount_z - 0.02))
         add_mesh_obj(f"outrigger_{k}", make_box(span + 0.08, 0.09, 0.10, center=center, rot_euler=(0, 0, a)), mats.hull_dark)
-        mid_node = Vector((mid_r * math.cos(a), mid_r * math.sin(a), mid_z))
-        add_mesh_obj(f"outrigger_strut_{k}", make_strut(mid_node, tip, 0.035), mats.truss)
+        dome_node = Vector((1.35 * math.cos(a), 1.35 * math.sin(a), mount_z + 0.18))
+        add_mesh_obj(f"outrigger_strut_{k}", make_strut(dome_node, tip, 0.035), mats.truss)
         add_mesh_obj(f"outrigger_node_{k}", make_sphere(0.07, center=tip, u_seg=12, v_seg=8), mats.clamp)
 
-    # 4. 加圧ヘリウム容器(COPV): ドーム腔の内側へ鞍座で吊り、環側との荷重経路を見せる
-    for k, (x, y) in enumerate(((-1.62, 0.92), (1.62, 0.92), (-1.62, -0.92), (1.62, -0.92))):
-        center = Vector((x, y, -0.34))
-        add_mesh_obj(f"helium_copv_{k}", make_sphere(0.40, center=center), mats.tank_rcs)
-        band = make_torus(0.405, 0.025, center.z, major_seg=32, minor_seg=8)
+    # 4. 加圧ヘリウム容器(COPV): ドーム外面へ鞍座で吊り、面との荷重経路を見せる
+    for k, (x, y) in enumerate(((-1.55, 1.55), (1.55, 1.55), (-1.55, -1.55), (1.55, -1.55))):
+        center = Vector((x, y, -0.86))
+        add_mesh_obj(f"helium_copv_{k}", make_sphere(0.32, center=center), mats.tank_rcs)
+        band = make_torus(0.325, 0.022, center.z, major_seg=32, minor_seg=8)
         add_mesh_obj(f"helium_copv_band_{k}", transform_bm(band, Matrix.Translation((x, y, 0))), mats.clamp)
         tangent = Vector((-y, x, 0.0)).normalized()
         for side in (-1.0, 1.0):
-            rim = Vector((x * 1.42, y * 1.42, -0.32)) + tangent * (side * 0.22)
-            saddle = center + tangent * (side * 0.22) + Vector((0, 0, 0.24))
-            add_mesh_obj(f"helium_copv_cradle_{k}_{side:+.0f}", make_strut(saddle, rim, 0.05), mats.truss)
-        valve = center + Vector((0, 0, -0.44))
-        valve_body = make_cylinder(0.09, 0.09, 0.10, z_center=valve.z, segments=16)
+            rim = Vector((x * 1.55, y * 1.55, -0.40)) + tangent * (side * 0.18)
+            saddle = center + tangent * (side * 0.18) + Vector((0, 0, 0.20))
+            add_mesh_obj(f"helium_copv_cradle_{k}_{side:+.0f}", make_strut(saddle, rim, 0.045), mats.truss)
+        valve = center + Vector((0, 0, -0.36))
+        valve_body = make_cylinder(0.08, 0.08, 0.09, z_center=valve.z, segments=16)
         add_mesh_obj(f"helium_valve_{k}", transform_bm(valve_body, Matrix.Translation((x, y, 0))), mats.clamp)
-        gas_line = [valve, valve + Vector((-x * 0.18, -y * 0.18, -0.12)),
-                    Vector((0.0, 1.55, -0.30))]
-        add_mesh_obj(f"helium_line_{k}", make_pipe(round_corners(gas_line, 0.12), radius=0.025, segments=10), mats.pipe)
-    manifold = make_cylinder(0.15, 0.15, 0.14, z_center=-0.30, segments=20)
-    add_mesh_obj("helium_manifold", transform_bm(manifold, Matrix.Translation((0, 1.55, 0))), mats.clamp)
-    add_mesh_obj("bay_avionics_box", make_box(0.70, 0.36, 0.22, center=(0.0, 1.90, -0.06)), mats.hull_dark)
+        gas_line = [valve, valve + Vector((-x * 0.15, -y * 0.15, -0.10)),
+                    Vector((0.0, 1.90, -0.72))]
+        add_mesh_obj(f"helium_line_{k}", make_pipe(round_corners(gas_line, 0.10), radius=0.025, segments=10), mats.pipe)
+    manifold = make_cylinder(0.15, 0.15, 0.14, z_center=-0.72, segments=20)
+    add_mesh_obj("helium_manifold", transform_bm(manifold, Matrix.Translation((0, 1.90, 0))), mats.clamp)
+    add_mesh_obj("bay_avionics_box", make_box(0.70, 0.36, 0.22, center=(0.0, 2.30, -0.50)), mats.hull_dark)
 
     # 5. ジンバルの支点。静止側の二股金具が十字軸を挟み、その下は全てジンバルと一緒に振れる
     pivot_z = mount_z - 0.18
@@ -1057,9 +1053,9 @@ def build_thruster():
     for side, name, pump_x in ((-1.0, "lox", otp_x), (1.0, "fuel", ftp_x)):
         bellows_x = side * 0.50
         bellows_top, bellows_bottom = pivot_z + 0.14, pivot_z - 0.04
-        static = [Vector((side * 2.30, 0.10, -0.14)),
-                  Vector((side * 2.10, 0.05, -0.35)),
-                  Vector((side * 1.10, 0.0, -0.68)),
+        static = [Vector((side * 2.60, 0.10, -0.32)),
+                  Vector((side * 2.00, 0.0, -0.64)),
+                  Vector((side * 1.20, 0.0, -0.82)),
                   Vector((bellows_x, 0.0, bellows_top))]
         feed_material = mats.mli_white if name == "lox" else mats.pipe
         add_mesh_obj(f"{name}_feedline", make_pipe(round_corners(static, 0.14, steps=6), radius=0.10, segments=16), feed_material)
@@ -1095,7 +1091,7 @@ def build_thruster():
             src, gg_center + Vector((0.02 if name == "fuel" else -0.02, -0.06, 0.04)),
         ], 0.04), radius=0.022, segments=10), mats.pipe, parent=gimbal)
     add_mesh_obj("helium_ctrl_line", make_pipe(round_corners([
-        Vector((0.0, 1.55, -0.42)), Vector((0.0, 0.90, -0.60)), Vector((0.0, 0.45, pivot_z + 0.02)),
+        Vector((0.0, 1.90, -0.80)), Vector((0.0, 0.90, -0.87)), Vector((0.0, 0.45, pivot_z + 0.02)),
     ], 0.10), radius=0.02, segments=8), mats.pipe)
     add_mesh_obj("helium_valve_lines", make_pipes([
         [Vector((0.0, 0.45, pivot_z - 0.02)), mov_center + Vector((0, 0, 0.10))],
