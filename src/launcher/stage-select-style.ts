@@ -1,16 +1,15 @@
-// ステージ選択画面(#stage-select)の CSS と、タイトル専用書体の読み込み。
+// ステージ選択画面(#stage-select)の CSS。
 import { MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import { injectOnce } from '../hud/inject-style';
 import { injectCommonUiStyle } from '../hud/style/common-ui-style';
+import {
+  injectTitleLogotypeStyle, TITLE_FONT_MONO, TITLE_FONT_SANS,
+} from '../hud/title-logotype';
 import { Z_STAGE_SELECT } from '../theme';
 
 // 声(voice)ごとの書体。Web font が使えない環境でも role ごとのフォールバックを保つ。
-const FONT_SANS = '"Arimo","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
 const FONT_SERIF = '"Cormorant Garamond","Zen Old Mincho","Hiragino Mincho ProN","Yu Mincho",serif';
-const FONT_MONO = '"IBM Plex Mono","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",monospace';
 const FONT_SCRIPT = '"Noto Serif HK","Noto Sans Cuneiform","Source Han Serif HC","Songti TC","Segoe UI Historic",serif';
-// 上の書体の配信元。読み込めなくても各書体の OS フォールバックでレイアウトを保つ。
-const TITLE_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Arimo:wght@400;500;600&family=Cormorant+Garamond:wght@300;400&family=IBM+Plex+Mono:wght@500&family=Noto+Sans+Cuneiform&family=Noto+Serif+HK:wght@700&family=Zen+Kaku+Gothic+Antique:wght@400;500;600&family=Zen+Old+Mincho:wght@400&display=swap';
 
 // TODO: 角丸の段(RADIUS_WINDOW = 22px)に無い値。段へ揃えるか、段として足すかを決める。
 const STAGE_SELECT_WINDOW_RADIUS = '30px';
@@ -21,7 +20,7 @@ const STAGE_SELECT_STYLE = `
   background:
     radial-gradient(circle at 10% 16%, color-mix(in srgb, var(--color-primary) 6%, transparent), transparent 28rem),
     radial-gradient(circle at 88% 58%, color-mix(in srgb, var(--color-signal) 5%, transparent), transparent 32rem), var(--bg);
-  color: var(--text-muted); font-family: ${FONT_SANS}; -webkit-font-smoothing: antialiased;
+  color: var(--text-muted); font-family: ${TITLE_FONT_SANS}; -webkit-font-smoothing: antialiased;
   color-scheme: var(--theme-tone);
 }
 #stage-select .ss-shell {
@@ -55,30 +54,15 @@ const STAGE_SELECT_STYLE = `
 }
 #stage-select .ss-eyebrow {
   display: flex; align-items: center; gap: 10px; margin: 0 0 14px;
-  color: var(--color-primary); font-family: ${FONT_MONO};
+  color: var(--color-primary); font-family: ${TITLE_FONT_MONO};
   font-size: 10px; font-weight: 500; letter-spacing: 0.08em;
 }
 #stage-select .ss-eyebrow::before {
   content: ""; width: 28px; height: 2px; border-radius: 99px; background: var(--color-primary);
 }
-#stage-select .ss-logotype {
-  width: min(100%, 900px); margin: 0; color: var(--text); font-weight: 500;
-  font-size: clamp(48px, 8vw, 104px); letter-spacing: -0.07em; line-height: 0.82;
-  text-transform: none;
+#stage-select .title-logotype {
+  width: min(100%, 900px); font-size: clamp(48px, 8vw, 104px);
 }
-#stage-select .ss-logo-line {
-  position: relative; display: block; width: fit-content; white-space: nowrap;
-}
-#stage-select .ss-logo-line:nth-child(2) { margin-left: 0.42em; }
-#stage-select .ss-logo-line:nth-child(3) { margin-left: 0.84em; color: var(--color-primary-hover); }
-#stage-select .ss-logo-ornament {
-  position: absolute; left: calc(100% + 0.75rem); color: var(--color-signal);
-  font-family: ${FONT_MONO}; font-size: clamp(0.65rem, 1.3vw, 1.05rem);
-  font-weight: 500; letter-spacing: 0.08em; line-height: 1;
-}
-#stage-select .ss-logo-line:nth-child(1) .ss-logo-ornament { top: 0.02em; }
-#stage-select .ss-logo-line:nth-child(2) .ss-logo-ornament { bottom: 0.04em; }
-#stage-select .ss-logo-line:nth-child(3) .ss-logo-ornament { top: 0.02em; }
 #stage-select .ss-sub {
   width: fit-content; margin: 0 0 0 0.12em;
   color: var(--color-primary); font-family: ${FONT_SERIF};
@@ -103,19 +87,19 @@ const STAGE_SELECT_STYLE = `
 }
 #stage-select .ss-script-polynesian { font-family: ${FONT_SERIF}; font-weight: 400; letter-spacing: 0.02em; }
 #stage-select .ss-transliteration {
-  margin: 5px 0 0; color: var(--text-dim); font-family: ${FONT_MONO};
+  margin: 5px 0 0; color: var(--text-dim); font-family: ${TITLE_FONT_MONO};
   font-size: clamp(10px, 1vw, 12px); font-weight: 500; line-height: 1.35; letter-spacing: 0.035em;
 }
 #stage-select .ss-transliteration[hidden] { display: none; }
 #stage-select .ss-flavor-note {
-  flex: 1 1 16em; margin: 0; color: var(--text-muted); font-family: ${FONT_SANS};
+  flex: 1 1 16em; margin: 0; color: var(--text-muted); font-family: ${TITLE_FONT_SANS};
   max-width: 30em; font-size: clamp(11px, 1.15vw, 14px); font-weight: 500;
   line-height: 1.35; letter-spacing: 0.025em;
 }
 #stage-select .ss-status {
   min-width: 190px; padding: 11px 13px; border-radius: var(--radius-panel);
   color: var(--text-muted);
-  font: 10px/1.55 ${FONT_MONO};
+  font: 10px/1.55 ${TITLE_FONT_MONO};
 }
 #stage-select .ss-status b { color: var(--color-signal); font-weight: 500; }
 #stage-select .ss-window {
@@ -148,7 +132,7 @@ const STAGE_SELECT_STYLE = `
   display: inline-flex; align-items: center; justify-content: center; text-align: center;
   border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--text-dim);
-  font-family: ${FONT_SANS}; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
+  font-family: ${TITLE_FONT_SANS}; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
 }
 #stage-select .w-tabs .w-btn::after {
   display: none;
@@ -176,17 +160,17 @@ const STAGE_SELECT_STYLE = `
 }
 #stage-select .ss-stage:not(.locked):hover .ss-stage-label { color: var(--color-primary-hover); }
 #stage-select .ss-stage.locked .ss-stage-label { color: var(--text-faint); }
-#stage-select .ss-stage-key { font-family: ${FONT_MONO}; font-size: 11px; font-weight: 500; color: var(--text-dim); }
+#stage-select .ss-stage-key { font-family: ${TITLE_FONT_MONO}; font-size: 11px; font-weight: 500; color: var(--text-dim); }
 #stage-select .ss-stage-sub { margin-top: 3px; color: var(--text-dim); font-size: 12px; line-height: 1.55; }
 #stage-select .ss-debug {
   flex: 0 0 auto; padding-top: 12px; color: var(--text-faint);
-  font-family: ${FONT_MONO}; font-size: 11px; cursor: pointer;
+  font-family: ${TITLE_FONT_MONO}; font-size: 11px; cursor: pointer;
 }
 #stage-select .ss-settings {
   align-self: flex-end; flex: 0 0 auto; margin-top: 2px;
   padding: var(--space-3) var(--space-4); border: 0;
   border-radius: var(--radius-control); color: var(--text-dim); background: var(--glass-control);
-  font: 12px ${FONT_SANS}; cursor: pointer;
+  font: 12px ${TITLE_FONT_SANS}; cursor: pointer;
 }
 #stage-select .ss-settings:hover { color: var(--text); background: var(--glass-control-hover); }
 #stage-select .hidden { display: none !important; }
@@ -194,7 +178,7 @@ const STAGE_SELECT_STYLE = `
 #stage-select .ss-datetime-fields { display: flex; flex-wrap: wrap; gap: 12px; }
 #stage-select .ss-datetime-field {
   display: flex; flex-direction: column; gap: 4px;
-  color: var(--text-dim); font-family: ${FONT_SANS}; font-size: 11px; letter-spacing: 0.04em;
+  color: var(--text-dim); font-family: ${TITLE_FONT_SANS}; font-size: 11px; letter-spacing: 0.04em;
 }
 #stage-select .ss-datetime-field .w-input { width: 88px; }
 #stage-select .ss-datetime-error { margin: 0; color: var(--color-signal); font-size: 12px; }
@@ -220,14 +204,9 @@ const STAGE_SELECT_STYLE = `
 }
 `;
 
-// 共通 UI とこの画面の CSS、タイトル専用書体を、それぞれ一度だけ document.head へ入れる。
+// 共通 UI・ロゴタイプとこの画面の CSS、タイトル専用書体を、それぞれ一度だけ document.head へ入れる。
 export function injectStageSelectStyle(): void {
   injectCommonUiStyle();
+  injectTitleLogotypeStyle();
   injectOnce('stage-select-style', STAGE_SELECT_STYLE);
-  if (document.getElementById('stage-select-fonts')) return;
-  const link = document.createElement('link');
-  link.id = 'stage-select-fonts';
-  link.rel = 'stylesheet';
-  link.href = TITLE_FONTS_URL;
-  document.head.appendChild(link);
 }
