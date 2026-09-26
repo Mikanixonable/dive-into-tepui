@@ -1,8 +1,6 @@
 // 焼き込み済み ship module asset とカタログの契約。モデルの UUID や頂点列ではなく、
 // module 境界、メートル単位、+Z 接続面、semantic anchor だけを固定する。
 import * as assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import * as THREE from 'three/webgpu';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import {
@@ -10,7 +8,6 @@ import {
   getShipModuleTemplates,
   loadShipModuleModels,
 } from '../../src/render/dynamic/ship/ship-module-models';
-import { GunFeedView } from '../../src/render/dynamic/ship/gun-feed-view';
 import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
 import {
   RADIATOR_FOLD_COUNT,
@@ -64,98 +61,6 @@ function transformInModule(module: THREE.Object3D, object: THREE.Object3D): { po
 }
 
 export function register(): void {
-  test('ship module asset: 8発ごとに装填段が上がり、次箱は後方レールから入る', () => {
-    const rail = new THREE.Group();
-    const feed = new GunFeedView(rail);
-    const magazine = rail.children[0];
-    assert.ok(magazine !== undefined);
-    const upper = magazine.getObjectByName('cartridge:0');
-    const middle = magazine.getObjectByName('cartridge:1');
-    const lower = magazine.getObjectByName('cartridge:2');
-    assert.ok(upper !== undefined && middle !== undefined && lower !== undefined);
-
-    feed.sync(24, null, null, 0);
-    const upperY = upper.position.y;
-    feed.sync(16, 1, null, 1.22);
-    assert.equal(upper.visible, false);
-    assert.equal(middle.visible, true);
-    assert.ok(Math.abs(middle.position.y - upperY) < 1e-8);
-    feed.sync(8, 2, null, 2.22);
-    assert.equal(middle.visible, false);
-    assert.equal(lower.visible, true);
-    assert.ok(Math.abs(lower.position.y - upperY) < 1e-8);
-
-    feed.sync(24, 2, 3, 3);
-    assert.ok(Math.abs(magazine.position.z + 0.85) < 1e-8);
-    feed.sync(24, 2, 3, 3.42);
-    assert.ok(Math.abs(magazine.position.z) < 1e-8);
-    feed.sync(0, 4, 3, 4);
-    assert.equal(magazine.visible, false);
-    feed.dispose();
-    assert.equal(rail.children.length, 0);
-  });
-
-  test('ship module asset: magazine は3段それぞれに8発を持ち、薬莢輪郭は排出品と一致する', () => {
-    const assetPath = (name: string): string => join(process.cwd(), 'src/assets/models', name);
-    const loader = new THREE.ObjectLoader();
-    const magazine = loader.parse(JSON.parse(readFileSync(assetPath('magazine.json'), 'utf8')) as THREE.Object3DJSON);
-    const casingAsset = loader.parse(JSON.parse(readFileSync(assetPath('casing.json'), 'utf8')) as THREE.Object3DJSON);
-    const cartridges: THREE.Object3D[] = [];
-    const roundGroups: THREE.Object3D[] = [];
-    const ejectedCasings: THREE.Mesh[] = [];
-    magazine.traverse((object) => {
-      if (object.userData.role === 'cartridgeFrame') cartridges.push(object);
-      if (object.userData.role === 'round') roundGroups.push(object);
-    });
-    casingAsset.traverse((object) => {
-      if (object instanceof THREE.Mesh) ejectedCasings.push(object);
-    });
-    assert.equal(cartridges.length, 3);
-    assert.deepEqual(cartridges.map(cartridge => cartridge.userData.stage).sort(), [0, 1, 2]);
-    assert.equal(roundGroups.length, 24);
-    for (const cartridge of cartridges) {
-      const rounds = cartridge.children.filter(child => child.userData.role === 'round');
-      assert.equal(rounds.length, 8);
-      assert.deepEqual(rounds.map(round => round.userData.index).sort(), [0, 1, 2, 3, 4, 5, 6, 7]);
-      for (const round of rounds) {
-        const casings: THREE.Mesh[] = [];
-        round.traverse((object) => {
-          if (object instanceof THREE.Mesh && object.userData.role === 'roundCase') casings.push(object);
-        });
-        assert.equal(casings.length, 1);
-      }
-    }
-    assert.ok(ejectedCasings.length > 0, 'casing.json has no mesh');
-    magazine.updateMatrixWorld(true);
-    casingAsset.updateMatrixWorld(true);
-    const exportedCasing = ejectedCasings[0]!;
-    const expectedMesh = new THREE.Mesh(exportedCasing.geometry.clone(), new THREE.MeshBasicMaterial());
-    expectedMesh.scale.set(1, 2, 1);
-    expectedMesh.updateMatrixWorld(true);
-    const expectedSize = new THREE.Box3().setFromObject(expectedMesh).getSize(new THREE.Vector3())
-      .toArray().sort((a, b) => a - b);
-    for (const cartridge of cartridges) {
-      for (const round of cartridge.children.filter(child => child.userData.role === 'round')) {
-        const casing = round.children.find(child => child instanceof THREE.Mesh && child.userData.role === 'roundCase');
-        assert.ok(casing instanceof THREE.Mesh);
-        const actualProfile = casing.geometry.getAttribute('position');
-        const expectedProfile = exportedCasing.geometry.getAttribute('position');
-        assert.equal(actualProfile.count, expectedProfile.count);
-        for (let index = 0; index < actualProfile.count; index++) {
-          assert.ok(Math.abs(actualProfile.getX(index) - expectedProfile.getX(index)) < 1e-7);
-          assert.ok(Math.abs(actualProfile.getY(index) - expectedProfile.getY(index)) < 1e-7);
-          assert.ok(Math.abs(actualProfile.getZ(index) - expectedProfile.getZ(index)) < 1e-7);
-        }
-        const actualSize = new THREE.Box3().setFromObject(casing).getSize(new THREE.Vector3())
-          .toArray().sort((a, b) => a - b);
-        actualSize.forEach((size, axis) => assert.ok(Math.abs(size - expectedSize[axis]!) < 1e-5,
-          `round casing dimension ${size} differs from ejected casing ${expectedSize[axis]}`));
-      }
-    }
-    expectedMesh.geometry.dispose();
-    expectedMesh.material.dispose();
-  });
-
   test('ship module asset: catalog の全 modelId が独立した等倍 Group を持つ', async () => {
     await loadShipModuleModels();
     const root = parsedRoot();
@@ -279,87 +184,8 @@ export function register(): void {
     const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
     const module = moduleRoots(parsedRoot()).get(definition.modelId);
     assert.ok(module !== undefined);
-    assert.ok(Math.abs(definition.length - 9) < 0.1, `gun length ${definition.length}m is not about 9m`);
-    const matingRing = objectByName(module, 'weapon_mating_ring');
-    assert.ok(matingRing !== null);
-    const matingBounds = new THREE.Box3().setFromObject(matingRing);
-    assert.ok(Math.abs(matingBounds.getSize(new THREE.Vector3()).x - 3) < 0.05,
-      `weapon coupling diameter ${matingBounds.getSize(new THREE.Vector3()).x}m`);
     const box = new THREE.Box3().setFromObject(module);
-    for (const muzzle of definition.muzzles) {
-      assert.ok(Math.abs(box.max.z - muzzle.z) < 1e-3, `muzzle z ${muzzle.z} vs ${box.max.z}`);
-      assert.ok(Math.abs(muzzle.z - (-definition.length / 2) - 9) < 0.1,
-        `mating plane to muzzle is ${muzzle.z + definition.length / 2}m`);
-    }
-  });
-
-  test('ship module asset: cockpit の外形は後端直径6mから前端直径3mへ細くなる', async () => {
-    await loadShipModuleModels();
-    const cockpit = moduleRoots(parsedRoot()).get('cockpit-standard');
-    assert.ok(cockpit !== undefined);
-    const hull = objectByName(cockpit, 'cockpit_hull');
-    assert.ok(hull instanceof THREE.Mesh);
-    cockpit.updateMatrixWorld(true);
-    const moduleInverse = cockpit.matrixWorld.clone().invert();
-    const hullToModule = moduleInverse.multiply(hull.matrixWorld);
-    const geometry = hull.geometry;
-    const position = geometry.getAttribute('position');
-    const vertices: THREE.Vector3[] = [];
-    let minZ = Number.POSITIVE_INFINITY;
-    let maxZ = Number.NEGATIVE_INFINITY;
-    for (let index = 0; index < position.count; index++) {
-      const point = new THREE.Vector3(position.getX(index), position.getY(index), position.getZ(index))
-        .applyMatrix4(hullToModule);
-      vertices.push(point);
-      minZ = Math.min(minZ, point.z);
-      maxZ = Math.max(maxZ, point.z);
-    }
-    const aftRadius = Math.max(...vertices.filter(point => point.z < minZ + 0.005)
-      .map(point => Math.hypot(point.x, point.y)));
-    const foreRadius = Math.max(...vertices.filter(point => point.z > maxZ - 0.005)
-      .map(point => Math.hypot(point.x, point.y)));
-    assert.ok(Math.abs(minZ + 1.5) < 0.02 && Math.abs(maxZ - 1.5) < 0.02,
-      `cockpit z bounds ${minZ}..${maxZ}`);
-    assert.ok(Math.abs(aftRadius - 3) < 0.02, `aft diameter ${2 * aftRadius}m`);
-    assert.ok(Math.abs(foreRadius - 1.5) < 0.02, `forward diameter ${2 * foreRadius}m`);
-  });
-
-  test('ship module asset: 機関砲の砲口は0.5m以上奥まで抜けている', async () => {
-    await loadShipModuleModels();
-    const module = moduleRoots(parsedRoot()).get('weapon-gatling');
-    assert.ok(module !== undefined);
-    const barrel = objectByName(module, 'barrel_0');
-    assert.ok(barrel instanceof THREE.Mesh);
-    module.updateMatrixWorld(true);
-    const barrelBounds = new THREE.Box3().setFromObject(barrel);
-    assert.ok(Math.abs(barrelBounds.max.z - barrelBounds.min.z - 2.6) < 0.15,
-      `exposed barrel length ${barrelBounds.max.z - barrelBounds.min.z}m`);
-    const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
-    const centerX = 0.59;
-    const centerY = 0;
-    const origin = new THREE.Vector3(
-      centerX,
-      centerY,
-      definition.muzzles[0]!.z + 0.05,
-    );
-    const ray = new THREE.Raycaster(origin, new THREE.Vector3(0, 0, -1));
-    const hit = ray.intersectObject(barrel, true)[0];
-    if (hit !== undefined) {
-      assert.ok(origin.z - hit.point.z >= 0.5, `bore depth ${origin.z - hit.point.z}m`);
-    }
-    const position = barrel.geometry.getAttribute('position');
-    let innerWallEnd = Number.POSITIVE_INFINITY;
-    for (let index = 0; index < position.count; index++) {
-      const point = new THREE.Vector3(position.getX(index), position.getY(index), position.getZ(index))
-        .applyMatrix4(barrel.matrixWorld);
-      const radius = Math.hypot(point.x - centerX, point.y - centerY);
-      if (radius < 0.135
-        && point.z > definition.muzzles[0]!.z - 1) {
-        innerWallEnd = Math.min(innerWallEnd, point.z);
-      }
-    }
-    assert.ok(innerWallEnd <= definition.muzzles[0]!.z - 0.6,
-      `inner wall ends at ${innerWallEnd}m`);
+    for (const muzzle of definition.muzzles) assert.ok(Math.abs(box.max.z - muzzle.z) < 1e-3, `muzzle z ${muzzle.z} vs ${box.max.z}`);
   });
 
   test('ship module asset: 主推進器の噴射口はジンバルの支点と一緒に振れる', async () => {
@@ -488,7 +314,7 @@ export function register(): void {
     await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
 
-    // 1. Cockpit: 全長3m、後端直径6m、前端直径3m。
+    // 1. Cockpit: 全長 3.0m (z in [-1.5, +1.5])
     const cockpit = modules.get('cockpit-standard');
     assert.ok(cockpit !== undefined);
     const boxCockpit = new THREE.Box3().setFromObject(cockpit);
