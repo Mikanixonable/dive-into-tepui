@@ -29,18 +29,19 @@ type ScreenSpaceDiffuse = (typeof SCREEN_SPACE_DIFFUSE)[keyof typeof SCREEN_SPAC
 export const SCREEN_SPACE_QUALITY = { low: 0, medium: 1, high: 2 } as const;
 type ScreenSpaceQuality = (typeof SCREEN_SPACE_QUALITY)[keyof typeof SCREEN_SPACE_QUALITY];
 
-// 精細さの段ごとの走査。scale は走査の解像度の描画バッファに対する比、sliceCount はスライスの数、
-// stepCount は片側の歩数。
-interface ScanTier {
+// 走査の段。scale は走査の解像度の描画バッファに対する比、sliceCount はスライスの数、stepCount は片側の歩数、
+// denoiseRadius は均しの半径 [走査の画素](0 は均さない)。
+export interface ScanTier {
   readonly scale: number;
   readonly sliceCount: number;
   readonly stepCount: number;
+  readonly denoiseRadius: number;
 }
-// 段の値は、解像度・スライス数・歩数の候補の組の費用と画質の指標を実測して選んだ。
+// 精細さの段ごとの走査。値は、解像度・スライス数・歩数の候補の組の費用と画質の指標を実測して選んだ。
 const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
-  [SCREEN_SPACE_QUALITY.low]: { scale: 0.25, sliceCount: 2, stepCount: 3 },
-  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.25, sliceCount: 3, stepCount: 4 },
-  [SCREEN_SPACE_QUALITY.high]: { scale: 0.25, sliceCount: 4, stepCount: 6 },
+  [SCREEN_SPACE_QUALITY.low]: { scale: 0.25, sliceCount: 2, stepCount: 3, denoiseRadius: 2 },
+  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.25, sliceCount: 3, stepCount: 4, denoiseRadius: 2 },
+  [SCREEN_SPACE_QUALITY.high]: { scale: 0.25, sliceCount: 4, stepCount: 6, denoiseRadius: 2 },
 };
 
 // 描画命令 1 本: material を全画面に描いて target へ書く。
@@ -77,8 +78,13 @@ export class ScreenSpacePass {
   // QuadMesh は固定直交カメラで描かれるため、実カメラの射影行列とその逆は毎フレーム自前で書き込む。
   private readonly projection: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly projectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
+  // 走査と均しの段。
+  private tier: ScanTier;
   private readonly sliceCount = uniform(1, 'int');
   private readonly stepCount = uniform(1, 'int');
+  private readonly denoiseRadius = uniform(0, 'int');
+  // 走査が読むブルーノイズのずれ [タイルの幅]。0 以外の値は、同じ推定を独立な標本で繰り返すためのもの。
+  private readonly seed = uniform(0);
   // 描画バッファと走査の解像度 [px]。解像度の違う段どうしで、対応する画素を引くのに使う。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly scanSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
@@ -100,8 +106,9 @@ export class ScreenSpacePass {
   public constructor(
     private readonly renderer: WebGPURenderer, gbuffer: GBufferPass, sun: SunSource, planetLight: PlanetLightSource,
     ambient: AmbientSource, private readonly output: DiffuseCorrection, private readonly gpu: GpuTimings,
-    private mode: ScreenSpaceDiffuse, private quality: ScreenSpaceQuality,
+    private mode: ScreenSpaceDiffuse, quality: ScreenSpaceQuality,
   ) {
+    this.tier = SCAN_TIERS[quality];
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
     this.reconstruction = new CorrectionReconstruction(
       gbuffer, this.projection, this.projectionInverse, this.fullSize, this.scanSize);
@@ -125,9 +132,19 @@ export class ScreenSpacePass {
     this.mode = mode;
   }
 
-  // 次の render から精細さ quality の解像度と標本数で走査する。
+  // 次の render から精細さ quality の段で走査して均す。
   public setQuality(quality: ScreenSpaceQuality): void {
-    this.quality = quality;
+    this.tier = SCAN_TIERS[quality];
+  }
+
+  // 次の render から段 tier で走査して均す。次に setQuality を呼ぶまで保つ。
+  public setTier(tier: ScanTier): void {
+    this.tier = tier;
+  }
+
+  // 次の render から、走査が読むブルーノイズを seed [タイルの幅] だけずらす。
+  public setSeed(seed: number): void {
+    this.seed.value = seed;
   }
 
   // 1 フレームぶんを描く。G バッファと同じ寸法 width × height で、影パスの後・ライティングパスの前に呼ぶ。
@@ -181,7 +198,8 @@ export class ScreenSpacePass {
     const scan = stageMaterial();
     // 丸めのずれのタイルのずれ 27/64 は、回転(0)・歩みのずれ(½)と画素ごとに相関しないものを実測で選んだ。
     const noise = vec3(
-      this.blueNoise.atScreenPixel(), this.blueNoise.atScreenPixel(0.5), this.blueNoise.atScreenPixel(27 / 64));
+      this.blueNoise.atScreenPixel(this.seed), this.blueNoise.atScreenPixel(this.seed.add(0.5)),
+      this.blueNoise.atScreenPixel(this.seed.add(27 / 64)));
     const planets: readonly PlanetIllumination[] = Array.from({ length: MAX_PLANET_LIGHT_SLOTS }, (_, slot) => ({
       cap: planetLight.capAt(this.sample, slot), irradiance: planetLight.diffuseIrradianceAtSlot(this.sample, slot),
     }));
@@ -197,15 +215,16 @@ export class ScreenSpacePass {
   // 走査の結果を描画バッファの解像度へ復元する、均し → 拡大の描画命令を組む。均しは走査の解像度、拡大は描画
   // バッファの解像度の受け手で、補正を受けるかを測り直す。
   private createReconstructStages(gbuffer: GBufferPass): readonly Stage[] {
+    // 均しの半径は段の値で、0 なら raw をそのまま写す。
     const denoise = stageMaterial();
     denoise.mrtNode = mrt({ denoisedDiffuseCorrection: this.whereResolved(gbuffer, this.gbufferUV,
-      () => this.reconstruction.denoised(this.output.rawTexture)) });
+      () => this.reconstruction.denoised(this.output.rawTexture, this.denoiseRadius)) });
     const upsample = stageMaterial();
     upsample.mrtNode = mrt({ diffuseCorrection: this.whereResolved(gbuffer, screenUV,
       () => this.reconstruction.upsampled(this.denoisedTarget.texture)) });
     return [
-      { material: denoise, target: this.denoisedTarget, gpuPass: GPU_PASS.nearbyDiffuseReconstruct },
-      { material: upsample, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseReconstruct },
+      { material: denoise, target: this.denoisedTarget, gpuPass: GPU_PASS.nearbyDiffuseDenoise },
+      { material: upsample, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseUpsample },
     ];
   }
 
@@ -246,11 +265,12 @@ export class ScreenSpacePass {
     return resolvesNearby(depth, projectedRadius(position, this.projection, this.scanSize));
   }
 
-  // 描画先と標本数を精細さの段へ合わせ、深度から位置を復元する行列を書き込む。
+  // 描画先と標本数・均しの半径を段へ合わせ、深度から位置を復元する行列を書き込む。
   private prepare(camera: THREE.Camera, width: number, height: number): void {
-    const tier = SCAN_TIERS[this.quality];
+    const tier = this.tier;
     this.sliceCount.value = tier.sliceCount;
     this.stepCount.value = tier.stepCount;
+    this.denoiseRadius.value = tier.denoiseRadius;
     const scanWidth = Math.max(1, Math.ceil(width * tier.scale));
     const scanHeight = Math.max(1, Math.ceil(height * tier.scale));
     // 描画先の寸法は、変わったときだけ確保し直す。

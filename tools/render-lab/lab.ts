@@ -1,8 +1,10 @@
 // 描画テスト環境の 1 ビュー。ケースを組み、ゲーム本体と同じ RenderPipeline でキャンバスへ描く。
-// 絵の撮影(PNG)と、CPU / GPU それぞれの所要時間の計測もここが担う。
+// 絵の撮影(PNG)と中間ターゲットの読み戻し、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
-import { WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { getViewPosition, ivec2, screenCoordinate, screenUV, select, textureLoad, uniform, vec2, vec4 } from 'three/tsl';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
+import { projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
   ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
 } from '../../src/game/protein/protein-motion-metrics';
@@ -29,6 +31,19 @@ import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/g
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
+import type { ScanTier } from '../../src/render/pipeline/screen-space/screen-space-pass';
+import type { Mat4Uniform } from '../../src/render/tsl-types';
+
+// 読み戻せる浮動小数の中間ターゲット。'projected-radius' は受け手の近傍の半径が写る描画バッファの画素数で、面の無い
+// 画素は 0。
+export type FloatTargetName = 'raw-correction' | 'denoised-correction' | 'correction' | 'diffuse' | 'projected-radius';
+
+// 読み戻した画像。rgba は画素ごとに 4 つの値で、行は上から。
+export interface FloatImage {
+  readonly width: number;
+  readonly height: number;
+  readonly rgba: Float32Array;
+}
 
 // 1 ケースの計測結果。所要時間は [ms] の分布で、gpuPassMs はパスのラベルごと。
 export interface LabMeasurement {
@@ -102,6 +117,15 @@ export class LabView {
   // 起動時の描画品質設定。撮影はこれへ差分を重ねる。
   private readonly startupGraphics: GraphicsSettingsData;
 
+  // 受け手の近傍の半径が写る画素数を描く先と、その描画命令。深度から位置を戻す実カメラの行列は描くたびに書き込む。
+  private readonly radiusTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
+    type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  });
+  private readonly radiusQuad = new QuadMesh();
+  private readonly radiusProjection: Mat4Uniform = uniform(new THREE.Matrix4());
+  private readonly radiusProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
+
   // graphics は描く描画品質設定の器。
   private constructor(
     private readonly renderer: WebGPURenderer,
@@ -116,6 +140,15 @@ export class LabView {
     this.sun.addTo(this.scene);
     this.startupGraphics = graphics.current;
     graphics.subscribe((next) => this.rebuildForGraphics(next));
+    // 近傍の半径は、近傍拡散補正の走査と同じ式で、描画バッファの画素で測る。
+    const radius = new THREE.MeshBasicNodeMaterial({
+      depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
+    });
+    const depth = textureLoad(pipeline.gbuffer.depthTexture, ivec2(screenCoordinate.xy)).r;
+    const position = getViewPosition(screenUV, depth, this.radiusProjectionInverse);
+    const pixels = projectedRadius(position, this.radiusProjection, vec2(VIEW_WIDTH, VIEW_HEIGHT));
+    radius.colorNode = vec4(select(depth.greaterThan(0), pixels, 0), 0, 0, 1);
+    this.radiusQuad.material = radius;
   }
 
   // graphics は描く描画品質設定の器。この時点の値を起動時の設定として控え、以後はその変更を受けて
@@ -352,6 +385,86 @@ export class LabView {
     };
   }
 
+  // いまのケース・観察の向き・描画設定のまま、近傍拡散補正の走査の段 tiers を rounds 巡(奇数巡目は逆順)交互に
+  // 測る。返り値は段ごとの、GPU の行の名前から p50 [ms] の巡の中央値への表で、GPU の計測に対応していなければ値は
+  // null。段は最後に測ったものが残る。
+  public async measureTiers(
+    tiers: readonly ScanTier[], rounds: number,
+  ): Promise<readonly Readonly<Record<string, number | null>>[]> {
+    // 段ごと・行ごとの、巡ごとの p50。
+    const samples = tiers.map(() => GPU_PASS_LABELS.map(() => [] as number[]));
+    let supported = true;
+    // 巡ごとに順を入れ替えて、熱によるずれを段の差と取り違えないようにする。
+    for (let round = 0; round < rounds; round++) {
+      const order = round % 2 === 0 ? [...tiers.keys()] : [...tiers.keys()].reverse();
+      for (const index of order) {
+        this.pipeline.screenSpace.setTier(tiers[index]!);
+        const result = await this.measureCurrent();
+        supported &&= result.gpuSupported;
+        for (const [row, label] of GPU_PASS_LABELS.entries()) samples[index]![row]!.push(result.gpuPassMs[label]!.p50);
+      }
+    }
+    return samples.map((rows) => Object.fromEntries(
+      GPU_PASS_LABELS.map((label, row) => [label, supported ? distributionOf(rows[row]!).p50 : null]),
+    ));
+  }
+
+  // 次に描くフレームから、近傍拡散補正を段 tier で走査して均す。描画品質設定が変わると精細さの段へ戻る。
+  public setScanTier(tier: ScanTier): void {
+    this.pipeline.screenSpace.setTier(tier);
+    this.render();
+  }
+
+  // 次に描くフレームから、近傍拡散補正の走査が読むブルーノイズを seed [タイルの幅] だけずらす。
+  public setScanSeed(seed: number): void {
+    this.pipeline.screenSpace.setSeed(seed);
+    this.render();
+  }
+
+  // 直前に描いたフレームの露出係数。
+  public get exposureFactor(): number { return this.pipeline.exposure.factorValue; }
+
+  // 直前に描いたフレームの中間ターゲット name を読み戻す。
+  public async readFloat(name: FloatTargetName): Promise<FloatImage> {
+    const texture = name === 'projected-radius' ? this.drawProjectedRadius() : this.floatTextureOf(name);
+    const target = texture.renderTarget;
+    if (target === null) throw new Error(`render-lab: "${name}" is not a render target`);
+    const { width, height } = target;
+    const data = await this.renderer.readRenderTargetPixelsAsync(
+      target, 0, 0, width, height, target.textures.indexOf(texture),
+    );
+    // 行の終わりは 256 byte の境まで詰め物が入る。最後の行には入らない。
+    const rowStride = height > 1 ? (data.length - width * 4) / (height - 1) : width * 4;
+    const toFloat = data instanceof Uint16Array ? THREE.DataUtils.fromHalfFloat : (v: number) => v;
+    const rgba = new Float32Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let i = 0; i < width * 4; i++) rgba[y * width * 4 + i] = toFloat(data[y * rowStride + i]!);
+    }
+    return { width, height, rgba };
+  }
+
+  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。
+  private floatTextureOf(name: Exclude<FloatTargetName, 'projected-radius'>): THREE.Texture {
+    switch (name) {
+      case 'raw-correction': return this.pipeline.diffuseCorrection.rawTexture;
+      case 'denoised-correction': return this.pipeline.screenSpace.denoisedCorrectionTexture;
+      case 'correction': return this.pipeline.diffuseCorrection.texture;
+      case 'diffuse': return this.pipeline.lighting.diffuseTexture;
+    }
+  }
+
+  // 直前に描いたフレームの G バッファの深度から、受け手の近傍の半径が写る画素数を描き、そのテクスチャを返す。
+  private drawProjectedRadius(): THREE.Texture {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    const camera = this.current.camera;
+    this.radiusProjection.value.copy(camera.projectionMatrix);
+    this.radiusProjectionInverse.value.copy(camera.projectionMatrixInverse);
+    this.renderer.setRenderTarget(this.radiusTarget);
+    this.radiusQuad.render(this.renderer);
+    this.renderer.setRenderTarget(null);
+    return this.radiusTarget.texture;
+  }
+
   // いまのケースの撮影。ケースが宣言していなければ、ケース名で既定の向きを 1 枚撮る。
   private get shots(): Readonly<Record<string, LabShot>> {
     if (this.current === null || this.currentName === null) return {};
@@ -387,18 +500,30 @@ export class LabView {
   public async shoot(
     name: CaseName, graphics: Partial<GraphicsSettingsData> = {},
   ): Promise<Readonly<Record<string, string>>> {
-    // **ケースは起動時の値へ graphics を重ねた設定で組んで待つ** — 描画設定が有効な間にしか読み込まない
-    // 部品(雲など)があり、前の撮影の設定のまま待つと、読み込み前の姿を撮る。
-    this.setGraphics({ ...this.startupGraphics, ...graphics });
-    this.show(name);
-    this.current?.updateProteinMotion?.(1);
-    await this.waitUntilReady();
+    await this.showReady(name, graphics);
     const pngs: Record<string, string> = {};
     for (const shotName of this.shotNames) {
       this.applyShot(shotName, graphics);
       pngs[shotName] = await this.captureSettled(shotName);
     }
     return pngs;
+  }
+
+  // ケース name を表示して部品と地球が揃うのを待ち、撮影 shotName を applyShot で当てる。graphics は shoot と同じ。
+  public async showShot(
+    name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
+  ): Promise<void> {
+    await this.showReady(name, graphics);
+    this.applyShot(shotName, graphics);
+  }
+
+  // ケース name を表示し、部品と地球が揃うまで待つ。**ケースは起動時の値へ graphics を重ねた設定で組んで待つ** —
+  // 描画設定が有効な間にしか読み込まない部品(雲など)があり、前の撮影の設定のまま待つと、読み込み前の姿を撮る。
+  private async showReady(name: CaseName, graphics: Partial<GraphicsSettingsData>): Promise<void> {
+    this.setGraphics({ ...this.startupGraphics, ...graphics });
+    this.show(name);
+    this.current?.updateProteinMotion?.(1);
+    await this.waitUntilReady();
   }
 
   // 連続する 2 回の capture が一致するまで撮り直し、一致した絵を返す。MAX_SETTLE_CAPTURES 回撮っても

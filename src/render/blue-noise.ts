@@ -8,7 +8,7 @@
 //
 // **画素座標だけから引くので時間で動かない。** 動くノイズは、静止した絵ではちらつきとして目に付く。
 import * as THREE from 'three/webgpu';
-import { floor, ivec2, mod, screenCoordinate, textureLoad } from 'three/tsl';
+import { float, floor, ivec2, mod, screenCoordinate, textureLoad } from 'three/tsl';
 import type { FloatNode } from './tsl-types';
 import { BLUE_NOISE_TILE_BASE64, BLUE_NOISE_TILE_SIZE } from './blue-noise-tile.generated';
 
@@ -28,8 +28,8 @@ export class BlueNoise {
   // 画面の向きや解像度がどうであれ、1画素が必ずタイルの1テクセルに対応する。tileShift はタイルの幅に
   // 対する割合で、読む位置を斜めにずらす。同じ画素にもう 1 つ別の値が要るときは 0.5 にする。
   // 3 つ目以降の tileShift は、同じ画素で使うほかの tileShift との差が、どれもタイルの自己相関の小さい所に来る値にする。
-  public atScreenPixel(tileShift = 0): FloatNode {
-    const texel = mod(floor(screenCoordinate.xy).add(tileShift * BLUE_NOISE_TILE_SIZE), BLUE_NOISE_TILE_SIZE);
+  public atScreenPixel(tileShift: FloatNode = float(0)): FloatNode {
+    const texel = mod(floor(screenCoordinate.xy).add(tileShift.mul(BLUE_NOISE_TILE_SIZE)), BLUE_NOISE_TILE_SIZE);
     return textureLoad(this.tile, ivec2(texel)).r;
   }
 

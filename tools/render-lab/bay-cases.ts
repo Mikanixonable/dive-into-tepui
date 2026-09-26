@@ -7,12 +7,12 @@ import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CasingPool } from '../../src/render/dynamic/dynamic-entity/casing-view';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
 import { directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
-import { EARTH_AWAY, labCamera, OBLIQUE_SUN_DIR, type CaseBuilder, type LabCase } from './lab-case';
+import {
+  EARTH_AWAY, labCamera, OBLIQUE_SUN_DIR, slab, standard, white, WHITE, WHITE_ROUGHNESS,
+  type CaseBuilder, type LabCase,
+} from './lab-case';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
-// 白い面の線形の灰色の値と粗さ。
-const WHITE = 0.8;
-const WHITE_ROUGHNESS = 0.7;
 // 日の当たる端の壁(+X。ケースの恒星は −X から差す)の内面の色(線形 RGB)。
 const ORANGE = new THREE.Vector3(0.8, 0.3, 0.05);
 
@@ -123,32 +123,6 @@ function planetLightOnly(
   exposureCompensation: GraphicsSettingsData['exposureCompensation'],
 ): Partial<GraphicsSettingsData> {
   return { ambient: false, planetLightModel: 0, exposureCompensation, lens: false };
-}
-
-// 線形 RGB color の標準マテリアル。
-function standard(color: THREE.Vector3, roughness: number, metalness: number): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setRGB(color.x, color.y, color.z, THREE.LinearSRGBColorSpace),
-    roughness,
-    metalness,
-  });
-}
-
-// 白い面のマテリアル。
-function white(): THREE.MeshStandardMaterial {
-  return standard(new THREE.Vector3(WHITE, WHITE, WHITE), WHITE_ROUGHNESS, 0);
-}
-
-// 描画座標の min から max までを占める箱。ジオメトリとマテリアルは箱が所有する。
-function slab(
-  min: THREE.Vector3, max: THREE.Vector3, material: THREE.Material | THREE.Material[] = white(),
-): THREE.Mesh {
-  const size = new THREE.Vector3().subVectors(max, min);
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
-  mesh.position.addVectors(min, max).multiplyScalar(0.5);
-  mesh.userData.ownsGeometry = true;
-  mesh.userData.ownsMaterial = true;
-  return mesh;
 }
 
 // 寸法 size の箱を、底面の中心が描画座標の base に来るよう置く。
@@ -287,8 +261,11 @@ function bay(): LabCase {
     sunDirection: OBLIQUE_SUN_DIR,
     earth: BAY_EARTH,
     shots: {
-      // 全景。恒星は斜光、地球は真上。
+      // 全景。恒星は斜光、地球は真上。同じ全景を、距離を半分と 2.5 倍にしても撮る — 同じ構造が画面の上で
+      // 違う大きさに写る。
       'bay': { view: {} },
+      'bay-distance-0.5x': { view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, CAMERA_DISTANCE * 0.5) },
+      'bay-distance-2.5x': { view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, CAMERA_DISTANCE * 2.5) },
       // 地球照だけ。**内側の床 P_in と外側の床 P_out は同じ材質・同じ向き**で、違いは周りの構造だけ。
       'bay-earthshine': { view: SUN_BELOW },
       // 天体照の遮られ方。地球を真上の低軌道(視半径 70°)と、仰角 35° の開いた +X の側・−X・−Z の内隅の側へ
