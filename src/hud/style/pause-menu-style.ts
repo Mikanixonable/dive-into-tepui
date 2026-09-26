@@ -31,12 +31,7 @@ export const PAUSE_MENU_STYLE = `
   position: relative; display: grid; grid-column: 1; gap: var(--space-4);
   min-height: 220px; align-content: end;
 }
-#hud-pause-menu .pm-brand-logotype {
-  display: grid; width: fit-content; color: var(--text-strong);
-  font-size: clamp(2.6rem, 6vw, 4.7rem); font-weight: 650; letter-spacing: -.075em; line-height: .78;
-}
-#hud-pause-menu .pm-brand-logotype span:nth-child(2) { margin-left: .36em; }
-#hud-pause-menu .pm-brand-logotype span:nth-child(3) { margin-left: .72em; color: var(--color-primary-hover); }
+#hud-pause-menu .pm-brand .title-logotype { font-size: clamp(2.6rem, 6vw, 4.7rem); }
 #hud-pause-menu .pm-brand-meta { display: flex; align-items: baseline; gap: var(--space-3); }
 #hud-pause-menu .pm-brand-logo {
   position: absolute; top: 0; left: 0; width: 2rem; height: 2rem; border-radius: var(--radius-control); opacity: .72;
@@ -126,7 +121,7 @@ export const PAUSE_MENU_STYLE = `
   }
   #hud-pause-menu .pm-header-top { grid-template-columns: minmax(0, 1fr) auto; }
   #hud-pause-menu .pm-brand { grid-column: 1; min-height: 112px; justify-self: start; }
-  #hud-pause-menu .pm-brand-logotype { font-size: clamp(2rem, 12vw, 3.3rem); }
+  #hud-pause-menu .pm-brand .title-logotype { font-size: clamp(2rem, 12vw, 3.3rem); }
   #hud-pause-menu .pm-brand-meta { display: none; }
   #hud-pause-menu .pm-header-actions { grid-column: 2; }
   #hud-pause-menu .pm-actions { grid-template-columns: 1fr; }
