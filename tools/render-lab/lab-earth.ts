@@ -20,15 +20,6 @@ import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { WebGPURenderer } from 'three/webgpu';
-import {
-  createCloudDetailDiagnosticTile, CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM,
-  estimateCloudDetailDiagnosticTexture, type CloudDetailDiagnosticTextureEstimate,
-} from './cloud-detail-diagnostic';
-import { createCloudLocalFieldDiagnostic } from './cloud-local-field-diagnostic';
-import type { CloudPresentationDetailTile } from '../../src/render/cloud/cloud-presentation';
-import type { CloudLocalFieldBinding } from '../../src/render/cloud/cloud-local-field';
-import type { CloudLocalFieldBakeStats } from '../../src/render/cloud/cloud-local-field-baker';
-import type { MeteorologicalFieldStats } from '../../src/render/cloud/meteorological-cloud-field';
 
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
 export const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.averageHue, EARTH_TEXTURE.bondAlbedo);
@@ -81,14 +72,7 @@ export class LabEarth {
   public readonly shadowBody: ShadowBody;
   public readonly cumulus: ShadowCumulus;
   private readonly surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
-  // 生成雲。製品と同じ全球気象モデル経路(MeteorologicalCloudField)で組む。
   private readonly clouds = earthCloudPresentation();
-  private diagnosticCloudDetail: CloudPresentationDetailTile | null = null;
-  private diagnosticLocalField: CloudLocalFieldBinding | null = null;
-  private diagnosticWavelengthKm: number | null = null;
-  private diagnosticDirectionDeg = 0;
-  private diagnosticPhaseDeg = 0;
-  private diagnosticComposition: CloudPresentationDetailTile['composition'] = 'absolute';
   private readonly graticule = new BodyGraticule();
   private readonly coastline = LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE });
 
@@ -104,7 +88,7 @@ export class LabEarth {
     this.coastline.addTo(this.object);
     const clouds = this.clouds;
     const bodyFromWorld = this.bodyFromWorld;
-    // **組は毎フレーム取り直す** — 供給が届くと写しが別のテクスチャになる。
+    // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
     const atmosphereClouds: AtmosphereClouds = {
       get cloud() { return clouds.renderInput; }, bodyFromWorld,
     };
@@ -136,65 +120,6 @@ export class LabEarth {
   // 地表が読む画像(ベース色と滑らかさ)がすべて GPU へ届いたか。
   public get ready(): boolean { return this.surface.imagesReady; }
 
-  // 製品経路の局所光学場の焼き器が記録した計測。
-  public get cloudLocalFieldBakeStats(): CloudLocalFieldBakeStats | null {
-    return this.clouds.localFieldBakeStats;
-  }
-
-  // 雲場の世代。全球場の初回ジョブが終わって場が届くと進む — 暖機の完了を見る撮影駆動が読む。
-  public get cloudGeneration(): number { return this.clouds.renderInput.generation; }
-
-  // 生成雲場の供給ジョブの計測(試行記録・駆動中の途中経過)。worker 化の実機確認が読む。
-  public get cloudGlobalFieldStats(): MeteorologicalFieldStats | null {
-    return this.clouds.globalFieldStats;
-  }
-
-  // 所有者が保持する局所雲タイルの backing data 実寸と GPU 基底 mip 容量推定を返す。
-  public get cloudDetailDiagnosticTextureEstimate(): CloudDetailDiagnosticTextureEstimate | null {
-    return this.diagnosticCloudDetail === null
-      ? null : estimateCloudDetailDiagnosticTexture(this.diagnosticCloudDetail.texture);
-  }
-
-  // render-lab 専用の既知周期タイルを sampler へ渡す。無効化すると texture を解放して現行場へ戻す。
-  public setCloudDetailDiagnostic(
-    enabled: boolean, wavelengthKm = CLOUD_DETAIL_DIAGNOSTIC_WAVELENGTH_KM, directionDeg = 0,
-    phaseDeg = 0,
-    composition: CloudPresentationDetailTile['composition'] = 'absolute',
-  ): void {
-    if (!enabled) {
-      if (this.diagnosticCloudDetail === null) return;
-      this.diagnosticCloudDetail.texture.dispose();
-      this.diagnosticCloudDetail = null;
-      this.diagnosticWavelengthKm = null;
-      return;
-    }
-    if (this.diagnosticCloudDetail !== null
-      && this.diagnosticWavelengthKm === wavelengthKm
-      && this.diagnosticDirectionDeg === directionDeg
-      && this.diagnosticPhaseDeg === phaseDeg
-      && this.diagnosticComposition === composition) return;
-
-    const tile = createCloudDetailDiagnosticTile(wavelengthKm, directionDeg, phaseDeg, composition);
-    this.diagnosticCloudDetail?.texture.dispose();
-    this.diagnosticCloudDetail = tile;
-    this.diagnosticWavelengthKm = wavelengthKm;
-    this.diagnosticDirectionDeg = directionDeg;
-    this.diagnosticPhaseDeg = phaseDeg;
-    this.diagnosticComposition = composition;
-  }
-
-  // render-lab 専用の局所光学場を生成雲へ差し込む。無効化すると texture を解放して現行場へ戻す。
-  public setCloudLocalFieldDiagnostic(enabled: boolean): void {
-    if (!enabled) {
-      if (this.diagnosticLocalField === null) return;
-      this.diagnosticLocalField.texture.dispose();
-      this.diagnosticLocalField = null;
-      return;
-    }
-    if (this.diagnosticLocalField !== null) return;
-    this.diagnosticLocalField = createCloudLocalFieldDiagnostic();
-  }
-
   // 地球のつまみ angles の置き方へ、中心・自転姿勢・天体固定への行列・大気の極軸を置き直す。
   public place(angles: Pick<LabViewAngles, EarthAngleKey>): void {
     this.center.copy(earthCenterOf(angles));
@@ -208,9 +133,7 @@ export class LabEarth {
   public sync(camera: THREE.Camera, graphics: GraphicsSettingsData, style: RenderStyle): void {
     // 殻の分割段は寄り切った 1 段に固定する — カメラ距離は観察のつまみで動くが、絵の比較は最も
     // 細かい段で行う。
-    this.clouds.syncGraphics(
-      graphics, CLOSE_UP_DIAMETER_PX, this.diagnosticCloudDetail, this.diagnosticLocalField,
-    );
+    this.clouds.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX);
     if (graphics.clouds) this.clouds.aimFrom(camera.position, this.center, this.object.quaternion, this.cumulus.axes);
     this.graticule.setVisible(style === 'schematic');
     this.coastline.setVisible(style === 'schematic');
