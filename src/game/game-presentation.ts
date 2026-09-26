@@ -166,7 +166,7 @@ export class GamePresentation {
     this.displayWindowManager = new DisplayWindowManager(
       hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.predictPanel, predictCommands,
     );
-    this.confirmation = new ConfirmationOverlay(hud.layers.system, hud.overlayManager);
+    this.confirmation = new ConfirmationOverlay(hud.overlayManager);
     this.shipConstruction = new ShipConstruction(
       scene.scene, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
       hud, hud.constructionConfirm,
@@ -192,7 +192,7 @@ export class GamePresentation {
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。
     this.frameAnchors = new FrameAnchors(celestialSystem, anchorEntities);
     this.frameControls = new FrameControls(
-      hud.mapRoot, hud.combatRoot, hud.layers.popup,
+      hud.mapRoot, hud.combatRoot,
       celestialSystem, viewer.camera.map, viewer.camera.combat,
       cameraCommandPort.map, cameraCommandPort.combat, this.cameraSystem,
       viewer.predictPanel, predictCommands, hud.overlayManager, this.frameAnchors,
