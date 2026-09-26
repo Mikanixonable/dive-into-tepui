@@ -32,6 +32,7 @@ function buildManifest() {
       modules[definition.modelId] ??= {
         kind: definition.kind,
         length: definition.length,
+        diameter: definition.diameter,
         muzzles: definition.muzzles.map(muzzle => [muzzle.x, muzzle.y, muzzle.z]),
         feedPort: [definition.feedPort.x, definition.feedPort.y, definition.feedPort.z],
         thrust: definition.abilities.thrust ?? null,
