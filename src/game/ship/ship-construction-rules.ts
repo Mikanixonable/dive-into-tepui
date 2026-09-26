@@ -1,7 +1,9 @@
 // 建造の接続候補と、選択した部品をその候補へ置けるかを判定する純粋な規則。
-import { qFromUnitVectors, Q_IDENTITY, LOCAL_FORWARD } from '../../math/quat';
-import { scale, v3, type Vec3 } from '../../math/vec3';
+import { LOCAL_UP, Q_IDENTITY, qFromAxisAngle } from '../../math/quat';
+import { v3, type Vec3 } from '../../math/vec3';
 import type { ShipAssembly, ModuleTransform } from './ship-assembly';
+import { sideMountTransform } from './ship-assembly-transform';
+import type { SideSlot } from './ship-assembly-types';
 import type { ShipModuleDefinition } from './ship-module-definition';
 import type { ConstructionMount, ConstructionSlotKind, ConstructionSlotState } from './ship-construction-types';
 
@@ -17,6 +19,10 @@ const SIDE_MOUNTS: readonly Exclude<ConstructionMount, 'axial'>[] = [
 ];
 
 const SIDE_KINDS = new Set(['dock', 'docking_port', 'solar_panel', 'radiator']);
+
+function toSideSlot(mount: Exclude<ConstructionMount, 'axial'>): SideSlot {
+  return `side:${mount.slice(4)}` as SideSlot;
+}
 
 export interface ConstructionSlot {
   readonly id: string;
@@ -56,9 +62,12 @@ export function isSideMount(mount: ConstructionMount): mount is Exclude<Construc
 export function enumerateConstructionSlots(
   assembly: ShipAssembly, parentIds: readonly string[], axialTailId: string,
 ): readonly ConstructionSlot[] {
+  const tailDefinition = assembly.definition(axialTailId);
+  const isDockTail = tailDefinition?.kind === 'dock' || tailDefinition?.kind === 'docking_port';
   const slots: ConstructionSlot[] = [{
     id: constructionSlotId(axialTailId, 'axial'), parentId: axialTailId, mount: 'axial', kind: 'axial',
-    label: constructionSlotLabel(axialTailId, 'axial'), direction: v3(0, 0, -1),
+    label: constructionSlotLabel(axialTailId, 'axial'),
+    direction: isDockTail ? v3(0, 0, 1) : v3(0, 0, -1),
   }];
   for (const parentId of parentIds) {
     const definition = assembly.definition(parentId);
@@ -83,16 +92,19 @@ export function placementForSlot(
   if (parentDefinition === null) {
     return invalidPlacement(slot, '接続先の部品が存在しません');
   }
-  const side = slot.kind === 'side';
+  const side = isSideMount(slot.mount);
+  const isDockParent = !side && (parentDefinition.kind === 'dock' || parentDefinition.kind === 'docking_port');
   const transform: ModuleTransform = side
-    ? {
-      position: scale(slot.direction, parentDefinition.diameter / 2 + definition.length / 2),
-      rotation: qFromUnitVectors(LOCAL_FORWARD, slot.direction),
-    }
-    : {
-      position: v3(0, 0, -(parentDefinition.length / 2 + definition.length / 2)),
-      rotation: Q_IDENTITY,
-    };
+    ? sideMountTransform(parentDefinition, definition, toSideSlot(slot.mount))
+    : isDockParent
+      ? {
+        position: v3(0, 0, (parentDefinition.length + definition.length) / 2),
+        rotation: qFromAxisAngle(LOCAL_UP, Math.PI),
+      }
+      : {
+        position: v3(0, 0, -(parentDefinition.length / 2 + definition.length / 2)),
+        rotation: Q_IDENTITY,
+      };
   let reason: string | null = null;
   if (side && (parentDefinition.kind !== 'cockpit' && parentDefinition.kind !== 'tank')) {
     reason = '側面部品は cockpit または tank にだけ取り付けられます';
