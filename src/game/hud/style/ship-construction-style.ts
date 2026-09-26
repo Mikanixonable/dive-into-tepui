@@ -84,6 +84,10 @@ export const SHIP_CONSTRUCTION_STYLE = `
   min-height: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #ship-construction-panel .construction-slot-button[data-valid="false"] { color: var(--color-warning); }
+#ship-construction-panel .construction-slot-reason {
+  display: block; color: var(--color-warning); font-size: var(--font-xxs); font-weight: 400;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 #ship-construction-panel .construction-metrics {
   display: grid; flex: 1 1 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
@@ -154,19 +158,5 @@ export const SHIP_CONSTRUCTION_STYLE = `
   #ship-construction-panel { padding-top: calc(var(--space-5) + 32px); }
   #ship-construction-panel .construction-center-note { display: none; }
   #ship-construction-panel .construction-target { margin-bottom: var(--space-2); padding-bottom: var(--space-2); }
-}
-
-/* 確認ダイアログは workspace の上に独立して出す。 */
-#ship-construction-confirm {
-  position: absolute; top: 50%; left: 50%;
-  width: min(420px, calc(100vw - var(--space-8))); max-height: var(--overlay-max-h-s);
-  transform: translate(-50%, -50%); overflow-y: auto;
-  gap: var(--space-4); padding: var(--space-6);
-}
-#ship-construction-confirm h3 { margin: 0; }
-#ship-construction-confirm p { margin: 0; color: var(--text-dim); line-height: 1.6; }
-#ship-construction-confirm[data-destructive="true"] h3 { color: var(--color-warning); }
-#ship-construction-confirm .construction-confirm-actions {
-  display: flex; justify-content: flex-end; gap: var(--space-3);
 }
 `;

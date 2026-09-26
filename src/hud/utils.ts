@@ -1,11 +1,5 @@
-// HUD 表示用の数値整形と、data-id で引いた要素への書き込み。
-import { julianDateToCalendarDate, TdbJulianDate } from '../physics/time';
-
-// data-id マップから id の要素を引き、表示中の文字列と異なるときだけ書き換える。
-export function setElementText(els: ReadonlyMap<string, HTMLElement>, id: string, text: string): void {
-  const element = els.get(id);
-  if (element && element.textContent !== text) element.textContent = text;
-}
+// HUD 表示用の数値整形。
+import { julianDateToCalendarDate, type TdbJulianDate } from '../physics/time';
 
 // パネル用距離表記(例: "420 m" / "1.23 km" / "1.50 Mm")
 export function fmtDist(m: number): string {
