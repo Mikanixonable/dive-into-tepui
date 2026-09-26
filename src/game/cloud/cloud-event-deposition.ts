@@ -248,16 +248,24 @@ export function depositedMassKgByPhase(
   return { liquid: liquid.total, ice: ice.total };
 }
 
-// 堆積の前後で相別質量が一致することを確かめる。
+// 堆積の前後で相別質量が一致することを確かめる。additionalToleranceKg は、確かめ方
+// 固有の丸めの床(共有累積器の前後差で読む場合の差分の分解能など)を足す許容で、
+// 省略時は相対 1e-10 の照合だけを行う。
 export function validateDepositedMassBalance(
   expected: Readonly<Record<CloudMassPhase, number>>,
   actual: Readonly<Record<CloudMassPhase, number>>,
+  additionalToleranceKg = 0,
 ): void {
+  requireFinite(additionalToleranceKg, 'additionalToleranceKg');
+  if (additionalToleranceKg < 0) {
+    throw new RangeError('additionalToleranceKg must be non-negative');
+  }
   for (const phase of ['liquid', 'ice'] as const) {
     const targetKg = expected[phase];
     requireFinite(targetKg, `expected ${phase} mass`);
     requireFinite(actual[phase], `deposited ${phase} mass`);
-    const toleranceKg = Math.max(Number.MIN_VALUE, Math.abs(targetKg) * 1e-10);
+    const toleranceKg = Math.max(Number.MIN_VALUE, Math.abs(targetKg) * 1e-10)
+      + additionalToleranceKg;
     if (Math.abs(actual[phase] - targetKg) > toleranceKg) {
       throw new RangeError(`${phase} mass is not conserved by event material deposition`);
     }
