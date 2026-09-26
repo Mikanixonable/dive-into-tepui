@@ -257,31 +257,7 @@ def sweep_profile(path_points, profile, cap_ends=True, sharp_angle_deg=70.0):
     """3D の折れ線 path_points に沿って、断面 profile [(u, v)](法線・従法線方向の [m])を掃引した筒。
     断面の向きは平行移送で捩れずに運ぶ。cap_ends なら両端を平らに塞ぐ。"""
     bm = bmesh.new()
-    if len(path_points) < 2:
-        return bm
-    tangents = []
-    for idx, pt in enumerate(path_points):
-        if idx == 0:
-            tangents.append((path_points[1] - pt).normalized())
-        elif idx == len(path_points) - 1:
-            tangents.append((pt - path_points[idx - 1]).normalized())
-        else:
-            tangents.append(((pt - path_points[idx - 1]).normalized() + (path_points[idx + 1] - pt).normalized()).normalized())
-    up = Vector((0, 0, 1)) if abs(tangents[0].z) < 0.9 else Vector((0, 1, 0))
-    normal = tangents[0].cross(up).normalized()
-    rings = []
-    for pt, tangent in zip(path_points, tangents):
-        normal = (normal - tangent * normal.dot(tangent)).normalized()
-        binormal = tangent.cross(normal).normalized()
-        rings.append([bm.verts.new(pt + normal * u + binormal * v) for u, v in profile])
-    n = len(profile)
-    for r0, r1 in zip(rings, rings[1:]):
-        for s in range(n):
-            s_next = (s + 1) % n
-            bm.faces.new([r0[s], r0[s_next], r1[s_next], r1[s]])
-    caps = []
-    if cap_ends:
-        caps = [bm.faces.new(rings[0]), bm.faces.new(list(reversed(rings[-1])))]
+    caps = append_sweep(bm, path_points, profile, cap_ends)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return shade_by_angle(bm, sharp_angle_deg, caps)
 
@@ -305,6 +281,58 @@ def make_sphere(radius, center=(0, 0, 0), u_seg=24, v_seg=16):
 def make_strut(start, end, radius, segments=10):
     """start から end への丸管の支柱 [m]。"""
     return make_pipe([Vector(start), Vector(end)], radius=radius, segments=segments)
+
+def make_boxes(parts, bevel=0.01):
+    """(dx, dy, dz, center, rot_euler) の列を1つの bm へまとめた箱の集まり。稜は bevel [m] で面取りする。
+    細かい部品をまとめて1メッシュにし、オブジェクト数を増やさないために使う。"""
+    bm = bmesh.new()
+    for dx, dy, dz, center, rot_euler in parts:
+        mat = Matrix.Translation(Vector(center)) @ Euler(rot_euler).to_matrix().to_4x4()
+        bmesh.ops.create_cube(bm, size=1.0, matrix=mat @ Matrix.Diagonal((dx, dy, dz, 1.0)))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bevel_faces = bevel_creases(bm, bevel, segments=2, crease_angle_deg=60.0)
+    return shade_by_angle(bm, 30.0, bevel_faces)
+
+def append_sweep(bm, path_points, profile, cap_ends=True):
+    """3D の折れ線 path_points に沿う断面 profile の筒を bm へ追加し、塞いだ端面を返す。
+    陰影は呼び出し側がまとめて仕上げる。"""
+    if len(path_points) < 2:
+        return []
+    tangents = []
+    for idx, pt in enumerate(path_points):
+        if idx == 0:
+            tangents.append((path_points[1] - pt).normalized())
+        elif idx == len(path_points) - 1:
+            tangents.append((pt - path_points[idx - 1]).normalized())
+        else:
+            tangents.append(((pt - path_points[idx - 1]).normalized() + (path_points[idx + 1] - pt).normalized()).normalized())
+    up = Vector((0, 0, 1)) if abs(tangents[0].z) < 0.9 else Vector((0, 1, 0))
+    normal = tangents[0].cross(up).normalized()
+    rings = []
+    for pt, tangent in zip(path_points, tangents):
+        normal = (normal - tangent * normal.dot(tangent)).normalized()
+        binormal = tangent.cross(normal).normalized()
+        rings.append([bm.verts.new(pt + normal * u + binormal * v) for u, v in profile])
+    n = len(profile)
+    for r0, r1 in zip(rings, rings[1:]):
+        for s in range(n):
+            s_next = (s + 1) % n
+            bm.faces.new([r0[s], r0[s_next], r1[s_next], r1[s]])
+    if not cap_ends:
+        return []
+    return [bm.faces.new(rings[0]), bm.faces.new(list(reversed(rings[-1])))]
+
+def make_pipes(paths, radius, segments=12, bend_radius=0.0):
+    """折れ線の列 paths に沿う半径 radius [m] の管を1つの bm へまとめる。
+    bend_radius > 0 なら各経路の角を丸める。"""
+    profile = [(radius * math.cos(2.0 * math.pi * s / segments), radius * math.sin(2.0 * math.pi * s / segments)) for s in range(segments)]
+    bm = bmesh.new()
+    caps = []
+    for path in paths:
+        points = round_corners(path, bend_radius) if bend_radius > 0.0 else [Vector(p) for p in path]
+        caps += append_sweep(bm, points, profile)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return shade_by_angle(bm, 70.0, caps)
 
 
 # ----------------------------------------------------------------------
@@ -1079,11 +1107,44 @@ def build_deployable_chain(kind, half_len, build_panel):
             parent_to(obj, hinge)
 
 def build_deploy_base(mats, half_len, radius):
-    """取付面の円盤フランジとボルト環。"""
+    """取付面の円盤フランジとボルト環。駆動機構・回転継手はこの上へ載る。"""
     bm_flange = make_cylinder(radius * 0.85, radius * 0.85, 0.12, z_center=half_len - 0.06, segments=36)
     add_mesh_obj("deploy_flange", bm_flange, mats.hull_dark)
     bm_bolts = make_torus(major_r=radius * 0.82, minor_r=0.025, z_center=half_len - 0.02, major_seg=36, minor_seg=8)
     add_mesh_obj("flange_bolts", bm_bolts, mats.clamp)
+
+def build_solar_mount(mats, half_len, thickness):
+    """駆動機構とブーム。パネル列の根元ヒンジ(panel-hinge)はモジュール軸上の取付面にあるので、
+    駆動ドラムはヒンジ軸(X 軸)と同軸に置き、ブームは翼の収納範囲の外側(翼端方向 +X)へ立てる。"""
+    hx, hy, hz = 0.0, -thickness / 2, half_len  # 根元ヒンジ軸(おもて +Y の反対側の面)
+    # 駆動ドラムと軸受。ドラムはフランジへ半分埋まる配置で、取付面から浮かない
+    bm_drum = make_cylinder(0.14, 0.14, 0.72, z_center=0.0, segments=24)
+    transform_bm(bm_drum, Matrix.Translation(Vector((hx, hy, hz))) @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
+    add_mesh_obj("sada_drum", bm_drum, mats.hull_dark)
+    bm_caps = make_boxes([
+        (0.05, 0.19, 0.19, (sx * 0.38, hy, hz), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)
+    ])
+    add_mesh_obj("sada_drum_caps", bm_caps, mats.clamp)
+    bm_cheeks = make_boxes([
+        (0.10, 0.30, 0.16, (sx * 0.44, hy, half_len - 0.04), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)
+    ])
+    add_mesh_obj("sada_bearing_cheeks", bm_cheeks, mats.hull_dark)
+    # ドラム脇の駆動モーター
+    bm_motor = make_cylinder(0.085, 0.085, 0.34, z_center=0.0, segments=16)
+    transform_bm(bm_motor, Matrix.Translation(Vector((0.78, hy, hz + 0.02))) @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
+    add_mesh_obj("sada_motor", bm_motor, mats.hull_dark)
+    add_mesh_obj("sada_motor_mount", make_box(0.12, 0.22, 0.12, center=(0.78, hy, half_len - 0.05)), mats.clamp)
+    # ブーム(ストロングバック)。翼端の外側へ立て、収納した翼列が展開方向へ掃く範囲を外す
+    boom_x = 1.80
+    add_mesh_obj("solar_boom_base", make_box(0.36, 0.36, 0.10, center=(boom_x, 0.0, half_len)), mats.hull_dark)
+    add_mesh_obj("solar_boom", make_box(0.20, 0.22, 0.90, center=(boom_x, 0.0, half_len + 0.45)), mats.truss)
+    # ブーム先端からヒンジ軸へ届くヨーク。翼面の裏側(-Y)を潜らせて展開した翼と交わらないようにする
+    add_mesh_obj("solar_yoke_arm", make_pipes([
+        [Vector((boom_x, -0.02, half_len + 0.88)), Vector((0.85, -0.16, half_len + 0.22)),
+         Vector((0.42, -0.10, half_len + 0.05)), Vector((0.29, hy, hz))],
+    ], radius=0.05, bend_radius=0.08), mats.truss)
+    add_mesh_obj("solar_yoke_brace", make_strut(
+        Vector((boom_x, -0.10, half_len + 0.22)), Vector((0.48, -0.10, half_len + 0.02)), 0.04), mats.truss)
 
 def build_solar_panel(name):
     reset_scene()
@@ -1092,19 +1153,77 @@ def build_solar_panel(name):
     build_deploy_base(mats, half_len, 3.0)
     spec = MANIFEST["deployables"]["solar_panel"]
     length, span, thickness = spec["length"], spec["span"], spec["thickness"]
+    build_solar_mount(mats, half_len, thickness)
+
+    body_span, body_len = span * 0.96, length * 0.96
+    # セル面は外周枠の内側に収める。枠の幅 0.05・根本枠はヒンジ胴を避けて z≈0.07 から
+    cell_x0, cell_x1 = -body_span / 2 + 0.075, body_span / 2 - 0.075
+    cell_z0, cell_z1 = 0.10, body_len - 0.075
+    cols, rows = 6, 9
+    cell_gap = 0.035
 
     def panel(index, side):
-        # おもて面 +Y が太陽電池、裏面に補強材、根元のヒンジ面にヒンジ胴
-        cells = add_mesh_obj(f"panel:{index}", make_box(span * 0.96, thickness, length * 0.96, center=(0.0, 0.0, length * 0.5)), mats.solar)
-        cells["name"] = "deployable-panel" if index == 0 else f"deployable-panel:{index}"
-        ribs = add_mesh_obj(f"panel_ribs:{index}", make_box(span * 0.94, 0.015, length * 0.94, center=(0.0, -thickness * 0.52, length * 0.5)), mats.hull_dark)
+        # おもて面 +Y にセル列とバスバー、裏面は白いカプトン(本体)と押さえ帯、外周はセル面より出る枠
+        body = add_mesh_obj(f"panel:{index}",
+            make_box(body_span, thickness, body_len, center=(0.0, 0.0, length * 0.5)), mats.mli_white)
+        body["name"] = "deployable-panel" if index == 0 else f"deployable-panel:{index}"
+        cell_parts = []
+        for c in range(cols):
+            for r in range(rows):
+                cx = cell_x0 + (c + 0.5) * (cell_x1 - cell_x0) / cols
+                cz = cell_z0 + (r + 0.5) * (cell_z1 - cell_z0) / rows
+                cell_parts.append((
+                    (cell_x1 - cell_x0) / cols - cell_gap, 0.012, (cell_z1 - cell_z0) / rows - cell_gap,
+                    (cx, thickness / 2 + 0.006, cz), (0.0, 0.0, 0.0),
+                ))
+        cells = add_mesh_obj(f"panel_cells:{index}", make_boxes(cell_parts, bevel=0.003), mats.solar)
+        busbars = add_mesh_obj(f"panel_busbars:{index}", make_boxes([
+            (0.035, 0.008, cell_z1 - cell_z0, (bx, thickness / 2 + 0.016, (cell_z0 + cell_z1) / 2), (0.0, 0.0, 0.0))
+            for bx in (-0.96, 0.96)
+        ], bevel=0.004), mats.pipe)
+        frame = add_mesh_obj(f"panel_frame:{index}", make_boxes([
+            (0.05, 0.10, body_len - 0.09, (sx * (body_span / 2 - 0.025), 0.0, 0.045 + (body_len - 0.09) / 2), (0.0, 0.0, 0.0))
+            for sx in (-1.0, 1.0)
+        ] + [
+            (body_span, 0.10, 0.05, (0.0, 0.0, 0.045), (0.0, 0.0, 0.0)),
+            (body_span, 0.10, 0.05, (0.0, 0.0, body_len - 0.025), (0.0, 0.0, 0.0)),
+        ], bevel=0.012), mats.hull)
+        straps = add_mesh_obj(f"panel_straps:{index}", make_boxes([
+            (span * 0.88, 0.008, 0.07, (0.0, -thickness / 2 - 0.004, sz), (0.0, 0.0, 0.0))
+            for sz in (0.95, length * 0.5, length - 0.95)
+        ], bevel=0.004), mats.truss)
         bm_hinge = make_cylinder(0.035, 0.035, span * 0.98, z_center=0.0, segments=12)
         transform_bm(bm_hinge, Matrix.Translation(Vector((0.0, -side * thickness / 2, 0.0))) @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
         knuckle = add_mesh_obj(f"panel_hinge_hardware:{index}", bm_hinge, mats.clamp)
-        return [cells, ribs, knuckle]
+        return [body, cells, busbars, frame, straps, knuckle]
 
     build_deployable_chain("solar_panel", half_len, panel)
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
+
+
+def build_radiator_mount(mats, half_len):
+    """回転流体継手のハウジング。継手ドラムはパネル列の収納範囲(展開方向に掃く ±X)の外、
+    翼端方向 +Y へ置き、根元ヒンジ胴(Y 軸)の端へ軸を繋ぐ。"""
+    drum = Vector((-0.04, 1.82, half_len + 0.05))
+    bm_drum = make_cylinder(0.20, 0.20, 0.55, z_center=0.0, segments=28)
+    transform_bm(bm_drum, Matrix.Translation(drum) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+    add_mesh_obj("fluid_joint_drum", bm_drum, mats.hull_dark)
+    bm_cap = make_cylinder(0.26, 0.26, 0.07, z_center=0.0, segments=28)
+    transform_bm(bm_cap, Matrix.Translation(drum + Vector((0.0, 0.31, 0.0))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+    add_mesh_obj("fluid_joint_cap", bm_cap, mats.clamp)
+    add_mesh_obj("fluid_joint_pedestal", make_box(0.40, 0.42, 0.16, center=(0.0, 1.82, half_len - 0.06)), mats.hull_dark)
+    # ドラムからフランジへ下りる行き・戻りの供給管
+    add_mesh_obj("fluid_joint_feeds", make_pipes([
+        [Vector((-0.12, 1.90, half_len + 0.10)), Vector((-0.12, 1.90, half_len - 0.06))],
+        [Vector((0.08, 1.90, half_len + 0.12)), Vector((0.08, 1.90, half_len - 0.06))],
+    ], radius=0.04, bend_radius=0.06), mats.pipe)
+    # 継手ドラムから根元ヒンジ胴の端へ入る軸と、反対端の軸受
+    add_mesh_obj("fluid_joint_shaft", make_strut(
+        Vector((-0.04, 1.42, half_len)), Vector((-0.04, 1.70, half_len)), 0.07), mats.clamp)
+    bm_cap2 = make_cylinder(0.11, 0.11, 0.24, z_center=0.0, segments=16)
+    transform_bm(bm_cap2, Matrix.Translation(Vector((-0.04, -1.67, half_len))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+    add_mesh_obj("fluid_joint_bearing", bm_cap2, mats.clamp)
+    add_mesh_obj("fluid_joint_bearing_mount", make_box(0.16, 0.28, 0.12, center=(-0.04, -1.67, half_len - 0.04)), mats.hull_dark)
 
 
 def build_radiator(name):
@@ -1113,25 +1232,61 @@ def build_radiator(name):
     half_len = MANIFEST["modules"][name]["length"] / 2
     build_deploy_base(mats, half_len, 3.0)
 
-    # 熱回転継手へ繋がる冷媒の集合管
+    # 回転継手へ繋がる船体側の冷媒口
     bm_manifold = make_cylinder(0.16, 0.16, 0.16, z_center=half_len - 0.02, segments=16)
     add_mesh_obj("coolant_manifold", bm_manifold, mats.pipe)
+    build_radiator_mount(mats, half_len)
 
     spec = MANIFEST["deployables"]["radiator"]
     length, span, thickness = spec["length"], spec["span"], spec["thickness"]
+    body_span, body_len = span * 0.96, length * 0.96
+    face_x = thickness / 2
+    # 流路管の両端を集める集合管の Z。折り目の渡り管は +X 面の先端集合管から隣パネルの根元集合管へ架かる
+    header_z0, header_z1 = 0.12, body_len - 0.15
+    lanes = (-1.05, -0.35, 0.35, 1.05)
+    hose_ys = (-0.90, 0.90)
 
     def panel(index, side):
-        # 両面が放熱面。流路管は両面に半分浮き出し、根元のヒンジ面に流体継手を兼ねるヒンジ胴
-        body = add_mesh_obj(f"panel:{index}", make_box(thickness, span * 0.96, length * 0.96, center=(0.0, 0.0, length * 0.5)), mats.radiator)
+        # 両面が放熱面。流路管は両面に半分浮き出し、根元・先端の縁に集合管、外周に枠を持つ
+        body = add_mesh_obj(f"panel:{index}",
+            make_box(thickness, body_span, body_len, center=(0.0, 0.0, length * 0.5)), mats.radiator)
         body["name"] = "deployable-panel" if index == 0 else f"deployable-panel:{index}"
         parts = [body]
+        paths = []
         for face in (1, -1):
-            for lane in (-0.3, 0.0, 0.3):
-                bm_pipe = make_cylinder(0.022, 0.022, length * 0.96, z_center=length * 0.5, segments=8)
-                transform_bm(bm_pipe, Matrix.Translation(Vector((face * thickness / 2, lane * span, 0.0))))
-                parts.append(add_mesh_obj(f"radiator_pipe:{index}:{face}:{lane}", bm_pipe, mats.pipe))
+            for lane in lanes:
+                paths.append([Vector((face * face_x, lane, header_z0)), Vector((face * face_x, lane, header_z1))])
+        # ヒンジ胴のある面から根元の縁を跨ぎ、集合管へ繋ぐ渡り管
+        paths.append(round_corners([
+            Vector((-side * face_x, 1.30, 0.045)), Vector((-side * face_x, 1.30, -0.06)),
+            Vector((0.0, 1.30, -0.06)), Vector((0.0, 1.30, header_z0)),
+        ], 0.045))
+        parts.append(add_mesh_obj(f"radiator_pipes:{index}", make_pipes(paths, radius=0.035, segments=10), mats.pipe))
+        parts.append(add_mesh_obj(f"radiator_headers:{index}", make_pipes([
+            [Vector((0.0, -1.30, header_z0)), Vector((0.0, 1.30, header_z0))],
+            [Vector((0.0, -1.30, header_z1)), Vector((0.0, 1.30, header_z1))],
+        ], radius=0.065, segments=14), mats.pipe))
+        # 折り目: +X 面の先端集合管から、隣パネルのヒンジ軸(常に +X 面側)を回り込んで
+        # 隣パネルの根元集合管へ届くホース。先頭以外のパネルは持たない
+        if index < spec["count"] - 1:
+            hose_paths = []
+            for hy in hose_ys:
+                arc = [Vector((face_x, hy, header_z1))]
+                for k in range(11):
+                    a = math.pi * k / 10
+                    arc.append(Vector((face_x + 0.10 * math.sin(a), hy, length - 0.10 * math.cos(a))))
+                hose_paths.append(arc)
+            parts.append(add_mesh_obj(f"radiator_hoses:{index}", make_pipes(hose_paths, radius=0.030, segments=10), mats.clamp))
+        frame = add_mesh_obj(f"radiator_frame:{index}", make_boxes([
+            (0.10, 0.05, body_len, (0.0, sy * (body_span / 2 - 0.025), length * 0.5), (0.0, 0.0, 0.0))
+            for sy in (-1.0, 1.0)
+        ] + [
+            (0.10, body_span, 0.05, (0.0, 0.0, 0.075), (0.0, 0.0, 0.0)),
+            (0.10, body_span, 0.05, (0.0, 0.0, body_len - 0.025), (0.0, 0.0, 0.0)),
+        ], bevel=0.012), mats.hull_dark)
+        parts.append(frame)
         bm_hinge = make_cylinder(0.04, 0.04, span * 0.98, z_center=0.0, segments=12)
-        transform_bm(bm_hinge, Matrix.Translation(Vector((-side * thickness / 2, 0.0, 0.0))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+        transform_bm(bm_hinge, Matrix.Translation(Vector((-side * face_x, 0.0, 0.0))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
         parts.append(add_mesh_obj(f"radiator_hinge_hardware:{index}", bm_hinge, mats.clamp))
         return parts
 
