@@ -335,7 +335,6 @@ export function register(): void {
       return transform.position.z + assembly.definition(module.id)!.length / 2;
     }));
     for (const muzzle of muzzles) assert.ok(muzzle.z > bow, `muzzle z ${muzzle.z} behind bow ${bow}`);
-=======
   });
 
   test('ship assembly: 側面接続された dock/port 同士のドッキングで逆流エッジ (sideReversed) を正しく保持し、合体・保存復元・切り離しができる', () => {
