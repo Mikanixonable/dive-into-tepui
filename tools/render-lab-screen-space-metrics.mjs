@@ -38,8 +38,8 @@ import { check, reference } from './screen-space-reference.mjs';
 const EDGE_NORMAL_COS = Math.cos(Math.PI / 6);
 const EDGE_DEPTH_LSB = 3;
 const EDGE_BAND = 2;
-// 表示で見えない差 t の初期値(Oklab)。sRGB 8bit の 10 階調前後。
-const DEFAULT_T = 0.035;
+// 表示で見えない差 t(Oklab)。stimuli の刺激の目視から測った値で、灰色で sRGB 8bit の約 0.3 階調。
+const DEFAULT_T = 0.001;
 // 表示の 1 LSB に当たる、黒の近くの線形の値。
 const DISPLAY_LSB = 1 / (255 * 12.92);
 
