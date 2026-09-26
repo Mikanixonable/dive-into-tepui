@@ -41,9 +41,9 @@ export class ConfirmationOverlay implements OverlayHandle {
   private readonly cancel: Button;
 
   // モーダルの骨組みを組み、確定/取消ボタンを操作行へ置く。
-  public constructor(root: HTMLElement, overlayManager: OverlayManager) {
+  public constructor(overlayManager: OverlayManager) {
     injectOnce('confirmation-overlay', STYLE);
-    this.shell = new ModalOverlay<boolean>(root, overlayManager, 'confirmation-overlay');
+    this.shell = new ModalOverlay<boolean>(overlayManager, 'confirmation-overlay');
     this.confirm = new Button('実行', () => this.shell.resolve(true), undefined, 'primary');
     this.cancel = new Button('キャンセル', () => this.shell.resolve(false), undefined, 'secondary');
     this.shell.actions.append(this.confirm.element, this.cancel.element);

@@ -11,7 +11,6 @@ export class HudShell {
   public constructor() {
     this.root = createHudElement('div', 'hud', document.body);
     this.layers = buildOverlayLayers(this.root);
-    const shield = createHudElement('div', 'hud-overlay-shield', this.layers.gate);
-    this.overlayManager = new OverlayManager(shield, this.layers.gate);
+    this.overlayManager = new OverlayManager(this.layers);
   }
 }

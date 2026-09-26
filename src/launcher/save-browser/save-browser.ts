@@ -96,9 +96,8 @@ export class SaveBrowser implements OverlayHandle {
 
   public get visible(): boolean { return this._visible; }
 
-  // モーダルの DOM 骨格を組み、非表示で親要素へ差し込む。
+  // モーダルの DOM 骨格を組む。要素は open されるまで DOM へ挿さず、overlayManager が置く。
   public constructor(
-    root: HTMLElement,
     private readonly slots: SaveSlots,
     private readonly service: SnapshotService,
     private readonly gameSource: CurrentGameSource,
@@ -109,10 +108,9 @@ export class SaveBrowser implements OverlayHandle {
     this.el = document.createElement('div');
     this.el.id = 'save-browser';
     this.el.style.display = 'none';
-    root.appendChild(this.el);
     // 確認・入力のモーダルはブラウザの開閉と独立させ、rebuild が作り直す DOM の外へ置く。
-    this.confirmDialog = new ConfirmationOverlay(root, overlayManager);
-    this.textPrompt = new TextPromptOverlay(root, overlayManager);
+    this.confirmDialog = new ConfirmationOverlay(overlayManager);
+    this.textPrompt = new TextPromptOverlay(overlayManager);
   }
 
   // パネルを開く。開いている間はゲームを止める。
@@ -125,7 +123,7 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
     this.el.style.display = 'flex';
     this._visible = true;
-    this.overlayManager.open('save-browser', this, {
+    this.overlayManager.open('save-browser', this.el, this, {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
       pausesGame: true, exclusiveGroup: 'system-modal',
     });

@@ -69,13 +69,13 @@ export class ViewBadge {
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
   // 直近の sync が受けた値。遷移メニューはフレームの外で開くので、遷移先をここから引く。
   private view: ViewBadgeViewModel | null = null;
-  // container(トップバー1行目の行)へコンテキスト表示を、popupLayer へビュー遷移メニューを組み立てる。
-  // 遷移メニューの選択は commands へ返す。
+  // container(トップバー1行目の行)へコンテキスト表示を組み立て、遷移メニューは
+  // overlayManager へ登録する。遷移メニューの選択は commands へ返す。
   public constructor(
-    container: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager,
+    container: HTMLElement, overlayManager: OverlayManager,
     private readonly commands: Pick<ViewCommands, 'select'>,
   ) {
-    this.menu = new ContextMenu<true, ViewMode>(popupLayer, overlayManager);
+    this.menu = new ContextMenu<true, ViewMode>(overlayManager);
     // モード名・ビュー切替ボタンと、現在値がある対象欄を横に並べる。
     container.setAttribute('role', 'navigation');
     container.setAttribute('aria-label', 'ビュー切り替え');

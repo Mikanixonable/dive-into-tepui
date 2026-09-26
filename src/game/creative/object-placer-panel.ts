@@ -187,12 +187,9 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private lagrangePointValue: CollinearPoint = 'L1';
   private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
 
-  // 物体配置パネルの DOM を組み立てて panelRoot へ追加する。基準天体・ラグランジュ系の選択肢は
-  // celestialSystem が実際に持つ天体から組む。popupRoot は ObjectPicker のポップアップの置き場所で、
-  // パネル自身の overflow に切られないよう popup レイヤを渡す。
+  // 物体配置パネルの DOM を組み立てる。基準天体・ラグランジュ系の選択肢は celestialSystem が
+  // 実際に持つ天体から組む。要素は開くまで DOM へ挿さず、overlayManager が window の層へ置く。
   constructor(
-    panelRoot: HTMLElement,
-    private readonly popupRoot: HTMLElement,
     private readonly celestialSystem: CelestialSystem,
     private readonly overlayManager: OverlayManager,
   ) {
@@ -204,9 +201,9 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-object-placer';
     this.panel.className = 'panel hidden editorial-control-sheet';
-    // モーダルとして画面右上に配置
+    // ウィンドウとして画面右上に配置する。上端はレールと同じく上部クロームの下。
     this.panel.style.position = 'fixed';
-    this.panel.style.top = '20px';
+    this.panel.style.top = 'calc(var(--hud-chrome-h, 0px) + var(--space-2))';
     this.panel.style.right = '20px';
     this.panel.style.width = 'max-content';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -268,8 +265,6 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.appendChild(this.issueList);
 
     this.buildButtonsAndKeybinds();
-
-    panelRoot.appendChild(this.panel);
   }
 
   // 軌道要素指定の一式(基準天体・サイズ/形・向き・位相)を1つの div にまとめて返す。返った
@@ -292,7 +287,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     refreshPresets: () => void;
   } {
     const elementsGroup = document.createElement('div');
-    const celestialBodyControl = new ObjectPicker<ReferenceCelestialBody>(this.popupRoot, '基準天体', (v) => {
+    const celestialBodyControl = new ObjectPicker<ReferenceCelestialBody>('基準天体', (v) => {
       this.celestialBodyValue = v;
       celestialBodyControl.setSelected(v);
       this.refreshPresets();
@@ -387,7 +382,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   } {
     const lagrangeGroup = document.createElement('div');
     const lagrangeSecondary = new ObjectPicker<string>(
-      this.popupRoot, '系', (v) => this.selectLagrangeSecondary(v), this.overlayManager,
+      '系', (v) => this.selectLagrangeSecondary(v), this.overlayManager,
     );
     lagrangeSecondary.setGroups([{ label: '', items: this.lagrangeSystemItems }]);
     lagrangeSecondary.setSelected(this.lagrangeSecondaryValue);
@@ -597,7 +592,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     }
     this._isOpen = true;
     this.panel.classList.remove('hidden');
-    this.overlayManager.open('object-placer', this, {
+    this.overlayManager.open('object-placer', this.panel, this, {
       kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
     });
   }
