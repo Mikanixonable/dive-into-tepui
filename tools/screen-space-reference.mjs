@@ -1,10 +1,11 @@
 // 近傍拡散補正の基準 B の生成と、その収束の判定。B は全解像度・均しなしの段で、パスごとにブルーノイズの seed を
-// 変えて撮った表示(と、解析値と照らす撮影では拡散照度)を、偶数番目と奇数番目のパスに分けて積んだもの。半分どうしの
-// 差で B に残る雑音を、歩数を倍にした B₂ との差で歩数による偏りを、いまの中設定(均しなし)の誤差と比べて判定する。
+// 変えて描いた HDR(と、解析値と照らす撮影では拡散照度)を、偶数番目と奇数番目のパスに分けて積み、その平均を本番の
+// 合成で表示にしたもの。半分どうしの差で B に残る雑音を、歩数を倍にした B₂ との差で歩数による偏りを、いまの中設定
+// (均しなし)の誤差と比べて判定する。
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { errorMetrics, oklabOf } from './screen-space-error.mjs';
 import {
-  analyticRatiosOf, captureLinear, ENTRIES, fixed, HEIGHT, headHash, linearOfPng, loadHalves, loadReference, maskOf,
+  analyticRatiosOf, captureLinear, ENTRIES, fixed, HEIGHT, headHash, loadHalves, loadReference, maskOf,
   readFloats, referenceDirOf, referenceFileOf, referenceMetaOf, referenceSumsOf, seedOf, table, TIERS, WIDTH,
   windowRatiosOf, withLab, writeFloats, writeReferencePasses,
 } from './screen-space-lab.mjs';
@@ -93,32 +94,36 @@ async function extendReference(lab, name, entry, tier, passes) {
     }
     await lab.setTarget('off');
   }
-  // 和は保存済みのものへ続けて足す。
-  const kinds = entry.set === 'correctness' ? ['display', 'diffuse'] : ['display'];
-  const size = WIDTH * HEIGHT * 3;
-  const sums = Object.fromEntries(kinds.map((kind) => [kind,
-    saved === null ? [new Float32Array(size), new Float32Array(size)] : referenceSumsOf(name, entry, kind)]));
-  const add = (sum, frame) => {
-    for (let i = 0; i < size; i++) sum[i] += frame[i];
-  };
-  // パスを撮る。絵の落ち着きを待つのは最初のパスだけで、以後は seed だけが変わる。拡散照度はページの中で積み、
-  // 撮影の終わりに 1 回だけ受け取る。
+  // HDR と、解析値と照らす撮影では拡散照度を、偶数番目と奇数番目のパスに分けてページの中で積む。保存済みの和が
+  // あれば、ページへ戻してから続ける。
+  const kinds = entry.set === 'correctness' ? ['hdr', 'diffuse'] : ['hdr'];
+  if (saved !== null) {
+    for (const kind of kinds) await lab.restoreAccumulated(kind, 3, referenceSumsOf(name, entry, kind));
+  }
+  // パスを描く。絵の落ち着きを待つのは最初のパスだけで、以後は seed だけが変わる。
   const passesStarted = Date.now();
   let firstPassSeconds = 0;
   for (let k = done; k < passes; k++) {
     await lab.setSeed(seedOf(k));
-    add(sums.display[k % 2], linearOfPng(k === done ? await lab.capturePng() : await lab.captureOncePng()));
-    if (sums.diffuse !== undefined) await lab.accumulateFloat('diffuse', 3, k % 2);
+    if (k === done) await lab.capturePng();
+    else await lab.render();
+    for (const kind of kinds) await lab.accumulateFloat(kind, 3, k % 2);
     if (k === done) firstPassSeconds = (Date.now() - passesStarted) / 1000;
   }
   const passSeconds = (Date.now() - passesStarted) / 1000;
-  if (sums.diffuse !== undefined) {
-    for (const [half, sum] of (await lab.takeAccumulated(2)).entries()) add(sums.diffuse[half], sum);
-  }
+  // 表示は、全パス・偶数番目・奇数番目それぞれの HDR の平均を、最後のパスと同じ合成で表示にしたもの。
+  const [evenCount, oddCount] = [Math.ceil(passes / 2), Math.floor(passes / 2)];
+  const displays = {
+    all: await lab.displayOfMean('hdr', [1 / passes, 1 / passes]),
+    even: await lab.displayOfMean('hdr', [1 / evenCount, 0]),
+    odd: oddCount > 0 ? await lab.displayOfMean('hdr', [0, 1 / oddCount]) : null,
+  };
+  const sums = {};
+  for (const kind of kinds) sums[kind] = await lab.takeAccumulated(kind, 2);
   const seconds = (Date.now() - started) / 1000;
   writeReferencePasses(name, entry, {
     slices: tier.sliceCount, steps: tier.stepCount, passes, seconds: (saved?.seconds ?? 0) + seconds,
-  }, sums);
+  }, sums, displays);
   const later = passes - done - 1;
   const perPass = later > 0 ? `${((passSeconds - firstPassSeconds) / later).toFixed(2)} s/パス、` : '';
   console.log(`reference ${entry.key}: パス ${done}〜${passes - 1}、${perPass}最初のパス ${firstPassSeconds.toFixed(1)} s、`
@@ -170,13 +175,14 @@ export async function check({ positional, options }) {
   };
   console.log([describe('B', name), ...(doubledName === undefined ? [] : [describe('B₂', doubledName)]), ''].join('\n'));
   console.log(table([
-    '撮影', 'G(偶 − 奇)', 'R(s) 偶 − 奇', 'G(中・均しなし)', 'G(B₂ − B)', 'G(B₂ 偶 − 奇)',
-    '雑音 G ≦ 中/10', `雑音 R(s)/R(1) ≦ ${CONVERGED_R_RATIO}`, '歩数 G ≦ 中/10',
+    '撮影', 'G(偶 − 奇)', 'R(s) 偶 − 奇', 'G(中・均しなし)', 'G(B₂ − B)', 'G(B₂ 偶 − 奇)', '雑音だけの G(B₂ − B)',
+    'G(B₂ − B) / 雑音だけ', '雑音 G ≦ 中/10', `雑音 R(s)/R(1) ≦ ${CONVERGED_R_RATIO}`, '歩数 G ≦ 中/10',
   ], rows).join('\n'));
 }
 
-// 撮影 entry の判定の行。current はいまの中設定(均しなし)の表示(線形 sRGB)。合否の後の括弧は、G の中の G に
-// 対する比か、R(s) の R(1) に対する比の最大。
+// 撮影 entry の判定の行。current はいまの中設定(均しなし)の表示(線形 sRGB)。雑音だけの G(B₂ − B) は、B と B₂ が
+// 同じ収束先を持つときの見込みで、半分どうしの差の G が各々の雑音の 2 倍にあたることから引く。合否の後の括弧は、
+// G の中の G に対する比か、R(s) の R(1) に対する比の最大。
 function checkRowOf(name, doubledName, entry, current) {
   const b = loadReference(name, [entry])[entry.key];
   const mask = maskOf(b.radius);
@@ -187,10 +193,12 @@ function checkRowOf(name, doubledName, entry, current) {
     g: errorMetrics(oklabOf(loadReference(doubledName, [entry])[entry.key].display), reference, mask, WIDTH, HEIGHT, 0, 1).g,
     noiseG: halvesNoiseOf(doubledName, entry).g,
   };
+  const noiseOnlyG = doubled === null ? null : Math.hypot(noise.g, doubled.noiseG) / 2;
   const verdict = (value, limit, digits) => `${value <= limit ? '合' : '否'} (${value.toFixed(digits)})`;
   return [
     entry.key, fixed(noise.g, 5), noise.r.map((v) => v.toFixed(2)).join(' / '), fixed(currentG, 5),
-    fixed(doubled?.g, 5), fixed(doubled?.noiseG, 5),
+    fixed(doubled?.g, 5), fixed(doubled?.noiseG, 5), fixed(noiseOnlyG, 5),
+    doubled === null ? '—' : (doubled.g / noiseOnlyG).toFixed(2),
     verdict(noise.g / currentG, CONVERGED_G_RATIO, 3), verdict(Math.max(...noise.r) / noise.r[0], CONVERGED_R_RATIO, 2),
     doubled === null ? '—' : verdict(doubled.g / currentG, CONVERGED_G_RATIO, 3),
   ];
