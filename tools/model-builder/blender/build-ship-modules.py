@@ -1166,14 +1166,15 @@ def build_hull_junction(mats, half_len):
         ], bevel=0.005), mats.clamp)
         # 座板の中央から台座の下端へ斜めに開いた脚
         foot = saddle_top(tc) + Vector((xc, 0.0, 0.0))
-        top = Vector((foot.x, foot.y, 0.0)).normalized() * 0.50 + Vector((0.0, 0.0, 0.10))
+        top = Vector((foot.x, foot.y, 0.0)).normalized() * 0.33 + Vector((0.0, 0.0, 0.10))
         add_mesh_obj(f"mount_leg:{index}", make_strut(foot, top, 0.065, segments=12), mats.truss)
         add_mesh_obj(f"mount_leg_foot:{index}", make_sphere(0.085, center=foot, u_seg=12, v_seg=8), mats.clamp)
-    # 機構を載せる台座。脚が届く下端だけ太く、上は駆動ドラムへ吸い込まれる細い柱
+    # 機構を載せる台座。円盤を受ける形を名残なくすため円形ではなく角柱で、
+    # 脚が届く下端だけ太く、上は駆動ドラムへ吸い込まれる細い四角錐台
     add_mesh_obj("mount_pedestal", make_lathe([
         (0.0, 0.00), (0.58, 0.00), (0.60, 0.04), (0.50, 0.08),
         (0.50, 0.30), (0.46, 0.36), (0.46, half_len - 0.06), (0.0, half_len - 0.06),
-    ], segments=48, closed=True), mats.hull_dark)
+    ], segments=4, closed=True, sharp_angle_deg=0.0), mats.hull_dark)
 
 def build_solar_mount(mats, half_len, thickness):
     """レースリング軸受と根元ヒンジの駆動部。パネル列の根元ヒンジ(panel-hinge)はモジュール軸上の
