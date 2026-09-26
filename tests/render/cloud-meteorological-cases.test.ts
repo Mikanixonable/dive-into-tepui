@@ -197,14 +197,65 @@ export function register(): void {
     assert.equal(measurement(result, 'wave-cloud-condensation').value, 1);
     assert.equal(measurement(result, 'dry-wave-cloud-control').value, 0);
     assert.equal(measurement(result, 'directional-spectrum').status, 'blocked');
+    // 方向別スペクトルの測定機構はある。波の伝播方位 π/2(北向き)へピークが立つことを確認し、
+    // 量的許容域の未固定で判定は保留のままにする。
+    assert.ok(Math.abs(Number(result.controls.waveSpectrumPeakComponentAzimuthRad) - Math.PI / 2) < 1e-6);
+    assert.ok(Number(result.controls.waveSpectrumPeakBinPowerShare) > 0.9);
+    assert.equal(String(result.controls.waveSpectrumAzimuthBinPowers).split(',').length, 18);
   });
 
-  test('meteorological fixtures: C8 and C9 stay explicitly blocked until their field models exist', () => {
-    for (const id of ['C8', 'C9'] as const) {
-      const result = evaluateMeteorologicalCase(id);
-      assert.ok(result.measurements.length > 0);
-      assert.ok(result.measurements.every((item) => item.status === 'blocked' && item.value === null));
-      assert.equal(result.generatedCloudImageFixtureApplied, false);
+  test('meteorological fixtures: C8 measures cell morphology on the fixture field but stays blocked', () => {
+    const result = evaluateMeteorologicalCase('C8');
+    assert.equal(result.generatedCloudImageFixtureApplied, false);
+    for (const id of ['hole-fraction', 'cell-size', 'cell-lifetime'] as const) {
+      assert.equal(measurement(result, id).status, 'blocked');
+      assert.equal(measurement(result, id).value, null);
     }
+    // 穴率・セル径・存続の計測値は controls へ出る。開いたセル網の fixture なので
+    // 内部の穴と有限の存続が検出される。
+    assert.ok(Number(result.controls.holeFraction) > 0);
+    assert.ok(Number(result.controls.interiorHoleComponentCount) > 0);
+    assert.ok(Number(result.controls.largestCloudyComponentEquivalentDiameterM) > 0);
+    assert.ok(Number(result.controls.meanInteriorHoleEquivalentDiameterM) > 0);
+    const clearDurations = String(result.controls.clearComponentPersistenceDurationsMin)
+      .split(',').map(Number);
+    assert.ok(clearDurations.length > 1);
+    assert.ok(Math.min(...clearDurations) <= 20);
+    assert.ok(Math.max(...clearDurations) === 60);
+    // 供給場の層抽出へも同じ演算が当たる。
+    assert.ok(Number(result.controls.supplyFieldLiquidCloudyComponentCount) > 0);
+  });
+
+  test('meteorological fixtures: C9 two-disc field passes the fixed geometry and optics gates', () => {
+    const result = evaluateMeteorologicalCase('C9');
+    assert.equal(result.generatedCloudImageFixtureApplied, false);
+    for (const id of [
+      'tau-vertical-liquid', 'tau-vertical-ice', 'tau-vertical', 'transmittance-vertical',
+      'tau-slant-45', 'transmittance-slant-45',
+      'phase-isolation-liquid-only', 'phase-isolation-ice-only',
+      'layer-gap', 'parallax', 'parallax-centroid-liquid', 'parallax-centroid-ice',
+      'wind-displacement-liquid', 'wind-displacement-ice', 'wind-cross-axis',
+    ] as const) {
+      assert.equal(measurement(result, id).status, 'pass', `${id} must pass`);
+    }
+    assert.ok(Math.abs(measurement(result, 'tau-vertical').value! - 0.6) < 0.005);
+    assert.ok(Math.abs(measurement(result, 'tau-slant-45').value! - 0.8485281374) < 0.005);
+    assert.ok(Math.abs(measurement(result, 'transmittance-vertical').value! - 0.5488116361) < 0.005);
+    assert.ok(Math.abs(measurement(result, 'transmittance-slant-45').value! - 0.4280444912) < 0.005);
+    assert.equal(measurement(result, 'phase-isolation-liquid-only').value, 0);
+    assert.equal(measurement(result, 'layer-gap').value, 3_000);
+    assert.ok(Math.abs(measurement(result, 'parallax').value! - 10) < 1e-9);
+    assert.equal(Number(result.controls.maximumGapExtinctionPerM), 0);
+    assert.ok(Number(result.controls.windDisplacementEastLiquidM) > 35_500);
+    // 影の支持域は測定するが量的許容域が未固定なので blocked。
+    assert.equal(measurement(result, 'shadow-support').status, 'blocked');
+    assert.ok(Number(result.controls.shadowSupportAreaM2) > 0);
+    assert.ok(Math.abs(
+      Number(result.controls.shadowSupportAreaM2)
+      - Number(result.controls.analyticShadowSupportAreaM2))
+      / Number(result.controls.analyticShadowSupportAreaM2) < 0.05);
+
+    const repeated = evaluateMeteorologicalCase('C9');
+    assert.deepEqual(repeated, result);
   });
 }

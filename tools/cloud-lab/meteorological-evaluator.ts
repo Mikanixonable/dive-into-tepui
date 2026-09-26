@@ -22,6 +22,11 @@ import {
   reconstructCloudEventMaterialTracks,
 } from '../../src/game/cloud/cloud-event-transport';
 import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
+import { integrateCloudLocalOpticalPath } from '../../src/game/cloud/cloud-local-optical-path';
+import {
+  cloudLocalUvAt,
+  integrateCloudLocalFieldRayCpu,
+} from '../../src/render/cloud/cloud-local-field';
 import { cross, dot, norm, scale, v3 } from '../../src/math/vec3';
 import type { Vec3 } from '../../src/math/vec3';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
@@ -36,6 +41,33 @@ import {
 } from './c2-continuous-release-oracle';
 import { massWeightedSphericalRmsSpreadM, sphericalDistanceM as distanceErrorM }
   from './spherical-measures';
+import {
+  cloudExtinctionLayersFromVolume,
+  cloudOpticalVolumeLayerPlane,
+  equivalentDiameterM,
+  fieldMemberMask,
+  fieldValueCentroid,
+  interiorHoleShare,
+  labelFieldComponents,
+  measureComponentPersistence,
+  unionShiftedSupportAreaM2,
+} from './meteorological-field-measures';
+import { directionalPowerSpectrum } from './meteorological-field-spectrum';
+import {
+  buildC9TwoDiscField,
+  buildCellFieldPlane,
+  buildCellFieldSeries,
+  buildWaveFieldPlane,
+  C8_CELL_FIELD_CELL_COUNT,
+  C8_CELL_FIELD_CELL_SIZE_M,
+  C8_CELL_FIELD_EXTINCTION_PER_M,
+  C8_CELL_FIELD_PERIOD_M,
+  C9_CELL_SIZE_M,
+  C9_ICE_LAYER_CENTER_M,
+  C9_LAYER_EDGES_M,
+  C9_LIQUID_LAYER_CENTER_M,
+} from './meteorological-fixture-fields';
+import { sampleEventOpticalVolume } from '../render-lab/cloud-event-optical-volume-case';
 import {
   METEOROLOGICAL_ERROR_FLOORS,
   type MeteorologicalCaseId,
@@ -55,6 +87,22 @@ const C1_EXPECTED_INTEGRATED_MASS_KG = 0.009;
 const C1_TWO_KM_FEATURE_WAVELENGTH_M = 2_000;
 const C1_MINIMUM_SAMPLES_PER_FEATURE = 4;
 const C2_PLAN_MAXIMUM_SPATIAL_SAMPLE_SPACING_M = 500;
+// C9 の二円盤 fixture の解析的診断値。fixture の幾何から独立に決まる参照値。
+const C9_VERTICAL_LIQUID_TAU = 0.4;
+const C9_VERTICAL_ICE_TAU = 0.2;
+const C9_VERTICAL_TOTAL_TAU = 0.6;
+const C9_SLANT_AZIMUTH_RAD = Math.PI / 4;
+const C9_SLANT_TOTAL_TAU = C9_VERTICAL_TOTAL_TAU / Math.cos(C9_SLANT_AZIMUTH_RAD);
+const C9_GAP_THICKNESS_M = 3_000;
+const C9_GAP_LOWER_M = 3_000;
+const C9_GAP_UPPER_M = 6_000;
+const C9_TAU_TOLERANCE = 0.005;
+// 45° の投影ずれ・風の交差軸偽変位の許容値 [m]。層中央の高さ差 5 km に対応する。
+const C9_CENTROID_TOLERANCE_M = 500;
+const C9_WIND_DISPLACEMENT_M = 36_000;
+const C9_RAY_STEPS = 1_024;
+const C9_PROJECTION_AZIMUTH_EAST_M = 1;
+const C9_PROJECTION_AZIMUTH_NORTH_M = 0;
 
 export type FixtureComparison = 'absolute-error' | 'greater-than' | 'less-than' | 'non-negative';
 
@@ -899,6 +947,16 @@ function evaluateC7(): MeteorologicalCaseEvaluation {
   const expectedMaterialTravelM = moistInput.levels[40]!.northWindMps * SAMPLE_DURATION_SECONDS;
   const materialTravelM = Math.acos(Math.max(-1, Math.min(1, materialTrack.directionUnitVector.z)))
     * (EARTH_RADIUS_M + 10_000);
+  // 波源入力と同じ水平波長・伝播方位の調和場へ、方向別スペクトルの測定機構を当てる。
+  // 波源が湿潤層を変調して作る形態場の生成はまだ無いので、解析的な fixture 場で測る。
+  const wavePlane = buildWaveFieldPlane({
+    cellCount: 64,
+    spanM: 60_000,
+    wavelengthM: 10_000,
+    propagationAzimuthRad: Math.PI / 2,
+    extinctionPerM: 1e-4,
+  });
+  const waveSpectrum = directionalPowerSpectrum(wavePlane, 18);
   return {
     fixture: 'C7',
     cpuDiagnosticsApplied: true,
@@ -911,6 +969,12 @@ function evaluateC7(): MeteorologicalCaseEvaluation {
       moistIceHumidityFactor: moist.upperIceMoistureFactor,
       dryIceHumidityFactor: dry.upperIceMoistureFactor,
       upperNorthWindMps: moistInput.levels[40]!.northWindMps,
+      waveSpectrumCellCount: wavePlane.width,
+      waveSpectrumSpanM: wavePlane.width * wavePlane.cellWidthM,
+      waveSpectrumAzimuthBinCount: waveSpectrum.azimuthBinPowers.length,
+      waveSpectrumPeakComponentAzimuthRad: waveSpectrum.peakComponentAzimuthRad ?? 'none',
+      waveSpectrumPeakBinPowerShare: waveSpectrum.directionalConcentration,
+      waveSpectrumAzimuthBinPowers: waveSpectrum.azimuthBinPowers.join(','),
     },
     measurements: [
       compare('wave-track', waveTravelM, 'm', expectedWaveTravelM, 1e-8, 'absolute-error',
@@ -921,29 +985,360 @@ function evaluateC7(): MeteorologicalCaseEvaluation {
         'absolute-error', 'A moist saturated control condenses under the prescribed lift.'),
       compare('dry-wave-cloud-control', Number(dry.gravityWaveDriver.cloudCondensationPossible), '1', 0, 0,
         'absolute-error', 'The dry control retains the same source and stability but does not reach ice saturation.'),
-      blocked('directional-spectrum', '1', 'No gridded cloud-density field is available for spectral analysis.'),
+      blocked('directional-spectrum', '1',
+        'The directional spatial spectrum of the prescribed wave field is measured and reported in controls '
+        + `(peak component azimuth ${(waveSpectrum.peakComponentAzimuthRad ?? Number.NaN).toFixed(4)} rad, `
+        + `peak-bin share ${waveSpectrum.directionalConcentration.toFixed(4)}), but the plan leaves the `
+        + 'quantitative directional-spectrum acceptance band to be fixed before the Step 5 wave-morphology implementation.'),
     ],
   };
 }
 
-function blockedCase(id: 'C8' | 'C9'): MeteorologicalCaseEvaluation {
-  const blockedMeasurements = id === 'C8'
-    ? [
-      blocked('hole-fraction', '1', 'Marine boundary-layer cell geometry is not implemented.'),
-      blocked('cell-size', 'km', 'Marine boundary-layer cell geometry is not implemented.'),
-      blocked('cell-lifetime', 'min', 'Marine boundary-layer event lifecycle is not implemented.'),
-    ]
-    : [
-      blocked('layer-gap', 'm', 'A multi-layer cloud density field is not implemented.'),
-      blocked('parallax', 'px', 'Projected multi-layer geometry is not implemented.'),
-      blocked('shadow-support', 'm2', 'Shared multi-layer density and shadow support are not implemented.'),
-    ];
+function evaluateC8(): MeteorologicalCaseEvaluation {
+  const cellPlane = buildCellFieldPlane();
+  const totalCellCount = cellPlane.width * cellPlane.height;
+  const cellAreaM2 = cellPlane.cellWidthM * cellPlane.cellHeightM;
+  const cloudy = labelFieldComponents(cellPlane, 0, 'above', true);
+  const clear = labelFieldComponents(cellPlane, 0, 'at-or-below', false);
+  const holes = interiorHoleShare(clear, totalCellCount);
+  const interiorHoleDiametersM = clear.components
+    .filter((component) => !component.touchesBoundary)
+    .map((component) => equivalentDiameterM(component.cellCount, cellAreaM2));
+  const cloudyDiametersM = cloudy.components
+    .map((component) => equivalentDiameterM(component.cellCount, cellAreaM2));
+  const largestCloudyDiameterM = cloudyDiametersM.length === 0
+    ? 0 : Math.max(...cloudyDiametersM);
+  const meanHoleDiameterM = interiorHoleDiametersM.length === 0
+    ? 0 : interiorHoleDiametersM.reduce((total, diameter) => total + diameter, 0)
+      / interiorHoleDiametersM.length;
+  // 寿命機構: 30 分で中央の一つの穴が埋まる系列へ、成分の重複追跡を当てる。
+  const series = buildCellFieldSeries();
+  const clearPersistence = measureComponentPersistence(
+    series.map((frame) => ({
+      timeMinutes: frame.timeMinutes,
+      memberCells: fieldMemberMask(frame.plane, 0, 'at-or-below'),
+    })),
+    cellPlane.width, cellPlane.height, cellPlane.cellWidthM, cellPlane.cellHeightM,
+    cellPlane.originEastM, cellPlane.originNorthM, false,
+  );
+  const cloudyPersistence = measureComponentPersistence(
+    series.map((frame) => ({
+      timeMinutes: frame.timeMinutes,
+      memberCells: fieldMemberMask(frame.plane, 0, 'above'),
+    })),
+    cellPlane.width, cellPlane.height, cellPlane.cellWidthM, cellPlane.cellHeightM,
+    cellPlane.originEastM, cellPlane.originNorthM, true,
+  );
+  // 実イベント堆積の供給場にも同じ層抽出・形態計測を当てる診断。
+  const supplyVolume = sampleEventOpticalVolume();
+  const supplyPlane = cloudOpticalVolumeLayerPlane(
+    supplyVolume,
+    { originEastM: -8_000, originNorthM: -8_000, cellWidthM: 250, cellHeightM: 250 },
+    0, 'liquid',
+  );
+  const supplyCloudy = labelFieldComponents(supplyPlane, 0, 'above', true);
+  const supplyClear = labelFieldComponents(supplyPlane, 0, 'at-or-below', false);
+  const supplyHoles = interiorHoleShare(supplyClear, supplyPlane.width * supplyPlane.height);
   return {
-    fixture: id,
+    fixture: 'C8',
     cpuDiagnosticsApplied: true,
     generatedCloudImageFixtureApplied: false,
-    controls: {},
-    measurements: blockedMeasurements,
+    controls: {
+      cellFieldCellCount: C8_CELL_FIELD_CELL_COUNT,
+      cellFieldCellSizeM: C8_CELL_FIELD_CELL_SIZE_M,
+      cellFieldPeriodM: C8_CELL_FIELD_PERIOD_M,
+      cellFieldExtinctionPerM: C8_CELL_FIELD_EXTINCTION_PER_M,
+      cloudyComponentCount: cloudy.components.length,
+      interiorHoleComponentCount: holes.interiorComponentCount,
+      holeFraction: holes.interiorShare,
+      largestCloudyComponentEquivalentDiameterM: largestCloudyDiameterM,
+      meanInteriorHoleEquivalentDiameterM: meanHoleDiameterM,
+      clearComponentPersistenceDurationsMin: clearPersistence.durationsMinutes.join(','),
+      cloudyComponentPersistenceDurationsMin: cloudyPersistence.durationsMinutes.join(','),
+      supplyFieldLiquidCloudyComponentCount: supplyCloudy.components.length,
+      supplyFieldHoleFraction: supplyHoles.interiorShare,
+      supplyFieldInteriorHoleCount: supplyHoles.interiorComponentCount,
+    },
+    measurements: [
+      blocked('hole-fraction', '1',
+        `Measured on the cell fixture field (interior share ${holes.interiorShare.toFixed(4)}, `
+        + 'declared uncertaintyFloor 1e-3); the quantitative '
+        + 'observation-constrained acceptance band is not fixed yet.'),
+      blocked('cell-size', 'km',
+        `Measured (largest cloudy equivalent diameter ${(largestCloudyDiameterM / 1_000).toFixed(2)} km, `
+        + `mean interior-hole diameter ${(meanHoleDiameterM / 1_000).toFixed(2)} km); the quantitative `
+        + 'cell-size acceptance band is not fixed yet.'),
+      blocked('cell-lifetime', 'min',
+        `Persistence tracking on the fixture series reports ${clearPersistence.durationsMinutes.length} `
+        + 'clear-component tracks and cloud-component tracks in controls; the quantitative '
+        + 'lifetime acceptance band is not fixed yet.'),
+    ],
+  };
+}
+
+// 45° 光路の水平方位へ、層中央の高さだけずらした地表投影位置を返す。方位は +east に固定。
+function projectedCentroid(
+  centroid: { readonly eastM: number; readonly northM: number },
+  layerCenterAltitudeM: number,
+): { readonly eastM: number; readonly northM: number } {
+  const shiftM = layerCenterAltitudeM * Math.tan(C9_SLANT_AZIMUTH_RAD);
+  return {
+    eastM: centroid.eastM + shiftM * C9_PROJECTION_AZIMUTH_EAST_M,
+    northM: centroid.northM + shiftM * C9_PROJECTION_AZIMUTH_NORTH_M,
+  };
+}
+
+// 半径の等しい二円盤を中心間隔だけずらして重ねた和集合の面積 [m2]。
+function twoDiscUnionAreaM2(radiusM: number, centerOffsetM: number): number {
+  const overlap = 2 * radiusM * radiusM * Math.acos(centerOffsetM / (2 * radiusM))
+    - centerOffsetM / 2 * Math.sqrt(4 * radiusM * radiusM - centerOffsetM * centerOffsetM);
+  return 2 * Math.PI * radiusM * radiusM - overlap;
+}
+
+function evaluateC9(): MeteorologicalCaseEvaluation {
+  const centered = { eastM: 0, northM: 0 };
+  const base = buildC9TwoDiscField(centered, centered);
+  const liquidOnly = buildC9TwoDiscField(centered, null);
+  const iceOnly = buildC9TwoDiscField(null, centered);
+  const frame = base.frame;
+  const frameGrid = {
+    originEastM: frame.gridOriginEastM,
+    originNorthM: frame.gridOriginNorthM,
+    cellWidthM: frame.cellWidthM,
+    cellHeightM: frame.cellHeightM,
+  };
+
+  // 三描画経路と同じ規則の CPU 参照で、鉛直と 45° の中心光路を積分する。
+  const surfaceCenterN = v3(0, 0, 1);
+  const slantDirection = norm(v3(1, 0, 1));
+  const verticalPath = integrateCloudLocalFieldRayCpu(
+    surfaceCenterN, v3(0, 0, 1), base.data, frame, C9_RAY_STEPS);
+  const slantPath = integrateCloudLocalFieldRayCpu(
+    surfaceCenterN, slantDirection, base.data, frame, C9_RAY_STEPS);
+  const liquidOnlyPath = integrateCloudLocalFieldRayCpu(
+    surfaceCenterN, v3(0, 0, 1), liquidOnly.data, liquidOnly.frame, C9_RAY_STEPS);
+  const iceOnlyPath = integrateCloudLocalFieldRayCpu(
+    surfaceCenterN, v3(0, 0, 1), iceOnly.data, iceOnly.frame, C9_RAY_STEPS);
+
+  // 独立した参照として、セル内一定消散の厳密な格子横断積分を併記する。
+  const strictLayers = cloudExtinctionLayersFromVolume(base.data);
+  const strictGrid = { ...frameGrid, width: frame.gridWidth, height: frame.gridHeight };
+  const strictVertical = integrateCloudLocalOpticalPath(
+    { eastM: 0, northM: 0, altitudeM: 0 },
+    { eastM: 0, northM: 0, altitudeM: C9_LAYER_EDGES_M[C9_LAYER_EDGES_M.length - 1]! },
+    strictGrid, strictLayers,
+  );
+  const strictSlant = integrateCloudLocalOpticalPath(
+    { eastM: 0, northM: 0, altitudeM: 0 },
+    { eastM: 8_000, northM: 0, altitudeM: 8_000 },
+    strictGrid, strictLayers,
+  );
+
+  // 空隙: 両相の支持層に挟まれた零消散帯の厚さ。空隙への漏れは支持を動かして帯を狭める。
+  const layerCount = C9_LAYER_EDGES_M.length - 1;
+  const cellCount = base.data.width * base.data.height;
+  let liquidSupportTopM = 0;
+  let iceSupportBottomM = Number.POSITIVE_INFINITY;
+  let hasLiquid = false;
+  let hasIce = false;
+  for (let layer = 0; layer < layerCount; layer += 1) {
+    if (base.data.liquidExtinctionPerM
+      .subarray(layer * cellCount, (layer + 1) * cellCount).some((value) => value > 0)) {
+      hasLiquid = true;
+      liquidSupportTopM = Math.max(liquidSupportTopM, C9_LAYER_EDGES_M[layer + 1]!);
+    }
+    if (base.data.iceExtinctionPerM
+      .subarray(layer * cellCount, (layer + 1) * cellCount).some((value) => value > 0)) {
+      hasIce = true;
+      iceSupportBottomM = Math.min(iceSupportBottomM, C9_LAYER_EDGES_M[layer]!);
+    }
+  }
+  if (!hasLiquid || !hasIce) throw new Error('C9 fixture must deposit both liquid and ice layers');
+  const zeroGapThicknessM = iceSupportBottomM - liquidSupportTopM;
+  // 報告用の空隙内消散は名目的な 3–6 km 帯で測る。漏れがあると帯の厚さも削られる。
+  let maximumGapExtinctionPerM = 0;
+  for (let layer = 0; layer < layerCount; layer += 1) {
+    const lower = C9_LAYER_EDGES_M[layer]!;
+    const upper = C9_LAYER_EDGES_M[layer + 1]!;
+    if (lower < C9_GAP_LOWER_M || upper > C9_GAP_UPPER_M) continue;
+    for (let cell = 0; cell < cellCount; cell += 1) {
+      maximumGapExtinctionPerM = Math.max(maximumGapExtinctionPerM,
+        base.data.liquidExtinctionPerM[layer * cellCount + cell]!
+        + base.data.iceExtinctionPerM[layer * cellCount + cell]!);
+    }
+  }
+
+  // 視差: 層別の重心を 45° の投影方位へ層中央高さぶん地表へ移し、その間隔を測る。
+  const liquidPlane = cloudOpticalVolumeLayerPlane(base.data, frameGrid, 0, 'liquid');
+  const icePlane = cloudOpticalVolumeLayerPlane(base.data, frameGrid, 2, 'ice');
+  const liquidCentroid = fieldValueCentroid(liquidPlane);
+  const iceCentroid = fieldValueCentroid(icePlane);
+  if (liquidCentroid === null || iceCentroid === null) {
+    throw new Error('C9 fixture discs must have nonzero extinction');
+  }
+  const liquidProjected = projectedCentroid(liquidCentroid, C9_LIQUID_LAYER_CENTER_M);
+  const iceProjected = projectedCentroid(iceCentroid, C9_ICE_LAYER_CENTER_M);
+  const projectedSeparationM = Math.hypot(
+    iceProjected.eastM - liquidProjected.eastM,
+    iceProjected.northM - liquidProjected.northM,
+  );
+  const liquidCentroidErrorM = Math.hypot(
+    liquidProjected.eastM - C9_LIQUID_LAYER_CENTER_M, liquidProjected.northM);
+  const iceCentroidErrorM = Math.hypot(
+    iceProjected.eastM - C9_ICE_LAYER_CENTER_M, iceProjected.northM);
+
+  // 影: 同じ投影で各層の mask を地表へずらし、和集合の支持面積を測る。
+  const shadowSupportAreaM2 = unionShiftedSupportAreaM2([
+    {
+      plane: liquidPlane,
+      shiftEastCells: Math.round(C9_LIQUID_LAYER_CENTER_M / C9_CELL_SIZE_M),
+      shiftNorthCells: 0,
+      memberThreshold: 0,
+    },
+    {
+      plane: icePlane,
+      shiftEastCells: Math.round(C9_ICE_LAYER_CENTER_M / C9_CELL_SIZE_M),
+      shiftNorthCells: 0,
+      memberThreshold: 0,
+    },
+  ]);
+  const analyticShadowSupportAreaM2 = twoDiscUnionAreaM2(
+    10_000, C9_ICE_LAYER_CENTER_M - C9_LIQUID_LAYER_CENTER_M);
+
+  // 風の対照: 層中央の高さで別々の風へ 1 時間輸送した円盤を張り直し、重心の変位を測る。
+  const windLevels: CloudEnvironmentLevelInput[] = [0, 1_000, 3_000, 6_000, 8_000]
+    .map((heightM) => ({
+      heightM,
+      pressurePa: 101_325,
+      temperatureK: 288,
+      waterVaporSpecificHumidityKgPerKg: 0.01,
+      liquidWaterMixingRatioKgPerKg: 0,
+      iceMixingRatioKgPerKg: 0,
+      eastWindMps: heightM >= 1_000 && heightM <= 3_000 ? 10 : 0,
+      northWindMps: heightM >= 6_000 ? 10 : 0,
+      largeScaleVerticalVelocityMps: 0,
+    }));
+  const liquidEndDirection = transportDisplacementM(windLevels, C9_LIQUID_LAYER_CENTER_M);
+  const iceEndDirection = transportDisplacementM(windLevels, C9_ICE_LAYER_CENTER_M);
+  const liquidEndUv = cloudLocalUvAt(liquidEndDirection, frame);
+  const iceEndUv = cloudLocalUvAt(iceEndDirection, frame);
+  if (liquidEndUv === null || iceEndUv === null) {
+    throw new Error('C9 wind-displaced disc centers must stay inside the field domain');
+  }
+  const displaced = buildC9TwoDiscField(
+    { eastM: liquidEndUv.eastM, northM: liquidEndUv.northM },
+    { eastM: iceEndUv.eastM, northM: iceEndUv.northM },
+  );
+  const displacedGrid = {
+    originEastM: displaced.frame.gridOriginEastM,
+    originNorthM: displaced.frame.gridOriginNorthM,
+    cellWidthM: displaced.frame.cellWidthM,
+    cellHeightM: displaced.frame.cellHeightM,
+  };
+  const displacedLiquidCentroid = fieldValueCentroid(
+    cloudOpticalVolumeLayerPlane(displaced.data, displacedGrid, 0, 'liquid'));
+  const displacedIceCentroid = fieldValueCentroid(
+    cloudOpticalVolumeLayerPlane(displaced.data, displacedGrid, 2, 'ice'));
+  if (displacedLiquidCentroid === null || displacedIceCentroid === null) {
+    throw new Error('C9 displaced discs must have nonzero extinction');
+  }
+  const liquidDisplacementEastM = displacedLiquidCentroid.eastM;
+  const iceDisplacementNorthM = displacedIceCentroid.northM;
+  const crossAxisDisplacementM = Math.max(
+    Math.abs(displacedLiquidCentroid.northM), Math.abs(displacedIceCentroid.eastM));
+
+  return {
+    fixture: 'C9',
+    cpuDiagnosticsApplied: true,
+    generatedCloudImageFixtureApplied: false,
+    controls: {
+      discRadiusM: 10_000,
+      cellSizeM: C9_CELL_SIZE_M,
+      raySteps: C9_RAY_STEPS,
+      verticalLiquidTau: verticalPath.liquidTau,
+      verticalIceTau: verticalPath.iceTau,
+      verticalTotalTau: verticalPath.totalTau,
+      verticalTransmittance: verticalPath.transmittance,
+      slant45LiquidTau: slantPath.liquidTau,
+      slant45IceTau: slantPath.iceTau,
+      slant45TotalTau: slantPath.totalTau,
+      slant45Transmittance: slantPath.transmittance,
+      strictVerticalLiquidTau: strictVertical.liquidOpticalDepth,
+      strictVerticalIceTau: strictVertical.iceOpticalDepth,
+      strictVerticalTotalTau: strictVertical.liquidOpticalDepth + strictVertical.iceOpticalDepth,
+      strictSlant45TotalTau: strictSlant.liquidOpticalDepth + strictSlant.iceOpticalDepth,
+      cpuMinusStrictSlant45TotalTau: slantPath.totalTau
+        - (strictSlant.liquidOpticalDepth + strictSlant.iceOpticalDepth),
+      gpuTauComparisonStatus: 'pending: GPU probe is a render-lab diagnostic; '
+        + 'this evaluation compares the shared-rule CPU reference with the analytic values',
+      zeroGapThicknessM,
+      maximumGapExtinctionPerM,
+      liquidCentroidEastM: liquidCentroid.eastM,
+      liquidCentroidNorthM: liquidCentroid.northM,
+      iceCentroidEastM: iceCentroid.eastM,
+      iceCentroidNorthM: iceCentroid.northM,
+      projectedSeparationM,
+      liquidProjectedCentroidErrorM: liquidCentroidErrorM,
+      iceProjectedCentroidErrorM: iceCentroidErrorM,
+      shadowSupportAreaM2,
+      analyticShadowSupportAreaM2,
+      shadowLayerOffsetM: projectedSeparationM,
+      windDisplacementEastLiquidM: liquidDisplacementEastM,
+      windDisplacementNorthIceM: iceDisplacementNorthM,
+      windCrossAxisDisplacementM: crossAxisDisplacementM,
+      slantAzimuthRad: C9_SLANT_AZIMUTH_RAD,
+    },
+    measurements: [
+      compare('tau-vertical-liquid', verticalPath.liquidTau, '1',
+        C9_VERTICAL_LIQUID_TAU, C9_TAU_TOLERANCE, 'absolute-error',
+        'Central vertical path through the liquid layer: beta 2e-4 m^-1 over 2 km.'),
+      compare('tau-vertical-ice', verticalPath.iceTau, '1',
+        C9_VERTICAL_ICE_TAU, C9_TAU_TOLERANCE, 'absolute-error',
+        'Central vertical path through the ice layer: beta 1e-4 m^-1 over 2 km.'),
+      compare('tau-vertical', verticalPath.totalTau, '1',
+        C9_VERTICAL_TOTAL_TAU, C9_TAU_TOLERANCE, 'absolute-error',
+        'Total analytic optical depth 0.4 + 0.2 = 0.6.'),
+      compare('transmittance-vertical', verticalPath.transmittance, '1',
+        Math.exp(-C9_VERTICAL_TOTAL_TAU), C9_TAU_TOLERANCE, 'absolute-error',
+        'exp(-0.6) = 0.5488116361; the tolerance is inherited from the tau gate.'),
+      compare('tau-slant-45', slantPath.totalTau, '1',
+        C9_SLANT_TOTAL_TAU, C9_TAU_TOLERANCE, 'absolute-error',
+        '45-degree center path: 0.6 / cos(45 deg) = 0.8485281374.'),
+      compare('transmittance-slant-45', slantPath.transmittance, '1',
+        Math.exp(-C9_SLANT_TOTAL_TAU), C9_TAU_TOLERANCE, 'absolute-error',
+        'exp(-0.8485281374) = 0.4280444912; the tolerance is inherited from the tau gate.'),
+      compare('phase-isolation-liquid-only', liquidOnlyPath.iceTau, '1',
+        0, 0, 'absolute-error',
+        'The liquid-only control must not contribute any ice optical depth.'),
+      compare('phase-isolation-ice-only', iceOnlyPath.liquidTau, '1',
+        0, 0, 'absolute-error',
+        'The ice-only control must not contribute any liquid optical depth.'),
+      compare('layer-gap', zeroGapThicknessM, 'm',
+        C9_GAP_THICKNESS_M, 1e-9, 'absolute-error',
+        'Thickness of the band with strictly zero extinction in both phases between the layer supports.'),
+      compare('parallax', projectedSeparationM / C9_CELL_SIZE_M, 'px',
+        10, 2, 'absolute-error',
+        '45-degree surface-projected centroid separation of the 2 km and 7 km layer centers: analytic 5 km = 10 cells.'),
+      compare('parallax-centroid-liquid', liquidCentroidErrorM, 'm',
+        0, C9_CENTROID_TOLERANCE_M, 'absolute-error',
+        'Projected liquid-layer centroid error on the 0.5 km grid.'),
+      compare('parallax-centroid-ice', iceCentroidErrorM, 'm',
+        0, C9_CENTROID_TOLERANCE_M, 'absolute-error',
+        'Projected ice-layer centroid error on the 0.5 km grid.'),
+      compare('wind-displacement-liquid', liquidDisplacementEastM, 'm',
+        C9_WIND_DISPLACEMENT_M, C9_CENTROID_TOLERANCE_M, 'absolute-error',
+        'Liquid-layer center advected one hour by the 10 m/s east wind, measured on the re-baked field.'),
+      compare('wind-displacement-ice', iceDisplacementNorthM, 'm',
+        C9_WIND_DISPLACEMENT_M, C9_CENTROID_TOLERANCE_M, 'absolute-error',
+        'Ice-layer center advected one hour by the 10 m/s north wind, measured on the re-baked field.'),
+      compare('wind-cross-axis', crossAxisDisplacementM, 'm',
+        0, C9_CENTROID_TOLERANCE_M, 'absolute-error',
+        'Cross-axis false displacement of both layer centers.'),
+      blocked('shadow-support', 'm2',
+        `Union shadow support of both projected layers measures ${shadowSupportAreaM2.toFixed(0)} m2 `
+        + `(analytic two-disc union ${analyticShadowSupportAreaM2.toFixed(0)} m2, offset `
+        + `${projectedSeparationM.toFixed(1)} m); the quantitative support-area acceptance band is not fixed yet.`),
+    ],
   };
 }
 
@@ -956,7 +1351,7 @@ export function evaluateMeteorologicalCase(id: MeteorologicalCaseId): Meteorolog
     case 'C5': return evaluateC5();
     case 'C6': return evaluateC6();
     case 'C7': return evaluateC7();
-    case 'C8':
-    case 'C9': return blockedCase(id);
+    case 'C8': return evaluateC8();
+    case 'C9': return evaluateC9();
   }
 }
