@@ -8,7 +8,7 @@ import { createShipModuleInstance } from '../../src/game/ship/ship-module-instan
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { restoreShipAssembly, serializeShipAssembly } from '../../src/game/ship/ship-save';
-import { sameTransform, sideSlotRotation } from '../../src/game/ship/ship-assembly-transform';
+import { sameTransform, sideMountTransform, sideSlotRotation } from '../../src/game/ship/ship-assembly-transform';
 import { test } from '../harness';
 
 function module(definitionId: string, id: string, state = {}) {
@@ -254,10 +254,11 @@ export function register(): void {
     assert.equal(restored.validate().valid, true);
     const edge = restored.graph.find(c => c.id === 'connection-8');
     assert.ok(edge !== undefined);
-    const expected = {
-      position: v3(-3.5, 0, 0),
-      rotation: sideSlotRotation('side:-x'),
-    };
+    const expected = sideMountTransform(
+      SHIP_MODULE_CATALOG.get('cockpit-standard')!,
+      SHIP_MODULE_CATALOG.get('solar-panel-standard')!,
+      'side:-x',
+    );
     assert.equal(sameTransform(edge.childTransform, expected), true);
   });
 
