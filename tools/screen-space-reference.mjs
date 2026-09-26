@@ -15,9 +15,9 @@ const CHECK_USAGE = 'usage: check <名前> [<歩数を倍にした名前>] [--en
 // 掛からない大きさ。
 const MAX_PASS_SAMPLES = 256;
 // 収束の条件: 半分どうしの差と、歩数を倍にした B₂ との差の G が、いまの中設定(均しなし)の G のこの割合以下で、
-// 半分どうしの差の R(s) がどの帯もこれ以下。
+// 半分どうしの差の R(s) がどの帯も、最も細かい帯の R(1) のこの倍以下。
 const CONVERGED_G_RATIO = 1 / 10;
-const CONVERGED_R = 1.5;
+const CONVERGED_R_RATIO = 1.5;
 
 // 評価の組のうち、--entries(撮影の key)と --sets(set)の両方に当たるもの。省いた方は絞らない。
 function selectedEntries(options) {
@@ -101,16 +101,20 @@ async function extendReference(lab, name, entry, tier, passes) {
   const add = (sum, frame) => {
     for (let i = 0; i < size; i++) sum[i] += frame[i];
   };
-  // パスを撮る。絵の落ち着きを待つのは最初のパスだけで、以後は seed だけが変わる。
+  // パスを撮る。絵の落ち着きを待つのは最初のパスだけで、以後は seed だけが変わる。拡散照度はページの中で積み、
+  // 撮影の終わりに 1 回だけ受け取る。
   const passesStarted = Date.now();
   let firstPassSeconds = 0;
   for (let k = done; k < passes; k++) {
     await lab.setSeed(seedOf(k));
     add(sums.display[k % 2], linearOfPng(k === done ? await lab.capturePng() : await lab.captureOncePng()));
-    if (sums.diffuse !== undefined) add(sums.diffuse[k % 2], await lab.readFloat('diffuse', 3));
+    if (sums.diffuse !== undefined) await lab.accumulateFloat('diffuse', 3, k % 2);
     if (k === done) firstPassSeconds = (Date.now() - passesStarted) / 1000;
   }
   const passSeconds = (Date.now() - passesStarted) / 1000;
+  if (sums.diffuse !== undefined) {
+    for (const [half, sum] of (await lab.takeAccumulated(2)).entries()) add(sums.diffuse[half], sum);
+  }
   const seconds = (Date.now() - started) / 1000;
   writeReferencePasses(name, entry, {
     slices: tier.sliceCount, steps: tier.stepCount, passes, seconds: (saved?.seconds ?? 0) + seconds,
@@ -167,12 +171,12 @@ export async function check({ positional, options }) {
   console.log([describe('B', name), ...(doubledName === undefined ? [] : [describe('B₂', doubledName)]), ''].join('\n'));
   console.log(table([
     '撮影', 'G(偶 − 奇)', 'R(s) 偶 − 奇', 'G(中・均しなし)', 'G(B₂ − B)', 'G(B₂ 偶 − 奇)',
-    '雑音 G ≦ 中/10', `雑音 R(s) ≦ ${CONVERGED_R}`, '歩数 G ≦ 中/10',
+    '雑音 G ≦ 中/10', `雑音 R(s)/R(1) ≦ ${CONVERGED_R_RATIO}`, '歩数 G ≦ 中/10',
   ], rows).join('\n'));
 }
 
 // 撮影 entry の判定の行。current はいまの中設定(均しなし)の表示(線形 sRGB)。合否の後の括弧は、G の中の G に
-// 対する比か、R(s) の最大。
+// 対する比か、R(s) の R(1) に対する比の最大。
 function checkRowOf(name, doubledName, entry, current) {
   const b = loadReference(name, [entry])[entry.key];
   const mask = maskOf(b.radius);
@@ -187,7 +191,7 @@ function checkRowOf(name, doubledName, entry, current) {
   return [
     entry.key, fixed(noise.g, 5), noise.r.map((v) => v.toFixed(2)).join(' / '), fixed(currentG, 5),
     fixed(doubled?.g, 5), fixed(doubled?.noiseG, 5),
-    verdict(noise.g / currentG, CONVERGED_G_RATIO, 3), verdict(Math.max(...noise.r), CONVERGED_R, 2),
+    verdict(noise.g / currentG, CONVERGED_G_RATIO, 3), verdict(Math.max(...noise.r) / noise.r[0], CONVERGED_R_RATIO, 2),
     doubled === null ? '—' : verdict(doubled.g / currentG, CONVERGED_G_RATIO, 3),
   ];
 }
