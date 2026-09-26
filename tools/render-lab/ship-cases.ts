@@ -126,6 +126,31 @@ function engine(): LabCase {
   };
 }
 
+// 機関砲の砲架、砲身束、給弾部を同じ照明で多方向から観察する。
+function weapon(): LabCase {
+  const model = buildShipModuleModel('weapon-gatling');
+  model.position.set(0, 0, -20);
+  return {
+    objects: [model],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -19.2),
+    shots: {
+      'weapon-cradle-oblique': {
+        view: { cameraAzimuthDeg: -35, cameraElevationDeg: 25, cameraDistanceLog: -0.22,
+          sunAzimuthDeg: -30, sunElevationDeg: 45 },
+      },
+      'weapon-cradle-side': {
+        view: { cameraAzimuthDeg: -85, cameraElevationDeg: 12, cameraDistanceLog: -0.22,
+          sunAzimuthDeg: -60, sunElevationDeg: 35 },
+      },
+      'weapon-cradle-feed': {
+        view: { cameraAzimuthDeg: 55, cameraElevationDeg: -20, cameraDistanceLog: -0.22,
+          sunAzimuthDeg: 40, sunElevationDeg: -35 },
+      },
+    },
+  };
+}
+
 // 展開途中: 太陽電池とラジエーターの展開度を変えた戦闘艦を並べ、ヒンジの繋がりと収納時の重なりを見る。
 function deploying(): LabCase {
   const objects = [0, 0.4, 0.8].map((deployed, index) => {
@@ -206,6 +231,7 @@ export const SHIP_CASES = {
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,
   'modular-ship-engine': engine,
+  'modular-ship-weapon': weapon,
   'modular-ship-deploying': deploying,
   'modular-ship-deployables': deployables,
   'modular-ship-deployables-stowed': deployablesStowed,
