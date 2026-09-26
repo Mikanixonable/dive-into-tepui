@@ -1,6 +1,6 @@
 // マガジンベルトの鎖のたわみ・ねじれを機体座標系で解き、接触判定の代理を置く。
 import type { Attitude } from '../../physics/attitude';
-import { LOCAL_RIGHT, Q_IDENTITY, qFromUnitVectors, qInvert, qMul, qRotate, type Quat } from '../../math/quat';
+import { LOCAL_RIGHT, qFromUnitVectors, qInvert, qMul, qRotate, type Quat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { type Vec3, add, addScaled, cross, len, norm, scale, sub, v3, type SerializedVec3 } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../physics/player-shape';
@@ -27,6 +27,8 @@ export interface SerializedBeltPhysics {
   readonly prevPositions: SerializedVec3[];
   readonly twists: number[];
   readonly prevShipW: SerializedVec3;
+  readonly mountAnchor?: SerializedVec3;
+  readonly mountDirection?: SerializedVec3;
 }
 
 export class BeltPhysics {
@@ -37,11 +39,13 @@ export class BeltPhysics {
   private readonly _twists: number[];
 
   private prevShipW: Vec3;
-  private mountAnchor = v3(MAG_BELT_ANCHOR_X, 0, 0);
-  private mountDirection = LOCAL_RIGHT;
-  private mountQ: Quat = Q_IDENTITY;
+  private mountAnchor: Vec3;
+  private mountDirection: Vec3;
+  private mountQ: Quat;
+  // 旧記録に取付情報が無ければ、最初の同期では保存された節点を移動しない。
+  private mountWasNotSerialized: boolean;
   // 給弾進みに応じて動く根本の固定点(機体座標系)。
-  private anchorValue: Vec3 = this.mountAnchor;
+  private anchorValue: Vec3;
 
   public get anchor(): Vec3 { return this.anchorValue; }
 
@@ -52,11 +56,19 @@ export class BeltPhysics {
     prevPositions: readonly Vec3[] = positions,
     twists: readonly number[] = positions.map(() => 0),
     prevShipW = v3(),
+    mountAnchor = v3(MAG_BELT_ANCHOR_X, 0, 0),
+    mountDirection = LOCAL_RIGHT,
+    mountWasNotSerialized = false,
   ) {
     this._positions = [...positions];
     this.prevPositions = [...prevPositions];
     this._twists = [...twists];
     this.prevShipW = prevShipW;
+    this.mountAnchor = v3(mountAnchor.x, mountAnchor.y, mountAnchor.z);
+    this.mountDirection = norm(mountDirection);
+    this.mountQ = qFromUnitVectors(LOCAL_RIGHT, this.mountDirection);
+    this.anchorValue = this.mountAnchor;
+    this.mountWasNotSerialized = mountWasNotSerialized;
   }
 
   // linkCount 個の節点を、アンカーから等間隔に伸ばした形で新しく作る。最初の update より前から位置を
@@ -75,16 +87,21 @@ export class BeltPhysics {
       serialized.prevPositions.map(vec),
       serialized.twists,
       vec(serialized.prevShipW),
+      serialized.mountAnchor === undefined ? undefined : vec(serialized.mountAnchor),
+      serialized.mountDirection === undefined ? undefined : vec(serialized.mountDirection),
+      serialized.mountAnchor === undefined || serialized.mountDirection === undefined,
     );
   }
 
-  // 節点の位置・前の位置・ねじれと、前フレームの機体角速度の直列化。
+  // 節点の位置・前の位置・ねじれ、給弾口の取付状態、前フレームの機体角速度を直列化する。
   public serialize(): SerializedBeltPhysics {
     return {
       positions: [...this._positions],
       prevPositions: [...this.prevPositions],
       twists: [...this._twists],
       prevShipW: this.prevShipW,
+      mountAnchor: this.mountAnchor,
+      mountDirection: this.mountDirection,
     };
   }
 
@@ -93,22 +110,32 @@ export class BeltPhysics {
   public get positions(): readonly Vec3[] { return this._positions; }
   public get twists(): readonly number[] { return this._twists; }
 
-  // weapon module の semantic belt anchor と延伸方向へ鎖全体を据え直す。assembly の質量だけが
-  // 変わったフレームでは同値入力を無視し、燃料消費でベルトを毎回初期化しない。
+  // weapon module の給弾口が動いた分だけ、鎖の形と速度を保って新しい位置・向きへ移す。
   public setMount(anchor: Vec3, direction: Vec3): void {
     const normalizedDirection = norm(direction);
+    if (this.mountWasNotSerialized) {
+      this.mountWasNotSerialized = false;
+      this.mountAnchor = v3(anchor.x, anchor.y, anchor.z);
+      this.mountDirection = normalizedDirection;
+      this.mountQ = qFromUnitVectors(LOCAL_RIGHT, normalizedDirection);
+      this.anchorValue = this.mountAnchor;
+      return;
+    }
     if (len(sub(anchor, this.mountAnchor)) < 1e-9
       && len(sub(normalizedDirection, this.mountDirection)) < 1e-9) return;
+    const rotation = qFromUnitVectors(this.mountDirection, normalizedDirection);
+    const movePoint = (point: Vec3): Vec3 => add(
+      anchor,
+      qRotate(rotation, sub(point, this.mountAnchor)),
+    );
+    this.anchorValue = movePoint(this.anchorValue);
+    for (let i = 0; i < this.linkCount; i++) {
+      this._positions[i] = movePoint(this._positions[i]!);
+      this.prevPositions[i] = movePoint(this.prevPositions[i]!);
+    }
     this.mountAnchor = v3(anchor.x, anchor.y, anchor.z);
     this.mountDirection = normalizedDirection;
     this.mountQ = qFromUnitVectors(LOCAL_RIGHT, normalizedDirection);
-    this.anchorValue = this.mountAnchor;
-    for (let i = 0; i < this.linkCount; i++) {
-      const p = addScaled(this.mountAnchor, this.mountDirection, (i + 1) * MAG_BELT_PITCH);
-      this._positions[i] = p;
-      this.prevPositions[i] = p;
-      this._twists[i] = 0;
-    }
   }
 
   // リンクを1つ手前へ詰め、末尾に新しいリンクを継ぎ足す。
@@ -136,6 +163,7 @@ export class BeltPhysics {
   // ベルトのたわみを dt 秒ぶん時間発展させる。軌道上は自由落下のため重力は作用せず、機体の推力加速度と
   // 回転が生む慣性力がベルトを機体座標系の中で揺らす。
   public update(dt: number, att: Attitude, thrustAccelVec: Vec3, beltFeed: number): void {
+    this.mountWasNotSerialized = false;
     // 前フレームとの角速度差から角加速度を推定する
     const invDt = dt > 1e-6 ? 1 / dt : 0;
     const angularAccel = scale(sub(att.w, this.prevShipW), invDt);
