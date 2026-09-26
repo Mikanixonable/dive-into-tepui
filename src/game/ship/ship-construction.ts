@@ -121,8 +121,8 @@ export class ShipConstruction implements OverlayHandle {
     this.focusDock?.(ship);
     this.previousForceCurrent = this.displayWindow.current.forceCurrent;
     this.displayWindow.setForceCurrent(true);
-    this.overlayManager.open('ship-construction-mode', this, {
-      kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false, pausesGame: true,
+    this.overlayManager.openMode('ship-construction-mode', this, {
+      closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false, pausesGame: true,
     });
     this.syncPanel();
   }

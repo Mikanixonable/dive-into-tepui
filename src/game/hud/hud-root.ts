@@ -502,7 +502,7 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
 
   // 画面上端の状態・カメラ操作・ヘルプを一つのクロームへまとめる。各要素が独立した
   // top 値を持たないため、トップバーが折り返しても互いに重ならない。
-  const helpPanel = new HelpPanel(layers.system, shell.overlayManager);
+  const helpPanel = new HelpPanel(shell.overlayManager);
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBar(chrome);
   buildChaseReset(chrome);

@@ -5,7 +5,6 @@ import { MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN } from '../../..
 
 export const MAP_PANEL_STYLE = `
 /* MANEUVER PLAN パネルと、表示設定パネル群が共有する行部品。 */
-#hud .hud-rail > #hud-object-placer { max-height: none; overflow: visible; }
 #hud .hud-rail > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }
 /* MANEUVER PLAN はマップ操作の主パネルとして右レールの最上段に固定する。 */
 #hud .hud-rail-right > #hud-plan {
@@ -256,10 +255,10 @@ export const MAP_PANEL_STYLE = `
 #hud-stage-controls .stage-control-select .w-select { min-width: 86px; }
 #hud-stage-controls .stage-control-select .w-input { width: 72px; text-align: right; }
 
-/* 物体配置パネル(#hud-object-placer、クリエイティブモード限定): MANEUVER PLAN の下、
-   右上に縦積みする。 */
+/* 物体配置パネル(#hud-object-placer、クリエイティブモード限定): ウィンドウとして右上へ
+   浮かせる。位置と幅はパネル自身が inline style で決める。 */
 #hud-object-placer {
-  width: 100%; pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto;
+  pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto;
 }
 #hud-object-placer .editorial-panel-head {
   margin-bottom: var(--space-3); padding-bottom: var(--space-3);

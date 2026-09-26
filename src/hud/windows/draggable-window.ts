@@ -9,7 +9,7 @@ import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
 import { Button, CloseButton } from '../widgets';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';
-import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
+import type { OverlayHandle, OverlayManager, SurfaceSpec } from '../overlay-manager';
 import { wireHeaderDrag } from '../window-drag';
 
 const STYLE = `
@@ -102,10 +102,10 @@ export class DraggableWindow implements OverlayHandle {
   // 項目ショートカットの一致判定コールバック。一致したら true を返す。
   public onShortcut: ((code: string) => boolean) | null = null;
 
-  // clientX/clientY を左上角として root の子として開く。viewport.ts のビューポート変化通知を
-  // 購読し、overlayManager へ登録する。
+  // clientX/clientY を左上角として開く。viewport.ts のビューポート変化通知を購読し、
+  // overlayManager へ登録する。要素は overlayManager が window の層へ置く。
   public constructor(
-    root: HTMLElement, clientX: number, clientY: number,
+    clientX: number, clientY: number,
     private readonly options: DraggableWindowOptions, private readonly overlayManager: OverlayManager,
   ) {
     this.overlayId = `dg-window-${DraggableWindow.nextId++}`;
@@ -170,15 +170,14 @@ export class DraggableWindow implements OverlayHandle {
     this.element.appendChild(this.body);
     this.element.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.element.addEventListener('contextmenu', (e) => e.preventDefault());
-    root.appendChild(this.element);
 
     this.onResize = () => this.moveTo(this.element.offsetLeft, this.element.offsetTop);
     this.unsubscribeViewport = onViewportChange(this.onResize);
 
     this.setHeader(options.title, options.subtitle);
+    // 先に登録して要素を DOM へ置いてから、実寸を測って位置を決める。
+    this.overlayManager.open(this.overlayId, this.element, this, this.currentSpec());
     this.moveTo(clientX, clientY);
-    this.bringToFront();
-    this.overlayManager.open(this.overlayId, this, this.currentSpec());
   }
 
   // OverlayHandle 実装。target がウィンドウ要素の内部かどうかを返す。
@@ -196,7 +195,7 @@ export class DraggableWindow implements OverlayHandle {
 
   // 現在のクリップ状態から overlayManager へ渡す宣言を組む。unclippedWindowGroup が無ければ
   // 常に ESC・外側クリックのどちらでも閉じない常設ウィンドウとして扱う。
-  private currentSpec(): OverlaySpec {
+  private currentSpec(): SurfaceSpec {
     const isUnclippedExclusive = this.options.unclippedWindowGroup !== undefined && !this._clipped;
     return {
       kind: 'window',
