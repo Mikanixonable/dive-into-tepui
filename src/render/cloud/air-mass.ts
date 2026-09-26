@@ -7,12 +7,14 @@ import * as THREE from 'three/webgpu';
 import { abs, float, length, normalize, smoothstep, vec2, vec4 } from 'three/tsl';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
-import { eastAt, latitudeOf, northAt } from './sphere-frame';
-import { windStep } from './wind-law';
+import { eastAt, eastAtCpu, latitudeAtCpu, latitudeOf, northAt, northAtCpu } from './sphere-frame';
+import { windStep, windStepCpu } from './wind-law';
+import * as vec from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from '../field-projection';
-import type { BalancedWind } from './wind-law';
+import type { BalancedWind, BalancedWindCpu } from './wind-law';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
 // 風上へ遡る時間 [s]。腕の巻きは流れの角速度 × 追跡時間 — 並の低気圧(短軸の半径 1200 km、
@@ -96,4 +98,54 @@ export class AirMass {
       direction.add(windStep(wind, direction, float(-TRACE_SECONDS)).div(this.surfaceRadius)));
     return latitudeOf(origin).sub(latitudeOf(direction));
   }
+}
+
+// 単位方向における気団の数値版。compression は気団の境目の押し縮まり(何も起きていない所と、
+// 追跡の風が淀んで境目を信じられない所で 1)、warmth はいまの緯度と出身の緯度の差 [rad]
+// (正で暖気の流入、負で寒気の流入)。
+export interface AirMassSampleCpu {
+  readonly compression: number;
+  readonly warmth: number;
+}
+
+// 端で立ち上がる滑らかな重み。TSL の smoothstep と同じ式の数値版。
+function smoothstepValue(low: number, high: number, value: number): number {
+  const t = Math.min(1, Math.max(0, (value - low) / (high - low)));
+  return t * t * (3 - 2 * t);
+}
+
+// AirMass.at の数値版。traceWindAt は単位方向における追跡の風を答える口 — ベイクドフィールドを
+// 経由しないので、評価ごとに風をその場で解く。surfaceRadius は気団が流れる天体の半径 [m]。
+export function airMassAtCpu(
+  direction: Vec3,
+  traceWindAt: (direction: Vec3) => BalancedWindCpu,
+  surfaceRadius: number,
+): AirMassSampleCpu {
+  // 風上へ遡った先の緯度との差と、追跡の風の速さ。
+  const driftAt = (point: Vec3): { readonly drift: number; readonly speed: number } => {
+    const wind = traceWindAt(point);
+    const origin = vec.norm(
+      vec.addScaled(point, windStepCpu(wind, point, -TRACE_SECONDS), 1 / surfaceRadius));
+    return { drift: latitudeAtCpu(origin) - latitudeAtCpu(point), speed: vec.len(wind.velocity) };
+  };
+  const center = driftAt(direction);
+  // 隔たりの勾配は、東西・南北それぞれの中心差分。
+  const east = vec.scale(eastAtCpu(direction), GRADIENT_STEP);
+  const north = vec.scale(northAtCpu(direction), GRADIENT_STEP);
+  const alongEast = (
+    driftAt(vec.norm(vec.add(direction, east))).drift
+      - driftAt(vec.norm(vec.sub(direction, east))).drift
+  ) / (2 * GRADIENT_STEP);
+  const alongNorth = (
+    driftAt(vec.norm(vec.add(direction, north))).drift
+      - driftAt(vec.norm(vec.sub(direction, north))).drift
+  ) / (2 * GRADIENT_STEP);
+  // 淀んだ所の押し縮まりは信じない。
+  const trusted = smoothstepValue(CALM_SPEED, WINDY_SPEED, center.speed);
+  // 出身の緯度の勾配は、隔たりの勾配へ緯度そのものの勾配(北向きの単位ベクトル)を足したもの。
+  const latitude = latitudeAtCpu(direction);
+  return {
+    compression: (Math.hypot(alongEast, alongNorth + 1) - 1) * trusted + 1,
+    warmth: Math.abs(latitude) - Math.abs(latitude + center.drift),
+  };
 }

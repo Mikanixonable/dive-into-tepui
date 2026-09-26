@@ -2,24 +2,31 @@
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
 import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
-import { AirMass } from './air-mass';
+import { AirMass, airMassAtCpu } from './air-mass';
 import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
-import { Cyclones } from './cyclones';
-import { eastAt, latitudeOf, northAt } from './sphere-frame';
-import { RossbyWave } from './rossby-wave';
+import {
+  Cyclones, cycloneTroughsAtCpu, troughAnvilAtCpu, troughEyeAtCpu, troughPressureAtCpu,
+} from './cyclones';
+import { eastAt, eastAtCpu, latitudeAtCpu, latitudeOf, northAt, northAtCpu } from './sphere-frame';
+import { RossbyWave, rossbyPerturbationAtCpu } from './rossby-wave';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
-import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
+import {
+  composeWind, FRICTION_RATE, balancedWind, balancedWindCpu, isobarAt, isobarAtCpu,
+} from './wind-law';
+import { climateSlopeAtCpu } from './climate-map';
+import * as vec from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
-import type { ClimateMap } from './climate-map';
+import type { ClimateData, ClimateMap } from './climate-map';
 import type { FieldProjection } from '../field-projection';
-import type { BalancedWind } from './wind-law';
+import type { BalancedWind, BalancedWindCpu } from './wind-law';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 単位方向における天気。
@@ -85,7 +92,7 @@ const BAND_LIFT = 0.06;
 // 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 1.4 倍で、帯の芯では
 // 上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き、途切れない帯になる
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
-const BAND_HUMIDITY = 0.3;
+export const BAND_HUMIDITY = 0.3;
 // 温帯と熱帯の境界緯度。温帯では前線、熱帯では雨帯の伝達関数を使い、暖気流入の補正は温帯に
 // 限定して適用する。
 const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
@@ -99,15 +106,15 @@ const LAND_HEIGHT_BIAS = 800;
 // (VORTEX_CONTRAST) に分離して計算する。
 // 地表付近の沈降の乾きは上昇より弱く取る — 海洋境界層は沈降の下でも層積雲を保ち、同じ利得では
 // 亜熱帯高圧帯の下の海が丸ごと晴れる。
-const SURFACE_LIFT_HUMIDITY = 1.3;
-const SURFACE_SUBSIDENCE_DRYING = 1.0;
-const UPPER_LIFT_HUMIDITY = 0.7;
+export const SURFACE_LIFT_HUMIDITY = 1.3;
+export const SURFACE_SUBSIDENCE_DRYING = 1.0;
+export const UPPER_LIFT_HUMIDITY = 0.7;
 // 上昇流が、移流した地表付近の湿度の偏差(源の底上げ SURFACE_HUMIDITY_BASE からの揺れ)を増幅する利得。
 // 頭打ち(LIFT_LIMIT)に張り付いた所で偏差は (1 + 利得) 倍 — 1 で 2 倍になる。
 const VORTEX_CONTRAST = 1.0;
 // 沈降が上層を乾かす利得 [per m/s]。上層には境界層のような湿りの溜まりが無いので、地表付近より
 // 強く乾く — 高気圧の吹きおろす所では薄い雲も消える。
-const UPPER_SUBSIDENCE_DRYING = 2;
+export const UPPER_SUBSIDENCE_DRYING = 2;
 
 // 圏界面の高さ [m] とその緯度依存。熱帯で 16〜17 km、極で 9 km 前後で、亜熱帯のジェットの下で
 // 段をなして下がる(NCAR ACOM「Cloud Tops and Tropopause」)。深い対流はここに当たって横へ広がる
@@ -139,14 +146,14 @@ const CONVECTION_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
 
 // 渦の目が移流後の湿度から引く深さ。眼壁の飽和と金床の天蓋(ANVIL_HUMIDITY)の両方を貫く深さに
 // 取る。上層を深く引いて、薄い雲の穴を厚い雲の目よりひとまわり広く開ける。
-const SURFACE_EYE_DRYNESS = 0.8;
-const UPPER_EYE_DRYNESS = 2;
+export const SURFACE_EYE_DRYNESS = 0.8;
+export const UPPER_EYE_DRYNESS = 2;
 // 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の下の円盤が隙間なく埋まるよう、並の湿度からでも
 // 雲量が飽和する分を足す。
-const ANVIL_HUMIDITY = 0.5;
+export const ANVIL_HUMIDITY = 0.5;
 // 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
 // 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
-const WARM_HUMIDITY = 0.6;
+export const WARM_HUMIDITY = 0.6;
 // 移流後に足す平年の雲量の重み(地表付近と上層)。雲量の地理的な差が凝結のしきい値をまたぐ幅に
 // 取る — 小さいと砂漠にも海と同じだけ雲が湧き、大きいと雲の多い海が覆われたまま平年の雲量図が
 // 貼り付く。
@@ -415,4 +422,167 @@ function liftFromPressure(pressure: FloatNode): FloatNode {
 // 上昇流を LIFT_LIMIT へ漸近させる。LIFT_LIMIT より十分弱い上昇流はほぼ素通しで、強いものだけが丸まる。
 function limitLift(lift: FloatNode): FloatNode {
   return tanh(lift.div(LIFT_LIMIT)).mul(LIFT_LIMIT);
+}
+
+// 単位方向における天気の数値版。weatherAt と同じモデルを、焼き込んだ写しを経由せずその場で
+// 解く純関数 — 同じ方向・時刻・入力には同じ値が返る。
+export interface WeatherSampleCpu {
+  readonly pressureDeviationHpa: number; // 平年からの偏差(帯と渦) [hPa]
+  readonly cycloneDropHpa: number; // 渦だけの気圧の落ち込み(0 以下) [hPa]
+  readonly surfaceWindEastMps: number; // 地表付近の風の東向き成分 [m/s]
+  readonly surfaceWindNorthMps: number; // 地表付近の風の北向き成分 [m/s]
+  readonly upperWindEastMps: number; // 上層の風の東向き成分 [m/s]
+  readonly upperWindNorthMps: number; // 上層の風の北向き成分 [m/s]
+  readonly liftMps: number; // 上昇流 [m/s](負なら下降)
+  readonly compression: number; // 気団の境目の押し縮まり(1 で何も起きていない)
+  readonly bandStrength: number; // 気団の折り目に立つ雲の帯(温帯で前線、眼を持つ渦のまわりで雨帯) 0..1
+  readonly warmthRad: number; // 暖気の流入(出身緯度との差に温帯の重みを掛けたもの) [rad]
+  readonly eyeStrength: number; // 眼の濃さ 0..1
+  readonly anvilStrength: number; // 金床の濃さ 0..1
+}
+
+// 端で立ち上がる滑らかな重み。TSL の smoothstep と同じ式の数値版。
+function smoothstepValue(low: number, high: number, value: number): number {
+  const t = Math.min(1, Math.max(0, (value - low) / (high - low)));
+  return t * t * (3 - 2 * t);
+}
+
+// liftFromPressure の数値版。
+function liftFromPressureCpu(pressure: number): number {
+  return (Math.exp(-pressure / PRESSURE_LIFT_SCALE) - 1) * PRESSURE_LIFT_GAIN;
+}
+
+// limitLift の数値版。
+function limitLiftCpu(lift: number): number {
+  return Math.tanh(lift / LIFT_LIMIT) * LIFT_LIMIT;
+}
+
+// 気圧フィールドの数値版。気圧は大循環の帯と渦の谷だけで組む — weatherAt の写しへ載る
+// 循環ノイズの項は CPU 評価では畳まない近似。また移流した湿度の場も畳まないので、
+// 前線へ寄与するのは気団の圧縮と気圧の上昇流だけ(湿度の勾配の項は省く近似)。
+export function weatherAtCpu(
+  direction: Vec3,
+  climateSource: Pick<ClimateData, 'valuesAtCpu'> | null,
+  seconds: number,
+  surfaceRadius: number,
+  rotationPeriod: number,
+): WeatherSampleCpu {
+  const windField = new AtmosphericWindField();
+  const troughs = cycloneTroughsAtCpu(seconds, surfaceRadius, rotationPeriod);
+  const latitude = latitudeAtCpu(direction);
+  const east = eastAtCpu(direction);
+  const north = northAtCpu(direction);
+
+  // 気圧の偏差 [hPa]: 大循環の帯 + 低気圧の谷。
+  const pressureAt = (point: Vec3): number => {
+    let pressure = -PRESSURE_BAND_AMPLITUDE * Math.cos(6 * latitudeAtCpu(point));
+    for (const trough of troughs) pressure += troughPressureAtCpu(trough, point);
+    return pressure;
+  };
+
+  // 気圧と、その勾配・等圧線方向の曲がり。pressureFieldAt の数値版。
+  interface PressureFieldCpu {
+    readonly pressure: number;
+    readonly gradient: Vec3;
+    readonly bend: number;
+  }
+  const pressureFieldAt = (point: Vec3): PressureFieldCpu => {
+    const eastVector = eastAtCpu(point);
+    const northVector = northAtCpu(point);
+    const pressure = pressureAt(point);
+    const eastStep = vec.scale(eastVector, GRADIENT_STEP);
+    const northStep = vec.scale(northVector, GRADIENT_STEP);
+    const gradient = vec.scale(vec.add(
+      vec.scale(eastVector, pressureAt(vec.norm(vec.add(point, eastStep)))
+        - pressureAt(vec.norm(vec.sub(point, eastStep)))),
+      vec.scale(northVector, pressureAt(vec.norm(vec.add(point, northStep)))
+        - pressureAt(vec.norm(vec.sub(point, northStep))))), 1 / (2 * GRADIENT_STEP));
+    const isobar = isobarAtCpu(point, gradient);
+    const isobarStep = vec.scale(isobar, BEND_STEP);
+    const bend = (pressureAt(vec.norm(vec.add(point, isobarStep)))
+      + pressureAt(vec.norm(vec.sub(point, isobarStep))) - 2 * pressure) / (BEND_STEP ** 2);
+    return { pressure, gradient, bend };
+  };
+
+  // 気団を風上へ遡らせる風。大循環の気圧帯を差し引いた気圧の勾配から解いた釣り合い風へ、
+  // 大循環の平均風とロスビー波を重ねる。traceFlowAt の数値版。
+  const traceWindAt = (point: Vec3): BalancedWindCpu => {
+    const field = pressureFieldAt(point);
+    const pointLatitude = latitudeAtCpu(point);
+    const eddy = vec.sub(field.gradient,
+      vec.scale(northAtCpu(point), Math.sin(6 * pointLatitude) * 6 * PRESSURE_BAND_AMPLITUDE));
+    const wind = balancedWindCpu(
+      eddy, isobarAtCpu(point, eddy), field.bend, pointLatitude, FRICTION_RATE,
+      SURFACE_WIND_CROSSING_LIMIT, surfaceRadius, rotationPeriod);
+    const mean = windField.sample(pointLatitude, SURFACE_HEIGHT);
+    return {
+      velocity: vec.add(vec.add(
+        wind.velocity,
+        vec.scale(eastAtCpu(point), mean.east)),
+        vec.add(
+          vec.scale(northAtCpu(point), mean.north),
+          rossbyPerturbationAtCpu(point, seconds, surfaceRadius))),
+      turn: wind.turn,
+    };
+  };
+  const airMass = airMassAtCpu(direction, traceWindAt, surfaceRadius);
+
+  // 地表付近と上層の風: 帯を含む勾配の釣り合い風へ平均風とロスビー波を重ねる。
+  const field = pressureFieldAt(direction);
+  const localWind = balancedWindCpu(
+    field.gradient, isobarAtCpu(direction, field.gradient), field.bend, latitude, FRICTION_RATE,
+    SURFACE_WIND_CROSSING_LIMIT, surfaceRadius, rotationPeriod);
+  const rossby = rossbyPerturbationAtCpu(direction, seconds, surfaceRadius);
+  const meanSurface = windField.sample(latitude, SURFACE_HEIGHT);
+  const meanUpper = windField.sample(latitude, UPPER_CLOUD_HEIGHT);
+  const surfaceWind = vec.add(vec.add(
+    localWind.velocity, vec.scale(east, meanSurface.east)),
+    vec.add(vec.scale(north, meanSurface.north), rossby));
+  const upperWind = vec.add(vec.add(
+    localWind.velocity, vec.scale(east, meanUpper.east)),
+    vec.add(vec.scale(north, meanUpper.north), rossby));
+  const surfaceEast = vec.dot(surfaceWind, east);
+  const surfaceNorth = vec.dot(surfaceWind, north);
+
+  // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
+  const slope = climateSource === null
+    ? { east: 0, north: 0 }
+    : climateSlopeAtCpu(climateSource, direction, LAND_HEIGHT_BIAS, surfaceRadius);
+  const terrainLift = (surfaceEast * slope.east + surfaceNorth * slope.north) * TERRAIN_LIFT_GAIN;
+  const pressureLift = liftFromPressureCpu(field.pressure);
+  const updraft = smoothstepValue(0.01, 0.04, Math.max(pressureLift, 0));
+  const extratropical = smoothstepValue(
+    FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, Math.abs(latitude));
+  const front = Math.min(
+    smoothstepValue(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression)
+      + updraft * 0.15, 1) * extratropical;
+  const rainband = smoothstepValue(
+    RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression) * (1 - extratropical);
+  const band = Math.min(front + rainband, 1);
+  const lift = limitLiftCpu(terrainLift + pressureLift + band * BAND_LIFT);
+
+  // 渦が表面へ貼る項(眼の乾きと金床の天蓋)と、渦だけの気圧の落ち込み。
+  let cycloneDropHpa = 0;
+  let eyeStrength = 0;
+  let anvilStrength = 0;
+  for (const trough of troughs) {
+    cycloneDropHpa += troughPressureAtCpu(trough, direction);
+    eyeStrength += troughEyeAtCpu(trough, direction);
+    anvilStrength += troughAnvilAtCpu(trough, direction);
+  }
+
+  return {
+    pressureDeviationHpa: field.pressure,
+    cycloneDropHpa,
+    surfaceWindEastMps: surfaceEast,
+    surfaceWindNorthMps: surfaceNorth,
+    upperWindEastMps: vec.dot(upperWind, east),
+    upperWindNorthMps: vec.dot(upperWind, north),
+    liftMps: lift,
+    compression: airMass.compression,
+    bandStrength: band,
+    warmthRad: airMass.warmth * extratropical,
+    eyeStrength,
+    anvilStrength,
+  };
 }
