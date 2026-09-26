@@ -20,14 +20,10 @@ import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
-import { MAX_CAMERA_DISTANCE_LOG, type LabShot } from './lab-case';
-import {
-  LabView, MAX_CAMERA_ELEVATION_DEG,
-  type CloudDetailLifecycleMeasurement, type CloudLocalFieldLifecycleMeasurement, type LabMeasurement,
-} from './lab';
+import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
+import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
-import { probeGlobalCloudField, type GlobalCloudFieldProbe } from './global-field-probe';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
@@ -63,36 +59,18 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
-      shootNative: (
-        name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
-        cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
-      ) => Promise<string>;
       capture: () => Promise<string>;
       show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
       setDisplayTime: (displayTime: number) => void;
-      cloudFieldGeneration: () => number;
-      cloudGlobalFieldStats: () => unknown;
-      probeGlobalField: (displayTimeSeconds: number) => Promise<GlobalCloudFieldProbe>;
-      cloudLocalFieldBakeStats: () => unknown;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       graphicsSettings: () => Readonly<GraphicsSettingsData>;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
-      readGpuTextureDiagnostic: (name: CaseName) => Promise<unknown>;
       measureShot: (
         name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
-        cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
       ) => Promise<LabMeasurement>;
-      measureCloudDetailLifecycle: (
-        name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData>,
-        detail: NonNullable<LabShot['cloudDetailDiagnostic']>, sampleCount?: number,
-      ) => Promise<CloudDetailLifecycleMeasurement>;
-      measureCloudLocalFieldLifecycle: (
-        name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
-        sampleCount?: number,
-      ) => Promise<CloudLocalFieldLifecycleMeasurement>;
     };
   }
 }
@@ -282,19 +260,10 @@ async function init(): Promise<void> {
     earthSurfaceCapture,
     cases: CASE_NAMES,
     shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
-    shootNative: async (name, shotName, graphics, cloudDetailDiagnostic) => {
-      const png = await view.shootNative(name, shotName, graphics, cloudDetailDiagnostic);
-      syncAngles();
-      return png;
-    },
     capture: () => view.capture(),
     show: (name) => { view.show(name); syncAngles(); },
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setDisplayTime: (displayTime) => view.setDisplayTime(displayTime),
-    cloudFieldGeneration: () => view.cloudFieldGeneration,
-    cloudGlobalFieldStats: () => view.cloudGlobalFieldStats,
-    probeGlobalField: (displayTimeSeconds) => probeGlobalCloudField(displayTimeSeconds),
-    cloudLocalFieldBakeStats: () => view.cloudLocalFieldBakeStats,
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
     setGraphicsOption: (key, value) => {
@@ -302,14 +271,7 @@ async function init(): Promise<void> {
     },
     graphicsSettings: () => settings.graphics.current,
     measure: (name, angles) => view.measure(name, angles),
-    readGpuTextureDiagnostic: (name) => view.readGpuTextureDiagnostic(name),
-    measureShot: (name, shotName, graphics, cloudDetailDiagnostic) => view.measureShot(
-      name, shotName, graphics, 6, 30, cloudDetailDiagnostic,
-    ),
-    measureCloudDetailLifecycle: (name, shotName, graphics, detail, sampleCount) =>
-      view.measureCloudDetailLifecycle(name, shotName, graphics, detail, sampleCount),
-    measureCloudLocalFieldLifecycle: (name, shotName, graphics, sampleCount) =>
-      view.measureCloudLocalFieldLifecycle(name, shotName, graphics, sampleCount),
+    measureShot: (name, shotName, graphics) => view.measureShot(name, shotName, graphics),
   };
 }
 
