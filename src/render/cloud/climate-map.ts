@@ -30,8 +30,15 @@ export interface ClimateValues {
   readonly landFraction: number;
 }
 
+// 気候画像のように遅れて届く入力が、CPU 側の読み出しで読めるかを答える口。
+// valuesAtCpu が null を返す間は偽を返す。実気候を読む供給ジョブは、これが真になるまで
+// 開始を遅らせてよい。
+export interface ClimateReadiness {
+  cpuReadable(): boolean;
+}
+
 // 天体の気候を単位方向で答える入力。generation は入力(読む画像か、その選択)が変わるたびに進む世代。
-export interface ClimateData {
+export interface ClimateData extends ClimateReadiness {
   readonly generation: number;
   temperatureK(direction: Vec3Node): FloatNode;
   meanCloudiness(direction: Vec3Node): FloatNode;
@@ -191,6 +198,11 @@ export class AnnualClimateMap implements ClimateData {
 
   // 入力の世代。画像が GPU へ公開されるたびに進む。
   public get generation(): number { return this.deferred?.generation ?? this.map.version; }
+
+  // CPU 経路で画素を読めるか。画像がまだ届いていない、または画素を取り出せない形の間は偽。
+  public cpuReadable(): boolean {
+    return this.pixels() !== null;
+  }
 
   // 平均気温 [K]。R は -40..40 °C を 0..1 で持つ。
   public temperatureK(direction: Vec3Node): FloatNode {
