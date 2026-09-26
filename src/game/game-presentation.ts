@@ -73,6 +73,8 @@ import type { LoadingProgress } from './loading-progress';
 
 // 新規開始のブリーフィングを出しておく時間 [ms]。
 const BRIEFING_TOAST_MS = 12000;
+// シェーダの事前コンパイルで段が切り替わるたびに、雲場の供給ジョブへ与える時間予算 [ms]。
+const COMPILE_GAP_JOB_BUDGET_MS = 16;
 
 export class GamePresentation {
   private readonly input: Input;
@@ -501,8 +503,20 @@ export class GamePresentation {
       scene.scene,
       this.cameraFrame.camera,
       style,
-      (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
+      (name, done, total) => {
+        // 段の切れ目は描画へ制御が戻る隙間 — 雲場の供給ジョブを前倒しで進める。
+        this.drivePendingJobs(COMPILE_GAP_JOB_BUDGET_MS);
+        progress.within(done / total, `シェーダを準備中: ${name}`);
+      },
     );
+  }
+
+  // ロード中の隙間に、雲場の供給ジョブを timeBudgetMs [ms] ぶん前倒しで進める。
+  // 表示時刻は直近の sync が確定させた表示窓のものを使う。
+  public drivePendingJobs(timeBudgetMs: number): void {
+    this.game.celestialSystem.drivePendingJobs(
+      this.devices.scene.renderer, this.displayWindowManager.current.displayTime,
+      timeBudgetMs, this.devices.scene.gpu);
   }
 
   // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。
