@@ -1,7 +1,6 @@
 // 局所光学場の再焼を担う。CloudLocalFieldSupply の導出から CloudOpticalVolume と sampler へ
 // 渡す binding を組み、再焼の条件と焼いた体積の寿命を持つ。供給源が分割ジョブを出せるときは
-// 再焼を step の駆動へ分けて進め、完了まで現行の場を使い続ける。ロード中などフレーム外の
-// 隙間から前倒しでジョブを進める口(drivePendingJobs)も持つ。再焼に掛けた CPU 時間と
+// 再焼を step の駆動へ分けて進め、完了まで現行の場を使い続ける。再焼に掛けた CPU 時間と
 // 体積の容量推定は bakeStats から読める。
 import { cross, dot, len } from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
@@ -13,7 +12,6 @@ import {
 import {
   CloudOpticalVolume, type CloudOpticalVolumeStorageFormat,
 } from './cloud-optical-volume';
-import type { ClimateReadiness } from './climate-map';
 
 // 再焼を試みるたびのメインスレッド時間 [ms] と、焼いた体積の容量推定を記録する1件。
 // sequence は試行の通し番号 — 記録は直近だけを保持するので、新たに積まれた試行を
@@ -48,8 +46,6 @@ export interface CloudLocalFieldBakeStats {
 const VECTOR_TOLERANCE = 1e-10;
 // 保持する試行記録の上限。計測が読むのは直近だけなので、ランの長さで際限なく育たせない。
 const BAKE_ATTEMPT_LIMIT = 16;
-// 外部入力(気候画像など)が読めるようになるのを待つ上限 [ms]。超えたら未着のまま進める。
-const INPUT_WAIT_LIMIT_MS = 1_500;
 
 function requireFinite(value: number, name: string): void {
   if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite`);
@@ -91,8 +87,6 @@ export class CloudLocalFieldBaker {
   private builtAt: { readonly timeSeconds: number; readonly centerDirection: Vec3 } | null = null;
   // 駆動中の分割導出。完了するまで再焼条件は新しいジョブを始めない。
   private pending: PendingLocalFieldJob | null = null;
-  // 外部入力が読めないことを初めて見た実時刻 [ms]。待つ上限の起算点。
-  private inputWaitStartedAtMs: number | null = null;
   // 直近の試行記録(古い順)と、焼き上げた体積・試行の通し番号。
   private readonly attempts: CloudLocalFieldBakeAttempt[] = [];
   private generationValue = 0;
@@ -100,19 +94,13 @@ export class CloudLocalFieldBaker {
 
   // supply は場の内容の導出先(null なら場を持たない)。rebuildIntervalSeconds は再焼の最小
   // 間隔 [s]、recenterAngularThresholdRad は中心がどれだけ動いたら焼き直すかの角距離 [rad]、
-  // inputReadiness は供給が読む外部入力(気候画像など)が CPU から読めるかの口で、渡すと
-  // 読めるようになるまで最初の再焼を遅らせる。jobStepTimeBudgetMs は分割ジョブを1回の
-  // 呼び出しで進めてよい壁時計の上限 [ms]、startupStepTimeBudgetMs は最初の場が届くまでの
-  // 間だけ使う上限、inputWaitLimitMs は外部入力を待つ上限 [ms]。
+  // jobStepTimeBudgetMs は分割ジョブを1回の呼び出しで進めてよい壁時計の上限 [ms]。
   public constructor(
     private readonly supply: CloudLocalFieldSupply | null,
     private readonly rebuildIntervalSeconds = 300,
     private readonly recenterAngularThresholdRad = 0.01,
-    private readonly inputReadiness: ClimateReadiness | null = null,
     private readonly storageFormat: CloudOpticalVolumeStorageFormat = 'rg32f',
     private readonly jobStepTimeBudgetMs = 6,
-    private readonly startupStepTimeBudgetMs = 16,
-    private readonly inputWaitLimitMs = INPUT_WAIT_LIMIT_MS,
   ) {
     requireFinite(rebuildIntervalSeconds, 'rebuildIntervalSeconds');
     if (rebuildIntervalSeconds <= 0) {
@@ -128,14 +116,6 @@ export class CloudLocalFieldBaker {
     requireFinite(jobStepTimeBudgetMs, 'jobStepTimeBudgetMs');
     if (jobStepTimeBudgetMs < 0) {
       throw new RangeError('jobStepTimeBudgetMs must be non-negative');
-    }
-    requireFinite(startupStepTimeBudgetMs, 'startupStepTimeBudgetMs');
-    if (startupStepTimeBudgetMs < 0) {
-      throw new RangeError('startupStepTimeBudgetMs must be non-negative');
-    }
-    requireFinite(inputWaitLimitMs, 'inputWaitLimitMs');
-    if (inputWaitLimitMs < 0) {
-      throw new RangeError('inputWaitLimitMs must be non-negative');
     }
   }
 
@@ -170,41 +150,13 @@ export class CloudLocalFieldBaker {
   public maybeRebuild(displayTimeSeconds: number, centerDirection: Vec3): void {
     requireFinite(displayTimeSeconds, 'displayTimeSeconds');
     requireUnitVector(centerDirection, 'centerDirection');
-    this.advance(displayTimeSeconds, centerDirection, this.stepTimeBudgetMs);
-  }
-
-  // フレーム外の隙間から、再焼条件を満たすジョブを timeBudgetMs [ms] ぶん前倒しで進める。
-  // ジョブが無くて再焼条件を満たさなければ何もしない。最初の場を焼くまでは、渡された
-  // 時刻・中心で条件を満たせばジョブを始めてよい。
-  public drivePendingJobs(
-    displayTimeSeconds: number, centerDirection: Vec3, timeBudgetMs: number,
-  ): void {
-    requireFinite(displayTimeSeconds, 'displayTimeSeconds');
-    requireUnitVector(centerDirection, 'centerDirection');
-    this.advance(displayTimeSeconds, centerDirection, timeBudgetMs);
-  }
-
-  // 現行と保持分の体積を解放する。
-  public dispose(): void {
-    this.pending?.job.cancel?.();
-    this.pending = null;
-    this.retainedVolume?.dispose();
-    this.retainedVolume = null;
-    this.current?.volume.dispose();
-    this.current = null;
-  }
-
-  // 駆動中ならジョブを stepBudgetMs ぶん進め、無ければ再焼条件を見て新しい導出を始める。
-  // 最初の場を焼くまでは、外部入力が読めるようになるまで開始を遅らせる。
-  private advance(displayTimeSeconds: number, centerDirection: Vec3, stepBudgetMs: number): void {
     const supply = this.supply;
     if (supply === null) return;
     if (this.pending !== null) {
-      this.driveJob(stepBudgetMs);
+      this.driveJob();
       return;
     }
     if (!this.needsRebuild(displayTimeSeconds, centerDirection)) return;
-    if (this.builtAt === null && !this.inputsReady()) return;
     if (supply.startJob === undefined) {
       this.rebuildSync(supply, displayTimeSeconds, centerDirection);
       return;
@@ -224,22 +176,17 @@ export class CloudLocalFieldBaker {
       job, displayTimeSeconds, centerDirection,
       stepCount: 0, deriveMs: performance.now() - startedAt,
     };
-    this.driveJob(stepBudgetMs);
+    this.driveJob();
   }
 
-  // 1回の駆動でジョブを進めてよい予算 [ms]。最初の場が届くまでは起動のバースト予算で
-  // 大きく進め、届いたら既定へ戻す。
-  private get stepTimeBudgetMs(): number {
-    return this.builtAt === null ? this.startupStepTimeBudgetMs : this.jobStepTimeBudgetMs;
-  }
-
-  // 外部入力が CPU から読めるか。口を持たないときは常に真。読めない間は緯度近似と
-  // 実気候の混在する場を採らないよう開始を遅らせるが、上限を超えたら未着のまま進める。
-  private inputsReady(): boolean {
-    const readiness = this.inputReadiness;
-    if (readiness === null || readiness.cpuReadable()) return true;
-    if (this.inputWaitStartedAtMs === null) this.inputWaitStartedAtMs = performance.now();
-    return performance.now() - this.inputWaitStartedAtMs >= this.inputWaitLimitMs;
+  // 現行と保持分の体積を解放する。
+  public dispose(): void {
+    this.pending?.job.cancel?.();
+    this.pending = null;
+    this.retainedVolume?.dispose();
+    this.retainedVolume = null;
+    this.current?.volume.dispose();
+    this.current = null;
   }
 
   // 分割ジョブを持たない供給源の同期焼き。
@@ -256,13 +203,13 @@ export class CloudLocalFieldBaker {
     this.adoptResult(result, displayTimeSeconds, centerDirection, deriveMs, 1);
   }
 
-  // 駆動中のジョブを stepBudgetMs ぶん進める。step が投げたらジョブを畳んで失敗試行として記録する。
-  private driveJob(stepBudgetMs: number): void {
+  // 駆動中のジョブを1回ぶん進める。step が投げたらジョブを畳んで失敗試行として記録する。
+  private driveJob(): void {
     const pending = this.pending!;
     const stepStartedAt = performance.now();
     let done: boolean;
     try {
-      done = pending.job.step(stepBudgetMs).done;
+      done = pending.job.step(this.jobStepTimeBudgetMs).done;
     } catch {
       pending.deriveMs += performance.now() - stepStartedAt;
       pending.stepCount += 1;
