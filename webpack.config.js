@@ -32,6 +32,7 @@ module.exports = {
   entry: {
     main: './src/main.ts',
     'earth-surface-terrain-worker': './src/render/earth-surface-terrain-worker.ts',
+    'cloud-global-field-worker': './src/game/cloud/cloud-global-field-worker.ts',
   },
   resolve: {
     extensions: ['.ts', '.js'],
@@ -86,7 +87,8 @@ module.exports = {
     ],
   },
   output: {
-    filename: ({ chunk }) => chunk?.name === 'earth-surface-terrain-worker'
+    // worker entry は実行時に固定 URL で new Worker するので contenthash を付けない。
+    filename: ({ chunk }) => chunk?.name?.endsWith('-worker')
       ? '[name].js' : '[name].[contenthash].js',
     path: path.resolve(__dirname, 'docs'),
     clean: true,

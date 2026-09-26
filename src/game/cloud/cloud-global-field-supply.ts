@@ -14,6 +14,7 @@ import { deriveCloudEventAreas } from './cloud-event-area-closure';
 import { reconstructCloudEventMaterialCohorts } from './cloud-event-transport';
 import {
   accumulateCloudEventMaterialCohortsEquirect,
+  depositCloudEventMaterialCohortsEquirect,
   prepareCloudEquirectDepositionTarget,
   type CloudEquirectDepositionTarget,
 } from './cloud-event-equirect-deposition';
@@ -152,9 +153,29 @@ function environmentCellValues(environment: CloudEnvironmentProfile): {
 }
 
 // 緯度帯1本のイベントセル配置。帯の中心緯度と、その周へ等間隔に置くセル数を持つ。
-interface GlobalEventCellBand {
+export interface GlobalEventCellBand {
   readonly latitudeRad: number;
   readonly cellCount: number;
+}
+
+// 全球へ張る緯度帯の分割。帯数は子午線長を目標間隔で割った数、各帯のセル数はその緯度の
+// 周長を目標間隔で割った数(最小1)で、全球でほぼ等面積のセル格子を組む。帯分割ジョブを
+// 連結する側はこの一覧を読んで帯 range を割り振る。
+export function globalEventCellBands(
+  sphereRadiusM: number, eventCellSpacingM: number,
+): readonly GlobalEventCellBand[] {
+  const bandCount = Math.max(
+    1, Math.round(Math.PI * sphereRadiusM / eventCellSpacingM));
+  const bands: GlobalEventCellBand[] = [];
+  for (let band = 0; band < bandCount; band += 1) {
+    const latitudeRad = -Math.PI / 2 + (band + 0.5) * (Math.PI / bandCount);
+    const circumferenceM = 2 * Math.PI * sphereRadiusM * Math.cos(latitudeRad);
+    bands.push({
+      latitudeRad,
+      cellCount: Math.max(1, Math.round(circumferenceM / eventCellSpacingM)),
+    });
+  }
+  return bands;
 }
 
 // 帯中心の緯度と列番号からセル中心の単位方向を返す。経度 0 が +Z、東が +X、北極が +Y。
@@ -183,14 +204,16 @@ export class ConvectiveCloudGlobalFieldSupply implements CloudGlobalFieldSupply 
   // 球の半径 [m]、gridWidth/gridHeight は equirect 質量格子の寸法 [texel]、windAt は
   // 輸送と面積導出に使う風場。eventCellSpacingM はイベントセルの目標間隔 [m] で、
   // 細格化した供給はここへ小さい間隔を渡す — 上限類はセル数に連動する。
+  // 構築時に決めた不変の引数は、帯分割の要求を組む worker client が同じ値を必要とする
+  // ので公開する(environmentAt・windAt だけは呼び出し口なので閉じる)。
   public constructor(
     private readonly environmentAt: CloudGlobalEnvironmentAt,
-    private readonly seed: number,
-    private readonly sphereRadiusM: number,
-    private readonly gridWidth: number,
-    private readonly gridHeight: number,
+    public readonly seed: number,
+    public readonly sphereRadiusM: number,
+    public readonly gridWidth: number,
+    public readonly gridHeight: number,
     private readonly windAt: CloudEventWindAt,
-    private readonly eventCellSpacingM = EVENT_CELL_SPACING_M,
+    public readonly eventCellSpacingM = EVENT_CELL_SPACING_M,
   ) {
     if (typeof environmentAt !== 'function') {
       throw new TypeError('environmentAt must be a function');
@@ -226,11 +249,16 @@ type GlobalFieldStage = 'cells' | 'events' | 'deposit' | 'merge' | 'done';
 
 // 対流イベントから全球質量場を組む分割導出。段階の境界と反復の1要素で壁時計の予算を
 // 見て中断し、呼ばれるたびに続きを進める。done が立つまで result は null。
-class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
+// bandIndexStart/bandIndexEnd で担当する帯の range(半開区間)を切れる — 帯のセル・
+// イベント・堆積はその帯だけが導き、質量格子は全帯ぶんの寸法で張るので、各帯の部分場を
+// main で加算 merge すると全 range の導出と同じ場になる(帯境界を跨ぐ footprint は
+// その帯の全球格子へ載る)。
+export class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
   private stage: GlobalFieldStage = 'cells';
   private resultValue: CloudGlobalFieldSupplyResult | null = null;
   private readonly bands: readonly GlobalEventCellBand[];
-  private bandIndex = 0;
+  private readonly bandIndexEnd: number;
+  private bandIndex: number;
   private columnIndex = 0;
   private readonly cells: ConvectiveCloudCell[] = [];
   private events: readonly ConvectiveCloudEvent[] = [];
@@ -255,8 +283,18 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
     private readonly gridHeight: number,
     private readonly windAt: CloudEventWindAt,
     private readonly eventCellSpacingM: number,
+    bandIndexStart = 0,
+    bandIndexEnd?: number,
   ) {
-    this.bands = this.buildBands();
+    this.bands = globalEventCellBands(this.sphereRadiusM, this.eventCellSpacingM);
+    const end = bandIndexEnd ?? this.bands.length;
+    if (!Number.isSafeInteger(bandIndexStart) || !Number.isSafeInteger(end)
+      || bandIndexStart < 0 || bandIndexStart > end || end > this.bands.length) {
+      throw new RangeError('band range must be within the event cell bands');
+    }
+    this.bandIndexEnd = end;
+    this.bandIndex = bandIndexStart;
+    if (this.bandIndex >= this.bandIndexEnd) this.stage = 'events';
   }
 
   public get result(): CloudGlobalFieldSupplyResult | null {
@@ -279,23 +317,6 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
       if (performance.now() >= deadline) break;
     }
     return { done: this.stage === 'done' };
-  }
-
-  // 緯度帯の分割。帯数は子午線長を目標間隔で割った数、各帯のセル数はその緯度の
-  // 周長を目標間隔で割った数(最小1)で、全球でほぼ等面積のセル格子を組む。
-  private buildBands(): readonly GlobalEventCellBand[] {
-    const bandCount = Math.max(
-      1, Math.round(Math.PI * this.sphereRadiusM / this.eventCellSpacingM));
-    const bands: GlobalEventCellBand[] = [];
-    for (let band = 0; band < bandCount; band += 1) {
-      const latitudeRad = -Math.PI / 2 + (band + 0.5) * (Math.PI / bandCount);
-      const circumferenceM = 2 * Math.PI * this.sphereRadiusM * Math.cos(latitudeRad);
-      bands.push({
-        latitudeRad,
-        cellCount: Math.max(1, Math.round(circumferenceM / this.eventCellSpacingM)),
-      });
-    }
-    return bands;
   }
 
   // セル位置の環境プロファイルを返す。イベントの源位置はセルの方向と一致するので、
@@ -342,11 +363,19 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
       this.bandIndex += 1;
       this.columnIndex = 0;
     }
-    if (this.bandIndex >= this.bands.length) this.stage = 'events';
+    if (this.bandIndex >= this.bandIndexEnd) this.stage = 'events';
   }
 
-  // セル群から表示時刻のイベント履歴を復元する。
+  // セル群から表示時刻のイベント履歴を復元する。空の帯 range はセルを持たないので
+  // 標本を呼ばず空の履歴へ進める(件数上限がセル数連動で 0 になり標本が投げるため)。
   private stepEventSampling(): void {
+    if (this.cells.length === 0) {
+      this.events = [];
+      this.truncatedEventCount = 0;
+      this.omittedMassUpperBoundKgM2 = 0;
+      this.stage = 'deposit';
+      return;
+    }
     const sample = sampleConvectiveCloudEvents({
       seed: this.seed,
       birthIntervalSeconds: BIRTH_INTERVAL_SECONDS,
@@ -389,9 +418,24 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
     }
     const sourceAreaM2 = this.eventAreas.sourceAreaM2;
     this.accumulateExpectedMass(this.eventMaterial, sourceAreaM2);
-    accumulateCloudEventMaterialCohortsEquirect(
-      this.eventMaterial, sourceAreaM2, this.eventAreas.footprints,
-      work.target, work.accumulation);
+    try {
+      accumulateCloudEventMaterialCohortsEquirect(
+        this.eventMaterial, sourceAreaM2, this.eventAreas.footprints,
+        work.target, work.accumulation);
+    } catch (error) {
+      // 共有累積器の前後差でこのイベントぶんの堆積を照合する内部検査は、累積値が
+      // 大きいほど差分の丸め誤差(複数の加算それぞれが累積値の ulp で丸まる)を許容
+      // 幅で収めきれず、微小なイベントを誤検知することがある。堆積は投げる前に
+      // 書き終えているので、独立した堆積で同じ保存則を正確な測り方で照合し直し、
+      // 保たれているなら続行する。本当に失われているなら、こちらの厳密な照合も投げる。
+      if (!(error instanceof RangeError)
+        || !error.message.includes('is not conserved by equirect deposition')) {
+        throw error;
+      }
+      depositCloudEventMaterialCohortsEquirect(
+        this.eventMaterial, sourceAreaM2, this.eventAreas.footprints,
+        work.target.grid, work.massGrid, work.target);
+    }
     this.eventMaterial = null;
     this.eventAreas = null;
     this.eventIndex += 1;
@@ -486,4 +530,60 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
     };
     this.stage = 'done';
   }
+}
+
+// 帯 range ごとの導出結果をひとつの全球結果へ合算する。各帯の部分場は全球格子へ載った
+// 部分和なので、層別質量配列・供給質量・格子外質量・件数・省略質量上界は同じ添字へ
+// 足すだけで全 range の導出と一致する。浮動小数の加算順だけは分割数に依って変わる —
+// 値の違いは最下位桁の再結合の誤差に留まる。
+export function mergeCloudGlobalFieldSupplyResults(
+  parts: readonly CloudGlobalFieldSupplyResult[],
+): CloudGlobalFieldSupplyResult {
+  if (parts.length === 0) throw new RangeError('parts must not be empty');
+  const field = parts[0]!.field;
+  const texelCount = field.liquidKgM2.length;
+  const liquidKgM2 = new Float64Array(texelCount);
+  const iceKgM2 = new Float64Array(texelCount);
+  const eventMassKgByPhase: Record<CloudMassPhase, number> = { liquid: 0, ice: 0 };
+  const unassignedMassKgByPhase: Record<CloudMassPhase, number> = { liquid: 0, ice: 0 };
+  let eventCount = 0;
+  let truncatedEventCount = 0;
+  let omittedMassUpperBoundKgM2 = 0;
+  for (const part of parts) {
+    const partField = part.field;
+    if (partField.width !== field.width || partField.height !== field.height
+      || partField.sphereRadiusM !== field.sphereRadiusM
+      || partField.layerEdgesM.length !== field.layerEdgesM.length
+      || !partField.layerEdgesM.every((edge, index) => edge === field.layerEdgesM[index])
+      || partField.liquidKgM2.length !== texelCount
+      || partField.iceKgM2.length !== texelCount) {
+      throw new RangeError('part fields must share the same equirect grid');
+    }
+    for (let index = 0; index < texelCount; index += 1) {
+      liquidKgM2[index]! += partField.liquidKgM2[index]!;
+      iceKgM2[index]! += partField.iceKgM2[index]!;
+    }
+    eventMassKgByPhase.liquid += part.eventMassKgByPhase.liquid;
+    eventMassKgByPhase.ice += part.eventMassKgByPhase.ice;
+    unassignedMassKgByPhase.liquid += part.unassignedMassKgByPhase.liquid;
+    unassignedMassKgByPhase.ice += part.unassignedMassKgByPhase.ice;
+    eventCount += part.eventCount;
+    truncatedEventCount += part.truncatedEventCount;
+    omittedMassUpperBoundKgM2 += part.omittedMassUpperBoundKgM2;
+  }
+  return {
+    field: {
+      width: field.width,
+      height: field.height,
+      sphereRadiusM: field.sphereRadiusM,
+      layerEdgesM: field.layerEdgesM,
+      liquidKgM2,
+      iceKgM2,
+    },
+    eventMassKgByPhase,
+    unassignedMassKgByPhase,
+    eventCount,
+    truncatedEventCount,
+    omittedMassUpperBoundKgM2,
+  };
 }

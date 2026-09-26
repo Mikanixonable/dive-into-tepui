@@ -28,6 +28,7 @@ import { createCloudLocalFieldDiagnostic } from './cloud-local-field-diagnostic'
 import type { CloudPresentationDetailTile } from '../../src/render/cloud/cloud-presentation';
 import type { CloudLocalFieldBinding } from '../../src/render/cloud/cloud-local-field';
 import type { CloudLocalFieldBakeStats } from '../../src/render/cloud/cloud-local-field-baker';
+import type { MeteorologicalFieldStats } from '../../src/render/cloud/meteorological-cloud-field';
 
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
 export const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.averageHue, EARTH_TEXTURE.bondAlbedo);
@@ -142,6 +143,11 @@ export class LabEarth {
 
   // 雲場の世代。全球場の初回ジョブが終わって場が届くと進む — 暖機の完了を見る撮影駆動が読む。
   public get cloudGeneration(): number { return this.clouds.renderInput.generation; }
+
+  // 生成雲場の供給ジョブの計測(試行記録・駆動中の途中経過)。worker 化の実機確認が読む。
+  public get cloudGlobalFieldStats(): MeteorologicalFieldStats | null {
+    return this.clouds.globalFieldStats;
+  }
 
   // 所有者が保持する局所雲タイルの backing data 実寸と GPU 基底 mip 容量推定を返す。
   public get cloudDetailDiagnosticTextureEstimate(): CloudDetailDiagnosticTextureEstimate | null {
