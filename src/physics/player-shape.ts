@@ -5,13 +5,14 @@
 // 放熱板の蛇腹の折り数(1モジュールあたり)。
 export const RADIATOR_FOLD_COUNT = 6;
 
-// 太陽電池の剛体パネル数(1モジュールあたり)。ソユーズ TM の翼と同じ4セクション。
-export const SOLAR_PANEL_COUNT = 4;
+// 太陽電池の剛体パネル数と翼幅方向の列数(1モジュールあたり)。
+export const SOLAR_PANEL_COUNT = 6;
+export const SOLAR_PANEL_COLUMNS = 3;
 
 // 太陽電池1パネルの展開方向と翼幅方向の寸法 [m]。
-// 4 枚で展開翼長 8 m × 翼幅 3.162 m の翼になる。
-export const SOLAR_PANEL_WIDTH = 2.0;
-export const SOLAR_PANEL_SPAN = 1.0 * Math.sqrt(10);  // ≈ 3.162 m
+// 3 列×2 段で展開翼長 1.5 m × 翼幅 2.4 m の翼になる。
+export const SOLAR_PANEL_WIDTH = 0.75;
+export const SOLAR_PANEL_SPAN = 2.4;
 
 // 太陽電池1パネルの厚み [m]。
 export const SOLAR_PANEL_THICKNESS = 0.06;
