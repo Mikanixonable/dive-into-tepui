@@ -154,6 +154,17 @@ export function register(): void {
     assert.notDeepEqual(earlier.field.liquidKgM2, later.field.liquidKgM2);
   });
 
+  test('cloud global field supply: セルの出生位相が散るので、出生間隔の境界時刻にも液水が載る', () => {
+    // 位相を置かないと全セルが同じ epoch に生まれ、birthInterval の倍数時刻では履歴内の
+    // 全イベントが供給終了から数時間経った残骸だけになる — 液水は時定数20分で消え、
+    // 全球の堆積はほぼ空になる。均一な湿潤環境では時刻によらず供給中〜消散直前の
+    // イベントが残り、全球の液水堆積は 1e8 kg の桁に載る。
+    const supply = makeSupply(() => makeEnvironment());
+    const result = supply.derive(0);
+    const liquidKg = depositedMassKg(result.field, 'liquid');
+    assert.ok(liquidKg > 1e8, `liquid mass starved at an epoch boundary: ${liquidKg}`);
+  });
+
   test('cloud global field supply: 質量収支が相別に保たれる', () => {
     const result = shared();
     for (const phase of ['liquid', 'ice'] as const) {

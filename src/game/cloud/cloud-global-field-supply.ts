@@ -292,13 +292,17 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
     const direction = cellDirectionAt(band.latitudeRad, this.columnIndex, band.cellCount);
     const values = environmentCellValues(
       this.environmentAt(direction, this.displayTimeSeconds));
+    // セルの乱数列。対流ポテンシャルと出生位相を別の引きで取る — 出生位相を置かないと
+    // 全セルが同じ epoch で生まれ、寿命が間隔より短いイベントは全球で同時に消える。
+    const cellRand = mulberry32(
+      (this.seed ^ Math.imul(this.bandIndex + 1, 0x9e3779b1)
+        ^ Math.imul(this.columnIndex + 1, 0x85ebca6b)) >>> 0);
     this.cells.push({
       id: `global-${this.bandIndex}-${this.columnIndex}`,
       supplySourceId: `global-source-${this.bandIndex}-${this.columnIndex}`,
       convectivePotential: CONVECTIVE_POTENTIAL_MIN
-        + CONVECTIVE_POTENTIAL_RANGE
-          * mulberry32((this.seed ^ Math.imul(this.bandIndex + 1, 0x9e3779b1)
-            ^ Math.imul(this.columnIndex + 1, 0x85ebca6b)) >>> 0)(),
+        + CONVECTIVE_POTENTIAL_RANGE * cellRand(),
+      birthPhaseSeconds: BIRTH_INTERVAL_SECONDS * cellRand(),
       upperRelativeHumidity: values.upperRelativeHumidity,
       liquidSupplyRateKgM2S: values.liquidSupplyRateKgM2S,
       convectiveDurationSeconds: values.convectiveDurationSeconds,
