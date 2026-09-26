@@ -363,6 +363,9 @@ export class LabView {
   // 雲場の世代。全球場の初回ジョブが終わって場が届くと進む — 暖機の完了を見る撮影駆動が読む。
   public get cloudFieldGeneration(): number { return this.earth.cloudGeneration; }
 
+  // 生成雲場の供給ジョブの計測。worker 化の実機確認が試行記録を読む。
+  public get cloudGlobalFieldStats() { return this.earth.cloudGlobalFieldStats; }
+
   // 製品経路の局所光学場の焼き器が記録した計測。
   public get cloudLocalFieldBakeStats() { return this.earth.cloudLocalFieldBakeStats; }
 
