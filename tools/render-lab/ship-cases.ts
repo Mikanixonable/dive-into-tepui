@@ -12,7 +12,7 @@ import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
-import { WeaponDrives } from '../../src/render/dynamic/ship/weapon-drives';
+import { WeaponDrives, type WeaponRecoilInput } from '../../src/render/dynamic/ship/weapon-drives';
 import type { ShipModuleRenderInput } from '../../src/render/dynamic/ship/ship-render-contract';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
 import { labCamera, shipObject, type CaseBuilder, type LabCase } from './lab-case';
@@ -272,10 +272,15 @@ function weaponMotion(
     const drives = new WeaponDrives();
     const endTime = Math.max(0, displayTime);
     const steps = Math.ceil(endTime * 120);
+    const interval = 1 / rate;
     for (let step = 0; step <= steps; step++) {
       const time = Math.min(step / 120, endTime);
       const firing = time >= 0.4 && time < 1.6;
-      drives.sync(view, modules, firing ? rate : 0, time);
+      const shotIndex = Math.floor((Math.min(time, 1.59) - 0.55) / interval + 1e-9);
+      const shots: readonly WeaponRecoilInput[] = shotIndex < 0 ? [] : [{
+        moduleId: 'weapon', muzzleIndex: 0, firedAt: 0.55 + shotIndex * interval, cycleDuration: interval,
+      }];
+      drives.sync(view, modules, firing ? rate : 0, time, shots);
     }
     view.object.updateMatrixWorld(true);
   };
