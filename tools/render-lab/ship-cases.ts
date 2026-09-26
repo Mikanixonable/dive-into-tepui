@@ -1,7 +1,7 @@
 // モジュール船のケース。基地へ寄港した船と建造ゴースト、分離の前後を、ゲーム本体と同じ組み立てと
 // モデルで組む。
 import * as THREE from 'three/webgpu';
-import { Q_IDENTITY } from '../../src/math/quat';
+import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
@@ -11,6 +11,7 @@ import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
+import { ShipModuleView } from '../../src/render/dynamic/ship/ship-module-view';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { WeaponDrives, type WeaponRecoilInput } from '../../src/render/dynamic/ship/weapon-drives';
 import type { ShipModuleRenderInput } from '../../src/render/dynamic/ship/ship-render-contract';
@@ -149,6 +150,30 @@ function mainTank(): LabCase {
       'main-tank-surface-oblique': {
         view: { cameraAzimuthDeg: -52, cameraElevationDeg: 22, cameraDistanceLog: -0.42,
           sunAzimuthDeg: -35, sunElevationDeg: 38 },
+      },
+    },
+  };
+}
+
+// 太陽電池翼の表面と裏面を、同じ照明・縮尺で並べて観察する。
+function solarPanelSurface(): LabCase {
+  const front = new ShipModuleView({
+    id: 'solar-front', modelId: 'solar-panel-standard', kind: 'solar_panel',
+    hp: 100, maxHp: 100, deployed: 1, burning: null,
+    transform: { position: v3(-3.4, 0, -25), rotation: Q_IDENTITY },
+  }, buildShipModuleModel);
+  const back = new ShipModuleView({
+    id: 'solar-back', modelId: 'solar-panel-standard', kind: 'solar_panel',
+    hp: 100, maxHp: 100, deployed: 1, burning: null,
+    transform: { position: v3(3.4, 0, -25), rotation: qFromAxisAngle(v3(1, 0, 0), Math.PI) },
+  }, buildShipModuleModel);
+  return {
+    objects: [front.object, back.object],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -25),
+    shots: {
+      'solar-panel-array-closeup': {
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 78, sunAzimuthDeg: 12, sunElevationDeg: 58 },
       },
     },
   };
@@ -417,6 +442,7 @@ export const SHIP_CASES = {
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,
   'modular-ship-main-tank': mainTank,
+  'modular-ship-solar-panel-surface': solarPanelSurface,
   'modular-ship-engine': engine,
   'modular-ship-rcs-tank': rcsTank,
   'modular-ship-weapon': weapon,
