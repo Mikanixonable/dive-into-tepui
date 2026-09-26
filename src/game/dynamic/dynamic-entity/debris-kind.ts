@@ -21,3 +21,6 @@ export type DebrisKind =
   | { readonly kind: 'magazineFrame'; readonly slide?: DebrisSlide; }
   | { readonly kind: 'casing'; readonly bornSim: number; }
   | { readonly kind: 'decouplerPanel'; readonly segment: number; readonly bornSim: number; };
+
+export type SerializedDebrisKind = DebrisKind
+  | { readonly kind: 'barrel'; readonly bornTemperature: number; readonly bornThermalDeviation: number; };

@@ -10,7 +10,7 @@ import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debri
 import { MagazineFrameView } from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
-import type { DebrisKind } from './debris-kind';
+import type { DebrisKind, SerializedDebrisKind } from './debris-kind';
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
 import type { DynamicMotionThermal } from '../dynamic-motion';
@@ -25,9 +25,10 @@ export const PLAYER_DESTROY_FRAG_COLOR = '#9fd8e8';
 const ENEMY_DESTROY_FRAG_COLOR = '#ff6a4a';
 
 // 論理種別から、その破片を描く View を組み立てる。
-function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicView {
+function debrisPieceView(debrisKind: SerializedDebrisKind, scene?: THREE.Scene): DynamicView {
   switch (debrisKind.kind) {
     case 'fragment': return new DebrisFragmentView(debrisKind.accent, debrisKind.size, scene);
+    case 'barrel': return new DebrisFragmentView('#9aa6ad', 0.8, scene);
     case 'magazineFrame': return new MagazineFrameView(scene);
     case 'casing': return new CasingView(scene);
     case 'decouplerPanel': return new DebrisFragmentView('#a9c8d6', 0.8, scene);
@@ -37,7 +38,7 @@ function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicVi
 // 破片1個の直列化した形。慣性と接触半径は出す場所ごとに違い、種別からは決まらないので記録に持つ。
 export interface SerializedDebrisPiece extends SerializedDynamicEntityFields {
   readonly kind: 'debris';
-  readonly debrisKind: DebrisKind;
+  readonly debrisKind: SerializedDebrisKind;
   readonly inertia: SerializedVec3;
   readonly radius: number;
   readonly thermal: DynamicMotionThermal;
@@ -53,7 +54,7 @@ export class DebrisPiece extends DynamicEntity {
   // 接触半径 [m] で、省くと 0。thermal は熱の状態、alive は生死で、省けばいま出した破片として組む。
   private constructor(
     state: KinematicState,
-    private readonly debrisKind: DebrisKind,
+    private readonly debrisKind: SerializedDebrisKind,
     attitude: Attitude,
     id: string,
     radius?: number,
