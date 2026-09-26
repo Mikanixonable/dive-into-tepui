@@ -70,7 +70,7 @@ declare global {
       measureCurrent: () => Promise<LabMeasurement>;
       showShot: (name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>) => Promise<void>;
       setScanTier: (tier: ScanTier) => void;
-      setScanSeed: (seed: number) => void;
+      setScanSeed: (x: number, y: number) => void;
       readFloat: (name: FloatTargetName) => Promise<FloatImage>;
       exposureFactor: () => number;
       measureTiers: (
@@ -321,7 +321,7 @@ async function init(): Promise<void> {
       targets.setSelected(view.debugTarget);
     },
     setScanTier: (tier) => view.setScanTier(tier),
-    setScanSeed: (seed) => view.setScanSeed(seed),
+    setScanSeed: (x, y) => view.setScanSeed(x, y),
     readFloat: (name) => view.readFloat(name),
     exposureFactor: () => view.exposureFactor,
     measureTiers: (tiers, rounds) => view.measureTiers(tiers, rounds),
