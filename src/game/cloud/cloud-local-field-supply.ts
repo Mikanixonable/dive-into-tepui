@@ -15,6 +15,9 @@ import { deriveCloudEventAreas } from './cloud-event-area-closure';
 import { reconstructCloudEventMaterialCohorts } from './cloud-event-transport';
 import { depositCloudEventMaterialCohorts } from './cloud-event-local-deposition';
 import { extinctionFromCloudMass } from './cloud-mass-extinction';
+import {
+  cloudGravityWaveFieldFromEnvironment, displaceCloudMassByWave,
+} from './cloud-wave-displacement';
 import { cloudOpticalVolumeFrameFromExtinction } from './cloud-optical-volume-frame';
 import type { Vec3 } from '../../math/vec3';
 import type {
@@ -211,7 +214,7 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
       timeSeconds: displayTimeSeconds,
       cells,
     });
-    return { frame, data: this.depositEvents(sample.events, frame) };
+    return { frame, data: this.depositEvents(sample.events, frame, displayTimeSeconds) };
   }
 
   // 場を張る frame。格子は中心のまわりに正方形で、有効角距離は格子の半対角まで届く。
@@ -270,6 +273,7 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
   private depositEvents(
     events: ReturnType<typeof sampleConvectiveCloudEvents>['events'],
     frame: CloudLocalFieldFrame,
+    displayTimeSeconds: number,
   ): CloudOpticalVolumeData {
     const cellCount = GRID_SIZE * GRID_SIZE;
     const footprintGrid: CloudFootprintGrid = {
@@ -318,7 +322,16 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
       }),
     );
     const merged: CloudMassDeposition = { columnsByLayer, unassignedMassKgByPhase };
-    const extinction = extinctionFromCloudMass(merged, LAYER_MICROPHYSICS);
+    // 場中心の環境が波源を持ち凝結まで届くときだけ、堆積済みの層別質量を波の位相で
+    // 鉛直に畳み直す。波の伝播は環境が導いた位相速度だけで決まり、輸送に使った物質風
+    // とは独立 — 波状雲で雲の流れと波の伝播が一致しないことを、この変位が風の情報を
+    // 持たないことで保つ。場の幅で環境は緩やかに変わるとして、波場は中心の環境で代表する。
+    const waveField = cloudGravityWaveFieldFromEnvironment(
+      this.environmentAt(frame.centerDirection));
+    const displaced = waveField === null
+      ? merged
+      : displaceCloudMassByWave(merged, waveField, footprintGrid, displayTimeSeconds);
+    const extinction = extinctionFromCloudMass(displaced, LAYER_MICROPHYSICS);
     return cloudOpticalVolumeFrameFromExtinction(
       GRID_SIZE, GRID_SIZE, frame.layerEdgesM, extinction);
   }
