@@ -1,5 +1,5 @@
-// 雲イベントの source / footprint 面積を、環境診断と輸送時刻から導出する物理閉包。
-// 堆積が要求する明示面積を、固定値ではなく対流の強さ・安定度・風の鉛直差・滞留時間・
+// 雲イベントの source / footprint を、環境診断と輸送時刻から導出する物理閉包。
+// 堆積が要求する明示形状を、固定値ではなく対流の強さ・安定度・風の鉛直差・滞留時間・
 // 昇華寿命から決める。
 // source 面積は上昇コアの断面積。CAPE を全て運動エネルギーへ換えた理想化上昇速度
 // w_max = √(2·CAPE) [J/kg = m²/s² → m/s] と、対流上部の混合時定数 τ_mix [s] から
@@ -7,24 +7,29 @@
 // τ_mix = 1/N とする(上昇流が安定層に突入してエントレインメントと混合する時間は、
 // 浮力振動の1周期の程度 — 実際の上昇速度はエントレインメントと凝結物荷重で
 // w_max より小さいので、コア半径は上限側の見積もり)。
-// footprint 面積はコア半径を初期値とした円で、半径の二乗に次の3項を加える:
-//   乱流拡散 σ_d² = r_core²·t/τ_d   (バルク横拡散係数 K = r_core²/(2τ_d) と等価)
-//   鉛直シアの横ずれ (|u(z)−u(z_src)|·t_res)²  — 材料の高さと源の高さの風差が
-//     滞留時間だけずれを引き伸ばす
-//   氷のみ かなとこ流出 r_a = γ·w_max·min(t, τ_sub) — 脱層流出は上昇速度の程度で
-//     進み、昇華寿命 τ_sub を超えては広がらない
+// footprint は等方半径 c と伸長ベクトル群 {v_i} の組で表し、受け手が
+// G = c²·I + Σ v_i v_iᵀ の固有楕円(長半径・短半径・主軸方位)として復元する。
+//   等方成分 c² = r_core² + σ_d² [+ 氷のみ r_a²]
+//     σ_d² = r_core²·t/τ_d  (バルク横拡散係数 K = r_core²/(2τ_d) と等価)
+//     r_a = γ·w_max·min(t, τ_sub) — かなとこ流出は上昇速度の程度の速さで
+//       放射状に広がり、昇華寿命 τ_sub を超えては広がらない
+//   伸長成分(源位置の接平面ベクトル、長さ = ずれ距離)
+//     鉛直シアの横ずれ Δu·t_res = (u(z)−u(z_src))·t_res — 材料の高さと源の
+//       高さの風差が滞留時間だけ材料を風差方向へ引き伸ばす
+//     氷のみ かなとこの風下引き伸ばし u(z_ice)·min(t, τ_sub) — 上層へ出た氷は
+//       その高度の流れで風下へ連なり、無風では等方広がりへ収まる
 // 拡散とかなとこ項は、連続放出を時刻ごとの独立した雲塊ではなく1枚の広がる雲板として
-// 扱い、イベント共通の滞留時間を使う。そのため cohort 間の面積差はシア項だけから
-// 生じ、無風の環境ではゼロになる。CAPE=0 では w_max=0 で拡散・流出・コア半径の全項が
-// 消え、全面積が下限へ縮退する。シア項は輸送時刻の瞬間シアを滞留時間へ掛ける代理で、
-// 履歴積分ではない。
+// 扱い、イベント共通の滞留時間を使う。cohort 間の形の差はシアずれと各層の風から
+// 生じ、無風の環境では全ベクトルが零で等半径の円へ収まる。CAPE=0 では w_max=0 で
+// 拡散・流出・コア半径の全項が消え、全面積が下限へ縮退する。シア項は輸送時刻の
+// 瞬間シアを滞留時間へ掛ける代理で、履歴積分ではない。
 // 係数は観測校正済みではない次数のバルク推定。粒径・微物理は含まない。
 
-import { len, v3 } from '../../math/vec3';
+import { cross, lenSq, scale, v3 } from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
 import type { CloudEnvironmentProfile } from './cloud-environment';
 import type { ConvectiveCloudEvent } from './cloud-events';
-import type { CloudEventFootprintAreas } from './cloud-event-local-deposition';
+import type { CloudEventFootprintShape, CloudEventFootprintShapes } from './cloud-event-local-deposition';
 import type { CloudEventMaterialCohorts, CloudEventWindAt } from './cloud-event-transport';
 
 // 平衡高度の安定度が取れないときの混合時定数。自由対流圏の代表的な
@@ -42,8 +47,8 @@ const ANVIL_OUTFLOW_FRACTION = 0.3;
 export interface CloudEventAreas {
   // イベントの kg/m² ledger が参照する源の断面積。m²。
   readonly sourceAreaM2: number;
-  // 材料ごとの現在の投影面積。堆積の明示面積入力と同じ形。
-  readonly footprints: CloudEventFootprintAreas;
+  // 材料ごとの現在の footprint 形状。堆積の明示形状入力と同じ形。
+  readonly footprints: CloudEventFootprintShapes;
 }
 
 function requireFinite(value: number, name: string): void {
@@ -77,26 +82,42 @@ function mixingTimeSeconds(environment: CloudEnvironmentProfile): number {
   return FALLBACK_MIXING_TIME_SECONDS;
 }
 
-// 同じ方位の2高度の水平風差 [m/s]。材料の層をまたぐ風差が footprint を伸ばす。
-function windShearMagnitudeMPerS(
+// 同じ方位の2高度の水平風ベクトル [m/s]。検証はここで済ませる。
+function windAtHeight(
   windAt: CloudEventWindAt,
   directionUnitVector: Vec3,
-  lowerHeightM: number,
-  upperHeightM: number,
+  heightM: number,
   timeSeconds: number,
-): number {
-  const lower = windAt(directionUnitVector, lowerHeightM, timeSeconds).tangentVelocityMPerS;
-  const upper = windAt(directionUnitVector, upperHeightM, timeSeconds).tangentVelocityMPerS;
-  for (const [name, vector] of Object.entries({ lower, upper })) {
-    requireFinite(vector.x, `windAt ${name}.x`);
-    requireFinite(vector.y, `windAt ${name}.y`);
-    requireFinite(vector.z, `windAt ${name}.z`);
-  }
-  return len(v3(upper.x - lower.x, upper.y - lower.y, upper.z - lower.z));
+): Vec3 {
+  const wind = windAt(directionUnitVector, heightM, timeSeconds).tangentVelocityMPerS;
+  requireFinite(wind.x, 'windAt.x');
+  requireFinite(wind.y, 'windAt.y');
+  requireFinite(wind.z, 'windAt.z');
+  return wind;
 }
 
-// イベント・材料・環境・風から、堆積へ渡す source 面積と材料ごとの footprint 面積を返す。
+// 等方半径と伸長ベクトルが作る形状行列 G = c²I + Σvvᵀ の行列式 [m⁴]。
+// 面積は π·√detG。2次元では det(c²I + Σvvᵀ) = c⁴ + c²·Σ|v|² + Σ_{i<j}|v_i×v_j|² 。
+function shapeAreaM2(shape: CloudEventFootprintShape): number {
+  const isotropicSquaredM2 = shape.isotropicRadiusM * shape.isotropicRadiusM;
+  let stretchedSquaredM2 = 0;
+  let pairCrossSquaredM4 = 0;
+  const vectors = shape.elongationVectorsM;
+  for (const [index, vector] of vectors.entries()) {
+    stretchedSquaredM2 += lenSq(vector);
+    for (const other of vectors.slice(index + 1)) {
+      pairCrossSquaredM4 += lenSq(cross(vector, other));
+    }
+  }
+  const determinantM4 = isotropicSquaredM2 * isotropicSquaredM2
+    + isotropicSquaredM2 * stretchedSquaredM2
+    + pairCrossSquaredM4;
+  return Math.PI * Math.sqrt(determinantM4);
+}
+
+// イベント・材料・環境・風から、堆積へ渡す source 面積と材料ごとの footprint 形状を返す。
 // 下限は受け手の格子1セル、上限はイベント域の面積を想定し、どちらも呼び出し側が与える。
+// 面積が上下限を外れるときは形(軸比・方位)を保ったまま等倍に縮める。
 export function deriveCloudEventAreas(
   event: ConvectiveCloudEvent,
   material: CloudEventMaterialCohorts,
@@ -129,14 +150,25 @@ export function deriveCloudEventAreas(
     requireFinite(cohort.geometricHeightM, 'cohort.geometricHeightM');
   }
 
-  const clampAreaM2 = (areaM2: number): number => (
-    Math.min(Math.max(areaM2, minimumAreaM2), maximumAreaM2)
-  );
-  const minimumFootprints: CloudEventFootprintAreas = {
-    parentLiquidM2: material.parent === null ? null : minimumAreaM2,
+  const clampShape = (shape: CloudEventFootprintShape): CloudEventFootprintShape => {
+    const areaM2 = shapeAreaM2(shape);
+    const clampedM2 = Math.min(Math.max(areaM2, minimumAreaM2), maximumAreaM2);
+    if (clampedM2 === areaM2) return shape;
+    const shrink = Math.sqrt(clampedM2 / areaM2);
+    return {
+      isotropicRadiusM: shape.isotropicRadiusM * shrink,
+      elongationVectorsM: shape.elongationVectorsM.map((vector) => scale(vector, shrink)),
+    };
+  };
+  const minimumShape = (): CloudEventFootprintShape => ({
+    isotropicRadiusM: Math.sqrt(minimumAreaM2 / Math.PI),
+    elongationVectorsM: [],
+  });
+  const minimumFootprints: CloudEventFootprintShapes = {
+    parentLiquid: material.parent === null ? null : minimumShape(),
     releasedIceCohorts: material.releasedIceCohorts.map((cohort) => ({
       cohortIndex: cohort.cohortIndex,
-      areaM2: minimumAreaM2,
+      shape: minimumShape(),
     })),
   };
 
@@ -152,28 +184,51 @@ export function deriveCloudEventAreas(
   requireFinite(sampleTimeSeconds, 'sampleTimeSeconds');
   const sourcePosition = event.sourcePosition;
 
-  // 材料の高さと源の高さの風差 × 滞留時間。滞留が無い、材料が無い(源が無い)ときは 0。
-  const shearDriftM = (heightM: number, residenceSeconds: number): number => {
-    if (residenceSeconds <= 0 || sourcePosition === undefined) return 0;
-    return windShearMagnitudeMPerS(
-      windAt, sourcePosition.directionUnitVector,
-      sourcePosition.geometricHeightM, heightM, sampleTimeSeconds,
-    ) * residenceSeconds;
+  // 材料の高さと源の高さの風差 × 滞留時間のずれベクトル [m]。滞留が無い、
+  // 材料が無い(源が無い)ときは零ベクトル。
+  const shearDriftVectorM = (
+    materialWindMPerS: Vec3,
+    residenceSeconds: number,
+    sourceWindMPerS: Vec3 | null,
+  ): Vec3 => {
+    if (residenceSeconds <= 0 || sourceWindMPerS === null) return v3(0, 0, 0);
+    return scale(v3(
+      materialWindMPerS.x - sourceWindMPerS.x,
+      materialWindMPerS.y - sourceWindMPerS.y,
+      materialWindMPerS.z - sourceWindMPerS.z,
+    ), residenceSeconds);
   };
 
-  let parentLiquidM2: number | null = null;
+  // 零でない伸長ベクトルだけを列挙する。零ベクトルは形へ寄与しない。
+  const nonzero = (vector: Vec3): Vec3[] => (lenSq(vector) > 0 ? [vector] : []);
+
+  const sourceWindMPerS = (hasMaterial && sourcePosition !== undefined)
+    ? windAtHeight(
+        windAt, sourcePosition.directionUnitVector, sourcePosition.geometricHeightM,
+        sampleTimeSeconds,
+      )
+    : null;
+
+  let parentLiquid: CloudEventFootprintShape | null = null;
   if (material.parent !== null) {
     requireFinite(material.parent.geometricHeightM, 'parent.geometricHeightM');
     const residenceSeconds = event.ageSeconds;
-    const driftM = shearDriftM(material.parent.geometricHeightM, residenceSeconds);
-    const radiusSquaredM2 = coreRadiusSquaredM2
-      + coreRadiusSquaredM2 * residenceSeconds / DIFFUSION_TIME_SECONDS
-      + driftM * driftM;
-    parentLiquidM2 = clampAreaM2(Math.PI * radiusSquaredM2);
+    const parentWindMPerS = windAtHeight(
+      windAt, sourcePosition!.directionUnitVector, material.parent.geometricHeightM,
+      sampleTimeSeconds,
+    );
+    const driftM = shearDriftVectorM(parentWindMPerS, residenceSeconds, sourceWindMPerS);
+    const isotropicSquaredM2 = coreRadiusSquaredM2
+      + coreRadiusSquaredM2 * residenceSeconds / DIFFUSION_TIME_SECONDS;
+    parentLiquid = clampShape({
+      isotropicRadiusM: Math.sqrt(isotropicSquaredM2),
+      elongationVectorsM: nonzero(driftM),
+    });
   }
 
   let iceDiffusionSquaredM2 = 0;
   let anvilRadiusM = 0;
+  let anvilSpreadSeconds = 0;
   if (hasIce && meanReleaseTimeSeconds !== null) {
     const iceResidenceSeconds = Math.max(0, sampleTimeSeconds - meanReleaseTimeSeconds);
     const sublimationRatePerSecond = event.iceRelease.sublimationRatePerSecond;
@@ -181,21 +236,32 @@ export function deriveCloudEventAreas(
       ? 1 / sublimationRatePerSecond
       : Number.POSITIVE_INFINITY;
     iceDiffusionSquaredM2 = coreRadiusSquaredM2 * iceResidenceSeconds / DIFFUSION_TIME_SECONDS;
-    anvilRadiusM = ANVIL_OUTFLOW_FRACTION * updraftSpeedMaxMPerS
-      * Math.min(iceResidenceSeconds, sublimationLifetimeSeconds);
+    anvilSpreadSeconds = Math.min(iceResidenceSeconds, sublimationLifetimeSeconds);
+    anvilRadiusM = ANVIL_OUTFLOW_FRACTION * updraftSpeedMaxMPerS * anvilSpreadSeconds;
   }
   const releasedIceCohorts = material.releasedIceCohorts.map((cohort) => {
     const residenceSeconds = Math.max(0, sampleTimeSeconds - cohort.meanReleaseTimeSeconds);
-    const driftM = shearDriftM(cohort.geometricHeightM, residenceSeconds);
-    const radiusSquaredM2 = coreRadiusSquaredM2
+    const cohortWindMPerS = windAtHeight(
+      windAt, sourcePosition!.directionUnitVector, cohort.geometricHeightM, sampleTimeSeconds,
+    );
+    const driftM = shearDriftVectorM(cohortWindMPerS, residenceSeconds, sourceWindMPerS);
+    // かなとこへ出た氷はその高度の風で風下へ引き伸ばされる。流出の等方半径とは
+    // 別に、風 × 流出時間のずれを伸長ベクトルとして立てる。
+    const anvilWindDriftM = scale(cohortWindMPerS, anvilSpreadSeconds);
+    const isotropicSquaredM2 = coreRadiusSquaredM2
       + iceDiffusionSquaredM2
-      + anvilRadiusM * anvilRadiusM
-      + driftM * driftM;
-    return { cohortIndex: cohort.cohortIndex, areaM2: clampAreaM2(Math.PI * radiusSquaredM2) };
+      + anvilRadiusM * anvilRadiusM;
+    return {
+      cohortIndex: cohort.cohortIndex,
+      shape: clampShape({
+        isotropicRadiusM: Math.sqrt(isotropicSquaredM2),
+        elongationVectorsM: [...nonzero(driftM), ...nonzero(anvilWindDriftM)],
+      }),
+    };
   });
 
   return {
-    sourceAreaM2: clampAreaM2(Math.PI * coreRadiusSquaredM2),
-    footprints: { parentLiquidM2, releasedIceCohorts },
+    sourceAreaM2: Math.min(Math.max(Math.PI * coreRadiusSquaredM2, minimumAreaM2), maximumAreaM2),
+    footprints: { parentLiquid, releasedIceCohorts },
   };
 }
