@@ -7,7 +7,7 @@ import { AnnualClimateMap } from '../../src/render/cloud/climate-map';
 import { AtmosphericWindField } from '../../src/render/cloud/atmospheric-wind';
 import { condenseGlobalMassField } from '../../src/render/cloud/cloud-global-condensation';
 import { ConvectiveCloudGlobalFieldSupply } from '../../src/game/cloud/cloud-global-field-supply';
-import { cloudEventWindAt } from '../../src/game/cloud/cloud-event-transport';
+import { makeWindAt } from '../../src/game/cloud/cloud-local-field-supply';
 import { earthGlobalEnvironmentAt } from '../../src/game/cloud/earth-global-environment';
 import { R_EARTH, R_EARTH_EQ, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 
@@ -55,7 +55,7 @@ export async function probeGlobalCloudField(displayTimeSeconds: number): Promise
       (direction, timeSeconds) => earthGlobalEnvironmentAt(
         direction, climate, timeSeconds, R_EARTH, SIDEREAL_DAY),
       GLOBAL_SEED, R_EARTH_EQ, GRID_WIDTH, GRID_HEIGHT,
-      cloudEventWindAt(new AtmosphericWindField()));
+      makeWindAt(new AtmosphericWindField()));
     const result = supply.derive(displayTimeSeconds);
     if (result === null) throw new Error('global field derive returned null');
     const { width, height } = result.field;

@@ -61,10 +61,11 @@ export function sideMountTransform(
   parent: ShipModuleDefinition, child: ShipModuleDefinition, slot: SideSlot,
 ): ModuleTransform {
   const direction = sideSlotDirection(slot);
-  // 翼面を持つモジュールは、負側スロットへ付くと外向き軸まわりに反転して面が逆を向く。
-  // どちら側へ付けても面の向きを揃えるため、負側では取付面まわりに180度ロールを足す。
+  // 翼面を持つモジュールの面法線(local +Y)を、スロットの正負に関わらず同じ向きへ揃える。
+  // ±X スロットではロールなしで両側とも面が +Y を向く。±Y スロットでは面が ±X に割れるため、
+  // -y 側では外向き軸まわりに180度ロールを足して +y 側と向きを揃える。
   const roll = (child.kind === 'solar_panel' || child.kind === 'radiator')
-    && (slot === 'side:-x' || slot === 'side:-y')
+    && slot === 'side:-y'
     ? qFromAxisAngle(v3(0, 0, 1), Math.PI) : { x: 0, y: 0, z: 0, w: 1 };
   return {
     position: v3(
