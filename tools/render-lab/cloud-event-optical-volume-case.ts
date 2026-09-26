@@ -3,7 +3,9 @@ import * as THREE from 'three/webgpu';
 import { float, uv, vec3 } from 'three/tsl';
 import { v3 } from '../../src/math/vec3';
 import { sampleConvectiveCloudEvents } from '../../src/game/cloud/cloud-events';
-import { reconstructCloudEventMaterialCohorts } from '../../src/game/cloud/cloud-event-transport';
+import { reconstructCloudEventMaterialCohorts, type CloudEventWindAt } from '../../src/game/cloud/cloud-event-transport';
+import { createCloudEnvironmentProfile } from '../../src/game/cloud/cloud-environment';
+import { deriveCloudEventAreas } from '../../src/game/cloud/cloud-event-area-closure';
 import { depositCloudEventMaterialCohorts } from '../../src/game/cloud/cloud-event-local-deposition';
 import { extinctionFromCloudMass } from '../../src/game/cloud/cloud-mass-extinction';
 import { cloudOpticalVolumeFrameFromExtinction } from '../../src/game/cloud/cloud-optical-volume-frame';
@@ -18,8 +20,6 @@ import type { CaseBuilder, LabCase } from './lab-case';
 const SEED = 17;
 const TIME_SECONDS = 7_200;
 const SPHERE_RADIUS_M = 6_371_000;
-const SOURCE_AREA_M2 = 4_000_000;
-const FOOTPRINT_AREA_M2 = Math.PI * 4_000 ** 2;
 const WIDTH = 64;
 const HEIGHT = 64;
 const CELL_WIDTH_M = 250;
@@ -178,21 +178,54 @@ export function sampleEventOpticalVolume(): CloudOpticalVolumeData {
   }).events[0];
   if (event === undefined) throw new Error('diagnostic seed did not sample a cloud event');
 
+  const windAt: CloudEventWindAt = (directionUnitVector) => {
+    const horizontalMagnitude = Math.hypot(directionUnitVector.x, directionUnitVector.y);
+    const east = horizontalMagnitude > 1e-12
+      ? v3(-directionUnitVector.y / horizontalMagnitude, directionUnitVector.x / horizontalMagnitude, 0)
+      : v3(0, 1, 0);
+    return {
+      tangentVelocityMPerS: v3(east.x * 0.2, east.y * 0.2, east.z * 0.2),
+      verticalVelocityMPerS: 0,
+    };
+  };
   const material = reconstructCloudEventMaterialCohorts(
     event,
     SPHERE_RADIUS_M,
     60,
-    (directionUnitVector) => {
-      const horizontalMagnitude = Math.hypot(directionUnitVector.x, directionUnitVector.y);
-      const east = horizontalMagnitude > 1e-12
-        ? v3(-directionUnitVector.y / horizontalMagnitude, directionUnitVector.x / horizontalMagnitude, 0)
-        : v3(0, 1, 0);
-      return {
-        tangentVelocityMPerS: v3(east.x * 0.2, east.y * 0.2, east.z * 0.2),
-        verticalVelocityMPerS: 0,
-      };
-    },
+    windAt,
     8,
+  );
+
+  // 面積閉包に渡す環境列。CAPE と平衡高度の安定度が上昇コア断面積と
+  // 滞留時間で成長する footprint を決める。
+  const environment = createCloudEnvironmentProfile({
+    levels: [
+      { heightM: 0, temperatureK: 298, pressurePa: 100_000, waterVaporSpecificHumidityKgPerKg: 0.016 },
+      { heightM: 1_500, temperatureK: 288.5, pressurePa: 84_000, waterVaporSpecificHumidityKgPerKg: 0.012 },
+      { heightM: 3_000, temperatureK: 278.5, pressurePa: 70_000, waterVaporSpecificHumidityKgPerKg: 0.007 },
+      { heightM: 6_000, temperatureK: 256, pressurePa: 47_000, waterVaporSpecificHumidityKgPerKg: 0.0015 },
+      { heightM: 9_000, temperatureK: 236, pressurePa: 31_000, waterVaporSpecificHumidityKgPerKg: 0.0002 },
+      { heightM: 12_000, temperatureK: 216, pressurePa: 20_000, waterVaporSpecificHumidityKgPerKg: 0.00004 },
+      { heightM: 14_500, temperatureK: 220, pressurePa: 15_000, waterVaporSpecificHumidityKgPerKg: 0.00002 },
+    ].map((level) => ({
+      ...level,
+      liquidWaterMixingRatioKgPerKg: 0,
+      iceMixingRatioKgPerKg: 0,
+      eastWindMps: 0.2,
+      northWindMps: 0,
+      largeScaleVerticalVelocityMps: 0,
+    })),
+    surfaceSensibleHeatFluxWPerM2: 0,
+    surfaceLatentHeatFluxWPerM2: 0,
+    cloudTopLongwaveCoolingKPerS: 0,
+    gravityWaveSource: null,
+    upperIceLayerBottomM: 6_000,
+    upperIceLayerTopM: 11_000,
+  });
+  const eventAreas = deriveCloudEventAreas(
+    event, material, environment, windAt,
+    CELL_WIDTH_M * CELL_HEIGHT_M,
+    WIDTH * CELL_WIDTH_M * (HEIGHT * CELL_HEIGHT_M),
   );
 
   const footprintGrid = {
@@ -209,14 +242,8 @@ export function sampleEventOpticalVolume(): CloudOpticalVolumeData {
   };
   const deposition = depositCloudEventMaterialCohorts(
     material,
-    SOURCE_AREA_M2,
-    {
-      parentLiquidM2: FOOTPRINT_AREA_M2,
-      releasedIceCohorts: material.releasedIceCohorts.map(({ cohortIndex }) => ({
-        cohortIndex,
-        areaM2: FOOTPRINT_AREA_M2,
-      })),
-    },
+    eventAreas.sourceAreaM2,
+    eventAreas.footprints,
     {
       centerDirectionUnitVector: v3(1, 0, 0),
       eastUnitVector: v3(0, 1, 0),
