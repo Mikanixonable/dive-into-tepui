@@ -147,6 +147,7 @@ const FORBIDDEN = [
     exempt: [
       'src/render/protein/protein-runtime.ts',
       'src/render/dynamic/dynamic-entity/protein-enemy-view.ts',
+      'src/render/cloud/cloud-local-field-baker.ts',
     ],
   },
   {

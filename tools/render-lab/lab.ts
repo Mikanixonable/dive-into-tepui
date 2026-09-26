@@ -26,6 +26,9 @@ import { LabSun } from './lab-sun';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { CloudDetailDiagnosticTextureEstimate } from './cloud-detail-diagnostic';
+import type {
+  CloudLocalFieldBakeAttempt, CloudLocalFieldBakeStats,
+} from '../../src/render/cloud/cloud-local-field-baker';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
@@ -108,6 +111,53 @@ export interface CloudDetailLifecycleMeasurement {
   };
 }
 
+// 局所光学場の再焼計測で記録した1フレーム。bakeAttempts はそのフレームで新たに
+// 積まれた試行だけ(再焼の無いフレームは空)。
+export interface CloudLocalFieldLifecycleFrame {
+  readonly index: number;
+  readonly kind: 'steady' | 'interval-rebuild' | 'recenter-rebuild';
+  readonly displayTimeSeconds: number;
+  // this.render() 全体の CPU 壁時計 [ms]。局所場の導出・体積構築はこの中で走る。
+  readonly renderCallCpuWallMs: number;
+  // pipeline.render() だけの CPU 壁時計 [ms]。
+  readonly pipelineRenderCpuWallMs: number;
+  readonly timestampResolveAwaitWallMs: number;
+  readonly bakeAttempts: readonly CloudLocalFieldBakeAttempt[];
+  readonly generation: number | null;
+  readonly bindingTextureUuid: string | null;
+  readonly volumeBytes: CloudLocalFieldBakeStats['volumeBytes'] | null;
+  readonly gpuPassMs: Readonly<Record<string, number>>;
+  readonly observedRenderTotalMs: number | null;
+  readonly observedComputeTotalMs: number | null;
+}
+
+export interface CloudLocalFieldLifecycleMeasurement {
+  readonly caseName: CaseName;
+  readonly shotName: string;
+  readonly sampleCount: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+  readonly caseReadinessWaitWallMs: number;
+  readonly setupWarmupWallMs: number;
+  readonly caseReady: boolean;
+  readonly gpuTimestampResolveSupport: boolean;
+  // 初期構築を含む、焼き器が保持している直近の試行記録。フレームへの帰属は frames 側で見る。
+  readonly bakeAttempts: readonly CloudLocalFieldBakeAttempt[];
+  readonly frames: readonly CloudLocalFieldLifecycleFrame[];
+  readonly fullFrameGpuB0: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
+  readonly actualGpuAllocation: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
+  readonly textureUploadReadyWait: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
+}
+
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -128,6 +178,15 @@ const READY_TIMEOUT_MS = 60_000;
 const MAX_SETTLE_CAPTURES = 6;
 // captureTarget は毎回透明に消す。出力パスが上書きしなければ、readback にこの alpha が残る。
 const CAPTURE_CLEAR_COLOR = new THREE.Color(1, 0, 1);
+
+// 局所場計測の定常フレームで進める表示時刻の刻み [s]。生成雲場は表示時刻が変わると焼き直す
+// ため、定常フレームにも生成場の焼き込みが含まれる — 再焼フレームとの差が局所場のぶんになる。
+const LOCAL_FIELD_STEADY_STEP_SECONDS = 0.1;
+// 局所場の再焼間隔(300 s)を確実に超える時刻ジャンプ [s]。
+const LOCAL_FIELD_REBUILD_JUMP_SECONDS = 310;
+// 再センター試行で直下点を動かす緯度差 [deg]。再焼の中心移動閾値は場の半幅の 1/4 相当
+// (約 0.56°)なので、それを十分に上回る。
+const LOCAL_FIELD_RECENTER_LATITUDE_DEG = 3;
 
 interface LabPixelRatioRenderer {
   readonly domElement: HTMLCanvasElement;
@@ -593,6 +652,135 @@ export class LabView {
       gpuTimestampResolveSupport: this.gpu.supported,
       coldExchange,
       warmReuse,
+    };
+  }
+
+  // 局所光学場の再焼を、製品経路の焼き器(earthCloudPresentation が持つもの)が載った実
+  // フレームで測る。同じ置き方の定常フレーム・再焼間隔を超える時刻ジャンプ・直下点の閾値超の
+  // 移動それぞれを別に記録し、再焼が起きたフレームと起きないフレームの CPU 発行時間・
+  // GPU pass 時間・体積の容量推定を読み分ける。
+  public async measureCloudLocalFieldLifecycle(
+    name: CaseName,
+    shotName: string,
+    graphics: Partial<GraphicsSettingsData> = {},
+    sampleCount = 4,
+  ): Promise<CloudLocalFieldLifecycleMeasurement> {
+    if (!Number.isSafeInteger(sampleCount) || sampleCount < 1 || sampleCount > 16) {
+      throw new RangeError('cloud local field lifecycle sample count must be in [1, 16]');
+    }
+    this.show(name);
+    this.applyShot(shotName);
+    if (this.current?.earth === undefined) {
+      throw new Error(`render-lab: case "${name}" has no earth for cloud local field measurement`);
+    }
+    this.setGraphics({ ...this.graphics.current, ...graphics, clouds: true });
+
+    const readinessStartedAt = performance.now();
+    await this.waitUntilReady();
+    const caseReadinessWaitWallMs = performance.now() - readinessStartedAt;
+    const caseReady = this.ready;
+    const statsOf = (): CloudLocalFieldBakeStats | null => this.earth.cloudLocalFieldBakeStats;
+    const fallback = {
+      caseName: name,
+      shotName,
+      sampleCount,
+      canvasWidth: this.renderer.domElement.width,
+      canvasHeight: this.renderer.domElement.height,
+      caseReadinessWaitWallMs,
+      setupWarmupWallMs: 0,
+      caseReady,
+      gpuTimestampResolveSupport: this.gpu.supported,
+      bakeAttempts: statsOf()?.attempts ?? [],
+      frames: [] as CloudLocalFieldLifecycleFrame[],
+      fullFrameGpuB0: {
+        status: 'not-measured' as const,
+        reason: 'render-lab cannot observe all GPU work and presentation for a full frame.',
+      },
+      actualGpuAllocation: {
+        status: 'not-measured' as const,
+        reason: 'The measurement sees texture byte estimates, not driver allocation or residency.',
+      },
+      textureUploadReadyWait: {
+        status: 'not-measured' as const,
+        reason: 'The render lab has no texture-specific upload-completion signal for this DataArrayTexture.',
+      },
+    };
+    if (!caseReady) return fallback;
+
+    const setupWarmupFrames = 6;
+    const baseLatitude = this.angles.earthLatitudeDeg;
+    let displayTime = 0;
+    let setupWarmupWallMs = 0;
+    let canvasWidth = fallback.canvasWidth;
+    let canvasHeight = fallback.canvasHeight;
+    const frames: CloudLocalFieldLifecycleFrame[] = [];
+    const record = async (kind: CloudLocalFieldLifecycleFrame['kind']): Promise<void> => {
+      // 試行記録は直近しか持たないので、新たに積まれた分は通し番号で切り分ける。
+      const sequenceBefore = statsOf()?.attempts.at(-1)?.sequence ?? -1;
+      this.gpu.beginObservedFrame();
+      const startedAt = performance.now();
+      this.render(displayTime, true);
+      const renderCallCpuWallMs = performance.now() - startedAt;
+      const pipelineRenderCpuWallMs = this.lastRenderCpuMs;
+      const resolveStartedAt = performance.now();
+      await this.gpu.waitForResolve();
+      const snapshot = this.gpu.snapshot();
+      const stats = statsOf();
+      frames.push({
+        index: frames.length,
+        kind,
+        displayTimeSeconds: displayTime,
+        renderCallCpuWallMs,
+        pipelineRenderCpuWallMs,
+        timestampResolveAwaitWallMs: performance.now() - resolveStartedAt,
+        bakeAttempts: stats?.attempts.filter((attempt) => attempt.sequence > sequenceBefore) ?? [],
+        generation: stats?.generation ?? null,
+        bindingTextureUuid: stats?.bindingTextureUuid ?? null,
+        volumeBytes: stats?.volumeBytes ?? null,
+        gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map(
+          (label, index): [string, number] => [label, snapshot.elapsedMs[index] ?? 0])),
+        observedRenderTotalMs: snapshot.observedRenderComplete ? snapshot.observedRenderTotalMs : null,
+        observedComputeTotalMs: snapshot.observedComputeComplete ? snapshot.observedComputeTotalMs : null,
+      });
+    };
+
+    try {
+      const pixelRatio = this.renderer.getPixelRatio() * this.graphics.current.resolutionScale;
+      await withLabPixelRatio(this.renderer, pixelRatio, async () => {
+        canvasWidth = this.renderer.domElement.width;
+        canvasHeight = this.renderer.domElement.height;
+        // 暖機。シェーダの組み立てと初回の転送を、計測に入れないフレームで済ませる。
+        const warmupStartedAt = performance.now();
+        for (let frame = 0; frame < setupWarmupFrames; frame += 1) {
+          displayTime += LOCAL_FIELD_STEADY_STEP_SECONDS;
+          this.render(displayTime);
+          await this.gpu.waitForResolve();
+        }
+        setupWarmupWallMs = performance.now() - warmupStartedAt;
+        for (let index = 0; index < sampleCount; index += 1) {
+          displayTime += LOCAL_FIELD_STEADY_STEP_SECONDS;
+          await record('steady');
+          displayTime += LOCAL_FIELD_REBUILD_JUMP_SECONDS;
+          await record('interval-rebuild');
+          // 直下点を閾値以上ずらして再焼させる。交互に元へ戻すので、どちら向きの移動も測れる。
+          this.angles = {
+            ...this.angles,
+            earthLatitudeDeg: baseLatitude + (index % 2 === 0 ? LOCAL_FIELD_RECENTER_LATITUDE_DEG : 0),
+          };
+          displayTime += LOCAL_FIELD_STEADY_STEP_SECONDS;
+          await record('recenter-rebuild');
+        }
+      });
+    } finally {
+      this.angles = { ...this.angles, earthLatitudeDeg: baseLatitude };
+    }
+    return {
+      ...fallback,
+      canvasWidth,
+      canvasHeight,
+      setupWarmupWallMs,
+      bakeAttempts: statsOf()?.attempts ?? [],
+      frames,
     };
   }
 
