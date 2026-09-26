@@ -37,41 +37,29 @@ async function main() {
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
     const hoursList = await devTools.evaluate('window.cloudLab.fixtureTimesHours');
-    const fixtures = await devTools.evaluate('window.cloudLab.fixtures');
-    for (const fixture of fixtures) {
-      await devTools.evaluate(`window.cloudLab.selectFixture(${JSON.stringify(fixture)})`);
-      const fixtureDir = path.join(outDir, fixture);
-      mkdirSync(fixtureDir, { recursive: true });
-      for (const hours of hoursList) {
-        await devTools.evaluate(`window.cloudLab.setTime(${hours})`);
-        for (const view of SERIES_VIEWS) {
-          await devTools.evaluate(`window.cloudLab.show(${JSON.stringify(view)})`);
-          const dataUrl = await devTools.evaluate('window.cloudLab.capture()');
-          const timeLabel = String(hours).replace('.', 'p');
-          writeFileSync(
-            path.join(fixtureDir, `${view}-${timeLabel}h.png`),
-            Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'),
-          );
-          console.log(`shot ${fixture} ${view} at ${hours} h`);
-        }
+    for (const hours of hoursList) {
+      await devTools.evaluate(`window.cloudLab.setTime(${hours})`);
+      for (const view of SERIES_VIEWS) {
+        await devTools.evaluate(`window.cloudLab.show(${JSON.stringify(view)})`);
+        const dataUrl = await devTools.evaluate('window.cloudLab.capture()');
+        const timeLabel = String(hours).replace('.', 'p');
+        writeFileSync(path.join(outDir, `${view}-${timeLabel}h.png`), Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
+        console.log(`shot ${view} at ${hours} h`);
       }
     }
     writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify({
       name: process.argv[2] ?? 'unnamed',
-      source: 'controlled-generated-cloud-field',
+      source: 'current-generated-cloud-field',
       cpuDiagnosticsApplied: true,
-      generatedCloudImageFixtureApplied: true,
+      generatedCloudImageFixtureApplied: false,
       fixtureResults: JSON.parse(await devTools.evaluate(
         'JSON.stringify(window.cloudLab.fixtures.map((id) => window.cloudLab.measureFixture(id)))',
       )),
-      fixtures,
       views: SERIES_VIEWS,
       timesHours: hoursList,
     }, null, 2)}\n`);
     if (fatalEvents.length > 0) throw new Error(`Page reported errors during shooting:\n${fatalEvents.join('\n')}`);
-    console.log(
-      `Wrote ${fixtures.length * SERIES_VIEWS.length * hoursList.length} PNGs to ${path.relative(root, outDir)}`,
-    );
+    console.log(`Wrote ${SERIES_VIEWS.length * hoursList.length} PNGs to ${path.relative(root, outDir)}`);
   } finally {
     await session.close();
   }

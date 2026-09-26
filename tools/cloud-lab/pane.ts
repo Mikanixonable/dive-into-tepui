@@ -19,11 +19,6 @@ export class CloudLabPane {
     this.field.prepare(renderer, seconds);
   }
 
-  // fixture の制御値だけが変わった場合にも、同じ表示時刻を焼き直せるようキャッシュを破棄する。
-  public invalidate(): void {
-    this.field.invalidate();
-  }
-
   // この面の uv(0..1)に出す表示値 0..1 の色。投影が値を持たない範囲は黒。
   public colorAt(view: CloudLabView, uv: Vec2Node): Vec3Node {
     const projection = this.field.fieldProjection;

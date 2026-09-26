@@ -22,8 +22,7 @@ type RayMarchResult = {
 // 短くなる形で反映されるため、steps を連続に変化させると積分値も滑らかに変化する。distanceAt は
 // 0..1 を区間の距離 [m] へマッピングする単調関数であり、**サンプル点の粗密はこの写像のみが決める** —
 // 等間隔なら線形に、密度を高めたい箇所では傾きを緩める。両端を確実に通るため、刻みをどう寄せても
-// 区間を取りこぼさない。medium はステップの中点と、そのステップの実長[m]を受け取る。実長は
-// 高周波の参加媒質を帯域制限するfootprintにも使える。**toVar と Loop を使うので Fn の中から呼ぶこと。**
+// 区間を取りこぼさない。medium はステップの中点で評価される。**toVar と Loop を使うので Fn の中から呼ぶこと。**
 //
 // jitter はステップ境界を画素ごとにずらす 0..1 の乱数(blue-noise.ts)。中点則のままサンプリング位相だけを
 // 回転させるため、**どのずらし方でも元の中点則より精度が悪化しない** — ステップ内の評価位置そのものを乱数で
@@ -34,7 +33,7 @@ type RayMarchResult = {
 export function rayMarch(
   steps: FloatNode,
   distanceAt: (fraction: FloatNode) => FloatNode,
-  medium: (distance: FloatNode, stepLength: FloatNode) => MediumSample,
+  medium: (distance: FloatNode) => MediumSample,
   jitter: FloatNode | null = null,
 ): RayMarchResult {
   const transmittance = vec3(1, 1, 1).toVar();
@@ -46,11 +45,10 @@ export function rayMarch(
   const segments = int(ceil(steps)).add(jitter === null ? 0 : 1);
   Loop({ start: 0, end: segments, type: 'int', condition: '<' }, ({ i }) => {
     const exit = distanceAt(min(offset.add(float(i)).div(steps), 1)).toVar();
-    const stepLength = max(exit.sub(entry), 0).toVar();
-    const sample = medium(entry.add(exit).mul(0.5), stepLength);
+    const sample = medium(entry.add(exit).mul(0.5));
     // 区間 1 つぶんは解析的に求める。**σ→0 でも 1 − exp(0) = 0 へ落ちる**ので、薄い区間で
     // ゼロ除算を踏まない。手前の層で既に減った光は transmittance が運ぶ。
-    const stepTransmittance = exp(sample.extinction.mul(stepLength).negate()).toVar();
+    const stepTransmittance = exp(sample.extinction.mul(max(exit.sub(entry), 0)).negate()).toVar();
     radiance.addAssign(transmittance.mul(vec3(1, 1, 1).sub(stepTransmittance)).mul(sample.source));
     transmittance.mulAssign(stepTransmittance);
     entry.assign(exit);

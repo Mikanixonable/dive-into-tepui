@@ -149,19 +149,13 @@ export class PointCelestialView extends SphereCelestialView {
     return {
       cloud: this.cumulus.renderInput,
       bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), motion, displayTime),
-      surfaceRadius: motion.def.radius,
     };
   }
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
-  public override bakeClouds(
-    renderer: WebGPURenderer,
-    displayTime: number,
-    gpu?: GpuTimingSink,
-    temporalExposureSeconds = 0,
-  ): void {
+  public override bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.cumulus?.cloudsVisible) return;
-    this.cumulus.bake(renderer, displayTime, gpu, temporalExposureSeconds);
+    this.cumulus.bake(renderer, displayTime, gpu);
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期し、高度ラベルを返す。
