@@ -4,23 +4,10 @@ import * as THREE from 'three/webgpu';
 import { CelestialSurface, type LightSourceMap } from '../../src/render/celestial/celestial-surface';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
-import climateTextureUrl from '../../src/assets/earth-climate.png';
-import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import {
-  EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_COASTLINE, earthCloudPresentation, earthGeneratedCloudField,
-  R_EARTH, R_EARTH_EQ, SIDEREAL_DAY,
+  EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_COASTLINE, earthCloudPresentation, R_EARTH, R_EARTH_EQ,
 } from '../../src/game/celestial/solar-system/earth-system';
 import { EARTH_TEXTURE } from '../../src/render/earth-surface-defaults';
-import { CloudPresentation } from '../../src/render/cloud/cloud-presentation';
-import { CloudLocalFieldBaker } from '../../src/render/cloud/cloud-local-field-baker';
-import { ObservedCloudField } from '../../src/render/cloud/observed-cloud-field';
-import { OrthographicCap } from '../../src/render/field-projection';
-import { CLOUD_CAP_MARGIN, CLOUD_CAP_SIZE } from '../../src/render/cloud/cloud-cap';
-import { AnnualClimateMap } from '../../src/render/cloud/climate-map';
-import { earthGlobalEnvironmentAt } from '../../src/game/cloud/earth-global-environment';
-import {
-  ConvectiveCloudLocalFieldSupply, CONVECTIVE_LOCAL_FIELD_SPAN_M,
-} from '../../src/game/cloud/cloud-local-field-supply';
 import { shapeAxes, shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
 import { LineOverlay } from '../../src/render/celestial/line-overlay';
@@ -47,30 +34,6 @@ export const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.avera
 
 // 天体固定の極軸。
 const BODY_POLE = new THREE.Vector3(0, 1, 0);
-
-// lab が選べる生成雲の経路。'meteorological' は製品と同じ全球気象モデル経路(既定)、
-// 'legacy' は主経路へ切り替わる前の WeatherModel 経路 — 新旧の被覆の見比べ専用で、
-// 製品はこの経路をもう通らない。
-export type GeneratedFieldKind = 'meteorological' | 'legacy';
-
-// 切り替え前の製品と同じ組(気候を読む WeatherModel 経路の生成雲 + 実写 + cap + 局所焼き器)を
-// 組む。定数は earth-system.ts の同名の私有定数(EARTH_CLOUD_LOCAL_SEED・再焼間隔・
-// 再センター閾値)と揃える — 私有なので式をここへ写す。
-function legacyEarthCloudPresentation(): CloudPresentation {
-  const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
-  const climate = AnnualClimateMap.fromDeferredUrl(climateTextureUrl);
-  climate.request();
-  const generated = earthGeneratedCloudField(cap, climate);
-  const localFieldBaker = new CloudLocalFieldBaker(
-    new ConvectiveCloudLocalFieldSupply(
-      (direction) => earthGlobalEnvironmentAt(
-        direction, climate, generated.displayTimeSeconds, R_EARTH, SIDEREAL_DAY),
-      41, R_EARTH_EQ),
-    300, 0.25 * (CONVECTIVE_LOCAL_FIELD_SPAN_M / 2) / R_EARTH_EQ);
-  return new CloudPresentation(
-    generated, new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ, localFieldBaker,
-  );
-}
 
 // 地球のつまみ angles が置く地球の中心(描画座標)。中心距離は平均半径に描画原点の高度を足したもの。
 export function earthCenterOf(angles: Pick<LabViewAngles, EarthAngleKey>): THREE.Vector3 {
@@ -117,15 +80,8 @@ export class LabEarth {
   public readonly shadowBody: ShadowBody;
   public readonly cumulus: ShadowCumulus;
   private readonly surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
-  // 生成雲の経路。既定は製品と同じ全球気象モデル経路で、比較撮影のときだけ
-  // setGeneratedFieldKind が旧経路へ差し替える(旧経路は初めて選ばれたときに組む)。
-  private readonly meteorologicalClouds = earthCloudPresentation();
-  private legacyClouds: CloudPresentation | null = null;
-  private generatedFieldKind: GeneratedFieldKind = 'meteorological';
-  private get clouds(): CloudPresentation {
-    return this.generatedFieldKind === 'legacy' && this.legacyClouds !== null
-      ? this.legacyClouds : this.meteorologicalClouds;
-  }
+  // 生成雲。製品と同じ全球気象モデル経路(MeteorologicalCloudField)で組む。
+  private readonly clouds = earthCloudPresentation();
   private diagnosticCloudDetail: CloudPresentationDetailTile | null = null;
   private diagnosticLocalField: CloudLocalFieldBinding | null = null;
   private diagnosticWavelengthKm: number | null = null;
@@ -142,15 +98,14 @@ export class LabEarth {
     this.object.scale.copy(axes);
     this.surface.addTo(this.object);
     this.surface.syncLod(CLOSE_UP_DIAMETER_PX);
-    this.meteorologicalClouds.addTo(this.object);
+    this.clouds.addTo(this.object);
     this.graticule.addTo(this.object);
     this.coastline.addTo(this.object);
-    // 経路の差し替えで this.clouds が指す実体は変わるので、読み手は実体ではなく窓口を掴む。
-    const self = this;
+    const clouds = this.clouds;
     const bodyFromWorld = this.bodyFromWorld;
-    // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
+    // **組は毎フレーム取り直す** — 供給が届くと写しが別のテクスチャになる。
     const atmosphereClouds: AtmosphereClouds = {
-      get cloud() { return self.clouds.renderInput; }, bodyFromWorld,
+      get cloud() { return clouds.renderInput; }, bodyFromWorld,
     };
     // 大気の地表は地表メッシュと同じ楕円体に採る。**真球で渡すと**、極で地表と空のあいだに
     // 隙間が開く。
@@ -162,7 +117,7 @@ export class LabEarth {
       polarRatio: radii.polarRadius / radii.equatorRadius,
       optics: EARTH_ATMOSPHERE_OPTICS,
       // 雲を描かない間は雲を持たない(ゲーム本体の大気の候補と同じ規則)。
-      get clouds() { return self.clouds.cloudsVisible ? atmosphereClouds : null; },
+      get clouds() { return clouds.cloudsVisible ? atmosphereClouds : null; },
     };
     this.shadowBody = { center: this.center, axes, bodyFromWorld };
     this.cumulus = {
@@ -170,7 +125,7 @@ export class LabEarth {
       surfaceRadius: R_EARTH_EQ,
       axes,
       bodyFromWorld,
-      get cloud() { return self.clouds.renderInput; },
+      get cloud() { return clouds.renderInput; },
     };
   }
 
@@ -185,21 +140,8 @@ export class LabEarth {
     return this.clouds.localFieldBakeStats;
   }
 
-  // いま選ばれている雲場の世代。全球場の初回ジョブが終わって場が届くと進む —
-  // 暖機の完了を見る撮影駆動が読む。
+  // 雲場の世代。全球場の初回ジョブが終わって場が届くと進む — 暖機の完了を見る撮影駆動が読む。
   public get cloudGeneration(): number { return this.clouds.renderInput.generation; }
-
-  // 生成雲の経路を差し替える(新旧比較撮影専用)。旧経路の組は初めて選ばれたときに組む。
-  // 出ていく側の殻は隠す — 入る側の見え方は次の syncGraphics が描画設定から立て直す。
-  public setGeneratedFieldKind(kind: GeneratedFieldKind): void {
-    if (kind === this.generatedFieldKind) return;
-    if (kind === 'legacy' && this.legacyClouds === null) {
-      this.legacyClouds = legacyEarthCloudPresentation();
-      this.legacyClouds.addTo(this.object);
-    }
-    this.clouds.setCloudsVisible(false);
-    this.generatedFieldKind = kind;
-  }
 
   // 所有者が保持する局所雲タイルの backing data 実寸と GPU 基底 mip 容量推定を返す。
   public get cloudDetailDiagnosticTextureEstimate(): CloudDetailDiagnosticTextureEstimate | null {
