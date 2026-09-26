@@ -29,8 +29,8 @@ export class ModalOverlay<T> implements OverlayHandle {
 
   // className はオーバーレイ自身と子要素のクラス名の接頭辞(.modal-overlay-* ではなく
   // .confirmation-overlay-* のように使い側の名前で見える化する)として使う。
+  // 要素は open() されるまで DOM へ挿さず、overlayManager が modal の層へ置く。
   public constructor(
-    root: HTMLElement,
     private readonly overlayManager: OverlayManager,
     className: string,
   ) {
@@ -58,7 +58,6 @@ export class ModalOverlay<T> implements OverlayHandle {
     this.element.appendChild(panel);
     // パネル内の押下を窓ごとのドラッグ・外側クリック判定と混ぜない。
     this.element.addEventListener('pointerdown', (event) => event.stopPropagation());
-    root.appendChild(this.element);
   }
 
   // モーダルを一枚だけ開く。既存のモーダルが開いていれば取消として解決してから重ねない。
@@ -74,7 +73,7 @@ export class ModalOverlay<T> implements OverlayHandle {
     this.message.textContent = request.message ?? '';
     this.message.hidden = request.message === undefined || request.message === '';
     this.element.hidden = false;
-    this.overlayManager.open(this.overlayId, this, {
+    this.overlayManager.open(this.overlayId, this.element, this, {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false,
       gatesInput: true, dimsBackground: true, pausesGame: true,
     });
