@@ -1770,8 +1770,18 @@ def build_weapon(name):
         center=((tower_x0 + face_x) / 2, body_y1 - 0.05, body_zc)), mats.hull_dark)
     add_mesh_obj("feed_tower_bottom", make_box(face_x - tower_x0, 0.10, body_z1 - body_z0,
         center=((tower_x0 + face_x) / 2, body_y0 + 0.05, body_zc)), mats.hull_dark)
-    add_mesh_obj("feed_tower_back", make_box(0.10, body_y1 - body_y0, body_z1 - body_z0,
-        center=(tower_x0 + 0.05, (body_y0 + body_y1) / 2, body_zc)), mats.hull_dark)
+    # -X 面の排出口。空の外枠(Y1.0 × Z2.0 の断面)が塔の奥行に収まる範囲いっぱいに抜ける
+    # 開口を、壁の縁で囲む。開口より後ろへはみ出る外枠の後端は甲板下の脚へ抜ける。
+    exit_y0, exit_y1 = fy - 0.64, fy + 0.68
+    exit_z0, exit_z1 = body_z0 + 0.05, body_z1 - 0.04
+    add_mesh_obj("feed_tower_back_top", make_box(0.10, body_y1 - exit_y1, body_z1 - body_z0,
+        center=(tower_x0 + 0.05, (exit_y1 + body_y1) / 2, body_zc)), mats.hull_dark)
+    add_mesh_obj("feed_tower_back_bottom", make_box(0.10, exit_y0 - body_y0, body_z1 - body_z0,
+        center=(tower_x0 + 0.05, (body_y0 + exit_y0) / 2, body_zc)), mats.hull_dark)
+    add_mesh_obj("feed_tower_back_fore", make_box(0.10, exit_y1 - exit_y0, body_z1 - exit_z1,
+        center=(tower_x0 + 0.05, fy, (exit_z1 + body_z1) / 2)), mats.hull_dark)
+    add_mesh_obj("feed_tower_back_aft", make_box(0.10, exit_y1 - exit_y0, exit_z0 - body_z0,
+        center=(tower_x0 + 0.05, fy, (body_z0 + exit_z0) / 2)), mats.hull_dark)
     add_mesh_obj("feed_tower_cap", make_box(face_x - tower_x0, body_y1 - body_y0, 0.06,
         center=((tower_x0 + face_x) / 2, (body_y0 + body_y1) / 2, body_z1 - 0.03)), mats.hull_dark)
     add_mesh_obj("feed_trunk_back", make_box(0.10, trunk_y1 - trunk_y0, trunk_z1 - trunk_z0,
@@ -1814,18 +1824,39 @@ def build_weapon(name):
     add_mesh_obj("feed_mouth_lip_fore", make_box(0.13, slot_y1 - slot_y0 + 0.20, 0.05,
         center=(lip_cx, fy, slot_z1 + 0.02)), mats.clamp)
 
+    # 開口の上下縁を走る案内ローラー列と、リンクの上下面を受ける塔内の摺動レール
+    for wy in (slot_y1 - 0.045, slot_y0 + 0.045):
+        for j, rz in enumerate((-0.20, 0.36, 0.92)):
+            bm_roller = make_cylinder(0.05, 0.05, 0.52, z_center=0.0, segments=14)
+            transform_bm(bm_roller, Matrix.Translation(Vector((lip_cx - 0.04, wy, rz))))
+            add_mesh_obj(f"feed_mouth_roller_{wy:+.2f}_{j}", bm_roller, mats.gun_machined)
+    for wy in (fy - 0.53, fy + 0.53):
+        for wz in (-0.90, 0.90):
+            add_mesh_obj(f"feed_guide_rail_{wy:+.2f}_{wz:+.2f}", make_box(0.55, 0.05, 0.08,
+                center=(face_x - 0.24, wy, wz), bevel=0.015), mats.gun_machined)
+
     # 開口の奥に見える送りスプロケット(縦軸の星車2基)と、横置きのデリンクドラム。
     # いずれも給弾につれて回る可動部で、anchor の子にする(スプロケットは +Y、ドラムは +X 軸まわり)。
+    # 星車は歯の間に弾径ぶんのポケットを持ち、リンクの上下面を抱えるよう2段に組む。
+    star = []
+    for k in range(16):
+        a = k * math.pi / 8.0
+        r = 0.30 if k % 2 == 0 else 0.195
+        star.append((r * math.cos(a), r * math.sin(a)))
+    sprocket_rot = Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4()
     for i, wz in enumerate((-0.15, 0.85)):
         sprocket = add_anchor(f"feed-sprocket:{i}", (fx + 0.35, fy, wz), direction=(0.0, 1.0, 0.0))
-        bm_wheel = make_cylinder(0.24, 0.24, 1.05, z_center=0.0, segments=20)
-        transform_bm(bm_wheel, Matrix.Translation(Vector((fx + 0.35, fy, wz))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
-        add_mesh_obj(f"feed_sprocket_{i}", bm_wheel, mats.gun_steel, parent=sprocket)
-        for t in range(8):
-            ta = t * math.pi / 4.0
-            add_mesh_obj(f"feed_sprocket_tooth_{i}_{t}", make_box(0.05, 0.10, 0.05,
-                center=(fx + 0.35 + 0.26 * math.cos(ta), fy, wz + 0.26 * math.sin(ta)),
-                rot_euler=(0.0, -ta, 0.0), bevel=0.01), mats.gun_steel, parent=sprocket)
+        for wy in (fy - 0.30, fy + 0.30):
+            bm_wheel = make_plate_prism(star, -0.14, 0.14)
+            transform_bm(bm_wheel, Matrix.Translation(Vector((fx + 0.35, wy, wz))) @ sprocket_rot)
+            add_mesh_obj(f"feed_sprocket_{i}_{wy - fy:+.2f}", bm_wheel, mats.gun_steel, parent=sprocket)
+        # 2枚の星車の間のハブとスペーサ盤
+        bm_hub = make_cylinder(0.11, 0.11, 0.66, z_center=0.0, segments=16)
+        transform_bm(bm_hub, Matrix.Translation(Vector((fx + 0.35, fy, wz))) @ sprocket_rot)
+        add_mesh_obj(f"feed_sprocket_hub_{i}", bm_hub, mats.clamp, parent=sprocket)
+        bm_spacer = make_cylinder(0.24, 0.24, 0.08, z_center=0.0, segments=24)
+        transform_bm(bm_spacer, Matrix.Translation(Vector((fx + 0.35, fy, wz))) @ sprocket_rot)
+        add_mesh_obj(f"feed_sprocket_spacer_{i}", bm_spacer, mats.gun_steel, parent=sprocket)
     drum_y, drum_z = fy + 0.42, 0.30
     drum_anchor = add_anchor("feed-drum", (fx + 0.05, drum_y, drum_z), direction=(1.0, 0.0, 0.0))
     drum_rot = Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4()
@@ -1840,6 +1871,18 @@ def build_weapon(name):
         bm_bolt = make_cylinder(0.035, 0.035, 0.05, z_center=0.0, segments=10)
         transform_bm(bm_bolt, Matrix.Translation(Vector((face_x - 0.06, drum_y + 0.30 * math.cos(ba), drum_z + 0.30 * math.sin(ba)))) @ drum_rot)
         add_mesh_obj(f"feed_drum_bolt_{t}", bm_bolt, mats.clamp, parent=drum_anchor)
+    # ドラム面の螺旋ガイド(デリンク溝)。弾をリンクから剥がしながら送る螺旋レールを、
+    # 溝の両縁にあたる2条で立てる
+    helix = []
+    for k in range(65):
+        t = k / 64.0
+        a = 4.0 * math.pi * t
+        helix.append(Vector((fx + 0.05 - 0.27 + 0.54 * t,
+            drum_y + 0.51 * math.cos(a), drum_z + 0.51 * math.sin(a))))
+    for dx_h in (0.0, 0.09):
+        add_mesh_obj(f"feed_drum_helix_{dx_h:+.2f}",
+            make_pipe([Vector((p.x + dx_h, p.y, p.z)) for p in helix], radius=0.026, segments=8),
+            mats.clamp, parent=drum_anchor)
 
     # 開口の下縁を走る案内爪(フィードシュー)。送りにつれて塔の中(-X)へ踏み込み、リンクを
     # 引き込む爪として往復する。anchor の局所 +Z が摺動方向。
@@ -1856,9 +1899,20 @@ def build_weapon(name):
     add_mesh_obj("feed_shoe_rail_2", make_box(0.80, 0.05, 0.10,
         center=(shoe_x - 0.10, shoe_y - 0.10, shoe_z + 0.40)), mats.hull_dark)
 
-    # 空になったリンクの排出口(-X 側の暗い開口)
-    add_mesh_obj("feed_exit_port", make_box(0.02, 1.20, 1.30, center=(tower_x0 - 0.01, fy, 0.30)), mats.recessed)
-    add_mesh_obj("feed_exit_port_trunk", make_box(0.02, 1.20, 0.15, center=(trunk_x0 - 0.01, fy, -0.40)), mats.recessed)
+    # 排出口の額縁と、開口から塔の空洞へ窄まる漏斗面
+    add_mesh_obj("feed_exit_lip_top", make_box(0.16, 0.10, exit_z1 - exit_z0 + 0.06,
+        center=(tower_x0 - 0.03, exit_y1 + 0.04, (exit_z0 + exit_z1) / 2)), mats.clamp)
+    add_mesh_obj("feed_exit_lip_bottom", make_box(0.16, 0.10, exit_z1 - exit_z0 + 0.06,
+        center=(tower_x0 - 0.03, exit_y0 - 0.04, (exit_z0 + exit_z1) / 2)), mats.clamp)
+    add_mesh_obj("feed_exit_lip_fore", make_box(0.16, exit_y1 - exit_y0 + 0.06, 0.10,
+        center=(tower_x0 - 0.03, fy, exit_z1 + 0.03)), mats.clamp)
+    for sy in (-1.0, 1.0):
+        add_mesh_obj(f"feed_exit_funnel_{sy:+.0f}", make_box(0.44, 0.05, exit_z1 - exit_z0 - 0.04,
+            center=(tower_x0 + 0.28, fy + sy * 0.56, (exit_z0 + exit_z1) / 2),
+            rot_euler=(0.0, 0.0, -sy * 0.16)), mats.hull_dark)
+    # 外枠の後端が抜ける、甲板下の脚側の排出口
+    add_mesh_obj("feed_exit_port_trunk", make_box(0.02, trunk_y1 - trunk_y0 - 0.10, trunk_z1 - trunk_z0 - 0.02,
+        center=(trunk_x0 - 0.01, fy, (trunk_z0 + trunk_z1) / 2)), mats.recessed)
 
     # 弾だけの通路: 塔の天面から機関部の底面へ立ち上がるシュート
     chute_cx, chute_cz = fx - 0.15, 0.05
