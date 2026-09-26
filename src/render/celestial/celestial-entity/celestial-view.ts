@@ -21,7 +21,6 @@ import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer'
 import type { CelestialBody } from '../../../physics/celestial-body';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
-import type { MeteorologicalFieldStats } from '../../cloud/meteorological-cloud-field';
 
 // 参照軌道線の色と、カメラ距離 [m] で濃さを上げるフェード帯(NEAR で 0、FAR で最大)。
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
@@ -137,15 +136,6 @@ export abstract class CelestialView {
 
   // この天体が持つ動的な雲場を表示時刻へ焼く。
   public bakeClouds(_renderer: WebGPURenderer, _displayTime: number, _gpu?: GpuTimingSink): void {}
-
-  // ロード中などフレーム外の隙間から、雲場の供給ジョブを timeBudgetMs [ms] ぶん
-  // 前倒しで進める。
-  public drivePendingJobs(
-    _renderer: WebGPURenderer, _displayTime: number, _timeBudgetMs: number, _gpu?: GpuTimingSink,
-  ): void {}
-
-  // 生成雲場の供給ジョブの計測。雲場を持たない天体では null。
-  public get globalCloudFieldStats(): MeteorologicalFieldStats | null { return null; }
 
   // 影パスへ渡す積雲の殻。積雲を持たない天体では null。
   public cumulusShadowAt(

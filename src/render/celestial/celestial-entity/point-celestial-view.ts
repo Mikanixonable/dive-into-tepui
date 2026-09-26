@@ -26,7 +26,6 @@ import type { RingMaterials } from '../ring';
 import type { AtmosphereClouds, AtmosphereOptics } from '../../atmosphere';
 import type { DefinedCelestialBody, StellarLightSource } from './celestial-view';
 import type { GpuTimingSink } from '../../gpu-timings';
-import type { MeteorologicalFieldStats } from '../../cloud/meteorological-cloud-field';
 
 // 太陽の視等級。ここから任意の視等級の放射照度が引ける。
 const SUN_APPARENT_MAGNITUDE = -26.74;
@@ -157,19 +156,6 @@ export class PointCelestialView extends SphereCelestialView {
   public override bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.cumulus?.cloudsVisible) return;
     this.cumulus.bake(renderer, displayTime, gpu);
-  }
-
-  // ロード中などフレーム外の隙間から、雲場の供給ジョブを予算ぶん前倒しで進める。
-  public override drivePendingJobs(
-    renderer: WebGPURenderer, displayTime: number, timeBudgetMs: number, gpu?: GpuTimingSink,
-  ): void {
-    if (!this.cumulus?.cloudsVisible) return;
-    this.cumulus.drivePendingJobs(renderer, displayTime, timeBudgetMs, gpu);
-  }
-
-  // 生成雲場の供給ジョブの計測。雲を持たない天体では null。
-  public override get globalCloudFieldStats(): MeteorologicalFieldStats | null {
-    return this.cumulus?.globalFieldStats ?? null;
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期し、高度ラベルを返す。
