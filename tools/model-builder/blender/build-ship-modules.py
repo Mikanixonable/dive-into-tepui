@@ -93,6 +93,19 @@ class MaterialLibrary:
         self.window_frame = create_pbr_material("mat_window_frame", (0.22, 0.24, 0.28, 1.0), roughness=0.35, metallic=1.0)
         # チタンの球形推進剤タンク
         self.tank_rcs = create_pbr_material("mat_tank_rcs", (0.32, 0.52, 0.62, 1.0), roughness=0.38, metallic=1.0)
+        # RCS 球タンクの銀箔外装と、地上設備を思わせる赤い外部架構
+        self.rcs_foil = create_pbr_material("mat_rcs_foil", (0.82, 0.85, 0.88, 1.0), roughness=0.32, metallic=0.55)
+        self.rcs_frame = create_pbr_material("mat_rcs_frame", (0.68, 0.055, 0.032, 1.0), roughness=0.27, metallic=0.20)
+        self.rcs_support = create_pbr_material("mat_rcs_support", (0.84, 0.87, 0.90, 1.0), roughness=0.34, metallic=0.58)
+        self.rcs_white_pipe = create_pbr_material("mat_rcs_white_pipe", (0.92, 0.94, 0.96, 1.0), roughness=0.34, metallic=0.30)
+        self.rcs_logo_blue = create_pbr_material("mat_rcs_logo_blue", (0.045, 0.23, 0.70, 1.0), roughness=0.34, metallic=0.06)
+        self.rcs_logo_red = create_pbr_material("mat_rcs_logo_red", (0.78, 0.045, 0.025, 1.0), roughness=0.32, metallic=0.2)
+        self.rcs_hazard_yellow = create_pbr_material("mat_rcs_hazard_yellow", (0.98, 0.62, 0.035, 1.0), roughness=0.38, metallic=0.12)
+        self.rcs_hazard_black = create_pbr_material("mat_rcs_hazard_black", (0.035, 0.04, 0.045, 1.0), roughness=0.46, metallic=0.22)
+        self.rcs_instrument = create_pbr_material("mat_rcs_instrument", (0.28, 0.25, 0.12, 1.0), roughness=0.55, metallic=0.48)
+        self.rcs_wire_red = create_pbr_material("mat_rcs_wire_red", (0.80, 0.045, 0.025, 1.0), roughness=0.4, metallic=0.05)
+        self.rcs_wire_yellow = create_pbr_material("mat_rcs_wire_yellow", (0.96, 0.58, 0.03, 1.0), roughness=0.42, metallic=0.05)
+        self.rcs_wire_white = create_pbr_material("mat_rcs_wire_white", (0.90, 0.92, 0.94, 1.0), roughness=0.45, metallic=0.12)
         # 外装の白い塗膜と黒い追尾模様
         self.tank_paint_white = create_pbr_material("mat_tank_paint_white", (0.88, 0.90, 0.92, 1.0), roughness=0.55, metallic=0.0)
         self.tank_paint_black = create_pbr_material("mat_tank_paint_black", (0.05, 0.05, 0.06, 1.0), roughness=0.60, metallic=0.0)
@@ -835,62 +848,288 @@ def build_tank_main(length, name):
 # ----------------------------------------------------------------------
 # 3. RCS Propellant Tanks (tank-3-rcs, tank-6-rcs, tank-12-rcs)
 # ----------------------------------------------------------------------
+def rcs_append_box(bm, center, dimensions, rotation=None):
+    matrix = Matrix.Translation(Vector(center))
+    if rotation is not None:
+        matrix = matrix @ rotation
+    matrix = matrix @ Matrix.Diagonal((*dimensions, 1.0))
+    bmesh.ops.create_cube(bm, size=1.0, matrix=matrix)
+
+def rcs_append_beam(bm, start, end, width, depth=None):
+    start, end = Vector(start), Vector(end)
+    direction = end - start
+    if direction.length < 1e-5:
+        return
+    rotation = direction.normalized().to_track_quat('Z', 'Y').to_matrix().to_4x4()
+    rcs_append_box(bm, (start + end) * 0.5, (width, depth or width, direction.length), rotation)
+
+def rcs_append_cylinder(bm, center, direction, radius, depth, segments=16):
+    rotation = Vector(direction).normalized().to_track_quat('Z', 'Y').to_matrix().to_4x4()
+    bmesh.ops.create_cone(
+        bm, cap_ends=True, cap_tris=False, segments=segments,
+        radius1=radius, radius2=radius, depth=depth,
+        matrix=Matrix.Translation(Vector(center)) @ rotation,
+    )
+
+def rcs_material_mesh(name, bm, material, smooth_angle=30.0):
+    if not bm.verts:
+        bm.free()
+        return
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    add_mesh_obj(name, shade_by_angle(bm, smooth_angle), material)
+
+def rcs_foil_sphere(radius, center):
+    """薄い箔の小さな皺を半径方向のゆらぎで作る。"""
+    center = Vector(center)
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(
+        bm, u_segments=40, v_segments=28, radius=radius,
+        matrix=Matrix.Translation(center),
+    )
+    for vertex in bm.verts:
+        offset = vertex.co - center
+        direction = offset.normalized()
+        longitude = math.atan2(direction.y, direction.x)
+        latitude = math.asin(max(-1.0, min(1.0, direction.z)))
+        ripple = (
+            0.010 * math.sin(longitude * 17.0 + latitude * 9.0)
+            + 0.007 * math.sin(longitude * 23.0 - latitude * 13.0)
+            + 0.005 * math.sin(longitude * 9.0 + latitude * 19.0)
+        )
+        vertex.co = center + direction * radius * (1.0 + ripple)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return shade_by_angle(bm, 180.0)
+
+def rcs_add_spherical_logo(center, radial, logo_meshes):
+    center, radial = Vector(center), Vector(radial).normalized()
+    rotation = radial.to_track_quat('Z', 'Y').to_matrix().to_4x4()
+    patch_center = center + radial * 0.872
+    rcs_append_cylinder(logo_meshes['rim'], patch_center, radial, 0.22, 0.018, 32)
+    rcs_append_cylinder(logo_meshes['blue'], patch_center + radial * 0.016, radial, 0.185, 0.02, 32)
+    stripe_rotation = rotation @ Euler((0.0, 0.0, math.radians(-34.0))).to_matrix().to_4x4()
+    rcs_append_box(
+        logo_meshes['white'], patch_center + radial * 0.031,
+        (0.25, 0.025, 0.012), stripe_rotation,
+    )
+    red_rotation = rotation @ Euler((0.0, 0.0, math.radians(-34.0))).to_matrix().to_4x4()
+    rcs_append_box(
+        logo_meshes['red'], patch_center + radial * 0.039,
+        (0.16, 0.018, 0.012), red_rotation,
+    )
+
 def build_tank_rcs(length, name):
     reset_scene()
     mats = MaterialLibrary()
     radius = 3.0
     half_len = length / 2.0
-    
-    # 1. Structural Space Frame / Exoskeleton Truss Cage
-    # Outer diameter 6.0m ring stringers and diagonal tubular trusses
+
+    # 1. 赤い角形鋼材とガセットで円柱シルエットを作る外部トラス
     ring_count = max(3, int(length / 1.5) + 1)
     z_step = length / (ring_count - 1)
+    sector_count = 16
+    column_stride = 2
+    frame_radius = radius * 0.97
+    frame = bmesh.new()
+    fasteners = bmesh.new()
     for r in range(ring_count):
-        zr = -half_len + r * z_step
-        bm_ring = make_torus(major_r=radius * 0.98, minor_r=0.05, z_center=zr, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"truss_ring_{r}", bm_ring, mats.truss)
-    
-    # Longitudinal and diagonal truss struts
-    longitudinal_count = 8
-    for i in range(longitudinal_count):
-        ang = i * 2.0 * math.pi / longitudinal_count
-        x = radius * 0.98 * math.cos(ang)
-        y = radius * 0.98 * math.sin(ang)
-        bm_strut = make_cylinder(0.04, 0.04, length, z_center=0.0, segments=8)
-        transform_bm(bm_strut, Matrix.Translation(Vector((x, y, 0.0))))
-        add_mesh_obj(f"truss_longitudinal_{i}", bm_strut, mats.truss)
+        z = -half_len + r * z_step
+        ring_points = []
+        for i in range(sector_count):
+            angle = 2.0 * math.pi * i / sector_count
+            ring_points.append(Vector((frame_radius * math.cos(angle), frame_radius * math.sin(angle), z)))
+        for i, point in enumerate(ring_points):
+            rcs_append_beam(frame, point, ring_points[(i + 1) % sector_count], 0.12, 0.095)
+            if i % column_stride == 0:
+                tangent = Vector((-math.sin(2.0 * math.pi * i / sector_count), math.cos(2.0 * math.pi * i / sector_count), 0.0))
+                radial = Vector((math.cos(2.0 * math.pi * i / sector_count), math.sin(2.0 * math.pi * i / sector_count), 0.0))
+                plate_rotation = radial.to_track_quat('Z', 'Y').to_matrix().to_4x4()
+                rcs_append_box(frame, point + radial * 0.035, (0.31, 0.24, 0.055), plate_rotation)
+                for side in (-1.0, 1.0):
+                    bolt_position = point + radial * 0.072 + tangent * (side * 0.105)
+                    bmesh.ops.create_uvsphere(
+                        fasteners, u_segments=8, v_segments=6, radius=0.025,
+                        matrix=Matrix.Translation(bolt_position),
+                    )
 
-    # 2. Clusters of High-Pressure Titanium Spherical Propellant Tanks inside the cage
-    # 4 tanks per axial section
+    # 円環を結ぶ縦材と、面ごとに向きを変える大きな斜材で三角形を連ねる。
+    for i in range(0, sector_count, column_stride):
+        angle = 2.0 * math.pi * i / sector_count
+        x, y = frame_radius * math.cos(angle), frame_radius * math.sin(angle)
+        rcs_append_beam(frame, (x, y, -half_len), (x, y, half_len), 0.12, 0.095)
+    for bay in range(ring_count - 1):
+        z0 = -half_len + bay * z_step
+        z1 = z0 + z_step
+        for i in range(0, sector_count, column_stride):
+            a0 = 2.0 * math.pi * i / sector_count
+            a1 = 2.0 * math.pi * (i + column_stride) / sector_count
+            lower_i = Vector((frame_radius * math.cos(a0), frame_radius * math.sin(a0), z0))
+            upper_i = Vector((frame_radius * math.cos(a0), frame_radius * math.sin(a0), z1))
+            lower_next = Vector((frame_radius * math.cos(a1), frame_radius * math.sin(a1), z0))
+            upper_next = Vector((frame_radius * math.cos(a1), frame_radius * math.sin(a1), z1))
+            if (bay + i // column_stride) % 2 == 0:
+                rcs_append_beam(frame, lower_i, upper_next, 0.15, 0.10)
+            else:
+                rcs_append_beam(frame, upper_i, lower_next, 0.15, 0.10)
+    rcs_material_mesh("rcs_red_box_truss", frame, mats.rcs_frame, 40.0)
+    rcs_material_mesh("rcs_truss_bolts", fasteners, mats.rivet, 180.0)
+
+    # 2. 軽い銀箔をまとった高圧球タンクと、その白銀色の支持ヨーク
     axial_sections = max(1, int(length / 2.5))
     section_step = length / (axial_sections + 1)
     sphere_radius = 0.85
+    support = bmesh.new()
+    logos = {
+        'rim': bmesh.new(), 'blue': bmesh.new(),
+        'white': bmesh.new(), 'red': bmesh.new(),
+    }
+    surface_gas_paths = []
+    feed_paths = []
     for sec in range(axial_sections):
         z_sec = -half_len + (sec + 1) * section_step
         for t in range(4):
             t_ang = t * math.pi / 2.0 + math.pi / 4.0
-            tx = (radius * 0.55) * math.cos(t_ang)
-            ty = (radius * 0.55) * math.sin(t_ang)
-            bm_sphere = make_sphere(sphere_radius, center=(tx, ty, z_sec), u_seg=24, v_seg=16)
-            add_mesh_obj(f"rcs_sphere_{sec}_{t}", bm_sphere, mats.tank_rcs)
-            
-            # Spherical tank equatorial weld seam
-            bm_seam = make_torus(major_r=sphere_radius, minor_r=0.02, z_center=z_sec, major_seg=24, minor_seg=6)
-            transform_bm(bm_seam, Matrix.Translation(Vector((tx, ty, 0.0))))
-            add_mesh_obj(f"rcs_seam_{sec}_{t}", bm_seam, mats.hull_dark)
+            radial = Vector((math.cos(t_ang), math.sin(t_ang), 0.0))
+            tangent = Vector((-math.sin(t_ang), math.cos(t_ang), 0.0))
+            center = Vector((radius * 0.55 * radial.x, radius * 0.55 * radial.y, z_sec))
+            add_mesh_obj(f"rcs_sphere_{sec}_{t}", rcs_foil_sphere(sphere_radius, center), mats.rcs_foil)
 
-    # 3. High-Pressure Manifold Manifold & Cross-feed Line
+            # しわの寄った箔面に、薄い溶接縁と斜めに折れるガス配管を重ねる。
+            bm_seam = make_torus(major_r=sphere_radius * 1.003, minor_r=0.009, z_center=z_sec, major_seg=40, minor_seg=8)
+            transform_bm(bm_seam, Matrix.Translation(Vector((center.x, center.y, 0.0))))
+            add_mesh_obj(f"rcs_seam_{sec}_{t}", bm_seam, mats.rcs_support)
+            rcs_add_spherical_logo(center, radial, logos)
+
+            surface_gas_paths.append([
+                center + radial * 0.42 - tangent * 0.70 + Vector((0.0, 0.0, -0.38)),
+                center + radial * 0.64 - tangent * 0.60 + Vector((0.0, 0.0, 0.08)),
+                center + radial * 0.55 - tangent * 0.55 + Vector((0.0, 0.0, 0.56)),
+            ])
+            # 球の内側から中央の供給管へつなぐ短い分岐。
+            feed_paths.append([
+                Vector((0.0, 0.0, z_sec)),
+                center - radial * 0.55 + Vector((0.0, 0.0, 0.12)),
+                center - radial * 0.84 + Vector((0.0, 0.0, 0.12)),
+            ])
+
+            # 球の外周を受ける二本の白銀ヨーク脚。接触点は球面の上下へ分ける。
+            for side in (-1.0, 1.0):
+                contact = center + radial * 0.75 + Vector((0.0, 0.0, side * 0.45))
+                footing = radial * 2.82 + Vector((0.0, 0.0, z_sec + side * 0.58))
+                rcs_append_beam(support, contact, footing, 0.075, 0.075)
+            rcs_append_beam(support, center + radial * 0.85, radial * 2.84 + Vector((0.0, 0.0, z_sec)), 0.09, 0.09)
+
+    for key, material in (
+        ('rim', mats.rcs_support), ('blue', mats.rcs_logo_blue),
+        ('white', mats.mli_white), ('red', mats.rcs_logo_red),
+    ):
+        rcs_material_mesh(f"rcs_logo_{key}", logos[key], material, 180.0)
+    rcs_material_mesh("rcs_silver_support_yokes", support, mats.rcs_support, 40.0)
+
+    # 中央マニホールド、球へ向かう枝管、箔の上を斜めに折れて走る個別配管。
     pipe_points = [
         Vector((0, 0, -half_len + 0.2)),
         Vector((0, 0, half_len - 0.2)),
     ]
-    bm_spine = make_pipe(pipe_points, radius=0.08, segments=12)
-    add_mesh_obj("manifold_spine", bm_spine, mats.pipe)
+    add_mesh_obj("manifold_spine", make_pipe(pipe_points, radius=0.09, segments=16), mats.rcs_white_pipe)
+    add_mesh_obj("rcs_manifold_feeds", make_pipes(feed_paths, radius=0.043, segments=10, bend_radius=0.08), mats.rcs_white_pipe)
+    add_mesh_obj("rcs_surface_gas_lines", make_pipes(surface_gas_paths, radius=0.031, segments=10, bend_radius=0.12), mats.rcs_white_pipe)
 
-    # End connection flanges
-    for sign in [-1.0, 1.0]:
-        bm_end = make_torus(major_r=radius * 0.88, minor_r=0.06, z_center=sign * (half_len - 0.04), major_seg=36, minor_seg=8)
-        add_mesh_obj(f"rcs_end_{sign}", bm_end, mats.hull_dark)
+    # 外側を這う白い配管束は赤い縦材へ複数の金属バンドで固定する。
+    bundle_angle = math.radians(-52.0)
+    bundle_radial = Vector((math.cos(bundle_angle), math.sin(bundle_angle), 0.0))
+    bundle_tangent = Vector((-math.sin(bundle_angle), math.cos(bundle_angle), 0.0))
+    bundle_paths = []
+    for offset in (-0.13, 0.0, 0.13):
+        bundle_paths.append([
+            bundle_radial * 2.76 + bundle_tangent * offset + Vector((0.0, 0.0, -half_len + 0.18)),
+            bundle_radial * 2.99 + bundle_tangent * offset + Vector((0.0, 0.0, -half_len + 0.30)),
+            bundle_radial * 2.99 + bundle_tangent * offset + Vector((0.0, 0.0, half_len - 0.30)),
+            bundle_radial * 2.76 + bundle_tangent * offset + Vector((0.0, 0.0, half_len - 0.18)),
+        ])
+    add_mesh_obj("rcs_white_external_pipe_bundle", make_pipes(bundle_paths, radius=0.038, segments=10, bend_radius=0.12), mats.rcs_white_pipe)
+    bundle_clamps = bmesh.new()
+    for clamp_index in range(max(2, ring_count - 1)):
+        z = -half_len + 0.35 + clamp_index * (length - 0.70) / max(1, ring_count - 2)
+        clamp_rotation = Matrix((
+            (bundle_radial.x, bundle_tangent.x, 0.0, 0.0),
+            (bundle_radial.y, bundle_tangent.y, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        ))
+        rcs_append_box(bundle_clamps, bundle_radial * 3.005 + Vector((0.0, 0.0, z)), (0.075, 0.40, 0.055), clamp_rotation)
+    rcs_material_mesh("rcs_external_pipe_clamps", bundle_clamps, mats.clamp, 40.0)
+
+    # 非対称の警告ロッド、籠付き計器、白い小型ボンベを一組だけ外周に設置する。
+    hazard_start = Vector((2.72, -0.24, -0.70))
+    hazard_end = Vector((2.78, -0.12, 0.78))
+    hazard_direction = (hazard_end - hazard_start).normalized()
+    hazard = bmesh.new()
+    yellow_bands = bmesh.new()
+    rcs_append_cylinder(hazard, (hazard_start + hazard_end) * 0.5, hazard_direction, 0.075, (hazard_end - hazard_start).length, 12)
+    band_count = 7
+    for index in range(band_count):
+        t = (index + 0.5) / band_count
+        position = hazard_start.lerp(hazard_end, t)
+        rcs_append_cylinder(yellow_bands, position, hazard_direction, 0.078, 0.10, 12)
+    rcs_material_mesh("rcs_hazard_rod_black", hazard, mats.rcs_hazard_black, 35.0)
+    rcs_material_mesh("rcs_hazard_rod_yellow_bands", yellow_bands, mats.rcs_hazard_yellow, 35.0)
+
+    instrument_angle = math.radians(138.0)
+    instrument_radial = Vector((math.cos(instrument_angle), math.sin(instrument_angle), 0.0))
+    instrument_center = instrument_radial * 2.73 + Vector((0.0, 0.0, 0.16))
+    instrument = make_cylinder(0.16, 0.16, 0.76, segments=20)
+    transform_bm(instrument, Matrix.Translation(instrument_center))
+    add_mesh_obj("rcs_caged_olive_instrument", instrument, mats.rcs_instrument)
+    instrument_cage = bmesh.new()
+    cage_tangent = Vector((-instrument_radial.y, instrument_radial.x, 0.0))
+    cage_center = instrument_radial * 2.76 + Vector((0.0, 0.0, 0.16))
+    for side_r in (-1.0, 1.0):
+        for side_t in (-1.0, 1.0):
+            cage_offset = instrument_radial * (side_r * 0.24) + cage_tangent * (side_t * 0.24)
+            rcs_append_beam(instrument_cage, cage_center + cage_offset + Vector((0.0, 0.0, -0.48)), cage_center + cage_offset + Vector((0.0, 0.0, 0.48)), 0.035, 0.035)
+    for z in (-0.32, 0.64):
+        for side in (-1.0, 1.0):
+            rcs_append_beam(
+                instrument_cage,
+                cage_center + instrument_radial * (side * 0.24) + cage_tangent * 0.24 + Vector((0.0, 0.0, z - 0.16)),
+                cage_center + instrument_radial * (side * 0.24) - cage_tangent * 0.24 + Vector((0.0, 0.0, z - 0.16)),
+                0.035, 0.035,
+            )
+    rcs_material_mesh("rcs_instrument_protective_cage", instrument_cage, mats.rcs_support, 35.0)
+
+    bottle_mesh = bmesh.new()
+    bottle_cage = bmesh.new()
+    bottle_radial = Vector((math.cos(math.radians(18.0)), math.sin(math.radians(18.0)), 0.0))
+    bottle_tangent = Vector((-bottle_radial.y, bottle_radial.x, 0.0))
+    for index, z in enumerate((-0.62, -0.02)):
+        center = bottle_radial * 2.72 + bottle_tangent * (index * 0.30) + Vector((0.0, 0.0, z))
+        rcs_append_cylinder(bottle_mesh, center, (0.0, 0.0, 1.0), 0.12, 0.50, 16)
+        rcs_append_box(bottle_cage, center + bottle_radial * 0.13 + Vector((0.0, 0.0, 0.0)), (0.045, 0.34, 0.065), Matrix(((bottle_radial.x, bottle_tangent.x, 0.0, 0.0), (bottle_radial.y, bottle_tangent.y, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0))))
+    rcs_material_mesh("rcs_small_white_cylinders", bottle_mesh, mats.rcs_white_pipe, 35.0)
+    rcs_material_mesh("rcs_small_cylinder_bands", bottle_cage, mats.clamp, 35.0)
+
+    # 赤・黄・白の細い電装ハーネスと固定クリップを配管の脇へ沿わせる。
+    cable_paths = {mats.rcs_wire_red: [], mats.rcs_wire_yellow: [], mats.rcs_wire_white: []}
+    cable_offsets = (-0.10, 0.0, 0.10)
+    for index, (material, offset) in enumerate(zip(cable_paths.keys(), cable_offsets)):
+        cable_paths[material].append([
+            bundle_radial * 2.82 + bundle_tangent * (offset + 0.14) + Vector((0.0, 0.0, -half_len + 0.2)),
+            bundle_radial * 2.89 + bundle_tangent * (offset + 0.11) + Vector((0.0, 0.0, -0.22 + index * 0.10)),
+            bundle_radial * 2.84 + bundle_tangent * (offset - 0.08) + Vector((0.0, 0.0, 0.10 + index * 0.12)),
+            bundle_radial * 2.89 + bundle_tangent * (offset - 0.12) + Vector((0.0, 0.0, half_len - 0.2)),
+        ])
+    for index, material in enumerate(cable_paths):
+        add_mesh_obj(f"rcs_electrical_cable_{index}", make_pipes(cable_paths[material], radius=0.014, segments=8, bend_radius=0.11), material)
+    cable_clips = bmesh.new()
+    cable_clip_rotation = Matrix((
+        (bundle_radial.x, bundle_tangent.x, 0.0, 0.0),
+        (bundle_radial.y, bundle_tangent.y, 0.0, 0.0),
+        (0.0, 0.0, 1.0, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    ))
+    for z in (-half_len + 0.38, 0.0, half_len - 0.38):
+        rcs_append_box(cable_clips, bundle_radial * 2.91 + bundle_tangent * 0.16 + Vector((0.0, 0.0, z)), (0.065, 0.36, 0.045), cable_clip_rotation)
+    rcs_material_mesh("rcs_electrical_cable_clips", cable_clips, mats.clamp, 40.0)
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 

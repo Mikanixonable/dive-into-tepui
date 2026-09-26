@@ -184,6 +184,31 @@ function combat(): LabCase {
   };
 }
 
+// RCS タンクを単体で置き、赤い円筒トラス・銀箔球・配管と非対称な機器を多方向から観察する。
+function rcsTank(): LabCase {
+  const model = buildShipModuleModel('tank-3-rcs');
+  model.position.set(0, 0, -25);
+  return {
+    objects: [model],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -25),
+    shots: {
+      'rcs-tank-truss-oblique': {
+        view: { cameraAzimuthDeg: -42, cameraElevationDeg: 22, cameraDistanceLog: -0.42,
+          sunAzimuthDeg: -35, sunElevationDeg: 38 },
+      },
+      'rcs-tank-truss-side': {
+        view: { cameraAzimuthDeg: -88, cameraElevationDeg: 12, cameraDistanceLog: -0.42,
+          sunAzimuthDeg: -50, sunElevationDeg: 32 },
+      },
+      'rcs-tank-truss-overhead': {
+        view: { cameraAzimuthDeg: -20, cameraElevationDeg: 55, cameraDistanceLog: -0.42,
+          sunAzimuthDeg: -45, sunElevationDeg: 35 },
+      },
+    },
+  };
+}
+
 // 主推進器だけを切り出し、開放された機械部とノズルを後方から観察する。
 function engine(): LabCase {
   const model = buildShipModuleModel('thruster-standard');
@@ -371,6 +396,7 @@ export const SHIP_CASES = {
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,
   'modular-ship-engine': engine,
+  'modular-ship-rcs-tank': rcsTank,
   'modular-ship-weapon': weapon,
   'modular-ship-deploying': deploying,
   'modular-ship-deployables': deployables,
