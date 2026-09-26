@@ -156,6 +156,8 @@ function roundTrips(): readonly RoundTrip[] {
           prevPositions: [{ x: 1, y: 0.05, z: 0 }, { x: 2, y: 0.2, z: -0.05 }],
           twists: [0.05, -0.1],
           prevShipW: { x: 0.01, y: 0.02, z: -0.03 },
+          mountAnchor: { x: -1.19, y: 0, z: 0 },
+          mountDirection: { x: 1, y: 0, z: 0 },
         },
       },
       (serialized) => BeltController.deserialize(serialized),
@@ -175,4 +177,23 @@ export function register(): void {
       assert.deepEqual(reserialized(), serialized);
     });
   }
+
+  test('progress-serialization: 旧ベルト記録の最初の取付同期は節点位置を保つ', () => {
+    const belt = BeltController.deserialize({
+      feed: 0.4,
+      physics: {
+        positions: [{ x: 1, y: 0.1, z: 0 }, { x: 2, y: 0.3, z: -0.1 }],
+        prevPositions: [{ x: 1, y: 0.05, z: 0 }, { x: 2, y: 0.2, z: -0.05 }],
+        twists: [0.05, -0.1],
+        prevShipW: { x: 0.01, y: 0.02, z: -0.03 },
+      },
+    });
+    const savedPositions = belt.positions.map((position) => ({ ...position }));
+
+    belt.setMount(v3(0.4, 2, -1), v3(0, 1, 0));
+
+    assert.deepEqual(belt.positions, savedPositions);
+    assert.deepEqual(belt.serialize().physics.mountAnchor, { x: 0.4, y: 2, z: -1 });
+    assert.deepEqual(belt.serialize().physics.mountDirection, { x: 0, y: 1, z: 0 });
+  });
 }

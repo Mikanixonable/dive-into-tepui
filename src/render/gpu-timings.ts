@@ -103,6 +103,7 @@ class PassInspector extends InspectorBase {
     this.onFinish();
   }
 
+  // compute() ごとにレンダラーから届く UID を計測器へ渡す。
   public beginCompute(uid: string): void {
     this.onComputeBegin(uid);
   }
@@ -153,6 +154,7 @@ export class GpuTimings {
 
   // render-lab marks one synchronous scene/pipeline render as a measurement frame. Query UIDs are
   // attributed to this boundary even when no named beginPass() was set.
+  // render-lab の1回の同期描画を計測窓として開き、非同期の query 解決に備える。
   public beginObservedFrame(): void {
     if (this.activeFrameId !== null) throw new Error('An observed GPU frame is already active');
     const id = this.nextFrameId++;
@@ -162,6 +164,7 @@ export class GpuTimings {
     });
     this.activeFrameId = id;
     this.latestObservedFrameId = id;
+    // 解決待ちの窓は上限内で保持し、最古の UID 紐付けから破棄する。
     if (this.observedFrames.size > OBSERVED_FRAME_CAP) {
       const oldestId = this.observedFrames.keys().next().value;
       if (oldestId !== undefined && oldestId !== id) {
@@ -172,6 +175,7 @@ export class GpuTimings {
     }
   }
 
+  // 計測窓を閉じる。開始中の窓がなければ呼び出し順の誤りとして例外にする。
   public endObservedFrame(): void {
     const id = this.activeFrameId;
     if (id === null) throw new Error('No observed GPU frame is active');
@@ -195,6 +199,7 @@ export class GpuTimings {
     }
   }
 
+  // compute query の UID を実行中の観測窓へ帰属させ、完了数を数える。
   private onBeginCompute(uid: string): void {
     if (!this.enabled || this.activeFrameId === null) return;
     this.computeFrameByUid.set(uid, this.activeFrameId);
@@ -254,6 +259,7 @@ export class GpuTimings {
 
   // 全パスの直近の所要時間 [ms] を、パス id の並びのまま写して返す。
   public snapshot(): GpuTimingSnapshot {
+    // 未解決 query が残る窓の部分和は total として公開しない。
     const frame = this.latestObservedFrameId === null
       ? undefined : this.observedFrames.get(this.latestObservedFrameId);
     const renderComplete = frame !== undefined && frame.ended
@@ -282,8 +288,9 @@ export class GpuTimings {
     const backend = this.renderer.backend as unknown as { timestampQueryPool: Record<string, RenderTimestampPool> };
     const pool = backend.timestampQueryPool[type];
     if (!pool) return;
+    // Render は名前付き pass と窓全体へ、compute は窓全体へ振り分ける。
     if (type === TimestampQuery.RENDER) {
-      const matches: Array<readonly [GpuPassId, number]> = [];
+      const matches: (readonly [GpuPassId, number])[] = [];
       for (const [uid, duration] of pool.timestamps) {
         const frameId = this.renderFrameByUid.get(uid);
         const frame = frameId === undefined ? undefined : this.observedFrames.get(frameId);
