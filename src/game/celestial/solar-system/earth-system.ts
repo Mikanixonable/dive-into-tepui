@@ -23,7 +23,7 @@ import {
   ConvectiveCloudLocalFieldSupply, CONVECTIVE_LOCAL_FIELD_SPAN_M,
 } from '../../cloud/cloud-local-field-supply';
 import { earthConvectiveCloudEnvironmentAt } from '../../cloud/earth-cloud-environment';
-import { AnnualClimateMap } from '../../../render/cloud/climate-map';
+import { AnnualClimateMap, type ClimateMap } from '../../../render/cloud/climate-map';
 import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
 import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
@@ -217,27 +217,33 @@ const EARTH_LOCAL_FIELD_RECENTER_RAD =
 // 局所場の再焼間隔 [s]。
 const EARTH_LOCAL_FIELD_REBUILD_SECONDS = 300;
 
-// 地球の平年の気候から焼く雲場を組む。projection は場の持ち方。返した場の寿命は受け取った側が持つ。
+// 地球の平年の気候から焼く雲場を組む。projection は場の持ち方、climate は読む気候源
+// (既定は気候テクスチャの遅延読み込み)。返した場の寿命は受け取った側が持つ。
 // **実験環境も本番もこの工場から組む** — 別の組み立てを書くと、実験環境が本番を映さなくなる。
-export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
+export function earthGeneratedCloudField(
+  projection: FieldProjection, climate: ClimateMap = AnnualClimateMap.fromDeferredUrl(climateTextureUrl),
+): GeneratedCloudField {
   // 気象シミュレーションに適用する半径は、全球を一様な球体とみなす平均半径。
-  return new GeneratedCloudField(
-    AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
-  );
+  return new GeneratedCloudField(climate, projection, R_EARTH, SIDEREAL_DAY);
 }
 
 // 地球の雲場ぜんぶを組む。生成と実写を同じ 1 つの cap へ焼き、CloudPresentation がその cap を
 // 視点へ置き直す。
 export function earthCloudPresentation(): CloudPresentation {
   const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
+  // 気候源は雲場(GPU の読み出し)と環境導出(CPU の読み出し)が同じ 1 つを読む。
+  // 画像の取得はここで始め、破棄は生成場が担う。
+  const climate = AnnualClimateMap.fromDeferredUrl(climateTextureUrl);
+  climate.request();
   // 局所光学場は対流イベントの生成経路から供給する。球の半径は衝突球と同じ赤道半径 —
   // 扁平率ぶんの地表距離の誤差は最大で0.3%程度の近似として扱う。
   const localFieldBaker = new CloudLocalFieldBaker(
     new ConvectiveCloudLocalFieldSupply(
-      earthConvectiveCloudEnvironmentAt, EARTH_CLOUD_LOCAL_SEED, R_EARTH_EQ),
+      (direction) => earthConvectiveCloudEnvironmentAt(direction, climate),
+      EARTH_CLOUD_LOCAL_SEED, R_EARTH_EQ),
     EARTH_LOCAL_FIELD_REBUILD_SECONDS, EARTH_LOCAL_FIELD_RECENTER_RAD);
   return new CloudPresentation(
-    earthGeneratedCloudField(cap), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
+    earthGeneratedCloudField(cap, climate), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
     localFieldBaker,
   );
 }
