@@ -69,8 +69,12 @@ export interface CloudEventDomain {
   readonly historyHorizonSeconds: number;
   // horizonより古いイベントが要求時刻に残す質量上界の許容値。kg m^-2。
   readonly maximumOmittedMassKgM2: number;
-  // 再構成するイベントの上限。1..100000。
+  // 再構成するイベントの上限。1 以上、ドメインが生じうるイベント数(既定では
+  // 100000 を下限に取るセル数連動の天井)まで。
   readonly maxEventCount: number;
+  // セル×epoch の探索ペア数の上限。省略時は既定値。細格化された全球の供給は
+  // セル数に比例してこの上限を上げる。
+  readonly maximumCellEpochPairs?: number;
   // 要求時刻。s。絶対 epoch と同じ任意の基準を使う。
   readonly timeSeconds: number;
   readonly cells: readonly ConvectiveCloudCell[];
@@ -322,9 +326,13 @@ function validateDomain(domain: CloudEventDomain): number {
   if (!(domain.maximumOmittedMassKgM2 >= 0) || !Number.isFinite(domain.maximumOmittedMassKgM2)) {
     throw new RangeError('maximumOmittedMassKgM2 must be finite and non-negative');
   }
-  if (!Number.isInteger(domain.maxEventCount)
-    || domain.maxEventCount < 1 || domain.maxEventCount > MAX_DOMAIN_EVENTS) {
-    throw new RangeError(`maxEventCount must be an integer from 1 to ${MAX_DOMAIN_EVENTS}`);
+  if (!Number.isInteger(domain.maxEventCount) || domain.maxEventCount < 1) {
+    throw new RangeError('maxEventCount must be a positive integer');
+  }
+  if (domain.maximumCellEpochPairs !== undefined
+    && (!Number.isSafeInteger(domain.maximumCellEpochPairs)
+      || domain.maximumCellEpochPairs < 1)) {
+    throw new RangeError('maximumCellEpochPairs must be a positive safe integer');
   }
   if (!Number.isFinite(domain.timeSeconds)) throw new RangeError('timeSeconds must be finite');
   const cellIds = new Set<string>();
@@ -420,10 +428,20 @@ function validateDomain(domain: CloudEventDomain): number {
     throw new RangeError('time and birth interval must produce safe integer epochs');
   }
   const epochCandidates = Math.max(0, lastEpoch - parentFirstEpoch + 1);
+  const maxCellEpochPairs = domain.maximumCellEpochPairs ?? MAX_CELL_EPOCH_PAIRS;
   if (!Number.isFinite(epochCandidates)
     || epochCandidates > MAX_EPOCH_CANDIDATES
-    || epochCandidates * cellIds.size > MAX_CELL_EPOCH_PAIRS) {
+    || epochCandidates * cellIds.size > maxCellEpochPairs) {
     throw new RangeError('history horizon and cell count exceed the bounded event search');
+  }
+  // 件数上限の天井はドメインが生じうるイベント数と既定の安全上限の大きい方。
+  // 生じうる数は セル×探索 epoch(親探索窓を含む + 位相ずれの1枠)×(1+外出流の世代数)
+  // で上から押さえ、細格化された全球ドメインではセル数に比例して上がる。
+  const generationFactor = 1 + (domain.outflow?.maxGeneration ?? 0);
+  const domainEventBound = Math.max(
+    MAX_DOMAIN_EVENTS, cellIds.size * (epochCandidates + 1) * generationFactor);
+  if (domain.maxEventCount > domainEventBound) {
+    throw new RangeError(`maxEventCount must not exceed ${domainEventBound} for this domain`);
   }
   return omittedUpperBoundKgM2;
 }

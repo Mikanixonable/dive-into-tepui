@@ -1,6 +1,6 @@
 // 全球雲場(MeteorologicalCloudField)の視覚検証。render-lab の earth ケースを駆動し、
 // 全球場の初回ジョブが完成するまで暖機してから、全球・中距離・近距離の構図と
-// 新経路/実写/旧経路(WeatherModel)の比較を撮る。PNG と画素統計を
+// 生成(気象モデル)/実写の比較を撮る。PNG と画素統計を
 // .render-lab-shots/cloud-field-check/ へ書く。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -18,10 +18,12 @@ const VIEW_WIDTH = 960;
 const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
 
-// 暖機。全球場の供給ジョブは 1 フレーム(= 1 prepare)あたり数 ms しか進まないので、
-// 世代が 2(空の場の初焼き=1、届いた場=2)へ進むまでフレームを回す。
+// 暖機。全球場の供給ジョブは worker 帯分割へ振るので step 自体は応答待ちでしかなく、
+// 導出の進捗はフレーム数ではなく壁時計に比例する — 世代が進むか壁時計の上限に
+// 達するまでフレームを回す。フレーム数の上限は応答が永遠に来ないときの打ち止め。
 const WARM_BATCH_FRAMES = 20;
-const WARM_MAX_FRAMES = 4000;
+const WARM_MAX_FRAMES = 20000;
+const WARM_MAX_WALL_MS = 60_000;
 // 1 枚の絵が落ち着くまで撮り直す上限。非同期に届くテクスチャ(実写・旧経路の焼き上げ)は
 // 届くフレームで絵が変わるので、連続する 2 枚が一致したものを「落ち着いた絵」として使う。
 const MAX_SETTLE_CAPTURES = 8;
@@ -211,7 +213,8 @@ async function main() {
     const baselineGeneration = await devTools.evaluate('window.renderLab.cloudFieldGeneration()');
     let generation = baselineGeneration;
     let warmFrames = 0;
-    while (generation <= baselineGeneration && warmFrames < WARM_MAX_FRAMES) {
+    while (generation <= baselineGeneration && warmFrames < WARM_MAX_FRAMES
+      && Date.now() - warmStartedAt < WARM_MAX_WALL_MS) {
       await devTools.evaluate(
         `for (let f = 0; f < ${WARM_BATCH_FRAMES}; f++) window.renderLab.setView({}); true`);
       warmFrames += WARM_BATCH_FRAMES;
@@ -257,9 +260,8 @@ async function main() {
       earthLongitudeDeg: report.globalField.maxCoverageLongitudeDeg,
     }));
 
-    // 3経路の比較。同じ構図・同じ時刻で、新経路(生成=気象モデル)・実写・旧経路(生成=
-    // WeatherModel)を並べる。実写との差は分布の出どころが別なので参考、旧経路との差は
-    // 主経路の切り替えの直接の効果。
+    // 生成(気象モデル)と実写の比較。同じ構図・同じ時刻で、生成雲と実写を並べる。
+    // 実写との差は分布の出どころが別なので参考。
     // 出どころを切り替えたあと、その場が届いて焼き直されるまで待つ。世代は焼き直しごとに
     // 進むので、切り替え直後の世代から +1 で「少なくとも1回焼いた」、+2 で「届いた画像を
     // 含む焼き直しが済んだ」目安になる(最初の焼き直しに届いた画像が間に合った場合は +1 で
@@ -285,7 +287,6 @@ async function main() {
     const compareAt = async (tag, view, circle) => {
       await devTools.evaluate(`window.renderLab.setView(${JSON.stringify(view)})`);
       await devTools.evaluate('window.renderLab.setGraphicsOption("cloudFieldSource", "generated")');
-      await devTools.evaluate('window.renderLab.setGeneratedFieldKind("meteorological")');
       const pngNew = (await captureSettled(`${tag}-new`)).png;
       await statsFor(`${tag}-new`, pngNew, circle);
 
@@ -295,17 +296,7 @@ async function main() {
       const pngObs = (await captureSettled(`${tag}-observed`)).png;
       await statsFor(`${tag}-observed`, pngObs, circle);
 
-      await devTools.evaluate('window.renderLab.setGraphicsOption("cloudFieldSource", "generated")');
-      await devTools.evaluate('window.renderLab.setGeneratedFieldKind("legacy")');
-      const baseLegacy = await devTools.evaluate('window.renderLab.cloudFieldGeneration()');
-      await waitSourceLoaded(`${tag}-legacy`, baseLegacy);
-      const pngLegacy = (await captureSettled(`${tag}-legacy`)).png;
-      await statsFor(`${tag}-legacy`, pngLegacy, circle);
-      await devTools.evaluate('window.renderLab.setGeneratedFieldKind("meteorological")');
-
       await diffOf(`${tag}-new-vs-observed`, pngNew, pngObs);
-      await diffOf(`${tag}-new-vs-legacy`, pngNew, pngLegacy);
-      await diffOf(`${tag}-observed-vs-legacy`, pngObs, pngLegacy);
     };
     await compareAt('disk', diskView(10, 0), DISK_CIRCLE);
     await compareAt('nadir600', nadirView(600e3, { sunElevationDeg: 10 }));
