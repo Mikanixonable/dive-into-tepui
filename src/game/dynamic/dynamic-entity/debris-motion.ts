@@ -1,6 +1,6 @@
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import type { DebrisKind } from './debris-kind';
+import type { SerializedDebrisKind } from './debris-kind';
 import {
   DynamicMotion,
   type DynamicMotionBehavior,
@@ -16,7 +16,7 @@ import {
 // 破片の種別・振る舞い・接触半径 [m]・熱の状態と生死。熱の状態で省いた項目は環境温度の既定から、
 // 生死を省くと生きた状態で始める。
 interface DebrisMotionProperties {
-  readonly kind: DebrisKind['kind'];
+  readonly kind: SerializedDebrisKind['kind'];
   readonly behavior: DynamicMotionBehavior;
   readonly radius?: number;
   readonly thermal: Partial<DynamicMotionThermal>;
