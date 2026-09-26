@@ -26,6 +26,9 @@ export type { AmmoLoad } from './weapon-state';
 
 const BARREL_PHYS_RADIUS = 1.45; // 砲身束の外接球(締め板半径 0.8 × 半長 1.2)
 const EJECTED_MAG_PHYS_RADIUS = 1.4;
+// 空マガジン外枠がリンク排出口へ出るスライド。内側へ潜った位置から面の外まで [m]・[s]。
+const MAG_FRAME_SLIDE_DEPTH = 0.55;
+const MAG_FRAME_SLIDE_TIME = 0.3;
 
 const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 
@@ -293,21 +296,39 @@ export class FireControl {
   }
 
   // 空になったマガジンの外枠を、撃ったモジュールの空リンク排出口(-X 側、薬莢と同じ側)から
-  // デブリとして放出する。
+  // デブリとして放出する。生成は塔の内側で、排出口へ出る既定経路(スライド)を進んでから自由な
+  // 破片になる。
   private spawnEjectedMagazineFrame(weapon: WeaponPorts): void {
     const ship = this.player;
-    // 排出ポートの位置と初速
+    // スライド経路(モジュール局所): 排出口の内側から面の外へ。終端にわずかなばらつきを足して
+    // 出て行く方向が個体ごとに散るようにする。
+    const inward = qRotate(weapon.rotation, v3(1, 0, 0));
+    const inner = add(weapon.linkExitPort, scale(inward, MAG_FRAME_SLIDE_DEPTH));
+    const outer = add(
+      add(weapon.linkExitPort, scale(inward, -MAG_FRAME_SLIDE_DEPTH)),
+      qRotate(weapon.rotation, randVec(0.12)),
+    );
+    const slideSpeed = (MAG_FRAME_SLIDE_DEPTH * 2) / MAG_FRAME_SLIDE_TIME;
     const eject = this.worldDir(weapon.rotation, v3(-1, 0, 0));
+    const t = ship.motion.state.t;
     this.registry.add(DebrisPiece.create(
       kinematicState<'eci'>(
-        ship.motion.state.t,
-        this.worldPoint(weapon.linkExitPort),
-        add(
-          ship.motion.state.v,
-          add(scale(eject, 0.5 + Math.random() * 0.3), randVec(0.15)),
-        ),
+        t,
+        this.worldPoint(inner),
+        add(ship.motion.state.v, scale(eject, slideSpeed)),
       ),
-      { kind: 'magazineFrame' },
+      {
+        kind: 'magazineFrame',
+        slide: {
+          bornSim: t,
+          duration: MAG_FRAME_SLIDE_TIME,
+          r0: ship.motion.state.r,
+          q0: ship.motion.att.q,
+          v0: ship.motion.state.v,
+          from: sub(inner, ship.motion.centerOffset),
+          to: sub(outer, ship.motion.centerOffset),
+        },
+      },
       {
         q: qMul(ship.motion.att.q, weapon.rotation),
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
