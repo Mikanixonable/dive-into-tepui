@@ -2,7 +2,6 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { v3 } from '../../src/math/vec3';
 import { AnnualClimateMap } from '../../src/render/cloud/climate-map';
-import { climateValuesAtCpu } from '../../src/render/cloud/climate-pixels';
 import type { Vec3 } from '../../src/math/vec3';
 
 // 正距円筒の texel 中心へ向く単位方向。u = (x+0.5)/width が経度(0.5 が本初子午線 +Z)、
@@ -86,26 +85,6 @@ export function register(): void {
     // 線形補間で 200 と 100 の中間。
     const tolerance = 0.5 / 255;
     assert.ok(Math.abs(acrossSeam.temperatureK - (150 / 255 * 80 + 233.15)) < tolerance);
-    climate.dispose();
-  });
-
-  test('climate map: 取り出した画素列からの復号は valuesAtCpu と一致する', () => {
-    const data = pixels(8, 4, (x, y) => [x * 30, y * 60, (x + y) * 12]);
-    const climate = AnnualClimateMap.fromPixels(data, 8, 4);
-    const transferred = climate.climatePixels();
-    assert.ok(transferred !== null);
-    // worker 側が受け取る形 {width,height,data} だけから値を復号する。
-    for (const direction of [
-      directionAtLatLon(0.3, 1.2), directionAtLatLon(-0.7, -2.1), directionAtLatLon(1.4, 0),
-    ]) {
-      assert.deepEqual(climateValuesAtCpu(direction, transferred), climate.valuesAtCpu(direction));
-    }
-    climate.dispose();
-  });
-
-  test('climate map: 画像がまだ無い遅延読み込みでは画素列も null を返す', () => {
-    const climate = AnnualClimateMap.fromDeferredUrl('earth-climate.png');
-    assert.equal(climate.climatePixels(), null);
     climate.dispose();
   });
 }

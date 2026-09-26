@@ -19,9 +19,7 @@ import {
 } from './cloud-equirect-grid';
 import type { CloudFootprintEllipse } from './cloud-footprint-overlap';
 import {
-  accumulateCloudParcelMass,
   depositCloudParcelMass,
-  type CloudMassAccumulation,
   type CloudMassDeposition,
   type CloudMassGrid,
   type CloudMassParcel,
@@ -252,83 +250,19 @@ function depositedMassKgByPhase(
   return { liquid: liquid.total, ice: ice.total };
 }
 
-// 堆積の前後で相別質量が一致することを確かめる。additionalToleranceKg は、確かめ方
-// 固有の丸めの床(共有累積器の前後差で読む場合の差分の分解能など)を足す許容で、
-// 省略時は相対 1e-10 の照合だけを行う。
 function validateMassBalance(
   expected: Readonly<Record<CloudMassPhase, number>>,
   actual: Readonly<Record<CloudMassPhase, number>>,
-  additionalToleranceKg = 0,
 ): void {
-  requireFinite(additionalToleranceKg, 'additionalToleranceKg');
-  if (additionalToleranceKg < 0) {
-    throw new RangeError('additionalToleranceKg must be non-negative');
-  }
   for (const phase of ['liquid', 'ice'] as const) {
     const targetKg = expected[phase];
     requireFinite(targetKg, `expected ${phase} mass`);
     requireFinite(actual[phase], `deposited ${phase} mass`);
-    const toleranceKg = Math.max(Number.MIN_VALUE, Math.abs(targetKg) * 1e-10)
-      + additionalToleranceKg;
+    const toleranceKg = Math.max(Number.MIN_VALUE, Math.abs(targetKg) * 1e-10);
     if (Math.abs(actual[phase] - targetKg) > toleranceKg) {
       throw new RangeError(`${phase} mass is not conserved by equirect deposition`);
     }
   }
-}
-
-// 材料1単位ずつ parcel を組み立てる。液水の親と氷コホートを parcelAt で1件ずつ作り、
-// parcel が触れた格子セルの index を併せて返す。堆積と累積が共有する。
-function eventMaterialParcels(
-  material: CloudEventMaterialCohorts,
-  sourceAreaM2: number,
-  footprintShapes: CloudEventFootprintShapes,
-  parcelAt: (
-    phase: CloudMassPhase,
-    massKgM2: number,
-    directionUnitVector: Vec3,
-    geometricHeightM: number,
-    footprintShape: CloudEventFootprintShape,
-  ) => CloudMassParcel,
-): {
-  readonly parcels: readonly CloudMassParcel[];
-  readonly touchedCellIndices: readonly number[];
-} {
-  requirePositive(sourceAreaM2, 'sourceAreaM2');
-  validateMaterialMass(material);
-  if (material.parent === null && footprintShapes.parentLiquid !== null) {
-    throw new RangeError('parentLiquid must be null when no liquid parent exists');
-  }
-  if (material.parent !== null && footprintShapes.parentLiquid === null) {
-    throw new RangeError('parentLiquid is required for a liquid parent');
-  }
-  const iceFootprintShapes = footprintShapeByCohortIndex(
-    material, footprintShapes.releasedIceCohorts);
-
-  const parcels: CloudMassParcel[] = [];
-  if (material.parent !== null && footprintShapes.parentLiquid !== null) {
-    parcels.push(parcelAt(
-      'liquid', material.parent.massKgM2, material.parent.directionUnitVector,
-      material.parent.geometricHeightM, footprintShapes.parentLiquid));
-  }
-  for (const cohort of material.releasedIceCohorts) {
-    const footprintShape = iceFootprintShapes.get(cohort.cohortIndex);
-    if (footprintShape === undefined) throw new Error('validated ice footprint shape is unavailable');
-    parcels.push(parcelAt(
-      'ice', cohort.massKgM2, cohort.directionUnitVector, cohort.geometricHeightM,
-      footprintShape));
-  }
-
-  const touchedCellIndices: number[] = [];
-  const touched = new Set<number>();
-  for (const parcel of parcels) {
-    for (const overlap of parcel.overlaps) {
-      if (!touched.has(overlap.cellIndex)) {
-        touched.add(overlap.cellIndex);
-        touchedCellIndices.push(overlap.cellIndex);
-      }
-    }
-  }
-  return { parcels, touchedCellIndices };
 }
 
 // イベントの surrogate kg/m² に明示 source area を掛け、材料ごとの明示 footprint 形状で
@@ -342,18 +276,48 @@ export function depositCloudEventMaterialCohortsEquirect(
   massGrid: CloudMassGrid,
   target?: CloudEquirectDepositionTarget,
 ): CloudEventEquirectDeposition {
+  requirePositive(sourceAreaM2, 'sourceAreaM2');
+  validateMaterialMass(material);
   if (target === undefined) {
     validateCloudEquirectGrid(grid);
     validateMassGrid(grid, massGrid);
   } else if (target.grid !== grid || target.massGrid !== massGrid) {
     throw new RangeError('deposition target must refer to the same grids being deposited into');
   }
-  const { parcels, touchedCellIndices } = eventMaterialParcels(
-    material, sourceAreaM2, footprintShapes,
-    (phase, massKgM2, directionUnitVector, geometricHeightM, footprintShape) =>
-      makeParcel(
-        phase, massKgM2, directionUnitVector, geometricHeightM, sourceAreaM2,
-        footprintShape, grid));
+  if (material.parent === null && footprintShapes.parentLiquid !== null) {
+    throw new RangeError('parentLiquid must be null when no liquid parent exists');
+  }
+  if (material.parent !== null && footprintShapes.parentLiquid === null) {
+    throw new RangeError('parentLiquid is required for a liquid parent');
+  }
+  const iceFootprintShapes = footprintShapeByCohortIndex(material, footprintShapes.releasedIceCohorts);
+
+  const parcels: CloudMassParcel[] = [];
+  if (material.parent !== null && footprintShapes.parentLiquid !== null) {
+    parcels.push(makeParcel(
+      'liquid', material.parent.massKgM2, material.parent.directionUnitVector,
+      material.parent.geometricHeightM, sourceAreaM2, footprintShapes.parentLiquid, grid,
+    ));
+  }
+  for (const cohort of material.releasedIceCohorts) {
+    const footprintShape = iceFootprintShapes.get(cohort.cohortIndex);
+    if (footprintShape === undefined) throw new Error('validated ice footprint shape is unavailable');
+    parcels.push(makeParcel(
+      'ice', cohort.massKgM2, cohort.directionUnitVector, cohort.geometricHeightM,
+      sourceAreaM2, footprintShape, grid,
+    ));
+  }
+
+  const touchedCellIndices: number[] = [];
+  const touched = new Set<number>();
+  for (const parcel of parcels) {
+    for (const overlap of parcel.overlaps) {
+      if (!touched.has(overlap.cellIndex)) {
+        touched.add(overlap.cellIndex);
+        touchedCellIndices.push(overlap.cellIndex);
+      }
+    }
+  }
   const deposition = depositCloudParcelMass(parcels, massGrid);
   validateMassBalance(
     expectedMassByPhaseKg(material, sourceAreaM2),
@@ -364,72 +328,4 @@ export function depositCloudEventMaterialCohortsEquirect(
     unassignedMassKgByPhase: deposition.unassignedMassKgByPhase,
     touchedCellIndices,
   };
-}
-
-// イベント材料を検算済みの宛先へ直接累積する。per-event の堆積配列は作らない —
-// parcel の組み立てとセル被覆は戻り値を返す経路と同じで、格子への書き込みだけが
-// 供給の永続累積器へ行く。このイベントが載せた質量は、累積値の前後差で照合する。
-export function accumulateCloudEventMaterialCohortsEquirect(
-  material: CloudEventMaterialCohorts,
-  sourceAreaM2: number,
-  footprintShapes: CloudEventFootprintShapes,
-  target: CloudEquirectDepositionTarget,
-  accumulation: CloudMassAccumulation,
-): void {
-  if (accumulation.grid !== target.massGrid) {
-    throw new RangeError('accumulation must belong to the target mass grid');
-  }
-  const { parcels, touchedCellIndices } = eventMaterialParcels(
-    material, sourceAreaM2, footprintShapes,
-    (phase, massKgM2, directionUnitVector, geometricHeightM, footprintShape) =>
-      makeParcel(
-        phase, massKgM2, directionUnitVector, geometricHeightM, sourceAreaM2,
-        footprintShape, target.grid));
-
-  // 累積する前に、触れたセルの値と格子外質量を退避する。共有の累積器には以前の
-  // イベントの質量が混ざっているので、前後差を取ってこのイベントぶんを照合する。
-  // 退避は footprint が触れたセルぶんだけで、全格子の複写は要らない。
-  const layerCount = target.massGrid.layerEdgesM.length - 1;
-  const cellCount = target.massGrid.cells.length;
-  const touchedCount = touchedCellIndices.length;
-  const beforeLiquidKgM2 = new Float64Array(layerCount * touchedCount);
-  const beforeIceKgM2 = new Float64Array(layerCount * touchedCount);
-  for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
-    const layerBase = layerIndex * cellCount;
-    const slotBase = layerIndex * touchedCount;
-    for (const [slot, cellIndex] of touchedCellIndices.entries()) {
-      beforeLiquidKgM2[slotBase + slot] = accumulation.liquidKgM2[layerBase + cellIndex]!;
-      beforeIceKgM2[slotBase + slot] = accumulation.iceKgM2[layerBase + cellIndex]!;
-    }
-  }
-  const unassignedLiquidBeforeKg = accumulation.unassignedMassKgByPhase.liquid;
-  const unassignedIceBeforeKg = accumulation.unassignedMassKgByPhase.ice;
-
-  accumulateCloudParcelMass(parcels, accumulation);
-
-  const deposited = {
-    liquid: accumulation.unassignedMassKgByPhase.liquid - unassignedLiquidBeforeKg,
-    ice: accumulation.unassignedMassKgByPhase.ice - unassignedIceBeforeKg,
-  };
-  // 前後差の分解能は累積値の絶対丸めで決まる — 読み戻した値の大きさから差分の
-  // 誤差上界を積み、照合の許容へ足す。微小なイベントほど相対精度は取れないが、
-  // 供給全体の末尾照合が積算ずれを捕える。
-  let roundingAllowanceKg = Number.EPSILON * (
-    Math.abs(accumulation.unassignedMassKgByPhase.liquid) + Math.abs(unassignedLiquidBeforeKg)
-    + Math.abs(accumulation.unassignedMassKgByPhase.ice) + Math.abs(unassignedIceBeforeKg));
-  for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
-    const layerBase = layerIndex * cellCount;
-    const slotBase = layerIndex * touchedCount;
-    for (const [slot, cellIndex] of touchedCellIndices.entries()) {
-      const areaM2 = target.massGrid.cells[cellIndex]!.areaM2;
-      const liquidAfter = accumulation.liquidKgM2[layerBase + cellIndex]!;
-      const iceAfter = accumulation.iceKgM2[layerBase + cellIndex]!;
-      deposited.liquid += (liquidAfter - beforeLiquidKgM2[slotBase + slot]!) * areaM2;
-      deposited.ice += (iceAfter - beforeIceKgM2[slotBase + slot]!) * areaM2;
-      roundingAllowanceKg += Number.EPSILON * Math.max(
-        Math.abs(liquidAfter), Math.abs(iceAfter)) * areaM2;
-    }
-  }
-  validateMassBalance(
-    expectedMassByPhaseKg(material, sourceAreaM2), deposited, roundingAllowanceKg);
 }
