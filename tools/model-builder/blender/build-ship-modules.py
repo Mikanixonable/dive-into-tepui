@@ -78,6 +78,9 @@ class MaterialLibrary:
         self.window_frame = create_pbr_material("mat_window_frame", (0.22, 0.24, 0.28, 1.0), roughness=0.35, metallic=1.0)
         # チタンの球形推進剤タンク
         self.tank_rcs = create_pbr_material("mat_tank_rcs", (0.32, 0.52, 0.62, 1.0), roughness=0.38, metallic=1.0)
+        # 外装の白い塗膜と黒い追尾模様
+        self.tank_paint_white = create_pbr_material("mat_tank_paint_white", (0.88, 0.90, 0.92, 1.0), roughness=0.55, metallic=0.0)
+        self.tank_paint_black = create_pbr_material("mat_tank_paint_black", (0.05, 0.05, 0.06, 1.0), roughness=0.60, metallic=0.0)
         # トラス材
         self.truss = create_pbr_material("mat_truss", (0.68, 0.72, 0.78, 1.0), roughness=0.35, metallic=1.0)
         # 炭素フェノールのアブレータ
@@ -113,7 +116,8 @@ def add_mesh_obj(name, bm, material=None, parent=None):
     obj = bpy.data.objects.new(name, me)
     bpy.context.collection.objects.link(obj)
     if material:
-        obj.data.materials.append(material)
+        for m in (material if isinstance(material, (list, tuple)) else (material,)):
+            obj.data.materials.append(m)
     if parent is not None:
         parent_to(obj, parent)
     return obj
@@ -568,16 +572,55 @@ def build_cockpit():
 # ----------------------------------------------------------------------
 # 2. Main Propellant Tanks (tank-3-main, tank-6-main, tank-12-main)
 # ----------------------------------------------------------------------
+def paint_roll_pattern(bm, length):
+    """円筒側面へ追尾用塗装の黒い模様を面割当する(material_index 1 = 黒、既定 0 = 白)。
+    +Z 端に市松帯(2 段)と白黒交互の縦縞、胴体中央に水平帯を置く。"""
+    half_len = length / 2.0
+    sector_count = 24
+    sector_arc = 2.0 * math.pi / sector_count
+    end_margin = 0.15    # 端の接続環と被らない余白 [m]
+    checker_row_h = min(0.75, max(0.30, 0.085 * length))
+    roll_bar_h = min(1.60, max(0.55, 0.16 * length))
+    stripe_h = min(0.25, max(0.08, 0.025 * length))
+    z_top = half_len - end_margin
+    z_check_mid = z_top - checker_row_h
+    z_roll_top = z_top - 2.0 * checker_row_h
+    z_roll_bottom = z_roll_top - roll_bar_h
+    for z in (z_top, z_check_mid, z_roll_top, z_roll_bottom, stripe_h / 2.0, -stripe_h / 2.0):
+        bmesh.ops.bisect_plane(
+            bm,
+            geom=list(bm.verts) + list(bm.edges) + list(bm.faces),
+            plane_co=(0.0, 0.0, z),
+            plane_no=(0.0, 0.0, 1.0),
+        )
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    for f in bm.faces:
+        if abs(f.normal.z) > 0.5:
+            continue
+        c = f.calc_center_median()
+        sector = int((math.atan2(c.y, c.x) + math.pi) / sector_arc) % sector_count
+        if z_roll_top < c.z < z_top:
+            row = 0 if c.z > z_check_mid else 1
+            if (sector + row) % 2 == 0:
+                f.material_index = 1
+        elif z_roll_bottom < c.z <= z_roll_top:
+            if sector % 2 == 0:
+                f.material_index = 1
+        elif abs(c.z) < stripe_h / 2.0:
+            f.material_index = 1
+
+
 def build_tank_main(length, name):
     reset_scene()
     mats = MaterialLibrary()
     radius = 3.0
     half_len = length / 2.0
-    
+
     # 1. Main Cylindrical Tank Hull with circumferential segments
-    # Outer hull is pristine aerospace aluminium
+    # 白い塗膜の外殻。黒い模様は初期ロケットの追尾用塗装を範とする。
     bm_hull = make_cylinder(radius, radius, length, z_center=0.0, segments=48)
-    add_mesh_obj("tank_hull", bm_hull, mats.hull)
+    paint_roll_pattern(bm_hull, length)
+    add_mesh_obj("tank_hull", bm_hull, (mats.tank_paint_white, mats.tank_paint_black))
     
     # 2. Structural Bulkhead Bands (CRITICAL: Named 'tank-band' to satisfy contract test!)
     # Band count scaled with length (3m: 1 band, 6m: 2 bands, 12m: 4 bands)
