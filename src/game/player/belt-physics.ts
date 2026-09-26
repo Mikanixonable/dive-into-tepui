@@ -273,20 +273,29 @@ export class BeltPhysics {
     return this._twists[i]!;
   }
 
-  // 節点ごとの接触代理。初回の placeContactSections で生成し、以後は使い回す。
+  // 節点ごとの接触代理。初回の placeContactSections で生成し、以後は使い回す。visible 以降の
+  // 節点は contactSections に含めず、衝突解決の書き戻しもしない。
   private readonly sections: ContactProxy[] = [];
+  private activeSections = 0;
 
-  // 節点ごとの接触代理。placeContactSections で置き直す。
-  public get contactSections(): readonly ContactProxy[] { return this.sections; }
+  // 表示されている節点ぶんの接触代理。placeContactSections で置き直す。
+  public get contactSections(): readonly ContactProxy[] {
+    return this.activeSections === this.sections.length
+      ? this.sections
+      : this.sections.slice(0, this.activeSections);
+  }
 
-  // 機体座標系の節点を ECI 状態へ直し、衝突判定用の接触代理を置き直す。owner は鎖を吊る艦で、
-  // 自身の節点との接触を除外するのに使う(呼ぶたびに同じ艦を渡す)。t は現在時刻、baseR・baseV は
-  // 機体の ECI 位置・速度。
+  // 機体座標系の節点を ECI 状態へ直し、衝突判定用の接触代理を置き直す。visibleLinks より後の節点は
+  // 見えないので置かない。owner は鎖を吊る艦で、自身の節点との接触を除外するのに使う(呼ぶたびに
+  // 同じ艦を渡す)。t は現在時刻、baseR・baseV は機体の ECI 位置・速度。
   public placeContactSections(
-    owner: EntityContactParticipant, t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude,
+    owner: EntityContactParticipant, visibleLinks: number, t: number, dt: number,
+    baseR: Vec3, baseV: Vec3, att: Attitude,
   ): void {
     const invDt = 1 / dt;
-    for (const [i, bp] of this._positions.entries()) {
+    this.activeSections = Math.min(Math.max(0, visibleLinks), this.linkCount);
+    for (let i = 0; i < this.activeSections; i++) {
+      const bp = this._positions[i]!;
       const bpPrev = this.prevPositions[i]!;
       // 節点は機体座標系の中で Verlet 変位ぶん動き、機体そのものの回転で接線方向にも動く。
       const verletVel = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
@@ -306,10 +315,10 @@ export class BeltPhysics {
     }
   }
 
-  // 衝突解決後のワールド状態を機体座標系の節点位置・速度へ書き戻す。
+  // 衝突解決後のワールド状態を機体座標系の節点位置・速度へ書き戻す。置いていない節点は書き戻さない。
   public applyContactSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
     const qInv = qInvert(att.q);
-    for (const [i, s] of this.sections.entries()) {
+    for (const [i, s] of this.sections.slice(0, this.activeSections).entries()) {
       const bpLocal = qRotate(qInv, sub(s.state.r, baseR));
       const bodyVel = qRotate(qInv, sub(s.state.v, baseV));
       const verletVel = sub(bodyVel, cross(att.w, bpLocal));

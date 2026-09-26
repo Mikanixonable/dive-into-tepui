@@ -54,7 +54,7 @@ function worldSoundOf(body: RunEventBody): WorldSound | null {
     case 'gunSpunUp': return { kind: 'spinUp' };
     case 'gunDryFired': return { kind: 'emptyClick' };
     case 'gunMagazineFed': return { kind: 'magFeed' };
-    case 'gunBarrelSwapped': return { kind: 'reload' };
+    case 'gunReloaded': return { kind: 'reload' };
     // 被弾音は着弾点と艦の距離で減衰する。距離はここで出す。
     case 'shipStruck': return { kind: 'hit', impactDistance: len(sub(body.impactPoint, body.shipState.r)) };
     case 'shipDamagedByContact':
