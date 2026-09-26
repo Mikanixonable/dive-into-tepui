@@ -1,26 +1,26 @@
-// Fixed-layer optical-depth diagnostic for a local cloud volume. Each z slab is homogeneous in altitude;
-// xy density may still vary, so the GPU evaluates its midpoint on the ray. This is intended for the small
-// C9 two-layer fixture, not as the product integrator for arbitrary fine-scale fields.
+// 局所雲体積の固定層の光学的厚み診断。各 z スラブは高度方向に一様で、xy の密度は
+// 変わりうるので GPU は光路の中点で評価する。小さな C9 の2層 fixture 向けの診断で、
+// 任意の細かい場の製品積分器ではない。
 import * as THREE from 'three/webgpu';
 import { and, exp, float, int, max, min, select, sqrt, texture, vec4 } from 'three/tsl';
 import type { FloatNode, Vec2Node, Vec4Node } from '../tsl-types';
 
 export interface CloudOpticalRayNodes {
-  // UV at startAltitudeM. UV is in the volume's normalized local-grid coordinates.
+  // startAltitudeM における UV。体積の正規化された局所格子座標。
   readonly originUv: Vec2Node;
-  // Local grid's physical spans. UV is dimensionless; these convert its slope back to horizontal metres.
+  // 局所格子の実寸の幅 [m]。UV は無次元なので、UV の傾きを水平の m へ戻すのに使う。
   readonly gridSpanEastM: number;
   readonly gridSpanNorthM: number;
-  // Change in normalized UV per metre of vertical altitude.
+  // 鉛直高度 1 m あたりの正規化 UV の変化。
   readonly uvDeltaPerAltitudeM: Vec2Node;
-  // The diagnostic ray travels upward; startAltitudeM must be less than endAltitudeM.
+  // 診断光路は上向きに進む。startAltitudeM は endAltitudeM 未満であること。
   readonly startAltitudeM: FloatNode;
   readonly endAltitudeM: FloatNode;
 }
 
-// Integrate every discrete altitude slab of an RG32F/RG16F volume. The static JS loop emits one texture
-// lookup per slab. Per phase the result is in m^-1 times metres = dimensionless optical depth.
-// Output channels are liquid tau, ice tau, total tau, and exp(-total tau).
+// RG32F/RG16F 体積の離散高度スラブをすべて積分する。静的な JS ループでスラブごとに
+// 1回のテクスチャ参照を展開する。相ごとの結果は m^-1 × m = 無次元の光学的厚み。
+// 出力チャンネルは液水 τ、氷 τ、合計 τ、exp(-合計 τ)。
 export function integrateCloudOpticalVolumeRayNode(
   volume: THREE.DataArrayTexture,
   layerEdgesM: Float32Array,
@@ -53,8 +53,8 @@ export function integrateCloudOpticalVolumeRayNode(
       );
       const sample = texture(volume, sampleUv).depth(int(layer)).level(float(0));
       const opticalPathLength = verticalLength.mul(pathLengthPerAltitude);
-      // For a linear ray, checking both endpoints guarantees the complete segment stays inside the UV box;
-      // otherwise discard the segment instead of integrating texture edge-clamp values.
+      // 直線光路では両端の判定で区間全体が UV 矩形の内側に留まることが保証される。
+      // 外れる区間は、テクスチャの端クランプ値を積む代わりに捨てる。
       const startInsideGrid = and(
         and(segmentStartUv.x.greaterThanEqual(0), segmentStartUv.x.lessThanEqual(1)),
         and(segmentStartUv.y.greaterThanEqual(0), segmentStartUv.y.lessThanEqual(1)),
@@ -89,6 +89,7 @@ function validateLayerEdges(volume: THREE.DataArrayTexture, edges: Float32Array)
   }
 }
 
+// 高度 1 m あたりの光路長 [m/m]。UV の水平傾きを実寸へ戻して鉛直成分 1 と合成する。
 export function cloudRayPathLengthPerAltitude(
   eastUvPerAltitudeM: number,
   northUvPerAltitudeM: number,

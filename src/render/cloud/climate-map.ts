@@ -259,5 +259,3 @@ export class AnnualClimateMap implements ClimateData {
   }
 }
 
-// 既存の生成・天候コードとの移行用別名。新しい表示境界ではClimateDataを使う。
-export type ClimateMap = ClimateData;
