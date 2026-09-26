@@ -10,8 +10,7 @@ export interface WeaponPorts {
   readonly muzzles: readonly Vec3[];
   readonly ejectionPort: Vec3;
   readonly linkExitPort: Vec3;
-  readonly barrelPort: Vec3;
-  // assembly 内でのモジュール姿勢。排莢・リンク排出・砲身取り外しの向きを機体座標へ写すのに使う。
+  // assembly 内でのモジュール姿勢。排莢・リンク排出の向きを機体座標へ写すのに使う。
   readonly rotation: Quat;
 }
 
@@ -86,7 +85,6 @@ export class ShipCapabilities {
         muzzles: definition.muzzles.map(at),
         ejectionPort: at(definition.ejectionPort),
         linkExitPort: at(definition.linkExitPort),
-        barrelPort: at(definition.barrelPort),
         rotation: transform.rotation,
       });
     }
