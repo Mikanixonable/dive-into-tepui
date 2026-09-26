@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { texture } from 'three/tsl';
 import climateTextureUrl from '../../src/assets/earth-climate.png';
-import { AnnualClimateMap, type ClimateMap } from '../../src/render/cloud/climate-map';
+import { AnnualClimateMap, type ClimateData } from '../../src/render/cloud/climate-map';
 import { AtmosphericWindField } from '../../src/render/cloud/atmospheric-wind';
 import { MeteorologicalCloudField } from '../../src/render/cloud/meteorological-cloud-field';
 import { cloudSampleFromTexel } from '../../src/render/cloud/cloud-field-sample';
@@ -14,7 +14,7 @@ import { equirectUvFromDirection, type FieldProjection } from '../../src/render/
 import {
   ConvectiveCloudGlobalFieldSupply, type CloudGlobalFieldSupplyResult,
 } from '../../src/game/cloud/cloud-global-field-supply';
-import { makeWindAt } from '../../src/game/cloud/cloud-local-field-supply';
+import { cloudEventWindAt } from '../../src/game/cloud/cloud-event-transport';
 import { earthGlobalEnvironmentAt } from '../../src/game/cloud/earth-global-environment';
 import { weatherAtCpu } from '../../src/game/cloud/weather-model-cpu';
 import { v3 } from '../../src/math/vec3';
@@ -132,7 +132,7 @@ export class CloudLabGlobalField {
       (direction, timeSeconds) => earthGlobalEnvironmentAt(
         direction, this.climate, timeSeconds, R_EARTH, SIDEREAL_DAY),
       GLOBAL_SEED, R_EARTH_EQ, GRID_WIDTH, GRID_HEIGHT,
-      makeWindAt(this.windField)));
+      cloudEventWindAt(this.windField)));
     this.field = new MeteorologicalCloudField(this.supply, this.projection, this.climate);
     const makeDiagTexture = (): THREE.DataTexture => {
       const map = new THREE.DataTexture(
@@ -160,7 +160,7 @@ export class CloudLabGlobalField {
   }
 
   // この場が読む気候。画像が届くのを待つのに要る。
-  public get climateMap(): ClimateMap { return this.climate; }
+  public get climateMap(): ClimateData { return this.climate; }
 
   // 表示時刻 seconds [s] の場が届き、診断場もその時刻で焼けていれば真。
   public settledFor(seconds: number): boolean {
