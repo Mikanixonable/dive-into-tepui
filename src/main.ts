@@ -147,7 +147,7 @@ function initHud(settings: UserSettings): {
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine);
   const pauseMenu = new PauseMenu(
-    shell.layers.system, shell.overlayManager,
+    shell.overlayManager,
     settings.graphics.current, settings.audibleBgmVolume, settings.themePalette.current.id,
   );
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
@@ -218,7 +218,7 @@ async function main() {
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
   const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
+    gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
   const devices: PageDevices = { scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo };
@@ -231,7 +231,7 @@ async function main() {
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
 
-  const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
+  const saveBrowser = new SaveBrowser(slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
