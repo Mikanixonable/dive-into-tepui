@@ -45,15 +45,19 @@ function massField(): CloudGlobalMassField {
 }
 
 // steps 回の step で done になるジョブ。field を渡すと完了時にそれを結果として返す。
+// budgets には step へ渡された予算 [ms] が記録される。
 function scriptedJob(steps: number, field: CloudGlobalMassField | null): GlobalMassFieldJob & {
   steps: number;
   cancels: number;
+  budgets: number[];
 } {
   const job = {
     steps: 0,
     cancels: 0,
-    step: (): { readonly done: boolean } => {
+    budgets: [] as number[],
+    step: (budgetMs: number): { readonly done: boolean } => {
       job.steps += 1;
+      job.budgets.push(budgetMs);
       return { done: job.steps >= steps };
     },
     get result(): GlobalMassFieldResult | null {
@@ -186,6 +190,85 @@ export function register(): void {
     projection.advance();
     field.prepare(stubRenderer, 0);
     assert.equal(field.generation, 2);
+    field.dispose();
+  });
+
+  test('meteorological cloud field: drivePendingJobs はフレーム外からジョブを前倒しで進める', () => {
+    const job = scriptedJob(2, massField());
+    const { supply } = queuedSupply([job]);
+    const field = new MeteorologicalCloudField(supply, testProjection());
+    // prepare を待たずに供給を始めて駆動する。予算は呼び出し側のものがそのまま渡る。
+    field.drivePendingJobs(stubRenderer, 0, 40);
+    assert.equal(job.steps, 1);
+    assert.equal(job.budgets[0], 40);
+    field.drivePendingJobs(stubRenderer, 0, 40);
+    // 場が届いて焼き直され、世代が進む。
+    assert.equal(job.steps, 2);
+    assert.equal(field.generation, 2);
+    field.dispose();
+  });
+
+  test('meteorological cloud field: 最初の場が届くまではバースト予算で駆動する', () => {
+    const first = scriptedJob(1, massField());
+    const second = scriptedJob(1, massField());
+    const { supply } = queuedSupply([first, second]);
+    const field = new MeteorologicalCloudField(supply, testProjection(), null, 6, 16);
+    field.prepare(stubRenderer, 0);
+    assert.deepEqual(first.budgets, [16]);
+    // 場が届いたあとの再供給は既定予算へ戻る。
+    field.prepare(stubRenderer, 601);
+    assert.deepEqual(second.budgets, [6]);
+    field.dispose();
+  });
+
+  test('meteorological cloud field: 外部入力が読めるまで最初のジョブを遅らせる', () => {
+    const job = scriptedJob(1, massField());
+    const { supply, times } = queuedSupply([job]);
+    const inputs = { ready: false };
+    const field = new MeteorologicalCloudField(
+      supply, testProjection(),
+      { dispose: (): void => {}, cpuReadable: () => inputs.ready });
+    field.prepare(stubRenderer, 0);
+    field.drivePendingJobs(stubRenderer, 0, 40);
+    assert.deepEqual(times, []);
+    inputs.ready = true;
+    field.drivePendingJobs(stubRenderer, 0, 40);
+    assert.deepEqual(times, [0]);
+    field.dispose();
+  });
+
+  test('meteorological cloud field: 入力を待つ上限を超えたら未着のまま開始する', () => {
+    const job = scriptedJob(1, massField());
+    const { supply, times } = queuedSupply([job]);
+    const field = new MeteorologicalCloudField(
+      supply, testProjection(),
+      { dispose: (): void => {}, cpuReadable: () => false },
+      6, 16, 0);
+    field.prepare(stubRenderer, 0);
+    assert.deepEqual(times, [0]);
+    field.dispose();
+  });
+
+  test('meteorological cloud field: fieldStats は駆動中の経過と試行記録を返す', () => {
+    const job = scriptedJob(3, massField());
+    const { supply } = queuedSupply([job]);
+    const field = new MeteorologicalCloudField(supply, testProjection());
+    field.prepare(stubRenderer, 0);
+    const pending = field.fieldStats.pending;
+    assert.ok(pending !== null);
+    assert.equal(pending.stepCount, 1);
+    assert.equal(pending.displayTimeSeconds, 0);
+    assert.equal(field.fieldStats.hasField, false);
+    field.prepare(stubRenderer, 0);
+    field.prepare(stubRenderer, 0);
+    const stats = field.fieldStats;
+    assert.equal(stats.pending, null);
+    assert.equal(stats.hasField, true);
+    assert.equal(stats.attempts.length, 1);
+    const attempt = stats.attempts[0]!;
+    assert.equal(attempt.stepCount, 3);
+    assert.equal(attempt.adopted, true);
+    assert.ok(attempt.wallMs >= 0 && attempt.deriveMs >= 0);
     field.dispose();
   });
 }
