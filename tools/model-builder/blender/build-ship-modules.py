@@ -71,10 +71,6 @@ class MaterialLibrary:
         self.mli_gold = create_pbr_material("mat_mli_gold", (0.86, 0.66, 0.16, 1.0), roughness=0.25, metallic=1.0)
         # 多層断熱材(白いベータクロス)
         self.mli_white = create_pbr_material("mat_mli_white", (0.92, 0.94, 0.96, 1.0), roughness=0.70, metallic=0.0)
-        # 多層断熱材の銀箔
-        self.mli_silver = create_pbr_material("mat_mli_silver", (0.78, 0.81, 0.85, 1.0), roughness=0.30, metallic=1.0)
-        # 多層断熱材の淡い金色の箔(銀箔と混ぜて使う)
-        self.mli_pale_gold = create_pbr_material("mat_mli_pale_gold", (0.83, 0.72, 0.46, 1.0), roughness=0.40, metallic=1.0)
         # 船体を覆う EVI 多層断熱カバーの布(箔より鈍い銀)
         self.evi = create_pbr_material("mat_evi", (0.70, 0.72, 0.76, 1.0), roughness=0.60, metallic=0.7)
         # ステンレス・インコネルの配管
@@ -106,8 +102,17 @@ class MaterialLibrary:
         self.dock = create_pbr_material("mat_dock", (0.84, 0.55, 0.22, 1.0), roughness=0.38, metallic=1.0)
         # 太陽電池セル
         self.solar = create_pbr_material("mat_solar", (0.06, 0.18, 0.45, 1.0), roughness=0.25, metallic=0.2)
+        # セル区画ごとの明暗ばらつき。基準の mat_solar を ±4% の幅へ振る
+        self.solar_shades = [
+            create_pbr_material(
+                f"mat_solar_shade_{k}",
+                (0.06 * f, 0.18 * f, 0.45 * f, 1.0), roughness=0.25, metallic=0.2)
+            for k, f in enumerate((0.96, 0.976, 0.992, 1.008, 1.024, 1.04))
+        ]
         # セル帯のあいだに見えるバス帯(濃紺の別トーン)
         self.solar_bus = create_pbr_material("mat_solar_bus", (0.10, 0.15, 0.32, 1.0), roughness=0.35, metallic=0.4)
+        # 翼裏の骨組みを成すガラス繊維の角材(金茶)
+        self.solar_lattice = create_pbr_material("mat_solar_lattice", (0.62, 0.51, 0.30, 1.0), roughness=0.60, metallic=0.3)
         # 翼端の航法灯(左舷の赤・右舷の緑)
         self.nav_red = create_emissive_material("mat_nav_red", (0.90, 0.05, 0.03, 1.0))
         self.nav_green = create_emissive_material("mat_nav_green", (0.04, 0.75, 0.18, 1.0))
@@ -1345,16 +1350,18 @@ def add_saddle_pads(mats, pads, half_w):
             for sx in (-(half_w - 0.09), (half_w - 0.09)) for st in (-0.055, 0.0, 0.055)
         ], bevel=0.005), mats.clamp)
 
-def build_hull_junction(mats, half_len):
-    """船体円筒へ伏せる座板・斜めに開いた脚・機構を載せる台座を架け、
-    取付面(z≈+0.4)から船体の接面(z=-0.5)までを構造で繋ぐ。"""
+def build_hull_junction(mats, half_len, pedestal=True):
+    """船体円筒へ伏せる座板・斜めに開いた脚を架け、取付面(z≈+0.4)から船体の接面(z=-0.5)
+    までを構造で繋ぐ。pedestal なら脚の先へ機構を載せる四角錐台を添える。"""
     add_saddle_pads(mats, SADDLE_PADS, SADDLE_HALF_W)
     for index, (xc, tc) in enumerate(SADDLE_PADS):
-        # 座板の中央から台座の下端へ斜めに開いた脚
+        # 座板の中央から取付構造へ斜めに開いた脚
         foot = saddle_top(tc) + Vector((xc, 0.0, 0.0))
         top = Vector((foot.x, foot.y, 0.0)).normalized() * 0.33 + Vector((0.0, 0.0, 0.10))
         add_mesh_obj(f"mount_leg:{index}", make_strut(foot, top, 0.065, segments=12), mats.truss)
         add_mesh_obj(f"mount_leg_foot:{index}", make_sphere(0.085, center=foot, u_seg=12, v_seg=8), mats.clamp)
+    if not pedestal:
+        return
     # 機構を載せる台座。円盤を受ける形を名残なくすため円形ではなく角柱で、
     # 脚が届く下端だけ太く、上は駆動ドラムへ吸い込まれる細い四角錐台
     add_mesh_obj("mount_pedestal", make_lathe([
@@ -1363,15 +1370,28 @@ def build_hull_junction(mats, half_len):
     ], segments=4, closed=True, sharp_angle_deg=0.0), mats.hull_dark)
 
 def build_solar_mount(mats, half_len, thickness):
-    """台座の肩から翼列の根元ヒンジへ伸びる2本のヒンジブームと、片側だけの駆動ラッチ箱。
-    翼は角度を追従しない構造で、根元ヒンジ(panel-hinge)はモジュール軸上の取付面にある。
-    ヒンジ軸は翼幅方向(X 軸)に走り、ブームはその軸線の内側へ届く。"""
+    """座板の上へ渡した平らなルートフレームから、翼列の根元ヒンジへ立ち上がる2本のヒンジ
+    アームと、片側だけの駆動ラッチ箱。翼は角度を追従しない構造で、根元ヒンジ
+    (panel-hinge)はモジュール軸上の取付面にある。ヒンジ軸は翼幅方向(X 軸)に走り、
+    アームはその軸線の両端へ届く。"""
     hy, hz = -thickness / 2, half_len  # 根元ヒンジ軸(おもて +Y の反対側の面)
+    frame_z = 0.13                     # ルートフレームのレール中心の高さ [m]
+    # 翼幅方向へ長い外周レールと、その内側へ並ぶ中桟2本で格子にした平らな枠。
+    # 座板からの脚は中桟の脇へ届く
+    add_mesh_obj("root_frame", make_boxes(
+        [(2.00, 0.07, 0.07, (0.0, sy * 0.465, frame_z), (0.0, 0.0, 0.0)) for sy in (-1.0, 1.0)]
+        + [(0.07, 0.86, 0.07, (sx * 0.965, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)]
+        + [(0.06, 0.86, 0.06, (sx / 3.0, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)],
+        bevel=0.008), mats.truss)
+    # 枠の -Y 側のレールへ張り出したホールドダウン解除箱。畳んだ翼列を押さえる留め具の解除部
+    add_mesh_obj("holddown_release_box", make_box(
+        0.40, 0.22, 0.16, center=(-0.35, -0.58, frame_z)), mats.hull_dark)
     for sx in (-1.0, 1.0):
+        # フレームの端から根元ヒンジの軸受へ立ち上がるヒンジアームと、斜めに支える支柱
         add_mesh_obj(f"hinge_boom:{sx:+.0f}", make_strut(
-            Vector((sx * 0.30, -0.05, half_len - 0.30)), Vector((sx * 0.92, hy, hz - 0.02)), 0.075), mats.truss)
+            Vector((sx * 0.95, -0.05, 0.17)), Vector((sx * 0.92, hy, hz - 0.02)), 0.075), mats.truss)
         add_mesh_obj(f"hinge_boom_brace:{sx:+.0f}", make_strut(
-            Vector((sx * 0.44, 0.14, half_len - 0.42)), Vector((sx * 0.88, hy + 0.11, hz - 0.03)), 0.04), mats.truss)
+            Vector((sx * 0.58, 0.36, 0.15)), Vector((sx * 0.925, -0.03, 0.42)), 0.04), mats.truss)
         add_mesh_obj(f"hinge_bearing:{sx:+.0f}",
             make_box(0.16, 0.16, 0.12, center=(sx * 0.95, hy, hz - 0.02)), mats.hull_dark)
         # ヒンジ軸と同軸のばねドラム。収納ばねを巻き取り、展開トルクを掛ける
@@ -1384,19 +1404,21 @@ def build_solar_mount(mats, half_len, thickness):
         Vector((-1.04, hy, hz + 0.03)), Vector((-0.45, hy - 0.01, hz + 0.06)),
         Vector((0.45, hy - 0.01, hz + 0.06)), Vector((1.04, hy, hz + 0.03)),
     ], radius=0.012, segments=6), mats.hull_dark)
-    # +X 側だけの駆動ラッチ箱。畳んだ翼端を掴む爪と、展開を始める蹴り出しモーターを納める
-    add_mesh_obj("drive_latch_box", make_box(0.30, 0.22, 0.46, center=(0.60, -0.02, half_len - 0.24)), mats.hull_dark)
+    # +X 側だけの駆動ラッチ箱。ヒンジアームを抱く位置へ掛け、畳んだ翼端を掴む爪と、
+    # 展開を始める蹴り出しモーター(フレームのベイへ横置きする胴)を納める
+    add_mesh_obj("drive_latch_box", make_box(0.28, 0.22, 0.30, center=(1.00, -0.02, 0.29)), mats.hull_dark)
     add_mesh_obj("drive_latch_claw", make_box(
-        0.10, 0.07, 0.22, center=(0.60, hy - 0.06, half_len - 0.01), rot_euler=(0.0, 0.0, math.radians(18))), mats.clamp)
-    bm_latch_motor = make_cylinder(0.06, 0.06, 0.24, z_center=0.0, segments=14)
-    transform_bm(bm_latch_motor, Matrix.Translation(Vector((0.60, -0.02, half_len - 0.55))))
+        0.10, 0.07, 0.22, center=(0.88, hy - 0.06, half_len - 0.03), rot_euler=(0.0, 0.0, math.radians(18))), mats.clamp)
+    bm_latch_motor = make_cylinder(0.06, 0.06, 0.66, z_center=0.0, segments=14)
+    transform_bm(bm_latch_motor, Matrix.Translation(Vector((0.65, -0.02, frame_z - 0.02)))
+        @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
     add_mesh_obj("drive_latch_motor", bm_latch_motor, mats.pipe)
-    # 台座から座板の貫通金具へ降ろす動力・信号のケーブル束(平行な2撚り)
+    # フレームから座板の貫通金具へ降ろす動力・信号のケーブル束(平行な2撚り)
     pad_x, pad_t = -0.85, -0.13
     top = saddle_top(pad_t)
     add_mesh_obj("power_umbilical", make_pipes([
-        [Vector((-0.42, -0.30, 0.22)), Vector((-0.60, -0.40, -0.05)), Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.06))],
-        [Vector((-0.36, -0.34, 0.22)), Vector((-0.54, -0.44, -0.05)), Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.05))],
+        [Vector((-0.44, -0.34, 0.13)), Vector((-0.62, -0.40, -0.05)), Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.06))],
+        [Vector((-0.38, -0.38, 0.13)), Vector((-0.56, -0.44, -0.05)), Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.05))],
     ], radius=0.03, segments=10, bend_radius=0.08), mats.clamp)
     add_mesh_obj("umbilical_fitting", make_box(0.24, 0.18, 0.07,
         center=(pad_x + 0.10, top.y - 0.03, top.z + 0.02), rot_euler=(-pad_t, 0.0, 0.0)), mats.hull_dark)
@@ -1408,7 +1430,7 @@ def build_solar_mount(mats, half_len, thickness):
 
 def build_solar_stub_panels(mats, half_len):
     """翼根元の左右へ、翼面内で約45°に突き出た小さな補助パネル。7K-TM の翼-機器室
-    接合部にあるスタブパネルが範。台座の脇から斜め前方へ伸び、おもてにセルを持つ。"""
+    接合部にあるスタブパネルが範。ルートフレームの脇から斜め前方へ伸び、おもてにセルを持つ。"""
     stub_len, stub_wid = 0.85, 0.55
     for sx in (-1.0, 1.0):
         rot = (0.0, sx * math.radians(45.0), 0.0)
@@ -1419,29 +1441,43 @@ def build_solar_stub_panels(mats, half_len):
             stub_wid, 0.024, stub_len, center=center, rot_euler=rot), mats.hull)
         add_mesh_obj(f"stub_cells:{sx:+.0f}", make_box(
             stub_wid - 0.09, 0.010, stub_len - 0.10, center=center + Vector((0.0, 0.017, 0.0)), rot_euler=rot), mats.solar)
+        # ルートフレームの中桟からパネルの根元裏へ降りる短い支持柱
         add_mesh_obj(f"stub_bracket:{sx:+.0f}", make_strut(
-            base + Vector((0.0, -0.06, -0.04)), center - diag * (stub_len * 0.42) + Vector((0.0, -0.02, 0.0)), 0.035), mats.clamp)
+            Vector((sx * 0.35, -0.02, 0.11)), Vector((sx * 0.44, -0.02, 0.42)), 0.035), mats.clamp)
+
+# 展開した翼が一面に揃わないよう、パネルごとに面法線方向へ振ったオフセット [m]。
+# ヒンジまわりの金具は揃ったままにし、本体と表裏の部品だけをずらす決定的な値
+PANEL_FACE_Y_OFFSETS = (0.012, -0.006, 0.016, 0.004)
 
 def build_solar_panel(name):
     reset_scene()
     mats = MaterialLibrary()
     half_len = MANIFEST["modules"][name]["length"] / 2
-    build_hull_junction(mats, half_len)
+    build_hull_junction(mats, half_len, pedestal=False)
     spec = MANIFEST["deployables"]["solar_panel"]
     length, span, thickness = spec["length"], spec["span"], spec["thickness"]
     build_solar_mount(mats, half_len, thickness)
     build_solar_stub_panels(mats, half_len)
 
     body_span, body_len = span * 0.96, length * 0.96
-    # セル面は外周枠の内側に収める。ストリングは短手方向(展開方向)へ走り、翼幅方向へ並ぶ
+    # セル面は外周枠の内側に収め、翼幅方向へ12列・展開方向へ5行の区画に刻む
     cell_x0, cell_x1 = -body_span / 2 + 0.075, body_span / 2 - 0.075
     cell_z0, cell_z1 = 0.10, body_len - 0.075
-    strings = 12
-    string_gap = 0.035
-    string_pitch = (cell_x1 - cell_x0) / strings
+    cell_cols, cell_rows = 12, 5
+    cell_gap = 0.03
+    cell_pitch_x = (cell_x1 - cell_x0) / cell_cols
+    cell_pitch_z = (cell_z1 - cell_z0) / cell_rows
+
+    # 裏面のワッフル骨組み。展開方向へ3筋の縦材・翼幅方向へ5筋の横材と、ベイごとに
+    # 向きを交互にした斜め材を、基板面から細い角材で浮かせる
+    lat_h, lat_w = 0.028, 0.024      # 角材の面からの高さ・面内の幅 [m]
+    lat_y = -thickness / 2 - lat_h / 2
+    lat_x0, lat_x1 = -body_span / 2 + 0.05, body_span / 2 - 0.05
+    lat_z0, lat_z1 = 0.10, body_len - 0.06
+    rib_zs = [lat_z0 + (lat_z1 - lat_z0) * i / 4 for i in range(5)]
 
     def panel(index, side):
-        # おもて面 +Y はストリング帯とバス帯の濃紺2トーン、裏面は銀箔と淡金の MLI と押さえ帯、
+        # おもて面 +Y は区画刻みのセルとバス帯、裏面 -Y は金茶のワッフル骨組み、
         # 外周は細い銀色の枠。ヒンジ胴は根元の side 側の面に載る
         body = add_mesh_obj(f"panel:{index}",
             make_box(body_span, thickness, body_len, center=(0.0, 0.0, length * 0.5)), mats.mli_white)
@@ -1449,18 +1485,29 @@ def build_solar_panel(name):
         bus_sheet = add_mesh_obj(f"panel_bus_sheet:{index}", make_box(
             cell_x1 - cell_x0 + 0.02, 0.006, cell_z1 - cell_z0 + 0.02,
             center=(0.0, thickness / 2 + 0.003, (cell_z0 + cell_z1) / 2)), mats.solar_bus)
-        cell_parts = []
-        for s in range(strings):
-            cx = cell_x0 + (s + 0.5) * string_pitch
-            cell_parts.append((
-                string_pitch - string_gap, 0.012, cell_z1 - cell_z0,
-                (cx, thickness / 2 + 0.012, (cell_z0 + cell_z1) / 2), (0.0, 0.0, 0.0),
-            ))
-        cells = add_mesh_obj(f"panel_cells:{index}", make_boxes(cell_parts, bevel=0.003), mats.solar)
-        # ストリングを横断するバス帯(帯より一回り明るい濃紺)
+        # 12列×5行のセル区画。区画ごとに明暗のシェード材を決定的に割り当てる
+        bm_cells = bmesh.new()
+        for row in range(cell_rows):
+            for col in range(cell_cols):
+                n0 = len(bm_cells.faces)
+                bmesh.ops.create_cube(bm_cells, size=1.0,
+                    matrix=Matrix.Translation(Vector((
+                        cell_x0 + (col + 0.5) * cell_pitch_x,
+                        thickness / 2 + 0.012,
+                        cell_z0 + (row + 0.5) * cell_pitch_z,
+                    ))) @ Matrix.Diagonal((
+                        cell_pitch_x - cell_gap, 0.012, cell_pitch_z - cell_gap, 1.0,
+                    )))
+                shade = (index * 7 + col * 13 + row * 29) % len(mats.solar_shades)
+                bm_cells.faces.ensure_lookup_table()
+                for i in range(n0, len(bm_cells.faces)):
+                    bm_cells.faces[i].material_index = shade
+        bmesh.ops.recalc_face_normals(bm_cells, faces=bm_cells.faces)
+        cells = add_mesh_obj(f"panel_cells:{index}", shade_by_angle(bm_cells, 30.0), list(mats.solar_shades))
+        # 行の境目へ沿わせてセル面を横断するバス帯(帯より一回り明るい濃紺)
         busbars = add_mesh_obj(f"panel_busbars:{index}", make_boxes([
             (cell_x1 - cell_x0, 0.010, 0.045, (0.0, thickness / 2 + 0.014, bz), (0.0, 0.0, 0.0))
-            for bz in (cell_z0 + 0.30, cell_z1 - 0.30)
+            for bz in (cell_z0 + cell_pitch_z, cell_z0 + 4 * cell_pitch_z)
         ], bevel=0.004), mats.solar_bus)
         frame = add_mesh_obj(f"panel_frame:{index}", make_boxes([
             (0.04, 0.09, body_len - 0.08, (sx * (body_span / 2 - 0.02), 0.0, 0.04 + (body_len - 0.08) / 2), (0.0, 0.0, 0.0))
@@ -1469,26 +1516,23 @@ def build_solar_panel(name):
             (body_span, 0.09, 0.04, (0.0, 0.0, 0.04), (0.0, 0.0, 0.0)),
             (body_span, 0.09, 0.04, (0.0, 0.0, body_len - 0.02), (0.0, 0.0, 0.0)),
         ], bevel=0.010), mats.pipe)
-        # 裏面の MLI は銀箔と淡金を市松に貼り分け、その上を押さえ帯が走る
-        mli_parts_silver, mli_parts_gold = [], []
-        mli_cols, mli_rows = 3, 2
-        mli_x0, mli_x1 = -body_span / 2 + 0.10, body_span / 2 - 0.10
-        mli_z0, mli_z1 = 0.10, body_len - 0.10
-        for c in range(mli_cols):
-            for r in range(mli_rows):
-                px = mli_x0 + (c + 0.5) * (mli_x1 - mli_x0) / mli_cols
-                pz = mli_z0 + (r + 0.5) * (mli_z1 - mli_z0) / mli_rows
-                part = (
-                    (mli_x1 - mli_x0) / mli_cols - 0.03, 0.008, (mli_z1 - mli_z0) / mli_rows - 0.03,
-                    (px, -thickness / 2 - 0.004, pz), (0.0, 0.0, 0.0),
-                )
-                (mli_parts_silver if (c + r) % 2 == 0 else mli_parts_gold).append(part)
-        mli_silver_obj = add_mesh_obj(f"panel_mli_silver:{index}", make_boxes(mli_parts_silver, bevel=0.006), mats.mli_silver)
-        mli_gold_obj = add_mesh_obj(f"panel_mli_gold:{index}", make_boxes(mli_parts_gold, bevel=0.006), mats.mli_pale_gold)
-        straps = add_mesh_obj(f"panel_straps:{index}", make_boxes([
-            (span * 0.88, 0.010, 0.07, (0.0, -thickness / 2 - 0.009, sz), (0.0, 0.0, 0.0))
-            for sz in (0.35, length * 0.5, length - 0.35)
-        ], bevel=0.004), mats.truss)
+        # 裏面の骨組み。縦材3筋と横材5筋の格子へ、ベイごとに向きを交互にした斜め材を入れる
+        lattice_parts = [
+            (lat_w, lat_h, lat_z1 - lat_z0, (sx, lat_y, (lat_z0 + lat_z1) / 2), (0.0, 0.0, 0.0))
+            for sx in (-body_span / 3, 0.0, body_span / 3)
+        ] + [
+            (lat_x1 - lat_x0, lat_h, lat_w, (0.0, lat_y, z), (0.0, 0.0, 0.0))
+            for z in rib_zs
+        ]
+        for bay in range(len(rib_zs) - 1):
+            z0, z1 = rib_zs[bay] + lat_w / 2, rib_zs[bay + 1] - lat_w / 2
+            xa, xb = (lat_x0, lat_x1) if bay % 2 == 0 else (lat_x1, lat_x0)
+            lattice_parts.append((
+                lat_w, lat_h, math.hypot(xb - xa, z1 - z0),
+                ((xa + xb) / 2, lat_y, (z0 + z1) / 2),
+                (0.0, math.atan2(xb - xa, z1 - z0), 0.0),
+            ))
+        lattice = add_mesh_obj(f"panel_lattice:{index}", make_boxes(lattice_parts, bevel=0.004), mats.solar_lattice)
         bm_hinge = make_cylinder(0.035, 0.035, span * 0.98, z_center=0.0, segments=12)
         transform_bm(bm_hinge, Matrix.Translation(Vector((0.0, -side * thickness / 2, 0.0)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
@@ -1507,17 +1551,25 @@ def build_solar_panel(name):
             0.07, 0.09, 0.14,
             center=(span / 2 - 0.14, -side * thickness / 2 - 0.02, -0.04),
             rot_euler=(0.0, 0.0, math.radians(-14))), mats.clamp)
-        parts = [body, bus_sheet, cells, busbars, frame, mli_silver_obj, mli_gold_obj, straps, knuckle, drum, cable, claw]
+        # パネル本体と表裏の部品は、決定的な高さ差のぶん面法線方向へずらす
+        face_parts = [body, bus_sheet, cells, busbars, frame, lattice]
+        hinge_parts = [knuckle, drum, cable, claw]
+        parts = face_parts + hinge_parts
         # 翼端セクション: 外側縁へアンテナ竿2本と航法灯(根元側を向く -X が赤、+X が緑)
         if index == spec["count"] - 1:
             for sx, light_mat, light_name in ((-1.0, mats.nav_red, "nav_red"), (1.0, mats.nav_green, "nav_green")):
                 tip = Vector((sx * (body_span / 2 - 0.12), 0.0, body_len - 0.02))
-                parts.append(add_mesh_obj(f"tip_antenna:{index}:{sx:+.0f}", make_pipe([
+                antenna = add_mesh_obj(f"tip_antenna:{index}:{sx:+.0f}", make_pipe([
                     tip, tip + Vector((sx * 0.22, 0.0, 0.72)),
-                ], radius=0.012, segments=8), mats.pipe))
-                parts.append(add_mesh_obj(f"nav_light_{light_name}:{index}", make_box(
+                ], radius=0.012, segments=8), mats.pipe)
+                nav_light = add_mesh_obj(f"nav_light_{light_name}:{index}", make_box(
                     0.05, 0.05, 0.07,
-                    center=(sx * (body_span / 2 - 0.05), thickness / 2 + 0.03, body_len - 0.08)), light_mat))
+                    center=(sx * (body_span / 2 - 0.05), thickness / 2 + 0.03, body_len - 0.08)), light_mat)
+                face_parts += [antenna, nav_light]
+                parts += [antenna, nav_light]
+        y_offset = PANEL_FACE_Y_OFFSETS[index % len(PANEL_FACE_Y_OFFSETS)]
+        for obj in face_parts:
+            obj.data.transform(Matrix.Translation(Vector((0.0, y_offset, 0.0))))
         return parts
 
     build_deployable_chain("solar_panel", half_len, panel)
