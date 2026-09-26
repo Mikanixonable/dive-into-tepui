@@ -24,7 +24,9 @@ import {
   type CloudEquirectGrid,
 } from './cloud-equirect-grid';
 import {
+  accumulateCloudParcelMass,
   depositCloudParcelMass,
+  type CloudMassAccumulation,
   type CloudMassDeposition,
   type CloudMassGrid,
   type CloudMassParcel,
@@ -161,4 +163,72 @@ export function depositCloudEventMaterialCohortsEquirect(
     unassignedMassKgByPhase: deposition.unassignedMassKgByPhase,
     touchedCellIndices,
   };
+}
+
+// イベント材料を検算済みの宛先へ直接累積する。per-event の堆積配列は作らない —
+// parcel の組み立てとセル被覆は戻り値を返す経路と同じで、格子への書き込みだけが
+// 供給の永続累積器へ行く。このイベントが載せた質量は、累積値の前後差で照合する。
+export function accumulateCloudEventMaterialCohortsEquirect(
+  material: CloudEventMaterialCohorts,
+  sourceAreaM2: number,
+  footprintShapes: CloudEventFootprintShapes,
+  target: CloudEquirectDepositionTarget,
+  accumulation: CloudMassAccumulation,
+): void {
+  if (accumulation.grid !== target.massGrid) {
+    throw new RangeError('accumulation must belong to the target mass grid');
+  }
+  const { parcels, touchedCellIndices } = cloudEventMaterialParcels(
+    material, sourceAreaM2, footprintShapes,
+    (phase, massKgM2, directionUnitVector, geometricHeightM, footprintShape) =>
+      makeParcel(
+        phase, massKgM2, directionUnitVector, geometricHeightM, footprintShape,
+        sourceAreaM2, target.equirectGrid));
+
+  // 累積する前に、触れたセルの値と格子外質量を退避する。共有の累積器には以前の
+  // イベントの質量が混ざっているので、前後差を取ってこのイベントぶんを照合する。
+  // 退避は footprint が触れたセルぶんだけで、全格子の複写は要らない。
+  const layerCount = target.massGrid.layerEdgesM.length - 1;
+  const cellCount = target.massGrid.cells.length;
+  const touchedCount = touchedCellIndices.length;
+  const beforeLiquidKgM2 = new Float64Array(layerCount * touchedCount);
+  const beforeIceKgM2 = new Float64Array(layerCount * touchedCount);
+  for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
+    const layerBase = layerIndex * cellCount;
+    const slotBase = layerIndex * touchedCount;
+    for (const [slot, cellIndex] of touchedCellIndices.entries()) {
+      beforeLiquidKgM2[slotBase + slot] = accumulation.liquidKgM2[layerBase + cellIndex]!;
+      beforeIceKgM2[slotBase + slot] = accumulation.iceKgM2[layerBase + cellIndex]!;
+    }
+  }
+  const unassignedLiquidBeforeKg = accumulation.unassignedMassKgByPhase.liquid;
+  const unassignedIceBeforeKg = accumulation.unassignedMassKgByPhase.ice;
+
+  accumulateCloudParcelMass(parcels, accumulation);
+
+  const deposited = {
+    liquid: accumulation.unassignedMassKgByPhase.liquid - unassignedLiquidBeforeKg,
+    ice: accumulation.unassignedMassKgByPhase.ice - unassignedIceBeforeKg,
+  };
+  // 前後差の分解能は累積値の絶対丸めで決まる — 読み戻した値の大きさから差分の
+  // 誤差上界を積み、照合の許容へ足す。微小なイベントほど相対精度は取れないが、
+  // 供給全体の末尾照合が積算ずれを捕える。
+  let roundingAllowanceKg = Number.EPSILON * (
+    Math.abs(accumulation.unassignedMassKgByPhase.liquid) + Math.abs(unassignedLiquidBeforeKg)
+    + Math.abs(accumulation.unassignedMassKgByPhase.ice) + Math.abs(unassignedIceBeforeKg));
+  for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
+    const layerBase = layerIndex * cellCount;
+    const slotBase = layerIndex * touchedCount;
+    for (const [slot, cellIndex] of touchedCellIndices.entries()) {
+      const areaM2 = target.massGrid.cells[cellIndex]!.areaM2;
+      const liquidAfter = accumulation.liquidKgM2[layerBase + cellIndex]!;
+      const iceAfter = accumulation.iceKgM2[layerBase + cellIndex]!;
+      deposited.liquid += (liquidAfter - beforeLiquidKgM2[slotBase + slot]!) * areaM2;
+      deposited.ice += (iceAfter - beforeIceKgM2[slotBase + slot]!) * areaM2;
+      roundingAllowanceKg += Number.EPSILON * Math.max(
+        Math.abs(liquidAfter), Math.abs(iceAfter)) * areaM2;
+    }
+  }
+  validateDepositedMassBalance(
+    expectedMaterialMassByPhaseKg(material, sourceAreaM2), deposited, roundingAllowanceKg);
 }
