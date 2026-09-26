@@ -70,6 +70,7 @@ declare global {
       capture: () => Promise<string>;
       show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
+      setDisplayTime: (displayTime: number) => void;
       cloudFieldGeneration: () => number;
       probeGlobalField: (displayTimeSeconds: number) => Promise<GlobalCloudFieldProbe>;
       cloudLocalFieldBakeStats: () => unknown;
@@ -288,6 +289,7 @@ async function init(): Promise<void> {
     capture: () => view.capture(),
     show: (name) => { view.show(name); syncAngles(); },
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
+    setDisplayTime: (displayTime) => view.setDisplayTime(displayTime),
     cloudFieldGeneration: () => view.cloudFieldGeneration,
     probeGlobalField: (displayTimeSeconds) => probeGlobalCloudField(displayTimeSeconds),
     cloudLocalFieldBakeStats: () => view.cloudLocalFieldBakeStats,

@@ -7,6 +7,7 @@ import type { CockpitInstance, ShipModuleInstance } from './ship-module-instance
 
 // 健全な武装モジュール1基ぶんの機能点(いずれも assembly 座標 [m])と姿勢。
 export interface WeaponPorts {
+  readonly moduleId: string;
   readonly muzzles: readonly Vec3[];
   readonly ejectionPort: Vec3;
   readonly linkExitPort: Vec3;
@@ -17,6 +18,7 @@ export interface WeaponPorts {
 // 1つの砲口と、それを持つモジュールの排出点一式。
 export interface WeaponMuzzle {
   readonly position: Vec3;
+  readonly muzzleIndex: number;
   readonly weapon: WeaponPorts;
 }
 
@@ -82,6 +84,7 @@ export class ShipCapabilities {
       if (definition === null || transform === null) continue;
       const at = (point: Vec3): Vec3 => add(transform.position, qRotate(transform.rotation, point));
       result.push({
+        moduleId: weapon.id,
         muzzles: definition.muzzles.map(at),
         ejectionPort: at(definition.ejectionPort),
         linkExitPort: at(definition.linkExitPort),
@@ -94,7 +97,7 @@ export class ShipCapabilities {
   // 全武装モジュールの砲口を、排出元のモジュール情報つきで列挙する。
   public weaponMuzzles(): readonly WeaponMuzzle[] {
     return this.weaponPorts().flatMap(
-      weapon => weapon.muzzles.map(position => ({ position, weapon })),
+      weapon => weapon.muzzles.map((position, muzzleIndex) => ({ position, muzzleIndex, weapon })),
     );
   }
 

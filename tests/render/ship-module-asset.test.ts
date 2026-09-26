@@ -200,6 +200,28 @@ export function register(): void {
     assert.equal(ancestor, gimbal, 'thrust is not a descendant of engine-gimbal');
   });
 
+  test('ship module asset: 砲身束は後座する機関部に保持され、固定砲架と独立する', async () => {
+    await loadShipModuleModels();
+    const module = buildShipModuleModel('weapon-gatling');
+    const recoil = semanticAnchor(module, 'gun-recoil:0');
+    const rotor = semanticAnchor(module, 'barrel-rotor:0');
+    const feed = semanticAnchor(module, 'feed-drum');
+    assert.ok(recoil !== null && rotor !== null && feed !== null);
+    const travel: unknown = recoil.userData.recoilTravel;
+    assert.ok(typeof travel === 'number' && travel > 0 && Number.isFinite(travel));
+    assert.equal(rotor.parent, recoil);
+    const rotorBefore = transformInModule(module, rotor).position;
+    const feedBefore = transformInModule(module, feed).position;
+    // 砲身束と機関部が同じ距離だけ後退し、固定の給弾ドラムは取付位置を保つ。
+    recoil.position.z -= travel;
+    const rotorAfter = transformInModule(module, rotor).position;
+    assert.ok(Math.abs(rotorBefore.z - rotorAfter.z - travel) < 1e-6);
+    assert.ok(transformInModule(module, feed).position.distanceTo(feedBefore) < 1e-6);
+    assert.ok(Math.abs(rotorAfter.x - rotorBefore.x) < 1e-6);
+    assert.ok(Math.abs(rotorAfter.y - rotorBefore.y) < 1e-6);
+    disposeOwnedRenderResources(module);
+  });
+
   test('ship module asset: 機関砲は砲口ごとに砲口の軸上で機軸まわりに回る砲身束を持つ', async () => {
     await loadShipModuleModels();
     const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
