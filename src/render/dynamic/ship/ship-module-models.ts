@@ -1,7 +1,8 @@
 // ship-modules.glb の template から module 境界ごとの表示インスタンスを作る。
 // production ではバイナリを asset/resource として別ファイルへ出し、起動時に一度だけ取得する。
 // tsc/node テストではローカルファイルを直接読み込み、同じ同期 factory を使える。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
+import type * as NodeFs from 'node:fs';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import shipModulesSource from '../../../assets/models/ship-modules.glb';
 import { makeThermallyEmissive } from '../../thermal-emissive';
@@ -14,7 +15,7 @@ async function fetchGlbArrayBuffer(): Promise<ArrayBuffer> {
   if (typeof window === 'undefined' && typeof process !== 'undefined' && process.versions?.node != null) {
     // Node.js テスト環境: new Function を用いて webpack の静的解析を完全に回避
     const dynamicImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<unknown>;
-    const fs = (await dynamicImport('node:fs')) as typeof import('node:fs');
+    const fs = (await dynamicImport('node:fs')) as typeof NodeFs;
     const buf = fs.readFileSync(shipModulesSource);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
