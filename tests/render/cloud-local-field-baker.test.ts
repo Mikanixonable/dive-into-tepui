@@ -3,7 +3,8 @@ import { test } from '../harness';
 import { v3 } from '../../src/math/vec3';
 import { CloudLocalFieldBaker } from '../../src/render/cloud/cloud-local-field-baker';
 import type {
-  CloudLocalFieldFrame, CloudLocalFieldSupply, CloudLocalFieldSupplyResult,
+  CloudLocalFieldFrame, CloudLocalFieldJob, CloudLocalFieldSupply,
+  CloudLocalFieldSupplyResult,
 } from '../../src/render/cloud/cloud-local-field';
 import type { CloudOpticalVolumeData } from '../../src/render/cloud/cloud-optical-volume';
 
@@ -51,6 +52,27 @@ function countingSupply(fail = false): { readonly supply: CloudLocalFieldSupply;
       },
     },
   };
+}
+
+// steps 回の step で done になるジョブ。throwAt を渡すとその回の step が例外を投げる。
+function scriptedJob(steps: number, throwAt = -1): CloudLocalFieldJob & {
+  steps: number;
+  cancels: number;
+} {
+  const job = {
+    steps: 0,
+    cancels: 0,
+    step: (): { readonly done: boolean } => {
+      job.steps += 1;
+      if (job.steps === throwAt) throw new RangeError('job failed');
+      return { done: job.steps >= steps };
+    },
+    get result(): CloudLocalFieldSupplyResult | null {
+      return job.steps >= steps ? { frame: frame(), data: data() } : null;
+    },
+    cancel: (): void => { job.cancels += 1; },
+  };
+  return job;
 }
 
 export function register(): void {
@@ -227,6 +249,111 @@ export function register(): void {
     assert.throws(() => baker.maybeRebuild(0, v3(1, 1, 0)), RangeError);
     assert.throws(() => baker.maybeRebuild(Number.NaN, CENTER), RangeError);
     assert.throws(() => baker.maybeRebuild(0, v3(0, 0, 0)), RangeError);
+    baker.dispose();
+  });
+
+  test('cloud local field baker: 分割ジョブは呼び出しごとに進み、完了で場を差し替える', () => {
+    let started = 0;
+    const jobs: ReturnType<typeof scriptedJob>[] = [];
+    const supply: CloudLocalFieldSupply = {
+      derive: () => { throw new Error('startJob のある供給源では同期導出を使わない'); },
+      startJob: () => {
+        started += 1;
+        const job = scriptedJob(3);
+        jobs.push(job);
+        return job;
+      },
+    };
+    const baker = new CloudLocalFieldBaker(supply, 300, 0.01);
+    // 1ジョブ3駆動。完了まで binding は立たず、試行記録にも積まれない。
+    baker.maybeRebuild(0, CENTER);
+    assert.equal(baker.binding, null);
+    baker.maybeRebuild(1, CENTER);
+    assert.equal(baker.binding, null);
+    assert.equal(baker.bakeStats.attempts.length, 0);
+    baker.maybeRebuild(2, CENTER);
+    assert.ok(baker.binding !== null);
+    assert.equal(started, 1);
+    assert.equal(jobs[0]!.steps, 3);
+    const attempt = baker.bakeStats.attempts.at(-1)!;
+    assert.equal(attempt.stepCount, 3);
+    assert.equal(attempt.rebuilt, true);
+    assert.equal(attempt.displayTimeSeconds, 0);
+    baker.dispose();
+  });
+
+  test('cloud local field baker: ジョブの駆動中は現行の場を使い続ける', () => {
+    let started = 0;
+    const supply: CloudLocalFieldSupply = {
+      derive: () => null,
+      startJob: () => {
+        started += 1;
+        return scriptedJob(started === 1 ? 1 : 2);
+      },
+    };
+    const baker = new CloudLocalFieldBaker(supply, 300, 0.01);
+    baker.maybeRebuild(0, CENTER);
+    const first = baker.binding!;
+    // 2回掛かる再焼の1駆動目では、まだ前の場が有効。
+    baker.maybeRebuild(300, CENTER);
+    assert.equal(baker.binding, first);
+    baker.maybeRebuild(301, CENTER);
+    assert.notEqual(baker.binding, first);
+    baker.dispose();
+  });
+
+  test('cloud local field baker: ジョブの途中失敗は畳んで現行場を保ち、次で新しいジョブへ再試行する', () => {
+    let started = 0;
+    const jobs: ReturnType<typeof scriptedJob>[] = [];
+    const supply: CloudLocalFieldSupply = {
+      derive: () => null,
+      startJob: () => {
+        started += 1;
+        const job = started === 2 ? scriptedJob(3, 2) : scriptedJob(2);
+        jobs.push(job);
+        return job;
+      },
+    };
+    const baker = new CloudLocalFieldBaker(supply, 300, 0.01);
+    baker.maybeRebuild(0, CENTER);
+    baker.maybeRebuild(1, CENTER);
+    const first = baker.binding!;
+    // 2個目のジョブは2駆動目で失敗する。1駆動目は進み、失敗後も現行場を保つ。
+    baker.maybeRebuild(300, CENTER);
+    assert.equal(baker.binding, first);
+    baker.maybeRebuild(301, CENTER);
+    assert.equal(baker.binding, first);
+    assert.equal(jobs[1]!.cancels, 1);
+    const failed = baker.bakeStats.attempts.at(-1)!;
+    assert.equal(failed.rebuilt, false);
+    assert.equal(failed.stepCount, 2);
+    assert.equal(baker.bakeStats.generation, 1);
+    // 失敗試行は間隔を解消しないので、次の呼び出しは新しいジョブを始める。
+    baker.maybeRebuild(302, CENTER);
+    baker.maybeRebuild(303, CENTER);
+    assert.equal(started, 3);
+    assert.notEqual(baker.binding, first);
+    baker.dispose();
+  });
+
+  test('cloud local field baker: startJob の例外は失敗試行として記録する', () => {
+    let started = 0;
+    const supply: CloudLocalFieldSupply = {
+      derive: () => null,
+      startJob: () => {
+        started += 1;
+        throw new RangeError('cannot start');
+      },
+    };
+    const baker = new CloudLocalFieldBaker(supply);
+    baker.maybeRebuild(0, CENTER);
+    const attempt = baker.bakeStats.attempts.at(-1)!;
+    assert.equal(attempt.rebuilt, false);
+    assert.equal(attempt.stepCount, 0);
+    assert.equal(baker.binding, null);
+    baker.maybeRebuild(1, CENTER);
+    assert.equal(started, 2);
+    assert.equal(baker.bakeStats.attempts.length, 2);
     baker.dispose();
   });
 }

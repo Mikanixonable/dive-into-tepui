@@ -197,4 +197,42 @@ export function register(): void {
     assert.ok(north > 0);
     assert.ok(north > south);
   });
+
+  test('cloud local field supply: 分割ジョブは同期導出と同じ場を返す', () => {
+    const supply = new ConvectiveCloudLocalFieldSupply(() => makeEnvironment(), 7, RADIUS_M);
+    const direct = supply.derive(7_200, CENTER);
+    const job = supply.startJob(7_200, CENTER);
+    while (!job.step(5).done) {
+      assert.equal(job.result, null); // 完成まで途中経過は出さない
+    }
+    const stepped = job.result;
+    assert.ok(direct !== null && stepped !== null);
+    assert.deepEqual(stepped.frame, direct.frame);
+    assert.deepEqual(stepped.data.liquidExtinctionPerM, direct.data.liquidExtinctionPerM);
+    assert.deepEqual(stepped.data.iceExtinctionPerM, direct.data.iceExtinctionPerM);
+  });
+
+  test('cloud local field supply: ゼロ予算でも反復すれば完成する', () => {
+    const supply = new ConvectiveCloudLocalFieldSupply(() => makeEnvironment(), 7, RADIUS_M);
+    const job = supply.startJob(7_200, CENTER);
+    // 1回の駆動では終わらない — セルは81件あり、1駆動1単位より先へ進めない。
+    assert.equal(job.step(0).done, false);
+    let steps = 1;
+    while (!job.step(0).done) {
+      steps += 1;
+      if (steps > 1_000) throw new Error('job did not finish');
+    }
+    assert.ok(steps > 1);
+    assert.ok(job.result !== null);
+    // 完成以後の駆動は done のまま。
+    assert.equal(job.step(0).done, true);
+  });
+
+  test('cloud local field supply: ジョブは非有限・非単位の入力を RangeError で始めない', () => {
+    const supply = new ConvectiveCloudLocalFieldSupply(() => makeEnvironment(), 7, RADIUS_M);
+    assert.throws(() => supply.startJob(Number.NaN, CENTER), RangeError);
+    assert.throws(() => supply.startJob(7_200, v3(1, 1, 0)), RangeError);
+    const job = supply.startJob(7_200, CENTER);
+    assert.throws(() => job.step(Number.NaN), RangeError);
+  });
 }
