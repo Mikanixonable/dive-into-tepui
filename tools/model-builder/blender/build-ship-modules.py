@@ -1294,9 +1294,12 @@ def build_weapon(name):
         ], segments=24, closed=True)
         transform_bm(bm_barrel, Matrix.Translation((mx + cluster_r * math.cos(a), my + cluster_r * math.sin(a), 0.0)))
         add_mesh_obj(f"barrel_{b}", bm_barrel, mats.gun_steel, parent=rotor)
-    for clamp_name, zc, thickness in (("mid", breech_z + 0.30, 0.05), ("muzzle", mz - 0.10, 0.06)):
+    # 長砲身を束ねる締め板は間隔を開けて3枚置く
+    for i, (zc, thickness) in enumerate(((breech_z + (mz - breech_z) * 0.35, 0.05),
+                                        (breech_z + (mz - breech_z) * 0.70, 0.05),
+                                        (mz - 0.10, 0.06))):
         bm_clamp = make_cylinder(0.80, 0.80, thickness, z_center=zc, segments=48)
-        add_mesh_obj(f"barrel_{clamp_name}_clamp", transform_bm(bm_clamp, Matrix.Translation((mx, my, 0.0))), mats.hull_dark, parent=rotor)
+        add_mesh_obj(f"barrel_clamp_{i}", transform_bm(bm_clamp, Matrix.Translation((mx, my, 0.0))), mats.hull_dark, parent=rotor)
 
     # 4. 給弾塔(デリンカー): feed_port を中心に甲板をまたぐ装甲ハウジング。
     #    +X 面の開口へベルトが差し込まれ、中で弾だけが天面のシュートへ分かれて機関部へ入る。
