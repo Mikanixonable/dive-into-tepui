@@ -1,12 +1,13 @@
 // モジュール船のケース。基地へ寄港した船と建造ゴースト、分離の前後を、ゲーム本体と同じ組み立てと
 // モデルで組む。
 import * as THREE from 'three/webgpu';
-import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
+import { Q_IDENTITY, qFromAxisAngle, qMul, qRotate } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { deployablePanelPoses } from '../../src/physics/ship-panel-layout';
+import { SOLAR_PANEL_COLUMNS, SOLAR_PANEL_COUNT, SOLAR_PANEL_LENGTH } from '../../src/physics/player-shape';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
@@ -159,18 +160,30 @@ function mainTank(): LabCase {
 // 太陽電池翼の表面と裏面を、同じ照明・縮尺で並べて観察する。
 function solarPanelSurface(): LabCase {
   const panels = deployablePanelPoses('solar_panel', 0, 1);
-  const panelCenterZ = panels.reduce((sum, panel) => sum + panel.center.z, 0) / panels.length;
+  const panelCenter = panels.reduce((sum, panel) => v3(
+    sum.x + panel.center.x / panels.length,
+    sum.y + panel.center.y / panels.length,
+    sum.z + panel.center.z / panels.length,
+  ), v3());
+  const mountRotation = qFromAxisAngle(v3(0, 1, 0), Math.PI / 2);
+  const backRotation = qMul(mountRotation, qFromAxisAngle(v3(1, 0, 0), Math.PI));
+  const lateralSpan = SOLAR_PANEL_LENGTH * (SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS);
+  const displayCenterOffset = lateralSpan / 2 + 0.65;
+  const frontCenter = qRotate(mountRotation, panelCenter);
+  const backCenter = qRotate(backRotation, panelCenter);
+  const frontPosition = v3(-displayCenterOffset - frontCenter.x, -frontCenter.y, -25 - frontCenter.z);
+  const backPosition = v3(displayCenterOffset - backCenter.x, -backCenter.y, -25 - backCenter.z);
   const front = new ShipModuleView({
     id: 'solar-front', modelId: 'solar-panel-standard', kind: 'solar_panel',
     hp: 100, maxHp: 100, deployed: 1, burning: null,
-    transform: { position: v3(-1.8, 0, -25), rotation: Q_IDENTITY },
+    transform: { position: frontPosition, rotation: mountRotation },
   }, buildShipModuleModel);
   const back = new ShipModuleView({
     id: 'solar-back', modelId: 'solar-panel-standard', kind: 'solar_panel',
     hp: 100, maxHp: 100, deployed: 1, burning: null,
     transform: {
-      position: v3(1.8, 0, -25 + panelCenterZ * 2),
-      rotation: qFromAxisAngle(v3(1, 0, 0), Math.PI),
+      position: backPosition,
+      rotation: backRotation,
     },
   }, buildShipModuleModel);
   return {
@@ -179,11 +192,11 @@ function solarPanelSurface(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -25),
     shots: {
       'solar-panel-array-closeup': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.4,
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: 0.0,
           sunAzimuthDeg: 3, sunElevationDeg: 75 },
       },
       'solar-panel-array-detail': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.7,
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.3,
           sunAzimuthDeg: 3, sunElevationDeg: 75 },
       },
     },

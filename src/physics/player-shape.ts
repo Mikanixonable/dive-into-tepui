@@ -5,14 +5,14 @@
 // 放熱板の蛇腹の折り数(1モジュールあたり)。
 export const RADIATOR_FOLD_COUNT = 6;
 
-// 太陽電池の剛体パネル数と翼幅方向の列数(1モジュールあたり)。
+// 太陽電池の剛体パネル数と船体前後方向の列数(1モジュールあたり)。
 export const SOLAR_PANEL_COUNT = 6;
-export const SOLAR_PANEL_COLUMNS = 3;
+export const SOLAR_PANEL_COLUMNS = 2;
 
-// 太陽電池1パネルの展開方向と翼幅方向の寸法 [m]。
-// 3 列×2 段で展開翼長 1.5 m × 翼幅 2.4 m の翼になる。
-export const SOLAR_PANEL_WIDTH = 0.75;
-export const SOLAR_PANEL_SPAN = 2.4;
+// 太陽電池1パネルの長さ(モジュール局所 Z)と、列全体の幅(局所 X) [m]。
+// 2 列×3 枚で前後 3.0 m × 左右 4.8 m の翼になる。
+export const SOLAR_PANEL_LENGTH = 1.6;
+export const SOLAR_PANEL_SPAN = 3.0;
 
 // 太陽電池1パネルの厚み [m]。
 export const SOLAR_PANEL_THICKNESS = 0.06;

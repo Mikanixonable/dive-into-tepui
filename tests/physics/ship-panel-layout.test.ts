@@ -10,7 +10,7 @@ import {
   SOLAR_PANEL_COLUMNS,
   SOLAR_PANEL_SPAN,
   SOLAR_PANEL_THICKNESS,
-  SOLAR_PANEL_WIDTH,
+  SOLAR_PANEL_LENGTH,
 } from '../../src/physics/player-shape';
 import {
   deployablePanelPoses, type DeployablePanelKind, type PanelPose,
@@ -18,7 +18,7 @@ import {
 import { test } from '../harness';
 
 const SHAPES: Readonly<Record<DeployablePanelKind, { length: number; thickness: number; normal: Vec3 }>> = {
-  solar_panel: { length: SOLAR_PANEL_WIDTH, thickness: SOLAR_PANEL_THICKNESS, normal: v3(0, 1, 0) },
+  solar_panel: { length: SOLAR_PANEL_LENGTH, thickness: SOLAR_PANEL_THICKNESS, normal: v3(0, 1, 0) },
   radiator: { length: RADIATOR_SEGMENT_LENGTH, thickness: RADIATOR_PANEL_THICKNESS, normal: v3(1, 0, 0) },
 };
 
@@ -80,7 +80,7 @@ export function register(): void {
     });
   }
 
-  test('ship panel layout: 太陽電池は展開しきると法線 +Y の3列×2段になる', () => {
+  test('ship panel layout: 太陽電池は展開しきると法線 +Y の2列×3枚になる', () => {
     const poses = deployablePanelPoses('solar_panel', 0.5, 1);
     assert.equal(poses.length, SOLAR_PANEL_COUNT);
     const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
@@ -91,7 +91,7 @@ export function register(): void {
       const row = index % rows;
       const x = (column - (SOLAR_PANEL_COLUMNS - 1) / 2) * tileSpan;
       assert.ok(Math.abs(pose.center.x - x) < 1e-9);
-      assert.ok(Math.abs(pose.center.z - (0.5 + (row + 0.5) * SOLAR_PANEL_WIDTH)) < 1e-9);
+      assert.ok(Math.abs(pose.center.z - (0.5 + (row + 0.5) * SOLAR_PANEL_LENGTH)) < 1e-9);
     });
   });
 }

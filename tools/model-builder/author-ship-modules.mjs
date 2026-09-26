@@ -47,7 +47,7 @@ function buildManifest() {
       deployables: {
         solar_panel: {
           count: shape.SOLAR_PANEL_COUNT, columns: shape.SOLAR_PANEL_COLUMNS,
-          length: shape.SOLAR_PANEL_WIDTH, span: shape.SOLAR_PANEL_SPAN,
+          length: shape.SOLAR_PANEL_LENGTH, span: shape.SOLAR_PANEL_SPAN,
           thickness: shape.SOLAR_PANEL_THICKNESS, normalAxis: [0, 1, 0],
         },
         radiator: {

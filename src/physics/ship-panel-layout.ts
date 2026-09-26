@@ -1,5 +1,5 @@
 // 展開部品(太陽電池・ラジエーター)のパネル列を、取付面のヒンジから連なる蛇腹の剛体鎖として置く。
-// 太陽電池は3列それぞれが2枚の鎖を持ち、ラジエーターは1列の鎖を持つ。
+// 太陽電池は2列それぞれが3枚の鎖を持ち、ラジエーターは1列の鎖を持つ。
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_FOLD_COUNT,
@@ -9,7 +9,7 @@ import {
   SOLAR_PANEL_COLUMNS,
   SOLAR_PANEL_SPAN,
   SOLAR_PANEL_THICKNESS,
-  SOLAR_PANEL_WIDTH,
+  SOLAR_PANEL_LENGTH,
 } from './player-shape';
 import { qFromAxisAngle, qMul, type Quat } from '../math/quat';
 import { v3, type Vec3 } from '../math/vec3';
@@ -45,7 +45,7 @@ const RADIATOR_PANEL_ROLL = qFromAxisAngle(v3(0, 0, 1), Math.PI / 2);
 const CHAINS: Readonly<Record<DeployablePanelKind, ChainShape>> = {
   solar_panel: {
     count: SOLAR_PANEL_COUNT,
-    length: SOLAR_PANEL_WIDTH,
+    length: SOLAR_PANEL_LENGTH,
     thickness: SOLAR_PANEL_THICKNESS,
     foldAxis: v3(1, 0, 0),
     normalAxis: v3(0, 1, 0),
@@ -77,7 +77,7 @@ export function deployablePanelPoses(
   return chainPoses(shape, faceZ, deployed);
 }
 
-// 太陽電池は3列それぞれに2枚の剛体鎖を持つ。列ごとに同じ展開姿勢を取り、全体を3×2へ並べる。
+// 太陽電池は2列それぞれに3枚の剛体鎖を持つ。列ごとに同じ展開姿勢を取り、全体を2×3へ並べる。
 function solarPanelPoses(shape: ChainShape, faceZ: number, deployed: number): readonly PanelPose[] {
   const rows = shape.count / SOLAR_PANEL_COLUMNS;
   const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;

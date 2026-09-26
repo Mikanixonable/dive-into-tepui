@@ -16,7 +16,7 @@ import {
   SOLAR_PANEL_COUNT,
   SOLAR_PANEL_COLUMNS,
   SOLAR_PANEL_SPAN,
-  SOLAR_PANEL_WIDTH,
+  SOLAR_PANEL_LENGTH,
 } from '../../src/physics/player-shape';
 import { test } from '../harness';
 
@@ -300,7 +300,7 @@ export function register(): void {
         count: SOLAR_PANEL_COUNT,
         width: SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS * 0.96, // 1枚の翼幅 (X)
         height: 0.06, // 厚み (Y)
-        depth: SOLAR_PANEL_WIDTH * 0.96, // 展開長 (Z)
+        depth: SOLAR_PANEL_LENGTH * 0.96, // 展開方向 (Z)。側面取付後は船体左右軸に沿う。
       },
     ] as const;
     for (const spec of expected) {
