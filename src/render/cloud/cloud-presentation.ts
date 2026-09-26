@@ -13,6 +13,7 @@ import type { GraphicsSettingsData } from '../graphics-settings';
 import type { CloudFieldDetailTileBinding } from './cloud-field-sampler';
 import type { CloudLocalFieldBinding } from './cloud-local-field';
 import type { CloudLocalFieldBaker, CloudLocalFieldBakeStats } from './cloud-local-field-baker';
+import type { MeteorologicalFieldStats } from './meteorological-cloud-field';
 
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
@@ -33,6 +34,13 @@ export interface CloudFieldSource {
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
   prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
+  // フレーム外の隙間から、ペンディング中の供給ジョブを timeBudgetMs [ms] ぶん前倒しで
+  // 進める。分割ジョブを持つ供給源が実装する。
+  drivePendingJobs?(
+    renderer: WebGPURenderer, displayTime: number, timeBudgetMs: number, gpu?: GpuTimingSink,
+  ): void;
+  // 供給ジョブの計測口。分割ジョブを持つ供給源が実装する。
+  readonly fieldStats?: MeteorologicalFieldStats;
   // 保持している GPU 資源を解放する。
   dispose(): void;
 }
@@ -99,6 +107,11 @@ export class CloudPresentation {
   // 局所場の焼き器の計測口。焼き器が無いなら null。
   public get localFieldBakeStats(): CloudLocalFieldBakeStats | null {
     return this.localFieldBaker?.bakeStats ?? null;
+  }
+
+  // 生成場の供給ジョブの計測口。
+  public get globalFieldStats(): MeteorologicalFieldStats | null {
+    return this.sources.generated.fieldStats ?? null;
   }
 
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
@@ -186,6 +199,17 @@ export class CloudPresentation {
     // 局所場の中心は直近の aimFrom が置いた cap の中心 — 最大1フレーム遅れだが許容する。
     const center = this.cap.placement.center;
     this.localFieldBaker?.maybeRebuild(displayTime, v3(center.x, center.y, center.z));
+  }
+
+  // ロード中などフレーム外の隙間から、選んでいる出どころの供給ジョブと局所場の再焼を
+  // timeBudgetMs [ms] ぶん前倒しで進める。分割ジョブを持たない出どころでは何もしない。
+  public drivePendingJobs(
+    renderer: WebGPURenderer, displayTime: number, timeBudgetMs: number, gpu?: GpuTimingSink,
+  ): void {
+    this.source.drivePendingJobs?.(renderer, displayTime, timeBudgetMs, gpu);
+    const center = this.cap.placement.center;
+    this.localFieldBaker?.drivePendingJobs(
+      displayTime, v3(center.x, center.y, center.z), timeBudgetMs);
   }
 
   // 不透明表面と、選べる雲場の出どころ・局所場の焼き器をすべて解放する。
