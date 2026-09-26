@@ -233,11 +233,14 @@ function labOf(devTools) {
   };
 }
 
-// いまの絵を、落ち着きを待って線形 sRGB(画素ごとに 3 つ)で撮る。
-export async function captureLinear(lab) {
-  const { channels, data } = decodePng(await lab.capturePng());
+// 撮った絵の PNG を線形 sRGB(画素ごとに 3 つ)へ。
+export function linearOfPng(png) {
+  const { channels, data } = decodePng(png);
   return linearOfSrgbCodes(data, channels, WIDTH * HEIGHT);
 }
+
+// いまの絵を、落ち着きを待って線形 sRGB で撮る。
+export const captureLinear = async (lab) => linearOfPng(await lab.capturePng());
 
 // .render-lab/ を開いた Chrome の上で work(lab) を走らせる。
 export async function withLab(work) {
