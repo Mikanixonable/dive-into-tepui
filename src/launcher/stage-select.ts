@@ -4,6 +4,7 @@ import { StageDebug } from '../game/stages/stage-debug';
 import { TabBar } from '../hud/widgets';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
+import { TITLE_LOGOTYPE_HTML } from '../hud/title-logotype';
 import { injectStageSelectStyle } from './stage-select-style';
 import { StartEpochForm } from './start-epoch-form';
 import { TITLE_SCENE_PATTERNS, TitleScene } from './title-scene';
@@ -189,10 +190,8 @@ function createScreenElement(): HTMLElement {
     '</div>' +
     '<div class="ss-hero">' +
     '<p class="ss-eyebrow">Sortie select · 公暦20115年</p>' +
-    '<h1 id="ss-title" class="ss-logotype" aria-label="Dive into Tepui">' +
-    '<span class="ss-logo-line">Dive<sup class="ss-logo-ornament">∴03</sup></span>' +
-    '<span class="ss-logo-line">into<sub class="ss-logo-ornament">ECI₀</sub></span>' +
-    '<span class="ss-logo-line">Tepui<sup class="ss-logo-ornament">Ω⁺</sup></span>' +
+    '<h1 id="ss-title" class="title-logotype" aria-label="Dive into Tepui">' +
+    TITLE_LOGOTYPE_HTML +
     '</h1>' +
     '<div class="ss-subrow"><div>' +
     '<p class="ss-sub" data-flavor-primary></p>' +

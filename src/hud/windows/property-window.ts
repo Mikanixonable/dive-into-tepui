@@ -216,16 +216,16 @@ export class PropertyWindow<A extends string = string> {
   // クリップボタンで状態が反転したことを通知する。
   public onClipChange: ((clipped: boolean) => void) | null = null;
 
-  // clientX/clientY を左上角として root の子として開き、content の内容で組み立てる。
+  // clientX/clientY を左上角として開き、content の内容で組み立てる。
   // unclippedWindowGroup を渡すと、クリップされていない間だけ OverlayManager 上の排他グループに
   // 参加する一時ウィンドウになる(ESC・外側クリックで自動的に閉じ、同グループの他方も追い出す)。
   // 省略すると ESC・外側クリックのどちらでも閉じない常設ウィンドウになる。
   public constructor(
-    root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>,
+    clientX: number, clientY: number, content: PropertyWindowContent<A>,
     overlayManager: OverlayManager, unclippedWindowGroup?: string,
   ) {
     injectOnce('property-window', STYLE);
-    this.win = new DraggableWindow(root, clientX, clientY, {
+    this.win = new DraggableWindow(clientX, clientY, {
       title: content.title, subtitle: content.subtitle, icon: content.icon, unclippedWindowGroup,
     }, overlayManager);
     this.win.onClose = () => this.onClose?.();

@@ -46,9 +46,9 @@ export class TextPromptOverlay implements OverlayHandle {
   private readonly cancel: Button;
 
   // モーダルの骨組みへ入力欄と確定/取消ボタンを組み込む。
-  public constructor(root: HTMLElement, overlayManager: OverlayManager) {
+  public constructor(overlayManager: OverlayManager) {
     injectOnce('text-prompt-overlay', STYLE);
-    this.shell = new ModalOverlay<string | null>(root, overlayManager, 'text-prompt-overlay');
+    this.shell = new ModalOverlay<string | null>(overlayManager, 'text-prompt-overlay');
     this.input = new ValueInput({ type: 'text' }, (value) => this.shell.resolve(value), () => this.shell.resolve(null));
     this.shell.body.appendChild(this.input.element);
     this.confirm = new Button('OK', () => this.shell.resolve(this.input.element.value), undefined, 'primary');

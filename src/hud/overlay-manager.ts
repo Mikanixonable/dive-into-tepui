@@ -2,8 +2,23 @@
 // 重なり順(最前面が誰か)・ESC の配送先・項目ショートカットの配送先・外側クリックでの
 // 自動クローズ・入力ゲート・ゲームの一時停止を一元的に決める。登録されたオーバーレイどうしの
 // 論理的な順序を持ち、外側クリックの判定は1箇所のキャプチャリスナに集約する。
+//
+// オーバーレイの表面の DOM の置き場は、この台帳へ渡す spec.kind から一意に決まる
+// (KIND_LAYER)。呼び出し側は自分で #hud の層を選んで要素を置かない — 開くときに
+// 要素を渡し、台帳が kind の層へ移す。
+import { createHudElement } from './hud-element';
+import type { OverlayLayers, OverlayLayerName } from './overlay-layer';
 
-type OverlayKind = 'modal' | 'popup' | 'window';
+// 表面を持つオーバーレイの種別。'mode' は表面を持たない論理登録(建造モードのように
+// ESC・一時停止・入力の取り合いだけを要するもの)で、openMode からだけ積まれる。
+export type OverlayKind = 'modal' | 'popup' | 'window' | 'mode';
+type SurfaceKind = Exclude<OverlayKind, 'mode'>;
+
+// kind と #hud 直下の物理層の対応。モーダルはゲート層の遮蔽幕より上でなければならない
+// (さもないと開いたモーダル自身の操作まで遮蔽される)ので、最上位の system 層に置く。
+const KIND_LAYER: Readonly<Record<SurfaceKind, OverlayLayerName>> = {
+  window: 'window', popup: 'popup', modal: 'system',
+};
 
 // クリップされていない一時ウィンドウ(プロパティウィンドウ・軌道分析パネル)が同時に高々1枚しか
 // 開かないための排他グループ名。クリップ状態の遷移ごとの出し入れは各ウィンドウ自身が持つ。
@@ -24,6 +39,12 @@ export interface OverlaySpec {
   readonly exclusiveGroup?: string;
 }
 
+// 表面を持つオーバーレイの宣言。open() はこの形だけを受け、kind から置き場を導く。
+export type SurfaceSpec = Omit<OverlaySpec, 'kind'> & { readonly kind: SurfaceKind };
+
+// 表面を持たない登録の宣言。openMode() が受ける。kind は 'mode' に固定される。
+export type ModeSpec = Omit<OverlaySpec, 'kind'>;
+
 // 各オーバーレイの持ち主が実装する、開閉判定に使うハンドル。閉じる実処理・対象要素の判定は
 // 実装側が持つ。
 export interface OverlayHandle {
@@ -36,6 +57,8 @@ export interface OverlayHandle {
 
 interface OverlayEntry {
   readonly id: string;
+  // 表面を持つオーバーレイの要素。'mode' 登録は null。
+  readonly element: HTMLElement | null;
   readonly handle: OverlayHandle;
   spec: OverlaySpec;
 }
@@ -49,13 +72,15 @@ function isTextInputFocused(): boolean {
 
 export class OverlayManager {
   private readonly stack: OverlayEntry[] = [];
+  private readonly shield: HTMLElement;
   private wasModalOpen = false;
 
-  // shield は入力ゲート中に背景の 3D 入力を遮る全画面要素、gateLayer はその親レイヤ
-  // (#hud-layer-gate)。
-  public constructor(private readonly shield: HTMLElement, private readonly gateLayer: HTMLElement) {
-    shield.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
-    shield.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+  // layers は #hud 直下の重なり順レイヤ一式。遮蔽幕(shield)は入力ゲート用の全画面要素で、
+  // ゲート層へここで1枚だけ作る。
+  public constructor(private readonly layers: OverlayLayers) {
+    this.shield = createHudElement('div', 'hud-overlay-shield', layers.gate);
+    this.shield.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
+    this.shield.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
     // 外側クリックを捕捉する唯一のキャプチャリスナ。登録済みの各オーバーレイの contains/close を
     // 通じて判定・応答する。
     document.addEventListener('pointerdown', this.handleOutsidePointerDown, true);
@@ -78,12 +103,34 @@ export class OverlayManager {
     return this.stack.some((e) => e.spec.pausesGame === true);
   }
 
-  // handle を id で開く/最前面へ動かす。既に同じ id があれば一旦外してから積み直す。
+  // handle を id で開く/最前面へ動かす。element は spec.kind の層へ移され、その層の最前面になる —
+  // 呼び出し側は層を選ばない。既に同じ id があれば一旦外してから積み直す。
   // 排他グループが指定されていれば、同グループの他の開いているオーバーレイを先に閉じる。
-  public open(id: string, handle: OverlayHandle, spec: OverlaySpec): void {
+  public open(id: string, element: HTMLElement, handle: OverlayHandle, spec: SurfaceSpec): void {
+    this.layers[KIND_LAYER[spec.kind]].appendChild(element);
     this.close(id);
     this.evictGroup(id, spec.exclusiveGroup);
-    this.stack.push({ id, handle, spec });
+    this.stack.push({ id, element, handle, spec });
+    this.sync();
+  }
+
+  // 表面を持たない論理登録(建造モードのような、常設の操作面を別の置き場に持つ状態)を積む。
+  // kind は 'mode' になり、DOM の置き場はここでは扱わない。
+  public openMode(id: string, handle: OverlayHandle, spec: ModeSpec): void {
+    this.close(id);
+    this.evictGroup(id, spec.exclusiveGroup);
+    this.stack.push({ id, element: null, handle, spec: { ...spec, kind: 'mode' } });
+    this.sync();
+  }
+
+  // 登録中のオーバーレイを最前面へ動かす。層内の DOM 順と台帳の順はここで一緒に更新される
+  // ので、ESC・ショートカット配送の「最前面」と見えている最前面がずれない。
+  public raise(id: string): void {
+    const index = this.stack.findIndex((e) => e.id === id);
+    if (index === -1) return;
+    const entry = this.stack.splice(index, 1)[0]!;
+    this.stack.push(entry);
+    entry.element?.parentElement?.appendChild(entry.element);
     this.sync();
   }
 
@@ -157,7 +204,7 @@ export class OverlayManager {
     );
     const gateInput = this.isInputGated();
     this.shield.style.pointerEvents = gateInput ? 'auto' : 'none';
-    this.gateLayer.classList.toggle('hud-overlay-gate', gateInput);
+    this.layers.gate.classList.toggle('hud-overlay-gate', gateInput);
     document.body.classList.toggle('hud-overlay-modal-open', modalOpen);
     document.body.classList.toggle('hud-overlay-dim-background', dimBackground);
     // 「開いている限り毎回」ではなく、モーダルが無→有に変わった瞬間だけ発火する — 2枚開いた

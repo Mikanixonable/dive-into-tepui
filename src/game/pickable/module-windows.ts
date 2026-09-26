@@ -104,7 +104,7 @@ export class ModuleWindows implements ModuleWindowOpener {
       return;
     }
     const win = new PropertyWindow<ModuleAction>(
-      this.hud.layers.window, clientX, clientY, this.content(ship, module), this.hud.overlayManager,
+      clientX, clientY, this.content(ship, module), this.hud.overlayManager,
     );
     const entry: ModuleWindowEntry = { win, ship, moduleId, candidates: null };
     this.windows.set(key, entry);

@@ -1,5 +1,5 @@
 // マップビューの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
-import { FrameRole, frameRoleOf } from '../../../physics/frame';
+import { type FrameRole, frameRoleOf } from '../../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../../../hud/widgets';
@@ -19,10 +19,9 @@ export class TrajectoryFramePanel {
   private readonly stateCenter: HTMLElement;
   private readonly stateRotation: HTMLElement;
 
-  // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
+  // panelRoot はパネル自身の設置先。
   public constructor(
     panelRoot: HTMLElement,
-    popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
     private readonly predictPanel: Pick<PredictPanelSource, 'frame' | 'followCamera'>,
     private readonly commands: Pick<
@@ -56,7 +55,7 @@ export class TrajectoryFramePanel {
 
     // 描く線は必ずどこかの座標系に焼き込まれるので「どこにも固定しない」状態が無く、
     // 太陽系空間への固定はプルダウンの恒星そのものにあたる。
-    this.planCenterZone = new AnchorZone(popupRoot, '基準', celestialBodies, null, overlayManager);
+    this.planCenterZone = new AnchorZone('基準', celestialBodies, null, overlayManager);
     this.planCenterZone.element.classList.add('hud-frame-origin-zone');
     this.planCenterZone.onSelect = (id) => {
       if (id === null) return;
