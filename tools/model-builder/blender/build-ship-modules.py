@@ -77,12 +77,16 @@ class MaterialLibrary:
         self.pipe = create_pbr_material("mat_pipe", (0.88, 0.90, 0.93, 1.0), roughness=0.30, metallic=1.0)
         # 配管の締め具・受け金具
         self.clamp = create_pbr_material("mat_clamp", (0.35, 0.40, 0.45, 1.0), roughness=0.35, metallic=1.0)
-        # 再生冷却される燃焼室とベル(焼けた耐熱合金)
-        self.nozzle_bell = create_pbr_material("mat_nozzle_bell", (0.32, 0.28, 0.26, 1.0), roughness=0.42, metallic=1.0)
-        # 冷却管・束ね帯
+        # 主ノズルのチタニウムグレーの外殻と、段差を拾う明るいリブ
+        self.nozzle_bell = create_pbr_material("mat_nozzle_bell", (0.38, 0.41, 0.45, 1.0), roughness=0.34, metallic=0.95)
         self.nozzle_rib = create_pbr_material("mat_nozzle_rib", (0.52, 0.48, 0.44, 1.0), roughness=0.35, metallic=1.0)
-        # 放射冷却のノズル延長部(ケイ化物被覆のニオブ合金)
-        self.nozzle_extension = create_pbr_material("mat_nozzle_extension", (0.13, 0.12, 0.13, 1.0), roughness=0.55, metallic=0.8)
+        self.nozzle_titanium_rib = create_pbr_material("mat_nozzle_titanium_rib", (0.64, 0.67, 0.71, 1.0), roughness=0.30, metallic=1.0)
+        self.nozzle_extension = create_pbr_material("mat_nozzle_extension", (0.34, 0.37, 0.41, 1.0), roughness=0.38, metallic=0.95)
+        # 電装ケース、セラミック被覆部品、ハーネス
+        self.electronics_brown = create_pbr_material("mat_electronics_brown", (0.34, 0.20, 0.12, 1.0), roughness=0.52, metallic=0.35)
+        self.electronics_white = create_pbr_material("mat_electronics_white", (0.82, 0.84, 0.85, 1.0), roughness=0.48, metallic=0.25)
+        self.cable = create_pbr_material("mat_cable", (0.10, 0.12, 0.15, 1.0), roughness=0.72, metallic=0.15)
+        self.rivet = create_pbr_material("mat_rivet", (0.57, 0.61, 0.65, 1.0), roughness=0.32, metallic=1.0)
         # 石英の窓
         self.window = create_pbr_material("mat_window", (0.04, 0.10, 0.18, 1.0), roughness=0.10, metallic=0.0)
         # チタンの窓枠
@@ -304,6 +308,20 @@ def make_sphere(radius, center=(0, 0, 0), u_seg=24, v_seg=16):
         radius=radius,
         matrix=Matrix.Translation(Vector(center))
     )
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return shade_by_angle(bm, 180.0)
+
+def make_spheres(centers, radius, u_seg=8, v_seg=6):
+    """同径の小球を1つのメッシュへまとめる。リベットなど反復する小部品向け。"""
+    bm = bmesh.new()
+    for center in centers:
+        bmesh.ops.create_uvsphere(
+            bm,
+            u_segments=u_seg,
+            v_segments=v_seg,
+            radius=radius,
+            matrix=Matrix.Translation(Vector(center)),
+        )
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return shade_by_angle(bm, 180.0)
 
@@ -806,7 +824,7 @@ def build_tank_rcs(length, name):
 # ----------------------------------------------------------------------
 # 4. Main Thruster (thruster-standard: length 1.0m, diameter 6.0m, radius 3.0m)
 # ----------------------------------------------------------------------
-# 燃焼圧・推力係数・膨張比は実寸の推定値。LOX/ケロシンのガス発生器サイクルを想定し、
+# 燃焼圧・推力係数・膨張比は実寸の推定値。液体水素/液体酸素のガス発生器サイクルを想定し、
 # Pc = 7 MPa、真空の Cf ≈ 1.8 とすると、カタログの F = 400 kN で At = F/(Cf·Pc) ≈ 0.0317 m²(Dt ≈ 0.20 m)。
 # 真空用の ε = 80 で De ≈ 1.80 m、長さは 15° 円錐の 80% の Rao ベルで Ln ≈ 2.4 m、θn ≈ 33°、θe ≈ 9°。
 MAIN_ENGINE_CHAMBER_PRESSURE = 7.0e6  # [Pa]
@@ -816,6 +834,184 @@ MAIN_ENGINE_EXPANSION_RATIO = 80.0
 MAIN_ENGINE_CONTRACTION_RATIO = 6.0
 # 再生冷却から放射冷却の延長部へ切り替える面積比
 MAIN_ENGINE_EXTENSION_RATIO = 20.0
+
+def aft_dome_surface_z(radial, radius, dome_depth, ring_bottom):
+    """ドーム隔壁の輪郭上で、半径 radial における軸方向位置を返す。"""
+    return ring_bottom - dome_depth * math.sqrt(max(0.0, 1.0 - (radial / radius) ** 2))
+
+def add_thruster_aft_details(radius, ring_bottom, dome_depth, mats):
+    """タンク後部の補強板・リベットと、面に沿う三方向の配管を加える。"""
+    def surface_z(radial):
+        return aft_dome_surface_z(radial, radius, dome_depth, ring_bottom)
+
+    rivets = []
+    for k in range(10):
+        a = k * math.pi / 5.0
+        for center_r in (1.20, 1.98):
+            radial_slope = dome_depth * center_r / (radius ** 2 * math.sqrt(1.0 - (center_r / radius) ** 2))
+            plate = make_box(
+                0.58, 0.17, 0.065,
+                center=(center_r * math.cos(a), center_r * math.sin(a), surface_z(center_r) - 0.045),
+                rot_euler=(0.0, -math.atan(radial_slope), a),
+            )
+            add_mesh_obj(f"aft_dome_reinforcement_{k}_{center_r:.2f}", plate, mats.hull_dark)
+            for radial_offset in (-0.21, 0.21):
+                for tangential_offset in (-0.047, 0.047):
+                    rivet_r = center_r + radial_offset
+                    x = rivet_r * math.cos(a) - tangential_offset * math.sin(a)
+                    y = rivet_r * math.sin(a) + tangential_offset * math.cos(a)
+                    rivets.append((x, y, surface_z(math.hypot(x, y)) - 0.082))
+    add_mesh_obj("aft_dome_panel_rivets", make_spheres(rivets, 0.024), mats.rivet)
+
+    # 隔壁の外周を巡る分配管と、複数系統を結ぶ放射・斜め配管
+    for ring_index, ring_r in enumerate((0.92, 1.48, 1.88)):
+        ring = make_torus(ring_r, 0.027, surface_z(ring_r) - 0.055, major_seg=64, minor_seg=8)
+        add_mesh_obj(f"aft_plumbing_ring_{ring_index}", ring, mats.pipe)
+    for k in range(10):
+        a = k * math.pi / 5.0 + math.pi / 10.0
+        points = [
+            Vector((radial * math.cos(a), radial * math.sin(a), surface_z(radial) - 0.060))
+            for radial in (0.62, 0.94, 1.28, 1.62, 1.96, 2.28)
+        ]
+        add_mesh_obj(f"aft_plumbing_radial_{k}", make_pipe(points, radius=0.022, segments=8), mats.pipe)
+    for k in range(6):
+        start_a = k * math.pi / 3.0
+        twist = math.pi / 8.0 if k % 2 == 0 else -math.pi / 8.0
+        points = []
+        for step in range(8):
+            t = step / 7.0
+            radial = 0.78 + 1.48 * t
+            a = start_a + twist * t
+            points.append(Vector((radial * math.cos(a), radial * math.sin(a), surface_z(radial) - 0.072)))
+        add_mesh_obj(f"aft_plumbing_diagonal_{k}", make_pipe(points, radius=0.020, segments=8), mats.pipe)
+
+def add_powerhead_pipe_cluster(mats, gimbal, pump_top):
+    """ノズル基部から下へ続く支持ケージと、束になった主/二次配管を組む。"""
+    ring_zs = (pump_top - 0.28, pump_top - 0.76, pump_top - 1.27)
+    # 外周の支持環・レール・斜材
+    for ring_index, ring_z in enumerate(ring_zs):
+        ring = make_torus(1.24, 0.035, ring_z, major_seg=48, minor_seg=8)
+        add_mesh_obj(f"powerhead_support_ring_{ring_index}", ring, mats.hull_dark, parent=gimbal)
+    for k in range(10):
+        a = k * math.tau / 10.0
+        top = Vector((1.22 * math.cos(a), 1.22 * math.sin(a), ring_zs[0]))
+        bottom = Vector((1.22 * math.cos(a), 1.22 * math.sin(a), ring_zs[2]))
+        rail = make_strut(top, bottom, 0.026, segments=8)
+        add_mesh_obj(f"powerhead_support_rail_{k}", rail, mats.truss, parent=gimbal)
+    for ring_index in range(2):
+        z0, z1 = ring_zs[ring_index:ring_index + 2]
+        for k in range(5):
+            a0 = k * math.tau / 5.0 + ring_index * math.pi / 5.0
+            a1 = a0 + math.pi / 5.0
+            start = Vector((1.22 * math.cos(a0), 1.22 * math.sin(a0), z0))
+            end = Vector((1.22 * math.cos(a1), 1.22 * math.sin(a1), z1))
+            brace = make_strut(start, end, 0.022, segments=8)
+            add_mesh_obj(f"powerhead_cross_brace_{ring_index}_{k}", brace, mats.clamp, parent=gimbal)
+
+    # ポンプ側から下部マニフォールドへ向かう二次配管と大径の往復管
+    line_paths = []
+    for side in (-1.0, 1.0):
+        for branch in range(6):
+            fraction = branch / 5.0
+            z_top = pump_top - 0.18 - 0.045 * branch
+            z_mid = pump_top - 0.58 - 0.065 * branch
+            z_low = pump_top - 1.06 - 0.045 * (5 - branch)
+            z_end = pump_top - 1.30 - 0.035 * branch
+            line_paths.append([
+                Vector((side * (0.62 + 0.09 * fraction), -0.36 + 0.62 * fraction, z_top)),
+                Vector((side * (0.96 + 0.18 * math.sin(fraction * math.pi)), -0.55 + 0.88 * fraction, z_mid)),
+                Vector((side * (1.04 + 0.12 * math.cos(fraction * math.pi)), -0.72 + 1.02 * fraction, z_low)),
+                Vector((side * (0.58 + 0.16 * fraction), 0.18 - 0.70 * fraction, z_end)),
+            ])
+        heavy_run = [
+            Vector((side * 0.82, 0.48, pump_top - 0.20)),
+            Vector((side * 1.24, 0.42, pump_top - 0.43)),
+            Vector((side * 1.42, -0.02, pump_top - 0.72)),
+            Vector((side * 1.34, -0.52, pump_top - 1.02)),
+            Vector((side * 0.94, -0.62, pump_top - 1.24)),
+        ]
+        add_mesh_obj(
+            f"powerhead_primary_feed_loop_{side:+.0f}",
+            make_pipe(round_corners(heavy_run, 0.12, steps=5), radius=0.060, segments=14),
+            mats.pipe,
+            parent=gimbal,
+        )
+    add_mesh_obj(
+        "powerhead_secondary_line_bundle",
+        make_pipes(line_paths, radius=0.019, segments=8, bend_radius=0.075),
+        mats.pipe,
+        parent=gimbal,
+    )
+
+def add_lh2_side_feedline(mats, ftp_x, pump_y, pump_top):
+    """上側タンクから側面を下る液体水素ラインと、その防護スリーブを組む。"""
+    points = [
+        Vector((0.30, 2.76, -0.28)),
+        Vector((0.42, 2.72, -0.62)),
+        Vector((0.68, 2.52, -1.02)),
+        Vector((0.88, 2.08, -1.48)),
+        Vector((0.88, 1.54, -1.92)),
+        Vector((ftp_x, 0.28, pump_top - 0.10)),
+        Vector((ftp_x, pump_y + 0.06, pump_top - 0.04)),
+    ]
+    line = make_pipe(round_corners(points, 0.12, steps=5), radius=0.072, segments=12)
+    add_mesh_obj("lh2_side_feedline", line, mats.pipe)
+    # 上側タンク側のラインを覆う断熱防護スリーブと固定環
+    shield_points = points[:5]
+    shield = make_pipe(round_corners(shield_points, 0.12, steps=5), radius=0.145, segments=16)
+    add_mesh_obj("lh2_feedline_protective_sleeve", shield, mats.mli_white)
+    for clip_index in range(1, len(shield_points) - 1):
+        point = shield_points[clip_index]
+        tangent = (shield_points[clip_index + 1] - shield_points[clip_index - 1]).normalized()
+        clip = make_torus(0.148, 0.018, major_seg=24, minor_seg=8)
+        orient = tangent.to_track_quat('Z', 'Y').to_matrix().to_4x4()
+        transform_bm(clip, Matrix.Translation(point) @ orient)
+        add_mesh_obj(f"lh2_sleeve_clamp_{clip_index}", clip, mats.clamp)
+
+def add_powerhead_electronics(mats, gimbal, collar_r, pump_top):
+    """ブラウンの制御機器、白い円筒機器、取付座と支持された電装ハーネスを載せる。"""
+    # 制御・計装パッケージと取付座
+    add_mesh_obj("engine_control_pkg_mount", make_box(0.40, 0.26, 0.06, center=(0.0, collar_r + 0.12, pump_top - 0.04)), mats.clamp, parent=gimbal)
+    add_mesh_obj("engine_control_pkg", make_box(0.34, 0.20, 0.26, center=(0.0, collar_r + 0.12, pump_top - 0.16)), mats.electronics_brown, parent=gimbal)
+    add_mesh_obj("instrumentation_pkg_mount", make_box(0.30, 0.24, 0.06, center=(-0.30, collar_r + 0.10, pump_top - 0.20)), mats.clamp, parent=gimbal)
+    add_mesh_obj("instrumentation_pkg", make_box(0.24, 0.18, 0.20, center=(-0.30, collar_r + 0.10, pump_top - 0.30)), mats.electronics_brown, parent=gimbal)
+    add_mesh_obj("instrumentation_harness", make_pipe(round_corners([
+        Vector((-0.30, collar_r + 0.10, pump_top - 0.20)), Vector((-0.10, collar_r + 0.10, pump_top - 0.06)),
+        Vector((0.0, collar_r + 0.20, pump_top - 0.10)),
+    ], 0.05), radius=0.018, segments=8), mats.cable, parent=gimbal)
+
+    # 外周の円筒電装と、その取付座
+    device_points = []
+    for i, (side, y, z_offset) in enumerate((
+        (-1.0, -0.62, 0.70), (-1.0, 0.62, 0.92),
+        (1.0, -0.62, 0.88), (1.0, 0.62, 0.68),
+    )):
+        x = side * 1.07
+        z = pump_top - z_offset
+        saddle = make_box(0.24, 0.22, 0.055, center=(x, y, z + 0.13), rot_euler=(0.0, 0.0, side * 0.18))
+        add_mesh_obj(f"powerhead_device_saddle_{i}", saddle, mats.clamp, parent=gimbal)
+        cylinder = make_cylinder(0.072, 0.072, 0.19, z_center=z)
+        transform_bm(cylinder, Matrix.Translation((x, y, 0.0)))
+        add_mesh_obj(f"powerhead_white_device_{i}", cylinder, mats.electronics_white, parent=gimbal)
+        brown_box = make_box(0.20, 0.15, 0.14, center=(side * 1.02, y + side * 0.18, z - 0.24))
+        add_mesh_obj(f"powerhead_brown_box_{i}", brown_box, mats.electronics_brown, parent=gimbal)
+        device_points.append(Vector((x, y, z - 0.08)))
+    # 各機器から支持ケージに沿って降りる電装ハーネス
+    wire_paths = []
+    for i, point in enumerate(device_points):
+        side = -1.0 if i < 2 else 1.0
+        wire_paths.append([
+            point,
+            point + Vector((side * 0.08, -0.12, -0.18)),
+            Vector((side * 0.72, -0.12, pump_top - 1.12)),
+            Vector((side * 0.42, 0.16, pump_top - 1.32)),
+        ])
+    add_mesh_obj(
+        "powerhead_electrical_harness_bundle",
+        make_pipes(wire_paths, radius=0.010, segments=6, bend_radius=0.055),
+        mats.cable,
+        parent=gimbal,
+    )
 
 def build_thruster():
     reset_scene()
@@ -848,8 +1044,10 @@ def build_thruster():
         add_mesh_obj(f"dome_rib_{k}", make_pipe(rib_pts, radius=0.035, segments=8), mats.truss)
     add_mesh_obj("dome_equator_ring", make_torus(1.90, 0.04, -0.66, major_seg=64, minor_seg=10), mats.truss)
 
+    add_thruster_aft_details(radius, ring_bottom, dome_depth, mats)
+
     # 3. 推力構造: ドーム頂の推力受け(基座)からエンジンマウント環へ荷重を受け渡す
-    mount_r, mount_z = 0.58, -0.95
+    mount_r, mount_z = 0.58, -1.35
     add_mesh_obj("engine_mount_ring", make_torus(mount_r, 0.045, mount_z, major_seg=40, minor_seg=10), mats.hull_dark)
     add_mesh_obj("thrust_pedestal", make_lathe([
         (0.60, mount_z + 0.02), (0.60, mount_z + 0.06), (0.72, mount_z + 0.10), (0.74, mount_z + 0.07),
@@ -870,7 +1068,11 @@ def build_thruster():
         span = outrigger_r - mount_r
         center = direction * (mount_r + span / 2) + Vector((0, 0, mount_z - 0.02))
         add_mesh_obj(f"outrigger_{k}", make_box(span + 0.08, 0.09, 0.10, center=center, rot_euler=(0, 0, a)), mats.hull_dark)
-        dome_node = Vector((1.35 * math.cos(a), 1.35 * math.sin(a), mount_z + 0.18))
+        dome_node_r = 1.35
+        dome_node = Vector((
+            dome_node_r * math.cos(a), dome_node_r * math.sin(a),
+            aft_dome_surface_z(dome_node_r, radius, dome_depth, ring_bottom),
+        ))
         add_mesh_obj(f"outrigger_strut_{k}", make_strut(dome_node, tip, 0.035), mats.truss)
         add_mesh_obj(f"outrigger_node_{k}", make_sphere(0.07, center=tip, u_seg=12, v_seg=8), mats.clamp)
 
@@ -893,7 +1095,8 @@ def build_thruster():
         add_mesh_obj(f"helium_line_{k}", make_pipe(round_corners(gas_line, 0.10), radius=0.025, segments=10), mats.pipe)
     manifold = make_cylinder(0.15, 0.15, 0.14, z_center=-0.72, segments=20)
     add_mesh_obj("helium_manifold", transform_bm(manifold, Matrix.Translation((0, 1.90, 0))), mats.clamp)
-    add_mesh_obj("bay_avionics_box", make_box(0.70, 0.36, 0.22, center=(0.0, 2.30, -0.50)), mats.hull_dark)
+    add_mesh_obj("bay_avionics_mount", make_box(0.82, 0.46, 0.06, center=(0.0, 2.30, -0.64)), mats.clamp)
+    add_mesh_obj("bay_avionics_box", make_box(0.70, 0.36, 0.22, center=(0.0, 2.30, -0.50)), mats.electronics_brown)
 
     # 5. ジンバルの支点。静止側の二股金具が十字軸を挟み、その下は全てジンバルと一緒に振れる
     pivot_z = mount_z - 0.18
@@ -929,13 +1132,25 @@ def build_thruster():
     add_mesh_obj("nozzle_extension", make_shell_lathe(extension, extension_wall, segments=64), mats.nozzle_extension, parent=gimbal)
     add_anchor("thrust", (0.0, 0.0, exit_z - pivot_z), (0, 0, -1), parent=gimbal)
 
+    # ノズル延長部の周回補強リブ
+    for i in range(22):
+        t = i / 21.0
+        z = extension[0][1] + (extension[-1][1] - extension[0][1]) * t
+        ring_r = profile_radius_at(extension, z) + extension_wall + 0.025
+        add_mesh_obj(
+            f"nozzle_circumferential_rib_{i}",
+            make_torus(ring_r, 0.022, z, major_seg=64, minor_seg=8),
+            mats.nozzle_titanium_rib,
+            parent=gimbal,
+        )
+
     # 7. 再生冷却管の束と束ね帯、延長部との継ぎ目の冷却剤入口マニフォールド、延長部の補強環
     tube_r = 0.009
     tube_path = [(r + regen_wall + tube_r * 0.6, z) for r, z in regen[1:]]
     for i in range(40):
         ang = i * 2.0 * math.pi / 40
         pts = [Vector((r * math.cos(ang), r * math.sin(ang), z)) for r, z in tube_path]
-        add_mesh_obj(f"cooling_tube_{i}", make_pipe(pts, radius=tube_r, segments=6), mats.nozzle_rib, parent=gimbal)
+        add_mesh_obj(f"cooling_tube_{i}", make_pipe(pts, radius=tube_r, segments=6), mats.nozzle_titanium_rib, parent=gimbal)
     for frac in (0.15, 0.55, 0.8):
         rb, zb = regen[int(frac * (len(regen) - 1))]
         add_mesh_obj(f"nozzle_band_{frac}", make_torus(rb + regen_wall + 0.02, 0.014, zb, major_seg=48, minor_seg=8), mats.clamp, parent=gimbal)
@@ -977,6 +1192,9 @@ def build_thruster():
     #    ガス発生器・スタートタンク・制御/計装箱をその周りへ載せる。全てジンバル側
     ftp_x, otp_x, pump_y = collar_r + 0.40, -(collar_r + 0.40), -0.05
     pump_top = chamber_top - 0.02
+    add_powerhead_pipe_cluster(mats, gimbal, pump_top)
+    add_lh2_side_feedline(mats, ftp_x, pump_y, pump_top)
+
     # 燃料ターボポンプ(誘導段・ボリュート・ギアボックス・タービンの積層)
     ftp_at = Matrix.Translation((ftp_x, pump_y, 0.0))
     for part, bm, mat in (
@@ -1012,13 +1230,7 @@ def build_thruster():
     add_mesh_obj("start_tank_line", make_pipe(round_corners([
         st_center + Vector((0, 0, -0.22)), Vector((0.45, 0.05, pump_top - 0.45)), Vector((ftp_x + 0.05, pump_y + 0.05, pump_top - 0.60)),
     ], 0.05), radius=0.02, segments=10), mats.pipe, parent=gimbal)
-    # 制御パッケージと飛行計装(J-2 の electric control package / instrumentation)
-    add_mesh_obj("engine_control_pkg", make_box(0.34, 0.20, 0.26, center=(0.0, collar_r + 0.12, pump_top - 0.16)), mats.hull_dark, parent=gimbal)
-    add_mesh_obj("instrumentation_pkg", make_box(0.24, 0.18, 0.20, center=(-0.30, collar_r + 0.10, pump_top - 0.30)), mats.hull_dark, parent=gimbal)
-    add_mesh_obj("instrumentation_harness", make_pipe(round_corners([
-        Vector((-0.30, collar_r + 0.10, pump_top - 0.20)), Vector((-0.10, collar_r + 0.10, pump_top - 0.06)),
-        Vector((0.0, collar_r + 0.20, pump_top - 0.10)),
-    ], 0.05), radius=0.018, segments=8), mats.pipe, parent=gimbal)
+    add_powerhead_electronics(mats, gimbal, collar_r, pump_top)
 
     # 10. タービン排気系: 両タービンの排気を合流させ、ベル外面を下って排気マニフォールドへ。
     #     途中の偏平箱は J-2 の熱交換器(加圧ガスとヘリウムを加温する)
