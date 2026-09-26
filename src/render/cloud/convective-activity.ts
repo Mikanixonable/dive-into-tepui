@@ -1,0 +1,75 @@
+// 対流がどれだけ活発かを表す場。低周波のノイズが持つ気団の対流のしやすさと、その場の上昇流と、
+// 寒気の流入と、陸らしさと、気団の折り目の帯(前線・雨帯)から出る — 冷たい空気が暖かい面の上を
+// 渡るところは不安定で、雲は粒へ千切れる。いちばん穏やかな空でも床(ACTIVITY_MIN)に留まる —
+// 一枚板として覆う空にも細胞の起伏がある。値はすべて見えのための調整値。
+import * as THREE from 'three/webgpu';
+import { clamp, vec4 } from 'three/tsl';
+import { BakedField } from '../baked-field';
+import { GPU_PASS } from '../gpu-timings';
+import { CirculatingNoise } from './circulating-noise';
+import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../gpu-timings';
+import type { NoiseOctave } from './circulating-noise';
+import type { Circulation } from './circulation';
+import type { FieldProjection } from '../field-projection';
+import type { FloatNode, Vec3Node } from '../tsl-types';
+
+// 気団ノイズのオクターブ定義表と、その振幅。雲塊の配置(800 km)より粗い所から始めて、粒(48 km)の
+// 約 5 倍の 250 km まで届かせる — 活発度が粒ごとではなく粒の群れごとに振れるので、粒は数百 km の
+// 塊に群れ、塊のあいだは静かな隙間として晴れる(`DEVELOP/SPEC/RENDERING.md`「粒は数百キロの
+// 塊に群れ、塊のあいだは晴れる」)。積雲の粒(48〜24 km)には届かせない — 粒より細かい所で
+// 活発度が振れると、粒が消え残るのではなく 1 つ 1 つが薄まる。振れ幅は、気団だけでは活発度が
+// 中間の階調に留まる高さに取る — 板と粒へ振り切るのは上昇流と気団の流入で、ノイズはその中間領域の
+// 分布を担う。
+const INSTABILITY_NOISE: readonly NoiseOctave[] = [
+  { frequency: 6.4, amplitude: 1 }, // 1000 km
+  { frequency: 12.8, amplitude: 0.65 }, // 500 km
+  { frequency: 25, amplitude: 0.65 }, // 250 km
+];
+const INSTABILITY_AMPLITUDE = 1.0;
+// 上昇流の対流活発度に対する伝達利得 [per m/s] と、無上昇流時の基準活発度。並の低気圧(0.02 m/s)で
+// 気団に依らず 1 へ、高気圧の吹きおろし(−0.02 m/s)で床へ届く。
+const LIFT_ACTIVITY = 25;
+const ACTIVITY_BASE = 0.5;
+// 寒気流入の対流活発度に対する寄与ゲイン [per rad] と、活発度の下限値。並の寒気の吹き出し(−0.26 rad)で
+// 活発度が半分ぶん上がる高さに取る。
+const COLD_ACTIVITY = 1.9;
+const ACTIVITY_MIN = 0.3;
+// 陸の上で上がる分。日射で温まる地面の上は不安定で、雲は板ではなく粒になる。
+const LAND_ACTIVITY = 0.3;
+// 前線帯・雨帯が対流活発度へ寄与する伝達利得。帯の中の対流は活発で、粒立った塔が列をなす —
+// 帯が飽和した所で活発度が半分ぶん上がる高さに取る。
+const BAND_ACTIVITY = 0.5;
+
+export class ConvectiveActivity {
+  private readonly instability: BakedField;
+
+  // circulation は気団を運ぶ流れ、projection は写しの持ち方。
+  public constructor(circulation: Circulation, projection: FieldProjection) {
+    const noise = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle);
+    this.instability = new BakedField(
+      'instability', THREE.RedFormat, projection,
+      (direction) => vec4(noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1),
+      GPU_PASS.cloudBake);
+  }
+
+  // いまの時刻の気団を写しへ焼く。at() のグラフを描く前に呼ぶ。
+  public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
+    this.instability.render(renderer, gpu);
+  }
+
+  // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、陸らしさ land
+  // 0..1、気団の折り目の帯の強さ band 0..1 における対流の活発度(ACTIVITY_MIN..1)。
+  public at(
+    direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, band: FloatNode,
+  ): FloatNode {
+    return clamp(
+      this.instability.at(direction).r.add(lift.mul(LIFT_ACTIVITY)).sub(warmth.mul(COLD_ACTIVITY))
+        .add(land.mul(LAND_ACTIVITY)).add(band.mul(BAND_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
+  }
+
+  // 保持している GPU 資源を解放する。
+  public dispose(): void {
+    this.instability.dispose();
+  }
+}

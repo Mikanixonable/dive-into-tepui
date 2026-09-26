@@ -3,7 +3,7 @@ import { test } from '../harness';
 import { v3 } from '../../src/math/vec3';
 import { earthGlobalEnvironmentAt } from '../../src/game/cloud/earth-global-environment';
 import { earthConvectiveCloudEnvironmentAt } from '../../src/game/cloud/earth-cloud-environment';
-import { weatherAtCpu } from '../../src/game/cloud/weather-model-cpu';
+import { weatherAtCpu } from '../../src/render/cloud/weather-model';
 import { lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
 import type { EarthClimateSource } from '../../src/game/cloud/earth-cloud-environment';
 import type { Vec3 } from '../../src/math/vec3';

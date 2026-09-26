@@ -29,9 +29,6 @@ declare global {
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
-      // 生成雲場の世代と、いまの時刻の場・診断場が焼き終わったか。撮影駆動が待ち合わせに使う。
-      cloudGeneration: () => number;
-      cloudSettled: () => boolean;
       measureFixture: (id: MeteorologicalCaseId) => {
         readonly fixture: MeteorologicalCaseId;
         readonly measurements: typeof METEOROLOGICAL_CASES[MeteorologicalCaseId]['measurements'];
@@ -202,8 +199,6 @@ async function init(): Promise<void> {
       setCapRadius(radius);
     },
     capture: () => canvas.capture(),
-    cloudGeneration: () => canvas.cloudGeneration,
-    cloudSettled: () => canvas.cloudSettled,
     measureFixture: (id) => {
       return {
         fixture: id,

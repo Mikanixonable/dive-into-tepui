@@ -460,19 +460,8 @@ equirect 堆積 adapter のイベントごとの O(格子) 検証をバッチ化
 
 検証: game 433・render 451 件、境界検査 pass。
 
-2026-09-27 の追記(第八報)。Step 7 の撤去を進め、旧 GPU 天気モデル経路を消した。
-
-CPU 評価関数を `src/game/cloud/` へ移設した — `weather-model-cpu.ts`(天気モデルの数値版・気団遡及・釣り合い風・ロスビー・気候勾配)、`cyclones-cpu.ts`(渦の谷・眼・かなとこの数値版+`eyeStrengthOf`)、`cloud-parcel-transport.ts`(輸送積分)。撤去で循環 import になる風則は `wind-law-cpu.ts` へ葉モジュールとして分離した。
-
-旧経路の13ファイルを撤去: `weather-model.ts`・`weather-transport.ts`(`ADVECTION_PERIOD`)・`air-mass.ts`・`wind-law.ts`・`cyclones.ts`・`rossby-wave.ts`・`convective-activity.ts`・`circulating-noise.ts`・`circulation.ts`・`condensation.ts`(`TRANSLUCENT_LIMIT`)・`generated-cloud-field.ts`・`cloud-field.ts`(旧経路専用ベイク器)+ `tools/cloud-lab/cloud-rendering-explainer.html`。`earthGeneratedCloudField` 関数も消去。湿度利得9定数・`eyeStrengthOf`・`coreCrossingAngle`・`FRICTION_RATE` は game 層へ移設した。消した全シンボルへの参照は src/tests/tools で 0 件。
-
-**残す判断**: `cloud-optics-node.ts` の `columnOpticalDepthFromCoverageNode`(被覆→光学深の一対一写像)は生存の影・大気経路が使用中。消すには消費側の再設計が要るため今回は残置し、別計画へ回す。
-
-lab は新 source(`MeteorologicalCloudField`)へ切替済み。全球面は `EquirectProjection(512)` で写し、旧 WeatherModel の中間場ビューは新経路の診断口(気圧・風・環境攪乱・層別質量)へ差し替えた。23 ビューが実データで動くことをスモーク確認。
-
-検証: game 441・render 443 件、境界検査 pass(許可リスト空のまま)。
-
-残る未達は、`cloud-optics-node.ts` の被覆→光学深写像(消費側再設計が要る)、被覆率の気候学的な粗さ(新経路 ~25% vs 実写 ~49%)、娘イベントの製品配線、季節・日変化の環境変調、全球場の解像度依存、CPU 天気評価で未畳みの循環ノイズ・移流湿度、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形の下流応答、上層で直接生成する巻雲、観測評価(C7/C8 の量的許容域は未固定)である。| --- | --- |
+残る未達は、被覆率の気候学的な粗さ(新経路 25% vs 実写 ~49% — 桁は合うが global coverage の calibration は製品判断)、娘イベントの製品配線、季節・日変化の環境変調、全球場の解像度依存(供給質量が格子で変わる surrogate)、CPU 移植の天気評価で未畳みの循環ノイズ・移流湿度、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形の下流応答、上層で直接生成する巻雲、観測評価(C7/C8 の量的許容域は未固定)、Step 7 の旧経路撤去である。| 変更場所 | 変更内容 |
+| --- | --- |
 | src/render/cloud/cloud-field-sample.ts、src/render/cloud/cloud-field.ts | 独立した層・相・高度・光学量の契約と格納方式の確定 |
 | src/render/cloud/generated-cloud-field.ts | イベント評価と場のキャッシュ、必要領域、生成世代 |
 | src/render/cloud/cloud-detail-field.ts（新規）、src/render/cloud/cloud-cap.ts | 局所タイルまたは解析的 detail、風上領域、footprint と LOD |

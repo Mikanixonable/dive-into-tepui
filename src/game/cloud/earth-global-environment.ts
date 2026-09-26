@@ -6,18 +6,22 @@
 
 import { createCloudEnvironmentProfile } from './cloud-environment';
 import { earthEnvironmentInputAt } from './earth-cloud-environment';
-import { weatherAtCpu } from './weather-model-cpu';
+import {
+  ANVIL_HUMIDITY, BAND_HUMIDITY, SURFACE_EYE_DRYNESS, SURFACE_LIFT_HUMIDITY,
+  SURFACE_SUBSIDENCE_DRYING, UPPER_EYE_DRYNESS, UPPER_LIFT_HUMIDITY,
+  UPPER_SUBSIDENCE_DRYING, WARM_HUMIDITY, weatherAtCpu,
+} from '../../render/cloud/weather-model';
 import type { Vec3 } from '../../math/vec3';
 import type { CloudEnvironmentProfile } from './cloud-environment';
 import type { EarthClimateSource, EarthEnvironmentPerturbation } from './earth-cloud-environment';
-import type { WeatherSampleCpu } from './weather-model-cpu';
+import type { WeatherSampleCpu } from '../../render/cloud/weather-model';
 
 // 気団の暖かさが地表温を動かす換算 [K/rad]。warmth は出身緯度と現在緯度の差(温帯で
 // 0.1〜0.3 rad 程度)で、15° 緯度差の気団で地表温を数 K 動かす程度に取る。
 const SURFACE_TEMPERATURE_SHIFT_PER_WARMTH_RAD = 15;
 const MAX_SURFACE_TEMPERATURE_SHIFT_K = 8;
-// 地表の湿りの偏差が相対湿度へ写る係数。天気モデルの湿度場が偏差(0..1 の場)へ足し引き
-// するものと同じ系列の利得で組み、相対湿度へ加算で写す。
+// 地表の湿りの偏差が相対湿度へ写る係数。weather-model が移流後の湿度へ足し引きする
+// 偏差(0..1 の場)と同じ利得で組み、相対湿度へ加算で写す。
 const MAX_SURFACE_HUMIDITY_BIAS = 0.5;
 const MAX_SURFACE_HUMIDITY_BIAS_DRY = -0.45;
 // 上層の湿りの偏差が氷層帯の比湿へ写る係数(対飽和比の加算)。上層流出で加湿、眼と
@@ -28,29 +32,6 @@ const MAX_UPPER_HUMIDITY_BIAS_DRY = -0.6;
 // 2 km の桁なので、最深 30 hPa で ~1.5 km 下げる換算。
 const TROPOPAUSE_DROP_M_PER_HPA = 50;
 const MAX_TROPOPAUSE_DROP_M = 2_000;
-
-// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 1.4 倍で、帯の芯では
-// 上昇流による偏差の増幅と合わせて被覆率が上端へ届き、途切れない帯になる
-// (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
-const BAND_HUMIDITY = 0.3;
-// 上昇流が湿度へ寄与する伝達利得 [per m/s]。地表付近の沈降の乾きは上昇より弱く取る — 海洋境界層は
-// 沈降の下でも層積雲を保ち、同じ利得では亜熱帯高圧帯の下の海が丸ごと晴れる。
-const SURFACE_LIFT_HUMIDITY = 1.3;
-const SURFACE_SUBSIDENCE_DRYING = 1.0;
-const UPPER_LIFT_HUMIDITY = 0.7;
-// 沈降が上層を乾かす利得 [per m/s]。上層には境界層のような湿りの溜まりが無いので、地表付近より
-// 強く乾く — 高気圧の吹きおろす所では薄い雲も消える。
-const UPPER_SUBSIDENCE_DRYING = 2;
-// 渦の目が湿度から引く深さ。眼壁の飽和と金床の天蓋(ANVIL_HUMIDITY)の両方を貫く深さに取る。
-// 上層を深く引いて、薄い雲の穴を厚い雲の目よりひとまわり広く開ける。
-const SURFACE_EYE_DRYNESS = 0.8;
-const UPPER_EYE_DRYNESS = 2;
-// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の下の円盤が隙間なく埋まるよう、並の湿度からでも
-// 雲量が飽和する分を足す。
-const ANVIL_HUMIDITY = 0.5;
-// 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入(0.26 rad)で伝達関数幅の
-// 約半分が変位する係数。
-const WARM_HUMIDITY = 0.6;
 
 function clamp(value: number, low: number, high: number): number {
   return Math.min(Math.max(value, low), high);

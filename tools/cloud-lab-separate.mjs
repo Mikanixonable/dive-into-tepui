@@ -17,7 +17,7 @@ const port = 8770;
 const debugPort = 9447;
 
 // 仮テクスチャ 1 枚へ詰める量と、その並び。**RGB の割り当ては生成側の出力規約に合わせる**
-// — src/render/cloud/cloud-field-sample.ts の cloudFieldTexelFromSample が詰める vec4(被覆率, 雲頂高度, 薄い雲 τ) と同じ順。
+// — src/render/cloud/cloud-field.ts が焼く vec4(被覆率, 雲頂高度, 薄い雲 τ) と同じ順。
 const FIELD_VIEWS = ['coverage', 'cloudTop', 'translucent'];
 const FIELD_FILE = path.join(assetsDir, 'cloud-field.png');
 
