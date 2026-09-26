@@ -1,4 +1,3 @@
-import faviconUrl from '../../../public/favicon.svg';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_4 } from '../../theme';
@@ -139,7 +138,7 @@ export class PauseMenu implements OverlayHandle {
     this.resizeObserver.observe(this.panel);
   }
 
-  // ロゴ・タイトル・バージョンを ESC メニュー上部へ積む。
+  // タイトルとバージョンを ESC メニュー上部へ積む。
   private buildBrand(): HTMLElement {
     const brand = document.createElement('div');
     brand.className = 'pm-brand';
@@ -158,13 +157,7 @@ export class PauseMenu implements OverlayHandle {
     version.textContent = `v${__APP_VERSION__}`;
     meta.append(label, version);
 
-    // favicon はアプリ同定の補助として残すが、ロゴタイプより弱く扱う。
-    const brandLogo = document.createElement('img');
-    brandLogo.className = 'pm-brand-logo';
-    brandLogo.src = faviconUrl;
-    brandLogo.alt = '';
-
-    brand.append(logotype, meta, brandLogo);
+    brand.append(logotype, meta);
     return brand;
   }
 
