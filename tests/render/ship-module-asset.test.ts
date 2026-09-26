@@ -188,6 +188,46 @@ export function register(): void {
     for (const muzzle of definition.muzzles) assert.ok(Math.abs(box.max.z - muzzle.z) < 1e-3, `muzzle z ${muzzle.z} vs ${box.max.z}`);
   });
 
+  test('ship module asset: cockpit は9mの船殻と左右対称の断面溝を持つ', async () => {
+    await loadShipModuleModels();
+    const cockpit = moduleRoots(parsedRoot()).get('cockpit-standard');
+    assert.ok(cockpit !== undefined);
+    const hull = objectByName(cockpit, 'cockpit_hull');
+    assert.ok(hull !== null);
+    cockpit.updateMatrixWorld(true);
+    const vertices: THREE.Vector3[] = [];
+    let minZ = Number.POSITIVE_INFINITY;
+    let maxZ = Number.NEGATIVE_INFINITY;
+    let hullMeshCount = 0;
+    hull.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      hullMeshCount++;
+      const moduleFromMesh = cockpit.matrixWorld.clone().invert().multiply(object.matrixWorld);
+      const position = object.geometry.getAttribute('position');
+      for (let index = 0; index < position.count; index++) {
+        const point = new THREE.Vector3(position.getX(index), position.getY(index), position.getZ(index))
+          .applyMatrix4(moduleFromMesh);
+        vertices.push(point);
+        minZ = Math.min(minZ, point.z);
+        maxZ = Math.max(maxZ, point.z);
+      }
+    });
+    assert.ok(hullMeshCount > 0, 'cockpit_hull has no mesh geometry');
+    const aftRadius = Math.max(...vertices.filter(point => point.z < minZ + 0.005)
+      .map(point => Math.hypot(point.x, point.y)));
+    const foreRadius = Math.max(...vertices.filter(point => point.z > maxZ - 0.005)
+      .map(point => Math.hypot(point.x, point.y)));
+    assert.ok(Math.abs(minZ + 4.5) < 0.02 && Math.abs(maxZ - 4.5) < 0.02,
+      `cockpit z bounds ${minZ}..${maxZ}`);
+    assert.ok(Math.abs(aftRadius - 3) < 0.02, `aft diameter ${2 * aftRadius}m`);
+    assert.ok(Math.abs(foreRadius - 1.5) < 0.02, `forward diameter ${2 * foreRadius}m`);
+    const middleSection = vertices.filter(point => Math.abs(point.z) < 0.03);
+    const sideRadius = Math.max(...middleSection.map(point => Math.abs(point.x)));
+    const dorsalRadius = Math.max(...middleSection.map(point => Math.abs(point.y)));
+    assert.ok(dorsalRadius - sideRadius > 0.3,
+      `cockpit cross section is too circular: side ${sideRadius}m, dorsal ${dorsalRadius}m`);
+  });
+
   test('ship module asset: 主推進器の噴射口はジンバルの支点と一緒に振れる', async () => {
     await loadShipModuleModels();
     const module = moduleRoots(parsedRoot()).get('thruster-standard');
@@ -198,6 +238,28 @@ export function register(): void {
     let ancestor = thrust.parent;
     while (ancestor !== null && ancestor !== gimbal) ancestor = ancestor.parent;
     assert.equal(ancestor, gimbal, 'thrust is not a descendant of engine-gimbal');
+  });
+
+  test('ship module asset: 砲身束は後座する機関部に保持され、固定砲架と独立する', async () => {
+    await loadShipModuleModels();
+    const module = buildShipModuleModel('weapon-gatling');
+    const recoil = semanticAnchor(module, 'gun-recoil:0');
+    const rotor = semanticAnchor(module, 'barrel-rotor:0');
+    const feed = semanticAnchor(module, 'feed-drum');
+    assert.ok(recoil !== null && rotor !== null && feed !== null);
+    const travel: unknown = recoil.userData.recoilTravel;
+    assert.ok(typeof travel === 'number' && travel > 0 && Number.isFinite(travel));
+    assert.equal(rotor.parent, recoil);
+    const rotorBefore = transformInModule(module, rotor).position;
+    const feedBefore = transformInModule(module, feed).position;
+    // 砲身束と機関部が同じ距離だけ後退し、固定の給弾ドラムは取付位置を保つ。
+    recoil.position.z -= travel;
+    const rotorAfter = transformInModule(module, rotor).position;
+    assert.ok(Math.abs(rotorBefore.z - rotorAfter.z - travel) < 1e-6);
+    assert.ok(transformInModule(module, feed).position.distanceTo(feedBefore) < 1e-6);
+    assert.ok(Math.abs(rotorAfter.x - rotorBefore.x) < 1e-6);
+    assert.ok(Math.abs(rotorAfter.y - rotorBefore.y) < 1e-6);
+    disposeOwnedRenderResources(module);
   });
 
   test('ship module asset: 機関砲は砲口ごとに砲口の軸上で機軸まわりに回る砲身束を持つ', async () => {
@@ -296,8 +358,8 @@ export function register(): void {
     const cockpit = modules.get('cockpit-standard');
     assert.ok(cockpit !== undefined);
     const boxCockpit = new THREE.Box3().setFromObject(cockpit);
-    assert.ok(boxCockpit.max.z <= 1.55, `cockpit max.z (${boxCockpit.max.z}) exceeds +1.5m`);
-    assert.ok(boxCockpit.min.z >= -1.55, `cockpit min.z (${boxCockpit.min.z}) extends below -1.5m`);
+    assert.ok(boxCockpit.max.z <= 4.55, `cockpit max.z (${boxCockpit.max.z}) exceeds +4.5m`);
+    assert.ok(boxCockpit.min.z >= -4.55, `cockpit min.z (${boxCockpit.min.z}) extends below -4.5m`);
 
     // 2. Thruster: 前面接続面 z = +0.50m を超えて前方に突き出ないこと (z <= 0.55m)
     const thruster = modules.get('thruster-standard');

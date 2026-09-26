@@ -89,7 +89,9 @@ export class LabEarth {
     const clouds = this.clouds;
     const bodyFromWorld = this.bodyFromWorld;
     // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
-    const atmosphereClouds: AtmosphereClouds = { get cloud() { return clouds.renderInput; }, bodyFromWorld };
+    const atmosphereClouds: AtmosphereClouds = {
+      get cloud() { return clouds.renderInput; }, bodyFromWorld,
+    };
     // 大気の地表は地表メッシュと同じ楕円体に採る。**真球で渡すと**、極で地表と空のあいだに
     // 隙間が開く。
     const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);

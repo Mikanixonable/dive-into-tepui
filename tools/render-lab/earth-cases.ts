@@ -1,7 +1,7 @@
 // 地球まわりのケース。地球照を受ける自機と板・地平線の地球・火星との構図ごとに、観察のつまみで置く
 // 地球の既定の置き方と、置き方を変えた撮影を宣言し、その地球に合わせて自機・板・試験球・火星を置く。
 import * as THREE from 'three/webgpu';
-import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { Curve } from '../../src/render/curve';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
@@ -164,8 +164,28 @@ function placementBelowHorizon(altitude: number, margin: number): Pick<LabViewAn
 // 地球のケースの地球の置き方と、その中心(描画座標)。
 const EARTH_PLACEMENT = placementBelowHorizon(LEO_ALTITUDE, 0);
 const EARTH_CENTER = earthCenterOf(EARTH_PLACEMENT);
+const EARTH_VIEW_TARGET = new THREE.Vector3(0, 0, EARTH_CENTER.z);
+const EARTH_VIEW_TARGET_DEPTH = -EARTH_VIEW_TARGET.z;
+
+// 赤道面の地表をケースの固定 pivot へ重ねる地球配置。
+const EARTH_NADIR_PLACEMENT: Pick<LabViewAngles, EarthAngleKey> = {
+  earthAzimuthDeg: 180,
+  earthElevationDeg: 0,
+  earthAltitudeLog: Math.log10(EARTH_VIEW_TARGET_DEPTH + R_EARTH_EQ - R_EARTH),
+  earthLatitudeDeg: 0,
+  earthLongitudeDeg: 0,
+};
+const EARTH_LOW_ORBIT_ALTITUDE_M = 120e3;
+const EARTH_LOW_ORBIT_PLACEMENT = placementBelowHorizon(EARTH_LOW_ORBIT_ALTITUDE_M, 0);
 // 昼夜境界の撮影の恒星の向き。視線の先の地平線上。
 const EARTH_TERMINATOR_SUN = sunAnglesOf(AHEAD.clone().projectOnPlane(EARTH_CENTER.clone().negate().normalize()));
+const EARTH_LOW_SUN_ELEVATION_DEG = 8;
+const EARTH_VISIBLE_SURFACE_NORMAL = EARTH_CENTER.clone().negate().normalize();
+const EARTH_LOW_SUN_TANGENT = AHEAD.clone().projectOnPlane(EARTH_VISIBLE_SURFACE_NORMAL).normalize();
+const EARTH_LOW_SUN = sunAnglesOf(
+  EARTH_LOW_SUN_TANGENT.multiplyScalar(Math.cos(THREE.MathUtils.degToRad(EARTH_LOW_SUN_ELEVATION_DEG)))
+    .addScaledVector(EARTH_VISIBLE_SURFACE_NORMAL, Math.sin(THREE.MathUtils.degToRad(EARTH_LOW_SUN_ELEVATION_DEG))),
+);
 // 日食の撮影の恒星の向き。食を起こす球はこの向きへ置くので、既定の向き(SUN_DIR)の撮影では影の軸が
 // 地表点から約 5,000 km(3e7 m × sin 9.5°)外れ、地平線まで(地表距離 約 2,300 km)に斑(半影の
 // 半径 約 340 km)は入らない。地球の置き方を変える撮影(斜視・極)では、影の軸は描画原点から見えない
@@ -220,24 +240,23 @@ function earth(): LabCase {
   return {
     objects: [sphere(GREY_SPHERE_ALBEDO, ABOVE_ATMOSPHERE_RADIUS, ABOVE_ATMOSPHERE_CENTER)],
     camera: labCamera(),
-    viewTarget: EARTH_CENTER,
+    viewTarget: EARTH_VIEW_TARGET,
     earth: EARTH_PLACEMENT,
     shadowBodies: [sphereShadowBody(eclipseBodyCenter, ECLIPSE_SHADOW_BODY_RADIUS)],
     shots: {
       'earth': { view: {} },
-      // サングリント。地球を視線の先へ置き、直下点を赤道・経度0の水域に取り、恒星をカメラの
-      // ほぼ背後(方位 0)へ置く構図。滑らかな水面ではグリントの縁がメッシュ分割や地形標本の
-      // 格子上で折れてはならない。
-      'earth-glint': {
-        view: {
-          earthAzimuthDeg: 180, earthElevationDeg: 0,
-          earthAltitudeLog: Math.log10(LEO_ALTITUDE), earthLatitudeDeg: 0, earthLongitudeDeg: 0,
-          ...sunAnglesOf(new THREE.Vector3(0, 0.3, 1)),
-        },
-      },
+      'earth-nadir': { view: EARTH_NADIR_PLACEMENT },
+      // サングリント。恒星をカメラのほぼ背後(方位 0)に置き、直下点の水域へ太陽の円盤の鏡面
+      // 反射が乗る構図。滑らかな水面ではグリントの縁がメッシュ分割や地形標本の格子上で
+      // 折れてはならない。
+      'earth-glint': { view: { ...EARTH_NADIR_PLACEMENT, ...sunAnglesOf(new THREE.Vector3(0, 0.3, 1)) } },
+      'earth-low-orbit': { view: EARTH_LOW_ORBIT_PLACEMENT },
+      'earth-limb': { view: {} },
       // 昼夜境界。**太陽光が最も長く大気を通って届く向き**なので、波長ごとの減衰だけで縁と霞が橙へ
       // 寄っていなければならない。前方散乱が効く向きでもあるので、太陽のまわりのグローもここで読む。
       'earth-terminator': { view: EARTH_TERMINATOR_SUN },
+      'earth-twilight': { view: EARTH_TERMINATOR_SUN },
+      'earth-low-sun': { view: EARTH_LOW_SUN },
       // 日食。**大気の明暗は入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた
       // 斑が出る。斑は本影(半径 60km)を半影(340km)が縁取る。
       'earth-eclipse': { view: EARTH_ECLIPSE_SUN },

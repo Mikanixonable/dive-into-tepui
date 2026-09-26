@@ -32,6 +32,7 @@ function buildManifest() {
       modules[definition.modelId] ??= {
         kind: definition.kind,
         length: definition.length,
+        diameter: definition.diameter,
         muzzles: definition.muzzles.map(muzzle => [muzzle.x, muzzle.y, muzzle.z]),
         feedPort: [definition.feedPort.x, definition.feedPort.y, definition.feedPort.z],
         thrust: definition.abilities.thrust ?? null,
@@ -39,6 +40,10 @@ function buildManifest() {
     }
     return {
       modules,
+      cockpitHull: {
+        profile: source.shipModuleCatalog.COCKPIT_HULL_PROFILE,
+        sectionIndentFraction: source.shipModuleCatalog.COCKPIT_SECTION_INDENT_FRACTION,
+      },
       deployables: {
         solar_panel: {
           count: shape.SOLAR_PANEL_COUNT, length: shape.SOLAR_PANEL_WIDTH, span: shape.SOLAR_PANEL_SPAN,
@@ -46,7 +51,7 @@ function buildManifest() {
         },
         radiator: {
           count: shape.RADIATOR_FOLD_COUNT, length: shape.RADIATOR_SEGMENT_LENGTH, span: shape.RADIATOR_PANEL_WIDTH,
-          thickness: shape.RADIATOR_PANEL_THICKNESS, normalAxis: [1, 0, 0],
+          thickness: shape.RADIATOR_PANEL_THICKNESS, normalAxis: [0, 1, 0],
         },
       },
     };

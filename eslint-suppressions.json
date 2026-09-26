@@ -1116,14 +1116,6 @@
       "count": 1
     }
   },
-  "src/render/gpu-timings.ts": {
-    "@typescript-eslint/array-type": {
-      "count": 1
-    },
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
   "src/render/instanced-pool.ts": {
     "@typescript-eslint/parameter-properties": {
       "count": 1

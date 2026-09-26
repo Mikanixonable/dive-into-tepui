@@ -1,8 +1,8 @@
 // 建造・preset・保存復元が共有する船体モジュール定義を検索可能な一覧として提供する。
 import { v3, type Vec3 } from '../../math/vec3';
 import {
-  bodyPrimitive, defineShipModule, type FuelKind, type ShipModuleCategory, type ShipModuleDefinition,
-  type ShipModuleKind,
+  bodyPrimitive, defineShipModule, type FuelKind, type LocalCappedCylinder, type ShipModuleCategory,
+  type ShipModuleDefinition, type ShipModuleKind,
 } from './ship-module-definition';
 
 const MODULE_NAMES: Readonly<Record<string, string>> = {
@@ -24,14 +24,15 @@ const CATEGORY_BY_KIND: Readonly<Record<ShipModuleKind, ShipModuleCategory>> = {
   weapon: 'combat', armor: 'combat', radiator: 'utility', solar_panel: 'utility', decoupler: 'utility',
 };
 
+// 標準の円筒接触形状を既定にし、個別モジュールだけ固有の接触形状と直径を渡す。
 function moduleDefinition(
   id: string, kind: ShipModuleKind, length: number, maxHp: number, dryMass: number,
   abilities: ShipModuleDefinition['abilities'] = {}, radius = 3, modelId = id, muzzles: readonly Vec3[] = [],
-  feedPort: Vec3 = v3(),
+  feedPort: Vec3 = v3(), solids?: readonly LocalCappedCylinder[], diameter = 6,
 ): ShipModuleDefinition {
   return defineShipModule({
-    id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter: 6, dryMass, maxHp, modelId,
-    solidPrimitives: [bodyPrimitive(length, radius)], muzzles, feedPort, abilities,
+    id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter, dryMass, maxHp, modelId,
+    solidPrimitives: solids ?? [bodyPrimitive(length, radius)], muzzles, feedPort, abilities,
   });
 }
 
@@ -47,13 +48,68 @@ function tank(
 // 既定船の実慣性に対して基準角加速度約 1.4 rad/s² を得る RCS 実トルク [N m]。
 const RCS_MODULE_TORQUE = 24_000;
 
-// 回転砲の砲身先端 [m]。モジュール局所で、前面 (+0.5) から砲身が 2.44 m 突き出る。
-const GATLING_MUZZLES = [v3(0, 0, 2.94)];
+// 回転砲の砲身先端 [m]。モジュール局所で、後端の結合面 (-0.5) から 3 m。
+const GATLING_MUZZLES = [v3(0, 0, 2.5)];
 // 給弾ベルトの取り込み口 [m]。砲架下の給弾塔の口で、ベルトはここから +X へ伸びる。
 const GATLING_FEED_PORT = v3(0, -1.95, 0);
+// 展開部品の実体は、座板・脚・台座・駆動部でできた取付構造まで。翼列は展開で実体から外れるので
+// 接触形状に含めず、取付構造の束(座板の張り出しを含む半径)を包む円柱で近似する。
+const DEPLOYABLE_MOUNT_PRIMITIVE: LocalCappedCylinder = {
+  center: v3(), axis: v3(0, 0, 1), halfLength: 0.55, radius: 1.35,
+};
+
+// 結合機構モジュールの実体は、直径 3.0 m の機構頭部と細い幹、船体曲面へ伏せる座板・脚・
+// 襟環の取付構造まで。取付構造は後端面の外へ張り出すので、両者を束ねて包む円柱で近似する。
+const DOCK_MODULE_PRIMITIVE: LocalCappedCylinder = {
+  center: v3(0, 0, -0.05), axis: v3(0, 0, 1), halfLength: 0.55, radius: 1.65,
+};
+
+// 船殻の輪郭。Z は全長 9 m の後端から前端、radius は断面の最大半径 [m]。
+export const COCKPIT_HULL_PROFILE: readonly { readonly z: number; readonly radius: number }[] = [
+  { z: -4.5, radius: 3.00 }, { z: -4.0, radius: 2.98 }, { z: -3.5, radius: 2.93 },
+  { z: -3.0, radius: 2.86 }, { z: -2.5, radius: 2.80 }, { z: -2.0, radius: 2.70 },
+  { z: -1.5, radius: 2.63 }, { z: -1.0, radius: 2.62 }, { z: -0.5, radius: 2.65 },
+  { z: 0.0, radius: 2.66 }, { z: 0.5, radius: 2.64 }, { z: 1.0, radius: 2.41 },
+  { z: 1.5, radius: 2.14 }, { z: 2.0, radius: 2.01 }, { z: 2.5, radius: 1.89 },
+  { z: 3.0, radius: 1.79 }, { z: 3.5, radius: 1.69 }, { z: 4.0, radius: 1.58 },
+  { z: 4.5, radius: 1.50 },
+];
+
+// 断面両側に長手のくぼみを作るため、外周断面を上下に離した円2つの和で近似する。
+// 見た目の輪郭も同じ比率を使う。各0.5 m区間は太い側の径で覆い、区間間に接触の隙間を作らない。
+export const COCKPIT_SECTION_INDENT_FRACTION = 0.14;
+const COCKPIT_CONTACT_INTERVAL = 0.5;
+
+// 船殻プロファイルを軸方向に線形補間して、その位置の最大半径を返す。
+function cockpitRadiusAt(z: number): number {
+  for (let index = 1; index < COCKPIT_HULL_PROFILE.length; index++) {
+    const previous = COCKPIT_HULL_PROFILE[index - 1]!;
+    const next = COCKPIT_HULL_PROFILE[index]!;
+    if (z <= next.z) {
+      const fraction = (z - previous.z) / (next.z - previous.z);
+      return previous.radius + (next.radius - previous.radius) * fraction;
+    }
+  }
+  return COCKPIT_HULL_PROFILE.at(-1)!.radius;
+}
+
+const COCKPIT_SOLID_PRIMITIVES: readonly LocalCappedCylinder[] = Array.from(
+  { length: Math.round(9 / COCKPIT_CONTACT_INTERVAL) }, (_, index) => {
+    const z0 = -4.5 + index * COCKPIT_CONTACT_INTERVAL;
+    const z1 = z0 + COCKPIT_CONTACT_INTERVAL;
+    const radius = Math.max(cockpitRadiusAt(z0), cockpitRadiusAt(z1));
+    const sideOffset = radius * COCKPIT_SECTION_INDENT_FRACTION;
+    const centerZ = (z0 + z1) / 2;
+    return [-1, 1].map(sign => ({
+      center: v3(0, sign * sideOffset, centerZ), axis: v3(0, 0, 1),
+      halfLength: COCKPIT_CONTACT_INTERVAL / 2, radius: radius - sideOffset,
+    }));
+  },
+).flat();
 
 const definitions: readonly ShipModuleDefinition[] = [
-  moduleDefinition('cockpit-standard', 'cockpit', 3, 100, 100),
+  moduleDefinition('cockpit-standard', 'cockpit', 9, 100, 100, {}, 3, 'cockpit-standard', [], v3(),
+    COCKPIT_SOLID_PRIMITIVES),
   tank('tank-3-main', 3, 'main', 80),
   tank('tank-6-main', 6, 'main', 160),
   tank('tank-12-main', 12, 'main', 320),
@@ -76,13 +132,17 @@ const definitions: readonly ShipModuleDefinition[] = [
   }, 3, 'weapon-gatling', GATLING_MUZZLES, GATLING_FEED_PORT),
   moduleDefinition('armor-standard', 'armor', 1, 100, 100, { armorReduction: 0.2 }),
   moduleDefinition('armor-combat', 'armor', 1, 370, 50, { armorReduction: 0.2 }),
-  moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 4.8 }),
-  moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 825 }),
+  moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 4.8 },
+    3, 'radiator-standard', [], v3(), [DEPLOYABLE_MOUNT_PRIMITIVE]),
+  moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 825 },
+    3, 'solar-panel-standard', [], v3(), [DEPLOYABLE_MOUNT_PRIMITIVE]),
   moduleDefinition('booster-standard', 'booster', 6, 100, 200, {
     fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 80,
   }),
-  moduleDefinition('docking-port-standard', 'docking_port', 1, 50, 40),
-  moduleDefinition('dock-standard', 'dock', 1, 50, 40),
+  moduleDefinition('docking-port-standard', 'docking_port', 1, 50, 40, {}, 1.5,
+    'docking-port-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], 3),
+  moduleDefinition('dock-standard', 'dock', 1, 50, 40, {}, 1.5,
+    'dock-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], 3),
   moduleDefinition('decoupler-standard', 'decoupler', 1, 50, 60),
 ];
 

@@ -5,6 +5,7 @@ import type { SerializedVec3 } from '../../math/vec3';
 import { SIDE_SLOTS, ShipAssembly, type SideSlot } from './ship-assembly';
 import { sideMountTransform, sideSlotFromTransform } from './ship-assembly-transform';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
+import type { ShipModuleDefinition } from './ship-module-definition';
 import { createShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
 import type { ShipConstructionDraftState } from './ship-dock-state';
 
@@ -70,6 +71,21 @@ function validTransform(connection: SerializedShipConnection): boolean {
   return finite(p.x) && finite(p.y) && finite(p.z)
     && finite(q.x) && finite(q.y) && finite(q.z) && finite(q.w)
     && Math.hypot(q.x, q.y, q.z, q.w) > 1e-12;
+}
+
+// 旧 3 m cockpit と現在の module 長から、移行対象と現在の軸間隔を返す。
+function cockpitAxialMigrationSpacing(
+  parent: ShipModuleDefinition | null,
+  child: ShipModuleDefinition | null,
+): { readonly previous: number; readonly current: number } | null {
+  if (parent?.kind !== 'cockpit' && child?.kind !== 'cockpit') return null;
+  const previousLength = (definition: ShipModuleDefinition | null): number => (
+    definition?.kind === 'cockpit' ? 3 : definition?.length ?? 0
+  );
+  return {
+    previous: (previousLength(parent) + previousLength(child)) / 2,
+    current: ((parent?.length ?? 0) + (child?.length ?? 0)) / 2,
+  };
 }
 
 // definition の discriminant と可変値を検証し、正規化済み instance を返す。
@@ -196,6 +212,18 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
       if (childDefinition?.kind !== 'weapon') {
         childTransform = {
           position: v3(childTransform.position.x, childTransform.position.y, -childTransform.position.z),
+          rotation: childTransform.rotation,
+        };
+      }
+    }
+    if (connection.kind === 'axial') {
+      const spacing = cockpitAxialMigrationSpacing(
+        assembly.definition(connection.parentId), SHIP_MODULE_CATALOG.get(module.definitionId),
+      );
+      if (spacing !== null && Math.abs(Math.abs(childTransform.position.z) - spacing.previous) < 1e-9) {
+        const sign = childTransform.position.z < 0 ? -1 : 1;
+        childTransform = {
+          position: v3(childTransform.position.x, childTransform.position.y, sign * spacing.current),
           rotation: childTransform.rotation,
         };
       }
