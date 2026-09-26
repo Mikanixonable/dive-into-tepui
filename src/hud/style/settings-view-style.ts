@@ -1,5 +1,5 @@
 // ESCメニュー内の設定詳細面(.pm-settings-view)の CSS。
-import { MQ_MEDIUM_DOWN } from '../breakpoints';
+import { MQ_COMPACT, MQ_MEDIUM_DOWN } from '../breakpoints';
 
 export const SETTINGS_VIEW_STYLE = `
 #hud-pause-menu .pm-settings-view {
@@ -115,5 +115,16 @@ export const SETTINGS_VIEW_STYLE = `
 #hud-pause-menu .pm-settings-view .sv-track-actions { margin-top: var(--space-2); text-align: right; }
 @media ${MQ_MEDIUM_DOWN} {
   #hud-pause-menu .pm-settings-view { padding-inline: 0; }
+}
+/* 右列の項目セルはカテゴリ2列×項目2列で ~160px しかなく、ラベルと操作部品を1行に並べると
+   ラベルが1文字ずつ縦に折り返す。compact 以外ではラベルを1行目へ独占させて操作部品を
+   下の行へ回し、トグルはラベル上・スイッチ下の縦積みにして互いの幅を譲らせる
+   (compact は項目が1列へ戻るので従来どおり)。 */
+@media not ${MQ_COMPACT} {
+  #hud-pause-menu .pm-settings-view .gp-group > .w-group .w-group-title { flex: 0 0 100%; }
+  #hud-pause-menu .pm-settings-view .gp-group > .w-toggle {
+    flex-direction: column; align-items: flex-start; justify-content: flex-start;
+    gap: var(--space-2);
+  }
 }
 `;
