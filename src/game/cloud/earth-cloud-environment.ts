@@ -52,9 +52,44 @@ const CLOUD_TOP_LONGWAVE_COOLING_K_PER_S = 1e-4;
 // 上層の氷層を張る帯 [m]。対流圏界面直下 5〜1 km へ、雲頂の氷を乗せる層として置く。
 const ICE_LAYER_DEPTH_BELOW_TROPOPAUSE_M = 5_000;
 const ICE_LAYER_TOP_BELOW_TROPOPAUSE_M = 1_000;
+// 重力波源を置く帯 [deg]。中緯度の斜圧帯(|φ| 20〜60°)の内側 35〜45° で窓が全開になる
+// 近似で、帯の内外では波の変位が滑らかに消える。地形・前線・ジェット streak といった
+// 個別の波源は解像せず、緯度だけで強さを決める。
+const WAVE_BAND_RAMP_IN_DEG = 20;
+const WAVE_BAND_FULL_INNER_DEG = 35;
+const WAVE_BAND_FULL_OUTER_DEG = 45;
+const WAVE_BAND_RAMP_OUT_DEG = 60;
+// 波源が載る湿潤中層 [m]。斜圧帯で持ち上げられた湿潤層を、層内の比湿を飽和比湿への
+// 下限比へ底上げする形でしか表さない近似(暖気コンベヤベルトのような実形状は解像しない)。
+// 波帯の内側では氷層の下端(対流圏界面−5 km ≧ 6 km)より常に低く、上層湿り診断を変えない。
+const WAVE_MOIST_LAYER_BOTTOM_M = 2_500;
+const WAVE_MOIST_LAYER_TOP_M = 5_000;
+// 湿潤層の底上げ RH(対飽和比)。帯の重み w で 0.4(減衰プロファイル並み)から
+// MAX_LEVEL_RELATIVE_HUMIDITY(ほぼ飽和)まで上げ、波の持ち上げで凝結に届く湿りを保つ。
+const WAVE_MOIST_LAYER_BASE_RELATIVE_HUMIDITY = 0.4;
+// 波源入力。源高は湿潤中層の中、変位は帯の重みで強弱(線形閉包の上限 = 短い方の波長の
+// 10% を常に下回る)。水平波長は undulatus の典型的な範囲(数〜数十 km)の内側。
+// 伝播方位は西向き(π)の固定値 — 地面固定の波源が作る後退波(偏西風へ向かって上流へ
+// 伝播する山岳波・地形波)の近似で、物質風(中緯度では東流)と位相速度が逆になる配置。
+const WAVE_SOURCE_HEIGHT_M = 3_500;
+const WAVE_MAX_VERTICAL_DISPLACEMENT_M = 400;
+const WAVE_HORIZONTAL_WAVELENGTH_M = 12_000;
+const WAVE_VERTICAL_WAVELENGTH_M = 6_000;
+const WAVE_PROPAGATION_AZIMUTH_RAD = Math.PI;
 
 function clamp(value: number, low: number, high: number): number {
   return Math.min(Math.max(value, low), high);
+}
+
+// 端で滑らかに 0 へ落ちる帯の重み。20〜35° で 0→1、35〜45° で 1、45〜60° で 1→0。
+function waveBandWeight(absLatitudeRad: number): number {
+  const degrees = absLatitudeRad * 180 / Math.PI;
+  const smooth = (low: number, high: number, value: number): number => {
+    const t = clamp((value - low) / (high - low), 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  return smooth(WAVE_BAND_RAMP_IN_DEG, WAVE_BAND_FULL_INNER_DEG, degrees)
+    * (1 - smooth(WAVE_BAND_FULL_OUTER_DEG, WAVE_BAND_RAMP_OUT_DEG, degrees));
 }
 
 // 単位方向から、その地点の対流環境プロファイルを返す。返り値は呼ぶたびに新しく組まれた
@@ -78,6 +113,7 @@ export function earthConvectiveCloudEnvironmentAt(direction: Vec3): CloudEnviron
     + (HUMIDITY_SCALE_HEIGHT_EQUATOR_M - HUMIDITY_SCALE_HEIGHT_POLE_M) * cosLatitudeSq;
 
   const profileTopM = tropopauseM + PROFILE_TOP_ABOVE_TROPOPAUSE_M;
+  const waveWeight = waveBandWeight(Math.abs(Math.asin(sinLatitude)));
   const levels: CloudEnvironmentLevelInput[] = [];
   for (let heightM = 0; heightM <= profileTopM; heightM += LEVEL_STEP_M) {
     const pressurePa = SURFACE_PRESSURE_PA * Math.exp(-heightM / PRESSURE_SCALE_HEIGHT_M);
@@ -86,13 +122,23 @@ export function earthConvectiveCloudEnvironmentAt(direction: Vec3): CloudEnviron
     const saturationSpecificHumidityKgPerKg = temperatureK <= ICE_SATURATION_TOP_K
       ? saturationSpecificHumidityOverIceKgPerKg(temperatureK, pressurePa)
       : saturationSpecificHumidityOverLiquidKgPerKg(temperatureK, pressurePa);
+    const inMoistLayer = waveWeight > 0
+      && heightM >= WAVE_MOIST_LAYER_BOTTOM_M && heightM <= WAVE_MOIST_LAYER_TOP_M;
+    // 減衰プロファイルを湿潤中層では下限 RH へ底上げする。下限は帯の外で減衰値と同じ
+    // くらいへ滑らかに下がるので、帯の端で柱は連続的に乾く。
+    const moistLayerRelativeHumidity = WAVE_MOIST_LAYER_BASE_RELATIVE_HUMIDITY
+      + (MAX_LEVEL_RELATIVE_HUMIDITY - WAVE_MOIST_LAYER_BASE_RELATIVE_HUMIDITY) * waveWeight;
     levels.push({
       heightM,
       pressurePa,
       temperatureK,
-      waterVaporSpecificHumidityKgPerKg: Math.min(
-        surfaceSpecificHumidityKgPerKg * Math.exp(-heightM / humidityScaleHeightM),
-        MAX_LEVEL_RELATIVE_HUMIDITY * saturationSpecificHumidityKgPerKg),
+      waterVaporSpecificHumidityKgPerKg: Math.max(
+        Math.min(
+          surfaceSpecificHumidityKgPerKg * Math.exp(-heightM / humidityScaleHeightM),
+          MAX_LEVEL_RELATIVE_HUMIDITY * saturationSpecificHumidityKgPerKg),
+        inMoistLayer
+          ? moistLayerRelativeHumidity * saturationSpecificHumidityKgPerKg
+          : 0),
       liquidWaterMixingRatioKgPerKg: 0,
       iceMixingRatioKgPerKg: 0,
       // 輸送の風は大気風モデルが担うので、層の風は供給系へ効かない代理値。
@@ -110,7 +156,13 @@ export function earthConvectiveCloudEnvironmentAt(direction: Vec3): CloudEnviron
       + (LATENT_HEAT_FLUX_EQUATOR_W_PER_M2
         - LATENT_HEAT_FLUX_POLE_W_PER_M2) * cosLatitudeSq,
     cloudTopLongwaveCoolingKPerS: CLOUD_TOP_LONGWAVE_COOLING_K_PER_S,
-    gravityWaveSource: null,
+    gravityWaveSource: waveWeight > 0 ? {
+      sourceHeightM: WAVE_SOURCE_HEIGHT_M,
+      verticalDisplacementM: WAVE_MAX_VERTICAL_DISPLACEMENT_M * waveWeight,
+      horizontalWavelengthM: WAVE_HORIZONTAL_WAVELENGTH_M,
+      verticalWavelengthM: WAVE_VERTICAL_WAVELENGTH_M,
+      propagationAzimuthRad: WAVE_PROPAGATION_AZIMUTH_RAD,
+    } : null,
     upperIceLayerBottomM: tropopauseM - ICE_LAYER_DEPTH_BELOW_TROPOPAUSE_M,
     upperIceLayerTopM: tropopauseM - ICE_LAYER_TOP_BELOW_TROPOPAUSE_M,
   });
