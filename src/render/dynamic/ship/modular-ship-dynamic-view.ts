@@ -10,6 +10,7 @@ import { ThrustEffects } from '../player/thrust-effects';
 import {
   DynamicView, type DynamicRenderSource, type DynamicViewFrame,
 } from '../dynamic-view';
+import { WeaponDrives } from './weapon-drives';
 import { buildShipModuleModel } from './ship-module-models';
 import { ModularShipView } from './modular-ship-view';
 import type { ShipModuleRenderInput, ShipRenderAssembly } from './ship-render-contract';
@@ -19,25 +20,30 @@ export interface ModularShipRenderSource extends DynamicRenderSource {
   readonly centerOffset: Vec3;
   readonly state: KinematicState;
   readonly active: boolean;
-  readonly thrustAcceleration: Vec3 | null;
+  // 主推進器の推力による ECI 加速度 [m/s^2]。噴射していなければ null。
+  readonly mainThrustAcceleration: Vec3 | null;
+  // 全開時の加速度 [m/s^2]。
   readonly maximumAcceleration: number;
   readonly torque: Vec3;
   readonly dynamicPressure: number;
   readonly belt: BeltNodes;
   readonly magsLeft: number;
+  // 機関砲の射撃レート [rounds/s]。全砲口の合計で、トリガーを離していれば 0。
+  readonly gunFireRate: number;
 }
 
 // DynamicView の時刻配置と、assembly から再構築する module 表示を一体にした実体用 View。
 export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource> {
   private readonly modules: ModularShipView;
-  private readonly thrustEffects: ThrustEffects;
+  private readonly thrustEffects: ThrustEffects[] = [];
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly belt: BeltView;
+  private readonly weaponDrives = new WeaponDrives();
 
   public constructor(
     private readonly effectScene: THREE.Scene,
-    ownerId: string,
+    private readonly ownerId: string,
     beltLinkCount: number,
   ) {
     const modules = new ModularShipView(buildShipModuleModel, undefined, false);
@@ -46,7 +52,6 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     root.add(modules.object);
     super(root, effectScene);
     this.modules = modules;
-    this.thrustEffects = new ThrustEffects(effectScene, ownerId);
     this.rcsEffects = new RcsEffects(effectScene, ownerId);
     this.reentryEffects = new ReentryEffects(effectScene);
     this.belt = new BeltView(this.object, beltLinkCount);
@@ -62,20 +67,10 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     const effectVisible = this.object.visible;
     const cameraQuat = viewFrame.camera.camera.quaternion;
     const zoomActive = viewFrame.camera.zoomed;
-    const thrustAnchor = this.firstAnchor(source.assembly.modules, ['thruster', 'booster'], 'thrust');
     const rcsAnchors = this.anchors(source.assembly.modules, 'rcs', 'rcs:');
 
     this.object.updateWorldMatrix(true, true);
-    this.thrustEffects.syncFromAnchor(
-      thrustAnchor,
-      source.thrustAcceleration,
-      source.maximumAcceleration,
-      effectVisible,
-      cameraQuat,
-      zoomActive,
-      viewFrame.style,
-      viewFrame.displayTime,
-    );
+    this.syncEnginePlumes(source, effectVisible, cameraQuat, zoomActive, viewFrame);
     this.rcsEffects.syncFromAnchors(
       this.object,
       rcsAnchors,
@@ -87,6 +82,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     );
     this.reentryEffects.sync(origin, displayed, source.dynamicPressure, effectVisible, cameraQuat);
     this.belt.sync(source.magsLeft, source.belt);
+    this.weaponDrives.sync(this.modules, source.assembly.modules, source.gunFireRate, viewFrame.displayTime);
     if (source.active && zoomActive) this.object.visible = false;
   }
 
@@ -103,24 +99,41 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     return anchors;
   }
 
-  private firstAnchor(
-    modules: readonly ShipModuleRenderInput[],
-    kinds: readonly ('thruster' | 'booster')[],
-    name: string,
-  ): THREE.Object3D | null {
-    for (const module of modules) {
-      if (!kinds.includes(module.kind as 'thruster' | 'booster') || module.hp <= 0) continue;
-      const anchor = this.modules.semanticAnchor(module.id, name);
-      if (anchor !== null) return anchor;
+  // 健全な推進器・ブースターの噴射口ごとにプルームを出す。主推進器の出力比は主推力の噴射軸成分と
+  // 全開加速度の比、ブースターは燃焼中なら全開。ship root の world matrix 更新後に呼ぶ。
+  private syncEnginePlumes(
+    source: ModularShipRenderSource, visible: boolean, cameraQuat: THREE.Quaternion, zoomActive: boolean,
+    viewFrame: DynamicViewFrame,
+  ): void {
+    let index = 0;
+    for (const module of source.assembly.modules) {
+      if ((module.kind !== 'thruster' && module.kind !== 'booster') || module.hp <= 0) continue;
+      const anchor = this.modules.semanticAnchor(module.id, 'thrust');
+      if (anchor === null) continue;
+      const effects = this.thrustEffects[index] ?? new ThrustEffects(this.effectScene, this.ownerId, index);
+      this.thrustEffects[index] = effects;
+      index++;
+      const ratio = module.kind === 'booster'
+        ? (module.burning === true ? 1 : 0)
+        : mainThrustRatio(anchor, source.mainThrustAcceleration, source.maximumAcceleration);
+      effects.syncFromAnchor(anchor, ratio, visible, cameraQuat, zoomActive, viewFrame.style, viewFrame.displayTime);
     }
-    return null;
+    for (let i = index; i < this.thrustEffects.length; i++) this.thrustEffects[i]!.hide();
   }
 
   public override dispose(): void {
-    this.thrustEffects.dispose(this.effectScene);
+    for (const effects of this.thrustEffects) effects.dispose(this.effectScene);
     this.rcsEffects.dispose(this.effectScene);
     this.reentryEffects.dispose(this.effectScene);
     this.modules.dispose();
     super.dispose();
   }
+}
+
+// 噴射口 anchor(+Z が排気方向)の推力軸へ主推力 thrust を射影した、全開加速度 maxAccel に対する出力比 0..1。
+function mainThrustRatio(anchor: THREE.Object3D, thrust: Vec3 | null, maxAccel: number): number {
+  if (thrust === null || !(maxAccel > 0)) return 0;
+  const exhaust = new THREE.Vector3(0, 0, 1).applyQuaternion(anchor.getWorldQuaternion(new THREE.Quaternion()));
+  const along = -(exhaust.x * thrust.x + exhaust.y * thrust.y + exhaust.z * thrust.z);
+  return Math.max(0, Math.min(1, along / maxAccel));
 }

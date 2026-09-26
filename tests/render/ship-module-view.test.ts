@@ -2,6 +2,8 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
+import { RADIATOR_FOLD_COUNT } from '../../src/physics/player-shape';
+import { deployablePanelPoses } from '../../src/physics/ship-panel-layout';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { ShipModuleView } from '../../src/render/dynamic/ship/ship-module-view';
 import type { ShipModuleRenderInput, ShipModuleRenderKind } from '../../src/render/dynamic/ship/ship-render-contract';
@@ -27,7 +29,7 @@ function moduleInput(
   deployed: number | null = null,
 ): ShipModuleRenderInput {
   return {
-    id, modelId, kind, hp, maxHp, deployed,
+    id, modelId, kind, hp, maxHp, deployed, burning: null,
     transform: { position: v3(), rotation: Q_IDENTITY },
   };
 }
@@ -101,27 +103,33 @@ export function register(): void {
   });
 
   test('ship module view: panel-hinge は module state の展開度と全損状態へ同期する', () => {
-    const radiator = moduleInput('radiator-standard', 'radiator', 'radiator', 50, 50, 0);
     const panelFactory = () => {
       const root = new THREE.Group();
       const hinge = new THREE.Object3D();
-      hinge.name = 'anchor:panel-hinge';
       hinge.userData.semanticAnchor = 'panel-hinge';
       root.add(hinge);
+      for (let index = 0; index < RADIATOR_FOLD_COUNT; index++) {
+        const panel = new THREE.Object3D();
+        panel.userData = { semanticAnchor: `panel-hinge:${index}`, panelKind: 'radiator', panelIndex: index };
+        hinge.add(panel);
+      }
       return root;
     };
-    const view = new ShipModuleView(
-      radiator, panelFactory,
-    );
-    const hinge = view.semanticAnchor('panel-hinge');
-    assert.ok(hinge !== null);
-    assert.ok(Math.abs(hinge.rotation.y - Math.PI / 2) < 1e-12);
-    const deployed = moduleInput('radiator-standard', 'radiator', 'radiator', 50, 50, 1);
-    view.sync(deployed);
-    assert.ok(Math.abs(hinge.rotation.y) < 1e-12);
-    const destroyed = moduleInput('radiator-standard', 'radiator', 'radiator', 0, 50, 1);
-    view.sync(destroyed);
-    assert.equal(hinge.visible, false);
+    const view = new ShipModuleView(moduleInput('radiator-standard', 'radiator', 'radiator', 50, 50, 0), panelFactory);
+    const assertPoses = (deployed: number): void => {
+      const expected = deployablePanelPoses('radiator', 0, deployed);
+      for (const panel of view.semanticAnchors('panel-hinge:')) {
+        const pose = expected[panel.userData.panelIndex as number]!;
+        assert.ok(panel.position.distanceTo(new THREE.Vector3(pose.origin.x, pose.origin.y, pose.origin.z)) < 1e-12);
+        const rotation = new THREE.Quaternion(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
+        assert.ok(panel.quaternion.angleTo(rotation) < 1e-9);
+      }
+    };
+    assertPoses(0);
+    view.sync(moduleInput('radiator-standard', 'radiator', 'radiator', 50, 50, 1));
+    assertPoses(1);
+    view.sync(moduleInput('radiator-standard', 'radiator', 'radiator', 0, 50, 1));
+    assert.equal(view.semanticAnchor('panel-hinge')?.visible, false);
     view.dispose();
   });
 

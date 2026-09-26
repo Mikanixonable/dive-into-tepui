@@ -1,7 +1,24 @@
 // 船体構成から役割・操作可否・装備能力・資源量を導出する。
+import { qRotate, type Quat } from '../../math/quat';
+import { add, type Vec3 } from '../../math/vec3';
 import type { ShipAssembly, ShipAssemblyTotals, ShipRole } from './ship-assembly';
 import type { FuelKind, ShipModuleKind } from './ship-module-definition';
 import type { CockpitInstance, ShipModuleInstance } from './ship-module-instance';
+
+// 健全な武装モジュール1基ぶんの機能点(いずれも assembly 座標 [m])と姿勢。
+export interface WeaponPorts {
+  readonly muzzles: readonly Vec3[];
+  readonly ejectionPort: Vec3;
+  readonly linkExitPort: Vec3;
+  // assembly 内でのモジュール姿勢。排莢・リンク排出の向きを機体座標へ写すのに使う。
+  readonly rotation: Quat;
+}
+
+// 1つの砲口と、それを持つモジュールの排出点一式。
+export interface WeaponMuzzle {
+  readonly position: Vec3;
+  readonly weapon: WeaponPorts;
+}
 
 // 操作・HUD・AI に、現在の module state から導出した能力面を提供する。
 export class ShipCapabilities {
@@ -52,6 +69,32 @@ export class ShipCapabilities {
       (module): module is Extract<ShipModuleInstance, { kind: K }> => (
         module.kind === kind && (!healthyOnly || module.hp > 0)
       ),
+    );
+  }
+
+  // 健全な武装モジュールの機能点を、assembly 座標 [m] でモジュールの並び順に返す。
+  // 排出物は撃ったモジュール自身の口から出るので、砲口と排出点は同じ WeaponPorts から取る。
+  public weaponPorts(): readonly WeaponPorts[] {
+    const result: WeaponPorts[] = [];
+    for (const weapon of this.modules('weapon', true)) {
+      const definition = this.assembly.definition(weapon.id);
+      const transform = this.assembly.worldTransformOf(weapon.id);
+      if (definition === null || transform === null) continue;
+      const at = (point: Vec3): Vec3 => add(transform.position, qRotate(transform.rotation, point));
+      result.push({
+        muzzles: definition.muzzles.map(at),
+        ejectionPort: at(definition.ejectionPort),
+        linkExitPort: at(definition.linkExitPort),
+        rotation: transform.rotation,
+      });
+    }
+    return result;
+  }
+
+  // 全武装モジュールの砲口を、排出元のモジュール情報つきで列挙する。
+  public weaponMuzzles(): readonly WeaponMuzzle[] {
+    return this.weaponPorts().flatMap(
+      weapon => weapon.muzzles.map(position => ({ position, weapon })),
     );
   }
 

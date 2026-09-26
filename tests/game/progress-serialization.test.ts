@@ -18,7 +18,7 @@ import {
 import { POWER_CAPACITY, PowerSystem, type SerializedPowerSystem } from '../../src/game/player/power';
 import { RadiatorSystem, type SerializedRadiatorSystem } from '../../src/game/player/radiator';
 import { THROTTLE_LEVELS, Throttle, type SerializedThrottle } from '../../src/game/player/throttle';
-import { MAGS_PER_BARREL, WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
+import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
 import {
   ProteinCombatState, type SerializedProteinCombatState,
 } from '../../src/game/protein/protein-combat-state';
@@ -110,10 +110,6 @@ function roundTrips(): readonly RoundTrip[] {
       {
         mags: 5,
         rounds: MAG_ROUNDS - 3,
-        barrel: MAGS_PER_BARREL - 1,
-        barrelTemperature: 310,
-        barrelDeviation: 12,
-        pendingBarrelJoules: 2.5e6,
         cooldown: 0.2,
         muzzleIdx: 1,
         wasFiring: true,

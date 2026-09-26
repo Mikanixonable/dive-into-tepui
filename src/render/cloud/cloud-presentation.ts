@@ -2,13 +2,17 @@
 // テクスチャの準備および雲面レンダラーの寿命を管理する。
 import * as THREE from 'three/webgpu';
 import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../opaque-cloud-surface-renderer';
-import { CLOUD_DENSITY_TOP_M } from './cloud-density-evaluator';
+import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor } from './cloud-cap';
+import { v3 } from '../../math/vec3';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
+import type { CloudFieldDetailTileBinding } from './cloud-field-sampler';
+import type { CloudLocalFieldBinding } from './cloud-local-field';
+import type { CloudLocalFieldBaker, CloudLocalFieldBakeStats } from './cloud-local-field-baker';
 
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
@@ -28,13 +32,18 @@ export interface CloudFieldSource {
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
-  prepare(
-    renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink, temporalExposureSeconds?: number,
-  ): void;
-  // 生成場は品質段に応じて時間キャッシュ幅を変えられる。観測場は実装しなくてよい。
-  setQuality?(level: number): void;
+  prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
   // 保持している GPU 資源を解放する。
   dispose(): void;
+}
+
+// sampler へ注入する局所タイル。cap は視点中心へ動かし、texture は設定元が寿命を持つ。
+export interface CloudPresentationDetailTile {
+  readonly texture: THREE.Texture;
+  readonly cap: OrthographicCap;
+  readonly radius: number; // [rad]
+  readonly blendStartCos: number;
+  readonly composition?: CloudFieldDetailTileBinding['composition'];
 }
 
 export class CloudPresentation {
@@ -42,15 +51,20 @@ export class CloudPresentation {
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
   // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
+  private sourceKind: CloudFieldSourceKind = CLOUD_FIELD_SOURCE_KIND.generated;
   private cloudVisible = false;
   private cirrusVisible = true;
   private translucentCumulusVisible = true;
+  private detailTile: CloudPresentationDetailTile | null = null;
+  private localField: CloudLocalFieldBinding | null = null;
 
   // 各供給源（generated / observed）を管理し、キャップの視点追従と雲メッシュの描画を同期する。
-  // bodyRadius は雲層を配置する天体の基準半径 [m]。
+  // bodyRadius は雲層を配置する天体の基準半径 [m]。localFieldBaker は生成場へ載せる局所光学場の
+  // 再焼を担い、null なら syncGraphics へ注入された場だけを使う。所有権はここへ移る。
   public constructor(
     generated: CloudFieldSource, observed: CloudFieldSource,
     private readonly cap: OrthographicCap, private readonly bodyRadius: number,
+    private readonly localFieldBaker: CloudLocalFieldBaker | null = null,
   ) {
     this.sources = { generated, observed };
     this.source = generated;
@@ -60,8 +74,20 @@ export class CloudPresentation {
 
   // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
+    const detailTile: CloudFieldDetailTileBinding | null = this.sourceKind !== CLOUD_FIELD_SOURCE_KIND.generated
+      || this.detailTile === null ? null : {
+        texture: this.detailTile.texture,
+        cap: this.detailTile.cap.placement,
+        blendStartCos: this.detailTile.blendStartCos,
+        composition: this.detailTile.composition,
+      };
+    // 局所光学場も detailTile と同じ門を通す — observed 供給源は体積場を持たない。
+    // syncGraphics へ注入された場を優先し、無ければ焼き上げ済みの場を使う。
+    const localField = this.sourceKind === CLOUD_FIELD_SOURCE_KIND.generated
+      ? this.localField ?? this.localFieldBaker?.binding ?? null
+      : null;
     return {
-      field: { texture: this.source.texture, cap: this.cap.placement },
+      field: { texture: this.source.texture, cap: this.cap.placement, detailTile, localField },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
     };
@@ -70,10 +96,23 @@ export class CloudPresentation {
   public get cloudsVisible(): boolean { return this.cloudVisible; }
   public get topAltitude(): number { return this.surface.topAltitude; }
 
+  // 局所場の焼き器の計測口。焼き器が無いなら null。
+  public get localFieldBakeStats(): CloudLocalFieldBakeStats | null {
+    return this.localFieldBaker?.bakeStats ?? null;
+  }
+
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
 
   // 描画設定のうち雲にかかわる項目と、見かけ直径 apparentDiameterPx [px] を表示状態へ反映する。
-  public syncGraphics(graphics: GraphicsSettingsData, apparentDiameterPx: number): void {
+  // localField は生成場へ差し込む局所光学場で、三経路が同じ写しを読む。
+  public syncGraphics(
+    graphics: GraphicsSettingsData, apparentDiameterPx: number,
+    detailTile: CloudPresentationDetailTile | null = null,
+    localField: CloudLocalFieldBinding | null = null,
+  ): void {
+    this.detailTile = detailTile;
+    this.localField = localField;
+    if (detailTile !== null) detailTile.cap.aimAt(this.cap.placement.center, detailTile.radius);
     // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
     this.setCloudsVisible(graphics.clouds);
     if (graphics.clouds) {
@@ -91,6 +130,7 @@ export class CloudPresentation {
   // 雲場の出どころを選ぶ。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
   // **選び直したら結び直す** — 結び直さないと、不透明表面が前の出どころの写しを読み続ける。
   private setSource(kind: CloudFieldSourceKind): void {
+    this.sourceKind = kind;
     this.source = this.sources[kind];
     this.surface.bind(this.renderInput);
   }
@@ -113,14 +153,12 @@ export class CloudPresentation {
   // rho は同じ空間で測った観測点の中心距離(地表が 1)。置き直した結果は不透明表面のサンプリングへ
   // 即座に反映する — 反映しないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
   private aim(subpoint: THREE.Vector3, rho: number): void {
-    this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_DENSITY_TOP_M / this.bodyRadius));
+    this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
+    this.detailTile?.cap.aimAt(subpoint, this.detailTile.radius);
     this.surface.bind(this.renderInput);
   }
 
-  private setDetail(detail: CumulusDetail): void {
-    this.surface.setDetail(detail);
-    this.source.setQuality?.(detail);
-  }
+  private setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
 
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   public setCloudsVisible(visible: boolean): void {
@@ -142,20 +180,19 @@ export class CloudPresentation {
 
   // 雲場が描画に寄与するフレームで、選んでいる出どころの場を表示時刻 displayTime [s] へ焼く。gpu を
   // 渡すと、焼いた GPU 時間をそこへ計上する。
-  public bake(
-    renderer: WebGPURenderer,
-    displayTime: number,
-    gpu?: GpuTimingSink,
-    temporalExposureSeconds = 0,
-  ): void {
+  public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.fieldContributes) return;
-    this.source.prepare(renderer, displayTime, gpu, temporalExposureSeconds);
+    this.source.prepare(renderer, displayTime, gpu);
+    // 局所場の中心は直近の aimFrom が置いた cap の中心 — 最大1フレーム遅れだが許容する。
+    const center = this.cap.placement.center;
+    this.localFieldBaker?.maybeRebuild(displayTime, v3(center.x, center.y, center.z));
   }
 
-  // 不透明表面と、選べる雲場の出どころをすべて解放する。
+  // 不透明表面と、選べる雲場の出どころ・局所場の焼き器をすべて解放する。
   public dispose(): void {
     this.surface.dispose();
     for (const source of Object.values(this.sources)) source.dispose();
+    this.localFieldBaker?.dispose();
   }
 
   // 雲場がこのフレームの描画に寄与するか。

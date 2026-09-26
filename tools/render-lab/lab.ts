@@ -2,7 +2,7 @@
 // 絵の撮影(PNG)と、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
-import { GPU_PASS, GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
+import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import {
   ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
 } from '../../src/game/protein/protein-motion-metrics';
@@ -21,10 +21,14 @@ import { distributionOf, type SampleDistribution } from '../../src/math/sample-d
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CASES, type CaseName } from './cases';
 import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
-import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
+import { EARTH_LIGHT_ALBEDO, LabEarth, type GeneratedFieldKind } from './lab-earth';
 import { LabSun } from './lab-sun';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
+import type { CloudDetailDiagnosticTextureEstimate } from './cloud-detail-diagnostic';
+import type {
+  CloudLocalFieldBakeAttempt, CloudLocalFieldBakeStats,
+} from '../../src/render/cloud/cloud-local-field-baker';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
@@ -34,37 +38,124 @@ import type { RenderStyle } from '../../src/render/render-style';
 export interface LabMeasurement {
   readonly caseName: CaseName;
   readonly frames: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
   readonly cpuRenderMs: SampleDistribution;
-  readonly cpuCloudPrepareMs: SampleDistribution;
   readonly gpuSupported: boolean;
   readonly gpuPassTotalScope: 'instrumented-render-pass-sum';
   readonly gpuPassTotalMs: SampleDistribution;
+  readonly observedRenderTotalScope: 'observed-render-total';
+  readonly observedRenderTotalMs: SampleDistribution;
+  readonly observedRenderTotalSamplesMs: readonly (number | null)[];
+  readonly observedRenderCompleteFrames: number;
+  readonly observedRenderExpectedQueryCounts: readonly number[];
+  readonly observedRenderResolvedQueryCounts: readonly number[];
+  readonly observedComputeScope: 'renderer-compute-query-sum';
+  readonly observedComputeMs: SampleDistribution;
+  readonly observedComputeSamplesMs: readonly (number | null)[];
+  readonly observedComputeCompleteFrames: number;
+  readonly observedComputeExpectedQueryCounts: readonly number[];
+  readonly observedComputeResolvedQueryCounts: readonly number[];
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
+  readonly gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu';
+  readonly gpuPassRenderCallCpuMs: Readonly<Record<string, SampleDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
 }
 
-export interface CloudPreparationFrame {
-  readonly displayTime: number;
-  readonly cold: {
-    readonly cpuCloudPrepareMs: number;
-    readonly gpuCloudBakeMs: number;
-    readonly generationBefore: number;
-    readonly generationAfter: number;
+export interface CloudDetailLifecycleMeasurement {
+  readonly caseName: CaseName;
+  readonly shotName: string;
+  readonly sampleCount: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+  readonly sampleDisplayTimeSeconds: number;
+  readonly caseReadinessWaitWallMs: number;
+  readonly setupWarmupWallMs: number;
+  readonly caseReady: boolean;
+  readonly gpuTimestampResolveSupport: boolean;
+  readonly coldExchange: readonly {
+    readonly index: number;
+    readonly phaseDeg: number;
+    readonly previousOwnerEstimate: CloudDetailDiagnosticTextureEstimate | null;
+    readonly ownerEstimate: CloudDetailDiagnosticTextureEstimate | null;
+    readonly setterCpuWallMs: number;
+    readonly renderCallCpuWallMs: number;
+    readonly pipelineRenderCpuWallMs: number;
+    readonly timestampResolveAwaitWallMs: number;
+    readonly firstUseWallMs: number;
+  }[];
+  readonly warmReuse: readonly {
+    readonly index: number;
+    readonly phaseDeg: number;
+    readonly ownerEstimateBefore: CloudDetailDiagnosticTextureEstimate | null;
+    readonly ownerEstimateAfter: CloudDetailDiagnosticTextureEstimate | null;
+    readonly sameTextureRetained: boolean;
+    readonly setterCpuWallMs: number;
+    readonly renderCallCpuWallMs: number;
+    readonly pipelineRenderCpuWallMs: number;
+    readonly timestampResolveAwaitWallMs: number;
+    readonly reuseWallMs: number;
+  }[];
+  readonly fullFrameGpuB0: {
+    readonly status: 'not-measured';
+    readonly reason: string;
   };
-  readonly warm: {
-    readonly cpuCloudPrepareMs: number;
-    readonly gpuCloudBakeMs: number;
-    readonly generationBefore: number;
-    readonly generationAfter: number;
+  readonly actualGpuAllocation: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
+  readonly cloudTextureUploadReadyWait: {
+    readonly status: 'not-measured';
+    readonly reason: string;
   };
 }
 
-export interface CloudPreparationMeasurement {
+// 局所光学場の再焼計測で記録した1フレーム。bakeAttempts はそのフレームで新たに
+// 積まれた試行だけ(再焼の無いフレームは空)。
+export interface CloudLocalFieldLifecycleFrame {
+  readonly index: number;
+  readonly kind: 'steady' | 'interval-rebuild' | 'recenter-rebuild';
+  readonly displayTimeSeconds: number;
+  // this.render() 全体の CPU 壁時計 [ms]。局所場の導出・体積構築はこの中で走る。
+  readonly renderCallCpuWallMs: number;
+  // pipeline.render() だけの CPU 壁時計 [ms]。
+  readonly pipelineRenderCpuWallMs: number;
+  readonly timestampResolveAwaitWallMs: number;
+  readonly bakeAttempts: readonly CloudLocalFieldBakeAttempt[];
+  readonly generation: number | null;
+  readonly bindingTextureUuid: string | null;
+  readonly volumeBytes: CloudLocalFieldBakeStats['volumeBytes'] | null;
+  readonly gpuPassMs: Readonly<Record<string, number>>;
+  readonly observedRenderTotalMs: number | null;
+  readonly observedComputeTotalMs: number | null;
+}
+
+export interface CloudLocalFieldLifecycleMeasurement {
   readonly caseName: CaseName;
-  readonly readyWaitMs: number;
-  readonly gpuSupported: boolean;
-  readonly frames: readonly CloudPreparationFrame[];
+  readonly shotName: string;
+  readonly sampleCount: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+  readonly caseReadinessWaitWallMs: number;
+  readonly setupWarmupWallMs: number;
+  readonly caseReady: boolean;
+  readonly gpuTimestampResolveSupport: boolean;
+  // 初期構築を含む、焼き器が保持している直近の試行記録。フレームへの帰属は frames 側で見る。
+  readonly bakeAttempts: readonly CloudLocalFieldBakeAttempt[];
+  readonly frames: readonly CloudLocalFieldLifecycleFrame[];
+  readonly fullFrameGpuB0: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
+  readonly actualGpuAllocation: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
+  readonly textureUploadReadyWait: {
+    readonly status: 'not-measured';
+    readonly reason: string;
+  };
 }
 
 const ORIGIN = new THREE.Vector3();
@@ -85,6 +176,43 @@ const READY_TIMEOUT_MS = 60_000;
 
 // 撮影 1 枚が、絵の落ち着きを待って撮る回数の上限。実測では全撮影が 3 回以内に一致したので、その倍を取る。
 const MAX_SETTLE_CAPTURES = 6;
+// captureTarget は毎回透明に消す。出力パスが上書きしなければ、readback にこの alpha が残る。
+const CAPTURE_CLEAR_COLOR = new THREE.Color(1, 0, 1);
+
+// 局所場計測の定常フレームで進める表示時刻の刻み [s]。生成雲場は表示時刻が変わると焼き直す
+// ため、定常フレームにも生成場の焼き込みが含まれる — 再焼フレームとの差が局所場のぶんになる。
+const LOCAL_FIELD_STEADY_STEP_SECONDS = 0.1;
+// 局所場の再焼間隔(300 s)を確実に超える時刻ジャンプ [s]。
+const LOCAL_FIELD_REBUILD_JUMP_SECONDS = 310;
+// 再センター試行で直下点を動かす緯度差 [deg]。再焼の中心移動閾値は場の半幅の 1/4 相当
+// (約 0.56°)なので、それを十分に上回る。
+const LOCAL_FIELD_RECENTER_LATITUDE_DEG = 3;
+
+interface LabPixelRatioRenderer {
+  readonly domElement: HTMLCanvasElement;
+  getPixelRatio(): number;
+  getSize(target: THREE.Vector2): THREE.Vector2;
+  setPixelRatio(value: number): void;
+  setSize(width: number, height: number, updateStyle?: boolean): void;
+}
+
+// 描画倍率を一時的に変え、処理の成否にかかわらず元のキャンバス寸法へ戻す。
+export async function withLabPixelRatio<T>(
+  renderer: LabPixelRatioRenderer,
+  pixelRatio: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previousPixelRatio = renderer.getPixelRatio();
+  const previousSize = renderer.getSize(new THREE.Vector2());
+  try {
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(previousSize.x, previousSize.y, false);
+    return await operation();
+  } finally {
+    renderer.setPixelRatio(previousPixelRatio);
+    renderer.setSize(previousSize.x, previousSize.y, false);
+  }
+}
 
 export class LabView {
   private readonly scene = new THREE.Scene();
@@ -102,8 +230,6 @@ export class LabView {
   private style: RenderStyle = 'realistic';
   // 直前の render がパイプラインの描画に費やした CPU 時間 [ms]。
   private lastRenderCpuMs = 0;
-  // 直前の render で雲場prepare/bakeに費やしたCPU側の発行時間 [ms]。
-  private lastCloudPrepareCpuMs = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
   // ケース既定のカメラ距離 [m]。cameraDistanceLog の基準になる。
@@ -172,6 +298,28 @@ export class LabView {
     this.render();
   }
 
+  // 指定ケースをGPUへ描画してから、ケース固有の実テクスチャ診断を実行する。
+  public async readGpuTextureDiagnostic(name: CaseName): Promise<unknown> {
+    this.build(name);
+    this.resetView();
+    await this.waitUntilReady();
+    if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for GPU texture diagnostic`);
+    this.render();
+    await this.gpu.waitForResolve();
+    const diagnostic = this.current?.readGpuTextureDiagnostic;
+    if (diagnostic === undefined) throw new Error(`render-lab: case "${name}" has no GPU texture diagnostic`);
+    const backend = this.renderer.backend as unknown as {
+      get: (texture: THREE.Texture) => { readonly textureDescriptorGPU: { readonly format: string } };
+      copyTextureToBuffer: (
+        texture: THREE.Texture, x: number, y: number, width: number, height: number, layer: number,
+      ) => Promise<ArrayBufferView>;
+    };
+    return diagnostic(async (texture, width, height, layer) => ({
+      data: await backend.copyTextureToBuffer(texture, 0, 0, width, height, layer),
+      format: backend.get(texture).textureDescriptorGPU.format,
+    }), this.renderer);
+  }
+
   // 表示スタイルを差し替え、いま出ているケースをそのスタイルで組み直す。観察の向きは保つ —
   // 写実と模式図を同じ構図で見比べるための切り替え。
   public setStyle(style: RenderStyle): void {
@@ -185,6 +333,7 @@ export class LabView {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
       this.current.disposeProteinMotion?.();
+      this.current.dispose?.();
       for (const root of this.current.objects) disposeOwnedRenderResources(root);
     }
     const built = CASES[name](this.style, this.ringMaterials);
@@ -210,6 +359,19 @@ export class LabView {
     this.pipeline.rebuildForGraphics(graphics);
     this.render();
   }
+
+  // 生成雲の経路を差し替えて描き直す(新旧比較撮影専用)。地球を置くケースでだけ効く。
+  public setGeneratedFieldKind(kind: GeneratedFieldKind): void {
+    this.earth.setGeneratedFieldKind(kind);
+    this.render();
+  }
+
+  // いま選ばれている雲場の世代。全球場の初回ジョブが終わって場が届くと進む —
+  // 暖機の完了を見る撮影駆動が読む。
+  public get cloudFieldGeneration(): number { return this.earth.cloudGeneration; }
+
+  // 製品経路の局所光学場の焼き器が記録した計測。
+  public get cloudLocalFieldBakeStats() { return this.earth.cloudLocalFieldBakeStats; }
 
   // 画面へ出す中間バッファを選び、その場で描き直す。
   public showDebugTarget(target: DebugTargetId): void {
@@ -276,7 +438,7 @@ export class LabView {
   }
 
   // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
-  public render(displayTime = 0): void {
+  public render(displayTime = 0, observedFrame = false): void {
     if (this.current === null) return;
     const graphics = this.graphics.current;
     // カメラを観察の向きへ置く。画角と遠クリップ距離の書き換えは、投影行列を組み直すまで無言で効かない。
@@ -306,9 +468,7 @@ export class LabView {
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     this.pipeline.cumulusShadow.set(castsCumulusShadow(graphics) ? earth?.cumulus ?? null : null);
-    const cloudPrepareStartedAt = performance.now();
     earth?.bake(this.renderer, displayTime, this.gpu);
-    this.lastCloudPrepareCpuMs = performance.now() - cloudPrepareStartedAt;
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
       [...(earth === null ? [] : [earth.atmosphere]), ...(this.current.atmospheres ?? [])].map((body) => {
@@ -322,9 +482,13 @@ export class LabView {
       graphics.atmosphere,
     ));
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, camera, this.style);
-    this.lastRenderCpuMs = performance.now() - startedAt;
-    this.gpu.resolve();
+    try {
+      this.pipeline.render(this.scene, camera, this.style);
+    } finally {
+      this.lastRenderCpuMs = performance.now() - startedAt;
+      if (observedFrame) this.gpu.endObservedFrame();
+      this.gpu.resolve();
+    }
   }
 
   // ケースを表示して測る。angles を渡すと、ケース既定の観察の向きへそれを重ねてから測る。
@@ -333,6 +497,310 @@ export class LabView {
   ): Promise<LabMeasurement> {
     this.show(name);
     this.setViewAngles(angles);
+    return this.measureCurrent(name, warmupFrames, sampleFrames);
+  }
+
+  // ケースの撮影を適用してから計測する。graphics は撮影の品質設定を適用した後の上書き。
+  public async measureShot(
+    name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
+    warmupFrames = 6, sampleFrames = 30,
+    cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
+  ): Promise<LabMeasurement> {
+    this.show(name);
+    this.applyShot(shotName);
+    this.setGraphics({ ...this.graphics.current, ...graphics });
+    if (cloudDetailDiagnostic !== undefined) {
+      this.earth.setCloudDetailDiagnostic(
+        cloudDetailDiagnostic !== null,
+        cloudDetailDiagnostic?.wavelengthKm,
+        cloudDetailDiagnostic?.directionDeg,
+        cloudDetailDiagnostic?.phaseDeg,
+        cloudDetailDiagnostic?.composition,
+      );
+    }
+    return withLabPixelRatio(
+      this.renderer,
+      this.renderer.getPixelRatio() * this.graphics.current.resolutionScale,
+      () => this.measureCurrent(name, warmupFrames, sampleFrames),
+    );
+  }
+
+  // 局所タイルを異なる phase へ差し替える冷交換と、同じ設定を再適用する warm reuse を分けて測る。
+  public async measureCloudDetailLifecycle(
+    name: CaseName,
+    shotName: string,
+    graphics: Partial<GraphicsSettingsData>,
+    detail: NonNullable<LabShot['cloudDetailDiagnostic']>,
+    sampleCount = 8,
+  ): Promise<CloudDetailLifecycleMeasurement> {
+    if (!Number.isSafeInteger(sampleCount) || sampleCount < 1 || sampleCount > 64) {
+      throw new RangeError('cloud detail lifecycle sample count must be in [1, 64]');
+    }
+    this.show(name);
+    this.applyShot(shotName);
+    if (this.current?.earth === undefined) {
+      throw new Error(`render-lab: case "${name}" has no earth for cloud detail measurement`);
+    }
+    this.setGraphics({ ...this.graphics.current, ...graphics, clouds: true });
+    this.earth.setCloudDetailDiagnostic(false);
+
+    const readinessStartedAt = performance.now();
+    await this.waitUntilReady();
+    const caseReadinessWaitWallMs = performance.now() - readinessStartedAt;
+    const caseReady = this.ready;
+    const fallback = {
+      caseName: name,
+      shotName,
+      sampleCount,
+      canvasWidth: this.renderer.domElement.width,
+      canvasHeight: this.renderer.domElement.height,
+      sampleDisplayTimeSeconds: 0.1,
+      caseReadinessWaitWallMs,
+      setupWarmupWallMs: 0,
+      caseReady,
+      gpuTimestampResolveSupport: this.gpu.supported,
+      coldExchange: [],
+      warmReuse: [],
+      fullFrameGpuB0: {
+        status: 'not-measured' as const,
+        reason: 'render-lab cannot observe all GPU work and presentation for a full frame.',
+      },
+      actualGpuAllocation: {
+        status: 'not-measured' as const,
+        reason: 'The diagnostic sees the DataTexture CPU image and dimensions, not driver allocation or residency.',
+      },
+      cloudTextureUploadReadyWait: {
+        status: 'not-measured' as const,
+        reason: 'The render lab has no texture-specific upload-completion signal for this DataTexture.',
+      },
+    };
+    if (!caseReady) return fallback;
+
+    const setupWarmupFrames = 6;
+    const sampleDisplayTime = setupWarmupFrames / 60;
+    let setupWarmupWallMs = 0;
+    let canvasWidth = fallback.canvasWidth;
+    let canvasHeight = fallback.canvasHeight;
+    const coldExchange: CloudDetailLifecycleMeasurement['coldExchange'][number][] = [];
+    const warmReuse: CloudDetailLifecycleMeasurement['warmReuse'][number][] = [];
+    const renderAndResolve = async () => {
+      const renderStartedAt = performance.now();
+      this.render(sampleDisplayTime);
+      const renderCallCpuWallMs = performance.now() - renderStartedAt;
+      const pipelineRenderCpuWallMs = this.lastRenderCpuMs;
+      const resolveStartedAt = performance.now();
+      await this.gpu.waitForResolve();
+      return {
+        renderCallCpuWallMs,
+        pipelineRenderCpuWallMs,
+        timestampResolveAwaitWallMs: performance.now() - resolveStartedAt,
+      };
+    };
+
+    try {
+      const pixelRatio = this.renderer.getPixelRatio() * this.graphics.current.resolutionScale;
+      await withLabPixelRatio(this.renderer, pixelRatio, async () => {
+        canvasWidth = this.renderer.domElement.width;
+        canvasHeight = this.renderer.domElement.height;
+        const setupStartedAt = performance.now();
+        for (let frame = 0; frame < setupWarmupFrames; frame += 1) {
+          this.render((frame + 1) / 60);
+          await this.gpu.waitForResolve();
+        }
+        setupWarmupWallMs = performance.now() - setupStartedAt;
+        for (let index = 0; index < sampleCount; index += 1) {
+          const phaseDeg = ((detail.phaseDeg ?? 0) + index * 37) % 360;
+          const previousOwnerEstimate = this.earth.cloudDetailDiagnosticTextureEstimate;
+          const coldStartedAt = performance.now();
+          const setterStartedAt = performance.now();
+          this.earth.setCloudDetailDiagnostic(
+            true, detail.wavelengthKm, detail.directionDeg, phaseDeg, detail.composition,
+          );
+          const setterCpuWallMs = performance.now() - setterStartedAt;
+          const coldUse = await renderAndResolve();
+          coldExchange.push({
+            index,
+            phaseDeg,
+            previousOwnerEstimate,
+            ownerEstimate: this.earth.cloudDetailDiagnosticTextureEstimate,
+            setterCpuWallMs,
+            renderCallCpuWallMs: coldUse.renderCallCpuWallMs,
+            pipelineRenderCpuWallMs: coldUse.pipelineRenderCpuWallMs,
+            timestampResolveAwaitWallMs: coldUse.timestampResolveAwaitWallMs,
+            firstUseWallMs: performance.now() - coldStartedAt,
+          });
+
+          const ownerEstimateBefore = this.earth.cloudDetailDiagnosticTextureEstimate;
+          const warmStartedAt = performance.now();
+          const warmSetterStartedAt = performance.now();
+          this.earth.setCloudDetailDiagnostic(
+            true, detail.wavelengthKm, detail.directionDeg, phaseDeg, detail.composition,
+          );
+          const warmSetterCpuWallMs = performance.now() - warmSetterStartedAt;
+          const warmUse = await renderAndResolve();
+          const ownerEstimateAfter = this.earth.cloudDetailDiagnosticTextureEstimate;
+          warmReuse.push({
+            index,
+            phaseDeg,
+            ownerEstimateBefore,
+            ownerEstimateAfter,
+            sameTextureRetained: ownerEstimateBefore?.textureUuid === ownerEstimateAfter?.textureUuid,
+            setterCpuWallMs: warmSetterCpuWallMs,
+            renderCallCpuWallMs: warmUse.renderCallCpuWallMs,
+            pipelineRenderCpuWallMs: warmUse.pipelineRenderCpuWallMs,
+            timestampResolveAwaitWallMs: warmUse.timestampResolveAwaitWallMs,
+            reuseWallMs: performance.now() - warmStartedAt,
+          });
+        }
+      });
+    } finally {
+      this.earth.setCloudDetailDiagnostic(false);
+    }
+    return {
+      ...fallback,
+      canvasWidth,
+      canvasHeight,
+      sampleDisplayTimeSeconds: sampleDisplayTime,
+      setupWarmupWallMs,
+      gpuTimestampResolveSupport: this.gpu.supported,
+      coldExchange,
+      warmReuse,
+    };
+  }
+
+  // 局所光学場の再焼を、製品経路の焼き器(earthCloudPresentation が持つもの)が載った実
+  // フレームで測る。同じ置き方の定常フレーム・再焼間隔を超える時刻ジャンプ・直下点の閾値超の
+  // 移動それぞれを別に記録し、再焼が起きたフレームと起きないフレームの CPU 発行時間・
+  // GPU pass 時間・体積の容量推定を読み分ける。
+  public async measureCloudLocalFieldLifecycle(
+    name: CaseName,
+    shotName: string,
+    graphics: Partial<GraphicsSettingsData> = {},
+    sampleCount = 4,
+  ): Promise<CloudLocalFieldLifecycleMeasurement> {
+    if (!Number.isSafeInteger(sampleCount) || sampleCount < 1 || sampleCount > 16) {
+      throw new RangeError('cloud local field lifecycle sample count must be in [1, 16]');
+    }
+    this.show(name);
+    this.applyShot(shotName);
+    if (this.current?.earth === undefined) {
+      throw new Error(`render-lab: case "${name}" has no earth for cloud local field measurement`);
+    }
+    this.setGraphics({ ...this.graphics.current, ...graphics, clouds: true });
+
+    const readinessStartedAt = performance.now();
+    await this.waitUntilReady();
+    const caseReadinessWaitWallMs = performance.now() - readinessStartedAt;
+    const caseReady = this.ready;
+    const statsOf = (): CloudLocalFieldBakeStats | null => this.earth.cloudLocalFieldBakeStats;
+    const fallback = {
+      caseName: name,
+      shotName,
+      sampleCount,
+      canvasWidth: this.renderer.domElement.width,
+      canvasHeight: this.renderer.domElement.height,
+      caseReadinessWaitWallMs,
+      setupWarmupWallMs: 0,
+      caseReady,
+      gpuTimestampResolveSupport: this.gpu.supported,
+      bakeAttempts: statsOf()?.attempts ?? [],
+      frames: [] as CloudLocalFieldLifecycleFrame[],
+      fullFrameGpuB0: {
+        status: 'not-measured' as const,
+        reason: 'render-lab cannot observe all GPU work and presentation for a full frame.',
+      },
+      actualGpuAllocation: {
+        status: 'not-measured' as const,
+        reason: 'The measurement sees texture byte estimates, not driver allocation or residency.',
+      },
+      textureUploadReadyWait: {
+        status: 'not-measured' as const,
+        reason: 'The render lab has no texture-specific upload-completion signal for this DataArrayTexture.',
+      },
+    };
+    if (!caseReady) return fallback;
+
+    const setupWarmupFrames = 6;
+    const baseLatitude = this.angles.earthLatitudeDeg;
+    let displayTime = 0;
+    let setupWarmupWallMs = 0;
+    let canvasWidth = fallback.canvasWidth;
+    let canvasHeight = fallback.canvasHeight;
+    const frames: CloudLocalFieldLifecycleFrame[] = [];
+    const record = async (kind: CloudLocalFieldLifecycleFrame['kind']): Promise<void> => {
+      // 試行記録は直近しか持たないので、新たに積まれた分は通し番号で切り分ける。
+      const sequenceBefore = statsOf()?.attempts.at(-1)?.sequence ?? -1;
+      this.gpu.beginObservedFrame();
+      const startedAt = performance.now();
+      this.render(displayTime, true);
+      const renderCallCpuWallMs = performance.now() - startedAt;
+      const pipelineRenderCpuWallMs = this.lastRenderCpuMs;
+      const resolveStartedAt = performance.now();
+      await this.gpu.waitForResolve();
+      const snapshot = this.gpu.snapshot();
+      const stats = statsOf();
+      frames.push({
+        index: frames.length,
+        kind,
+        displayTimeSeconds: displayTime,
+        renderCallCpuWallMs,
+        pipelineRenderCpuWallMs,
+        timestampResolveAwaitWallMs: performance.now() - resolveStartedAt,
+        bakeAttempts: stats?.attempts.filter((attempt) => attempt.sequence > sequenceBefore) ?? [],
+        generation: stats?.generation ?? null,
+        bindingTextureUuid: stats?.bindingTextureUuid ?? null,
+        volumeBytes: stats?.volumeBytes ?? null,
+        gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map(
+          (label, index): [string, number] => [label, snapshot.elapsedMs[index] ?? 0])),
+        observedRenderTotalMs: snapshot.observedRenderComplete ? snapshot.observedRenderTotalMs : null,
+        observedComputeTotalMs: snapshot.observedComputeComplete ? snapshot.observedComputeTotalMs : null,
+      });
+    };
+
+    try {
+      const pixelRatio = this.renderer.getPixelRatio() * this.graphics.current.resolutionScale;
+      await withLabPixelRatio(this.renderer, pixelRatio, async () => {
+        canvasWidth = this.renderer.domElement.width;
+        canvasHeight = this.renderer.domElement.height;
+        // 暖機。シェーダの組み立てと初回の転送を、計測に入れないフレームで済ませる。
+        const warmupStartedAt = performance.now();
+        for (let frame = 0; frame < setupWarmupFrames; frame += 1) {
+          displayTime += LOCAL_FIELD_STEADY_STEP_SECONDS;
+          this.render(displayTime);
+          await this.gpu.waitForResolve();
+        }
+        setupWarmupWallMs = performance.now() - warmupStartedAt;
+        for (let index = 0; index < sampleCount; index += 1) {
+          displayTime += LOCAL_FIELD_STEADY_STEP_SECONDS;
+          await record('steady');
+          displayTime += LOCAL_FIELD_REBUILD_JUMP_SECONDS;
+          await record('interval-rebuild');
+          // 直下点を閾値以上ずらして再焼させる。交互に元へ戻すので、どちら向きの移動も測れる。
+          this.angles = {
+            ...this.angles,
+            earthLatitudeDeg: baseLatitude + (index % 2 === 0 ? LOCAL_FIELD_RECENTER_LATITUDE_DEG : 0),
+          };
+          displayTime += LOCAL_FIELD_STEADY_STEP_SECONDS;
+          await record('recenter-rebuild');
+        }
+      });
+    } finally {
+      this.angles = { ...this.angles, earthLatitudeDeg: baseLatitude };
+    }
+    return {
+      ...fallback,
+      canvasWidth,
+      canvasHeight,
+      setupWarmupWallMs,
+      bakeAttempts: statsOf()?.attempts ?? [],
+      frames,
+    };
+  }
+
+  // 現在のケースと shot の設定を保持したまま、準備待ち・ウォームアップ・標本収集を共通に行う。
+  private async measureCurrent(
+    name: CaseName, warmupFrames: number, sampleFrames: number,
+  ): Promise<LabMeasurement> {
     await this.waitUntilReady();
     if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for measurement`);
     await this.gpu.waitForResolve();
@@ -350,81 +818,113 @@ export class LabView {
 
     // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
     const cpuSamples: number[] = [];
-    const cloudPrepareSamples: number[] = [];
     const gpuPassTotalSamples: number[] = [];
+    const observedRenderSamples: (number | null)[] = [];
+    const observedRenderExpectedQueryCounts: number[] = [];
+    const observedRenderResolvedQueryCounts: number[] = [];
+    const observedComputeSamples: (number | null)[] = [];
+    const observedComputeExpectedQueryCounts: number[] = [];
+    const observedComputeResolvedQueryCounts: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
+    const renderCallCpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => Array(sampleFrames).fill(0) as number[]);
     const motion = new ProteinMotionMetricsRecorder();
-    for (let frame = 0; frame < sampleFrames; frame++) {
-      const displayTime = (warmupFrames + frame + 1) / 60;
-      const motionSample = this.current?.updateProteinMotion?.(displayTime);
-      this.render(displayTime);
-      cpuSamples.push(this.lastRenderCpuMs);
-      cloudPrepareSamples.push(this.lastCloudPrepareCpuMs);
-      await this.gpu.waitForResolve();
-      const timings = this.gpu.snapshot();
-      let passTotalMs = 0;
-      for (let index = 0; index < GPU_PASS_COUNT; index += 1) {
-        passTotalMs += timings.elapsedMs[index] ?? 0;
+    let measuredFrameIndex: number | null = null;
+    let pendingPass: number | null = null;
+    let activePass: number | null = null;
+    let renderDepth = 0;
+    let renderStartedAt = 0;
+    const inspector = this.renderer.inspector;
+    const originalBeginPass = this.gpu.beginPass;
+    const originalBeginRender = inspector.beginRender;
+    const originalFinishRender = inspector.finishRender;
+    this.gpu.beginPass = (id) => {
+      pendingPass = id;
+      originalBeginPass.call(this.gpu, id);
+    };
+    inspector.beginRender = (uid, scene, camera, target) => {
+      if (renderDepth === 0) {
+        activePass = pendingPass;
+        pendingPass = null;
+        renderStartedAt = performance.now();
       }
-      gpuPassTotalSamples.push(passTotalMs);
-      for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
-      motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
+      renderDepth += 1;
+      originalBeginRender.call(inspector, uid, scene, camera, target);
+    };
+    inspector.finishRender = (uid) => {
+      originalFinishRender.call(inspector, uid);
+      renderDepth -= 1;
+      if (renderDepth === 0) {
+        if (measuredFrameIndex !== null && activePass !== null) {
+          const samples = renderCallCpuSamples[activePass]!;
+          samples[measuredFrameIndex] = (samples[measuredFrameIndex] ?? 0) + performance.now() - renderStartedAt;
+        }
+        activePass = null;
+      }
+    };
+    try {
+      for (let frame = 0; frame < sampleFrames; frame++) {
+        measuredFrameIndex = frame;
+        const displayTime = (warmupFrames + frame + 1) / 60;
+        this.gpu.beginObservedFrame();
+        const motionSample = this.current?.updateProteinMotion?.(displayTime);
+        this.render(displayTime, true);
+        measuredFrameIndex = null;
+        cpuSamples.push(this.lastRenderCpuMs);
+        await this.gpu.waitForResolve();
+        const timings = this.gpu.snapshot();
+        observedRenderSamples.push(timings.observedRenderComplete ? timings.observedRenderTotalMs : null);
+        observedRenderExpectedQueryCounts.push(timings.observedRenderExpectedQueryCount);
+        observedRenderResolvedQueryCounts.push(timings.observedRenderQueryCount);
+        observedComputeSamples.push(timings.observedComputeComplete ? timings.observedComputeTotalMs : null);
+        observedComputeExpectedQueryCounts.push(timings.observedComputeExpectedQueryCount);
+        observedComputeResolvedQueryCounts.push(timings.observedComputeQueryCount);
+        let passTotalMs = 0;
+        for (let index = 0; index < GPU_PASS_COUNT; index += 1) {
+          passTotalMs += timings.elapsedMs[index] ?? 0;
+        }
+        gpuPassTotalSamples.push(passTotalMs);
+        for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
+        motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
+      }
+    } finally {
+      measuredFrameIndex = null;
+      this.gpu.beginPass = originalBeginPass;
+      inspector.beginRender = originalBeginRender;
+      inspector.finishRender = originalFinishRender;
     }
 
     return {
       caseName: name,
       frames: sampleFrames,
+      canvasWidth: this.renderer.domElement.width,
+      canvasHeight: this.renderer.domElement.height,
       cpuRenderMs: distributionOf(cpuSamples),
-      cpuCloudPrepareMs: distributionOf(cloudPrepareSamples),
       gpuSupported: this.gpu.snapshot().supported,
       gpuPassTotalScope: 'instrumented-render-pass-sum',
       gpuPassTotalMs: distributionOf(gpuPassTotalSamples),
+      observedRenderTotalScope: 'observed-render-total',
+      observedRenderTotalMs: distributionOf(observedRenderSamples.filter(
+        (sample): sample is number => sample !== null,
+      )),
+      observedRenderTotalSamplesMs: observedRenderSamples,
+      observedRenderCompleteFrames: observedRenderSamples.filter((sample) => sample !== null).length,
+      observedRenderExpectedQueryCounts,
+      observedRenderResolvedQueryCounts,
+      observedComputeScope: 'renderer-compute-query-sum',
+      observedComputeMs: distributionOf(observedComputeSamples.filter(
+        (sample): sample is number => sample !== null,
+      )),
+      observedComputeSamplesMs: observedComputeSamples,
+      observedComputeCompleteFrames: observedComputeSamples.filter((sample) => sample !== null).length,
+      observedComputeExpectedQueryCounts,
+      observedComputeResolvedQueryCounts,
       gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distributionOf(gpuSamples[index]!)])),
+      gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu',
+      gpuPassRenderCallCpuMs: Object.fromEntries(
+        GPU_PASS_LABELS.map((label, index) => [label, distributionOf(renderCallCpuSamples[index]!)]),
+      ),
       proteinMotion: motion.summary(),
       proteinCase: this.current?.proteinMotion,
-    };
-  }
-
-  // 任意時刻へのジャンプと同一時刻の再描画を対にして、雲場のcold/warm prepareを測る。
-  // coldは単世代キャッシュに無い時刻、warmは直後の同一時刻なので、generationがcoldだけ進むことも検査できる。
-  public async measureCloudPreparation(
-    name: CaseName, displayTimes: readonly number[], angles: Partial<LabViewAngles> = {},
-  ): Promise<CloudPreparationMeasurement> {
-    const readyStartedAt = performance.now();
-    this.show(name);
-    this.setViewAngles(angles);
-    await this.waitUntilReady();
-    const readyWaitMs = performance.now() - readyStartedAt;
-    if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for cloud preparation measurement`);
-    const earth = this.current?.earth === undefined ? null : this.earth;
-    if (earth === null) throw new Error(`render-lab: case "${name}" has no earth cloud field`);
-    await this.gpu.waitForResolve();
-
-    const frames: CloudPreparationFrame[] = [];
-    const measureOne = async (displayTime: number) => {
-      await this.gpu.waitForResolve();
-      this.gpu.reset();
-      const generationBefore = earth.cloudGeneration;
-      this.render(displayTime);
-      const cpuCloudPrepareMs = this.lastCloudPrepareCpuMs;
-      await this.gpu.waitForResolve();
-      return {
-        cpuCloudPrepareMs,
-        gpuCloudBakeMs: this.gpu.msOf(GPU_PASS.cloudBake),
-        generationBefore,
-        generationAfter: earth.cloudGeneration,
-      };
-    };
-    for (const displayTime of displayTimes) {
-      const cold = await measureOne(displayTime);
-      const warm = await measureOne(displayTime);
-      frames.push({ displayTime, cold, warm });
-    }
-    return {
-      caseName: name,
-      readyWaitMs,
-      gpuSupported: this.gpu.snapshot().supported,
-      frames,
     };
   }
 
@@ -442,6 +942,13 @@ export class LabView {
   public applyShot(name: string, graphics: Partial<GraphicsSettingsData> = {}): void {
     const shot = this.shots[name];
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
+    const diagnostic = shot.cloudDetailDiagnostic;
+    this.earth.setCloudDetailDiagnostic(
+      diagnostic !== undefined, diagnostic?.wavelengthKm, diagnostic?.directionDeg,
+      diagnostic?.phaseDeg,
+      diagnostic?.composition,
+    );
+    this.earth.setCloudLocalFieldDiagnostic(shot.cloudLocalFieldDiagnostic === true);
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
   }
@@ -475,6 +982,42 @@ export class LabView {
     return pngs;
   }
 
+  // 指定 shot を品質設定の内部ラスタ寸法で撮る。通常の固定寸法 shot と計測の解像度を混同しない。
+  public async shootNative(
+    name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
+    cloudDetailDiagnostic?: LabShot['cloudDetailDiagnostic'] | null,
+  ): Promise<string> {
+    this.setGraphics({ ...this.startupGraphics, ...graphics });
+    this.show(name);
+    this.current?.updateProteinMotion?.(1);
+    await this.waitUntilReady();
+    if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for native shooting`);
+    this.applyShot(shotName, graphics);
+    this.setGraphics({ ...this.graphics.current, ...graphics });
+    if (cloudDetailDiagnostic !== undefined) {
+      this.earth.setCloudDetailDiagnostic(
+        cloudDetailDiagnostic !== null,
+        cloudDetailDiagnostic?.wavelengthKm,
+        cloudDetailDiagnostic?.directionDeg,
+        cloudDetailDiagnostic?.phaseDeg,
+        cloudDetailDiagnostic?.composition,
+      );
+    }
+    const pixelRatio = this.renderer.getPixelRatio() * this.graphics.current.resolutionScale;
+    const width = Math.round(VIEW_WIDTH * pixelRatio);
+    const height = Math.round(VIEW_HEIGHT * pixelRatio);
+    const previousWidth = this.captureTarget.width;
+    const previousHeight = this.captureTarget.height;
+    try {
+      return await withLabPixelRatio(this.renderer, pixelRatio, async () => {
+        this.captureTarget.setSize(width, height);
+        return this.captureSettled(shotName);
+      });
+    } finally {
+      this.captureTarget.setSize(previousWidth, previousHeight);
+    }
+  }
+
   // 連続する 2 回の capture が一致するまで撮り直し、一致した絵を返す。MAX_SETTLE_CAPTURES 回撮っても
   // 一致しなければ、撮影名 shotName を添えて投げる。
   private async captureSettled(shotName: string): Promise<string> {
@@ -482,6 +1025,7 @@ export class LabView {
     // 完全に決定的。雲場は焼いたフレームの次から載り、パイプラインを組み直した直後のフレームは崩れる。
     let previous = await this.capture();
     for (let count = 2; count <= MAX_SETTLE_CAPTURES; count++) {
+      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
       const next = await this.capture();
       if (next === previous) return next;
       previous = next;
@@ -511,16 +1055,54 @@ export class LabView {
 
   // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。
   public async capture(): Promise<string> {
-    this.renderer.setOutputRenderTarget(this.captureTarget);
+    // 前回の timestamp resolve を排出してから描く。render() の resolve がこのフレームを対象にできる。
+    await this.gpu.waitForResolve();
+    const previousOutput = this.renderer.getOutputRenderTarget();
+    const previousTarget = this.renderer.getRenderTarget();
+    const previousClearColor = this.renderer.getClearColor(new THREE.Color()).clone();
+    const previousClearAlpha = this.renderer.getClearAlpha();
     try {
+      // 同じ captureTarget を使い回しても、前 shot の画像を「新しい capture」として返さない。
+      this.renderer.setClearColor(CAPTURE_CLEAR_COLOR, 0);
+      this.renderer.setRenderTarget(this.captureTarget);
+      this.renderer.clear(true, true, true);
+      // sentinel は撮影先だけへ使う。scene/pipeline 内部の clear は元の色で行わせる。
+      this.renderer.setClearColor(previousClearColor, previousClearAlpha);
+      this.renderer.setRenderTarget(previousTarget);
+      this.renderer.setOutputRenderTarget(this.captureTarget);
       this.render();
+      // timestamp 解決後に readback する。readRenderTargetPixelsAsync は captureTarget の GPU 書き込みも待つ。
+      await this.gpu.waitForResolve();
     } finally {
-      // 戻し忘れると以後キャンバスに何も出なくなる(撮影だけは通るので気付きにくい)。
-      this.renderer.setOutputRenderTarget(null);
+      this.renderer.setRenderTarget(previousTarget);
+      this.renderer.setOutputRenderTarget(previousOutput);
+      this.renderer.setClearColor(previousClearColor, previousClearAlpha);
     }
-    const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
-    return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
+    const { width, height } = this.captureTarget;
+    const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, width, height);
+    const rgba = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+    assertCaptureTargetWasRendered(rgba);
+    const rowBytes = width * 4;
+    if (rgba.byteLength === rowBytes * height) return pixelsToPngDataUrl(rgba, width, height);
+    // WebGPU の readback は 256-byte 行境界を持ち、末尾の余白だけは含まない。
+    const stride = Math.ceil(rowBytes / 256) * 256;
+    if (rgba.byteLength !== stride * (height - 1) + rowBytes) {
+      throw new Error(`render-lab: unexpected capture readback size ${rgba.byteLength} for ${width}x${height}`);
+    }
+    const packed = new Uint8Array(rowBytes * height);
+    for (let y = 0; y < height; y++) {
+      packed.set(rgba.subarray(y * stride, y * stride + rowBytes), y * rowBytes);
+    }
+    return pixelsToPngDataUrl(packed, width, height);
   }
+}
+
+// 最終 composite は画面全体を不透明に書く。alpha が全て 0 なら透明 sentinel のままなので撮影を失敗させる。
+export function assertCaptureTargetWasRendered(pixels: Uint8Array): void {
+  for (let index = 3; index < pixels.length; index += 4) {
+    if (pixels[index] !== 0) return;
+  }
+  throw new Error('render-lab: capture target was not overwritten by the current frame');
 }
 
 // 物体 objects をすべて包む箱の中心(描画座標)。箱が空なら null。

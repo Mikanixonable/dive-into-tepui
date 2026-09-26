@@ -46,6 +46,14 @@ export interface ShipModuleDefinition {
   readonly maxHp: number;
   readonly modelId: string;
   readonly solidPrimitives: readonly LocalCappedCylinder[];
+  // 砲身先端の位置。モジュール局所 [m] で、発射はこの順に交互に巡る。
+  readonly muzzles: readonly Vec3[];
+  // 給弾ベルトの取り込み口。モジュール局所 [m] で、ベルトはここから +X 方向へ伸びる。
+  readonly feedPort: Vec3;
+  // 空薬莢の排出口。モジュール局所 [m] で、薬莢はここから -X 方向へ出る。
+  readonly ejectionPort: Vec3;
+  // 空になったベルトリンクとマガジン外枠の排出口。モジュール局所 [m] で、外枠はここから -X 方向へ出る。
+  readonly linkExitPort: Vec3;
   readonly abilities: ShipModuleAbilities;
 }
 
@@ -72,6 +80,10 @@ function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinitio
   return Object.freeze({
     ...definition,
     solidPrimitives: Object.freeze(primitives),
+    muzzles: Object.freeze(definition.muzzles.map(frozenVector)),
+    feedPort: frozenVector(definition.feedPort),
+    ejectionPort: frozenVector(definition.ejectionPort),
+    linkExitPort: frozenVector(definition.linkExitPort),
     abilities: Object.freeze({ ...definition.abilities }),
   });
 }
@@ -97,6 +109,20 @@ export function defineShipModule(
       || !Number.isFinite(primitive.center.z)) throw new Error('primitive center must be finite');
     const axisLength = Math.hypot(primitive.axis.x, primitive.axis.y, primitive.axis.z);
     if (!(axisLength > 1e-12) || !Number.isFinite(axisLength)) throw new Error('primitive axis must be nonzero');
+  }
+  for (const muzzle of definition.muzzles) {
+    if (!Number.isFinite(muzzle.x) || !Number.isFinite(muzzle.y) || !Number.isFinite(muzzle.z)) {
+      throw new Error('muzzle position must be finite');
+    }
+  }
+  for (const [label, port] of [
+    ['feed port', definition.feedPort],
+    ['ejection port', definition.ejectionPort],
+    ['link exit port', definition.linkExitPort],
+  ] as const) {
+    if (!Number.isFinite(port.x) || !Number.isFinite(port.y) || !Number.isFinite(port.z)) {
+      throw new Error(`${label} must be finite`);
+    }
   }
   for (const value of Object.values(definition.abilities)) {
     if (typeof value === 'number' && (!Number.isFinite(value) || value < 0)) {

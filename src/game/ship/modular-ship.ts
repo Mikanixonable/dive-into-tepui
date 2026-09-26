@@ -221,7 +221,7 @@ export class ModularShip extends Ship implements Controllable {
     };
     const reactions = (owner: ModularShip): ModularShipMotionReactions => ({
       roundsInMagazine: () => owner.fire.rounds,
-      stepBarrelThermal: dt => owner.fire.stepBarrelThermal(dt),
+      magsLeft: () => owner.fire.mags,
       thrustAcceleration: () => owner.motion.thrust ?? v3(),
       radiatorWear: () => owner.radiatorWear(),
       totalCoolingRate: () => owner.totalCoolingRate,
@@ -621,22 +621,19 @@ export class ModularShip extends Ship implements Controllable {
   ): ModularShipRenderSource {
     const motion = this.motion;
     const { belt } = motion;
-    // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
-    const thrustAcceleration = motion.thrust;
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
       assembly: shipRenderAssembly(this.assembly),
       centerOffset: motion.centerOffset,
       state: motion.state,
       active,
-      thrustAcceleration: thrustAcceleration !== null && len(thrustAcceleration) > 0
-        ? thrustAcceleration
-        : null,
+      mainThrustAcceleration: this.throttle.thrust,
       maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,
       belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
       magsLeft: this.magsLeft,
+      gunFireRate: this.fire.isFiring ? this.totalFireRate : 0,
     };
   }
 
