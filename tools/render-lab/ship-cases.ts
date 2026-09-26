@@ -109,6 +109,7 @@ function rcsTank(): LabCase {
     objects: [model],
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -25),
+    // トラス外周、配管側、タンク列上面を確認する3方向を登録する。
     shots: {
       'rcs-tank-truss-oblique': {
         view: { cameraAzimuthDeg: -42, cameraElevationDeg: 22, cameraDistanceLog: -0.42,
