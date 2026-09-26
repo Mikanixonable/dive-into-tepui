@@ -4,7 +4,6 @@
 // 勝てるよう全セレクタを `#hud` で始める。
 import { clampOverlayPosition } from '../../../hud/layout';
 import { shortcutKeyLabel } from '../../../hud/windows/shortcut-hint';
-import { bringToFront } from '../../../hud/overlay-layer';
 import { onViewportChange } from '../../../hud/viewport';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 import { injectOnce } from '../../../hud/inject-style';
@@ -87,16 +86,15 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   public onSelect: ((act: A, target: T) => void) | null = null;
   public onClose: (() => void) | null = null;
 
-  // メニュー要素を popupLayer(#hud の popup レイヤ)へ追加し、overlayManager へ登録する。
-  public constructor(popupLayer: HTMLElement, private readonly overlayManager: OverlayManager) {
+  // メニュー要素を組み立て、overlayManager へ登録する。要素は open されるまで DOM へ挿さず、
+  // overlayManager が popup の層へ置く。
+  public constructor(private readonly overlayManager: OverlayManager) {
     this.overlayId = `ctx-menu-${ContextMenu.nextId++}`;
     injectCommonUiStyle();
     injectOnce('ctx-menu', STYLE);
-    // メニュー要素を組み立てて popupLayer へ追加する。
     this.el = document.createElement('div');
     this.el.className = 'ctx-menu ui-surface-focus';
     this.el.setAttribute('role', 'menu');
-    popupLayer.appendChild(this.el);
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
     this.el.addEventListener('keydown', (event) => this.handleMenuNavigation(event));
@@ -190,11 +188,11 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
       this.el.appendChild(item);
     }
     this.el.style.display = 'block';
-    bringToFront(this.el);
-    this.positionWithinViewport();
-    this.overlayManager.open(this.overlayId, this, {
+    // 先に登録して要素を DOM へ置いてから、実寸を測って位置を決める。
+    this.overlayManager.open(this.overlayId, this.el, this, {
       kind: 'popup', closeOnEscape: true, closeOnOutsideClick: true, gatesInput: false,
     });
+    this.positionWithinViewport();
     const firstItem = this.el.querySelector<HTMLElement>('.ctx-menu-item');
     if (firstItem) {
       this.setRovingItem(firstItem);

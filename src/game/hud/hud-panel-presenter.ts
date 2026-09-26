@@ -65,7 +65,7 @@ export class HudPanelPresenter {
     private readonly cameraSystem: CameraSystem,
   ) {
     this.viewBadge = new ViewBadge(
-      hud.viewBadgeRow, hud.layers.notify, hud.overlayManager, viewCommands(commands, viewer.view),
+      hud.viewBadgeRow, hud.overlayManager, viewCommands(commands, viewer.view),
     );
     this.simSpeedCommands = simSpeedCommands(commands, simSpeedManager);
     this.deployableCommands = deployableCommands(commands);
