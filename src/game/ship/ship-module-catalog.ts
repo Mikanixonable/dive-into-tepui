@@ -24,6 +24,7 @@ const CATEGORY_BY_KIND: Readonly<Record<ShipModuleKind, ShipModuleCategory>> = {
   weapon: 'combat', armor: 'combat', radiator: 'utility', solar_panel: 'utility', decoupler: 'utility',
 };
 
+// 標準の円筒接触形状を既定にし、個別モジュールだけ固有の接触形状と直径を渡す。
 function moduleDefinition(
   id: string, kind: ShipModuleKind, length: number, maxHp: number, dryMass: number,
   abilities: ShipModuleDefinition['abilities'] = {}, radius = 3, modelId = id, muzzles: readonly Vec3[] = [],
