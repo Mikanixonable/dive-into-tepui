@@ -3,6 +3,8 @@
 // 地衡風の枝へ、谷が狭く深い所では遠心力が受け持って緯度に依らない枝へ落ちるので、**中緯度の
 // 低気圧も熱帯の台風も同じ式から出る。** 赤道でも高気圧側でも有限に留まる。
 import { abs, cos, cross, length, max, min, sin, sqrt, tanh } from 'three/tsl';
+import * as vec from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
 // 摩擦の減衰率 [1/s]。1/k は風が摩擦で衰える時間で、4.7 h(海上の 8〜20 h と陸上の 3〜6 h のあいだ)。
@@ -113,4 +115,57 @@ export function coreCrossingAngle(
   const spin = 2 * spinSquared
     / (damped + Math.sqrt(Math.max(damped * damped + 4 * spinSquared, FRICTION_RATE ** 2)));
   return Math.atan2(FRICTION_RATE, coriolis + spin * Math.tanh(sinLatitude / SPIN_SENSE_WIDTH));
+}
+
+// balancedWind の数値版。velocity は [m/s] の接ベクトル、turn は流れが向きを変える
+// 角速度 [rad/s](天頂まわりに右ねじ正)。
+export interface BalancedWindCpu {
+  readonly velocity: Vec3;
+  readonly turn: number;
+}
+
+// isobarAt の数値版。
+export function isobarAtCpu(direction: Vec3, gradient: Vec3): Vec3 {
+  return vec.scale(vec.cross(direction, gradient), 1 / Math.max(vec.len(gradient), 1e-6));
+}
+
+// balancedWind の数値版。引数の意味と単位はそちらと同じ。
+export function balancedWindCpu(
+  gradient: Vec3, isobar: Vec3, bend: number, latitude: number, friction: number,
+  maxCrossing: number, surfaceRadius: number, rotationPeriod: number,
+): BalancedWindCpu {
+  const sinLatitude = Math.sin(latitude);
+  const coriolis = sinLatitude * coriolisRate(rotationPeriod);
+  const damped = Math.hypot(coriolis, friction);
+  const spinSquared = bend * bendToSpinSquared(surfaceRadius);
+  const denominator = damped
+    + Math.sqrt(Math.max(damped * damped + 4 * spinSquared, friction ** 2));
+  const speed = vec.len(gradient) * 2 * gradientToAcceleration(surfaceRadius) / denominator;
+  const spinSense = Math.tanh(sinLatitude / SPIN_SENSE_WIDTH);
+  const spin = spinSquared * 2 / denominator * spinSense;
+  const along = coriolis + spin;
+  const equatorial = 1 - Math.abs(spinSense);
+  const crossingFriction = Math.min(
+    friction,
+    Math.max(Math.abs(along), Math.abs(coriolis)) * Math.tan(maxCrossing)
+      + equatorial * friction,
+  );
+  const gradientHat = vec.scale(gradient, 1 / Math.max(vec.len(gradient), 1e-6));
+  const alongVector = vec.sub(
+    vec.scale(isobar, along), vec.scale(gradientHat, crossingFriction));
+  return {
+    velocity: vec.scale(alongVector, speed / Math.hypot(along, crossingFriction)),
+    turn: spin,
+  };
+}
+
+// windStep の数値版。seconds を負に取れば来た弧をそのまま遡る。
+export function windStepCpu(wind: BalancedWindCpu, direction: Vec3, seconds: number): Vec3 {
+  const half = wind.turn * seconds * 0.5;
+  const angle = Math.max(Math.abs(half), 1e-6);
+  return vec.scale(
+    vec.add(
+      vec.scale(wind.velocity, Math.cos(half)),
+      vec.scale(vec.cross(direction, wind.velocity), Math.sin(half))),
+    (Math.sin(angle) / angle) * seconds);
 }

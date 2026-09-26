@@ -4,7 +4,9 @@ import {
   abs, clamp, cos, float, max, sign, sin, smoothstep, uniform,
 } from 'three/tsl';
 import { equirectUvFromDirection } from '../field-projection';
-import { eastAt, latitudeOf, northAt } from './sphere-frame';
+import { eastAt, eastAtCpu, latitudeAtCpu, latitudeOf, northAt, northAtCpu } from './sphere-frame';
+import * as vec from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
 
 // 長波の東西波数。波長は赤道上で地球一周の 1/5、緯度45°で約5600 kmになる。
@@ -98,4 +100,47 @@ export class RossbyWave {
 function wrapAngle(angle: number): number {
   const turns = angle / (2 * Math.PI);
   return (turns - Math.floor(turns)) * 2 * Math.PI;
+}
+
+// 端で立ち上がる滑らかな重み。TSL の smoothstep と同じ式の数値版。
+function smoothstepValue(low: number, high: number, value: number): number {
+  const t = Math.min(1, Math.max(0, (value - low) / (high - low)));
+  return t * t * (3 - 2 * t);
+}
+
+// envelopeAt の数値版。
+function envelopeAtCpu(latitude: number): number {
+  const absolute = Math.abs(latitude);
+  return smoothstepValue(ENVELOPE_RISE_START, ENVELOPE_RISE_END, absolute)
+    * (1 - smoothstepValue(ENVELOPE_FALL_START, ENVELOPE_FALL_END, absolute));
+}
+
+// envelopeSlopeAt の数値版。
+function envelopeSlopeAtCpu(latitude: number): number {
+  const absolute = Math.abs(latitude);
+  const rising = smoothstepValue(ENVELOPE_RISE_START, ENVELOPE_RISE_END, absolute);
+  const falling = smoothstepValue(ENVELOPE_FALL_START, ENVELOPE_FALL_END, absolute);
+  const risingT = Math.min(1, Math.max(0,
+    (absolute - ENVELOPE_RISE_START) / (ENVELOPE_RISE_END - ENVELOPE_RISE_START)));
+  const fallingT = Math.min(1, Math.max(0,
+    (absolute - ENVELOPE_FALL_START) / (ENVELOPE_FALL_END - ENVELOPE_FALL_START)));
+  const risingSlope = risingT * (1 - risingT) * 6 / (ENVELOPE_RISE_END - ENVELOPE_RISE_START);
+  const fallingSlope = fallingT * (1 - fallingT) * -6 / (ENVELOPE_FALL_END - ENVELOPE_FALL_START);
+  return (risingSlope * (1 - falling) + rising * fallingSlope) * Math.sign(latitude);
+}
+
+// perturbationAt の数値版。seconds は表示時刻 [s]、surfaceRadius は天体の半径 [m]。
+export function rossbyPerturbationAtCpu(
+  direction: Vec3, seconds: number, surfaceRadius: number,
+): Vec3 {
+  const latitude = latitudeAtCpu(direction);
+  const longitude = Math.atan2(direction.x, direction.z);
+  const phase = longitude * WAVE_NUMBER - wrapAngle(WAVE_PHASE_RATE * seconds);
+  const amplitudeOverRadius = streamfunctionAmplitude(surfaceRadius) / surfaceRadius;
+  const eastWind = Math.sin(phase) * envelopeSlopeAtCpu(latitude) * -amplitudeOverRadius;
+  const northWind = Math.cos(phase) * envelopeAtCpu(latitude)
+    * amplitudeOverRadius * WAVE_NUMBER
+    / Math.max(Math.cos(latitude), MIN_LONGITUDE_RADIUS);
+  return vec.addScaled(
+    vec.scale(eastAtCpu(direction), eastWind), northAtCpu(direction), northWind);
 }
