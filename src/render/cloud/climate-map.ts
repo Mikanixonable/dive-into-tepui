@@ -6,15 +6,11 @@ import { smoothstep, texture, vec2 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { equirectUvFromDirection } from '../field-projection';
 import { eastAt, northAt } from './sphere-frame';
+import { climateValuesAtCpu, ELEVATION_SPAN, LAND_ELEVATION } from './climate-pixels';
+import type { ClimatePixels } from './climate-pixels';
 import type { Vec3 } from '../../math/vec3';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
-// テクスチャの目盛り。B は 0..8000 m を 0..1 で持つ。
-const ELEVATION_SPAN = 8000;
-// 陸らしさが 1 に届く標高 [m]。**標高は海で 0、ぼかしの幅で海岸から立ち上がる**ので、低い値で
-// 切れば陸と、その近くの海が読める。海抜の低い平野が海の側へ寄るが、板と粒を分けるのに要る
-// のは大陸と大洋の区別なので足りる。
-const LAND_ELEVATION = 100;
 // 標高の勾配を取る中心差分の刻み [rad]。テクスチャの texel(2π/512)より大きく、山脈の幅より小さい。
 const SLOPE_STEP = 0.02;
 
@@ -70,23 +66,6 @@ export function climateSlope(
   );
 }
 
-// 画像から取り出した RGB8 の画素列。1 texel は R・G・B・A の 4 byte。
-interface ClimatePixels {
-  readonly width: number;
-  readonly height: number;
-  readonly data: Uint8Array | Uint8ClampedArray;
-}
-
-function clampValue(value: number, low: number, high: number): number {
-  return Math.min(Math.max(value, low), high);
-}
-
-// 端で立ち上がる滑らかな重み。TSL の smoothstep と同じ式の数値版。
-function smoothstepValue(low: number, high: number, value: number): number {
-  const t = clampValue((value - low) / (high - low), 0, 1);
-  return t * t * (3 - 2 * t);
-}
-
 // テクスチャに載った画像から画素列を取り出す。画素配列を持つ画像(DataTexture など)は
 // そのまま読み、画像要素は canvas へ写して読む。DOM の無い環境や画像の未着では null。
 function pixelsFromImage(image: unknown): ClimatePixels | null {
@@ -120,35 +99,6 @@ function pixelsFromImage(image: unknown): ClimatePixels | null {
   // ソースだけを載せることで保証される。
   context.drawImage(source as CanvasImageSource, 0, 0);
   return { width, height, data: context.getImageData(0, 0, width, height).data };
-}
-
-// 単位方向の正距円筒 uv(0..1)。equirectUvFromDirection と同じ取り決めの数値版。
-function equirectUvFromDirectionCpu(direction: Vec3): { readonly u: number; readonly v: number } {
-  return {
-    u: Math.atan2(direction.x, direction.z) / (2 * Math.PI) + 0.5,
-    v: 0.5 - Math.asin(clampValue(direction.y, -1, 1)) / Math.PI,
-  };
-}
-
-// uv(0..1)の画素値(R・G・B、0..1)を線形補間で読む。u は経度で周回、v は緯度で端に
-// 留まる — テクスチャのラップ設定と同じ読み方。
-function sampleBilinear(pixels: ClimatePixels, u: number, v: number): readonly [number, number, number] {
-  const x = u * pixels.width - 0.5;
-  const y = v * pixels.height - 0.5;
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
-  const tx = x - x0;
-  const ty = y - y0;
-  const wrapX = (i: number): number => ((i % pixels.width) + pixels.width) % pixels.width;
-  const clampY = (j: number): number => clampValue(j, 0, pixels.height - 1);
-  const channel = (i: number, j: number, c: number): number =>
-    pixels.data[(clampY(j) * pixels.width + wrapX(i)) * 4 + c]! / 255;
-  const mix = (c: number): number => {
-    const upper = channel(x0, y0, c) + (channel(x0 + 1, y0, c) - channel(x0, y0, c)) * tx;
-    const lower = channel(x0, y0 + 1, c) + (channel(x0 + 1, y0 + 1, c) - channel(x0, y0 + 1, c)) * tx;
-    return upper + (lower - upper) * ty;
-  };
-  return [mix(0), mix(1), mix(2)];
 }
 
 // 気候テクスチャを、正距円筒のデータ値のまま線形補間で読める設定にして返す。
@@ -201,7 +151,7 @@ export class AnnualClimateMap implements ClimateData {
 
   // CPU 経路で画素を読めるか。画像がまだ届いていない、または画素を取り出せない形の間は偽。
   public cpuReadable(): boolean {
-    return this.pixels() !== null;
+    return this.climatePixels() !== null;
   }
 
   // 平均気温 [K]。R は -40..40 °C を 0..1 で持つ。
@@ -233,17 +183,9 @@ export class AnnualClimateMap implements ClimateData {
   // 単位方向の気候値を CPU 側の数値で返す。画像がまだ届いていない、または CPU から
   // 画素を読めない形のときは null を返す。目盛りの復号は GPU 経路と同じ。
   public valuesAtCpu(direction: Vec3): ClimateValues | null {
-    const pixels = this.pixels();
+    const pixels = this.climatePixels();
     if (pixels === null) return null;
-    const { u, v } = equirectUvFromDirectionCpu(direction);
-    const [r, g, b] = sampleBilinear(pixels, u, v);
-    const elevationM = b * ELEVATION_SPAN;
-    return {
-      temperatureK: r * 80 + 233.15,
-      meanCloudiness: g,
-      elevationM,
-      landFraction: smoothstepValue(0, LAND_ELEVATION, elevationM),
-    };
+    return climateValuesAtCpu(direction, pixels);
   }
 
   // 単位方向のテクセル(R 平均気温 / G 平年の雲量 / B 標高、それぞれ 0..1)。
@@ -252,8 +194,9 @@ export class AnnualClimateMap implements ClimateData {
   }
 
   // 画像の画素列。読み出せる画像がまだ無いときは null。画像が差し替わる
-  // (世代が進む)と次の呼び出しで取り直す。
-  private pixels(): ClimatePixels | null {
+  // (世代が進む)と次の呼び出しで取り直す。返すのは画像とは独立した平面データで、
+  // 別の実行環境へ転送・複製してよい。
+  public climatePixels(): ClimatePixels | null {
     const image: unknown = this.map.image;
     if (this.cpuPixels !== null && this.cpuPixels.image === image) {
       return this.cpuPixels.pixels;

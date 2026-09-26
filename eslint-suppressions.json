@@ -1071,11 +1071,6 @@
       "count": 1
     }
   },
-  "src/render/cloud/atmospheric-wind.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    }
-  },
   "src/render/cloud/circulating-noise.ts": {
     "@typescript-eslint/consistent-type-definitions": {
       "count": 1
