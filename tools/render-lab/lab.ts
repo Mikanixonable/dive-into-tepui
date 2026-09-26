@@ -21,7 +21,7 @@ import { distributionOf, type SampleDistribution } from '../../src/math/sample-d
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CASES, type CaseName } from './cases';
 import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
-import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
+import { EARTH_LIGHT_ALBEDO, LabEarth, type GeneratedFieldKind } from './lab-earth';
 import { LabSun } from './lab-sun';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
@@ -360,7 +360,14 @@ export class LabView {
     this.render();
   }
 
-  // 雲場の世代。全球場の初回ジョブが終わって場が届くと進む — 暖機の完了を見る撮影駆動が読む。
+  // 生成雲の経路を差し替えて描き直す(新旧比較撮影専用)。地球を置くケースでだけ効く。
+  public setGeneratedFieldKind(kind: GeneratedFieldKind): void {
+    this.earth.setGeneratedFieldKind(kind);
+    this.render();
+  }
+
+  // いま選ばれている雲場の世代。全球場の初回ジョブが終わって場が届くと進む —
+  // 暖機の完了を見る撮影駆動が読む。
   public get cloudFieldGeneration(): number { return this.earth.cloudGeneration; }
 
   // 製品経路の局所光学場の焼き器が記録した計測。

@@ -5,7 +5,8 @@ import * as THREE from 'three/webgpu';
 import { smoothstep, texture, vec2 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { equirectUvFromDirection } from '../field-projection';
-import { eastAt, northAt } from './sphere-frame';
+import { eastAt, eastAtCpu, northAt, northAtCpu } from './sphere-frame';
+import * as vec from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
@@ -61,6 +62,24 @@ export function climateSlope(
     height(direction.add(east)).sub(height(direction.sub(east))).div(stepMeters),
     height(direction.add(north)).sub(height(direction.sub(north))).div(stepMeters),
   );
+}
+
+// climateSlope の数値版。気候値は valuesAtCpu で読み、読めない方向は高さ 0 として扱う。
+export function climateSlopeAtCpu(
+  climate: Pick<ClimateData, 'valuesAtCpu'>, direction: Vec3, landHeight: number,
+  surfaceRadius: number,
+): { readonly east: number; readonly north: number } {
+  const east = vec.scale(eastAtCpu(direction), SLOPE_STEP);
+  const north = vec.scale(northAtCpu(direction), SLOPE_STEP);
+  const stepMeters = SLOPE_STEP * 2 * surfaceRadius;
+  const heightAt = (d: Vec3): number => {
+    const values = climate.valuesAtCpu(d);
+    return values === null ? 0 : values.elevationM + landHeight * values.landFraction;
+  };
+  return {
+    east: (heightAt(vec.add(direction, east)) - heightAt(vec.sub(direction, east))) / stepMeters,
+    north: (heightAt(vec.add(direction, north)) - heightAt(vec.sub(direction, north))) / stepMeters,
+  };
 }
 
 // 画像から取り出した RGB8 の画素列。1 texel は R・G・B・A の 4 byte。
