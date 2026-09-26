@@ -2,7 +2,7 @@
 // そのとき起きたことの記録もここで組み立てる。
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
+import { LOCAL_FORWARD, qMul, qRotate, randomQuat } from '../../math/quat';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../math/random';
 import type { Vec3 } from '../../math/vec3';
@@ -14,22 +14,22 @@ import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { ModularShip } from '../ship/modular-ship';
+import type { WeaponMuzzle, WeaponPorts } from '../ship/ship-capabilities';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-collision';
 import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
 import {
-  WeaponState, type SerializedWeaponState,
+  WeaponState, type SerializedWeaponState, type WeaponShotRecord,
 } from './weapon-state';
 
 export type { AmmoLoad } from './weapon-state';
 
-const BARREL_PHYS_RADIUS = 0.8;
 const EJECTED_MAG_PHYS_RADIUS = 1.4;
+// 空マガジン外枠がリンク排出口へ出るスライド。内側へ潜った位置から面の外まで [m]・[s]。
+const MAG_FRAME_SLIDE_DEPTH = 0.55;
+const MAG_FRAME_SLIDE_TIME = 0.3;
 
 const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
-
-// 1発あたりに砲身へ入る熱量 [J]。発射ガスの熱の大半は砲身の側が受け取る。
-const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
 // 砲口の位置とそのときの艦の速度。
 function muzzleState(ship: Ship, muzzle: Vec3): KinematicState {
@@ -60,6 +60,7 @@ export class FireControl {
   public get mags(): number { return this.weapon.mags; }
   public get cooldown(): number { return this.weapon.cooldown; }
   public get isFiring(): boolean { return this.weapon.wasFiring; }
+  public get recentShotRecords(): readonly WeaponShotRecord[] { return this.weapon.recentShots; }
 
   // 弾薬・砲身の状態をシリアライズ形式へ変換する。
   public serialize(): SerializedFireControl {
@@ -83,6 +84,7 @@ export class FireControl {
     activeStage: StageOutcome,
     celestialBodies: CelestialBodies,
   ): void {
+    this.weapon.retainShotModules(new Set(this.player.capabilities.modules('weapon', true).map(module => module.id)));
     this.weapon.tickCooldown(dt);
 
     if (!controls.firing) {
@@ -130,68 +132,82 @@ export class FireControl {
       return;
     }
 
-    const muzzles = this.player.capabilities.muzzlePositions();
+    const muzzles = this.player.capabilities.weaponMuzzles();
     const command = this.weapon.nextShot(muzzles.length);
     if (command === null) return;
+    const cycleDuration = muzzles.length / this.player.totalFireRate;
     this.weapon.fire(muzzles.length);
 
-    this.fireGun(muzzles[command.muzzleIndex]!, activeStage, celestialBodies);
-    // 装填の段階に応じて、次の発射までの間隔と排出物を決める
+    const muzzle = muzzles[command.muzzleIndex]!;
+    this.fireGun(muzzle, activeStage, celestialBodies, cycleDuration);
+    // マガジンを撃ち尽くしたら空の外枠を排出し、次の発射までの間隔を決める
     switch (command.consumption) {
       case 'normal':
         this.weapon.setCooldown(1 / this.player.totalFireRate);
         return;
       case 'mag-reload':
-        this.spawnEjectedMagazineFrame();
+        this.spawnEjectedMagazineFrame(muzzle.weapon);
         this.registry.events.record({ kind: 'gunMagazineFed' });
         this.weapon.setCooldown(1 / this.player.totalFireRate);
-        return;
-      case 'barrel-reload':
-        this.spawnEjectedMagazineFrame();
-        this.weapon.setCooldown(RELOAD_TIME);
-        this.dropBarrel();
-        this.registry.events.record({ kind: 'gunBarrelSwapped' });
         return;
     }
   }
 
-  // 手動リロードを試みる。開始できたら true。
+  // 手動リロードを試みる。開始できたら true。捨てるマガジンの外枠を、健全な武装があればその
+  // リンク排出口から出す。
   public manualReload(): boolean {
     if (!this.weapon.manualReload()) return false;
     this.weapon.setCooldown(RELOAD_TIME);
-    this.registry.events.record({ kind: 'gunBarrelSwapped' });
-    this.dropBarrel();
+    this.registry.events.record({ kind: 'gunReloaded' });
+    const weapon = this.player.capabilities.weaponPorts()[0];
+    if (weapon !== undefined) this.spawnEjectedMagazineFrame(weapon);
     return true;
   }
 
   // ---------------------------------------------------------------- entity管理
 
-  // 1発発射する: assembly 座標 [m] の砲身先端 muzzleOnAssembly から弾丸と薬莢を出し、反動と熱を艦へ入れ、
-  // 発射したことを記録する。
+  // assembly 座標 [m] の点を ECI 座標へ写す。
+  private worldPoint(assemblyPoint: Vec3): Vec3 {
+    return add(
+      this.player.motion.state.r,
+      qRotate(this.player.motion.att.q, sub(assemblyPoint, this.player.motion.centerOffset)),
+    );
+  }
+
+  // モジュール姿勢 moduleRot の局所方向 dir を ECI 方向へ写す。
+  private worldDir(moduleRot: WeaponPorts['rotation'], dir: Vec3): Vec3 {
+    return qRotate(this.player.motion.att.q, qRotate(moduleRot, dir));
+  }
+
+  // 1発発射する: assembly 座標 [m] の砲身先端から弾丸を出し、撃ったモジュールの排莢口から薬莢を
+  // 出して、反動と熱を艦へ入れ、発射したことを記録する。
   private fireGun(
-    muzzleOnAssembly: Vec3,
+    muzzle: WeaponMuzzle,
     activeStage: StageOutcome,
     celestialBodies: CelestialBodies,
+    cycleDuration: number,
   ): void {
     const fwd = qRotate(this.player.motion.att.q, LOCAL_FORWARD);
-    const muzzle = add(
-      this.player.motion.state.r,
-      qRotate(this.player.motion.att.q, sub(muzzleOnAssembly, this.player.motion.centerOffset)),
-    );
+    const muzzleWorld = this.worldPoint(muzzle.position);
 
-    this.spawnBullet(muzzle, fwd, celestialBodies);
+    this.spawnBullet(muzzleWorld, fwd, celestialBodies);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
     this.player.motion.reset(kinematicState<'eci'>(
       this.player.motion.state.t,
       this.player.motion.state.r,
       addScaled(this.player.motion.state.v, fwd, -RECOIL_DV),
     ));
-    this.dropCasing(muzzle);
+    this.dropCasing(muzzle.weapon);
 
     activeStage.recordShot();
     this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
-    this.weapon.addBarrelHeat(GUN_BARREL_HEAT_PER_ROUND);
-    this.registry.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzle) });
+    this.registry.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzleWorld) });
+    this.weapon.recordShot({
+      moduleId: muzzle.weapon.moduleId,
+      muzzleIndex: muzzle.muzzleIndex,
+      firedAt: this.player.motion.state.t,
+      cycleDuration,
+    });
   }
 
   // 弾丸: 機首方向 + 散布界
@@ -215,19 +231,20 @@ export class FireControl {
     ));
   }
 
-  // 薬莢を -X 側(+X 側には給弾ベルトがある)へ、ゆっくり漂い個体ごとに大きくばらついて回るよう排出する。
-  private dropCasing(muzzle: Vec3): void {
+  // 薬莢を撃ったモジュールの排莢口(樋の向き -X、+X 側には給弾ベルトがある)から、ゆっくり漂い
+  // 個体ごとに大きくばらついて回るよう排出する。
+  private dropCasing(weapon: WeaponPorts): void {
     const ship = this.player;
-    // 機体姿勢基準の左右・上方向
-    const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
-    const up = qRotate(ship.motion.att.q, LOCAL_UP);
+    // モジュール姿勢基準の排莢方向と上方向
+    const eject = this.worldDir(weapon.rotation, v3(-1, 0, 0));
+    const up = this.worldDir(weapon.rotation, v3(0, 1, 0));
     this.registry.add(DebrisPiece.create(
       kinematicState<'eci'>(
         ship.motion.state.t,
-        add(muzzle, scale(right, -1.4)),
+        this.worldPoint(weapon.ejectionPort),
         add(
           ship.motion.state.v,
-          add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
+          add(scale(eject, 0.5 + Math.random() * 0.3), add(scale(up, randSym(0.2)), randVec(0.1))),
         ),
       ),
       { kind: 'casing', bornSim: ship.motion.state.t },
@@ -240,58 +257,42 @@ export class FireControl {
     ));
   }
 
-  // 装着している砲身の温度を dt だけ進める。
-  public stepBarrelThermal(dt: number): void {
-    this.weapon.stepBarrelThermal(dt);
-  }
-
-  // バレル交換時に円柱アイテムをデブリとして放出する。装着していた砲身の温度は、そのまま
-  // 排出されたデブリへ移る。
-  private dropBarrel(): void {
+  // 空になったマガジンの外枠を、撃ったモジュールの空リンク排出口(-X 側、薬莢と同じ側)から
+  // デブリとして放出する。生成は塔の内側で、排出口へ出る既定経路(スライド)を進んでから自由な
+  // 破片になる。
+  private spawnEjectedMagazineFrame(weapon: WeaponPorts): void {
     const ship = this.player;
-    // 下方に少し勢いをつけて放出
-    const down = qRotate(ship.motion.att.q, v3(0, -1, 0));
-    this.registry.add(DebrisPiece.create(
-      kinematicState<'eci'>(
-        ship.motion.state.t,
-        add(ship.motion.state.r, qRotate(ship.motion.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
-        add(ship.motion.state.v, add(scale(down, 3.0), randVec(0.5))),
-      ),
-      {
-        kind: 'barrel',
-        bornTemperature: this.weapon.barrelTemperature,
-        bornThermalDeviation: this.weapon.barrelDeviation,
-      },
-      {
-        q: ship.motion.att.q,
-        w: v3(randSym(2), randSym(2), randSym(2)),
-        inertia: v3(1, 0.2, 1), // 円柱
-      },
-      this.registry.idAllocators, BARREL_PHYS_RADIUS, this.scene,
-    ));
-    this.weapon.mountFreshBarrel();
-  }
-
-  // 空になったマガジンの外枠を、-X 側(薬莢と同じ側)からデブリとして放出する。
-  private spawnEjectedMagazineFrame(): void {
-    const ship = this.player;
-    // 排出ポートの位置と初速
-    const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
-    const portWorld = add(
-      ship.motion.state.r, qRotate(ship.motion.att.q, v3(-0.9, 0, 0)),
+    // スライド経路(モジュール局所): 排出口の内側から面の外へ。終端にわずかなばらつきを足して
+    // 出て行く方向が個体ごとに散るようにする。
+    const inward = qRotate(weapon.rotation, v3(1, 0, 0));
+    const inner = add(weapon.linkExitPort, scale(inward, MAG_FRAME_SLIDE_DEPTH));
+    const outer = add(
+      add(weapon.linkExitPort, scale(inward, -MAG_FRAME_SLIDE_DEPTH)),
+      qRotate(weapon.rotation, randVec(0.12)),
     );
+    const slideSpeed = (MAG_FRAME_SLIDE_DEPTH * 2) / MAG_FRAME_SLIDE_TIME;
+    const eject = this.worldDir(weapon.rotation, v3(-1, 0, 0));
+    const t = ship.motion.state.t;
     this.registry.add(DebrisPiece.create(
       kinematicState<'eci'>(
-        ship.motion.state.t,
-        portWorld,
-        add(
-          ship.motion.state.v,
-          add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15)),
-        ),
+        t,
+        this.worldPoint(inner),
+        add(ship.motion.state.v, scale(eject, slideSpeed)),
       ),
-      { kind: 'magazineFrame' },
       {
-        q: ship.motion.att.q,
+        kind: 'magazineFrame',
+        slide: {
+          bornSim: t,
+          duration: MAG_FRAME_SLIDE_TIME,
+          r0: ship.motion.state.r,
+          q0: ship.motion.att.q,
+          v0: ship.motion.state.v,
+          from: sub(inner, ship.motion.centerOffset),
+          to: sub(outer, ship.motion.centerOffset),
+        },
+      },
+      {
+        q: qMul(ship.motion.att.q, weapon.rotation),
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
