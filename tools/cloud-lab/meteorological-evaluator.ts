@@ -573,6 +573,14 @@ function evaluateC1(): MeteorologicalCaseEvaluation {
         sublimationRatePerSecond: 0,
         releaseHeightM: heightM,
       },
+      lifecycle: {
+        liquidSupplyRateKgM2S: 0,
+        convectiveDurationSeconds: 0,
+        iceYieldFraction: 0.35,
+        upperRelativeHumidity: 1,
+      },
+      generation: 0,
+      parentEventId: null,
     };
     const material = reconstructCloudEventMaterialCohorts(
       event,
