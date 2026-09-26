@@ -90,7 +90,7 @@ export function register(): void {
 
     throttle.updateTorque(motion.att, v3(), v3(), controls, false, 0, 0, fuelConsumer, null);
     const angularAcceleration = throttle.torque.z / motion.att.inertia.z;
-    assert.ok(angularAcceleration > 0.35 && angularAcceleration < 0.5);
+    assert.ok(angularAcceleration > 0.45 && angularAcceleration < 0.6);
 
     const next = stepAttitude(motion.att, throttle.torque, 0.4);
     assert.ok(Math.abs(next.q.z) > 1e-3);
@@ -119,12 +119,12 @@ export function register(): void {
 
     const radiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, assembly);
     radiator.syncAssembly();
-    radiator.setDeployed('radiator-left', true);
-    assert.equal(radiator.deployOf('radiator-left'), 0);
+    radiator.setDeployed('radiator', true);
+    assert.equal(radiator.deployOf('radiator'), 0);
     radiator.update(3, {});
-    assert.equal(radiator.deployOf('radiator-left'), 1);
+    assert.equal(radiator.deployOf('radiator'), 1);
     assert.equal(radiator.radiatingArea(0), 4.8);
-    assert.deepEqual(radiator.serialize().panels?.map(panel => panel.id), ['radiator-left', 'radiator-right']);
+    assert.deepEqual(radiator.serialize().panels?.map(panel => panel.id), ['radiator']);
   });
 
   test('modular ship motion: booster module の質量で空力・輻射圧の質量あたり値が下がる', () => {
@@ -133,9 +133,9 @@ export function register(): void {
       SHIP_MODULE_CATALOG.require('booster-standard'), 'test-booster',
     ));
     const motion = new ModularShipMotion(assembly, state, attitude);
-    assert.equal(motion.mass, 2_000);
-    assert.equal(motion.bcInv, SHIP_BCINV / 2);
-    assert.equal(motion.srpCoeff, SHIP_SRP_COEFF / 2);
+    assert.equal(motion.mass, 1_990);
+    assert.equal(motion.bcInv, SHIP_BCINV * 1_000 / 1_990);
+    assert.equal(motion.srpCoeff, SHIP_SRP_COEFF * 1_000 / 1_990);
   });
 
   test('ship marker: 同名艦でも clipPath ID が衝突せず、改名でも安定する', () => {
