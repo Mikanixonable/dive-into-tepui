@@ -93,20 +93,13 @@ export class Run implements SnapshotSource, PerfCountSource {
   ): Promise<Run> {
     const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections);
     const run = new Run(game, presentation, devices, graphics, renderStyle, sections, progressReader);
-    // ランがまだ無い起動中のフレームに、雲場の供給ジョブのような重い前倒し駆動を差し込める
-    // よう組み立て中のランを載せる。暖機が終わるか投げたら外す。
-    devices.loadingJobs = run;
-    try {
-      // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
-      // ここで視点に反映してプレゼンテーション層へ反映しておく。新規開始のブリーフィングもこの場で表示する。
-      game.followProgress();
-      presentation.anchorFrameAt(game.simTime);
-      game.followCamera(presentation.cameraSamples());
-      presentation.presentRunStart();
-      await run.warmUp(warmUpGraphics, warmUpStyle, progress);
-    } finally {
-      devices.loadingJobs = null;
-    }
+    // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
+    // ここで視点に反映してプレゼンテーション層へ反映しておく。新規開始のブリーフィングもこの場で表示する。
+    game.followProgress();
+    presentation.anchorFrameAt(game.simTime);
+    game.followCamera(presentation.cameraSamples());
+    presentation.presentRunStart();
+    await run.warmUp(warmUpGraphics, warmUpStyle, progress);
     return run;
   }
 
@@ -190,12 +183,6 @@ export class Run implements SnapshotSource, PerfCountSource {
   }
 
   // ------------------------------------------------------------ ランの外への読み口
-
-  // loadingJobs が呼ぶ、起動中の前倒し駆動。ペンディング中の雲場供給ジョブを
-  // timeBudgetMs [ms] ぶん進める。
-  public drivePendingJobs(timeBudgetMs: number): void {
-    this.presentation.drivePendingJobs(timeBudgetMs);
-  }
 
   public get stageId(): string { return this.game.activeStage.id; }
   public get isPaused(): boolean { return this.presentation.isPaused; }

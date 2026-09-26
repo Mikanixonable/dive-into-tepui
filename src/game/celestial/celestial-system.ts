@@ -359,20 +359,6 @@ export class CelestialSystem implements CelestialBodies {
     for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, gpu);
   }
 
-  // ロード中などフレーム外の隙間から、雲場を持つ天体の供給ジョブを予算ぶん前倒しで進める。
-  public drivePendingJobs(
-    renderer: WebGPURenderer, displayTime: number, timeBudgetMs: number, gpu?: GpuTimingSink,
-  ): void {
-    for (const body of this.entities) {
-      body.view.drivePendingJobs(renderer, displayTime, timeBudgetMs, gpu);
-    }
-  }
-
-  // 生成雲場を持つ天体のどれかが最初の場を採用済みか。雲が描けるようになった印。
-  public get cloudFieldReady(): boolean {
-    return this.entities.some((body) => body.view.globalCloudFieldStats?.hasField === true);
-  }
-
   // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。
   private syncReferenceLines(
     displayTime: number, camera: CameraFrame, visibilityPolicy: MapVisibilityPolicy | null,

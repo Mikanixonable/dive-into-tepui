@@ -55,19 +55,15 @@ function countingSupply(fail = false): { readonly supply: CloudLocalFieldSupply;
 }
 
 // steps 回の step で done になるジョブ。throwAt を渡すとその回の step が例外を投げる。
-// budgets には step へ渡された予算 [ms] が記録される。
 function scriptedJob(steps: number, throwAt = -1): CloudLocalFieldJob & {
   steps: number;
   cancels: number;
-  budgets: number[];
 } {
   const job = {
     steps: 0,
     cancels: 0,
-    budgets: [] as number[],
-    step: (budgetMs: number): { readonly done: boolean } => {
+    step: (): { readonly done: boolean } => {
       job.steps += 1;
-      job.budgets.push(budgetMs);
       if (job.steps === throwAt) throw new RangeError('job failed');
       return { done: job.steps >= steps };
     },
@@ -358,85 +354,6 @@ export function register(): void {
     baker.maybeRebuild(1, CENTER);
     assert.equal(started, 2);
     assert.equal(baker.bakeStats.attempts.length, 2);
-    baker.dispose();
-  });
-
-  test('cloud local field baker: drivePendingJobs はフレーム外からジョブを前倒しで進める', () => {
-    const jobs: ReturnType<typeof scriptedJob>[] = [];
-    const supply: CloudLocalFieldSupply = {
-      derive: () => null,
-      startJob: () => {
-        const job = scriptedJob(3);
-        jobs.push(job);
-        return job;
-      },
-    };
-    const baker = new CloudLocalFieldBaker(supply, 300, 0.01);
-    // maybeRebuild を待たずに最初の再焼を始めて駆動する。予算は呼び出し側のものがそのまま渡る。
-    baker.drivePendingJobs(0, CENTER, 40);
-    assert.equal(jobs.length, 1);
-    assert.equal(jobs[0]!.steps, 1);
-    assert.equal(jobs[0]!.budgets[0], 40);
-    baker.drivePendingJobs(0, CENTER, 40);
-    baker.drivePendingJobs(0, CENTER, 40);
-    assert.ok(baker.binding !== null);
-    baker.dispose();
-  });
-
-  test('cloud local field baker: 最初の場が届くまではバースト予算で駆動する', () => {
-    const jobs: ReturnType<typeof scriptedJob>[] = [];
-    const supply: CloudLocalFieldSupply = {
-      derive: () => null,
-      startJob: () => {
-        const job = scriptedJob(1);
-        jobs.push(job);
-        return job;
-      },
-    };
-    const baker = new CloudLocalFieldBaker(supply, 300, 0.01, null, 'rg32f', 6, 16);
-    baker.maybeRebuild(0, CENTER);
-    assert.deepEqual(jobs[0]!.budgets, [16]);
-    // 場が届いたあとの再焼は既定予算へ戻る。
-    baker.maybeRebuild(300, CENTER);
-    assert.deepEqual(jobs[1]!.budgets, [6]);
-    baker.dispose();
-  });
-
-  test('cloud local field baker: 外部入力が読めるまで最初の再焼を遅らせる', () => {
-    let started = 0;
-    const supply: CloudLocalFieldSupply = {
-      derive: () => null,
-      startJob: () => {
-        started += 1;
-        return scriptedJob(1);
-      },
-    };
-    const inputs = { ready: false };
-    const baker = new CloudLocalFieldBaker(
-      supply, 300, 0.01, { cpuReadable: () => inputs.ready });
-    baker.maybeRebuild(0, CENTER);
-    baker.drivePendingJobs(0, CENTER, 40);
-    assert.equal(started, 0);
-    inputs.ready = true;
-    baker.drivePendingJobs(0, CENTER, 40);
-    assert.equal(started, 1);
-    assert.ok(baker.binding !== null);
-    baker.dispose();
-  });
-
-  test('cloud local field baker: 入力を待つ上限を超えたら未着のまま開始する', () => {
-    let started = 0;
-    const supply: CloudLocalFieldSupply = {
-      derive: () => null,
-      startJob: () => {
-        started += 1;
-        return scriptedJob(1);
-      },
-    };
-    const baker = new CloudLocalFieldBaker(
-      supply, 300, 0.01, { cpuReadable: () => false }, 'rg32f', 6, 16, 0);
-    baker.maybeRebuild(0, CENTER);
-    assert.equal(started, 1);
     baker.dispose();
   });
 }
