@@ -1,4 +1,3 @@
-import faviconUrl from '../../../public/favicon.svg';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_4 } from '../../theme';
@@ -6,9 +5,10 @@ import { clampOverlayPosition } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';
+import { injectTitleLogotypeStyle, TITLE_LOGOTYPE_HTML } from '../title-logotype';
 import { PAUSE_MENU_STYLE } from '../style/pause-menu-style';
 import { SETTINGS_VIEW_STYLE } from '../style/settings-view-style';
-import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
+import type { OverlayHandle, OverlayManager, SurfaceSpec } from '../overlay-manager';
 import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider, TabBar,
 } from '../widgets';
@@ -47,13 +47,15 @@ export class PauseMenu implements OverlayHandle {
   private readonly bgmSlider: Slider;
   private readonly bgmMute: Button;
 
-  // パネル DOM を組み立てて root へ追加する。graphics・themeId は組み立て時の設定値、bgmVolume は
-  // 消音を織り込んだ組み立て時の音量。各操作のコールバックは onXxx フィールドへ後から代入する。
+  // パネル DOM を組み立てる。要素は開くまで DOM へ挿さず、overlayManager が modal の層へ置く。
+  // graphics・themeId は組み立て時の設定値、bgmVolume は消音を織り込んだ組み立て時の音量。
+  // 各操作のコールバックは onXxx フィールドへ後から代入する。
   public constructor(
-    root: HTMLElement, overlayManager: OverlayManager,
+    overlayManager: OverlayManager,
     graphics: GraphicsSettingsData, bgmVolume: number, themeId: string,
   ) {
     injectCommonUiStyle();
+    injectTitleLogotypeStyle();
     injectOnce('pause-menu', PAUSE_MENU_STYLE);
     injectOnce('settings-view', SETTINGS_VIEW_STYLE);
     this.overlayManager = overlayManager;
@@ -129,7 +131,6 @@ export class PauseMenu implements OverlayHandle {
     this.syncBgmVolume(bgmVolume);
     this.pauseTabPanel.appendChild(this.buildActionGrid());
 
-    root.appendChild(this.panel);
     this.setActiveTab('pause');
     // ビューポート変化と内容サイズの変化のたびに現在位置を収め直す。
     onViewportChange(() => this.reclamp());
@@ -137,18 +138,15 @@ export class PauseMenu implements OverlayHandle {
     this.resizeObserver.observe(this.panel);
   }
 
-  // ロゴ・タイトル・バージョンを ESC メニュー上部へ積む。
+  // タイトルとバージョンを ESC メニュー上部へ積む。
   private buildBrand(): HTMLElement {
+    // 共有ロゴと版情報を、操作ヘッダーから独立したブランド欄へまとめる。
     const brand = document.createElement('div');
     brand.className = 'pm-brand';
 
     const logotype = document.createElement('div');
-    logotype.className = 'pm-brand-logotype';
-    for (const line of ['DIVE', 'INTO', 'TEPUI']) {
-      const span = document.createElement('span');
-      span.textContent = line;
-      logotype.appendChild(span);
-    }
+    logotype.className = 'title-logotype';
+    logotype.innerHTML = TITLE_LOGOTYPE_HTML;
 
     const meta = document.createElement('div');
     meta.className = 'pm-brand-meta';
@@ -160,13 +158,7 @@ export class PauseMenu implements OverlayHandle {
     version.textContent = `v${__APP_VERSION__}`;
     meta.append(label, version);
 
-    // favicon はアプリ同定の補助として残すが、ロゴタイプより弱く扱う。
-    const brandLogo = document.createElement('img');
-    brandLogo.className = 'pm-brand-logo';
-    brandLogo.src = faviconUrl;
-    brandLogo.alt = '';
-
-    brand.append(logotype, meta, brandLogo);
+    brand.append(logotype, meta);
     return brand;
   }
 
@@ -243,7 +235,7 @@ export class PauseMenu implements OverlayHandle {
   }
 
   // ESC メニューのオーバーレイ宣言を返す。設定タブの間は背景入力も遮る。
-  private overlaySpec(): OverlaySpec {
+  private overlaySpec(): SurfaceSpec {
     return {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false,
       gatesInput: this.activeTab === 'settings', dimsBackground: false,
@@ -285,10 +277,11 @@ export class PauseMenu implements OverlayHandle {
     this.panel.style.display = show ? 'grid' : 'none';
     if (show) {
       // 開くたびに一時停止タブ・展開状態から始め、動かされていなければ中央へ置く。
+      // 先に登録して要素を DOM へ置いてから、実寸を測って中央寄せする。
+      this.overlayManager.open('pause-menu', this.panel, this, this.overlaySpec());
       this.setActiveTab('pause');
       this.setMinimized(false);
       if (!this.hasCustomPosition) this.centerPanel();
-      this.overlayManager.open('pause-menu', this, this.overlaySpec());
     } else {
       this.overlayManager.close('pause-menu');
     }

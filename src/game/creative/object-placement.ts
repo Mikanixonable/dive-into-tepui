@@ -95,7 +95,7 @@ export class ObjectPlacement {
 
     this.previewView = new ObjectPlacementPreviewView(scene, PREVIEW_LINE_STYLE);
 
-    this.panel = new ObjectPlacerPanel(hud.mapRoot, hud.layers.popup, celestialSystem, hud.overlayManager);
+    this.panel = new ObjectPlacerPanel(celestialSystem, hud.overlayManager);
     this.panel.onConfirm = (name, form) => this.place(name, form);
   }
 

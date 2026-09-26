@@ -39,7 +39,7 @@ export class OrbitLineWindows {
     }
     // 新しく開き、閉じたら表から外す。
     const win = new PropertyWindow<MenuAction>(
-      this.hud.layers.window, clientX, clientY, this.content(orbit), this.hud.overlayManager,
+      clientX, clientY, this.content(orbit), this.hud.overlayManager,
     );
     this.windows.set(orbit.key, win);
     win.onClose = () => { this.windows.delete(orbit.key); };

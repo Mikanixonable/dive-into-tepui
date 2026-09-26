@@ -116,4 +116,9 @@ export const SETTINGS_VIEW_STYLE = `
 @media ${MQ_MEDIUM_DOWN} {
   #hud-pause-menu .pm-settings-view { padding-inline: 0; }
 }
+/* 描画タブの内容は、狭い右列でのカテゴリ2列×項目2列の二重分割を避けて常に1列にする。
+   畳み方は compact のときの .gp-* と同じ — ラベルが1行目を独占し、操作部品は下の行へ回る。 */
+#hud-pause-menu .pm-settings-view .gp-body,
+#hud-pause-menu .pm-settings-view .gp-group { grid-template-columns: 1fr; }
+#hud-pause-menu .pm-settings-view .gp-group > .w-group .w-group-title { flex: 0 0 100%; }
 `;

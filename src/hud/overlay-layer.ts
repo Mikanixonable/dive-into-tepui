@@ -1,10 +1,11 @@
 // #hud 直下の重なり順を決める固定レイヤ群。z-index を持つのはこのモジュールだけであり、
-// 各ウィジェットは自分がどのレイヤの子になるかを選ぶだけで、レイヤ内の前後は DOM 順(bringToFront)で決まる。
+// 各ウィジェットは自分がどのレイヤの子になるかを選ぶだけで、レイヤ内の前後は DOM 順で決まる
+// (登録済みオーバーレイの DOM 順は OverlayManager の open/raise が台帳と一緒に動かす)。
 // gate は入力ゲート用の遮蔽幕(OverlayManager が構築する #hud-overlay-shield)専用の層で、
 // ゲートの対象(marker/panel/window/popup)より上、ゲートを開く側になり得るモーダル
 // (system のヘルプ・一時停止・セーブブラウザ)より下に置く —
 // 遮蔽幕自身がモーダルの上に乗って操作を奪うことがないようにするため。
-type OverlayLayerName = 'marker' | 'panel' | 'window' | 'popup' | 'gate' | 'view' | 'notify' | 'system';
+export type OverlayLayerName = 'marker' | 'panel' | 'window' | 'popup' | 'gate' | 'view' | 'notify' | 'system';
 
 export type OverlayLayers = Readonly<Record<OverlayLayerName, HTMLDivElement>>;
 
@@ -26,9 +27,4 @@ export function buildOverlayLayers(root: HTMLElement): OverlayLayers {
     layers[name] = div;
   }
   return layers;
-}
-
-// 要素を同じ親の末尾へ移動し、同一レイヤ内で最前面にする。
-export function bringToFront(el: HTMLElement): void {
-  el.parentElement?.appendChild(el);
 }

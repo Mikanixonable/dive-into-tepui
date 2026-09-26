@@ -37,8 +37,9 @@ export class HelpPanel implements OverlayHandle {
   private readonly contextEl: HTMLElement;
   private _isOpen = false;
 
-  // 操作説明の DOM を組み立てて root へ追加する。閉じた状態で始まる。
-  public constructor(root: HTMLElement, private readonly overlayManager: OverlayManager) {
+  // 操作説明の DOM を組み立てる。要素は開くまで DOM へ挿さず、overlayManager が modal の層へ置く。
+  // 閉じた状態で始まる。
+  public constructor(private readonly overlayManager: OverlayManager) {
     injectCommonUiStyle();
     injectOnce('help-panel', HELP_PANEL_STYLE);
     this.el = document.createElement('div');
@@ -102,7 +103,6 @@ export class HelpPanel implements OverlayHandle {
     }
     this.el.appendChild(body);
     this.setCategory('flight');
-    root.appendChild(this.el);
     stopDragPropagation(this.el);
   }
 
@@ -133,7 +133,7 @@ export class HelpPanel implements OverlayHandle {
     this.setCategory(category);
     this.el.style.display = 'flex';
     // 系のモーダル(ヘルプ・一時停止など)は同じ排他グループに属し、同時に1つしか開かない。
-    this.overlayManager.open('help', this, {
+    this.overlayManager.open('help', this.el, this, {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true, exclusiveGroup: 'system-modal',
     });
   }

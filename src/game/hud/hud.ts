@@ -97,7 +97,7 @@ export class Hud implements HudLayers, Notifier {
     this.enemiesPanel = new EnemiesPanel(els);
     this.burnManagementPanel = new BurnManagementPanel(els);
     this.shipConstructionPanel = new ShipConstructionPanel(els);
-    this.constructionConfirm = new ConfirmationOverlay(this.layers.window, this.overlayManager);
+    this.constructionConfirm = new ConfirmationOverlay(this.overlayManager);
 
     // ランがまだ無い状態の見た目で組み上げる。
     this.burnManagementPanel.sync(null, {});
@@ -112,7 +112,7 @@ export class Hud implements HudLayers, Notifier {
       return;
     }
     const win = new OrbitAnalysisWindow(
-      this.layers.window, ANALYSIS_WINDOW_OPEN_X, ANALYSIS_WINDOW_OPEN_Y, this.overlayManager,
+      ANALYSIS_WINDOW_OPEN_X, ANALYSIS_WINDOW_OPEN_Y, this.overlayManager,
     );
     win.onClose = () => { this.orbitAnalysisWindow = null; };
     this.orbitAnalysisWindow = win;
