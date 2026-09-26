@@ -19,7 +19,7 @@ import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-collision';
 import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
 import {
-  WeaponState, type SerializedWeaponState,
+  WeaponState, type SerializedWeaponState, type WeaponShotRecord,
 } from './weapon-state';
 
 export type { AmmoLoad } from './weapon-state';
@@ -60,6 +60,7 @@ export class FireControl {
   public get mags(): number { return this.weapon.mags; }
   public get cooldown(): number { return this.weapon.cooldown; }
   public get isFiring(): boolean { return this.weapon.wasFiring; }
+  public get recentShotRecords(): readonly WeaponShotRecord[] { return this.weapon.recentShots; }
 
   // 弾薬・砲身の状態をシリアライズ形式へ変換する。
   public serialize(): SerializedFireControl {
@@ -83,6 +84,7 @@ export class FireControl {
     activeStage: StageOutcome,
     celestialBodies: CelestialBodies,
   ): void {
+    this.weapon.retainShotModules(new Set(this.player.capabilities.modules('weapon', true).map(module => module.id)));
     this.weapon.tickCooldown(dt);
 
     if (!controls.firing) {
@@ -133,10 +135,11 @@ export class FireControl {
     const muzzles = this.player.capabilities.weaponMuzzles();
     const command = this.weapon.nextShot(muzzles.length);
     if (command === null) return;
+    const cycleDuration = muzzles.length / this.player.totalFireRate;
     this.weapon.fire(muzzles.length);
 
     const muzzle = muzzles[command.muzzleIndex]!;
-    this.fireGun(muzzle, activeStage, celestialBodies);
+    this.fireGun(muzzle, activeStage, celestialBodies, cycleDuration);
     // マガジンを撃ち尽くしたら空の外枠を排出し、次の発射までの間隔を決める
     switch (command.consumption) {
       case 'normal':
@@ -182,6 +185,7 @@ export class FireControl {
     muzzle: WeaponMuzzle,
     activeStage: StageOutcome,
     celestialBodies: CelestialBodies,
+    cycleDuration: number,
   ): void {
     const fwd = qRotate(this.player.motion.att.q, LOCAL_FORWARD);
     const muzzleWorld = this.worldPoint(muzzle.position);
@@ -198,6 +202,12 @@ export class FireControl {
     activeStage.recordShot();
     this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
     this.registry.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzleWorld) });
+    this.weapon.recordShot({
+      moduleId: muzzle.weapon.moduleId,
+      muzzleIndex: muzzle.muzzleIndex,
+      firedAt: this.player.motion.state.t,
+      cycleDuration,
+    });
   }
 
   // 弾丸: 機首方向 + 散布界
