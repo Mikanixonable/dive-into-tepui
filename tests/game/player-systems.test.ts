@@ -133,9 +133,9 @@ export function register(): void {
       SHIP_MODULE_CATALOG.require('booster-standard'), 'test-booster',
     ));
     const motion = new ModularShipMotion(assembly, state, attitude);
-    assert.equal(motion.mass, 1_990);
-    assert.equal(motion.bcInv, SHIP_BCINV * 1_000 / 1_990);
-    assert.equal(motion.srpCoeff, SHIP_SRP_COEFF * 1_000 / 1_990);
+    assert.equal(motion.mass, 2_030);
+    assert.equal(motion.bcInv, SHIP_BCINV * 1_000 / 2_030);
+    assert.equal(motion.srpCoeff, SHIP_SRP_COEFF * 1_000 / 2_030);
   });
 
   test('ship marker: 同名艦でも clipPath ID が衝突せず、改名でも安定する', () => {

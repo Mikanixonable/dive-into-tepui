@@ -20,8 +20,8 @@ export function register(): void {
     const assembly = createDefaultCombatPreset();
     const totals = assembly.totals();
     assert.equal(assembly.role, 'ship');
-    assert.equal(totals.hp, 950);
-    assert.equal(totals.maxHp, 950);
+    assert.equal(totals.hp, 1_000);
+    assert.equal(totals.maxHp, 1_000);
     assert.equal(totals.thrust, 400_000);
     assert.equal(totals.torque, 24_000);
     assert.equal(totals.power, 1_650);
@@ -30,17 +30,20 @@ export function register(): void {
     assert.equal(totals.fireRate, 1 / 0.06);
     assert.equal(totals.muzzleVelocity, 1_000);
     assert.equal(totals.mainFuel, 1_000);
-    assert.equal(totals.mass, 990);
-    assert.equal(totals.dryMass, 390);
+    assert.equal(totals.mass, 1_030);
+    assert.equal(totals.dryMass, 430);
     const solarLeft = assembly.graph.find(edge => edge.childId === 'solar-left');
     const solarRight = assembly.graph.find(edge => edge.childId === 'solar-right');
     const radiator = assembly.graph.find(edge => edge.childId === 'radiator');
+    const dockingPort = assembly.graph.find(edge => edge.childId === 'docking-port');
     assert.equal(solarLeft?.parentId, 'main-tank');
     assert.equal(solarLeft?.sideSlot, 'side:-x');
     assert.equal(solarRight?.parentId, 'main-tank');
     assert.equal(solarRight?.sideSlot, 'side:+x');
     assert.equal(radiator?.parentId, 'main-tank');
     assert.equal(radiator?.sideSlot, 'side:-y');
+    assert.equal(dockingPort?.parentId, 'main-tank');
+    assert.equal(dockingPort?.sideSlot, 'side:+y');
     assert.equal(assembly.validate().valid, true);
   });
 
