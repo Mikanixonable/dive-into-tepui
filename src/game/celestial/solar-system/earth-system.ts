@@ -16,8 +16,16 @@ import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
+import { CloudLocalFieldBaker } from '../../../render/cloud/cloud-local-field-baker';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
+import {
+  ConvectiveCloudLocalFieldSupply, CONVECTIVE_LOCAL_FIELD_SPAN_M,
+} from '../../cloud/cloud-local-field-supply';
+import {
+  createCloudEnvironmentProfile,
+  type CloudEnvironmentLevelInput, type CloudEnvironmentProfile,
+} from '../../cloud/cloud-environment';
 import { AnnualClimateMap } from '../../../render/cloud/climate-map';
 import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
 import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
@@ -204,6 +212,45 @@ function earthAuroras(): readonly Aurora[] {
   ];
 }
 
+// 地球の局所雲場の種。セルのポテンシャルとイベント出生の決定論はこれで決まる。
+const EARTH_CLOUD_LOCAL_SEED = 41;
+// 局所場の再焼を促す視点の移動量 — 場の半幅の 25% [rad]。
+const EARTH_LOCAL_FIELD_RECENTER_RAD =
+  0.25 * (CONVECTIVE_LOCAL_FIELD_SPAN_M / 2) / R_EARTH_EQ;
+// 局所場の再焼間隔 [s]。
+const EARTH_LOCAL_FIELD_REBUILD_SECONDS = 300;
+
+// 局所場へ与える地球の環境プロファイル。熱帯の海洋性の深対流を代表する単一柱の近似で、
+// 気候図の空間分布はまだここへ繋いでいない。層の刻みは 250 m、圏界面近傍まで覆う。
+export function earthConvectiveCloudEnvironment(): CloudEnvironmentProfile {
+  const levels: CloudEnvironmentLevelInput[] = [];
+  for (let index = 0; index <= 60; index += 1) {
+    const heightM = index * 250;
+    levels.push({
+      heightM,
+      pressurePa: 100_000 * Math.exp(-heightM / 8_400),
+      // 熱帯の平均的な減率で圏界面(約 12 km)まで下げ、上では等温の成層圏へ繋ぐ。
+      temperatureK: heightM <= 12_000 ? 300 - 6.5 * heightM / 1_000 : 222,
+      waterVaporSpecificHumidityKgPerKg: 0.018 * Math.exp(-heightM / 2_200),
+      liquidWaterMixingRatioKgPerKg: 0,
+      iceMixingRatioKgPerKg: 0,
+      // 輸送の風は大気風モデルが担うので、層の風は供給系へ効かない代理値。
+      eastWindMps: -5,
+      northWindMps: 0,
+      largeScaleVerticalVelocityMps: 0,
+    });
+  }
+  return createCloudEnvironmentProfile({
+    levels,
+    surfaceSensibleHeatFluxWPerM2: 20,
+    surfaceLatentHeatFluxWPerM2: 150,
+    cloudTopLongwaveCoolingKPerS: 1e-4,
+    gravityWaveSource: null,
+    upperIceLayerBottomM: 7_000,
+    upperIceLayerTopM: 12_000,
+  });
+}
+
 // 地球の平年の気候から焼く雲場を組む。projection は場の持ち方。返した場の寿命は受け取った側が持つ。
 // **実験環境も本番もこの工場から組む** — 別の組み立てを書くと、実験環境が本番を映さなくなる。
 export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
@@ -217,8 +264,15 @@ export function earthGeneratedCloudField(projection: FieldProjection): Generated
 // 視点へ置き直す。
 export function earthCloudPresentation(): CloudPresentation {
   const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
+  // 局所光学場は対流イベントの生成経路から供給する。球の半径は衝突球と同じ赤道半径 —
+  // 扁平率ぶんの地表距離の誤差は最大で0.3%程度の近似として扱う。
+  const localFieldBaker = new CloudLocalFieldBaker(
+    new ConvectiveCloudLocalFieldSupply(
+      earthConvectiveCloudEnvironment(), EARTH_CLOUD_LOCAL_SEED, R_EARTH_EQ),
+    EARTH_LOCAL_FIELD_REBUILD_SECONDS, EARTH_LOCAL_FIELD_RECENTER_RAD);
   return new CloudPresentation(
     earthGeneratedCloudField(cap), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
+    localFieldBaker,
   );
 }
 
