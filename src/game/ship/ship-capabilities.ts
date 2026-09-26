@@ -82,6 +82,7 @@ export class ShipCapabilities {
       const definition = this.assembly.definition(weapon.id);
       const transform = this.assembly.worldTransformOf(weapon.id);
       if (definition === null || transform === null) continue;
+      // 砲口と排出口は assembly 座標へ移し、排出方向に使う姿勢も同じ単位で残す。
       const at = (point: Vec3): Vec3 => add(transform.position, qRotate(transform.rotation, point));
       result.push({
         moduleId: weapon.id,

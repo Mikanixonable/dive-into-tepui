@@ -181,10 +181,12 @@ export class WeaponState {
   }
 }
 
+// module ID と砲口番号の組を、衝突しない一意キーへ写す。
 function shotKey(moduleId: string, muzzleIndex: number): string {
   return `${moduleId}\u0000${muzzleIndex}`;
 }
 
+// 未信頼の保存値が発射記録の条件を満たすときだけ数値を正規化して返す。
 function validShotRecord(value: unknown): WeaponShotRecord | null {
   if (value === null || typeof value !== 'object') return null;
   const record = value as Partial<SerializedWeaponShot>;
