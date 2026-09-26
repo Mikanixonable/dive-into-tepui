@@ -29,9 +29,10 @@ function moduleDefinition(
   abilities: ShipModuleDefinition['abilities'] = {}, radius = 3, modelId = id, muzzles: readonly Vec3[] = [],
   feedPort: Vec3 = v3(), solids?: readonly LocalCappedCylinder[],
   ports: { ejection: Vec3; linkExit: Vec3 } = { ejection: v3(), linkExit: v3() },
+  diameter = 6,
 ): ShipModuleDefinition {
   return defineShipModule({
-    id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter: 6, dryMass, maxHp, modelId,
+    id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter, dryMass, maxHp, modelId,
     solidPrimitives: solids ?? [bodyPrimitive(length, radius)], muzzles, feedPort,
     ejectionPort: ports.ejection, linkExitPort: ports.linkExit, abilities,
   });
@@ -62,6 +63,12 @@ const GATLING_LINK_EXIT_PORT = v3(-0.86, -1.95, 0.3);
 // 接触形状に含めず、取付構造の束(座板の張り出しを含む半径)を包む円柱で近似する。
 const DEPLOYABLE_MOUNT_PRIMITIVE: LocalCappedCylinder = {
   center: v3(), axis: v3(0, 0, 1), halfLength: 0.55, radius: 1.35,
+};
+
+// 結合機構モジュールの実体は、直径 3.0 m の機構頭部と細い幹、船体曲面へ伏せる座板・脚・
+// 襟環の取付構造まで。取付構造は後端面の外へ張り出すので、両者を束ねて包む円柱で近似する。
+const DOCK_MODULE_PRIMITIVE: LocalCappedCylinder = {
+  center: v3(0, 0, -0.05), axis: v3(0, 0, 1), halfLength: 0.55, radius: 1.65,
 };
 
 const definitions: readonly ShipModuleDefinition[] = [
@@ -97,8 +104,10 @@ const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('booster-standard', 'booster', 6, 100, 200, {
     fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 80,
   }),
-  moduleDefinition('docking-port-standard', 'docking_port', 1, 50, 40),
-  moduleDefinition('dock-standard', 'dock', 1, 50, 40),
+  moduleDefinition('docking-port-standard', 'docking_port', 1, 50, 40, {}, 1.5,
+    'docking-port-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], undefined, 3),
+  moduleDefinition('dock-standard', 'dock', 1, 50, 40, {}, 1.5,
+    'dock-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], undefined, 3),
   moduleDefinition('decoupler-standard', 'decoupler', 1, 50, 60),
 ];
 
