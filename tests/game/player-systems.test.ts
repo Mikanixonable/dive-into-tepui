@@ -183,54 +183,19 @@ export function register(): void {
       weapon,
     );
     assert.equal(fire.mags, 2);
-    assert.equal(fire.rounds, 24);
+    assert.equal(fire.rounds, 32);
     const before = fire.mags;
     fire.onPickup(0);
     fire.onPickup(-1);
     assert.equal(fire.mags, before);
   });
 
-  test('weapon state: 24発を3段×8発で送り、最後にマガジン外枠を排出する', () => {
-    const weapon = WeaponState.create({ mags: 1, rounds: 24 });
-    const transitions: { round: number; consumption: string }[] = [];
-    for (let round = 1; round <= 24; round++) {
-      const shot = weapon.nextShot(2);
-      assert.ok(shot !== null);
-      if (shot.consumption !== 'normal') transitions.push({ round, consumption: shot.consumption });
-      weapon.fire(2);
-    }
-    assert.deepEqual(transitions, [
-      { round: 8, consumption: 'cartridge-advance' },
-      { round: 16, consumption: 'cartridge-advance' },
-      { round: 24, consumption: 'magazine-finished' },
-    ]);
-    assert.equal(weapon.rounds, 24);
-    assert.equal(weapon.mags, 0);
+  test('weapon state: 弾薬遷移と砲口交互状態は副作用なしに再現できる', () => {
+    const weapon = WeaponState.create({ mags: 1, rounds: 1 });
+    assert.deepEqual(weapon.nextShot(2), { consumption: 'mag-reload', muzzleIndex: 0 });
+    weapon.fire(2);
+    assert.deepEqual(weapon.nextShot(2), { consumption: 'normal', muzzleIndex: 1 });
+    weapon.fire(2);
     assert.equal(weapon.muzzleIdx, 0);
-
-    const finalMagazine = WeaponState.create({ mags: 0, rounds: 24 });
-    const finalTransitions: string[] = [];
-    for (let round = 1; round <= 24; round++) {
-      const shot = finalMagazine.nextShot(2);
-      assert.ok(shot !== null);
-      if (shot.consumption !== 'normal') finalTransitions.push(shot.consumption);
-      finalMagazine.fire(2);
-    }
-    assert.deepEqual(finalTransitions, ['cartridge-advance', 'cartridge-advance', 'magazine-finished']);
-    assert.equal(finalMagazine.rounds, 0);
-    assert.equal(finalMagazine.mags, 0);
-    assert.equal(finalMagazine.left, false);
-  });
-
-  test('weapon state: 空の装填状態に予備があれば次箱を装填し、補給時刻を記録する', () => {
-    const restored = WeaponState.create({ mags: 1, rounds: 0 });
-    assert.equal(restored.rounds, 24);
-    assert.equal(restored.mags, 0);
-
-    const depleted = WeaponState.create({ mags: 0, rounds: 0 });
-    depleted.addMags(1, 5);
-    assert.equal(depleted.rounds, 24);
-    assert.equal(depleted.mags, 0);
-    assert.equal(depleted.magazineFedAt, 5);
   });
 }

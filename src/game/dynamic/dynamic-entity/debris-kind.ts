@@ -19,7 +19,6 @@ export interface DebrisSlide {
 export type DebrisKind =
   | { readonly kind: 'fragment'; readonly accent: string | number; readonly size: number; }
   | { readonly kind: 'magazineFrame'; readonly slide?: DebrisSlide; }
-  | { readonly kind: 'cartridgeFrame'; readonly bornSim: number; readonly slide?: DebrisSlide; }
   | { readonly kind: 'casing'; readonly bornSim: number; }
   | { readonly kind: 'decouplerPanel'; readonly segment: number; readonly bornSim: number; };
 
