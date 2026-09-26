@@ -47,7 +47,7 @@ function buildManifest() {
         },
         radiator: {
           count: shape.RADIATOR_FOLD_COUNT, length: shape.RADIATOR_SEGMENT_LENGTH, span: shape.RADIATOR_PANEL_WIDTH,
-          thickness: shape.RADIATOR_PANEL_THICKNESS, normalAxis: [1, 0, 0],
+          thickness: shape.RADIATOR_PANEL_THICKNESS, normalAxis: [0, 1, 0],
         },
       },
     };

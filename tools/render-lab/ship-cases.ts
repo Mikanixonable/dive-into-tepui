@@ -277,9 +277,9 @@ const DEPLOYABLES_TARGET = new THREE.Vector3(0, 0, -8.9);
 
 // 展開部品の寄り: 全展開の戦闘艦 1 隻を取付面へ寄せ、太陽電池翼のセル面・取付構造と
 // ラジエーターの蛇腹・取付構造を大きく写す。
-// 機軸を視線へ向けると、太陽電池の面は船体の ±x、蛇腹の面は船体の ±z を向く。だから
-// 上の翼のセル面は左舷前方(方位 -50 度)、左の蛇腹の面は艦首側(方位 0 付近)から、
-// 右の蛇腹の面は艦尾側(方位 +140 度)から見ると正面になる。
+// 機軸を視線へ向けると、太陽電池の面は船体の ±x、蛇腹の面は船体の ±x(左右)を向く。だから
+// 上の翼のセル面は左舷前方(方位 -50 度)、下面の蛇腹の面は右舷側(方位 +90 付近)から
+// 見ると正面になる。
 function deployables(): LabCase {
   const ship = shipObject(combatShipDeployed(1));
   ship.position.set(0, 0, DEPLOYABLES_SHIP_Z);
@@ -297,11 +297,14 @@ function deployables(): LabCase {
           sunAzimuthDeg: -60, sunElevationDeg: 25,
         },
       },
-      // 左の蛇腹: 上から降りて折り目の凹凸と配管を見る。面は艦首側を向くので既定の恒星で当たる。
+      // 下面の蛇腹: 右舷側を向く配管側の面へ上から降りて、折り目の凹凸と配管を見る。
       'modular-ship-deployables-radiator': {
-        view: { cameraAzimuthDeg: -15, cameraElevationDeg: 50, cameraDistanceLog: 0.1 },
+        view: {
+          cameraAzimuthDeg: 80, cameraElevationDeg: 45, cameraDistanceLog: 0.1,
+          sunAzimuthDeg: 60, sunElevationDeg: 25,
+        },
       },
-      // 艦尾側: 面が -z を向く右の蛇腹と右舷の取付を後方から。恒星も艦尾側へ回す。
+      // 艦尾側: 面が ±x を向く蛇腹の端と右舷の取付を後方から。恒星も艦尾側へ回す。
       'modular-ship-deployables-aft': {
         view: {
           cameraAzimuthDeg: 140, cameraElevationDeg: 15, cameraDistanceLog: 0.15,
