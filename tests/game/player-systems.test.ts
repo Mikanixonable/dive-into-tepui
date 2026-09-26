@@ -90,7 +90,8 @@ export function register(): void {
 
     throttle.updateTorque(motion.att, v3(), v3(), controls, false, 0, 0, fuelConsumer, null);
     const angularAcceleration = throttle.torque.z / motion.att.inertia.z;
-    assert.ok(angularAcceleration > 0.45 && angularAcceleration < 0.6);
+    assert.ok(angularAcceleration > 0.3 && angularAcceleration < 0.4,
+      `RCS roll acceleration ${angularAcceleration} rad/s²`);
 
     const next = stepAttitude(motion.att, throttle.torque, 0.4);
     assert.ok(Math.abs(next.q.z) > 1e-3);

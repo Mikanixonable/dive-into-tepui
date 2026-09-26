@@ -121,6 +121,15 @@ class MaterialLibrary:
         # 砲身・機関部の黒染め鋼
         self.gun_steel = create_pbr_material("mat_gun_steel", (0.10, 0.11, 0.12, 1.0), roughness=0.38, metallic=1.0)
 
+class CockpitMaterialLibrary:
+    def __init__(self):
+        # 焼き物のような鈍い光沢を持つ、コックピットのエボナイト塗膜とアイボリー塗膜。
+        self.ebonite = create_pbr_material("mat_cockpit_ebonite", (0.035, 0.040, 0.048, 1.0), roughness=0.34, metallic=0.02)
+        self.ivory = create_pbr_material("mat_cockpit_ivory", (0.79, 0.75, 0.65, 1.0), roughness=0.40, metallic=0.02)
+        self.recess = create_pbr_material("mat_cockpit_recess", (0.014, 0.018, 0.024, 1.0), roughness=0.46, metallic=0.0)
+        self.red = create_pbr_material("mat_cockpit_red", (0.62, 0.055, 0.040, 1.0), roughness=0.42, metallic=0.02)
+        self.fastener = create_pbr_material("mat_cockpit_fastener", (0.43, 0.42, 0.39, 1.0), roughness=0.32, metallic=0.22)
+
 def world_matrix(obj):
     """obj の模型座標での変換。親子付けはどれも parent_inverse が単位行列である前提。"""
     matrix = obj.matrix_basis.copy()
@@ -507,115 +516,179 @@ def make_shell_lathe(inner_points, wall, segments=48):
     return make_lathe(list(inner_points) + outer, segments=segments, closed=True)
 
 # ----------------------------------------------------------------------
-# 1. Cockpit Module (cockpit-standard: length 3m, aft diameter 6m, forward diameter 3m)
+# 1. Cockpit Module (cockpit-standard: length 9m, aft diameter 6m, forward diameter 3m)
 # ----------------------------------------------------------------------
+def cockpit_profile_radius(profile, z):
+    """manifest の船殻輪郭から断面の基準半径 [m] を線形補間する。"""
+    for previous, current in zip(profile, profile[1:]):
+        if z <= current["z"]:
+            fraction = (z - previous["z"]) / (current["z"] - previous["z"])
+            return previous["radius"] + (current["radius"] - previous["radius"]) * fraction
+    return profile[-1]["radius"]
+
+def cockpit_surface_radius(profile, indent_fraction, z, theta):
+    """上下にずらした2円の和から、角度thetaにおける長手溝付き断面の外周を返す。"""
+    radius = cockpit_profile_radius(profile, z)
+    offset = radius * indent_fraction
+    circle_radius = radius - offset
+    return offset * abs(math.sin(theta)) + math.sqrt(max(0.0, circle_radius ** 2 - offset ** 2 * math.cos(theta) ** 2))
+
+def wrapped_angle_difference(a, b):
+    return math.atan2(math.sin(a - b), math.cos(a - b))
+
+def cockpit_short_recess(z, theta, radius):
+    """船殻表面へ短冊状の浅い凹みを刻み、継ぎ目と重ならない暗部も返す。"""
+    period = 0.64
+    column_count = 32
+    step = 2.0 * math.pi / column_count
+    column = int(round(theta / step)) % column_count
+    center_theta = column * step
+    delta_theta = abs(wrapped_angle_difference(theta, center_theta))
+    phase = (column % 2) * period * 0.5
+    delta_z = (z + 4.15 + phase + period * 0.5) % period - period * 0.5
+    distance = max(abs(delta_z) - 0.14, delta_theta * radius - 0.055)
+    slot = 0.042 * max(0.0, min(1.0, (0.030 - distance) / 0.050))
+
+    joint_z = min(abs(z - seam) for seam in (-3.45, -1.25, 0.5, 2.35, 3.85))
+    axial_joint = 0.022 * max(0.0, min(1.0, (0.040 - joint_z) / 0.032))
+    joint_angles = tuple(math.radians(degrees) for degrees in (22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5))
+    longitudinal_joint = min(abs(wrapped_angle_difference(theta, seam)) for seam in joint_angles) * radius
+    longitudinal_joint = 0.015 * max(0.0, min(1.0, (0.026 - longitudinal_joint) / 0.018))
+    return max(slot, axial_joint, longitudinal_joint), slot
+
+def cockpit_hull_mesh(profile, indent_fraction):
+    """短冊凹み・板継ぎ目を断面メッシュ自体へ刻んだ、黒/アイボリー複材の閉じた船殻を作る。"""
+    bm = bmesh.new()
+    axial_steps = int(round((profile[-1]["z"] - profile[0]["z"]) / 0.04))
+    angular_steps = 288
+    rings = []
+    for axial_index in range(axial_steps + 1):
+        z = profile[0]["z"] + (profile[-1]["z"] - profile[0]["z"]) * axial_index / axial_steps
+        ring = []
+        for angular_index in range(angular_steps):
+            theta = 2.0 * math.pi * angular_index / angular_steps
+            radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+            recess, _ = cockpit_short_recess(z, theta, radius)
+            surface_radius = max(0.0, radius - recess)
+            ring.append(bm.verts.new((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z)))
+        rings.append(ring)
+
+    for axial_index in range(axial_steps):
+        for angular_index in range(angular_steps):
+            next_angle = (angular_index + 1) % angular_steps
+            face = bm.faces.new((rings[axial_index][angular_index], rings[axial_index][next_angle],
+                                 rings[axial_index + 1][next_angle], rings[axial_index + 1][angular_index]))
+            center = face.calc_center_median()
+            theta = math.atan2(center.y, center.x)
+            radius = cockpit_surface_radius(profile, indent_fraction, center.z, theta)
+            recess, slot = cockpit_short_recess(center.z, theta, radius)
+            if recess > 0.010 or slot > 0.010:
+                face.material_index = 2
+            elif center.z < -3.48:
+                face.material_index = 1
+
+    for end_index, z in ((0, profile[0]["z"]), (-1, profile[-1]["z"])):
+        center = bm.verts.new((0.0, 0.0, z))
+        ring = rings[end_index]
+        for angular_index in range(angular_steps):
+            bm.faces.new((center, ring[angular_index], ring[(angular_index + 1) % angular_steps]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return shade_by_angle(bm, 42.0)
+
+def add_cockpit_surface_patch(name, profile, indent_fraction, z_center, height, theta_center, width,
+                              radial_offset, material, axial_segments=6, angular_segments=8):
+    """長手断面の曲面に沿った薄いパネル/マーキングを作る。width は船殻に沿う実寸[m]。"""
+    radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+    theta_half = width / (2.0 * max(radius, 0.1))
+    bm = bmesh.new()
+    grid = []
+    for axial_index in range(axial_segments + 1):
+        z = z_center - height / 2.0 + height * axial_index / axial_segments
+        row = []
+        for angular_index in range(angular_segments + 1):
+            theta = theta_center - theta_half + 2.0 * theta_half * angular_index / angular_segments
+            surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radial_offset
+            row.append(bm.verts.new((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z)))
+        grid.append(row)
+    for axial_index in range(axial_segments):
+        for angular_index in range(angular_segments):
+            bm.faces.new((grid[axial_index][angular_index], grid[axial_index][angular_index + 1],
+                          grid[axial_index + 1][angular_index + 1], grid[axial_index + 1][angular_index]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, bm, material)
+
+def add_cockpit_ring_patch(name, profile, indent_fraction, z_center, width, radial_offset, material, angular_steps=192):
+    """非円形断面に沿った全周バンドを作る。"""
+    bm = bmesh.new()
+    rows = []
+    for z in (z_center - width / 2.0, z_center + width / 2.0):
+        rows.append([
+            bm.verts.new(((cockpit_surface_radius(profile, indent_fraction, z, 2.0 * math.pi * index / angular_steps)
+                           + radial_offset) * math.cos(2.0 * math.pi * index / angular_steps),
+                          (cockpit_surface_radius(profile, indent_fraction, z, 2.0 * math.pi * index / angular_steps)
+                           + radial_offset) * math.sin(2.0 * math.pi * index / angular_steps), z))
+            for index in range(angular_steps)
+        ])
+    for index in range(angular_steps):
+        next_index = (index + 1) % angular_steps
+        bm.faces.new((rows[0][index], rows[0][next_index], rows[1][next_index], rows[1][index]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, bm, material)
+
 def build_cockpit():
     reset_scene()
-    mats = MaterialLibrary()
-    
-    # 1. 円錐台船殻。接続面は z=-1.5 m で半径 3 m、z=+1.5 m で半径 1.5 m。
-    # 中間断面も同じ勾配で結び、外形は指定した両端寸法を越えない。
-    points = [
-        (3.00, -1.50),
-        (2.85, -1.20),
-        (2.60, -0.70),
-        (2.35, -0.20),
-        (2.10,  0.30),
-        (1.85,  0.80),
-        (1.65,  1.20),
-        (1.50,  1.50),
-    ]
-    bm_hull = make_lathe(points, segments=48)
-    add_mesh_obj("cockpit_hull", bm_hull, mats.hull)
-    
-    # 2. 後端の耐熱板。直径 6 m の後部結合面に揃える。
-    bm_shield = make_cylinder(3.00, 3.00, 0.025, z_center=-1.4875, segments=48)
-    add_mesh_obj("cockpit_heatshield", bm_shield, mats.heatshield)
-    
-    # 3. Forward CBM / APAS Docking Flange Ring (torus)
-    bm_cbm = make_torus(major_r=1.46, minor_r=0.035, z_center=1.48, major_seg=36, minor_seg=12)
-    add_mesh_obj("cockpit_cbm_ring", bm_cbm, mats.cbm_ring)
+    cockpit_mats = CockpitMaterialLibrary()
+    definition = MANIFEST["modules"]["cockpit-standard"]
+    profile = MANIFEST["cockpitHull"]["profile"]
+    indent_fraction = MANIFEST["cockpitHull"]["sectionIndentFraction"]
+    aft_z, fore_z = profile[0]["z"], profile[-1]["z"]
 
-    # 3b. 前端ハッチと覗き窓。直径 3 m の前端断面内に収める。
-    bm_hatch = make_cylinder(1.42, 1.42, 0.05, z_center=1.46, segments=36)
-    add_mesh_obj("cockpit_hatch", bm_hatch, mats.hull_dark)
+    # 共通カタログ輪郭を使い、2つの対向円で左右に溝が入る断面を描く。
+    add_mesh_obj("cockpit_hull", cockpit_hull_mesh(profile, indent_fraction),
+                 [cockpit_mats.ebonite, cockpit_mats.ivory, cockpit_mats.recess])
 
-    bm_hub = make_cylinder(0.65, 0.65, 0.04, z_center=1.48, segments=24)
-    add_mesh_obj("cockpit_hatch_hub", bm_hub, mats.hull)
+    # 後部のアイボリー帯と、その前縁に巻いた細い赤い識別線。
+    add_cockpit_ring_patch("cockpit_red_aft_mark", profile, indent_fraction, -3.53, 0.055, 0.028, cockpit_mats.red)
+    add_cockpit_surface_patch("cockpit_ivory_centerline", profile, indent_fraction,
+                              0.0, 8.62, math.pi / 2.0, 0.16, 0.028, cockpit_mats.ivory, 108, 4)
+    # 前端の接続縁も閉じた薄いリングで仕上げ、黒い前面は窓のない板面にする。
+    add_cockpit_ring_patch("cockpit_forward_rim", profile, indent_fraction, 4.35, 0.065, 0.026, cockpit_mats.ivory)
 
-    bm_hatch_win = make_cylinder(0.24, 0.24, 0.03, z_center=1.49, segments=16)
-    add_mesh_obj("cockpit_hatch_window", bm_hatch_win, mats.window)
+    # 側面に閉じたハッチを2枚ずつ配置し、両舷で左右対称にする。
+    for side, theta in (("port", 0.0), ("starboard", math.pi)):
+        for hatch_index, z in enumerate((-1.15, 1.95)):
+            add_cockpit_surface_patch(f"cockpit_side_hatch_recess_{side}_{hatch_index}", profile, indent_fraction,
+                                      z, 0.96, theta, 0.82, 0.018, cockpit_mats.recess)
+            add_cockpit_surface_patch(f"cockpit_side_hatch_door_{side}_{hatch_index}", profile, indent_fraction,
+                                      z, 0.82, theta, 0.70, 0.034, cockpit_mats.ivory)
+            # 赤い警告枠をハッチ前縁だけに入れる。
+            side_radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+            edge_theta = theta + (0.29 / side_radius) * (-1 if side == "port" else 1)
+            add_cockpit_surface_patch(f"cockpit_side_hatch_red_frame_{side}_{hatch_index}", profile, indent_fraction,
+                                      z, 0.70, edge_theta, 0.045, 0.050, cockpit_mats.red, 6, 2)
+            latch_theta = theta + (0.22 / side_radius) * (1 if side == "port" else -1)
+            add_cockpit_surface_patch(f"cockpit_side_hatch_latch_{side}_{hatch_index}", profile, indent_fraction,
+                                      z, 0.18, latch_theta, 0.052, 0.048, cockpit_mats.fastener, 2, 2)
 
-    for i in range(8):
-        ang = i * math.pi / 4.0
-        bm_bolt = make_box(0.06, 0.06, 0.04, center=(1.28 * math.cos(ang), 1.28 * math.sin(ang), 1.48))
-        add_mesh_obj(f"cockpit_hatch_latch_{i}", bm_bolt, mats.clamp)
-    
-    # 4. Beveled Dual Trapezoidal Windows (Gemini / Soyuz style)
-    # Positioned at +Y (top side) at angles +/- 22 degrees, z = 0.6m to 1.1m
-    for sign in [-1.0, 1.0]:
-        ang = sign * math.radians(22)
-        z_mid = 0.80
-        r_mid = 3.00 - 0.50 * (z_mid + 1.50)
-        # Frame
-        rot = (math.radians(-18), 0, -ang)
-        pos = (r_mid * math.sin(ang), r_mid * math.cos(ang), z_mid)
-        bm_frame = make_box(0.48, 0.08, 0.55, center=pos, rot_euler=rot)
-        add_mesh_obj(f"window_frame_{sign}", bm_frame, mats.window_frame)
-        
-        # Inset Glass Pane (recessed inside frame)
-        pos_glass = (pos[0] * 0.98, pos[1] * 0.98, pos[2])
-        bm_glass = make_box(0.42, 0.03, 0.48, center=pos_glass, rot_euler=rot)
-        add_mesh_obj(f"window_glass_{sign}", bm_glass, mats.window)
+            half_theta = 0.34 / side_radius
+            for corner in range(4):
+                corner_theta = theta + (-half_theta if corner % 2 == 0 else half_theta)
+                corner_z = z + (-0.37 if corner < 2 else 0.37)
+                point_radius = cockpit_surface_radius(profile, indent_fraction, corner_z, corner_theta) + 0.034
+                bm_rivet = make_sphere(0.020, center=(point_radius * math.cos(corner_theta),
+                                                      point_radius * math.sin(corner_theta), corner_z),
+                                       u_seg=10, v_seg=6)
+                add_mesh_obj(f"cockpit_side_hatch_rivet_{side}_{hatch_index}_{corner}", bm_rivet,
+                             cockpit_mats.fastener)
 
-    # 5. Recessed Avionics & Equipment Bay (Carved INTO the hull, NOT a plate!)
-    # Located on port & starboard sides (angles +/- 90 deg, z = -0.4m to +0.2m)
-    for sign in [-1.0, 1.0]:
-        ang = sign * math.pi / 2.0
-        z_bay = -0.10
-        r_bay = 3.00 - 0.50 * (z_bay + 1.50) - 0.08
-        pos_bay = (r_bay * math.cos(ang), r_bay * math.sin(ang), z_bay)
-        # Recessed cavity backplane
-        bm_cavity = make_box(0.12, 1.00, 0.60, center=pos_bay, rot_euler=(0, 0, ang))
-        add_mesh_obj(f"recessed_bay_{sign}", bm_cavity, mats.recessed)
-        # Internal avionics modules / connectors inside bay
-        for k in range(3):
-            zk = -0.25 + k * 0.20
-            pos_mod = ((r_bay + 0.02) * math.cos(ang), (r_bay + 0.02) * math.sin(ang), zk)
-            bm_mod = make_box(0.06, 0.75, 0.12, center=pos_mod, rot_euler=(0, 0, ang))
-            add_mesh_obj(f"bay_module_{sign}_{k}", bm_mod, mats.hull_dark)
-
-    # 6. Integrated Optical Star Tracker Cowl
-    # Aerodynamic cowling blended into the forward dorsal hull
-    cowl_radius = 3.00 - 0.50 * (0.35 + 1.50)
-    cowl_pos = (0.0, cowl_radius, 0.35)
-    bm_cowl = make_cylinder(0.18, 0.14, 0.28, z_center=0.0, segments=16)
-    # Tilt slightly forward
-    transform_bm(bm_cowl, Euler((math.radians(25), 0, 0)).to_matrix().to_4x4())
-    transform_bm(bm_cowl, Matrix.Translation(Vector(cowl_pos)))
-    add_mesh_obj("star_tracker_cowl", bm_cowl, mats.hull_dark)
-    
-    # 7. Blended RCS Quad Pod Housings (Aerospace faired pods, not arbitrary cubes)
-    # Placed symmetrically around circumference at z = -0.55m
-    pod_z = -0.55
-    pod_radius = 3.00 - 0.50 * (pod_z + 1.50)
-    for i in range(4):
-        ang = i * math.pi / 2.0 + math.pi / 4.0
-        r_pod = pod_radius
-        pos_pod = (r_pod * math.cos(ang), r_pod * math.sin(ang), -0.55)
-        bm_pod = make_box(0.24, 0.32, 0.26, center=pos_pod, rot_euler=(0, 0, ang))
-        add_mesh_obj(f"rcs_pod_{i}", bm_pod, mats.hull_dark)
-        
-        # ポッドの接線 ±・軸 ± へ向いた4基のノズル
-        tangent = Vector((-math.sin(ang), math.cos(ang), 0))
-        for k, (d, reach) in enumerate([(tangent, 0.16), (-tangent, 0.16), (Vector((0, 0, 1)), 0.13), (Vector((0, 0, -1)), 0.13)]):
-            add_directed_nozzle(f"rcs_noz_{i}_{k}", Vector(pos_pod) + d * (reach + 0.07), d, 0.07, 0.035, 0.018, mats.nozzle_rib)
-
-    # 8. Structural Circumferential Frame Ribs (Ring bulkheads)
-    for z_ring in [-1.10, 0.0, 1.10]:
-        ring_radius = 3.00 - 0.50 * (z_ring + 1.50)
-        bm_ring = make_torus(major_r=ring_radius - 0.035, minor_r=0.035, z_center=z_ring, major_seg=36, minor_seg=8)
-        add_mesh_obj(f"frame_ring_{z_ring}", bm_ring, mats.hull_dark)
+    # 端板継ぎ目の位置へ小さな締結リベットを揃える。凹みや板面は接触形状には加えない。
+    for seam_index, z in enumerate((-3.45, -1.25, 0.5, 2.35, 3.85)):
+        for bolt_index in range(12):
+            theta = 2.0 * math.pi * bolt_index / 12.0
+            radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + 0.026
+            bm_rivet = make_sphere(0.018, center=(radius * math.cos(theta), radius * math.sin(theta), z),
+                                   u_seg=8, v_seg=6)
+            add_mesh_obj(f"cockpit_panel_rivet_{seam_index}_{bolt_index}", bm_rivet, cockpit_mats.fastener)
 
     export_glb(os.path.join(OUT_DIR, "cockpit-standard.glb"))
 
@@ -1871,8 +1944,8 @@ def add_gun_bolts(name, positions, direction, mats, parent=None, radius=0.035):
 
 
 # 固定砲架を作る。頬板下側の切り欠きは排莢樋と給弾塔の空間を確保する。
-def build_gun_cradle(mats, deck_top):
-    outline = [(0.20, deck_top + 0.04), (1.13, deck_top + 0.04), (1.32, 0.0),
+def build_gun_cradle(mats, mount_plane_z):
+    outline = [(0.20, mount_plane_z + 0.04), (1.13, mount_plane_z + 0.04), (1.32, 0.0),
         (1.26, 0.68), (0.76, 1.32), (-0.64, 1.32), (-0.78, 1.06),
         (-0.78, 0.67), (0.20, 0.67)]
     panel = [(0.30, -0.19), (1.00, -0.19), (1.12, 0.08), (1.08, 0.61),
@@ -1885,7 +1958,7 @@ def build_gun_cradle(mats, deck_top):
         add_mesh_obj(f"gun_cradle_cheek_field_{side:+.0f}",
             make_gun_cheek(panel, side * 1.496 - 0.012, side * 1.496 + 0.012, 0.012), mats.gun_panel)
         add_mesh_obj(f"gun_cradle_foot_{side:+.0f}", make_box(0.57, 1.16, 0.10,
-            center=(x, 0.72, deck_top + 0.05), bevel=0.035), mats.gun_paint)
+            center=(x, 0.72, mount_plane_z + 0.05), bevel=0.035), mats.gun_paint)
         bearing_transform = Matrix.Translation((side * 1.53, 0.64, 0.40)) @ Euler((0, math.pi / 2, 0)).to_matrix().to_4x4()
         add_mesh_obj(f"gun_cradle_trunnion_{side:+.0f}",
             transform_bm(make_cylinder(0.38, 0.38, 0.22, segments=40), bearing_transform), mats.gun_paint)
@@ -1897,15 +1970,15 @@ def build_gun_cradle(mats, deck_top):
         add_gun_bolts(f"gun_cheek_bolts_{side:+.0f}",
             [(side * 1.52, y, z) for y, z in ((-.51, 1.23), (.14, 1.23), (.70, 1.20), (1.18, .60), (.29, -.22))],
             (side, 0, 0), mats)
-    # 後座を支える案内レールと、甲板へ反力を渡す横梁。
+    # 後座を支える案内レールと、取付面へ反力を渡す横梁。
     for y in (-0.62, 0.62):
         add_mesh_obj(f"gun_cradle_crossbeam_{y:+.2f}", make_box(2.60, 0.20, 0.14,
-            center=(0, y, deck_top + .09), bevel=.025), mats.gun_paint)
+            center=(0, y, mount_plane_z + .09), bevel=.025), mats.gun_paint)
     for side in (-1.0, 1.0):
         add_mesh_obj(f"gun_slide_rail_{side:+.0f}", make_box(.17, .20, 1.47,
             center=(side * .93, -.38, .44), bevel=.018), mats.gun_machined)
         add_mesh_obj(f"gun_slide_rail_seat_{side:+.0f}", make_box(.27, .34, .14,
-            center=(side * .93, -.38, deck_top + .10), bevel=.025), mats.gun_paint)
+            center=(side * .93, -.38, mount_plane_z + .10), bevel=.025), mats.gun_paint)
 
 
 # 後座する機関部、駆動装置、軸受と整備扉を組む。
@@ -1982,10 +2055,10 @@ def build_gun_recoil_cylinders(mats, recoil):
                 for a in [i * math.pi / 3 for i in range(6)]], (0, 0, 1), mats, radius=.026)
 
 
-# 固定側の機械室と圧力容器を甲板へ据え付ける。
-def build_gun_service_house(mats, deck_top):
+# 固定側の機械室と圧力容器を砲架の支持部へ据え付ける。
+def build_gun_service_house(mats, mount_plane_z):
     add_mesh_obj("gun_house", make_box(2.20, .77, .67,
-        center=(0, 1.80, deck_top + .335), bevel=.075), mats.gun_paint)
+        center=(0, 1.80, mount_plane_z + .335), bevel=.075), mats.gun_paint)
     add_mesh_obj("gun_house_hood", make_box(2.03, .65, .08,
         center=(0, 1.81, .33), bevel=.035), mats.gun_panel)
     for side in (-1.0, 1.0):
@@ -2055,7 +2128,6 @@ def build_weapon(name):
     reset_scene()
     mats = MaterialLibrary()
     add_gun_materials(mats)
-    radius = 3.0
     module = MANIFEST["modules"][name]
     half_len = module["length"] / 2.0
     muzzle = Vector(module["muzzles"][0])   # 砲口は機軸上の1点
@@ -2063,64 +2135,23 @@ def build_weapon(name):
     mx, my, mz = muzzle.x, muzzle.y, muzzle.z
     fx, fy = feed_port.x, feed_port.y
 
-    # 1. 後端の結合環と砲架の甲板・放射状の補強リブ。
-    #    ベルトのリンクは長手(Z)に甲板面をまたぐので、通路にあたる帯を甲板から抜く。
-    ring_top = -half_len + 0.12
-    add_mesh_obj("weapon_mating_ring", make_lathe([
-        (radius - 0.20, -half_len), (radius, -half_len), (radius, ring_top), (radius - 0.20, ring_top),
-    ], segments=64, closed=True), mats.hull)
-    add_mesh_obj("weapon_ring_flange", make_torus(radius + 0.005, 0.025, ring_top - 0.025, major_seg=64, minor_seg=10), mats.hull_dark)
-    deck_top = -half_len + 0.125
-    deck_r = radius - 0.18
+    mount_plane_z = -half_len + 0.125
 
-    # 甲板の切り欠きは feed_port を跨ぐ Y 方向の帯で、円板を2片(主板と外縁側の小片)に分ける。
-    # 帯の端は甲板縁の結合環まで開くので、ベルトは舷側へ出入りできる。
-    channel_y0 = fy - 0.60  # リンク厚み 1.0 + 0.2 の余裕
-    channel_y1 = fy + 0.60
-    chord_x1 = math.sqrt(deck_r ** 2 - channel_y1 ** 2)
-    chord_x0 = math.sqrt(deck_r ** 2 - channel_y0 ** 2)
-    deck_outline = [(-chord_x1, channel_y1), (chord_x1, channel_y1)]
-    arc_from = math.atan2(channel_y1, chord_x1)
-    arc_to = math.atan2(channel_y1, -chord_x1) + 2.0 * math.pi
-    for i in range(1, 48):
-        a = arc_from + (arc_to - arc_from) * i / 48.0
-        deck_outline.append((deck_r * math.cos(a), deck_r * math.sin(a)))
-    add_mesh_obj("weapon_deck", make_plate_prism(deck_outline, deck_top - 0.05, deck_top), mats.hull_dark)
-    # 切り欠きの向こう側に残る円板の小片
-    cap_outline = [(chord_x0, channel_y0), (-chord_x0, channel_y0)]
-    cap_from = math.atan2(channel_y0, -chord_x0)
-    cap_to = math.atan2(channel_y0, chord_x0)
-    for i in range(1, 16):
-        a = cap_from + (cap_to - cap_from) * i / 16.0
-        cap_outline.append((deck_r * math.cos(a), deck_r * math.sin(a)))
-    add_mesh_obj("weapon_deck_channel_floor", make_plate_prism(cap_outline, deck_top - 0.05, deck_top), mats.hull_dark)
-    # 通路の両脇の立ち上がり縁
-    add_mesh_obj("deck_channel_sill_inner", make_box(2.0 * chord_x1 - 0.02, 0.07, 0.06, center=(0.0, channel_y1 + 0.045, deck_top + 0.02)), mats.clamp)
-    add_mesh_obj("deck_channel_sill_outer", make_box(2.0 * chord_x0 - 0.02, 0.07, 0.06, center=(0.0, channel_y0 - 0.045, deck_top + 0.02)), mats.clamp)
-
-    for i in range(8):
-        a = i * math.pi / 4.0 + math.pi / 8.0
-        # 通路の上空をまたぐリブは浮いてしまうので置かない
-        if any(channel_y0 <= deck_r * t * math.sin(a) <= channel_y1 for t in [k / 24.0 for k in range(1, 25)]):
-            continue
-        mid = 1.75
-        add_mesh_obj(f"deck_rib_{i}", make_box(1.70, 0.06, 0.08, center=(mid * math.cos(a), mid * math.sin(a), deck_top + 0.04), rot_euler=(0, 0, a)), mats.hull)
-
-    # 2. 露出砲架。頬板・軸受・案内レール・駐退シリンダー・機械室は甲板へ固定し、機関部と
+    # 1. 露出砲架。頬板・軸受・案内レール・駐退シリンダー・機械室は支持部へ固定し、機関部と
     #    砲身束・排莢口は後座 anchor の子として、発射ごとに砲架へ沿って後退・復座する。
     breech_z = 1.20                    # 砲身束の尾端(回転部の根元)。ここから砲口までが露出砲身
     recoil = add_anchor("gun-recoil:0", (0.0, 0.0, 0.0), recoilTravel=0.22)
-    build_gun_cradle(mats, deck_top)
+    build_gun_cradle(mats, mount_plane_z)
     build_gun_receiver(mats, recoil, breech_z)
     build_gun_recoil_cylinders(mats, recoil)
-    build_gun_service_house(mats, deck_top)
+    build_gun_service_house(mats, mount_plane_z)
     build_gun_barrels(mats, recoil, breech_z, mz)
     build_gun_ejection(mats, recoil)
     # 固定の給弾シュートが機関部の底へ入る摺動口の締め環(後座してもシュートを囲う)
     add_mesh_obj("gun_feed_gland", make_box(0.86, 0.06, 0.86,
         center=(fx - 0.15, my - 0.77, 0.05), bevel=0.02), mats.gun_machined, parent=recoil)
 
-    # 4. 給弾塔(デリンカー): feed_port を中心に甲板をまたぐ装甲ハウジング。
+    # 2. 給弾塔(デリンカー): feed_port を中心に砲架の支持部をまたぐ装甲ハウジング。
     #    +X 面の開口へベルトが差し込まれ、中で弾だけが天面のシュートへ分かれて機関部へ入る。
     slot_y0, slot_y1 = fy - 0.625, fy + 0.625  # 開口の高さ 1.25(リンク厚み 1.0 より僅かに大きい)
     # 開口の後端は後端面(z=-0.5)の手前に留める。リンク(奥行 2.0)の後ろ側は開口の下からはみ出す
@@ -2128,16 +2159,16 @@ def build_weapon(name):
     face_x = fx + 0.45
     tower_x0 = fx - 0.80
     body_y0, body_y1 = fy - 0.90, fy + 1.00
-    body_z0, body_z1 = deck_top, 1.18
+    body_z0, body_z1 = mount_plane_z, 1.18
     trunk_x0 = fx - 0.55
     trunk_y0, trunk_y1 = fy - 0.75, fy + 0.75
-    # 甲板より後ろは結合面(z=-0.5)の手前に留める浅い脚にする
+    # 結合面(z=-0.5)より後ろへ出ない浅い脚にする
     trunk_z0, trunk_z1 = -0.48, -0.28
     wall_x0 = face_x - 0.18
     body_zc = (body_z0 + body_z1) / 2
     trunk_zc = (trunk_z0 + trunk_z1) / 2
 
-    # 甲板上の胴体と甲板下の脚を板で組む。開口の奥は暗い空洞として抜く
+    # 支持面の上の胴体と結合面前方へ張り出す脚を板で組む。開口の奥は暗い空洞として抜く
     add_mesh_obj("feed_tower_top", make_box(face_x - tower_x0, 0.10, body_z1 - body_z0,
         center=((tower_x0 + face_x) / 2, body_y1 - 0.05, body_zc)), mats.hull_dark)
     add_mesh_obj("feed_tower_bottom", make_box(face_x - tower_x0, 0.10, body_z1 - body_z0,
@@ -2160,7 +2191,7 @@ def build_weapon(name):
     add_mesh_obj("feed_trunk_cavity", make_box(face_x - 0.30 - trunk_x0 - 0.10, trunk_y1 - trunk_y0 - 0.20, 0.18,
         center=((trunk_x0 + 0.10 + face_x - 0.30) / 2, fy, -0.36)), mats.recessed)
 
-    # +X 面の開口まわりの壁(甲板上は上・下・前の3辺、甲板下は上・下・後ろの3辺)
+    # +X 面の開口まわりを3辺の壁で囲う
     wall_cx = wall_x0 + 0.09
     add_mesh_obj("feed_mouth_wall_top", make_box(0.18, body_y1 - slot_y1, body_z1 - body_z0,
         center=(wall_cx, (body_y1 + slot_y1) / 2, body_zc)), mats.hull_dark)
