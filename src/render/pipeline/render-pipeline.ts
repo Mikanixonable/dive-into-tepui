@@ -9,7 +9,7 @@ import { ATMOSPHERE_QUALITY } from '../atmosphere';
 import { CUMULUS_DETAIL } from '../opaque-cloud-surface-renderer';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
-import type { Mat4Uniform } from '../tsl-types';
+import type { Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetId } from './debug-target';
 import { GBufferPass } from './gbuffer';
 import { compositeMaterial } from './composite-material';
@@ -112,6 +112,8 @@ export class RenderPipeline {
   public get diffuseCorrection(): DiffuseCorrection { return this._diffuseCorrection; }
   public get lighting(): LightPrepass { return this.lightPrepass; }
   public get gbuffer(): GBufferPass { return this._gbuffer; }
+  // 直前のフレームの、合成が読む HDR の絵(線形、半精度)。
+  public get hdrTexture(): THREE.Texture { return this.target.texture; }
 
   // graphics は構築時点の描画品質設定。以後の変更は rebuildForGraphics() で受ける。
   public constructor(
@@ -181,15 +183,10 @@ export class RenderPipeline {
     this.lensEnabled = graphics.lens;
 
     this.compositeMaterial = compositeMaterial(
-      vec4(this.visualEffectLut.apply(
-        this.filmLut.apply(this._exposure.toneMapped(texture(this.target.texture, screenUV).rgb)),
-      ), 1),
-      this._gbuffer.depthTexture,
+      this.displayColorOf(texture(this.target.texture, screenUV).rgb), this._gbuffer.depthTexture,
     );
     this.lensCompositeMaterial = compositeMaterial(
-      vec4(this.visualEffectLut.apply(
-        this.filmLut.apply(this._exposure.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
-      ), 1),
+      this.displayColorOf(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb)),
       this._gbuffer.depthTexture,
     );
     this.debugComposites = new DebugComposites(
@@ -205,6 +202,24 @@ export class RenderPipeline {
     this.syncTargetSize();
     // 構築で渡さなかった値も含めて、構築時点の設定をすべてのパスへ配る。
     this.rebuildForGraphics(graphics);
+  }
+
+  // 通常表示の合成の色: HDR の色 hdr へ露出・トーンマップ・フィルムのルック・視覚効果の LUT を掛けたもの。
+  private displayColorOf(hdr: Vec3Node): Vec4Node {
+    return vec4(this.visualEffectLut.apply(this.filmLut.apply(this._exposure.toneMapped(hdr))), 1);
+  }
+
+  // フレームの外で作った HDR の絵 hdr(複数フレームの HDR の平均など。線形で、描画バッファと同じ寸法)を、直前の
+  // render と同じ通常表示の合成で target へ描く。露出・色の LUT の状態と写す深度は直前の render のものなので、同じ
+  // 場面を render した直後に呼ぶ。target は hdr と同じ寸法で深度を持ち、値は表示用の色空間へ変換済みになる。
+  public renderComposite(hdr: THREE.Texture, target: THREE.RenderTarget): void {
+    const material = compositeMaterial(this.displayColorOf(texture(hdr, screenUV).rgb), this._gbuffer.depthTexture);
+    const outputTarget = this.renderer.getOutputRenderTarget();
+    this.renderer.setOutputRenderTarget(target);
+    this.renderer.setRenderTarget(null);
+    new QuadMesh(material).render(this.renderer);
+    this.renderer.setOutputRenderTarget(outputTarget);
+    material.dispose();
   }
 
   // 共有ターゲットと表示用ターゲットを描画バッファの寸法へ合わせ、その寸法を返す。
