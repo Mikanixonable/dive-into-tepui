@@ -96,6 +96,7 @@ export async function withLabPixelRatio<T>(
 ): Promise<T> {
   const previousPixelRatio = renderer.getPixelRatio();
   const previousSize = renderer.getSize(new THREE.Vector2());
+  // 解像度倍率だけを変え、撮影の論理寸法は保つ。
   try {
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(previousSize.x, previousSize.y, false);
@@ -664,6 +665,7 @@ function withAirglowSetting(body: AtmosphereBody, airglow: boolean): AtmosphereB
 // 合わせて渡す。
 function earthLightValue(earth: LabEarth, sun: LabSun, airglow: boolean): PlanetLightValue {
   const sunIrradiance = sun.irradianceAt(earth.center);
+  // 面の明るさと恒星方向の大気照に同じ入射強度を渡す。
   return {
     center: earth.center,
     radius: R_EARTH,
