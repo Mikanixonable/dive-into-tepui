@@ -10,13 +10,10 @@ import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
-import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
-import { BeltView } from '../../src/render/dynamic/player/belt-view';
-import { GunFeedView } from '../../src/render/dynamic/ship/gun-feed-view';
-import { WeaponDrives, type WeaponRecoilInput } from '../../src/render/dynamic/ship/weapon-drives';
-import { MAG_BELT_PITCH } from '../../src/physics/player-shape';
+import { WeaponDrives } from '../../src/render/dynamic/ship/weapon-drives';
 import type { ShipModuleRenderInput } from '../../src/render/dynamic/ship/ship-render-contract';
+import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
 import { labCamera, shipObject, type CaseBuilder, type LabCase } from './lab-case';
 
 // カタログの定義 definitionId から、識別子 id のモジュールを1つ作る。
@@ -183,20 +180,6 @@ function weapon(): LabCase {
   }];
   const view = new ModularShipView(buildShipModuleModel, undefined, false);
   view.sync(modules);
-  // 側方給弾の形が見えるよう、レシーバー高さに短い連結マガジン列を置く。
-  const belt = new BeltView(view.object, 3);
-  const feedPort = definition.feedPort;
-  belt.sync(3, {
-    anchor: feedPort,
-    positions: Array.from({ length: 3 }, (_, index) => v3(
-      feedPort.x + (index + 1) * MAG_BELT_PITCH, feedPort.y, feedPort.z,
-    )),
-    twists: [0, 0, 0],
-  });
-  // レール上に満装填状態のカートリッジ段を表示する。
-  const magazineRail = view.semanticAnchor('weapon', 'magazine-rail');
-  const gunFeed = magazineRail === null ? null : new GunFeedView(magazineRail);
-  gunFeed?.sync(24, null, null, 0);
   view.object.position.set(0, 0, -20);
   const syncMotion = weaponMotion(view, modules, definition.abilities.fireRate ?? 0);
   return {
@@ -204,10 +187,7 @@ function weapon(): LabCase {
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -19.2),
     syncMotion,
-    dispose: () => {
-      gunFeed?.dispose();
-      view.dispose();
-    },
+    dispose: () => view.dispose(),
     shots: {
       'weapon-cradle-oblique': {
         view: { cameraAzimuthDeg: -35, cameraElevationDeg: 25, cameraDistanceLog: -0.22,
@@ -220,14 +200,6 @@ function weapon(): LabCase {
       'weapon-cradle-feed': {
         view: { cameraAzimuthDeg: 55, cameraElevationDeg: -20, cameraDistanceLog: -0.22,
           sunAzimuthDeg: 40, sunElevationDeg: -35 },
-      },
-      'weapon-feed-mouth': {
-        view: { cameraAzimuthDeg: 75, cameraElevationDeg: -8, cameraDistanceLog: -0.5,
-          sunAzimuthDeg: 80, sunElevationDeg: 40 },
-      },
-      'weapon-feed-exit': {
-        view: { cameraAzimuthDeg: -75, cameraElevationDeg: 15, cameraDistanceLog: -0.5,
-          sunAzimuthDeg: -80, sunElevationDeg: 45 },
       },
       'weapon-cradle-recoil': {
         displayTime: 0.562,
@@ -248,29 +220,24 @@ function weapon(): LabCase {
   };
 }
 
-// 静止姿勢から同じ射撃列を再生し、任意の時刻を同じ駆動履歴で観察できるようにする。
+// 各撮影時刻まで同じ連射履歴を再生する。
 function weaponMotion(
   view: ModularShipView, modules: readonly ShipModuleRenderInput[], rate: number,
 ): (displayTime: number) => void {
   const anchors = view.semanticAnchors('weapon', '');
   const rest = anchors.map(anchor => ({ anchor, position: anchor.position.clone(), rotation: anchor.quaternion.clone() }));
-  const interval = 1 / rate;
   return (displayTime) => {
     for (const pose of rest) {
       pose.anchor.position.copy(pose.position);
       pose.anchor.quaternion.copy(pose.rotation);
     }
     const drives = new WeaponDrives();
-    const steps = Math.ceil(Math.max(0, displayTime) * 120);
-    // 起動遅延のあとに連射し、離したあとの復座と惰性回転まで見る。
+    const endTime = Math.max(0, displayTime);
+    const steps = Math.ceil(endTime * 120);
     for (let step = 0; step <= steps; step++) {
-      const time = Math.min(step / 120, Math.max(0, displayTime));
+      const time = Math.min(step / 120, endTime);
       const firing = time >= 0.4 && time < 1.6;
-      const shotIndex = Math.floor((Math.min(time, 1.59) - 0.55) / interval + 1e-9);
-      const shots: readonly WeaponRecoilInput[] = shotIndex < 0 ? [] : [{
-        moduleId: 'weapon', muzzleIndex: 0, firedAt: 0.55 + shotIndex * interval, cycleDuration: interval,
-      }];
-      drives.sync(view, modules, firing ? rate : 0, time, shots);
+      drives.sync(view, modules, firing ? rate : 0, time);
     }
     view.object.updateMatrixWorld(true);
   };
