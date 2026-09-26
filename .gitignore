@@ -24,3 +24,15 @@ assets-src/climate/
 .earth-surface/verification/capture/
 .earth-surface/verification/fetch-tasks.txt
 .earth-surface/verification/preflight-micromamba.json
+
+# Security: Secrets and sensitive files
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.secret
+*.p12
+*.pfx
+credentials.json
+service-account.json

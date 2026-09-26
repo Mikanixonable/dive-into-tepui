@@ -27,7 +27,7 @@ function moduleInput(
   deployed: number | null = null,
 ): ShipModuleRenderInput {
   return {
-    id, modelId, kind, hp, maxHp, deployed,
+    id, modelId, kind, hp, maxHp, deployed, burning: null,
     transform: { position: v3(), rotation: Q_IDENTITY },
   };
 }
