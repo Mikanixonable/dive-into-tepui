@@ -56,10 +56,10 @@ const STYLE = `
 `;
 
 // 見出しつきの候補のまとまり。label が空の group は見出しを出さない。
-export type ObjectPickerGroup<T> = {
+export interface ObjectPickerGroup<T> {
   readonly label: string;
   readonly items: readonly (readonly [T, string])[];
-};
+}
 
 // groups が現在の内容と同じかどうかを、ラベルと各項目の並び(値は参照同一性)で判定する。
 function groupsEqual<T>(a: readonly ObjectPickerGroup<T>[], b: readonly ObjectPickerGroup<T>[]): boolean {
