@@ -6,6 +6,10 @@ import {
 import { ObjectPicker } from '../hud/windows/object-picker';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
+import { clampOverlayPosition } from '../../hud/layout';
+import { onViewportChange } from '../../hud/viewport';
+import { isCompactViewport } from '../../hud/breakpoints';
+import { wireHeaderDrag } from '../../hud/window-drag';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import type { CollinearPoint } from '../../physics/lagrange';
@@ -186,6 +190,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private lagrangeSecondaryValue: string = 'moon';
   private lagrangePointValue: CollinearPoint = 'L1';
   private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
+  private readonly unsubscribeViewport: () => void;
 
   // 物体配置パネルの DOM を組み立てる。基準天体・ラグランジュ系の選択肢は celestialSystem が
   // 実際に持つ天体から組む。要素は開くまで DOM へ挿さず、overlayManager が window の層へ置く。
@@ -201,11 +206,6 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-object-placer';
     this.panel.className = 'panel hidden editorial-control-sheet';
-    // ウィンドウとして画面右上に配置する。上端はレールと同じく上部クロームの下。
-    this.panel.style.position = 'fixed';
-    this.panel.style.top = 'calc(var(--hud-chrome-h, 0px) + var(--space-2))';
-    this.panel.style.right = '20px';
-    this.panel.style.width = 'max-content';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const header = document.createElement('div');
     header.className = 'panel-shell-head editorial-panel-head';
@@ -219,6 +219,15 @@ export class ObjectPlacerPanel implements OverlayHandle {
     header.append(code, title);
     header.appendChild(new CloseButton(() => this.close()).element);
     this.panel.appendChild(header);
+    // ヘッダーを掴んで動かせる浮遊ウィンドウにする。compact の下端シート中はドラッグしない。
+    wireHeaderDrag(header, {
+      position: () => ({ x: this.panel.offsetLeft, y: this.panel.offsetTop }),
+      moveTo: (x, y) => this.moveTo(x, y),
+      enabled: () => this._isOpen && !isCompactViewport(),
+    });
+    this.unsubscribeViewport = onViewportChange(() => {
+      if (this._isOpen) this.moveTo(this.panel.offsetLeft, this.panel.offsetTop);
+    });
 
     this.entityKind = new SegmentedControl('種類', ENTITY_KIND_ITEMS, (v) => this.selectEntityKind(v));
     this.entityKind.setSelected(this.entityKindValue);
@@ -595,6 +604,42 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.overlayManager.open('object-placer', this.panel, this, {
       kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
     });
+    // 開くたび右上(上部クロームの下)の既定位置から始める。
+    this.placeAtDefault();
+  }
+
+  // 開いたときの既定位置へ置く。CSS の右上アンカーへ戻してから、実寸を測って left/top に
+  // 焼き付ける(以後はドラッグ・クランプが left/top だけを扱えるようにするため)。
+  private placeAtDefault(): void {
+    if (isCompactViewport()) {
+      this.moveTo(0, 0);
+      return;
+    }
+    this.panel.style.left = '';
+    this.panel.style.right = '';
+    const rect = this.panel.getBoundingClientRect();
+    this.moveTo(rect.left, rect.top);
+  }
+
+  // 要求座標をビューポート内へクランプして配置する。compact では下端シートの位置を CSS へ
+  // 委ねる(前回の非 compact 時の left/top/right が残っていれば消す)。
+  private moveTo(clientX: number, clientY: number): void {
+    if (isCompactViewport()) {
+      this.panel.style.left = '';
+      this.panel.style.top = '';
+      this.panel.style.right = '';
+      return;
+    }
+    // CSS 側の既定 right と両方効くのを避けるため、left へ焼き付けるなら右アンカーは無効にする。
+    this.panel.style.right = 'auto';
+    const rect = this.panel.getBoundingClientRect();
+    const pos = clampOverlayPosition(
+      { x: clientX, y: clientY },
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    this.panel.style.left = `${pos.x}px`;
+    this.panel.style.top = `${pos.y}px`;
   }
 
   // パネルを閉じ、オーバーレイの登録も外す。開いていなければ何も起きない。
@@ -609,10 +654,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
     return this.panel.contains(target);
   }
 
-  // panelRoot へ追加したパネル DOM を取り除き、popupRoot に開く基準天体・系の ObjectPicker も
-  // あわせて片付ける。
+  // パネル DOM と登録を取り除き、基準天体・系の ObjectPicker もあわせて片付ける。
   dispose(): void {
     this.close();
+    this.unsubscribeViewport();
     this.panel.remove();
     this.celestialBody.dispose();
     this.lagrangeSecondary.dispose();
