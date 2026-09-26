@@ -96,12 +96,15 @@ export function register(): void {
       cells: Array.from({ length: width * height }, () => ({ areaM2: 250 ** 2 })),
       layerEdgesM: [0, 3_000, 9_000],
     };
+    const circle = {
+      isotropicRadiusM: Math.sqrt(footprintAreaM2 / Math.PI), elongationVectorsM: [],
+    };
     const deposition = depositCloudEventMaterialCohorts(
       material, sourceAreaM2,
       {
-        parentLiquidM2: footprintAreaM2,
+        parentLiquid: circle,
         releasedIceCohorts: material.releasedIceCohorts.map(({ cohortIndex }) => ({
-          cohortIndex, areaM2: footprintAreaM2,
+          cohortIndex, shape: circle,
         })),
       },
       {

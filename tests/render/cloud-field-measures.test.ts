@@ -4,6 +4,7 @@ import {
   cloudExtinctionLayersFromVolume,
   cloudOpticalVolumeLayerPlane,
   equivalentDiameterM,
+  fieldMomentAxes,
   fieldValueCentroid,
   interiorHoleShare,
   labelFieldComponents,
@@ -18,6 +19,7 @@ import {
   buildCellFieldSeries,
   buildWaveFieldPlane,
 } from '../../tools/cloud-lab/meteorological-fixture-fields';
+import { cloudFootprintOverlap } from '../../src/game/cloud/cloud-footprint-overlap';
 import { integrateCloudLocalFieldRayCpu } from '../../src/render/cloud/cloud-local-field';
 import { v3 } from '../../src/math/vec3';
 
@@ -178,4 +180,51 @@ export function register(): void {
     assert.ok(interiorHoleShare(late, 64 * 64).interiorComponentCount
       < interiorHoleShare(early, 64 * 64).interiorComponentCount);
   });
+
+  test('field measures: second moments recover the axes of a deposited ellipse', () => {
+    // footprint の解析交差で一様楕円板を平面へ焼き、二次モーメントが
+    // 半軸と主軸方位を読み戻せることを見る。格子は楕円を十分に含む。
+    const cellWidthM = 100;
+    const cellCount = 80;
+    const originM = -cellCount * cellWidthM / 2;
+    const ellipse = {
+      eastM: 250, northM: -150,
+      majorRadiusM: 2_000, minorRadiusM: 700, majorAxisAzimuthRad: 0.4,
+    };
+    const coverage = cloudFootprintOverlap(ellipse, {
+      originEastM: originM, originNorthM: originM,
+      cellWidthM, cellHeightM: cellWidthM, width: cellCount, height: cellCount,
+    });
+    const values = new Float32Array(cellCount * cellCount);
+    for (const overlap of coverage.overlaps) {
+      values[overlap.cellIndex] = overlap.areaM2 / (cellWidthM * cellWidthM);
+    }
+    const axes = fieldMomentAxes({
+      width: cellCount, height: cellCount,
+      cellWidthM, cellHeightM: cellWidthM,
+      originEastM: originM, originNorthM: originM, values,
+    });
+    assert.ok(axes);
+    // セル刻みの離散化で数%ずれる程度。
+    assert.ok(Math.abs(axes.majorRadiusM - ellipse.majorRadiusM) < ellipse.majorRadiusM * 0.02);
+    assert.ok(Math.abs(axes.minorRadiusM - ellipse.minorRadiusM) < ellipse.minorRadiusM * 0.05);
+    assert.ok(Math.abs(axes.majorAxisAzimuthRad - ellipse.majorAxisAzimuthRad) < 0.02);
+    // 円では両軸がほぼ等しく、方位は結果へ効かない。
+    const circleAxes = fieldMomentAxes(buildC9TwoDiscFieldPlane());
+    assert.ok(circleAxes);
+    assert.ok(Math.abs(circleAxes.majorRadiusM / circleAxes.minorRadiusM - 1) < 0.05);
+  });
+
+  test('field measures: empty plane reports no moment axes', () => {
+    assert.equal(fieldMomentAxes(plane(new Array(25).fill(0), 5, 5)), null);
+  });
+}
+
+// C9 の円盤を一層の平面として切り出す。
+function buildC9TwoDiscFieldPlane(): CloudFieldPlane {
+  const { data, frame } = buildC9TwoDiscField({ eastM: 0, northM: 0 }, { eastM: 0, northM: 0 });
+  return cloudOpticalVolumeLayerPlane(data, {
+    originEastM: frame.gridOriginEastM, originNorthM: frame.gridOriginNorthM,
+    cellWidthM: frame.cellWidthM, cellHeightM: frame.cellHeightM,
+  }, 0, 'liquid');
 }

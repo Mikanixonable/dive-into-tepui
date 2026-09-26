@@ -1,8 +1,9 @@
-// 環境・輸送から source/footprint 面積を導く閉包の物理的性質を検査する。
+// 環境・輸送から source/footprint 形状を導く閉包の物理的性質を検査する。
 import * as assert from 'node:assert/strict';
-import { v3 } from '../../src/math/vec3';
+import { cross, lenSq, v3 } from '../../src/math/vec3';
 import { deriveCloudEventAreas } from '../../src/game/cloud/cloud-event-area-closure';
 import { depositCloudEventMaterialCohorts } from '../../src/game/cloud/cloud-event-local-deposition';
+import type { CloudEventFootprintShape } from '../../src/game/cloud/cloud-event-local-deposition';
 import type { CloudEnvironmentProfile } from '../../src/game/cloud/cloud-environment';
 import type { ConvectiveCloudEvent, CloudEventSourcePosition } from '../../src/game/cloud/cloud-events';
 import type { CloudEventMaterialCohorts, CloudEventWindAt, CloudIceMaterialCohort } from '../../src/game/cloud/cloud-event-transport';
@@ -22,10 +23,19 @@ const STILL_WIND: CloudEventWindAt = () => ({
   verticalVelocityMPerS: 0,
 });
 
-// 東向き風が高度に比例する一様な鉛直シア。
+// 風が高度に比例する一様な鉛直シア。
 function shearedWindMPerSPerM(gradientPerM: number): CloudEventWindAt {
   return (_directionUnitVector, geometricHeightM) => ({
     tangentVelocityMPerS: v3(gradientPerM * geometricHeightM, 0, 0),
+    verticalVelocityMPerS: 0,
+  });
+}
+
+// 源位置 (1,0,0) の接平面上で +y 向きに強まる風。接平面内のシア方位が
+// footprint の伸長方位として読めることを見るための風。
+function tangentShearedWindMPerSPerM(gradientPerM: number): CloudEventWindAt {
+  return (_directionUnitVector, geometricHeightM) => ({
+    tangentVelocityMPerS: v3(0, gradientPerM * geometricHeightM, 0),
     verticalVelocityMPerS: 0,
   });
 }
@@ -117,6 +127,14 @@ function event(options: {
       sublimationRatePerSecond: options.sublimationRatePerSecond ?? 1 / 7_200,
       releaseHeightM: 6_000,
     },
+    lifecycle: {
+      liquidSupplyRateKgM2S: 1e-6,
+      convectiveDurationSeconds: 3_600,
+      iceYieldFraction: 0.5,
+      upperRelativeHumidity: 0.8,
+    },
+    generation: 0,
+    parentEventId: null,
   };
 }
 
@@ -170,13 +188,33 @@ function material(options: {
   };
 }
 
+// 形状行列 G = c²I + Σvvᵀ の行列式から footprint 面積を復元する。
+function shapeAreaM2(shape: CloudEventFootprintShape): number {
+  const isotropicSquaredM2 = shape.isotropicRadiusM * shape.isotropicRadiusM;
+  let stretchedSquaredM2 = 0;
+  let pairCrossSquaredM4 = 0;
+  for (const [index, vector] of shape.elongationVectorsM.entries()) {
+    stretchedSquaredM2 += lenSq(vector);
+    for (const other of shape.elongationVectorsM.slice(index + 1)) {
+      pairCrossSquaredM4 += lenSq(cross(vector, other));
+    }
+  }
+  return Math.PI * Math.sqrt(isotropicSquaredM2 * isotropicSquaredM2
+    + isotropicSquaredM2 * stretchedSquaredM2 + pairCrossSquaredM4);
+}
+
 function cohortArea(
   result: ReturnType<typeof deriveCloudEventAreas>,
   cohortIndex: number,
 ): number {
-  const area = result.footprints.releasedIceCohorts.find((c) => c.cohortIndex === cohortIndex);
-  assert.ok(area, `cohort ${cohortIndex} footprint`);
-  return area.areaM2;
+  const footprint = result.footprints.releasedIceCohorts.find((c) => c.cohortIndex === cohortIndex);
+  assert.ok(footprint, `cohort ${cohortIndex} footprint`);
+  return shapeAreaM2(footprint.shape);
+}
+
+function parentAreaM2(result: ReturnType<typeof deriveCloudEventAreas>): number {
+  assert.ok(result.footprints.parentLiquid, 'parent liquid footprint');
+  return shapeAreaM2(result.footprints.parentLiquid);
 }
 
 export function register(): void {
@@ -190,7 +228,7 @@ export function register(): void {
     assert.ok(areas[1]!.sourceAreaM2 < areas[2]!.sourceAreaM2);
     // A_src = π·(√(2·CAPE)·τ_mix)² = 2π·CAPE·τ_mix² なので同じ τ_mix では CAPE に比例する。
     assert.ok(Math.abs(areas[2]!.sourceAreaM2 / areas[1]!.sourceAreaM2 - 4) < 1e-9);
-    assert.ok(areas[0]!.footprints.parentLiquidM2! < areas[2]!.footprints.parentLiquidM2!);
+    assert.ok(parentAreaM2(areas[0]!) < parentAreaM2(areas[2]!));
     assert.ok(cohortArea(areas[0]!, 0) < cohortArea(areas[2]!, 0));
   });
 
@@ -200,9 +238,10 @@ export function register(): void {
       shearedWindMPerSPerM(0.005), MIN_AREA_M2, MAX_AREA_M2,
     );
     assert.equal(result.sourceAreaM2, MIN_AREA_M2);
-    assert.equal(result.footprints.parentLiquidM2, MIN_AREA_M2);
+    assert.ok(result.footprints.parentLiquid);
+    assert.ok(Math.abs(shapeAreaM2(result.footprints.parentLiquid) - MIN_AREA_M2) < 1e-9);
     for (const footprint of result.footprints.releasedIceCohorts) {
-      assert.equal(footprint.areaM2, MIN_AREA_M2);
+      assert.ok(Math.abs(shapeAreaM2(footprint.shape) - MIN_AREA_M2) < 1e-9);
     }
   });
 
@@ -217,12 +256,17 @@ export function register(): void {
       }),
       environmentProfile({ capeJPerKg: 2_000 }), STILL_WIND, MIN_AREA_M2, MAX_AREA_M2,
     );
-    const areas = result.footprints.releasedIceCohorts.map((footprint) => footprint.areaM2);
+    const areas = result.footprints.releasedIceCohorts.map((footprint) => shapeAreaM2(footprint.shape));
     assert.equal(areas.length, 3);
     for (const areaM2 of areas) assert.equal(areaM2, areas[0]);
     // footprint は source 以上である。
     assert.ok(areas[0]! >= result.sourceAreaM2);
-    assert.ok(result.footprints.parentLiquidM2! >= result.sourceAreaM2);
+    assert.ok(parentAreaM2(result) >= result.sourceAreaM2);
+    // 無風では伸長ベクトルは立たず、全 footprint は等半径の円。
+    for (const footprint of result.footprints.releasedIceCohorts) {
+      assert.equal(footprint.shape.elongationVectorsM.length, 0);
+    }
+    assert.equal(result.footprints.parentLiquid!.elongationVectorsM.length, 0);
   });
 
   test('cloud event area closure: vertical shear spreads ice beyond the parent liquid', () => {
@@ -236,11 +280,55 @@ export function register(): void {
       shearedWindMPerSPerM(0.002), MIN_AREA_M2, MAX_AREA_M2,
     );
     // 親液水は源と同じ高さに留まり、シア項が効かない。
-    assert.equal(still.footprints.parentLiquidM2, sheared.footprints.parentLiquidM2);
+    assert.equal(still.footprints.parentLiquid!.isotropicRadiusM,
+      sheared.footprints.parentLiquid!.isotropicRadiusM);
+    assert.equal(sheared.footprints.parentLiquid!.elongationVectorsM.length, 0);
     for (const cohort of [0, 1]) {
       assert.ok(cohortArea(sheared, cohort) > cohortArea(still, cohort));
-      assert.ok(cohortArea(sheared, cohort) > sheared.footprints.parentLiquidM2!);
+      assert.ok(cohortArea(sheared, cohort) > parentAreaM2(sheared));
     }
+  });
+
+  test('cloud event area closure: shear elongates ice footprints along the shear direction', () => {
+    const result = deriveCloudEventAreas(
+      event(), material(), environmentProfile({ capeJPerKg: 1_000 }),
+      tangentShearedWindMPerSPerM(0.002), MIN_AREA_M2, MAX_AREA_M2,
+    );
+    for (const footprint of result.footprints.releasedIceCohorts) {
+      // シアずれとかなとこ風下のどちらの伸長も、源の接平面上で +y 向き。
+      assert.equal(footprint.shape.elongationVectorsM.length, 2);
+      for (const vector of footprint.shape.elongationVectorsM) {
+        assert.ok(vector.y > 0);
+        assert.equal(vector.x, 0);
+        assert.equal(vector.z, 0);
+      }
+      // 長半径は等方半径より大きく伸びている。
+      assert.ok(shapeAreaM2(footprint.shape)
+        > Math.PI * footprint.shape.isotropicRadiusM ** 2);
+    }
+    // 親は源と同じ高さに留まるので、一様シアでは伸びない。
+    assert.equal(result.footprints.parentLiquid!.elongationVectorsM.length, 0);
+  });
+
+  test('cloud event area closure: uniform wind stretches ice downwind without shear', () => {
+    // 全高度で同じ風なら層間風差は零で、氷はかなとこ流出だけで風下へ伸びる。
+    const uniformWind: CloudEventWindAt = () => ({
+      tangentVelocityMPerS: v3(0, 15, 0),
+      verticalVelocityMPerS: 0,
+    });
+    const result = deriveCloudEventAreas(
+      event(), material(), environmentProfile({ capeJPerKg: 1_000 }),
+      uniformWind, MIN_AREA_M2, MAX_AREA_M2,
+    );
+    for (const footprint of result.footprints.releasedIceCohorts) {
+      assert.equal(footprint.shape.elongationVectorsM.length, 1);
+      const vector = footprint.shape.elongationVectorsM[0]!;
+      assert.ok(vector.y > 0 && vector.x === 0 && vector.z === 0);
+      // 伸長は風速 × 流出時間。氷の平均滞留 1800 s は昇華寿命 7200 s 未満で cap されない。
+      assert.ok(Math.abs(lenSq(vector) ** 0.5 - 15 * 1_800) < 1e-6);
+    }
+    // 親液水は風下へは伸びず等半径の円。
+    assert.equal(result.footprints.parentLiquid!.elongationVectorsM.length, 0);
   });
 
   test('cloud event area closure: longer ice residence under shear spreads cohorts more', () => {
@@ -265,9 +353,10 @@ export function register(): void {
       shearedWindMPerSPerM(1), MIN_AREA_M2, MAX_AREA_M2,
     );
     assert.equal(bounded.sourceAreaM2, MAX_AREA_M2);
-    assert.equal(bounded.footprints.parentLiquidM2, MAX_AREA_M2);
+    assert.ok(Math.abs(shapeAreaM2(bounded.footprints.parentLiquid!) - MAX_AREA_M2)
+      < MAX_AREA_M2 * 1e-12);
     for (const footprint of bounded.footprints.releasedIceCohorts) {
-      assert.equal(footprint.areaM2, MAX_AREA_M2);
+      assert.ok(Math.abs(shapeAreaM2(footprint.shape) - MAX_AREA_M2) < MAX_AREA_M2 * 1e-12);
     }
     const tiny = deriveCloudEventAreas(
       event(), material(), environmentProfile({ capeJPerKg: 1e-12 }),
@@ -280,8 +369,8 @@ export function register(): void {
     );
     for (const areaM2 of [
       typical.sourceAreaM2,
-      typical.footprints.parentLiquidM2!,
-      ...typical.footprints.releasedIceCohorts.map((c) => c.areaM2),
+      parentAreaM2(typical),
+      ...typical.footprints.releasedIceCohorts.map((c) => shapeAreaM2(c.shape)),
     ]) {
       assert.ok(Number.isFinite(areaM2) && areaM2 > 0);
       assert.ok(areaM2 >= MIN_AREA_M2 && areaM2 <= MAX_AREA_M2);
@@ -293,7 +382,7 @@ export function register(): void {
       event(), material({ withoutParent: true, cohorts: [] }),
       environmentProfile(), STILL_WIND, MIN_AREA_M2, MAX_AREA_M2,
     );
-    assert.equal(result.footprints.parentLiquidM2, null);
+    assert.equal(result.footprints.parentLiquid, null);
     assert.equal(result.footprints.releasedIceCohorts.length, 0);
     assert.ok(result.sourceAreaM2 > MIN_AREA_M2);
   });
