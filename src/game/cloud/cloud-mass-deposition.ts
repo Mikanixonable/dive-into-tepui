@@ -36,6 +36,32 @@ export interface CloudMassDeposition {
   readonly unassignedMassKgByPhase: Readonly<Record<CloudMassPhase, number>>;
 }
 
+// 堆積の永続累積器。層×セルの平坦な列質量配列と格子へ割り当たらなかった質量を持ち、
+// イベントを跨いで使い回して、イベントごとの全格子配列の確保を避ける。
+// 累積先の格子は作成時に一度だけ検証し、イベントごとの再検算はしない。
+export interface CloudMassAccumulation {
+  // 累積先の格子。createCloudMassAccumulation で検証済みの参照を持つ。
+  readonly grid: CloudMassGrid;
+  // 液水の列質量 [kg/m²]。layerIndex × セル数 + cellIndex で引く。
+  readonly liquidKgM2: Float64Array;
+  // 氷の列質量 [kg/m²]。配置は liquidKgM2 と同じ。
+  readonly iceKgM2: Float64Array;
+  // 格子のどのセルにも割り当たらなかった質量 [kg](相別)。累積するので mutable。
+  readonly unassignedMassKgByPhase: Record<CloudMassPhase, number>;
+}
+
+// 層×セルの列質量への書き込み口。per-event の堆積は層別の列配列、永続累積器は
+// 層×セルの平坦配列として実装する — どちらも同じ堆積式を addParcel から受ける。
+interface CloudMassColumnWriter {
+  // columnKgM2 を加え、加算後の値を返す。
+  add(
+    phase: CloudMassPhase,
+    layerIndex: number,
+    cellIndex: number,
+    columnKgM2: number,
+  ): number;
+}
+
 function requireFinite(value: number, name: string): void {
   if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite`);
 }
@@ -125,23 +151,55 @@ function validateParcel(parcel: CloudMassParcel, grid: CloudMassGrid): number {
   return layerIndex;
 }
 
+// 層別の列配列(per-event の堆積)への書き込み。
+function layerColumnWriter(
+  columnsByLayer: { liquid: number[][]; ice: number[][] },
+): CloudMassColumnWriter {
+  return {
+    add: (phase, layerIndex, cellIndex, columnKgM2) => {
+      const columns = columnsByLayer[phase][layerIndex]!;
+      const next = columns[cellIndex]! + columnKgM2;
+      columns[cellIndex] = next;
+      return next;
+    },
+  };
+}
+
+// 層×セルの平坦配列(永続累積器)への書き込み。
+function flatColumnWriter(
+  accumulation: CloudMassAccumulation,
+  cellCount: number,
+): CloudMassColumnWriter {
+  const columnsByPhase = {
+    liquid: accumulation.liquidKgM2,
+    ice: accumulation.iceKgM2,
+  };
+  return {
+    add: (phase, layerIndex, cellIndex, columnKgM2) => {
+      const index = layerIndex * cellCount + cellIndex;
+      const next = columnsByPhase[phase][index]! + columnKgM2;
+      columnsByPhase[phase][index] = next;
+      return next;
+    },
+  };
+}
+
 // Overlap 面積比を列密度へ加え、格子へ割り当たらない質量を相別に積む。
 function addParcel(
   parcel: CloudMassParcel,
   layerIndex: number,
-  columnsByLayer: { liquid: number[][]; ice: number[][] },
+  writer: CloudMassColumnWriter,
   cells: readonly CloudMassGridCell[],
   unassignedMassKgByPhase: Record<CloudMassPhase, number>,
 ): void {
-  const phaseColumns = columnsByLayer[parcel.phase][layerIndex]!;
   for (const overlap of parcel.overlaps) {
     const cell = cells[overlap.cellIndex]!;
     const columnKgM2 = parcel.massKg * overlap.areaM2 / parcel.footprintAreaM2 / cell.areaM2;
-    const nextColumnKgM2 = phaseColumns[overlap.cellIndex]! + columnKgM2;
+    const nextColumnKgM2 = writer.add(
+      parcel.phase, layerIndex, overlap.cellIndex, columnKgM2);
     if (!Number.isFinite(columnKgM2) || !Number.isFinite(nextColumnKgM2)) {
       throw new RangeError('deposited column mass must be finite');
     }
-    phaseColumns[overlap.cellIndex] = nextColumnKgM2;
   }
   const overlapAreaM2 = sumOverlapAreaM2(parcel.overlaps);
   // 誤差幅内の完全被覆だけ、丸めで負になる未割当を0へ戻す。
@@ -166,9 +224,10 @@ export function depositCloudParcelMass(
     ice: Array.from({ length: layerCount }, () => Array<number>(grid.cells.length).fill(0)),
   };
   const unassignedMassKgByPhase: Record<CloudMassPhase, number> = { liquid: 0, ice: 0 };
+  const writer = layerColumnWriter(columnsByLayer);
   for (const parcel of parcels) {
     const layerIndex = validateParcel(parcel, grid);
-    addParcel(parcel, layerIndex, columnsByLayer, grid.cells, unassignedMassKgByPhase);
+    addParcel(parcel, layerIndex, writer, grid.cells, unassignedMassKgByPhase);
   }
   return {
     columnsByLayer: grid.layerEdgesM.slice(0, -1).map((lowerAltitudeM, index) => ({
@@ -179,4 +238,37 @@ export function depositCloudParcelMass(
     })),
     unassignedMassKgByPhase,
   };
+}
+
+// 格子に合わせた空の累積器を組む。格子の検証と配列の確保はここで1度だけ行い、
+// あとのイベントは累積だけを行う。
+export function createCloudMassAccumulation(
+  grid: CloudMassGrid,
+): CloudMassAccumulation {
+  validateGrid(grid);
+  const size = (grid.layerEdgesM.length - 1) * grid.cells.length;
+  return {
+    grid,
+    liquidKgM2: new Float64Array(size),
+    iceKgM2: new Float64Array(size),
+    unassignedMassKgByPhase: { liquid: 0, ice: 0 },
+  };
+}
+
+// Parcel を永続累積器へ直接加算する。戻り値の堆積は作らない — イベントを跨いで
+// 使い回す累積器へ書き込み、per-event の全格子確保と格子の再検算を避ける。
+export function accumulateCloudParcelMass(
+  parcels: readonly CloudMassParcel[],
+  accumulation: CloudMassAccumulation,
+): void {
+  const grid = accumulation.grid;
+  const size = (grid.layerEdgesM.length - 1) * grid.cells.length;
+  if (accumulation.liquidKgM2.length !== size || accumulation.iceKgM2.length !== size) {
+    throw new RangeError('accumulation arrays must cover every layer and grid cell');
+  }
+  const writer = flatColumnWriter(accumulation, grid.cells.length);
+  for (const parcel of parcels) {
+    const layerIndex = validateParcel(parcel, grid);
+    addParcel(parcel, layerIndex, writer, grid.cells, accumulation.unassignedMassKgByPhase);
+  }
 }
