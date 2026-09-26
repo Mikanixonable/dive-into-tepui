@@ -254,18 +254,35 @@ function ellipseRectangleAreaM2(
   return Math.max(0, areaM2);
 }
 
+// 点評価に使う footprint の 2次形式。同じ footprint へ多数の点を評価するときは、
+// 楕円の三角関数を点ごとに解き直さないよう、先に cloudFootprintQuadraticForm で正規化する。
+export interface CloudFootprintQuadratic {
+  readonly eastM: number;
+  readonly northM: number;
+  // 2次形式の係数。m⁻²。
+  readonly quadraticA: number;
+  readonly quadraticB: number;
+  readonly quadraticC: number;
+}
+
+// footprint を点評価の 2次形式へ正規化する。
+export function cloudFootprintQuadraticForm(
+  footprint: CloudFootprint,
+): CloudFootprintQuadratic {
+  return ellipseFormOf(footprint);
+}
+
 // footprint の 2次形式を接平面上の 1 点で評価する。戻り値が 1 以下ならその点は内部。
 export function cloudFootprintQuadraticAt(
-  footprint: CloudFootprint, eastM: number, northM: number,
+  quadratic: CloudFootprintQuadratic, eastM: number, northM: number,
 ): number {
-  const form = ellipseFormOf(footprint);
   requireFinite(eastM, 'eastM');
   requireFinite(northM, 'northM');
-  const offsetEastM = eastM - form.eastM;
-  const offsetNorthM = northM - form.northM;
-  return form.quadraticA * offsetEastM * offsetEastM
-    + form.quadraticB * offsetEastM * offsetNorthM
-    + form.quadraticC * offsetNorthM * offsetNorthM;
+  const offsetEastM = eastM - quadratic.eastM;
+  const offsetNorthM = northM - quadratic.northM;
+  return quadratic.quadraticA * offsetEastM * offsetEastM
+    + quadratic.quadraticB * offsetEastM * offsetNorthM
+    + quadratic.quadraticC * offsetNorthM * offsetNorthM;
 }
 
 // footprint を交差するセルだけを row-major cellIndex で返す。格子外部分は overlaps に含めない。

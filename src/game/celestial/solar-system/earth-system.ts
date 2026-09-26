@@ -246,13 +246,14 @@ export function earthCloudPresentation(): CloudPresentation {
       makeWindAt(new AtmosphericWindField())),
     cap, climate);
   // 局所光学場は対流イベントの生成経路から供給する。環境の天気は、生成場が prepare で
-  // 受けた表示時刻をそのまま読む。
+  // 受けた表示時刻をそのまま読む。気候画像を inputReadiness として渡し、CPU で読める
+  // ようになるまで最初の焼き上げを遅らせる — 緯度近似と実気候の混在する場を採らない。
   const localFieldBaker = new CloudLocalFieldBaker(
     new ConvectiveCloudLocalFieldSupply(
       (direction) => earthGlobalEnvironmentAt(
         direction, climate, generated.displayTimeSeconds, R_EARTH, SIDEREAL_DAY),
       EARTH_CLOUD_LOCAL_SEED, R_EARTH_EQ),
-    EARTH_LOCAL_FIELD_REBUILD_SECONDS, EARTH_LOCAL_FIELD_RECENTER_RAD);
+    EARTH_LOCAL_FIELD_REBUILD_SECONDS, EARTH_LOCAL_FIELD_RECENTER_RAD, climate);
   return new CloudPresentation(
     generated, new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
     localFieldBaker,
