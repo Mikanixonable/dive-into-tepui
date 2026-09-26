@@ -71,19 +71,51 @@ const DOCK_MODULE_PRIMITIVE: LocalCappedCylinder = {
   center: v3(0, 0, -0.05), axis: v3(0, 0, 1), halfLength: 0.55, radius: 1.65,
 };
 
-// コックピットは後端半径 3 m から前端半径 1.5 m へ細くなるため、軸方向に分割して接触形状を近似する。
-// 各円柱は区間の後端半径で覆い、単一の半径 3 m 円柱が前部まで広がる過大判定を避ける。
-const COCKPIT_SOLID_PRIMITIVES: readonly LocalCappedCylinder[] = [
-  { center: v3(0, 0, -1.25), axis: v3(0, 0, 1), halfLength: 0.25, radius: 3.00 },
-  { center: v3(0, 0, -0.75), axis: v3(0, 0, 1), halfLength: 0.25, radius: 2.75 },
-  { center: v3(0, 0, -0.25), axis: v3(0, 0, 1), halfLength: 0.25, radius: 2.50 },
-  { center: v3(0, 0, 0.25), axis: v3(0, 0, 1), halfLength: 0.25, radius: 2.25 },
-  { center: v3(0, 0, 0.75), axis: v3(0, 0, 1), halfLength: 0.25, radius: 2.00 },
-  { center: v3(0, 0, 1.25), axis: v3(0, 0, 1), halfLength: 0.25, radius: 1.75 },
+// 船殻の輪郭。Z は全長 9 m の後端から前端、radius は断面の最大半径 [m]。
+export const COCKPIT_HULL_PROFILE: readonly { readonly z: number; readonly radius: number }[] = [
+  { z: -4.5, radius: 3.00 }, { z: -4.0, radius: 2.98 }, { z: -3.5, radius: 2.93 },
+  { z: -3.0, radius: 2.86 }, { z: -2.5, radius: 2.80 }, { z: -2.0, radius: 2.70 },
+  { z: -1.5, radius: 2.63 }, { z: -1.0, radius: 2.62 }, { z: -0.5, radius: 2.65 },
+  { z: 0.0, radius: 2.66 }, { z: 0.5, radius: 2.64 }, { z: 1.0, radius: 2.41 },
+  { z: 1.5, radius: 2.14 }, { z: 2.0, radius: 2.01 }, { z: 2.5, radius: 1.89 },
+  { z: 3.0, radius: 1.79 }, { z: 3.5, radius: 1.69 }, { z: 4.0, radius: 1.58 },
+  { z: 4.5, radius: 1.50 },
 ];
 
+// 断面両側に長手のくぼみを作るため、外周断面を上下に離した円2つの和で近似する。
+// 見た目の輪郭も同じ比率を使う。各0.5 m区間は太い側の径で覆い、区間間に接触の隙間を作らない。
+export const COCKPIT_SECTION_INDENT_FRACTION = 0.14;
+const COCKPIT_CONTACT_INTERVAL = 0.5;
+
+// 船殻プロファイルを軸方向に線形補間して、その位置の最大半径を返す。
+function cockpitRadiusAt(z: number): number {
+  for (let index = 1; index < COCKPIT_HULL_PROFILE.length; index++) {
+    const previous = COCKPIT_HULL_PROFILE[index - 1]!;
+    const next = COCKPIT_HULL_PROFILE[index]!;
+    if (z <= next.z) {
+      const fraction = (z - previous.z) / (next.z - previous.z);
+      return previous.radius + (next.radius - previous.radius) * fraction;
+    }
+  }
+  return COCKPIT_HULL_PROFILE.at(-1)!.radius;
+}
+
+const COCKPIT_SOLID_PRIMITIVES: readonly LocalCappedCylinder[] = Array.from(
+  { length: Math.round(9 / COCKPIT_CONTACT_INTERVAL) }, (_, index) => {
+    const z0 = -4.5 + index * COCKPIT_CONTACT_INTERVAL;
+    const z1 = z0 + COCKPIT_CONTACT_INTERVAL;
+    const radius = Math.max(cockpitRadiusAt(z0), cockpitRadiusAt(z1));
+    const sideOffset = radius * COCKPIT_SECTION_INDENT_FRACTION;
+    const centerZ = (z0 + z1) / 2;
+    return [-1, 1].map(sign => ({
+      center: v3(0, sign * sideOffset, centerZ), axis: v3(0, 0, 1),
+      halfLength: COCKPIT_CONTACT_INTERVAL / 2, radius: radius - sideOffset,
+    }));
+  },
+).flat();
+
 const definitions: readonly ShipModuleDefinition[] = [
-  moduleDefinition('cockpit-standard', 'cockpit', 3, 100, 100, {}, 3, 'cockpit-standard', [], v3(),
+  moduleDefinition('cockpit-standard', 'cockpit', 9, 100, 100, {}, 3, 'cockpit-standard', [], v3(),
     COCKPIT_SOLID_PRIMITIVES),
   tank('tank-3-main', 3, 'main', 80),
   tank('tank-6-main', 6, 'main', 160),

@@ -40,6 +40,10 @@ function buildManifest() {
     }
     return {
       modules,
+      cockpitHull: {
+        profile: source.shipModuleCatalog.COCKPIT_HULL_PROFILE,
+        sectionIndentFraction: source.shipModuleCatalog.COCKPIT_SECTION_INDENT_FRACTION,
+      },
       deployables: {
         solar_panel: {
           count: shape.SOLAR_PANEL_COUNT, length: shape.SOLAR_PANEL_WIDTH, span: shape.SOLAR_PANEL_SPAN,
