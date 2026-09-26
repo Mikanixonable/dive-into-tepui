@@ -2,7 +2,7 @@ import faviconUrl from '../../../public/favicon.svg';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_4 } from '../../theme';
-import { clampOverlayPosition, type Point2 } from '../layout';
+import { clampOverlayPosition } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';
@@ -12,7 +12,7 @@ import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-mana
 import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider, TabBar,
 } from '../widgets';
-import { CLICK_MOVE_THRESHOLD } from '../../input/input';
+import { wireHeaderDrag } from '../window-drag';
 import { SettingsView } from './settings-view';
 
 type PauseMenuTab = 'pause' | 'settings';
@@ -46,10 +46,6 @@ export class PauseMenu implements OverlayHandle {
   private readonly resizeObserver: ResizeObserver;
   private readonly bgmSlider: Slider;
   private readonly bgmMute: Button;
-
-  private dragPointerId: number | null = null;
-  private dragStartClient: Point2 | null = null;
-  private dragStartWindowPos: Point2 = { x: 0, y: 0 };
 
   // パネル DOM を組み立てて root へ追加する。graphics・themeId は組み立て時の設定値、bgmVolume は
   // 消音を織り込んだ組み立て時の音量。各操作のコールバックは onXxx フィールドへ後から代入する。
@@ -91,10 +87,11 @@ export class PauseMenu implements OverlayHandle {
     subheading.className = 'pm-system-sub ui-data-context';
     subheading.textContent = 'APPLICATION STATE · SUSPENDED';
     header.append(heading, subheading);
-    header.addEventListener('pointerdown', this.handleHeaderPointerDown);
-    header.addEventListener('pointermove', this.handleHeaderPointerMove);
-    header.addEventListener('pointerup', this.handleHeaderPointerUp);
-    header.addEventListener('pointercancel', this.handleHeaderPointerUp);
+    wireHeaderDrag(header, {
+      position: () => ({ x: this.panel.offsetLeft, y: this.panel.offsetTop }),
+      moveTo: (x, y) => this.moveTo(x, y),
+      onDragStart: () => { this.hasCustomPosition = true; },
+    });
     this.panel.appendChild(header);
 
     this.body = document.createElement('div');
@@ -320,33 +317,6 @@ export class PauseMenu implements OverlayHandle {
     if (!this._isOpen) return;
     this.moveTo(this.panel.offsetLeft, this.panel.offsetTop);
   }
-
-  // ヘッダー上のボタン以外を掴んだときに、ドラッグ開始点とポインタキャプチャを確保する。
-  private readonly handleHeaderPointerDown = (e: PointerEvent): void => {
-    if (e.target instanceof Element && e.target.closest('button')) return;
-    this.dragPointerId = e.pointerId;
-    this.dragStartClient = { x: e.clientX, y: e.clientY };
-    this.dragStartWindowPos = { x: this.panel.offsetLeft, y: this.panel.offsetTop };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
-
-  // しきい値(CLICK_MOVE_THRESHOLD)を超えて動いたら位置を持ち出し位置として確定させる。
-  private readonly handleHeaderPointerMove = (e: PointerEvent): void => {
-    if (this.dragPointerId !== e.pointerId || this.dragStartClient === null) return;
-    const dx = e.clientX - this.dragStartClient.x;
-    const dy = e.clientY - this.dragStartClient.y;
-    if (!this.hasCustomPosition && Math.hypot(dx, dy) < CLICK_MOVE_THRESHOLD) return;
-    this.hasCustomPosition = true;
-    this.moveTo(this.dragStartWindowPos.x + dx, this.dragStartWindowPos.y + dy);
-  };
-
-  // ポインタキャプチャを解放してドラッグ状態を終える。
-  private readonly handleHeaderPointerUp = (e: PointerEvent): void => {
-    if (this.dragPointerId !== e.pointerId) return;
-    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    this.dragPointerId = null;
-    this.dragStartClient = null;
-  };
 
   // 開いている間、設定ビューの表示を更新する。nowMs [ms] はフレームの実時刻。毎フレーム呼ぶ。
   public sync(nowMs: number): void {
