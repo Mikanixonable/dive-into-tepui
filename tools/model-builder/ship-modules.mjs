@@ -69,6 +69,7 @@ function requiredAnchors(definition) {
     required['barrel-rotor:'] = definition.muzzles.length;
     required['feed-sprocket:'] = 2;
     required['feed-drum'] = 1;
+    required['feed-shoe'] = 1;
   }
   return required;
 }
