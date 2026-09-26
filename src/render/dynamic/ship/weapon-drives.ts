@@ -1,6 +1,5 @@
-// 機関砲の被駆動部(回転砲身束・給弾スプロケット・デリンクドラム・案内爪)を、射撃レートに
-// 追従する速さで表示時刻に沿って動かす。回転する部品は anchor 局所 +Z まわり、摺動する部品は
-// 局所 +Z 向きの往復として駆動する。
+// 機関砲の被駆動部(回転砲身束・給弾スプロケット・デリンクドラム・案内爪・反動部)を表示時刻へ
+// 同期する。回転・給弾部は射撃レートに追従し、反動部は実射時刻から解析的に動かす。
 import * as THREE from 'three/webgpu';
 import type { ModularShipView } from './modular-ship-view';
 import type { ShipModuleRenderInput } from './ship-render-contract';
@@ -25,6 +24,15 @@ const DRUM_RAD_PER_ROUND = TWO_PI / 6;
 // 案内爪はベルト1リンク(32発)の送りで1往復する [rad/発] と、行程の半分の長さ [m]。
 const SHOE_RAD_PER_ROUND = TWO_PI / 32;
 const SHOE_AMPLITUDE = 0.22;
+const MAX_RECOIL_DURATION = 0.18;
+const RECOIL_ATTACK_RATIO = 0.2;
+
+export interface WeaponRecoilInput {
+  readonly moduleId: string;
+  readonly muzzleIndex: number;
+  readonly firedAt: number;
+  readonly cycleDuration: number;
+}
 
 // 駆動の形。spin は anchor 局所 +Z まわりの回転、stroke は +Z 向きの往復摺動。
 type DriveMode = { type: 'spin' } | { type: 'stroke'; amplitude: number };
@@ -37,6 +45,12 @@ interface DriveState {
   phase: number;
 }
 
+interface RecoilState {
+  readonly baseQuat: THREE.Quaternion;
+  readonly basePos: THREE.Vector3;
+  readonly travel: number;
+}
+
 // 動かす対象、その1発あたりに進む位相 [rad/発]、駆動の形。
 interface DrivenPart {
   readonly anchor: THREE.Object3D;
@@ -47,12 +61,14 @@ interface DrivenPart {
 // 1隻ぶんの被駆動部 anchor の速さと位相を持ち、毎フレーム anchor の姿勢・位置へ書く。
 export class WeaponDrives {
   private readonly states = new Map<THREE.Object3D, DriveState>();
+  private readonly recoilStates = new Map<THREE.Object3D, RecoilState>();
   private lastDisplayTime: number | null = null;
 
   // 健全な武装モジュールの被駆動部を、全砲口の合計射撃レート gunFireRate [rounds/s] に
   // 見合う速さへ追従させ、displayTime [s] の前進ぶん動かす。消えた・壊れた部品の状態は捨てる。
   public sync(
     ship: ModularShipView, modules: readonly ShipModuleRenderInput[], gunFireRate: number, displayTime: number,
+    recoilInputs: readonly WeaponRecoilInput[] = [],
   ): void {
     const parts = drivenParts(ship, modules);
     const dt = this.lastDisplayTime === null ? 0 : Math.min(MAX_STEP, Math.max(0, displayTime - this.lastDisplayTime));
@@ -62,6 +78,7 @@ export class WeaponDrives {
     for (const anchor of this.states.keys()) {
       if (!live.has(anchor)) this.states.delete(anchor);
     }
+    this.syncRecoil(ship, modules, recoilInputs, displayTime);
     for (const { anchor, radiansPerRound, mode } of parts) {
       let state = this.states.get(anchor);
       if (state === undefined) {
@@ -81,6 +98,35 @@ export class WeaponDrives {
         anchor.position.copy(state.basePos).addScaledVector(
           STROKE_DIR.set(0, 0, 1).applyQuaternion(state.baseQuat), stroke);
       }
+    }
+  }
+
+  private syncRecoil(
+    ship: ModularShipView,
+    modules: readonly ShipModuleRenderInput[],
+    recoilInputs: readonly WeaponRecoilInput[],
+    displayTime: number,
+  ): void {
+    const anchors = recoilAnchors(ship, modules);
+    const live = new Set(anchors.map(part => part.anchor));
+    for (const anchor of this.recoilStates.keys()) {
+      if (!live.has(anchor)) this.recoilStates.delete(anchor);
+    }
+    for (const { moduleId, muzzleIndex, anchor } of anchors) {
+      let state = this.recoilStates.get(anchor);
+      if (state === undefined) {
+        state = {
+          baseQuat: anchor.quaternion.clone(),
+          basePos: anchor.position.clone(),
+          travel: recoilTravelOf(anchor),
+        };
+        this.recoilStates.set(anchor, state);
+      }
+      const shot = recoilInputs.find(input => input.moduleId === moduleId && input.muzzleIndex === muzzleIndex);
+      const displacement = shot === undefined ? 0 : recoilStroke(shot, displayTime, state.travel);
+      anchor.position.copy(state.basePos).addScaledVector(
+        STROKE_DIR.set(0, 0, 1).applyQuaternion(state.baseQuat), -displacement,
+      );
     }
   }
 }
@@ -114,7 +160,51 @@ function drivenParts(ship: ModularShipView, modules: readonly ShipModuleRenderIn
   return parts;
 }
 
+function recoilAnchors(
+  ship: ModularShipView,
+  modules: readonly ShipModuleRenderInput[],
+): { readonly moduleId: string; readonly muzzleIndex: number; readonly anchor: THREE.Object3D }[] {
+  const result: { moduleId: string; muzzleIndex: number; anchor: THREE.Object3D }[] = [];
+  for (const module of modules) {
+    if (module.kind !== 'weapon' || module.hp <= 0) continue;
+    for (const anchor of ship.semanticAnchors(module.id, 'gun-recoil:')) {
+      const name = typeof anchor.userData.semanticAnchor === 'string'
+        ? anchor.userData.semanticAnchor : anchor.name.slice('anchor:'.length);
+      const suffix = name.slice('gun-recoil:'.length);
+      const muzzleIndex = Number(suffix);
+      if (!Number.isInteger(muzzleIndex) || muzzleIndex < 0) {
+        throw new Error(`gun recoil anchor has invalid muzzle index: ${anchor.name}`);
+      }
+      result.push({ moduleId: module.id, muzzleIndex, anchor });
+    }
+  }
+  return result;
+}
+
 const SPIN: DriveMode = { type: 'spin' };
+
+function recoilTravelOf(anchor: THREE.Object3D): number {
+  const travel: unknown = anchor.userData.recoilTravel;
+  if (typeof travel !== 'number' || !Number.isFinite(travel) || travel <= 0) {
+    throw new Error(`gun recoil anchor has no positive recoilTravel: ${anchor.name}`);
+  }
+  return travel;
+}
+
+function recoilStroke(input: WeaponRecoilInput, displayTime: number, travel: number): number {
+  if (!Number.isFinite(input.firedAt) || !Number.isFinite(input.cycleDuration) || input.cycleDuration <= 0) return 0;
+  const duration = Math.min(MAX_RECOIL_DURATION, input.cycleDuration * 0.95);
+  const age = displayTime - input.firedAt;
+  if (!(duration > 0) || age <= 0 || age >= duration) return 0;
+  const attackDuration = duration * RECOIL_ATTACK_RATIO;
+  if (age < attackDuration) {
+    const progress = age / attackDuration;
+    return travel * (1 - (1 - progress) ** 3);
+  }
+  const progress = (age - attackDuration) / (duration - attackDuration);
+  const eased = progress * progress * (3 - 2 * progress);
+  return travel * (1 - eased);
+}
 
 // 速さを目標 target [rad/s] へ一次遅れで dt [s] だけ近づけ、その間の前進を位相へ積む。
 function advance(state: DriveState, target: number, dt: number): void {

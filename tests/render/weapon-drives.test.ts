@@ -38,6 +38,11 @@ function weaponModel(): THREE.Group {
     anchor.position.set(0.3, -1.9, 0.4);
     root.add(anchor);
   }
+  const recoil = new THREE.Object3D();
+  recoil.name = 'anchor:gun-recoil:0';
+  recoil.userData.semanticAnchor = 'gun-recoil:0';
+  recoil.userData.recoilTravel = 0.22;
+  root.add(recoil);
   return root;
 }
 
@@ -195,6 +200,64 @@ export function register(): void {
     // デリンクドラムは1発ごとに1ステーション(2π/6)回る
     const drumTarget = (2 * Math.PI / 6) * FIRE_RATE;
     assert.ok(Math.abs(speeds[speeds.length - 1]! - drumTarget) < drumTarget * 1e-3);
+    ship.dispose();
+  });
+
+  test('weapon drives: a shot recoils the receiver anchor along -Z and returns it to battery', () => {
+    const ship = new ModularShipView(weaponModel);
+    const modules = [weapon('gun-1', 100)];
+    ship.sync(modules);
+    const recoil = anchors(ship, 'gun-1', 'gun-recoil:')[0]!;
+    const base = recoil.position.clone();
+    const baseQuat = recoil.quaternion.clone();
+    const drives = new WeaponDrives();
+    // cycleDuration 0.2 の発射は、後座時間 0.18 s・急発進 0.036 s の行程を持つ
+    const shots = [{ moduleId: 'gun-1', muzzleIndex: 0, firedAt: 1.0, cycleDuration: 0.2 }];
+    drives.sync(ship, modules, 0, 1.0, shots);
+    assert.ok(recoil.position.distanceTo(base) < 1e-9, 'recoiled before the shot');
+    drives.sync(ship, modules, 0, 1.036, shots);
+    const peak = base.z - recoil.position.z;
+    assert.ok(peak > 0.2, `did not recoil: ${peak}`);
+    assert.ok(Math.abs(recoil.position.x - base.x) < 1e-9 && Math.abs(recoil.position.y - base.y) < 1e-9);
+    assert.ok(recoil.quaternion.angleTo(baseQuat) < 1e-9, 'recoil anchor rotated');
+    drives.sync(ship, modules, 0, 1.1, shots);
+    const returning = base.z - recoil.position.z;
+    assert.ok(returning < peak && returning > 0, `did not start returning: ${returning}`);
+    drives.sync(ship, modules, 0, 1.2, shots);
+    assert.ok(recoil.position.distanceTo(base) < 1e-9, 'did not return to battery');
+    ship.dispose();
+  });
+
+  test('weapon drives: recoil stays at rest without a matching shot record', () => {
+    const ship = new ModularShipView(weaponModel);
+    const modules = [weapon('gun-1', 100)];
+    ship.sync(modules);
+    const recoil = anchors(ship, 'gun-1', 'gun-recoil:')[0]!;
+    const base = recoil.position.clone();
+    const drives = new WeaponDrives();
+    // 別砲口・別モジュールの記録では動かず、行程を過ぎた古い記録でも動かない
+    const stale = [
+      { moduleId: 'gun-1', muzzleIndex: 1, firedAt: 1.0, cycleDuration: 0.2 },
+      { moduleId: 'gun-2', muzzleIndex: 0, firedAt: 1.0, cycleDuration: 0.2 },
+      { moduleId: 'gun-1', muzzleIndex: 0, firedAt: 0.5, cycleDuration: 0.2 },
+    ];
+    for (const shot of stale) {
+      drives.sync(ship, modules, 0, 1.036, [shot]);
+      assert.ok(recoil.position.distanceTo(base) < 1e-9, `recoiled for ${shot.moduleId}:${shot.muzzleIndex}`);
+    }
+    ship.dispose();
+  });
+
+  test('weapon drives: a destroyed weapon receiver does not recoil', () => {
+    const ship = new ModularShipView(weaponModel);
+    const modules = [weapon('gun-1', 0)];
+    ship.sync(modules);
+    const recoil = anchors(ship, 'gun-1', 'gun-recoil:')[0]!;
+    const base = recoil.position.clone();
+    const drives = new WeaponDrives();
+    const shots = [{ moduleId: 'gun-1', muzzleIndex: 0, firedAt: 1.0, cycleDuration: 0.2 }];
+    drives.sync(ship, modules, 0, 1.036, shots);
+    assert.ok(recoil.position.distanceTo(base) < 1e-9, 'destroyed receiver recoiled');
     ship.dispose();
   });
 
