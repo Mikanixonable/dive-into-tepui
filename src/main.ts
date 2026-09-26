@@ -36,10 +36,6 @@ import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 
-// ランが無い起動中のフレームで、雲場の供給ジョブへ与える1回ぶんの時間予算 [ms]。
-// 起動中のフレームはフレーム処理がほぼ無いので、ほぼ1フレームぶんを供給へ割く。
-const LOADING_JOB_PUMP_BUDGET_MS = 16;
-
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   showLoading();
@@ -62,8 +58,6 @@ function startAnimationLoop(
   const layoutSmoke = new URLSearchParams(window.location.search).has('layout-smoke');
   let lastTime = performance.now();
   let completedFrames = 0;
-  // 生成雲場が最初の場を採用したことを、外から読めるようにした印。
-  let cloudFieldReadyMarked = false;
   // 1フレーム分: ランのフレームを回し、次フレームを予約する。
   function animate(now: number) {
     const dt = (now - lastTime) / 1000;
@@ -87,14 +81,6 @@ function startAnimationLoop(
     });
     // 周回の切り替え中はランが存在しないため、次フレームを予約して早期リターンする。
     if (run === null) {
-      // 起動中のランが置いた前倒し駆動があれば、この隙間で進める。ジョブが投げたら
-      // ポンプを外して打ち止めにする — ここで潰すと最初のフレームで同じ失敗が出る。
-      try {
-        devices.loadingJobs?.drivePendingJobs(LOADING_JOB_PUMP_BUDGET_MS);
-      } catch (e) {
-        console.error('Loading job pump failed, disabling pump:', e);
-        devices.loadingJobs = null;
-      }
       requestAnimationFrame(animate);
       return;
     }
@@ -126,11 +112,6 @@ function startAnimationLoop(
         completedFrames++;
         // 例外なく60フレーム完走したことを、外から読めるようにする印。
         if (completedFrames === 60) document.documentElement.dataset.gameReady = 'true';
-        // 生成雲場が最初の場を採用したこと(雲が描けるようになったこと)を、外から読めるようにする印。
-        if (!cloudFieldReadyMarked && run.game.celestialSystem.cloudFieldReady) {
-          cloudFieldReadyMarked = true;
-          document.documentElement.dataset.cloudFieldReady = 'true';
-        }
       }
       requestAnimationFrame(animate);
     } catch (e) {
@@ -241,7 +222,7 @@ async function main() {
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
   const devices: PageDevices = {
-    scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo, loadingJobs: null,
+    scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo,
   };
 
   // 周回の遷移と、一時停止メニューからの導線。
