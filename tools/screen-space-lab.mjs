@@ -49,6 +49,8 @@ export const ENTRIES = [
 const FADE_OUTER_PX = 8;
 // 撮影 1 枚が、絵の落ち着きを待って撮る回数の上限。
 const MAX_SETTLE_CAPTURES = 6;
+// 段の費用の計測を待つ上限 [ms]。既定の候補 9 段 × 3 巡で 1〜2 分かかる。
+const MEASURE_TIMEOUT_MS = 15 * 60_000;
 
 // seed の列。ブルーノイズのタイル(一辺 SEED_GRID テクセル)の整数のずれを、R2 列(plastic number g の
 // α = (1/g, 1/g²))の点 fract(n·α) が落ちる格子の順に、重複を飛ばして並べる。どこで打ち切っても格子に一様に散る。
@@ -132,7 +134,17 @@ function labOf(devTools) {
     setSeed: ([x, y]) => call(`setScanSeed(${x}, ${y})`),
     setTarget: (target) => call(`setTarget(${JSON.stringify(target)})`),
     exposureFactor: () => call('exposureFactor()'),
-    measureTiers: (tiers, rounds) => call(`measureTiers(${JSON.stringify(tiers)}, ${rounds})`),
+    // 段 tiers を rounds 巡交互に測る。段と巡が多いと CDP の 1 要求の待ちを越えるので、ページの中で走らせて
+    // 終わりを待つ。
+    async measureTiers(tiers, rounds) {
+      await devTools.evaluate(`(window.__ssdCosts = null, window.renderLab.measureTiers(${JSON.stringify(tiers)}, ${rounds})
+        .then((costs) => { window.__ssdCosts = { costs }; }, (e) => { window.__ssdCosts = { error: String(e) }; }), 0)`);
+      await waitFor(devTools, 'window.__ssdCosts !== null', 'the tier costs', MEASURE_TIMEOUT_MS);
+      const { costs, error } = await devTools.evaluate('window.__ssdCosts');
+      await devTools.evaluate('delete window.__ssdCosts');
+      if (error !== undefined) throw new Error(`measureTiers failed: ${error}`);
+      return costs;
+    },
     // いまの絵を、連続する 2 回が一致するまで撮り直して PNG の Buffer で返す。
     async capturePng() {
       let previous = await call('capture()');
