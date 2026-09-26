@@ -1169,10 +1169,10 @@ def build_hull_junction(mats, half_len):
         top = Vector((foot.x, foot.y, 0.0)).normalized() * 0.50 + Vector((0.0, 0.0, 0.10))
         add_mesh_obj(f"mount_leg:{index}", make_strut(foot, top, 0.065, segments=12), mats.truss)
         add_mesh_obj(f"mount_leg_foot:{index}", make_sphere(0.085, center=foot, u_seg=12, v_seg=8), mats.clamp)
-    # 機構を載せる台座。フランジ(取付面)の下面へ届けて上部構造を宙に浮かせない
+    # 機構を載せる台座。脚が届く下端だけ太く、上は駆動ドラムへ吸い込まれる細い柱
     add_mesh_obj("mount_pedestal", make_lathe([
-        (0.0, 0.00), (0.58, 0.00), (0.60, 0.04), (0.52, 0.10),
-        (0.52, 0.30), (0.60, 0.38), (0.60, half_len - 0.03), (0.0, half_len - 0.03),
+        (0.0, 0.00), (0.58, 0.00), (0.60, 0.04), (0.50, 0.08),
+        (0.50, 0.30), (0.46, 0.36), (0.46, half_len - 0.06), (0.0, half_len - 0.06),
     ], segments=48, closed=True), mats.hull_dark)
 
 def build_solar_mount(mats, half_len, thickness):
