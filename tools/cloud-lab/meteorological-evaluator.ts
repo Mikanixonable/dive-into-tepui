@@ -21,7 +21,7 @@ import {
   reconstructCloudEventMaterialCohorts,
   reconstructCloudEventMaterialTracks,
 } from '../../src/game/cloud/cloud-event-transport';
-import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
+import { reconstructCloudParcel } from '../../src/game/cloud/cloud-parcel-transport';
 import { integrateCloudLocalOpticalPath } from '../../src/game/cloud/cloud-local-optical-path';
 import {
   cloudLocalUvAt,
