@@ -1076,11 +1076,6 @@
       "count": 1
     }
   },
-  "src/render/dynamic/dynamic-entity/ejected-gun-part-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/dynamic/dynamic-entity/metal-enemy-view.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1

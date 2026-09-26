@@ -6,10 +6,14 @@ import { v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
+import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
+import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
+import { WeaponDrives, type WeaponRecoilInput } from '../../src/render/dynamic/ship/weapon-drives';
+import type { ShipModuleRenderInput } from '../../src/render/dynamic/ship/ship-render-contract';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
 import { labCamera, shipObject, type CaseBuilder, type LabCase } from './lab-case';
 
@@ -44,6 +48,60 @@ function at(object: THREE.Object3D, x: number, y: number, z: number): THREE.Obje
   return object;
 }
 
+// ドック寄り: 側面の建造ドック・ドッキングポートの取付構造と、船首のドッキングポートを
+// 近距離で観察する。機軸を -Z へ向けた素直な姿勢で置き、側面ドックは main-tank の ±x、
+// 上面のポートは +y、船首ポートはコックピット前端へ付く。
+function dock(): LabCase {
+  const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+  assembly.addRoot(module('cockpit-standard', 'cockpit'));
+  assembly.prepend(module('docking-port-standard', 'bow-port'), 'cockpit');
+  assembly.append(module('tank-6-main', 'main-tank'));
+  assembly.connectSide(module('dock-standard', 'dock-left'), 'main-tank', 'side:-x');
+  assembly.connectSide(module('docking-port-standard', 'port-top'), 'main-tank', 'side:+y');
+  const obj = shipObject(assembly);
+  obj.position.set(0, 0, -14);
+  const dockTransform = assembly.worldTransformOf('dock-left');
+  const shape = shipPhysicsShape(assembly);
+  if (dockTransform === null || shape === null) throw new Error('dock detail target is missing');
+  const viewTarget = new THREE.Vector3(
+    dockTransform.position.x - shape.centerOffset.x,
+    dockTransform.position.y - shape.centerOffset.y,
+    dockTransform.position.z - shape.centerOffset.z,
+  ).add(obj.position);
+  const camera = labCamera();
+  camera.position.set(viewTarget.x, viewTarget.y, viewTarget.z + 10.6);
+  camera.lookAt(viewTarget);
+  camera.updateMatrixWorld(true);
+  return {
+    objects: [obj],
+    camera,
+    // COM から戻した左舷ドックの位置へ焦点を置き、視線を船体表面へ向ける。
+    viewTarget,
+    shots: {
+      // 側面ドックの取付構造: 左舷の斜め下から、脚と座板が船体曲面へ伏せる様子を見る。
+      'modular-ship-dock-mount': {
+        view: { cameraAzimuthDeg: -105, cameraElevationDeg: -5, cameraDistanceLog: -0.05,
+          sunAzimuthDeg: -70, sunElevationDeg: 40 },
+      },
+      // 船体軸に沿って見る: ポート下面と船体曲面の隙間(浮き)が最も読める向き。
+      'modular-ship-dock-gap': {
+        view: { cameraAzimuthDeg: -110, cameraElevationDeg: 10, cameraDistanceLog: -0.15,
+          sunAzimuthDeg: -85, sunElevationDeg: 45 },
+      },
+      // 結合面の機構: ポート正面から捕捉環・ペタル・気閘を見る。
+      'modular-ship-dock-face': {
+        view: { cameraAzimuthDeg: -85, cameraElevationDeg: 8, cameraDistanceLog: -0.2,
+          sunAzimuthDeg: -75, sunElevationDeg: 20 },
+      },
+      // 船全体: 船首ポートと両側のドックの位置関係を一望する。
+      'modular-ship-dock-wide': {
+        view: { cameraAzimuthDeg: -50, cameraElevationDeg: 20, cameraDistanceLog: 0.45,
+          sunAzimuthDeg: -60, sunElevationDeg: 30 },
+      },
+    },
+  };
+}
+
 // 基地: 船を寄港させた基地と、その右に建造ゴーストと吸着ガイドを置く。
 function base(): LabCase {
   const docked = at(shipObject(dockedPreset()), -7, 0, -42);
@@ -72,6 +130,32 @@ function separation(): LabCase {
     ],
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -40),
+  };
+}
+
+// 船殻だけを単体で置き、全長・断面・側面ディテールを多方向から観察する。
+function cockpit(): LabCase {
+  const model = buildShipModuleModel('cockpit-standard');
+  model.position.set(0, 0, -20);
+  return {
+    objects: [model],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -20),
+    // 側面の凹凸、船首断面、斜め前方の輪郭を別の光で確かめる。
+    shots: {
+      'cockpit-rich-side': {
+        view: { cameraAzimuthDeg: -90, cameraElevationDeg: 10, cameraDistanceLog: -0.4,
+          sunAzimuthDeg: -65, sunElevationDeg: 28 },
+      },
+      'cockpit-rich-oblique': {
+        view: { cameraAzimuthDeg: -42, cameraElevationDeg: 20, cameraDistanceLog: -0.4,
+          sunAzimuthDeg: -55, sunElevationDeg: 34 },
+      },
+      'cockpit-rich-bow': {
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 14, cameraDistanceLog: -0.4,
+          sunAzimuthDeg: -35, sunElevationDeg: 32 },
+      },
+    },
   };
 }
 
@@ -127,6 +211,111 @@ function rcsTank(): LabCase {
   };
 }
 
+// 主推進器だけを切り出し、開放された機械部とノズルを後方から観察する。
+function engine(): LabCase {
+  const model = buildShipModuleModel('thruster-standard');
+  model.position.set(0, 0, -25);
+  return {
+    objects: [model],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -25),
+    // ノズル内部と側面の機器群を別方向から照らす。
+    shots: {
+      'modular-ship-engine-aft': {
+        view: {
+          cameraAzimuthDeg: 165, cameraElevationDeg: 20, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: 155, sunElevationDeg: 35,
+        },
+      },
+      'modular-ship-engine-side': {
+        view: {
+          cameraAzimuthDeg: 105, cameraElevationDeg: 15, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: 125, sunElevationDeg: 30,
+        },
+      },
+    },
+  };
+}
+
+// 機関砲の砲架、砲身束、給弾部を同じ照明で多方向から観察する。
+function weapon(): LabCase {
+  const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
+  const modules: readonly ShipModuleRenderInput[] = [{
+    id: 'weapon', modelId: definition.modelId, kind: 'weapon', hp: definition.maxHp, maxHp: definition.maxHp,
+    transform: { position: v3(), rotation: Q_IDENTITY }, deployed: null, burning: null,
+  }];
+  const view = new ModularShipView(buildShipModuleModel, undefined, false);
+  view.sync(modules);
+  view.object.position.set(0, 0, -20);
+  const syncMotion = weaponMotion(view, modules, definition.abilities.fireRate ?? 0);
+  return {
+    objects: [view.object],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -19.2),
+    syncMotion,
+    dispose: () => view.dispose(),
+    // 砲架、給弾口、後座中の砲身束を比較できる撮影時刻を並べる。
+    shots: {
+      'weapon-cradle-oblique': {
+        view: { cameraAzimuthDeg: -35, cameraElevationDeg: 25, cameraDistanceLog: -0.22,
+          sunAzimuthDeg: -30, sunElevationDeg: 45 },
+      },
+      'weapon-cradle-side': {
+        view: { cameraAzimuthDeg: -85, cameraElevationDeg: 12, cameraDistanceLog: -0.22,
+          sunAzimuthDeg: -60, sunElevationDeg: 35 },
+      },
+      'weapon-cradle-feed': {
+        view: { cameraAzimuthDeg: 55, cameraElevationDeg: -20, cameraDistanceLog: -0.22,
+          sunAzimuthDeg: 40, sunElevationDeg: -35 },
+      },
+      'weapon-cradle-recoil': {
+        displayTime: 0.562,
+        view: { cameraAzimuthDeg: -65, cameraElevationDeg: 25, cameraDistanceLog: -0.32,
+          sunAzimuthDeg: -30, sunElevationDeg: 45 },
+      },
+      'weapon-cradle-return': {
+        displayTime: 0.59,
+        view: { cameraAzimuthDeg: -65, cameraElevationDeg: 25, cameraDistanceLog: -0.32,
+          sunAzimuthDeg: -30, sunElevationDeg: 45 },
+      },
+      'weapon-cradle-rest': {
+        displayTime: 2.5,
+        view: { cameraAzimuthDeg: -65, cameraElevationDeg: 25, cameraDistanceLog: -0.32,
+          sunAzimuthDeg: -30, sunElevationDeg: 45 },
+      },
+    },
+  };
+}
+
+// 各撮影時刻まで同じ連射履歴を再生する。
+function weaponMotion(
+  view: ModularShipView, modules: readonly ShipModuleRenderInput[], rate: number,
+): (displayTime: number) => void {
+  // 毎回同じ静止姿勢から始め、指定時刻まで同じ射撃履歴を再生する。
+  const anchors = view.semanticAnchors('weapon', '');
+  const rest = anchors.map(anchor => ({ anchor, position: anchor.position.clone(), rotation: anchor.quaternion.clone() }));
+  return (displayTime) => {
+    for (const pose of rest) {
+      pose.anchor.position.copy(pose.position);
+      pose.anchor.quaternion.copy(pose.rotation);
+    }
+    const drives = new WeaponDrives();
+    const endTime = Math.max(0, displayTime);
+    const steps = Math.ceil(endTime * 120);
+    const interval = 1 / rate;
+    for (let step = 0; step <= steps; step++) {
+      const time = Math.min(step / 120, endTime);
+      const firing = time >= 0.4 && time < 1.6;
+      const shotIndex = Math.floor((Math.min(time, 1.59) - 0.55) / interval + 1e-9);
+      const shots: readonly WeaponRecoilInput[] = shotIndex < 0 ? [] : [{
+        moduleId: 'weapon', muzzleIndex: 0, firedAt: 0.55 + shotIndex * interval, cycleDuration: interval,
+      }];
+      drives.sync(view, modules, firing ? rate : 0, time, shots);
+    }
+    view.object.updateMatrixWorld(true);
+  };
+}
+
 // 展開途中: 太陽電池とラジエーターの展開度を変えた戦闘艦を並べ、ヒンジの繋がりと収納時の重なりを見る。
 function deploying(): LabCase {
   const objects = [0, 0.4, 0.8].map((deployed, index) => {
@@ -148,9 +337,9 @@ const DEPLOYABLES_TARGET = new THREE.Vector3(0, 0, -8.9);
 
 // 展開部品の寄り: 全展開の戦闘艦 1 隻を取付面へ寄せ、太陽電池翼のセル面・取付構造と
 // ラジエーターの蛇腹・取付構造を大きく写す。
-// 機軸を視線へ向けると、太陽電池の面は船体の ±x、蛇腹の面は船体の ±z を向く。だから
-// 上の翼のセル面は左舷前方(方位 -50 度)、左の蛇腹の面は艦首側(方位 0 付近)から、
-// 右の蛇腹の面は艦尾側(方位 +140 度)から見ると正面になる。
+// 機軸を視線へ向けると、太陽電池の面は船体の ±x、蛇腹の面は船体の ±x(左右)を向く。だから
+// 上の翼のセル面は左舷前方(方位 -50 度)、下面の蛇腹の面は右舷側(方位 +90 付近)から
+// 見ると正面になる。
 function deployables(): LabCase {
   const ship = shipObject(combatShipDeployed(1));
   ship.position.set(0, 0, DEPLOYABLES_SHIP_Z);
@@ -168,11 +357,14 @@ function deployables(): LabCase {
           sunAzimuthDeg: -60, sunElevationDeg: 25,
         },
       },
-      // 左の蛇腹: 上から降りて折り目の凹凸と配管を見る。面は艦首側を向くので既定の恒星で当たる。
+      // 下面の蛇腹: 右舷側を向く配管側の面へ上から降りて、折り目の凹凸と配管を見る。
       'modular-ship-deployables-radiator': {
-        view: { cameraAzimuthDeg: -15, cameraElevationDeg: 50, cameraDistanceLog: 0.1 },
+        view: {
+          cameraAzimuthDeg: 80, cameraElevationDeg: 45, cameraDistanceLog: 0.1,
+          sunAzimuthDeg: 60, sunElevationDeg: 25,
+        },
       },
-      // 艦尾側: 面が -z を向く右の蛇腹と右舷の取付を後方から。恒星も艦尾側へ回す。
+      // 艦尾側: 面が ±x を向く蛇腹の端と右舷の取付を後方から。恒星も艦尾側へ回す。
       'modular-ship-deployables-aft': {
         view: {
           cameraAzimuthDeg: 140, cameraElevationDeg: 15, cameraDistanceLog: 0.15,
@@ -203,10 +395,14 @@ function deployablesStowed(): LabCase {
 }
 
 export const SHIP_CASES = {
+  'modular-ship-cockpit': cockpit,
+  'modular-ship-dock': dock,
   'modular-ship-base': base,
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,
+  'modular-ship-engine': engine,
   'modular-ship-rcs-tank': rcsTank,
+  'modular-ship-weapon': weapon,
   'modular-ship-deploying': deploying,
   'modular-ship-deployables': deployables,
   'modular-ship-deployables-stowed': deployablesStowed,

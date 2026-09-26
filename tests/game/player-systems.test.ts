@@ -14,7 +14,7 @@ import { createShipDefaultParts } from '../../src/game/dynamic/dynamic-entity/sh
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
 import { Throttle } from '../../src/game/player/throttle';
-import { MAGS_PER_BARREL, WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
+import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
@@ -174,9 +174,8 @@ export function register(): void {
 
   test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
     const weapon = WeaponState.deserialize({
-      mags: -2, rounds: 999, barrel: MAGS_PER_BARREL - 1,
-      barrelTemperature: 310, barrelDeviation: 12, pendingBarrelJoules: 2.5e6,
-      cooldown: Number.NaN, muzzleIdx: -1, wasFiring: false, wasEmptyClick: false,
+      mags: -2, rounds: 999, cooldown: Number.NaN, muzzleIdx: -1,
+      wasFiring: false, wasEmptyClick: false,
     } satisfies SerializedWeaponState);
     const fire = new FireControl(
       { motion: { mass: 1_000 } } as ModularShip,
