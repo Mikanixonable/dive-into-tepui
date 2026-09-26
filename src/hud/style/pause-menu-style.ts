@@ -7,6 +7,9 @@ export const PAUSE_MENU_STYLE = `
   position: fixed; display: none;
   --pm-expanded-width: 920px;
   grid-template-columns: minmax(150px, .4fr) minmax(0, 1.6fr);
+  /* 行をコンテナ高へキャップしないと本文が内容高に張られ、max-height を超えた分が
+     overflow:hidden で切れて .pm-tab-content のスクロールが発動しない。 */
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--space-6);
   width: min(var(--pm-expanded-width), calc(100vw - var(--space-6) - var(--space-6)));
   max-height: var(--overlay-max-h-l);
@@ -115,7 +118,8 @@ export const PAUSE_MENU_STYLE = `
   }
 }
 @media ${MQ_COMPACT} {
-  #hud-pause-menu { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+  /* 1列化でヘッダーと本文が2行に分かれるので、本文行を残り高さへキャップする。 */
+  #hud-pause-menu { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: var(--space-3); }
   #hud #hud-pause-menu { padding: var(--space-4); }
   #hud-pause-menu .pm-header {
     padding-right: 0; padding-bottom: var(--space-3);

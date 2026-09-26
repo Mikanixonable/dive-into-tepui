@@ -57,6 +57,8 @@ export interface OverlayHandle {
 
 interface OverlayEntry {
   readonly id: string;
+  // 表面を持つオーバーレイの要素。'mode' 登録は null。
+  readonly element: HTMLElement | null;
   readonly handle: OverlayHandle;
   spec: OverlaySpec;
 }
@@ -108,7 +110,7 @@ export class OverlayManager {
     this.layers[KIND_LAYER[spec.kind]].appendChild(element);
     this.close(id);
     this.evictGroup(id, spec.exclusiveGroup);
-    this.stack.push({ id, handle, spec });
+    this.stack.push({ id, element, handle, spec });
     this.sync();
   }
 
@@ -117,7 +119,18 @@ export class OverlayManager {
   public openMode(id: string, handle: OverlayHandle, spec: ModeSpec): void {
     this.close(id);
     this.evictGroup(id, spec.exclusiveGroup);
-    this.stack.push({ id, handle, spec: { ...spec, kind: 'mode' } });
+    this.stack.push({ id, element: null, handle, spec: { ...spec, kind: 'mode' } });
+    this.sync();
+  }
+
+  // 登録中のオーバーレイを最前面へ動かす。層内の DOM 順と台帳の順はここで一緒に更新される
+  // ので、ESC・ショートカット配送の「最前面」と見えている最前面がずれない。
+  public raise(id: string): void {
+    const index = this.stack.findIndex((e) => e.id === id);
+    if (index === -1) return;
+    const entry = this.stack.splice(index, 1)[0]!;
+    this.stack.push(entry);
+    entry.element?.parentElement?.appendChild(entry.element);
     this.sync();
   }
 
