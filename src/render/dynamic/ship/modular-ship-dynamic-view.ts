@@ -11,6 +11,7 @@ import {
   DynamicView, type DynamicRenderSource, type DynamicViewFrame,
 } from '../dynamic-view';
 import { WeaponDrives, type WeaponRecoilInput } from './weapon-drives';
+import { GunFeedView } from './gun-feed-view';
 import { buildShipModuleModel } from './ship-module-models';
 import { ModularShipView } from './modular-ship-view';
 import type { ShipModuleRenderInput, ShipRenderAssembly } from './ship-render-contract';
@@ -32,6 +33,9 @@ export interface ModularShipRenderSource extends DynamicRenderSource {
   readonly gunFireRate: number;
   // 直近に成功した発射の砲口ごとの記録。反動部の後座はここから表示時刻へ同期する。
   readonly recentShotRecords: readonly WeaponRecoilInput[];
+  readonly roundsInMagazine: number;
+  readonly cartridgeAdvancedAt: number | null;
+  readonly magazineFedAt: number | null;
 }
 
 // DynamicView の時刻配置と、assembly から再構築する module 表示を一体にした実体用 View。
@@ -42,6 +46,8 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   private readonly reentryEffects: ReentryEffects;
   private readonly belt: BeltView;
   private readonly weaponDrives = new WeaponDrives();
+  private gunFeed: GunFeedView | null = null;
+  private gunFeedModuleId: string | null = null;
 
   public constructor(
     private readonly effectScene: THREE.Scene,
@@ -88,6 +94,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
       this.modules, source.assembly.modules, source.gunFireRate, viewFrame.displayTime,
       source.recentShotRecords,
     );
+    this.syncGunFeed(source, viewFrame.displayTime);
     if (source.active && zoomActive) this.object.visible = false;
   }
 
@@ -130,8 +137,41 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     for (const effects of this.thrustEffects) effects.dispose(this.effectScene);
     this.rcsEffects.dispose(this.effectScene);
     this.reentryEffects.dispose(this.effectScene);
+    this.gunFeed?.dispose();
+    this.gunFeed = null;
     this.modules.dispose();
     super.dispose();
+  }
+
+  // 健全な機関砲のレールへ装填箱を保持し、破壊・交換されたら表示資源を切り替える。
+  private syncGunFeed(source: ModularShipRenderSource, displayTime: number): void {
+    const weapon = source.assembly.modules.find(module => module.kind === 'weapon' && module.hp > 0);
+    if (weapon === undefined) {
+      this.gunFeed?.dispose();
+      this.gunFeed = null;
+      this.gunFeedModuleId = null;
+      return;
+    }
+    const rail = this.modules.semanticAnchor(weapon.id, 'magazine-rail');
+    if (rail === null) {
+      this.gunFeed?.dispose();
+      this.gunFeed = null;
+      this.gunFeedModuleId = null;
+      return;
+    }
+    if (this.gunFeed === null || this.gunFeedModuleId !== weapon.id) {
+      this.gunFeed?.dispose();
+      this.gunFeed = new GunFeedView(rail);
+      this.gunFeedModuleId = weapon.id;
+    } else {
+      this.gunFeed.attach(rail);
+    }
+    this.gunFeed.sync(
+      source.roundsInMagazine,
+      source.cartridgeAdvancedAt,
+      source.magazineFedAt,
+      displayTime,
+    );
   }
 }
 
