@@ -412,13 +412,11 @@ export class LabView {
   // 次に描くフレームから、近傍拡散補正を段 tier で走査して均す。描画品質設定が変わると精細さの段へ戻る。
   public setScanTier(tier: ScanTier): void {
     this.pipeline.screenSpace.setTier(tier);
-    this.render();
   }
 
   // 次に描くフレームから、近傍拡散補正の走査が読むブルーノイズを (x, y) [タイルの幅] だけずらす。
   public setScanSeed(x: number, y: number): void {
     this.pipeline.screenSpace.setSeed(x, y);
-    this.render();
   }
 
   // 直前に描いたフレームの露出係数。

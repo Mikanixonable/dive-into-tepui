@@ -82,6 +82,24 @@ export const headHash = () => execSync('git rev-parse --short HEAD', { cwd: root
 
 // ---- 撮影 ----
 
+// ページの式 source が指す長さ length の Float32Array を受け取る。CDP の 1 通の上限を超えないよう、塊ごとに受け取る。
+const FLOATS_PER_CHUNK = 64 * WIDTH * 3;
+async function receiveFloats(devTools, source, length) {
+  const out = new Float32Array(length);
+  for (let start = 0; start < length; start += FLOATS_PER_CHUNK) {
+    const count = Math.min(length - start, FLOATS_PER_CHUNK);
+    const base64 = await devTools.evaluate(`(() => {
+      const bytes = new Uint8Array(${source}.buffer, ${start * 4}, ${count * 4});
+      let text = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(text);
+    })()`);
+    const bytes = Buffer.from(base64, 'base64');
+    out.set(new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + count * 4)), start);
+  }
+  return out;
+}
+
 // 描画テスト環境の CDP の入口を包む。
 function labOf(devTools) {
   const call = (expression) => devTools.evaluate(`window.renderLab.${expression}`);
@@ -110,31 +128,41 @@ function labOf(devTools) {
     },
     // いまの絵を 1 回だけ撮って PNG の Buffer で返す。落ち着いた絵から seed だけを変えたときに使う。
     captureOncePng: async () => pngOf(await call('capture()')),
-    // 直前のフレームの中間ターゲット name の、画素ごとに先頭 channels 成分の Float32Array。CDP の 1 通の上限を
-    // 超えないよう、行の塊ごとに受け取る。
+    // 直前のフレームの中間ターゲット name の、画素ごとに先頭 channels 成分の Float32Array。
     async readFloat(name, channels) {
       const [width, height] = await devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})
-        .then((image) => { window.__ssdFloat = image; return [image.width, image.height]; })`);
-      const out = new Float32Array(width * height * channels);
-      const rowsPerChunk = 64;
-      for (let y0 = 0; y0 < height; y0 += rowsPerChunk) {
-        const y1 = Math.min(height, y0 + rowsPerChunk);
-        const base64 = await devTools.evaluate(`(() => {
-          const { width, rgba } = window.__ssdFloat;
-          const out = new Float32Array(${(y1 - y0)} * width * ${channels});
-          for (let p = 0; p < out.length / ${channels}; p++) {
-            for (let k = 0; k < ${channels}; k++) out[p * ${channels} + k] = rgba[(${y0} * width + p) * 4 + k];
+        .then(({ width, height, rgba }) => {
+          const packed = new Float32Array(width * height * ${channels});
+          for (let p = 0; p < width * height; p++) {
+            for (let k = 0; k < ${channels}; k++) packed[p * ${channels} + k] = rgba[p * 4 + k];
           }
-          const bytes = new Uint8Array(out.buffer);
-          let text = '';
-          for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-          return btoa(text);
-        })()`);
-        const bytes = Buffer.from(base64, 'base64');
-        out.set(new Float32Array(bytes.buffer, bytes.byteOffset, bytes.length / 4), y0 * width * channels);
-      }
+          window.__ssdFloat = packed;
+          return [width, height];
+        })`);
+      const out = await receiveFloats(devTools, 'window.__ssdFloat', width * height * channels);
       await devTools.evaluate('delete window.__ssdFloat');
       return out;
+    },
+    // 直前のフレームの中間ターゲット name の先頭 channels 成分を、ページの中に積む slot 番目の和へ足す。積んだ和は
+    // takeAccumulated で受け取る。
+    accumulateFloat: (name, channels, slot) => devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})
+      .then(({ width, height, rgba }) => {
+        window.__ssdSums ??= { size: width * height * ${channels}, slots: [] };
+        const sum = (window.__ssdSums.slots[${slot}] ??= new Float32Array(window.__ssdSums.size));
+        for (let p = 0; p < width * height; p++) {
+          for (let k = 0; k < ${channels}; k++) sum[p * ${channels} + k] += rgba[p * 4 + k];
+        }
+      })`),
+    // accumulateFloat で積んだ slot 0〜slotCount − 1 の和を受け取り、ページから消す。足していない slot は 0。
+    async takeAccumulated(slotCount) {
+      const size = await devTools.evaluate('window.__ssdSums.size');
+      const sums = [];
+      for (let slot = 0; slot < slotCount; slot++) {
+        const source = `window.__ssdSums.slots[${slot}]`;
+        sums.push(await devTools.evaluate(`${source} !== undefined`) ? await receiveFloats(devTools, source, size) : new Float32Array(size));
+      }
+      await devTools.evaluate('delete window.__ssdSums');
+      return sums;
     },
   };
 }
