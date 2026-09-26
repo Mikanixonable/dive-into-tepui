@@ -95,9 +95,8 @@ export class NodeGizmo {
   // ドラッグ中の Δv アーム。ドラッグしていなければ null。
   public get axisHandleDrag(): AxisHandleDrag | null { return this._axisHandleDrag; }
 
-  // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ、
-  // popupLayer はノードのコンテキストメニューを置くレイヤ。
-  public constructor(root: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager) {
+  // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ。
+  public constructor(root: HTMLElement, overlayManager: OverlayManager) {
     if (!styleInjected) {
       styleInjected = true;
       const style = document.createElement('style');
@@ -114,7 +113,7 @@ export class NodeGizmo {
     this.axisLayer = document.createElement('div');
     this.root.appendChild(this.axisLayer);
 
-    this.menu = new ContextMenu<number, MenuAction>(popupLayer, overlayManager);
+    this.menu = new ContextMenu<number, MenuAction>(overlayManager);
     // メニュー選択を対応するノード操作コールバックへ橋渡しする。
     this.menu.onSelect = (act, idx) => {
       if (act === 'warp') this.onMenuWarpTo?.(idx);

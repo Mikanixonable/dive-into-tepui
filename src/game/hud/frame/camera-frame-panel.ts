@@ -74,11 +74,10 @@ export class CameraFramePanel {
 
   public onSelectCenter: ((id: string | null) => void) | null = null;
 
-  // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
+  // panelRoot はパネル自身の設置先。
   // 操作は commands へ返し、初期の回転モードだけトグルの点灯に使う。
   public constructor(
     panelRoot: HTMLElement,
-    popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
     commands: CameraFrameCommands,
     overlayManager: OverlayManager,
@@ -118,7 +117,7 @@ export class CameraFramePanel {
     controls.className = 'editorial-control-zone camera-control-zone';
     this.panel.appendChild(controls);
 
-    this.cameraCenterZone = new AnchorZone(popupRoot, '基準', celestialBodies, '固定を解除', overlayManager);
+    this.cameraCenterZone = new AnchorZone('基準', celestialBodies, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
     controls.appendChild(this.cameraCenterZone.element);
