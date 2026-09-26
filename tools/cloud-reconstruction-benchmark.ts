@@ -22,15 +22,15 @@ interface Scenario {
   readonly id: string;
   readonly cellCount: number;
   readonly timeSeconds: number;
-  readonly cohortDurationSeconds: number;
+  readonly cohortCount: number;
 }
 
 const SCENARIOS: readonly Scenario[] = [
-  { id: 'standard-8-events-5min', cellCount: 8, timeSeconds: 7_200, cohortDurationSeconds: 300 },
-  { id: 'standard-32-events-5min', cellCount: 32, timeSeconds: 7_200, cohortDurationSeconds: 300 },
-  { id: 'jump-32-events-5min', cellCount: 32, timeSeconds: 14_400, cohortDurationSeconds: 300 },
-  { id: 'stress-32-events-1min', cellCount: 32, timeSeconds: 7_200, cohortDurationSeconds: 60 },
-  { id: 'stress-64-events-5min', cellCount: 64, timeSeconds: 7_200, cohortDurationSeconds: 300 },
+  { id: 'standard-8-events-5min', cellCount: 8, timeSeconds: 7_200, cohortCount: 12 },
+  { id: 'standard-32-events-5min', cellCount: 32, timeSeconds: 7_200, cohortCount: 12 },
+  { id: 'jump-32-events-5min', cellCount: 32, timeSeconds: 14_400, cohortCount: 12 },
+  { id: 'stress-32-events-1min', cellCount: 32, timeSeconds: 7_200, cohortCount: 60 },
+  { id: 'stress-64-events-5min', cellCount: 64, timeSeconds: 7_200, cohortCount: 12 },
 ];
 
 function eastAt(direction: Vec3): Vec3 {
@@ -101,8 +101,8 @@ function measure(scenario: Scenario) {
         event,
         EARTH_RADIUS_M,
         MAX_STEP_SECONDS,
-        scenario.cohortDurationSeconds,
         windAt,
+        scenario.cohortCount,
       );
       runCohorts += reconstructed.releasedIceCohorts.length;
       runSteps += reconstructed.parent?.steps ?? 0;
