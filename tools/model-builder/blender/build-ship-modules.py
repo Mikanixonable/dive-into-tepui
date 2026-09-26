@@ -764,12 +764,34 @@ def build_thruster():
     ], segments=64, closed=True), mats.hull_dark)
     for zr in (ring_bottom + 0.025, half_len - 0.025):
         add_mesh_obj(f"thrust_ring_flange_{zr:.3f}", make_torus(radius + 0.005, 0.025, zr, major_seg=64, minor_seg=10), mats.hull)
-    add_mesh_obj("thrust_bulkhead", make_cylinder(radius - 0.20, radius - 0.20, 0.04, z_center=half_len - 0.07, segments=64), mats.hull)
-    add_mesh_obj("thrust_bulkhead_mli", make_cylinder(2.2, 2.2, 0.02, z_center=half_len - 0.10, segments=48), mats.mli_gold)
-    # 隔壁の後面に吊るした加圧ヘリウム気蓄器と電装箱
-    for side in (-1.0, 1.0):
-        add_mesh_obj(f"helium_copv_{side:+.0f}", make_sphere(0.30, center=(side * 1.55, 0.95, half_len - 0.44)), mats.tank_rcs)
-        add_mesh_obj(f"helium_copv_strap_{side:+.0f}", make_box(0.08, 0.66, 0.34, center=(side * 1.55, 0.95, half_len - 0.26)), mats.clamp)
+    bulkhead_z = half_len - 0.07
+    add_mesh_obj("thrust_bulkhead", make_lathe([
+        (2.16, bulkhead_z - 0.025), (radius - 0.20, bulkhead_z - 0.025),
+        (radius - 0.20, bulkhead_z + 0.025), (2.16, bulkhead_z + 0.025),
+    ], segments=64, closed=True), mats.hull)
+    add_mesh_obj("thrust_bulkhead_mli", make_lathe([
+        (2.17, bulkhead_z - 0.052), (2.53, bulkhead_z - 0.052),
+        (2.53, bulkhead_z - 0.037), (2.17, bulkhead_z - 0.037),
+    ], segments=64, closed=True), mats.mli_gold)
+    # 開放された推力受けの内側へ加圧ヘリウム容器を吊り、リングとの荷重経路を見せる。
+    for k, (x, y) in enumerate(((-1.65, 0.95), (1.65, 0.95), (-1.65, -0.95), (1.65, -0.95))):
+        center = Vector((x, y, half_len - 0.56))
+        add_mesh_obj(f"helium_copv_{k}", make_sphere(0.40, center=center), mats.tank_rcs)
+        band = make_torus(0.405, 0.025, center.z, major_seg=32, minor_seg=8)
+        add_mesh_obj(f"helium_copv_band_{k}", transform_bm(band, Matrix.Translation((x, y, 0))), mats.clamp)
+        tangent = Vector((-y, x, 0.0)).normalized()
+        for side in (-1.0, 1.0):
+            rim = Vector((x * 1.38, y * 1.38, ring_bottom + 0.04)) + tangent * (side * 0.22)
+            saddle = center + tangent * (side * 0.22) + Vector((0, 0, 0.24))
+            add_mesh_obj(f"helium_copv_cradle_{k}_{side:+.0f}", make_strut(saddle, rim, 0.05), mats.truss)
+        valve = center + Vector((0, 0, -0.44))
+        valve_body = make_cylinder(0.09, 0.09, 0.10, z_center=valve.z, segments=16)
+        add_mesh_obj(f"helium_valve_{k}", transform_bm(valve_body, Matrix.Translation((x, y, 0))), mats.clamp)
+        gas_line = [valve, valve + Vector((-x * 0.18, -y * 0.18, -0.12)),
+                    Vector((0.0, 1.15, half_len - 0.79))]
+        add_mesh_obj(f"helium_line_{k}", make_pipe(round_corners(gas_line, 0.12), radius=0.025, segments=10), mats.pipe)
+    manifold = make_cylinder(0.15, 0.15, 0.14, z_center=half_len - 0.79, segments=20)
+    add_mesh_obj("helium_manifold", transform_bm(manifold, Matrix.Translation((0, 1.15, 0))), mats.clamp)
     add_mesh_obj("engine_controller", make_box(0.70, 0.36, 0.22, center=(0.0, 1.75, half_len - 0.22)), mats.hull_dark)
 
     # 2. 推力構造: 結合環から中央のジンバル受けへ集まる V 字の支柱。ジンバル受けは環より後方にある
@@ -905,20 +927,25 @@ def build_thruster():
     for side, name in ((1.0, "lox"), (-1.0, "fuel")):
         bellows_x, bellows_y = side * 0.24, -0.46
         bellows_top, bellows_bottom = pivot_z + 0.05, pivot_z - 0.07
-        static = [Vector((side * 0.85, -0.85, half_len - 0.09)), Vector((side * 0.55, -0.62, mount_z + 0.10)),
-                  Vector((bellows_x, bellows_y, bellows_top + 0.10)), Vector((bellows_x, bellows_y, bellows_top))]
-        add_mesh_obj(f"{name}_feedline", make_pipe(round_corners(static, 0.15, steps=6), radius=0.055, segments=14), mats.pipe)
-        bm_flange = make_cylinder(0.08, 0.08, 0.03, z_center=0.0, segments=16)
+        static = [Vector((side * 1.95, 0.0, half_len - 0.09)),
+                  Vector((side * 1.95, 0.0, mount_z + 0.03)),
+                  Vector((side * 0.56, -0.84, bellows_top + 0.09)),
+                  Vector((bellows_x, bellows_y, bellows_top))]
+        feed_material = mats.mli_white if name == "lox" else mats.pipe
+        add_mesh_obj(f"{name}_feedline", make_pipe(round_corners(static, 0.16, steps=6), radius=0.10, segments=16), feed_material)
+        bm_flange = make_cylinder(0.145, 0.145, 0.045, z_center=0.0, segments=20)
         add_mesh_obj(f"{name}_feed_flange", transform_bm(bm_flange, Matrix.Translation(static[0])), mats.clamp)
+        valve_at = static[0].lerp(static[1], 0.58)
+        add_mesh_obj(f"{name}_shutoff_valve", make_box(0.32, 0.27, 0.30, center=valve_at), mats.hull_dark)
         for c in range(6):
             zc = bellows_top - (bellows_top - bellows_bottom) * (c + 0.5) / 6
-            bm = make_torus(0.066, 0.014, zc, major_seg=16, minor_seg=6)
+            bm = make_torus(0.11, 0.016, zc, major_seg=16, minor_seg=6)
             transform_bm(bm, Matrix.Translation((bellows_x, bellows_y, 0.0)))
             add_mesh_obj(f"{name}_bellows_{c}", bm, mats.clamp, parent=gimbal if c >= 3 else None)
         inlet = Vector((pump_x + side * 0.11, pump_y, pump_top - 0.10))
         moving = [Vector((bellows_x, bellows_y, bellows_bottom)), Vector((bellows_x, bellows_y, bellows_bottom - 0.05)),
                   inlet + Vector((side * 0.10, 0, 0.02)), inlet]
-        add_mesh_obj(f"{name}_pump_inlet_line", make_pipe(round_corners(moving, 0.06), radius=0.055, segments=14), mats.pipe, parent=gimbal)
+        add_mesh_obj(f"{name}_pump_inlet_line", make_pipe(round_corners(moving, 0.06), radius=0.085, segments=14), mats.pipe, parent=gimbal)
     discharge = [Vector((pump_x + 0.05, pump_y + 0.10, pump_top - 0.03)), Vector((0.05, -(r_c * 0.5), pivot_z - 0.09))]
     add_mesh_obj("lox_discharge_line", make_pipe(discharge, radius=0.035, segments=12), mats.pipe, parent=gimbal)
     coolant = [Vector((pump_x - 0.05, pump_y - 0.02, pump_top - 0.20)), Vector((-0.20, pump_y - 0.08, pump_top - 0.45)),
@@ -1521,6 +1548,50 @@ def build_weapon(name):
     add_mesh_obj("gun_front_bearing", make_lathe([
         (0.84, receiver_front - 0.06), (0.92, receiver_front - 0.06), (0.92, receiver_front + 0.02), (0.84, receiver_front + 0.02),
     ], segments=48, closed=True), mats.hull_dark)
+
+    # 2.5 結合面の上に建つ砲架台の機械室。ガトリングの後方(結合面側)を機器で埋めて
+    #     円板へ段を付けて繋げる — 砲が円板から直接生える見え方を避ける。
+    # 機関部を両脇から支える頬板と、架台軸受のキャップ
+    for sx in (-1.0, 1.0):
+        add_mesh_obj(f"gun_cradle_cheek_{sx:+.0f}", make_box(0.22, 1.55, 0.80,
+            center=(sx * 0.72, 0.30, -0.02), bevel=0.04), mats.gun_steel)
+        bm_cap = make_cylinder(0.14, 0.14, 0.08, z_center=0.0, segments=16)
+        transform_bm(bm_cap, Matrix.Translation(Vector((sx * 0.59, 0.30, 0.30)))
+            @ Euler((0.0, math.pi / 2.0, 0.0)).to_matrix().to_4x4())
+        add_mesh_obj(f"gun_cradle_trunnion_{sx:+.0f}", bm_cap, mats.clamp)
+
+    # 結合面の上側を占める機械ブロック(駆動制御・配電・冷却の筐体)と結合面側へ下がる天板
+    add_mesh_obj("gun_house", make_box(1.75, 0.85, 0.62, center=(0.0, 1.45, -0.14), bevel=0.05), mats.hull_dark)
+    add_mesh_obj("gun_house_hood", make_box(1.62, 0.07, 0.48,
+        center=(0.0, 1.83, -0.24), rot_euler=(-0.45, 0.0, 0.0), bevel=0.02), mats.hull)
+    add_mesh_obj("gun_house_panel", make_box(0.90, 0.48, 0.03, center=(0.0, 1.45, 0.18)), mats.recessed)
+    for i in range(4):
+        add_mesh_obj(f"gun_house_vent_{i}", make_box(1.30, 0.07, 0.05, center=(0.0, 1.13 + i * 0.18, 0.18)), mats.hull)
+    # 機械室と駆動モーターの間を繋ぐ筐体(モーターを機械室へ組み込んで見せる)
+    add_mesh_obj("gun_house_trunk", make_box(0.55, 0.55, 0.50, center=(0.0, 0.86, -0.12), bevel=0.04), mats.hull_dark)
+
+    # 結合面の両脇の補機ユニット(反動緩衝・油圧・制御機器)と、キャップ状のフタ
+    for sx in (-1.0, 1.0):
+        add_mesh_obj(f"gun_side_unit_{sx:+.0f}", make_box(0.55, 0.85, 0.45,
+            center=(sx * 1.55, 0.55, -0.10), bevel=0.04), mats.hull_dark)
+        bm_fu = make_cylinder(0.16, 0.16, 0.16, z_center=0.0, segments=16)
+        transform_bm(bm_fu, Matrix.Translation(Vector((sx * 1.55, 1.02, -0.10)))
+            @ Euler((math.pi / 2.0, 0.0, 0.0)).to_matrix().to_4x4())
+        add_mesh_obj(f"gun_side_unit_cap_{sx:+.0f}", bm_fu, mats.clamp)
+
+    # 機関部の脇を通る反動緩衝器(Z 軸方向の緩衝シリンダー2本)
+    for sx in (-1.0, 1.0):
+        bm_damp = make_cylinder(0.07, 0.07, 0.70, z_center=0.0, segments=14)
+        transform_bm(bm_damp, Matrix.Translation(Vector((sx * 0.60, -0.55, 0.30))))
+        add_mesh_obj(f"gun_recoil_damper_{sx:+.0f}", bm_damp, mats.pipe)
+
+    # 機械室から結合環へ走る配線導管と、甲板縁の中継箱
+    for sx in (-1.0, 1.0):
+        add_mesh_obj(f"gun_conduit_{sx:+.0f}", make_pipes([
+            [Vector((sx * 0.60, 1.70, -0.30)), Vector((sx * 0.95, 2.10, -0.34)), Vector((sx * 0.95, 2.45, -0.34))],
+        ], radius=0.035, segments=10), mats.pipe)
+        add_mesh_obj(f"gun_conduit_relay_{sx:+.0f}", make_box(0.34, 0.26, 0.20,
+            center=(sx * 0.95, 2.42, -0.28), bevel=0.03), mats.clamp)
 
     # 排莢: 機関部 -X 側面の開口と、空薬莢を -X へ後ろ下がりに逃がす樋
     eject_y, eject_z = my - 0.02, 0.10
