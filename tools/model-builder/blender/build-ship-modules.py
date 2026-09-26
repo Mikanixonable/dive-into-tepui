@@ -1655,37 +1655,37 @@ def build_solar_panel(name):
 
 def build_radiator_mount(mats, half_len):
     """回転流体継手の段付きハウジングと、船体へ降りる冷媒の往復管・制御線束。
-    継手はパネル列の収納範囲(展開方向に掃く ±X)の外、翼端方向 +Y へ置き、
-    根元ヒンジ胴(Y 軸)の端へ軸を繋ぐ。機構部は座板の上を EVI カバーで覆い、
+    継手はパネル列の収納範囲(畳むと -Y 側へ掃く範囲)の外、翼端方向 -X へ置き、
+    根元ヒンジ胴(X 軸)の端へ軸を繋ぐ。機構部は座板の上を EVI カバーで覆い、
     畳んだパネル列の脇には保持ラッチとロックピンを立てる。"""
     # 継手ハウジングは段付き: 太い基部、シール帯を挟む中段、先の軸受ナット
-    joint = Vector((-0.04, 1.80, half_len + 0.05))
-    for i, (r, h, dy) in enumerate(((0.26, 0.14, -0.17), (0.21, 0.24, 0.02), (0.16, 0.12, 0.20))):
+    joint = Vector((-1.80, -0.04, half_len + 0.05))
+    for i, (r, h, dx) in enumerate(((0.26, 0.14, 0.17), (0.21, 0.24, -0.02), (0.16, 0.12, -0.20))):
         bm_stage = make_cylinder(r, r, h, z_center=0.0, segments=28)
-        transform_bm(bm_stage, Matrix.Translation(joint + Vector((0.0, dy, 0.0)))
-            @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+        transform_bm(bm_stage, Matrix.Translation(joint + Vector((dx, 0.0, 0.0)))
+            @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
         add_mesh_obj(f"fluid_joint_stage:{i}", bm_stage, mats.hull_dark)
     # 段の境目のシール帯と、先端の六角の軸受ナット
     bm_seal = make_torus(0.215, 0.025, z_center=0.0, major_seg=28, minor_seg=8)
-    transform_bm(bm_seal, Matrix.Translation(joint + Vector((0.0, -0.10, 0.0)))
-        @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+    transform_bm(bm_seal, Matrix.Translation(joint + Vector((0.10, 0.0, 0.0)))
+        @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
     add_mesh_obj("fluid_joint_seal", bm_seal, mats.clamp)
     bm_nut = make_cylinder(0.20, 0.20, 0.10, z_center=0.0, segments=8)
-    transform_bm(bm_nut, Matrix.Translation(joint + Vector((0.0, 0.30, 0.0)))
-        @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+    transform_bm(bm_nut, Matrix.Translation(joint + Vector((-0.30, 0.0, 0.0)))
+        @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
     add_mesh_obj("fluid_joint_nut", bm_nut, mats.clamp)
-    add_mesh_obj("fluid_joint_pedestal", make_box(0.40, 0.42, 0.16, center=(0.0, 1.82, half_len - 0.06)), mats.hull_dark)
+    add_mesh_obj("fluid_joint_pedestal", make_box(0.42, 0.40, 0.16, center=(-1.82, 0.0, half_len - 0.06)), mats.hull_dark)
     # 座板の上・機構部を包む EVI の銀色断熱カバー。配管だけが貫通して出る布状の箱
-    add_mesh_obj("evi_cover", make_box(1.10, 1.00, 0.80, center=(0.0, -0.02, 0.95), bevel=0.10), mats.evi)
-    add_mesh_obj("evi_cover_flap", make_box(0.62, 0.56, 0.16, center=(0.0, 0.10, 1.38), bevel=0.05), mats.evi)
+    add_mesh_obj("evi_cover", make_box(1.00, 1.10, 0.80, center=(0.02, 0.0, 0.95), bevel=0.10), mats.evi)
+    add_mesh_obj("evi_cover_flap", make_box(0.56, 0.62, 0.16, center=(-0.10, 0.0, 1.38), bevel=0.05), mats.evi)
     # 継手ハウジングの取り出し口から台座の脇を経て座板の貫通金具へ下りる行き・戻りの供給管
-    pad_x, pad_t = -0.85, 0.13
+    pad_x, pad_t = -0.85, -0.13
     top = saddle_top(pad_t)
     add_mesh_obj("fluid_joint_feeds", make_pipes([
-        [Vector((-0.14, 1.62, half_len - 0.08)), Vector((-0.14, 1.55, 0.28)), Vector((-0.18, 0.90, 0.12)),
-         Vector((-0.24, 0.52, 0.00)), Vector((-0.50, 0.44, -0.22)), Vector((pad_x + 0.16, top.y + 0.02, top.z + 0.05))],
-        [Vector((0.06, 1.68, half_len - 0.08)), Vector((0.06, 1.50, 0.26)), Vector((0.02, 0.85, 0.08)),
-         Vector((-0.08, 0.50, -0.04)), Vector((-0.44, 0.46, -0.26)), Vector((pad_x + 0.24, top.y + 0.04, top.z + 0.04))],
+        [Vector((-1.62, -0.14, half_len - 0.08)), Vector((-1.55, -0.14, 0.28)), Vector((-0.90, -0.18, 0.12)),
+         Vector((-0.52, -0.24, 0.00)), Vector((-0.50, -0.44, -0.22)), Vector((pad_x + 0.16, top.y + 0.02, top.z + 0.05))],
+        [Vector((-1.68, 0.06, half_len - 0.08)), Vector((-1.50, 0.06, 0.26)), Vector((-0.85, 0.02, 0.08)),
+         Vector((-0.50, -0.08, -0.04)), Vector((-0.46, -0.44, -0.26)), Vector((pad_x + 0.24, top.y + 0.04, top.z + 0.04))],
     ], radius=0.04, segments=12, bend_radius=0.08), mats.pipe)
     # 座板上の貫通金具(船体側の冷媒口)。往復管はここで母船の冷媒系へ合流する
     fit = Vector((pad_x + 0.20, top.y + 0.03, top.z + 0.01))
@@ -1698,36 +1698,36 @@ def build_radiator_mount(mats, half_len):
         [Vector((pad_x + 0.24, top.y + 0.04, top.z + 0.04)), Vector((pad_x + 0.25, top.y + 0.04, -0.62))],
     ], radius=0.035, segments=10), mats.pipe)
     # 展開制御の umbilical 線束。反対側の座板の貫通金具から継手の台座へ3本撚りで上がる
-    cp_x, cp_t = 0.85, -0.13
+    cp_x, cp_t = 0.85, 0.13
     ctop = saddle_top(cp_t)
     add_mesh_obj("control_umbilical", make_pipes([
-        [Vector((cp_x - 0.06, ctop.y + 0.02, ctop.z + 0.05)), Vector((0.42, 0.52, -0.20)),
-         Vector((0.24, 0.95, 0.10)), Vector((0.16, 1.60, half_len - 0.10))],
-        [Vector((cp_x - 0.13, ctop.y + 0.04, ctop.z + 0.04)), Vector((0.36, 0.50, -0.24)),
-         Vector((0.18, 0.92, 0.06)), Vector((0.10, 1.56, half_len - 0.10))],
-        [Vector((cp_x - 0.20, ctop.y + 0.06, ctop.z + 0.03)), Vector((0.30, 0.48, -0.28)),
-         Vector((0.12, 0.90, 0.02)), Vector((0.04, 1.52, half_len - 0.10))],
+        [Vector((cp_x - 0.06, ctop.y + 0.02, ctop.z + 0.05)), Vector((0.20, 0.52, -0.20)),
+         Vector((-0.40, 0.55, 0.05)), Vector((-1.10, 0.30, 0.15)), Vector((-1.55, 0.06, half_len - 0.10))],
+        [Vector((cp_x - 0.13, ctop.y + 0.04, ctop.z + 0.04)), Vector((0.14, 0.50, -0.24)),
+         Vector((-0.48, 0.50, 0.00)), Vector((-1.15, 0.24, 0.10)), Vector((-1.58, 0.00, half_len - 0.10))],
+        [Vector((cp_x - 0.20, ctop.y + 0.06, ctop.z + 0.03)), Vector((0.08, 0.48, -0.28)),
+         Vector((-0.55, 0.45, -0.05)), Vector((-1.20, 0.18, 0.05)), Vector((-1.62, -0.06, half_len - 0.10))],
     ], radius=0.016, segments=8, bend_radius=0.06), mats.clamp)
     cfit = Vector((cp_x - 0.13, ctop.y + 0.04, ctop.z + 0.01))
     add_mesh_obj("control_umbilical_fitting", make_box(
         0.26, 0.16, 0.07, center=cfit, rot_euler=(-cp_t, 0.0, 0.0)), mats.hull_dark)
     # 継手ハウジングから根元ヒンジ胴の端へ入る軸と、反対端の軸受
     add_mesh_obj("fluid_joint_shaft", make_strut(
-        Vector((-0.04, 1.42, half_len)), Vector((-0.04, 1.62, half_len)), 0.07), mats.clamp)
+        Vector((-1.42, -0.04, half_len)), Vector((-1.62, -0.04, half_len)), 0.07), mats.clamp)
     bm_cap2 = make_cylinder(0.11, 0.11, 0.24, z_center=0.0, segments=16)
-    transform_bm(bm_cap2, Matrix.Translation(Vector((-0.04, -1.67, half_len))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+    transform_bm(bm_cap2, Matrix.Translation(Vector((1.67, -0.04, half_len))) @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
     add_mesh_obj("fluid_joint_bearing", bm_cap2, mats.clamp)
-    add_mesh_obj("fluid_joint_bearing_mount", make_box(0.16, 0.28, 0.12, center=(-0.04, -1.67, half_len - 0.04)), mats.hull_dark)
-    # 畳んだパネル列は取付面の上で x -2.43..0・z が6枚ぶん厚い積層になる。その両脇に立つ
+    add_mesh_obj("fluid_joint_bearing_mount", make_box(0.28, 0.16, 0.12, center=(1.67, -0.04, half_len - 0.04)), mats.hull_dark)
+    # 畳んだパネル列は取付面の上で y -2.43..0・z が6枚ぶん厚い積層になる。その両脇に立つ
     # 保持ラッチと、積層の天面を跨ぐロックピン
-    for sy in (-1.0, 1.0):
-        add_mesh_obj(f"stack_latch_arm:{sy:+.0f}", make_box(
-            0.08, 0.10, 0.56, center=(-1.00, sy * 1.60, half_len + 0.27)), mats.hull_dark)
-        add_mesh_obj(f"stack_latch_jaw:{sy:+.0f}", make_box(
-            0.10, 0.24, 0.09, center=(-1.00, sy * 1.45, half_len + 0.49)), mats.clamp)
+    for sx in (-1.0, 1.0):
+        add_mesh_obj(f"stack_latch_arm:{sx:+.0f}", make_box(
+            0.10, 0.08, 0.56, center=(sx * 1.60, -1.00, half_len + 0.27)), mats.hull_dark)
+        add_mesh_obj(f"stack_latch_jaw:{sx:+.0f}", make_box(
+            0.24, 0.10, 0.09, center=(sx * 1.45, -1.00, half_len + 0.49)), mats.clamp)
     bm_pin = make_cylinder(0.030, 0.030, 3.10, z_center=0.0, segments=10)
-    transform_bm(bm_pin, Matrix.Translation(Vector((-1.00, 0.0, half_len + 0.49)))
-        @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+    transform_bm(bm_pin, Matrix.Translation(Vector((0.0, -1.00, half_len + 0.49)))
+        @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
     add_mesh_obj("stack_lock_pin", bm_pin, mats.pipe)
 
 
