@@ -7,11 +7,11 @@ import type {
 import {
   ConvectiveCloudGlobalFieldSupply,
   type CloudGlobalFieldSupplyResult,
+  type CloudGlobalMassField,
 } from '../../src/game/cloud/cloud-global-field-supply';
 import { cloudEquirectCellAreaM2 } from '../../src/game/cloud/cloud-equirect-grid';
 import { AtmosphericWindField } from '../../src/render/cloud/atmospheric-wind';
-import { cloudEventWindAt } from '../../src/game/cloud/cloud-event-transport';
-import type { CloudGlobalMassField } from '../../src/render/cloud/global-mass-field';
+import { makeWindAt } from '../../src/game/cloud/cloud-local-field-supply';
 import type { Vec3 } from '../../src/math/vec3';
 import type { CloudEventWindAt } from '../../src/game/cloud/cloud-event-transport';
 
@@ -21,7 +21,7 @@ const GRID_HEIGHT = 64;
 
 // 大気風モデルを輸送用の口へ包む。
 function windAt(): CloudEventWindAt {
-  return cloudEventWindAt(new AtmosphericWindField());
+  return makeWindAt(new AtmosphericWindField());
 }
 
 // 熱帯の深対流を代表する単一柱。テストでは供給側の入力だけを固定する。
