@@ -1,8 +1,8 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { add, cross, dot, len, norm, projectOntoPlane, rotateAxis, scale, v3 } from '../../src/math/vec3';
-import { reconstructCloudParcel } from '../../src/render/cloud/weather-transport';
-import type { CloudParcelWindAt } from '../../src/render/cloud/weather-transport';
+import { reconstructCloudParcel } from '../../src/game/cloud/cloud-parcel-transport';
+import type { CloudParcelWindAt } from '../../src/game/cloud/cloud-parcel-transport';
 import { reconstructCloudEventMaterialCohorts } from '../../src/game/cloud/cloud-event-transport';
 import type { CloudEventWindAt } from '../../src/game/cloud/cloud-event-transport';
 import { sampleConvectiveCloudEvents } from '../../src/game/cloud/cloud-events';
