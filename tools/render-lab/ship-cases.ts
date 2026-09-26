@@ -115,9 +115,72 @@ function deploying(): LabCase {
   };
 }
 
+// 展開部品の取付面(コックピット)が来る描画座標の高さ。機軸は +Z が艦首で、重心は取付面より
+// 5.1 m 艦尾寄りにある — 物体を (0, 0, -14) へ置くと取付面が z = -8.9 に来る。
+const DEPLOYABLES_SHIP_Z = -14;
+const DEPLOYABLES_TARGET = new THREE.Vector3(0, 0, -8.9);
+
+// 展開部品の寄り: 全展開の戦闘艦 1 隻を取付面へ寄せ、太陽電池翼のセル面・取付構造と
+// ラジエーターの蛇腹・取付構造を大きく写す。
+// 機軸を視線へ向けると、太陽電池の面は船体の ±x、蛇腹の面は船体の ±z を向く。だから
+// 上の翼のセル面は左舷前方(方位 -50 度)、左の蛇腹の面は艦首側(方位 0 付近)から、
+// 右の蛇腹の面は艦尾側(方位 +140 度)から見ると正面になる。
+function deployables(): LabCase {
+  const ship = shipObject(combatShipDeployed(1));
+  ship.position.set(0, 0, DEPLOYABLES_SHIP_Z);
+  return {
+    objects: [ship],
+    camera: labCamera(),
+    viewTarget: DEPLOYABLES_TARGET,
+    shots: {
+      // 取付面の少し斜め前。機首の砲身を画面中央から外し、両舷の蛇腹と上下の翼の付け根を見る。
+      'modular-ship-deployables': { view: { cameraAzimuthDeg: -20, cameraElevationDeg: 12 } },
+      // 上の太陽電池翼: 面が -x を向くので左舷前方から、セル面とマウントを写す。
+      'modular-ship-deployables-solar': {
+        view: {
+          cameraAzimuthDeg: -50, cameraElevationDeg: 22, cameraDistanceLog: 0.2,
+          sunAzimuthDeg: -60, sunElevationDeg: 25,
+        },
+      },
+      // 左の蛇腹: 上から降りて折り目の凹凸と配管を見る。面は艦首側を向くので既定の恒星で当たる。
+      'modular-ship-deployables-radiator': {
+        view: { cameraAzimuthDeg: -15, cameraElevationDeg: 50, cameraDistanceLog: 0.1 },
+      },
+      // 艦尾側: 面が -z を向く右の蛇腹と右舷の取付を後方から。恒星も艦尾側へ回す。
+      'modular-ship-deployables-aft': {
+        view: {
+          cameraAzimuthDeg: 140, cameraElevationDeg: 15, cameraDistanceLog: 0.15,
+          sunAzimuthDeg: 170, sunElevationDeg: 25,
+        },
+      },
+    },
+  };
+}
+
+// 収納の寄り: 同じ位置に収納した戦闘艦を置き、取付面へ積まれたパネル山とマウントを見る。
+function deployablesStowed(): LabCase {
+  const ship = shipObject(combatShipDeployed(0));
+  ship.position.set(0, 0, DEPLOYABLES_SHIP_Z);
+  return {
+    objects: [ship],
+    camera: labCamera(),
+    viewTarget: DEPLOYABLES_TARGET,
+    shots: {
+      // 取付面の少し斜め前。左右の蛇腹山と上下のパネル山が並ぶ。
+      'modular-ship-deployables-stowed': { view: { cameraAzimuthDeg: -20, cameraElevationDeg: 12 } },
+      // さらに寄って、左舷側のパネル山とマウントを写す。
+      'modular-ship-deployables-stowed-mount': {
+        view: { cameraAzimuthDeg: -45, cameraElevationDeg: 20, cameraDistanceLog: -0.25 },
+      },
+    },
+  };
+}
+
 export const SHIP_CASES = {
   'modular-ship-base': base,
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,
   'modular-ship-deploying': deploying,
+  'modular-ship-deployables': deployables,
+  'modular-ship-deployables-stowed': deployablesStowed,
 } as const satisfies Record<string, CaseBuilder>;
