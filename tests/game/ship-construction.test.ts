@@ -91,7 +91,7 @@ export function register(): void {
     const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
     const placement = placementForSlot(assembly, dockSlots[0], cockpit);
     assert.equal(placement.valid, true);
-    assert.equal(placement.transform.position.z, (1 + 3) / 2);
+    assert.equal(placement.transform.position.z, (1 + 9) / 2);
     assert.equal(placement.transform.rotation.y, 1);
   });
 

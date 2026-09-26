@@ -41,7 +41,16 @@ function anchor(parent, name, x, y, z, direction = null) {
 function definitionAnchors(root, definition) {
   anchor(root, 'connection:aft', 0, 0, -definition.length / 2, new THREE.Vector3(0, 0, -1));
   anchor(root, 'connection:forward', 0, 0, definition.length / 2, new THREE.Vector3(0, 0, 1));
-  if (definition.kind === 'cockpit' || definition.kind === 'tank') {
+  if (definition.kind === 'cockpit') {
+    // 中央断面の左右の長手溝に置いた側面取付点。径6mの断面輪郭でも表面半径は約2.25m。
+    const sideRadius = definition.diameter * 3 / 8;
+    for (const [name, direction] of [
+      ['side:+x', new THREE.Vector3(1, 0, 0)],
+      ['side:-x', new THREE.Vector3(-1, 0, 0)],
+      ['side:+y', new THREE.Vector3(0, 1, 0)],
+      ['side:-y', new THREE.Vector3(0, -1, 0)],
+    ]) anchor(root, `connection:${name}`, direction.x * sideRadius, direction.y * sideRadius, 0, direction);
+  } else if (definition.kind === 'tank') {
     for (const [name, direction] of [
       ['side:+x', new THREE.Vector3(1, 0, 0)],
       ['side:-x', new THREE.Vector3(-1, 0, 0)],
@@ -65,7 +74,13 @@ const REQUIRED_ANCHORS = {
 // definition の原型が持つべき機能 anchor の数。種別の表に、機関砲なら砲口ごとの回転砲身を足す。
 function requiredAnchors(definition) {
   const required = { ...(REQUIRED_ANCHORS[definition.kind] ?? {}) };
-  if (definition.kind === 'weapon') required['barrel-rotor:'] = definition.muzzles.length;
+  if (definition.kind === 'weapon') {
+    required['barrel-rotor:'] = definition.muzzles.length;
+    required['gun-recoil:'] = definition.muzzles.length;
+    required['feed-sprocket:'] = 2;
+    required['feed-drum'] = 1;
+    required['feed-shoe'] = 1;
+  }
   return required;
 }
 

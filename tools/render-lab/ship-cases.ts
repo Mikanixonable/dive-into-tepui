@@ -101,6 +101,31 @@ function combat(): LabCase {
   };
 }
 
+// RCS タンクを単体で置き、赤い円筒トラス・銀箔球・配管と非対称な機器を多方向から観察する。
+function rcsTank(): LabCase {
+  const model = buildShipModuleModel('tank-3-rcs');
+  model.position.set(0, 0, -25);
+  return {
+    objects: [model],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -25),
+    shots: {
+      'rcs-tank-truss-oblique': {
+        view: { cameraAzimuthDeg: -42, cameraElevationDeg: 22, cameraDistanceLog: -0.42,
+          sunAzimuthDeg: -35, sunElevationDeg: 38 },
+      },
+      'rcs-tank-truss-side': {
+        view: { cameraAzimuthDeg: -88, cameraElevationDeg: 12, cameraDistanceLog: -0.42,
+          sunAzimuthDeg: -50, sunElevationDeg: 32 },
+      },
+      'rcs-tank-truss-overhead': {
+        view: { cameraAzimuthDeg: -20, cameraElevationDeg: 55, cameraDistanceLog: -0.42,
+          sunAzimuthDeg: -45, sunElevationDeg: 35 },
+      },
+    },
+  };
+}
+
 // 展開途中: 太陽電池とラジエーターの展開度を変えた戦闘艦を並べ、ヒンジの繋がりと収納時の重なりを見る。
 function deploying(): LabCase {
   const objects = [0, 0.4, 0.8].map((deployed, index) => {
@@ -180,6 +205,7 @@ export const SHIP_CASES = {
   'modular-ship-base': base,
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,
+  'modular-ship-rcs-tank': rcsTank,
   'modular-ship-deploying': deploying,
   'modular-ship-deployables': deployables,
   'modular-ship-deployables-stowed': deployablesStowed,
