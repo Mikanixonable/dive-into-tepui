@@ -2,7 +2,7 @@
 // ブルーノイズの seed を与えて撮る。4 つの使い方がある。
 //
 //   reference [--name D] [--entries K,...] [--sets S,...] --slices S --steps T --passes N
-//     基準 B(全解像度・均しなし・1 パス S スライス × 片側 T 歩で、seed を変えた N パスの平均)を
+//     基準 B(全解像度・均しなし・1 パス S スライス × 片側 T 歩で、seed を変えた N パスの HDR の平均の表示)を
 //     .render-lab-shots/ssd-reference/<D>/ へ作る。同じ D で呼び直すと、保存済みのパスへ N 個目まで続きから足す。
 //     D の既定は HEAD の短いハッシュ。--entries と --sets は評価の組のうち作る撮影の key と set
 //     (tuning・checking・correctness・flicker)。

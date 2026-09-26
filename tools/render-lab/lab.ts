@@ -34,9 +34,10 @@ import type { RenderStyle } from '../../src/render/render-style';
 import type { ScanTier } from '../../src/render/pipeline/screen-space/screen-space-pass';
 import type { Mat4Uniform } from '../../src/render/tsl-types';
 
-// 読み戻せる浮動小数の中間ターゲット。'projected-radius' は受け手の近傍の半径が写る描画バッファの画素数で、面の無い
-// 画素は 0。
-export type FloatTargetName = 'raw-correction' | 'denoised-correction' | 'correction' | 'diffuse' | 'projected-radius';
+// 読み戻せる浮動小数の中間ターゲット。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る
+// 描画バッファの画素数で、面の無い画素は 0。
+export type FloatTargetName = 'raw-correction' | 'denoised-correction' | 'correction' | 'diffuse' | 'hdr'
+  | 'projected-radius';
 
 // 読み戻した画像。rgba は画素ごとに 4 つの値で、行は上から。
 export interface FloatImage {
@@ -125,6 +126,10 @@ export class LabView {
   private readonly radiusQuad = new QuadMesh();
   private readonly radiusProjection: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly radiusProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
+  // 与えた HDR を合成した表示を、8 bit へ丸めずに受ける先。合成は深度も写すので深度を持たせる。
+  private readonly compositeTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
+    type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: true,
+  });
 
   // graphics は描く描画品質設定の器。
   private constructor(
@@ -424,9 +429,26 @@ export class LabView {
 
   // 直前に描いたフレームの中間ターゲット name を読み戻す。
   public async readFloat(name: FloatTargetName): Promise<FloatImage> {
-    const texture = name === 'projected-radius' ? this.drawProjectedRadius() : this.floatTextureOf(name);
+    return this.readBack(name === 'projected-radius' ? this.drawProjectedRadius() : this.floatTextureOf(name));
+  }
+
+  // HDR の絵 hdr(線形、描画バッファと同じ寸法)を、直前に描いたフレームと同じ通常表示の合成で描いて読み戻す。値は
+  // 表示用の色空間(sRGB)へ変換済みで、8 bit へ丸める前のもの。同じケースを描いた直後に呼ぶ。
+  public async composite(hdr: FloatImage): Promise<FloatImage> {
+    const texture = new THREE.DataTexture(hdr.rgba, hdr.width, hdr.height, THREE.RGBAFormat, THREE.FloatType);
+    texture.minFilter = THREE.NearestFilter;
+    texture.magFilter = THREE.NearestFilter;
+    texture.needsUpdate = true;
+    this.pipeline.renderComposite(texture, this.compositeTarget);
+    const display = await this.readBack(this.compositeTarget.texture);
+    texture.dispose();
+    return display;
+  }
+
+  // 描画先のテクスチャ texture を浮動小数で読み戻す。
+  private async readBack(texture: THREE.Texture): Promise<FloatImage> {
     const target = texture.renderTarget;
-    if (target === null) throw new Error(`render-lab: "${name}" is not a render target`);
+    if (target === null) throw new Error(`render-lab: "${texture.name}" is not a render target`);
     const { width, height } = target;
     const data = await this.renderer.readRenderTargetPixelsAsync(
       target, 0, 0, width, height, target.textures.indexOf(texture),
@@ -448,6 +470,7 @@ export class LabView {
       case 'denoised-correction': return this.pipeline.screenSpace.denoisedCorrectionTexture;
       case 'correction': return this.pipeline.diffuseCorrection.texture;
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
+      case 'hdr': return this.pipeline.hdrTexture;
     }
   }
 

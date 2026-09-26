@@ -62,6 +62,7 @@ declare global {
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
       capture: () => Promise<string>;
+      render: () => void;
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
@@ -72,6 +73,7 @@ declare global {
       setScanTier: (tier: ScanTier) => void;
       setScanSeed: (x: number, y: number) => void;
       readFloat: (name: FloatTargetName) => Promise<FloatImage>;
+      composite: (hdr: FloatImage) => Promise<FloatImage>;
       exposureFactor: () => number;
       measureTiers: (
         tiers: readonly ScanTier[], rounds: number,
@@ -307,6 +309,7 @@ async function init(): Promise<void> {
       return pngs;
     },
     capture: () => view.capture(),
+    render: () => view.render(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
@@ -323,6 +326,7 @@ async function init(): Promise<void> {
     setScanTier: (tier) => view.setScanTier(tier),
     setScanSeed: (x, y) => view.setScanSeed(x, y),
     readFloat: (name) => view.readFloat(name),
+    composite: (hdr) => view.composite(hdr),
     exposureFactor: () => view.exposureFactor,
     measureTiers: (tiers, rounds) => view.measureTiers(tiers, rounds),
   };
