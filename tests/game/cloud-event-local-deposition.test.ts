@@ -6,7 +6,8 @@ import type { CloudEventMaterialCohorts, CloudIceMaterialCohort, CloudMaterialTr
 import { sampleConvectiveCloudEvents } from '../../src/game/cloud/cloud-events';
 import {
   depositCloudEventMaterialCohorts,
-  type CloudEventFootprintAreas,
+  type CloudEventFootprintShape,
+  type CloudEventFootprintShapes,
   type CloudEventTangentChart,
 } from '../../src/game/cloud/cloud-event-local-deposition';
 import type { CloudFootprintGrid } from '../../src/game/cloud/cloud-footprint-overlap';
@@ -66,13 +67,20 @@ function integratedMassKg(columnsKgM2: readonly number[], grid: CloudMassGrid): 
   return columnsKgM2.reduce((total, columnKgM2, index) => total + columnKgM2 * grid.cells[index]!.areaM2, 0);
 }
 
+// 等半径の円として面積だけを指定する形状。楕円は等方半径ゼロ伸長の特殊形。
+function circleOfAreaM2(areaM2: number): CloudEventFootprintShape {
+  return { isotropicRadiusM: Math.sqrt(areaM2 / Math.PI), elongationVectorsM: [] };
+}
+
 function footprintAreas(
   parentLiquidM2: number | null = Math.PI,
   releasedIceCohortAreasM2: readonly number[] = [Math.PI],
-): CloudEventFootprintAreas {
+): CloudEventFootprintShapes {
   return {
-    parentLiquidM2,
-    releasedIceCohorts: releasedIceCohortAreasM2.map((areaM2, cohortIndex) => ({ cohortIndex, areaM2 })),
+    parentLiquid: parentLiquidM2 === null ? null : circleOfAreaM2(parentLiquidM2),
+    releasedIceCohorts: releasedIceCohortAreasM2.map((areaM2, cohortIndex) => ({
+      cohortIndex, shape: circleOfAreaM2(areaM2),
+    })),
   };
 }
 
@@ -108,9 +116,9 @@ export function register(): void {
     const deposition = depositCloudEventMaterialCohorts(
       materialTracks, sourceAreaM2,
       {
-        parentLiquidM2: footprintAreaM2,
+        parentLiquid: circleOfAreaM2(footprintAreaM2),
         releasedIceCohorts: materialTracks.releasedIceCohorts.map((cohort) => ({
-          cohortIndex: cohort.cohortIndex, areaM2: footprintAreaM2,
+          cohortIndex: cohort.cohortIndex, shape: circleOfAreaM2(footprintAreaM2),
         })),
       },
       {
@@ -168,11 +176,11 @@ export function register(): void {
     const western = v3(-Math.sin(0.01), 0, Math.cos(0.01));
     const ice = [iceCohort(1, 7, eastern), iceCohort(2, 9, western)];
     const cohortMaterial = material(null, ice);
-    const areas: CloudEventFootprintAreas = {
-      parentLiquidM2: null,
+    const areas: CloudEventFootprintShapes = {
+      parentLiquid: null,
       releasedIceCohorts: [
-        { cohortIndex: 9, areaM2: 4 * Math.PI },
-        { cohortIndex: 7, areaM2: Math.PI },
+        { cohortIndex: 9, shape: circleOfAreaM2(4 * Math.PI) },
+        { cohortIndex: 7, shape: circleOfAreaM2(Math.PI) },
       ],
     };
     const localGrid: CloudFootprintGrid = {
@@ -200,6 +208,65 @@ export function register(): void {
       'cohort 7 uses its π m² footprint');
     assert.ok(Math.abs(iceColumns[westInteriorCellIndex]! - 1 / (2 * Math.PI)) < 1e-12,
       'cohort 9 uses its 4π m² footprint');
+  });
+
+  test('cloud event local deposition: elongation vectors deposit mass along their axis', () => {
+    // 等方半径 0.5 m に東向き 4 m の伸長を足すと、chart 上で a≈4.03, b=0.5 の
+    // 東西に長い楕円になる。chart の東は ECI +x。
+    const elongated: CloudEventFootprintShape = {
+      isotropicRadiusM: 0.5,
+      elongationVectorsM: [v3(4, 0, 0)],
+    };
+    const footprintGrid: CloudFootprintGrid = {
+      originEastM: -6, originNorthM: -3, cellWidthM: 1, cellHeightM: 1, width: 12, height: 6,
+    };
+    const massGrid: CloudMassGrid = {
+      cells: Array.from({ length: 72 }, () => ({ areaM2: 1 })),
+      layerEdgesM: [0, 500],
+    };
+    const result = depositCloudEventMaterialCohorts(
+      material(null, [iceCohort(3)]), 1,
+      { parentLiquid: null, releasedIceCohorts: [{ cohortIndex: 0, shape: elongated }] },
+      CHART, footprintGrid, massGrid,
+    );
+    const ice = result.columnsByLayer[0]!.iceKgM2ByCell;
+    const cellCenter = (index: number) => ({
+      eastM: footprintGrid.originEastM + (index % footprintGrid.width + 0.5) * footprintGrid.cellWidthM,
+      northM: footprintGrid.originNorthM + (Math.floor(index / footprintGrid.width) + 0.5) * footprintGrid.cellHeightM,
+    });
+    // 中央帯(南北 ±0.5 m)は東西端まで質量が届き、南北の外側へはほぼ出ない。
+    const middleBand = ice.reduce((total, value, index) => {
+      const { northM } = cellCenter(index);
+      return Math.abs(northM) <= 0.5 ? total + value : total;
+    }, 0);
+    const outerBand = ice.reduce((total, value, index) => {
+      const { northM } = cellCenter(index);
+      return Math.abs(northM) > 1.5 ? total + value : total;
+    }, 0);
+    assert.ok(middleBand > 0);
+    assert.equal(outerBand, 0);
+    // 東西方向の分散が南北方向より大きい = 伸長軸へ広がっている。
+    let weight = 0; let eastMean = 0; let northMean = 0;
+    for (const [index, value] of ice.entries()) {
+      if (value <= 0) continue;
+      const { eastM, northM } = cellCenter(index);
+      weight += value;
+      eastMean += value * eastM;
+      northMean += value * northM;
+    }
+    eastMean /= weight;
+    northMean /= weight;
+    let eastVariance = 0; let northVariance = 0;
+    for (const [index, value] of ice.entries()) {
+      if (value <= 0) continue;
+      const { eastM, northM } = cellCenter(index);
+      eastVariance += value * (eastM - eastMean) ** 2;
+      northVariance += value * (northM - northMean) ** 2;
+    }
+    assert.ok(eastVariance > 4 * northVariance,
+      `east variance ${eastVariance / weight} should exceed north variance ${northVariance / weight}`);
+    // 面積は π·a·b ≈ 6.3 m² で格子内に収まり、質量は保存される。
+    assert.ok(Math.abs(integratedMassKg(ice, massGrid) - 3) < 1e-12);
   });
 
   test('cloud event local deposition: a clipped local grid returns the remaining event mass', () => {
