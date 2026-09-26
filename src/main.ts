@@ -52,7 +52,7 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, gameScene: GameScene, settings: UserSettings, bgm: Bgm,
+  launcher: Launcher, devices: PageDevices, settings: UserSettings, bgm: Bgm,
   debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
 ): void {
   const layoutSmoke = new URLSearchParams(window.location.search).has('layout-smoke');
@@ -69,7 +69,7 @@ function startAnimationLoop(
     // headless WebGPU の再確保だけ止める。通常実行では常に従来どおり同期・描画する。
     const hudOnlyFrame = layoutSmoke
       && document.documentElement.dataset.layoutSmokeFreeze === 'true';
-    if (!hudOnlyFrame) gameScene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
+    if (!hudOnlyFrame) devices.scene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
     pauseMenu.sync(now);
@@ -147,7 +147,7 @@ function initHud(settings: UserSettings): {
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine);
   const pauseMenu = new PauseMenu(
-    shell.layers.system, shell.overlayManager,
+    shell.overlayManager,
     settings.graphics.current, settings.audibleBgmVolume, settings.themePalette.current.id,
   );
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
@@ -218,10 +218,12 @@ async function main() {
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
   const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
+    gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
-  const devices: PageDevices = { scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo };
+  const devices: PageDevices = {
+    scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo,
+  };
 
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
@@ -231,7 +233,7 @@ async function main() {
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
 
-  const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
+  const saveBrowser = new SaveBrowser(slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
@@ -251,7 +253,7 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
-  startAnimationLoop(launcher, gameScene, settings, bgm, debugInfo, pauseMenu, snapshotControls);
+  startAnimationLoop(launcher, devices, settings, bgm, debugInfo, pauseMenu, snapshotControls);
   await launcher.start();
 }
 

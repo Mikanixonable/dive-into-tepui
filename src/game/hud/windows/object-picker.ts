@@ -6,7 +6,6 @@ import { clampOverlayPosition } from '../../../hud/layout';
 import { Button, buildLabeledRow } from '../../../hud/widgets';
 import { injectOnce } from '../../../hud/inject-style';
 import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
-import { bringToFront } from '../../../hud/overlay-layer';
 import { isCompactViewport, MQ_COMPACT } from '../../../hud/breakpoints';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 
@@ -57,10 +56,10 @@ const STYLE = `
 `;
 
 // 見出しつきの候補のまとまり。label が空の group は見出しを出さない。
-export type ObjectPickerGroup<T> = {
+export interface ObjectPickerGroup<T> {
   readonly label: string;
   readonly items: readonly (readonly [T, string])[];
-};
+}
 
 // groups が現在の内容と同じかどうかを、ラベルと各項目の並び(値は参照同一性)で判定する。
 function groupsEqual<T>(a: readonly ObjectPickerGroup<T>[], b: readonly ObjectPickerGroup<T>[]): boolean {
@@ -90,9 +89,10 @@ export class ObjectPicker<T> implements OverlayHandle {
   private previouslyFocused: HTMLElement | null = null;
   private disposed = false;
 
-  // title は見出し、root はポップアップを popup レイヤへ追加する親。
+  // title は見出し。ポップアップは open されるまで DOM へ挿さず、overlayManager が
+  // popup の層へ置く。
   public constructor(
-    root: HTMLElement, title: string, onSelect: (value: T) => void,
+    title: string, onSelect: (value: T) => void,
     private readonly overlayManager: OverlayManager,
   ) {
     this.overlayId = `object-picker-${ObjectPicker.nextId++}`;
@@ -137,7 +137,6 @@ export class ObjectPicker<T> implements OverlayHandle {
     this.list.setAttribute('role', 'listbox');
     this.list.setAttribute('aria-label', `${title}の候補`);
     this.pop.appendChild(this.list);
-    root.appendChild(this.pop);
   }
 
   // OverlayHandle 実装。target がトリガーボタンかポップアップの内部かどうかを返す。
@@ -185,7 +184,10 @@ export class ObjectPicker<T> implements OverlayHandle {
     this.isOpen = true;
     this.trigger.element.setAttribute('aria-expanded', 'true');
     this.pop.style.display = 'block';
-    bringToFront(this.pop);
+    // 先に登録して要素を DOM へ置いてから、実寸を測って位置を決める。
+    this.overlayManager.open(this.overlayId, this.pop, this, {
+      kind: 'popup', closeOnEscape: true, closeOnOutsideClick: true, gatesInput: false,
+    });
     // compact モードでは CSS による下端シート配置を適用するためインライン位置をクリアする。
     if (isCompactViewport()) {
       this.pop.style.left = '';
@@ -202,9 +204,6 @@ export class ObjectPicker<T> implements OverlayHandle {
       this.pop.style.top = `${pos.y}px`;
     }
     this.filter.focus();
-    this.overlayManager.open(this.overlayId, this, {
-      kind: 'popup', closeOnEscape: true, closeOnOutsideClick: true, gatesInput: false,
-    });
   }
 
   // ポップアップを閉じる。
