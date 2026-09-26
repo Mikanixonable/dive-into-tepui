@@ -21,7 +21,7 @@ import type {
 import type {
   CloudEventFootprintShape,
   CloudEventFootprintShapes,
-} from '../../src/game/cloud/cloud-event-deposition';
+} from '../../src/game/cloud/cloud-event-local-deposition';
 import type { CloudMassGrid } from '../../src/game/cloud/cloud-mass-deposition';
 import { test } from '../harness';
 

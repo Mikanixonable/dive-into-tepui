@@ -1,6 +1,7 @@
 // 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 気団・渦の影響を
 // CPU でその場で解く純関数の集まり。時刻の閉じた関数で、同じ方向・時刻・入力には同じ値が
 // 返る。値はすべて見えのための調整値。循環ノイズの項と移流した湿度の場は畳まない近似を取る。
+import * as THREE from 'three/webgpu';
 import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from '../../render/cloud/atmospheric-wind';
 import {
   cycloneTroughsAtCpu, troughAnvilAtCpu, troughEyeAtCpu, troughPressureAtCpu,
@@ -223,8 +224,8 @@ const RAINBAND_WIDTH = 4;
 const BAND_LIFT = 0.06;
 // 温帯と熱帯の境界緯度。温帯では前線、熱帯では雨帯の伝達関数を使い、暖気流入の補正は温帯に
 // 限定して適用する。
-const FRONT_LATITUDE_START = (20 * (Math.PI / 180));
-const FRONT_LATITUDE_FULL = (35 * (Math.PI / 180));
+const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
+const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
 // 風が斜面を駆け上がる分の利得。等倍では偏西風や貿易風が山脈へ当たり続けるだけで上昇流が頭打ちに
 // 達し、地形の縞が年中貼り付く — 慢性的な湿潤・乾燥は平年の雲量が持つ。
 const TERRAIN_LIFT_GAIN = 0.35;
@@ -244,7 +245,7 @@ const GRADIENT_STEP = 0.01;
 const BEND_STEP = 0.02;
 // 風が等圧線を横切る角の上限 [rad]。湿度の風は中緯度で摩擦が作る角(45° で 30°)そのものに取る。
 // 熱帯では大きな流入角を切り、台風のまわりで粒が放射状の筋に引かれるのを止める。
-const SURFACE_WIND_CROSSING_LIMIT = (30 * (Math.PI / 180));
+const SURFACE_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(30);
 
 // 単位方向における天気。焼き込んだ写しを経由せずその場で解く純関数 — 同じ方向・時刻・
 // 入力には同じ値が返る。

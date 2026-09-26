@@ -6,12 +6,10 @@ import type { CloudEventMaterialCohorts, CloudIceMaterialCohort, CloudMaterialTr
 import { sampleConvectiveCloudEvents } from '../../src/game/cloud/cloud-events';
 import {
   depositCloudEventMaterialCohorts,
+  type CloudEventFootprintShape,
+  type CloudEventFootprintShapes,
   type CloudEventTangentChart,
 } from '../../src/game/cloud/cloud-event-local-deposition';
-import type {
-  CloudEventFootprintShape,
-  CloudEventFootprintShapes,
-} from '../../src/game/cloud/cloud-event-deposition';
 import type { CloudFootprintGrid } from '../../src/game/cloud/cloud-footprint-overlap';
 import type { CloudMassGrid } from '../../src/game/cloud/cloud-mass-deposition';
 import { extinctionFromCloudMass } from '../../src/game/cloud/cloud-mass-extinction';

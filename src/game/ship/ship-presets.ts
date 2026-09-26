@@ -8,13 +8,12 @@ function instance(catalog: ShipModuleCatalog, definitionId: string, id: string, 
 }
 
 function addSideEquipment(assembly: ShipAssembly, catalog: ShipModuleCatalog): void {
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'cockpit', 'side:-x');
-  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'cockpit', 'side:+x');
-  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-left'), 'cockpit', 'side:+y');
-  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'cockpit', 'side:-y');
+  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-left'), 'main-tank', 'side:-x');
+  assembly.connectSide(instance(catalog, 'solar-panel-standard', 'solar-right'), 'main-tank', 'side:+x');
+  assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator'), 'main-tank', 'side:-y');
 }
 
-// 標準戦闘艦プリセットを構築する（諸元: HP 1,000、満載質量 1,000 kg、推力 400 kN、発電 1,650 W、放熱面積 9.6 m²、弾速 1,000 m/s）。
+// 標準戦闘艦プリセットを構築する（諸元: HP 950、満載質量 990 kg、推力 400 kN、発電 1,650 W、放熱面積 4.8 m²、弾速 1,000 m/s）。
 export function createDefaultCombatPreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALOG): ShipAssembly {
   const assembly = new ShipAssembly(catalog, true);
   assembly.addRoot(instance(catalog, 'cockpit-standard', 'cockpit'));

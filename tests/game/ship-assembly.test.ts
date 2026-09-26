@@ -16,22 +16,31 @@ function module(definitionId: string, id: string, state = {}) {
 }
 
 export function register(): void {
-  test('ship assembly: 既定戦闘船は既存の HP と性能、質量を保つ', () => {
+  test('ship assembly: 既定戦闘船は規定の HP と性能、質量を持つ', () => {
     const assembly = createDefaultCombatPreset();
     const totals = assembly.totals();
     assert.equal(assembly.role, 'ship');
-    assert.equal(totals.hp, 1_000);
-    assert.equal(totals.maxHp, 1_000);
+    assert.equal(totals.hp, 950);
+    assert.equal(totals.maxHp, 950);
     assert.equal(totals.thrust, 400_000);
     assert.equal(totals.torque, 24_000);
     assert.equal(totals.power, 1_650);
-    assert.equal(totals.radiation, 9.6);
+    assert.equal(totals.radiation, 4.8);
     assert.equal(totals.weaponDamage, 1);
     assert.equal(totals.fireRate, 1 / 0.06);
     assert.equal(totals.muzzleVelocity, 1_000);
     assert.equal(totals.mainFuel, 1_000);
-    assert.equal(totals.mass, 1_000);
-    assert.equal(totals.dryMass, 400);
+    assert.equal(totals.mass, 990);
+    assert.equal(totals.dryMass, 390);
+    const solarLeft = assembly.graph.find(edge => edge.childId === 'solar-left');
+    const solarRight = assembly.graph.find(edge => edge.childId === 'solar-right');
+    const radiator = assembly.graph.find(edge => edge.childId === 'radiator');
+    assert.equal(solarLeft?.parentId, 'main-tank');
+    assert.equal(solarLeft?.sideSlot, 'side:-x');
+    assert.equal(solarRight?.parentId, 'main-tank');
+    assert.equal(solarRight?.sideSlot, 'side:+x');
+    assert.equal(radiator?.parentId, 'main-tank');
+    assert.equal(radiator?.sideSlot, 'side:-y');
     assert.equal(assembly.validate().valid, true);
   });
 

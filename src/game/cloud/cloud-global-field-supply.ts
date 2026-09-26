@@ -18,12 +18,7 @@ import {
   type CloudEquirectDepositionTarget,
   type CloudEventEquirectDeposition,
 } from './cloud-event-equirect-deposition';
-import {
-  CLOUD_MASS_LAYER_EDGES_M, CONVECTIVE_POTENTIAL_MIN, CONVECTIVE_POTENTIAL_RANGE,
-  convectiveCellSupplyValues,
-} from './convective-cell-supply';
 import type { Vec3 } from '../../math/vec3';
-import type { CloudGlobalMassField } from '../../render/cloud/global-mass-field';
 import type { CloudEnvironmentProfile } from './cloud-environment';
 import type { ConvectiveCloudCell, ConvectiveCloudEvent } from './cloud-events';
 import type {
@@ -32,6 +27,8 @@ import type {
 import type { CloudEventAreas } from './cloud-event-area-closure';
 import type { CloudMassGrid, CloudMassPhase } from './cloud-mass-deposition';
 
+// 高度層の境界 [m]。局所場と同じ層分けで、全球の質量場も同じ高さへ載せる。
+const LAYER_EDGES_M = [0, 1_500, 4_000, 7_000, 10_000] as const;
 // イベントセルの目標間隔 [m]。低気圧・前線・ITCZ のスケールより細かく、全球で
 // 数千イベントに収まる間隔として取る。
 const EVENT_CELL_SPACING_M = 450e3;
@@ -43,6 +40,13 @@ const MAX_EVENT_COUNT = 40_000;
 const MAX_OMITTED_MASS_KG_M2 = 1.0;
 const TRANSPORT_STEP_SECONDS = 900;
 const ICE_COHORT_COUNT = 8;
+// 0°C の水の蒸発潜熱 [J/kg]。地表の潜熱フラックスをそのまま対流の水供給率へ換算する近似。
+const LATENT_HEAT_VAPORIZATION_J_PER_KG = 2.501e6;
+const MIN_CONVECTIVE_DURATION_SECONDS = 900;
+const MAX_CONVECTIVE_DURATION_SECONDS = 7_200;
+// セルの対流ポテンシャルの幅。均一格子にしないため seed とセル番号から散らす。
+const CONVECTIVE_POTENTIAL_MIN = 0.05;
+const CONVECTIVE_POTENTIAL_RANGE = 0.8;
 
 function requireFinite(value: number, name: string): void {
   if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite`);
@@ -51,6 +55,21 @@ function requireFinite(value: number, name: string): void {
 function requirePositive(value: number, name: string): void {
   requireFinite(value, name);
   if (value <= 0) throw new RangeError(`${name} must be positive`);
+}
+
+function clamp(value: number, low: number, high: number): number {
+  return Math.min(Math.max(value, low), high);
+}
+
+// 全球の層別・相別の列質量場。セル (row, column) は正距円筒の行優先で、層 l の値は
+// 配列の l·width·height + row·width + column 番目にある [kg/m²]。
+export interface CloudGlobalMassField {
+  readonly width: number;
+  readonly height: number;
+  readonly sphereRadiusM: number;
+  readonly layerEdgesM: readonly number[];
+  readonly liquidKgM2: Float64Array;
+  readonly iceKgM2: Float64Array;
 }
 
 // derive が返す質量場と、質量収支の診断値。イベントが供給した質量(相別)は、
@@ -90,6 +109,40 @@ export type CloudGlobalEnvironmentAt = (
   direction: Vec3,
   timeSeconds: number,
 ) => CloudEnvironmentProfile;
+
+// 環境プロファイルから、セルへ与える供給系の値を導く。雲底はパーセルの LCL(無ければ境界層
+// の深さ)、氷放出高は平衡高度(無ければプロファイル上端)、供給率は潜熱フラックスの蒸発量換算、
+// 対流の継続時間は雲の深さを CAPE 由来の上昇速度で渡る時間の数倍で近似する。
+function environmentCellValues(environment: CloudEnvironmentProfile): {
+  readonly upperRelativeHumidity: number;
+  readonly liquidSupplyRateKgM2S: number;
+  readonly convectiveDurationSeconds: number;
+  readonly sourceHeightM: number;
+  readonly iceReleaseHeightM: number;
+} {
+  const topEdgeM = LAYER_EDGES_M[LAYER_EDGES_M.length - 1]!;
+  const parcel = environment.parcel;
+  const cloudBaseM = clamp(
+    parcel.lclHeightM ?? environment.boundaryLayer.depthM, LAYER_EDGES_M[0]!, topEdgeM - 1);
+  const releaseM = clamp(
+    parcel.equilibriumHeightM ?? environment.levels[environment.levels.length - 1]!.heightM,
+    LAYER_EDGES_M[0]!, topEdgeM - 1);
+  const updraftMPerS = Math.sqrt(2 * Math.max(0, parcel.capeJPerKg));
+  // 上昇流で雲の深さを渡る時間の約4倍を対流の一生とみなす。CAPE が小さい環境では
+  // 供給の細い短命なイベントだけが残る。
+  const convectiveDurationSeconds = updraftMPerS >= 0.5 && releaseM > cloudBaseM
+    ? clamp(4 * (releaseM - cloudBaseM) / updraftMPerS,
+      MIN_CONVECTIVE_DURATION_SECONDS, MAX_CONVECTIVE_DURATION_SECONDS)
+    : MIN_CONVECTIVE_DURATION_SECONDS;
+  return {
+    upperRelativeHumidity: clamp(environment.upperIceMoistureFactor, 0, 1),
+    liquidSupplyRateKgM2S: environment.surfaceLatentHeatFluxWPerM2
+      / LATENT_HEAT_VAPORIZATION_J_PER_KG,
+    convectiveDurationSeconds,
+    sourceHeightM: cloudBaseM,
+    iceReleaseHeightM: releaseM,
+  };
+}
 
 // 緯度帯1本のイベントセル配置。帯の中心緯度と、その周へ等間隔に置くセル数を持つ。
 interface GlobalEventCellBand {
@@ -237,7 +290,7 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
   private stepCell(): void {
     const band = this.bands[this.bandIndex]!;
     const direction = cellDirectionAt(band.latitudeRad, this.columnIndex, band.cellCount);
-    const values = convectiveCellSupplyValues(
+    const values = environmentCellValues(
       this.environmentAt(direction, this.displayTimeSeconds));
     // セルの乱数列。対流ポテンシャルと出生位相を別の引きで取る — 出生位相を置かないと
     // 全セルが同じ epoch で生まれ、寿命が間隔より短いイベントは全球で同時に消える。
@@ -332,8 +385,8 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
         cells[row * this.gridWidth + column] = { areaM2 };
       }
     }
-    const layerCount = CLOUD_MASS_LAYER_EDGES_M.length - 1;
-    const massGrid: CloudMassGrid = { cells, layerEdgesM: CLOUD_MASS_LAYER_EDGES_M };
+    const layerCount = LAYER_EDGES_M.length - 1;
+    const massGrid: CloudMassGrid = { cells, layerEdgesM: LAYER_EDGES_M };
     return {
       grid,
       massGrid,
@@ -392,7 +445,7 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
   // 末尾で1回照合する。畳み込みがセルを取りこぼすとここで検出する。
   private verifyMassBalance(work: GlobalFieldDepositionState): void {
     const cellCount = this.gridWidth * this.gridHeight;
-    const layerCount = CLOUD_MASS_LAYER_EDGES_M.length - 1;
+    const layerCount = LAYER_EDGES_M.length - 1;
     const deposited: Record<CloudMassPhase, number> = { liquid: 0, ice: 0 };
     for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
       const base = layerIndex * cellCount;
@@ -421,7 +474,7 @@ class ConvectiveCloudGlobalFieldJob implements CloudGlobalFieldJob {
         width: this.gridWidth,
         height: this.gridHeight,
         sphereRadiusM: this.sphereRadiusM,
-        layerEdgesM: CLOUD_MASS_LAYER_EDGES_M,
+        layerEdgesM: LAYER_EDGES_M,
         liquidKgM2: work.liquidKgM2,
         iceKgM2: work.iceKgM2,
       },

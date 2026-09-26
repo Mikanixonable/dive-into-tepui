@@ -1,7 +1,7 @@
 # 気象過程に基づく地球の雲モデル改修計画（第二版・改訂）
 
 - 作成日: 2026-09-22／今回改訂: 2026-09-26
-- 状態: 2026-09-27 時点で Step 3A/3B の共通局所光学場・製品供給・面積閉包・三経路接続、Step 4/5 の形態基盤(寿命ゆらぎ・娘イベント・楕円footprint・重力波)、Step 6 の全球被覆(環境モデル・equirect質量場・新sourceで生成雲を差し替え)、Step 7 の旧GPU天気経路撤去(13ファイル・参照0件)まで実施。残タスク(被覆→光学深写像・気候学的粗さ・観測評価・性能計測)は末尾の「残る未達」へ記録。全体完成ではない
+- 状態: 2026-09-26 時点で参照原本の取得・受領監査、Step 1・2 の診断基盤、Step 3A の局所タイル・相別GPU搬送・実イベント場の共通局所光学場契約と GPU 数値一致・三描画経路の共通 binding 接続まで実施。以下の改訂ゲートで続行中であり、全体完成ではない
 - 対象: 地球の生成雲、観測雲 adapter、雲の地表・大気・影描画、雲ラボ・描画ラボ
 
 ## 実施記録（2026-09-26 時点の履歴）
@@ -13,11 +13,7 @@
 | Step 1 | 雲の期待する振る舞いを `DEVELOP/SPEC/RENDERING.md` に先行確定。C1〜C9 の制御入力と指標宣言、参照 manifest・距離関数・分割検証、雲／描画ラボの固定系列撮影を追加。GOES ABI の必須9ケース・405枠・2430 NetCDF を受領し、hash・枠網羅・投影・領域 QC を実施。COD には実太陽角 mask、枠別支持域、地域 bbox の部分画素面積診断と COD/ACM 画素境界の整列検証を追加 | COD/ACM の最終面積重複・雲頂視差・必要フレーム支持域、VIIRS L2 原本、独立系列の数値分布と絶対許容域、動画、全フレーム B0 |
 | Step 2 | 物理層に飽和・混相・仮温度・parcel 浮力／CAPE/CIN・粒径／光学厚・球面移流の閉包を追加。表示導出層に環境診断、質量収支付きイベント再構成、有限面積 overlap の相別・層別質量分配、局所接平面の円形 footprint と格子の解析交差、球面位置・明示的な供給元/現在の面積から局所場へ分配する診断 adapter、質量から消散係数への変換、層別の CPU 三次元光路積分を追加。高度・時刻依存の球面 parcel 輸送と C1〜C7 の対応済み CPU 診断を実行。source/footprint 面積を CAPE・浮力振動数・鉛直シア・昇華寿命から導く `deriveCloudEventAreas` 閉包を追加し、製品局所場の供給へ接続 | 塔／かなとこの形状・放出群の全軌跡、C1 の製品空間質量、寿命の観測校正、GPU 候補との誤差、冷キャッシュ費用、C2〜C9 の全量的許容域、閉包係数の観測校正(現状は次数のバルク推定)。C8/C9 は全項目 blocked |
 | Step 3A | 共通 sampler に局所タイル契約と render-lab 限定 4 MiB 供給源を追加。200 km の 2 km・4方向画面応答と周波数 sweep を測定し、絶対値タイルの円形継ぎ目を残差方式で改善。三描画経路の 2D 被覆接続、250 km の 864×486 診断画面応答、生成／実写 source 隔離、M4 Pro の暖機・冷交換を診断。相別・多層 RG32F 配列テクスチャの合成場と、実イベントを相別・層別に分配した診断場を WebGPU で実標本。合成場の9点で PNG 経由の GPU/CPU 標本を照合し、実イベント場の RG16F CPU 量子化候補を評価。M4 Pro の raw GPU 読み戻しで RG32F/RG16F とも実イベント全層の upload bit 一致を確認。`CloudLocalFieldFrame`/`Binding`/`Sampler` の共通局所光学場契約(log-map・層選択・球殻+円錐の中点積分)を新設し、三描画経路が同じ binding を読む形へ接続。実イベント場の点標本・光路を float render target から実測し、位置誤差 0.0038 m・消散誤差 1.24e-14・τ 誤差 4.36e-6 で同規則 CPU 参照と一致。診断注入場の撮影ペアで地表・大気経路の視覚到達を確認。`ConvectiveCloudLocalFieldSupply` + `CloudLocalFieldBaker` で製品の生成経路へ接続し(環境→セル導出・イベント→堆積→消散の実パイプライン、再焼条件と体積寿命を持つ)、source/footprint 面積を CAPE・シア・昇華寿命から導く `deriveCloudEventAreas` 閉包へ置き換え。製品経路の場が診断注入なしで画面へ出ることを確認 | 環境プロファイルの空間変化(単一プロファイル近似)、derive のメインスレッド費用(~245 ms)、250 km 製品 medium の4標本、最終 GPU／メモリ予算、形態側の多層密度、大気経路の局所 τ が殻イベントを踏む視線へ限定した近似。残差方式の暫定 5 ms はノイズ込みで判定保留、実 GPU allocation と full-frame B0 は未測定 |
-| Step 3B | 製品供給を `ConvectiveCloudLocalFieldSupply` + `CloudLocalFieldBaker` で接続。環境は方向ごとの `environmentAt`(緯度+気候)へ。`deriveCloudEventAreas` で footprint 面積を物理閉包へ。焼き込み統計と寿命計測(6 ms/frame 分割ジョブ)、C9 二円盤 fixture 16 項目通過 | 娘イベントの製品配線、大気経路の局所 τ が殻イベントを踏む視線への近似、製品 250 km・medium の 4 標本、実 allocation・全フレーム B0 |
-| Step 4 | イベント寿命を `lifecycle` で散らし(供給率・継続時間・氷収率・上層湿度、0.5〜1.5 倍)、冷気外出流→娘イベントを `CloudEventDomain.outflow` へ実装(有界世代)。footprint を `CloudFootprintEllipse` へ拡張し、シア・かなとこ風下へ伸びる形へ | 塔の形状・上層巻雲の直接生成、地形の下流応答、観測校正 |
-| Step 5 | 重力波変位を `cloudGravityWaveFieldFromEnvironment`/`displaceCloudMassByWave` で場へ接続(位相速度と物質風は分離、質量保存)。地球環境の波源は |φ| 20–60° の湿潤中層 | 開/閉海洋セル・前線帯の独立形態、波の位相ごとの凝結・蒸発、C7/C8 の量的許容域未固定 |
-| Step 6 | 全球環境モデル(気圧・気団・渦・地形の CPU 天気評価)と equirect 堆積受け皿を実装。`ConvectiveCloudGlobalFieldSupply` が 2555 セル・~4660 イベント/日窓で全球質量場を組み、`MeteorologicalCloudField` が `CloudFieldSource` として cap へ再投影。生成雲の主経路を旧 `GeneratedCloudField` から差し替え。出生同期枯渇と equirect 列挙漏れを修正して disk whitish 25.5% に到達 | 被覆率の気候学的な粗さ(実写 ~49%)、全球場の解像度依存、CPU 天気評価で未畳みの循環ノイズ・移流湿度、観測評価(C7/C8 未固定)、季節・日変化 |
-| Step 7 | 旧 GPU 天気経路 13 ファイルを撤去(weather-model/weather-transport/air-mass/wind-law/cyclones/rossby-wave/convective-activity/circulating-noise/circulation/condensation/generated-cloud-field/cloud-field + explainer)。CPU 評価関数を `src/game/cloud/` へ移設。`TRANSLUCENT_LIMIT`・`ADVECTION_PERIOD`・旧 `condense` を消去。lab を新 source へ切替。雲コード全体へ refactor+comment-cleanup(重複簿記の共通モジュール化・THREE 依存削減・日本語コメント) | `cloud-optics-node.ts` の被覆→光学深一対一写像は生存の影・大気経路が使用中のため残置(消費側再設計が別計画) |
+| Step 3B〜7 | 未着手 | 共通多層密度・光学、形態全種、観測評価、旧生成経路の撤去 |
 
 Step 2 のラボ撮影は48枚。Step 1 と同条件の48枚は SHA-256 が全一致した。ラボの `measureFixture` は CPU 診断の値・基準・許容差・`pass/fail/blocked` を返すが、撮影 manifest の `generatedCloudImageFixtureApplied` は `false` であり、これらの画像を新モデルの視覚検証に数えない。現行の生成雲に残る固定周期移流などの旧経路は、Step 3 以降に新契約へ接続してから撤去する。
 
