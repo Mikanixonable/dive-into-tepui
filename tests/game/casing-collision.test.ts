@@ -30,11 +30,18 @@ export function register(): void {
 
   test('casing-collision: 外接球が触れうる近傍で実際に触れる薬莢ペアは接触結果を返す', () => {
     const a = casingMotion(state(0, 0, 0));
-    const b = casingMotion(state(0.3, 0, 0)); // 半径0.231の2倍以下で触れる
+    const b = casingMotion(state(0.1, 0, 0)); // 表示半径0.066mの2倍より近い
 
     const hit = casingEntityCollision(a, b, a.state, b.state);
     assert.notEqual(hit, null);
     assert.ok((hit?.pushOut ?? 0) > 0);
+  });
+
+  test('casing-collision: 外接球内でも薬莢の半径和を超える横ずれは接触しない', () => {
+    const a = casingMotion(state(0, 0, 0));
+    const b = casingMotion(state(0.14, 0, 0)); // 0.14m > 2 * 0.066m
+
+    assert.equal(casingEntityCollision(a, b, a.state, b.state), null);
   });
 
   test('casing-collision: 掃引区間で外接球が触れないペアはカプセル判定を呼ばず早期棄却する', () => {
