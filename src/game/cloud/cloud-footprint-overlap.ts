@@ -155,7 +155,10 @@ export function cloudFootprintOverlap(
         circle, leftM, bottomM, leftM + grid.cellWidthM, bottomM + grid.cellHeightM,
       );
       const geometricAreaLimitM2 = Math.min(grid.cellWidthM * grid.cellHeightM, footprintAreaM2);
-      const roundingToleranceM2 = 32 * Number.EPSILON * Math.max(rawAreaM2, geometricAreaLimitM2);
+      // 中間量は半径の二乗のスケールまで膨らむ(rootTailIntegralM2 の差し引き)ので、
+      // 丸めの許容差にもそれを含める。
+      const roundingToleranceM2 = 32 * Number.EPSILON * Math.max(
+        rawAreaM2, geometricAreaLimitM2, circle.radiusM * circle.radiusM);
       if (rawAreaM2 - geometricAreaLimitM2 > roundingToleranceM2) {
         throw new RangeError('circle-rectangle overlap exceeds its geometric area limit');
       }
