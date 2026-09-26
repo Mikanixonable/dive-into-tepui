@@ -1166,14 +1166,15 @@ def build_hull_junction(mats, half_len):
         ], bevel=0.005), mats.clamp)
         # 座板の中央から台座の下端へ斜めに開いた脚
         foot = saddle_top(tc) + Vector((xc, 0.0, 0.0))
-        top = Vector((foot.x, foot.y, 0.0)).normalized() * 0.50 + Vector((0.0, 0.0, 0.10))
+        top = Vector((foot.x, foot.y, 0.0)).normalized() * 0.33 + Vector((0.0, 0.0, 0.10))
         add_mesh_obj(f"mount_leg:{index}", make_strut(foot, top, 0.065, segments=12), mats.truss)
         add_mesh_obj(f"mount_leg_foot:{index}", make_sphere(0.085, center=foot, u_seg=12, v_seg=8), mats.clamp)
-    # 機構を載せる台座。脚が届く下端だけ太く、上は駆動ドラムへ吸い込まれる細い柱
+    # 機構を載せる台座。円盤を受ける形を名残なくすため円形ではなく角柱で、
+    # 脚が届く下端だけ太く、上は駆動ドラムへ吸い込まれる細い四角錐台
     add_mesh_obj("mount_pedestal", make_lathe([
         (0.0, 0.00), (0.58, 0.00), (0.60, 0.04), (0.50, 0.08),
         (0.50, 0.30), (0.46, 0.36), (0.46, half_len - 0.06), (0.0, half_len - 0.06),
-    ], segments=48, closed=True), mats.hull_dark)
+    ], segments=4, closed=True, sharp_angle_deg=0.0), mats.hull_dark)
 
 def build_solar_mount(mats, half_len, thickness):
     """レースリング軸受と根元ヒンジの駆動部。パネル列の根元ヒンジ(panel-hinge)はモジュール軸上の
@@ -1647,6 +1648,21 @@ def build_weapon(name):
         bm_bolt = make_cylinder(0.035, 0.035, 0.05, z_center=0.0, segments=10)
         transform_bm(bm_bolt, Matrix.Translation(Vector((face_x - 0.06, drum_y + 0.30 * math.cos(ba), drum_z + 0.30 * math.sin(ba)))) @ drum_rot)
         add_mesh_obj(f"feed_drum_bolt_{t}", bm_bolt, mats.clamp, parent=drum_anchor)
+
+    # 開口の下縁を走る案内爪(フィードシュー)。送りにつれて塔の中(-X)へ踏み込み、リンクを
+    # 引き込む爪として往復する。anchor の局所 +Z が摺動方向。
+    shoe_x, shoe_y, shoe_z = face_x - 0.14, fy - 0.50, 0.36
+    shoe = add_anchor("feed-shoe", (shoe_x, shoe_y, shoe_z), direction=(-1.0, 0.0, 0.0))
+    add_mesh_obj("feed_shoe_body", make_box(0.55, 0.16, 0.85,
+        center=(shoe_x, shoe_y, shoe_z), bevel=0.03), mats.gun_steel, parent=shoe)
+    add_mesh_obj("feed_shoe_claw", make_box(0.10, 0.26, 0.10,
+        center=(shoe_x + 0.18, shoe_y + 0.14, shoe_z + 0.30), rot_euler=(0.0, -0.45, 0.0), bevel=0.02),
+        mats.clamp, parent=shoe)
+    # 爪が乗る案内レール(摺動しない側)
+    add_mesh_obj("feed_shoe_rail", make_box(0.80, 0.05, 0.10,
+        center=(shoe_x - 0.10, shoe_y - 0.10, shoe_z - 0.40)), mats.hull_dark)
+    add_mesh_obj("feed_shoe_rail_2", make_box(0.80, 0.05, 0.10,
+        center=(shoe_x - 0.10, shoe_y - 0.10, shoe_z + 0.40)), mats.hull_dark)
 
     # 空になったリンクの排出口(-X 側の暗い開口)
     add_mesh_obj("feed_exit_port", make_box(0.02, 1.20, 1.30, center=(tower_x0 - 0.01, fy, 0.30)), mats.recessed)

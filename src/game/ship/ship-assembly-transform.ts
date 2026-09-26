@@ -1,5 +1,5 @@
 import {
-  qNormalize, type Quat,
+  qFromAxisAngle, qMul, qNormalize, type Quat,
 } from '../../math/quat';
 import { v3, type Vec3 } from '../../math/vec3';
 import type { ShipModuleDefinition } from './ship-module-definition';
@@ -61,13 +61,18 @@ export function sideMountTransform(
   parent: ShipModuleDefinition, child: ShipModuleDefinition, slot: SideSlot,
 ): ModuleTransform {
   const direction = sideSlotDirection(slot);
+  // 翼面を持つモジュールは、負側スロットへ付くと外向き軸まわりに反転して面が逆を向く。
+  // どちら側へ付けても面の向きを揃えるため、負側では取付面まわりに180度ロールを足す。
+  const roll = (child.kind === 'solar_panel' || child.kind === 'radiator')
+    && (slot === 'side:-x' || slot === 'side:-y')
+    ? qFromAxisAngle(v3(0, 0, 1), Math.PI) : { x: 0, y: 0, z: 0, w: 1 };
   return {
     position: v3(
       direction.x * (parent.diameter / 2 + child.length / 2),
       direction.y * (parent.diameter / 2 + child.length / 2),
       0,
     ),
-    rotation: sideSlotRotation(slot),
+    rotation: qMul(sideSlotRotation(slot), roll),
   };
 }
 
