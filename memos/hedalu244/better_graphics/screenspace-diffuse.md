@@ -103,9 +103,13 @@
      同じく 1/10 以下。満たさなければ B₂ を B とし、歩数をさらに倍にして繰り返す。打ち切りの予算を越えるなら
      1 パスのスライスを半分にしてパスを倍にする（比べる 2 つは同じ 1 パスのスライス数で）。
   残りの撮影の半分どうしの差の G も、追加の撮影なしに出るので表に並べる。
-- **表示は 8 bit へ丸める前の float で積む。** PNG を平均すると、丸めの偏り（最大 0.5 LSB、Oklab の L で約 0.002）
-  が 1 パスの分散に依って変わり、1 パスの設定の違う B どうしの差に等輝度線の弧と筋として出る。これは収束の条件の
-  閾（中設定の G の 1/10 ≈ 0.0016）と同じ大きさで、半分どうしの差には出ない（判断材料）。候補は画面と同じ PNG で撮る。
+- **B は平均の表示であって、表示の平均ではない。** パスで平均するのは合成前の線形の輝度（HDR。補正に対して線形）で、
+  その平均へ本番の合成（露出・トーンマップ・色の LUT・出力の色空間）を 1 回掛け、8 bit へ丸める前の float で読む。
+  表示は非線形なので、表示を平均すると 1 パスの分散に依る偏りと 8 bit の丸めの偏り（最大 0.5 LSB、Oklab の L で約 0.002）
+  が残って収束先が 1 パスの設定で動き、等輝度線の弧と筋として出る。これは収束の条件の閾（中設定の G の 1/10 ≈ 0.0016）と
+  同じ大きさで、半分どうしの差には出ない（判断材料）。候補は画面と同じ PNG で撮る。
+- 評価では描画設定の antialias（SMAA）を切る — 8 bit の表示に掛かって誤差を縁の向こうへ混ぜ、B の合成にも掛からない
+  （レンズ効果を切るのと同じ理由）。
 - **再現手順**（推定量を変えて B を作り直すたびに、この順で。`<名前>` は作ったコミットの短いハッシュ）:
   1. `node tools/render-lab-screen-space-metrics.mjs reference --name <名前> --entries bay --slices <S> --steps <T> --passes <N>`
   2. `node tools/render-lab-screen-space-metrics.mjs reference --name <名前>-steps2x --entries bay --slices <S> --steps <2T> --passes <N>`
@@ -680,8 +684,10 @@ voxel cone tracing（Crassin 2011）の前から奥への合成 `c ← c + (1 �
   対する 2 次元の割合）。`src/render/pipeline/screen-space/screen-space-pass.ts` — seed を vec2 の uniform にし、
   `setSeed(x: number, y: number): void`。回転・歩みのずれ・丸めのずれの 3 つの読みは、いまと同じく seed に
   (0, 0)・(½, ½)・(27/64, 27/64) を足した位置。seed (0, 0) で本番とビット一致。render-lab の `setScanSeed(x, y)` も同じ形。
-- `tools/render-lab/lab.ts` — 撮影と同じ絵を、8 bit へ丸める前の線形 sRGB の float で読み戻す口（PNG の撮影は
-  変えない）。
+- `src/render/pipeline/render-pipeline.ts` — 直前の `render` と同じ合成で、与えた HDR を与えた target へ描く口
+  `renderComposite(hdr: THREE.Texture, target: THREE.RenderTarget): void`（render-lab が基準を作るためのもの。
+  `render` の経路は変えない）。`tools/render-lab/lab.ts` — HDR の読み戻しと、平均した HDR をこの口で float の target へ
+  合成して読む口（PNG の撮影は変えない）。
 - `tools/screen-space-lab.mjs` — `seedOf(k: number): [number, number]`（R2 列、64 × 64 の格子で重複なし）。
   基準の置き場を、撮影ごとの半分ずつの和とパス数へ。
 - `tools/render-lab-screen-space-metrics.mjs` — `reference --name <名前> [--entries <key,...>] [--sets <set,...>]
@@ -700,7 +706,7 @@ voxel cone tracing（Crassin 2011）の前から奥への合成 `c ← c + (1 �
   に収まる。seed を変えると絵が変わり、(0, 0) へ戻すとビット一致で戻る。
 - B の収束（K1）: `bay` で雑音と歩数の条件を満たす最小の（1 パスのスライス, 歩数, パス数）と、1 パス・1 撮影の
   所要を記録する。その値で全撮影の B を作り、撮影ごとの半分どうしの差の G を表に並べる。PNG で積んだ試し
-  （判断材料）は丸めの偏りで判定できなかったので、表示を float で積む口を render-lab に足し、1 パス 4 スライス ×
+  （判断材料）は丸めの偏りで判定できなかったので、HDR を積んで平均を合成する形にし、1 パス 4 スライス ×
   256 パスの歩数 32 と 64、8 スライス × 128 パスの歩数 32 を撮り直して判定する。
 - B と W = 1 の B（一時版、commit しない。`reference --name <ハッシュ>-w1`）の P_in / P_out と解析値の差を表に
   する。小天体（moon-open）の偏りが B でも残るかをここで確かめ、残るなら手順4で扱う（W = 1 で歩数を増やすと
