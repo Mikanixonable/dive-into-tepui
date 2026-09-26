@@ -117,10 +117,14 @@ export class Run implements SnapshotSource, PerfCountSource {
   // 天体表面の分割段のように導出と同期が決めるまで現れない表示物が、事前コンパイルから漏れる。
   private async warmUp(graphics: GraphicsSettingsData, style: RenderStyle, progress: LoadingProgress): Promise<void> {
     const viewport = this.devices.scene.viewport;
+    const prepareRenderResources = document.documentElement.dataset.layoutSmokeFreeze !== 'true';
     // 進行を通すと、読み込んだ記録が保存した瞬間の状態から続かなくなる(SAVE.md「保存される内容」)。
     this.deriveAfterProgress(0, viewport);
-    this.presentation.sync(graphics, style, viewport, 0);
+    this.presentation.sync(graphics, style, viewport, 0, prepareRenderResources);
     await progress.enter('shaders');
+    // layout smoke は HUD/DOM の幾何だけを検査する。ソフトウェア WebGPU で新しい雲シェーダを
+    // compile/render することは検査対象ではなく、起動待ちを性能試験に変えてしまうので省く。
+    if (!prepareRenderResources) return;
     await this.presentation.compile(style, progress);
     // 出力段の階調変換は three が実際に描いたときにしか組まないので、捨てる 1 フレームで組ませる。
     this.presentation.render(style);
