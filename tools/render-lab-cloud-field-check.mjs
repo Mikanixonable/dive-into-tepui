@@ -1,6 +1,6 @@
 // 全球雲場(MeteorologicalCloudField)の視覚検証。render-lab の earth ケースを駆動し、
 // 全球場の初回ジョブが完成するまで暖機してから、全球・中距離・近距離の構図と
-// 新経路/実写/旧経路(WeatherModel)の比較を撮る。PNG と画素統計を
+// 生成(気象モデル)/実写の比較を撮る。PNG と画素統計を
 // .render-lab-shots/cloud-field-check/ へ書く。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -257,9 +257,8 @@ async function main() {
       earthLongitudeDeg: report.globalField.maxCoverageLongitudeDeg,
     }));
 
-    // 3経路の比較。同じ構図・同じ時刻で、新経路(生成=気象モデル)・実写・旧経路(生成=
-    // WeatherModel)を並べる。実写との差は分布の出どころが別なので参考、旧経路との差は
-    // 主経路の切り替えの直接の効果。
+    // 生成(気象モデル)と実写の比較。同じ構図・同じ時刻で、生成雲と実写を並べる。
+    // 実写との差は分布の出どころが別なので参考。
     // 出どころを切り替えたあと、その場が届いて焼き直されるまで待つ。世代は焼き直しごとに
     // 進むので、切り替え直後の世代から +1 で「少なくとも1回焼いた」、+2 で「届いた画像を
     // 含む焼き直しが済んだ」目安になる(最初の焼き直しに届いた画像が間に合った場合は +1 で
@@ -285,7 +284,6 @@ async function main() {
     const compareAt = async (tag, view, circle) => {
       await devTools.evaluate(`window.renderLab.setView(${JSON.stringify(view)})`);
       await devTools.evaluate('window.renderLab.setGraphicsOption("cloudFieldSource", "generated")');
-      await devTools.evaluate('window.renderLab.setGeneratedFieldKind("meteorological")');
       const pngNew = (await captureSettled(`${tag}-new`)).png;
       await statsFor(`${tag}-new`, pngNew, circle);
 
@@ -295,17 +293,7 @@ async function main() {
       const pngObs = (await captureSettled(`${tag}-observed`)).png;
       await statsFor(`${tag}-observed`, pngObs, circle);
 
-      await devTools.evaluate('window.renderLab.setGraphicsOption("cloudFieldSource", "generated")');
-      await devTools.evaluate('window.renderLab.setGeneratedFieldKind("legacy")');
-      const baseLegacy = await devTools.evaluate('window.renderLab.cloudFieldGeneration()');
-      await waitSourceLoaded(`${tag}-legacy`, baseLegacy);
-      const pngLegacy = (await captureSettled(`${tag}-legacy`)).png;
-      await statsFor(`${tag}-legacy`, pngLegacy, circle);
-      await devTools.evaluate('window.renderLab.setGeneratedFieldKind("meteorological")');
-
       await diffOf(`${tag}-new-vs-observed`, pngNew, pngObs);
-      await diffOf(`${tag}-new-vs-legacy`, pngNew, pngLegacy);
-      await diffOf(`${tag}-observed-vs-legacy`, pngObs, pngLegacy);
     };
     await compareAt('disk', diskView(10, 0), DISK_CIRCLE);
     await compareAt('nadir600', nadirView(600e3, { sunElevationDeg: 10 }));
