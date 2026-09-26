@@ -28,7 +28,6 @@ import {
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import { probeGlobalCloudField, type GlobalCloudFieldProbe } from './global-field-probe';
-import type { GeneratedFieldKind } from './lab-earth';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
@@ -71,7 +70,6 @@ declare global {
       capture: () => Promise<string>;
       show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
-      setGeneratedFieldKind: (kind: GeneratedFieldKind) => void;
       cloudFieldGeneration: () => number;
       probeGlobalField: (displayTimeSeconds: number) => Promise<GlobalCloudFieldProbe>;
       cloudLocalFieldBakeStats: () => unknown;
@@ -290,7 +288,6 @@ async function init(): Promise<void> {
     capture: () => view.capture(),
     show: (name) => { view.show(name); syncAngles(); },
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
-    setGeneratedFieldKind: (kind) => { view.setGeneratedFieldKind(kind); },
     cloudFieldGeneration: () => view.cloudFieldGeneration,
     probeGlobalField: (displayTimeSeconds) => probeGlobalCloudField(displayTimeSeconds),
     cloudLocalFieldBakeStats: () => view.cloudLocalFieldBakeStats,
