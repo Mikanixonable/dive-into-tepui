@@ -47,6 +47,48 @@ function at(object: THREE.Object3D, x: number, y: number, z: number): THREE.Obje
   return object;
 }
 
+// ドック寄り: 側面の建造ドック・ドッキングポートの取付構造と、船首のドッキングポートを
+// 近距離で観察する。機軸を -Z へ向けた素直な姿勢で置き、側面ドックは main-tank の ±x、
+// 上面のポートは +y、船首ポートはコックピット前端へ付く。
+function dock(): LabCase {
+  const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+  assembly.addRoot(module('cockpit-standard', 'cockpit'));
+  assembly.prepend(module('docking-port-standard', 'bow-port'), 'cockpit');
+  assembly.append(module('tank-6-main', 'main-tank'));
+  assembly.connectSide(module('dock-standard', 'dock-left'), 'main-tank', 'side:-x');
+  assembly.connectSide(module('docking-port-standard', 'port-top'), 'main-tank', 'side:+y');
+  const obj = shipObject(assembly);
+  obj.position.set(0, 0, -14);
+  return {
+    objects: [obj],
+    camera: labCamera(),
+    // 側面ドックの取付部(左舷 -x、main-tank 中央)をターゲットに据える。
+    viewTarget: new THREE.Vector3(-3.5, 0, -9.5),
+    shots: {
+      // 側面ドックの取付構造: 左舷の斜め下から、脚と座板が船体曲面へ伏せる様子を見る。
+      'modular-ship-dock-mount': {
+        view: { cameraAzimuthDeg: -105, cameraElevationDeg: -5, cameraDistanceLog: -0.05,
+          sunAzimuthDeg: -70, sunElevationDeg: 40 },
+      },
+      // 船体軸に沿って見る: ポート下面と船体曲面の隙間(浮き)が最も読める向き。
+      'modular-ship-dock-gap': {
+        view: { cameraAzimuthDeg: 170, cameraElevationDeg: 10, cameraDistanceLog: -0.15,
+          sunAzimuthDeg: -85, sunElevationDeg: 45 },
+      },
+      // 結合面の機構: ポート正面から捕捉環・ペタル・気閘を見る。
+      'modular-ship-dock-face': {
+        view: { cameraAzimuthDeg: -85, cameraElevationDeg: 8, cameraDistanceLog: -0.2,
+          sunAzimuthDeg: -75, sunElevationDeg: 20 },
+      },
+      // 船全体: 船首ポートと両側のドックの位置関係を一望する。
+      'modular-ship-dock-wide': {
+        view: { cameraAzimuthDeg: -50, cameraElevationDeg: 20, cameraDistanceLog: 0.45,
+          sunAzimuthDeg: -60, sunElevationDeg: 30 },
+      },
+    },
+  };
+}
+
 // 基地: 船を寄港させた基地と、その右に建造ゴーストと吸着ガイドを置く。
 function base(): LabCase {
   const docked = at(shipObject(dockedPreset()), -7, 0, -42);
@@ -290,6 +332,7 @@ function deployablesStowed(): LabCase {
 }
 
 export const SHIP_CASES = {
+  'modular-ship-dock': dock,
   'modular-ship-base': base,
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,

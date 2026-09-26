@@ -1146,61 +1146,145 @@ def build_rcs_module():
 # ----------------------------------------------------------------------
 # 7. Docking & Decoupler Modules (docking-port, dock, decoupler)
 # ----------------------------------------------------------------------
-def build_docking_mechanism(name, kind):
+# ドッキングポート・建造ドックは直径 3.0 m の周辺結合機構(APAS式)、デカプラーは船体と
+# 同じ 6.0 m 径の分離リング。どちらも +Z 側の結合面が嵌合相手の同じ面へ隙間なく当たる。
+def build_dock_junction(mats, trunk_r):
+    """側面取付で、ポートの幹を船体曲面へ架ける取付構造。船体面へ伏せる座板から
+    斜めに開いた脚が、幹を抱く襟環まで登る。"""
+    add_saddle_pads(mats, DOCK_SADDLE_PADS, DOCK_PAD_HALF_W)
+    for index, (xc, tc) in enumerate(DOCK_SADDLE_PADS):
+        foot = saddle_top(tc) + Vector((xc, 0.0, 0.0))
+        # 座板の中央から襟環へ斜めに開く脚
+        top = Vector((foot.x, foot.y, 0.0)).normalized() * (trunk_r + 0.08) + Vector((0.0, 0.0, -0.06))
+        add_mesh_obj(f"dock_leg:{index}", make_strut(foot, top, 0.06, segments=12), mats.truss)
+        add_mesh_obj(f"dock_leg_foot:{index}", make_sphere(0.085, center=foot, u_seg=12, v_seg=8), mats.clamp)
+    # 脚の先を束ねて幹を抱く襟環
+    add_mesh_obj("dock_collar", make_torus(trunk_r + 0.03, 0.055, z_center=-0.06, major_seg=40, minor_seg=10), mats.clamp)
+
+def build_dock_port(name, kind):
+    """直径 3.0 m・長さ 1.0 m の周辺結合機構。細い幹(気閘のトンネル)が船体へ立ち、その上へ
+    広い機構頭部を載せる。結合面は減衰脚に支えられた捕捉環・3枚の内向きガイドペタル・周囲の
+    構造ラッチ列を持ち、気閘の底に圧力隔壁と照準窓がある。
+    面盤と気閘は1つの回転体で抜く — 嵌め込みの蓋で面を誤魔化さず、共面によるちらつきを残さない。"""
     reset_scene()
     mats = MaterialLibrary()
-    radius = 3.0
-    half_len = 0.5
-    
-    # 1. Main outer structural ring (standard 6.0m diameter)
-    mat_main = mats.dock if kind == 'dock' else mats.hull
+    spec = MANIFEST["modules"][name]
+    radius = spec["diameter"] / 2.0   # 1.5
+    trunk_r = 0.9                   # 幹(トンネルアダプタ)の半径 [m]
+    mat_body = mats.dock if kind == 'dock' else mats.hull
+
+    # 本体: 幹(後端面 z=-0.5、半径 0.9)から肩部へ広がる機構頭部(半径 1.5、面盤 z=0.46)、
+    # その内側へ気閘(床 z=0.28)を抜く、1つの回転体。
+    add_mesh_obj("drum", make_lathe([
+        (0.00, -0.50), (0.84, -0.50), (0.90, -0.44), (0.90, 0.05),
+        (1.05, 0.11), (1.40, 0.17), (1.50, 0.24), (1.50, 0.32),
+        (1.42, 0.40), (1.30, 0.44), (1.30, 0.46), (0.98, 0.46),
+        (0.90, 0.42), (0.90, 0.30), (0.80, 0.28), (0.00, 0.28),
+    ], segments=64, sharp_angle_deg=30.0), mat_body)
+
+    # 気閘の底の圧力隔壁、隔壁ハンドルの輪と中央の照準窓、床のアライメント条
+    add_mesh_obj("dock_hatch", make_cylinder(0.62, 0.62, 0.035, z_center=0.295, segments=36), mats.hull_dark)
+    add_mesh_obj("dock_hatch_wheel", make_torus(0.16, 0.018, z_center=0.345, major_seg=24, minor_seg=8), mats.clamp)
+    add_mesh_obj("dock_hatch_hub", make_cylinder(0.028, 0.028, 0.05, z_center=0.335, segments=12), mats.clamp)
+    add_mesh_obj("dock_window", make_cylinder(0.08, 0.08, 0.02, z_center=0.322, segments=16), mats.window)
+    add_mesh_obj("dock_align_marks", make_boxes([
+        (0.24, 0.035, 0.006, (0.78 * math.cos(a), 0.78 * math.sin(a), 0.281), (0.0, 0.0, a))
+        for a in (0.0, math.pi / 2, math.pi, -math.pi / 2)
+    ], bevel=0.002), mats.dock)
+
+    # 面盤の結合機構: ハードメイト環(名前は契約)・構造ラッチ列・捕捉環とその減衰脚・ガイドペタル
+    # 'interface-ring' の名前と +Z 法線は契約テストが要求する。面盤から盛り上がる環で z<=0.49。
+    add_mesh_obj("interface-ring", make_torus(major_r=1.14, minor_r=0.035, z_center=0.455, major_seg=48, minor_seg=12), mats.cbm_ring)
+    add_mesh_obj("capture_hooks", make_boxes([
+        (0.085, 0.06, 0.045, (1.245 * math.cos(a), 1.245 * math.sin(a), 0.4725), (0.0, 0.0, a))
+        for a in (i * math.pi / 6.0 for i in range(12))
+    ], bevel=0.008), mats.hull_dark)
+
+    # 捕捉環は面盤より先へ浮いた薄い帯環。6本の減衰脚(外筒+ロッド)が肩の面盤から斜めに支える。
+    add_mesh_obj("capture_ring", make_lathe([
+        (0.99, 0.475), (1.11, 0.475), (1.11, 0.49), (0.99, 0.49),
+    ], segments=48, closed=True), mats.cbm_ring)
+    for i in range(6):
+        a = i * math.pi / 3.0 + math.pi / 6.0
+        d = Vector((math.cos(a), math.sin(a), 0.0))
+        # 基部は頭部の肩部(z≈0.375 で表面 r≈1.44)の上、先端は捕捉環の下面へ届く。
+        foot = d * 1.44 + Vector((0.0, 0.0, 0.375))
+        top = d * 1.05 + Vector((0.0, 0.0, 0.478))
+        mid = foot.lerp(top, 0.62)
+        add_mesh_obj(f"ring_strut_sleeve:{i}", make_strut(foot, mid, 0.045, segments=12), mats.pipe)
+        add_mesh_obj(f"ring_strut_rod:{i}", make_strut(mid, top, 0.022, segments=10), mats.pipe)
+        add_mesh_obj(f"strut_joint:{i}", make_sphere(0.05, center=foot, u_seg=10, v_seg=8), mats.clamp)
+
+    # 捕捉環の外縁のキャプチャラッチ(3基)
+    add_mesh_obj("capture_latches", make_boxes([
+        (0.14, 0.07, 0.02, (1.05 * math.cos(a), 1.05 * math.sin(a), 0.488), (0.0, 0.0, a))
+        for a in (i * 2.0 * math.pi / 3.0 + math.pi / 6.0 for i in range(3))
+    ], bevel=0.005), mats.hull_dark)
+
+    # 内向きガイドペタル3枚。気閘の縁に根を張り、先端は z<=0.49 に収める。
+    for p in range(3):
+        ang = p * 2.0 * math.pi / 3.0
+        px = 0.92 * math.cos(ang)
+        py = 0.92 * math.sin(ang)
+        bm_petal = make_box(0.16, 0.10, 0.26, center=(px, py, 0.34), rot_euler=(math.radians(16) * math.sin(ang), -math.radians(16) * math.cos(ang), ang))
+        add_mesh_obj(f"guide_petal_{p}", bm_petal, mats.hull_dark)
+
+    # 幹の取付フランジと締結ボルト(端面取付で端壁へ据わる根元)
+    add_mesh_obj("aft_mount_flange", make_torus(major_r=trunk_r + 0.08, minor_r=0.05, z_center=-0.44, major_seg=40, minor_seg=10), mats.clamp)
+    add_mesh_obj("aft_bolts", make_boxes([
+        (0.06, 0.06, 0.05, (0.76 * math.cos(a), 0.76 * math.sin(a), -0.48), (0.0, 0.0, a))
+        for a in (i * math.pi / 4.0 + math.pi / 8.0 for i in range(8))
+    ], bevel=0.008), mats.clamp)
+
+    # 頭部の断熱パネル境目と識別帯
+    add_mesh_obj("panel_seam_fwd", make_torus(major_r=radius + 0.004, minor_r=0.008, z_center=0.30, major_seg=48, minor_seg=6), mats.hull_dark)
+    add_mesh_obj("panel_seam_trunk", make_torus(major_r=trunk_r + 0.004, minor_r=0.008, z_center=-0.20, major_seg=40, minor_seg=6), mats.hull_dark)
+    add_mesh_obj("dock_stripe", make_torus(major_r=radius + 0.012, minor_r=0.02, z_center=0.24, major_seg=48, minor_seg=6),
+                 mats.dock if kind != 'dock' else mats.clamp)
+
+    # 幹を這うアンビリカル導管と貫通金具(側面取付では船体内部へ吸収される)
+    add_mesh_obj("umbilical_panel", make_box(0.16, 0.10, 0.20, center=(0.80, -0.42, -0.10), rot_euler=(0.0, 0.0, -0.48)), mats.hull_dark)
+    add_mesh_obj("umbilical_duct", make_pipes([
+        [Vector((0.80, -0.44, -0.02)), Vector((0.86, -0.52, -0.32)), Vector((0.80, -0.60, -0.50))],
+    ], radius=0.028, segments=10, bend_radius=0.05), mats.pipe)
+
+    # 側面取付で船体曲面へ架ける座板・脚・襟環(端面取付では母船へ吸収されて見えない)
+    build_dock_junction(mats, trunk_r)
+
+    export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
+
+def build_decoupler(name):
+    """直径 6.0 m・長さ 1.0 m の分離リング。直線状爆薬の切断テープと分離ばねを持つ。"""
+    reset_scene()
+    mats = MaterialLibrary()
+    spec = MANIFEST["modules"][name]
+    radius = spec["diameter"] / 2.0   # 3.0
+
+    # Main outer structural ring (standard 6.0m diameter)
     bm_ring = make_cylinder(radius, radius, 1.0, z_center=0.0, segments=48)
-    add_mesh_obj("ring", bm_ring, mat_main)
+    add_mesh_obj("ring", bm_ring, mats.hull)
 
-    # 2. Recessed Docking Vestibule / Tunnel (+Z forward face)
-    if kind != 'decoupler':
-        bm_tunnel = make_cylinder(2.20, 2.20, 0.20, z_center=0.40, segments=36)
-        add_mesh_obj("dock_tunnel", bm_tunnel, mats.recessed)
-
-        # Internal pressure hatch at bottom of vestibule (z = 0.32m)
-        bm_hatch = make_cylinder(2.05, 2.05, 0.04, z_center=0.32, segments=36)
-        add_mesh_obj("dock_hatch", bm_hatch, mats.hull_dark)
-
-        # Central optical alignment window
-        bm_win = make_cylinder(0.28, 0.28, 0.02, z_center=0.35, segments=16)
-        add_mesh_obj("dock_window", bm_win, mats.window)
-
-    # 3. Interface Ring (CRITICAL: Must have name 'interface-ring' and +Z normal!)
+    # Interface Ring (CRITICAL: Must have name 'interface-ring' and +Z normal!)
     # Torus centered at z=0.44m with minor_r=0.05m (fits strictly within z <= 0.49m)
     bm_int_ring = make_torus(major_r=2.35, minor_r=0.05, z_center=0.44, major_seg=48, minor_seg=12)
     add_mesh_obj("interface-ring", bm_int_ring, mats.cbm_ring)
 
-    # 4. APAS / CBM 3 Guide Petals (120 degrees apart, strictly terminating at z <= 0.49m)
-    if kind != 'decoupler':
-        for p in range(3):
-            ang = p * 2.0 * math.pi / 3.0
-            px = 2.22 * math.cos(ang)
-            py = 2.22 * math.sin(ang)
-            bm_petal = make_box(0.12, 0.35, 0.14, center=(px, py, 0.42), rot_euler=(math.radians(18) * math.sin(ang), -math.radians(18) * math.cos(ang), ang))
-            add_mesh_obj(f"guide_petal_{p}", bm_petal, mats.hull_dark)
-
-    # 5. Aft Hull Mounting Flange (-Z face, structural interface)
+    # Aft Hull Mounting Flange (-Z face, structural interface)
     bm_aft_flange = make_torus(major_r=radius - 0.05, minor_r=0.04, z_center=-0.48, major_seg=48, minor_seg=8)
     add_mesh_obj("aft_mount_flange", bm_aft_flange, mats.clamp)
 
     # Circumferential alignment stripe / warning band on outer hull
     bm_band = make_torus(major_r=radius + 0.015, minor_r=0.025, z_center=0.10, major_seg=48, minor_seg=6)
-    add_mesh_obj("dock_stripe", bm_band, mats.dock if kind != 'dock' else mats.clamp)
+    add_mesh_obj("dock_stripe", bm_band, mats.dock)
 
     # Decoupler linear shaped charge cutting tape & separation springs
-    if kind == 'decoupler':
-        bm_charge = make_torus(major_r=radius + 0.02, minor_r=0.025, z_center=0.0, major_seg=48, minor_seg=6)
-        add_mesh_obj("shaped_charge", bm_charge, mats.dock)
-        for s in range(6):
-            s_ang = s * math.pi / 3.0
-            bm_spring = make_cylinder(0.04, 0.04, 0.08, z_center=0.0, segments=8)
-            transform_bm(bm_spring, Matrix.Translation(Vector((radius * 0.85 * math.cos(s_ang), radius * 0.85 * math.sin(s_ang), 0.42))))
-            add_mesh_obj(f"pusher_spring_{s}", bm_spring, mats.pipe)
+    bm_charge = make_torus(major_r=radius + 0.02, minor_r=0.025, z_center=0.0, major_seg=48, minor_seg=6)
+    add_mesh_obj("shaped_charge", bm_charge, mats.dock)
+    for s in range(6):
+        s_ang = s * math.pi / 3.0
+        bm_spring = make_cylinder(0.04, 0.04, 0.08, z_center=0.0, segments=8)
+        transform_bm(bm_spring, Matrix.Translation(Vector((radius * 0.85 * math.cos(s_ang), radius * 0.85 * math.sin(s_ang), 0.42))))
+        add_mesh_obj(f"pusher_spring_{s}", bm_spring, mats.pipe)
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 
@@ -1241,19 +1325,31 @@ def saddle_top(t):
     r = SADDLE_INNER_RADIUS + SADDLE_THICKNESS
     return Vector((0.0, r * math.sin(t), HULL_AXIS_Z + r * math.cos(t)))
 
-def build_hull_junction(mats, half_len):
-    """船体円筒へ伏せる座板・斜めに開いた脚・機構を載せる台座を架け、
-    取付面(z≈+0.4)から船体の接面(z=-0.5)までを構造で繋ぐ。"""
-    for index, (xc, tc) in enumerate(SADDLE_PADS):
+# ドックの幹を受ける座板。幹の直下に収めて、脚が幹を抱く襟環まで届く。
+DOCK_SADDLE_PADS = (
+    (0.72, 0.13), (0.72, -0.13), (-0.72, 0.13), (-0.72, -0.13),
+)
+DOCK_PAD_HALF_W = 0.32          # ドック座板の船体軸方向の半幅 [m]
+
+def add_saddle_pads(mats, pads, half_w):
+    """船体面へ伏せる座板とその締結ボルトを並べる。pads は (船体軸方向 x, 周方向角 t [rad])。
+    座板端はどの配置でもモデル範囲(z>=-0.55)へ収まる角度幅に留める。"""
+    for index, (xc, tc) in enumerate(pads):
         add_mesh_obj(f"hull_saddle:{index}", make_curved_plate(
             tc - SADDLE_HALF_DT, tc + SADDLE_HALF_DT, SADDLE_INNER_RADIUS, SADDLE_THICKNESS,
-            xc - SADDLE_HALF_W, xc + SADDLE_HALF_W, HULL_AXIS_Z), mats.hull_dark)
+            xc - half_w, xc + half_w, HULL_AXIS_Z), mats.hull_dark)
         # 座板の締結ボルト。船体軸方向2列×周方向3列
         add_mesh_obj(f"saddle_bolts:{index}", make_boxes([
             (0.05, 0.05, 0.04,
              (xc + sx, saddle_top(tc + st).y, saddle_top(tc + st).z + 0.01), (-(tc + st), 0.0, 0.0))
-            for sx in (-0.26, 0.26) for st in (-0.055, 0.0, 0.055)
+            for sx in (-(half_w - 0.09), (half_w - 0.09)) for st in (-0.055, 0.0, 0.055)
         ], bevel=0.005), mats.clamp)
+
+def build_hull_junction(mats, half_len):
+    """船体円筒へ伏せる座板・斜めに開いた脚・機構を載せる台座を架け、
+    取付面(z≈+0.4)から船体の接面(z=-0.5)までを構造で繋ぐ。"""
+    add_saddle_pads(mats, SADDLE_PADS, SADDLE_HALF_W)
+    for index, (xc, tc) in enumerate(SADDLE_PADS):
         # 座板の中央から台座の下端へ斜めに開いた脚
         foot = saddle_top(tc) + Vector((xc, 0.0, 0.0))
         top = Vector((foot.x, foot.y, 0.0)).normalized() * 0.33 + Vector((0.0, 0.0, 0.10))
@@ -2100,9 +2196,9 @@ def main():
     build_rcs_module()
     
     # 6. Docking & Decoupler
-    build_docking_mechanism("docking-port-standard", "docking_port")
-    build_docking_mechanism("dock-standard", "dock")
-    build_docking_mechanism("decoupler-standard", "decoupler")
+    build_dock_port("docking-port-standard", "docking_port")
+    build_dock_port("dock-standard", "dock")
+    build_decoupler("decoupler-standard")
     
     # 7. Deployable modules
     build_solar_panel("solar-panel-standard")
