@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>雲描画パイプライン：クラスと入出力</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182328;
+      --muted: #52636a;
+      --faint: #75858b;
+      --paper: #f4f6f6;
+      --surface: #ffffff;
+      --line: #c9d3d5;
+      --line-strong: #8da1a6;
+      --accent: #075e63;
+      --accent-soft: #e7f2f2;
+      --input: #8a4c00;
+      --input-soft: #fff2df;
+      --model: #7b3156;
+      --model-soft: #f8eaf1;
+      --field: #075e63;
+      --field-soft: #e7f2f2;
+      --output: #356a2d;
+      --output-soft: #ebf5e8;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--paper); }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    a { color: var(--accent); }
+    button { font: inherit; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+
+    .page { width: min(1440px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 64px; }
+    .page-header { border-bottom: 2px solid var(--ink); padding-bottom: 18px; }
+    .eyebrow { margin: 0 0 7px; color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0 0 8px; font-size: clamp(27px, 4vw, 46px); line-height: 1.08; letter-spacing: -.04em; }
+    h2 { margin: 0 0 12px; font-size: 23px; line-height: 1.15; }
+    h3 { margin: 0 0 7px; font-size: 16px; }
+    p { margin: 0; }
+    .intro { max-width: 980px; color: var(--muted); font-size: 15px; }
+    .coordinate-note { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; color: var(--faint); font-size: 12px; }
+    .coordinate-note span::before { color: var(--accent); font-weight: 800; }
+    .coordinate-note span:nth-child(1)::before { content: "X  "; }
+    .coordinate-note span:nth-child(2)::before { content: "Y  "; }
+    .coordinate-note span:nth-child(3)::before { content: "◆  "; }
+
+    .section { margin-top: 34px; }
+    .section-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 13px; }
+    .section-heading p { color: var(--muted); font-size: 13px; }
+    .panel { border: 1px solid var(--line); background: var(--surface); }
+    .panel-pad { padding: 16px; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 20px; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-mark { display: inline-block; width: 18px; height: 10px; border: 1px solid var(--line-strong); background: var(--surface); }
+    .legend-mark.arrow { width: auto; height: auto; border: 0; font-size: 18px; line-height: 10px; }
+    .legend-mark.parallel { border-style: dashed; }
+    .legend-mark.input { border-color: var(--input); background: var(--input-soft); }
+    .legend-mark.model { border-color: var(--model); background: var(--model-soft); }
+    .legend-mark.field { border-color: var(--field); background: var(--field-soft); }
+    .legend-mark.output { border-color: var(--output); background: var(--output-soft); }
+
+    .pipeline-wrap { overflow-x: auto; }
+    .pipeline-grid {
+      display: grid;
+      min-width: 1040px;
+      grid-template-columns: minmax(180px, 1fr) 34px minmax(250px, 1.35fr) 34px minmax(220px, 1.15fr) 34px minmax(300px, 1.65fr);
+      grid-template-rows: 44px minmax(205px, auto) minmax(205px, auto);
+      align-items: stretch;
+      gap: 0;
+      padding: 14px;
+    }
+    .column-heading { display: flex; align-items: end; padding: 0 9px 8px; border-bottom: 2px solid var(--ink); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .pipeline-cell { margin: 8px 5px; }
+    .gen-input { grid-column: 1; grid-row: 2; }
+    .gen-connector { grid-column: 2; grid-row: 2; }
+    .gen-transform { grid-column: 3; grid-row: 2; }
+    .gen-field-connector { grid-column: 4; grid-row: 2; }
+    .pipeline-cell.shared { grid-column: 5; grid-row: 2 / span 2; align-self: stretch; display: grid; align-items: center; }
+    .pipeline-cell.consumers { grid-column: 7; grid-row: 2 / span 2; display: grid; grid-template-rows: repeat(3, 1fr); gap: 10px; }
+    .obs-input { grid-column: 1; grid-row: 3; }
+    .obs-connector { grid-column: 2; grid-row: 3; }
+    .obs-transform { grid-column: 3; grid-row: 3; }
+    .obs-field-connector { grid-column: 4; grid-row: 3; }
+    .connector { display: grid; place-items: center; color: var(--accent); font-size: 24px; }
+
+    .node {
+      position: relative;
+      display: grid;
+      align-content: start;
+      gap: 9px;
+      min-height: 100%;
+      padding: 12px;
+      border: 1px solid var(--line-strong);
+      border-left-width: 4px;
+      color: var(--ink);
+      text-align: left;
+      background: var(--surface);
+    }
+    button.node { width: 100%; cursor: pointer; }
+    .node:hover, .node[data-active="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .node.input { border-left-color: var(--input); background: var(--input-soft); }
+    .node.model { border-left-color: var(--model); background: var(--model-soft); }
+    .node.field { border-left-color: var(--field); background: var(--field-soft); }
+    .node.output { border-left-color: var(--output); background: var(--output-soft); }
+    .node-title { display: block; font-size: 14px; font-weight: 800; line-height: 1.25; }
+    .node-class { display: block; color: var(--muted); font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .io { display: grid; gap: 5px; margin-top: auto; padding-top: 7px; border-top: 1px solid rgba(24, 35, 40, .18); font-size: 11px; }
+    .io-row { display: grid; grid-template-columns: 31px minmax(0, 1fr); gap: 7px; }
+    .io-label { color: var(--faint); font-weight: 800; letter-spacing: .04em; }
+    .io-value { overflow-wrap: anywhere; }
+    .source-ref { color: var(--accent); font-size: 11px; }
+    .source-ref code { color: inherit; }
+
+    .field-contract { width: min(100%, 380px); margin: 0 auto; }
+    .field-contract .node-title { font-size: 17px; }
+    .field-contract .io { margin-top: 14px; }
+    .channel-table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 12px; }
+    .channel-table th, .channel-table td { padding: 7px 5px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .channel-table th { width: 32px; font-weight: 900; }
+    .channel-r { color: var(--input); }
+    .channel-g { color: var(--field); }
+    .channel-b { color: var(--model); }
+    .channel-a { color: var(--faint); }
+
+    .consumer-node { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; align-items: start; padding: 11px; border: 1px solid var(--output); background: var(--output-soft); }
+    .consumer-node .node-title { font-size: 13px; }
+    .consumer-node[data-active="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .consumer-body { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+    .consumer-body strong { color: var(--ink); font-weight: 700; }
+
+    .detail-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 14px 0; }
+    .stage-tab { border: 1px solid var(--line-strong); border-radius: 2px; padding: 6px 9px; color: var(--muted); background: var(--surface); cursor: pointer; }
+    .stage-tab:hover, .stage-tab[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    .detail { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: 20px; margin: 13px 14px 14px; padding: 13px; border: 1px solid var(--line); background: #fbfcfc; }
+    .detail-kicker { margin-bottom: 4px; color: var(--accent); font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-transform: uppercase; }
+    .detail-title { margin-bottom: 5px; font-size: 16px; }
+    .detail-copy { color: var(--muted); font-size: 13px; }
+    .detail-meta { display: grid; gap: 6px; }
+    .meta-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--line); font-size: 11px; }
+    .meta-row span:first-child { color: var(--faint); }
+    .meta-row span:last-child { overflow-wrap: anywhere; }
+
+    .sequence { display: grid; gap: 0; border-left: 2px solid var(--accent); }
+    .sequence-row { display: grid; grid-template-columns: 42px minmax(190px, .75fr) 28px minmax(260px, 1.25fr); align-items: stretch; min-height: 108px; border-bottom: 1px solid var(--line); }
+    .sequence-row:last-child { border-bottom: 0; }
+    .step-number { display: grid; place-items: start center; padding-top: 14px; color: var(--accent); font: 800 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .step-stage { padding: 13px 12px; border-left: 1px solid var(--line); }
+    .step-stage strong { display: block; margin-bottom: 3px; font-size: 13px; }
+    .step-stage span { display: block; color: var(--muted); font-size: 11px; }
+    .step-arrow { display: grid; place-items: center; color: var(--accent); font-size: 20px; }
+    .step-io { padding: 13px 12px; background: #fbfcfc; }
+    .step-io .io { margin: 0; padding: 0; border-top: 0; }
+
+    .split-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .subpanel { border: 1px solid var(--line); background: var(--surface); }
+    .subpanel-head { padding: 12px 13px; border-bottom: 1px solid var(--line); }
+    .subpanel-head p { color: var(--muted); font-size: 12px; }
+    .subpanel-body { padding: 12px 13px; }
+    .mini-sequence { display: grid; gap: 8px; }
+    .mini-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: start; padding-bottom: 8px; border-bottom: 1px dotted var(--line-strong); }
+    .mini-row:last-child { padding-bottom: 0; border-bottom: 0; }
+    .mini-number { color: var(--accent); font: 800 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .mini-row strong { display: block; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .mini-row span { display: block; color: var(--muted); font-size: 11px; }
+
+    .scale-table, .api-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .scale-table th, .scale-table td, .api-table th, .api-table td { padding: 8px 9px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .scale-table thead th, .api-table thead th { border-top: 0; color: var(--faint); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+    .scale-table td:first-child { white-space: nowrap; color: var(--accent); font: 800 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .scale-table td:nth-child(2) { color: var(--muted); }
+    .api-table td:first-child { width: 26%; color: var(--accent); font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .api-table td:nth-child(2) { width: 32%; color: var(--muted); }
+    .api-table td:nth-child(3) { width: 32%; }
+    .api-table td:last-child { width: 10%; white-space: nowrap; color: var(--faint); }
+    .api-wrap { overflow-x: auto; }
+
+    .footer { margin-top: 30px; padding-top: 13px; border-top: 1px solid var(--line-strong); color: var(--faint); font-size: 12px; }
+
+    @media (max-width: 900px) {
+      .detail, .split-grid { grid-template-columns: 1fr; }
+      .sequence-row { grid-template-columns: 34px minmax(170px, .75fr) 24px minmax(220px, 1.25fr); }
+      .consumer-node { grid-template-columns: 1fr; gap: 5px; }
+    }
+    @media (max-width: 560px) {
+      .page { width: min(100% - 20px, 1440px); padding-top: 22px; }
+      .pipeline-grid { min-width: 760px; }
+      .detail { margin-left: 10px; margin-right: 10px; }
+      .detail-toolbar { margin-left: 10px; margin-right: 10px; }
+      .sequence-row { grid-template-columns: 30px minmax(135px, .8fr) 20px minmax(180px, 1.2fr); }
+      .step-stage, .step-io { padding-left: 8px; padding-right: 8px; }
+      .api-table { min-width: 760px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page" id="cloud-explainer">
+    <header class="page-header">
+      <p class="eyebrow">Dive into Tepui / current source map</p>
+      <h1>雲描画パイプライン：クラス・関数・入出力</h1>
+      <p class="intro">この図は、雲の「データがどこで作られ、どの契約で渡され、どの描画経路が読むか」をコード上の名前で追うためのものです。</p>
+      <div class="coordinate-note" aria-label="図の座標系">
+        <span>横方向はデータの流れ。左が入力、右が消費側。</span>
+        <span>縦方向は、上から順に実行する場所、または同じデータを読む並列経路。</span>
+        <span>中央の枠は、両方の入力から共有される契約。</span>
+      </div>
+    </header>
+
+    <section class="section" id="overview" aria-labelledby="overview-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">01 / data flow</p><h2 id="overview-title">A. 2つの入力が、1つの RGBA 雲場になり、3方向へ分岐する</h2></div>
+        <p>位置の意味：左→右は値の受け渡し。右側3行は処理順ではなく並列の利用先。</p>
+      </div>
+
+      <div class="panel">
+        <div class="legend" aria-label="図の凡例">
+          <span class="legend-item"><i class="legend-mark input"></i>入力・画像</span>
+          <span class="legend-item"><i class="legend-mark model"></i>計算・変換</span>
+          <span class="legend-item"><i class="legend-mark field"></i>共有データ</span>
+          <span class="legend-item"><i class="legend-mark output"></i>描画経路</span>
+          <span class="legend-item"><i class="legend-mark arrow">→</i>入力から出力への向き</span>
+          <span class="legend-item"><i class="legend-mark parallel"></i>同じ雲場を並列に読む</span>
+        </div>
+        <div class="pipeline-wrap">
+          <div class="pipeline-grid">
+            <div class="column-heading">1 / input</div><div></div>
+            <div class="column-heading">2 / transform</div><div></div>
+            <div class="column-heading">3 / shared contract</div><div></div>
+            <div class="column-heading">4 / consumers</div>
+
+            <div class="pipeline-cell gen-input">
+              <button class="node input" type="button" data-stage="generated" data-active="true">
+                <span class="node-title">生成雲の入力</span>
+                <span class="node-class">earth-climate.png → AnnualClimateMap</span>
+                <div class="io">
+                  <div class="io-row"><span class="io-label">IN</span><span class="io-value">R=気温 / G=平年雲量 / B=標高</span></div>
+                  <div class="io-row"><span class="io-label">OUT</span><span class="io-value">ClimateData(direction)</span></div>
+                </div>
+                <span class="source-ref"><code>AnnualClimateMap</code></span>
+              </button>
+            </div>
+            <div class="connector gen-connector">→</div>
+            <div class="pipeline-cell gen-transform">
+              <button class="node model" type="button" data-stage="generated">
+                <span class="node-title">時刻ごとの生成</span>
+                <span class="node-class">GeneratedCloudField.prepare(renderer, displayTime)</span>
+                <div class="io">
+                  <div class="io-row"><span class="io-label">IN</span><span class="io-value">ClimateData / displayTime / FieldProjection</span></div>
+                  <div class="io-row"><span class="io-label">OUT</span><span class="io-value">CloudField.texture / generation</span></div>
+                </div>
+                <span class="source-ref"><code>GeneratedCloudField.prepare</code></span>
+              </button>
+            </div>
+            <div class="connector gen-field-connector">→</div>
+
+            <div class="pipeline-cell shared">
+              <div class="field-contract">
+                <button class="node field" type="button" data-stage="field">
+                  <span class="node-title">CloudRenderInput.field</span>
+                  <span class="node-class">CloudFieldBinding = { texture, cap }</span>
+                  <div class="io">
+                    <div class="io-row"><span class="io-label">IN</span><span class="io-value">BakedField のテクスチャ / CapPlacement</span></div>
+                    <div class="io-row"><span class="io-label">OUT</span><span class="io-value">CloudSample(direction)</span></div>
+                  </div>
+                  <table class="channel-table" aria-label="CloudSample channels">
+                    <tbody>
+                      <tr><th class="channel-r">R</th><td><strong>coverage</strong><br>厚い雲の被覆率</td></tr>
+                      <tr><th class="channel-g">G</th><td><strong>cloudTop</strong><br>G × 15,000 m</td></tr>
+                      <tr><th class="channel-b">B</th><td><strong>translucent</strong><br>薄い雲の柱 τ</td></tr>
+                      <tr><th class="channel-a">A</th><td>予約値 1</td></tr>
+                    </tbody>
+                  </table>
+                  <span class="source-ref"><code>CloudRenderInput</code></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="pipeline-cell consumers">
+              <button class="consumer-node" type="button" data-stage="surface">
+                <span class="node-title">不透明な雲頂</span>
+                <span class="node-class">OpaqueCloudSurfaceRenderer.marchedSurface()</span>
+                <span class="consumer-body"><strong>IN</strong> CloudSample + camera<br><strong>OUT</strong> depthNode / normalNode / lit G-buffer</span>
+              </button>
+              <button class="consumer-node" type="button" data-stage="atmosphere">
+                <span class="node-title">大気中の雲</span>
+                <span class="node-class">CloudAtmosphereRenderer.scatteredAt()</span>
+                <span class="consumer-body"><strong>IN</strong> CloudSample + ray + sun<br><strong>OUT</strong> transmittance / localRadiance</span>
+              </button>
+              <button class="consumer-node" type="button" data-stage="shadow">
+                <span class="node-title">雲影</span>
+                <span class="node-class">CloudShadowRenderer.transmittance()</span>
+                <span class="consumer-body"><strong>IN</strong> CloudSample + sun path<br><strong>OUT</strong> receiver transmittance</span>
+              </button>
+            </div>
+
+            <div class="pipeline-cell obs-input">
+              <button class="node input" type="button" data-stage="observed">
+                <span class="node-title">実写雲の入力</span>
+                <span class="node-class">8k_clouds.jpg → cloud-field.png</span>
+                <div class="io">
+                  <div class="io-row"><span class="io-label">IN</span><span class="io-value">4096×2048 写真 / SeparationPipeline</span></div>
+                  <div class="io-row"><span class="io-label">OUT</span><span class="io-value">RGB: coverage / cloudTop / translucent</span></div>
+                </div>
+                <span class="source-ref"><code>FIELD_VIEWS / packRgb</code></span>
+              </button>
+            </div>
+            <div class="connector obs-connector">→</div>
+            <div class="pipeline-cell obs-transform">
+              <button class="node model" type="button" data-stage="observed">
+                <span class="node-title">cap への再焼成</span>
+                <span class="node-class">ObservedCloudField.prepare(renderer)</span>
+                <div class="io">
+                  <div class="io-row"><span class="io-label">IN</span><span class="io-value">cloud-field.png / FieldProjection</span></div>
+                  <div class="io-row"><span class="io-label">OUT</span><span class="io-value">BakedField.texture / generation</span></div>
+                </div>
+                <span class="source-ref"><code>ObservedCloudField.prepare</code></span>
+              </button>
+            </div>
+            <div class="connector obs-field-connector">→</div>
+          </div>
+        </div>
+
+        <div class="detail-toolbar" role="group" aria-label="段階の詳細を選ぶ">
+          <button class="stage-tab" type="button" data-stage="generated" aria-pressed="true">generated</button>
+          <button class="stage-tab" type="button" data-stage="observed" aria-pressed="false">observed</button>
+          <button class="stage-tab" type="button" data-stage="field" aria-pressed="false">field contract</button>
+          <button class="stage-tab" type="button" data-stage="surface" aria-pressed="false">surface</button>
+          <button class="stage-tab" type="button" data-stage="atmosphere" aria-pressed="false">atmosphere</button>
+          <button class="stage-tab" type="button" data-stage="shadow" aria-pressed="false">shadow</button>
+        </div>
+        <div class="detail" aria-live="polite">
+          <div>
+            <div class="detail-kicker" id="detail-kicker">selected / generated</div>
+            <h3 class="detail-title" id="detail-title">GeneratedCloudField.prepare が、時刻付きの雲場を公開する</h3>
+            <p class="detail-copy" id="detail-copy">入力は ClimateData・表示時刻・投影です。WeatherModel と CloudField を順に焼き、読み手には texture と generation を返します。</p>
+          </div>
+          <div class="detail-meta" id="detail-meta"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="generation" aria-labelledby="generation-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">02 / frame timing</p><h2 id="generation-title">B. 1フレームで生成雲が焼かれる順序</h2></div>
+        <p>ここだけは縦位置が実行順。番号が小さい処理から大きい処理へ進む。</p>
+      </div>
+      <div class="panel panel-pad">
+        <div class="sequence">
+          <div class="sequence-row"><div class="step-number">01</div><div class="step-stage"><strong>GamePresentation.syncWorld</strong><span>世界の同期後、雲の焼成を呼ぶ。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value">graphics / displayTime / camera</span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value"><code>CelestialSystem.bakeClouds(renderer, displayTime)</code></span></div></div></div></div>
+          <div class="sequence-row"><div class="step-number">02</div><div class="step-stage"><strong>PointCelestialView.syncResolved</strong><span>表示源・精細さ・cap の向きを決める。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value">apparentDiameterPx / GraphicsSettingsData</span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value"><code>setSource / setDetail / aim</code></span></div></div></div></div>
+          <div class="sequence-row"><div class="step-number">03</div><div class="step-stage"><strong>CloudPresentation.bake</strong><span>選択した source が実際に寄与する場合だけ焼く。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value">WebGPURenderer / displayTime</span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value"><code>source.prepare()</code></span></div></div></div></div>
+          <div class="sequence-row"><div class="step-number">04</div><div class="step-stage"><strong>GeneratedCloudField.prepare</strong><span>同じ時刻・気候世代・projection revision なら再利用。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value">displayTime / ClimateData / projection.revision</span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value"><code>WeatherModel.syncTime → WeatherModel.bake</code></span></div></div></div></div>
+          <div class="sequence-row"><div class="step-number">05</div><div class="step-stage"><strong>WeatherModel.bake</strong><span>中間場を依存順に RenderTarget へ焼く。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value">pressure / circulation / noise sources</span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value">pressure / airMass / humidity / convection / instability</span></div></div></div></div>
+          <div class="sequence-row"><div class="step-number">06</div><div class="step-stage"><strong>CloudField.render</strong><span>各方向で WeatherSample を condense する。</span></div><div class="step-arrow">→</div><div class="step-io"><div class="io"><div class="io-row"><span class="io-label">IN</span><span class="io-value"><code>model.weatherAt(direction)</code></span></div><div class="io-row"><span class="io-label">OUT</span><span class="io-value"><code>vec4(coverage, cloudTop / 15000, translucent, 1)</code></span></div></div></div></div>
+        </div>
+        <a class="source-ref" href="../../src/game/game-presentation.ts#L400"><code>GamePresentation.syncWorld</code></a>
+        <span> · </span>
+        <a class="source-ref" href="../../src/render/cloud/generated-cloud-field.ts#L46"><code>GeneratedCloudField.prepare</code></a>
+      </div>
+    </section>
+
+    <section class="section" id="weather" aria-labelledby="weather-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">03 / generated source</p><h2 id="weather-title">C. WeatherModel.weatherAt の中で値がどう変わるか</h2></div>
+        <p>左から右が計算依存。下の細胞行だけは、上の湿度・風を入力にする。</p>
+      </div>
+      <div class="split-grid">
+        <div class="subpanel">
+          <div class="subpanel-head"><h3>WeatherSample を作る主経路</h3><p>最終的に <code>condense(weather)</code> が読む値。</p></div>
+          <div class="subpanel-body"><div class="mini-sequence">
+            <div class="mini-row"><div class="mini-number">01</div><div><strong>pressureFieldAt(direction)</strong><span>pressure / gradient / isobar / bend</span></div></div>
+            <div class="mini-row"><div class="mini-number">02</div><div><strong>balancedWind(...)</strong><span>局所気圧風 + atmosphericWind + RossbyWave → surfaceWind / upperWind</span></div></div>
+            <div class="mini-row"><div class="mini-number">03</div><div><strong>transport.advectedAt(...)</strong><span>移流後 surfaceHumidity / upperHumidity / convection</span></div></div>
+            <div class="mini-row"><div class="mini-number">04</div><div><strong>airMass.at / climate.slope</strong><span>warmth / compression / terrainLift / front / rainband / lift</span></div></div>
+            <div class="mini-row"><div class="mini-number">05</div><div><strong>surfaceHumidity / upperHumidity</strong><span>平年雲量・上昇流・目・金床を加減算し 0..1 へ clamp</span></div></div>
+            <div class="mini-row"><div class="mini-number">06</div><div><strong>WeatherSample</strong><span>condense の入力として coverage・雲頂・薄い雲へ渡る</span></div></div>
+          </div></div>
+        </div>
+        <div class="subpanel">
+          <div class="subpanel-head"><h3>細胞の発生箇所</h3><p>「画像へ後付け」ではなく、対流場の時点で作る。</p></div>
+          <div class="subpanel-body"><div class="mini-sequence">
+            <div class="mini-row"><div class="mini-number">01</div><div><strong>CirculatingNoise.pairAt(direction)</strong><span>同じ gradientNoise から x=grain / y=network を返す</span></div></div>
+            <div class="mini-row"><div class="mini-number">02</div><div><strong>convectionSourceAt(direction)</strong><span>48 km と 24 km の2段を RG に焼く</span></div></div>
+            <div class="mini-row"><div class="mini-number">03</div><div><strong>WeatherTransport.advectedAt</strong><span>対流用の風で2位相移流し、時刻に応じて読む</span></div></div>
+            <div class="mini-row"><div class="mini-number">04</div><div><strong>condense(weather)</strong><span>湿度 0.45..0.70 で network → grain を混ぜ、granularity を coverage へ足す</span></div></div>
+          </div><a class="source-ref" href="../../src/render/cloud/circulating-noise.ts#L53"><code>CirculatingNoise.pairAt</code></a><span> · </span><a class="source-ref" href="../../src/render/cloud/condensation.ts#L95"><code>condense</code></a></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="scales" aria-labelledby="scales-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">04 / spatial scales</p><h2 id="scales-title">D. 細かさの位置づけ</h2></div>
+        <p>縦軸は「大きい構造 → 細かい構造」。各行は別の処理段。</p>
+      </div>
+      <div class="panel panel-pad">
+        <table class="scale-table">
+          <thead><tr><th>スケール</th><th>生成する関数・定数</th><th>入力</th><th>出力・見えるもの</th></tr></thead>
+          <tbody>
+            <tr><td>約 5300 km</td><td><code>WeatherModel.pressureSourceAt</code><br><code>PRESSURE_NOISE</code></td><td>緯度帯 + 低周波ノイズ + cyclone</td><td>低気圧・高気圧、全球の雲の大配置</td></tr>
+            <tr><td>100–3200 km</td><td><code>WeatherTransport.humiditySourceAt</code><br><code>SURFACE_HUMIDITY_NOISE</code></td><td><code>CirculatingNoise.at</code></td><td>雲塊、湿潤域、乾燥域</td></tr>
+            <tr><td>24 / 48 km</td><td><code>CONVECTION_NOISE</code><br><code>CirculatingNoise.pairAt</code></td><td><code>gradientNoise(position)</code></td><td>細胞の網目と粒。生成雲の cellular pattern</td></tr>
+            <tr><td>15 km 上限</td><td><code>CloudShapeEvaluator.cloudTop</code><br><code>CLOUD_TOP_SPAN</code></td><td>fieldTop + grain × 0.15</td><td>雲頂の高さ場。雲底からの起伏</td></tr>
+            <tr><td>6 km</td><td><code>OpaqueCloudSurfaceRenderer.grainAt</code><br><code>CUMULUS_GRAIN_SIZE</code></td><td>画面微分 <code>dFdx/dFdy</code> + direction</td><td>実写・生成どちらにも加わる sub-texel の粒と法線起伏</td></tr>
+            <tr><td>2–4 px</td><td><code>grainAmplitudeAt</code></td><td>画面上の粒の波長</td><td>解像不能な粒を fade。遠景のモアレを抑える</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" id="rendering" aria-labelledby="rendering-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">05 / rendering consumers</p><h2 id="rendering-title">E. 3つの描画経路：同じ値をどう解釈するか</h2></div>
+        <p>3行は同じ <code>CloudRenderInput</code> を読む並列経路。位置に実行順の意味はない。</p>
+      </div>
+      <div class="panel panel-pad"><div class="split-grid">
+        <div class="subpanel">
+          <div class="subpanel-head"><h3>OpaqueCloudSurfaceRenderer</h3><p>不透明な雲頂。G-buffer の雲殻レイヤーへ書く。</p></div>
+          <div class="subpanel-body"><div class="mini-sequence">
+            <div class="mini-row"><div class="mini-number">IN</div><div><strong>fieldSampler.sampleCloud(direction)</strong><span>CloudSample: coverage / cloudTop / translucent</span></div></div>
+            <div class="mini-row"><div class="mini-number">01</div><div><strong>CloudShapeEvaluator.grainAt</strong><span>6 km gradientNoise。画面波長に応じて振幅 fade</span></div></div>
+            <div class="mini-row"><div class="mini-number">02</div><div><strong>opaqueFraction</strong><span>coverage + grain × 0.25 をディザ帯へ変換</span></div></div>
+            <div class="mini-row"><div class="mini-number">03</div><div><strong>clearanceAt / cloudTopRadius</strong><span>雲頂の内外を判定。最初の交点を探す</span></div></div>
+            <div class="mini-row"><div class="mini-number">OUT</div><div><strong>marchedSurface → depthNode / normalNode</strong><span><code>GBuffer.render</code> の LIT_CLOUD_SHELL_LAYER</span></div></div>
+          </div><a class="source-ref" href="../../src/render/opaque-cloud-surface-renderer.ts#L168"><code>marchedSurface</code></a><span> · </span><a class="source-ref" href="../../src/render/pipeline/gbuffer.ts#L98"><code>GBuffer.render</code></a></div>
+        </div>
+        <div class="subpanel">
+          <div class="subpanel-head"><h3>CloudAtmosphereRenderer</h3><p>大気積分へ球殻イベントとして挿入する。</p></div>
+          <div class="subpanel-body"><div class="mini-sequence">
+            <div class="mini-row"><div class="mini-number">IN</div><div><strong>CloudFieldSampler.sampleCloud(up)</strong><span>交点方向の CloudSample</span></div></div>
+            <div class="mini-row"><div class="mini-number">01</div><div><strong>columnOpticalDepthOf</strong><span>cirrus は translucent、cumulus は coverage → τ</span></div></div>
+            <div class="mini-row"><div class="mini-number">02</div><div><strong>shellAirmassNode</strong><span>視線角で airmass を増幅。ただし接線付近は有限化</span></div></div>
+            <div class="mini-row"><div class="mini-number">03</div><div><strong>AtmosphereCloudLayers.build</strong><span>外殻から front-to-back のイベント列を作る</span></div></div>
+            <div class="mini-row"><div class="mini-number">OUT</div><div><strong>AtmosphereCloudLayers.compose</strong><span>transmittance / inscatter を大気結果へ合成</span></div></div>
+          </div><a class="source-ref" href="../../src/render/pipeline/cloud-atmosphere-renderer.ts#L147"><code>scatteredAt</code></a><span> · </span><a class="source-ref" href="../../src/render/pipeline/atmosphere-cloud-layers.ts#L89"><code>build / compose</code></a></div>
+        </div>
+        <div class="subpanel">
+          <div class="subpanel-head"><h3>CloudShadowRenderer</h3><p>受け手から太陽へ向かう光路の透過率を計算する。</p></div>
+          <div class="subpanel-body"><div class="mini-sequence">
+            <div class="mini-row"><div class="mini-number">IN</div><div><strong>transmittance(worldPos, footprint)</strong><span>受け手位置 / 画面 footprint / sun direction</span></div></div>
+            <div class="mini-row"><div class="mini-number">01</div><div><strong>SHADOW_TAPS = 6</strong><span>光路を6区間へ分けて sampleOffset を作る</span></div></div>
+            <div class="mini-row"><div class="mini-number">02</div><div><strong>fieldAt(up) + grainAt</strong><span>雲頂より下を通った割合を opticalDepth へ加算</span></div></div>
+            <div class="mini-row"><div class="mini-number">OUT</div><div><strong>exp(-opticalDepth)</strong><span>地表ライティングへ渡す receiver transmittance</span></div></div>
+          </div><a class="source-ref" href="../../src/render/pipeline/shadow/cloud-shadow-renderer.ts#L82"><code>CloudShadowRenderer.transmittance</code></a></div>
+        </div>
+        <div class="subpanel">
+          <div class="subpanel-head"><h3>設定・LODの意味</h3><p>解像度の変更と、形状サンプリングの変更を分離している。</p></div>
+          <div class="subpanel-body"><div class="mini-sequence">
+            <div class="mini-row"><div class="mini-number">A</div><div><strong>GraphicsSettings.cumulusDetail</strong><span>ray march: coarse 1+5 / standard 6+3 / fine 12+3</span></div></div>
+            <div class="mini-row"><div class="mini-number">B</div><div><strong>sphereLodLevel(apparentDiameterPx)</strong><span>球メッシュ: 64×48 / 160×120 / 384×288</span></div></div>
+            <div class="mini-row"><div class="mini-number">C</div><div><strong>CloudPresentation.aim</strong><span>capRadiusFor(rho, topOverRadius) で視点中心へ再配置</span></div></div>
+            <div class="mini-row"><div class="mini-number">D</div><div><strong>CloudFieldSampler.bind</strong><span>texture と CapPlacement を同じスナップショットで更新</span></div></div>
+          </div><a class="source-ref" href="../../src/render/opaque-cloud-surface-renderer.ts#L30"><code>CUMULUS_DETAIL</code></a><span> · </span><a class="source-ref" href="../../src/render/field-projection.ts#L100"><code>OrthographicCap</code></a></div>
+        </div>
+      </div></div>
+    </section>
+
+    <section class="section" id="api" aria-labelledby="api-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">06 / core contracts</p><h2 id="api-title">F. 中心となる関数の入出力一覧</h2></div>
+        <p>コードを読むときの入口。クリック操作は不要な静的表。</p>
+      </div>
+      <div class="panel api-wrap"><table class="api-table">
+        <thead><tr><th>クラス / 関数</th><th>入力</th><th>出力</th><th>頻度</th></tr></thead>
+        <tbody>
+          <tr><td>GeneratedCloudField.prepare</td><td>renderer, displayTime, climate.generation, projection.revision</td><td>焼成済み cap texture / generation</td><td>時刻・cap変更時</td></tr>
+          <tr><td>WeatherModel.weatherAt</td><td>unit direction</td><td>WeatherSample: humidity / convection / lift / band / tropopause</td><td>CloudField の各 texel</td></tr>
+          <tr><td>condense</td><td>WeatherSample</td><td>CloudSample: coverage / cloudTop / translucent</td><td>CloudField の各 texel</td></tr>
+          <tr><td>BakedField.render</td><td>source(direction), FieldProjection</td><td>RenderTarget texture</td><td>各焼成パス</td></tr>
+          <tr><td>CloudFieldSampler.sampleCloud</td><td>body-fixed unit direction</td><td>texture.sample(uv) → CloudSample</td><td>各消費側</td></tr>
+          <tr><td>CloudShapeEvaluator.grainAt</td><td>direction, amplitude</td><td>6 km gradient noise</td><td>surface / shadow</td></tr>
+          <tr><td>OpaqueCloudSurfaceRenderer.marchedSurface</td><td>camera ray, field, grain</td><td>first cloud-top hit → depth / normal</td><td>画素</td></tr>
+          <tr><td>CloudAtmosphereRenderer.scatteredAt</td><td>species, shell, ray, sun</td><td>cloudTransmittance / localRadiance</td><td>殻の交差点</td></tr>
+          <tr><td>CloudShadowRenderer.transmittance</td><td>worldPos, footprint, sun ray</td><td>receiver transmittance</td><td>影パスの画素</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <footer class="footer">読解用の補助図です。現在の動作の正本はコードです。主なディレクトリ: <code>src/render/cloud/</code> / <code>src/render/pipeline/</code></footer>
+  </main>
+
+  <script>
+    const root = document.getElementById('cloud-explainer');
+    const details = {
+      generated: { kicker: 'selected / generated source', title: 'GeneratedCloudField.prepare が、時刻付きの雲場を公開する', copy: 'ClimateData・displayTime・FieldProjection を入力し、WeatherModel の中間場を焼いてから CloudField を焼きます。読み手には texture と generation が残ります。', meta: [['class', 'GeneratedCloudField'], ['input', 'ClimateData / displayTime / projection'], ['output', 'CloudRenderInput.field.texture']] },
+      observed: { kicker: 'selected / observed source', title: 'ObservedCloudField.prepare は画像を cap へ写し直す', copy: 'cloud-field.png はすでに RGB の雲場です。ObservedCloudField は現在の OrthographicCap に合う uv で読み、BakedField の 512×512 texture として公開します。', meta: [['class', 'ObservedCloudField'], ['input', 'cloud-field.png / FieldProjection'], ['output', 'BakedField.texture']] },
+      field: { kicker: 'selected / shared contract', title: 'CloudFieldBinding が texture と cap の位置を同時に渡す', copy: 'texture だけを差し替えるのではなく、同じ texture を焼いた時の center / east / north / sinRadius / cosRadius も一緒に渡します。これで描画側の uv がずれません。', meta: [['class', 'CloudFieldSampler'], ['input', 'CloudFieldBinding'], ['output', 'CloudSample(direction)']] },
+      surface: { kicker: 'selected / opaque surface', title: 'OpaqueCloudSurfaceRenderer は depth と normal を同じ交点から出す', copy: 'coverage と grain から opaqueFraction を作り、cloudTopRadius との clearance をレイマーチします。最初の交点を二分探索で締め、同じ cloudTop から法線を出します。', meta: [['class', 'OpaqueCloudSurfaceRenderer'], ['input', 'CloudSample / camera ray / blue noise'], ['output', 'depthNode / normalNode']] },
+      atmosphere: { kicker: 'selected / atmosphere', title: 'CloudAtmosphereRenderer は CloudSample を光学イベントへ変換する', copy: 'cirrus は translucent をそのまま柱 τ として使い、cumulus は coverage を -log(1-coverage) へ変換します。球殻の厚みから airmass を求め、大気積分へ渡します。', meta: [['class', 'CloudAtmosphereRenderer'], ['input', 'species / shell / ray / sun'], ['output', 'transmittance / localRadiance']] },
+      shadow: { kicker: 'selected / shadow', title: 'CloudShadowRenderer は太陽光路の透過率を出す', copy: 'worldPos と footprint を入力に、太陽方向の光路を6タップします。各タップで同じ雲場と雲頂形状を読み、光学的厚みを積算して exp(-τ) を返します。', meta: [['class', 'CloudShadowRenderer'], ['input', 'worldPos / footprint / sun ray'], ['output', 'receiver transmittance']] }
+    };
+
+    const tabs = [...root.querySelectorAll('.stage-tab')];
+    const nodes = [...root.querySelectorAll('[data-stage]')].filter((element) => !element.classList.contains('stage-tab'));
+    const kicker = root.querySelector('#detail-kicker');
+    const title = root.querySelector('#detail-title');
+    const copy = root.querySelector('#detail-copy');
+    const meta = root.querySelector('#detail-meta');
+
+    function selectStage(stage) {
+      const selected = details[stage] || details.generated;
+      tabs.forEach((tab) => tab.setAttribute('aria-pressed', String(tab.dataset.stage === stage)));
+      nodes.forEach((node) => { node.dataset.active = String(node.dataset.stage === stage); });
+      kicker.textContent = selected.kicker;
+      title.textContent = selected.title;
+      copy.textContent = selected.copy;
+      meta.replaceChildren(...selected.meta.map(([label, value]) => {
+        const row = document.createElement('div');
+        row.className = 'meta-row';
+        const left = document.createElement('span');
+        const right = document.createElement('span');
+        left.textContent = label;
+        right.textContent = value;
+        row.append(left, right);
+        return row;
+      }));
+    }
+
+    [...tabs, ...nodes].forEach((element) => {
+      element.addEventListener('click', () => selectStage(element.dataset.stage));
+    });
+    selectStage('generated');
+  </script>
+</body>
+</html>

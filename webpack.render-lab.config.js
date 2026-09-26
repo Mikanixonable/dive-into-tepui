@@ -6,11 +6,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 
 module.exports = {
-  entry: {
-    'render-lab': './tools/render-lab/main.ts',
-    // 製品と同じ全球雲場の worker 供給を使えるよう、固定名で出す。
-    'cloud-global-field-worker': './src/game/cloud/cloud-global-field-worker.ts',
-  },
+  entry: './tools/render-lab/main.ts',
   resolve: {
     extensions: ['.ts', '.js'],
   },
@@ -48,9 +44,7 @@ module.exports = {
     ],
   },
   output: {
-    // worker entry は実行時に固定 URL で new Worker するので contenthash を付けない。
-    filename: ({ chunk }) => chunk?.name?.endsWith('-worker')
-      ? '[name].js' : '[name].[contenthash].js',
+    filename: 'render-lab.[contenthash].js',
     path: path.resolve(__dirname, '.render-lab'),
     clean: true,
   },
@@ -65,8 +59,6 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({
       template: './tools/render-lab/index.html',
-      // worker entry はページへ読み込ませない — new Worker の固定 URL として出すだけ。
-      chunks: ['render-lab'],
     }),
   ],
   devServer: {
