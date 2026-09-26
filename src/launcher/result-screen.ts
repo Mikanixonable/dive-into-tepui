@@ -1,7 +1,6 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { StageResult } from '../game/stages/stage';
 import type { HudShell } from '../hud/hud-shell';
-import { createHudElement } from '../hud/hud-element';
 import type { OverlayHandle } from '../hud/overlay-manager';
 import { injectOnce } from '../hud/inject-style';
 import { injectCommonUiStyle } from '../hud/style/common-ui-style';
@@ -26,7 +25,8 @@ export class ResultScreen implements OverlayHandle {
   ) {
     injectCommonUiStyle();
     injectOnce('result-screen-style', RESULT_SCREEN_STYLE);
-    this.element = createHudElement('div', 'hud-result', shell.layers.system);
+    this.element = document.createElement('div');
+    this.element.id = 'hud-result';
   }
 
   // OverlayHandle 実装。target が結果画面の内部かどうかを返す。
@@ -62,7 +62,7 @@ export class ResultScreen implements OverlayHandle {
       'タイトル画面に戻る', () => this.transitions.returnToTitle(), undefined, 'secondary',
     ).element);
     // 背景入力を遮断する入力ゲートとして登録する。
-    this.shell.overlayManager.open('result', this, {
+    this.shell.overlayManager.open('result', this.element, this, {
       kind: 'modal', closeOnEscape: false, closeOnOutsideClick: false, gatesInput: true,
     });
   }
