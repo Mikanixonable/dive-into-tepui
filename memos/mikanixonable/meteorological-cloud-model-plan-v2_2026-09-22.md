@@ -472,15 +472,8 @@ lab は新 source(`MeteorologicalCloudField`)へ切替済み。全球面は `Equ
 
 検証: game 441・render 443 件、境界検査 pass(許可リスト空のまま)。
 
-2026-09-27 の追記(第九報)。起動遅延対策と案A(worker 化)の先行改造を入れた。
-
-起動から雲表示まで ~16.8 s 掛かっていた問題を、「ランが無い起動中のフレームで雲場の供給ジョブを前倒し駆動する」構造で直した。`PageDevices.loadingJobs` にランが自分を登録し、`main.ts` が `run===null` の rAF で 16 ms/フレームのポンプを呼ぶ(compile の onPass 隙間も同様)。最初の場が届くまで `startupStepTimeBudgetMs`(16 ms)でバースト、届いたら既定 6 ms へ戻す。最初のジョブは気候画素が `cpuReadable` になるまで最大 1.5 s だけ開始を遅らせる(未着なら緯度近似で進める)。`MeteorologicalCloudField` に `fieldStats`(attempts/pending の stepCount・経過)を追加して計測可能にした。実測(本番ビルド・ヘッドレス): **nav→雲場採用 16.8 s → 4.5 s**。代償として `gameReady` が ~2 s 伸びる。
-
-案A(細格化+worker 化)の先行改造: `climate-pixels.ts`(THREE/DOM 非依存の気候画素サンプリング)と `atmospheric-wind-sample.ts`(TSL 無しの風サンプル)を分離し、`AnnualClimateMap.climatePixels()` で画素転送用の口を追加。全球供給のコスト削減: 環境プロファイルのジョブ内メモ化(environmentAt 7,215→2,555 回)、永続累積器 `CloudMassAccumulation`(per-event 全格子確保を解消)、楕円再正規化のホイスト、footprint 上限の spacing 非連動化、`MAX_*` をセル数連動へ。derive は 3,849 ms → **1,781 ms(−54%)**、100 km セル + 512×256 で 91,279 イベントを完走確認(84 s 単スレ、worker で ~10-20 s 見込み)。
-
-検証: game 441・render 455 件、境界検査 pass。
-
-残る未達は、`cloud-optics-node.ts` の被覆→光学深一対一写像、被覆率の気候学的な粗さ、案A 本体(worker entry/client・帯分割・製品切替)、娘イベントの製品配線、季節・日変化、全球場の解像度依存、CPU 天気評価の循環ノイズ・移流湿度、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形下流応答、上層巻雲、観測評価(C7/C8 未固定)である。| src/render/cloud/cloud-field-sample.ts、src/render/cloud/cloud-field.ts | 独立した層・相・高度・光学量の契約と格納方式の確定 |
+残る未達は、`cloud-optics-node.ts` の被覆→光学深写像(消費側再設計が要る)、被覆率の気候学的な粗さ(新経路 ~25% vs 実写 ~49%)、娘イベントの製品配線、季節・日変化の環境変調、全球場の解像度依存、CPU 天気評価で未畳みの循環ノイズ・移流湿度、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形の下流応答、上層で直接生成する巻雲、観測評価(C7/C8 の量的許容域は未固定)である。| --- | --- |
+| src/render/cloud/cloud-field-sample.ts、src/render/cloud/cloud-field.ts | 独立した層・相・高度・光学量の契約と格納方式の確定 |
 | src/render/cloud/generated-cloud-field.ts | イベント評価と場のキャッシュ、必要領域、生成世代 |
 | src/render/cloud/cloud-detail-field.ts（新規）、src/render/cloud/cloud-cap.ts | 局所タイルまたは解析的 detail、風上領域、footprint と LOD |
 | src/render/cloud/cloud-density-evaluator.ts（新規）、src/render/cloud/cloud-shape-evaluator.ts、src/render/cloud/cumulus-shape.ts | 多層・傾き・変形を含む共通密度、質量に整合する細部 |
