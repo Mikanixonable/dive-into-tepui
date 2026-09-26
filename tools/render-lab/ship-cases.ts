@@ -162,6 +162,7 @@ function cockpit(): LabCase {
     objects: [model],
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -20),
+    // 側面の凹凸、船首断面、斜め前方の輪郭を別の光で確かめる。
     shots: {
       'cockpit-rich-side': {
         view: { cameraAzimuthDeg: -90, cameraElevationDeg: 10, cameraDistanceLog: -0.4,
@@ -213,6 +214,7 @@ function rcsTank(): LabCase {
     objects: [model],
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -25),
+    // トラス外周、配管側、タンク列上面を確認する3方向を登録する。
     shots: {
       'rcs-tank-truss-oblique': {
         view: { cameraAzimuthDeg: -42, cameraElevationDeg: 22, cameraDistanceLog: -0.42,
@@ -238,6 +240,7 @@ function engine(): LabCase {
     objects: [model],
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -25),
+    // ノズル内部と側面の機器群を別方向から照らす。
     shots: {
       'modular-ship-engine-aft': {
         view: {
@@ -272,6 +275,7 @@ function weapon(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -19.2),
     syncMotion,
     dispose: () => view.dispose(),
+    // 砲架、給弾口、後座中の砲身束を比較できる撮影時刻を並べる。
     shots: {
       'weapon-cradle-oblique': {
         view: { cameraAzimuthDeg: -35, cameraElevationDeg: 25, cameraDistanceLog: -0.22,
@@ -308,6 +312,7 @@ function weapon(): LabCase {
 function weaponMotion(
   view: ModularShipView, modules: readonly ShipModuleRenderInput[], rate: number,
 ): (displayTime: number) => void {
+  // 毎回同じ静止姿勢から始め、指定時刻まで同じ射撃履歴を再生する。
   const anchors = view.semanticAnchors('weapon', '');
   const rest = anchors.map(anchor => ({ anchor, position: anchor.position.clone(), rotation: anchor.quaternion.clone() }));
   return (displayTime) => {

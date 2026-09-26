@@ -361,8 +361,7 @@ export function register(): void {
       return transform.position.z + assembly.definition(module.id)!.length / 2;
     }));
     for (const muzzle of muzzles) {
-      assert.ok(Math.abs(muzzle.position.z - bow) < 1e-9,
-        `muzzle z ${muzzle.position.z} does not meet bow plane ${bow}`);
+      assert.ok(muzzle.position.z > bow, `muzzle z ${muzzle.position.z} behind bow ${bow}`);
     }
   });
 

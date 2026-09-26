@@ -74,12 +74,14 @@ export class DebrisReaction implements DynamicMotionBehavior {
     const slide = this.slide;
     if (slide === null) return;
     const elapsed = self.state.t - slide.bornSim;
+    // 終端へ達した破片は座標拘束を解いて自由飛行へ戻す。
     if (elapsed >= slide.duration) {
       this.slide = null;
       return;
     }
     const frac = Math.max(0, elapsed / slide.duration);
     const body = addScaled(slide.from, sub(slide.to, slide.from), frac);
+    // 出生時の等速機体座標系から位置と滑り速度を組み直す。
     self.reset(kinematicState(
       self.state.t,
       add(add(slide.r0, scale(slide.v0, elapsed)), qRotate(slide.q0, body)),

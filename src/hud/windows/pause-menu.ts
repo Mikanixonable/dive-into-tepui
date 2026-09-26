@@ -140,6 +140,7 @@ export class PauseMenu implements OverlayHandle {
 
   // タイトルとバージョンを ESC メニュー上部へ積む。
   private buildBrand(): HTMLElement {
+    // 共有ロゴと版情報を、操作ヘッダーから独立したブランド欄へまとめる。
     const brand = document.createElement('div');
     brand.className = 'pm-brand';
 
