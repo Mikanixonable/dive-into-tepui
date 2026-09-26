@@ -57,6 +57,13 @@ export function sideSlotRotation(slot: SideSlot): Quat {
   }
 }
 
+// 円筒タンクは直径の半分、前端径が後端の半分のコックピットは中央断面半径を側面取付面とする。
+export function sideMountRadius(parent: ShipModuleDefinition): number {
+  return parent.kind === 'cockpit'
+    ? parent.diameter * 3 / 8
+    : parent.diameter / 2;
+}
+
 export function sideMountTransform(
   parent: ShipModuleDefinition, child: ShipModuleDefinition, slot: SideSlot,
 ): ModuleTransform {
@@ -69,8 +76,8 @@ export function sideMountTransform(
     ? qFromAxisAngle(v3(0, 0, 1), Math.PI) : { x: 0, y: 0, z: 0, w: 1 };
   return {
     position: v3(
-      direction.x * (parent.diameter / 2 + child.length / 2),
-      direction.y * (parent.diameter / 2 + child.length / 2),
+      direction.x * (sideMountRadius(parent) + child.length / 2),
+      direction.y * (sideMountRadius(parent) + child.length / 2),
       0,
     ),
     rotation: qMul(sideSlotRotation(slot), roll),
