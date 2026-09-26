@@ -480,8 +480,17 @@ lab は新 source(`MeteorologicalCloudField`)へ切替済み。全球面は `Equ
 
 検証: game 441・render 455 件、境界検査 pass。
 
-残る未達は、`cloud-optics-node.ts` の被覆→光学深一対一写像、被覆率の気候学的な粗さ、案A 本体(worker entry/client・帯分割・製品切替)、娘イベントの製品配線、季節・日変化、全球場の解像度依存、CPU 天気評価の循環ノイズ・移流湿度、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形下流応答、上層巻雲、観測評価(C7/C8 未固定)である。| src/render/cloud/cloud-field-sample.ts、src/render/cloud/cloud-field.ts | 独立した層・相・高度・光学量の契約と格納方式の確定 |
-| src/render/cloud/generated-cloud-field.ts | イベント評価と場のキャッシュ、必要領域、生成世代 |
+2026-09-27 の追記(第十報)。案A(worker 化+細格化)を着地させた。
+
+全球場を `ConvectiveCloudGlobalFieldWorkerSupply` へ差し替え、帯分割で最大 8 worker へ derive を振る。worker entry は `cloud-global-field-worker.ts`、client は同 `-client.ts` で `GlobalMassFieldSupply` 契約を満たし、Worker が無ければ従来の同期供給へ落ちる。各 worker が全球格子へ堆積し、メインで加算 merge(帯境界を跨ぐ footprint も正確)。気候画素は init メッセージで各 worker へ独立バッファで転送(共有バッファの detach バグを修正)。格子は 512×256・イベントセル 100 km へ切り替え — 構造の最小スケールが ~450 km から ~100 km へ下がり、イベント数は ~4,660→92,212 へ増えた。
+
+実測: derive は 8 worker で ~21-30 s(単スレッド ~641 s の約 20 倍速)。disk whitish は 25.5→27.0%、直下 600 km の白さは 0→14.8% — 細格化した構造が近景でも見えるようになった。被覆率の本体は変わらず(meanCoverage 0.003 台)で、実写 ~49% との差は供給量側の問題として残る。
+
+**残課題**: 初回供給の表示到着は ~40 s で、5 秒表示目標と解像度(derive ~30 s)は同時に達成できない — 粗い初回場の先行採用や階層供給が要る。worker プールに dispose が無い(製品は1供給なので実害小)。環境源の気候は init で転送するため、起動中に気候画像が遅れると最初の場は緯度近似になる。
+
+検証: game 447・render 462 件、境界検査 pass(既存の無関係な weapon-state 違反を除く)。
+
+残る未達は、`cloud-optics-node.ts` の被覆→光学深一対一写像、被覆率の気候学的な粗さ(27% vs 実写 ~49%)、初回供給の表示到着(~40 s)、娘イベントの製品配線、季節・日変化、CPU 天気評価の循環ノイズ・移流湿度、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形下流応答、上層巻雲、観測評価(C7/C8 未固定)である。| src/render/cloud/generated-cloud-field.ts | イベント評価と場のキャッシュ、必要領域、生成世代 |
 | src/render/cloud/cloud-detail-field.ts（新規）、src/render/cloud/cloud-cap.ts | 局所タイルまたは解析的 detail、風上領域、footprint と LOD |
 | src/render/cloud/cloud-density-evaluator.ts（新規）、src/render/cloud/cloud-shape-evaluator.ts、src/render/cloud/cumulus-shape.ts | 多層・傾き・変形を含む共通密度、質量に整合する細部 |
 | src/render/cloud/cloud-optics.ts、src/render/cloud/cloud-optics-node.ts | 相・粒径・消散、多重散乱近似、被覆と光学厚の分離、可視帯域の線形放射出力 |
