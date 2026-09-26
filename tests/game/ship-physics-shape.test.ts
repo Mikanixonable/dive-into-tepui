@@ -74,7 +74,10 @@ export function register(): void {
     assert.equal(assembly.modules.filter(module => module.kind === 'solar_panel').length, 2);
     assert.equal(assembly.modules.filter(module => module.kind === 'radiator').length, 2);
     assert.equal(assembly.modules.filter(module => module.kind === 'dock').length, 2);
-    assert.equal(physics.shape.primitives.length, assembly.size);
+    const expectedPrimitiveCount = assembly.modules.reduce(
+      (count, item) => count + assembly.definition(item.id)!.solidPrimitives.length, 0,
+    );
+    assert.equal(physics.shape.primitives.length, expectedPrimitiveCount);
   });
 
   test('ship physics shape: empty assembly は null で、単一 module を COM 原点へ移す', () => {
