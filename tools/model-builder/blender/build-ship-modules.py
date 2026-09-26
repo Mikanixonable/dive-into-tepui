@@ -335,6 +335,33 @@ def make_pipes(paths, radius, segments=12, bend_radius=0.0):
     return shade_by_angle(bm, 70.0, caps)
 
 
+def make_curved_plate(t0, t1, r_inner, thickness, x0, x1, z_axis, steps=8):
+    """円筒船体へ伏せる曲面の板。内面は軸 (y=0, z=z_axis) まわり半径 r_inner の凹弧で、
+    その軸はモジュール局所 X に沿う。角度 t は船体軸まわりの周方向位置 [rad]、
+    t=0 がモジュール中心(+Z 側)で、上面は内面から放射方向へ thickness [m] だけ離れる。"""
+    bm = bmesh.new()
+    grid = []
+    for i in range(steps + 1):
+        t = t0 + (t1 - t0) * i / steps
+        row = []
+        for x in (x0, x1):
+            for r in (r_inner, r_inner + thickness):
+                row.append(bm.verts.new((x, r * math.sin(t), z_axis + r * math.cos(t))))
+        grid.append(row)
+    # 各行は (x0,内) (x0,外) (x1,内) (x1,外) の順
+    for i in range(steps):
+        a, b = grid[i], grid[i + 1]
+        bm.faces.new([a[0], a[2], b[2], b[0]])       # 内面(船体側の凹面)
+        bm.faces.new([a[1], b[1], b[3], a[3]])       # 上面
+        bm.faces.new([a[0], b[0], b[1], a[1]])       # 側壁 x0
+        bm.faces.new([a[2], a[3], b[3], b[2]])       # 側壁 x1
+    f0, f1 = grid[0], grid[-1]
+    bm.faces.new([f0[0], f0[1], f0[3], f0[2]])       # 端壁 t0
+    bm.faces.new([f1[0], f1[2], f1[3], f1[1]])       # 端壁 t1
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return shade_by_angle(bm, 30.0)
+
+
 # ----------------------------------------------------------------------
 # 機能点の anchor、向きを持つノズル、Rao ベル
 # ----------------------------------------------------------------------
@@ -1107,16 +1134,81 @@ def build_deployable_chain(kind, half_len, build_panel):
             parent_to(obj, hinge)
 
 def build_deploy_base(mats, half_len, radius):
-    """取付面の円盤フランジとボルト環。駆動機構・回転継手はこの上へ載る。"""
+    """取付面の円盤フランジとボルト環。台座の天板として残し、駆動機構・回転継手はこの上へ載る。"""
     bm_flange = make_cylinder(radius * 0.85, radius * 0.85, 0.12, z_center=half_len - 0.06, segments=36)
     add_mesh_obj("deploy_flange", bm_flange, mats.hull_dark)
     bm_bolts = make_torus(major_r=radius * 0.82, minor_r=0.025, z_center=half_len - 0.02, major_seg=36, minor_seg=8)
     add_mesh_obj("flange_bolts", bm_bolts, mats.clamp)
 
+# 展開モジュールの船体側取付構造。母船の船体は半径 3.0 m の円筒で、側面取付の回転
+# (sideSlotRotation)はどの向き(side:±x / side:±y)でも母船の長手軸をモジュール局所 ±X へ写す。
+# モジュール後端面 z = -0.5 が船体面の接点なので、局所座標では船体円筒軸は高さ z = -3.5 を
+# X 方向へ走り、座板の凹弧はその軸まわりの半径となる。
+HULL_AXIS_Z = -3.5            # モジュール局所での船体円筒軸の高さ [m]
+SADDLE_INNER_RADIUS = 3.02    # 座板の内面半径 [m]。船体 R=3.0 へ 2 cm の取付代を残す
+SADDLE_THICKNESS = 0.07       # 座板の厚み [m]
+SADDLE_PADS = (               # 座板の位置 (船体軸方向 x, 周方向角 t [rad])
+    (0.85, 0.13), (0.85, -0.13), (-0.85, 0.13), (-0.85, -0.13),
+)
+SADDLE_HALF_DT = 0.08         # 座板の周方向の半幅 [rad]。これ以上広げると端が z=-0.55 を割る
+SADDLE_HALF_W = 0.35          # 座板の船体軸方向の半幅 [m]
+
+def saddle_top(t):
+    """座板の上面(外半径)で周方向角 t の点のモジュール局所座標。x は含まず (0, y, z)。"""
+    r = SADDLE_INNER_RADIUS + SADDLE_THICKNESS
+    return Vector((0.0, r * math.sin(t), HULL_AXIS_Z + r * math.cos(t)))
+
+def build_hull_junction(mats, half_len):
+    """船体円筒へ伏せる座板・斜めに開いた脚・機構を載せる台座を架け、
+    取付面(z≈+0.4)から船体の接面(z=-0.5)までを構造で繋ぐ。"""
+    for index, (xc, tc) in enumerate(SADDLE_PADS):
+        add_mesh_obj(f"hull_saddle:{index}", make_curved_plate(
+            tc - SADDLE_HALF_DT, tc + SADDLE_HALF_DT, SADDLE_INNER_RADIUS, SADDLE_THICKNESS,
+            xc - SADDLE_HALF_W, xc + SADDLE_HALF_W, HULL_AXIS_Z), mats.hull_dark)
+        # 座板の締結ボルト。船体軸方向2列×周方向3列
+        add_mesh_obj(f"saddle_bolts:{index}", make_boxes([
+            (0.05, 0.05, 0.04,
+             (xc + sx, saddle_top(tc + st).y, saddle_top(tc + st).z + 0.01), (-(tc + st), 0.0, 0.0))
+            for sx in (-0.26, 0.26) for st in (-0.055, 0.0, 0.055)
+        ], bevel=0.005), mats.clamp)
+        # 座板の中央から台座の下端へ斜めに開いた脚
+        foot = saddle_top(tc) + Vector((xc, 0.0, 0.0))
+        top = Vector((foot.x, foot.y, 0.0)).normalized() * 0.50 + Vector((0.0, 0.0, 0.10))
+        add_mesh_obj(f"mount_leg:{index}", make_strut(foot, top, 0.065, segments=12), mats.truss)
+        add_mesh_obj(f"mount_leg_foot:{index}", make_sphere(0.085, center=foot, u_seg=12, v_seg=8), mats.clamp)
+    # 機構を載せる台座。フランジ(取付面)の下面へ届けて上部構造を宙に浮かせない
+    add_mesh_obj("mount_pedestal", make_lathe([
+        (0.0, 0.00), (0.58, 0.00), (0.60, 0.04), (0.52, 0.10),
+        (0.52, 0.30), (0.60, 0.38), (0.60, half_len - 0.06), (0.0, half_len - 0.06),
+    ], segments=48, closed=True), mats.hull_dark)
+
 def build_solar_mount(mats, half_len, thickness):
-    """駆動機構とブーム。パネル列の根元ヒンジ(panel-hinge)はモジュール軸上の取付面にあるので、
-    駆動ドラムはヒンジ軸(X 軸)と同軸に置き、ブームは翼の収納範囲の外側(翼端方向 +X)へ立てる。"""
+    """レースリング軸受と根元ヒンジの駆動部。パネル列の根元ヒンジ(panel-hinge)はモジュール軸上の
+    取付面にあるので、駆動ドラムはヒンジ軸(X 軸)と同軸に置き、台座頂の軸受リングが
+    内ドラムとヨークを介してヒンジを支える。"""
+    # レースリング軸受: 台座へ固定の外レース、翼列と一緒に回る内レース、その間の転がり要素。
+    # 内レースの内縁(0.525)は台座の外径(0.52)へ載り、外レースの外縁(0.83)には駆動モーターが付く
+    add_mesh_obj("sarj_race_outer", make_torus(0.78, 0.05, z_center=0.30, major_seg=48, minor_seg=12), mats.clamp)
+    add_mesh_obj("sarj_race_inner", make_torus(0.575, 0.05, z_center=0.30, major_seg=48, minor_seg=12), mats.hull_dark)
+    for i in range(14):
+        a = i * 2.0 * math.pi / 14
+        add_mesh_obj(f"sarj_roller_{i}", make_sphere(
+            0.05, center=(0.70 * math.cos(a), 0.70 * math.sin(a), 0.30), u_seg=10, v_seg=8), mats.pipe)
+    # 外レースの外縁へ付く3基の駆動モーターと、外レースへ噛み合うピニオン
+    for i in range(3):
+        a = i * 2.0 * math.pi / 3.0 + math.pi / 6.0
+        px, py = 0.85 * math.cos(a), 0.85 * math.sin(a)
+        bm_motor = make_cylinder(0.075, 0.075, 0.22, z_center=0.27, segments=16)
+        add_mesh_obj(f"sarj_motor_{i}", transform_bm(bm_motor, Matrix.Translation(Vector((px, py, 0.0)))), mats.hull_dark)
+        bm_pinion = make_cylinder(0.11, 0.11, 0.06, z_center=0.30, segments=16)
+        add_mesh_obj(f"sarj_motor_pinion_{i}",
+            transform_bm(bm_pinion, Matrix.Translation(Vector((0.87 * px, 0.87 * py, 0.0)))), mats.clamp)
+    # 内レースからヒンジまで立ち上がる回転ドラムと、ドラム端へ届く短いヨーク
+    add_mesh_obj("sarj_drum", make_cylinder(0.58, 0.58, 0.20, z_center=0.40, segments=40), mats.hull_dark)
     hx, hy, hz = 0.0, -thickness / 2, half_len  # 根元ヒンジ軸(おもて +Y の反対側の面)
+    for sx in (-1.0, 1.0):
+        add_mesh_obj(f"sarj_yoke_{sx:+.0f}", make_strut(
+            Vector((sx * 0.60, hy, 0.33)), Vector((sx * 0.40, hy, half_len - 0.02)), 0.05), mats.truss)
     # 駆動ドラムと軸受。ドラムはフランジへ半分埋まる配置で、取付面から浮かない
     bm_drum = make_cylinder(0.14, 0.14, 0.72, z_center=0.0, segments=24)
     transform_bm(bm_drum, Matrix.Translation(Vector((hx, hy, hz))) @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
@@ -1134,23 +1226,27 @@ def build_solar_mount(mats, half_len, thickness):
     transform_bm(bm_motor, Matrix.Translation(Vector((0.78, hy, hz + 0.02))) @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
     add_mesh_obj("sada_motor", bm_motor, mats.hull_dark)
     add_mesh_obj("sada_motor_mount", make_box(0.12, 0.22, 0.12, center=(0.78, hy, half_len - 0.05)), mats.clamp)
-    # ブーム(ストロングバック)。翼端の外側へ立て、収納した翼列が展開方向へ掃く範囲を外す
-    boom_x = 1.80
-    add_mesh_obj("solar_boom_base", make_box(0.36, 0.36, 0.10, center=(boom_x, 0.0, half_len)), mats.hull_dark)
-    add_mesh_obj("solar_boom", make_box(0.20, 0.22, 0.90, center=(boom_x, 0.0, half_len + 0.45)), mats.truss)
-    # ブーム先端からヒンジ軸へ届くヨーク。翼面の裏側(-Y)を潜らせて展開した翼と交わらないようにする
-    add_mesh_obj("solar_yoke_arm", make_pipes([
-        [Vector((boom_x, -0.02, half_len + 0.88)), Vector((0.85, -0.16, half_len + 0.22)),
-         Vector((0.42, -0.10, half_len + 0.05)), Vector((0.29, hy, hz))],
-    ], radius=0.05, bend_radius=0.08), mats.truss)
-    add_mesh_obj("solar_yoke_brace", make_strut(
-        Vector((boom_x, -0.10, half_len + 0.22)), Vector((0.48, -0.10, half_len + 0.02)), 0.04), mats.truss)
+    # 台座から座板の貫通金具へ降ろす動力・信号のケーブル束(平行な2撚り)
+    pad_x, pad_t = -0.85, -0.13
+    top = saddle_top(pad_t)
+    add_mesh_obj("power_umbilical", make_pipes([
+        [Vector((-0.42, -0.30, 0.22)), Vector((-0.60, -0.40, -0.05)), Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.06))],
+        [Vector((-0.36, -0.34, 0.22)), Vector((-0.54, -0.44, -0.05)), Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.05))],
+    ], radius=0.03, segments=10, bend_radius=0.08), mats.clamp)
+    add_mesh_obj("umbilical_fitting", make_box(0.24, 0.18, 0.07,
+        center=(pad_x + 0.10, top.y - 0.03, top.z + 0.02), rot_euler=(-pad_t, 0.0, 0.0)), mats.hull_dark)
+    # 金具から船体内部へ潜る貫通部。船体面より下は母船へ吸収されるのでモジュール側では切り落とす
+    add_mesh_obj("umbilical_stub", make_pipes([
+        [Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.04)), Vector((pad_x + 0.06, top.y - 0.04, -0.62))],
+        [Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.03)), Vector((pad_x + 0.14, top.y - 0.06, -0.62))],
+    ], radius=0.028, segments=8), mats.clamp)
 
 def build_solar_panel(name):
     reset_scene()
     mats = MaterialLibrary()
     half_len = MANIFEST["modules"][name]["length"] / 2
     build_deploy_base(mats, half_len, 3.0)
+    build_hull_junction(mats, half_len)
     spec = MANIFEST["deployables"]["solar_panel"]
     length, span, thickness = spec["length"], spec["span"], spec["thickness"]
     build_solar_mount(mats, half_len, thickness)
@@ -1202,8 +1298,9 @@ def build_solar_panel(name):
 
 
 def build_radiator_mount(mats, half_len):
-    """回転流体継手のハウジング。継手ドラムはパネル列の収納範囲(展開方向に掃く ±X)の外、
-    翼端方向 +Y へ置き、根元ヒンジ胴(Y 軸)の端へ軸を繋ぐ。"""
+    """回転流体継手のハウジングと、船体へ降りる冷媒の往復管。継手ドラムはパネル列の収納範囲
+    (展開方向に掃く ±X)の外、翼端方向 +Y へ置き、根元ヒンジ胴(Y 軸)の端へ軸を繋ぐ。
+    供給管は継手からフランジ下面を潜って台座の脇を下り、座板の貫通部まで剥き出しで架ける。"""
     drum = Vector((-0.04, 1.82, half_len + 0.05))
     bm_drum = make_cylinder(0.20, 0.20, 0.55, z_center=0.0, segments=28)
     transform_bm(bm_drum, Matrix.Translation(drum) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
@@ -1212,11 +1309,25 @@ def build_radiator_mount(mats, half_len):
     transform_bm(bm_cap, Matrix.Translation(drum + Vector((0.0, 0.31, 0.0))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
     add_mesh_obj("fluid_joint_cap", bm_cap, mats.clamp)
     add_mesh_obj("fluid_joint_pedestal", make_box(0.40, 0.42, 0.16, center=(0.0, 1.82, half_len - 0.06)), mats.hull_dark)
-    # ドラムからフランジへ下りる行き・戻りの供給管
+    # 継手ドラムの取り出し口から台座の脇を経て座板の貫通金具へ下りる行き・戻りの供給管
+    pad_x, pad_t = -0.85, 0.13
+    top = saddle_top(pad_t)
     add_mesh_obj("fluid_joint_feeds", make_pipes([
-        [Vector((-0.12, 1.90, half_len + 0.10)), Vector((-0.12, 1.90, half_len - 0.06))],
-        [Vector((0.08, 1.90, half_len + 0.12)), Vector((0.08, 1.90, half_len - 0.06))],
-    ], radius=0.04, bend_radius=0.06), mats.pipe)
+        [Vector((-0.14, 1.62, half_len - 0.08)), Vector((-0.14, 1.55, 0.28)), Vector((-0.18, 0.90, 0.12)),
+         Vector((-0.24, 0.52, 0.00)), Vector((-0.50, 0.44, -0.22)), Vector((pad_x + 0.16, top.y + 0.02, top.z + 0.05))],
+        [Vector((0.06, 1.68, half_len - 0.08)), Vector((0.06, 1.50, 0.26)), Vector((0.02, 0.85, 0.08)),
+         Vector((-0.08, 0.50, -0.04)), Vector((-0.44, 0.46, -0.26)), Vector((pad_x + 0.24, top.y + 0.04, top.z + 0.04))],
+    ], radius=0.04, segments=12, bend_radius=0.08), mats.pipe)
+    # 座板上の貫通金具(船体側の冷媒口)。往復管はここで母船の冷媒系へ合流する
+    fit = Vector((pad_x + 0.20, top.y + 0.03, top.z + 0.01))
+    bm_manifold = make_cylinder(0.13, 0.13, 0.14, z_center=0.0, segments=16)
+    transform_bm(bm_manifold, Matrix.Translation(fit) @ Euler((-pad_t, 0.0, 0.0)).to_matrix().to_4x4())
+    add_mesh_obj("coolant_manifold", bm_manifold, mats.pipe)
+    # 金具から船体内部へ潜る口。船体面より下は母船へ吸収されるのでモジュール側では切り落とす
+    add_mesh_obj("coolant_stubs", make_pipes([
+        [Vector((pad_x + 0.16, top.y + 0.02, top.z + 0.05)), Vector((pad_x + 0.17, top.y + 0.02, -0.62))],
+        [Vector((pad_x + 0.24, top.y + 0.04, top.z + 0.04)), Vector((pad_x + 0.25, top.y + 0.04, -0.62))],
+    ], radius=0.035, segments=10), mats.pipe)
     # 継手ドラムから根元ヒンジ胴の端へ入る軸と、反対端の軸受
     add_mesh_obj("fluid_joint_shaft", make_strut(
         Vector((-0.04, 1.42, half_len)), Vector((-0.04, 1.70, half_len)), 0.07), mats.clamp)
@@ -1231,10 +1342,7 @@ def build_radiator(name):
     mats = MaterialLibrary()
     half_len = MANIFEST["modules"][name]["length"] / 2
     build_deploy_base(mats, half_len, 3.0)
-
-    # 回転継手へ繋がる船体側の冷媒口
-    bm_manifold = make_cylinder(0.16, 0.16, 0.16, z_center=half_len - 0.02, segments=16)
-    add_mesh_obj("coolant_manifold", bm_manifold, mats.pipe)
+    build_hull_junction(mats, half_len)
     build_radiator_mount(mats, half_len)
 
     spec = MANIFEST["deployables"]["radiator"]
