@@ -20,6 +20,7 @@
 import {
   parcelBuoyancyProfile,
   saturationSpecificHumidityOverIceKgPerKg,
+  saturationSpecificHumidityOverLiquidKgPerKg,
   virtualTemperatureK,
   type CloudProfileLevel,
 } from '../../physics/cloud-thermodynamics';
@@ -233,7 +234,11 @@ function deriveColumnWaterVaporKgPerM2(levels: readonly CloudEnvironmentLevelInp
 
 function deriveUpperIceMoistureFactor(input: CloudEnvironmentInput): number {
   const humidityAt = (level: CloudEnvironmentLevelInput): number => {
-    const saturation = saturationSpecificHumidityOverIceKgPerKg(level.temperatureK, level.pressurePa);
+    // The saturation reference follows the phase of the level: the ice equation is only
+    // valid up to the freezing point, so warm levels are compared to liquid saturation.
+    const saturation = level.temperatureK <= 273.15
+      ? saturationSpecificHumidityOverIceKgPerKg(level.temperatureK, level.pressurePa)
+      : saturationSpecificHumidityOverLiquidKgPerKg(level.temperatureK, level.pressurePa);
     return Math.max(0, Math.min(1, level.waterVaporSpecificHumidityKgPerKg / saturation));
   };
   const samples = [
@@ -330,9 +335,14 @@ function deriveGravityWaveDriver(
   const liftedPressurePa = sourceEnvironment.pressurePa * (
     liftedTemperatureK / sourceEnvironment.temperatureK
   ) ** (DRY_AIR_SPECIFIC_HEAT_J_PER_KG_K / DRY_AIR_GAS_CONSTANT_J_PER_KG_K);
+  // The saturation check follows the phase of the lifted air: the ice equation is only
+  // valid up to the freezing point, so a warm lifted parcel is compared to liquid
+  // saturation instead.
+  const liftedSaturationKgPerKg = liftedTemperatureK <= 273.15
+    ? saturationSpecificHumidityOverIceKgPerKg(liftedTemperatureK, liftedPressurePa)
+    : saturationSpecificHumidityOverLiquidKgPerKg(liftedTemperatureK, liftedPressurePa);
   const cloudCondensationPossible = active
-    && sourceEnvironment.waterVaporSpecificHumidityKgPerKg
-      >= saturationSpecificHumidityOverIceKgPerKg(liftedTemperatureK, liftedPressurePa);
+    && sourceEnvironment.waterVaporSpecificHumidityKgPerKg >= liftedSaturationKgPerKg;
   const horizontalWavenumberPerM = 2 * Math.PI / source.horizontalWavelengthM;
   const verticalWavenumberPerM = 2 * Math.PI / source.verticalWavelengthM;
   const wavenumberMagnitudePerM = Math.hypot(horizontalWavenumberPerM, verticalWavenumberPerM);

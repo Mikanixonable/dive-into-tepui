@@ -6,6 +6,8 @@ import * as THREE from 'three/webgpu';
 import { dot, exp, float, inverseSqrt, uniform } from 'three/tsl';
 import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from './cyclone-tracks';
 import { coreCrossingAngle } from './wind-law';
+import * as vec from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import type { CyclonePlacement } from './cyclone-tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
@@ -167,4 +169,87 @@ export class Cyclones {
   public anvilAt(direction: Vec3Node): FloatNode {
     return this.troughs.reduce<FloatNode>((sum, trough) => sum.add(trough.anvilAt(direction)), float(0));
   }
+}
+
+// 谷 1 つの数値版の形。Trough.place が uniform へ組む係数と同じものを数値で持つ。
+export interface CycloneTroughCpu {
+  // 中心の単位方向。
+  readonly center: Vec3;
+  // 長軸の向きの単位接ベクトル。
+  readonly axis: Vec3;
+  readonly depth: number; // [hPa]
+  // 弦の二乗を芯の尺で測る係数 (天体の半径 / 短軸の半径)²。
+  readonly coreScale: number;
+  // 長軸に沿う成分を縮める係数 1 − 1 / (長軸/短軸の比)²。
+  readonly axisShrink: number;
+  // 裾を閉じるガウスの係数 (天体の半径 / TROUGH_REACH)²。
+  readonly reachScale: number;
+  readonly eyeStrength: number; // 0..1
+}
+
+// 配置 placement から、数値版の谷を組む。surfaceRadius は天体の半径 [m]、rotationPeriod は
+// 自転周期 [s]。
+export function cycloneTroughCpu(
+  placement: CyclonePlacement, surfaceRadius: number, rotationPeriod: number,
+): CycloneTroughCpu {
+  const { latitude, longitude, depth, radius, elongation } = placement;
+  const cosLatitude = Math.cos(latitude);
+  const sinLatitude = Math.sin(latitude);
+  const cosLongitude = Math.cos(longitude);
+  const sinLongitude = Math.sin(longitude);
+  const hemisphere = latitude >= 0 ? 1 : -1;
+  return {
+    center: vec.v3(cosLatitude * sinLongitude, sinLatitude, cosLatitude * cosLongitude),
+    axis: vec.norm(vec.v3(
+      cosLongitude - hemisphere * sinLatitude * sinLongitude,
+      hemisphere * cosLatitude,
+      -sinLongitude - hemisphere * sinLatitude * cosLongitude)),
+    depth,
+    coreScale: (surfaceRadius / radius) ** 2,
+    axisShrink: 1 - 1 / elongation ** 2,
+    reachScale: (surfaceRadius / TROUGH_REACH) ** 2,
+    eyeStrength: eyeStrengthOf(depth, radius, latitude, surfaceRadius, rotationPeriod),
+  };
+}
+
+// 時刻 seconds [s] における全谷(熱帯低気圧 1 つと中緯度の低気圧 LOW_COUNT 個)の数値版。
+export function cycloneTroughsAtCpu(
+  seconds: number, surfaceRadius: number, rotationPeriod: number,
+): CycloneTroughCpu[] {
+  const troughs: CycloneTroughCpu[] = [];
+  const tropical = tropicalPlacementAt(seconds);
+  if (tropical !== null) troughs.push(cycloneTroughCpu(tropical, surfaceRadius, rotationPeriod));
+  for (let index = 0; index < LOW_COUNT; index += 1) {
+    const placement = lowPlacementAt(index, seconds, surfaceRadius);
+    if (placement !== null) {
+      troughs.push(cycloneTroughCpu(placement, surfaceRadius, rotationPeriod));
+    }
+  }
+  return troughs;
+}
+
+// 中心からの弦の二乗。Trough.chordSquared の数値版。
+function chordSquaredCpu(trough: CycloneTroughCpu, direction: Vec3): number {
+  const offset = vec.sub(direction, trough.center);
+  const alongAxis = vec.dot(offset, trough.axis);
+  return vec.dot(offset, offset) - alongAxis * alongAxis * trough.axisShrink;
+}
+
+// Trough.pressureAt の数値版。単位方向での気圧の落ち込み [hPa](負)。
+export function troughPressureAtCpu(trough: CycloneTroughCpu, direction: Vec3): number {
+  const chord = chordSquaredCpu(trough, direction);
+  const core = (1 / Math.sqrt(chord * trough.coreScale + 1)) * Math.exp(-chord * trough.reachScale);
+  return -core * trough.depth;
+}
+
+// Trough.eyeAt の数値版。眼の濃さ 0..1。
+export function troughEyeAtCpu(trough: CycloneTroughCpu, direction: Vec3): number {
+  const normalized = chordSquaredCpu(trough, direction) * trough.coreScale / (EYE_FRACTION ** 2);
+  return Math.exp(-normalized) * trough.eyeStrength;
+}
+
+// Trough.anvilAt の数値版。金床の濃さ 0..1。
+export function troughAnvilAtCpu(trough: CycloneTroughCpu, direction: Vec3): number {
+  const normalized = chordSquaredCpu(trough, direction) * trough.coreScale / (ANVIL_FRACTION ** 2);
+  return Math.exp(-(normalized ** 3)) * trough.eyeStrength;
 }
