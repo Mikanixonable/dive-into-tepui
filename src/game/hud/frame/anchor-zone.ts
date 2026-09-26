@@ -8,7 +8,7 @@ import { injectOnce } from '../../../hud/inject-style';
 import { frameRoleName } from './frame-labels';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { groupPickables } from '../object-groups';
-import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
+import { ObjectPicker, type ObjectPickerGroup } from '../windows/object-picker';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { ListedObject } from '../../pickable/listed-object';
 

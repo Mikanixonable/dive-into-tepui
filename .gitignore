@@ -38,3 +38,6 @@ assets-src/climate/
 *.pfx
 credentials.json
 service-account.json
+
+# Local scratch work
+scratch/

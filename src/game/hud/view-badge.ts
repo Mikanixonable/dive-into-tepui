@@ -1,7 +1,7 @@
 // トップバー1行目のコンテキスト表示: 現在のモード・ビュー切替と、注視/操作/ターゲットの対象名。
 import type { ViewMode } from '../view/view-mode';
 import type { ViewCommands } from '../viewer/view-commands';
-import { ContextMenu, MenuItem } from './windows/context-menu';
+import { ContextMenu, type MenuItem } from './windows/context-menu';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import { Button } from '../../hud/widgets';
 
