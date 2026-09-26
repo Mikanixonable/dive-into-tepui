@@ -31,6 +31,8 @@ const REFERENCE_SHIP_MASS = 1_000;
 
 export interface ModularShipMotionReactions {
   roundsInMagazine?(): number;
+  // ベルトに残っているマガジンの本数(装填中の1本を含む)。ベルトの接触代理の範囲を決める。
+  magsLeft?(): number;
   stepBarrelThermal?(dt: number): void;
   thrustAcceleration?(): Vec3;
   radiatorWear?(): Readonly<Record<string, number>>;
@@ -115,7 +117,9 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     motion.radiator.placeContactFolds(
       sub(motion.state.r, rootOffset), sub(motion.state.v, rootVelocityOffset), motion.att, simTime,
     );
-    motion.belt.placeContactSections(motion, simTime, dt, motion.state.r, motion.state.v, motion.att);
+    motion.belt.placeContactSections(
+      motion, this.reactions.magsLeft?.() ?? 0, simTime, dt, motion.state.r, motion.state.v, motion.att,
+    );
   }
 
   public contactProxies(self: DynamicMotion): readonly EntityContactParticipant[] {
