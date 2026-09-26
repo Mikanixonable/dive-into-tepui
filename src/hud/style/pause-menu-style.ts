@@ -28,14 +28,11 @@ export const PAUSE_MENU_STYLE = `
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start;
 }
 #hud-pause-menu .pm-brand {
-  position: relative; display: grid; grid-column: 1; gap: var(--space-4);
+  display: grid; grid-column: 1; gap: var(--space-4);
   min-height: 220px; align-content: end;
 }
 #hud-pause-menu .pm-brand .title-logotype { font-size: clamp(2.6rem, 6vw, 4.7rem); }
 #hud-pause-menu .pm-brand-meta { display: flex; align-items: baseline; gap: var(--space-3); }
-#hud-pause-menu .pm-brand-logo {
-  position: absolute; top: 0; left: 0; width: 2rem; height: 2rem; border-radius: var(--radius-control); opacity: .72;
-}
 #hud-pause-menu .pm-brand-version {
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
