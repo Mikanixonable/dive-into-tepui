@@ -1,6 +1,7 @@
 // 機関砲の被駆動部(回転砲身束・給弾スプロケット・デリンクドラム・案内爪・反動部)を表示時刻へ
 // 同期する。回転・給弾部は射撃レートに追従し、反動部は実射時刻から解析的に動かす。
 import * as THREE from 'three/webgpu';
+import { MAG_BELT_PITCH } from '../../../physics/player-shape';
 import type { ModularShipView } from './modular-ship-view';
 import type { ShipModuleRenderInput } from './ship-render-contract';
 
@@ -15,9 +16,10 @@ const SPIN_AXIS = new THREE.Vector3(0, 0, 1);
 const SPIN_QUAT = new THREE.Quaternion();
 const STROKE_DIR = new THREE.Vector3();
 
-// 送り車の半径 [m](build-ship-modules.py の給弾塔)。ベルト1リンクぶんの装弾
+// 送り車の半径 [m](build-ship-modules.py の側方給弾スプロケット)。ベルト1リンクぶんの装弾
 // 1カートリッジ8発を、そのピッチ MAG_BELT_PITCH(physics/player-shape.ts)ぶん送る回転角 [rad/発]。
-const SPROCKET_RAD_PER_ROUND = (2.847 / 0.26) / 8;
+const SPROCKET_RADIUS = 0.26;
+const SPROCKET_RAD_PER_ROUND = (MAG_BELT_PITCH / SPROCKET_RADIUS) / 8;
 // デリンクドラムは1発剥がすごとに1ステーション(全6)ぶん回る [rad/発]。
 const DRUM_RAD_PER_ROUND = TWO_PI / 6;
 // 案内爪はカートリッジ1段(8発)の送りで1往復する [rad/発] と、行程の半分の長さ [m]。
@@ -100,6 +102,7 @@ export class WeaponDrives {
     }
   }
 
+  // 発射時刻からレシーバーの後座位置を求め、各砲の表示姿勢へ反映する。
   private syncRecoil(
     ship: ModularShipView,
     modules: readonly ShipModuleRenderInput[],
@@ -108,12 +111,14 @@ export class WeaponDrives {
   ): void {
     const anchors = recoilAnchors(ship, modules);
     const live = new Set(anchors.map(part => part.anchor));
+    // 消えた武装の状態を捨て、現存する後座部だけを追跡する。
     for (const anchor of this.recoilStates.keys()) {
       if (!live.has(anchor)) this.recoilStates.delete(anchor);
     }
     for (const { moduleId, muzzleIndex, anchor } of anchors) {
       let state = this.recoilStates.get(anchor);
       if (state === undefined) {
+        // 初期姿勢を保存し、発射間の描画でも同じ基準へ戻せるようにする。
         state = {
           baseQuat: anchor.quaternion.clone(),
           basePos: anchor.position.clone(),
@@ -121,6 +126,7 @@ export class WeaponDrives {
         };
         this.recoilStates.set(anchor, state);
       }
+      // 対応する発射イベントの後座量を表示時刻で評価する。
       const shot = recoilInputs.find(input => input.moduleId === moduleId && input.muzzleIndex === muzzleIndex);
       const displacement = shot === undefined ? 0 : recoilStroke(shot, displayTime, state.travel);
       anchor.position.copy(state.basePos).addScaledVector(
@@ -159,11 +165,13 @@ function drivenParts(ship: ModularShipView, modules: readonly ShipModuleRenderIn
   return parts;
 }
 
+// 稼働中の武装から後座アンカーと砲口番号を組にする。
 function recoilAnchors(
   ship: ModularShipView,
   modules: readonly ShipModuleRenderInput[],
 ): { readonly moduleId: string; readonly muzzleIndex: number; readonly anchor: THREE.Object3D }[] {
   const result: { moduleId: string; muzzleIndex: number; anchor: THREE.Object3D }[] = [];
+  // 破損した武装を除き、各後座部を対応する砲口と結び付ける。
   for (const module of modules) {
     if (module.kind !== 'weapon' || module.hp <= 0) continue;
     for (const anchor of ship.semanticAnchors(module.id, 'gun-recoil:')) {
@@ -182,6 +190,7 @@ function recoilAnchors(
 
 const SPIN: DriveMode = { type: 'spin' };
 
+// アセットに定義された後座行程を検証して取得する。
 function recoilTravelOf(anchor: THREE.Object3D): number {
   const travel: unknown = anchor.userData.recoilTravel;
   if (typeof travel !== 'number' || !Number.isFinite(travel) || travel <= 0) {
@@ -190,11 +199,13 @@ function recoilTravelOf(anchor: THREE.Object3D): number {
   return travel;
 }
 
+// 発射時刻とサイクル長から、現在の後座変位を滑らかな一往復で求める。
 function recoilStroke(input: WeaponRecoilInput, displayTime: number, travel: number): number {
   if (!Number.isFinite(input.firedAt) || !Number.isFinite(input.cycleDuration) || input.cycleDuration <= 0) return 0;
   const duration = Math.min(MAX_RECOIL_DURATION, input.cycleDuration * 0.95);
   const age = displayTime - input.firedAt;
   if (!(duration > 0) || age <= 0 || age >= duration) return 0;
+  // 発射直後に後座し、残りのサイクルで基準位置へ戻す。
   const attackDuration = duration * RECOIL_ATTACK_RATIO;
   if (age < attackDuration) {
     const progress = age / attackDuration;
