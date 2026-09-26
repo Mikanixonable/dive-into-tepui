@@ -27,7 +27,6 @@ export class FrameControls {
   public constructor(
     mapPanelRoot: HTMLElement,
     combatPanelRoot: HTMLElement,
-    popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: Pick<
       FocusCameraSource,
@@ -65,13 +64,13 @@ export class FrameControls {
       ),
     };
     this.cameraPanel = new CameraFramePanel(
-      mapPanelRoot, popupRoot, celestialBodies, mapCommands, overlayManager, mapCamera.cameraRotationMode,
+      mapPanelRoot, celestialBodies, mapCommands, overlayManager, mapCamera.cameraRotationMode,
     );
     this.combatCameraPanel = new CombatCameraPanel(
       combatPanelRoot, combatCameraCommands, combatCamera.cameraRotationMode,
     );
     this.trajectoryPanel = new TrajectoryFramePanel(
-      mapPanelRoot, popupRoot, celestialBodies, predictPanel, predictPanelCommands, overlayManager,
+      mapPanelRoot, celestialBodies, predictPanel, predictPanelCommands, overlayManager,
     );
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
   }
