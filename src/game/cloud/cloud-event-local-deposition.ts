@@ -1,4 +1,5 @@
-// 球面上で輸送したイベント材料を、明示面積を用いて地表固定局所格子へ分配する診断adapter。
+// 球面上で輸送したイベント材料を、明示した source 面積と footprint 形状で
+// 地表固定局所格子へ分配する診断adapter。
 // supplySourceId の一意性やこのadapterの質量収支は、複数source領域の地理的な非重複を保証しない。
 // この関数単体は製品場への接続でも、C1の製品空間質量合格判定でもない。
 
@@ -7,6 +8,7 @@ import type { Vec3 } from '../../math/vec3';
 import type { CloudEventMaterialCohorts } from './cloud-event-transport';
 import {
   cloudFootprintOverlap,
+  type CloudFootprintEllipse,
   type CloudFootprintGrid,
 } from './cloud-footprint-overlap';
 import {
@@ -16,14 +18,24 @@ import {
   type CloudMassParcel,
 } from './cloud-mass-deposition';
 
-export interface CloudEventFootprintAreas {
-  readonly parentLiquidM2: number | null;
-  readonly releasedIceCohorts: readonly CloudIceCohortFootprintArea[];
+// 材料1単位の footprint 形。等方半径と接空間上の伸長ベクトルの組で、
+// 接平面上の楕円は G = c²I + Σvvᵀ の固有値・固有ベクトルから復元する。
+// 伸長が無い形は等半径の円。
+export interface CloudEventFootprintShape {
+  // 等方成分の半径。m。
+  readonly isotropicRadiusM: number;
+  // 伸長成分。長さが伸長距離 [m] のベクトルで、材料の位置の接平面方向へ伸びる。
+  readonly elongationVectorsM: readonly Vec3[];
 }
 
-export interface CloudIceCohortFootprintArea {
+export interface CloudEventFootprintShapes {
+  readonly parentLiquid: CloudEventFootprintShape | null;
+  readonly releasedIceCohorts: readonly CloudIceCohortFootprintShape[];
+}
+
+export interface CloudIceCohortFootprintShape {
   readonly cohortIndex: number;
-  readonly areaM2: number;
+  readonly shape: CloudEventFootprintShape;
 }
 
 export interface CloudEventTangentChart {
@@ -115,18 +127,53 @@ function validateLocalGrid(footprintGrid: CloudFootprintGrid, massGrid: CloudMas
   }
 }
 
+// footprint の等方半径と伸長ベクトルから、chart 平面上の楕円へ変換する。
+// 伸長ベクトルは ECI 接空間のまま運ばれるので、chart の東・北基底へ落として
+// 2×2 形状行列 G = c²I + Σvvᵀ を組み、その固有値を半軸、固有ベクトルを主軸方位とする。
+// 材料方向と chart 中心が離れるほど基底のずれで形状が歪む近似を含む。
+function footprintEllipseFromShape(
+  shape: CloudEventFootprintShape,
+  chart: CloudEventTangentChart,
+): { readonly majorRadiusM: number; readonly minorRadiusM: number; readonly majorAxisAzimuthRad: number } {
+  requirePositive(shape.isotropicRadiusM, 'footprint isotropicRadiusM');
+  const isotropicSquaredM2 = shape.isotropicRadiusM * shape.isotropicRadiusM;
+  let g11 = isotropicSquaredM2;
+  let g12 = 0;
+  let g22 = isotropicSquaredM2;
+  for (const vector of shape.elongationVectorsM) {
+    requireFinite(vector.x, 'elongation.x');
+    requireFinite(vector.y, 'elongation.y');
+    requireFinite(vector.z, 'elongation.z');
+    const eastM = dot(vector, chart.eastUnitVector);
+    const northM = dot(vector, chart.northUnitVector);
+    g11 += eastM * eastM;
+    g12 += eastM * northM;
+    g22 += northM * northM;
+  }
+  const traceHalfM2 = (g11 + g22) / 2;
+  const offDiagonalRadiusM2 = Math.hypot((g11 - g22) / 2, g12);
+  const majorSquaredM2 = traceHalfM2 + offDiagonalRadiusM2;
+  const minorSquaredM2 = Math.max(traceHalfM2 - offDiagonalRadiusM2, Number.MIN_VALUE);
+  return {
+    majorRadiusM: Math.sqrt(majorSquaredM2),
+    minorRadiusM: Math.sqrt(minorSquaredM2),
+    // 対称 2×2 の大固有値の主軸方位。等方(g12=0 かつ g11=g22)では不定だが、
+    // そのとき半軸が等しく方位は結果に効かない。
+    majorAxisAzimuthRad: Math.atan2(2 * g12, g11 - g22) / 2,
+  };
+}
+
 function projectToChart(
   directionUnitVector: Vec3,
   geometricHeightM: number,
-  footprintAreaM2: number,
+  footprintMajorRadiusM: number,
   chart: CloudEventTangentChart,
 ): { readonly eastM: number; readonly northM: number } {
   validateUnitVector(directionUnitVector, 'directionUnitVector');
   requireFinite(geometricHeightM, 'geometricHeightM');
   if (geometricHeightM < 0) throw new RangeError('geometricHeightM must be non-negative');
-  requirePositive(footprintAreaM2, 'footprintAreaM2');
-  const footprintRadiusM = Math.sqrt(footprintAreaM2 / Math.PI);
-  const footprintAngularRadiusRad = footprintRadiusM / chart.sphereRadiusM;
+  requirePositive(footprintMajorRadiusM, 'footprintMajorRadiusM');
+  const footprintAngularRadiusRad = footprintMajorRadiusM / chart.sphereRadiusM;
   if (!Number.isFinite(footprintAngularRadiusRad)) {
     throw new RangeError('footprint angular radius must be finite');
   }
@@ -150,30 +197,30 @@ function projectToChart(
   return { eastM, northM };
 }
 
-function requireArea(value: number, name: string): void {
-  requirePositive(value, name);
-}
-
 function makeParcel(
   phase: 'liquid' | 'ice',
   massKgM2: number,
   directionUnitVector: Vec3,
   geometricHeightM: number,
   sourceAreaM2: number,
-  footprintAreaM2: number,
+  footprintShape: CloudEventFootprintShape,
   chart: CloudEventTangentChart,
   footprintGrid: CloudFootprintGrid,
 ): CloudMassParcel {
   requireFinite(massKgM2, 'massKgM2');
   if (massKgM2 < 0) throw new RangeError('massKgM2 must be non-negative');
-  requireArea(footprintAreaM2, 'footprintAreaM2');
   const massKg = massKgM2 * sourceAreaM2;
   requireFinite(massKg, 'massKg');
-  const center = projectToChart(directionUnitVector, geometricHeightM, footprintAreaM2, chart);
-  const coverage = cloudFootprintOverlap({
+  const ellipse = footprintEllipseFromShape(footprintShape, chart);
+  const center = projectToChart(
+    directionUnitVector, geometricHeightM, ellipse.majorRadiusM, chart);
+  const footprint: CloudFootprintEllipse = {
     ...center,
-    radiusM: Math.sqrt(footprintAreaM2 / Math.PI),
-  }, footprintGrid);
+    majorRadiusM: ellipse.majorRadiusM,
+    minorRadiusM: ellipse.minorRadiusM,
+    majorAxisAzimuthRad: ellipse.majorAxisAzimuthRad,
+  };
+  const coverage = cloudFootprintOverlap(footprint, footprintGrid);
   return {
     phase,
     massKg,
@@ -214,23 +261,22 @@ function validateMaterialMass(material: CloudEventMaterialCohorts): void {
   }
 }
 
-function footprintAreaByCohortIndex(
+function footprintShapeByCohortIndex(
   material: CloudEventMaterialCohorts,
-  footprints: readonly CloudIceCohortFootprintArea[],
-): ReadonlyMap<number, number> {
+  footprints: readonly CloudIceCohortFootprintShape[],
+): ReadonlyMap<number, CloudEventFootprintShape> {
   if (footprints.length !== material.releasedIceCohorts.length) {
-    throw new RangeError('each released ice cohort requires one explicit footprint area');
+    throw new RangeError('each released ice cohort requires one explicit footprint shape');
   }
-  const areas = new Map<number, number>();
+  const shapes = new Map<number, CloudEventFootprintShape>();
   for (const footprint of footprints) {
     if (!Number.isInteger(footprint.cohortIndex) || footprint.cohortIndex < 0) {
       throw new RangeError('footprint cohortIndex must be a non-negative integer');
     }
-    requireArea(footprint.areaM2, 'released ice footprint areaM2');
-    if (areas.has(footprint.cohortIndex)) {
+    if (shapes.has(footprint.cohortIndex)) {
       throw new RangeError('duplicate released ice cohort footprint');
     }
-    areas.set(footprint.cohortIndex, footprint.areaM2);
+    shapes.set(footprint.cohortIndex, footprint.shape);
   }
   const cohortIndices = new Set<number>();
   for (const cohort of material.releasedIceCohorts) {
@@ -241,12 +287,12 @@ function footprintAreaByCohortIndex(
       throw new RangeError('released ice cohortIndex values must be unique');
     }
     cohortIndices.add(cohort.cohortIndex);
-    if (!areas.has(cohort.cohortIndex)) {
-      throw new RangeError(`missing footprint area for ice cohort ${cohort.cohortIndex}`);
+    if (!shapes.has(cohort.cohortIndex)) {
+      throw new RangeError(`missing footprint shape for ice cohort ${cohort.cohortIndex}`);
     }
   }
-  if (areas.size !== cohortIndices.size) throw new RangeError('footprint area refers to an unknown ice cohort');
-  return areas;
+  if (shapes.size !== cohortIndices.size) throw new RangeError('footprint shape refers to an unknown ice cohort');
+  return shapes;
 }
 
 function depositedMassKgByPhase(
@@ -282,40 +328,40 @@ function validateMassBalance(
   }
 }
 
-// イベントの surrogate kg/m² に明示 source area を掛け、材料ごとの明示 footprint で局所格子へ置く。
+// イベントの surrogate kg/m² に明示 source area を掛け、材料ごとの明示 footprint 形状で局所格子へ置く。
 export function depositCloudEventMaterialCohorts(
   material: CloudEventMaterialCohorts,
   sourceAreaM2: number,
-  footprintAreas: CloudEventFootprintAreas,
+  footprintShapes: CloudEventFootprintShapes,
   chart: CloudEventTangentChart,
   footprintGrid: CloudFootprintGrid,
   massGrid: CloudMassGrid,
 ): CloudMassDeposition {
-  requireArea(sourceAreaM2, 'sourceAreaM2');
+  requirePositive(sourceAreaM2, 'sourceAreaM2');
   validateMaterialMass(material);
   validateChart(chart);
   validateLocalGrid(footprintGrid, massGrid);
-  if (material.parent === null && footprintAreas.parentLiquidM2 !== null) {
-    throw new RangeError('parentLiquidM2 must be null when no liquid parent exists');
+  if (material.parent === null && footprintShapes.parentLiquid !== null) {
+    throw new RangeError('parentLiquid must be null when no liquid parent exists');
   }
-  if (material.parent !== null && footprintAreas.parentLiquidM2 === null) {
-    throw new RangeError('parentLiquidM2 is required for a liquid parent');
+  if (material.parent !== null && footprintShapes.parentLiquid === null) {
+    throw new RangeError('parentLiquid is required for a liquid parent');
   }
-  const iceFootprintAreasM2 = footprintAreaByCohortIndex(material, footprintAreas.releasedIceCohorts);
+  const iceFootprintShapes = footprintShapeByCohortIndex(material, footprintShapes.releasedIceCohorts);
 
   const parcels: CloudMassParcel[] = [];
-  if (material.parent !== null && footprintAreas.parentLiquidM2 !== null) {
+  if (material.parent !== null && footprintShapes.parentLiquid !== null) {
     parcels.push(makeParcel(
       'liquid', material.parent.massKgM2, material.parent.directionUnitVector,
-      material.parent.geometricHeightM, sourceAreaM2, footprintAreas.parentLiquidM2, chart, footprintGrid,
+      material.parent.geometricHeightM, sourceAreaM2, footprintShapes.parentLiquid, chart, footprintGrid,
     ));
   }
   for (const cohort of material.releasedIceCohorts) {
-    const footprintAreaM2 = iceFootprintAreasM2.get(cohort.cohortIndex);
-    if (footprintAreaM2 === undefined) throw new Error('validated ice footprint area is unavailable');
+    const footprintShape = iceFootprintShapes.get(cohort.cohortIndex);
+    if (footprintShape === undefined) throw new Error('validated ice footprint shape is unavailable');
     parcels.push(makeParcel(
       'ice', cohort.massKgM2, cohort.directionUnitVector, cohort.geometricHeightM,
-      sourceAreaM2, footprintAreaM2, chart, footprintGrid,
+      sourceAreaM2, footprintShape, chart, footprintGrid,
     ));
   }
 
