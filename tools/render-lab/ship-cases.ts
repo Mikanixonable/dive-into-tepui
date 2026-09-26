@@ -159,6 +159,14 @@ function weapon(): LabCase {
         view: { cameraAzimuthDeg: 55, cameraElevationDeg: -20, cameraDistanceLog: -0.22,
           sunAzimuthDeg: 40, sunElevationDeg: -35 },
       },
+      'weapon-feed-mouth': {
+        view: { cameraAzimuthDeg: 75, cameraElevationDeg: -8, cameraDistanceLog: -0.5,
+          sunAzimuthDeg: 80, sunElevationDeg: 40 },
+      },
+      'weapon-feed-exit': {
+        view: { cameraAzimuthDeg: -75, cameraElevationDeg: 15, cameraDistanceLog: -0.5,
+          sunAzimuthDeg: -80, sunElevationDeg: 45 },
+      },
       'weapon-cradle-recoil': {
         displayTime: 0.562,
         view: { cameraAzimuthDeg: -65, cameraElevationDeg: 25, cameraDistanceLog: -0.32,
