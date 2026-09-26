@@ -16,12 +16,14 @@ interface InspectorProbe {
   beginCompute(uid: string): void;
 }
 
+// timestamp pool を差し替え、非同期解決を待ちながら UID の帰属を検証する。
 function timingFixture(): {
   readonly timings: GpuTimings;
   readonly inspector: InspectorProbe;
   readonly renderTimestamps: TimestampPoolProbe;
   readonly computeTimestamps: TimestampPoolProbe;
 } {
+  // render と compute の query を別々に補い、回収数を独立して確かめる。
   const renderTimestamps = { timestamps: new Map<string, number>() };
   const computeTimestamps = { timestamps: new Map<string, number>() };
   const renderer = {
@@ -41,6 +43,7 @@ function timingFixture(): {
   };
 }
 
+// 名前付き pass と窓全体の集計、未解決 query の扱いを確かめる。
 export function register(): void {
   test('gpu timings: 行の名前が識別子と 1 対 1 に並ぶ', () => {
     assert.equal(GPU_PASS_COUNT, Object.keys(GPU_PASS).length);

@@ -93,8 +93,8 @@ export function register(): void {
     const localAnchor = definition.feedPort;
     // 後端側の給弾 port 中心は砲の長手軸上にある。
     assert.equal(localAnchor.x, 0);
-    assert.equal(localAnchor.y, 0);
-    assert.ok(localAnchor.z < -definition.length / 2 + 0.5);
+    assert.equal(localAnchor.y, -1.95);
+    assert.equal(localAnchor.z, 0);
     const assemblyAnchor = qRotate(transform.rotation, localAnchor);
     const expected = v3(
       transform.position.x + assemblyAnchor.x - motion.centerOffset.x,
