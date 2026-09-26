@@ -7,7 +7,17 @@ export interface SerializedWeaponState {
   readonly muzzleIdx: number;
   readonly wasFiring: boolean;
   readonly wasEmptyClick: boolean;
+  readonly shots?: readonly SerializedWeaponShot[];
 }
+
+export interface SerializedWeaponShot {
+  readonly moduleId: string;
+  readonly muzzleIndex: number;
+  readonly firedAt: number;
+  readonly cycleDuration: number;
+}
+
+export type WeaponShotRecord = SerializedWeaponShot;
 
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export interface AmmoLoad { readonly mags: number; readonly rounds: number }
@@ -22,8 +32,10 @@ export interface WeaponFireCommand {
 // 既定の初期積載。開始時は3マガジンが連結された状態で、装填済みの1マガジン＋予備2本。
 const DEFAULT_MAGS = 2;
 
-// 弾薬・クールダウン・交互に撃つ砲口・トリガーの状態機械。
+// 弾薬・クールダウン・交互に撃つ砲口・トリガーと直近発射記録の状態機械。
 export class WeaponState {
+  private readonly shotRecords = new Map<string, WeaponShotRecord>();
+
   // mags は予備を含めて残っているマガジン数、muzzleIdx は次に撃つ砲口。
   // 省いた値は既定の積載で始める。
   public constructor(
@@ -43,7 +55,7 @@ export class WeaponState {
   // 直列化した弾薬の状態から復元する。壊れた値は既定値へフォールバックする。
   public static deserialize(serialized: SerializedWeaponState): WeaponState {
     // 壊れた値は undefined として渡し、コンストラクタの既定引数に補わせる
-    return new WeaponState(
+    const weapon = new WeaponState(
       nonNegativeInteger(serialized.mags),
       boundedInteger(serialized.rounds, 0, MAG_ROUNDS),
       nonNegativeNumber(serialized.cooldown),
@@ -51,6 +63,13 @@ export class WeaponState {
       booleanValue(serialized.wasFiring),
       booleanValue(serialized.wasEmptyClick),
     );
+    if (Array.isArray(serialized.shots)) {
+      for (const candidate of serialized.shots) {
+        const record = validShotRecord(candidate);
+        if (record !== null) weapon.recordShot(record);
+      }
+    }
+    return weapon;
   }
 
   public get mags(): number { return this._mags; }
@@ -61,6 +80,20 @@ export class WeaponState {
   public get wasFiring(): boolean { return this._wasFiring; }
   // 撃てないまま引いたことを、次に撃てるまでに記録済みか。
   public get wasEmptyClick(): boolean { return this._wasEmptyClick; }
+
+  public get recentShots(): readonly WeaponShotRecord[] { return [...this.shotRecords.values()]; }
+
+  // 同じモジュールと砲口の発射記録を、直近の1発で置き換える。
+  public recordShot(record: WeaponShotRecord): void {
+    this.shotRecords.set(shotKey(record.moduleId, record.muzzleIndex), { ...record });
+  }
+
+  // 撤去・破壊された武装の発射記録を捨てる。
+  public retainShotModules(moduleIds: ReadonlySet<string>): void {
+    for (const [key, shot] of this.shotRecords) {
+      if (!moduleIds.has(shot.moduleId)) this.shotRecords.delete(key);
+    }
+  }
 
   // 装填中か予備に弾が残っているか。
   public get left(): boolean { return this._rounds > 0 || this._mags > 0; }
@@ -134,7 +167,7 @@ export class WeaponState {
     }
   }
 
-  // 弾薬・砲口と、トリガーの引き続けの直列化。
+  // 弾薬・砲口・トリガー状態と、直近の発射記録を直列化する。
   public serialize(): SerializedWeaponState {
     return {
       mags: this._mags,
@@ -143,8 +176,24 @@ export class WeaponState {
       muzzleIdx: this._muzzleIdx,
       wasFiring: this._wasFiring,
       wasEmptyClick: this._wasEmptyClick,
+      ...(this.shotRecords.size > 0 ? { shots: this.recentShots } : {}),
     };
   }
+}
+
+function shotKey(moduleId: string, muzzleIndex: number): string {
+  return `${moduleId}\u0000${muzzleIndex}`;
+}
+
+function validShotRecord(value: unknown): WeaponShotRecord | null {
+  if (value === null || typeof value !== 'object') return null;
+  const record = value as Partial<SerializedWeaponShot>;
+  if (typeof record.moduleId !== 'string' || record.moduleId.length === 0) return null;
+  const muzzleIndex = nonNegativeInteger(record.muzzleIndex);
+  const firedAt = finiteNumber(record.firedAt);
+  const cycleDuration = finiteNumber(record.cycleDuration);
+  if (muzzleIndex === undefined || firedAt === undefined || cycleDuration === undefined || cycleDuration <= 0) return null;
+  return { moduleId: record.moduleId, muzzleIndex, firedAt, cycleDuration };
 }
 
 // 真偽値ならその値、そうでなければ既定値へフォールバックするための undefined。
