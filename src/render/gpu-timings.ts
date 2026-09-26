@@ -12,16 +12,17 @@ export const GPU_PASS = {
   cloudShadow: 5,
   bounceSource: 6,
   nearbyDiffuseScan: 7,
-  nearbyDiffuseReconstruct: 8,
-  lighting: 9,
-  material: 10,
-  atmosphere: 11,
-  cloudAtmosphere: 12,
-  world: 13,
-  lens: 14,
-  composite: 15,
-  overlay: 16,
-  antialias: 17,
+  nearbyDiffuseDenoise: 8,
+  nearbyDiffuseUpsample: 9,
+  lighting: 10,
+  material: 11,
+  atmosphere: 12,
+  cloudAtmosphere: 13,
+  world: 14,
+  lens: 15,
+  composite: 16,
+  overlay: 17,
+  antialias: 18,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
@@ -33,7 +34,7 @@ export interface GpuTimingSink {
 // 表示名。並びは GPU_PASS の値の順。
 export const GPU_PASS_LABELS: readonly string[] = [
   '雲の生成', '影マップ', 'Gバッファ', '表面雲', '影', '雲影',
-  '照り返し源', '近傍拡散走査', '近傍拡散復元', 'ライティング',
+  '照り返し源', '近傍拡散走査', '近傍拡散均し', '近傍拡散拡大', 'ライティング',
   'マテリアル', '大気', '大気(雲あり)', 'ワールド', 'レンズ', '合成',
   '3D UI', 'アンチエイリアス',
 ];
