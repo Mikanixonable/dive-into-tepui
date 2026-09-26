@@ -11,7 +11,7 @@ import {
 } from '../../physics/cloud-thermodynamics';
 import { createCloudEnvironmentProfile } from './cloud-environment';
 import type {
-  CloudEnvironmentLevelInput, CloudEnvironmentProfile,
+  CloudEnvironmentInput, CloudEnvironmentLevelInput, CloudEnvironmentProfile,
 } from './cloud-environment';
 import type { ClimateValues } from '../../render/cloud/climate-map';
 
@@ -96,6 +96,23 @@ const WAVE_MAX_VERTICAL_DISPLACEMENT_M = 400;
 const WAVE_HORIZONTAL_WAVELENGTH_M = 12_000;
 const WAVE_VERTICAL_WAVELENGTH_M = 6_000;
 const WAVE_PROPAGATION_AZIMUTH_RAD = Math.PI;
+// 傾斜上昇域(前線・雨帯に沿う斜めの湿潤層)が張る帯 [m]。下端は境界層の上、上端は
+// 深い成層の雲が届く高さ — 対流圏界面−1 km より浅い所へ収める。
+const SLANT_MOIST_LAYER_BOTTOM_M = 1_500;
+const SLANT_MOIST_LAYER_TOP_M = 9_000;
+// 傾斜上昇域の湿潤層の底上げ RH(対飽和比)。帯の強さ 0..1 で底上げ 0.4(背景の減衰値
+// なみ)から MAX_LEVEL_RELATIVE_HUMIDITY(ほぼ飽和)まで上げる。
+const SLANT_MOIST_LAYER_BASE_RELATIVE_HUMIDITY = 0.4;
+// 気団の温度偏差が減衰する深さ [m]。暖気・寒気の流入は境界層〜中層に効く換算。
+const AIR_MASS_TEMPERATURE_DEPTH_M = 4_000;
+// 層の風を低層の値から上層の値へ混ぜる遷移帯 [m]。大気風モデルの地表付近・上層の
+// 高さと同じ取り決め。
+const LEVEL_WIND_BLEND_BOTTOM_M = 1_000;
+const LEVEL_WIND_BLEND_TOP_M = 10_000;
+// 地表の相対湿度へ足せる偏りの上下限。入力に掛かる総量を押さえてプロファイルが組める
+// 範囲に留める。
+const MIN_SURFACE_RELATIVE_HUMIDITY = 0.02;
+const MAX_SURFACE_RELATIVE_HUMIDITY = 0.98;
 
 function clamp(value: number, low: number, high: number): number {
   return Math.min(Math.max(value, low), high);
@@ -118,12 +135,36 @@ export interface EarthClimateSource {
   valuesAtCpu(direction: Vec3): ClimateValues | null;
 }
 
-// 単位方向から、その地点の対流環境プロファイルを返す。climateSource がこの方向の気候値を
-// 返すときは、地表温・表面圧・湿り・フラックスをそれで変調する。返り値は呼ぶたびに
-// 新しく組まれた frozen なプロファイルで、同じ方向と同じ気候値には常に同じ内容が返る。
-export function earthConvectiveCloudEnvironmentAt(
-  direction: Vec3, climateSource: EarthClimateSource | null = null,
-): CloudEnvironmentProfile {
+// 緯度+気候の柱へ畳む、総観規模の天気の偏差。どの項も null を渡したとき 0 として扱われ、
+// そのとき環境は緯度と気候値だけで決まる。
+export interface EarthEnvironmentPerturbation {
+  // 地表の気温偏差 [K]。暖気の流入で正、寒気の流入で負。気団の温度偏差として
+  // AIR_MASS_TEMPERATURE_DEPTH_M の深さで減衰しながら層へ効く。
+  readonly surfaceTemperatureShiftK: number;
+  // 地表の相対湿度への加算の偏り。帯の加湿・眼の乾き・沈降の乾燥を畳んだもの。
+  readonly surfaceRelativeHumidityBias: number;
+  // 傾斜上昇域(前線・雨帯に沿う斜めの湿潤層)の強さ 0..1。
+  readonly slantwiseMoistureStrength: number;
+  // 上層の氷層帯の比湿への加算の偏り(対飽和比)。渦の上層流出で正、眼・沈降で負。
+  readonly upperHumidityBias: number;
+  // 大規模な鉛直流 [m/s]。上昇で正。層へは対流圏の中ほどが腹の放物線で写す。
+  readonly largeScaleLiftMps: number;
+  // 地表付近・上層の風 [m/s]。層へは LEVEL_WIND_BLEND 帯で線形に混ぜるので、
+  // 風の鉛直差がそのままシアになる。
+  readonly surfaceWindEastMps: number;
+  readonly surfaceWindNorthMps: number;
+  readonly upperWindEastMps: number;
+  readonly upperWindNorthMps: number;
+  // 深い気圧の谷の上での対流圏界面のたわみ [m](負で下がる)。
+  readonly tropopauseShiftM: number;
+}
+
+// 単位方向と気候値と天気の偏差から、環境プロファイルへ渡す入力を組む。perturbation が
+// null のときは緯度と気候値だけで決まる柱になる。
+export function earthEnvironmentInputAt(
+  direction: Vec3, climateSource: EarthClimateSource | null,
+  perturbation: EarthEnvironmentPerturbation | null,
+): CloudEnvironmentInput {
   const climate = climateSource?.valuesAtCpu(direction) ?? null;
   // 乾きの度合い 0..1。陸らしさに晴天さ(1−雲量)を掛けたもの。海上では地表の水が常に
   // 境界層を湿らせるので、乾きは陸の側へだけ掛ける。
@@ -138,19 +179,28 @@ export function earthConvectiveCloudEnvironmentAt(
   const tropopauseM = TROPOPAUSE_POLE_M
     + (TROPOPAUSE_EQUATOR_M - TROPOPAUSE_POLE_M) * cosLatitudeSq;
   // 界面の高度は海面基準で緯度に決まるので、地表からの深さは標高ぶん浅くなる。
+  // 深い気圧の谷の上では攪乱のたわみぶん下がる。
   const tropopauseAboveSurfaceM = Math.max(
-    tropopauseM - (climate?.elevationM ?? 0), TROPOPAUSE_MIN_DEPTH_M);
-  // 地表温は気候値があればそれを取り、無ければ緯度近似。
-  const surfaceTemperatureK = climate?.temperatureK ?? SURFACE_TEMPERATURE_POLE_K
+    tropopauseM - (climate?.elevationM ?? 0) + (perturbation?.tropopauseShiftM ?? 0),
+    TROPOPAUSE_MIN_DEPTH_M);
+  // 地表温は気候値があればそれを取り、無ければ緯度近似。気団の温度偏差は地表から
+  // AIR_MASS_TEMPERATURE_DEPTH_M の深さで減衰する。
+  const baseSurfaceTemperatureK = climate?.temperatureK ?? SURFACE_TEMPERATURE_POLE_K
     + (SURFACE_TEMPERATURE_EQUATOR_K - SURFACE_TEMPERATURE_POLE_K) * cosLatitude;
+  const surfaceTemperatureShiftK = perturbation?.surfaceTemperatureShiftK ?? 0;
   const lapseRateKPerM = (LAPSE_RATE_POLE_K_PER_KM
     + (LAPSE_RATE_EQUATOR_K_PER_KM - LAPSE_RATE_POLE_K_PER_KM) * cosLatitudeSq) / 1_000;
   // 標高ぶん表面圧を下げる。気候源を持たないときは海面と同じ。
   const surfacePressurePa = SURFACE_PRESSURE_PA
     * Math.exp(-(climate?.elevationM ?? 0) / PRESSURE_SCALE_HEIGHT_M);
-  const surfaceRelativeHumidity = (SURFACE_RELATIVE_HUMIDITY_POLE
-    + (SURFACE_RELATIVE_HUMIDITY_EQUATOR - SURFACE_RELATIVE_HUMIDITY_POLE) * cosLatitudeSq)
-    * (1 - SURFACE_DRYING_ON_LAND * surfaceDryness);
+  const surfaceRelativeHumidity = clamp(
+    (SURFACE_RELATIVE_HUMIDITY_POLE
+      + (SURFACE_RELATIVE_HUMIDITY_EQUATOR - SURFACE_RELATIVE_HUMIDITY_POLE) * cosLatitudeSq)
+      * (1 - SURFACE_DRYING_ON_LAND * surfaceDryness)
+      + (perturbation?.surfaceRelativeHumidityBias ?? 0),
+    MIN_SURFACE_RELATIVE_HUMIDITY, MAX_SURFACE_RELATIVE_HUMIDITY);
+  // 地表温 = ベースの柱 + 気団の温度偏差。
+  const surfaceTemperatureK = baseSurfaceTemperatureK + surfaceTemperatureShiftK;
   const surfaceSaturationKgPerKg = surfaceTemperatureK <= ICE_SATURATION_TOP_K
     ? saturationSpecificHumidityOverIceKgPerKg(surfaceTemperatureK, surfacePressurePa)
     : saturationSpecificHumidityOverLiquidKgPerKg(surfaceTemperatureK, surfacePressurePa);
@@ -167,14 +217,29 @@ export function earthConvectiveCloudEnvironmentAt(
     * (1 - HUMIDITY_DEPTH_DRYING_ON_LAND * surfaceDryness
       + HUMIDITY_DEPTH_GAIN_ON_CLOUD * (cloudiness - MEAN_GLOBAL_CLOUDINESS));
 
+  // 傾斜上昇域の湿潤層。帯の強さに比例した下限 RH を 1.5 km〜対流圏界面−1 km に張る。
+  const slantMoistStrength = perturbation?.slantwiseMoistureStrength ?? 0;
+  const slantMoistTopM = Math.min(
+    SLANT_MOIST_LAYER_TOP_M, tropopauseAboveSurfaceM - ICE_LAYER_TOP_BELOW_TROPOPAUSE_M);
+  const inSlantMoistLayer = slantMoistStrength > 0 && slantMoistTopM > SLANT_MOIST_LAYER_BOTTOM_M;
+  const slantMoistRelativeHumidity = SLANT_MOIST_LAYER_BASE_RELATIVE_HUMIDITY
+    + (MAX_LEVEL_RELATIVE_HUMIDITY - SLANT_MOIST_LAYER_BASE_RELATIVE_HUMIDITY)
+      * clamp(slantMoistStrength, 0, 1);
+  const upperHumidityBias = perturbation?.upperHumidityBias ?? 0;
+  const largeScaleLiftMps = perturbation?.largeScaleLiftMps ?? 0;
+  const upperIceLayerBottomM = tropopauseAboveSurfaceM - ICE_LAYER_DEPTH_BELOW_TROPOPAUSE_M;
+  const upperIceLayerTopM = tropopauseAboveSurfaceM - ICE_LAYER_TOP_BELOW_TROPOPAUSE_M;
+
   const profileTopM = tropopauseAboveSurfaceM + PROFILE_TOP_ABOVE_TROPOPAUSE_M;
   const waveWeight = waveBandWeight(Math.abs(Math.asin(sinLatitude)));
   const levels: CloudEnvironmentLevelInput[] = [];
   for (let heightM = 0; heightM <= profileTopM; heightM += LEVEL_STEP_M) {
     const pressurePa = surfacePressurePa * Math.exp(-heightM / PRESSURE_SCALE_HEIGHT_M);
-    // 対流圏界面までは一定減率で下げ、上では等温の成層圏へ繋ぐ。
+    // 対流圏界面までは一定減率で下げ、上では等温の成層圏へ繋ぐ。気団の温度偏差は
+    // AIR_MASS_TEMPERATURE_DEPTH_M の深さで減衰する。
     const temperatureK = surfaceTemperatureK - lapseRateKPerM
-      * Math.min(heightM, tropopauseAboveSurfaceM);
+      * Math.min(heightM, tropopauseAboveSurfaceM)
+      - surfaceTemperatureShiftK * (1 - Math.exp(-heightM / AIR_MASS_TEMPERATURE_DEPTH_M));
     const saturationSpecificHumidityKgPerKg = temperatureK <= ICE_SATURATION_TOP_K
       ? saturationSpecificHumidityOverIceKgPerKg(temperatureK, pressurePa)
       : saturationSpecificHumidityOverLiquidKgPerKg(temperatureK, pressurePa);
@@ -184,26 +249,51 @@ export function earthConvectiveCloudEnvironmentAt(
     // くらいへ滑らかに下がるので、帯の端で柱は連続的に乾く。
     const moistLayerRelativeHumidity = WAVE_MOIST_LAYER_BASE_RELATIVE_HUMIDITY
       + (MAX_LEVEL_RELATIVE_HUMIDITY - WAVE_MOIST_LAYER_BASE_RELATIVE_HUMIDITY) * waveWeight;
+    // 層の湿り: 減衰プロファイルへ上限を掛け、湿潤中層・傾斜上昇域の下限 RH で底上げし、
+    // 氷層帯へは上層の湿りの偏りを加算する。
+    let waterVaporKgPerKg = Math.max(
+      Math.min(
+        surfaceSpecificHumidityKgPerKg * Math.exp(-heightM / humidityScaleHeightM),
+        MAX_LEVEL_RELATIVE_HUMIDITY * saturationSpecificHumidityKgPerKg),
+      inMoistLayer
+        ? moistLayerRelativeHumidity * saturationSpecificHumidityKgPerKg
+        : 0,
+      inSlantMoistLayer
+          && heightM >= SLANT_MOIST_LAYER_BOTTOM_M && heightM <= slantMoistTopM
+        ? slantMoistRelativeHumidity * saturationSpecificHumidityKgPerKg
+        : 0);
+    if (upperHumidityBias !== 0
+      && heightM >= upperIceLayerBottomM && heightM <= upperIceLayerTopM) {
+      waterVaporKgPerKg = clamp(
+        waterVaporKgPerKg + upperHumidityBias * saturationSpecificHumidityKgPerKg,
+        0, MAX_LEVEL_RELATIVE_HUMIDITY * saturationSpecificHumidityKgPerKg);
+    }
+    // 大規模鉛直流は対流圏の中ほどが腹の放物線で写す。界面と地表では 0。
+    const liftWindow = heightM <= 0 || heightM >= tropopauseAboveSurfaceM
+      ? 0
+      : 4 * (heightM / tropopauseAboveSurfaceM) * (1 - heightM / tropopauseAboveSurfaceM);
+    // 層の風は低層から上層へ LEVEL_WIND_BLEND 帯で混ぜる。攪乱が無いときは供給系へ
+    // 効かない代理値(輸送の風は大気風モデルが担う)。
+    const windBlend = perturbation === null ? 0
+      : clamp((heightM - LEVEL_WIND_BLEND_BOTTOM_M)
+        / (LEVEL_WIND_BLEND_TOP_M - LEVEL_WIND_BLEND_BOTTOM_M), 0, 1);
     levels.push({
       heightM,
       pressurePa,
       temperatureK,
-      waterVaporSpecificHumidityKgPerKg: Math.max(
-        Math.min(
-          surfaceSpecificHumidityKgPerKg * Math.exp(-heightM / humidityScaleHeightM),
-          MAX_LEVEL_RELATIVE_HUMIDITY * saturationSpecificHumidityKgPerKg),
-        inMoistLayer
-          ? moistLayerRelativeHumidity * saturationSpecificHumidityKgPerKg
-          : 0),
+      waterVaporSpecificHumidityKgPerKg: waterVaporKgPerKg,
       liquidWaterMixingRatioKgPerKg: 0,
       iceMixingRatioKgPerKg: 0,
-      // 輸送の風は大気風モデルが担うので、層の風は供給系へ効かない代理値。
-      eastWindMps: -5,
-      northWindMps: 0,
-      largeScaleVerticalVelocityMps: 0,
+      eastWindMps: perturbation === null ? -5
+        : perturbation.surfaceWindEastMps
+          + (perturbation.upperWindEastMps - perturbation.surfaceWindEastMps) * windBlend,
+      northWindMps: perturbation === null ? 0
+        : perturbation.surfaceWindNorthMps
+          + (perturbation.upperWindNorthMps - perturbation.surfaceWindNorthMps) * windBlend,
+      largeScaleVerticalVelocityMps: largeScaleLiftMps * liftWindow,
     });
   }
-  return createCloudEnvironmentProfile({
+  return {
     levels,
     surfaceSensibleHeatFluxWPerM2: (SENSIBLE_HEAT_FLUX_POLE_W_PER_M2
       + (SENSIBLE_HEAT_FLUX_EQUATOR_W_PER_M2
@@ -221,7 +311,16 @@ export function earthConvectiveCloudEnvironmentAt(
       verticalWavelengthM: WAVE_VERTICAL_WAVELENGTH_M,
       propagationAzimuthRad: WAVE_PROPAGATION_AZIMUTH_RAD,
     } : null,
-    upperIceLayerBottomM: tropopauseAboveSurfaceM - ICE_LAYER_DEPTH_BELOW_TROPOPAUSE_M,
-    upperIceLayerTopM: tropopauseAboveSurfaceM - ICE_LAYER_TOP_BELOW_TROPOPAUSE_M,
-  });
+    upperIceLayerBottomM,
+    upperIceLayerTopM,
+  };
+}
+
+// 単位方向から、その地点の対流環境プロファイルを返す。climateSource がこの方向の気候値を
+// 返すときは、地表温・表面圧・湿り・フラックスをそれで変調する。返り値は呼ぶたびに
+// 新しく組まれた frozen なプロファイルで、同じ方向と同じ気候値には常に同じ内容が返る。
+export function earthConvectiveCloudEnvironmentAt(
+  direction: Vec3, climateSource: EarthClimateSource | null = null,
+): CloudEnvironmentProfile {
+  return createCloudEnvironmentProfile(earthEnvironmentInputAt(direction, climateSource, null));
 }
