@@ -4,6 +4,7 @@ import type { HudShell } from '../../hud/hud-shell';
 import { createHudElement } from '../../hud/hud-element';
 import { HelpPanel } from './windows/help-panel';
 import { PanelShell } from './panel-shell';
+import { HudEls } from './hud-els';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
 import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
@@ -33,7 +34,7 @@ interface HudDomRefs {
   readonly combatRoot: HudViewRoot;
   readonly mapRoot: HudViewRoot;
   readonly helpPanel: HelpPanel;
-  readonly els: Map<string, HTMLElement>;
+  readonly els: HudEls;
 }
 
 /** 戦闘/マップそれぞれが所有する HUD の DOM ルート。 */
@@ -136,10 +137,7 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
       <div class="row metric">
         <dt class="k">RCS燃料</dt>
         <dd class="v vessel-meter-readout">
-          <span class="vessel-meter w-meter-track" data-id="rcs-fuel-meter" role="progressbar"
-            aria-label="RCS燃料" aria-valuemin="0">
-            <span class="w-meter-fill" data-id="rcs-fuel-fill"></span>
-          </span>
+          <span class="vessel-meter" data-id="rcs-fuel-meter"></span>
           <output class="vessel-meter-value" data-id="rcs-fuel-value">—</output>
         </dd>
       </div>
@@ -213,15 +211,11 @@ function buildOrbitInfoPanel(leftRail: HTMLElement, collapse: PanelCollapse): vo
     <div class="orbit-environment" aria-label="飛行環境">
       <div class="orbit-env-row" data-id="orbit-qdyn-row">
         <div class="orbit-env-head"><span class="ui-data-label">q · DYNAMIC PRESSURE</span><output data-id="qdyn">—</output></div>
-        <span class="orbit-env-meter w-meter-track" role="progressbar" aria-label="動圧">
-          <span class="w-meter-fill" data-id="qdyn-meter-fill"></span>
-        </span>
+        <span class="orbit-env-meter" data-id="qdyn-meter"></span>
       </div>
       <div class="orbit-env-row" data-id="temp-row">
         <div class="orbit-env-head"><span class="ui-data-label">T · HULL TEMP</span><output data-id="temp">—</output></div>
-        <span class="orbit-env-meter w-meter-track" role="progressbar" aria-label="機体温度">
-          <span class="w-meter-fill" data-id="temp-meter-fill"></span>
-        </span>
+        <span class="orbit-env-meter" data-id="temp-meter"></span>
       </div>
     </div>
     <div class="orbit-controls">
@@ -248,10 +242,7 @@ function buildBurnManagementPanel(leftRail: HTMLElement, collapse: PanelCollapse
       <div class="row metric">
         <dt class="k">最後尾燃料</dt>
         <dd class="v burn-fuel-readout">
-          <span class="burn-fuel-meter w-meter-track" data-id="burn-active-fuel-meter" role="progressbar"
-            aria-label="最後尾ブースター燃料" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
-            <span class="w-meter-fill" data-id="burn-active-fuel-fill"></span>
-          </span>
+          <span class="burn-fuel-meter" data-id="burn-active-fuel-meter"></span>
           <output class="burn-fuel-value" data-id="burn-active-fuel-value">—</output>
         </dd>
       </div>
@@ -348,10 +339,7 @@ function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void
           <dt class="k">相対速度</dt><dd class="v"><output data-id="tgt-relative-speed">—</output></dd>
         </div>
         <div class="row metric" data-id="tgt-armor-row"><dt class="k">装甲</dt><dd class="v armor-readout">
-          <span class="armor-meter w-meter-track" data-id="tgt-armor-meter" role="progressbar"
-            aria-label="ターゲットの装甲" aria-valuemin="0">
-            <span class="w-meter-fill" data-id="tgt-armor-fill"></span>
-          </span>
+          <span class="armor-meter" data-id="tgt-armor-meter"></span>
           <output class="armor-value" data-id="tgt-armor-value">—</output>
         </dd></div>
       </dl>
@@ -420,7 +408,7 @@ function buildTopBar(root: HTMLElement): void {
       </div>
       <div class="gs-metric">
         <span class="ui-data-label">SIM RATE</span>
-        <select class="v gs-speed-select" data-id="sim-speed" aria-label="時間加速"></select>
+        <div class="gs-speed-holder" data-id="sim-speed"></div>
       </div>
       <div class="gs-metric">
         <span class="ui-data-label">NODE WARP</span>
@@ -460,15 +448,6 @@ function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
   badge.setAttribute('title', '操作ガイドを開く');
   badge.innerHTML = '<span class="hud-mini-code" aria-hidden="true">HLP</span><span>?</span>';
   badge.addEventListener('click', () => helpPanel.open());
-}
-
-// data-id 属性を持つ要素を、その id をキーにした Map にまとめて返す。
-function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
-  const els = new Map<string, HTMLElement>();
-  for (const element of Array.from(root.querySelectorAll<HTMLElement>('[data-id]'))) {
-    els.set(element.dataset['id']!, element);
-  }
-  return els;
 }
 
 /* 上部クロームの実寸を HUD の配置トークンへ反映する。トップバーの行数が変わっても
@@ -533,6 +512,6 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
   buildMapScale(mapRoot.element);
   createHudElement('div', 'hud-toast', layers.notify, 'ui-surface-focus');
 
-  const els = collectDataIdElements(root);
+  const els = new HudEls(root);
   return { combatRoot, mapRoot, helpPanel, els };
 }

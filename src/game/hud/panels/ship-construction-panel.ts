@@ -2,6 +2,7 @@ import { SHIP_MODULE_CATALOG } from '../../ship/ship-module-catalog';
 import type { ShipModuleCategory, ShipModuleDefinition } from '../../ship/ship-module-definition';
 import type { ConstructionRole, ShipConstructionPanelModel } from '../../ship/ship-construction-types';
 import { Button, Meter, TabBar } from '../../../hud/widgets';
+import type { HudEls, HudElId } from '../hud-els';
 
 const CATEGORY_ITEMS: readonly (readonly [ShipModuleCategory, string])[] = [
   ['command', '指令'], ['fuel', '燃料'], ['propulsion', '推進'], ['combat', '戦闘'], ['utility', '設備'],
@@ -74,34 +75,34 @@ export class ShipConstructionPanel {
   private readonly slotButtons = new Map<string, Button>();
 
   // 静的 workspace へ既存Widgetを差し込み、動的なカタログ/候補の再構築点を固定する。
-  public constructor(els: ReadonlyMap<string, HTMLElement>) {
-    this.panel = this.required(els, 'ship-construction-panel');
-    this.shipName = this.required(els, 'construction-ship-name');
-    this.dockName = this.required(els, 'construction-dock-name');
-    this.count = this.required(els, 'construction-count');
-    this.mass = this.required(els, 'construction-mass');
-    this.massPreview = this.required(els, 'construction-mass-preview');
-    this.hp = this.required(els, 'construction-hp');
-    this.hpPreview = this.required(els, 'construction-hp-preview');
+  public constructor(els: HudEls) {
+    this.panel = els.get('ship-construction-panel');
+    this.shipName = els.get('construction-ship-name');
+    this.dockName = els.get('construction-dock-name');
+    this.count = els.get('construction-count');
+    this.mass = els.get('construction-mass');
+    this.massPreview = els.get('construction-mass-preview');
+    this.hp = els.get('construction-hp');
+    this.hpPreview = els.get('construction-hp-preview');
     this.capabilities = {
-      thrust: this.metricPair(els, 'construction-thrust'),
-      mainFuel: this.metricPair(els, 'construction-main-fuel'),
-      rcsFuel: this.metricPair(els, 'construction-rcs-fuel'),
-      power: this.metricPair(els, 'construction-power'),
-      radiation: this.metricPair(els, 'construction-radiation'),
+      thrust: this.metricPair(els, 'construction-thrust', 'construction-thrust-preview'),
+      mainFuel: this.metricPair(els, 'construction-main-fuel', 'construction-main-fuel-preview'),
+      rcsFuel: this.metricPair(els, 'construction-rcs-fuel', 'construction-rcs-fuel-preview'),
+      power: this.metricPair(els, 'construction-power', 'construction-power-preview'),
+      radiation: this.metricPair(els, 'construction-radiation', 'construction-radiation-preview'),
     };
-    this.role = this.required(els, 'construction-role');
-    this.warning = this.required(els, 'construction-warning');
-    this.selectedModule = this.required(els, 'construction-selected-module');
-    this.selectedSlot = this.required(els, 'construction-selected-slot');
-    this.completion = this.required(els, 'construction-completion');
-    this.categoryRoot = this.required(els, 'construction-category-tabs');
-    this.moduleCards = this.required(els, 'construction-module-cards');
-    this.slotList = this.required(els, 'construction-slots');
+    this.role = els.get('construction-role');
+    this.warning = els.get('construction-warning');
+    this.selectedModule = els.get('construction-selected-module');
+    this.selectedSlot = els.get('construction-selected-slot');
+    this.completion = els.get('construction-completion');
+    this.categoryRoot = els.get('construction-category-tabs');
+    this.moduleCards = els.get('construction-module-cards');
+    this.slotList = els.get('construction-slots');
 
     this.hpMeter = new Meter();
     this.hpMeter.element.classList.add('construction-hp-meter');
-    this.required(els, 'construction-hp-meter').appendChild(this.hpMeter.element);
+    els.get('construction-hp-meter').appendChild(this.hpMeter.element);
 
     this.categoryTabs = new TabBar(CATEGORY_ITEMS, (category) => {
       this.activeCategory = category;
@@ -111,13 +112,13 @@ export class ShipConstructionPanel {
     this.categoryTabs.element.classList.add('construction-category-tabs');
     this.categoryRoot.appendChild(this.categoryTabs.element);
 
-    const mobileTabs = this.required(els, 'construction-mobile-tabs');
+    const mobileTabs = els.get('construction-mobile-tabs');
     this.catalogPaneButton = new Button('部品', () => this.setMobilePane('catalog'), undefined, 'secondary');
     this.statusPaneButton = new Button('性能', () => this.setMobilePane('status'), undefined, 'secondary');
     mobileTabs.append(this.catalogPaneButton.element, this.statusPaneButton.element);
     this.setMobilePane('catalog');
 
-    const actions = this.required(els, 'construction-actions');
+    const actions = els.get('construction-actions');
     this.place = new Button('配置', () => this.onPlace?.(), undefined, 'primary');
     this.remove = new Button('末尾撤去', () => this.onRemove?.(), undefined, 'secondary');
     this.finish = new Button('建造終了', () => this.onFinish?.(), undefined, 'primary');
@@ -203,10 +204,15 @@ export class ShipConstructionPanel {
       this.slotList.replaceChildren();
       this.slotButtons.clear();
       for (const slot of model.slots) {
-        const button = new Button(slot.label, () => this.onSlotChange?.(slot.id), undefined, 'dense');
+        const button = new Button('', () => this.onSlotChange?.(slot.id), undefined, 'dense');
         button.element.classList.add('construction-slot-button');
         button.element.dataset['valid'] = String(slot.valid);
         button.element.title = slot.reason ?? 'このスロットを選択';
+        button.element.replaceChildren(textSpan('construction-slot-label', slot.label));
+        // 無効なスロットは選べない。理由はホバーの説明文だけに置かず、ボタン内に明示する。
+        if (slot.reason !== null) {
+          button.element.appendChild(textSpan('construction-slot-reason', slot.reason));
+        }
         this.slotList.appendChild(button.element);
         this.slotButtons.set(slot.id, button);
       }
@@ -231,18 +237,11 @@ export class ShipConstructionPanel {
     pair.preview.textContent = previewText(value, preview, unit);
   }
 
-  private metricPair(els: ReadonlyMap<string, HTMLElement>, id: string): MetricPair {
+  private metricPair(els: HudEls, id: HudElId, previewId: HudElId): MetricPair {
     return {
-      value: this.required(els, id),
-      preview: this.required(els, `${id}-preview`),
+      value: els.get(id),
+      preview: els.get(previewId),
     };
-  }
-
-  // HUDの静的DOM契約を、null参照ではなく組み立て時の診断へ変換する。
-  private required(els: ReadonlyMap<string, HTMLElement>, id: string): HTMLElement {
-    const element = els.get(id);
-    if (!element) throw new Error(`ShipConstructionPanel: missing HUD element ${id}`);
-    return element;
   }
 }
 
