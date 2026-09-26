@@ -9,7 +9,10 @@ import {
   cloudEquirectFootprintOverlap,
   type CloudEquirectGrid,
 } from '../../src/game/cloud/cloud-equirect-grid';
-import { depositCloudEventMaterialCohortsEquirect } from '../../src/game/cloud/cloud-event-equirect-deposition';
+import {
+  depositCloudEventMaterialCohortsEquirect,
+  prepareCloudEquirectDepositionTarget,
+} from '../../src/game/cloud/cloud-event-equirect-deposition';
 import type {
   CloudEventMaterialCohorts,
   CloudIceMaterialCohort,
@@ -196,6 +199,68 @@ export function register(): void {
     // 氷は別の方向へ置かれるので、親液水が載った赤道直下のセルには氷が来ない。
     const parentIndex = cloudEquirectCellIndex(GRID, v3(0, 0, 1));
     assert.equal(deposition.columnsByLayer[1]!.iceKgM2ByCell[parentIndex], 0);
+  });
+
+  test('equirect deposition: touched cells are exactly the cells that receive mass', () => {
+    const massGrid = makeMassGrid();
+    const cohorts = [iceCohort(3, 0, directionAtDeg(30, 0), 5_000)];
+    const eventMaterial = material(track(2, v3(0, 0, 1), 100), cohorts);
+    const shapes: CloudEventFootprintShapes = {
+      parentLiquid: circleOfRadiusM(500_000),
+      releasedIceCohorts: [{ cohortIndex: 0, shape: circleOfRadiusM(500_000) }],
+    };
+    const deposition = depositCloudEventMaterialCohortsEquirect(
+      eventMaterial, 1_000_000, shapes, GRID, massGrid);
+    const touched = new Set(deposition.touchedCellIndices);
+    const nonzero = new Set<number>();
+    for (const layer of deposition.columnsByLayer) {
+      for (const [index, value] of layer.liquidKgM2ByCell.entries()) {
+        if (value !== 0) nonzero.add(index);
+      }
+      for (const [index, value] of layer.iceKgM2ByCell.entries()) {
+        if (value !== 0) nonzero.add(index);
+      }
+    }
+    // 正の質量を持つイベントでは、質量のあるセルと触れたセルが一致する。
+    assert.deepEqual(touched, nonzero);
+    // 触れたセルだけ積分しても全質量が回収できる。
+    let assignedKg = 0;
+    for (const layer of deposition.columnsByLayer) {
+      for (const index of touched) {
+        assignedKg += (layer.liquidKgM2ByCell[index]! + layer.iceKgM2ByCell[index]!)
+          * massGrid.cells[index]!.areaM2;
+      }
+    }
+    const expectedKg = (2 + 3) * 1_000_000 - deposition.unassignedMassKgByPhase.liquid
+      - deposition.unassignedMassKgByPhase.ice;
+    assert.ok(Math.abs(assignedKg - expectedKg) / expectedKg < 1e-10);
+  });
+
+  test('equirect deposition: a prepared target deposits identically and mismatched targets throw', () => {
+    const massGrid = makeMassGrid();
+    const target = prepareCloudEquirectDepositionTarget(GRID, massGrid);
+    const eventMaterial = material(track(2, v3(0, 0, 1), 100), []);
+    const shapes: CloudEventFootprintShapes = {
+      parentLiquid: circleOfRadiusM(500_000), releasedIceCohorts: [],
+    };
+    const prepared = depositCloudEventMaterialCohortsEquirect(
+      eventMaterial, 4, shapes, GRID, massGrid, target);
+    const plain = depositCloudEventMaterialCohortsEquirect(
+      eventMaterial, 4, shapes, GRID, massGrid);
+    assert.deepEqual(prepared, plain);
+    // 別の格子や質量格子を指す target を渡すと投げる。
+    const otherGrid: CloudEquirectGrid = { ...GRID, width: GRID.width / 2 };
+    const otherTarget = prepareCloudEquirectDepositionTarget(otherGrid, {
+      cells: Array.from({ length: otherGrid.width * otherGrid.height }, (_, index) => ({
+        areaM2: cloudEquirectCellAreaM2(otherGrid, Math.floor(index / otherGrid.width)),
+      })),
+      layerEdgesM: [0, 3_000, 9_000],
+    });
+    assert.throws(() => depositCloudEventMaterialCohortsEquirect(
+      eventMaterial, 4, shapes, GRID, massGrid, otherTarget), RangeError);
+    assert.throws(() => depositCloudEventMaterialCohortsEquirect(
+      eventMaterial, 4, shapes, GRID,
+      { cells: [], layerEdgesM: [0, 3_000, 9_000] }, target), RangeError);
   });
 
   test('equirect deposition: the same input deposits identically', () => {

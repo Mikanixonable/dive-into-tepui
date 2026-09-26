@@ -26,6 +26,20 @@ import {
   type CloudMassPhase,
 } from './cloud-mass-deposition';
 
+// 全球格子と質量格子の面積整合を照合済みの堆積先。
+// prepareCloudEquirectDepositionTarget で組み、連続する堆積へ同じものを渡すと、
+// イベントごとの格子検証を供給全体で1回へ畳める。
+export interface CloudEquirectDepositionTarget {
+  readonly grid: CloudEquirectGrid;
+  readonly massGrid: CloudMassGrid;
+}
+
+// イベントが質量を載せたセルの行優先 index を添えた堆積結果。畳み込み側は格子全体を
+// 走らずに触れたセルだけを読めばよい。
+export interface CloudEventEquirectDeposition extends CloudMassDeposition {
+  readonly touchedCellIndices: readonly number[];
+}
+
 const VECTOR_TOLERANCE = 1e-10;
 
 interface SumAccumulator {
@@ -131,6 +145,17 @@ function validateMassGrid(grid: CloudEquirectGrid, massGrid: CloudMassGrid): voi
   }
 }
 
+// 格子の寸法と質量格子のセル面積が全球格子の実面積と一致することを1回だけ確かめ、
+// 照合済みの堆積先として返す。
+export function prepareCloudEquirectDepositionTarget(
+  grid: CloudEquirectGrid,
+  massGrid: CloudMassGrid,
+): CloudEquirectDepositionTarget {
+  validateCloudEquirectGrid(grid);
+  validateMassGrid(grid, massGrid);
+  return { grid, massGrid };
+}
+
 function makeParcel(
   phase: CloudMassPhase,
   massKgM2: number,
@@ -204,14 +229,17 @@ function expectedMassByPhaseKg(
   };
 }
 
+// 質量が載るのは parcel の footprint が触れたセルだけなので、堆積質量の照合は
+// そのセルだけで行う — 触れていないセルは堆積の組み立て方から値を持たない。
 function depositedMassKgByPhase(
   deposition: CloudMassDeposition,
   grid: CloudMassGrid,
+  touchedCellIndices: readonly number[],
 ): Readonly<Record<CloudMassPhase, number>> {
   const liquid: SumAccumulator = { total: 0, correction: 0 };
   const ice: SumAccumulator = { total: 0, correction: 0 };
   for (const layer of deposition.columnsByLayer) {
-    for (let index = 0; index < grid.cells.length; index += 1) {
+    for (const index of touchedCellIndices) {
       const cellAreaM2 = grid.cells[index]!.areaM2;
       addCompensated(liquid, layer.liquidKgM2ByCell[index]! * cellAreaM2);
       addCompensated(ice, layer.iceKgM2ByCell[index]! * cellAreaM2);
@@ -239,17 +267,23 @@ function validateMassBalance(
 
 // イベントの surrogate kg/m² に明示 source area を掛け、材料ごとの明示 footprint 形状で
 // 全球の正距円筒格子へ置く。格子へ割り当たらなかった分は未分配質量として返る。
+// target へ照合済みの堆積先を渡すと格子検証を省く — 別の格子の組を渡すと投げる。
 export function depositCloudEventMaterialCohortsEquirect(
   material: CloudEventMaterialCohorts,
   sourceAreaM2: number,
   footprintShapes: CloudEventFootprintShapes,
   grid: CloudEquirectGrid,
   massGrid: CloudMassGrid,
-): CloudMassDeposition {
+  target?: CloudEquirectDepositionTarget,
+): CloudEventEquirectDeposition {
   requirePositive(sourceAreaM2, 'sourceAreaM2');
   validateMaterialMass(material);
-  validateCloudEquirectGrid(grid);
-  validateMassGrid(grid, massGrid);
+  if (target === undefined) {
+    validateCloudEquirectGrid(grid);
+    validateMassGrid(grid, massGrid);
+  } else if (target.grid !== grid || target.massGrid !== massGrid) {
+    throw new RangeError('deposition target must refer to the same grids being deposited into');
+  }
   if (material.parent === null && footprintShapes.parentLiquid !== null) {
     throw new RangeError('parentLiquid must be null when no liquid parent exists');
   }
@@ -274,10 +308,24 @@ export function depositCloudEventMaterialCohortsEquirect(
     ));
   }
 
+  const touchedCellIndices: number[] = [];
+  const touched = new Set<number>();
+  for (const parcel of parcels) {
+    for (const overlap of parcel.overlaps) {
+      if (!touched.has(overlap.cellIndex)) {
+        touched.add(overlap.cellIndex);
+        touchedCellIndices.push(overlap.cellIndex);
+      }
+    }
+  }
   const deposition = depositCloudParcelMass(parcels, massGrid);
   validateMassBalance(
     expectedMassByPhaseKg(material, sourceAreaM2),
-    depositedMassKgByPhase(deposition, massGrid),
+    depositedMassKgByPhase(deposition, massGrid, touchedCellIndices),
   );
-  return deposition;
+  return {
+    columnsByLayer: deposition.columnsByLayer,
+    unassignedMassKgByPhase: deposition.unassignedMassKgByPhase,
+    touchedCellIndices,
+  };
 }

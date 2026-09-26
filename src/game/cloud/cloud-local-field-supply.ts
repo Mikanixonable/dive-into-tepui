@@ -143,7 +143,7 @@ function environmentCellValues(environment: CloudEnvironmentProfile): {
 
 // 輸送に使う風。大気風モデルをイベント位置の緯度と高さで評価し、位置の接平面基底で
 // 東・北成分から接線速度へ戻す。鉛直流は surrogate では扱わない。
-function makeWindAt(windField: AtmosphericWindField): CloudEventWindAt {
+export function makeWindAt(windField: AtmosphericWindField): CloudEventWindAt {
   return (directionUnitVector, geometricHeightM) => {
     const latitudeRad = Math.asin(clamp(directionUnitVector.y, -1, 1));
     const { east, north } = tangentBasis(directionUnitVector);
