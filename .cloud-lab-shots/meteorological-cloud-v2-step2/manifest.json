@@ -1,0 +1,831 @@
+{
+  "name": "meteorological-cloud-v2-step2",
+  "source": "current-generated-cloud-field",
+  "cpuDiagnosticsApplied": true,
+  "generatedCloudImageFixtureApplied": false,
+  "fixtureResults": [
+    {
+      "fixture": "C1",
+      "measurements": [
+        {
+          "id": "trajectory",
+          "quantity": "球面移流軌跡誤差",
+          "unit": "m",
+          "operator": "distance to analytic equatorial great-circle path",
+          "mask": "finite cloud mask",
+          "independentReference": {
+            "kind": "analytic",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "0.01 m 以下"
+        },
+        {
+          "id": "mass",
+          "quantity": "相対質量誤差",
+          "unit": "1",
+          "operator": "carried mass before/after transport",
+          "mask": "finite cloud mask",
+          "independentReference": {
+            "kind": "analytic",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "輸送APIに質量状態がなく blocked"
+        }
+      ],
+      "result": {
+        "fixture": "C1",
+        "cpuDiagnosticsApplied": true,
+        "generatedCloudImageFixtureApplied": false,
+        "controls": {
+          "equatorialEastWindMps": 10,
+          "durationSeconds": 3600,
+          "sphereRadiusM": 6371000
+        },
+        "measurements": [
+          {
+            "measurementId": "trajectory",
+            "value": 1.6580486983386325e-11,
+            "unit": "m",
+            "reference": 0,
+            "tolerance": 0.01,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "Great-circle displacement is compared with the analytic equatorial solution."
+          },
+          {
+            "measurementId": "mass",
+            "value": null,
+            "unit": "1",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "The parcel transport API returns position only and has no carried-mass state."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "C2",
+      "measurements": [
+        {
+          "id": "layer-displacement",
+          "quantity": "解析解に対する高度別変位誤差",
+          "unit": "m",
+          "operator": "maximum distance error of lower/upper parcel tracks",
+          "mask": "lower and upper parcel tracks",
+          "independentReference": {
+            "kind": "analytic",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "各層の解析的大円移流に対し 0.05 m 以下"
+        },
+        {
+          "id": "released-ice-track",
+          "quantity": "放出氷の移流方向",
+          "unit": "deg",
+          "operator": "wind-relative angular displacement",
+          "mask": "released ice mask",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "CloudIceReleaseに位置がなく blocked"
+        }
+      ],
+      "result": {
+        "fixture": "C2",
+        "cpuDiagnosticsApplied": true,
+        "generatedCloudImageFixtureApplied": false,
+        "controls": {
+          "lowerEastWindMps": 10,
+          "upperNorthWindMps": 10,
+          "durationSeconds": 3600
+        },
+        "measurements": [
+          {
+            "measurementId": "layer-displacement",
+            "value": 6.088098775114403e-11,
+            "unit": "m",
+            "reference": 0,
+            "tolerance": 0.05,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "Lower eastward and upper northward tracks are each compared with analytic great-circle motion."
+          },
+          {
+            "measurementId": "released-ice-track",
+            "value": null,
+            "unit": "deg",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "CloudIceRelease has mass but no birth position or transport track."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "C3",
+      "measurements": [
+        {
+          "id": "anvil-residual",
+          "quantity": "供給停止後の残存氷面密度",
+          "unit": "kg m^-2",
+          "operator": "released ice remaining at supply stop",
+          "mask": "controlled event",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "供給停止時に 0 kg m^-2 より大きい"
+        },
+        {
+          "id": "anvil-lifetime",
+          "quantity": "かなとこ残存寿命",
+          "unit": "min",
+          "operator": "first-to-last valid anvil sample",
+          "mask": "anvil mask",
+          "independentReference": {
+            "kind": "observationSeries",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "イベント寿命評価と独立観測基準がなく blocked"
+        }
+      ],
+      "result": {
+        "fixture": "C3",
+        "cpuDiagnosticsApplied": true,
+        "generatedCloudImageFixtureApplied": false,
+        "controls": {
+          "supplyDurationSeconds": 3600,
+          "evaluationTimeSeconds": 3600,
+          "upperRelativeHumidity": 1
+        },
+        "measurements": [
+          {
+            "measurementId": "anvil-residual",
+            "value": 0.007880310174467501,
+            "unit": "kg m^-2",
+            "reference": 0,
+            "tolerance": 0,
+            "comparison": "greater-than",
+            "status": "pass",
+            "detail": "The event closure retains released ice at the instant its source supply stops."
+          },
+          {
+            "measurementId": "anvil-lifetime",
+            "value": null,
+            "unit": "min",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "This closure is not calibrated to an independent observed lifetime distribution."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "C4",
+      "measurements": [
+        {
+          "id": "sublimation-loss",
+          "quantity": "乾燥時と湿潤時のイベント損失差",
+          "unit": "kg m^-2",
+          "operator": "dry loss minus moist loss at 6 h",
+          "mask": "controlled event",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "0 kg m^-2 より大きい。観測校正なしのモデル応答"
+        },
+        {
+          "id": "residual-lifetime",
+          "quantity": "残存氷寿命",
+          "unit": "min",
+          "operator": "mass threshold crossing time",
+          "mask": "ice support",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "イベント lifetime 評価・観測校正がなく blocked"
+        },
+        {
+          "id": "residual-ice-difference",
+          "quantity": "乾燥時と湿潤時の残存氷差",
+          "unit": "kg m^-2",
+          "operator": "dry remaining ice minus moist remaining ice at 6 h",
+          "mask": "controlled event",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "0 kg m^-2 未満"
+        }
+      ],
+      "result": {
+        "fixture": "C4",
+        "cpuDiagnosticsApplied": true,
+        "generatedCloudImageFixtureApplied": false,
+        "controls": {
+          "moistUpperHumidityScale": 1.3,
+          "dryUpperHumidityScale": 0.25,
+          "moistIceHumidityFactor": 0.7798734636468028,
+          "dryIceHumidityFactor": 0.14997566608592358,
+          "comparisonTimeSeconds": 21600
+        },
+        "measurements": [
+          {
+            "measurementId": "sublimation-loss",
+            "value": 0.00009370210110540983,
+            "unit": "kg m^-2",
+            "reference": 0,
+            "tolerance": 0,
+            "comparison": "greater-than",
+            "status": "pass",
+            "detail": "The dry environment drives greater loss in the event model; this is a model response, not an observed rate."
+          },
+          {
+            "measurementId": "residual-lifetime",
+            "value": null,
+            "unit": "min",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "Lifetime threshold crossing is not calibrated or evaluated by the environment diagnostic."
+          },
+          {
+            "measurementId": "residual-ice-difference",
+            "value": -0.00009370210110541253,
+            "unit": "kg m^-2",
+            "reference": 0,
+            "tolerance": 0,
+            "comparison": "less-than",
+            "status": "pass",
+            "detail": "The same event supply retains less ice under the drier upper-layer input."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "C5",
+      "measurements": [
+        {
+          "id": "convective-top",
+          "quantity": "正浮力parcelの最大高度差",
+          "unit": "m",
+          "operator": "strong minus weak inversion positive-buoyancy top",
+          "mask": "parcel profile",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "0 m 未満"
+        },
+        {
+          "id": "deep-penetration",
+          "quantity": "深い対流への貫通",
+          "unit": "1",
+          "operator": "deep-convective connected-component share",
+          "mask": "convective support",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "連結雲形状がなく blocked"
+        }
+      ],
+      "result": {
+        "fixture": "C5",
+        "cpuDiagnosticsApplied": true,
+        "generatedCloudImageFixtureApplied": false,
+        "controls": {
+          "weakInversionIncreaseK": 0.5,
+          "strongInversionIncreaseK": 8,
+          "surfaceFluxesHeldFixed": true
+        },
+        "measurements": [
+          {
+            "measurementId": "convective-top",
+            "value": -5750,
+            "unit": "m",
+            "reference": 0,
+            "tolerance": 0,
+            "comparison": "less-than",
+            "status": "pass",
+            "detail": "The parcel profile integral determines positive-buoyancy extent; it is not an image-derived cloud top."
+          },
+          {
+            "measurementId": "deep-penetration",
+            "value": null,
+            "unit": "1",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "Connected cloud geometry and overshooting-top events are not part of the parcel diagnostic."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "C6",
+      "measurements": [
+        {
+          "id": "supply-response",
+          "quantity": "供給率2倍時の面密度比",
+          "unit": "1",
+          "operator": "mass at 2x supply / base-supply mass",
+          "mask": "same controlled event",
+          "independentReference": {
+            "kind": "analytic",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "2.0 ± 1e-12"
+        },
+        {
+          "id": "particle-size-response",
+          "quantity": "氷粒子数2倍時の有効半径比",
+          "unit": "1",
+          "operator": "radius at 2x number / base-number radius",
+          "mask": "same ice mass and air density",
+          "independentReference": {
+            "kind": "analytic",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "2^(-1/3) ± 1e-12"
+        },
+        {
+          "id": "mass-balance",
+          "quantity": "物質収支相対残差",
+          "unit": "1",
+          "operator": "abs(initial + supply - loss - current) / (initial + supply)",
+          "mask": "controlled event ledger",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "1e-12 以下"
+        },
+        {
+          "id": "non-negative",
+          "quantity": "水相の最小質量",
+          "unit": "kg m^-2",
+          "operator": "minimum of initial/supplied/lost/liquid/ice masses",
+          "mask": "controlled event ledger",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "0 kg m^-2 以上"
+        },
+        {
+          "id": "optical-closure",
+          "quantity": "粒径から光学厚への相対残差",
+          "unit": "1",
+          "operator": "API tau versus geometric-optics equation",
+          "mask": "controlled ice column",
+          "independentReference": {
+            "kind": "analytic",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 1e-12,
+          "acceptance": "1e-12 以下"
+        }
+      ],
+      "result": {
+        "fixture": "C6",
+        "cpuDiagnosticsApplied": true,
+        "generatedCloudImageFixtureApplied": false,
+        "controls": {
+          "supplyRateKgM2S": 0.00001,
+          "doubledSupplyRateKgM2S": 0.00002,
+          "supplyDurationSeconds": 3600,
+          "evaluationTimeSeconds": 7200,
+          "iceNumberConcentrationPerM3": 100000,
+          "doubledIceNumberConcentrationPerM3": 200000,
+          "iceExtinctionEfficiency": 2
+        },
+        "measurements": [
+          {
+            "measurementId": "supply-response",
+            "value": 2,
+            "unit": "1",
+            "reference": 2,
+            "tolerance": 1e-12,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "Doubling only the declared liquid supply rate doubles the event column mass."
+          },
+          {
+            "measurementId": "particle-size-response",
+            "value": 0.7937005259840998,
+            "unit": "1",
+            "reference": 0.7937005259840998,
+            "tolerance": 1e-12,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "Doubling only particle number changes spherical-equivalent radius by N^(-1/3)."
+          },
+          {
+            "measurementId": "mass-balance",
+            "value": 2.4093381610788985e-17,
+            "unit": "1",
+            "reference": 0,
+            "tolerance": 1e-12,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "Checks the event ledger identity against the mass-conservation equation."
+          },
+          {
+            "measurementId": "non-negative",
+            "value": 0,
+            "unit": "kg m^-2",
+            "reference": 0,
+            "tolerance": 0,
+            "comparison": "non-negative",
+            "status": "pass",
+            "detail": "Minimum of initial, supplied, lost, liquid, and ice column masses."
+          },
+          {
+            "measurementId": "optical-closure",
+            "value": 0,
+            "unit": "1",
+            "reference": 0,
+            "tolerance": 1e-12,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "Radius derives from dry-air density and ice mixing ratio; optical depth is checked against the geometric-optics equation."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "C7",
+      "measurements": [
+        {
+          "id": "wave-track",
+          "quantity": "分散関係による波の位相移動",
+          "unit": "m",
+          "operator": "linear Boussinesq phase speed times duration",
+          "mask": "prescribed wave mode",
+          "independentReference": {
+            "kind": "analytic",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "分散関係の解析値との差 1e-8 m 以下"
+        },
+        {
+          "id": "material-track",
+          "quantity": "上層風によるparcel移流",
+          "unit": "m",
+          "operator": "spherical parcel displacement",
+          "mask": "controlled parcel",
+          "independentReference": {
+            "kind": "analytic",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "一定風の解析的大円移流との差 0.05 m 以下"
+        },
+        {
+          "id": "wave-cloud-condensation",
+          "quantity": "湿潤制御の波状雲成立",
+          "unit": "1",
+          "operator": "ice saturation after dry-adiabatic wave lift",
+          "mask": "wave source level",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "湿潤条件で 1"
+        },
+        {
+          "id": "dry-wave-cloud-control",
+          "quantity": "乾燥対照の波状雲不成立",
+          "unit": "1",
+          "operator": "ice saturation after dry-adiabatic wave lift",
+          "mask": "wave source level",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "乾燥条件で 0"
+        },
+        {
+          "id": "directional-spectrum",
+          "quantity": "方向別パワー",
+          "unit": "1",
+          "operator": "directional spatial spectrum",
+          "mask": "valid spectral band",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0.001,
+          "acceptance": "格子状密度場がなく blocked"
+        }
+      ],
+      "result": {
+        "fixture": "C7",
+        "cpuDiagnosticsApplied": true,
+        "generatedCloudImageFixtureApplied": false,
+        "controls": {
+          "gravityWaveSourceHeightM": 5500,
+          "horizontalWavelengthM": 10000,
+          "verticalWavelengthM": 5000,
+          "propagationAzimuthRad": 1.5707963267948966,
+          "moistIceHumidityFactor": 0.7798734636468028,
+          "dryIceHumidityFactor": 0.059990266434369444,
+          "upperNorthWindMps": 10
+        },
+        "measurements": [
+          {
+            "measurementId": "wave-track",
+            "value": 22937.42961891344,
+            "unit": "m",
+            "reference": 22937.42961891344,
+            "tolerance": 1e-8,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "Intrinsic phase travel follows the linear Boussinesq dispersion relation."
+          },
+          {
+            "measurementId": "material-track",
+            "value": 36000.000000076696,
+            "unit": "m",
+            "reference": 36000,
+            "tolerance": 0.05,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "The air-mass track integrates the supplied northward upper-level wind on the sphere."
+          },
+          {
+            "measurementId": "wave-cloud-condensation",
+            "value": 1,
+            "unit": "1",
+            "reference": 1,
+            "tolerance": 0,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "A moist saturated control condenses under the prescribed lift."
+          },
+          {
+            "measurementId": "dry-wave-cloud-control",
+            "value": 0,
+            "unit": "1",
+            "reference": 0,
+            "tolerance": 0,
+            "comparison": "absolute-error",
+            "status": "pass",
+            "detail": "The dry control retains the same source and stability but does not reach ice saturation."
+          },
+          {
+            "measurementId": "directional-spectrum",
+            "value": null,
+            "unit": "1",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "No gridded cloud-density field is available for spectral analysis."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "C8",
+      "measurements": [
+        {
+          "id": "hole-fraction",
+          "quantity": "セルの穴率",
+          "unit": "1",
+          "operator": "clear-area share within cell mask",
+          "mask": "ocean boundary-layer mask",
+          "independentReference": {
+            "kind": "observationSeries",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0.001,
+          "acceptance": "海洋境界層セル場がなく blocked"
+        },
+        {
+          "id": "cell-size",
+          "quantity": "セル径",
+          "unit": "km",
+          "operator": "connected-cell equivalent diameter",
+          "mask": "ocean boundary-layer mask",
+          "independentReference": {
+            "kind": "observationSeries",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "海洋境界層セル場がなく blocked"
+        },
+        {
+          "id": "cell-lifetime",
+          "quantity": "セル寿命",
+          "unit": "min",
+          "operator": "connected-cell persistence",
+          "mask": "ocean boundary-layer mask",
+          "independentReference": {
+            "kind": "observationSeries",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "海洋境界層イベントがなく blocked"
+        }
+      ],
+      "result": {
+        "fixture": "C8",
+        "cpuDiagnosticsApplied": true,
+        "generatedCloudImageFixtureApplied": false,
+        "controls": {},
+        "measurements": [
+          {
+            "measurementId": "hole-fraction",
+            "value": null,
+            "unit": "1",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "Marine boundary-layer cell geometry is not implemented."
+          },
+          {
+            "measurementId": "cell-size",
+            "value": null,
+            "unit": "km",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "Marine boundary-layer cell geometry is not implemented."
+          },
+          {
+            "measurementId": "cell-lifetime",
+            "value": null,
+            "unit": "min",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "Marine boundary-layer event lifecycle is not implemented."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "C9",
+      "measurements": [
+        {
+          "id": "layer-gap",
+          "quantity": "雲層間空隙",
+          "unit": "m",
+          "operator": "minimum density between layer supports",
+          "mask": "between-layer mask",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0.001,
+          "acceptance": "多層雲密度場がなく blocked"
+        },
+        {
+          "id": "parallax",
+          "quantity": "高度による視差",
+          "unit": "px",
+          "operator": "projected centroid separation by layer",
+          "mask": "both layer masks",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0,
+          "acceptance": "多層投影形状がなく blocked"
+        },
+        {
+          "id": "shadow-support",
+          "quantity": "影の支持域",
+          "unit": "m2",
+          "operator": "shadow support from shared 3D field",
+          "mask": "shadow-valid mask",
+          "independentReference": {
+            "kind": "numeric",
+            "status": "not-provided",
+            "artifact": null
+          },
+          "uncertaintyFloor": 0.001,
+          "acceptance": "共有3D密度と影形状がなく blocked"
+        }
+      ],
+      "result": {
+        "fixture": "C9",
+        "cpuDiagnosticsApplied": true,
+        "generatedCloudImageFixtureApplied": false,
+        "controls": {},
+        "measurements": [
+          {
+            "measurementId": "layer-gap",
+            "value": null,
+            "unit": "m",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "A multi-layer cloud density field is not implemented."
+          },
+          {
+            "measurementId": "parallax",
+            "value": null,
+            "unit": "px",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "Projected multi-layer geometry is not implemented."
+          },
+          {
+            "measurementId": "shadow-support",
+            "value": null,
+            "unit": "m2",
+            "reference": null,
+            "tolerance": null,
+            "comparison": null,
+            "status": "blocked",
+            "detail": "Shared multi-layer density and shadow support are not implemented."
+          }
+        ]
+      }
+    }
+  ],
+  "views": [
+    "coverage",
+    "cloudTop",
+    "translucent",
+    "composite"
+  ],
+  "timesHours": [
+    0,
+    0.16666666666666666,
+    0.3333333333333333,
+    0.5,
+    0.6666666666666666,
+    0.8333333333333334,
+    1,
+    2,
+    4,
+    6,
+    12,
+    24
+  ]
+}

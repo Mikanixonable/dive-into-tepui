@@ -173,7 +173,7 @@ export function register(): void {
 
   test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
     const weapon = WeaponState.deserialize({
-      mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
+      mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: -1,
       barrelTemperature: Number.NaN, barrelDeviation: Number.NaN, pendingBarrelJoules: -1,
       wasFiring: false, wasEmptyClick: false,
     } satisfies SerializedWeaponState);
