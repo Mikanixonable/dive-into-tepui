@@ -61,21 +61,21 @@ export function register(): void {
     assert.equal(cockpit.modelId, 'cockpit-standard');
     assert.equal(cockpit.hp, 40);
     assert.equal(cockpit.maxHp, 100);
-    assert.equal(tank.transform.position.z, -3);
+    assert.equal(tank.transform.position.z, -6);
     assert.equal(radiator.transform.position.x, 2.75);
     assert.equal(radiator.deployed, 1);
   });
 
   test('ship assembly: cockpit は後端直径6m・前端直径3mで、側面取付点は中央断面にある', () => {
     const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
-    assert.equal(cockpit.length, 3);
+    assert.equal(cockpit.length, 9);
     assert.equal(cockpit.diameter, 6);
     const assembly = new ShipAssembly();
     assembly.addRoot(module('cockpit-standard', 'cockpit'));
     assembly.connectSide(module('docking-port-standard', 'port'), 'cockpit', 'side:+x');
     const transform = assembly.transformOf('port');
     assert.ok(transform !== null);
-    // 中央断面半径 2.25m とポート半長 0.5m の和。
+    // 中央断面の左右溝の底 2.25m とポート半長 0.5m の和。
     assert.deepEqual(transform.position, v3(2.75, 0, 0));
   });
 
@@ -88,10 +88,10 @@ export function register(): void {
     assert.equal(edge.kind, 'axial');
     assert.equal(edge.childTransform.position.x, 0);
     assert.equal(edge.childTransform.position.y, 0);
-    assert.equal(edge.childTransform.position.z, -7.5);
+    assert.equal(edge.childTransform.position.z, -10.5);
     const tankTransform = assembly.worldTransformOf('tank');
     assert.ok(tankTransform !== null);
-    assert.equal(tankTransform.position.z, -7.5);
+    assert.equal(tankTransform.position.z, -10.5);
     assert.equal(assembly.validate().valid, true);
   });
 
@@ -309,7 +309,7 @@ export function register(): void {
     assert.equal(restored.validate().valid, true);
     const edge = restored.graph.find(c => c.id === 'connection-1');
     assert.ok(edge !== undefined);
-    assert.equal(edge.childTransform.position.z, -3);
+    assert.equal(edge.childTransform.position.z, -6);
   });
 
   test('ship assembly: +Z prepend は前端面を隙間なく接続し headId を更新する', () => {
@@ -325,11 +325,11 @@ export function register(): void {
     const edge = assembly.graph.find(c => c.childId === 'weapon');
     assert.ok(edge !== undefined);
     assert.equal(edge.kind, 'axial');
-    // cockpit 前端 +1.5m と砲の後端 -4.5m を接続するため、砲中心は +6m。
-    assert.equal(edge.childTransform.position.z, 6.0);
+    // cockpit 前端 +4.5m と砲本体の後端 -0.5m を接続するため、砲中心は +5m。
+    assert.equal(edge.childTransform.position.z, 5.0);
     const weaponTransform = assembly.worldTransformOf('weapon');
     assert.ok(weaponTransform !== null);
-    assert.equal(weaponTransform.position.z, 6.0);
+    assert.equal(weaponTransform.position.z, 5.0);
     assert.equal(assembly.validate().valid, true);
   });
 
