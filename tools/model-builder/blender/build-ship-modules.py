@@ -1468,9 +1468,221 @@ def make_plate_prism(outline, z_bottom, z_top):
     bevel_faces = bevel_creases(bm, 0.015, segments=2, crease_angle_deg=60.0)
     return shade_by_angle(bm, 30.0, bevel_faces)
 
+
+# YZ 輪郭の板を X 軸へ押し出し、砲架の厚い鋳鋼縁を面取りする。
+def make_gun_cheek(outline, x0, x1, bevel=0.04):
+    bm = make_plate_prism(outline, x0, x1)
+    transform_bm(bm, Matrix(((0, 0, 1, 0), (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 0, 1))))
+    bevel_faces = bevel_creases(bm, bevel, segments=3, crease_angle_deg=35.0)
+    return shade_by_angle(bm, 40.0, bevel_faces)
+
+
+# 塗装・切削面・締結具を武器専用の材質として用意する。
+def add_gun_materials(mats):
+    mats.gun_paint = create_pbr_material("mat_gun_naval_gray", (0.31, 0.37, 0.40, 1.0), 0.53, 0.0)
+    mats.gun_panel = create_pbr_material("mat_gun_panel_gray", (0.20, 0.25, 0.28, 1.0), 0.58, 0.0)
+    mats.gun_machined = create_pbr_material("mat_gun_machined", (0.66, 0.72, 0.75, 1.0), 0.25, 0.72)
+    mats.gun_bronze = create_pbr_material("mat_gun_bronze", (0.31, 0.23, 0.14, 1.0), 0.46, 0.45)
+
+
+# 模型座標の位置列へ、軸方向を揃えた六角ボルトを一つのメッシュとして作る。
+def add_gun_bolts(name, positions, direction, mats, parent=None, radius=0.035):
+    bm = bmesh.new()
+    rotation = Vector(direction).to_track_quat('Z', 'Y').to_matrix().to_4x4()
+    for position in positions:
+        bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=6,
+            radius1=radius, radius2=radius, depth=0.027,
+            matrix=Matrix.Translation(Vector(position)) @ rotation)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bevel_faces = bevel_creases(bm, 0.004, segments=2)
+    add_mesh_obj(name, shade_by_angle(bm, 30, bevel_faces), mats.gun_machined, parent=parent)
+
+
+# 固定砲架を作る。頬板下側の切り欠きは排莢樋と給弾塔の空間を確保する。
+def build_gun_cradle(mats, deck_top):
+    outline = [(0.20, deck_top + 0.04), (1.13, deck_top + 0.04), (1.32, 0.0),
+        (1.26, 0.68), (0.76, 1.32), (-0.64, 1.32), (-0.78, 1.06),
+        (-0.78, 0.67), (0.20, 0.67)]
+    panel = [(0.30, -0.19), (1.00, -0.19), (1.12, 0.08), (1.08, 0.61),
+        (0.65, 1.17), (-0.49, 1.17), (-0.61, 1.00), (-0.61, 0.82), (0.30, 0.82)]
+    # 頬板の段付き外面と、軸受を支える幅広の足。
+    for side in (-1.0, 1.0):
+        x = side * 1.36
+        add_mesh_obj(f"gun_cradle_cheek_{side:+.0f}",
+            make_gun_cheek(outline, x - 0.13, x + 0.13), mats.gun_paint)
+        add_mesh_obj(f"gun_cradle_cheek_field_{side:+.0f}",
+            make_gun_cheek(panel, side * 1.496 - 0.012, side * 1.496 + 0.012, 0.012), mats.gun_panel)
+        add_mesh_obj(f"gun_cradle_foot_{side:+.0f}", make_box(0.57, 1.16, 0.10,
+            center=(x, 0.72, deck_top + 0.05), bevel=0.035), mats.gun_paint)
+        bearing_transform = Matrix.Translation((side * 1.53, 0.64, 0.40)) @ Euler((0, math.pi / 2, 0)).to_matrix().to_4x4()
+        add_mesh_obj(f"gun_cradle_trunnion_{side:+.0f}",
+            transform_bm(make_cylinder(0.38, 0.38, 0.22, segments=40), bearing_transform), mats.gun_paint)
+        add_mesh_obj(f"gun_trunnion_hub_{side:+.0f}",
+            transform_bm(make_cylinder(0.24, 0.24, 0.24, segments=32), bearing_transform), mats.gun_machined)
+        positions = [(side * 1.65, 0.64 + 0.31 * math.cos(a), 0.40 + 0.31 * math.sin(a))
+            for a in [i * math.pi / 4 for i in range(8)]]
+        add_gun_bolts(f"gun_trunnion_bolts_{side:+.0f}", positions, (side, 0, 0), mats)
+        add_gun_bolts(f"gun_cheek_bolts_{side:+.0f}",
+            [(side * 1.52, y, z) for y, z in ((-.51, 1.23), (.14, 1.23), (.70, 1.20), (1.18, .60), (.29, -.22))],
+            (side, 0, 0), mats)
+    # 後座を支える案内レールと、甲板へ反力を渡す横梁。
+    for y in (-0.62, 0.62):
+        add_mesh_obj(f"gun_cradle_crossbeam_{y:+.2f}", make_box(2.60, 0.20, 0.14,
+            center=(0, y, deck_top + .09), bevel=.025), mats.gun_paint)
+    for side in (-1.0, 1.0):
+        add_mesh_obj(f"gun_slide_rail_{side:+.0f}", make_box(.17, .20, 1.47,
+            center=(side * .93, -.38, .44), bevel=.018), mats.gun_machined)
+        add_mesh_obj(f"gun_slide_rail_seat_{side:+.0f}", make_box(.27, .34, .14,
+            center=(side * .93, -.38, deck_top + .10), bevel=.025), mats.gun_paint)
+
+
+# 後座する機関部、駆動装置、軸受と整備扉を組む。
+def build_gun_receiver(mats, recoil, breech_z):
+    receiver_back, receiver_front = -0.06, breech_z - 0.06
+    add_mesh_obj("gun_receiver", make_box(1.65, 1.48, receiver_front - receiver_back,
+        center=(0, 0, (receiver_front + receiver_back) / 2), bevel=.08), mats.gun_paint, parent=recoil)
+    add_mesh_obj("gun_receiver_rear_cover", make_box(1.42, 1.25, .07,
+        center=(0, 0, -.065), bevel=.045), mats.gun_panel, parent=recoil)
+    # 天面の段差と排熱格子。
+    add_mesh_obj("gun_receiver_top_hatch", make_box(1.16, .09, .66,
+        center=(0, .76, .43), bevel=.04), mats.gun_panel, parent=recoil)
+    for i in range(5):
+        add_mesh_obj(f"gun_receiver_louvre_{i}", make_box(.72, .035, .045,
+            center=(0, .819, .20 + i * .105), bevel=.009), mats.gun_machined, parent=recoil)
+    for side in (-1.0, 1.0):
+        add_mesh_obj(f"gun_slide_shoe_{side:+.0f}", make_box(.32, .31, .37,
+            center=(side * .87, -.38, .62), bevel=.025), mats.gun_panel, parent=recoil)
+        add_mesh_obj(f"gun_receiver_side_door_{side:+.0f}", make_box(.05, .71, .61,
+            center=(side * .843, .16, .52), bevel=.025), mats.gun_panel, parent=recoil)
+        add_gun_bolts(f"gun_receiver_door_bolts_{side:+.0f}",
+            [(side * .88, y, z) for y in (-.13, .45) for z in (.27, .77)],
+            (side, 0, 0), mats, recoil, .026)
+        add_mesh_obj(f"gun_receiver_door_handle_{side:+.0f}",
+            make_pipes([[Vector((side * .88, .02, .47)), Vector((side * .94, .02, .47)),
+                Vector((side * .94, .23, .47)), Vector((side * .88, .23, .47))]], .018, 10, .025),
+            mats.gun_machined, parent=recoil)
+    # 砲身束を囲う軸受環と、機関部に載る駆動モーター。
+    add_mesh_obj("gun_front_bearing", make_lathe([(.79, receiver_front - .09), (.94, receiver_front - .09),
+        (.98, receiver_front - .02), (.98, receiver_front + .10), (.92, receiver_front + .14),
+        (.79, receiver_front + .14)], segments=56, closed=True), mats.gun_paint, parent=recoil)
+    add_mesh_obj("gun_front_bearing_rim", make_torus(.88, .024, receiver_front + .145, 56, 10),
+        mats.gun_machined, parent=recoil)
+    add_gun_bolts("gun_front_bearing_bolts",
+        [(.89 * math.cos(a), .89 * math.sin(a), receiver_front + .152)
+            for a in [i * math.pi / 6 for i in range(12)]], (0, 0, 1), mats, recoil)
+    add_mesh_obj("gun_drive_motor", transform_bm(make_cylinder(.22, .22, .64, .30, 32),
+        Matrix.Translation((0, 1.03, 0))), mats.gun_panel, parent=recoil)
+    add_mesh_obj("gun_motor_rear_cap", transform_bm(make_cylinder(.17, .17, .07, -.055, 24),
+        Matrix.Translation((0, 1.03, 0))), mats.gun_machined, parent=recoil)
+    add_mesh_obj("gun_motor_gearbox", make_box(.50, .40, .30, center=(0, .95, .73), bevel=.045),
+        mats.gun_paint, parent=recoil)
+    for z in (.09, .20, .31, .42, .53):
+        add_mesh_obj(f"gun_motor_cooling_fin_{z}", transform_bm(make_torus(.22, .017, z, 32, 8),
+            Matrix.Translation((0, 1.03, 0))), mats.gun_machined, parent=recoil)
+
+
+# 固定スリーブと後座ロッドを同軸に組み、最大 0.22 m の後退でも嵌合を保つ。
+def build_gun_recoil_cylinders(mats, recoil):
+    for side in (-1.0, 1.0):
+        x, y = side * 1.07, -.66
+        offset = Matrix.Translation((x, y, 0))
+        add_mesh_obj(f"gun_recoil_sleeve_{side:+.0f}", transform_bm(make_lathe([
+            (.11, -.22), (.20, -.22), (.21, -.17), (.21, .43), (.18, .49), (.11, .49),
+        ], 40, closed=True), offset), mats.gun_paint)
+        add_mesh_obj(f"gun_recoil_gland_{side:+.0f}", transform_bm(make_lathe([
+            (.103, .43), (.225, .43), (.225, .51), (.103, .51),
+        ], 40, closed=True), offset), mats.gun_machined)
+        add_mesh_obj(f"gun_recoil_rod_{side:+.0f}", transform_bm(
+            make_cylinder(.10, .10, 1.00, .66, 32), offset), mats.gun_machined, parent=recoil)
+        add_mesh_obj(f"gun_recoil_rod_crosshead_{side:+.0f}", make_box(.43, .25, .16,
+            center=(side * .93, y, 1.17), bevel=.045), mats.gun_paint, parent=recoil)
+        for z in (-.12, .30):
+            add_mesh_obj(f"gun_cylinder_saddle_{side:+.0f}_{z}", make_box(.42, .23, .14,
+                center=(x, y + .17, z), bevel=.025), mats.gun_panel)
+        add_mesh_obj(f"gun_hydraulic_line_{side:+.0f}", make_pipes([
+            [Vector((x, y, -.13)), Vector((side * 1.72, y, -.13)),
+                Vector((side * 1.72, .97, -.13)), Vector((side * 1.20, 1.56, -.13))],
+            [Vector((x, y, .32)), Vector((side * 1.47, -.92, .32)),
+                Vector((side * 1.76, -.92, .04)), Vector((side * 1.76, .97, .04))],
+        ], .032, 12, .12), mats.gun_bronze)
+        add_gun_bolts(f"gun_gland_bolts_{side:+.0f}",
+            [(x + .17 * math.cos(a), y + .17 * math.sin(a), .527)
+                for a in [i * math.pi / 3 for i in range(6)]], (0, 0, 1), mats, radius=.026)
+
+
+# 固定側の機械室と圧力容器を甲板へ据え付ける。
+def build_gun_service_house(mats, deck_top):
+    add_mesh_obj("gun_house", make_box(2.20, .77, .67,
+        center=(0, 1.80, deck_top + .335), bevel=.075), mats.gun_paint)
+    add_mesh_obj("gun_house_hood", make_box(2.03, .65, .08,
+        center=(0, 1.81, .33), bevel=.035), mats.gun_panel)
+    for side in (-1.0, 1.0):
+        add_mesh_obj(f"gun_house_service_door_{side:+.0f}", make_box(.75, .49, .025,
+            center=(side * .54, 1.80, .384), bevel=.025), mats.gun_paint)
+        add_gun_bolts(f"gun_house_door_bolts_{side:+.0f}",
+            [(side * .54 + dx, 1.80 + dy, .409) for dx in (-.29, .29) for dy in (-.18, .18)],
+            (0, 0, 1), mats, radius=.026)
+        add_mesh_obj(f"gun_accumulator_{side:+.0f}", transform_bm(make_lathe([
+            (0, -.23), (.18, -.23), (.22, -.15), (.22, .30), (.18, .40), (0, .40),
+        ], 32), Matrix.Translation((side * 1.55, 1.36, 0))), mats.gun_panel)
+        add_mesh_obj(f"gun_accumulator_band_{side:+.0f}", transform_bm(make_torus(.224, .025, .12, 32, 8),
+            Matrix.Translation((side * 1.55, 1.36, 0))), mats.gun_machined)
+        add_mesh_obj(f"gun_conduit_{side:+.0f}", make_pipes([[
+            Vector((side * .73, 2.1, -.14)), Vector((side * .95, 2.45, -.25)),
+        ]], .035, 12), mats.pipe)
+        add_mesh_obj(f"gun_conduit_relay_{side:+.0f}", make_box(.34, .26, .20,
+            center=(side * .95, 2.42, -.25), bevel=.03), mats.gun_panel)
+
+
+# 砲身の個別カラーと中央ハブを結び、砲身間に抜けのある回転束を作る。
+def build_gun_barrels(mats, recoil, breech_z, muzzle_z):
+    rotor = add_anchor("barrel-rotor:0", (0, 0, breech_z - .04),
+        parent=recoil, barrelCount=GATLING_BARREL_COUNT)
+    add_mesh_obj("barrel_hub", make_cylinder(.76, .76, .17, breech_z - .045, 48),
+        mats.gun_panel, parent=rotor)
+    add_mesh_obj("barrel_spindle", make_cylinder(.09, .09, muzzle_z - .15 - breech_z,
+        (muzzle_z - .15 + breech_z) / 2, 20), mats.gun_machined, parent=rotor)
+    cluster_r = .59
+    # 開口砲口、段付き薬室、放熱帯。
+    for b in range(GATLING_BARREL_COUNT):
+        a = b * 2 * math.pi / GATLING_BARREL_COUNT
+        offset = Matrix.Translation((cluster_r * math.cos(a), cluster_r * math.sin(a), 0))
+        barrel = make_lathe([(0, breech_z), (.19, breech_z), (.19, breech_z + .23),
+            (.165, breech_z + .31), (.151, muzzle_z - .20), (.173, muzzle_z - .18),
+            (.173, muzzle_z - .025), (.16, muzzle_z), (.125, muzzle_z), (.125, muzzle_z - .18),
+            (0, muzzle_z - .18)], 32, closed=True)
+        add_mesh_obj(f"barrel_{b}", transform_bm(barrel, offset), mats.gun_steel, parent=rotor)
+        for j, z in enumerate((breech_z + .12, breech_z + .23)):
+            add_mesh_obj(f"barrel_chamber_band_{b}_{j}", transform_bm(make_torus(.193, .016, z, 32, 8), offset),
+                mats.gun_machined, parent=rotor)
+        # 締め環の周囲は中空のまま、中心軸へスポークで繋ぐ。
+        for j, z in enumerate((breech_z + .39, muzzle_z - .29)):
+            add_mesh_obj(f"barrel_collar_{b}_{j}", transform_bm(make_lathe([
+                (.165, z - .046), (.218, z - .046), (.218, z + .046), (.165, z + .046),
+            ], 32, closed=True), offset), mats.gun_machined, parent=rotor)
+            add_mesh_obj(f"barrel_spoke_{b}_{j}", make_box(.39, .095, .084,
+                center=(.28 * math.cos(a), .28 * math.sin(a), z), rot_euler=(0, 0, a), bevel=.016),
+                mats.gun_panel, parent=rotor)
+    for j, z in enumerate((breech_z + .39, muzzle_z - .29)):
+        add_mesh_obj(f"barrel_spider_hub_{j}", make_cylinder(.17, .17, .115, z, 24),
+            mats.gun_machined, parent=rotor)
+
+
+# 排莢口と固定樋の重なりは、後座端でも開口を覆う長さを持つ。
+def build_gun_ejection(mats, recoil):
+    add_mesh_obj("gun_ejection_port", make_box(.035, .56, .76,
+        center=(-.836, -.04, .37), bevel=.01), mats.recessed, parent=recoil)
+    path = round_corners([Vector((-.80, -.02, .10)), Vector((-1.05, -.12, .06)),
+        Vector((-1.32, -.24, -.04))], .08, 4)
+    profile = [(-.27, -.34), (.27, -.34), (.27, .34), (-.27, .34)]
+    add_mesh_obj("gun_ejection_chute", sweep_profile(path, profile, cap_ends=False, sharp_angle_deg=30),
+        mats.gun_panel)
+
+# 結合面、砲架、後座機関部、給弾塔を一つの武器原型へ組み上げる。
 def build_weapon(name):
     reset_scene()
     mats = MaterialLibrary()
+    add_gun_materials(mats)
     radius = 3.0
     module = MANIFEST["modules"][name]
     half_len = module["length"] / 2.0
@@ -1522,110 +1734,19 @@ def build_weapon(name):
         mid = 1.75
         add_mesh_obj(f"deck_rib_{i}", make_box(1.70, 0.06, 0.08, center=(mid * math.cos(a), mid * math.sin(a), deck_top + 0.04), rot_euler=(0, 0, a)), mats.hull)
 
-    # 2. 機関部。大口径弾に見合う幅 1.0 m の箱で、甲板に架けた台座と斜めの支柱で支える
-    breech_z = 0.62                    # 砲身束の尾端(回転部の根元)
-    receiver_back = deck_top + 0.05
-    receiver_front = breech_z - 0.05
-    add_mesh_obj("gun_receiver", make_box(1.00, 1.05, receiver_front - receiver_back,
-        center=(mx, my, (receiver_front + receiver_back) / 2), bevel=0.03), mats.gun_steel)
-    add_mesh_obj("gun_receiver_cover", make_box(0.70, 0.70, 0.04, center=(mx, my, receiver_back - 0.01)), mats.hull_dark)
-    add_mesh_obj("gun_pedestal", make_box(0.90, 0.95, 0.06, center=(mx, my, deck_top + 0.03)), mats.hull_dark)
-    for sx in (-1.0, 1.0):
-        for sy in (-1.0, 1.0):
-            foot = Vector((mx + sx * 0.95, my + sy * 0.55, deck_top + 0.02))
-            add_mesh_obj(f"gun_brace_{sx:+.0f}_{sy:+.0f}", make_strut(foot, Vector((mx + sx * 0.44, my + sy * 0.38, receiver_back + 0.16)), 0.035), mats.truss)
-            add_mesh_obj(f"gun_brace_foot_{sx:+.0f}_{sy:+.0f}", make_box(0.14, 0.14, 0.04, center=foot), mats.clamp)
-
-    # 駆動系: 砲架天面のモーターから駆動軸を通して後部ハブへ落とす
-    bm_motor = make_cylinder(0.17, 0.17, 0.50, z_center=0.0, segments=24)
-    add_mesh_obj("gun_drive_motor", transform_bm(bm_motor, Matrix.Translation((mx, my + 0.66, -0.02))), mats.hull_dark)
-    bm_motor_cap = make_cylinder(0.11, 0.11, 0.06, z_center=0.0, segments=16)
-    add_mesh_obj("gun_drive_motor_cap", transform_bm(bm_motor_cap, Matrix.Translation((mx, my + 0.66, -0.30))), mats.clamp)
-    bm_shaft = make_cylinder(0.045, 0.045, 0.30, z_center=0.0, segments=12)
-    add_mesh_obj("gun_drive_shaft", transform_bm(bm_shaft, Matrix.Translation((mx, my + 0.66, 0.38))), mats.pipe)
-    add_mesh_obj("gun_gearbox", make_box(0.20, 0.28, 0.20, center=(mx, my + 0.60, 0.50)), mats.gun_steel)
-    # 前軸受: 回転するハブを囲う静止の環。砲身の最外径より内側を空ける
-    add_mesh_obj("gun_front_bearing", make_lathe([
-        (0.84, receiver_front - 0.06), (0.92, receiver_front - 0.06), (0.92, receiver_front + 0.02), (0.84, receiver_front + 0.02),
-    ], segments=48, closed=True), mats.hull_dark)
-
-    # 2.5 結合面の上に建つ砲架台の機械室。ガトリングの後方(結合面側)を機器で埋めて
-    #     円板へ段を付けて繋げる — 砲が円板から直接生える見え方を避ける。
-    # 機関部を両脇から支える頬板と、架台軸受のキャップ
-    for sx in (-1.0, 1.0):
-        add_mesh_obj(f"gun_cradle_cheek_{sx:+.0f}", make_box(0.22, 1.55, 0.80,
-            center=(sx * 0.72, 0.30, -0.02), bevel=0.04), mats.gun_steel)
-        bm_cap = make_cylinder(0.14, 0.14, 0.08, z_center=0.0, segments=16)
-        transform_bm(bm_cap, Matrix.Translation(Vector((sx * 0.59, 0.30, 0.30)))
-            @ Euler((0.0, math.pi / 2.0, 0.0)).to_matrix().to_4x4())
-        add_mesh_obj(f"gun_cradle_trunnion_{sx:+.0f}", bm_cap, mats.clamp)
-
-    # 結合面の上側を占める機械ブロック(駆動制御・配電・冷却の筐体)と結合面側へ下がる天板
-    add_mesh_obj("gun_house", make_box(1.75, 0.85, 0.62, center=(0.0, 1.45, -0.14), bevel=0.05), mats.hull_dark)
-    add_mesh_obj("gun_house_hood", make_box(1.62, 0.07, 0.48,
-        center=(0.0, 1.83, -0.24), rot_euler=(-0.45, 0.0, 0.0), bevel=0.02), mats.hull)
-    add_mesh_obj("gun_house_panel", make_box(0.90, 0.48, 0.03, center=(0.0, 1.45, 0.18)), mats.recessed)
-    for i in range(4):
-        add_mesh_obj(f"gun_house_vent_{i}", make_box(1.30, 0.07, 0.05, center=(0.0, 1.13 + i * 0.18, 0.18)), mats.hull)
-    # 機械室と駆動モーターの間を繋ぐ筐体(モーターを機械室へ組み込んで見せる)
-    add_mesh_obj("gun_house_trunk", make_box(0.55, 0.55, 0.50, center=(0.0, 0.86, -0.12), bevel=0.04), mats.hull_dark)
-
-    # 結合面の両脇の補機ユニット(反動緩衝・油圧・制御機器)と、キャップ状のフタ
-    for sx in (-1.0, 1.0):
-        add_mesh_obj(f"gun_side_unit_{sx:+.0f}", make_box(0.55, 0.85, 0.45,
-            center=(sx * 1.55, 0.55, -0.10), bevel=0.04), mats.hull_dark)
-        bm_fu = make_cylinder(0.16, 0.16, 0.16, z_center=0.0, segments=16)
-        transform_bm(bm_fu, Matrix.Translation(Vector((sx * 1.55, 1.02, -0.10)))
-            @ Euler((math.pi / 2.0, 0.0, 0.0)).to_matrix().to_4x4())
-        add_mesh_obj(f"gun_side_unit_cap_{sx:+.0f}", bm_fu, mats.clamp)
-
-    # 機関部の脇を通る反動緩衝器(Z 軸方向の緩衝シリンダー2本)
-    for sx in (-1.0, 1.0):
-        bm_damp = make_cylinder(0.07, 0.07, 0.70, z_center=0.0, segments=14)
-        transform_bm(bm_damp, Matrix.Translation(Vector((sx * 0.60, -0.55, 0.30))))
-        add_mesh_obj(f"gun_recoil_damper_{sx:+.0f}", bm_damp, mats.pipe)
-
-    # 機械室から結合環へ走る配線導管と、甲板縁の中継箱
-    for sx in (-1.0, 1.0):
-        add_mesh_obj(f"gun_conduit_{sx:+.0f}", make_pipes([
-            [Vector((sx * 0.60, 1.70, -0.30)), Vector((sx * 0.95, 2.10, -0.34)), Vector((sx * 0.95, 2.45, -0.34))],
-        ], radius=0.035, segments=10), mats.pipe)
-        add_mesh_obj(f"gun_conduit_relay_{sx:+.0f}", make_box(0.34, 0.26, 0.20,
-            center=(sx * 0.95, 2.42, -0.28), bevel=0.03), mats.clamp)
-
-    # 排莢: 機関部 -X 側面の開口と、空薬莢を -X へ後ろ下がりに逃がす樋
-    eject_y, eject_z = my - 0.02, 0.10
-    add_mesh_obj("gun_ejection_port", make_box(0.03, 0.66, 0.88, center=(mx - 0.51, eject_y, eject_z)), mats.recessed)
-    chute_path = round_corners([
-        Vector((mx - 0.50, eject_y, eject_z)),
-        Vector((mx - 0.95, eject_y - 0.10, eject_z - 0.04)),
-        Vector((mx - 1.32, eject_y - 0.22, eject_z - 0.14)),
-    ], 0.12, steps=4)
-    chute_profile = [(-0.27, -0.34), (0.27, -0.34), (0.27, 0.34), (-0.27, 0.34)]
-    add_mesh_obj("gun_ejection_chute", sweep_profile(chute_path, chute_profile, cap_ends=False, sharp_angle_deg=30.0), mats.hull_dark)
-
-    # 3. 回転部: 局所 +Z を軸にハブ・軸棒・5 本の砲身・締め板が一体で回る
-    rotor = add_anchor("barrel-rotor:0", (mx, my, breech_z - 0.04), barrelCount=GATLING_BARREL_COUNT)
-    bm_hub = make_cylinder(0.74, 0.74, 0.16, z_center=breech_z - 0.04, segments=48)
-    add_mesh_obj("barrel_hub", transform_bm(bm_hub, Matrix.Translation((mx, my, 0.0))), mats.gun_steel, parent=rotor)
-    bm_spindle = make_cylinder(0.055, 0.055, mz - 0.10 - breech_z, z_center=(mz - 0.10 + breech_z) / 2, segments=16)
-    add_mesh_obj("barrel_spindle", transform_bm(bm_spindle, Matrix.Translation((mx, my, 0.0))), mats.hull_dark, parent=rotor)
-    cluster_r = 0.60
-    for b in range(GATLING_BARREL_COUNT):
-        a = b * 2.0 * math.pi / GATLING_BARREL_COUNT
-        # 砲身は尾栓側が太く、砲口には口径の穴が開く。先端がちょうど砲口の z に来る
-        bm_barrel = make_lathe([
-            (0.0, breech_z), (0.185, breech_z), (0.185, breech_z + 0.16), (0.160, mz - 0.20),
-            (0.150, mz - 0.08), (0.150, mz), (0.125, mz), (0.125, mz - 0.14), (0.0, mz - 0.14),
-        ], segments=24, closed=True)
-        transform_bm(bm_barrel, Matrix.Translation((mx + cluster_r * math.cos(a), my + cluster_r * math.sin(a), 0.0)))
-        add_mesh_obj(f"barrel_{b}", bm_barrel, mats.gun_steel, parent=rotor)
-    # 長砲身を束ねる締め板は間隔を開けて3枚置く
-    for i, (zc, thickness) in enumerate(((breech_z + (mz - breech_z) * 0.35, 0.05),
-                                        (breech_z + (mz - breech_z) * 0.70, 0.05),
-                                        (mz - 0.10, 0.06))):
-        bm_clamp = make_cylinder(0.80, 0.80, thickness, z_center=zc, segments=48)
-        add_mesh_obj(f"barrel_clamp_{i}", transform_bm(bm_clamp, Matrix.Translation((mx, my, 0.0))), mats.hull_dark, parent=rotor)
+    # 2. 露出砲架。頬板・軸受・案内レール・駐退シリンダー・機械室は甲板へ固定し、機関部と
+    #    砲身束・排莢口は後座 anchor の子として、発射ごとに砲架へ沿って後退・復座する。
+    breech_z = 1.20                    # 砲身束の尾端(回転部の根元)。ここから砲口までが露出砲身
+    recoil = add_anchor("gun-recoil:0", (0.0, 0.0, 0.0), recoilTravel=0.22)
+    build_gun_cradle(mats, deck_top)
+    build_gun_receiver(mats, recoil, breech_z)
+    build_gun_recoil_cylinders(mats, recoil)
+    build_gun_service_house(mats, deck_top)
+    build_gun_barrels(mats, recoil, breech_z, mz)
+    build_gun_ejection(mats, recoil)
+    # 固定の給弾シュートが機関部の底へ入る摺動口の締め環(後座してもシュートを囲う)
+    add_mesh_obj("gun_feed_gland", make_box(0.86, 0.06, 0.86,
+        center=(fx - 0.15, my - 0.77, 0.05), bevel=0.02), mats.gun_machined, parent=recoil)
 
     # 4. 給弾塔(デリンカー): feed_port を中心に甲板をまたぐ装甲ハウジング。
     #    +X 面の開口へベルトが差し込まれ、中で弾だけが天面のシュートへ分かれて機関部へ入る。
