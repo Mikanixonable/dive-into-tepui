@@ -41,7 +41,16 @@ function anchor(parent, name, x, y, z, direction = null) {
 function definitionAnchors(root, definition) {
   anchor(root, 'connection:aft', 0, 0, -definition.length / 2, new THREE.Vector3(0, 0, -1));
   anchor(root, 'connection:forward', 0, 0, definition.length / 2, new THREE.Vector3(0, 0, 1));
-  if (definition.kind === 'cockpit' || definition.kind === 'tank') {
+  if (definition.kind === 'cockpit') {
+    // 後端半径 3 m から前端半径 1.5 m の円錐台。側面の取付点は中央断面の実表面へ置く。
+    const sideRadius = definition.diameter * 3 / 8;
+    for (const [name, direction] of [
+      ['side:+x', new THREE.Vector3(1, 0, 0)],
+      ['side:-x', new THREE.Vector3(-1, 0, 0)],
+      ['side:+y', new THREE.Vector3(0, 1, 0)],
+      ['side:-y', new THREE.Vector3(0, -1, 0)],
+    ]) anchor(root, `connection:${name}`, direction.x * sideRadius, direction.y * sideRadius, 0, direction);
+  } else if (definition.kind === 'tank') {
     for (const [name, direction] of [
       ['side:+x', new THREE.Vector3(1, 0, 0)],
       ['side:-x', new THREE.Vector3(-1, 0, 0)],
