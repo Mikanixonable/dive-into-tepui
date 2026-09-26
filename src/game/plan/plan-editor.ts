@@ -102,8 +102,8 @@ export class PlanEditor {
     private readonly planCommands: PlanCommands,
   ) {
     // マップ上の操作物(ノードギズモ・軌道メニュー・3D 矢印・Δv アーム)
-    this.nodeGizmo = new NodeGizmo(this.hud.layers.marker, this.hud.layers.popup, this.hud.overlayManager);
-    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this.hud.layers.popup, this.hud.overlayManager);
+    this.nodeGizmo = new NodeGizmo(this.hud.layers.marker, this.hud.overlayManager);
+    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this.hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D(scene);
     this.axisDrag = new AxisDragGizmo(
       (state) => bodyStateFor(state, this.celestialBodies),

@@ -36,7 +36,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
     private readonly actions: ObjectWindowActions,
   ) {
-    this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
+    this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.overlayManager);
     this.menu.onSelect = (act, target) => this.actions.runAct(target, act);
   }
 
@@ -66,7 +66,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       target, this.displayWindowManager.current.simTime, this,
     );
     const w = new PropertyWindow<MenuAction>(
-      this.hud.layers.window, clientX, clientY, content,
+      clientX, clientY, content,
       this.hud.overlayManager, UNCLIPPED_WINDOW_GROUP,
     );
     const entry: WindowEntry = { win: w, target };
