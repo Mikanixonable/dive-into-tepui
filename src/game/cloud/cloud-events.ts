@@ -27,6 +27,10 @@ export interface ConvectiveCloudCell {
   readonly liquidSupplyRateKgM2S: number;
   // 対流供給が続く時間。s。
   readonly convectiveDurationSeconds: number;
+  // セル固有の出生グリッドの位相。s、0..birthIntervalSeconds 未満。省略時は 0 で、
+  // 全セルが同じ epoch グリッドを共有する。独立した対流の出生はセルごとに別の時刻へ
+  // 起きるので、セル間で出生を同期させたくない供給源がここへ位相を置く。
+  readonly birthPhaseSeconds?: number;
   // Optional geographic placement for consumers that reconstruct material tracks.
   // Diagnostic-only cells may omit it; no location is inferred from an ID.
   readonly sourcePosition?: CloudEventSourcePosition;
@@ -348,6 +352,11 @@ function validateDomain(domain: CloudEventDomain): number {
     if (!(cell.convectiveDurationSeconds >= 0) || !Number.isFinite(cell.convectiveDurationSeconds)) {
       throw new RangeError('convectiveDurationSeconds must be finite and non-negative');
     }
+    if (cell.birthPhaseSeconds !== undefined
+      && (!(cell.birthPhaseSeconds >= 0) || !Number.isFinite(cell.birthPhaseSeconds)
+        || cell.birthPhaseSeconds >= domain.birthIntervalSeconds)) {
+      throw new RangeError('birthPhaseSeconds must be in [0, birthIntervalSeconds)');
+    }
     if (cell.convectiveDurationSeconds > domain.birthIntervalSeconds) {
       throw new RangeError('convectiveDurationSeconds must not exceed birthIntervalSeconds');
     }
@@ -402,7 +411,10 @@ function validateDomain(domain: CloudEventDomain): number {
     (domain.timeSeconds - domain.historyHorizonSeconds) / domain.birthIntervalSeconds,
   );
   const lastEpoch = Math.floor(domain.timeSeconds / domain.birthIntervalSeconds);
-  const parentFirstEpoch = parentSearchFirstEpoch(domain, firstEpoch);
+  // 件数・整数域の境界検査は最大の位相ずれ(= 間隔)で行う。位相は間隔未満なので、
+  // どのセルの探索窓もこの上限を超えない。
+  const parentFirstEpoch = parentSearchFirstEpoch(
+    domain, firstEpoch, domain.birthIntervalSeconds);
   if (!Number.isSafeInteger(firstEpoch) || !Number.isSafeInteger(lastEpoch)
     || !Number.isSafeInteger(parentFirstEpoch)) {
     throw new RangeError('time and birth interval must produce safe integer epochs');
@@ -418,13 +430,17 @@ function validateDomain(domain: CloudEventDomain): number {
 
 // horizon 内に生まれる娘イベントの祖先は、世代数ぶんの(出生間隔+伝播遅延)だけ古い
 // epoch に居うるので、親候補の探索はそこまで遡る。外出流が無効なら履歴窓の先頭そのもの。
-function parentSearchFirstEpoch(domain: CloudEventDomain, firstEpoch: number): number {
+// セルの出生位相 phaseSeconds はセル固有のグリッドのずれで、探索窓も同じだけずらす。
+function parentSearchFirstEpoch(
+  domain: CloudEventDomain, firstEpoch: number, phaseSeconds: number,
+): number {
   const outflow = domain.outflow;
   if (outflow === undefined || outflow.maxGeneration === 0) return firstEpoch;
   return Math.floor(
     (domain.timeSeconds - domain.historyHorizonSeconds
       - outflow.maxGeneration
-        * (domain.birthIntervalSeconds + outflow.propagationDelaySeconds))
+        * (domain.birthIntervalSeconds + outflow.propagationDelaySeconds)
+      - phaseSeconds)
     / domain.birthIntervalSeconds,
   );
 }
@@ -529,7 +545,8 @@ function createEvent(
   cell: ConvectiveCloudCell,
   epoch: number,
 ): ConvectiveCloudEvent {
-  const birthTimeSeconds = epoch * domain.birthIntervalSeconds;
+  const birthTimeSeconds = epoch * domain.birthIntervalSeconds
+    + (cell.birthPhaseSeconds ?? 0);
   const ageSeconds = Math.max(domain.timeSeconds - birthTimeSeconds, 0);
   const lifecycle = sampleEventLifecycle(
     cell,
@@ -718,17 +735,21 @@ export function splitCloudIceReleaseIntoCohorts(
 export function sampleConvectiveCloudEvents(domain: CloudEventDomain): CloudEventSample {
   const omittedUpperBoundKgM2 = validateDomain(domain);
   const horizonStartSeconds = domain.timeSeconds - domain.historyHorizonSeconds;
-  const firstEpoch = Math.ceil(horizonStartSeconds / domain.birthIntervalSeconds);
-  const lastEpoch = Math.floor(domain.timeSeconds / domain.birthIntervalSeconds);
   const cellsById = new Map(domain.cells.map((cell) => [cell.id, cell]));
   const cells = [...cellsById.values()]
     .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
   const events: ConvectiveCloudEvent[] = [];
   const parents: ConvectiveCloudEvent[] = [];
   const outflowActive = domain.outflow !== undefined && domain.outflow.maxGeneration > 0;
-  const parentFirstEpoch = parentSearchFirstEpoch(domain, firstEpoch);
 
   for (const cell of cells) {
+    // セルの出生グリッドは epoch×間隔+位相。horizon と親探索窓はセルごとのグリッドへ揃える。
+    const phaseSeconds = cell.birthPhaseSeconds ?? 0;
+    const firstEpoch = Math.ceil(
+      (horizonStartSeconds - phaseSeconds) / domain.birthIntervalSeconds);
+    const lastEpoch = Math.floor(
+      (domain.timeSeconds - phaseSeconds) / domain.birthIntervalSeconds);
+    const parentFirstEpoch = parentSearchFirstEpoch(domain, firstEpoch, phaseSeconds);
     for (let epoch = parentFirstEpoch; epoch <= lastEpoch; epoch += 1) {
       if (eventHash(domain.seed, cell.id, epoch) / UINT32_RANGE >= cell.convectivePotential) continue;
       const event = createEvent(domain, cell, epoch);
