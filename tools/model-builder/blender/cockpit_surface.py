@@ -7,13 +7,13 @@ from mathutils import Vector
 
 
 TAU = math.tau
-BLACK_BANDS = ((-3.42, -2.18), (2.08, 4.32))
-WHITE_PANEL_BAND = (-2.18, 2.08)
+BLACK_BANDS = ((-3.42, -1.88), (1.88, 4.32))
+WHITE_PANEL_BAND = (-1.88, 1.88)
 BLACK_BLOCK_COUNT = 24
 WHITE_PANEL_COUNT = 16
-WHITE_RIB_POSITIONS = (-1.92, -1.31, -0.70, -0.09, 0.52, 1.13, 1.74)
+WHITE_RIB_POSITIONS = (-1.56, -1.04, -0.52, 0.0, 0.52, 1.04, 1.56)
 WINDOW_POSITIONS = (2.48, -0.18, -1.57)
-CASE_POSITIONS = ((0.86, 0.0), (-0.96, 0.0), (0.86, math.pi), (-0.96, math.pi))
+CASE_POSITIONS = ((0.70, 0.73), (-0.84, 2.43), (0.92, 3.62), (-0.62, 5.17))
 
 
 class MeshBuilder:
@@ -125,12 +125,21 @@ def slot_at(profile, z, theta):
         center_z = low + margin + (row + 0.5) * row_spacing
         scale = widths[(sector * 3 + row * 2 + band_index) % len(widths)]
         half_arc = radius * sector_width * 0.47 * scale
-        half_height = 0.052 * (0.85 + 0.1 * ((sector + row) % 3))
+        half_height = 0.033 * (0.88 + 0.1 * ((sector + row) % 3))
         distance = max(abs(z - center_z) - half_height, delta_theta * radius - half_arc)
         if distance < 0.024:
             is_umber = (sector * 5 + row * 7 + band_index) % 13 in (3, 9)
-            depth = 0.048 * smooth_edge(max(distance, 0.0), 0.024)
+            depth = 0.040 * smooth_edge(max(distance, 0.0), 0.024)
             return depth, (6 if is_umber else 5), sector, row
+
+    for row in range(5):
+        center_z = low + margin + (row + 1.0) * row_spacing
+        half_arc = radius * sector_width * 0.46
+        half_height = 0.016
+        distance = max(abs(z - center_z) - half_height, delta_theta * radius - half_arc)
+        if distance < 0.010:
+            depth = 0.014 * smooth_edge(max(distance, 0.0), 0.010)
+            return depth, 5, sector, row
     return None
 
 
@@ -192,7 +201,7 @@ def hull_material(profile, z, theta):
 
 
 def create_hull(profile, indent_fraction, surface_materials):
-    axial_steps = 360
+    axial_steps = 480
     angular_steps = 384
     first_z = profile[0]["z"]
     last_z = profile[-1]["z"]
@@ -330,36 +339,53 @@ def create_windows(profile, indent_fraction, surface_materials):
 
 
 def case_half_width(z, center_z, width):
-    fraction = (z - (center_z - 0.32)) / 0.64
+    fraction = (z - (center_z - 0.30)) / 0.60
     return width * (0.78 + 0.22 * max(0.0, min(1.0, fraction)))
 
 
 def add_case(builder, profile, indent_fraction, center_z, center_theta, surface_materials):
-    axial_steps = 32
-    across_steps = 72
-    z_low, z_high = center_z - 0.32, center_z + 0.32
-    base_width = 0.39
-    rows = []
+    axial_steps = 28
+    across_steps = 96
+    z_low, z_high = center_z - 0.30, center_z + 0.30
+    base_width = 0.43
+    front_rows, backing_rows = [], []
     for axial_index in range(axial_steps + 1):
         fraction_z = axial_index / axial_steps
         z = z_low + (z_high - z_low) * fraction_z
         half_width = case_half_width(z, center_z, base_width)
-        row = []
+        front_row, backing_row = [], []
         for across_index in range(across_steps + 1):
             fraction_across = across_index / across_steps
             theta = center_theta + (fraction_across * 2.0 - 1.0) * half_width / radius_at(profile, z)
-            corrugation = 0.025 * (0.5 + 0.5 * math.cos(TAU * 10.0 * fraction_across))
-            row.append(surface_point(profile, indent_fraction, z, theta, 0.036 + corrugation))
-        rows.append(row)
-    builder.add_grid(rows, lambda row, column: 4 if column % 7 in (0, 1) else 9)
+            corrugation = 0.028 * (0.5 + 0.5 * math.cos(TAU * 8.0 * fraction_across))
+            front_row.append(surface_point(profile, indent_fraction, z, theta, 0.105 + corrugation))
+            backing_row.append(surface_point(profile, indent_fraction, z, theta, 0.025))
+        front_rows.append(front_row)
+        backing_rows.append(backing_row)
 
-    for port_z in (center_z - 0.15, center_z + 0.15):
+    builder.add_grid(backing_rows, lambda row, column: 9)
+    builder.add_grid(front_rows, lambda row, column: 4 if column % 12 in (0, 1, 2, 3) else 9)
+
+    for edge_row in (0, axial_steps):
+        for column in range(across_steps):
+            builder.add_face((
+                backing_rows[edge_row][column], backing_rows[edge_row][column + 1],
+                front_rows[edge_row][column + 1], front_rows[edge_row][column],
+            ), 4)
+    for edge_column in (0, across_steps):
+        for row in range(axial_steps):
+            builder.add_face((
+                backing_rows[row][edge_column], backing_rows[row + 1][edge_column],
+                front_rows[row + 1][edge_column], front_rows[row][edge_column],
+            ), 4)
+
+    for port_z in (center_z - 0.16, center_z + 0.16):
         theta = center_theta
         tangential, axial, normal = basis_at(theta)
-        center = surface_point(profile, indent_fraction, port_z, theta, 0.040)
-        add_disc(builder, center + normal * 0.008, tangential, axial, 0.089, 0.048, 5, 40)
+        center = surface_point(profile, indent_fraction, port_z, theta, 0.142)
+        add_disc(builder, center + normal * 0.008, tangential, axial, 0.078, 0.043, 5, 40)
         add_torus(builder, center + normal * 0.017, tangential, axial, normal,
-                  0.078, 0.013, 7, axial_scale=0.56, major_steps=40, tube_steps=6)
+                  0.069, 0.012, 7, axial_scale=0.56, major_steps=40, tube_steps=6)
 
 
 def create_equipment_cases(profile, indent_fraction, surface_materials):
