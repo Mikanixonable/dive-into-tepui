@@ -1,7 +1,8 @@
 // 対流イベントから局所光学場を導出する供給源。中心方向のまわりへ決定論的に置いたイベント
-// セルへ、環境プロファイルから導いた供給率・期間・氷放出高を与え、出生 → 輸送 → 堆積 →
-// 消散のチェーンで CloudOpticalVolumeData とそれを張る frame を組む。単一の環境プロファイルを
-// 場全体へ当てる近似で、気候の空間変化・下流への地形応答はここでは扱わない。
+// セルへ、セル位置の環境プロファイルから導いた供給率・期間・氷放出高を与え、
+// 出生 → 輸送 → 堆積 → 消散のチェーンで CloudOpticalVolumeData とそれを張る frame を組む。
+// 環境はセル位置ごとに environmentAt から引くので、場の中で湿った対流域と乾いた領域が
+// 混在する。下流への地形応答はここでは扱わない。
 
 import { mulberry32 } from '../../math/random';
 import { v3 } from '../../math/vec3';
@@ -96,6 +97,10 @@ function tangentBasis(centerDirection: Vec3): { readonly east: Vec3; readonly no
   };
 }
 
+// 単位方向からその地点の環境プロファイルを引く口。供給側はセル・イベントの位置ごとに
+// 呼ぶので、実装側は方向から決定的にプロファイルを返す純関数であること。
+export type CloudEnvironmentAt = (direction: Vec3) => CloudEnvironmentProfile;
+
 // 環境プロファイルから、セルへ与える供給系の値を導く。雲底はパーセルの LCL(無ければ境界層
 // の深さ)、氷放出高は平衡高度(無ければプロファイル上端)、供給率は潜熱フラックスの蒸発量換算、
 // 対流の継続時間は雲の深さを CAPE 由来の上昇速度で渡る時間の数倍で近似する。
@@ -169,22 +174,22 @@ function accumulateDeposition(
 }
 
 // 表示時刻 displayTimeSeconds [s] の、中心方向のまわりの局所光学場を導出する。セルの
-// 対流ポテンシャルだけがセルごとに散り、供給系の値は環境プロファイルから全セル共通。
+// 対流ポテンシャルに加え、供給系の値もセル位置の環境プロファイルから導く。
 export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
   private readonly windField = new AtmosphericWindField();
 
-  // environment はイベントの供給系を決める環境プロファイル、seed はセルのポテンシャルと
-  // イベント出生の決定論を与える種、sphereRadiusM は場を張る球の半径 [m]。
+  // environmentAt はイベントの供給系を決める環境プロファイルを方向から引く口、seed は
+  // セルのポテンシャルとイベント出生の決定論を与える種、sphereRadiusM は場を張る球の半径 [m]。
   public constructor(
-    private readonly environment: CloudEnvironmentProfile,
+    private readonly environmentAt: CloudEnvironmentAt,
     private readonly seed: number,
     private readonly sphereRadiusM: number,
   ) {
     requireFinite(seed, 'seed');
     requireFinite(sphereRadiusM, 'sphereRadiusM');
     if (sphereRadiusM <= 0) throw new RangeError('sphereRadiusM must be positive');
-    if (environment === null || environment === undefined) {
-      throw new TypeError('environment is required');
+    if (typeof environmentAt !== 'function') {
+      throw new TypeError('environmentAt must be a function');
     }
   }
 
@@ -196,8 +201,7 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
     const frame = this.frame(centerDirection);
     validateCloudLocalFieldFrame(frame);
 
-    const cellValues = environmentCellValues(this.environment);
-    const cells = this.cells(frame, cellValues);
+    const cells = this.cells(frame);
     const sample = sampleConvectiveCloudEvents({
       seed: this.seed,
       birthIntervalSeconds: BIRTH_INTERVAL_SECONDS,
@@ -231,17 +235,16 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
     };
   }
 
-  // 中心のまわりに等間隔で置くイベントセル。位置は frame の接平面座標から log-map で引く。
-  private cells(
-    frame: CloudLocalFieldFrame,
-    values: ReturnType<typeof environmentCellValues>,
-  ): ConvectiveCloudCell[] {
+  // 中心のまわりに等間隔で置くイベントセル。位置は frame の接平面座標から log-map で引き、
+  // 供給系の値はそのセル位置の環境プロファイルから導く。
+  private cells(frame: CloudLocalFieldFrame): ConvectiveCloudCell[] {
     const cells: ConvectiveCloudCell[] = [];
     const half = (EVENT_CELL_COUNT - 1) / 2;
     for (let i = 0; i < EVENT_CELL_COUNT; i += 1) {
       for (let j = 0; j < EVENT_CELL_COUNT; j += 1) {
         const direction = cloudLocalDirectionAt(
           (i - half) * EVENT_CELL_SPACING_M, (j - half) * EVENT_CELL_SPACING_M, frame);
+        const values = environmentCellValues(this.environmentAt(direction));
         cells.push({
           id: `local-${i}-${j}`,
           supplySourceId: `local-source-${i}-${j}`,
@@ -295,9 +298,10 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
     for (const event of events) {
       const material = reconstructCloudEventMaterialCohorts(
         event, this.sphereRadiusM, TRANSPORT_STEP_SECONDS, windAt, ICE_COHORT_COUNT);
-      // 面積は環境・輸送から導く閉包。下限は堆積格子の 1 セル、上限は場の全域。
+      // 面積は環境・輸送から導く閉包。環境はイベントの源位置のものを引く — セルは必ず
+      // 源位置を持って建てている。
       const areas = deriveCloudEventAreas(
-        event, material, this.environment, windAt,
+        event, material, this.environmentAt(event.sourcePosition!.directionUnitVector), windAt,
         CELL_SIZE_M * CELL_SIZE_M,
         CONVECTIVE_LOCAL_FIELD_SPAN_M * CONVECTIVE_LOCAL_FIELD_SPAN_M);
       const deposition = depositCloudEventMaterialCohorts(
