@@ -35,7 +35,10 @@ export function register(): void {
     assert.equal(motion.radius, motion.physicsShape.mass.boundingRadius);
     assert.deepEqual(motion.att.inertia, motion.physicsShape.mass.inertia);
     assert.ok(motion.compoundShape !== null);
-    assert.equal(motion.compoundShape.primitives.length, ship.size);
+    const expectedPrimitiveCount = ship.modules.reduce(
+      (count, item) => count + ship.definition(item.id)!.solidPrimitives.length, 0,
+    );
+    assert.equal(motion.compoundShape.primitives.length, expectedPrimitiveCount);
     assert.equal(motion.shapeRevision, 1);
   });
 
@@ -88,6 +91,10 @@ export function register(): void {
     const definition = ship.definition('weapon');
     assert.ok(transform !== null && definition !== null);
     const localAnchor = definition.feedPort;
+    // 後端側の給弾 port 中心は砲の長手軸上にある。
+    assert.equal(localAnchor.x, 0);
+    assert.equal(localAnchor.y, 0);
+    assert.ok(localAnchor.z < -definition.length / 2 + 0.5);
     const assemblyAnchor = qRotate(transform.rotation, localAnchor);
     const expected = v3(
       transform.position.x + assemblyAnchor.x - motion.centerOffset.x,
