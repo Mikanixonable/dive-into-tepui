@@ -50,6 +50,10 @@ export interface ShipModuleDefinition {
   readonly muzzles: readonly Vec3[];
   // 給弾ベルトの取り込み口。モジュール局所 [m] で、ベルトはここから +X 方向へ伸びる。
   readonly feedPort: Vec3;
+  // 空薬莢の排出口。モジュール局所 [m] で、薬莢はここから -X 方向へ出る。
+  readonly ejectionPort: Vec3;
+  // 空になったベルトリンクとマガジン外枠の排出口。モジュール局所 [m] で、外枠はここから -X 方向へ出る。
+  readonly linkExitPort: Vec3;
   readonly abilities: ShipModuleAbilities;
 }
 
@@ -78,6 +82,8 @@ function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinitio
     solidPrimitives: Object.freeze(primitives),
     muzzles: Object.freeze(definition.muzzles.map(frozenVector)),
     feedPort: frozenVector(definition.feedPort),
+    ejectionPort: frozenVector(definition.ejectionPort),
+    linkExitPort: frozenVector(definition.linkExitPort),
     abilities: Object.freeze({ ...definition.abilities }),
   });
 }
@@ -109,8 +115,15 @@ export function defineShipModule(
       throw new Error('muzzle position must be finite');
     }
   }
-  if (!Number.isFinite(definition.feedPort.x) || !Number.isFinite(definition.feedPort.y)
-    || !Number.isFinite(definition.feedPort.z)) throw new Error('feed port must be finite');
+  for (const [label, port] of [
+    ['feed port', definition.feedPort],
+    ['ejection port', definition.ejectionPort],
+    ['link exit port', definition.linkExitPort],
+  ] as const) {
+    if (!Number.isFinite(port.x) || !Number.isFinite(port.y) || !Number.isFinite(port.z)) {
+      throw new Error(`${label} must be finite`);
+    }
+  }
   for (const value of Object.values(definition.abilities)) {
     if (typeof value === 'number' && (!Number.isFinite(value) || value < 0)) {
       throw new Error(`ship module abilities must be finite and nonnegative: ${definition.id}`);
