@@ -11,12 +11,28 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { buildDebrisChunk, buildDebrisPanel, buildDebrisRod } from './debris-fragments.mjs';
-import { buildBarrelMesh, buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
+import { buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
 import { buildEnemyShip, buildEnemyVariantA, buildEnemyVariantB, buildEnemyVariantC } from './metal-enemies.mjs';
 import { buildAmmoPickup, buildRcsFuelPickup } from './pickups.mjs';
 import { buildBulletMesh, buildPlasmaBullet } from './projectiles.mjs';
 import { buildShipModules } from './ship-modules.mjs';
+
+// Node.js 環境での GLTFExporter 用 FileReader ポリフィル
+if (typeof globalThis.FileReader === 'undefined') {
+  globalThis.FileReader = class FileReader {
+    async readAsArrayBuffer(blob) {
+      this.result = await blob.arrayBuffer();
+      if (this.onloadend) this.onloadend();
+    }
+    async readAsDataURL(blob) {
+      const buffer = Buffer.from(await blob.arrayBuffer());
+      this.result = `data:${blob.type};base64,${buffer.toString('base64')}`;
+      if (this.onloadend) this.onloadend();
+    }
+  };
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, '..', '..', 'src', 'assets', 'models');
@@ -71,13 +87,12 @@ const models = {
   ammo:         buildAmmoPickup(),
   bullet:       buildBulletMesh(),
   plasma:       buildPlasmaBullet(),
-  barrel:       buildBarrelMesh(),
+
   casing:       buildCasingMesh(),
   debrisChunk:  buildDebrisChunk(),
   debrisPanel:  buildDebrisPanel(),
   debrisRod:    buildDebrisRod(),
   rcsFuel:      buildRcsFuelPickup(),
-  shipModules:  await buildShipModules(),
 };
 
 // magazine は ammo の子としても使われるため、静的な子メッシュを材質ごとに統合する。
@@ -93,3 +108,22 @@ for (const [name, object] of Object.entries(models)) {
   writeFileSync(outPath, JSON.stringify(json));
   console.log(`Wrote ${outPath}`);
 }
+
+// ship-modules は統合 GLB バイナリとして書き出す
+const shipModules = await buildShipModules();
+mergeStaticChildren(shipModules);
+shipModules.updateMatrixWorld(true);
+
+const exporter = new GLTFExporter();
+const glbBuffer = await new Promise((resolve, reject) => {
+  exporter.parse(
+    shipModules,
+    (result) => resolve(result),
+    (error) => reject(error),
+    { binary: true },
+  );
+});
+
+const shipModulesGlbPath = join(outDir, 'ship-modules.glb');
+writeFileSync(shipModulesGlbPath, Buffer.from(glbBuffer));
+console.log(`Wrote ${shipModulesGlbPath} (${Buffer.byteLength(Buffer.from(glbBuffer))} bytes)`);
