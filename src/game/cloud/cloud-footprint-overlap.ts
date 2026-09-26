@@ -254,6 +254,20 @@ function ellipseRectangleAreaM2(
   return Math.max(0, areaM2);
 }
 
+// footprint の 2次形式を接平面上の 1 点で評価する。戻り値が 1 以下ならその点は内部。
+export function cloudFootprintQuadraticAt(
+  footprint: CloudFootprint, eastM: number, northM: number,
+): number {
+  const form = ellipseFormOf(footprint);
+  requireFinite(eastM, 'eastM');
+  requireFinite(northM, 'northM');
+  const offsetEastM = eastM - form.eastM;
+  const offsetNorthM = northM - form.northM;
+  return form.quadraticA * offsetEastM * offsetEastM
+    + form.quadraticB * offsetEastM * offsetNorthM
+    + form.quadraticC * offsetNorthM * offsetNorthM;
+}
+
 // footprint を交差するセルだけを row-major cellIndex で返す。格子外部分は overlaps に含めない。
 export function cloudFootprintOverlap(
   footprint: CloudFootprint,
