@@ -1,8 +1,8 @@
 // 建造・preset・保存復元が共有する船体モジュール定義を検索可能な一覧として提供する。
 import { v3, type Vec3 } from '../../math/vec3';
 import {
-  bodyPrimitive, defineShipModule, type FuelKind, type ShipModuleCategory, type ShipModuleDefinition,
-  type ShipModuleKind,
+  bodyPrimitive, defineShipModule, type FuelKind, type LocalCappedCylinder, type ShipModuleCategory,
+  type ShipModuleDefinition, type ShipModuleKind,
 } from './ship-module-definition';
 
 const MODULE_NAMES: Readonly<Record<string, string>> = {
@@ -27,11 +27,13 @@ const CATEGORY_BY_KIND: Readonly<Record<ShipModuleKind, ShipModuleCategory>> = {
 function moduleDefinition(
   id: string, kind: ShipModuleKind, length: number, maxHp: number, dryMass: number,
   abilities: ShipModuleDefinition['abilities'] = {}, radius = 3, modelId = id, muzzles: readonly Vec3[] = [],
-  feedPort: Vec3 = v3(),
+  feedPort: Vec3 = v3(), solids?: readonly LocalCappedCylinder[],
+  ports: { ejection: Vec3; linkExit: Vec3; barrel: Vec3 } = { ejection: v3(), linkExit: v3(), barrel: v3() },
 ): ShipModuleDefinition {
   return defineShipModule({
     id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter: 6, dryMass, maxHp, modelId,
-    solidPrimitives: [bodyPrimitive(length, radius)], muzzles, feedPort, abilities,
+    solidPrimitives: solids ?? [bodyPrimitive(length, radius)], muzzles, feedPort,
+    ejectionPort: ports.ejection, linkExitPort: ports.linkExit, barrelPort: ports.barrel, abilities,
   });
 }
 
@@ -51,6 +53,18 @@ const RCS_MODULE_TORQUE = 24_000;
 const GATLING_MUZZLES = [v3(0, 0, 2.94)];
 // 給弾ベルトの取り込み口 [m]。砲架下の給弾塔の口で、ベルトはここから +X へ伸びる。
 const GATLING_FEED_PORT = v3(0, -1.95, 0);
+// 空薬莢の排出口 [m]。機関部 -X 側の排莢樋の末端。
+const GATLING_EJECTION_PORT = v3(-1.32, -0.24, -0.04);
+// 空リンク・マガジン外枠の排出口 [m]。給弾塔の -X 面の開口の少し外。
+const GATLING_LINK_EXIT_PORT = v3(-0.86, -1.95, 0.3);
+// 砲身交換で外れる砲身束の位置 [m]。砲身束の下へ -Y 方向へ取り外される。
+const GATLING_BARREL_PORT = v3(0, -1.0, 1.5);
+
+// 展開部品の実体は、座板・脚・台座・駆動部でできた取付構造まで。翼列は展開で実体から外れるので
+// 接触形状に含めず、取付構造の束(座板の張り出しを含む半径)を包む円柱で近似する。
+const DEPLOYABLE_MOUNT_PRIMITIVE: LocalCappedCylinder = {
+  center: v3(), axis: v3(0, 0, 1), halfLength: 0.55, radius: 1.35,
+};
 
 const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('cockpit-standard', 'cockpit', 3, 100, 100),
@@ -73,11 +87,15 @@ const definitions: readonly ShipModuleDefinition[] = [
   ),
   moduleDefinition('weapon-gatling', 'weapon', 1, 80, 20, {
     weaponDamage: 1, fireRate: 1 / 0.06, muzzleVelocity: 1_000,
-  }, 3, 'weapon-gatling', GATLING_MUZZLES, GATLING_FEED_PORT),
+  }, 3, 'weapon-gatling', GATLING_MUZZLES, GATLING_FEED_PORT, undefined, {
+    ejection: GATLING_EJECTION_PORT, linkExit: GATLING_LINK_EXIT_PORT, barrel: GATLING_BARREL_PORT,
+  }),
   moduleDefinition('armor-standard', 'armor', 1, 100, 100, { armorReduction: 0.2 }),
   moduleDefinition('armor-combat', 'armor', 1, 370, 50, { armorReduction: 0.2 }),
-  moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 4.8 }),
-  moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 825 }),
+  moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 4.8 },
+    3, 'radiator-standard', [], v3(), [DEPLOYABLE_MOUNT_PRIMITIVE]),
+  moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 825 },
+    3, 'solar-panel-standard', [], v3(), [DEPLOYABLE_MOUNT_PRIMITIVE]),
   moduleDefinition('booster-standard', 'booster', 6, 100, 200, {
     fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 80,
   }),
