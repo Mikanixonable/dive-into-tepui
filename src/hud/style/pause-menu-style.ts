@@ -6,7 +6,7 @@ export const PAUSE_MENU_STYLE = `
 #hud-pause-menu {
   position: fixed; display: none;
   --pm-expanded-width: 920px;
-  grid-template-columns: minmax(150px, .4fr) minmax(0, 1.6fr);
+  grid-template-columns: minmax(250px, .78fr) minmax(0, 1.22fr);
   gap: var(--space-6);
   width: min(var(--pm-expanded-width), calc(100vw - var(--space-6) - var(--space-6)));
   max-height: var(--overlay-max-h-l);
@@ -28,15 +28,10 @@ export const PAUSE_MENU_STYLE = `
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start;
 }
 #hud-pause-menu .pm-brand {
-  display: grid; grid-column: 1; gap: var(--space-3);
-  min-height: 120px; align-content: end;
+  display: grid; grid-column: 1; gap: var(--space-4);
+  min-height: 220px; align-content: end;
 }
-#hud-pause-menu .pm-brand .title-logotype { font-size: clamp(1.3rem, 3vw, 2.35rem); }
-#hud-pause-menu .pm-brand .title-logotype sup,
-#hud-pause-menu .pm-brand .title-logotype sub {
-  left: calc(100% + var(--space-2));
-  font-size: clamp(0.5rem, 1vw, 0.75rem);
-}
+#hud-pause-menu .pm-brand .title-logotype { font-size: clamp(2.6rem, 6vw, 4.7rem); }
 #hud-pause-menu .pm-brand-meta { display: flex; align-items: baseline; gap: var(--space-3); }
 #hud-pause-menu .pm-brand-version {
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
