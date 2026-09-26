@@ -2,7 +2,8 @@
 // セルへ、セル位置の環境プロファイルから導いた供給率・期間・氷放出高を与え、
 // 出生 → 輸送 → 堆積 → 消散のチェーンで CloudOpticalVolumeData とそれを張る frame を組む。
 // 環境はセル位置ごとに environmentAt から引くので、場の中で湿った対流域と乾いた領域が
-// 混在する。下流への地形応答はここでは扱わない。
+// 混在する。下流への地形応答はここでは扱わない。導出は一括の同期 derive と、
+// step で分割して進めるジョブの両方を出す。
 
 import { mulberry32 } from '../../math/random';
 import { v3 } from '../../math/vec3';
@@ -21,17 +22,19 @@ import {
 import { cloudOpticalVolumeFrameFromExtinction } from './cloud-optical-volume-frame';
 import type { Vec3 } from '../../math/vec3';
 import type {
-  CloudLocalFieldFrame, CloudLocalFieldSupply, CloudLocalFieldSupplyResult,
+  CloudLocalFieldFrame, CloudLocalFieldJob, CloudLocalFieldSupply,
+  CloudLocalFieldSupplyResult,
 } from '../../render/cloud/cloud-local-field';
-import type { CloudOpticalVolumeData } from '../../render/cloud/cloud-optical-volume';
 import type { CloudEnvironmentProfile } from './cloud-environment';
-import type { ConvectiveCloudCell } from './cloud-events';
-import type { CloudEventWindAt } from './cloud-event-transport';
+import type { ConvectiveCloudCell, ConvectiveCloudEvent } from './cloud-events';
+import type { CloudEventWindAt, CloudEventMaterialCohorts } from './cloud-event-transport';
+import type { CloudEventAreas } from './cloud-event-area-closure';
+import type { CloudEventTangentChart } from './cloud-event-local-deposition';
 import type { CloudFootprintGrid } from './cloud-footprint-overlap';
 import type {
   CloudMassDeposition, CloudMassGrid, CloudMassLayerColumns,
 } from './cloud-mass-deposition';
-import type { CloudLayerMicrophysics } from './cloud-mass-extinction';
+import type { CloudExtinctionLayer, CloudLayerMicrophysics } from './cloud-mass-extinction';
 
 // 場の一辺 [texel] と、中心のまわりに東西・南北へ張る幅 [m]。
 export const CONVECTIVE_LOCAL_FIELD_SPAN_M = 500e3;
@@ -196,25 +199,26 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
     }
   }
 
+  // 同期の一括導出。ジョブを制限なしで駆動したものと同じ結果を返す。
   public derive(
     displayTimeSeconds: number, centerDirection: Vec3,
   ): CloudLocalFieldSupplyResult | null {
+    const job = this.startJob(displayTimeSeconds, centerDirection);
+    job.step(Number.POSITIVE_INFINITY);
+    return job.result;
+  }
+
+  // 分割して駆動できる導出ジョブを始める。
+  public startJob(
+    displayTimeSeconds: number, centerDirection: Vec3,
+  ): CloudLocalFieldJob {
     requireFinite(displayTimeSeconds, 'displayTimeSeconds');
     requireUnitVector(centerDirection, 'centerDirection');
     const frame = this.frame(centerDirection);
     validateCloudLocalFieldFrame(frame);
-
-    const cells = this.cells(frame);
-    const sample = sampleConvectiveCloudEvents({
-      seed: this.seed,
-      birthIntervalSeconds: BIRTH_INTERVAL_SECONDS,
-      historyHorizonSeconds: HISTORY_HORIZON_SECONDS,
-      maximumOmittedMassKgM2: MAX_OMITTED_MASS_KG_M2,
-      maxEventCount: MAX_EVENT_COUNT,
-      timeSeconds: displayTimeSeconds,
-      cells,
-    });
-    return { frame, data: this.depositEvents(sample.events, frame, displayTimeSeconds) };
+    return new ConvectiveCloudLocalFieldJob(
+      frame, displayTimeSeconds, this.environmentAt, this.seed, this.sphereRadiusM,
+      this.windField);
   }
 
   // 場を張る frame。格子は中心のまわりに正方形で、有効角距離は格子の半対角まで届く。
@@ -237,102 +241,230 @@ export class ConvectiveCloudLocalFieldSupply implements CloudLocalFieldSupply {
       layerEdgesM: LAYER_EDGES_M,
     };
   }
+}
 
-  // 中心のまわりに等間隔で置くイベントセル。位置は frame の接平面座標から log-map で引き、
-  // 供給系の値はそのセル位置の環境プロファイルから導く。
-  private cells(frame: CloudLocalFieldFrame): ConvectiveCloudCell[] {
-    const cells: ConvectiveCloudCell[] = [];
-    const half = (EVENT_CELL_COUNT - 1) / 2;
-    for (let i = 0; i < EVENT_CELL_COUNT; i += 1) {
-      for (let j = 0; j < EVENT_CELL_COUNT; j += 1) {
-        const direction = cloudLocalDirectionAt(
-          (i - half) * EVENT_CELL_SPACING_M, (j - half) * EVENT_CELL_SPACING_M, frame);
-        const values = environmentCellValues(this.environmentAt(direction));
-        cells.push({
-          id: `local-${i}-${j}`,
-          supplySourceId: `local-source-${i}-${j}`,
-          convectivePotential: CONVECTIVE_POTENTIAL_MIN
-            + CONVECTIVE_POTENTIAL_RANGE
-              * mulberry32((this.seed ^ Math.imul(i + 1, 0x9e3779b1)
-                ^ Math.imul(j + 1, 0x85ebca6b)) >>> 0)(),
-          upperRelativeHumidity: values.upperRelativeHumidity,
-          liquidSupplyRateKgM2S: values.liquidSupplyRateKgM2S,
-          convectiveDurationSeconds: values.convectiveDurationSeconds,
-          sourcePosition: {
-            directionUnitVector: direction,
-            geometricHeightM: values.sourceHeightM,
-          },
-          iceReleaseHeightM: values.iceReleaseHeightM,
-        });
-      }
-    }
-    return cells;
+// 導出ジョブの段階。cells / deposit は反復を1要素ずつ、残りは段階全体を1単位で進める。
+type ConvectiveLocalFieldStage =
+  | 'cells' | 'events' | 'deposit' | 'merge' | 'wave' | 'extinction' | 'volume' | 'done';
+
+// 堆積段階の進行状態。格子・chart・風は段階のあいだ変わらない固定入力、層別の質量配列と
+// unassigned はイベントごとに累積される。
+interface LocalFieldDepositionState {
+  readonly footprintGrid: CloudFootprintGrid;
+  readonly massGrid: CloudMassGrid;
+  readonly chart: CloudEventTangentChart;
+  readonly windAt: CloudEventWindAt;
+  readonly liquidKgM2ByLayer: number[][];
+  readonly iceKgM2ByLayer: number[][];
+  readonly unassignedMassKgByPhase: { liquid: number; ice: number };
+}
+
+// 対流イベントから局所光学場を組む分割導出。段階の境界と反復の1要素で壁時計の予算を
+// 見て中断し、呼ばれるたびに続きを進める。done が立つまで result は null。
+class ConvectiveCloudLocalFieldJob implements CloudLocalFieldJob {
+  private stage: ConvectiveLocalFieldStage = 'cells';
+  private resultValue: CloudLocalFieldSupplyResult | null = null;
+  private readonly cells: ConvectiveCloudCell[] = [];
+  private cellIndex = 0;
+  private events: readonly ConvectiveCloudEvent[] = [];
+  private eventIndex = 0;
+  // 進行中イベントの中間結果。堆積の1イベントを「輸送の復元」「面積の導出」「堆積と累積」の
+  // 3単位に分ける — まとめて1単位にすると1イベントの費用がそのまま1駆動の床になる。
+  private eventMaterial: CloudEventMaterialCohorts | null = null;
+  private eventAreas: CloudEventAreas | null = null;
+  private deposition: LocalFieldDepositionState | null = null;
+  private merged: CloudMassDeposition | null = null;
+  private displaced: CloudMassDeposition | null = null;
+  private extinction: readonly CloudExtinctionLayer[] | null = null;
+
+  public constructor(
+    private readonly frame: CloudLocalFieldFrame,
+    private readonly displayTimeSeconds: number,
+    private readonly environmentAt: CloudEnvironmentAt,
+    private readonly seed: number,
+    private readonly sphereRadiusM: number,
+    private readonly windField: AtmosphericWindField,
+  ) {}
+
+  public get result(): CloudLocalFieldSupplyResult | null {
+    return this.resultValue;
   }
 
-  // イベント群を輸送・堆積・消散へ通し、テクスチャへ焼く形へ並べ替える。
-  private depositEvents(
-    events: ReturnType<typeof sampleConvectiveCloudEvents>['events'],
-    frame: CloudLocalFieldFrame,
-    displayTimeSeconds: number,
-  ): CloudOpticalVolumeData {
-    const cellCount = GRID_SIZE * GRID_SIZE;
-    const footprintGrid: CloudFootprintGrid = {
-      originEastM: frame.gridOriginEastM,
-      originNorthM: frame.gridOriginNorthM,
-      cellWidthM: frame.cellWidthM,
-      cellHeightM: frame.cellHeightM,
-      width: GRID_SIZE,
-      height: GRID_SIZE,
-    };
-    const massGrid: CloudMassGrid = {
-      cells: Array.from({ length: cellCount }, () => ({ areaM2: CELL_SIZE_M * CELL_SIZE_M })),
-      layerEdgesM: LAYER_EDGES_M,
-    };
-    const chart = {
-      centerDirectionUnitVector: frame.centerDirection,
-      eastUnitVector: frame.eastDirection,
-      northUnitVector: frame.northDirection,
-      sphereRadiusM: this.sphereRadiusM,
-      maxAngularDistanceRad: DEPOSITION_MAX_ANGULAR_RAD,
-    };
-    const windAt = makeWindAt(this.windField);
-    const liquidKgM2ByLayer = LAYER_EDGES_M.slice(0, -1).map(() => new Array<number>(cellCount).fill(0));
-    const iceKgM2ByLayer = LAYER_EDGES_M.slice(0, -1).map(() => new Array<number>(cellCount).fill(0));
-    const unassignedMassKgByPhase = { liquid: 0, ice: 0 };
-    for (const event of events) {
-      const material = reconstructCloudEventMaterialCohorts(
-        event, this.sphereRadiusM, TRANSPORT_STEP_SECONDS, windAt, ICE_COHORT_COUNT);
+  // 予算には Infinity を渡せる — 締切が無限大になり完了まで一度に進む。
+  public step(timeBudgetMs: number): { readonly done: boolean } {
+    if (typeof timeBudgetMs !== 'number' || Number.isNaN(timeBudgetMs)) {
+      throw new RangeError('timeBudgetMs must be a number');
+    }
+    const deadline = performance.now() + Math.max(0, timeBudgetMs);
+    while (this.stage !== 'done') {
+      switch (this.stage) {
+        case 'cells': this.stepCell(); break;
+        case 'events': this.stepEventSampling(); break;
+        case 'deposit': this.stepDeposit(); break;
+        case 'merge': this.stepMerge(); break;
+        case 'wave': this.stepWave(); break;
+        case 'extinction': this.stepExtinction(); break;
+        case 'volume': this.stepVolume(); break;
+      }
+      if (performance.now() >= deadline) break;
+    }
+    return { done: this.stage === 'done' };
+  }
+
+  // イベントセルを1件導く。位置は frame の接平面座標から log-map で引き、
+  // 供給系の値はそのセル位置の環境プロファイルから導く。
+  private stepCell(): void {
+    const index = this.cellIndex;
+    const i = Math.floor(index / EVENT_CELL_COUNT);
+    const j = index % EVENT_CELL_COUNT;
+    const half = (EVENT_CELL_COUNT - 1) / 2;
+    const direction = cloudLocalDirectionAt(
+      (i - half) * EVENT_CELL_SPACING_M, (j - half) * EVENT_CELL_SPACING_M, this.frame);
+    const values = environmentCellValues(this.environmentAt(direction));
+    this.cells.push({
+      id: `local-${i}-${j}`,
+      supplySourceId: `local-source-${i}-${j}`,
+      convectivePotential: CONVECTIVE_POTENTIAL_MIN
+        + CONVECTIVE_POTENTIAL_RANGE
+          * mulberry32((this.seed ^ Math.imul(i + 1, 0x9e3779b1)
+            ^ Math.imul(j + 1, 0x85ebca6b)) >>> 0)(),
+      upperRelativeHumidity: values.upperRelativeHumidity,
+      liquidSupplyRateKgM2S: values.liquidSupplyRateKgM2S,
+      convectiveDurationSeconds: values.convectiveDurationSeconds,
+      sourcePosition: {
+        directionUnitVector: direction,
+        geometricHeightM: values.sourceHeightM,
+      },
+      iceReleaseHeightM: values.iceReleaseHeightM,
+    });
+    this.cellIndex = index + 1;
+    if (this.cellIndex >= EVENT_CELL_COUNT * EVENT_CELL_COUNT) this.stage = 'events';
+  }
+
+  // セル群から表示時刻のイベント履歴を復元する。
+  private stepEventSampling(): void {
+    this.events = sampleConvectiveCloudEvents({
+      seed: this.seed,
+      birthIntervalSeconds: BIRTH_INTERVAL_SECONDS,
+      historyHorizonSeconds: HISTORY_HORIZON_SECONDS,
+      maximumOmittedMassKgM2: MAX_OMITTED_MASS_KG_M2,
+      maxEventCount: MAX_EVENT_COUNT,
+      timeSeconds: this.displayTimeSeconds,
+      cells: this.cells,
+    }).events;
+    this.stage = 'deposit';
+  }
+
+  // イベントの堆積を1単位ずつ進める。輸送の復元 → 面積の導出 → 堆積と累積の3単位で
+  // 1イベントぶん。呼ばれるたびに進捗の続きから始める。
+  private stepDeposit(): void {
+    const work = this.deposition ??= this.startDeposition();
+    if (this.eventIndex >= this.events.length) {
+      this.stage = 'merge';
+      return;
+    }
+    const event = this.events[this.eventIndex]!;
+    if (this.eventMaterial === null) {
+      this.eventMaterial = reconstructCloudEventMaterialCohorts(
+        event, this.sphereRadiusM, TRANSPORT_STEP_SECONDS, work.windAt, ICE_COHORT_COUNT);
+      return;
+    }
+    if (this.eventAreas === null) {
       // 面積は環境・輸送から導く閉包。環境はイベントの源位置のものを引く — セルは必ず
       // 源位置を持って建てている。
-      const areas = deriveCloudEventAreas(
-        event, material, this.environmentAt(event.sourcePosition!.directionUnitVector), windAt,
+      this.eventAreas = deriveCloudEventAreas(
+        event, this.eventMaterial,
+        this.environmentAt(event.sourcePosition!.directionUnitVector), work.windAt,
         CELL_SIZE_M * CELL_SIZE_M,
         CONVECTIVE_LOCAL_FIELD_SPAN_M * CONVECTIVE_LOCAL_FIELD_SPAN_M);
-      const deposition = depositCloudEventMaterialCohorts(
-        material, areas.sourceAreaM2, areas.footprints, chart, footprintGrid, massGrid);
-      accumulateDeposition(
-        deposition, liquidKgM2ByLayer, iceKgM2ByLayer, unassignedMassKgByPhase);
+      return;
     }
+    const deposition = depositCloudEventMaterialCohorts(
+      this.eventMaterial, this.eventAreas.sourceAreaM2, this.eventAreas.footprints,
+      work.chart, work.footprintGrid, work.massGrid);
+    accumulateDeposition(
+      deposition, work.liquidKgM2ByLayer, work.iceKgM2ByLayer, work.unassignedMassKgByPhase);
+    this.eventMaterial = null;
+    this.eventAreas = null;
+    this.eventIndex += 1;
+    if (this.eventIndex >= this.events.length) this.stage = 'merge';
+  }
+
+  // 堆積段階の固定入力と累積器を組む。
+  private startDeposition(): LocalFieldDepositionState {
+    const cellCount = GRID_SIZE * GRID_SIZE;
+    return {
+      footprintGrid: {
+        originEastM: this.frame.gridOriginEastM,
+        originNorthM: this.frame.gridOriginNorthM,
+        cellWidthM: this.frame.cellWidthM,
+        cellHeightM: this.frame.cellHeightM,
+        width: GRID_SIZE,
+        height: GRID_SIZE,
+      },
+      massGrid: {
+        cells: Array.from({ length: cellCount }, () => ({ areaM2: CELL_SIZE_M * CELL_SIZE_M })),
+        layerEdgesM: LAYER_EDGES_M,
+      },
+      chart: {
+        centerDirectionUnitVector: this.frame.centerDirection,
+        eastUnitVector: this.frame.eastDirection,
+        northUnitVector: this.frame.northDirection,
+        sphereRadiusM: this.sphereRadiusM,
+        maxAngularDistanceRad: DEPOSITION_MAX_ANGULAR_RAD,
+      },
+      windAt: makeWindAt(this.windField),
+      liquidKgM2ByLayer:
+        LAYER_EDGES_M.slice(0, -1).map(() => new Array<number>(cellCount).fill(0)),
+      iceKgM2ByLayer:
+        LAYER_EDGES_M.slice(0, -1).map(() => new Array<number>(cellCount).fill(0)),
+      unassignedMassKgByPhase: { liquid: 0, ice: 0 },
+    };
+  }
+
+  // 累積した層別質量を堆積の形へ束ねる。
+  private stepMerge(): void {
+    const work = this.deposition!;
     const columnsByLayer: CloudMassLayerColumns[] = LAYER_EDGES_M.slice(0, -1).map(
       (lowerAltitudeM, layerIndex) => ({
         lowerAltitudeM,
         upperAltitudeM: LAYER_EDGES_M[layerIndex + 1]!,
-        liquidKgM2ByCell: liquidKgM2ByLayer[layerIndex]!,
-        iceKgM2ByCell: iceKgM2ByLayer[layerIndex]!,
+        liquidKgM2ByCell: work.liquidKgM2ByLayer[layerIndex]!,
+        iceKgM2ByCell: work.iceKgM2ByLayer[layerIndex]!,
       }),
     );
-    const merged: CloudMassDeposition = { columnsByLayer, unassignedMassKgByPhase };
-    // 場中心の環境が波源を持ち凝結まで届くときだけ、堆積済みの層別質量を波の位相で
-    // 鉛直に畳み直す。波の伝播は環境が導いた位相速度だけで決まり、輸送に使った物質風
-    // とは独立 — 波状雲で雲の流れと波の伝播が一致しないことを、この変位が風の情報を
-    // 持たないことで保つ。場の幅で環境は緩やかに変わるとして、波場は中心の環境で代表する。
+    this.merged = { columnsByLayer, unassignedMassKgByPhase: work.unassignedMassKgByPhase };
+    this.stage = 'wave';
+  }
+
+  // 場中心の環境が波源を持ち凝結まで届くときだけ、堆積済みの層別質量を波の位相で
+  // 鉛直に畳み直す。波の伝播は環境が導いた位相速度だけで決まり、輸送に使った物質風
+  // とは独立 — 波状雲で雲の流れと波の伝播が一致しないことを、この変位が風の情報を
+  // 持たないことで保つ。場の幅で環境は緩やかに変わるとして、波場は中心の環境で代表する。
+  private stepWave(): void {
+    const merged = this.merged!;
     const waveField = cloudGravityWaveFieldFromEnvironment(
-      this.environmentAt(frame.centerDirection));
-    const displaced = waveField === null
+      this.environmentAt(this.frame.centerDirection));
+    this.displaced = waveField === null
       ? merged
-      : displaceCloudMassByWave(merged, waveField, footprintGrid, displayTimeSeconds);
-    const extinction = extinctionFromCloudMass(displaced, LAYER_MICROPHYSICS);
-    return cloudOpticalVolumeFrameFromExtinction(
-      GRID_SIZE, GRID_SIZE, frame.layerEdgesM, extinction);
+      : displaceCloudMassByWave(
+        merged, waveField, this.deposition!.footprintGrid, this.displayTimeSeconds);
+    this.stage = 'extinction';
+  }
+
+  // 層別質量を微物理から消散係数へ換算する。
+  private stepExtinction(): void {
+    this.extinction = extinctionFromCloudMass(this.displaced!, LAYER_MICROPHYSICS);
+    this.stage = 'volume';
+  }
+
+  // 消散をテクスチャへ焼く形へ並べ替えて結果を確定する。
+  private stepVolume(): void {
+    this.resultValue = {
+      frame: this.frame,
+      data: cloudOpticalVolumeFrameFromExtinction(
+        GRID_SIZE, GRID_SIZE, this.frame.layerEdgesM, this.extinction!),
+    };
+    this.stage = 'done';
   }
 }

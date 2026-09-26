@@ -48,6 +48,19 @@ export interface CloudLocalFieldBinding {
 // render 側はこの契約だけを見る。null はその時刻・位置に場を出さないことを示す。
 export interface CloudLocalFieldSupply {
   derive(displayTimeSeconds: number, centerDirection: Vec3): CloudLocalFieldSupplyResult | null;
+  // 分割して駆動できる導出を始める。持たない実装は derive の同期導出だけを提供する。
+  startJob?(displayTimeSeconds: number, centerDirection: Vec3): CloudLocalFieldJob;
+}
+
+// 分割して進められる場の導出。step へ1回の駆動で使ってよい壁時計の上限 [ms] を渡すと、
+// その範囲で内部を進める。予算を超えても1単位(1段階または反復の1要素)は進めるので、
+// どんな予算でも反復すれば done へ辿り着く。done が立つまで result は null を返し、
+// 途中経過を外へ出さない。
+export interface CloudLocalFieldJob {
+  step(timeBudgetMs: number): { readonly done: boolean };
+  readonly result: CloudLocalFieldSupplyResult | null;
+  // 途中で放棄するときの後始末。done 以後は呼ばない。
+  cancel?(): void;
 }
 
 // derive が返す、焼く場の内容とそれを張る frame の組。data の格子寸法・層境界は frame と
