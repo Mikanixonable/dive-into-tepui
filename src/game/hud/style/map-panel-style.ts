@@ -255,14 +255,29 @@ export const MAP_PANEL_STYLE = `
 #hud-stage-controls .stage-control-select .w-select { min-width: 86px; }
 #hud-stage-controls .stage-control-select .w-input { width: 72px; text-align: right; }
 
-/* 物体配置パネル(#hud-object-placer、クリエイティブモード限定): ウィンドウとして右上へ
-   浮かせる。位置と幅はパネル自身が inline style で決める。 */
+/* 物体配置パネル(#hud-object-placer、クリエイティブモード限定): 右上(上部クロームの下)から
+   始まる浮遊ウィンドウ。ドラッグ・クランプで left/top へ焼き付けられた後は、ここの
+   right/top は使われなくなる。 */
 #hud-object-placer {
-  pointer-events: auto; max-height: 70vh; max-height: 70dvh; overflow-y: auto;
+  position: fixed; top: calc(var(--hud-chrome-h, 0px) + var(--space-2)); right: 20px;
+  width: max-content; pointer-events: auto;
+  max-height: 70vh; max-height: 70dvh; overflow-y: auto;
+}
+/* compact: 画面下端のシートとして開く。inline style で残った left/top/right/width は
+   moveTo がコンパクトの間クリアするので、ここでは CSS だけで位置を決める。 */
+@media ${MQ_COMPACT} {
+  #hud-object-placer {
+    top: auto; right: 0; bottom: 0; left: 0; width: 100%;
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+    max-height: var(--overlay-max-h-l);
+  }
 }
 #hud-object-placer .editorial-panel-head {
-  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3); cursor: move;
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
+}
+@media ${MQ_COMPACT} {
+  #hud-object-placer .editorial-panel-head { cursor: default; }
 }
 #hud-object-placer .w-close { border-radius: 50%; }
 #hud-object-placer .shipplacer-btn-row { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
