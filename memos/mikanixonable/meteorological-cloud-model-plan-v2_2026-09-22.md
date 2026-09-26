@@ -437,8 +437,19 @@ footprint を円から `CloudFootprintEllipse` へ拡張した。回転楕円と
 
 検証: game 421・render 435 件、境界検査 pass。
 
-残る未達は、娘イベントの製品配線、季節・日変化の環境変調、全球セルのイベント供給→equirect 堆積→CloudSample 凝結→cap 再投影の製品差し替え(Step 6 本体)、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形の下流応答(現在は lift/乾燥のみ)、上層で直接生成する巻雲、観測評価(C7/C8 の量的許容域は未固定)、Step 7 の旧経路撤去である。
+2026-09-27 の追記(第六報)。Step 6 の全球被覆を製品経路へ繋いだ — 新モデルが生成雲の主経路になった。
 
+全球イベント供給 `ConvectiveCloudGlobalFieldSupply`(`src/game/cloud/cloud-global-field-supply.ts`)を実装。子午線長 ÷ 450 km = 45 緯度帯、帯ごとに周長 ÷ 450 km の経度セルで準等面積 2555 セルを置き、`environmentAt`(全球環境モデル)から `ConvectiveCloudCell` を導き、`sampleConvectiveCloudEvents`(6 h 間隔・24 h horizon)で均一湿潤なら ~4660 イベント/日窓を標本して輸送→equirect 堆積する。`CloudLocalFieldJob` と同じ分割契約(`step(budget)` → done/result/cancel)で駆動し、結果は層別・相別の列質量 `CloudGlobalMassField`。質量収支は堆積+unassigned=供給で相対 1e-9。
+
+凝結写像 `src/render/cloud/cloud-global-condensation.ts` が層別・相別質量から `CloudSample` を導く: 各層 τ を Stephens 閉包で計算し、`w_l=exp(−τ_l)` で薄い/不透明へ分配(総 τ 保存)、`coverage=1−exp(−τ_opaque/15)`、「τ_l>0.05 の最上層の上端」を cloudTop、`translucent=tanh(τ_thin/0.63)·0.63`。これは `condense()` の湿度→被覆の伝達関数とは別経路で、質量から直接光学条件へ写す置き換え。
+
+`MeteorologicalCloudField`(`src/render/cloud/meteorological-cloud-field.ts`)が `CloudFieldSource` を実装 — 分割ジョブを 6 ms/フレーム予算で駆動し、完成したら凝結・`BakedField` で cap へ再投影(`ObservedCloudField` と同じ手順)。前進時刻では目標時刻が過去でも完成まで駆動し、後退ジャンプでは破棄して戻った時刻で再開、鮮度は 600 s 間隔で引き直す。`earth-system.ts` で生成雲の source を `GeneratedCloudField` から `MeteorologicalCloudField` へ差し替えた。旧経路は lab 専用として残し、`GeneratedCloudField`/`earthGeneratedCloudField` の関数は温存。
+
+equirect 堆積 adapter のイベントごとの O(格子) 検証をバッチ化した — `prepareCloudEquirectDepositionTarget` で格子検証を1回に畳み、質量収支照合は「触れたセルのみの累積」へ。512×256 で ~40 s だった derive が 16.0 s、製品の 128×64 では 1.2 s(6 ms/frame で ~3.4 s 壁時計に分散)。
+
+検証: game 432・render 450 件、境界検査 pass。
+
+残る未達は、娘イベントの製品配線、季節・日変化の環境変調、全球場の解像度依存(供給質量が格子で ~16× 変わる surrogate 的性質 — 消費側の凝結が global coverage として機能するかは視覚検証が要る)、CPU 移植の天気評価で未畳みの循環ノイズ・移流湿度、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形の下流応答、上層で直接生成する巻雲、観測評価(C7/C8 の量的許容域は未固定)、Step 7 の旧経路撤去である。
 | 変更場所 | 変更内容 |
 | --- | --- |
 | src/render/cloud/cloud-field-sample.ts、src/render/cloud/cloud-field.ts | 独立した層・相・高度・光学量の契約と格納方式の確定 |
