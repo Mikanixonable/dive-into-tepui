@@ -1,7 +1,7 @@
 // 全球を正距円筒で割る格子と、接平面 footprint のセル被覆を求める。
 // 格子は方向から行・列への射影と、緯度帯ごとに球面上で積分した実セル面積を持つ。
-// footprint は中心方向の接平面に置いた円・楕円で、覆うセルはセル中心方向を
-// 接平面へ指数写像で写した点が内部に入るかで分ける。
+// footprint は中心方向の接平面に置いた円・楕円で、覆うセルはセルを副分割した
+// 副セル中心方向を接平面へ指数写像で写した点が内部に入るかで分ける。
 
 import { dot, len, v3 } from '../../math/vec3';
 import type { Vec3 } from '../../math/vec3';
@@ -24,6 +24,11 @@ export interface CloudEquirectGrid {
 const VECTOR_TOLERANCE = 1e-10;
 // anchor が極にある判定と、セル中心方向が anchor・対蹠点へ潰れる判定の下限。
 const DEGENERATE_EPSILON = 1e-12;
+// footprint とセルの交差を推す副分割数。セル中心だけの判定は footprint が
+// セル数個ぶんの面積しかないとき被覆を数割欠くので、セルを副セルへ割って
+// 境界の一部被覆を拾う。副セル一辺は格子セルの 1/8 で、細長い楕円 footprint の
+// 幅(数十 km 台)も列の隙間へ落ちずに拾える大きさに取る。
+const OVERLAP_SUBCELLS_PER_SIDE = 8;
 
 function requireFinite(value: number, name: string): void {
   if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite`);
@@ -179,9 +184,10 @@ function projectToTangentPlane(
 }
 
 // 接平面の円・楕円 footprint が全球格子のどのセルを覆うかを求める。
-// 覆うセルへはそのセルの実面積を分け、境界セルを丸ごと数えて被覆面積が footprint
-// 面積を超えた分は比率で割り戻す。足りない分は overlaps へ入れないので、
-// footprintAreaM2 と被覆面積の差が未分配として残る。
+// セルの被覆は副セルへ割って推す: 副セルの中心方向を接平面へ指数写像で写し、
+// 楕円の内側に入った副セルだけ実面積を足す。被覆面積が footprint 面積を超えた分は
+// 比率で割り戻す。足りない分は overlaps へ入れないので、footprintAreaM2 と被覆面積の
+// 差が未分配として残る。
 export function cloudEquirectFootprintOverlap(
   centerDirectionUnitVector: Vec3,
   footprint: CloudFootprint,
@@ -216,26 +222,32 @@ export function cloudEquirectFootprintOverlap(
   const overlaps: CloudFootprintOverlap[] = [];
   let coveredAreaM2 = 0;
   for (let row = firstRow; row <= lastRow; row += 1) {
-    const centerLatitudeRad = Math.PI / 2 - (row + 0.5) * bandRad;
-    // この緯度でキャップ内に入りうる経度の半幅を求め、列の走査を絞る。
-    // anchor が極にあるとき経度の基準を持たないので、極からの角距離だけで決める。
+    const rowTopRad = Math.PI / 2 - row * bandRad;
+    // 行の緯度帯で anchor に最も近い緯度。キャップの経度半幅はこの緯度で最大になる
+    // ので、ここで求める窓は行内の全点を覆う。セル中心ではなく行の端まで含めた
+    // 最寄り緯度で見ないと、キャップが行の端だけを掠める配置で行ごと取りこぼす。
+    const rowNearestLatitudeRad = clampValue(
+      anchorLatitudeRad, rowTopRad - bandRad, rowTopRad);
     let firstColumn = 0;
     let columnCount = grid.width;
-    const denominator = cosAnchorLatitude * Math.cos(centerLatitudeRad);
-    const numerator = cosCap - sinAnchorLatitude * Math.sin(centerLatitudeRad);
+    const denominator = cosAnchorLatitude * Math.cos(rowNearestLatitudeRad);
+    const numerator = cosCap - sinAnchorLatitude * Math.sin(rowNearestLatitudeRad);
     if (Math.abs(denominator) < DEGENERATE_EPSILON) {
       const poleDistanceRad = Math.acos(clampValue(
-        sinAnchorLatitude * Math.sin(centerLatitudeRad), -1, 1));
+        sinAnchorLatitude * Math.sin(rowNearestLatitudeRad), -1, 1));
       if (poleDistanceRad > capAngularRadiusRad) continue;
     } else {
       const cosHalfWidth = numerator / denominator;
       if (cosHalfWidth >= 1) continue;
       if (cosHalfWidth > -1) {
         const halfWidthRad = Math.acos(cosHalfWidth);
-        firstColumn = Math.ceil(
-          (anchorLongitudeRad - halfWidthRad + Math.PI) / cellWidthRad - 0.5);
+        // キャップの経度窓が触れる列をすべて走る — セル幅単位の窓はセル中心ではなく
+        // セル区画へ写す。窓が区画の境へ食い込むだけの配置で走査列が空になり、
+        // footprint の全質量が未分配になるのを防ぐ。
+        firstColumn = Math.floor(
+          (anchorLongitudeRad - halfWidthRad + Math.PI) / cellWidthRad);
         columnCount = Math.floor(
-          (anchorLongitudeRad + halfWidthRad + Math.PI) / cellWidthRad - 0.5)
+          (anchorLongitudeRad + halfWidthRad + Math.PI) / cellWidthRad)
           - firstColumn + 1;
         if (columnCount >= grid.width) {
           firstColumn = 0;
@@ -244,15 +256,37 @@ export function cloudEquirectFootprintOverlap(
       }
     }
     const cellAreaM2 = cloudEquirectCellAreaM2(grid, row);
+    const subBandRad = bandRad / OVERLAP_SUBCELLS_PER_SIDE;
+    const subCellWidthRad = cellWidthRad / OVERLAP_SUBCELLS_PER_SIDE;
     for (let offset = 0; offset < columnCount; offset += 1) {
       const column = ((firstColumn + offset) % grid.width + grid.width) % grid.width;
       const cellIndex = row * grid.width + column;
-      const point = projectToTangentPlane(
-        cloudEquirectCellCenter(grid, cellIndex),
-        centerDirectionUnitVector, eastUnitVector, northUnitVector, grid.sphereRadiusM);
-      if (cloudFootprintQuadraticAt(footprint, point.x, point.y) <= 1) {
-        overlaps.push({ cellIndex, areaM2: cellAreaM2 });
-        coveredAreaM2 += cellAreaM2;
+      const longitudeLeftRad = -Math.PI + column * cellWidthRad;
+      // 副セルの緯度帯もセル面積と同じ積分で実面積を立てる — 緯度帯内の和が
+      // 親セルの実面積へ一致し、極側で潰れたセルでも副セル面積は正しい。
+      // 積算の丸めで親セルを数万分の1だけ超えうるので、親セル面積で止める。
+      let coveredCellAreaM2 = 0;
+      for (let subRow = 0; subRow < OVERLAP_SUBCELLS_PER_SIDE; subRow += 1) {
+        const subLatitudeTopRad = rowTopRad - subRow * subBandRad;
+        const subCellAreaM2 = grid.sphereRadiusM * grid.sphereRadiusM * subCellWidthRad
+          * (Math.sin(subLatitudeTopRad) - Math.sin(subLatitudeTopRad - subBandRad));
+        const subLatitudeRad = subLatitudeTopRad - subBandRad / 2;
+        const sinSubLatitude = Math.sin(subLatitudeRad);
+        const flat = Math.cos(subLatitudeRad);
+        for (let subColumn = 0; subColumn < OVERLAP_SUBCELLS_PER_SIDE; subColumn += 1) {
+          const longitudeRad = longitudeLeftRad + (subColumn + 0.5) * subCellWidthRad;
+          const point = projectToTangentPlane(
+            v3(flat * Math.sin(longitudeRad), sinSubLatitude, flat * Math.cos(longitudeRad)),
+            centerDirectionUnitVector, eastUnitVector, northUnitVector, grid.sphereRadiusM);
+          if (cloudFootprintQuadraticAt(footprint, point.x, point.y) <= 1) {
+            coveredCellAreaM2 += subCellAreaM2;
+          }
+        }
+      }
+      if (coveredCellAreaM2 > 0) {
+        const overlapAreaM2 = Math.min(coveredCellAreaM2, cellAreaM2);
+        overlaps.push({ cellIndex, areaM2: overlapAreaM2 });
+        coveredAreaM2 += overlapAreaM2;
       }
     }
   }
