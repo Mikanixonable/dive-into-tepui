@@ -33,7 +33,6 @@ export interface ModularShipMotionReactions {
   roundsInMagazine?(): number;
   // ベルトに残っているマガジンの本数(装填中の1本を含む)。ベルトの接触代理の範囲を決める。
   magsLeft?(): number;
-  stepBarrelThermal?(dt: number): void;
   thrustAcceleration?(): Vec3;
   radiatorWear?(): Readonly<Record<string, number>>;
   totalCoolingRate?(): number;
@@ -100,7 +99,6 @@ class ModularShipBehavior implements DynamicMotionBehavior {
       dt,
       this.reactions.radiatorWear?.() ?? {},
     );
-    this.reactions.stepBarrelThermal?.(dt);
     motion.aero.update(motion.state.r, motion.state.v, atmosphereBody, atmospherePivot);
     this.reactions.updateAltitudeAlarm?.(
       dt, motion.state.r, atmosphereBody, atmospherePivot,

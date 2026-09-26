@@ -27,7 +27,6 @@ const MULTI_TANK = defineShipModule({
   feedPort: v3(),
   ejectionPort: v3(),
   linkExitPort: v3(),
-  barrelPort: v3(),
   abilities: { fuelKind: 'main', fuelCapacity: 10, fuelMassPerUnit: 2 },
 });
 

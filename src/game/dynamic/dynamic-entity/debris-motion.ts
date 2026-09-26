@@ -13,12 +13,6 @@ import {
   type DynamicMotionThermal,
 } from '../dynamic-motion';
 
-// 砲身(鋼)の物性。
-const BARREL_BULK_DENSITY = 7850; // [kg/m^3]
-const BARREL_MAX_TEMP = 1700; // [K]
-export const BARREL_SPECIFIC_HEAT = 500; // [J/(kg·K)]
-export const BARREL_RADIATING_AREA_PER_MASS = 0.047; // [m^2/kg]
-
 // 破片の種別・振る舞い・接触半径 [m]・熱の状態と生死。熱の状態で省いた項目は環境温度の既定から、
 // 生死を省くと生きた状態で始める。
 interface DebrisMotionProperties {
@@ -37,24 +31,13 @@ interface DebrisThermal {
   readonly maxTemperature: number;
 }
 
-const ALUMINIUM_DEBRIS: DebrisThermal = {
+// 破片の熱の物性はいずれもアルミ相当。
+const DEBRIS_THERMAL: DebrisThermal = {
   specificHeat: SMALL_DEBRIS_SPECIFIC_HEAT,
   bulkDensity: SMALL_DEBRIS_BULK_DENSITY,
   radiatingAreaPerMass: SMALL_DEBRIS_RADIATING_AREA_PER_MASS,
   maxTemperature: SMALL_DEBRIS_MAX_TEMP,
 };
-
-const STEEL_BARREL: DebrisThermal = {
-  specificHeat: BARREL_SPECIFIC_HEAT,
-  bulkDensity: BARREL_BULK_DENSITY,
-  radiatingAreaPerMass: BARREL_RADIATING_AREA_PER_MASS,
-  maxTemperature: BARREL_MAX_TEMP,
-};
-
-// 種別 kind の破片の熱の物性。砲身は鋼、ほかはアルミ相当。
-function debrisThermal(kind: DebrisKind['kind']): DebrisThermal {
-  return kind === 'barrel' ? STEEL_BARREL : ALUMINIUM_DEBRIS;
-}
 
 // 破片・薬莢・分離金物の物性、熱、接触可否、寿命境界を所有する。
 export class DebrisMotion extends DynamicMotion {
@@ -64,7 +47,7 @@ export class DebrisMotion extends DynamicMotion {
     attitude: Attitude,
     properties: DebrisMotionProperties,
   ) {
-    const thermal = debrisThermal(properties.kind);
+    const thermal = DEBRIS_THERMAL;
     super(state, {
       alive: properties.alive,
       attitude,

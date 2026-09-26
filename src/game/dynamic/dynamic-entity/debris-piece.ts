@@ -7,9 +7,7 @@ import { deserializeKinematicState, kinematicState, type KinematicState } from '
 import type { CapKind } from './entity-kind';
 import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
 import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
-import {
-  BarrelView, MagazineFrameView,
-} from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
+import { MagazineFrameView } from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
@@ -30,18 +28,10 @@ const ENEMY_DESTROY_FRAG_COLOR = '#ff6a4a';
 function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicView {
   switch (debrisKind.kind) {
     case 'fragment': return new DebrisFragmentView(debrisKind.accent, debrisKind.size, scene);
-    case 'barrel': return new BarrelView(scene);
     case 'magazineFrame': return new MagazineFrameView(scene);
     case 'casing': return new CasingView(scene);
     case 'decouplerPanel': return new DebrisFragmentView('#a9c8d6', 0.8, scene);
   }
-}
-
-// 新しく出した破片の熱の状態。砲身の破片は外れた時点の温度と温度差を引き継ぎ、ほかは環境温度から
-// 始める。
-function initialThermal(debrisKind: DebrisKind): Partial<DynamicMotionThermal> {
-  if (debrisKind.kind !== 'barrel') return {};
-  return { temperature: debrisKind.bornTemperature, thermalDeviation: debrisKind.bornThermalDeviation };
 }
 
 // 破片1個の直列化した形。慣性と接触半径は出す場所ごとに違い、種別からは決まらないので記録に持つ。
@@ -68,7 +58,7 @@ export class DebrisPiece extends DynamicEntity {
     id: string,
     radius?: number,
     scene?: THREE.Scene,
-    thermal = initialThermal(debrisKind),
+    thermal: Partial<DynamicMotionThermal> = {},
     alive?: boolean,
   ) {
     super(

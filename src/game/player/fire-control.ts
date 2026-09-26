@@ -24,16 +24,12 @@ import {
 
 export type { AmmoLoad } from './weapon-state';
 
-const BARREL_PHYS_RADIUS = 1.45; // 砲身束の外接球(締め板半径 0.8 × 半長 1.2)
 const EJECTED_MAG_PHYS_RADIUS = 1.4;
 // 空マガジン外枠がリンク排出口へ出るスライド。内側へ潜った位置から面の外まで [m]・[s]。
 const MAG_FRAME_SLIDE_DEPTH = 0.55;
 const MAG_FRAME_SLIDE_TIME = 0.3;
 
 const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
-
-// 1発あたりに砲身へ入る熱量 [J]。発射ガスの熱の大半は砲身の側が受け取る。
-const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
 // 砲口の位置とそのときの艦の速度。
 function muzzleState(ship: Ship, muzzle: Vec3): KinematicState {
@@ -141,7 +137,7 @@ export class FireControl {
 
     const muzzle = muzzles[command.muzzleIndex]!;
     this.fireGun(muzzle, activeStage, celestialBodies);
-    // 装填の段階に応じて、次の発射までの間隔と排出物を決める
+    // マガジンを撃ち尽くしたら空の外枠を排出し、次の発射までの間隔を決める
     switch (command.consumption) {
       case 'normal':
         this.weapon.setCooldown(1 / this.player.totalFireRate);
@@ -151,21 +147,17 @@ export class FireControl {
         this.registry.events.record({ kind: 'gunMagazineFed' });
         this.weapon.setCooldown(1 / this.player.totalFireRate);
         return;
-      case 'barrel-reload':
-        this.spawnEjectedMagazineFrame(muzzle.weapon);
-        this.weapon.setCooldown(RELOAD_TIME);
-        this.dropBarrel(muzzle.weapon);
-        this.registry.events.record({ kind: 'gunBarrelSwapped' });
-        return;
     }
   }
 
-  // 手動リロードを試みる。開始できたら true。
+  // 手動リロードを試みる。開始できたら true。捨てるマガジンの外枠を、健全な武装があればその
+  // リンク排出口から出す。
   public manualReload(): boolean {
     if (!this.weapon.manualReload()) return false;
     this.weapon.setCooldown(RELOAD_TIME);
-    this.registry.events.record({ kind: 'gunBarrelSwapped' });
-    this.dropBarrel(this.player.capabilities.weaponPorts()[0] ?? null);
+    this.registry.events.record({ kind: 'gunReloaded' });
+    const weapon = this.player.capabilities.weaponPorts()[0];
+    if (weapon !== undefined) this.spawnEjectedMagazineFrame(weapon);
     return true;
   }
 
@@ -205,7 +197,6 @@ export class FireControl {
 
     activeStage.recordShot();
     this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
-    this.weapon.addBarrelHeat(GUN_BARREL_HEAT_PER_ROUND);
     this.registry.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzleWorld) });
   }
 
@@ -254,45 +245,6 @@ export class FireControl {
       },
       this.registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this.scene,
     ));
-  }
-
-  // 装着している砲身の温度を dt だけ進める。
-  public stepBarrelThermal(dt: number): void {
-    this.weapon.stepBarrelThermal(dt);
-  }
-
-  // 砲身交換時に砲身束をデブリとして放出する。weapon があればその砲身取り外し点から -Y 方向へ
-  // 出し、武装モジュールが残っていなければ機体下部の固定点から出す。装着していた砲身の温度は、
-  // そのまま排出されたデブリへ移る。
-  private dropBarrel(weapon: WeaponPorts | null): void {
-    const ship = this.player;
-    // 下方に少し勢いをつけて放出
-    const down = weapon === null
-      ? qRotate(ship.motion.att.q, v3(0, -1, 0))
-      : this.worldDir(weapon.rotation, v3(0, -1, 0));
-    const at = weapon === null
-      ? add(ship.motion.state.r, qRotate(ship.motion.att.q, v3(0, -1, 1.5))) // 機首下部あたりから
-      : this.worldPoint(weapon.barrelPort);
-    this.registry.add(DebrisPiece.create(
-      kinematicState<'eci'>(
-        ship.motion.state.t,
-        at,
-        add(ship.motion.state.v, add(scale(down, 3.0), randVec(0.5))),
-      ),
-      {
-        kind: 'barrel',
-        bornTemperature: this.weapon.barrelTemperature,
-        bornThermalDeviation: this.weapon.barrelDeviation,
-      },
-      {
-        // 砲身束の長手はモジュールの +Z。武装が残っていなければ機体姿勢のまま落とす。
-        q: weapon === null ? ship.motion.att.q : qMul(ship.motion.att.q, weapon.rotation),
-        w: v3(randSym(2), randSym(2), randSym(2)),
-        inertia: v3(1, 0.5, 1), // 砲身束: 外周へ砲身が張り出すので軸まわりは単管より大きい
-      },
-      this.registry.idAllocators, BARREL_PHYS_RADIUS, this.scene,
-    ));
-    this.weapon.mountFreshBarrel();
   }
 
   // 空になったマガジンの外枠を、撃ったモジュールの空リンク排出口(-X 側、薬莢と同じ側)から
