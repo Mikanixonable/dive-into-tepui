@@ -35,6 +35,10 @@ export class GeneratedCloudField implements CloudFieldSource {
   public get texture(): THREE.Texture { return this.field.texture; }
   public get generation(): number { return this.generationValue; }
 
+  // 最後に焼いた表示時刻 [s]。一度も焼いていない間は 0。prepare で天気のモデルへ
+  // 同期した時刻と同じ値で、CPU 経路が同じ時刻の天気を引くときに使う。
+  public get displayTimeSeconds(): number { return this.lastBakedDisplayTime ?? 0; }
+
   // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。
   public at(direction: Vec3Node): CloudSample { return this.field.at(direction); }
 
