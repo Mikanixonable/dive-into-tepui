@@ -1,27 +1,22 @@
 // 大気風の共有モデル。風速 [m/s] は緯度と高度に応じて連続的に変化する。
-// 描画側は本モデルから位相を導出する。
+// 描画側は本モデルから位相を導出する。風則そのものの数値版は atmospheric-wind-sample.ts が
+// 持ち、TSL を引き込めない実行環境(worker)はそちらを読む。
 import { abs, float, sign, smoothstep as nodeSmoothstep, vec2 } from 'three/tsl';
+import { atmosphericWindAt, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind-sample';
 import type { FloatNode, Vec2Node } from '../tsl-types';
-export type WindVector = { readonly east: number; readonly north: number };
+import type { WindVector } from './atmospheric-wind-sample';
 
-export const SURFACE_HEIGHT = 1_000;
-export const UPPER_CLOUD_HEIGHT = 10_000;
+// 例外(CODING-RULE 1.6「同じ値へ入口を2つ作らない」): 代表高度の所有者は
+// atmospheric-wind-sample。このモジュールを引く既存の消費者(気象 CPU モデル・cloud-lab)が
+// 同じ入口から読み続けられるよう、ここからも同じ値を公開する。
+export { SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT };
+
 const BAND_LATITUDES = [75, 45, 15, -15, -45, -75] as const;
 
 export class AtmosphericWindField {
+  // 緯度 latitudeRad [rad]・高度 heightM [m] における大循環の風 [m/s]。
   public sample(latitudeRad: number, heightM: number): WindVector {
-    const a = Math.abs(latitudeRad);
-    const trade = smoothstep(0.18, 0.32, a);
-    const westerly = smoothstep(0.28, 0.55, a) * (1 - smoothstep(0.58, 0.72, a));
-    const polar = smoothstep(0.62, 1.25, a);
-    const layer = smoothstep(SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT, heightM);
-    const hemisphere = latitudeRad < 0 ? -1 : 1;
-    const eastSurface = -6 * trade + 7 * westerly - 6 * polar;
-    const northSurface = -hemisphere * (1.5 * trade - 1.5 * westerly + polar);
-    return {
-      east: eastSurface + layer * (12 * polar + 13 * westerly - eastSurface),
-      north: northSurface + layer * (-northSurface - hemisphere * 0.8),
-    };
+    return atmosphericWindAt(latitudeRad, heightM);
   }
 
   // TSL シェーダーグラフ向けサンプリング。CPU 側とシェーダー側の風速プロファイルを一元化する。
@@ -82,9 +77,4 @@ export function windBandsAt(heightM: number): readonly {
       north: wind.north,
     };
   });
-}
-
-function smoothstep(edge0: number, edge1: number, value: number): number {
-  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
 }
