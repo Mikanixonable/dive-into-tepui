@@ -22,7 +22,7 @@ import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import {
   ConvectiveCloudLocalFieldSupply, CONVECTIVE_LOCAL_FIELD_SPAN_M,
 } from '../../cloud/cloud-local-field-supply';
-import { earthConvectiveCloudEnvironmentAt } from '../../cloud/earth-cloud-environment';
+import { earthGlobalEnvironmentAt } from '../../cloud/earth-global-environment';
 import { AnnualClimateMap, type ClimateMap } from '../../../render/cloud/climate-map';
 import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
 import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
@@ -235,15 +235,18 @@ export function earthCloudPresentation(): CloudPresentation {
   // 画像の取得はここで始め、破棄は生成場が担う。
   const climate = AnnualClimateMap.fromDeferredUrl(climateTextureUrl);
   climate.request();
+  const generated = earthGeneratedCloudField(cap, climate);
   // 局所光学場は対流イベントの生成経路から供給する。球の半径は衝突球と同じ赤道半径 —
-  // 扁平率ぶんの地表距離の誤差は最大で0.3%程度の近似として扱う。
+  // 扁平率ぶんの地表距離の誤差は最大で0.3%程度の近似として扱う。環境の天気(渦・気団・
+  // 地形)は、生成場が prepare で同期した表示時刻をそのまま読む。
   const localFieldBaker = new CloudLocalFieldBaker(
     new ConvectiveCloudLocalFieldSupply(
-      (direction) => earthConvectiveCloudEnvironmentAt(direction, climate),
+      (direction) => earthGlobalEnvironmentAt(
+        direction, climate, generated.displayTimeSeconds, R_EARTH, SIDEREAL_DAY),
       EARTH_CLOUD_LOCAL_SEED, R_EARTH_EQ),
     EARTH_LOCAL_FIELD_REBUILD_SECONDS, EARTH_LOCAL_FIELD_RECENTER_RAD);
   return new CloudPresentation(
-    earthGeneratedCloudField(cap, climate), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
+    generated, new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
     localFieldBaker,
   );
 }
