@@ -34,9 +34,27 @@ import type { RenderStyle } from '../../src/render/render-style';
 export interface LabMeasurement {
   readonly caseName: CaseName;
   readonly frames: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
   readonly cpuRenderMs: SampleDistribution;
   readonly gpuSupported: boolean;
+  readonly gpuPassTotalScope: 'instrumented-render-pass-sum';
+  readonly gpuPassTotalMs: SampleDistribution;
+  readonly observedRenderTotalScope: 'observed-render-total';
+  readonly observedRenderTotalMs: SampleDistribution;
+  readonly observedRenderTotalSamplesMs: readonly (number | null)[];
+  readonly observedRenderCompleteFrames: number;
+  readonly observedRenderExpectedQueryCounts: readonly number[];
+  readonly observedRenderResolvedQueryCounts: readonly number[];
+  readonly observedComputeScope: 'renderer-compute-query-sum';
+  readonly observedComputeMs: SampleDistribution;
+  readonly observedComputeSamplesMs: readonly (number | null)[];
+  readonly observedComputeCompleteFrames: number;
+  readonly observedComputeExpectedQueryCounts: readonly number[];
+  readonly observedComputeResolvedQueryCounts: readonly number[];
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
+  readonly gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu';
+  readonly gpuPassRenderCallCpuMs: Readonly<Record<string, SampleDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
 }
@@ -61,6 +79,33 @@ const READY_TIMEOUT_MS = 60_000;
 const MAX_SETTLE_CAPTURES = 6;
 // captureTarget は毎回透明に消す。出力パスが上書きしなければ、readback にこの alpha が残る。
 const CAPTURE_CLEAR_COLOR = new THREE.Color(1, 0, 1);
+
+interface LabPixelRatioRenderer {
+  readonly domElement: HTMLCanvasElement;
+  getPixelRatio(): number;
+  getSize(target: THREE.Vector2): THREE.Vector2;
+  setPixelRatio(value: number): void;
+  setSize(width: number, height: number, updateStyle?: boolean): void;
+}
+
+// 描画倍率を一時的に変え、処理の成否にかかわらず元のキャンバス寸法へ戻す。
+export async function withLabPixelRatio<T>(
+  renderer: LabPixelRatioRenderer,
+  pixelRatio: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previousPixelRatio = renderer.getPixelRatio();
+  const previousSize = renderer.getSize(new THREE.Vector2());
+  // 解像度倍率だけを変え、撮影の論理寸法は保つ。
+  try {
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(previousSize.x, previousSize.y, false);
+    return await operation();
+  } finally {
+    renderer.setPixelRatio(previousPixelRatio);
+    renderer.setSize(previousSize.x, previousSize.y, false);
+  }
+}
 
 export class LabView {
   private readonly scene = new THREE.Scene();
@@ -159,6 +204,7 @@ export class LabView {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
       this.current.disposeProteinMotion?.();
+      this.current.dispose?.();
       for (const root of this.current.objects) disposeOwnedRenderResources(root);
     }
     const built = CASES[name](this.style, this.ringMaterials);
@@ -250,7 +296,7 @@ export class LabView {
   }
 
   // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
-  public render(displayTime = 0): void {
+  public render(displayTime = 0, observedFrame = false): void {
     if (this.current === null) return;
     const graphics = this.graphics.current;
     // カメラを観察の向きへ置く。画角と遠クリップ距離の書き換えは、投影行列を組み直すまで無言で効かない。
@@ -294,9 +340,13 @@ export class LabView {
       graphics.atmosphere,
     ));
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, camera, this.style);
-    this.lastRenderCpuMs = performance.now() - startedAt;
-    this.gpu.resolve();
+    try {
+      this.pipeline.render(this.scene, camera, this.style);
+    } finally {
+      this.lastRenderCpuMs = performance.now() - startedAt;
+      if (observedFrame) this.gpu.endObservedFrame();
+      this.gpu.resolve();
+    }
   }
 
   // ケースを表示して測る。angles を渡すと、ケース既定の観察の向きへそれを重ねてから測る。
@@ -305,6 +355,30 @@ export class LabView {
   ): Promise<LabMeasurement> {
     this.show(name);
     this.setViewAngles(angles);
+    return this.measureCurrent(name, warmupFrames, sampleFrames);
+  }
+
+  // ケースの撮影を適用してから計測する。graphics は撮影の品質設定を適用した後の上書き。
+  public async measureShot(
+    name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
+    warmupFrames = 6, sampleFrames = 30,
+  ): Promise<LabMeasurement> {
+    this.show(name);
+    this.applyShot(shotName);
+    this.setGraphics({ ...this.graphics.current, ...graphics });
+    return withLabPixelRatio(
+      this.renderer,
+      this.renderer.getPixelRatio() * this.graphics.current.resolutionScale,
+      () => this.measureCurrent(name, warmupFrames, sampleFrames),
+    );
+  }
+
+  // 現在のケースと shot の設定を保持したまま、準備待ち・ウォームアップ・標本収集を共通に行う。
+  private async measureCurrent(
+    name: CaseName, warmupFrames: number, sampleFrames: number,
+  ): Promise<LabMeasurement> {
+    await this.waitUntilReady();
+    if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for measurement`);
     await this.gpu.waitForResolve();
     this.gpu.reset();
 
@@ -320,25 +394,111 @@ export class LabView {
 
     // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
     const cpuSamples: number[] = [];
+    const gpuPassTotalSamples: number[] = [];
+    const observedRenderSamples: (number | null)[] = [];
+    const observedRenderExpectedQueryCounts: number[] = [];
+    const observedRenderResolvedQueryCounts: number[] = [];
+    const observedComputeSamples: (number | null)[] = [];
+    const observedComputeExpectedQueryCounts: number[] = [];
+    const observedComputeResolvedQueryCounts: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
+    const renderCallCpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => Array(sampleFrames).fill(0) as number[]);
     const motion = new ProteinMotionMetricsRecorder();
-    for (let frame = 0; frame < sampleFrames; frame++) {
-      const displayTime = (warmupFrames + frame + 1) / 60;
-      const motionSample = this.current?.updateProteinMotion?.(displayTime);
-      this.render(displayTime);
-      cpuSamples.push(this.lastRenderCpuMs);
-      await this.gpu.waitForResolve();
-      const timings = this.gpu.snapshot();
-      for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
-      motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
+    let measuredFrameIndex: number | null = null;
+    let pendingPass: number | null = null;
+    let activePass: number | null = null;
+    let renderDepth = 0;
+    let renderStartedAt = 0;
+    const inspector = this.renderer.inspector;
+    const originalBeginPass = this.gpu.beginPass;
+    const originalBeginRender = inspector.beginRender;
+    const originalFinishRender = inspector.finishRender;
+    this.gpu.beginPass = (id) => {
+      pendingPass = id;
+      originalBeginPass.call(this.gpu, id);
+    };
+    inspector.beginRender = (uid, scene, camera, target) => {
+      if (renderDepth === 0) {
+        activePass = pendingPass;
+        pendingPass = null;
+        renderStartedAt = performance.now();
+      }
+      renderDepth += 1;
+      originalBeginRender.call(inspector, uid, scene, camera, target);
+    };
+    inspector.finishRender = (uid) => {
+      originalFinishRender.call(inspector, uid);
+      renderDepth -= 1;
+      if (renderDepth === 0) {
+        if (measuredFrameIndex !== null && activePass !== null) {
+          const samples = renderCallCpuSamples[activePass]!;
+          samples[measuredFrameIndex] = (samples[measuredFrameIndex] ?? 0) + performance.now() - renderStartedAt;
+        }
+        activePass = null;
+      }
+    };
+    try {
+      for (let frame = 0; frame < sampleFrames; frame++) {
+        measuredFrameIndex = frame;
+        const displayTime = (warmupFrames + frame + 1) / 60;
+        this.gpu.beginObservedFrame();
+        const motionSample = this.current?.updateProteinMotion?.(displayTime);
+        this.render(displayTime, true);
+        measuredFrameIndex = null;
+        cpuSamples.push(this.lastRenderCpuMs);
+        await this.gpu.waitForResolve();
+        const timings = this.gpu.snapshot();
+        observedRenderSamples.push(timings.observedRenderComplete ? timings.observedRenderTotalMs : null);
+        observedRenderExpectedQueryCounts.push(timings.observedRenderExpectedQueryCount);
+        observedRenderResolvedQueryCounts.push(timings.observedRenderQueryCount);
+        observedComputeSamples.push(timings.observedComputeComplete ? timings.observedComputeTotalMs : null);
+        observedComputeExpectedQueryCounts.push(timings.observedComputeExpectedQueryCount);
+        observedComputeResolvedQueryCounts.push(timings.observedComputeQueryCount);
+        let passTotalMs = 0;
+        for (let index = 0; index < GPU_PASS_COUNT; index += 1) {
+          passTotalMs += timings.elapsedMs[index] ?? 0;
+        }
+        gpuPassTotalSamples.push(passTotalMs);
+        for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
+        motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
+      }
+    } finally {
+      measuredFrameIndex = null;
+      this.gpu.beginPass = originalBeginPass;
+      inspector.beginRender = originalBeginRender;
+      inspector.finishRender = originalFinishRender;
     }
 
     return {
       caseName: name,
       frames: sampleFrames,
+      canvasWidth: this.renderer.domElement.width,
+      canvasHeight: this.renderer.domElement.height,
       cpuRenderMs: distributionOf(cpuSamples),
       gpuSupported: this.gpu.snapshot().supported,
+      gpuPassTotalScope: 'instrumented-render-pass-sum',
+      gpuPassTotalMs: distributionOf(gpuPassTotalSamples),
+      observedRenderTotalScope: 'observed-render-total',
+      observedRenderTotalMs: distributionOf(observedRenderSamples.filter(
+        (sample): sample is number => sample !== null,
+      )),
+      observedRenderTotalSamplesMs: observedRenderSamples,
+      observedRenderCompleteFrames: observedRenderSamples.filter((sample) => sample !== null).length,
+      observedRenderExpectedQueryCounts,
+      observedRenderResolvedQueryCounts,
+      observedComputeScope: 'renderer-compute-query-sum',
+      observedComputeMs: distributionOf(observedComputeSamples.filter(
+        (sample): sample is number => sample !== null,
+      )),
+      observedComputeSamplesMs: observedComputeSamples,
+      observedComputeCompleteFrames: observedComputeSamples.filter((sample) => sample !== null).length,
+      observedComputeExpectedQueryCounts,
+      observedComputeResolvedQueryCounts,
       gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distributionOf(gpuSamples[index]!)])),
+      gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu',
+      gpuPassRenderCallCpuMs: Object.fromEntries(
+        GPU_PASS_LABELS.map((label, index) => [label, distributionOf(renderCallCpuSamples[index]!)]),
+      ),
       proteinMotion: motion.summary(),
       proteinCase: this.current?.proteinMotion,
     };
@@ -360,6 +520,13 @@ export class LabView {
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
+    this.setDisplayTime(shot.displayTime ?? 0);
+  }
+
+  // 可動部を指定表示時刻 [s] に合わせ、静止した1フレームとして描く。
+  public setDisplayTime(displayTime: number): void {
+    this.current?.syncMotion?.(displayTime);
+    this.render(displayTime);
   }
 
   // 描画品質設定を next にする。**設定の器は同値でも購読者へ配り、パイプラインを組み直す**ので、
@@ -398,6 +565,7 @@ export class LabView {
     // 完全に決定的。雲場は焼いたフレームの次から載り、パイプラインを組み直した直後のフレームは崩れる。
     let previous = await this.capture();
     for (let count = 2; count <= MAX_SETTLE_CAPTURES; count++) {
+      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
       const next = await this.capture();
       if (next === previous) return next;
       previous = next;
@@ -497,6 +665,7 @@ function withAirglowSetting(body: AtmosphereBody, airglow: boolean): AtmosphereB
 // 合わせて渡す。
 function earthLightValue(earth: LabEarth, sun: LabSun, airglow: boolean): PlanetLightValue {
   const sunIrradiance = sun.irradianceAt(earth.center);
+  // 面の明るさと恒星方向の大気照に同じ入射強度を渡す。
   return {
     center: earth.center,
     radius: R_EARTH,

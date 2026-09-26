@@ -50,18 +50,35 @@ export const CLOUD_GPU_MEASUREMENTS = {
 interface GpuTimingSnapshot {
   readonly supported: boolean;
   readonly elapsedMs: readonly number[];
+  readonly observedRenderTotalMs: number | null;
+  readonly observedRenderExpectedQueryCount: number;
+  readonly observedRenderQueryCount: number;
+  readonly observedRenderComplete: boolean;
+  readonly observedComputeTotalMs: number | null;
+  readonly observedComputeExpectedQueryCount: number;
+  readonly observedComputeQueryCount: number;
+  readonly observedComputeComplete: boolean;
 }
 
-// backend.timestampQueryPool[type] の型。@types/three の Backend 型には出てこないが、
-// resolveTimestampsAsync の戻り値がフレーム全体の合計だけなのに対し、呼び出しごと(uid ごと)
-// の実測値はここにしかない。
+// backend.timestampQueryPool[type] の型。@types/three の Backend 型には出てこない。
 interface RenderTimestampPool {
   readonly timestamps: Map<string, number>;
+}
+
+interface ObservedFrameTimings {
+  renderExpected: number;
+  renderResolved: number;
+  renderMs: number;
+  computeExpected: number;
+  computeResolved: number;
+  computeMs: number;
+  ended: boolean;
 }
 
 // resolve() を跨いで解決されないまま残る uid が際限なく育たないための上限。
 // 数フレーム分のパス数だけ許容すれば十分で、上限を超えたら一括破棄して次のフレームから計測し直す。
 const PENDING_UID_CAP = GPU_PASS_COUNT * 8;
+const OBSERVED_FRAME_CAP = 64;
 
 // renderer.render() 呼び出しの uid を、直前の GpuTimings.beginPass が宣言したパスへ結び付ける
 // Inspector。InspectorBase の広いメソッド一式(beginCompute など)を GpuTimings の公開面へ持ち込まない
@@ -71,6 +88,7 @@ class PassInspector extends InspectorBase {
   public constructor(
     private readonly onBegin: (uid: string) => void,
     private readonly onFinish: () => void,
+    private readonly onComputeBegin: (uid: string) => void,
   ) {
     super();
   }
@@ -83,6 +101,11 @@ class PassInspector extends InspectorBase {
   // その render() が終わるたびに呼ばれる。入れ子の呼び出しでは内側が先に閉じる。
   public finishRender(): void {
     this.onFinish();
+  }
+
+  // compute() ごとにレンダラーから届く UID を計測器へ渡す。
+  public beginCompute(uid: string): void {
+    this.onComputeBegin(uid);
   }
 }
 
@@ -102,6 +125,12 @@ export class GpuTimings {
   private outerPass: GpuPassId | null = null;
   // render() 呼び出しの uid → その呼び出しが属していたパス。resolve() が該当分を引いて消費する。
   private readonly passByUid = new Map<string, GpuPassId>();
+  private readonly renderFrameByUid = new Map<string, number>();
+  private readonly computeFrameByUid = new Map<string, number>();
+  private readonly observedFrames = new Map<number, ObservedFrameTimings>();
+  private nextFrameId = 0;
+  private activeFrameId: number | null = null;
+  private latestObservedFrameId: number | null = null;
 
   // 自分専用の Inspector をレンダラーへ据え、以後の render() 呼び出しの uid を
   // beginPass が宣言したパスへ結び付けられるようにする。
@@ -109,6 +138,7 @@ export class GpuTimings {
     renderer.inspector = new PassInspector(
       (uid) => this.onBeginRender(uid),
       () => this.onFinishRender(),
+      (uid) => this.onBeginCompute(uid),
     );
   }
 
@@ -122,6 +152,38 @@ export class GpuTimings {
     this.pendingPass = id;
   }
 
+  // render-lab marks one synchronous scene/pipeline render as a measurement frame. Query UIDs are
+  // attributed to this boundary even when no named beginPass() was set.
+  // render-lab の1回の同期描画を計測窓として開き、非同期の query 解決に備える。
+  public beginObservedFrame(): void {
+    if (this.activeFrameId !== null) throw new Error('An observed GPU frame is already active');
+    const id = this.nextFrameId++;
+    this.observedFrames.set(id, {
+      renderExpected: 0, renderResolved: 0, renderMs: 0,
+      computeExpected: 0, computeResolved: 0, computeMs: 0, ended: false,
+    });
+    this.activeFrameId = id;
+    this.latestObservedFrameId = id;
+    // 解決待ちの窓は上限内で保持し、最古の UID 紐付けから破棄する。
+    if (this.observedFrames.size > OBSERVED_FRAME_CAP) {
+      const oldestId = this.observedFrames.keys().next().value;
+      if (oldestId !== undefined && oldestId !== id) {
+        this.observedFrames.delete(oldestId);
+        for (const [uid, frameId] of this.renderFrameByUid) if (frameId === oldestId) this.renderFrameByUid.delete(uid);
+        for (const [uid, frameId] of this.computeFrameByUid) if (frameId === oldestId) this.computeFrameByUid.delete(uid);
+      }
+    }
+  }
+
+  // 計測窓を閉じる。開始中の窓がなければ呼び出し順の誤りとして例外にする。
+  public endObservedFrame(): void {
+    const id = this.activeFrameId;
+    if (id === null) throw new Error('No observed GPU frame is active');
+    const frame = this.observedFrames.get(id);
+    if (frame) frame.ended = true;
+    this.activeFrameId = null;
+  }
+
   // いちばん外側の render() が beginPass の宣言を消費し、その内側で発行される render()
   // (ノードが自前の中間パスを持つとき)も同じパスへ計上する。宣言のないまま始まった外側の
   // 呼び出しは、どのパスにも属さない扱いで流れる。
@@ -130,6 +192,19 @@ export class GpuTimings {
     this.renderDepth++;
     this.pendingPass = null;
     if (this.enabled && this.outerPass !== null) this.passByUid.set(uid, this.outerPass);
+    if (this.enabled && this.activeFrameId !== null) {
+      this.renderFrameByUid.set(uid, this.activeFrameId);
+      const frame = this.observedFrames.get(this.activeFrameId);
+      if (frame) frame.renderExpected++;
+    }
+  }
+
+  // compute query の UID を実行中の観測窓へ帰属させ、完了数を数える。
+  private onBeginCompute(uid: string): void {
+    if (!this.enabled || this.activeFrameId === null) return;
+    this.computeFrameByUid.set(uid, this.activeFrameId);
+    const frame = this.observedFrames.get(this.activeFrameId);
+    if (frame) frame.computeExpected++;
   }
 
   // render() の終わりで入れ子の深さを戻し、いちばん外側が閉じたらパスの帰属を解除する。
@@ -139,38 +214,21 @@ export class GpuTimings {
     if (this.renderDepth === 0) this.outerPass = null;
   }
 
-  // 描画フェーズの末尾で呼ぶ。直近フレームのパス所要時間を要求し、届き次第 elapsedMs へ書く。
+  // 描画フェーズの末尾で呼ぶ。render / compute の時刻印を要求し、届き次第対応する集計へ書く。
   //
   // 呼ばない期間があるとレンダラ側の時刻印クエリが溜まって上限に当たるため、`enabled` に
   // かかわらず毎フレーム呼ぶこと。ゲート下にあるのは集計だけで、要求そのものではない。
   public resolve(): void {
     if (this.resolving) return;
     this.resolving = true;
-    this.resolvePromise = this.renderer.resolveTimestampsAsync(TimestampQuery.RENDER)
-      .then((ms) => {
-        if (ms === undefined) return;
-        this.available = true;
-        const pool = this.renderTimestampPool();
-        if (pool) {
-          const matches: Array<readonly [GpuPassId, number]> = [];
-          for (const [uid, duration] of pool.timestamps) {
-            const pass = this.passByUid.get(uid);
-            if (pass === undefined) continue;
-            matches.push([pass, duration]);
-            this.passByUid.delete(uid);
-          }
-          // 1件も一致しなかった(まだクエリが flush されていない)フレームは、前回までの
-          // 読みをそのまま残す。0 で塗り潰すのはここで初めて書き込むときだけ。
-          if (this.enabled && matches.length > 0) {
-            this.elapsedMs.fill(0);
-            // 1 つのパスが 1 フレームに何度も render() を呼ぶことがあるので、上書きではなく
-            // 足し合わせる。
-            for (const [pass, duration] of matches) this.elapsedMs[pass]! += duration;
-          }
-          // three は resolve のたびにここへ足すだけで自分では空にしないので、消費済みかどうかに
-          // 関わらず毎フレームここで空にする(さもないと無限に肥大化する)。
-          pool.timestamps.clear();
-        }
+    this.resolvePromise = Promise.all([
+      this.renderer.resolveTimestampsAsync(TimestampQuery.RENDER),
+      this.renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE),
+    ])
+      .then(([renderMs]) => {
+        if (renderMs !== undefined) this.available = true;
+        this.collectTimestamps(TimestampQuery.RENDER);
+        this.collectTimestamps(TimestampQuery.COMPUTE);
         // 解決されないまま残った uid が肥大化しないよう、閾値を超えたら一括破棄する。
         if (this.passByUid.size > PENDING_UID_CAP) this.passByUid.clear();
       })
@@ -193,19 +251,75 @@ export class GpuTimings {
     this.available = false;
     this.pendingPass = null;
     this.passByUid.clear();
+    this.renderFrameByUid.clear();
+    this.computeFrameByUid.clear();
+    this.observedFrames.clear();
+    this.latestObservedFrameId = null;
   }
 
   // 全パスの直近の所要時間 [ms] を、パス id の並びのまま写して返す。
   public snapshot(): GpuTimingSnapshot {
-    return { supported: this.available, elapsedMs: Array.from(this.elapsedMs) };
+    // 未解決 query が残る窓の部分和は total として公開しない。
+    const frame = this.latestObservedFrameId === null
+      ? undefined : this.observedFrames.get(this.latestObservedFrameId);
+    const renderComplete = frame !== undefined && frame.ended
+      && frame.renderResolved === frame.renderExpected;
+    const computeComplete = frame !== undefined && frame.ended
+      && frame.computeResolved === frame.computeExpected;
+    return {
+      supported: this.available,
+      elapsedMs: Array.from(this.elapsedMs),
+      observedRenderTotalMs: renderComplete ? frame.renderMs : null,
+      observedRenderExpectedQueryCount: frame?.renderExpected ?? 0,
+      observedRenderQueryCount: frame?.renderResolved ?? 0,
+      observedRenderComplete: renderComplete,
+      observedComputeTotalMs: computeComplete ? frame.computeMs : null,
+      observedComputeExpectedQueryCount: frame?.computeExpected ?? 0,
+      observedComputeQueryCount: frame?.computeResolved ?? 0,
+      observedComputeComplete: computeComplete,
+    };
   }
 
   // パス id の直近の所要時間 [ms]。
   public msOf(id: GpuPassId): number { return this.elapsedMs[id]!; }
 
-  // render 用の timestampQueryPool を返す。公開型に無い内部プロパティを読む唯一のキャスト箇所。
-  private renderTimestampPool(): RenderTimestampPool | undefined {
+  // WebGPU timestampQueryPool を読む唯一のキャスト箇所。Three の公開型にはこの内部プールが出てこない。
+  private collectTimestamps(type: typeof TimestampQuery.RENDER | typeof TimestampQuery.COMPUTE): void {
     const backend = this.renderer.backend as unknown as { timestampQueryPool: Record<string, RenderTimestampPool> };
-    return backend.timestampQueryPool[TimestampQuery.RENDER];
+    const pool = backend.timestampQueryPool[type];
+    if (!pool) return;
+    // Render は名前付き pass と窓全体へ、compute は窓全体へ振り分ける。
+    if (type === TimestampQuery.RENDER) {
+      const matches: (readonly [GpuPassId, number])[] = [];
+      for (const [uid, duration] of pool.timestamps) {
+        const frameId = this.renderFrameByUid.get(uid);
+        const frame = frameId === undefined ? undefined : this.observedFrames.get(frameId);
+        if (frame) {
+          frame.renderMs += duration;
+          frame.renderResolved++;
+          this.renderFrameByUid.delete(uid);
+        }
+        const pass = this.passByUid.get(uid);
+        if (pass !== undefined) {
+          matches.push([pass, duration]);
+          this.passByUid.delete(uid);
+        }
+      }
+      if (this.enabled && matches.length > 0) {
+        this.elapsedMs.fill(0);
+        for (const [pass, duration] of matches) this.elapsedMs[pass]! += duration;
+      }
+    } else {
+      for (const [uid, duration] of pool.timestamps) {
+        const frameId = this.computeFrameByUid.get(uid);
+        const frame = frameId === undefined ? undefined : this.observedFrames.get(frameId);
+        if (frame) {
+          frame.computeMs += duration;
+          frame.computeResolved++;
+          this.computeFrameByUid.delete(uid);
+        }
+      }
+    }
+    pool.timestamps.clear();
   }
 }

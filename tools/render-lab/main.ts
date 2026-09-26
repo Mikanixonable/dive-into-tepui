@@ -60,11 +60,17 @@ declare global {
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
       capture: () => Promise<string>;
+      show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
+      setDisplayTime: (displayTime: number) => void;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
+      graphicsSettings: () => Readonly<GraphicsSettingsData>;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
+      measureShot: (
+        name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
+      ) => Promise<LabMeasurement>;
     };
   }
 }
@@ -255,13 +261,17 @@ async function init(): Promise<void> {
     cases: CASE_NAMES,
     shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
     capture: () => view.capture(),
+    show: (name) => { view.show(name); syncAngles(); },
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
+    setDisplayTime: (displayTime) => view.setDisplayTime(displayTime),
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
     setGraphicsOption: (key, value) => {
       settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
     },
+    graphicsSettings: () => settings.graphics.current,
     measure: (name, angles) => view.measure(name, angles),
+    measureShot: (name, shotName, graphics) => view.measureShot(name, shotName, graphics),
   };
 }
 
