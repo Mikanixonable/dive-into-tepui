@@ -67,6 +67,7 @@ function requiredAnchors(definition) {
   const required = { ...(REQUIRED_ANCHORS[definition.kind] ?? {}) };
   if (definition.kind === 'weapon') {
     required['barrel-rotor:'] = definition.muzzles.length;
+    required['gun-recoil:'] = definition.muzzles.length;
     required['feed-sprocket:'] = 2;
     required['feed-drum'] = 1;
     required['feed-shoe'] = 1;
