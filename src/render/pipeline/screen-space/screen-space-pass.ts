@@ -83,8 +83,8 @@ export class ScreenSpacePass {
   private readonly sliceCount = uniform(1, 'int');
   private readonly stepCount = uniform(1, 'int');
   private readonly denoiseRadius = uniform(0, 'int');
-  // 走査が読むブルーノイズのずれ [タイルの幅]。0 以外の値は、同じ推定を独立な標本で繰り返すためのもの。
-  private readonly seed = uniform(0);
+  // 走査が読むブルーノイズの 2 次元のずれ [タイルの幅]。(0, 0) 以外の値は、同じ推定を独立な標本で繰り返すためのもの。
+  private readonly seed: Vec2Uniform = uniform(new THREE.Vector2(0, 0));
   // 描画バッファと走査の解像度 [px]。解像度の違う段どうしで、対応する画素を引くのに使う。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly scanSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
@@ -142,9 +142,9 @@ export class ScreenSpacePass {
     this.tier = tier;
   }
 
-  // 次の render から、走査が読むブルーノイズを seed [タイルの幅] だけずらす。
-  public setSeed(seed: number): void {
-    this.seed.value = seed;
+  // 次の render から、走査が読むブルーノイズを (x, y) [タイルの幅] だけずらす。
+  public setSeed(x: number, y: number): void {
+    this.seed.value.set(x, y);
   }
 
   // 1 フレームぶんを描く。G バッファと同じ寸法 width × height で、影パスの後・ライティングパスの前に呼ぶ。

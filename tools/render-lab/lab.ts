@@ -415,9 +415,9 @@ export class LabView {
     this.render();
   }
 
-  // 次に描くフレームから、近傍拡散補正の走査が読むブルーノイズを seed [タイルの幅] だけずらす。
-  public setScanSeed(seed: number): void {
-    this.pipeline.screenSpace.setSeed(seed);
+  // 次に描くフレームから、近傍拡散補正の走査が読むブルーノイズを (x, y) [タイルの幅] だけずらす。
+  public setScanSeed(x: number, y: number): void {
+    this.pipeline.screenSpace.setSeed(x, y);
     this.render();
   }
 
