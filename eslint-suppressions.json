@@ -1096,11 +1096,6 @@
       "count": 1
     }
   },
-  "src/render/dynamic/dynamic-entity/ejected-gun-part-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/dynamic/dynamic-entity/metal-enemy-view.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -1133,14 +1128,6 @@
   },
   "src/render/earth-surface-tile-queue.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/render/gpu-timings.ts": {
-    "@typescript-eslint/array-type": {
-      "count": 1
-    },
-    "no-restricted-syntax": {
       "count": 1
     }
   },
