@@ -3,7 +3,6 @@
 // 本文要素はコンストラクタの引数として注入する。
 // #hud 配下の window レイヤに配置するため、リセットスタイルを上書きできるようセレクタは `#hud` で始める。
 import { clampOverlayPosition } from '../layout';
-import { bringToFront as bringOverlayToFront } from '../overlay-layer';
 import { onViewportChange } from '../viewport';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
 import { Button, CloseButton } from '../widgets';
@@ -241,9 +240,10 @@ export class DraggableWindow implements OverlayHandle {
     this.onClipChange?.(clipped);
   }
 
-  // window レイヤ内で最前面にする。
+  // window レイヤ内で最前面にする。台帳の順も一緒に動くので、ESC・ショートカットの
+  // 配送先もこの窓が最前面になる。
   public bringToFront(): void {
-    bringOverlayToFront(this.element);
+    this.overlayManager.raise(this.overlayId);
   }
 
   // 現在位置を要求座標としてビューポート内へクランプし直す。内容の変化でサイズが伸びた
