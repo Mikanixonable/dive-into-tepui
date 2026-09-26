@@ -351,11 +351,6 @@
       "count": 1
     }
   },
-  "src/game/hud/frame/camera-frame-panel.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/game/hud/frame/frame-labels.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -414,16 +409,6 @@
   "src/game/hud/panels/reference-orbit-rows.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
-    }
-  },
-  "src/game/hud/panels/vessel-panel.ts": {
-    "no-restricted-syntax": {
-      "count": 2
-    }
-  },
-  "src/game/hud/touch-controls.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
     }
   },
   "src/game/hud/view-badge.ts": {
@@ -603,11 +588,6 @@
       "count": 1
     }
   },
-  "src/hud/utils.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/hud/widgets/pulldown.ts": {
     "@typescript-eslint/parameter-properties": {
       "count": 1
@@ -632,9 +612,6 @@
     }
   },
   "src/hud/windows/draggable-window.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 2
     }
@@ -671,11 +648,6 @@
   "src/launcher/save/save-transfer.ts": {
     "no-restricted-syntax": {
       "count": 1
-    }
-  },
-  "src/launcher/snapshot-controls.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
     }
   },
   "src/launcher/stage-select.ts": {
@@ -1167,9 +1139,6 @@
   "src/render/gpu-timings.ts": {
     "@typescript-eslint/array-type": {
       "count": 1
-    },
-    "no-restricted-syntax": {
-      "count": 1
     }
   },
   "src/render/instanced-pool.ts": {
@@ -1307,6 +1276,11 @@
     }
   },
   "src/render/pipeline/shadow/body-shadow.ts": {
+    "@typescript-eslint/explicit-member-accessibility": {
+      "count": 4
+    }
+  },
+  "src/render/pipeline/shadow/cloud-shadow-renderer.ts": {
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 4
     }
@@ -1553,14 +1527,6 @@
   },
   "tests/physics/body-orientation.test.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "tests/physics/celestial-eci-baseline.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   },

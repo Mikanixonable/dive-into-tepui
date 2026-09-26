@@ -1,7 +1,7 @@
 // 材質と較正のケース。粗さと金属度・アルベドを振った球の格子で天体照の映り込み・恒星の見え方・放射照度の
 // 較正と日食を読む試験体と、温度による自照を読む試験体を組む。
 import * as THREE from 'three/webgpu';
-import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
+
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
@@ -187,9 +187,6 @@ const BLACKBODY_GRADIENT_DEVIATION = 550;
 const BLACKBODY_SHIP_TEMPERATURE = 1400;
 // 1 本の InstancedMesh へ積む枝の温度 [K]。
 const BLACKBODY_INSTANCE_TEMPERATURES = [1200, 1300, 1400, 1500, 1600, 1700];
-// 96 発を撃ち切って排出された直後の砲身。平均温度 [K] と、薬室側が平均より高い温度差 [K]。
-const BLACKBODY_BARREL_TEMPERATURE = 887;
-const BLACKBODY_BARREL_DEVIATION = 619;
 
 // 赤熱を読むための、暗くつや消しの試験体マテリアル。反射で自照が埋もれないアルベドに取る。
 function blackbodyMaterial(shaped: boolean, source: ThermalSource = 'object'): THREE.MeshStandardNodeMaterial {
@@ -260,12 +257,6 @@ function blackbody(): LabCase {
   markLitOpaque(bar);
   objects.push(bar);
   objects.push(blackbodyInstancedRow(new THREE.Vector3(-14, -8, -BLACKBODY_DEPTH), 3));
-  // 排出直後の砲身。**赤熱が薬室から砲口へ向かって連続して落ちる**ことを見る。
-  const barrel = buildBarrelMesh();
-  barrel.position.set(0, 6, -20);
-  barrel.rotation.set(0, Math.PI / 2, 0.06);
-  syncThermalState(barrel, BLACKBODY_BARREL_TEMPERATURE, BLACKBODY_BARREL_DEVIATION, HULL_EMISS);
-  objects.push(barrel);
   // 艦 1 隻を同じ絵へ。**モデルから読んだマテリアルにも温度が届く**ことを見る。
   const heatedShip = shipAt(new THREE.Vector3(22, -15, -50), SHIP_ROTATION_PORT);
   syncThermalState(heatedShip, BLACKBODY_SHIP_TEMPERATURE, 0, HULL_EMISS);

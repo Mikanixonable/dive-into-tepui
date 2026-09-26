@@ -5,11 +5,12 @@
 // 分離した成分(src/assets の仮テクスチャと .cloud-lab/separated/)を読み、撮影の面(全球の
 // 正距円筒と cap の正射影)へ再標本化して成分ごとに比べる。**先に separate を実行しておく。**
 // 再標本化した実写厚・実写薄も画像で .cloud-lab/compare/ に残る。
-// 台風は 8k_clouds に写っていないので、`npm run cloud-lab:reference` が取り込んだ Worldview の実写
+// 台風は 8k_clouds に写っていないので、`npm run cloud-lab:reference` が登録した Worldview の実写
 // (.cloud-lab/reference/)を cap の面へ再標本化して比べる。無ければその節だけ飛ばす。
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
+import { verifyMawarReference } from './cloud-reference/acquire-aux.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
 import { cropField, cropLatLonBox, decodeChannelPng, decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
 import { decodePng } from './png.mjs';
@@ -664,8 +665,6 @@ async function main() {
 
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
-    // 実写比較は制御実験ではなく、本番と同じ生成場に対して行う。
-    await devTools.evaluate('window.cloudLab.clearFixture()');
     await devTools.evaluate('window.cloudLab.setTime(0)');
     cyclonesAtZero = JSON.parse(await devTools.evaluate('JSON.stringify(window.cloudLab.cyclonesAt(0))'));
     for (const region of REGIONS) {
@@ -939,6 +938,12 @@ async function main() {
     const typhoon = REGIONS.find((region) => region.coreRadiusKm !== null);
     const typhoonCap = caps.get(typhoon.name);
     for (const entry of JSON.parse(readFileSync(referenceIndex, 'utf8'))) {
+      if (entry.name === 'mawar') {
+        if (entry.file !== 'reference/tropical-cyclone-mawar-2023-05-25/mawar.png') {
+          throw new Error('Mawar reference index must use the verified source image');
+        }
+        verifyMawarReference(root);
+      }
       const luminance = decodeLuminancePng(readFileSync(path.join(root, entry.file)));
       const referenceCap = resampleCap(luminance, entry.bbox, entry.center.latitude, entry.center.longitude);
       saveGray(`typhoon-reference-${entry.name}.png`, referenceCap);

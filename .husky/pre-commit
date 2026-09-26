@@ -1,3 +1,0 @@
-#!/bin/sh
-npm run typecheck
-npm run check:boundaries

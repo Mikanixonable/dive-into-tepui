@@ -232,6 +232,7 @@ npm outdated
 | `npm run cloud-lab:compare` | 生成と実写の統計比較(`.cloud-lab/compare/`) | 雲の生成を実写(8k_clouds)と見比べるとき |
 | `npm run cloud-lab:separate` | 実写を被覆率・雲頂高度・薄い雲へ推定分離(`.cloud-lab/separated/`) | 実写から描画用の仮テクスチャを作るとき |
 | `npm run export-assets` | `src/assets/` の焼き込みアセット再生成 | モデルかノズル表を変えたときだけ |
+| `npm run ship-modules:author` | Blender で船モジュールの原型 `assets-src/ship-modules/*.glb` を再生成(続けて `export-assets`) | 船モジュールの造形か寸法を変えたときだけ |
 
 `npm run export-assets` は実行のたびに全アセットの識別子が振り直されるため、差分が識別子だけの
 ファイルは commit せず戻す。

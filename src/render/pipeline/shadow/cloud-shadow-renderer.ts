@@ -6,13 +6,10 @@ import {
   sqrt, uniform, vec4,
 } from 'three/tsl';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
-import { cloudQualityPolicy } from '../../cloud/cloud-quality';
 import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
-import {
-  CLOUD_LIQUID_EDGE_M,
-  CloudDensityEvaluator,
-} from '../../cloud/cloud-density-evaluator';
+import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
+import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 
@@ -43,13 +40,12 @@ export class CloudShadowRenderer {
   private readonly topAltitude: FloatUniform;
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
-  private readonly detailFootprintScale: FloatUniform;
-  // 雲場の読み取りと3D密度式は共有入力層へ置く。ここは太陽光路の透過率だけを所有する。
+  // 雲場の読み取りと形状式は共有入力層へ置く。ここは太陽光路の透過率だけを所有する。
   private readonly fieldSampler = new CloudFieldSampler();
-  private readonly density: CloudDensityEvaluator;
+  private readonly shape: CloudShapeEvaluator;
 
   // 殻 1 体ぶんの uniform を確保する。殻の有無は active で切るので、グラフの形は変わらない。
-  public constructor(private readonly sunLight: SunLight) {
+  constructor(private readonly sunLight: SunLight) {
     this.center = uniform(new THREE.Vector3());
     this.surfaceRadius = uniform(0);
     // 場を持たないフレームでも殻の空間への写しは走るので、半軸は 0 で割らない値から始める。
@@ -57,12 +53,11 @@ export class CloudShadowRenderer {
     this.topAltitude = uniform(0);
     this.bodyFromWorld = uniform(new THREE.Matrix4());
     this.active = uniform(0);
-    this.detailFootprintScale = uniform(1);
-    this.density = new CloudDensityEvaluator(this.surfaceRadius);
+    this.shape = new CloudShapeEvaluator(this.surfaceRadius.div(CUMULUS_GRAIN_SIZE));
   }
 
   // このフレームに影を落とす殻。null なら雲の影は落ちない。
-  public set(cumulus: ShadowCumulus | null): void {
+  set(cumulus: ShadowCumulus | null): void {
     this.active.value = cumulus === null ? 0 : 1;
     if (cumulus === null) return;
     this.center.value.copy(cumulus.center);
@@ -74,21 +69,17 @@ export class CloudShadowRenderer {
   }
 
   // このフレームに積雲の殻の影があるか。
-  public casts(): boolean { return this.active.value > 0; }
-
-  public setQuality(level: number): void {
-    this.detailFootprintScale.value = cloudQualityPolicy(level).detailFootprintScale;
-  }
+  casts(): boolean { return this.active.value > 0; }
 
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
   // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
   //
-  // 柱の光学的厚みも覆いの形も表面・大気と同じ CloudDensityEvaluator から引くので、
-  // 影は同じ3D support の下へ落ちる。消散係数 [1/m] を実光路長で積分するため、鉛直に抜ければ
-  // 柱光学深さ τ、斜めに抜ければ通過距離に応じてそれより大きい slant optical depth になる。
+  // 柱の光学的厚みも覆いの形も殻が雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、
+  // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配分するので、柱を 1 本抜ける
+  // 合計はどれだけ斜めでも τ に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
   // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、粒の振幅を決める。
-  public transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
+  transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
     const sunDir = this.sunLight.directionFrom(worldPos);
     return Fn(() => {
       const transmittance = float(1).toVar();
@@ -109,9 +100,9 @@ export class CloudShadowRenderer {
         const stepLength = clamp(exit, 0, MAX_LIGHT_PATH).div(SHADOW_TAPS);
         // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
         // 実寸と光路 1 歩の長さのうち粗いほうを取る。粒の振幅はこの幅が決める。
-        const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR))
-          .mul(this.detailFootprintScale);
-        const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius, sampleWidth);
+        const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
+        const grainAmplitude = this.shape.grainAmplitudeForWidth(sampleWidth).toVar();
+        const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
         Loop({ start: 0, end: SHADOW_TAPS, type: 'int', condition: '<' }, ({ i }) => {
@@ -120,11 +111,23 @@ export class CloudShadowRenderer {
           const up = sampleOffset.div(sampleRadius);
           const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
           const cloud = this.fieldAt(up);
-          // 表面雲・大気雲と同じ3D消散係数を実距離で積分する。2 km detailはsampleWidthで
-          // 自動的に帯域制限されるため、粗い光路で高周波だけがエイリアスすることもない。
-          const density = this.density.sample(cloud, up, altitude, sampleWidth);
-          opticalDepth.addAssign(density.extinctionPerM.mul(stepLength));
+          // 粒は引けるときだけ引く。タップの数だけノイズを引くので、振幅が 0 になる遠さでは分岐ごと
+          // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
+          const grain = float(0).toVar();
+          If(greaterThan(grainAmplitude, 0), () => {
+            grain.assign(this.shape.grainAt(up, grainAmplitude));
+          });
+          const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
+          const rise = max(dot(rayDir, up), 0).mul(stepLength);
+          const columnDepth = this.shape.columnOpticalDepth(this.shape.opaqueFraction(cloud.coverage, grain));
+          // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
+          // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
+          const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
+          opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1)));
         });
+        // 局所光学場が張る域では、場を抜ける光路の消散を柱の推定へ足す。場は受け手から恒星へ
+        // 向かう同じ殻の空間の光路で積分する — 未結合では 0 を返すので分岐は要らない。
+        opticalDepth.addAssign(this.fieldSampler.localOpticalPathAt(offset, rayDir, 32).z);
         transmittance.assign(exp(opticalDepth.negate()));
       });
       return transmittance;
@@ -148,13 +151,11 @@ export class CloudShadowRenderer {
   // 光路のタップの高度に張る床 [m]。受け手が自分の柱の雲頂の高さにあるなら、その雲頂の高さ。
   // offset は天体中心から受け手へのベクトル(殻の空間)、bodyRadius は殻の空間の半径 1 が
   // 張る高度の目盛り [m]。
-  private receiverFloorAltitude(
-    offset: Vec3Node, bodyRadius: FloatNode, footprintM: FloatNode,
-  ): FloatNode {
+  private receiverFloorAltitude(offset: Vec3Node, bodyRadius: FloatNode): FloatNode {
     const radius = max(length(offset), 1e-6);
     const altitude = max(radius.sub(1), 0).mul(bodyRadius);
-    const up = offset.div(radius);
-    const top = this.density.liquidTopM(this.fieldAt(up), up, footprintM);
-    return select(greaterThan(altitude, top.sub(CLOUD_LIQUID_EDGE_M)), top, float(0));
+    const top = this.fieldAt(offset.div(radius)).cloudTop.div(CLOUD_TOP_SPAN).mul(this.topAltitude);
+    const uncertainty = this.topAltitude.mul(CloudShapeEvaluator.cloudTopUncertainty);
+    return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
   }
 }

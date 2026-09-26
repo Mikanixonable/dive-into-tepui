@@ -1,163 +1,75 @@
-// 気候から表示時刻の雲場を焼く所有者。二時刻キャッシュを補間して、時間加速や時刻ジャンプでも
-// 同じ時刻問い合わせが同じ結果を返す。中間気象場は各キャッシュ時刻の生成時だけ焼き直す。
-import * as THREE from 'three/webgpu';
-import { dot, fract, mix, select, sin, uniform, vec3 } from 'three/tsl';
-import { BakedField } from '../baked-field';
-import { GPU_PASS } from '../gpu-timings';
-import { CloudField, type CloudSampleTransform } from './cloud-field';
-import {
-  cloudFieldTexelFromSample, cloudSampleFromTexel, type CloudSample,
-} from './cloud-field-sample';
-import {
-  cloudTemporalAveragePlan,
-  cloudTemporalCachePlan,
-  cloudTemporalSampleTimes,
-  cloudUsesTemporalAverage,
-} from './cloud-quality';
+// 気候から表示時刻の雲場を焼く所有者。気候・天気の中間場・出力場を同じ寿命で管理する。
+import type * as THREE from 'three/webgpu';
+import { CloudField } from './cloud-field';
 import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { ClimateMap } from './climate-map';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from '../field-projection';
+import type { CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
-import type { FloatUniform, Vec3Node } from '../tsl-types';
+import type { Vec3Node } from '../tsl-types';
 
 export class GeneratedCloudField implements CloudFieldSource {
   private readonly model: WeatherModel;
-  private readonly fieldA: CloudField;
-  private readonly fieldB: CloudField;
-  private readonly blended: BakedField;
-  private readonly blendAtoB: FloatUniform = uniform(0);
-  private readonly temporalAverageMode: FloatUniform = uniform(0);
-  private timeA: number | null = null;
-  private timeB: number | null = null;
-  private cachedClimateGeneration: number | null = null;
-  private cachedProjectionRevision: number | null = null;
-  private lastPreparedDisplayTime: number | null = null;
-  private lastPreparedTemporalExposure: number | null = null;
-  private qualityLevel = 2;
+  private readonly field: CloudField;
+  // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
+  private lastBakedDisplayTime: number | null = null;
+  // 最後に焼いたときの気候の世代。読む画像が変われば、同じ表示時刻でも焼き直す。
+  private lastBakedClimateGeneration: number | null = null;
+  // 最後に焼いたときの投影の版。置き方が変われば、同じ表示時刻でも焼き直す。
+  private lastBakedProjectionRevision: number | null = null;
   private generationValue = 0;
 
+  // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
+  // 半径 [m]、rotationPeriod はその自転周期 [s]。
   public constructor(
     private readonly climate: ClimateMap, private readonly projection: FieldProjection,
     surfaceRadius: number, rotationPeriod: number,
-    private readonly transform?: CloudSampleTransform,
   ) {
     this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
-    this.fieldA = new CloudField(this.model, projection, transform);
-    this.fieldB = new CloudField(this.model, projection, transform);
-    this.blended = new BakedField(
-      'cloud-temporal',
-      THREE.RGBAFormat,
-      projection,
-      (direction) => {
-        const a = cloudFieldTexelFromSample(this.fieldA.at(direction));
-        const b = cloudFieldTexelFromSample(this.fieldB.at(direction));
-        const interpolated = mix(a, b, this.blendAtoB);
-        // 高速時間の平均は雲量・雲頂を直接平均せず、前半/後半の瞬間場のどちらかを
-        // 天体固定の位置ごとに決定的に選ぶ。これにより後段の透過・影は必ず一つの瞬間場を評価する。
-        const selector = fract(sin(dot(
-          direction.mul(4096),
-          vec3(12.9898, 78.233, 37.719),
-        )).mul(43758.5453));
-        const averaged = select(selector.lessThan(this.blendAtoB), b, a);
-        return mix(interpolated, averaged, this.temporalAverageMode);
-      },
-      GPU_PASS.cloudBake,
-    );
+    this.field = new CloudField(this.model, projection);
   }
 
-  public get texture(): THREE.Texture { return this.blended.texture; }
+  // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
+  public get texture(): THREE.Texture { return this.field.texture; }
   public get generation(): number { return this.generationValue; }
 
-  public at(direction: Vec3Node): CloudSample {
-    return cloudSampleFromTexel(this.blended.at(direction));
-  }
+  // 最後に焼いた表示時刻 [s]。一度も焼いていない間は 0。prepare で天気のモデルへ
+  // 同期した時刻と同じ値で、CPU 経路が同じ時刻の天気を引くときに使う。
+  public get displayTimeSeconds(): number { return this.lastBakedDisplayTime ?? 0; }
 
+  // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。
+  public at(direction: Vec3Node): CloudSample { return this.field.at(direction); }
+
+  // この場を焼く天気のモデル・気候・投影。prepare で焼いた中間場を読むときに使い、寿命はこのクラスが持つ。
   public get weatherModel(): WeatherModel { return this.model; }
   public get climateMap(): ClimateMap { return this.climate; }
   public get fieldProjection(): FieldProjection { return this.projection; }
 
-  public setQuality(level: number): void {
-    if (level === this.qualityLevel) return;
-    // 品質値の検証と時間ポリシーの正本は cloud-quality.ts に置く。
-    cloudTemporalSampleTimes(0, level);
-    this.qualityLevel = level;
-    this.lastPreparedDisplayTime = null;
-    this.lastPreparedTemporalExposure = null;
-  }
-
-  public prepare(
-    renderer: WebGPURenderer,
-    displayTime: number,
-    gpu?: GpuTimingSink,
-    temporalExposureSeconds = 0,
-  ): void {
+  // 表示時刻の雲場を、天気の中間場から順に焼く。
+  public prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+    // 気候画像の取得を始める。
     this.climate.request();
+    // 表示時刻・気候の入力・投影の置き方が前回と同じなら、焼いた場をそのまま使う。
     const climateGeneration = this.climate.generation;
     const projectionRevision = this.projection.revision;
-    const sourceChanged = climateGeneration !== this.cachedClimateGeneration
-      || projectionRevision !== this.cachedProjectionRevision;
-    if (sourceChanged) {
-      this.timeA = null;
-      this.timeB = null;
-      this.lastPreparedDisplayTime = null;
-      this.lastPreparedTemporalExposure = null;
-      this.cachedClimateGeneration = climateGeneration;
-      this.cachedProjectionRevision = projectionRevision;
-    }
-    if (!Number.isFinite(temporalExposureSeconds) || temporalExposureSeconds < 0) {
-      throw new RangeError('temporalExposureSeconds must be non-negative and finite');
-    }
-    if (
-      this.lastPreparedDisplayTime === displayTime
-      && this.lastPreparedTemporalExposure === temporalExposureSeconds
-      && !sourceChanged
-    ) return;
-
-    const cacheState = { timeA: this.timeA, timeB: this.timeB };
-    const temporalAverage = cloudUsesTemporalAverage(temporalExposureSeconds, this.qualityLevel);
-    const plan = temporalAverage
-      ? cloudTemporalAveragePlan(displayTime, temporalExposureSeconds, cacheState)
-      : cloudTemporalCachePlan(displayTime, this.qualityLevel, cacheState);
-    for (const write of plan.writes) {
-      this.renderSlot(renderer, write.slot, write.timeSeconds, gpu);
-    }
-    this.blendAtoB.value = plan.blendAtoB;
-    this.temporalAverageMode.value = temporalAverage ? 1 : 0;
-    this.blended.render(renderer, gpu);
+    if (this.lastBakedDisplayTime === displayTime
+      && this.lastBakedClimateGeneration === climateGeneration
+      && this.lastBakedProjectionRevision === projectionRevision) return;
+    // 天気の中間場から雲場まで順に焼く。
     this.model.syncTime(displayTime);
-    this.generationValue += 1;
-    this.lastPreparedDisplayTime = displayTime;
-    this.lastPreparedTemporalExposure = temporalExposureSeconds;
-  }
-
-  public invalidate(): void {
-    this.timeA = null;
-    this.timeB = null;
-    this.lastPreparedDisplayTime = null;
-    this.lastPreparedTemporalExposure = null;
-  }
-
-  private renderSlot(
-    renderer: WebGPURenderer, slot: 'A' | 'B', timeSeconds: number, gpu?: GpuTimingSink,
-  ): void {
-    this.transform?.syncTime?.(timeSeconds);
-    this.model.syncTime(timeSeconds);
     this.model.bake(renderer, gpu);
-    if (slot === 'A') {
-      this.fieldA.render(renderer, gpu);
-      this.timeA = timeSeconds;
-    } else {
-      this.fieldB.render(renderer, gpu);
-      this.timeB = timeSeconds;
-    }
+    this.field.render(renderer, gpu);
+    this.generationValue += 1;
+    this.lastBakedDisplayTime = displayTime;
+    this.lastBakedClimateGeneration = climateGeneration;
+    this.lastBakedProjectionRevision = projectionRevision;
   }
 
+  // 保持している雲場を解放する。
   public dispose(): void {
-    this.blended.dispose();
-    this.fieldA.dispose();
-    this.fieldB.dispose();
+    this.field.dispose();
     this.model.dispose();
     this.climate.dispose();
   }

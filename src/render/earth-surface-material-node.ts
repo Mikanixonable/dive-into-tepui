@@ -3,7 +3,8 @@ import {
   exp2, float, floor, Fn, greaterThanEqual, If, int, max, min, mix, normalize, select, texture, vec2, vec4,
 } from 'three/tsl';
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
-import { earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
+import { earthSurfaceNormalFromRadialNode, earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
+import { EARTH_WATER_ROUGHNESS } from './earth-surface-material';
 import { configureEarthSurfaceTexture } from './earth-surface-texture';
 import {
   EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
@@ -101,6 +102,10 @@ function sampleLodTexture(
   })() as Vec4Node;
 }
 
+// 粗さチャンネルが水クラス(0.05)そのものの画素だけを通す閾値。地形テクスチャは A8 に
+// 量子化されるので、13/255 の水の値だけを拾い、粗さが混ざる陸・氷の画素は外す。
+const WATER_ROUGHNESS_LIMIT = EARTH_WATER_ROUGHNESS + 1 / 255;
+
 // 線形補間されたRGBを天体固定の単位法線へ戻す。
 export function decodeEarthSurfaceNormalNode(encoded: Vec3Node): Vec3Node {
   return normalize(encoded.mul(2).sub(1));
@@ -132,8 +137,14 @@ export function earthSurfaceMaterialNodes(
     textures.terrain, textures.baseTerrain, uv, z, layer, parentLayer, fade,
   );
   const normalBody = decodeEarthSurfaceNormalNode(terrain.rgb);
-  const normalView = normalize(inputs.bodyToView.mul(normalBody));
-  const normalNode = select(inputs.schematic, inputs.geometricNormalView, normalView);
+  const terrainNormalView = normalize(inputs.bodyToView.mul(normalBody));
+  // 水域では地形法線のテクセルを使わず、同じ放射方向から解析的に求めた楕円体法線へ切り替える
+  // — 標本化された法線場では、滑らかな水面の鏡面反射がテクセルの格子上で折れて見える。
+  const water = terrain.a.lessThan(WATER_ROUGHNESS_LIMIT);
+  const ellipsoidNormalView = normalize(inputs.bodyToView.mul(
+    earthSurfaceNormalFromRadialNode(inputs.bodyDirection, inputs.axes)));
+  const surfaceNormalView = select(water, ellipsoidNormalView, terrainNormalView);
+  const normalNode = select(inputs.schematic, inputs.geometricNormalView, surfaceNormalView);
 
   return { colorNode, roughnessNode: terrain.a, normalNode };
 }

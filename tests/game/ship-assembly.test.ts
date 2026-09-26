@@ -3,11 +3,12 @@ import { qFromUnitVectors, qRotate, LOCAL_FORWARD, LOCAL_UP } from '../../src/ma
 import { add, scale, v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
+import { ShipCapabilities } from '../../src/game/ship/ship-capabilities';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { restoreShipAssembly, serializeShipAssembly } from '../../src/game/ship/ship-save';
-import { sameTransform, sideSlotRotation } from '../../src/game/ship/ship-assembly-transform';
+import { sameTransform, sideMountTransform, sideSlotRotation } from '../../src/game/ship/ship-assembly-transform';
 import { test } from '../harness';
 
 function module(definitionId: string, id: string, state = {}) {
@@ -253,10 +254,11 @@ export function register(): void {
     assert.equal(restored.validate().valid, true);
     const edge = restored.graph.find(c => c.id === 'connection-8');
     assert.ok(edge !== undefined);
-    const expected = {
-      position: v3(-3.5, 0, 0),
-      rotation: sideSlotRotation('side:-x'),
-    };
+    const expected = sideMountTransform(
+      SHIP_MODULE_CATALOG.get('cockpit-standard')!,
+      SHIP_MODULE_CATALOG.get('solar-panel-standard')!,
+      'side:-x',
+    );
     assert.equal(sameTransform(edge.childTransform, expected), true);
   });
 
@@ -325,17 +327,15 @@ export function register(): void {
     assert.ok(Math.abs(fwdMinusX.x - (-1.0)) < 1e-9);
   });
 
-  test('ship assembly: 戦闘艦プリセットの機関砲は船首に位置し、マズルオフセットと整合する', () => {
+  test('ship assembly: 戦闘艦プリセットは機首前面に砲口を持つ', () => {
     const assembly = createDefaultCombatPreset();
-    const weaponTransform = assembly.worldTransformOf('weapon');
-    assert.ok(weaponTransform !== null);
-    // コックピット(center 0, length 3)の前方に接続され、z = +2.0m
-    assert.equal(weaponTransform.position.z, 2.0);
-
-    // 機関砲のマズルはモジュール前端(z = +0.5m)から突き出た z = +0.55m
-    const worldMuzzleZ = weaponTransform.position.z + 0.55;
-    // 物理システム側の PLAYER_MUZZLE_OFFSETS (z = 2.55m) と一致
-    assert.ok(Math.abs(worldMuzzleZ - 2.55) < 1e-9);
+    const muzzles = new ShipCapabilities(assembly).weaponMuzzles();
+    assert.equal(muzzles.length, 1);
+    const bow = Math.max(...assembly.modules.map((module) => {
+      const transform = assembly.worldTransformOf(module.id)!;
+      return transform.position.z + assembly.definition(module.id)!.length / 2;
+    }));
+    for (const muzzle of muzzles) assert.ok(muzzle.position.z > bow, `muzzle z ${muzzle.position.z} behind bow ${bow}`);
   });
 
   test('ship assembly: 側面接続された dock/port 同士のドッキングで逆流エッジ (sideReversed) を正しく保持し、合体・保存復元・切り離しができる', () => {

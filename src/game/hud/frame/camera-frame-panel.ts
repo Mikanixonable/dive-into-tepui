@@ -3,7 +3,7 @@
 import { frameRoleOf } from '../../../physics/frame';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import {
-  CameraReferencePlane, CameraReferenceView, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX,
+  type CameraReferencePlane, type CameraReferenceView, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX,
   type CameraRotationFollow,
 } from '../../viewer/focus-camera-selection';
 import { AnchorZone } from './anchor-zone';
@@ -46,6 +46,15 @@ export interface CameraFrameCommands extends CameraRotationModeCommands {
   setReferenceView(view: CameraReferenceView): void;
 }
 
+// buildFovControl が組み立てた画角行の部品一式。
+interface CameraFovDom {
+  readonly element: HTMLElement;
+  readonly slider: Slider;
+  readonly input: ValueInput;
+  readonly resetButton: Button;
+  readonly note: HTMLElement;
+}
+
 export class CameraFramePanel {
   private readonly panel: HTMLElement;
   private readonly cameraCenterZone: AnchorZone;
@@ -55,6 +64,7 @@ export class CameraFramePanel {
   private readonly fovSlider: Slider;
   private readonly fovInput: ValueInput;
   private readonly fovResetButton: Button;
+  private readonly fovNote: HTMLElement;
   private readonly angleControl: Pulldown<typeof ANGLE_COLUMNS>;
   private readonly stateFocus: HTMLElement;
   private readonly stateLens: HTMLElement;
@@ -126,33 +136,12 @@ export class CameraFramePanel {
     });
     controls.appendChild(this.projectionToggle.element);
 
-    const fovGroup = document.createElement('div');
-    fovGroup.className = 'camera-fov-control';
-    const fovLabel = document.createElement('span');
-    fovLabel.className = 'camera-control-label';
-    fovLabel.textContent = '画角';
-    fovGroup.appendChild(fovLabel);
-    this.fovSlider = new Slider({
-      min: FOCUS_CAMERA_FOV_MIN,
-      max: FOCUS_CAMERA_FOV_MAX,
-      step: FOCUS_CAMERA_FOV_STEP,
-    }, (value) => commands.setFovDeg(value));
-    fovGroup.appendChild(this.fovSlider.element);
-    this.fovInput = new ValueInput({
-      type: 'number',
-      min: FOCUS_CAMERA_FOV_MIN,
-      max: FOCUS_CAMERA_FOV_MAX,
-      step: FOCUS_CAMERA_FOV_STEP,
-    }, (text) => commands.setFovDeg(Number(text)));
-    fovGroup.appendChild(this.fovInput.element);
-    const fovUnit = document.createElement('span');
-    fovUnit.className = 'camera-control-unit';
-    fovUnit.textContent = '°';
-    fovGroup.appendChild(fovUnit);
-    this.fovResetButton = new Button('リセット', () => commands.resetFov());
-    this.fovResetButton.element.title = '画角をデフォルトに戻す';
-    fovGroup.appendChild(this.fovResetButton.element);
-    controls.appendChild(fovGroup);
+    const fov = this.buildFovControl(commands);
+    this.fovSlider = fov.slider;
+    this.fovInput = fov.input;
+    this.fovResetButton = fov.resetButton;
+    this.fovNote = fov.note;
+    controls.appendChild(fov.element);
 
     // 面を確定させてから視点をジャンプさせる——真上/真横は現在の基準面からの相対視点のため。
     this.angleControl = new Pulldown('角度', ANGLE_COLUMNS, 'セット', ([plane, view]) => {
@@ -162,6 +151,42 @@ export class CameraFramePanel {
     this.angleControl.element.classList.add('camera-angle-group');
     controls.appendChild(this.angleControl.element);
 
+  }
+
+  // 画角のスライダー・数値入力・リセット・平行投影時の注記を一行に組む。
+  // 平行投影で効かない理由はホバー説明に置かず、常時表示の注記で示す。
+  private buildFovControl(commands: CameraFrameCommands): CameraFovDom {
+    const element = document.createElement('div');
+    element.className = 'camera-fov-control';
+    const label = document.createElement('span');
+    label.className = 'camera-control-label';
+    label.textContent = '画角';
+    element.appendChild(label);
+    const slider = new Slider({
+      min: FOCUS_CAMERA_FOV_MIN,
+      max: FOCUS_CAMERA_FOV_MAX,
+      step: FOCUS_CAMERA_FOV_STEP,
+    }, (value) => commands.setFovDeg(value));
+    element.appendChild(slider.element);
+    const input = new ValueInput({
+      type: 'number',
+      min: FOCUS_CAMERA_FOV_MIN,
+      max: FOCUS_CAMERA_FOV_MAX,
+      step: FOCUS_CAMERA_FOV_STEP,
+    }, (text) => commands.setFovDeg(Number(text)));
+    element.appendChild(input.element);
+    const unit = document.createElement('span');
+    unit.className = 'camera-control-unit';
+    unit.textContent = '°';
+    element.appendChild(unit);
+    const resetButton = new Button('リセット', () => commands.resetFov());
+    resetButton.element.title = '画角をデフォルトに戻す';
+    element.appendChild(resetButton.element);
+    const note = document.createElement('small');
+    note.className = 'camera-fov-note hidden';
+    note.textContent = '平行投影では画角は使用しません';
+    element.appendChild(note);
+    return { element, slider, input, resetButton, note };
   }
 
   private focusLabel(view: CameraFrameViewModel): string {
@@ -193,6 +218,7 @@ export class CameraFramePanel {
     this.fovResetButton.setEnabled(!isOrthographic);
     this.fovSlider.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
     this.fovInput.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
+    this.fovNote.classList.toggle('hidden', !isOrthographic);
     this.fovSlider.setValue(view.fovDeg);
     if (document.activeElement !== this.fovInput.element) {
       this.fovInput.setValue(view.fovDeg.toFixed(0));

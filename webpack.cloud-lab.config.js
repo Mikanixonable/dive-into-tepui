@@ -26,6 +26,22 @@ module.exports = {
         test: /\.(png|jpe?g)$/,
         type: 'asset/resource',
       },
+      {
+        test: /\.cube$/,
+        type: 'asset/source',
+      },
+      {
+        // 船モジュールの統合 GLB バイナリは main JS へ埋め込まず、起動時に fetch する。
+        test: /\.(glb|gltf)$/,
+        type: 'asset/resource',
+        generator: { filename: 'assets/[hash][ext]' },
+      },
+      {
+        test: /(Backbone|Structure|Motion)\.json$/,
+        include: path.resolve(__dirname, 'src/assets/models'),
+        type: 'asset/resource',
+        generator: { filename: 'assets/[hash][ext]' },
+      },
     ],
   },
   output: {

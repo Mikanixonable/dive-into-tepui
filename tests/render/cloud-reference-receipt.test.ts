@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from '../harness';
@@ -63,6 +63,27 @@ export function register(): void {
       assert.equal(result.code, 0);
       assert.deepEqual(result.result, { status: 'verified', netcdfFileCount: 2, errors: [] });
     });
+  });
+
+  test('cloud reference receipt: a manifest-pinned digest is required before evaluation', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'cloud-reference-pinned-receipt-'));
+    try {
+      writeNetcdf(directory, 'frame.nc', 'data');
+      writeReceipt(directory, { 'frame.nc': 'data' });
+      const pinnedDigest = digest(readFileSync(join(directory, 'SHA256SUMS'), 'utf8'));
+      const verified = spawnSync(process.execPath, [VERIFY_SCRIPT, '--sha256', pinnedDigest, directory], {
+        encoding: 'utf8',
+      });
+      assert.equal(verified.status, 0, verified.stderr);
+      assert.equal((JSON.parse(verified.stdout) as ReceiptVerification).status, 'verified');
+      const mismatched = spawnSync(process.execPath, [VERIFY_SCRIPT, '--sha256', '0'.repeat(64), directory], {
+        encoding: 'utf8',
+      });
+      assert.equal(mismatched.status, 1, mismatched.stderr);
+      assert.match((JSON.parse(mismatched.stdout) as ReceiptVerification).errors.join(' '), /digest mismatch/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   test('cloud reference receipt: missing receipt is blocked rather than passed', () => {

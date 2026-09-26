@@ -210,7 +210,7 @@ export class ShipConstruction implements OverlayHandle {
     const draft = this.current;
     const candidate = this.selectedCandidate();
     if (draft === null || candidate === null || !candidate.placement.valid) {
-      if (candidate?.placement.reason) this.notifier.hint(candidate.placement.reason);
+      if (candidate?.placement.reason) this.notifier.hint(candidate.placement.reason, undefined, 'warn');
       return;
     }
     let id: string;

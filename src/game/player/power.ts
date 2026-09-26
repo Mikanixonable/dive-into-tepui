@@ -3,7 +3,7 @@ import type { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
 import { type Vec3, dot } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/astronomical-unit';
-import { solarPanelLayout } from '../../physics/ship-panel-layout';
+import { deployablePanelPoses } from '../../physics/ship-panel-layout';
 import { SOLAR_MODULE_GENERATION, SOLAR_PANEL_COUNT } from '../../physics/player-shape';
 import type { ShipAssembly } from '../ship/ship-assembly';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
@@ -127,7 +127,7 @@ export class PowerSystem {
         if (state === undefined || transform === null || definition === null) continue;
         state.update(dt, 3);
         const generation = definition.abilities.powerGeneration ?? SOLAR_MODULE_GENERATION;
-        for (const panel of solarPanelLayout(definition.length, state.value)) {
+        for (const panel of deployablePanelPoses('solar_panel', definition.length / 2, state.value)) {
           const normal = qRotate(att.q, qRotate(transform.rotation, panel.normal));
           const incidence = Math.max(0, dot(normal, sunDir));
           power += (generation / SOLAR_PANEL_COUNT) * (sunlight / SOLAR_CONSTANT) * incidence * state.value;
