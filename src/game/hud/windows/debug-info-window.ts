@@ -128,7 +128,6 @@ export class DebugInfoWindow {
   // 計測対象と表示先を受け取り、デバッグ表示の操作部品を組み立てる。renderStyle は組み立て時の
   // 見せ方。openAtStart が真なら組み立てた直後に窓を開く。
   public constructor(
-    private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
     private readonly sections: FrameSections,
     private readonly gpu: GpuTimings,
@@ -179,7 +178,7 @@ export class DebugInfoWindow {
     this.gpu.enabled = true;
     this.frames = 0;
     this.lastFlush = null;
-    this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
+    this.win = new PropertyWindow(DEFAULT_X, DEFAULT_Y, {
       title: 'PERFORMANCE',
       kindCode: 'DBG',
       kindLabel: 'PERFORMANCE',
