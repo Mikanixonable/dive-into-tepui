@@ -101,6 +101,31 @@ function combat(): LabCase {
   };
 }
 
+// 主推進器だけを切り出し、開放された機械部とノズルを後方から観察する。
+function engine(): LabCase {
+  const model = buildShipModuleModel('thruster-standard');
+  model.position.set(0, 0, -25);
+  return {
+    objects: [model],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -25),
+    shots: {
+      'modular-ship-engine-aft': {
+        view: {
+          cameraAzimuthDeg: 165, cameraElevationDeg: 20, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: 155, sunElevationDeg: 35,
+        },
+      },
+      'modular-ship-engine-side': {
+        view: {
+          cameraAzimuthDeg: 105, cameraElevationDeg: 15, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: 125, sunElevationDeg: 30,
+        },
+      },
+    },
+  };
+}
+
 // 展開途中: 太陽電池とラジエーターの展開度を変えた戦闘艦を並べ、ヒンジの繋がりと収納時の重なりを見る。
 function deploying(): LabCase {
   const objects = [0, 0.4, 0.8].map((deployed, index) => {
@@ -180,6 +205,7 @@ export const SHIP_CASES = {
   'modular-ship-base': base,
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,
+  'modular-ship-engine': engine,
   'modular-ship-deploying': deploying,
   'modular-ship-deployables': deployables,
   'modular-ship-deployables-stowed': deployablesStowed,
