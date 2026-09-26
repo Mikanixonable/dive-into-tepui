@@ -24,8 +24,8 @@ import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
-import type { Notifier } from '../../hud/notifier';
-import { ConstructionConfirmDialog } from './windows/construction-confirm-dialog';
+import type { HintKind, Notifier } from '../../hud/notifier';
+import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 import { hudAttention, hudWorkspace } from './hud-workspace';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
@@ -63,7 +63,7 @@ export class Hud implements HudLayers, Notifier {
   private readonly enemiesPanel: EnemiesPanel;
   private readonly burnManagementPanel: BurnManagementPanel;
   public readonly shipConstructionPanel: ShipConstructionPanel;
-  public readonly constructionConfirm: ConstructionConfirmDialog;
+  public readonly constructionConfirm: ConfirmationOverlay;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
   private chromeView: ViewMode | null = null;
@@ -89,7 +89,7 @@ export class Hud implements HudLayers, Notifier {
 
     // 常設パネルを、data-id で引ける要素の一覧から組む。
     this.topBar = new TopBar(els);
-    this.viewBadgeRow = els.get('gs-viewrow')!;
+    this.viewBadgeRow = els.get('gs-viewrow');
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
     this.orbitPanel = new OrbitPanel(els, () => this.openOrbitAnalysis());
@@ -97,7 +97,7 @@ export class Hud implements HudLayers, Notifier {
     this.enemiesPanel = new EnemiesPanel(els);
     this.burnManagementPanel = new BurnManagementPanel(els);
     this.shipConstructionPanel = new ShipConstructionPanel(els);
-    this.constructionConfirm = new ConstructionConfirmDialog(this.layers.window, this.overlayManager);
+    this.constructionConfirm = new ConfirmationOverlay(this.layers.window, this.overlayManager);
 
     // ランがまだ無い状態の見た目で組み上げる。
     this.burnManagementPanel.sync(null, {});
@@ -210,13 +210,11 @@ export class Hud implements HudLayers, Notifier {
     this.root.dataset['renderStyle'] = style;
   }
 
-  // 本文だけのトーストを durationMs 表示する。
-  public hint(text: string, durationMs = 1800): void {
-    const warning = /できません|失敗|警告|危険|全損|大気圏/.test(text);
-    const code = warning ? 'WARN'
-      : /フォーカス|ターゲット|航法/.test(text) ? 'NAV'
-        : /ノード|マニューバ|軌道計画/.test(text) ? 'PLN' : 'SYS';
-    this.requestToast(text, durationMs, code, warning, false);
+  // 本文だけのトーストを durationMs 表示する。kind は通知の意味上の種別で、
+  // バッジの記号と警告色をここで導く — 表示側が本文の文言から類推しない。
+  public hint(text: string, durationMs = 1800, kind: HintKind = 'info'): void {
+    const code = kind === 'warn' ? 'WARN' : kind === 'nav' ? 'NAV' : kind === 'plan' ? 'PLN' : 'SYS';
+    this.requestToast(text, durationMs, code, kind === 'warn', false);
   }
 
   // 見出しと本文を持つ HTML のトーストを durationMs 表示する。
