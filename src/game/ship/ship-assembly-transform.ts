@@ -1,5 +1,5 @@
 import {
-  qNormalize, type Quat,
+  qFromAxisAngle, qMul, qNormalize, type Quat,
 } from '../../math/quat';
 import { v3, type Vec3 } from '../../math/vec3';
 import type { ShipModuleDefinition } from './ship-module-definition';
@@ -57,17 +57,30 @@ export function sideSlotRotation(slot: SideSlot): Quat {
   }
 }
 
+// 円筒タンクは直径の半分、前端径が後端の半分のコックピットは中央断面半径を側面取付面とする。
+export function sideMountRadius(parent: ShipModuleDefinition): number {
+  return parent.kind === 'cockpit'
+    ? parent.diameter * 3 / 8
+    : parent.diameter / 2;
+}
+
 export function sideMountTransform(
   parent: ShipModuleDefinition, child: ShipModuleDefinition, slot: SideSlot,
 ): ModuleTransform {
   const direction = sideSlotDirection(slot);
+  // 翼面を持つモジュールの面法線(local +Y)を、スロットの正負に関わらず同じ向きへ揃える。
+  // ±X スロットではロールなしで両側とも面が +Y を向く。±Y スロットでは面が ±X に割れるため、
+  // -y 側では外向き軸まわりに180度ロールを足して +y 側と向きを揃える。
+  const roll = (child.kind === 'solar_panel' || child.kind === 'radiator')
+    && slot === 'side:-y'
+    ? qFromAxisAngle(v3(0, 0, 1), Math.PI) : { x: 0, y: 0, z: 0, w: 1 };
   return {
     position: v3(
-      direction.x * (parent.diameter / 2 + child.length / 2),
-      direction.y * (parent.diameter / 2 + child.length / 2),
+      direction.x * (sideMountRadius(parent) + child.length / 2),
+      direction.y * (sideMountRadius(parent) + child.length / 2),
       0,
     ),
-    rotation: sideSlotRotation(slot),
+    rotation: qMul(sideSlotRotation(slot), roll),
   };
 }
 

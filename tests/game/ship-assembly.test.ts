@@ -8,7 +8,7 @@ import { createShipModuleInstance } from '../../src/game/ship/ship-module-instan
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { restoreShipAssembly, serializeShipAssembly } from '../../src/game/ship/ship-save';
-import { sameTransform, sideSlotRotation } from '../../src/game/ship/ship-assembly-transform';
+import { sameTransform, sideMountTransform, sideSlotRotation } from '../../src/game/ship/ship-assembly-transform';
 import { test } from '../harness';
 
 function module(definitionId: string, id: string, state = {}) {
@@ -16,7 +16,7 @@ function module(definitionId: string, id: string, state = {}) {
 }
 
 export function register(): void {
-  test('ship assembly: 既定戦闘船は既存の HP と性能、質量を保つ', () => {
+  test('ship assembly: 既定戦闘船は規定の HP と性能、質量を持つ', () => {
     const assembly = createDefaultCombatPreset();
     const totals = assembly.totals();
     assert.equal(assembly.role, 'ship');
@@ -25,13 +25,25 @@ export function register(): void {
     assert.equal(totals.thrust, 400_000);
     assert.equal(totals.torque, 24_000);
     assert.equal(totals.power, 1_650);
-    assert.equal(totals.radiation, 9.6);
+    assert.equal(totals.radiation, 4.8);
     assert.equal(totals.weaponDamage, 1);
     assert.equal(totals.fireRate, 1 / 0.06);
     assert.equal(totals.muzzleVelocity, 1_000);
     assert.equal(totals.mainFuel, 1_000);
-    assert.equal(totals.mass, 1_000);
-    assert.equal(totals.dryMass, 400);
+    assert.equal(totals.mass, 1_030);
+    assert.equal(totals.dryMass, 430);
+    const solarLeft = assembly.graph.find(edge => edge.childId === 'solar-left');
+    const solarRight = assembly.graph.find(edge => edge.childId === 'solar-right');
+    const radiator = assembly.graph.find(edge => edge.childId === 'radiator');
+    const dockingPort = assembly.graph.find(edge => edge.childId === 'docking-port');
+    assert.equal(solarLeft?.parentId, 'main-tank');
+    assert.equal(solarLeft?.sideSlot, 'side:-x');
+    assert.equal(solarRight?.parentId, 'main-tank');
+    assert.equal(solarRight?.sideSlot, 'side:+x');
+    assert.equal(radiator?.parentId, 'main-tank');
+    assert.equal(radiator?.sideSlot, 'side:-y');
+    assert.equal(dockingPort?.parentId, 'main-tank');
+    assert.equal(dockingPort?.sideSlot, 'side:+y');
     assert.equal(assembly.validate().valid, true);
   });
 
@@ -49,9 +61,22 @@ export function register(): void {
     assert.equal(cockpit.modelId, 'cockpit-standard');
     assert.equal(cockpit.hp, 40);
     assert.equal(cockpit.maxHp, 100);
-    assert.equal(tank.transform.position.z, -3);
-    assert.equal(radiator.transform.position.x, 3.5);
+    assert.equal(tank.transform.position.z, -6);
+    assert.equal(radiator.transform.position.x, 2.75);
     assert.equal(radiator.deployed, 1);
+  });
+
+  test('ship assembly: cockpit は後端直径6m・前端直径3mで、側面取付点は中央断面にある', () => {
+    const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
+    assert.equal(cockpit.length, 9);
+    assert.equal(cockpit.diameter, 6);
+    const assembly = new ShipAssembly();
+    assembly.addRoot(module('cockpit-standard', 'cockpit'));
+    assembly.connectSide(module('docking-port-standard', 'port'), 'cockpit', 'side:+x');
+    const transform = assembly.transformOf('port');
+    assert.ok(transform !== null);
+    // 中央断面の左右溝の底 2.25m とポート半長 0.5m の和。
+    assert.deepEqual(transform.position, v3(2.75, 0, 0));
   });
 
   test('ship assembly: -Z append は端面を隙間なく接続する', () => {
@@ -63,10 +88,10 @@ export function register(): void {
     assert.equal(edge.kind, 'axial');
     assert.equal(edge.childTransform.position.x, 0);
     assert.equal(edge.childTransform.position.y, 0);
-    assert.equal(edge.childTransform.position.z, -7.5);
+    assert.equal(edge.childTransform.position.z, -10.5);
     const tankTransform = assembly.worldTransformOf('tank');
     assert.ok(tankTransform !== null);
-    assert.equal(tankTransform.position.z, -7.5);
+    assert.equal(tankTransform.position.z, -10.5);
     assert.equal(assembly.validate().valid, true);
   });
 
@@ -107,7 +132,7 @@ export function register(): void {
     const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
     assembly.addRoot(module('cockpit-standard', 'cockpit'));
     assembly.connectSide(module('dock-standard', 'dock'), 'cockpit', {
-      position: v3(3.5, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)),
+      position: v3(2.75, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)),
     });
     assembly.addModule(module('tank-3-main', 'construction-tank'), 'dock', {
       position: v3(0, 0, 2), rotation: { x: 0, y: 0, z: 0, w: 1 },
@@ -158,7 +183,7 @@ export function register(): void {
     assert.equal(assembly.role, 'material');
     assembly.append(module('cockpit-standard', 'cockpit'));
     assert.equal(assembly.role, 'ship');
-    assembly.connectSide(module('dock-standard', 'dock'), 'cockpit', { position: v3(3.5, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)) });
+    assembly.connectSide(module('dock-standard', 'dock'), 'cockpit', { position: v3(2.75, 0, 0), rotation: qFromUnitVectors(LOCAL_FORWARD, v3(1, 0, 0)) });
     assert.equal(assembly.role, 'base');
     assembly.damage(200, 1, 'cockpit');
     assert.equal(assembly.role, 'material');
@@ -254,10 +279,11 @@ export function register(): void {
     assert.equal(restored.validate().valid, true);
     const edge = restored.graph.find(c => c.id === 'connection-8');
     assert.ok(edge !== undefined);
-    const expected = {
-      position: v3(-3.5, 0, 0),
-      rotation: sideSlotRotation('side:-x'),
-    };
+    const expected = sideMountTransform(
+      SHIP_MODULE_CATALOG.get('cockpit-standard')!,
+      SHIP_MODULE_CATALOG.get('solar-panel-standard')!,
+      'side:-x',
+    );
     assert.equal(sameTransform(edge.childTransform, expected), true);
   });
 
@@ -283,7 +309,7 @@ export function register(): void {
     assert.equal(restored.validate().valid, true);
     const edge = restored.graph.find(c => c.id === 'connection-1');
     assert.ok(edge !== undefined);
-    assert.equal(edge.childTransform.position.z, -3);
+    assert.equal(edge.childTransform.position.z, -6);
   });
 
   test('ship assembly: +Z prepend は前端面を隙間なく接続し headId を更新する', () => {
@@ -299,11 +325,11 @@ export function register(): void {
     const edge = assembly.graph.find(c => c.childId === 'weapon');
     assert.ok(edge !== undefined);
     assert.equal(edge.kind, 'axial');
-    // cockpit (length 3, center 0, forward +1.5) + weapon (length 1, center +0.5) -> z = +2.0
-    assert.equal(edge.childTransform.position.z, 2.0);
+    // cockpit 前端 +4.5m と砲本体の後端 -0.5m を接続するため、砲中心は +5m。
+    assert.equal(edge.childTransform.position.z, 5.0);
     const weaponTransform = assembly.worldTransformOf('weapon');
     assert.ok(weaponTransform !== null);
-    assert.equal(weaponTransform.position.z, 2.0);
+    assert.equal(weaponTransform.position.z, 5.0);
     assert.equal(assembly.validate().valid, true);
   });
 
