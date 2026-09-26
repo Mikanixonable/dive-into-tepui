@@ -28,6 +28,8 @@ const EJECTED_MAG_PHYS_RADIUS = 1.4;
 // 空マガジン外枠がリンク排出口へ出るスライド。内側へ潜った位置から面の外まで [m]・[s]。
 const MAG_FRAME_SLIDE_DEPTH = 0.55;
 const MAG_FRAME_SLIDE_TIME = 0.3;
+const CARTRIDGE_FRAME_SLIDE_DEPTH = 0.38;
+const CARTRIDGE_FRAME_SLIDE_TIME = 0.22;
 
 const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 
@@ -61,6 +63,8 @@ export class FireControl {
   public get cooldown(): number { return this.weapon.cooldown; }
   public get isFiring(): boolean { return this.weapon.wasFiring; }
   public get recentShotRecords(): readonly WeaponShotRecord[] { return this.weapon.recentShots; }
+  public get cartridgeAdvancedAt(): number | null { return this.weapon.cartridgeAdvancedAt; }
+  public get magazineFedAt(): number | null { return this.weapon.magazineFedAt; }
 
   // 弾薬・砲身の状態をシリアライズ形式へ変換する。
   public serialize(): SerializedFireControl {
@@ -69,7 +73,8 @@ export class FireControl {
 
   // 拾ったマガジン数を加算する。弾切れ中なら即座に1マガジンを装填する。
   public onPickup(mags: number): void {
-    this.weapon.addMags(mags);
+    if (!Number.isFinite(mags) || mags <= 0) return;
+    this.weapon.addMags(mags, this.player.motion.state.t);
   }
 
   // 発射状態を強制的に解除する。
@@ -136,18 +141,23 @@ export class FireControl {
     const command = this.weapon.nextShot(muzzles.length);
     if (command === null) return;
     const cycleDuration = muzzles.length / this.player.totalFireRate;
-    this.weapon.fire(muzzles.length);
+    this.weapon.fire(muzzles.length, this.player.motion.state.t);
 
     const muzzle = muzzles[command.muzzleIndex]!;
     this.fireGun(muzzle, activeStage, celestialBodies, cycleDuration);
-    // マガジンを撃ち尽くしたら空の外枠を排出し、次の発射までの間隔を決める
+    // 弾薬の区切りごとの実体を排出し、連続給弾の発射間隔を保つ
     switch (command.consumption) {
       case 'normal':
         this.weapon.setCooldown(1 / this.player.totalFireRate);
         return;
-      case 'mag-reload':
+      case 'cartridge-advance':
+        this.spawnEjectedCartridgeFrame(muzzle.weapon);
+        this.weapon.setCooldown(1 / this.player.totalFireRate);
+        return;
+      case 'magazine-finished':
+        this.spawnEjectedCartridgeFrame(muzzle.weapon);
         this.spawnEjectedMagazineFrame(muzzle.weapon);
-        this.registry.events.record({ kind: 'gunMagazineFed' });
+        if (this.weapon.rounds > 0) this.registry.events.record({ kind: 'gunMagazineFed' });
         this.weapon.setCooldown(1 / this.player.totalFireRate);
         return;
     }
@@ -156,7 +166,7 @@ export class FireControl {
   // 手動リロードを試みる。開始できたら true。捨てるマガジンの外枠を、健全な武装があればその
   // リンク排出口から出す。
   public manualReload(): boolean {
-    if (!this.weapon.manualReload()) return false;
+    if (!this.weapon.manualReload(this.player.motion.state.t)) return false;
     this.weapon.setCooldown(RELOAD_TIME);
     this.registry.events.record({ kind: 'gunReloaded' });
     const weapon = this.player.capabilities.weaponPorts()[0];
@@ -297,6 +307,48 @@ export class FireControl {
         inertia: v3(1, 1.2, 1.4),
       },
       this.registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this.scene,
+    ));
+  }
+
+  // 空カートリッジ骨組みをリンク排出口基準の専用スライドで排出する。
+  private spawnEjectedCartridgeFrame(weapon: WeaponPorts): void {
+    const ship = this.player;
+    const inward = qRotate(weapon.rotation, v3(1, 0, 0));
+    // 外箱の排出路と重ならないよう、カートリッジ骨組みは砲軸方向にも位置をずらす。
+    const exit = add(weapon.linkExitPort, qRotate(weapon.rotation, v3(0, 0.24, 1.4)));
+    const inner = add(exit, scale(inward, CARTRIDGE_FRAME_SLIDE_DEPTH));
+    const outer = add(
+      add(exit, scale(inward, -CARTRIDGE_FRAME_SLIDE_DEPTH)),
+      qRotate(weapon.rotation, randVec(0.04)),
+    );
+    const slideSpeed = (CARTRIDGE_FRAME_SLIDE_DEPTH * 2) / CARTRIDGE_FRAME_SLIDE_TIME;
+    const eject = this.worldDir(weapon.rotation, v3(-1, 0, 0));
+    const t = ship.motion.state.t;
+    this.registry.add(DebrisPiece.create(
+      kinematicState<'eci'>(
+        t,
+        this.worldPoint(inner),
+        add(ship.motion.state.v, scale(eject, slideSpeed)),
+      ),
+      {
+        kind: 'cartridgeFrame',
+        bornSim: t,
+        slide: {
+          bornSim: t,
+          duration: CARTRIDGE_FRAME_SLIDE_TIME,
+          r0: ship.motion.state.r,
+          q0: ship.motion.att.q,
+          v0: ship.motion.state.v,
+          from: sub(inner, ship.motion.centerOffset),
+          to: sub(outer, ship.motion.centerOffset),
+        },
+      },
+      {
+        q: qMul(ship.motion.att.q, weapon.rotation),
+        w: v3(randSym(0.35), randSym(0.35), randSym(0.35)),
+        inertia: v3(0.35, 0.5, 0.7),
+      },
+      this.registry.idAllocators, 0.65, this.scene,
     ));
   }
 }

@@ -8,6 +8,8 @@ export interface SerializedWeaponState {
   readonly wasFiring: boolean;
   readonly wasEmptyClick: boolean;
   readonly shots?: readonly SerializedWeaponShot[];
+  readonly cartridgeAdvancedAt?: number;
+  readonly magazineFedAt?: number;
 }
 
 export interface SerializedWeaponShot {
@@ -22,7 +24,7 @@ export type WeaponShotRecord = SerializedWeaponShot;
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export interface AmmoLoad { readonly mags: number; readonly rounds: number }
 
-export type AmmoConsumption = 'normal' | 'mag-reload';
+export type AmmoConsumption = 'normal' | 'cartridge-advance' | 'magazine-finished';
 
 export interface WeaponFireCommand {
   readonly consumption: AmmoConsumption;
@@ -34,7 +36,7 @@ const DEFAULT_MAGS = 2;
 
 // 弾薬・クールダウン・交互に撃つ砲口・トリガーの状態機械。
 export class WeaponState {
-  // mags は予備を含めて残っているマガジン数、muzzleIdx は次に撃つ砲口。
+  // mags は予備マガジン数、muzzleIdx は次に撃つ砲口。
   // 省いた値は既定の積載で始める。
   public constructor(
     private _mags = DEFAULT_MAGS,
@@ -43,7 +45,14 @@ export class WeaponState {
     private _muzzleIdx = 0,
     private _wasFiring = false,
     private _wasEmptyClick = false,
-  ) {}
+    private _cartridgeAdvancedAt: number | null = null,
+    private _magazineFedAt: number | null = null,
+  ) {
+    if (this._rounds === 0 && this._mags > 0) {
+      this._mags--;
+      this._rounds = MAG_ROUNDS;
+    }
+  }
 
   private readonly shotRecords = new Map<string, WeaponShotRecord>();
 
@@ -62,6 +71,8 @@ export class WeaponState {
       nonNegativeInteger(serialized.muzzleIdx),
       booleanValue(serialized.wasFiring),
       booleanValue(serialized.wasEmptyClick),
+      finiteNumber(serialized.cartridgeAdvancedAt) ?? null,
+      finiteNumber(serialized.magazineFedAt) ?? null,
     );
     weapon.restoreShotRecords(serialized.shots ?? null);
     return weapon;
@@ -75,6 +86,8 @@ export class WeaponState {
   public get wasFiring(): boolean { return this._wasFiring; }
   // 撃てないまま引いたことを、次に撃てるまでに記録済みか。
   public get wasEmptyClick(): boolean { return this._wasEmptyClick; }
+  public get cartridgeAdvancedAt(): number | null { return this._cartridgeAdvancedAt; }
+  public get magazineFedAt(): number | null { return this._magazineFedAt; }
 
   // 直近の成功した発射を、砲口ごとに返す。
   public get recentShots(): readonly WeaponShotRecord[] { return [...this.shotRecords.values()]; }
@@ -119,10 +132,11 @@ export class WeaponState {
     this._wasEmptyClick = true;
   }
 
-  // 次の1発が弾をどう消費するか。マガジンを撃ち尽くせば次のマガジンを装填する(mag-reload)。
+  // 次の1発が段の最後ならカートリッジを送り、マガジンの最後なら外枠を排出する。
   private nextConsumption(): AmmoConsumption {
-    if (this._rounds > 1 || this._mags <= 0) return 'normal';
-    return 'mag-reload';
+    if (this._rounds === 1) return 'magazine-finished';
+    if (this._rounds % 8 === 1) return 'cartridge-advance';
+    return 'normal';
   }
 
   // muzzleCount 本の砲口を交互に使うときの、次の1発の弾の消費と撃つ砲口。撃てなければ null。
@@ -132,33 +146,43 @@ export class WeaponState {
   }
 
   // 次の1発(nextShot)を撃ち、弾を消費して砲口を次へ移す。撃てなければ何もしない。
-  public fire(muzzleCount: number): void {
+  public fire(muzzleCount: number, firedAt?: number): void {
     const shot = this.nextShot(muzzleCount);
     if (shot === null) return;
     this._muzzleIdx = (shot.muzzleIndex + 1) % muzzleCount;
     this._rounds--;
     if (shot.consumption === 'normal') return;
-    // 撃ち尽くしたマガジンの外枠は捨て、予備のマガジンを装填する。
-    this._mags--;
-    this._rounds = MAG_ROUNDS;
+    if (shot.consumption === 'cartridge-advance') {
+      this._cartridgeAdvancedAt = finiteNumber(firedAt) ?? null;
+      return;
+    }
+    this._cartridgeAdvancedAt = finiteNumber(firedAt) ?? null;
+    // 最終弾の消費後、予備があれば次のマガジンを装填済み状態へ移す。
+    if (this._mags > 0) {
+      this._mags--;
+      this._rounds = MAG_ROUNDS;
+      this._magazineFedAt = finiteNumber(firedAt) ?? null;
+    }
   }
 
   // クールダウン中でなく、予備があり装填中のマガジンに補充の余地があれば、マガジンを替えて
   // true を返す。
-  public manualReload(): boolean {
+  public manualReload(fedAt?: number): boolean {
     if (this._cooldown > 0 || this._mags <= 0 || this._rounds >= MAG_ROUNDS) return false;
     this._mags--;
     this._rounds = MAG_ROUNDS;
+    this._magazineFedAt = finiteNumber(fedAt) ?? null;
     return true;
   }
 
   // mags が有限な正の数なら予備へ足し、弾切れならそのうち1個をそのまま装填する。
-  public addMags(mags: number): void {
+  public addMags(mags: number, fedAt?: number): void {
     if (!Number.isFinite(mags) || mags <= 0) return;
     this._mags += mags;
     if (this._rounds <= 0) {
       this._mags--;
       this._rounds = MAG_ROUNDS;
+      this._magazineFedAt = finiteNumber(fedAt) ?? null;
     }
   }
 
@@ -172,6 +196,8 @@ export class WeaponState {
       wasFiring: this._wasFiring,
       wasEmptyClick: this._wasEmptyClick,
       ...(this.shotRecords.size > 0 ? { shots: this.recentShots } : {}),
+      ...(this._cartridgeAdvancedAt === null ? {} : { cartridgeAdvancedAt: this._cartridgeAdvancedAt }),
+      ...(this._magazineFedAt === null ? {} : { magazineFedAt: this._magazineFedAt }),
     };
   }
 
