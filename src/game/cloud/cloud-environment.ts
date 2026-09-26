@@ -1,21 +1,16 @@
-// Reproducible environmental inputs and diagnostics for display-side cloud experiments.
-// This game-layer display derivation is limited to immutable inputs and pure
-// diagnostics; it owns no time, camera, GPU, or model state. The renderer will receive
-// derived declarations rather than importing game state. This is not a global
-// circulation or cloud-resolving model.
-// The upper-ice moisture factor is an input for event lifecycle code; this module does
-// not compute ice lifetime. Height-dependent winds are sampled inputs; material tracks
-// are integrated by transport code, not here.
-// Parcel diagnostics use the documented limits in cloud-thermodynamics.ts. Column
-// stability is dry Brunt–Väisälä frequency from virtual potential temperature; the
-// boundary-layer depth is a profile diagnostic at the strongest positive gradient
-// below 3 km, not a universal boundary-layer definition. Wave phase uses the linear,
-// non-rotating Boussinesq internal-wave dispersion relation; cloud onset checks whether
-// dry-adiabatic lifting at the source displacement reaches ice saturation, omitting
-// latent heating, refraction, and wave breaking. Displacement must remain below 10% of
-// both wavelengths (and below 1 km). References: WMO-No. 8 (2021),
-// Annex 4.B; Bolton (1980), doi:10.1175/1520-0493(1980)108<1046:TCOEPT>2.0.CO;2;
-// N² definition: Durran (1990), doi:10.1175/1520-0469(1990)047<2152:ADVNTO>2.0.CO;2.
+// 雲の表示導出が読む、再現可能な環境入力と診断。不変な入力と純粋な診断だけを持ち、
+// 時刻・カメラ・GPU・モデル状態は持たない。描画へは導出した宣言だけを渡す。
+// 全球循環モデルでも雲解像モデルでもない。
+// 上層氷の湿り係数はイベント寿命系への入力で、氷の寿命そのものはここでは解かない。
+// 高度依存の風は標本入力で、材料軌道の積分は輸送側が担う。
+// パーセル診断は cloud-thermodynamics.ts に書かれた適用範囲に従う。柱の安定度は
+// 仮温位温からの乾燥 Brunt–Väisälä 振動数、境界層の深さは 3 km 以下の最強の正勾配
+// におけるプロファイル診断で、普遍的な境界層の定義ではない。波の位相は線形・
+// 非回転 Boussinesq 内部波の分散関係を使い、凝結可否は源の変位で乾燥断熱持ち上げ
+// した気塊が氷飽和へ届くかを見る — 潜熱・屈折・波の崩壊は省く。変位は両波長の
+// 10% 未満(かつ 1 km 未満)に留めること。出典: WMO-No. 8 (2021), Annex 4.B;
+// Bolton (1980), doi:10.1175/1520-0493(1980)108<1046:TCOEPT>2.0.CO;2;
+// N² の定義: Durran (1990), doi:10.1175/1520-0469(1990)047<2152:ADVNTO>2.0.CO;2.
 
 import {
   parcelBuoyancyProfile,
@@ -119,8 +114,8 @@ function virtualPotentialTemperatureK(level: CloudEnvironmentLevelInput): number
 }
 
 function waterVaporDensityKgPerM3(level: CloudEnvironmentLevelInput): number {
-  // Convert vapor specific humidity to dry-air mixing ratio. Condensate is not part
-  // of the gas equation of state, so changing liquid/ice mass cannot change rho_v.
+  // 水蒸気の比湿を乾燥空気の混合比へ換算する。凝結物は気体の状態方程式に入らない
+  // ので、液水・氷の質量を変えても rho_v は変わらない。
   const specificHumidity = level.waterVaporSpecificHumidityKgPerKg;
   const vaporMixingRatio = specificHumidity / (1 - specificHumidity);
   const dryAirDensity = level.pressurePa / (
@@ -234,8 +229,8 @@ function deriveColumnWaterVaporKgPerM2(levels: readonly CloudEnvironmentLevelInp
 
 function deriveUpperIceMoistureFactor(input: CloudEnvironmentInput): number {
   const humidityAt = (level: CloudEnvironmentLevelInput): number => {
-    // The saturation reference follows the phase of the level: the ice equation is only
-    // valid up to the freezing point, so warm levels are compared to liquid saturation.
+    // 飽和の参照は層の相に従う — 氷の式は凝固点までしか当てられないので、暖かい
+    // 層は液水飽和と比べる。
     const saturation = level.temperatureK <= 273.15
       ? saturationSpecificHumidityOverIceKgPerKg(level.temperatureK, level.pressurePa)
       : saturationSpecificHumidityOverLiquidKgPerKg(level.temperatureK, level.pressurePa);
@@ -335,9 +330,8 @@ function deriveGravityWaveDriver(
   const liftedPressurePa = sourceEnvironment.pressurePa * (
     liftedTemperatureK / sourceEnvironment.temperatureK
   ) ** (DRY_AIR_SPECIFIC_HEAT_J_PER_KG_K / DRY_AIR_GAS_CONSTANT_J_PER_KG_K);
-  // The saturation check follows the phase of the lifted air: the ice equation is only
-  // valid up to the freezing point, so a warm lifted parcel is compared to liquid
-  // saturation instead.
+  // 飽和の判定は持ち上げた気塊の相に従う — 氷の式は凝固点までしか当てられない
+  // ので、暖かい気塊は液水飽和と比べる。
   const liftedSaturationKgPerKg = liftedTemperatureK <= 273.15
     ? saturationSpecificHumidityOverIceKgPerKg(liftedTemperatureK, liftedPressurePa)
     : saturationSpecificHumidityOverLiquidKgPerKg(liftedTemperatureK, liftedPressurePa);
@@ -368,9 +362,9 @@ function deriveGravityWaveDriver(
   });
 }
 
-// Creates a frozen diagnostic profile from prescribed environmental levels. Input
-// fields are boundary conditions: fluxes and cloud-top cooling are not solved here.
-// The parcel calculation is the physics-layer profile integral, not an activity proxy.
+// 与えられた環境層から frozen な診断プロファイルを組む。入力の場は境界条件で、
+// フラックスと雲頂冷却はここでは解かない。パーセル計算は physics 層の
+// プロファイル積分で、活動度の代理値ではない。
 export function createCloudEnvironmentProfile(input: CloudEnvironmentInput): CloudEnvironmentProfile {
   validateInput(input);
   const levels = Object.freeze(input.levels.map((level) => Object.freeze({ ...level })));
