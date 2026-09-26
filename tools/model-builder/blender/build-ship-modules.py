@@ -9,6 +9,7 @@ import json
 import sys
 import os
 import math
+import random
 import bpy
 import bmesh
 from mathutils import Vector, Matrix, Euler
@@ -49,6 +50,33 @@ def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0):
         bsdf.inputs["Roughness"].default_value = roughness
         bsdf.inputs["Metallic"].default_value = metallic
     return mat
+
+def make_tank_hull(length, radius=3.0, angular_segments=192):
+    """微細な放射方向のゆらぎを加えた、閉じた高密度の円筒外殻を作る。"""
+    bm = bmesh.new()
+    half_len = length / 2.0
+    axial_segments = max(60, round(length * 16.0))
+    rng = random.Random(7319)
+    rings = []
+    for axial_index in range(axial_segments + 1):
+        z = -half_len + length * axial_index / axial_segments
+        end_ring = axial_index in (0, axial_segments)
+        ring = []
+        for angular_index in range(angular_segments):
+            angle = 2.0 * math.pi * angular_index / angular_segments
+            ripple = 0.0 if end_ring else rng.uniform(-0.0012, 0.0012)
+            radial = radius + ripple
+            ring.append(bm.verts.new((radial * math.cos(angle), radial * math.sin(angle), z)))
+        rings.append(ring)
+    for axial_index in range(axial_segments):
+        lower, upper = rings[axial_index], rings[axial_index + 1]
+        for angular_index in range(angular_segments):
+            following = (angular_index + 1) % angular_segments
+            bm.faces.new((lower[angular_index], lower[following], upper[following], upper[angular_index]))
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return shade_by_angle(bm, 60.0)
 
 def create_emissive_material(name, color, strength=4.0):
     """自分で光る小さな部品(航法灯など)の材質。glTF の emissive へ焼かれる。"""
@@ -106,9 +134,13 @@ class MaterialLibrary:
         self.rcs_wire_red = create_pbr_material("mat_rcs_wire_red", (0.80, 0.045, 0.025, 1.0), roughness=0.4, metallic=0.05)
         self.rcs_wire_yellow = create_pbr_material("mat_rcs_wire_yellow", (0.96, 0.58, 0.03, 1.0), roughness=0.42, metallic=0.05)
         self.rcs_wire_white = create_pbr_material("mat_rcs_wire_white", (0.90, 0.92, 0.94, 1.0), roughness=0.45, metallic=0.12)
-        # 外装の白い塗膜と黒い追尾模様
-        self.tank_paint_white = create_pbr_material("mat_tank_paint_white", (0.88, 0.90, 0.92, 1.0), roughness=0.55, metallic=0.0)
-        self.tank_paint_black = create_pbr_material("mat_tank_paint_black", (0.05, 0.05, 0.06, 1.0), roughness=0.60, metallic=0.0)
+        # 外装の白黒塗装。白の色は保ち、光沢だけコックピットのアイボリー塗膜に揃える。
+        self.tank_paint_white = create_pbr_material("mat_tank_paint_white", (0.88, 0.90, 0.92, 1.0), roughness=0.40, metallic=0.02)
+        self.tank_paint_black = create_pbr_material("mat_tank_paint_black", (0.05, 0.05, 0.06, 1.0), roughness=0.40, metallic=0.02)
+        self.tank_seam = create_pbr_material("mat_tank_seam", (0.68, 0.70, 0.72, 1.0), roughness=0.50, metallic=0.05)
+        self.tank_recess = create_pbr_material("mat_tank_recess", (0.16, 0.17, 0.18, 1.0), roughness=0.72, metallic=0.08)
+        self.tank_fastener = create_pbr_material("mat_tank_fastener", (0.48, 0.50, 0.51, 1.0), roughness=0.42, metallic=0.35)
+        self.tank_brass = create_pbr_material("mat_tank_brass", (0.48, 0.39, 0.25, 1.0), roughness=0.62, metallic=0.32)
         # トラス材
         self.truss = create_pbr_material("mat_truss", (0.68, 0.72, 0.78, 1.0), roughness=0.35, metallic=1.0)
         # 炭素フェノールのアブレータ
@@ -726,21 +758,39 @@ def build_cockpit():
 # ----------------------------------------------------------------------
 # 2. Main Propellant Tanks (tank-3-main, tank-6-main, tank-12-main)
 # ----------------------------------------------------------------------
-def paint_roll_pattern(bm, length):
-    """円筒側面へ追尾用塗装の黒い模様を面割当する(material_index 1 = 黒、既定 0 = 白)。
-    +Z 端に市松帯(2 段)と白黒交互の縦縞、胴体中央に水平帯を置く。"""
+def tank_checker_bounds(length):
+    """+Z 側の短い塗装帯を返す。黒いリブ帯が囲うのは前方チェッカーだけ。"""
     half_len = length / 2.0
-    sector_count = 24
+    row_height = max(0.12, 0.035 * length)
+    belt_width = max(0.065, 0.020 * length)
+    group_gap = max(0.07, 0.025 * length)
+    top = half_len - 0.15
+    first_high = top - belt_width
+    first_low = first_high - 2.0 * row_height
+    second_high = first_low - belt_width - group_gap
+    second_low = second_high - 2.0 * row_height
+    return {
+        "top": top,
+        "row_height": row_height,
+        "belt_width": belt_width,
+        "first_high": first_high,
+        "first_low": first_low,
+        "second_high": second_high,
+        "second_low": second_low,
+    }
+
+def paint_roll_pattern(bm, length):
+    """前方の2区画だけに、正方形と長手方向の長方形を混ぜた白黒模様を割り当てる。"""
+    sector_count = 48
     sector_arc = 2.0 * math.pi / sector_count
-    end_margin = 0.15    # 端の接続環と被らない余白 [m]
-    checker_row_h = min(0.75, max(0.30, 0.085 * length))
-    roll_bar_h = min(1.60, max(0.55, 0.16 * length))
-    stripe_h = min(0.25, max(0.08, 0.025 * length))
-    z_top = half_len - end_margin
-    z_check_mid = z_top - checker_row_h
-    z_roll_top = z_top - 2.0 * checker_row_h
-    z_roll_bottom = z_roll_top - roll_bar_h
-    for z in (z_top, z_check_mid, z_roll_top, z_roll_bottom, stripe_h / 2.0, -stripe_h / 2.0):
+    bounds = tank_checker_bounds(length)
+    cuts = (
+        bounds["top"], bounds["first_high"], bounds["first_low"],
+        bounds["first_low"] - bounds["belt_width"], bounds["second_high"],
+        bounds["second_high"] - bounds["row_height"], bounds["second_low"],
+        bounds["first_high"] - bounds["row_height"],
+    )
+    for z in cuts:
         bmesh.ops.bisect_plane(
             bm,
             geom=list(bm.verts) + list(bm.edges) + list(bm.faces),
@@ -748,20 +798,208 @@ def paint_roll_pattern(bm, length):
             plane_no=(0.0, 0.0, 1.0),
         )
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    for f in bm.faces:
-        if abs(f.normal.z) > 0.5:
+    for face in bm.faces:
+        if abs(face.normal.z) > 0.5:
             continue
-        c = f.calc_center_median()
-        sector = int((math.atan2(c.y, c.x) + math.pi) / sector_arc) % sector_count
-        if z_roll_top < c.z < z_top:
-            row = 0 if c.z > z_check_mid else 1
-            if (sector + row) % 2 == 0:
-                f.material_index = 1
-        elif z_roll_bottom < c.z <= z_roll_top:
-            if sector % 2 == 0:
-                f.material_index = 1
-        elif abs(c.z) < stripe_h / 2.0:
-            f.material_index = 1
+        center = face.calc_center_median()
+        sector = int((math.atan2(center.y, center.x) + math.pi) / sector_arc) % sector_count
+        if (bounds["first_high"] < center.z < bounds["top"]
+                or bounds["first_low"] - bounds["belt_width"] < center.z < bounds["first_low"]):
+            face.material_index = 1
+            continue
+        group = None
+        if bounds["first_low"] < center.z < bounds["first_high"]:
+            group = ("first", bounds["first_high"])
+        elif bounds["second_low"] < center.z < bounds["second_high"]:
+            group = ("second", bounds["second_high"])
+        if group is None:
+            continue
+        group_name, group_top = group
+        row = min(1, int((group_top - center.z) / bounds["row_height"]))
+        elongated_column = sector % (7 if group_name == "first" else 8) in ((1, 2) if group_name == "first" else (4, 5))
+        black = (sector % 2 == 0) if elongated_column else ((sector + row + (group_name == "second")) % 2 == 0)
+        if black:
+            face.material_index = 1
+
+def rounded_panel_outline(width, height, corner_radius, corner_steps=5):
+    """平面の角丸長方形を、円筒面へ写す順序で点列化する。"""
+    radius = min(corner_radius, width * 0.49, height * 0.49)
+    half_width, half_height = width / 2.0, height / 2.0
+    corners = (
+        (half_width - radius, half_height - radius, 0.0),
+        (-half_width + radius, half_height - radius, 90.0),
+        (-half_width + radius, -half_height + radius, 180.0),
+        (half_width - radius, -half_height + radius, 270.0),
+    )
+    points = []
+    for center_u, center_z, start_degrees in corners:
+        for step in range(corner_steps):
+            angle = math.radians(start_degrees + 90.0 * step / (corner_steps - 1))
+            points.append((center_u + radius * math.cos(angle), center_z + radius * math.sin(angle)))
+    return points
+
+def append_curved_panel(bm, center_angle, center_z, width, height, radius, layers,
+                        ring_materials, fill_material, corner_radius=0.06):
+    """角丸の板・浅い溝を、半径を保つ同心ループで円筒へ沿わせる。"""
+    rings = []
+    for scale, radial_offset in layers:
+        outline = rounded_panel_outline(width * scale, height * scale, corner_radius * scale)
+        ring = []
+        for arc_offset, axial_offset in outline:
+            angle = center_angle + arc_offset / radius
+            radial = radius + radial_offset
+            ring.append(bm.verts.new((radial * math.cos(angle), radial * math.sin(angle), center_z + axial_offset)))
+        rings.append(ring)
+    for ring_index, (outer, inner) in enumerate(zip(rings, rings[1:])):
+        material_index = ring_materials[ring_index]
+        for index in range(len(outer)):
+            following = (index + 1) % len(outer)
+            face = bm.faces.new((outer[index], outer[following], inner[following], inner[index]))
+            face.material_index = material_index
+    last_ring = rings[-1]
+    center_radial = radius + layers[-1][1]
+    center = bm.verts.new((center_radial * math.cos(center_angle), center_radial * math.sin(center_angle), center_z))
+    for index in range(len(last_ring)):
+        following = (index + 1) % len(last_ring)
+        face = bm.faces.new((last_ring[index], last_ring[following], center))
+        face.material_index = fill_material
+
+def append_surface_hole(bm, angle, axial, radius, hole_radius, material_index, depth=0.006):
+    """曲面にほぼ面一で置く暗い丸穴を追加する。"""
+    normal = Vector((math.cos(angle), math.sin(angle), 0.0))
+    center = Vector((radius * normal.x, radius * normal.y, axial))
+    rotation = normal.to_track_quat("Z", "Y").to_matrix().to_4x4()
+    previous_faces = set(bm.faces)
+    bmesh.ops.create_cone(
+        bm, cap_ends=True, cap_tris=False, segments=16,
+        radius1=hole_radius, radius2=hole_radius, depth=depth,
+        matrix=Matrix.Translation(center) @ rotation,
+    )
+    for face in set(bm.faces) - previous_faces:
+        face.material_index = material_index
+
+def append_raised_tank_panel(bm, angle, axial, width, height, radius, white_index):
+    layers = ((1.0, 0.002), (0.96, 0.010), (0.88, 0.017), (0.66, 0.019), (0.34, 0.019), (0.02, 0.019))
+    append_curved_panel(bm, angle, axial, width, height, radius, layers,
+                        (white_index,) * (len(layers) - 1), white_index,
+                        corner_radius=min(0.085, min(width, height) * 0.22))
+
+def append_recessed_tank_panel(bm, angle, axial, width, height, radius, white_index, seam_index):
+    layers = ((1.0, 0.006), (0.98, 0.001), (0.91, 0.0005), (0.70, 0.0005), (0.35, 0.0005), (0.02, 0.0005))
+    append_curved_panel(bm, angle, axial, width, height, radius, layers,
+                        (seam_index, seam_index, white_index, white_index, white_index), white_index,
+                        corner_radius=min(0.12, min(width, height) * 0.20))
+
+def add_tank_surface_details(mats, length, bounds):
+    """前方塗装と干渉しない範囲へ、継ぎ目・浅い溝・大きさの異なる板を配置する。"""
+    radius = 3.0
+    half_len = length / 2.0
+    materials = (mats.tank_paint_white, mats.tank_seam, mats.tank_brass, mats.tank_recess)
+    white_index, seam_index, brass_index, recess_index = range(len(materials))
+    details = bmesh.new()
+    groove_angle = math.pi
+    groove_center_z = -0.06 * length
+    groove_width = 1.38
+    groove_height = 0.39 * length
+    append_recessed_tank_panel(details, groove_angle, groove_center_z, groove_width, groove_height,
+                               radius, white_index, seam_index)
+
+    # 前方の黒い市松セル上へ、塗装色を保った小さな白い識別板を置く。
+    sector_count = 48
+    white_patch_sector = 0
+    white_patch_angle = -math.pi + (white_patch_sector + 0.5) * 2.0 * math.pi / sector_count
+    white_patch_z = bounds["first_high"] - 0.45 * bounds["row_height"]
+    append_raised_tank_panel(details, white_patch_angle, white_patch_z, 0.42, 0.28,
+                             radius, white_index)
+
+    # 薄い角丸のハッチを不規則な間隔で並べる。送り線と外付け COPV の取付角度を避ける。
+    rng = random.Random(24091 + round(length * 100))
+    panel_count = max(5, round(length * 1.65))
+    shapes = ((0.34, 0.31), (0.43, 0.48), (0.58, 0.36), (0.40, 0.72),
+              (0.82, 0.52), (0.32, 0.27), (0.54, 0.82), (0.68, 0.42))
+    selected = []
+    candidate_limit = panel_count * 80
+    z_min = -half_len + 0.46
+    z_max = bounds["second_low"] - 0.24
+    copv_z = -half_len * 0.4
+    copv_angles = (math.radians(120), math.radians(240))
+    for _ in range(candidate_limit):
+        if len(selected) >= panel_count:
+            break
+        width, height = shapes[rng.randrange(len(shapes))]
+        angle = rng.uniform(-math.pi, math.pi)
+        axial = rng.uniform(z_min, z_max)
+        angular_distance = abs((angle + math.pi) % (2.0 * math.pi) - math.pi)
+        if angular_distance < (width * 0.5 + 0.15) / radius:
+            continue
+        if (abs((angle - groove_angle + math.pi) % (2.0 * math.pi) - math.pi) * radius
+                < (groove_width + width) * 0.5 + 0.16
+                and abs(axial - groove_center_z) < (groove_height + height) * 0.5 + 0.16):
+            continue
+        if any(abs((angle - copv_angle + math.pi) % (2.0 * math.pi) - math.pi) < 0.24
+               and abs(axial - copv_z) < 0.48 for copv_angle in copv_angles):
+            continue
+        if any(abs((angle - old_angle + math.pi) % (2.0 * math.pi) - math.pi) * radius
+               < (width + old_width) * 0.5 + 0.16
+               and abs(axial - old_axial) < (height + old_height) * 0.5 + 0.16
+               for old_angle, old_axial, old_width, old_height in selected):
+            continue
+        selected.append((angle, axial, width, height))
+
+    for panel_index, (angle, axial, width, height) in enumerate(selected):
+        if panel_index % 4 == 2:
+            append_recessed_tank_panel(details, angle, axial, width, height, radius, white_index, seam_index)
+        else:
+            append_raised_tank_panel(details, angle, axial, width, height, radius, white_index)
+        # 一部のパネルには浅い横スロット、または対になったグレーの締結穴を付ける。
+        if panel_index % 3 != 1:
+            slot_width = min(0.25, width * 0.46)
+            slot_height = 0.045
+            slot_layers = ((1.0, 0.004), (0.92, 0.006), (0.75, 0.006), (0.02, 0.006))
+            append_curved_panel(details, angle, axial + height * 0.25, slot_width, slot_height, radius,
+                                slot_layers, (seam_index, recess_index, recess_index), recess_index,
+                                corner_radius=0.02)
+        if panel_index % 2 == 0:
+            hole_offset = width * 0.40 / radius
+            hole_z = axial - height * 0.30
+            append_surface_hole(details, angle - hole_offset, hole_z, radius + 0.003, 0.027, recess_index)
+            append_surface_hole(details, angle + hole_offset, hole_z, radius + 0.003, 0.027, recess_index)
+
+    # 真鍮色は艶を抑えた小板に限り、黒いセル上の一枚と、長尺型だけ追加の一枚を置く。
+    brass_angle = -math.pi + (2.5 * 2.0 * math.pi / sector_count)
+    brass_plates = [(brass_angle, white_patch_z, 0.34, 0.26)]
+    if length >= 6.0:
+        brass_plates.append((2.82, -0.27 * length, 0.48, 0.34))
+    if length >= 12.0:
+        brass_plates.append((4.82, 0.17 * length, 0.42, 0.31))
+    brass_layers = ((1.0, 0.003), (0.95, 0.011), (0.86, 0.015), (0.60, 0.016), (0.25, 0.016), (0.02, 0.016))
+    for angle, axial, width, height in brass_plates:
+        append_curved_panel(details, angle, axial, width, height, radius, brass_layers,
+                            (brass_index,) * (len(brass_layers) - 1), brass_index,
+                            corner_radius=0.035)
+        for u_sign in (-1.0, 1.0):
+            for z_sign in (-1.0, 1.0):
+                append_surface_hole(details, angle + u_sign * width * 0.36 / radius,
+                                    axial + z_sign * height * 0.30, radius + 0.004,
+                                    0.026, recess_index)
+
+    if details.verts:
+        bmesh.ops.recalc_face_normals(details, faces=details.faces)
+        add_mesh_obj("tank_surface_panels", details, materials)
+
+    # 長手方向の浅い補強線と、周方向の塗装継ぎ目。どちらも白塗装に近い淡い灰色。
+    for index in range(8):
+        angle = 2.0 * math.pi * index / 8.0 + math.pi / 8.0
+        radial = radius + 0.004
+        path = [Vector((radial * math.cos(angle), radial * math.sin(angle), -half_len + 0.12)),
+                Vector((radial * math.cos(angle), radial * math.sin(angle), half_len - 0.12))]
+        add_mesh_obj(f"tank_longitudinal_seam_{index}", make_pipe(path, radius=0.008, segments=8), mats.tank_seam)
+    for seam_index, fraction in enumerate((-0.40, -0.12, 0.20, 0.42)):
+        z = fraction * length
+        add_mesh_obj(f"tank_circumferential_seam_{seam_index}",
+                     make_torus(radius + 0.001, 0.007, z_center=z, major_seg=48, minor_seg=6),
+                     mats.tank_seam)
+
 
 
 def build_tank_main(length, name):
@@ -769,12 +1007,26 @@ def build_tank_main(length, name):
     mats = MaterialLibrary()
     radius = 3.0
     half_len = length / 2.0
+    checker_bounds = tank_checker_bounds(length)
 
     # 1. Main Cylindrical Tank Hull with circumferential segments
-    # 白い塗膜の外殻。黒い模様は初期ロケットの追尾用塗装を範とする。
-    bm_hull = make_cylinder(radius, radius, length, z_center=0.0, segments=48)
+    # ベース色を保った白塗膜へ、前方だけの白黒チェッカーを面割当する。
+    bm_hull = make_tank_hull(length, radius=radius)
     paint_roll_pattern(bm_hull, length)
     add_mesh_obj("tank_hull", bm_hull, (mats.tank_paint_white, mats.tank_paint_black))
+
+    # 前方の片方のチェッカー帯だけを黒いリブ帯で挟み、反対側の短い帯は単独にする。
+    for band_index, band_center in enumerate((
+            checker_bounds["top"] - checker_bounds["belt_width"] * 0.5,
+            checker_bounds["first_low"] - checker_bounds["belt_width"] * 0.5)):
+        rib_count = 4 if checker_bounds["belt_width"] >= 0.09 else 2
+        for rib_index in range(rib_count):
+            axial = band_center + checker_bounds["belt_width"] * (
+                (rib_index + 0.5) / rib_count - 0.5
+            )
+            add_mesh_obj(f"tank_checker_belt_{band_index}_{rib_index}",
+                         make_torus(radius + 0.002, 0.006, z_center=axial, major_seg=48, minor_seg=6),
+                         mats.tank_paint_black)
     
     # 2. Structural Bulkhead Bands (CRITICAL: Named 'tank-band' to satisfy contract test!)
     # Band count scaled with length (3m: 1 band, 6m: 2 bands, 12m: 4 bands)
@@ -784,7 +1036,15 @@ def build_tank_main(length, name):
         zb = -half_len + step * (b + 1)
         bm_band = make_torus(major_r=radius + 0.02, minor_r=0.04, z_center=zb, major_seg=48, minor_seg=12)
         # Name MUST be 'tank-band' for test contract!
-        add_mesh_obj("tank-band", bm_band, mats.hull_dark)
+        add_mesh_obj("tank-band", bm_band, mats.tank_paint_white)
+        fastener_centers = [((radius + 0.059) * math.cos(2.0 * math.pi * index / 24.0),
+                             (radius + 0.059) * math.sin(2.0 * math.pi * index / 24.0), zb)
+                            for index in range(24)]
+        add_mesh_obj(f"tank_bulkhead_rivets_{b}",
+                     make_spheres(fastener_centers, 0.018, u_seg=8, v_seg=6), mats.tank_fastener)
+
+    # 塗装に馴染む前後・周方向の継ぎ目、浅いハッチ、リベット穴を追加する。
+    add_tank_surface_details(mats, length, checker_bounds)
 
     # 3. Cryogenic Feedline with Saddle Clamps & Bolted Flanges
     # High-pressure LOX/LH2 feedline running down the hull at radius R=3.06m

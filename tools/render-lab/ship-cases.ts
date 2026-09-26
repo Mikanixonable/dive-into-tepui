@@ -133,6 +133,27 @@ function separation(): LabCase {
   };
 }
 
+// 主燃料タンクを単体で置き、白黒塗装と胴体の表面を観察する。
+function mainTank(): LabCase {
+  const model = buildShipModuleModel('tank-6-main');
+  model.position.set(0, 0, -25);
+  return {
+    objects: [model],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -25),
+    shots: {
+      'main-tank-surface-side': {
+        view: { cameraAzimuthDeg: -90, cameraElevationDeg: 12, cameraDistanceLog: -0.42,
+          sunAzimuthDeg: -50, sunElevationDeg: 32 },
+      },
+      'main-tank-surface-oblique': {
+        view: { cameraAzimuthDeg: -52, cameraElevationDeg: 22, cameraDistanceLog: -0.42,
+          sunAzimuthDeg: -35, sunElevationDeg: 38 },
+      },
+    },
+  };
+}
+
 // 船殻だけを単体で置き、全長・断面・側面ディテールを多方向から観察する。
 function cockpit(): LabCase {
   const model = buildShipModuleModel('cockpit-standard');
@@ -395,6 +416,7 @@ export const SHIP_CASES = {
   'modular-ship-base': base,
   'modular-ship-separation': separation,
   'modular-ship-combat': combat,
+  'modular-ship-main-tank': mainTank,
   'modular-ship-engine': engine,
   'modular-ship-rcs-tank': rcsTank,
   'modular-ship-weapon': weapon,
