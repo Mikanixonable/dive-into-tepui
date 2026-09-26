@@ -50,6 +50,9 @@ function buildManifest() {
           thickness: shape.RADIATOR_PANEL_THICKNESS, normalAxis: [0, 1, 0],
         },
       },
+      magazine: {
+        width: shape.MAG_WIDTH,
+      },
     };
   } finally {
     source.dispose();

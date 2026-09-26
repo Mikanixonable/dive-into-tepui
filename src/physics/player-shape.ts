@@ -32,12 +32,12 @@ export const RADIATOR_MODULE_AREA = RADIATOR_FOLD_COUNT * RADIATOR_SEGMENT_LENGT
 // 全開時に各折りが展開軸から残す傾き [rad]。
 export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
 
-// マガジン1本の厚み [m]。3段のカートリッジが収まり、全体が3 m径の通路を通る寸法。
-export const MAG_THICKNESS = 0.62;
+// マガジン1本の厚み [m]。3段のカートリッジが収まる寸法。
+export const MAG_THICKNESS = 1.0;
 
 // マガジンのベルト方向寸法と継手間隔 [m]。
-export const MAG_WIDTH = 1.48;
-export const MAG_BELT_PITCH = MAG_WIDTH + 0.16;
+export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3);
+export const MAG_BELT_PITCH = MAG_WIDTH + 0.18;
 
 // ベルトが機体へ入る給弾口の機体座標系 X 位置 [m]。
-export const MAG_BELT_ANCHOR_X = -1.19;
+export const MAG_BELT_ANCHOR_X = 1.25;

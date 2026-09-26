@@ -7,6 +7,7 @@ import { kinematicState, type KinematicState } from '../../physics/kinematic-sta
 import { randSym } from '../../math/random';
 import type { Vec3 } from '../../math/vec3';
 import { add, addScaled, norm, randPerp, randVec, scale, sub, v3 } from '../../math/vec3';
+import { MAG_WIDTH } from '../../physics/player-shape';
 
 import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import type { Ship } from '../dynamic/dynamic-entity/ship';
@@ -30,6 +31,7 @@ const MAG_FRAME_SLIDE_DEPTH = 0.55;
 const MAG_FRAME_SLIDE_TIME = 0.3;
 const CARTRIDGE_FRAME_SLIDE_DEPTH = 0.38;
 const CARTRIDGE_FRAME_SLIDE_TIME = 0.22;
+const MAG_FRAME_QUEUE_DEPTH = CARTRIDGE_FRAME_SLIDE_DEPTH + MAG_WIDTH + 0.15;
 
 const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 
@@ -156,7 +158,7 @@ export class FireControl {
         return;
       case 'magazine-finished':
         this.spawnEjectedCartridgeFrame(muzzle.weapon);
-        this.spawnEjectedMagazineFrame(muzzle.weapon);
+        this.spawnEjectedMagazineFrame(muzzle.weapon, true);
         if (this.weapon.rounds > 0) this.registry.events.record({ kind: 'gunMagazineFed' });
         this.weapon.setCooldown(1 / this.player.totalFireRate);
         return;
@@ -267,20 +269,24 @@ export class FireControl {
     ));
   }
 
-  // 空になったマガジンの外枠を、撃ったモジュールの空リンク排出口(-X 側、薬莢と同じ側)から
-  // デブリとして放出する。生成は塔の内側で、排出口へ出る既定経路(スライド)を進んでから自由な
-  // 破片になる。
-  private spawnEjectedMagazineFrame(weapon: WeaponPorts): void {
+  // 空マガジン外枠をカートリッジ枠と同じ -X 側の排出口へ送り、出口手前で一列になるよう並べる。
+  private spawnEjectedMagazineFrame(weapon: WeaponPorts, queuedBehindCartridgeFrame = false): void {
     const ship = this.player;
     // スライド経路(モジュール局所): 排出口の内側から面の外へ。終端にわずかなばらつきを足して
     // 出て行く方向が個体ごとに散るようにする。
     const inward = qRotate(weapon.rotation, v3(1, 0, 0));
-    const inner = add(weapon.linkExitPort, scale(inward, MAG_FRAME_SLIDE_DEPTH));
+    const inwardDepth = queuedBehindCartridgeFrame
+      ? MAG_FRAME_QUEUE_DEPTH
+      : MAG_FRAME_SLIDE_DEPTH;
+    const inner = add(weapon.linkExitPort, scale(inward, inwardDepth));
     const outer = add(
       add(weapon.linkExitPort, scale(inward, -MAG_FRAME_SLIDE_DEPTH)),
       qRotate(weapon.rotation, randVec(0.12)),
     );
-    const slideSpeed = (MAG_FRAME_SLIDE_DEPTH * 2) / MAG_FRAME_SLIDE_TIME;
+    const slideSpeed = queuedBehindCartridgeFrame
+      ? (CARTRIDGE_FRAME_SLIDE_DEPTH * 2) / CARTRIDGE_FRAME_SLIDE_TIME
+      : (MAG_FRAME_SLIDE_DEPTH * 2) / MAG_FRAME_SLIDE_TIME;
+    const slideDuration = (inwardDepth + MAG_FRAME_SLIDE_DEPTH) / slideSpeed;
     const eject = this.worldDir(weapon.rotation, v3(-1, 0, 0));
     const t = ship.motion.state.t;
     this.registry.add(DebrisPiece.create(
@@ -293,7 +299,7 @@ export class FireControl {
         kind: 'magazineFrame',
         slide: {
           bornSim: t,
-          duration: MAG_FRAME_SLIDE_TIME,
+          duration: slideDuration,
           r0: ship.motion.state.r,
           q0: ship.motion.att.q,
           v0: ship.motion.state.v,
@@ -310,12 +316,12 @@ export class FireControl {
     ));
   }
 
-  // 空カートリッジ骨組みをリンク排出口基準の専用スライドで排出する。
+  // 空カートリッジ骨組みを、マガジン外枠と共有する排出口からスライドで排出する。
   private spawnEjectedCartridgeFrame(weapon: WeaponPorts): void {
     const ship = this.player;
     const inward = qRotate(weapon.rotation, v3(1, 0, 0));
-    // 外箱の排出路と重ならないよう、カートリッジ骨組みは砲軸方向にも位置をずらす。
-    const exit = add(weapon.linkExitPort, qRotate(weapon.rotation, v3(0, 0.24, 1.4)));
+    const exit = weapon.linkExitPort;
+    // 共有口の内側から外側へ移る軌道を、船体の運動へ重ねる。
     const inner = add(exit, scale(inward, CARTRIDGE_FRAME_SLIDE_DEPTH));
     const outer = add(
       add(exit, scale(inward, -CARTRIDGE_FRAME_SLIDE_DEPTH)),
@@ -324,6 +330,7 @@ export class FireControl {
     const slideSpeed = (CARTRIDGE_FRAME_SLIDE_DEPTH * 2) / CARTRIDGE_FRAME_SLIDE_TIME;
     const eject = this.worldDir(weapon.rotation, v3(-1, 0, 0));
     const t = ship.motion.state.t;
+    // スライドの終点と初期回転を持つ破片として登録する。
     this.registry.add(DebrisPiece.create(
       kinematicState<'eci'>(
         t,

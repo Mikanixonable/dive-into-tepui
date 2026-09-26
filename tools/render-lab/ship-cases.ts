@@ -12,7 +12,10 @@ import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
+import { BeltView } from '../../src/render/dynamic/player/belt-view';
+import { GunFeedView } from '../../src/render/dynamic/ship/gun-feed-view';
 import { WeaponDrives, type WeaponRecoilInput } from '../../src/render/dynamic/ship/weapon-drives';
+import { MAG_BELT_PITCH } from '../../src/physics/player-shape';
 import type { ShipModuleRenderInput } from '../../src/render/dynamic/ship/ship-render-contract';
 import { labCamera, shipObject, type CaseBuilder, type LabCase } from './lab-case';
 
@@ -180,6 +183,20 @@ function weapon(): LabCase {
   }];
   const view = new ModularShipView(buildShipModuleModel, undefined, false);
   view.sync(modules);
+  // 側方給弾の形が見えるよう、レシーバー高さに短い連結マガジン列を置く。
+  const belt = new BeltView(view.object, 3);
+  const feedPort = definition.feedPort;
+  belt.sync(3, {
+    anchor: feedPort,
+    positions: Array.from({ length: 3 }, (_, index) => v3(
+      feedPort.x + (index + 1) * MAG_BELT_PITCH, feedPort.y, feedPort.z,
+    )),
+    twists: [0, 0, 0],
+  });
+  // レール上に満装填状態のカートリッジ段を表示する。
+  const magazineRail = view.semanticAnchor('weapon', 'magazine-rail');
+  const gunFeed = magazineRail === null ? null : new GunFeedView(magazineRail);
+  gunFeed?.sync(24, null, null, 0);
   view.object.position.set(0, 0, -20);
   const syncMotion = weaponMotion(view, modules, definition.abilities.fireRate ?? 0);
   return {
@@ -187,7 +204,10 @@ function weapon(): LabCase {
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -19.2),
     syncMotion,
-    dispose: () => view.dispose(),
+    dispose: () => {
+      gunFeed?.dispose();
+      view.dispose();
+    },
     shots: {
       'weapon-cradle-oblique': {
         view: { cameraAzimuthDeg: -35, cameraElevationDeg: 25, cameraDistanceLog: -0.22,

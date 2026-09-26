@@ -52,12 +52,12 @@ const RCS_MODULE_TORQUE = 24_000;
 
 // 回転砲の砲口 [m]。モジュール長 9 m の前端面に置く。
 const GATLING_MUZZLES = [v3(0, 0, 4.5)];
-// 後方から中心軸へ入る給弾口 [m]。
-const GATLING_FEED_PORT = v3(0, 0, -4.15);
+// 側方のベルトがレシーバー横へ入る点 [m]。ベルトはここから +X へ伸びる。
+const GATLING_FEED_PORT = v3(1.25, 0, 1.08);
 // 空薬莢の排出口 [m]。機関部付近の左舷側。
 const GATLING_EJECTION_PORT = v3(-1.72, -0.30, 0.5);
-// 空リンク・マガジン外枠の排出口 [m]。後方寄りの左舷外箱。
-const GATLING_LINK_EXIT_PORT = v3(-1.32, 0, -2.6);
+// 空カートリッジ枠と空マガジン外枠が共有する排出口 [m]。
+const GATLING_LINK_EXIT_PORT = v3(-1.34, -0.10, 1.08);
 
 // 9 m の砲身・給弾路を長手方向に分け、端部の接触範囲を結合面内に収める。
 const GATLING_SOLID_PRIMITIVES: readonly LocalCappedCylinder[] = [
