@@ -27,6 +27,7 @@ import {
 import { createCloudLocalFieldDiagnostic } from './cloud-local-field-diagnostic';
 import type { CloudPresentationDetailTile } from '../../src/render/cloud/cloud-presentation';
 import type { CloudLocalFieldBinding } from '../../src/render/cloud/cloud-local-field';
+import type { CloudLocalFieldBakeStats } from '../../src/render/cloud/cloud-local-field-baker';
 
 // 地球を光源として扱うときの色つきアルベド(ゲーム本体の Earth と同じ測光)。
 export const EARTH_LIGHT_ALBEDO: Albedo = scaledToBondAlbedo(EARTH_TEXTURE.averageHue, EARTH_TEXTURE.bondAlbedo);
@@ -130,6 +131,11 @@ export class LabEarth {
 
   // 地表が読む画像(ベース色と滑らかさ)がすべて GPU へ届いたか。
   public get ready(): boolean { return this.surface.imagesReady; }
+
+  // 製品経路の局所光学場の焼き器が記録した計測。
+  public get cloudLocalFieldBakeStats(): CloudLocalFieldBakeStats | null {
+    return this.clouds.localFieldBakeStats;
+  }
 
   // 所有者が保持する局所雲タイルの backing data 実寸と GPU 基底 mip 容量推定を返す。
   public get cloudDetailDiagnosticTextureEstimate(): CloudDetailDiagnosticTextureEstimate | null {
