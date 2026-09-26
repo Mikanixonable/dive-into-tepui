@@ -21,8 +21,9 @@ import { MeteorologicalCloudField } from '../../../render/cloud/meteorological-c
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { AtmosphericWindField } from '../../../render/cloud/atmospheric-wind';
 import {
-  ConvectiveCloudLocalFieldSupply, CONVECTIVE_LOCAL_FIELD_SPAN_M, makeWindAt,
+  ConvectiveCloudLocalFieldSupply, CONVECTIVE_LOCAL_FIELD_SPAN_M,
 } from '../../cloud/cloud-local-field-supply';
+import { cloudEventWindAt } from '../../cloud/cloud-event-transport';
 import { ConvectiveCloudGlobalFieldSupply } from '../../cloud/cloud-global-field-supply';
 import { earthGlobalEnvironmentAt } from '../../cloud/earth-global-environment';
 import { AnnualClimateMap } from '../../../render/cloud/climate-map';
@@ -243,16 +244,17 @@ export function earthCloudPresentation(): CloudPresentation {
         direction, climate, timeSeconds, R_EARTH, SIDEREAL_DAY),
       EARTH_CLOUD_GLOBAL_SEED, R_EARTH_EQ,
       EARTH_GLOBAL_FIELD_GRID_WIDTH, EARTH_GLOBAL_FIELD_GRID_HEIGHT,
-      makeWindAt(new AtmosphericWindField())),
+      cloudEventWindAt(new AtmosphericWindField())),
     cap, climate);
   // 局所光学場は対流イベントの生成経路から供給する。環境の天気は、生成場が prepare で
-  // 受けた表示時刻をそのまま読む。
+  // 受けた表示時刻をそのまま読む。気候画像を inputReadiness として渡し、CPU で読める
+  // ようになるまで最初の焼き上げを遅らせる — 緯度近似と実気候の混在する場を採らない。
   const localFieldBaker = new CloudLocalFieldBaker(
     new ConvectiveCloudLocalFieldSupply(
       (direction) => earthGlobalEnvironmentAt(
         direction, climate, generated.displayTimeSeconds, R_EARTH, SIDEREAL_DAY),
       EARTH_CLOUD_LOCAL_SEED, R_EARTH_EQ),
-    EARTH_LOCAL_FIELD_REBUILD_SECONDS, EARTH_LOCAL_FIELD_RECENTER_RAD);
+    EARTH_LOCAL_FIELD_REBUILD_SECONDS, EARTH_LOCAL_FIELD_RECENTER_RAD, climate);
   return new CloudPresentation(
     generated, new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
     localFieldBaker,
