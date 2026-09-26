@@ -40,7 +40,7 @@ host._resolveFilename = function (request, parent, ...rest): string {
 // それぞれ返すローダーを立てる。
 // webpack 用に `require` がグローバル宣言されているので、node のローダー登録はここで作る。
 const nodeRequire = createRequire(__filename);
-for (const extension of ['.jpg', '.png']) {
+for (const extension of ['.jpg', '.png', '.glb']) {
   nodeRequire.extensions[extension] = (module, filename) => {
     module.exports = filename;
   };
