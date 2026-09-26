@@ -634,6 +634,7 @@ export class ModularShip extends Ship implements Controllable {
       belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
       magsLeft: this.magsLeft,
       gunFireRate: this.fire.isFiring ? this.totalFireRate : 0,
+      recentShotRecords: this.fire.recentShotRecords,
     };
   }
 

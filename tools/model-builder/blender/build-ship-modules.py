@@ -1944,8 +1944,8 @@ def add_gun_bolts(name, positions, direction, mats, parent=None, radius=0.035):
 
 
 # 固定砲架を作る。頬板下側の切り欠きは排莢樋と給弾塔の空間を確保する。
-def build_gun_cradle(mats, deck_top):
-    outline = [(0.20, deck_top + 0.04), (1.13, deck_top + 0.04), (1.32, 0.0),
+def build_gun_cradle(mats, mount_plane_z):
+    outline = [(0.20, mount_plane_z + 0.04), (1.13, mount_plane_z + 0.04), (1.32, 0.0),
         (1.26, 0.68), (0.76, 1.32), (-0.64, 1.32), (-0.78, 1.06),
         (-0.78, 0.67), (0.20, 0.67)]
     panel = [(0.30, -0.19), (1.00, -0.19), (1.12, 0.08), (1.08, 0.61),
@@ -1958,7 +1958,7 @@ def build_gun_cradle(mats, deck_top):
         add_mesh_obj(f"gun_cradle_cheek_field_{side:+.0f}",
             make_gun_cheek(panel, side * 1.496 - 0.012, side * 1.496 + 0.012, 0.012), mats.gun_panel)
         add_mesh_obj(f"gun_cradle_foot_{side:+.0f}", make_box(0.57, 1.16, 0.10,
-            center=(x, 0.72, deck_top + 0.05), bevel=0.035), mats.gun_paint)
+            center=(x, 0.72, mount_plane_z + 0.05), bevel=0.035), mats.gun_paint)
         bearing_transform = Matrix.Translation((side * 1.53, 0.64, 0.40)) @ Euler((0, math.pi / 2, 0)).to_matrix().to_4x4()
         add_mesh_obj(f"gun_cradle_trunnion_{side:+.0f}",
             transform_bm(make_cylinder(0.38, 0.38, 0.22, segments=40), bearing_transform), mats.gun_paint)
@@ -1970,15 +1970,15 @@ def build_gun_cradle(mats, deck_top):
         add_gun_bolts(f"gun_cheek_bolts_{side:+.0f}",
             [(side * 1.52, y, z) for y, z in ((-.51, 1.23), (.14, 1.23), (.70, 1.20), (1.18, .60), (.29, -.22))],
             (side, 0, 0), mats)
-    # 後座を支える案内レールと、甲板へ反力を渡す横梁。
+    # 後座を支える案内レールと、取付面へ反力を渡す横梁。
     for y in (-0.62, 0.62):
         add_mesh_obj(f"gun_cradle_crossbeam_{y:+.2f}", make_box(2.60, 0.20, 0.14,
-            center=(0, y, deck_top + .09), bevel=.025), mats.gun_paint)
+            center=(0, y, mount_plane_z + .09), bevel=.025), mats.gun_paint)
     for side in (-1.0, 1.0):
         add_mesh_obj(f"gun_slide_rail_{side:+.0f}", make_box(.17, .20, 1.47,
             center=(side * .93, -.38, .44), bevel=.018), mats.gun_machined)
         add_mesh_obj(f"gun_slide_rail_seat_{side:+.0f}", make_box(.27, .34, .14,
-            center=(side * .93, -.38, deck_top + .10), bevel=.025), mats.gun_paint)
+            center=(side * .93, -.38, mount_plane_z + .10), bevel=.025), mats.gun_paint)
 
 
 # 後座する機関部、駆動装置、軸受と整備扉を組む。
@@ -2055,10 +2055,10 @@ def build_gun_recoil_cylinders(mats, recoil):
                 for a in [i * math.pi / 3 for i in range(6)]], (0, 0, 1), mats, radius=.026)
 
 
-# 固定側の機械室と圧力容器を甲板へ据え付ける。
-def build_gun_service_house(mats, deck_top):
+# 固定側の機械室と圧力容器を砲架の支持部へ据え付ける。
+def build_gun_service_house(mats, mount_plane_z):
     add_mesh_obj("gun_house", make_box(2.20, .77, .67,
-        center=(0, 1.80, deck_top + .335), bevel=.075), mats.gun_paint)
+        center=(0, 1.80, mount_plane_z + .335), bevel=.075), mats.gun_paint)
     add_mesh_obj("gun_house_hood", make_box(2.03, .65, .08,
         center=(0, 1.81, .33), bevel=.035), mats.gun_panel)
     for side in (-1.0, 1.0):
@@ -2128,7 +2128,6 @@ def build_weapon(name):
     reset_scene()
     mats = MaterialLibrary()
     add_gun_materials(mats)
-    radius = 3.0
     module = MANIFEST["modules"][name]
     half_len = module["length"] / 2.0
     muzzle = Vector(module["muzzles"][0])   # 砲口は機軸上の1点
@@ -2136,64 +2135,23 @@ def build_weapon(name):
     mx, my, mz = muzzle.x, muzzle.y, muzzle.z
     fx, fy = feed_port.x, feed_port.y
 
-    # 1. 後端の結合環と砲架の甲板・放射状の補強リブ。
-    #    ベルトのリンクは長手(Z)に甲板面をまたぐので、通路にあたる帯を甲板から抜く。
-    ring_top = -half_len + 0.12
-    add_mesh_obj("weapon_mating_ring", make_lathe([
-        (radius - 0.20, -half_len), (radius, -half_len), (radius, ring_top), (radius - 0.20, ring_top),
-    ], segments=64, closed=True), mats.hull)
-    add_mesh_obj("weapon_ring_flange", make_torus(radius + 0.005, 0.025, ring_top - 0.025, major_seg=64, minor_seg=10), mats.hull_dark)
-    deck_top = -half_len + 0.125
-    deck_r = radius - 0.18
+    mount_plane_z = -half_len + 0.125
 
-    # 甲板の切り欠きは feed_port を跨ぐ Y 方向の帯で、円板を2片(主板と外縁側の小片)に分ける。
-    # 帯の端は甲板縁の結合環まで開くので、ベルトは舷側へ出入りできる。
-    channel_y0 = fy - 0.60  # リンク厚み 1.0 + 0.2 の余裕
-    channel_y1 = fy + 0.60
-    chord_x1 = math.sqrt(deck_r ** 2 - channel_y1 ** 2)
-    chord_x0 = math.sqrt(deck_r ** 2 - channel_y0 ** 2)
-    deck_outline = [(-chord_x1, channel_y1), (chord_x1, channel_y1)]
-    arc_from = math.atan2(channel_y1, chord_x1)
-    arc_to = math.atan2(channel_y1, -chord_x1) + 2.0 * math.pi
-    for i in range(1, 48):
-        a = arc_from + (arc_to - arc_from) * i / 48.0
-        deck_outline.append((deck_r * math.cos(a), deck_r * math.sin(a)))
-    add_mesh_obj("weapon_deck", make_plate_prism(deck_outline, deck_top - 0.05, deck_top), mats.hull_dark)
-    # 切り欠きの向こう側に残る円板の小片
-    cap_outline = [(chord_x0, channel_y0), (-chord_x0, channel_y0)]
-    cap_from = math.atan2(channel_y0, -chord_x0)
-    cap_to = math.atan2(channel_y0, chord_x0)
-    for i in range(1, 16):
-        a = cap_from + (cap_to - cap_from) * i / 16.0
-        cap_outline.append((deck_r * math.cos(a), deck_r * math.sin(a)))
-    add_mesh_obj("weapon_deck_channel_floor", make_plate_prism(cap_outline, deck_top - 0.05, deck_top), mats.hull_dark)
-    # 通路の両脇の立ち上がり縁
-    add_mesh_obj("deck_channel_sill_inner", make_box(2.0 * chord_x1 - 0.02, 0.07, 0.06, center=(0.0, channel_y1 + 0.045, deck_top + 0.02)), mats.clamp)
-    add_mesh_obj("deck_channel_sill_outer", make_box(2.0 * chord_x0 - 0.02, 0.07, 0.06, center=(0.0, channel_y0 - 0.045, deck_top + 0.02)), mats.clamp)
-
-    for i in range(8):
-        a = i * math.pi / 4.0 + math.pi / 8.0
-        # 通路の上空をまたぐリブは浮いてしまうので置かない
-        if any(channel_y0 <= deck_r * t * math.sin(a) <= channel_y1 for t in [k / 24.0 for k in range(1, 25)]):
-            continue
-        mid = 1.75
-        add_mesh_obj(f"deck_rib_{i}", make_box(1.70, 0.06, 0.08, center=(mid * math.cos(a), mid * math.sin(a), deck_top + 0.04), rot_euler=(0, 0, a)), mats.hull)
-
-    # 2. 露出砲架。頬板・軸受・案内レール・駐退シリンダー・機械室は甲板へ固定し、機関部と
+    # 1. 露出砲架。頬板・軸受・案内レール・駐退シリンダー・機械室は支持部へ固定し、機関部と
     #    砲身束・排莢口は後座 anchor の子として、発射ごとに砲架へ沿って後退・復座する。
     breech_z = 1.20                    # 砲身束の尾端(回転部の根元)。ここから砲口までが露出砲身
     recoil = add_anchor("gun-recoil:0", (0.0, 0.0, 0.0), recoilTravel=0.22)
-    build_gun_cradle(mats, deck_top)
+    build_gun_cradle(mats, mount_plane_z)
     build_gun_receiver(mats, recoil, breech_z)
     build_gun_recoil_cylinders(mats, recoil)
-    build_gun_service_house(mats, deck_top)
+    build_gun_service_house(mats, mount_plane_z)
     build_gun_barrels(mats, recoil, breech_z, mz)
     build_gun_ejection(mats, recoil)
     # 固定の給弾シュートが機関部の底へ入る摺動口の締め環(後座してもシュートを囲う)
     add_mesh_obj("gun_feed_gland", make_box(0.86, 0.06, 0.86,
         center=(fx - 0.15, my - 0.77, 0.05), bevel=0.02), mats.gun_machined, parent=recoil)
 
-    # 4. 給弾塔(デリンカー): feed_port を中心に甲板をまたぐ装甲ハウジング。
+    # 2. 給弾塔(デリンカー): feed_port を中心に砲架の支持部をまたぐ装甲ハウジング。
     #    +X 面の開口へベルトが差し込まれ、中で弾だけが天面のシュートへ分かれて機関部へ入る。
     slot_y0, slot_y1 = fy - 0.625, fy + 0.625  # 開口の高さ 1.25(リンク厚み 1.0 より僅かに大きい)
     # 開口の後端は後端面(z=-0.5)の手前に留める。リンク(奥行 2.0)の後ろ側は開口の下からはみ出す
@@ -2201,16 +2159,16 @@ def build_weapon(name):
     face_x = fx + 0.45
     tower_x0 = fx - 0.80
     body_y0, body_y1 = fy - 0.90, fy + 1.00
-    body_z0, body_z1 = deck_top, 1.18
+    body_z0, body_z1 = mount_plane_z, 1.18
     trunk_x0 = fx - 0.55
     trunk_y0, trunk_y1 = fy - 0.75, fy + 0.75
-    # 甲板より後ろは結合面(z=-0.5)の手前に留める浅い脚にする
+    # 結合面(z=-0.5)より後ろへ出ない浅い脚にする
     trunk_z0, trunk_z1 = -0.48, -0.28
     wall_x0 = face_x - 0.18
     body_zc = (body_z0 + body_z1) / 2
     trunk_zc = (trunk_z0 + trunk_z1) / 2
 
-    # 甲板上の胴体と甲板下の脚を板で組む。開口の奥は暗い空洞として抜く
+    # 支持面の上の胴体と結合面前方へ張り出す脚を板で組む。開口の奥は暗い空洞として抜く
     add_mesh_obj("feed_tower_top", make_box(face_x - tower_x0, 0.10, body_z1 - body_z0,
         center=((tower_x0 + face_x) / 2, body_y1 - 0.05, body_zc)), mats.hull_dark)
     add_mesh_obj("feed_tower_bottom", make_box(face_x - tower_x0, 0.10, body_z1 - body_z0,
@@ -2233,7 +2191,7 @@ def build_weapon(name):
     add_mesh_obj("feed_trunk_cavity", make_box(face_x - 0.30 - trunk_x0 - 0.10, trunk_y1 - trunk_y0 - 0.20, 0.18,
         center=((trunk_x0 + 0.10 + face_x - 0.30) / 2, fy, -0.36)), mats.recessed)
 
-    # +X 面の開口まわりの壁(甲板上は上・下・前の3辺、甲板下は上・下・後ろの3辺)
+    # +X 面の開口まわりを3辺の壁で囲う
     wall_cx = wall_x0 + 0.09
     add_mesh_obj("feed_mouth_wall_top", make_box(0.18, body_y1 - slot_y1, body_z1 - body_z0,
         center=(wall_cx, (body_y1 + slot_y1) / 2, body_zc)), mats.hull_dark)
