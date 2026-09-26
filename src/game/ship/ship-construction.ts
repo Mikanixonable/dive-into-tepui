@@ -16,6 +16,7 @@ import type {
 } from './ship-construction-types';
 import type { Notifier } from '../../hud/notifier';
 import type { ModuleTransform } from './ship-assembly';
+import { sideMountRadius } from './ship-assembly-transform';
 import {
   constructionSlotId, enumerateConstructionSlots, placementForSlot, slotState,
   type ConstructionPlacement, type ConstructionSlot,
@@ -333,7 +334,7 @@ export class ShipConstruction implements OverlayHandle {
     const rotationEci = qMul(draft.ship.motion.att.q, assemblyRotation);
     const parentCenter = add(root, qRotate(draft.ship.motion.att.q, parentWorld.position));
     const guideDirection = qRotate(qMul(draft.ship.motion.att.q, parentWorld.rotation), slot.direction);
-    const guideDistance = slot.kind === 'side' ? parentDefinition.diameter / 2 : parentDefinition.length / 2;
+    const guideDistance = slot.kind === 'side' ? sideMountRadius(parentDefinition) : parentDefinition.length / 2;
     return {
       slot, placement, centerEci, rotationEci,
       guideEci: add(parentCenter, scale(guideDirection, guideDistance)),
