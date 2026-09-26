@@ -170,6 +170,47 @@ export function fieldValueCentroid(
   return { eastM: weightedEast / valueSum, northM: weightedNorth / valueSum };
 }
 
+// 値で重み付けした二次中心化モーメントから、同じ慣性主軸を持つ等価楕円の
+// 半軸と主軸方位を返す。一様楕円板の慣性関係 λ = a²/4 で半軸へ換算する。
+// 伸長した形は長半径 ≫ 短半径、等方な形は両者が近い値になる。値の総和が零なら null。
+export function fieldMomentAxes(
+  plane: CloudFieldPlane,
+): {
+  readonly majorRadiusM: number;
+  readonly minorRadiusM: number;
+  readonly majorAxisAzimuthRad: number;
+} | null {
+  requirePlane(plane);
+  const centroid = fieldValueCentroid(plane);
+  if (centroid === null) return null;
+  let weightSum = 0;
+  let momentEastM2 = 0;
+  let momentNorthM2 = 0;
+  let momentCrossM2 = 0;
+  for (const [index, weight] of plane.values.entries()) {
+    if (weight <= 0) continue;
+    const column = index % plane.width;
+    const row = (index - column) / plane.width;
+    const eastM = plane.originEastM + (column + 0.5) * plane.cellWidthM - centroid.eastM;
+    const northM = plane.originNorthM + (row + 0.5) * plane.cellHeightM - centroid.northM;
+    weightSum += weight;
+    momentEastM2 += weight * eastM * eastM;
+    momentNorthM2 += weight * northM * northM;
+    momentCrossM2 += weight * eastM * northM;
+  }
+  const eastVarianceM2 = momentEastM2 / weightSum;
+  const northVarianceM2 = momentNorthM2 / weightSum;
+  const crossVarianceM2 = momentCrossM2 / weightSum;
+  const meanVarianceM2 = (eastVarianceM2 + northVarianceM2) / 2;
+  const spreadM2 = Math.hypot((eastVarianceM2 - northVarianceM2) / 2, crossVarianceM2);
+  return {
+    majorRadiusM: 2 * Math.sqrt(meanVarianceM2 + spreadM2),
+    minorRadiusM: 2 * Math.sqrt(Math.max(meanVarianceM2 - spreadM2, 0)),
+    // 対称 2×2 モーメント行列の大固有値の方位。east から north 向き。
+    majorAxisAzimuthRad: Math.atan2(2 * crossVarianceM2, eastVarianceM2 - northVarianceM2) / 2,
+  };
+}
+
 // 成分の面積と同じ面積を持つ円の直径 [m]。
 export function equivalentDiameterM(cellCount: number, cellAreaM2: number): number {
   if (!Number.isSafeInteger(cellCount) || cellCount <= 0 || !(cellAreaM2 > 0)) {
