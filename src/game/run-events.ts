@@ -52,8 +52,8 @@ export type RunEventBody =
   | { readonly kind: 'gunDryFired' }
   // 次のマガジンが給弾された。
   | { readonly kind: 'gunMagazineFed' }
-  // 砲身を交換した。
-  | { readonly kind: 'gunBarrelSwapped' }
+  // 手動でマガジンを替えた。
+  | { readonly kind: 'gunReloaded' }
   // 武装が壊れていて撃てない。
   | { readonly kind: 'gunDisabled' }
   // 弾薬を撃ち尽くした。
