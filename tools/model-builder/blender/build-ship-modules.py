@@ -1133,13 +1133,6 @@ def build_deployable_chain(kind, half_len, build_panel):
         for obj in build_panel(index, 1 if index % 2 == 0 else -1):
             parent_to(obj, hinge)
 
-def build_deploy_base(mats, half_len, radius):
-    """取付面の円盤フランジとボルト環。台座の天板として残し、駆動機構・回転継手はこの上へ載る。"""
-    bm_flange = make_cylinder(radius * 0.85, radius * 0.85, 0.12, z_center=half_len - 0.06, segments=36)
-    add_mesh_obj("deploy_flange", bm_flange, mats.hull_dark)
-    bm_bolts = make_torus(major_r=radius * 0.82, minor_r=0.025, z_center=half_len - 0.02, major_seg=36, minor_seg=8)
-    add_mesh_obj("flange_bolts", bm_bolts, mats.clamp)
-
 # 展開モジュールの船体側取付構造。母船の船体は半径 3.0 m の円筒で、側面取付の回転
 # (sideSlotRotation)はどの向き(side:±x / side:±y)でも母船の長手軸をモジュール局所 ±X へ写す。
 # モジュール後端面 z = -0.5 が船体面の接点なので、局所座標では船体円筒軸は高さ z = -3.5 を
@@ -1179,7 +1172,7 @@ def build_hull_junction(mats, half_len):
     # 機構を載せる台座。フランジ(取付面)の下面へ届けて上部構造を宙に浮かせない
     add_mesh_obj("mount_pedestal", make_lathe([
         (0.0, 0.00), (0.58, 0.00), (0.60, 0.04), (0.52, 0.10),
-        (0.52, 0.30), (0.60, 0.38), (0.60, half_len - 0.06), (0.0, half_len - 0.06),
+        (0.52, 0.30), (0.60, 0.38), (0.60, half_len - 0.03), (0.0, half_len - 0.03),
     ], segments=48, closed=True), mats.hull_dark)
 
 def build_solar_mount(mats, half_len, thickness):
@@ -1245,7 +1238,6 @@ def build_solar_panel(name):
     reset_scene()
     mats = MaterialLibrary()
     half_len = MANIFEST["modules"][name]["length"] / 2
-    build_deploy_base(mats, half_len, 3.0)
     build_hull_junction(mats, half_len)
     spec = MANIFEST["deployables"]["solar_panel"]
     length, span, thickness = spec["length"], spec["span"], spec["thickness"]
@@ -1341,7 +1333,6 @@ def build_radiator(name):
     reset_scene()
     mats = MaterialLibrary()
     half_len = MANIFEST["modules"][name]["length"] / 2
-    build_deploy_base(mats, half_len, 3.0)
     build_hull_junction(mats, half_len)
     build_radiator_mount(mats, half_len)
 
