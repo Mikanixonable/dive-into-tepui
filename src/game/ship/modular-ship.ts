@@ -635,6 +635,9 @@ export class ModularShip extends Ship implements Controllable {
       magsLeft: this.magsLeft,
       gunFireRate: this.fire.isFiring ? this.totalFireRate : 0,
       recentShotRecords: this.fire.recentShotRecords,
+      roundsInMagazine: this.fire.rounds,
+      cartridgeAdvancedAt: this.fire.cartridgeAdvancedAt,
+      magazineFedAt: this.fire.magazineFedAt,
     };
   }
 

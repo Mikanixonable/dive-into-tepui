@@ -50,14 +50,22 @@ function tank(
 // 既定船の実慣性に対して基準角加速度約 1.4 rad/s² を得る RCS 実トルク [N m]。
 const RCS_MODULE_TORQUE = 24_000;
 
-// 回転砲の砲身先端 [m]。モジュール局所で、後端の結合面 (-0.5) から 3 m。
-const GATLING_MUZZLES = [v3(0, 0, 2.5)];
-// 給弾ベルトの取り込み口 [m]。砲架下の給弾塔の口で、ベルトはここから +X へ伸びる。
-const GATLING_FEED_PORT = v3(0, -1.95, 0);
-// 空薬莢の排出口 [m]。機関部 -X 側の排莢樋の末端。
-const GATLING_EJECTION_PORT = v3(-1.32, -0.24, -0.04);
-// 空リンク・マガジン外枠の排出口 [m]。給弾塔の -X 面の開口の少し外。
-const GATLING_LINK_EXIT_PORT = v3(-0.86, -1.95, 0.3);
+// 回転砲の砲口 [m]。モジュール長 9 m の前端面に置く。
+const GATLING_MUZZLES = [v3(0, 0, 4.5)];
+// 後方から中心軸へ入る給弾口 [m]。
+const GATLING_FEED_PORT = v3(0, 0, -4.15);
+// 空薬莢の排出口 [m]。機関部付近の左舷側。
+const GATLING_EJECTION_PORT = v3(-1.72, -0.30, 0.5);
+// 空リンク・マガジン外枠の排出口 [m]。後方寄りの左舷外箱。
+const GATLING_LINK_EXIT_PORT = v3(-1.32, 0, -2.6);
+
+// 9 m の砲身・給弾路を長手方向に分け、端部の接触範囲を結合面内に収める。
+const GATLING_SOLID_PRIMITIVES: readonly LocalCappedCylinder[] = [
+  { center: v3(0, 0, -3.375), axis: v3(0, 0, 1), halfLength: 1.125, radius: 1.48 },
+  { center: v3(0, 0, -1.125), axis: v3(0, 0, 1), halfLength: 1.125, radius: 1.48 },
+  { center: v3(0, 0, 1.125), axis: v3(0, 0, 1), halfLength: 1.125, radius: 1.48 },
+  { center: v3(0, 0, 3.375), axis: v3(0, 0, 1), halfLength: 1.125, radius: 1.48 },
+];
 
 // 展開部品の実体は、座板・脚・台座・駆動部でできた取付構造まで。翼列は展開で実体から外れるので
 // 接触形状に含めず、取付構造の束(座板の張り出しを含む半径)を包む円柱で近似する。
@@ -71,8 +79,20 @@ const DOCK_MODULE_PRIMITIVE: LocalCappedCylinder = {
   center: v3(0, 0, -0.05), axis: v3(0, 0, 1), halfLength: 0.55, radius: 1.65,
 };
 
+// コックピットは後端半径 3 m から前端半径 1.5 m へ細くなるため、軸方向に分割して接触形状を近似する。
+// 各円柱は区間の後端半径で覆い、単一の半径 3 m 円柱が前部まで広がる過大判定を避ける。
+const COCKPIT_SOLID_PRIMITIVES: readonly LocalCappedCylinder[] = [
+  { center: v3(0, 0, -1.25), axis: v3(0, 0, 1), halfLength: 0.25, radius: 3.00 },
+  { center: v3(0, 0, -0.75), axis: v3(0, 0, 1), halfLength: 0.25, radius: 2.75 },
+  { center: v3(0, 0, -0.25), axis: v3(0, 0, 1), halfLength: 0.25, radius: 2.50 },
+  { center: v3(0, 0, 0.25), axis: v3(0, 0, 1), halfLength: 0.25, radius: 2.25 },
+  { center: v3(0, 0, 0.75), axis: v3(0, 0, 1), halfLength: 0.25, radius: 2.00 },
+  { center: v3(0, 0, 1.25), axis: v3(0, 0, 1), halfLength: 0.25, radius: 1.75 },
+];
+
 const definitions: readonly ShipModuleDefinition[] = [
-  moduleDefinition('cockpit-standard', 'cockpit', 3, 100, 100),
+  moduleDefinition('cockpit-standard', 'cockpit', 3, 100, 100, {}, 3, 'cockpit-standard', [], v3(),
+    COCKPIT_SOLID_PRIMITIVES),
   tank('tank-3-main', 3, 'main', 80),
   tank('tank-6-main', 6, 'main', 160),
   tank('tank-12-main', 12, 'main', 320),
@@ -90,11 +110,11 @@ const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition(
     'rcs-combat', 'rcs', 1, 50, 25, { torque: RCS_MODULE_TORQUE, fuelConsumptionRate: 1 }, 3, 'rcs-standard',
   ),
-  moduleDefinition('weapon-gatling', 'weapon', 1, 80, 20, {
+  moduleDefinition('weapon-gatling', 'weapon', 9, 80, 20, {
     weaponDamage: 1, fireRate: 1 / 0.06, muzzleVelocity: 1_000,
-  }, 3, 'weapon-gatling', GATLING_MUZZLES, GATLING_FEED_PORT, undefined, {
+  }, 1.5, 'weapon-gatling', GATLING_MUZZLES, GATLING_FEED_PORT, GATLING_SOLID_PRIMITIVES, {
     ejection: GATLING_EJECTION_PORT, linkExit: GATLING_LINK_EXIT_PORT,
-  }),
+  }, 3),
   moduleDefinition('armor-standard', 'armor', 1, 100, 100, { armorReduction: 0.2 }),
   moduleDefinition('armor-combat', 'armor', 1, 370, 50, { armorReduction: 0.2 }),
   moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 4.8 },
