@@ -1648,6 +1648,21 @@ def build_weapon(name):
         transform_bm(bm_bolt, Matrix.Translation(Vector((face_x - 0.06, drum_y + 0.30 * math.cos(ba), drum_z + 0.30 * math.sin(ba)))) @ drum_rot)
         add_mesh_obj(f"feed_drum_bolt_{t}", bm_bolt, mats.clamp, parent=drum_anchor)
 
+    # 開口の下縁を走る案内爪(フィードシュー)。送りにつれて塔の中(-X)へ踏み込み、リンクを
+    # 引き込む爪として往復する。anchor の局所 +Z が摺動方向。
+    shoe_x, shoe_y, shoe_z = face_x - 0.14, fy - 0.50, 0.36
+    shoe = add_anchor("feed-shoe", (shoe_x, shoe_y, shoe_z), direction=(-1.0, 0.0, 0.0))
+    add_mesh_obj("feed_shoe_body", make_box(0.55, 0.16, 0.85,
+        center=(shoe_x, shoe_y, shoe_z), bevel=0.03), mats.gun_steel, parent=shoe)
+    add_mesh_obj("feed_shoe_claw", make_box(0.10, 0.26, 0.10,
+        center=(shoe_x + 0.18, shoe_y + 0.14, shoe_z + 0.30), rot_euler=(0.0, -0.45, 0.0), bevel=0.02),
+        mats.clamp, parent=shoe)
+    # 爪が乗る案内レール(摺動しない側)
+    add_mesh_obj("feed_shoe_rail", make_box(0.80, 0.05, 0.10,
+        center=(shoe_x - 0.10, shoe_y - 0.10, shoe_z - 0.40)), mats.hull_dark)
+    add_mesh_obj("feed_shoe_rail_2", make_box(0.80, 0.05, 0.10,
+        center=(shoe_x - 0.10, shoe_y - 0.10, shoe_z + 0.40)), mats.hull_dark)
+
     # 空になったリンクの排出口(-X 側の暗い開口)
     add_mesh_obj("feed_exit_port", make_box(0.02, 1.20, 1.30, center=(tower_x0 - 0.01, fy, 0.30)), mats.recessed)
     add_mesh_obj("feed_exit_port_trunk", make_box(0.02, 1.20, 0.15, center=(trunk_x0 - 0.01, fy, -0.40)), mats.recessed)
