@@ -47,8 +47,8 @@ function tank(
 // 既定船の実慣性に対して基準角加速度約 1.4 rad/s² を得る RCS 実トルク [N m]。
 const RCS_MODULE_TORQUE = 24_000;
 
-// 回転砲の砲身先端 [m]。モジュール局所で、前面 (+0.5) から砲身が 0.7 m 突き出る。
-const GATLING_MUZZLES = [v3(0, 0, 1.2)];
+// 回転砲の砲身先端 [m]。モジュール局所で、前面 (+0.5) から砲身が 2.44 m 突き出る。
+const GATLING_MUZZLES = [v3(0, 0, 2.94)];
 // 給弾ベルトの取り込み口 [m]。砲架下の給弾塔の口で、ベルトはここから +X へ伸びる。
 const GATLING_FEED_PORT = v3(0, -1.95, 0);
 
