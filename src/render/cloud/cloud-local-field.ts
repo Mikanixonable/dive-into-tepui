@@ -44,6 +44,19 @@ export interface CloudLocalFieldBinding {
   readonly frame: CloudLocalFieldFrame;
 }
 
+// 表示時刻と天体固定の中心方向から局所場の内容を導出する口。実装は game 層に置き、
+// render 側はこの契約だけを見る。null はその時刻・位置に場を出さないことを示す。
+export interface CloudLocalFieldSupply {
+  derive(displayTimeSeconds: number, centerDirection: Vec3): CloudLocalFieldSupplyResult | null;
+}
+
+// derive が返す、焼く場の内容とそれを張る frame の組。data の格子寸法・層境界は frame と
+// 一致していなければならない。
+export interface CloudLocalFieldSupplyResult {
+  readonly frame: CloudLocalFieldFrame;
+  readonly data: CloudOpticalVolumeData;
+}
+
 export interface CloudLocalFieldOpticalPath {
   readonly liquidTau: number;
   readonly iceTau: number;
