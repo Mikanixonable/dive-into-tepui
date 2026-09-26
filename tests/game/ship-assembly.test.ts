@@ -328,13 +328,13 @@ export function register(): void {
 
   test('ship assembly: 戦闘艦プリセットは機首前面に砲口を持つ', () => {
     const assembly = createDefaultCombatPreset();
-    const muzzles = new ShipCapabilities(assembly).muzzlePositions();
+    const muzzles = new ShipCapabilities(assembly).weaponMuzzles();
     assert.equal(muzzles.length, 1);
     const bow = Math.max(...assembly.modules.map((module) => {
       const transform = assembly.worldTransformOf(module.id)!;
       return transform.position.z + assembly.definition(module.id)!.length / 2;
     }));
-    for (const muzzle of muzzles) assert.ok(muzzle.z > bow, `muzzle z ${muzzle.z} behind bow ${bow}`);
+    for (const muzzle of muzzles) assert.ok(muzzle.position.z > bow, `muzzle z ${muzzle.position.z} behind bow ${bow}`);
   });
 
   test('ship assembly: 側面接続された dock/port 同士のドッキングで逆流エッジ (sideReversed) を正しく保持し、合体・保存復元・切り離しができる', () => {

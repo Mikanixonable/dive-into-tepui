@@ -180,7 +180,7 @@ export function buildCasingMesh() {
 
 // 薬室の位置 [m] と、そこから砲口へ向かって温度差が落ちる長さ [m]。発射ガスは銃身に沿って
 // 熱を置いていくので、薬室側がいちばん熱く、砲口へ向かって指数で下がる。
-const BARREL_BREECH_Z = -2.3;
+const BARREL_BREECH_Z = -1.16;
 const BARREL_HEAT_FALLOFF = 1.2;
 
 // 砲身の各メッシュへ、平均温度からの温度差の分布(薬室側 1、砲口側 0)を焼く。
@@ -202,66 +202,64 @@ function bakeBarrelThermalShape(root) {
   });
 }
 
-// リロード時に放出される砲身。長手方向は Z で砲口が +Z、薬室側が -Z。
+// リロード時に放出される砲身束。モジュールに架かっている回転砲身そのままの形(後部ハブ・心棒・
+// 5本の砲身・締め板)で、長手方向は Z、砲口が +Z、薬室側が -Z。
 // 各頂点に、薬室からの距離で決まる温度差の分布を焼いた属性を持つ。
 export function buildBarrelMesh() {
   const g = new THREE.Group();
-  const S = 0.7; // 直径スケール係数
 
-  // --- 砲身チューブ本体(熱焼け黒鋼) ---
-  const tubeGeo = new THREE.CylinderGeometry(0.58 * S, 0.64 * S, 4.4, 12);
-  const tubeMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.38, metalness: 1 });
-  const tube = new THREE.Mesh(tubeGeo, tubeMat);
-  tube.rotation.x = Math.PI / 2;
-  g.add(tube);
+  // モジュール側の寸法(blender/build-ship-modules.py の回転部)を、その中心が原点へ来るよう写したもの。
+  const BARREL_COUNT = 5;
+  const CLUSTER_R = 0.60;
+  const BREECH_Z = -1.16;  // 砲身の尾端
+  const MUZZLE_Z = 1.16;   // 砲口
+  const BARREL_LEN = MUZZLE_Z - BREECH_Z;
 
-  // --- 後端フランジ(薬室側・太めリング) ---
-  const flangeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.42, metalness: 1 });
-  const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.88 * S, 0.85 * S, 0.32, 12), flangeMat);
-  flange.rotation.x = Math.PI / 2;
-  flange.position.z = -2.3;
-  g.add(flange);
-
-  // 後端中補強リング
-  const midRing = new THREE.Mesh(new THREE.CylinderGeometry(0.72 * S, 0.72 * S, 0.10, 12), flangeMat);
-  midRing.rotation.x = Math.PI / 2;
-  midRing.position.z = -0.8;
-  g.add(midRing);
-
-  // --- 放熱フィン(6枚、後部寄りに配置) ---
-  const finMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.52, metalness: 1 });
-  const FIN_COUNT = 6;
-  for (let i = 0; i < FIN_COUNT; i++) {
-    const angle = (i / FIN_COUNT) * Math.PI * 2;
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.52 * S, 1.6), finMat);
-    fin.rotation.z = angle;
-    fin.position.set(Math.cos(angle) * 0.90 * S, Math.sin(angle) * 0.90 * S, -0.8);
-    g.add(fin);
-  }
-
-  // --- ガスポートリング(中間部) ---
-  const gasPortMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.50, metalness: 1 });
-  const gasPort = new THREE.Mesh(new THREE.TorusGeometry(0.66 * S, 0.065, 6, 16), gasPortMat);
-  gasPort.rotation.x = Math.PI / 2;
-  gasPort.position.z = 0.4;
-  g.add(gasPort);
-
-  // --- マズルブレーキ(先端3連リング) ---
-  const brakeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.30, metalness: 1 });
-  for (let ri = 0; ri < 3; ri++) {
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.76 * S, 0.70 * S, 0.11, 12), brakeMat);
-    ring.rotation.x = Math.PI / 2;
-    ring.position.z = 1.55 + ri * 0.24;
-    g.add(ring);
-  }
-
-  // --- 砲口ボア(最前端・暗い穴) ---
-  // 発射煙のすすで覆われた内壁なので金属ではない。ベース色は拡散アルベドとして読まれる。
+  const steelMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.42, metalness: 1 });
+  const darkSteelMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.45, metalness: 1 });
   const boreMat = new THREE.MeshStandardMaterial({ color: 0x080b10, roughness: 0.80, metalness: 0 });
-  const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.34 * S, 0.34 * S, 0.14, 10), boreMat);
-  bore.rotation.x = Math.PI / 2;
-  bore.position.z = 2.28;
-  g.add(bore);
+
+  // --- 後部ハブ(駆動軸の受けを兼ねる厚円盤) ---
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.74, 0.16, 24), steelMat);
+  hub.rotation.x = Math.PI / 2;
+  hub.position.z = BREECH_Z - 0.04;
+  g.add(hub);
+
+  // --- 中心の心棒 ---
+  const spindle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.055, MUZZLE_Z - 0.10 - BREECH_Z, 10), darkSteelMat);
+  spindle.rotation.x = Math.PI / 2;
+  spindle.position.z = (BREECH_Z + MUZZLE_Z - 0.10) / 2;
+  g.add(spindle);
+
+  // --- 5本の砲身(尾栓側が太く、砲口へ先細り)と砲口の穴 ---
+  const barrelGeo = new THREE.CylinderGeometry(0.150, 0.185, BARREL_LEN, 14);
+  const boreGeo = new THREE.CylinderGeometry(0.125, 0.125, 0.06, 10);
+  for (let b = 0; b < BARREL_COUNT; b++) {
+    const a = (b * 2 * Math.PI) / BARREL_COUNT;
+    const bx = CLUSTER_R * Math.cos(a);
+    const by = CLUSTER_R * Math.sin(a);
+    const barrel = new THREE.Mesh(barrelGeo, steelMat);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(bx, by, (BREECH_Z + MUZZLE_Z) / 2);
+    g.add(barrel);
+    const bore = new THREE.Mesh(boreGeo, boreMat);
+    bore.rotation.x = Math.PI / 2;
+    bore.position.set(bx, by, MUZZLE_Z - 0.03);
+    g.add(bore);
+  }
+
+  // --- 長砲身を束ねる締め板(間隔を開けて3枚) ---
+  for (const [zc, thickness] of [
+    [BREECH_Z + BARREL_LEN * 0.35, 0.05],
+    [BREECH_Z + BARREL_LEN * 0.70, 0.05],
+    [MUZZLE_Z - 0.10, 0.06],
+  ]) {
+    const clamp = new THREE.Mesh(new THREE.CylinderGeometry(0.80, 0.80, thickness, 24), darkSteelMat);
+    clamp.rotation.x = Math.PI / 2;
+    clamp.position.z = zc;
+    g.add(clamp);
+  }
 
   bakeBarrelThermalShape(g);
   return g;

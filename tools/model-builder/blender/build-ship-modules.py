@@ -1630,29 +1630,32 @@ def build_weapon(name):
     add_mesh_obj("feed_mouth_lip_fore", make_box(0.13, slot_y1 - slot_y0 + 0.20, 0.05,
         center=(lip_cx, fy, slot_z1 + 0.02)), mats.clamp)
 
-    # 開口の奥に見える送りスプロケット(縦軸の星車2基)と、横置きのデリンクドラム
+    # 開口の奥に見える送りスプロケット(縦軸の星車2基)と、横置きのデリンクドラム。
+    # いずれも給弾につれて回る可動部で、anchor の子にする(スプロケットは +Y、ドラムは +X 軸まわり)。
     for i, wz in enumerate((-0.15, 0.85)):
+        sprocket = add_anchor(f"feed-sprocket:{i}", (fx + 0.35, fy, wz), direction=(0.0, 1.0, 0.0))
         bm_wheel = make_cylinder(0.24, 0.24, 1.05, z_center=0.0, segments=20)
         transform_bm(bm_wheel, Matrix.Translation(Vector((fx + 0.35, fy, wz))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
-        add_mesh_obj(f"feed_sprocket_{i}", bm_wheel, mats.gun_steel)
+        add_mesh_obj(f"feed_sprocket_{i}", bm_wheel, mats.gun_steel, parent=sprocket)
         for t in range(8):
             ta = t * math.pi / 4.0
             add_mesh_obj(f"feed_sprocket_tooth_{i}_{t}", make_box(0.05, 0.10, 0.05,
                 center=(fx + 0.35 + 0.26 * math.cos(ta), fy, wz + 0.26 * math.sin(ta)),
-                rot_euler=(0.0, -ta, 0.0), bevel=0.01), mats.gun_steel)
+                rot_euler=(0.0, -ta, 0.0), bevel=0.01), mats.gun_steel, parent=sprocket)
     drum_y, drum_z = fy + 0.42, 0.30
+    drum_anchor = add_anchor("feed-drum", (fx + 0.05, drum_y, drum_z), direction=(1.0, 0.0, 0.0))
     drum_rot = Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4()
     bm_drum = make_cylinder(0.50, 0.50, 0.70, z_center=0.0, segments=32)
     transform_bm(bm_drum, Matrix.Translation(Vector((fx + 0.05, drum_y, drum_z))) @ drum_rot)
-    add_mesh_obj("feed_delink_drum", bm_drum, mats.gun_steel)
+    add_mesh_obj("feed_delink_drum", bm_drum, mats.gun_steel, parent=drum_anchor)
     bm_boss = make_cylinder(0.16, 0.16, 0.76, z_center=0.0, segments=20)
     transform_bm(bm_boss, Matrix.Translation(Vector((fx + 0.05, drum_y, drum_z))) @ drum_rot)
-    add_mesh_obj("feed_delink_drum_boss", bm_boss, mats.hull_dark)
+    add_mesh_obj("feed_delink_drum_boss", bm_boss, mats.hull_dark, parent=drum_anchor)
     for t in range(6):
         ba = t * math.pi / 3.0
         bm_bolt = make_cylinder(0.035, 0.035, 0.05, z_center=0.0, segments=10)
         transform_bm(bm_bolt, Matrix.Translation(Vector((face_x - 0.06, drum_y + 0.30 * math.cos(ba), drum_z + 0.30 * math.sin(ba)))) @ drum_rot)
-        add_mesh_obj(f"feed_drum_bolt_{t}", bm_bolt, mats.clamp)
+        add_mesh_obj(f"feed_drum_bolt_{t}", bm_bolt, mats.clamp, parent=drum_anchor)
 
     # 空になったリンクの排出口(-X 側の暗い開口)
     add_mesh_obj("feed_exit_port", make_box(0.02, 1.20, 1.30, center=(tower_x0 - 0.01, fy, 0.30)), mats.recessed)

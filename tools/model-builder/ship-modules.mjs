@@ -65,7 +65,11 @@ const REQUIRED_ANCHORS = {
 // definition の原型が持つべき機能 anchor の数。種別の表に、機関砲なら砲口ごとの回転砲身を足す。
 function requiredAnchors(definition) {
   const required = { ...(REQUIRED_ANCHORS[definition.kind] ?? {}) };
-  if (definition.kind === 'weapon') required['barrel-rotor:'] = definition.muzzles.length;
+  if (definition.kind === 'weapon') {
+    required['barrel-rotor:'] = definition.muzzles.length;
+    required['feed-sprocket:'] = 2;
+    required['feed-drum'] = 1;
+  }
   return required;
 }
 
