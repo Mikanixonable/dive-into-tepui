@@ -35,7 +35,10 @@ export function register(): void {
     assert.equal(motion.radius, motion.physicsShape.mass.boundingRadius);
     assert.deepEqual(motion.att.inertia, motion.physicsShape.mass.inertia);
     assert.ok(motion.compoundShape !== null);
-    assert.equal(motion.compoundShape.primitives.length, ship.size);
+    const expectedPrimitiveCount = ship.modules.reduce(
+      (count, item) => count + ship.definition(item.id)!.solidPrimitives.length, 0,
+    );
+    assert.equal(motion.compoundShape.primitives.length, expectedPrimitiveCount);
     assert.equal(motion.shapeRevision, 1);
   });
 
