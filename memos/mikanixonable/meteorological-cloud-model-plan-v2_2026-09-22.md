@@ -421,7 +421,15 @@ footprint を円から `CloudFootprintEllipse` へ拡張した。回転楕円と
 
 検証: game 397・render 427 件、境界検査 pass。
 
-残る未達は、娘イベントの製品配線(derive 費用)、環境の経度・海陸・季節変化、derive のメインスレッド費用、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形応答、上層で直接生成する巻雲、観測評価(C7/C8 の量的許容域は未固定)、Step 3B の残件と Step 6〜7 である。
+2026-09-27 の追記(第四報)。derive の分割化と気候 prior を入れた。
+
+`CloudLocalFieldSupply` に `startJob` を追加し、供給の導出を分割可能な `CloudLocalFieldJob`(step(予算 ms) → done / result / cancel)へ変えた。`ConvectiveCloudLocalFieldSupply` はセル導出→イベント標本→イベントごとの堆積→merge→波→消散→体積変換を粒度のある単位へ分け、`derive` は `startJob + step(Infinity)` へ委譲(同期と分割の結果は同一経路で bit 一致)。baker は `jobStepTimeBudgetMs`(既定 6 ms)を1フレームずつ駆動し、完成で差し替える — 実測では同期 ~400 ms が 6 ms 予算で 37 駆動に分散する。駆動単位の床は `depositCloudEventMaterialCohorts` の1イベント呼び出し(~10–20 ms)で、これより細かく割るには堆積モジュール内側の分割が要る。未完成の間は現行 binding を使い続ける。
+
+気候値の CPU 読み取り経路を追加した。`ClimateData.valuesAtCpu(direction)` が GPU 経路と同じ画像・同じ目盛りで気温・平年雲量・標高・陸率を返す(DataTexture は直接、画像要素は canvas 経由で画素化、image identity でキャッシュ)。`earthConvectiveCloudEnvironmentAt` は気候源を受け、地表温・表面圧(標高減衰)・地表 RH/比湿スケールハイト・潜熱/顕熱フラックスを `dryness = landFraction×(1−雲量)` で変調させる。海陸・経度差が環境へ効くようになった(季節・日変化は年間平均画像のため非対象)。南極内陸の乾燥で parcel 診断が下限を外れる問題は地表比湿へ −45 °C 露点相当の下限、高山で柱が崩れる問題は対流圏界面を海面基準へ置くガードで処理した。遅延ロード中は null → 緯度近似へ落ち、画像到着後は 300 s の定期再焼で気候入り場へ切り替わる。
+
+検証: game 405・render 435 件、境界検査 pass。
+
+残る未達は、娘イベントの製品配線(horizon 延長でイベント数 ~4×、分割化で費用は分散可能だが未接続)、季節・日変化の環境変調、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、地形応答、上層で直接生成する巻雲、観測評価(C7/C8 の量的許容域は未固定)、Step 6 の全球被覆(気団・前線・渦・地形)と Step 7 の旧経路撤去である。
 
 
 | 変更場所 | 変更内容 |
