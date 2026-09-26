@@ -18,10 +18,12 @@ const VIEW_WIDTH = 960;
 const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
 
-// 暖機。全球場の供給ジョブは 1 フレーム(= 1 prepare)あたり数 ms しか進まないので、
-// 世代が 2(空の場の初焼き=1、届いた場=2)へ進むまでフレームを回す。
+// 暖機。全球場の供給ジョブは worker 帯分割へ振るので step 自体は応答待ちでしかなく、
+// 導出の進捗はフレーム数ではなく壁時計に比例する — 世代が進むか壁時計の上限に
+// 達するまでフレームを回す。フレーム数の上限は応答が永遠に来ないときの打ち止め。
 const WARM_BATCH_FRAMES = 20;
-const WARM_MAX_FRAMES = 4000;
+const WARM_MAX_FRAMES = 20000;
+const WARM_MAX_WALL_MS = 60_000;
 // 1 枚の絵が落ち着くまで撮り直す上限。非同期に届くテクスチャ(実写・旧経路の焼き上げ)は
 // 届くフレームで絵が変わるので、連続する 2 枚が一致したものを「落ち着いた絵」として使う。
 const MAX_SETTLE_CAPTURES = 8;
@@ -211,7 +213,8 @@ async function main() {
     const baselineGeneration = await devTools.evaluate('window.renderLab.cloudFieldGeneration()');
     let generation = baselineGeneration;
     let warmFrames = 0;
-    while (generation <= baselineGeneration && warmFrames < WARM_MAX_FRAMES) {
+    while (generation <= baselineGeneration && warmFrames < WARM_MAX_FRAMES
+      && Date.now() - warmStartedAt < WARM_MAX_WALL_MS) {
       await devTools.evaluate(
         `for (let f = 0; f < ${WARM_BATCH_FRAMES}; f++) window.renderLab.setView({}); true`);
       warmFrames += WARM_BATCH_FRAMES;

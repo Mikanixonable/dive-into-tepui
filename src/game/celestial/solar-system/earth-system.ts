@@ -24,6 +24,9 @@ import {
   ConvectiveCloudLocalFieldSupply, CONVECTIVE_LOCAL_FIELD_SPAN_M, makeWindAt,
 } from '../../cloud/cloud-local-field-supply';
 import { ConvectiveCloudGlobalFieldSupply } from '../../cloud/cloud-global-field-supply';
+import {
+  ConvectiveCloudGlobalFieldWorkerSupply,
+} from '../../cloud/cloud-global-field-worker-client';
 import { earthGlobalEnvironmentAt } from '../../cloud/earth-global-environment';
 import { AnnualClimateMap } from '../../../render/cloud/climate-map';
 import { OrthographicCap } from '../../../render/field-projection';
@@ -215,11 +218,14 @@ function earthAuroras(): readonly Aurora[] {
 const EARTH_CLOUD_LOCAL_SEED = 41;
 // 地球の全球雲場の種。局所場とは別の決定論系列にする。
 const EARTH_CLOUD_GLOBAL_SEED = 137;
-// 全球質量場の equirect 格子の寸法 [texel]。質量を置く空間分解能はイベントセルの間隔
-// (約 450 km)で決まるので、それと同桁の解像度 — これ以上細かくしても堆積コストが
-// 増えるだけで、場の内容は変わらない。
-const EARTH_GLOBAL_FIELD_GRID_WIDTH = 128;
-const EARTH_GLOBAL_FIELD_GRID_HEIGHT = 64;
+// 全球質量場の equirect 格子の寸法 [texel]。イベントセルの間隔(100 km)を質量場が
+// 拾えるよう、赤道で約 78 km のセルへ細格化してある — これ以上粗いとセル未満の構造が
+// 潰れ、これ以上細かくしても堆積コストが増えるだけで場の内容は変わらない。
+const EARTH_GLOBAL_FIELD_GRID_WIDTH = 512;
+const EARTH_GLOBAL_FIELD_GRID_HEIGHT = 256;
+// 全球のイベントセルの目標間隔 [m]。積雲の個々の塊(数十 km)とスケールが切り離せる
+// 間隔として取り、供給が細格化されても上限類はセル数に連動する。
+const EARTH_GLOBAL_EVENT_CELL_SPACING_M = 100e3;
 // 局所場の再焼を促す視点の移動量 — 場の半幅の 25% [rad]。
 const EARTH_LOCAL_FIELD_RECENTER_RAD =
   0.25 * (CONVECTIVE_LOCAL_FIELD_SPAN_M / 2) / R_EARTH_EQ;
@@ -238,12 +244,16 @@ export function earthCloudPresentation(): CloudPresentation {
   // 赤道半径 — 扁平率ぶんの地表距離の誤差は最大で0.3%程度の近似として扱う。環境の天気
   // (渦・気団・地形)は供給へ渡した表示時刻をそのまま読む。
   const generated = new MeteorologicalCloudField(
-    new ConvectiveCloudGlobalFieldSupply(
-      (direction, timeSeconds) => earthGlobalEnvironmentAt(
-        direction, climate, timeSeconds, R_EARTH, SIDEREAL_DAY),
-      EARTH_CLOUD_GLOBAL_SEED, R_EARTH_EQ,
-      EARTH_GLOBAL_FIELD_GRID_WIDTH, EARTH_GLOBAL_FIELD_GRID_HEIGHT,
-      makeWindAt(new AtmosphericWindField())),
+    // 供給導出は帯分割して worker プールへ振る。worker を組めない環境では
+    // 内側の同期供給へ落ちる。
+    new ConvectiveCloudGlobalFieldWorkerSupply(
+      new ConvectiveCloudGlobalFieldSupply(
+        (direction, timeSeconds) => earthGlobalEnvironmentAt(
+          direction, climate, timeSeconds, R_EARTH, SIDEREAL_DAY),
+        EARTH_CLOUD_GLOBAL_SEED, R_EARTH_EQ,
+        EARTH_GLOBAL_FIELD_GRID_WIDTH, EARTH_GLOBAL_FIELD_GRID_HEIGHT,
+        makeWindAt(new AtmosphericWindField()), EARTH_GLOBAL_EVENT_CELL_SPACING_M),
+      climate, R_EARTH, SIDEREAL_DAY),
     cap, climate);
   // 局所光学場は対流イベントの生成経路から供給する。環境の天気は、生成場が prepare で
   // 受けた表示時刻をそのまま読む。気候画像を inputReadiness として渡し、CPU で読める
