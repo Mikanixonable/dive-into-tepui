@@ -346,22 +346,12 @@
       "count": 1
     }
   },
-  "src/game/hud/frame/anchor-zone.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/game/hud/frame/frame-labels.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },
   "src/game/hud/frame/rotation-zone.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/hud/frame/trajectory-frame-panel.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
@@ -408,16 +398,6 @@
   },
   "src/game/hud/panels/reference-orbit-rows.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/hud/view-badge.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/hud/windows/object-picker.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
       "count": 1
     }
   },
