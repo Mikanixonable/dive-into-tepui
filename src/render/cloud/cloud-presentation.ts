@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../opaque-cloud-surface-renderer';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor } from './cloud-cap';
+import { v3 } from '../../math/vec3';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
@@ -11,6 +12,7 @@ import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { CloudFieldDetailTileBinding } from './cloud-field-sampler';
 import type { CloudLocalFieldBinding } from './cloud-local-field';
+import type { CloudLocalFieldBaker } from './cloud-local-field-baker';
 
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
@@ -57,10 +59,12 @@ export class CloudPresentation {
   private localField: CloudLocalFieldBinding | null = null;
 
   // 各供給源（generated / observed）を管理し、キャップの視点追従と雲メッシュの描画を同期する。
-  // bodyRadius は雲層を配置する天体の基準半径 [m]。
+  // bodyRadius は雲層を配置する天体の基準半径 [m]。localFieldBaker は生成場へ載せる局所光学場の
+  // 再焼を担い、null なら syncGraphics へ注入された場だけを使う。所有権はここへ移る。
   public constructor(
     generated: CloudFieldSource, observed: CloudFieldSource,
     private readonly cap: OrthographicCap, private readonly bodyRadius: number,
+    private readonly localFieldBaker: CloudLocalFieldBaker | null = null,
   ) {
     this.sources = { generated, observed };
     this.source = generated;
@@ -78,7 +82,10 @@ export class CloudPresentation {
         composition: this.detailTile.composition,
       };
     // 局所光学場も detailTile と同じ門を通す — observed 供給源は体積場を持たない。
-    const localField = this.sourceKind === CLOUD_FIELD_SOURCE_KIND.generated ? this.localField : null;
+    // syncGraphics へ注入された場を優先し、無ければ焼き上げ済みの場を使う。
+    const localField = this.sourceKind === CLOUD_FIELD_SOURCE_KIND.generated
+      ? this.localField ?? this.localFieldBaker?.binding ?? null
+      : null;
     return {
       field: { texture: this.source.texture, cap: this.cap.placement, detailTile, localField },
       generation: this.source.generation,
@@ -171,12 +178,16 @@ export class CloudPresentation {
   public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.fieldContributes) return;
     this.source.prepare(renderer, displayTime, gpu);
+    // 局所場の中心は直近の aimFrom が置いた cap の中心 — 最大1フレーム遅れだが許容する。
+    const center = this.cap.placement.center;
+    this.localFieldBaker?.maybeRebuild(displayTime, v3(center.x, center.y, center.z));
   }
 
-  // 不透明表面と、選べる雲場の出どころをすべて解放する。
+  // 不透明表面と、選べる雲場の出どころ・局所場の焼き器をすべて解放する。
   public dispose(): void {
     this.surface.dispose();
     for (const source of Object.values(this.sources)) source.dispose();
+    this.localFieldBaker?.dispose();
   }
 
   // 雲場がこのフレームの描画に寄与するか。
