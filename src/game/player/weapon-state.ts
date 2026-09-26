@@ -1,48 +1,46 @@
-import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
-import { ENV_TEMP, HULL_EMISS } from '../dynamic/dynamic-motion';
-import { BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT } from '../dynamic/dynamic-entity/debris-motion';
 import { MAG_ROUNDS } from './ammo-spec';
-
-export const MAGS_PER_BARREL = 3; // 砲身1本で撃ち切るマガジン数
-const BARREL_MASS = 300; // [kg]
 
 export interface SerializedWeaponState {
   readonly mags: number;
   readonly rounds: number;
-  readonly barrel: number;
-  // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]、発砲で砲身へ入り、まだ温度へ
-  // 変えていない熱量 [J]。
-  readonly barrelTemperature: number;
-  readonly barrelDeviation: number;
-  readonly pendingBarrelJoules: number;
   readonly cooldown: number;
   readonly muzzleIdx: number;
   readonly wasFiring: boolean;
   readonly wasEmptyClick: boolean;
+  readonly shots?: readonly SerializedWeaponShot[];
 }
+
+export interface SerializedWeaponShot {
+  readonly moduleId: string;
+  readonly muzzleIndex: number;
+  readonly firedAt: number;
+  readonly cycleDuration: number;
+}
+
+export type WeaponShotRecord = SerializedWeaponShot;
 
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export interface AmmoLoad { readonly mags: number; readonly rounds: number }
 
-export type AmmoConsumption = 'normal' | 'mag-reload' | 'barrel-reload';
+export type AmmoConsumption = 'normal' | 'mag-reload';
 
 export interface WeaponFireCommand {
   readonly consumption: AmmoConsumption;
   readonly muzzleIndex: number;
 }
 
-// 弾薬・砲身(温度を含む)・クールダウン・交互に撃つ砲口・トリガーの状態機械。
+// 既定の初期積載。開始時は3マガジンが連結された状態で、装填済みの1マガジン＋予備2本。
+const DEFAULT_MAGS = 2;
+
+// 弾薬・クールダウン・交互に撃つ砲口・トリガーと直近発射記録の状態機械。
 export class WeaponState {
-  // barrel は装着中の砲身で撃てる残りのマガジン数、barrelDeviation は薬室側が平均より高い温度差 [K]、
-  // pendingBarrelJoules は発砲で砲身へ入り、まだ温度へ変えていない熱量 [J]、muzzleIdx は次に撃つ砲口。
-  // 省いた値は既定の積載と、環境温度の新しい砲身で始める。
+  private readonly shotRecords = new Map<string, WeaponShotRecord>();
+
+  // mags は予備を含めて残っているマガジン数、muzzleIdx は次に撃つ砲口。
+  // 省いた値は既定の積載で始める。
   public constructor(
-    private _mags = MAGS_PER_BARREL - 1,
+    private _mags = DEFAULT_MAGS,
     private _rounds = MAG_ROUNDS,
-    private barrel = MAGS_PER_BARREL,
-    private _barrelTemperature = ENV_TEMP,
-    private _barrelDeviation = 0,
-    private pendingBarrelJoules = 0,
     private _cooldown = 0,
     private _muzzleIdx = 0,
     private _wasFiring = false,
@@ -54,33 +52,48 @@ export class WeaponState {
     return new WeaponState(nonNegativeInteger(ammo.mags), boundedInteger(ammo.rounds, 0, MAG_ROUNDS));
   }
 
-  // 直列化した弾薬・砲身の状態から復元する。壊れた値は既定値へフォールバックする。
+  // 直列化した弾薬の状態から復元する。壊れた値は既定値へフォールバックする。
   public static deserialize(serialized: SerializedWeaponState): WeaponState {
     // 壊れた値は undefined として渡し、コンストラクタの既定引数に補わせる
-    return new WeaponState(
+    const weapon = new WeaponState(
       nonNegativeInteger(serialized.mags),
       boundedInteger(serialized.rounds, 0, MAG_ROUNDS),
-      boundedInteger(serialized.barrel, 0, MAGS_PER_BARREL),
-      finiteNumber(serialized.barrelTemperature),
-      finiteNumber(serialized.barrelDeviation),
-      nonNegativeNumber(serialized.pendingBarrelJoules),
       nonNegativeNumber(serialized.cooldown),
       nonNegativeInteger(serialized.muzzleIdx),
       booleanValue(serialized.wasFiring),
       booleanValue(serialized.wasEmptyClick),
     );
+    if (Array.isArray(serialized.shots)) {
+      for (const candidate of serialized.shots) {
+        const record = validShotRecord(candidate);
+        if (record !== null) weapon.recordShot(record);
+      }
+    }
+    return weapon;
   }
 
   public get mags(): number { return this._mags; }
   public get rounds(): number { return this._rounds; }
-  public get barrelTemperature(): number { return this._barrelTemperature; }
-  public get barrelDeviation(): number { return this._barrelDeviation; }
   public get cooldown(): number { return this._cooldown; }
   public get muzzleIdx(): number { return this._muzzleIdx; }
   // トリガーを引き続けているか。
   public get wasFiring(): boolean { return this._wasFiring; }
   // 撃てないまま引いたことを、次に撃てるまでに記録済みか。
   public get wasEmptyClick(): boolean { return this._wasEmptyClick; }
+
+  public get recentShots(): readonly WeaponShotRecord[] { return [...this.shotRecords.values()]; }
+
+  // 同じモジュールと砲口の発射記録を、直近の1発で置き換える。
+  public recordShot(record: WeaponShotRecord): void {
+    this.shotRecords.set(shotKey(record.moduleId, record.muzzleIndex), { ...record });
+  }
+
+  // 撤去・破壊された武装の発射記録を捨てる。
+  public retainShotModules(moduleIds: ReadonlySet<string>): void {
+    for (const [key, shot] of this.shotRecords) {
+      if (!moduleIds.has(shot.moduleId)) this.shotRecords.delete(key);
+    }
+  }
 
   // 装填中か予備に弾が残っているか。
   public get left(): boolean { return this._rounds > 0 || this._mags > 0; }
@@ -111,11 +124,10 @@ export class WeaponState {
     this._wasEmptyClick = true;
   }
 
-  // 次の1発が弾をどう消費するか。マガジンを撃ち尽くせば次のマガジンを装填し(mag-reload)、砲身の
-  // 全マガジンを撃ち尽くせば砲身を替える(barrel-reload)。
+  // 次の1発が弾をどう消費するか。マガジンを撃ち尽くせば次のマガジンを装填する(mag-reload)。
   private nextConsumption(): AmmoConsumption {
     if (this._rounds > 1 || this._mags <= 0) return 'normal';
-    return this.barrel > 1 ? 'mag-reload' : 'barrel-reload';
+    return 'mag-reload';
   }
 
   // muzzleCount 本の砲口を交互に使うときの、次の1発の弾の消費と撃つ砲口。撃てなければ null。
@@ -131,19 +143,17 @@ export class WeaponState {
     this._muzzleIdx = (shot.muzzleIndex + 1) % muzzleCount;
     this._rounds--;
     if (shot.consumption === 'normal') return;
-    // 予備のマガジンを装填し、この砲身で撃てる残りのマガジン数を減らす。撃ち尽くした砲身は替える。
+    // 撃ち尽くしたマガジンの外枠は捨て、予備のマガジンを装填する。
     this._mags--;
     this._rounds = MAG_ROUNDS;
-    this.barrel = shot.consumption === 'mag-reload' ? this.barrel - 1 : MAGS_PER_BARREL;
   }
 
-  // クールダウン中でなく、予備があり装填中のマガジンに補充の余地があれば、マガジンと砲身を替えて
+  // クールダウン中でなく、予備があり装填中のマガジンに補充の余地があれば、マガジンを替えて
   // true を返す。
   public manualReload(): boolean {
     if (this._cooldown > 0 || this._mags <= 0 || this._rounds >= MAG_ROUNDS) return false;
     this._mags--;
     this._rounds = MAG_ROUNDS;
-    this.barrel = MAGS_PER_BARREL;
     return true;
   }
 
@@ -157,55 +167,35 @@ export class WeaponState {
     }
   }
 
-  // 発砲で砲身へ入った熱量 joules [J] を積む。次の stepBarrelThermal で一度だけ温度へ変わる。
-  public addBarrelHeat(joules: number): void {
-    this.pendingBarrelJoules += joules;
-  }
-
-  // 装着している砲身の温度を dt だけ進める。発砲で入った熱は刻みの分け方に依らず一度だけ
-  // 温度へ変わり、薬室側には平均の 2 倍の温度上昇として乗る(SPEC/FLIGHT.md「熱管理」)。
-  public stepBarrelThermal(dt: number): void {
-    // 放射で冷え、温度差は薄まる。
-    const cooling = radiativeCooling(
-      this._barrelTemperature, ENV_TEMP, HULL_EMISS, BARREL_RADIATING_AREA_PER_MASS,
-      BARREL_SPECIFIC_HEAT, dt);
-    this._barrelTemperature = stepTemperature(
-      this._barrelTemperature, -cooling, BARREL_SPECIFIC_HEAT, dt);
-    this._barrelDeviation = stepThermalDeviation(
-      this._barrelDeviation, this._barrelTemperature, HULL_EMISS,
-      BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT, dt);
-    // 溜まっていた発射ガスの熱を、この区間で一度だけ温度へ変える。
-    if (this.pendingBarrelJoules === 0) return;
-    const rise = this.pendingBarrelJoules / (BARREL_MASS * BARREL_SPECIFIC_HEAT);
-    this._barrelTemperature += rise;
-    this._barrelDeviation += rise;
-    this.pendingBarrelJoules = 0;
-  }
-
-  // 装着している砲身を、環境温度の新しい砲身へ替える。
-  public mountFreshBarrel(): void {
-    this._barrelTemperature = ENV_TEMP;
-    this._barrelDeviation = 0;
-    this.pendingBarrelJoules = 0;
-  }
-
-  // 弾薬・砲身・砲口と、トリガーの引き続けの直列化。
+  // 弾薬・砲口・トリガー状態と、直近の発射記録を直列化する。
   public serialize(): SerializedWeaponState {
     return {
-      // 弾薬と砲身
       mags: this._mags,
       rounds: this._rounds,
-      barrel: this.barrel,
-      barrelTemperature: this._barrelTemperature,
-      barrelDeviation: this._barrelDeviation,
-      pendingBarrelJoules: this.pendingBarrelJoules,
-      // 発射サイクルとトリガー
       cooldown: this._cooldown,
       muzzleIdx: this._muzzleIdx,
       wasFiring: this._wasFiring,
       wasEmptyClick: this._wasEmptyClick,
+      ...(this.shotRecords.size > 0 ? { shots: this.recentShots } : {}),
     };
   }
+}
+
+// module ID と砲口番号の組を、衝突しない一意キーへ写す。
+function shotKey(moduleId: string, muzzleIndex: number): string {
+  return `${moduleId}\u0000${muzzleIndex}`;
+}
+
+// 未信頼の保存値が発射記録の条件を満たすときだけ数値を正規化して返す。
+function validShotRecord(value: unknown): WeaponShotRecord | null {
+  if (value === null || typeof value !== 'object') return null;
+  const record = value as Partial<SerializedWeaponShot>;
+  if (typeof record.moduleId !== 'string' || record.moduleId.length === 0) return null;
+  const muzzleIndex = nonNegativeInteger(record.muzzleIndex);
+  const firedAt = finiteNumber(record.firedAt);
+  const cycleDuration = finiteNumber(record.cycleDuration);
+  if (muzzleIndex === undefined || firedAt === undefined || cycleDuration === undefined || cycleDuration <= 0) return null;
+  return { moduleId: record.moduleId, muzzleIndex, firedAt, cycleDuration };
 }
 
 // 真偽値ならその値、そうでなければ既定値へフォールバックするための undefined。

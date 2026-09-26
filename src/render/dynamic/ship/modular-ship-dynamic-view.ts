@@ -10,7 +10,7 @@ import { ThrustEffects } from '../player/thrust-effects';
 import {
   DynamicView, type DynamicRenderSource, type DynamicViewFrame,
 } from '../dynamic-view';
-import { GatlingRotors } from './gatling-rotors';
+import { WeaponDrives, type WeaponRecoilInput } from './weapon-drives';
 import { buildShipModuleModel } from './ship-module-models';
 import { ModularShipView } from './modular-ship-view';
 import type { ShipModuleRenderInput, ShipRenderAssembly } from './ship-render-contract';
@@ -30,6 +30,8 @@ export interface ModularShipRenderSource extends DynamicRenderSource {
   readonly magsLeft: number;
   // 機関砲の射撃レート [rounds/s]。全砲口の合計で、トリガーを離していれば 0。
   readonly gunFireRate: number;
+  // 砲口ごとの直近発射時刻。表示時刻に基づく後座アニメーションに使う。
+  readonly recentShotRecords: readonly WeaponRecoilInput[];
 }
 
 // DynamicView の時刻配置と、assembly から再構築する module 表示を一体にした実体用 View。
@@ -39,7 +41,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly belt: BeltView;
-  private readonly gatlingRotors = new GatlingRotors();
+  private readonly weaponDrives = new WeaponDrives();
 
   public constructor(
     private readonly effectScene: THREE.Scene,
@@ -82,7 +84,10 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     );
     this.reentryEffects.sync(origin, displayed, source.dynamicPressure, effectVisible, cameraQuat);
     this.belt.sync(source.magsLeft, source.belt);
-    this.gatlingRotors.sync(this.modules, source.assembly.modules, source.gunFireRate, viewFrame.displayTime);
+    this.weaponDrives.sync(
+      this.modules, source.assembly.modules, source.gunFireRate, viewFrame.displayTime,
+      source.recentShotRecords,
+    );
     if (source.active && zoomActive) this.object.visible = false;
   }
 
