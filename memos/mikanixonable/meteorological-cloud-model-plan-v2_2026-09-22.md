@@ -405,7 +405,14 @@ Step 3A の render-lab 縦切りでは、既存 cap と共通 sampler へ 1024²
 
 実測と検証: derive はメインスレッドで約 245 ms(300 s 間隔・再センター時の1回分、worker 化は未実装)。製品経路の場は診断注入なしで nadir shot の中央部へ出ることを画素統計で確認。game 379・render 407・physics 517 件のテストと境界検査を通過。
 
-残る未達は、環境プロファイルの空間変化(現状は1プロファイルを場全体へ当てる近似)、derive のメインスレッド費用、製品 250 km・medium の 4 標本条件、実 allocation・交換ピーク・全フレーム B0 のメモリ/性能予算、大気経路の局所 τ が殻イベントを踏む視線への近似、Step 3B の形態側・観測評価、Step 4〜7 である。
+2026-09-27 の追記(第二報)。環境の空間変化を `environmentAt(direction)` 契約へ切り替えた。`src/game/cloud/earth-cloud-environment.ts` は方向の y(緯度)から経年平均のサウンディングを組み、地表温・対流圏界面・減率・比湿・フラックスを cosφ で変化させる — 赤道で CAPE≈3.7 kJ/kg・EL≈13.8 km、45°以上で CAPE=0 の乾いた浅い柱になり、場の中で湿った対流域と乾域が混在する。セルごとの環境・イベント源位置ごとの環境を derive で個別に引く(1プロファイル生成 ~80 µs、焼き込み 1 回あたり ~20 ms)。経度・海陸・季節・日変化はまだ読まない。
+
+計測基盤を追加した。`CloudLocalFieldBaker.bakeStats` が試行ごとの derive ms・volume build ms・転送量推定と、現行+保持分の texture bytes(交換ピーク)を返す。`tools/cloud-local-field-lifecycle-benchmark.mjs`(`npm run cloud-local-field:lifecycle`)が定常フレーム・時刻ジャンプ・再センターの再焼をフレーム別に記録する。実測: derive は冷起動 1.7–2.9 s(JIT 込み)・定常 85–130 ms、RG32F 256²×4層で GPU 2 MiB/体・交換時 4 MiB・CPU backing 8.4 MB。全フレーム B0・texture upload 完了待ち・実 GPU allocation は依然 `not-measured`。壁時計の exempt を `tools/check-boundaries.mjs` の既存一覧へ追加(自分の処理時間の計測は表示時刻ではない、既存 2 件と同じ根拠)。
+
+C9 の二円盤 fixture を `tools/cloud-lab/meteorological-fixture-fields.ts` へ実装し、16 項目の計測宣言を通した: 鉛直 τ=液水 0.4006/氷 0.2003/計 0.6009(解析 0.4/0.2/0.6、許容 0.005)、45° τ=0.84821(解析 0.84853)、T=0.42818、空隙帯 3000 m 丁度・非零消散ゼロ、片層対照で他相ゼロ、45° 投影重心間隔 10.0 px(5 km)・層重心誤差 ~10⁻¹³ m、風の層別変位 35,988.7/35,960.6 m(36 km±0.5 km)・交差軸 ~10⁻¹³ m。判定は独立した厳密セル横断参照と併記し、実装自身の出力を正解値にしていない。C7 の directional-spectrum(方向別パワー bin)と C8 の穴率・連結成分・等価径・存続追跡の測定骨組みを `meteorological-field-measures.ts`/`meteorological-field-spectrum.ts` へ実装したが、量的許容域は計画で未固定のため `blocked` のまま残す。C9 の GPU 側 τ ゲートは CPU evaluator の外で `pending`。render 419・game 384 件のテストと境界検査を通過。
+
+残る未達は、環境の経度・海陸・季節変化(緯度のみの経年平均)、derive のメインスレッド費用(定常 ~85–130 ms)、製品 250 km・medium の 4 標本条件、実 allocation・全フレーム B0、大気経路の局所 τ が殻イベントを踏む視線への近似、Step 3B の形態側・観測評価、Step 4〜7 である。
+
 
 | 変更場所 | 変更内容 |
 | --- | --- |
