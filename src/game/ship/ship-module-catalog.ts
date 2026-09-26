@@ -28,12 +28,12 @@ function moduleDefinition(
   id: string, kind: ShipModuleKind, length: number, maxHp: number, dryMass: number,
   abilities: ShipModuleDefinition['abilities'] = {}, radius = 3, modelId = id, muzzles: readonly Vec3[] = [],
   feedPort: Vec3 = v3(), solids?: readonly LocalCappedCylinder[],
-  ports: { ejection: Vec3; linkExit: Vec3; barrel: Vec3 } = { ejection: v3(), linkExit: v3(), barrel: v3() },
+  ports: { ejection: Vec3; linkExit: Vec3 } = { ejection: v3(), linkExit: v3() },
 ): ShipModuleDefinition {
   return defineShipModule({
     id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter: 6, dryMass, maxHp, modelId,
     solidPrimitives: solids ?? [bodyPrimitive(length, radius)], muzzles, feedPort,
-    ejectionPort: ports.ejection, linkExitPort: ports.linkExit, barrelPort: ports.barrel, abilities,
+    ejectionPort: ports.ejection, linkExitPort: ports.linkExit, abilities,
   });
 }
 
@@ -57,8 +57,6 @@ const GATLING_FEED_PORT = v3(0, -1.95, 0);
 const GATLING_EJECTION_PORT = v3(-1.32, -0.24, -0.04);
 // 空リンク・マガジン外枠の排出口 [m]。給弾塔の -X 面の開口の少し外。
 const GATLING_LINK_EXIT_PORT = v3(-0.86, -1.95, 0.3);
-// 砲身交換で外れる砲身束の位置 [m]。砲身束の下へ -Y 方向へ取り外される。
-const GATLING_BARREL_PORT = v3(0, -1.0, 1.5);
 
 // 展開部品の実体は、座板・脚・台座・駆動部でできた取付構造まで。翼列は展開で実体から外れるので
 // 接触形状に含めず、取付構造の束(座板の張り出しを含む半径)を包む円柱で近似する。
@@ -88,7 +86,7 @@ const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('weapon-gatling', 'weapon', 1, 80, 20, {
     weaponDamage: 1, fireRate: 1 / 0.06, muzzleVelocity: 1_000,
   }, 3, 'weapon-gatling', GATLING_MUZZLES, GATLING_FEED_PORT, undefined, {
-    ejection: GATLING_EJECTION_PORT, linkExit: GATLING_LINK_EXIT_PORT, barrel: GATLING_BARREL_PORT,
+    ejection: GATLING_EJECTION_PORT, linkExit: GATLING_LINK_EXIT_PORT,
   }),
   moduleDefinition('armor-standard', 'armor', 1, 100, 100, { armorReduction: 0.2 }),
   moduleDefinition('armor-combat', 'armor', 1, 370, 50, { armorReduction: 0.2 }),

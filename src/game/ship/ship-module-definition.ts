@@ -54,8 +54,6 @@ export interface ShipModuleDefinition {
   readonly ejectionPort: Vec3;
   // 空になったベルトリンクとマガジン外枠の排出口。モジュール局所 [m] で、外枠はここから -X 方向へ出る。
   readonly linkExitPort: Vec3;
-  // 砲身交換で外れる砲身束の位置。モジュール局所 [m] で、砲身束はここから -Y 方向へ取り外される。
-  readonly barrelPort: Vec3;
   readonly abilities: ShipModuleAbilities;
 }
 
@@ -86,7 +84,6 @@ function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinitio
     feedPort: frozenVector(definition.feedPort),
     ejectionPort: frozenVector(definition.ejectionPort),
     linkExitPort: frozenVector(definition.linkExitPort),
-    barrelPort: frozenVector(definition.barrelPort),
     abilities: Object.freeze({ ...definition.abilities }),
   });
 }
@@ -122,7 +119,6 @@ export function defineShipModule(
     ['feed port', definition.feedPort],
     ['ejection port', definition.ejectionPort],
     ['link exit port', definition.linkExitPort],
-    ['barrel port', definition.barrelPort],
   ] as const) {
     if (!Number.isFinite(port.x) || !Number.isFinite(port.y) || !Number.isFinite(port.z)) {
       throw new Error(`${label} must be finite`);
