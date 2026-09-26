@@ -2,10 +2,10 @@
 // 変換する。tsc にはこの変換を伝える型情報がないため手動で宣言する。
 declare module '*.glb' {
   const url: string;
-  export default url;
+  export { url as default };
 }
 
 declare module '*.gltf' {
   const url: string;
-  export default url;
+  export { url as default };
 }
