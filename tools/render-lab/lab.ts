@@ -944,6 +944,13 @@ export class LabView {
     this.earth.setCloudLocalFieldDiagnostic(shot.cloudLocalFieldDiagnostic === true);
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
+    this.setDisplayTime(shot.displayTime ?? 0);
+  }
+
+  // 可動部を指定表示時刻 [s] に合わせ、静止した1フレームとして描く。
+  public setDisplayTime(displayTime: number): void {
+    this.current?.syncMotion?.(displayTime);
+    this.render(displayTime);
   }
 
   // 描画品質設定を next にする。**設定の器は同値でも購読者へ配り、パイプラインを組み直す**ので、

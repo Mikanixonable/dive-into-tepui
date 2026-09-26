@@ -53,6 +53,8 @@ const NEAR = 2;
 
 // 撮影 1 枚ぶんの差分。
 export interface LabShot {
+  // 可動部を止めて撮る表示時刻 [s]。省略時は 0。
+  readonly displayTime?: number;
   // ケース既定の観察の向きへ重ねる差分。
   readonly view: Partial<LabViewAngles>;
   // 起動時の描画品質設定へ重ねる差分。省略すると起動時の設定のまま撮る。
@@ -69,6 +71,8 @@ export interface LabShot {
 }
 
 export interface LabCase {
+  // 可動部を表示時刻 [s] の姿へ同期する。
+  readonly syncMotion?: (displayTime: number) => void;
   // シーンへ載せる物体。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を立てた
   // 物体のものがケースを外すときに解放される。
   readonly objects: readonly THREE.Object3D[];
