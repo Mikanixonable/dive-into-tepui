@@ -10,7 +10,7 @@ import {
   SOLAR_PANEL_THICKNESS,
   SOLAR_PANEL_WIDTH,
 } from './player-shape';
-import { qFromAxisAngle, type Quat } from '../math/quat';
+import { qFromAxisAngle, qMul, type Quat } from '../math/quat';
 import { v3, type Vec3 } from '../math/vec3';
 
 export type DeployablePanelKind = 'solar_panel' | 'radiator';
@@ -31,10 +31,15 @@ interface ChainShape {
   readonly thickness: number; // [m]
   readonly foldAxis: Vec3; // 折り目の軸。正の角でパネルの長手が厚み方向の負側へ倒れる向き
   readonly normalAxis: Vec3; // 厚み方向
+  readonly panelRoll: Quat; // パネル局所を鎖の展開姿勢へ合わせる固定ロール
   readonly halfFold: (deployed: number) => number; // 展開度 0..1 に対する ψ [rad]
 }
 
 const STOW_HALF_FOLD = Math.PI / 2;
+const IDENTITY_ROLL: Quat = { x: 0, y: 0, z: 0, w: 1 };
+// ラジエーターの帯は面法線を取付面の +Y(船体長手軸と直交)へ向ける。パネル局所の法線 +X を
+// +Y へ合わせる、ヒンジ軸まわりの取付ロール。
+const RADIATOR_PANEL_ROLL = qFromAxisAngle(v3(0, 0, 1), Math.PI / 2);
 
 const CHAINS: Readonly<Record<DeployablePanelKind, ChainShape>> = {
   solar_panel: {
@@ -43,14 +48,16 @@ const CHAINS: Readonly<Record<DeployablePanelKind, ChainShape>> = {
     thickness: SOLAR_PANEL_THICKNESS,
     foldAxis: v3(1, 0, 0),
     normalAxis: v3(0, 1, 0),
+    panelRoll: IDENTITY_ROLL,
     halfFold: deployed => (1 - deployed) * STOW_HALF_FOLD,
   },
   radiator: {
     count: RADIATOR_FOLD_COUNT,
     length: RADIATOR_SEGMENT_LENGTH,
     thickness: RADIATOR_PANEL_THICKNESS,
-    foldAxis: v3(0, -1, 0),
-    normalAxis: v3(1, 0, 0),
+    foldAxis: v3(1, 0, 0),
+    normalAxis: v3(0, 1, 0),
+    panelRoll: RADIATOR_PANEL_ROLL,
     halfFold: deployed => STOW_HALF_FOLD + (RADIATOR_DEPLOY_TILT - STOW_HALF_FOLD) * deployed,
   },
 };
@@ -83,7 +90,7 @@ export function deployablePanelPoses(
     const originW = hingeW + side * mw * halfThickness;
     result.push({
       origin: lift(shape, originU, originW, faceZ),
-      rotation: qFromAxisAngle(shape.foldAxis, angle),
+      rotation: qMul(qFromAxisAngle(shape.foldAxis, angle), shape.panelRoll),
       center: lift(shape, originU + du * shape.length / 2, originW + dw * shape.length / 2, faceZ),
       normal: lift(shape, mu, mw, 0),
     });
