@@ -309,6 +309,37 @@ export function register(): void {
     assert.notEqual(initial.id, otherCell?.id);
   });
 
+  test('cloud events: 出生位相のあるセルは epoch グリッドからずれた時刻に生まれる', () => {
+    // 位相 600 s のセルの epoch 0 の出生は 0 ではなく 600 s。位相の無いセルと
+    // 同じ epoch でも別の時刻に生まれるので、セル間で出生は同期しない。
+    const phased = sampleConvectiveCloudEvents(domain({
+      timeSeconds: 1_200,
+      cells: [cell('cell-a', { birthPhaseSeconds: 600 })],
+    }));
+    const event = phased.events.find((item) => item.birthEpoch === 0);
+    assert.ok(event !== undefined);
+    assert.equal(event.birthTimeSeconds, 600);
+    assert.equal(event.ageSeconds, 600);
+    // 位相の違う2セルは同じ履歴窓でも別の出生時刻のイベントを持つ。
+    const pair = sampleConvectiveCloudEvents(domain({
+      timeSeconds: 1_200,
+      cells: [
+        cell('early', { birthPhaseSeconds: 100 }),
+        cell('late', { birthPhaseSeconds: 1_100 }),
+      ],
+    }));
+    const early = pair.events.find((item) => item.cellId === 'early');
+    const late = pair.events.find((item) => item.cellId === 'late');
+    assert.ok(early !== undefined && late !== undefined);
+    assert.notEqual(early.birthTimeSeconds, late.birthTimeSeconds);
+    assert.throws(() => sampleConvectiveCloudEvents(domain({
+      cells: [cell('cell-a', { birthPhaseSeconds: -0.01 })],
+    })), /birthPhaseSeconds/);
+    assert.throws(() => sampleConvectiveCloudEvents(domain({
+      cells: [cell('cell-a', { birthPhaseSeconds: 1_800 })],
+    })), /birthPhaseSeconds/);
+  });
+
   test('cloud event transport: shutdown後も親と放出氷を別高度の風で運び質量を保つ', () => {
     const source = cell('located', {
       sourcePosition: { directionUnitVector: v3(0, 0, 1), geometricHeightM: 1_000 },
