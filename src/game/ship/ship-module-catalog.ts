@@ -28,11 +28,14 @@ const CATEGORY_BY_KIND: Readonly<Record<ShipModuleKind, ShipModuleCategory>> = {
 function moduleDefinition(
   id: string, kind: ShipModuleKind, length: number, maxHp: number, dryMass: number,
   abilities: ShipModuleDefinition['abilities'] = {}, radius = 3, modelId = id, muzzles: readonly Vec3[] = [],
-  feedPort: Vec3 = v3(), solids?: readonly LocalCappedCylinder[], diameter = 6,
+  feedPort: Vec3 = v3(), solids?: readonly LocalCappedCylinder[],
+  ports: { ejection: Vec3; linkExit: Vec3 } = { ejection: v3(), linkExit: v3() },
+  diameter = 6,
 ): ShipModuleDefinition {
   return defineShipModule({
     id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter, dryMass, maxHp, modelId,
-    solidPrimitives: solids ?? [bodyPrimitive(length, radius)], muzzles, feedPort, abilities,
+    solidPrimitives: solids ?? [bodyPrimitive(length, radius)], muzzles, feedPort,
+    ejectionPort: ports.ejection, linkExitPort: ports.linkExit, abilities,
   });
 }
 
@@ -52,6 +55,11 @@ const RCS_MODULE_TORQUE = 24_000;
 const GATLING_MUZZLES = [v3(0, 0, 2.5)];
 // 給弾ベルトの取り込み口 [m]。砲架下の給弾塔の口で、ベルトはここから +X へ伸びる。
 const GATLING_FEED_PORT = v3(0, -1.95, 0);
+// 空薬莢の排出口 [m]。機関部 -X 側の排莢樋の末端。
+const GATLING_EJECTION_PORT = v3(-1.32, -0.24, -0.04);
+// 空リンク・マガジン外枠の排出口 [m]。給弾塔の -X 面の開口の少し外。
+const GATLING_LINK_EXIT_PORT = v3(-0.86, -1.95, 0.3);
+
 // 展開部品の実体は、座板・脚・台座・駆動部でできた取付構造まで。翼列は展開で実体から外れるので
 // 接触形状に含めず、取付構造の束(座板の張り出しを含む半径)を包む円柱で近似する。
 const DEPLOYABLE_MOUNT_PRIMITIVE: LocalCappedCylinder = {
@@ -129,7 +137,9 @@ const definitions: readonly ShipModuleDefinition[] = [
   ),
   moduleDefinition('weapon-gatling', 'weapon', 1, 80, 20, {
     weaponDamage: 1, fireRate: 1 / 0.06, muzzleVelocity: 1_000,
-  }, 3, 'weapon-gatling', GATLING_MUZZLES, GATLING_FEED_PORT),
+  }, 3, 'weapon-gatling', GATLING_MUZZLES, GATLING_FEED_PORT, undefined, {
+    ejection: GATLING_EJECTION_PORT, linkExit: GATLING_LINK_EXIT_PORT,
+  }),
   moduleDefinition('armor-standard', 'armor', 1, 100, 100, { armorReduction: 0.2 }),
   moduleDefinition('armor-combat', 'armor', 1, 370, 50, { armorReduction: 0.2 }),
   moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 4.8 },
@@ -140,9 +150,9 @@ const definitions: readonly ShipModuleDefinition[] = [
     fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 80,
   }),
   moduleDefinition('docking-port-standard', 'docking_port', 1, 50, 40, {}, 1.5,
-    'docking-port-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], 3),
+    'docking-port-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], undefined, 3),
   moduleDefinition('dock-standard', 'dock', 1, 50, 40, {}, 1.5,
-    'dock-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], 3),
+    'dock-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], undefined, 3),
   moduleDefinition('decoupler-standard', 'decoupler', 1, 50, 60),
 ];
 
