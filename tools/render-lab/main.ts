@@ -23,7 +23,7 @@ import { CASE_NAMES, type CaseName } from './cases';
 import { MAX_CAMERA_DISTANCE_LOG, type LabShot } from './lab-case';
 import {
   LabView, MAX_CAMERA_ELEVATION_DEG,
-  type CloudDetailLifecycleMeasurement, type LabMeasurement,
+  type CloudDetailLifecycleMeasurement, type CloudLocalFieldLifecycleMeasurement, type LabMeasurement,
 } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
@@ -82,6 +82,10 @@ declare global {
         name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData>,
         detail: NonNullable<LabShot['cloudDetailDiagnostic']>, sampleCount?: number,
       ) => Promise<CloudDetailLifecycleMeasurement>;
+      measureCloudLocalFieldLifecycle: (
+        name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
+        sampleCount?: number,
+      ) => Promise<CloudLocalFieldLifecycleMeasurement>;
     };
   }
 }
@@ -291,6 +295,8 @@ async function init(): Promise<void> {
     ),
     measureCloudDetailLifecycle: (name, shotName, graphics, detail, sampleCount) =>
       view.measureCloudDetailLifecycle(name, shotName, graphics, detail, sampleCount),
+    measureCloudLocalFieldLifecycle: (name, shotName, graphics, sampleCount) =>
+      view.measureCloudLocalFieldLifecycle(name, shotName, graphics, sampleCount),
   };
 }
 

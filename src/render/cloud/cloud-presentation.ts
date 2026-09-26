@@ -12,7 +12,7 @@ import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { CloudFieldDetailTileBinding } from './cloud-field-sampler';
 import type { CloudLocalFieldBinding } from './cloud-local-field';
-import type { CloudLocalFieldBaker } from './cloud-local-field-baker';
+import type { CloudLocalFieldBaker, CloudLocalFieldBakeStats } from './cloud-local-field-baker';
 
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
@@ -95,6 +95,11 @@ export class CloudPresentation {
   public get visible(): boolean { return this.surface.visible; }
   public get cloudsVisible(): boolean { return this.cloudVisible; }
   public get topAltitude(): number { return this.surface.topAltitude; }
+
+  // 局所場の焼き器の計測口。焼き器が無いなら null。
+  public get localFieldBakeStats(): CloudLocalFieldBakeStats | null {
+    return this.localFieldBaker?.bakeStats ?? null;
+  }
 
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
 

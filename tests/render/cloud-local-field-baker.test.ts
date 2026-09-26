@@ -137,6 +137,75 @@ export function register(): void {
     baker.dispose();
   });
 
+  test('cloud local field baker: 計測口は試行・世代・体積の容量を記録する', () => {
+    const { supply } = countingSupply();
+    const baker = new CloudLocalFieldBaker(supply, 300, 0.01);
+    const empty = baker.bakeStats;
+    assert.equal(empty.generation, 0);
+    assert.equal(empty.bindingTextureUuid, null);
+    assert.equal(empty.attempts.length, 0);
+    assert.equal(empty.volumeBytes.estimatedGpuBaseLevelBytes, 0);
+    assert.equal(empty.volumeBytes.cpuBackingBytes, 0);
+
+    // 焼き上げると、成功した試行が時刻・各段の時間・転送量推定とともに残る。
+    baker.maybeRebuild(0, CENTER);
+    let stats = baker.bakeStats;
+    assert.equal(stats.generation, 1);
+    assert.equal(stats.bindingTextureUuid, baker.binding!.texture.uuid);
+    assert.equal(stats.attempts.length, 1);
+    const attempt = stats.attempts[0]!;
+    assert.equal(attempt.sequence, 0);
+    assert.equal(attempt.displayTimeSeconds, 0);
+    assert.equal(attempt.rebuilt, true);
+    assert.ok(Number.isFinite(attempt.deriveMs) && attempt.deriveMs >= 0);
+    assert.ok(Number.isFinite(attempt.volumeBuildMs) && attempt.volumeBuildMs >= 0);
+    // 4×4×1 層の RG32F: 16 texel × 2 成分 × 4 byte。
+    assert.equal(attempt.estimatedGpuBaseLevelBytes, 128);
+    assert.equal(stats.volumeBytes.estimatedGpuBaseLevelBytes, 128);
+    assert.equal(stats.volumeBytes.cpuBackingBytes, 8 + 64 + 64 + 128);
+
+    // 再焼で前の体積は保持分へ回り、合計は交換のピークとして2体分が読める。
+    baker.maybeRebuild(300, CENTER);
+    stats = baker.bakeStats;
+    assert.equal(stats.generation, 2);
+    assert.equal(stats.attempts.length, 2);
+    assert.equal(stats.attempts[1]!.sequence, 1);
+    assert.equal(stats.volumeBytes.estimatedGpuBaseLevelBytes, 256);
+    assert.equal(stats.volumeBytes.cpuBackingBytes, 528);
+    baker.dispose();
+  });
+
+  test('cloud local field baker: 失敗した試行も計測へ残り、世代は進まない', () => {
+    const { supply } = countingSupply(true);
+    const baker = new CloudLocalFieldBaker(supply);
+    baker.maybeRebuild(0, CENTER);
+    const stats = baker.bakeStats;
+    assert.equal(stats.generation, 0);
+    assert.equal(stats.bindingTextureUuid, null);
+    assert.equal(stats.attempts.length, 1);
+    const attempt = stats.attempts[0]!;
+    assert.equal(attempt.rebuilt, false);
+    assert.equal(attempt.estimatedGpuBaseLevelBytes, 0);
+    assert.equal(attempt.volumeBuildMs, 0);
+    assert.ok(Number.isFinite(attempt.deriveMs) && attempt.deriveMs >= 0);
+    assert.equal(stats.volumeBytes.estimatedGpuBaseLevelBytes, 0);
+    baker.dispose();
+  });
+
+  test('cloud local field baker: 試行記録は直近へ絞られる', () => {
+    const { supply } = countingSupply();
+    const baker = new CloudLocalFieldBaker(supply, 1, 0.01);
+    for (let index = 0; index < 20; index += 1) baker.maybeRebuild(index * 2, CENTER);
+    const stats = baker.bakeStats;
+    assert.equal(stats.generation, 20);
+    assert.equal(stats.attempts.length, 16);
+    // 古い順に残る — 上限を超えて落ちた分は sequence が飛ぶので、先頭は 4 番目の試行。
+    assert.equal(stats.attempts[0]!.sequence, 4);
+    assert.equal(stats.attempts[0]!.displayTimeSeconds, 8);
+    assert.equal(stats.attempts[15]!.sequence, 19);
+    baker.dispose();
+  });
+
   test('cloud local field baker: dispose は現行と保持分の texture を解放する', () => {
     const { supply } = countingSupply();
     const baker = new CloudLocalFieldBaker(supply, 300, 0.01);
