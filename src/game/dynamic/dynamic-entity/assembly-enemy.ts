@@ -14,11 +14,11 @@ import {
   Enemy, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement, driftingAttitude,
   type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
+import { AssemblyEnemyView, type AssemblyVisualSource } from '../../../render/dynamic/dynamic-entity/assembly-enemy-view';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { FormationRole } from './entity-kind';
-import { AssemblyEnemyView, type AssemblyVisualSource } from '../../../render/dynamic/dynamic-entity/assembly-enemy-view';
 import type { DynamicEntity } from './dynamic-entity';
 import type { EnemyCollisionShape } from './enemy-motion';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
@@ -145,7 +145,8 @@ export class AssemblyEnemy extends Enemy {
     );
   }
 
-  public override get hp(): number { return this.combat.integrity; }
+  // 撃破判定は被弾モデルへ委ねる — integrity の枯渇だけでなく、中核・全部品の喪失も撃破。
+  public override get hp(): number { return this.combat.destroyed ? 0 : this.combat.integrity; }
   public override get maxHp(): number { return this.combat.maxIntegrity; }
 
   // 発射部が残っている間だけ撃てる。
