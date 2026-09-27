@@ -214,7 +214,7 @@ G_s は、測る画素の中だけで正規化したガウスの畳み込み（�
 
 ### 道具と再現手順
 
-入口は `node tools/render-lab-screen-space-metrics.mjs`（`7099366e4`。先に `.render-lab/` を
+入口は `node tools/render-lab-screen-space-metrics.mjs`（`cb58ecb8b`。先に `.render-lab/` を
 `webpack --config webpack.render-lab.config.js --mode production` で組む）。
 
 1. `reference --name <名前> [--entries …] [--sets …] --slices <S> --steps <M> --passes <N>` — B を作る（補正項の偶数・奇数の和と露出係数を
@@ -223,10 +223,11 @@ G_s は、測る画素の中だけで正規化したガウスの畳み込み（�
    `--passes` を倍にして 1 へ。
 3. `compare [<候補.json>] --reference <名前> [--entries …] [--sets …] [--out <出力先>]` — 候補を撮り、（費用, S）と診断の表を出す。補正項の撮影を
    半精度（`captures/<撮影>.<候補>.s<n>.f16`、1 枚 3.1 MB）で、費用と拡散照度から数えた値を `record.json` で残す。
-4. `rescore <出力先> --t <t,…>` — 残した撮影を撮り直さずに採点し直す（`threshold` の出力にも使える）。
-5. `threshold [--name <名前>]` — 1 つのセッションで、刺激の 3 撮影の B（`822b16cc2` の段: 4 スライス × 片側 32 歩 × 256 パス）と、低・中・高の
-   均し後と raw の 6 構成（seed 2 つ）を撮り、a = 1/8〜1 の 99 百分位・t・その t での S の表を `report.md` に書く。同じ名前の B があると止まる。
-   `stimuli --reference <名前>` は目視の刺激を作り直す。
+4. `rescore <出力先> [--reference <名前>]` — 残した撮影を撮り直さずに、いまの指標で採点し直す（`report.md` を上書きする）。
+
+指標 S の計算は 960×540 の 1 回に約 30 秒かかり、既定の比較（9 候補 × 13 撮影 × 4 回）の採点は約 4 時間になる。手順3-c の前に速くする（手順3-c）。
+盲検の刺激と、指標を当てはめたスクリプトはリポジトリの外（刺激は `.render-lab-shots/ssd-h1-stimuli-2/`・`-3/`・`ssd-v1-check/`・`ssd-better-than-raw/`、
+当てはめは作業者の scratchpad）にある。
 
 道具の段の表（`tools/screen-space-lab.mjs` の `TIERS`）は比べる候補の定義で、本番の `SCAN_TIERS` の写しではない（手順3〜6 の候補は仮の M = 片側
 6 歩で、本番と違う）。
@@ -280,8 +281,7 @@ W = 1 の B（解析値との照合）だけは、`hemisphere-scan.ts` の距離
 ### 負荷と計測
 
 13. 負荷の予算を満たす（同じページで交互に 3 回測った p50 の中央値）。
-14. `node tools/render-lab-screen-space-metrics.mjs` 1 本で、B の生成から t の測定・全指標の表までが再現できる（W = 1 の B の 1 行の
-    一時パッチを除く）。
+14. `node tools/render-lab-screen-space-metrics.mjs` 1 本で、B の生成から全指標の表までが再現できる（W = 1 の B の 1 行の一時パッチを除く）。
 15. `npm run typecheck` / `npm run check:boundaries` / `npm run test:render` / `npm run test:settings` が通る。
 
 ---
@@ -442,7 +442,9 @@ W = 1 の B（解析値との照合）だけは、`hemisphere-scan.ts` の距離
 
 **変更が必要な箇所** — `tools/screen-space-reference.mjs` / `tools/render-lab-screen-space-metrics.mjs`: B の meta に 1 パスのスライス数と
 歩数を残し、`compare` が候補ごとに同じスライス数・歩数の B を選ぶ（無ければ止まる）。候補の seed は B のパスと重ならない番号から取る
-（重なると候補が B の 1 パスそのものになり、B の雑音と相関する）。
+（重なると候補が B の 1 パスそのものになり、B の雑音と相関する）。指標 S を速くする — いまは 960×540 の 1 回に約 30 秒で、既定の比較の
+採点が約 4 時間になる。候補（案: 印ごとに正規化の分母と κ を使い回す、偏りと分散の R(s) の 2 回の採点をやめる、撮影ごとに並列にする）を、値が
+変わらないこと（相対差 1e-9 以内）を確かめて入れる。
 
 **達成条件と検証**
 
