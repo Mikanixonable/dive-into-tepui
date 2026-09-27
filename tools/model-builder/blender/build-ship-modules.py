@@ -2322,7 +2322,12 @@ def build_deployable_chain(kind, half_len, build_panel):
     root = add_anchor("panel-hinge", (0, 0, half_len))
     for index in range(spec["count"]):
         column, row = divmod(index, rows)
-        x = (column - (columns - 1) / 2) * column_span
+        if kind == "solar_panel":
+            panel_width = spec["panelPitch"] * spec["faceScale"] * spec["stageScales"][row]
+            center_distance = panel_width / 2 + spec["centerlineClearance"]
+            x = (column - (columns - 1) / 2) * 2 * center_distance
+        else:
+            x = (column - (columns - 1) / 2) * column_span
         hinge = add_anchor(
             f"panel-hinge:{index}", normal * (spec["thickness"] / 2) + Vector((x, 0, row * spec["length"])),
             parent=root, panelIndex=index, panelKind=kind,
@@ -2387,14 +2392,14 @@ def build_hull_junction(mats, half_len, pedestal=True):
         (0.50, 0.30), (0.46, 0.36), (0.46, half_len - 0.06), (0.0, half_len - 0.06),
     ], segments=4, closed=True, sharp_angle_deg=0.0), mats.hull_dark)
 
-def build_solar_mount(mats, half_len, thickness, span, columns):
+def build_solar_mount(mats, half_len, thickness, span, columns, root_hinge_offset):
     """曲面座の脚で二本のトラスレールを支え、中央の段付き回転筒から根元ヒンジへ力を渡す。"""
     hinge_y = -thickness / 2
     root_z = half_len
     upper_rail_y, upper_rail_z = hinge_y - 0.09, root_z - 0.12
     lower_rail_y, lower_rail_z = hinge_y - 0.38, root_z - 0.44
     drive_y, drive_z = hinge_y - 0.24, root_z - 0.035
-    column_pitch = span / columns
+    column_pitch = root_hinge_offset * 2
 
     mount = bpy.data.objects.new("solar_mount_iss_a", None)
     bpy.context.collection.objects.link(mount)
@@ -2502,6 +2507,13 @@ def build_solar_mount(mats, half_len, thickness, span, columns):
     add_part(clamps, "solar_mount_hinge_clamps", make_boxes(clamp_parts, bevel=0.012), mats.hull)
     add_part(clamps, "solar_mount_clamp_bolts", make_spheres(clamp_bolts, 0.022, u_seg=8, v_seg=6), mats.pipe)
 
+    # 駆動筒から中央桁の最初の節へ荷重を渡す二股のヨーク。
+    centerline_yoke = add_group("solar_mount_centerline_yoke", "folding-centerline-spine-root")
+    for side in (-1.0, 1.0):
+        add_part(centerline_yoke, f"solar_mount_centerline_yoke_strut:{side:+.0f}", make_strut(
+            Vector((side * 0.10, drive_y, drive_z)),
+            Vector((side * 0.045, hinge_y - 0.12, root_z + 0.015)), 0.055), mats.truss)
+
     # 非対称な保持解除箱・駆動箱と、座板へ降りる電力/信号線はレールの外側へ残す。
     frame_z = lower_rail_z
     add_part(actuation, "holddown_release_box", make_box(
@@ -2532,8 +2544,6 @@ def build_solar_mount(mats, half_len, thickness, span, columns):
 # 展開した翼が一面に揃わないよう、パネルごとに面法線方向へ振ったオフセット [m]。
 # ヒンジまわりの金具は揃ったままにし、本体と表裏の部品だけをずらす決定的な値
 PANEL_FACE_Y_OFFSETS = (0.045, -0.032, 0.020, -0.016, -0.024, 0.036, -0.040, 0.008)
-# 根元から第1〜4段。段間差を前回の2倍に広げ、第3段を最大、第1・4段を最小にする。
-PANEL_SIZE_SCALES = (0.88, 0.96, 1.04, 0.88, 0.88, 0.96, 1.04, 0.88)
 RUST_PANEL_STAGE = 2
 DIAMOND_BRACE_STAGE = 2
 
@@ -2546,17 +2556,23 @@ def build_solar_panel(name):
     length, span, thickness = spec["length"], spec["span"], spec["thickness"]
     columns = int(spec["columns"])
     panels_per_column = int(spec["count"]) // columns
-    tile_span = span / columns
-    build_solar_mount(mats, half_len, thickness, span, columns)
+    tile_span = spec["panelPitch"]
+    face_scale = spec["faceScale"]
+    stage_scales = spec["stageScales"]
+    centerline_clearance = spec["centerlineClearance"]
+    root_hinge_offset = tile_span * face_scale * stage_scales[0] / 2 + centerline_clearance
+    build_solar_mount(mats, half_len, thickness, span, columns, root_hinge_offset)
 
     # 裏面の細い角材は基板から浮かせ、段に応じた白い筋交いと二本束の中央レールを作る
     lat_h, lat_w = 0.028, 0.024      # 角材の面からの高さ・面内の幅 [m]
     lat_y = -thickness / 2 - lat_h / 2
 
     def panel(index, side):
-        scale = PANEL_SIZE_SCALES[index]
-        body_span = tile_span * 0.96 * scale
-        body_len = length * 0.96 * scale
+        column = index // panels_per_column
+        panel_stage = index % panels_per_column
+        size_scale = stage_scales[panel_stage]
+        body_span = tile_span * face_scale * size_scale
+        body_len = length * face_scale * size_scale
         # セル面は枠の内側へ収め、細かなセル区画を並べる
         cell_x0, cell_x1 = -body_span / 2 + 0.075, body_span / 2 - 0.075
         cell_z0, cell_z1 = 0.09, body_len - 0.075
@@ -2576,7 +2592,6 @@ def build_solar_panel(name):
             cell_x1 - cell_x0 + 0.02, 0.006, cell_z1 - cell_z0 + 0.02,
             center=(0.0, thickness / 2 + 0.003, (cell_z0 + cell_z1) / 2)), mats.solar_bus)
         # 第3段の2枚は、セル全体を青みの赤褐色にする
-        panel_stage = index % panels_per_column
         is_rust_panel = panel_stage == RUST_PANEL_STAGE
         brace_pattern = "diamond" if panel_stage == DIAMOND_BRACE_STAGE else "x"
         bm_cells = bmesh.new()
@@ -2685,23 +2700,23 @@ def build_solar_panel(name):
             actuator_parts.append(add_mesh_obj(f"panel_actuator:{index}:{site}", make_box(
                 0.13, 0.08, 0.12, center=(x, actuator_y, z), bevel=0.018), mats.solar_actuator))
 
-        bm_hinge = make_cylinder(0.035, 0.035, tile_span * 0.98, z_center=0.0, segments=12)
+        bm_hinge = make_cylinder(0.035, 0.035, body_span * 0.98, z_center=0.0, segments=12)
         transform_bm(bm_hinge, Matrix.Translation(Vector((0.0, -side * thickness / 2, 0.0)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
         knuckle = add_mesh_obj(f"panel_hinge_hardware:{index}", bm_hinge, mats.clamp)
         # ヒンジのばねドラムと引張ケーブル、開ききりを掴むラッチ爪
         bm_drum = make_cylinder(0.055, 0.055, 0.09, z_center=0.0, segments=12)
-        transform_bm(bm_drum, Matrix.Translation(Vector((-tile_span / 2 + 0.10, -side * thickness / 2, 0.0)))
+        transform_bm(bm_drum, Matrix.Translation(Vector((-body_span / 2 + 0.10, -side * thickness / 2, 0.0)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
         drum = add_mesh_obj(f"panel_spring_drum:{index}", bm_drum, mats.clamp)
         cable = add_mesh_obj(f"panel_tension_cable:{index}", make_pipe([
-            Vector((-tile_span / 2 + 0.10, -side * thickness / 2 - 0.05, 0.02)),
+            Vector((-body_span / 2 + 0.10, -side * thickness / 2 - 0.05, 0.02)),
             Vector((0.0, -side * thickness / 2 - 0.05, 0.05)),
-            Vector((tile_span / 2 - 0.10, -side * thickness / 2 - 0.05, 0.02)),
+            Vector((body_span / 2 - 0.10, -side * thickness / 2 - 0.05, 0.02)),
         ], radius=0.008, segments=6), mats.hull_dark)
         claw = add_mesh_obj(f"panel_latch_claw:{index}", make_box(
             0.07, 0.09, 0.14,
-            center=(tile_span / 2 - 0.10, -side * thickness / 2 - 0.02, -0.04),
+            center=(body_span / 2 - 0.10, -side * thickness / 2 - 0.02, -0.04),
             rot_euler=(0.0, 0.0, math.radians(-14))), mats.clamp)
         # パネル本体と表裏の部品は、決定的な高さ差のぶん面法線方向へずらす
         face_parts = [body, bus_sheet, cells, traces, busbars, frame, stripes, lattice, joints, *actuator_parts]
@@ -2710,6 +2725,65 @@ def build_solar_panel(name):
         y_offset = PANEL_FACE_Y_OFFSETS[index % len(PANEL_FACE_Y_OFFSETS)]
         for obj in face_parts:
             obj.data.transform(Matrix.Translation(Vector((0.0, y_offset, 0.0))))
+
+        # 中央桁は各段で分節し、隣り合うパネルと同じヒンジ姿勢で折り畳む。
+        centerline_side = 1.0 if column == 0 else -1.0
+        center_distance = body_span / 2 + centerline_clearance
+        axis_x = centerline_side * center_distance
+        spine_half_width = 0.052
+        spine_y = -thickness / 2 - 0.14
+        support_z = (body_len * 0.32, body_len * 0.68)
+        support_groups = []
+        if column == 0:
+            spine = bpy.data.objects.new(f"solar_panel_center_spine:{panel_stage}", None)
+            bpy.context.collection.objects.link(spine)
+            spine["mountRole"] = "folding-centerline-spine-segment"
+            spine["stageIndex"] = panel_stage
+            spine_parts = [
+                (0.034, 0.10, length, (axis_x - 0.034, spine_y, length / 2), (0.0, 0.0, 0.0)),
+                (0.034, 0.10, length, (axis_x + 0.034, spine_y, length / 2), (0.0, 0.0, 0.0)),
+                (0.13, 0.07, 0.045, (axis_x, spine_y, 0.07), (0.0, 0.0, 0.0)),
+                (0.13, 0.07, 0.045, (axis_x, spine_y, length - 0.07), (0.0, 0.0, 0.0)),
+            ]
+            spine_parts.extend(
+                (0.13, 0.07, 0.045, (axis_x, spine_y, z), (0.0, 0.0, 0.0))
+                for z in support_z
+            )
+            parent_to(add_mesh_obj(f"solar_panel_center_spine_frame:{panel_stage}",
+                make_boxes(spine_parts, bevel=0.006), mats.solar_lattice), spine)
+            if panel_stage < panels_per_column - 1:
+                bm_spine_joint = make_cylinder(0.045, 0.045, 0.14, z_center=0.0, segments=16)
+                transform_bm(bm_spine_joint,
+                    Matrix.Translation(Vector((axis_x, spine_y, length)))
+                    @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
+                parent_to(add_mesh_obj(f"solar_panel_center_spine_joint:{panel_stage}",
+                    bm_spine_joint, mats.clamp), spine)
+            support_groups.append(spine)
+
+        # 各パネルの内縁を中央桁へ短い斜材と二点のクランプ板で結ぶ。
+        mount = bpy.data.objects.new(f"panel_centerline_mount:{index}", None)
+        bpy.context.collection.objects.link(mount)
+        mount["mountRole"] = "centerline-panel-bracket"
+        mount["panelIndex"] = index
+        panel_edge_x = centerline_side * body_span / 2
+        foot_x = panel_edge_x - centerline_side * 0.08
+        spine_edge_x = axis_x - centerline_side * spine_half_width
+        foot_y = -thickness / 2 + y_offset - 0.035
+        for support_index, z in enumerate(support_z):
+            arm = make_strut(
+                Vector((spine_edge_x, spine_y, z)),
+                Vector((foot_x, foot_y, z)), 0.038)
+            parent_to(add_mesh_obj(f"panel_centerline_mount_arm:{index}:{support_index}",
+                arm, mats.solar_lattice), mount)
+            parent_to(add_mesh_obj(f"panel_centerline_mount_shoe:{index}:{support_index}",
+                make_box(0.24, 0.07, 0.17, center=(foot_x, foot_y, z), bevel=0.008), mats.clamp), mount)
+            parent_to(add_mesh_obj(f"panel_centerline_mount_bolts:{index}:{support_index}",
+                make_spheres([
+                    (foot_x - 0.075, foot_y - 0.04, z),
+                    (foot_x + 0.075, foot_y - 0.04, z),
+                ], 0.018, u_seg=8, v_seg=6), mats.pipe), mount)
+        support_groups.append(mount)
+        parts.extend(support_groups)
         return parts
 
     build_deployable_chain("solar_panel", half_len, panel)
