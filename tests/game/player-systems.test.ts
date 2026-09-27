@@ -15,6 +15,7 @@ import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
 import { Throttle } from '../../src/game/player/throttle';
 import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
+import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
@@ -184,7 +185,7 @@ export function register(): void {
       weapon,
     );
     assert.equal(fire.mags, 2);
-    assert.equal(fire.rounds, 32);
+    assert.equal(fire.rounds, MAG_ROUNDS);
     const before = fire.mags;
     fire.onPickup(0);
     fire.onPickup(-1);
