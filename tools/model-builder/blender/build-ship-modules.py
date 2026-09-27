@@ -14,9 +14,6 @@ import bpy
 import bmesh
 from mathutils import Vector, Matrix, Euler
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cockpit_surface import build_cockpit_surface
-
 OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets-src", "ship-modules"))
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -182,6 +179,22 @@ class MaterialLibrary:
         self.radiator = create_pbr_material("mat_radiator", (0.88, 0.90, 0.92, 1.0), roughness=0.85, metallic=0.0)
         # 砲身・機関部の黒染め鋼
         self.gun_steel = create_pbr_material("mat_gun_steel", (0.10, 0.11, 0.12, 1.0), roughness=0.38, metallic=1.0)
+
+class CockpitMaterialLibrary:
+    def __init__(self):
+        # 黒い熱防護外板とアイボリー塗装の船殻。どちらも塗膜の鈍い光沢を保つ。
+        self.ebonite = create_pbr_material("mat_cockpit_ebonite", (0.028, 0.034, 0.043, 1.0), roughness=0.46, metallic=0.08)
+        self.ivory = create_pbr_material("mat_cockpit_ivory", (0.79, 0.80, 0.77, 1.0), roughness=0.48, metallic=0.06)
+        self.recess = create_pbr_material("mat_cockpit_recess", (0.010, 0.014, 0.020, 1.0), roughness=0.58, metallic=0.02)
+        self.seam = create_pbr_material("mat_cockpit_seam", (0.38, 0.41, 0.42, 1.0), roughness=0.62, metallic=0.08)
+        self.brown = create_pbr_material("mat_cockpit_brown_insert", (0.24, 0.15, 0.09, 1.0), roughness=0.55, metallic=0.28)
+        self.red = create_pbr_material("mat_cockpit_red", (0.58, 0.035, 0.040, 1.0), roughness=0.50, metallic=0.08)
+        self.fastener = create_pbr_material("mat_cockpit_fastener", (0.49, 0.51, 0.50, 1.0), roughness=0.40, metallic=0.55)
+        self.case = create_pbr_material("mat_cockpit_equipment_case", (0.86, 0.86, 0.82, 1.0), roughness=0.38, metallic=0.20)
+        self.brass = create_pbr_material("mat_cockpit_dull_brass", (0.47, 0.34, 0.17, 1.0), roughness=0.48, metallic=0.62)
+        self.gasket = create_pbr_material("mat_cockpit_window_gasket", (0.025, 0.040, 0.046, 1.0), roughness=0.55, metallic=0.05)
+        self.window_frame = create_pbr_material("mat_cockpit_window_frame", (0.62, 0.67, 0.69, 1.0), roughness=0.30, metallic=0.86)
+        self.window = create_pbr_material("mat_cockpit_window", (0.19, 0.39, 0.42, 1.0), roughness=0.18, metallic=0.10)
 
 def world_matrix(obj):
     """obj の模型座標での変換。親子付けはどれも parent_inverse が単位行列である前提。"""
@@ -583,10 +596,474 @@ def make_shell_lathe(inner_points, wall, segments=48):
     return make_lathe(list(inner_points) + outer, segments=segments, closed=True)
 
 # ----------------------------------------------------------------------
-# 1. Cockpit Module
+# 1. Cockpit Module (cockpit-standard: length 9m, aft diameter 6m, forward diameter 3m)
+# ----------------------------------------------------------------------
+def cockpit_profile_radius(profile, z):
+    """manifest の船殻輪郭から断面の基準半径 [m] を線形補間する。"""
+    for previous, current in zip(profile, profile[1:]):
+        if z <= current["z"]:
+            fraction = (z - previous["z"]) / (current["z"] - previous["z"])
+            return previous["radius"] + (current["radius"] - previous["radius"]) * fraction
+    return profile[-1]["radius"]
+
+def cockpit_surface_radius(profile, indent_fraction, z, theta):
+    """上下にずらした2円の和から、角度thetaにおける長手溝付き断面の外周を返す。"""
+    radius = cockpit_profile_radius(profile, z)
+    offset = radius * indent_fraction
+    circle_radius = radius - offset
+    return offset * abs(math.sin(theta)) + math.sqrt(max(0.0, circle_radius ** 2 - offset ** 2 * math.cos(theta) ** 2))
+
+def wrapped_angle_difference(a, b):
+    return math.atan2(math.sin(a - b), math.cos(a - b))
+
+COCKPIT_IVORY_Z = (-3.25, 2.95)
+COCKPIT_DARK_ZONES = ((-4.32, -3.40), (3.02, 4.32))
+COCKPIT_TIE_RIB_Z = (-2.52, -1.02, 0.48, 1.98)
+COCKPIT_WINDOW_Z = (2.70, 0.18, -2.22)
+COCKPIT_WINDOW_ANGLES = (0.0, math.pi)
+COCKPIT_CASE_CENTERS = ((1.33, -0.55), (1.33, math.pi - 0.55),
+                        (-2.62, -0.55), (-2.62, math.pi - 0.55))
+COCKPIT_DARK_BLOCK_COUNT = 24
+COCKPIT_SLOTS_PER_BLOCK = 6
+
+def cockpit_surface_detail(profile, indent_fraction, z, theta):
+    """船殻の表面ディテールによる浅い沈み量と面材番号を返す。"""
+    radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+    ivory = COCKPIT_IVORY_Z[0] <= z <= COCKPIT_IVORY_Z[1]
+    depth = 0.0
+    material_index = 1 if ivory else 0
+
+    for zone_start, zone_end in COCKPIT_DARK_ZONES:
+        if not zone_start <= z <= zone_end:
+            continue
+        block_step = 2.0 * math.pi / COCKPIT_DARK_BLOCK_COUNT
+        block = int((theta % (2.0 * math.pi)) / block_step)
+        row_pitch = (zone_end - zone_start) / COCKPIT_SLOTS_PER_BLOCK
+        slot_row = min(COCKPIT_SLOTS_PER_BLOCK - 1, int((z - zone_start) / row_pitch))
+        slot_z = zone_start + (slot_row + 0.5) * row_pitch
+        center_theta = (block + 0.5) * block_step
+        # z 方向を短く、船殻の周方向(theta)を長くして、横筋が周囲へ回り込む形にする。
+        half_height = 0.050 + 0.008 * ((block + slot_row) % 3)
+        half_width = 0.195 + 0.045 * ((block + 2 * slot_row) % 3)
+        edge = max(abs(z - slot_z) - half_height,
+                   abs(wrapped_angle_difference(theta, center_theta)) * radius - half_width)
+        slot_depth = 0.052 * max(0.0, min(1.0, (0.035 - edge) / 0.035))
+        if slot_depth > depth:
+            depth = slot_depth
+            if (block + 3 * slot_row) % 13 in (0, 1) and edge < -0.018:
+                material_index = 4
+            else:
+                material_index = 2
+
+        boundary_theta = round(theta / block_step) * block_step
+        boundary_arc = abs(wrapped_angle_difference(theta, boundary_theta)) * radius
+        if boundary_arc < 0.030:
+            panel_joint = 0.020 * max(0.0, min(1.0, (0.030 - boundary_arc) / 0.018))
+            if panel_joint > depth:
+                depth, material_index = panel_joint, 2
+        return depth, material_index
+
+    if ivory:
+        seam_angles = tuple(math.radians(degrees) for degrees in range(0, 360, 45))
+        seam_arc = min(abs(wrapped_angle_difference(theta, seam)) for seam in seam_angles) * radius
+        if seam_arc < 0.035:
+            depth = 0.022 * max(0.0, min(1.0, (0.035 - seam_arc) / 0.022))
+            material_index = 3
+
+        tie_groove = min(
+            abs(abs(z - rib_z) - 0.072) for rib_z in COCKPIT_TIE_RIB_Z
+        )
+        if tie_groove < 0.030:
+            groove_depth = 0.020 * max(0.0, min(1.0, (0.030 - tie_groove) / 0.020))
+            if groove_depth > depth:
+                depth, material_index = groove_depth, 3
+
+        for case_z, case_theta in COCKPIT_CASE_CENTERS:
+            along_axis = abs(z - case_z) - 0.36
+            around_hull = abs(wrapped_angle_difference(theta, case_theta)) * radius - 0.43
+            case_edge = max(along_axis, around_hull)
+            if case_edge < 0.10:
+                seat_depth = 0.145 * max(0.0, min(1.0, (0.10 - case_edge) / 0.10))
+                if seat_depth > depth:
+                    depth, material_index = seat_depth, 1
+
+        for window_z in COCKPIT_WINDOW_Z:
+            for window_theta in COCKPIT_WINDOW_ANGLES:
+                along_axis = z - window_z
+                around_hull = wrapped_angle_difference(theta, window_theta) * radius
+                distance = math.sqrt(along_axis * along_axis + around_hull * around_hull)
+                if distance < 0.255:
+                    well_depth = 0.078 * max(0.0, min(1.0, (0.255 - distance) / 0.075))
+                    if well_depth > depth:
+                        depth, material_index = well_depth, 2
+
+    return depth, material_index
+
+def cockpit_hull_mesh(profile, indent_fraction):
+    """黒い区画の反復溝と、アイボリー外板の部材境界を刻んだ船殻を作る。"""
+    bm = bmesh.new()
+    axial_steps = int(round((profile[-1]["z"] - profile[0]["z"]) / 0.04))
+    angular_steps = 288
+    rings = []
+    for axial_index in range(axial_steps + 1):
+        z = profile[0]["z"] + (profile[-1]["z"] - profile[0]["z"]) * axial_index / axial_steps
+        ring = []
+        for angular_index in range(angular_steps):
+            theta = 2.0 * math.pi * angular_index / angular_steps
+            radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+            recess, _ = cockpit_surface_detail(profile, indent_fraction, z, theta)
+            surface_radius = max(0.0, radius - recess)
+            ring.append(bm.verts.new((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z)))
+        rings.append(ring)
+
+    for axial_index in range(axial_steps):
+        for angular_index in range(angular_steps):
+            next_angle = (angular_index + 1) % angular_steps
+            face = bm.faces.new((rings[axial_index][angular_index], rings[axial_index][next_angle],
+                                 rings[axial_index + 1][next_angle], rings[axial_index + 1][angular_index]))
+            center = face.calc_center_median()
+            theta = math.atan2(center.y, center.x)
+            _, face.material_index = cockpit_surface_detail(profile, indent_fraction, center.z, theta)
+
+    for end_index, z in ((0, profile[0]["z"]), (-1, profile[-1]["z"])):
+        center = bm.verts.new((0.0, 0.0, z))
+        ring = rings[end_index]
+        for angular_index in range(angular_steps):
+            bm.faces.new((center, ring[angular_index], ring[(angular_index + 1) % angular_steps]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return shade_by_angle(bm, 42.0)
+
+def add_cockpit_surface_patch(name, profile, indent_fraction, z_center, height, theta_center, width,
+                              radial_offset, material, axial_segments=6, angular_segments=8):
+    """長手断面の曲面に沿った薄いパネル/マーキングを作る。width は船殻に沿う実寸[m]。"""
+    radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+    theta_half = width / (2.0 * max(radius, 0.1))
+    bm = bmesh.new()
+    grid = []
+    for axial_index in range(axial_segments + 1):
+        z = z_center - height / 2.0 + height * axial_index / axial_segments
+        row = []
+        for angular_index in range(angular_segments + 1):
+            theta = theta_center - theta_half + 2.0 * theta_half * angular_index / angular_segments
+            surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radial_offset
+            row.append(bm.verts.new((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z)))
+        grid.append(row)
+    for axial_index in range(axial_segments):
+        for angular_index in range(angular_segments):
+            bm.faces.new((grid[axial_index][angular_index], grid[axial_index][angular_index + 1],
+                          grid[axial_index + 1][angular_index + 1], grid[axial_index + 1][angular_index]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, bm, material)
+
+def add_cockpit_ring_patch(name, profile, indent_fraction, z_center, width, radial_offset, material, angular_steps=192):
+    """非円形断面に沿った全周バンドを作る。"""
+    bm = bmesh.new()
+    rows = []
+    for z in (z_center - width / 2.0, z_center + width / 2.0):
+        rows.append([
+            bm.verts.new(((cockpit_surface_radius(profile, indent_fraction, z, 2.0 * math.pi * index / angular_steps)
+                           + radial_offset) * math.cos(2.0 * math.pi * index / angular_steps),
+                          (cockpit_surface_radius(profile, indent_fraction, z, 2.0 * math.pi * index / angular_steps)
+                           + radial_offset) * math.sin(2.0 * math.pi * index / angular_steps), z))
+            for index in range(angular_steps)
+        ])
+    for index in range(angular_steps):
+        next_index = (index + 1) % angular_steps
+        bm.faces.new((rows[0][index], rows[0][next_index], rows[1][next_index], rows[1][index]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, bm, material)
+
+def add_cockpit_surface_patch_batch(name, profile, indent_fraction, patches, material):
+    """曲面に沿う小さな長方形パッチを一つの描画メッシュへまとめる。"""
+    bm = bmesh.new()
+    for z_center, height, theta_center, width, radial_offset in patches:
+        radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+        theta_half = width / (2.0 * max(radius, 0.1))
+        corners = []
+        for z, theta in ((z_center - height / 2.0, theta_center - theta_half),
+                         (z_center - height / 2.0, theta_center + theta_half),
+                         (z_center + height / 2.0, theta_center + theta_half),
+                         (z_center + height / 2.0, theta_center - theta_half)):
+            surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radial_offset
+            corners.append(bm.verts.new((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z)))
+        bm.faces.new(corners)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, bm, material)
+
+def cockpit_window_locations():
+    return [(z, theta) for z in COCKPIT_WINDOW_Z for theta in COCKPIT_WINDOW_ANGLES]
+
+def cockpit_surface_point(profile, indent_fraction, z, theta, radial_offset=0.0):
+    radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radial_offset
+    return radius * math.cos(theta), radius * math.sin(theta), z
+
+def add_cockpit_annuli(name, profile, indent_fraction, locations, outer_radius, inner_radius, material,
+                        radial_offset=0.0, angular_steps=48):
+    """船殻曲面へ沿う円形の枠をまとめて作る。"""
+    bm = bmesh.new()
+    for z_center, theta_center in locations:
+        rows = []
+        for ring_radius in (inner_radius, outer_radius):
+            ring = []
+            for index in range(angular_steps):
+                angle = 2.0 * math.pi * index / angular_steps
+                z = z_center + ring_radius * math.cos(angle)
+                theta = theta_center + ring_radius * math.sin(angle) / max(
+                    cockpit_surface_radius(profile, indent_fraction, z_center, theta_center), 0.1)
+                ring.append(bm.verts.new(cockpit_surface_point(
+                    profile, indent_fraction, z, theta, radial_offset)))
+            rows.append(ring)
+        for index in range(angular_steps):
+            next_index = (index + 1) % angular_steps
+            bm.faces.new((rows[0][index], rows[0][next_index], rows[1][next_index], rows[1][index]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, bm, material)
+
+def add_cockpit_window_discs(name, profile, indent_fraction, locations, radius, radial_offset, material,
+                              angular_steps=48):
+    """へこんだガラス面を船殻に沿う円盤としてまとめる。"""
+    bm = bmesh.new()
+    for z_center, theta_center in locations:
+        center = bm.verts.new(cockpit_surface_point(
+            profile, indent_fraction, z_center, theta_center, radial_offset))
+        rim = []
+        for index in range(angular_steps):
+            angle = 2.0 * math.pi * index / angular_steps
+            z = z_center + radius * math.cos(angle)
+            theta = theta_center + radius * math.sin(angle) / max(
+                cockpit_surface_radius(profile, indent_fraction, z_center, theta_center), 0.1)
+            rim.append(bm.verts.new(cockpit_surface_point(
+                profile, indent_fraction, z, theta, radial_offset)))
+        for index in range(angular_steps):
+            bm.faces.new((center, rim[index], rim[(index + 1) % angular_steps]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, bm, material)
+
+def cockpit_case_wave_depth(fraction):
+    phase = fraction * 12.0
+    return 0.040 * (0.5 - 0.5 * math.cos(2.0 * math.pi * phase))
+
+def add_cockpit_equipment_case(name, profile, indent_fraction, z_center, theta_center, materials):
+    """面の包絡内へ収めた、扇形で波板状の機器ケースを作る。"""
+    half_height = 0.36
+    top_segments_z = 12
+    top_segments_theta = 48
+    depth = 0.145
+    top_grid = []
+    bottom_grid = []
+    for axial_index in range(top_segments_z + 1):
+        fraction_z = axial_index / top_segments_z
+        z = z_center - half_height + 2.0 * half_height * fraction_z
+        edge_fraction = abs(2.0 * fraction_z - 1.0)
+        half_width = 0.36 + 0.07 * (1.0 - edge_fraction)
+        surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta_center)
+        top_row, bottom_row = [], []
+        for angular_index in range(top_segments_theta + 1):
+            fraction_theta = angular_index / top_segments_theta
+            local_u = 2.0 * fraction_theta - 1.0
+            theta = theta_center + local_u * half_width / max(surface_radius, 0.1)
+            wave_depth = cockpit_case_wave_depth(fraction_theta)
+            top_radius = cockpit_surface_radius(profile, indent_fraction, z, theta) - wave_depth
+            bottom_radius = cockpit_surface_radius(profile, indent_fraction, z, theta) - depth
+            top_row.append((z, theta, (top_radius * math.cos(theta), top_radius * math.sin(theta), z)))
+            bottom_row.append((z, theta, (bottom_radius * math.cos(theta), bottom_radius * math.sin(theta), z)))
+        top_grid.append(top_row)
+        bottom_grid.append(bottom_row)
+
+    bm = bmesh.new()
+    top_vertices = [[bm.verts.new(point) for _, _, point in row] for row in top_grid]
+    bottom_vertices = [[bm.verts.new(point) for _, _, point in row] for row in bottom_grid]
+    for axial_index in range(top_segments_z):
+        for angular_index in range(top_segments_theta):
+            face = bm.faces.new((top_vertices[axial_index][angular_index],
+                                 top_vertices[axial_index][angular_index + 1],
+                                 top_vertices[axial_index + 1][angular_index + 1],
+                                 top_vertices[axial_index + 1][angular_index]))
+            face.material_index = 0
+
+    perimeter = ([(0, index) for index in range(top_segments_theta + 1)]
+                 + [(index, top_segments_theta) for index in range(1, top_segments_z + 1)]
+                 + [(top_segments_z, index) for index in range(top_segments_theta - 1, -1, -1)]
+                 + [(index, 0) for index in range(top_segments_z - 1, 0, -1)])
+    bottom_boundary = []
+    for axial_index, angular_index in perimeter:
+        bottom_boundary.append(bottom_vertices[axial_index][angular_index])
+    top_boundary = [top_vertices[axial_index][angular_index] for axial_index, angular_index in perimeter]
+    for index, top_vertex in enumerate(top_boundary):
+        next_index = (index + 1) % len(top_boundary)
+        wall = bm.faces.new((top_vertex, top_boundary[next_index],
+                             bottom_boundary[next_index], bottom_boundary[index]))
+        wall.material_index = 1
+
+    base_radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center) - depth
+    base_center = bm.verts.new((base_radius * math.cos(theta_center), base_radius * math.sin(theta_center), z_center))
+    for index in range(len(bottom_boundary)):
+        bm.faces.new((base_center, bottom_boundary[(index + 1) % len(bottom_boundary)], bottom_boundary[index]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, bm, [materials.case, materials.seam])
+
+def add_cockpit_equipment_ports(profile, indent_fraction, materials):
+    """ケース上の楕円ポートを真鍮の縁と暗い奥面で作る。"""
+    ports = []
+    for case_z, theta_center in COCKPIT_CASE_CENTERS:
+        radius = cockpit_surface_radius(profile, indent_fraction, case_z, theta_center)
+        half_width = 0.43
+        for fraction_theta in (0.25, 0.75):
+            local_u = 2.0 * fraction_theta - 1.0
+            theta = theta_center + local_u * half_width / max(radius, 0.1)
+            ports.append((case_z, theta))
+
+    bm = bmesh.new()
+    angular_steps = 40
+    for z_center, theta_center in ports:
+        radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+        loops = []
+        for scale in (1.0, 0.62):
+            loop = []
+            for index in range(angular_steps):
+                angle = 2.0 * math.pi * index / angular_steps
+                z = z_center + 0.064 * scale * math.cos(angle)
+                theta = theta_center + 0.12 * scale * math.sin(angle) / max(radius, 0.1)
+                surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta) - 0.034
+                loop.append(bm.verts.new((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z)))
+            loops.append(loop)
+        for index in range(angular_steps):
+            bm.faces.new((loops[1][index], loops[1][(index + 1) % angular_steps],
+                          loops[0][(index + 1) % angular_steps], loops[0][index]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    add_mesh_obj("cockpit_equipment_oval_port_rims", bm, materials.brass)
+
+    bm = bmesh.new()
+    for z_center, theta_center in ports:
+        radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+        center_radius = radius - 0.036
+        center = bm.verts.new((center_radius * math.cos(theta_center), center_radius * math.sin(theta_center), z_center))
+        rim = []
+        for index in range(angular_steps):
+            angle = 2.0 * math.pi * index / angular_steps
+            z = z_center + 0.039 * math.cos(angle)
+            theta = theta_center + 0.074 * math.sin(angle) / max(radius, 0.1)
+            surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta) - 0.036
+            rim.append(bm.verts.new((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z)))
+        for index in range(angular_steps):
+            bm.faces.new((center, rim[index], rim[(index + 1) % angular_steps]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    add_mesh_obj("cockpit_equipment_oval_port_insets", bm, materials.recess)
+
+def add_cockpit_window_frames(profile, indent_fraction, materials):
+    locations = cockpit_window_locations()
+    add_cockpit_annuli("cockpit_window_gaskets", profile, indent_fraction, locations,
+                       0.255, 0.211, materials.gasket, radial_offset=0.002)
+    add_cockpit_annuli("cockpit_window_silver_frames", profile, indent_fraction, locations,
+                       0.214, 0.166, materials.window_frame, radial_offset=0.003)
+    add_cockpit_window_discs("cockpit_window_glazing", profile, indent_fraction, locations,
+                             0.163, -0.040, materials.window)
+
+def add_cockpit_red_checks(profile, indent_fraction, material):
+    """黒い6溝パネル群の一部を、赤い細いチェック枠で囲う。"""
+    patches = []
+    blocks_per_frame = 4
+    group_step = 2.0 * math.pi / COCKPIT_DARK_BLOCK_COUNT * blocks_per_frame
+    for zone_start, zone_end in COCKPIT_DARK_ZONES:
+        z_mid = (zone_start + zone_end) / 2.0
+        for group in (0, 2, 4):
+            theta_start = group * group_step
+            theta_end = theta_start + group_step
+            theta_mid = (theta_start + theta_end) / 2.0
+            radius = cockpit_surface_radius(profile, indent_fraction, z_mid, theta_mid)
+            group_width = radius * group_step * 0.90
+            frame_height = zone_end - zone_start - 0.16
+            patches.extend((
+                (zone_start + 0.045, 0.038, theta_mid, group_width, 0.002),
+                (zone_end - 0.045, 0.038, theta_mid, group_width, 0.002),
+                (z_mid, frame_height, theta_start + 0.006, 0.035, 0.002),
+                (z_mid, frame_height, theta_end - 0.006, 0.035, 0.002),
+            ))
+    add_cockpit_surface_patch_batch("cockpit_red_checked_panel_frames", profile, indent_fraction,
+                                    patches, material)
+
 def build_cockpit():
     reset_scene()
-    build_cockpit_surface(MANIFEST["cockpitHull"])
+    cockpit_mats = CockpitMaterialLibrary()
+    profile = MANIFEST["cockpitHull"]["profile"]
+    indent_fraction = MANIFEST["cockpitHull"]["sectionIndentFraction"]
+
+    # カタログの輪郭は変更せず、外板の色分けと微細な凹凸だけを差し替える。
+    add_mesh_obj("cockpit_hull", cockpit_hull_mesh(profile, indent_fraction),
+                 [cockpit_mats.ebonite, cockpit_mats.ivory, cockpit_mats.recess,
+                  cockpit_mats.seam, cockpit_mats.brown])
+
+    # アイボリー外板を周方向リブで区切り、黒い端部の継ぎ目に赤と鈍い真鍮の線を巻く。
+    for rib_index, z in enumerate(COCKPIT_TIE_RIB_Z):
+        add_cockpit_ring_patch(f"cockpit_ivory_tie_rib_{rib_index}", profile, indent_fraction,
+                               z, 0.085, 0.002, cockpit_mats.ivory)
+    for stripe_index, z in enumerate((-4.12, -3.82, -3.53, 3.16, 3.58, 4.12)):
+        add_cockpit_ring_patch(f"cockpit_dull_brass_wrap_{stripe_index}", profile, indent_fraction,
+                               z, 0.032, 0.003, cockpit_mats.brass)
+    add_cockpit_ring_patch("cockpit_red_aft_mark", profile, indent_fraction, -3.32,
+                           0.052, 0.004, cockpit_mats.red)
+    add_cockpit_ring_patch("cockpit_red_fore_mark", profile, indent_fraction, 2.99,
+                           0.042, 0.004, cockpit_mats.red)
+    add_cockpit_ring_patch("cockpit_forward_rim", profile, indent_fraction, 4.35,
+                           0.065, 0.003, cockpit_mats.window_frame)
+    add_cockpit_red_checks(profile, indent_fraction, cockpit_mats.red)
+
+    # 白い扇形ケースは船殻の表面包絡に収め、箱の側面と洗濯板状の上面で奥行きを見せる。
+    for case_index, (z, theta) in enumerate(COCKPIT_CASE_CENTERS):
+        add_cockpit_equipment_case(f"cockpit_equipment_case_{case_index}", profile, indent_fraction,
+                                   z, theta, cockpit_mats)
+    add_cockpit_equipment_ports(profile, indent_fraction, cockpit_mats)
+    add_cockpit_window_frames(profile, indent_fraction, cockpit_mats)
+
+    # 側面に閉じたハッチを2枚ずつ配置し、両舷で左右対称にする。
+    for side, theta in (("port", 0.0), ("starboard", math.pi)):
+        for hatch_index, z in enumerate((-1.15, 1.95)):
+            add_cockpit_surface_patch(f"cockpit_side_hatch_recess_{side}_{hatch_index}", profile, indent_fraction,
+                                      z, 0.82, theta, 0.74, 0.018, cockpit_mats.recess)
+            add_cockpit_surface_patch(f"cockpit_side_hatch_door_{side}_{hatch_index}", profile, indent_fraction,
+                                      z, 0.70, theta, 0.64, 0.034, cockpit_mats.ivory)
+            # 赤い警告枠をハッチ前縁だけに入れる。
+            side_radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+            edge_theta = theta + (0.29 / side_radius) * (-1 if side == "port" else 1)
+            add_cockpit_surface_patch(f"cockpit_side_hatch_red_frame_{side}_{hatch_index}", profile, indent_fraction,
+                                      z, 0.60, edge_theta, 0.040, 0.050, cockpit_mats.red, 6, 2)
+            latch_theta = theta + (0.22 / side_radius) * (1 if side == "port" else -1)
+            add_cockpit_surface_patch(f"cockpit_side_hatch_latch_{side}_{hatch_index}", profile, indent_fraction,
+                                      z, 0.18, latch_theta, 0.052, 0.048, cockpit_mats.fastener, 2, 2)
+
+            half_theta = 0.31 / side_radius
+            for corner in range(4):
+                corner_theta = theta + (-half_theta if corner % 2 == 0 else half_theta)
+                corner_z = z + (-0.31 if corner < 2 else 0.31)
+                point_radius = cockpit_surface_radius(profile, indent_fraction, corner_z, corner_theta) + 0.028
+                bm_rivet = make_sphere(0.020, center=(point_radius * math.cos(corner_theta),
+                                                      point_radius * math.sin(corner_theta), corner_z),
+                                       u_seg=10, v_seg=6)
+                add_mesh_obj(f"cockpit_side_hatch_rivet_{side}_{hatch_index}_{corner}", bm_rivet,
+                             cockpit_mats.fastener)
+
+    # 端板継ぎ目の位置へ締結リベットを揃える。窓枠と機器ケースに重なる点は省く。
+    for seam_index, z in enumerate((-3.45, -2.52, -1.02, 0.48, 1.98, 2.95, 3.85)):
+        for bolt_index in range(12):
+            theta = 2.0 * math.pi * bolt_index / 12.0
+            window_overlap = any(
+                math.hypot(z - window_z,
+                           wrapped_angle_difference(theta, window_theta)
+                           * cockpit_surface_radius(profile, indent_fraction, z, theta)) < 0.31
+                for window_z, window_theta in cockpit_window_locations()
+            )
+            case_overlap = any(
+                abs(z - case_z) < 0.22
+                and abs(wrapped_angle_difference(theta, case_theta)) < 0.16
+                for case_z, case_theta in COCKPIT_CASE_CENTERS
+            )
+            if window_overlap or case_overlap:
+                continue
+            radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + 0.026
+            bm_rivet = make_sphere(0.018, center=(radius * math.cos(theta), radius * math.sin(theta), z),
+                                   u_seg=8, v_seg=6)
+            add_mesh_obj(f"cockpit_panel_rivet_{seam_index}_{bolt_index}", bm_rivet, cockpit_mats.fastener)
+
     export_glb(os.path.join(OUT_DIR, "cockpit-standard.glb"))
 
 # ----------------------------------------------------------------------
