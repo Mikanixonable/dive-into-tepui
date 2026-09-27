@@ -143,7 +143,7 @@ export class SphereChainCollisionGeometry {
         const center = interpolate(previousSelfState.r, selfState.r, globalToi);
         const hitAttitude = qSlerp(previousAttitude, attitude, globalToi);
         // TOI では2球が接するだけなので、押し戻し量は 0 になる。接触点は
-        // 相手の球ではなく、Protein側の球面上へ置く。
+        // 相手の球ではなく、球列側の球面上へ置く。
         nearest = {
           hit: {
             point: addScaled(add(center, qRotate(hitAttitude, offset)), normal, sphere.radius),
