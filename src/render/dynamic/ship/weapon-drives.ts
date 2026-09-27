@@ -251,6 +251,7 @@ function recoilParts(
   for (const module of modules) {
     if (module.kind !== 'weapon' || module.hp <= 0) continue;
     for (const anchor of ship.semanticAnchors(module.id, prefix)) {
+      // anchor 名の末尾から砲口番号を読む。整数でなければアセットの不備。
       const name = typeof anchor.userData.semanticAnchor === 'string'
         ? anchor.userData.semanticAnchor : anchor.name.slice('anchor:'.length);
       const muzzleIndex = Number(name.slice(prefix.length).split(':')[0]);
@@ -263,6 +264,7 @@ function recoilParts(
   return result;
 }
 
+// モジュール内の砲口を一意にするキー。
 function recoilKey(moduleId: string, muzzleIndex: number): string {
   return `${moduleId}:${muzzleIndex}`;
 }

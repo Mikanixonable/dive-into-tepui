@@ -39,6 +39,7 @@ function moduleDefinition(
   });
 }
 
+// 燃料タンクのモジュール定義。モデルは省略時に id と同名のものを引く。
 function tank(
   id: string, length: number, fuelKind: FuelKind, capacity: number, dryMass = 250,
   fuelMassPerUnit = 1, modelId = id,
@@ -159,6 +160,7 @@ const definitions: readonly ShipModuleDefinition[] = [
 export class ShipModuleCatalog {
   private readonly byId: ReadonlyMap<string, ShipModuleDefinition>;
 
+  // items を id で引ける索引にする。id の重複はその場で失敗にする。
   public constructor(items: readonly ShipModuleDefinition[] = definitions) {
     const map = new Map<string, ShipModuleDefinition>();
     for (const item of items) {
@@ -172,10 +174,12 @@ export class ShipModuleCatalog {
     return this.byId.has(id);
   }
 
+  // 定義を引く。未定義の id では null を返す。
   public get(id: string): ShipModuleDefinition | null {
     return this.byId.get(id) ?? null;
   }
 
+  // 定義を引く。未定義の id はその場で失敗にする。
   public require(id: string): ShipModuleDefinition {
     const definition = this.get(id);
     if (definition === null) throw new Error(`unknown ship module definition: ${id}`);

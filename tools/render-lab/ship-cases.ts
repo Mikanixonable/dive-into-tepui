@@ -161,6 +161,7 @@ function mainTank(): LabCase {
 function solarPanelSurface(): LabCase {
   const panels = deployablePanelPoses('solar_panel', 0, 1);
   const panelFrameDistanceLog = Math.log10(1.5);
+  // 全展開のパネル群の重心を取り、表と裏それぞれの配置角度へ回す。
   const panelCenter = panels.reduce((sum, panel) => v3(
     sum.x + panel.center.x / panels.length,
     sum.y + panel.center.y / panels.length,
@@ -174,6 +175,7 @@ function solarPanelSurface(): LabCase {
   const backCenter = qRotate(backRotation, panelCenter);
   const frontPosition = v3(-displayCenterOffset - frontCenter.x, -frontCenter.y, -25 - frontCenter.z);
   const backPosition = v3(displayCenterOffset - backCenter.x, -backCenter.y, -25 - backCenter.z);
+  // 表と裏の2枚を、同じ縮尺で画面中央へ並べる。
   const front = new ShipModuleView({
     id: 'solar-front', modelId: 'solar-panel-standard', kind: 'solar_panel',
     hp: 100, maxHp: 100, deployed: 1, burning: null,
