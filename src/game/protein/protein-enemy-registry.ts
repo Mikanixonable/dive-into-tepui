@@ -3,14 +3,15 @@
 import {
   proteinAssetBundleFor, proteinAssetFor, type ProteinAssetId, type ProteinSemanticSource,
 } from './protein-asset-loader';
-import { buildProteinCollisionSpheres, type ProteinCollisionSphere } from './protein-sphere-collision';
+import { buildProteinCollisionSpheres } from './protein-sphere-collision';
+import type { CollisionSphere } from '../dynamic/sphere-chain-collision';
 import type { ProteinAssetDefinition } from './protein-schema';
 
 export interface ProteinEnemyDefinition {
   readonly assetId: ProteinAssetId;
   readonly asset: ProteinAssetDefinition;
   /** 表示形態に依らない判定形状。アセットごとに1つで、個体は位置と姿勢だけを渡す。 */
-  readonly collisionSpheres: readonly ProteinCollisionSphere[];
+  readonly collisionSpheres: readonly CollisionSphere[];
 }
 
 /** 判定形状を組み、意味論の定義と束ねた敵定義を作る。 */
