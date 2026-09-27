@@ -288,6 +288,9 @@ export function register(): void {
     await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     const solarFaceOffsets: number[] = [];
+    const solarBraceWidths: number[] = [];
+    const solarBraceDepths: number[] = [];
+    const solarPanelSizes = new Map<number, { width: number, depth: number }>();
     const expected = [
       {
         modelId: 'radiator-standard',
@@ -324,11 +327,14 @@ export function register(): void {
         const size = new THREE.Vector3();
         bbox.getSize(size);
         if (spec.modelId === 'solar-panel-standard') {
-          assert.ok(Math.abs(size.x - spec.width) < spec.width * 0.04, `${spec.modelId} width: ${size.x}`);
-          assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.04, `${spec.modelId} depth: ${size.z}`);
+          assert.ok(Math.abs(size.x - spec.width) < spec.width * 0.081, `${spec.modelId} width: ${size.x}`);
+          assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.081, `${spec.modelId} depth: ${size.z}`);
           solarWidths.push(size.x);
           solarDepths.push(size.z);
           solarFaceOffsets.push((bbox.min.y + bbox.max.y) / 2);
+          const indexMatch = /^deployable-panel(?::(\d+))?$/.exec(panel.name);
+          assert.ok(indexMatch !== null, `${spec.modelId} has an unrecognized panel name: ${panel.name}`);
+          solarPanelSizes.set(indexMatch[1] === undefined ? 0 : Number(indexMatch[1]), { width: size.x, depth: size.z });
         } else {
           assert.ok(Math.abs(size.x - spec.width) < 1e-3, `${spec.modelId} width: ${size.x} expected ${spec.width}`);
           assert.ok(Math.abs(size.z - spec.depth) < 1e-3, `${spec.modelId} depth: ${size.z} expected ${spec.depth}`);
@@ -339,6 +345,30 @@ export function register(): void {
         assert.ok(Math.max(...solarWidths) > Math.min(...solarWidths));
         assert.ok(Math.max(...solarDepths) > Math.min(...solarDepths));
         assert.ok(Math.max(...solarFaceOffsets) - Math.min(...solarFaceOffsets) > 0.01);
+        const braces: THREE.Object3D[] = [];
+        module.traverse((child) => {
+          if (child.name.startsWith('panel_lattice:')) braces.push(child);
+        });
+        assert.equal(braces.length, SOLAR_PANEL_COUNT, 'one X-brace lattice per solar panel');
+        for (const brace of braces) {
+          const braceBox = new THREE.Box3().setFromObject(brace);
+          const braceSize = new THREE.Vector3();
+          braceBox.getSize(braceSize);
+          solarBraceWidths.push(braceSize.x);
+          solarBraceDepths.push(braceSize.z);
+          const indexMatch = /^panel_lattice:(\d+)$/.exec(brace.name);
+          assert.ok(indexMatch !== null, `unrecognized solar brace name: ${brace.name}`);
+          const panelSize = solarPanelSizes.get(Number(indexMatch[1]));
+          assert.ok(panelSize !== undefined, `missing solar panel size for ${brace.name}`);
+          assert.ok(Math.abs(braceSize.x / panelSize.width - 1) < 0.16,
+            `${brace.name} width ${braceSize.x} does not follow panel width ${panelSize.width}`);
+          assert.ok(Math.abs(braceSize.z / panelSize.depth - 1) < 0.16,
+            `${brace.name} depth ${braceSize.z} does not follow panel depth ${panelSize.depth}`);
+        }
+        assert.ok(Math.max(...solarBraceWidths) - Math.min(...solarBraceWidths) > 0.05,
+          'X-brace width does not follow the individual panel sizes');
+        assert.ok(Math.max(...solarBraceDepths) - Math.min(...solarBraceDepths) > 0.05,
+          'X-brace depth does not follow the individual panel sizes');
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {
@@ -349,6 +379,22 @@ export function register(): void {
         hinges.map((hinge) => hinge.userData.panelIndex),
         [...Array(spec.count).keys()],
       );
+      if (spec.modelId === 'solar-panel-standard') {
+        const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+        const firstHingeZ = transformInModule(module, hinges[0]).position.z;
+        for (const hinge of hinges) {
+          const index = hinge.userData.panelIndex as number;
+          const column = Math.floor(index / rows);
+          const row = index % rows;
+          const panelPosition: THREE.Vector3 = transformInModule(module, hinge).position;
+          const expectedX = (column - (SOLAR_PANEL_COLUMNS - 1) / 2)
+            * SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;
+          assert.ok(Math.abs(panelPosition.x - expectedX) < 1e-6,
+            `panel ${index} root hinge x ${panelPosition.x} should be ${expectedX}`);
+          assert.ok(Math.abs(panelPosition.z - firstHingeZ - row * SOLAR_PANEL_LENGTH) < 1e-6,
+            `panel ${index} root hinge is not on the four-panel chain row ${row}`);
+        }
+      }
     }
   });
 
@@ -361,6 +407,10 @@ export function register(): void {
       if (child.name.startsWith('panel_cells:')) cellGroups.push(child);
     });
     assert.equal(cellGroups.length, SOLAR_PANEL_COUNT);
+    const blueMaterials = new Map<string, THREE.MeshPhysicalMaterial>();
+    const rustMaterials = new Map<string, THREE.MeshPhysicalMaterial>();
+    let assignedBlueCellGroups = 0;
+    let assignedRustCellGroups = 0;
     for (const cells of cellGroups) {
       cells.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
@@ -369,9 +419,30 @@ export function register(): void {
           assert.ok(material instanceof THREE.MeshPhysicalMaterial, `${cells.name} is not a physical glass material`);
           assert.ok(material.clearcoat >= 0.7, `${cells.name} clearcoat: ${material.clearcoat}`);
           assert.ok(material.clearcoatRoughness <= 0.03, `${cells.name} coat roughness: ${material.clearcoatRoughness}`);
+          if (material.name.startsWith('mat_solar_shade_')) {
+            blueMaterials.set(material.name, material);
+            assignedBlueCellGroups++;
+          }
+          if (material.name.startsWith('mat_solar_rust_shade_')) {
+            rustMaterials.set(material.name, material);
+            assignedRustCellGroups++;
+          }
         }
       });
     }
+    assert.ok(blueMaterials.size > 0 && rustMaterials.size > 0, 'blue and muted rust cell materials are present');
+    for (const material of blueMaterials.values()) {
+      assert.ok(material.color.b > material.color.r * 3, `${material.name} is not blue-black: ${material.color.getHexString()}`);
+      assert.ok(material.color.b < 0.03, `${material.name} is too bright: ${material.color.getHexString()}`);
+    }
+    for (const material of rustMaterials.values()) {
+      assert.ok(material.color.r > material.color.g, `${material.name} is not red-brown`);
+      assert.ok(material.color.b > material.color.g, `${material.name} has no cool blue shift`);
+      assert.ok(material.color.b / material.color.r > 0.65, `${material.name} is too saturated red`);
+      assert.ok(material.color.r < 0.07, `${material.name} is too bright: ${material.color.getHexString()}`);
+    }
+    assert.ok(assignedBlueCellGroups > 0, 'blue cells are assigned to cell geometry');
+    assert.ok(assignedRustCellGroups > 0, 'rust patches are assigned to cell geometry');
   });
 
   test('ship module asset: instance は geometry を共有し material と状態だけを分離する', async () => {

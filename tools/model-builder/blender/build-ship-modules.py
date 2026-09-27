@@ -154,22 +154,23 @@ class MaterialLibrary:
         # 建造ドックの識別色
         self.dock = create_pbr_material("mat_dock", (0.84, 0.55, 0.22, 1.0), roughness=0.38, metallic=1.0)
         # ガラス越しに見える暗い濃青の太陽電池セル。低 roughness で鋭い反射を返す
-        self.solar = create_pbr_material("mat_solar", (0.003, 0.008, 0.024, 1.0), roughness=0.035, metallic=0.06, clearcoat=0.75, coat_roughness=0.02)
+        self.solar = create_pbr_material("mat_solar", (0.002, 0.005, 0.014, 1.0), roughness=0.035, metallic=0.06, clearcoat=0.75, coat_roughness=0.02)
         # セル区画ごとの明暗ばらつき
         self.solar_shades = [
             create_pbr_material(
                 f"mat_solar_shade_{k}",
-                (0.003 * f, 0.008 * f, 0.024 * f, 1.0), roughness=0.035, metallic=0.06, clearcoat=0.75, coat_roughness=0.02)
+                (0.002 * f, 0.005 * f, 0.014 * f, 1.0), roughness=0.035, metallic=0.06, clearcoat=0.75, coat_roughness=0.02)
             for k, f in enumerate((0.82, 0.9, 0.96, 1.0, 1.08, 1.16))
         ]
         self.solar_rust_shades = [
             create_pbr_material(
                 f"mat_solar_rust_shade_{k}",
-                (0.054 * f, 0.030 * f, 0.032 * f, 1.0), roughness=0.045, metallic=0.04, clearcoat=0.75, coat_roughness=0.02)
+                (0.050 * f, 0.033 * f, 0.037 * f, 1.0), roughness=0.045, metallic=0.04, clearcoat=0.75, coat_roughness=0.02)
             for k, f in enumerate((0.86, 0.94, 1.0, 1.08, 1.16))
         ]
         # セル帯のあいだに見えるバス帯と、翼裏の褐色基板・横縞
-        self.solar_bus = create_pbr_material("mat_solar_bus", (0.007, 0.016, 0.045, 1.0), roughness=0.12, metallic=0.18)
+        self.solar_bus = create_pbr_material("mat_solar_bus", (0.004, 0.009, 0.020, 1.0), roughness=0.12, metallic=0.18)
+        self.solar_trace = create_pbr_material("mat_solar_trace", (0.18, 0.21, 0.24, 1.0), roughness=0.28, metallic=0.62)
         self.solar_backing = create_pbr_material("mat_solar_backing", (0.065, 0.038, 0.020, 1.0), roughness=0.68, metallic=0.08)
         self.solar_back_stripe = create_pbr_material("mat_solar_back_stripe", (0.036, 0.022, 0.012, 1.0), roughness=0.74, metallic=0.05)
         # 翼裏の白い骨格と、灰色の小型アクチュエーター
@@ -2424,9 +2425,15 @@ def build_solar_mount(mats, half_len, thickness, span):
 
 # 展開した翼が一面に揃わないよう、パネルごとに面法線方向へ振ったオフセット [m]。
 # ヒンジまわりの金具は揃ったままにし、本体と表裏の部品だけをずらす決定的な値
-PANEL_FACE_Y_OFFSETS = (0.012, -0.006, 0.016, 0.004, -0.010, 0.008, -0.014, 0.006)
-PANEL_SIZE_SCALES = (0.98, 1.02, 0.97, 1.025, 0.99, 1.01, 0.985, 1.015)
-RUST_PANEL_INDICES = frozenset((1, 6))
+PANEL_FACE_Y_OFFSETS = (0.045, -0.032, 0.020, -0.016, -0.024, 0.036, -0.040, 0.008)
+PANEL_SIZE_SCALES = (1.06, 0.94, 1.05, 0.95, 0.94, 1.06, 0.92, 1.04)
+RUST_CELL_PATCHES = {
+    0: ((7, 0, 9, 2),),
+    1: ((0, 5, 2, 7),),
+    3: ((4, 1, 6, 3),),
+    4: ((7, 5, 9, 7),),
+    6: ((1, 0, 3, 2),),
+}
 
 def build_solar_panel(name):
     reset_scene()
@@ -2439,7 +2446,7 @@ def build_solar_panel(name):
     tile_span = span / columns
     build_solar_mount(mats, half_len, thickness, span)
 
-    # 裏面の細い角材は基板から浮かせ、白い菱形と近接した横桟の組を作る
+    # 裏面の細い角材は基板から浮かせ、白いX筋交いと二本束の中央レールを作る
     lat_h, lat_w = 0.028, 0.024      # 角材の面からの高さ・面内の幅 [m]
     lat_y = -thickness / 2 - lat_h / 2
 
@@ -2447,11 +2454,11 @@ def build_solar_panel(name):
         scale = PANEL_SIZE_SCALES[index]
         body_span = tile_span * 0.96 * scale
         body_len = length * 0.96 * scale
-        # セル面は枠の内側に収め、幅方向へ8列・展開方向へ6行の区画に刻む
+        # セル面は枠の内側へ収め、細かなセル区画と一部の赤褐色パッチを並べる
         cell_x0, cell_x1 = -body_span / 2 + 0.075, body_span / 2 - 0.075
         cell_z0, cell_z1 = 0.09, body_len - 0.075
-        cell_cols, cell_rows = 8, 6
-        cell_gap = 0.018
+        cell_cols, cell_rows = 8, 10
+        cell_gap = 0.012
         cell_pitch_x = (cell_x1 - cell_x0) / cell_cols
         cell_pitch_z = (cell_z1 - cell_z0) / cell_rows
         lat_x0, lat_x1 = -body_span / 2 + 0.055, body_span / 2 - 0.055
@@ -2465,8 +2472,8 @@ def build_solar_panel(name):
         bus_sheet = add_mesh_obj(f"panel_bus_sheet:{index}", make_box(
             cell_x1 - cell_x0 + 0.02, 0.006, cell_z1 - cell_z0 + 0.02,
             center=(0.0, thickness / 2 + 0.003, (cell_z0 + cell_z1) / 2)), mats.solar_bus)
-        # 区画ごとに明暗のシェード材を決定的に割り当て、2枚だけ赤褐色へ振る
-        solar_shades = mats.solar_rust_shades if index in RUST_PANEL_INDICES else mats.solar_shades
+        # 全パネルを青黒で作り、選んだセル区画だけを青みの赤褐色へ振る
+        rust_patches = RUST_CELL_PATCHES.get(index, ())
         bm_cells = bmesh.new()
         for row in range(cell_rows):
             for col in range(cell_cols):
@@ -2479,16 +2486,30 @@ def build_solar_panel(name):
                     ))) @ Matrix.Diagonal((
                         cell_pitch_x - cell_gap, 0.012, cell_pitch_z - cell_gap, 1.0,
                     )))
-                shade = (index * 7 + col * 13 + row * 29) % len(solar_shades)
+                is_rust = any(row0 <= row <= row1 and col0 <= col <= col1
+                    for row0, col0, row1, col1 in rust_patches)
+                if is_rust:
+                    shade = len(mats.solar_shades) + (index * 7 + col * 13 + row * 29) % len(mats.solar_rust_shades)
+                else:
+                    shade = (index * 7 + col * 13 + row * 29) % len(mats.solar_shades)
                 bm_cells.faces.ensure_lookup_table()
                 for i in range(n0, len(bm_cells.faces)):
                     bm_cells.faces[i].material_index = shade
         bmesh.ops.recalc_face_normals(bm_cells, faces=bm_cells.faces)
-        cells = add_mesh_obj(f"panel_cells:{index}", shade_by_angle(bm_cells, 30.0), list(solar_shades))
+        cells = add_mesh_obj(f"panel_cells:{index}", shade_by_angle(bm_cells, 30.0), mats.solar_shades + mats.solar_rust_shades)
+        traces = add_mesh_obj(f"panel_cell_traces:{index}", make_boxes([
+            (0.006, 0.002, cell_z1 - cell_z0,
+             (cell_x0 + col * cell_pitch_x, thickness / 2 + 0.019, (cell_z0 + cell_z1) / 2), (0.0, 0.0, 0.0))
+            for col in range(1, cell_cols)
+        ] + [
+            (cell_x1 - cell_x0, 0.002, 0.006,
+             (0.0, thickness / 2 + 0.019, cell_z0 + row * cell_pitch_z), (0.0, 0.0, 0.0))
+            for row in range(1, cell_rows)
+        ], bevel=0.001), mats.solar_trace)
         # セル列を横断するバス帯
         busbars = add_mesh_obj(f"panel_busbars:{index}", make_boxes([
             (cell_x1 - cell_x0, 0.010, 0.045, (0.0, thickness / 2 + 0.014, bz), (0.0, 0.0, 0.0))
-            for bz in (cell_z0 + 2 * cell_pitch_z, cell_z0 + 5 * cell_pitch_z)
+            for bz in (cell_z0 + 3 * cell_pitch_z, cell_z0 + 7 * cell_pitch_z)
         ], bevel=0.004), mats.solar_bus)
         frame = add_mesh_obj(f"panel_frame:{index}", make_boxes([
             (0.04, 0.09, body_len - 0.08, (sx * (body_span / 2 - 0.02), 0.0, 0.04 + (body_len - 0.08) / 2), (0.0, 0.0, 0.0))
@@ -2510,14 +2531,16 @@ def build_solar_panel(name):
                 ((start[0] + end[0]) / 2, lat_y, (start[1] + end[1]) / 2),
                 (0.0, math.atan2(dx, dz), 0.0))
 
-        diamond_nodes = ((lat_x0, mid_z), (mid_x, lat_z0), (lat_x1, mid_z), (mid_x, lat_z1))
+        brace_nodes = ((lat_x0, lat_z0), (lat_x1, lat_z0), (lat_x1, lat_z1), (lat_x0, lat_z1))
         lattice_parts = [
-            diagonal(diamond_nodes[node], diamond_nodes[(node + 1) % len(diamond_nodes)])
-            for node in range(len(diamond_nodes))
+            diagonal(brace_nodes[0], brace_nodes[2]),
+            diagonal(brace_nodes[1], brace_nodes[3]),
         ]
-        # 横桟は1本でなく、少し間隔を空けた2本を一組にする
+        # 二本の中央レールは2列の内側に沿い、連なる4枚のパネルに渡す
+        panels_per_column = int(spec["count"]) // columns
+        inner_edge_x = body_span / 2 - 0.055 if index < panels_per_column else -body_span / 2 + 0.055
         lattice_parts.extend(
-            (lat_x1 - lat_x0, lat_h, lat_w, (0.0, lat_y, mid_z + offset), (0.0, 0.0, 0.0))
+            (lat_w, lat_h, lat_z1 - lat_z0, (inner_edge_x + offset, lat_y, mid_z), (0.0, 0.0, 0.0))
             for offset in (-0.035, 0.035)
         )
         lattice = add_mesh_obj(f"panel_lattice:{index}", make_boxes(lattice_parts, bevel=0.004), mats.solar_lattice)
@@ -2526,7 +2549,7 @@ def build_solar_panel(name):
         joint_y = lat_y - lat_h / 2 - 0.012
         joints = add_mesh_obj(f"panel_lattice_joints:{index}", make_boxes([
             (0.095, 0.05, 0.095, (x, joint_y, z), (0.0, 0.0, 0.0))
-            for node, (x, z) in enumerate(diamond_nodes)
+            for node, (x, z) in enumerate(brace_nodes)
             if (index + node) % 2 == 0
         ] + [
             (0.11, 0.055, 0.11, (mid_x, joint_y, mid_z), (0.0, 0.0, 0.0))
@@ -2568,7 +2591,7 @@ def build_solar_panel(name):
             center=(tile_span / 2 - 0.10, -side * thickness / 2 - 0.02, -0.04),
             rot_euler=(0.0, 0.0, math.radians(-14))), mats.clamp)
         # パネル本体と表裏の部品は、決定的な高さ差のぶん面法線方向へずらす
-        face_parts = [body, bus_sheet, cells, busbars, frame, stripes, lattice, joints, *actuator_parts]
+        face_parts = [body, bus_sheet, cells, traces, busbars, frame, stripes, lattice, joints, *actuator_parts]
         hinge_parts = [knuckle, drum, cable, claw]
         parts = face_parts + hinge_parts
         y_offset = PANEL_FACE_Y_OFFSETS[index % len(PANEL_FACE_Y_OFFSETS)]
