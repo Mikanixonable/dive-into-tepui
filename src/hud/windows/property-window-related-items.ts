@@ -3,7 +3,7 @@
 // 空のときは自分自身を DOM から外し、非空になれば内容を組み立て直す。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
 import { bindActivation, expandHitTarget, stopDragPropagation } from '../widgets/widget-base';
-import type { DraggableWindow } from './draggable-window';
+import type { ReclampingWindow } from './draggable-window';
 import type { PropertyWindowRelatedItem } from './property-window-content';
 
 export class PropertyWindowRelatedItems {
@@ -17,7 +17,7 @@ export class PropertyWindowRelatedItems {
   private lastItemsKey = '';
 
   // 一覧を差し込む要素を用意する。win は自分が開閉した際のはみ出し補正にだけ使う。
-  public constructor(private readonly win: DraggableWindow) {
+  public constructor(private readonly win: ReclampingWindow) {
     this.element = document.createElement('div');
     this.element.className = 'prop-window-related';
   }
@@ -115,6 +115,6 @@ export class PropertyWindowRelatedItems {
 
   // 本文の変化でウィンドウの高さが伸びたときに、画面外へのはみ出しだけ戻す。
   private reclamp(): void {
-    this.win.moveTo(this.win.element.offsetLeft, this.win.element.offsetTop);
+    this.win.reclamp();
   }
 }
