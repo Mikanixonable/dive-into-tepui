@@ -8,6 +8,8 @@ import {
 } from '../../src/render/dynamic/dynamic-entity/assembly-enemy-view';
 import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
 import { DEFAULT_PROTEIN_DISPLAY } from '../../src/render/protein/protein-display';
+import { SunLight } from '../../src/render/pipeline/sun-light';
+import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { qFromAxisAngle } from '../../src/math/quat';
 import { norm, v3 } from '../../src/math/vec3';
@@ -21,6 +23,7 @@ import type { Vec3 } from '../../src/math/vec3';
 // DynamicView.sync を通すための最小のフレーム。ケースの描画はケースのカメラが担うので、
 // 同期が読まない項目は埋めるだけでよい。
 function staticFrame(): DynamicViewFrame {
+  const sunLight = new SunLight();
   return {
     displayTime: 0,
     camera: {
@@ -38,8 +41,10 @@ function staticFrame(): DynamicViewFrame {
       radialScale: () => 1,
     },
     style: 'realistic',
-    visual: { proteinVibration: false },
+    visual: { proteinVibration: false, thrustPlume: 'simple' },
     proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
+    sunLight,
+    bodyShadow: new BodyShadow(sunLight),
     pools: new InstancedPools([]),
   };
 }
