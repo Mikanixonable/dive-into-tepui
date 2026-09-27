@@ -4,7 +4,7 @@ import { InstancedPool } from '../../instanced-pool';
 import { attachThermalEmissive } from '../../thermal-emissive';
 import { markSharedResources, memoParseIndependent } from '../baked-model';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
-import { CASING_DISPLAY_COLOR, CASING_DISPLAY_METALNESS, CASING_DISPLAY_ROUGHNESS } from '../casing-style';
+import { CASING_DISPLAY_METALNESS, CASING_DISPLAY_ROUGHNESS } from '../casing-style';
 import casingData from '../../../assets/models/casing.json';
 import type { InstancedPoolSet } from '../instanced-pools';
 import type { KinematicState } from '../../../physics/kinematic-state';
@@ -22,7 +22,6 @@ function casingBodyResources(): { geometry: THREE.BufferGeometry; material: THRE
     const geometry = template.geometry.clone();
     geometry.scale(1, 2, 1);
     const material = template.material as THREE.MeshStandardNodeMaterial;
-    material.color.setHex(CASING_DISPLAY_COLOR);
     material.metalness = CASING_DISPLAY_METALNESS;
     material.roughness = CASING_DISPLAY_ROUGHNESS;
     // 個体は 1 本の InstancedMesh へ積まれるので、温度は個体ごとの属性から読む。
