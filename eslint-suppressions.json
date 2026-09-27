@@ -1051,11 +1051,6 @@
       "count": 1
     }
   },
-  "src/render/cloud/atmospheric-wind.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    }
-  },
   "src/render/cloud/circulating-noise.ts": {
     "@typescript-eslint/consistent-type-definitions": {
       "count": 1
@@ -1497,14 +1492,6 @@
   },
   "tests/physics/body-orientation.test.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "tests/physics/celestial-eci-baseline.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   },

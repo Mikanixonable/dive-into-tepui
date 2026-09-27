@@ -50,8 +50,7 @@ export class DebrisPiece extends DynamicEntity {
 
   public override readonly capKind: CapKind;
 
-  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。id は採番器が配った識別子。radius は
-  // 接触半径 [m] で、省くと 0。thermal は熱の状態、alive は生死で、省けばいま出した破片として組む。
+  // 復元済みの状態・姿勢と種別から、破片の運動と表示を組み立てる。
   private constructor(
     state: KinematicState,
     private readonly debrisKind: DebrisKind,
@@ -81,8 +80,7 @@ export class DebrisPiece extends DynamicEntity {
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
   }
 
-  // 種別 debrisKind の破片1個を、state・attitude でいま出したものとして新しく組む。radius は接触半径
-  // [m] で、省くと 0。
+  // 破片を指定した位置・姿勢で生成する。radius を省くと接触半径 0 m で始める。
   public static create(
     state: KinematicState, debrisKind: DebrisKind, attitude: Attitude, idAllocators: EntityIdAllocators,
     radius?: number, scene?: THREE.Scene,
@@ -121,8 +119,7 @@ export class DebrisPiece extends DynamicEntity {
   }
 }
 
-// origin のまわりへ count 個の破片を散らす。速度は baseVel に最大 spread [m/s] のばらつきを足し、
-// 大きさは [sizeMin, sizeMax] から一様に選ぶ。
+// origin のまわりへ count 個を作り、速度・大きさ・姿勢に指定範囲のばらつきを与える。
 export function buildDestroyFragments(
   t: number,
   origin: Vec3,

@@ -13,8 +13,7 @@ import {
   type DynamicMotionThermal,
 } from '../dynamic-motion';
 
-// 破片の種別・振る舞い・接触半径 [m]・熱の状態と生死。熱の状態で省いた項目は環境温度の既定から、
-// 生死を省くと生きた状態で始める。
+// 破片の初期状態。半径は 0 m、生死は生存、熱の未指定項目は環境温度を使う。
 interface DebrisMotionProperties {
   readonly kind: DebrisKind['kind'];
   readonly behavior: DynamicMotionBehavior;
