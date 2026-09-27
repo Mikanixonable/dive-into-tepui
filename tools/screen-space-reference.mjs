@@ -19,7 +19,7 @@ const MAX_PASS_SAMPLES = 256;
 const CONVERGED_G_RATIO = 1 / 10;
 const CONVERGED_R_RATIO = 1.5;
 
-// 基準の組 name の撮影 entry の、偶数番目と奇数番目のパスの補正の平均の q どうしの誤差の指標(粒は全解像度)。
+// 基準の組 name の撮影 entry の、偶数番目と奇数番目のパスの補正の平均の q どうしの誤差の指標。
 function halvesNoiseOf(name, entry) {
   const { passes, exposure } = builtMetaOf(name, entry);
   if (passes < 2) throw new Error(`reference ${name} ${entry.key} has ${passes} pass; halves need 2`);
@@ -27,7 +27,7 @@ function halvesNoiseOf(name, entry) {
   const [even, odd] = referenceSumsOf(name, entry, 'correction')
     .map((sum, i) => exposedCorrectionOf(sum.map((v) => v / counts[i]), exposure));
   const mask = maskOf(readFloats(referenceFileOf(name, entry, 'radius.f32')));
-  return errorMetrics(even, odd, mask, WIDTH, HEIGHT, 0, 1);
+  return errorMetrics(even, odd, mask, WIDTH, HEIGHT, 0);
 }
 
 // ---- 生成 ----
@@ -173,7 +173,7 @@ function checkRowOf(name, entry, current) {
   const mask = maskOf(b.radius);
   const noise = halvesNoiseOf(name, entry);
   const q = exposedCorrectionOf(current, b.meta.exposure);
-  const currentG = errorMetrics(q, b.exposedCorrection, mask, WIDTH, HEIGHT, 0, 4).g;
+  const currentG = errorMetrics(q, b.exposedCorrection, mask, WIDTH, HEIGHT, 0).g;
   const verdict = (value, limit, digits) => `${value <= limit ? '合' : '否'} (${value.toFixed(digits)})`;
   return [
     entry.key, fixed(noise.g, 5), noise.r.map((v) => v.toFixed(2)).join(' / '), fixed(currentG, 5),
