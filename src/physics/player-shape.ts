@@ -36,8 +36,12 @@ export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
 // マガジン1本の厚み [m]。積み上げ間隔とベルト方向の寸法がこれで決まる。
 export const MAG_THICKNESS = 1.0;
 
-// マガジンのベルト方向寸法と継手間隔 [m]。
-export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3);
+// マガジンの平面寸法倍率。高さ方向(MAG_THICKNESS)は据え置く。
+export const MAG_PLANAR_SCALE = 1.4;
+
+// マガジンのベルト方向寸法・横幅と継手間隔 [m]。
+export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3) * MAG_PLANAR_SCALE;
+export const MAG_DEPTH = MAG_THICKNESS * 3 * (2 / 3) * MAG_PLANAR_SCALE;
 export const MAG_BELT_PITCH = MAG_WIDTH + 0.18;
 
 // ベルトが機体へ入る給弾口の機体座標系 X 位置 [m]。

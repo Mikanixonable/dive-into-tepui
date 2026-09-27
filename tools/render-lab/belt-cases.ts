@@ -49,6 +49,11 @@ function beltC2(): LabCase {
           sunAzimuthDeg: 0, sunElevationDeg: 20 },
         displayTime: 1,
       },
+      'belt-c2-joint-detail': {
+        view: { cameraAzimuthDeg: 8, cameraElevationDeg: 24, cameraDistanceLog: -0.22,
+          sunAzimuthDeg: -8, sunElevationDeg: 25 },
+        displayTime: 1,
+      },
     },
   };
 }
