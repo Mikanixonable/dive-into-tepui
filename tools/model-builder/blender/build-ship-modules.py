@@ -40,7 +40,7 @@ def reset_scene():
     for block in bpy.data.materials: bpy.data.materials.remove(block)
     for block in bpy.data.objects: bpy.data.objects.remove(block)
 
-def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0):
+def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0, clearcoat=0.0, coat_roughness=0.03):
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
@@ -49,6 +49,9 @@ def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0):
         bsdf.inputs["Base Color"].default_value = base_color
         bsdf.inputs["Roughness"].default_value = roughness
         bsdf.inputs["Metallic"].default_value = metallic
+        if clearcoat > 0.0:
+            bsdf.inputs["Coat Weight"].default_value = clearcoat
+            bsdf.inputs["Coat Roughness"].default_value = coat_roughness
     return mat
 
 def make_tank_hull(length, radius=3.0, angular_segments=192):
@@ -151,24 +154,24 @@ class MaterialLibrary:
         # 建造ドックの識別色
         self.dock = create_pbr_material("mat_dock", (0.84, 0.55, 0.22, 1.0), roughness=0.38, metallic=1.0)
         # ガラス越しに見える暗い濃青の太陽電池セル。低 roughness で鋭い反射を返す
-        self.solar = create_pbr_material("mat_solar", (0.008, 0.022, 0.07, 1.0), roughness=0.06, metallic=0.12)
+        self.solar = create_pbr_material("mat_solar", (0.003, 0.008, 0.024, 1.0), roughness=0.035, metallic=0.06, clearcoat=0.75, coat_roughness=0.02)
         # セル区画ごとの明暗ばらつき
         self.solar_shades = [
             create_pbr_material(
                 f"mat_solar_shade_{k}",
-                (0.008 * f, 0.022 * f, 0.07 * f, 1.0), roughness=0.06, metallic=0.12)
+                (0.003 * f, 0.008 * f, 0.024 * f, 1.0), roughness=0.035, metallic=0.06, clearcoat=0.75, coat_roughness=0.02)
             for k, f in enumerate((0.82, 0.9, 0.96, 1.0, 1.08, 1.16))
         ]
         self.solar_rust_shades = [
             create_pbr_material(
                 f"mat_solar_rust_shade_{k}",
-                (0.075 * f, 0.018 * f, 0.012 * f, 1.0), roughness=0.10, metallic=0.08)
+                (0.054 * f, 0.030 * f, 0.032 * f, 1.0), roughness=0.045, metallic=0.04, clearcoat=0.75, coat_roughness=0.02)
             for k, f in enumerate((0.86, 0.94, 1.0, 1.08, 1.16))
         ]
         # セル帯のあいだに見えるバス帯と、翼裏の褐色基板・横縞
         self.solar_bus = create_pbr_material("mat_solar_bus", (0.007, 0.016, 0.045, 1.0), roughness=0.12, metallic=0.18)
-        self.solar_backing = create_pbr_material("mat_solar_backing", (0.14, 0.085, 0.042, 1.0), roughness=0.68, metallic=0.08)
-        self.solar_back_stripe = create_pbr_material("mat_solar_back_stripe", (0.08, 0.05, 0.024, 1.0), roughness=0.74, metallic=0.05)
+        self.solar_backing = create_pbr_material("mat_solar_backing", (0.065, 0.038, 0.020, 1.0), roughness=0.68, metallic=0.08)
+        self.solar_back_stripe = create_pbr_material("mat_solar_back_stripe", (0.036, 0.022, 0.012, 1.0), roughness=0.74, metallic=0.05)
         # 翼裏の白い骨格と、灰色の小型アクチュエーター
         self.solar_lattice = create_pbr_material("mat_solar_lattice", (0.88, 0.90, 0.92, 1.0), roughness=0.28, metallic=0.22)
         self.solar_actuator = create_pbr_material("mat_solar_actuator", (0.34, 0.38, 0.42, 1.0), roughness=0.34, metallic=0.72)
@@ -2421,9 +2424,9 @@ def build_solar_mount(mats, half_len, thickness, span):
 
 # 展開した翼が一面に揃わないよう、パネルごとに面法線方向へ振ったオフセット [m]。
 # ヒンジまわりの金具は揃ったままにし、本体と表裏の部品だけをずらす決定的な値
-PANEL_FACE_Y_OFFSETS = (0.012, -0.006, 0.016, 0.004, -0.010, 0.008)
-PANEL_SIZE_SCALES = (0.98, 1.02, 0.97, 1.025, 0.99, 1.01)
-RUST_PANEL_INDICES = frozenset((1, 4))
+PANEL_FACE_Y_OFFSETS = (0.012, -0.006, 0.016, 0.004, -0.010, 0.008, -0.014, 0.006)
+PANEL_SIZE_SCALES = (0.98, 1.02, 0.97, 1.025, 0.99, 1.01, 0.985, 1.015)
+RUST_PANEL_INDICES = frozenset((1, 6))
 
 def build_solar_panel(name):
     reset_scene()
@@ -2537,16 +2540,14 @@ def build_solar_panel(name):
             3: ((mid_x - 0.04, lat_z0 + 0.10),),
             4: ((lat_x1 - 0.12, lat_z0 + 0.12),),
             5: ((lat_x1 - 0.10, lat_z1 - 0.11),),
+            6: ((lat_x1 - 0.11, mid_z + 0.06),),
+            7: ((mid_x + 0.06, lat_z1 - 0.10),),
         }
         actuator_parts = []
         for site, (x, z) in enumerate(actuator_sites.get(index, ())):
             actuator_y = -thickness / 2 - lat_h - 0.035 - site * 0.006
             actuator_parts.append(add_mesh_obj(f"panel_actuator:{index}:{site}", make_box(
                 0.13, 0.08, 0.12, center=(x, actuator_y, z), bevel=0.018), mats.solar_actuator))
-            bm_actuator_pin = make_cylinder(0.022, 0.022, 0.07, z_center=0.0, segments=10)
-            transform_bm(bm_actuator_pin, Matrix.Translation(Vector((x, actuator_y + 0.025, z)))
-                @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
-            actuator_parts.append(add_mesh_obj(f"panel_actuator_pin:{index}:{site}", bm_actuator_pin, mats.pipe))
 
         bm_hinge = make_cylinder(0.035, 0.035, tile_span * 0.98, z_center=0.0, segments=12)
         transform_bm(bm_hinge, Matrix.Translation(Vector((0.0, -side * thickness / 2, 0.0)))
