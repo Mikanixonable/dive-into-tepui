@@ -48,6 +48,9 @@ function buildManifest() {
         solar_panel: {
           count: shape.SOLAR_PANEL_COUNT, columns: shape.SOLAR_PANEL_COLUMNS,
           length: shape.SOLAR_PANEL_LENGTH, span: shape.SOLAR_PANEL_SPAN,
+          panelPitch: shape.SOLAR_PANEL_PANEL_PITCH, faceScale: shape.SOLAR_PANEL_FACE_SCALE,
+          stageScales: shape.SOLAR_PANEL_STAGE_SCALES,
+          centerlineClearance: shape.SOLAR_PANEL_CENTERLINE_CLEARANCE,
           thickness: shape.SOLAR_PANEL_THICKNESS, normalAxis: [0, 1, 0],
         },
         radiator: {

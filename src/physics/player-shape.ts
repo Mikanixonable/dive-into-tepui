@@ -7,10 +7,16 @@ export const RADIATOR_FOLD_COUNT = 6;
 export const SOLAR_PANEL_COUNT = 8;
 export const SOLAR_PANEL_COLUMNS = 2;
 
-// 太陽電池1パネルの展開方向のヒンジピッチ(モジュール局所 Z)と、列全体の幅(局所 X) [m]。
-// 2列それぞれが4枚を連ねる。パネルの面寸法に合わせてヒンジピッチも広げ、翼全体を 7.2 m × 4.5 m にする。
+// 太陽電池1パネルの展開方向のヒンジピッチと、板幅の基準値 [m]。列全体の幅は中心軸の隙間を含めて算出する。
 export const SOLAR_PANEL_LENGTH = 1.8;
-export const SOLAR_PANEL_SPAN = 4.5;
+export const SOLAR_PANEL_PANEL_PITCH = 2.25;
+export const SOLAR_PANEL_FACE_SCALE = 0.96;
+export const SOLAR_PANEL_STAGE_SCALES = [0.88, 0.96, 1.04, 0.88] as const;
+export const SOLAR_PANEL_CENTERLINE_CLEARANCE = 0.10;
+export const SOLAR_PANEL_SPAN = 2 * (
+  SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * Math.max(...SOLAR_PANEL_STAGE_SCALES)
+  + SOLAR_PANEL_CENTERLINE_CLEARANCE
+);
 
 // 太陽電池1パネルの厚み [m]。
 export const SOLAR_PANEL_THICKNESS = 0.06;
