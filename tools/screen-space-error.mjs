@@ -1,9 +1,9 @@
-// 近傍拡散補正の画質の指標と、目視の刺激の合成。誤差は Oklab で測り、画面に見えている粒の大きさ g で説明できる
-// 幅と、説明できずにはみ出した分を、区間スコア S = mean_x Σ_s [2k·u_s + (2/α)·max(0, |d_s| − k·u_s − t)]
-// (u_s = c_s·g、k = 3、α = 2(1 − Φ(3)))で 1 つに並べる。粒は、候補が独立な標本を持つ一辺 m の画素ごとの白色雑音を
-// 全解像度へ双一次で拡大したものとみなし、c_s はその雑音の帯 d_s の標準偏差(拡大の位相ごと)。L・a・b の成分
-// ごとに測って和を取る。
-// 画像は画素の配列で受け、ファイルもブラウザも触らない。平面は行優先の Float32Array、Oklab の画像は平面 3 枚の組。
+// 近傍拡散補正の画質の指標と、目視の刺激の合成。誤差は補正 ΔE をアルベド 1 の面の表示の尺度へ写した
+// q = 露出係数·ΔE/π で測り、画面に見えている粒の大きさ g で説明できる幅と、説明できずにはみ出した分を、区間スコア
+// S = mean_x Σ_s [2k·u_s + (2/α)·max(0, |d_s| − k·u_s − t)](u_s = c_s·g、k = 3、α = 2(1 − Φ(3)))で 1 つに並べる。
+// 粒は、候補が独立な標本を持つ一辺 m の画素ごとの白色雑音を全解像度へ双一次で拡大したものとみなし、c_s はその雑音の
+// 帯 d_s の標準偏差(拡大の位相ごと)。R・G・B の成分ごとに測って和を取る。刺激は表示の Oklab で合成する。
+// 画像は画素の配列で受け、ファイルもブラウザも触らない。平面は行優先の Float32Array、q と Oklab の画像は平面 3 枚の組。
 
 // 帯の箱の一辺 [画素]。帯 d_s = ē_s − ē_2s を s ごとに持ち、残りは ē_RESIDUAL_SCALE。
 export const BAND_SCALES = [1, 2, 4, 8, 16, 32];
@@ -98,6 +98,17 @@ function bandStdsOf(grainScale, width, height) {
   bandStdTables.set(key, stds);
   return stds;
 }
+
+// ---- 測る量 ----
+
+// 補正 correction(画素ごとに rgb の ΔE)を露出係数 exposure でアルベド 1 の面の表示の尺度へ写した
+// q = exposure·ΔE/π の平面の組 [R, G, B]。トーンマップの前に補正が表示へ足す値。
+export function exposedCorrectionOf(correction, exposure) {
+  const count = correction.length / 3;
+  const scale = exposure / Math.PI;
+  return [0, 1, 2].map((c) => Float32Array.from({ length: count }, (_, p) => scale * correction[p * 3 + c]));
+}
+
 // ---- 色 ----
 
 // sRGB で符号化した値 v(0..1)の線形の値と、その逆。
@@ -261,7 +272,7 @@ export function grainOf(bands, mask, width, height, grainScale) {
 }
 
 // 1 成分の誤差 e の、区間スコアの幅と超過の和(mask の立った画素の和)、超過の帯ごとの和(BAND_SCALES の順と残り)と
-// 画素ごとの値 excessMap への足し込み、帯ごとの R(s)、粒の帯で粒の K 倍を超える画素の数。
+// 画素ごとの値 excessMap への足し込み、帯ごとの d_s² と u_s² の和、粒の帯で粒の K 倍を超える画素の数。
 function channelTerms(e, mask, width, height, t, grainScale, excessMap) {
   const { bands, residual } = bandsOf(e, mask, width, height);
   const grain = grainOf(bands, mask, width, height, grainScale);
@@ -270,7 +281,6 @@ function channelTerms(e, mask, width, height, t, grainScale, excessMap) {
   const grainBand = BAND_SCALES.indexOf(grainScale);
   const penalty = 2 / ALPHA;
   const excessByBand = new Float64Array(all.length);
-  // 帯ごとの d_s² と u_s² の和。R(s) は両者の比の平方根。
   const squareByBand = new Float64Array(bands.length);
   const unitSquareByBand = new Float64Array(bands.length);
   let widthSum = 0;
@@ -297,15 +307,14 @@ function channelTerms(e, mask, width, height, t, grainScale, excessMap) {
       if (Math.abs(bands[grainBand][p]) > K * stds[grainBand][phase] * g) tail++;
     }
   }
-  const r = Array.from(squareByBand, (square, j) => Math.sqrt(square / unitSquareByBand[j]));
-  return { widthSum, excessByBand, r, tail };
+  return { widthSum, excessByBand, squareByBand, unitSquareByBand, tail };
 }
 
-// 候補 candidate と基準 reference(Oklab の平面の組)の誤差を、mask の立った画素で測る。t は表示で見えない差
-// (Oklab)、grainScale は候補が独立な標本を持つ一辺 [画素](BAND_SCALES のどれか。走査の解像度の逆数)。score は
-// 区間スコア S、widthTerm と excessTerm はその幅と超過の項、excessByBand は超過の帯ごとの内訳(BAND_SCALES の順と
-// 残り)、excessMap は画素ごとの超過(3 成分の和)、r は L 成分の帯ごとの R(s)、g は誤差のベクトルの RMS、tail は
-// 粒の帯で粒の K 倍を超える画素の割合(3 成分を通して)。
+// 候補 candidate と基準 reference(平面の組)の誤差を、mask の立った画素で測る。t は表示で見えない差(平面の単位)、
+// grainScale は候補が独立な標本を持つ一辺 [画素](BAND_SCALES のどれか。走査の解像度の逆数)。score は区間スコア S、
+// widthTerm と excessTerm はその幅と超過の項、excessByBand は超過の帯ごとの内訳(BAND_SCALES の順と残り)、excessMap
+// は画素ごとの超過(3 成分の和)、r は帯ごとの R(s)(3 成分を通して)、g は誤差のベクトルの RMS、tail は粒の帯で粒の
+// K 倍を超える画素の割合(3 成分を通して)。
 export function errorMetrics(candidate, reference, mask, width, height, t, grainScale) {
   const excessMap = new Float32Array(width * height);
   const excessByBand = new Float64Array(BAND_SCALES.length + 1);
@@ -318,14 +327,18 @@ export function errorMetrics(candidate, reference, mask, width, height, t, grain
   }
   let widthSum = 0;
   let tail = 0;
-  let r = [];
+  const squareByBand = new Float64Array(BAND_SCALES.length);
+  const unitSquareByBand = new Float64Array(BAND_SCALES.length);
   for (let c = 0; c < 3; c++) {
     const e = candidate[c].map((v, p) => v - reference[c][p]);
     const terms = channelTerms(e, mask, width, height, t, grainScale, excessMap);
     widthSum += terms.widthSum;
     tail += terms.tail;
     for (const [j, v] of terms.excessByBand.entries()) excessByBand[j] += v;
-    if (c === 0) r = terms.r;
+    for (const [j, v] of terms.squareByBand.entries()) {
+      squareByBand[j] += v;
+      unitSquareByBand[j] += terms.unitSquareByBand[j];
+    }
   }
   const excessSum = excessByBand.reduce((sum, v) => sum + v, 0);
   return {
@@ -334,15 +347,37 @@ export function errorMetrics(candidate, reference, mask, width, height, t, grain
     excessTerm: excessSum / count,
     excessByBand: Array.from(excessByBand, (v) => v / count),
     excessMap,
-    r,
+    r: Array.from(squareByBand, (square, j) => Math.sqrt(square / unitSquareByBand[j])),
     g: Math.sqrt(squareSum / count),
     tail: tail / (3 * count),
   };
 }
 
+// 誤差 error(平面の組)の、粒で説明できる幅からのはみ出し |d_s| − K·u_s を、成分・帯と残り・mask の立った画素を
+// まとめた分布にしたときの分位 quantile(0..1)。grainScale は errorMetrics と同じ。
+export function marginQuantileOf(error, mask, width, height, grainScale, quantile) {
+  const stds = bandStdsOf(grainScale, width, height);
+  const count = mask.reduce((sum, v) => sum + v, 0);
+  const margins = new Float32Array(count * error.length * (BAND_SCALES.length + 1));
+  let n = 0;
+  for (const e of error) {
+    const { bands, residual } = bandsOf(e, mask, width, height);
+    const grain = grainOf(bands, mask, width, height, grainScale);
+    for (const [j, band] of [...bands, residual].entries()) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const p = y * width + x;
+          if (mask[p]) margins[n++] = Math.abs(band[p]) - K * stds[j][phaseOf(x, y, grainScale)] * grain[p];
+        }
+      }
+    }
+  }
+  return margins.sort()[Math.min(n - 1, Math.floor(quantile * n))];
+}
+
 // ---- 診断 ----
 
-// 候補と基準(Oklab の平面の組)の誤差のベクトルの RMS を、mask の立った画素で。
+// 候補と基準(平面の組)の誤差のベクトルの RMS を、mask の立った画素で。
 export function rmsOf(candidate, reference, mask) {
   let squareSum = 0;
   let count = 0;
@@ -354,16 +389,18 @@ export function rmsOf(candidate, reference, mask) {
   return Math.sqrt(squareSum / count);
 }
 
-// 連続するフレームの、候補の差分と基準の差分の差の平均絶対値。frames は Oklab の L の平面の並び。
+// 連続するフレームの、候補の差分と基準の差分の差の絶対値の、3 成分の和の平均。frames は平面の組の並び。
 export function flickerOf(candidateFrames, referenceFrames, mask) {
   let sum = 0;
   let count = 0;
   for (let k = 1; k < candidateFrames.length; k++) {
     for (let p = 0; p < mask.length; p++) {
       if (!mask[p]) continue;
-      const candidateStep = candidateFrames[k][p] - candidateFrames[k - 1][p];
-      const referenceStep = referenceFrames[k][p] - referenceFrames[k - 1][p];
-      sum += Math.abs(candidateStep - referenceStep);
+      for (let c = 0; c < 3; c++) {
+        const candidateStep = candidateFrames[k][c][p] - candidateFrames[k - 1][c][p];
+        const referenceStep = referenceFrames[k][c][p] - referenceFrames[k - 1][c][p];
+        sum += Math.abs(candidateStep - referenceStep);
+      }
       count++;
     }
   }

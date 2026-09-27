@@ -1,39 +1,33 @@
 // 近傍拡散補正の基準 B の生成と、その収束の判定。B は全解像度・均しなしの段で、パスごとにブルーノイズの seed を
-// 変えて描いた HDR(と、解析値と照らす撮影では拡散照度)を、偶数番目と奇数番目のパスに分けて積み、その平均を本番の
-// 合成で表示にしたもの。半分どうしの差で B に残る雑音を、歩数を倍にした B₂ との差で歩数による偏りを、いまの中設定
-// (均しなし)の誤差と比べて判定する。
+// 変えて描いた補正(と、目で見る画像のための HDR、解析値と照らす撮影では拡散照度)を、偶数番目と奇数番目のパスに
+// 分けて積んだもの。半分どうしの差で B に残る雑音を、いまの中設定(均しなし)の誤差と比べて判定する。
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { errorMetrics, oklabOf } from './screen-space-error.mjs';
+import { errorMetrics, exposedCorrectionOf } from './screen-space-error.mjs';
 import {
-  analyticRatiosOf, captureLinear, ENTRIES, fixed, HEIGHT, headHash, loadHalves, loadReference, maskOf,
-  readFloats, referenceDirOf, referenceFileOf, referenceMetaOf, referenceSumsOf, seedOf, table, TIERS, WIDTH,
+  analyticRatiosOf, builtMetaOf, fixed, HEIGHT, headHash, loadReference, maskOf, readFloats,
+  referenceDirOf, referenceFileOf, referenceMetaOf, referenceSumsOf, seedOf, selectedEntries, table, TIERS, WIDTH,
   windowRatiosOf, withLab, writeFloats, writeReferencePasses,
 } from './screen-space-lab.mjs';
 
 const REFERENCE_USAGE = 'usage: reference [--name <名前>] [--entries <key,...>] [--sets <set,...>] --slices <S> --steps <T> --passes <N>';
-const CHECK_USAGE = 'usage: check <名前> [<歩数を倍にした名前>] [--entries <key,...>]';
+const CHECK_USAGE = 'usage: check <名前> [--entries <key,...>]';
 // 1 パスのスライス × 片側の歩数の上限。全解像度の 1 フレームが GPU の打ち切り(Windows の TDR は既定 2 秒)に
 // 掛からない大きさ。
 const MAX_PASS_SAMPLES = 256;
-// 収束の条件: 半分どうしの差と、歩数を倍にした B₂ との差の G が、いまの中設定(均しなし)の G のこの割合以下で、
-// 半分どうしの差の R(s) がどの帯も、最も細かい帯の R(1) のこの倍以下。
+// 収束の条件: 半分どうしの差の G が、いまの中設定(均しなし)の G のこの割合以下で、半分どうしの差の R(s) がどの帯も、
+// 最も細かい帯の R(1) のこの倍以下。
 const CONVERGED_G_RATIO = 1 / 10;
 const CONVERGED_R_RATIO = 1.5;
 
-// 評価の組のうち、--entries(撮影の key)と --sets(set)の両方に当たるもの。省いた方は絞らない。
-function selectedEntries(options) {
-  const keys = options.entries?.split(',');
-  const sets = options.sets?.split(',');
-  const selected = ENTRIES.filter((e) => (keys?.includes(e.key) ?? true) && (sets?.includes(e.set) ?? true));
-  if (selected.length === 0) throw new Error(`no entries match --entries ${options.entries} --sets ${options.sets}`);
-  return selected;
-}
-
-// 基準の組 name の撮影 entry の、偶数番目と奇数番目のパスの表示の平均どうしの誤差の指標(粒は全解像度)。
+// 基準の組 name の撮影 entry の、偶数番目と奇数番目のパスの補正の平均の q どうしの誤差の指標(粒は全解像度)。
 function halvesNoiseOf(name, entry) {
-  const { even, odd } = loadHalves(name, entry);
+  const { passes, exposure } = builtMetaOf(name, entry);
+  if (passes < 2) throw new Error(`reference ${name} ${entry.key} has ${passes} pass; halves need 2`);
+  const counts = [Math.ceil(passes / 2), Math.floor(passes / 2)];
+  const [even, odd] = referenceSumsOf(name, entry, 'correction')
+    .map((sum, i) => exposedCorrectionOf(sum.map((v) => v / counts[i]), exposure));
   const mask = maskOf(readFloats(referenceFileOf(name, entry, 'radius.f32')));
-  return errorMetrics(oklabOf(even), oklabOf(odd), mask, WIDTH, HEIGHT, 0, 1);
+  return errorMetrics(even, odd, mask, WIDTH, HEIGHT, 0, 1);
 }
 
 // ---- 生成 ----
@@ -48,7 +42,6 @@ export async function reference({ options }) {
   const tier = { scale: 1, sliceCount: slices, stepCount: steps, denoiseRadius: 0 };
   const name = options.name ?? headHash();
   const entries = selectedEntries(options);
-  mkdirSync(referenceDirOf(name), { recursive: true });
   await withLab(async (lab) => {
     for (const entry of entries) await extendReference(lab, name, entry, tier, passes);
   });
@@ -69,8 +62,8 @@ export async function reference({ options }) {
   console.log(['', ...table(['撮影', 'G(偶 − 奇)'], noise)].join('\n'));
 }
 
-// 基準の組 name の撮影 entry へ、段 tier のパスを passes 個目まで続きから足す。
-async function extendReference(lab, name, entry, tier, passes) {
+// 基準の組 name の撮影 entry へ、段 tier のパスを passes 個目まで続きから足す。lab は withLab の口。
+export async function extendReference(lab, name, entry, tier, passes) {
   const saved = referenceMetaOf(name, entry);
   if (saved !== null && (saved.slices !== tier.sliceCount || saved.steps !== tier.stepCount)) {
     throw new Error(`${entry.key}: saved with ${saved.slices} slices × ${saved.steps} steps, `
@@ -81,6 +74,7 @@ async function extendReference(lab, name, entry, tier, passes) {
     console.log(`reference ${entry.key}: ${done} パス済み`);
     return;
   }
+  mkdirSync(referenceDirOf(name), { recursive: true });
   const started = Date.now();
   await lab.show(entry);
   await lab.setTier(tier);
@@ -94,9 +88,9 @@ async function extendReference(lab, name, entry, tier, passes) {
     }
     await lab.setTarget('off');
   }
-  // HDR と、解析値と照らす撮影では拡散照度を、偶数番目と奇数番目のパスに分けてページの中で積む。保存済みの和が
+  // HDR・補正と、解析値と照らす撮影では拡散照度を、偶数番目と奇数番目のパスに分けてページの中で積む。保存済みの和が
   // あれば、ページへ戻してから続ける。
-  const kinds = entry.set === 'correctness' ? ['hdr', 'diffuse'] : ['hdr'];
+  const kinds = ['hdr', 'correction', ...(entry.set === 'correctness' ? ['diffuse'] : [])];
   if (saved !== null) {
     for (const kind of kinds) await lab.restoreAccumulated(kind, 3, referenceSumsOf(name, entry, kind));
   }
@@ -111,19 +105,15 @@ async function extendReference(lab, name, entry, tier, passes) {
     if (k === done) firstPassSeconds = (Date.now() - passesStarted) / 1000;
   }
   const passSeconds = (Date.now() - passesStarted) / 1000;
-  // 表示は、全パス・偶数番目・奇数番目それぞれの HDR の平均を、最後のパスと同じ合成で表示にしたもの。
-  const [evenCount, oddCount] = [Math.ceil(passes / 2), Math.floor(passes / 2)];
-  const displays = {
-    all: await lab.displayOfMean('hdr', [1 / passes, 1 / passes]),
-    even: await lab.displayOfMean('hdr', [1 / evenCount, 0]),
-    odd: oddCount > 0 ? await lab.displayOfMean('hdr', [0, 1 / oddCount]) : null,
-  };
+  // 目で見る画像は、全パスの HDR の平均を、最後のパスと同じ合成で表示にしたもの。
+  const display = await lab.displayOfMean('hdr', passes);
+  const exposure = await lab.exposureFactor();
   const sums = {};
   for (const kind of kinds) sums[kind] = await lab.takeAccumulated(kind, 2);
   const seconds = (Date.now() - started) / 1000;
   writeReferencePasses(name, entry, {
-    slices: tier.sliceCount, steps: tier.stepCount, passes, seconds: (saved?.seconds ?? 0) + seconds,
-  }, sums, displays);
+    slices: tier.sliceCount, steps: tier.stepCount, passes, exposure, seconds: (saved?.seconds ?? 0) + seconds,
+  }, sums, display);
   const later = passes - done - 1;
   const perPass = later > 0 ? `${((passSeconds - firstPassSeconds) / later).toFixed(2)} s/パス、` : '';
   console.log(`reference ${entry.key}: パス ${done}〜${passes - 1}、${perPass}最初のパス ${firstPassSeconds.toFixed(1)} s、`
@@ -152,10 +142,10 @@ function printCoverage(name, entries) {
 
 // ---- 判定 ----
 
-// 基準の組 name(と、歩数を倍にした組 doubledName)の収束を、撮影(--entries、既定は bay)ごとに表にする。比べる
-// 相手のいまの中設定(均しなし、seed (0, 0))をその場で撮る。
+// 基準の組 name の収束を、撮影(--entries、既定は bay)ごとに表にする。比べる相手のいまの中設定(均しなし、
+// seed (0, 0))をその場で撮る。
 export async function check({ positional, options }) {
-  const [name, doubledName] = positional;
+  const [name] = positional;
   if (name === undefined) throw new Error(CHECK_USAGE);
   const entries = selectedEntries({ entries: options.entries ?? 'bay' });
   const currents = await withLab(async (lab) => {
@@ -164,42 +154,29 @@ export async function check({ positional, options }) {
       await lab.show(entry);
       await lab.setTier({ ...TIERS.medium, denoiseRadius: 0 });
       await lab.setSeed(seedOf(0));
-      out[entry.key] = await captureLinear(lab);
+      await lab.capturePng();
+      out[entry.key] = await lab.readFloat('correction', 3);
     }
     return out;
   });
-  const rows = entries.map((entry) => checkRowOf(name, doubledName, entry, currents[entry.key]));
-  const describe = (label, n) => {
-    const meta = referenceMetaOf(n, entries[0]);
-    return `${label} ${n}: ${meta.slices} スライス × 片側 ${meta.steps} 歩、${meta.passes} パス`;
-  };
-  console.log([describe('B', name), ...(doubledName === undefined ? [] : [describe('B₂', doubledName)]), ''].join('\n'));
+  const meta = referenceMetaOf(name, entries[0]);
+  console.log(`B ${name}: ${meta.slices} スライス × 片側 ${meta.steps} 歩、${meta.passes} パス\n`);
   console.log(table([
-    '撮影', 'G(偶 − 奇)', 'R(s) 偶 − 奇', 'G(中・均しなし)', 'G(B₂ − B)', 'G(B₂ 偶 − 奇)', '雑音だけの G(B₂ − B)',
-    'G(B₂ − B) / 雑音だけ', '雑音 G ≦ 中/10', `雑音 R(s)/R(1) ≦ ${CONVERGED_R_RATIO}`, '歩数 G ≦ 中/10',
-  ], rows).join('\n'));
+    '撮影', 'G(偶 − 奇)', 'R(s) 偶 − 奇', 'G(中・均しなし)', '雑音 G ≦ 中/10', `雑音 R(s)/R(1) ≦ ${CONVERGED_R_RATIO}`,
+  ], entries.map((entry) => checkRowOf(name, entry, currents[entry.key]))).join('\n'));
 }
 
-// 撮影 entry の判定の行。current はいまの中設定(均しなし)の表示(線形 sRGB)。雑音だけの G(B₂ − B) は、B と B₂ が
-// 同じ収束先を持つときの見込みで、半分どうしの差の G が各々の雑音の 2 倍にあたることから引く。合否の後の括弧は、
-// G の中の G に対する比か、R(s) の R(1) に対する比の最大。
-function checkRowOf(name, doubledName, entry, current) {
+// 撮影 entry の判定の行。current はいまの中設定(均しなし)の補正(rgb)。合否の後の括弧は、G の中の G に対する比か、
+// R(s) の R(1) に対する比の最大。
+function checkRowOf(name, entry, current) {
   const b = loadReference(name, [entry])[entry.key];
   const mask = maskOf(b.radius);
-  const reference = oklabOf(b.display);
   const noise = halvesNoiseOf(name, entry);
-  const currentG = errorMetrics(oklabOf(current), reference, mask, WIDTH, HEIGHT, 0, 4).g;
-  const doubled = doubledName === undefined ? null : {
-    g: errorMetrics(oklabOf(loadReference(doubledName, [entry])[entry.key].display), reference, mask, WIDTH, HEIGHT, 0, 1).g,
-    noiseG: halvesNoiseOf(doubledName, entry).g,
-  };
-  const noiseOnlyG = doubled === null ? null : Math.hypot(noise.g, doubled.noiseG) / 2;
+  const q = exposedCorrectionOf(current, b.meta.exposure);
+  const currentG = errorMetrics(q, b.exposedCorrection, mask, WIDTH, HEIGHT, 0, 4).g;
   const verdict = (value, limit, digits) => `${value <= limit ? '合' : '否'} (${value.toFixed(digits)})`;
   return [
     entry.key, fixed(noise.g, 5), noise.r.map((v) => v.toFixed(2)).join(' / '), fixed(currentG, 5),
-    fixed(doubled?.g, 5), fixed(doubled?.noiseG, 5), fixed(noiseOnlyG, 5),
-    doubled === null ? '—' : (doubled.g / noiseOnlyG).toFixed(2),
     verdict(noise.g / currentG, CONVERGED_G_RATIO, 3), verdict(Math.max(...noise.r) / noise.r[0], CONVERGED_R_RATIO, 2),
-    doubled === null ? '—' : verdict(doubled.g / currentG, CONVERGED_G_RATIO, 3),
   ];
 }
