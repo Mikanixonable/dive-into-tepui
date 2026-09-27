@@ -1,7 +1,11 @@
 // デバッグ用ステージ: 敵集団1つから始め、勝敗を発生させずに検証を続けられる。敵の射撃 ON/OFF と、
 // 敵集団・補給の手動スポーンをステータスウィンドウから操作できる。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
+import { LOCAL_FORWARD, qRotate } from '../../math/quat';
+import { addScaled } from '../../math/vec3';
+import { kinematicState } from '../../physics/kinematic-state';
 import { generateWave } from './stage-utils/wave-attack';
+import { generateAssemblyEnemy } from './spawner/enemy-generator';
 import { Button, ToggleSwitch } from '../../hud/widgets';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import { MAG_ROUNDS } from '../player/ammo-spec';
@@ -27,6 +31,8 @@ export class StageDebug extends Stage {
 
   // パネルの操作を積む先。
   private readonly commands: StageDebugCommands;
+  // 組み立て型の敵の名前の連番。表示名にしか使わないので直列化しない。
+  private assemblyCount = 0;
 
   // 敵の射撃の可否・次に出す敵集団の通し番号と共通の状態から組み、射撃切替トグルとスポーンボタン列を
   // ステータスウィンドウ左部へ追加する。省いた値は新しいランの初期値から始まる。
@@ -47,6 +53,11 @@ export class StageDebug extends Stage {
     // 以降は、検証を続けるための手動スポーン。
     const spawnEnemyBtn = new Button('敵集団をスポーン', () => this.commands.spawnEnemyWave());
     this.addStatusPanelWidget(spawnEnemyBtn.element);
+
+    const spawnAssemblyBtn = new Button(
+      '組み立て型の敵をスポーン', () => this.commands.spawnAssemblyEnemy(),
+    );
+    this.addStatusPanelWidget(spawnAssemblyBtn.element);
 
     const spawnAmmoBtn = new Button('弾薬をスポーン', () => this.commands.spawnAmmo());
     this.addStatusPanelWidget(spawnAmmoBtn.element);
@@ -92,6 +103,20 @@ export class StageDebug extends Stage {
     const player = this.ship;
     if (player === null) return;
     for (const enemy of this.generateWaveAround(player)) this.addEnemy(enemy);
+  }
+
+  // 組み立て型の敵を1体、自艦の前方へ出す。自艦がいなければ何も出さない。
+  public spawnAssemblyEnemy(): void {
+    const player = this.ship;
+    if (player === null) return;
+    const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
+    const position = addScaled(player.motion.state.r, forward, 2000);
+    const state = kinematicState<'eci'>(player.motion.state.t, position, player.motion.state.v);
+    const seed = Math.floor(Math.random() * 2 ** 31);
+    this.addEnemy(generateAssemblyEnemy(
+      `ASSEMBLY-${this.assemblyCount++}`, state, seed, 0xff4a3d, 0xff4a3d,
+      this._scene, this._dynamicSystem.idAllocators,
+    ));
   }
 
   // 弾薬を1つ、自艦の近くへ出す。自艦がいなければ何も出さない。

@@ -26,6 +26,8 @@ export interface ModularShipRenderSource extends DynamicRenderSource {
   readonly maximumAcceleration: number;
   readonly torque: Vec3;
   readonly dynamicPressure: number;
+  // 機体が浸っている外気の密度 [kg/m^3]。大気天体が無いとき 0。
+  readonly ambientDensity: number;
   readonly belt: BeltNodes;
   readonly magsLeft: number;
   // 機関砲の射撃レート [rounds/s]。全砲口の合計で、トリガーを離していれば 0。
@@ -115,13 +117,20 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
       if ((module.kind !== 'thruster' && module.kind !== 'booster') || module.hp <= 0) continue;
       const anchor = this.modules.semanticAnchor(module.id, 'thrust');
       if (anchor === null) continue;
-      const effects = this.thrustEffects[index] ?? new ThrustEffects(this.effectScene, this.ownerId, index);
+      const effects = this.thrustEffects[index] ?? new ThrustEffects(
+        this.effectScene, this.ownerId, index, viewFrame.sunLight, viewFrame.bodyShadow,
+      );
       this.thrustEffects[index] = effects;
       index++;
       const ratio = module.kind === 'booster'
         ? (module.burning === true ? 1 : 0)
         : mainThrustRatio(anchor, source.mainThrustAcceleration, source.maximumAcceleration);
-      effects.syncFromAnchor(anchor, ratio, visible, cameraQuat, zoomActive, viewFrame.style, viewFrame.displayTime);
+      // 体積描画は主推進器の hydrolox 排気のモデル。ブースター(固体)は簡易表示に留める。
+      const plumeMode = module.kind === 'thruster' ? viewFrame.visual.thrustPlume : 'simple';
+      effects.syncFromAnchor(
+        anchor, ratio, visible, cameraQuat, zoomActive, viewFrame.style, viewFrame.displayTime,
+        source.ambientDensity, plumeMode,
+      );
     }
     for (let i = index; i < this.thrustEffects.length; i++) this.thrustEffects[i]!.hide();
   }

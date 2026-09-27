@@ -7,7 +7,7 @@ import { proteinLocalImpactPoint, proteinSiteWorldPosition } from '../../../phys
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState, type SerializedProteinCombatState } from '../../protein/protein-combat-state';
-import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
+import { SphereChainCollisionGeometry } from '../sphere-chain-collision';
 import {
   ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement, driftingAttitude,
   type EnemyPlacement, type SerializedEnemy,
@@ -116,7 +116,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     lastBehaviorSim?: number | null,
   ) {
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
-    const collision = new ProteinSphereCollisionGeometry(
+    const collision = new SphereChainCollisionGeometry(
       definition.collisionSpheres, ENEMY_MODEL_SCALE,
     );
     const proteinView = new ProteinEnemyView(

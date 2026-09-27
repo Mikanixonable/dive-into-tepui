@@ -36,7 +36,7 @@ export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾�
 
 // 敵に共通する直列化の項目。具象の直列化した形がこれを継ぐ。
 export interface SerializedEnemy extends SerializedDynamicEntityFields {
-  readonly kind: 'metal-enemy' | 'protein-enemy';
+  readonly kind: 'metal-enemy' | 'protein-enemy' | 'assembly-enemy';
   readonly name: string;
   readonly thermal: DynamicMotionThermal;
   // マーカーに使う個体色と、軌道線の色。
@@ -53,7 +53,9 @@ export interface SerializedEnemy extends SerializedDynamicEntityFields {
 }
 
 // 敵の直列化した形が取る種別タグ。
-const SERIALIZED_ENEMY_KINDS: Record<SerializedEnemy['kind'], true> = { 'metal-enemy': true, 'protein-enemy': true };
+const SERIALIZED_ENEMY_KINDS: Record<SerializedEnemy['kind'], true> = {
+  'metal-enemy': true, 'protein-enemy': true, 'assembly-enemy': true,
+};
 
 // 直列化した実体が敵のものか。
 export function isSerializedEnemy(serialized: SerializedDynamicEntity): boolean {

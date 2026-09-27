@@ -5,7 +5,7 @@ import { addScaled } from '../../math/vec3';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import {
-  generateApproachingEnemy, generateDriftingEnemy, proteinFormationRequests,
+  generateApproachingEnemy, generateAssemblyEnemy, generateDriftingEnemy, proteinFormationRequests,
 } from '../stages/spawner/enemy-generator';
 import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './stage-controls-panel';
 import type * as THREE from 'three/webgpu';
@@ -91,6 +91,14 @@ export class ManualSpawn {
       return {
         kind: 'protein-enemy',
         request: { name, state, assetId: shapeDefinition.assetId, formationId: null, formationRole: null },
+      };
+    }
+    if (shapeDefinition.kind === 'assembly') {
+      // seed は出た個体の形を決めるだけなので、呼ぶたびに新しい乱数でよい。
+      const seed = Math.floor(Math.random() * 2 ** 31);
+      return {
+        kind: 'enemy',
+        enemy: generateAssemblyEnemy(name, state, seed, color, color, this.scene, this.idAllocators),
       };
     }
     const enemy = shapeDefinition.kind === 'drifting'

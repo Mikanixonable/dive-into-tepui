@@ -18,6 +18,7 @@ type FlashKind =
   | 'destroy2'
   | 'gasPuff1'
   | 'gasPuff2'
+  | 'partBreak'
   | 'proteinCritical'
   | 'proteinDissociated'
   | 'proteinDamaged';
@@ -49,6 +50,8 @@ const FLASH_APPEARANCE: Record<FlashKind, FlashAppearance> = {
   // ガスの放出。薄く広がる灰色の板を2枚重ねて気体らしさを出す。
   gasPuff1: { color: '#aaaaaa', size0: 1.0, size1: 8.0, peakBrightness: 0.3, dimsInGunsight: false },
   gasPuff2: { color: '#ffffff', size0: 0.5, size1: 6.0, peakBrightness: 0.4, dimsInGunsight: false },
+  // 組み立て型の敵の部品1個が折れた閃光。撃破(destroy1/2)より小さく、着弾より大きい。
+  partBreak: { color: '#ffc890', size0: 3, size1: 22, peakBrightness: 1, dimsInGunsight: false },
   proteinCritical: {
     color: 0xff3d88, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
     peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
@@ -72,6 +75,7 @@ const DESTROY_FLASH2_DURATION = 0.5;
 const GAS_PUFF1_DURATION = 0.45;
 const GAS_PUFF2_DURATION = 0.35;
 const PROTEIN_STATE_FLASH_DURATION = 0.34;
+const PART_BREAK_FLASH_DURATION = 0.5;
 
 // タンパク質の遷移先のフェーズ、または部位の機能停止('site-disabled')ごとの閃光の種別。
 // 危篤・解離はそれぞれの種別、それ以外は損傷として示す。
@@ -140,6 +144,7 @@ export class FlashPresenter {
     switch (body.kind) {
       case 'gunFired':
       case 'proteinSiteFired':
+      case 'assemblyEmitterFired':
         this.add(body.muzzleState, 'muzzle', MUZZLE_FLASH_DURATION);
         return;
       case 'shipStruck':
@@ -163,6 +168,9 @@ export class FlashPresenter {
       case 'proteinStateChanged':
         this.add(
           body.state, PROTEIN_STATE_FLASH_KIND[body.transition], PROTEIN_STATE_FLASH_DURATION);
+        return;
+      case 'assemblyPartBroken':
+        this.add(body.state, 'partBreak', PART_BREAK_FLASH_DURATION);
         return;
       case 'boosterDecoupled':
         this.addGasPuff(body.jointState);
