@@ -2426,14 +2426,9 @@ def build_solar_mount(mats, half_len, thickness, span):
 # 展開した翼が一面に揃わないよう、パネルごとに面法線方向へ振ったオフセット [m]。
 # ヒンジまわりの金具は揃ったままにし、本体と表裏の部品だけをずらす決定的な値
 PANEL_FACE_Y_OFFSETS = (0.045, -0.032, 0.020, -0.016, -0.024, 0.036, -0.040, 0.008)
-PANEL_SIZE_SCALES = (1.06, 0.94, 1.05, 0.95, 0.94, 1.06, 0.92, 1.04)
-RUST_CELL_PATCHES = {
-    0: ((7, 0, 9, 2),),
-    1: ((0, 5, 2, 7),),
-    3: ((4, 1, 6, 3),),
-    4: ((7, 5, 9, 7),),
-    6: ((1, 0, 3, 2),),
-}
+# 根元から第1〜4段。第2段だけ大きく、第1・3段は同寸、第4段は小さくする。
+PANEL_SIZE_SCALES = (1.0, 1.04, 1.0, 0.96, 1.0, 1.04, 1.0, 0.96)
+RUST_PANEL_STAGE = 2
 
 def build_solar_panel(name):
     reset_scene()
@@ -2472,8 +2467,10 @@ def build_solar_panel(name):
         bus_sheet = add_mesh_obj(f"panel_bus_sheet:{index}", make_box(
             cell_x1 - cell_x0 + 0.02, 0.006, cell_z1 - cell_z0 + 0.02,
             center=(0.0, thickness / 2 + 0.003, (cell_z0 + cell_z1) / 2)), mats.solar_bus)
-        # 全パネルを青黒で作り、選んだセル区画だけを青みの赤褐色へ振る
-        rust_patches = RUST_CELL_PATCHES.get(index, ())
+        # 第3段の外側列にある1枚だけ、セル全体を青みの赤褐色にする
+        panels_per_column = int(spec["count"]) // columns
+        panel_column, panel_stage = divmod(index, panels_per_column)
+        is_rust_panel = panel_column == columns - 1 and panel_stage == RUST_PANEL_STAGE
         bm_cells = bmesh.new()
         for row in range(cell_rows):
             for col in range(cell_cols):
@@ -2486,9 +2483,7 @@ def build_solar_panel(name):
                     ))) @ Matrix.Diagonal((
                         cell_pitch_x - cell_gap, 0.012, cell_pitch_z - cell_gap, 1.0,
                     )))
-                is_rust = any(row0 <= row <= row1 and col0 <= col <= col1
-                    for row0, col0, row1, col1 in rust_patches)
-                if is_rust:
+                if is_rust_panel:
                     shade = len(mats.solar_shades) + (index * 7 + col * 13 + row * 29) % len(mats.solar_rust_shades)
                 else:
                     shade = (index * 7 + col * 13 + row * 29) % len(mats.solar_shades)
