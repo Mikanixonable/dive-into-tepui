@@ -46,7 +46,7 @@ const EDGE_NORMAL_COS = Math.cos(Math.PI / 6);
 const EDGE_DEPTH_LSB = 3;
 const EDGE_BAND = 2;
 // 表示で見えない差 t(q)。threshold で、stimuli の刺激の目視の判定から測った値。
-const DEFAULT_T = 0.00032;
+const DEFAULT_T = 0.0005;
 // 表示の 1 LSB に当たる、黒の近くの線形の値。
 const DISPLAY_LSB = 1 / (255 * 12.92);
 
