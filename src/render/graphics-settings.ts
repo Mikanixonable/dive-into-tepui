@@ -134,10 +134,10 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '半透明の積雲',
     presets: { low: true, medium: true, high: true },
   },
-  // 積雲の球殻を評価するレイマーチングの精細度。オフでは雲殻およびその影を描画しない。「精細」は
-  // 積雲の描画アーティファクトを地表側の乱れから切り分けるための設定レベル。
+  // 厚い雲の球殻を評価するレイマーチングの精細度。オフでは雲殻およびその影を描画しない。
+  // 段を上げるほど、より細かい尺度の起伏と縁が形として写る。
   cumulusDetail: {
-    kind: 'choice', group: 'element', label: '積雲の精細さ',
+    kind: 'choice', group: 'element', label: '雲の細部',
     items: [
       [CUMULUS_DETAIL.off, 'オフ'], [CUMULUS_DETAIL.coarse, '粗'],
       [CUMULUS_DETAIL.standard, '標準'], [CUMULUS_DETAIL.fine, '精細'],
@@ -185,7 +185,7 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
     presets: { low: false, medium: true, high: true },
   },
-  // 積雲が地表・艦艇へ落とす影。積雲を描かない設定(「雲」がオフ、「積雲の精細さ」がオフ)では、
+  // 積雲が地表・艦艇へ落とす影。積雲を描かない設定(「雲」がオフ、「雲の細部」がオフ)では、
   // この値によらず影は落ちない。
   cumulusShadow: {
     kind: 'toggle', group: 'shadow', label: '積雲の影',

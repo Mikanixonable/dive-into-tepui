@@ -1,6 +1,6 @@
 // 雲テクスチャ値を各表現の形状・光学量へ変換する共有評価器。被覆率の不透明/半透明への分け方・
 // 雲頂高度・細部・光学的厚みの計算式を集約し、各レンダラーのシェーダーグラフへ展開する。
-import { clamp, exp, max, smoothstep } from 'three/tsl';
+import { clamp, exp, float, max, mix, smoothstep } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import {
   columnOpticalDepthFromCoverageNode, lowCloudOpticalDepthNode,
@@ -23,27 +23,60 @@ const RESOLVE_FULL_PIXELS = 4;
 // 細部の標準偏差の下限。解像度 0 で 0 除算に落ちないための値。
 const MIN_DETAIL_SPREAD = 1e-3;
 
+// 細部の波長と雲頂の起伏を雲の形態(cellularity・vigor)で変える倍率。**侵食の細部の標準偏差は
+// 形態で変えない** — 被覆率を不透明と半透明へ分ける期待値の式は細部の標準偏差を
+// DETAIL_SIGMA × resolvability と仮定しているので、形態で変えられるのは波長と起伏だけ。
+// 板状の雲(cellularity 0)は層積雲の数十 km のセルや乱層雲の板の当たりとして、粒より長い波長で
+// 浅い起伏へ寄せる。
+const SHEET_FREQUENCY_SCALE = 0.25;
+const SHEET_RELIEF_GAIN = 0.3;
+// 勢いのある柱(vigor 1)は積雲の粒 1–5 km の当たりとして、粒より細かく深い起伏へ寄せる。
+const TOWER_FREQUENCY_SCALE = 1.75;
+const TOWER_RELIEF_GAIN = 1.75;
+
 export class CloudShapeEvaluator {
-  public static readonly cloudTopUncertainty = GRAIN_TOP_RELIEF + FIELD_TOP_STEP;
+  // 雲頂の高さの不確かさ(粒の起伏と場の texel 段差の和、場の 0..1 の目盛り)。
+  public static readonly cloudTopUncertainty = GRAIN_TOP_RELIEF * TOWER_RELIEF_GAIN + FIELD_TOP_STEP;
   // grainAt が返す粒から detailAt が返す細部への換算比(標準偏差の比)。同じノイズを両方へ使う
   // 呼び出し側が引き直さずに済むようにここで対にする。
   public static readonly detailScale = DETAIL_SIGMA / GRADIENT_NOISE_SIGMA;
 
   public constructor(private readonly grainFrequency: FloatNode | number) {}
 
-  // 雲頂の起伏へ足す粒。amplitude は解像できる割合 0..1。
-  public grainAt(direction: Vec3Node, amplitude: FloatNode): FloatNode {
-    return gradientNoise(direction.mul(this.grainFrequency)).mul(amplitude);
+  // 細部の波長を形態で変える倍率。被覆率の侵食にも雲頂の起伏にも同じものを使う。
+  public detailFrequencyScale(cellularity: FloatNode, vigor: FloatNode): FloatNode {
+    return mix(SHEET_FREQUENCY_SCALE, 1, cellularity)
+      .mul(mix(float(1), TOWER_FREQUENCY_SCALE, vigor));
+  }
+
+  // 雲頂の起伏の振幅を形態で変える倍率。被覆率の侵食へは掛けない(上の定数コメント参照)。
+  public reliefGain(cellularity: FloatNode, vigor: FloatNode): FloatNode {
+    return mix(SHEET_RELIEF_GAIN, 1, cellularity)
+      .mul(mix(float(1), TOWER_RELIEF_GAIN, vigor));
+  }
+
+  // 雲頂の起伏へ足す粒。amplitude は解像できる割合 0..1、frequencyScale は detailFrequencyScale。
+  public grainAt(
+    direction: Vec3Node, amplitude: FloatNode, frequencyScale: FloatNode | number = 1,
+  ): FloatNode {
+    return gradientNoise(direction.mul(this.grainFrequency).mul(frequencyScale)).mul(amplitude);
   }
 
   // 被覆率へ足す細部。平均 0、標準偏差 DETAIL_SIGMA × resolvability。
-  public detailAt(direction: Vec3Node, resolvability: FloatNode): FloatNode {
-    return this.grainAt(direction, resolvability).mul(DETAIL_SIGMA / GRADIENT_NOISE_SIGMA);
+  public detailAt(
+    direction: Vec3Node, resolvability: FloatNode, frequencyScale: FloatNode | number = 1,
+  ): FloatNode {
+    return this.grainAt(direction, resolvability, frequencyScale)
+      .mul(DETAIL_SIGMA / GRADIENT_NOISE_SIGMA);
   }
 
-  // 1 画素が張る実寸 footprint [m] で、細部を解像できる割合 0..1。
-  public static resolvability(footprint: FloatNode): FloatNode {
-    return smoothstep(RESOLVE_MIN_PIXELS, RESOLVE_FULL_PIXELS, max(footprint, 1e-3).reciprocal().mul(CUMULUS_GRAIN_SIZE));
+  // 1 画素が張る実寸 footprint [m] で、1 波長 featureSize [m] の細部を解像できる割合 0..1。
+  public static resolvability(
+    footprint: FloatNode, featureSize: FloatNode | number = CUMULUS_GRAIN_SIZE,
+  ): FloatNode {
+    return smoothstep(
+      RESOLVE_MIN_PIXELS, RESOLVE_FULL_PIXELS,
+      max(footprint, 1e-3).reciprocal().mul(featureSize));
   }
 
   // 被覆率へ細部を足した値と比べる、不透明のしきい値。解像できないか、光学的に薄い柱では形が現れない。
@@ -71,8 +104,11 @@ export class CloudShapeEvaluator {
     return lowCloudOpticalDepthNode(cloudTop.sub(CLOUD_BASE_HEIGHT));
   }
 
-  public cloudTop(fieldTop: FloatNode, grain: FloatNode): FloatNode {
-    return clamp(fieldTop.add(grain.mul(GRAIN_TOP_RELIEF)), 0, 1);
+  // 場の雲頂 fieldTop(0..1)へ粒の起伏を足した雲頂。reliefGain は reliefGain(cellularity, vigor)。
+  public cloudTop(
+    fieldTop: FloatNode, grain: FloatNode, reliefGain: FloatNode | number = 1,
+  ): FloatNode {
+    return clamp(fieldTop.add(grain.mul(GRAIN_TOP_RELIEF).mul(reliefGain)), 0, 1);
   }
 
   public cloudTopRadius(cloudTop: FloatNode, groundRadius: FloatNode): FloatNode {

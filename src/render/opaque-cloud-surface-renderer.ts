@@ -8,11 +8,12 @@ import {
   sqrt, step, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
+import { cloudReflectanceNode } from './cloud/cloud-optics-node';
 import type { CloudSample } from './cloud/cloud-field-sample';
 import { CloudFieldSampler } from './cloud/cloud-field-sampler';
 import type { CloudRenderInput } from './cloud/cloud-render-input';
 import { unitSphereGeometry } from './celestial/celestial-surface';
-import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
+import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
@@ -21,7 +22,7 @@ import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
 const CUMULUS_ROUGHNESS = 1;
 
-// 積雲の精細さの段。オフは殻を描かない段。**値は保存された設定を読む鍵なので、段を足すときも
+// 「雲の細部」設定の段。オフは殻を描かない段。**値は保存された設定を読む鍵なので、段を足すときも
 // 既存の値を動かさない** — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
 export const CUMULUS_DETAIL = { off: 0, coarse: 1, standard: 2, fine: 3 } as const;
 export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL];
@@ -93,7 +94,7 @@ export class OpaqueCloudSurfaceRenderer {
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // 積雲の精細さの段を置き直す。オフなら全段を隠す。
+  // 「雲の細部」設定の段を置き直す。オフなら全段を隠す。
   public setDetail(detail: CumulusDetail): void {
     this.setSampling(SAMPLING_OF_DETAIL[detail]);
     if (detail === CUMULUS_DETAIL.off) this.hide();
@@ -119,7 +120,7 @@ export class OpaqueCloudSurfaceRenderer {
     previous.dispose();
   }
 
-  // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。精細さがオフなら全段を隠す。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。細部の段がオフなら全段を隠す。
   public syncLod(apparentDiameterPx: number): void {
     const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
@@ -140,7 +141,7 @@ export class OpaqueCloudSurfaceRenderer {
     this.material.dispose();
   }
 
-  // 雲頂の交点を書く不透明な白の標準マテリアル。深度と法線は 1 本のレイマーチを共有する。
+  // 雲頂の交点を書く不透明な標準マテリアル。深度と法線は 1 本のレイマーチを共有する。
   private buildMaterial(): THREE.Material {
     const material = new THREE.MeshStandardNodeMaterial({
       roughness: CUMULUS_ROUGHNESS, metalness: 0,
@@ -148,8 +149,29 @@ export class OpaqueCloudSurfaceRenderer {
     const marched = this.marchedSurface().toVar();
     material.depthNode = marched.w;
     material.normalNode = marched.xyz;
-    material.colorNode = vec3(CLOUD_ALBEDO);
+    material.colorNode = vec3(this.surfaceAlbedo());
     return material;
+  }
+
+  // その画素の柱の雲が持つ拡散反射率。雲頂の高さから鉛直柱光学深さを引き、二流近似の反射率へ
+  // 写すので、厚い雲ほど白く薄い雲ほど灰になる。**交点の柱ではなく殻への入口の柱で引く** —
+  // 入口から交点までの方向のずれは場の texel に満たないので、画素ごとの濃淡としては同一。
+  private surfaceAlbedo(): FloatNode {
+    return Fn(() => {
+      const direction = normalize(positionLocal);
+      const cloud = this.fieldAt(direction);
+      const frequencyScale = this.shape.detailFrequencyScale(cloud.cellularity, cloud.vigor);
+      const resolvability = CloudShapeEvaluator.resolvability(
+        this.footprintAt(direction), float(CUMULUS_GRAIN_SIZE).div(frequencyScale));
+      const grain = this.shape.grainAt(direction, resolvability, frequencyScale);
+      const top = this.shape.cloudTop(
+        cloud.cloudTop.div(CLOUD_TOP_SPAN),
+        grain,
+        this.shape.reliefGain(cloud.cellularity, cloud.vigor),
+      );
+      return cloudReflectanceNode(
+        CloudShapeEvaluator.lowOpticalDepth(top.mul(CLOUD_TOP_SPAN)));
+    })();
   }
 
   // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、交点の view 空間法線(xyz)と深度(w)を返す。
@@ -161,7 +183,7 @@ export class OpaqueCloudSurfaceRenderer {
       const entry = positionLocal.toVar();
       const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
       const direction = normalize(entry.sub(origin)).toVar();
-      const resolvability = this.resolvabilityAt(normalize(entry)).toVar();
+      const footprint = this.footprintAt(normalize(entry)).toVar();
 
       // 殻に入ってから地表の球へ達するまで(掠めるなら殻を出るまで)を等分してたどる。
       const along = dot(entry, direction);
@@ -182,7 +204,7 @@ export class OpaqueCloudSurfaceRenderer {
       for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(distance)), resolvability).lessThan(0);
+          entry.add(direction.mul(distance)), footprint).lessThan(0);
         If(inside.and(hit.lessThan(0.5)), () => {
           hit.assign(1);
           below.assign(distance);
@@ -193,24 +215,28 @@ export class OpaqueCloudSurfaceRenderer {
       for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
         const middle = above.add(below).mul(0.5);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(middle)), resolvability).lessThan(0);
+          entry.add(direction.mul(middle)), footprint).lessThan(0);
         If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
       }
 
       const hitPoint = entry.add(direction.mul(below)).toVar();
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
-      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, resolvability)));
+      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, footprint)));
       Discard(hit.lessThan(0.5));
       return vec4(viewNormal, clip.z.div(clip.w));
     })();
   }
 
   // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。
-  private clearanceAt(point: Vec3Node, resolvability: FloatNode): FloatNode {
+  private clearanceAt(point: Vec3Node, footprint: FloatNode): FloatNode {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
-    const grain = this.shape.grainAt(direction, resolvability);
+    // 細部の波長は雲の種類で変わる — 板状の雲は長い波長なので、粒が消える遠さでも形が残る。
+    const frequencyScale = this.shape.detailFrequencyScale(cloud.cellularity, cloud.vigor);
+    const resolvability = CloudShapeEvaluator.resolvability(
+      footprint, float(CUMULUS_GRAIN_SIZE).div(frequencyScale));
+    const grain = this.shape.grainAt(direction, resolvability, frequencyScale);
     // 細部は覆いの縁を texel より細かく千切る。解像できない遠さや光学的に薄い柱ではしきい値が
     // 閉じて形は現れず、その分は大気側の半透明な雲が受け持つ。
     const detail = grain.mul(CloudShapeEvaluator.detailScale);
@@ -220,33 +246,60 @@ export class OpaqueCloudSurfaceRenderer {
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに粒が湧く。
     const clearance = radius.sub(this.shape.cloudTopRadius(
-      this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain), this.groundRadius));
+      this.shape.cloudTop(
+        cloud.cloudTop.div(CLOUD_TOP_SPAN), grain,
+        this.shape.reliefGain(cloud.cellularity, cloud.vigor)),
+      this.groundRadius));
     return select(present.greaterThan(0.5), clearance, float(1));
   }
 
   // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
   // 崖ではなく、雲頂そのものの起伏を法線に出す。
-  private cloudTopNormalAt(hitPoint: Vec3Node, resolvability: FloatNode): Vec3Node {
+  private cloudTopNormalAt(hitPoint: Vec3Node, footprint: FloatNode): Vec3Node {
     const up = hitPoint.div(max(length(hitPoint), 1e-6));
     const east = eastAt(up);
     const north = northAt(up);
-    // その向きの雲頂(物体空間の半径)。
-    const topAt = (direction: Vec3Node): FloatNode => this.shape.cloudTopRadius(
-      this.shape.cloudTop(
-        this.fieldAt(direction).cloudTop.div(CLOUD_TOP_SPAN),
-        this.shape.grainAt(direction, resolvability),
-      ),
-      this.groundRadius,
-    );
+    // その向きの雲頂(物体空間の半径)。粒の波長は雲の種類で変わるので、差分の幅もそれに合わせる。
+    const topAt = (direction: Vec3Node): FloatNode => {
+      const cloud = this.fieldAt(direction);
+      const frequencyScale = this.shape.detailFrequencyScale(cloud.cellularity, cloud.vigor);
+      return this.shape.cloudTopRadius(
+        this.shape.cloudTop(
+          cloud.cloudTop.div(CLOUD_TOP_SPAN),
+          this.shape.grainAt(
+            direction,
+            CloudShapeEvaluator.resolvability(
+              footprint, float(CUMULUS_GRAIN_SIZE).div(frequencyScale)),
+            frequencyScale,
+          ),
+          this.shape.reliefGain(cloud.cellularity, cloud.vigor),
+        ),
+        this.groundRadius,
+      );
+    };
     // **中心の高さは交点の中心距離ではなく雲頂を引き直して測る** — 締めた交点は雲頂より内側へ
     // 食い込んでいて、中心距離を高さに使うと食い込みが両方向の傾きへ一様なオフセットとして加算される。掠める
     // 視線ほど刻みが長く食い込みも深いので、リム際で法線が倒れて夜側の雲が光る。
-    const here = topAt(up);
+    const hereCloud = this.fieldAt(up);
+    const hereScale = this.shape.detailFrequencyScale(hereCloud.cellularity, hereCloud.vigor);
+    const here = this.shape.cloudTopRadius(
+      this.shape.cloudTop(
+        hereCloud.cloudTop.div(CLOUD_TOP_SPAN),
+        this.shape.grainAt(
+          up,
+          CloudShapeEvaluator.resolvability(
+            footprint, float(CUMULUS_GRAIN_SIZE).div(hereScale)),
+          hereScale),
+        this.shape.reliefGain(hereCloud.cellularity, hereCloud.vigor),
+      ),
+      this.groundRadius,
+    );
     // 東と北へ粒の半波長ぶん振った雲頂との差が、そのまま接平面での傾き。
-    const slopeEast = topAt(normalize(up.add(east.mul(this.gradientAngle))))
-      .sub(here).div(this.gradientAngle);
-    const slopeNorth = topAt(normalize(up.add(north.mul(this.gradientAngle))))
-      .sub(here).div(this.gradientAngle);
+    const gradientAngle = this.gradientAngle.div(hereScale);
+    const slopeEast = topAt(normalize(up.add(east.mul(gradientAngle))))
+      .sub(here).div(gradientAngle);
+    const slopeNorth = topAt(normalize(up.add(north.mul(gradientAngle))))
+      .sub(here).div(gradientAngle);
     return normalize(up.sub(east.mul(slopeEast)).sub(north.mul(slopeNorth)));
   }
 
@@ -255,12 +308,11 @@ export class OpaqueCloudSurfaceRenderer {
     return this.fieldSampler.sampleCloud(direction);
   }
 
-  // 細部を解像できる割合。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から
-  // 出すと、大気圏のすぐ上から見下ろす構図で 1 桁ずれる。解像できない細かさになったら 0 へ
-  // 落ちるので、引きの構図では場の分布だけが残る。
-  private resolvabilityAt(entryDirection: Vec3Node): FloatNode {
+  // 1 画素が殻の面で張る実寸 [m]。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ
+  // 直径から出すと、大気圏のすぐ上から見下ろす構図で 1 桁ずれる。解像できない細かさになったら
+  // 細部の振幅は 0 へ落ちるので、引きの構図では場の分布だけが残る。
+  private footprintAt(entryDirection: Vec3Node): FloatNode {
     const pixelAngle = max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
-    const footprint = pixelAngle.mul(this.grainFrequency).mul(CUMULUS_GRAIN_SIZE);
-    return CloudShapeEvaluator.resolvability(footprint);
+    return pixelAngle.mul(this.grainFrequency).mul(CUMULUS_GRAIN_SIZE);
   }
 }

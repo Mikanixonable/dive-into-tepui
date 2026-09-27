@@ -14,7 +14,8 @@ export type CloudLabViewId =
   | 'pressure' | 'surfaceWind' | 'traceWind' | 'front' | 'airMass' | 'lift'
   | 'surfaceHumiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'surfaceHumidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
-  | 'coverage' | 'cloudTop' | 'translucent' | 'composite' | 'photo';
+  | 'coverage' | 'cloudTop' | 'cellularity' | 'vigor'
+  | 'translucent' | 'upperAltitude' | 'fibrousness' | 'smoothness' | 'composite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
 // 写しを描画と同じ読み取りで読んで色を組む。'photo' のビューは実写の雲テクスチャを読むだけで、生成の系には
@@ -36,10 +37,12 @@ export type CloudLabView = {
 // 塔が立つかどうかを決める量)は 0..0.3、前線(気団の圧縮の 1 を超えた分)は 0..8、
 // 暖気の流入は ±0.4 rad(48 h の追跡で気団が動く緯度差の上限)を 0.5 中心に、
 // 風は ±45 m/s(台風の芯の風速まで飽和させない幅)を
-// 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
-// 被覆率・湿度・対流の活発度はそのまま出す。**地表の風・平均風・追跡の風は同じ目盛りに乗せる** — 大循環が
+// 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m、上層の雲の高さは 0..17000 m(熱帯の
+// 圏界面まで)。
+// 被覆率・湿度・対流の活発度・形態チャンネル(セル性・活力・繊維性・滑らかさ)はそのまま出す。**地表の風・平均風・追跡の風は同じ目盛りに乗せる** — 大循環が
 // 運ぶ分と、気圧から出る分と、気団を遡らせる分の大きさを見比べるため。
 const CLOUD_TOP_SPAN = 15000;
+const UPPER_ALTITUDE_SPAN = 17000;
 const CONVECTION_SPAN = 0.5;
 const CONVECTIVE_DEPTH_SPAN = 0.3;
 const TRANSLUCENT_SPAN = 1;
@@ -100,8 +103,18 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     color: (d, cloudAt) => vec3(cloudAt(d).coverage) },
   { id: 'cloudTop', label: '雲頂高度', reads: 'cloud',
     color: (d, cloudAt) => vec3(cloudAt(d).cloudTop.div(CLOUD_TOP_SPAN)) },
+  { id: 'cellularity', label: 'セル性', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cloudAt(d).cellularity) },
+  { id: 'vigor', label: '活力', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cloudAt(d).vigor) },
   { id: 'translucent', label: '薄い雲', reads: 'cloud',
     color: (d, cloudAt) => vec3(cloudAt(d).upperOpticalDepth.div(TRANSLUCENT_SPAN)) },
+  { id: 'upperAltitude', label: '上層の高さ', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cloudAt(d).upperAltitude.div(UPPER_ALTITUDE_SPAN)) },
+  { id: 'fibrousness', label: '繊維性', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cloudAt(d).fibrousness) },
+  { id: 'smoothness', label: '滑らかさ', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cloudAt(d).smoothness) },
   // 被覆率と薄い雲を 1 枚に重ねた見え。晴れた空が透ける割合 (1 − 被覆率)·e^(−τ) の補で、
   // 加算と違って飽和しない。実写と見比べるための面で、描画側の合成の仕様ではない。
   { id: 'composite', label: '合成', reads: 'cloud',

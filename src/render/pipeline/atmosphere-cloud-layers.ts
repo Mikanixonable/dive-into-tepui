@@ -2,7 +2,8 @@
 // AtmosphereIntegrator から天体空間の幾何配置と太陽放射輝度を入力パラメータとして受け取る。
 import { If, and, float, greaterThan, lessThan, mix, normalize, step, vec3 } from 'three/tsl';
 import {
-  CLOUD_SHELL_SPECIES, CloudAtmosphereRenderer, type CloudShellSample, type CloudSpecies,
+  CLOUD_SHELL_IDS, CloudAtmosphereRenderer, type CloudShellId, type CloudShellSample,
+  type CloudSpecies,
 } from './cloud-atmosphere-renderer';
 import type { BoolNode, FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
@@ -26,7 +27,7 @@ export interface AtmosphereCloudSegment {
 }
 
 export interface AtmosphereCloudGeometry {
-  readonly shellRadiusOf: (species: CloudSpecies) => FloatNode;
+  readonly shellRadiusOf: (shell: CloudShellId) => FloatNode;
   readonly crossingsOf: (ray: AtmosphereCloudRay, radius: FloatNode) => AtmosphereCloudCrossings;
   readonly outwardDepthAt: (ray: AtmosphereCloudRay, distance: FloatNode) => Vec2Node;
   readonly transmittanceTo: (
@@ -90,9 +91,9 @@ export class AtmosphereCloudLayers {
     ray: AtmosphereCloudRay, segment: AtmosphereCloudSegment,
     rayOrigin: Vec3Node, rayDir: Vec3Node, geometry: AtmosphereCloudGeometry,
   ): readonly CloudShellEvent[] {
-    const shells = CLOUD_SHELL_SPECIES.map((species) => {
-      const radius = geometry.shellRadiusOf(species);
-      return { species, radius, crossings: geometry.crossingsOf(ray, radius) };
+    const shells = CLOUD_SHELL_IDS.map((id) => {
+      const radius = geometry.shellRadiusOf(id);
+      return { id, radius, crossings: geometry.crossingsOf(ray, radius) };
     });
     const entries = shells.map((shell) => [shell, shell.crossings.entry] as const);
     const exits = shells.map((shell) => [shell, shell.crossings.exit] as const).reverse();
@@ -108,12 +109,13 @@ export class AtmosphereCloudLayers {
       const inSegment = and(
         greaterThan(distance, segment.near), lessThan(distance, segment.far),
       );
-      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present(shell.species)), () => {
+      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present(shell.id)), () => {
         const point = geometry.pointAt(rayOrigin, rayDir, distance);
         const offset = geometry.offsetAt(ray, distance);
         const sunDir = normalize(geometry.sunDirectionAt(point));
         const sample: CloudShellSample = this.clouds.scatteredAt(
-          shell.species, shell.radius, offset, ray.unitDir, sunDir, geometry.sunRadianceAt(point),
+          shell.id, shell.radius, offset, ray.unitDir, sunDir, geometry.sunRadianceAt(point),
+          distance,
         );
         cloudTransmittance.assign(sample.transmittance);
         localRadiance.assign(sample.radiance);

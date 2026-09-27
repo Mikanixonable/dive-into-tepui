@@ -117,7 +117,7 @@ export class PlanetLightSubject {
   // 大気を積分するか(描画設定「大気」がオフでない)。
   public setAtmosphereEnabled(enabled: boolean): void { this.atmosphereEnabled.value = enabled; }
 
-  // 不透明な積雲を焼き込むか(描画設定「積雲の精細さ」がオフでない)。
+  // 不透明な積雲を焼き込むか(描画設定「雲の細部」がオフでない)。
   public setCumulusEnabled(enabled: boolean): void { this.cumulusEnabled.value = enabled; }
 
   // 種類ごとに、大気の中の雲の殻を描くかを置き直す。

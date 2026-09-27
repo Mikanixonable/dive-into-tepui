@@ -2,7 +2,7 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, mix, normalize, select,
+  Fn, If, Loop, abs, clamp, dot, exp, float, greaterThan, length, max, mix, normalize, select,
   sqrt, step, uniform, vec4,
 } from 'three/tsl';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
@@ -32,6 +32,9 @@ const MAX_LIGHT_PATH = 3e5;
 // 光路 1 歩が代表する幅を、場のぼかしへ何倍で写すか。**等倍では足りない** — 隣り合うタップの
 // 覆う範囲が接するだけなので、あいだに影の抜けた縞が残る。
 const STEP_BLUR = 2;
+// 上層の雲(巻雲・かなとこ)の層の厚み [m]。場の上層の高さを中心とする薄い層として光路を抜ける。
+// 大気の中の殻の厚みと同程度の当たり。
+const UPPER_CLOUD_THICKNESS = 1e3;
 
 export class CloudShadowRenderer {
   private readonly center: Vec3Uniform;
@@ -101,7 +104,6 @@ export class CloudShadowRenderer {
         // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
         // 実寸と光路 1 歩の長さのうち粗いほうを取る。粒の振幅はこの幅が決める。
         const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
-        const resolvability = CloudShapeEvaluator.resolvability(sampleWidth).toVar();
         const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
@@ -114,16 +116,30 @@ export class CloudShadowRenderer {
           // 粒は引けるときだけ引く。タップの数だけノイズを引くので、振幅が 0 になる遠さでは分岐ごと
           // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
           const grain = float(0).toVar();
-          If(greaterThan(resolvability, 0), () => {
-            grain.assign(this.shape.grainAt(up, resolvability));
+          const frequencyScale = this.shape.detailFrequencyScale(cloud.cellularity, cloud.vigor);
+          const resolvability = CloudShapeEvaluator.resolvability(
+            sampleWidth, float(CUMULUS_GRAIN_SIZE).div(frequencyScale));
+          If(resolvability.greaterThan(0), () => {
+            grain.assign(this.shape.grainAt(up, resolvability, frequencyScale));
           });
-          const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
+          const cloudTop = this.shape.cloudTop(
+            cloud.cloudTop.div(CLOUD_TOP_SPAN), grain,
+            this.shape.reliefGain(cloud.cellularity, cloud.vigor)).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
-          const columnDepth = this.columnOpticalDepthAt(up, cloud, resolvability);
+          const columnDepth = this.columnOpticalDepthAt(
+            up, cloud, resolvability, frequencyScale);
           // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
           opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1)));
+          // 上層の雲(巻雲・かなとこ)は、場の上層の高さを中心とする薄い層として抜ける。
+          const upperInside = clamp(
+            rise.mul(0.5).add(UPPER_CLOUD_THICKNESS / 2)
+              .sub(abs(altitude.sub(cloud.upperAltitude)))
+              .div(max(rise, 1)),
+            0, 1);
+          opticalDepth.addAssign(cloud.upperOpticalDepth
+            .mul(rise).mul(upperInside).div(UPPER_CLOUD_THICKNESS));
         });
         transmittance.assign(exp(opticalDepth.negate()));
       });
@@ -141,10 +157,13 @@ export class CloudShadowRenderer {
 
   // 殻の空間の単位方向 up の柱 cloud の鉛直光学深さ。不透明な形の内側は雲頂の厚みから、外側は
   // 形の外を覆う半透明な雲から決まり、殻と大気の雲が描き分けるのと同じ分け方になる。
-  private columnOpticalDepthAt(up: Vec3Node, cloud: CloudSample, resolvability: FloatNode): FloatNode {
+  private columnOpticalDepthAt(
+    up: Vec3Node, cloud: CloudSample, resolvability: FloatNode, frequencyScale: FloatNode,
+  ): FloatNode {
     const opticalDepth = CloudShapeEvaluator.lowOpticalDepth(cloud.cloudTop);
     const threshold = CloudShapeEvaluator.opaqueThreshold(resolvability, opticalDepth);
-    const opaque = step(threshold, cloud.coverage.add(this.shape.detailAt(up, resolvability)));
+    const opaque = step(
+      threshold, cloud.coverage.add(this.shape.detailAt(up, resolvability, frequencyScale)));
     const residual = CloudShapeEvaluator.translucentResidual(
       cloud.coverage, CloudShapeEvaluator.expectedOpaqueFraction(cloud.coverage, resolvability, opticalDepth));
     return mix(this.shape.columnOpticalDepth(residual), opticalDepth, opaque);

@@ -261,7 +261,7 @@ export class PlanetLightSource {
     for (const source of this.slotSources) source.subject.setAtmosphereEnabled(enabled);
   }
 
-  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲の精細さ」がオフでない)を全スロットへ配る。
+  // 写しへ不透明な積雲を焼き込むか(描画設定「雲の細部」がオフでない)を全スロットへ配る。
   public setCumulusEnabled(enabled: boolean): void {
     for (const source of this.slotSources) source.subject.setCumulusEnabled(enabled);
   }
