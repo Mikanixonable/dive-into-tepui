@@ -32,6 +32,7 @@
 | [UI-DESIGN.md](UI-DESIGN.md) | HUD / UI のデザイン規約 |
 | [RENDERING.md](RENDERING.md) | 描画品質・LOD・描画パイプライン |
 | [PROTEIN.md](PROTEIN.md) | タンパク質型の敵の見せ方・揺らぎ・戦闘状態 |
+| [ASSEMBLY.md](ASSEMBLY.md) | 組み立て型の敵の構成・表示・部品の被弾 |
 | [AUDIO.md](AUDIO.md) | BGM・効果音 |
 | [SAVE.md](SAVE.md) | セーブデータ・手動セーブ・自動セーブ |
 
