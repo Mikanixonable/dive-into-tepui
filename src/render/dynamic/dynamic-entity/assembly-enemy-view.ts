@@ -3,10 +3,10 @@
 import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../../math/random';
 import { assemblyPartGeometry } from '../../assembly/assembly-geometry';
-import type { AssemblyPartDef, AssemblyShape } from '../../assembly/assembly-shape';
 import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
 import { makeThermallyEmissive } from '../../thermal-emissive';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
+import type { AssemblyPartDef, AssemblyShape } from '../../assembly/assembly-shape';
 import type { KinematicState } from '../../../physics/kinematic-state';
 
 // 組み立て型の敵の表示入力。aliveParts[i] が偽なら部品 i は描かない(失われた部品)。
