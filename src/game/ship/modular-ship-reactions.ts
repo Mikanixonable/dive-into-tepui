@@ -1,7 +1,7 @@
 // モジュール船の接触・被弾・構造喪失・焼失の帰結を所有する。船体の構造と寿命を持つ
 // ModularShip から、接触結果を assembly と演出へ適用する状態機械を分離する。
 import { bulletReactionOf, type BulletType } from '../dynamic/dynamic-entity/bullet-reaction';
-import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
+import type { Contact } from '../dynamic/dynamic-entity/contact';
 import { collisionDamageFraction, contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import type { ModularShipMotion } from './modular-ship-motion';
@@ -33,11 +33,12 @@ export class ModularShipReactions {
     this.damagedByContact(contactDamageSpeed(other, contact), null);
   }
 
+  // 天体の固体表面への到達は、接近速度によらず機体喪失(ORBIT.md「接触判定」)。
   public receiveSurfaceContact(
-    _body: unknown, contact: Contact, _services: DynamicReactionServices,
+    _body: unknown, _contact: Contact, services: DynamicReactionServices,
   ): void {
     if (!this.port.motion.alive) return;
-    this.damagedByContact(closingSpeed(contact), null);
+    this.lose('天体の地表へ到達し機体は失われた', services);
   }
 
   public receiveRadiatorContact(
