@@ -948,7 +948,7 @@ try {
     debugPort,
     profilePrefix: 'tepui-smoke-',
     extraLaunchArgs: layoutOnly ? [
-      '--use-webgpu-adapter=compat',
+      '--use-webgpu-adapter=swiftshader',
       '--enable-features=Vulkan',
       '--use-gpu-in-tests',
       '--enable-accelerated-2d-canvas',
