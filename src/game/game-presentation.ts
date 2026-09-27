@@ -33,7 +33,7 @@ import { resolveOrbitReference } from './orbit-reference';
 import { navTargetCommands } from './viewer/nav-target-commands';
 import { viewCommands } from './viewer/view-commands';
 import { orbitGuideCommands } from './viewer/orbit-guide-commands';
-import { predictPanelCommands } from './viewer/predict-panel-commands';
+import { displayTimelineCommands } from './viewer/display-timeline-commands';
 import { cameraCommands } from './viewer/camera-commands';
 import { entityDisplayCommands } from './viewer/entity-display-commands';
 import { ObjectWindows } from './pickable/object-windows';
@@ -162,9 +162,9 @@ export class GamePresentation {
     this.cameraSystem = new CameraSystem(
       hud, celestialSystem, viewer.camera, cameraCommandPort, viewer.view, anchorEntities, scene.viewport,
     );
-    const predictCommands = predictPanelCommands(commands, viewer.predictPanel);
+    const timelineCommands = displayTimelineCommands(commands, viewer.displayTimeline);
     this.displayWindowManager = new DisplayWindowManager(
-      hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.predictPanel, predictCommands,
+      hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.displayTimeline, timelineCommands,
     );
     this.confirmation = new ConfirmationOverlay(hud.overlayManager);
     this.shipConstruction = new ShipConstruction(
@@ -195,7 +195,7 @@ export class GamePresentation {
       hud.mapRoot, hud.combatRoot,
       celestialSystem, viewer.camera.map, viewer.camera.combat,
       cameraCommandPort.map, cameraCommandPort.combat, this.cameraSystem,
-      viewer.predictPanel, predictCommands, hud.overlayManager, this.frameAnchors,
+      viewer.displayTimeline, timelineCommands, hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
       markers, viewer.navTarget, targetCommands, dynamicSystem, celestialSystem.celestialMotions,

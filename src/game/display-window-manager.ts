@@ -4,7 +4,7 @@
 // 束ねたもので、時間の窓だけを指す語ではない。画面全体で1つに揃っていなければならない —
 // 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えばメッシュと
 // マーカーが別の瞬間を指す。
-import { PredictPanel } from './hud/panels/predict-panel';
+import { DisplayTimelinePanel } from './hud/panels/display-timeline-panel';
 import type { PanelCollapse } from './hud/panel-shell';
 import { buildTicks } from './hud/orbit/tick-scale';
 import { epochUnixSeconds } from '../hud/utils';
@@ -18,9 +18,9 @@ import type { TrajectoryDemand } from './dynamic/trajectory-demand';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
-} from './viewer/predict-panel-selection';
-import type { PredictPanelSource, TickLabelMode } from './viewer/predict-panel-selection';
-import type { PredictPanelCommands } from './viewer/predict-panel-commands';
+} from './viewer/display-timeline-selection';
+import type { DisplayTimelineSource, TickLabelMode } from './viewer/display-timeline-selection';
+import type { DisplayTimelineCommands } from './viewer/display-timeline-commands';
 
 // 1フレーム分の「どこを・いつを表示しているか」。
 export interface DisplayWindow {
@@ -77,7 +77,7 @@ export class DisplayWindowManager {
   // このランの元期の unix 秒相当。
   private readonly epochUnixSec: number;
 
-  private readonly panel: PredictPanel;
+  private readonly panel: DisplayTimelinePanel;
 
   private _current: DisplayWindow;
 
@@ -86,8 +86,8 @@ export class DisplayWindowManager {
     hudRoot: HTMLElement,
     collapse: PanelCollapse,
     private readonly celestialBodies: CelestialBodies,
-    private readonly selection: PredictPanelSource,
-    private readonly commands: PredictPanelCommands,
+    private readonly selection: DisplayTimelineSource,
+    private readonly commands: DisplayTimelineCommands,
   ) {
     this.epochUnixSec = epochUnixSeconds(celestialBodies.epoch);
     this._current = {
@@ -96,7 +96,7 @@ export class DisplayWindowManager {
       tickLabelMode: selection.tickLabelMode, showElementTimes: selection.showElementTimes,
       epochUnixSec: this.epochUnixSec,
     };
-    this.panel = new PredictPanel(hudRoot, collapse);
+    this.panel = new DisplayTimelinePanel(hudRoot, collapse);
     this.panel.onDurationSelect = (key) => this.commands.selectDuration(key);
     this.panel.onCustomDurationConfirm = (sec) => this.commands.selectCustomDuration(sec);
     this.panel.onPastDurationSelect = (key) => this.commands.selectPastDuration(key);
