@@ -1337,7 +1337,7 @@ def build_tank_rcs(length, name):
     ]
     avionics_center_radius = 0.45
     for index, z in enumerate(avionics_zs):
-        angle = 2.0 * math.pi * index / avionics_count
+        angle = math.pi * 0.5 * index
         radial_rotation = Matrix.Rotation(angle, 4, 'Z')
         center = radial_rotation @ Vector((avionics_center_radius, 0.0, z))
         box = make_box(0.42, 0.34, 0.30, center=(avionics_center_radius, 0.0, z), bevel=0.035)
