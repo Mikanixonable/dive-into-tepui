@@ -117,6 +117,9 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud .row .k { color: var(--text-dim); }
 #hud .row .v { color: var(--text); min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
 #hud .panel input[type="number"], #hud .panel input[type="text"] { max-width: 100%; }
+/* パネル本体に積むウィジェットの行間。 */
+#hud .w-group { margin-bottom: var(--space-3); }
+#hud .w-toggle { margin-bottom: var(--space-3); }
 
 /* 左右レール */
 #hud .hud-rail {
