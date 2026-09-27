@@ -1,16 +1,13 @@
-// 自機の物理判定・部品配置・描画が共有する機体座標系の寸法。
-// 他モジュールを import してはならない — tools/model-builder/ がこのファイルを
-// TypeScript のまま transpile して読み込む。
+// 自機の物理判定・部品配置・描画で共有する機体座標系の寸法。モデル生成でも同じ値を使う。
 
 // 放熱板の蛇腹の折り数(1モジュールあたり)。
 export const RADIATOR_FOLD_COUNT = 6;
 
-// 太陽電池の剛体パネル数と船体前後方向の列数(1モジュールあたり)。
+// 太陽電池のパネル数と列数(1モジュールあたり)。
 export const SOLAR_PANEL_COUNT = 6;
 export const SOLAR_PANEL_COLUMNS = 2;
 
-// 太陽電池1パネルの長さ(モジュール局所 Z)と、列全体の幅(局所 X) [m]。
-// 2 列×3 枚で前後 3.0 m × 左右 4.8 m の翼になる。
+// 太陽電池1パネルの長さ(局所 Z)と列全体の幅(局所 X) [m]。
 export const SOLAR_PANEL_LENGTH = 1.6;
 export const SOLAR_PANEL_SPAN = 3.0;
 
@@ -21,7 +18,6 @@ export const SOLAR_PANEL_THICKNESS = 0.06;
 export const SOLAR_MODULE_GENERATION = 8250;
 
 // 放熱板の蛇腹1折りの展開方向長さ [m]。
-// 面積を旧設計の10倍（縦横各 √10 倍）にしたリビジョン。
 export const RADIATOR_SEGMENT_LENGTH = 0.8 * Math.sqrt(10); // ≈ 2.530 m
 
 // 放熱板1折りの横幅 [m]。放熱の有効面積は片面相当として一度だけ数える。

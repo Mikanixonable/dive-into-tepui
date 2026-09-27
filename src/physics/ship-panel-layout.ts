@@ -1,5 +1,4 @@
-// 展開部品(太陽電池・ラジエーター)のパネル列を、取付面のヒンジから連なる蛇腹の剛体鎖として置く。
-// 太陽電池は2列それぞれが3枚の鎖を持ち、ラジエーターは1列の鎖を持つ。
+// 太陽電池とラジエーターのパネル姿勢を、取付ヒンジを基準に計算する。
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_FOLD_COUNT,
@@ -38,8 +37,7 @@ interface ChainShape {
 
 const STOW_HALF_FOLD = Math.PI / 2;
 const IDENTITY_ROLL: Quat = { x: 0, y: 0, z: 0, w: 1 };
-// ラジエーターの帯は面法線を取付面の +Y(船体長手軸と直交)へ向ける。パネル局所の法線 +X を
-// +Y へ合わせる、ヒンジ軸まわりの取付ロール。
+// ラジエーターの面法線 +X を取付面の +Y へ合わせる。
 const RADIATOR_PANEL_ROLL = qFromAxisAngle(v3(0, 0, 1), Math.PI / 2);
 
 const CHAINS: Readonly<Record<DeployablePanelKind, ChainShape>> = {
@@ -83,6 +81,7 @@ function solarPanelPoses(shape: ChainShape, faceZ: number, deployed: number): re
   const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;
   const columnShape = { ...shape, count: rows };
   const result: PanelPose[] = [];
+  // 各列を全体幅の中心から左右へ配置する。
   for (let column = 0; column < SOLAR_PANEL_COLUMNS; column++) {
     const x = (column - (SOLAR_PANEL_COLUMNS - 1) / 2) * tileSpan;
     for (const pose of chainPoses(columnShape, faceZ, deployed)) {

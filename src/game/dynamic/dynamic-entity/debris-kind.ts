@@ -1,11 +1,9 @@
-// 破片の種別と、種別ごとの値。直列化した形を兼ねる。accent / size / segment は見た目を、
-// bornTemperature / bornThermalDeviation / bornSim は熱と寿命を決める。
+// 破片の種別と、外観・寿命・熱など種別固有の値。
 import type { Quat } from '../../../math/quat';
 import type { Vec3 } from '../../../math/vec3';
 
-// 破片が生まれた直後に機体に沿って進む経路。排出機構の内側から排出口へ向かう滑りで、生まれた
-// 時点の機体座標系(位置 r0・姿勢 q0・速度 v0 を持つ等速の座標系)で、質量中心基準の from→to を
-// duration 秒かけて進む。機体の加速・回転中は経路が正確には追従しないので、滑りは短く保つ。
+// 破片が生まれた直後に機体座標系でたどる排出口への経路。from/to は重心基準、r0・q0・v0 は
+// 出生時の等速座標系を表す。
 export interface DebrisSlide {
   readonly bornSim: number;
   readonly duration: number;
@@ -20,7 +18,5 @@ export type DebrisKind =
   | { readonly kind: 'fragment'; readonly accent: string | number; readonly size: number; }
   | { readonly kind: 'magazineFrame'; readonly slide?: DebrisSlide; }
   | { readonly kind: 'casing'; readonly bornSim: number; }
-  | { readonly kind: 'decouplerPanel'; readonly segment: number; readonly bornSim: number; };
-
-export type SerializedDebrisKind = DebrisKind
+  | { readonly kind: 'decouplerPanel'; readonly segment: number; readonly bornSim: number; }
   | { readonly kind: 'barrel'; readonly bornTemperature: number; readonly bornThermalDeviation: number; };
