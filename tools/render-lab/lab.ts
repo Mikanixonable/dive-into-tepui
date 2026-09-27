@@ -207,7 +207,9 @@ export class LabView {
       this.current.dispose?.();
       for (const root of this.current.objects) disposeOwnedRenderResources(root);
     }
-    const built = CASES[name](this.style, this.ringMaterials);
+    const built = CASES[name](
+      this.style, this.ringMaterials, this.pipeline.sunLight, this.pipeline.bodyShadow,
+    );
     // **1 つずつ足す** — 地球のほかに物体を持たないケースで空の引数を渡すと、three.js がエラーを出す。
     for (const object of built.objects) this.scene.add(object);
     this.current = built;
