@@ -80,12 +80,12 @@ export function register(): void {
     });
   }
 
-  test('ship panel layout: 太陽電池は展開しきると法線 +Y の4列×2枚になる', () => {
+  test('ship panel layout: 太陽電池は2列の取り付け辺から4枚ずつ展開する', () => {
     const poses = deployablePanelPoses('solar_panel', 0.5, 1);
     assert.equal(SOLAR_PANEL_COUNT, 8);
-    assert.equal(SOLAR_PANEL_COLUMNS, 4);
-    assert.equal(SOLAR_PANEL_LENGTH, 1.5);
-    assert.equal(SOLAR_PANEL_SPAN, 4.8);
+    assert.equal(SOLAR_PANEL_COLUMNS, 2);
+    assert.equal(SOLAR_PANEL_LENGTH, 1.2);
+    assert.equal(SOLAR_PANEL_SPAN, 3.0);
     assert.equal(poses.length, SOLAR_PANEL_COUNT);
     const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
     const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;
