@@ -291,6 +291,7 @@ export function register(): void {
     const solarBraceWidths: number[] = [];
     const solarBraceDepths: number[] = [];
     const solarPanelSizes = new Map<number, { width: number, depth: number }>();
+    const solarBraceSizes = new Map<number, { width: number, depth: number }>();
     const expected = [
       {
         modelId: 'radiator-standard',
@@ -318,8 +319,6 @@ export function register(): void {
         }
       });
       assert.equal(panels.length, spec.count, `${spec.modelId} panel count`);
-      const solarWidths: number[] = [];
-      const solarDepths: number[] = [];
       for (const panel of panels) {
         panel.geometry.computeBoundingBox();
         const bbox = panel.geometry.boundingBox;
@@ -329,8 +328,10 @@ export function register(): void {
         if (spec.modelId === 'solar-panel-standard') {
           assert.ok(Math.abs(size.x - spec.width) < spec.width * 0.081, `${spec.modelId} width: ${size.x}`);
           assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.081, `${spec.modelId} depth: ${size.z}`);
-          solarWidths.push(size.x);
-          solarDepths.push(size.z);
+          assert.ok(size.x <= SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS + 1e-6,
+            `${spec.modelId} panel width ${size.x} exceeds its hinge pitch`);
+          assert.ok(size.z <= SOLAR_PANEL_LENGTH + 1e-6,
+            `${spec.modelId} panel depth ${size.z} exceeds its hinge pitch`);
           solarFaceOffsets.push((bbox.min.y + bbox.max.y) / 2);
           const indexMatch = /^deployable-panel(?::(\d+))?$/.exec(panel.name);
           assert.ok(indexMatch !== null, `${spec.modelId} has an unrecognized panel name: ${panel.name}`);
@@ -342,8 +343,19 @@ export function register(): void {
         assert.ok(Math.abs(size.y - spec.height) < 1e-3, `${spec.modelId} height: ${size.y} expected ${spec.height}`);
       }
       if (spec.modelId === 'solar-panel-standard') {
-        assert.ok(Math.max(...solarWidths) > Math.min(...solarWidths));
-        assert.ok(Math.max(...solarDepths) > Math.min(...solarDepths));
+        const stages = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+        const stageSizes = [...Array(stages).keys()].map((stage) => {
+          const inner = solarPanelSizes.get(stage);
+          const outer = solarPanelSizes.get(stages + stage);
+          assert.ok(inner !== undefined && outer !== undefined, `missing panel size at stage ${stage + 1}`);
+          assert.ok(Math.abs(inner.width - outer.width) < 1e-6 && Math.abs(inner.depth - outer.depth) < 1e-6,
+            `stage ${stage + 1} panels do not have equal dimensions`);
+          return inner;
+        });
+        const stageScales = stageSizes.map((size) => size.width / spec.width);
+        assert.ok(stageScales[1] > stageScales[0], 'stage 2 should be larger than stage 1');
+        assert.ok(Math.abs(stageScales[0] - stageScales[2]) < 1e-6, 'stages 1 and 3 should have equal dimensions');
+        assert.ok(stageScales[2] > stageScales[3], 'stage 3 should be larger than stage 4');
         assert.ok(Math.max(...solarFaceOffsets) - Math.min(...solarFaceOffsets) > 0.01);
         const braces: THREE.Object3D[] = [];
         module.traverse((child) => {
@@ -360,6 +372,7 @@ export function register(): void {
           assert.ok(indexMatch !== null, `unrecognized solar brace name: ${brace.name}`);
           const panelSize = solarPanelSizes.get(Number(indexMatch[1]));
           assert.ok(panelSize !== undefined, `missing solar panel size for ${brace.name}`);
+          solarBraceSizes.set(Number(indexMatch[1]), { width: braceSize.x, depth: braceSize.z });
           assert.ok(Math.abs(braceSize.x / panelSize.width - 1) < 0.16,
             `${brace.name} width ${braceSize.x} does not follow panel width ${panelSize.width}`);
           assert.ok(Math.abs(braceSize.z / panelSize.depth - 1) < 0.16,
@@ -369,6 +382,17 @@ export function register(): void {
           'X-brace width does not follow the individual panel sizes');
         assert.ok(Math.max(...solarBraceDepths) - Math.min(...solarBraceDepths) > 0.05,
           'X-brace depth does not follow the individual panel sizes');
+        const braceStages = [...Array(stages).keys()].map((stage) => {
+          const inner = solarBraceSizes.get(stage);
+          const outer = solarBraceSizes.get(stages + stage);
+          assert.ok(inner !== undefined && outer !== undefined, `missing X-brace at stage ${stage + 1}`);
+          assert.ok(Math.abs(inner.width - outer.width) < 1e-6 && Math.abs(inner.depth - outer.depth) < 1e-6,
+            `stage ${stage + 1} X-braces do not follow equal panel dimensions`);
+          return inner.width / spec.width;
+        });
+        assert.ok(braceStages[1] > braceStages[0], 'stage 2 X-brace should be larger than stage 1');
+        assert.ok(Math.abs(braceStages[0] - braceStages[2]) < 1e-6, 'stage 1 and 3 X-braces should have equal dimensions');
+        assert.ok(braceStages[2] > braceStages[3], 'stage 3 X-brace should be larger than stage 4');
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {
@@ -411,7 +435,12 @@ export function register(): void {
     const rustMaterials = new Map<string, THREE.MeshPhysicalMaterial>();
     let assignedBlueCellGroups = 0;
     let assignedRustCellGroups = 0;
+    const rustCellCountByPanel = new Map<number, number>();
+    const blueCellCountByPanel = new Map<number, number>();
     for (const cells of cellGroups) {
+      const panelIndexMatch = /^panel_cells:(\d+)$/.exec(cells.name);
+      assert.ok(panelIndexMatch !== null, `unrecognized solar cell panel name: ${cells.name}`);
+      const panelIndex = Number(panelIndexMatch[1]);
       cells.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
         const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -422,10 +451,12 @@ export function register(): void {
           if (material.name.startsWith('mat_solar_shade_')) {
             blueMaterials.set(material.name, material);
             assignedBlueCellGroups++;
+            blueCellCountByPanel.set(panelIndex, (blueCellCountByPanel.get(panelIndex) ?? 0) + 1);
           }
           if (material.name.startsWith('mat_solar_rust_shade_')) {
             rustMaterials.set(material.name, material);
             assignedRustCellGroups++;
+            rustCellCountByPanel.set(panelIndex, (rustCellCountByPanel.get(panelIndex) ?? 0) + 1);
           }
         }
       });
@@ -442,7 +473,18 @@ export function register(): void {
       assert.ok(material.color.r < 0.07, `${material.name} is too bright: ${material.color.getHexString()}`);
     }
     assert.ok(assignedBlueCellGroups > 0, 'blue cells are assigned to cell geometry');
-    assert.ok(assignedRustCellGroups > 0, 'rust patches are assigned to cell geometry');
+    assert.ok(assignedRustCellGroups > 0, 'the rust-colored panel is assigned to cell geometry');
+    const stages = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+    const brownPanelIndex = (SOLAR_PANEL_COLUMNS - 1) * stages + 2;
+    for (let index = 0; index < SOLAR_PANEL_COUNT; index++) {
+      if (index === brownPanelIndex) {
+        assert.ok((rustCellCountByPanel.get(index) ?? 0) > 0, 'stage 3 outer panel has no rust cells');
+        assert.equal(blueCellCountByPanel.get(index) ?? 0, 0, 'stage 3 outer panel should be fully rust-colored');
+      } else {
+        assert.equal(rustCellCountByPanel.get(index) ?? 0, 0, `panel ${index} has an unexpected rust patch`);
+        assert.ok((blueCellCountByPanel.get(index) ?? 0) > 0, `panel ${index} has no blue cells`);
+      }
+    }
   });
 
   test('ship module asset: instance は geometry を共有し material と状態だけを分離する', async () => {
