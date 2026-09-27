@@ -145,7 +145,8 @@ export class AssemblyEnemy extends Enemy {
     );
   }
 
-  public override get hp(): number { return this.combat.integrity; }
+  // 撃破判定は被弾モデルへ委ねる — integrity の枯渇だけでなく、中核・全部品の喪失も撃破。
+  public override get hp(): number { return this.combat.destroyed ? 0 : this.combat.integrity; }
   public override get maxHp(): number { return this.combat.maxIntegrity; }
 
   // 発射部が残っている間だけ撃てる。
