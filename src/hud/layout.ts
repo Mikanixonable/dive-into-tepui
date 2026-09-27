@@ -1,4 +1,5 @@
-// 画面座標の DOM/カメラ非依存幾何計算。オーバーレイの再配置に使う。
+// 画面座標でのオーバーレイ配置。要求座標をビューポート内へクランプする幾何計算と、
+// DOM 要素への反映をまとめる。
 
 export interface Point2 {
   readonly x: number;
@@ -16,4 +17,15 @@ export function clampOverlayPosition(
     x: Math.max(margin, Math.min(requested.x, viewport.width - overlay.width - margin)),
     y: Math.max(margin, Math.min(requested.y, viewport.height - overlay.height - margin)),
   };
+}
+
+// 要求座標をビューポート内へクランプして、要素をその位置へ置く。実寸はここで測る。
+export function placeOverlayAt(el: HTMLElement, requested: Point2): void {
+  const pos = clampOverlayPosition(
+    requested,
+    el.getBoundingClientRect(),
+    { width: window.innerWidth, height: window.innerHeight },
+  );
+  el.style.left = `${pos.x}px`;
+  el.style.top = `${pos.y}px`;
 }

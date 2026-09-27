@@ -2,7 +2,7 @@
 // group を意味単位の折りたたみ Section、collapsible/detail を末尾の詳細欄として組む。
 // presentation 未指定の既存 PropertyRow は metric として扱い、旧データとの互換性を保つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
-import type { DraggableWindow } from './draggable-window';
+import type { ReclampingWindow } from './draggable-window';
 import type { PropertyRow, PropertyRowPresentation } from './property-window-content';
 
 function groupToggleLabel(name: string, rowCount: number, expanded: boolean): string {
@@ -24,7 +24,7 @@ export class PropertyWindowRows {
   private collapsibleExpanded = false;
   private readonly groupExpanded = new Map<string, boolean>();
 
-  public constructor(private readonly win: DraggableWindow) {
+  public constructor(private readonly win: ReclampingWindow) {
     this.element = document.createElement('div');
     this.element.className = 'prop-window-rows';
   }
@@ -189,6 +189,6 @@ export class PropertyWindowRows {
   }
 
   private reclamp(): void {
-    this.win.moveTo(this.win.element.offsetLeft, this.win.element.offsetTop);
+    this.win.reclamp();
   }
 }
