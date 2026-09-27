@@ -1,8 +1,10 @@
 import * as assert from 'node:assert/strict';
 import {
-  buildProteinCollisionSpheres, ProteinSphereCollisionGeometry,
-  type ProteinCollisionSphere,
+  buildProteinCollisionSpheres,
 } from '../../src/game/protein/protein-sphere-collision';
+import {
+  SphereChainCollisionGeometry, type CollisionSphere,
+} from '../../src/game/dynamic/sphere-chain-collision';
 import { v3, type Vec3 } from '../../src/math/vec3';
 import { qFromAxisAngle } from '../../src/math/quat';
 import { kinematicState } from '../../src/physics/kinematic-state';
@@ -13,7 +15,7 @@ const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };
 const ROOT_SCALE = 20;
 
 // 球の中心から点までの距離が半径をどれだけ下回るか [m]。正なら球の内側。
-function marginInside(sphere: ProteinCollisionSphere, x: number, y: number, z: number): number {
+function marginInside(sphere: CollisionSphere, x: number, y: number, z: number): number {
   return sphere.radius - Math.hypot(x - sphere.cx, y - sphere.cy, z - sphere.cz);
 }
 
@@ -71,14 +73,14 @@ export function register(): void {
         const residue = residueAt(backboneCoordinates, index, coordinateScale);
         drawnRadius = Math.max(drawnRadius, Math.hypot(residue.x, residue.y, residue.z));
       }
-      const geometry = new ProteinSphereCollisionGeometry(spheres, ROOT_SCALE);
+      const geometry = new SphereChainCollisionGeometry(spheres, ROOT_SCALE);
       const ratio = geometry.outerRadius / (drawnRadius * ROOT_SCALE);
       assert.ok(ratio >= 1, `${id} outer radius is ${ratio.toFixed(2)}x the drawn size`);
     });
   }
 
   test('protein sphere collision: the sweep agrees with the resting test at its own toi', () => {
-    const geometry = new ProteinSphereCollisionGeometry(
+    const geometry = new SphereChainCollisionGeometry(
       [{ cx: 0, cy: 0, cz: 0, radius: 1 }], ROOT_SCALE,
     );
     const center = v3();
@@ -107,7 +109,7 @@ export function register(): void {
   });
 
   test('protein sphere collision: a rotating shape is swept between attitudes', () => {
-    const geometry = new ProteinSphereCollisionGeometry(
+    const geometry = new SphereChainCollisionGeometry(
       [{ cx: 10, cy: 0, cz: 0, radius: 1 }], ROOT_SCALE,
     );
     const center = v3();
