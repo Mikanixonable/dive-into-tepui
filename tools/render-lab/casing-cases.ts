@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { CasingPool, CasingView } from '../../src/render/dynamic/dynamic-entity/casing-view';
 import { labCamera, type CaseBuilder, type LabCase } from './lab-case';
 
+// 薬莢1発を排出プールへ積み、実機と同じ経路の見え方を撮る。
 function ejectedCasing(): LabCase {
   const poolScene = new THREE.Scene();
   const pool = new CasingPool(poolScene, 1);
