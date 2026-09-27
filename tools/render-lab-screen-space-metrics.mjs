@@ -177,7 +177,7 @@ function scoreSaved(dir, record, references, imageDir) {
       if (entry.set === 'flicker' || entry.key === 'bay') flickerFrames[candidate.label].push(qs[0]);
       if (entry.set === 'flicker') continue;
       const { falseStructureMap, ...metrics } = errorMetrics(qs[0], q0, mask, WIDTH, HEIGHT);
-      // 2 つ目の seed の M、偏りと分散の R(s)、境界の漏れ、拡散照度から数えた値。
+      // 2 つ目の seed の S、偏りと分散の R(s)、境界の漏れ、拡散照度から数えた値。
       const average = qs[0].map((plane, c) => plane.map((v, p) => (v + qs[1][c][p]) / 2));
       results[candidate.label][entry.key] = {
         ...metrics,
@@ -219,7 +219,7 @@ function writeImages(outDir, label, key, display, referenceDisplay, falseStructu
 // 値の並び values の平均。空なら NaN。
 const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
 
-// 記録 record の表。候補ごとの費用と調整用・確認用の M の平均、撮影ごとの M、スケールごとの偽の構造、解析値との照合。
+// 記録 record の表。候補ごとの費用と調整用・確認用の S の平均、撮影ごとの S、スケールごとの偽の構造、解析値との照合。
 // results は候補と撮影ごとの指標、flicker は候補ごとのちらつき。撮っていない組の平均は —。
 function reportOf(record, results, flicker) {
   const { candidates, costs } = record;
@@ -262,7 +262,7 @@ function reportOf(record, results, flicker) {
     '## 候補', '',
     ...table(['候補', '費用 / マテリアル', 'S 調整用', '雑音', '偽の構造', 'G', 'S 確認用', 'S の 2 つ目の seed',
       '境界の漏れ', 'ちらつき', '負の画素 / 見える', 'R(s)', 'R(s) 偏り', 'R(s) 分散'], summary),
-    '', '## 撮影ごとの M(雑音 + 偽の構造)', '', ...table(['候補', ...measured], perShot),
+    '', '## 撮影ごとの S(雑音 + 偽の構造)', '', ...table(['候補', ...measured], perShot),
     '', '## スケールごとの偽の構造(調整用の平均)', '', ...table(['候補', ...ERROR_SCALES.map((s) => `${s} px`)], perScale),
     '', '## 解析値のある窓の比(拡散照度。bay は P_in / P_out、bounce-cosine は余弦 1 / 0.5 / 0)', '',
     ...table(['撮影', '解析値', '基準', ...candidates.map((c) => c.label)], ratios),

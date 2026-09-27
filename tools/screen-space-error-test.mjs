@@ -167,7 +167,7 @@ check('誤差を 3 倍にすると、S も 3 倍になる', () => {
   const mixed = noise.map((plane, c) => plane.map((v, p) => v + mura[c][p]));
   const base = metricsOf(mixed, mask, WIDTH, HEIGHT);
   const tripled = metricsOf(mixed.map((plane) => plane.map((v) => 3 * v)), mask, WIDTH, HEIGHT);
-  console.log(`    M ${base.score.toFixed(4)} → ${tripled.score.toFixed(4)}(比 ${(tripled.score / base.score).toFixed(4)})`);
+  console.log(`    S ${base.score.toFixed(4)} → ${tripled.score.toFixed(4)}(比 ${(tripled.score / base.score).toFixed(4)})`);
   assert.ok(Math.abs(tripled.score / base.score - 3) <= 0.03, `比 ${tripled.score / base.score}`);
 });
 
