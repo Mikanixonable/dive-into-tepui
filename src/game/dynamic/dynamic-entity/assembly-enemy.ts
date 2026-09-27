@@ -14,11 +14,11 @@ import {
   Enemy, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement, driftingAttitude,
   type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
+import { AssemblyEnemyView, type AssemblyVisualSource } from '../../../render/dynamic/dynamic-entity/assembly-enemy-view';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { FormationRole } from './entity-kind';
-import { AssemblyEnemyView, type AssemblyVisualSource } from '../../../render/dynamic/dynamic-entity/assembly-enemy-view';
 import type { DynamicEntity } from './dynamic-entity';
 import type { EnemyCollisionShape } from './enemy-motion';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
@@ -64,7 +64,7 @@ export class AssemblyEnemy extends Enemy {
     placement: EnemyPlacement,
     shape: AssemblyShape,
     id: string,
-    scene: THREE.Scene | undefined,
+    scene?: THREE.Scene,
     combat = new AssemblyCombatState(shape),
     alive?: boolean,
     burstLeft?: number | null,
@@ -203,7 +203,7 @@ export class AssemblyEnemy extends Enemy {
 
   // 被弾で失われた部品を表示入力へ足す。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference?: OrbitReference,
   ): AssemblyVisualSource {
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
