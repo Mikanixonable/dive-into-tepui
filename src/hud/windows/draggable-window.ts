@@ -2,7 +2,7 @@
 // ドラッグ操作、OverlayManager への登録更新、ビューポート変化時の再クランプ、最前面化を制御する。
 // 本文要素はコンストラクタの引数として注入する。
 // #hud 配下の window レイヤに配置するため、リセットスタイルを上書きできるようセレクタは `#hud` で始める。
-import { clampOverlayPosition } from '../layout';
+import { placeOverlayAt } from '../layout';
 import { onViewportChange } from '../viewport';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
 import { Button, CloseButton } from '../widgets';
@@ -75,6 +75,12 @@ export interface DraggableWindowOptions {
   readonly unclippedWindowGroup?: string;
 }
 
+// 本文の開閉・組み替えで高さが変わる部品へ渡す、ウィンドウ側の面。現在位置を
+// ビューポート内へ収め直すはみ出し補正だけを受け付ける。
+export interface ReclampingWindow {
+  reclamp(): void;
+}
+
 export class DraggableWindow implements OverlayHandle {
   private static nextId = 0;
   private static readonly UNSET = Symbol('unset');
@@ -90,7 +96,6 @@ export class DraggableWindow implements OverlayHandle {
   private _clipped: boolean;
   private disposed = false;
 
-  private readonly onResize: () => void;
   private readonly unsubscribeViewport: () => void;
 
   // 閉じられた(dispose 済み)ことを通知するコールバック。ESC・外側クリック・✕ ボタンの
@@ -170,8 +175,7 @@ export class DraggableWindow implements OverlayHandle {
     this.element.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.element.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    this.onResize = () => this.moveTo(this.element.offsetLeft, this.element.offsetTop);
-    this.unsubscribeViewport = onViewportChange(this.onResize);
+    this.unsubscribeViewport = onViewportChange(() => this.reclamp());
 
     this.setHeader(options.title, options.subtitle);
     // 先に登録して要素を DOM へ置いてから、実寸を測って位置を決める。
@@ -203,6 +207,12 @@ export class DraggableWindow implements OverlayHandle {
       gatesInput: false,
       exclusiveGroup: isUnclippedExclusive ? this.options.unclippedWindowGroup : undefined,
     };
+  }
+
+  // タイトル文字列を表示している要素。setHeader が書き込む先であり、タイトル位置へ別の要素を
+  // 一時的に差し替えるときの差し替え元として使える。
+  public get titleMain(): HTMLDivElement {
+    return this.titleMainEl;
   }
 
   // タイトル・サブタイトルを変化があった要素だけ差分更新する。
@@ -248,7 +258,7 @@ export class DraggableWindow implements OverlayHandle {
 
   // 現在位置を要求座標としてビューポート内へクランプし直す。内容の変化でサイズが伸びた
   // ときに使う — ドラッグで動かした位置はそのまま尊重しつつ、画面外へのはみ出しだけ戻す。
-  private reclamp(): void {
+  public reclamp(): void {
     this.moveTo(this.element.offsetLeft, this.element.offsetTop);
   }
 
@@ -260,15 +270,7 @@ export class DraggableWindow implements OverlayHandle {
       this.element.style.top = '';
       return;
     }
-    const rect = this.element.getBoundingClientRect();
-    // ウィンドウの実寸とビューポートに収まるよう要求座標をクランプする。
-    const pos = clampOverlayPosition(
-      { x: clientX, y: clientY },
-      { width: rect.width, height: rect.height },
-      { width: window.innerWidth, height: window.innerHeight },
-    );
-    this.element.style.left = `${pos.x}px`;
-    this.element.style.top = `${pos.y}px`;
+    placeOverlayAt(this.element, { x: clientX, y: clientY });
   }
 
   // DOM ノードと登録したグローバルリスナを取り除き、overlayManager からも外す。
