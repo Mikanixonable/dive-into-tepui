@@ -41,12 +41,17 @@ function beltC2(): LabCase {
     syncMotion,
     shots: {
       'belt-c2': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 16, sunAzimuthDeg: 0, sunElevationDeg: 70 },
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 16, sunAzimuthDeg: 0, sunElevationDeg: 20 },
         displayTime: 0,
       },
       'belt-c2-articulation': {
         view: { cameraAzimuthDeg: 18, cameraElevationDeg: 27, cameraDistanceLog: 0.04,
-          sunAzimuthDeg: 0, sunElevationDeg: 70 },
+          sunAzimuthDeg: 0, sunElevationDeg: 20 },
+        displayTime: 1,
+      },
+      'belt-c2-joint-detail': {
+        view: { cameraAzimuthDeg: 8, cameraElevationDeg: 24, cameraDistanceLog: -0.22,
+          sunAzimuthDeg: -8, sunElevationDeg: 25 },
         displayTime: 1,
       },
     },
