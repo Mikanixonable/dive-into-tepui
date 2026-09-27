@@ -1,4 +1,5 @@
 import * as assert from 'node:assert/strict';
+import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
   ASSEMBLY_PART_HP, AssemblyCombatState,
@@ -6,6 +7,10 @@ import {
 import {
   generateAssemblyShape, type AssemblyPartRole, type AssemblyShape,
 } from '../../src/render/assembly/assembly-shape';
+import { AssemblyEnemy } from '../../src/game/dynamic/dynamic-entity/assembly-enemy';
+import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
+import { RunEventLog } from '../../src/game/run-events';
+import type { EntityRegistry } from '../../src/game/dynamic/entity-registry';
 
 // role を持つ部品の index。
 function roleIndex(shape: AssemblyShape, role: AssemblyPartRole): number {
@@ -89,5 +94,34 @@ export function register(): void {
       { partHp: shape.parts.map(() => 0), integrity: state.maxIntegrity }, shape,
     );
     assert.equal(allLost.destroyed, true);
+  });
+
+  // SPEC/ASSEMBLY.md「戦闘状態」: 中核の喪失は integrity の残量によらず撃破。
+  // 撃破の正本は被弾モデルの destroyed で、個体の hp はそれに従う。
+  test('assembly combat: a lost core part destroys the enemy even with integrity left', () => {
+    const idAllocators = new EntityIdAllocators();
+    const registry: EntityRegistry = {
+      idAllocators,
+      events: new RunEventLog(),
+      add: () => {},
+      spawnWhenReady: () => {},
+      pendingEnemyCount: 0,
+    };
+    const enemy = AssemblyEnemy.create({
+      name: 'assembly-test',
+      state: { t: 0, r: { x: 7e6, y: 0, z: 0 }, v: { x: 0, y: 7.5e3, z: 0 } },
+      seed: 1, accent: 0xffffff, orbitLineColor: 0xffffff,
+      formationId: null, formationRole: null,
+    }, idAllocators, new THREE.Scene());
+    assert.ok(enemy.hp > 0, '無傷の個体が初めから撃破扱いになっている');
+
+    const serialized = enemy.serialize();
+    const coreIndex = roleIndex(shape, 'core');
+    const partHp = serialized.assembly.partHp.map((hp, index) => (index === coreIndex ? 0 : hp));
+    const restored = AssemblyEnemy.deserialize(
+      { ...serialized, assembly: { ...serialized.assembly, partHp } },
+      registry, new THREE.Scene(),
+    );
+    assert.equal(restored.hp, 0, '中核を失った記録の個体が生きている');
   });
 }
