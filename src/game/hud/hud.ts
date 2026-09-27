@@ -10,10 +10,7 @@ import { VesselPanel, type VesselPanelViewModel } from './panels/vessel-panel';
 import { OrbitPanel, type OrbitPanelViewModel } from './orbit/orbit-panel';
 import { TargetPanel, type TargetPanelViewModel } from './panels/target-panel';
 import { EnemiesPanel, type EnemiesPanelViewModel } from './panels/enemies-panel';
-import {
-  BurnManagementPanel,
-  type BurnManagementPanelHandlers, type BurnManagementViewModel,
-} from './panels/burn-management-panel';
+import { BurnManagementPanel, type BurnManagementViewModel } from './panels/burn-management-panel';
 import { ShipConstructionPanel } from './panels/ship-construction-panel';
 import { TopBar, type TopBarViewModel } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
@@ -26,6 +23,7 @@ import type { OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
 import type { HintKind, Notifier } from '../../hud/notifier';
 import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
+import { HudToast } from './hud-toast';
 import { hudAttention, hudWorkspace } from './hud-workspace';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
@@ -40,7 +38,6 @@ export interface HudPanelViewModels {
   readonly target: TargetPanelViewModel | null;
   readonly enemies: EnemiesPanelViewModel | null;
   readonly burnManagement: BurnManagementViewModel | null;
-  readonly burnHandlers: BurnManagementPanelHandlers;
   // マップカメラの注視点の ECI 位置。
   readonly mapFocus: Vec3;
   readonly analysisSource: AnalysisChartSource;
@@ -69,13 +66,7 @@ export class Hud implements HudLayers, Notifier {
   private chromeView: ViewMode | null = null;
   // 建造は ViewMode と独立した一時 workspace。ユーザーのパネル折りたたみ設定は変更しない。
   private constructionMode = false;
-  // 次の tick() で表示するトースト。
-  private pendingToast: {
-    readonly content: string; readonly durationMs: number; readonly code: string; readonly warning: boolean;
-    readonly allowHtml: boolean;
-  } | null = null;
-  // 表示中のトーストの期限 [ms, フレームの実時刻と同じ基準]。
-  private toastUntil: number | null = null;
+  private readonly toastBox: HudToast;
 
   // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方で、
   // panelCollapse は各パネルの折りたたみトグルの配線役。
@@ -98,9 +89,10 @@ export class Hud implements HudLayers, Notifier {
     this.burnManagementPanel = new BurnManagementPanel(els);
     this.shipConstructionPanel = new ShipConstructionPanel(els);
     this.constructionConfirm = new ConfirmationOverlay(this.overlayManager);
+    this.toastBox = new HudToast(this.root);
 
     // ランがまだ無い状態の見た目で組み上げる。
-    this.burnManagementPanel.sync(null, {});
+    this.burnManagementPanel.sync(null);
     this.applyView('combat');
     this.applyHudProfile('combat', false);
   }
@@ -145,7 +137,7 @@ export class Hud implements HudLayers, Notifier {
     this.orbitPanel.sync(null, 0);
     this.targetPanel.sync(null, 0);
     this.enemiesPanel.sync(null, 0);
-    this.burnManagementPanel.sync(null, {});
+    this.burnManagementPanel.sync(null);
   }
 
   // view で表に出ている常設パネルと、控えられたトーストを panels の値へ合わせる。
@@ -158,7 +150,7 @@ export class Hud implements HudLayers, Notifier {
     this.applyView(view);
     this.applyHudProfile(view, panels.target !== null);
     // 両ビュー共通のパネル。
-    this.burnManagementPanel.sync(panels.burnManagement, panels.burnHandlers);
+    this.burnManagementPanel.sync(panels.burnManagement);
     this.topBar.sync(panels.topBar, nowMs);
     this.orbitPanel.sync(panels.orbit, nowMs);
     // ビュー固有のパネル。
@@ -170,7 +162,7 @@ export class Hud implements HudLayers, Notifier {
       this.enemiesPanel.sync(panels.enemies, nowMs);
     }
     this.orbitAnalysisWindow?.sync(panels.analysisSource, panels.analysisSubject, nowMs);
-    this.tick(nowMs);
+    this.toastBox.sync(nowMs);
   }
 
   // workspace は画面の大分類、attention は flight 内の一時的な強調状態。DOM再配置ではなく
@@ -210,51 +202,18 @@ export class Hud implements HudLayers, Notifier {
     this.root.dataset['renderStyle'] = style;
   }
 
-  // 本文だけのトーストを durationMs 表示する。kind は通知の意味上の種別で、
-  // バッジの記号と警告色をここで導く — 表示側が本文の文言から類推しない。
-  public hint(text: string, durationMs = 1800, kind: HintKind = 'info'): void {
-    const code = kind === 'warn' ? 'WARN' : kind === 'nav' ? 'NAV' : kind === 'plan' ? 'PLN' : 'SYS';
-    this.requestToast(text, durationMs, code, kind === 'warn', false);
+  // 本文だけのトーストを durationMs 表示する。kind は通知の意味上の種別。
+  public hint(text: string, durationMs?: number, kind?: HintKind): void {
+    this.toastBox.hint(text, durationMs, kind);
   }
 
   // 見出しと本文を持つ HTML のトーストを durationMs 表示する。
-  public toast(html: string, durationMs = 8000): void {
-    this.requestToast(html, durationMs, 'SYS', false, true);
-  }
-
-  // 表示したい文言と表示時間を控える。同じフレームに複数控えられたら最後のものが表示される。
-  private requestToast(
-    content: string, durationMs: number, code: string, warning: boolean, allowHtml: boolean,
-  ): void {
-    this.pendingToast = { content, durationMs, code, warning, allowHtml };
+  public toast(html: string, durationMs?: number): void {
+    this.toastBox.toast(html, durationMs);
   }
 
   // router から HUD 固有の単発入力を受け取る。
   public handleCommand(commandId: string): void {
     this.helpPanel.handleCommand(commandId);
-  }
-
-  // 控えられたトーストを表示し、nowMs が表示期限を過ぎたトーストをフェードアウトさせる。
-  private tick(nowMs: number): void {
-    const toast = document.getElementById('hud-toast');
-    if (!toast) return;
-    // 控えがあれば差し替えて期限を張り直し、無ければ期限切れのものを消す。
-    if (this.pendingToast) {
-      const code = document.createElement('span');
-      code.className = 'toast-code';
-      code.textContent = this.pendingToast.code;
-      const message = document.createElement('div');
-      message.className = 'toast-message';
-      if (this.pendingToast.allowHtml) message.innerHTML = this.pendingToast.content;
-      else message.textContent = this.pendingToast.content;
-      toast.replaceChildren(code, message);
-      toast.classList.toggle('warn', this.pendingToast.warning);
-      toast.style.opacity = '1';
-      this.toastUntil = nowMs + this.pendingToast.durationMs;
-      this.pendingToast = null;
-    } else if (this.toastUntil !== null && nowMs > this.toastUntil) {
-      toast.style.opacity = '0';
-      this.toastUntil = null;
-    }
   }
 }
