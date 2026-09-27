@@ -8,6 +8,10 @@ import {
   RADIATOR_SEGMENT_LENGTH,
   SOLAR_PANEL_COUNT,
   SOLAR_PANEL_COLUMNS,
+  SOLAR_PANEL_CENTERLINE_CLEARANCE,
+  SOLAR_PANEL_FACE_SCALE,
+  SOLAR_PANEL_PANEL_PITCH,
+  SOLAR_PANEL_STAGE_SCALES,
   SOLAR_PANEL_SPAN,
   SOLAR_PANEL_THICKNESS,
   SOLAR_PANEL_LENGTH,
@@ -39,23 +43,23 @@ function hinges(kind: DeployablePanelKind, pose: PanelPose, index: number): { ro
 
 export function register(): void {
   for (const kind of ['solar_panel', 'radiator'] as const) {
-    test(`ship panel layout: ${kind} の隣り合うパネルは全展開度でヒンジを共有する`, () => {
+    test(`ship panel layout: ${kind} の中心支持鎖は全展開度でヒンジを共有する`, () => {
       for (const deployed of [0, 0.1, 0.37, 0.5, 0.8, 1]) {
         const poses = deployablePanelPoses(kind, 0.5, deployed);
         const columns = kind === 'solar_panel' ? SOLAR_PANEL_COLUMNS : 1;
         const rows = poses.length / columns;
-        const tileSpan = kind === 'solar_panel' ? SOLAR_PANEL_SPAN / columns : 0;
-        for (let column = 0; column < columns; column++) {
-          const first = column * rows;
-          const rootX = (column - (columns - 1) / 2) * tileSpan;
-          assert.ok(len(sub(hinges(kind, poses[first]!, 0).root, v3(rootX, 0, 0.5))) < 1e-9);
-          for (let row = 1; row < rows; row++) {
-            const previous = first + row - 1;
-            const current = first + row;
-            const gap = len(sub(hinges(kind, poses[previous]!, row - 1).tip,
-              hinges(kind, poses[current]!, row).root));
-            assert.ok(gap < 1e-9, `${kind} deployed=${deployed} hinge ${current} gap ${gap}`);
-          }
+        const centerlinePoses = kind === 'solar_panel'
+          ? poses.slice(0, rows).map((pose, row) => {
+            const panelWidth = SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * SOLAR_PANEL_STAGE_SCALES[row]!;
+            const offset = -(panelWidth / 2 + SOLAR_PANEL_CENTERLINE_CLEARANCE);
+            return { ...pose, origin: sub(pose.origin, qRotate(pose.rotation, v3(offset, 0, 0))) };
+          })
+          : poses;
+        assert.ok(len(sub(hinges(kind, centerlinePoses[0]!, 0).root, v3(0, 0, 0.5))) < 1e-9);
+        for (let row = 1; row < rows; row++) {
+          const gap = len(sub(hinges(kind, centerlinePoses[row - 1]!, row - 1).tip,
+            hinges(kind, centerlinePoses[row]!, row).root));
+          assert.ok(gap < 1e-9, `${kind} deployed=${deployed} centerline hinge ${row} gap ${gap}`);
         }
       }
     });
@@ -85,17 +89,29 @@ export function register(): void {
     assert.equal(SOLAR_PANEL_COUNT, 8);
     assert.equal(SOLAR_PANEL_COLUMNS, 2);
     assert.equal(SOLAR_PANEL_LENGTH, 1.8);
-    assert.equal(SOLAR_PANEL_SPAN, 4.5);
+    assert.equal(SOLAR_PANEL_SPAN,
+      2 * (SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * Math.max(...SOLAR_PANEL_STAGE_SCALES)
+        + SOLAR_PANEL_CENTERLINE_CLEARANCE));
     assert.equal(poses.length, SOLAR_PANEL_COUNT);
     const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
-    const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;
     poses.forEach((pose, index) => {
       assert.ok(len(sub(pose.normal, v3(0, 1, 0))) < 1e-9);
       const column = Math.floor(index / rows);
       const row = index % rows;
-      const x = (column - (SOLAR_PANEL_COLUMNS - 1) / 2) * tileSpan;
+      const panelWidth = SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * SOLAR_PANEL_STAGE_SCALES[row]!;
+      const side = column === 0 ? -1 : 1;
+      const x = side * (panelWidth / 2 + SOLAR_PANEL_CENTERLINE_CLEARANCE);
       assert.ok(Math.abs(pose.center.x - x) < 1e-9);
+      const innerEdgeDistance = Math.abs(pose.center.x) - panelWidth / 2;
+      assert.ok(Math.abs(innerEdgeDistance - SOLAR_PANEL_CENTERLINE_CLEARANCE) < 1e-9,
+        `panel ${index} centerline clearance ${innerEdgeDistance}`);
       assert.ok(Math.abs(pose.center.z - (0.5 + (row + 0.5) * SOLAR_PANEL_LENGTH)) < 1e-9);
     });
+    for (let row = 0; row < rows; row++) {
+      assert.ok(Math.abs(poses[row]!.center.x + poses[rows + row]!.center.x) < 1e-9,
+        `stage ${row + 1} panels are not symmetric about the centerline`);
+      assert.ok(Math.abs(poses[row]!.center.z - poses[rows + row]!.center.z) < 1e-9,
+        `stage ${row + 1} paired panels do not share a center station`);
+    }
   });
 }
