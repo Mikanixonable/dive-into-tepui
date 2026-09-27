@@ -40,5 +40,14 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
 
+      # ランナー同梱の google-chrome は版が流動する — Chrome 153 の SwiftShader WebGPU は
+      # createBuffer(mappedAtCreation) が全サイズで失敗する回帰を持つため、既知の安定版を
+      # Chrome for Testing から固定取得する(CHROME_PATH は tools/chrome-session.mjs が読む)。
+      - name: Pin Chrome for layout smoke
+        run: |
+          npx --yes @puppeteer/browsers install chrome@152.0.7977.82 --path /tmp/tepui-cft
+          CHROME_PATH=$(echo /tmp/tepui-cft/chrome/linux-*/chrome-linux64/chrome)
+          echo "CHROME_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
+          "$CHROME_PATH" --version
       - name: HUD geometry suite
         run: npm run smoke:layout-suite
