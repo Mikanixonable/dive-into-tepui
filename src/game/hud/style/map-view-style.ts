@@ -28,7 +28,7 @@ export const MAP_VIEW_STYLE = `
    上限をかける——無いと下に続くカメラパネルをレールの下方へ押し出し、隠れて見える。
    タブによって内容量が変わるため、内容が少ないタブでも隣の常設レールパネルより著しく
    縮まないよう最小高さも持つ。スクロールはタイトル行・タブ切替を巻き込まないよう、
-   本文側(view-options-body 以下、map-panel-style.ts)へ付ける。 */
+   本文側(view-options-body 以下、view-options-panel-style.ts)へ付ける。 */
 #hud .hud-map-root.active .hud-rail-left > #hud-view-options {
   display: flex;
   flex-direction: column;
@@ -373,6 +373,8 @@ export const MAP_VIEW_STYLE = `
 }
 
 @media ${MQ_COMPACT} {
+  #hud .hud-map-root.active .w-group { gap: var(--space-2); }
+  #hud .hud-map-root.active .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
   /* compact では既存の初期収納を保ち、開いたレールも両側合計100%未満に納める。 */
   #hud .hud-map-root.active {
     --rail-w-left: calc(42vw - 8px);
