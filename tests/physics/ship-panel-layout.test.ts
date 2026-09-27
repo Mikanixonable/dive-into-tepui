@@ -7,8 +7,10 @@ import {
   RADIATOR_PANEL_THICKNESS,
   RADIATOR_SEGMENT_LENGTH,
   SOLAR_PANEL_COUNT,
+  SOLAR_PANEL_COLUMNS,
+  SOLAR_PANEL_SPAN,
   SOLAR_PANEL_THICKNESS,
-  SOLAR_PANEL_WIDTH,
+  SOLAR_PANEL_LENGTH,
 } from '../../src/physics/player-shape';
 import {
   deployablePanelPoses, type DeployablePanelKind, type PanelPose,
@@ -16,7 +18,7 @@ import {
 import { test } from '../harness';
 
 const SHAPES: Readonly<Record<DeployablePanelKind, { length: number; thickness: number; normal: Vec3 }>> = {
-  solar_panel: { length: SOLAR_PANEL_WIDTH, thickness: SOLAR_PANEL_THICKNESS, normal: v3(0, 1, 0) },
+  solar_panel: { length: SOLAR_PANEL_LENGTH, thickness: SOLAR_PANEL_THICKNESS, normal: v3(0, 1, 0) },
   radiator: { length: RADIATOR_SEGMENT_LENGTH, thickness: RADIATOR_PANEL_THICKNESS, normal: v3(1, 0, 0) },
 };
 
@@ -40,10 +42,20 @@ export function register(): void {
     test(`ship panel layout: ${kind} の隣り合うパネルは全展開度でヒンジを共有する`, () => {
       for (const deployed of [0, 0.1, 0.37, 0.5, 0.8, 1]) {
         const poses = deployablePanelPoses(kind, 0.5, deployed);
-        assert.ok(len(sub(hinges(kind, poses[0]!, 0).root, v3(0, 0, 0.5))) < 1e-9);
-        for (let i = 1; i < poses.length; i++) {
-          const gap = len(sub(hinges(kind, poses[i - 1]!, i - 1).tip, hinges(kind, poses[i]!, i).root));
-          assert.ok(gap < 1e-9, `${kind} deployed=${deployed} hinge ${i} gap ${gap}`);
+        const columns = kind === 'solar_panel' ? SOLAR_PANEL_COLUMNS : 1;
+        const rows = poses.length / columns;
+        const tileSpan = kind === 'solar_panel' ? SOLAR_PANEL_SPAN / columns : 0;
+        for (let column = 0; column < columns; column++) {
+          const first = column * rows;
+          const rootX = (column - (columns - 1) / 2) * tileSpan;
+          assert.ok(len(sub(hinges(kind, poses[first]!, 0).root, v3(rootX, 0, 0.5))) < 1e-9);
+          for (let row = 1; row < rows; row++) {
+            const previous = first + row - 1;
+            const current = first + row;
+            const gap = len(sub(hinges(kind, poses[previous]!, row - 1).tip,
+              hinges(kind, poses[current]!, row).root));
+            assert.ok(gap < 1e-9, `${kind} deployed=${deployed} hinge ${current} gap ${gap}`);
+          }
         }
       }
     });
@@ -59,19 +71,27 @@ export function register(): void {
     test(`ship panel layout: ${kind} は畳みきると取付面の上へ厚みずつ積み重なる`, () => {
       const { thickness } = SHAPES[kind];
       const poses = deployablePanelPoses(kind, 0.5, 0);
+      const rows = kind === 'solar_panel' ? SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS : poses.length;
       poses.forEach((pose, index) => {
-        assert.ok(Math.abs(pose.center.z - (0.5 + (index + 0.5) * thickness)) < 1e-9, `${kind} layer ${index}`);
+        const row = kind === 'solar_panel' ? index % rows : index;
+        assert.ok(Math.abs(pose.center.z - (0.5 + (row + 0.5) * thickness)) < 1e-9, `${kind} layer ${index}`);
         assert.ok(Math.abs(Math.abs(pose.normal.z) - 1) < 1e-9);
       });
     });
   }
 
-  test('ship panel layout: 太陽電池は展開しきると法線 +Y の一枚の帯になる', () => {
+  test('ship panel layout: 太陽電池は展開しきると法線 +Y の2列×3枚になる', () => {
     const poses = deployablePanelPoses('solar_panel', 0.5, 1);
     assert.equal(poses.length, SOLAR_PANEL_COUNT);
+    const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+    const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;
     poses.forEach((pose, index) => {
       assert.ok(len(sub(pose.normal, v3(0, 1, 0))) < 1e-9);
-      assert.ok(Math.abs(pose.center.z - (0.5 + (index + 0.5) * SOLAR_PANEL_WIDTH)) < 1e-9);
+      const column = Math.floor(index / rows);
+      const row = index % rows;
+      const x = (column - (SOLAR_PANEL_COLUMNS - 1) / 2) * tileSpan;
+      assert.ok(Math.abs(pose.center.x - x) < 1e-9);
+      assert.ok(Math.abs(pose.center.z - (0.5 + (row + 0.5) * SOLAR_PANEL_LENGTH)) < 1e-9);
     });
   });
 }

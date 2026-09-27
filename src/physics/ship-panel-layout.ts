@@ -1,14 +1,14 @@
-// 展開部品(太陽電池・ラジエーター)のパネル列を、取付面のヒンジから連なる蛇腹の剛体鎖として置く。
-// パネル i の根元ヒンジは直前のパネルの交互の面にあり、隣り合うパネルは相対角 2ψ で折れる。
-// 収納(ψ = 90°)では厚みの分だけずれて取付面の上へ積み重なり、展開では一枚の帯へ伸びる。
+// 太陽電池とラジエーターのパネル姿勢を、取付ヒンジを基準に計算する。
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_FOLD_COUNT,
   RADIATOR_PANEL_THICKNESS,
   RADIATOR_SEGMENT_LENGTH,
   SOLAR_PANEL_COUNT,
+  SOLAR_PANEL_COLUMNS,
+  SOLAR_PANEL_SPAN,
   SOLAR_PANEL_THICKNESS,
-  SOLAR_PANEL_WIDTH,
+  SOLAR_PANEL_LENGTH,
 } from './player-shape';
 import { qFromAxisAngle, qMul, type Quat } from '../math/quat';
 import { v3, type Vec3 } from '../math/vec3';
@@ -37,14 +37,13 @@ interface ChainShape {
 
 const STOW_HALF_FOLD = Math.PI / 2;
 const IDENTITY_ROLL: Quat = { x: 0, y: 0, z: 0, w: 1 };
-// ラジエーターの帯は面法線を取付面の +Y(船体長手軸と直交)へ向ける。パネル局所の法線 +X を
-// +Y へ合わせる、ヒンジ軸まわりの取付ロール。
+// ラジエーターの面法線 +X を取付面の +Y へ合わせる。
 const RADIATOR_PANEL_ROLL = qFromAxisAngle(v3(0, 0, 1), Math.PI / 2);
 
 const CHAINS: Readonly<Record<DeployablePanelKind, ChainShape>> = {
   solar_panel: {
     count: SOLAR_PANEL_COUNT,
-    length: SOLAR_PANEL_WIDTH,
+    length: SOLAR_PANEL_LENGTH,
     thickness: SOLAR_PANEL_THICKNESS,
     foldAxis: v3(1, 0, 0),
     normalAxis: v3(0, 1, 0),
@@ -72,6 +71,33 @@ export function deployablePanelPoses(
   kind: DeployablePanelKind, faceZ: number, deployed: number,
 ): readonly PanelPose[] {
   const shape = CHAINS[kind];
+  if (kind === 'solar_panel') return solarPanelPoses(shape, faceZ, deployed);
+  return chainPoses(shape, faceZ, deployed);
+}
+
+// 太陽電池は2列それぞれに3枚の剛体鎖を持つ。列ごとに同じ展開姿勢を取り、全体を2×3へ並べる。
+function solarPanelPoses(shape: ChainShape, faceZ: number, deployed: number): readonly PanelPose[] {
+  const rows = shape.count / SOLAR_PANEL_COLUMNS;
+  const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;
+  const columnShape = { ...shape, count: rows };
+  const result: PanelPose[] = [];
+  // 各列を全体幅の中心から左右へ配置する。
+  for (let column = 0; column < SOLAR_PANEL_COLUMNS; column++) {
+    const x = (column - (SOLAR_PANEL_COLUMNS - 1) / 2) * tileSpan;
+    for (const pose of chainPoses(columnShape, faceZ, deployed)) {
+      result.push({
+        origin: v3(pose.origin.x + x, pose.origin.y, pose.origin.z),
+        rotation: pose.rotation,
+        center: v3(pose.center.x + x, pose.center.y, pose.center.z),
+        normal: pose.normal,
+      });
+    }
+  }
+  return result;
+}
+
+// 1列ぶんのパネル鎖を、根元から順に並べる。
+function chainPoses(shape: ChainShape, faceZ: number, deployed: number): readonly PanelPose[] {
   const psi = shape.halfFold(Math.max(0, Math.min(1, deployed)));
   const halfThickness = shape.thickness / 2;
   const result: PanelPose[] = [];

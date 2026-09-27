@@ -9,6 +9,7 @@ import json
 import sys
 import os
 import math
+import random
 import bpy
 import bmesh
 from mathutils import Vector, Matrix, Euler
@@ -49,6 +50,33 @@ def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0):
         bsdf.inputs["Roughness"].default_value = roughness
         bsdf.inputs["Metallic"].default_value = metallic
     return mat
+
+def make_tank_hull(length, radius=3.0, angular_segments=192):
+    """微細な放射方向のゆらぎを加えた、閉じた高密度の円筒外殻を作る。"""
+    bm = bmesh.new()
+    half_len = length / 2.0
+    axial_segments = max(60, round(length * 16.0))
+    rng = random.Random(7319)
+    rings = []
+    for axial_index in range(axial_segments + 1):
+        z = -half_len + length * axial_index / axial_segments
+        end_ring = axial_index in (0, axial_segments)
+        ring = []
+        for angular_index in range(angular_segments):
+            angle = 2.0 * math.pi * angular_index / angular_segments
+            ripple = 0.0 if end_ring else rng.uniform(-0.0012, 0.0012)
+            radial = radius + ripple
+            ring.append(bm.verts.new((radial * math.cos(angle), radial * math.sin(angle), z)))
+        rings.append(ring)
+    for axial_index in range(axial_segments):
+        lower, upper = rings[axial_index], rings[axial_index + 1]
+        for angular_index in range(angular_segments):
+            following = (angular_index + 1) % angular_segments
+            bm.faces.new((lower[angular_index], lower[following], upper[following], upper[angular_index]))
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return shade_by_angle(bm, 60.0)
 
 def create_emissive_material(name, color, strength=4.0):
     """自分で光る小さな部品(航法灯など)の材質。glTF の emissive へ焼かれる。"""
@@ -94,9 +122,10 @@ class MaterialLibrary:
         # チタンの球形推進剤タンク
         self.tank_rcs = create_pbr_material("mat_tank_rcs", (0.32, 0.52, 0.62, 1.0), roughness=0.38, metallic=1.0)
         # RCS 球タンクの銀箔外装と、地上設備を思わせる赤い外部架構
-        self.rcs_foil = create_pbr_material("mat_rcs_foil", (0.82, 0.85, 0.88, 1.0), roughness=0.32, metallic=0.55)
-        self.rcs_frame = create_pbr_material("mat_rcs_frame", (0.68, 0.055, 0.032, 1.0), roughness=0.27, metallic=0.20)
-        self.rcs_support = create_pbr_material("mat_rcs_support", (0.84, 0.87, 0.90, 1.0), roughness=0.34, metallic=0.58)
+        self.rcs_foil = create_pbr_material("mat_rcs_foil", (0.88, 0.90, 0.93, 1.0), roughness=0.22, metallic=0.82)
+        self.rcs_frame = create_pbr_material("mat_rcs_frame", (0.54, 0.1125, 0.086, 1.0), roughness=0.27, metallic=0.20)
+        self.rcs_support = create_pbr_material("mat_rcs_support", (0.90, 0.92, 0.94, 1.0), roughness=0.38, metallic=0.22)
+        self.rcs_silver_pipe = create_pbr_material("mat_rcs_silver_pipe", (0.84, 0.86, 0.89, 1.0), roughness=0.26, metallic=0.38)
         self.rcs_white_pipe = create_pbr_material("mat_rcs_white_pipe", (0.92, 0.94, 0.96, 1.0), roughness=0.34, metallic=0.30)
         self.rcs_logo_blue = create_pbr_material("mat_rcs_logo_blue", (0.045, 0.23, 0.70, 1.0), roughness=0.34, metallic=0.06)
         self.rcs_logo_red = create_pbr_material("mat_rcs_logo_red", (0.78, 0.045, 0.025, 1.0), roughness=0.32, metallic=0.2)
@@ -106,9 +135,13 @@ class MaterialLibrary:
         self.rcs_wire_red = create_pbr_material("mat_rcs_wire_red", (0.80, 0.045, 0.025, 1.0), roughness=0.4, metallic=0.05)
         self.rcs_wire_yellow = create_pbr_material("mat_rcs_wire_yellow", (0.96, 0.58, 0.03, 1.0), roughness=0.42, metallic=0.05)
         self.rcs_wire_white = create_pbr_material("mat_rcs_wire_white", (0.90, 0.92, 0.94, 1.0), roughness=0.45, metallic=0.12)
-        # 外装の白い塗膜と黒い追尾模様
-        self.tank_paint_white = create_pbr_material("mat_tank_paint_white", (0.88, 0.90, 0.92, 1.0), roughness=0.55, metallic=0.0)
-        self.tank_paint_black = create_pbr_material("mat_tank_paint_black", (0.05, 0.05, 0.06, 1.0), roughness=0.60, metallic=0.0)
+        # 外装の白黒塗装。白の色は保ち、光沢だけコックピットのアイボリー塗膜に揃える。
+        self.tank_paint_white = create_pbr_material("mat_tank_paint_white", (0.88, 0.90, 0.92, 1.0), roughness=0.40, metallic=0.02)
+        self.tank_paint_black = create_pbr_material("mat_tank_paint_black", (0.05, 0.05, 0.06, 1.0), roughness=0.40, metallic=0.02)
+        self.tank_seam = create_pbr_material("mat_tank_seam", (0.68, 0.70, 0.72, 1.0), roughness=0.50, metallic=0.05)
+        self.tank_recess = create_pbr_material("mat_tank_recess", (0.16, 0.17, 0.18, 1.0), roughness=0.72, metallic=0.08)
+        self.tank_fastener = create_pbr_material("mat_tank_fastener", (0.48, 0.50, 0.51, 1.0), roughness=0.42, metallic=0.35)
+        self.tank_brass = create_pbr_material("mat_tank_brass", (0.48, 0.39, 0.25, 1.0), roughness=0.62, metallic=0.32)
         # トラス材
         self.truss = create_pbr_material("mat_truss", (0.68, 0.72, 0.78, 1.0), roughness=0.35, metallic=1.0)
         # 炭素フェノールのアブレータ
@@ -117,19 +150,28 @@ class MaterialLibrary:
         self.cbm_ring = create_pbr_material("mat_cbm_ring", (0.76, 0.79, 0.84, 1.0), roughness=0.28, metallic=1.0)
         # 建造ドックの識別色
         self.dock = create_pbr_material("mat_dock", (0.84, 0.55, 0.22, 1.0), roughness=0.38, metallic=1.0)
-        # 太陽電池セル
-        self.solar = create_pbr_material("mat_solar", (0.06, 0.18, 0.45, 1.0), roughness=0.25, metallic=0.2)
-        # セル区画ごとの明暗ばらつき。基準の mat_solar を ±4% の幅へ振る
+        # ガラス越しに見える暗い濃青の太陽電池セル。低 roughness で鋭い反射を返す
+        self.solar = create_pbr_material("mat_solar", (0.008, 0.022, 0.07, 1.0), roughness=0.06, metallic=0.12)
+        # セル区画ごとの明暗ばらつき
         self.solar_shades = [
             create_pbr_material(
                 f"mat_solar_shade_{k}",
-                (0.06 * f, 0.18 * f, 0.45 * f, 1.0), roughness=0.25, metallic=0.2)
-            for k, f in enumerate((0.96, 0.976, 0.992, 1.008, 1.024, 1.04))
+                (0.008 * f, 0.022 * f, 0.07 * f, 1.0), roughness=0.06, metallic=0.12)
+            for k, f in enumerate((0.82, 0.9, 0.96, 1.0, 1.08, 1.16))
         ]
-        # セル帯のあいだに見えるバス帯(濃紺の別トーン)
-        self.solar_bus = create_pbr_material("mat_solar_bus", (0.10, 0.15, 0.32, 1.0), roughness=0.35, metallic=0.4)
-        # 翼裏の骨組みを成すガラス繊維の角材(金茶)
-        self.solar_lattice = create_pbr_material("mat_solar_lattice", (0.62, 0.51, 0.30, 1.0), roughness=0.60, metallic=0.3)
+        self.solar_rust_shades = [
+            create_pbr_material(
+                f"mat_solar_rust_shade_{k}",
+                (0.075 * f, 0.018 * f, 0.012 * f, 1.0), roughness=0.10, metallic=0.08)
+            for k, f in enumerate((0.86, 0.94, 1.0, 1.08, 1.16))
+        ]
+        # セル帯のあいだに見えるバス帯と、翼裏の褐色基板・横縞
+        self.solar_bus = create_pbr_material("mat_solar_bus", (0.007, 0.016, 0.045, 1.0), roughness=0.12, metallic=0.18)
+        self.solar_backing = create_pbr_material("mat_solar_backing", (0.14, 0.085, 0.042, 1.0), roughness=0.68, metallic=0.08)
+        self.solar_back_stripe = create_pbr_material("mat_solar_back_stripe", (0.08, 0.05, 0.024, 1.0), roughness=0.74, metallic=0.05)
+        # 翼裏の白い骨格と、灰色の小型アクチュエーター
+        self.solar_lattice = create_pbr_material("mat_solar_lattice", (0.88, 0.90, 0.92, 1.0), roughness=0.28, metallic=0.22)
+        self.solar_actuator = create_pbr_material("mat_solar_actuator", (0.34, 0.38, 0.42, 1.0), roughness=0.34, metallic=0.72)
         # 翼端の航法灯(左舷の赤・右舷の緑)
         self.nav_red = create_emissive_material("mat_nav_red", (0.90, 0.05, 0.03, 1.0))
         self.nav_green = create_emissive_material("mat_nav_green", (0.04, 0.75, 0.18, 1.0))
@@ -726,21 +768,34 @@ def build_cockpit():
 # ----------------------------------------------------------------------
 # 2. Main Propellant Tanks (tank-3-main, tank-6-main, tank-12-main)
 # ----------------------------------------------------------------------
-def paint_roll_pattern(bm, length):
-    """円筒側面へ追尾用塗装の黒い模様を面割当する(material_index 1 = 黒、既定 0 = 白)。
-    +Z 端に市松帯(2 段)と白黒交互の縦縞、胴体中央に水平帯を置く。"""
+TANK_ROLL_SECTOR_COUNT = 12
+
+def tank_roll_pattern_bounds(length):
+    """端部の市松帯・長手帯と中央黒帯の位置を返す。"""
     half_len = length / 2.0
-    sector_count = 24
-    sector_arc = 2.0 * math.pi / sector_count
-    end_margin = 0.15    # 端の接続環と被らない余白 [m]
-    checker_row_h = min(0.75, max(0.30, 0.085 * length))
-    roll_bar_h = min(1.60, max(0.55, 0.16 * length))
-    stripe_h = min(0.25, max(0.08, 0.025 * length))
-    z_top = half_len - end_margin
-    z_check_mid = z_top - checker_row_h
-    z_roll_top = z_top - 2.0 * checker_row_h
-    z_roll_bottom = z_roll_top - roll_bar_h
-    for z in (z_top, z_check_mid, z_roll_top, z_roll_bottom, stripe_h / 2.0, -stripe_h / 2.0):
+    end_margin = 0.15
+    checker_row_height = min(0.75, max(0.30, 0.085 * length))
+    roll_bar_height = min(1.60, max(0.55, 0.16 * length))
+    stripe_half_height = min(0.25, max(0.08, 0.025 * length)) * 0.5
+    top = half_len - end_margin
+    checker_mid = top - checker_row_height
+    roll_top = top - 2.0 * checker_row_height
+    roll_bottom = roll_top - roll_bar_height
+    return {
+        "top": top,
+        "checker_mid": checker_mid,
+        "checker_row_height": checker_row_height,
+        "roll_top": roll_top,
+        "roll_bottom": roll_bottom,
+        "stripe_half_height": stripe_half_height,
+    }
+
+def paint_roll_pattern(bm, length):
+    """円筒側面へ端部の市松帯・交互の長手帯・中央黒帯を割り当てる。"""
+    sector_arc = 2.0 * math.pi / TANK_ROLL_SECTOR_COUNT
+    bounds = tank_roll_pattern_bounds(length)
+    for z in (bounds["top"], bounds["checker_mid"], bounds["roll_top"], bounds["roll_bottom"],
+              bounds["stripe_half_height"], -bounds["stripe_half_height"]):
         bmesh.ops.bisect_plane(
             bm,
             geom=list(bm.verts) + list(bm.edges) + list(bm.faces),
@@ -748,20 +803,200 @@ def paint_roll_pattern(bm, length):
             plane_no=(0.0, 0.0, 1.0),
         )
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    for f in bm.faces:
-        if abs(f.normal.z) > 0.5:
+    for face in bm.faces:
+        if abs(face.normal.z) > 0.5:
             continue
-        c = f.calc_center_median()
-        sector = int((math.atan2(c.y, c.x) + math.pi) / sector_arc) % sector_count
-        if z_roll_top < c.z < z_top:
-            row = 0 if c.z > z_check_mid else 1
+        center = face.calc_center_median()
+        sector = int((math.atan2(center.y, center.x) + math.pi) / sector_arc) % TANK_ROLL_SECTOR_COUNT
+        if bounds["roll_top"] < center.z < bounds["top"]:
+            row = 0 if center.z > bounds["checker_mid"] else 1
             if (sector + row) % 2 == 0:
-                f.material_index = 1
-        elif z_roll_bottom < c.z <= z_roll_top:
+                face.material_index = 1
+        elif bounds["roll_bottom"] < center.z <= bounds["roll_top"]:
             if sector % 2 == 0:
-                f.material_index = 1
-        elif abs(c.z) < stripe_h / 2.0:
-            f.material_index = 1
+                face.material_index = 1
+        elif abs(center.z) < bounds["stripe_half_height"]:
+            face.material_index = 1
+
+def rounded_panel_outline(width, height, corner_radius, corner_steps=5):
+    """平面の角丸長方形を、円筒面へ写す順序で点列化する。"""
+    radius = min(corner_radius, width * 0.49, height * 0.49)
+    half_width, half_height = width / 2.0, height / 2.0
+    corners = (
+        (half_width - radius, half_height - radius, 0.0),
+        (-half_width + radius, half_height - radius, 90.0),
+        (-half_width + radius, -half_height + radius, 180.0),
+        (half_width - radius, -half_height + radius, 270.0),
+    )
+    points = []
+    for center_u, center_z, start_degrees in corners:
+        for step in range(corner_steps):
+            angle = math.radians(start_degrees + 90.0 * step / (corner_steps - 1))
+            points.append((center_u + radius * math.cos(angle), center_z + radius * math.sin(angle)))
+    return points
+
+def append_curved_panel(bm, center_angle, center_z, width, height, radius, layers,
+                        ring_materials, fill_material, corner_radius=0.06):
+    """角丸の板・浅い溝を、半径を保つ同心ループで円筒へ沿わせる。"""
+    rings = []
+    for scale, radial_offset in layers:
+        outline = rounded_panel_outline(width * scale, height * scale, corner_radius * scale)
+        ring = []
+        for arc_offset, axial_offset in outline:
+            angle = center_angle + arc_offset / radius
+            radial = radius + radial_offset
+            ring.append(bm.verts.new((radial * math.cos(angle), radial * math.sin(angle), center_z + axial_offset)))
+        rings.append(ring)
+    for ring_index, (outer, inner) in enumerate(zip(rings, rings[1:])):
+        material_index = ring_materials[ring_index]
+        for index in range(len(outer)):
+            following = (index + 1) % len(outer)
+            face = bm.faces.new((outer[index], outer[following], inner[following], inner[index]))
+            face.material_index = material_index
+    last_ring = rings[-1]
+    center_radial = radius + layers[-1][1]
+    center = bm.verts.new((center_radial * math.cos(center_angle), center_radial * math.sin(center_angle), center_z))
+    for index in range(len(last_ring)):
+        following = (index + 1) % len(last_ring)
+        face = bm.faces.new((last_ring[index], last_ring[following], center))
+        face.material_index = fill_material
+
+def append_surface_hole(bm, angle, axial, radius, hole_radius, material_index, depth=0.006):
+    """曲面にほぼ面一で置く暗い丸穴を追加する。"""
+    normal = Vector((math.cos(angle), math.sin(angle), 0.0))
+    center = Vector((radius * normal.x, radius * normal.y, axial))
+    rotation = normal.to_track_quat("Z", "Y").to_matrix().to_4x4()
+    previous_faces = set(bm.faces)
+    bmesh.ops.create_cone(
+        bm, cap_ends=True, cap_tris=False, segments=16,
+        radius1=hole_radius, radius2=hole_radius, depth=depth,
+        matrix=Matrix.Translation(center) @ rotation,
+    )
+    for face in set(bm.faces) - previous_faces:
+        face.material_index = material_index
+
+def append_raised_tank_panel(bm, angle, axial, width, height, radius, white_index):
+    layers = ((1.0, 0.002), (0.96, 0.010), (0.88, 0.017), (0.66, 0.019), (0.34, 0.019), (0.02, 0.019))
+    append_curved_panel(bm, angle, axial, width, height, radius, layers,
+                        (white_index,) * (len(layers) - 1), white_index,
+                        corner_radius=min(0.085, min(width, height) * 0.22))
+
+def append_recessed_tank_panel(bm, angle, axial, width, height, radius, white_index, seam_index):
+    layers = ((1.0, 0.006), (0.98, 0.001), (0.91, 0.0005), (0.70, 0.0005), (0.35, 0.0005), (0.02, 0.0005))
+    append_curved_panel(bm, angle, axial, width, height, radius, layers,
+                        (seam_index, seam_index, white_index, white_index, white_index), white_index,
+                        corner_radius=min(0.12, min(width, height) * 0.20))
+
+def add_tank_surface_details(mats, length, bounds):
+    """前方塗装と干渉しない範囲へ、継ぎ目・浅い溝・大きさの異なる板を配置する。"""
+    radius = 3.0
+    half_len = length / 2.0
+    materials = (mats.tank_paint_white, mats.tank_seam, mats.tank_brass, mats.tank_recess)
+    white_index, seam_index, brass_index, recess_index = range(len(materials))
+    details = bmesh.new()
+    groove_angle = math.pi
+    groove_center_z = -0.06 * length
+    groove_width = 1.38
+    groove_height = 0.39 * length
+    append_recessed_tank_panel(details, groove_angle, groove_center_z, groove_width, groove_height,
+                               radius, white_index, seam_index)
+
+    # 前方の黒い市松セル上へ、塗装色を保った小さな白い識別板を置く。
+    sector_count = TANK_ROLL_SECTOR_COUNT
+    white_patch_sector = 0
+    white_patch_angle = -math.pi + (white_patch_sector + 0.5) * 2.0 * math.pi / sector_count
+    white_patch_z = bounds["top"] - 0.45 * bounds["checker_row_height"]
+    append_raised_tank_panel(details, white_patch_angle, white_patch_z, 0.42, 0.28,
+                             radius, white_index)
+
+    # 薄い角丸のハッチを不規則な間隔で並べる。送り線と外付け COPV の取付角度を避ける。
+    rng = random.Random(24091 + round(length * 100))
+    panel_count = max(5, round(length * 1.65))
+    shapes = ((0.34, 0.31), (0.43, 0.48), (0.58, 0.36), (0.40, 0.72),
+              (0.82, 0.52), (0.32, 0.27), (0.54, 0.82), (0.68, 0.42))
+    selected = []
+    candidate_limit = panel_count * 80
+    z_min = -half_len + 0.46
+    z_max = bounds["roll_bottom"] - 0.24
+    copv_z = -half_len * 0.4
+    copv_angles = (math.radians(120), math.radians(240))
+    for _ in range(candidate_limit):
+        if len(selected) >= panel_count:
+            break
+        width, height = shapes[rng.randrange(len(shapes))]
+        angle = rng.uniform(-math.pi, math.pi)
+        axial = rng.uniform(z_min, z_max)
+        angular_distance = abs((angle + math.pi) % (2.0 * math.pi) - math.pi)
+        if angular_distance < (width * 0.5 + 0.15) / radius:
+            continue
+        if (abs((angle - groove_angle + math.pi) % (2.0 * math.pi) - math.pi) * radius
+                < (groove_width + width) * 0.5 + 0.16
+                and abs(axial - groove_center_z) < (groove_height + height) * 0.5 + 0.16):
+            continue
+        if any(abs((angle - copv_angle + math.pi) % (2.0 * math.pi) - math.pi) < 0.24
+               and abs(axial - copv_z) < 0.48 for copv_angle in copv_angles):
+            continue
+        if any(abs((angle - old_angle + math.pi) % (2.0 * math.pi) - math.pi) * radius
+               < (width + old_width) * 0.5 + 0.16
+               and abs(axial - old_axial) < (height + old_height) * 0.5 + 0.16
+               for old_angle, old_axial, old_width, old_height in selected):
+            continue
+        selected.append((angle, axial, width, height))
+
+    for panel_index, (angle, axial, width, height) in enumerate(selected):
+        if panel_index % 4 == 2:
+            append_recessed_tank_panel(details, angle, axial, width, height, radius, white_index, seam_index)
+        else:
+            append_raised_tank_panel(details, angle, axial, width, height, radius, white_index)
+        # 一部のパネルには浅い横スロット、または対になったグレーの締結穴を付ける。
+        if panel_index % 3 != 1:
+            slot_width = min(0.25, width * 0.46)
+            slot_height = 0.045
+            slot_layers = ((1.0, 0.004), (0.92, 0.006), (0.75, 0.006), (0.02, 0.006))
+            append_curved_panel(details, angle, axial + height * 0.25, slot_width, slot_height, radius,
+                                slot_layers, (seam_index, recess_index, recess_index), recess_index,
+                                corner_radius=0.02)
+        if panel_index % 2 == 0:
+            hole_offset = width * 0.40 / radius
+            hole_z = axial - height * 0.30
+            append_surface_hole(details, angle - hole_offset, hole_z, radius + 0.003, 0.027, recess_index)
+            append_surface_hole(details, angle + hole_offset, hole_z, radius + 0.003, 0.027, recess_index)
+
+    # 真鍮色は艶を抑えた小板に限り、黒いセル上の一枚と、長尺型だけ追加の一枚を置く。
+    brass_angle = -math.pi + (2.5 * 2.0 * math.pi / sector_count)
+    brass_plates = [(brass_angle, white_patch_z, 0.34, 0.26)]
+    if length >= 6.0:
+        brass_plates.append((2.82, -0.27 * length, 0.48, 0.34))
+    if length >= 12.0:
+        brass_plates.append((4.82, 0.17 * length, 0.42, 0.31))
+    brass_layers = ((1.0, 0.003), (0.95, 0.011), (0.86, 0.015), (0.60, 0.016), (0.25, 0.016), (0.02, 0.016))
+    for angle, axial, width, height in brass_plates:
+        append_curved_panel(details, angle, axial, width, height, radius, brass_layers,
+                            (brass_index,) * (len(brass_layers) - 1), brass_index,
+                            corner_radius=0.035)
+        for u_sign in (-1.0, 1.0):
+            for z_sign in (-1.0, 1.0):
+                append_surface_hole(details, angle + u_sign * width * 0.36 / radius,
+                                    axial + z_sign * height * 0.30, radius + 0.004,
+                                    0.026, recess_index)
+
+    if details.verts:
+        bmesh.ops.recalc_face_normals(details, faces=details.faces)
+        add_mesh_obj("tank_surface_panels", details, materials)
+
+    # 長手方向の浅い補強線と、周方向の塗装継ぎ目。どちらも白塗装に近い淡い灰色。
+    for index in range(8):
+        angle = 2.0 * math.pi * index / 8.0 + math.pi / 8.0
+        radial = radius + 0.004
+        path = [Vector((radial * math.cos(angle), radial * math.sin(angle), -half_len + 0.12)),
+                Vector((radial * math.cos(angle), radial * math.sin(angle), half_len - 0.12))]
+        add_mesh_obj(f"tank_longitudinal_seam_{index}", make_pipe(path, radius=0.008, segments=8), mats.tank_seam)
+    for seam_index, fraction in enumerate((-0.40, -0.12, 0.20, 0.42)):
+        z = fraction * length
+        add_mesh_obj(f"tank_circumferential_seam_{seam_index}",
+                     make_torus(radius + 0.001, 0.007, z_center=z, major_seg=48, minor_seg=6),
+                     mats.tank_seam)
+
 
 
 def build_tank_main(length, name):
@@ -769,13 +1004,14 @@ def build_tank_main(length, name):
     mats = MaterialLibrary()
     radius = 3.0
     half_len = length / 2.0
+    pattern_bounds = tank_roll_pattern_bounds(length)
 
     # 1. Main Cylindrical Tank Hull with circumferential segments
-    # 白い塗膜の外殻。黒い模様は初期ロケットの追尾用塗装を範とする。
-    bm_hull = make_cylinder(radius, radius, length, z_center=0.0, segments=48)
+    # ベース色を保った白塗膜へ、前方だけの白黒チェッカーを面割当する。
+    bm_hull = make_tank_hull(length, radius=radius)
     paint_roll_pattern(bm_hull, length)
     add_mesh_obj("tank_hull", bm_hull, (mats.tank_paint_white, mats.tank_paint_black))
-    
+
     # 2. Structural Bulkhead Bands (CRITICAL: Named 'tank-band' to satisfy contract test!)
     # Band count scaled with length (3m: 1 band, 6m: 2 bands, 12m: 4 bands)
     band_count = 1 if length <= 3.5 else (2 if length <= 6.5 else 4)
@@ -784,7 +1020,15 @@ def build_tank_main(length, name):
         zb = -half_len + step * (b + 1)
         bm_band = make_torus(major_r=radius + 0.02, minor_r=0.04, z_center=zb, major_seg=48, minor_seg=12)
         # Name MUST be 'tank-band' for test contract!
-        add_mesh_obj("tank-band", bm_band, mats.hull_dark)
+        add_mesh_obj("tank-band", bm_band, mats.tank_paint_white)
+        fastener_centers = [((radius + 0.059) * math.cos(2.0 * math.pi * index / 24.0),
+                             (radius + 0.059) * math.sin(2.0 * math.pi * index / 24.0), zb)
+                            for index in range(24)]
+        add_mesh_obj(f"tank_bulkhead_rivets_{b}",
+                     make_spheres(fastener_centers, 0.018, u_seg=8, v_seg=6), mats.tank_fastener)
+
+    # 塗装に馴染む前後・周方向の継ぎ目、浅いハッチ、リベット穴を追加する。
+    add_tank_surface_details(mats, length, pattern_bounds)
 
     # 3. Cryogenic Feedline with Saddle Clamps & Bolted Flanges
     # High-pressure LOX/LH2 feedline running down the hull at radius R=3.06m
@@ -879,11 +1123,11 @@ def rcs_material_mesh(name, bm, material, smooth_angle=30.0):
     add_mesh_obj(name, shade_by_angle(bm, smooth_angle), material)
 
 def rcs_foil_sphere(radius, center):
-    """薄い箔の小さな皺を半径方向のゆらぎで作る。"""
+    """銀箔の細かな皺を、多方向の半径ゆらぎで作る。"""
     center = Vector(center)
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(
-        bm, u_segments=40, v_segments=28, radius=radius,
+        bm, u_segments=64, v_segments=44, radius=radius,
         matrix=Matrix.Translation(center),
     )
     for vertex in bm.verts:
@@ -892,18 +1136,19 @@ def rcs_foil_sphere(radius, center):
         longitude = math.atan2(direction.y, direction.x)
         latitude = math.asin(max(-1.0, min(1.0, direction.z)))
         ripple = (
-            0.010 * math.sin(longitude * 17.0 + latitude * 9.0)
-            + 0.007 * math.sin(longitude * 23.0 - latitude * 13.0)
-            + 0.005 * math.sin(longitude * 9.0 + latitude * 19.0)
+            0.015 * math.sin(longitude * 13.0 + latitude * 17.0)
+            + 0.012 * math.sin(longitude * 23.0 - latitude * 19.0)
+            + 0.009 * math.sin(longitude * 37.0 + latitude * 7.0)
+            + 0.005 * math.sin(longitude * 53.0 - latitude * 31.0)
         )
         vertex.co = center + direction * radius * (1.0 + ripple)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    return shade_by_angle(bm, 180.0)
+    return shade_by_angle(bm, 34.0)
 
-def rcs_add_spherical_logo(center, radial, logo_meshes):
+def rcs_add_spherical_logo(center, radial, sphere_radius, logo_meshes):
     center, radial = Vector(center), Vector(radial).normalized()
     rotation = radial.to_track_quat('Z', 'Y').to_matrix().to_4x4()
-    patch_center = center + radial * 0.872
+    patch_center = center + radial * (sphere_radius * 1.055)
     rcs_append_cylinder(logo_meshes['rim'], patch_center, radial, 0.22, 0.018, 32)
     rcs_append_cylinder(logo_meshes['blue'], patch_center + radial * 0.016, radial, 0.185, 0.02, 32)
     stripe_rotation = rotation @ Euler((0.0, 0.0, math.radians(-34.0))).to_matrix().to_4x4()
@@ -970,22 +1215,53 @@ def build_tank_rcs(length, name):
                 rcs_append_beam(frame, lower_i, upper_next, 0.15, 0.10)
             else:
                 rcs_append_beam(frame, upper_i, lower_next, 0.15, 0.10)
+
+        # 一部の区画だけ中間横梁を足し、全周を同じ密度にはしない。
+        reinforced_sectors = []
+        if bay == 0:
+            reinforced_sectors.append(2)
+        if ring_count >= 5 and bay == ring_count - 2:
+            reinforced_sectors.append(10)
+        for i in reinforced_sectors:
+            a0 = 2.0 * math.pi * i / sector_count
+            a1 = 2.0 * math.pi * (i + column_stride) / sector_count
+            z_mid = (z0 + z1) * 0.5
+            lower = Vector((frame_radius * math.cos(a0), frame_radius * math.sin(a0), z_mid))
+            upper = Vector((frame_radius * math.cos(a1), frame_radius * math.sin(a1), z_mid))
+            rcs_append_beam(frame, lower, upper, 0.18, 0.12)
+            for point, angle in ((lower, a0), (upper, a1)):
+                radial = Vector((math.cos(angle), math.sin(angle), 0.0))
+                bmesh.ops.create_uvsphere(
+                    fasteners, u_segments=8, v_segments=6, radius=0.03,
+                    matrix=Matrix.Translation(point + radial * 0.075),
+                )
     rcs_material_mesh("rcs_red_box_truss", frame, mats.rcs_frame, 40.0)
     rcs_material_mesh("rcs_truss_bolts", fasteners, mats.rivet, 180.0)
 
     # 2. 軽い銀箔をまとった高圧球タンクと、その白銀色の支持ヨーク
     axial_sections = max(1, int(length / 2.5))
-    section_step = length / (axial_sections + 1)
-    sphere_radius = 0.85
+    sphere_radius = 0.85 * 1.2
+    section_step = max(length / (axial_sections + 1), 2.0 * (sphere_radius + 0.11 + 0.035) + 0.06)
+    sphere_sections = [
+        (section - (axial_sections - 1) * 0.5) * section_step
+        for section in range(axial_sections)
+    ]
     support = bmesh.new()
     logos = {
         'rim': bmesh.new(), 'blue': bmesh.new(),
         'white': bmesh.new(), 'red': bmesh.new(),
     }
-    surface_gas_paths = []
-    feed_paths = []
+    branch_paths = []
+    branch_junctions = bmesh.new()
+    avionics_count = max(3, min(5, int(round(length / 3.0))))
+    avionics_span = half_len * 0.72
+    avionics_zs = [
+        -avionics_span + 2.0 * avionics_span * index / (avionics_count - 1)
+        for index in range(avionics_count)
+    ]
     for sec in range(axial_sections):
-        z_sec = -half_len + (sec + 1) * section_step
+        z_sec = sphere_sections[sec]
+        section_ports = []
         for t in range(4):
             t_ang = t * math.pi / 2.0 + math.pi / 4.0
             radial = Vector((math.cos(t_ang), math.sin(t_ang), 0.0))
@@ -993,30 +1269,63 @@ def build_tank_rcs(length, name):
             center = Vector((radius * 0.55 * radial.x, radius * 0.55 * radial.y, z_sec))
             add_mesh_obj(f"rcs_sphere_{sec}_{t}", rcs_foil_sphere(sphere_radius, center), mats.rcs_foil)
 
-            # しわの寄った箔面に、薄い溶接縁と斜めに折れるガス配管を重ねる。
-            bm_seam = make_torus(major_r=sphere_radius * 1.003, minor_r=0.009, z_center=z_sec, major_seg=40, minor_seg=8)
-            transform_bm(bm_seam, Matrix.Translation(Vector((center.x, center.y, 0.0))))
-            add_mesh_obj(f"rcs_seam_{sec}_{t}", bm_seam, mats.rcs_support)
-            rcs_add_spherical_logo(center, radial, logos)
+            # 三方向の白い輪で球を囲い、外部ヨークへ荷重を渡す。
+            for axis_index, axis in enumerate((Vector((0.0, 0.0, 1.0)), radial, tangent)):
+                cage_ring = make_torus(
+                    sphere_radius + 0.11, 0.035, major_seg=48, minor_seg=10,
+                )
+                rotation = Vector((0.0, 0.0, 1.0)).rotation_difference(axis).to_matrix().to_4x4()
+                transform_bm(cage_ring, Matrix.Translation(center) @ rotation)
+                add_mesh_obj(f"rcs_sphere_cage_{sec}_{t}_{axis_index}", cage_ring, mats.rcs_support)
 
-            surface_gas_paths.append([
-                center + radial * 0.42 - tangent * 0.70 + Vector((0.0, 0.0, -0.38)),
-                center + radial * 0.64 - tangent * 0.60 + Vector((0.0, 0.0, 0.08)),
-                center + radial * 0.55 - tangent * 0.55 + Vector((0.0, 0.0, 0.56)),
-            ])
-            # 球の内側から中央の供給管へつなぐ短い分岐。
-            feed_paths.append([
-                Vector((0.0, 0.0, z_sec)),
-                center - radial * 0.55 + Vector((0.0, 0.0, 0.12)),
-                center - radial * 0.84 + Vector((0.0, 0.0, 0.12)),
-            ])
+            # しわの寄った箔面に、薄い溶接縁と斜めに折れるガス配管を重ねる。
+            bm_seam = make_torus(major_r=sphere_radius * 1.045, minor_r=0.006, z_center=0.0, major_seg=48, minor_seg=8)
+            transform_bm(bm_seam, Matrix.Translation(center))
+            add_mesh_obj(f"rcs_seam_{sec}_{t}", bm_seam, mats.rcs_support)
+            rcs_add_spherical_logo(center, radial, sphere_radius, logos)
+
+            # 高さを交互に振った内向きポートで支持輪を避け、球面をなぞらず枝配管を始める。
+            port_height_sign = 1.0 if t % 2 == 0 else -1.0
+            port_direction = (-radial * 0.91 + tangent * 0.30 + Vector((0.0, 0.0, 0.31 * port_height_sign))).normalized()
+            port = center + port_direction * (sphere_radius + 0.012)
+            section_ports.append((port, port_direction, tangent))
 
             # 球の外周を受ける二本の白銀ヨーク脚。接触点は球面の上下へ分ける。
             for side in (-1.0, 1.0):
-                contact = center + radial * 0.75 + Vector((0.0, 0.0, side * 0.45))
-                footing = radial * 2.82 + Vector((0.0, 0.0, z_sec + side * 0.58))
-                rcs_append_beam(support, contact, footing, 0.075, 0.075)
-            rcs_append_beam(support, center + radial * 0.85, radial * 2.84 + Vector((0.0, 0.0, z_sec)), 0.09, 0.09)
+                contact = center + radial * (sphere_radius * 0.72) + Vector((0.0, 0.0, side * sphere_radius * 0.72))
+                footing = radial * 2.82 + Vector((0.0, 0.0, z_sec + side * 0.70))
+                rcs_append_beam(support, contact, footing, 0.085, 0.085)
+            rcs_append_beam(
+                support, center + radial * (sphere_radius * 1.02),
+                radial * 2.84 + Vector((0.0, 0.0, z_sec)), 0.10, 0.09,
+            )
+
+        # 上下の隣接タンクをそれぞれ一つの節点でまとめ、その枝幹を軸方向配管へ合流させる。
+        for pair_index, pair in enumerate(((0, 1), (2, 3))):
+            sign = 1.0 if pair_index == 0 else -1.0
+            pair_ports = [section_ports[index] for index in pair]
+            pair_center = (pair_ports[0][0] + pair_ports[1][0]) * 0.5
+            spine_z = z_sec + sign * 0.72
+            while any(abs(spine_z - avionics_z) < 0.27 for avionics_z in avionics_zs):
+                spine_z += sign * 0.35
+            junction = Vector((pair_center.x, pair_center.y, z_sec + (spine_z - z_sec) * 0.24))
+            bmesh.ops.create_uvsphere(
+                branch_junctions, u_segments=12, v_segments=8, radius=0.092,
+                matrix=Matrix.Translation(junction),
+            )
+
+            for port, port_direction, tangent in pair_ports:
+                exit_point = port + port_direction * 0.18
+                mid_point = exit_point.lerp(junction, 0.52) + tangent * (0.105 * sign)
+                branch_paths.append([port, exit_point, mid_point, junction])
+
+            # 節点から軸へ向かう幹にも短い折れを入れ、電装箱との間隔を保つ。
+            toward_axis = Vector((0.0, 0.0, spine_z))
+            approach = Vector((junction.x * 0.76, junction.y * 0.76, spine_z))
+            inner = Vector((junction.x * 0.36, junction.y * 0.36, spine_z))
+            side = Vector((junction.y, -junction.x, 0.0)).normalized()
+            jog = inner + side * (0.075 * sign)
+            branch_paths.append([junction, approach, jog, inner, toward_axis])
 
     for key, material in (
         ('rim', mats.rcs_support), ('blue', mats.rcs_logo_blue),
@@ -1030,22 +1339,79 @@ def build_tank_rcs(length, name):
         Vector((0, 0, -half_len + 0.2)),
         Vector((0, 0, half_len - 0.2)),
     ]
-    add_mesh_obj("manifold_spine", make_pipe(pipe_points, radius=0.09, segments=16), mats.rcs_white_pipe)
-    add_mesh_obj("rcs_manifold_feeds", make_pipes(feed_paths, radius=0.043, segments=10, bend_radius=0.08), mats.rcs_white_pipe)
-    add_mesh_obj("rcs_surface_gas_lines", make_pipes(surface_gas_paths, radius=0.031, segments=10, bend_radius=0.12), mats.rcs_white_pipe)
+    add_mesh_obj("manifold_spine", make_pipe(pipe_points, radius=0.17, segments=20), mats.rcs_silver_pipe)
+    rcs_material_mesh("rcs_branch_junctions", branch_junctions, mats.rcs_silver_pipe, 45.0)
+
+    # 中心配管の側面に、支持金具で電装箱を固定する。
+    avionics_mounts = bmesh.new()
+    avionics_fasteners = bmesh.new()
+    avionics_center_radius = 0.45
+    for index, z in enumerate(avionics_zs):
+        angle = math.pi * 0.5 * index
+        radial_rotation = Matrix.Rotation(angle, 4, 'Z')
+        center = radial_rotation @ Vector((avionics_center_radius, 0.0, z))
+        box = make_box(0.42, 0.34, 0.30, center=(avionics_center_radius, 0.0, z), bevel=0.035)
+        transform_bm(box, radial_rotation)
+        add_mesh_obj(
+            f"rcs_axial_avionics_box_{index}",
+            box,
+            mats.electronics_white,
+        )
+        panel_center = radial_rotation @ Vector((avionics_center_radius + 0.42 * 0.5 + 0.014, 0.0, z))
+        panel = make_box(
+            0.028, 0.24, 0.17,
+            center=(avionics_center_radius + 0.42 * 0.5 + 0.014, 0.0, z),
+            bevel=0.012,
+        )
+        transform_bm(panel, radial_rotation)
+        add_mesh_obj(
+            f"rcs_axial_avionics_panel_{index}",
+            panel,
+            mats.electronics_brown,
+        )
+        for side in (-1.0, 1.0):
+            rcs_append_beam(
+                avionics_mounts,
+                radial_rotation @ Vector((0.135, side * 0.10, z)),
+                radial_rotation @ Vector((avionics_center_radius - 0.42 * 0.5, side * 0.10, z)),
+                0.04,
+                0.035,
+            )
+            for vertical_side in (-1.0, 1.0):
+                fastener_center = radial_rotation @ Vector((
+                    avionics_center_radius + 0.42 * 0.5 + 0.014 + 0.018,
+                    side * 0.075,
+                    z + vertical_side * 0.052,
+                ))
+                bmesh.ops.create_uvsphere(
+                    avionics_fasteners, u_segments=8, v_segments=6, radius=0.016,
+                    matrix=Matrix.Translation(fastener_center),
+                )
+    rcs_material_mesh("rcs_axial_avionics_mounts", avionics_mounts, mats.clamp, 40.0)
+    rcs_material_mesh("rcs_axial_avionics_fasteners", avionics_fasteners, mats.rivet, 180.0)
+
+    add_mesh_obj("rcs_branch_manifold_pipes", make_pipes(branch_paths, radius=0.046, segments=12, bend_radius=0.045), mats.rcs_white_pipe)
 
     # 外側を這う白い配管束は赤い縦材へ複数の金属バンドで固定する。
-    bundle_angle = math.radians(-52.0)
+    bundle_angle = math.radians(-30.0)
     bundle_radial = Vector((math.cos(bundle_angle), math.sin(bundle_angle), 0.0))
     bundle_tangent = Vector((-math.sin(bundle_angle), math.cos(bundle_angle), 0.0))
     bundle_paths = []
+    bend_offsets = (0.0, 0.035, 0.055, 0.035, 0.0)
     for offset in (-0.13, 0.0, 0.13):
-        bundle_paths.append([
-            bundle_radial * 2.76 + bundle_tangent * offset + Vector((0.0, 0.0, -half_len + 0.18)),
-            bundle_radial * 2.99 + bundle_tangent * offset + Vector((0.0, 0.0, -half_len + 0.30)),
-            bundle_radial * 2.99 + bundle_tangent * offset + Vector((0.0, 0.0, half_len - 0.30)),
-            bundle_radial * 2.76 + bundle_tangent * offset + Vector((0.0, 0.0, half_len - 0.18)),
-        ])
+        lower_run = [
+            bundle_radial * (2.76 + 0.23 * step / 4.0)
+            + bundle_tangent * (offset + bend_offsets[step])
+            + Vector((0.0, 0.0, -half_len + 0.18 + 0.12 * step))
+            for step in range(5)
+        ]
+        upper_run = [
+            bundle_radial * (2.76 + 0.23 * step / 4.0)
+            + bundle_tangent * (offset + bend_offsets[step])
+            + Vector((0.0, 0.0, half_len - 0.18 - 0.12 * step))
+            for step in reversed(range(5))
+        ]
+        bundle_paths.append(lower_run + upper_run)
     add_mesh_obj("rcs_white_external_pipe_bundle", make_pipes(bundle_paths, radius=0.038, segments=10, bend_radius=0.12), mats.rcs_white_pipe)
     bundle_clamps = bmesh.new()
     for clamp_index in range(max(2, ring_count - 1)):
@@ -1059,10 +1425,26 @@ def build_tank_rcs(length, name):
         rcs_append_box(bundle_clamps, bundle_radial * 3.005 + Vector((0.0, 0.0, z)), (0.075, 0.40, 0.055), clamp_rotation)
     rcs_material_mesh("rcs_external_pipe_clamps", bundle_clamps, mats.clamp, 40.0)
 
-    # 非対称の警告ロッド、籠付き計器、白い小型ボンベを一組だけ外周に設置する。
-    hazard_start = Vector((2.72, -0.24, -0.70))
-    hazard_end = Vector((2.78, -0.12, 0.78))
+    # 警告ロッドの両端を、外部配管束の継手へ短い折れ配管でつなぐ。
+    hazard_radial = bundle_radial
+    hazard_tangent = bundle_tangent
+    hazard_start = hazard_radial * 2.82 + hazard_tangent * 0.02 + Vector((0.0, 0.0, -0.68))
+    hazard_end = hazard_radial * 2.82 - hazard_tangent * 0.02 + Vector((0.0, 0.0, 0.68))
     hazard_direction = (hazard_end - hazard_start).normalized()
+    hazard_connection_paths = [
+        [
+            hazard_start,
+            hazard_radial * 2.88 + hazard_tangent * 0.04 + Vector((0.0, 0.0, -0.66)),
+            hazard_radial * 2.94 + hazard_tangent * 0.03 + Vector((0.0, 0.0, -0.63)),
+            hazard_radial * 2.99 + hazard_tangent * 0.02 + Vector((0.0, 0.0, -0.68)),
+        ],
+        [
+            hazard_end,
+            hazard_radial * 2.88 - hazard_tangent * 0.04 + Vector((0.0, 0.0, 0.66)),
+            hazard_radial * 2.94 - hazard_tangent * 0.03 + Vector((0.0, 0.0, 0.63)),
+            hazard_radial * 2.99 - hazard_tangent * 0.02 + Vector((0.0, 0.0, 0.68)),
+        ],
+    ]
     hazard = bmesh.new()
     yellow_bands = bmesh.new()
     rcs_append_cylinder(hazard, (hazard_start + hazard_end) * 0.5, hazard_direction, 0.075, (hazard_end - hazard_start).length, 12)
@@ -1073,6 +1455,7 @@ def build_tank_rcs(length, name):
         rcs_append_cylinder(yellow_bands, position, hazard_direction, 0.078, 0.10, 12)
     rcs_material_mesh("rcs_hazard_rod_black", hazard, mats.rcs_hazard_black, 35.0)
     rcs_material_mesh("rcs_hazard_rod_yellow_bands", yellow_bands, mats.rcs_hazard_yellow, 35.0)
+    add_mesh_obj("rcs_hazard_rod_pipe_connectors", make_pipes(hazard_connection_paths, radius=0.045, segments=10, bend_radius=0.035), mats.rcs_white_pipe)
 
     instrument_angle = math.radians(138.0)
     instrument_radial = Vector((math.cos(instrument_angle), math.sin(instrument_angle), 0.0))
@@ -1902,13 +2285,20 @@ def build_deployable_chain(kind, half_len, build_panel):
     メッシュを作って返す。side = (-1)^i はそのパネルの根元ヒンジが載る面。姿勢は実行時に上書きされる。"""
     spec = MANIFEST["deployables"][kind]
     normal = Vector(spec["normalAxis"])
+    columns = int(spec.get("columns", 1))
+    if columns < 1 or spec["count"] % columns != 0:
+        raise ValueError(f"{kind}: panel count must be divisible by its column count")
+    rows = spec["count"] // columns
+    column_span = spec["span"] / columns
     root = add_anchor("panel-hinge", (0, 0, half_len))
     for index in range(spec["count"]):
+        column, row = divmod(index, rows)
+        x = (column - (columns - 1) / 2) * column_span
         hinge = add_anchor(
-            f"panel-hinge:{index}", normal * (spec["thickness"] / 2) + Vector((0, 0, index * spec["length"])),
+            f"panel-hinge:{index}", normal * (spec["thickness"] / 2) + Vector((x, 0, row * spec["length"])),
             parent=root, panelIndex=index, panelKind=kind,
         )
-        for obj in build_panel(index, 1 if index % 2 == 0 else -1):
+        for obj in build_panel(index, 1 if row % 2 == 0 else -1):
             parent_to(obj, hinge)
 
 # 展開モジュールの船体側取付構造。母船の船体は半径 3.0 m の円筒で、側面取付の回転
@@ -1968,7 +2358,7 @@ def build_hull_junction(mats, half_len, pedestal=True):
         (0.50, 0.30), (0.46, 0.36), (0.46, half_len - 0.06), (0.0, half_len - 0.06),
     ], segments=4, closed=True, sharp_angle_deg=0.0), mats.hull_dark)
 
-def build_solar_mount(mats, half_len, thickness):
+def build_solar_mount(mats, half_len, thickness, span):
     """座板の上へ渡した平らなルートフレームから、翼列の根元ヒンジへ立ち上がる2本のヒンジ
     アームと、片側だけの駆動ラッチ箱。翼は角度を追従しない構造で、根元ヒンジ
     (panel-hinge)はモジュール軸上の取付面にある。ヒンジ軸は翼幅方向(X 軸)に走り、
@@ -1977,31 +2367,33 @@ def build_solar_mount(mats, half_len, thickness):
     frame_z = 0.13                     # ルートフレームのレール中心の高さ [m]
     # 翼幅方向へ長い外周レールと、その内側へ並ぶ中桟2本で格子にした平らな枠。
     # 座板からの脚は中桟の脇へ届く
+    rail_x = span / 2 - 0.06
     add_mesh_obj("root_frame", make_boxes(
-        [(2.00, 0.07, 0.07, (0.0, sy * 0.465, frame_z), (0.0, 0.0, 0.0)) for sy in (-1.0, 1.0)]
-        + [(0.07, 0.86, 0.07, (sx * 0.965, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)]
-        + [(0.06, 0.86, 0.06, (sx / 3.0, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)],
+        [(span - 0.12, 0.07, 0.07, (0.0, sy * 0.465, frame_z), (0.0, 0.0, 0.0)) for sy in (-1.0, 1.0)]
+        + [(0.07, 0.86, 0.07, (sx * rail_x, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)]
+        + [(0.06, 0.86, 0.06, (sx * span / 6, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)],
         bevel=0.008), mats.truss)
     # 枠の -Y 側のレールへ張り出したホールドダウン解除箱。畳んだ翼列を押さえる留め具の解除部
     add_mesh_obj("holddown_release_box", make_box(
         0.40, 0.22, 0.16, center=(-0.35, -0.58, frame_z)), mats.hull_dark)
     for sx in (-1.0, 1.0):
+        end_x = sx * (span / 2 - 0.12)
         # フレームの端から根元ヒンジの軸受へ立ち上がるヒンジアームと、斜めに支える支柱
         add_mesh_obj(f"hinge_boom:{sx:+.0f}", make_strut(
-            Vector((sx * 0.95, -0.05, 0.17)), Vector((sx * 0.92, hy, hz - 0.02)), 0.075), mats.truss)
+            Vector((sx * (span / 2 - 0.16), -0.05, 0.17)), Vector((end_x, hy, hz - 0.02)), 0.075), mats.truss)
         add_mesh_obj(f"hinge_boom_brace:{sx:+.0f}", make_strut(
-            Vector((sx * 0.58, 0.36, 0.15)), Vector((sx * 0.925, -0.03, 0.42)), 0.04), mats.truss)
+            Vector((sx * (span / 2 - 0.52), 0.36, 0.15)), Vector((sx * (span / 2 - 0.16), -0.03, 0.42)), 0.04), mats.truss)
         add_mesh_obj(f"hinge_bearing:{sx:+.0f}",
-            make_box(0.16, 0.16, 0.12, center=(sx * 0.95, hy, hz - 0.02)), mats.hull_dark)
+            make_box(0.16, 0.16, 0.12, center=(end_x, hy, hz - 0.02)), mats.hull_dark)
         # ヒンジ軸と同軸のばねドラム。収納ばねを巻き取り、展開トルクを掛ける
         bm_drum = make_cylinder(0.09, 0.09, 0.12, z_center=0.0, segments=16)
-        transform_bm(bm_drum, Matrix.Translation(Vector((sx * 1.10, hy, hz)))
+        transform_bm(bm_drum, Matrix.Translation(Vector((sx * (span / 2 + 0.08), hy, hz)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
         add_mesh_obj(f"spring_drum:{sx:+.0f}", bm_drum, mats.clamp)
     # ばねドラムから根元ヒンジの胴へ掛け渡す引張ケーブル
     add_mesh_obj("hinge_tension_cable", make_pipe([
-        Vector((-1.04, hy, hz + 0.03)), Vector((-0.45, hy - 0.01, hz + 0.06)),
-        Vector((0.45, hy - 0.01, hz + 0.06)), Vector((1.04, hy, hz + 0.03)),
+        Vector((-span / 2 - 0.02, hy, hz + 0.03)), Vector((-0.45, hy - 0.01, hz + 0.06)),
+        Vector((0.45, hy - 0.01, hz + 0.06)), Vector((span / 2 + 0.02, hy, hz + 0.03)),
     ], radius=0.012, segments=6), mats.hull_dark)
     # +X 側だけの駆動ラッチ箱。ヒンジアームを抱く位置へ掛け、畳んだ翼端を掴む爪と、
     # 展開を始める蹴り出しモーター(フレームのベイへ横置きする胴)を納める
@@ -2027,26 +2419,11 @@ def build_solar_mount(mats, half_len, thickness):
         [Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.03)), Vector((pad_x + 0.14, top.y - 0.06, -0.62))],
     ], radius=0.028, segments=8), mats.clamp)
 
-def build_solar_stub_panels(mats, half_len):
-    """翼根元の左右へ、翼面内で約45°に突き出た小さな補助パネル。7K-TM の翼-機器室
-    接合部にあるスタブパネルが範。ルートフレームの脇から斜め前方へ伸び、おもてにセルを持つ。"""
-    stub_len, stub_wid = 0.85, 0.55
-    for sx in (-1.0, 1.0):
-        rot = (0.0, sx * math.radians(45.0), 0.0)
-        diag = Vector((sx * math.sin(math.radians(45.0)), 0.0, math.cos(math.radians(45.0))))
-        base = Vector((sx * 0.42, 0.0, half_len - 0.50))
-        center = base + diag * (stub_len * 0.52)
-        add_mesh_obj(f"stub_panel:{sx:+.0f}", make_box(
-            stub_wid, 0.024, stub_len, center=center, rot_euler=rot), mats.hull)
-        add_mesh_obj(f"stub_cells:{sx:+.0f}", make_box(
-            stub_wid - 0.09, 0.010, stub_len - 0.10, center=center + Vector((0.0, 0.017, 0.0)), rot_euler=rot), mats.solar)
-        # ルートフレームの中桟からパネルの根元裏へ降りる短い支持柱
-        add_mesh_obj(f"stub_bracket:{sx:+.0f}", make_strut(
-            Vector((sx * 0.35, -0.02, 0.11)), Vector((sx * 0.44, -0.02, 0.42)), 0.035), mats.clamp)
-
 # 展開した翼が一面に揃わないよう、パネルごとに面法線方向へ振ったオフセット [m]。
 # ヒンジまわりの金具は揃ったままにし、本体と表裏の部品だけをずらす決定的な値
-PANEL_FACE_Y_OFFSETS = (0.012, -0.006, 0.016, 0.004)
+PANEL_FACE_Y_OFFSETS = (0.012, -0.006, 0.016, 0.004, -0.010, 0.008)
+PANEL_SIZE_SCALES = (0.98, 1.02, 0.97, 1.025, 0.99, 1.01)
+RUST_PANEL_INDICES = frozenset((1, 4))
 
 def build_solar_panel(name):
     reset_scene()
@@ -2055,36 +2432,38 @@ def build_solar_panel(name):
     build_hull_junction(mats, half_len, pedestal=False)
     spec = MANIFEST["deployables"]["solar_panel"]
     length, span, thickness = spec["length"], spec["span"], spec["thickness"]
-    build_solar_mount(mats, half_len, thickness)
-    build_solar_stub_panels(mats, half_len)
+    columns = int(spec["columns"])
+    tile_span = span / columns
+    build_solar_mount(mats, half_len, thickness, span)
 
-    body_span, body_len = span * 0.96, length * 0.96
-    # セル面は外周枠の内側に収め、翼幅方向へ12列・展開方向へ5行の区画に刻む
-    cell_x0, cell_x1 = -body_span / 2 + 0.075, body_span / 2 - 0.075
-    cell_z0, cell_z1 = 0.10, body_len - 0.075
-    cell_cols, cell_rows = 12, 5
-    cell_gap = 0.03
-    cell_pitch_x = (cell_x1 - cell_x0) / cell_cols
-    cell_pitch_z = (cell_z1 - cell_z0) / cell_rows
-
-    # 裏面のワッフル骨組み。展開方向へ3筋の縦材・翼幅方向へ5筋の横材と、ベイごとに
-    # 向きを交互にした斜め材を、基板面から細い角材で浮かせる
+    # 裏面の細い角材は基板から浮かせ、白い菱形と近接した横桟の組を作る
     lat_h, lat_w = 0.028, 0.024      # 角材の面からの高さ・面内の幅 [m]
     lat_y = -thickness / 2 - lat_h / 2
-    lat_x0, lat_x1 = -body_span / 2 + 0.05, body_span / 2 - 0.05
-    lat_z0, lat_z1 = 0.10, body_len - 0.06
-    rib_zs = [lat_z0 + (lat_z1 - lat_z0) * i / 4 for i in range(5)]
 
     def panel(index, side):
-        # おもて面 +Y は区画刻みのセルとバス帯、裏面 -Y は金茶のワッフル骨組み、
-        # 外周は細い銀色の枠。ヒンジ胴は根元の side 側の面に載る
+        scale = PANEL_SIZE_SCALES[index]
+        body_span = tile_span * 0.96 * scale
+        body_len = length * 0.96 * scale
+        # セル面は枠の内側に収め、幅方向へ8列・展開方向へ6行の区画に刻む
+        cell_x0, cell_x1 = -body_span / 2 + 0.075, body_span / 2 - 0.075
+        cell_z0, cell_z1 = 0.09, body_len - 0.075
+        cell_cols, cell_rows = 8, 6
+        cell_gap = 0.018
+        cell_pitch_x = (cell_x1 - cell_x0) / cell_cols
+        cell_pitch_z = (cell_z1 - cell_z0) / cell_rows
+        lat_x0, lat_x1 = -body_span / 2 + 0.055, body_span / 2 - 0.055
+        lat_z0, lat_z1 = 0.09, body_len - 0.055
+        mid_x, mid_z = (lat_x0 + lat_x1) / 2, (lat_z0 + lat_z1) / 2
+
+        # おもて面 +Y はガラス光沢のセルとバス帯、裏面 -Y は横縞の褐色基板。
         body = add_mesh_obj(f"panel:{index}",
-            make_box(body_span, thickness, body_len, center=(0.0, 0.0, length * 0.5)), mats.mli_white)
+            make_box(body_span, thickness, body_len, center=(0.0, 0.0, length * 0.5)), mats.solar_backing)
         body["name"] = "deployable-panel" if index == 0 else f"deployable-panel:{index}"
         bus_sheet = add_mesh_obj(f"panel_bus_sheet:{index}", make_box(
             cell_x1 - cell_x0 + 0.02, 0.006, cell_z1 - cell_z0 + 0.02,
             center=(0.0, thickness / 2 + 0.003, (cell_z0 + cell_z1) / 2)), mats.solar_bus)
-        # 12列×5行のセル区画。区画ごとに明暗のシェード材を決定的に割り当てる
+        # 区画ごとに明暗のシェード材を決定的に割り当て、2枚だけ赤褐色へ振る
+        solar_shades = mats.solar_rust_shades if index in RUST_PANEL_INDICES else mats.solar_shades
         bm_cells = bmesh.new()
         for row in range(cell_rows):
             for col in range(cell_cols):
@@ -2097,16 +2476,16 @@ def build_solar_panel(name):
                     ))) @ Matrix.Diagonal((
                         cell_pitch_x - cell_gap, 0.012, cell_pitch_z - cell_gap, 1.0,
                     )))
-                shade = (index * 7 + col * 13 + row * 29) % len(mats.solar_shades)
+                shade = (index * 7 + col * 13 + row * 29) % len(solar_shades)
                 bm_cells.faces.ensure_lookup_table()
                 for i in range(n0, len(bm_cells.faces)):
                     bm_cells.faces[i].material_index = shade
         bmesh.ops.recalc_face_normals(bm_cells, faces=bm_cells.faces)
-        cells = add_mesh_obj(f"panel_cells:{index}", shade_by_angle(bm_cells, 30.0), list(mats.solar_shades))
-        # 行の境目へ沿わせてセル面を横断するバス帯(帯より一回り明るい濃紺)
+        cells = add_mesh_obj(f"panel_cells:{index}", shade_by_angle(bm_cells, 30.0), list(solar_shades))
+        # セル列を横断するバス帯
         busbars = add_mesh_obj(f"panel_busbars:{index}", make_boxes([
             (cell_x1 - cell_x0, 0.010, 0.045, (0.0, thickness / 2 + 0.014, bz), (0.0, 0.0, 0.0))
-            for bz in (cell_z0 + cell_pitch_z, cell_z0 + 4 * cell_pitch_z)
+            for bz in (cell_z0 + 2 * cell_pitch_z, cell_z0 + 5 * cell_pitch_z)
         ], bevel=0.004), mats.solar_bus)
         frame = add_mesh_obj(f"panel_frame:{index}", make_boxes([
             (0.04, 0.09, body_len - 0.08, (sx * (body_span / 2 - 0.02), 0.0, 0.04 + (body_len - 0.08) / 2), (0.0, 0.0, 0.0))
@@ -2115,57 +2494,82 @@ def build_solar_panel(name):
             (body_span, 0.09, 0.04, (0.0, 0.0, 0.04), (0.0, 0.0, 0.0)),
             (body_span, 0.09, 0.04, (0.0, 0.0, body_len - 0.02), (0.0, 0.0, 0.0)),
         ], bevel=0.010), mats.pipe)
-        # 裏面の骨組み。縦材3筋と横材5筋の格子へ、ベイごとに向きを交互にした斜め材を入れる
+        # 裏面の横縞。骨格より下へ沈め、褐色の基板に細い帯として残す
+        stripes = add_mesh_obj(f"panel_back_stripes:{index}", make_boxes([
+            (lat_x1 - lat_x0, 0.003, 0.008, (0.0, -thickness / 2 - 0.0015, lat_z0 + (lat_z1 - lat_z0) * row / 7),
+             (0.0, 0.0, 0.0))
+            for row in range(1, 7)
+        ], bevel=0.002), mats.solar_back_stripe)
+
+        def diagonal(start, end):
+            dx, dz = end[0] - start[0], end[1] - start[1]
+            return (lat_w, lat_h, math.hypot(dx, dz),
+                ((start[0] + end[0]) / 2, lat_y, (start[1] + end[1]) / 2),
+                (0.0, math.atan2(dx, dz), 0.0))
+
+        diamond_nodes = ((lat_x0, mid_z), (mid_x, lat_z0), (lat_x1, mid_z), (mid_x, lat_z1))
         lattice_parts = [
-            (lat_w, lat_h, lat_z1 - lat_z0, (sx, lat_y, (lat_z0 + lat_z1) / 2), (0.0, 0.0, 0.0))
-            for sx in (-body_span / 3, 0.0, body_span / 3)
-        ] + [
-            (lat_x1 - lat_x0, lat_h, lat_w, (0.0, lat_y, z), (0.0, 0.0, 0.0))
-            for z in rib_zs
+            diagonal(diamond_nodes[node], diamond_nodes[(node + 1) % len(diamond_nodes)])
+            for node in range(len(diamond_nodes))
         ]
-        for bay in range(len(rib_zs) - 1):
-            z0, z1 = rib_zs[bay] + lat_w / 2, rib_zs[bay + 1] - lat_w / 2
-            xa, xb = (lat_x0, lat_x1) if bay % 2 == 0 else (lat_x1, lat_x0)
-            lattice_parts.append((
-                lat_w, lat_h, math.hypot(xb - xa, z1 - z0),
-                ((xa + xb) / 2, lat_y, (z0 + z1) / 2),
-                (0.0, math.atan2(xb - xa, z1 - z0), 0.0),
-            ))
+        # 横桟は1本でなく、少し間隔を空けた2本を一組にする
+        lattice_parts.extend(
+            (lat_x1 - lat_x0, lat_h, lat_w, (0.0, lat_y, mid_z + offset), (0.0, 0.0, 0.0))
+            for offset in (-0.035, 0.035)
+        )
         lattice = add_mesh_obj(f"panel_lattice:{index}", make_boxes(lattice_parts, bevel=0.004), mats.solar_lattice)
-        bm_hinge = make_cylinder(0.035, 0.035, span * 0.98, z_center=0.0, segments=12)
+
+        # 一部の骨格交点を白い四角金具で覆う
+        joint_y = lat_y - lat_h / 2 - 0.012
+        joints = add_mesh_obj(f"panel_lattice_joints:{index}", make_boxes([
+            (0.095, 0.05, 0.095, (x, joint_y, z), (0.0, 0.0, 0.0))
+            for node, (x, z) in enumerate(diamond_nodes)
+            if (index + node) % 2 == 0
+        ] + [
+            (0.11, 0.055, 0.11, (mid_x, joint_y, mid_z), (0.0, 0.0, 0.0))
+        ], bevel=0.008), mats.solar_lattice)
+
+        # 四隅と中央寄りへ少数の灰色アクチュエーターを非対称に置く
+        actuator_sites = {
+            0: ((lat_x0 + 0.10, lat_z0 + 0.10),),
+            1: ((lat_x0 + 0.12, lat_z1 - 0.12),),
+            2: ((mid_x + 0.03, lat_z1 - 0.12),),
+            3: ((mid_x - 0.04, lat_z0 + 0.10),),
+            4: ((lat_x1 - 0.12, lat_z0 + 0.12),),
+            5: ((lat_x1 - 0.10, lat_z1 - 0.11),),
+        }
+        actuator_parts = []
+        for site, (x, z) in enumerate(actuator_sites.get(index, ())):
+            actuator_y = -thickness / 2 - lat_h - 0.035 - site * 0.006
+            actuator_parts.append(add_mesh_obj(f"panel_actuator:{index}:{site}", make_box(
+                0.13, 0.08, 0.12, center=(x, actuator_y, z), bevel=0.018), mats.solar_actuator))
+            bm_actuator_pin = make_cylinder(0.022, 0.022, 0.07, z_center=0.0, segments=10)
+            transform_bm(bm_actuator_pin, Matrix.Translation(Vector((x, actuator_y + 0.025, z)))
+                @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
+            actuator_parts.append(add_mesh_obj(f"panel_actuator_pin:{index}:{site}", bm_actuator_pin, mats.pipe))
+
+        bm_hinge = make_cylinder(0.035, 0.035, tile_span * 0.98, z_center=0.0, segments=12)
         transform_bm(bm_hinge, Matrix.Translation(Vector((0.0, -side * thickness / 2, 0.0)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
         knuckle = add_mesh_obj(f"panel_hinge_hardware:{index}", bm_hinge, mats.clamp)
-        # ヒンジのばねドラム(胴の -X 端)と引張ケーブル、開ききりを掴むラッチ爪(+X 端)
+        # ヒンジのばねドラムと引張ケーブル、開ききりを掴むラッチ爪
         bm_drum = make_cylinder(0.055, 0.055, 0.09, z_center=0.0, segments=12)
-        transform_bm(bm_drum, Matrix.Translation(Vector((-span / 2 + 0.14, -side * thickness / 2, 0.0)))
+        transform_bm(bm_drum, Matrix.Translation(Vector((-tile_span / 2 + 0.10, -side * thickness / 2, 0.0)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
         drum = add_mesh_obj(f"panel_spring_drum:{index}", bm_drum, mats.clamp)
         cable = add_mesh_obj(f"panel_tension_cable:{index}", make_pipe([
-            Vector((-span / 2 + 0.14, -side * thickness / 2 - 0.05, 0.02)),
+            Vector((-tile_span / 2 + 0.10, -side * thickness / 2 - 0.05, 0.02)),
             Vector((0.0, -side * thickness / 2 - 0.05, 0.05)),
-            Vector((span / 2 - 0.16, -side * thickness / 2 - 0.05, 0.02)),
+            Vector((tile_span / 2 - 0.10, -side * thickness / 2 - 0.05, 0.02)),
         ], radius=0.008, segments=6), mats.hull_dark)
         claw = add_mesh_obj(f"panel_latch_claw:{index}", make_box(
             0.07, 0.09, 0.14,
-            center=(span / 2 - 0.14, -side * thickness / 2 - 0.02, -0.04),
+            center=(tile_span / 2 - 0.10, -side * thickness / 2 - 0.02, -0.04),
             rot_euler=(0.0, 0.0, math.radians(-14))), mats.clamp)
         # パネル本体と表裏の部品は、決定的な高さ差のぶん面法線方向へずらす
-        face_parts = [body, bus_sheet, cells, busbars, frame, lattice]
+        face_parts = [body, bus_sheet, cells, busbars, frame, stripes, lattice, joints, *actuator_parts]
         hinge_parts = [knuckle, drum, cable, claw]
         parts = face_parts + hinge_parts
-        # 翼端セクション: 外側縁へアンテナ竿2本と航法灯(根元側を向く -X が赤、+X が緑)
-        if index == spec["count"] - 1:
-            for sx, light_mat, light_name in ((-1.0, mats.nav_red, "nav_red"), (1.0, mats.nav_green, "nav_green")):
-                tip = Vector((sx * (body_span / 2 - 0.12), 0.0, body_len - 0.02))
-                antenna = add_mesh_obj(f"tip_antenna:{index}:{sx:+.0f}", make_pipe([
-                    tip, tip + Vector((sx * 0.22, 0.0, 0.72)),
-                ], radius=0.012, segments=8), mats.pipe)
-                nav_light = add_mesh_obj(f"nav_light_{light_name}:{index}", make_box(
-                    0.05, 0.05, 0.07,
-                    center=(sx * (body_span / 2 - 0.05), thickness / 2 + 0.03, body_len - 0.08)), light_mat)
-                face_parts += [antenna, nav_light]
-                parts += [antenna, nav_light]
         y_offset = PANEL_FACE_Y_OFFSETS[index % len(PANEL_FACE_Y_OFFSETS)]
         for obj in face_parts:
             obj.data.transform(Matrix.Translation(Vector((0.0, y_offset, 0.0))))

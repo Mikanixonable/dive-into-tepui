@@ -1,5 +1,4 @@
-// 破片1つの寿命と接触の振る舞い。弾が当たったことを出来事として記録する。薬莢は円筒の当たり
-// 判定を持ち、自機や他の薬莢へ触れたことも記録する。
+// 破片・薬莢の寿命と接触に関する規則を実行する。
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { add, addScaled, scale, sub, type Vec3 } from '../../../math/vec3';
 import { qRotate } from '../../../math/quat';
@@ -31,8 +30,7 @@ export class DebrisReaction implements DynamicMotionBehavior {
   // 排出経路のある破片は、終端へ達するまで機体座標系の滑りに沿って進む。
   private slide: DebrisSlide | null;
 
-  // bornSim が null の破片は寿命で消えない。薬莢は円筒の形に沿った当たり判定を備える — 判定の
-  // 有無が個体差なので、メソッドでなくフィールドで持つ。
+  // 寿命の起点と排出経路を持ち、kind に応じた接触判定を提供する。
   public constructor(
     private readonly kind: DebrisKind['kind'],
     private readonly bornSim: number | null,
@@ -68,8 +66,7 @@ export class DebrisReaction implements DynamicMotionBehavior {
     );
   }
 
-  // 排出経路のある破片を経路に沿って進める。経路は生まれた時点の等速の機体座標系で from→to を
-  // なぞり、終端へ達したら以後は自由な破片になる。
+  // 排出中の破片を機体相対の経路に沿わせ、終端で自由飛行へ移す。
   public updateCommands(self: DynamicMotion, _simDt: number): void {
     const slide = this.slide;
     if (slide === null) return;
