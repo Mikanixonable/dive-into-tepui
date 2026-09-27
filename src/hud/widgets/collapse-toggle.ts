@@ -13,14 +13,6 @@ export interface CollapseToggleLabels {
   readonly collapsedTitle: string;
 }
 
-// マップビュー下部の PREDICT バー用トグルの見た目。
-export const PREDICT_TOGGLE_LABELS: CollapseToggleLabels = {
-  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
-  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-  expandedTitle: '下部パネルを閉じる',
-  collapsedTitle: '下部パネルを開く',
-};
-
 // button の見た目(グリフ・aria-expanded・title)を target の collapsed クラスに合わせる。
 export function syncCollapseToggle(button: HTMLElement, target: HTMLElement, labels: CollapseToggleLabels): void {
   const collapsed = target.classList.contains('collapsed');

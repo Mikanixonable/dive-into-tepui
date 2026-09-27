@@ -232,7 +232,7 @@ export class PropertyWindow<A extends string = string> {
     this.win.onClipChange = (clipped) => {
       if (content.monitorWhenClipped === true) {
         this.win.element.classList.toggle('property-window-monitor', clipped);
-        this.reclamp();
+        this.win.reclamp();
       }
       this.onClipChange?.(clipped);
     };
@@ -299,13 +299,13 @@ export class PropertyWindow<A extends string = string> {
   // プロパティ行の値だけを毎フレーム差分更新する。行構成が変わった場合のみ DOM を組み直す。
   public syncRows(rows: readonly PropertyRow[]): void {
     this.rows.sync(rows);
-    this.reclamp();
+    this.win.reclamp();
   }
 
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。
   public syncItems(items: readonly PropertyWindowItem<A>[]): void {
     this.items.sync(items);
-    this.reclamp();
+    this.win.reclamp();
   }
 
   // 対象に関連する物体の集合が変わったときだけ DOM を組み直す。欄は常にプロパティ行より上に置く。
@@ -314,7 +314,7 @@ export class PropertyWindow<A extends string = string> {
     if (this.relatedItems.element.childElementCount > 0 && !this.relatedItems.element.parentElement) {
       this.win.body.insertBefore(this.relatedItems.element, this.rows.element);
     }
-    this.reclamp();
+    this.win.reclamp();
   }
 
   public get clipped(): boolean {
@@ -331,17 +331,12 @@ export class PropertyWindow<A extends string = string> {
       this.controlsEl.appendChild(controls);
       if (!this.controlsEl.parentElement) this.win.body.insertBefore(this.controlsEl, this.win.body.firstChild);
     }
-    this.reclamp();
+    this.win.reclamp();
   }
 
   // window レイヤ内で最前面にする。
   public bringToFront(): void {
     this.win.bringToFront();
-  }
-
-  // 本文の変化でウィンドウの高さが伸びたときに、画面外へのはみ出しだけ戻す。
-  private reclamp(): void {
-    this.moveTo(this.win.element.offsetLeft, this.win.element.offsetTop);
   }
 
   // 要求座標をビューポート内へクランプして配置する。
