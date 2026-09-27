@@ -8,7 +8,7 @@ import { RunEventLog } from '../../src/game/run-events';
 import { Viewer, type SerializedViewer } from '../../src/game/viewer/viewer';
 import { solarSystemParts } from '../physics/test-helpers';
 import type { CameraFrameSample } from '../../src/game/viewer/focus-camera-selection';
-import type { SerializedPredictPanelSelection } from '../../src/game/viewer/predict-panel-selection';
+import type { SerializedDisplayTimelineSelection } from '../../src/game/viewer/display-timeline-selection';
 import type { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
 
@@ -71,7 +71,7 @@ export function register(): void {
     const { system } = solarSystemParts();
     const viewer = newViewer(system);
     viewer.orbitReference.setMode('moon');
-    const panel = viewer.predictPanel;
+    const panel = viewer.displayTimeline;
     panel.setFrameCenter('moon');
     panel.setFrameRotation({ kind: 'revolution', id: 'moon' });
     panel.selectCustomDuration(3 * 86400);
@@ -92,8 +92,8 @@ export function register(): void {
     // 既定へ落ちたことを往復が見逃さないよう、確かめる項目はどれも既定と違う値にしてある。
     const initial = newViewer(system).serialize();
     assert.notEqual(serialized.orbitReference, initial.orbitReference);
-    for (const key of Object.keys(serialized.predictPanel) as (keyof SerializedPredictPanelSelection)[]) {
-      assert.notDeepEqual(serialized.predictPanel[key], initial.predictPanel[key], key);
+    for (const key of Object.keys(serialized.displayTimeline) as (keyof SerializedDisplayTimelineSelection)[]) {
+      assert.notDeepEqual(serialized.displayTimeline[key], initial.displayTimeline[key], key);
     }
     assert.notEqual(serialized.camera.combat.staleFollowFrames, initial.camera.combat.staleFollowFrames);
     assert.notEqual(serialized.camera.combat.focusReplaced, initial.camera.combat.focusReplaced);

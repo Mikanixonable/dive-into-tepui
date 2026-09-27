@@ -252,11 +252,4 @@ export const COMBAT_VIEW_STYLE = `
     min-height: var(--hit-target-min);
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  #hud:not(.base-mode) .hud-combat-root.active .combat-panel *,
-  #hud:not(.base-mode) .hud-combat-root.active #hud-combat-camera-controls *,
-  #hud:not(.base-mode) #hud-topbar {
-    transition-duration: 0.001ms !important;
-  }
-}
 `;

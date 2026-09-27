@@ -6,10 +6,9 @@ import { CloseButton } from '../../../hud/widgets/close-button';
 import { TabBar } from '../../../hud/widgets/tab-bar';
 import { stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { HELP_PANEL_STYLE } from '../style/help-panel-style';
-import { helpRows, type HelpRow } from './help-content';
+import { helpRows, type HelpCategory } from './help-content';
+import { SYSTEM_MODAL_GROUP } from '../../../hud/overlay-manager';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
-
-type HelpCategory = 'flight' | 'camera' | 'combat' | 'map' | 'system';
 
 const HELP_TABS: readonly (readonly [HelpCategory, string])[] = [
   ['flight', 'FLIGHT'],
@@ -19,23 +18,14 @@ const HELP_TABS: readonly (readonly [HelpCategory, string])[] = [
   ['system', 'SYSTEM'],
 ];
 
-function helpCategory(row: HelpRow): HelpCategory {
-  const label = row.label;
-  if (label.includes('視点') || label.includes('フォーカス')) return 'camera';
-  if (label.includes('ターゲット') || label.includes('照準') || label.includes('機関砲') || label.includes('装填')) return 'combat';
-  if (label.includes('ノード') || label.includes('時間加速') || label.includes('ビュー切替')
-    || label.includes('プロパティ・メニュー')) return 'map';
-  if (label.includes('ヘルプ') || label.includes('ESC') || label.includes('デバッグ')
-    || label.includes('セーブ') || label.includes('再出撃')) return 'system';
-  return 'flight';
-}
+// OverlayManager の台帳上の id。開いているかどうかは登録の有無が正本。
+const OVERLAY_ID = 'help';
 
 export class HelpPanel implements OverlayHandle {
   private readonly el: HTMLElement;
   private readonly tabs: TabBar<HelpCategory>;
   private readonly sections = new Map<HelpCategory, HTMLElement>();
   private readonly contextEl: HTMLElement;
-  private _isOpen = false;
 
   // 操作説明の DOM を組み立てる。要素は開くまで DOM へ挿さず、overlayManager が modal の層へ置く。
   // 閉じた状態で始まる。
@@ -81,7 +71,7 @@ export class HelpPanel implements OverlayHandle {
     }
 
     for (const row of helpRows()) {
-      const list = this.sections.get(helpCategory(row))?.querySelector<HTMLElement>('.help-reference-list');
+      const list = this.sections.get(row.category)?.querySelector<HTMLElement>('.help-reference-list');
       if (list === null || list === undefined) continue;
       const item = document.createElement('div');
       item.className = 'help-reference-row';
@@ -106,7 +96,8 @@ export class HelpPanel implements OverlayHandle {
     stopDragPropagation(this.el);
   }
 
-  public get isOpen(): boolean { return this._isOpen; }
+  // 開いているかどうか。台帳への登録の有無が正本。
+  public get isOpen(): boolean { return this.overlayManager.isOverlayOpen(OVERLAY_ID); }
 
   private setCategory(category: HelpCategory): void {
     this.tabs.setSelected(category);
@@ -119,31 +110,29 @@ export class HelpPanel implements OverlayHandle {
   // router から [H] の単発入力を受け取って開閉を切り替える。
   public handleCommand(commandId: string): void {
     if (commandId !== K.help.code) return;
-    if (this._isOpen) this.close();
+    if (this.isOpen) this.close();
     else this.open();
   }
 
   // パネルを開く。既に開いていれば何もしない。
   public open(): void {
-    if (this._isOpen) return;
-    this._isOpen = true;
+    if (this.isOpen) return;
     const workspace = document.getElementById('hud')?.dataset['workspace'];
     const category: HelpCategory = workspace === 'map' ? 'map' : 'flight';
     this.contextEl.textContent = workspace === 'map' ? 'MAP' : workspace === 'construction' ? 'BUILD' : 'FLIGHT';
     this.setCategory(category);
     this.el.style.display = 'flex';
     // 系のモーダル(ヘルプ・一時停止など)は同じ排他グループに属し、同時に1つしか開かない。
-    this.overlayManager.open('help', this.el, this, {
-      kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true, exclusiveGroup: 'system-modal',
+    this.overlayManager.open(OVERLAY_ID, this.el, this, {
+      kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true, exclusiveGroup: SYSTEM_MODAL_GROUP,
     });
   }
 
   // パネルを閉じる。既に閉じていれば何もしない。
   public close(): void {
-    if (!this._isOpen) return;
-    this._isOpen = false;
+    if (!this.isOpen) return;
     this.el.style.display = 'none';
-    this.overlayManager.close('help');
+    this.overlayManager.close(OVERLAY_ID);
   }
 
   // 指定したノードがこのパネルの DOM 内にあるかを判定する。

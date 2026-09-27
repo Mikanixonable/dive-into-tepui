@@ -24,6 +24,10 @@ const KIND_LAYER: Readonly<Record<SurfaceKind, OverlayLayerName>> = {
 // 開かないための排他グループ名。クリップ状態の遷移ごとの出し入れは各ウィンドウ自身が持つ。
 export const UNCLIPPED_WINDOW_GROUP = 'unclipped-window';
 
+// 系のモーダル(一時停止・ヘルプ・セーブデータ管理)が同時に高々1つしか開かないための
+// 排他グループ名。
+export const SYSTEM_MODAL_GROUP = 'system-modal';
+
 export interface OverlaySpec {
   readonly kind: OverlayKind;
   readonly closeOnEscape: boolean;
