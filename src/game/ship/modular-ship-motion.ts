@@ -1,6 +1,6 @@
 // モジュール船を一体剛体として進め、船体由来の形状・質量・補助システムを同期する。
-import { cross, add, sub, v3, type Vec3 } from '../../math/vec3';
-import { LOCAL_RIGHT, qRotate } from '../../math/quat';
+import { cross, add, scale, sub, v3, type Vec3 } from '../../math/vec3';
+import { LOCAL_RIGHT, qInvert, qRotate } from '../../math/quat';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
@@ -256,6 +256,29 @@ export class ModularShipMotion extends DynamicMotion {
   public resetRigidState(state: KinematicState, attitude: Attitude = this.att): void {
     this.resetAttitude(attitude);
     this.reset(state);
+  }
+
+  // worldPoint に加わる力積 [N·s] で、重心速度と機体座標系の角速度を瞬時に更新する。
+  public applyImpulseAtPoint(impulse: Vec3, worldPoint: Vec3): void {
+    const attitude = this.att;
+    const worldToBody = qInvert(attitude.q);
+    const armBody = qRotate(worldToBody, sub(worldPoint, this.state.r));
+    const impulseBody = qRotate(worldToBody, impulse);
+    const angularImpulse = cross(armBody, impulseBody);
+    const nextAttitude: Attitude = {
+      ...attitude,
+      w: v3(
+        attitude.w.x + angularImpulse.x / attitude.inertia.x,
+        attitude.w.y + angularImpulse.y / attitude.inertia.y,
+        attitude.w.z + angularImpulse.z / attitude.inertia.z,
+      ),
+    };
+    const nextState = kinematicState<'eci'>(
+      this.state.t,
+      this.state.r,
+      add(this.state.v, scale(impulse, 1 / this.mass)),
+    );
+    this.resetRigidState(nextState, nextAttitude);
   }
 
   public ignoreCollisionWith(other: EntityContactParticipant, until: number): void {
