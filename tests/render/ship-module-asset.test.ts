@@ -287,6 +287,7 @@ export function register(): void {
   test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', async () => {
     await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
+    const solarFaceOffsets: number[] = [];
     const expected = [
       {
         modelId: 'radiator-standard',
@@ -327,6 +328,7 @@ export function register(): void {
           assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.04, `${spec.modelId} depth: ${size.z}`);
           solarWidths.push(size.x);
           solarDepths.push(size.z);
+          solarFaceOffsets.push((bbox.min.y + bbox.max.y) / 2);
         } else {
           assert.ok(Math.abs(size.x - spec.width) < 1e-3, `${spec.modelId} width: ${size.x} expected ${spec.width}`);
           assert.ok(Math.abs(size.z - spec.depth) < 1e-3, `${spec.modelId} depth: ${size.z} expected ${spec.depth}`);
@@ -336,6 +338,7 @@ export function register(): void {
       if (spec.modelId === 'solar-panel-standard') {
         assert.ok(Math.max(...solarWidths) > Math.min(...solarWidths));
         assert.ok(Math.max(...solarDepths) > Math.min(...solarDepths));
+        assert.ok(Math.max(...solarFaceOffsets) - Math.min(...solarFaceOffsets) > 0.01);
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {
@@ -346,6 +349,28 @@ export function register(): void {
         hinges.map((hinge) => hinge.userData.panelIndex),
         [...Array(spec.count).keys()],
       );
+    }
+  });
+
+  test('ship module asset: 太陽電池セルはクリアコートの光沢ガラス面を持つ', async () => {
+    await loadShipModuleModels();
+    const solar = moduleRoots(parsedRoot()).get('solar-panel-standard');
+    assert.ok(solar !== undefined);
+    const cellGroups: THREE.Object3D[] = [];
+    solar.traverse((child) => {
+      if (child.name.startsWith('panel_cells:')) cellGroups.push(child);
+    });
+    assert.equal(cellGroups.length, SOLAR_PANEL_COUNT);
+    for (const cells of cellGroups) {
+      cells.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materials) {
+          assert.ok(material instanceof THREE.MeshPhysicalMaterial, `${cells.name} is not a physical glass material`);
+          assert.ok(material.clearcoat >= 0.7, `${cells.name} clearcoat: ${material.clearcoat}`);
+          assert.ok(material.clearcoatRoughness <= 0.03, `${cells.name} coat roughness: ${material.clearcoatRoughness}`);
+        }
+      });
     }
   });
 
