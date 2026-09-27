@@ -8,7 +8,13 @@ import { HudEls } from './hud-els';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
 import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
-import { MAP_PANEL_STYLE } from './style/map-panel-style';
+import { PLAN_PANEL_STYLE } from './style/plan-panel-style';
+import { VIEW_OPTIONS_PANEL_STYLE } from './style/view-options-panel-style';
+import { PREDICT_PANEL_STYLE } from './style/predict-panel-style';
+import { FRAME_CONTROLS_STYLE } from './style/frame-controls-style';
+import { ORBIT_GUIDE_STYLE } from './style/orbit-guide-style';
+import { STAGE_CONTROLS_STYLE } from './style/stage-controls-style';
+import { OBJECT_PLACER_STYLE } from './style/object-placer-style';
 import { STAGE_STATUS_STYLE } from './style/stage-status-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
@@ -25,7 +31,10 @@ import type { PanelCollapse } from './panel-shell';
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
 const STYLE =
   LAYOUT_TOKENS_STYLE + SKELETON_STYLE + EDITORIAL_DATA_STYLE
-  + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE
+  + COMBAT_PANEL_ROWS_STYLE
+  + PLAN_PANEL_STYLE + VIEW_OPTIONS_PANEL_STYLE + PREDICT_PANEL_STYLE
+  + FRAME_CONTROLS_STYLE + ORBIT_GUIDE_STYLE + STAGE_CONTROLS_STYLE
+  + OBJECT_PLACER_STYLE + STAGE_STATUS_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE;
 
 
