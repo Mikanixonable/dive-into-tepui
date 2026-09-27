@@ -11,6 +11,8 @@ import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
 import { ThrustEffects } from '../../src/render/dynamic/player/thrust-effects';
 import { RcsEffects } from '../../src/render/dynamic/player/rcs-effects';
 import { DEFAULT_PROTEIN_DISPLAY } from '../../src/render/protein/protein-display';
+import { SunLight } from '../../src/render/pipeline/sun-light';
+import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { add, len, sub, v3, type Vec3 } from '../../src/math/vec3';
@@ -56,14 +58,17 @@ function cameraFrame(): CameraFrame {
   return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, false, v3());
 }
 
-// 表示時刻とカメラだけを持つ、そのフレームの共通入力。
+// そのフレームの共通入力。恒星光と天体影は実物で組む(どちらも uniform の器なので node で立つ)。
 function viewFrame(camera: CameraFrame, pools: InstancedPools): DynamicViewFrame {
+  const sunLight = new SunLight();
   return {
     displayTime: DISPLAY_TIME,
     camera,
     style: 'realistic',
-    visual: { proteinVibration: false },
+    visual: { proteinVibration: false, thrustPlume: 'simple' },
     proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
+    sunLight,
+    bodyShadow: new BodyShadow(sunLight),
     pools,
   };
 }
@@ -161,7 +166,8 @@ export function register(): void {
 
   test('dynamic view source: マニューバ噴射の揺らぎは表示時刻だけで決まる', () => {
     const scene = new THREE.Scene();
-    const effects = new ThrustEffects(scene, 'entity-0');
+    const sunLight = new SunLight();
+    const effects = new ThrustEffects(scene, 'entity-0', 0, sunLight, new BodyShadow(sunLight));
     const anchor = new THREE.Object3D();
     anchor.updateWorldMatrix(true, false);
     const syncAt = (displayTime: number): void => effects.syncFromAnchor(
@@ -179,7 +185,8 @@ export function register(): void {
 
   test('dynamic view source: module thrust anchor の出口から排気方向へプルームを置く', () => {
     const scene = new THREE.Scene();
-    const effects = new ThrustEffects(scene, 'entity-anchor');
+    const sunLight = new SunLight();
+    const effects = new ThrustEffects(scene, 'entity-anchor', 0, sunLight, new BodyShadow(sunLight));
     const anchor = new THREE.Object3D();
     anchor.position.set(4, 5, 6);
     anchor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, -1));
