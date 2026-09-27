@@ -1,4 +1,5 @@
 // 太陽電池とラジエーターのパネル姿勢を、取付ヒンジを基準に計算する。
+// 太陽電池は4列それぞれが2枚の鎖を持ち、ラジエーターは1列の鎖を持つ。
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_FOLD_COUNT,
@@ -75,7 +76,7 @@ export function deployablePanelPoses(
   return chainPoses(shape, faceZ, deployed);
 }
 
-// 太陽電池は2列それぞれに3枚の剛体鎖を持つ。列ごとに同じ展開姿勢を取り、全体を2×3へ並べる。
+// 太陽電池は4列それぞれに2枚の剛体鎖を持つ。列ごとに同じ展開姿勢を取り、全体を4×2へ並べる。
 function solarPanelPoses(shape: ChainShape, faceZ: number, deployed: number): readonly PanelPose[] {
   const rows = shape.count / SOLAR_PANEL_COLUMNS;
   const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;
