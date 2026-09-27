@@ -78,6 +78,16 @@ export function evaluateShaderNode(input: unknown): ShaderValue {
       case 'min': return Math.min(value as number, evaluateShaderNode(node.bNode) as number);
       case 'exp2': return 2 ** (value as number);
       case 'fract': return (value as number) - Math.floor(value as number);
+      case 'abs': return Math.abs(value as number);
+      case 'oneMinus': return 1 - (value as number);
+      case 'smoothstep': {
+        // TSL の引数順は (low, high, x) で、aNode=low・bNode=high・cNode=x。
+        const low = value as number;
+        const high = evaluateShaderNode(node.bNode) as number;
+        const x = evaluateShaderNode(node.cNode) as number;
+        const t = Math.min(Math.max((x - low) / (high - low), 0), 1);
+        return t * t * (3 - 2 * t);
+      }
       case 'negate': return -(value as number);
       case 'sqrt': return Math.sqrt(value as number);
       case 'sin': return Math.sin(value as number);
