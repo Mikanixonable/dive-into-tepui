@@ -1,13 +1,14 @@
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_4 } from '../../theme';
-import { clampOverlayPosition } from '../layout';
+import { placeOverlayAt } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';
 import { injectTitleLogotypeStyle, TITLE_LOGOTYPE_HTML } from '../title-logotype';
 import { PAUSE_MENU_STYLE } from '../style/pause-menu-style';
 import { SETTINGS_VIEW_STYLE } from '../style/settings-view-style';
+import { SYSTEM_MODAL_GROUP } from '../overlay-manager';
 import type { OverlayHandle, OverlayManager, SurfaceSpec } from '../overlay-manager';
 import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider, TabBar,
@@ -16,6 +17,9 @@ import { wireHeaderDrag } from '../window-drag';
 import { SettingsView } from './settings-view';
 
 type PauseMenuTab = 'pause' | 'settings';
+
+// OverlayManager の台帳上の id。開いているかどうかは登録の有無が正本。
+const OVERLAY_ID = 'pause-menu';
 
 // ESCメニュー(#hud-pause-menu)。一時停止操作と詳細設定を外側タブで切り替え、ヘッダーのドラッグ移動と
 // 最小化を持つ。
@@ -29,7 +33,6 @@ export class PauseMenu implements OverlayHandle {
   private readonly _settingsView: SettingsView;
   public get settingsView(): SettingsView { return this._settingsView; }
   private readonly minimizeToggle: HTMLButtonElement;
-  private _isOpen = false;
   private minimized = false;
   private hasCustomPosition = false;
   private activeTab: PauseMenuTab = 'pause';
@@ -138,6 +141,11 @@ export class PauseMenu implements OverlayHandle {
     this.resizeObserver.observe(this.panel);
   }
 
+  // 開いているかどうか。台帳への登録の有無が正本。
+  private get isOpen(): boolean {
+    return this.overlayManager.isOverlayOpen(OVERLAY_ID);
+  }
+
   // タイトルとバージョンを ESC メニュー上部へ積む。
   private buildBrand(): HTMLElement {
     // 共有ロゴと版情報を、操作ヘッダーから独立したブランド欄へまとめる。
@@ -230,7 +238,7 @@ export class PauseMenu implements OverlayHandle {
     this.pauseTabPanel.hidden = tab !== 'pause';
     this._settingsView.element.hidden = tab !== 'settings';
     this._settingsView.setActive(tab === 'settings');
-    if (this._isOpen) this.overlayManager.reconfigure('pause-menu', this.overlaySpec());
+    if (this.isOpen) this.overlayManager.reconfigure(OVERLAY_ID, this.overlaySpec());
     this.reclamp();
   }
 
@@ -239,7 +247,7 @@ export class PauseMenu implements OverlayHandle {
     return {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false,
       gatesInput: this.activeTab === 'settings', dimsBackground: false,
-      pausesGame: true, exclusiveGroup: 'system-modal',
+      pausesGame: true, exclusiveGroup: SYSTEM_MODAL_GROUP,
     };
   }
 
@@ -269,21 +277,20 @@ export class PauseMenu implements OverlayHandle {
 
   // パネルの開閉を切り替える。force を渡すと開閉状態を明示的に指定する。
   public toggle(force?: boolean): void {
-    const show = force !== undefined ? force : !this._isOpen;
-    if (show === this._isOpen) return;
+    const show = force !== undefined ? force : !this.isOpen;
+    if (show === this.isOpen) return;
     // 閉じる前にタブを戻し、設定タブの試聴と入力遮断を解いておく。
     if (!show) this.setActiveTab('pause');
-    this._isOpen = show;
     this.panel.style.display = show ? 'grid' : 'none';
     if (show) {
       // 開くたびに一時停止タブ・展開状態から始め、動かされていなければ中央へ置く。
       // 先に登録して要素を DOM へ置いてから、実寸を測って中央寄せする。
-      this.overlayManager.open('pause-menu', this.panel, this, this.overlaySpec());
+      this.overlayManager.open(OVERLAY_ID, this.panel, this, this.overlaySpec());
       this.setActiveTab('pause');
       this.setMinimized(false);
       if (!this.hasCustomPosition) this.centerPanel();
     } else {
-      this.overlayManager.close('pause-menu');
+      this.overlayManager.close(OVERLAY_ID);
     }
   }
 
@@ -295,25 +302,18 @@ export class PauseMenu implements OverlayHandle {
 
   // 要求座標をビューポート内へクランプして配置する。
   private moveTo(clientX: number, clientY: number): void {
-    const rect = this.panel.getBoundingClientRect();
-    const pos = clampOverlayPosition(
-      { x: clientX, y: clientY },
-      { width: rect.width, height: rect.height },
-      { width: window.innerWidth, height: window.innerHeight },
-    );
-    this.panel.style.left = `${pos.x}px`;
-    this.panel.style.top = `${pos.y}px`;
+    placeOverlayAt(this.panel, { x: clientX, y: clientY });
   }
 
   // 現在位置をビューポート内へ収め直す。
   private reclamp(): void {
-    if (!this._isOpen) return;
+    if (!this.isOpen) return;
     this.moveTo(this.panel.offsetLeft, this.panel.offsetTop);
   }
 
   // 開いている間、設定ビューの表示を更新する。nowMs [ms] はフレームの実時刻。毎フレーム呼ぶ。
   public sync(nowMs: number): void {
-    if (!this._isOpen) return;
+    if (!this.isOpen) return;
     this._settingsView.sync(nowMs);
   }
 

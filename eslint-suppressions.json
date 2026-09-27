@@ -548,19 +548,19 @@
       "count": 1
     }
   },
+  "src/game/viewer/display-timeline-commands.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "src/game/viewer/display-timeline-selection.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
   "src/game/viewer/focus-target.ts": {
     "no-restricted-syntax": {
       "count": 1
-    }
-  },
-  "src/game/viewer/predict-panel-commands.ts": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/game/viewer/predict-panel-selection.ts": {
-    "no-restricted-syntax": {
-      "count": 2
     }
   },
   "src/hud/overlay-manager.ts": {

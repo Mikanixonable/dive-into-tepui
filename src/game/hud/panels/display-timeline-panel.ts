@@ -1,17 +1,19 @@
 // 未来表示の操作パネル。未来/過去の期間ピル、目盛り表記の切り替え、表示時刻のスクラバーと
 // 目盛り列を持つ。
 import {
-  buildLabeledRow, Button, PREDICT_TOGGLE_LABELS, SegmentedControl, Slider, ToggleSwitch, ValueInput,
+  Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, DurationPillRow,
+  Slider, ToggleSwitch, ToggleValueEdit,
+  type CollapseToggleLabels,
 } from '../../../hud/widgets';
 import type { PanelCollapse } from '../panel-shell';
 import { fmtDateTime, fmtDuration } from '../../../hud/utils';
 import type { DisplayTick } from '../orbit/tick-scale';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
-} from '../../viewer/predict-panel-selection';
+} from '../../viewer/display-timeline-selection';
 import type {
   DisplayDurationKey, DisplayPastDurationKey, TickLabelMode,
-} from '../../viewer/predict-panel-selection';
+} from '../../viewer/display-timeline-selection';
 
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。
@@ -34,214 +36,16 @@ const FIXED_PAST_DURATIONS: readonly (readonly [FixedPastDurationKey, string])[]
   ...FIXED_DURATIONS,
 ];
 
-// 単位換算後の秒数を入力欄へ表示する文字列に丸める。小数第3位以降を切り捨てて
-// 桁の長い割り切れない値(例: 1時間を「日」単位にした 0.041666...)を防ぐ。
-function fmtInputSec(sec: number): string {
-  return String(Math.round(sec * 100) / 100);
-}
+// マップビュー下部のタイムラインバー用トグルの見た目。
+const TIMELINE_TOGGLE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+  expandedTitle: '下部パネルを閉じる',
+  collapsedTitle: '下部パネルを開く',
+};
 
-type DurationUnit = 'hour' | 'day' | 'month' | 'year';
-
-const UNIT_SEC: Record<DurationUnit, number> = { hour: 3600, day: 86400, month: 30 * 86400, year: 365 * 86400 };
-
-const UNITS: readonly (readonly [DurationUnit, string])[] = [
-  ['hour', '時'],
-  ['day', '日'],
-  ['month', '月'],
-  ['year', '年'],
-];
-
-// 値(数値入力)+単位(SegmentedControl)の組。確定操作(Enter/blur/外部からの commit())でのみ
-// クランプ後の秒数を通知する — 打鍵ごとに書き戻すと入力途中の値が壊れて打ち直せなくなるため。
-// 空欄・非数値での確定、または Escape/cancel() は「変更なし」として現在の表示へ戻す。
-class DurationValueInput {
-  public readonly element: HTMLElement;
-  private readonly value: ValueInput;
-  private readonly unit: SegmentedControl<DurationUnit>;
-  private unitValue: DurationUnit;
-  private minSec = 0;
-  private maxSec = Infinity;
-  private lastSec = 0;
-
-  // onCommit は Enter・blur・確定ボタンで確定した値だけを1回ずつ通知する。
-  public constructor(
-    defaultUnit: DurationUnit,
-    private readonly onCommit: (sec: number) => void,
-    private readonly onCancel: () => void,
-  ) {
-    this.unitValue = defaultUnit;
-    this.element = document.createElement('span');
-    this.element.className = 'w-group predict-value-input';
-    // 単位ボタンを押しても数値欄からフォーカスを移さない — 移すと blur が確定として走り、
-    // 選び直した単位が反映される前に古い単位の値で閉じてしまう。フォーカス移動の既定動作を
-    // 持つのは mousedown なので、それを捕捉段階で止める。
-    this.element.addEventListener('mousedown', (e) => {
-      if (e.target !== this.value.element) e.preventDefault();
-    }, true);
-    // 数値入力欄そのものは ValueInput へ委譲する。レンジへのクランプは commitText で行う —
-    // ValueInput 自身は非有限値/空欄しか破棄しない。
-    this.value = new ValueInput({ type: 'number', step: 1 }, (text) => this.commitText(text), () => this.onCancel());
-    this.element.appendChild(this.value.element);
-    // 単位切り替え。min/max とその時点の秒数を、新しい単位での表示値に引き直す。
-    this.unit = new SegmentedControl('', UNITS, (u) => {
-      this.unitValue = u;
-      this.unit.setSelected(u);
-      this.syncMinMaxAttr();
-      this.value.setValue(fmtInputSec(this.lastSec / UNIT_SEC[u]));
-    });
-    this.unit.setSelected(this.unitValue);
-    this.element.appendChild(this.unit.element);
-  }
-
-  // 秒数を今の単位での表示値に変換して入力欄へ反映し、フォーカスする。
-  public openWithSec(sec: number, minSec: number, maxSec: number): void {
-    this.syncSec(sec, minSec, maxSec);
-    this.value.element.focus();
-    this.value.element.select();
-  }
-
-  // 秒数を今の単位での表示値に反映するだけで、フォーカスは奪わない。常時表示の入力欄を
-  // 外部状態に同期させるときに使う — 呼び出し側は編集中(フォーカス中)なら呼ばないこと。
-  public syncSec(sec: number, minSec: number, maxSec: number): void {
-    this.lastSec = sec;
-    this.minSec = minSec;
-    this.maxSec = maxSec;
-    this.syncMinMaxAttr();
-    this.value.setValue(fmtInputSec(sec / UNIT_SEC[this.unitValue]));
-  }
-
-  // ValueInput が確定した生の文字列をレンジへクランプして通知する。
-  private commitText(text: string): void {
-    const unitSec = UNIT_SEC[this.unitValue];
-    const sec = Math.max(this.minSec, Math.min(this.maxSec, Number(text) * unitSec));
-    this.lastSec = sec;
-    this.value.setValue(fmtInputSec(sec / unitSec));
-    this.onCommit(sec);
-  }
-
-  // 編集中の値を確定させる。レンジへ収めたうえで onCommit が1回だけ呼ばれる。
-  public commit(): void {
-    this.value.commit();
-  }
-
-  // 編集を破棄する。
-  public cancel(): void {
-    this.value.cancel();
-  }
-
-  // 編集中(フォーカス中)かどうか。常時表示の入力欄を外部状態で上書きしてよいかの判定に使う。
-  public get focused(): boolean {
-    return document.activeElement === this.value.element;
-  }
-
-  // 入力欄の min/max 属性を現在の単位での表示値に換算して合わせる(ブラウザのスピンボタン用の
-  // ヒントで、実際のクランプは commitText が担う)。
-  private syncMinMaxAttr(): void {
-    const unitSec = UNIT_SEC[this.unitValue];
-    this.value.element.min = String(this.minSec / unitSec);
-    if (isFinite(this.maxSec)) this.value.element.max = String(this.maxSec / unitSec);
-    else this.value.element.removeAttribute('max');
-  }
-}
-
-// 「表示用要素 ⇔ 数値入力(DurationValueInput)」の開閉を1つ受け持つ。open() で表示用要素を
-// 隠して数値入力を出し、確定・取り消しで自動的に close() して表示用要素へ戻す。
-class ToggleValueEdit {
-  private readonly input: DurationValueInput;
-  private editingValue = false;
-
-  // displayEl と editEl を入れ替える組を作る。確定した秒数を onCommit へ渡し、確定・取り消しの
-  // どちらでも表示用要素へ戻る。
-  public constructor(
-    private readonly displayEl: HTMLElement,
-    private readonly editEl: HTMLElement,
-    defaultUnit: DurationUnit,
-    onCommit: (sec: number) => void,
-  ) {
-    this.input = new DurationValueInput(
-      defaultUnit,
-      (sec) => { onCommit(sec); this.close(); },
-      () => this.close(),
-    );
-  }
-
-  // 数値入力へ差し替わっている間だけ真。
-  public get editing(): boolean {
-    return this.editingValue;
-  }
-
-  // 数値入力の要素。editEl の中へ置く。
-  public get inputEl(): HTMLElement {
-    return this.input.element;
-  }
-
-  // 表示用要素を数値入力フォームへ差し替え、指定した秒数を初期値として入れる。
-  public open(sec: number, minSec: number, maxSec: number): void {
-    this.editingValue = true;
-    this.displayEl.classList.add('hidden');
-    this.editEl.classList.remove('hidden');
-    this.input.openWithSec(sec, minSec, maxSec);
-  }
-
-  // 数値入力フォームを閉じ、表示用要素へ戻す。
-  public close(): void {
-    this.editingValue = false;
-    this.editEl.classList.add('hidden');
-    this.displayEl.classList.remove('hidden');
-  }
-
-  // 開いている数値入力を確定させて閉じる。
-  public commit(): void {
-    this.input.commit();
-  }
-
-  // 開いている数値入力を破棄して閉じる。
-  public cancel(): void {
-    this.input.cancel();
-  }
-}
-
-// 「見出し + 固定期間ピル列 + 常時表示の数値入力」の1行。数値入力を書き換えて確定すると
-// 選択キーが 'custom' になる。K は固定ピルのキー、Kd は選択状態として受け取るキー
-// (固定ピルに加えて 'custom' を含む)。
-class DurationPillRow<K extends string, Kd extends K | 'custom'> {
-  public readonly element: HTMLElement;
-  private readonly buttons = new Map<K, Button>();
-  private readonly input: DurationValueInput;
-
-  // title を見出しにした1行を組む。ピルの押下は onSelect、数値入力の確定は onCustomConfirm。
-  public constructor(
-    title: string,
-    entries: readonly (readonly [K, string])[],
-    private readonly onSelect: (key: K) => void,
-    onCustomConfirm: (sec: number) => void,
-  ) {
-    this.element = buildLabeledRow(title, 'predict-row1');
-
-    // 固定期間のピルを並べ、末尾に手動レンジの入力欄を置く。
-    const pillsEl = document.createElement('span');
-    pillsEl.className = 'predict-pills';
-    for (const [key, text] of entries) {
-      const btn = new Button(text, () => this.onSelect(key));
-      pillsEl.appendChild(btn.element);
-      this.buttons.set(key, btn);
-    }
-    this.element.appendChild(pillsEl);
-
-    this.input = new DurationValueInput('day', onCustomConfirm, () => {});
-    this.element.appendChild(this.input.element);
-  }
-
-  // 選択中のキーと、数値入力欄に示す秒数を反映する。入力欄は編集中(フォーカス中)なら
-  // ユーザー入力を壊さないよう書き換えない。
-  public render(key: Kd, currentSec: number): void {
-    for (const [k, btn] of this.buttons) btn.setOn(key === k);
-    if (!this.input.focused) this.input.syncSec(currentSec, DISPLAY_DURATION_MIN, DISPLAY_DURATION_MAX);
-  }
-}
-
-// 未来表示パネルが1フレームに映す値。
-interface PredictPanelState {
+// タイムラインパネルが1フレームに映す値。
+interface DisplayTimelinePanelState {
   readonly visible: boolean;
   readonly durationKey: DisplayDurationKey;
   readonly pastDurationKey: DisplayPastDurationKey;
@@ -259,7 +63,7 @@ interface PredictPanelState {
   readonly ticks: readonly DisplayTick[];
 }
 
-export class PredictPanel {
+export class DisplayTimelinePanel {
   public onDurationSelect: ((key: FixedDurationKey) => void) | null = null;
   public onCustomDurationConfirm: ((sec: number) => void) | null = null;
   public onPastDurationSelect: ((key: FixedPastDurationKey) => void) | null = null;
@@ -293,7 +97,7 @@ export class PredictPanel {
   private currentDuration = APERIODIC_ARC_DURATION;
   private lastTrackRatio = 1;
 
-  // PREDICT パネルの DOM を組み立て、root へ追加する。collapse は折りたたみトグルの配線役。
+  // タイムラインパネルの DOM を組み立て、root へ追加する。collapse は折りたたみトグルの配線役。
   public constructor(root: HTMLElement, collapse: PanelCollapse) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-predict';
@@ -355,12 +159,12 @@ export class PredictPanel {
       toggleId: 'hud-predict-toggle',
       toggleClassName: '',
       target: this.panel,
-      labels: PREDICT_TOGGLE_LABELS,
+      labels: TIMELINE_TOGGLE_LABELS,
       storageId: 'hud-predict',
     });
     root.appendChild(this.wrap);
 
-    // compactではPREDICTを下部sheetとして扱うため、wrapの上端から画面下端までの実占有量を
+    // compactではこのパネルを下部sheetとして扱うため、wrapの上端から画面下端までの実占有量を
     // map rootへ公開する。高さだけでなくbottom offsetも含め、touch UIの下端予約にも追従する。
     const syncOccupancy = (): void => {
       const rootRect = root.getBoundingClientRect();
@@ -391,6 +195,7 @@ export class PredictPanel {
       '未来', FIXED_DURATIONS,
       (key) => this.onDurationSelect?.(key),
       (sec) => this.onCustomDurationConfirm?.(sec),
+      DISPLAY_DURATION_MIN, DISPLAY_DURATION_MAX,
     );
     container.appendChild(durationRow.element);
     // 過去の期間。
@@ -398,6 +203,7 @@ export class PredictPanel {
       '過去', FIXED_PAST_DURATIONS,
       (key) => this.onPastDurationSelect?.(key),
       (sec) => this.onPastCustomDurationConfirm?.(sec),
+      DISPLAY_DURATION_MIN, DISPLAY_DURATION_MAX,
     );
     pastDurationRow.element.classList.add('predict-past');
     container.appendChild(pastDurationRow.element);
@@ -483,7 +289,7 @@ export class PredictPanel {
   }
 
   // state をパネルへ反映する。編集中の行はユーザー入力を壊さないよう再描画しない。
-  public render(state: PredictPanelState): void {
+  public render(state: DisplayTimelinePanelState): void {
     this.setVisible(state.visible);
     if (!state.visible) return;
     // 期間はジャンプ入力の上限にもなるので控えておく。

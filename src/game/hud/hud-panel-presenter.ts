@@ -14,7 +14,6 @@ import { focusTargetId } from '../viewer/focus-target';
 import { ViewBadge } from './view-badge';
 import { frameRoleName } from './frame/frame-labels';
 import type { Hud, HudPanelViewModels } from './hud';
-import type { BurnManagementPanelHandlers } from './panels/burn-management-panel';
 import type { VesselPanelViewModel } from './panels/vessel-panel';
 import type { OrbitPanelViewModel } from './orbit/orbit-panel';
 import type { TargetPanelViewModel } from './panels/target-panel';
@@ -46,8 +45,6 @@ export class HudPanelPresenter {
   private readonly simSpeedCommands: SimSpeedCommands;
   private readonly deployableCommands: DeployableCommands;
   private readonly orbitReferenceCommands: OrbitReferenceCommands;
-  // ブースターの取り付け・点火・切り離しを扱うハンドラ。
-  private readonly burnHandlers: BurnManagementPanelHandlers;
 
   // ビューバッジを組む。パネルの操作は commands へ積み、値は残りの持ち主から毎フレーム読む。
   public constructor(
@@ -70,8 +67,6 @@ export class HudPanelPresenter {
     this.simSpeedCommands = simSpeedCommands(commands, simSpeedManager);
     this.deployableCommands = deployableCommands(commands);
     this.orbitReferenceCommands = orbitReferenceCommands(commands, viewer.orbitReference);
-    // 燃焼表示は船体が提供する読み取り専用 view model を参照し、ハンドラ側では命令を発行しない。
-    this.burnHandlers = {};
   }
 
   // ビューバッジを取り除く。
@@ -149,7 +144,6 @@ export class HudPanelPresenter {
       },
       burnManagement: controlled !== null && isModularShip(controlled)
         ? controlled.burnManagementViewModel() : null,
-      burnHandlers: this.burnHandlers,
       mapFocus: this.cameraSystem.mapResolvedFocus,
       analysisSource: {
         celestialSystem: this.celestialSystem,
