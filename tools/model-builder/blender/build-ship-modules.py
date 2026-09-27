@@ -1251,10 +1251,17 @@ def build_tank_rcs(length, name):
         'rim': bmesh.new(), 'blue': bmesh.new(),
         'white': bmesh.new(), 'red': bmesh.new(),
     }
-    surface_gas_paths = []
-    feed_paths = []
+    branch_paths = []
+    branch_junctions = bmesh.new()
+    avionics_count = max(3, min(5, int(round(length / 3.0))))
+    avionics_span = half_len * 0.72
+    avionics_zs = [
+        -avionics_span + 2.0 * avionics_span * index / (avionics_count - 1)
+        for index in range(avionics_count)
+    ]
     for sec in range(axial_sections):
         z_sec = sphere_sections[sec]
+        section_ports = []
         for t in range(4):
             t_ang = t * math.pi / 2.0 + math.pi / 4.0
             radial = Vector((math.cos(t_ang), math.sin(t_ang), 0.0))
@@ -1277,31 +1284,11 @@ def build_tank_rcs(length, name):
             add_mesh_obj(f"rcs_seam_{sec}_{t}", bm_seam, mats.rcs_support)
             rcs_add_spherical_logo(center, radial, sphere_radius, logos)
 
-            # 球面配管は対角の二球にだけ置き、保護リングの外側を長い直線区間で通す。
-            if t % 2 == 0:
-                surface_path = []
-                for step in range(6):
-                    fraction = step / 5.0
-                    latitude = (fraction - 0.5) * 2.0
-                    longitude = 0.84 + 0.08 * math.sin(fraction * math.pi * 2.0)
-                    direction = (
-                        radial * (math.cos(latitude) * math.cos(longitude))
-                        + tangent * (math.cos(latitude) * math.sin(longitude))
-                        + Vector((0.0, 0.0, math.sin(latitude)))
-                    ).normalized()
-                    surface_path.append(center + direction * (sphere_radius + 0.19))
-                surface_gas_paths.append(surface_path)
-
-            # 各球の内向きポートを中央マニホールドへつなぐ。
-            port_direction = (-radial * 0.94 + tangent * 0.34).normalized()
+            # 高さを交互に振った内向きポートで支持輪を避け、球面をなぞらず枝配管を始める。
+            port_height_sign = 1.0 if t % 2 == 0 else -1.0
+            port_direction = (-radial * 0.91 + tangent * 0.30 + Vector((0.0, 0.0, 0.31 * port_height_sign))).normalized()
             port = center + port_direction * (sphere_radius + 0.012)
-            spine_start = Vector((0.0, 0.0, z_sec + 0.17))
-            feed_paths.append([
-                spine_start,
-                spine_start.lerp(port, 0.38) + tangent * 0.035,
-                spine_start.lerp(port, 0.72) + tangent * 0.04,
-                port,
-            ])
+            section_ports.append((port, port_direction, tangent))
 
             # 球の外周を受ける二本の白銀ヨーク脚。接触点は球面の上下へ分ける。
             for side in (-1.0, 1.0):
@@ -1312,6 +1299,33 @@ def build_tank_rcs(length, name):
                 support, center + radial * (sphere_radius * 1.02),
                 radial * 2.84 + Vector((0.0, 0.0, z_sec)), 0.10, 0.09,
             )
+
+        # 上下の隣接タンクをそれぞれ一つの節点でまとめ、その枝幹を軸方向配管へ合流させる。
+        for pair_index, pair in enumerate(((0, 1), (2, 3))):
+            sign = 1.0 if pair_index == 0 else -1.0
+            pair_ports = [section_ports[index] for index in pair]
+            pair_center = (pair_ports[0][0] + pair_ports[1][0]) * 0.5
+            spine_z = z_sec + sign * 0.72
+            while any(abs(spine_z - avionics_z) < 0.27 for avionics_z in avionics_zs):
+                spine_z += sign * 0.35
+            junction = Vector((pair_center.x, pair_center.y, z_sec + (spine_z - z_sec) * 0.24))
+            bmesh.ops.create_uvsphere(
+                branch_junctions, u_segments=12, v_segments=8, radius=0.092,
+                matrix=Matrix.Translation(junction),
+            )
+
+            for port, port_direction, tangent in pair_ports:
+                exit_point = port + port_direction * 0.18
+                mid_point = exit_point.lerp(junction, 0.52) + tangent * (0.105 * sign)
+                branch_paths.append([port, exit_point, mid_point, junction])
+
+            # 節点から軸へ向かう幹にも短い折れを入れ、電装箱との間隔を保つ。
+            toward_axis = Vector((0.0, 0.0, spine_z))
+            approach = Vector((junction.x * 0.76, junction.y * 0.76, spine_z))
+            inner = Vector((junction.x * 0.36, junction.y * 0.36, spine_z))
+            side = Vector((junction.y, -junction.x, 0.0)).normalized()
+            jog = inner + side * (0.075 * sign)
+            branch_paths.append([junction, approach, jog, inner, toward_axis])
 
     for key, material in (
         ('rim', mats.rcs_support), ('blue', mats.rcs_logo_blue),
@@ -1326,16 +1340,11 @@ def build_tank_rcs(length, name):
         Vector((0, 0, half_len - 0.2)),
     ]
     add_mesh_obj("manifold_spine", make_pipe(pipe_points, radius=0.17, segments=20), mats.rcs_silver_pipe)
+    rcs_material_mesh("rcs_branch_junctions", branch_junctions, mats.rcs_silver_pipe, 45.0)
 
     # 中心配管の側面に、支持金具で電装箱を固定する。
     avionics_mounts = bmesh.new()
     avionics_fasteners = bmesh.new()
-    avionics_count = max(3, min(5, int(round(length / 3.0))))
-    avionics_span = half_len * 0.72
-    avionics_zs = [
-        -avionics_span + 2.0 * avionics_span * index / (avionics_count - 1)
-        for index in range(avionics_count)
-    ]
     avionics_center_radius = 0.45
     for index, z in enumerate(avionics_zs):
         angle = math.pi * 0.5 * index
@@ -1381,8 +1390,7 @@ def build_tank_rcs(length, name):
     rcs_material_mesh("rcs_axial_avionics_mounts", avionics_mounts, mats.clamp, 40.0)
     rcs_material_mesh("rcs_axial_avionics_fasteners", avionics_fasteners, mats.rivet, 180.0)
 
-    add_mesh_obj("rcs_manifold_feeds", make_pipes(feed_paths, radius=0.046, segments=12, bend_radius=0.07), mats.rcs_white_pipe)
-    add_mesh_obj("rcs_surface_gas_lines", make_pipes(surface_gas_paths, radius=0.030, segments=10, bend_radius=0.06), mats.rcs_silver_pipe)
+    add_mesh_obj("rcs_branch_manifold_pipes", make_pipes(branch_paths, radius=0.046, segments=12, bend_radius=0.045), mats.rcs_white_pipe)
 
     # 外側を這う白い配管束は赤い縦材へ複数の金属バンドで固定する。
     bundle_angle = math.radians(-30.0)
