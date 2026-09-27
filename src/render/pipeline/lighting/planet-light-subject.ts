@@ -8,7 +8,7 @@ import {
 import { cutoffRadius } from '../../atmosphere';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
-import { CLOUD_ALBEDO } from '../../cloud/cumulus-shape';
+import { cloudReflectanceNode } from '../../cloud/cloud-optics-node';
 import { equirectUvFromDirection } from '../../field-projection';
 import { AtmosphereIntegrator } from '../atmosphere-integrator';
 import type { AtmosphereBody } from '../../atmosphere';
@@ -69,9 +69,8 @@ export class PlanetLightSubject {
   private readonly sunIrradiance: FloatUniform = uniform(0);
   private readonly starDirection: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly bodyFromWorld: Mat4Uniform = uniform(new THREE.Matrix4());
-  // 不透明な積雲を引く雲の場と、被覆率から雲頂の見える割合を出す積雲の殻と共通の規則。
+  // 下層の雲を引く雲の場。
   private readonly cloudField = new CloudFieldSampler();
-  private readonly cloudShape = new CloudShapeEvaluator(0);
   private readonly integrator: AtmosphereIntegrator;
   // このフレームの天体が大気・雲を持つか。
   private readonly atmospherePresent: BoolUniform = uniform(false);
@@ -132,12 +131,12 @@ export class PlanetLightSubject {
     const hit = this.surfaceHit(origin, direction);
     const normal = normalize(hit.sub(this.center));
     const bodyNormal: Vec3Node = this.bodyFromWorld.mul(vec4(normal, 0)).xyz;
-    // 不透明な積雲は、地表のアルベドの上へ雲頂の見える割合ぶん重ねる。粒 0 で読んだ割合が、殻の
-    // ディザを均した割合になる。
+    // 下層の雲は、地表のアルベドの上へ被覆率ぶん、光学的厚みから決まる反射率で重ねる。
     const albedo = this.groundAlbedo(bodyNormal, origin, texelAngle).toVar();
     If(and(this.cumulusEnabled, this.cloudsPresent), () => {
-      const opaque = this.cloudShape.opaqueFraction(this.cloudField.sampleCloud(bodyNormal).coverage, float(0));
-      albedo.assign(mix(albedo, vec3(CLOUD_ALBEDO), opaque));
+      const cloud = this.cloudField.sampleCloud(bodyNormal);
+      const reflectance = cloudReflectanceNode(CloudShapeEvaluator.lowOpticalDepth(cloud.cloudTop));
+      albedo.assign(mix(albedo, vec3(reflectance), cloud.coverage));
     });
     // ランバート面の放射輝度。昼側だけが光る。
     const radiance = albedo.mul(this.sunIrradiance).mul(max(dot(normal, this.starDirection), 0)).div(Math.PI)

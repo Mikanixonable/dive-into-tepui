@@ -1,10 +1,11 @@
-// 気象モデルから凝結した雲テクスチャ（ベイクドフィールド）。ベイク時とサンプリング時の4基底割り当てを一括管理し、
-// 出入りをどちらも CloudSample で受け渡す。cloudTop は basis の連続重みから導出される。
+// 気象モデルから凝結した雲テクスチャ（ベイクドフィールド）。下層・上層の 2 層を 1 回で焼き、出入りを
+// どちらも CloudSample で受け渡す。
 import * as THREE from 'three/webgpu';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { condense } from './condensation';
-import { cloudFieldTexelFromSample, cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
+import { cloudFieldTexelsFromSample, cloudSampleFromTexels, type CloudSample } from './cloud-field-sample';
+import type { CloudFieldTextures } from './cloud-field-sampler';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from '../field-projection';
@@ -17,8 +18,8 @@ export class CloudField {
   // model の現在時刻における雲を、指定された projection に従ってベイクするテクスチャ。サンプリング時も projection の uv を参照する。
   public constructor(model: WeatherModel, projection: FieldProjection) {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, (direction) => {
-      const cloud = condense(model.weatherAt(direction));
-      return cloudFieldTexelFromSample(cloud);
+      const texels = cloudFieldTexelsFromSample(condense(direction, model.weatherAt(direction)));
+      return [texels.lower, texels.upper];
     }, GPU_PASS.cloudBake);
   }
 
@@ -27,13 +28,15 @@ export class CloudField {
     this.field.render(renderer, gpu);
   }
 
-  // 焼いた雲の場。テクスチャの所有権は BakedField に残す。
-  public get texture(): THREE.Texture { return this.field.texture; }
+  // 焼いた雲の場の下層・上層。テクスチャの所有権は BakedField に残す。
+  public get textures(): CloudFieldTextures {
+    return { lower: this.field.textureAt(0), upper: this.field.textureAt(1) };
+  }
 
   // 単位方向 direction での雲を、投影自身の uv で直接サンプリングする。cap による領域切り出しを行わないため、テクスチャ
   // 全域を参照できる。
   public at(direction: Vec3Node): CloudSample {
-    return cloudSampleFromTexel(this.field.at(direction));
+    return cloudSampleFromTexels({ lower: this.field.at(direction, 0), upper: this.field.at(direction, 1) });
   }
 
   // 保持している GPU 資源を解放する。

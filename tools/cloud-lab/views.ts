@@ -101,13 +101,13 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'cloudTop', label: '雲頂高度', reads: 'cloud',
     color: (d, cloudAt) => vec3(cloudAt(d).cloudTop.div(CLOUD_TOP_SPAN)) },
   { id: 'translucent', label: '薄い雲', reads: 'cloud',
-    color: (d, cloudAt) => vec3(cloudAt(d).translucent.div(TRANSLUCENT_SPAN)) },
+    color: (d, cloudAt) => vec3(cloudAt(d).upperOpticalDepth.div(TRANSLUCENT_SPAN)) },
   // 被覆率と薄い雲を 1 枚に重ねた見え。晴れた空が透ける割合 (1 − 被覆率)·e^(−τ) の補で、
   // 加算と違って飽和しない。実写と見比べるための面で、描画側の合成の仕様ではない。
   { id: 'composite', label: '合成', reads: 'cloud',
     color: (d, cloudAt) => {
       const cover = cloudAt(d);
-      return vec3(float(1).sub(float(1).sub(cover.coverage).mul(exp(cover.translucent.negate()))));
+      return vec3(float(1).sub(float(1).sub(cover.coverage).mul(exp(cover.upperOpticalDepth.negate()))));
     } },
   { id: 'photo', label: '実写', reads: 'photo',
     color: (d, photo) => texture(photo, equirectUvFromDirection(d)).rgb },

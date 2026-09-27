@@ -1,8 +1,12 @@
-// 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
+// 天気から凝結する雲。地表付近の湿度と対流が下層の雲に、上層の湿度と渦の天蓋が上層の雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
-import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
+import { clamp, exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
+import { CLOUD_BASE_HEIGHT } from './cumulus-shape';
+import { latitudeOf } from './sphere-frame';
+import { upperCloudAltitude } from './tropopause';
 import type { CloudSample } from './cloud-field-sample';
 import type { WeatherSample } from './weather-model';
+import type { Vec3Node } from '../tsl-types';
 export type { CloudSample } from './cloud-field-sample';
 
 // 被覆率の立ち上がり閾値となる湿度と、そこからの正規化遷移幅（被覆率が 0 から 0.56 へ推移する湿度の
@@ -26,9 +30,8 @@ const CONVECTION_GAIN = 1.2;
 // — 弱めないと、帯が被覆率の立ち上がり閾値を跨ぐ境界部で、面構造が点描状に破綻する。塔は別の項が
 // 立てるので、ここを上げても帯の上の塔は残る。
 const BAND_GRAIN_FADE = 0.8;
-// 層状の雲の高さ [m]。雲底から、上昇流の深さが 1 に漸近する高さまで。上限は前線の乱層雲
+// 層状の雲が雲底から立つ高さの上限 [m]。上昇流の深さが 1 に漸近する高さで、前線の乱層雲
 // (4〜8 km)に取る — 塔はここではなく対流の峰が立てる。
-const CLOUD_BASE_HEIGHT = 1000;
 const LAYER_TOP_SPAN = 6000;
 // 層状の深さを 0..1 へ収めるロジスティックの、上昇流 [per m/s] と対流の重み、そして底。
 // 上昇流が頭打ち(0.06 m/s)の谷の芯で 5.5 km、並の低気圧(0.02 m/s)で 2.7 km、上昇流の無い所で
@@ -79,14 +82,22 @@ const TRANSLUCENT_STREAK_ONSET = 0.48;
 const TRANSLUCENT_STREAK_GAIN = 1.75;
 const TRANSLUCENT_KNEE = 0.25;
 const TRANSLUCENT_LIMIT = 0.63;
+// 金床(渦の芯の天蓋)の芯の上層の光学的厚み。かなとこの芯の典型 20〜40 の中ほど。
+const ANVIL_OPTICAL_DEPTH = 30;
+// 板として覆う海洋性層積雲のセル性。閉じたセルの板でも起伏は残る。
+const STRATOCUMULUS_CELLULARITY = 0.35;
+// 気団の折り目の帯(前線・雨帯)の中でセル性を弱める割合。帯は隙間なく連なる面になる。
+const BAND_CELLULARITY_FADE = 0.6;
+// 繊維性の分母に足す床。上層の雲の無い所で 0 除算に落ちないための値。
+const FIBROUS_FLOOR = 1e-3;
 
-// weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
+// 単位方向 direction の weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
 // 雲頂高度は層状の雲から立つ塔と、渦の芯が敷く金床の高いほうを雲底からの高さへ写して出す —
 // 覆う広さは湿度が、層の高さは上昇流と暖気の流入と気団の折り目の帯が、塔は粒の峰が、平らな
 // 天蓋は渦の芯が決める。**雲底からの高さは被覆率が低いほど縮み、広く覆う雲ほど元の高さを保つ**。
 // **対流活発度は被覆率および雲塔の高さに反映され、沈降域の海洋性層積雲では層状起伏も低減する** — 一面に
 // 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
-export function condense(weather: WeatherSample): CloudSample {
+export function condense(direction: Vec3Node, weather: WeatherSample): CloudSample {
   // 網目と粒を湿度で混ぜる。混ぜると振れ幅が落ちるので、二乗和の平方根で戻す — 戻さないと
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
   const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, weather.surfaceHumidity);
@@ -130,7 +141,6 @@ export function condense(weather: WeatherSample): CloudSample {
   const rising = smoothstep(-TOWER_LIFT_GATE, TOWER_LIFT_GATE, weather.lift);
   const reach = smoothstep(TOWER_ONSET, TOWER_ONSET + TOWER_WIDTH, grain);
   const tower = layered.add(weather.tropopause.sub(layered).mul(reach.mul(reach)).mul(moist).mul(rising));
-  const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が開始閾値を超過した量を遷移幅で正規化した値に基づく晴天率の補数。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
   const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
@@ -140,15 +150,27 @@ export function condense(weather: WeatherSample): CloudSample {
   // 小さな雲を高い柱にしないため、雲底からの高さだけを被覆率で縮める。被覆率 0 では雲底へ
   // 落ちるが、その柱は CloudShapeEvaluator の連続したcoverage境界を通らないので晴天に雲や影が
   // 現れることはない。
-  const cloudTop = max(tower, anvil);
-  const scaledCloudTop = max(cloudTop.sub(CLOUD_BASE_HEIGHT), 0).mul(coverage).add(CLOUD_BASE_HEIGHT);
+  const scaledCloudTop = max(tower.sub(CLOUD_BASE_HEIGHT), 0).mul(coverage).add(CLOUD_BASE_HEIGHT);
+  // 形態: 活発な対流ほどばらばらのセルに、層積雲の板と帯の中ほど一枚の板になる。勢いは塔の立ち方。
+  const activity = smoothstep(0, 1, weather.convectiveActivity);
+  const cellularity = mix(activity, float(STRATOCUMULUS_CELLULARITY), stratocumulus)
+    .mul(weather.band.mul(BAND_CELLULARITY_FADE).oneMinus());
+  const vigor = reach.mul(moist).mul(rising);
   // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
+  const cirrus = tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT);
+  // 上層: 巻雲の靄と筋に、渦の芯の金床を重ねる。筋の多い所ほど繊維に、金床ほど平らな天蓋になる。
+  const smoothness = weather.anvil;
   return {
     coverage,
     cloudTop: scaledCloudTop,
-    translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
+    cellularity: clamp(cellularity, 0, 1),
+    vigor,
+    upperOpticalDepth: cirrus.add(weather.anvil.mul(ANVIL_OPTICAL_DEPTH)),
+    upperAltitude: upperCloudAltitude(latitudeOf(direction), smoothness),
+    fibrousness: streak.div(haze.add(streak).add(FIBROUS_FLOOR)).mul(smoothness.oneMinus()),
+    smoothness,
   };
 }

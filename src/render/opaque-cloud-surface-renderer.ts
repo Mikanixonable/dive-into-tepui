@@ -1,13 +1,12 @@
-// 積雲(雲の場の R = 被覆率、G = 雲頂高度)を、地表の上に立つ不透明な雲頂として描く殻。天体の
-// 子として置き、見かけ直径から分割段を選ぶ。雲頂は深度と法線を持つ不透明な面として照らされ、
-// 場の texel より細かい起伏は天体固定の粒で足す。
+// 雲場の下層の雲を、地表の上に立つ不透明な雲頂として描く殻。天体の子として置き、見かけ直径
+// から分割段を選ぶ。雲頂は深度と法線を持つ不透明な面として照らされ、場の texel より細かい
+// 起伏は天体固定の粒で足す。被覆率のうち形として描けない分は半透明な雲として大気側へ渡る。
 import * as THREE from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
-  max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
+  max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select,
   sqrt, step, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
-import { BlueNoise } from './blue-noise';
 import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
 import type { CloudSample } from './cloud/cloud-field-sample';
 import { CloudFieldSampler } from './cloud/cloud-field-sampler';
@@ -21,11 +20,6 @@ import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
 const CUMULUS_ROUGHNESS = 1;
-
-// ディザの閾値の段数。blue noise は 0..1 の両端を含むので、閾値は半段ぶん内側へ寄せて使う
-// — 寄せないと、覆いの無い空へ閾値 0 の画素だけが雲として残り、覆い尽くされた面から閾値 1 の
-// 画素の描画欠落が生じる。
-const DITHER_LEVELS = 256;
 
 // 積雲の精細さの段。オフは殻を描かない段。**値は保存された設定を読む鍵なので、段を足すときも
 // 既存の値を動かさない** — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
@@ -46,17 +40,11 @@ const SAMPLING_OF_DETAIL = {
   [CUMULUS_DETAIL.fine]: { march: 12, refine: 3 },
 } as const satisfies Readonly<Record<CumulusDetail, CumulusSampling>>;
 
-// 粒の 1 波長が何画素を切ったら消し始め、何画素まで残すか。標本化できない粒はモアレにしか
-// ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
-const GRAIN_FADE_MIN_PIXELS = 2;
-const GRAIN_FADE_FULL_PIXELS = 4;
-
 export class OpaqueCloudSurfaceRenderer {
   private readonly shape: CloudShapeEvaluator;
   // 標本の配り方と、その回数まで展開したマテリアル。
   private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
-  private readonly blueNoise = new BlueNoise();
   // 読む雲場。出どころが焼いた写しと cap の置き方を bind で写し取る。
   private readonly fieldSampler = new CloudFieldSampler();
   // 殻を半径 1 とする物体空間での地表の半径。天体ごとの値は uniform で渡す — 定数で焼くと
@@ -150,7 +138,6 @@ export class OpaqueCloudSurfaceRenderer {
     this.hide();
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
     this.material.dispose();
-    this.blueNoise.dispose();
   }
 
   // 雲頂の交点を書く不透明な白の標準マテリアル。深度と法線は 1 本のレイマーチを共有する。
@@ -174,8 +161,7 @@ export class OpaqueCloudSurfaceRenderer {
       const entry = positionLocal.toVar();
       const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
       const direction = normalize(entry.sub(origin)).toVar();
-      const threshold = this.ditherThreshold().toVar();
-      const grainAmplitude = this.grainAmplitudeAt(normalize(entry)).toVar();
+      const resolvability = this.resolvabilityAt(normalize(entry)).toVar();
 
       // 殻に入ってから地表の球へ達するまで(掠めるなら殻を出るまで)を等分してたどる。
       const along = dot(entry, direction);
@@ -196,7 +182,7 @@ export class OpaqueCloudSurfaceRenderer {
       for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(distance)), threshold, grainAmplitude).lessThan(0);
+          entry.add(direction.mul(distance)), resolvability).lessThan(0);
         If(inside.and(hit.lessThan(0.5)), () => {
           hit.assign(1);
           below.assign(distance);
@@ -207,26 +193,30 @@ export class OpaqueCloudSurfaceRenderer {
       for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
         const middle = above.add(below).mul(0.5);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(middle)), threshold, grainAmplitude).lessThan(0);
+          entry.add(direction.mul(middle)), resolvability).lessThan(0);
         If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
       }
 
       const hitPoint = entry.add(direction.mul(below)).toVar();
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
-      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, grainAmplitude)));
+      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, resolvability)));
       Discard(hit.lessThan(0.5));
       return vec4(viewNormal, clip.z.div(clip.w));
     })();
   }
 
   // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。
-  private clearanceAt(point: Vec3Node, threshold: FloatNode, grainAmplitude: FloatNode): FloatNode {
+  private clearanceAt(point: Vec3Node, resolvability: FloatNode): FloatNode {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
-    const grain = this.shape.grainAt(direction, grainAmplitude);
-    // 粒は覆いの縁を texel より細かく千切る。
-    const present = step(threshold, this.shape.opaqueFraction(cloud.coverage, grain));
+    const grain = this.shape.grainAt(direction, resolvability);
+    // 細部は覆いの縁を texel より細かく千切る。解像できない遠さや光学的に薄い柱ではしきい値が
+    // 閉じて形は現れず、その分は大気側の半透明な雲が受け持つ。
+    const detail = grain.mul(CloudShapeEvaluator.detailScale);
+    const threshold = CloudShapeEvaluator.opaqueThreshold(
+      resolvability, CloudShapeEvaluator.lowOpticalDepth(cloud.cloudTop));
+    const present = step(threshold, cloud.coverage.add(detail));
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに粒が湧く。
     const clearance = radius.sub(this.shape.cloudTopRadius(
@@ -236,7 +226,7 @@ export class OpaqueCloudSurfaceRenderer {
 
   // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
   // 崖ではなく、雲頂そのものの起伏を法線に出す。
-  private cloudTopNormalAt(hitPoint: Vec3Node, grainAmplitude: FloatNode): Vec3Node {
+  private cloudTopNormalAt(hitPoint: Vec3Node, resolvability: FloatNode): Vec3Node {
     const up = hitPoint.div(max(length(hitPoint), 1e-6));
     const east = eastAt(up);
     const north = northAt(up);
@@ -244,7 +234,7 @@ export class OpaqueCloudSurfaceRenderer {
     const topAt = (direction: Vec3Node): FloatNode => this.shape.cloudTopRadius(
       this.shape.cloudTop(
         this.fieldAt(direction).cloudTop.div(CLOUD_TOP_SPAN),
-        this.shape.grainAt(direction, grainAmplitude),
+        this.shape.grainAt(direction, resolvability),
       ),
       this.groundRadius,
     );
@@ -265,18 +255,12 @@ export class OpaqueCloudSurfaceRenderer {
     return this.fieldSampler.sampleCloud(direction);
   }
 
-  // 粒の振幅。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
-  // 大気圏のすぐ上から見下ろす構図で 1 桁ずれる。解像できない細かさになったら 0 へ落ちるので、
-  // 引きの構図では場の分布だけが残る。
-  private grainAmplitudeAt(entryDirection: Vec3Node): FloatNode {
+  // 細部を解像できる割合。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から
+  // 出すと、大気圏のすぐ上から見下ろす構図で 1 桁ずれる。解像できない細かさになったら 0 へ
+  // 落ちるので、引きの構図では場の分布だけが残る。
+  private resolvabilityAt(entryDirection: Vec3Node): FloatNode {
     const pixelAngle = max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
-    const wavelengthPixels = max(pixelAngle.mul(this.grainFrequency), 1e-9).reciprocal();
-    return smoothstep(GRAIN_FADE_MIN_PIXELS, GRAIN_FADE_FULL_PIXELS, wavelengthPixels);
-  }
-
-  // 画素ごとに固定の、覆い尽くされている割合と比べるディザの閾値。
-  private ditherThreshold(): FloatNode {
-    return this.blueNoise.atScreenPixel()
-      .mul((DITHER_LEVELS - 1) / DITHER_LEVELS).add(0.5 / DITHER_LEVELS);
+    const footprint = pixelAngle.mul(this.grainFrequency).mul(CUMULUS_GRAIN_SIZE);
+    return CloudShapeEvaluator.resolvability(footprint);
   }
 }

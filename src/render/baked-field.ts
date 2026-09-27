@@ -14,40 +14,47 @@ export class BakedField {
 
   // name は写しの名前、format は使う成分(THREE.RedFormat / THREE.RGFormat)、projection は写しの
   // 持ち方、source は単位方向から焼く値を組むグラフ。source は写しを組むときに一度だけ展開される。
+  // source が値の配列を返すと、同じ大きさ・同じ成分の写しを層として並べて 1 回で焼く。
   // 写しの大きさは常に投影と同じ。pass は render() の GPU 時間を計上する描画パス、mipmaps を立てると
   // 段付きで焼き、atLevel() で段を選べるようになる。
   public constructor(
     name: string,
     format: THREE.PixelFormat,
     private readonly projection: FieldProjection,
-    source: (direction: Vec3Node) => Vec4Node,
+    source: (direction: Vec3Node) => Vec4Node | readonly Vec4Node[],
     private readonly pass: GpuPassId,
     mipmaps = false,
   ) {
     // 段を持つ写しは段の間も補間して読む。LinearFilter のままだと、段を選んでも最上段が返る。
     const minFilter = mipmaps ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+    const sourced = source(projection.directionAt(screenUV));
+    const layers = Array.isArray(sourced) ? sourced : [sourced as Vec4Node];
     this.target = new THREE.RenderTarget(
       projection.width, projection.height,
       {
-        count: 1,
+        count: layers.length,
         depthBuffer: false,
         samples: 0,
         generateMipmaps: mipmaps,
         minFilter,
       });
-    const map = this.target.textures[0]!;
-    map.name = name;
-    map.format = format;
-    // 半精度で焼く。単精度はフィルタできない環境があり、そこでは黙って最近傍に落ちる。
-    map.type = THREE.HalfFloatType;
-    map.wrapS = projection.wrapS;
-    map.wrapT = projection.wrapT;
-    // RenderTarget の初期化設定を明示的に指定し、テクスチャプロパティの整合性を保つ。
-    map.generateMipmaps = mipmaps;
-    map.minFilter = minFilter;
-    map.magFilter = THREE.LinearFilter;
+    // MRT の出力は名前で層へ結び付く。
+    const outputs: Record<string, Vec4Node> = {};
+    this.target.textures.forEach((map, index) => {
+      map.name = layers.length === 1 ? name : `${name}${index}`;
+      map.format = format;
+      // 半精度で焼く。単精度はフィルタできない環境があり、そこでは黙って最近傍に落ちる。
+      map.type = THREE.HalfFloatType;
+      map.wrapS = projection.wrapS;
+      map.wrapT = projection.wrapT;
+      // RenderTarget の初期化設定を明示的に指定し、テクスチャプロパティの整合性を保つ。
+      map.generateMipmaps = mipmaps;
+      map.minFilter = minFilter;
+      map.magFilter = THREE.LinearFilter;
+      outputs[map.name] = layers[index]!;
+    });
     this.material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
-    this.material.mrtNode = mrt({ [name]: source(projection.directionAt(screenUV)) });
+    this.material.mrtNode = mrt(outputs);
     this.quad = new QuadMesh(this.material);
   }
 
@@ -59,12 +66,15 @@ export class BakedField {
     renderer.setRenderTarget(null);
   }
 
-  // 焼いた場のテクスチャ。RenderTarget の所有権はこのクラスに残す。
+  // 焼いた場の最初の層のテクスチャ。RenderTarget の所有権はこのクラスに残す。
   public get texture(): THREE.Texture { return this.target.textures[0]!; }
 
-  // 単位方向 direction での値。使う成分は呼ぶ側が取る。
-  public at(direction: Vec3Node): Vec4Node {
-    return texture(this.target.textures[0]!, this.projection.uvAt(direction));
+  // 焼いた場の層 layer のテクスチャ。RenderTarget の所有権はこのクラスに残す。
+  public textureAt(layer: number): THREE.Texture { return this.target.textures[layer]!; }
+
+  // 単位方向 direction での層 layer の値。使う成分は呼ぶ側が取る。
+  public at(direction: Vec3Node, layer = 0): Vec4Node {
+    return texture(this.target.textures[layer]!, this.projection.uvAt(direction));
   }
 
   // 単位方向 direction での値を、ミップ段 level から読む。段を持つのは mipmaps を立てて焼いた写し。

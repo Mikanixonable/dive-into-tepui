@@ -7,6 +7,7 @@ import { capRadiusFor } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
+import type { CloudFieldTextures } from './cloud-field-sampler';
 import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
 
@@ -22,9 +23,9 @@ const tmpInverseSpin = new THREE.Quaternion();
 export const CLOUD_FIELD_SOURCE_KIND = { observed: 'observed', generated: 'generated' } as const;
 export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof CLOUD_FIELD_SOURCE_KIND];
 
-// 雲データ供給源のインターフェース。texture はキャップへ投影されたテクスチャであり、供給元が寿命を管理する。
+// 雲データ供給源のインターフェース。textures はキャップへ投影された下層・上層のテクスチャであり、供給元が寿命を管理する。
 export interface CloudFieldSource {
-  readonly texture: THREE.Texture;
+  readonly textures: CloudFieldTextures;
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
@@ -57,7 +58,7 @@ export class CloudPresentation {
   // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
     return {
-      field: { texture: this.source.texture, cap: this.cap.placement },
+      field: { ...this.source.textures, cap: this.cap.placement },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
     };

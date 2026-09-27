@@ -1,16 +1,25 @@
-// 衛星写真から被覆率・雲頂高度・薄層雲の光学的厚みに分離した静的雲場。チャンネル構成は
-// プロシージャル生成雲場と一致する。読み出し側のサンプリング処理を球面キャップ1枚に統一するため、
-// 全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
+// 衛星写真から被覆率・雲頂高度・薄層雲の光学的厚みに分離した静的雲場。層の構成はプロシージャル生成
+// 雲場と一致し、写真から分からない形態には中庸の値を置く。読み出し側のサンプリング処理を球面キャップ
+// 1枚に統一するため、全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
 import * as THREE from 'three/webgpu';
-import { float, int, log2, max, texture } from 'three/tsl';
+import { float, int, log2, max, texture, vec4 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { equirectUvFromDirection, type FieldProjection } from '../field-projection';
+import { CLOUD_TOP_SPAN } from './cumulus-shape';
+import { latitudeOf } from './sphere-frame';
+import { upperCloudAltitude } from './tropopause';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
+import type { CloudFieldTextures } from './cloud-field-sampler';
 import type { Vec4Node } from '../tsl-types';
+
+// 写真から分からない形態に置く中庸の値。下層のセル性と勢い、上層の繊維性。
+const NEUTRAL_CELLULARITY = 0.5;
+const NEUTRAL_VIGOR = 0.5;
+const NEUTRAL_FIBROUSNESS = 0.5;
 
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
@@ -34,12 +43,21 @@ export class ObservedCloudField implements CloudFieldSource {
     const lod = max(log2(projection.texelAngle.mul(imageHeight).div(Math.PI)), 0);
     this.field = new BakedField(
       'observedCloud', THREE.RGBAFormat, projection,
-      (direction) => image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node,
+      (direction) => {
+        const photo = image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node;
+        const upperAltitude = upperCloudAltitude(latitudeOf(direction), float(0));
+        return [
+          vec4(photo.r, photo.g, NEUTRAL_CELLULARITY, NEUTRAL_VIGOR),
+          vec4(photo.b, upperAltitude.div(CLOUD_TOP_SPAN), NEUTRAL_FIBROUSNESS, 0),
+        ];
+      },
       GPU_PASS.cloudBake,
     );
   }
 
-  public get texture(): THREE.Texture { return this.field.texture; }
+  public get textures(): CloudFieldTextures {
+    return { lower: this.field.textureAt(0), upper: this.field.textureAt(1) };
+  }
   public get generation(): number { return this.generationValue; }
 
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。

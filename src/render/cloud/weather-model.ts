@@ -13,6 +13,7 @@ import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
+import { tropopauseAt } from './tropopause';
 import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
@@ -108,14 +109,6 @@ const VORTEX_CONTRAST = 1.0;
 // 沈降が上層を乾かす利得 [per m/s]。上層には境界層のような湿りの溜まりが無いので、地表付近より
 // 強く乾く — 高気圧の吹きおろす所では薄い雲も消える。
 const UPPER_SUBSIDENCE_DRYING = 2;
-
-// 圏界面の高さ [m] とその緯度依存。熱帯で 16〜17 km、極で 9 km 前後で、亜熱帯のジェットの下で
-// 段をなして下がる(NCAR ACOM「Cloud Tops and Tropopause」)。深い対流はここに当たって横へ広がる
-// ので、対流の天井そのものになる。
-const TROPOPAUSE_EQUATOR = 17000;
-const TROPOPAUSE_POLE = 9000;
-const TROPOPAUSE_STEP_START = THREE.MathUtils.degToRad(15);
-const TROPOPAUSE_STEP_END = THREE.MathUtils.degToRad(60);
 
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。緯度の 6 倍の余弦なので、緯度に
 // ついての微分は sin(6 φ) × 6 × 振幅 [hPa/rad]。
@@ -399,12 +392,6 @@ function eastNorthComponents(v: Vec3Node, east: Vec3Node, north: Vec3Node): Vec2
 // 平年の雲量 0..1 が湿度へ渡す偏り ±0.5。乾燥帯で −0.5、年中曇りの土地で +0.5 に振り切る。
 function cloudinessBias(meanCloudiness: FloatNode): FloatNode {
   return smoothstep(MEAN_CLOUDINESS_DRY, MEAN_CLOUDINESS_WET, meanCloudiness).sub(0.5);
-}
-
-// 緯度 [rad] における圏界面の高さ [m]。
-function tropopauseAt(latitude: FloatNode): FloatNode {
-  const drop = smoothstep(TROPOPAUSE_STEP_START, TROPOPAUSE_STEP_END, abs(latitude));
-  return drop.mul(TROPOPAUSE_POLE - TROPOPAUSE_EQUATOR).add(TROPOPAUSE_EQUATOR);
 }
 
 // 気圧の偏差 [hPa] が生む上昇流 [m/s]。低気圧で正、高気圧で負。

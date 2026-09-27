@@ -2,8 +2,8 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select,
-  sqrt, uniform, vec4,
+  Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, mix, normalize, select,
+  sqrt, step, uniform, vec4,
 } from 'three/tsl';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import type { CloudRenderInput } from '../../cloud/cloud-render-input';
@@ -101,7 +101,7 @@ export class CloudShadowRenderer {
         // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
         // 実寸と光路 1 歩の長さのうち粗いほうを取る。粒の振幅はこの幅が決める。
         const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
-        const grainAmplitude = this.shape.grainAmplitudeForWidth(sampleWidth).toVar();
+        const resolvability = CloudShapeEvaluator.resolvability(sampleWidth).toVar();
         const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
@@ -114,12 +114,12 @@ export class CloudShadowRenderer {
           // 粒は引けるときだけ引く。タップの数だけノイズを引くので、振幅が 0 になる遠さでは分岐ごと
           // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
           const grain = float(0).toVar();
-          If(greaterThan(grainAmplitude, 0), () => {
-            grain.assign(this.shape.grainAt(up, grainAmplitude));
+          If(greaterThan(resolvability, 0), () => {
+            grain.assign(this.shape.grainAt(up, resolvability));
           });
           const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
-          const columnDepth = this.shape.columnOpticalDepth(this.shape.opaqueFraction(cloud.coverage, grain));
+          const columnDepth = this.columnOpticalDepthAt(up, cloud, resolvability);
           // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
@@ -137,6 +137,17 @@ export class CloudShadowRenderer {
   // 21 km — 雲の層 15 km より厚いので、極の雲頂が自分の柱の内側に沈み、恒星の向きによらず影になる)。
   private toShellSpace(worldVec: Vec3Node): Vec3Node {
     return this.bodyFromWorld.mul(vec4(worldVec, 0)).xyz.div(this.axes);
+  }
+
+  // 殻の空間の単位方向 up の柱 cloud の鉛直光学深さ。不透明な形の内側は雲頂の厚みから、外側は
+  // 形の外を覆う半透明な雲から決まり、殻と大気の雲が描き分けるのと同じ分け方になる。
+  private columnOpticalDepthAt(up: Vec3Node, cloud: CloudSample, resolvability: FloatNode): FloatNode {
+    const opticalDepth = CloudShapeEvaluator.lowOpticalDepth(cloud.cloudTop);
+    const threshold = CloudShapeEvaluator.opaqueThreshold(resolvability, opticalDepth);
+    const opaque = step(threshold, cloud.coverage.add(this.shape.detailAt(up, resolvability)));
+    const residual = CloudShapeEvaluator.translucentResidual(
+      cloud.coverage, CloudShapeEvaluator.expectedOpaqueFraction(cloud.coverage, resolvability, opticalDepth));
+    return mix(this.shape.columnOpticalDepth(residual), opticalDepth, opaque);
   }
 
   // 殻の空間の単位方向 up における場。uv は殻が読むのと共有 sampler の規則で引く — 別の規則で

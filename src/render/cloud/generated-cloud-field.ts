@@ -1,5 +1,4 @@
 // 気候から表示時刻の雲場を焼く所有者。気候・天気の中間場・出力場を同じ寿命で管理する。
-import type * as THREE from 'three/webgpu';
 import { CloudField } from './cloud-field';
 import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -8,6 +7,7 @@ import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from '../field-projection';
 import type { CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
+import type { CloudFieldTextures } from './cloud-field-sampler';
 import type { Vec3Node } from '../tsl-types';
 
 export class GeneratedCloudField implements CloudFieldSource {
@@ -31,8 +31,8 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.field = new CloudField(this.model, projection);
   }
 
-  // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
-  public get texture(): THREE.Texture { return this.field.texture; }
+  // 雲場の下層・上層のテクスチャ。出力場の所有権はこのクラスに残す。
+  public get textures(): CloudFieldTextures { return this.field.textures; }
   public get generation(): number { return this.generationValue; }
 
   // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。

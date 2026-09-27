@@ -16,7 +16,6 @@ import { injectOnce } from '../../src/hud/inject-style';
 import { applyThemeVariables } from '../../src/hud/style/theme-variables';
 import { AU } from '../../src/physics/astronomical-unit';
 import { parseThemePalette } from '../../src/theme';
-import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
@@ -148,19 +147,10 @@ function buildViewAngleSliders(view: LabView): () => void {
   };
 }
 
-// 仮設の雲のつまみ(積雲のディザと、半透明な殻の種類ごとの濃さ・高度・反射率)を組む。つまみは
+// 仮設の雲のつまみ(半透明な殻の種類ごとの濃さ・高度・反射率)を組む。つまみは
 // 描画の uniform を書き換え、view をその場で描き直す。
 function buildCloudSliders(view: LabView): void {
   const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
-
-  // 積雲の飽和とディザの幅。被覆率が 中央値±半幅 に入る柱がディザに掛かるので、半幅を広げるほど
-  // 半透明として読める画素が増える。生成側の場へ差し替えたあとの追い込みまで残す。
-  const dither = CUMULUS_DITHER_KNOB;
-  buildSlider('cumulus-dither', '中央値', 0, 1, 0.001,
-    () => dither.center.value.toFixed(3), (v) => redraw(dither.center, v))(dither.center.value);
-  buildSlider('cumulus-dither', '中間調 半幅', 0.001, 0.5, 0.001,
-    () => `±${dither.halfWidth.value.toFixed(3)}`,
-    (v) => redraw(dither.halfWidth, v))(dither.halfWidth.value);
 
   // 半透明な殻の濃さ・立つ高さ・反射率。不透明な積雲との馴染みを目で追い込み終えるまで残す。
   const kilometers = (value: number) => `${(value / 1000).toFixed(2)} km`;

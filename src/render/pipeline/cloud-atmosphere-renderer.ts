@@ -44,7 +44,7 @@ const CLOUD_SHELL_DEFINITIONS = [
       cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
       bottomAltitude: uniform(15e3), topAltitude: uniform(16e3),
     },
-    columnOpticalDepth: (field: CloudSample): FloatNode => field.translucent,
+    columnOpticalDepth: (field: CloudSample): FloatNode => field.upperOpticalDepth,
   },
   {
     species: 'cumulus',

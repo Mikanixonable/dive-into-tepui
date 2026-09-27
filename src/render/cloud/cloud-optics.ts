@@ -25,6 +25,29 @@ export function columnOpticalDepthFromCoverage(coverage: number): number {
   return -Math.log1p(-bounded);
 }
 
+// 雲粒の散乱の非対称因子 g。水雲の可視域の典型値。
+export const CLOUD_ASYMMETRY = 0.85;
+
+// 保存散乱の二流近似による、鉛直柱光学深さ tau の雲層の反射率 R = 3(1−g)τ / (4 + 3(1−g)τ)。
+// 厚い雲ほど 1 へ漸近し、薄い雲は下地を透かす灰色になる。
+export function cloudReflectance(columnOpticalDepth: number): number {
+  const scaled = 3 * (1 - CLOUD_ASYMMETRY) * Math.max(columnOpticalDepth, 0);
+  return scaled / (4 + scaled);
+}
+
+// 下層の雲の鉛直柱光学深さを、雲底から雲頂までの厚み depth [m] から見積もる。断熱的な雲では液水量が
+// 厚みの 2 乗、光学深さが液水量の 5/6 乗に比例するので τ ∝ 厚み^(5/3)。係数は厚み 1 km で τ 8
+// (層積雲の典型)、上限は積乱雲の芯の典型 150 に取る調整値。
+export const LOW_CLOUD_OPTICAL_DEPTH_PER_KM = 8;
+export const LOW_CLOUD_OPTICAL_DEPTH_EXPONENT = 5 / 3;
+export const MAX_LOW_CLOUD_OPTICAL_DEPTH = 150;
+export function lowCloudOpticalDepth(depth: number): number {
+  const kilometers = Math.max(depth, 0) / 1000;
+  return Math.min(
+    LOW_CLOUD_OPTICAL_DEPTH_PER_KM * kilometers ** LOW_CLOUD_OPTICAL_DEPTH_EXPONENT,
+    MAX_LOW_CLOUD_OPTICAL_DEPTH);
+}
+
 // 球殻の厚みを通る視線airmass。cosineは鉛直方向との内積、thickness/radiusは同じ長さ単位。
 // 接線でも有限値を返し、薄い殻を無限大の光路へ発散させない。
 export function shellAirmass(cosine: number, thickness: number, radius: number): number {
