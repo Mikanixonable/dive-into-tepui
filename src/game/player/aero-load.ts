@@ -15,6 +15,12 @@ export class AeroLoad {
 
   public get qdyn(): number { return this._qdyn; }
 
+  // いま浸っている外気の密度 [kg/m^3]。大気天体が無いとき 0。qdyn と同じく update が求め直す
+  // キャッシュ。
+  private _density = 0;
+
+  public get density(): number { return this._density; }
+
   // 位置 r・速度 v の機体が浴びる動圧を求め直す。atmosphereBody は抗力を及ぼすただ1体の
   // 大気天体(null なら真空)。
   public update(
@@ -23,10 +29,12 @@ export class AeroLoad {
     const atm = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(atmospherePivot);
     if (atmosphereBody === null || atm === null) {
       this._qdyn = 0;
+      this._density = 0;
       return;
     }
     const bodyState = atmosphereBody.stateAt(atmospherePivot);
     const { density, speed } = airflow(sub(r, bodyState.r), sub(v, bodyState.v), atm);
+    this._density = density;
     this._qdyn = 0.5 * density * speed * speed;
   }
 

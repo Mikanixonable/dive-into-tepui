@@ -156,6 +156,12 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: 'タンパク質の敵の揺らぎ',
     presets: { low: false, medium: true, high: true },
   },
+  // 主推進の排気プルームの描き方。体積は排気を透過する立体として、簡易は発光板として描く。
+  thrustPlume: {
+    kind: 'choice', group: 'element', label: '噴射プルーム',
+    items: [['simple', '簡易'], ['volume', '体積']],
+    presets: { low: 'simple', medium: 'volume', high: 'volume' },
+  },
   // 太陽の光源モデル。球光源では明暗の終端が視半径ぶん柔らかくなり、粗さの小さい金属面に
   // 太陽の円盤が映る。
   sunLightModel: {
