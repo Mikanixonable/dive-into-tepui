@@ -5,7 +5,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
 #ship-construction-panel {
   position: absolute; inset: 0; z-index: 2;
   display: grid; grid-template-columns: minmax(250px, 320px) minmax(220px, 1fr) minmax(270px, 350px);
-  gap: var(--space-5); padding: calc(var(--hud-rail-top) + var(--space-4)) var(--space-5) var(--space-5);
+  gap: var(--space-5); padding: calc(var(--hud-chrome-h) + var(--space-4)) var(--space-5) var(--space-5);
   pointer-events: none;
 }
 #ship-construction-panel.hidden { display: none !important; }
@@ -133,7 +133,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
   #ship-construction-panel {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(140px, 34vh) auto minmax(0, 1fr);
-    padding: calc(var(--hud-rail-top) + var(--space-3)) var(--space-3) var(--space-3);
+    padding: calc(var(--hud-chrome-h) + var(--space-3)) var(--space-3) var(--space-3);
   }
   #ship-construction-panel .construction-center {
     grid-row: 1; grid-column: 1; align-self: start; margin-top: 0;

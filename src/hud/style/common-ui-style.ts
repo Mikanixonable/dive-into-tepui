@@ -2,6 +2,7 @@
 // 画面固有の CSS は配置と内容の調整だけを持ち、UI の面と状態はここへ集約する。
 import { injectOnce } from '../inject-style';
 import { WIDGET_STYLE } from '../widgets/widget-style';
+import { HUD_LAYOUT_TOKENS_STYLE } from './layout-tokens';
 
 const SURFACE_STYLE = `
 .ui-surface-quiet, #hud .panel {
@@ -70,5 +71,5 @@ const SURFACE_STYLE = `
 
 // 共通 UI の CSS を一度だけ document.head へ注入する。
 export function injectCommonUiStyle(): void {
-  injectOnce('common-ui-style', SURFACE_STYLE + WIDGET_STYLE);
+  injectOnce('common-ui-style', HUD_LAYOUT_TOKENS_STYLE + SURFACE_STYLE + WIDGET_STYLE);
 }
