@@ -444,7 +444,7 @@ async function checkHelpModal() {
     await pressKey('h', 'KeyH', 72);
   }
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-help')).display !== 'none'`,
+    `document.getElementById('hud-help') !== null && getComputedStyle(document.getElementById('hud-help')).display !== 'none'`,
     layoutOnly ? 'the HLP badge to open the help panel' : '[H] to open the help panel',
   );
   await throwIfVisibleFatalOverlay('Headless GPU fatal while checking Help modal');
@@ -478,7 +478,7 @@ async function checkHelpModal() {
     await pressKey('Escape', 'Escape', 27);
   }
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-help')).display === 'none'
+    `(document.getElementById('hud-help') === null || getComputedStyle(document.getElementById('hud-help')).display === 'none')
       && !document.body.classList.contains('hud-overlay-modal-open')`,
     layoutOnly ? 'the Help close button to close the panel' : 'Escape to close the help panel',
   );
@@ -488,7 +488,7 @@ async function checkHelpModal() {
 // ゲーム世界も暗転させない(UI-DESIGN.md「一時停止タブ」)。どちらも退行しやすいので明示的に見る。
 async function checkPauseMenu() {
   await pressKey('Escape', 'Escape', 27);
-  await waitFor(`getComputedStyle(document.getElementById('hud-pause-menu')).display !== 'none'`, 'Escape to open the pause menu');
+  await waitFor(`document.getElementById('hud-pause-menu') !== null && getComputedStyle(document.getElementById('hud-pause-menu')).display !== 'none'`, 'Escape to open the pause menu');
   // ここでは合成 pointerdown を投げない — 背景はゲーム本体のリスナで、合成イベントの
   // pointerId には setPointerCapture が通らず、この検証自身が例外を生んでしまう。
   // 遮っていないことは当たり判定(最前面がシールドでなく背景である)で言い切れる。
@@ -510,7 +510,7 @@ async function checkPauseMenu() {
   await checkOverlayGeometry('#hud-pause-menu', 'Pause menu');
   await pressKey('Escape', 'Escape', 27);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-pause-menu')).display === 'none'`,
+    `(document.getElementById('hud-pause-menu') === null || getComputedStyle(document.getElementById('hud-pause-menu')).display === 'none')`,
     'Escape to close the pause menu',
   );
 }
@@ -555,7 +555,7 @@ async function placeShipThroughMenu() {
   })()`);
   if (openedPlacer) throw new Error(`Creative placement menu failed: ${openedPlacer}`);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-object-placer')).display !== 'none'`,
+    `document.getElementById('hud-object-placer') !== null && getComputedStyle(document.getElementById('hud-object-placer')).display !== 'none'`,
     'the placement panel to open',
   );
   if (creativePreset === 'base') {
@@ -594,7 +594,7 @@ async function placeShipThroughMenu() {
   })()`);
   if (confirmed) throw new Error(`Creative placement panel failed: ${confirmed}`);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-object-placer')).display === 'none'`,
+    `(document.getElementById('hud-object-placer') === null || getComputedStyle(document.getElementById('hud-object-placer')).display === 'none')`,
     'the placement panel to close after confirming',
   );
   return placedName;
