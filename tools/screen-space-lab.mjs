@@ -9,7 +9,7 @@ import { decodePng } from './png.mjs';
 import { exposedCorrectionOf, linearOfSrgbCodes, srgbToLinear, windowMean } from './screen-space-error.mjs';
 
 // リポジトリ根と、組んだ描画テスト環境、撮影組の置き場。
-export const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.render-lab');
 export const shotsDir = path.join(root, '.render-lab-shots');
 const port = 8771;
@@ -247,9 +247,6 @@ export function linearOfPng(png) {
   const { channels, data } = decodePng(png);
   return linearOfSrgbCodes(data, channels, WIDTH * HEIGHT);
 }
-
-// いまの絵を、落ち着きを待って線形 sRGB で撮る。
-export const captureLinear = async (lab) => linearOfPng(await lab.capturePng());
 
 // .render-lab/ を開いた Chrome の上で work(lab) を走らせる。
 export async function withLab(work) {

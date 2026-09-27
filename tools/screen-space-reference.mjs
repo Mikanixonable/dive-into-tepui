@@ -2,7 +2,7 @@
 // 変えて描いた補正(と、目で見る画像のための HDR、解析値と照らす撮影では拡散照度)を、偶数番目と奇数番目のパスに
 // 分けて積んだもの。半分どうしの差で B に残る雑音を、いまの中設定(均しなし)の誤差と比べて判定する。
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { errorMetrics, exposedCorrectionOf } from './screen-space-error.mjs';
+import { errorMetrics, exposedCorrectionOf, rmsOf } from './screen-space-error.mjs';
 import {
   analyticRatiosOf, builtMetaOf, fixed, HEIGHT, headHash, loadReference, maskOf, readFloats,
   referenceDirOf, referenceFileOf, referenceMetaOf, referenceSumsOf, seedOf, selectedEntries, table, TIERS, WIDTH,
@@ -19,15 +19,14 @@ const MAX_PASS_SAMPLES = 256;
 const CONVERGED_G_RATIO = 1 / 10;
 const CONVERGED_R_RATIO = 1.5;
 
-// 基準の組 name の撮影 entry の、偶数番目と奇数番目のパスの補正の平均の q どうしの誤差の指標。
-function halvesNoiseOf(name, entry) {
+// 基準の組 name の撮影 entry の、偶数番目と奇数番目のパスの補正の平均の q の組 halves と、測る画素の印 mask。
+function halvesOf(name, entry) {
   const { passes, exposure } = builtMetaOf(name, entry);
   if (passes < 2) throw new Error(`reference ${name} ${entry.key} has ${passes} pass; halves need 2`);
   const counts = [Math.ceil(passes / 2), Math.floor(passes / 2)];
-  const [even, odd] = referenceSumsOf(name, entry, 'correction')
+  const halves = referenceSumsOf(name, entry, 'correction')
     .map((sum, i) => exposedCorrectionOf(sum.map((v) => v / counts[i]), exposure));
-  const mask = maskOf(readFloats(referenceFileOf(name, entry, 'radius.f32')));
-  return errorMetrics(even, odd, mask, WIDTH, HEIGHT, 0);
+  return { halves, mask: maskOf(readFloats(referenceFileOf(name, entry, 'radius.f32'))) };
 }
 
 // ---- 生成 ----
@@ -57,13 +56,15 @@ export async function reference({ options }) {
     ]);
     console.log(['', ...table(['撮影', '解析値', '基準'], ratios)].join('\n'));
   }
-  const noise = entries.filter((e) => referenceMetaOf(name, e).passes >= 2)
-    .map((e) => [e.key, fixed(halvesNoiseOf(name, e).g, 5)]);
+  const noise = entries.filter((e) => referenceMetaOf(name, e).passes >= 2).map((e) => {
+    const { halves: [even, odd], mask } = halvesOf(name, e);
+    return [e.key, fixed(rmsOf(even, odd, mask), 5)];
+  });
   console.log(['', ...table(['撮影', 'G(偶 − 奇)'], noise)].join('\n'));
 }
 
 // 基準の組 name の撮影 entry へ、段 tier のパスを passes 個目まで続きから足す。lab は withLab の口。
-export async function extendReference(lab, name, entry, tier, passes) {
+async function extendReference(lab, name, entry, tier, passes) {
   const saved = referenceMetaOf(name, entry);
   if (saved !== null && (saved.slices !== tier.sliceCount || saved.steps !== tier.stepCount)) {
     throw new Error(`${entry.key}: saved with ${saved.slices} slices × ${saved.steps} steps, `
@@ -170,10 +171,10 @@ export async function check({ positional, options }) {
 // R(s) の R(1) に対する比の最大。
 function checkRowOf(name, entry, current) {
   const b = loadReference(name, [entry])[entry.key];
-  const mask = maskOf(b.radius);
-  const noise = halvesNoiseOf(name, entry);
+  const { halves: [even, odd], mask } = halvesOf(name, entry);
+  const noise = errorMetrics(even, odd, mask, WIDTH, HEIGHT);
   const q = exposedCorrectionOf(current, b.meta.exposure);
-  const currentG = errorMetrics(q, b.exposedCorrection, mask, WIDTH, HEIGHT, 0).g;
+  const currentG = rmsOf(q, b.exposedCorrection, mask);
   const verdict = (value, limit, digits) => `${value <= limit ? '合' : '否'} (${value.toFixed(digits)})`;
   return [
     entry.key, fixed(noise.g, 5), noise.r.map((v) => v.toFixed(2)).join(' / '), fixed(currentG, 5),
