@@ -2,7 +2,7 @@
 // 描画側は本モデルから位相を導出する。
 import { abs, float, sign, smoothstep as nodeSmoothstep, vec2 } from 'three/tsl';
 import type { FloatNode, Vec2Node } from '../tsl-types';
-export type WindVector = { readonly east: number; readonly north: number };
+export interface WindVector { readonly east: number; readonly north: number }
 
 export const SURFACE_HEIGHT = 1_000;
 export const UPPER_CLOUD_HEIGHT = 10_000;
