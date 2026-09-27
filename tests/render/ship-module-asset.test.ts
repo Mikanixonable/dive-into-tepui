@@ -15,7 +15,10 @@ import {
   RADIATOR_SEGMENT_LENGTH,
   SOLAR_PANEL_COUNT,
   SOLAR_PANEL_COLUMNS,
-  SOLAR_PANEL_SPAN,
+  SOLAR_PANEL_CENTERLINE_CLEARANCE,
+  SOLAR_PANEL_FACE_SCALE,
+  SOLAR_PANEL_PANEL_PITCH,
+  SOLAR_PANEL_STAGE_SCALES,
   SOLAR_PANEL_LENGTH,
 } from '../../src/physics/player-shape';
 import { test } from '../harness';
@@ -24,6 +27,7 @@ function parsedRoot(): THREE.Group {
   return getShipModuleTemplates();
 }
 
+// ルート直下の子を moduleModelId で引ける Map にする。id の重複は失敗にする。
 function moduleRoots(root: THREE.Group): Map<string, THREE.Object3D> {
   const result = new Map<string, THREE.Object3D>();
   for (const child of root.children) {
@@ -35,6 +39,7 @@ function moduleRoots(root: THREE.Group): Map<string, THREE.Object3D> {
   return result;
 }
 
+// 全子孫から semanticAnchor 名のノードを探す。無ければ null。
 function semanticAnchor(root: THREE.Object3D, name: string): THREE.Object3D | null {
   let result: THREE.Object3D | null = null;
   root.traverse((child) => {
@@ -43,6 +48,7 @@ function semanticAnchor(root: THREE.Object3D, name: string): THREE.Object3D | nu
   return result;
 }
 
+// 全子孫から名前のノードを探す。無ければ null。
 function objectByName(root: THREE.Object3D, name: string): THREE.Object3D | null {
   let result: THREE.Object3D | null = null;
   root.traverse((child) => {
@@ -251,6 +257,32 @@ export function register(): void {
     const travel: unknown = recoil.userData.recoilTravel;
     assert.ok(typeof travel === 'number' && travel > 0 && Number.isFinite(travel));
     assert.equal(rotor.parent, recoil);
+    // 後座量に追従する部品。圧縮部品は自然長、リンクは回転比を持つ。
+    for (let i = 0; i < 4; i++) {
+      const compress = semanticAnchor(module, `gun-recoil-compress:0:${i}`);
+      assert.ok(compress !== null, `lacks gun-recoil-compress:0:${i}`);
+      const restLength: unknown = compress.userData.restLength;
+      assert.ok(typeof restLength === 'number' && restLength > 0 && Number.isFinite(restLength));
+    }
+    for (let i = 0; i < 2; i++) {
+      const lever = semanticAnchor(module, `gun-recoil-lever:0:${i}`);
+      assert.ok(lever !== null, `lacks gun-recoil-lever:0:${i}`);
+      const leverRate: unknown = lever.userData.leverRate;
+      assert.ok(typeof leverRate === 'number' && Number.isFinite(leverRate));
+    }
+    // 給弾・排莢の送り路は1発あたりの送り量を持つ。
+    for (const name of ['feed-conveyor', 'eject-conveyor']) {
+      const anchor = semanticAnchor(module, name);
+      assert.ok(anchor !== null, `lacks ${name}`);
+      const pitch: unknown = anchor.userData.conveyorPitch;
+      assert.ok(typeof pitch === 'number' && pitch > 0 && Number.isFinite(pitch), `${name} conveyorPitch`);
+    }
+    for (const name of ['link-kicker', 'eject-rotor']) {
+      assert.ok(semanticAnchor(module, name) !== null, `lacks ${name}`);
+    }
+    for (let i = 0; i < 2; i++) {
+      assert.ok(semanticAnchor(module, `link-roller:${i}`) !== null, `lacks link-roller:${i}`);
+    }
     const rotorBefore = transformInModule(module, rotor).position;
     const feedBefore = transformInModule(module, feed).position;
     // 砲身束と機関部が同じ距離だけ後退し、固定の給弾ドラムは取付位置を保つ。
@@ -287,6 +319,12 @@ export function register(): void {
   test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', async () => {
     await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
+    const solarFaceOffsets: number[] = [];
+    const solarBraceWidths: number[] = [];
+    const solarBraceDepths: number[] = [];
+    const solarPanelSizes = new Map<number, { width: number, depth: number }>();
+    const solarPanelBounds = new Map<number, THREE.Box3>();
+    const solarBraceSizes = new Map<number, { width: number, depth: number }>();
     const expected = [
       {
         modelId: 'radiator-standard',
@@ -298,14 +336,15 @@ export function register(): void {
       {
         modelId: 'solar-panel-standard',
         count: SOLAR_PANEL_COUNT,
-        width: SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS * 0.96, // 1枚の翼幅 (X)
+        width: SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE, // 1枚の翼幅 (X)
         height: 0.06, // 厚み (Y)
-        depth: SOLAR_PANEL_LENGTH * 0.96, // 展開方向 (Z)。側面取付後は船体左右軸に沿う。
+        depth: SOLAR_PANEL_LENGTH * SOLAR_PANEL_FACE_SCALE, // 展開方向 (Z)。側面取付後は船体左右軸に沿う。
       },
     ] as const;
     for (const spec of expected) {
       const module = modules.get(spec.modelId);
       assert.ok(module !== undefined);
+      module.updateMatrixWorld(true);
       const panels: THREE.Mesh[] = [];
       module.traverse((child) => {
         if (child.name === 'deployable-panel' || child.name.startsWith('deployable-panel:')) {
@@ -314,8 +353,6 @@ export function register(): void {
         }
       });
       assert.equal(panels.length, spec.count, `${spec.modelId} panel count`);
-      const solarWidths: number[] = [];
-      const solarDepths: number[] = [];
       for (const panel of panels) {
         panel.geometry.computeBoundingBox();
         const bbox = panel.geometry.boundingBox;
@@ -323,10 +360,20 @@ export function register(): void {
         const size = new THREE.Vector3();
         bbox.getSize(size);
         if (spec.modelId === 'solar-panel-standard') {
-          assert.ok(Math.abs(size.x - spec.width) < spec.width * 0.04, `${spec.modelId} width: ${size.x}`);
-          assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.04, `${spec.modelId} depth: ${size.z}`);
-          solarWidths.push(size.x);
-          solarDepths.push(size.z);
+          assert.ok(Math.abs(size.x - spec.width) < spec.width * 0.13, `${spec.modelId} width: ${size.x}`);
+          assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.13, `${spec.modelId} depth: ${size.z}`);
+          assert.ok(size.x <= SOLAR_PANEL_PANEL_PITCH + 1e-6,
+            `${spec.modelId} panel width ${size.x} exceeds its hinge pitch`);
+          assert.ok(size.z <= SOLAR_PANEL_LENGTH + 1e-6,
+            `${spec.modelId} panel depth ${size.z} exceeds its hinge pitch`);
+          solarFaceOffsets.push((bbox.min.y + bbox.max.y) / 2);
+          const indexMatch = /^deployable-panel(?::(\d+))?$/.exec(panel.name);
+          assert.ok(indexMatch !== null, `${spec.modelId} has an unrecognized panel name: ${panel.name}`);
+          const panelIndex = indexMatch[1] === undefined ? 0 : Number(indexMatch[1]);
+          solarPanelSizes.set(panelIndex, { width: size.x, depth: size.z });
+          if (spec.modelId === 'solar-panel-standard') {
+            solarPanelBounds.set(panelIndex, new THREE.Box3().setFromObject(panel));
+          }
         } else {
           assert.ok(Math.abs(size.x - spec.width) < 1e-3, `${spec.modelId} width: ${size.x} expected ${spec.width}`);
           assert.ok(Math.abs(size.z - spec.depth) < 1e-3, `${spec.modelId} depth: ${size.z} expected ${spec.depth}`);
@@ -334,8 +381,91 @@ export function register(): void {
         assert.ok(Math.abs(size.y - spec.height) < 1e-3, `${spec.modelId} height: ${size.y} expected ${spec.height}`);
       }
       if (spec.modelId === 'solar-panel-standard') {
-        assert.ok(Math.max(...solarWidths) > Math.min(...solarWidths));
-        assert.ok(Math.max(...solarDepths) > Math.min(...solarDepths));
+        const stages = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+        const stageSizes = [...Array(stages).keys()].map((stage) => {
+          const inner = solarPanelSizes.get(stage);
+          const outer = solarPanelSizes.get(stages + stage);
+          assert.ok(inner !== undefined && outer !== undefined, `missing panel size at stage ${stage + 1}`);
+          assert.ok(Math.abs(inner.width - outer.width) < 1e-6 && Math.abs(inner.depth - outer.depth) < 1e-6,
+            `stage ${stage + 1} panels do not have equal dimensions`);
+          return inner;
+        });
+        const stageScales = stageSizes.map((size) => size.width / spec.width);
+        const stageDepthScales = stageSizes.map((size) => size.depth / spec.depth);
+        for (const stage of [...Array(stages).keys()]) {
+          assert.ok(Math.abs(stageScales[stage] - stageDepthScales[stage]) < 1e-6,
+            `stage ${stage + 1} width and depth do not use the same size scale`);
+        }
+        const expectedStageScales = SOLAR_PANEL_STAGE_SCALES;
+        for (const stage of [...Array(stages).keys()]) {
+          assert.ok(Math.abs(stageScales[stage] - expectedStageScales[stage]) < 1e-6,
+            `stage ${stage + 1} scale ${stageScales[stage]} should be ${expectedStageScales[stage]}`);
+        }
+        assert.ok(stageScales[2] > stageScales[1], 'stage 3 should be the largest');
+        assert.ok(stageScales[1] > stageScales[0], 'stage 2 should be larger than stage 1');
+        assert.ok(Math.abs(stageScales[0] - stageScales[3]) < 1e-6,
+          'stages 1 and 4 should have equal dimensions');
+        for (let stage = 0; stage < stages; stage++) {
+          const left = solarPanelBounds.get(stage);
+          const right = solarPanelBounds.get(stages + stage);
+          assert.ok(left !== undefined && right !== undefined, `missing panel bounds at stage ${stage + 1}`);
+          assert.ok(Math.abs(-left.max.x - SOLAR_PANEL_CENTERLINE_CLEARANCE) < 1e-6,
+            `stage ${stage + 1} left panel centerline clearance is ${-left.max.x}`);
+          assert.ok(Math.abs(right.min.x - SOLAR_PANEL_CENTERLINE_CLEARANCE) < 1e-6,
+            `stage ${stage + 1} right panel centerline clearance is ${right.min.x}`);
+        }
+        assert.ok(Math.max(...solarFaceOffsets) - Math.min(...solarFaceOffsets) > 0.01);
+        const braces: THREE.Object3D[] = [];
+        module.traverse((child) => {
+          if (child.name.startsWith('panel_lattice:')) braces.push(child);
+        });
+        assert.equal(braces.length, SOLAR_PANEL_COUNT, 'one rear brace lattice per solar panel');
+        let diamondBraceCount = 0;
+        let centerCrossbarCount = 0;
+        for (const brace of braces) {
+          const braceBox = new THREE.Box3().setFromObject(brace);
+          const braceSize = new THREE.Vector3();
+          braceBox.getSize(braceSize);
+          solarBraceWidths.push(braceSize.x);
+          solarBraceDepths.push(braceSize.z);
+          const indexMatch = /^panel_lattice:(\d+)$/.exec(brace.name);
+          assert.ok(indexMatch !== null, `unrecognized solar brace name: ${brace.name}`);
+          const panelIndex = Number(indexMatch[1]);
+          const panelStage = panelIndex % stages;
+          const expectedPattern = panelStage === 2 ? 'diamond' : 'x';
+          assert.equal(brace.userData.bracePattern, expectedPattern,
+            `${brace.name} should use ${expectedPattern} bracing`);
+          const hasCenterCrossbar = expectedPattern === 'diamond';
+          assert.equal(Boolean(brace.userData.centerCrossbar), hasCenterCrossbar,
+            `${brace.name} should ${hasCenterCrossbar ? 'have' : 'not have'} a center crossbar`);
+          if (expectedPattern === 'diamond') diamondBraceCount++;
+          if (hasCenterCrossbar) centerCrossbarCount++;
+          const panelSize = solarPanelSizes.get(Number(indexMatch[1]));
+          assert.ok(panelSize !== undefined, `missing solar panel size for ${brace.name}`);
+          solarBraceSizes.set(Number(indexMatch[1]), { width: braceSize.x, depth: braceSize.z });
+          assert.ok(Math.abs(braceSize.x / panelSize.width - 1) < 0.16,
+            `${brace.name} width ${braceSize.x} does not follow panel width ${panelSize.width}`);
+          assert.ok(Math.abs(braceSize.z / panelSize.depth - 1) < 0.16,
+            `${brace.name} depth ${braceSize.z} does not follow panel depth ${panelSize.depth}`);
+        }
+        assert.equal(diamondBraceCount, SOLAR_PANEL_COLUMNS, 'both stage 3 panels should use diamond bracing');
+        assert.equal(centerCrossbarCount, SOLAR_PANEL_COLUMNS, 'both stage 3 panels should have a center crossbar');
+        assert.ok(Math.max(...solarBraceWidths) - Math.min(...solarBraceWidths) > 0.05,
+          'brace width does not follow the individual panel sizes');
+        assert.ok(Math.max(...solarBraceDepths) - Math.min(...solarBraceDepths) > 0.05,
+          'brace depth does not follow the individual panel sizes');
+        const braceStages = [...Array(stages).keys()].map((stage) => {
+          const inner = solarBraceSizes.get(stage);
+          const outer = solarBraceSizes.get(stages + stage);
+          assert.ok(inner !== undefined && outer !== undefined, `missing brace lattice at stage ${stage + 1}`);
+          assert.ok(Math.abs(inner.width - outer.width) < 1e-6 && Math.abs(inner.depth - outer.depth) < 1e-6,
+            `stage ${stage + 1} braces do not follow equal panel dimensions`);
+          return inner.width / spec.width;
+        });
+        assert.ok(braceStages[2] > braceStages[1], 'stage 3 brace should be the largest');
+        assert.ok(braceStages[1] > braceStages[0], 'stage 2 brace should be larger than stage 1');
+        assert.ok(Math.abs(braceStages[0] - braceStages[3]) < 1e-6,
+          'stage 1 and 4 braces should have equal dimensions');
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {
@@ -346,6 +476,134 @@ export function register(): void {
         hinges.map((hinge) => hinge.userData.panelIndex),
         [...Array(spec.count).keys()],
       );
+      if (spec.modelId === 'solar-panel-standard') {
+        const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+        const mount = objectByName(module, 'solar_mount_iss_a');
+        assert.ok(mount !== null, 'solar panel mount keeps the ISS-A structure group');
+        assert.equal(mount.userData.mountPattern, 'iss-a');
+        for (const [name, role] of [
+          ['solar_mount_rotary_drive', 'stepped-transverse-drive'],
+          ['solar_mount_saddle', 'raised-box-saddle'],
+          ['solar_mount_twin_rails', 'parallel-spanwise-rails'],
+          ['solar_mount_v_truss', 'open-v-bracing'],
+          ['solar_mount_root_clamps', 'hinge-root-clamps'],
+          ['solar_mount_centerline_yoke', 'folding-centerline-spine-root'],
+        ]) {
+          const part = objectByName(mount, name);
+          assert.ok(part !== null, `solar mount lacks ${name}`);
+          assert.equal(part.userData.mountRole, role, `${name} has the expected mount role`);
+          let containsMesh = false;
+          part.traverse((child) => { if (child instanceof THREE.Mesh) containsMesh = true; });
+          assert.ok(containsMesh, `${name} has visible geometry`);
+        }
+        const spineSegments: THREE.Object3D[] = [];
+        const panelMounts: THREE.Object3D[] = [];
+        module.traverse((child) => {
+          if (/^solar_panel_center_spine:\d+$/.test(child.name)) spineSegments.push(child);
+          if (/^panel_centerline_mount:\d+$/.test(child.name)) panelMounts.push(child);
+        });
+        assert.equal(spineSegments.length, SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS,
+          'one folding centerline spine segment per panel stage');
+        for (const spine of spineSegments) {
+          const bounds = new THREE.Box3().setFromObject(spine);
+          assert.ok(Math.abs((bounds.min.x + bounds.max.x) / 2) < 1e-6,
+            `${spine.name} is not centered on the wing axis`);
+          assert.ok(bounds.max.z - bounds.min.z >= SOLAR_PANEL_LENGTH * 0.95,
+            `${spine.name} does not span its articulated stage`);
+        }
+        assert.equal(panelMounts.length, SOLAR_PANEL_COUNT, 'each panel has a centerline mounting bracket');
+        for (const panelMount of panelMounts) {
+          assert.equal(panelMount.userData.mountRole, 'centerline-panel-bracket');
+          let containsMesh = false;
+          panelMount.traverse((child) => { if (child instanceof THREE.Mesh) containsMesh = true; });
+          assert.ok(containsMesh, `${panelMount.name} has visible bracket geometry`);
+          const bounds = new THREE.Box3().setFromObject(panelMount);
+          const index = panelMount.userData.panelIndex as number;
+          const side = index < rows ? -1 : 1;
+          const centerlineReach = side * (side < 0 ? bounds.max.x : bounds.min.x);
+          assert.ok(centerlineReach > 0.005 && centerlineReach < 0.075,
+            `${panelMount.name} does not reach the central spine: ${centerlineReach}`);
+        }
+        const firstHingeZ = transformInModule(module, hinges[0]).position.z;
+        for (const hinge of hinges) {
+          const index = hinge.userData.panelIndex as number;
+          const column = Math.floor(index / rows);
+          const row = index % rows;
+          const panelPosition: THREE.Vector3 = transformInModule(module, hinge).position;
+          const panelWidth = SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * SOLAR_PANEL_STAGE_SCALES[row]!;
+          const side = column === 0 ? -1 : 1;
+          const expectedX = side * (panelWidth / 2 + SOLAR_PANEL_CENTERLINE_CLEARANCE);
+          assert.ok(Math.abs(panelPosition.x - expectedX) < 1e-6,
+            `panel ${index} root hinge x ${panelPosition.x} should be ${expectedX}`);
+          assert.ok(Math.abs(panelPosition.z - firstHingeZ - row * SOLAR_PANEL_LENGTH) < 1e-6,
+            `panel ${index} root hinge is not on the four-panel chain row ${row}`);
+        }
+      }
+    }
+  });
+
+  test('ship module asset: 太陽電池セルはクリアコートの光沢ガラス面を持つ', async () => {
+    await loadShipModuleModels();
+    const solar = moduleRoots(parsedRoot()).get('solar-panel-standard');
+    assert.ok(solar !== undefined);
+    const cellGroups: THREE.Object3D[] = [];
+    solar.traverse((child) => {
+      if (child.name.startsWith('panel_cells:')) cellGroups.push(child);
+    });
+    assert.equal(cellGroups.length, SOLAR_PANEL_COUNT);
+    const blueMaterials = new Map<string, THREE.MeshPhysicalMaterial>();
+    const rustMaterials = new Map<string, THREE.MeshPhysicalMaterial>();
+    let assignedBlueCellGroups = 0;
+    let assignedRustCellGroups = 0;
+    const rustCellCountByPanel = new Map<number, number>();
+    const blueCellCountByPanel = new Map<number, number>();
+    for (const cells of cellGroups) {
+      const panelIndexMatch = /^panel_cells:(\d+)$/.exec(cells.name);
+      assert.ok(panelIndexMatch !== null, `unrecognized solar cell panel name: ${cells.name}`);
+      const panelIndex = Number(panelIndexMatch[1]);
+      cells.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materials) {
+          assert.ok(material instanceof THREE.MeshPhysicalMaterial, `${cells.name} is not a physical glass material`);
+          assert.ok(material.clearcoat >= 0.7, `${cells.name} clearcoat: ${material.clearcoat}`);
+          assert.ok(material.clearcoatRoughness <= 0.03, `${cells.name} coat roughness: ${material.clearcoatRoughness}`);
+          if (material.name.startsWith('mat_solar_shade_')) {
+            blueMaterials.set(material.name, material);
+            assignedBlueCellGroups++;
+            blueCellCountByPanel.set(panelIndex, (blueCellCountByPanel.get(panelIndex) ?? 0) + 1);
+          }
+          if (material.name.startsWith('mat_solar_rust_shade_')) {
+            rustMaterials.set(material.name, material);
+            assignedRustCellGroups++;
+            rustCellCountByPanel.set(panelIndex, (rustCellCountByPanel.get(panelIndex) ?? 0) + 1);
+          }
+        }
+      });
+    }
+    assert.ok(blueMaterials.size > 0 && rustMaterials.size > 0, 'blue and muted rust cell materials are present');
+    for (const material of blueMaterials.values()) {
+      assert.ok(material.color.b > material.color.r * 3, `${material.name} is not blue-black: ${material.color.getHexString()}`);
+      assert.ok(material.color.b < 0.03, `${material.name} is too bright: ${material.color.getHexString()}`);
+    }
+    for (const material of rustMaterials.values()) {
+      assert.ok(material.color.r > material.color.g, `${material.name} is not red-brown`);
+      assert.ok(material.color.b > material.color.g, `${material.name} has no cool blue shift`);
+      assert.ok(material.color.b / material.color.r > 0.65, `${material.name} is too saturated red`);
+      assert.ok(material.color.r < 0.07, `${material.name} is too bright: ${material.color.getHexString()}`);
+    }
+    assert.ok(assignedBlueCellGroups > 0, 'blue cells are assigned to cell geometry');
+    assert.ok(assignedRustCellGroups > 0, 'the rust-colored panel is assigned to cell geometry');
+    const stages = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+    const brownPanelIndices = new Set([...Array(SOLAR_PANEL_COLUMNS).keys()].map((column) => column * stages + 2));
+    for (let index = 0; index < SOLAR_PANEL_COUNT; index++) {
+      if (brownPanelIndices.has(index)) {
+        assert.ok((rustCellCountByPanel.get(index) ?? 0) > 0, `stage 3 panel ${index} has no rust cells`);
+        assert.equal(blueCellCountByPanel.get(index) ?? 0, 0, `stage 3 panel ${index} should be fully rust-colored`);
+      } else {
+        assert.equal(rustCellCountByPanel.get(index) ?? 0, 0, `panel ${index} has an unexpected rust patch`);
+        assert.ok((blueCellCountByPanel.get(index) ?? 0) > 0, `panel ${index} has no blue cells`);
+      }
     }
   });
 

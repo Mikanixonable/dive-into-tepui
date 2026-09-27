@@ -39,6 +39,7 @@ function moduleDefinition(
   });
 }
 
+// 燃料タンクのモジュール定義。モデルは省略時に id と同名のものを引く。
 function tank(
   id: string, length: number, fuelKind: FuelKind, capacity: number, dryMass = 250,
   fuelMassPerUnit = 1, modelId = id,
@@ -55,8 +56,8 @@ const RCS_MODULE_TORQUE = 24_000;
 const GATLING_MUZZLES = [v3(0, 0, 2.5)];
 // 給弾ベルトの取り込み口 [m]。砲架下の給弾塔の口で、ベルトはここから +X へ伸びる。
 const GATLING_FEED_PORT = v3(0, -1.95, 0);
-// 空薬莢の排出口 [m]。機関部 -X 側の排莢樋の末端。
-const GATLING_EJECTION_PORT = v3(-1.32, -0.24, -0.04);
+// 空薬莢の排出口 [m]。機関部の下から -X 側へ下る排莢樋の末端。
+const GATLING_EJECTION_PORT = v3(-2.08, -1.38, 0.51);
 // 空リンク・マガジン外枠の排出口 [m]。給弾塔の -X 面の開口の少し外。
 const GATLING_LINK_EXIT_PORT = v3(-0.86, -1.95, 0.3);
 
@@ -159,6 +160,7 @@ const definitions: readonly ShipModuleDefinition[] = [
 export class ShipModuleCatalog {
   private readonly byId: ReadonlyMap<string, ShipModuleDefinition>;
 
+  // items を id で引ける索引にする。id の重複はその場で失敗にする。
   public constructor(items: readonly ShipModuleDefinition[] = definitions) {
     const map = new Map<string, ShipModuleDefinition>();
     for (const item of items) {
@@ -172,10 +174,12 @@ export class ShipModuleCatalog {
     return this.byId.has(id);
   }
 
+  // 定義を引く。未定義の id では null を返す。
   public get(id: string): ShipModuleDefinition | null {
     return this.byId.get(id) ?? null;
   }
 
+  // 定義を引く。未定義の id はその場で失敗にする。
   public require(id: string): ShipModuleDefinition {
     const definition = this.get(id);
     if (definition === null) throw new Error(`unknown ship module definition: ${id}`);

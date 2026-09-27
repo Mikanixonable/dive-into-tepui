@@ -3,6 +3,7 @@ import { LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qMul, qRotat
 import { len, scale, sub, type Vec3 } from '../../../math/vec3';
 import { memoParseIndependent } from '../baked-model';
 import magazineData from '../../../assets/models/magazine.json';
+import { BeltHardwareView } from './belt-hardware-view';
 
 // マガジンリンク1個分のモデル。
 const parseMagazine = memoParseIndependent<THREE.Group>(magazineData);
@@ -17,6 +18,7 @@ export interface BeltNodes {
 // 給弾ベルトのリンク列を組み、供給された各節の位置とねじれへ同期する。
 export class BeltView {
   private readonly links: THREE.Group[] = [];
+  private readonly hardware: BeltHardwareView;
 
   // root は自機の表示ツリーの根。linkCount ぶんのリンクを給弾口から並べて作る。
   public constructor(root: THREE.Object3D, linkCount: number) {
@@ -26,6 +28,7 @@ export class BeltView {
       group.add(link);
       this.links.push(link);
     }
+    this.hardware = new BeltHardwareView(group, linkCount);
     root.add(group);
   }
 
@@ -50,5 +53,6 @@ export class BeltView {
       prevQ = bendQ;
       prevPoint = pos;
     }
+    this.hardware.sync(magsLeft, nodes, this.links);
   }
 }

@@ -40,7 +40,7 @@ def reset_scene():
     for block in bpy.data.materials: bpy.data.materials.remove(block)
     for block in bpy.data.objects: bpy.data.objects.remove(block)
 
-def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0):
+def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0, clearcoat=0.0, coat_roughness=0.03):
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
@@ -49,6 +49,9 @@ def create_pbr_material(name, base_color, roughness=0.5, metallic=0.0):
         bsdf.inputs["Base Color"].default_value = base_color
         bsdf.inputs["Roughness"].default_value = roughness
         bsdf.inputs["Metallic"].default_value = metallic
+        if clearcoat > 0.0:
+            bsdf.inputs["Coat Weight"].default_value = clearcoat
+            bsdf.inputs["Coat Roughness"].default_value = coat_roughness
     return mat
 
 def make_tank_hull(length, radius=3.0, angular_segments=192):
@@ -105,11 +108,11 @@ class MaterialLibrary:
         self.pipe = create_pbr_material("mat_pipe", (0.88, 0.90, 0.93, 1.0), roughness=0.30, metallic=1.0)
         # 配管の締め具・受け金具
         self.clamp = create_pbr_material("mat_clamp", (0.35, 0.40, 0.45, 1.0), roughness=0.35, metallic=1.0)
-        # 主ノズルのチタニウムグレーの外殻と、段差を拾う明るいリブ
-        self.nozzle_bell = create_pbr_material("mat_nozzle_bell", (0.38, 0.41, 0.45, 1.0), roughness=0.34, metallic=0.95)
+        # 主ノズルの銀色の延長ベルと、段差を拾う明るいチタンリブ
         self.nozzle_rib = create_pbr_material("mat_nozzle_rib", (0.52, 0.48, 0.44, 1.0), roughness=0.35, metallic=1.0)
-        self.nozzle_titanium_rib = create_pbr_material("mat_nozzle_titanium_rib", (0.64, 0.67, 0.71, 1.0), roughness=0.30, metallic=1.0)
-        self.nozzle_extension = create_pbr_material("mat_nozzle_extension", (0.34, 0.37, 0.41, 1.0), roughness=0.38, metallic=0.95)
+        self.nozzle_titanium_rib = create_pbr_material("mat_nozzle_titanium_rib", (0.76, 0.79, 0.82, 1.0), roughness=0.26, metallic=1.0)
+        self.nozzle_extension = create_pbr_material("mat_nozzle_extension", (0.64, 0.68, 0.72, 1.0), roughness=0.27, metallic=0.98)
+        self.nozzle_copper = create_pbr_material("mat_nozzle_copper", (0.66, 0.25, 0.105, 1.0), roughness=0.29, metallic=0.9)
         # 電装ケース、セラミック被覆部品、ハーネス
         self.electronics_brown = create_pbr_material("mat_electronics_brown", (0.34, 0.20, 0.12, 1.0), roughness=0.52, metallic=0.35)
         self.electronics_white = create_pbr_material("mat_electronics_white", (0.82, 0.84, 0.85, 1.0), roughness=0.48, metallic=0.25)
@@ -151,24 +154,25 @@ class MaterialLibrary:
         # 建造ドックの識別色
         self.dock = create_pbr_material("mat_dock", (0.84, 0.55, 0.22, 1.0), roughness=0.38, metallic=1.0)
         # ガラス越しに見える暗い濃青の太陽電池セル。低 roughness で鋭い反射を返す
-        self.solar = create_pbr_material("mat_solar", (0.008, 0.022, 0.07, 1.0), roughness=0.06, metallic=0.12)
+        self.solar = create_pbr_material("mat_solar", (0.002, 0.005, 0.014, 1.0), roughness=0.035, metallic=0.06, clearcoat=0.75, coat_roughness=0.02)
         # セル区画ごとの明暗ばらつき
         self.solar_shades = [
             create_pbr_material(
                 f"mat_solar_shade_{k}",
-                (0.008 * f, 0.022 * f, 0.07 * f, 1.0), roughness=0.06, metallic=0.12)
+                (0.002 * f, 0.005 * f, 0.014 * f, 1.0), roughness=0.035, metallic=0.06, clearcoat=0.75, coat_roughness=0.02)
             for k, f in enumerate((0.82, 0.9, 0.96, 1.0, 1.08, 1.16))
         ]
         self.solar_rust_shades = [
             create_pbr_material(
                 f"mat_solar_rust_shade_{k}",
-                (0.075 * f, 0.018 * f, 0.012 * f, 1.0), roughness=0.10, metallic=0.08)
+                (0.050 * f, 0.033 * f, 0.037 * f, 1.0), roughness=0.045, metallic=0.04, clearcoat=0.75, coat_roughness=0.02)
             for k, f in enumerate((0.86, 0.94, 1.0, 1.08, 1.16))
         ]
         # セル帯のあいだに見えるバス帯と、翼裏の褐色基板・横縞
-        self.solar_bus = create_pbr_material("mat_solar_bus", (0.007, 0.016, 0.045, 1.0), roughness=0.12, metallic=0.18)
-        self.solar_backing = create_pbr_material("mat_solar_backing", (0.14, 0.085, 0.042, 1.0), roughness=0.68, metallic=0.08)
-        self.solar_back_stripe = create_pbr_material("mat_solar_back_stripe", (0.08, 0.05, 0.024, 1.0), roughness=0.74, metallic=0.05)
+        self.solar_bus = create_pbr_material("mat_solar_bus", (0.004, 0.009, 0.020, 1.0), roughness=0.12, metallic=0.18)
+        self.solar_trace = create_pbr_material("mat_solar_trace", (0.18, 0.21, 0.24, 1.0), roughness=0.28, metallic=0.62)
+        self.solar_backing = create_pbr_material("mat_solar_backing", (0.065, 0.038, 0.020, 1.0), roughness=0.68, metallic=0.08)
+        self.solar_back_stripe = create_pbr_material("mat_solar_back_stripe", (0.036, 0.022, 0.012, 1.0), roughness=0.74, metallic=0.05)
         # 翼裏の白い骨格と、灰色の小型アクチュエーター
         self.solar_lattice = create_pbr_material("mat_solar_lattice", (0.88, 0.90, 0.92, 1.0), roughness=0.28, metallic=0.22)
         self.solar_actuator = create_pbr_material("mat_solar_actuator", (0.34, 0.38, 0.42, 1.0), roughness=0.34, metallic=0.72)
@@ -182,12 +186,22 @@ class MaterialLibrary:
 
 class CockpitMaterialLibrary:
     def __init__(self):
-        # 焼き物のような鈍い光沢を持つ、コックピットのエボナイト塗膜とアイボリー塗膜。
-        self.ebonite = create_pbr_material("mat_cockpit_ebonite", (0.035, 0.040, 0.048, 1.0), roughness=0.34, metallic=0.02)
-        self.ivory = create_pbr_material("mat_cockpit_ivory", (0.79, 0.75, 0.65, 1.0), roughness=0.40, metallic=0.02)
+        # 青みを含む濃灰色の船殻、淡いアイボリー塗装、銅色の接合帯を使う。
+        self.ebonite = create_pbr_material("mat_cockpit_ebonite", (0.052, 0.069, 0.086, 1.0), roughness=0.42, metallic=0.18)
+        self.ivory = create_pbr_material("mat_cockpit_ivory", (0.79, 0.76, 0.68, 1.0), roughness=0.44, metallic=0.03)
+        self.ivory_line = create_pbr_material("mat_cockpit_ivory_line", (0.55, 0.54, 0.49, 1.0), roughness=0.50, metallic=0.12)
         self.recess = create_pbr_material("mat_cockpit_recess", (0.014, 0.018, 0.024, 1.0), roughness=0.46, metallic=0.0)
-        self.red = create_pbr_material("mat_cockpit_red", (0.62, 0.055, 0.040, 1.0), roughness=0.42, metallic=0.02)
-        self.fastener = create_pbr_material("mat_cockpit_fastener", (0.43, 0.42, 0.39, 1.0), roughness=0.32, metallic=0.22)
+        self.panel = create_pbr_material("mat_cockpit_panel", (0.065, 0.084, 0.103, 1.0), roughness=0.46, metallic=0.24)
+        self.panel_alt = create_pbr_material("mat_cockpit_panel_alt", (0.044, 0.060, 0.077, 1.0), roughness=0.48, metallic=0.20)
+        self.panel_seam = create_pbr_material("mat_cockpit_panel_seam", (0.022, 0.031, 0.042, 1.0), roughness=0.60, metallic=0.16)
+        self.red = create_pbr_material("mat_cockpit_copper", (0.37, 0.135, 0.078, 1.0), roughness=0.34, metallic=0.48)
+        self.fastener = create_pbr_material("mat_cockpit_fastener", (0.48, 0.48, 0.45, 1.0), roughness=0.34, metallic=0.62)
+        self.hardware = create_pbr_material("mat_cockpit_hardware", (0.32, 0.37, 0.40, 1.0), roughness=0.38, metallic=0.72)
+        self.louver = create_pbr_material("mat_cockpit_louver", (0.22, 0.28, 0.32, 1.0), roughness=0.38, metallic=0.72)
+        self.device_case = create_pbr_material("mat_cockpit_device_case", (0.45, 0.46, 0.43, 1.0), roughness=0.48, metallic=0.38)
+        self.hatch = create_pbr_material("mat_cockpit_hatch", (0.12, 0.15, 0.18, 1.0), roughness=0.42, metallic=0.42)
+        self.glass = create_pbr_material("mat_cockpit_glass", (0.16, 0.18, 0.18, 1.0), roughness=0.72, metallic=0.0,
+                                         clearcoat=0.025, coat_roughness=0.28)
 
 def world_matrix(obj):
     """obj の模型座標での変換。親子付けはどれも parent_inverse が単位行列である前提。"""
@@ -606,31 +620,8 @@ def cockpit_surface_radius(profile, indent_fraction, z, theta):
     circle_radius = radius - offset
     return offset * abs(math.sin(theta)) + math.sqrt(max(0.0, circle_radius ** 2 - offset ** 2 * math.cos(theta) ** 2))
 
-def wrapped_angle_difference(a, b):
-    return math.atan2(math.sin(a - b), math.cos(a - b))
-
-def cockpit_short_recess(z, theta, radius):
-    """船殻表面へ短冊状の浅い凹みを刻み、継ぎ目と重ならない暗部も返す。"""
-    period = 0.64
-    column_count = 32
-    step = 2.0 * math.pi / column_count
-    column = int(round(theta / step)) % column_count
-    center_theta = column * step
-    delta_theta = abs(wrapped_angle_difference(theta, center_theta))
-    phase = (column % 2) * period * 0.5
-    delta_z = (z + 4.15 + phase + period * 0.5) % period - period * 0.5
-    distance = max(abs(delta_z) - 0.14, delta_theta * radius - 0.055)
-    slot = 0.042 * max(0.0, min(1.0, (0.030 - distance) / 0.050))
-
-    joint_z = min(abs(z - seam) for seam in (-3.45, -1.25, 0.5, 2.35, 3.85))
-    axial_joint = 0.022 * max(0.0, min(1.0, (0.040 - joint_z) / 0.032))
-    joint_angles = tuple(math.radians(degrees) for degrees in (22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5))
-    longitudinal_joint = min(abs(wrapped_angle_difference(theta, seam)) for seam in joint_angles) * radius
-    longitudinal_joint = 0.015 * max(0.0, min(1.0, (0.026 - longitudinal_joint) / 0.018))
-    return max(slot, axial_joint, longitudinal_joint), slot
-
 def cockpit_hull_mesh(profile, indent_fraction):
-    """短冊凹み・板継ぎ目を断面メッシュ自体へ刻んだ、黒/アイボリー複材の閉じた船殻を作る。"""
+    """断面の長手溝を保ち、アイボリー後部と濃色の前部を持つ閉じた船殻を作る。"""
     bm = bmesh.new()
     axial_steps = int(round((profile[-1]["z"] - profile[0]["z"]) / 0.04))
     angular_steps = 288
@@ -641,9 +632,7 @@ def cockpit_hull_mesh(profile, indent_fraction):
         for angular_index in range(angular_steps):
             theta = 2.0 * math.pi * angular_index / angular_steps
             radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
-            recess, _ = cockpit_short_recess(z, theta, radius)
-            surface_radius = max(0.0, radius - recess)
-            ring.append(bm.verts.new((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z)))
+            ring.append(bm.verts.new((radius * math.cos(theta), radius * math.sin(theta), z)))
         rings.append(ring)
 
     for axial_index in range(axial_steps):
@@ -652,19 +641,16 @@ def cockpit_hull_mesh(profile, indent_fraction):
             face = bm.faces.new((rings[axial_index][angular_index], rings[axial_index][next_angle],
                                  rings[axial_index + 1][next_angle], rings[axial_index + 1][angular_index]))
             center = face.calc_center_median()
-            theta = math.atan2(center.y, center.x)
-            radius = cockpit_surface_radius(profile, indent_fraction, center.z, theta)
-            recess, slot = cockpit_short_recess(center.z, theta, radius)
-            if recess > 0.010 or slot > 0.010:
-                face.material_index = 2
-            elif center.z < -3.48:
+            if center.z < -3.08:
                 face.material_index = 1
 
     for end_index, z in ((0, profile[0]["z"]), (-1, profile[-1]["z"])):
         center = bm.verts.new((0.0, 0.0, z))
         ring = rings[end_index]
         for angular_index in range(angular_steps):
-            bm.faces.new((center, ring[angular_index], ring[(angular_index + 1) % angular_steps]))
+            face = bm.faces.new((center, ring[angular_index], ring[(angular_index + 1) % angular_steps]))
+            if end_index == 0:
+                face.material_index = 1
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return shade_by_angle(bm, 42.0)
 
@@ -708,60 +694,315 @@ def add_cockpit_ring_patch(name, profile, indent_fraction, z_center, width, radi
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return add_mesh_obj(name, bm, material)
 
+def add_cockpit_round_window_glass(name, profile, indent_fraction, z_center, diameter, theta_center,
+                                   radial_offset, thickness, material, segments=48):
+    """船殻の曲面から立ち上がる、真円の立体窓ガラスを作る。"""
+    bm = bmesh.new()
+    base_radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+
+    def round_loop(scale, depth):
+        loop = []
+        for index in range(segments):
+            angle = 2.0 * math.pi * index / segments
+            z = z_center + diameter * 0.5 * scale * math.sin(angle)
+            theta = theta_center + diameter * 0.5 * scale * math.cos(angle) / max(base_radius, 0.1)
+            radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radial_offset + depth
+            loop.append(bm.verts.new((radius * math.cos(theta), radius * math.sin(theta), z)))
+        return loop
+
+    base = round_loop(0.98, 0.0)
+    shoulder = round_loop(1.0, thickness * 0.28)
+    crown = round_loop(0.82, thickness * 0.82)
+    bottom_radius = base_radius + radial_offset
+    bottom = bm.verts.new((bottom_radius * math.cos(theta_center), bottom_radius * math.sin(theta_center), z_center))
+    top_radius = base_radius + radial_offset + thickness
+    top = bm.verts.new((top_radius * math.cos(theta_center), top_radius * math.sin(theta_center), z_center))
+    for index in range(segments):
+        following = (index + 1) % segments
+        bm.faces.new((bottom, base[following], base[index]))
+        bm.faces.new((base[index], base[following], shoulder[following], shoulder[index]))
+        bm.faces.new((shoulder[index], shoulder[following], crown[following], crown[index]))
+        bm.faces.new((top, crown[index], crown[following]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, shade_by_angle(bm, 50.0), material)
+
+def add_cockpit_round_window_bezel(name, profile, indent_fraction, z_center, diameter, theta_center,
+                                   radial_offset, material):
+    """真円窓の穴を残した、船殻に沿う立体トーラス枠を作る。"""
+    surface_radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+    center_radius = surface_radius + radial_offset
+    center = (center_radius * math.cos(theta_center), center_radius * math.sin(theta_center), z_center)
+    tube_center_radius = 0.40
+    tube_radius = 0.045
+    outer_radius = tube_center_radius + tube_radius
+    scale = diameter / (2.0 * outer_radius)
+    sine, cosine = math.sin(theta_center), math.cos(theta_center)
+    matrix = Matrix((
+        (0.0, -sine * scale, cosine, center[0]),
+        (0.0, cosine * scale, sine, center[1]),
+        (scale, 0.0, 0.0, center[2]),
+        (0.0, 0.0, 0.0, 1.0),
+    ))
+    bm = make_torus(tube_center_radius, tube_radius, major_seg=64, minor_seg=12)
+    transform_bm(bm, matrix)
+    return add_mesh_obj(name, bm, material)
+
+def add_cockpit_radial_cylinder(name, profile, indent_fraction, z, theta, radius, depth, radial_offset, material):
+    """船殻面から放射方向へ短い円筒を立て、開口の暗面や固定金具を作る。"""
+    surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+    center_radius = surface_radius + radial_offset
+    center = Vector((center_radius * math.cos(theta), center_radius * math.sin(theta), z))
+    direction = Vector((math.cos(theta), math.sin(theta), 0.0))
+    matrix = Matrix.Translation(center) @ direction.to_track_quat("Z", "Y").to_matrix().to_4x4()
+    bm = make_cylinder(radius, radius, depth, segments=24, bevel=min(0.008, depth * 0.2))
+    transform_bm(bm, matrix)
+    return add_mesh_obj(name, bm, material)
+
+def add_cockpit_aperture(name, profile, indent_fraction, z, theta, radius, mats):
+    """外周に金属縁を持つ暗い円形開口を作る。"""
+    surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+    center_radius = surface_radius + 0.026
+    matrix = (Matrix.Translation((center_radius * math.cos(theta), center_radius * math.sin(theta), z))
+              @ Vector((math.cos(theta), math.sin(theta), 0.0)).to_track_quat("Z", "Y").to_matrix().to_4x4())
+    rim = make_torus(radius * 0.78, max(0.012, radius * 0.13), major_seg=32, minor_seg=8)
+    transform_bm(rim, matrix)
+    add_mesh_obj(f"{name}_rim", rim, mats.hardware)
+    add_cockpit_radial_cylinder(f"{name}_dark_lens", profile, indent_fraction, z, theta,
+                                radius * 0.70, 0.024, 0.020, mats.recess)
+
+def add_cockpit_louver_panel(name, profile, indent_fraction, z_center, height, theta_center, width,
+                             count, mats, axial_segments=8):
+    """外板上に縁取り付きのルーバー区画を作る。羽根数と区画寸法を変えて配置する。"""
+    add_cockpit_surface_patch(f"{name}_recess", profile, indent_fraction, z_center, height, theta_center,
+                              width, 0.016, mats.recess, axial_segments, 16)
+    edge_theta = (width * 0.5 - 0.025) / max(cockpit_surface_radius(profile, indent_fraction, z_center, theta_center), 0.1)
+    for edge_index, direction in enumerate((-1.0, 1.0)):
+        add_cockpit_surface_patch(f"{name}_side_rail_{edge_index}", profile, indent_fraction, z_center, height,
+                                  theta_center + direction * edge_theta, 0.035, 0.046, mats.hardware,
+                                  axial_segments, 2)
+    frame_height = min(0.038, height * 0.08)
+    for edge_index, z in enumerate((z_center - height * 0.5, z_center + height * 0.5)):
+        add_cockpit_surface_patch(f"{name}_end_rail_{edge_index}", profile, indent_fraction, z, frame_height,
+                                  theta_center, width, 0.044, mats.hardware, 2, 16)
+    pitch = height / (count + 1)
+    louver_height = min(0.060, pitch * 0.34)
+    for index in range(count):
+        z = z_center - height * 0.5 + pitch * (index + 1)
+        add_cockpit_surface_patch(f"{name}_louver_{index}", profile, indent_fraction, z, louver_height,
+                                  theta_center, width - 0.085, 0.056, mats.louver, 2, 16)
+
+def add_cockpit_circumferential_grille_field(name, profile, indent_fraction, panel_specs, mats):
+    """船首側を規則的に覆う、周方向へ伸びる窪みをまとめて作る。"""
+    bm = bmesh.new()
+
+    def add_panel_patch(z_center, height, theta_center, width, radial_offset,
+                        material_index, axial_segments, angular_segments):
+        surface_radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+        theta_half = width * 0.5 / max(surface_radius, 0.1)
+        grid = []
+        for axial_index in range(axial_segments + 1):
+            z = z_center - height * 0.5 + height * axial_index / axial_segments
+            row = []
+            for angular_index in range(angular_segments + 1):
+                theta = theta_center - theta_half + 2.0 * theta_half * angular_index / angular_segments
+                radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radial_offset
+                row.append(bm.verts.new((radius * math.cos(theta), radius * math.sin(theta), z)))
+            grid.append(row)
+        for axial_index in range(axial_segments):
+            for angular_index in range(angular_segments):
+                face = bm.faces.new((grid[axial_index][angular_index], grid[axial_index][angular_index + 1],
+                                     grid[axial_index + 1][angular_index + 1], grid[axial_index + 1][angular_index]))
+                face.material_index = material_index
+
+    material_slots = (mats.panel, mats.panel, mats.recess, mats.panel_seam)
+    for z_center, height, theta_center, width, count in panel_specs:
+        surface_radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+        half_width = width * 0.5
+        pitch = height / count
+        groove_width = min(0.046, pitch * 0.52)
+        axial_profile = [(-height * 0.5, 0.010, 0)]
+        for index in range(count):
+            center = -height * 0.5 + pitch * (index + 0.5)
+            axial_profile.extend((
+                (center - groove_width * 0.42, 0.010, 0),
+                (center - groove_width * 0.29, 0.020, 1),
+                (center - groove_width * 0.17, 0.006, 3),
+                (center + groove_width * 0.17, 0.002, 2),
+                (center + groove_width * 0.29, 0.020, 3),
+                (center + groove_width * 0.42, 0.010, 1),
+            ))
+        axial_profile.append((height * 0.5, 0.010, 0))
+
+        grid = []
+        for axial_offset, radial_offset, _ in axial_profile:
+            z = z_center + axial_offset
+            row = []
+            for angular_index in range(17):
+                theta = theta_center - half_width / max(surface_radius, 0.1) \
+                    + width * angular_index / (16 * max(surface_radius, 0.1))
+                radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radial_offset
+                row.append(bm.verts.new((radius * math.cos(theta), radius * math.sin(theta), z)))
+            grid.append(row)
+        for profile_index in range(len(axial_profile) - 1):
+            for angular_index in range(16):
+                face = bm.faces.new((grid[profile_index][angular_index], grid[profile_index][angular_index + 1],
+                                     grid[profile_index + 1][angular_index + 1], grid[profile_index + 1][angular_index]))
+                face.material_index = axial_profile[profile_index + 1][2]
+
+        rail_theta_offset = (half_width - 0.022) / max(surface_radius, 0.1)
+        for direction in (-1.0, 1.0):
+            add_panel_patch(z_center, height, theta_center + direction * rail_theta_offset,
+                            0.036, 0.018, 0, 12, 2)
+        for z in (z_center - height * 0.5, z_center + height * 0.5):
+            add_panel_patch(z, 0.036, theta_center, width, 0.018, 0, 2, 16)
+
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    add_mesh_obj(name, bm, material_slots)
+
+def add_cockpit_finned_device(name, profile, indent_fraction, z_center, height, theta_center, width, mats):
+    """アイボリー部の小型箱形装置と横羽根を作る。"""
+    add_cockpit_surface_patch(f"{name}_case", profile, indent_fraction, z_center, height, theta_center,
+                              width, 0.060, mats.device_case, 6, 12)
+    count = 7
+    pitch = height * 0.78 / count
+    louver_height = min(0.050, pitch * 0.40)
+    for index in range(count):
+        z = z_center - height * 0.39 + pitch * (index + 0.5)
+        add_cockpit_surface_patch(f"{name}_fin_{index}", profile, indent_fraction, z, louver_height,
+                                  theta_center, width * 0.82, 0.112, mats.hardware, 2, 12)
+
+def add_cockpit_rivets(name, profile, indent_fraction, points, radius, material):
+    """指定した曲面座標に疎な固定点をまとめて置く。"""
+    centers = []
+    for z, theta in points:
+        surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radius * 0.55
+        centers.append((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z))
+    return add_mesh_obj(name, make_spheres(centers, radius, u_seg=10, v_seg=6), material)
+
 def build_cockpit():
     reset_scene()
     cockpit_mats = CockpitMaterialLibrary()
     definition = MANIFEST["modules"]["cockpit-standard"]
     profile = MANIFEST["cockpitHull"]["profile"]
     indent_fraction = MANIFEST["cockpitHull"]["sectionIndentFraction"]
-    aft_z, fore_z = profile[0]["z"], profile[-1]["z"]
 
-    # 共通カタログ輪郭を使い、2つの対向円で左右に溝が入る断面を描く。
+    # カタログ輪郭と左右の長手溝を使い、短冊凹みのない外殻を作る。
     add_mesh_obj("cockpit_hull", cockpit_hull_mesh(profile, indent_fraction),
                  [cockpit_mats.ebonite, cockpit_mats.ivory, cockpit_mats.recess])
 
-    # 後部のアイボリー帯と、その前縁に巻いた細い赤い識別線。
-    add_cockpit_ring_patch("cockpit_red_aft_mark", profile, indent_fraction, -3.53, 0.055, 0.028, cockpit_mats.red)
-    add_cockpit_surface_patch("cockpit_ivory_centerline", profile, indent_fraction,
-                              0.0, 8.62, math.pi / 2.0, 0.16, 0.028, cockpit_mats.ivory, 108, 4)
-    # 前端の接続縁も閉じた薄いリングで仕上げ、黒い前面は窓のない板面にする。
-    add_cockpit_ring_patch("cockpit_forward_rim", profile, indent_fraction, 4.35, 0.065, 0.026, cockpit_mats.ivory)
+    # 接合帯はアイボリーの後部カラーと濃色胴体の境に置く。
+    add_cockpit_ring_patch("cockpit_copper_joint_band", profile, indent_fraction, -3.08, 0.115, 0.030,
+                           cockpit_mats.red)
+    add_cockpit_ring_patch("cockpit_joint_inner_seam", profile, indent_fraction, -3.17, 0.022, 0.026,
+                           cockpit_mats.panel_seam)
 
-    # 側面に閉じたハッチを2枚ずつ配置し、両舷で左右対称にする。
+    # アイボリー部には細い長手線と、位置をずらした少数の周方向継ぎ目を置く。
+    ivory_fasteners = []
     for side, theta in (("port", 0.0), ("starboard", math.pi)):
-        for hatch_index, z in enumerate((-1.15, 1.95)):
-            add_cockpit_surface_patch(f"cockpit_side_hatch_recess_{side}_{hatch_index}", profile, indent_fraction,
-                                      z, 0.96, theta, 0.82, 0.018, cockpit_mats.recess)
-            add_cockpit_surface_patch(f"cockpit_side_hatch_door_{side}_{hatch_index}", profile, indent_fraction,
-                                      z, 0.82, theta, 0.70, 0.034, cockpit_mats.ivory)
-            # 赤い警告枠をハッチ前縁だけに入れる。
-            side_radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
-            edge_theta = theta + (0.29 / side_radius) * (-1 if side == "port" else 1)
-            add_cockpit_surface_patch(f"cockpit_side_hatch_red_frame_{side}_{hatch_index}", profile, indent_fraction,
-                                      z, 0.70, edge_theta, 0.045, 0.050, cockpit_mats.red, 6, 2)
-            latch_theta = theta + (0.22 / side_radius) * (1 if side == "port" else -1)
-            add_cockpit_surface_patch(f"cockpit_side_hatch_latch_{side}_{hatch_index}", profile, indent_fraction,
-                                      z, 0.18, latch_theta, 0.052, 0.048, cockpit_mats.fastener, 2, 2)
+        for line_index, offset in enumerate((-0.60, -0.31, 0.31, 0.60)):
+            add_cockpit_surface_patch(f"cockpit_ivory_axial_line_{side}_{line_index}", profile, indent_fraction,
+                                      -3.82, 1.24, theta + offset, 0.012, 0.012,
+                                      cockpit_mats.ivory_line, 36, 2)
+        for seam_index, z in enumerate((-4.08, -3.62)):
+            add_cockpit_ring_patch(f"cockpit_ivory_cross_seam_{side}_{seam_index}", profile, indent_fraction,
+                                   z, 0.014, 0.013, cockpit_mats.ivory_line, 144)
+        for z in (-4.31, -3.96, -3.53, -3.27):
+            ivory_fasteners.extend(((z, theta - 0.80), (z, theta + 0.80)))
+    add_cockpit_rivets("cockpit_ivory_fasteners", profile, indent_fraction, ivory_fasteners,
+                       0.013, cockpit_mats.fastener)
 
-            half_theta = 0.34 / side_radius
-            for corner in range(4):
-                corner_theta = theta + (-half_theta if corner % 2 == 0 else half_theta)
-                corner_z = z + (-0.37 if corner < 2 else 0.37)
-                point_radius = cockpit_surface_radius(profile, indent_fraction, corner_z, corner_theta) + 0.034
-                bm_rivet = make_sphere(0.020, center=(point_radius * math.cos(corner_theta),
-                                                      point_radius * math.sin(corner_theta), corner_z),
-                                       u_seg=10, v_seg=6)
-                add_mesh_obj(f"cockpit_side_hatch_rivet_{side}_{hatch_index}_{corner}", bm_rivet,
-                             cockpit_mats.fastener)
+    # 胴体の板継ぎは間隔を変えたリング線と、途切れた長手線で構成する。
+    for seam_index, z in enumerate((-2.38, -0.58, 1.25, 2.00, 2.74, 3.47)):
+        add_cockpit_ring_patch(f"cockpit_body_cross_seam_{seam_index}", profile, indent_fraction,
+                               z, 0.018, 0.010, cockpit_mats.panel_seam)
+    for side, theta in (("port", 0.0), ("starboard", math.pi)):
+        seam_tracks = ((-0.84, -1.73, 1.08), (-0.30, -0.73, 1.42))
+        for track_index, (offset, z, height) in enumerate(seam_tracks):
+            add_cockpit_surface_patch(f"cockpit_body_axial_seam_{side}_{track_index}", profile, indent_fraction,
+                                      z, height, theta + offset, 0.014, 0.012,
+                                      cockpit_mats.panel_seam, 24, 2)
 
-    # 端板継ぎ目の位置へ小さな締結リベットを揃える。凹みや板面は接触形状には加えない。
-    for seam_index, z in enumerate((-3.45, -1.25, 0.5, 2.35, 3.85)):
-        for bolt_index in range(12):
-            theta = 2.0 * math.pi * bolt_index / 12.0
-            radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + 0.026
-            bm_rivet = make_sphere(0.018, center=(radius * math.cos(theta), radius * math.sin(theta), z),
-                                   u_seg=8, v_seg=6)
-            add_mesh_obj(f"cockpit_panel_rivet_{seam_index}_{bolt_index}", bm_rivet, cockpit_mats.fastener)
+        # 少数の広い外板を色差だけで分け、全体を格子状にしない。
+        add_cockpit_surface_patch(f"cockpit_body_plate_{side}_aft", profile, indent_fraction,
+                                  -1.18, 1.00, theta - 0.91, 0.96, 0.008, cockpit_mats.panel, 24, 16)
+        # 縦羽根型のグリルは中央から後方に少数だけ残す。
+        grille_specs = (
+            ("aft_joint", -2.72, 0.38, theta + 1.04, 0.62, 7),
+            ("aft", -2.12, 0.62, theta - 0.64, 0.88, 12),
+            ("lower_aft", -1.52, 0.52, theta + 0.20, 0.74, 11),
+            ("upper_mid", -0.67, 0.76, theta + 0.73, 1.18, 16),
+        )
+        for grille_name, z, height, grille_theta, width, count in grille_specs:
+            add_cockpit_louver_panel(f"cockpit_grille_{side}_{grille_name}", profile, indent_fraction,
+                                     z, height, grille_theta, width, count, cockpit_mats)
+
+        # 各舷にハッチを1枚。外枠、ガスケット、濃灰色の扉板を重ねる。
+        hatch_z = -0.08
+        add_cockpit_surface_patch(f"cockpit_side_hatch_gasket_{side}", profile, indent_fraction,
+                                  hatch_z, 0.86, theta, 0.91, 0.018, cockpit_mats.recess, 12, 14)
+        add_cockpit_surface_patch(f"cockpit_side_hatch_bezel_{side}", profile, indent_fraction,
+                                  hatch_z, 0.78, theta, 0.83, 0.034, cockpit_mats.hardware, 12, 14)
+        add_cockpit_surface_patch(f"cockpit_side_hatch_door_{side}", profile, indent_fraction,
+                                  hatch_z, 0.68, theta, 0.72, 0.050, cockpit_mats.hatch, 12, 14)
+        hatch_radius = cockpit_surface_radius(profile, indent_fraction, hatch_z, theta)
+        hatch_half_theta = 0.31 / hatch_radius
+        hatch_fasteners = [(hatch_z + z_delta, theta + angle_delta * hatch_half_theta)
+                           for z_delta in (-0.28, 0.28) for angle_delta in (-1.0, 1.0)]
+        add_cockpit_rivets(f"cockpit_side_hatch_fasteners_{side}", profile, indent_fraction,
+                           hatch_fasteners, 0.017, cockpit_mats.fastener)
+        add_cockpit_surface_patch(f"cockpit_side_hatch_latch_{side}", profile, indent_fraction,
+                                  hatch_z, 0.11, theta + 0.24 / hatch_radius, 0.060, 0.071,
+                                  cockpit_mats.fastener, 2, 3)
+
+        # 舷窓は船殻から立ち上がる真円の金属枠・ガスケット・厚みのある灰色ガラスで構成する。
+        window_z = 2.78
+        add_cockpit_round_window_bezel(f"cockpit_side_window_frame_{side}", profile, indent_fraction,
+                                       window_z, 0.80, theta, 0.045, cockpit_mats.hardware)
+        add_cockpit_round_window_glass(f"cockpit_side_window_glass_{side}", profile, indent_fraction,
+                                       window_z, 0.62, theta, 0.010, 0.040, cockpit_mats.glass)
+
+        # アイボリー接合部近くのフィン箱、異径の丸穴を一組としてまとめる。
+        add_cockpit_finned_device(f"cockpit_joint_finned_unit_{side}", profile, indent_fraction,
+                                  -3.77, 0.62, theta - 0.30, 0.68, cockpit_mats)
+        add_cockpit_surface_patch(f"cockpit_joint_aperture_plate_{side}", profile, indent_fraction,
+                                  -3.36, 0.42, theta, 0.72, 0.022, cockpit_mats.device_case, 8, 12)
+        add_cockpit_aperture(f"cockpit_joint_large_aperture_{side}", profile, indent_fraction,
+                             -3.36, theta - 0.115, 0.205, cockpit_mats)
+        add_cockpit_aperture(f"cockpit_joint_small_aperture_{side}", profile, indent_fraction,
+                             -3.36, theta + 0.135, 0.145, cockpit_mats)
+
+        # 後端寄りの小型二口装置。
+        add_cockpit_surface_patch(f"cockpit_aft_dual_port_case_{side}", profile, indent_fraction,
+                                  -4.18, 0.45, theta + 0.48, 0.40, 0.040,
+                                  cockpit_mats.device_case, 8, 10)
+        add_cockpit_aperture(f"cockpit_aft_dual_port_upper_{side}", profile, indent_fraction,
+                             -4.18, theta + 0.56, 0.078, cockpit_mats)
+        add_cockpit_aperture(f"cockpit_aft_dual_port_lower_{side}", profile, indent_fraction,
+                             -4.18, theta + 0.40, 0.066, cockpit_mats)
+
+        body_fasteners = []
+        for z in (-2.38, -0.58, 1.16, 2.76, 3.72):
+            body_fasteners.extend(((z, theta - 1.02), (z, theta + 1.02)))
+        add_cockpit_rivets(f"cockpit_body_fasteners_{side}", profile, indent_fraction,
+                           body_fasteners, 0.012, cockpit_mats.fastener)
+
+    # 船首側半分は周方向の溝を持つ等間隔の格子にし、両舷の窓まわりだけ区画を空ける。
+    circumferential_grille_specs = []
+    axial_bands = (0.88, 1.62, 2.36, 3.10, 3.84)
+    for band_index, z in enumerate(axial_bands):
+        for row_index in range(18):
+            if band_index in (2, 3) and row_index in (17, 0, 1, 8, 9, 10):
+                continue
+            theta = 2.0 * math.pi * row_index / 18
+            surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+            width = surface_radius * (2.0 * math.pi / 18 - 0.035)
+            circumferential_grille_specs.append((z, 0.62, theta, width, 6))
+    add_cockpit_circumferential_grille_field("cockpit_circumferential_grille_field", profile, indent_fraction,
+                                              circumferential_grille_specs, cockpit_mats)
+
+    # 前端の接続面は暗色のまま、薄いアイボリー縁だけで終端を示す。
+    add_cockpit_ring_patch("cockpit_forward_rim", profile, indent_fraction, 4.35, 0.052, 0.024,
+                           cockpit_mats.ivory)
 
     export_glb(os.path.join(OUT_DIR, "cockpit-standard.glb"))
 
@@ -1122,8 +1363,8 @@ def rcs_material_mesh(name, bm, material, smooth_angle=30.0):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     add_mesh_obj(name, shade_by_angle(bm, smooth_angle), material)
 
-def rcs_foil_sphere(radius, center):
-    """銀箔の細かな皺を、多方向の半径ゆらぎで作る。"""
+def wrinkled_foil_sphere(radius, center):
+    """金属箔の不規則な反射を拾う細かな皺を、多方向の半径ゆらぎで作る。"""
     center = Vector(center)
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(
@@ -1267,7 +1508,7 @@ def build_tank_rcs(length, name):
             radial = Vector((math.cos(t_ang), math.sin(t_ang), 0.0))
             tangent = Vector((-math.sin(t_ang), math.cos(t_ang), 0.0))
             center = Vector((radius * 0.55 * radial.x, radius * 0.55 * radial.y, z_sec))
-            add_mesh_obj(f"rcs_sphere_{sec}_{t}", rcs_foil_sphere(sphere_radius, center), mats.rcs_foil)
+            add_mesh_obj(f"rcs_sphere_{sec}_{t}", wrinkled_foil_sphere(sphere_radius, center), mats.rcs_foil)
 
             # 三方向の白い輪で球を囲い、外部ヨークへ荷重を渡す。
             for axis_index, axis in enumerate((Vector((0.0, 0.0, 1.0)), radial, tangent)):
@@ -1535,7 +1776,7 @@ def aft_dome_surface_z(radial, radius, dome_depth, ring_bottom):
     return ring_bottom - dome_depth * math.sqrt(max(0.0, 1.0 - (radial / radius) ** 2))
 
 def add_thruster_aft_details(radius, ring_bottom, dome_depth, mats):
-    """タンク後部の補強板・リベットと、面に沿う三方向の配管を加える。"""
+    """タンク後部ドームの補強板とリベットを加える。"""
     def surface_z(radial):
         return aft_dome_surface_z(radial, radius, dome_depth, ring_bottom)
 
@@ -1557,28 +1798,6 @@ def add_thruster_aft_details(radius, ring_bottom, dome_depth, mats):
                     y = rivet_r * math.sin(a) + tangential_offset * math.cos(a)
                     rivets.append((x, y, surface_z(math.hypot(x, y)) - 0.082))
     add_mesh_obj("aft_dome_panel_rivets", make_spheres(rivets, 0.024), mats.rivet)
-
-    # 隔壁の外周を巡る分配管と、複数系統を結ぶ放射・斜め配管
-    for ring_index, ring_r in enumerate((0.92, 1.48, 1.88)):
-        ring = make_torus(ring_r, 0.027, surface_z(ring_r) - 0.055, major_seg=64, minor_seg=8)
-        add_mesh_obj(f"aft_plumbing_ring_{ring_index}", ring, mats.pipe)
-    for k in range(10):
-        a = k * math.pi / 5.0 + math.pi / 10.0
-        points = [
-            Vector((radial * math.cos(a), radial * math.sin(a), surface_z(radial) - 0.060))
-            for radial in (0.62, 0.94, 1.28, 1.62, 1.96, 2.28)
-        ]
-        add_mesh_obj(f"aft_plumbing_radial_{k}", make_pipe(points, radius=0.022, segments=8), mats.pipe)
-    for k in range(6):
-        start_a = k * math.pi / 3.0
-        twist = math.pi / 8.0 if k % 2 == 0 else -math.pi / 8.0
-        points = []
-        for step in range(8):
-            t = step / 7.0
-            radial = 0.78 + 1.48 * t
-            a = start_a + twist * t
-            points.append(Vector((radial * math.cos(a), radial * math.sin(a), surface_z(radial) - 0.072)))
-        add_mesh_obj(f"aft_plumbing_diagonal_{k}", make_pipe(points, radius=0.020, segments=8), mats.pipe)
 
 def add_powerhead_pipe_cluster(mats, gimbal, pump_top):
     """ノズル基部から下へ続く支持ケージと、束になった主/二次配管を組む。"""
@@ -1638,6 +1857,22 @@ def add_powerhead_pipe_cluster(mats, gimbal, pump_top):
         parent=gimbal,
     )
 
+def add_nozzle_midsection_feeds(mats, gimbal, manifold_r, manifold_z, ftp_x, otp_x, pump_y, pump_top):
+    """ノズル中腹の環状マニフォールドと左右のタービンケースを太管でつなぐ。"""
+    for side, pump_x, turbine_offset in ((1.0, ftp_x, 0.62), (-1.0, otp_x, 0.46)):
+        angle = -math.pi / 2.0 + side * math.radians(28.0)
+        port = Vector((manifold_r * math.cos(angle), manifold_r * math.sin(angle), manifold_z))
+        turbine_z = pump_top - turbine_offset
+        points = [
+            port,
+            Vector((side * 0.62, -0.98, manifold_z + 0.16)),
+            Vector((side * 0.84, -0.82, turbine_z + 0.42)),
+            Vector((pump_x, pump_y - 0.34, turbine_z + 0.10)),
+            Vector((pump_x, pump_y - 0.16, turbine_z)),
+        ]
+        feed = make_pipe(round_corners(points, 0.14, steps=6), radius=0.074, segments=14)
+        add_mesh_obj(f"nozzle_midsection_feed_{side:+.0f}", feed, mats.pipe, parent=gimbal)
+
 def add_lh2_side_feedline(mats, ftp_x, pump_y, pump_top):
     """上側タンクから側面を下る液体水素ラインと、その防護スリーブを組む。"""
     points = [
@@ -1649,16 +1884,17 @@ def add_lh2_side_feedline(mats, ftp_x, pump_y, pump_top):
         Vector((ftp_x, 0.28, pump_top - 0.10)),
         Vector((ftp_x, pump_y + 0.06, pump_top - 0.04)),
     ]
-    line = make_pipe(round_corners(points, 0.12, steps=5), radius=0.072, segments=12)
+    line = make_pipe(round_corners(points, 0.12, steps=5), radius=0.095, segments=14)
     add_mesh_obj("lh2_side_feedline", line, mats.pipe)
     # 上側タンク側のラインを覆う断熱防護スリーブと固定環
     shield_points = points[:5]
-    shield = make_pipe(round_corners(shield_points, 0.12, steps=5), radius=0.145, segments=16)
-    add_mesh_obj("lh2_feedline_protective_sleeve", shield, mats.mli_white)
+    shield_radius = 0.155
+    shield = make_pipe(round_corners(shield_points, 0.12, steps=5), radius=shield_radius, segments=16)
+    add_mesh_obj("lh2_feedline_protective_sleeve", shield, mats.pipe)
     for clip_index in range(1, len(shield_points) - 1):
         point = shield_points[clip_index]
         tangent = (shield_points[clip_index + 1] - shield_points[clip_index - 1]).normalized()
-        clip = make_torus(0.148, 0.018, major_seg=24, minor_seg=8)
+        clip = make_torus(shield_radius + 0.012, 0.018, major_seg=24, minor_seg=8)
         orient = tangent.to_track_quat('Z', 'Y').to_matrix().to_4x4()
         transform_bm(clip, Matrix.Translation(point) @ orient)
         add_mesh_obj(f"lh2_sleeve_clamp_{clip_index}", clip, mats.clamp)
@@ -1729,10 +1965,7 @@ def build_thruster():
              ring_bottom - dome_depth * math.sin(i * math.pi / 40.0)) for i in range(21)]
     add_mesh_obj("aft_dome", make_shell_lathe(dome, 0.05, segments=64), mats.mli_white)
     add_mesh_obj("bay_top_rim", make_torus(radius - 0.03, 0.05, ring_bottom - 0.04, major_seg=64, minor_seg=10), mats.hull_dark)
-    # ドーム外面の断熱帯と、殻の形を支える子午線の補強リブ・赤道補強環
-    add_mesh_obj("aft_dome_mli", make_lathe([
-        (2.92, -0.08), (2.70, -0.27), (2.65, -0.32), (2.85, -0.14),
-    ], segments=64, closed=True), mats.mli_gold)
+    # 殻の形を支える子午線の補強リブ・赤道補強環
     for k in range(10):
         a = k * math.pi / 5.0
         rib_pts = [Vector((r * math.cos(a), r * math.sin(a), z - 0.03)) for r, z in dome[4:18]]
@@ -1771,10 +2004,10 @@ def build_thruster():
         add_mesh_obj(f"outrigger_strut_{k}", make_strut(dome_node, tip, 0.035), mats.truss)
         add_mesh_obj(f"outrigger_node_{k}", make_sphere(0.07, center=tip, u_seg=12, v_seg=8), mats.clamp)
 
-    # 4. 加圧ヘリウム容器(COPV): ドーム外面へ鞍座で吊り、面との荷重経路を見せる
+    # 4. 加圧ヘリウム容器(COPV): 金色の皺付き箔で覆い、ドーム外面へ鞍座で吊る
     for k, (x, y) in enumerate(((-1.55, 1.55), (1.55, 1.55), (-1.55, -1.55), (1.55, -1.55))):
         center = Vector((x, y, -0.86))
-        add_mesh_obj(f"helium_copv_{k}", make_sphere(0.32, center=center), mats.tank_rcs)
+        add_mesh_obj(f"helium_copv_{k}", wrinkled_foil_sphere(0.32, center), mats.mli_gold)
         band = make_torus(0.325, 0.022, center.z, major_seg=32, minor_seg=8)
         add_mesh_obj(f"helium_copv_band_{k}", transform_bm(band, Matrix.Translation((x, y, 0))), mats.clamp)
         tangent = Vector((-y, x, 0.0)).normalized()
@@ -1823,21 +2056,31 @@ def build_thruster():
         (r_c + regen_wall + 0.01, pivot_z - 0.115), (r_c + regen_wall + 0.01, chamber_top), (0.0, chamber_top),
     ], segments=48, closed=True), mats.hull_dark, parent=gimbal)
     add_mesh_obj("injector_flange", make_torus(r_c + regen_wall + 0.012, 0.018, chamber_top + 0.005, major_seg=48, minor_seg=10), mats.clamp, parent=gimbal)
-    add_mesh_obj("combustion_chamber", make_shell_lathe(regen, regen_wall, segments=64), mats.nozzle_bell, parent=gimbal)
+    add_mesh_obj("combustion_chamber", make_shell_lathe(regen, regen_wall, segments=64), mats.nozzle_copper, parent=gimbal)
     add_mesh_obj("nozzle_extension", make_shell_lathe(extension, extension_wall, segments=64), mats.nozzle_extension, parent=gimbal)
     add_anchor("thrust", (0.0, 0.0, exit_z - pivot_z), (0, 0, -1), parent=gimbal)
 
-    # ノズル延長部の周回補強リブ
-    for i in range(22):
-        t = i / 21.0
+    # ノズル延長部の広い周方向補強環。中央の1本は太い流体マニフォールドに置き換える。
+    nozzle_midsection_z = (extension[0][1] + extension[-1][1]) * 0.5
+    nozzle_midsection_r = profile_radius_at(extension, nozzle_midsection_z) + extension_wall + 0.065
+    for i in range(11):
+        if i == 5:
+            continue
+        t = i / 10.0
         z = extension[0][1] + (extension[-1][1] - extension[0][1]) * t
-        ring_r = profile_radius_at(extension, z) + extension_wall + 0.025
+        ring_r = profile_radius_at(extension, z) + extension_wall + 0.018
         add_mesh_obj(
             f"nozzle_circumferential_rib_{i}",
-            make_torus(ring_r, 0.022, z, major_seg=64, minor_seg=8),
+            make_torus(ring_r, 0.025, z, major_seg=64, minor_seg=10),
             mats.nozzle_titanium_rib,
             parent=gimbal,
         )
+    add_mesh_obj(
+        "nozzle_midsection_manifold",
+        make_torus(nozzle_midsection_r, 0.075, nozzle_midsection_z, major_seg=64, minor_seg=16),
+        mats.pipe,
+        parent=gimbal,
+    )
 
     # 7. 再生冷却管の束と束ね帯、延長部との継ぎ目の冷却剤入口マニフォールド、延長部の補強環
     tube_r = 0.009
@@ -1853,19 +2096,42 @@ def build_thruster():
     manifold_r = r_split + regen_wall + 0.045
     add_mesh_obj("coolant_inlet_manifold", make_torus(manifold_r, 0.035, z_split + 0.01, major_seg=48, minor_seg=12), mats.pipe, parent=gimbal)
     add_mesh_obj("extension_joint_flange", make_torus(r_split + regen_wall + 0.008, 0.016, z_split - 0.03, major_seg=48, minor_seg=8), mats.clamp, parent=gimbal)
-    # タービン排気の環状マニフォールド: 実機と同じく延長部の入口へ排気を導き、壁面を膜冷却する
+    # タービン排気の環状マニフォールドは延長部の入口へ排気を導き、壁面を膜冷却する
     exhaust_manifold_r = r_split + regen_wall + 0.11
     exhaust_manifold_z = z_split - 0.16
-    add_mesh_obj("turbine_exhaust_manifold", make_torus(exhaust_manifold_r, 0.05, exhaust_manifold_z, major_seg=48, minor_seg=12), mats.nozzle_rib, parent=gimbal)
+    add_mesh_obj("turbine_exhaust_manifold", make_torus(exhaust_manifold_r, 0.05, exhaust_manifold_z, major_seg=48, minor_seg=12), mats.pipe, parent=gimbal)
     for k in range(8):
         a = math.pi / 8.0 + k * math.pi / 4.0
         direction = Vector((math.cos(a), math.sin(a), 0.0))
         top = direction * exhaust_manifold_r + Vector((0, 0, exhaust_manifold_z))
         bottom = direction * (profile_radius_at(inner, exhaust_manifold_z - 0.10) + extension_wall + 0.02) \
             + Vector((0, 0, exhaust_manifold_z - 0.10))
-        add_mesh_obj(f"exhaust_dump_tube_{k}", make_strut(top, bottom, 0.022, segments=8), mats.nozzle_rib, parent=gimbal)
-    rb, zb = extension[len(extension) // 2]
-    add_mesh_obj("extension_stiffener", make_torus(rb + extension_wall + 0.012, 0.012, zb, major_seg=64, minor_seg=8), mats.nozzle_extension, parent=gimbal)
+        add_mesh_obj(f"exhaust_dump_tube_{k}", make_strut(top, bottom, 0.022, segments=8), mats.pipe, parent=gimbal)
+
+    # マニフォールドから出口近くまで伸びる並行ガス管と、束を押さえる分割クランプ
+    gas_line_count = 8
+    gas_tube_radius = 0.012
+    gas_line_end_z = exit_z + 0.08
+    for i in range(gas_line_count):
+        angle = math.tau * i / gas_line_count
+        path = []
+        for sample in range(9):
+            fraction = sample / 8.0
+            z = nozzle_midsection_z + (gas_line_end_z - nozzle_midsection_z) * fraction
+            radial = profile_radius_at(extension, z) + extension_wall + gas_tube_radius * 0.65
+            path.append(Vector((radial * math.cos(angle), radial * math.sin(angle), z)))
+        add_mesh_obj(f"nozzle_gas_line_{i}", make_pipe(path, radius=gas_tube_radius, segments=8), mats.nozzle_titanium_rib, parent=gimbal)
+        for clamp_index, fraction in enumerate((0.23, 0.77)):
+            z = nozzle_midsection_z + (gas_line_end_z - nozzle_midsection_z) * fraction
+            radial = profile_radius_at(extension, z) + extension_wall + gas_tube_radius * 0.65
+            center = Vector((radial * math.cos(angle), radial * math.sin(angle), z))
+            clamp = make_torus(0.015, 0.006, major_seg=16, minor_seg=6)
+            add_mesh_obj(
+                f"nozzle_gas_line_clamp_{i}_{clamp_index}",
+                transform_bm(clamp, Matrix.Translation(center)),
+                mats.clamp,
+                parent=gimbal,
+            )
     add_mesh_obj("extension_exit_ring", make_torus(r_e + extension_wall + 0.004, 0.018, exit_z + 0.018, major_seg=64, minor_seg=10), mats.nozzle_extension, parent=gimbal)
 
     # 8. 燃焼室の首輪とジンバル作動器。作動器は張り出し腕の節点(静止側)から首輪の耳金具(ジンバル側)を押す
@@ -1883,7 +2149,7 @@ def build_thruster():
         add_mesh_obj(f"gimbal_actuator_eye_top_{k}", make_sphere(0.038, center=top, u_seg=12, v_seg=8), mats.clamp)
         add_mesh_obj(f"gimbal_actuator_eye_lug_{k}", make_sphere(0.038, center=lug, u_seg=12, v_seg=8), mats.clamp, parent=gimbal)
 
-    # 9. パワーヘッド(J-2 型): 燃焼室の両側へ燃料・酸化剤のターボポンプを対向配置し、
+    # 9. 開放パワーヘッド: 燃焼室の両側へ燃料・酸化剤のターボポンプを対向配置し、
     #    ガス発生器・スタートタンク・制御/計装箱をその周りへ載せる。全てジンバル側
     ftp_x, otp_x, pump_y = collar_r + 0.40, -(collar_r + 0.40), -0.05
     pump_top = chamber_top - 0.02
@@ -1893,23 +2159,24 @@ def build_thruster():
     # 燃料ターボポンプ(誘導段・ボリュート・ギアボックス・タービンの積層)
     ftp_at = Matrix.Translation((ftp_x, pump_y, 0.0))
     for part, bm, mat in (
-        ("ftp_inlet_horn", make_cylinder(0.12, 0.19, 0.14, z_center=pump_top - 0.02, segments=24), mats.pipe),
-        ("ftp_pump_housing", make_cylinder(0.15, 0.15, 0.24, z_center=pump_top - 0.20, segments=24), mats.hull_dark),
-        ("ftp_volute", make_torus(0.135, 0.05, pump_top - 0.30, major_seg=24, minor_seg=10), mats.hull_dark),
-        ("ftp_gearbox", make_box(0.24, 0.22, 0.16, center=(0, 0, pump_top - 0.46)), mats.hull_dark),
-        ("ftp_turbine", make_cylinder(0.18, 0.14, 0.18, z_center=pump_top - 0.62, segments=24), mats.nozzle_rib),
+        ("ftp_inlet_horn", make_cylinder(0.14, 0.21, 0.16, z_center=pump_top - 0.02, segments=24), mats.pipe),
+        ("ftp_pump_housing", make_cylinder(0.19, 0.19, 0.28, z_center=pump_top - 0.20, segments=24), mats.hull_dark),
+        ("ftp_volute", make_torus(0.17, 0.055, pump_top - 0.32, major_seg=28, minor_seg=12), mats.hull_dark),
+        ("ftp_gearbox", make_box(0.28, 0.24, 0.18, center=(0, 0, pump_top - 0.48)), mats.hull_dark),
+        ("ftp_turbine", make_cylinder(0.20, 0.16, 0.24, z_center=pump_top - 0.62, segments=28), mats.pipe),
     ):
         add_mesh_obj(part, transform_bm(bm, ftp_at), mat, parent=gimbal)
     # 酸化剤ターボポンプ(一段、直径の反対側)
     otp_at = Matrix.Translation((otp_x, pump_y, 0.0))
     for part, bm, mat in (
-        ("otp_inlet", make_cylinder(0.10, 0.15, 0.12, z_center=pump_top - 0.04, segments=20), mats.pipe),
-        ("otp_pump_housing", make_cylinder(0.13, 0.13, 0.20, z_center=pump_top - 0.18, segments=24), mats.hull_dark),
-        ("otp_volute", make_torus(0.11, 0.045, pump_top - 0.26, major_seg=24, minor_seg=10), mats.hull_dark),
-        ("otp_turbine", make_cylinder(0.15, 0.12, 0.16, z_center=pump_top - 0.46, segments=24), mats.nozzle_rib),
+        ("otp_inlet", make_cylinder(0.12, 0.17, 0.14, z_center=pump_top - 0.04, segments=22), mats.pipe),
+        ("otp_pump_housing", make_cylinder(0.16, 0.16, 0.24, z_center=pump_top - 0.18, segments=24), mats.hull_dark),
+        ("otp_volute", make_torus(0.14, 0.05, pump_top - 0.28, major_seg=26, minor_seg=12), mats.hull_dark),
+        ("otp_turbine", make_cylinder(0.17, 0.13, 0.20, z_center=pump_top - 0.46, segments=26), mats.pipe),
     ):
         add_mesh_obj(part, transform_bm(bm, otp_at), mat, parent=gimbal)
-    # ガス発生器は燃料ターボポンプの脇へ(J-2 と同じレイアウト)
+    add_nozzle_midsection_feeds(mats, gimbal, nozzle_midsection_r, nozzle_midsection_z, ftp_x, otp_x, pump_y, pump_top)
+    # ガス発生器は燃料ターボポンプの脇へ配置
     gg_center = Vector((ftp_x - 0.26, pump_y - 0.22, pump_top - 0.28))
     bm_gg = make_cylinder(0.065, 0.065, 0.20, z_center=0.0, segments=16)
     add_mesh_obj("gas_generator", transform_bm(bm_gg, Matrix.Translation(gg_center)), mats.nozzle_rib, parent=gimbal)
@@ -1928,13 +2195,13 @@ def build_thruster():
     add_powerhead_electronics(mats, gimbal, collar_r, pump_top)
 
     # 10. タービン排気系: 両タービンの排気を合流させ、ベル外面を下って排気マニフォールドへ。
-    #     途中の偏平箱は J-2 の熱交換器(加圧ガスとヘリウムを加温する)
+    #     途中の偏平箱は加圧ガスとヘリウムを加温する熱交換器
     ftp_exhaust = [Vector((ftp_x, pump_y - 0.10, pump_top - 0.71)),
                    Vector((0.40, -0.50, pump_top - 0.78)), Vector((0.06, -0.72, pump_top - 0.94))]
-    add_mesh_obj("ftp_exhaust_duct", make_pipe(round_corners(ftp_exhaust, 0.06), radius=0.045, segments=12), mats.nozzle_rib, parent=gimbal)
+    add_mesh_obj("ftp_exhaust_duct", make_pipe(round_corners(ftp_exhaust, 0.06), radius=0.055, segments=12), mats.pipe, parent=gimbal)
     otp_exhaust = [Vector((otp_x, pump_y - 0.10, pump_top - 0.54)),
                    Vector((-0.30, -0.55, pump_top - 0.80)), Vector((0.06, -0.72, pump_top - 0.94))]
-    add_mesh_obj("otp_exhaust_duct", make_pipe(round_corners(otp_exhaust, 0.06), radius=0.045, segments=12), mats.nozzle_rib, parent=gimbal)
+    add_mesh_obj("otp_exhaust_duct", make_pipe(round_corners(otp_exhaust, 0.06), radius=0.055, segments=12), mats.pipe, parent=gimbal)
     hx_center = Vector((0.06, -0.80, pump_top - 0.98))
     add_mesh_obj("heat_exchanger", make_box(0.36, 0.10, 0.28, center=hx_center, rot_euler=(0.35, 0.0, 0.0)), mats.hull_dark, parent=gimbal)
     for k in range(3):
@@ -1947,14 +2214,14 @@ def build_thruster():
         wall = regen_wall if z >= z_split else extension_wall
         r = profile_radius_at(inner, z) + wall + duct_gap
         duct_pts.append(Vector((0.0, -r, z)))
-    add_mesh_obj("turbine_exhaust_duct", make_pipe(round_corners(duct_pts, 0.08), radius=0.05, segments=14), mats.nozzle_rib, parent=gimbal)
+    add_mesh_obj("turbine_exhaust_duct", make_pipe(round_corners(duct_pts, 0.08), radius=0.065, segments=14), mats.pipe, parent=gimbal)
     for s in (2, 4):
         p = duct_pts[s]
         wall_r = profile_radius_at(inner, p.z) + (regen_wall if p.z >= z_split else extension_wall)
         add_mesh_obj(f"exhaust_duct_bracket_{s}", make_box(0.05, -p.y - wall_r, 0.04, center=(0.0, (p.y - wall_r) / 2, p.z)), mats.clamp, parent=gimbal)
 
     # 11. 推進剤の配管: ドーム縁から下りる静止側、ジンバル面の蛇腹、ジンバル側でポンプ入口へ。
-    #     燃料吐出は冷却剤入口マニフォールドへ(J-2 と同じく燃焼室冷却を経て噴射器へ)、酸化剤吐出は噴射器へ
+    #     燃料吐出は冷却剤入口マニフォールドを経て噴射器へ、酸化剤吐出は噴射器へ
     for side, name, pump_x in ((-1.0, "lox", otp_x), (1.0, "fuel", ftp_x)):
         bellows_x = side * 0.50
         bellows_top, bellows_bottom = pivot_z + 0.14, pivot_z - 0.04
@@ -1962,8 +2229,7 @@ def build_thruster():
                   Vector((side * 2.00, 0.0, -0.64)),
                   Vector((side * 1.20, 0.0, -0.82)),
                   Vector((bellows_x, 0.0, bellows_top))]
-        feed_material = mats.mli_white if name == "lox" else mats.pipe
-        add_mesh_obj(f"{name}_feedline", make_pipe(round_corners(static, 0.14, steps=6), radius=0.10, segments=16), feed_material)
+        add_mesh_obj(f"{name}_feedline", make_pipe(round_corners(static, 0.14, steps=6), radius=0.10, segments=16), mats.pipe)
         bm_flange = make_cylinder(0.145, 0.145, 0.045, z_center=0.0, segments=20)
         add_mesh_obj(f"{name}_feed_flange", transform_bm(bm_flange, Matrix.Translation(static[0])), mats.clamp)
         valve_at = static[1].lerp(static[2], 0.5)
@@ -2293,7 +2559,12 @@ def build_deployable_chain(kind, half_len, build_panel):
     root = add_anchor("panel-hinge", (0, 0, half_len))
     for index in range(spec["count"]):
         column, row = divmod(index, rows)
-        x = (column - (columns - 1) / 2) * column_span
+        if kind == "solar_panel":
+            panel_width = spec["panelPitch"] * spec["faceScale"] * spec["stageScales"][row]
+            center_distance = panel_width / 2 + spec["centerlineClearance"]
+            x = (column - (columns - 1) / 2) * 2 * center_distance
+        else:
+            x = (column - (columns - 1) / 2) * column_span
         hinge = add_anchor(
             f"panel-hinge:{index}", normal * (spec["thickness"] / 2) + Vector((x, 0, row * spec["length"])),
             parent=root, panelIndex=index, panelKind=kind,
@@ -2358,72 +2629,160 @@ def build_hull_junction(mats, half_len, pedestal=True):
         (0.50, 0.30), (0.46, 0.36), (0.46, half_len - 0.06), (0.0, half_len - 0.06),
     ], segments=4, closed=True, sharp_angle_deg=0.0), mats.hull_dark)
 
-def build_solar_mount(mats, half_len, thickness, span):
-    """座板の上へ渡した平らなルートフレームから、翼列の根元ヒンジへ立ち上がる2本のヒンジ
-    アームと、片側だけの駆動ラッチ箱。翼は角度を追従しない構造で、根元ヒンジ
-    (panel-hinge)はモジュール軸上の取付面にある。ヒンジ軸は翼幅方向(X 軸)に走り、
-    アームはその軸線の両端へ届く。"""
-    hy, hz = -thickness / 2, half_len  # 根元ヒンジ軸(おもて +Y の反対側の面)
-    frame_z = 0.13                     # ルートフレームのレール中心の高さ [m]
-    # 翼幅方向へ長い外周レールと、その内側へ並ぶ中桟2本で格子にした平らな枠。
-    # 座板からの脚は中桟の脇へ届く
-    rail_x = span / 2 - 0.06
-    add_mesh_obj("root_frame", make_boxes(
-        [(span - 0.12, 0.07, 0.07, (0.0, sy * 0.465, frame_z), (0.0, 0.0, 0.0)) for sy in (-1.0, 1.0)]
-        + [(0.07, 0.86, 0.07, (sx * rail_x, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)]
-        + [(0.06, 0.86, 0.06, (sx * span / 6, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)],
-        bevel=0.008), mats.truss)
-    # 枠の -Y 側のレールへ張り出したホールドダウン解除箱。畳んだ翼列を押さえる留め具の解除部
-    add_mesh_obj("holddown_release_box", make_box(
-        0.40, 0.22, 0.16, center=(-0.35, -0.58, frame_z)), mats.hull_dark)
-    for sx in (-1.0, 1.0):
-        end_x = sx * (span / 2 - 0.12)
-        # フレームの端から根元ヒンジの軸受へ立ち上がるヒンジアームと、斜めに支える支柱
-        add_mesh_obj(f"hinge_boom:{sx:+.0f}", make_strut(
-            Vector((sx * (span / 2 - 0.16), -0.05, 0.17)), Vector((end_x, hy, hz - 0.02)), 0.075), mats.truss)
-        add_mesh_obj(f"hinge_boom_brace:{sx:+.0f}", make_strut(
-            Vector((sx * (span / 2 - 0.52), 0.36, 0.15)), Vector((sx * (span / 2 - 0.16), -0.03, 0.42)), 0.04), mats.truss)
-        add_mesh_obj(f"hinge_bearing:{sx:+.0f}",
-            make_box(0.16, 0.16, 0.12, center=(end_x, hy, hz - 0.02)), mats.hull_dark)
-        # ヒンジ軸と同軸のばねドラム。収納ばねを巻き取り、展開トルクを掛ける
-        bm_drum = make_cylinder(0.09, 0.09, 0.12, z_center=0.0, segments=16)
-        transform_bm(bm_drum, Matrix.Translation(Vector((sx * (span / 2 + 0.08), hy, hz)))
+def build_solar_mount(mats, half_len, thickness, span, columns, root_hinge_offset):
+    """曲面座の脚で二本のトラスレールを支え、中央の段付き回転筒から根元ヒンジへ力を渡す。"""
+    hinge_y = -thickness / 2
+    root_z = half_len
+    upper_rail_y, upper_rail_z = hinge_y - 0.09, root_z - 0.12
+    lower_rail_y, lower_rail_z = hinge_y - 0.38, root_z - 0.44
+    drive_y, drive_z = hinge_y - 0.24, root_z - 0.035
+    column_pitch = root_hinge_offset * 2
+
+    mount = bpy.data.objects.new("solar_mount_iss_a", None)
+    bpy.context.collection.objects.link(mount)
+    mount["mountPattern"] = "iss-a"
+
+    def add_group(name, role):
+        group = bpy.data.objects.new(name, None)
+        bpy.context.collection.objects.link(group)
+        group["mountRole"] = role
+        return parent_to(group, mount)
+
+    def add_part(parent, name, geometry, material):
+        return parent_to(add_mesh_obj(name, geometry, material), parent)
+
+    def cylinder_x(radius, length, x, y, z, segments=24):
+        geometry = make_cylinder(radius, radius, length, z_center=0.0, segments=segments)
+        return transform_bm(geometry, Matrix.Translation(Vector((x, y, z)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
-        add_mesh_obj(f"spring_drum:{sx:+.0f}", bm_drum, mats.clamp)
-    # ばねドラムから根元ヒンジの胴へ掛け渡す引張ケーブル
-    add_mesh_obj("hinge_tension_cable", make_pipe([
-        Vector((-span / 2 - 0.02, hy, hz + 0.03)), Vector((-0.45, hy - 0.01, hz + 0.06)),
-        Vector((0.45, hy - 0.01, hz + 0.06)), Vector((span / 2 + 0.02, hy, hz + 0.03)),
-    ], radius=0.012, segments=6), mats.hull_dark)
-    # +X 側だけの駆動ラッチ箱。ヒンジアームを抱く位置へ掛け、畳んだ翼端を掴む爪と、
-    # 展開を始める蹴り出しモーター(フレームのベイへ横置きする胴)を納める
-    add_mesh_obj("drive_latch_box", make_box(0.28, 0.22, 0.30, center=(1.00, -0.02, 0.29)), mats.hull_dark)
-    add_mesh_obj("drive_latch_claw", make_box(
-        0.10, 0.07, 0.22, center=(0.88, hy - 0.06, half_len - 0.03), rot_euler=(0.0, 0.0, math.radians(18))), mats.clamp)
-    bm_latch_motor = make_cylinder(0.06, 0.06, 0.66, z_center=0.0, segments=14)
-    transform_bm(bm_latch_motor, Matrix.Translation(Vector((0.65, -0.02, frame_z - 0.02)))
+
+    def torus_x(major_radius, minor_radius, x, y, z):
+        geometry = make_torus(major_radius, minor_radius, z_center=0.0, major_seg=28, minor_seg=8)
+        return transform_bm(geometry, Matrix.Translation(Vector((x, y, z)))
+            @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
+
+    drive = add_group("solar_mount_rotary_drive", "stepped-transverse-drive")
+    saddle = add_group("solar_mount_saddle", "raised-box-saddle")
+    rails = add_group("solar_mount_twin_rails", "parallel-spanwise-rails")
+    truss = add_group("solar_mount_v_truss", "open-v-bracing")
+    clamps = add_group("solar_mount_root_clamps", "hinge-root-clamps")
+    actuation = add_group("solar_mount_actuation", "hold-down-and-feed")
+
+    # パネル幅方向(X)の段付き回転筒。端面の暗い軸穴を金属の襟環が囲む。
+    add_part(drive, "solar_mount_drive_barrel", cylinder_x(0.17, 0.50, 0.0, drive_y, drive_z), mats.hull)
+    for side in (-1.0, 1.0):
+        x = side * 0.27
+        add_part(drive, f"solar_mount_drive_collar:{side:+.0f}",
+            cylinder_x(0.205, 0.075, x, drive_y, drive_z), mats.clamp)
+        add_part(drive, f"solar_mount_drive_recess:{side:+.0f}",
+            cylinder_x(0.105, 0.016, side * 0.312, drive_y, drive_z), mats.recessed)
+        add_part(drive, f"solar_mount_drive_end_rim:{side:+.0f}",
+            torus_x(0.125, 0.022, side * 0.322, drive_y, drive_z), mats.pipe)
+    drive_bolts = [
+        (side * 0.325, drive_y + 0.155 * math.cos(angle), drive_z + 0.155 * math.sin(angle))
+        for side in (-1.0, 1.0) for angle in (i * math.pi / 4 for i in range(8))
+    ]
+    add_part(drive, "solar_mount_drive_bolts", make_spheres(drive_bolts, 0.018, u_seg=8, v_seg=6), mats.clamp)
+
+    # 中央の受けはU字の箱形サドルとし、筒の下に暗い隙間を残す。
+    add_part(saddle, "solar_mount_saddle_plates", make_boxes([
+        (0.84, 0.09, 0.08, (0.0, drive_y - 0.12, root_z - 0.33), (0.0, 0.0, 0.0)),
+        (0.10, 0.25, 0.22, (-0.32, drive_y - 0.015, root_z - 0.18), (0.0, 0.0, 0.0)),
+        (0.10, 0.25, 0.22, (0.32, drive_y - 0.015, root_z - 0.18), (0.0, 0.0, 0.0)),
+        (0.70, 0.08, 0.06, (0.0, drive_y - 0.12, root_z - 0.20), (0.0, 0.0, 0.0)),
+    ], bevel=0.012), mats.hull)
+    add_part(saddle, "solar_mount_saddle_bolts", make_spheres([
+        (x, drive_y - 0.17, root_z - 0.34) for x in (-0.31, -0.20, 0.20, 0.31)
+    ], 0.022, u_seg=8, v_seg=6), mats.clamp)
+
+    # 二本の平行レールを根元と後方に離して渡し、クランプ位置に補強ブロックを置く。
+    add_part(rails, "solar_mount_rails", make_boxes([
+        (span - 0.16, 0.075, 0.085, (0.0, upper_rail_y, upper_rail_z), (0.0, 0.0, 0.0)),
+        (span - 0.16, 0.075, 0.085, (0.0, lower_rail_y, lower_rail_z), (0.0, 0.0, 0.0)),
+    ], bevel=0.010), mats.pipe)
+    rail_nodes = []
+    for column in range(columns):
+        x = (column - (columns - 1) / 2) * column_pitch
+        rail_nodes.extend([
+            (0.22, 0.10, 0.12, (x, upper_rail_y, upper_rail_z), (0.0, 0.0, 0.0)),
+            (0.18, 0.10, 0.11, (x, lower_rail_y, lower_rail_z), (0.0, 0.0, 0.0)),
+        ])
+    add_part(rails, "solar_mount_rail_nodes", make_boxes(rail_nodes, bevel=0.010), mats.clamp)
+
+    # 対称な二本の斜材が中央サドルからレール端へ開く。各根元にも短い三角補強を置く。
+    for side in (-1.0, 1.0):
+        add_part(truss, f"solar_mount_v_brace:{side:+.0f}", make_strut(
+            Vector((side * 0.34, drive_y - 0.04, root_z - 0.20)),
+            Vector((side * (span / 2 - 0.18), lower_rail_y, lower_rail_z)), 0.052), mats.truss)
+        x = side * column_pitch / 2
+        add_part(truss, f"solar_mount_root_gusset:{side:+.0f}", make_strut(
+            Vector((x, upper_rail_y, upper_rail_z)),
+            Vector((x + side * 0.30, lower_rail_y, lower_rail_z)), 0.043), mats.truss)
+        add_part(truss, f"solar_mount_saddle_lift:{side:+.0f}", make_strut(
+            Vector((side * 0.32, drive_y - 0.04, root_z - 0.22)),
+            Vector((side * 0.32, drive_y - 0.12, root_z - 0.36)), 0.045), mats.truss)
+    add_part(truss, "solar_mount_truss_nodes", make_boxes([
+        (0.15, 0.09, 0.12, (side * (span / 2 - 0.18), lower_rail_y, lower_rail_z), (0.0, 0.0, 0.0))
+        for side in (-1.0, 1.0)
+    ], bevel=0.012), mats.clamp)
+
+    # 各根元ヒンジを長いレールへ重ね板で固定し、駆動筒から短いリンクをつなぐ。
+    clamp_parts = []
+    clamp_bolts = []
+    for column in range(columns):
+        x = (column - (columns - 1) / 2) * column_pitch
+        clamp_parts.extend([
+            (0.30, 0.08, 0.15, (x, hinge_y - 0.055, root_z - 0.045), (0.0, 0.0, 0.0)),
+            (0.12, 0.20, 0.13, (x, hinge_y - 0.13, root_z - 0.12), (0.0, 0.0, 0.0)),
+        ])
+        clamp_bolts.extend((x + offset, hinge_y - 0.012, root_z - 0.055)
+            for offset in (-0.095, 0.095))
+        side = -1.0 if x < 0.0 else 1.0
+        add_part(clamps, f"solar_mount_drive_link:{column}", make_strut(
+            Vector((side * 0.31, drive_y, drive_z)),
+            Vector((x, upper_rail_y - 0.035, upper_rail_z)), 0.032), mats.clamp)
+    add_part(clamps, "solar_mount_hinge_clamps", make_boxes(clamp_parts, bevel=0.012), mats.hull)
+    add_part(clamps, "solar_mount_clamp_bolts", make_spheres(clamp_bolts, 0.022, u_seg=8, v_seg=6), mats.pipe)
+
+    # 駆動筒から中央桁の最初の節へ荷重を渡す二股のヨーク。
+    centerline_yoke = add_group("solar_mount_centerline_yoke", "folding-centerline-spine-root")
+    for side in (-1.0, 1.0):
+        add_part(centerline_yoke, f"solar_mount_centerline_yoke_strut:{side:+.0f}", make_strut(
+            Vector((side * 0.10, drive_y, drive_z)),
+            Vector((side * 0.045, hinge_y - 0.12, root_z + 0.015)), 0.055), mats.truss)
+
+    # 非対称な保持解除箱・駆動箱と、座板へ降りる電力/信号線はレールの外側へ残す。
+    frame_z = lower_rail_z
+    add_part(actuation, "holddown_release_box", make_box(
+        0.36, 0.20, 0.15, center=(-span / 2 + 0.30, lower_rail_y - 0.10, frame_z)), mats.hull_dark)
+    add_part(actuation, "drive_latch_box", make_box(
+        0.30, 0.22, 0.22, center=(span / 2 - 0.29, lower_rail_y - 0.10, frame_z + 0.04)), mats.hull_dark)
+    add_part(actuation, "drive_latch_claw", make_box(
+        0.10, 0.07, 0.20, center=(span / 4, hinge_y - 0.06, root_z - 0.025),
+        rot_euler=(0.0, 0.0, math.radians(18))), mats.clamp)
+    bm_latch_motor = make_cylinder(0.06, 0.06, 0.52, z_center=0.0, segments=14)
+    transform_bm(bm_latch_motor, Matrix.Translation(Vector((span / 2 - 0.63, lower_rail_y - 0.10, frame_z)))
         @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
-    add_mesh_obj("drive_latch_motor", bm_latch_motor, mats.pipe)
-    # フレームから座板の貫通金具へ降ろす動力・信号のケーブル束(平行な2撚り)
+    add_part(actuation, "drive_latch_motor", bm_latch_motor, mats.pipe)
+
     pad_x, pad_t = -0.85, -0.13
     top = saddle_top(pad_t)
-    add_mesh_obj("power_umbilical", make_pipes([
-        [Vector((-0.44, -0.34, 0.13)), Vector((-0.62, -0.40, -0.05)), Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.06))],
-        [Vector((-0.38, -0.38, 0.13)), Vector((-0.56, -0.44, -0.05)), Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.05))],
+    add_part(actuation, "power_umbilical", make_pipes([
+        [Vector((-0.44, lower_rail_y - 0.02, lower_rail_z)), Vector((-0.62, -0.40, -0.05)), Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.06))],
+        [Vector((-0.38, lower_rail_y - 0.04, lower_rail_z - 0.01)), Vector((-0.56, -0.44, -0.05)), Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.05))],
     ], radius=0.03, segments=10, bend_radius=0.08), mats.clamp)
-    add_mesh_obj("umbilical_fitting", make_box(0.24, 0.18, 0.07,
+    add_part(actuation, "umbilical_fitting", make_box(0.24, 0.18, 0.07,
         center=(pad_x + 0.10, top.y - 0.03, top.z + 0.02), rot_euler=(-pad_t, 0.0, 0.0)), mats.hull_dark)
-    # 金具から船体内部へ潜る貫通部。船体面より下は母船へ吸収されるのでモジュール側では切り落とす
-    add_mesh_obj("umbilical_stub", make_pipes([
+    add_part(actuation, "umbilical_stub", make_pipes([
         [Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.04)), Vector((pad_x + 0.06, top.y - 0.04, -0.62))],
         [Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.03)), Vector((pad_x + 0.14, top.y - 0.06, -0.62))],
     ], radius=0.028, segments=8), mats.clamp)
 
 # 展開した翼が一面に揃わないよう、パネルごとに面法線方向へ振ったオフセット [m]。
 # ヒンジまわりの金具は揃ったままにし、本体と表裏の部品だけをずらす決定的な値
-PANEL_FACE_Y_OFFSETS = (0.012, -0.006, 0.016, 0.004, -0.010, 0.008)
-PANEL_SIZE_SCALES = (0.98, 1.02, 0.97, 1.025, 0.99, 1.01)
-RUST_PANEL_INDICES = frozenset((1, 4))
+PANEL_FACE_Y_OFFSETS = (0.045, -0.032, 0.020, -0.016, -0.024, 0.036, -0.040, 0.008)
+RUST_PANEL_STAGE = 2
+DIAMOND_BRACE_STAGE = 2
 
 def build_solar_panel(name):
     reset_scene()
@@ -2433,22 +2792,29 @@ def build_solar_panel(name):
     spec = MANIFEST["deployables"]["solar_panel"]
     length, span, thickness = spec["length"], spec["span"], spec["thickness"]
     columns = int(spec["columns"])
-    tile_span = span / columns
-    build_solar_mount(mats, half_len, thickness, span)
+    panels_per_column = int(spec["count"]) // columns
+    tile_span = spec["panelPitch"]
+    face_scale = spec["faceScale"]
+    stage_scales = spec["stageScales"]
+    centerline_clearance = spec["centerlineClearance"]
+    root_hinge_offset = tile_span * face_scale * stage_scales[0] / 2 + centerline_clearance
+    build_solar_mount(mats, half_len, thickness, span, columns, root_hinge_offset)
 
-    # 裏面の細い角材は基板から浮かせ、白い菱形と近接した横桟の組を作る
+    # 裏面の細い角材は基板から浮かせ、段に応じた白い筋交いと二本束の中央レールを作る
     lat_h, lat_w = 0.028, 0.024      # 角材の面からの高さ・面内の幅 [m]
     lat_y = -thickness / 2 - lat_h / 2
 
     def panel(index, side):
-        scale = PANEL_SIZE_SCALES[index]
-        body_span = tile_span * 0.96 * scale
-        body_len = length * 0.96 * scale
-        # セル面は枠の内側に収め、幅方向へ8列・展開方向へ6行の区画に刻む
+        column = index // panels_per_column
+        panel_stage = index % panels_per_column
+        size_scale = stage_scales[panel_stage]
+        body_span = tile_span * face_scale * size_scale
+        body_len = length * face_scale * size_scale
+        # セル面は枠の内側へ収め、細かなセル区画を並べる
         cell_x0, cell_x1 = -body_span / 2 + 0.075, body_span / 2 - 0.075
         cell_z0, cell_z1 = 0.09, body_len - 0.075
-        cell_cols, cell_rows = 8, 6
-        cell_gap = 0.018
+        cell_cols, cell_rows = 8, 10
+        cell_gap = 0.012
         cell_pitch_x = (cell_x1 - cell_x0) / cell_cols
         cell_pitch_z = (cell_z1 - cell_z0) / cell_rows
         lat_x0, lat_x1 = -body_span / 2 + 0.055, body_span / 2 - 0.055
@@ -2462,8 +2828,9 @@ def build_solar_panel(name):
         bus_sheet = add_mesh_obj(f"panel_bus_sheet:{index}", make_box(
             cell_x1 - cell_x0 + 0.02, 0.006, cell_z1 - cell_z0 + 0.02,
             center=(0.0, thickness / 2 + 0.003, (cell_z0 + cell_z1) / 2)), mats.solar_bus)
-        # 区画ごとに明暗のシェード材を決定的に割り当て、2枚だけ赤褐色へ振る
-        solar_shades = mats.solar_rust_shades if index in RUST_PANEL_INDICES else mats.solar_shades
+        # 第3段の2枚は、セル全体を青みの赤褐色にする
+        is_rust_panel = panel_stage == RUST_PANEL_STAGE
+        brace_pattern = "diamond" if panel_stage == DIAMOND_BRACE_STAGE else "x"
         bm_cells = bmesh.new()
         for row in range(cell_rows):
             for col in range(cell_cols):
@@ -2476,16 +2843,28 @@ def build_solar_panel(name):
                     ))) @ Matrix.Diagonal((
                         cell_pitch_x - cell_gap, 0.012, cell_pitch_z - cell_gap, 1.0,
                     )))
-                shade = (index * 7 + col * 13 + row * 29) % len(solar_shades)
+                if is_rust_panel:
+                    shade = len(mats.solar_shades) + (index * 7 + col * 13 + row * 29) % len(mats.solar_rust_shades)
+                else:
+                    shade = (index * 7 + col * 13 + row * 29) % len(mats.solar_shades)
                 bm_cells.faces.ensure_lookup_table()
                 for i in range(n0, len(bm_cells.faces)):
                     bm_cells.faces[i].material_index = shade
         bmesh.ops.recalc_face_normals(bm_cells, faces=bm_cells.faces)
-        cells = add_mesh_obj(f"panel_cells:{index}", shade_by_angle(bm_cells, 30.0), list(solar_shades))
+        cells = add_mesh_obj(f"panel_cells:{index}", shade_by_angle(bm_cells, 30.0), mats.solar_shades + mats.solar_rust_shades)
+        traces = add_mesh_obj(f"panel_cell_traces:{index}", make_boxes([
+            (0.006, 0.002, cell_z1 - cell_z0,
+             (cell_x0 + col * cell_pitch_x, thickness / 2 + 0.019, (cell_z0 + cell_z1) / 2), (0.0, 0.0, 0.0))
+            for col in range(1, cell_cols)
+        ] + [
+            (cell_x1 - cell_x0, 0.002, 0.006,
+             (0.0, thickness / 2 + 0.019, cell_z0 + row * cell_pitch_z), (0.0, 0.0, 0.0))
+            for row in range(1, cell_rows)
+        ], bevel=0.001), mats.solar_trace)
         # セル列を横断するバス帯
         busbars = add_mesh_obj(f"panel_busbars:{index}", make_boxes([
             (cell_x1 - cell_x0, 0.010, 0.045, (0.0, thickness / 2 + 0.014, bz), (0.0, 0.0, 0.0))
-            for bz in (cell_z0 + 2 * cell_pitch_z, cell_z0 + 5 * cell_pitch_z)
+            for bz in (cell_z0 + 3 * cell_pitch_z, cell_z0 + 7 * cell_pitch_z)
         ], bevel=0.004), mats.solar_bus)
         frame = add_mesh_obj(f"panel_frame:{index}", make_boxes([
             (0.04, 0.09, body_len - 0.08, (sx * (body_span / 2 - 0.02), 0.0, 0.04 + (body_len - 0.08) / 2), (0.0, 0.0, 0.0))
@@ -2507,27 +2886,39 @@ def build_solar_panel(name):
                 ((start[0] + end[0]) / 2, lat_y, (start[1] + end[1]) / 2),
                 (0.0, math.atan2(dx, dz), 0.0))
 
-        diamond_nodes = ((lat_x0, mid_z), (mid_x, lat_z0), (lat_x1, mid_z), (mid_x, lat_z1))
-        lattice_parts = [
-            diagonal(diamond_nodes[node], diamond_nodes[(node + 1) % len(diamond_nodes)])
-            for node in range(len(diamond_nodes))
-        ]
-        # 横桟は1本でなく、少し間隔を空けた2本を一組にする
+        corner_nodes = ((lat_x0, lat_z0), (lat_x1, lat_z0), (lat_x1, lat_z1), (lat_x0, lat_z1))
+        if brace_pattern == "diamond":
+            brace_nodes = ((mid_x, lat_z0), (lat_x1, mid_z), (mid_x, lat_z1), (lat_x0, mid_z))
+            brace_edges = tuple((brace_nodes[node], brace_nodes[(node + 1) % len(brace_nodes)])
+                for node in range(len(brace_nodes)))
+            joint_nodes = brace_nodes
+        else:
+            brace_nodes = corner_nodes
+            brace_edges = ((brace_nodes[0], brace_nodes[2]), (brace_nodes[1], brace_nodes[3]))
+            joint_nodes = tuple((x, z) for node, (x, z) in enumerate(brace_nodes) if (index + node) % 2 == 0)
+        lattice_parts = [diagonal(start, end) for start, end in brace_edges]
+        has_center_crossbar = brace_pattern == "diamond"
+        if has_center_crossbar:
+            lattice_parts.append(diagonal((lat_x0, mid_z), (lat_x1, mid_z)))
+        # 二本の中央レールは2列の内側に沿い、連なる4枚のパネルに渡す
+        inner_edge_x = body_span / 2 - 0.055 if index < panels_per_column else -body_span / 2 + 0.055
         lattice_parts.extend(
-            (lat_x1 - lat_x0, lat_h, lat_w, (0.0, lat_y, mid_z + offset), (0.0, 0.0, 0.0))
+            (lat_w, lat_h, lat_z1 - lat_z0, (inner_edge_x + offset, lat_y, mid_z), (0.0, 0.0, 0.0))
             for offset in (-0.035, 0.035)
         )
         lattice = add_mesh_obj(f"panel_lattice:{index}", make_boxes(lattice_parts, bevel=0.004), mats.solar_lattice)
+        lattice["bracePattern"] = brace_pattern
+        lattice["centerCrossbar"] = has_center_crossbar
 
-        # 一部の骨格交点を白い四角金具で覆う
+        # 筋交いの交点を白い四角金具で覆う
         joint_y = lat_y - lat_h / 2 - 0.012
-        joints = add_mesh_obj(f"panel_lattice_joints:{index}", make_boxes([
+        joint_parts = [
             (0.095, 0.05, 0.095, (x, joint_y, z), (0.0, 0.0, 0.0))
-            for node, (x, z) in enumerate(diamond_nodes)
-            if (index + node) % 2 == 0
-        ] + [
-            (0.11, 0.055, 0.11, (mid_x, joint_y, mid_z), (0.0, 0.0, 0.0))
-        ], bevel=0.008), mats.solar_lattice)
+            for x, z in joint_nodes
+        ]
+        if brace_pattern == "x":
+            joint_parts.append((0.11, 0.055, 0.11, (mid_x, joint_y, mid_z), (0.0, 0.0, 0.0)))
+        joints = add_mesh_obj(f"panel_lattice_joints:{index}", make_boxes(joint_parts, bevel=0.008), mats.solar_lattice)
 
         # 四隅と中央寄りへ少数の灰色アクチュエーターを非対称に置く
         actuator_sites = {
@@ -2537,42 +2928,99 @@ def build_solar_panel(name):
             3: ((mid_x - 0.04, lat_z0 + 0.10),),
             4: ((lat_x1 - 0.12, lat_z0 + 0.12),),
             5: ((lat_x1 - 0.10, lat_z1 - 0.11),),
+            6: ((lat_x1 - 0.11, mid_z + 0.06),),
+            7: ((mid_x + 0.06, lat_z1 - 0.10),),
         }
         actuator_parts = []
         for site, (x, z) in enumerate(actuator_sites.get(index, ())):
             actuator_y = -thickness / 2 - lat_h - 0.035 - site * 0.006
             actuator_parts.append(add_mesh_obj(f"panel_actuator:{index}:{site}", make_box(
                 0.13, 0.08, 0.12, center=(x, actuator_y, z), bevel=0.018), mats.solar_actuator))
-            bm_actuator_pin = make_cylinder(0.022, 0.022, 0.07, z_center=0.0, segments=10)
-            transform_bm(bm_actuator_pin, Matrix.Translation(Vector((x, actuator_y + 0.025, z)))
-                @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
-            actuator_parts.append(add_mesh_obj(f"panel_actuator_pin:{index}:{site}", bm_actuator_pin, mats.pipe))
 
-        bm_hinge = make_cylinder(0.035, 0.035, tile_span * 0.98, z_center=0.0, segments=12)
+        bm_hinge = make_cylinder(0.035, 0.035, body_span * 0.98, z_center=0.0, segments=12)
         transform_bm(bm_hinge, Matrix.Translation(Vector((0.0, -side * thickness / 2, 0.0)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
         knuckle = add_mesh_obj(f"panel_hinge_hardware:{index}", bm_hinge, mats.clamp)
         # ヒンジのばねドラムと引張ケーブル、開ききりを掴むラッチ爪
         bm_drum = make_cylinder(0.055, 0.055, 0.09, z_center=0.0, segments=12)
-        transform_bm(bm_drum, Matrix.Translation(Vector((-tile_span / 2 + 0.10, -side * thickness / 2, 0.0)))
+        transform_bm(bm_drum, Matrix.Translation(Vector((-body_span / 2 + 0.10, -side * thickness / 2, 0.0)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
         drum = add_mesh_obj(f"panel_spring_drum:{index}", bm_drum, mats.clamp)
         cable = add_mesh_obj(f"panel_tension_cable:{index}", make_pipe([
-            Vector((-tile_span / 2 + 0.10, -side * thickness / 2 - 0.05, 0.02)),
+            Vector((-body_span / 2 + 0.10, -side * thickness / 2 - 0.05, 0.02)),
             Vector((0.0, -side * thickness / 2 - 0.05, 0.05)),
-            Vector((tile_span / 2 - 0.10, -side * thickness / 2 - 0.05, 0.02)),
+            Vector((body_span / 2 - 0.10, -side * thickness / 2 - 0.05, 0.02)),
         ], radius=0.008, segments=6), mats.hull_dark)
         claw = add_mesh_obj(f"panel_latch_claw:{index}", make_box(
             0.07, 0.09, 0.14,
-            center=(tile_span / 2 - 0.10, -side * thickness / 2 - 0.02, -0.04),
+            center=(body_span / 2 - 0.10, -side * thickness / 2 - 0.02, -0.04),
             rot_euler=(0.0, 0.0, math.radians(-14))), mats.clamp)
         # パネル本体と表裏の部品は、決定的な高さ差のぶん面法線方向へずらす
-        face_parts = [body, bus_sheet, cells, busbars, frame, stripes, lattice, joints, *actuator_parts]
+        face_parts = [body, bus_sheet, cells, traces, busbars, frame, stripes, lattice, joints, *actuator_parts]
         hinge_parts = [knuckle, drum, cable, claw]
         parts = face_parts + hinge_parts
         y_offset = PANEL_FACE_Y_OFFSETS[index % len(PANEL_FACE_Y_OFFSETS)]
         for obj in face_parts:
             obj.data.transform(Matrix.Translation(Vector((0.0, y_offset, 0.0))))
+
+        # 中央桁は各段で分節し、隣り合うパネルと同じヒンジ姿勢で折り畳む。
+        centerline_side = 1.0 if column == 0 else -1.0
+        center_distance = body_span / 2 + centerline_clearance
+        axis_x = centerline_side * center_distance
+        spine_half_width = 0.052
+        spine_y = -thickness / 2 - 0.14
+        support_z = (body_len * 0.32, body_len * 0.68)
+        support_groups = []
+        if column == 0:
+            spine = bpy.data.objects.new(f"solar_panel_center_spine:{panel_stage}", None)
+            bpy.context.collection.objects.link(spine)
+            spine["mountRole"] = "folding-centerline-spine-segment"
+            spine["stageIndex"] = panel_stage
+            spine_parts = [
+                (0.034, 0.10, length, (axis_x - 0.034, spine_y, length / 2), (0.0, 0.0, 0.0)),
+                (0.034, 0.10, length, (axis_x + 0.034, spine_y, length / 2), (0.0, 0.0, 0.0)),
+                (0.13, 0.07, 0.045, (axis_x, spine_y, 0.07), (0.0, 0.0, 0.0)),
+                (0.13, 0.07, 0.045, (axis_x, spine_y, length - 0.07), (0.0, 0.0, 0.0)),
+            ]
+            spine_parts.extend(
+                (0.13, 0.07, 0.045, (axis_x, spine_y, z), (0.0, 0.0, 0.0))
+                for z in support_z
+            )
+            parent_to(add_mesh_obj(f"solar_panel_center_spine_frame:{panel_stage}",
+                make_boxes(spine_parts, bevel=0.006), mats.solar_lattice), spine)
+            if panel_stage < panels_per_column - 1:
+                bm_spine_joint = make_cylinder(0.045, 0.045, 0.14, z_center=0.0, segments=16)
+                transform_bm(bm_spine_joint,
+                    Matrix.Translation(Vector((axis_x, spine_y, length)))
+                    @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
+                parent_to(add_mesh_obj(f"solar_panel_center_spine_joint:{panel_stage}",
+                    bm_spine_joint, mats.clamp), spine)
+            support_groups.append(spine)
+
+        # 各パネルの内縁を中央桁へ短い斜材と二点のクランプ板で結ぶ。
+        mount = bpy.data.objects.new(f"panel_centerline_mount:{index}", None)
+        bpy.context.collection.objects.link(mount)
+        mount["mountRole"] = "centerline-panel-bracket"
+        mount["panelIndex"] = index
+        panel_edge_x = centerline_side * body_span / 2
+        foot_x = panel_edge_x - centerline_side * 0.08
+        spine_edge_x = axis_x - centerline_side * spine_half_width
+        foot_y = -thickness / 2 + y_offset - 0.035
+        for support_index, z in enumerate(support_z):
+            arm = make_strut(
+                Vector((spine_edge_x, spine_y, z)),
+                Vector((foot_x, foot_y, z)), 0.038)
+            parent_to(add_mesh_obj(f"panel_centerline_mount_arm:{index}:{support_index}",
+                arm, mats.solar_lattice), mount)
+            parent_to(add_mesh_obj(f"panel_centerline_mount_shoe:{index}:{support_index}",
+                make_box(0.24, 0.07, 0.17, center=(foot_x, foot_y, z), bevel=0.008), mats.clamp), mount)
+            parent_to(add_mesh_obj(f"panel_centerline_mount_bolts:{index}:{support_index}",
+                make_spheres([
+                    (foot_x - 0.075, foot_y - 0.04, z),
+                    (foot_x + 0.075, foot_y - 0.04, z),
+                ], 0.018, u_seg=8, v_seg=6), mats.pipe), mount)
+        support_groups.append(mount)
+        parts.extend(support_groups)
         return parts
 
     build_deployable_chain("solar_panel", half_len, panel)
@@ -2752,6 +3200,15 @@ def build_armor(name):
 # ----------------------------------------------------------------------
 # 回転砲身の本数
 GATLING_BARREL_COUNT = 5
+# 機関部と砲身束が砲架に沿って後退する最大量 [m]
+GUN_RECOIL_TRAVEL = 0.42
+# 砲架の脚が載る台座上面の z [m]。結合面(z=-0.5)との間に締結フランジ環と格子梁を収める
+GUN_MOUNT_Z = -0.25
+# 機関部の後端 z [m]。後座端でも台座上面の手前に留まる
+GUN_RECEIVER_BACK_Z = 0.30
+# 機関部へ送られる弾と、排莢樋を滑る薬莢の送りピッチ [m]
+GUN_ROUND_PITCH = 0.30
+GUN_CASING_PITCH = 0.24
 
 def make_plate_prism(outline, z_bottom, z_top):
     """XY 面の輪郭 outline(+Z から見て反時計回り)を [z_bottom, z_top] の厚みへ押し出した板。"""
@@ -2777,12 +3234,21 @@ def make_gun_cheek(outline, x0, x1, bevel=0.04):
     return shade_by_angle(bm, 40.0, bevel_faces)
 
 
-# 塗装・切削面・締結具を武器専用の材質として用意する。
+# XZ 輪郭 outline の三角肘板を、Y 位置 y に厚さ thickness で立てる。
+def make_gusset_xz(outline, y, thickness=0.04):
+    bm = make_plate_prism(outline, y - thickness / 2, y + thickness / 2)
+    return transform_bm(bm, Matrix(((1, 0, 0, 0), (0, 0, 1, 0), (0, 1, 0, 0), (0, 0, 0, 1))))
+
+
+# 塗装・切削面・締結具・弾薬・ゴム覆いを武器専用の材質として用意する。
 def add_gun_materials(mats):
     mats.gun_paint = create_pbr_material("mat_gun_naval_gray", (0.31, 0.37, 0.40, 1.0), 0.53, 0.0)
     mats.gun_panel = create_pbr_material("mat_gun_panel_gray", (0.20, 0.25, 0.28, 1.0), 0.58, 0.0)
     mats.gun_machined = create_pbr_material("mat_gun_machined", (0.66, 0.72, 0.75, 1.0), 0.25, 0.72)
     mats.gun_bronze = create_pbr_material("mat_gun_bronze", (0.31, 0.23, 0.14, 1.0), 0.46, 0.45)
+    mats.gun_brass = create_pbr_material("mat_gun_brass", (0.80, 0.58, 0.26, 1.0), 0.30, 1.0)
+    mats.gun_round_tip = create_pbr_material("mat_gun_round_tip", (0.50, 0.53, 0.56, 1.0), 0.40, 0.9)
+    mats.gun_rubber = create_pbr_material("mat_gun_rubber", (0.055, 0.06, 0.065, 1.0), 0.82, 0.0)
 
 
 # 模型座標の位置列へ、軸方向を揃えた六角ボルトを一つのメッシュとして作る。
@@ -2798,9 +3264,123 @@ def add_gun_bolts(name, positions, direction, mats, parent=None, radius=0.035):
     add_mesh_obj(name, shade_by_angle(bm, 30, bevel_faces), mats.gun_machined, parent=parent)
 
 
-# 固定砲架を作る。頬板下側の切り欠きは排莢樋と給弾塔の空間を確保する。
-def build_gun_cradle(mats, mount_plane_z):
-    outline = [(0.20, mount_plane_z + 0.04), (1.13, mount_plane_z + 0.04), (1.32, 0.0),
+# 軸 axis('x' か 'y')に沿う長さ length の I 形梁を [z_bottom, z_top] の高さで作る箱の列。
+def i_beam_parts(axis, center, length, z_bottom, z_top, width, flange=0.035, web=0.04):
+    cx, cy = center
+    zc = (z_bottom + z_top) / 2
+    depth = z_top - z_bottom
+    if axis == 'x':
+        dims = lambda w, d: (length, w, d)
+    else:
+        dims = lambda w, d: (w, length, d)
+    parts = []
+    for z in (z_bottom + flange / 2, z_top - flange / 2):
+        parts.append((*dims(width, flange), (cx, cy, z), (0, 0, 0)))
+    parts.append((*dims(web, depth - 2 * flange), (cx, cy, zc), (0, 0, 0)))
+    return parts
+
+
+# 弾の輪郭 (半径, z)。薬莢のボトルネックと弾頭を Z 軸上に並べ、全長 0.78 m・最大径 0.24 m。
+GUN_ROUND_CASE = [(0.0, -0.39), (0.12, -0.39), (0.12, -0.36), (0.104, -0.34), (0.104, -0.32),
+    (0.12, -0.30), (0.12, 0.10), (0.085, 0.16), (0.0, 0.16)]
+GUN_ROUND_TIP = [(0.0, 0.14), (0.084, 0.14), (0.084, 0.24), (0.06, 0.33), (0.03, 0.37), (0.0, 0.39)]
+# 撃ち終えた薬莢の輪郭 (半径, z)。弾頭の抜けた口を持つ。
+GUN_SPENT_CASE = [(0.0, -0.31), (0.10, -0.31), (0.10, -0.28), (0.086, -0.26), (0.086, -0.24),
+    (0.10, -0.22), (0.10, 0.12), (0.07, 0.19), (0.07, 0.29), (0.055, 0.29), (0.055, 0.24), (0.0, 0.24)]
+
+
+# 長手を Z へ向けた弾を center に置く。
+def add_gun_round(name, center, mats, parent):
+    offset = Matrix.Translation(Vector(center))
+    add_mesh_obj(f"{name}_case", transform_bm(make_lathe(GUN_ROUND_CASE, 14, closed=True), offset),
+        mats.gun_brass, parent=parent)
+    add_mesh_obj(f"{name}_tip", transform_bm(make_lathe(GUN_ROUND_TIP, 14, closed=True), offset),
+        mats.gun_round_tip, parent=parent)
+
+
+# 長手を Z へ向けた空薬莢を center に置く。
+def add_gun_spent_case(name, center, mats, parent):
+    add_mesh_obj(name, transform_bm(make_lathe(GUN_SPENT_CASE, 12, closed=True),
+        Matrix.Translation(Vector(center))), mats.gun_brass, parent=parent)
+
+
+# 結合面の締結フランジ環と、その上の I 形梁の格子台座、肘板、配管束。
+def build_gun_mount_base(mats):
+    ring_r0, ring_r1, ring_z0, ring_z1 = 1.20, 1.50, -0.50, -0.43
+    grid_z0, grid_z1 = ring_z1, GUN_MOUNT_Z
+    # 隣のモジュール端面へ当たる締結フランジ環と、ボルト列・位置決めキー。
+    add_mesh_obj("gun_mount_flange", make_lathe([(ring_r0, ring_z0), (ring_r1, ring_z0), (ring_r1, ring_z1 - 0.018),
+        (ring_r1 - 0.03, ring_z1), (ring_r0 + 0.03, ring_z1), (ring_r0, ring_z1 - 0.02)], 96, closed=True),
+        mats.gun_panel)
+    add_mesh_obj("gun_mount_flange_lip", make_torus(ring_r0 + 0.012, 0.018, ring_z1 - 0.012, 96, 8), mats.gun_machined)
+    add_gun_bolts("gun_mount_flange_bolts",
+        [(1.37 * math.cos(a), 1.37 * math.sin(a), ring_z1 + 0.012)
+            for a in [(i + 0.5) * math.pi / 16 for i in range(32)]], (0, 0, 1), mats, radius=0.032)
+    add_mesh_obj("gun_mount_flange_keys", make_boxes([
+        (0.10, 0.07, 0.05, (1.35 * math.cos(a), 1.35 * math.sin(a), ring_z1 + 0.02), (0, 0, a))
+        for a in (0.25 * math.pi, 1.25 * math.pi)], 0.01), mats.gun_machined)
+
+    # 格子台座: 2本の縦通梁と、頬板の脚・給弾機構・機械室を受ける横梁。
+    beams = []
+    for x in (-1.12, 1.12):
+        beams += i_beam_parts('y', (x, -0.275), 5.05, grid_z0, grid_z1, 0.17)
+    for y, half in ((0.25, 1.64), (1.20, 1.64), (2.10, 1.12), (-1.05, 1.50)):
+        beams += i_beam_parts('x', (0.0, y), 2 * half, grid_z0, grid_z1, 0.15)
+    for y in (-1.28, -2.78):
+        beams += i_beam_parts('x', (-0.96, y), 0.32, grid_z0, grid_z1, 0.12)
+        beams += i_beam_parts('x', (0.785, y), 0.67, grid_z0, grid_z1, 0.12)
+    add_mesh_obj("gun_mount_girders", make_boxes(beams, 0.008), mats.gun_paint)
+    # 縦通梁がフランジ環を跨ぐ所の山形の留め金具。
+    clips = []
+    for x in (-1.12, 1.12):
+        for sy in (-1.0, 1.0):
+            y = sy * math.sqrt(1.35 ** 2 - x ** 2)
+            clips.append((0.30, 0.20, 0.035, (x, y, ring_z1 + 0.018), (0, 0, 0)))
+            clips.append((0.035, 0.20, 0.14, (x + math.copysign(0.105, -x), y, ring_z1 + 0.07), (0, 0, 0)))
+    add_mesh_obj("gun_mount_clips", make_boxes(clips, 0.006), mats.gun_panel)
+    add_gun_bolts("gun_mount_clip_bolts",
+        [(x + dx, sy * math.sqrt(1.35 ** 2 - x ** 2) + dy, ring_z1 + 0.04)
+            for x in (-1.12, 1.12) for sy in (-1.0, 1.0) for dx in (-0.1, 0.1) for dy in (-0.06, 0.06)],
+        (0, 0, 1), mats, radius=0.02)
+
+    # 給弾機構の側壁へ立ち上がる肘板。+X 面ではベルトの開口を避けて上下の縁に置く。
+    for y in (-1.28, -2.78):
+        add_mesh_obj(f"gun_mount_tower_knee_{y:+.2f}_aft", make_gusset_xz(
+            [(-1.12, grid_z1), (-0.80, grid_z1), (-0.80, 0.30)], y), mats.gun_paint)
+        add_mesh_obj(f"gun_mount_tower_knee_{y:+.2f}_fore", make_gusset_xz(
+            [(1.12, grid_z1), (0.45, 0.25), (0.45, grid_z1)], y), mats.gun_paint)
+    # 頬板の脚の外側から頬板へ立ち上がる肘板。
+    for side in (-1.0, 1.0):
+        for y in (0.30, 1.10):
+            outline = [(side * 1.49, GUN_MOUNT_Z + 0.10), (side * 1.64, GUN_MOUNT_Z + 0.10), (side * 1.49, 0.40)]
+            if side < 0:
+                outline.reverse()
+            add_mesh_obj(f"gun_cheek_knee_{side:+.0f}_{y}", make_gusset_xz(outline, y, 0.035), mats.gun_paint)
+    # 頬板の張り出した後縁を横梁から支える斜材(排莢樋の無い +X 側)と、その端の耳金具。
+    add_mesh_obj("gun_cheek_strut", make_strut((1.36, -1.05, grid_z1), (1.36, -0.72, 0.72), 0.055, 16), mats.gun_machined)
+    add_mesh_obj("gun_cheek_strut_lugs", make_boxes([
+        (0.10, 0.16, 0.08, (1.36, -1.05, grid_z1 + 0.04), (0, 0, 0)),
+        (0.10, 0.14, 0.12, (1.36, -0.73, 0.74), (0, 0, 0))], 0.01), mats.gun_panel)
+
+    # 環の内側から出て、横梁に沿って機械室へ届く油圧・電力の配管束。
+    add_mesh_obj("gun_umbilical_grommet", make_box(0.62, 0.20, 0.05,
+        center=(0.0, 1.02, ring_z0 + 0.03), bevel=0.012), mats.gun_panel)
+    for i, (dx, radius, material) in enumerate((
+            (-0.21, 0.035, mats.cable), (-0.09, 0.028, mats.pipe), (0.03, 0.035, mats.gun_bronze),
+            (0.15, 0.024, mats.cable), (0.24, 0.028, mats.pipe))):
+        add_mesh_obj(f"gun_umbilical_{i}", make_pipes([[
+            Vector((dx, 1.02, ring_z0 + 0.05)), Vector((dx, 1.02, GUN_MOUNT_Z + 0.08)),
+            Vector((dx * 1.3, 1.45, GUN_MOUNT_Z + 0.10)), Vector((dx * 1.3, 1.52, GUN_MOUNT_Z + 0.20)),
+        ]], radius, 12, 0.10), material)
+    add_mesh_obj("gun_umbilical_clamps", make_boxes([
+        (0.62, 0.05, 0.06, (0.0, 1.20, GUN_MOUNT_Z + 0.09), (0, 0, 0)),
+        (0.58, 0.05, 0.05, (0.0, 1.02, GUN_MOUNT_Z - 0.05), (0, 0, 0))], 0.008), mats.clamp)
+
+
+# 固定砲架を作る。頬板下側の切り欠きは排莢樋と給弾機構の空間を確保する。
+def build_gun_cradle(mats):
+    mount_z = GUN_MOUNT_Z
+    outline = [(0.20, mount_z + 0.04), (1.13, mount_z + 0.04), (1.32, 0.0),
         (1.26, 0.68), (0.76, 1.32), (-0.64, 1.32), (-0.78, 1.06),
         (-0.78, 0.67), (0.20, 0.67)]
     panel = [(0.30, -0.19), (1.00, -0.19), (1.12, 0.08), (1.08, 0.61),
@@ -2813,7 +3393,9 @@ def build_gun_cradle(mats, mount_plane_z):
         add_mesh_obj(f"gun_cradle_cheek_field_{side:+.0f}",
             make_gun_cheek(panel, side * 1.496 - 0.012, side * 1.496 + 0.012, 0.012), mats.gun_panel)
         add_mesh_obj(f"gun_cradle_foot_{side:+.0f}", make_box(0.57, 1.16, 0.10,
-            center=(x, 0.72, mount_plane_z + 0.05), bevel=0.035), mats.gun_paint)
+            center=(x, 0.72, mount_z + 0.05), bevel=0.035), mats.gun_paint)
+        add_gun_bolts(f"gun_cradle_foot_bolts_{side:+.0f}",
+            [(x + dx, y, mount_z + 0.11) for dx in (-0.2, 0.2) for y in (0.25, 0.72, 1.20)], (0, 0, 1), mats, radius=0.03)
         bearing_transform = Matrix.Translation((side * 1.53, 0.64, 0.40)) @ Euler((0, math.pi / 2, 0)).to_matrix().to_4x4()
         add_mesh_obj(f"gun_cradle_trunnion_{side:+.0f}",
             transform_bm(make_cylinder(0.38, 0.38, 0.22, segments=40), bearing_transform), mats.gun_paint)
@@ -2823,79 +3405,95 @@ def build_gun_cradle(mats, mount_plane_z):
             for a in [i * math.pi / 4 for i in range(8)]]
         add_gun_bolts(f"gun_trunnion_bolts_{side:+.0f}", positions, (side, 0, 0), mats)
         add_gun_bolts(f"gun_cheek_bolts_{side:+.0f}",
-            [(side * 1.52, y, z) for y, z in ((-.51, 1.23), (.14, 1.23), (.70, 1.20), (1.18, .60), (.29, -.22))],
+            [(side * 1.52, y, z) for y, z in ((-.51, 1.23), (.14, 1.23), (.70, 1.20), (1.18, .60), (.29, -.12))],
             (side, 0, 0), mats)
-    # 後座を支える案内レールと、取付面へ反力を渡す横梁。
-    for y in (-0.62, 0.62):
-        add_mesh_obj(f"gun_cradle_crossbeam_{y:+.2f}", make_box(2.60, 0.20, 0.14,
-            center=(0, y, mount_plane_z + .09), bevel=.025), mats.gun_paint)
+    # 後座を支える案内レールとその座。
     for side in (-1.0, 1.0):
-        add_mesh_obj(f"gun_slide_rail_{side:+.0f}", make_box(.17, .20, 1.47,
-            center=(side * .93, -.38, .44), bevel=.018), mats.gun_machined)
+        add_mesh_obj(f"gun_slide_rail_{side:+.0f}", make_box(.17, .20, 1.32,
+            center=(side * .93, -.38, .51), bevel=.018), mats.gun_machined)
         add_mesh_obj(f"gun_slide_rail_seat_{side:+.0f}", make_box(.27, .34, .14,
-            center=(side * .93, -.38, mount_plane_z + .10), bevel=.025), mats.gun_paint)
+            center=(side * .93, -.38, mount_z + .07), bevel=.025), mats.gun_paint)
 
 
 # 後座する機関部、駆動装置、軸受と整備扉を組む。
 def build_gun_receiver(mats, recoil, breech_z):
-    receiver_back, receiver_front = -0.06, breech_z - 0.06
-    add_mesh_obj("gun_receiver", make_box(1.65, 1.48, receiver_front - receiver_back,
-        center=(0, 0, (receiver_front + receiver_back) / 2), bevel=.08), mats.gun_paint, parent=recoil)
+    back, front = GUN_RECEIVER_BACK_Z, breech_z - 0.06
+    zc, length = (back + front) / 2, front - back
+    add_mesh_obj("gun_receiver", make_box(1.65, 1.48, length, center=(0, 0, zc), bevel=.08), mats.gun_paint, parent=recoil)
     add_mesh_obj("gun_receiver_rear_cover", make_box(1.42, 1.25, .07,
-        center=(0, 0, -.065), bevel=.045), mats.gun_panel, parent=recoil)
+        center=(0, 0, back - .035), bevel=.045), mats.gun_panel, parent=recoil)
     # 天面の段差と排熱格子。
-    add_mesh_obj("gun_receiver_top_hatch", make_box(1.16, .09, .66,
-        center=(0, .76, .43), bevel=.04), mats.gun_panel, parent=recoil)
+    add_mesh_obj("gun_receiver_top_hatch", make_box(1.16, .09, length * 0.72,
+        center=(0, .76, zc), bevel=.04), mats.gun_panel, parent=recoil)
     for i in range(5):
         add_mesh_obj(f"gun_receiver_louvre_{i}", make_box(.72, .035, .045,
-            center=(0, .819, .20 + i * .105), bevel=.009), mats.gun_machined, parent=recoil)
+            center=(0, .819, back + .16 + i * (length - .32) / 4), bevel=.009), mats.gun_machined, parent=recoil)
     for side in (-1.0, 1.0):
         add_mesh_obj(f"gun_slide_shoe_{side:+.0f}", make_box(.32, .31, .37,
-            center=(side * .87, -.38, .62), bevel=.025), mats.gun_panel, parent=recoil)
+            center=(side * .87, -.38, zc), bevel=.025), mats.gun_panel, parent=recoil)
         add_mesh_obj(f"gun_receiver_side_door_{side:+.0f}", make_box(.05, .71, .61,
-            center=(side * .843, .16, .52), bevel=.025), mats.gun_panel, parent=recoil)
+            center=(side * .843, .16, zc - .05), bevel=.025), mats.gun_panel, parent=recoil)
         add_gun_bolts(f"gun_receiver_door_bolts_{side:+.0f}",
-            [(side * .88, y, z) for y in (-.13, .45) for z in (.27, .77)],
+            [(side * .88, y, z) for y in (-.13, .45) for z in (zc - .30, zc + .20)],
             (side, 0, 0), mats, recoil, .026)
         add_mesh_obj(f"gun_receiver_door_handle_{side:+.0f}",
-            make_pipes([[Vector((side * .88, .02, .47)), Vector((side * .94, .02, .47)),
-                Vector((side * .94, .23, .47)), Vector((side * .88, .23, .47))]], .018, 10, .025),
+            make_pipes([[Vector((side * .88, .02, zc - .05)), Vector((side * .94, .02, zc - .05)),
+                Vector((side * .94, .23, zc - .05)), Vector((side * .88, .23, zc - .05))]], .018, 10, .025),
             mats.gun_machined, parent=recoil)
     # 砲身束を囲う軸受環と、機関部に載る駆動モーター。
-    add_mesh_obj("gun_front_bearing", make_lathe([(.79, receiver_front - .09), (.94, receiver_front - .09),
-        (.98, receiver_front - .02), (.98, receiver_front + .10), (.92, receiver_front + .14),
-        (.79, receiver_front + .14)], segments=56, closed=True), mats.gun_paint, parent=recoil)
-    add_mesh_obj("gun_front_bearing_rim", make_torus(.88, .024, receiver_front + .145, 56, 10),
+    add_mesh_obj("gun_front_bearing", make_lathe([(.79, front - .09), (.94, front - .09),
+        (.98, front - .02), (.98, front + .10), (.92, front + .14),
+        (.79, front + .14)], segments=56, closed=True), mats.gun_paint, parent=recoil)
+    add_mesh_obj("gun_front_bearing_rim", make_torus(.88, .024, front + .145, 56, 10),
         mats.gun_machined, parent=recoil)
     add_gun_bolts("gun_front_bearing_bolts",
-        [(.89 * math.cos(a), .89 * math.sin(a), receiver_front + .152)
+        [(.89 * math.cos(a), .89 * math.sin(a), front + .152)
             for a in [i * math.pi / 6 for i in range(12)]], (0, 0, 1), mats, recoil)
-    add_mesh_obj("gun_drive_motor", transform_bm(make_cylinder(.22, .22, .64, .30, 32),
-        Matrix.Translation((0, 1.03, 0))), mats.gun_panel, parent=recoil)
-    add_mesh_obj("gun_motor_rear_cap", transform_bm(make_cylinder(.17, .17, .07, -.055, 24),
-        Matrix.Translation((0, 1.03, 0))), mats.gun_machined, parent=recoil)
-    add_mesh_obj("gun_motor_gearbox", make_box(.50, .40, .30, center=(0, .95, .73), bevel=.045),
+    motor_z = zc - .12
+    motor_offset = Matrix.Translation((0, 1.03, 0))
+    add_mesh_obj("gun_drive_motor", transform_bm(make_cylinder(.22, .22, .64, motor_z, 32), motor_offset),
+        mats.gun_panel, parent=recoil)
+    add_mesh_obj("gun_motor_rear_cap", transform_bm(make_cylinder(.17, .17, .07, motor_z - .355, 24), motor_offset),
+        mats.gun_machined, parent=recoil)
+    add_mesh_obj("gun_motor_gearbox", make_box(.50, .40, .30, center=(0, .95, motor_z + .43), bevel=.045),
         mats.gun_paint, parent=recoil)
-    for z in (.09, .20, .31, .42, .53):
-        add_mesh_obj(f"gun_motor_cooling_fin_{z}", transform_bm(make_torus(.22, .017, z, 32, 8),
-            Matrix.Translation((0, 1.03, 0))), mats.gun_machined, parent=recoil)
+    for i, dz in enumerate((-.21, -.10, .01, .12, .23)):
+        add_mesh_obj(f"gun_motor_cooling_fin_{i}", transform_bm(make_torus(.22, .017, motor_z + dz, 32, 8), motor_offset),
+            mats.gun_machined, parent=recoil)
 
 
-# 固定スリーブと後座ロッドを同軸に組み、最大 0.22 m の後退でも嵌合を保つ。
+# 固定スリーブと後座ロッドを同軸に組み、ロッドを囲む復座ばねを後座量に応じて縮ませる。
 def build_gun_recoil_cylinders(mats, recoil):
-    for side in (-1.0, 1.0):
+    crosshead_z = 1.35
+    for index, side in enumerate((-1.0, 1.0)):
         x, y = side * 1.07, -.66
         offset = Matrix.Translation((x, y, 0))
         add_mesh_obj(f"gun_recoil_sleeve_{side:+.0f}", transform_bm(make_lathe([
-            (.11, -.22), (.20, -.22), (.21, -.17), (.21, .43), (.18, .49), (.11, .49),
+            (.11, -.22), (.20, -.22), (.21, -.17), (.21, .47), (.18, .53), (.11, .53),
         ], 40, closed=True), offset), mats.gun_paint)
         add_mesh_obj(f"gun_recoil_gland_{side:+.0f}", transform_bm(make_lathe([
-            (.103, .43), (.225, .43), (.225, .51), (.103, .51),
+            (.103, .47), (.225, .47), (.225, .55), (.103, .55),
         ], 40, closed=True), offset), mats.gun_machined)
         add_mesh_obj(f"gun_recoil_rod_{side:+.0f}", transform_bm(
-            make_cylinder(.10, .10, 1.00, .66, 32), offset), mats.gun_machined, parent=recoil)
+            make_cylinder(.10, .10, crosshead_z - .25, (crosshead_z + .25) / 2, 32), offset), mats.gun_machined, parent=recoil)
         add_mesh_obj(f"gun_recoil_rod_crosshead_{side:+.0f}", make_box(.43, .25, .16,
-            center=(side * .93, y, 1.17), bevel=.045), mats.gun_paint, parent=recoil)
+            center=(side * .93, y, crosshead_z), bevel=.045), mats.gun_paint, parent=recoil)
+        add_mesh_obj(f"gun_recoil_crosshead_yoke_{side:+.0f}", make_box(.24, .22, .34,
+            center=(side * .80, -.60, crosshead_z - .15), bevel=.03), mats.gun_paint, parent=recoil)
+        # ばね座: 固定側はグランドの前、可動側はクロスヘッドの後ろ。
+        seat_fixed, seat_moving = .56, crosshead_z - .08
+        add_mesh_obj(f"gun_recuperator_seat_fixed_{side:+.0f}", transform_bm(make_lathe([
+            (.11, seat_fixed - .02), (.20, seat_fixed - .02), (.20, seat_fixed + .01), (.11, seat_fixed + .01),
+        ], 32, closed=True), offset), mats.gun_panel)
+        add_mesh_obj(f"gun_recuperator_seat_moving_{side:+.0f}", transform_bm(make_lathe([
+            (.11, seat_moving - .01), (.20, seat_moving - .01), (.20, seat_moving + .02), (.11, seat_moving + .02),
+        ], 32, closed=True), offset), mats.gun_panel, parent=recoil)
+        spring = add_anchor(f"gun-recoil-compress:0:{index}", (x, y, seat_fixed + .01),
+            restLength=seat_moving - seat_fixed - .02)
+        coil_length, turns, coil_r = seat_moving - seat_fixed - .02, 6, .165
+        helix = [Vector((x + coil_r * math.cos(2 * math.pi * t / 24), y + coil_r * math.sin(2 * math.pi * t / 24),
+            seat_fixed + .01 + coil_length * t / (24 * turns))) for t in range(24 * turns + 1)]
+        add_mesh_obj(f"gun_recuperator_spring_{side:+.0f}", make_pipes([helix], .018, 8), mats.gun_machined, parent=spring)
         for z in (-.12, .30):
             add_mesh_obj(f"gun_cylinder_saddle_{side:+.0f}_{z}", make_box(.42, .23, .14,
                 center=(x, y + .17, z), bevel=.025), mats.gun_panel)
@@ -2906,32 +3504,71 @@ def build_gun_recoil_cylinders(mats, recoil):
                 Vector((side * 1.76, -.92, .04)), Vector((side * 1.76, .97, .04))],
         ], .032, 12, .12), mats.gun_bronze)
         add_gun_bolts(f"gun_gland_bolts_{side:+.0f}",
-            [(x + .17 * math.cos(a), y + .17 * math.sin(a), .527)
+            [(x + .17 * math.cos(a), y + .17 * math.sin(a), .557)
                 for a in [i * math.pi / 3 for i in range(6)]], (0, 0, 1), mats, radius=.026)
 
 
+# 案内レールの蛇腹覆いと、機関部と頬板をつなぐ復座リンク。どちらも後座量に追従する。
+def build_gun_recoil_followers(mats, recoil, breech_z):
+    shoe_rear = (GUN_RECEIVER_BACK_Z + breech_z - 0.06) / 2 - .185
+    boot_z0 = -.08
+    for index, side in enumerate((-1.0, 1.0)):
+        x, y = side * .93, -.38
+        boot = add_anchor(f"gun-recoil-compress:0:{2 + index}", (x, y, boot_z0), restLength=shoe_rear - boot_z0)
+        pleats = 9
+        pitch = (shoe_rear - boot_z0) / pleats
+        parts = []
+        for k in range(pleats):
+            z = boot_z0 + (k + 0.5) * pitch
+            parts.append((.20, .26, pitch * .55, (x, y, z - pitch * .2), (0, 0, 0)))
+            parts.append((.165, .225, pitch * .5, (x, y, z + pitch * .25), (0, 0, 0)))
+        add_mesh_obj(f"gun_rail_boot_{side:+.0f}", make_boxes(parts, 0.006), mats.gun_rubber, parent=boot)
+        add_mesh_obj(f"gun_rail_boot_collar_{side:+.0f}", make_box(.23, .29, .04,
+            center=(x, y, boot_z0 + .02), bevel=.008), mats.gun_machined)
+
+        # 復座リンク: 頬板の軸受から下がる腕が、機関部の溝付き耳金具に沿って振れる。
+        pivot = Vector((side * .97, -.05, 1.06))
+        arm_length = .55
+        lever = add_anchor(f"gun-recoil-lever:0:{index}", pivot, direction=(1.0, 0.0, 0.0), leverRate=-1.0 / arm_length)
+        add_mesh_obj(f"gun_runout_arm_{side:+.0f}", make_box(.05, arm_length + .08, .10,
+            center=(pivot.x, pivot.y + arm_length / 2, pivot.z), bevel=.015), mats.gun_machined, parent=lever)
+        axle = Euler((0, math.pi / 2, 0)).to_matrix().to_4x4()
+        add_mesh_obj(f"gun_runout_arm_boss_{side:+.0f}", transform_bm(make_cylinder(.075, .075, .09, 0.0, 20),
+            Matrix.Translation(pivot) @ axle), mats.gun_panel, parent=lever)
+        add_mesh_obj(f"gun_runout_arm_roller_{side:+.0f}", transform_bm(make_cylinder(.05, .05, .12, 0.0, 16),
+            Matrix.Translation(pivot + Vector((0, arm_length, 0))) @ axle), mats.gun_machined, parent=lever)
+        add_mesh_obj(f"gun_runout_pivot_bracket_{side:+.0f}", make_box(1.23 - 1.02, .16, .16,
+            center=(side * (1.02 + 1.23) / 2, pivot.y, pivot.z), bevel=.02), mats.gun_paint)
+        add_mesh_obj(f"gun_runout_slot_lug_{side:+.0f}", make_boxes([
+            (.135, .34, .035, (side * .89, pivot.y + arm_length - .05, pivot.z - .07), (0, 0, 0)),
+            (.135, .34, .035, (side * .89, pivot.y + arm_length - .05, pivot.z + .07), (0, 0, 0))], 0.008),
+            mats.gun_panel, parent=recoil)
+
+
 # 固定側の機械室と圧力容器を砲架の支持部へ据え付ける。
-def build_gun_service_house(mats, mount_plane_z):
+def build_gun_service_house(mats):
+    mz = GUN_MOUNT_Z
     add_mesh_obj("gun_house", make_box(2.20, .77, .67,
-        center=(0, 1.80, mount_plane_z + .335), bevel=.075), mats.gun_paint)
+        center=(0, 1.80, mz + .335), bevel=.075), mats.gun_paint)
     add_mesh_obj("gun_house_hood", make_box(2.03, .65, .08,
-        center=(0, 1.81, .33), bevel=.035), mats.gun_panel)
+        center=(0, 1.81, mz + .705), bevel=.035), mats.gun_panel)
     for side in (-1.0, 1.0):
         add_mesh_obj(f"gun_house_service_door_{side:+.0f}", make_box(.75, .49, .025,
-            center=(side * .54, 1.80, .384), bevel=.025), mats.gun_paint)
+            center=(side * .54, 1.80, mz + .759), bevel=.025), mats.gun_paint)
         add_gun_bolts(f"gun_house_door_bolts_{side:+.0f}",
-            [(side * .54 + dx, 1.80 + dy, .409) for dx in (-.29, .29) for dy in (-.18, .18)],
+            [(side * .54 + dx, 1.80 + dy, mz + .784) for dx in (-.29, .29) for dy in (-.18, .18)],
             (0, 0, 1), mats, radius=.026)
+        accumulator = Matrix.Translation((side * 1.55, 1.36, mz + .375))
         add_mesh_obj(f"gun_accumulator_{side:+.0f}", transform_bm(make_lathe([
             (0, -.23), (.18, -.23), (.22, -.15), (.22, .30), (.18, .40), (0, .40),
-        ], 32), Matrix.Translation((side * 1.55, 1.36, 0))), mats.gun_panel)
+        ], 32), accumulator), mats.gun_panel)
         add_mesh_obj(f"gun_accumulator_band_{side:+.0f}", transform_bm(make_torus(.224, .025, .12, 32, 8),
-            Matrix.Translation((side * 1.55, 1.36, 0))), mats.gun_machined)
+            accumulator), mats.gun_machined)
         add_mesh_obj(f"gun_conduit_{side:+.0f}", make_pipes([[
-            Vector((side * .73, 2.1, -.14)), Vector((side * .95, 2.45, -.25)),
+            Vector((side * .73, 2.1, mz + .235)), Vector((side * .95, 2.45, mz + .125)),
         ]], .035, 12), mats.pipe)
         add_mesh_obj(f"gun_conduit_relay_{side:+.0f}", make_box(.34, .26, .20,
-            center=(side * .95, 2.42, -.25), bevel=.03), mats.gun_panel)
+            center=(side * .95, 2.42, mz + .125), bevel=.03), mats.gun_panel)
 
 
 # 砲身の個別カラーと中央ハブを結び、砲身間に抜けのある回転束を作る。
@@ -2968,162 +3605,248 @@ def build_gun_barrels(mats, recoil, breech_z, muzzle_z):
             mats.gun_machined, parent=rotor)
 
 
-# 排莢口と固定樋の重なりは、後座端でも開口を覆う長さを持つ。
-def build_gun_ejection(mats, recoil):
-    add_mesh_obj("gun_ejection_port", make_box(.035, .56, .76,
-        center=(-.836, -.04, .37), bevel=.01), mats.recessed, parent=recoil)
-    path = round_corners([Vector((-.80, -.02, .10)), Vector((-1.05, -.12, .06)),
-        Vector((-1.32, -.24, -.04))], .08, 4)
-    profile = [(-.27, -.34), (.27, -.34), (.27, .34), (-.27, .34)]
-    add_mesh_obj("gun_ejection_chute", sweep_profile(path, profile, cap_ends=False, sharp_angle_deg=30),
-        mats.gun_panel)
+# 軸 Z の星形車: ハブ・端板・放射状の6枚の爪を center に作り、loaded 番目の爪の間の、軸から load_r の所へ
+# load で弾か薬莢を載せる。
+def add_gun_star_wheel(name, center, radius, length, load_r, mats, parent, loaded, load):
+    cx, cy, cz = center
+    add_mesh_obj(f"{name}_hub", transform_bm(make_cylinder(radius * .28, radius * .28, length + .04, cz, 20),
+        Matrix.Translation((cx, cy, 0))), mats.gun_machined, parent=parent)
+    for k, z in enumerate((cz - length / 2 + .02, cz + length / 2 - .02)):
+        add_mesh_obj(f"{name}_plate_{k}", transform_bm(make_cylinder(radius, radius, .04, z, 6, bevel=.008),
+            Matrix.Translation((cx, cy, 0)) @ Euler((0, 0, math.pi / 6)).to_matrix().to_4x4()), mats.gun_steel, parent=parent)
+    add_mesh_obj(f"{name}_fins", make_boxes([
+        (radius * .72, .03, length - .06, (cx + radius * .62 * math.cos(a), cy + radius * .62 * math.sin(a), cz), (0, 0, a))
+        for a in [k * math.pi / 3 for k in range(6)]], 0.006), mats.gun_steel, parent=parent)
+    for k in loaded:
+        a = (k + 0.5) * math.pi / 3
+        load(f"{name}_load_{k}", (cx + load_r * math.cos(a), cy + load_r * math.sin(a), cz), mats, parent)
 
-# 結合面、砲架、後座機関部、給弾塔を一つの武器原型へ組み上げる。
+
+# 骨組みと窓の枠で組んだ給弾機構。中の送り車・デリンクドラム・案内爪と、機関部へ昇る弾が見える。
+def build_gun_feed(mats, recoil, feed_port, breech_z):
+    fx, fy = feed_port.x, feed_port.y
+    x0, x1 = fx - 0.80, fx + 0.45
+    y0, y1 = fy - 0.90, fy + 0.73
+    z0, z1 = -0.43, 1.18
+    receiver_zc = (GUN_RECEIVER_BACK_Z + breech_z - 0.06) / 2
+    slot_y0, slot_y1 = fy - 0.625, fy + 0.625  # ベルトの開口(リンク厚み 1.0 より僅かに大きい)
+    slot_z0, slot_z1 = -0.36, 1.15
+    conveyor_x = fx - 0.10
+    shaft_x0, shaft_x1 = conveyor_x - 0.24, conveyor_x + 0.24
+
+    # 枠の稜: 角柱と上下・前後の横材。
+    post = 0.12
+    frame = []
+    for x in (x0 + post / 2, x1 - post / 2):
+        for y in (y0 + post / 2, y1 - post / 2):
+            frame.append((post, post, z1 - z0, (x, y, (z0 + z1) / 2), (0, 0, 0)))
+    for z in (z0 + post / 2, z1 - post / 2):
+        for y in (y0 + post / 2, y1 - post / 2):
+            frame.append((x1 - x0, post, post, ((x0 + x1) / 2, y, z), (0, 0, 0)))
+        for x in (x0 + post / 2, x1 - post / 2):
+            frame.append((post, y1 - y0, post, (x, (y0 + y1) / 2, z), (0, 0, 0)))
+    add_mesh_obj("feed_frame", make_boxes(frame, 0.018), mats.gun_paint)
+
+    # 外側の面(-Y)と前面(+Z)は縁板と斜めの帯板だけを残した窓にする。
+    panels = []
+    border = 0.20
+    for z in (z0 + border / 2, z1 - border / 2):
+        panels.append((x1 - x0 - 0.02, 0.05, border, ((x0 + x1) / 2, y0 + 0.025, z), (0, 0, 0)))
+    for x in (x0 + border / 2, x1 - border / 2):
+        panels.append((border, 0.05, z1 - z0 - 0.02, (x, y0 + 0.025, (z0 + z1) / 2), (0, 0, 0)))
+    diag = math.hypot(x1 - x0 - 2 * border, z1 - z0 - 2 * border)
+    panels.append((diag, 0.035, 0.10, ((x0 + x1) / 2, y0 + 0.03, (z0 + z1) / 2),
+        (0, -math.atan2(z1 - z0 - 2 * border, x1 - x0 - 2 * border), 0)))
+    for y in (y0 + border / 2, y1 - border / 2):
+        panels.append((x1 - x0 - 0.02, border, 0.05, ((x0 + x1) / 2, y, z1 - 0.025), (0, 0, 0)))
+    for x in (x0 + border / 2, x1 - border / 2):
+        panels.append((border, y1 - y0 - 0.02, 0.05, (x, (y0 + y1) / 2, z1 - 0.025), (0, 0, 0)))
+    panels.append((0.08, y1 - y0 - 2 * border, 0.035, ((x0 + x1) / 2 + 0.12, (y0 + y1) / 2, z1 - 0.03), (0, 0, 0)))
+    # 天面(+Y)は弾の昇る抜け道を空け、後座で前後に動く分だけ長い溝にする。
+    panels.append((shaft_x0 - x0, 0.08, z1 - z0, ((x0 + shaft_x0) / 2, y1 - 0.04, (z0 + z1) / 2), (0, 0, 0)))
+    panels.append((x1 - shaft_x1, 0.08, z1 - z0, ((shaft_x1 + x1) / 2, y1 - 0.04, (z0 + z1) / 2), (0, 0, 0)))
+    panels.append((shaft_x1 - shaft_x0, 0.08, 0.22, (conveyor_x, y1 - 0.04, z0 + 0.11), (0, 0, 0)))
+    # 結合面側(-Z)は塞ぐ。
+    panels.append((x1 - x0 - 0.02, y1 - y0 - 0.02, 0.05, ((x0 + x1) / 2, (y0 + y1) / 2, z0 + 0.025), (0, 0, 0)))
+    # +X 面はベルトの開口を残し、その上下と前後を壁で囲う。
+    panels.append((0.14, slot_y0 - y0, z1 - z0, (x1 - 0.07, (y0 + slot_y0) / 2, (z0 + z1) / 2), (0, 0, 0)))
+    panels.append((0.14, y1 - slot_y1, z1 - z0, (x1 - 0.07, (slot_y1 + y1) / 2, (z0 + z1) / 2), (0, 0, 0)))
+    panels.append((0.14, slot_y1 - slot_y0, slot_z0 - z0, (x1 - 0.07, fy, (z0 + slot_z0) / 2), (0, 0, 0)))
+    # -X 面はリンク排出口を残し、縁を板で囲う。
+    exit_y0, exit_y1, exit_z0, exit_z1 = fy - 0.60, fy + 0.60, -0.35, 0.95
+    panels.append((0.10, exit_y0 - y0, z1 - z0, (x0 + 0.05, (y0 + exit_y0) / 2, (z0 + z1) / 2), (0, 0, 0)))
+    panels.append((0.10, y1 - exit_y1, z1 - z0, (x0 + 0.05, (exit_y1 + y1) / 2, (z0 + z1) / 2), (0, 0, 0)))
+    panels.append((0.10, exit_y1 - exit_y0, exit_z0 - z0, (x0 + 0.05, fy, (z0 + exit_z0) / 2), (0, 0, 0)))
+    panels.append((0.10, exit_y1 - exit_y0, z1 - exit_z1, (x0 + 0.05, fy, (exit_z1 + z1) / 2), (0, 0, 0)))
+    add_mesh_obj("feed_panels", make_boxes(panels, 0.012), mats.gun_panel)
+    add_gun_bolts("feed_panel_bolts_outer",
+        [(x, y0 - 0.002, z) for x in (x0 + 0.10, x1 - 0.10) for z in (z0 + 0.25, (z0 + z1) / 2, z1 - 0.25)],
+        (0, -1, 0), mats, radius=0.024)
+    add_gun_bolts("feed_panel_bolts_front",
+        [(x, y, z1 + 0.002) for x in (x0 + 0.10, x1 - 0.10) for y in (y0 + 0.30, y1 - 0.30)],
+        (0, 0, 1), mats, radius=0.024)
+
+    # ベルト開口の縁の枠。
+    lip_x = x1 + 0.065
+    add_mesh_obj("feed_mouth_lip", make_boxes([
+        (0.13, 0.10, slot_z1 - slot_z0 + 0.04, (lip_x, slot_y1 + 0.05, (slot_z0 + slot_z1) / 2), (0, 0, 0)),
+        (0.13, 0.10, slot_z1 - slot_z0 + 0.04, (lip_x, slot_y0 - 0.05, (slot_z0 + slot_z1) / 2), (0, 0, 0)),
+        (0.13, slot_y1 - slot_y0 + 0.20, 0.06, (lip_x, fy, slot_z0 - 0.03), (0, 0, 0)),
+        (0.13, slot_y1 - slot_y0 + 0.20, 0.05, (lip_x, fy, slot_z1 + 0.02), (0, 0, 0))], 0.01), mats.clamp)
+
+    # 開口の奥の送り車(縦軸の星車2基)。3枚の星形板と軸で組み、ベルトのリンクを噛む。
+    for i, wz in enumerate((-0.15, 0.85)):
+        sprocket = add_anchor(f"feed-sprocket:{i}", (fx + 0.35, fy, wz), direction=(0.0, 1.0, 0.0))
+        to_axis = Matrix.Translation(Vector((fx + 0.35, fy, wz))) @ Euler((-math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4()
+        add_mesh_obj(f"feed_sprocket_shaft_{i}", transform_bm(make_cylinder(0.06, 0.06, 1.15, 0.0, 16), to_axis),
+            mats.gun_machined, parent=sprocket)
+        for k, dy in enumerate((-0.45, 0.0, 0.45)):
+            add_mesh_obj(f"feed_sprocket_disc_{i}_{k}", transform_bm(make_cylinder(0.17, 0.17, 0.06, dy, 16), to_axis),
+                mats.gun_steel, parent=sprocket)
+            add_mesh_obj(f"feed_sprocket_teeth_{i}_{k}", transform_bm(make_boxes([
+                (0.13, 0.055, 0.07, (0.20 * math.cos(t * math.pi / 4), 0.20 * math.sin(t * math.pi / 4), dy),
+                    (0, 0, t * math.pi / 4)) for t in range(8)], 0.008), to_axis), mats.gun_steel, parent=sprocket)
+        add_mesh_obj(f"feed_sprocket_bearings_{i}", make_boxes([
+            (0.20, 0.06, 0.20, (fx + 0.35, fy + dy, wz), (0, 0, 0)) for dy in (-0.60, 0.60)], 0.01), mats.gun_panel)
+
+    # デリンクドラム: ベルトから外した弾を6つの爪の間に抱えて、上の送り路へ回す。
+    drum_center = (fx - 0.30, fy - 0.13, receiver_zc)
+    drum = add_anchor("feed-drum", drum_center, direction=(0.0, 0.0, 1.0))
+    add_gun_star_wheel("feed_drum", drum_center, 0.36, 0.80, 0.26, mats, drum, (0, 1, 3, 4), add_gun_round)
+    add_mesh_obj("feed_drum_bearings", make_boxes([
+        (0.16, 0.50, 0.06, (drum_center[0], drum_center[1] - 0.25, drum_center[2] + dz), (0, 0, 0))
+        for dz in (-0.43, 0.43)], 0.01), mats.gun_panel)
+
+    # 開口の下縁を走る案内爪(フィードシュー)。送りにつれて内側(-X)へ踏み込み、リンクを引き込む。
+    shoe_x, shoe_y, shoe_z = x1 - 0.14, slot_y0 - 0.085, 0.36
+    shoe = add_anchor("feed-shoe", (shoe_x, shoe_y, shoe_z), direction=(-1.0, 0.0, 0.0))
+    add_mesh_obj("feed_shoe_body", make_box(0.55, 0.10, 0.85,
+        center=(shoe_x, shoe_y, shoe_z), bevel=0.02), mats.gun_steel, parent=shoe)
+    add_mesh_obj("feed_shoe_claw", make_box(0.10, 0.20, 0.10,
+        center=(shoe_x + 0.18, shoe_y + 0.12, shoe_z + 0.30), rot_euler=(0.0, -0.45, 0.0), bevel=0.02),
+        mats.clamp, parent=shoe)
+    add_mesh_obj("feed_shoe_rails", make_boxes([
+        (0.80, 0.05, 0.10, (shoe_x - 0.10, shoe_y - 0.075, shoe_z + dz), (0, 0, 0)) for dz in (-0.40, 0.40)], 0.008),
+        mats.hull_dark)
+
+    # リンク排出口: 上下の案内ローラーと、空の外枠を押し出す爪。
+    for i, ry in enumerate((exit_y1 + 0.02, exit_y0 - 0.02)):
+        roller_center = Vector((x0 - 0.10, ry, (exit_z0 + exit_z1) / 2))
+        roller = add_anchor(f"link-roller:{i}", roller_center, direction=(0.0, 0.0, 1.0))
+        add_mesh_obj(f"link_roller_{i}", transform_bm(make_cylinder(0.09, 0.09, 1.20, roller_center.z, 20),
+            Matrix.Translation((roller_center.x, ry, 0))), mats.gun_machined, parent=roller)
+        add_mesh_obj(f"link_roller_grips_{i}", make_boxes([
+            (0.025, 0.025, 1.14, (roller_center.x + 0.09 * math.cos(a), ry + 0.09 * math.sin(a), roller_center.z), (0, 0, a))
+            for a in [k * math.pi / 3 for k in range(6)]], 0.004), mats.gun_steel, parent=roller)
+    add_mesh_obj("link_exit_flare", make_boxes([
+        (0.26, 0.05, exit_z1 - exit_z0 + 0.20, (x0 - 0.13, exit_y1 + 0.12, (exit_z0 + exit_z1) / 2), (0, 0, -0.35)),
+        (0.26, 0.05, exit_z1 - exit_z0 + 0.20, (x0 - 0.13, exit_y0 - 0.12, (exit_z0 + exit_z1) / 2), (0, 0, 0.35)),
+        (0.24, exit_y1 - exit_y0 + 0.30, 0.05, (x0 - 0.12, fy, exit_z0 - 0.12), (0, 0, 0)),
+        (0.24, exit_y1 - exit_y0 + 0.30, 0.05, (x0 - 0.12, fy, exit_z1 + 0.12), (0, 0, 0))], 0.01), mats.gun_paint)
+    kicker_center = Vector((x0 + 0.34, fy, exit_z0 + 0.08))
+    kicker = add_anchor("link-kicker", kicker_center, direction=(-1.0, 0.0, 0.0))
+    add_mesh_obj("link_kicker_pusher", make_boxes([
+        (0.06, 1.00, 0.16, (kicker_center.x, fy, kicker_center.z), (0, 0, 0)),
+        (0.30, 0.12, 0.10, (kicker_center.x + 0.15, fy, kicker_center.z - 0.02), (0, 0, 0))], 0.01),
+        mats.clamp, parent=kicker)
+    add_mesh_obj("link_kicker_guide", make_pipes([[
+        Vector((x0 + 0.10, fy, kicker_center.z - 0.02)), Vector((x0 + 0.75, fy, kicker_center.z - 0.02))]], 0.03, 10),
+        mats.gun_machined)
+
+    # 機関部の底から給弾機構の中へ下りる送り路。後座と一緒に動き、弾を1発ずつ機関部へ送り込む。
+    shroud_y0, shroud_y1 = y1 - 0.44, y1 - 0.09
+    add_mesh_obj("feed_throat_shroud", make_box(0.44, shroud_y1 - shroud_y0, 0.88,
+        center=(conveyor_x, (shroud_y0 + shroud_y1) / 2, receiver_zc), bevel=0.02), mats.hull_dark, parent=recoil)
+    add_mesh_obj("feed_chute_rails", make_boxes([
+        (0.035, -0.74 - shroud_y1 + 0.04, 0.035, (conveyor_x + sx * 0.16, (shroud_y1 - 0.74) / 2, receiver_zc + sz * 0.40), (0, 0, 0))
+        for sx in (-1, 1) for sz in (-1, 1)] + [
+        (0.36, 0.03, 0.03, (conveyor_x, shroud_y1 + 0.02, receiver_zc + sz * 0.40), (0, 0, 0)) for sz in (-1, 1)], 0.006),
+        mats.gun_machined, parent=recoil)
+    first_round_y = shroud_y0 + 0.18
+    conveyor = add_anchor("feed-conveyor", (conveyor_x, first_round_y, receiver_zc), direction=(0.0, 1.0, 0.0),
+        parent=recoil, conveyorPitch=GUN_ROUND_PITCH)
+    for k in range(4):
+        add_gun_round(f"feed_conveyor_round_{k}", (conveyor_x, first_round_y + k * GUN_ROUND_PITCH, receiver_zc),
+            mats, conveyor)
+
+
+# 機関部底の排莢口と星形の排莢車、薬莢が滑り落ちる開いた排莢樋。
+def build_gun_ejection(mats, recoil, breech_z, ejection_port):
+    receiver_zc = (GUN_RECEIVER_BACK_Z + breech_z - 0.06) / 2
+    add_mesh_obj("gun_ejection_port", make_box(0.42, 0.03, 0.76,
+        center=(-0.62, -0.745, receiver_zc), bevel=0.008), mats.recessed, parent=recoil)
+    rotor_center = (-0.60, -0.92, receiver_zc)
+    rotor = add_anchor("eject-rotor", rotor_center, direction=(0.0, 0.0, 1.0), parent=recoil)
+    add_gun_star_wheel("eject_rotor", rotor_center, 0.19, 0.70, 0.21, mats, rotor, (2, 3, 5), add_gun_spent_case)
+    add_mesh_obj("gun_ejection_rotor_hangers", make_boxes([
+        (0.12, 0.20, 0.05, (-0.60, -0.83, receiver_zc + dz), (0, 0, 0)) for dz in (-0.39, 0.39)], 0.008),
+        mats.gun_panel, parent=recoil)
+
+    # 排莢樋: 受け口から放出口まで下り勾配で -X へ伸び、天面は開けて薬莢を見せる。
+    start = Vector((-0.86, -1.10, 0.0))
+    end = Vector((ejection_port.x, ejection_port.y, 0.0))
+    along = (end - start).normalized()
+    up = Vector((-along.y, along.x, 0.0))
+    if up.y < 0:
+        up = -up
+    length = (end - start).length
+    angle = math.atan2(along.y, along.x)
+    trough_z0, trough_z1 = -0.08, 1.10
+    trough_zc = (trough_z0 + trough_z1) / 2
+    def on_path(s, lift, z):
+        p = start + along * s + up * lift
+        return (p.x, p.y, z)
+    trough = [
+        (length + 0.14, 0.03, trough_z1 - trough_z0, on_path(length / 2 - 0.07, -0.015, trough_zc), (0, 0, angle)),
+    ]
+    for z in (trough_z0 + 0.02, trough_z1 - 0.02):
+        trough.append((length + 0.14, 0.30, 0.04, on_path(length / 2 - 0.07, 0.15, z), (0, 0, angle)))
+    add_mesh_obj("gun_ejection_trough", make_boxes(trough, 0.008), mats.gun_panel)
+    add_mesh_obj("gun_ejection_guide_rods", make_pipes([
+        [Vector(on_path(0.28, 0.27, z)), Vector(on_path(length - 0.30, 0.27, z))] for z in (0.22, 0.82)], 0.018, 10),
+        mats.gun_machined)
+    # 放出口の覆いと、口を塞ぐゴムのフラップ。
+    hood_s0, hood_s1 = length - 0.34, length + 0.07
+    add_mesh_obj("gun_ejection_hood", make_box(hood_s1 - hood_s0, 0.03, trough_z1 - trough_z0,
+        center=on_path((hood_s0 + hood_s1) / 2, 0.30, trough_zc), rot_euler=(0, 0, angle), bevel=0.008), mats.gun_paint)
+    add_mesh_obj("gun_ejection_flap", make_box(0.025, 0.30, trough_z1 - trough_z0 - 0.08,
+        center=on_path(length + 0.06, 0.15, trough_zc), rot_euler=(0, 0, angle), bevel=0.006), mats.gun_rubber)
+    # 樋を格子台座と給弾機構の角柱へ留める支え。
+    girder_end = Vector((-1.12, -1.28, GUN_MOUNT_Z))
+    add_mesh_obj("gun_ejection_brackets", make_pipes(
+        [[Vector(on_path(0.55, -0.02, z)), girder_end] for z in (trough_z0 + 0.1, trough_z1 - 0.1)]
+        + [[Vector(on_path(length - 0.10, -0.02, trough_z0 + 0.1)), girder_end]], 0.028, 10), mats.gun_machined)
+    first_case = start + up * 0.13
+    conveyor = add_anchor("eject-conveyor", (first_case.x, first_case.y, trough_zc), direction=(along.x, along.y, 0.0),
+        conveyorPitch=GUN_CASING_PITCH)
+    for k in range(5):
+        p = first_case + along * (k * GUN_CASING_PITCH)
+        add_gun_spent_case(f"eject_conveyor_case_{k}", (p.x, p.y, trough_zc), mats, conveyor)
+
+
+# 結合面の台座、砲架、後座機関部、給弾機構、排莢機構を一つの武器原型へ組み上げる。
 def build_weapon(name):
     reset_scene()
     mats = MaterialLibrary()
     add_gun_materials(mats)
     module = MANIFEST["modules"][name]
-    half_len = module["length"] / 2.0
     muzzle = Vector(module["muzzles"][0])   # 砲口は機軸上の1点
     feed_port = Vector(module["feedPort"])  # 給弾ベルトが機体へ入る点
-    mx, my, mz = muzzle.x, muzzle.y, muzzle.z
-    fx, fy = feed_port.x, feed_port.y
+    ejection_port = Vector(module["ejectionPort"])  # 薬莢が放出される点
 
-    mount_plane_z = -half_len + 0.125
-
-    # 1. 露出砲架。頬板・軸受・案内レール・駐退シリンダー・機械室は支持部へ固定し、機関部と
-    #    砲身束・排莢口は後座 anchor の子として、発射ごとに砲架へ沿って後退・復座する。
+    # 頬板・軸受・案内レール・駐退シリンダー・機械室・給弾機構は台座へ固定し、機関部と砲身束・
+    # 排莢車・弾の送り路は後座 anchor の子として、発射ごとに砲架へ沿って後退・復座する。
     breech_z = 1.20                    # 砲身束の尾端(回転部の根元)。ここから砲口までが露出砲身
-    recoil = add_anchor("gun-recoil:0", (0.0, 0.0, 0.0), recoilTravel=0.22)
-    build_gun_cradle(mats, mount_plane_z)
+    recoil = add_anchor("gun-recoil:0", (0.0, 0.0, 0.0), recoilTravel=GUN_RECOIL_TRAVEL)
+    build_gun_mount_base(mats)
+    build_gun_cradle(mats)
     build_gun_receiver(mats, recoil, breech_z)
     build_gun_recoil_cylinders(mats, recoil)
-    build_gun_service_house(mats, mount_plane_z)
-    build_gun_barrels(mats, recoil, breech_z, mz)
-    build_gun_ejection(mats, recoil)
-    # 固定の給弾シュートが機関部の底へ入る摺動口の締め環(後座してもシュートを囲う)
-    add_mesh_obj("gun_feed_gland", make_box(0.86, 0.06, 0.86,
-        center=(fx - 0.15, my - 0.77, 0.05), bevel=0.02), mats.gun_machined, parent=recoil)
-
-    # 2. 給弾塔(デリンカー): feed_port を中心に砲架の支持部をまたぐ装甲ハウジング。
-    #    +X 面の開口へベルトが差し込まれ、中で弾だけが天面のシュートへ分かれて機関部へ入る。
-    slot_y0, slot_y1 = fy - 0.625, fy + 0.625  # 開口の高さ 1.25(リンク厚み 1.0 より僅かに大きい)
-    # 開口の後端は後端面(z=-0.5)の手前に留める。リンク(奥行 2.0)の後ろ側は開口の下からはみ出す
-    slot_z0, slot_z1 = -0.42, 1.15
-    face_x = fx + 0.45
-    tower_x0 = fx - 0.80
-    body_y0, body_y1 = fy - 0.90, fy + 1.00
-    body_z0, body_z1 = mount_plane_z, 1.18
-    trunk_x0 = fx - 0.55
-    trunk_y0, trunk_y1 = fy - 0.75, fy + 0.75
-    # 結合面(z=-0.5)より後ろへ出ない浅い脚にする
-    trunk_z0, trunk_z1 = -0.48, -0.28
-    wall_x0 = face_x - 0.18
-    body_zc = (body_z0 + body_z1) / 2
-    trunk_zc = (trunk_z0 + trunk_z1) / 2
-
-    # 支持面の上の胴体と結合面前方へ張り出す脚を板で組む。開口の奥は暗い空洞として抜く
-    add_mesh_obj("feed_tower_top", make_box(face_x - tower_x0, 0.10, body_z1 - body_z0,
-        center=((tower_x0 + face_x) / 2, body_y1 - 0.05, body_zc)), mats.hull_dark)
-    add_mesh_obj("feed_tower_bottom", make_box(face_x - tower_x0, 0.10, body_z1 - body_z0,
-        center=((tower_x0 + face_x) / 2, body_y0 + 0.05, body_zc)), mats.hull_dark)
-    add_mesh_obj("feed_tower_back", make_box(0.10, body_y1 - body_y0, body_z1 - body_z0,
-        center=(tower_x0 + 0.05, (body_y0 + body_y1) / 2, body_zc)), mats.hull_dark)
-    add_mesh_obj("feed_tower_cap", make_box(face_x - tower_x0, body_y1 - body_y0, 0.06,
-        center=((tower_x0 + face_x) / 2, (body_y0 + body_y1) / 2, body_z1 - 0.03)), mats.hull_dark)
-    add_mesh_obj("feed_trunk_back", make_box(0.10, trunk_y1 - trunk_y0, trunk_z1 - trunk_z0,
-        center=(trunk_x0 + 0.05, fy, trunk_zc)), mats.hull_dark)
-    add_mesh_obj("feed_trunk_top", make_box(face_x - trunk_x0, 0.10, trunk_z1 - trunk_z0,
-        center=((trunk_x0 + face_x) / 2, trunk_y1 - 0.05, trunk_zc)), mats.hull_dark)
-    add_mesh_obj("feed_trunk_bottom", make_box(face_x - trunk_x0, 0.10, trunk_z1 - trunk_z0,
-        center=((trunk_x0 + face_x) / 2, trunk_y0 + 0.05, trunk_zc)), mats.hull_dark)
-    add_mesh_obj("feed_trunk_cap", make_box(face_x - trunk_x0, trunk_y1 - trunk_y0, 0.10,
-        center=((trunk_x0 + face_x) / 2, fy, trunk_z0 + 0.05)), mats.hull_dark)
-    # 開口の奥の暗い内壁(空洞の底)
-    add_mesh_obj("feed_tower_cavity", make_box(face_x - 0.30 - tower_x0 - 0.10, body_y1 - body_y0 - 0.20, 1.12 - (-0.30),
-        center=((tower_x0 + 0.10 + face_x - 0.30) / 2, (body_y0 + 0.10 + body_y1 - 0.10) / 2, (-0.30 + 1.12) / 2)), mats.recessed)
-    add_mesh_obj("feed_trunk_cavity", make_box(face_x - 0.30 - trunk_x0 - 0.10, trunk_y1 - trunk_y0 - 0.20, 0.18,
-        center=((trunk_x0 + 0.10 + face_x - 0.30) / 2, fy, -0.36)), mats.recessed)
-
-    # +X 面の開口まわりを3辺の壁で囲う
-    wall_cx = wall_x0 + 0.09
-    add_mesh_obj("feed_mouth_wall_top", make_box(0.18, body_y1 - slot_y1, body_z1 - body_z0,
-        center=(wall_cx, (body_y1 + slot_y1) / 2, body_zc)), mats.hull_dark)
-    add_mesh_obj("feed_mouth_wall_bottom", make_box(0.18, slot_y0 - body_y0, body_z1 - body_z0,
-        center=(wall_cx, (slot_y0 + body_y0) / 2, body_zc)), mats.hull_dark)
-    add_mesh_obj("feed_mouth_wall_fore", make_box(0.18, slot_y1 - slot_y0, body_z1 - slot_z1,
-        center=(wall_cx, fy, (body_z1 + slot_z1) / 2)), mats.hull_dark)
-    add_mesh_obj("feed_mouth_wall_trunk_top", make_box(0.18, trunk_y1 - slot_y1, trunk_z1 - trunk_z0,
-        center=(wall_cx, (trunk_y1 + slot_y1) / 2, trunk_zc)), mats.hull_dark)
-    add_mesh_obj("feed_mouth_wall_trunk_bottom", make_box(0.18, slot_y0 - trunk_y0, trunk_z1 - trunk_z0,
-        center=(wall_cx, (slot_y0 + trunk_y0) / 2, trunk_zc)), mats.hull_dark)
-    add_mesh_obj("feed_mouth_wall_aft", make_box(0.18, slot_y1 - slot_y0, slot_z0 - trunk_z0,
-        center=(wall_cx, fy, (slot_z0 + trunk_z0) / 2)), mats.hull_dark)
-
-    # 開口縁を囲う枠(マウスリップ)
-    lip_cx = face_x + 0.065
-    add_mesh_obj("feed_mouth_lip_top", make_box(0.13, 0.10, slot_z1 - slot_z0 + 0.04,
-        center=(lip_cx, slot_y1 + 0.05, (slot_z0 + slot_z1) / 2)), mats.clamp)
-    add_mesh_obj("feed_mouth_lip_bottom", make_box(0.13, 0.10, slot_z1 - slot_z0 + 0.04,
-        center=(lip_cx, slot_y0 - 0.05, (slot_z0 + slot_z1) / 2)), mats.clamp)
-    add_mesh_obj("feed_mouth_lip_aft", make_box(0.13, slot_y1 - slot_y0 + 0.20, 0.06,
-        center=(lip_cx, fy, slot_z0 - 0.03)), mats.clamp)
-    add_mesh_obj("feed_mouth_lip_fore", make_box(0.13, slot_y1 - slot_y0 + 0.20, 0.05,
-        center=(lip_cx, fy, slot_z1 + 0.02)), mats.clamp)
-
-    # 開口の奥に見える送りスプロケット(縦軸の星車2基)と、横置きのデリンクドラム。
-    # いずれも給弾につれて回る可動部で、anchor の子にする(スプロケットは +Y、ドラムは +X 軸まわり)。
-    for i, wz in enumerate((-0.15, 0.85)):
-        sprocket = add_anchor(f"feed-sprocket:{i}", (fx + 0.35, fy, wz), direction=(0.0, 1.0, 0.0))
-        bm_wheel = make_cylinder(0.24, 0.24, 1.05, z_center=0.0, segments=20)
-        transform_bm(bm_wheel, Matrix.Translation(Vector((fx + 0.35, fy, wz))) @ Euler((math.pi / 2, 0.0, 0.0)).to_matrix().to_4x4())
-        add_mesh_obj(f"feed_sprocket_{i}", bm_wheel, mats.gun_steel, parent=sprocket)
-        for t in range(8):
-            ta = t * math.pi / 4.0
-            add_mesh_obj(f"feed_sprocket_tooth_{i}_{t}", make_box(0.05, 0.10, 0.05,
-                center=(fx + 0.35 + 0.26 * math.cos(ta), fy, wz + 0.26 * math.sin(ta)),
-                rot_euler=(0.0, -ta, 0.0), bevel=0.01), mats.gun_steel, parent=sprocket)
-    drum_y, drum_z = fy + 0.42, 0.30
-    drum_anchor = add_anchor("feed-drum", (fx + 0.05, drum_y, drum_z), direction=(1.0, 0.0, 0.0))
-    drum_rot = Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4()
-    bm_drum = make_cylinder(0.50, 0.50, 0.70, z_center=0.0, segments=32)
-    transform_bm(bm_drum, Matrix.Translation(Vector((fx + 0.05, drum_y, drum_z))) @ drum_rot)
-    add_mesh_obj("feed_delink_drum", bm_drum, mats.gun_steel, parent=drum_anchor)
-    bm_boss = make_cylinder(0.16, 0.16, 0.76, z_center=0.0, segments=20)
-    transform_bm(bm_boss, Matrix.Translation(Vector((fx + 0.05, drum_y, drum_z))) @ drum_rot)
-    add_mesh_obj("feed_delink_drum_boss", bm_boss, mats.hull_dark, parent=drum_anchor)
-    for t in range(6):
-        ba = t * math.pi / 3.0
-        bm_bolt = make_cylinder(0.035, 0.035, 0.05, z_center=0.0, segments=10)
-        transform_bm(bm_bolt, Matrix.Translation(Vector((face_x - 0.06, drum_y + 0.30 * math.cos(ba), drum_z + 0.30 * math.sin(ba)))) @ drum_rot)
-        add_mesh_obj(f"feed_drum_bolt_{t}", bm_bolt, mats.clamp, parent=drum_anchor)
-
-    # 開口の下縁を走る案内爪(フィードシュー)。送りにつれて塔の中(-X)へ踏み込み、リンクを
-    # 引き込む爪として往復する。anchor の局所 +Z が摺動方向。
-    shoe_x, shoe_y, shoe_z = face_x - 0.14, fy - 0.50, 0.36
-    shoe = add_anchor("feed-shoe", (shoe_x, shoe_y, shoe_z), direction=(-1.0, 0.0, 0.0))
-    add_mesh_obj("feed_shoe_body", make_box(0.55, 0.16, 0.85,
-        center=(shoe_x, shoe_y, shoe_z), bevel=0.03), mats.gun_steel, parent=shoe)
-    add_mesh_obj("feed_shoe_claw", make_box(0.10, 0.26, 0.10,
-        center=(shoe_x + 0.18, shoe_y + 0.14, shoe_z + 0.30), rot_euler=(0.0, -0.45, 0.0), bevel=0.02),
-        mats.clamp, parent=shoe)
-    # 爪が乗る案内レール(摺動しない側)
-    add_mesh_obj("feed_shoe_rail", make_box(0.80, 0.05, 0.10,
-        center=(shoe_x - 0.10, shoe_y - 0.10, shoe_z - 0.40)), mats.hull_dark)
-    add_mesh_obj("feed_shoe_rail_2", make_box(0.80, 0.05, 0.10,
-        center=(shoe_x - 0.10, shoe_y - 0.10, shoe_z + 0.40)), mats.hull_dark)
-
-    # 空になったリンクの排出口(-X 側の暗い開口)
-    add_mesh_obj("feed_exit_port", make_box(0.02, 1.20, 1.30, center=(tower_x0 - 0.01, fy, 0.30)), mats.recessed)
-    add_mesh_obj("feed_exit_port_trunk", make_box(0.02, 1.20, 0.15, center=(trunk_x0 - 0.01, fy, -0.40)), mats.recessed)
-
-    # 弾だけの通路: 塔の天面から機関部の底面へ立ち上がるシュート
-    chute_cx, chute_cz = fx - 0.15, 0.05
-    add_mesh_obj("feed_rounds_chute", make_box(0.62, 0.58, 0.62,
-        center=(chute_cx, (fy + 0.93 + my - 0.44) / 2, chute_cz)), mats.hull_dark)
-    add_mesh_obj("feed_chute_flange_top", make_box(0.74, 0.06, 0.74, center=(chute_cx, my - 0.50, chute_cz)), mats.clamp)
-    add_mesh_obj("feed_chute_flange_bottom", make_box(0.74, 0.06, 0.74, center=(chute_cx, fy + 0.96, chute_cz)), mats.clamp)
+    build_gun_recoil_followers(mats, recoil, breech_z)
+    build_gun_service_house(mats)
+    build_gun_barrels(mats, recoil, breech_z, muzzle.z)
+    build_gun_feed(mats, recoil, feed_port, breech_z)
+    build_gun_ejection(mats, recoil, breech_z, ejection_port)
 
     export_glb(os.path.join(OUT_DIR, f"{name}.glb"))
 

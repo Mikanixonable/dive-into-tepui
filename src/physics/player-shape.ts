@@ -3,13 +3,20 @@
 // 放熱板の蛇腹の折り数(1モジュールあたり)。
 export const RADIATOR_FOLD_COUNT = 6;
 
-// 太陽電池のパネル数と列数(1モジュールあたり)。
-export const SOLAR_PANEL_COUNT = 6;
+// 太陽電池の剛体パネル数と根元ヒンジに並ぶ列数(1モジュールあたり)。
+export const SOLAR_PANEL_COUNT = 8;
 export const SOLAR_PANEL_COLUMNS = 2;
 
-// 太陽電池1パネルの長さ(局所 Z)と列全体の幅(局所 X) [m]。
-export const SOLAR_PANEL_LENGTH = 1.6;
-export const SOLAR_PANEL_SPAN = 3.0;
+// 太陽電池1パネルの展開方向のヒンジピッチと、板幅の基準値 [m]。列全体の幅は中心軸の隙間を含めて算出する。
+export const SOLAR_PANEL_LENGTH = 1.8;
+export const SOLAR_PANEL_PANEL_PITCH = 2.25;
+export const SOLAR_PANEL_FACE_SCALE = 0.96;
+export const SOLAR_PANEL_STAGE_SCALES = [0.88, 0.96, 1.04, 0.88] as const;
+export const SOLAR_PANEL_CENTERLINE_CLEARANCE = 0.10;
+export const SOLAR_PANEL_SPAN = 2 * (
+  SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * Math.max(...SOLAR_PANEL_STAGE_SCALES)
+  + SOLAR_PANEL_CENTERLINE_CLEARANCE
+);
 
 // 太陽電池1パネルの厚み [m]。
 export const SOLAR_PANEL_THICKNESS = 0.06;
@@ -32,9 +39,14 @@ export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
 // マガジン1本の厚み [m]。積み上げ間隔とベルト方向の寸法がこれで決まる。
 export const MAG_THICKNESS = 1.0;
 
-// マガジンのベルト方向寸法と継手間隔 [m]。
-export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3);
-export const MAG_BELT_PITCH = MAG_WIDTH + 0.18;
+// マガジンの平面寸法倍率。高さ方向(MAG_THICKNESS)は据え置く。
+export const MAG_PLANAR_SCALE = 1.4;
+
+// マガジンのベルト方向寸法・横幅と、端面の間に残す継手すき間 [m]。
+export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3) * MAG_PLANAR_SCALE;
+export const MAG_DEPTH = MAG_THICKNESS * 3 * (2 / 3) * MAG_PLANAR_SCALE;
+export const MAG_JOINT_GAP = 0.36;
+export const MAG_BELT_PITCH = MAG_WIDTH + MAG_JOINT_GAP;
 
 // ベルトが機体へ入る給弾口の機体座標系 X 位置 [m]。
 export const MAG_BELT_ANCHOR_X = -1.19;
