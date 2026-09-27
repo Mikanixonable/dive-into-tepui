@@ -361,6 +361,29 @@ function weapon(): LabCase {
         view: { cameraAzimuthDeg: -65, cameraElevationDeg: 25, cameraDistanceLog: -0.32,
           sunAzimuthDeg: -30, sunElevationDeg: 45 },
       },
+      // 連射中の後座端。機関部・ばね・蛇腹・リンクがいちばん縮んだ姿を横から見る。
+      'weapon-recoil-peak': {
+        displayTime: 1.162,
+        view: { cameraAzimuthDeg: 95, cameraElevationDeg: 10, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: 70, sunElevationDeg: 35 },
+      },
+      // 結合面側から、締結フランジ環・格子台座・肘板・配管束を見上げる。
+      'weapon-joint-aft': {
+        view: { cameraAzimuthDeg: 150, cameraElevationDeg: -30, cameraDistanceLog: -0.5,
+          sunAzimuthDeg: 160, sunElevationDeg: -20 },
+      },
+      // 連射中の給弾機構を下前方から。窓越しの送り車・ドラムと、機関部へ昇る弾を見る。
+      'weapon-feed-open': {
+        displayTime: 1.1,
+        view: { cameraAzimuthDeg: 35, cameraElevationDeg: -38, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: 20, sunElevationDeg: -30 },
+      },
+      // 連射中の排莢機構を -X 側の下から。排莢車と樋を滑る薬莢を見る。
+      'weapon-ejection-open': {
+        displayTime: 1.1,
+        view: { cameraAzimuthDeg: -40, cameraElevationDeg: -30, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: -50, sunElevationDeg: -25 },
+      },
     },
   };
 }
@@ -371,11 +394,14 @@ function weaponMotion(
 ): (displayTime: number) => void {
   // 毎回同じ静止姿勢から始め、指定時刻まで同じ射撃履歴を再生する。
   const anchors = view.semanticAnchors('weapon', '');
-  const rest = anchors.map(anchor => ({ anchor, position: anchor.position.clone(), rotation: anchor.quaternion.clone() }));
+  const rest = anchors.map(anchor => ({
+    anchor, position: anchor.position.clone(), rotation: anchor.quaternion.clone(), scale: anchor.scale.clone(),
+  }));
   return (displayTime) => {
     for (const pose of rest) {
       pose.anchor.position.copy(pose.position);
       pose.anchor.quaternion.copy(pose.rotation);
+      pose.anchor.scale.copy(pose.scale);
     }
     const drives = new WeaponDrives();
     const endTime = Math.max(0, displayTime);
