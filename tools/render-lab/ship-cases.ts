@@ -192,11 +192,11 @@ function solarPanelSurface(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -25),
     shots: {
       'solar-panel-array-closeup': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: 0.0,
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.45,
           sunAzimuthDeg: 3, sunElevationDeg: 75 },
       },
       'solar-panel-array-detail': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.3,
+        view: { cameraAzimuthDeg: 18, cameraElevationDeg: 62, cameraDistanceLog: -0.45,
           sunAzimuthDeg: 3, sunElevationDeg: 75 },
       },
     },
