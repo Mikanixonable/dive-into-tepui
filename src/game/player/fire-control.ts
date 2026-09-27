@@ -40,7 +40,6 @@ const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの
 const BULLET_SPREAD = 0.002; // 散布界 [rad]
 
 const BULLET_LIFETIME = 240; // 保険としての寿命 [sim s]
-const RECOIL_DV = 0.04; // 反動 [m/s]
 
 const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
 
@@ -190,13 +189,12 @@ export class FireControl {
     const fwd = qRotate(this.player.motion.att.q, LOCAL_FORWARD);
     const muzzleWorld = this.worldPoint(muzzle.position);
 
-    this.spawnBullet(muzzleWorld, fwd, celestialBodies);
-    // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
-    this.player.motion.reset(kinematicState<'eci'>(
-      this.player.motion.state.t,
-      this.player.motion.state.r,
-      addScaled(this.player.motion.state.v, fwd, -RECOIL_DV),
-    ));
+    const bullet = this.spawnBullet(muzzleWorld, fwd, celestialBodies);
+    // 発射した弾の運動量と逆向きの力積を、同じ散布方向で砲口へ加える。
+    this.player.motion.applyImpulseAtPoint(
+      scale(sub(this.player.motion.state.v, bullet.motion.state.v), bullet.motion.mass),
+      muzzleWorld,
+    );
     this.dropCasing(muzzle.weapon);
 
     activeStage.recordShot();
@@ -211,13 +209,13 @@ export class FireControl {
   }
 
   // 弾丸: 機首方向 + 散布界
-  private spawnBullet(muzzle: Vec3, fwd: Vec3, celestialBodies: CelestialBodies): void {
+  private spawnBullet(muzzle: Vec3, fwd: Vec3, celestialBodies: CelestialBodies): Bullet {
     const ship = this.player;
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, celestialBodies, ship.motion.state.t);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
-    this.registry.add(Bullet.create(
+    const bullet = Bullet.create(
       kinematicState<'eci'>(
         ship.motion.state.t,
         addScaled(muzzle, fwd, 1.5),
@@ -228,7 +226,9 @@ export class FireControl {
       'normal',
       ship.weaponDamage,
       this.registry.idAllocators,
-    ));
+    );
+    this.registry.add(bullet);
+    return bullet;
   }
 
   // 薬莢を撃ったモジュールの排莢口(樋の向き -X、+X 側には給弾ベルトがある)から、ゆっくり漂い
