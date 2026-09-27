@@ -2,7 +2,7 @@
 // 項目ショートカットで onSelect(act, target) を発火して閉じる。
 // #hud の子として popup レイヤへ置くため、`#hud, #hud *` の margin/padding リセットに
 // 勝てるよう全セレクタを `#hud` で始める。
-import { clampOverlayPosition } from '../../../hud/layout';
+import { placeOverlayAt } from '../../../hud/layout';
 import { shortcutKeyLabel } from '../../../hud/windows/shortcut-hint';
 import { onViewportChange } from '../../../hud/viewport';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
@@ -78,6 +78,8 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   private readonly el: HTMLDivElement;
   // 開いているメニューの対象。閉じると破棄されるので、選択結果は必ず開いた対象へ届く。
   private target: T | null = null;
+  // 開いた時点の項目。ショートカットの一致判定はここを走査する。
+  private items: readonly MenuItem<A>[] = [];
   private requestedX = 0;
   private requestedY = 0;
   private previouslyFocused: HTMLElement | null = null;
@@ -113,15 +115,11 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   // (close→onSelect)で選択したことにする。
   public handleShortcut(code: string): boolean {
     if (this.target === null) return false;
-    // 各項目のクリックリスナは自分自身を閉包で持つが、ここはコード文字列しか受け取らない
-    // ので、開いた項目の DOM を dataset 経由で引き直す。
-    const items = this.el.querySelectorAll<HTMLElement>('.ctx-menu-item');
-    for (const item of Array.from(items)) {
-      if (item.dataset['shortcut'] !== code) continue;
-      const act = item.dataset['act'] as A;
+    for (const it of this.items) {
+      if (it.shortcut !== code) continue;
       const t = this.target;
       this.close();
-      if (t !== null) this.onSelect?.(act, t);
+      if (t !== null && it.act !== undefined) this.onSelect?.(it.act, t);
       return true;
     }
     return false;
@@ -132,6 +130,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   public open(clientX: number, clientY: number, target: T, items: readonly MenuItem<A>[]): void {
     this.previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.target = target;
+    this.items = items;
     this.requestedX = clientX;
     this.requestedY = clientY;
     // 項目 DOM を組み立てる。ラベルには改名可能な名前が流れうるので textContent で入れる。
@@ -164,8 +163,6 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
       item.setAttribute('role', 'menuitem');
       item.tabIndex = -1;
       item.classList.toggle('on', it.selected === true);
-      item.dataset['act'] = it.act || '';
-      item.dataset['shortcut'] = it.shortcut || '';
       const label = document.createElement('span');
       label.textContent = it.label;
       item.appendChild(label);
@@ -179,10 +176,9 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
       expandHitTarget(item);
       // クリックされた項目の act を、開いた時点の対象とともに通知して閉じる
       bindActivation(item, () => {
-        const act = item.dataset['act'] as A;
         const t = this.target;
         this.close();
-        if (t !== null) this.onSelect?.(act, t);
+        if (t !== null && it.act !== undefined) this.onSelect?.(it.act, t);
       });
       item.addEventListener('focus', () => this.setRovingItem(item));
       this.el.appendChild(item);
@@ -232,17 +228,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
 
   // 要求座標を基準に、ビューポート内へ収まるようメニューの位置を決める。
   private positionWithinViewport(): void {
-    const margin = 6;
-    const rect = this.el.getBoundingClientRect();
-    // メニューの実寸とビューポートに収まるよう要求座標をクランプする。
-    const pos = clampOverlayPosition(
-      { x: this.requestedX, y: this.requestedY },
-      rect,
-      { width: window.innerWidth, height: window.innerHeight },
-      margin,
-    );
-    this.el.style.left = `${pos.x}px`;
-    this.el.style.top = `${pos.y}px`;
+    placeOverlayAt(this.el, { x: this.requestedX, y: this.requestedY });
   }
 
   // メニューを閉じ、保持中の対象を破棄する。
@@ -250,6 +236,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
     const wasOpen = this.target !== null;
     this.el.style.display = 'none';
     this.target = null;
+    this.items = [];
     this.overlayManager.close(this.overlayId);
     const focusTarget = this.previouslyFocused;
     this.previouslyFocused = null;
