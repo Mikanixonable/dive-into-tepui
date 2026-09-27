@@ -192,20 +192,19 @@ function scoreSaved(dir, record, references, ts, imageDir) {
         readHalfFloats(correctionPathOf(dir, entry, candidate.label, index)), reference.meta.exposure));
       if (entry.set === 'flicker' || entry.key === 'bay') flickerFrames[candidate.label].push(qs[0]);
       if (entry.set === 'flicker') continue;
-      const grainScale = Math.round(1 / candidate.tier.scale);
       // t によらない指標: 偏りと分散の R(s)、境界の漏れ、拡散照度から数えた値。
       const average = qs[0].map((plane, c) => plane.map((v, p) => (v + qs[1][c][p]) / 2));
       const common = {
-        biasR: errorMetrics(average, q0, mask, WIDTH, HEIGHT, ts[0], grainScale).r,
-        varianceR: errorMetrics(qs[0], qs[1], mask, WIDTH, HEIGHT, ts[0], grainScale).r,
+        biasR: errorMetrics(average, q0, mask, WIDTH, HEIGHT, ts[0]).r,
+        varianceR: errorMetrics(qs[0], qs[1], mask, WIDTH, HEIGHT, ts[0]).r,
         leak: rmsOf(qs[0], q0, nearEdges),
         ...record.diffuse[candidate.label][entry.key],
         referenceRatios: entry.set === 'correctness' ? windowRatiosOf(entry, reference.diffuse) : null,
       };
       // t ごとの指標。
       for (const [i, t] of ts.entries()) {
-        const { excessMap, ...metrics } = errorMetrics(qs[0], q0, mask, WIDTH, HEIGHT, t, grainScale);
-        const scoreSecond = errorMetrics(qs[1], q0, mask, WIDTH, HEIGHT, t, grainScale).score;
+        const { excessMap, ...metrics } = errorMetrics(qs[0], q0, mask, WIDTH, HEIGHT, t);
+        const scoreSecond = errorMetrics(qs[1], q0, mask, WIDTH, HEIGHT, t).score;
         byT[i][candidate.label][entry.key] = { ...metrics, ...common, scoreSecond };
         if (imageDir !== null && i === 0 && imagedOf(entry)) {
           const display = linearOfPng(readFileSync(displayPathOf(dir, entry, candidate.label)));
@@ -387,7 +386,7 @@ async function threshold({ options }) {
     const q = exposedCorrectionOf(readHalfFloats(correctionPathOf(outDir, entry, medium.label, 0)), meta.exposure);
     const error = q.map((plane, c) => plane.map((v, p) => v - exposedCorrection[c][p]));
     return [entry.key, STIMULUS_SCALES.map((a) => marginQuantileOf(error.map((plane) => plane.map((v) => a * v)),
-      maskOf(radius), WIDTH, HEIGHT, Math.round(1 / medium.tier.scale), THRESHOLD_QUANTILE))];
+      maskOf(radius), WIDTH, HEIGHT, THRESHOLD_QUANTILE))];
   }));
   const marginOf = (key, a) => margins[key][STIMULUS_SCALES.indexOf(a)];
   const t = Math.min(...entries.map((e) => marginOf(e.key, ACCEPTED_SCALE)));

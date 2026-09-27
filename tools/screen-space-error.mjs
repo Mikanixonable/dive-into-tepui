@@ -1,13 +1,15 @@
 // 近傍拡散補正の画質の指標と、目視の刺激の合成。誤差は補正 ΔE をアルベド 1 の面の表示の尺度へ写した
-// q = 露出係数·ΔE/π で測り、画面に見えている粒の大きさ g で説明できる幅と、説明できずにはみ出した分を、区間スコア
-// S = mean_x Σ_s [2k·u_s + (2/α)·max(0, |d_s| − k·u_s − t)](u_s = c_s·g、k = 3、α = 2(1 − Φ(3)))で 1 つに並べる。
-// 粒は、候補が独立な標本を持つ一辺 m の画素ごとの白色雑音を全解像度へ双一次で拡大したものとみなし、c_s はその雑音の
-// 帯 d_s の標準偏差(拡大の位相ごと)。R・G・B の成分ごとに測って和を取る。刺激は表示の Oklab で合成する。
+// q = 露出係数·ΔE/π で測り、画面に見えている粒の大きさ g で説明できる幅と、説明できずにはみ出した分を、帯の勾配で
+// 見えやすさを測る区間スコア S = mean_x Σ_成分 Σ_s (1/s)·[2k·u_s + (2/α)·max(0, |d_s| − k·u_s − t)](s は帯の箱の一辺、
+// u_s = c_s·g、k = 3、α = 2(1 − Φ(3)))で 1 つに並べる。粒は表示の画素ごとに独立な白色雑音とみなし、c_s はその雑音の
+// 帯 d_s の標準偏差。刺激は表示の Oklab で合成する。
 // 画像は画素の配列で受け、ファイルもブラウザも触らない。平面は行優先の Float32Array、q と Oklab の画像は平面 3 枚の組。
 
 // 帯の箱の一辺 [画素]。帯 d_s = ē_s − ē_2s を s ごとに持ち、残りは ē_RESIDUAL_SCALE。
 export const BAND_SCALES = [1, 2, 4, 8, 16, 32];
 const RESIDUAL_SCALE = 64;
+// 区間スコアの、帯と残り(BAND_SCALES の順と残り)の項の重み 1/s。
+const BAND_WEIGHTS = [...BAND_SCALES, RESIDUAL_SCALE].map((s) => 1 / s);
 // 粒の大きさを読む窓の一辺と、窓を置く区画の一辺 [画素]。
 const GRAIN_WINDOW = 32;
 const GRAIN_STRIDE = 8;
@@ -44,57 +46,20 @@ export function gaussianNoise(seed, count, sigma = 1) {
   return plane;
 }
 
-// 平面 values(width × height)を、一辺 factor 倍へ双一次で拡大する。画素の中心どうしを合わせ、端は寄せる。
-export function bilinearUpscale(values, width, height, factor) {
-  const [outWidth, outHeight] = [width * factor, height * factor];
-  const out = new Float32Array(outWidth * outHeight);
-  const at = (x, y) => values[Math.min(height - 1, Math.max(0, y)) * width + Math.min(width - 1, Math.max(0, x))];
-  for (let y = 0; y < outHeight; y++) {
-    const v = (y + 0.5) / factor - 0.5;
-    const y0 = Math.floor(v);
-    for (let x = 0; x < outWidth; x++) {
-      const u = (x + 0.5) / factor - 0.5;
-      const x0 = Math.floor(u);
-      const [fx, fy] = [u - x0, v - y0];
-      out[y * outWidth + x] = (1 - fx) * (1 - fy) * at(x0, y0) + fx * (1 - fy) * at(x0 + 1, y0)
-        + (1 - fx) * fy * at(x0, y0 + 1) + fx * fy * at(x0 + 1, y0 + 1);
-    }
-  }
-  return out;
-}
-
-// 画素 (x, y) の、一辺 grainScale の拡大の位相。
-const phaseOf = (x, y, grainScale) => (y % grainScale) * grainScale + (x % grainScale);
-
-// 寸法 width × height の画像で、一辺 grainScale の画素ごとに独立な単位分散の白色雑音を双一次で拡大したときの、
-// 帯と残り(BAND_SCALES の順と残り)の、拡大の位相ごとの標準偏差。一度求めた寸法と大きさの組は覚えておく。
+// 寸法 width × height の画像で、画素ごとに独立な単位分散の白色雑音の、帯と残り(BAND_SCALES の順と残り)の標準偏差。
+// 一度求めた寸法は覚えておく。
 const bandStdTables = new Map();
-function bandStdsOf(grainScale, width, height) {
-  const key = `${grainScale}:${width}x${height}`;
+function bandStdsOf(width, height) {
+  const key = `${width}x${height}`;
   const known = bandStdTables.get(key);
   if (known !== undefined) return known;
-  const [coarseWidth, coarseHeight] = [Math.ceil(width / grainScale), Math.ceil(height / grainScale)];
-  const upscaledWidth = coarseWidth * grainScale;
   const mask = new Uint8Array(width * height).fill(1);
-  const phases = grainScale * grainScale;
-  const squares = Array.from({ length: BAND_SCALES.length + 1 }, () => new Float64Array(phases));
-  const counts = new Float64Array(phases);
+  const squares = new Float64Array(BAND_SCALES.length + 1);
   for (let field = 0; field < CALIBRATION_FIELDS; field++) {
-    const coarse = gaussianNoise(CALIBRATION_SEED + field, coarseWidth * coarseHeight);
-    const upscaled = bilinearUpscale(coarse, coarseWidth, coarseHeight, grainScale);
-    // 拡大した画像が寸法を超えるぶんは、右と下を切る。
-    const noise = new Float32Array(width * height);
-    for (let y = 0; y < height; y++) noise.set(upscaled.subarray(y * upscaledWidth, y * upscaledWidth + width), y * width);
-    const planes = Object.values(bandsOf(noise, mask, width, height)).flat();
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const phase = phaseOf(x, y, grainScale);
-        counts[phase]++;
-        for (const [j, plane] of planes.entries()) squares[j][phase] += plane[y * width + x] ** 2;
-      }
-    }
+    const { bands, residual } = bandsOf(gaussianNoise(CALIBRATION_SEED + field, width * height), mask, width, height);
+    for (const [j, plane] of [...bands, residual].entries()) squares[j] += plane.reduce((sum, v) => sum + v * v, 0);
   }
-  const stds = squares.map((perPhase) => perPhase.map((square, phase) => Math.sqrt(square / counts[phase])));
+  const stds = Array.from(squares, (square) => Math.sqrt(square / (CALIBRATION_FIELDS * width * height)));
   bandStdTables.set(key, stds);
   return stds;
 }
@@ -242,14 +207,14 @@ function medianInPlace(values, count) {
   return values[k];
 }
 
-// 帯 bands(BAND_SCALES の順)から、各画素の粒の大きさ g。粒の帯 d_m(m = grainScale)を粒の雑音での標準偏差で
-// 割った値の絶対値の、画素を囲む窓の mask の立った画素での中央値を、正規分布の標準偏差へ直す。窓は
-// GRAIN_STRIDE 四方の区画ごとに、区画の中心を囲む GRAIN_WINDOW 四方に置く。
-export function grainOf(bands, mask, width, height, grainScale) {
+// 帯 bands(BAND_SCALES の順)から、各画素の粒の大きさ g。最も細かい帯 d_1 を粒の雑音での標準偏差で割った値の
+// 絶対値の、画素を囲む窓の mask の立った画素での中央値を、正規分布の標準偏差へ直す。窓は GRAIN_STRIDE 四方の
+// 区画ごとに、区画の中心を囲む GRAIN_WINDOW 四方に置く。
+export function grainOf(bands, mask, width, height) {
   const grain = new Float32Array(width * height);
   const scratch = new Float32Array(GRAIN_WINDOW * GRAIN_WINDOW);
-  const band = BAND_SCALES.indexOf(grainScale);
-  const stds = bandStdsOf(grainScale, width, height)[band];
+  const [finest] = bands;
+  const [finestStd] = bandStdsOf(width, height);
   for (let by = 0; by * GRAIN_STRIDE < height; by++) {
     for (let bx = 0; bx * GRAIN_STRIDE < width; bx++) {
       const cx = bx * GRAIN_STRIDE + GRAIN_STRIDE / 2;
@@ -258,7 +223,7 @@ export function grainOf(bands, mask, width, height, grainScale) {
       for (let y = Math.max(0, cy - GRAIN_WINDOW / 2); y < Math.min(height, cy + GRAIN_WINDOW / 2); y++) {
         for (let x = Math.max(0, cx - GRAIN_WINDOW / 2); x < Math.min(width, cx + GRAIN_WINDOW / 2); x++) {
           const p = y * width + x;
-          if (mask[p]) scratch[count++] = Math.abs(bands[band][p]) / stds[phaseOf(x, y, grainScale)];
+          if (mask[p]) scratch[count++] = Math.abs(finest[p]) / finestStd;
         }
       }
       const scale = count === 0 ? 0 : medianInPlace(scratch, count) / MAD_TO_SIGMA;
@@ -271,51 +236,46 @@ export function grainOf(bands, mask, width, height, grainScale) {
   return grain;
 }
 
-// 1 成分の誤差 e の、区間スコアの幅と超過の和(mask の立った画素の和)、超過の帯ごとの和(BAND_SCALES の順と残り)と
-// 画素ごとの値 excessMap への足し込み、帯ごとの d_s² と u_s² の和、粒の帯で粒の K 倍を超える画素の数。
-function channelTerms(e, mask, width, height, t, grainScale, excessMap) {
+// 1 成分の誤差 e の、区間スコアの重みを掛けた幅と超過の和(mask の立った画素の和)、超過の帯ごとの和(BAND_SCALES の
+// 順と残り)と画素ごとの値 excessMap への足し込み、帯ごとの d_s² と u_s² の和、最も細かい帯で粒の K 倍を超える画素の数。
+function channelTerms(e, mask, width, height, t, excessMap) {
   const { bands, residual } = bandsOf(e, mask, width, height);
-  const grain = grainOf(bands, mask, width, height, grainScale);
+  const grain = grainOf(bands, mask, width, height);
   const all = [...bands, residual];
-  const stds = bandStdsOf(grainScale, width, height);
-  const grainBand = BAND_SCALES.indexOf(grainScale);
+  const stds = bandStdsOf(width, height);
   const penalty = 2 / ALPHA;
   const excessByBand = new Float64Array(all.length);
   const squareByBand = new Float64Array(bands.length);
   const unitSquareByBand = new Float64Array(bands.length);
   let widthSum = 0;
   let tail = 0;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const p = y * width + x;
-      if (!mask[p]) continue;
-      const g = grain[p];
-      const phase = phaseOf(x, y, grainScale);
-      for (let j = 0; j < all.length; j++) {
-        const u = stds[j][phase] * g;
-        widthSum += 2 * K * u;
-        const over = Math.abs(all[j][p]) - K * u - t;
-        if (over > 0) {
-          excessByBand[j] += penalty * over;
-          excessMap[p] += penalty * over;
-        }
-        if (j < bands.length) {
-          squareByBand[j] += all[j][p] ** 2;
-          unitSquareByBand[j] += u * u;
-        }
+  for (let p = 0; p < mask.length; p++) {
+    if (!mask[p]) continue;
+    const g = grain[p];
+    for (let j = 0; j < all.length; j++) {
+      const u = stds[j] * g;
+      widthSum += BAND_WEIGHTS[j] * 2 * K * u;
+      const over = Math.abs(all[j][p]) - K * u - t;
+      if (over > 0) {
+        const excess = BAND_WEIGHTS[j] * penalty * over;
+        excessByBand[j] += excess;
+        excessMap[p] += excess;
       }
-      if (Math.abs(bands[grainBand][p]) > K * stds[grainBand][phase] * g) tail++;
+      if (j < bands.length) {
+        squareByBand[j] += all[j][p] ** 2;
+        unitSquareByBand[j] += u * u;
+      }
     }
+    if (Math.abs(bands[0][p]) > K * stds[0] * g) tail++;
   }
   return { widthSum, excessByBand, squareByBand, unitSquareByBand, tail };
 }
 
-// 候補 candidate と基準 reference(平面の組)の誤差を、mask の立った画素で測る。t は表示で見えない差(平面の単位)、
-// grainScale は候補が独立な標本を持つ一辺 [画素](BAND_SCALES のどれか。走査の解像度の逆数)。score は区間スコア S、
-// widthTerm と excessTerm はその幅と超過の項、excessByBand は超過の帯ごとの内訳(BAND_SCALES の順と残り)、excessMap
-// は画素ごとの超過(3 成分の和)、r は帯ごとの R(s)(3 成分を通して)、g は誤差のベクトルの RMS、tail は粒の帯で粒の
-// K 倍を超える画素の割合(3 成分を通して)。
-export function errorMetrics(candidate, reference, mask, width, height, t, grainScale) {
+// 候補 candidate と基準 reference(平面の組)の誤差を、mask の立った画素で測る。t は表示で見えない差(平面の単位)。
+// score は区間スコア S、widthTerm と excessTerm はその幅と超過の項、excessByBand は超過の帯ごとの内訳(BAND_SCALES の
+// 順と残り)、excessMap は画素ごとの超過(3 成分の和)、r は帯ごとの R(s)(3 成分を通して)、g は誤差のベクトルの RMS、
+// tail は最も細かい帯で粒の K 倍を超える画素の割合(3 成分を通して)。
+export function errorMetrics(candidate, reference, mask, width, height, t) {
   const excessMap = new Float32Array(width * height);
   const excessByBand = new Float64Array(BAND_SCALES.length + 1);
   let count = 0;
@@ -331,7 +291,7 @@ export function errorMetrics(candidate, reference, mask, width, height, t, grain
   const unitSquareByBand = new Float64Array(BAND_SCALES.length);
   for (let c = 0; c < 3; c++) {
     const e = candidate[c].map((v, p) => v - reference[c][p]);
-    const terms = channelTerms(e, mask, width, height, t, grainScale, excessMap);
+    const terms = channelTerms(e, mask, width, height, t, excessMap);
     widthSum += terms.widthSum;
     tail += terms.tail;
     for (const [j, v] of terms.excessByBand.entries()) excessByBand[j] += v;
@@ -354,21 +314,18 @@ export function errorMetrics(candidate, reference, mask, width, height, t, grain
 }
 
 // 誤差 error(平面の組)の、粒で説明できる幅からのはみ出し |d_s| − K·u_s を、成分・帯と残り・mask の立った画素を
-// まとめた分布にしたときの分位 quantile(0..1)。grainScale は errorMetrics と同じ。
-export function marginQuantileOf(error, mask, width, height, grainScale, quantile) {
-  const stds = bandStdsOf(grainScale, width, height);
+// まとめた分布にしたときの分位 quantile(0..1)。
+export function marginQuantileOf(error, mask, width, height, quantile) {
+  const stds = bandStdsOf(width, height);
   const count = mask.reduce((sum, v) => sum + v, 0);
   const margins = new Float32Array(count * error.length * (BAND_SCALES.length + 1));
   let n = 0;
   for (const e of error) {
     const { bands, residual } = bandsOf(e, mask, width, height);
-    const grain = grainOf(bands, mask, width, height, grainScale);
+    const grain = grainOf(bands, mask, width, height);
     for (const [j, band] of [...bands, residual].entries()) {
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const p = y * width + x;
-          if (mask[p]) margins[n++] = Math.abs(band[p]) - K * stds[j][phaseOf(x, y, grainScale)] * grain[p];
-        }
+      for (let p = 0; p < mask.length; p++) {
+        if (mask[p]) margins[n++] = Math.abs(band[p]) - K * stds[j] * grain[p];
       }
     }
   }
