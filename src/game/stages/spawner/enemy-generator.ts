@@ -14,6 +14,7 @@ import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
 import type { ProteinEnemyRequest } from '../../dynamic/dynamic-entity/protein-enemy';
+import { AssemblyEnemy } from '../../dynamic/dynamic-entity/assembly-enemy';
 
 // 自機軌道(referenceState)を、中心天体 center まわりの軌道面内で弧長 dAlong [m] だけ進めた、center 相対の状態。
 function phasedState(referenceState: KinematicState, center: CelestialBody, dAlong: number): KinematicState<'primaryRel'> {
@@ -32,6 +33,20 @@ export function generateDriftingEnemy(
     {
       name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId,
       waveId: null, formationId: null, formationRole: null, typeIndex: null,
+    },
+    idAllocators, scene,
+  );
+}
+
+// state に、無秩序に漂う組み立て型の敵を生成する。seed が個体の形を決める(SPEC/ASSEMBLY.md)。
+export function generateAssemblyEnemy(
+  name: string, state: KinematicState, seed: number, accent: string | number, orbitLineColor: string | number,
+  scene: THREE.Scene, idAllocators: EntityIdAllocators,
+): Enemy {
+  return AssemblyEnemy.create(
+    {
+      name, state, seed, accent, orbitLineColor,
+      formationId: null, formationRole: null,
     },
     idAllocators, scene,
   );
