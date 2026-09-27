@@ -1,12 +1,13 @@
-// 機関砲の被駆動部(回転砲身束・給弾スプロケット・デリンクドラム)の回転の回帰テスト。
-// 射撃中に回り始め、トリガーを離すと減速して止まること、回転が表示時刻に従い一時停止中は
-// 止まること、破壊された武装の駆動部は回らないこと、向きを持つ anchor は定めた軸まわりだけ
-// 回ることを見る。時定数そのものは調整値なので固定しない。
+// 機関砲の被駆動部(回転砲身束・給弾部・送り路・後座部)の回帰テスト。
+// 射撃中に回り始め、トリガーを離すと減速して止まること、駆動が表示時刻に従い一時停止中は
+// 止まること、破壊された武装の駆動部は回らないこと、向きを持つ anchor は定めた軸だけに沿って
+// 動くこと、後座が砲架の前進位置と後座量の間に収まり追従部品が後座量どおりに動くことを見る。
+// 時定数そのものは調整値なので固定しない。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
-import { WeaponDrives } from '../../src/render/dynamic/ship/weapon-drives';
+import { WeaponDrives, type WeaponRecoilInput } from '../../src/render/dynamic/ship/weapon-drives';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import type { ShipModuleRenderInput } from '../../src/render/dynamic/ship/ship-render-contract';
 import { test } from '../harness';
@@ -41,6 +42,40 @@ function weaponModel(): THREE.Group {
   return root;
 }
 
+const RECOIL_TRAVEL = 0.4;
+const SPRING_REST_LENGTH = 0.7;
+const LEVER_RATE = -2;
+
+// 後座 anchor と、その後座量に追従する圧縮部品・リンクを1つずつ持つ武装モデル。
+function recoilModel(): THREE.Group {
+  const root = new THREE.Group();
+  const recoil = new THREE.Object3D();
+  recoil.name = 'anchor:gun-recoil:0';
+  recoil.userData = { semanticAnchor: 'gun-recoil:0', recoilTravel: RECOIL_TRAVEL };
+  recoil.position.set(0, 0, 0.3);
+  root.add(recoil);
+  const spring = new THREE.Object3D();
+  spring.name = 'anchor:gun-recoil-compress:0:0';
+  spring.userData = { semanticAnchor: 'gun-recoil-compress:0:0', restLength: SPRING_REST_LENGTH };
+  spring.position.set(1, -0.6, 0.5);
+  root.add(spring);
+  const lever = new THREE.Object3D();
+  lever.name = 'anchor:gun-recoil-lever:0:0';
+  lever.userData = { semanticAnchor: 'gun-recoil-lever:0:0', leverRate: LEVER_RATE };
+  lever.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0));
+  root.add(lever);
+  return root;
+}
+
+// 表示時刻 time [s] に、burstStart から burstEnd まで連射した砲口 0 の直近発射記録。
+function lastShot(time: number, burstStart: number, burstEnd: number): readonly WeaponRecoilInput[] {
+  const interval = 1 / FIRE_RATE;
+  const index = Math.floor((Math.min(time, burstEnd) - burstStart) / interval + 1e-9);
+  if (index < 0) return [];
+  return [{ moduleId: 'gun-1', muzzleIndex: 0, firedAt: burstStart + index * interval, cycleDuration: interval }];
+}
+
+// 指定 hp の武装モジュールの render input。transform は原点・無回転。
 function weapon(id: string, hp: number): ShipModuleRenderInput {
   return {
     id, modelId: 'gun', kind: 'weapon', hp, maxHp: 100, deployed: null, burning: null,
@@ -48,6 +83,7 @@ function weapon(id: string, hp: number): ShipModuleRenderInput {
   };
 }
 
+// モジュール id の接頭辞 name の anchor。1つも無ければその場で失敗にする。
 function anchors(ship: ModularShipView, id: string, name: string): readonly THREE.Object3D[] {
   const found = ship.semanticAnchors(id, name);
   assert.ok(found.length > 0);
@@ -221,6 +257,103 @@ export function register(): void {
     assert.ok(maxX - basePos.x < 0.01, `shoe moved the wrong way: ${maxX - basePos.x}`);
     assert.ok(shoe.quaternion.angleTo(baseQuat) < 1e-6, 'shoe rotated');
     assert.ok(maxDisplacement < 0.23, `stroke too large: ${maxDisplacement}`);
+    ship.dispose();
+  });
+
+  test('weapon drives: a conveyor advances one pitch per round along its axis and wraps within a pitch', () => {
+    const pitch = 0.33;
+    // 送り路の anchor を +Y を送り方向にして1つ持つ武装モデル。
+    const model = (): THREE.Group => {
+      const root = new THREE.Group();
+      const conveyor = new THREE.Object3D();
+      conveyor.name = 'anchor:feed-conveyor';
+      conveyor.userData = { semanticAnchor: 'feed-conveyor', conveyorPitch: pitch };
+      conveyor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0));
+      root.add(conveyor);
+      return root;
+    };
+    const ship = new ModularShipView(model);
+    const modules = [weapon('gun-1', 100)];
+    ship.sync(modules);
+    const conveyor = anchors(ship, 'gun-1', 'feed-conveyor')[0]!;
+    const basePos = conveyor.position.clone();
+    const drives = new WeaponDrives();
+    drives.sync(ship, modules, FIRE_RATE, 0);
+    let travelled = 0;
+    let previous = 0;
+    for (let i = 1; i <= 240; i++) {
+      drives.sync(ship, modules, FIRE_RATE, i * FRAME);
+      const offset = conveyor.position.clone().sub(basePos);
+      assert.ok(Math.abs(offset.x) < 1e-9 && Math.abs(offset.z) < 1e-9, 'conveyor left its axis');
+      assert.ok(offset.y >= -1e-9 && offset.y < pitch, `conveyor offset ${offset.y} outside one pitch`);
+      travelled += ((offset.y - previous) % pitch + pitch) % pitch;
+      previous = offset.y;
+    }
+    // 起動の遅れのぶん、十分に回ったあとの送り量は発射数ぶんに届かない
+    assert.ok(travelled > pitch * FIRE_RATE * 240 * FRAME * 0.5, `conveyor barely moved: ${travelled}`);
+    assert.ok(travelled <= pitch * FIRE_RATE * 240 * FRAME * (1 + 1e-9), `conveyor overran: ${travelled}`);
+    ship.dispose();
+  });
+
+  test('weapon drives: recoil stays between battery and full travel, reaches it, and returns to battery', () => {
+    const ship = new ModularShipView(recoilModel);
+    const modules = [weapon('gun-1', 100)];
+    ship.sync(modules);
+    const recoil = anchors(ship, 'gun-1', 'gun-recoil:')[0]!;
+    const battery = recoil.position.z;
+    const drives = new WeaponDrives();
+    let maxDisplacement = 0;
+    // 1 ms 刻みで、0.1 s から 1.3 s まで連射し、その後 3 s 置く
+    const step = 0.001;
+    for (let i = 0; i <= 4.3 / step; i++) {
+      const time = i * step;
+      const firing = time >= 0.1 && time < 1.3;
+      drives.sync(ship, modules, firing ? FIRE_RATE : 0, time, lastShot(time, 0.1, 1.29));
+      const displacement = battery - recoil.position.z;
+      assert.ok(displacement >= -1e-9, `recoil ran forward of battery at ${time}: ${displacement}`);
+      assert.ok(displacement <= RECOIL_TRAVEL + 1e-9, `recoil exceeded travel at ${time}: ${displacement}`);
+      maxDisplacement = Math.max(maxDisplacement, displacement);
+    }
+    assert.ok(maxDisplacement > 0.9 * RECOIL_TRAVEL, `recoil did not reach its travel: ${maxDisplacement}`);
+    assert.ok(battery - recoil.position.z < 1e-3 * RECOIL_TRAVEL, `recoil did not return: ${battery - recoil.position.z}`);
+    ship.dispose();
+  });
+
+  test('weapon drives: recoil holds still while the display time is paused', () => {
+    const ship = new ModularShipView(recoilModel);
+    const modules = [weapon('gun-1', 100)];
+    ship.sync(modules);
+    const recoil = anchors(ship, 'gun-1', 'gun-recoil:')[0]!;
+    const drives = new WeaponDrives();
+    const pausedAt = 0.1 + 40 * FRAME + 0.003;
+    for (let i = 0; i * FRAME < pausedAt; i++) drives.sync(ship, modules, FIRE_RATE, i * FRAME, lastShot(i * FRAME, 0.1, 2));
+    drives.sync(ship, modules, FIRE_RATE, pausedAt, lastShot(pausedAt, 0.1, 2));
+    const held = recoil.position.z;
+    for (let i = 0; i < 10; i++) drives.sync(ship, modules, FIRE_RATE, pausedAt, lastShot(pausedAt, 0.1, 2));
+    assert.equal(recoil.position.z, held);
+    ship.dispose();
+  });
+
+  test('weapon drives: recoil followers compress and turn by the recoil displacement', () => {
+    const ship = new ModularShipView(recoilModel);
+    const modules = [weapon('gun-1', 100)];
+    ship.sync(modules);
+    const recoil = anchors(ship, 'gun-1', 'gun-recoil:')[0]!;
+    const spring = anchors(ship, 'gun-1', 'gun-recoil-compress:')[0]!;
+    const lever = anchors(ship, 'gun-1', 'gun-recoil-lever:')[0]!;
+    const battery = recoil.position.z;
+    const leverBase = lever.quaternion.clone();
+    const drives = new WeaponDrives();
+    for (let i = 0; i <= 1.0 / FRAME; i++) {
+      const time = i * FRAME;
+      drives.sync(ship, modules, FIRE_RATE, time, lastShot(time, 0.1, 2));
+      const displacement = battery - recoil.position.z;
+      // 固定端から見た可動端は、後座した機関部と同じだけ縮む
+      assert.ok(Math.abs(SPRING_REST_LENGTH * spring.scale.z - (SPRING_REST_LENGTH - displacement)) < 1e-9);
+      const turn = leverBase.clone().invert().multiply(lever.quaternion);
+      const angle = 2 * Math.atan2(turn.z, turn.w);
+      assert.ok(Math.abs(angle - displacement * LEVER_RATE) < 1e-9, `lever angle ${angle} vs ${displacement * LEVER_RATE}`);
+    }
     ship.dispose();
   });
 }
