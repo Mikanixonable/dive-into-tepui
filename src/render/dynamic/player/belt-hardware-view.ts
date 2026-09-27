@@ -74,6 +74,7 @@ function cableRun(): THREE.Group {
   const group = new THREE.Group();
   group.scale.set(MAG_PLANAR_SCALE, 1, MAG_PLANAR_SCALE);
   group.add(new THREE.Mesh(CABLE_GEOMETRY, CABLE_MATERIAL));
+  // ケーブルの両端を押さえる外装クランプ。
   for (const x of [-1.12, 1.12]) {
     const clamp = new THREE.Mesh(CLAMP_GEOMETRY, CLAMP_MATERIAL);
     clamp.position.set(x, 1.12, -0.46);
@@ -161,6 +162,7 @@ export class BeltHardwareView {
       root.add(run);
       this.cableRuns.push(run);
     }
+    // 継手は隣接リンクの間に1つずつ。
     for (let i = 0; i < Math.max(0, linkCount - 1); i++) {
       const joint = swivelJoint();
       root.add(joint);
@@ -171,6 +173,7 @@ export class BeltHardwareView {
   // 表示中の箱だけへケーブルと継手を合わせ、消費済みリンクの金具を隠す。
   public sync(magsLeft: number, nodes: BeltNodes, links: readonly THREE.Group[]): void {
     const visibleCount = Math.min(magsLeft, links.length);
+    // ケーブルはリンクの姿勢へそのまま合わせる。
     for (let i = 0; i < this.cableRuns.length; i++) {
       const cable = this.cableRuns[i]!;
       const link = links[i]!;
@@ -178,6 +181,7 @@ export class BeltHardwareView {
       cable.position.copy(link.position);
       cable.quaternion.copy(link.quaternion);
     }
+    // 継手は前後リンクの節点へ置き、姿勢は両者の中間へ。
     for (let i = 0; i < this.joints.length; i++) {
       const joint = this.joints[i]!;
       const before = links[i]!;
