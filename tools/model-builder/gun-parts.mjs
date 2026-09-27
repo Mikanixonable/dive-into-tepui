@@ -1,13 +1,13 @@
 // 機関砲の弾薬と消耗部品のモデル — 実弾入りのマガジンと薬莢。
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { importTsDataModule } from '../compile-source.mjs';
 import { F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL, std } from './materials.mjs';
 
-const { MAG_THICKNESS, MAG_WIDTH } = await importTsDataModule('src/physics/player-shape.ts');
+const { MAG_THICKNESS, MAG_WIDTH, MAG_DEPTH, MAG_PLANAR_SCALE } = await importTsDataModule('src/physics/player-shape.ts');
 
 // ------------------------------------------------------------- マガジン
 // 給弾方向(+Z)の奥行き [m] と、並べる弾の段数・列数。
-const MAG_DEPTH = MAG_THICKNESS * 3 * (2 / 3);
 const MAG_ROWS = 1;
 const MAG_COLS = 8;
 
@@ -19,9 +19,17 @@ const magPanelMat  = std(0x30383f, { roughness: 0.72 });
 const magWindowMat = std(0x11171c, { roughness: 0.88 });
 const magTrimMat   = std(F0_STEEL, { metalness: 1, roughness: 0.48 });
 const magFastenerMat = std(F0_ALUMINIUM, { metalness: 1, roughness: 0.38 });
-const magPlateGeo  = new THREE.BoxGeometry(MAG_WIDTH, 0.055, MAG_DEPTH);
-const magPostGeo   = new THREE.BoxGeometry(0.07, MAG_THICKNESS, 0.07);
+const magPlateGeo  = beveledBoxGeometry(MAG_WIDTH, 0.055, MAG_DEPTH, 0.025);
+const magPostGeo   = beveledBoxGeometry(0.07, MAG_THICKNESS, 0.07, 0.02);
 const magFastenerGeo = new THREE.CylinderGeometry(0.038, 0.038, 0.032, 8);
+
+// 1分割の浅い丸みで、直角を立てずに機械加工の C 面取りを表す。
+function beveledBoxGeometry(width, height, depth, bevel = 0.04) {
+  const minimumDimension = Math.min(width, height, depth);
+  if (minimumDimension < 0.07) return new THREE.BoxGeometry(width, height, depth).toNonIndexed();
+  const radius = Math.min(bevel, minimumDimension * 0.24);
+  return new RoundedBoxGeometry(width, height, depth, radius, 1);
+}
 
 // 実弾の輪郭 (半径, 長手位置) — 放出される薬莢と同族のボトルネック形状。
 // 太く短い薬室部(φ0.30・全長 0.7 ほど)に細い弾体(φ0.20)が +Y へ伸び、窓の中で縦に並ぶ。
@@ -58,7 +66,7 @@ export function buildMagazineMesh() {
   }
 
   // 左右サイドパネル(X方向の壁)
-  const sideGeo = new THREE.BoxGeometry(0.07, MAG_THICKNESS * 0.90, MAG_DEPTH);
+  const sideGeo = beveledBoxGeometry(0.07, MAG_THICKNESS * 0.90, MAG_DEPTH, 0.025);
   for (const sx of [-1, 1]) {
     const side = new THREE.Mesh(sideGeo, magPlateMat);
     side.position.set(sx * (MAG_WIDTH / 2 - 0.04), 0, 0);
@@ -75,7 +83,7 @@ export function buildMagazineMesh() {
   }
 
   // フィードリップ(+Z 先端・給弾口突起)は、弾薬窓を塞がない外周へ寄せる。
-  const feedLipGeo = new THREE.BoxGeometry(0.52, 0.16, 0.14);
+  const feedLipGeo = beveledBoxGeometry(0.52 * MAG_PLANAR_SCALE, 0.16, 0.14 * MAG_PLANAR_SCALE, 0.035);
   const feedLip = new THREE.Mesh(feedLipGeo, magPlateMat);
   feedLip.position.set(0, 0.80, MAG_DEPTH / 2 + 0.04);
   g.add(feedLip);
@@ -88,16 +96,16 @@ export function buildMagazineMesh() {
   for (const sy of [-1, 1]) {
     // 中央溝レール(上面/下面を横切る)
     const groove = new THREE.Mesh(
-      new THREE.BoxGeometry(MAG_WIDTH * 0.55, 0.06, MAG_DEPTH * 0.80),
+      beveledBoxGeometry(MAG_WIDTH * 0.55, 0.06, MAG_DEPTH * 0.80, 0.025),
       recessMat,
     );
     groove.position.set(0, sy * (MAG_THICKNESS / 2 + 0.03), 0);
     g.add(groove);
 
     // 前後の段付きリブ(ショルダー)
-    for (const sz of [-0.85, 0.85]) {
+    for (const sz of [-0.85 * MAG_PLANAR_SCALE, 0.85 * MAG_PLANAR_SCALE]) {
       const rib = new THREE.Mesh(
-        new THREE.BoxGeometry(MAG_WIDTH * 0.80, 0.07, 0.12),
+        beveledBoxGeometry(MAG_WIDTH * 0.80, 0.07, 0.12, 0.025),
         ridgeMat,
       );
       rib.position.set(0, sy * (MAG_THICKNESS / 2 + 0.035), sz);
@@ -110,7 +118,7 @@ export function buildMagazineMesh() {
     // 左右の縦段差
     for (const sx of [-1, 1]) {
       const ledge = new THREE.Mesh(
-        new THREE.BoxGeometry(0.10, MAG_THICKNESS * 0.70, 0.07),
+        beveledBoxGeometry(0.10, MAG_THICKNESS * 0.70, 0.07, 0.025),
         recessMat,
       );
       ledge.position.set(sx * (MAG_WIDTH / 2 - 0.30), 0, sz * (MAG_DEPTH / 2 + 0.02));
@@ -119,7 +127,7 @@ export function buildMagazineMesh() {
   }
 
   // サイド: ベルト案内レール(左右面中央に浮き出たリブ)
-  const railGeo = new THREE.BoxGeometry(0.06, MAG_THICKNESS * 0.60, MAG_DEPTH * 0.75);
+  const railGeo = beveledBoxGeometry(0.06, MAG_THICKNESS * 0.60, MAG_DEPTH * 0.75, 0.02);
   for (const sx of [-1, 1]) {
     const rail = new THREE.Mesh(railGeo, ridgeMat);
     rail.position.set(sx * (MAG_WIDTH / 2 + 0.02), 0, 0);
@@ -146,14 +154,14 @@ export function buildMagazineMesh() {
 
   // 弾を箱の中に保持する外殻。前面の開口と背板の間に実包を見せる。
   const shellHeight = 2.04;
-  const shellDepth = 1.76;
+  const shellDepth = MAG_DEPTH * 0.88;
   const shellSideThickness = 0.14;
   const shellTopThickness = 0.14;
   const frontZ = MAG_DEPTH * 0.43;
   const windowWidth = MAG_WIDTH * 0.64;
   const windowHeight = 1.34;
   const addBox = (width, height, depth, x, y, z, material) => {
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+    const panel = new THREE.Mesh(beveledBoxGeometry(width, height, depth, 0.07), material);
     panel.position.set(x, y, z);
     g.add(panel);
   };
@@ -189,27 +197,42 @@ export function buildMagazineMesh() {
   addBox(windowWidth - 0.10, 0.035, 0.035, 0, 0.68, frontZ + 0.075, magTrimMat);
   addBox(windowWidth - 0.10, 0.035, 0.035, 0, -0.68, frontZ + 0.075, magTrimMat);
 
+  // 窓の外側四隅は厚い面取りブロックと小さな締結具で受け、薄板の箱に見せない。
+  const cornerGuardGeo = beveledBoxGeometry(0.24 * MAG_PLANAR_SCALE, 0.30, 0.16 * MAG_PLANAR_SCALE, 0.055);
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      const guard = new THREE.Mesh(cornerGuardGeo, magPlateMat);
+      guard.position.set(sx * (MAG_WIDTH / 2 - 0.16), sy * (shellHeight / 2 - 0.17), frontZ + 0.10);
+      g.add(guard);
+      addFastener(sx * (MAG_WIDTH / 2 - 0.16), sy * (shellHeight / 2 - 0.17), frontZ + 0.19, 'front');
+    }
+  }
+
   // 上面の整備蓋は浅い段差と対称な締結具を持つ。
   const lidY = shellHeight / 2 + 0.025;
-  addBox(1.72, 0.05, 1.12, 0, lidY, -0.02, magPanelMat);
+  addBox(1.72 * MAG_PLANAR_SCALE, 0.05, 1.12 * MAG_PLANAR_SCALE, 0, lidY, -0.02, magPanelMat);
   for (const sx of [-1, 1]) {
-    addBox(0.045, 0.028, 1.16, sx * 0.89, shellHeight / 2 + 0.04, -0.02, magTrimMat);
+    addBox(0.045, 0.028, 1.16 * MAG_PLANAR_SCALE,
+      sx * 0.89 * MAG_PLANAR_SCALE, shellHeight / 2 + 0.04, -0.02, magTrimMat);
   }
   for (const sz of [-1, 1]) {
-    addBox(1.82, 0.028, 0.045, 0, shellHeight / 2 + 0.04, sz * 0.60, magTrimMat);
+    addBox(1.82 * MAG_PLANAR_SCALE, 0.028, 0.045,
+      0, shellHeight / 2 + 0.04, sz * 0.60 * MAG_PLANAR_SCALE, magTrimMat);
   }
 
   // 頭が外を向くボルトで、蓋と窓枠を外装へ締結する。
-  const addFastener = (x, y, z, face) => {
+  function addFastener(x, y, z, face) {
     const fastener = new THREE.Mesh(magFastenerGeo, magFastenerMat);
     if (face === 'front') fastener.rotation.x = Math.PI / 2;
     else if (face === 'side') fastener.rotation.z = Math.PI / 2;
     fastener.position.set(x, y, z);
     g.add(fastener);
-  };
+  }
   for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) addFastener(sx * 0.76, lidY + 0.045, sz * 0.48, 'top');
-    for (const sy of [-1, 1]) addFastener(sx * (MAG_WIDTH / 2 + 0.01), sy * 0.76, 0.56, 'side');
+    for (const sz of [-1, 1]) addFastener(sx * 0.76 * MAG_PLANAR_SCALE,
+      lidY + 0.045, sz * 0.48 * MAG_PLANAR_SCALE, 'top');
+    for (const sy of [-1, 1]) addFastener(sx * (MAG_WIDTH / 2 + 0.01), sy * 0.76,
+      0.56 * MAG_PLANAR_SCALE, 'side');
     for (const sy of [-1, 1]) addFastener(sx * (windowWidth / 2 + windowSideWidth / 2), sy * 0.79,
       frontZ + 0.10, 'front');
   }
