@@ -16,6 +16,8 @@ import { MATERIAL_CASES } from './material-cases';
 import { SHADOW_CASES } from './shadow-cases';
 import { BELT_CASES } from './belt-cases';
 import { CASING_CASES } from './casing-cases';
+import { ASSEMBLY_CASES } from './assembly-cases';
+import { PLUME_CASES } from './plume-cases';
 import {
   circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, texturedBody, VIEW_HEIGHT, VIEW_WIDTH,
   type CaseBuilder, type LabCase,
@@ -170,9 +172,11 @@ export const CASES = {
   'order': order,
   'march-slab': marchSlab,
   ...SHIP_CASES,
+  ...PLUME_CASES,
   ...BELT_CASES,
   ...CASING_CASES,
   ...PROTEIN_CASES,
+  ...ASSEMBLY_CASES,
 } as const satisfies Record<string, CaseBuilder>;
 
 export type CaseName = keyof typeof CASES;
