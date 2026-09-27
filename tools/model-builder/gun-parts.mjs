@@ -8,12 +8,11 @@ const { MAG_THICKNESS, MAG_WIDTH, MAG_DEPTH, MAG_PLANAR_SCALE } = await importTs
 
 // ------------------------------------------------------------- マガジン
 // 給弾方向(+Z)の奥行き [m] と、並べる弾の段数・列数。
-const MAG_ROWS = 1;
+const MAG_ROWS = 5;
 const MAG_COLS = 8;
 
 const magPlateMat  = std(F0_STEEL, { metalness: 1, roughness: 0.42 });
-const magRoundMat  = std(F0_BRASS, { metalness: 1, roughness: 0.36 }); // 真鍮色
-const magTipMat    = std(0x828a91, { roughness: 0.56 }); // 光を拾いやすい銀色の弾頭
+const magRoundMat  = std(F0_BRASS, { metalness: 1, roughness: 0.36 }); // 弾頭と薬莢に共通する真鍮色
 const magShellMat  = std(0x464e56, { roughness: 0.68 });
 const magPanelMat  = std(0x30383f, { roughness: 0.72 });
 const magWindowMat = std(0x11171c, { roughness: 0.88 });
@@ -137,15 +136,17 @@ export function buildMagazineMesh() {
   // 弾(実弾: ボトルネックの薬室部 + 弾体)
   for (let iy = 0; iy < MAG_ROWS; iy++) {
     for (let ix = 0; ix < MAG_COLS; ix++) {
-      const x = (ix - (MAG_COLS - 1) / 2) * (MAG_WIDTH / (MAG_COLS * 1.1));
-      const z = 0.68 + (iy - (MAG_ROWS - 1) / 2) * 0.38;
+      const pitch = MAG_WIDTH / (MAG_COLS * 1.1);
+      const rowStagger = iy % 4 === 1 ? 0.5 : iy % 4 === 3 ? -0.5 : 0;
+      const x = (ix - (MAG_COLS - 1) / 2 + rowStagger) * pitch;
+      const z = ((MAG_ROWS - 1) / 2 - iy) * MAG_DEPTH * 0.13;
 
       const round = new THREE.Mesh(magCaseGeo, magRoundMat);
       round.position.set(x, 0.07, z);
       round.userData = { role: 'round' };
       g.add(round);
 
-      const tip = new THREE.Mesh(magProjGeo, magTipMat);
+      const tip = new THREE.Mesh(magProjGeo, magRoundMat);
       tip.position.set(x, 0.07, z);
       tip.userData = { role: 'round' };
       g.add(tip);

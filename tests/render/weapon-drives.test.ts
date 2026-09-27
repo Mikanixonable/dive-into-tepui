@@ -207,7 +207,7 @@ export function register(): void {
     drives.sync(ship, modules, FIRE_RATE, 0);
     const basePos = shoe.position.clone();
     const baseQuat = shoe.quaternion.clone();
-    // 案内爪は1リンク(32発)で1往復する。起動の遅れを見越して1往復ぶんより長く進め、
+    // 案内爪は1リンク(40発)で1往復する。起動の遅れを見越して1往復ぶんより長く進め、
     // 最大変位を追う
     let maxDisplacement = 0, minX = basePos.x, maxX = basePos.x;
     for (let i = 1; i <= 200; i++) {

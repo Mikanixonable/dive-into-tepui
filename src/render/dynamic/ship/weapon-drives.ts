@@ -1,5 +1,6 @@
 // 機関砲の砲身・給弾部・後座部を、射撃と表示時刻に沿って動かす。
 import * as THREE from 'three/webgpu';
+import { MAG_ROUNDS } from '../../../game/player/ammo-spec';
 import type { ModularShipView } from './modular-ship-view';
 import type { ShipModuleRenderInput } from './ship-render-contract';
 
@@ -17,11 +18,11 @@ const STROKE_DIR = new THREE.Vector3();
 // 送り車の半径 [m](build-ship-modules.py の給弾塔)。ベルト1リンクぶんの装弾
 // MAG_ROUNDS(game/player/ammo-spec.ts) を、そのピッチ MAG_BELT_PITCH
 // (physics/player-shape.ts) ぶん送る回転角 [rad/発]。
-const SPROCKET_RAD_PER_ROUND = (2.847 / 0.26) / 32;
+const SPROCKET_RAD_PER_ROUND = (2.847 / 0.26) / MAG_ROUNDS;
 // デリンクドラムは1発剥がすごとに1ステーション(全6)ぶん回る [rad/発]。
 const DRUM_RAD_PER_ROUND = TWO_PI / 6;
-// 案内爪はベルト1リンク(32発)の送りで1往復する [rad/発] と、行程の半分の長さ [m]。
-const SHOE_RAD_PER_ROUND = TWO_PI / 32;
+// 案内爪はベルト1リンク(MAG_ROUNDS 発)の送りで1往復する [rad/発] と、行程の半分の長さ [m]。
+const SHOE_RAD_PER_ROUND = TWO_PI / MAG_ROUNDS;
 const SHOE_AMPLITUDE = 0.22;
 const MAX_RECOIL_DURATION = 0.18;
 const RECOIL_ATTACK_RATIO = 0.2;
