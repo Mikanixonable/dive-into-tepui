@@ -419,7 +419,9 @@ export class GamePresentation {
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
     celestialSystem.bakeClouds(this.devices.scene.renderer, displayTime, this.devices.scene.gpu);
     dynamicSystem.sync(
-      displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay, orbitRef ?? undefined,
+      displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay,
+      this.devices.scene.pipeline.sunLight, this.devices.scene.pipeline.bodyShadow,
+      orbitRef ?? undefined,
     );
     this.shipConstruction.sync(camera);
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
