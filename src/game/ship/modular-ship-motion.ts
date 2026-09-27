@@ -64,6 +64,7 @@ export interface ModularShipMotionSystems {
 class ModularShipBehavior implements DynamicMotionBehavior {
   public readonly contactKind;
 
+  // playerOwned に対応する接触種別と船体反応口を設定する。
   public constructor(
     playerOwned: boolean,
     private readonly reactions: ModularShipMotionReactions,
@@ -71,14 +72,17 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     this.contactKind = playerOwned ? 'player' as const : 'generic' as const;
   }
 
+  // 質量に応じて基準の弾道係数を換算する。
   public bcInv(self: DynamicMotion): number {
     return self.mass > 0 ? SHIP_BCINV * REFERENCE_SHIP_MASS / self.mass : 0;
   }
 
+  // 質量に応じて基準の輻射圧係数を換算する。
   public srpCoeff(self: DynamicMotion): number {
     return self.mass > 0 ? SHIP_SRP_COEFF * REFERENCE_SHIP_MASS / self.mass : 0;
   }
 
+  // 環境入力を船体の空力・熱・電力系へ反映する。
   public stepEnvironment(
     self: DynamicMotion,
     dt: number,
@@ -89,6 +93,7 @@ class ModularShipBehavior implements DynamicMotionBehavior {
   ): void {
     const motion = modularShipMotionOf(self);
     if (!motion.alive) return;
+    // 給弾と冷却は船体状態に応じて進める。
     motion.belt.update(
       dt,
       this.reactions.roundsInMagazine?.() ?? 0,
@@ -99,15 +104,18 @@ class ModularShipBehavior implements DynamicMotionBehavior {
       dt,
       this.reactions.radiatorWear?.() ?? {},
     );
+    // 大気抵抗と高度警報へ現在の環境を渡す。
     motion.aero.update(motion.state.r, motion.state.v, atmosphereBody, atmospherePivot);
     this.reactions.updateAltitudeAlarm?.(
       dt, motion.state.r, atmosphereBody, atmospherePivot,
     );
+    // 日照と発電量から電力状態を進める。
     motion.power.update(
       dt, sunlit, sunDir, motion.att, this.reactions.totalPowerGeneration?.() ?? 0,
     );
   }
 
+  // 重心位置からラジエーターと給弾ベルトの接触代理を配置する。
   public placeContactProxies(self: DynamicMotion, simTime: number, dt: number): void {
     const motion = modularShipMotionOf(self);
     const rootOffset = qRotate(motion.att.q, motion.centerOffset);
@@ -120,16 +128,19 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     );
   }
 
+  // 衝突判定に使うラジエーターと給弾ベルトの接触代理を返す。
   public contactProxies(self: DynamicMotion): readonly EntityContactParticipant[] {
     const motion = modularShipMotionOf(self);
     return [...motion.radiator.contactFolds, ...motion.belt.contactSections];
   }
 
+  // 接触した給弾ベルト区間の反力を船体へ反映する。
   public applyContactProxies(self: DynamicMotion, dt: number): void {
     const motion = modularShipMotionOf(self);
     motion.belt.applyContactSections(dt, motion.state.r, motion.state.v, motion.att);
   }
 
+  // 船体とラジエーターを合わせた単位質量あたりの放熱面積を返す。
   public radiatingAreaPerMass(self: DynamicMotion): number {
     const motion = modularShipMotionOf(self);
     if (motion.mass <= 0) return 0;
@@ -137,6 +148,7 @@ class ModularShipBehavior implements DynamicMotionBehavior {
       + motion.radiator.radiatingArea(this.reactions.totalCoolingRate?.() ?? 0) / motion.mass;
   }
 
+  // 船体とラジエーターを合わせた単位質量あたりの日射吸収面積を返す。
   public solarAbsorbAreaPerMass(self: DynamicMotion, sunDir: Vec3): number {
     const motion = modularShipMotionOf(self);
     const hullArea = (motion.emissivity * motion.bcInv) / 2.2;
@@ -145,30 +157,36 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     ) / Math.max(motion.mass, 1e-9);
   }
 
+  // 船体に起きた接触を反応先へ渡す。
   public onEntityContact(
     _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
     this.reactions.receiveEntityContact?.(other, contact, services);
   }
 
+  // 指定時刻に相手との接触を許可するか返す。
   public contactsWith(self: DynamicMotion, other: DynamicMotion, simTime: number): boolean {
     return modularShipMotionOf(self).contactsAllowedWith(other, simTime);
   }
 
+  // 接触猶予のうち、次にシミュレーションを区切る時刻を返す。
   public nextSimulationEventTime(self: DynamicMotion, simTime: number): number | null {
     return modularShipMotionOf(self).nextCollisionGraceBoundary(simTime);
   }
 
+  // 船体表面への接触を反応先へ渡す。
   public onSurfaceContact(
     _self: DynamicMotion, body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void {
     this.reactions.receiveSurfaceContact?.(body, contact, services);
   }
 
+  // 燃え尽きの発生を反応先へ渡す。
   public onBurnUp(_self: DynamicMotion, services: DynamicReactionServices): void {
     this.reactions.receiveBurnUp?.(services);
   }
 
+  // 空力荷重が構造限界を超えたとき、船体喪失を通知する。
   public checkLoss(
     self: DynamicMotion,
     _dt: number,
@@ -181,10 +199,12 @@ class ModularShipBehavior implements DynamicMotionBehavior {
   }
 }
 
+// 形状が持つ慣性テンソルを姿勢値へ反映する。
 function withInertia(attitude: Attitude, shape: ShipPhysicsShape): Attitude {
   return { ...attitude, inertia: shape.mass.inertia };
 }
 
+// 慣性が変わった後も各軸の角運動量を保つ角速度を返す。
 function componentwiseAngularMomentumVelocity(
   angularVelocity: Vec3, oldInertia: Vec3, nextInertia: Vec3,
 ): Vec3 {
@@ -195,8 +215,7 @@ function componentwiseAngularMomentumVelocity(
   );
 }
 
-// ShipAssembly から導いた一体剛体。state.r は常に現在の COM を表し、assembly 座標の
-// 原点との差は centerOffset にだけ保持する。
+// 船体運動の位置と速度は、組立の重心を基準にする。
 export class ModularShipMotion extends DynamicMotion {
   private physicsShapeValue: ShipPhysicsShape;
   private readonly collisionGraceUntil = new Map<EntityContactParticipant, number>();
@@ -205,6 +224,7 @@ export class ModularShipMotion extends DynamicMotion {
   public readonly radiator: RadiatorSystem;
   public readonly power: PowerSystem;
 
+  // assembly から剛体と補助系を構築し、systems の記録があれば復元する。
   public constructor(
     public readonly assembly: ShipAssembly,
     state: KinematicState,
@@ -212,6 +232,7 @@ export class ModularShipMotion extends DynamicMotion {
     reactions: ModularShipMotionReactions = {},
     systems: ModularShipMotionSystems = {},
   ) {
+    // 船体形状から初期質量・慣性・衝突特性を得る。
     const shape = shipPhysicsShape(assembly);
     if (shape === null) throw new Error('modular ship requires a non-empty valid assembly');
     super(state, shipMotionOptions(withInertia(attitude, shape), shape.mass.boundingRadius, {
@@ -232,10 +253,12 @@ export class ModularShipMotion extends DynamicMotion {
       compoundShape: shape.shape,
       surfaceShape: shape.surfaceShape,
     });
+    // 補助系の記録を復元するか、既定値から組み立てる。
     this.belt = systems.beltSave
       ? BeltController.deserialize(systems.beltSave)
       : BeltController.create(systems.beltLinkCount ?? 18);
     this.synchronizeBeltMount(shape);
+    // ラジエーター接触を船体側の反応口へ渡す。
     const onRadiatorContact = (moduleId: string, other: EntityContactParticipant, contact: Contact,
       services: DynamicReactionServices): void => {
       reactions.receiveRadiatorContact?.(moduleId, other, contact, services);
@@ -253,6 +276,7 @@ export class ModularShipMotion extends DynamicMotion {
   public get physicsShape(): ShipPhysicsShape { return this.physicsShapeValue; }
   public get centerOffset(): Vec3 { return this.physicsShapeValue.centerOffset; }
 
+  // 並進と回転の初期状態をまとめて差し替える。
   public resetRigidState(state: KinematicState, attitude: Attitude = this.att): void {
     this.resetAttitude(attitude);
     this.reset(state);
@@ -262,9 +286,11 @@ export class ModularShipMotion extends DynamicMotion {
   public applyImpulseAtPoint(impulse: Vec3, worldPoint: Vec3): void {
     const attitude = this.att;
     const worldToBody = qInvert(attitude.q);
+    // 作用点の腕と力積から、機体座標での角運動量変化を求める。
     const armBody = qRotate(worldToBody, sub(worldPoint, this.state.r));
     const impulseBody = qRotate(worldToBody, impulse);
     const angularImpulse = cross(armBody, impulseBody);
+    // 対角慣性で角速度を更新し、並進には全力積を適用する。
     const nextAttitude: Attitude = {
       ...attitude,
       w: v3(
@@ -281,12 +307,14 @@ export class ModularShipMotion extends DynamicMotion {
     this.resetRigidState(nextState, nextAttitude);
   }
 
+  // 指定した時刻まで相手との衝突を猶予する。
   public ignoreCollisionWith(other: EntityContactParticipant, until: number): void {
     if (!Number.isFinite(until) || until <= this.state.t) return;
     this.collisionGraceUntil.set(other, until);
     this.invalidatePrediction();
   }
 
+  // 衝突猶予の期限に応じて、相手との接触可否を返す。
   public contactsAllowedWith(other: EntityContactParticipant, simTime: number): boolean {
     const until = this.collisionGraceUntil.get(other);
     if (until === undefined) return true;
@@ -297,6 +325,7 @@ export class ModularShipMotion extends DynamicMotion {
     return false;
   }
 
+  // 現在時刻より先にある衝突猶予の最短期限を返す。
   public nextCollisionGraceBoundary(simTime: number): number | null {
     let earliest = Infinity;
     for (const [other, until] of this.collisionGraceUntil) {
@@ -306,9 +335,9 @@ export class ModularShipMotion extends DynamicMotion {
     return Number.isFinite(earliest) ? earliest : null;
   }
 
-  // assembly の変更後に shape と物性を同時更新する。COM の移動は assembly 原点の
-  // world pose を保つ並進へ変換し、回転によるその点の速度と対角角運動量も連続にする。
+  // 組立変更後の質量特性を反映し、組立原点の運動と各軸角運動量を保つ。
   public synchronizeAssembly(): void {
+    // 新しい重心へ並進状態を移し、組立原点の速度を保つ。
     const next = shipPhysicsShape(this.assembly);
     if (next === null) throw new Error('cannot synchronize an empty or invalid ship assembly');
     const previous = this.physicsShapeValue;
@@ -327,6 +356,7 @@ export class ModularShipMotion extends DynamicMotion {
     const nextW = componentwiseAngularMomentumVelocity(
       this.att.w, previous.mass.inertia, next.mass.inertia,
     );
+    // 衝突形状と補助系を新しい組立へ揃える。
     this.resetAttitude({ ...this.att, w: nextW }, { ...this.prevAtt, w: nextW });
     this.replaceCollisionProperties({
       mass: next.mass.totalMass,
@@ -341,7 +371,9 @@ export class ModularShipMotion extends DynamicMotion {
     this.reset(nextState);
   }
 
+  // 有効な主砲の給弾口を、船体重心基準の帯制御系へ反映する。
   private synchronizeBeltMount(shape: ShipPhysicsShape): void {
+    // 砲の給弾口と方向を船体座標へ移す。
     const weapon = this.assembly.modules.find(module => module.kind === 'weapon' && module.hp > 0);
     if (weapon === undefined) return;
     const definition = this.assembly.definition(weapon.id);
@@ -363,6 +395,7 @@ export class ModularShipMotion extends DynamicMotion {
   }
 }
 
+// DynamicMotion を船体の具象型として取り出し、型が異なれば例外にする。
 function modularShipMotionOf(motion: DynamicMotion): ModularShipMotion {
   if (!(motion instanceof ModularShipMotion)) {
     throw new Error('ModularShipBehavior received a non-modular ship motion');
@@ -370,6 +403,7 @@ function modularShipMotionOf(motion: DynamicMotion): ModularShipMotion {
   return motion;
 }
 
+// motion がモジュール船の剛体運動かを判定する。
 export function isModularShipMotion(motion: DynamicMotion): motion is ModularShipMotion {
   return motion instanceof ModularShipMotion;
 }
