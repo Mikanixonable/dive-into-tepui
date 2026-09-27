@@ -1,12 +1,12 @@
 // 組み立て型の敵の接触判定。各部品の中心線折れ線を球の列で覆い、静止球・掃引球との接触を
 // 球列ジオメトリへ委譲する。失われた部品は判定から取り除く。
 import { addScaled, distSq, dot, len, lenSq, sub, type Vec3 } from '../../math/vec3';
-import type { Quat } from '../../math/quat';
-import type { KinematicState } from '../../physics/kinematic-state';
-import type { SphereHit } from '../../math/triangle-mesh';
 import {
   SphereChainCollisionGeometry, type CollisionSphere,
 } from '../dynamic/sphere-chain-collision';
+import type { Quat } from '../../math/quat';
+import type { KinematicState } from '../../physics/kinematic-state';
+import type { SphereHit } from '../../math/triangle-mesh';
 import type { AssemblyPartDef } from '../../render/assembly/assembly-shape';
 
 // 球を置く間隔(部品の半径に対する比率)。中心線は管を覆うには過密なので間引くが、

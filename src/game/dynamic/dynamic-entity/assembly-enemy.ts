@@ -14,11 +14,11 @@ import {
   Enemy, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement, driftingAttitude,
   type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
+import { AssemblyEnemyView, type AssemblyVisualSource } from '../../../render/dynamic/dynamic-entity/assembly-enemy-view';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { FormationRole } from './entity-kind';
-import { AssemblyEnemyView, type AssemblyVisualSource } from '../../../render/dynamic/dynamic-entity/assembly-enemy-view';
 import type { DynamicEntity } from './dynamic-entity';
 import type { EnemyCollisionShape } from './enemy-motion';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
