@@ -14,8 +14,12 @@ const HEIGHT = 540;
 const GAUSSIAN_EXCESS_RATIO = (2 / 0.0026997960632601866) * 2 * (0.0044318484119380075 - 3 * 0.0013498980316301035) / 6;
 // 標準正規分布で |Z| > 3 となる確率。
 const GAUSSIAN_TAIL = 0.0026997960632601866;
+// 白色雑音で許す R(s) の範囲と、超過と幅の比の範囲。粒は窓の中央値から推すので、推定の揺らぎのぶん超過は理論値より
+// 大きく出る。
+const WHITE_R_RANGE = [0.98, 1.02];
+const WHITE_EXCESS_RATIO_RANGE = [0.09, 0.13];
 
-// 3 成分とも種を変えた白色雑音の Oklab の組と、その基準の 0 の組。
+// 3 成分とも種を変えた白色雑音の平面の組と、その基準の 0 の組。
 function noiseImage(seed, width, height, sigma = 1) {
   const count = width * height;
   return {
@@ -24,8 +28,8 @@ function noiseImage(seed, width, height, sigma = 1) {
   };
 }
 
-// L だけに plane を持ち、a・b が 0 の組。
-const lightnessOnly = (plane) => [plane, new Float32Array(plane.length), new Float32Array(plane.length)];
+// 1 つ目の成分だけに plane を持ち、残りが 0 の組。
+const firstComponentOnly = (plane) => [plane, new Float32Array(plane.length), new Float32Array(plane.length)];
 
 // 平面を、間隔 spacing の 5×5 のタップへ、中心からのタップ数の距離で標準偏差 1 のガウスの重みで均す。画面の外の
 // タップは除いて重みを正規化する。
@@ -52,6 +56,7 @@ function dense5x5(values, width, height, spacing) {
 }
 
 const within = (actual, expected, tolerance) => Math.abs(actual - expected) <= tolerance;
+const inRange = (value, [low, high]) => value >= low && value <= high;
 const failures = [];
 
 // 検査 name を走らせ、落ちたら並べて続ける。
@@ -89,27 +94,24 @@ check('誤差 0 なら S も G も 0', () => {
 
 const allPixels = new Uint8Array(WIDTH * HEIGHT).fill(1);
 
-// 粒は窓の中央値から推すので、推定の揺らぎのぶん超過は理論値より大きく出る。独立な標本の少ない粗い粒ほど大きい。
-check('全解像度の白色雑音: R(s) が 1 ± 0.1、裾の重さが正規分布の理論値、超過と幅の比が理論値の 1.2 倍以内', () => {
-  const { candidate, reference } = noiseImage(10, WIDTH, HEIGHT);
-  const metrics = errorMetrics(candidate, reference, allPixels, WIDTH, HEIGHT, 0, 1);
+// 白色雑音の誤差 candidate(基準は 0)を粒の一辺 grainScale で測り、R(s)・超過と幅の比・裾の重さを当てる。
+function checkWhiteNoise(candidate, grainScale) {
+  const reference = [0, 1, 2].map(() => new Float32Array(WIDTH * HEIGHT));
+  const metrics = errorMetrics(candidate, reference, allPixels, WIDTH, HEIGHT, 0, grainScale);
   const ratio = metrics.excessTerm / metrics.widthTerm;
   console.log(`    R(s) ${metrics.r.map((v) => v.toFixed(3)).join(' / ')}  超過/幅 ${ratio.toFixed(4)}  裾 ${(100 * metrics.tail).toFixed(3)}%`);
-  for (const [j, r] of metrics.r.entries()) assert.ok(within(r, 1, 0.1), `R(${BAND_SCALES[j]}) = ${r}`);
-  assert.ok(within(ratio, GAUSSIAN_EXCESS_RATIO, 0.2 * GAUSSIAN_EXCESS_RATIO), `超過/幅 ${ratio}(理論値 ${GAUSSIAN_EXCESS_RATIO})`);
+  for (const [j, r] of metrics.r.entries()) assert.ok(inRange(r, WHITE_R_RANGE), `R(${BAND_SCALES[j]}) = ${r}`);
+  assert.ok(inRange(ratio, WHITE_EXCESS_RATIO_RANGE), `超過/幅 ${ratio}(理論値 ${GAUSSIAN_EXCESS_RATIO})`);
   assert.ok(within(metrics.tail, GAUSSIAN_TAIL, 0.001), `裾 ${metrics.tail}`);
+}
+
+check('全解像度の白色雑音: R(s) と超過と幅の比が白色雑音の範囲、裾の重さが正規分布の理論値', () => {
+  checkWhiteNoise(noiseImage(10, WIDTH, HEIGHT).candidate, 1);
 });
 
-check('4 画素の塊を双一次で拡大した白色雑音: R(s) が 1 ± 0.1、裾の重さが正規分布の理論値、超過と幅の比が理論値の 1.5 倍以内', () => {
+check('1/4 の画素ごとの白色雑音を双一次で拡大したもの: R(s) と超過と幅の比が白色雑音の範囲、裾の重さが正規分布の理論値', () => {
   const coarse = noiseImage(20, WIDTH / 4, HEIGHT / 4);
-  const candidate = coarse.candidate.map((plane) => bilinearUpscale(plane, WIDTH / 4, HEIGHT / 4, 4));
-  const reference = [0, 1, 2].map(() => new Float32Array(WIDTH * HEIGHT));
-  const metrics = errorMetrics(candidate, reference, allPixels, WIDTH, HEIGHT, 0, 4);
-  const ratio = metrics.excessTerm / metrics.widthTerm;
-  console.log(`    R(s) ${metrics.r.map((v) => v.toFixed(3)).join(' / ')}  超過/幅 ${ratio.toFixed(4)}  裾 ${(100 * metrics.tail).toFixed(3)}%`);
-  for (const [j, r] of metrics.r.entries()) assert.ok(within(r, 1, 0.1), `R(${BAND_SCALES[j]}) = ${r}`);
-  assert.ok(ratio >= GAUSSIAN_EXCESS_RATIO && ratio <= 1.5 * GAUSSIAN_EXCESS_RATIO, `超過/幅 ${ratio}`);
-  assert.ok(within(metrics.tail, GAUSSIAN_TAIL, 0.001), `裾 ${metrics.tail}`);
+  checkWhiteNoise(coarse.candidate.map((plane) => bilinearUpscale(plane, WIDTH / 4, HEIGHT / 4, 4)), 4);
 });
 
 check('1% の画素に 20 倍の外れ値を混ぜると裾の重さが 1% を超え、粒は 10% 以上動かない', () => {
@@ -146,10 +148,10 @@ check('理想化した均しの G が重みの二乗和に合い、S の順が t
     '密な 2 段': { plane: dense5x5(dense, size, size, 4), g: null },
   };
   const mask = new Uint8Array(size * size).fill(1);
-  const zero = lightnessOnly(new Float32Array(size * size));
+  const zero = firstComponentOnly(new Float32Array(size * size));
   const scores = {};
   for (const [name, { plane, g }] of Object.entries(candidates)) {
-    const metrics = [0, 0.05, 0.2].map((t) => errorMetrics(lightnessOnly(plane), zero, mask, size, size, t, 1));
+    const metrics = [0, 0.05, 0.2].map((t) => errorMetrics(firstComponentOnly(plane), zero, mask, size, size, t, 1));
     scores[name] = metrics.map((m) => m.score);
     console.log(`    ${name}: G ${metrics[0].g.toFixed(3)}  S ${scores[name].map((v) => v.toFixed(2)).join(' / ')}  R(s) ${metrics[0].r.map((v) => v.toFixed(2)).join(' / ')}`);
     if (g !== null) assert.ok(within(metrics[0].g, g, 0.05 * g), `${name} の G = ${metrics[0].g}(${g})`);

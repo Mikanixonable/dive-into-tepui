@@ -6,7 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { openChromeSession, waitFor } from './chrome-session.mjs';
 import { decodePng } from './png.mjs';
-import { linearOfSrgbCodes, srgbToLinear, windowMean } from './screen-space-error.mjs';
+import { exposedCorrectionOf, linearOfSrgbCodes, srgbToLinear, windowMean } from './screen-space-error.mjs';
 
 // リポジトリ根と、組んだ描画テスト環境、撮影組の置き場。
 export const root = path.resolve(import.meta.dirname, '..');
@@ -20,8 +20,8 @@ export const HEIGHT = 540;
 
 // 描画設定 screenSpaceDiffuse の値(src/render/pipeline/screen-space/screen-space-pass.ts)。
 const MODE = { occlusion: 1, indirect: 2 };
-// 全撮影へ重ねる描画設定。レンズ効果は明るい面の光を、アンチエイリアス(値 0 はなし)は 8 bit の表示を縁の向こうへ
-// 広げて誤差を混ぜ、どちらも基準の合成には掛からないので切る。
+// 全撮影へ重ねる描画設定。目で見る画像は候補の表示と基準の合成の差から作る。レンズ効果は明るい面の光を、
+// アンチエイリアス(値 0 はなし)は表示を縁の向こうへ広げ、どちらも基準の合成には掛からないので切る。
 const EVALUATION_GRAPHICS = { lens: false, antialias: 0 };
 
 // 評価の組。set は tuning(調整用)・checking(確認用)・correctness(解析値との照合)・flicker(ちらつき)、mode は
@@ -45,7 +45,17 @@ export const ENTRIES = [
   ...Array.from({ length: DOLLY_FRAMES }, (_, k) => entry('flicker', 'bay', 'bay', MODE.indirect, (k + 1) * DOLLY_STEP)),
 ];
 
-// 走査の解像度 1/4 のフェードの外側 — 近傍の半径が描画バッファの画素でこれを超える面だけを測る。
+// 評価の組のうち、entries(撮影の key を , で並べた文字列)と sets(set を , で並べた文字列)の両方に当たるもの。
+// undefined の方は絞らない。
+export function selectedEntries({ entries, sets }) {
+  const keys = entries?.split(',');
+  const setNames = sets?.split(',');
+  const selected = ENTRIES.filter((e) => (keys?.includes(e.key) ?? true) && (setNames?.includes(e.set) ?? true));
+  if (selected.length === 0) throw new Error(`no entries match --entries ${entries} --sets ${sets}`);
+  return selected;
+}
+
+// 走査の解像度 1/4 のフェードの外側 [描画バッファの画素]。
 const FADE_OUTER_PX = 8;
 // 撮影 1 枚が、絵の落ち着きを待って撮る回数の上限。
 const MAX_SETTLE_CAPTURES = 6;
@@ -190,18 +200,17 @@ function labOf(devTools) {
         width: ${WIDTH}, height: ${HEIGHT}, channels: ${channels}, slots: [] }, 0)`);
       for (const [slot, sum] of sums.entries()) await sendFloats(devTools, `${destination}.slots[${slot}]`, sum);
     },
-    // name の slot ごとの和へ重み weights を掛けて足した HDR を、直前のフレームと同じ合成で表示にし、線形 sRGB
-    // (画素ごとに 3 つ)で返す。合成の値を [0, 1] へ切ってから線形へ戻すので、撮った PNG と同じ量になる。
-    async displayOfMean(name, weights) {
+    // name の全 slot の和を count で割った HDR の平均を、直前のフレームと同じ合成で表示にし、線形 sRGB(画素ごとに
+    // 3 つ)で返す。合成の値を [0, 1] へ切ってから線形へ戻すので、撮った PNG と同じ量になる。
+    async displayOfMean(name, count) {
       const length = await devTools.evaluate(`(async () => {
         const { width, height, channels, slots } = window.__ssdSums[${JSON.stringify(name)}];
-        const weights = ${JSON.stringify(weights)};
         const rgba = new Float32Array(width * height * 4);
         for (let p = 0; p < width * height; p++) {
           for (let k = 0; k < 3; k++) {
             let v = 0;
-            for (const [slot, w] of weights.entries()) if (slots[slot] !== undefined) v += w * slots[slot][p * channels + k];
-            rgba[p * 4 + k] = v;
+            for (const slot of slots) if (slot !== undefined) v += slot[p * channels + k];
+            rgba[p * 4 + k] = v / ${count};
           }
           rgba[p * 4 + 3] = 1;
         }
@@ -262,63 +271,69 @@ export async function withLab(work) {
 // ---- 基準 ----
 
 // 基準の組 name の置き場と、その中の撮影 entry のファイル suffix。撮影ごとに、近傍の半径(radius.f32)、法線と
-// 深度の表示(normal.png・depth.png)、HDR と拡散照度の偶数番目と奇数番目のパスの和(hdr-even.f32 など。続きを
-// 足すときの正本)、全パス・偶数番目・奇数番目の HDR の平均の表示(display.f32・display-even.f32・display-odd.f32。
-// 線形 sRGB)、作った段とパス数と所要秒の記録(json)を置く。
+// 深度の表示(normal.png・depth.png)、HDR・補正・拡散照度の偶数番目と奇数番目のパスの和(hdr-even.f32 など。続きを
+// 足すときの正本)、全パスの HDR の平均の表示(display.f32。線形 sRGB)、作った段とパス数と露出係数と所要秒の
+// 記録(json)を置く。
 export const referenceDirOf = (name) => path.join(shotsDir, 'ssd-reference', name);
 export const referenceFileOf = (name, entry, suffix) => path.join(referenceDirOf(name), `${entry.key}.${suffix}`);
 
+// 浮動小数の並びを、単精度か半精度のままファイルへ書き、単精度で読む。
 export const writeFloats = (file, values) => writeFileSync(file, Buffer.from(values.buffer, values.byteOffset, values.byteLength));
 export const readFloats = (file) => {
   const bytes = readFileSync(file);
   return new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
 };
+export const writeHalfFloats = (file, values) => writeFloats(file, Float16Array.from(values));
+export const readHalfFloats = (file) => {
+  const bytes = readFileSync(file);
+  return Float32Array.from(new Float16Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length)));
+};
 
-// 基準の組 name の撮影 entry の記録 { slices, steps, passes, seconds }。まだ作っていなければ null。
+// 基準の組 name の撮影 entry の記録 { slices, steps, passes, exposure, seconds }。まだ作っていなければ null。
 export function referenceMetaOf(name, entry) {
   const file = referenceFileOf(name, entry, 'json');
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null;
 }
 
 // referenceMetaOf の、まだ作っていなければ投げる版。
-function builtMetaOf(name, entry) {
+export function builtMetaOf(name, entry) {
   const meta = referenceMetaOf(name, entry);
   if (meta === null) throw new Error(`reference ${name} has no ${entry.key}`);
   return meta;
 }
 
-// 基準の組 name の撮影 entry の、kind('hdr' は HDR の rgb、'diffuse' は拡散照度の rgb)の、偶数番目と
-// 奇数番目のパスの和の組 [even, odd]。
+// 基準の組 name の撮影 entry の、kind('hdr' は HDR、'correction' は補正 ΔE、'diffuse' は拡散照度。どれも rgb)の、
+// 偶数番目と奇数番目のパスの和の組 [even, odd]。
 export const referenceSumsOf = (name, entry, kind) => ['even', 'odd']
   .map((half) => readFloats(referenceFileOf(name, entry, `${kind}-${half}.f32`)));
 
-// 基準の組 name の撮影 entry へ、記録 meta と、kind ごとの偶数番目と奇数番目のパスの和の組 sums と、HDR の平均の表示
-// displays({ all, even, odd }。odd はパスが 1 つなら null)を書く。
-export function writeReferencePasses(name, entry, meta, sums, displays) {
+// 基準の組 name の撮影 entry へ、記録 meta と、kind ごとの偶数番目と奇数番目のパスの和の組 sums と、全パスの HDR の
+// 平均の表示 display を書く。
+export function writeReferencePasses(name, entry, meta, sums, display) {
   for (const [kind, halves] of Object.entries(sums)) {
     for (const [i, half] of ['even', 'odd'].entries()) writeFloats(referenceFileOf(name, entry, `${kind}-${half}.f32`), halves[i]);
   }
-  writeFloats(referenceFileOf(name, entry, 'display.f32'), displays.all);
-  writeFloats(referenceFileOf(name, entry, 'display-even.f32'), displays.even);
-  if (displays.odd !== null) writeFloats(referenceFileOf(name, entry, 'display-odd.f32'), displays.odd);
+  writeFloats(referenceFileOf(name, entry, 'display.f32'), display);
   writeFileSync(referenceFileOf(name, entry, 'json'), JSON.stringify(meta, null, 1));
 }
 
-// 基準の組 name の撮影 entries を読む。entry.key ごとの { meta, display, diffuse, radius, normal, depth }。display は
-// 全パスの HDR の平均の表示、diffuse は全パスの拡散照度の平均。
+// 基準の組 name の撮影 entries を読む。entry.key ごとの { meta, exposedCorrection, display, diffuse, radius, normal,
+// depth }。exposedCorrection は全パスの補正の平均の q(exposedCorrectionOf)、display は全パスの HDR の平均の表示、
+// diffuse は全パスの拡散照度の平均(解析値と照らす撮影だけ。ほかは null)。
 export function loadReference(name, entries) {
   return Object.fromEntries(entries.map((entry) => {
     const meta = builtMetaOf(name, entry);
     const normal = decodePng(readFileSync(referenceFileOf(name, entry, 'normal.png')));
     const depth = decodePng(readFileSync(referenceFileOf(name, entry, 'depth.png')));
-    const diffuseMean = () => {
-      const [even, odd] = referenceSumsOf(name, entry, 'diffuse');
+    const meanOf = (kind) => {
+      const [even, odd] = referenceSumsOf(name, entry, kind);
       return even.map((v, i) => (v + odd[i]) / meta.passes);
     };
     return [entry.key, {
       meta,
+      exposedCorrection: exposedCorrectionOf(meanOf('correction'), meta.exposure),
       display: readFloats(referenceFileOf(name, entry, 'display.f32')),
-      diffuse: entry.set === 'correctness' ? diffuseMean() : null,
+      diffuse: entry.set === 'correctness' ? meanOf('diffuse') : null,
       radius: readFloats(referenceFileOf(name, entry, 'radius.f32')),
       normal: linearOfSrgbCodes(normal.data, normal.channels, WIDTH * HEIGHT),
       depth: Uint8Array.from({ length: WIDTH * HEIGHT }, (_, p) => depth.data[p * depth.channels]),
@@ -326,18 +341,8 @@ export function loadReference(name, entries) {
   }));
 }
 
-// 基準の組 name の撮影 entry の、偶数番目のパスの HDR の平均の表示 even と、奇数番目の odd。パスが 2 つ以上要る。
-export function loadHalves(name, entry) {
-  const { passes } = builtMetaOf(name, entry);
-  if (passes < 2) throw new Error(`reference ${name} ${entry.key} has ${passes} pass; halves need 2`);
-  return {
-    even: readFloats(referenceFileOf(name, entry, 'display-even.f32')),
-    odd: readFloats(referenceFileOf(name, entry, 'display-odd.f32')),
-  };
-}
-
-// 近傍の半径 radius [画素] から、測る画素の印(背景と、1/4 の走査でもフェードの外にある面)。
-export const maskOf = (radius) => Uint8Array.from(radius, (r) => (r === 0 || r > FADE_OUTER_PX ? 1 : 0));
+// 近傍の半径 radius [画素] から、測る画素の印(1/4 の走査でもフェードの外にある面)。
+export const maskOf = (radius) => Uint8Array.from(radius, (r) => (r > FADE_OUTER_PX ? 1 : 0));
 
 // ---- 解析値のある窓 ----
 
