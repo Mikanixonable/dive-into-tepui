@@ -1,4 +1,5 @@
-// 太陽電池とラジエーターのパネル姿勢を、取付ヒンジを基準に計算する。
+// 展開部品(太陽電池・ラジエーター)の支持鎖と、鎖へ取り付くパネル姿勢を返す。
+// 太陽電池は中央の蛇腹支持鎖へ2列×4段のパネルを固定し、ラジエーターは1列の鎖を持つ。
 import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_FOLD_COUNT,
@@ -6,12 +7,15 @@ import {
   RADIATOR_SEGMENT_LENGTH,
   SOLAR_PANEL_COUNT,
   SOLAR_PANEL_COLUMNS,
-  SOLAR_PANEL_SPAN,
+  SOLAR_PANEL_CENTERLINE_CLEARANCE,
+  SOLAR_PANEL_FACE_SCALE,
+  SOLAR_PANEL_PANEL_PITCH,
+  SOLAR_PANEL_STAGE_SCALES,
   SOLAR_PANEL_THICKNESS,
   SOLAR_PANEL_LENGTH,
 } from './player-shape';
-import { qFromAxisAngle, qMul, type Quat } from '../math/quat';
-import { v3, type Vec3 } from '../math/vec3';
+import { qFromAxisAngle, qMul, qRotate, type Quat } from '../math/quat';
+import { add, v3, type Vec3 } from '../math/vec3';
 
 export type DeployablePanelKind = 'solar_panel' | 'radiator';
 
@@ -75,20 +79,25 @@ export function deployablePanelPoses(
   return chainPoses(shape, faceZ, deployed);
 }
 
-// 太陽電池は2列それぞれに3枚の剛体鎖を持つ。列ごとに同じ展開姿勢を取り、全体を2×3へ並べる。
+// 太陽電池は中央支持鎖の各段に左右一対の板を固定し、内縁の隙間を一定に保つ。
 function solarPanelPoses(shape: ChainShape, faceZ: number, deployed: number): readonly PanelPose[] {
   const rows = shape.count / SOLAR_PANEL_COLUMNS;
-  const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;
   const columnShape = { ...shape, count: rows };
+  const spinePoses = chainPoses(columnShape, faceZ, deployed);
   const result: PanelPose[] = [];
-  // 各列を全体幅の中心から左右へ配置する。
+  // 各段の左右パネルを中央桁の同じヒンジへ固定し、内縁の隙間を一定にする。
   for (let column = 0; column < SOLAR_PANEL_COLUMNS; column++) {
-    const x = (column - (SOLAR_PANEL_COLUMNS - 1) / 2) * tileSpan;
-    for (const pose of chainPoses(columnShape, faceZ, deployed)) {
+    const side = column === 0 ? -1 : 1;
+    for (let row = 0; row < rows; row++) {
+      const pose = spinePoses[row]!;
+      const panelWidth = SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * SOLAR_PANEL_STAGE_SCALES[row]!;
+      const centerlineOffset = side * (panelWidth / 2 + SOLAR_PANEL_CENTERLINE_CLEARANCE);
+      const offset = qRotate(pose.rotation, v3(centerlineOffset, 0, 0));
+      const origin = add(pose.origin, offset);
       result.push({
-        origin: v3(pose.origin.x + x, pose.origin.y, pose.origin.z),
+        origin,
         rotation: pose.rotation,
-        center: v3(pose.center.x + x, pose.center.y, pose.center.z),
+        center: add(origin, qRotate(pose.rotation, v3(0, 0, shape.length / 2))),
         normal: pose.normal,
       });
     }
