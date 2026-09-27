@@ -4,7 +4,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { importTsDataModule } from '../compile-source.mjs';
 import {
   CASING_DISPLAY_COLOR, CASING_DISPLAY_METALNESS, CASING_DISPLAY_ROUGHNESS,
-  F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL, std,
+  F0_ALUMINIUM, F0_BURNT_STEEL, F0_STEEL, std,
 } from './materials.mjs';
 
 const { MAG_THICKNESS, MAG_WIDTH, MAG_DEPTH, MAG_PLANAR_SCALE } = await importTsDataModule('src/physics/player-shape.ts');
@@ -269,7 +269,7 @@ const casingProfile = [
 export function buildCasingMesh() {
   const geo = new THREE.LatheGeometry(casingProfile, 8);
   const mat = new THREE.MeshStandardMaterial({
-    color: F0_BRASS,
+    color: CASING_DISPLAY_COLOR,
     metalness: 1,
     roughness: 0.28,
   });
