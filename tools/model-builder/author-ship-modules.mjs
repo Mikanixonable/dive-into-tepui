@@ -7,10 +7,34 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as THREE from 'three';
 import { loadSourceModules } from '../compile-source.mjs';
+import { CASING_DISPLAY_COLOR, CASING_DISPLAY_METALNESS, CASING_DISPLAY_ROUGHNESS } from './materials.mjs';
+import { buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MAC_BLENDER = '/Applications/Blender.app/Contents/MacOS/Blender';
+
+// 実際に出力するマガジンと、表示時の長さ補正をかけた薬莢の外形を Blender へ渡す。
+function ammunitionDimensions() {
+  const magazine = buildMagazineMesh();
+  magazine.updateMatrixWorld(true);
+  const magazineSize = new THREE.Box3().setFromObject(magazine).getSize(new THREE.Vector3());
+
+  const casing = buildCasingMesh();
+  casing.scale.y = 2;
+  casing.updateMatrixWorld(true);
+  const casingSize = new THREE.Box3().setFromObject(casing).getSize(new THREE.Vector3());
+  const casingColor = new THREE.Color(CASING_DISPLAY_COLOR);
+  return {
+    magazineCrossSection: [magazineSize.y, magazineSize.z],
+    casingDiameter: Math.max(casingSize.x, casingSize.z),
+    casingLength: casingSize.y,
+    casingColorLinear: casingColor.toArray().slice(0, 3),
+    casingMetalness: CASING_DISPLAY_METALNESS,
+    casingRoughness: CASING_DISPLAY_ROUGHNESS,
+  };
+}
 
 // 使う Blender 実行ファイル。見つからなければ投げる。
 function blenderPath() {
@@ -36,11 +60,13 @@ function buildManifest() {
         muzzles: definition.muzzles.map(muzzle => [muzzle.x, muzzle.y, muzzle.z]),
         feedPort: [definition.feedPort.x, definition.feedPort.y, definition.feedPort.z],
         ejectionPort: [definition.ejectionPort.x, definition.ejectionPort.y, definition.ejectionPort.z],
+        linkExitPort: [definition.linkExitPort.x, definition.linkExitPort.y, definition.linkExitPort.z],
         thrust: definition.abilities.thrust ?? null,
       };
     }
     return {
       modules,
+      ammunition: ammunitionDimensions(),
       cockpitHull: {
         profile: source.shipModuleCatalog.COCKPIT_HULL_PROFILE,
         sectionIndentFraction: source.shipModuleCatalog.COCKPIT_SECTION_INDENT_FRACTION,
