@@ -2,7 +2,10 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { importTsDataModule } from '../compile-source.mjs';
-import { F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL, std } from './materials.mjs';
+import {
+  CASING_DISPLAY_COLOR, CASING_DISPLAY_METALNESS, CASING_DISPLAY_ROUGHNESS,
+  F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL, std,
+} from './materials.mjs';
 
 const { MAG_THICKNESS, MAG_WIDTH, MAG_DEPTH, MAG_PLANAR_SCALE } = await importTsDataModule('src/physics/player-shape.ts');
 
@@ -12,7 +15,9 @@ const MAG_ROWS = 5;
 const MAG_COLS = 8;
 
 const magPlateMat  = std(F0_STEEL, { metalness: 1, roughness: 0.42 });
-const magRoundMat  = std(F0_BRASS, { metalness: 1, roughness: 0.36 }); // 弾頭と薬莢に共通する真鍮色
+const magRoundMat  = std(CASING_DISPLAY_COLOR, {
+  metalness: CASING_DISPLAY_METALNESS, roughness: CASING_DISPLAY_ROUGHNESS,
+}); // 弾頭と薬莢部は排出薬莢と同じ材質
 const magShellMat  = std(0x464e56, { roughness: 0.68 });
 const magPanelMat  = std(0x30383f, { roughness: 0.72 });
 const magWindowMat = std(0x11171c, { roughness: 0.88 });
