@@ -18,7 +18,13 @@ import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view
 import { WeaponDrives, type WeaponRecoilInput } from '../../src/render/dynamic/ship/weapon-drives';
 import type { ShipModuleRenderInput } from '../../src/render/dynamic/ship/ship-render-contract';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
+import magazineData from '../../src/assets/models/magazine.json';
+import casingData from '../../src/assets/models/casing.json';
+import { memoParseIndependent } from '../../src/render/dynamic/baked-model';
 import { labCamera, shipObject, type CaseBuilder, type LabCase } from './lab-case';
+
+const parseMagazine = memoParseIndependent<THREE.Group>(magazineData);
+const parseCasing = memoParseIndependent<THREE.Mesh>(casingData);
 
 // カタログの定義 definitionId から、識別子 id のモジュールを1つ作る。
 function module(definitionId: string, id: string) {
@@ -391,6 +397,74 @@ function weapon(): LabCase {
   };
 }
 
+// 実際のマガジンモデルを入口・空枠出口へ当て、通過断面の適合を見る。
+function weaponPortFit(): LabCase {
+  const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
+  const modules: readonly ShipModuleRenderInput[] = [{
+    id: 'weapon', modelId: definition.modelId, kind: 'weapon', hp: definition.maxHp, maxHp: definition.maxHp,
+    transform: { position: v3(), rotation: Q_IDENTITY }, deployed: null, burning: null,
+  }];
+  const view = new ModularShipView(buildShipModuleModel, undefined, false);
+  view.sync(modules);
+  view.object.position.set(0, 0, -20);
+  const assembly = new THREE.Group();
+  assembly.position.set(0.205, 1.95, 0.35);
+  assembly.add(view.object);
+
+  const incoming = parseMagazine();
+  const emptyFrame = parseMagazine();
+  const localBounds = new THREE.Box3().setFromObject(incoming);
+  const localCenter = localBounds.getCenter(new THREE.Vector3());
+  const portGaugeGap = 0.25;
+  const incomingMouthX = definition.feedPort.x + 0.45 + portGaugeGap;
+  const emptyFrameExitX = definition.linkExitPort.x - portGaugeGap;
+  incoming.position.set(
+    incomingMouthX - localBounds.min.x,
+    definition.feedPort.y - localCenter.y,
+    definition.feedPort.z - localCenter.z - 20,
+  );
+  emptyFrame.position.set(
+    emptyFrameExitX - localBounds.max.x,
+    definition.linkExitPort.y - localCenter.y,
+    definition.linkExitPort.z - localCenter.z - 20,
+  );
+  emptyFrame.traverse((object) => {
+    if (object.userData.role === 'round') object.visible = false;
+  });
+  assembly.add(incoming, emptyFrame);
+
+  const casingGauge = parseCasing();
+  casingGauge.geometry = casingGauge.geometry.clone();
+  casingGauge.geometry.scale(1, 2, 1);
+  casingGauge.rotation.x = Math.PI / 2;
+  casingGauge.position.set(-0.62, -0.91, -20 + 0.72);
+  assembly.add(casingGauge);
+
+  return {
+    objects: [assembly],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, -19.5),
+    dispose: () => view.dispose(),
+    shots: {
+      // 実包入りマガジンを入口へ当て、窓と給弾口の断面を同時に見る。
+      'weapon-port-fit-feed': {
+        view: { cameraAzimuthDeg: 58, cameraElevationDeg: 18, cameraDistanceLog: -0.50,
+          sunAzimuthDeg: 55, sunElevationDeg: 42 },
+      },
+      // 弾を隠した空マガジン枠を出口へ当て、開口とローラーを見る。
+      'weapon-port-fit-link-exit': {
+        view: { cameraAzimuthDeg: -58, cameraElevationDeg: 16, cameraDistanceLog: -0.50,
+          sunAzimuthDeg: -55, sunElevationDeg: 40 },
+      },
+      // ゲーム中の薬莢をサイズゲージとして排莢口へ合わせる。
+      'weapon-port-fit-ejection': {
+        view: { cameraAzimuthDeg: -40, cameraElevationDeg: -30, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: -50, sunElevationDeg: -25 },
+      },
+    },
+  };
+}
+
 // 各撮影時刻まで同じ連射履歴を再生する。
 function weaponMotion(
   view: ModularShipView, modules: readonly ShipModuleRenderInput[], rate: number,
@@ -512,6 +586,7 @@ export const SHIP_CASES = {
   'modular-ship-engine': engine,
   'modular-ship-rcs-tank': rcsTank,
   'modular-ship-weapon': weapon,
+  'modular-ship-weapon-port-fit': weaponPortFit,
   'modular-ship-deploying': deploying,
   'modular-ship-deployables': deployables,
   'modular-ship-deployables-stowed': deployablesStowed,
