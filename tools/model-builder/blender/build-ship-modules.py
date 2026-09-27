@@ -2362,63 +2362,144 @@ def build_hull_junction(mats, half_len, pedestal=True):
         (0.50, 0.30), (0.46, 0.36), (0.46, half_len - 0.06), (0.0, half_len - 0.06),
     ], segments=4, closed=True, sharp_angle_deg=0.0), mats.hull_dark)
 
-def build_solar_mount(mats, half_len, thickness, span):
-    """座板の上へ渡した平らなルートフレームから、翼列の根元ヒンジへ立ち上がる2本のヒンジ
-    アームと、片側だけの駆動ラッチ箱。翼は角度を追従しない構造で、根元ヒンジ
-    (panel-hinge)はモジュール軸上の取付面にある。ヒンジ軸は翼幅方向(X 軸)に走り、
-    アームはその軸線の両端へ届く。"""
-    hy, hz = -thickness / 2, half_len  # 根元ヒンジ軸(おもて +Y の反対側の面)
-    frame_z = 0.13                     # ルートフレームのレール中心の高さ [m]
-    # 翼幅方向へ長い外周レールと、その内側へ並ぶ中桟2本で格子にした平らな枠。
-    # 座板からの脚は中桟の脇へ届く
-    rail_x = span / 2 - 0.06
-    add_mesh_obj("root_frame", make_boxes(
-        [(span - 0.12, 0.07, 0.07, (0.0, sy * 0.465, frame_z), (0.0, 0.0, 0.0)) for sy in (-1.0, 1.0)]
-        + [(0.07, 0.86, 0.07, (sx * rail_x, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)]
-        + [(0.06, 0.86, 0.06, (sx * span / 6, 0.0, frame_z), (0.0, 0.0, 0.0)) for sx in (-1.0, 1.0)],
-        bevel=0.008), mats.truss)
-    # 枠の -Y 側のレールへ張り出したホールドダウン解除箱。畳んだ翼列を押さえる留め具の解除部
-    add_mesh_obj("holddown_release_box", make_box(
-        0.40, 0.22, 0.16, center=(-0.35, -0.58, frame_z)), mats.hull_dark)
-    for sx in (-1.0, 1.0):
-        end_x = sx * (span / 2 - 0.12)
-        # フレームの端から根元ヒンジの軸受へ立ち上がるヒンジアームと、斜めに支える支柱
-        add_mesh_obj(f"hinge_boom:{sx:+.0f}", make_strut(
-            Vector((sx * (span / 2 - 0.16), -0.05, 0.17)), Vector((end_x, hy, hz - 0.02)), 0.075), mats.truss)
-        add_mesh_obj(f"hinge_boom_brace:{sx:+.0f}", make_strut(
-            Vector((sx * (span / 2 - 0.52), 0.36, 0.15)), Vector((sx * (span / 2 - 0.16), -0.03, 0.42)), 0.04), mats.truss)
-        add_mesh_obj(f"hinge_bearing:{sx:+.0f}",
-            make_box(0.16, 0.16, 0.12, center=(end_x, hy, hz - 0.02)), mats.hull_dark)
-        # ヒンジ軸と同軸のばねドラム。収納ばねを巻き取り、展開トルクを掛ける
-        bm_drum = make_cylinder(0.09, 0.09, 0.12, z_center=0.0, segments=16)
-        transform_bm(bm_drum, Matrix.Translation(Vector((sx * (span / 2 + 0.08), hy, hz)))
+def build_solar_mount(mats, half_len, thickness, span, columns):
+    """曲面座の脚で二本のトラスレールを支え、中央の段付き回転筒から根元ヒンジへ力を渡す。"""
+    hinge_y = -thickness / 2
+    root_z = half_len
+    upper_rail_y, upper_rail_z = hinge_y - 0.09, root_z - 0.12
+    lower_rail_y, lower_rail_z = hinge_y - 0.38, root_z - 0.44
+    drive_y, drive_z = hinge_y - 0.24, root_z - 0.035
+    column_pitch = span / columns
+
+    mount = bpy.data.objects.new("solar_mount_iss_a", None)
+    bpy.context.collection.objects.link(mount)
+    mount["mountPattern"] = "iss-a"
+
+    def add_group(name, role):
+        group = bpy.data.objects.new(name, None)
+        bpy.context.collection.objects.link(group)
+        group["mountRole"] = role
+        return parent_to(group, mount)
+
+    def add_part(parent, name, geometry, material):
+        return parent_to(add_mesh_obj(name, geometry, material), parent)
+
+    def cylinder_x(radius, length, x, y, z, segments=24):
+        geometry = make_cylinder(radius, radius, length, z_center=0.0, segments=segments)
+        return transform_bm(geometry, Matrix.Translation(Vector((x, y, z)))
             @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
-        add_mesh_obj(f"spring_drum:{sx:+.0f}", bm_drum, mats.clamp)
-    # ばねドラムから根元ヒンジの胴へ掛け渡す引張ケーブル
-    add_mesh_obj("hinge_tension_cable", make_pipe([
-        Vector((-span / 2 - 0.02, hy, hz + 0.03)), Vector((-0.45, hy - 0.01, hz + 0.06)),
-        Vector((0.45, hy - 0.01, hz + 0.06)), Vector((span / 2 + 0.02, hy, hz + 0.03)),
-    ], radius=0.012, segments=6), mats.hull_dark)
-    # +X 側だけの駆動ラッチ箱。ヒンジアームを抱く位置へ掛け、畳んだ翼端を掴む爪と、
-    # 展開を始める蹴り出しモーター(フレームのベイへ横置きする胴)を納める
-    add_mesh_obj("drive_latch_box", make_box(0.28, 0.22, 0.30, center=(1.00, -0.02, 0.29)), mats.hull_dark)
-    add_mesh_obj("drive_latch_claw", make_box(
-        0.10, 0.07, 0.22, center=(0.88, hy - 0.06, half_len - 0.03), rot_euler=(0.0, 0.0, math.radians(18))), mats.clamp)
-    bm_latch_motor = make_cylinder(0.06, 0.06, 0.66, z_center=0.0, segments=14)
-    transform_bm(bm_latch_motor, Matrix.Translation(Vector((0.65, -0.02, frame_z - 0.02)))
+
+    def torus_x(major_radius, minor_radius, x, y, z):
+        geometry = make_torus(major_radius, minor_radius, z_center=0.0, major_seg=28, minor_seg=8)
+        return transform_bm(geometry, Matrix.Translation(Vector((x, y, z)))
+            @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
+
+    drive = add_group("solar_mount_rotary_drive", "stepped-transverse-drive")
+    saddle = add_group("solar_mount_saddle", "raised-box-saddle")
+    rails = add_group("solar_mount_twin_rails", "parallel-spanwise-rails")
+    truss = add_group("solar_mount_v_truss", "open-v-bracing")
+    clamps = add_group("solar_mount_root_clamps", "hinge-root-clamps")
+    actuation = add_group("solar_mount_actuation", "hold-down-and-feed")
+
+    # パネル幅方向(X)の段付き回転筒。端面の暗い軸穴を金属の襟環が囲む。
+    add_part(drive, "solar_mount_drive_barrel", cylinder_x(0.17, 0.50, 0.0, drive_y, drive_z), mats.hull)
+    for side in (-1.0, 1.0):
+        x = side * 0.27
+        add_part(drive, f"solar_mount_drive_collar:{side:+.0f}",
+            cylinder_x(0.205, 0.075, x, drive_y, drive_z), mats.clamp)
+        add_part(drive, f"solar_mount_drive_recess:{side:+.0f}",
+            cylinder_x(0.105, 0.016, side * 0.312, drive_y, drive_z), mats.recessed)
+        add_part(drive, f"solar_mount_drive_end_rim:{side:+.0f}",
+            torus_x(0.125, 0.022, side * 0.322, drive_y, drive_z), mats.pipe)
+    drive_bolts = [
+        (side * 0.325, drive_y + 0.155 * math.cos(angle), drive_z + 0.155 * math.sin(angle))
+        for side in (-1.0, 1.0) for angle in (i * math.pi / 4 for i in range(8))
+    ]
+    add_part(drive, "solar_mount_drive_bolts", make_spheres(drive_bolts, 0.018, u_seg=8, v_seg=6), mats.clamp)
+
+    # 中央の受けはU字の箱形サドルとし、筒の下に暗い隙間を残す。
+    add_part(saddle, "solar_mount_saddle_plates", make_boxes([
+        (0.84, 0.09, 0.08, (0.0, drive_y - 0.12, root_z - 0.33), (0.0, 0.0, 0.0)),
+        (0.10, 0.25, 0.22, (-0.32, drive_y - 0.015, root_z - 0.18), (0.0, 0.0, 0.0)),
+        (0.10, 0.25, 0.22, (0.32, drive_y - 0.015, root_z - 0.18), (0.0, 0.0, 0.0)),
+        (0.70, 0.08, 0.06, (0.0, drive_y - 0.12, root_z - 0.20), (0.0, 0.0, 0.0)),
+    ], bevel=0.012), mats.hull)
+    add_part(saddle, "solar_mount_saddle_bolts", make_spheres([
+        (x, drive_y - 0.17, root_z - 0.34) for x in (-0.31, -0.20, 0.20, 0.31)
+    ], 0.022, u_seg=8, v_seg=6), mats.clamp)
+
+    # 二本の平行レールを根元と後方に離して渡し、クランプ位置に補強ブロックを置く。
+    add_part(rails, "solar_mount_rails", make_boxes([
+        (span - 0.16, 0.075, 0.085, (0.0, upper_rail_y, upper_rail_z), (0.0, 0.0, 0.0)),
+        (span - 0.16, 0.075, 0.085, (0.0, lower_rail_y, lower_rail_z), (0.0, 0.0, 0.0)),
+    ], bevel=0.010), mats.pipe)
+    rail_nodes = []
+    for column in range(columns):
+        x = (column - (columns - 1) / 2) * column_pitch
+        rail_nodes.extend([
+            (0.22, 0.10, 0.12, (x, upper_rail_y, upper_rail_z), (0.0, 0.0, 0.0)),
+            (0.18, 0.10, 0.11, (x, lower_rail_y, lower_rail_z), (0.0, 0.0, 0.0)),
+        ])
+    add_part(rails, "solar_mount_rail_nodes", make_boxes(rail_nodes, bevel=0.010), mats.clamp)
+
+    # 対称な二本の斜材が中央サドルからレール端へ開く。各根元にも短い三角補強を置く。
+    for side in (-1.0, 1.0):
+        add_part(truss, f"solar_mount_v_brace:{side:+.0f}", make_strut(
+            Vector((side * 0.34, drive_y - 0.04, root_z - 0.20)),
+            Vector((side * (span / 2 - 0.18), lower_rail_y, lower_rail_z)), 0.052), mats.truss)
+        x = side * column_pitch / 2
+        add_part(truss, f"solar_mount_root_gusset:{side:+.0f}", make_strut(
+            Vector((x, upper_rail_y, upper_rail_z)),
+            Vector((x + side * 0.30, lower_rail_y, lower_rail_z)), 0.043), mats.truss)
+        add_part(truss, f"solar_mount_saddle_lift:{side:+.0f}", make_strut(
+            Vector((side * 0.32, drive_y - 0.04, root_z - 0.22)),
+            Vector((side * 0.32, drive_y - 0.12, root_z - 0.36)), 0.045), mats.truss)
+    add_part(truss, "solar_mount_truss_nodes", make_boxes([
+        (0.15, 0.09, 0.12, (side * (span / 2 - 0.18), lower_rail_y, lower_rail_z), (0.0, 0.0, 0.0))
+        for side in (-1.0, 1.0)
+    ], bevel=0.012), mats.clamp)
+
+    # 各根元ヒンジを長いレールへ重ね板で固定し、駆動筒から短いリンクをつなぐ。
+    clamp_parts = []
+    clamp_bolts = []
+    for column in range(columns):
+        x = (column - (columns - 1) / 2) * column_pitch
+        clamp_parts.extend([
+            (0.30, 0.08, 0.15, (x, hinge_y - 0.055, root_z - 0.045), (0.0, 0.0, 0.0)),
+            (0.12, 0.20, 0.13, (x, hinge_y - 0.13, root_z - 0.12), (0.0, 0.0, 0.0)),
+        ])
+        clamp_bolts.extend((x + offset, hinge_y - 0.012, root_z - 0.055)
+            for offset in (-0.095, 0.095))
+        side = -1.0 if x < 0.0 else 1.0
+        add_part(clamps, f"solar_mount_drive_link:{column}", make_strut(
+            Vector((side * 0.31, drive_y, drive_z)),
+            Vector((x, upper_rail_y - 0.035, upper_rail_z)), 0.032), mats.clamp)
+    add_part(clamps, "solar_mount_hinge_clamps", make_boxes(clamp_parts, bevel=0.012), mats.hull)
+    add_part(clamps, "solar_mount_clamp_bolts", make_spheres(clamp_bolts, 0.022, u_seg=8, v_seg=6), mats.pipe)
+
+    # 非対称な保持解除箱・駆動箱と、座板へ降りる電力/信号線はレールの外側へ残す。
+    frame_z = lower_rail_z
+    add_part(actuation, "holddown_release_box", make_box(
+        0.36, 0.20, 0.15, center=(-span / 2 + 0.30, lower_rail_y - 0.10, frame_z)), mats.hull_dark)
+    add_part(actuation, "drive_latch_box", make_box(
+        0.30, 0.22, 0.22, center=(span / 2 - 0.29, lower_rail_y - 0.10, frame_z + 0.04)), mats.hull_dark)
+    add_part(actuation, "drive_latch_claw", make_box(
+        0.10, 0.07, 0.20, center=(span / 4, hinge_y - 0.06, root_z - 0.025),
+        rot_euler=(0.0, 0.0, math.radians(18))), mats.clamp)
+    bm_latch_motor = make_cylinder(0.06, 0.06, 0.52, z_center=0.0, segments=14)
+    transform_bm(bm_latch_motor, Matrix.Translation(Vector((span / 2 - 0.63, lower_rail_y - 0.10, frame_z)))
         @ Euler((0.0, math.pi / 2, 0.0)).to_matrix().to_4x4())
-    add_mesh_obj("drive_latch_motor", bm_latch_motor, mats.pipe)
-    # フレームから座板の貫通金具へ降ろす動力・信号のケーブル束(平行な2撚り)
+    add_part(actuation, "drive_latch_motor", bm_latch_motor, mats.pipe)
+
     pad_x, pad_t = -0.85, -0.13
     top = saddle_top(pad_t)
-    add_mesh_obj("power_umbilical", make_pipes([
-        [Vector((-0.44, -0.34, 0.13)), Vector((-0.62, -0.40, -0.05)), Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.06))],
-        [Vector((-0.38, -0.38, 0.13)), Vector((-0.56, -0.44, -0.05)), Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.05))],
+    add_part(actuation, "power_umbilical", make_pipes([
+        [Vector((-0.44, lower_rail_y - 0.02, lower_rail_z)), Vector((-0.62, -0.40, -0.05)), Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.06))],
+        [Vector((-0.38, lower_rail_y - 0.04, lower_rail_z - 0.01)), Vector((-0.56, -0.44, -0.05)), Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.05))],
     ], radius=0.03, segments=10, bend_radius=0.08), mats.clamp)
-    add_mesh_obj("umbilical_fitting", make_box(0.24, 0.18, 0.07,
+    add_part(actuation, "umbilical_fitting", make_box(0.24, 0.18, 0.07,
         center=(pad_x + 0.10, top.y - 0.03, top.z + 0.02), rot_euler=(-pad_t, 0.0, 0.0)), mats.hull_dark)
-    # 金具から船体内部へ潜る貫通部。船体面より下は母船へ吸収されるのでモジュール側では切り落とす
-    add_mesh_obj("umbilical_stub", make_pipes([
+    add_part(actuation, "umbilical_stub", make_pipes([
         [Vector((pad_x + 0.06, top.y - 0.02, top.z + 0.04)), Vector((pad_x + 0.06, top.y - 0.04, -0.62))],
         [Vector((pad_x + 0.14, top.y - 0.04, top.z + 0.03)), Vector((pad_x + 0.14, top.y - 0.06, -0.62))],
     ], radius=0.028, segments=8), mats.clamp)
@@ -2441,7 +2522,7 @@ def build_solar_panel(name):
     columns = int(spec["columns"])
     panels_per_column = int(spec["count"]) // columns
     tile_span = span / columns
-    build_solar_mount(mats, half_len, thickness, span)
+    build_solar_mount(mats, half_len, thickness, span, columns)
 
     # 裏面の細い角材は基板から浮かせ、段に応じた白い筋交いと二本束の中央レールを作る
     lat_h, lat_w = 0.028, 0.024      # 角材の面からの高さ・面内の幅 [m]

@@ -199,6 +199,14 @@ function solarPanelSurface(): LabCase {
         view: { cameraAzimuthDeg: 18, cameraElevationDeg: 62, cameraDistanceLog: -0.45,
           sunAzimuthDeg: 3, sunElevationDeg: 75 },
       },
+      'solar-panel-array-mount-side': {
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 8, cameraDistanceLog: -0.35,
+          sunAzimuthDeg: 45, sunElevationDeg: 35 },
+      },
+      'solar-panel-array-mount-oblique': {
+        view: { cameraAzimuthDeg: 28, cameraElevationDeg: 26, cameraDistanceLog: -0.4,
+          sunAzimuthDeg: 45, sunElevationDeg: 35 },
+      },
     },
   };
 }
