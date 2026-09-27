@@ -160,6 +160,8 @@ function mainTank(): LabCase {
 // 太陽電池翼の表面と裏面を、同じ照明・縮尺で並べて観察する。
 function solarPanelSurface(): LabCase {
   const panels = deployablePanelPoses('solar_panel', 0, 1);
+  const panelFrameDistanceLog = Math.log10(1.5);
+  // 全展開のパネル群の重心を取り、表と裏それぞれの配置角度へ回す。
   const panelCenter = panels.reduce((sum, panel) => v3(
     sum.x + panel.center.x / panels.length,
     sum.y + panel.center.y / panels.length,
@@ -173,6 +175,7 @@ function solarPanelSurface(): LabCase {
   const backCenter = qRotate(backRotation, panelCenter);
   const frontPosition = v3(-displayCenterOffset - frontCenter.x, -frontCenter.y, -25 - frontCenter.z);
   const backPosition = v3(displayCenterOffset - backCenter.x, -backCenter.y, -25 - backCenter.z);
+  // 表と裏の2枚を、同じ縮尺で画面中央へ並べる。
   const front = new ShipModuleView({
     id: 'solar-front', modelId: 'solar-panel-standard', kind: 'solar_panel',
     hp: 100, maxHp: 100, deployed: 1, burning: null,
@@ -192,12 +195,20 @@ function solarPanelSurface(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -25),
     shots: {
       'solar-panel-array-closeup': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: 0.0,
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.45 + panelFrameDistanceLog,
           sunAzimuthDeg: 3, sunElevationDeg: 75 },
       },
       'solar-panel-array-detail': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.3,
+        view: { cameraAzimuthDeg: 18, cameraElevationDeg: 62, cameraDistanceLog: -0.45 + panelFrameDistanceLog,
           sunAzimuthDeg: 3, sunElevationDeg: 75 },
+      },
+      'solar-panel-array-mount-side': {
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 8, cameraDistanceLog: -0.35 + panelFrameDistanceLog,
+          sunAzimuthDeg: 45, sunElevationDeg: 35 },
+      },
+      'solar-panel-array-mount-oblique': {
+        view: { cameraAzimuthDeg: 28, cameraElevationDeg: 26, cameraDistanceLog: -0.4 + panelFrameDistanceLog,
+          sunAzimuthDeg: 45, sunElevationDeg: 35 },
       },
     },
   };
@@ -353,6 +364,29 @@ function weapon(): LabCase {
         view: { cameraAzimuthDeg: -65, cameraElevationDeg: 25, cameraDistanceLog: -0.32,
           sunAzimuthDeg: -30, sunElevationDeg: 45 },
       },
+      // 連射中の後座端。機関部・ばね・蛇腹・リンクがいちばん縮んだ姿を横から見る。
+      'weapon-recoil-peak': {
+        displayTime: 1.162,
+        view: { cameraAzimuthDeg: 95, cameraElevationDeg: 10, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: 70, sunElevationDeg: 35 },
+      },
+      // 結合面側から、締結フランジ環・格子台座・肘板・配管束を見上げる。
+      'weapon-joint-aft': {
+        view: { cameraAzimuthDeg: 150, cameraElevationDeg: -30, cameraDistanceLog: -0.5,
+          sunAzimuthDeg: 160, sunElevationDeg: -20 },
+      },
+      // 連射中の給弾機構を下前方から。窓越しの送り車・ドラムと、機関部へ昇る弾を見る。
+      'weapon-feed-open': {
+        displayTime: 1.1,
+        view: { cameraAzimuthDeg: 35, cameraElevationDeg: -38, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: 20, sunElevationDeg: -30 },
+      },
+      // 連射中の排莢機構を -X 側の下から。排莢車と樋を滑る薬莢を見る。
+      'weapon-ejection-open': {
+        displayTime: 1.1,
+        view: { cameraAzimuthDeg: -40, cameraElevationDeg: -30, cameraDistanceLog: -0.55,
+          sunAzimuthDeg: -50, sunElevationDeg: -25 },
+      },
     },
   };
 }
@@ -363,11 +397,14 @@ function weaponMotion(
 ): (displayTime: number) => void {
   // 毎回同じ静止姿勢から始め、指定時刻まで同じ射撃履歴を再生する。
   const anchors = view.semanticAnchors('weapon', '');
-  const rest = anchors.map(anchor => ({ anchor, position: anchor.position.clone(), rotation: anchor.quaternion.clone() }));
+  const rest = anchors.map(anchor => ({
+    anchor, position: anchor.position.clone(), rotation: anchor.quaternion.clone(), scale: anchor.scale.clone(),
+  }));
   return (displayTime) => {
     for (const pose of rest) {
       pose.anchor.position.copy(pose.position);
       pose.anchor.quaternion.copy(pose.rotation);
+      pose.anchor.scale.copy(pose.scale);
     }
     const drives = new WeaponDrives();
     const endTime = Math.max(0, displayTime);
