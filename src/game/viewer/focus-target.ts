@@ -34,3 +34,16 @@ export function focusPoint(
 ): FocusTarget {
   return { kind: 'point', frame, point: toFramePoint(frames.transformAt(frame, t, frameAnchors), pos) };
 }
+
+// ECI 位置 pos を恒星中心の慣性系へ固定したフォーカスを組む。恒星の無い星系では
+// ECI 原点の慣性系へ固定する。
+export function starInertialFocusPoint(
+  frames: Pick<ReferenceFrames, 'inertialFrame' | 'frameOf' | 'transformAt'>,
+  starId: string | null,
+  pos: Vec3,
+  t: number,
+  frameAnchors: FrameAnchorSource,
+): FocusTarget {
+  const frame = starId !== null ? frames.frameOf(starId, null) : frames.inertialFrame;
+  return focusPoint(frames, frame, pos, t, frameAnchors);
+}

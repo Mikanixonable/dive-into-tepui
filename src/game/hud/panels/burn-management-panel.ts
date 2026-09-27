@@ -25,9 +25,6 @@ export interface BurnManagementViewModel {
   }[];
 }
 
-// ブースターとデカプラーの操作は各モジュールのプロパティウィンドウから行う。
-export type BurnManagementPanelHandlers = Record<string, never>;
-
 interface BurnManagementDom {
   readonly stageCount: HTMLElement;
   readonly totalMass: HTMLElement;
@@ -72,7 +69,6 @@ function stateLabel(state: string): string {
 /** 左レールへ配置される燃焼管理パネルの DOM/controller。 */
 export class BurnManagementPanel {
   private readonly dom: BurnManagementDom;
-  private model: BurnManagementViewModel | null = null;
 
   // 表示要素を els から取り出し、燃料バーを Meter ウィジェットで組み込む。
   public constructor(private readonly els: HudEls) {
@@ -89,9 +85,7 @@ export class BurnManagementPanel {
   }
 
   /** 表示モデルを同期する。null はブースターのない機体としてパネルを隠す。 */
-  public sync(view: BurnManagementViewModel | null, _handlers: BurnManagementPanelHandlers = {}): void {
-    void _handlers;
-    this.model = view;
+  public sync(view: BurnManagementViewModel | null): void {
     const panel = this.els.get('burn-management-panel');
     panel.classList.toggle('hidden', view === null);
     if (!view) {
@@ -126,9 +120,5 @@ export class BurnManagementPanel {
       return row;
     });
     this.dom.moduleList.replaceChildren(...rows);
-  }
-
-  public get currentModel(): BurnManagementViewModel | null {
-    return this.model;
   }
 }

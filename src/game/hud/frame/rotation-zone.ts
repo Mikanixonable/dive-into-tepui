@@ -1,40 +1,75 @@
 // マップの座標系UIのうち「何の回転に合わせて回すか」を選ばせるゾーン。いまカメラがいる系の
 // 天体ぶんの公転・自転と、役割(操作対象の船/ターゲット)の公転を選択肢として並べ、
 // 選ばれた回転対象を返す。
-import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../../physics/frame';
+import {
+  FRAME_ROLES, type FrameAnchorSource, FrameRotationSource, frameRoleAnchorId, rotationSourceKey,
+} from '../../../physics/frame';
 import { SegmentedControl } from '../../../hud/widgets';
-import { frameRoleName } from './frame-labels';
+import { rotationFollowChoiceLabel, rotationSourceChoiceLabel } from './frame-labels';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { rotationFollowKey, type CameraRotationFollow } from '../../viewer/focus-camera-selection';
 import type { CelestialBody } from '../../../physics/celestial-body';
+
+// 値を安定した文字列キーへ写して扱う SegmentedControl。SegmentedControl は値を参照同一性で
+// 比べるので、組み直すたびに新しくなるオブジェクトをそのまま値にすると選択照合が外れる。
+// 選択肢の先頭の項は常に「解除」(キー ''、値 null)。
+class KeyedSegmentedControl<V> {
+  public readonly element: HTMLElement;
+  private readonly values = new Map<string, V | null>([['', null]]);
+  private readonly control: SegmentedControl<string>;
+
+  // keyOf は値から安定キー(null では '')を引く。onSelect にはキーから復元した値を渡す。
+  public constructor(
+    title: string,
+    private readonly keyOf: (value: V | null) => string,
+    onSelect: (value: V | null) => void,
+  ) {
+    this.control = new SegmentedControl<string>(
+      title, [['', '解除']], (key) => onSelect(this.values.get(key) ?? null),
+    );
+    this.element = this.control.element;
+  }
+
+  // 選択肢を「解除 + choices」へ組み直す。choices は [値, ラベル] の並びでその順に並ぶ。
+  public setChoices(choices: readonly (readonly [V, string])[]): void {
+    this.values.clear();
+    this.values.set('', null);
+    const items: (readonly [string, string])[] = [['', '解除']];
+    for (const [value, label] of choices) {
+      const key = this.keyOf(value);
+      this.values.set(key, value);
+      items.push([key, label]);
+    }
+    this.control.setItems(items);
+  }
+
+  // 選択中の表示を合わせる。
+  public setSelected(value: V | null): void {
+    this.control.setSelected(this.keyOf(value));
+  }
+}
 
 export class RotationZone {
   public readonly element: HTMLElement;
   // null は「解除」= 回転させない(慣性系)。
   public onSelect: ((rotatingWith: FrameRotationSource | null) => void) | null = null;
 
-  // 正規化キー → 回転対象。SegmentedControl は値を参照同一性で比べるので、組み直すたびに
-  // 新しくなるオブジェクトではなく安定した文字列を値に持たせる。
-  private readonly sources = new Map<string, FrameRotationSource | null>([['', null]]);
-  private readonly control: SegmentedControl<string>;
+  private readonly control: KeyedSegmentedControl<FrameRotationSource>;
 
-  // title は選択肢見出し。
-  public constructor(title: string, private readonly celestialBodies: CelestialBodies) {
-    this.control = new SegmentedControl<string>(
-      title, [['', '解除']], (key) => this.onSelect?.(this.sources.get(key) ?? null),
+  // title は選択肢見出し。frameAnchors は役割トークンが周回軌道にあるかの判定に使う。
+  public constructor(
+    title: string,
+    private readonly celestialBodies: CelestialBodies,
+    private readonly frameAnchors: Pick<FrameAnchorSource, 'attractorOf'>,
+  ) {
+    this.control = new KeyedSegmentedControl<FrameRotationSource>(
+      title, rotationSourceKey, (source) => this.onSelect?.(source),
     );
     this.element = this.control.element;
   }
 
-  // 選択肢を「解除・各天体の公転・各天体の自転・validRoles の役割の公転」へ組み直す。
-  // validRoles には、周回軌道にあって公転を固定できる役割だけを渡す。
-  public setNearby(
-    members: readonly string[], displayTime: number, validRoles: readonly FrameRole[] = [],
-  ): void {
-    this.sources.clear();
-    this.sources.set('', null);
-    const items: (readonly [string, string])[] = [['', '解除']];
-
+  // 選択肢を「解除・各天体の公転・各天体の自転・周回軌道にある役割の公転」へ組み直す。
+  public setNearby(members: readonly string[], displayTime: number): void {
     // 主天体を持つ天体だけが公転回転系を持つ(恒星と、恒星の無い星系の惑星はここで外れる)。
     const revolvable: (readonly [string, CelestialBody, CelestialBody])[] = [];
     for (const id of members) {
@@ -43,32 +78,30 @@ export class RotationZone {
       if (motion === null || primary === null) continue;
       revolvable.push([id, motion, primary]);
     }
-    for (const [id, , primary] of revolvable) {
+
+    const choices: (readonly [FrameRotationSource, string])[] = [];
+    for (const [id] of revolvable) {
       const source: FrameRotationSource = { kind: 'revolution', id };
-      const key = rotationSourceKey(source);
-      this.sources.set(key, source);
-      items.push([key,
-        `${this.celestialBodies.nameOf(primary.id)}-${this.celestialBodies.nameOf(id)}回転座標系`]);
+      choices.push([source, rotationSourceChoiceLabel(this.celestialBodies, source)]);
     }
     for (const [id, motion] of revolvable) {
       if (motion.spinRotationAt(displayTime) === null) continue;
       const source: FrameRotationSource = { kind: 'spin', id };
-      const key = rotationSourceKey(source);
-      this.sources.set(key, source);
-      items.push([key, `${this.celestialBodies.nameOf(id)}自転座標系`]);
+      choices.push([source, rotationSourceChoiceLabel(this.celestialBodies, source)]);
     }
-    for (const role of validRoles) {
-      const source: FrameRotationSource = { kind: 'revolution', id: `@${role}` };
-      const key = rotationSourceKey(source);
-      this.sources.set(key, source);
-      items.push([key, `${frameRoleName(role)}の公転`]);
+    // 役割はその時点の対象が周回軌道にあるものだけが公転を固定できる。
+    for (const role of FRAME_ROLES) {
+      const id = frameRoleAnchorId(role);
+      if (this.frameAnchors.attractorOf(id, displayTime) === null) continue;
+      const source: FrameRotationSource = { kind: 'revolution', id };
+      choices.push([source, rotationSourceChoiceLabel(this.celestialBodies, source)]);
     }
-    this.control.setItems(items);
+    this.control.setChoices(choices);
   }
 
   // 選択中の表示を合わせる。
   public setSelected(rotatingWith: FrameRotationSource | null): void {
-    this.control.setSelected(rotationSourceKey(rotatingWith));
+    this.control.setSelected(rotatingWith);
   }
 }
 
@@ -80,47 +113,25 @@ export class CameraRotationZone {
   // null は「解除」= 回転させない(慣性系)。
   public onSelect: ((follow: CameraRotationFollow | null) => void) | null = null;
 
-  // 照合キー → 選択肢。SegmentedControl は値を参照同一性で比べるので、組み直すたびに
-  // 新しくなるオブジェクトではなく安定した文字列を値に持たせる。
-  private readonly follows = new Map<string, CameraRotationFollow | null>([['', null]]);
-  private readonly control: SegmentedControl<string>;
+  private readonly control: KeyedSegmentedControl<CameraRotationFollow>;
 
   // title は選択肢見出し。
   public constructor(title: string, private readonly celestialBodies: CelestialBodies) {
-    this.control = new SegmentedControl<string>(
-      title, [['', '解除']], (key) => this.onSelect?.(this.follows.get(key) ?? null),
+    this.control = new KeyedSegmentedControl<CameraRotationFollow>(
+      title, rotationFollowKey, (follow) => this.onSelect?.(follow),
     );
     this.element = this.control.element;
   }
 
   // 選択肢を「解除 + follows」へ組み直す。
   public setChoices(follows: readonly CameraRotationFollow[]): void {
-    this.follows.clear();
-    this.follows.set('', null);
-    const items: (readonly [string, string])[] = [['', '解除']];
-    for (const follow of follows) {
-      const key = rotationFollowKey(follow);
-      this.follows.set(key, follow);
-      items.push([key, this.followLabel(follow)]);
-    }
-    this.control.setItems(items);
-  }
-
-  // 天体は座標系の名前で、機体(天体レジストリに無い id)は種別の名前で書く。
-  private followLabel(follow: CameraRotationFollow): string {
-    if (follow.kind === 'attitude') return '姿勢追従';
-    const motion = this.celestialBodies.findMotion(follow.id);
-    if (motion === null) return follow.kind === 'revolution' ? '公転' : '自転';
-    const name = this.celestialBodies.nameOf(follow.id);
-    if (follow.kind === 'spin') return `${name}自転座標系`;
-    const primary = motion.primary;
-    return primary !== null
-      ? `${this.celestialBodies.nameOf(primary.id)}-${name}回転座標系`
-      : `${name}回転座標系`;
+    this.control.setChoices(
+      follows.map((follow) => [follow, rotationFollowChoiceLabel(this.celestialBodies, follow)] as const),
+    );
   }
 
   // 選択中の表示を合わせる。
   public setSelected(follow: CameraRotationFollow | null): void {
-    this.control.setSelected(rotationFollowKey(follow));
+    this.control.setSelected(follow);
   }
 }
