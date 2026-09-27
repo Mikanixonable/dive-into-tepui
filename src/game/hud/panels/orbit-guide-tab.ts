@@ -543,6 +543,12 @@ export class OrbitGuideTab {
     this.tundraRow.sync(this.current.tundra);
   }
 
+  // このタブが持つ現在の設定の正本。ゼロ速度曲線など別の部品の変更を全体へ組み戻すときの
+  // 起点として読む。
+  public get settings(): OrbitGuideSettings {
+    return this.current;
+  }
+
   // 外から渡された設定へ見た目を合わせる。onSettingsChange は呼ばない。
   public setSettings(settings: OrbitGuideSettings): void {
     this.current = settings;
