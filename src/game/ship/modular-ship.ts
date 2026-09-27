@@ -631,6 +631,7 @@ export class ModularShip extends Ship implements Controllable {
       maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,
+      ambientDensity: motion.aero.density,
       belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
       magsLeft: this.magsLeft,
       gunFireRate: this.fire.isFiring ? this.totalFireRate : 0,
