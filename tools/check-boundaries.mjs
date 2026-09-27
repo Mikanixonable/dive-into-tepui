@@ -147,6 +147,9 @@ const FORBIDDEN = [
     exempt: [
       'src/render/protein/protein-runtime.ts',
       'src/render/dynamic/dynamic-entity/protein-enemy-view.ts',
+      'src/render/cloud/cloud-local-field-baker.ts',
+      // 分割ジョブの step 予算・試行の壁時計を測るため — baker と同じ計測用途。
+      'src/render/cloud/meteorological-cloud-field.ts',
     ],
   },
   {
