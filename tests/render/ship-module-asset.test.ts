@@ -326,8 +326,8 @@ export function register(): void {
         const size = new THREE.Vector3();
         bbox.getSize(size);
         if (spec.modelId === 'solar-panel-standard') {
-          assert.ok(Math.abs(size.x - spec.width) < spec.width * 0.081, `${spec.modelId} width: ${size.x}`);
-          assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.081, `${spec.modelId} depth: ${size.z}`);
+          assert.ok(Math.abs(size.x - spec.width) < spec.width * 0.13, `${spec.modelId} width: ${size.x}`);
+          assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.13, `${spec.modelId} depth: ${size.z}`);
           assert.ok(size.x <= SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS + 1e-6,
             `${spec.modelId} panel width ${size.x} exceeds its hinge pitch`);
           assert.ok(size.z <= SOLAR_PANEL_LENGTH + 1e-6,
@@ -358,6 +358,11 @@ export function register(): void {
           assert.ok(Math.abs(stageScales[stage] - stageDepthScales[stage]) < 1e-6,
             `stage ${stage + 1} width and depth do not use the same size scale`);
         }
+        const expectedStageScales = [0.88, 0.96, 1.04, 0.88];
+        for (const stage of [...Array(stages).keys()]) {
+          assert.ok(Math.abs(stageScales[stage] - expectedStageScales[stage]) < 1e-6,
+            `stage ${stage + 1} scale ${stageScales[stage]} should be ${expectedStageScales[stage]}`);
+        }
         assert.ok(stageScales[2] > stageScales[1], 'stage 3 should be the largest');
         assert.ok(stageScales[1] > stageScales[0], 'stage 2 should be larger than stage 1');
         assert.ok(Math.abs(stageScales[0] - stageScales[3]) < 1e-6,
@@ -369,6 +374,7 @@ export function register(): void {
         });
         assert.equal(braces.length, SOLAR_PANEL_COUNT, 'one rear brace lattice per solar panel');
         let diamondBraceCount = 0;
+        let centerCrossbarCount = 0;
         for (const brace of braces) {
           const braceBox = new THREE.Box3().setFromObject(brace);
           const braceSize = new THREE.Vector3();
@@ -382,7 +388,11 @@ export function register(): void {
           const expectedPattern = panelStage === 2 ? 'diamond' : 'x';
           assert.equal(brace.userData.bracePattern, expectedPattern,
             `${brace.name} should use ${expectedPattern} bracing`);
+          const hasCenterCrossbar = expectedPattern === 'diamond';
+          assert.equal(Boolean(brace.userData.centerCrossbar), hasCenterCrossbar,
+            `${brace.name} should ${hasCenterCrossbar ? 'have' : 'not have'} a center crossbar`);
           if (expectedPattern === 'diamond') diamondBraceCount++;
+          if (hasCenterCrossbar) centerCrossbarCount++;
           const panelSize = solarPanelSizes.get(Number(indexMatch[1]));
           assert.ok(panelSize !== undefined, `missing solar panel size for ${brace.name}`);
           solarBraceSizes.set(Number(indexMatch[1]), { width: braceSize.x, depth: braceSize.z });
@@ -392,6 +402,7 @@ export function register(): void {
             `${brace.name} depth ${braceSize.z} does not follow panel depth ${panelSize.depth}`);
         }
         assert.equal(diamondBraceCount, SOLAR_PANEL_COLUMNS, 'both stage 3 panels should use diamond bracing');
+        assert.equal(centerCrossbarCount, SOLAR_PANEL_COLUMNS, 'both stage 3 panels should have a center crossbar');
         assert.ok(Math.max(...solarBraceWidths) - Math.min(...solarBraceWidths) > 0.05,
           'brace width does not follow the individual panel sizes');
         assert.ok(Math.max(...solarBraceDepths) - Math.min(...solarBraceDepths) > 0.05,
@@ -490,11 +501,11 @@ export function register(): void {
     assert.ok(assignedBlueCellGroups > 0, 'blue cells are assigned to cell geometry');
     assert.ok(assignedRustCellGroups > 0, 'the rust-colored panel is assigned to cell geometry');
     const stages = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
-    const brownPanelIndex = (SOLAR_PANEL_COLUMNS - 1) * stages + 2;
+    const brownPanelIndices = new Set([...Array(SOLAR_PANEL_COLUMNS).keys()].map((column) => column * stages + 2));
     for (let index = 0; index < SOLAR_PANEL_COUNT; index++) {
-      if (index === brownPanelIndex) {
-        assert.ok((rustCellCountByPanel.get(index) ?? 0) > 0, 'stage 3 outer panel has no rust cells');
-        assert.equal(blueCellCountByPanel.get(index) ?? 0, 0, 'stage 3 outer panel should be fully rust-colored');
+      if (brownPanelIndices.has(index)) {
+        assert.ok((rustCellCountByPanel.get(index) ?? 0) > 0, `stage 3 panel ${index} has no rust cells`);
+        assert.equal(blueCellCountByPanel.get(index) ?? 0, 0, `stage 3 panel ${index} should be fully rust-colored`);
       } else {
         assert.equal(rustCellCountByPanel.get(index) ?? 0, 0, `panel ${index} has an unexpected rust patch`);
         assert.ok((blueCellCountByPanel.get(index) ?? 0) > 0, `panel ${index} has no blue cells`);
