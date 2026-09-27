@@ -186,12 +186,22 @@ class MaterialLibrary:
 
 class CockpitMaterialLibrary:
     def __init__(self):
-        # 焼き物のような鈍い光沢を持つ、コックピットのエボナイト塗膜とアイボリー塗膜。
-        self.ebonite = create_pbr_material("mat_cockpit_ebonite", (0.035, 0.040, 0.048, 1.0), roughness=0.34, metallic=0.02)
-        self.ivory = create_pbr_material("mat_cockpit_ivory", (0.79, 0.75, 0.65, 1.0), roughness=0.40, metallic=0.02)
+        # 青みを含む濃灰色の船殻、淡いアイボリー塗装、銅色の接合帯を使う。
+        self.ebonite = create_pbr_material("mat_cockpit_ebonite", (0.052, 0.069, 0.086, 1.0), roughness=0.42, metallic=0.18)
+        self.ivory = create_pbr_material("mat_cockpit_ivory", (0.79, 0.76, 0.68, 1.0), roughness=0.44, metallic=0.03)
+        self.ivory_line = create_pbr_material("mat_cockpit_ivory_line", (0.55, 0.54, 0.49, 1.0), roughness=0.50, metallic=0.12)
         self.recess = create_pbr_material("mat_cockpit_recess", (0.014, 0.018, 0.024, 1.0), roughness=0.46, metallic=0.0)
-        self.red = create_pbr_material("mat_cockpit_red", (0.62, 0.055, 0.040, 1.0), roughness=0.42, metallic=0.02)
-        self.fastener = create_pbr_material("mat_cockpit_fastener", (0.43, 0.42, 0.39, 1.0), roughness=0.32, metallic=0.22)
+        self.panel = create_pbr_material("mat_cockpit_panel", (0.065, 0.084, 0.103, 1.0), roughness=0.46, metallic=0.24)
+        self.panel_alt = create_pbr_material("mat_cockpit_panel_alt", (0.044, 0.060, 0.077, 1.0), roughness=0.48, metallic=0.20)
+        self.panel_seam = create_pbr_material("mat_cockpit_panel_seam", (0.022, 0.031, 0.042, 1.0), roughness=0.60, metallic=0.16)
+        self.red = create_pbr_material("mat_cockpit_copper", (0.37, 0.135, 0.078, 1.0), roughness=0.34, metallic=0.48)
+        self.fastener = create_pbr_material("mat_cockpit_fastener", (0.48, 0.48, 0.45, 1.0), roughness=0.34, metallic=0.62)
+        self.hardware = create_pbr_material("mat_cockpit_hardware", (0.32, 0.37, 0.40, 1.0), roughness=0.38, metallic=0.72)
+        self.louver = create_pbr_material("mat_cockpit_louver", (0.22, 0.28, 0.32, 1.0), roughness=0.38, metallic=0.72)
+        self.device_case = create_pbr_material("mat_cockpit_device_case", (0.45, 0.46, 0.43, 1.0), roughness=0.48, metallic=0.38)
+        self.hatch = create_pbr_material("mat_cockpit_hatch", (0.12, 0.15, 0.18, 1.0), roughness=0.42, metallic=0.42)
+        self.glass = create_pbr_material("mat_cockpit_glass", (0.16, 0.18, 0.18, 1.0), roughness=0.72, metallic=0.0,
+                                         clearcoat=0.025, coat_roughness=0.28)
 
 def world_matrix(obj):
     """obj の模型座標での変換。親子付けはどれも parent_inverse が単位行列である前提。"""
@@ -610,31 +620,8 @@ def cockpit_surface_radius(profile, indent_fraction, z, theta):
     circle_radius = radius - offset
     return offset * abs(math.sin(theta)) + math.sqrt(max(0.0, circle_radius ** 2 - offset ** 2 * math.cos(theta) ** 2))
 
-def wrapped_angle_difference(a, b):
-    return math.atan2(math.sin(a - b), math.cos(a - b))
-
-def cockpit_short_recess(z, theta, radius):
-    """船殻表面へ短冊状の浅い凹みを刻み、継ぎ目と重ならない暗部も返す。"""
-    period = 0.64
-    column_count = 32
-    step = 2.0 * math.pi / column_count
-    column = int(round(theta / step)) % column_count
-    center_theta = column * step
-    delta_theta = abs(wrapped_angle_difference(theta, center_theta))
-    phase = (column % 2) * period * 0.5
-    delta_z = (z + 4.15 + phase + period * 0.5) % period - period * 0.5
-    distance = max(abs(delta_z) - 0.14, delta_theta * radius - 0.055)
-    slot = 0.042 * max(0.0, min(1.0, (0.030 - distance) / 0.050))
-
-    joint_z = min(abs(z - seam) for seam in (-3.45, -1.25, 0.5, 2.35, 3.85))
-    axial_joint = 0.022 * max(0.0, min(1.0, (0.040 - joint_z) / 0.032))
-    joint_angles = tuple(math.radians(degrees) for degrees in (22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5))
-    longitudinal_joint = min(abs(wrapped_angle_difference(theta, seam)) for seam in joint_angles) * radius
-    longitudinal_joint = 0.015 * max(0.0, min(1.0, (0.026 - longitudinal_joint) / 0.018))
-    return max(slot, axial_joint, longitudinal_joint), slot
-
 def cockpit_hull_mesh(profile, indent_fraction):
-    """短冊凹み・板継ぎ目を断面メッシュ自体へ刻んだ、黒/アイボリー複材の閉じた船殻を作る。"""
+    """断面の長手溝を保ち、アイボリー後部と濃色の前部を持つ閉じた船殻を作る。"""
     bm = bmesh.new()
     axial_steps = int(round((profile[-1]["z"] - profile[0]["z"]) / 0.04))
     angular_steps = 288
@@ -645,9 +632,7 @@ def cockpit_hull_mesh(profile, indent_fraction):
         for angular_index in range(angular_steps):
             theta = 2.0 * math.pi * angular_index / angular_steps
             radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
-            recess, _ = cockpit_short_recess(z, theta, radius)
-            surface_radius = max(0.0, radius - recess)
-            ring.append(bm.verts.new((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z)))
+            ring.append(bm.verts.new((radius * math.cos(theta), radius * math.sin(theta), z)))
         rings.append(ring)
 
     for axial_index in range(axial_steps):
@@ -656,19 +641,16 @@ def cockpit_hull_mesh(profile, indent_fraction):
             face = bm.faces.new((rings[axial_index][angular_index], rings[axial_index][next_angle],
                                  rings[axial_index + 1][next_angle], rings[axial_index + 1][angular_index]))
             center = face.calc_center_median()
-            theta = math.atan2(center.y, center.x)
-            radius = cockpit_surface_radius(profile, indent_fraction, center.z, theta)
-            recess, slot = cockpit_short_recess(center.z, theta, radius)
-            if recess > 0.010 or slot > 0.010:
-                face.material_index = 2
-            elif center.z < -3.48:
+            if center.z < -3.08:
                 face.material_index = 1
 
     for end_index, z in ((0, profile[0]["z"]), (-1, profile[-1]["z"])):
         center = bm.verts.new((0.0, 0.0, z))
         ring = rings[end_index]
         for angular_index in range(angular_steps):
-            bm.faces.new((center, ring[angular_index], ring[(angular_index + 1) % angular_steps]))
+            face = bm.faces.new((center, ring[angular_index], ring[(angular_index + 1) % angular_steps]))
+            if end_index == 0:
+                face.material_index = 1
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return shade_by_angle(bm, 42.0)
 
@@ -712,60 +694,238 @@ def add_cockpit_ring_patch(name, profile, indent_fraction, z_center, width, radi
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     return add_mesh_obj(name, bm, material)
 
+def add_cockpit_oval_object(name, profile, indent_fraction, z_center, height, theta_center, width,
+                            radial_offset, thickness, material, segments=48):
+    """船殻の曲面から立ち上がる、閉じた楕円部品を作る。"""
+    bm = bmesh.new()
+    base_radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+
+    def oval_loop(scale, depth):
+        loop = []
+        for index in range(segments):
+            angle = 2.0 * math.pi * index / segments
+            z = z_center + height * 0.5 * scale * math.sin(angle)
+            theta = theta_center + width * 0.5 * scale * math.cos(angle) / max(base_radius, 0.1)
+            radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radial_offset + depth
+            loop.append(bm.verts.new((radius * math.cos(theta), radius * math.sin(theta), z)))
+        return loop
+
+    base = oval_loop(0.98, 0.0)
+    shoulder = oval_loop(1.0, thickness * 0.28)
+    crown = oval_loop(0.82, thickness * 0.82)
+    bottom_radius = base_radius + radial_offset
+    bottom = bm.verts.new((bottom_radius * math.cos(theta_center), bottom_radius * math.sin(theta_center), z_center))
+    top_radius = base_radius + radial_offset + thickness
+    top = bm.verts.new((top_radius * math.cos(theta_center), top_radius * math.sin(theta_center), z_center))
+    for index in range(segments):
+        following = (index + 1) % segments
+        bm.faces.new((bottom, base[following], base[index]))
+        bm.faces.new((base[index], base[following], shoulder[following], shoulder[index]))
+        bm.faces.new((shoulder[index], shoulder[following], crown[following], crown[index]))
+        bm.faces.new((top, crown[index], crown[following]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return add_mesh_obj(name, shade_by_angle(bm, 50.0), material)
+
+def add_cockpit_oval_bezel(name, profile, indent_fraction, z_center, height, theta_center, width,
+                           radial_offset, material):
+    """楕円窓の穴を残した、船殻に沿う立体トーラス枠を作る。"""
+    surface_radius = cockpit_surface_radius(profile, indent_fraction, z_center, theta_center)
+    center_radius = surface_radius + radial_offset
+    center = (center_radius * math.cos(theta_center), center_radius * math.sin(theta_center), z_center)
+    tube_center_radius = 0.40
+    tube_radius = 0.045
+    outer_radius = tube_center_radius + tube_radius
+    scale_axial = height / (2.0 * outer_radius)
+    scale_circumferential = width / (2.0 * outer_radius)
+    sine, cosine = math.sin(theta_center), math.cos(theta_center)
+    matrix = Matrix((
+        (0.0, -sine * scale_circumferential, cosine, center[0]),
+        (0.0, cosine * scale_circumferential, sine, center[1]),
+        (scale_axial, 0.0, 0.0, center[2]),
+        (0.0, 0.0, 0.0, 1.0),
+    ))
+    bm = make_torus(tube_center_radius, tube_radius, major_seg=64, minor_seg=12)
+    transform_bm(bm, matrix)
+    return add_mesh_obj(name, bm, material)
+
+def add_cockpit_radial_cylinder(name, profile, indent_fraction, z, theta, radius, depth, radial_offset, material):
+    """船殻面から放射方向へ短い円筒を立て、開口の暗面や固定金具を作る。"""
+    surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+    center_radius = surface_radius + radial_offset
+    center = Vector((center_radius * math.cos(theta), center_radius * math.sin(theta), z))
+    direction = Vector((math.cos(theta), math.sin(theta), 0.0))
+    matrix = Matrix.Translation(center) @ direction.to_track_quat("Z", "Y").to_matrix().to_4x4()
+    bm = make_cylinder(radius, radius, depth, segments=24, bevel=min(0.008, depth * 0.2))
+    transform_bm(bm, matrix)
+    return add_mesh_obj(name, bm, material)
+
+def add_cockpit_aperture(name, profile, indent_fraction, z, theta, radius, mats):
+    """外周に金属縁を持つ暗い円形開口を作る。"""
+    surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
+    center_radius = surface_radius + 0.026
+    matrix = (Matrix.Translation((center_radius * math.cos(theta), center_radius * math.sin(theta), z))
+              @ Vector((math.cos(theta), math.sin(theta), 0.0)).to_track_quat("Z", "Y").to_matrix().to_4x4())
+    rim = make_torus(radius * 0.78, max(0.012, radius * 0.13), major_seg=32, minor_seg=8)
+    transform_bm(rim, matrix)
+    add_mesh_obj(f"{name}_rim", rim, mats.hardware)
+    add_cockpit_radial_cylinder(f"{name}_dark_lens", profile, indent_fraction, z, theta,
+                                radius * 0.70, 0.024, 0.020, mats.recess)
+
+def add_cockpit_louver_panel(name, profile, indent_fraction, z_center, height, theta_center, width,
+                             count, mats, axial_segments=8):
+    """外板上に縁取り付きのルーバー区画を作る。羽根数と区画寸法を変えて配置する。"""
+    add_cockpit_surface_patch(f"{name}_recess", profile, indent_fraction, z_center, height, theta_center,
+                              width, 0.016, mats.recess, axial_segments, 16)
+    edge_theta = (width * 0.5 - 0.025) / max(cockpit_surface_radius(profile, indent_fraction, z_center, theta_center), 0.1)
+    for edge_index, direction in enumerate((-1.0, 1.0)):
+        add_cockpit_surface_patch(f"{name}_side_rail_{edge_index}", profile, indent_fraction, z_center, height,
+                                  theta_center + direction * edge_theta, 0.035, 0.046, mats.hardware,
+                                  axial_segments, 2)
+    frame_height = min(0.038, height * 0.08)
+    for edge_index, z in enumerate((z_center - height * 0.5, z_center + height * 0.5)):
+        add_cockpit_surface_patch(f"{name}_end_rail_{edge_index}", profile, indent_fraction, z, frame_height,
+                                  theta_center, width, 0.044, mats.hardware, 2, 16)
+    pitch = height / (count + 1)
+    louver_height = min(0.060, pitch * 0.34)
+    for index in range(count):
+        z = z_center - height * 0.5 + pitch * (index + 1)
+        add_cockpit_surface_patch(f"{name}_louver_{index}", profile, indent_fraction, z, louver_height,
+                                  theta_center, width - 0.085, 0.056, mats.louver, 2, 16)
+
+def add_cockpit_finned_device(name, profile, indent_fraction, z_center, height, theta_center, width, mats):
+    """アイボリー部の小型箱形装置と横羽根を作る。"""
+    add_cockpit_surface_patch(f"{name}_case", profile, indent_fraction, z_center, height, theta_center,
+                              width, 0.060, mats.device_case, 6, 12)
+    count = 7
+    pitch = height * 0.78 / count
+    louver_height = min(0.050, pitch * 0.40)
+    for index in range(count):
+        z = z_center - height * 0.39 + pitch * (index + 0.5)
+        add_cockpit_surface_patch(f"{name}_fin_{index}", profile, indent_fraction, z, louver_height,
+                                  theta_center, width * 0.82, 0.112, mats.hardware, 2, 12)
+
+def add_cockpit_rivets(name, profile, indent_fraction, points, radius, material):
+    """指定した曲面座標に疎な固定点をまとめて置く。"""
+    centers = []
+    for z, theta in points:
+        surface_radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radius * 0.55
+        centers.append((surface_radius * math.cos(theta), surface_radius * math.sin(theta), z))
+    return add_mesh_obj(name, make_spheres(centers, radius, u_seg=10, v_seg=6), material)
+
 def build_cockpit():
     reset_scene()
     cockpit_mats = CockpitMaterialLibrary()
     definition = MANIFEST["modules"]["cockpit-standard"]
     profile = MANIFEST["cockpitHull"]["profile"]
     indent_fraction = MANIFEST["cockpitHull"]["sectionIndentFraction"]
-    aft_z, fore_z = profile[0]["z"], profile[-1]["z"]
 
-    # 共通カタログ輪郭を使い、2つの対向円で左右に溝が入る断面を描く。
+    # カタログ輪郭と左右の長手溝を使い、短冊凹みのない外殻を作る。
     add_mesh_obj("cockpit_hull", cockpit_hull_mesh(profile, indent_fraction),
                  [cockpit_mats.ebonite, cockpit_mats.ivory, cockpit_mats.recess])
 
-    # 後部のアイボリー帯と、その前縁に巻いた細い赤い識別線。
-    add_cockpit_ring_patch("cockpit_red_aft_mark", profile, indent_fraction, -3.53, 0.055, 0.028, cockpit_mats.red)
-    add_cockpit_surface_patch("cockpit_ivory_centerline", profile, indent_fraction,
-                              0.0, 8.62, math.pi / 2.0, 0.16, 0.028, cockpit_mats.ivory, 108, 4)
-    # 前端の接続縁も閉じた薄いリングで仕上げ、黒い前面は窓のない板面にする。
-    add_cockpit_ring_patch("cockpit_forward_rim", profile, indent_fraction, 4.35, 0.065, 0.026, cockpit_mats.ivory)
+    # 接合帯はアイボリーの後部カラーと濃色胴体の境に置く。
+    add_cockpit_ring_patch("cockpit_copper_joint_band", profile, indent_fraction, -3.08, 0.115, 0.030,
+                           cockpit_mats.red)
+    add_cockpit_ring_patch("cockpit_joint_inner_seam", profile, indent_fraction, -3.17, 0.022, 0.026,
+                           cockpit_mats.panel_seam)
 
-    # 側面に閉じたハッチを2枚ずつ配置し、両舷で左右対称にする。
+    # アイボリー部には細い長手線と、位置をずらした少数の周方向継ぎ目を置く。
+    ivory_fasteners = []
     for side, theta in (("port", 0.0), ("starboard", math.pi)):
-        for hatch_index, z in enumerate((-1.15, 1.95)):
-            add_cockpit_surface_patch(f"cockpit_side_hatch_recess_{side}_{hatch_index}", profile, indent_fraction,
-                                      z, 0.96, theta, 0.82, 0.018, cockpit_mats.recess)
-            add_cockpit_surface_patch(f"cockpit_side_hatch_door_{side}_{hatch_index}", profile, indent_fraction,
-                                      z, 0.82, theta, 0.70, 0.034, cockpit_mats.ivory)
-            # 赤い警告枠をハッチ前縁だけに入れる。
-            side_radius = cockpit_surface_radius(profile, indent_fraction, z, theta)
-            edge_theta = theta + (0.29 / side_radius) * (-1 if side == "port" else 1)
-            add_cockpit_surface_patch(f"cockpit_side_hatch_red_frame_{side}_{hatch_index}", profile, indent_fraction,
-                                      z, 0.70, edge_theta, 0.045, 0.050, cockpit_mats.red, 6, 2)
-            latch_theta = theta + (0.22 / side_radius) * (1 if side == "port" else -1)
-            add_cockpit_surface_patch(f"cockpit_side_hatch_latch_{side}_{hatch_index}", profile, indent_fraction,
-                                      z, 0.18, latch_theta, 0.052, 0.048, cockpit_mats.fastener, 2, 2)
+        for line_index, offset in enumerate((-0.60, -0.31, 0.31, 0.60)):
+            add_cockpit_surface_patch(f"cockpit_ivory_axial_line_{side}_{line_index}", profile, indent_fraction,
+                                      -3.82, 1.24, theta + offset, 0.012, 0.012,
+                                      cockpit_mats.ivory_line, 36, 2)
+        for seam_index, z in enumerate((-4.08, -3.62)):
+            add_cockpit_ring_patch(f"cockpit_ivory_cross_seam_{side}_{seam_index}", profile, indent_fraction,
+                                   z, 0.014, 0.013, cockpit_mats.ivory_line, 144)
+        for z in (-4.31, -3.96, -3.53, -3.27):
+            ivory_fasteners.extend(((z, theta - 0.80), (z, theta + 0.80)))
+    add_cockpit_rivets("cockpit_ivory_fasteners", profile, indent_fraction, ivory_fasteners,
+                       0.013, cockpit_mats.fastener)
 
-            half_theta = 0.34 / side_radius
-            for corner in range(4):
-                corner_theta = theta + (-half_theta if corner % 2 == 0 else half_theta)
-                corner_z = z + (-0.37 if corner < 2 else 0.37)
-                point_radius = cockpit_surface_radius(profile, indent_fraction, corner_z, corner_theta) + 0.034
-                bm_rivet = make_sphere(0.020, center=(point_radius * math.cos(corner_theta),
-                                                      point_radius * math.sin(corner_theta), corner_z),
-                                       u_seg=10, v_seg=6)
-                add_mesh_obj(f"cockpit_side_hatch_rivet_{side}_{hatch_index}_{corner}", bm_rivet,
-                             cockpit_mats.fastener)
+    # 胴体の板継ぎは間隔を変えたリング線と、途切れた長手線で構成する。
+    for seam_index, z in enumerate((-2.38, -0.58, 1.16, 2.76, 3.72)):
+        add_cockpit_ring_patch(f"cockpit_body_cross_seam_{seam_index}", profile, indent_fraction,
+                               z, 0.018, 0.010, cockpit_mats.panel_seam)
+    for side, theta in (("port", 0.0), ("starboard", math.pi)):
+        seam_tracks = ((-0.84, -1.73, 1.08), (-0.30, -0.73, 1.42),
+                       (0.42, 0.78, 1.28), (0.91, 2.18, 1.50))
+        for track_index, (offset, z, height) in enumerate(seam_tracks):
+            add_cockpit_surface_patch(f"cockpit_body_axial_seam_{side}_{track_index}", profile, indent_fraction,
+                                      z, height, theta + offset, 0.014, 0.012,
+                                      cockpit_mats.panel_seam, 24, 2)
 
-    # 端板継ぎ目の位置へ小さな締結リベットを揃える。凹みや板面は接触形状には加えない。
-    for seam_index, z in enumerate((-3.45, -1.25, 0.5, 2.35, 3.85)):
-        for bolt_index in range(12):
-            theta = 2.0 * math.pi * bolt_index / 12.0
-            radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + 0.026
-            bm_rivet = make_sphere(0.018, center=(radius * math.cos(theta), radius * math.sin(theta), z),
-                                   u_seg=8, v_seg=6)
-            add_mesh_obj(f"cockpit_panel_rivet_{seam_index}_{bolt_index}", bm_rivet, cockpit_mats.fastener)
+        # 少数の広い外板を色差だけで分け、全体を格子状にしない。
+        add_cockpit_surface_patch(f"cockpit_body_plate_{side}_aft", profile, indent_fraction,
+                                  -1.18, 1.00, theta - 0.91, 0.96, 0.008, cockpit_mats.panel, 24, 16)
+        add_cockpit_surface_patch(f"cockpit_body_plate_{side}_fore", profile, indent_fraction,
+                                  1.92, 1.18, theta + 0.86, 0.90, 0.008, cockpit_mats.panel_alt, 28, 14)
+
+        # グリルは区画ごとに幅・高さ・羽根数を変え、無地の外板を間に残す。
+        grille_specs = (
+            ("aft", -2.12, 0.62, theta - 0.64, 0.88, 7),
+            ("upper_mid", -0.67, 0.76, theta + 0.73, 1.18, 9),
+            ("lower_mid", 1.13, 0.62, theta - 0.70, 0.96, 7),
+            ("fore", 3.30, 0.46, theta + 0.34, 0.70, 5),
+        )
+        for grille_name, z, height, grille_theta, width, count in grille_specs:
+            add_cockpit_louver_panel(f"cockpit_grille_{side}_{grille_name}", profile, indent_fraction,
+                                     z, height, grille_theta, width, count, cockpit_mats)
+
+        # 各舷にハッチを1枚。外枠、ガスケット、濃灰色の扉板を重ねる。
+        hatch_z = -0.08
+        add_cockpit_surface_patch(f"cockpit_side_hatch_gasket_{side}", profile, indent_fraction,
+                                  hatch_z, 0.86, theta, 0.91, 0.018, cockpit_mats.recess, 12, 14)
+        add_cockpit_surface_patch(f"cockpit_side_hatch_bezel_{side}", profile, indent_fraction,
+                                  hatch_z, 0.78, theta, 0.83, 0.034, cockpit_mats.hardware, 12, 14)
+        add_cockpit_surface_patch(f"cockpit_side_hatch_door_{side}", profile, indent_fraction,
+                                  hatch_z, 0.68, theta, 0.72, 0.050, cockpit_mats.hatch, 12, 14)
+        hatch_radius = cockpit_surface_radius(profile, indent_fraction, hatch_z, theta)
+        hatch_half_theta = 0.31 / hatch_radius
+        hatch_fasteners = [(hatch_z + z_delta, theta + angle_delta * hatch_half_theta)
+                           for z_delta in (-0.28, 0.28) for angle_delta in (-1.0, 1.0)]
+        add_cockpit_rivets(f"cockpit_side_hatch_fasteners_{side}", profile, indent_fraction,
+                           hatch_fasteners, 0.017, cockpit_mats.fastener)
+        add_cockpit_surface_patch(f"cockpit_side_hatch_latch_{side}", profile, indent_fraction,
+                                  hatch_z, 0.11, theta + 0.24 / hatch_radius, 0.060, 0.071,
+                                  cockpit_mats.fastener, 2, 3)
+
+        # 舷窓は船殻から立ち上がる金属枠・ガスケット・厚みのある灰色ガラスで構成する。
+        window_z = 2.78
+        add_cockpit_oval_bezel(f"cockpit_side_window_frame_{side}", profile, indent_fraction,
+                               window_z, 0.80, theta, 0.46, 0.045, cockpit_mats.hardware)
+        add_cockpit_oval_object(f"cockpit_side_window_glass_{side}", profile, indent_fraction,
+                                window_z, 0.62, theta, 0.34, 0.010, 0.040, cockpit_mats.glass)
+
+        # アイボリー接合部近くのフィン箱、異径の丸穴を一組としてまとめる。
+        add_cockpit_finned_device(f"cockpit_joint_finned_unit_{side}", profile, indent_fraction,
+                                  -3.77, 0.62, theta - 0.30, 0.68, cockpit_mats)
+        add_cockpit_surface_patch(f"cockpit_joint_aperture_plate_{side}", profile, indent_fraction,
+                                  -3.36, 0.42, theta, 0.72, 0.022, cockpit_mats.device_case, 8, 12)
+        add_cockpit_aperture(f"cockpit_joint_large_aperture_{side}", profile, indent_fraction,
+                             -3.36, theta - 0.115, 0.205, cockpit_mats)
+        add_cockpit_aperture(f"cockpit_joint_small_aperture_{side}", profile, indent_fraction,
+                             -3.36, theta + 0.135, 0.145, cockpit_mats)
+
+        # 後端寄りの小型二口装置。
+        add_cockpit_surface_patch(f"cockpit_aft_dual_port_case_{side}", profile, indent_fraction,
+                                  -4.18, 0.45, theta + 0.48, 0.40, 0.040,
+                                  cockpit_mats.device_case, 8, 10)
+        add_cockpit_aperture(f"cockpit_aft_dual_port_upper_{side}", profile, indent_fraction,
+                             -4.18, theta + 0.56, 0.078, cockpit_mats)
+        add_cockpit_aperture(f"cockpit_aft_dual_port_lower_{side}", profile, indent_fraction,
+                             -4.18, theta + 0.40, 0.066, cockpit_mats)
+
+        body_fasteners = []
+        for z in (-2.38, -0.58, 1.16, 2.76, 3.72):
+            body_fasteners.extend(((z, theta - 1.02), (z, theta + 1.02)))
+        add_cockpit_rivets(f"cockpit_body_fasteners_{side}", profile, indent_fraction,
+                           body_fasteners, 0.012, cockpit_mats.fastener)
+
+    # 前端の接続面は暗色のまま、薄いアイボリー縁だけで終端を示す。
+    add_cockpit_ring_patch("cockpit_forward_rim", profile, indent_fraction, 4.35, 0.052, 0.024,
+                           cockpit_mats.ivory)
 
     export_glb(os.path.join(OUT_DIR, "cockpit-standard.glb"))
 
