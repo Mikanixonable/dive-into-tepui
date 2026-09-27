@@ -123,7 +123,7 @@ class MaterialLibrary:
         self.tank_rcs = create_pbr_material("mat_tank_rcs", (0.32, 0.52, 0.62, 1.0), roughness=0.38, metallic=1.0)
         # RCS 球タンクの銀箔外装と、地上設備を思わせる赤い外部架構
         self.rcs_foil = create_pbr_material("mat_rcs_foil", (0.88, 0.90, 0.93, 1.0), roughness=0.22, metallic=0.82)
-        self.rcs_frame = create_pbr_material("mat_rcs_frame", (0.40, 0.17, 0.14, 1.0), roughness=0.32, metallic=0.30)
+        self.rcs_frame = create_pbr_material("mat_rcs_frame", (0.54, 0.1125, 0.086, 1.0), roughness=0.27, metallic=0.20)
         self.rcs_support = create_pbr_material("mat_rcs_support", (0.90, 0.92, 0.94, 1.0), roughness=0.38, metallic=0.22)
         self.rcs_silver_pipe = create_pbr_material("mat_rcs_silver_pipe", (0.84, 0.86, 0.89, 1.0), roughness=0.26, metallic=0.38)
         self.rcs_white_pipe = create_pbr_material("mat_rcs_white_pipe", (0.92, 0.94, 0.96, 1.0), roughness=0.34, metallic=0.30)
@@ -1277,33 +1277,30 @@ def build_tank_rcs(length, name):
             add_mesh_obj(f"rcs_seam_{sec}_{t}", bm_seam, mats.rcs_support)
             rcs_add_spherical_logo(center, radial, sphere_radius, logos)
 
-            # 箔面に沿う2本の配管は、10〜20度ずつ方向を変えて球の上下を結ぶ。
-            for side in (-1.0, 1.0):
-                surface_path = []
-                for step in range(11):
-                    fraction = step / 10.0
-                    latitude = (fraction - 0.5) * 2.2
-                    longitude = side * (0.84 + 0.08 * math.sin(fraction * math.pi * 2.0))
-                    direction = (
-                        radial * (math.cos(latitude) * math.cos(longitude))
-                        + tangent * (math.cos(latitude) * math.sin(longitude))
-                        + Vector((0.0, 0.0, math.sin(latitude)))
-                    ).normalized()
-                    surface_path.append(center + direction * (sphere_radius + 0.11))
-                surface_gas_paths.append(surface_path)
+            # 球面上を結ぶ配管は、保護リングの外側を長い直線区間で通す。
+            surface_path = []
+            for step in range(6):
+                fraction = step / 5.0
+                latitude = (fraction - 0.5) * 2.0
+                longitude = 0.84 + 0.08 * math.sin(fraction * math.pi * 2.0)
+                direction = (
+                    radial * (math.cos(latitude) * math.cos(longitude))
+                    + tangent * (math.cos(latitude) * math.sin(longitude))
+                    + Vector((0.0, 0.0, math.sin(latitude)))
+                ).normalized()
+                surface_path.append(center + direction * (sphere_radius + 0.19))
+            surface_gas_paths.append(surface_path)
 
-            # 中央マニホールドから球の内向きポートへ、別々の角度で2本ずつ給排管を接続する。
-            for side in (-1.0, 1.0):
-                port_direction = (-radial * 0.94 + tangent * (side * 0.34)).normalized()
-                port = center + port_direction * (sphere_radius + 0.012)
-                spine_start = Vector((0.0, 0.0, z_sec + side * 0.17))
-                feed_paths.append([
-                    spine_start,
-                    spine_start.lerp(port, 0.28) + tangent * (side * 0.025),
-                    spine_start.lerp(port, 0.55) + tangent * (side * 0.05),
-                    spine_start.lerp(port, 0.78) + tangent * (side * 0.045),
-                    port,
-                ])
+            # 各球の内向きポートを中央マニホールドへつなぐ。
+            port_direction = (-radial * 0.94 + tangent * 0.34).normalized()
+            port = center + port_direction * (sphere_radius + 0.012)
+            spine_start = Vector((0.0, 0.0, z_sec + 0.17))
+            feed_paths.append([
+                spine_start,
+                spine_start.lerp(port, 0.38) + tangent * 0.035,
+                spine_start.lerp(port, 0.72) + tangent * 0.04,
+                port,
+            ])
 
             # 球の外周を受ける二本の白銀ヨーク脚。接触点は球面の上下へ分ける。
             for side in (-1.0, 1.0):
@@ -1328,6 +1325,61 @@ def build_tank_rcs(length, name):
         Vector((0, 0, half_len - 0.2)),
     ]
     add_mesh_obj("manifold_spine", make_pipe(pipe_points, radius=0.17, segments=20), mats.rcs_silver_pipe)
+
+    # 中心配管の側面に、支持金具で電装箱を固定する。
+    avionics_mounts = bmesh.new()
+    avionics_fasteners = bmesh.new()
+    avionics_count = max(3, min(5, int(round(length / 3.0))))
+    avionics_span = half_len * 0.72
+    avionics_zs = [
+        -avionics_span + 2.0 * avionics_span * index / (avionics_count - 1)
+        for index in range(avionics_count)
+    ]
+    avionics_center_radius = 0.45
+    for index, z in enumerate(avionics_zs):
+        angle = 2.0 * math.pi * index / avionics_count
+        radial_rotation = Matrix.Rotation(angle, 4, 'Z')
+        center = radial_rotation @ Vector((avionics_center_radius, 0.0, z))
+        box = make_box(0.42, 0.34, 0.30, center=(avionics_center_radius, 0.0, z), bevel=0.035)
+        transform_bm(box, radial_rotation)
+        add_mesh_obj(
+            f"rcs_axial_avionics_box_{index}",
+            box,
+            mats.electronics_white,
+        )
+        panel_center = radial_rotation @ Vector((avionics_center_radius + 0.42 * 0.5 + 0.014, 0.0, z))
+        panel = make_box(
+            0.028, 0.24, 0.17,
+            center=(avionics_center_radius + 0.42 * 0.5 + 0.014, 0.0, z),
+            bevel=0.012,
+        )
+        transform_bm(panel, radial_rotation)
+        add_mesh_obj(
+            f"rcs_axial_avionics_panel_{index}",
+            panel,
+            mats.electronics_brown,
+        )
+        for side in (-1.0, 1.0):
+            rcs_append_beam(
+                avionics_mounts,
+                radial_rotation @ Vector((0.135, side * 0.10, z)),
+                radial_rotation @ Vector((avionics_center_radius - 0.42 * 0.5, side * 0.10, z)),
+                0.04,
+                0.035,
+            )
+            for vertical_side in (-1.0, 1.0):
+                fastener_center = radial_rotation @ Vector((
+                    avionics_center_radius + 0.42 * 0.5 + 0.014 + 0.018,
+                    side * 0.075,
+                    z + vertical_side * 0.052,
+                ))
+                bmesh.ops.create_uvsphere(
+                    avionics_fasteners, u_segments=8, v_segments=6, radius=0.016,
+                    matrix=Matrix.Translation(fastener_center),
+                )
+    rcs_material_mesh("rcs_axial_avionics_mounts", avionics_mounts, mats.clamp, 40.0)
+    rcs_material_mesh("rcs_axial_avionics_fasteners", avionics_fasteners, mats.rivet, 180.0)
+
     add_mesh_obj("rcs_manifold_feeds", make_pipes(feed_paths, radius=0.046, segments=12, bend_radius=0.07), mats.rcs_white_pipe)
     add_mesh_obj("rcs_surface_gas_lines", make_pipes(surface_gas_paths, radius=0.030, segments=10, bend_radius=0.06), mats.rcs_silver_pipe)
 
