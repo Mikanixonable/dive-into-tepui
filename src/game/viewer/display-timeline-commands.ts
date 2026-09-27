@@ -1,12 +1,12 @@
-// 予測パネルの選択へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
+// タイムラインパネルの選択へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { FrameRotationSource } from '../../physics/frame';
 import type { CommandQueue } from '../command-queue';
 import type {
-  DisplayDurationKey, DisplayPastDurationKey, PredictPanelSelection, TickLabelMode,
-} from './predict-panel-selection';
+  DisplayDurationKey, DisplayPastDurationKey, DisplayTimelineSelection, TickLabelMode,
+} from './display-timeline-selection';
 
-// 予測パネルの選択を外から変える命令。受け付けるだけで、適用は次の進行の位相。
-export interface PredictPanelCommands {
+// タイムラインパネルの選択を外から変える命令。受け付けるだけで、適用は次の進行の位相。
+export interface DisplayTimelineCommands {
   // 未来側の表示期間を key へ切り替える。
   selectDuration(key: Exclude<DisplayDurationKey, 'custom'>): void;
   // 未来側の任意期間を sec にして選ぶ。
@@ -38,9 +38,9 @@ export interface PredictPanelCommands {
 }
 
 // selection へのコマンドを queue へエンキューする実装を構築する。
-export function predictPanelCommands(
-  queue: CommandQueue, selection: PredictPanelSelection,
-): PredictPanelCommands {
+export function displayTimelineCommands(
+  queue: CommandQueue, selection: DisplayTimelineSelection,
+): DisplayTimelineCommands {
   return {
     selectDuration: (key) => queue.submit(() => selection.selectDuration(key)),
     selectCustomDuration: (sec) => queue.submit(() => selection.selectCustomDuration(sec)),

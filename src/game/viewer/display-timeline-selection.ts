@@ -1,5 +1,5 @@
-// 予測パネルで選ぶ座標系・表示期間・表示時刻・時刻表記を持つ。選択から各方向の表示期間を
-// 求め、カメラの基準と現在のビューに合わせる規則を担う。
+// タイムラインパネルで選ぶ座標系・表示期間・表示時刻・時刻表記を持つ。選択から各方向の
+// 表示期間を求め、カメラの基準と現在のビューに合わせる規則を担う。
 import { isDestroyedTarget } from './nav-target-selection';
 import type { FrameRotationSource, ReferenceFrame } from '../../physics/frame';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -41,8 +41,8 @@ const FIXED_DURATION_SEC: Record<'day' | 'tenDay' | 'month' | 'threeMonth', numb
   threeMonth: DISPLAY_DUR_THREE_MONTH,
 };
 
-// 予測パネルの選択を読む口。
-export interface PredictPanelSource {
+// タイムラインパネルの選択を読む口。
+export interface DisplayTimelineSource {
   // 未来の軌道・マーカーを描く座標系。
   readonly frame: ReferenceFrame;
   // 未来側の表示期間の選択。
@@ -65,7 +65,7 @@ export interface PredictPanelSource {
   pastDurationSec(referencePeriod: number): number;
 }
 
-export interface SerializedPredictPanelSelection {
+export interface SerializedDisplayTimelineSelection {
   readonly frame: ReferenceFrame;
   readonly durationKey: DisplayDurationKey;
   readonly customDurationSec: number;
@@ -78,7 +78,7 @@ export interface SerializedPredictPanelSelection {
   readonly showTicks: boolean;
 }
 
-export class PredictPanelSelection implements PredictPanelSource {
+export class DisplayTimelineSelection implements DisplayTimelineSource {
   // frames は座標系の同一性を保つ生成元、celestialBodies はカメラ追随で選べる天体の索引。
   // _frame は frames が返した座標系で渡す。
   private constructor(
@@ -102,24 +102,24 @@ export class PredictPanelSelection implements PredictPanelSource {
     frames: Pick<ReferenceFrames, 'inertialFrame' | 'frameOf'>,
     celestialBodies: Pick<CelestialBodies, 'has'>,
     cameraFocusId: string | undefined,
-  ): PredictPanelSelection {
+  ): DisplayTimelineSelection {
     const frame = cameraFocusId === undefined
       ? null
       : frameCenteredOnFocus(frames, celestialBodies, cameraFocusId, frames.inertialFrame.rotatingWith);
-    return new PredictPanelSelection(frames, celestialBodies, frame ?? undefined);
+    return new DisplayTimelineSelection(frames, celestialBodies, frame ?? undefined);
   }
 
   // 直列化した選択から復元する。座標系の中心が撃墜・破壊された対象を指していれば、既定の座標系から
   // 始める。roster は復元完了時点のエンティティ一覧。
   public static deserialize(
-    serialized: SerializedPredictPanelSelection,
+    serialized: SerializedDisplayTimelineSelection,
     frames: Pick<ReferenceFrames, 'inertialFrame' | 'frameOf'>,
     celestialBodies: Pick<CelestialBodies, 'has'>,
     roster: EntityRoster,
-  ): PredictPanelSelection {
+  ): DisplayTimelineSelection {
     const { frame } = serialized;
     // 座標系は frames から引き直し、同じ対に同じ参照を保つ。
-    return new PredictPanelSelection(
+    return new DisplayTimelineSelection(
       frames,
       celestialBodies,
       isDestroyedTarget(frame.center, roster) ? undefined : frames.frameOf(frame.center, frame.rotatingWith),
@@ -136,7 +136,7 @@ export class PredictPanelSelection implements PredictPanelSource {
   }
 
   // 直列化した形へ畳む。
-  public serialize(): SerializedPredictPanelSelection {
+  public serialize(): SerializedDisplayTimelineSelection {
     // 手動レンジの期間は、選んでいないあいだの値も書く。
     return {
       frame: this._frame,
