@@ -84,8 +84,8 @@ export function register(): void {
     const poses = deployablePanelPoses('solar_panel', 0.5, 1);
     assert.equal(SOLAR_PANEL_COUNT, 8);
     assert.equal(SOLAR_PANEL_COLUMNS, 2);
-    assert.equal(SOLAR_PANEL_LENGTH, 1.2);
-    assert.equal(SOLAR_PANEL_SPAN, 3.0);
+    assert.equal(SOLAR_PANEL_LENGTH, 1.8);
+    assert.equal(SOLAR_PANEL_SPAN, 4.5);
     assert.equal(poses.length, SOLAR_PANEL_COUNT);
     const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
     const tileSpan = SOLAR_PANEL_SPAN / SOLAR_PANEL_COLUMNS;

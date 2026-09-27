@@ -160,6 +160,7 @@ function mainTank(): LabCase {
 // 太陽電池翼の表面と裏面を、同じ照明・縮尺で並べて観察する。
 function solarPanelSurface(): LabCase {
   const panels = deployablePanelPoses('solar_panel', 0, 1);
+  const panelFrameDistanceLog = Math.log10(1.5);
   const panelCenter = panels.reduce((sum, panel) => v3(
     sum.x + panel.center.x / panels.length,
     sum.y + panel.center.y / panels.length,
@@ -192,19 +193,19 @@ function solarPanelSurface(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -25),
     shots: {
       'solar-panel-array-closeup': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.45,
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 85, cameraDistanceLog: -0.45 + panelFrameDistanceLog,
           sunAzimuthDeg: 3, sunElevationDeg: 75 },
       },
       'solar-panel-array-detail': {
-        view: { cameraAzimuthDeg: 18, cameraElevationDeg: 62, cameraDistanceLog: -0.45,
+        view: { cameraAzimuthDeg: 18, cameraElevationDeg: 62, cameraDistanceLog: -0.45 + panelFrameDistanceLog,
           sunAzimuthDeg: 3, sunElevationDeg: 75 },
       },
       'solar-panel-array-mount-side': {
-        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 8, cameraDistanceLog: -0.35,
+        view: { cameraAzimuthDeg: 0, cameraElevationDeg: 8, cameraDistanceLog: -0.35 + panelFrameDistanceLog,
           sunAzimuthDeg: 45, sunElevationDeg: 35 },
       },
       'solar-panel-array-mount-oblique': {
-        view: { cameraAzimuthDeg: 28, cameraElevationDeg: 26, cameraDistanceLog: -0.4,
+        view: { cameraAzimuthDeg: 28, cameraElevationDeg: 26, cameraDistanceLog: -0.4 + panelFrameDistanceLog,
           sunAzimuthDeg: 45, sunElevationDeg: 35 },
       },
     },
