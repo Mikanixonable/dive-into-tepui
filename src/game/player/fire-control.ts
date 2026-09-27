@@ -1,5 +1,4 @@
-// プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換で出る実体と、
-// そのとき起きたことの記録もここで組み立てる。
+// プレイヤーの射撃と弾薬状態を進め、射撃で生じる実体と出来事を作る。
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LOCAL_FORWARD, qMul, qRotate, randomQuat } from '../../math/quat';
@@ -40,7 +39,6 @@ const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの
 const BULLET_SPREAD = 0.002; // 散布界 [rad]
 
 const BULLET_LIFETIME = 240; // 保険としての寿命 [sim s]
-const RECOIL_DV = 0.04; // 反動 [m/s]
 
 const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
 
@@ -179,8 +177,7 @@ export class FireControl {
     return qRotate(this.player.motion.att.q, qRotate(moduleRot, dir));
   }
 
-  // 1発発射する: assembly 座標 [m] の砲身先端から弾丸を出し、撃ったモジュールの排莢口から薬莢を
-  // 出して、反動と熱を艦へ入れ、発射したことを記録する。
+  // 有効な射撃1回分を処理し、弾・薬莢・反動・熱・射撃記録を更新する。
   private fireGun(
     muzzle: WeaponMuzzle,
     activeStage: StageOutcome,
@@ -190,13 +187,12 @@ export class FireControl {
     const fwd = qRotate(this.player.motion.att.q, LOCAL_FORWARD);
     const muzzleWorld = this.worldPoint(muzzle.position);
 
-    this.spawnBullet(muzzleWorld, fwd, celestialBodies);
-    // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
-    this.player.motion.reset(kinematicState<'eci'>(
-      this.player.motion.state.t,
-      this.player.motion.state.r,
-      addScaled(this.player.motion.state.v, fwd, -RECOIL_DV),
-    ));
+    const bullet = this.spawnBullet(muzzleWorld, fwd, celestialBodies);
+    // 発射した弾の運動量と逆向きの力積を、同じ散布方向で砲口へ加える。
+    this.player.motion.applyImpulseAtPoint(
+      scale(sub(this.player.motion.state.v, bullet.motion.state.v), bullet.motion.mass),
+      muzzleWorld,
+    );
     this.dropCasing(muzzle.weapon);
 
     activeStage.recordShot();
@@ -211,13 +207,13 @@ export class FireControl {
   }
 
   // 弾丸: 機首方向 + 散布界
-  private spawnBullet(muzzle: Vec3, fwd: Vec3, celestialBodies: CelestialBodies): void {
+  private spawnBullet(muzzle: Vec3, fwd: Vec3, celestialBodies: CelestialBodies): Bullet {
     const ship = this.player;
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, celestialBodies, ship.motion.state.t);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
-    this.registry.add(Bullet.create(
+    const bullet = Bullet.create(
       kinematicState<'eci'>(
         ship.motion.state.t,
         addScaled(muzzle, fwd, 1.5),
@@ -228,11 +224,12 @@ export class FireControl {
       'normal',
       ship.weaponDamage,
       this.registry.idAllocators,
-    ));
+    );
+    this.registry.add(bullet);
+    return bullet;
   }
 
-  // 薬莢を撃ったモジュールの排莢口(樋の向き -X、+X 側には給弾ベルトがある)から、ゆっくり漂い
-  // 個体ごとに大きくばらついて回るよう排出する。
+  // 薬莢を排莢口(-X)から排出し、位置・向き・速度を個体ごとに散らす。
   private dropCasing(weapon: WeaponPorts): void {
     const ship = this.player;
     // モジュール姿勢基準の排莢方向と上方向
@@ -257,13 +254,10 @@ export class FireControl {
     ));
   }
 
-  // 空になったマガジンの外枠を、撃ったモジュールの空リンク排出口(-X 側、薬莢と同じ側)から
-  // デブリとして放出する。生成は塔の内側で、排出口へ出る既定経路(スライド)を進んでから自由な
-  // 破片になる。
+  // 空マガジン外枠をリンク排出口(-X)から排出し、排出口までの経路を経て自由飛行へ移す。
   private spawnEjectedMagazineFrame(weapon: WeaponPorts): void {
     const ship = this.player;
-    // スライド経路(モジュール局所): 排出口の内側から面の外へ。終端にわずかなばらつきを足して
-    // 出て行く方向が個体ごとに散るようにする。
+    // 経路の終端にばらつきを持たせ、外枠ごとの排出方向を変える。
     const inward = qRotate(weapon.rotation, v3(1, 0, 0));
     const inner = add(weapon.linkExitPort, scale(inward, MAG_FRAME_SLIDE_DEPTH));
     const outer = add(
