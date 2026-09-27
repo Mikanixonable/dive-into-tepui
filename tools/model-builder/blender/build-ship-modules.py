@@ -1277,19 +1277,20 @@ def build_tank_rcs(length, name):
             add_mesh_obj(f"rcs_seam_{sec}_{t}", bm_seam, mats.rcs_support)
             rcs_add_spherical_logo(center, radial, sphere_radius, logos)
 
-            # 球面上を結ぶ配管は、保護リングの外側を長い直線区間で通す。
-            surface_path = []
-            for step in range(6):
-                fraction = step / 5.0
-                latitude = (fraction - 0.5) * 2.0
-                longitude = 0.84 + 0.08 * math.sin(fraction * math.pi * 2.0)
-                direction = (
-                    radial * (math.cos(latitude) * math.cos(longitude))
-                    + tangent * (math.cos(latitude) * math.sin(longitude))
-                    + Vector((0.0, 0.0, math.sin(latitude)))
-                ).normalized()
-                surface_path.append(center + direction * (sphere_radius + 0.19))
-            surface_gas_paths.append(surface_path)
+            # 球面配管は対角の二球にだけ置き、保護リングの外側を長い直線区間で通す。
+            if t % 2 == 0:
+                surface_path = []
+                for step in range(6):
+                    fraction = step / 5.0
+                    latitude = (fraction - 0.5) * 2.0
+                    longitude = 0.84 + 0.08 * math.sin(fraction * math.pi * 2.0)
+                    direction = (
+                        radial * (math.cos(latitude) * math.cos(longitude))
+                        + tangent * (math.cos(latitude) * math.sin(longitude))
+                        + Vector((0.0, 0.0, math.sin(latitude)))
+                    ).normalized()
+                    surface_path.append(center + direction * (sphere_radius + 0.19))
+                surface_gas_paths.append(surface_path)
 
             # 各球の内向きポートを中央マニホールドへつなぐ。
             port_direction = (-radial * 0.94 + tangent * 0.34).normalized()
