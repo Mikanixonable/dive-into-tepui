@@ -13,7 +13,7 @@ import { upperCloudAltitude } from './tropopause';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
-import type { CloudFieldTextures } from './cloud-field-sampler';
+import type { CloudFieldKeyframes } from './cloud-field-sampler';
 import type { Vec4Node } from '../tsl-types';
 
 // 写真から分からない形態に置く中庸の値。下層のセル性と勢い、上層の繊維性。
@@ -55,8 +55,10 @@ export class ObservedCloudField implements CloudFieldSource {
     );
   }
 
-  public get textures(): CloudFieldTextures {
-    return { lower: this.field.textureAt(0), upper: this.field.textureAt(1) };
+  // 静止場なので両キー時刻に同じ写しを出し、補間係数は 0 で固定する。
+  public get textures(): CloudFieldKeyframes {
+    const pair = { lower: this.field.textureAt(0), upper: this.field.textureAt(1) };
+    return { a: pair, b: pair, blend: 0 };
   }
   public get generation(): number { return this.generationValue; }
 

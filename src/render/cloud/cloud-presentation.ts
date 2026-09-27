@@ -7,12 +7,18 @@ import { capRadiusFor } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
-import type { CloudFieldTextures } from './cloud-field-sampler';
+import type { CloudFieldKeyframes } from './cloud-field-sampler';
 import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
 
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
+
+// cap を置き直すとき、必要な半径に足す余白 [rad]。この分だけ大きい円板を置くので、cap の中心は
+// ここに書いた角だけ観測点の直下点からずれても、必要な覆いを保つ。低軌道(高度 400 km)では直下点が
+// 秒速約 0.07° 動くので、30 秒に 1 回程度の置き直しになる。texel の角は余白ぶんだけ粗くなる
+// (400 km で約 7%)。
+const CAP_REAIM_SLACK = (2 * Math.PI) / 180;
 
 // aimFrom の書き込み先。
 const tmpToObserver = new THREE.Vector3();
@@ -23,9 +29,10 @@ const tmpInverseSpin = new THREE.Quaternion();
 export const CLOUD_FIELD_SOURCE_KIND = { observed: 'observed', generated: 'generated' } as const;
 export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof CLOUD_FIELD_SOURCE_KIND];
 
-// 雲データ供給源のインターフェース。textures はキャップへ投影された下層・上層のテクスチャであり、供給元が寿命を管理する。
+// 雲データ供給源のインターフェース。textures はキャップへ投影された、前後 2 キー時刻の
+// 下層・上層のテクスチャと補間係数であり、供給元が寿命を管理する。
 export interface CloudFieldSource {
-  readonly textures: CloudFieldTextures;
+  readonly textures: CloudFieldKeyframes;
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
@@ -39,6 +46,9 @@ export class CloudPresentation {
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
   // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
+  // いま cap に置いてある円板。中心は殻の空間での直下点(単位方向)、半径は角 [rad]。
+  // 置き直した時点の記憶で、必要な覆いを満たす間は同じ置き方を保つ。
+  private placedCap: { center: THREE.Vector3; radius: number } | null = null;
   private cloudVisible = false;
   private cirrusVisible = true;
   private translucentCumulusVisible = true;
@@ -56,10 +66,19 @@ export class CloudPresentation {
   }
 
   // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
+  // 場の実体と補間係数は、読み手が結ぶ時点の値を取る — この写しを組んでからそのフレームの
+  // prepare が走る経路があるので、写しを取った時点の値で固定すると prepare 前の場に 1 フレーム
+  // 戻ることがある。
   public get renderInput(): CloudRenderInput {
+    const source = this.source;
     return {
-      field: { ...this.source.textures, cap: this.cap.placement },
-      generation: this.source.generation,
+      field: {
+        get a() { return source.textures.a; },
+        get b() { return source.textures.b; },
+        get blend() { return source.textures.blend; },
+        cap: this.cap.placement,
+      },
+      generation: source.generation,
       topAltitude: this.topAltitude,
     };
   }
@@ -71,7 +90,7 @@ export class CloudPresentation {
 
   // 描画設定のうち雲にかかわる項目と、見かけ直径 apparentDiameterPx [px] を表示状態へ反映する。
   public syncGraphics(graphics: GraphicsSettingsData, apparentDiameterPx: number): void {
-    // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
+    // 雲全体を描くかと、描くときの雲場の出どころ・雲の細部の段・殻の分割段。
     this.setCloudsVisible(graphics.clouds);
     if (graphics.clouds) {
       this.setSource(graphics.cloudFieldSource);
@@ -110,7 +129,19 @@ export class CloudPresentation {
   // rho は同じ空間で測った観測点の中心距離(地表が 1)。置き直した結果は不透明表面のサンプリングへ
   // 即座に反映する — 反映しないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
   private aim(subpoint: THREE.Vector3, rho: number): void {
-    this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
+    // その時点で見えうる円板(地表の地平線 + 雲頂ぶん)と、場の遡り読みの余白を含む半径 [rad]。
+    const neededRadius = capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius);
+    // **必要な円板が置いた円板に収まる間は置き直さない** — cap の置き方が変わると場の焼き直しが
+    // 走る。収まるかは「中心どうしの角距離 + 必要な半径 ≤ 置いた半径」で厳密に見る: 読み手は
+    // cap の外を「雲なし」で返すので、覆いの不足はそのまま円板の縁の雲を消す。
+    // 必要な半径が π/2 に張り付く遠方では余白を足せず、中心が動くたび置き直すことになる。
+    const placed = this.placedCap;
+    if (placed === null || placed.center.angleTo(subpoint) + neededRadius > placed.radius) {
+      // 置き直す半径は必要な半径に余白を足す。このぶん中心のずれを許し、置き直しの頻度を下げる。
+      const radius = Math.min(Math.PI / 2, neededRadius + CAP_REAIM_SLACK);
+      this.cap.aimAt(subpoint, radius);
+      this.placedCap = { center: subpoint.clone(), radius };
+    }
     this.surface.bind(this.renderInput);
   }
 
@@ -139,6 +170,8 @@ export class CloudPresentation {
   public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.fieldContributes) return;
     this.source.prepare(renderer, displayTime, gpu);
+    // 焼き直しで場の差し替えや補間係数が進むので、不透明表面の結びをこの表示時刻のものへ写し直す。
+    this.surface.bind(this.renderInput);
   }
 
   // 不透明表面と、選べる雲場の出どころをすべて解放する。
