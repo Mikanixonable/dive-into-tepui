@@ -12,7 +12,8 @@ import {
 type EnemyShapeDefinition =
   | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
   | { readonly id: 'variant-a' | 'variant-b' | 'variant-c'; readonly family: 'conventional'; readonly kind: 'variant'; readonly typeIndex: number }
-  | { readonly id: ProteinAssetId; readonly family: 'protein'; readonly kind: 'protein'; readonly assetId: ProteinAssetId };
+  | { readonly id: ProteinAssetId; readonly family: 'protein'; readonly kind: 'protein'; readonly assetId: ProteinAssetId }
+  | { readonly id: 'assembly'; readonly family: 'assembly'; readonly kind: 'assembly' };
 
 export const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
   { id: 'drifting', family: 'conventional', kind: 'drifting' },
@@ -20,6 +21,7 @@ export const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
   { id: 'variant-b', family: 'conventional', kind: 'variant', typeIndex: 1 },
   { id: 'variant-c', family: 'conventional', kind: 'variant', typeIndex: 2 },
   ...PROTEIN_ASSET_IDS.map((assetId) => ({ id: assetId, family: 'protein', kind: 'protein', assetId } as const)),
+  { id: 'assembly', family: 'assembly', kind: 'assembly' },
 ];
 export type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
 
@@ -97,8 +99,17 @@ export class StageControlsPanel implements ProteinDisplayControl {
     this.buildGeneralControls(body, resupplyEnabled, rcsFuelResupplyEnabled, waveAttackEnabled);
     const conventional = this.buildConventionalEnemySection();
     const protein = this.buildProteinEnemySection();
-    this.appendEnemyTabs(body, conventional.element, protein.element, protein.requestSelectedAsset);
-    this.spawnEnemyButtons = [conventional.spawnButton, protein.spawnButton, protein.formationButton];
+    const assembly = this.buildAssemblyEnemySection();
+    this.appendEnemyTabs(
+      body,
+      [['conventional', '従来型の敵', conventional.element],
+        ['protein', 'タンパク質型の敵', protein.element],
+        ['assembly', '組み立て型の敵', assembly.element]],
+      protein.requestSelectedAsset,
+    );
+    this.spawnEnemyButtons = [
+      conventional.spawnButton, protein.spawnButton, protein.formationButton, assembly.spawnButton,
+    ];
 
     this.element = panel;
   }
@@ -261,22 +272,40 @@ export class StageControlsPanel implements ProteinDisplayControl {
     };
   }
 
-  // 従来型/タンパク質型のタブ切り替えを body へ追加し、選ばれた側のセクションだけを表示する。
+  // 組み立て型の敵の色選択とスポーンボタンをまとめたセクションを組み立てる。
+  // 形状は seed の手続き生成で選ぶものがないので、色だけを選ばせる。
+  private buildAssemblyEnemySection(): { element: HTMLElement; spawnButton: Button } {
+    const section = document.createElement('div');
+    section.className = 'stage-control-section';
+    section.id = 'stage-control-panel-assembly';
+    section.setAttribute('role', 'tabpanel');
+    section.setAttribute('aria-label', '組み立て型の敵');
+    const title = document.createElement('div');
+    title.className = 'stage-control-section-title';
+    title.textContent = '組み立て型の敵';
+    section.appendChild(title);
+    const colorSelect = buildColorSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
+    section.appendChild(colorSelect.wrapper);
+    const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.('assembly', colorSelect.select.value));
+    section.appendChild(spawnButton.element);
+    return { element: section, spawnButton };
+  }
+
+  // 敵の種類ごとのタブ切り替えを body へ追加し、選ばれた側のセクションだけを表示する。
   // onProteinShown はタンパク質型のタブが選ばれるたびに呼ぶ — 選ぶ画面が開いた時点が、
   // 既定で選ばれている体の取得の起点になる(SPEC/PROTEIN.md「出現」)。
   private appendEnemyTabs(
-    body: HTMLElement, conventionalSection: HTMLElement, proteinSection: HTMLElement,
+    body: HTMLElement,
+    entries: readonly (readonly [family: string, label: string, element: HTMLElement])[],
     onProteinShown: () => void,
   ): void {
-    type EnemyFamily = 'conventional' | 'protein';
-    const sections = new Map<EnemyFamily, HTMLElement>([['conventional', conventionalSection], ['protein', proteinSection]]);
-    let selectedFamily: EnemyFamily = 'conventional';
-    const tabs = new TabBar<EnemyFamily>(
-      [['conventional', '従来型の敵'], ['protein', 'タンパク質型の敵']],
+    let selectedFamily = entries[0]![0];
+    const tabs = new TabBar<string>(
+      entries.map(([family, label]) => [family, label] as const),
       (family) => {
         selectedFamily = family;
         tabs.setSelected(family);
-        for (const [tab, section] of sections) {
+        for (const [tab, , section] of entries) {
           const visible = tab === selectedFamily;
           section.classList.toggle('hidden', !visible);
           section.setAttribute('aria-hidden', String(!visible));
@@ -288,17 +317,16 @@ export class StageControlsPanel implements ProteinDisplayControl {
     tabs.element.setAttribute('aria-label', '敵の種類');
     // タブ要素と対応するセクションを aria 属性で結びつける。
     tabs.element.querySelectorAll<HTMLElement>('[role="tab"]').forEach((tab, index) => {
-      const family = (index === 0 ? 'conventional' : 'protein') as EnemyFamily;
+      const family = entries[index]![0];
       tab.id = `stage-control-tab-${family}`;
       tab.setAttribute('aria-controls', `stage-control-panel-${family}`);
     });
     body.appendChild(tabs.element);
-    body.appendChild(conventionalSection);
-    body.appendChild(proteinSection);
-    // 初期表示は従来型のタブを選んだ状態にする。
+    for (const [, , section] of entries) body.appendChild(section);
+    // 初期表示は先頭のタブを選んだ状態にする。
     tabs.setSelected(selectedFamily);
-    for (const [tab, section] of sections) {
-      const visible = tab === selectedFamily;
+    for (const [family, , section] of entries) {
+      const visible = family === selectedFamily;
       section.classList.toggle('hidden', !visible);
       section.setAttribute('aria-hidden', String(!visible));
     }
