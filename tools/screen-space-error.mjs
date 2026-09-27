@@ -1,68 +1,16 @@
-// 近傍拡散補正の画質の指標と、目視の刺激の合成。誤差は補正 ΔE をアルベド 1 の面の表示の尺度へ写した
-// q = 露出係数·ΔE/π で測り、画面に見えている粒の大きさ g で説明できる幅と、説明できずにはみ出した分を、帯の勾配で
-// 見えやすさを測る区間スコア S = mean_x Σ_成分 Σ_s (1/s)·[2k·u_s + (2/α)·max(0, |d_s| − k·u_s − t)](s は帯の箱の一辺、
-// u_s = c_s·g、k = 3、α = 2(1 − Φ(3)))で 1 つに並べる。粒は表示の画素ごとに独立な白色雑音とみなし、c_s はその雑音の
-// 帯 d_s の標準偏差。刺激は表示の Oklab で合成する。
-// 画像は画素の配列で受け、ファイルもブラウザも触らない。平面は行優先の Float32Array、q と Oklab の画像は平面 3 枚の組。
+// 近傍拡散補正の画質の指標と、その診断・表示の色の変換。誤差 e は補正 ΔE をアルベド 1 の面の表示の尺度へ写した
+// q = 露出係数·ΔE/π の、候補と収束先の差。スケール s ごとに e を構造 L_s と雑音へ分け、雑音の強さから正直な白色雑音なら
+// L_s が揺れる大きさ σ̃_s を求め、スコア S = mean_x Σ_成分 [N + β·Σ_s (μ·s)^−γ·max(0, L_s² − σ̃_s²)/(σ̃_s + ε)] で
+// 雑音の罰 N と偽の構造の罰を 1 つに並べる(μ は表示倍率)。
+// 画像は画素の配列で受け取る。平面は行優先の Float32Array、q と Oklab の画像は平面 3 枚の組。
 
-// 帯の箱の一辺 [画素]。帯 d_s = ē_s − ē_2s を s ごとに持ち、残りは ē_RESIDUAL_SCALE。
-export const BAND_SCALES = [1, 2, 4, 8, 16, 32];
-const RESIDUAL_SCALE = 64;
-// 区間スコアの、帯と残り(BAND_SCALES の順と残り)の項の重み 1/s。
-const BAND_WEIGHTS = [...BAND_SCALES, RESIDUAL_SCALE].map((s) => 1 / s);
-// 粒の大きさを読む窓の一辺と、窓を置く区画の一辺 [画素]。
-const GRAIN_WINDOW = 32;
-const GRAIN_STRIDE = 8;
-// 区間の半幅(粒の標準偏差の倍数)と、その区間の外に出る確率 α = 2(1 − Φ(K))。
-const K = 3;
-const ALPHA = 0.0026997960632601866;
-// 標準正規分布の |z| の中央値。|d| の中央値を標準偏差へ直す。
-const MAD_TO_SIGMA = 0.6744897501960817;
-// 帯の標準偏差を数値で求める雑音の枚数と種。
-const CALIBRATION_FIELDS = 4;
-const CALIBRATION_SEED = 0x5eed;
-
-// ---- 雑音と、帯の幅の単位 ----
-
-// 種 seed の一様乱数(mulberry32)。
-export function uniformRandom(seed) {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let z = state;
-    z = Math.imul(z ^ (z >>> 15), z | 1);
-    z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
-    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// 種 seed の、標準偏差 sigma の白色ガウス雑音の平面(count 画素)。
-export function gaussianNoise(seed, count, sigma = 1) {
-  const random = uniformRandom(seed);
-  const plane = new Float32Array(count);
-  for (let p = 0; p < count; p++) {
-    plane[p] = sigma * Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random());
-  }
-  return plane;
-}
-
-// 寸法 width × height の画像で、画素ごとに独立な単位分散の白色雑音の、帯と残り(BAND_SCALES の順と残り)の標準偏差。
-// 一度求めた寸法は覚えておく。
-const bandStdTables = new Map();
-function bandStdsOf(width, height) {
-  const key = `${width}x${height}`;
-  const known = bandStdTables.get(key);
-  if (known !== undefined) return known;
-  const mask = new Uint8Array(width * height).fill(1);
-  const squares = new Float64Array(BAND_SCALES.length + 1);
-  for (let field = 0; field < CALIBRATION_FIELDS; field++) {
-    const { bands, residual } = bandsOf(gaussianNoise(CALIBRATION_SEED + field, width * height), mask, width, height);
-    for (const [j, plane] of [...bands, residual].entries()) squares[j] += plane.reduce((sum, v) => sum + v * v, 0);
-  }
-  const stds = Array.from(squares, (square) => Math.sqrt(square / (CALIBRATION_FIELDS * width * height)));
-  bandStdTables.set(key, stds);
-  return stds;
-}
+// 誤差を分けるスケール s(ガウスの標準偏差 [画素])。構造 L_s は帯 G_s∗e − G_2s∗e で、最後の s だけは G_s∗e。
+export const ERROR_SCALES = [1, 2, 4, 8, 16, 32, 64];
+const LAST = ERROR_SCALES.length - 1;
+// 偽の構造の罰の重み β と、スケールの重み (μ·s)^−γ の指数 γ、偽の構造の罰の分母の下限 ε(q)。
+const FALSE_STRUCTURE_WEIGHT = 100;
+const SCALE_EXPONENT = 2;
+const EPSILON = 3e-4;
 
 // ---- 測る量 ----
 
@@ -131,205 +79,151 @@ export function linearOfOklab(lab) {
   return rgb;
 }
 
-// ---- 帯 ----
+// ---- ガウス ----
 
-// 平面 values の、mask の立った画素だけで均した一辺 size の箱の平均を sizes の順に返す。箱は画素 x を
-// [x − ⌊s/2⌋, x + ⌈s/2⌉ − 1] に置く — 一辺 s の箱は一辺 2s の箱の中に入る。mask の立った画素が箱に無ければ 0。
-function boxMeans(values, mask, width, height, sizes) {
-  // 和の表。行と列を 1 つずつ足し、(x, y) に [0, x) × [0, y) の和を置く。
-  const stride = width + 1;
-  const sum = new Float64Array(stride * (height + 1));
-  const weight = new Float64Array(stride * (height + 1));
-  for (let y = 0; y < height; y++) {
-    let rowSum = 0;
-    let rowWeight = 0;
-    for (let x = 0; x < width; x++) {
-      const p = y * width + x;
-      if (mask[p]) {
-        rowSum += values[p];
-        rowWeight += 1;
-      }
-      const q = (y + 1) * stride + x + 1;
-      sum[q] = sum[q - stride] + rowSum;
-      weight[q] = weight[q - stride] + rowWeight;
-    }
-  }
-  return sizes.map((size) => {
-    const lo = Math.floor(size / 2);
-    const hi = size - lo;
-    const mean = new Float32Array(width * height);
-    for (let y = 0; y < height; y++) {
-      const y0 = Math.max(0, y - lo) * stride;
-      const y1 = Math.min(height, y + hi) * stride;
-      for (let x = 0; x < width; x++) {
-        const x0 = Math.max(0, x - lo);
-        const x1 = Math.min(width, x + hi);
-        const w = weight[y1 + x1] - weight[y0 + x1] - weight[y1 + x0] + weight[y0 + x0];
-        if (w > 0) mean[y * width + x] = (sum[y1 + x1] - sum[y0 + x1] - sum[y1 + x0] + sum[y0 + x0]) / w;
-      }
-    }
-    return mean;
-  });
+// 標準偏差 s [画素] の、半径 3s で打ち切って和を 1 にした 1 次元の核。
+function gaussianKernelOf(s) {
+  const radius = Math.ceil(3 * s);
+  const taps = Float64Array.from({ length: 2 * radius + 1 }, (_, i) => Math.exp(-((i - radius) ** 2) / (2 * s * s)));
+  const sum = taps.reduce((total, v) => total + v, 0);
+  return { radius, taps: taps.map((v) => v / sum) };
 }
+const KERNELS = ERROR_SCALES.map(gaussianKernelOf);
+// スケールの番号 j の帯の粗い側 G_2s の番号。最後のスケールは自分。
+const coarserOf = (j) => Math.min(j + 1, LAST);
 
-// 平面 values を、帯 d_s = ē_s − ē_2s(BAND_SCALES の順)と残り ē_RESIDUAL_SCALE へ分ける。ē_s は mask の立った画素
-// だけで均した箱の平均で、mask の立った画素では帯と残りの和が values に戻る。
-export function bandsOf(values, mask, width, height) {
-  const means = boxMeans(values, mask, width, height, [...BAND_SCALES, RESIDUAL_SCALE]);
-  const bands = BAND_SCALES.map((_, j) => means[j].map((v, p) => v - means[j + 1][p]));
-  return { bands, residual: means[BAND_SCALES.length] };
-}
-
-// ---- 粒と区間スコア ----
-
-// values の先頭 count 個の中央値(上側)。values の並びを壊す。
-function medianInPlace(values, count) {
-  const k = Math.floor(count / 2);
-  let lo = 0;
-  let hi = count - 1;
-  while (lo < hi) {
-    const pivot = values[(lo + hi) >> 1];
-    let i = lo;
-    let j = hi;
-    while (i <= j) {
-      while (values[i] < pivot) i++;
-      while (values[j] > pivot) j--;
-      if (i <= j) {
-        [values[i], values[j]] = [values[j], values[i]];
-        i++;
-        j--;
-      }
-    }
-    if (k <= j) hi = j;
-    else if (k >= i) lo = i;
-    else break;
-  }
-  return values[k];
-}
-
-// 帯 bands(BAND_SCALES の順)から、各画素の粒の大きさ g。最も細かい帯 d_1 を粒の雑音での標準偏差で割った値の
-// 絶対値の、画素を囲む窓の mask の立った画素での中央値を、正規分布の標準偏差へ直す。窓は GRAIN_STRIDE 四方の
-// 区画ごとに、区画の中心を囲む GRAIN_WINDOW 四方に置く。
-export function grainOf(bands, mask, width, height) {
-  const grain = new Float32Array(width * height);
-  const scratch = new Float32Array(GRAIN_WINDOW * GRAIN_WINDOW);
-  const [finest] = bands;
-  const [finestStd] = bandStdsOf(width, height);
-  for (let by = 0; by * GRAIN_STRIDE < height; by++) {
-    for (let bx = 0; bx * GRAIN_STRIDE < width; bx++) {
-      const cx = bx * GRAIN_STRIDE + GRAIN_STRIDE / 2;
-      const cy = by * GRAIN_STRIDE + GRAIN_STRIDE / 2;
-      let count = 0;
-      for (let y = Math.max(0, cy - GRAIN_WINDOW / 2); y < Math.min(height, cy + GRAIN_WINDOW / 2); y++) {
-        for (let x = Math.max(0, cx - GRAIN_WINDOW / 2); x < Math.min(width, cx + GRAIN_WINDOW / 2); x++) {
-          const p = y * width + x;
-          if (mask[p]) scratch[count++] = Math.abs(finest[p]) / finestStd;
-        }
-      }
-      const scale = count === 0 ? 0 : medianInPlace(scratch, count) / MAD_TO_SIGMA;
-      const [left, right] = [bx * GRAIN_STRIDE, Math.min(width, (bx + 1) * GRAIN_STRIDE)];
-      for (let y = by * GRAIN_STRIDE; y < Math.min(height, (by + 1) * GRAIN_STRIDE); y++) {
-        grain.fill(scale, y * width + left, y * width + right);
-      }
-    }
-  }
-  return grain;
-}
-
-// 1 成分の誤差 e の、区間スコアの重みを掛けた幅と超過の和(mask の立った画素の和)、超過の帯ごとの和(BAND_SCALES の
-// 順と残り)と画素ごとの値 excessMap への足し込み、帯ごとの d_s² と u_s² の和、最も細かい帯で粒の K 倍を超える画素の数。
-function channelTerms(e, mask, width, height, t, excessMap) {
-  const { bands, residual } = bandsOf(e, mask, width, height);
-  const grain = grainOf(bands, mask, width, height);
-  const all = [...bands, residual];
-  const stds = bandStdsOf(width, height);
-  const penalty = 2 / ALPHA;
-  const excessByBand = new Float64Array(all.length);
-  const squareByBand = new Float64Array(bands.length);
-  const unitSquareByBand = new Float64Array(bands.length);
-  let widthSum = 0;
-  let tail = 0;
-  for (let p = 0; p < mask.length; p++) {
-    if (!mask[p]) continue;
-    const g = grain[p];
-    for (let j = 0; j < all.length; j++) {
-      const u = stds[j] * g;
-      widthSum += BAND_WEIGHTS[j] * 2 * K * u;
-      const over = Math.abs(all[j][p]) - K * u - t;
-      if (over > 0) {
-        const excess = BAND_WEIGHTS[j] * penalty * over;
-        excessByBand[j] += excess;
-        excessMap[p] += excess;
-      }
-      if (j < bands.length) {
-        squareByBand[j] += all[j][p] ** 2;
-        unitSquareByBand[j] += u * u;
-      }
-    }
-    if (Math.abs(bands[0][p]) > K * stds[0] * g) tail++;
-  }
-  return { widthSum, excessByBand, squareByBand, unitSquareByBand, tail };
-}
-
-// 候補 candidate と基準 reference(平面の組)の誤差を、mask の立った画素で測る。t は表示で見えない差(平面の単位)。
-// score は区間スコア S、widthTerm と excessTerm はその幅と超過の項、excessByBand は超過の帯ごとの内訳(BAND_SCALES の
-// 順と残り)、excessMap は画素ごとの超過(3 成分の和)、r は帯ごとの R(s)(3 成分を通して)、g は誤差のベクトルの RMS、
-// tail は最も細かい帯で粒の K 倍を超える画素の割合(3 成分を通して)。
-export function errorMetrics(candidate, reference, mask, width, height, t) {
-  const excessMap = new Float32Array(width * height);
-  const excessByBand = new Float64Array(BAND_SCALES.length + 1);
-  let count = 0;
-  let squareSum = 0;
-  for (let p = 0; p < mask.length; p++) {
-    if (!mask[p]) continue;
-    count++;
-    for (let c = 0; c < 3; c++) squareSum += (candidate[c][p] - reference[c][p]) ** 2;
-  }
-  let widthSum = 0;
-  let tail = 0;
-  const squareByBand = new Float64Array(BAND_SCALES.length);
-  const unitSquareByBand = new Float64Array(BAND_SCALES.length);
-  for (let c = 0; c < 3; c++) {
-    const e = candidate[c].map((v, p) => v - reference[c][p]);
-    const terms = channelTerms(e, mask, width, height, t, excessMap);
-    widthSum += terms.widthSum;
-    tail += terms.tail;
-    for (const [j, v] of terms.excessByBand.entries()) excessByBand[j] += v;
-    for (const [j, v] of terms.squareByBand.entries()) {
-      squareByBand[j] += v;
-      unitSquareByBand[j] += terms.unitSquareByBand[j];
-    }
-  }
-  const excessSum = excessByBand.reduce((sum, v) => sum + v, 0);
+// 1 次元の核 a と b の積の核。台は狭いほう。2 次元の核どうしの積も、1 次元の積の外積になる。
+function productKernelOf(a, b) {
+  const radius = Math.min(a.radius, b.radius);
   return {
-    score: (widthSum + excessSum) / count,
-    widthTerm: widthSum / count,
-    excessTerm: excessSum / count,
-    excessByBand: Array.from(excessByBand, (v) => v / count),
-    excessMap,
-    r: Array.from(squareByBand, (square, j) => Math.sqrt(square / unitSquareByBand[j])),
-    g: Math.sqrt(squareSum / count),
-    tail: tail / (3 * count),
+    radius,
+    taps: Float64Array.from({ length: 2 * radius + 1 }, (_, i) => a.taps[i - radius + a.radius] * b.taps[i - radius + b.radius]),
   };
 }
 
-// 誤差 error(平面の組)の、粒で説明できる幅からのはみ出し |d_s| − K·u_s を、成分・帯と残り・mask の立った画素を
-// まとめた分布にしたときの分位 quantile(0..1)。
-export function marginQuantileOf(error, mask, width, height, quantile) {
-  const stds = bandStdsOf(width, height);
-  const count = mask.reduce((sum, v) => sum + v, 0);
-  const margins = new Float32Array(count * error.length * (BAND_SCALES.length + 1));
-  let n = 0;
-  for (const e of error) {
-    const { bands, residual } = bandsOf(e, mask, width, height);
-    const grain = grainOf(bands, mask, width, height);
-    for (const [j, band] of [...bands, residual].entries()) {
-      for (let p = 0; p < mask.length; p++) {
-        if (mask[p]) margins[n++] = Math.abs(band[p]) - K * stds[j] * grain[p];
-      }
+// 平面 values(width × height)を、1 次元の核 kernel の外積で畳み込む。画像の外の画素は 0。
+function convolve(values, width, height, { radius, taps }) {
+  // 行も列も、タップを外側に回してメモリを順に読む。
+  const rows = new Float64Array(width * height);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let i = -radius; i <= radius; i++) {
+      const tap = taps[i + radius];
+      for (let x = Math.max(0, -i); x < Math.min(width, width - i); x++) rows[row + x] += tap * values[row + x + i];
     }
   }
-  return margins.sort()[Math.min(n - 1, Math.floor(quantile * n))];
+  const out = new Float64Array(width * height);
+  for (let y = 0; y < height; y++) {
+    const lo = Math.max(-radius, -y);
+    const hi = Math.min(radius, height - 1 - y);
+    const row = y * width;
+    for (let i = lo; i <= hi; i++) {
+      const tap = taps[i + radius];
+      const source = (y + i) * width;
+      for (let x = 0; x < width; x++) out[row + x] += tap * rows[source + x];
+    }
+  }
+  return out;
+}
+
+// 印 mask の、スケールごとの正規化の分母 G_s∗M(denominators)と、白色雑音での L_s の分散の係数 κ_s(kappas)。
+// κ_s は画素ごとの正規化した核 ĝ から Σ(ĝ_s − ĝ_2s)²(最後のスケールは Σĝ_s²)で、mask の立った画素だけに入れる。
+function normalizationOf(mask, width, height) {
+  const m = Float64Array.from(mask);
+  const denominators = KERNELS.map((kernel) => convolve(m, width, height, kernel));
+  const squares = KERNELS.map((kernel) => convolve(m, width, height, productKernelOf(kernel, kernel)));
+  const kappas = KERNELS.map((kernel, j) => {
+    const kappa = new Float64Array(mask.length);
+    const c = coarserOf(j);
+    const cross = j === LAST ? null : convolve(m, width, height, productKernelOf(kernel, KERNELS[c]));
+    for (let p = 0; p < mask.length; p++) {
+      if (!mask[p]) continue;
+      const [ws, wc] = [denominators[j][p], denominators[c][p]];
+      kappa[p] = j === LAST ? squares[j][p] / (ws * ws)
+        : squares[j][p] / (ws * ws) - (2 * cross[p]) / (ws * wc) + squares[c][p] / (wc * wc);
+    }
+    return kappa;
+  });
+  return { denominators, kappas };
+}
+
+// 平面 values の、mask の立った画素だけで正規化した畳み込み G∗values。kernel は G の 1 次元の核、denominator は同じ
+// 核の G∗M。mask の立っていない画素は 0。
+function normalizedConvolve(values, mask, width, height, kernel, denominator) {
+  const sum = convolve(Float64Array.from(values, (v, p) => (mask[p] ? v : 0)), width, height, kernel);
+  return sum.map((v, p) => (mask[p] && denominator[p] > 0 ? v / denominator[p] : 0));
+}
+
+// ---- 指標 ----
+
+// 1 成分の誤差 e の、mask の立った画素での和: 雑音の罰 N(noise)、スケールごとに重み weights を掛けた偽の構造の罰
+// (falseStructureByScale)、L_s² と σ̃_s²(structureSquares・honestSquares)。偽の構造の罰は画素ごとに falseStructureMap
+// へも足す。normalization は normalizationOf の返り値。
+function channelTermsOf(e, mask, width, height, normalization, weights, falseStructureMap) {
+  const { denominators, kappas } = normalization;
+  const blurred = (values, j) => normalizedConvolve(values, mask, width, height, KERNELS[j], denominators[j]);
+  const smooth = KERNELS.map((_, j) => blurred(e, j));
+  let noise = 0;
+  const falseStructureByScale = new Float64Array(ERROR_SCALES.length);
+  const structureSquares = new Float64Array(ERROR_SCALES.length);
+  const honestSquares = new Float64Array(ERROR_SCALES.length);
+  for (let j = 0; j < ERROR_SCALES.length; j++) {
+    const c = coarserOf(j);
+    // 構造 L_s と、雑音 H_s = e − G_s∗e の強さ V_s = G_2s∗H_s²(最後のスケールは G_s∗H_s²)。
+    const structure = j === LAST ? smooth[j] : smooth[j].map((v, p) => v - smooth[c][p]);
+    const power = blurred(Float64Array.from(e, (v, p) => (v - smooth[j][p]) ** 2), c);
+    for (let p = 0; p < mask.length; p++) {
+      if (!mask[p]) continue;
+      // N = sqrt(G_2∗H_1²) は最も細かいスケールの V の平方根。
+      if (j === 0) noise += Math.sqrt(power[p]);
+      const honest = Math.sqrt(power[p] * kappas[j][p]);
+      const square = structure[p] * structure[p];
+      structureSquares[j] += square;
+      honestSquares[j] += honest * honest;
+      const over = square - honest * honest;
+      if (over <= 0) continue;
+      const penalty = weights[j] * over / (honest + EPSILON);
+      falseStructureByScale[j] += penalty;
+      falseStructureMap[p] += penalty;
+    }
+  }
+  return { noise, falseStructureByScale, structureSquares, honestSquares };
+}
+
+// 候補 candidate と収束先 reference(平面の組)の誤差を、mask の立った画素で測る。magnification は表示倍率 μ(画像の
+// 1 画素が画面の何画素に映るか)。score はスコア S、noiseTerm と falseStructureTerm はその雑音と偽の構造の項、
+// falseStructureByScale は偽の構造の項のスケールごとの内訳(ERROR_SCALES の順)、falseStructureMap は画素ごとの偽の
+// 構造の項(3 成分の和)、r はスケールごとの R(s) = sqrt(Σ L_s² / Σ σ̃_s²)(3 成分を通して。1 なら正直な雑音、上なら
+// 雑音で説明できない構造)、g は誤差のベクトルの RMS。
+export function errorMetrics(candidate, reference, mask, width, height, magnification = 1) {
+  const normalization = normalizationOf(mask, width, height);
+  const weights = ERROR_SCALES.map((s) => FALSE_STRUCTURE_WEIGHT * (magnification * s) ** -SCALE_EXPONENT);
+  const falseStructureMap = new Float32Array(width * height);
+  let noise = 0;
+  const falseStructureByScale = new Float64Array(ERROR_SCALES.length);
+  const structureSquares = new Float64Array(ERROR_SCALES.length);
+  const honestSquares = new Float64Array(ERROR_SCALES.length);
+  for (let c = 0; c < 3; c++) {
+    const e = candidate[c].map((v, p) => v - reference[c][p]);
+    const terms = channelTermsOf(e, mask, width, height, normalization, weights, falseStructureMap);
+    noise += terms.noise;
+    for (let j = 0; j < ERROR_SCALES.length; j++) {
+      falseStructureByScale[j] += terms.falseStructureByScale[j];
+      structureSquares[j] += terms.structureSquares[j];
+      honestSquares[j] += terms.honestSquares[j];
+    }
+  }
+  const count = mask.reduce((sum, v) => sum + v, 0);
+  const falseStructure = falseStructureByScale.reduce((sum, v) => sum + v, 0);
+  return {
+    score: (noise + falseStructure) / count,
+    noiseTerm: noise / count,
+    falseStructureTerm: falseStructure / count,
+    falseStructureByScale: Array.from(falseStructureByScale, (v) => v / count),
+    falseStructureMap,
+    r: Array.from(structureSquares, (square, j) => Math.sqrt(square / honestSquares[j])),
+    g: rmsOf(candidate, reference, mask),
+  };
 }
 
 // ---- 診断 ----
@@ -414,42 +308,4 @@ export function nearEdgesOf(edges, surface, width, height, band) {
     }
   }
   return near;
-}
-
-// ---- 刺激 ----
-
-// 基準 reference から候補 candidate への誤差を a 倍にした画像(Oklab の平面の組)。
-export function scaledErrorOf(reference, candidate, a) {
-  return reference.map((plane, c) => plane.map((v, p) => v + a * (candidate[c][p] - v)));
-}
-
-// 平面 values を、mask の立った画素だけで、標準偏差 sigma・半径 radius [画素] の定常なガウスで均す。mask の立って
-// いない画素は values のまま。
-export function gaussianBlurOf(values, mask, width, height, sigma, radius) {
-  const kernel = Array.from({ length: 2 * radius + 1 }, (_, i) => Math.exp(-((i - radius) ** 2) / (2 * sigma * sigma)));
-  // 縦横に分けて、値と重みの両方を畳み込む。
-  const pass = (source, sourceWeight, dx, dy) => {
-    const out = new Float32Array(width * height);
-    const outWeight = new Float32Array(width * height);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let sum = 0;
-        let weight = 0;
-        for (let i = -radius; i <= radius; i++) {
-          const [nx, ny] = [x + i * dx, y + i * dy];
-          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-          const q = ny * width + nx;
-          sum += kernel[i + radius] * source[q];
-          weight += kernel[i + radius] * sourceWeight[q];
-        }
-        out[y * width + x] = sum;
-        outWeight[y * width + x] = weight;
-      }
-    }
-    return [out, outWeight];
-  };
-  const masked = values.map((v, p) => (mask[p] ? v : 0));
-  const [rowSum, rowWeight] = pass(masked, Float32Array.from(mask), 1, 0);
-  const [sum, weight] = pass(rowSum, rowWeight, 0, 1);
-  return values.map((v, p) => (mask[p] && weight[p] > 0 ? sum[p] / weight[p] : v));
 }

@@ -2,114 +2,72 @@
 //
 // 使い方: node tools/screen-space-error-test.mjs。失敗した検査を並べて終了コード 1 で終わる。
 import assert from 'node:assert/strict';
-import { bandsOf, errorMetrics, gaussianNoise, uniformRandom, BAND_SCALES } from './screen-space-error.mjs';
+import { errorMetrics, ERROR_SCALES } from './screen-space-error.mjs';
 
-// 実際の撮影と同じ寸法 [画素]。
-const WIDTH = 960;
-const HEIGHT = 540;
-// 帯と残りの箱の一辺 [画素](区間スコアの重みは 1/s)。
-const TERM_SCALES = [...BAND_SCALES, 2 * BAND_SCALES.at(-1)];
-// 標準正規分布で |Z| > 3 となる確率(区間スコアの α)。
-const GAUSSIAN_TAIL = 0.0026997960632601866;
-// 超過の項の幅の項に対する比の理論値。誤差が単位分散の白色雑音で粒がその標準偏差のとき、帯ごとに(重み 1/s によらず)
-// (2/α)·E[max(0, |Z| − 3)] / (2·3)、E[max(0, |Z| − 3)] = 2(φ(3) − 3(1 − Φ(3)))。
-const GAUSSIAN_EXCESS_RATIO = (2 / GAUSSIAN_TAIL) * 2 * (0.0044318484119380075 - 3 * 0.0013498980316301035) / 6;
-// 白色雑音で許す R(s) の範囲と、超過と幅の比の範囲。粒は窓の中央値から推すので、推定の揺らぎのぶん超過は理論値より
-// 大きく出る。
-const WHITE_R_RANGE = [0.98, 1.02];
-const WHITE_EXCESS_RATIO_RANGE = [0.09, 0.13];
-// 拡大した雑音の R(s)/R(1) を理論値と照らす相対の許容幅。粗い帯ほど独立な標本が少なく(32 px の帯で数千)、帯の RMS が
-// 数 % 揺らぐ。
-const UPSCALED_R_TOLERANCE = 0.05;
+// 全面の検査の寸法と、印の縁と画像の端が効く検査の寸法 [画素]。
+const [WIDTH, HEIGHT] = [480, 270];
+const [SMALL_WIDTH, SMALL_HEIGHT] = [240, 135];
+// 白色雑音の場を重ねる枚数(1 枚が 3 成分)。粗いスケールほど独立な標本が少ないので、場を重ねて揺らぎを抑える。
+const WHITE_FIELDS = 8;
+const SMALL_WHITE_FIELDS = 24;
+// 白色雑音での 1/R(s) = RMS(σ̃_s)/RMS(L_s) の理論値。s ≥ 2 は 1。s = 1 は雑音 H_1 = e − G_1∗e の分散
+// E[H²] = 1 − 2ĝ(0) + Σĝ² が 1 より小さく、画像の内側で sqrt(0.7613) = 0.872。
+const WHITE_FINEST_RATIO = 0.872;
+// 1/R(s) の許容幅。場を重ねても標本が足りない粗いスケールは、場ごとの値の標準誤差の 3 倍まで広げる。
+const WHITE_RATIO_TOLERANCE = 0.05;
+const FINEST_RATIO_TOLERANCE = 0.03;
+// 誤差の振幅(q)。偽の構造の罰の分母の下限 ε = 3e-4 が効かない大きさ。
+const AMPLITUDE = 1;
 
-// 3 成分とも種を変えた白色雑音の平面の組と、その基準の 0 の組。
-function noiseImage(seed, width, height, sigma = 1) {
-  const count = width * height;
-  return {
-    candidate: [0, 1, 2].map((c) => gaussianNoise(seed + c, count, sigma)),
-    reference: [0, 1, 2].map(() => new Float32Array(count)),
+// 種 seed の一様乱数(mulberry32)。
+function uniformRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let z = state;
+    z = Math.imul(z ^ (z >>> 15), z | 1);
+    z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-// 平面 values(width × height)を、一辺 factor 倍へ双一次で拡大する。画素の中心どうしを合わせ、端は寄せる。
-function bilinearUpscale(values, width, height, factor) {
-  const [outWidth, outHeight] = [width * factor, height * factor];
-  const out = new Float32Array(outWidth * outHeight);
-  const at = (x, y) => values[Math.min(height - 1, Math.max(0, y)) * width + Math.min(width - 1, Math.max(0, x))];
-  for (let y = 0; y < outHeight; y++) {
-    const v = (y + 0.5) / factor - 0.5;
-    const y0 = Math.floor(v);
-    for (let x = 0; x < outWidth; x++) {
-      const u = (x + 0.5) / factor - 0.5;
-      const x0 = Math.floor(u);
-      const [fx, fy] = [u - x0, v - y0];
-      out[y * outWidth + x] = (1 - fx) * (1 - fy) * at(x0, y0) + fx * (1 - fy) * at(x0 + 1, y0)
-        + (1 - fx) * fy * at(x0, y0 + 1) + fx * fy * at(x0 + 1, y0 + 1);
-    }
-  }
-  return out;
+// 種 seed の、標準偏差 sigma の白色ガウス雑音の平面(count 画素)。
+function gaussianNoise(seed, count, sigma) {
+  const random = uniformRandom(seed);
+  return Float32Array.from({ length: count }, () => sigma * Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random()));
 }
 
-// 1/factor の画素ごとに独立な単位分散の白色雑音を bilinearUpscale で拡大したものの、帯と残り(BAND_SCALES の順と残り)の
-// 分散の理論値。画面の端から離れた画素で、拡大と箱の平均の重みから数え、拡大の位相で平均する。factor = 1 なら
-// 全解像度の白色雑音。
-function upscaledBandVariances(factor) {
-  // 1 次元で、画素 x に置いた一辺 s の箱の平均が、粗い画素 k から受ける重み(k ごとの表)。
-  const boxWeights = (x, s) => {
-    const weights = new Map();
-    const lo = x - Math.floor(s / 2);
-    for (let xp = lo; xp < lo + s; xp++) {
-      const u = (xp + 0.5) / factor - 0.5;
-      for (const k of [Math.floor(u), Math.floor(u) + 1]) {
-        weights.set(k, (weights.get(k) ?? 0) + (1 - Math.abs(u - k)) / s);
-      }
+// 3 成分とも種を変えた、標準偏差 AMPLITUDE の白色雑音の平面の組。
+const whiteImage = (seed, width, height) => [0, 1, 2].map((c) => gaussianNoise(seed + c, width * height, AMPLITUDE));
+
+// 平面 values を、標準偏差 sigma [画素]・半径 3σ のガウスで均す。画像の外は除いて重みを正規化する。
+function gaussianBlurOf(values, width, height, sigma) {
+  const radius = Math.ceil(3 * sigma);
+  const kernel = Array.from({ length: 2 * radius + 1 }, (_, i) => Math.exp(-((i - radius) ** 2) / (2 * sigma * sigma)));
+  const pass = (source, dx, dy) => Float32Array.from({ length: width * height }, (_, p) => {
+    const [x, y] = [p % width, Math.floor(p / width)];
+    let [sum, weight] = [0, 0];
+    for (let i = -radius; i <= radius; i++) {
+      const [nx, ny] = [x + i * dx, y + i * dy];
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      sum += kernel[i + radius] * source[ny * width + nx];
+      weight += kernel[i + radius];
     }
-    return weights;
-  };
-  const dot = (a, b) => [...a].reduce((sum, [k, w]) => sum + w * (b.get(k) ?? 0), 0);
-  // 1 次元の箱どうしの重みの内積の、位相の平均。2 次元の重みは x と y の積で、x と y の位相は独立に回る。
-  const norms = new Array(TERM_SCALES.length).fill(0);
-  const crosses = new Array(TERM_SCALES.length - 1).fill(0);
-  for (let phase = 0; phase < factor; phase++) {
-    const boxes = TERM_SCALES.map((s) => boxWeights(phase, s));
-    for (const [j, box] of boxes.entries()) {
-      norms[j] += dot(box, box) / factor;
-      if (j < crosses.length) crosses[j] += dot(box, boxes[j + 1]) / factor;
-    }
-  }
-  // d_s = ē_s − ē_2s の分散は、ē_s·ē_s − 2ē_s·ē_2s + ē_2s·ē_2s の各内積を x と y で掛けたもの。
-  return [...crosses.map((cross, j) => norms[j] ** 2 - 2 * cross ** 2 + norms[j + 1] ** 2), norms.at(-1) ** 2];
+    return sum / weight;
+  });
+  return pass(pass(values, 1, 0), 0, 1);
 }
 
-// 1 つ目の成分だけに plane を持ち、残りが 0 の組。
-const firstComponentOnly = (plane) => [plane, new Float32Array(plane.length), new Float32Array(plane.length)];
-
-// 平面を、間隔 spacing の 5×5 のタップへ、中心からのタップ数の距離で標準偏差 1 のガウスの重みで均す。画面の外の
-// タップは除いて重みを正規化する。
-function dense5x5(values, width, height, spacing) {
-  const weights = [-2, -1, 0, 1, 2].map((i) => Math.exp(-i * i / 2));
-  const out = new Float32Array(values.length);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let sum = 0;
-      let weight = 0;
-      for (let j = -2; j <= 2; j++) {
-        for (let i = -2; i <= 2; i++) {
-          const [nx, ny] = [x + i * spacing, y + j * spacing];
-          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-          const w = weights[i + 2] * weights[j + 2];
-          sum += w * values[ny * width + nx];
-          weight += w;
-        }
-      }
-      out[y * width + x] = sum / weight;
-    }
-  }
-  return out;
+// 白色雑音を標準偏差 sigma [画素] のガウスで均した滑らかなムラ(3 成分)を、成分をまとめた RMS が AMPLITUDE になる
+// よう揃えたもの。
+function muraImage(seed, width, height, sigma) {
+  const planes = whiteImage(seed, width, height).map((plane) => gaussianBlurOf(plane, width, height, sigma));
+  const rms = Math.sqrt(planes.reduce((sum, plane) => sum + plane.reduce((s, v) => s + v * v, 0), 0) / (3 * width * height));
+  return planes.map((plane) => plane.map((v) => (AMPLITUDE / rms) * v));
 }
 
-const within = (actual, expected, tolerance) => Math.abs(actual - expected) <= tolerance;
-const inRange = (value, [low, high]) => value >= low && value <= high;
+const zeroImage = (width, height) => [0, 1, 2].map(() => new Float32Array(width * height));
+const fullMask = (width, height) => new Uint8Array(width * height).fill(1);
 const failures = [];
 
 // 検査 name を走らせ、落ちたら並べて続ける。
@@ -123,115 +81,94 @@ function check(name, fn) {
   }
 }
 
-check('帯と残りの和が元の平面に戻る(一部の画素を外した印でも)', () => {
-  const values = gaussianNoise(1, WIDTH * HEIGHT);
-  const random = uniformRandom(2);
-  for (const mask of [new Uint8Array(values.length).fill(1), Uint8Array.from(values, () => (random() < 0.7 ? 1 : 0))]) {
-    const { bands, residual } = bandsOf(values, mask, WIDTH, HEIGHT);
-    let worst = 0;
-    for (let p = 0; p < values.length; p++) {
-      if (!mask[p]) continue;
-      const sum = bands.reduce((s, band) => s + band[p], 0) + residual[p];
-      worst = Math.max(worst, Math.abs(sum - values[p]));
-    }
-    assert.ok(worst <= 1e-6, `最大の差 ${worst}`);
-  }
-});
+// 誤差 candidate を 0 の収束先と比べた指標。
+const metricsOf = (candidate, mask, width, height) => errorMetrics(candidate, zeroImage(width, height), mask, width, height);
+// 偽の構造の項の、雑音の項に対する比。
+const falseStructureRatioOf = (metrics) => metrics.falseStructureTerm / metrics.noiseTerm;
+const format = (values, digits = 3) => values.map((v) => v.toFixed(digits)).join(' / ');
 
-const allPixels = new Uint8Array(WIDTH * HEIGHT).fill(1);
-const zeroImage = [0, 1, 2].map(() => new Float32Array(WIDTH * HEIGHT));
-const formatR = (r) => r.map((v) => v.toFixed(3)).join(' / ');
+// 種を変えた fields 枚の白色雑音の、スケールごとの 1/R(s) を場をまとめた値と、場ごとの値の標準誤差。σ̃ の和は場に
+// よらずほぼ一定なので、場をまとめた値は 1 / sqrt(mean R(s)²)。
+function whiteHonestRatiosOf(mask, width, height, fields) {
+  const rs = Array.from({ length: fields }, (_, k) => metricsOf(whiteImage(100 + 3 * k, width, height), mask, width, height).r);
+  return ERROR_SCALES.map((_, j) => {
+    const values = rs.map((r) => 1 / r[j]);
+    const mean = values.reduce((sum, v) => sum + v, 0) / fields;
+    const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / (fields - 1);
+    return { ratio: 1 / Math.sqrt(rs.reduce((sum, r) => sum + r[j] ** 2, 0) / fields), error: Math.sqrt(variance / fields) };
+  });
+}
+
+// 白色雑音の 1/R(s) が理論値の許容幅に入るか確かめる。
+function assertWhiteHonestRatios(mask, width, height, fields) {
+  const ratios = whiteHonestRatiosOf(mask, width, height, fields);
+  console.log(`    1/R(s) ${format(ratios.map((r) => r.ratio))}(標準誤差 ${format(ratios.map((r) => r.error))})`);
+  for (const [j, { ratio, error }] of ratios.entries()) {
+    const [expected, tolerance] = j === 0 ? [WHITE_FINEST_RATIO, FINEST_RATIO_TOLERANCE] : [1, WHITE_RATIO_TOLERANCE];
+    const allowed = Math.max(tolerance, 3 * error);
+    assert.ok(Math.abs(ratio - expected) <= allowed, `s = ${ERROR_SCALES[j]}: 1/R ${ratio}(${expected} ± ${allowed})`);
+  }
+}
 
 check('誤差 0 なら S も G も 0', () => {
-  const metrics = errorMetrics(zeroImage, zeroImage, allPixels, WIDTH, HEIGHT, 0.03);
+  const metrics = metricsOf(zeroImage(SMALL_WIDTH, SMALL_HEIGHT), fullMask(SMALL_WIDTH, SMALL_HEIGHT), SMALL_WIDTH, SMALL_HEIGHT);
   assert.equal(metrics.score, 0);
   assert.equal(metrics.g, 0);
 });
 
-check('全解像度の白色雑音: R(s) と超過と幅の比が白色雑音の範囲、裾の重さが正規分布の理論値', () => {
-  const metrics = errorMetrics(noiseImage(10, WIDTH, HEIGHT).candidate, zeroImage, allPixels, WIDTH, HEIGHT, 0);
-  const ratio = metrics.excessTerm / metrics.widthTerm;
-  console.log(`    R(s) ${formatR(metrics.r)}  超過/幅 ${ratio.toFixed(4)}  裾 ${(100 * metrics.tail).toFixed(3)}%`);
-  for (const [j, r] of metrics.r.entries()) assert.ok(inRange(r, WHITE_R_RANGE), `R(${BAND_SCALES[j]}) = ${r}`);
-  assert.ok(inRange(ratio, WHITE_EXCESS_RATIO_RANGE), `超過/幅 ${ratio}(理論値 ${GAUSSIAN_EXCESS_RATIO})`);
-  assert.ok(within(metrics.tail, GAUSSIAN_TAIL, 0.001), `裾 ${metrics.tail}`);
+check('全面の白色雑音: RMS(σ̃_s)/RMS(L_s) が s ≥ 2 で 1、s = 1 で 0.872', () => {
+  assertWhiteHonestRatios(fullMask(WIDTH, HEIGHT), WIDTH, HEIGHT, WHITE_FIELDS);
 });
 
-// 粒は表示の画素の揺らぎ d_1 から読むので、拡大した雑音の粒は小さく、4 px より粗い帯はそれで説明できないムラになる。
-check('1/4 の画素ごとの白色雑音を双一次で拡大したもの: R(s)/R(1) が拡大の理論値、超過と幅の比が下界を超える', () => {
-  const coarse = noiseImage(20, WIDTH / 4, HEIGHT / 4).candidate;
-  const upscaled = coarse.map((plane) => bilinearUpscale(plane, WIDTH / 4, HEIGHT / 4, 4));
-  const metrics = errorMetrics(upscaled, zeroImage, allPixels, WIDTH, HEIGHT, 0);
-  const ratio = metrics.excessTerm / metrics.widthTerm;
-  const measuredR = metrics.r.map((r) => r / metrics.r[0]);
-  // 帯と残りの RMS の c_s に対する比を、d_1 で 1 に揃えたもの。粒 g は R(s) のどの帯にも同じく掛かるので、帯では
-  // R(s)/R(1) の理論値になる。
-  const white = upscaledBandVariances(1);
-  const relative = upscaledBandVariances(4).map((v, j) => Math.sqrt(v / white[j]));
-  const expectedR = relative.map((v) => v / relative[0]);
-  // 超過と幅の比の下界。帯を標準偏差 R(s)·u_s の正規分布とみると、Jensen の不等式で E[max(0, |d_s| − 3u_s)] ≥
-  // max(0, √(2/π)·R(s) − 3)·u_s。u_s = c_s·g の g は幅と超過の両方に掛かって消える。
-  const weightedC = white.map((v, j) => Math.sqrt(v) / TERM_SCALES[j]);
-  const width = weightedC.reduce((sum, c) => sum + 6 * c, 0);
-  const excessFloor = weightedC.reduce(
-    (sum, c, j) => sum + (2 / GAUSSIAN_TAIL) * c * Math.max(0, Math.sqrt(2 / Math.PI) * expectedR[j] - 3), 0);
-  const ratioFloor = excessFloor / width;
-  console.log(`    R(s) ${formatR(metrics.r)}  R(s)/R(1) ${formatR(measuredR)}`);
-  console.log(`    R(s)/R(1) の理論値 ${formatR(expectedR.slice(0, measuredR.length))}`);
-  console.log(`    超過/幅 ${ratio.toFixed(4)}(下界 ${ratioFloor.toFixed(4)})  裾 ${(100 * metrics.tail).toFixed(3)}%`);
-  assert.ok(inRange(metrics.r[0], WHITE_R_RANGE), `R(1) = ${metrics.r[0]}`);
-  for (const [j, r] of measuredR.entries()) {
-    const expected = expectedR[j];
-    assert.ok(within(r, expected, UPSCALED_R_TOLERANCE * expected), `R(${BAND_SCALES[j]})/R(1) = ${r}(${expected})`);
+check('印の縁と画像の端を含む白色雑音: RMS(σ̃_s)/RMS(L_s) が s ≥ 2 で 1、s = 1 で 0.872', () => {
+  // 左の 40 列と、中ほどの半径 30 の円を外した印。
+  const mask = Uint8Array.from({ length: SMALL_WIDTH * SMALL_HEIGHT }, (_, p) => {
+    const [x, y] = [p % SMALL_WIDTH, Math.floor(p / SMALL_WIDTH)];
+    return x >= 40 && (x - 140) ** 2 + (y - 67) ** 2 > 30 ** 2 ? 1 : 0;
+  });
+  assertWhiteHonestRatios(mask, SMALL_WIDTH, SMALL_HEIGHT, SMALL_WHITE_FIELDS);
+});
+
+const mask = fullMask(WIDTH, HEIGHT);
+const white = metricsOf(whiteImage(10, WIDTH, HEIGHT), mask, WIDTH, HEIGHT);
+console.log(`  白色雑音: 雑音 ${white.noiseTerm.toFixed(4)}  偽の構造 ${white.falseStructureTerm.toFixed(4)}  R(s) ${format(white.r)}`);
+
+check('孤立した輝点: 偽の構造の項の雑音の項に対する比が、正直な白色雑音以下(輝点が自分で説明される)', () => {
+  const spot = zeroImage(WIDTH, HEIGHT);
+  for (const plane of spot) plane[(HEIGHT / 2) * WIDTH + WIDTH / 2] = AMPLITUDE;
+  const metrics = metricsOf(spot, mask, WIDTH, HEIGHT);
+  console.log(`    偽の構造 / 雑音: 輝点 ${falseStructureRatioOf(metrics).toFixed(2)}、白色雑音 ${falseStructureRatioOf(white).toFixed(2)}`);
+  assert.ok(falseStructureRatioOf(metrics) <= falseStructureRatioOf(white), `輝点 ${falseStructureRatioOf(metrics)}`);
+});
+
+// 同じエネルギーの、大きさの違うムラ。
+const muraSigmas = [4, 8, 16, 32];
+const muras = muraSigmas.map((sigma) => metricsOf(muraImage(20, WIDTH, HEIGHT, sigma), mask, WIDTH, HEIGHT));
+
+check('滑らかなムラ(σ = 8): 偽の構造の項が白色雑音の比の 10 倍を超え、R(s) が 4 px 以上の帯で 10 を超える', () => {
+  const mura = muras[muraSigmas.indexOf(8)];
+  console.log(`    偽の構造 / 雑音 ${falseStructureRatioOf(mura).toFixed(1)}  R(s) ${format(mura.r, 1)}`);
+  assert.ok(falseStructureRatioOf(mura) > 10 * falseStructureRatioOf(white), `偽の構造 / 雑音 ${falseStructureRatioOf(mura)}`);
+  for (const [j, s] of ERROR_SCALES.entries()) {
+    if (s >= 4) assert.ok(mura.r[j] > 10, `R(${s}) = ${mura.r[j]}`);
   }
-  assert.ok(ratio >= ratioFloor, `超過/幅 ${ratio}(下界 ${ratioFloor})`);
 });
 
-check('1% の画素に 20 倍の外れ値を混ぜると裾の重さが 1% を超え、粒は 10% 以上動かない', () => {
-  const clean = noiseImage(30, WIDTH, HEIGHT);
-  const random = uniformRandom(31);
-  const outliers = Uint8Array.from({ length: WIDTH * HEIGHT }, () => (random() < 0.01 ? 1 : 0));
-  const dirty = clean.candidate.map((plane) => plane.map((v, p) => (outliers[p] ? 20 * v : v)));
-  const before = errorMetrics(clean.candidate, clean.reference, allPixels, WIDTH, HEIGHT, 0);
-  const after = errorMetrics(dirty, clean.reference, allPixels, WIDTH, HEIGHT, 0);
-  // 幅の項は粒に比例する。
-  const grainShift = after.widthTerm / before.widthTerm - 1;
-  console.log(`    裾 ${(100 * after.tail).toFixed(3)}%  粒の変化 ${(100 * grainShift).toFixed(2)}%`);
-  assert.ok(after.tail >= 0.01, `裾 ${after.tail}`);
-  assert.ok(Math.abs(grainShift) < 0.1, `粒の変化 ${grainShift}`);
-});
-
-// 全解像度の白色雑音 σ = 1 を 256² 画素で。均しの誤差の分散は重みの二乗和で決まり、S は雑音の大きさに比例する。
-// t = 0 では密な均しが均さない raw より悪く(粒が消えて、残った粗い帯を説明できない)、t が粒の 0.2 倍になると粗い帯の
-// 超過が t に収まり、粒の小さいものほど良くなる。
-check('理想化した均しの G が重みの二乗和に合い、S の順が t で入れ替わる', () => {
-  const size = 256;
-  const raw = gaussianNoise(40, size * size);
-  const dense = dense5x5(raw, size, size, 1);
-  const weights = [-2, -1, 0, 1, 2].map((i) => Math.exp(-i * i / 2));
-  const weightSum = weights.reduce((sum, w) => sum + w, 0);
-  // 5×5 のガウスの重みの二乗和と中心の重み。
-  const squareSum = (weights.reduce((sum, w) => sum + w * w, 0) / weightSum ** 2) ** 2;
-  const center = (1 / weightSum) ** 2;
-  const candidates = {
-    'raw': { plane: raw, g: 1 },
-    '標本 4 倍の raw': { plane: gaussianNoise(41, size * size, 0.5), g: 0.5 },
-    '密な 5×5': { plane: dense, g: Math.sqrt(squareSum) },
-    '半分だけ均す': { plane: raw.map((v, p) => 0.5 * v + 0.5 * dense[p]), g: Math.sqrt(0.25 + 0.25 * squareSum + 0.5 * center) },
-    '密な 2 段': { plane: dense5x5(dense, size, size, 4), g: null },
-  };
-  const mask = new Uint8Array(size * size).fill(1);
-  const zero = firstComponentOnly(new Float32Array(size * size));
-  const scores = {};
-  for (const [name, { plane, g }] of Object.entries(candidates)) {
-    const metrics = [0, 0.05, 0.2].map((t) => errorMetrics(firstComponentOnly(plane), zero, mask, size, size, t));
-    scores[name] = metrics.map((m) => m.score);
-    console.log(`    ${name}: G ${metrics[0].g.toFixed(3)}  S ${scores[name].map((v) => v.toFixed(2)).join(' / ')}  R(s) ${metrics[0].r.map((v) => v.toFixed(2)).join(' / ')}`);
-    if (g !== null) assert.ok(within(metrics[0].g, g, 0.05 * g), `${name} の G = ${metrics[0].g}(${g})`);
+check('同じエネルギーのムラは、大きいほど偽の構造の項が小さい', () => {
+  console.log(`    σ = ${muraSigmas.join(' / ')}: 偽の構造 ${format(muras.map((m) => m.falseStructureTerm), 4)}`);
+  for (let k = 1; k < muras.length; k++) {
+    assert.ok(muras[k].falseStructureTerm < muras[k - 1].falseStructureTerm, `σ = ${muraSigmas[k]} が σ = ${muraSigmas[k - 1]} 以上`);
   }
-  assert.ok(within(scores['標本 4 倍の raw'][0], scores.raw[0] / 2, 0.05 * scores.raw[0]), '標本 4 倍の S(0) が raw の半分');
-  assert.ok(scores['密な 5×5'][0] > scores.raw[0], 't = 0 では密な均しが悪い');
-  assert.ok(scores['密な 5×5'][2] < scores.raw[2] && scores['密な 2 段'][2] < scores['密な 5×5'][2], 't が粒の 0.2 倍なら均すほど良い');
+});
+
+check('誤差を 3 倍にすると、S も 3 倍になる', () => {
+  const noise = whiteImage(30, WIDTH, HEIGHT);
+  const mura = muraImage(40, WIDTH, HEIGHT, 8);
+  const mixed = noise.map((plane, c) => plane.map((v, p) => v + mura[c][p]));
+  const base = metricsOf(mixed, mask, WIDTH, HEIGHT);
+  const tripled = metricsOf(mixed.map((plane) => plane.map((v) => 3 * v)), mask, WIDTH, HEIGHT);
+  console.log(`    M ${base.score.toFixed(4)} → ${tripled.score.toFixed(4)}(比 ${(tripled.score / base.score).toFixed(4)})`);
+  assert.ok(Math.abs(tripled.score / base.score - 3) <= 0.03, `比 ${tripled.score / base.score}`);
 });
 
 if (failures.length > 0) {
