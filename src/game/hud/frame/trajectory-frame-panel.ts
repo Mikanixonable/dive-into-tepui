@@ -1,12 +1,12 @@
 // マップビューの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
-import { type FrameRole, frameRoleOf } from '../../../physics/frame';
+import { type FrameAnchorSource, frameRoleOf } from '../../../physics/frame';
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../../../hud/widgets';
 import { frameRoleName, rotationSourceLabel } from './frame-labels';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { PredictPanelSource } from '../../viewer/predict-panel-selection';
-import type { PredictPanelCommands } from '../../viewer/predict-panel-commands';
+import type { DisplayTimelineSource } from '../../viewer/display-timeline-selection';
+import type { DisplayTimelineCommands } from '../../viewer/display-timeline-commands';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-panel';
 import type { ListedObject } from '../../pickable/listed-object';
@@ -23,11 +23,12 @@ export class TrajectoryFramePanel {
   public constructor(
     panelRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
-    private readonly predictPanel: Pick<PredictPanelSource, 'frame' | 'followCamera'>,
+    private readonly displayTimeline: Pick<DisplayTimelineSource, 'frame' | 'followCamera'>,
     private readonly commands: Pick<
-      PredictPanelCommands,
+      DisplayTimelineCommands,
       'setFrameCenter' | 'setFrameRotation' | 'setFollowCamera'
     >,
+    frameAnchors: Pick<FrameAnchorSource, 'attractorOf'>,
     overlayManager: OverlayManager,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-trajectory-frame', 'TRAJECTORY FRAME', 'FRM');
@@ -63,7 +64,7 @@ export class TrajectoryFramePanel {
     };
     controls.appendChild(this.planCenterZone.element);
 
-    this.planRotationZone = new RotationZone('回転フレーム', celestialBodies);
+    this.planRotationZone = new RotationZone('回転フレーム', celestialBodies, frameAnchors);
     this.planRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.planRotationZone.onSelect = (rotatingWith) => {
       this.commands.setFrameRotation(rotatingWith);
@@ -71,30 +72,29 @@ export class TrajectoryFramePanel {
     controls.appendChild(this.planRotationZone.element);
 
     this.followToggle = new ToggleSwitch('カメラの基準に追随', (on: boolean) => commands.setFollowCamera(on));
-    this.followToggle.setOn(predictPanel.followCamera);
+    this.followToggle.setOn(displayTimeline.followCamera);
     controls.appendChild(this.followToggle.element);
 
   }
 
   private frameLabels(): { readonly center: string; readonly rotation: string } {
-    const centerId = this.predictPanel.frame.center;
+    const centerId = this.displayTimeline.frame.center;
     const centerRole = frameRoleOf(centerId);
     const center = centerRole !== null ? frameRoleName(centerRole) : this.celestialBodies.nameOf(centerId);
-    return { center, rotation: rotationSourceLabel(this.celestialBodies, this.predictPanel.frame.rotatingWith) };
+    return { center, rotation: rotationSourceLabel(this.celestialBodies, this.displayTimeline.frame.rotatingWith) };
   }
 
   // 各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。
   public sync(
     pickables: readonly ListedObject[], members: readonly string[], displayTime: number,
-    validRoles: readonly FrameRole[],
   ): void {
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
-    this.planCenterZone.setSelected(this.predictPanel.frame.center);
-    this.planRotationZone.setNearby(members, displayTime, validRoles);
-    this.planRotationZone.setSelected(this.predictPanel.frame.rotatingWith);
+    this.planCenterZone.setSelected(this.displayTimeline.frame.center);
+    this.planRotationZone.setNearby(members, displayTime);
+    this.planRotationZone.setSelected(this.displayTimeline.frame.rotatingWith);
 
-    this.followToggle.setOn(this.predictPanel.followCamera);
+    this.followToggle.setOn(this.displayTimeline.followCamera);
     const labels = this.frameLabels();
     this.stateCenter.textContent = labels.center;
     this.stateRotation.textContent = labels.rotation;
