@@ -353,15 +353,22 @@ export function register(): void {
           return inner;
         });
         const stageScales = stageSizes.map((size) => size.width / spec.width);
+        const stageDepthScales = stageSizes.map((size) => size.depth / spec.depth);
+        for (const stage of [...Array(stages).keys()]) {
+          assert.ok(Math.abs(stageScales[stage] - stageDepthScales[stage]) < 1e-6,
+            `stage ${stage + 1} width and depth do not use the same size scale`);
+        }
+        assert.ok(stageScales[2] > stageScales[1], 'stage 3 should be the largest');
         assert.ok(stageScales[1] > stageScales[0], 'stage 2 should be larger than stage 1');
-        assert.ok(Math.abs(stageScales[0] - stageScales[2]) < 1e-6, 'stages 1 and 3 should have equal dimensions');
-        assert.ok(stageScales[2] > stageScales[3], 'stage 3 should be larger than stage 4');
+        assert.ok(Math.abs(stageScales[0] - stageScales[3]) < 1e-6,
+          'stages 1 and 4 should have equal dimensions');
         assert.ok(Math.max(...solarFaceOffsets) - Math.min(...solarFaceOffsets) > 0.01);
         const braces: THREE.Object3D[] = [];
         module.traverse((child) => {
           if (child.name.startsWith('panel_lattice:')) braces.push(child);
         });
-        assert.equal(braces.length, SOLAR_PANEL_COUNT, 'one X-brace lattice per solar panel');
+        assert.equal(braces.length, SOLAR_PANEL_COUNT, 'one rear brace lattice per solar panel');
+        let diamondBraceCount = 0;
         for (const brace of braces) {
           const braceBox = new THREE.Box3().setFromObject(brace);
           const braceSize = new THREE.Vector3();
@@ -370,6 +377,12 @@ export function register(): void {
           solarBraceDepths.push(braceSize.z);
           const indexMatch = /^panel_lattice:(\d+)$/.exec(brace.name);
           assert.ok(indexMatch !== null, `unrecognized solar brace name: ${brace.name}`);
+          const panelIndex = Number(indexMatch[1]);
+          const panelStage = panelIndex % stages;
+          const expectedPattern = panelStage === 2 ? 'diamond' : 'x';
+          assert.equal(brace.userData.bracePattern, expectedPattern,
+            `${brace.name} should use ${expectedPattern} bracing`);
+          if (expectedPattern === 'diamond') diamondBraceCount++;
           const panelSize = solarPanelSizes.get(Number(indexMatch[1]));
           assert.ok(panelSize !== undefined, `missing solar panel size for ${brace.name}`);
           solarBraceSizes.set(Number(indexMatch[1]), { width: braceSize.x, depth: braceSize.z });
@@ -378,21 +391,23 @@ export function register(): void {
           assert.ok(Math.abs(braceSize.z / panelSize.depth - 1) < 0.16,
             `${brace.name} depth ${braceSize.z} does not follow panel depth ${panelSize.depth}`);
         }
+        assert.equal(diamondBraceCount, SOLAR_PANEL_COLUMNS, 'both stage 3 panels should use diamond bracing');
         assert.ok(Math.max(...solarBraceWidths) - Math.min(...solarBraceWidths) > 0.05,
-          'X-brace width does not follow the individual panel sizes');
+          'brace width does not follow the individual panel sizes');
         assert.ok(Math.max(...solarBraceDepths) - Math.min(...solarBraceDepths) > 0.05,
-          'X-brace depth does not follow the individual panel sizes');
+          'brace depth does not follow the individual panel sizes');
         const braceStages = [...Array(stages).keys()].map((stage) => {
           const inner = solarBraceSizes.get(stage);
           const outer = solarBraceSizes.get(stages + stage);
-          assert.ok(inner !== undefined && outer !== undefined, `missing X-brace at stage ${stage + 1}`);
+          assert.ok(inner !== undefined && outer !== undefined, `missing brace lattice at stage ${stage + 1}`);
           assert.ok(Math.abs(inner.width - outer.width) < 1e-6 && Math.abs(inner.depth - outer.depth) < 1e-6,
-            `stage ${stage + 1} X-braces do not follow equal panel dimensions`);
+            `stage ${stage + 1} braces do not follow equal panel dimensions`);
           return inner.width / spec.width;
         });
-        assert.ok(braceStages[1] > braceStages[0], 'stage 2 X-brace should be larger than stage 1');
-        assert.ok(Math.abs(braceStages[0] - braceStages[2]) < 1e-6, 'stage 1 and 3 X-braces should have equal dimensions');
-        assert.ok(braceStages[2] > braceStages[3], 'stage 3 X-brace should be larger than stage 4');
+        assert.ok(braceStages[2] > braceStages[1], 'stage 3 brace should be the largest');
+        assert.ok(braceStages[1] > braceStages[0], 'stage 2 brace should be larger than stage 1');
+        assert.ok(Math.abs(braceStages[0] - braceStages[3]) < 1e-6,
+          'stage 1 and 4 braces should have equal dimensions');
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {

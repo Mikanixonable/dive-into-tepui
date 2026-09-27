@@ -2426,9 +2426,10 @@ def build_solar_mount(mats, half_len, thickness, span):
 # 展開した翼が一面に揃わないよう、パネルごとに面法線方向へ振ったオフセット [m]。
 # ヒンジまわりの金具は揃ったままにし、本体と表裏の部品だけをずらす決定的な値
 PANEL_FACE_Y_OFFSETS = (0.045, -0.032, 0.020, -0.016, -0.024, 0.036, -0.040, 0.008)
-# 根元から第1〜4段。第2段だけ大きく、第1・3段は同寸、第4段は小さくする。
-PANEL_SIZE_SCALES = (1.0, 1.04, 1.0, 0.96, 1.0, 1.04, 1.0, 0.96)
+# 根元から第1〜4段。第3段を最大、第1・4段を最小にし、同じ段の2枚は同寸にする。
+PANEL_SIZE_SCALES = (0.96, 1.0, 1.04, 0.96, 0.96, 1.0, 1.04, 0.96)
 RUST_PANEL_STAGE = 2
+DIAMOND_BRACE_STAGE = 2
 
 def build_solar_panel(name):
     reset_scene()
@@ -2438,10 +2439,11 @@ def build_solar_panel(name):
     spec = MANIFEST["deployables"]["solar_panel"]
     length, span, thickness = spec["length"], spec["span"], spec["thickness"]
     columns = int(spec["columns"])
+    panels_per_column = int(spec["count"]) // columns
     tile_span = span / columns
     build_solar_mount(mats, half_len, thickness, span)
 
-    # 裏面の細い角材は基板から浮かせ、白いX筋交いと二本束の中央レールを作る
+    # 裏面の細い角材は基板から浮かせ、段に応じた白い筋交いと二本束の中央レールを作る
     lat_h, lat_w = 0.028, 0.024      # 角材の面からの高さ・面内の幅 [m]
     lat_y = -thickness / 2 - lat_h / 2
 
@@ -2449,7 +2451,7 @@ def build_solar_panel(name):
         scale = PANEL_SIZE_SCALES[index]
         body_span = tile_span * 0.96 * scale
         body_len = length * 0.96 * scale
-        # セル面は枠の内側へ収め、細かなセル区画と一部の赤褐色パッチを並べる
+        # セル面は枠の内側へ収め、細かなセル区画を並べる
         cell_x0, cell_x1 = -body_span / 2 + 0.075, body_span / 2 - 0.075
         cell_z0, cell_z1 = 0.09, body_len - 0.075
         cell_cols, cell_rows = 8, 10
@@ -2468,9 +2470,9 @@ def build_solar_panel(name):
             cell_x1 - cell_x0 + 0.02, 0.006, cell_z1 - cell_z0 + 0.02,
             center=(0.0, thickness / 2 + 0.003, (cell_z0 + cell_z1) / 2)), mats.solar_bus)
         # 第3段の外側列にある1枚だけ、セル全体を青みの赤褐色にする
-        panels_per_column = int(spec["count"]) // columns
         panel_column, panel_stage = divmod(index, panels_per_column)
         is_rust_panel = panel_column == columns - 1 and panel_stage == RUST_PANEL_STAGE
+        brace_pattern = "diamond" if panel_stage == DIAMOND_BRACE_STAGE else "x"
         bm_cells = bmesh.new()
         for row in range(cell_rows):
             for col in range(cell_cols):
@@ -2526,29 +2528,35 @@ def build_solar_panel(name):
                 ((start[0] + end[0]) / 2, lat_y, (start[1] + end[1]) / 2),
                 (0.0, math.atan2(dx, dz), 0.0))
 
-        brace_nodes = ((lat_x0, lat_z0), (lat_x1, lat_z0), (lat_x1, lat_z1), (lat_x0, lat_z1))
-        lattice_parts = [
-            diagonal(brace_nodes[0], brace_nodes[2]),
-            diagonal(brace_nodes[1], brace_nodes[3]),
-        ]
+        corner_nodes = ((lat_x0, lat_z0), (lat_x1, lat_z0), (lat_x1, lat_z1), (lat_x0, lat_z1))
+        if brace_pattern == "diamond":
+            brace_nodes = ((mid_x, lat_z0), (lat_x1, mid_z), (mid_x, lat_z1), (lat_x0, mid_z))
+            brace_edges = tuple((brace_nodes[node], brace_nodes[(node + 1) % len(brace_nodes)])
+                for node in range(len(brace_nodes)))
+            joint_nodes = brace_nodes
+        else:
+            brace_nodes = corner_nodes
+            brace_edges = ((brace_nodes[0], brace_nodes[2]), (brace_nodes[1], brace_nodes[3]))
+            joint_nodes = tuple((x, z) for node, (x, z) in enumerate(brace_nodes) if (index + node) % 2 == 0)
+        lattice_parts = [diagonal(start, end) for start, end in brace_edges]
         # 二本の中央レールは2列の内側に沿い、連なる4枚のパネルに渡す
-        panels_per_column = int(spec["count"]) // columns
         inner_edge_x = body_span / 2 - 0.055 if index < panels_per_column else -body_span / 2 + 0.055
         lattice_parts.extend(
             (lat_w, lat_h, lat_z1 - lat_z0, (inner_edge_x + offset, lat_y, mid_z), (0.0, 0.0, 0.0))
             for offset in (-0.035, 0.035)
         )
         lattice = add_mesh_obj(f"panel_lattice:{index}", make_boxes(lattice_parts, bevel=0.004), mats.solar_lattice)
+        lattice["bracePattern"] = brace_pattern
 
-        # 一部の骨格交点を白い四角金具で覆う
+        # 筋交いの交点を白い四角金具で覆う
         joint_y = lat_y - lat_h / 2 - 0.012
-        joints = add_mesh_obj(f"panel_lattice_joints:{index}", make_boxes([
+        joint_parts = [
             (0.095, 0.05, 0.095, (x, joint_y, z), (0.0, 0.0, 0.0))
-            for node, (x, z) in enumerate(brace_nodes)
-            if (index + node) % 2 == 0
-        ] + [
-            (0.11, 0.055, 0.11, (mid_x, joint_y, mid_z), (0.0, 0.0, 0.0))
-        ], bevel=0.008), mats.solar_lattice)
+            for x, z in joint_nodes
+        ]
+        if brace_pattern == "x":
+            joint_parts.append((0.11, 0.055, 0.11, (mid_x, joint_y, mid_z), (0.0, 0.0, 0.0)))
+        joints = add_mesh_obj(f"panel_lattice_joints:{index}", make_boxes(joint_parts, bevel=0.008), mats.solar_lattice)
 
         # 四隅と中央寄りへ少数の灰色アクチュエーターを非対称に置く
         actuator_sites = {
