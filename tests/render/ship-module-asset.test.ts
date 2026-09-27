@@ -431,6 +431,23 @@ export function register(): void {
       );
       if (spec.modelId === 'solar-panel-standard') {
         const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+        const mount = objectByName(module, 'solar_mount_iss_a');
+        assert.ok(mount !== null, 'solar panel mount keeps the ISS-A structure group');
+        assert.equal(mount.userData.mountPattern, 'iss-a');
+        for (const [name, role] of [
+          ['solar_mount_rotary_drive', 'stepped-transverse-drive'],
+          ['solar_mount_saddle', 'raised-box-saddle'],
+          ['solar_mount_twin_rails', 'parallel-spanwise-rails'],
+          ['solar_mount_v_truss', 'open-v-bracing'],
+          ['solar_mount_root_clamps', 'hinge-root-clamps'],
+        ]) {
+          const part = objectByName(mount, name);
+          assert.ok(part !== null, `solar mount lacks ${name}`);
+          assert.equal(part.userData.mountRole, role, `${name} has the expected mount role`);
+          let containsMesh = false;
+          part.traverse((child) => { if (child instanceof THREE.Mesh) containsMesh = true; });
+          assert.ok(containsMesh, `${name} has visible geometry`);
+        }
         const firstHingeZ = transformInModule(module, hinges[0]).position.z;
         for (const hinge of hinges) {
           const index = hinge.userData.panelIndex as number;
