@@ -1079,10 +1079,12 @@ def tank_roll_pattern_bounds(length):
     roll_bar_height = min(1.60, max(0.55, 0.16 * length))
     stripe_half_height = min(0.25, max(0.08, 0.025 * length)) * 0.5
     top = half_len - end_margin
-    roll_top = top - checker_row_height
+    checker_mid = top - checker_row_height
+    roll_top = top - 2.0 * checker_row_height
     roll_bottom = roll_top - roll_bar_height
     return {
         "top": top,
+        "checker_mid": checker_mid,
         "checker_row_height": checker_row_height,
         "roll_top": roll_top,
         "roll_bottom": roll_bottom,
@@ -1093,7 +1095,7 @@ def paint_roll_pattern(bm, length):
     """円筒側面へ端部の市松帯・交互の長手帯・中央黒帯を割り当てる。"""
     sector_arc = 2.0 * math.pi / TANK_ROLL_SECTOR_COUNT
     bounds = tank_roll_pattern_bounds(length)
-    for z in (bounds["top"], bounds["roll_top"], bounds["roll_bottom"],
+    for z in (bounds["top"], bounds["checker_mid"], bounds["roll_top"], bounds["roll_bottom"],
               bounds["stripe_half_height"], -bounds["stripe_half_height"]):
         bmesh.ops.bisect_plane(
             bm,
@@ -1108,7 +1110,8 @@ def paint_roll_pattern(bm, length):
         center = face.calc_center_median()
         sector = int((math.atan2(center.y, center.x) + math.pi) / sector_arc) % TANK_ROLL_SECTOR_COUNT
         if bounds["roll_top"] < center.z < bounds["top"]:
-            if sector % 2 == 0:
+            row = 0 if center.z > bounds["checker_mid"] else 1
+            if (sector + row) % 2 == 0:
                 face.material_index = 1
         elif bounds["roll_bottom"] < center.z <= bounds["roll_top"]:
             if sector % 2 == 0:
