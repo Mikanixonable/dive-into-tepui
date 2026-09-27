@@ -99,6 +99,10 @@ export type RunEventBody =
     readonly state: KinematicState;
     readonly transition: ProteinPhase | 'site-disabled';
   }
+  // 組み立て型の敵が発射部から1発撃った。muzzleState は発射位置と機体の速度。
+  | { readonly kind: 'assemblyEmitterFired'; readonly muzzleState: KinematicState }
+  // 組み立て型の敵の部品が被弾で失われた。state は失われた部品の位置と機体の速度。
+  | { readonly kind: 'assemblyPartBroken'; readonly state: KinematicState }
   // 敵のプラズマ弾が交戦圏の中心の近くを初めて通り過ぎた。
   | { readonly kind: 'plasmaPassedClose' }
   // 敵1体が失われた。cause は撃破か自然損耗の別。
