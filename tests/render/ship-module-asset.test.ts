@@ -254,6 +254,32 @@ export function register(): void {
     const travel: unknown = recoil.userData.recoilTravel;
     assert.ok(typeof travel === 'number' && travel > 0 && Number.isFinite(travel));
     assert.equal(rotor.parent, recoil);
+    // 後座量に追従する部品。圧縮部品は自然長、リンクは回転比を持つ。
+    for (let i = 0; i < 4; i++) {
+      const compress = semanticAnchor(module, `gun-recoil-compress:0:${i}`);
+      assert.ok(compress !== null, `lacks gun-recoil-compress:0:${i}`);
+      const restLength: unknown = compress.userData.restLength;
+      assert.ok(typeof restLength === 'number' && restLength > 0 && Number.isFinite(restLength));
+    }
+    for (let i = 0; i < 2; i++) {
+      const lever = semanticAnchor(module, `gun-recoil-lever:0:${i}`);
+      assert.ok(lever !== null, `lacks gun-recoil-lever:0:${i}`);
+      const leverRate: unknown = lever.userData.leverRate;
+      assert.ok(typeof leverRate === 'number' && Number.isFinite(leverRate));
+    }
+    // 給弾・排莢の送り路は1発あたりの送り量を持つ。
+    for (const name of ['feed-conveyor', 'eject-conveyor']) {
+      const anchor = semanticAnchor(module, name);
+      assert.ok(anchor !== null, `lacks ${name}`);
+      const pitch: unknown = anchor.userData.conveyorPitch;
+      assert.ok(typeof pitch === 'number' && pitch > 0 && Number.isFinite(pitch), `${name} conveyorPitch`);
+    }
+    for (const name of ['link-kicker', 'eject-rotor']) {
+      assert.ok(semanticAnchor(module, name) !== null, `lacks ${name}`);
+    }
+    for (let i = 0; i < 2; i++) {
+      assert.ok(semanticAnchor(module, `link-roller:${i}`) !== null, `lacks link-roller:${i}`);
+    }
     const rotorBefore = transformInModule(module, rotor).position;
     const feedBefore = transformInModule(module, feed).position;
     // 砲身束と機関部が同じ距離だけ後退し、固定の給弾ドラムは取付位置を保つ。

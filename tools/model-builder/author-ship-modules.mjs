@@ -35,6 +35,7 @@ function buildManifest() {
         diameter: definition.diameter,
         muzzles: definition.muzzles.map(muzzle => [muzzle.x, muzzle.y, muzzle.z]),
         feedPort: [definition.feedPort.x, definition.feedPort.y, definition.feedPort.z],
+        ejectionPort: [definition.ejectionPort.x, definition.ejectionPort.y, definition.ejectionPort.z],
         thrust: definition.abilities.thrust ?? null,
       };
     }
