@@ -77,9 +77,16 @@ function requiredAnchors(definition) {
   if (definition.kind === 'weapon') {
     required['barrel-rotor:'] = definition.muzzles.length;
     required['gun-recoil:'] = definition.muzzles.length;
+    required['gun-recoil-compress:'] = 4 * definition.muzzles.length;
+    required['gun-recoil-lever:'] = 2 * definition.muzzles.length;
     required['feed-sprocket:'] = 2;
     required['feed-drum'] = 1;
     required['feed-shoe'] = 1;
+    required['feed-conveyor'] = 1;
+    required['link-roller:'] = 2;
+    required['link-kicker'] = 1;
+    required['eject-rotor'] = 1;
+    required['eject-conveyor'] = 1;
   }
   return required;
 }
