@@ -13,7 +13,8 @@ import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-
 import { anglesFromDirection, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import type { Albedo } from '../../src/render/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
-import type { ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { BodyShadow, ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { SunLight } from '../../src/render/pipeline/sun-light';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { LineStyle } from '../../src/render/line-style';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
@@ -109,7 +110,14 @@ export interface LabCase {
 }
 
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。
-export type CaseBuilder = (style: RenderStyle, ringMaterials: RingMaterials) => LabCase;
+// sunLight と bodyShadow は、フレームの恒星と天体影をパイプラインと共有する口で、それらを読む
+// 部品(体積プルームなど)を組むケースへ渡す。
+export type CaseBuilder = (
+  style: RenderStyle,
+  ringMaterials: RingMaterials,
+  sunLight: SunLight,
+  bodyShadow: BodyShadow,
+) => LabCase;
 
 // 原点から -Z を見るケース共通のカメラ。
 export function labCamera(): THREE.PerspectiveCamera {
