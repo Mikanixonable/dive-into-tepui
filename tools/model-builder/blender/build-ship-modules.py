@@ -2426,8 +2426,8 @@ def build_solar_mount(mats, half_len, thickness, span):
 # 展開した翼が一面に揃わないよう、パネルごとに面法線方向へ振ったオフセット [m]。
 # ヒンジまわりの金具は揃ったままにし、本体と表裏の部品だけをずらす決定的な値
 PANEL_FACE_Y_OFFSETS = (0.045, -0.032, 0.020, -0.016, -0.024, 0.036, -0.040, 0.008)
-# 根元から第1〜4段。第3段を最大、第1・4段を最小にし、同じ段の2枚は同寸にする。
-PANEL_SIZE_SCALES = (0.96, 1.0, 1.04, 0.96, 0.96, 1.0, 1.04, 0.96)
+# 根元から第1〜4段。段間差を前回の2倍に広げ、第3段を最大、第1・4段を最小にする。
+PANEL_SIZE_SCALES = (0.88, 0.96, 1.04, 0.88, 0.88, 0.96, 1.04, 0.88)
 RUST_PANEL_STAGE = 2
 DIAMOND_BRACE_STAGE = 2
 
@@ -2469,9 +2469,9 @@ def build_solar_panel(name):
         bus_sheet = add_mesh_obj(f"panel_bus_sheet:{index}", make_box(
             cell_x1 - cell_x0 + 0.02, 0.006, cell_z1 - cell_z0 + 0.02,
             center=(0.0, thickness / 2 + 0.003, (cell_z0 + cell_z1) / 2)), mats.solar_bus)
-        # 第3段の外側列にある1枚だけ、セル全体を青みの赤褐色にする
-        panel_column, panel_stage = divmod(index, panels_per_column)
-        is_rust_panel = panel_column == columns - 1 and panel_stage == RUST_PANEL_STAGE
+        # 第3段の2枚は、セル全体を青みの赤褐色にする
+        panel_stage = index % panels_per_column
+        is_rust_panel = panel_stage == RUST_PANEL_STAGE
         brace_pattern = "diamond" if panel_stage == DIAMOND_BRACE_STAGE else "x"
         bm_cells = bmesh.new()
         for row in range(cell_rows):
@@ -2539,6 +2539,9 @@ def build_solar_panel(name):
             brace_edges = ((brace_nodes[0], brace_nodes[2]), (brace_nodes[1], brace_nodes[3]))
             joint_nodes = tuple((x, z) for node, (x, z) in enumerate(brace_nodes) if (index + node) % 2 == 0)
         lattice_parts = [diagonal(start, end) for start, end in brace_edges]
+        has_center_crossbar = brace_pattern == "diamond"
+        if has_center_crossbar:
+            lattice_parts.append(diagonal((lat_x0, mid_z), (lat_x1, mid_z)))
         # 二本の中央レールは2列の内側に沿い、連なる4枚のパネルに渡す
         inner_edge_x = body_span / 2 - 0.055 if index < panels_per_column else -body_span / 2 + 0.055
         lattice_parts.extend(
@@ -2547,6 +2550,7 @@ def build_solar_panel(name):
         )
         lattice = add_mesh_obj(f"panel_lattice:{index}", make_boxes(lattice_parts, bevel=0.004), mats.solar_lattice)
         lattice["bracePattern"] = brace_pattern
+        lattice["centerCrossbar"] = has_center_crossbar
 
         # 筋交いの交点を白い四角金具で覆う
         joint_y = lat_y - lat_h / 2 - 0.012
