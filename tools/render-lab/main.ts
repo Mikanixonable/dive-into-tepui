@@ -20,12 +20,15 @@ import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/c
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
-import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
+import {
+  LabView, MAX_CAMERA_ELEVATION_DEG, type FloatImage, type FloatTargetName, type LabMeasurement,
+} from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
+import type { ScanTier } from '../../src/render/pipeline/screen-space/screen-space-pass';
 
 // 恒星の距離のつまみの下限・上限。つまみは距離を**天文単位の常用対数で持つ** — 見かけ径が 1px を切る
 // あたりの変化を読みたいので、AU を直に刻むと近距離側が粗すぎて追えない。下限の 0.01 AU は太陽が
@@ -59,12 +62,22 @@ declare global {
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
       capture: () => Promise<string>;
+      render: () => void;
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
       measureCurrent: () => Promise<LabMeasurement>;
+      showShot: (name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>) => Promise<void>;
+      setScanTier: (tier: ScanTier) => void;
+      setScanSeed: (x: number, y: number) => void;
+      readFloat: (name: FloatTargetName) => Promise<FloatImage>;
+      composite: (hdr: FloatImage) => Promise<FloatImage>;
+      exposureFactor: () => number;
+      measureTiers: (
+        tiers: readonly ScanTier[], rounds: number,
+      ) => Promise<readonly Readonly<Record<string, number | null>>[]>;
     };
   }
 }
@@ -296,6 +309,7 @@ async function init(): Promise<void> {
       return pngs;
     },
     capture: () => view.capture(),
+    render: () => view.render(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
@@ -304,6 +318,17 @@ async function init(): Promise<void> {
     },
     measure: (name, angles) => view.measure(name, angles),
     measureCurrent: () => view.measureCurrent(),
+    showShot: async (name, shotName, graphics) => {
+      await view.showShot(name, shotName, graphics);
+      syncAngles();
+      targets.setSelected(view.debugTarget);
+    },
+    setScanTier: (tier) => view.setScanTier(tier),
+    setScanSeed: (x, y) => view.setScanSeed(x, y),
+    readFloat: (name) => view.readFloat(name),
+    composite: (hdr) => view.composite(hdr),
+    exposureFactor: () => view.exposureFactor,
+    measureTiers: (tiers, rounds) => view.measureTiers(tiers, rounds),
   };
 }
 

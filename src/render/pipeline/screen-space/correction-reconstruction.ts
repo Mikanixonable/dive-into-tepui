@@ -1,21 +1,20 @@
 // 走査の解像度で求めた符号付きの拡散照度補正を、描画バッファの解像度へ joint bilateral で復元する。走査の解像度で
-// 近い 5×5 を均し、描画バッファの解像度で囲む 2×2 から拡大する。標本の重みは、標本の面が受け手の接平面から
+// 近い (2r + 1)² を均し、描画バッファの解像度で囲む 2×2 から拡大する。標本の重みは、標本の面が受け手の接平面から
 // どれだけ離れているか(全解像度の画素の足跡で測る)と法線のなす角で半分ずつ落ちる — 補正には受け手ごとの天体照が
 // 掛かっているので、内隅や輪郭を越えて混ぜない。
 import type * as THREE from 'three/webgpu';
 import {
-  clamp, dot, exp2, float, floor, getViewPosition, ivec2, max, screenSize, screenUV, select, textureLoad, transpose,
-  vec2, vec3, vec4,
+  Loop, clamp, dot, exp2, float, floor, getViewPosition, ivec2, max, screenSize, screenUV, select, textureLoad,
+  transpose, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { gbufferTexelOf, texelCenterUV } from './hemisphere-scan';
 import type { GBufferPass } from '../gbuffer';
-import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
+import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 重みが半分になる法線のなす角 [rad]。接平面からの距離は、全解像度の画素の足跡 1 つで重みが半分になる。
 const HALF_WEIGHT_NORMAL_ANGLE = Math.PI / 6;
-// 均しの半径と、空間の重みの標準偏差 [走査の画素]。
-const DENOISE_RADIUS = 2;
+// 均しの空間の重みの標準偏差 [走査の画素]。
 const DENOISE_SIGMA = 1;
 // 重みの和がこれ以下なら、受け手と同じ面の標本がないとみなして補正を 0 とする。0 で割らないための値。
 const WEIGHT_EPSILON = 1e-6;
@@ -43,22 +42,26 @@ export class CorrectionReconstruction {
     private readonly scanSize: Vec2Node,
   ) {}
 
-  // 走査の解像度で描いている画素の補正を、近い 5×5 の走査の画素の補正 raw から均す。受け手と同じ面の標本が
-  // なければ 0。**Fn の中の、受け手が補正を受ける分岐から呼ぶこと。**
-  public denoised(raw: THREE.Texture): Vec3Node {
+  // 走査の解像度で描いている画素の補正を、中心から縦横 radius [走査の画素] 以内の走査の画素の補正 raw から均す。
+  // radius が 0 なら中心だけを読む。受け手と同じ面の標本がなければ 0。**Fn の中の、受け手が補正を受ける分岐から
+  // 呼ぶこと。**
+  public denoised(raw: THREE.Texture, radius: IntNode): Vec3Node {
     // 受け手は描いている画素自身が表す G バッファの画素の面。
     const texel = ivec2(floor(screenUV.mul(screenSize))).toVar();
     const receiver = this.receiverAt(this.gbufferTexelOfScan(texel));
     // 空間の重みは、中心からの距離の二項係数に近いガウス関数。
     const sum = new WeightedSum();
-    for (let dy = -DENOISE_RADIUS; dy <= DENOISE_RADIUS; dy++) {
-      for (let dx = -DENOISE_RADIUS; dx <= DENOISE_RADIUS; dx++) {
-        const tap = this.clampToScan(texel.add(ivec2(dx, dy))).toVar();
-        const spatial = (dx * dx + dy * dy) * 0.5 * Math.LOG2E / (DENOISE_SIGMA * DENOISE_SIGMA);
-        const exponent = this.exponentOf(receiver, this.gbufferTexelOfScan(tap)).add(spatial);
-        sum.add(textureLoad(raw, tap).rgb, exponent, float(1));
-      }
-    }
+    // (2r + 1)² のタップを 1 本のループで行ごとに読む — 入れ子の Loop は添字がどれも同じ名前になり、内側から外側の
+    // 添字を読めない。
+    const side = radius.mul(2).add(1).toVar();
+    Loop({ start: 0, end: side.mul(side), type: 'int', condition: '<' }, ({ i }) => {
+      const dx = i.mod(side).sub(radius).toVar();
+      const dy = i.div(side).sub(radius).toVar();
+      const tap = this.clampToScan(texel.add(ivec2(dx, dy))).toVar();
+      const spatial = float(dx.mul(dx).add(dy.mul(dy))).mul(0.5 * Math.LOG2E / (DENOISE_SIGMA * DENOISE_SIGMA));
+      const exponent = this.exponentOf(receiver, this.gbufferTexelOfScan(tap)).add(spatial);
+      sum.add(textureLoad(raw, tap).rgb, exponent, float(1));
+    });
     return sum.average();
   }
 

@@ -203,6 +203,36 @@ export const EARTH_AWAY: Partial<LabViewAngles> = { earthElevationDeg: -90, eart
 // 機軸の片端と側面の両方が見える機体の姿勢。
 export const SHIP_ROTATION_PORT = new THREE.Euler(-0.5, 0.6, 0.12);
 
+// 白い面の線形の灰色の値と粗さ。
+export const WHITE = 0.8;
+export const WHITE_ROUGHNESS = 0.7;
+
+// 線形 RGB color の標準マテリアル。
+export function standard(color: THREE.Vector3, roughness: number, metalness: number): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setRGB(color.x, color.y, color.z, THREE.LinearSRGBColorSpace),
+    roughness,
+    metalness,
+  });
+}
+
+// 白い面のマテリアル。
+export function white(): THREE.MeshStandardMaterial {
+  return standard(new THREE.Vector3(WHITE, WHITE, WHITE), WHITE_ROUGHNESS, 0);
+}
+
+// 描画座標の min から max までを占める箱。ジオメトリとマテリアルは箱が所有する。
+export function slab(
+  min: THREE.Vector3, max: THREE.Vector3, material: THREE.Material | THREE.Material[] = white(),
+): THREE.Mesh {
+  const size = new THREE.Vector3().subVectors(max, min);
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
+  mesh.position.addVectors(min, max).multiplyScalar(0.5);
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  return mesh;
+}
+
 // 仮の親 host へ組んで個体を積み終えた InstancedPool の枝を、host から外してケースの物体にする。
 // ジオメトリとマテリアルはケースが所有する。
 export function detachPoolMesh(host: THREE.Scene): THREE.Object3D {

@@ -1,449 +1,421 @@
-// 遮蔽と照り返しの画質の計測。ヘッドレス Chrome で .render-lab/ を開き、荷室(bay)を地球照だけで照らした構図
-// (bay-earthshine の撮影と同じ向き)を精細さの段ごとにデバッグ表示で撮って <out-dir> へ書き、基準の組
-// <reference-dir> の高設定と比べた指標を表にする。基準を省くと <out-dir> 自身の高設定と比べる。
+// 近傍拡散補正の画質と費用の計測。ヘッドレス Chrome で .render-lab/ を開き、評価の組の撮影を、走査の段と
+// ブルーノイズの seed を与えて撮る。画質は補正項だけを、アルベド 1 の面の表示の尺度 q = 露出係数·ΔE/π で測る。
+// 6 つの使い方がある。
 //
-// 使い方: node tools/render-lab-screen-space-metrics.mjs <out-dir> [<reference-dir>]。dir は相対ならリポジトリ根から。
+//   reference [--name D] [--entries K,...] [--sets S,...] --slices S --steps T --passes N
+//     基準 B(全解像度・均しなし・1 パス S スライス × 片側 T 歩で、seed を変えた N パスの補正の和と、目で見る画像の
+//     ための HDR の平均の表示)を .render-lab-shots/ssd-reference/<D>/ へ作る。同じ D で呼び直すと、保存済みの
+//     パスへ N 個目まで続きから足す。D の既定は HEAD の短いハッシュ。--entries と --sets は評価の組のうち作る撮影の
+//     key と set(tuning・checking・correctness・flicker)。
+//   check D [--entries K,...]
+//     基準 D の偶数番目と奇数番目のパスの差(雑音)を、いまの中設定(均しなし)の誤差と比べて収束を判定する。
+//     --entries の既定は bay。
+//   compare [<candidates.json>] [--reference D] [--entries K,...] [--sets S,...] [--t T] [--out O]
+//     候補の段(既定は精細さの 3 段の均し前後と、中の均し前のスライスを 2・4・8 倍にしたもの)を B と比べ、
+//     指標と費用の表を出す。超過の地図と、表示の誤差を 8 倍にした画像を .render-lab-shots/ssd-compare/<O>/ へ書き、
+//     候補の撮影(captures/)と費用・拡散照度から数えた値(record.json)も残す。--entries と --sets は reference と同じ。
+//   rescore <出力先> [--reference D] --t T,...
+//     compare か threshold が残した撮影を、撮り直さずに t ごとに採点し直し、表を <出力先>/report-t<T>.md へ書く。
+//     D の既定は撮影に使った基準。
+//   stimuli [--reference D]
+//     目視の刺激(B の表示に中設定の表示の誤差を縮めて足した画像と、raw の誤差を表示の空間で均した画像)を、中身を
+//     伏せた名前で .render-lab-shots/ssd-stimuli/<撮影>/ へ書く。対応表は key.json。
+//   threshold [--name D]
+//     刺激の目視の判定から t を測る。刺激の撮影の B を刺激と同じ段で ssd-reference/<D>/ へ作り、同じセッションで精細さの
+//     3 段の均し前後を撮って ssd-compare/<D>/ へ残す。中(均し後、1 つ目の seed)の誤差を刺激の倍率にしたときの、
+//     粒で説明できる幅からのはみ出しの 99 百分位を表にし、採用可能とされた倍率での撮影どうしの最小を t とする。
+//     その t で採点した表も書く。D の既定は HEAD の短いハッシュに -threshold を付けたもの。
+//
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
-//
-// 値はどれも、撮った PNG を sRGB と PBR Neutral から戻した線形の値(露出を掛けた目盛り)で測る。
-// - 窓: 平らな床の 5×5 の窓。偏り・RMS 誤差・誤差の標準偏差を、基準の窓の平均輝度に対する割合 [%] で出す。
-// - 接触影: 壁の足元から床へ引いた輝度の断面。足元の暗さ 1 − 足元 / 遠く と、その半分まで戻る距離 [px] を、
-//   基準との差で出す。
-// - 照り返し: 窓の「遮蔽と照り返し」と「遮蔽」の差の RGB の和を、基準の同じ差で割った比。
-// - 境界の漏れ: G バッファの法線・深度の境界から 2 画素以内の面の、基準に対する RMS 誤差 [%]。
-// - 連続フレーム差: カメラを少しずつ引いた連続フレームどうしの、境界の帯の外の面の平均絶対差 [%]。
-// - 負の画素: 拡散照度(方式オフ)+ 復元後の補正 が負になる画素の数。PNG の量子化の幅の外で確かに負なものと、
-//   幅の中で負でありうるもの。復元後の補正を表示できないビルドでは測らない。
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { openChromeSession, waitFor } from './chrome-session.mjs';
-import { decodePng } from './png.mjs';
+import { encodeGrayPng, encodeRgbPng } from './png.mjs';
+import {
+  BAND_SCALES, edgesOf, errorMetrics, exposedCorrectionOf, flickerOf, gaussianBlurOf, linearOfOklab, marginQuantileOf,
+  nearEdgesOf, oklabOf, rmsOf, scaledErrorOf, srgbCodesOfLinear, uniformRandom,
+} from './screen-space-error.mjs';
+import {
+  analyticRatiosOf, captureLinear, ENTRIES, fixed, HEIGHT, headHash, linearOfPng, loadReference, maskOf,
+  readHalfFloats, referenceMetaOf, root, seedOf, selectedEntries, shotsDir, table, TIERS, WIDTH, windowRatiosOf, withLab,
+  writeHalfFloats,
+} from './screen-space-lab.mjs';
+import { check, extendReference, reference } from './screen-space-reference.mjs';
 
-const root = path.resolve(import.meta.dirname, '..');
-const buildDir = path.join(root, '.render-lab');
-const port = 8771;
-const debugPort = 9447;
-
-const USAGE = 'usage: node tools/render-lab-screen-space-metrics.mjs <out-dir> [<reference-dir>]';
-
-// 描画設定 screenSpaceDiffuse / screenSpaceQuality の値(src/render/pipeline/screen-space/screen-space-pass.ts)。
-const MODE = { off: 0, occlusion: 1, indirect: 2 };
-const QUALITIES = [{ label: '低', value: 0 }, { label: '中', value: 1 }, { label: '高', value: 2 }];
-// 基準にする精細さ。
-const REFERENCE_QUALITY = 2;
-// 荷室の既定の構図へ重ねる観察の向き。恒星を床の真下へ置き、見えている面を地球照と環境光だけで照らす。
-const VIEW = { sunAzimuthDeg: 0, sunElevationDeg: -90 };
-// 露出補正。床の拡散照度が、トーンマッピングの圧縮の掛からない明るさ(線形 0.76 未満)に写る値。
-const EXPOSURE_COMPENSATION = 0.25;
-// 復元後の補正のデバッグ表示のボタンの名前(src/render/pipeline/debug-target.ts)。
-const CORRECTION_LABEL = '拡散照度補正';
-
-// 読みどころ(960×540 の画素、tools/render-lab/bay-cases.ts の注記)。窓はこれを中心とする 5×5。
-const WINDOWS = {
-  'P_in': [412, 179],
-  'P_base': [507, 189],
-  'P_bleed': [704, 386],
-  'P_glow': [547, 225],
-};
-const WINDOW_HALF = 2;
-// 接触影の断面。start から toward の向きへ進んで壁に当たったところを足元とし、逆向きに PROFILE_LENGTH 画素まで、
-// 断面と直交する ±PROFILE_HALF_WIDTH 画素を平均して読む。
-const PROFILES = {
-  'P_base': { start: [507, 189], toward: [0, -1] },
-  'P_bleed': { start: [704, 386], toward: [1, 0] },
-};
-const PROFILE_LENGTH = 40;
-const PROFILE_HALF_WIDTH = 10;
-// 足元と遠くの断面の範囲 [px]。
-const PROFILE_NEAR = [1, 3];
-const PROFILE_FAR = [30, 40];
-// 照り返しを読む窓。
-const BOUNCE_WINDOWS = ['P_glow', 'P_bleed'];
-// 境界とみなす隣の画素との法線のなす角の余弦と、深度の表示の差 [LSB]、境界の帯の幅 [px]。
+// 境界とみなす法線のなす角の余弦と深度の表示の差 [LSB]、境界の帯の幅 [画素]。
 const EDGE_NORMAL_COS = Math.cos(Math.PI / 6);
 const EDGE_DEPTH_LSB = 3;
 const EDGE_BAND = 2;
-// カメラを引く 1 フレームぶんの距離の倍率の常用対数と、フレームの数。
-const DOLLY_STEP = 0.0005;
-const DOLLY_FRAMES = 6;
-// 撮影 1 枚が、絵の落ち着きを待って撮る回数の上限。
-const MAX_SETTLE_CAPTURES = 6;
+// 表示で見えない差 t(q)。threshold で、stimuli の刺激の目視の判定から測った値。
+const DEFAULT_T = 0.00032;
+// 表示の 1 LSB に当たる、黒の近くの線形の値。
+const DISPLAY_LSB = 1 / (255 * 12.92);
 
-// ---- 撮影 ----
+// 精細さの 3 段の、均した後と均す前(-raw)。
+const QUALITY_CANDIDATES = Object.entries(TIERS).flatMap(([name, tier]) => [
+  { label: `${name}`, tier },
+  { label: `${name}-raw`, tier: { ...tier, denoiseRadius: 0 } },
+]);
+const DEFAULT_CANDIDATES = [
+  ...QUALITY_CANDIDATES,
+  ...[2, 4, 8].map((factor) => ({
+    label: `medium-raw-x${factor}`, tier: { ...TIERS.medium, sliceCount: TIERS.medium.sliceCount * factor, denoiseRadius: 0 },
+  })),
+];
 
-// いま画面に出ているものを、連続する 2 回が一致するまで撮り直して PNG の Buffer で返す。
-async function captureSettled(devTools, name) {
-  let previous = await devTools.evaluate('window.renderLab.capture()');
-  for (let count = 2; count <= MAX_SETTLE_CAPTURES; count++) {
-    const next = await devTools.evaluate('window.renderLab.capture()');
-    if (next === previous) return Buffer.from(next.slice(next.indexOf(',') + 1), 'base64');
-    previous = next;
+// ---- 引数 ----
+
+// `--名前 値` と `--旗` の並び args を { positional, options } へ。
+function parseArgs(args) {
+  const positional = [];
+  const options = {};
+  for (let i = 0; i < args.length; i++) {
+    if (!args[i].startsWith('--')) positional.push(args[i]);
+    else if (i + 1 < args.length && !args[i + 1].startsWith('--')) options[args[i].slice(2)] = args[++i];
+    else options[args[i].slice(2)] = true;
   }
-  throw new Error(`capture "${name}" did not settle within ${MAX_SETTLE_CAPTURES} captures`);
+  return { positional, options };
 }
 
-// 全段を撮って outDir へ書き、段ごとの GPU の中央値 [ms] を返す。
-async function captureSet(devTools, outDir) {
-  const set = (key, value) => devTools.evaluate(`window.renderLab.setGraphicsOption(${JSON.stringify(key)}, ${value})`);
-  const target = (id) => devTools.evaluate(`window.renderLab.setTarget(${JSON.stringify(id)})`);
-  const view = (changes) => devTools.evaluate(`window.renderLab.setView(${JSON.stringify(changes)})`);
-  const save = async (name) => {
-    writeFileSync(path.join(outDir, `${name}.png`), await captureSettled(devTools, name));
-    console.log(`shot ${name}`);
-  };
-  const hasCorrection = await devTools.evaluate(`[...document.querySelectorAll('[role=button]')]
-    .some((b) => b.textContent === ${JSON.stringify(CORRECTION_LABEL)})`);
-  await set('exposureCompensation', EXPOSURE_COMPENSATION);
-  const gpu = {};
-  for (const { value: q } of QUALITIES) {
-    await set('screenSpaceDiffuse', MODE.indirect);
-    await set('screenSpaceQuality', q);
-    // 計測はケースを出し直して構図を既定へ戻すので、撮る前に呼ぶ。
-    const measured = await devTools.evaluate(`window.renderLab.measure('bay', ${JSON.stringify(VIEW)})`);
-    gpu[q] = Object.fromEntries(['照り返し源', '近傍拡散走査', '近傍拡散復元', 'マテリアル']
-      .map((row) => [row, measured.gpuSupported ? measured.gpuPassMs[row]?.p50 ?? null : null]));
-    await target('diffuse');
-    await save(`q${q}-diffuse`);
-    for (let k = 1; k <= DOLLY_FRAMES; k++) {
-      await view({ cameraDistanceLog: k * DOLLY_STEP });
-      await save(`q${q}-dolly-${k}`);
+// ---- 比較 ----
+
+// 比較の出力先 dir の、候補の撮影の置き場と、撮り直せない値の記録。撮影は、撮影 entry・候補 label・seed の番号
+// index ごとの補正(rgb の半精度)と、目で見る画像を書く撮影での 1 つ目の seed の表示(PNG)。記録は
+// { reference, entries, candidates, costs, diffuse }(entries は撮影の key の並び、costs は候補ごとの GPU の行の
+// p50 [ms] の表か null、diffuse は候補と撮影ごとの、拡散照度から数えた負の画素と解析値のある窓の比)。
+const correctionPathOf = (dir, entry, label, index) => path.join(dir, 'captures', `${entry.key}.${label}.s${index}.f16`);
+const displayPathOf = (dir, entry, label) => path.join(dir, 'captures', `${entry.key}.${label}.png`);
+const recordPathOf = (dir) => path.join(dir, 'record.json');
+// 記録 record が撮った評価の組の撮影。
+const recordEntriesOf = (record) => ENTRIES.filter((e) => record.entries.includes(e.key));
+// 候補の撮影に使う seed。ちらつきのフレームは 1 つ目だけ。
+const COMPARE_SEEDS = [seedOf(0), seedOf(1)];
+const seedsOf = (entry) => (entry.set === 'flicker' ? COMPARE_SEEDS.slice(0, 1) : COMPARE_SEEDS);
+// 超過の地図と、誤差を 8 倍にした画像を書く撮影。
+const imagedOf = (entry) => entry.set === 'tuning' || entry.set === 'checking';
+
+async function compare({ positional, options }) {
+  const candidates = positional[0] === undefined ? DEFAULT_CANDIDATES : JSON.parse(readFileSync(positional[0], 'utf8'));
+  const name = options.reference ?? headHash();
+  const t = Number(options.t ?? DEFAULT_T);
+  const outDir = path.join(shotsDir, 'ssd-compare', options.out ?? name);
+  const entries = selectedEntries(options);
+  const references = loadReference(name, entries);
+  const { meta } = references[entries[0].key];
+  console.log(`基準 ${name}(${meta.slices} スライス × 片側 ${meta.steps} 歩、${meta.passes} パス)、t = ${t}`);
+  const { diffuse, costs } = await withLab(async (lab) => {
+    const captured = await captureCandidates(lab, outDir, entries, candidates, references);
+    // 費用。コンパイルを済ませてから、bay で段を交互に測る。
+    await lab.show(ENTRIES[0]);
+    await lab.capturePng();
+    return { diffuse: captured, costs: await lab.measureTiers(candidates.map((c) => c.tier), 3) };
+  });
+  const record = { reference: name, entries: entries.map((e) => e.key), candidates, costs, diffuse };
+  writeFileSync(recordPathOf(outDir), JSON.stringify(record));
+  const { byT, flicker } = scoreSaved(outDir, record, references, [t], outDir);
+  const report = reportOf(record, byT[0], flicker);
+  writeFileSync(path.join(outDir, 'report.md'), report);
+  console.log(`\n${report}`);
+}
+
+// compare か threshold が残した dir の撮影を、撮り直さずに t の並び(--t)ごとに採点し直し、report-t<t>.md を書く。
+// 費用と拡散照度から数えた値は撮影のときの記録のまま。
+async function rescore({ positional, options }) {
+  const dir = positional[0];
+  if (dir === undefined || typeof options.t !== 'string') throw new Error('usage: rescore <出力先> [--reference D] --t <t,...>');
+  const record = JSON.parse(readFileSync(recordPathOf(dir), 'utf8'));
+  const ts = options.t.split(',').map(Number);
+  const references = loadReference(options.reference ?? record.reference, recordEntriesOf(record));
+  const { byT, flicker } = scoreSaved(dir, record, references, ts, null);
+  for (const [i, t] of ts.entries()) {
+    const file = path.join(dir, `report-t${t}.md`);
+    writeFileSync(file, reportOf(record, byT[i], flicker));
+    console.log(`rescored t = ${t}: ${file}`);
+  }
+}
+
+// 撮影 entries ごとに候補 candidates を seed を変えて撮り、補正と表示を dir の captures/ へ書く。1 つ目の seed の
+// 拡散照度は、その場で負の画素と窓の比へ畳み、候補の label と撮影の key の表で返す。references は基準、lab は
+// withLab の口。
+async function captureCandidates(lab, dir, entries, candidates, references) {
+  mkdirSync(path.join(dir, 'captures'), { recursive: true });
+  const diffuse = Object.fromEntries(candidates.map((c) => [c.label, {}]));
+  for (const entry of entries) {
+    await lab.show(entry);
+    for (const candidate of candidates) {
+      await lab.setTier(candidate.tier);
+      for (const [index, seed] of seedsOf(entry).entries()) {
+        await lab.setSeed(seed);
+        const png = await lab.capturePng();
+        writeHalfFloats(correctionPathOf(dir, entry, candidate.label, index), await lab.readFloat('correction', 3));
+        if (index > 0 || entry.set === 'flicker') continue;
+        if (imagedOf(entry)) writeFileSync(displayPathOf(dir, entry, candidate.label), png);
+        const irradiance = await lab.readFloat('diffuse', 3);
+        const exposure = await lab.exposureFactor();
+        diffuse[candidate.label][entry.key] = diffuseSummaryOf(entry, irradiance, references[entry.key], exposure);
+      }
     }
-    await view({ cameraDistanceLog: 0 });
-    if (hasCorrection) {
-      await target('correction');
-      await save(`q${q}-correction`);
-      await target('diffuse');
+    console.log(`captured ${entry.key}`);
+  }
+  return diffuse;
+}
+
+// 撮影 entry の候補の拡散照度 irradiance(rgb)の、測る画素で負の画素の数と、そのうちアルベド 1 の面の表示
+// (露出係数 exposure)で 1 LSB 以上暗く出るものの数。解析値と照らす撮影では窓の比も。reference は基準。
+function diffuseSummaryOf(entry, irradiance, reference, exposure) {
+  const mask = maskOf(reference.radius);
+  let [negatives, visibleNegatives] = [0, 0];
+  for (let p = 0; p < WIDTH * HEIGHT; p++) {
+    if (!mask[p]) continue;
+    const lowest = Math.min(irradiance[p * 3], irradiance[p * 3 + 1], irradiance[p * 3 + 2]);
+    if (lowest < 0) negatives++;
+    if (exposure * lowest / Math.PI < -DISPLAY_LSB) visibleNegatives++;
+  }
+  const ratios = entry.set === 'correctness' ? windowRatiosOf(entry, irradiance) : null;
+  return { negatives, visibleNegatives, ratios };
+}
+
+// dir に残した撮影を基準 references と比べ、t の並び ts の順に、候補と撮影ごとの指標の表 byT と、候補ごとの
+// ちらつき flicker(bay とちらつきの全フレームを撮っていなければ null)を返す。imageDir が null でなければ、最初の
+// t の超過の地図と表示の誤差を 8 倍にした画像をそこへ書く。
+function scoreSaved(dir, record, references, ts, imageDir) {
+  const entries = recordEntriesOf(record);
+  const byT = ts.map(() => Object.fromEntries(record.candidates.map((c) => [c.label, {}])));
+  const flickerFrames = Object.fromEntries(record.candidates.map((c) => [c.label, []]));
+  for (const entry of entries) {
+    const reference = references[entry.key];
+    const q0 = reference.exposedCorrection;
+    const mask = maskOf(reference.radius);
+    const edges = edgesOf(reference.normal, reference.depth, WIDTH, HEIGHT, EDGE_NORMAL_COS, EDGE_DEPTH_LSB);
+    const nearEdges = nearEdgesOf(edges, mask, WIDTH, HEIGHT, EDGE_BAND);
+    for (const candidate of record.candidates) {
+      const qs = seedsOf(entry).map((_, index) => exposedCorrectionOf(
+        readHalfFloats(correctionPathOf(dir, entry, candidate.label, index)), reference.meta.exposure));
+      if (entry.set === 'flicker' || entry.key === 'bay') flickerFrames[candidate.label].push(qs[0]);
+      if (entry.set === 'flicker') continue;
+      const grainScale = Math.round(1 / candidate.tier.scale);
+      // t によらない指標: 偏りと分散の R(s)、境界の漏れ、拡散照度から数えた値。
+      const average = qs[0].map((plane, c) => plane.map((v, p) => (v + qs[1][c][p]) / 2));
+      const common = {
+        biasR: errorMetrics(average, q0, mask, WIDTH, HEIGHT, ts[0], grainScale).r,
+        varianceR: errorMetrics(qs[0], qs[1], mask, WIDTH, HEIGHT, ts[0], grainScale).r,
+        leak: rmsOf(qs[0], q0, nearEdges),
+        ...record.diffuse[candidate.label][entry.key],
+        referenceRatios: entry.set === 'correctness' ? windowRatiosOf(entry, reference.diffuse) : null,
+      };
+      // t ごとの指標。
+      for (const [i, t] of ts.entries()) {
+        const { excessMap, ...metrics } = errorMetrics(qs[0], q0, mask, WIDTH, HEIGHT, t, grainScale);
+        const scoreSecond = errorMetrics(qs[1], q0, mask, WIDTH, HEIGHT, t, grainScale).score;
+        byT[i][candidate.label][entry.key] = { ...metrics, ...common, scoreSecond };
+        if (imageDir !== null && i === 0 && imagedOf(entry)) {
+          const display = linearOfPng(readFileSync(displayPathOf(dir, entry, candidate.label)));
+          writeImages(imageDir, candidate.label, entry.key, display, reference.display, excessMap);
+        }
+      }
     }
-    await set('screenSpaceDiffuse', MODE.occlusion);
-    await save(`q${q}-occlusion-diffuse`);
+    console.log(`scored ${entry.key}`);
   }
-  // 方式によらない G バッファと、補正の掛からない拡散照度。
-  await set('screenSpaceDiffuse', MODE.off);
-  await save('off-diffuse');
-  await target('normal');
-  await save('normal');
-  await target('depth');
-  await save('depth');
-  await target('off');
-  writeFileSync(path.join(outDir, 'gpu.json'), JSON.stringify(gpu, null, 1));
-  return gpu;
+  const flickerEntries = [ENTRIES.find((e) => e.key === 'bay'), ...ENTRIES.filter((e) => e.set === 'flicker')];
+  const flickerReference = flickerEntries.every((e) => record.entries.includes(e.key))
+    ? flickerEntries.map((e) => references[e.key].exposedCorrection) : null;
+  const flicker = Object.fromEntries(record.candidates.map((c) => [c.label, flickerReference === null ? null
+    : flickerOf(flickerFrames[c.label], flickerReference, maskOf(references.bay.radius))]));
+  return { byT, flicker };
 }
 
-// ---- 復号 ----
+// 超過の地図で白になる、画素ごとの超過の値。
+const EXCESS_MAP_WHITE = 20;
 
-// sRGB で符号化した 0..1 の値の線形の値。
-const srgbToLinear = (v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
-
-// PBR Neutral(three の neutralToneMapping、露出は掛けたあと)の順写像。
-function neutral(c) {
-  const x = Math.min(c[0], c[1], c[2]);
-  const offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
-  const shifted = c.map((v) => v - offset);
-  const peak = Math.max(...shifted);
-  if (peak < 0.76) return shifted;
-  const d = 0.24;
-  const newPeak = 1 - (d * d) / (peak + d - 0.76);
-  const g = 1 - 1 / (0.15 * (peak - newPeak) + 1);
-  return shifted.map((v) => v * (newPeak / peak) * (1 - g) + newPeak * g);
+// 候補 label の撮影 key の、超過の地図 excessMap と、候補の表示 display の基準の表示 referenceDisplay(どちらも
+// 線形 sRGB)からの差を Oklab で 8 倍にした画像を outDir へ書く。
+function writeImages(outDir, label, key, display, referenceDisplay, excessMap) {
+  const map = Uint8Array.from(excessMap, (v) => Math.min(255, Math.round(255 * v / EXCESS_MAP_WHITE)));
+  writeFileSync(path.join(outDir, `${key}.${label}.excess.png`), encodeGrayPng(WIDTH, HEIGHT, map));
+  const enhanced = linearOfOklab(scaledErrorOf(oklabOf(referenceDisplay), oklabOf(display), 8));
+  writeFileSync(path.join(outDir, `${key}.${label}.error8.png`), encodeRgbPng(WIDTH, HEIGHT, srgbCodesOfLinear(enhanced)));
 }
 
-// PBR Neutral の逆写像。圧縮の掛からない範囲は閉じた式で、掛かる範囲は順写像を繰り返し当てて解く。
-function inverseNeutral(t) {
-  if (Math.max(...t) < 0.76) {
-    const low = Math.min(...t);
-    const x = low < 0.04 ? 0.4 * Math.sqrt(low) : low + 0.04;
-    return t.map((v) => v + x - low);
-  }
-  let c = [...t];
-  for (let i = 0; i < 100; i++) {
-    const f = neutral(c);
-    c = c.map((v, k) => v + (t[k] - f[k]));
-  }
-  return c;
-}
-
-// 8bit の PNG の画素ごとの RGB を、画素の値 code(0..255)から線形の値へ写す関数 decode で戻した Float32Array。
-function decodeImage(png, decode) {
-  const { width, height, channels, data } = decodePng(png);
-  const rgb = new Float32Array(width * height * 3);
-  for (let p = 0; p < width * height; p++) {
-    rgb.set(decode([data[p * channels], data[p * channels + 1], data[p * channels + 2]]), p * 3);
-  }
-  return { width, height, rgb };
-}
-
-// 拡散照度などトーンマッピングして出す表示の画素の値を、線形の値へ。
-const tonemappedValue = (code) => inverseNeutral(code.map((v) => srgbToLinear(v / 255)));
-// 符号付きの補正の表示(0 が 127.5、成分ごとに符号と大きさ)の画素の値を、線形の値へ。
-function signedValue(code) {
-  const magnitude = inverseNeutral(code.map((v) => srgbToLinear(Math.abs(2 * v / 255 - 1))));
-  return magnitude.map((m, k) => Math.sign(code[k] - 127.5) * m);
-}
-
-// 線形の RGB の並び rgb の、画素 p の輝度。
-const luminance = (rgb, p) => 0.2126 * rgb[p * 3] + 0.7152 * rgb[p * 3 + 1] + 0.0722 * rgb[p * 3 + 2];
-
-// ---- 指標 ----
-
-// 窓 center の画素の添字。
-function windowPixels(width, [cx, cy]) {
-  const pixels = [];
-  for (let y = cy - WINDOW_HALF; y <= cy + WINDOW_HALF; y++) {
-    for (let x = cx - WINDOW_HALF; x <= cx + WINDOW_HALF; x++) pixels.push(y * width + x);
-  }
-  return pixels;
-}
-
-// values の平均。
+// 値の並び values の平均。空なら NaN。
 const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
 
-// 窓の偏り・RMS 誤差・誤差の標準偏差 [%](基準の窓の平均輝度に対する割合)。
-function windowError(image, reference, center) {
-  const pixels = windowPixels(image.width, center);
-  const errors = pixels.map((p) => luminance(image.rgb, p) - luminance(reference.rgb, p));
-  const scale = 100 / mean(pixels.map((p) => luminance(reference.rgb, p)));
-  const bias = mean(errors);
-  const rmse = Math.sqrt(mean(errors.map((e) => e * e)));
-  const std = Math.sqrt(mean(errors.map((e) => (e - bias) ** 2)));
-  return { bias: bias * scale, rmse: rmse * scale, std: std * scale };
-}
-
-// 法線の表示 normal と深度の表示 depth から、境界の画素の印。
-function edgeMask(normal, depthPng) {
-  const { width, height } = normal;
-  const depth = decodePng(depthPng);
-  const n = (p) => [0, 1, 2].map((k) => normal.rgb[p * 3 + k] * 2 - 1);
-  const edges = new Uint8Array(width * height);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const p = y * width + x;
-      for (const q of [x + 1 < width ? p + 1 : -1, y + 1 < height ? p + width : -1]) {
-        if (q < 0) continue;
-        const [a, b] = [n(p), n(q)];
-        const cos = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / Math.hypot(...a) / Math.hypot(...b);
-        const depthStep = Math.abs(depth.data[p * depth.channels] - depth.data[q * depth.channels]);
-        if (cos < EDGE_NORMAL_COS || depthStep >= EDGE_DEPTH_LSB) {
-          edges[p] = 1;
-          edges[q] = 1;
-        }
-      }
-    }
-  }
-  return edges;
-}
-
-// 境界から EDGE_BAND 画素以内の面の印と、その外の面の印。面は方式オフの拡散照度が正の画素。
-function bands(edges, surface, width, height) {
-  const band = new Uint8Array(width * height);
-  const interior = new Uint8Array(width * height);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const p = y * width + x;
-      if (!surface[p]) continue;
-      let near = false;
-      for (let dy = -EDGE_BAND; dy <= EDGE_BAND && !near; dy++) {
-        for (let dx = -EDGE_BAND; dx <= EDGE_BAND && !near; dx++) {
-          const [nx, ny] = [x + dx, y + dy];
-          near = nx >= 0 && ny >= 0 && nx < width && ny < height && edges[ny * width + nx] === 1;
-        }
-      }
-      (near ? band : interior)[p] = 1;
-    }
-  }
-  return { band, interior };
-}
-
-// 接触影の断面 [足元からの距離 1..PROFILE_LENGTH の平均輝度]。足元は、start から toward へ進んで法線が start の面と
-// 30° より離れた最初の画素の手前。
-function contactProfile(image, normal, { start, toward }) {
-  const { width } = image;
-  const across = [-toward[1], toward[0]];
-  const normalAt = (x, y) => [0, 1, 2].map((k) => normal.rgb[(y * width + x) * 3 + k] * 2 - 1);
-  const profile = new Array(PROFILE_LENGTH).fill(0);
-  for (let s = -PROFILE_HALF_WIDTH; s <= PROFILE_HALF_WIDTH; s++) {
-    const [x0, y0] = [start[0] + across[0] * s, start[1] + across[1] * s];
-    const floor = normalAt(x0, y0);
-    let step = 0;
-    for (; step < 200; step++) {
-      const n = normalAt(x0 + toward[0] * (step + 1), y0 + toward[1] * (step + 1));
-      const cos = (n[0] * floor[0] + n[1] * floor[1] + n[2] * floor[2]) / Math.hypot(...n) / Math.hypot(...floor);
-      if (cos < EDGE_NORMAL_COS) break;
-    }
-    for (let d = 1; d <= PROFILE_LENGTH; d++) {
-      const [x, y] = [x0 + toward[0] * (step + 1 - d), y0 + toward[1] * (step + 1 - d)];
-      profile[d - 1] += luminance(image.rgb, y * width + x) / (2 * PROFILE_HALF_WIDTH + 1);
-    }
-  }
-  return profile;
-}
-
-// 断面の足元の暗さと、その半分まで戻る距離 [px]。
-function contactShadow(profile) {
-  const range = ([from, to]) => mean(profile.slice(from - 1, to));
-  const near = range(PROFILE_NEAR);
-  const far = range(PROFILE_FAR);
-  const half = near + (far - near) / 2;
-  let spread = PROFILE_LENGTH;
-  for (let d = PROFILE_NEAR[0]; d < PROFILE_LENGTH; d++) {
-    const [a, b] = [profile[d - 1], profile[d]];
-    if ((a - half) * (b - half) <= 0 && a !== b) {
-      spread = d + (half - a) / (b - a);
-      break;
-    }
-  }
-  return { contrast: 1 - near / far, spread };
-}
-
-// 窓 center の、image から base を引いた RGB の平均の和。
-function windowDifference(image, base, center) {
-  const pixels = windowPixels(image.width, center);
-  return mean(pixels.map((p) => [0, 1, 2].reduce((sum, k) => sum + image.rgb[p * 3 + k] - base.rgb[p * 3 + k], 0)));
-}
-
-// 印 mask の画素の、image と reference の輝度の RMS 誤差 [%](基準の平均輝度に対する割合)。
-function maskedError(image, reference, mask) {
-  let squared = 0;
-  let scale = 0;
-  let count = 0;
-  for (let p = 0; p < mask.length; p++) {
-    if (!mask[p]) continue;
-    squared += (luminance(image.rgb, p) - luminance(reference.rgb, p)) ** 2;
-    scale += luminance(reference.rgb, p);
-    count++;
-  }
-  return 100 * Math.sqrt(squared / count) / (scale / count);
-}
-
-// 連続するフレーム frames の、印 mask の画素の輝度の平均絶対差 [%](平均輝度に対する割合)の平均。
-function frameDifference(frames, mask) {
-  const differences = [];
-  for (let k = 1; k < frames.length; k++) {
-    let sum = 0;
-    let scale = 0;
-    for (let p = 0; p < mask.length; p++) {
-      if (!mask[p]) continue;
-      sum += Math.abs(luminance(frames[k].rgb, p) - luminance(frames[k - 1].rgb, p));
-      scale += luminance(frames[k - 1].rgb, p);
-    }
-    differences.push(100 * sum / scale);
-  }
-  return mean(differences);
-}
-
-// 方式オフの拡散照度の表示 offPng と、補正の表示 correctionPng から、和が負になる画素の数。量子化の幅(画素の値 ±½)の
-// どこを取っても負なものと、負を取りうるもの。
-function negativePixels(offPng, correctionPng) {
-  const off = decodePng(offPng);
-  const correction = decodePng(correctionPng);
-  const at = (png, p, bias) => [0, 1, 2].map((k) => Math.min(255, Math.max(0, png.data[p * png.channels + k] + bias)));
-  let certain = 0;
-  let possible = 0;
-  for (let p = 0; p < off.width * off.height; p++) {
-    if (Math.max(...at(off, p, 0)) === 0) continue;
-    const highest = tonemappedValue(at(off, p, 0.5)).map((v, k) => v + signedValue(at(correction, p, 0.5))[k]);
-    const lowest = tonemappedValue(at(off, p, -0.5)).map((v, k) => v + signedValue(at(correction, p, -0.5))[k]);
-    if (highest.some((v) => v < 0)) certain++;
-    else if (lowest.some((v) => v < 0)) possible++;
-  }
-  return { certain, possible };
-}
-
-// ---- 表 ----
-
-// 小数 digits 桁の文字列。null と NaN(測れなかった値)は —。
-const fixed = (value, digits) => (value === null || Number.isNaN(value) ? '—' : value.toFixed(digits));
-
-// outDir の組を referenceDir の組の基準の段と比べ、表を出す。
-function report(outDir, referenceDir, gpu) {
-  const load = (dir, name, decode) => decodeImage(readFileSync(path.join(dir, `${name}.png`)), decode);
-  const readPng = (dir, name) => readFileSync(path.join(dir, `${name}.png`));
-  const normal = load(outDir, 'normal', (code) => code.map((v) => srgbToLinear(v / 255)));
-  const off = load(outDir, 'off-diffuse', tonemappedValue);
-  const { width, height } = off;
-  const surface = Uint8Array.from({ length: width * height }, (_, p) => (luminance(off.rgb, p) > 0 ? 1 : 0));
-  const { band, interior } = bands(edgeMask(normal, readPng(outDir, 'depth')), surface, width, height);
-  const reference = load(referenceDir, `q${REFERENCE_QUALITY}-diffuse`, tonemappedValue);
-  const referenceOcclusion = load(referenceDir, `q${REFERENCE_QUALITY}-occlusion-diffuse`, tonemappedValue);
-  const referenceContact = Object.fromEntries(Object.entries(PROFILES)
-    .map(([name, profile]) => [name, contactShadow(contactProfile(reference, normal, profile))]));
-  const referenceBounce = Object.fromEntries(BOUNCE_WINDOWS
-    .map((name) => [name, windowDifference(reference, referenceOcclusion, WINDOWS[name])]));
-
-  const windowNames = Object.keys(WINDOWS);
-  const header = [
-    '段',
-    ...['偏り', 'RMS', '標準偏差'].map((metric) => `窓の${metric} [%] ${windowNames.join(' / ')}`),
-    ...Object.keys(PROFILES).map((name) => `接触影 ${name} 暗さの差 / 距離の差 [px]`),
-    `照り返し / 基準 ${BOUNCE_WINDOWS.join(' / ')}`,
-    '境界の漏れ [%]',
-    '連続フレーム差 [%]',
-    '負の画素 確か / ありうる',
-    'GPU 復元 / マテリアル [ms]',
-  ];
-  console.log(`\n基準: ${path.relative(root, referenceDir) || '.'} の段 ${REFERENCE_QUALITY}`);
-  console.log(`| ${header.join(' | ')} |`);
-  console.log(`|${' --- |'.repeat(header.length)}`);
-  for (const { label, value: q } of QUALITIES) {
-    const image = load(outDir, `q${q}-diffuse`, tonemappedValue);
-    const occlusion = load(outDir, `q${q}-occlusion-diffuse`, tonemappedValue);
-    const errors = windowNames.map((name) => windowError(image, reference, WINDOWS[name]));
-    const contact = Object.entries(PROFILES).map(([name, profile]) => {
-      const shadow = contactShadow(contactProfile(image, normal, profile));
-      const base = referenceContact[name];
-      return `${fixed(shadow.contrast - base.contrast, 3)} / ${fixed(shadow.spread - base.spread, 1)}`;
-    });
-    const bounce = BOUNCE_WINDOWS
-      .map((name) => fixed(windowDifference(image, occlusion, WINDOWS[name]) / referenceBounce[name], 3));
-    const dolly = Array.from({ length: DOLLY_FRAMES }, (_, k) => load(outDir, `q${q}-dolly-${k + 1}`, tonemappedValue));
-    const frames = [image, ...dolly];
-    let negatives = '—';
-    try {
-      const { certain, possible } = negativePixels(readPng(outDir, 'off-diffuse'), readPng(outDir, `q${q}-correction`));
-      negatives = `${certain} / ${possible}`;
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw e;
-    }
-    const cells = [
-      label,
-      ...['bias', 'rmse', 'std'].map((metric) => errors.map((e) => fixed(e[metric], 2)).join(' / ')),
-      ...contact,
-      bounce.join(' / '),
-      fixed(maskedError(image, reference, band), 2),
-      fixed(frameDifference(frames, interior), 3),
-      negatives,
-      `${fixed(gpu[q]?.['近傍拡散復元'] ?? null, 3)} / ${fixed(gpu[q]?.['マテリアル'] ?? null, 3)}`,
+// 記録 record の表。候補ごとの費用と調整用・確認用の S の平均、撮影ごとの S、帯ごとの超過、解析値との照合。results
+// は候補と撮影ごとの指標、flicker は候補ごとのちらつき。撮っていない組の平均は —。
+function reportOf(record, results, flicker) {
+  const { candidates, costs } = record;
+  const entries = recordEntriesOf(record);
+  const keysOf = (set) => entries.filter((e) => e.set === set).map((e) => e.key);
+  const [tuning, checking, correctness] = ['tuning', 'checking', 'correctness'].map(keysOf);
+  const measured = [...tuning, ...checking];
+  // 費用は近傍拡散補正の 4 行の和の、マテリアルの行に対する比。
+  const costOf = (row) => {
+    if (row === null) return null;
+    const parts = ['照り返し源', '近傍拡散走査', '近傍拡散均し', '近傍拡散拡大', 'マテリアル'].map((label) => row[label]);
+    return parts.some((v) => v === null) ? null : (parts[0] + parts[1] + parts[2] + parts[3]) / parts[4];
+  };
+  const summary = candidates.map((candidate, i) => {
+    const rows = results[candidate.label];
+    const avg = (keys, field, digits) => fixed(mean(keys.map((k) => rows[k][field])), digits);
+    const bands = (field) => BAND_SCALES.map((_, j) => fixed(mean(tuning.map((k) => rows[k][field][j])), 2)).join(' / ');
+    const sum = (field) => measured.reduce((total, k) => total + rows[k][field], 0);
+    return [
+      candidate.label, fixed(costOf(costs[i]), 2), avg(tuning, 'score', 3), avg(tuning, 'widthTerm', 3),
+      avg(tuning, 'excessTerm', 3), avg(tuning, 'g', 5), fixed(100 * mean(tuning.map((k) => rows[k].tail)), 2),
+      avg(checking, 'score', 3), avg(tuning, 'scoreSecond', 3), avg(measured, 'leak', 5),
+      fixed(flicker[candidate.label], 5), `${sum('negatives')} / ${sum('visibleNegatives')}`,
+      bands('r'), bands('biasR'), bands('varianceR'),
     ];
-    console.log(`| ${cells.join(' | ')} |`);
-  }
-  const shadows = Object.entries(referenceContact)
-    .map(([name, { contrast, spread }]) => `${name} 暗さ ${fixed(contrast, 3)} 距離 ${fixed(spread, 1)} px`);
-  console.log(`\n基準の接触影: ${shadows.join('、')}`);
+  });
+  const perShot = candidates.map((candidate) => [candidate.label, ...measured.map((k) => {
+    const row = results[candidate.label][k];
+    return `${row.score.toFixed(3)} (${row.widthTerm.toFixed(3)} + ${row.excessTerm.toFixed(3)})`;
+  })]);
+  const perBand = candidates.map((candidate) => [candidate.label, ...Array.from(
+    { length: BAND_SCALES.length + 1 }, (_, j) => fixed(mean(tuning.map((k) => results[candidate.label][k].excessByBand[j])), 3),
+  )]);
+  const ratios = correctness.map((key) => {
+    const analytic = analyticRatiosOf(key);
+    const format = (values) => values.map((v) => fixed(v, 3)).join(' / ');
+    return [key, format(analytic), format(results[candidates[0].label][key].referenceRatios),
+      ...candidates.map((c) => format(results[c.label][key].ratios))];
+  });
+  return [
+    '## 候補', '',
+    ...table(['候補', '費用 / マテリアル', 'S 調整用', '幅', '超過', 'G', '裾 [%]', 'S 確認用', 'S の 2 つ目の seed',
+      '境界の漏れ', 'ちらつき', '負の画素 / 見える', 'R(s)', 'R(s) 偏り', 'R(s) 分散'], summary),
+    '', '## 撮影ごとの S(幅 + 超過)', '', ...table(['候補', ...measured], perShot),
+    '', '## 帯ごとの超過(調整用の平均)', '', ...table(['候補', ...BAND_SCALES.map((s) => `${s} px`), '残り'], perBand),
+    '', '## 解析値のある窓の比(拡散照度。bay は P_in / P_out、bounce-cosine は余弦 1 / 0.5 / 0)', '',
+    ...table(['撮影', '解析値', '基準', ...candidates.map((c) => c.label)], ratios),
+    '',
+  ].join('\n');
 }
+
+// ---- 刺激と t ----
+
+// 刺激を作る撮影と、誤差を縮める倍率。
+const STIMULUS_SHOTS = ['bay', 'bay-dark', 'bay-earth-open'];
+const STIMULUS_SCALES = [1, 1 / 2, 1 / 4, 1 / 8];
+// 外れ値の刺激の、表示の空間で誤差を均すガウスの標準偏差と半径 [画素]。中設定の均し(走査の画素で標準偏差 1、
+// 半径 2)を描画バッファの画素へ写したもの。
+const STIMULUS_BLUR_SIGMA = 4;
+const STIMULUS_BLUR_RADIUS = 8;
+
+async function stimuli({ options }) {
+  const name = options.reference ?? headHash();
+  const stimulusEntries = ENTRIES.filter((e) => STIMULUS_SHOTS.includes(e.key));
+  const references = loadReference(name, stimulusEntries);
+  const captures = await withLab(async (lab) => {
+    const out = {};
+    for (const entry of stimulusEntries) {
+      await lab.show(entry);
+      out[entry.key] = {};
+      for (const [label, tier] of [['smoothed', TIERS.medium], ['raw', { ...TIERS.medium, denoiseRadius: 0 }]]) {
+        await lab.setTier(tier);
+        await lab.setSeed(seedOf(0));
+        out[entry.key][label] = await captureLinear(lab);
+      }
+    }
+    return out;
+  });
+  const random = uniformRandom(Date.now() >>> 0);
+  for (const entry of stimulusEntries) {
+    const dir = path.join(shotsDir, 'ssd-stimuli', entry.key);
+    mkdirSync(dir, { recursive: true });
+    const reference = oklabOf(references[entry.key].display);
+    const surface = Uint8Array.from(references[entry.key].radius, (r) => (r > 0 ? 1 : 0));
+    const smoothed = oklabOf(captures[entry.key].smoothed);
+    const raw = oklabOf(captures[entry.key].raw);
+    // 誤差を縮めた刺激と、raw の誤差を表示の空間で均した刺激。
+    const scaled = STIMULUS_SCALES.map((a) => ({ content: `smoothed-error x${a}`, image: scaledErrorOf(reference, smoothed, a) }));
+    const blurredError = raw.map((plane, c) => gaussianBlurOf(
+      plane.map((v, p) => v - reference[c][p]), surface, WIDTH, HEIGHT, STIMULUS_BLUR_SIGMA, STIMULUS_BLUR_RADIUS));
+    const pair = [
+      { content: 'smoothed (linear irradiance)', image: smoothed },
+      { content: 'raw error blurred in display space', image: reference.map((plane, c) => plane.map((v, p) => v + blurredError[c][p])) },
+    ];
+    const key = {};
+    const write = (prefix, items) => {
+      const order = items.map((item) => ({ item, sort: random() })).sort((a, b) => a.sort - b.sort);
+      for (const [i, { item }] of order.entries()) {
+        const file = `${prefix}${i + 1}.png`;
+        writeFileSync(path.join(dir, file), encodeRgbPng(WIDTH, HEIGHT, srgbCodesOfLinear(linearOfOklab(item.image))));
+        key[file] = item.content;
+      }
+    };
+    writeFileSync(path.join(dir, 'reference.png'), encodeRgbPng(WIDTH, HEIGHT, srgbCodesOfLinear(references[entry.key].display)));
+    write('t', scaled);
+    write('pair', pair);
+    writeFileSync(path.join(dir, 'key.json'), JSON.stringify(key, null, 1));
+    console.log(`stimuli ${path.relative(root, dir)}`);
+  }
+}
+
+// 刺激の基準の段(全解像度・均しなし・1 パス 4 スライス × 片側 32 歩)とパス数。
+const STIMULUS_REFERENCE_TIER = { scale: 1, sliceCount: 4, stepCount: 32, denoiseRadius: 0 };
+const STIMULUS_REFERENCE_PASSES = 256;
+// t を読む分位。
+const THRESHOLD_QUANTILE = 0.99;
+// 刺激の目視の判定: 3 撮影とも採用可能とされた倍率と、不可とされた倍率。不可の値は t のこの倍以上あるべき。
+const ACCEPTED_SCALE = 1 / 8;
+const REJECTED_SCALE = 1 / 2;
+const REJECTED_MARGIN = 2;
+
+async function threshold({ options }) {
+  const name = options.name ?? `${headHash()}-threshold`;
+  const entries = ENTRIES.filter((e) => STIMULUS_SHOTS.includes(e.key));
+  // 基準と候補は同じセッションで撮る(セッションが違うと 1 パスの値が違う)。
+  if (entries.some((e) => referenceMetaOf(name, e) !== null)) {
+    throw new Error(`reference ${name} already exists; give a new --name to build B and the candidates in one session`);
+  }
+  const outDir = path.join(shotsDir, 'ssd-compare', name);
+  const { references, diffuse } = await withLab(async (lab) => {
+    for (const entry of entries) {
+      await extendReference(lab, name, entry, STIMULUS_REFERENCE_TIER, STIMULUS_REFERENCE_PASSES);
+    }
+    const built = loadReference(name, entries);
+    return { references: built, diffuse: await captureCandidates(lab, outDir, entries, QUALITY_CANDIDATES, built) };
+  });
+  const record = {
+    reference: name, entries: entries.map((e) => e.key), candidates: QUALITY_CANDIDATES,
+    costs: QUALITY_CANDIDATES.map(() => null), diffuse,
+  };
+  writeFileSync(recordPathOf(outDir), JSON.stringify(record));
+  // 中(均し後、1 つ目の seed)の誤差を倍率ごとに縮めたときの、はみ出しの分位。
+  const medium = QUALITY_CANDIDATES.find((c) => c.label === 'medium');
+  const margins = Object.fromEntries(entries.map((entry) => {
+    const { exposedCorrection, meta, radius } = references[entry.key];
+    const q = exposedCorrectionOf(readHalfFloats(correctionPathOf(outDir, entry, medium.label, 0)), meta.exposure);
+    const error = q.map((plane, c) => plane.map((v, p) => v - exposedCorrection[c][p]));
+    return [entry.key, STIMULUS_SCALES.map((a) => marginQuantileOf(error.map((plane) => plane.map((v) => a * v)),
+      maskOf(radius), WIDTH, HEIGHT, Math.round(1 / medium.tier.scale), THRESHOLD_QUANTILE))];
+  }));
+  const marginOf = (key, a) => margins[key][STIMULUS_SCALES.indexOf(a)];
+  const t = Math.min(...entries.map((e) => marginOf(e.key, ACCEPTED_SCALE)));
+  const scaleLabel = (a) => (a === 1 ? '1' : `1/${1 / a}`);
+  const rows = entries.map((e) => [
+    e.key, ...STIMULUS_SCALES.map((a) => fixed(marginOf(e.key, a), 6)),
+    marginOf(e.key, REJECTED_SCALE) >= REJECTED_MARGIN * t ? '合' : '否',
+  ]);
+  const { byT, flicker } = scoreSaved(outDir, record, references, [t], outDir);
+  const report = [
+    `## t(中の均し後の誤差を a 倍したときの |d_s| − 3u_s の ${100 * THRESHOLD_QUANTILE} 百分位)`, '',
+    ...table(['撮影', ...STIMULUS_SCALES.map((a) => `a = ${scaleLabel(a)}`),
+      `a = ${scaleLabel(REJECTED_SCALE)} ≧ ${REJECTED_MARGIN}t`], rows),
+    '', `t = ${t.toPrecision(4)}(a = ${scaleLabel(ACCEPTED_SCALE)} の撮影どうしの最小)`, '',
+    reportOf(record, byT[0], flicker),
+  ].join('\n');
+  writeFileSync(path.join(outDir, 'report.md'), report);
+  console.log(`\n${report}`);
+}
+
+const COMMANDS = { reference, check, compare, rescore, stimuli, threshold };
 
 async function main() {
-  const [outArg, referenceArg] = process.argv.slice(2);
-  if (outArg === undefined) throw new Error(USAGE);
-  const outDir = path.resolve(root, outArg);
-  const referenceDir = referenceArg === undefined ? outDir : path.resolve(root, referenceArg);
-  mkdirSync(outDir, { recursive: true });
-
-  const session = await openChromeSession({
-    serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-render-lab-ss-',
-  });
-  let gpu;
-  try {
-    const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
-    await waitFor(devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab?.measure === 'function')",
-      'the render lab to initialise');
-    const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
-    if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
-    gpu = await captureSet(devTools, outDir);
-  } finally {
-    await session.close();
+  const [command, ...rest] = process.argv.slice(2);
+  if (!Object.hasOwn(COMMANDS, command)) {
+    throw new Error('usage: node tools/render-lab-screen-space-metrics.mjs reference|check|compare|rescore|stimuli|threshold [...]');
   }
-  report(outDir, referenceDir, gpu);
+  await COMMANDS[command](parseArgs(rest));
 }
 
 main().catch((e) => {

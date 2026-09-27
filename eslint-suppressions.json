@@ -1215,14 +1215,6 @@
       "count": 2
     }
   },
-  "src/render/pipeline/exposure.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
-    }
-  },
   "src/render/pipeline/gbuffer.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1

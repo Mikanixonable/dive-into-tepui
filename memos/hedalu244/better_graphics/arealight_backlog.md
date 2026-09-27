@@ -5,7 +5,7 @@
 構成)と §1-5(明るさの目盛り)。** ここにあるのは「これから何を足しうるか」と、その判断材料だけ。
 
 **天体照の遮蔽(天体照が艦の構造で遮られること)はここでは扱わない。**
-[`screenspace.md`](screenspace.md) が引き取る。
+[`screenspace-diffuse.md`](screenspace-diffuse.md) が引き取る。
 
 ---
 
