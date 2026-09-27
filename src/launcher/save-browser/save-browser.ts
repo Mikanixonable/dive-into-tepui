@@ -5,6 +5,7 @@ import type { SaveSlots } from '../save/save-slots';
 import type { SnapshotService, SnapshotSource } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta } from '../save/slot-data';
+import { SYSTEM_MODAL_GROUP } from '../../hud/overlay-manager';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 import { TextPromptOverlay } from '../../hud/windows/text-prompt-overlay';
@@ -67,6 +68,9 @@ const STYLE = `
 }
 `;
 
+// OverlayManager の台帳上の id。開いているかどうかは登録の有無が正本。
+const OVERLAY_ID = 'save-browser';
+
 // いま動いている周回の読み口。周回が無ければ current は null。
 export interface CurrentGameSource {
   readonly current: {
@@ -78,7 +82,6 @@ export interface CurrentGameSource {
 
 export class SaveBrowser implements OverlayHandle {
   private readonly el: HTMLElement;
-  private _visible = false;
   // 一覧で選んで「見ている」スロット。アクティブスロット(実際に遊んでいるもの)とは独立。
   private viewedSlotId: string | null = null;
   private viewedStageId: string | null = null;
@@ -94,7 +97,7 @@ export class SaveBrowser implements OverlayHandle {
   // 復元する手動セーブが選ばれ、自分を閉じた後に呼ぶ。
   public onLoadSnapshot: ((snapshotId: string) => void) | null = null;
 
-  public get visible(): boolean { return this._visible; }
+  public get visible(): boolean { return this.overlayManager.isOverlayOpen(OVERLAY_ID); }
 
   // モーダルの DOM 骨格を組む。要素は open されるまで DOM へ挿さず、overlayManager が置く。
   public constructor(
@@ -122,10 +125,9 @@ export class SaveBrowser implements OverlayHandle {
     this.statusIsError = false;
     this.rebuild();
     this.el.style.display = 'flex';
-    this._visible = true;
-    this.overlayManager.open('save-browser', this.el, this, {
+    this.overlayManager.open(OVERLAY_ID, this.el, this, {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
-      pausesGame: true, exclusiveGroup: 'system-modal',
+      pausesGame: true, exclusiveGroup: SYSTEM_MODAL_GROUP,
     });
   }
 
@@ -134,8 +136,7 @@ export class SaveBrowser implements OverlayHandle {
     this.confirmDialog.close();
     this.textPrompt.close();
     this.el.style.display = 'none';
-    this._visible = false;
-    this.overlayManager.close('save-browser');
+    this.overlayManager.close(OVERLAY_ID);
   }
 
   // target がこの画面の要素の内部かどうかを返す。
