@@ -6,7 +6,7 @@ import {
 import { ObjectPicker } from '../hud/windows/object-picker';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
-import { clampOverlayPosition } from '../../hud/layout';
+import { placeOverlayAt } from '../../hud/layout';
 import { onViewportChange } from '../../hud/viewport';
 import { isCompactViewport } from '../../hud/breakpoints';
 import { wireHeaderDrag } from '../../hud/window-drag';
@@ -145,11 +145,13 @@ const ALTITUDE_REF_FLOOR_KM = 100;
 // 周期の基準値の下限(h): 高度と同じ床を使うと大きすぎて操作不能になるため、周期のオーダーに合わせる。
 const PERIOD_REF_FLOOR_HOURS = 0.1;
 
+// OverlayManager の台帳上の id。開いているかどうかは登録の有無が正本。
+const OVERLAY_ID = 'object-placer';
+
 export class ObjectPlacerPanel implements OverlayHandle {
   onConfirm: ((name: string, form: ObjectPlacerForm) => void) | null = null;
 
-  private _isOpen = false;
-  get isOpen(): boolean { return this._isOpen; }
+  get isOpen(): boolean { return this.overlayManager.isOverlayOpen(OVERLAY_ID); }
 
   private readonly panel: HTMLElement;
   private readonly entityKind: SegmentedControl<ObjectPlacementSelection>;
@@ -223,10 +225,10 @@ export class ObjectPlacerPanel implements OverlayHandle {
     wireHeaderDrag(header, {
       position: () => ({ x: this.panel.offsetLeft, y: this.panel.offsetTop }),
       moveTo: (x, y) => this.moveTo(x, y),
-      enabled: () => this._isOpen && !isCompactViewport(),
+      enabled: () => this.isOpen && !isCompactViewport(),
     });
     this.unsubscribeViewport = onViewportChange(() => {
-      if (this._isOpen) this.moveTo(this.panel.offsetLeft, this.panel.offsetTop);
+      if (this.isOpen) this.reclamp();
     });
 
     this.entityKind = new SegmentedControl('種類', ENTITY_KIND_ITEMS, (v) => this.selectEntityKind(v));
@@ -599,9 +601,8 @@ export class ObjectPlacerPanel implements OverlayHandle {
         this.refreshPresets();
       }
     }
-    this._isOpen = true;
     this.panel.classList.remove('hidden');
-    this.overlayManager.open('object-placer', this.panel, this, {
+    this.overlayManager.open(OVERLAY_ID, this.panel, this, {
       kind: 'window', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
     });
     // 開くたび右上(上部クロームの下)の既定位置から始める。
@@ -632,22 +633,19 @@ export class ObjectPlacerPanel implements OverlayHandle {
     }
     // CSS 側の既定 right と両方効くのを避けるため、left へ焼き付けるなら右アンカーは無効にする。
     this.panel.style.right = 'auto';
-    const rect = this.panel.getBoundingClientRect();
-    const pos = clampOverlayPosition(
-      { x: clientX, y: clientY },
-      { width: rect.width, height: rect.height },
-      { width: window.innerWidth, height: window.innerHeight },
-    );
-    this.panel.style.left = `${pos.x}px`;
-    this.panel.style.top = `${pos.y}px`;
+    placeOverlayAt(this.panel, { x: clientX, y: clientY });
+  }
+
+  // 現在位置を要求座標としてビューポート内へクランプし直す。
+  private reclamp(): void {
+    this.moveTo(this.panel.offsetLeft, this.panel.offsetTop);
   }
 
   // パネルを閉じ、オーバーレイの登録も外す。開いていなければ何も起きない。
   close(): void {
-    if (!this._isOpen) return;
-    this._isOpen = false;
+    if (!this.isOpen) return;
     this.panel.classList.add('hidden');
-    this.overlayManager.close('object-placer');
+    this.overlayManager.close(OVERLAY_ID);
   }
 
   contains(target: Node): boolean {
