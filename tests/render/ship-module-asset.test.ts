@@ -27,6 +27,7 @@ function parsedRoot(): THREE.Group {
   return getShipModuleTemplates();
 }
 
+// ルート直下の子を moduleModelId で引ける Map にする。id の重複は失敗にする。
 function moduleRoots(root: THREE.Group): Map<string, THREE.Object3D> {
   const result = new Map<string, THREE.Object3D>();
   for (const child of root.children) {
@@ -38,6 +39,7 @@ function moduleRoots(root: THREE.Group): Map<string, THREE.Object3D> {
   return result;
 }
 
+// 全子孫から semanticAnchor 名のノードを探す。無ければ null。
 function semanticAnchor(root: THREE.Object3D, name: string): THREE.Object3D | null {
   let result: THREE.Object3D | null = null;
   root.traverse((child) => {
@@ -46,6 +48,7 @@ function semanticAnchor(root: THREE.Object3D, name: string): THREE.Object3D | nu
   return result;
 }
 
+// 全子孫から名前のノードを探す。無ければ null。
 function objectByName(root: THREE.Object3D, name: string): THREE.Object3D | null {
   let result: THREE.Object3D | null = null;
   root.traverse((child) => {
