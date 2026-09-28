@@ -25,6 +25,7 @@ import {
 } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
+import { ERROR_SCALES, ErrorMetric, type ErrorMeasurement } from './error-metric';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
@@ -78,6 +79,11 @@ declare global {
       measureTiers: (
         tiers: readonly ScanTier[], rounds: number,
       ) => Promise<readonly Readonly<Record<string, number | null>>[]>;
+      errorScales: readonly number[];
+      errorMetrics: (
+        error: Float32Array, mask: Uint8Array, width: number, height: number, magnification: number,
+      ) => Promise<ErrorMeasurement>;
+      falseStructureMap: () => Promise<Float32Array>;
     };
   }
 }
@@ -207,6 +213,7 @@ async function init(): Promise<void> {
   // **この実行の中だけで生きる設定**。残すと、撮影が「人間が最後に押した状態」に依存して黙って変わる。
   const settings = new UserSettings(new MemorySettingStorage());
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement, settings.graphics);
+  const errorMetric = await ErrorMetric.create();
   const syncAngles = buildViewAngleSliders(view);
 
   const shotsRow = document.getElementById('shots')!;
@@ -329,6 +336,10 @@ async function init(): Promise<void> {
     composite: (hdr) => view.composite(hdr),
     exposureFactor: () => view.exposureFactor,
     measureTiers: (tiers, rounds) => view.measureTiers(tiers, rounds),
+    errorScales: ERROR_SCALES,
+    errorMetrics: (error, mask, width, height, magnification) => (
+      errorMetric.measure(error, mask, width, height, magnification)),
+    falseStructureMap: () => errorMetric.falseStructureMap(),
   };
 }
 
