@@ -1,12 +1,12 @@
-// 近傍拡散補正の計測が使う、評価の組と解析値のある窓、それを描画テスト環境で撮る口、基準の置き場、表の書式。撮影は
-// 走査の段とブルーノイズの seed を与え、表示の絵と浮動小数の中間ターゲットを受け取る。中間ターゲットはページの中で
-// 積むこともでき、積んだ HDR の平均は本番と同じ合成で表示にして受け取る。
+// 近傍拡散補正の計測が使う、評価の組と解析値のある窓、それを描画テスト環境で撮る口と誤差の指標を測る口、基準の置き場、
+// 表の書式。撮影は走査の段とブルーノイズの seed を与え、表示の絵と浮動小数の中間ターゲットを受け取る。中間ターゲットは
+// ページの中で積むこともでき、積んだ HDR の平均は本番と同じ合成で表示にして受け取る。
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { openChromeSession, waitFor } from './chrome-session.mjs';
 import { decodePng } from './png.mjs';
-import { exposedCorrectionOf, linearOfSrgbCodes, srgbToLinear, windowMean } from './screen-space-error.mjs';
+import { exposedCorrectionOf, linearOfSrgbCodes, rmsOf, srgbToLinear, windowMean } from './screen-space-error.mjs';
 
 // リポジトリ根と、組んだ描画テスト環境、撮影組の置き場。
 const root = path.resolve(import.meta.dirname, '..');
@@ -97,35 +97,26 @@ export const headHash = () => execSync('git rev-parse --short HEAD', { cwd: root
 // ---- 撮影 ----
 
 // ページの式 source が指す長さ length の Float32Array を受け取る。CDP の 1 通の上限を超えないよう、塊ごとに受け取る。
-const FLOATS_PER_CHUNK = 64 * WIDTH * 3;
+const BYTES_PER_CHUNK = 64 * WIDTH * 3 * 4;
 async function receiveFloats(devTools, source, length) {
   const out = new Float32Array(length);
-  for (let start = 0; start < length; start += FLOATS_PER_CHUNK) {
-    const count = Math.min(length - start, FLOATS_PER_CHUNK);
-    const base64 = await devTools.evaluate(`(() => {
-      const bytes = new Uint8Array(${source}.buffer, ${start * 4}, ${count * 4});
-      let text = '';
-      for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-      return btoa(text);
-    })()`);
+  for (let start = 0; start < length * 4; start += BYTES_PER_CHUNK) {
+    const size = Math.min(length * 4 - start, BYTES_PER_CHUNK);
+    const base64 = await devTools.evaluate(`new Uint8Array(${source}.buffer, ${start}, ${size}).toBase64()`);
     const bytes = Buffer.from(base64, 'base64');
-    out.set(new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + count * 4)), start);
+    out.set(new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + size)), start / 4);
   }
   return out;
 }
 
-// Float32Array values の写しを、ページの式 destination が指す場所へ置く。塊ごとに送る。
-async function sendFloats(devTools, destination, values) {
-  await devTools.evaluate(`${destination} = new Float32Array(${values.length}), 0`);
-  for (let start = 0; start < values.length; start += FLOATS_PER_CHUNK) {
-    const count = Math.min(values.length - start, FLOATS_PER_CHUNK);
-    const base64 = Buffer.from(values.buffer, values.byteOffset + start * 4, count * 4).toString('base64');
-    await devTools.evaluate(`(() => {
-      const text = atob('${base64}');
-      const bytes = new Uint8Array(text.length);
-      for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
-      ${destination}.set(new Float32Array(bytes.buffer), ${start});
-    })()`);
+// 型付き配列 values の写しを、ページの式 destination が指す場所へ同じ型で置く。塊ごとに送る。
+async function sendArray(devTools, destination, values) {
+  await devTools.evaluate(`${destination} = new ${values.constructor.name}(${values.length}), 0`);
+  const bytes = Buffer.from(values.buffer, values.byteOffset, values.byteLength);
+  for (let start = 0; start < bytes.length; start += BYTES_PER_CHUNK) {
+    const base64 = bytes.subarray(start, start + BYTES_PER_CHUNK).toString('base64');
+    await devTools.evaluate(`new Uint8Array(${destination}.buffer)
+      .set(Uint8Array.fromBase64('${base64}'), ${start}), 0`);
   }
 }
 
@@ -198,7 +189,7 @@ function labOf(devTools) {
       const destination = `window.__ssdSums[${JSON.stringify(name)}]`;
       await devTools.evaluate(`((window.__ssdSums ??= {})[${JSON.stringify(name)}] = {
         width: ${WIDTH}, height: ${HEIGHT}, channels: ${channels}, slots: [] }, 0)`);
-      for (const [slot, sum] of sums.entries()) await sendFloats(devTools, `${destination}.slots[${slot}]`, sum);
+      for (const [slot, sum] of sums.entries()) await sendArray(devTools, `${destination}.slots[${slot}]`, sum);
     },
     // name の全 slot の和を count で割った HDR の平均を、直前のフレームと同じ合成で表示にし、線形 sRGB(画素ごとに
     // 3 つ)で返す。合成の値を [0, 1] へ切ってから線形へ戻すので、撮った PNG と同じ量になる。
@@ -226,6 +217,30 @@ function labOf(devTools) {
       await devTools.evaluate('delete window.__ssdFloat');
       return encoded.map((v) => srgbToLinear(Math.min(1, Math.max(0, v))));
     },
+    // 候補 candidate と収束先 reference(平面の組、width × height)の誤差の指標を、印 mask(Uint8Array)の立った画素で
+    // 測る。tools/render-lab/error-metric.ts の ErrorMeasurement に、誤差のベクトルの RMS g を足したもの。magnification は
+    // 表示倍率 μ。
+    async errorMetrics(candidate, reference, mask, width, height, magnification = 1) {
+      const error = new Float32Array(width * height * 3);
+      for (let p = 0; p < width * height; p++) {
+        for (let c = 0; c < 3; c++) error[p * 3 + c] = candidate[c][p] - reference[c][p];
+      }
+      await sendArray(devTools, 'window.__ssdError', error);
+      await sendArray(devTools, 'window.__ssdMask', mask);
+      const measurement = await devTools.evaluate(`window.renderLab.errorMetrics(window.__ssdError, window.__ssdMask,
+        ${width}, ${height}, ${magnification}).finally(() => { delete window.__ssdError; delete window.__ssdMask; })`);
+      return { ...measurement, g: rmsOf(candidate, reference, mask) };
+    },
+    // 直前の errorMetrics の、画素ごとの偽の構造の項(3 成分の和)の Float32Array。
+    async falseStructureMap() {
+      const length = await devTools.evaluate(
+        'window.renderLab.falseStructureMap().then((map) => { window.__ssdFloat = map; return map.length; })');
+      const map = await receiveFloats(devTools, 'window.__ssdFloat', length);
+      await devTools.evaluate('delete window.__ssdFloat');
+      return map;
+    },
+    // 誤差の指標のスケール(errorMetrics の返すスケールごとの値の順)。
+    errorScales: () => devTools.evaluate('window.renderLab.errorScales'),
     // name の slot 0〜slotCount − 1 の和を受け取り、ページから消す。足していない slot は 0。
     async takeAccumulated(name, slotCount) {
       const source = `window.__ssdSums[${JSON.stringify(name)}]`;
