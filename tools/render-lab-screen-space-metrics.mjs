@@ -23,8 +23,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { encodeGrayPng, encodeRgbPng } from './png.mjs';
 import {
-  edgesOf, ERROR_SCALES, errorMetrics, exposedCorrectionOf, flickerOf, linearOfOklab, nearEdgesOf, oklabOf, rmsOf,
-  srgbCodesOfLinear,
+  edgesOf, exposedCorrectionOf, flickerOf, linearOfOklab, nearEdgesOf, oklabOf, rmsOf, srgbCodesOfLinear,
 } from './screen-space-error.mjs';
 import {
   analyticRatiosOf, ENTRIES, fixed, HEIGHT, headHash, linearOfPng, loadReference, maskOf, readHalfFloats, seedOf,
@@ -89,17 +88,18 @@ async function compare({ positional, options }) {
   const references = loadReference(name, entries);
   const { meta } = references[entries[0].key];
   console.log(`基準 ${name}(${meta.slices} スライス × 片側 ${meta.steps} 歩、${meta.passes} パス)`);
-  const { diffuse, costs } = await withLab(async (lab) => {
-    const captured = await captureCandidates(lab, outDir, entries, candidates, references);
+  const { record, results, flicker, scales } = await withLab(async (lab) => {
+    const diffuse = await captureCandidates(lab, outDir, entries, candidates, references);
     // 費用。コンパイルを済ませてから、bay で段を交互に測る。
     await lab.show(ENTRIES[0]);
     await lab.capturePng();
-    return { diffuse: captured, costs: await lab.measureTiers(candidates.map((c) => c.tier), 3) };
+    const costs = await lab.measureTiers(candidates.map((c) => c.tier), 3);
+    const record = { reference: name, entries: entries.map((e) => e.key), candidates, costs, diffuse };
+    writeFileSync(recordPathOf(outDir), JSON.stringify(record));
+    const scored = await scoreSaved(lab, outDir, record, references, outDir);
+    return { record, ...scored, scales: await lab.errorScales() };
   });
-  const record = { reference: name, entries: entries.map((e) => e.key), candidates, costs, diffuse };
-  writeFileSync(recordPathOf(outDir), JSON.stringify(record));
-  const { results, flicker } = scoreSaved(outDir, record, references, outDir);
-  const report = reportOf(record, results, flicker);
+  const report = reportOf(record, results, flicker, scales);
   writeFileSync(path.join(outDir, 'report.md'), report);
   console.log(`\n${report}`);
 }
@@ -111,9 +111,11 @@ async function rescore({ positional, options }) {
   if (dir === undefined) throw new Error('usage: rescore <出力先> [--reference D]');
   const record = JSON.parse(readFileSync(recordPathOf(dir), 'utf8'));
   const references = loadReference(options.reference ?? record.reference, recordEntriesOf(record));
-  const { results, flicker } = scoreSaved(dir, record, references, null);
+  const { results, flicker, scales } = await withLab(async (lab) => ({
+    ...await scoreSaved(lab, dir, record, references, null), scales: await lab.errorScales(),
+  }));
   const file = path.join(dir, 'report.md');
-  writeFileSync(file, reportOf(record, results, flicker));
+  writeFileSync(file, reportOf(record, results, flicker, scales));
   console.log(`rescored: ${file}`);
 }
 
@@ -160,8 +162,8 @@ function diffuseSummaryOf(entry, irradiance, reference, exposure) {
 
 // dir に残した撮影を基準 references と比べ、候補と撮影ごとの指標の表 results と、候補ごとのちらつき flicker(bay と
 // ちらつきの全フレームを撮っていなければ null)を返す。imageDir が null でなければ、偽の構造の地図と表示の誤差を
-// 8 倍にした画像をそこへ書く。
-function scoreSaved(dir, record, references, imageDir) {
+// 8 倍にした画像をそこへ書く。lab は withLab の口。
+async function scoreSaved(lab, dir, record, references, imageDir) {
   const entries = recordEntriesOf(record);
   const results = Object.fromEntries(record.candidates.map((c) => [c.label, {}]));
   const flickerFrames = Object.fromEntries(record.candidates.map((c) => [c.label, []]));
@@ -176,22 +178,22 @@ function scoreSaved(dir, record, references, imageDir) {
         readHalfFloats(correctionPathOf(dir, entry, candidate.label, index)), reference.meta.exposure));
       if (entry.set === 'flicker' || entry.key === 'bay') flickerFrames[candidate.label].push(qs[0]);
       if (entry.set === 'flicker') continue;
-      const { falseStructureMap, ...metrics } = errorMetrics(qs[0], q0, mask, WIDTH, HEIGHT);
+      const metrics = await lab.errorMetrics(qs[0], q0, mask, WIDTH, HEIGHT);
+      if (imageDir !== null && imagedOf(entry)) {
+        const display = linearOfPng(readFileSync(displayPathOf(dir, entry, candidate.label)));
+        writeImages(imageDir, candidate.label, entry.key, display, reference.display, await lab.falseStructureMap());
+      }
       // 2 つ目の seed の S、偏りと分散の R(s)、境界の漏れ、拡散照度から数えた値。
       const average = qs[0].map((plane, c) => plane.map((v, p) => (v + qs[1][c][p]) / 2));
       results[candidate.label][entry.key] = {
         ...metrics,
-        scoreSecond: errorMetrics(qs[1], q0, mask, WIDTH, HEIGHT).score,
-        biasR: errorMetrics(average, q0, mask, WIDTH, HEIGHT).r,
-        varianceR: errorMetrics(qs[0], qs[1], mask, WIDTH, HEIGHT).r,
+        scoreSecond: (await lab.errorMetrics(qs[1], q0, mask, WIDTH, HEIGHT)).score,
+        biasR: (await lab.errorMetrics(average, q0, mask, WIDTH, HEIGHT)).r,
+        varianceR: (await lab.errorMetrics(qs[0], qs[1], mask, WIDTH, HEIGHT)).r,
         leak: rmsOf(qs[0], q0, nearEdges),
         ...record.diffuse[candidate.label][entry.key],
         referenceRatios: entry.set === 'correctness' ? windowRatiosOf(entry, reference.diffuse) : null,
       };
-      if (imageDir !== null && imagedOf(entry)) {
-        const display = linearOfPng(readFileSync(displayPathOf(dir, entry, candidate.label)));
-        writeImages(imageDir, candidate.label, entry.key, display, reference.display, falseStructureMap);
-      }
     }
     console.log(`scored ${entry.key}`);
   }
@@ -220,8 +222,8 @@ function writeImages(outDir, label, key, display, referenceDisplay, falseStructu
 const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
 
 // 記録 record の表。候補ごとの費用と調整用・確認用の S の平均、撮影ごとの S、スケールごとの偽の構造、解析値との照合。
-// results は候補と撮影ごとの指標、flicker は候補ごとのちらつき。撮っていない組の平均は —。
-function reportOf(record, results, flicker) {
+// results は候補と撮影ごとの指標、flicker は候補ごとのちらつき、scales は指標のスケールの並び。撮っていない組の平均は —。
+function reportOf(record, results, flicker, scales) {
   const { candidates, costs } = record;
   const entries = recordEntriesOf(record);
   const keysOf = (set) => entries.filter((e) => e.set === set).map((e) => e.key);
@@ -236,20 +238,20 @@ function reportOf(record, results, flicker) {
   const summary = candidates.map((candidate, i) => {
     const rows = results[candidate.label];
     const avg = (keys, field, digits) => fixed(mean(keys.map((k) => rows[k][field])), digits);
-    const scales = (field) => ERROR_SCALES.map((_, j) => fixed(mean(tuning.map((k) => rows[k][field][j])), 2)).join(' / ');
+    const byScale = (field) => scales.map((_, j) => fixed(mean(tuning.map((k) => rows[k][field][j])), 2)).join(' / ');
     const sum = (field) => measured.reduce((total, k) => total + rows[k][field], 0);
     return [
       candidate.label, fixed(costOf(costs[i]), 2), avg(tuning, 'score', 3), avg(tuning, 'noiseTerm', 5),
       avg(tuning, 'falseStructureTerm', 3), avg(tuning, 'g', 5), avg(checking, 'score', 3), avg(tuning, 'scoreSecond', 3),
       avg(measured, 'leak', 5), fixed(flicker[candidate.label], 5), `${sum('negatives')} / ${sum('visibleNegatives')}`,
-      scales('r'), scales('biasR'), scales('varianceR'),
+      byScale('r'), byScale('biasR'), byScale('varianceR'),
     ];
   });
   const perShot = candidates.map((candidate) => [candidate.label, ...measured.map((k) => {
     const row = results[candidate.label][k];
     return `${row.score.toFixed(3)} (${row.noiseTerm.toFixed(5)} + ${row.falseStructureTerm.toFixed(3)})`;
   })]);
-  const perScale = candidates.map((candidate) => [candidate.label, ...ERROR_SCALES.map(
+  const perScale = candidates.map((candidate) => [candidate.label, ...scales.map(
     (_, j) => fixed(mean(tuning.map((k) => results[candidate.label][k].falseStructureByScale[j])), 3),
   )]);
   const ratios = correctness.map((key) => {
@@ -263,7 +265,7 @@ function reportOf(record, results, flicker) {
     ...table(['候補', '費用 / マテリアル', 'S 調整用', '雑音', '偽の構造', 'G', 'S 確認用', 'S の 2 つ目の seed',
       '境界の漏れ', 'ちらつき', '負の画素 / 見える', 'R(s)', 'R(s) 偏り', 'R(s) 分散'], summary),
     '', '## 撮影ごとの S(雑音 + 偽の構造)', '', ...table(['候補', ...measured], perShot),
-    '', '## スケールごとの偽の構造(調整用の平均)', '', ...table(['候補', ...ERROR_SCALES.map((s) => `${s} px`)], perScale),
+    '', '## スケールごとの偽の構造(調整用の平均)', '', ...table(['候補', ...scales.map((s) => `${s} px`)], perScale),
     '', '## 解析値のある窓の比(拡散照度。bay は P_in / P_out、bounce-cosine は余弦 1 / 0.5 / 0)', '',
     ...table(['撮影', '解析値', '基準', ...candidates.map((c) => c.label)], ratios),
     '',
