@@ -5,7 +5,7 @@ import { NORMAL_ANGLE_ERROR } from '../gbuffer';
 import { toSliceCoordinates, type Slice } from './slice-sectors';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
-// スライスの中の面の点 — スライス平面へ射影した位置(スライスの座標)と、接平面がスライス平面を切る直線
+// スライスの中の面の点 — その点の位置(スライスの座標)と、接平面がスライス平面を切る直線
 // normal·x = offset(normal の長さは問わない)。offset は受け手から見た接平面の符号つきの高さで、負なら受け手へ
 // 面を向ける。
 export interface SlicePoint {
@@ -36,6 +36,32 @@ export interface SegmentSplit {
   readonly farLower: Vec2Node;
 }
 
+// 2 つの接平面がスライス平面を切る直線を平行とみなす、射影した法線どうしの外積の大きさの上限。
+const PARALLEL_LIMIT = 1e-6;
+
+// 画面距離 rho で読んだ標本の、スライス slice の中の面の点。toSample は受け手から標本への変位、normal は標本の
+// 法線(view 空間)、rays は標本のある側の視線、receiver は受け手自身の面の点。
+export function samplePoint(
+  slice: Slice, rays: SideRays, rho: FloatNode, toSample: Vec3Node, normal: Vec3Node, receiver: SlicePoint,
+): SlicePoint {
+  // 接平面の直線は標本の 3 次元の位置から引く — 画素へ丸めた標本はスライス平面の外にあり、射影した位置を通る
+  // 直線では、同じ面の隣り合う標本の切片が継ぎ目でずれる。
+  const position = toSliceCoordinates(slice, toSample).toVar();
+  const sliceNormal = toSliceCoordinates(slice, normal).toVar();
+  const offset = dot(normal, toSample).toVar();
+  // 受け手と同じ平面の標本(接平面の直線が受け手のものと平行で、画素の足跡の中で重なる)は、受け手の接平面が
+  // 画面距離 rho の視線と交わる点として扱う — 射影した点は、スライス平面の外へのずれの分だけ受け手の地平から
+  // 外れ、平らな面が自分を塞ぐ。
+  const coplanar = abs(cross2(receiver.normal, sliceNormal)).lessThan(PARALLEL_LIMIT)
+    .and(abs(offset).lessThanEqual(pixelFootprint(rays, position)));
+  const onReceiverPlane = tangentHit(rayAt(rays, rho), { position, normal: receiver.normal, offset: receiver.offset });
+  return {
+    position: select(coplanar, onReceiverPlane, position).toVar(),
+    normal: select(coplanar, receiver.normal, sliceNormal).toVar(),
+    offset: select(coplanar, receiver.offset, offset).toVar(),
+  };
+}
+
 // 画面上で隣り合う 2 標本 near(画面距離 nearRho)と far(farRho)の切片の境目。面の続きなら 1 点で継ぎ、輪郭なら
 // それぞれの接平面の上に分かれる。bothSurfaces は両方が面を持つかで、偽なら境目は中点の視線で決める。near が
 // 受け手自身なら nearRho = 0。rays はこの側の視線。
@@ -44,7 +70,7 @@ export function splitSegments(
 ): SegmentSplit {
   // 2 平面がスライス平面を切る 2 直線の交点。2 標本のあいだに写るなら、2 面はそこで交わる(凹んだ継ぎ目か凸の稜)。
   const determinant = cross2(near.normal, far.normal).toVar();
-  const solvable = abs(determinant).greaterThanEqual(1e-6);
+  const solvable = abs(determinant).greaterThanEqual(PARALLEL_LIMIT);
   const seam = perpendicular(far.normal).mul(near.offset).sub(perpendicular(near.normal).mul(far.offset))
     .div(select(solvable, determinant, float(1))).toVar();
   // near が受け手自身なら、交点は受け手の接平面の上にあり、受け手から見た向きはどちらかの側の地平に決まっている。
