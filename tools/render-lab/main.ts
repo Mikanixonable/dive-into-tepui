@@ -25,7 +25,10 @@ import {
 } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
-import { ERROR_SCALES, ErrorMetric, type ErrorMeasurement } from './error-metric';
+import {
+  ERROR_SCALES, ErrorMetric, FALSE_STRUCTURE_EPSILONS, NOISE_COEFFICIENTS, THRESHOLD_COEFFICIENTS, type ErrorMeasurement,
+} from './error-metric';
+import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
@@ -80,10 +83,20 @@ declare global {
         tiers: readonly ScanTier[], rounds: number,
       ) => Promise<readonly Readonly<Record<string, number | null>>[]>;
       errorScales: readonly number[];
+      falseStructureEpsilons: readonly number[];
+      thresholdCoefficients: readonly number[];
+      noiseCoefficients: readonly number[];
       errorMetrics: (
-        error: Float32Array, mask: Uint8Array, width: number, height: number, magnification: number,
+        error: Float32Array, converged: Float32Array, mask: Uint8Array, width: number, height: number,
+        magnification: number,
       ) => Promise<ErrorMeasurement>;
       falseStructureMap: () => Promise<Float32Array>;
+      surfaceBlur: (values: Float32Array, surface: Uint8Array, sigma: number) => Promise<Float32Array>;
+      segmentBlur: (values: Float32Array, segments: Int32Array, sigma: number) => Promise<Float32Array>;
+      sparseBilateral: (
+        rgb: Float32Array, geometry: SurfaceGeometry, radius: number, shift: readonly [number, number],
+      ) => Promise<Float32Array>;
+      stochasticUpscale: (scan: Float32Array, geometry: SurfaceGeometry, block: number) => Promise<Float32Array>;
     };
   }
 }
@@ -214,6 +227,9 @@ async function init(): Promise<void> {
   const settings = new UserSettings(new MemorySettingStorage());
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement, settings.graphics);
   const errorMetric = await ErrorMetric.create();
+  // 平面を均す GPU の資源は盲検の刺激を組むときにしか使わないので、初めて使うときに作る。
+  let smoother: Promise<PlaneSmoother> | null = null;
+  const planeSmoother = (): Promise<PlaneSmoother> => (smoother ??= PlaneSmoother.create());
   const syncAngles = buildViewAngleSliders(view);
 
   const shotsRow = document.getElementById('shots')!;
@@ -337,9 +353,17 @@ async function init(): Promise<void> {
     exposureFactor: () => view.exposureFactor,
     measureTiers: (tiers, rounds) => view.measureTiers(tiers, rounds),
     errorScales: ERROR_SCALES,
-    errorMetrics: (error, mask, width, height, magnification) => (
-      errorMetric.measure(error, mask, width, height, magnification)),
+    falseStructureEpsilons: FALSE_STRUCTURE_EPSILONS,
+    thresholdCoefficients: THRESHOLD_COEFFICIENTS,
+    noiseCoefficients: NOISE_COEFFICIENTS,
+    errorMetrics: (error, converged, mask, width, height, magnification) => (
+      errorMetric.measure(error, converged, mask, width, height, magnification)),
     falseStructureMap: () => errorMetric.falseStructureMap(),
+    surfaceBlur: async (values, surface, sigma) => (await planeSmoother()).surfaceBlur(values, surface, sigma),
+    segmentBlur: async (values, segments, sigma) => (await planeSmoother()).segmentBlur(values, segments, sigma),
+    sparseBilateral: async (rgb, geometry, radius, shift) => (
+      (await planeSmoother()).sparseBilateral(rgb, geometry, radius, shift)),
+    stochasticUpscale: async (scan, geometry, block) => (await planeSmoother()).stochasticUpscale(scan, geometry, block),
   };
 }
 

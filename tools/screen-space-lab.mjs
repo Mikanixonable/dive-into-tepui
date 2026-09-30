@@ -1,5 +1,5 @@
-// 近傍拡散補正の計測が使う、評価の組と解析値のある窓、それを描画テスト環境で撮る口と誤差の指標を測る口、基準の置き場、
-// 表の書式。撮影は走査の段とブルーノイズの seed を与え、表示の絵と浮動小数の中間ターゲットを受け取る。中間ターゲットは
+// 近傍拡散補正の計測が使う、評価の組と解析値のある窓、それを描画テスト環境で撮る口と誤差の指標を測る口と平面を均す口、
+// 基準の置き場、表の書式。撮影は走査の段とブルーノイズの seed を与え、表示の絵と浮動小数の中間ターゲットを受け取る。中間ターゲットは
 // ページの中で積むこともでき、積んだ HDR の平均は本番と同じ合成で表示にして受け取る。
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -109,6 +109,15 @@ async function receiveFloats(devTools, source, length) {
   return out;
 }
 
+// ページの式 source が解決する Float32Array を受け取る。
+async function receiveResolvedFloats(devTools, source) {
+  const length = await devTools.evaluate(
+    `(${source}).then((values) => { window.__ssdFloat = values; return values.length; })`);
+  const out = await receiveFloats(devTools, 'window.__ssdFloat', length);
+  await devTools.evaluate('delete window.__ssdFloat');
+  return out;
+}
+
 // 型付き配列 values の写しを、ページの式 destination が指す場所へ同じ型で置く。塊ごとに送る。
 async function sendArray(devTools, destination, values) {
   await devTools.evaluate(`${destination} = new ${values.constructor.name}(${values.length}), 0`);
@@ -119,6 +128,24 @@ async function sendArray(devTools, destination, values) {
       .set(Uint8Array.fromBase64('${base64}'), ${start}), 0`);
   }
 }
+
+// 平面の組 planes(R・G・B)を画素ごとに rgb を並べてページの window.__ssdRgb へ、面の幾何 geometry({ position, normal,
+// footprint } の Float32Array)を window.__ssdGeometry へ置く。
+async function sendRgbAndGeometry(devTools, planes, geometry) {
+  const count = planes[0].length;
+  const rgb = new Float32Array(3 * count);
+  for (let p = 0; p < count; p++) {
+    for (let c = 0; c < 3; c++) rgb[3 * p + c] = planes[c][p];
+  }
+  await sendArray(devTools, 'window.__ssdRgb', rgb);
+  await devTools.evaluate('window.__ssdGeometry = {}, 0');
+  for (const key of ['position', 'normal', 'footprint']) {
+    await sendArray(devTools, `window.__ssdGeometry.${key}`, geometry[key]);
+  }
+}
+
+// 画素ごとに rgb を並べた rgb を平面の組(R・G・B)へ。
+const planesOfRgb = (rgb) => [0, 1, 2].map((c) => Float32Array.from({ length: rgb.length / 3 }, (_, p) => rgb[3 * p + c]));
 
 // 描画テスト環境の CDP の入口を包む。
 function labOf(devTools) {
@@ -218,29 +245,67 @@ function labOf(devTools) {
       return encoded.map((v) => srgbToLinear(Math.min(1, Math.max(0, v))));
     },
     // 候補 candidate と収束先 reference(平面の組、width × height)の誤差の指標を、印 mask(Uint8Array)の立った画素で
-    // 測る。tools/render-lab/error-metric.ts の ErrorMeasurement に、誤差のベクトルの RMS g を足したもの。magnification は
-    // 表示倍率 μ。
+    // 測る。偽の構造の罰を覆い隠す真の構造は reference の構造。tools/render-lab/error-metric.ts の ErrorMeasurement に、
+    // 誤差のベクトルの RMS g を足したもの。magnification は表示倍率 μ。
     async errorMetrics(candidate, reference, mask, width, height, magnification = 1) {
       const error = new Float32Array(width * height * 3);
+      const converged = new Float32Array(width * height * 3);
       for (let p = 0; p < width * height; p++) {
-        for (let c = 0; c < 3; c++) error[p * 3 + c] = candidate[c][p] - reference[c][p];
+        for (let c = 0; c < 3; c++) {
+          error[p * 3 + c] = candidate[c][p] - reference[c][p];
+          converged[p * 3 + c] = reference[c][p];
+        }
       }
       await sendArray(devTools, 'window.__ssdError', error);
+      await sendArray(devTools, 'window.__ssdConverged', converged);
       await sendArray(devTools, 'window.__ssdMask', mask);
-      const measurement = await devTools.evaluate(`window.renderLab.errorMetrics(window.__ssdError, window.__ssdMask,
-        ${width}, ${height}, ${magnification}).finally(() => { delete window.__ssdError; delete window.__ssdMask; })`);
+      const measurement = await devTools.evaluate(`window.renderLab.errorMetrics(window.__ssdError,
+        window.__ssdConverged, window.__ssdMask, ${width}, ${height}, ${magnification})
+        .finally(() => { delete window.__ssdError; delete window.__ssdConverged; delete window.__ssdMask; })`);
       return { ...measurement, g: rmsOf(candidate, reference, mask) };
     },
     // 直前の errorMetrics の、画素ごとの偽の構造の項(3 成分の和)の Float32Array。
-    async falseStructureMap() {
-      const length = await devTools.evaluate(
-        'window.renderLab.falseStructureMap().then((map) => { window.__ssdFloat = map; return map.length; })');
-      const map = await receiveFloats(devTools, 'window.__ssdFloat', length);
-      await devTools.evaluate('delete window.__ssdFloat');
-      return map;
+    falseStructureMap: () => receiveResolvedFloats(devTools, 'window.renderLab.falseStructureMap()'),
+    // 平面 plane(画素ごとに 1 つ)を、面の画素 surface(Uint8Array)の値だけで、面の画素全体で正規化した標準偏差 sigma [画素] の
+    // ガウスで均した Float32Array(面の無い画素は 0)。tools/render-lab/plane-smoother.ts の surfaceBlur。
+    async surfaceBlur(plane, surface, sigma) {
+      await sendArray(devTools, 'window.__ssdPlane', Float32Array.from(plane));
+      await sendArray(devTools, 'window.__ssdSurface', surface);
+      return receiveResolvedFloats(devTools, `window.renderLab.surfaceBlur(window.__ssdPlane, window.__ssdSurface,
+        ${sigma}).finally(() => { delete window.__ssdPlane; delete window.__ssdSurface; })`);
+    },
+    // 平面 plane(画素ごとに 1 つ)を、区画 segments(画素ごとの区画の番号の Int32Array。区画の無い画素は負)ごとに、同じ区画の
+    // 画素だけで正規化した標準偏差 sigma [画素] のガウスで均した Float32Array(区画の無い画素は 0)。
+    // tools/render-lab/plane-smoother.ts の segmentBlur。
+    async segmentBlur(plane, segments, sigma) {
+      await sendArray(devTools, 'window.__ssdPlane', Float32Array.from(plane));
+      await sendArray(devTools, 'window.__ssdSegments', segments);
+      return receiveResolvedFloats(devTools, `window.renderLab.segmentBlur(window.__ssdPlane, window.__ssdSegments,
+        ${sigma}).finally(() => { delete window.__ssdPlane; delete window.__ssdSegments; })`);
+    },
+    // 平面の組 planes(R・G・B)を、面の幾何 geometry({ position, normal, footprint } の Float32Array)の重みを付けた、半径
+    // radius [画素] の疎なタップで均した平面の組。shift([x, y])はタップを回すブルーノイズのタイルのずれ [テクセル]。
+    // tools/render-lab/plane-smoother.ts の sparseBilateral。
+    async sparseBilateral(planes, geometry, radius, shift) {
+      await sendRgbAndGeometry(devTools, planes, geometry);
+      return planesOfRgb(await receiveResolvedFloats(devTools, `window.renderLab.sparseBilateral(window.__ssdRgb,
+        window.__ssdGeometry, ${radius}, ${JSON.stringify(shift)})
+        .finally(() => { delete window.__ssdRgb; delete window.__ssdGeometry; })`));
+    },
+    // 走査の解像度(絵の 1/block)の平面の組 scan を全解像度へ拡大した平面の組。全解像度の画素ごとに、中心を囲む 2×2 の走査の
+    // 画素から、双線形の重み × 面の幾何 geometry(sparseBilateral と同じ形)の重みを確率として 1 つを選んで写す。
+    // tools/render-lab/plane-smoother.ts の stochasticUpscale。
+    async stochasticUpscale(scan, geometry, block) {
+      await sendRgbAndGeometry(devTools, scan, geometry);
+      return planesOfRgb(await receiveResolvedFloats(devTools, `window.renderLab.stochasticUpscale(window.__ssdRgb,
+        window.__ssdGeometry, ${block}).finally(() => { delete window.__ssdRgb; delete window.__ssdGeometry; })`));
     },
     // 誤差の指標のスケール(errorMetrics の返すスケールごとの値の順)。
     errorScales: () => devTools.evaluate('window.renderLab.errorScales'),
+    // 重みを掛ける前の偽の構造の項の ε・τ・λ の並び(errorMetrics の unweightedFalseStructure[帯][ε][τ][λ] の順)。
+    falseStructureEpsilons: () => devTools.evaluate('window.renderLab.falseStructureEpsilons'),
+    thresholdCoefficients: () => devTools.evaluate('window.renderLab.thresholdCoefficients'),
+    noiseCoefficients: () => devTools.evaluate('window.renderLab.noiseCoefficients'),
     // name の slot 0〜slotCount − 1 の和を受け取り、ページから消す。足していない slot は 0。
     async takeAccumulated(name, slotCount) {
       const source = `window.__ssdSums[${JSON.stringify(name)}]`;
