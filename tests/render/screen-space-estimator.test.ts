@@ -8,7 +8,7 @@ import {
   wedgeWeight,
 } from '../../src/render/pipeline/screen-space/slice-sectors';
 import {
-  rayAt, sideRays, splitSegments, type SideRays, type SlicePoint,
+  rayAt, samplePoint, sideRays, splitSegments, type SideRays, type SlicePoint,
 } from '../../src/render/pipeline/screen-space/tangent-segments';
 import { NORMAL_ANGLE_ERROR } from '../../src/render/pipeline/gbuffer';
 import { viewRayAt } from '../../src/render/pipeline/view-ray';
@@ -594,6 +594,58 @@ export function register(): void {
       const upperPosition = float(Math.max(...positions));
       near(valueOf(upperPosition) - valueOf(lowerPosition), 0, 1e-9, `dither=${dither} 測度`);
       assert.equal(valueOf(segmentSectors(lowerPosition, upperPosition)), 0, `dither=${dither}`);
+    }
+  });
+
+  test('screen space estimator: スライス平面の外へずれた、受け手と同じ平面の標本は、受け手の接平面と画面距離の視線の交点に置かれ、測度を持たない', () => {
+    const bay = bayScan();
+    const receiver = receiverPoint(bay);
+    const across = bay.slicePlane.normal.clone().projectOnPlane(FLOOR.normal).normalize();
+    // 床の奥行き約 4 m で、走査の 1 画素の足跡は約 0.02 m。
+    for (const [rho, drift] of [[1.2, 0.01], [1.2, -0.01], [4, -0.015], [40, 0.015]] as const) {
+      const toSample = onPlane(FLOOR, RECEIVER_UV.clone().addScaledVector(bay.uvStep, rho)).sub(bay.receiver)
+        .addScaledVector(across, drift);
+      const sample = samplePoint(bay.slice, bay.rays, float(rho), vectorNode(toSample), vectorNode(FLOOR.normal),
+        receiver);
+      const label = `rho=${rho} drift=${drift}`;
+      const point = lifted(bay, sample.position);
+      near(planeDistance(FLOOR, point), 0, 1e-9, `${label} 床の上`);
+      assertOnRay(point, bay, rho, label);
+      // 接平面の直線は受け手のもの。
+      assert.deepEqual(evaluateShaderNode(sample.normal), evaluateShaderNode(receiver.normal), `${label} 法線`);
+      assert.equal(valueOf(sample.offset), 0, `${label} offset`);
+      const lower = splitSegments(bay.rays, receiver, float(0), sample, float(rho), bool(true)).farLower;
+      for (const dither of ditherGrid(16)) {
+        // 床の平面の上の向きは、走査の側では受け手の半球の上の縁にある。
+        const positions = [lower, sample.position].map((end) => endPosition(bay, sample, end, dither));
+        near(positions[1]!, SECTOR_COUNT + dither - 0.5, 1e-9, `${label} dither=${dither} 地平`);
+        const lowerPosition = float(Math.min(...positions));
+        const upperPosition = float(Math.max(...positions));
+        near(valueOf(upperPosition) - valueOf(lowerPosition), 0, 1e-9, `${label} dither=${dither} 測度`);
+        assert.equal(valueOf(segmentSectors(lowerPosition, upperPosition)), 0, `${label} dither=${dither}`);
+      }
+    }
+  });
+
+  test('screen space estimator: 受け手と違う平面の標本は、受け手の平面と平行でも足跡より離れていれば、射影した位置と自分の接平面のまま', () => {
+    const bay = bayScan();
+    // 受け手の平面と平行で 0.2 m 上にある面。走査の 1 画素の足跡は 0.02〜0.03 m。
+    const shelf: Plane = { normal: FLOOR.normal, point: FLOOR.point.clone().addScaledVector(FLOOR.normal, 0.2) };
+    const cases = [[WALL, 40, -0.015], [WALL, 55, 0.015], [BOX_FRONT, 20, 0.01], [shelf, 4, 0.01], [shelf, 40, -0.015]] as const;
+    for (const [plane, rho, drift] of cases) {
+      const across = bay.slicePlane.normal.clone().projectOnPlane(plane.normal).normalize();
+      const toSample = onPlane(plane, RECEIVER_UV.clone().addScaledVector(bay.uvStep, rho)).sub(bay.receiver)
+        .addScaledVector(across, drift);
+      const sample = samplePoint(bay.slice, bay.rays, float(rho), vectorNode(toSample), vectorNode(plane.normal),
+        receiverPoint(bay));
+      const projected = sampleAt(plane, bay, rho, drift);
+      const label = `${plane.normal.toArray()} rho=${rho} drift=${drift}`;
+      for (const field of ['position', 'normal'] as const) {
+        const actual = evaluateShaderNode(sample[field]) as number[];
+        const expected = evaluateShaderNode(projected[field]) as number[];
+        near(Math.hypot(actual[0]! - expected[0]!, actual[1]! - expected[1]!), 0, 1e-12, `${label} ${field}`);
+      }
+      near(valueOf(sample.offset), plane.normal.dot(toSample), 1e-12, `${label} offset`);
     }
   });
 
