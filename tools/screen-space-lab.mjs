@@ -91,7 +91,7 @@ export function seedOf(k) {
 // いまの精細さの段(src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_TIERS)。
 export const TIERS = {
   low: { scale: 0.25, sliceCount: 2, stepCount: 3, denoiseRadius: 2 },
-  medium: { scale: 0.25, sliceCount: 3, stepCount: 4, denoiseRadius: 2 },
+  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, denoiseRadius: 2 },
   high: { scale: 0.25, sliceCount: 4, stepCount: 6, denoiseRadius: 2 },
 };
 
