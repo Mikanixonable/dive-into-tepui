@@ -1,6 +1,6 @@
 // 近傍拡散補正の計測が使う、評価の組と解析値のある窓、それを描画テスト環境で撮る口と誤差の指標を測る口と平面を均す口、
 // 基準の置き場、表の書式。撮影は走査の段とブルーノイズの seed を与え、表示の絵と浮動小数の中間ターゲットを受け取る。中間ターゲットは
-// ページの中で積むこともでき、積んだ HDR の平均は本番と同じ合成で表示にして受け取る。
+// ページの中で積むこともでき(和か、倍精度の和と二乗和)、積んだ HDR の平均は本番と同じ合成で表示にして受け取る。
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -100,15 +100,17 @@ export const headHash = () => execSync('git rev-parse --short HEAD', { cwd: root
 
 // ---- 撮影 ----
 
-// ページの式 source が指す長さ length の Float32Array を受け取る。CDP の 1 通の上限を超えないよう、塊ごとに受け取る。
+// ページの式 source が指す長さ length の、型 type(Float32Array か Float64Array)の配列を受け取る。CDP の 1 通の上限を
+// 超えないよう、塊ごとに受け取る。
 const BYTES_PER_CHUNK = 64 * WIDTH * 3 * 4;
-async function receiveFloats(devTools, source, length) {
-  const out = new Float32Array(length);
-  for (let start = 0; start < length * 4; start += BYTES_PER_CHUNK) {
-    const size = Math.min(length * 4 - start, BYTES_PER_CHUNK);
+async function receiveFloats(devTools, source, length, type = Float32Array) {
+  const out = new type(length);
+  const byteLength = length * type.BYTES_PER_ELEMENT;
+  for (let start = 0; start < byteLength; start += BYTES_PER_CHUNK) {
+    const size = Math.min(byteLength - start, BYTES_PER_CHUNK);
     const base64 = await devTools.evaluate(`new Uint8Array(${source}.buffer, ${start}, ${size}).toBase64()`);
     const bytes = Buffer.from(base64, 'base64');
-    out.set(new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + size)), start / 4);
+    out.set(new type(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + size)), start / type.BYTES_PER_ELEMENT);
   }
   return out;
 }
@@ -212,6 +214,22 @@ function labOf(devTools) {
         const sum = (sums.slots[${slot}] ??= new Float32Array(width * height * ${channels}));
         for (let p = 0; p < width * height; p++) {
           for (let k = 0; k < ${channels}; k++) sum[p * ${channels} + k] += rgba[p * 4 + k];
+        }
+      })`),
+    // 直前のフレームの中間ターゲット name の先頭 channels 成分を、ページの中に name ごとに積む slot 番目の和と二乗和
+    // (倍精度)へ足す。積んだ和は takeMoments で受け取る。
+    accumulateMoments: (name, channels, slot) => devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})
+      .then(({ width, height, rgba }) => {
+        const moments = ((window.__ssdMoments ??= {})[${JSON.stringify(name)}] ??= { width, height, slots: [] });
+        const size = width * height * ${channels};
+        const { sum, squareSum } = (moments.slots[${slot}] ??= {
+          sum: new Float64Array(size), squareSum: new Float64Array(size) });
+        for (let p = 0; p < width * height; p++) {
+          for (let k = 0; k < ${channels}; k++) {
+            const v = rgba[p * 4 + k];
+            sum[p * ${channels} + k] += v;
+            squareSum[p * ${channels} + k] += v * v;
+          }
         }
       })`),
     // 保存しておいた name の和の並び sums(画素ごとに channels 成分)を、ページの中の和として置き直す。以後の
@@ -320,6 +338,24 @@ function labOf(devTools) {
       }
       await devTools.evaluate(`delete ${source}`);
       return sums;
+    },
+    // name の和をページから消す。
+    dropAccumulated: (name) => devTools.evaluate(`delete window.__ssdSums[${JSON.stringify(name)}]`),
+    // accumulateMoments で積んだ name の { width, height, slots } を受け取り、ページから消す。slots は slot 0〜slotCount − 1
+    // の { sum, squareSum }(画素ごとに成分を並べた Float64Array)で、どれも 1 回以上足してあること。
+    async takeMoments(name, slotCount) {
+      const source = `window.__ssdMoments[${JSON.stringify(name)}]`;
+      const [width, height, size] = await devTools.evaluate(
+        `[${source}.width, ${source}.height, ${source}.slots[0].sum.length]`);
+      const slots = [];
+      for (let slot = 0; slot < slotCount; slot++) {
+        slots.push({
+          sum: await receiveFloats(devTools, `${source}.slots[${slot}].sum`, size, Float64Array),
+          squareSum: await receiveFloats(devTools, `${source}.slots[${slot}].squareSum`, size, Float64Array),
+        });
+      }
+      await devTools.evaluate(`delete ${source}`);
+      return { width, height, slots };
     },
   };
 }

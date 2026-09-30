@@ -1,6 +1,6 @@
 // 近傍拡散補正の画質と費用の計測。ヘッドレス Chrome で .render-lab/ を開き、評価の組の撮影を、走査の段と
 // ブルーノイズの seed を与えて撮る。画質は補正項だけを、アルベド 1 の面の表示の尺度 q = 露出係数·ΔE/π で測る。
-// 4 つの使い方がある。
+// 5 つの使い方がある。
 //
 //   reference [--name D] [--entries K,...] [--sets S,...] --slices S --steps T --passes N
 //     基準 B(全解像度・均しなし・1 パス S スライス × 片側 T 歩で、seed を変えた N パスの補正の和と、目で見る画像の
@@ -17,6 +17,10 @@
 //   rescore <出力先> [--reference D]
 //     compare が残した撮影を、撮り直さずにいまの指標で採点し直し、表を <出力先>/report.md へ書く。D の既定は撮影に
 //     使った基準。
+//   variance [<candidates.json>] [--entries K,...] [--sets S,...] [--passes N] [--out O]
+//     候補の段(既定は中の均し前)の均し・拡大の前の補正を、全候補で共通の seed の列で N パス(既定 256、4 の倍数)撮り、
+//     seed についての画素ごとの分散と収束先の移動と費用を、先頭の候補と比べる表にする。画素ごとの統計と目で見る画像も
+//     .render-lab-shots/ssd-variance/<O>/ へ書く。O の既定は HEAD の短いハッシュ。--entries も --sets も無ければ tuning。
 //
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -30,6 +34,7 @@ import {
   selectedEntries, shotsDir, table, TIERS, WIDTH, windowRatiosOf, withLab, writeHalfFloats,
 } from './screen-space-lab.mjs';
 import { check, reference } from './screen-space-reference.mjs';
+import { variance } from './screen-space-variance.mjs';
 
 // 境界とみなす法線のなす角の余弦と深度の表示の差 [LSB]、境界の帯の幅 [画素]。
 const EDGE_NORMAL_COS = Math.cos(Math.PI / 6);
@@ -272,12 +277,12 @@ function reportOf(record, results, flicker, scales) {
   ].join('\n');
 }
 
-const COMMANDS = { reference, check, compare, rescore };
+const COMMANDS = { reference, check, compare, rescore, variance };
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   if (!Object.hasOwn(COMMANDS, command)) {
-    throw new Error('usage: node tools/render-lab-screen-space-metrics.mjs reference|check|compare|rescore [...]');
+    throw new Error('usage: node tools/render-lab-screen-space-metrics.mjs reference|check|compare|rescore|variance [...]');
   }
   await COMMANDS[command](parseArgs(rest));
 }
