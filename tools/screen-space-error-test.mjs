@@ -17,7 +17,7 @@ const WHITE_FINEST_RATIO = 0.872;
 // 1/R(s) の許容幅。場を重ねても標本が足りない粗いスケールは、場ごとの値の標準誤差の 3 倍まで広げる。
 const WHITE_RATIO_TOLERANCE = 0.05;
 const FINEST_RATIO_TOLERANCE = 0.03;
-// 誤差の振幅(q)。偽の構造の罰の分母の下限 ε = 3e-4 が効かない大きさ。
+// 誤差の振幅(q)。偽の構造の罰の分母の下限 ε が効かない大きさ。
 const AMPLITUDE = 1;
 
 // 種 seed の一様乱数(mulberry32)。
@@ -67,6 +67,24 @@ function muraImage(seed, width, height, sigma) {
   return planes.map((plane) => plane.map((v) => (AMPLITUDE / rms) * v));
 }
 
+// 左半分に辺 CHECKER_BLOCK [画素] の市松で ±AMPLITUDE を置き、右半分を 0 とした、鋭い構造を持つ収束先の補正(3 成分とも
+// 同じ)。
+const CHECKER_BLOCK = 8;
+function leftCheckerImage(width, height) {
+  const plane = Float32Array.from({ length: width * height }, (_, p) => {
+    const [x, y] = [p % width, Math.floor(p / width)];
+    if (x >= width / 2) return 0;
+    return (Math.floor(x / CHECKER_BLOCK) + Math.floor(y / CHECKER_BLOCK)) % 2 === 0 ? AMPLITUDE : -AMPLITUDE;
+  });
+  return [0, 1, 2].map(() => plane.slice());
+}
+
+// 平面の組 planes(幅 width)を左右に反転したもの。
+const mirroredImage = (planes, width) => planes.map((plane) => plane.map((_, p) => {
+  const x = p % width;
+  return plane[p - x + (width - 1 - x)];
+}));
+
 const zeroImage = (width, height) => [0, 1, 2].map(() => new Float32Array(width * height));
 const fullMask = (width, height) => new Uint8Array(width * height).fill(1);
 const failures = [];
@@ -82,8 +100,8 @@ async function check(name, fn) {
   }
 }
 
-// 偽の構造の項の、雑音の項に対する比。
-const falseStructureRatioOf = (metrics) => metrics.falseStructureTerm / metrics.noiseTerm;
+// スコア(偽の構造の項)の、雑音の強さ N に対する比。
+const falseStructureRatioOf = (metrics) => metrics.score / metrics.noiseTerm;
 const format = (values, digits = 3) => values.map((v) => v.toFixed(digits)).join(' / ');
 
 await withLab(async (lab) => {
@@ -140,20 +158,22 @@ await withLab(async (lab) => {
 
   const mask = fullMask(WIDTH, HEIGHT);
   const white = await metricsOf(whiteImage(10, WIDTH, HEIGHT), mask, WIDTH, HEIGHT);
-  console.log(`  白色雑音: 雑音 ${white.noiseTerm.toFixed(4)}  偽の構造 ${white.falseStructureTerm.toFixed(4)}  R(s) ${format(white.r)}`);
+  console.log(`  白色雑音: 雑音 ${white.noiseTerm.toFixed(4)}  偽の構造 ${white.score.toFixed(4)}  R(s) ${format(white.r)}`);
 
-  await check('孤立した輝点: 偽の構造の項の雑音の項に対する比が、正直な白色雑音以下(輝点が自分で説明される)', async () => {
+  // 同じエネルギーの、大きさの違うムラ。σ = 1・4・16 は盲検の場 n2・n8・n32(特徴の大きさ 2・8・32 px)と同じ均し方。
+  const muraSigmas = [1, 4, 8, 16];
+  const muras = [];
+  for (const sigma of muraSigmas) muras.push(await metricsOf(muraImage(20, WIDTH, HEIGHT, sigma), mask, WIDTH, HEIGHT));
+
+  await check('孤立した輝点: 偽の構造の項の雑音の項に対する比が、白色雑音と同じ桁(2 倍以下)で、滑らかなムラ(σ = 8)の 1/100 以下(輝点は雑音に数え、ムラに数えない)', async () => {
     const spot = zeroImage(WIDTH, HEIGHT);
     for (const plane of spot) plane[(HEIGHT / 2) * WIDTH + WIDTH / 2] = AMPLITUDE;
     const metrics = await metricsOf(spot, mask, WIDTH, HEIGHT);
-    console.log(`    偽の構造 / 雑音: 輝点 ${falseStructureRatioOf(metrics).toFixed(2)}、白色雑音 ${falseStructureRatioOf(white).toFixed(2)}`);
-    assert.ok(falseStructureRatioOf(metrics) <= falseStructureRatioOf(white), `輝点 ${falseStructureRatioOf(metrics)}`);
+    const muraRatio = falseStructureRatioOf(muras[muraSigmas.indexOf(8)]);
+    console.log(`    偽の構造 / 雑音: 輝点 ${falseStructureRatioOf(metrics).toFixed(2)}、白色雑音 ${falseStructureRatioOf(white).toFixed(2)}、ムラ ${muraRatio.toFixed(1)}`);
+    assert.ok(falseStructureRatioOf(metrics) <= 2 * falseStructureRatioOf(white), `輝点 ${falseStructureRatioOf(metrics)}`);
+    assert.ok(falseStructureRatioOf(metrics) <= muraRatio / 100, `輝点 ${falseStructureRatioOf(metrics)}`);
   });
-
-  // 同じエネルギーの、大きさの違うムラ。
-  const muraSigmas = [4, 8, 16, 32];
-  const muras = [];
-  for (const sigma of muraSigmas) muras.push(await metricsOf(muraImage(20, WIDTH, HEIGHT, sigma), mask, WIDTH, HEIGHT));
 
   await check('滑らかなムラ(σ = 8): 偽の構造の項が白色雑音の比の 10 倍を超え、R(s) が 4 px 以上の帯で 10 を超える', () => {
     const mura = muras[muraSigmas.indexOf(8)];
@@ -164,11 +184,11 @@ await withLab(async (lab) => {
     }
   });
 
-  await check('同じエネルギーのムラは、大きいほど偽の構造の項が小さい', () => {
-    console.log(`    σ = ${muraSigmas.join(' / ')}: 偽の構造 ${format(muras.map((m) => m.falseStructureTerm), 4)}`);
-    for (let k = 1; k < muras.length; k++) {
-      assert.ok(muras[k].falseStructureTerm < muras[k - 1].falseStructureTerm, `σ = ${muraSigmas[k]} が σ = ${muraSigmas[k - 1]} 以上`);
-    }
+  await check('同じエネルギーのムラは、特徴の大きさ 8 px(σ = 4)が 2 px(σ = 1)と 32 px(σ = 16)より偽の構造の項が大きい', () => {
+    console.log(`    σ = ${muraSigmas.join(' / ')}: 偽の構造 ${format(muras.map((m) => m.score), 4)}`);
+    const termOf = (sigma) => muras[muraSigmas.indexOf(sigma)].score;
+    assert.ok(termOf(4) > termOf(1), `σ = 4 が σ = 1 以下`);
+    assert.ok(termOf(4) > termOf(16), `σ = 4 が σ = 16 以下`);
   });
 
   await check('誤差を 3 倍にすると、S も 3 倍になる', async () => {
@@ -179,6 +199,60 @@ await withLab(async (lab) => {
     const tripled = await metricsOf(mixed.map((plane) => plane.map((v) => 3 * v)), mask, WIDTH, HEIGHT);
     console.log(`    S ${base.score.toFixed(4)} → ${tripled.score.toFixed(4)}(比 ${(tripled.score / base.score).toFixed(4)})`);
     assert.ok(Math.abs(tripled.score / base.score - 3) <= 0.03, `比 ${tripled.score / base.score}`);
+  });
+
+  // 覆い隠し(誤差の帯から収束先の同じ帯とそれを広げたものに当てた成分を除く局所の回帰)と、E_s の床 ε の並び。
+  // 覆い隠さない値は、同じ誤差を 0 の収束先に対して測ったもの。
+  const epsilons = await lab.falseStructureEpsilons();
+  const metricsAgainst = (reference, error, width, height) => lab.errorMetrics(
+    reference.map((plane, c) => plane.map((v, p) => v + error[c][p])), reference, fullMask(width, height),
+    width, height);
+  const unmaskedOf = (error, width, height) => metricsAgainst(zeroImage(width, height), error, width, height);
+  // 指標 metrics の、ε の添字 k の Σ_s E_s。
+  const totalOf = (metrics, k) => metrics.unweightedFalseStructure.reduce((sum, band) => sum + band[k], 0);
+  // 全ての ε で、覆い隠した Σ_s E_s の覆い隠さないものに対する比が accepts を満たすか確かめる。
+  const assertRatios = (masked, unmasked, accepts, label) => {
+    const ratios = epsilons.map((_, k) => totalOf(masked, k) / totalOf(unmasked, k));
+    console.log(`    ${label}: Σ_s E_s の覆い隠さないものに対する比(ε = ${epsilons.join(' / ')}) ${format(ratios)}`);
+    for (const [k, ratio] of ratios.entries()) assert.ok(accepts(ratio), `${label}, ε = ${epsilons[k]}: ${ratio}`);
+  };
+  // 鋭い構造を左半分に持つ収束先と、そのぼけ G_σ∗q_B − q_B。
+  const converged = leftCheckerImage(WIDTH, HEIGHT);
+  const blurErrorOf = (sigma) => converged.map((plane) => (
+    gaussianBlurOf(plane, WIDTH, HEIGHT, sigma).map((v, p) => v - plane[p])));
+
+  await check('覆い隠し: 収束先 × 灰色の滑らかな倍率の誤差は Σ_s E_s が半分以下に減り、反転して収束先の平らな所へ置いたものは 1 割も減らない', async () => {
+    const [multiplier] = muraImage(50, WIDTH, HEIGHT, 8);
+    const following = converged.map((plane) => plane.map((v, p) => v * multiplier[p]));
+    const mirrored = mirroredImage(following, WIDTH);
+    assertRatios(await metricsAgainst(converged, following, WIDTH, HEIGHT), await unmaskedOf(following, WIDTH, HEIGHT),
+      (ratio) => ratio <= 0.5, '収束先 × 倍率');
+    assertRatios(await metricsAgainst(converged, mirrored, WIDTH, HEIGHT), await unmaskedOf(mirrored, WIDTH, HEIGHT),
+      (ratio) => ratio >= 0.9, '反転');
+  });
+
+  await check('覆い隠し: 収束先のぼけ G_σ∗q_B − q_B は、σ = 1・2・4・8・16 のどれでも Σ_s E_s が 3 割以下に減る', async () => {
+    for (const sigma of [1, 2, 4, 8, 16]) {
+      const blur = blurErrorOf(sigma);
+      assertRatios(await metricsAgainst(converged, blur, WIDTH, HEIGHT), await unmaskedOf(blur, WIDTH, HEIGHT),
+        (ratio) => ratio <= 0.3, `ぼけ σ = ${sigma}`);
+    }
+  });
+
+  await check('覆い隠し: 収束先と独立な白色雑音は、どの帯でも除いた割合が 15% 以下', async () => {
+    const [width, height] = [2 * WIDTH, 2 * HEIGHT];
+    const metrics = await metricsAgainst(whiteImage(70, width, height), whiteImage(80, width, height), width, height);
+    console.log(`    除いた割合 ${format(metrics.removedFraction)}`);
+    for (const [j, s] of scales.entries()) assert.ok(metrics.removedFraction[j] <= 0.15, `s = ${s}: ${metrics.removedFraction[j]}`);
+  });
+
+  await check('覆い隠し: 収束先の振幅の大きい所に置いた形を持たないムラは、Σ_s E_s が 3 割も減らない', async () => {
+    // 白色雑音を σ = 8 で均した灰色の場に、収束先の振幅を σ = 8 で均した包絡 G_8∗|q_B| を掛けたもの。
+    const [field] = muraImage(60, WIDTH, HEIGHT, 8);
+    const envelope = gaussianBlurOf(converged[0].map(Math.abs), WIDTH, HEIGHT, 8);
+    const shapeless = converged.map(() => field.map((v, p) => v * envelope[p]));
+    assertRatios(await metricsAgainst(converged, shapeless, WIDTH, HEIGHT), await unmaskedOf(shapeless, WIDTH, HEIGHT),
+      (ratio) => ratio >= 0.7, '形を持たないムラ');
   });
 });
 
