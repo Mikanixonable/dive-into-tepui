@@ -120,6 +120,10 @@ const SCREEN_PIXELS = 200;
 const FLOOR: Plane = { normal: new THREE.Vector3(0.05, 1, 0.1).normalize(), point: new THREE.Vector3(0, -1, -4) };
 const WALL: Plane = { normal: new THREE.Vector3(-0.2, 0.1, 1).normalize(), point: new THREE.Vector3(0, -0.5, -6) };
 const BOX_FRONT: Plane = { normal: new THREE.Vector3(0.15, 0, 1).normalize(), point: new THREE.Vector3(0, -1, -3.6) };
+// 箱の上面。箱の前面と、画面距離 31 画素に写る凸の稜で交わる。
+const BOX_TOP: Plane = { normal: new THREE.Vector3(0, 1, 0.1).normalize(), point: new THREE.Vector3(0, -0.6, -3.6) };
+// カメラの上を通って奥へ上がる天井。床とはカメラの後ろで交わる。
+const CEILING: Plane = { normal: new THREE.Vector3(0, -1, -0.2).normalize(), point: new THREE.Vector3(0, 0.5, 0) };
 // 受け手の uv と、スライスの画面上の角 [rad]。
 const RECEIVER_UV = new THREE.Vector2(0.53, 0.82);
 const BAY_SLICE_ANGLE = 1.45;
@@ -214,6 +218,11 @@ function lifted({ receiver, slice }: BayScan, point: Vec2Node): THREE.Vector3 {
 // ベクトルのノードの値。
 function vectorOf(node: Vec3Node): THREE.Vector3 {
   return new THREE.Vector3().fromArray(evaluateShaderNode(node) as number[]);
+}
+
+// view 空間の点 point が写る、受け手からの画面距離 [走査の画素]。
+function rhoOf(point: THREE.Vector3): number {
+  return uvOf(point).sub(RECEIVER_UV).length() * SCREEN_PIXELS;
 }
 
 // 点 point が、受け手から画面距離 rho の視線に乗っていることを検査する。
@@ -431,7 +440,7 @@ export function register(): void {
     }
   });
 
-  test('screen space estimator: 同じ平面の隣り合う標本の切片は、中点の視線の上で隙間なく継がれる', () => {
+  test('screen space estimator: 同じ平面の隣り合う標本の切片は、奥の標本の位置で隙間なく継がれる', () => {
     const bay = bayScan();
     for (const [nearRho, farRho] of [[40, 55], [55, 90], [37, 38]] as const) {
       const first = sampleAt(WALL, bay, nearRho);
@@ -441,22 +450,22 @@ export function register(): void {
       const label = `${nearRho}..${farRho}`;
       near(upper.distanceTo(lifted(bay, split.farLower)), 0, 1e-9, `${label} 継ぎ目`);
       near(planeDistance(WALL, upper), 0, 1e-9, `${label} 壁の上`);
-      assertOnRay(upper, bay, (nearRho + farRho) / 2, label);
+      assertOnRay(upper, bay, farRho, label);
       near(endPosition(bay, first, split.nearUpper, 0.4), endPosition(bay, second, split.farLower, 0.4), 1e-9,
         `${label} 角`);
     }
   });
 
-  test('screen space estimator: スライス平面の外へずれた同じ平面の標本どうしも、平面がスライスを切る直線の上で継がれる', () => {
+  test('screen space estimator: スライス平面の外へ画素の足跡の中でずれた同じ平面の標本どうしも、奥の標本の位置で継がれる', () => {
     const bay = bayScan();
-    for (const [nearRho, farRho, nearDrift, farDrift] of [[40, 55, 0.02, -0.03], [37, 38, -0.01, 0.01]] as const) {
-      const split = splitSegments(bay.rays, sampleAt(WALL, bay, nearRho, nearDrift), float(nearRho),
-        sampleAt(WALL, bay, farRho, farDrift), float(farRho), bool(true));
-      const upper = lifted(bay, split.nearUpper);
+    // 壁の奥行き約 6 m で、走査の 1 画素の足跡は約 0.03 m。
+    for (const [nearRho, farRho, nearDrift, farDrift] of [[40, 55, 0.01, -0.015], [37, 38, -0.01, 0.01]] as const) {
+      const far = sampleAt(WALL, bay, farRho, farDrift);
+      const split = splitSegments(bay.rays, sampleAt(WALL, bay, nearRho, nearDrift), float(nearRho), far,
+        float(farRho), bool(true));
       const label = `${nearRho}..${farRho}`;
-      near(upper.distanceTo(lifted(bay, split.farLower)), 0, 1e-9, `${label} 継ぎ目`);
-      near(planeDistance(WALL, upper), 0, 1e-9, `${label} 壁の上`);
-      assertOnRay(upper, bay, (nearRho + farRho) / 2, label);
+      near(lifted(bay, split.nearUpper).distanceTo(lifted(bay, far.position)), 0, 1e-9, `${label} 手前の上端`);
+      near(lifted(bay, split.farLower).distanceTo(lifted(bay, far.position)), 0, 1e-9, `${label} 奥の下端`);
     }
   });
 
@@ -475,6 +484,68 @@ export function register(): void {
       assertOnRay(lower, bay, middle, `${label} 壁の下端`);
       assert.ok(lower.length() > upper.length() + 1, `${label} 壁は箱の奥`);
     }
+  });
+
+  test('screen space estimator: 凸の稜をまたぐ 2 標本の切片は、2 面がスライスの中で交わる稜で継がれる', () => {
+    const bay = bayScan();
+    const ridge = intersection(BOX_FRONT, BOX_TOP, bay.slicePlane);
+    const ridgeRho = rhoOf(ridge);
+    for (const [before, after] of [[10, 3], [3, 1.5], [0.5, 0.5]] as const) {
+      const split = splitSegments(bay.rays, sampleAt(BOX_FRONT, bay, ridgeRho - before), float(ridgeRho - before),
+        sampleAt(BOX_TOP, bay, ridgeRho + after), float(ridgeRho + after), bool(true));
+      const label = `${-before}..${after}`;
+      near(lifted(bay, split.nearUpper).distanceTo(ridge), 0, 1e-9, `${label} 前面の上端`);
+      near(lifted(bay, split.farLower).distanceTo(ridge), 0, 1e-9, `${label} 上面の下端`);
+    }
+  });
+
+  test('screen space estimator: 継ぎ目を含む画素を読んだ標本は、画面距離が継ぎ目の先でも手前でも、継ぎ目で継がれる', () => {
+    const bay = bayScan();
+    const seam = intersection(FLOOR, WALL, bay.slicePlane);
+    const seamRho = rhoOf(seam);
+    // 画面距離が継ぎ目を半画素こえた床の標本と、継ぎ目に半画素届かない壁の標本。どちらの画素も継ぎ目を含む。
+    const pairs = [
+      [sampleAt(FLOOR, bay, seamRho + 0.5, 0.01), seamRho + 0.5, sampleAt(WALL, bay, seamRho + 4), seamRho + 4],
+      [sampleAt(FLOOR, bay, seamRho - 4), seamRho - 4, sampleAt(WALL, bay, seamRho - 0.5, -0.01), seamRho - 0.5],
+    ] as const;
+    for (const [floor, floorRho, wall, wallRho] of pairs) {
+      const split = splitSegments(bay.rays, floor, float(floorRho), wall, float(wallRho), bool(true));
+      const label = `${floorRho - seamRho}..${wallRho - seamRho}`;
+      near(lifted(bay, split.nearUpper).distanceTo(seam), 0, 1e-9, `${label} 床の上端`);
+      near(lifted(bay, split.farLower).distanceTo(seam), 0, 1e-9, `${label} 壁の下端`);
+    }
+  });
+
+  test('screen space estimator: 稜が 2 標本のあいだに写らない凸の稜の 2 標本は、奥の標本の位置で継がれ、相手の面の手前へ出ない', () => {
+    const bay = bayScan();
+    const ridgeRho = rhoOf(intersection(BOX_FRONT, BOX_TOP, bay.slicePlane));
+    // 上面の標本は稜の先の画素のもの。画面距離は、稜の手前の歩みの点で測られている。
+    const top = sampleAt(BOX_TOP, bay, ridgeRho + 1, 0.01);
+    for (const [frontRho, topRho] of [[ridgeRho - 8, ridgeRho - 3], [ridgeRho - 3.5, ridgeRho - 1.5]] as const) {
+      const split = splitSegments(bay.rays, sampleAt(BOX_FRONT, bay, frontRho), float(frontRho), top, float(topRho),
+        bool(true));
+      const label = `${frontRho - ridgeRho}..${topRho - ridgeRho}`;
+      const joint = lifted(bay, top.position);
+      near(lifted(bay, split.nearUpper).distanceTo(joint), 0, 1e-9, `${label} 前面の上端`);
+      near(lifted(bay, split.farLower).distanceTo(joint), 0, 1e-9, `${label} 上面の下端`);
+      assert.ok(planeDistance(BOX_FRONT, joint) < 0, `${label} 前面の奥`);
+    }
+  });
+
+  test('screen space estimator: カメラの後ろで交わる 2 面の標本は、継がれずに中点の視線で分かれる', () => {
+    const bay = bayScan();
+    const [floorRho, ceilingRho] = [60, 160];
+    // 2 面の交線をカメラへ向かって延ばした向きは、2 標本のあいだの視線と重なる。
+    const behind = intersection(FLOOR, CEILING, bay.slicePlane);
+    assert.ok(behind.z > 0, `交線はカメラの後ろ ${behind.z}`);
+    const mirrored = rhoOf(behind.clone().negate());
+    assert.ok(mirrored > floorRho && mirrored < ceilingRho, `交線の逆向きの画面距離 ${mirrored}`);
+    const ceiling = sampleAt(CEILING, bay, ceilingRho);
+    const split = splitSegments(bay.rays, sampleAt(FLOOR, bay, floorRho), float(floorRho), ceiling, float(ceilingRho),
+      bool(true));
+    const lower = lifted(bay, split.farLower);
+    near(planeDistance(CEILING, lower), 0, 1e-9, '天井の下端');
+    assertOnRay(lower, bay, (floorRho + ceilingRho) / 2, '天井の下端');
   });
 
   test('screen space estimator: 半径の投影は渡した寸法の画素で測り、透視では奥行きに反比例し、平行投影では一定', () => {
