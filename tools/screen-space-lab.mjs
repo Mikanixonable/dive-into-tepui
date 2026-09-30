@@ -42,6 +42,10 @@ export const ENTRIES = [
   ...['bay-earthshine', 'bay-earth-overhead', 'bay-earth-corner', 'bay-moon-open', 'bay-moon-corner']
     .flatMap((shot) => Object.values(MODE).map((mode) => entry('correctness', 'bay', shot, mode))),
   entry('correctness', 'bounce-cosine', 'bounce-cosine'),
+  ...[
+    'plane-earth-overhead', 'plane-earth-low', 'plane-earth-horizon', 'plane-moon-overhead', 'plane-moon-low',
+    'plane-moon-horizon', 'plane-ambient', 'plane-earth-low-grazing', 'plane-ambient-grazing',
+  ].flatMap((shot) => Object.values(MODE).map((mode) => entry('correctness', 'plane', shot, mode))),
   ...Array.from({ length: DOLLY_FRAMES }, (_, k) => entry('flicker', 'bay', 'bay', MODE.indirect, (k + 1) * DOLLY_STEP)),
 ];
 
