@@ -1,6 +1,7 @@
 // スライスの中で、深度の標本 1 つが受け持つ接平面の切片の幾何。画面上で隣り合う標本の切片の境目、スライスの
 // 片側の視線、視線と接平面の交点、受け手から見た角の大小を答える。
 import { abs, dot, float, getViewPosition, length, max, select, vec2 } from 'three/tsl';
+import { NORMAL_ANGLE_ERROR } from '../gbuffer';
 import { toSliceCoordinates, type Slice } from './slice-sectors';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
@@ -46,9 +47,16 @@ export function splitSegments(
   const solvable = abs(determinant).greaterThanEqual(1e-6);
   const seam = perpendicular(far.normal).mul(near.offset).sub(perpendicular(near.normal).mul(far.offset))
     .div(select(solvable, determinant, float(1))).toVar();
+  // near が受け手自身なら、交点は受け手の接平面の上にあり、受け手から見た向きはどちらかの側の地平に決まっている。
+  // 受け手が far の接平面に法線の精度の範囲で乗っていれば、交点が受け手の反対側へ出るのは丸めによるので、受け手に
+  // ついて折り返す。精度を超えて裏にあれば、輪郭をまたぐ組の本当の交線で、継ぎ目にすると開いた向きを塞ぐ。
+  const roundedBehind = nearRho.equal(0)
+    .and(abs(far.offset).lessThanEqual(length(far.position).mul(NORMAL_ANGLE_ERROR)))
+    .and(seam.y.mul(rays.originStep.y).lessThan(0));
+  const joint = select(roundedBehind, seam.negate(), seam).toVar();
   // 標本が読む面は画面距離の点を含む画素のもので、その画素は 1 画素先まで届く。受け手自身は画素の中心にある。
   const atSeam = bothSurfaces.and(solvable)
-    .and(seenBetween(rays, seam, max(nearRho.sub(1), 0), farRho.add(1)));
+    .and(seenBetween(rays, joint, max(nearRho.sub(1), 0), farRho.add(1)));
   // 継ぎ目が写らなくても、互いに相手の接平面の手前へ画素の足跡を超えて出ていなければ、同じ面か凸の稜をまたぐ面の
   // 続きなので far の位置で直に継ぐ — 視線との交点へ延ばすと、縁をまたいだ画素の面が縁の手前へはみ出す。
   const tolerance = pixelFootprint(rays, far.position);
@@ -58,8 +66,8 @@ export function splitSegments(
   // それ以外(輪郭・向かい合う面・面のない標本)は境目の位置が分からないので、画面上の中点の視線で分ける。
   const middle = rayAt(rays, nearRho.add(farRho).mul(0.5));
   return {
-    nearUpper: select(atSeam, seam, select(contiguous, far.position, tangentHit(middle, near))),
-    farLower: select(atSeam, seam, select(contiguous, far.position, tangentHit(middle, far))),
+    nearUpper: select(atSeam, joint, select(contiguous, far.position, tangentHit(middle, near))),
+    farLower: select(atSeam, joint, select(contiguous, far.position, tangentHit(middle, far))),
   };
 }
 

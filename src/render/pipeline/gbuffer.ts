@@ -11,6 +11,11 @@ import { LIT_CLOUD_SHELL_LAYER, LIT_OPAQUE_LAYER } from './lit-layer';
 import { compileInto } from './compile-into';
 import type { BoolNode, Vec2Node, Vec3Node } from '../tsl-types';
 
+// G バッファから戻した法線の向きの誤差の上限 [rad]。0..1 に詰めた oct 座標を半精度で持つので、0.5..1 の刻みは 2⁻¹¹ で、
+// 復号した oct 座標 e = 2·raw − 1 の丸めの誤差は成分ごとに 2⁻¹¹ 以下。正規化する前のベクトル
+// (e.x, e.y, 1 − |e.x| − |e.y|) の誤差は √6·2⁻¹¹ 以下、その長さは 1/√3 以上なので、向きの誤差は √18·2⁻¹¹ 以下。
+export const NORMAL_ANGLE_ERROR = Math.sqrt(18) * 2 ** -11;
+
 // v の各成分が 0 以上なら +1、そうでなければ -1 を返す。TSL の sign() は 0 で 0 を返すため、
 // 下記 octEncodeNormal の折り返しがそこで壊れる — 自前で書く。
 function signNotZero(v: Vec2Node): Vec2Node {

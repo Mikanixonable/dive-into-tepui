@@ -10,6 +10,7 @@ import {
 import {
   rayAt, sideRays, splitSegments, type SideRays, type SlicePoint,
 } from '../../src/render/pipeline/screen-space/tangent-segments';
+import { NORMAL_ANGLE_ERROR } from '../../src/render/pipeline/gbuffer';
 import { viewRayAt } from '../../src/render/pipeline/view-ray';
 import { test } from '../harness';
 import { evaluateShaderNode } from './tsl-node-evaluator';
@@ -593,6 +594,50 @@ export function register(): void {
       const upperPosition = float(Math.max(...positions));
       near(valueOf(upperPosition) - valueOf(lowerPosition), 0, 1e-9, `dither=${dither} 測度`);
       assert.equal(valueOf(segmentSectors(lowerPosition, upperPosition)), 0, `dither=${dither}`);
+    }
+  });
+
+  test('screen space estimator: 受け手のすぐ裏を通る壁の標本の切片も、壁が受け手のすぐ手前を通るときと同じ側の床の地平から始まる', () => {
+    const bay = bayScan();
+    // 受け手から壁の法線の向きへ shift [m] ずれた点を通る壁。正なら受け手は壁の接平面の裏、負なら手前にある。
+    const wallNear = (shift: number): Plane =>
+      ({ normal: WALL.normal, point: bay.receiver.clone().addScaledVector(WALL.normal, shift) });
+    for (const rho of [40, 55, 90]) {
+      for (const shift of [-1e-5, 1e-5]) {
+        const wall = sampleAt(wallNear(shift), bay, rho);
+        const split = splitSegments(bay.rays, receiverPoint(bay), float(0), wall, float(rho), bool(true));
+        for (const dither of [0.13, 0.71]) {
+          // 床と壁の交線は受け手の画素の中にあり、壁の切片は走査の側の床の地平(半球の上の縁)から始まる。
+          const label = `rho=${rho} shift=${shift} dither=${dither}`;
+          const lower = endPosition(bay, wall, split.farLower, dither);
+          near(lower, SECTOR_COUNT + dither - 0.5, 1e-6, `${label} 下端`);
+          const own = endPosition(bay, wall, wall.position, dither);
+          assert.ok(Math.abs(own - lower) > 1e-3, `${label} 標本 ${own}`);
+        }
+      }
+    }
+  });
+
+  test('screen space estimator: 受け手の裏を法線の精度を超えて通る壁の標本は、継ぎ目で継がれず、中点の視線でそれぞれの平面の上に分かれる', () => {
+    const bay = bayScan();
+    // 受け手から壁の法線の向きへ shift [m] ずれた点を通る壁。正なら受け手は壁の接平面の裏にある。
+    const wallNear = (shift: number): Plane =>
+      ({ normal: WALL.normal, point: bay.receiver.clone().addScaledVector(WALL.normal, shift) });
+    // 受け手の奥行きで、走査の 1 画素が占める長さ [m]。
+    const footprint = bay.receiver.length() / SCREEN_PIXELS;
+    for (const rho of [40, 55, 90]) {
+      // 法線の精度が許す、受け手から壁の接平面までの距離。
+      const [x, y] = evaluateShaderNode(sampleAt(wallNear(0), bay, rho).position) as number[];
+      const reach = Math.hypot(x!, y!) * NORMAL_ANGLE_ERROR;
+      for (const shift of [3 * reach, footprint / 2]) {
+        const wall = wallNear(shift);
+        const split = splitSegments(bay.rays, receiverPoint(bay), float(0), sampleAt(wall, bay, rho), float(rho),
+          bool(true));
+        const label = `rho=${rho} shift=${shift}`;
+        const lower = lifted(bay, split.farLower);
+        near(planeDistance(wall, lower), 0, 1e-9, `${label} 壁の下端`);
+        assertOnRay(lower, bay, rho / 2, `${label} 壁の下端`);
+      }
     }
   });
 }
