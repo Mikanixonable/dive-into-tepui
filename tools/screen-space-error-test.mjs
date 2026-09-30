@@ -100,8 +100,8 @@ async function check(name, fn) {
   }
 }
 
-// 偽の構造の項の、雑音の項に対する比。
-const falseStructureRatioOf = (metrics) => metrics.falseStructureTerm / metrics.noiseTerm;
+// スコア(偽の構造の項)の、雑音の強さ N に対する比。
+const falseStructureRatioOf = (metrics) => metrics.score / metrics.noiseTerm;
 const format = (values, digits = 3) => values.map((v) => v.toFixed(digits)).join(' / ');
 
 await withLab(async (lab) => {
@@ -158,7 +158,7 @@ await withLab(async (lab) => {
 
   const mask = fullMask(WIDTH, HEIGHT);
   const white = await metricsOf(whiteImage(10, WIDTH, HEIGHT), mask, WIDTH, HEIGHT);
-  console.log(`  白色雑音: 雑音 ${white.noiseTerm.toFixed(4)}  偽の構造 ${white.falseStructureTerm.toFixed(4)}  R(s) ${format(white.r)}`);
+  console.log(`  白色雑音: 雑音 ${white.noiseTerm.toFixed(4)}  偽の構造 ${white.score.toFixed(4)}  R(s) ${format(white.r)}`);
 
   // 同じエネルギーの、大きさの違うムラ。σ = 1・4・16 は盲検の場 n2・n8・n32(特徴の大きさ 2・8・32 px)と同じ均し方。
   const muraSigmas = [1, 4, 8, 16];
@@ -185,8 +185,8 @@ await withLab(async (lab) => {
   });
 
   await check('同じエネルギーのムラは、特徴の大きさ 8 px(σ = 4)が 2 px(σ = 1)と 32 px(σ = 16)より偽の構造の項が大きい', () => {
-    console.log(`    σ = ${muraSigmas.join(' / ')}: 偽の構造 ${format(muras.map((m) => m.falseStructureTerm), 4)}`);
-    const termOf = (sigma) => muras[muraSigmas.indexOf(sigma)].falseStructureTerm;
+    console.log(`    σ = ${muraSigmas.join(' / ')}: 偽の構造 ${format(muras.map((m) => m.score), 4)}`);
+    const termOf = (sigma) => muras[muraSigmas.indexOf(sigma)].score;
     assert.ok(termOf(4) > termOf(1), `σ = 4 が σ = 1 以下`);
     assert.ok(termOf(4) > termOf(16), `σ = 4 が σ = 16 以下`);
   });
@@ -201,19 +201,16 @@ await withLab(async (lab) => {
     assert.ok(Math.abs(tripled.score / base.score - 3) <= 0.03, `比 ${tripled.score / base.score}`);
   });
 
-  // 覆い隠し(誤差の帯から収束先の同じ帯とそれを広げたものに当てた成分を除く局所の回帰)と、E_s の ε・τ・λ の並び。
+  // 覆い隠し(誤差の帯から収束先の同じ帯とそれを広げたものに当てた成分を除く局所の回帰)と、E_s の床 ε の並び。
   // 覆い隠さない値は、同じ誤差を 0 の収束先に対して測ったもの。
   const epsilons = await lab.falseStructureEpsilons();
-  const [thresholds, noises] = [await lab.thresholdCoefficients(), await lab.noiseCoefficients()];
-  const [noThreshold, fullNoise] = [thresholds.indexOf(0), noises.indexOf(1)];
   const metricsAgainst = (reference, error, width, height) => lab.errorMetrics(
     reference.map((plane, c) => plane.map((v, p) => v + error[c][p])), reference, fullMask(width, height),
     width, height);
   const unmaskedOf = (error, width, height) => metricsAgainst(zeroImage(width, height), error, width, height);
-  // 指標 metrics の、ε・τ・λ の添字 k・l・m の Σ_s E_s。
-  const totalOf = (metrics, k, l = noThreshold, m = fullNoise) => (
-    metrics.unweightedFalseStructure.reduce((sum, band) => sum + band[k][l][m], 0));
-  // τ = 0・λ = 1 の全ての ε で、覆い隠した Σ_s E_s の覆い隠さないものに対する比が accepts を満たすか確かめる。
+  // 指標 metrics の、ε の添字 k の Σ_s E_s。
+  const totalOf = (metrics, k) => metrics.unweightedFalseStructure.reduce((sum, band) => sum + band[k], 0);
+  // 全ての ε で、覆い隠した Σ_s E_s の覆い隠さないものに対する比が accepts を満たすか確かめる。
   const assertRatios = (masked, unmasked, accepts, label) => {
     const ratios = epsilons.map((_, k) => totalOf(masked, k) / totalOf(unmasked, k));
     console.log(`    ${label}: Σ_s E_s の覆い隠さないものに対する比(ε = ${epsilons.join(' / ')}) ${format(ratios)}`);
@@ -256,33 +253,6 @@ await withLab(async (lab) => {
     const shapeless = converged.map(() => field.map((v, p) => v * envelope[p]));
     assertRatios(await metricsAgainst(converged, shapeless, WIDTH, HEIGHT), await unmaskedOf(shapeless, WIDTH, HEIGHT),
       (ratio) => ratio >= 0.7, '形を持たないムラ');
-  });
-
-  await check('見え始める振幅: 収束先の構造が密な所に置いたムラは、τ > 0 で、平らな所に置いた同じムラより Σ_s E_s が大きく減り、振幅を 3 倍にすると減り方が小さい', async () => {
-    // 特徴の大きさ 8 px(σ = 4)の灰色のムラを、辺 8 px の市松のある左半分に置いたものと、左右に反転して平らな右半分へ
-    // 置いたもの。1 倍の振幅は市松の振幅の 1/4 の RMS で、τ·m_s が格子の τ の範囲で効く大きさ。
-    const [field] = muraImage(90, WIDTH, HEIGHT, 4);
-    const denseOf = (amplitude) => converged.map(() => field.map((v, p) => ((p % WIDTH) < WIDTH / 2 ? amplitude * v : 0)));
-    const dense = await metricsAgainst(converged, denseOf(0.25), WIDTH, HEIGHT);
-    const flat = await metricsAgainst(converged, mirroredImage(denseOf(0.25), WIDTH), WIDTH, HEIGHT);
-    const denseTripled = await metricsAgainst(converged, denseOf(0.75), WIDTH, HEIGHT);
-    // 指標 metrics の、τ の添字 l の Σ_s E_s の τ = 0 に対する比。
-    const reductionOf = (metrics, k, l, m) => totalOf(metrics, k, l, m) / totalOf(metrics, k, noThreshold, m);
-    const formatReductions = (metrics) => format(thresholds.map((_, l) => reductionOf(metrics, 2, l, fullNoise)));
-    console.log(`    τ = ${thresholds.join(' / ')} の τ = 0 に対する比(ε = ${epsilons[2]}、λ = 1): 密な所 ${formatReductions(dense)}、`
-      + `平らな所 ${formatReductions(flat)}、密な所で 3 倍 ${formatReductions(denseTripled)}`);
-    for (const [k, epsilon] of epsilons.entries()) {
-      for (const [m, noise] of noises.entries()) {
-        for (const [l, threshold] of thresholds.entries()) {
-          if (threshold === 0) continue;
-          const label = `ε = ${epsilon}, λ = ${noise}, τ = ${threshold}`;
-          const [denseRatio, flatRatio] = [reductionOf(dense, k, l, m), reductionOf(flat, k, l, m)];
-          const tripledRatio = reductionOf(denseTripled, k, l, m);
-          assert.ok(denseRatio < flatRatio, `${label}: 密な所 ${denseRatio}、平らな所 ${flatRatio}`);
-          assert.ok(tripledRatio > denseRatio, `${label}: 3 倍 ${tripledRatio}、1 倍 ${denseRatio}`);
-        }
-      }
-    }
   });
 });
 

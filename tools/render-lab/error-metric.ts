@@ -1,10 +1,10 @@
 // 近傍拡散補正の画質の指標を GPU で測る。誤差 e(補正を表示の尺度へ写した q の、候補と収束先 q_B の差)を印の中で
-// スケール s ごとに構造 L_s と雑音へ分け、雑音の強さから正直な白色雑音なら L_s が揺れる大きさ σ̃_s を求め、スコア
-// S = N + Σ_s w(μ·s)·E_s、E_s = mean_x Σ_成分 max(0, R_s² − σ̃_s² − (τ·m_s)²)/(λ·σ̃_s + ε) で雑音の罰 N と偽の構造の罰を
-// 1 つに並べる(μ は表示倍率、w(μ·s) = β·exp(−(log₂(μ·s) − log₂S₀)²/(2ω²)) は画面の大きさ S₀ に山を持つ重み)。R_s は覆い
-// 隠した構造で、誤差の帯 L_s(e) から、収束先の同じ帯 a = L_s(q_B) と、それを G_s で広げた b へ窓 G_2s の局所の最小二乗で
-// 当てた灰色の成分を除いたもの(最後の帯の係数は印の中の全体で 1 つ)。m_s は真の構造の密さ sqrt(G_2s∗Σ_成分 a² / 3)(最後の
-// 帯は G_64 の窓)で、τ·m_s は真の構造が密な所で上がる、構造が見え始める振幅。ガウスの畳み込みは印の中で正規化し、画像の外は 0。
+// スケール s ごとの帯 L_s へ分け、スコア S = Σ_s w(μ·s)·E_s、E_s = mean_x Σ_成分 max(0, R_s² − σ̃_s²)/(σ̃_s + ε) で、見る人に
+// 見える偽の構造を数える。σ̃_s は正直な揺れ(誤差が局所の雑音の強さの白色雑音なら L_s が揺れる大きさ。それに収まる構造は
+// 雑音に紛れる)。R_s は形の覆い隠し(L_s から、収束先の同じ帯 a = L_s(q_B) と、それを G_s で広げた b へ窓 G_2s の局所の
+// 最小二乗で当てた灰色の成分を除いたもの。真の構造に倍率やぼけとして沿う誤差は見えにくい。最後の帯の係数は印の中の全体で
+// 1 つ)。w(μ·s) = exp(−(log₂(μ·s) − log₂S₀)²/(2ω²)) は画面の大きさの重み(μ は表示倍率)、ε は見えない差の床。ガウスの
+// 畳み込みは印の中で正規化し、画像の外は 0 とする。
 import { StorageBufferAttribute, WebGPURenderer } from 'three/webgpu';
 import {
   Fn, If, Loop, dot, float, instanceIndex, int, localId, max, select, sqrt, storage, uniform, vec2, vec3, vec4,
@@ -17,18 +17,13 @@ import type { FloatNode, IntNode, Vec2Node, Vec3Node, Vec4Node } from '../../src
 // 誤差を分けるスケール s(ガウスの標準偏差 [画素])。構造 L_s は帯 G_s∗e − G_2s∗e で、最後の s だけは G_s∗e。
 export const ERROR_SCALES: readonly number[] = [1, 2, 4, 8, 16, 32, 64];
 const LAST = ERROR_SCALES.length - 1;
-// スコアの偽の構造の罰の重み w の β・S₀ [画面の画素]・ω [オクターブ] と、E_s の ε(q)・τ・λ。
-const FALSE_STRUCTURE_WEIGHT = 562;
-const PEAK_SIZE = 2;
+// 重み w の山の位置 S₀ [画面の画素] と幅 ω [オクターブ]、見えない差の床 ε(q)。盲検の順位への当てはめで、格子の内側の
+// 切りのよい値に落ちたもの(近傍拡散補正の計画書の判断材料)。
+const PEAK_SIZE = 1;
 const PEAK_WIDTH = 1;
-const SCORE_EPSILON = 1e-5;
-const SCORE_THRESHOLD_COEFFICIENT = 0.2;
-const SCORE_NOISE_COEFFICIENT = 1;
-// 重みを掛ける前の偽の構造の項 E_s(ε, τ, λ) を数える、分母の下限 ε(q)・見え始める振幅 τ·m_s の係数 τ・正直な揺れ σ̃_s の
-// 係数 λ の並び。
+const SCORE_EPSILON = 1e-4;
+// 当てはめ直しのために重みを掛ける前の項 E_s(ε) を数える、床 ε(q)の並び。SCORE_EPSILON を含む。
 export const FALSE_STRUCTURE_EPSILONS: readonly number[] = [1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3];
-export const THRESHOLD_COEFFICIENTS: readonly number[] = [0, 0.1, 0.2, 0.3, 0.5, 1];
-export const NOISE_COEFFICIENTS: readonly number[] = [1, 0.5];
 // 回帰で b を a に直交化した成分のエネルギー Σ b⊥² = Σbb − (Σab)²/Σaa が、Σaa のこの割合以下なら a だけへ当てる。
 // 回帰の和は単精度で最大およそ 8,200 回足す(最後の帯の全体の和: 64 画素の和を 8,100 個)ので、相対の丸めは
 // 8,200·2⁻²⁴ ≈ 5e-4 まで。Σ b⊥² はその丸めを受けた 2 つの項の差なので、この割合より小さい値は丸めと区別できない。
@@ -42,24 +37,19 @@ const PIXELS_PER_SUM = 64;
 const SEGMENTS = Math.ceil(CAPACITY / PIXELS_PER_SUM);
 // 回帰の窓の和 (Σaa, Σab, Σbb, Σea, Σeb) の数。
 const REGRESSION_SUMS = 5;
-// 1 つの和が足す量の数。和は (Σ L_s², Σ σ̃_s², 偽の構造の項, 雑音の項)、UNWEIGHTED_COUNT 個の E_s(ε, τ, λ)、Σ R_s² の順。
-// E_s(ε, τ, λ) は ε・τ・λ の入れ子の順に並べ、ε・τ・λ の添字の組の位置は unweightedOffsetOf。
-const UNWEIGHTED_COUNT = FALSE_STRUCTURE_EPSILONS.length * THRESHOLD_COEFFICIENTS.length * NOISE_COEFFICIENTS.length;
-const SUMMED = 4 + UNWEIGHTED_COUNT + 1;
-const unweightedOffsetOf = (epsilon: number, threshold: number, noise: number): number => (
-  (epsilon * THRESHOLD_COEFFICIENTS.length + threshold) * NOISE_COEFFICIENTS.length + noise);
+// 1 つの和が足す量の数。和は (Σ L_s², Σ σ̃_s², 雑音の項)、FALSE_STRUCTURE_EPSILONS の順の E_s(ε)、Σ R_s² の順。
+const SUMMED = 3 + FALSE_STRUCTURE_EPSILONS.length + 1;
 
-// 誤差の指標。score はスコア S、noiseTerm と falseStructureTerm はその雑音と偽の構造の項、falseStructureByScale は
-// 偽の構造の項のスケールごとの内訳(ERROR_SCALES の順)、unweightedFalseStructure[帯][ε][τ][λ] は重みを掛ける前の項
-// E_s(ε, τ, λ)(ERROR_SCALES・FALSE_STRUCTURE_EPSILONS・THRESHOLD_COEFFICIENTS・NOISE_COEFFICIENTS の順)、
-// removedFraction[帯] は覆い隠しで除いた割合 Σ(L_s² − R_s²) / Σ L_s²、r はスケールごとの R(s) = sqrt(Σ L_s² / Σ σ̃_s²)
-// (1 なら正直な雑音、上なら雑音で説明できない構造)。和はどれも 3 成分を通す。
+// 誤差の指標。score はスコア S、scoreByScale はその帯ごとの内訳(ERROR_SCALES の順)、noiseTerm は雑音の強さ
+// N = mean_x Σ_成分 sqrt(G_2∗H_1²)(H_1 = e − G_1∗e。スコアには入らない)、unweightedFalseStructure[帯][ε] は重みを掛ける前の項
+// E_s(ε)(ERROR_SCALES と FALSE_STRUCTURE_EPSILONS の順)、removedFraction[帯] は覆い隠しで除いた割合
+// Σ(L_s² − R_s²) / Σ L_s²、r はスケールごとの R(s) = sqrt(Σ L_s² / Σ σ̃_s²)(1 なら正直な雑音、上なら雑音で説明できない
+// 構造)。和はどれも 3 成分を通す。
 export interface ErrorMeasurement {
   readonly score: number;
+  readonly scoreByScale: readonly number[];
   readonly noiseTerm: number;
-  readonly falseStructureTerm: number;
-  readonly falseStructureByScale: readonly number[];
-  readonly unweightedFalseStructure: readonly (readonly (readonly (readonly number[])[])[])[];
+  readonly unweightedFalseStructure: readonly (readonly number[])[];
   readonly removedFraction: readonly number[];
   readonly r: readonly number[];
 }
@@ -67,9 +57,8 @@ export interface ErrorMeasurement {
 // スケールの番号 j の帯の粗い側 G_2s の番号。最後のスケールは自分。
 const coarserOf = (j: number): number => Math.min(j + 1, LAST);
 
-// 画面の大きさ size = μ·s [画面の画素] の帯の、スコアの偽の構造の罰の重み w。
-const weightOf = (size: number): number => (
-  FALSE_STRUCTURE_WEIGHT * Math.exp(-(Math.log2(size / PEAK_SIZE) ** 2) / (2 * PEAK_WIDTH ** 2)));
+// 画面の大きさ size = μ·s [画面の画素] の帯の、スコアの重み w。
+const weightOf = (size: number): number => Math.exp(-(Math.log2(size / PEAK_SIZE) ** 2) / (2 * PEAK_WIDTH ** 2));
 
 // 標準偏差 s [画素] の、半径 3s で打ち切って和を 1 にした 1 次元の核(-3s..3s の重み)。
 function gaussianOf(s: number): Float64Array {
@@ -134,6 +123,10 @@ function coefficientsFrom(aa: FloatNode, ab: FloatNode, bb: FloatNode, ea: Float
   return vec2(alongA.sub(projection.mul(alongB)), alongB);
 }
 
+// 覆い隠した構造の二乗 square の、偽の構造の項 max(0, R_s² − σ̃_s²)/(σ̃_s + ε) の成分ごとの値。
+const falseStructureOf = (square: Vec3Node, honest: Vec3Node, epsilon: number): Vec3Node => (
+  max(square.sub(honest.mul(honest)), 0).div(honest.add(epsilon)));
+
 export class ErrorMetric {
   // 誤差の 3 成分と収束先の補正の 3 成分に印を掛けたものと印 (M·e, M)・(M·q_B, M)。
   private readonly maskedError = planeOf();
@@ -143,14 +136,14 @@ export class ErrorMetric {
   private readonly convergedSmooths = [planeOf(), planeOf()];
   // 行だけを畳み込んだ途中の値。
   private readonly rows = planeOf();
-  // 雑音 H_s = e − G_s∗e の (M·H_s², M) を G_2s で畳み込んだもの。
+  // 雑音 H_s = e − G_s∗e の (M·H_s², M) を G_2s で畳み込んだもの(雑音の強さ V_s の材料)。
   private readonly noisePower = planeOf();
   // 帯 j の誤差の構造 (M·L_s(e), M) と収束先の構造 (M·a, M)、それを G_s で広げた G_s∗(M·a, M)(b はその正規化)。
   private readonly errorStructures = planeOf();
   private readonly convergedStructures = planeOf();
   private readonly convergedSpreads = planeOf();
-  // 回帰の窓 G_2s の和 (Σaa, Σab, Σbb, Σea) と (Σeb, 0, 0, 0) と、画素ごとの (α, β', m_s, 0)。最後の帯は窓 G_64 の和の
-  // 前半だけを作り、α・β' は PIXELS_PER_SUM 画素ごとの REGRESSION_SUMS 個の和から求めた印の中の全体の (α, β', 0, 0)。
+  // 回帰の窓 G_2s の和 (Σaa, Σab, Σbb, Σea) と (Σeb, 0, 0, 0) と、画素ごとの係数 (α, β', 0, 0)。最後の帯の係数は、
+  // PIXELS_PER_SUM 画素ごとの REGRESSION_SUMS 個の和から求めた印の中の全体の係数。
   private readonly regressionSums = [planeOf(), planeOf()];
   private readonly coefficients = planeOf();
   private readonly regressionPartials = floatsOf(REGRESSION_SUMS * SEGMENTS);
@@ -161,12 +154,12 @@ export class ErrorMetric {
   private readonly moments = planeOf();
   private kappaMask: Uint8Array | null = null;
   private kappaWidth = 0;
-  // 画素ごとの偽の構造の項と、帯ごと・PIXELS_PER_SUM 画素ごとの SUMMED 個の量の和。
+  // 画素ごとのスコアの項と、帯ごと・PIXELS_PER_SUM 画素ごとの SUMMED 個の量の和。
   private readonly falseStructure = floatsOf(CAPACITY);
   private readonly partialSums = floatsOf(SEGMENTS * ERROR_SCALES.length * SUMMED);
   private readonly width = uniform(0, 'int');
   private readonly height = uniform(0, 'int');
-  // 帯ごとのスコアの偽の構造の罰の重み w(μ·s)。
+  // 帯ごとのスコアの重み w(μ·s)。
   private readonly weights = ERROR_SCALES.map(() => uniform(0));
   // 段の種類ごとの並び(寸法に合わせてスレッド数を置き直す)と、1 回の指標で走らせる段の順の並び。
   private readonly rowPasses: ComputeNode[] = [];
@@ -190,8 +183,7 @@ export class ErrorMetric {
       ];
     };
     always(...smoothOf(0));
-    // 帯 j ごとに、構造と雑音の強さ V_s と覆い隠しの係数と真の構造の密さと、印が変わったときだけ κ_s を求めてから、
-    // 画素ごとの項を足す。
+    // 帯 j ごとに、構造と雑音の強さ V_s と覆い隠しの係数と、印が変わったときだけ κ_s を求めてから、画素ごとの項を足す。
     for (const [j, fine] of GAUSSIANS.entries()) {
       const c = coarserOf(j);
       const coarse = GAUSSIANS[c]!;
@@ -204,11 +196,13 @@ export class ErrorMetric {
           (p) => this.convergedStructures.element(p), this.convergedSpreads, replicatedKernelOf(fine),
         ),
       );
-      always(...this.convolutionOf((p) => this.regressionSourcesOf(p)[0], this.regressionSums[0]!, coarseKernel));
       if (j === LAST) {
         always(this.regressionPartialPass(), this.globalCoefficientPass());
       } else {
-        always(...this.convolutionOf((p) => this.regressionSourcesOf(p)[1], this.regressionSums[1]!, coarseKernel));
+        always(
+          ...this.convolutionOf((p) => this.regressionSourcesOf(p)[0], this.regressionSums[0]!, coarseKernel),
+          ...this.convolutionOf((p) => this.regressionSourcesOf(p)[1], this.regressionSums[1]!, coarseKernel),
+        );
       }
       always(this.coefficientPassOf(j));
       const momentKernel = kernelOf(j === LAST ? [productOf(fine, fine)]
@@ -256,7 +250,8 @@ export class ErrorMetric {
     convergedAttribute.needsUpdate = true;
     this.width.value = width;
     this.height.value = height;
-    for (const [j, s] of ERROR_SCALES.entries()) this.weights[j]!.value = weightOf(magnification * s);
+    const weights = ERROR_SCALES.map((s) => weightOf(magnification * s));
+    for (const [j, weight] of weights.entries()) this.weights[j]!.value = weight;
     for (const pass of this.rowPasses) pass.dispatchSize = [Math.ceil(width / TILE), height, 1];
     for (const pass of this.columnPasses) pass.dispatchSize = [Math.ceil(height / TILE), width, 1];
     for (const pass of this.pixelPasses) pass.count = count;
@@ -270,10 +265,10 @@ export class ErrorMetric {
       this.kappaWidth = width;
     }
     const partials = await this.renderer.getArrayBufferAsync(this.partialSums.value);
-    return summaryOf(new Float32Array(partials), segments, maskCount);
+    return summaryOf(new Float32Array(partials), segments, maskCount, weights);
   }
 
-  // 直前に measure で測った画像の、画素ごとの偽の構造の項(3 成分の和。印の立っていない画素は 0)。
+  // 直前に measure で測った画像の、画素ごとのスコアの項(3 成分の和。印の立っていない画素は 0)。
   public async falseStructureMap(): Promise<Float32Array> {
     const count = this.width.value * this.height.value;
     return new Float32Array(await this.renderer.getArrayBufferAsync(this.falseStructure.value, null, 0, 4 * count));
@@ -358,16 +353,14 @@ export class ErrorMetric {
     return [vec4(dot(a, a), dot(a, b), dot(b, b), dot(e, a)), vec4(dot(e, b), 0, 0, 0)];
   }
 
-  // 帯 j の画素ごとの (α, β', m_s, 0) を coefficients へ書く段。m_s は窓の和 Σaa を、同じ窓の印の和(雑音の強さの
-  // 畳み込みの w)と成分の数 3 で割った平方根。
+  // 帯 j の画素ごとの係数 (α, β', 0, 0) を coefficients へ書く段。最後の帯は印の中の全体の係数を写す。
   private coefficientPassOf(j: number): ComputeNode {
     const pass = Fn(() => {
       const p = int(instanceIndex);
-      const first = this.regressionSums[0]!.element(p);
-      const density = sqrt(max(ratioOf(first.x, this.noisePower.element(p).w.mul(3)), 0));
-      const fit = j === LAST ? this.globalCoefficients.element(0).xy
-        : coefficientsFrom(first.x, first.y, first.z, first.w, this.regressionSums[1]!.element(p).x);
-      this.coefficients.element(p).assign(vec4(fit, density, 0));
+      const [first, second] = [this.regressionSums[0]!.element(p), this.regressionSums[1]!.element(p)];
+      const fit = j === LAST ? this.globalCoefficients.element(0)
+        : vec4(coefficientsFrom(first.x, first.y, first.z, first.w, second.x), 0, 0);
+      this.coefficients.element(p).assign(fit);
     })().compute(CAPACITY);
     this.pixelPasses.push(pass);
     return pass;
@@ -427,60 +420,44 @@ export class ErrorMetric {
     return pass;
   }
 
-  // 帯 j の画素ごとの項を、印の立った画素で PIXELS_PER_SUM 画素ずつ足して partialSums へ書き、偽の構造の項を
+  // 帯 j の画素ごとの項を、印の立った画素で PIXELS_PER_SUM 画素ずつ足して partialSums へ書き、スコアの項を
   // falseStructure へ足す段(最初の帯は置く)。
   private sumPassOf(j: number): ComputeNode {
     const pass = Fn(() => {
       const t = int(instanceIndex);
       const count = this.width.mul(this.height);
-      const sums = vec4(0).toVar();
-      const unweightedSums = Array.from({ length: UNWEIGHTED_COUNT }, () => float(0).toVar());
+      const sums = vec3(0).toVar();
+      const unweightedSums = FALSE_STRUCTURE_EPSILONS.map(() => float(0).toVar());
       const residualSum = float(0).toVar();
       Loop(PIXELS_PER_SUM, ({ i }) => {
         const p = t.mul(PIXELS_PER_SUM).add(i);
-        const penalty = vec3(0).toVar();
+        const scoreTerm = float(0).toVar();
         const error = this.errorStructures.element(p);
         If(p.lessThan(count).and(error.w.greaterThan(0)), () => {
           // 構造 L_s と、雑音の強さ V_s = G_2s∗H_s² から白色雑音なら L_s が揺れる大きさ σ̃_s = sqrt(V_s·κ_s)。
           const structure = error.xyz;
           const power = normalized(this.noisePower.element(p));
           const honest = sqrt(max(power.mul(this.kappas[j]!.element(p)), 0));
-          const honestSquare = honest.mul(honest);
-          // 覆い隠した構造 R_s と、見え始める振幅 τ·m_s と分母 λ·σ̃_s + ε ごとの偽の構造の項。
-          const coefficients = this.coefficients.element(p);
-          const residual = structure.sub(this.convergedStructures.element(p).xyz.mul(coefficients.x))
-            .sub(normalized(this.convergedSpreads.element(p)).mul(coefficients.y));
+          // 覆い隠した構造 R_s と、床 ε ごとの偽の構造の項。
+          const fit = this.coefficients.element(p);
+          const residual = structure.sub(this.convergedStructures.element(p).xyz.mul(fit.x))
+            .sub(normalized(this.convergedSpreads.element(p)).mul(fit.y));
           const square = residual.mul(residual);
-          const density = coefficients.z;
-          const excessOf = (thresholdCoefficient: number): Vec3Node => {
-            const threshold = density.mul(thresholdCoefficient);
-            return max(square.sub(honestSquare).sub(threshold.mul(threshold)), 0);
-          };
-          const denominatorOf = (epsilon: number, noiseCoefficient: number): Vec3Node => (
-            honest.mul(noiseCoefficient).add(epsilon));
-          const scoreExcess = excessOf(SCORE_THRESHOLD_COEFFICIENT);
-          penalty.assign(scoreExcess.div(denominatorOf(SCORE_EPSILON, SCORE_NOISE_COEFFICIENT)).mul(this.weights[j]!));
-          residualSum.addAssign(dot(square, vec3(1)));
-          for (const [l, thresholdCoefficient] of THRESHOLD_COEFFICIENTS.entries()) {
-            const excess = excessOf(thresholdCoefficient);
-            for (const [k, epsilon] of FALSE_STRUCTURE_EPSILONS.entries()) {
-              for (const [m, noiseCoefficient] of NOISE_COEFFICIENTS.entries()) {
-                const sum = unweightedSums[unweightedOffsetOf(k, l, m)]!;
-                sum.addAssign(dot(excess.div(denominatorOf(epsilon, noiseCoefficient)), vec3(1)));
-              }
-            }
+          for (const [k, epsilon] of FALSE_STRUCTURE_EPSILONS.entries()) {
+            unweightedSums[k]!.addAssign(dot(falseStructureOf(square, honest, epsilon), vec3(1)));
           }
+          scoreTerm.assign(dot(falseStructureOf(square, honest, SCORE_EPSILON), vec3(1)).mul(this.weights[j]!));
+          residualSum.addAssign(dot(square, vec3(1)));
           // N = sqrt(G_2∗H_1²) は最も細かいスケールの V の平方根。
           const noise = j === 0 ? dot(sqrt(power), vec3(1)) : 0;
-          const structureSquare = dot(structure.mul(structure), vec3(1));
-          sums.addAssign(vec4(structureSquare, dot(honestSquare, vec3(1)), dot(penalty, vec3(1)), noise));
+          sums.addAssign(vec3(dot(structure.mul(structure), vec3(1)), dot(honest.mul(honest), vec3(1)), noise));
         });
         const map = this.falseStructure.element(p);
-        if (j === 0) map.assign(dot(penalty, vec3(1)));
-        else map.addAssign(dot(penalty, vec3(1)));
+        if (j === 0) map.assign(scoreTerm);
+        else map.addAssign(scoreTerm);
       });
       const first = t.add(j * SEGMENTS).mul(SUMMED);
-      for (const [k, sum] of [sums.x, sums.y, sums.z, sums.w, ...unweightedSums, residualSum].entries()) {
+      for (const [k, sum] of [sums.x, sums.y, sums.z, ...unweightedSums, residualSum].entries()) {
         this.partialSums.element(first.add(k)).assign(sum);
       }
     })().compute(SEGMENTS);
@@ -489,24 +466,25 @@ export class ErrorMetric {
   }
 }
 
-// 帯ごとの和の並び partials(sumPassOf の並び)の、帯ごとに先頭 segments 個の和を、印の立った画素の数 count で指標へ。
-function summaryOf(partials: Float32Array, segments: number, count: number): ErrorMeasurement {
+// 帯ごとの和の並び partials(sumPassOf の並び)の、帯ごとに先頭 segments 個の和を、印の立った画素の数 count とスコアの
+// 帯ごとの重み weights で指標へ。
+function summaryOf(
+  partials: Float32Array, segments: number, count: number, weights: readonly number[],
+): ErrorMeasurement {
   const bandSums = ERROR_SCALES.map((_, j) => Array.from({ length: SUMMED }, (_, k) => {
     let sum = 0;
     for (let t = j * SEGMENTS; t < j * SEGMENTS + segments; t++) sum += partials[SUMMED * t + k]!;
     return sum;
   }));
-  const noise = bandSums[0]![3]!;
-  const falseStructureByScale = bandSums.map((sums) => sums[2]!);
-  const falseStructure = falseStructureByScale.reduce((sum, v) => sum + v, 0);
+  const unweightedFalseStructure = bandSums.map((sums) => sums.slice(3, 3 + FALSE_STRUCTURE_EPSILONS.length)
+    .map((v) => v / count));
+  const scoreEpsilon = FALSE_STRUCTURE_EPSILONS.indexOf(SCORE_EPSILON);
+  const scoreByScale = unweightedFalseStructure.map((band, j) => weights[j]! * band[scoreEpsilon]!);
   return {
-    score: (noise + falseStructure) / count,
-    noiseTerm: noise / count,
-    falseStructureTerm: falseStructure / count,
-    falseStructureByScale: falseStructureByScale.map((v) => v / count),
-    unweightedFalseStructure: bandSums.map((sums) => FALSE_STRUCTURE_EPSILONS.map((_, k) => THRESHOLD_COEFFICIENTS.map(
-      (_, l) => NOISE_COEFFICIENTS.map((_, m) => sums[4 + unweightedOffsetOf(k, l, m)]! / count),
-    ))),
+    score: scoreByScale.reduce((sum, v) => sum + v, 0),
+    scoreByScale,
+    noiseTerm: bandSums[0]![2]! / count,
+    unweightedFalseStructure,
     removedFraction: bandSums.map((sums) => 1 - sums[SUMMED - 1]! / sums[0]!),
     r: bandSums.map(([structureSquare, honestSquare]) => Math.sqrt(structureSquare! / honestSquare!)),
   };
