@@ -25,9 +25,7 @@ import {
 } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
-import {
-  ERROR_SCALES, ErrorMetric, FALSE_STRUCTURE_EPSILONS, NOISE_COEFFICIENTS, THRESHOLD_COEFFICIENTS, type ErrorMeasurement,
-} from './error-metric';
+import { ERROR_SCALES, ErrorMetric, FALSE_STRUCTURE_EPSILONS, type ErrorMeasurement } from './error-metric';
 import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
@@ -84,8 +82,6 @@ declare global {
       ) => Promise<readonly Readonly<Record<string, number | null>>[]>;
       errorScales: readonly number[];
       falseStructureEpsilons: readonly number[];
-      thresholdCoefficients: readonly number[];
-      noiseCoefficients: readonly number[];
       errorMetrics: (
         error: Float32Array, converged: Float32Array, mask: Uint8Array, width: number, height: number,
         magnification: number,
@@ -354,8 +350,6 @@ async function init(): Promise<void> {
     measureTiers: (tiers, rounds) => view.measureTiers(tiers, rounds),
     errorScales: ERROR_SCALES,
     falseStructureEpsilons: FALSE_STRUCTURE_EPSILONS,
-    thresholdCoefficients: THRESHOLD_COEFFICIENTS,
-    noiseCoefficients: NOISE_COEFFICIENTS,
     errorMetrics: (error, converged, mask, width, height, magnification) => (
       errorMetric.measure(error, converged, mask, width, height, magnification)),
     falseStructureMap: () => errorMetric.falseStructureMap(),

@@ -302,10 +302,8 @@ function labOf(devTools) {
     },
     // 誤差の指標のスケール(errorMetrics の返すスケールごとの値の順)。
     errorScales: () => devTools.evaluate('window.renderLab.errorScales'),
-    // 重みを掛ける前の偽の構造の項の ε・τ・λ の並び(errorMetrics の unweightedFalseStructure[帯][ε][τ][λ] の順)。
+    // 重みを掛ける前の偽の構造の項の床 ε の並び(errorMetrics の unweightedFalseStructure[帯][ε] の ε の順)。
     falseStructureEpsilons: () => devTools.evaluate('window.renderLab.falseStructureEpsilons'),
-    thresholdCoefficients: () => devTools.evaluate('window.renderLab.thresholdCoefficients'),
-    noiseCoefficients: () => devTools.evaluate('window.renderLab.noiseCoefficients'),
     // name の slot 0〜slotCount − 1 の和を受け取り、ページから消す。足していない slot は 0。
     async takeAccumulated(name, slotCount) {
       const source = `window.__ssdSums[${JSON.stringify(name)}]`;

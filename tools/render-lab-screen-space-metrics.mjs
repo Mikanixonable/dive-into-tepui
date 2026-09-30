@@ -221,7 +221,7 @@ function writeImages(outDir, label, key, display, referenceDisplay, falseStructu
 // 値の並び values の平均。空なら NaN。
 const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
 
-// 記録 record の表。候補ごとの費用と調整用・確認用の S の平均、撮影ごとの S、スケールごとの偽の構造、解析値との照合。
+// 記録 record の表。候補ごとの費用と調整用・確認用の S の平均、撮影ごとの S、スケールごとの S の内訳、解析値との照合。
 // results は候補と撮影ごとの指標、flicker は候補ごとのちらつき、scales は指標のスケールの並び。撮っていない組の平均は —。
 function reportOf(record, results, flicker, scales) {
   const { candidates, costs } = record;
@@ -241,18 +241,18 @@ function reportOf(record, results, flicker, scales) {
     const byScale = (field) => scales.map((_, j) => fixed(mean(tuning.map((k) => rows[k][field][j])), 2)).join(' / ');
     const sum = (field) => measured.reduce((total, k) => total + rows[k][field], 0);
     return [
-      candidate.label, fixed(costOf(costs[i]), 2), avg(tuning, 'score', 3), avg(tuning, 'noiseTerm', 5),
-      avg(tuning, 'falseStructureTerm', 3), avg(tuning, 'g', 5), avg(checking, 'score', 3), avg(tuning, 'scoreSecond', 3),
+      candidate.label, fixed(costOf(costs[i]), 2), avg(tuning, 'score', 5), avg(tuning, 'noiseTerm', 5),
+      avg(tuning, 'g', 5), avg(checking, 'score', 5), avg(tuning, 'scoreSecond', 5),
       avg(measured, 'leak', 5), fixed(flicker[candidate.label], 5), `${sum('negatives')} / ${sum('visibleNegatives')}`,
       byScale('r'), byScale('biasR'), byScale('varianceR'),
     ];
   });
   const perShot = candidates.map((candidate) => [candidate.label, ...measured.map((k) => {
     const row = results[candidate.label][k];
-    return `${row.score.toFixed(3)} (${row.noiseTerm.toFixed(5)} + ${row.falseStructureTerm.toFixed(3)})`;
+    return fixed(row.score, 5);
   })]);
   const perScale = candidates.map((candidate) => [candidate.label, ...scales.map(
-    (_, j) => fixed(mean(tuning.map((k) => results[candidate.label][k].falseStructureByScale[j])), 3),
+    (_, j) => fixed(mean(tuning.map((k) => results[candidate.label][k].scoreByScale[j])), 5),
   )]);
   const ratios = correctness.map((key) => {
     const analytic = analyticRatiosOf(key);
@@ -262,10 +262,10 @@ function reportOf(record, results, flicker, scales) {
   });
   return [
     '## 候補', '',
-    ...table(['候補', '費用 / マテリアル', 'S 調整用', '雑音', '偽の構造', 'G', 'S 確認用', 'S の 2 つ目の seed',
+    ...table(['候補', '費用 / マテリアル', 'S 調整用', '雑音 N(S の外)', 'G', 'S 確認用', 'S の 2 つ目の seed',
       '境界の漏れ', 'ちらつき', '負の画素 / 見える', 'R(s)', 'R(s) 偏り', 'R(s) 分散'], summary),
-    '', '## 撮影ごとの S(雑音 + 偽の構造)', '', ...table(['候補', ...measured], perShot),
-    '', '## スケールごとの偽の構造(調整用の平均)', '', ...table(['候補', ...scales.map((s) => `${s} px`)], perScale),
+    '', '## 撮影ごとの S', '', ...table(['候補', ...measured], perShot),
+    '', '## スケールごとの S の内訳(調整用の平均)', '', ...table(['候補', ...scales.map((s) => `${s} px`)], perScale),
     '', '## 解析値のある窓の比(拡散照度。bay は P_in / P_out、bounce-cosine は余弦 1 / 0.5 / 0)', '',
     ...table(['撮影', '解析値', '基準', ...candidates.map((c) => c.label)], ratios),
     '',
