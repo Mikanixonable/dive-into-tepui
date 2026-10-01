@@ -6,9 +6,9 @@ import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CasingPool } from '../../src/render/dynamic/dynamic-entity/casing-view';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
-import { directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
+import { directionFromAngles, type LabViewAngles } from './view-angles';
 import {
-  EARTH_AWAY, labCamera, OBLIQUE_SUN_DIR, slab, standard, white, WHITE, WHITE_ROUGHNESS,
+  EARTH_AWAY, labCamera, OBLIQUE_SUN_DIR, OVERHEAD_EARTH, slab, standard, white, WHITE, WHITE_ROUGHNESS,
   type CaseBuilder, type LabCase,
 } from './lab-case';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
@@ -67,15 +67,6 @@ const CAMERA_AZIMUTH_DEG = 15;
 const CAMERA_ELEVATION_DEG = 50;
 const CAMERA_DISTANCE = 11.6;
 
-// 地球の置き方: 描画原点の高度を低軌道の 420 km にし、荷室の真上に置く — 開口から天体照が差し込む。直下点は
-// 地表の色が読める陸(サハラ、北緯 23°・東経 13°)。
-const BAY_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
-  earthAzimuthDeg: 0,
-  earthElevationDeg: 90,
-  earthAltitudeLog: Math.log10(420e3),
-  earthLatitudeDeg: 23,
-  earthLongitudeDeg: 13,
-};
 // 恒星を床の真下に置く向き。見えている面はどれも直射を受けない。
 const SUN_BELOW: Partial<LabViewAngles> = { sunAzimuthDeg: 0, sunElevationDeg: -90 };
 // 天体照の遮られ方を読む撮影の、地球の仰角と方位 [deg]。方位は開いた +X の側と、−X・−Z の内隅の側。
@@ -259,7 +250,8 @@ function bay(): LabCase {
     camera,
     viewTarget: VIEW_TARGET,
     sunDirection: OBLIQUE_SUN_DIR,
-    earth: BAY_EARTH,
+    // 地球は荷室の真上 — 開口から天体照が差し込む。
+    earth: OVERHEAD_EARTH,
     shots: {
       // 全景。恒星は斜光、地球は真上。同じ全景を、距離を半分と 2.5 倍にしても撮る — 同じ構造が画面の上で
       // 違う大きさに写る。

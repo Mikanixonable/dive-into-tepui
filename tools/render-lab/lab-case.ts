@@ -1,5 +1,5 @@
 // 描画テスト環境のケースが共有する取り決め。ケースが返す形と組む関数の型、描画の大きさ、既定の
-// カメラ・恒星の向きと地球を遠ざける置き方、ケースが物体を置く部品(試験球・円・実写テクスチャの天体・
+// カメラ・恒星の向きと地球を遠ざける・真上に置く置き方、ケースが物体を置く部品(試験球・円・実写テクスチャの天体・
 // 既定戦闘船・インスタンスの枝)を持つ。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
@@ -200,6 +200,15 @@ export function shipAt(position: THREE.Vector3, rotation?: THREE.Euler): THREE.O
 export const OBLIQUE_SUN_DIR = new THREE.Vector3(-0.70, 0.20, 0.68).normalize();
 // 地球を遠ざける置き方: 高度 1e9 m の真下。どの撮影の画面にも入らず、恒星とケースの物体のあいだにも入らない。
 export const EARTH_AWAY: Partial<LabViewAngles> = { earthElevationDeg: -90, earthAltitudeLog: 9 };
+// 地球を真上に置く置き方: 描画原点の高度を低軌道の 420 km にし、直下点を地表の色が読める陸(サハラ、北緯 23°・
+// 東経 13°)にする。
+export const OVERHEAD_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
+  earthAzimuthDeg: 0,
+  earthElevationDeg: 90,
+  earthAltitudeLog: Math.log10(420e3),
+  earthLatitudeDeg: 23,
+  earthLongitudeDeg: 13,
+};
 // 機軸の片端と側面の両方が見える機体の姿勢。
 export const SHIP_ROTATION_PORT = new THREE.Euler(-0.5, 0.6, 0.12);
 
