@@ -61,11 +61,12 @@ export function selectedEntries({ entries, sets }) {
   return selected;
 }
 
-// 走査の解像度 1/4 のフェードの外側 [描画バッファの画素]。
-const FADE_OUTER_PX = 8;
+// 受け手の近傍の半径に効きを渡すフェードの外側 [走査の画素](src/render/pipeline/screen-space/hemisphere-scan.ts の
+// smoothstep(1, 2, radius))。
+const FADE_OUTER_SCAN_PX = 2;
 // 撮影 1 枚が、絵の落ち着きを待って撮る回数の上限。
 const MAX_SETTLE_CAPTURES = 6;
-// 段の費用の計測を待つ上限 [ms]。既定の候補 9 段 × 3 巡で 1〜2 分かかる。
+// 段の費用の計測を待つ上限 [ms]。段 1 つの 1 巡に 2〜4 秒かかる。
 const MEASURE_TIMEOUT_MS = 15 * 60_000;
 
 // seed の列。ブルーノイズのタイル(一辺 SEED_GRID テクセル)の整数のずれを、R2 列(plastic number g の
@@ -90,12 +91,24 @@ export function seedOf(k) {
   return SEED_CELLS[k];
 }
 
+// 基準と比べる候補の k 番目の seed。列の末尾から取り、先頭の seedOf(0〜referencePasses − 1) で作った基準のパスと
+// 重なるなら投げる。
+export function candidateSeedOf(k, referencePasses) {
+  const index = SEED_CELLS.length - 1 - k;
+  if (index < referencePasses) {
+    throw new Error(`candidate seed ${k} overlaps ${referencePasses} reference passes of ${SEED_CELLS.length} seeds`);
+  }
+  return SEED_CELLS[index];
+}
+
 // いまの精細さの段(src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_TIERS)。
 export const TIERS = {
   low: { scale: 0.25, sliceCount: 2, stepCount: 3, denoiseRadius: 2 },
   medium: { scale: 0.25, sliceCount: 4, stepCount: 5, denoiseRadius: 2 },
   high: { scale: 0.25, sliceCount: 4, stepCount: 6, denoiseRadius: 2 },
 };
+// 中の段の均しなし。
+export const MEDIUM_RAW_TIER = { ...TIERS.medium, denoiseRadius: 0 };
 
 // HEAD の短いハッシュ。
 export const headHash = () => execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim();
@@ -458,8 +471,8 @@ export function loadReference(name, entries) {
   }));
 }
 
-// 近傍の半径 radius [画素] から、測る画素の印(1/4 の走査でもフェードの外にある面)。
-export const maskOf = (radius) => Uint8Array.from(radius, (r) => (r > FADE_OUTER_PX ? 1 : 0));
+// 近傍の半径 radius [描画バッファの画素] から、測る画素の印(解像度 scale の走査でフェードの外にある面)。
+export const maskOf = (radius, scale) => Uint8Array.from(radius, (r) => (r > FADE_OUTER_SCAN_PX / scale ? 1 : 0));
 
 // ---- 解析値のある窓 ----
 
