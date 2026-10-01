@@ -37,8 +37,10 @@ export const ENTRIES = [
   ...['bay', 'bay-dark', 'bay-earth-open', 'bay-bounce'].map((shot) => entry('tuning', 'bay', shot)),
   ...['groove-ladder', 'groove-ladder-near', 'groove-ladder-far', 'groove-ladder-bounce']
     .map((shot) => entry('tuning', 'groove-ladder', shot)),
+  entry('tuning', 'slope-fan', 'slope-fan'),
   ...['bay-distance-0.5x', 'bay-distance-2.5x', 'bay-truss', 'bay-edge'].map((shot) => entry('checking', 'bay', shot)),
   entry('checking', 'groove-ladder', 'groove-ladder-check'),
+  entry('checking', 'slope-fan', 'slope-fan-check'),
   ...['bay-earthshine', 'bay-earth-overhead', 'bay-earth-corner', 'bay-moon-open', 'bay-moon-corner']
     .flatMap((shot) => Object.values(MODE).map((mode) => entry('correctness', 'bay', shot, mode))),
   entry('correctness', 'bounce-cosine', 'bounce-cosine'),
