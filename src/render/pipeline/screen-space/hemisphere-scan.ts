@@ -90,10 +90,11 @@ export function scanHemisphere(
     const planetSums: readonly PlanetSum[] = planetVars.map((planet) => ({
       planet, blocked: float(0).toVar(), wedge: float(0).toVar(),
     }));
-    // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。近くへ寄せる二乗の配分。
+    // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。標本が受け手自身の画素を読まないよう 1 走査画素
+    // 先から、半径までを近くへ寄せる二乗で配る。
     const stepDistance = (progress: FloatNode): FloatNode => {
       const u = progress.div(float(stepCount));
-      return u.mul(u).mul(radius);
+      return u.mul(u).mul(radius.sub(1)).add(1);
     };
     Loop({ start: 0, end: sliceCount, type: 'int', condition: '<' }, ({ i }) => {
       const slice = sliceAt(float(i).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiver.normal);
@@ -107,7 +108,7 @@ export function scanHemisphere(
         projectionInverse);
       // 歩みのずれはスライスごとに 1/S ずらす(共有すると半径方向のずれが平均されない)。i は内側の Loop で同名の添字に化けるのでここで読む。
       const sliceJitter = fract(jitter.add(float(i).div(float(sliceCount)))).toVar();
-      // 両側へ、手前から奥の順に歩む。歩 k の標本は画面上の区間 [(k/N)²·R, ((k+1)/N)²·R] の中の 1 点。
+      // 両側へ、手前から奥の順に歩む。歩 k の標本は画面上の区間 [stepDistance(k), stepDistance(k + 1)] の中の 1 点。
       Loop({ start: 0, end: 2, type: 'int', condition: '<' }, ({ i: sideIndex }) => {
         const sideSign = float(1).sub(float(sideIndex).mul(2)).toVar();
         const screenStep = slice.screenDirection.mul(sideSign).div(screenSize).toVar();
@@ -120,8 +121,7 @@ export function scanHemisphere(
         };
         const walk = new SideWalk(slice, screenStep, rays, occlusion, receiverInSlice);
         Loop({ start: 0, end: stepCount, type: 'int', condition: '<' }, ({ i: step }) => {
-          // 標本は隣の画素から先を読む — 受け手との中点が、受け手の画素の外に出る。
-          const rho = max(stepDistance(float(step).add(sliceJitter)), 1).toVar();
+          const rho = stepDistance(float(step).add(sliceJitter)).toVar();
           const samplePixel = pixelAlong(screenStep, rho).toVar();
           const sample = surfaceAt(depth, normal, gbufferSize, projectionInverse, samplePixel);
           const toSample = sample.position.sub(receiver.position).toVar();
