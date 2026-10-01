@@ -6,7 +6,7 @@
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, bool, dot, float, floor, getViewPosition, ivec2, length, max, min, screenSize, screenUV, select,
+  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, screenSize, screenUV, select,
   smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
@@ -105,6 +105,8 @@ export function scanHemisphere(
       };
       const forwardRays = sideRays(slice, receiver.position, receiver.uv, slice.screenDirection.div(screenSize),
         projectionInverse);
+      // 歩みのずれはスライスごとに 1/S ずらす(共有すると半径方向のずれが平均されない)。i は内側の Loop で同名の添字に化けるのでここで読む。
+      const sliceJitter = fract(jitter.add(float(i).div(float(sliceCount)))).toVar();
       // 両側へ、手前から奥の順に歩む。歩 k の標本は画面上の区間 [(k/N)²·R, ((k+1)/N)²·R] の中の 1 点。
       Loop({ start: 0, end: 2, type: 'int', condition: '<' }, ({ i: sideIndex }) => {
         const sideSign = float(1).sub(float(sideIndex).mul(2)).toVar();
@@ -119,7 +121,7 @@ export function scanHemisphere(
         const walk = new SideWalk(slice, screenStep, rays, occlusion, receiverInSlice);
         Loop({ start: 0, end: stepCount, type: 'int', condition: '<' }, ({ i: step }) => {
           // 標本は隣の画素から先を読む — 受け手との中点が、受け手の画素の外に出る。
-          const rho = max(stepDistance(float(step).add(jitter)), 1).toVar();
+          const rho = max(stepDistance(float(step).add(sliceJitter)), 1).toVar();
           const samplePixel = pixelAlong(screenStep, rho).toVar();
           const sample = surfaceAt(depth, normal, gbufferSize, projectionInverse, samplePixel);
           const toSample = sample.position.sub(receiver.position).toVar();
