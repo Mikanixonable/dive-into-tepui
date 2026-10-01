@@ -17,6 +17,8 @@ import { SHADOW_CASES } from './shadow-cases';
 import { BAY_CASES } from './bay-cases';
 import { BOUNCE_COSINE_CASES } from './bounce-cosine-case';
 import { GROOVE_LADDER_CASES } from './groove-ladder-case';
+import { SLOPE_FAN_CASES } from './slope-fan-case';
+import { PLANE_CASES } from './plane-case';
 import {
   circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, texturedBody, VIEW_HEIGHT, VIEW_WIDTH,
   type CaseBuilder, type LabCase,
@@ -171,6 +173,8 @@ export const CASES = {
   ...BAY_CASES,
   ...BOUNCE_COSINE_CASES,
   ...GROOVE_LADDER_CASES,
+  ...SLOPE_FAN_CASES,
+  ...PLANE_CASES,
   'order': order,
   'march-slab': marchSlab,
   ...SHIP_CASES,

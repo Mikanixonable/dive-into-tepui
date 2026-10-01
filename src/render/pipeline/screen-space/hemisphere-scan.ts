@@ -6,7 +6,7 @@
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, bool, dot, float, floor, getViewPosition, ivec2, length, max, min, screenSize, screenUV, select,
+  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, screenSize, screenUV, select,
   smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
@@ -17,7 +17,8 @@ import {
   toSliceCoordinates, wedgeWeight, type RangeSectors, type SectorRange, type Slice,
 } from './slice-sectors';
 import {
-  angularlyHigher, angularlyLower, rayAt, sideRays, splitSegments, tangentHit, type SideRays, type SlicePoint,
+  angularlyHigher, angularlyLower, rayAt, samplePoint, sideRays, splitSegments, tangentHit, type SideRays,
+  type SlicePoint,
 } from './tangent-segments';
 import type { PlanetCap } from '../lighting/planet-light-source';
 import type {
@@ -73,7 +74,9 @@ export function scanHemisphere(
     const view = viewRayAt(projectionInverse, receiver.uv).direction.negate().toVar();
     const rotation = noise.x.toVar();
     const jitter = noise.y.toVar();
-    const dither = noise.z.toVar();
+    // 丸めのずれは両端を除いた区間へ写す — 0 と 1 では扇形の座標のずれが ±½ ちょうどになり、半球の端に接する
+    // 幅 0 の切片が端の扇形を立てる。
+    const dither = noise.z.mul(255 / 256).add(0.5 / 256).toVar();
     // 遠方の光は面の値を読む式から組まれている。**ループへ入る前に変数へ置く** — ループの中で初めて組むと、
     // スライスごとに面を読み直し、ループの後の照度もループの中で読んだ値に頼る。
     const ambient = ambientIrradiance.toVar();
@@ -102,6 +105,8 @@ export function scanHemisphere(
       };
       const forwardRays = sideRays(slice, receiver.position, receiver.uv, slice.screenDirection.div(screenSize),
         projectionInverse);
+      // 歩みのずれはスライスごとに 1/S ずらす(共有すると半径方向のずれが平均されない)。i は内側の Loop で同名の添字に化けるのでここで読む。
+      const sliceJitter = fract(jitter.add(float(i).div(float(sliceCount)))).toVar();
       // 両側へ、手前から奥の順に歩む。歩 k の標本は画面上の区間 [(k/N)²·R, ((k+1)/N)²·R] の中の 1 点。
       Loop({ start: 0, end: 2, type: 'int', condition: '<' }, ({ i: sideIndex }) => {
         const sideSign = float(1).sub(float(sideIndex).mul(2)).toVar();
@@ -116,7 +121,7 @@ export function scanHemisphere(
         const walk = new SideWalk(slice, screenStep, rays, occlusion, receiverInSlice);
         Loop({ start: 0, end: stepCount, type: 'int', condition: '<' }, ({ i: step }) => {
           // 標本は隣の画素から先を読む — 受け手との中点が、受け手の画素の外に出る。
-          const rho = max(stepDistance(float(step).add(jitter)), 1).toVar();
+          const rho = max(stepDistance(float(step).add(sliceJitter)), 1).toVar();
           const samplePixel = pixelAlong(screenStep, rho).toVar();
           const sample = surfaceAt(depth, normal, gbufferSize, projectionInverse, samplePixel);
           const toSample = sample.position.sub(receiver.position).toVar();
@@ -262,7 +267,7 @@ class SideWalk {
   // receiver は最初の「直前の標本」とする受け手自身。
   public constructor(
     private readonly slice: Slice, private readonly screenStep: Vec2Node, private readonly rays: SideRays,
-    private readonly occlusion: SliceOcclusion, receiver: SlicePoint,
+    private readonly occlusion: SliceOcclusion, private readonly receiver: SlicePoint,
   ) {
     this.previous = {
       position: receiver.position.toVar(), normal: receiver.normal.toVar(), offset: receiver.offset.toVar(),
@@ -272,13 +277,7 @@ class SideWalk {
   // 画面距離 rho の標本を次に加える。toSample は受け手から標本への変位、normal は標本の法線(view 空間)。hasSurface
   // が偽なら面のない標本(虚空・画面外・半径の外)で、切片を持たない。
   public visit(rho: FloatNode, hasSurface: BoolNode, toSample: Vec3Node, normal: Vec3Node): void {
-    // 接平面の直線は標本の 3 次元の位置から引く — 画素へ丸めた標本はスライス平面の外にあり、射影した位置を通る
-    // 直線では、同じ面の隣り合う標本の切片が継ぎ目でずれる。
-    const sample: SlicePoint = {
-      position: toSliceCoordinates(this.slice, toSample).toVar(),
-      normal: toSliceCoordinates(this.slice, normal).toVar(),
-      offset: dot(normal, toSample).toVar(),
-    };
+    const sample = samplePoint(this.slice, this.rays, rho, toSample, normal, this.receiver);
     const split = splitSegments(this.rays, this.previous, this.previousRho, sample, rho,
       this.previousHasSurface.and(hasSurface));
     // 分岐の外で変数へ置く — 両端が共有する式を分岐の中で初めて組むと、外から読めない。
