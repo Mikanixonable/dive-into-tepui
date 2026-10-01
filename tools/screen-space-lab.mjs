@@ -1,6 +1,7 @@
 // 近傍拡散補正の計測が使う、評価の組と解析値のある窓、それを描画テスト環境で撮る口と誤差の指標を測る口と平面を均す口、
 // 基準の置き場、表の書式。撮影は走査の段とブルーノイズの seed を与え、表示の絵と浮動小数の中間ターゲットを受け取る。中間ターゲットは
-// ページの中で積むこともでき(和か、倍精度の和と二乗和)、積んだ HDR の平均は本番と同じ合成で表示にして受け取る。
+// ページの中で積むこともでき(和か、倍精度の和と二乗和と成分の和の高次の冪和)、積んだ HDR の平均は本番と同じ合成で表示にして
+// 受け取る。
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -61,6 +62,12 @@ export function selectedEntries({ entries, sets }) {
   return selected;
 }
 
+// 撮影 e を、描画設定 screenSpaceDiffuse を方式 modeName(MODE の名前)にして撮るもの。
+export function entryInMode(e, modeName) {
+  if (!Object.hasOwn(MODE, modeName)) throw new Error(`unknown mode ${modeName}: one of ${Object.keys(MODE).join(', ')}`);
+  return entry(e.set, e.caseName, e.shot, MODE[modeName], e.dolly);
+}
+
 // 受け手の近傍の半径に効きを渡すフェードの外側 [走査の画素](src/render/pipeline/screen-space/hemisphere-scan.ts の
 // smoothstep(1, 2, radius))。
 const FADE_OUTER_SCAN_PX = 2;
@@ -114,6 +121,9 @@ export const MEDIUM_RAW_TIER = { ...TIERS.medium, denoiseRadius: 0 };
 export const headHash = () => execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim();
 
 // ---- 撮影 ----
+
+// accumulateMoments が成分の和のずれの冪和を積む、最高の次数。
+const MOMENT_ORDER = 4;
 
 // ページの式 source が指す長さ length の、型 type(Float32Array か Float64Array)の配列を受け取る。CDP の 1 通の上限を
 // 超えないよう、塊ごとに受け取る。
@@ -232,18 +242,32 @@ function labOf(devTools) {
         }
       })`),
     // 直前のフレームの中間ターゲット name の先頭 channels 成分を、ページの中に name ごとに積む slot 番目の和と二乗和
-    // (倍精度)へ足す。積んだ和は takeMoments で受け取る。
+    // (倍精度)へ足し、画素ごとの成分の和の、原点(画素ごとに最初に積んだ成分の和)からのずれの 1〜MOMENT_ORDER 乗の和
+    // (倍精度)を slot によらず足す。積んだ和は takeMoments で受け取る。
     accumulateMoments: (name, channels, slot) => devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})
       .then(({ width, height, rgba }) => {
-        const moments = ((window.__ssdMoments ??= {})[${JSON.stringify(name)}] ??= { width, height, slots: [] });
+        const moments = ((window.__ssdMoments ??= {})[${JSON.stringify(name)}] ??= { width, height, slots: [],
+          origin: null, powerSums: Array.from({ length: ${MOMENT_ORDER} }, () => new Float64Array(width * height)) });
         const size = width * height * ${channels};
         const { sum, squareSum } = (moments.slots[${slot}] ??= {
           sum: new Float64Array(size), squareSum: new Float64Array(size) });
+        const total = new Float64Array(width * height);
         for (let p = 0; p < width * height; p++) {
           for (let k = 0; k < ${channels}; k++) {
             const v = rgba[p * 4 + k];
             sum[p * ${channels} + k] += v;
             squareSum[p * ${channels} + k] += v * v;
+            total[p] += v;
+          }
+        }
+        // 平均に比べて揺れの小さい画素で、冪和から中心モーメントを求めるときの桁落ちを避けるため、原点をずらして積む。
+        moments.origin ??= total;
+        for (let p = 0; p < width * height; p++) {
+          const deviation = total[p] - moments.origin[p];
+          let power = 1;
+          for (const powerSum of moments.powerSums) {
+            power *= deviation;
+            powerSum[p] += power;
           }
         }
       })`),
@@ -356,8 +380,10 @@ function labOf(devTools) {
     },
     // name の和をページから消す。
     dropAccumulated: (name) => devTools.evaluate(`delete window.__ssdSums[${JSON.stringify(name)}]`),
-    // accumulateMoments で積んだ name の { width, height, slots } を受け取り、ページから消す。slots は slot 0〜slotCount − 1
-    // の { sum, squareSum }(画素ごとに成分を並べた Float64Array)で、どれも 1 回以上足してあること。
+    // accumulateMoments で積んだ name の { width, height, slots, channelSum } を受け取り、ページから消す。slots は slot 0〜
+    // slotCount − 1 の { sum, squareSum }(画素ごとに成分を並べた Float64Array)で、どれも 1 回以上足してあること。
+    // channelSum は成分の和の { origin, powerSums }(画素ごとに 1 つの Float64Array。powerSums は原点からのずれの 1〜
+    // MOMENT_ORDER 乗の和の順)。
     async takeMoments(name, slotCount) {
       const source = `window.__ssdMoments[${JSON.stringify(name)}]`;
       const [width, height, size] = await devTools.evaluate(
@@ -369,8 +395,12 @@ function labOf(devTools) {
           squareSum: await receiveFloats(devTools, `${source}.slots[${slot}].squareSum`, size, Float64Array),
         });
       }
+      const receivePlane = (expression) => receiveFloats(devTools, expression, width * height, Float64Array);
+      const origin = await receivePlane(`${source}.origin`);
+      const powerSums = [];
+      for (let k = 0; k < MOMENT_ORDER; k++) powerSums.push(await receivePlane(`${source}.powerSums[${k}]`));
       await devTools.evaluate(`delete ${source}`);
-      return { width, height, slots };
+      return { width, height, slots, channelSum: { origin, powerSums } };
     },
   };
 }
@@ -476,9 +506,10 @@ export const maskOf = (radius, scale) => Uint8Array.from(radius, (r) => (r > FAD
 
 // ---- 解析値のある窓 ----
 
-// 解析値のある窓(960×540 の画素、tools/render-lab/bay-cases.ts の注記)と、窓の半幅 [画素]。
-const WINDOWS = { P_in: [412, 179], P_out: [186, 183] };
-const WINDOW_HALF = 2;
+// bay の既定の構図の窓の中心(960×540 の画素、tools/render-lab/bay-cases.ts の注記)と、窓の半幅 [画素]。P_in は −X の
+// 内隅に近い床、P_out は荷室の外の遠い床、P_glow は光る箱のそばの床、P_base は奥の壁の足元の床。
+export const WINDOWS = { P_in: [412, 179], P_out: [186, 183], P_glow: [547, 225], P_base: [507, 189] };
+export const WINDOW_HALF = 2;
 // bay の天体照の撮影の P_in / P_out の解析値(遮蔽 / 遮蔽と照り返し)。
 const ANALYTIC_RATIOS = {
   'bay-earth-overhead': [0.32, 0.49], 'bay-earth-open': [0.64, 1.06], 'bay-earth-corner': [0, 0],

@@ -20,10 +20,12 @@
 //   rescore <出力先> [--reference D]
 //     compare が残した撮影を、撮り直さずにいまの指標で採点し直し、表を <出力先>/report.md へ書く。D の既定は撮影に
 //     使った基準。
-//   variance [<candidates.json>] [--entries K,...] [--sets S,...] [--passes N] [--out O]
+//   variance [<candidates.json>] [--entries K,...] [--sets S,...] [--mode M] [--passes N] [--out O]
 //     候補の段(既定は中の均し前)の均し・拡大の前の補正を、全候補で共通の seed の列で N パス(既定 256、4 の倍数)撮り、
-//     seed についての画素ごとの分散と収束先の移動と費用を、先頭の候補と比べる表にする。画素ごとの統計と目で見る画像も
-//     .render-lab-shots/ssd-variance/<O>/ へ書く。O の既定は HEAD の短いハッシュ。--entries も --sets も無ければ tuning。
+//     seed についての画素ごとの分散と収束先の移動と費用を、先頭の候補と比べる表にする。画素ごとの分布の形(歪度・尖度を、
+//     |μ| の帯・μ の符号・bay の窓で分けたもの)と、1 パスの誤差の空間の相関 R(s) の表も出す。画素ごとの統計と目で見る
+//     画像も .render-lab-shots/ssd-variance/<O>/ へ書く。O の既定は HEAD の短いハッシュ。--entries も --sets も無ければ
+//     tuning。M(occlusion か indirect)を与えると、選んだ撮影をその方式で撮る(key は遮蔽なら <撮影>@occlusion)。
 //
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
