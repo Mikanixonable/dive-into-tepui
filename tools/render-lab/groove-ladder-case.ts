@@ -3,8 +3,10 @@
 // 構造の大きさと画面上の大きさのどちらにどう従うかを読む試験体。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
-import { directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
-import { EARTH_AWAY, labCamera, slab, white, WHITE_ROUGHNESS, type CaseBuilder, type LabCase } from './lab-case';
+import { directionFromAngles, type LabViewAngles } from './view-angles';
+import {
+  EARTH_AWAY, labCamera, OVERHEAD_EARTH, slab, white, WHITE_ROUGHNESS, type CaseBuilder, type LabCase,
+} from './lab-case';
 
 // 溝の幅(= 深さ)[m]。3 cm から公比 2 で 7 段。溝は z に沿って走り、x の向きへ並ぶ。
 const GROOVE_WIDTHS = Array.from({ length: 7 }, (_, k) => 0.03 * 2 ** k);
@@ -41,14 +43,6 @@ const CAMERA_DISTANCE = 12;
 const CHECK_AZIMUTH_DEG = -35;
 const CHECK_DISTANCE_SCALE = 1.6;
 
-// 地球の置き方: 描画原点の高度を低軌道の 420 km にし、真上に置く。直下点は地表の色が読める陸(サハラ)。
-const OVERHEAD_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
-  earthAzimuthDeg: 0,
-  earthElevationDeg: 90,
-  earthAltitudeLog: Math.log10(420e3),
-  earthLatitudeDeg: 23,
-  earthLongitudeDeg: 13,
-};
 // 恒星を床の真下に置く向き。見えている面はどれも直射を受けない。
 const SUN_BELOW: Partial<LabViewAngles> = { sunAzimuthDeg: 0, sunElevationDeg: -90 };
 

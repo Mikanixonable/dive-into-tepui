@@ -3,8 +3,8 @@
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
-import { directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
-import { EARTH_AWAY, labCamera, slab, type CaseBuilder, type LabCase } from './lab-case';
+import { directionFromAngles, type LabViewAngles } from './view-angles';
+import { EARTH_AWAY, labCamera, OVERHEAD_EARTH, slab, type CaseBuilder, type LabCase } from './lab-case';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
 // 床の半幅と厚み [m]。上面は y = 0。掠める構図でも、地平の近くまで床が続く。
@@ -19,14 +19,6 @@ const CAMERA_DISTANCE = 11.6;
 // 床を掠める構図のカメラの仰角 [deg]。画面の上端に地平が入る。
 const GRAZING_CAMERA_ELEVATION_DEG = 10;
 
-// 地球の置き方の既定: 描画原点の高度を低軌道の 420 km にし、真上に置く。直下点は地表の色が読める陸(サハラ)。
-const OVERHEAD_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
-  earthAzimuthDeg: 0,
-  earthElevationDeg: 90,
-  earthAltitudeLog: Math.log10(420e3),
-  earthLatitudeDeg: 23,
-  earthLongitudeDeg: 13,
-};
 // 恒星を床の真下に置く向き。床は直射を受けない。
 const SUN_BELOW: Partial<LabViewAngles> = { sunAzimuthDeg: 0, sunElevationDeg: -90 };
 // 天体照の撮影の、地球の方位 [deg](画面の右手)と、大きい地球・小さい地球の視半径 [deg]。
