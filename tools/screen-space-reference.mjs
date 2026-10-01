@@ -4,8 +4,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { exposedCorrectionOf, rmsOf } from './screen-space-error.mjs';
 import {
-  analyticRatiosOf, builtMetaOf, fixed, HEIGHT, headHash, loadReference, maskOf, readFloats,
-  referenceDirOf, referenceFileOf, referenceMetaOf, referenceSumsOf, seedOf, selectedEntries, table, TIERS, WIDTH,
+  analyticRatiosOf, builtMetaOf, candidateSeedOf, fixed, HEIGHT, headHash, loadReference, maskOf, MEDIUM_RAW_TIER,
+  readFloats, referenceDirOf, referenceFileOf, referenceMetaOf, referenceSumsOf, seedOf, selectedEntries, table, WIDTH,
   windowRatiosOf, withLab, writeFloats, writeReferencePasses,
 } from './screen-space-lab.mjs';
 
@@ -19,14 +19,15 @@ const MAX_PASS_SAMPLES = 256;
 const CONVERGED_G_RATIO = 1 / 10;
 const CONVERGED_R_RATIO = 1.5;
 
-// 基準の組 name の撮影 entry の、偶数番目と奇数番目のパスの補正の平均の q の組 halves と、測る画素の印 mask。
+// 基準の組 name の撮影 entry の、偶数番目と奇数番目のパスの補正の平均の q の組 halves と、測る画素の印 mask
+// (比べる相手の走査でフェードの外にある面)。
 function halvesOf(name, entry) {
   const { passes, exposure } = builtMetaOf(name, entry);
   if (passes < 2) throw new Error(`reference ${name} ${entry.key} has ${passes} pass; halves need 2`);
   const counts = [Math.ceil(passes / 2), Math.floor(passes / 2)];
   const halves = referenceSumsOf(name, entry, 'correction')
     .map((sum, i) => exposedCorrectionOf(sum.map((v) => v / counts[i]), exposure));
-  return { halves, mask: maskOf(readFloats(referenceFileOf(name, entry, 'radius.f32'))) };
+  return { halves, mask: maskOf(readFloats(referenceFileOf(name, entry, 'radius.f32')), MEDIUM_RAW_TIER.scale) };
 }
 
 // ---- 生成 ----
@@ -144,7 +145,7 @@ function printCoverage(name, entries) {
 // ---- 判定 ----
 
 // 基準の組 name の収束を、撮影(--entries、既定は bay)ごとに表にする。比べる相手のいまの中設定(均しなし、
-// seed (0, 0))をその場で撮る。
+// 基準のパスと重ならない候補の 1 つ目の seed)をその場で撮る。
 export async function check({ positional, options }) {
   const [name] = positional;
   if (name === undefined) throw new Error(CHECK_USAGE);
@@ -153,8 +154,8 @@ export async function check({ positional, options }) {
     const out = [];
     for (const entry of entries) {
       await lab.show(entry);
-      await lab.setTier({ ...TIERS.medium, denoiseRadius: 0 });
-      await lab.setSeed(seedOf(0));
+      await lab.setTier(MEDIUM_RAW_TIER);
+      await lab.setSeed(candidateSeedOf(0, builtMetaOf(name, entry).passes));
       await lab.capturePng();
       out.push(await checkRowOf(lab, name, entry, await lab.readFloat('correction', 3)));
     }

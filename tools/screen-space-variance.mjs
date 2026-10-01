@@ -6,12 +6,13 @@ import path from 'node:path';
 import { encodeRgbPng } from './png.mjs';
 import { srgbCodesOfLinear } from './screen-space-error.mjs';
 import {
-  ENTRIES, fixed, HEIGHT, headHash, maskOf, seedOf, selectedEntries, shotsDir, table, TIERS, WIDTH, withLab, writeFloats,
+  ENTRIES, fixed, HEIGHT, headHash, maskOf, MEDIUM_RAW_TIER, seedOf, selectedEntries, shotsDir, table, WIDTH, withLab,
+  writeFloats,
 } from './screen-space-lab.mjs';
 
 const USAGE = 'usage: variance [<candidates.json>] [--entries <key,...>] [--sets <set,...>] [--passes <N>] [--out <名前>]';
 // 既定の候補: 中の精細さの均す前。
-const DEFAULT_CANDIDATES = [{ label: 'medium-raw', tier: { ...TIERS.medium, denoiseRadius: 0 } }];
+const DEFAULT_CANDIDATES = [{ label: 'medium-raw', tier: MEDIUM_RAW_TIER }];
 const DEFAULT_PASSES = 256;
 // seed の列を k mod BLOCKS で分ける塊の数。塊 0・2 が偶数番目、1・3 が奇数番目のパス。
 const BLOCKS = 4;
@@ -58,7 +59,7 @@ async function measureShot(lab, dir, entry, candidates, passes) {
   writeFloats(path.join(dir, 'data', `${entry.key}.radius.f32`), radius);
   const baseline = await capturePasses(lab, entry, candidates[0], passes, exposure);
   const { width, height } = baseline;
-  const mask = scanMaskOf(radius, width, height);
+  const mask = scanMaskOf(radius, candidates[0].tier.scale, width, height);
   const imageScales = imageScalesOf(baseline, mask, passes);
   const rows = {};
   for (const [index, candidate] of candidates.entries()) {
@@ -101,10 +102,10 @@ async function capturePasses(lab, entry, candidate, passes, exposure) {
   return { ...statistics, display, passSeconds, seconds };
 }
 
-// 走査の解像度 width × height の画素ごとの、測る画素の印。走査の画素が読む G バッファの画素
+// 解像度 scale の走査(width × height)の画素ごとの、測る画素の印。走査の画素が読む G バッファの画素
 // (src/render/pipeline/screen-space/hemisphere-scan.ts の gbufferTexelOf)での、近傍の半径 radius(絵の画素ごと)の印 maskOf。
-function scanMaskOf(radius, width, height) {
-  const full = maskOf(radius);
+function scanMaskOf(radius, scale, width, height) {
+  const full = maskOf(radius, scale);
   const texelOf = (pixel, size, fullSize) => Math.floor((2 * pixel + 1) * fullSize / (2 * size));
   return Uint8Array.from({ length: width * height }, (_, p) => (
     full[texelOf(Math.floor(p / width), height, HEIGHT) * WIDTH + texelOf(p % width, width, WIDTH)]));
@@ -294,7 +295,7 @@ function reportOf({ head, passes, candidates, entries, scanCosts, shots }) {
     '', '## 保存したもの', '',
     `- \`data/<撮影>.<候補>.{mean,variance,even,odd}.f32\` — q の全パスの平均・不偏分散・偶数番目と奇数番目のパスの平均。`
       + '単精度で、走査の解像度(撮影ごとの width × height は record.json の shots)の画素ごとに rgb。',
-    `- \`data/<撮影>.radius.f32\` — 近傍の半径 [絵の画素](${WIDTH}×${HEIGHT}、単精度)。測る画素はこれが 8 を超える面。`,
+    `- \`data/<撮影>.radius.f32\` — 近傍の半径 [絵の画素](${WIDTH}×${HEIGHT}、単精度)。測る画素は、走査の画素で近傍の半径が 2 を超える面。`,
     '- `<撮影>.<候補>.mean.png` — HDR のパス平均の表示。`mean-q.png` — 0.5 + μ / meanRange。`sigma.png` — √(Σ_c s²) / sigmaWhite。',
     '  `diff.png` — 0.5 + (μ − μ_A) / diffRange。`ratio.png` — log2(Σ_c s² / Σ_c s²_A) を ±2 で青〜灰〜赤。尺度は record.json の',
     '  shots.<撮影>.imageScales。印の外は黒。', '',

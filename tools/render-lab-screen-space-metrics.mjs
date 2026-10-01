@@ -11,9 +11,12 @@
 //     基準 D の偶数番目と奇数番目のパスの差(雑音)を、いまの中設定(均しなし)の誤差と比べて収束を判定する。
 //     --entries の既定は bay。
 //   compare [<candidates.json>] [--reference D] [--entries K,...] [--sets S,...] [--out O]
-//     候補の段(既定は精細さの 3 段の均し前後と、中の均し前のスライスを 2・4・8 倍にしたもの)を B と比べ、
-//     指標と費用の表を出す。偽の構造の地図と、表示の誤差を 8 倍にした画像を .render-lab-shots/ssd-compare/<O>/ へ書き、
-//     候補の撮影(captures/)と費用・拡散照度から数えた値(record.json)も残す。--entries と --sets は reference と同じ。
+//     候補 { label, tier, passes }(passes の既定は 1)を B と比べ、指標と費用の表を出す。passes パスの候補は、seed を変えた
+//     passes パスの補正の平均を 1 枚の出力とし、費用を段の passes 倍に数える。既定の候補は中の段の均した後と均す前と、
+//     均す前の 2・4・8 パス。候補の段の 1 パスのスライス数・歩数が B と違えば撮る前に止まる。候補の seed は seed の列の
+//     末尾から取って B のパスと重ねず、重なるなら止まる。偽の構造の地図と、表示の誤差を 8 倍にした画像を
+//     .render-lab-shots/ssd-compare/<O>/ へ書き、候補の撮影(captures/)と費用・拡散照度から数えた値(record.json)も残す。
+//     --entries と --sets は reference と同じ。
 //   rescore <出力先> [--reference D]
 //     compare が残した撮影を、撮り直さずにいまの指標で採点し直し、表を <出力先>/report.md へ書く。D の既定は撮影に
 //     使った基準。
@@ -30,8 +33,9 @@ import {
   edgesOf, exposedCorrectionOf, flickerOf, linearOfOklab, nearEdgesOf, oklabOf, rmsOf, srgbCodesOfLinear,
 } from './screen-space-error.mjs';
 import {
-  analyticRatiosOf, ENTRIES, fixed, HEIGHT, headHash, linearOfPng, loadReference, maskOf, readHalfFloats, seedOf,
-  selectedEntries, shotsDir, table, TIERS, WIDTH, windowRatiosOf, withLab, writeHalfFloats,
+  analyticRatiosOf, candidateSeedOf, ENTRIES, fixed, HEIGHT, headHash, linearOfPng, loadReference, maskOf,
+  MEDIUM_RAW_TIER, readHalfFloats, selectedEntries, shotsDir, table, TIERS, WIDTH, windowRatiosOf, withLab,
+  writeHalfFloats,
 } from './screen-space-lab.mjs';
 import { check, reference } from './screen-space-reference.mjs';
 import { variance } from './screen-space-variance.mjs';
@@ -43,15 +47,11 @@ const EDGE_BAND = 2;
 // 表示の 1 LSB に当たる、黒の近くの線形の値。
 const DISPLAY_LSB = 1 / (255 * 12.92);
 
-// 既定の候補: 精細さの 3 段の均した後と均す前(-raw)と、中の均す前のスライスを 2・4・8 倍にしたもの。
+// 既定の候補: 着手前の中の段の均した後と均す前(-raw)と、愚直な曲線(均す前の -p<N> パスの平均)。
 const DEFAULT_CANDIDATES = [
-  ...Object.entries(TIERS).flatMap(([name, tier]) => [
-    { label: `${name}`, tier },
-    { label: `${name}-raw`, tier: { ...tier, denoiseRadius: 0 } },
-  ]),
-  ...[2, 4, 8].map((factor) => ({
-    label: `medium-raw-x${factor}`, tier: { ...TIERS.medium, sliceCount: TIERS.medium.sliceCount * factor, denoiseRadius: 0 },
-  })),
+  { label: 'medium', tier: TIERS.medium },
+  { label: 'medium-raw', tier: MEDIUM_RAW_TIER },
+  ...[2, 4, 8].map((passes) => ({ label: `medium-raw-p${passes}`, tier: MEDIUM_RAW_TIER, passes })),
 ];
 
 // ---- 引数 ----
@@ -70,35 +70,70 @@ function parseArgs(args) {
 
 // ---- 比較 ----
 
-// 比較の出力先 dir の、候補の撮影の置き場と、撮り直せない値の記録。撮影は、撮影 entry・候補 label・seed の番号
-// index ごとの補正(rgb の半精度)と、目で見る画像を書く撮影での 1 つ目の seed の表示(PNG)。記録は
-// { reference, entries, candidates, costs, diffuse }(entries は撮影の key の並び、costs は候補ごとの GPU の行の
-// p50 [ms] の表か null、diffuse は候補と撮影ごとの、拡散照度から数えた負の画素と解析値のある窓の比)。
+// 比較の出力先 dir の、候補の撮影の置き場と、撮り直せない値の記録。撮影は、撮影 entry・候補 label・seed の組の番号
+// index ごとの、組のパスの補正の平均(rgb の半精度)と、目で見る画像を書く撮影での組 0 の表示(PNG。複数パスの候補は
+// 組 0 の HDR の平均の表示)。記録は { reference, entries, candidates, costs, diffuse }(entries は撮影の key の並び、
+// candidates は passes を補った候補の並び、costs は候補ごとの段 1 パスの GPU の行の p50 [ms] の表か null、diffuse は
+// 候補と撮影ごとの、組 0 の拡散照度の平均から数えた負の画素と解析値のある窓の比)。
 const correctionPathOf = (dir, entry, label, index) => path.join(dir, 'captures', `${entry.key}.${label}.s${index}.f16`);
 const displayPathOf = (dir, entry, label) => path.join(dir, 'captures', `${entry.key}.${label}.png`);
 const recordPathOf = (dir) => path.join(dir, 'record.json');
 // 記録 record が撮った評価の組の撮影。
 const recordEntriesOf = (record) => ENTRIES.filter((e) => record.entries.includes(e.key));
-// 候補の撮影に使う seed。ちらつきのフレームは 1 つ目だけ。
-const COMPARE_SEEDS = [seedOf(0), seedOf(1)];
-const seedsOf = (entry) => (entry.set === 'flicker' ? COMPARE_SEEDS.slice(0, 1) : COMPARE_SEEDS);
+// 撮影 entry で候補を撮る seed の組の数。ちらつきのフレームは組 0 だけ。
+const groupCountOf = (entry) => (entry.set === 'flicker' ? 1 : 2);
 // 偽の構造の地図と、誤差を 8 倍にした画像を書く撮影。
 const imagedOf = (entry) => entry.set === 'tuning' || entry.set === 'checking';
+// 測る画素の印を決める走査の解像度。候補 candidates のどの解像度でもフェードの外にある面を測る。
+const maskScaleOf = (candidates) => Math.min(...candidates.map((c) => c.tier.scale));
 
+// 候補 { label, tier, passes } の並び。file(候補の JSON)が undefined なら既定の候補。passes の既定 1 を補う。
+function candidatesOf(file) {
+  const candidates = file === undefined ? DEFAULT_CANDIDATES : JSON.parse(readFileSync(file, 'utf8'));
+  return candidates.map(({ passes = 1, ...candidate }) => {
+    if (!Number.isInteger(passes) || passes < 1) throw new Error(`${candidate.label}: passes must be at least 1`);
+    return { ...candidate, passes };
+  });
+}
+
+// 候補 candidates の段の 1 パスのスライス数・片側の歩数が、基準 references のどの撮影の記録とも同じことを確かめる。
+// 違えば、違う候補ごとに両者の数を並べて投げる。
+function checkSampleCounts(candidates, references) {
+  const countsOf = (slices, steps) => `${slices} slices × ${steps} steps`;
+  const mismatches = candidates.flatMap(({ label, tier }) => {
+    const own = countsOf(tier.sliceCount, tier.stepCount);
+    const others = new Set(Object.values(references).map(({ meta }) => countsOf(meta.slices, meta.steps)));
+    others.delete(own);
+    return others.size === 0 ? [] : [`${label}: ${own} per pass, reference ${[...others].join(' / ')}`];
+  });
+  if (mismatches.length > 0) throw new Error(`candidates sample unlike the reference:\n${mismatches.join('\n')}`);
+}
+
+// 候補 candidates の label ごとの、seed の 2 つの組。組 g は候補の seed の列(candidateSeedOf)の gN〜(g + 1)N − 1 番目
+// (N は候補のパス数)。referencePasses は基準のパス数で、seed がそのパスと重なるなら投げる。
+const seedGroupsOf = (candidates, referencePasses) => Object.fromEntries(candidates.map(({ label, passes }) => [
+  label, [0, 1].map((g) => Array.from({ length: passes }, (_, i) => candidateSeedOf(g * passes + i, referencePasses))),
+]));
+
+// 候補を撮って費用を測り、基準と比べて採点し、表を書く。
 async function compare({ positional, options }) {
-  const candidates = positional[0] === undefined ? DEFAULT_CANDIDATES : JSON.parse(readFileSync(positional[0], 'utf8'));
+  const candidates = candidatesOf(positional[0]);
   const name = options.reference ?? headHash();
   const outDir = path.join(shotsDir, 'ssd-compare', options.out ?? name);
   const entries = selectedEntries(options);
   const references = loadReference(name, entries);
+  checkSampleCounts(candidates, references);
+  const seedGroups = seedGroupsOf(candidates, Math.max(...entries.map((e) => references[e.key].meta.passes)));
   const { meta } = references[entries[0].key];
   console.log(`基準 ${name}(${meta.slices} スライス × 片側 ${meta.steps} 歩、${meta.passes} パス)`);
   const { record, results, flicker, scales } = await withLab(async (lab) => {
-    const diffuse = await captureCandidates(lab, outDir, entries, candidates, references);
-    // 費用。コンパイルを済ませてから、bay で段を交互に測る。
+    const diffuse = await captureCandidates(lab, outDir, entries, candidates, seedGroups, references);
+    // 費用。コンパイルを済ませてから、bay で段を交互に測る。同じ段の候補は 1 回の計測を分け合う。
     await lab.show(ENTRIES[0]);
     await lab.capturePng();
-    const costs = await lab.measureTiers(candidates.map((c) => c.tier), 3);
+    const tiers = [...new Set(candidates.map((c) => JSON.stringify(c.tier)))];
+    const tierCosts = await lab.measureTiers(tiers.map((tier) => JSON.parse(tier)), 3);
+    const costs = candidates.map((c) => tierCosts[tiers.indexOf(JSON.stringify(c.tier))]);
     const record = { reference: name, entries: entries.map((e) => e.key), candidates, costs, diffuse };
     writeFileSync(recordPathOf(outDir), JSON.stringify(record));
     const scored = await scoreSaved(lab, outDir, record, references, outDir);
@@ -124,36 +159,63 @@ async function rescore({ positional, options }) {
   console.log(`rescored: ${file}`);
 }
 
-// 撮影 entries ごとに候補 candidates を seed を変えて撮り、補正と表示を dir の captures/ へ書く。1 つ目の seed の
-// 拡散照度は、その場で負の画素と窓の比へ畳み、候補の label と撮影の key の表で返す。references は基準、lab は
-// withLab の口。
-async function captureCandidates(lab, dir, entries, candidates, references) {
+// 撮影 entries ごとに候補 candidates を seed の組 seedGroups(候補の label ごと)で撮り、補正と表示を dir の captures/ へ
+// 書く。組 0 の拡散照度の平均は、その場で負の画素と窓の比へ畳み、候補の label と撮影の key の表で返す。references は
+// 基準、lab は withLab の口。
+async function captureCandidates(lab, dir, entries, candidates, seedGroups, references) {
   mkdirSync(path.join(dir, 'captures'), { recursive: true });
   const diffuse = Object.fromEntries(candidates.map((c) => [c.label, {}]));
   for (const entry of entries) {
     await lab.show(entry);
+    const mask = maskOf(references[entry.key].radius, maskScaleOf(candidates));
     for (const candidate of candidates) {
-      await lab.setTier(candidate.tier);
-      for (const [index, seed] of seedsOf(entry).entries()) {
-        await lab.setSeed(seed);
-        const png = await lab.capturePng();
-        writeHalfFloats(correctionPathOf(dir, entry, candidate.label, index), await lab.readFloat('correction', 3));
-        if (index > 0 || entry.set === 'flicker') continue;
-        if (imagedOf(entry)) writeFileSync(displayPathOf(dir, entry, candidate.label), png);
-        const irradiance = await lab.readFloat('diffuse', 3);
-        const exposure = await lab.exposureFactor();
-        diffuse[candidate.label][entry.key] = diffuseSummaryOf(entry, irradiance, references[entry.key], exposure);
-      }
+      const groups = seedGroups[candidate.label].slice(0, groupCountOf(entry));
+      const summary = await captureCandidate(lab, dir, entry, candidate, groups, mask);
+      if (summary !== null) diffuse[candidate.label][entry.key] = summary;
     }
     console.log(`captured ${entry.key}`);
   }
   return diffuse;
 }
 
-// 撮影 entry の候補の拡散照度 irradiance(rgb)の、測る画素で負の画素の数と、そのうちアルベド 1 の面の表示
-// (露出係数 exposure)で 1 LSB 以上暗く出るものの数。解析値と照らす撮影では窓の比も。reference は基準。
-function diffuseSummaryOf(entry, irradiance, reference, exposure) {
-  const mask = maskOf(reference.radius);
+// 表示中の撮影 entry で候補 candidate を seed の組 groups ごとに撮り、組ごとのパスの補正の平均を dir の captures/ へ
+// 書く。目で見る画像を書く撮影では組 0 の表示も書く。組 0 の拡散照度の平均を測る画素の印 mask で畳んだ値
+// (diffuseSummaryOf)を返し、ちらつきのフレームでは null を返す。lab は withLab の口。
+async function captureCandidate(lab, dir, entry, candidate, groups, mask) {
+  const { label, tier, passes } = candidate;
+  const flickerFrame = entry.set === 'flicker';
+  const averagedDisplay = imagedOf(entry) && passes > 1;
+  // 絵の落ち着きを待つのは最初の seed だけで、以後は seed だけが変わる。
+  await lab.setTier(tier);
+  await lab.setSeed(groups[0][0]);
+  const png = await lab.capturePng();
+  // 組ごとに補正を積む。組 0 では拡散照度と、複数パスの表示のための HDR も積む。
+  const firstKinds = [...(flickerFrame ? [] : ['diffuse']), ...(averagedDisplay ? ['hdr'] : [])];
+  for (const [index, seeds] of groups.entries()) {
+    for (const seed of seeds) {
+      await lab.setSeed(seed);
+      await lab.render();
+      for (const kind of ['correction', ...(index === 0 ? firstKinds : [])]) await lab.accumulateFloat(kind, 3, index);
+    }
+  }
+  const sums = await lab.takeAccumulated('correction', groups.length);
+  for (const [index, sum] of sums.entries()) {
+    writeHalfFloats(correctionPathOf(dir, entry, label, index), sum.map((v) => v / passes));
+  }
+  if (imagedOf(entry)) {
+    const display = averagedDisplay
+      ? encodeRgbPng(WIDTH, HEIGHT, srgbCodesOfLinear(await lab.displayOfMean('hdr', passes))) : png;
+    writeFileSync(displayPathOf(dir, entry, label), display);
+  }
+  if (averagedDisplay) await lab.dropAccumulated('hdr');
+  if (flickerFrame) return null;
+  const [irradiance] = await lab.takeAccumulated('diffuse', 1);
+  return diffuseSummaryOf(entry, irradiance.map((v) => v / passes), mask, await lab.exposureFactor());
+}
+
+// 撮影 entry の候補の拡散照度 irradiance(rgb)の、測る画素の印 mask の立った画素で負の画素の数と、そのうちアルベド 1 の
+// 面の表示(露出係数 exposure)で 1 LSB 以上暗く出るものの数。解析値と照らす撮影では窓の比も。
+function diffuseSummaryOf(entry, irradiance, mask, exposure) {
   let [negatives, visibleNegatives] = [0, 0];
   for (let p = 0; p < WIDTH * HEIGHT; p++) {
     if (!mask[p]) continue;
@@ -170,16 +232,17 @@ function diffuseSummaryOf(entry, irradiance, reference, exposure) {
 // 8 倍にした画像をそこへ書く。lab は withLab の口。
 async function scoreSaved(lab, dir, record, references, imageDir) {
   const entries = recordEntriesOf(record);
+  const maskScale = maskScaleOf(record.candidates);
   const results = Object.fromEntries(record.candidates.map((c) => [c.label, {}]));
   const flickerFrames = Object.fromEntries(record.candidates.map((c) => [c.label, []]));
   for (const entry of entries) {
     const reference = references[entry.key];
     const q0 = reference.exposedCorrection;
-    const mask = maskOf(reference.radius);
+    const mask = maskOf(reference.radius, maskScale);
     const edges = edgesOf(reference.normal, reference.depth, WIDTH, HEIGHT, EDGE_NORMAL_COS, EDGE_DEPTH_LSB);
     const nearEdges = nearEdgesOf(edges, mask, WIDTH, HEIGHT, EDGE_BAND);
     for (const candidate of record.candidates) {
-      const qs = seedsOf(entry).map((_, index) => exposedCorrectionOf(
+      const qs = Array.from({ length: groupCountOf(entry) }, (_, index) => exposedCorrectionOf(
         readHalfFloats(correctionPathOf(dir, entry, candidate.label, index)), reference.meta.exposure));
       if (entry.set === 'flicker' || entry.key === 'bay') flickerFrames[candidate.label].push(qs[0]);
       if (entry.set === 'flicker') continue;
@@ -188,7 +251,7 @@ async function scoreSaved(lab, dir, record, references, imageDir) {
         const display = linearOfPng(readFileSync(displayPathOf(dir, entry, candidate.label)));
         writeImages(imageDir, candidate.label, entry.key, display, reference.display, await lab.falseStructureMap());
       }
-      // 2 つ目の seed の S、偏りと分散の R(s)、境界の漏れ、拡散照度から数えた値。
+      // 組 1 の S、2 つの組の平均(偏り)と差(分散)の R(s)、境界の漏れ、拡散照度から数えた値。
       const average = qs[0].map((plane, c) => plane.map((v, p) => (v + qs[1][c][p]) / 2));
       results[candidate.label][entry.key] = {
         ...metrics,
@@ -206,12 +269,13 @@ async function scoreSaved(lab, dir, record, references, imageDir) {
   const flickerReference = flickerEntries.every((e) => record.entries.includes(e.key))
     ? flickerEntries.map((e) => references[e.key].exposedCorrection) : null;
   const flicker = Object.fromEntries(record.candidates.map((c) => [c.label, flickerReference === null ? null
-    : flickerOf(flickerFrames[c.label], flickerReference, maskOf(references.bay.radius))]));
+    : flickerOf(flickerFrames[c.label], flickerReference, maskOf(references.bay.radius, maskScale))]));
   return { results, flicker };
 }
 
-// 偽の構造の地図で白になる、画素ごとの偽の構造の項の値。
-const FALSE_STRUCTURE_MAP_WHITE = 20;
+// 偽の構造の地図で白になる、画素ごとの偽の構造の項の値。実測: 比較 6484ec55c-threshold の bay-earth-open の中の段の
+// 均し(5×5)の、測る画素での 99 百分位 0.216。
+const FALSE_STRUCTURE_MAP_WHITE = 0.2;
 
 // 候補 label の撮影 key の、偽の構造の地図 falseStructureMap と、候補の表示 display の基準の表示 referenceDisplay
 // (どちらも線形 sRGB)からの差を Oklab で 8 倍にした画像を outDir へ書く。
@@ -234,11 +298,11 @@ function reportOf(record, results, flicker, scales) {
   const keysOf = (set) => entries.filter((e) => e.set === set).map((e) => e.key);
   const [tuning, checking, correctness] = ['tuning', 'checking', 'correctness'].map(keysOf);
   const measured = [...tuning, ...checking];
-  // 費用は近傍拡散補正の 4 行の和の、マテリアルの行に対する比。
-  const costOf = (row) => {
+  // 費用は近傍拡散補正の 4 行の和の、マテリアルの行に対する比の、候補のパス数 passes 倍。
+  const costOf = (row, passes) => {
     if (row === null) return null;
     const parts = ['照り返し源', '近傍拡散走査', '近傍拡散均し', '近傍拡散拡大', 'マテリアル'].map((label) => row[label]);
-    return parts.some((v) => v === null) ? null : (parts[0] + parts[1] + parts[2] + parts[3]) / parts[4];
+    return parts.some((v) => v === null) ? null : passes * (parts[0] + parts[1] + parts[2] + parts[3]) / parts[4];
   };
   const summary = candidates.map((candidate, i) => {
     const rows = results[candidate.label];
@@ -246,8 +310,8 @@ function reportOf(record, results, flicker, scales) {
     const byScale = (field) => scales.map((_, j) => fixed(mean(tuning.map((k) => rows[k][field][j])), 2)).join(' / ');
     const sum = (field) => measured.reduce((total, k) => total + rows[k][field], 0);
     return [
-      candidate.label, fixed(costOf(costs[i]), 2), avg(tuning, 'score', 5), avg(tuning, 'noiseTerm', 5),
-      avg(tuning, 'g', 5), avg(checking, 'score', 5), avg(tuning, 'scoreSecond', 5),
+      candidate.label, fixed(costOf(costs[i], candidate.passes), 2), avg(tuning, 'score', 5),
+      avg(tuning, 'noiseTerm', 5), avg(tuning, 'g', 5), avg(checking, 'score', 5), avg(tuning, 'scoreSecond', 5),
       avg(measured, 'leak', 5), fixed(flicker[candidate.label], 5), `${sum('negatives')} / ${sum('visibleNegatives')}`,
       byScale('r'), byScale('biasR'), byScale('varianceR'),
     ];
@@ -267,7 +331,7 @@ function reportOf(record, results, flicker, scales) {
   });
   return [
     '## 候補', '',
-    ...table(['候補', '費用 / マテリアル', 'S 調整用', '雑音 N(S の外)', 'G', 'S 確認用', 'S の 2 つ目の seed',
+    ...table(['候補', '費用 / マテリアル', 'S 調整用', '雑音 N(S の外)', 'G', 'S 確認用', 'S の 2 つ目の組',
       '境界の漏れ', 'ちらつき', '負の画素 / 見える', 'R(s)', 'R(s) 偏り', 'R(s) 分散'], summary),
     '', '## 撮影ごとの S', '', ...table(['候補', ...measured], perShot),
     '', '## スケールごとの S の内訳(調整用の平均)', '', ...table(['候補', ...scales.map((s) => `${s} px`)], perScale),
