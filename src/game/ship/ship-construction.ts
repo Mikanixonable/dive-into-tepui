@@ -8,7 +8,8 @@ import {
 } from './ship-construction-rules';
 import { constructionCandidate, hitsConstructionCandidate, type ConstructionCandidate } from './ship-construction-candidates';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
-import { createShipModuleInstance } from './ship-module-instance';
+import { ShipConstructionEdits } from './ship-construction-edits';
+import { CommandCompletion } from '../command-completion';
 import type * as THREE from 'three/webgpu';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
@@ -20,14 +21,26 @@ import type {
   ConstructionConfirmationPort, ConstructionSlotState, ShipConstructionPanelModel,
 } from './ship-construction-types';
 import type { Notifier } from '../../hud/notifier';
+import type { CommandQueue } from '../command-queue';
+import type { ShipConstructionDraftState } from './ship-dock-state';
 import type { ModularShip } from './modular-ship';
 
-interface ConstructionDraft {
+interface ConstructionDraft extends ShipConstructionDraftState {
+  readonly ship: ModularShip;
+}
+
+interface ConstructionSession {
   readonly ship: ModularShip;
   readonly dockId: string;
-  readonly addedIds: string[];
-  axialTailId: string;
-  firstConnectionId: string | null;
+  readonly edits: ShipConstructionEdits;
+}
+
+type ConstructionAction = 'begin' | 'place' | 'remove' | 'finish' | 'discard';
+
+interface PendingConstructionCommand {
+  readonly session: ConstructionSession;
+  readonly action: ConstructionAction;
+  readonly completion: CommandCompletion;
 }
 
 let nextConstructionModule = 1;
@@ -47,8 +60,8 @@ export interface ShipConstructionPanelPort {
 export class ShipConstruction implements OverlayHandle {
   private readonly ghost: ShipGhostView;
   private readonly guide: DockSnapGuideView;
-  private readonly drafts = new Map<string, ConstructionDraft>();
-  private current: ConstructionDraft | null = null;
+  private current: ConstructionSession | null = null;
+  private pending: PendingConstructionCommand[] = [];
   private definitionId = 'cockpit-standard';
   private selectedSlotId = 'axial';
   private previousForceCurrent = false;
@@ -56,6 +69,7 @@ export class ShipConstruction implements OverlayHandle {
   // 建造規則の結果を、既存のHUD・入力・表示時刻の各装置へ接続する。
   public constructor(
     scene: THREE.Scene,
+    private readonly commands: CommandQueue,
     private readonly panel: ShipConstructionPanelPort,
     private readonly overlayManager: OverlayManager,
     private readonly displayWindow: DisplayWindowManager,
@@ -90,22 +104,9 @@ export class ShipConstruction implements OverlayHandle {
       throw new Error('空いている健全な接舷部が必要です');
     }
     if (this.current !== null) this.close();
-    const key = this.key(ship, dockId);
-    let draft = this.drafts.get(key);
-    if (draft === undefined) {
-      let saved = ship.docks.constructionDraft(dockId);
-      if (saved === null) {
-        ship.docks.beginBuilding(ship.assembly, dockId);
-        saved = ship.docks.constructionDraft(dockId);
-      }
-      if (saved === null) throw new Error(`construction draft missing: ${dockId}`);
-      draft = {
-        ship, dockId, addedIds: [...saved.addedIds],
-        axialTailId: saved.axialTailId, firstConnectionId: saved.firstConnectionId,
-      };
-      this.drafts.set(key, draft);
-    }
-    this.current = draft;
+    const session: ConstructionSession = { ship, dockId, edits: new ShipConstructionEdits(ship, dockId) };
+    this.current = session;
+    this.submit(session, 'begin', () => session.edits.begin());
     this.normalizeSelection();
     this.focusDock?.(ship);
     this.previousForceCurrent = this.displayWindow.current.forceCurrent;
@@ -116,6 +117,7 @@ export class ShipConstruction implements OverlayHandle {
     this.syncPanel();
   }
 
+  // 建造パネル内の操作かを判定する。
   public contains(target: Node): boolean { return this.panel.element.contains(target); }
 
   // ESC では未完成枝を保持してセッションだけ閉じる。
@@ -153,6 +155,7 @@ export class ShipConstruction implements OverlayHandle {
 
   // このフレームの全候補をガイドへ、選択中の候補だけをゴーストへ宣言する。
   public sync(camera: CameraFrame): void {
+    this.syncCommandResults();
     if (this.current === null) {
       this.ghost.sync(null);
       this.guide.syncAll([]);
@@ -196,56 +199,35 @@ export class ShipConstruction implements OverlayHandle {
     this.panel.onDiscard = null;
   }
 
-  // 選択中のスロットへ部品を追加し、保存ドラフトと船体物性を更新する。
+  // 選択時点の部品とスロットを捕捉し、配置の命令を受け付ける。
   private place(): void {
-    const draft = this.current;
+    const session = this.current;
     const candidate = this.selectedCandidate();
-    if (draft === null || candidate === null || !candidate.placement.valid) {
+    if (session === null || candidate === null || !candidate.placement.valid) {
       if (candidate?.placement.reason) this.notifier.hint(candidate.placement.reason, undefined, 'warn');
       return;
     }
-    let id: string;
-    do id = `construction-${nextConstructionModule++}`;
-    while (draft.ship.assembly.module(id) !== null);
-    draft.ship.assembly.addModule(
-      createShipModuleInstance(SHIP_MODULE_CATALOG.require(this.definitionId), id),
-      candidate.placement.parentId, candidate.placement.transform, candidate.placement.kind,
-    );
-    const connection = draft.ship.assembly.graph.find(edge => edge.childId === id);
-    if (connection === undefined) throw new Error(`construction connection missing: ${id}`);
-    if (draft.firstConnectionId === null) draft.firstConnectionId = connection.id;
-    draft.addedIds.push(id);
-    if (candidate.placement.kind === 'axial') draft.axialTailId = id;
-    this.persistDraft(draft);
-    this.synchronizeShip(draft.ship);
-    this.normalizeSelection();
-    this.syncPanel();
+    const definitionId = this.definitionId;
+    const slotId = this.selectedSlotId;
+    this.submit(session, 'place', () => {
+      let id: string;
+      do id = `construction-${nextConstructionModule++}`;
+      while (session.ship.assembly.module(id) !== null);
+      session.edits.place(definitionId, slotId, id);
+    });
   }
 
-  // 末尾追加の逆順を保ち、側面枝を壊さず最後の追加部品だけを撤去する。
+  // 最後に追加した部品を撤去する命令を受け付ける。
   private removeLast(): void {
-    const draft = this.current;
-    const id = draft?.addedIds.at(-1);
-    if (draft === null || id === undefined) return;
-    draft.ship.assembly.removeModule(id);
-    draft.addedIds.pop();
-    const axial = [...draft.addedIds].reverse().find(moduleId => {
-      const edge = draft.ship.assembly.graph.find(connection => connection.childId === moduleId);
-      return edge?.kind === 'axial';
-    });
-    draft.axialTailId = axial ?? draft.dockId;
-    draft.firstConnectionId = draft.addedIds.length === 0
-      ? null
-      : draft.ship.assembly.graph.find(edge => edge.childId === draft.addedIds[0])?.id ?? null;
-    this.persistDraft(draft);
-    this.synchronizeShip(draft.ship);
-    this.normalizeSelection();
-    this.syncPanel();
+    const session = this.current;
+    if (session !== null) this.submit(session, 'remove', () => session.edits.removeLast());
   }
 
   // 物資化の結果だけを確認オーバーレイへ送り、確定処理は別の一回きりの命令へ分ける。
   private finish(): void {
-    const draft = this.current;
+    const session = this.current;
+    if (session === null) return;
+    const draft = this.currentDraft();
     if (draft === null || draft.firstConnectionId === null) return;
     const branch = draft.ship.assembly.clone().splitAt(draft.firstConnectionId)[1];
     if (branch.role === 'material') {
@@ -253,52 +235,42 @@ export class ShipConstruction implements OverlayHandle {
         title: '操縦不能な物資として完成',
         message: 'この枝にはコックピットがないため、操縦不能な物資として分離されます。続けますか？',
         confirmLabel: '物資として完成', destructive: true,
-      }, (confirmed) => { if (confirmed) this.finishConfirmed(); });
+      }, (confirmed) => { if (confirmed) this.finishConfirmed(session); });
       return;
     }
-    this.finishConfirmed();
+    this.finishConfirmed(session);
   }
 
-  // 確認済みの枝だけを docking edge と別の建造接続へ確定する。
-  private finishConfirmed(): void {
-    const draft = this.current;
-    if (draft === null || draft.firstConnectionId === null) return;
-    draft.ship.assembly.completeConstructionConnection(draft.firstConnectionId);
-    draft.ship.docks.finishBuilding(draft.dockId);
-    this.drafts.delete(this.key(draft.ship, draft.dockId));
-    this.synchronizeShip(draft.ship);
-    this.close();
+  // 確認したセッションの枝を完成させる命令を受け付ける。
+  private finishConfirmed(session: ConstructionSession): void {
+    this.submit(session, 'finish', () => session.edits.finish());
   }
 
   // 追加部品がある場合だけ、破棄対象と復帰状態を説明して確認する。
   private discard(): void {
-    const draft = this.current;
+    const session = this.current;
+    if (session === null) return;
+    const draft = this.currentDraft();
     if (draft === null) return;
     if (draft.addedIds.length > 0) {
       this.confirmation.request({
         title: '建造中の船体を破棄',
         message: '建造中に追加した部品をすべて破棄し、ドックを空き状態へ戻します。続けますか？',
         confirmLabel: '船体を破棄', destructive: true,
-      }, (confirmed) => { if (confirmed) this.discardConfirmed(); });
+      }, (confirmed) => { if (confirmed) this.discardConfirmed(session); });
       return;
     }
-    this.discardConfirmed();
+    this.discardConfirmed(session);
   }
 
-  // 確認済みの追加部品を逆順に外し、ドックを空き状態へ戻す。
-  private discardConfirmed(): void {
-    const draft = this.current;
-    if (draft === null) return;
-    for (const id of [...draft.addedIds].reverse()) draft.ship.assembly.removeModule(id);
-    draft.ship.docks.finishBuilding(draft.dockId);
-    this.drafts.delete(this.key(draft.ship, draft.dockId));
-    this.synchronizeShip(draft.ship);
-    this.close();
+  // 確認したセッションの追加部品を破棄する命令を受け付ける。
+  private discardConfirmed(session: ConstructionSession): void {
+    this.submit(session, 'discard', () => session.edits.discard());
   }
 
   // 現在の定義に対する全候補のワールド表示情報を組む。
   private candidates(): readonly ConstructionCandidate[] {
-    const draft = this.current;
+    const draft = this.currentDraft();
     if (draft === null) return [];
     const slots = this.slots(draft);
     const definition = SHIP_MODULE_CATALOG.require(this.definitionId);
@@ -325,7 +297,7 @@ export class ShipConstruction implements OverlayHandle {
 
   // 撤去や保存データの変化で選択先が消えたとき、軸候補へ安全に戻す。
   private normalizeSelection(): void {
-    const draft = this.current;
+    const draft = this.currentDraft();
     if (draft === null) return;
     const slots = this.slots(draft);
     if (slots.some(slot => slot.id === this.selectedSlotId)) return;
@@ -334,18 +306,41 @@ export class ShipConstruction implements OverlayHandle {
 
   // パネルから来たスロットIDが現在のドラフトに属する場合だけ選択を変える。
   private selectSlot(slotId: string): void {
-    if (this.current === null) return;
-    if (this.slots(this.current).some(slot => slot.id === slotId)) this.selectedSlotId = slotId;
+    const draft = this.currentDraft();
+    if (draft !== null && this.slots(draft).some(slot => slot.id === slotId)) this.selectedSlotId = slotId;
   }
 
-  private synchronizeShip(ship: ModularShip): void { ship.synchronizeAssemblyState(); }
+  // 船側の予約から、表示に使う建造枝を読み取る。予約開始前・終了後はnull。
+  private currentDraft(): ConstructionDraft | null {
+    const session = this.current;
+    const saved = session?.edits.draft ?? null;
+    return session === null || saved === null ? null : { ...saved, ship: session.ship };
+  }
 
-  // セーブ形式のドラフトへ、追加順と接続根を一度に書き戻す。
-  private persistDraft(draft: ConstructionDraft): void {
-    draft.ship.docks.updateConstructionDraft({
-      dockId: draft.dockId, addedIds: draft.addedIds,
-      axialTailId: draft.axialTailId, firstConnectionId: draft.firstConnectionId,
-    });
+  // 応答を操作途中の状態として保持し、モデル編集を次の進行へ送る。
+  private submit(session: ConstructionSession, action: ConstructionAction, apply: () => void): void {
+    if (this.pending.some(command => command.session === session
+      && (command.action === 'finish' || command.action === 'discard'))) return;
+    const completion = new CommandCompletion();
+    this.pending.push({ session, action, completion });
+    this.commands.submitWithCompletion(apply, completion);
+  }
+
+  // 適用済みの応答を表示へ反映する。再開した別セッションの開閉には影響させない。
+  private syncCommandResults(): void {
+    for (const command of this.pending) {
+      const state = command.completion.state;
+      if (state.kind === 'pending') continue;
+      if (state.kind === 'failed') {
+        this.notifier.hint(state.error instanceof Error ? state.error.message : '建造操作に失敗しました', undefined, 'warn');
+        if (command.action === 'begin' && this.current === command.session) this.close();
+      } else if ((command.action === 'finish' || command.action === 'discard')
+        && this.current === command.session) {
+        this.close();
+      }
+    }
+    // 適用待ちの応答を次の同期へ残す。
+    this.pending = this.pending.filter(command => command.completion.state.kind === 'pending');
   }
 
   // 物理のECI座標を、このフレームのfloating origin表示座標へ写す。
@@ -356,7 +351,7 @@ export class ShipConstruction implements OverlayHandle {
 
   // ゲーム状態を構造化したHUD snapshotへ変換し、無効候補も必ず表示へ残す。
   private syncPanel(): void {
-    const draft = this.current;
+    const draft = this.currentDraft();
     if (draft === null) return;
     this.normalizeSelection();
     const slots = this.slots(draft);
@@ -390,8 +385,6 @@ export class ShipConstruction implements OverlayHandle {
       canRemove: draft.addedIds.length > 0, canFinish: draft.firstConnectionId !== null,
     });
   }
-
-  private key(ship: ModularShip, dockId: string): string { return `${ship.id}:${dockId}`; }
 }
 
 // 初期配置される燃料を含めた、現在枝への追加後の表示見積りを作る。
