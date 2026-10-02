@@ -1,11 +1,16 @@
 // ドック起点の建造セッションを持ち、ゲームの配置規則をHUD・ゴースト・候補ガイドへ同期する。
-import type * as THREE from 'three/webgpu';
-import { LOCAL_FORWARD, qMul, qRotate } from '../../math/quat';
-import { add, dot, scale, sub, v3, type Vec3 } from '../../math/vec3';
-import type { Ray } from '../../math/ray';
-import type { CameraFrame } from '../../render/camera/camera-frame';
+import { v3, type Vec3 } from '../../math/vec3';
 import { DockSnapGuideView, type DockSnapGuideDisplay } from '../../render/dynamic/ship/dock-snap-guide-view';
 import { ShipGhostView } from '../../render/dynamic/ship/ship-ghost-view';
+import {
+  constructionSlotId, enumerateConstructionSlots, placementForSlot, slotState,
+  type ConstructionSlot,
+} from './ship-construction-rules';
+import { constructionCandidate, hitsConstructionCandidate, type ConstructionCandidate } from './ship-construction-candidates';
+import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
+import { createShipModuleInstance } from './ship-module-instance';
+import type * as THREE from 'three/webgpu';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import type { Input } from '../../input/input';
 import type { Viewport } from '../../render/viewport';
@@ -15,14 +20,6 @@ import type {
   ConstructionConfirmationPort, ConstructionSlotState, ShipConstructionPanelModel,
 } from './ship-construction-types';
 import type { Notifier } from '../../hud/notifier';
-import type { ModuleTransform } from './ship-assembly';
-import { sideMountRadius } from './ship-assembly-transform';
-import {
-  constructionSlotId, enumerateConstructionSlots, placementForSlot, slotState,
-  type ConstructionPlacement, type ConstructionSlot,
-} from './ship-construction-rules';
-import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
-import { createShipModuleInstance } from './ship-module-instance';
 import type { ModularShip } from './modular-ship';
 
 interface ConstructionDraft {
@@ -31,15 +28,6 @@ interface ConstructionDraft {
   readonly addedIds: string[];
   axialTailId: string;
   firstConnectionId: string | null;
-}
-
-interface ConstructionCandidate {
-  readonly slot: ConstructionSlot;
-  readonly placement: ConstructionPlacement;
-  readonly centerEci: Vec3;
-  readonly rotationEci: ModuleTransform['rotation'];
-  readonly guideEci: Vec3;
-  readonly guideRadius: number;
 }
 
 let nextConstructionModule = 1;
@@ -147,7 +135,9 @@ export class ShipConstruction implements OverlayHandle {
     if (this.current === null) return false;
     input.takeClicks((point) => {
       const ray = camera.rayThroughScreen(point.x, point.y, viewport);
-      const hit = this.candidates().find(candidate => this.hitsCandidate(ray, candidate));
+      const hit = this.candidates().find(candidate => hitsConstructionCandidate(
+        ray, candidate, candidate.slot.id === this.selectedSlotId,
+      ));
       if (hit === undefined) return true;
       if (this.selectedSlotId !== hit.slot.id) {
         this.selectSlot(hit.slot.id);
@@ -311,35 +301,14 @@ export class ShipConstruction implements OverlayHandle {
     const draft = this.current;
     if (draft === null) return [];
     const slots = this.slots(draft);
+    const definition = SHIP_MODULE_CATALOG.require(this.definitionId);
     return slots.flatMap(slot => {
-      const candidate = this.candidateFor(draft, slot);
+      const candidate = constructionCandidate(
+        draft.ship.assembly, slot, definition,
+        draft.ship.motion.state.r, draft.ship.motion.att.q, draft.ship.motion.centerOffset,
+      );
       return candidate === null ? [] : [candidate];
     });
-  }
-
-  // 純粋な接続規則へ時刻層の姿勢と原点を適用し、描画可能な候補へ変換する。
-  private candidateFor(draft: ConstructionDraft, slot: ConstructionSlot): ConstructionCandidate | null {
-    const definition = SHIP_MODULE_CATALOG.require(this.definitionId);
-    const placement = placementForSlot(draft.ship.assembly, slot, definition);
-    const parentDefinition = draft.ship.assembly.definition(slot.parentId);
-    const parentWorld = draft.ship.assembly.worldTransformOf(slot.parentId);
-    if (parentDefinition === null || parentWorld === null) return null;
-    const assemblyPosition = add(parentWorld.position, qRotate(parentWorld.rotation, placement.transform.position));
-    const assemblyRotation = qMul(parentWorld.rotation, placement.transform.rotation);
-    const root = sub(
-      draft.ship.motion.state.r,
-      qRotate(draft.ship.motion.att.q, draft.ship.motion.centerOffset),
-    );
-    const centerEci = add(root, qRotate(draft.ship.motion.att.q, assemblyPosition));
-    const rotationEci = qMul(draft.ship.motion.att.q, assemblyRotation);
-    const parentCenter = add(root, qRotate(draft.ship.motion.att.q, parentWorld.position));
-    const guideDirection = qRotate(qMul(draft.ship.motion.att.q, parentWorld.rotation), slot.direction);
-    const guideDistance = slot.kind === 'side' ? sideMountRadius(parentDefinition) : parentDefinition.length / 2;
-    return {
-      slot, placement, centerEci, rotationEci,
-      guideEci: add(parentCenter, scale(guideDirection, guideDistance)),
-      guideRadius: Math.min(parentDefinition.diameter, definition.diameter) / 2,
-    };
   }
 
   // パネル・クリック・ゴーストが同じ選択候補を見るための単一参照。
@@ -367,20 +336,6 @@ export class ShipConstruction implements OverlayHandle {
   private selectSlot(slotId: string): void {
     if (this.current === null) return;
     if (this.slots(this.current).some(slot => slot.id === slotId)) this.selectedSlotId = slotId;
-  }
-
-  // guide の円盤と同じ平面判定を入力側でも使い、見た目とクリック領域を一致させる。
-  private hitsCandidate(ray: Ray, candidate: ConstructionCandidate): boolean {
-    const normal = qRotate(candidate.rotationEci, LOCAL_FORWARD);
-    const denominator = dot(ray.dir, normal);
-    if (Math.abs(denominator) < 1e-9) return false;
-    const distance = dot(sub(candidate.guideEci, ray.origin), normal) / denominator;
-    if (distance < 0) return false;
-    const hit = add(ray.origin, scale(ray.dir, distance));
-    const offset = sub(hit, candidate.guideEci);
-    const radialSq = dot(offset, offset) - dot(offset, normal) ** 2;
-    const guideRadius = candidate.guideRadius * (candidate.slot.id === this.selectedSlotId ? 1.15 : 1);
-    return radialSq <= guideRadius ** 2;
   }
 
   private synchronizeShip(ship: ModularShip): void { ship.synchronizeAssemblyState(); }

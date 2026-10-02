@@ -7,6 +7,9 @@ import { createShipModuleInstance } from '../../src/game/ship/ship-module-instan
 import { enumerateConstructionSlots, placementForSlot } from '../../src/game/ship/ship-construction-rules';
 import { restoreConstructionDrafts, restoreDockedVessels } from '../../src/game/ship/ship-save';
 import { test } from '../harness';
+import { constructionCandidate, hitsConstructionCandidate } from '../../src/game/ship/ship-construction-candidates';
+import { LOCAL_FORWARD, LOCAL_UP, Q_IDENTITY, qFromAxisAngle, qRotate } from '../../src/math/quat';
+import { add, sub, scale, len, v3 } from '../../src/math/vec3';
 
 export function register(): void {
   test('ship construction: dock draft lifecycle is resumable and serializable', () => {
@@ -99,6 +102,43 @@ export function register(): void {
     assert.equal(SHIP_MODULE_CATALOG.require('cockpit-standard').name, 'コックピット');
     assert.equal(SHIP_MODULE_CATALOG.require('tank-6-main').category, 'fuel');
     assert.equal(SHIP_MODULE_CATALOG.require('weapon-gatling').category, 'combat');
+  });
+
+  test('ship construction: 候補位置は船体の平行移動と回転に従う', () => {
+    const assembly = createBasePreset();
+    const definition = SHIP_MODULE_CATALOG.require('cockpit-standard');
+    const slots = enumerateConstructionSlots(assembly, ['dock-left', 'main-tank'], 'dock-left');
+    const position = v3(700, -30, 80); // ECI [m]
+    const offset = v3(1, 2, 3); // 船体内重心 [m]
+    const rotation = qFromAxisAngle(LOCAL_UP, Math.PI / 3);
+    for (const slot of slots) {
+      const local = constructionCandidate(assembly, slot, definition, v3(), Q_IDENTITY, offset);
+      const world = constructionCandidate(assembly, slot, definition, position, rotation, offset);
+      assert.ok(local !== null && world !== null);
+      assert.ok(len(sub(world.centerEci, add(position, qRotate(rotation, local.centerEci)))) < 1e-9);
+      assert.ok(len(sub(world.guideEci, add(position, qRotate(rotation, local.guideEci)))) < 1e-9);
+      assert.equal(world.placement.valid, local.placement.valid);
+      assert.equal(world.guideRadius, local.guideRadius);
+    }
+  });
+
+  test('ship construction: 円盤は前方の交差を受け、背後と平行の視線を拒否する', () => {
+    const assembly = createBasePreset();
+    const slot = enumerateConstructionSlots(assembly, ['dock-left'], 'dock-left')[0];
+    assert.ok(slot !== undefined);
+    const candidate = constructionCandidate(
+      assembly, slot, SHIP_MODULE_CATALOG.require('cockpit-standard'),
+      v3(700, -30, 80), qFromAxisAngle(LOCAL_UP, Math.PI / 3), v3(1, 2, 3),
+    );
+    assert.ok(candidate !== null);
+    const normal = qRotate(candidate.rotationEci, LOCAL_FORWARD);
+    const origin = add(candidate.guideEci, scale(normal, 10));
+    assert.equal(hitsConstructionCandidate({ origin, dir: scale(normal, -1) }, candidate, false), true);
+    assert.equal(hitsConstructionCandidate({ origin, dir: normal }, candidate, false), false);
+    const tangent = qRotate(candidate.rotationEci, LOCAL_UP);
+    assert.equal(hitsConstructionCandidate({ origin, dir: tangent }, candidate, false), false);
+    const outside = add(origin, scale(tangent, candidate.guideRadius * 2));
+    assert.equal(hitsConstructionCandidate({ origin: outside, dir: scale(normal, -1) }, candidate, false), false);
   });
 
   test('ship construction: 保存ドラフトは追加枝と重複IDを検証する', () => {
