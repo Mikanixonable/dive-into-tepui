@@ -3,11 +3,12 @@ import { PropertyWindow } from '../../hud/windows/property-window';
 import { ModularShip } from '../ship/modular-ship';
 import { dockingEligibility } from '../ship/ship-docking';
 import { moduleContent, moduleItems, type ModuleInspectionAction } from './module-inspection';
+import { CommandCompletion } from '../command-completion';
+import { DockingEligibilityError, type ModuleCommands, type ModuleCommandAction } from './module-commands';
 import type { PropertyWindowItem } from '../../hud/windows/property-window-content';
 import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
 import type { EntityRoster } from '../dynamic/entity-roster';
-import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { Notifier } from '../../hud/notifier';
 import type { ShipConstruction } from '../ship/ship-construction';
 import type { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
@@ -32,6 +33,13 @@ interface ModuleWindowEntry {
   candidates: readonly DockingCandidate[] | null;
 }
 
+interface PendingModuleAction {
+  readonly entry: ModuleWindowEntry;
+  readonly action: ModuleCommandAction | 'dockCandidate';
+  readonly completion: CommandCompletion;
+  readonly closeOnSuccess: readonly ModuleWindowEntry[];
+}
+
 export interface ModuleWindowOpener {
   open(ship: ModularShip, moduleId: string, clientX: number, clientY: number): void;
   openAtDefault(ship: ModularShip, moduleId: string): void;
@@ -39,11 +47,13 @@ export interface ModuleWindowOpener {
 
 export class ModuleWindows implements ModuleWindowOpener {
   private readonly windows = new Map<string, ModuleWindowEntry>();
+  private readonly pending = new Set<PendingModuleAction>();
 
   public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly controlSelection: ControlSelection,
-    private readonly roster: EntityRoster & EntityRegistry,
+    private readonly roster: EntityRoster,
+    private readonly commands: ModuleCommands,
     private readonly construction: ShipConstruction,
     private readonly confirmation: ConfirmationOverlay,
     private readonly enterCombatView: () => boolean,
@@ -69,17 +79,13 @@ export class ModuleWindows implements ModuleWindowOpener {
     win.onSelect = (act) => {
       if (!ship.inspection.hasModule(moduleId)) return;
       if (act === 'deployModule' || act === 'stowModule') {
-        ship.inspection.setModuleDeployment(moduleId, act === 'deployModule');
+        this.submit(entry, act);
       } else if (act === 'toggleBoosterModule') {
-        ship.toggleBoosterIgnition(moduleId);
+        this.submit(entry, act);
       } else if (act === 'decoupleModule') {
         this.confirmation.open({ message: `${moduleId} を作動させますか？` }, (confirmed) => {
           if (!confirmed) return;
-          try {
-            ship.decouple(moduleId, this.roster);
-          } catch (error) {
-            this.hud.hint(error instanceof Error ? error.message : '分離できません', undefined, 'warn');
-          }
+          this.submit(entry, 'decoupleModule');
         });
       } else if (act === 'dockModule') {
         if (entry.candidates === null) this.showDockCandidates(entry);
@@ -92,22 +98,9 @@ export class ModuleWindows implements ModuleWindowOpener {
         const index = Number(act.slice('dockCandidate:'.length));
         const candidate = entry.candidates?.[index];
         if (candidate === undefined) return;
-        const eligibility = !ship.motion.alive || !candidate.ship.motion.alive
-          || !this.roster.all().includes(candidate.ship)
-          ? { eligible: false, reasons: ['対象船体が存在しません'] }
-          : dockingEligibility(ship, moduleId, candidate.ship, candidate.moduleId);
-        if (!eligibility.eligible) {
-          this.hud.hint(eligibility.reasons[0] ?? '接舷条件を満たしていません', undefined, 'warn');
-          this.showDockCandidates(entry);
-          this.syncEntry(entry);
-          return;
-        }
-        try {
-          ship.dock(candidate.ship, moduleId, candidate.moduleId, this.controlSelection);
-          this.close();
-        } catch (error) {
-          this.hud.hint(error instanceof Error ? error.message : '接舷できません', undefined, 'warn');
-        }
+        const completion = new CommandCompletion();
+        this.pending.add({ entry, action: 'dockCandidate', completion, closeOnSuccess: [...this.windows.values()] });
+        this.commands.dock(ship, moduleId, candidate.ship, candidate.moduleId, completion);
       } else if (act === 'startConstructionModule') {
         try {
           if (!this.enterCombatView()) throw new Error('戦闘ビューへ切り替えられません');
@@ -121,17 +114,13 @@ export class ModuleWindows implements ModuleWindowOpener {
         if (this.undockProducesMaterial(ship, moduleId)) {
           this.confirmation.open(
             { message: 'コックピットがないため操縦不能な物資として分離します。続けますか？' },
-            (confirmed) => { if (confirmed) this.undock(ship, moduleId); },
+            (confirmed) => { if (confirmed) this.submit(entry, 'undockModule'); },
           );
-        } else this.undock(ship, moduleId);
+        } else this.submit(entry, 'undockModule');
       } else if (act === 'repairDockedModules') {
-        try {
-          ship.repairAtDock(moduleId);
-        } catch (error) {
-          this.hud.hint(error instanceof Error ? error.message : '修理できません', undefined, 'warn');
-        }
+        this.submit(entry, act);
       } else if (act === 'selectCockpitModule') {
-        if (!ship.capabilities.selectOperatingCockpit(moduleId)) this.hud.hint('全損したコックピットは選択できません', undefined, 'warn');
+        this.submit(entry, act);
       }
     };
     win.onClose = () => { this.windows.delete(key); };
@@ -154,6 +143,7 @@ export class ModuleWindows implements ModuleWindowOpener {
 
   // 開いている各ウィンドウの値を最新化する。操作対象から外れた艦・失われたモジュールは閉じる。
   public sync(): void {
+    this.syncCompletions();
     for (const entry of [...this.windows.values()]) {
       const { ship, moduleId } = entry;
       const module = ship.assembly.module(moduleId);
@@ -232,13 +222,47 @@ export class ModuleWindows implements ModuleWindowOpener {
     return ship.assembly.clone().splitAt(connection.id)[1].role === 'material';
   }
 
-  // 接続を解除し、成功した窓を閉じる。失敗は通知する。
-  private undock(ship: ModularShip, moduleId: string): void {
-    try {
-      ship.undock(moduleId, this.roster);
-      this.close();
-    } catch (error) {
-      this.hud.hint(error instanceof Error ? error.message : '発進できません', undefined, 'warn');
+  // 窓の対象と操作を捕捉し、応答を待つ。
+  private submit(entry: ModuleWindowEntry, action: ModuleCommandAction): void {
+    const completion = new CommandCompletion();
+    this.pending.add({
+      entry, action, completion,
+      closeOnSuccess: action === 'undockModule' ? [...this.windows.values()] : [],
+    });
+    this.commands.submit(entry.ship, entry.moduleId, action, completion);
+  }
+
+  // 窓を閉じた後も命令の成否を読み、通知や接舷候補へ反映する。
+  private syncCompletions(): void {
+    for (const pending of this.pending) {
+      const state = pending.completion.state;
+      if (state.kind === 'pending') continue;
+      this.pending.delete(pending);
+      if (state.kind === 'succeeded') {
+        for (const entry of pending.closeOnSuccess) {
+          if (this.windows.get(`${entry.ship.id}:${entry.moduleId}`) === entry) entry.win.close();
+        }
+        continue;
+      }
+      const error = state.error;
+      this.hud.hint(error instanceof Error ? error.message : this.failureText(pending.action), undefined, 'warn');
+      const { entry } = pending;
+      if (pending.action === 'dockCandidate' && error instanceof DockingEligibilityError
+        && this.windows.get(`${entry.ship.id}:${entry.moduleId}`) === entry) {
+        this.showDockCandidates(entry);
+      }
+    }
+  }
+
+  // 非Errorの失敗にも操作に対応する文面を付ける。
+  private failureText(action: PendingModuleAction['action']): string {
+    switch (action) {
+      case 'decoupleModule': return '分離できません';
+      case 'dockCandidate': return '接舷できません';
+      case 'undockModule': return '発進できません';
+      case 'repairDockedModules': return '修理できません';
+      case 'selectCockpitModule': return '全損したコックピットは選択できません';
+      default: return 'モジュールを操作できません';
     }
   }
 }

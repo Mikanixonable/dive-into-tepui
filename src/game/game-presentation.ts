@@ -38,6 +38,7 @@ import { cameraCommands } from './viewer/camera-commands';
 import { entityDisplayCommands } from './viewer/entity-display-commands';
 import { ObjectWindows } from './pickable/object-windows';
 import { ObjectWindowActions } from './pickable/object-window-actions';
+import { ModuleCommands } from './pickable/module-commands';
 import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
 import { FrameControls } from './hud/frame/frame-controls';
@@ -174,7 +175,8 @@ export class GamePresentation {
     );
     const viewSelectionCommands = viewCommands(commands, viewer.view);
     this.moduleWindows = new ModuleWindows(
-      hud, controlSelection, dynamicSystem, this.shipConstruction,
+      hud, controlSelection, dynamicSystem, new ModuleCommands(commands, controlSelection, dynamicSystem),
+      this.shipConstruction,
       this.confirmation,
       () => {
         if (!viewer.view.canSelect('combat')) return false;

@@ -431,6 +431,17 @@ export class ModularShip extends Ship implements Controllable {
     return this.connections.repairAtDock(portId);
   }
 
+  // 展開目標とモジュールの展開状態を、同じ操作で更新する。
+  public setModuleDeployment(moduleId: string, deployed: boolean): void {
+    const module = this.assembly.module(moduleId);
+    if (module === null || (module.kind !== 'radiator' && module.kind !== 'solar_panel')) return;
+    const sameKind = this.assembly.modules.filter(candidate => candidate.kind === module.kind);
+    const side = sameKind.findIndex(candidate => candidate.id === moduleId) === 0 ? 'up' : 'down';
+    if (module.kind === 'radiator') this.motion.radiator.setDeployed(side, deployed);
+    else this.motion.power.setDeployed(side, deployed);
+    this.assembly.setDeployment(moduleId, deployed ? 1 : 0);
+  }
+
   // assembly を直接編集する建造系の操作後に、質量特性・耐久値・能力・表示上の役割を一括更新する。
   public synchronizeAssemblyState(): void {
     if (this.assembly.size === 0) {
