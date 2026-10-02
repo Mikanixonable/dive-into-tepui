@@ -42,6 +42,7 @@ export const ENTRIES = [
   ...['bay-distance-0.5x', 'bay-distance-2.5x', 'bay-truss', 'bay-edge'].map((shot) => entry('checking', 'bay', shot)),
   entry('checking', 'groove-ladder', 'groove-ladder-check'),
   entry('checking', 'slope-fan', 'slope-fan-check'),
+  ...['cornell-box', 'cornell-box-grazing'].map((shot) => entry('checking', 'cornell-box', shot)),
   ...['bay-earthshine', 'bay-earth-overhead', 'bay-earth-corner', 'bay-moon-open', 'bay-moon-corner']
     .flatMap((shot) => Object.values(MODE).map((mode) => entry('correctness', 'bay', shot, mode))),
   entry('correctness', 'bounce-cosine', 'bounce-cosine'),
