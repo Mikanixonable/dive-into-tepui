@@ -169,7 +169,7 @@ export class GamePresentation {
     );
     this.confirmation = new ConfirmationOverlay(hud.overlayManager);
     this.shipConstruction = new ShipConstruction(
-      scene.scene, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
+      scene.scene, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
       hud, hud.constructionConfirm,
       (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
     );
