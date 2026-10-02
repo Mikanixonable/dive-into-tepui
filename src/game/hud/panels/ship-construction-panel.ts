@@ -1,18 +1,9 @@
-import { SHIP_MODULE_CATALOG } from '../../ship/ship-module-catalog';
-import type { ShipModuleCategory, ShipModuleDefinition } from '../../ship/ship-module-definition';
+import { Button, Meter } from '../../../hud/widgets';
+import { ShipConstructionCatalog } from './ship-construction-catalog';
+import { formatConstructionMetric, formatConstructionNumber } from './ship-construction-format';
 import type { ConstructionRole, ShipConstructionPanelModel } from '../../ship/ship-construction-types';
-import { Button, Meter, TabBar } from '../../../hud/widgets';
 import type { HudEls, HudElId } from '../hud-els';
-
-const CATEGORY_ITEMS: readonly (readonly [ShipModuleCategory, string])[] = [
-  ['command', '指令'], ['fuel', '燃料'], ['propulsion', '推進'], ['combat', '戦闘'], ['utility', '設備'],
-];
-
-const CATEGORY_BY_KIND: Readonly<Record<ShipModuleDefinition['kind'], ShipModuleCategory>> = {
-  cockpit: 'command', dock: 'command', docking_port: 'utility', tank: 'fuel', booster: 'propulsion',
-  thruster: 'propulsion', rcs: 'propulsion', weapon: 'combat', armor: 'combat', radiator: 'utility',
-  solar_panel: 'utility', decoupler: 'utility',
-};
+import type { ConstructionMetricUnit } from './ship-construction-format';
 
 const DEFAULT_CAPABILITIES = { thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0 };
 
@@ -31,8 +22,7 @@ interface CapabilityElements {
 
 type MobilePane = 'catalog' | 'status';
 
-// 建造セッションのスナップショットを、左右ペインと中央3D workspace に同期するUI。
-// 3D候補そのものは ShipConstruction が所有し、このクラスはゲーム状態を所有しない。
+// 建造セッションの表示と操作可能状態を同期し、建造操作を通知する。
 export class ShipConstructionPanel {
   public get element(): HTMLElement { return this.panel; }
   public onSelectionChange: ((definitionId: string) => void) | null = null;
@@ -57,21 +47,15 @@ export class ShipConstructionPanel {
   private readonly selectedModule: HTMLElement;
   private readonly selectedSlot: HTMLElement;
   private readonly completion: HTMLElement;
-  private readonly categoryRoot: HTMLElement;
-  private readonly moduleCards: HTMLElement;
+  private readonly catalog: ShipConstructionCatalog;
   private readonly slotList: HTMLElement;
-  private readonly categoryTabs: TabBar<ShipModuleCategory>;
   private readonly place: Button;
   private readonly remove: Button;
   private readonly finish: Button;
   private readonly discard: Button;
   private readonly catalogPaneButton: Button;
   private readonly statusPaneButton: Button;
-  private readonly definitions: readonly ShipModuleDefinition[] = SHIP_MODULE_CATALOG.all();
-  private activeCategory: ShipModuleCategory = 'command';
-  private moduleSignature = '';
   private slotSignature = '';
-  private readonly moduleButtons = new Map<string, Button>();
   private readonly slotButtons = new Map<string, Button>();
 
   // 静的 workspace へ既存Widgetを差し込み、動的なカタログ/候補の再構築点を固定する。
@@ -96,21 +80,17 @@ export class ShipConstructionPanel {
     this.selectedModule = els.get('construction-selected-module');
     this.selectedSlot = els.get('construction-selected-slot');
     this.completion = els.get('construction-completion');
-    this.categoryRoot = els.get('construction-category-tabs');
-    this.moduleCards = els.get('construction-module-cards');
     this.slotList = els.get('construction-slots');
 
     this.hpMeter = new Meter();
     this.hpMeter.element.classList.add('construction-hp-meter');
     els.get('construction-hp-meter').appendChild(this.hpMeter.element);
 
-    this.categoryTabs = new TabBar(CATEGORY_ITEMS, (category) => {
-      this.activeCategory = category;
-      this.moduleSignature = '';
-      this.renderModules('');
-    });
-    this.categoryTabs.element.classList.add('construction-category-tabs');
-    this.categoryRoot.appendChild(this.categoryTabs.element);
+    this.catalog = new ShipConstructionCatalog(
+      els.get('construction-category-tabs'),
+      els.get('construction-module-cards'),
+      definitionId => this.onSelectionChange?.(definitionId),
+    );
 
     const mobileTabs = els.get('construction-mobile-tabs');
     this.catalogPaneButton = new Button('部品', () => this.setMobilePane('catalog'), undefined, 'secondary');
@@ -137,14 +117,14 @@ export class ShipConstructionPanel {
     this.dockName.textContent = model.dockLabel;
     this.count.textContent = String(model.moduleCount);
 
-    this.mass.textContent = formatMetric(model.totalMass, 'kg');
+    this.mass.textContent = formatConstructionMetric(model.totalMass, 'kg');
     this.massPreview.textContent = previewText(model.totalMass, model.preview === null ? null : model.preview.mass, 'kg');
 
-    this.hp.textContent = `${format(model.hp)} / ${format(model.maxHp)}`;
+    this.hp.textContent = `${formatConstructionNumber(model.hp)} / ${formatConstructionNumber(model.maxHp)}`;
     this.hpPreview.textContent = previewText(model.maxHp, model.preview === null ? null : model.preview.maxHp, '');
     this.hpMeter.setRatio(model.maxHp > 0 ? model.hp / model.maxHp : 0);
     this.hpMeter.setDanger(model.maxHp > 0 && model.hp / model.maxHp < 0.3);
-    this.hpMeter.setLabel(`${format(model.hp)} / ${format(model.maxHp)}`);
+    this.hpMeter.setLabel(`${formatConstructionNumber(model.hp)} / ${formatConstructionNumber(model.maxHp)}`);
 
     this.syncMetric(this.capabilities.thrust, model.capabilities.thrust, model.preview === null ? null : model.preview.capabilities.thrust, 'N');
     this.syncMetric(this.capabilities.mainFuel, model.capabilities.mainFuel, model.preview === null ? null : model.preview.capabilities.mainFuel, '');
@@ -159,42 +139,12 @@ export class ShipConstructionPanel {
     this.selectedModule.textContent = model.selectedModuleName;
     this.selectedSlot.textContent = model.slots.find(slot => slot.id === model.selectedSlotId)?.label ?? '候補なし';
     this.completion.textContent = model.canFinish ? '建造終了可能' : '部品を1個以上配置';
-    this.categoryTabs.setSelected(this.activeCategory);
-    this.renderModules(model.selectedDefinitionId);
+    this.catalog.sync(model.selectedDefinitionId);
     this.renderSlots(model);
     this.place.setEnabled(model.canPlace);
     this.remove.setEnabled(model.canRemove);
     this.finish.setEnabled(model.canFinish);
     this.discard.setEnabled(model.visible);
-  }
-
-  // カテゴリが変わったときだけカードを組み直し、毎フレームの selection 変更ではDOMを壊さない。
-  private renderModules(selectedId: string): void {
-    const definitions = this.definitions.filter(definition => moduleCategory(definition) === this.activeCategory);
-    const signature = `${this.activeCategory}:${definitions.map(definition => definition.id).join(',')}`;
-    if (signature !== this.moduleSignature) {
-      this.moduleCards.replaceChildren();
-      this.moduleButtons.clear();
-      for (const definition of definitions) {
-        const card = document.createElement('div');
-        card.className = 'construction-module-card';
-        const button = new Button('', () => this.onSelectionChange?.(definition.id), undefined, 'secondary');
-        button.element.title = moduleDescription(definition);
-        button.element.replaceChildren(
-          textSpan('construction-module-name', definition.name),
-          textSpan(
-            'construction-module-spec',
-            `${formatDimension(definition.length)} m · ${formatMetric(definition.dryMass, 'kg')} · HP ${format(definition.maxHp)}`,
-          ),
-          textSpan('construction-module-ability', moduleCardAbility(definition)),
-        );
-        card.appendChild(button.element);
-        this.moduleCards.appendChild(card);
-        this.moduleButtons.set(definition.id, button);
-      }
-      this.moduleSignature = signature;
-    }
-    for (const [id, button] of this.moduleButtons) button.setOn(id === selectedId);
   }
 
   // 候補一覧に変更があった場合のみボタンを再生成し、選択状態は毎フレーム反映する。
@@ -226,17 +176,20 @@ export class ShipConstructionPanel {
     }
   }
 
+  // 小画面で表示するペインと切替ボタンの押下表示を揃える。
   private setMobilePane(pane: MobilePane): void {
     this.panel.dataset['mobilePane'] = pane;
     this.catalogPaneButton.setOn(pane === 'catalog');
     this.statusPaneButton.setOn(pane === 'status');
   }
 
-  private syncMetric(pair: MetricPair, value: number, preview: number | null, unit: MetricUnit): void {
-    pair.value.textContent = formatMetric(value, unit);
+  // 現在値と配置後の増減を対応する表示へ反映する。
+  private syncMetric(pair: MetricPair, value: number, preview: number | null, unit: ConstructionMetricUnit): void {
+    pair.value.textContent = formatConstructionMetric(value, unit);
     pair.preview.textContent = previewText(value, preview, unit);
   }
 
+  // 現在値と配置後差分の表示要素を組にする。
   private metricPair(els: HudEls, id: HudElId, previewId: HudElId): MetricPair {
     return {
       value: els.get(id),
@@ -255,37 +208,7 @@ function hiddenModel(): ShipConstructionPanelModel {
   };
 }
 
-// 旧形式の定義データにも表示カテゴリを適用できるよう、kind から既定カテゴリを導出する。
-function moduleCategory(definition: ShipModuleDefinition): ShipModuleCategory {
-  return definition.category ?? CATEGORY_BY_KIND[definition.kind];
-}
-
-// カードでは主要能力を1行に圧縮し、詳細は title へ残す。
-function moduleCardAbility(definition: ShipModuleDefinition): string {
-  const abilities = definition.abilities;
-  const values: string[] = [];
-  if (abilities.thrust !== undefined) values.push(`推力 ${formatMetric(abilities.thrust, 'N')}`);
-  if (abilities.fuelCapacity !== undefined) {
-    values.push(`${abilities.fuelKind === 'rcs' ? 'RCS' : '主'}燃料 ${formatMetric(abilities.fuelCapacity, '')}`);
-  }
-  if (abilities.powerGeneration !== undefined) values.push(`発電 ${formatMetric(abilities.powerGeneration, 'W')}`);
-  if (abilities.radiationArea !== undefined) values.push(`放熱 ${formatMetric(abilities.radiationArea, 'm²')}`);
-  if (abilities.weaponDamage !== undefined) values.push(`威力 ${format(abilities.weaponDamage)}`);
-  if (abilities.armorReduction !== undefined) values.push(`装甲 ${Math.round(abilities.armorReduction * 100)}%`);
-  return values.slice(0, 2).join(' · ') || '構造モジュール';
-}
-
-// ホバー/読み上げ用に、部品が持つ主要能力を短い説明へまとめる。
-function moduleDescription(definition: ShipModuleDefinition): string {
-  const abilities = definition.abilities;
-  const values: string[] = [];
-  if (abilities.thrust !== undefined) values.push(`推力 ${formatMetric(abilities.thrust, 'N')}`);
-  if (abilities.fuelCapacity !== undefined) values.push(`容量 ${formatMetric(abilities.fuelCapacity, '')}`);
-  if (abilities.powerGeneration !== undefined) values.push(`発電 ${formatMetric(abilities.powerGeneration, 'W')}`);
-  if (abilities.radiationArea !== undefined) values.push(`放熱面積 ${formatMetric(abilities.radiationArea, 'm²')}`);
-  return values.length === 0 ? definition.name : values.join(' / ');
-}
-
+// 指定した表示クラスと文言を持つラベルを作る。
 function textSpan(className: string, text: string): HTMLElement {
   const span = document.createElement('span');
   span.className = className;
@@ -293,38 +216,15 @@ function textSpan(className: string, text: string): HTMLElement {
   return span;
 }
 
-type MetricUnit = '' | 'kg' | 'N' | 'W' | 'm²';
-
-function previewText(current: number, preview: number | null, unit: MetricUnit): string {
+// 配置後の値と増減を示し、差分がないときは空文字を返す。
+function previewText(current: number, preview: number | null, unit: ConstructionMetricUnit): string {
   if (preview === null) return '';
   const delta = preview - current;
   if (Math.abs(delta) < 1e-9) return '';
-  return `→ ${formatMetric(preview, unit)} · ${delta > 0 ? '+' : ''}${formatMetric(delta, unit)}`;
-}
-
-function formatMetric(value: number, unit: MetricUnit): string {
-  const abs = Math.abs(value);
-  if (unit === 'N' && abs >= 1000) return `${formatDecimal(value / 1000)} kN`;
-  if (unit === 'W' && abs >= 1000) return `${formatDecimal(value / 1000)} kW`;
-  if (unit === 'm²') return `${formatDecimal(value)} m²`;
-  const body = format(value);
-  return unit === '' ? body : `${body} ${unit}`;
-}
-
-function formatDecimal(value: number): string {
-  return Math.abs(value) >= 100 ? Math.round(value).toLocaleString() : value.toFixed(1);
-}
-
-function formatDimension(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return `→ ${formatConstructionMetric(preview, unit)} · ${delta > 0 ? '+' : ''}${formatConstructionMetric(delta, unit)}`;
 }
 
 // role の内部語彙をUIの短い日本語ラベルへ変換する。
 function roleLabel(role: ConstructionRole): string {
   return role === 'ship' ? '船' : role === 'base' ? '基地' : '物資';
-}
-
-// 全ての建造数値の丸めと桁区切りを一箇所へ寄せる。
-function format(value: number): string {
-  return Math.round(value).toLocaleString();
 }
