@@ -1,20 +1,18 @@
-// 自艦の搭載モジュールに関するプロパティウィンドウ。モジュール1つにつき最大1枚を維持し、
-// 展開可能なモジュールの展開や収納を制御する。排他グループは持たせず、選択対象ウィンドウと共存させる。
+// 搭載モジュールごとのプロパティウィンドウの寿命と、確認・接舷候補の操作を管理する。
 import { PropertyWindow } from '../../hud/windows/property-window';
-import type { PropertyWindowContent, PropertyWindowItem } from '../../hud/windows/property-window-content';
-import type { MenuAction } from '../hud/windows/menu-actions';
+import { ModularShip } from '../ship/modular-ship';
+import { dockingEligibility } from '../ship/ship-docking';
+import { moduleContent, moduleItems, type ModuleInspectionAction } from './module-inspection';
+import type { PropertyWindowItem } from '../../hud/windows/property-window-content';
 import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
-import { ModularShip } from '../ship/modular-ship';
-import type { ShipModuleInstance } from '../ship/ship-module-instance';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { Notifier } from '../../hud/notifier';
-import { dockingEligibility } from '../ship/ship-docking';
 import type { ShipConstruction } from '../ship/ship-construction';
 import type { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 
-type ModuleAction = MenuAction | `dockCandidate:${number}`;
+type ModuleAction = ModuleInspectionAction | 'cancelDockCandidates' | `dockCandidate:${number}`;
 
 interface DockingCandidate {
   readonly ship: ModularShip;
@@ -37,46 +35,6 @@ interface ModuleWindowEntry {
 export interface ModuleWindowOpener {
   open(ship: ModularShip, moduleId: string, clientX: number, clientY: number): void;
   openAtDefault(ship: ModularShip, moduleId: string): void;
-}
-
-function wearText(module: ShipModuleInstance, maxHp: number): string {
-  const wear = maxHp > 0 ? Math.max(0, Math.min(1, 1 - module.hp / maxHp)) : 1;
-  return `${(wear * 100).toFixed(1)}% (${Math.floor(module.hp)} / ${maxHp})`;
-}
-
-// 展開・収納を選べるモジュールにだけ操作項目を出す。
-function moduleItems(ship: ModularShip, module: ShipModuleInstance): PropertyWindowItem<ModuleAction>[] {
-  if (module.kind === 'radiator' || module.kind === 'solar_panel') return [
-    { label: '展開', act: 'deployModule', keepOpen: true },
-    { label: '収納', act: 'stowModule', keepOpen: true },
-  ];
-  if (module.kind === 'booster') return [{
-    label: module.ignited ? '燃焼停止' : '点火', act: 'toggleBoosterModule', keepOpen: true,
-  }];
-  if (module.kind === 'decoupler') return [{ label: 'この接続を分離', act: 'decoupleModule' }];
-  if (module.kind === 'cockpit') return [{
-    label: ship.capabilities.operatingCockpitId === module.id ? '操作基準コックピット' : '操作基準に設定',
-    act: 'selectCockpitModule', keepOpen: true,
-  }];
-  if (module.kind === 'dock' || module.kind === 'docking_port') {
-    const status = ship.docks.status(ship.assembly, module.id);
-    return status === 'connected'
-      ? [
-        ...(module.kind === 'dock' && ship.assembly.isDockingPortOccupied(module.id)
-          ? [{ label: '接続船体を修理', act: 'repairDockedModules' as const, keepOpen: true }]
-          : []),
-        { label: '接続を解除して発進', act: 'undockModule' as const },
-      ]
-      : [
-        ...(module.kind === 'dock'
-          ? [{ label: status === 'building' ? '建造を再開' : '船体を建造', act: 'startConstructionModule' as const }]
-          : []),
-        ...(status === 'empty'
-          ? [{ label: '近傍船を接舷', act: 'dockModule' as const }]
-          : []),
-      ];
-  }
-  return [];
 }
 
 export class ModuleWindows implements ModuleWindowOpener {
@@ -104,7 +62,7 @@ export class ModuleWindows implements ModuleWindowOpener {
       return;
     }
     const win = new PropertyWindow<ModuleAction>(
-      clientX, clientY, this.content(ship, module), this.hud.overlayManager,
+      clientX, clientY, moduleContent(ship, module), this.hud.overlayManager,
     );
     const entry: ModuleWindowEntry = { win, ship, moduleId, candidates: null };
     this.windows.set(key, entry);
@@ -216,44 +174,12 @@ export class ModuleWindows implements ModuleWindowOpener {
     for (const entry of [...this.windows.values()]) entry.win.close();
   }
 
-  // ウィンドウ1枚ぶんの見出し・行・操作項目。
-  private content(ship: ModularShip, module: ShipModuleInstance): PropertyWindowContent<ModuleAction> {
-    const definition = ship.assembly.definition(module.id);
-    const label = definition?.name ?? module.definitionId;
-    const resource = module.kind === 'tank' || module.kind === 'booster'
-      ? [{
-        key: 'fuel', label: '燃料',
-        value: `${module.fuel.toFixed(1)} / ${definition?.abilities.fuelCapacity ?? 0}`,
-        presentation: 'major' as const,
-      }]
-      : [];
-    return {
-      title: label,
-      subtitle: `取り付け艦: ${ship.name}`,
-      kindCode: 'MOD',
-      kindLabel: 'MODULE',
-      monitorWhenClipped: true,
-      rows: [
-        {
-          key: 'wear', label: '損耗度', value: wearText(module, definition?.maxHp ?? 0),
-          presentation: 'hero',
-        },
-        {
-          key: 'temperature', label: '温度', value: `${module.temperature.toFixed(0)} K`,
-          presentation: 'major',
-        },
-        ...resource,
-        { key: 'kind', label: '種別', value: module.kind },
-        { key: 'ship', label: '取り付け艦', value: ship.name },
-      ],
-      items: moduleItems(ship, module),
-    };
-  }
-
+  // 接舷候補を再評価し、選択中の窓へ保持する。
   private showDockCandidates(entry: ModuleWindowEntry): void {
     entry.candidates = this.dockingCandidates(entry.ship, entry.moduleId);
   }
 
+  // 生存する別船体の接舷部を、接舷可否と距離順で列挙する。
   private dockingCandidates(ship: ModularShip, moduleId: string): readonly DockingCandidate[] {
     const candidates: DockingCandidate[] = [];
     for (const entity of this.roster.all()) {
@@ -271,9 +197,11 @@ export class ModuleWindows implements ModuleWindowOpener {
         });
       }
     }
+    // 操作可能な候補を先に、近いものから表示する。
     return candidates.sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.distance - b.distance);
   }
 
+  // 候補の位置と相対運動を、接舷操作の選択項目へ写す。
   private candidateItems(candidates: readonly DockingCandidate[]): PropertyWindowItem<ModuleAction>[] {
     return [
       { label: '接舷候補を閉じる', act: 'cancelDockCandidates', keepOpen: true },
@@ -287,13 +215,15 @@ export class ModuleWindows implements ModuleWindowOpener {
     ];
   }
 
+  // 部品が存在する窓へ状態と現在の操作項目を反映する。
   private syncEntry(entry: ModuleWindowEntry, module = entry.ship.assembly.module(entry.moduleId)): void {
     if (module === null) return;
-    entry.win.syncRows(this.content(entry.ship, module).rows);
+    entry.win.syncRows(moduleContent(entry.ship, module).rows);
     entry.win.syncItems(entry.candidates === null
       ? moduleItems(entry.ship, module) : this.candidateItems(entry.candidates));
   }
 
+  // 切り離す枝が操縦不能な物資になるかを、複製した船体で判定する。
   private undockProducesMaterial(ship: ModularShip, moduleId: string): boolean {
     const connection = ship.assembly.detachableConnections().find(
       edge => edge.parentId === moduleId || edge.childId === moduleId,
@@ -302,6 +232,7 @@ export class ModuleWindows implements ModuleWindowOpener {
     return ship.assembly.clone().splitAt(connection.id)[1].role === 'material';
   }
 
+  // 接続を解除し、成功した窓を閉じる。失敗は通知する。
   private undock(ship: ModularShip, moduleId: string): void {
     try {
       ship.undock(moduleId, this.roster);
