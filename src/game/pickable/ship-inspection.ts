@@ -42,15 +42,6 @@ export class ShipInspection implements InspectedObject {
   public get onlyInFocusedSystem(): boolean { return this.ship.capabilities.role !== 'base'; }
   public get modules(): readonly ShipModuleInstance[] { return this.ship.assembly.modules; }
   public hasModule(moduleId: string): boolean { return this.ship.assembly.module(moduleId) !== null; }
-  public setModuleDeployment(moduleId: string, deployed: boolean): void {
-    const module = this.ship.assembly.module(moduleId);
-    if (module === null || (module.kind !== 'radiator' && module.kind !== 'solar_panel')) return;
-    const sameKind = this.modules.filter(candidate => candidate.kind === module.kind);
-    const side = sameKind.findIndex(candidate => candidate.id === moduleId) === 0 ? 'up' : 'down';
-    if (module.kind === 'radiator') this.ship.motion.radiator.setDeployed(side, deployed);
-    else this.ship.motion.power.setDeployed(side, deployed);
-    this.ship.assembly.setDeployment(moduleId, deployed ? 1 : 0);
-  }
   public readonly rename = (name: string): void => { this.ship.rename(name); };
   public readonly onMapSelect = (windows: PropertyWindowOpener, x: number, y: number): void => {
     windows.openProperties(this, x, y);
