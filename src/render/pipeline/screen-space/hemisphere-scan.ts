@@ -6,8 +6,8 @@
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, screenSize, screenUV, select,
-  smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
+  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, pow, screenSize, screenUV,
+  select, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
@@ -90,11 +90,11 @@ export function scanHemisphere(
     const planetSums: readonly PlanetSum[] = planetVars.map((planet) => ({
       planet, blocked: float(0).toVar(), wedge: float(0).toVar(),
     }));
-    // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。標本が受け手自身の画素を読まないよう 1 走査画素
-    // 先から、半径までを近くへ寄せる二乗で配る。
+    // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。受け手自身の画素を読まない 1 走査画素先から半径までを、
+    // 指数で近くへ寄せて配る（半径が大きくても受け手のそばを粗くしない）。
     const stepDistance = (progress: FloatNode): FloatNode => {
       const u = progress.div(float(stepCount));
-      return u.mul(u).mul(radius.sub(1)).add(1);
+      return radius.mul(pow(radius, u.sub(1)));
     };
     Loop({ start: 0, end: sliceCount, type: 'int', condition: '<' }, ({ i }) => {
       const slice = sliceAt(float(i).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiver.normal);
