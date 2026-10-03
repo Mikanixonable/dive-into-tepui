@@ -2538,7 +2538,7 @@ seedOf(3) と 4×5 の seedOf(2)、(438, 275〜276)。届く光 4.0〜4.2e-5 の
 - 負の照度: 表示に使う拡散照度を 0 以上に切る（決めたこと 10）。
 - 費用はマテリアル行の 6.3 倍（均し約 1.0 ms・拡大約 1.2 ms。着手前の中の 5×5 は 5.6〜6.5 倍）。高の予算（8 スライス）では、密な 3×3 の無い疎な 2 段 16 + 16 が Q より良い（節 17）。
 
-**ブランチ `ssd-7-single-scale`**（`215f9226a`・`38d6772bc`、2026-10-04）— Q を本番の形で入れたもの（作業の記録は `.render-lab-shots/ssd-7/work/branch/NOTES.md`）。
+**ブランチ `ssd-7-single-scale`**（commit「perf(render): 近傍拡散補正を疎なタップで均し、確率的に拡大する」と道具の 1 本。本体の先頭へ載せ直して使う、2026-10-04）— Q を本番の形で入れたもの（作業の記録は `.render-lab-shots/ssd-7/work/branch/NOTES.md`）。
 
 - 面の重みは新しいモジュール `src/render/pipeline/screen-space/surface-weight.ts`（`SurfaceWeight` の `receiverAt`・`reachTolerance`・`exponentOf` と、重みつきの和の
   `WeightedSum`）。`CorrectionReconstruction` は `sparseDenoised`・`denseDenoised`・`stochasticUpsampled` の 3 つで、手順8〜10 の集め方はこれらを使う。
