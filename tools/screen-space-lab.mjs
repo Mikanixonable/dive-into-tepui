@@ -111,12 +111,30 @@ export function candidateSeedOf(k, referencePasses) {
 
 // いまの精細さの段(src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_TIERS)。
 export const TIERS = {
-  low: { scale: 0.25, sliceCount: 2, stepCount: 3, denoiseRadius: 2 },
-  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, denoiseRadius: 2 },
-  high: { scale: 0.25, sliceCount: 4, stepCount: 6, denoiseRadius: 2 },
+  low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 5, bandScale: 1 / 8 },
+  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 5, bandScale: 1 / 8 },
+  high: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 5, bandScale: 1 / 8 },
 };
-// 中の段の均しなし。
-export const MEDIUM_RAW_TIER = { ...TIERS.medium, denoiseRadius: 0 };
+// 中の段の、帯に分けない愚直な点。走査の帯 0 が raw。
+export const MEDIUM_RAW_TIER = { ...TIERS.medium, bandCount: 1 };
+
+// 走査が帯ごとの補正を詰めるテクスチャ(src/render/pipeline/screen-space/band-pyramid.ts)の、帯の数 bandCount の段での
+// 読み戻しの名前の並び(テクスチャの番号順)。帯 b の成分 c は、テクスチャを並べた通しのチャンネル 3b + c。
+export const packedBandsNamesOf = (bandCount) => Array.from(
+  { length: Math.ceil(3 * bandCount / 4) }, (_, i) => `packed-bands-${i}`);
+
+// 詰めたテクスチャの、画素ごとに 4 成分の並び packed(packedBandsNamesOf の順)から、帯 band の画素ごとの rgb を同じ型で
+// 取り出す。
+export function unpackedBand(packed, band) {
+  const pixels = packed[0].length / 4;
+  const out = new packed[0].constructor(pixels * 3);
+  for (let c = 0; c < 3; c++) {
+    const channel = 3 * band + c;
+    const texture = packed[Math.floor(channel / 4)];
+    for (let p = 0; p < pixels; p++) out[3 * p + c] = texture[4 * p + channel % 4];
+  }
+  return out;
+}
 
 // HEAD の短いハッシュ。
 export const headHash = () => execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim();

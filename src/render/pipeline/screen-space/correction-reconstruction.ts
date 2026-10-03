@@ -1,120 +1,72 @@
-// 走査の解像度で求めた符号付きの拡散照度補正を、描画バッファの解像度へ joint bilateral で復元する。走査の解像度で
-// 近い (2r + 1)² を均し、描画バッファの解像度で囲む 2×2 から拡大する。標本の重みは、標本の面が受け手の接平面から
-// どれだけ離れているか(全解像度の画素の足跡で測る)と法線のなす角で半分ずつ落ちる — 補正には受け手ごとの天体照が
-// 掛かっているので、内隅や輪郭を越えて混ぜない。
+// 走査の解像度で求めた符号付きの拡散照度補正を、受け手の面の重み(SurfaceWeight)で描画バッファの解像度へ復元する
+// 段の部品。補正には受け手ごとの天体照が掛かっているので、内隅や輪郭を越えて混ぜない。
 import type * as THREE from 'three/webgpu';
-import {
-  Loop, clamp, dot, exp2, float, floor, getViewPosition, ivec2, max, screenSize, screenUV, select, textureLoad,
-  transpose, vec2, vec3, vec4,
-} from 'three/tsl';
-import { octDecodeNormal } from '../gbuffer';
-import { gbufferTexelOf, texelCenterUV } from './hemisphere-scan';
+import { If, bool, clamp, exp2, float, floor, ivec2, screenSize, screenUV, select, vec2, vec3 } from 'three/tsl';
+import { gbufferTexelOf } from './hemisphere-scan';
+import { bandsAt } from './band-pyramid';
+import { SurfaceWeight, WEIGHT_EPSILON, type Texel } from './surface-weight';
 import type { GBufferPass } from '../gbuffer';
-import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
+import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
-// 重みが半分になる法線のなす角 [rad]。接平面からの距離は、全解像度の画素の足跡 1 つで重みが半分になる。
-const HALF_WEIGHT_NORMAL_ANGLE = Math.PI / 6;
-// 均しの空間の重みの標準偏差 [走査の画素]。
-const DENOISE_SIGMA = 1;
-// 重みの和がこれ以下なら、受け手と同じ面の標本がないとみなして補正を 0 とする。0 で割らないための値。
-const WEIGHT_EPSILON = 1e-6;
-// 面の写っていない標本の重みの指数。重みは 0 になる。
-const VOID_EXPONENT = 1e4;
-
-type Texel = THREE.Node<'ivec2'>;
-
-// 重みを測る受け手の面。接平面は、逆射影する前の座標 c = (NDC の xy, 素の深度, 1) の一次式で持ち、
-// dot(plane, c) / dot(w, c) が c の点の接平面からの符号付きの距離 [m] になる。footprint はそこに写る全解像度の
-// 画素 1 つの幅 [m]。
-interface Receiver {
-  readonly plane: Vec4Node;
-  readonly w: Vec4Node;
-  readonly normal: Vec3Node;
-  readonly footprint: FloatNode;
-}
+// 拡大が読む、描画バッファの画素の中心を囲む 2×2 の走査の画素の、左上からのずれ。
+const UPSAMPLE_OFFSETS = [[0, 0], [1, 0], [0, 1], [1, 1]] as const;
 
 export class CorrectionReconstruction {
+  private readonly weight: SurfaceWeight;
+
   // gbuffer は重みを測る深度と法線、projection / projectionInverse は実カメラの射影行列とその逆、fullSize と
   // scanSize は描画バッファと走査の解像度 [px]。
   public constructor(
-    private readonly gbuffer: GBufferPass, private readonly projection: Mat4Uniform,
-    private readonly projectionInverse: Mat4Uniform, private readonly fullSize: Vec2Node,
-    private readonly scanSize: Vec2Node,
-  ) {}
-
-  // 走査の解像度で描いている画素の補正を、中心から縦横 radius [走査の画素] 以内の走査の画素の補正 raw から均す。
-  // radius が 0 なら中心だけを読む。受け手と同じ面の標本がなければ 0。**Fn の中の、受け手が補正を受ける分岐から
-  // 呼ぶこと。**
-  public denoised(raw: THREE.Texture, radius: IntNode): Vec3Node {
-    // 受け手は描いている画素自身が表す G バッファの画素の面。
-    const texel = ivec2(floor(screenUV.mul(screenSize))).toVar();
-    const receiver = this.receiverAt(this.gbufferTexelOfScan(texel));
-    // 空間の重みは、中心からの距離の二項係数に近いガウス関数。
-    const sum = new WeightedSum();
-    // (2r + 1)² のタップを 1 本のループで行ごとに読む — 入れ子の Loop は添字がどれも同じ名前になり、内側から外側の
-    // 添字を読めない。
-    const side = radius.mul(2).add(1).toVar();
-    Loop({ start: 0, end: side.mul(side), type: 'int', condition: '<' }, ({ i }) => {
-      const dx = i.mod(side).sub(radius).toVar();
-      const dy = i.div(side).sub(radius).toVar();
-      const tap = this.clampToScan(texel.add(ivec2(dx, dy))).toVar();
-      const spatial = float(dx.mul(dx).add(dy.mul(dy))).mul(0.5 * Math.LOG2E / (DENOISE_SIGMA * DENOISE_SIGMA));
-      const exponent = this.exponentOf(receiver, this.gbufferTexelOfScan(tap)).add(spatial);
-      sum.add(textureLoad(raw, tap).rgb, exponent, float(1));
-    });
-    return sum.average();
+    gbuffer: GBufferPass, projection: Mat4Uniform, projectionInverse: Mat4Uniform,
+    private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
+  ) {
+    this.weight = new SurfaceWeight(gbuffer, projection, projectionInverse, fullSize);
   }
 
-  // 描画バッファの解像度で描いている画素の補正を、走査の画面の上で囲む 2×2 の走査の画素の補正 denoised から、
-  // 双線形の重みと面の重みで拡大する。受け手と同じ面の標本がなければ 0。**Fn の中の、受け手が補正を受ける
-  // 分岐から呼ぶこと。**
-  public upsampled(denoised: THREE.Texture): Vec3Node {
+  // 描画バッファの解像度で描いている画素の補正を、走査の画面の上で囲む 2×2 の走査の画素から 1 つ選び、その画素の
+  // 帯の和を写す。帯ごとの補正は、帯の数 bandCount の補正を詰めたテクスチャ bands から読む。選ぶ確率は双線形の
+  // 重み × 面の重みに比例し、choice(0..1)で引く。受け手と同じ面の標本がなければ 0。**Fn の中の、受け手が補正を
+  // 受ける分岐から呼ぶこと。**
+  public stochasticUpsampled(bands: readonly THREE.Texture[], bandCount: number, choice: FloatNode): Vec3Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
-    const receiver = this.receiverAt(pixel);
-    // 画素の中心を囲む 4 つの走査の画素の中心のうち左上のものと、そこからのずれ [走査の画素]。走査の上の位置
-    // ((2·pixel + 1)·scanSize − fullSize) / (2·fullSize) を整数で割る — 浮動小数の割り算では、解像度が同じとき整数に
-    // 乗る位置が下へずれ、左上の隣が重みを持つ。割られる数は fullSize を足して非負にしてある。
+    const receiver = this.weight.receiverAt(pixel);
+    // 囲む 4 つの、双線形の重み × 面の重み。
+    const { corner, fraction } = this.upsampleCornerOf(pixel);
+    const taps = UPSAMPLE_OFFSETS.map(([dx, dy]) => {
+      const tap = this.clampToScan(ivec2(corner.add(vec2(dx, dy)))).toVar();
+      const exponent = this.weight.exponentOf(receiver, this.gbufferTexelOfScan(tap), float(1));
+      return { tap, weight: exp2(exponent.negate()).mul(bilinearWeightOf(fraction, dx, dy)).toVar() };
+    });
+    const total = float(0).toVar();
+    for (const { weight } of taps) total.addAssign(weight);
+    // 重みの累積が、choice を両端を除いた区間へ写した値 × 重みの和を初めて超えたタップを選ぶ。
+    const threshold = choice.mul(255 / 256).add(0.5 / 256).mul(total).toVar();
+    const chosen = ivec2(taps[taps.length - 1]!.tap).toVar();
+    const pending = bool(true).toVar();
+    const cumulative = float(0).toVar();
+    for (const { tap, weight } of taps) {
+      cumulative.addAssign(weight);
+      If(pending.and(cumulative.greaterThan(threshold)), () => {
+        chosen.assign(tap);
+        pending.assign(bool(false));
+      });
+    }
+    const bandSum = bandsAt(bands, bandCount, chosen).reduce((sum, band) => sum.add(band));
+    return select(total.greaterThan(WEIGHT_EPSILON), bandSum, vec3(0));
+  }
+
+  // 描画バッファの画素 pixel の中心を囲む 4 つの走査の画素の中心のうち左上のもの corner と、そこからのずれ
+  // fraction [走査の画素]。
+  private upsampleCornerOf(pixel: Texel): { readonly corner: Vec2Node; readonly fraction: Vec2Node } {
+    // 走査の上の位置 ((2·pixel + 1)·scanSize − fullSize) / (2·fullSize) を整数で割る — 浮動小数の割り算では、解像度が
+    // 同じとき整数に乗る位置が下へずれ、左上の隣が重みを持つ。割られる数は fullSize を足して非負にしてある。
     const span = ivec2(this.fullSize).mul(2).toVar();
     const shifted = ivec2(pixel).mul(2).add(1).mul(ivec2(this.scanSize)).add(ivec2(this.fullSize)).toVar();
     const quotient = shifted.div(span).toVar();
-    const corner = vec2(quotient.sub(1)).toVar();
-    const fraction = vec2(shifted.sub(quotient.mul(span))).div(vec2(span)).toVar();
-    const sum = new WeightedSum();
-    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
-      const tap = this.clampToScan(ivec2(corner.add(vec2(dx, dy)))).toVar();
-      const bilinear = (dx === 0 ? fraction.x.oneMinus() : fraction.x)
-        .mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
-      sum.add(textureLoad(denoised, tap).rgb, this.exponentOf(receiver, this.gbufferTexelOfScan(tap)), bilinear);
-    }
-    return sum.average();
-  }
-
-  // G バッファの画素 texel の面を受け手とする。
-  private receiverAt(texel: Texel): Receiver {
-    const depth = textureLoad(this.gbuffer.depthTexture, texel).r;
-    const position = getViewPosition(texelCenterUV(texel, this.fullSize), depth, this.projectionInverse).toVar();
-    const normal = octDecodeNormal(textureLoad(this.gbuffer.normalTexture, texel).rg).toVar();
-    // 接平面 normal·p = normal·position と同次座標の w を、逆射影の転置で c の一次式へ写す。
-    const toClip = transpose(this.projectionInverse);
-    const clipW = this.projection.mul(vec4(position, 1)).w;
-    const yScale = this.projection.mul(vec4(0, 1, 0, 0)).y;
     return {
-      plane: toClip.mul(vec4(normal, dot(normal, position).negate())).toVar(),
-      w: toClip.mul(vec4(0, 0, 0, 1)).toVar(),
-      normal,
-      footprint: clipW.mul(2).div(yScale.mul(this.fullSize.y)).toVar(),
+      corner: vec2(quotient.sub(1)).toVar(),
+      fraction: vec2(shifted.sub(quotient.mul(span))).div(vec2(span)).toVar(),
     };
-  }
-
-  // G バッファの画素 texel の面の、受け手 receiver に対する重みの指数(重みは 2^−exponent)。
-  private exponentOf(receiver: Receiver, texel: Texel): FloatNode {
-    const depth = textureLoad(this.gbuffer.depthTexture, texel).r.toVar();
-    const uv = texelCenterUV(texel, this.fullSize);
-    const clip = vec4(uv.x.mul(2).sub(1), uv.y.oneMinus().mul(2).sub(1), depth, 1).toVar();
-    const plane = dot(receiver.plane, clip).div(dot(receiver.w, clip).mul(receiver.footprint));
-    const normal = octDecodeNormal(textureLoad(this.gbuffer.normalTexture, texel).rg);
-    const bend = float(1).sub(dot(receiver.normal, normal)).div(1 - Math.cos(HALF_WEIGHT_NORMAL_ANGLE));
-    return select(depth.greaterThan(0), plane.mul(plane).add(bend.mul(bend)), float(VOID_EXPONENT));
   }
 
   // 走査の画素 texel が表す G バッファの画素。
@@ -128,21 +80,7 @@ export class CorrectionReconstruction {
   }
 }
 
-// 標本を重みつきで積む器。**Fn の中で作ること。**
-class WeightedSum {
-  private readonly sum = vec3(0).toVar();
-  private readonly weightSum = float(0).toVar();
-
-  // 値 value を、重み scale·2^−exponent で積む。
-  public add(value: Vec3Node, exponent: FloatNode, scale: FloatNode): void {
-    const weight = exp2(exponent.negate()).mul(scale).toVar();
-    this.sum.addAssign(value.mul(weight));
-    this.weightSum.addAssign(weight);
-  }
-
-  // 重みつきの平均。重みの和が WEIGHT_EPSILON 以下なら 0。
-  public average(): Vec3Node {
-    const average = this.sum.div(max(this.weightSum, WEIGHT_EPSILON));
-    return select(this.weightSum.greaterThan(WEIGHT_EPSILON), average, vec3(0));
-  }
+// 左上の角からのずれ fraction [走査の画素] の点に対する、角から (dx, dy) の走査の画素の双線形の重み。
+function bilinearWeightOf(fraction: Vec2Node, dx: 0 | 1, dy: 0 | 1): FloatNode {
+  return (dx === 0 ? fraction.x.oneMinus() : fraction.x).mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
 }
