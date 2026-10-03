@@ -306,11 +306,14 @@ function reportOf(record, results, flicker, scales) {
   const keysOf = (set) => entries.filter((e) => e.set === set).map((e) => e.key);
   const [tuning, checking, correctness] = ['tuning', 'checking', 'correctness'].map(keysOf);
   const measured = [...tuning, ...checking];
-  // 費用は近傍拡散補正の 3 行の和の、マテリアルの行に対する比の、候補のパス数 passes 倍。
+  // 費用は近傍拡散補正の行の和の、マテリアルの行に対する比の、候補のパス数 passes 倍。
   const costOf = (row, passes) => {
     if (row === null) return null;
-    const parts = ['照り返し源', '近傍拡散走査', '近傍拡散拡大', 'マテリアル'].map((label) => row[label]);
-    return parts.some((v) => v === null) ? null : passes * (parts[0] + parts[1] + parts[2]) / parts[3];
+    const parts = ['照り返し源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大']
+      .map((label) => row[label]);
+    const material = row['マテリアル'];
+    if (material === null || parts.some((v) => v === null)) return null;
+    return passes * parts.reduce((sum, v) => sum + v, 0) / material;
   };
   const summary = candidates.map((candidate, i) => {
     const rows = results[candidate.label];

@@ -14,12 +14,16 @@ export function register(): void {
     before('normal', 'shadow');
     before('shadow', 'planet-light');
     before('planet-light', 'bounce-source');
-    before('bounce-source', 'band-0');
-    before('band-0', 'band-1');
-    before('band-1', 'band-2');
-    before('band-2', 'band-3');
-    before('band-3', 'band-4');
-    before('band-4', 'correction');
+    // 走査の帯 → 代表の縮小列 → 帯の縮小 → 粗い段からの拡大と合流 → 描画バッファの解像度への拡大。
+    const chain = [
+      'band-0', 'band-1', 'band-2', 'band-3', 'band-4',
+      'representative-1', 'representative-2', 'representative-3', 'representative-4',
+      'reduced-1', 'reduced-2', 'reduced-3', 'reduced-4',
+      'merged-3', 'merged-2', 'merged-1', 'merged-0',
+    ] as const;
+    before('bounce-source', chain[0]);
+    for (const [index, id] of chain.slice(1).entries()) before(chain[index]!, id);
+    before(chain[chain.length - 1]!, 'correction');
     before('correction', 'diffuse');
     before('diffuse', 'material');
     before('material', 'atmosphere');

@@ -1,40 +1,36 @@
 // 走査の解像度で求めた符号付きの拡散照度補正を、受け手の面の重み(SurfaceWeight)で描画バッファの解像度へ復元する
 // 段の部品。補正には受け手ごとの天体照が掛かっているので、内隅や輪郭を越えて混ぜない。
 import type * as THREE from 'three/webgpu';
-import { If, bool, clamp, exp2, float, floor, ivec2, screenSize, screenUV, select, vec2, vec3 } from 'three/tsl';
+import {
+  If, bool, clamp, exp2, float, floor, ivec2, screenSize, screenUV, select, textureLoad, vec2, vec3,
+} from 'three/tsl';
 import { gbufferTexelOf } from './hemisphere-scan';
-import { bandsAt } from './band-pyramid';
-import { SurfaceWeight, WEIGHT_EPSILON, type Texel } from './surface-weight';
-import type { GBufferPass } from '../gbuffer';
-import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
+import { QUAD_OFFSETS, WEIGHT_EPSILON, bilinearWeightOf } from './band-pyramid';
+import type { SurfaceWeight, Texel } from './surface-weight';
+import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
-// 拡大が読む、描画バッファの画素の中心を囲む 2×2 の走査の画素の、左上からのずれ。
-const UPSAMPLE_OFFSETS = [[0, 0], [1, 0], [0, 1], [1, 1]] as const;
+// 拡大の面の重み — 接平面からの距離の許容 [受け手の足跡] と、法線の重みが半分になる角 [rad](20°)。
+const UPSAMPLE_DISTANCE_TOLERANCE = 1;
+const UPSAMPLE_HALF_WEIGHT_ANGLE = Math.PI / 9;
 
 export class CorrectionReconstruction {
-  private readonly weight: SurfaceWeight;
-
-  // gbuffer は重みを測る深度と法線、projection / projectionInverse は実カメラの射影行列とその逆、fullSize と
-  // scanSize は描画バッファと走査の解像度 [px]。
+  // weight は受け手と標本の面の重み、fullSize と scanSize は描画バッファと走査の解像度 [px]。
   public constructor(
-    gbuffer: GBufferPass, projection: Mat4Uniform, projectionInverse: Mat4Uniform,
-    private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
-  ) {
-    this.weight = new SurfaceWeight(gbuffer, projection, projectionInverse, fullSize);
-  }
+    private readonly weight: SurfaceWeight, private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
+  ) {}
 
-  // 描画バッファの解像度で描いている画素の補正を、走査の画面の上で囲む 2×2 の走査の画素から 1 つ選び、その画素の
-  // 帯の和を写す。帯ごとの補正は、帯の数 bandCount の補正を詰めたテクスチャ bands から読む。選ぶ確率は双線形の
-  // 重み × 面の重みに比例し、choice(0..1)で引く。受け手と同じ面の標本がなければ 0。**Fn の中の、受け手が補正を
-  // 受ける分岐から呼ぶこと。**
-  public stochasticUpsampled(bands: readonly THREE.Texture[], bandCount: number, choice: FloatNode): Vec3Node {
+  // 描画バッファの解像度で描いている画素の補正を、走査の画面の上で囲む 2×2 の走査の画素の補正 source(rgb)から 1 つ
+  // 選んで写す。選ぶ確率は双線形の重み × 面の重みに比例し、choice(0..1)で引く。受け手と同じ面の標本がなければ 0。
+  // **Fn の中の、受け手が補正を受ける分岐から呼ぶこと。**
+  public stochasticUpsampled(source: THREE.Texture, choice: FloatNode): Vec3Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
     const receiver = this.weight.receiverAt(pixel);
     // 囲む 4 つの、双線形の重み × 面の重み。
     const { corner, fraction } = this.upsampleCornerOf(pixel);
-    const taps = UPSAMPLE_OFFSETS.map(([dx, dy]) => {
+    const taps = QUAD_OFFSETS.map(([dx, dy]) => {
       const tap = this.clampToScan(ivec2(corner.add(vec2(dx, dy)))).toVar();
-      const exponent = this.weight.exponentOf(receiver, this.gbufferTexelOfScan(tap), float(1));
+      const exponent = this.weight.exponentOf(receiver, this.gbufferTexelOfScan(tap),
+        float(UPSAMPLE_DISTANCE_TOLERANCE), float(UPSAMPLE_HALF_WEIGHT_ANGLE));
       return { tap, weight: exp2(exponent.negate()).mul(bilinearWeightOf(fraction, dx, dy)).toVar() };
     });
     const total = float(0).toVar();
@@ -51,8 +47,7 @@ export class CorrectionReconstruction {
         pending.assign(bool(false));
       });
     }
-    const bandSum = bandsAt(bands, bandCount, chosen).reduce((sum, band) => sum.add(band));
-    return select(total.greaterThan(WEIGHT_EPSILON), bandSum, vec3(0));
+    return select(total.greaterThan(WEIGHT_EPSILON), textureLoad(source, chosen).rgb, vec3(0));
   }
 
   // 描画バッファの画素 pixel の中心を囲む 4 つの走査の画素の中心のうち左上のもの corner と、そこからのずれ
@@ -78,9 +73,4 @@ export class CorrectionReconstruction {
   private clampToScan(texel: Texel): Texel {
     return ivec2(clamp(vec2(texel), vec2(0), this.scanSize.sub(1)));
   }
-}
-
-// 左上の角からのずれ fraction [走査の画素] の点に対する、角から (dx, dy) の走査の画素の双線形の重み。
-function bilinearWeightOf(fraction: Vec2Node, dx: 0 | 1, dy: 0 | 1): FloatNode {
-  return (dx === 0 ? fraction.x.oneMinus() : fraction.x).mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
 }

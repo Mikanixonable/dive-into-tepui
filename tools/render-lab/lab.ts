@@ -40,10 +40,11 @@ const PACKED_BANDS_NAMES = ['packed-bands-0', 'packed-bands-1', 'packed-bands-2'
 
 // 読み戻せる浮動小数の中間ターゲット。'packed-bands-i' は、いまの段の帯の数で走査が帯ごとの補正を詰めた i 枚目の
 // テクスチャ(帯 b の rgb は、テクスチャを並べた通しのチャンネル 3b..3b + 2。帯の数 1 では 'packed-bands-0' の rgb が
-// 帯に分けない補正)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る描画バッファの画素数で、
-// 面の無い画素は 0。
-export type FloatTargetName = (typeof PACKED_BANDS_NAMES)[number] | 'correction' | 'diffuse' | 'hdr'
-  | 'projected-radius';
+// 帯に分けない補正)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では帯 0、2 以上では
+// 拡大と合流の段 0 の出力)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る描画バッファの
+// 画素数で、面の無い画素は 0。
+export type FloatTargetName = (typeof PACKED_BANDS_NAMES)[number] | 'scan-correction' | 'correction' | 'diffuse'
+  | 'hdr' | 'projected-radius';
 
 // 読み戻した画像。rgba は画素ごとに 4 つの値で、行は上から。
 export interface FloatImage {
@@ -472,14 +473,16 @@ export class LabView {
   // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数で詰めたテクスチャに無い
   // 'packed-bands-i' なら投げる。
   private floatTextureOf(name: Exclude<FloatTargetName, 'projected-radius'>): THREE.Texture {
+    const { screenSpace, diffuseCorrection } = this.pipeline;
     switch (name) {
-      case 'correction': return this.pipeline.diffuseCorrection.texture;
+      case 'scan-correction': return diffuseCorrection.mergedTexture(screenSpace.bandCount, 0);
+      case 'correction': return diffuseCorrection.texture;
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
       case 'hdr': return this.pipeline.hdrTexture;
       default: {
-        // 帯を詰めたテクスチャは、いまの段の帯の数の描画先から引く。
-        const { screenSpace, diffuseCorrection } = this.pipeline;
-        const texture = diffuseCorrection.bandTarget(screenSpace.bandCount).textures[PACKED_BANDS_NAMES.indexOf(name)];
+        // 帯を詰めたテクスチャは、いまの段の帯の数の走査の描画先から引く。
+        const bands = diffuseCorrection.bandTarget(screenSpace.bandCount, 0);
+        const texture = bands.textures[PACKED_BANDS_NAMES.indexOf(name)];
         if (texture === undefined) throw new Error(`render-lab: ${screenSpace.bandCount} bands have no "${name}"`);
         return texture;
       }

@@ -4,10 +4,9 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, float, floor, getViewPosition, ivec2, mrt, property, screenSize, screenUV, texture, textureLoad, uniform,
-  vec3, vec4,
+  Fn, If, float, floor, getViewPosition, ivec2, mrt, screenSize, screenUV, texture, textureLoad, uniform, vec3, vec4,
 } from 'three/tsl';
-import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
 import { ShadingSample } from '../lighting/shading-sample';
 import { MAX_PLANET_LIGHT_SLOTS, type PlanetLightSource } from '../lighting/planet-light-source';
@@ -15,8 +14,11 @@ import { compileInto } from '../compile-into';
 import {
   gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
 } from './hemisphere-scan';
-import { packedBands } from './band-pyramid';
+import { BandPyramid, packedBands } from './band-pyramid';
 import { CorrectionReconstruction } from './correction-reconstruction';
+import { ScreenSpaceInputPyramid, levelExtent } from './screen-space-input-pyramid';
+import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
+import { SurfaceWeight } from './surface-weight';
 import type { DiffuseCorrection } from './diffuse-correction';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
@@ -45,24 +47,26 @@ export interface ScanTier {
 // 精細さの段ごとの走査。値は、解像度・スライス数・歩数の候補の組の費用と画質の指標を実測して選んだ。
 // TODO: 中のスライス数と歩数、帯の数と尺度は仮置き。費用と画質の指標の実測から選び直す。
 const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
-  [SCREEN_SPACE_QUALITY.low]: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 5, bandScale: 1 / 8 },
-  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 5, bandScale: 1 / 8 },
-  [SCREEN_SPACE_QUALITY.high]: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 5, bandScale: 1 / 8 },
+  [SCREEN_SPACE_QUALITY.low]: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 1 / 8 },
+  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 1 / 8 },
+  [SCREEN_SPACE_QUALITY.high]: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 1 / 8 },
 };
 
 // 確率的な拡大の選択が読むブルーノイズのずれ [タイルの幅]。走査の 0・½・27/64 との差がタイルの自己相関の小さい所に
 // 来るものを実測で選んだ。
 const UPSAMPLE_CHOICE_SHIFT = 23 / 64;
 
-// 描画命令 1 本: material を全画面に描いて target へ書く。
-interface Stage {
-  readonly material: THREE.MeshBasicNodeMaterial;
-  readonly target: THREE.RenderTarget;
-  readonly gpuPass: GpuPassId;
-}
-
 // 描画命令を出す方式ごとの、描画命令の列。
-type ModeStages = Readonly<Record<Exclude<ScreenSpaceDiffuse, typeof SCREEN_SPACE_DIFFUSE.off>, readonly Stage[]>>;
+type ModeStages = Readonly<
+  Record<Exclude<ScreenSpaceDiffuse, typeof SCREEN_SPACE_DIFFUSE.off>, readonly ScreenSpaceStage[]>
+>;
+
+// 帯の数 1 つぶんの描画命令 — 方式ごとの列 modes と、そのうちこのパスが帯の数ごとに組んだもの own(照り返しの源と
+// 代表の縮小列を除く)。
+interface BandCountStages {
+  readonly modes: ModeStages;
+  readonly own: readonly ScreenSpaceStage[];
+}
 
 // 走査の解像度の描画先(rgba16float)。名前 name は MRT の出力と結び付く。
 function createScanTarget(name: string): THREE.RenderTarget {
@@ -74,19 +78,12 @@ function createScanTarget(name: string): THREE.RenderTarget {
   return target;
 }
 
-// 全画面で書くマテリアル。出力は呼び出し側が mrtNode へ置く。**合成を切る** — 負の補正をそのまま書く。
-function stageMaterial(): THREE.MeshBasicNodeMaterial {
-  return new THREE.MeshBasicNodeMaterial({
-    depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
-  });
-}
-
 export class ScreenSpacePass {
   // 照り返しの源の描画先と、それを書く描画命令。
   private readonly sourceTarget = createScanTarget('surfaceRadiance');
-  private readonly sourceStage: Stage;
-  // 帯の数ごとの、方式ごとの描画命令の列。初めてその帯の数で描くときに組む。
-  private readonly stagesByBandCount = new Map<number, ModeStages>();
+  private readonly sourceStage: ScreenSpaceStage;
+  // 帯の数ごとの描画命令。初めてその帯の数で描くときに組む。
+  private readonly stagesByBandCount = new Map<number, BandCountStages>();
   private readonly quad = new QuadMesh();
   // QuadMesh は固定直交カメラで描かれるため、実カメラの射影行列とその逆は毎フレーム自前で書き込む。
   private readonly projection: Mat4Uniform = uniform(new THREE.Matrix4());
@@ -107,6 +104,9 @@ export class ScreenSpacePass {
   private readonly gbufferUV: Vec2Node = gbufferUVOf(this.scanPixel, this.fullSize);
   // 走査の解像度の画素の、光の向きと面の向きを引くシェーディング入力。
   private readonly sample: ShadingSample;
+  // 段ごとの代表の面と、それで比べる帯の縮小・拡大と合流、描画バッファの解像度への拡大。
+  private readonly surfaces: ScreenSpaceInputPyramid;
+  private readonly bandPyramid: BandPyramid;
   private readonly reconstruction: CorrectionReconstruction;
   private readonly blueNoise = new BlueNoise();
   // 直前に render した方式。null はまだ render していないこと。
@@ -125,8 +125,10 @@ export class ScreenSpacePass {
   ) {
     this.tier = SCAN_TIERS[quality];
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
-    this.reconstruction = new CorrectionReconstruction(
-      gbuffer, this.projection, this.projectionInverse, this.fullSize, this.scanSize);
+    const weight = new SurfaceWeight(gbuffer, this.projection, this.projectionInverse, this.fullSize);
+    this.surfaces = new ScreenSpaceInputPyramid(gbuffer, this.projectionInverse, this.fullSize, this.scanSize);
+    this.bandPyramid = new BandPyramid(this.surfaces, weight, this.fullSize, this.scanSize);
+    this.reconstruction = new CorrectionReconstruction(weight, this.fullSize, this.scanSize);
     this.sourceStage = this.createSourceStage(sun);
   }
 
@@ -135,6 +137,9 @@ export class ScreenSpacePass {
 
   // いまの段で補正を分ける帯の数。
   public get bandCount(): number { return this.tier.bandCount; }
+
+  // 段ごとの代表の面。
+  public get inputPyramid(): ScreenSpaceInputPyramid { return this.surfaces; }
 
   // 次の render から方式 mode で描く。
   public setMode(mode: ScreenSpaceDiffuse): void {
@@ -162,9 +167,11 @@ export class ScreenSpacePass {
     if (this.mode !== this.renderedMode) this.clearUnwritten();
     this.renderedMode = this.mode;
     if (this.mode === SCREEN_SPACE_DIFFUSE.off) return;
+    // **描画先の寸法を合わせる前に列を組む** — 代表の段の描画先は、列を組むときに作られる。
+    const stages = this.currentStages();
     this.prepare(camera, width, height);
-    // 照り返しの源 → 走査 → 拡大の順に、段ごとの描画先へ書く。
-    for (const { material, target, gpuPass } of this.currentStages()) {
+    // 照り返しの源 → 走査 → 代表の縮小列 → 帯の縮小 → 拡大と合流 → 拡大の順に、段ごとの描画先へ書く。
+    for (const { material, target, gpuPass } of stages) {
       this.renderer.setRenderTarget(target);
       this.quad.material = material;
       this.gpu.beginPass(gpuPass);
@@ -175,8 +182,9 @@ export class ScreenSpacePass {
 
   // いまの方式と段の全段のマテリアルを、それぞれの描画先へ事前コンパイルする。
   public async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
+    const stages = this.currentStages();
     this.prepare(camera, width, height);
-    for (const { material, target } of this.currentStages()) {
+    for (const { material, target } of stages) {
       this.quad.material = material;
       await compileInto(this.renderer, target, this.quad, this.quad.camera);
     }
@@ -186,34 +194,40 @@ export class ScreenSpacePass {
   // なので、ここでは解放しない。
   public dispose(): void {
     this.sourceTarget.dispose();
-    const built = [...this.stagesByBandCount.values()].flatMap((stages) => Object.values(stages).flat());
-    for (const material of new Set([this.sourceStage, ...built].map(({ material }) => material))) material.dispose();
+    const own = [this.sourceStage, ...[...this.stagesByBandCount.values()].flatMap((stages) => stages.own)];
+    for (const material of new Set(own.map(({ material }) => material))) material.dispose();
+    this.surfaces.dispose();
     this.blueNoise.dispose();
   }
 
   // いまの方式と段の帯の数の描画命令の列。オフは空。
-  private currentStages(): readonly Stage[] {
-    return this.mode === SCREEN_SPACE_DIFFUSE.off ? [] : this.stagesOf(this.tier.bandCount)[this.mode];
+  private currentStages(): readonly ScreenSpaceStage[] {
+    return this.mode === SCREEN_SPACE_DIFFUSE.off ? [] : this.stagesOf(this.tier.bandCount).modes[this.mode];
   }
 
-  // 帯の数 count の、方式ごとの描画命令の列。初めて引いたときに組み、以後は同じ列を返す。
-  private stagesOf(count: number): ModeStages {
+  // 帯の数 count の描画命令。初めて引いたときに組み、以後は同じものを返す。
+  private stagesOf(count: number): BandCountStages {
     const built = this.stagesByBandCount.get(count);
     if (built !== undefined) return built;
-    // 拡大の段は方式によらないので、両方の方式で同じ描画命令を使う。
+    const occlusionScan = this.createScanStage(count, null);
+    const indirectScan = this.createScanStage(count, this.sourceTarget.texture);
+    // 走査より後の段は方式によらないので、両方の方式で同じ描画命令を使う。
+    const chain = this.createChainStages(count);
     const upsample = this.createUpsampleStage(count);
-    const stages: ModeStages = {
-      [SCREEN_SPACE_DIFFUSE.occlusion]: [this.createScanStage(count, null), upsample],
-      [SCREEN_SPACE_DIFFUSE.indirect]: [
-        this.sourceStage, this.createScanStage(count, this.sourceTarget.texture), upsample,
-      ],
+    const pyramid = this.surfaces.stagesUpTo(count);
+    const stages: BandCountStages = {
+      modes: {
+        [SCREEN_SPACE_DIFFUSE.occlusion]: [occlusionScan, ...pyramid, ...chain, upsample],
+        [SCREEN_SPACE_DIFFUSE.indirect]: [this.sourceStage, indirectScan, ...pyramid, ...chain, upsample],
+      },
+      own: [occlusionScan, indirectScan, ...chain, upsample],
     };
     this.stagesByBandCount.set(count, stages);
     return stages;
   }
 
   // 照り返しの源の描画命令を組む。sun は照り返しの源になる面を照らす太陽。
-  private createSourceStage(sun: SunSource): Stage {
+  private createSourceStage(sun: SunSource): ScreenSpaceStage {
     const source = stageMaterial();
     source.mrtNode = mrt({ surfaceRadiance: this.whereResolved(this.gbufferUV, () => this.emittedRadiance(sun)) });
     return { material: source, target: this.sourceTarget, gpuPass: GPU_PASS.bounceSource };
@@ -221,8 +235,8 @@ export class ScreenSpacePass {
 
   // 受け手へ届く遠方の拡散光のうち塞がれた照度と照り返しの差を、帯の数 count の帯ごとに求めて詰めて書く、走査の
   // 描画命令を組む。radiance は照り返しの源の放射輝度で、null なら照り返しを集めない。
-  private createScanStage(count: number, radiance: THREE.Texture | null): Stage {
-    const target = this.output.bandTarget(count);
+  private createScanStage(count: number, radiance: THREE.Texture | null): ScreenSpaceStage {
+    const target = this.output.bandTarget(count, 0);
     // 丸めのずれのタイルのずれ 27/64 は、回転(0)・歩みのずれ(½)と画素ごとに相関しないものを実測で選んだ。
     const noise = vec3(
       this.blueNoise.atScreenPixel(this.seed), this.blueNoise.atScreenPixel(this.seed.add(0.5)),
@@ -231,31 +245,47 @@ export class ScreenSpacePass {
       cap: this.planetLight.capAt(this.sample, slot),
       irradiance: this.planetLight.diffuseIrradianceAtSlot(this.sample, slot),
     }));
-    // **MRT の出力が読む変数は、色として組む 1 つの Fn の中で書く** — 出力ごとに走査を組むと、走査が出力の枚数だけ
-    // 走る。
-    const packed = target.textures.map(() => property('vec4'));
-    const scan = stageMaterial();
-    scan.colorNode = Fn(() => {
-      const bands = scanHemisphere(
-        this.gbuffer.depthTexture, this.gbuffer.normalTexture, this.fullSize, this.projection, this.projectionInverse,
-        this.sliceCount, this.stepCount, noise, this.ambient.irradiance(this.sample), planets, radiance,
-        { count, scale: this.bandScale },
-      );
-      for (const [index, value] of packedBands(bands).entries()) packed[index]!.assign(value);
-      return vec4(0);
-    })();
-    scan.mrtNode = mrt(Object.fromEntries(target.textures.map((texture, index) => [texture.name, packed[index]!])));
-    return { material: scan, target, gpuPass: GPU_PASS.nearbyDiffuseScan };
+    const material = multiOutputMaterial(target, () => packedBands(scanHemisphere(
+      this.gbuffer.depthTexture, this.gbuffer.normalTexture, this.fullSize, this.projection, this.projectionInverse,
+      this.sliceCount, this.stepCount, noise, this.ambient.irradiance(this.sample), planets, radiance,
+      { count, scale: this.bandScale },
+    )));
+    return { material, target, gpuPass: GPU_PASS.nearbyDiffuseScan };
   }
 
-  // 帯の数 count の補正の帯の和を、描画バッファの解像度へ確率的に拡大する描画命令を組む。拡大は描画バッファの
-  // 解像度の受け手で、補正を受けるかを測り直す。
-  private createUpsampleStage(count: number): Stage {
-    const bands = this.output.bandTarget(count).textures;
+  // 帯の数 count の、帯の縮小(段 1..count − 1)→ 拡大と合流(段 count − 2..0)の描画命令の列。
+  private createChainStages(count: number): ScreenSpaceStage[] {
+    const reduce = Array.from({ length: count - 1 }, (_, index): ScreenSpaceStage => {
+      const level = index + 1;
+      const target = this.output.bandTarget(count, level);
+      const finer = this.output.bandTarget(count, level - 1).textures;
+      const material = multiOutputMaterial(target, () => this.bandPyramid.reduced(finer, count, level));
+      return { material, target, gpuPass: GPU_PASS.nearbyDiffuseBandReduce };
+    });
+    const merge = Array.from({ length: count - 1 }, (_, index): ScreenSpaceStage => {
+      const level = count - 2 - index;
+      const target = this.output.mergedTarget(count, level);
+      const coarse = this.output.mergedTexture(count, level + 1);
+      const own = this.output.bandTarget(count, level).textures;
+      const value = (): Vec3Node => this.bandPyramid.merged(coarse, own, count, level);
+      // 段 0 の受け手は走査の受け手なので、走査と同じく補正を受けない受け手を 0 で塗る。
+      const material = stageMaterial();
+      material.mrtNode = mrt({
+        [target.texture.name]: level === 0 ? this.whereResolved(this.gbufferUV, value) : Fn(() => vec4(value(), 1))(),
+      });
+      return { material, target, gpuPass: GPU_PASS.nearbyDiffuseMerge };
+    });
+    return [...reduce, ...merge];
+  }
+
+  // 帯の数 count の、走査の解像度の最後の拡大の前の補正を、描画バッファの解像度へ確率的に拡大する描画命令を組む。
+  // 拡大は描画バッファの解像度の受け手で、補正を受けるかを測り直す。
+  private createUpsampleStage(count: number): ScreenSpaceStage {
+    const source = this.output.mergedTexture(count, 0);
     const choice = this.blueNoise.atScreenPixel(this.seed.add(UPSAMPLE_CHOICE_SHIFT));
     const upsample = stageMaterial();
     upsample.mrtNode = mrt({ diffuseCorrection: this.whereResolved(screenUV,
-      () => this.reconstruction.stochasticUpsampled(bands, count, choice)) });
+      () => this.reconstruction.stochasticUpsampled(source, choice)) });
     return { material: upsample, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
   }
 
@@ -306,7 +336,10 @@ export class ScreenSpacePass {
     if (this.sourceTarget.width !== scanWidth || this.sourceTarget.height !== scanHeight) {
       this.sourceTarget.setSize(scanWidth, scanHeight);
     }
-    this.output.setSize(tier.bandCount, scanWidth, scanHeight, width, height);
+    this.surfaces.setSize(scanWidth, scanHeight);
+    const levelSizes = Array.from({ length: tier.bandCount }, (_, level) =>
+      [levelExtent(scanWidth, level), levelExtent(scanHeight, level)] as const);
+    this.output.setSize(tier.bandCount, levelSizes, width, height);
     this.fullSize.value.set(width, height);
     this.scanSize.value.set(scanWidth, scanHeight);
     // 実カメラの行列。
@@ -319,7 +352,7 @@ export class ScreenSpacePass {
   // 切る直前の像が凍ったまま出る。
   private clearUnwritten(): void {
     const unwritten = this.mode === SCREEN_SPACE_DIFFUSE.off
-      ? [this.sourceTarget, ...this.output.targets]
+      ? [this.sourceTarget, ...this.surfaces.targets, ...this.output.targets]
       : this.mode === SCREEN_SPACE_DIFFUSE.occlusion ? [this.sourceTarget] : [];
     if (unwritten.length === 0) return;
     // 消去色はレンダラーを共有する他のパスのものなので、退避して黒の透明で消し、戻す。
