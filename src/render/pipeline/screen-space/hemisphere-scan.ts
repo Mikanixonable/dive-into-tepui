@@ -1,20 +1,20 @@
 // 受け手 1 画素のまわりの半球を、画面に写った近くの構造に対して一度だけ走査し、遠方の拡散光(一様な環境光と
-// 天体照)のうち近くの構造に塞がれた照度と、塞いでいる面が返す照度(照り返し)の差を答える。
+// 天体照)のうち近くの構造に塞がれた照度と、塞いでいる面が返す照度(照り返し)の差を、遮りの画面距離の帯ごとに答える。
 //
 // 画面上の向き(スライス)を数本取り、それぞれ両側へ深度を引く。深度の標本 1 つは、画面上で隣り合う標本との
 // あいだを受け持つ接平面の切片とみなし、スライスの中の遮りは扇形のビットマスクで持つ(Therrien, Levesque, Gilet
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, pow, screenSize, screenUV,
-  select, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
+  If, Loop, abs, bool, clamp, dot, float, floor, fract, getViewPosition, ivec2, length, log2, max, min, pow, screenSize,
+  screenUV, select, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
 import { signedDiffuseCorrection } from './diffuse-correction';
 import {
   SECTOR_COUNT, angleOf, bitCount, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt,
-  toSliceCoordinates, wedgeWeight, type RangeSectors, type SectorRange, type Slice,
+  toSliceCoordinates, wedgeWeight, type RangeSectors, type Slice,
 } from './slice-sectors';
 import {
   angularlyHigher, angularlyLower, rayAt, samplePoint, sideRays, splitSegments, tangentHit, type SideRays,
@@ -35,11 +35,25 @@ export interface PlanetIllumination {
   readonly irradiance: Vec3Node;
 }
 
-// 天体 1 つの、受け手の画素での塞がれ方の和 — スライスごとの塞がれた割合を楔の重みで積んだ和 blocked と、
-// その重みの和 wedge。
+// 塞がれた照度と照り返しの増分を、遮りの画面距離 ρ [走査の画素] で分ける帯。count は帯の数(1 なら分けない)、
+// scale は帯の座標 log₂(scale·ρ) の尺度で、帯 b は座標 b を受け持つ(座標は 0..count − 1 へ寄せる)。
+export interface BandSplit {
+  readonly count: number;
+  readonly scale: FloatNode;
+}
+
+// 帯 1 つの、受け手の画素での和 — 新しく塞いだ扇形の数と、それに照り返しの源の放射輝度を掛けたものに、スライスの
+// 重みを掛けて積んだ和。
+interface BandSum {
+  readonly ambient: FloatNode;
+  readonly bounce: Vec3Node;
+}
+
+// 天体 1 つの、受け手の画素での塞がれ方の和 — 帯ごとの、スライスごとの塞がれた割合を楔の重みで積んだ和 blocked と、
+// 帯によらない楔の重みの和 wedge。
 interface PlanetSum {
   readonly planet: PlanetIllumination;
-  readonly blocked: FloatNode;
+  readonly blocked: readonly FloatNode[];
   readonly wedge: FloatNode;
 }
 
@@ -52,23 +66,24 @@ interface GBufferSurface {
 }
 
 // 走査の解像度で描いている画素を受け手として、寸法 gbufferSize [px] の G バッファの素の深度 depth と法線 normal
-// (view 空間、oct 符号化)を走査し、受け手の拡散照度の補正(照り返し − 塞がれた照度)を返す。受け手と標本は、
-// 走査の画素が表す G バッファの画素(gbufferUVOf)の値を読む。projection / projectionInverse は実カメラの射影行列と
-// その逆、sliceCount はスライスの数、stepCount は片側の歩数、noise は画素ごとの互いに独立な 0..1 の組(x が
-// スライスの回転、y が歩みのずれ、z が扇形の端の丸めのずれ)。ambientIrradiance と planets は、近くの構造に
-// 遮られないときに受け手へ届く一様な環境光の照度と天体照。radiance は走査と同じ解像度の、面が放つ放射輝度
-// (SUN_IRRADIANCE_1AU の目盛り)で、null なら照り返しは 0。resolvesNearby が偽の受け手は 0。
-// **Fn の中から呼ぶこと。** noise・ambientIrradiance・planets は一様でない分岐の中で読むので、テクスチャを段を
-// 明示して読む式で渡すこと。
+// (view 空間、oct 符号化)を走査し、受け手の拡散照度の補正(照り返し − 塞がれた照度)を帯 bands ごとに返す(長さは
+// 帯の数で、和が帯に分けない補正)。受け手と標本は、走査の画素が表す G バッファの画素(gbufferUVOf)の値を読む。
+// projection / projectionInverse は実カメラの射影行列とその逆、sliceCount はスライスの数、stepCount は片側の歩数、
+// noise は画素ごとの互いに独立な 0..1 の組(x がスライスの回転、y が歩みのずれ、z が扇形の端の丸めのずれ)。
+// ambientIrradiance と planets は、近くの構造に遮られないときに受け手へ届く一様な環境光の照度と天体照。radiance は
+// 走査と同じ解像度の、面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)で、null なら照り返しは 0。resolvesNearby が
+// 偽の受け手は 0。**Fn の中から呼ぶこと。** noise・ambientIrradiance・planets は一様でない分岐の中で読むので、
+// テクスチャを段を明示して読む式で渡すこと。
 export function scanHemisphere(
   depth: THREE.Texture, normal: THREE.Texture, gbufferSize: Vec2Node, projection: Mat4Uniform,
   projectionInverse: Mat4Uniform, sliceCount: IntNode, stepCount: IntNode, noise: Vec3Node,
   ambientIrradiance: Vec3Node, planets: readonly PlanetIllumination[], radiance: THREE.Texture | null,
-): Vec3Node {
+  bands: BandSplit,
+): Vec3Node[] {
   // 受け手。ループの中と外の両方から読むので、先に変数へ置く。
   const receiver = surfaceAt(depth, normal, gbufferSize, projectionInverse, floor(screenUV.mul(screenSize)));
   const radius = projectedRadius(receiver.position, projection, screenSize).toVar();
-  const correction = vec3(0).toVar();
+  const corrections = Array.from({ length: bands.count }, () => vec3(0).toVar());
   If(resolvesNearby(receiver.depth, radius), () => {
     // 視線は投影方式によらない形から取る。
     const view = viewRayAt(projectionInverse, receiver.uv).direction.negate().toVar();
@@ -83,12 +98,13 @@ export function scanHemisphere(
     const planetVars: readonly PlanetIllumination[] = planets.map(({ cap, irradiance }) => ({
       cap: { direction: cap.direction.toVar(), cosAngle: cap.cosAngle.toVar() }, irradiance: irradiance.toVar(),
     }));
-    // 塞がれた扇形の数と照り返しの、スライスの重みつきの和。
-    const ambientSum = float(0).toVar();
-    const bounceSum = vec3(0).toVar();
+    // 帯ごとの塞がれ方と照り返しの和と、帯によらない分母(スライスの重みの和と天体ごとの楔の重みの和)。
+    const bandSums: readonly BandSum[] = corrections.map(() => ({
+      ambient: float(0).toVar(), bounce: vec3(0).toVar(),
+    }));
     const weightSum = float(0).toVar();
     const planetSums: readonly PlanetSum[] = planetVars.map((planet) => ({
-      planet, blocked: float(0).toVar(), wedge: float(0).toVar(),
+      planet, blocked: corrections.map(() => float(0).toVar()), wedge: float(0).toVar(),
     }));
     // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。受け手自身の画素を読まない 1 走査画素先から半径までを、
     // 指数で近くへ寄せて配る（半径が大きくても受け手のそばを粗くしない）。
@@ -98,7 +114,9 @@ export function scanHemisphere(
     };
     Loop({ start: 0, end: sliceCount, type: 'int', condition: '<' }, ({ i }) => {
       const slice = sliceAt(float(i).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiver.normal);
-      const occlusion = new SliceOcclusion(slice, planetSums, dither, radiance);
+      const occlusion = new SliceOcclusion(slice, bands, bandSums, planetSums, dither, radiance);
+      weightSum.addAssign(slice.weight);
+      for (const { sum, wedge } of occlusion.planets) sum.wedge.addAssign(wedge);
       // 受け手自身は、スライスの座標の原点にある、受け手の接平面の点。標本と同じ式で法線を写す — 同じ平面の標本と
       // 法線が一致しないと、平行なはずの 2 直線の交点を拾う。
       const receiverInSlice: SlicePoint = {
@@ -134,30 +152,29 @@ export function scanHemisphere(
         });
         walk.finish(radius);
       });
-      // スライスの塞がれ方と照り返しを重みつきで積む。天体照はスライスごとに球冠の幅で割った割合を、天体の
-      // 方位の楔を代表する重みで積む。球冠の幅が 0 のスライスは重みも 0。
-      ambientSum.addAssign(occlusion.ambient.mul(slice.weight));
-      bounceSum.addAssign(occlusion.bounce.mul(slice.weight));
-      weightSum.addAssign(slice.weight);
-      for (const { sum, range, blocked } of occlusion.planets) {
-        const width = range.upper.sub(range.lower).toVar();
-        const wedge = select(width.greaterThan(0), wedgeWeight(slice, sum.planet.cap.direction), float(0)).toVar();
-        sum.blocked.addAssign(blocked.div(max(width, 1e-6)).mul(wedge));
-        sum.wedge.addAssign(wedge);
-      }
     });
     // 扇形の数を重みで均して SECTOR_COUNT で割ると、半球の余弦重みの測度に対する割合になる。放射輝度 L の面が
     // 半球を塞げば照り返しは π L。
     const average = max(weightSum, 1e-6).mul(SECTOR_COUNT).toVar();
-    const blockedIrradiance = ambient.mul(ambientSum.div(average)).toVar();
-    for (const { planet, blocked, wedge } of planetSums) {
-      blockedIrradiance.addAssign(planet.irradiance.mul(blocked.div(max(wedge, 1e-6))));
-    }
     // 半径が 1〜2 画素に写る受け手では、効きを 0 から 1 へ渡す — 走査を打ち切る 1 画素で補正が段を作らない。
-    correction.assign(signedDiffuseCorrection(bounceSum.mul(Math.PI).div(average), blockedIrradiance)
-      .mul(smoothstep(1, 2, radius)));
+    const fade = smoothstep(1, 2, radius).toVar();
+    for (const [band, sum] of bandSums.entries()) {
+      const blockedIrradiance = ambient.mul(sum.ambient.div(average)).toVar();
+      for (const { planet, blocked, wedge } of planetSums) {
+        blockedIrradiance.addAssign(planet.irradiance.mul(blocked[band]!.div(max(wedge, 1e-6))));
+      }
+      corrections[band]!.assign(
+        signedDiffuseCorrection(sum.bounce.mul(Math.PI).div(average), blockedIrradiance).mul(fade));
+    }
   });
-  return correction;
+  return corrections;
+}
+
+// 画面距離 rho [走査の画素] の遮りの増分を帯 bands へ分ける、帯ごとの重み。重みは 0 以上で、和は 1。
+export function bandWeights(bands: BandSplit, rho: FloatNode): FloatNode[] {
+  if (bands.count === 1) return [float(1)];
+  const coordinate = clamp(log2(bands.scale.mul(rho)), 0, bands.count - 1);
+  return Array.from({ length: bands.count }, (_, band) => max(float(1).sub(abs(coordinate.sub(band))), 0));
 }
 
 // 受け手の近くを走査するか — 面が写っていて(素の深度 depth > 0)、半径が走査の画面へ 1 画素より大きく写る
@@ -197,37 +214,40 @@ function pixelAlong(screenStep: Vec2Node, rho: FloatNode): Vec2Node {
   return floor(screenUV.add(screenStep.mul(rho)).mul(screenSize));
 }
 
-// スライス 1 枚の遮り。手前から奥の順に渡される切片を扇形のビットへ立て、新しく塞いだ扇形の測度を積む。
-// **スライスのループの本体で作ること** — 積算の変数をそこへ置く。
+// スライス 1 枚の遮り。手前から奥の順に渡される切片を扇形のビットへ立て、新しく塞いだ扇形の測度を、切片の画面距離で
+// 帯へ分けて受け手の画素の和へ積む。**スライスのループの本体で作ること** — 塞がれた扇形の変数をそこへ置く。
 class SliceOcclusion {
   // 塞がれた扇形。
   private readonly blocked = uint(0).toVar();
-  // 新しく塞いだ扇形の数に距離重みを掛けた和と、それに照り返しの源の放射輝度を掛けた和。
-  public readonly ambient = float(0).toVar();
-  public readonly bounce = vec3(0).toVar();
-  // 天体ごとの、球冠の範囲とそれをビットごとに測る形、その中で新しく塞いだ測度に距離重みを掛けた和。sum は受け手の
-  // 画素での和。
+  // 天体ごとの、受け手の画素での和 sum、球冠をビットごとに測る形 sectors、このスライスが天体の方位の楔を代表する
+  // 重み wedge と、それを球冠の幅で割った楔の比 ratio。球冠の幅が 0 のスライスは楔の重みも 0。
   public readonly planets: readonly {
     readonly sum: PlanetSum;
-    readonly range: SectorRange;
     readonly sectors: RangeSectors;
-    readonly blocked: FloatNode;
+    readonly wedge: FloatNode;
+    readonly ratio: FloatNode;
   }[];
 
-  // dither は扇形の端の丸めのずれ、radiance は照り返しの源の放射輝度(null なら照り返しを積まない)。
+  // bands は帯の分け方、bandSums と planetSums は積み先の受け手の画素での和、dither は扇形の端の丸めのずれ、
+  // radiance は照り返しの源の放射輝度(null なら照り返しを積まない)。
   public constructor(
-    private readonly slice: Slice, planetSums: readonly PlanetSum[], private readonly dither: FloatNode,
+    private readonly slice: Slice, private readonly bands: BandSplit, private readonly bandSums: readonly BandSum[],
+    planetSums: readonly PlanetSum[], private readonly dither: FloatNode,
     private readonly radiance: THREE.Texture | null,
   ) {
     this.planets = planetSums.map((sum) => {
       const range = capRange(slice, sum.planet.cap, dither);
-      return { sum, range, sectors: rangeSectors(range), blocked: float(0).toVar() };
+      const width = range.upper.sub(range.lower).toVar();
+      const wedge = select(width.greaterThan(0), wedgeWeight(slice, sum.planet.cap.direction), float(0)).toVar();
+      return { sum, sectors: rangeSectors(range), wedge, ratio: wedge.div(max(width, 1e-6)).toVar() };
     });
   }
 
   // 受け手から見て角 lower..upper を占める切片を、手前の切片の後ろへ積む。falloff はその標本の距離重み、
-  // facesReceiver は標本が受け手へ面を向けているか、pixel は標本の走査の画素。
-  public add(lower: FloatNode, upper: FloatNode, falloff: FloatNode, facesReceiver: BoolNode, pixel: Vec2Node): void {
+  // facesReceiver は標本が受け手へ面を向けているか、rho と pixel は標本の画面距離 [走査の画素] と走査の画素。
+  public add(
+    lower: FloatNode, upper: FloatNode, falloff: FloatNode, facesReceiver: BoolNode, rho: FloatNode, pixel: Vec2Node,
+  ): void {
     const sectors = segmentSectors(
       sectorPosition(this.slice, lower, this.dither), sectorPosition(this.slice, upper, this.dither)).toVar();
     // 手前の切片に塞がれていなかった扇形。**OR する前に引く** — 遮りの後ろの遮りを二重に数えない。
@@ -237,13 +257,20 @@ class SliceOcclusion {
       // 距離重みは**ビットには掛けない** — 手前から奥へ歩むので、ビットを立てそこねると奥の標本が手前の遮りの
       // 後ろを塞ぎ直し、二重に数える。
       const newlyMeasure = bitCount(newly).mul(falloff).toVar();
-      this.ambient.addAssign(newlyMeasure);
-      for (const planet of this.planets) planet.blocked.addAssign(maskedMeasure(newly, planet.sectors).mul(falloff));
+      const weights = bandWeights(this.bands, rho);
+      // 環境光と照り返しはスライスの重みを、天体照は楔の比を掛けて、帯の重みで分けて積む。
+      const sliceMeasure = newlyMeasure.mul(this.slice.weight).toVar();
+      for (const [band, { ambient }] of this.bandSums.entries()) ambient.addAssign(sliceMeasure.mul(weights[band]!));
+      for (const { sum, sectors: planetSectors, ratio } of this.planets) {
+        const planetMeasure = maskedMeasure(newly, planetSectors).mul(falloff).mul(ratio).toVar();
+        for (const [band, blocked] of sum.blocked.entries()) blocked.addAssign(planetMeasure.mul(weights[band]!));
+      }
       // 光を返すのは受け手へ面を向けた切片。その向きの境で、切片の張る角は 0 へ縮む。
       const radiance = this.radiance;
       if (radiance !== null) {
         If(facesReceiver, () => {
-          this.bounce.addAssign(textureLoad(radiance, ivec2(pixel)).rgb.mul(newlyMeasure));
+          const bounce = textureLoad(radiance, ivec2(pixel)).rgb.mul(sliceMeasure).toVar();
+          for (const [band, sum] of this.bandSums.entries()) sum.bounce.addAssign(bounce.mul(weights[band]!));
         });
       }
     });
@@ -311,7 +338,7 @@ class SideWalk {
     const lowest = angularlyLower(angularlyLower(this.previousLower, position), upper);
     const highest = angularlyHigher(angularlyHigher(this.previousLower, position), upper);
     this.occlusion.add(angleOf(this.slice, lowest), angleOf(this.slice, highest), this.previousFalloff,
-      offset.lessThan(0), pixelAlong(this.screenStep, this.previousRho));
+      offset.lessThan(0), this.previousRho, pixelAlong(this.screenStep, this.previousRho));
   }
 }
 

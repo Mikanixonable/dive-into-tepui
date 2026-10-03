@@ -34,9 +34,15 @@ import type { RenderStyle } from '../../src/render/render-style';
 import type { ScanTier } from '../../src/render/pipeline/screen-space/screen-space-pass';
 import type { Mat4Uniform } from '../../src/render/tsl-types';
 
-// 読み戻せる浮動小数の中間ターゲット。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る
-// 描画バッファの画素数で、面の無い画素は 0。
-export type FloatTargetName = 'raw-correction' | 'denoised-correction' | 'correction' | 'diffuse' | 'hdr'
+// 近傍拡散補正の走査が帯ごとの補正を詰めて書くテクスチャの読み戻しの名前。並びはテクスチャの番号で、WebGPU の
+// 既定の上限で書ける 4 枚だけ並べる。
+const PACKED_BANDS_NAMES = ['packed-bands-0', 'packed-bands-1', 'packed-bands-2', 'packed-bands-3'] as const;
+
+// 読み戻せる浮動小数の中間ターゲット。'packed-bands-i' は、いまの段の帯の数で走査が帯ごとの補正を詰めた i 枚目の
+// テクスチャ(帯 b の rgb は、テクスチャを並べた通しのチャンネル 3b..3b + 2。帯の数 1 では 'packed-bands-0' の rgb が
+// 帯に分けない補正)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る描画バッファの画素数で、
+// 面の無い画素は 0。
+export type FloatTargetName = (typeof PACKED_BANDS_NAMES)[number] | 'correction' | 'diffuse' | 'hdr'
   | 'projected-radius';
 
 // 読み戻した画像。rgba は画素ごとに 4 つの値で、行は上から。
@@ -414,7 +420,7 @@ export class LabView {
     ));
   }
 
-  // 次に描くフレームから、近傍拡散補正を段 tier で走査して均す。描画品質設定が変わると精細さの段へ戻る。
+  // 次に描くフレームから、近傍拡散補正を段 tier で走査する。描画品質設定が変わると精細さの段へ戻る。
   public setScanTier(tier: ScanTier): void {
     this.pipeline.screenSpace.setTier(tier);
   }
@@ -463,14 +469,20 @@ export class LabView {
     return { width, height, rgba };
   }
 
-  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。
+  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数で詰めたテクスチャに無い
+  // 'packed-bands-i' なら投げる。
   private floatTextureOf(name: Exclude<FloatTargetName, 'projected-radius'>): THREE.Texture {
     switch (name) {
-      case 'raw-correction': return this.pipeline.diffuseCorrection.rawTexture;
-      case 'denoised-correction': return this.pipeline.screenSpace.denoisedCorrectionTexture;
       case 'correction': return this.pipeline.diffuseCorrection.texture;
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
       case 'hdr': return this.pipeline.hdrTexture;
+      default: {
+        // 帯を詰めたテクスチャは、いまの段の帯の数の描画先から引く。
+        const { screenSpace, diffuseCorrection } = this.pipeline;
+        const texture = diffuseCorrection.bandTarget(screenSpace.bandCount).textures[PACKED_BANDS_NAMES.indexOf(name)];
+        if (texture === undefined) throw new Error(`render-lab: ${screenSpace.bandCount} bands have no "${name}"`);
+        return texture;
+      }
     }
   }
 

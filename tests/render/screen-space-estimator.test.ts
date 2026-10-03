@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { bool, float, uint, uniform, vec2, vec3 } from 'three/tsl';
-import { clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
+import { bandWeights, clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
   angleOf, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt, toSliceCoordinates,
   wedgeWeight,
@@ -381,6 +381,31 @@ export function register(): void {
           }
         }
       }
+    }
+  });
+
+  test('screen space estimator: 帯の重みは 0 以上で和が 1、両隣の帯にだけ乗り、帯の番号の重みつきの平均が帯の座標', () => {
+    for (const count of [2, 5]) {
+      for (const scale of [1 / 8, 1 / 4]) {
+        for (const rho of [1, 3, 7.5, 8, 11, 16, 40, 100, 128, 300, 700]) {
+          const weights = bandWeights({ count, scale: float(scale) }, float(rho)).map(valueOf);
+          const label = `count=${count} scale=${scale} rho=${rho}`;
+          assert.strictEqual(weights.length, count, label);
+          assert.ok(weights.every((weight) => weight >= 0), `${label} 重み ${weights}`);
+          near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, `${label} 和`);
+          // 帯の座標 log₂(scale·ρ) は、両端の帯で頭打ちになる。
+          const coordinate = Math.min(Math.max(Math.log2(scale * rho), 0), count - 1);
+          near(weights.reduce((sum, weight, band) => sum + weight * band, 0), coordinate, 1e-12, `${label} 座標`);
+          assert.ok(weights.every((weight, band) => weight === 0 || Math.abs(band - coordinate) < 1),
+            `${label} 重み ${weights}`);
+        }
+      }
+    }
+  });
+
+  test('screen space estimator: 帯が 1 つなら、増分は画面距離によらずすべてその帯へ入る', () => {
+    for (const rho of [0.5, 8, 700]) {
+      assert.deepStrictEqual(bandWeights({ count: 1, scale: float(1 / 8) }, float(rho)).map(valueOf), [1]);
     }
   });
 

@@ -39,7 +39,7 @@ export async function reference({ options }) {
   if (slices * steps > MAX_PASS_SAMPLES) {
     throw new Error(`slices × steps = ${slices * steps} exceeds ${MAX_PASS_SAMPLES} per pass (GPU timeout budget)`);
   }
-  const tier = { scale: 1, sliceCount: slices, stepCount: steps, denoiseRadius: 0 };
+  const tier = { ...MEDIUM_RAW_TIER, scale: 1, sliceCount: slices, stepCount: steps };
   const name = options.name ?? headHash();
   const entries = selectedEntries(options);
   await withLab(async (lab) => {

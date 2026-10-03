@@ -12,8 +12,8 @@
 //     --entries の既定は bay。
 //   compare [<candidates.json>] [--reference D] [--entries K,...] [--sets S,...] [--out O]
 //     候補 { label, tier, passes }(passes の既定は 1)を B と比べ、指標と費用の表を出す。passes パスの候補は、seed を変えた
-//     passes パスの補正の平均を 1 枚の出力とし、費用を段の passes 倍に数える。既定の候補は中の段の均した後と均す前と、
-//     均す前の 2・4・8 パス。候補の段の 1 パスの歩数が B と違うか、スライス数が B と同じでも、ともに 4 の倍数でも
+//     passes パスの補正の平均を 1 枚の出力とし、費用を段の passes 倍に数える。既定の候補は中の段と、その帯に分けない段
+//     (-raw)と、それの 2・4・8 パス。候補の段の 1 パスの歩数が B と違うか、スライス数が B と同じでも、ともに 4 の倍数でも
 //     なければ撮る前に止まる。候補の seed は seed の列の末尾から取って B のパスと重ねず、重なるなら止まる。偽の構造の
 //     地図と、表示の誤差を 8 倍にした画像を .render-lab-shots/ssd-compare/<O>/ へ書き、候補の撮影(captures/)と費用・
 //     拡散照度から数えた値(record.json)も残す。
@@ -22,10 +22,11 @@
 //     compare が残した撮影を、撮り直さずにいまの指標で採点し直し、表を <出力先>/report.md へ書く。D の既定は撮影に
 //     使った基準。
 //   variance [<candidates.json>] [--entries K,...] [--sets S,...] [--mode M] [--passes N] [--out O]
-//     候補の段(既定は中の均し前)の均し・拡大の前の補正を、全候補で共通の seed の列で N パス(既定 256、4 の倍数)撮り、
-//     seed についての画素ごとの分散と収束先の移動と費用を、先頭の候補と比べる表にする。画素ごとの分布の形(歪度・尖度を、
-//     |μ| の帯・μ の符号・bay の窓で分けたもの)と、1 パスの誤差の空間の相関 R(s) の表も出す。画素ごとの統計と目で見る
-//     画像も .render-lab-shots/ssd-variance/<O>/ へ書く。O の既定は HEAD の短いハッシュ。--entries も --sets も無ければ
+//     候補の段(既定は中の帯に分けない段)の拡大の前の帯ごとの補正を、全候補で共通の seed の列で N パス(既定 256、4 の
+//     倍数)撮り、seed についての帯ごとの画素ごとの分散と、帯の和の収束先の移動と費用を、先頭の候補(帯に分けない段)と
+//     比べる表にする。帯に分けない候補では、画素ごとの分布の形(歪度・尖度を、|μ| の帯・μ の符号・bay の窓で分けたもの)と、
+//     1 パスの誤差の空間の相関 R(s) の表も出す。帯ごとの画素ごとの統計と目で見る画像も
+//     .render-lab-shots/ssd-variance/<O>/ へ書く。O の既定は HEAD の短いハッシュ。--entries も --sets も無ければ
 //     tuning。M(occlusion か indirect)を与えると、選んだ撮影をその方式で撮る(key は遮蔽なら <撮影>@occlusion)。
 //
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
@@ -52,7 +53,7 @@ const SHARED_SLICE_MULTIPLE = 4;
 // 表示の 1 LSB に当たる、黒の近くの線形の値。
 const DISPLAY_LSB = 1 / (255 * 12.92);
 
-// 既定の候補: 着手前の中の段の均した後と均す前(-raw)と、愚直な曲線(均す前の -p<N> パスの平均)。
+// 既定の候補: いまの中の段と、帯に分けない段(-raw)と、愚直な曲線(-raw の -p<N> パスの平均)。
 const DEFAULT_CANDIDATES = [
   { label: 'medium', tier: TIERS.medium },
   { label: 'medium-raw', tier: MEDIUM_RAW_TIER },
@@ -305,11 +306,11 @@ function reportOf(record, results, flicker, scales) {
   const keysOf = (set) => entries.filter((e) => e.set === set).map((e) => e.key);
   const [tuning, checking, correctness] = ['tuning', 'checking', 'correctness'].map(keysOf);
   const measured = [...tuning, ...checking];
-  // 費用は近傍拡散補正の 4 行の和の、マテリアルの行に対する比の、候補のパス数 passes 倍。
+  // 費用は近傍拡散補正の 3 行の和の、マテリアルの行に対する比の、候補のパス数 passes 倍。
   const costOf = (row, passes) => {
     if (row === null) return null;
-    const parts = ['照り返し源', '近傍拡散走査', '近傍拡散均し', '近傍拡散拡大', 'マテリアル'].map((label) => row[label]);
-    return parts.some((v) => v === null) ? null : passes * (parts[0] + parts[1] + parts[2] + parts[3]) / parts[4];
+    const parts = ['照り返し源', '近傍拡散走査', '近傍拡散拡大', 'マテリアル'].map((label) => row[label]);
+    return parts.some((v) => v === null) ? null : passes * (parts[0] + parts[1] + parts[2]) / parts[3];
   };
   const summary = candidates.map((candidate, i) => {
     const rows = results[candidate.label];

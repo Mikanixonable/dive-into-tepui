@@ -9,7 +9,8 @@ import {
 import { octDecodeNormal } from './gbuffer';
 import { compositeMaterial } from './composite-material';
 import { viewPositionAt } from './view-ray';
-import type { DebugTargetId } from './debug-target';
+import { BAND_DEBUG_TARGETS, type BandDebugTargetId, type DebugTargetId } from './debug-target';
+import { unpackedBands } from './screen-space/band-pyramid';
 import type { GBufferPass } from './gbuffer';
 import type { Exposure } from './exposure';
 import type { ShadowMaps } from './shadow/shadow-maps';
@@ -26,8 +27,17 @@ import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '.
 // 通常表示を除くデバッグ表示の選択肢。
 export type DebugView = Exclude<DebugTargetId, 'off'>;
 
+// 選択肢 view が、走査の帯ごとの補正の表示か。
+function isBandView(view: DebugView): view is BandDebugTargetId {
+  return (BAND_DEBUG_TARGETS as readonly string[]).includes(view);
+}
+
 export class DebugComposites {
-  private readonly materials: Readonly<Record<DebugView, THREE.MeshBasicNodeMaterial>>;
+  private readonly materials: Readonly<Record<Exclude<DebugView, BandDebugTargetId>, THREE.MeshBasicNodeMaterial>>;
+  // 帯の数ごとの、帯ごとの補正の表示。初めてその帯の数で映すときに組む。
+  private readonly bandMaterials = new Map<number, readonly THREE.MeshBasicNodeMaterial[]>();
+  // いまの段に無い帯の表示が映す黒。
+  private readonly blankMaterial: THREE.MeshBasicNodeMaterial;
   // 深度と影スロットの表示が、深度から距離と描画座標を引き直す実カメラの値。合成パスは固定の直交カメラで描かれる
   // ので、TSL のカメラの組み込みノードは実カメラの値を返さない — syncCamera が毎フレーム書き込む。
   private readonly near: FloatUniform = uniform(1);
@@ -39,11 +49,12 @@ export class DebugComposites {
     private readonly gbuffer: GBufferPass, private readonly exposure: Exposure,
     private readonly projectionInverse: Mat4Uniform, private readonly shadowMaps: ShadowMaps,
     private readonly meshShadow: MeshShadow, shadowPass: ShadowPass, lightPrepass: LightPrepass,
-    screenSpacePass: ScreenSpacePass, diffuseCorrection: DiffuseCorrection, planetLight: PlanetLightSource,
-    atmospherePass: AtmospherePass, lensPass: LensPass,
+    private readonly screenSpacePass: ScreenSpacePass, private readonly diffuseCorrection: DiffuseCorrection,
+    planetLight: PlanetLightSource, atmospherePass: AtmospherePass, lensPass: LensPass,
   ) {
     const material = (color: Vec4Node): THREE.MeshBasicNodeMaterial => compositeMaterial(color, gbuffer.depthTexture);
     const toneMapped = (color: Vec3Node): Vec4Node => vec4(exposure.toneMapped(color), 1);
+    this.blankMaterial = material(vec4(0, 0, 0, 1));
     // 「マテリアル」も「大気」も、大気パスが点検用に描く1枚を映すので、材質を共有する。
     const inspectMaterial = material(toneMapped(texture(atmospherePass.inspectTexture, screenUV).rgb));
     this.materials = {
@@ -63,9 +74,6 @@ export class DebugComposites {
       // 画面へ出す(1 天文単位の放射照度は π を超えるため、通さないと全面白になる)。
       diffuse: material(toneMapped(texture(lightPrepass.diffuseTexture, screenUV).rgb)),
       specular: material(toneMapped(texture(lightPrepass.specularTexture, screenUV).rgb)),
-      'raw-correction': material(vec4(this.signedCorrection(texture(diffuseCorrection.rawTexture, screenUV)), 1)),
-      'denoised-correction': material(vec4(
-        this.signedCorrection(texture(screenSpacePass.denoisedCorrectionTexture, screenUV)), 1)),
       correction: material(vec4(this.signedCorrection(texture(diffuseCorrection.texture, screenUV)), 1)),
       'bounce-source': material(toneMapped(texture(screenSpacePass.surfaceRadianceTexture, screenUV).rgb)),
       material: inspectMaterial,
@@ -75,9 +83,26 @@ export class DebugComposites {
     };
   }
 
-  // 選択肢 view の合成マテリアル。
+  // 選択肢 view の合成マテリアル。帯の表示は、いまの段の帯の数で走査が書いた帯を映す。
   public material(view: DebugView): THREE.MeshBasicNodeMaterial {
-    return this.materials[view];
+    return isBandView(view) ? this.bandMaterial(BAND_DEBUG_TARGETS.indexOf(view)) : this.materials[view];
+  }
+
+  // 帯 band の表示の合成マテリアル。いまの段の帯の数に帯 band が無ければ黒。
+  private bandMaterial(band: number): THREE.MeshBasicNodeMaterial {
+    const count = this.screenSpacePass.bandCount;
+    return band < count ? this.bandMaterialsOf(count)[band]! : this.blankMaterial;
+  }
+
+  // 帯の数 count で走査が書いた帯ごとの補正を、符号を色分けして映す合成マテリアルの並び。初めて引いたときに組む。
+  private bandMaterialsOf(count: number): readonly THREE.MeshBasicNodeMaterial[] {
+    const existing = this.bandMaterials.get(count);
+    if (existing !== undefined) return existing;
+    const packed = this.diffuseCorrection.bandTarget(count).textures.map((source) => texture(source, screenUV));
+    const materials = unpackedBands(packed, count).map((value) => compositeMaterial(
+      vec4(this.signedCorrection(vec4(value, 1)), 1), this.gbuffer.depthTexture));
+    this.bandMaterials.set(count, materials);
+    return materials;
   }
 
   // 深度と影スロットの表示が読む実カメラ camera の値を書き込む。
@@ -91,7 +116,10 @@ export class DebugComposites {
 
   // 全マテリアルを解放する。同じ1枚を複数の選択肢が共有するので、重複を畳んでから解放する。
   public dispose(): void {
-    for (const material of new Set(Object.values(this.materials))) material.dispose();
+    const bandMaterials = [...this.bandMaterials.values()].flat();
+    for (const material of new Set([...Object.values(this.materials), ...bandMaterials, this.blankMaterial])) {
+      material.dispose();
+    }
   }
 
   // 符号付きの値を成分ごとに、画面に出る値が 0 で中間灰、正で明るく、負で暗くなるよう写す。大きさの階調は
