@@ -4,7 +4,7 @@
 // 描くのと、G バッファの深度を同じターゲットへ複製するのもこのパスが担う。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { BRDF_Lambert, Discard, Fn, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
+import { BRDF_Lambert, Discard, Fn, max, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { WORLD_BACKGROUND_LAYER } from './lit-layer';
 import type { GBufferPass } from './gbuffer';
@@ -27,7 +27,8 @@ function shadedColor(lightPrepass: LightPrepass, gbuffer: GBufferPass): Vec4Node
     const lambert = BRDF_Lambert({
       diffuseColor: baseColor.mul(metalness.oneMinus()),
     }) as unknown as Vec3Node;
-    const diffuse = texture(lightPrepass.diffuseTexture, screenUV).rgb.mul(lambert);
+    // 拡散の照度は符号付きの近傍補正を含み、補正が引きすぎると負になるので、0 以上に切ってから掛ける。
+    const diffuse = max(texture(lightPrepass.diffuseTexture, screenUV).rgb, vec3(0)).mul(lambert);
     const specular = texture(lightPrepass.specularTexture, screenUV).rgb
       .mul(mix(vec3(0.04), baseColor, metalness));
     const emissive = texture(gbuffer.emissiveTexture, screenUV).rgb;
