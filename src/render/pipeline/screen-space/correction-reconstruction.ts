@@ -71,10 +71,14 @@ export class CorrectionReconstruction {
   public upsampled(denoised: THREE.Texture): Vec3Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
     const receiver = this.receiverAt(pixel);
-    // 画素の中心を囲む 4 つの走査の画素の中心のうち左上のものと、そこからのずれ [走査の画素]。
-    const onScan = vec2(pixel).add(0.5).mul(this.scanSize).div(this.fullSize).sub(0.5).toVar();
-    const corner = floor(onScan).toVar();
-    const fraction = onScan.sub(corner).toVar();
+    // 画素の中心を囲む 4 つの走査の画素の中心のうち左上のものと、そこからのずれ [走査の画素]。走査の上の位置
+    // ((2·pixel + 1)·scanSize − fullSize) / (2·fullSize) を整数で割る — 浮動小数の割り算では、解像度が同じとき整数に
+    // 乗る位置が下へずれ、左上の隣が重みを持つ。割られる数は fullSize を足して非負にしてある。
+    const span = ivec2(this.fullSize).mul(2).toVar();
+    const shifted = ivec2(pixel).mul(2).add(1).mul(ivec2(this.scanSize)).add(ivec2(this.fullSize)).toVar();
+    const quotient = shifted.div(span).toVar();
+    const corner = vec2(quotient.sub(1)).toVar();
+    const fraction = vec2(shifted.sub(quotient.mul(span))).div(vec2(span)).toVar();
     const sum = new WeightedSum();
     for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
       const tap = this.clampToScan(ivec2(corner.add(vec2(dx, dy)))).toVar();

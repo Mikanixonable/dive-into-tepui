@@ -6,8 +6,8 @@
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, screenSize, screenUV, select,
-  smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
+  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, pow, screenSize, screenUV,
+  select, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
@@ -90,10 +90,11 @@ export function scanHemisphere(
     const planetSums: readonly PlanetSum[] = planetVars.map((planet) => ({
       planet, blocked: float(0).toVar(), wedge: float(0).toVar(),
     }));
-    // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。近くへ寄せる二乗の配分。
+    // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。受け手自身の画素を読まない 1 走査画素先から半径までを、
+    // 指数で近くへ寄せて配る（半径が大きくても受け手のそばを粗くしない）。
     const stepDistance = (progress: FloatNode): FloatNode => {
       const u = progress.div(float(stepCount));
-      return u.mul(u).mul(radius);
+      return radius.mul(pow(radius, u.sub(1)));
     };
     Loop({ start: 0, end: sliceCount, type: 'int', condition: '<' }, ({ i }) => {
       const slice = sliceAt(float(i).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiver.normal);
@@ -107,7 +108,7 @@ export function scanHemisphere(
         projectionInverse);
       // 歩みのずれはスライスごとに 1/S ずらす(共有すると半径方向のずれが平均されない)。i は内側の Loop で同名の添字に化けるのでここで読む。
       const sliceJitter = fract(jitter.add(float(i).div(float(sliceCount)))).toVar();
-      // 両側へ、手前から奥の順に歩む。歩 k の標本は画面上の区間 [(k/N)²·R, ((k+1)/N)²·R] の中の 1 点。
+      // 両側へ、手前から奥の順に歩む。歩 k の標本は画面上の区間 [stepDistance(k), stepDistance(k + 1)] の中の 1 点。
       Loop({ start: 0, end: 2, type: 'int', condition: '<' }, ({ i: sideIndex }) => {
         const sideSign = float(1).sub(float(sideIndex).mul(2)).toVar();
         const screenStep = slice.screenDirection.mul(sideSign).div(screenSize).toVar();
@@ -120,8 +121,7 @@ export function scanHemisphere(
         };
         const walk = new SideWalk(slice, screenStep, rays, occlusion, receiverInSlice);
         Loop({ start: 0, end: stepCount, type: 'int', condition: '<' }, ({ i: step }) => {
-          // 標本は隣の画素から先を読む — 受け手との中点が、受け手の画素の外に出る。
-          const rho = max(stepDistance(float(step).add(sliceJitter)), 1).toVar();
+          const rho = stepDistance(float(step).add(sliceJitter)).toVar();
           const samplePixel = pixelAlong(screenStep, rho).toVar();
           const sample = surfaceAt(depth, normal, gbufferSize, projectionInverse, samplePixel);
           const toSample = sample.position.sub(receiver.position).toVar();
@@ -141,8 +141,7 @@ export function scanHemisphere(
       weightSum.addAssign(slice.weight);
       for (const { sum, range, blocked } of occlusion.planets) {
         const width = range.upper.sub(range.lower).toVar();
-        const wedge = select(width.greaterThan(0), wedgeWeight(slice, sum.planet.cap.direction, sliceCount), float(0))
-          .toVar();
+        const wedge = select(width.greaterThan(0), wedgeWeight(slice, sum.planet.cap.direction), float(0)).toVar();
         sum.blocked.addAssign(blocked.div(max(width, 1e-6)).mul(wedge));
         sum.wedge.addAssign(wedge);
       }
