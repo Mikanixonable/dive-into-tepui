@@ -5,7 +5,7 @@ import {
   sign, sin, uint, vec2, vec3,
 } from 'three/tsl';
 import type { PlanetCap } from '../lighting/planet-light-source';
-import type { FloatNode, IntNode, UintNode, Vec2Node, Vec3Node } from '../../tsl-types';
+import type { FloatNode, UintNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
 // スライス 1 枚を刻む扇形の数。マスクの幅(uint のビット数)と一致させる。
 export const SECTOR_COUNT = 32;
@@ -109,13 +109,16 @@ export function capRange(slice: Slice, cap: PlanetCap, dither: FloatNode): Secto
   };
 }
 
+// 楔の半幅 [rad]。等間隔のスライスが 4 の倍数本なら、どの方位でも楔の重みの和が本数 / 4 になり、天体照の核が
+// スライスの数に依らない。
+const WEDGE_HALF_WIDTH = Math.PI / 4;
+
 // スライスが、向き direction(view 空間)の天体の方位のまわりの楔を代表する重み。視線の成分を除いた向きと
-// スライスの向きの角距離(mod π)が 0 で 1、スライスの間隔 π / sliceCount で 0 になる三角形で、隣り合う
-// スライスを補間する。
-export function wedgeWeight(slice: Slice, direction: Vec3Node, sliceCount: IntNode): FloatNode {
+// スライスの向きの角距離(mod π)が 0 で 1、WEDGE_HALF_WIDTH で 0 になる三角形。
+export function wedgeWeight(slice: Slice, direction: Vec3Node): FloatNode {
   const across = direction.sub(slice.view.mul(dot(direction, slice.view))).toVar();
   const cosDistance = abs(dot(across, slice.orthoDirection)).div(max(length(across), 1e-6));
-  return max(float(1).sub(acos(min(cosDistance, 1)).mul(float(sliceCount)).div(Math.PI)), 0);
+  return max(float(1).sub(acos(min(cosDistance, 1)).div(WEDGE_HALF_WIDTH)), 0);
 }
 
 // 扇形の座標の区間を、立っているビットから測る形 — 区間の下端の扇形 first と上端の扇形 last のビット、そのあいだの
