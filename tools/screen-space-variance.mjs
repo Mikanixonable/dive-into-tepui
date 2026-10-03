@@ -1,7 +1,8 @@
 // 近傍拡散補正の拡大の前の走査の、seed についての帯ごとの画素ごとの分散と分布の形の計測。候補の段ごとに、全候補で共通の seed
-// の列で撮ったパスから、遮りの画面距離の帯ごとの q の画素ごとの平均・不偏分散を求め、帯の和の収束先を先頭の候補 A(帯に
-// 分けない段)と比べる。帯に分けない候補では raw(帯 0)の分散を A と比べ、分布の形と誤差の空間の相関も表にする。表・数・
-// 画素ごとの統計・目で見る画像を .render-lab-shots/ssd-variance/<出力先>/ へ書く。
+// の列で撮ったパスから、遮りの画面距離の帯ごとの q と、最後の拡大の前の補正 C_0 の画素ごとの平均・不偏分散を求め、先頭の
+// 候補 A(帯に分けない段)と比べる。C_0 は恒等からのずれ・揺れとその見込み・bay の系の窓の比を表にする。帯に分けない候補では
+// raw(帯 0)の分散を A と比べ、分布の形と誤差の空間の相関も表にする。表・数・画素ごとの統計・目で見る画像を
+// .render-lab-shots/ssd-variance/<出力先>/ へ書く。
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { encodeRgbPng } from './png.mjs';
@@ -11,8 +12,12 @@ import {
 } from './screen-space-distribution.mjs';
 import { exposedCorrectionOf, srgbCodesOfLinear } from './screen-space-error.mjs';
 import {
-  ENTRIES, entryInMode, fixed, HEIGHT, headHash, maskOf, MEDIUM_RAW_TIER, packedBandsNamesOf, seedOf, selectedEntries,
-  shotsDir, table, unpackedBand, WIDTH, WINDOW_HALF, WINDOWS, withLab, writeFloats,
+  CHAIN_IMAGE_NOTES, CHAIN_NOTES, chainColorsOf, chainPlanesOf, chainRowOf, chainTableOf,
+} from './screen-space-chain.mjs';
+import {
+  ENTRIES, entryInMode, fixed, HEIGHT, headHash, maskedMeanOf, maskOf, MEDIUM_RAW_TIER, packedBandsNamesOf,
+  ratioColorOf, seedOf, selectedEntries, shotsDir, table, unpackedBand, WIDTH, WINDOW_HALF, WINDOWS, windowRatiosOf,
+  withLab, writeFloats,
 } from './screen-space-lab.mjs';
 
 const USAGE = 'usage: variance [<candidates.json>] [--entries <key,...>] [--sets <set,...>] [--mode occlusion|indirect] '
@@ -24,8 +29,14 @@ const DEFAULT_PASSES = 256;
 const BLOCKS = 4;
 // 誤差の空間の相関を測る、先頭から取る 1 パスの補正の数。
 const SAMPLED_PASSES = 2;
-// 費用に使う GPU の行(src/render/gpu-timings.ts の GPU_PASS_LABELS の近傍拡散の走査)。
+// 費用に使う GPU の行(src/render/gpu-timings.ts の GPU_PASS_LABELS)。SCAN_ROW は近傍拡散の走査、COST_ROWS は表に出す行で、
+// 最後のマテリアルの行を費用の比の分母にする。
 const SCAN_ROW = '近傍拡散走査';
+const COST_ROWS = [
+  '照り返し源', SCAN_ROW, '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大', 'マテリアル',
+];
+// 最後の拡大の前の補正(走査の解像度。帯に分けない段は帯 0、分ける段は拡大と合流の段 0 の出力)の読み戻しの名前。
+const C0_NAME = 'scan-correction';
 
 // 撮影の候補ごとの行を測り、費用を測って、表と記録を書く。options.mode(MODE の名前)があれば、選んだ撮影をその方式で撮る。
 export async function variance({ positional, options }) {
@@ -41,16 +52,21 @@ export async function variance({ positional, options }) {
   const head = headHash();
   const outDir = path.join(shotsDir, 'ssd-variance', options.out ?? head);
   mkdirSync(path.join(outDir, 'data'), { recursive: true });
-  const { shots, scanCosts, scales } = await withLab(async (lab) => {
+  const { shots, costs, scales } = await withLab(async (lab) => {
     const measured = {};
     for (const entry of entries) measured[entry.key] = await measureShot(lab, outDir, entry, candidates, passes);
     // 費用。コンパイルを済ませてから、bay を撮影と同じ方式で、段を交互に測る。
     await lab.show(inMode(ENTRIES[0]));
     await lab.capturePng();
-    const costs = await lab.measureTiers(candidates.map((c) => c.tier), 3);
-    return { shots: measured, scanCosts: costs.map((row) => row[SCAN_ROW]), scales: await lab.errorScales() };
+    const rows = await lab.measureTiers(candidates.map((c) => c.tier), 3);
+    return {
+      shots: measured,
+      costs: rows.map((row) => Object.fromEntries(COST_ROWS.map((label) => [label, row[label]]))),
+      scales: await lab.errorScales(),
+    };
   });
-  const record = { head, passes, candidates, entries: entries.map((e) => e.key), scales, scanCosts, shots };
+  const scanCosts = costs.map((row) => row[SCAN_ROW]);
+  const record = { head, passes, candidates, entries: entries.map((e) => e.key), scales, scanCosts, costs, shots };
   writeFileSync(path.join(outDir, 'record.json'), JSON.stringify(record, null, 1));
   const report = reportOf(record);
   writeFileSync(path.join(outDir, 'report.md'), report);
@@ -73,9 +89,10 @@ function candidatesOf(file) {
 // ---- 撮影 ----
 
 // 撮影 entry で候補 candidates を passes パスずつ撮り、画素ごとの統計と目で見る画像を dir へ書いて、撮影の記録
-// { width, height, measured, exposure, meanRms, imageScales, rows, distributions } を返す。width × height は走査の解像度、
-// measured は測る画素の数、meanRms は A の平均 μ_A の RMS、rows は候補の label ごとの行(rowOf)、distributions は帯に
-// 分けない候補の label ごとの分布(distributionOf)に誤差の空間の相関 r(errorCorrelationOf)を足したもの。lab は withLab の口。
+// { width, height, measured, exposure, meanRms, imageScales, rows, chains, distributions } を返す。width × height は走査の
+// 解像度、measured は測る画素の数、meanRms は A の平均 μ_A の RMS、rows は候補の label ごとの行(rowOf)、chains は候補の
+// label ごとの C_0 の行(chainRowOf)、distributions は帯に分けない候補の label ごとの分布(distributionOf)に誤差の空間の
+// 相関 r(errorCorrelationOf)を足したもの。lab は withLab の口。
 async function measureShot(lab, dir, entry, candidates, passes) {
   await lab.show(entry);
   await lab.capturePng();
@@ -87,16 +104,20 @@ async function measureShot(lab, dir, entry, candidates, passes) {
   const mask = scanMaskOf(radius, candidates[0].tier.scale, width, height);
   const windowPixels = entry.caseName === 'bay' ? bayWindowPixelsOf(width, height) : null;
   const imageScales = imageScalesOf(baseline.raw, mask, passes);
+  const meanRms = Math.sqrt(maskedMeanOf(baseline.mean.map((v) => v * v), mask));
   const rows = {};
+  const chains = {};
   const distributions = {};
   for (const [index, candidate] of candidates.entries()) {
     const current = index === 0 ? baseline : await capturePasses(lab, entry, candidate, passes, exposure);
     if (current.width !== width || current.height !== height) {
       throw new Error(`${candidate.label} scans ${current.width}×${current.height}, A scans ${width}×${height}`);
     }
+    const chain = chainPlanesOf(current.c0, baseline.c0, current.bands, mask, width, height);
     writeStatistics(dir, entry.key, candidate.label, current);
-    writeImages(dir, entry.key, candidate.label, current, index === 0 ? null : baseline, mask, imageScales);
+    writeImages(dir, entry.key, candidate.label, current, index === 0 ? null : baseline, mask, imageScales, chain);
     rows[candidate.label] = rowOf(current, baseline, mask);
+    chains[candidate.label] = chainRowOf(chain, mask, width, meanRms, current.windowRatio);
     if (current.raw === null) continue;
     distributions[candidate.label] = {
       ...distributionOf(current.raw, mask, windowPixels),
@@ -104,20 +125,21 @@ async function measureShot(lab, dir, entry, candidates, passes) {
     };
   }
   const measured = mask.reduce((count, m) => count + m, 0);
-  const meanRms = Math.sqrt(maskedMeanOf(baseline.mean.map((v) => v * v), mask));
-  return { width, height, measured, exposure, meanRms, imageScales, rows, distributions };
+  return { width, height, measured, exposure, meanRms, imageScales, rows, chains, distributions };
 }
 
 // 表示中の撮影 entry を候補 candidate の段で passes パス撮り、露出係数 exposure の q の統計
-// { width, height, bands, mean, halves, raw, display, passSeconds, seconds } を返す。bands は帯ごとの画素ごとの統計
-// (statisticsOf)、mean と halves は帯の和の全パスの平均と偶数番目・奇数番目のパスの平均の組、raw は帯に分けない段なら帯 0 の
-// 統計に成分の和の画素ごとの形 shape(shapeOf)と先頭 SAMPLED_PASSES パスの q の平面の組(R・G・B)の並び samples を足した
-// もの(帯に分ける段では null)、display は全パスの HDR の平均の表示(線形 sRGB)、passSeconds は最初のパスを除く 1 パスの所要、
-// seconds は全体の所要。
+// { width, height, bands, mean, halves, raw, c0, windowRatio, display, passSeconds, seconds } を返す。bands は帯ごとの画素
+// ごとの統計(statisticsOf)、mean と halves は帯の和の全パスの平均と偶数番目・奇数番目のパスの平均の組、raw は帯に分けない段
+// なら帯 0 の統計に成分の和の画素ごとの形 shape(shapeOf)と先頭 SAMPLED_PASSES パスの q の平面の組(R・G・B)の並び samples を
+// 足したもの(帯に分ける段では null)、c0 は最後の拡大の前の補正の統計、windowRatio は bay の系の撮影での拡散照度の全パスの
+// 平均の窓の比 P_in / P_out(ほかの撮影では null)、display は全パスの HDR の平均の表示(線形 sRGB)、passSeconds は最初の
+// パスを除く 1 パスの所要、seconds は全体の所要。
 async function capturePasses(lab, entry, candidate, passes, exposure) {
   const started = Date.now();
   const { bandCount } = candidate.tier;
   const names = packedBandsNamesOf(bandCount);
+  const inBay = entry.caseName === 'bay';
   await lab.setTier(candidate.tier);
   let firstPassSeconds = 0;
   const samples = [];
@@ -127,17 +149,22 @@ async function capturePasses(lab, entry, candidate, passes, exposure) {
     if (k === 0) await lab.capturePng();
     else await lab.render();
     for (const name of names) await lab.accumulateMoments(name, 4, k % BLOCKS);
+    await lab.accumulateMoments(C0_NAME, 3, k % BLOCKS);
     await lab.accumulateFloat('hdr', 3, 0);
+    if (inBay) await lab.accumulateFloat('diffuse', 3, 0);
     if (bandCount === 1 && k < SAMPLED_PASSES) samples.push(exposedCorrectionOf(await lab.readFloat(names[0], 3), exposure));
     if (k === 0) firstPassSeconds = (Date.now() - started) / 1000;
   }
   const passSeconds = ((Date.now() - started) / 1000 - firstPassSeconds) / (passes - 1);
   const display = await lab.displayOfMean('hdr', passes);
   await lab.dropAccumulated('hdr');
+  const windowRatio = inBay
+    ? windowRatiosOf(entry, (await lab.takeAccumulated('diffuse', 1))[0].map((v) => v / passes))[0] : null;
   const packed = [];
   for (const name of names) packed.push(await lab.takeMoments(name, BLOCKS));
   // 帯ごとの冪和を詰めたテクスチャのチャンネルから取り出して、統計にする。
   const scale = exposure / Math.PI;
+  const c0 = statisticsOf((await lab.takeMoments(C0_NAME, BLOCKS)).slots, scale, passes);
   const bands = Array.from({ length: bandCount }, (_, band) => statisticsOf(packed[0].slots.map((_, slot) => ({
     sum: unpackedBand(packed.map((texture) => texture.slots[slot].sum), band),
     squareSum: unpackedBand(packed.map((texture) => texture.slots[slot].squareSum), band),
@@ -154,6 +181,8 @@ async function capturePasses(lab, entry, candidate, passes, exposure) {
     mean: elementSumOf(bands.map((b) => b.mean)),
     halves: [0, 1].map((h) => elementSumOf(bands.map((b) => b.halves[h]))),
     raw,
+    c0,
+    windowRatio,
     display,
     passSeconds,
     seconds,
@@ -220,17 +249,6 @@ const unbiasedVarianceOf = (sum, squareSum, n) => (squareSum - sum * sum / n) / 
 // 同じ長さの並び arrays の、要素ごとの和。
 const elementSumOf = (arrays) => arrays[0].map((_, i) => arrays.reduce((sum, values) => sum + values[i], 0));
 
-// 画素ごとに rgb を並べた values の、印 mask の立った画素での 3 成分の和の平均。
-function maskedMeanOf(values, mask) {
-  let [total, count] = [0, 0];
-  for (let p = 0; p < mask.length; p++) {
-    if (!mask[p]) continue;
-    total += values[3 * p] + values[3 * p + 1] + values[3 * p + 2];
-    count++;
-  }
-  return total / count;
-}
-
 // 候補の統計 current の、A の統計 baseline に対する撮影ごとの行 { variance, ratio, blockRatioRange, shift, shiftCorrelation,
 // bands, passSeconds, seconds }。印 mask の立った画素で測る。variance は raw の V、ratio は V/V_A、blockRatioRange は塊ごとの
 // 比の [最小, 最大] で、どれも帯に分ける候補では null(帯の和の分散は帯ごとの積算から求まらない)。shift は帯の和の偶数番目と
@@ -269,12 +287,12 @@ function rawRowOf(raw, baseline, mask) {
 
 // ---- 保存と画像 ----
 
-// 候補 label の撮影 key の、帯ごとの q の画素ごとの平均・不偏分散・偶数番目と奇数番目のパスの平均(画素ごとに rgb)と、帯に
-// 分けない候補では成分の和の歪度・尖度(画素ごとに 1 つ。定まらない画素は NaN)を、単精度で dir の data/ へ書く。
-function writeStatistics(dir, key, label, { bands, raw }) {
+// 候補 label の撮影 key の、帯ごとと C_0 の q の画素ごとの平均・不偏分散・偶数番目と奇数番目のパスの平均(画素ごとに rgb)
+// と、帯に分けない候補では成分の和の歪度・尖度(画素ごとに 1 つ。定まらない画素は NaN)を、単精度で dir の data/ へ書く。
+function writeStatistics(dir, key, label, { bands, c0, raw }) {
   const write = (kind, values) => writeFloats(path.join(dir, 'data', `${key}.${label}.${kind}.f32`), Float32Array.from(values));
-  for (const [band, { mean, variance, halves: [even, odd] }] of bands.entries()) {
-    for (const [kind, values] of Object.entries({ mean, variance, even, odd })) write(`band${band}.${kind}`, values);
+  for (const [name, { mean, variance, halves: [even, odd] }] of [...bands.map((b, i) => [`band${i}`, b]), ['c0', c0]]) {
+    for (const [kind, values] of Object.entries({ mean, variance, even, odd })) write(`${name}.${kind}`, values);
   }
   if (raw === null) return;
   write('skewness', raw.shape.skewness);
@@ -297,19 +315,8 @@ function imageScalesOf(baseline, mask, passes) {
   };
 }
 
-// 分散の比の表示: log2 の比を ±RATIO_OCTAVES で、下がると LOWER_COLOR、上がると HIGHER_COLOR、同じなら SAME_COLOR へ。
+// 分散の比の表示の、端の色に当たる log2 の比。
 const RATIO_OCTAVES = 2;
-const LOWER_COLOR = [0.15, 0.35, 1];
-const HIGHER_COLOR = [1, 0.2, 0.15];
-const SAME_COLOR = [0.5, 0.5, 0.5];
-
-// 画素の分散の和 current の、A の分散の和 baseline に対する比の色。両方が floor 未満なら SAME_COLOR。
-function ratioColorOf(current, baseline, floor) {
-  if (current < floor && baseline < floor) return SAME_COLOR;
-  const t = Math.max(-1, Math.min(1, Math.log2(current / baseline) / RATIO_OCTAVES));
-  const end = t < 0 ? LOWER_COLOR : HIGHER_COLOR;
-  return SAME_COLOR.map((v, c) => v + Math.abs(t) * (end[c] - v));
-}
 
 // 尖度の表示: log β₂ を、正規分布の NORMAL_KURTOSIS で灰、白に当たる尖度で白へ。β₂ の定まらない画素(σ_s = 0)は
 // UNDEFINED_KURTOSIS_COLOR。
@@ -323,13 +330,14 @@ function kurtosisColorOf(kurtosis, white) {
 }
 
 // 候補 label の撮影 key の目で見る画像を dir へ書く。statistics は候補の統計と表示(capturePasses)、baseline は A の統計
-// (A 自身なら null で、A と比べる画像を書かない)、mask は測る画素の印、scales は撮影の尺度(imageScalesOf)。σ・尖度・
-// 分散の比は帯に分けない候補だけ書く。
-function writeImages(dir, key, label, statistics, baseline, mask, scales) {
-  const { width, height, mean, raw, display } = statistics;
+// (A 自身なら null で、A と比べる画像を書かない)、mask は測る画素の印、scales は撮影の尺度(imageScalesOf)、chain は C_0 の
+// 画素ごとの量(chainPlanesOf)。σ・尖度・分散の比は帯に分けない候補だけ書く。
+function writeImages(dir, key, label, statistics, baseline, mask, scales, chain) {
+  const { width, height, mean, raw, c0, display } = statistics;
   const write = (kind, png) => writeFileSync(path.join(dir, `${key}.${label}.${kind}.png`), png);
   const scanPng = (colorOf) => scanPngOf(width, height, mask, colorOf);
-  write('mean', encodeRgbPng(WIDTH, HEIGHT, srgbCodesOfLinear(display)));
+  write('display', encodeRgbPng(WIDTH, HEIGHT, srgbCodesOfLinear(display)));
+  for (const [kind, colorOf] of Object.entries(chainColorsOf(c0, chain))) write(kind, scanPng(colorOf));
   write('mean-q', scanPng((p) => [0, 1, 2].map((c) => 0.5 + mean[3 * p + c] / scales.meanRange)));
   if (raw !== null) {
     write('sigma', scanPng((p) => Array(3).fill(Math.sqrt(varianceSumOf(raw.variance, p)) / scales.sigmaWhite)));
@@ -339,17 +347,23 @@ function writeImages(dir, key, label, statistics, baseline, mask, scales) {
   write('diff', scanPng((p) => [0, 1, 2].map((c) => 0.5 + (mean[3 * p + c] - baseline.mean[3 * p + c]) / scales.diffRange)));
   if (raw === null) return;
   write('ratio', scanPng((p) => ratioColorOf(
-    varianceSumOf(raw.variance, p), varianceSumOf(baseline.raw.variance, p), scales.ratioFloor)));
+    varianceSumOf(raw.variance, p), varianceSumOf(baseline.raw.variance, p), scales.ratioFloor, RATIO_OCTAVES)));
 }
 
+// 測る画素の印の外の色(sRGB の符号値)。
+const UNMEASURED = [0, 0, 80];
+
 // 走査の解像度 width × height の画素 p ごとの表示の色 colorOf(p)(rgb、[0, 1] へ切る)を、最近傍で絵の寸法へ広げた PNG。
-// 印 mask の外は黒。
+// 印 mask の外は UNMEASURED。
 function scanPngOf(width, height, mask, colorOf) {
   const codes = new Uint8Array(WIDTH * HEIGHT * 3);
   for (let y = 0; y < HEIGHT; y++) {
     for (let x = 0; x < WIDTH; x++) {
       const p = Math.floor(y * height / HEIGHT) * width + Math.floor(x * width / WIDTH);
-      if (!mask[p]) continue;
+      if (!mask[p]) {
+        codes.set(UNMEASURED, (y * WIDTH + x) * 3);
+        continue;
+      }
       const color = colorOf(p);
       for (let c = 0; c < 3; c++) codes[(y * WIDTH + x) * 3 + c] = Math.round(255 * Math.min(1, Math.max(0, color[c])));
     }
@@ -364,8 +378,8 @@ const geometricMeanOf = (values) => Math.exp(values.reduce((sum, v) => sum + Mat
 // 最小〜最大の文字列。測れなかった範囲は —。
 const rangeOf = (range, digits) => (range === null ? '—' : `${fixed(range[0], digits)}〜${fixed(range[1], digits)}`);
 
-// 記録 record の表。候補ごとのまとめ、撮影ごとの行と帯ごとの表と分布の表、保存したものの説明。
-function reportOf({ head, passes, candidates, entries, scales, scanCosts, shots }) {
+// 記録 record の表。候補ごとのまとめと費用、撮影ごとの行と C_0 と帯ごとの表と分布の表、保存したものの説明。
+function reportOf({ head, passes, candidates, entries, scales, scanCosts, costs, shots }) {
   const labels = candidates.map((c) => c.label);
   const unsplitLabels = candidates.filter((c) => c.tier.bandCount === 1).map((c) => c.label);
   const split = candidates.filter((c) => c.tier.bandCount > 1);
@@ -379,8 +393,14 @@ function reportOf({ head, passes, candidates, entries, scales, scanCosts, shots 
       ...costCells, fixed(geometricMeanOf(ratios.map((r) => 1 / (r * costRatio))), 3),
     ];
   });
+  // 近傍拡散の行の和の、マテリアルの行に対する比。測れなかった行があれば null。
+  const nearbyRatioOf = (row) => (COST_ROWS.some((label) => row[label] === null) ? null
+    : COST_ROWS.slice(0, -1).reduce((sum, label) => sum + row[label], 0) / row[COST_ROWS.at(-1)]);
+  const costTable = table(['候補', ...COST_ROWS, '近傍拡散の和 / マテリアル'], candidates.map((candidate, i) => [
+    candidate.label, ...COST_ROWS.map((label) => fixed(costs[i][label], 3)), fixed(nearbyRatioOf(costs[i]), 3),
+  ]));
   const perShot = entries.flatMap((key) => {
-    const { width, height, measured, meanRms, rows, distributions } = shots[key];
+    const { width, height, measured, meanRms, rows, chains, distributions } = shots[key];
     return [
       '', `### ${key}(走査 ${width}×${height}、測る画素 ${measured}、μ_A の RMS ${fixed(meanRms, 5)})`, '',
       ...table(['候補', '√V', 'V/V_A', '塊ごとの V_b/V_A,b', 'mean(Σ d偶·d奇)', '√mean(Σ d偶·d奇)', 'd偶 と d奇 の相関'],
@@ -392,6 +412,7 @@ function reportOf({ head, passes, candidates, entries, scales, scanCosts, shots 
             fixed(row.shiftCorrelation, 3),
           ];
         })),
+      ...chainTableOf(labels, chains),
       ...(split.length === 0 ? [] : [
         '', '#### 帯ごと(√V_ℓ / μ_ℓ の RMS)', '',
         ...table(['候補', ...Array.from({ length: Math.max(...split.map((c) => c.tier.bandCount)) }, (_, b) => `帯 ${b}`)],
@@ -408,24 +429,29 @@ function reportOf({ head, passes, candidates, entries, scales, scanCosts, shots 
     'ついての不偏分散)で、帯に分けない候補の raw だけが持つ(帯の和の分散は帯ごとに積んだ和から求まらない)。V_ℓ は帯 ℓ の V。',
     'd偶・d奇 は帯の和の偶数番目・奇数番目のパスの平均の A との差で、相関は中心化しない Σ d偶·d奇 / √(Σ d偶² · Σ d奇²)。',
     'μ_ℓ の RMS は √(測る画素で平均した Σ_c μ_ℓ,c²)。',
+    ...CHAIN_NOTES,
     '', ...distributionNotesOf(passes), '',
     ...candidates.map((c) => `- ${c.label}: \`${JSON.stringify(c.tier)}\``),
     '', '## まとめ', '',
     ...table(['候補', 'V/V_A 幾何平均', 'V/V_A 最小〜最大', '走査 p50 [ms]', 'T/T_A', '効率比 (V_A·T_A)/(V·T)'], summary),
+    '', '### 費用(bay、同じページで段を交互に 3 巡した p50 の中央値 [ms])', '', ...costTable,
     '', '## 撮影ごと', ...perShot,
     '', '## 保存したもの', '',
     '- `data/<撮影>.<候補>.band<ℓ>.{mean,variance,even,odd}.f32` — 帯 ℓ(0〜帯の数 − 1。帯に分けない候補は帯 0 = raw)の q の',
     '  全パスの平均・不偏分散・偶数番目と奇数番目のパスの平均。単精度で、走査の解像度(撮影ごとの width × height は record.json の',
     '  shots)の画素ごとに rgb、行は上から。帯の和の平均は帯ごとの mean の和。',
+    '- `data/<撮影>.<候補>.c0.{mean,variance,even,odd}.f32` — C_0 の同じ形の統計。',
     '- `data/<撮影>.<候補>.{skewness,kurtosis}.f32` — 帯に分けない候補の s の歪度 γ₁・尖度 β₂。単精度で、走査の解像度の画素ごとに',
     '  1 つ。σ_s = 0 の画素は NaN。',
     `- \`data/<撮影>.radius.f32\` — 近傍の半径 [絵の画素](${WIDTH}×${HEIGHT}、単精度)。測る画素は、走査の画素で近傍の半径が 2 を超える面。`,
-    '- `<撮影>.<候補>.mean.png` — HDR のパス平均の表示。`mean-q.png` — 0.5 + μ / meanRange(μ は帯の和)。`sigma.png` —',
+    '- `<撮影>.<候補>.display.png` — HDR のパス平均の表示。`mean-q.png` — 0.5 + μ / meanRange(μ は帯の和)。`sigma.png` —',
     `  √(Σ_c V_c) / sigmaWhite。\`kurtosis.png\` — 0.5 + 0.5·ln(β₂/${NORMAL_KURTOSIS}) / ln(kurtosisWhite/${NORMAL_KURTOSIS}) の灰色`,
     `  (正規分布の β₂ = ${NORMAL_KURTOSIS} で灰、${passes} パスでとれる上限 kurtosisWhite で白、β₂ = 1 で暗い灰)。σ_s = 0 の画素は青。`,
     '  `diff.png` — 0.5 + (μ − μ_A) / diffRange。`ratio.png` — log2(Σ_c V_c / Σ_c V_A,c) を ±2 で青〜灰〜赤。sigma・kurtosis・',
-    '  ratio は帯に分けない候補だけ。尺度は record.json の shots.<撮影>.imageScales。印の外は黒。',
+    '  ratio は帯に分けない候補だけ。尺度は record.json の shots.<撮影>.imageScales。印の外は濃い青。',
+    ...CHAIN_IMAGE_NOTES,
     '- `record.json` の shots.<撮影>.rows.<候補>.bands — 帯ごとの V_ℓ(variance)と μ_ℓ の RMS(meanRms)。',
+    '  shots.<撮影>.chains.<候補> — C_0 の行(上の表の数)。costs — 候補ごとの GPU の行の p50 [ms]。',
     '  shots.<撮影>.distributions.<候補> — 帯に分けない候補の分布の表の数(groups・quiet・windows)と R(s)(r。scales の順)。', '',
   ].join('\n');
 }

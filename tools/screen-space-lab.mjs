@@ -523,6 +523,31 @@ export function loadReference(name, entries) {
 // 近傍の半径 radius [描画バッファの画素] から、測る画素の印(解像度 scale の走査でフェードの外にある面)。
 export const maskOf = (radius, scale) => Uint8Array.from(radius, (r) => (r > FADE_OUTER_SCAN_PX / scale ? 1 : 0));
 
+// 画素ごとに rgb を並べた values の、印 mask の立った画素での 3 成分の和の平均。
+export function maskedMeanOf(values, mask) {
+  let [total, count] = [0, 0];
+  for (let p = 0; p < mask.length; p++) {
+    if (!mask[p]) continue;
+    total += values[3 * p] + values[3 * p + 1] + values[3 * p + 2];
+    count++;
+  }
+  return total / count;
+}
+
+// 比の表示の色(rgb、0..1): 下がると LOWER_RATIO_COLOR、上がると HIGHER_RATIO_COLOR、同じなら SAME_RATIO_COLOR。
+const LOWER_RATIO_COLOR = [0.15, 0.35, 1];
+const HIGHER_RATIO_COLOR = [1, 0.2, 0.15];
+const SAME_RATIO_COLOR = [0.5, 0.5, 0.5];
+
+// 画素の値 current の、基準の値 baseline に対する比の色。log2 の比を ±octaves で端の色にする。両方が floor 以下なら
+// SAME_RATIO_COLOR。
+export function ratioColorOf(current, baseline, floor, octaves) {
+  if (current <= floor && baseline <= floor) return SAME_RATIO_COLOR;
+  const t = Math.max(-1, Math.min(1, Math.log2(current / baseline) / octaves));
+  const end = t < 0 ? LOWER_RATIO_COLOR : HIGHER_RATIO_COLOR;
+  return SAME_RATIO_COLOR.map((v, c) => v + Math.abs(t) * (end[c] - v));
+}
+
 // ---- 解析値のある窓 ----
 
 // bay の既定の構図の窓の中心(960×540 の画素、tools/render-lab/bay-cases.ts の注記)と、窓の半幅 [画素]。P_in は −X の
