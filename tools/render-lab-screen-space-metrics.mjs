@@ -25,9 +25,11 @@
 //     候補の段(既定は中の帯に分けない段)の拡大の前の帯ごとの補正を、全候補で共通の seed の列で N パス(既定 256、4 の
 //     倍数)撮り、seed についての帯ごとの画素ごとの分散と、帯の和の収束先の移動と費用を、先頭の候補(帯に分けない段)と
 //     比べる表にする。帯に分けない候補では、画素ごとの分布の形(歪度・尖度を、|μ| の帯・μ の符号・bay の窓で分けたもの)と、
-//     1 パスの誤差の空間の相関 R(s) の表も出す。帯ごとの画素ごとの統計と目で見る画像も
-//     .render-lab-shots/ssd-variance/<O>/ へ書く。O の既定は HEAD の短いハッシュ。--entries も --sets も無ければ
-//     tuning。M(occlusion か indirect)を与えると、選んだ撮影をその方式で撮る(key は遮蔽なら <撮影>@occlusion)。
+//     1 パスの誤差の空間の相関 R(s) の表も出す。最後の拡大の前の補正 C_0 も積み、先頭の候補からの恒等のずれと、揺れと
+//     その見込みの比・段の周期の変調・bay の系の窓の比の表と、強調・揺れ・その比・表示の画像を候補ごとに出す。帯ごとと C_0 の
+//     画素ごとの統計と目で見る画像も .render-lab-shots/ssd-variance/<O>/ へ書く。O の既定は HEAD の短いハッシュ。
+//     --entries も --sets も無ければ tuning。M(occlusion か indirect)を与えると、選んだ撮影をその方式で撮る(key は遮蔽なら
+//     <撮影>@occlusion)。
 //
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
