@@ -111,9 +111,9 @@ export function candidateSeedOf(k, referencePasses) {
 
 // いまの精細さの段(src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_TIERS)。
 export const TIERS = {
-  low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 5, bandScale: 1 / 8 },
-  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 5, bandScale: 1 / 8 },
-  high: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 5, bandScale: 1 / 8 },
+  low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 1 / 8 },
+  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 1 / 8 },
+  high: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 1 / 8 },
 };
 // 中の段の、帯に分けない愚直な点。走査の帯 0 が raw。
 export const MEDIUM_RAW_TIER = { ...TIERS.medium, bandCount: 1 };

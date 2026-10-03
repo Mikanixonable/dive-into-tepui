@@ -45,8 +45,10 @@ const AXES = {
       { label: '遮蔽と照り返し・中', graphics: { screenSpaceDiffuse: 2, screenSpaceQuality: 1 } },
       { label: '遮蔽と照り返し・高', graphics: { screenSpaceDiffuse: 2, screenSpaceQuality: 2 } },
     ],
-    rows: ['照り返し源', '近傍拡散走査', '近傍拡散拡大', 'マテリアル'],
-    ratioRows: ['照り返し源', '近傍拡散走査', '近傍拡散拡大'],
+    rows: [
+      '照り返し源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大', 'マテリアル',
+    ],
+    ratioRows: ['照り返し源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大'],
     ratioLabel: '近傍拡散合計',
   },
 };
