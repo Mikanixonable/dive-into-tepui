@@ -1,7 +1,7 @@
 // 近傍拡散補正の走査の補助関数を、スライスの半球の余弦重みの測度、扇形の丸め、視線と平面の幾何の理論値で検査する。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
-import { bool, float, int, uint, uniform, vec2, vec3 } from 'three/tsl';
+import { bool, float, uint, uniform, vec2, vec3 } from 'three/tsl';
 import { clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
   angleOf, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt, toSliceCoordinates,
@@ -363,11 +363,11 @@ export function register(): void {
     }
   });
 
-  test('screen space estimator: 等間隔のスライスの楔の重みは、どの方位でも和が 1', () => {
+  test('screen space estimator: 4 の倍数本の等間隔のスライスの楔の重みは、どの方位でも和が本数 / 4', () => {
     // 視線が画面に垂直なら、画面上で等間隔のスライスは視線のまわりでも等間隔。
     const view = new THREE.Vector3(0, 0, 1);
     const azimuths = Array.from({ length: 24 }, (_, k) => (k + 0.1) * 2 * Math.PI / 24);
-    for (const sliceCount of [2, 3, 5]) {
+    for (const sliceCount of [4, 8, 16]) {
       for (const rotation of [0, 0.37]) {
         const slices = Array.from({ length: sliceCount }, (_, i) =>
           sliceAt(float((i + rotation) * Math.PI / sliceCount), vectorNode(view), vectorNode(view)));
@@ -375,10 +375,9 @@ export function register(): void {
           for (const azimuth of azimuths) {
             const direction = new THREE.Vector3(Math.sin(elevation) * Math.cos(azimuth),
               Math.sin(elevation) * Math.sin(azimuth), Math.cos(elevation));
-            const sum = slices.map((slice) =>
-              valueOf(wedgeWeight(slice, vectorNode(direction), int(sliceCount))))
+            const sum = slices.map((slice) => valueOf(wedgeWeight(slice, vectorNode(direction))))
               .reduce((total, weight) => total + weight, 0);
-            near(sum, 1, 1e-9, `slices=${sliceCount} rotation=${rotation} azimuth=${azimuth}`);
+            near(sum, sliceCount / 4, 1e-9, `slices=${sliceCount} rotation=${rotation} azimuth=${azimuth}`);
           }
         }
       }

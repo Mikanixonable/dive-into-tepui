@@ -141,8 +141,7 @@ export function scanHemisphere(
       weightSum.addAssign(slice.weight);
       for (const { sum, range, blocked } of occlusion.planets) {
         const width = range.upper.sub(range.lower).toVar();
-        const wedge = select(width.greaterThan(0), wedgeWeight(slice, sum.planet.cap.direction, sliceCount), float(0))
-          .toVar();
+        const wedge = select(width.greaterThan(0), wedgeWeight(slice, sum.planet.cap.direction), float(0)).toVar();
         sum.blocked.addAssign(blocked.div(max(width, 1e-6)).mul(wedge));
         sum.wedge.addAssign(wedge);
       }
