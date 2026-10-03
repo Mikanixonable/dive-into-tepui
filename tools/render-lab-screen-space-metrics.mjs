@@ -13,9 +13,10 @@
 //   compare [<candidates.json>] [--reference D] [--entries K,...] [--sets S,...] [--out O]
 //     候補 { label, tier, passes }(passes の既定は 1)を B と比べ、指標と費用の表を出す。passes パスの候補は、seed を変えた
 //     passes パスの補正の平均を 1 枚の出力とし、費用を段の passes 倍に数える。既定の候補は中の段の均した後と均す前と、
-//     均す前の 2・4・8 パス。候補の段の 1 パスのスライス数・歩数が B と違えば撮る前に止まる。候補の seed は seed の列の
-//     末尾から取って B のパスと重ねず、重なるなら止まる。偽の構造の地図と、表示の誤差を 8 倍にした画像を
-//     .render-lab-shots/ssd-compare/<O>/ へ書き、候補の撮影(captures/)と費用・拡散照度から数えた値(record.json)も残す。
+//     均す前の 2・4・8 パス。候補の段の 1 パスの歩数が B と違うか、スライス数が B と同じでも、ともに 4 の倍数でも
+//     なければ撮る前に止まる。候補の seed は seed の列の末尾から取って B のパスと重ねず、重なるなら止まる。偽の構造の
+//     地図と、表示の誤差を 8 倍にした画像を .render-lab-shots/ssd-compare/<O>/ へ書き、候補の撮影(captures/)と費用・
+//     拡散照度から数えた値(record.json)も残す。
 //     --entries と --sets は reference と同じ。
 //   rescore <出力先> [--reference D]
 //     compare が残した撮影を、撮り直さずにいまの指標で採点し直し、表を <出力先>/report.md へ書く。D の既定は撮影に
@@ -46,6 +47,8 @@ import { variance } from './screen-space-variance.mjs';
 const EDGE_NORMAL_COS = Math.cos(Math.PI / 6);
 const EDGE_DEPTH_LSB = 3;
 const EDGE_BAND = 2;
+// スライス数がこの倍数どうしの段は、天体照の楔の核が同じで収束先を共有する — 同じ基準で採点できる。
+const SHARED_SLICE_MULTIPLE = 4;
 // 表示の 1 LSB に当たる、黒の近くの線形の値。
 const DISPLAY_LSB = 1 / (255 * 12.92);
 
@@ -98,15 +101,17 @@ function candidatesOf(file) {
   });
 }
 
-// 候補 candidates の段の 1 パスのスライス数・片側の歩数が、基準 references のどの撮影の記録とも同じことを確かめる。
-// 違えば、違う候補ごとに両者の数を並べて投げる。
+// 候補 candidates の段の 1 パスの片側の歩数が基準 references のどの撮影の記録とも同じで、スライス数が同じか、どちらも
+// SHARED_SLICE_MULTIPLE の倍数であることを確かめる。違えば、違う候補ごとに両者の数を並べて投げる。
 function checkSampleCounts(candidates, references) {
   const countsOf = (slices, steps) => `${slices} slices × ${steps} steps`;
+  const sharesSlices = (a, b) => a === b || (a % SHARED_SLICE_MULTIPLE === 0 && b % SHARED_SLICE_MULTIPLE === 0);
+  const metas = Object.values(references).map(({ meta }) => meta);
   const mismatches = candidates.flatMap(({ label, tier }) => {
-    const own = countsOf(tier.sliceCount, tier.stepCount);
-    const others = new Set(Object.values(references).map(({ meta }) => countsOf(meta.slices, meta.steps)));
-    others.delete(own);
-    return others.size === 0 ? [] : [`${label}: ${own} per pass, reference ${[...others].join(' / ')}`];
+    const unlike = metas.filter(({ slices, steps }) => steps !== tier.stepCount || !sharesSlices(slices, tier.sliceCount));
+    const others = new Set(unlike.map(({ slices, steps }) => countsOf(slices, steps)));
+    return others.size === 0 ? []
+      : [`${label}: ${countsOf(tier.sliceCount, tier.stepCount)} per pass, reference ${[...others].join(' / ')}`];
   });
   if (mismatches.length > 0) throw new Error(`candidates sample unlike the reference:\n${mismatches.join('\n')}`);
 }
