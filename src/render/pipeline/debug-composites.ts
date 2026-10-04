@@ -4,12 +4,16 @@
 // bind/sample することになる。
 import * as THREE from 'three/webgpu';
 import {
-  abs, float, int, log, max, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign, texture, uniform, vec3, vec4,
+  abs, float, floor, int, ivec2, log, max, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign, texture,
+  textureLoad, uniform, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from './gbuffer';
 import { compositeMaterial } from './composite-material';
 import { viewPositionAt } from './view-ray';
-import type { DebugTargetId } from './debug-target';
+import {
+  CHAIN_DEBUG_TARGETS, type ChainDebugTargetId, type ChainTargetKind, type DebugTargetId,
+} from './debug-target';
+import { unpackedBands } from './screen-space/band-pyramid';
 import type { GBufferPass } from './gbuffer';
 import type { Exposure } from './exposure';
 import type { ShadowMaps } from './shadow/shadow-maps';
@@ -26,8 +30,17 @@ import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '.
 // 通常表示を除くデバッグ表示の選択肢。
 export type DebugView = Exclude<DebugTargetId, 'off'>;
 
+// 選択肢 view が、近傍拡散補正の帯と段の表示か。
+function isChainView(view: DebugView): view is ChainDebugTargetId {
+  return CHAIN_DEBUG_TARGETS.some(({ id }) => id === view);
+}
+
 export class DebugComposites {
-  private readonly materials: Readonly<Record<DebugView, THREE.MeshBasicNodeMaterial>>;
+  private readonly materials: Readonly<Record<Exclude<DebugView, ChainDebugTargetId>, THREE.MeshBasicNodeMaterial>>;
+  // 帯の数ごとの、帯と段の表示。初めてその帯の数で映すときに組む。
+  private readonly chainMaterials = new Map<number, ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial>>();
+  // いまの段の帯の数に無い帯と段の表示が映す黒。
+  private readonly blankMaterial: THREE.MeshBasicNodeMaterial;
   // 深度と影スロットの表示が、深度から距離と描画座標を引き直す実カメラの値。合成パスは固定の直交カメラで描かれる
   // ので、TSL のカメラの組み込みノードは実カメラの値を返さない — syncCamera が毎フレーム書き込む。
   private readonly near: FloatUniform = uniform(1);
@@ -39,11 +52,12 @@ export class DebugComposites {
     private readonly gbuffer: GBufferPass, private readonly exposure: Exposure,
     private readonly projectionInverse: Mat4Uniform, private readonly shadowMaps: ShadowMaps,
     private readonly meshShadow: MeshShadow, shadowPass: ShadowPass, lightPrepass: LightPrepass,
-    screenSpacePass: ScreenSpacePass, diffuseCorrection: DiffuseCorrection, planetLight: PlanetLightSource,
-    atmospherePass: AtmospherePass, lensPass: LensPass,
+    private readonly screenSpacePass: ScreenSpacePass, private readonly diffuseCorrection: DiffuseCorrection,
+    planetLight: PlanetLightSource, atmospherePass: AtmospherePass, lensPass: LensPass,
   ) {
     const material = (color: Vec4Node): THREE.MeshBasicNodeMaterial => compositeMaterial(color, gbuffer.depthTexture);
     const toneMapped = (color: Vec3Node): Vec4Node => vec4(exposure.toneMapped(color), 1);
+    this.blankMaterial = material(vec4(0, 0, 0, 1));
     // 「マテリアル」も「大気」も、大気パスが点検用に描く1枚を映すので、材質を共有する。
     const inspectMaterial = material(toneMapped(texture(atmospherePass.inspectTexture, screenUV).rgb));
     this.materials = {
@@ -63,9 +77,6 @@ export class DebugComposites {
       // 画面へ出す(1 天文単位の放射照度は π を超えるため、通さないと全面白になる)。
       diffuse: material(toneMapped(texture(lightPrepass.diffuseTexture, screenUV).rgb)),
       specular: material(toneMapped(texture(lightPrepass.specularTexture, screenUV).rgb)),
-      'raw-correction': material(vec4(this.signedCorrection(texture(diffuseCorrection.rawTexture, screenUV)), 1)),
-      'denoised-correction': material(vec4(
-        this.signedCorrection(texture(screenSpacePass.denoisedCorrectionTexture, screenUV)), 1)),
       correction: material(vec4(this.signedCorrection(texture(diffuseCorrection.texture, screenUV)), 1)),
       'bounce-source': material(toneMapped(texture(screenSpacePass.surfaceRadianceTexture, screenUV).rgb)),
       material: inspectMaterial,
@@ -75,9 +86,65 @@ export class DebugComposites {
     };
   }
 
-  // 選択肢 view の合成マテリアル。
+  // 選択肢 view の合成マテリアル。帯と段の表示は、いまの段の帯の数で描いた中間ターゲットを映し、その帯の数に無い
+  // 帯と段なら黒。
   public material(view: DebugView): THREE.MeshBasicNodeMaterial {
-    return this.materials[view];
+    if (!isChainView(view)) return this.materials[view];
+    return this.chainMaterialsOf(this.screenSpacePass.bandCount).get(view) ?? this.blankMaterial;
+  }
+
+  // 帯の数 count で描いた帯と段の表示の合成マテリアル。その帯の数に無い帯と段は持たない。初めて引いたときに組む。
+  private chainMaterialsOf(count: number): ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial> {
+    const existing = this.chainMaterials.get(count);
+    if (existing !== undefined) return existing;
+    const materials = new Map(CHAIN_DEBUG_TARGETS.flatMap(({ id, kind, index }) => {
+      const color = this.chainColor(kind, index, count);
+      return color === null ? [] : [[id, compositeMaterial(color, this.gbuffer.depthTexture)] as const];
+    }));
+    this.chainMaterials.set(count, materials);
+    return materials;
+  }
+
+  // 帯の数 count で描いた、種類 kind の番号 index の帯か段を映す色。補正は符号を色分けし、代表の面は法線を映す。
+  // その帯の数に無い帯と段なら null。
+  private chainColor(kind: ChainTargetKind, index: number, count: number): Vec4Node | null {
+    const corrections = this.diffuseCorrection;
+    // 帯を詰めた描画先 target の、描いている画素の値(packedBands の並び)。
+    const packedAt = (target: THREE.RenderTarget): Vec4Node[] =>
+      target.textures.map((source) => texture(source, screenUV));
+    switch (kind) {
+      case 'band': {
+        if (index >= count) return null;
+        return this.signedColor(unpackedBands(packedAt(corrections.bandTarget(count, 0)), count)[index]!);
+      }
+      case 'representative':
+        return index < count ? vec4(this.representativeNormal(index), 1) : null;
+      // 縮小した帯の段は、その段が持つ帯の和を映す。
+      case 'reduced': {
+        if (index >= count) return null;
+        const bands = unpackedBands(packedAt(corrections.bandTarget(count, index)), count - index);
+        return this.signedColor(bands.reduce((sum, band) => sum.add(band)));
+      }
+      case 'merged': {
+        if (index >= count - 1) return null;
+        const merged = texture(corrections.mergedTarget(count, index).texture, screenUV);
+        return vec4(this.signedCorrection(merged), 1);
+      }
+    }
+  }
+
+  // 帯の補正 value を、符号を色分けして映す色。詰めた帯の α は帯の値なので、書かれた画素として扱う。
+  private signedColor(value: Vec3Node): Vec4Node {
+    return vec4(this.signedCorrection(vec4(value, 1)), 1);
+  }
+
+  // 段 level の代表の面の法線を 0..1 へ写した色。代表に面がなければ黒。
+  private representativeNormal(level: number): Vec3Node {
+    const surfaces = this.screenSpacePass.inputPyramid;
+    const pixel = ivec2(floor(screenUV.mul(surfaces.sizeAt(level))));
+    const texel = surfaces.representativeAt(level, pixel);
+    const normal = octDecodeNormal(textureLoad(this.gbuffer.normalTexture, texel).rg).mul(0.5).add(0.5);
+    return select(surfaces.hasSurface(texel), normal, vec3(0));
   }
 
   // 深度と影スロットの表示が読む実カメラ camera の値を書き込む。
@@ -91,7 +158,10 @@ export class DebugComposites {
 
   // 全マテリアルを解放する。同じ1枚を複数の選択肢が共有するので、重複を畳んでから解放する。
   public dispose(): void {
-    for (const material of new Set(Object.values(this.materials))) material.dispose();
+    const chainMaterials = [...this.chainMaterials.values()].flatMap((materials) => [...materials.values()]);
+    for (const material of new Set([...Object.values(this.materials), ...chainMaterials, this.blankMaterial])) {
+      material.dispose();
+    }
   }
 
   // 符号付きの値を成分ごとに、画面に出る値が 0 で中間灰、正で明るく、負で暗くなるよう写す。大きさの階調は

@@ -111,12 +111,30 @@ export function candidateSeedOf(k, referencePasses) {
 
 // いまの精細さの段(src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_TIERS)。
 export const TIERS = {
-  low: { scale: 0.25, sliceCount: 2, stepCount: 3, denoiseRadius: 2 },
-  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, denoiseRadius: 2 },
-  high: { scale: 0.25, sliceCount: 4, stepCount: 6, denoiseRadius: 2 },
+  low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 1 / 8 },
+  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 1 / 8 },
+  high: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 1 / 8 },
 };
-// 中の段の均しなし。
-export const MEDIUM_RAW_TIER = { ...TIERS.medium, denoiseRadius: 0 };
+// 中の段の、帯に分けない愚直な点。走査の帯 0 が raw。
+export const MEDIUM_RAW_TIER = { ...TIERS.medium, bandCount: 1 };
+
+// 走査が帯ごとの補正を詰めるテクスチャ(src/render/pipeline/screen-space/band-pyramid.ts)の、帯の数 bandCount の段での
+// 読み戻しの名前の並び(テクスチャの番号順)。帯 b の成分 c は、テクスチャを並べた通しのチャンネル 3b + c。
+export const packedBandsNamesOf = (bandCount) => Array.from(
+  { length: Math.ceil(3 * bandCount / 4) }, (_, i) => `packed-bands-${i}`);
+
+// 詰めたテクスチャの、画素ごとに 4 成分の並び packed(packedBandsNamesOf の順)から、帯 band の画素ごとの rgb を同じ型で
+// 取り出す。
+export function unpackedBand(packed, band) {
+  const pixels = packed[0].length / 4;
+  const out = new packed[0].constructor(pixels * 3);
+  for (let c = 0; c < 3; c++) {
+    const channel = 3 * band + c;
+    const texture = packed[Math.floor(channel / 4)];
+    for (let p = 0; p < pixels; p++) out[3 * p + c] = texture[4 * p + channel % 4];
+  }
+  return out;
+}
 
 // HEAD の短いハッシュ。
 export const headHash = () => execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim();
@@ -504,6 +522,31 @@ export function loadReference(name, entries) {
 
 // 近傍の半径 radius [描画バッファの画素] から、測る画素の印(解像度 scale の走査でフェードの外にある面)。
 export const maskOf = (radius, scale) => Uint8Array.from(radius, (r) => (r > FADE_OUTER_SCAN_PX / scale ? 1 : 0));
+
+// 画素ごとに rgb を並べた values の、印 mask の立った画素での 3 成分の和の平均。
+export function maskedMeanOf(values, mask) {
+  let [total, count] = [0, 0];
+  for (let p = 0; p < mask.length; p++) {
+    if (!mask[p]) continue;
+    total += values[3 * p] + values[3 * p + 1] + values[3 * p + 2];
+    count++;
+  }
+  return total / count;
+}
+
+// 比の表示の色(rgb、0..1): 下がると LOWER_RATIO_COLOR、上がると HIGHER_RATIO_COLOR、同じなら SAME_RATIO_COLOR。
+const LOWER_RATIO_COLOR = [0.15, 0.35, 1];
+const HIGHER_RATIO_COLOR = [1, 0.2, 0.15];
+const SAME_RATIO_COLOR = [0.5, 0.5, 0.5];
+
+// 画素の値 current の、基準の値 baseline に対する比の色。log2 の比を ±octaves で端の色にする。両方が floor 以下なら
+// SAME_RATIO_COLOR。
+export function ratioColorOf(current, baseline, floor, octaves) {
+  if (current <= floor && baseline <= floor) return SAME_RATIO_COLOR;
+  const t = Math.max(-1, Math.min(1, Math.log2(current / baseline) / octaves));
+  const end = t < 0 ? LOWER_RATIO_COLOR : HIGHER_RATIO_COLOR;
+  return SAME_RATIO_COLOR.map((v, c) => v + Math.abs(t) * (end[c] - v));
+}
 
 // ---- 解析値のある窓 ----
 

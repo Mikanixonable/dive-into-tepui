@@ -83,8 +83,11 @@ function evaluateMath(node: ShaderNode, evaluate: Evaluate): ShaderValue {
     case 'asin': return Math.asin(value as number);
     case 'clamp': return Math.min(Math.max(value as number, evaluate(node.bNode) as number), evaluate(node.cNode) as number);
     case 'exp2': return 2 ** (value as number);
+    case 'log2': return Math.log2(value as number);
     case 'fract': return (value as number) - Math.floor(value as number);
-    case 'floor': return Math.floor(value as number);
+    case 'floor': return Array.isArray(value)
+      ? value.map((component) => Math.floor(component))
+      : Math.floor(value as number);
     case 'round': {
       // WGSL の round は、ちょうど半分を偶数へ丸める。
       const nearest = Math.round(value as number);

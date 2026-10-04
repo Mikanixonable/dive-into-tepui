@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { bool, vec2, vec3 } from 'three/tsl';
 import { DiffuseCorrection, signedDiffuseCorrection } from '../../src/render/pipeline/screen-space/diffuse-correction';
+import { packedBands, unpackedBands } from '../../src/render/pipeline/screen-space/band-pyramid';
 import { DiffuseCorrectionSource } from '../../src/render/pipeline/lighting/diffuse-correction-source';
 import { SCREEN_SPACE_DIFFUSE } from '../../src/render/pipeline/screen-space/screen-space-pass';
 import { test } from '../harness';
@@ -22,6 +23,49 @@ export function register(): void {
     const readNode = correction.atUv(vec2(0, 0)) as unknown as { node: { value: THREE.Texture } };
     assert.strictEqual(readNode.node.value, correction.texture);
     correction.dispose();
+  });
+
+  test('screen space correction: 帯の段の描画先は帯の数と段ごとに 1 つの、1 標本 32 バイト以内の半精度 RGBA', () => {
+    const correction = new DiffuseCorrection();
+    for (let count = 1; count <= 5; count++) {
+      // 段 level は帯 level..count − 1 を持つ。
+      for (let level = 0; level < count; level++) {
+        const target = correction.bandTarget(count, level);
+        assert.strictEqual(correction.bandTarget(count, level), target);
+        assert.strictEqual(target.textures.length, Math.ceil((3 * (count - level)) / 4), `${count} 帯の段 ${level}`);
+        for (const texture of target.textures) {
+          assert.strictEqual(texture.type, THREE.HalfFloatType);
+          assert.strictEqual(texture.format, THREE.RGBAFormat);
+        }
+        // WebGPU が既定で保証する色の出力は、1 標本あたり 32 バイト(maxColorAttachmentBytesPerSample)。
+        assert.ok(target.textures.length * 8 <= 32, `${count} 帯の段 ${level}`);
+      }
+    }
+    correction.dispose();
+  });
+
+  test('screen space correction: 拡大と合流の出力は段 0..L − 2 に 1 枚ずつで、最も粗い段の C はその段の帯', () => {
+    const correction = new DiffuseCorrection();
+    for (let count = 1; count <= 5; count++) {
+      for (let level = 0; level < count - 1; level++) {
+        const target = correction.mergedTarget(count, level);
+        assert.strictEqual(target.textures.length, 1);
+        assert.strictEqual(target.texture.type, THREE.HalfFloatType);
+        assert.strictEqual(correction.mergedTexture(count, level), target.texture);
+      }
+      assert.strictEqual(correction.mergedTexture(count, count - 1), correction.bandTarget(count, count - 1).texture);
+    }
+    correction.dispose();
+  });
+
+  test('screen space correction: 詰めた帯を取り出すと詰める前の帯に戻り、余りのチャンネルは 0', () => {
+    for (let count = 1; count <= 5; count++) {
+      const values = Array.from({ length: count }, (_, band) => [band + 0.25, -band - 0.5, 3 * band + 1]);
+      const packed = packedBands(values.map(([r, g, b]) => vec3(r!, g!, b!)));
+      const channels = packed.flatMap((value) => evaluateShaderNode(value) as number[]);
+      assert.deepStrictEqual(channels.slice(3 * count), Array(channels.length - 3 * count).fill(0), `${count} 帯`);
+      assert.deepStrictEqual(unpackedBands(packed, count).map((band) => evaluateShaderNode(band)), values);
+    }
   });
 
   test('screen space correction: off だけ寄与を描かず、遮蔽と照り返しは同じ source を使う', () => {
