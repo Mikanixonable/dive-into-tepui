@@ -14,11 +14,15 @@ export function register(): void {
     before('normal', 'shadow');
     before('shadow', 'planet-light');
     before('planet-light', 'bounce-source');
-    // 走査の帯 → 代表の縮小列 → 帯の縮小 → 粗い段からの拡大と合流 → 描画バッファの解像度への拡大。
+    // 走査の帯 → 代表の縮小列 → 段ごとの帯の縮小(段 m は帯 m〜4) → 粗い段からの拡大と合流 → 描画バッファの
+    // 解像度への拡大。
     const chain = [
       'band-0', 'band-1', 'band-2', 'band-3', 'band-4',
       'representative-1', 'representative-2', 'representative-3', 'representative-4',
-      'reduced-1', 'reduced-2', 'reduced-3', 'reduced-4',
+      'reduced-1-band-1', 'reduced-1-band-2', 'reduced-1-band-3', 'reduced-1-band-4',
+      'reduced-2-band-2', 'reduced-2-band-3', 'reduced-2-band-4',
+      'reduced-3-band-3', 'reduced-3-band-4',
+      'reduced-4-band-4',
       'merged-3', 'merged-2', 'merged-1', 'merged-0',
     ] as const;
     before('bounce-source', chain[0]);

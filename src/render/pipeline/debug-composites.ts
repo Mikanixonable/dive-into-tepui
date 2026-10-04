@@ -11,7 +11,7 @@ import { octDecodeNormal } from './gbuffer';
 import { compositeMaterial } from './composite-material';
 import { viewPositionAt } from './view-ray';
 import {
-  CHAIN_DEBUG_TARGETS, type ChainDebugTargetId, type ChainTargetKind, type DebugTargetId,
+  CHAIN_DEBUG_TARGETS, type ChainDebugTarget, type ChainDebugTargetId, type DebugTargetId,
 } from './debug-target';
 import { unpackedBands } from './screen-space/band-pyramid';
 import type { GBufferPass } from './gbuffer';
@@ -97,37 +97,32 @@ export class DebugComposites {
   private chainMaterialsOf(count: number): ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial> {
     const existing = this.chainMaterials.get(count);
     if (existing !== undefined) return existing;
-    const materials = new Map(CHAIN_DEBUG_TARGETS.flatMap(({ id, kind, index }) => {
-      const color = this.chainColor(kind, index, count);
-      return color === null ? [] : [[id, compositeMaterial(color, this.gbuffer.depthTexture)] as const];
+    const materials = new Map(CHAIN_DEBUG_TARGETS.flatMap((target) => {
+      const color = this.chainColor(target, count);
+      return color === null ? [] : [[target.id, compositeMaterial(color, this.gbuffer.depthTexture)] as const];
     }));
     this.chainMaterials.set(count, materials);
     return materials;
   }
 
-  // 帯の数 count で描いた、種類 kind の番号 index の帯か段を映す色。補正は符号を色分けし、代表の面は法線を映す。
-  // その帯の数に無い帯と段なら null。
-  private chainColor(kind: ChainTargetKind, index: number, count: number): Vec4Node | null {
+  // 帯の数 count で描いた、帯と段の表示 target の色。補正は符号を色分けし、代表の面は法線を映す。その帯の数に無い
+  // 帯と段なら null。
+  private chainColor(target: ChainDebugTarget, count: number): Vec4Node | null {
     const corrections = this.diffuseCorrection;
-    // 帯を詰めた描画先 target の、描いている画素の値(packedBands の並び)。
-    const packedAt = (target: THREE.RenderTarget): Vec4Node[] =>
-      target.textures.map((source) => texture(source, screenUV));
-    switch (kind) {
-      case 'band': {
-        if (index >= count) return null;
-        return this.signedColor(unpackedBands(packedAt(corrections.bandTarget(count, 0)), count)[index]!);
+    switch (target.kind) {
+      // 段 level の描画先は、帯 level〜count − 1 を packedBands の並びで詰めて持つ。
+      case 'band':
+      case 'reduced': {
+        const { level, band } = target;
+        if (band >= count) return null;
+        const packed = corrections.bandTarget(count, level).textures.map((source) => texture(source, screenUV));
+        return this.signedColor(unpackedBands(packed, count - level)[band - level]!);
       }
       case 'representative':
-        return index < count ? vec4(this.representativeNormal(index), 1) : null;
-      // 縮小した帯の段は、その段が持つ帯の和を映す。
-      case 'reduced': {
-        if (index >= count) return null;
-        const bands = unpackedBands(packedAt(corrections.bandTarget(count, index)), count - index);
-        return this.signedColor(bands.reduce((sum, band) => sum.add(band)));
-      }
+        return target.level < count ? vec4(this.representativeNormal(target.level), 1) : null;
       case 'merged': {
-        if (index >= count - 1) return null;
-        const merged = texture(corrections.mergedTarget(count, index).texture, screenUV);
+        if (target.level >= count - 1) return null;
+        const merged = texture(corrections.mergedTarget(count, target.level).texture, screenUV);
         return vec4(this.signedCorrection(merged), 1);
       }
     }

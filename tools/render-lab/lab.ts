@@ -34,17 +34,17 @@ import type { RenderStyle } from '../../src/render/render-style';
 import type { ScanTier } from '../../src/render/pipeline/screen-space/screen-space-pass';
 import type { Mat4Uniform } from '../../src/render/tsl-types';
 
-// 近傍拡散補正の走査が帯ごとの補正を詰めて書くテクスチャの読み戻しの名前。並びはテクスチャの番号で、WebGPU の
-// 既定の上限で書ける 4 枚だけ並べる。
-const PACKED_BANDS_NAMES = ['packed-bands-0', 'packed-bands-1', 'packed-bands-2', 'packed-bands-3'] as const;
+// 近傍拡散補正の、帯を詰めた描画先の i 枚目のテクスチャの読み戻しの名前。'packed-bands-i' は走査(段 0)、'reduced-m-i'
+// は帯の縮小の段 m。枚数は WebGPU の既定の上限で書ける帯の数 5 の分だけ並べる。
+type PackedBandsName = `packed-bands-${0 | 1 | 2 | 3}` | `reduced-${1 | 2 | 3 | 4}-${0 | 1 | 2}`;
+const PACKED_BANDS_NAME_PATTERN = /^(?:packed-bands|reduced-(\d))-(\d)$/;
 
-// 読み戻せる浮動小数の中間ターゲット。'packed-bands-i' は、いまの段の帯の数で走査が帯ごとの補正を詰めた i 枚目の
-// テクスチャ(帯 b の rgb は、テクスチャを並べた通しのチャンネル 3b..3b + 2。帯の数 1 では 'packed-bands-0' の rgb が
-// 帯に分けない補正)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では帯 0、2 以上では
-// 拡大と合流の段 0 の出力)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る描画バッファの
-// 画素数で、面の無い画素は 0。
-export type FloatTargetName = (typeof PACKED_BANDS_NAMES)[number] | 'scan-correction' | 'correction' | 'diffuse'
-  | 'hdr' | 'projected-radius';
+// 読み戻せる浮動小数の中間ターゲット。PackedBandsName は、いまの段の帯の数の段 m の描画先が帯 m〜帯の数 − 1 を詰めた
+// i 枚目のテクスチャ(段の帯 b の rgb は、テクスチャを並べた通しのチャンネル 3(b − m)..3(b − m) + 2。帯の数 1 では
+// 'packed-bands-0' の rgb が帯に分けない補正)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1
+// では帯 0、2 以上では拡大と合流の段 0 の出力)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が
+// 写る描画バッファの画素数で、面の無い画素は 0。
+export type FloatTargetName = PackedBandsName | 'scan-correction' | 'correction' | 'diffuse' | 'hdr' | 'projected-radius';
 
 // 読み戻した画像。rgba は画素ごとに 4 つの値で、行は上から。
 export interface FloatImage {
@@ -470,8 +470,8 @@ export class LabView {
     return { width, height, rgba };
   }
 
-  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数で詰めたテクスチャに無い
-  // 'packed-bands-i' なら投げる。
+  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数で帯を詰めた描画先に無い段か枚数なら
+  // 投げる。
   private floatTextureOf(name: Exclude<FloatTargetName, 'projected-radius'>): THREE.Texture {
     const { screenSpace, diffuseCorrection } = this.pipeline;
     switch (name) {
@@ -480,10 +480,12 @@ export class LabView {
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
       case 'hdr': return this.pipeline.hdrTexture;
       default: {
-        // 帯を詰めたテクスチャは、いまの段の帯の数の走査の描画先から引く。
-        const bands = diffuseCorrection.bandTarget(screenSpace.bandCount, 0);
-        const texture = bands.textures[PACKED_BANDS_NAMES.indexOf(name)];
-        if (texture === undefined) throw new Error(`render-lab: ${screenSpace.bandCount} bands have no "${name}"`);
+        // 帯を詰めたテクスチャは、いまの段の帯の数の、名前の段(無ければ走査の段 0)の描画先から引く。
+        const [, level = '0', index] = PACKED_BANDS_NAME_PATTERN.exec(name)!;
+        const count = screenSpace.bandCount;
+        const texture = Number(level) < count
+          ? diffuseCorrection.bandTarget(count, Number(level)).textures[Number(index)] : undefined;
+        if (texture === undefined) throw new Error(`render-lab: ${count} bands have no "${name}"`);
         return texture;
       }
     }
