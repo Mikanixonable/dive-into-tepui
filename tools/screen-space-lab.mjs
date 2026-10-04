@@ -69,6 +69,15 @@ export function entryInMode(e, modeName) {
   return entry(e.set, e.caseName, e.shot, MODE[modeName], e.dolly);
 }
 
+// 記録に残った撮影の key(方式を揃えて撮ったものは @occlusion 付き)の撮影。
+export function entryOfKey(key) {
+  const listed = ENTRIES.find((e) => e.key === key);
+  if (listed !== undefined) return listed;
+  const occluded = ENTRIES.find((e) => `${e.key}@occlusion` === key);
+  if (occluded === undefined) throw new Error(`no entry has the key ${key}`);
+  return entryInMode(occluded, 'occlusion');
+}
+
 // 受け手の近傍の半径に効きを渡すフェードの外側 [走査の画素](src/render/pipeline/screen-space/hemisphere-scan.ts の
 // smoothstep(1, 2, radius))。
 const FADE_OUTER_SCAN_PX = 2;
@@ -210,6 +219,35 @@ function labOf(devTools) {
     setTier: (tier) => call(`setScanTier(${JSON.stringify(tier)})`),
     // seed は seedOf の返す [x, y]。
     setSeed: ([x, y]) => call(`setScanSeed(${x}, ${y})`),
+    // 近傍拡散補正の段の範囲 range('all'・'scan'・'chain')だけを描く。'chain' は帯を詰めた描画先の値から鎖を描く。
+    setStageRange: (range) => call(`setScanStageRange(${JSON.stringify(range)})`),
+    // 直前のフレームの入力のまま、走査だけをホワイトノイズのパス first〜first + count − 1 で描き直し、帯を詰めた
+    // テクスチャを偶数番目と奇数番目のパスに分けてページの GPU の和へ足す。和は takePassSums で受け取る。
+    accumulateWhitePasses: (first, count) => call(`accumulateWhitePasses(${first}, ${count})`),
+    // accumulateWhitePasses の和 [偶数番目, 奇数番目](帯を詰めたテクスチャごとの、画素ごとに RGBA の Float32Array)を受け取り、
+    // ページの和を 0 に戻す。
+    async takePassSums() {
+      const shape = await devTools.evaluate(`window.renderLab.takePassSums().then((sums) => {
+        window.__ssdPassSums = sums;
+        return sums.map((images) => images.map(({ rgba }) => rgba.length));
+      })`);
+      const sums = [];
+      for (const [parity, lengths] of shape.entries()) {
+        const images = [];
+        for (const [i, length] of lengths.entries()) {
+          images.push(await receiveFloats(devTools, `window.__ssdPassSums[${parity}][${i}].rgba`, length));
+        }
+        sums.push(images);
+      }
+      await devTools.evaluate('delete window.__ssdPassSums');
+      return sums;
+    },
+    // いまの段の、走査が帯を詰めた描画先の index 枚目へ、走査の解像度の画素ごとの RGBA の ΔE rgba(Float32Array)を書く。
+    async writePackedBands(index, rgba) {
+      await sendArray(devTools, 'window.__ssdPacked', rgba);
+      await call(`writePackedBands(${index}, window.__ssdPacked)`);
+      await devTools.evaluate('delete window.__ssdPacked');
+    },
     setTarget: (target) => call(`setTarget(${JSON.stringify(target)})`),
     exposureFactor: () => call('exposureFactor()'),
     // 段 tiers を rounds 巡交互に測る。段と巡が多いと CDP の 1 要求の待ちを越えるので、ページの中で走らせて

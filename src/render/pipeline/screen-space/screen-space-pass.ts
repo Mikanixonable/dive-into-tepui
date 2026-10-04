@@ -4,7 +4,8 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, float, floor, getViewPosition, ivec2, mrt, screenSize, screenUV, texture, textureLoad, uniform, vec3, vec4,
+  Fn, If, float, floor, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint, uniform,
+  vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
@@ -19,6 +20,7 @@ import { CorrectionReconstruction } from './correction-reconstruction';
 import { ScreenSpaceInputPyramid, levelExtent } from './screen-space-input-pyramid';
 import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
 import { SurfaceWeight } from './surface-weight';
+import { whiteNoiseAt } from './white-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
@@ -61,10 +63,14 @@ type ModeStages = Readonly<
   Record<Exclude<ScreenSpaceDiffuse, typeof SCREEN_SPACE_DIFFUSE.off>, readonly ScreenSpaceStage[]>
 >;
 
-// 帯の数 1 つぶんの描画命令 — 方式ごとの列 modes と、そのうちこのパスが帯の数ごとに組んだもの own(照り返しの源と
-// 代表の縮小列を除く)。
+// render が描く段の範囲。all は全段、scan は照り返しの源と走査まで、chain は走査より後だけ(走査の描画先に残った帯の
+// 値から描く)。scan と chain は、道具が走査と鎖を分けて描くためのもの。
+export type ScreenSpaceStageRange = 'all' | 'scan' | 'chain';
+
+// 帯の数 1 つぶんの描画命令 — 描く段の範囲と方式ごとの列 ranges と、そのうちこのパスが帯の数ごとに組んだもの own
+// (照り返しの源と代表の縮小列を除く)。
 interface BandCountStages {
-  readonly modes: ModeStages;
+  readonly ranges: Readonly<Record<ScreenSpaceStageRange, ModeStages>>;
   readonly own: readonly ScreenSpaceStage[];
 }
 
@@ -93,6 +99,8 @@ export class ScreenSpacePass {
   private readonly sliceCount = uniform(1, 'int');
   private readonly stepCount = uniform(1, 'int');
   private readonly bandScale: FloatUniform = uniform(1);
+  // 走査のずれをホワイトノイズから引くパスの番号(setWhiteNoisePass)。負ならブルーノイズから引く。
+  private readonly whiteNoisePass = uniform(-1, 'int');
   // 走査と拡大が読むブルーノイズの 2 次元のずれ [タイルの幅]。(0, 0) 以外の値は、同じ推定を独立な標本で繰り返す
   // ためのもの。
   private readonly seed: Vec2Uniform = uniform(new THREE.Vector2(0, 0));
@@ -111,6 +119,8 @@ export class ScreenSpacePass {
   private readonly blueNoise = new BlueNoise();
   // 直前に render した方式。null はまだ render していないこと。
   private renderedMode: ScreenSpaceDiffuse | null = null;
+  // render が描く段の範囲(setStageRange)。
+  private stageRange: ScreenSpaceStageRange = 'all';
   // 空へ戻すときに退避する消去色。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
@@ -161,6 +171,18 @@ export class ScreenSpacePass {
     this.seed.value.set(x, y);
   }
 
+  // 次の render から、走査の 3 つのずれを、pass が null ならブルーノイズ(本番)から、整数ならパスの番号 pass のホワイト
+  // ノイズ(画素・パス・成分ごとに独立)から引く。多くのパスを平均する道具のためのもの。
+  public setWhiteNoisePass(pass: number | null): void {
+    this.whiteNoisePass.value = pass ?? -1;
+  }
+
+  // 次の render から、段の範囲 range(ScreenSpaceStageRange)だけを描く。chain は走査の描画先
+  // (DiffuseCorrection.bandTarget の段 0)に置かれた帯の値を読む。
+  public setStageRange(range: ScreenSpaceStageRange): void {
+    this.stageRange = range;
+  }
+
   // 1 フレームぶんを描く。G バッファと同じ寸法 width × height で、影パスの後・ライティングパスの前に呼ぶ。
   // camera は深度から位置を復元する行列を引き直すためだけに使う。
   public render(camera: THREE.Camera, width: number, height: number): void {
@@ -200,9 +222,10 @@ export class ScreenSpacePass {
     this.blueNoise.dispose();
   }
 
-  // いまの方式と段の帯の数の描画命令の列。オフは空。
+  // いまの方式と段の帯の数と段の範囲の描画命令の列。オフは空。
   private currentStages(): readonly ScreenSpaceStage[] {
-    return this.mode === SCREEN_SPACE_DIFFUSE.off ? [] : this.stagesOf(this.tier.bandCount).modes[this.mode];
+    if (this.mode === SCREEN_SPACE_DIFFUSE.off) return [];
+    return this.stagesOf(this.tier.bandCount).ranges[this.stageRange][this.mode];
   }
 
   // 帯の数 count の描画命令。初めて引いたときに組み、以後は同じものを返す。
@@ -214,11 +237,19 @@ export class ScreenSpacePass {
     // 走査より後の段は方式によらないので、両方の方式で同じ描画命令を使う。
     const chain = this.createChainStages(count);
     const upsample = this.createUpsampleStage(count);
-    const pyramid = this.surfaces.stagesUpTo(count);
+    const scans: ModeStages = {
+      [SCREEN_SPACE_DIFFUSE.occlusion]: [occlusionScan],
+      [SCREEN_SPACE_DIFFUSE.indirect]: [this.sourceStage, indirectScan],
+    };
+    const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, upsample];
     const stages: BandCountStages = {
-      modes: {
-        [SCREEN_SPACE_DIFFUSE.occlusion]: [occlusionScan, ...pyramid, ...chain, upsample],
-        [SCREEN_SPACE_DIFFUSE.indirect]: [this.sourceStage, indirectScan, ...pyramid, ...chain, upsample],
+      ranges: {
+        all: {
+          [SCREEN_SPACE_DIFFUSE.occlusion]: [...scans[SCREEN_SPACE_DIFFUSE.occlusion], ...afterScan],
+          [SCREEN_SPACE_DIFFUSE.indirect]: [...scans[SCREEN_SPACE_DIFFUSE.indirect], ...afterScan],
+        },
+        scan: scans,
+        chain: { [SCREEN_SPACE_DIFFUSE.occlusion]: afterScan, [SCREEN_SPACE_DIFFUSE.indirect]: afterScan },
       },
       own: [occlusionScan, indirectScan, ...chain, upsample],
     };
@@ -238,9 +269,12 @@ export class ScreenSpacePass {
   private createScanStage(count: number, radiance: THREE.Texture | null): ScreenSpaceStage {
     const target = this.output.bandTarget(count, 0);
     // 丸めのずれのタイルのずれ 27/64 は、回転(0)・歩みのずれ(½)と画素ごとに相関しないものを実測で選んだ。
-    const noise = vec3(
+    const blue = vec3(
       this.blueNoise.atScreenPixel(this.seed), this.blueNoise.atScreenPixel(this.seed.add(0.5)),
       this.blueNoise.atScreenPixel(this.seed.add(27 / 64)));
+    const whiteAt = (component: number): FloatNode => whiteNoiseAt(this.scanPixel, uint(this.whiteNoisePass), component);
+    const white = vec3(whiteAt(0), whiteAt(1), whiteAt(2));
+    const noise = select(this.whiteNoisePass.lessThan(0), blue, white);
     const planets: readonly PlanetIllumination[] = Array.from({ length: MAX_PLANET_LIGHT_SLOTS }, (_, slot) => ({
       cap: this.planetLight.capAt(this.sample, slot),
       irradiance: this.planetLight.diffuseIrradianceAtSlot(this.sample, slot),
