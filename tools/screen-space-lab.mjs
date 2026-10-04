@@ -250,6 +250,9 @@ function labOf(devTools) {
       await devTools.evaluate('delete window.__ssdFloat');
       return out;
     },
+    // 直前のフレームの中間ターゲット name の寸法 [width, height]。
+    floatSizeOf: (name) => devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})
+      .then(({ width, height }) => [width, height])`),
     // 直前のフレームの中間ターゲット name の先頭 channels 成分を、ページの中に name ごとに積む slot 番目の和へ足す。
     // 積んだ和は takeAccumulated で受け取る。
     accumulateFloat: (name, channels, slot) => devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})
@@ -546,6 +549,29 @@ export function ratioColorOf(current, baseline, floor, octaves) {
   const t = Math.max(-1, Math.min(1, Math.log2(current / baseline) / octaves));
   const end = t < 0 ? LOWER_RATIO_COLOR : HIGHER_RATIO_COLOR;
   return SAME_RATIO_COLOR.map((v, c) => v + Math.abs(t) * (end[c] - v));
+}
+
+// 符号つきの値の写し方: 成分ごとに 0.5 + g·v を [0, 1] へ切って符号値にする(sRGB の変換をしない。0 が 50% の灰色で、土台の
+// 画像を足さない)。差分の係数 DIFFERENCE_GAIN と、補正項の係数を決める百分位と、それに係数を掛けた値の上限。
+export const DIFFERENCE_GAIN = 8;
+const SIGNED_GAIN_PERCENTILE = 0.995;
+const SIGNED_PEAK_LIMIT = 0.45;
+
+// 画素ごとに rgb を並べた符号つきの値 values を係数 gain で写した、画素 p の色(rgb、[0, 1] へ切る前)。
+export const signedColorOf = (values, gain) => (p) => [0, 1, 2].map((c) => 0.5 + gain * values[3 * p + c]);
+
+// 補正項を写す係数: 撮影ごとの { values, mask }(画素ごとに rgb の値と、測る画素の印)の並び fields の、印の立った画素の
+// |v|(成分ごと)の SIGNED_GAIN_PERCENTILE の百分位 p について、g·p ≤ SIGNED_PEAK_LIMIT を満たす最大の 2 の冪 g。p = 0 なら 1。
+export function signedGainOf(fields) {
+  const magnitudes = [];
+  for (const { values, mask } of fields) {
+    for (let p = 0; p < mask.length; p++) {
+      if (mask[p]) for (let c = 0; c < 3; c++) magnitudes.push(Math.abs(values[3 * p + c]));
+    }
+  }
+  const sorted = Float64Array.from(magnitudes).sort();
+  const peak = sorted[Math.floor(SIGNED_GAIN_PERCENTILE * (sorted.length - 1))];
+  return peak > 0 ? 2 ** Math.floor(Math.log2(SIGNED_PEAK_LIMIT / peak)) : 1;
 }
 
 // ---- 解析値のある窓 ----

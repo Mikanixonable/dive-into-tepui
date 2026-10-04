@@ -2,17 +2,13 @@
 // に対する恒等からのずれと揺れの量。画素ごとの量と撮影ごとの行、目で見る画像の色、表と説明の行を組む。統計は画素ごとに rgb を
 // 並べた { mean, variance, halves }(全パスの平均・不偏分散・偶数番目と奇数番目のパスの平均の組)で受ける。
 import { percentileOf, varianceSumOf } from './screen-space-distribution.mjs';
-import { linearOfOklab, oklabOf, srgbCodesOfLinear } from './screen-space-error.mjs';
 import { fixed, maskedMeanOf, ratioColorOf, table } from './screen-space-lab.mjs';
 
 // 段の格子の変調を集める周期 [走査の画素](段 1〜3 のブロックの幅)。
 const PERIODS = [2, 4, 8];
 // 揺れ s の見込み p に対する比が、揺れが下がらない画素とみなす下限。
 const STD_RATIO_LIMIT = 2;
-// 画像の尺度 — 強調の土台の灰色(線形 sRGB)と倍率、std.png の白に当たる s(全撮影・全候補で共通)、std-ratio.png の
-// ±1 に当たる log2(s/p)。
-const EMPHASIS_GRAY = 0.18;
-const EMPHASIS = 8;
+// 画像の尺度 — std.png の白に当たる s(全撮影・全候補で共通)と、std-ratio.png の ±1 に当たる log2(s/p)。
 const SIGMA_WHITE = 0.2;
 const STD_RATIO_OCTAVES = 1;
 
@@ -96,26 +92,13 @@ export function chainRowOf({ deviation, floor, std, expected }, mask, width, ref
   };
 }
 
-// C_0 の画像の、名前から走査の画素 p ごとの色(rgb、0..1)への表。c0 は候補の C_0 の統計、chain はその画素ごとの量。
-// mean-c0 と dev8 は μ(C_0) と d の強調、std は s / SIGMA_WHITE の灰色、std-ratio は log2(s / p) を ±STD_RATIO_OCTAVES で
-// 青〜灰〜赤。
-export function chainColorsOf(c0, chain) {
-  const codesOf = (codes) => (p) => [0, 1, 2].map((c) => codes[3 * p + c] / 255);
+// C_0 の揺れの画像の、名前から走査の画素 p ごとの色(rgb、0..1)への表。chain は C_0 の画素ごとの量。std は s / SIGMA_WHITE の
+// 灰色、std-ratio は log2(s / p) を ±STD_RATIO_OCTAVES で青〜灰〜赤。
+export function chainColorsOf(chain) {
   return {
-    'mean-c0': codesOf(enhancedCodesOf(c0.mean)),
-    dev8: codesOf(enhancedCodesOf(chain.deviation)),
     std: (p) => Array(3).fill(chain.std[p] / SIGMA_WHITE),
     'std-ratio': (p) => ratioColorOf(chain.std[p], chain.expected[p], 0, STD_RATIO_OCTAVES),
   };
-}
-
-// 画素ごとの q(rgb)の強調の色(sRGB の符号値、画素ごとに rgb)。一様な灰色の土台 EMPHASIS_GRAY と、それに q を足して
-// [0, 1] へ切った色の Oklab の差を EMPHASIS 倍にして、土台へ足す。
-function enhancedCodesOf(q) {
-  const base = new Float32Array(q.length).fill(EMPHASIS_GRAY);
-  const [baseLab, shiftedLab] = [base, base.map((v, i) => Math.min(1, Math.max(0, v + q[i])))].map(oklabOf);
-  return srgbCodesOfLinear(linearOfOklab(baseLab.map(
-    (plane, c) => plane.map((v, p) => v + EMPHASIS * (shiftedLab[c][p] - v)))));
 }
 
 // 撮影の C_0 の行 chains(候補の label ごと。labels の先頭が A)の表の行。窓の比を持つ撮影では、A との差の列も出す。
@@ -149,7 +132,6 @@ export const CHAIN_NOTES = [
 
 // 保存した画像の説明の行。
 export const CHAIN_IMAGE_NOTES = [
-  `- \`<撮影>.<候補>.{mean-c0,dev8}.png\` — μ(C_0) と d を ${EMPHASIS} 倍に強調した符号つきの表示(線形 sRGB ${EMPHASIS_GRAY} の灰色の`,
-  `  土台と、それに q を足して [0, 1] へ切った色の Oklab の差を ${EMPHASIS} 倍)。\`std.png\` — s / ${SIGMA_WHITE} の灰色。`,
-  `  \`std-ratio.png\` — log2(s / p) を ±${STD_RATIO_OCTAVES} で青〜灰〜赤。印の外は濃い青。`,
+  `- \`<撮影>.<候補>.std.png\` — s / ${SIGMA_WHITE} の灰色。\`std-ratio.png\` — log2(s / p) を ±${STD_RATIO_OCTAVES} で青〜灰〜赤。`,
+  '  印の外は濃い青。',
 ];
