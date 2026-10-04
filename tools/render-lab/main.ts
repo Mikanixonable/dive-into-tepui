@@ -30,7 +30,7 @@ import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
-import type { ScanTier } from '../../src/render/pipeline/screen-space/screen-space-pass';
+import type { ScanTier, ScreenSpaceStageRange } from '../../src/render/pipeline/screen-space/screen-space-pass';
 
 // 恒星の距離のつまみの下限・上限。つまみは距離を**天文単位の常用対数で持つ** — 見かけ径が 1px を切る
 // あたりの変化を読みたいので、AU を直に刻むと近距離側が粗すぎて追えない。下限の 0.01 AU は太陽が
@@ -74,6 +74,11 @@ declare global {
       showShot: (name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>) => Promise<void>;
       setScanTier: (tier: ScanTier) => void;
       setScanSeed: (x: number, y: number) => void;
+      setScanStageRange: (range: ScreenSpaceStageRange) => void;
+      setScanWhiteNoisePass: (pass: number | null) => void;
+      accumulateWhitePasses: (first: number, count: number) => Promise<void>;
+      takePassSums: () => Promise<readonly (readonly FloatImage[])[]>;
+      writePackedBands: (index: number, rgba: Float32Array) => void;
       readFloat: (name: FloatTargetName) => Promise<FloatImage>;
       composite: (hdr: FloatImage) => Promise<FloatImage>;
       exposureFactor: () => number;
@@ -344,6 +349,11 @@ async function init(): Promise<void> {
     },
     setScanTier: (tier) => view.setScanTier(tier),
     setScanSeed: (x, y) => view.setScanSeed(x, y),
+    setScanStageRange: (range) => view.setScanStageRange(range),
+    setScanWhiteNoisePass: (pass) => view.setScanWhiteNoisePass(pass),
+    accumulateWhitePasses: (first, count) => view.accumulateWhitePasses(first, count),
+    takePassSums: () => view.takePassSums(),
+    writePackedBands: (index, rgba) => view.writePackedBands(index, rgba),
     readFloat: (name) => view.readFloat(name),
     composite: (hdr) => view.composite(hdr),
     exposureFactor: () => view.exposureFactor,

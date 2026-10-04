@@ -1,4 +1,4 @@
-// 近傍拡散補正の、最後の拡大の前の補正 C_0(帯の縮小と拡大と合流の鎖の出力。帯に分けない段では raw)の、帯に分けない候補 A
+// 近傍拡散補正の、最後の拡大の前の補正 C_0(帯の縮小と拡大と合流の鎖の出力。帯に分けない段では raw)の、同じパスの帯の和
 // に対する恒等からのずれと揺れの量。画素ごとの量と撮影ごとの行、目で見る画像の色、表と説明の行を組む。統計は画素ごとに rgb を
 // 並べた { mean, variance, halves }(全パスの平均・不偏分散・偶数番目と奇数番目のパスの平均の組)で受ける。
 import { percentileOf, varianceSumOf } from './screen-space-distribution.mjs';
@@ -12,14 +12,14 @@ const STD_RATIO_LIMIT = 2;
 const SIGMA_WHITE = 0.2;
 const STD_RATIO_OCTAVES = 1;
 
-// 候補の C_0 の統計 c0 の、A の C_0 の統計 baseline に対する画素ごとの量 { deviation, floor, std, expected }。bands は候補の
-// 帯ごとの統計(帯 0 から)、mask は測る画素の印、width × height は走査の解像度。deviation は恒等からのずれ
-// d = μ(C_0) − μ_A(C_0)、floor は偶数番目と奇数番目のパスでそれぞれ求めた d の差の半分(どちらも画素ごとに rgb)、std は揺れ
+// 候補の C_0 の統計 c0 の、同じパスの帯の和の統計 sum に対する画素ごとの量 { deviation, floor, std, expected }。bands は
+// 候補の帯ごとの統計(帯 0 から)、mask は測る画素の印、width × height は走査の解像度。deviation は恒等からのずれ
+// d = μ(C_0) − μ(帯の和)、floor は偶数番目と奇数番目のパスでそれぞれ求めた d の差の半分(どちらも画素ごとに rgb)、std は揺れ
 // s = √(Σ_c V_c(C_0))、expected はその見込み p(expectedStdOf)。
-export function chainPlanesOf(c0, baseline, bands, mask, width, height) {
-  const [even, odd] = [0, 1].map((h) => c0.halves[h].map((v, i) => v - baseline.halves[h][i]));
+export function chainPlanesOf(c0, sum, bands, mask, width, height) {
+  const [even, odd] = [0, 1].map((h) => c0.halves[h].map((v, i) => v - sum.halves[h][i]));
   return {
-    deviation: c0.mean.map((v, i) => v - baseline.mean[i]),
+    deviation: c0.mean.map((v, i) => v - sum.mean[i]),
     floor: even.map((v, i) => (v - odd[i]) / 2),
     std: Float64Array.from({ length: width * height }, (_, p) => Math.sqrt(varianceSumOf(c0.variance, p))),
     expected: expectedStdOf(bands, mask, width, height),
@@ -123,7 +123,7 @@ export function chainTableOf(labels, chains) {
 
 // 表の読み方の行。
 export const CHAIN_NOTES = [
-  'C_0 は最後の拡大の前の補正(帯に分けない候補は raw)。d = μ(C_0) − μ_A(C_0) は恒等からのずれで、RMS の比の分母は μ_A の RMS、',
+  'C_0 は最後の拡大の前の補正(帯に分けない候補は raw)。d = μ(C_0) − μ(帯の和) は恒等からのずれで、RMS の比の分母は μ_A の RMS、',
   '床は偶数番目と奇数番目のパスでそれぞれ求めた d の差の半分の RMS(同じ分母)。変調は |d| や s の測る画素での平均を、走査の',
   `画素の座標を周期 ${PERIODS.join('・')} で割った余りの組ごとに集めた最大 / 最小(1 に近いほど段の格子が無い)。s = √(Σ_c V_c(C_0))、`,
   '見込み p = √(V_0 + Σ_{ℓ≥1} box_ℓ(V_ℓ) / 4^ℓ)(V_ℓ はその候補の帯 ℓ の V、box_ℓ は走査の 2^ℓ 画素四方の整列したブロックの平均。',
