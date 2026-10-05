@@ -25,26 +25,43 @@ import { CASES, type CaseName } from './cases';
 import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
 import { LabSun } from './lab-sun';
+import { PassAccumulator } from './pass-accumulator';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
-import type { ScanTier } from '../../src/render/pipeline/screen-space/screen-space-pass';
+import type { ScanTier, ScreenSpaceStageRange } from '../../src/render/pipeline/screen-space/screen-space-pass';
 import type { Mat4Uniform } from '../../src/render/tsl-types';
 
-// 近傍拡散補正の走査が帯ごとの補正を詰めて書くテクスチャの読み戻しの名前。並びはテクスチャの番号で、WebGPU の
-// 既定の上限で書ける 4 枚だけ並べる。
-const PACKED_BANDS_NAMES = ['packed-bands-0', 'packed-bands-1', 'packed-bands-2', 'packed-bands-3'] as const;
+// 近傍拡散補正の、帯を詰めた描画先の i 枚目のテクスチャの読み戻しの名前。'packed-bands-i' は走査(段 0)、'reduced-m-i'
+// は帯の縮小の段 m。枚数は WebGPU の既定の上限で書ける帯の数 5 の分だけ並べる。
+type PackedBandsName = `packed-bands-${0 | 1 | 2 | 3}` | `reduced-${1 | 2 | 3 | 4}-${0 | 1 | 2}`;
+const PACKED_BANDS_NAME_PATTERN = /^(?:packed-bands|reduced-(\d))-(\d)$/;
+// 近傍拡散補正の拡大と合流の段 k の出力の読み戻しの名前。
+type MergedName = `merged-${0 | 1 | 2 | 3}`;
+const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 
-// 読み戻せる浮動小数の中間ターゲット。'packed-bands-i' は、いまの段の帯の数で走査が帯ごとの補正を詰めた i 枚目の
-// テクスチャ(帯 b の rgb は、テクスチャを並べた通しのチャンネル 3b..3b + 2。帯の数 1 では 'packed-bands-0' の rgb が
-// 帯に分けない補正)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では帯 0、2 以上では
-// 拡大と合流の段 0 の出力)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る描画バッファの
-// 画素数で、面の無い画素は 0。
-export type FloatTargetName = (typeof PACKED_BANDS_NAMES)[number] | 'scan-correction' | 'correction' | 'diffuse'
+// 読み戻せる浮動小数の中間ターゲット。PackedBandsName は、いまの段の帯の数の段 m の描画先が帯 m〜帯の数 − 1 を詰めた
+// i 枚目のテクスチャ(段の帯 b の rgb は、テクスチャを並べた通しのチャンネル 3(b − m)..3(b − m) + 2。帯の数 1 では
+// 'packed-bands-0' の rgb が帯に分けない補正)。MergedName は、いまの段の帯の数の拡大と合流の段 k の出力(rgb は C_k)。
+// 'band-sum' は走査の帯の和(rgb、α は 0)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では
+// 帯 0、2 以上では 'merged-0' と同じ)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る描画
+// バッファの画素数で、面の無い画素は 0。
+export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse'
   | 'hdr' | 'projected-radius';
+
+// accumulateWhitePasses が GPU の終わりを待つ間隔 [パス]。
+const WHITE_PASSES_PER_WAIT = 256;
+
+// 単精度の値 v に最も近い半精度のビット列(DataUtils.toHalfFloat は切り捨てる)。
+function nearestHalfOf(v: number): number {
+  const truncated = THREE.DataUtils.toHalfFloat(v);
+  const away = truncated + 1;
+  const error = (bits: number): number => Math.abs(THREE.DataUtils.fromHalfFloat(bits) - v);
+  return error(away) < error(truncated) ? away : truncated;
+}
 
 // 読み戻した画像。rgba は画素ごとに 4 つの値で、行は上から。
 export interface FloatImage {
@@ -133,6 +150,8 @@ export class LabView {
   private readonly radiusQuad = new QuadMesh();
   private readonly radiusProjection: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly radiusProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
+  // accumulateWhitePasses が走査の帯を足し込む器。初めて足すとき、または帯の描画先が変わったときに作り直す。
+  private passAccumulator: PassAccumulator | null = null;
   // 与えた HDR を合成した表示を、8 bit へ丸めずに受ける先。合成は深度も写すので深度を持たせる。
   private readonly compositeTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
     type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: true,
@@ -431,12 +450,113 @@ export class LabView {
     this.pipeline.screenSpace.setSeed(x, y);
   }
 
+  // 次に描くフレームから、近傍拡散補正の段の範囲 range だけを描く('chain' は帯を詰めた描画先に置いた値から鎖を描く)。
+  public setScanStageRange(range: ScreenSpaceStageRange): void {
+    this.pipeline.screenSpace.setStageRange(range);
+  }
+
+  // 次に描くフレームから、近傍拡散補正の走査のずれを、pass が null ならブルーノイズから、整数ならパスの番号 pass の
+  // ホワイトノイズから引く。
+  public setScanWhiteNoisePass(pass: number | null): void {
+    this.pipeline.screenSpace.setWhiteNoisePass(pass);
+  }
+
+  // 直前に描いたフレームの G バッファなどを入力のまま、近傍拡散補正の照り返しの源と走査だけを、ホワイトノイズのパスの番号
+  // first〜first + count − 1 で描き直し、走査が帯を詰めたテクスチャを偶数番目と奇数番目のパスに分けて和へ足す。和は
+  // takePassSums で受け取る。終わると段の範囲とノイズは本番のものへ戻る。
+  public async accumulateWhitePasses(first: number, count: number): Promise<void> {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    const { screenSpace, diffuseCorrection } = this.pipeline;
+    const target = diffuseCorrection.bandTarget(screenSpace.bandCount, 0);
+    if (this.passAccumulator?.sources !== target.textures) {
+      this.passAccumulator?.dispose();
+      this.passAccumulator = new PassAccumulator(this.renderer, target.textures, target.width, target.height);
+    }
+    screenSpace.setStageRange('scan');
+    try {
+      for (let k = first; k < first + count; k++) {
+        screenSpace.setWhiteNoisePass(k);
+        screenSpace.render(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT);
+        this.passAccumulator.add(k % 2 === 0 ? 0 : 1);
+        // GPU の待ち行列が際限なく伸びないよう、ときどき終わりを待つ。時刻印の器も空ける。
+        if ((k - first) % WHITE_PASSES_PER_WAIT === WHITE_PASSES_PER_WAIT - 1) {
+          await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
+          this.gpu.resolve();
+        }
+      }
+    } finally {
+      screenSpace.setStageRange('all');
+      screenSpace.setWhiteNoisePass(null);
+    }
+  }
+
+  // accumulateWhitePasses で足した値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
+  // テクスチャごと)を読み戻し、和を 0 に戻す。
+  public async takePassSums(): Promise<{
+    readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
+  }> {
+    const accumulator = this.passAccumulator;
+    if (accumulator === null) throw new Error('render-lab: no passes accumulated');
+    // 偶奇ごと・テクスチャごとに読み戻す。
+    const readBackHalves = async (halves: readonly (readonly THREE.Texture[])[]): Promise<FloatImage[][]> => {
+      const images: FloatImage[][] = [];
+      for (const textures of halves) {
+        const half: FloatImage[] = [];
+        for (const texture of textures) half.push(await this.readBack(texture));
+        images.push(half);
+      }
+      return images;
+    };
+    const sums = await readBackHalves(accumulator.sumTextures);
+    const squares = await readBackHalves(accumulator.squareTextures);
+    accumulator.clear();
+    return { sums, squares };
+  }
+
+  // いまの段の帯の数の、走査の帯を詰めた描画先の index 枚目('packed-bands-<index>')へ、走査の解像度の画素ごとの RGBA の
+  // 値 rgba(行は上から)を半精度へ丸めて書く。いまの段で 1 度描いて描画先の寸法を合わせてから呼ぶ。段の範囲
+  // 'chain' のフレーム(setScanStageRange)が鎖の入力として読む。
+  public writePackedBands(index: number, rgba: Float32Array): void {
+    const target = this.pipeline.diffuseCorrection.bandTarget(this.pipeline.screenSpace.bandCount, 0);
+    const destination = target.textures[index];
+    if (destination === undefined) throw new Error(`render-lab: the scan has no packed band texture ${index}`);
+    const { width, height } = target;
+    if (rgba.length !== width * height * 4) throw new Error(`render-lab: packed bands are ${width}×${height} RGBA`);
+    // 走査の出力と同じ形式(rgba16float)の板を作り、描画先へ写す。
+    const source = new THREE.DataTexture(
+      Uint16Array.from(rgba, nearestHalfOf), width, height, THREE.RGBAFormat, THREE.HalfFloatType);
+    source.needsUpdate = true;
+    this.renderer.copyTextureToTexture(source, destination);
+    source.dispose();
+  }
+
   // 直前に描いたフレームの露出係数。
   public get exposureFactor(): number { return this.pipeline.exposure.factorValue; }
 
   // 直前に描いたフレームの中間ターゲット name を読み戻す。
   public async readFloat(name: FloatTargetName): Promise<FloatImage> {
+    if (name === 'band-sum') return this.readBandSum();
     return this.readBack(name === 'projected-radius' ? this.drawProjectedRadius() : this.floatTextureOf(name));
+  }
+
+  // 直前に描いたフレームの、いまの段の帯の数の走査の帯の和(rgb、α は 0)。帯の並びは packedBands の通しのチャンネル。
+  private async readBandSum(): Promise<FloatImage> {
+    const count = this.pipeline.screenSpace.bandCount;
+    const packed: FloatImage[] = [];
+    for (const texture of this.pipeline.diffuseCorrection.bandTarget(count, 0).textures) {
+      packed.push(await this.readBack(texture));
+    }
+    const { width, height } = packed[0]!;
+    const rgba = new Float32Array(width * height * 4);
+    // 帯 b の成分 c は通しのチャンネル 3b + c。
+    for (let channel = 0; channel < 3 * count; channel++) {
+      const source = packed[Math.floor(channel / 4)]!.rgba;
+      for (let p = 0; p < width * height; p++) {
+        const sum = 4 * p + channel % 3;
+        rgba[sum] = rgba[sum]! + source[4 * p + channel % 4]!;
+      }
+    }
+    return { width, height, rgba };
   }
 
   // HDR の絵 hdr(線形、描画バッファと同じ寸法)を、直前に描いたフレームと同じ通常表示の合成で描いて読み戻す。値は
@@ -470,9 +590,9 @@ export class LabView {
     return { width, height, rgba };
   }
 
-  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数で詰めたテクスチャに無い
-  // 'packed-bands-i' なら投げる。
-  private floatTextureOf(name: Exclude<FloatTargetName, 'projected-radius'>): THREE.Texture {
+  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数で帯を詰めた描画先に無い段か枚数なら
+  // 投げる。
+  private floatTextureOf(name: Exclude<FloatTargetName, 'band-sum' | 'projected-radius'>): THREE.Texture {
     const { screenSpace, diffuseCorrection } = this.pipeline;
     switch (name) {
       case 'scan-correction': return diffuseCorrection.mergedTexture(screenSpace.bandCount, 0);
@@ -480,10 +600,17 @@ export class LabView {
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
       case 'hdr': return this.pipeline.hdrTexture;
       default: {
-        // 帯を詰めたテクスチャは、いまの段の帯の数の走査の描画先から引く。
-        const bands = diffuseCorrection.bandTarget(screenSpace.bandCount, 0);
-        const texture = bands.textures[PACKED_BANDS_NAMES.indexOf(name)];
-        if (texture === undefined) throw new Error(`render-lab: ${screenSpace.bandCount} bands have no "${name}"`);
+        const count = screenSpace.bandCount;
+        const [, mergedLevel] = MERGED_NAME_PATTERN.exec(name) ?? [];
+        if (mergedLevel !== undefined) {
+          if (Number(mergedLevel) >= count - 1) throw new Error(`render-lab: ${count} bands have no "${name}"`);
+          return diffuseCorrection.mergedTarget(count, Number(mergedLevel)).texture;
+        }
+        // 帯を詰めたテクスチャは、いまの段の帯の数の、名前の段(無ければ走査の段 0)の描画先から引く。
+        const [, level = '0', index] = PACKED_BANDS_NAME_PATTERN.exec(name)!;
+        const texture = Number(level) < count
+          ? diffuseCorrection.bandTarget(count, Number(level)).textures[Number(index)] : undefined;
+        if (texture === undefined) throw new Error(`render-lab: ${count} bands have no "${name}"`);
         return texture;
       }
     }

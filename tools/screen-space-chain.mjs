@@ -1,29 +1,25 @@
-// 近傍拡散補正の、最後の拡大の前の補正 C_0(帯の縮小と拡大と合流の鎖の出力。帯に分けない段では raw)の、帯に分けない候補 A
+// 近傍拡散補正の、最後の拡大の前の補正 C_0(帯の縮小と拡大と合流の鎖の出力。帯に分けない段では raw)の、同じパスの帯の和
 // に対する恒等からのずれと揺れの量。画素ごとの量と撮影ごとの行、目で見る画像の色、表と説明の行を組む。統計は画素ごとに rgb を
 // 並べた { mean, variance, halves }(全パスの平均・不偏分散・偶数番目と奇数番目のパスの平均の組)で受ける。
 import { percentileOf, varianceSumOf } from './screen-space-distribution.mjs';
-import { linearOfOklab, oklabOf, srgbCodesOfLinear } from './screen-space-error.mjs';
 import { fixed, maskedMeanOf, ratioColorOf, table } from './screen-space-lab.mjs';
 
 // 段の格子の変調を集める周期 [走査の画素](段 1〜3 のブロックの幅)。
 const PERIODS = [2, 4, 8];
 // 揺れ s の見込み p に対する比が、揺れが下がらない画素とみなす下限。
 const STD_RATIO_LIMIT = 2;
-// 画像の尺度 — 強調の土台の灰色(線形 sRGB)と倍率、std.png の白に当たる s(全撮影・全候補で共通)、std-ratio.png の
-// ±1 に当たる log2(s/p)。
-const EMPHASIS_GRAY = 0.18;
-const EMPHASIS = 8;
+// 画像の尺度 — std.png の白に当たる s(全撮影・全候補で共通)と、std-ratio.png の ±1 に当たる log2(s/p)。
 const SIGMA_WHITE = 0.2;
 const STD_RATIO_OCTAVES = 1;
 
-// 候補の C_0 の統計 c0 の、A の C_0 の統計 baseline に対する画素ごとの量 { deviation, floor, std, expected }。bands は候補の
-// 帯ごとの統計(帯 0 から)、mask は測る画素の印、width × height は走査の解像度。deviation は恒等からのずれ
-// d = μ(C_0) − μ_A(C_0)、floor は偶数番目と奇数番目のパスでそれぞれ求めた d の差の半分(どちらも画素ごとに rgb)、std は揺れ
+// 候補の C_0 の統計 c0 の、同じパスの帯の和の統計 sum に対する画素ごとの量 { deviation, floor, std, expected }。bands は
+// 候補の帯ごとの統計(帯 0 から)、mask は測る画素の印、width × height は走査の解像度。deviation は恒等からのずれ
+// d = μ(C_0) − μ(帯の和)、floor は偶数番目と奇数番目のパスでそれぞれ求めた d の差の半分(どちらも画素ごとに rgb)、std は揺れ
 // s = √(Σ_c V_c(C_0))、expected はその見込み p(expectedStdOf)。
-export function chainPlanesOf(c0, baseline, bands, mask, width, height) {
-  const [even, odd] = [0, 1].map((h) => c0.halves[h].map((v, i) => v - baseline.halves[h][i]));
+export function chainPlanesOf(c0, sum, bands, mask, width, height) {
+  const [even, odd] = [0, 1].map((h) => c0.halves[h].map((v, i) => v - sum.halves[h][i]));
   return {
-    deviation: c0.mean.map((v, i) => v - baseline.mean[i]),
+    deviation: c0.mean.map((v, i) => v - sum.mean[i]),
     floor: even.map((v, i) => (v - odd[i]) / 2),
     std: Float64Array.from({ length: width * height }, (_, p) => Math.sqrt(varianceSumOf(c0.variance, p))),
     expected: expectedStdOf(bands, mask, width, height),
@@ -96,26 +92,13 @@ export function chainRowOf({ deviation, floor, std, expected }, mask, width, ref
   };
 }
 
-// C_0 の画像の、名前から走査の画素 p ごとの色(rgb、0..1)への表。c0 は候補の C_0 の統計、chain はその画素ごとの量。
-// mean-c0 と dev8 は μ(C_0) と d の強調、std は s / SIGMA_WHITE の灰色、std-ratio は log2(s / p) を ±STD_RATIO_OCTAVES で
-// 青〜灰〜赤。
-export function chainColorsOf(c0, chain) {
-  const codesOf = (codes) => (p) => [0, 1, 2].map((c) => codes[3 * p + c] / 255);
+// C_0 の揺れの画像の、名前から走査の画素 p ごとの色(rgb、0..1)への表。chain は C_0 の画素ごとの量。std は s / SIGMA_WHITE の
+// 灰色、std-ratio は log2(s / p) を ±STD_RATIO_OCTAVES で青〜灰〜赤。
+export function chainColorsOf(chain) {
   return {
-    'mean-c0': codesOf(enhancedCodesOf(c0.mean)),
-    dev8: codesOf(enhancedCodesOf(chain.deviation)),
     std: (p) => Array(3).fill(chain.std[p] / SIGMA_WHITE),
     'std-ratio': (p) => ratioColorOf(chain.std[p], chain.expected[p], 0, STD_RATIO_OCTAVES),
   };
-}
-
-// 画素ごとの q(rgb)の強調の色(sRGB の符号値、画素ごとに rgb)。一様な灰色の土台 EMPHASIS_GRAY と、それに q を足して
-// [0, 1] へ切った色の Oklab の差を EMPHASIS 倍にして、土台へ足す。
-function enhancedCodesOf(q) {
-  const base = new Float32Array(q.length).fill(EMPHASIS_GRAY);
-  const [baseLab, shiftedLab] = [base, base.map((v, i) => Math.min(1, Math.max(0, v + q[i])))].map(oklabOf);
-  return srgbCodesOfLinear(linearOfOklab(baseLab.map(
-    (plane, c) => plane.map((v, p) => v + EMPHASIS * (shiftedLab[c][p] - v)))));
 }
 
 // 撮影の C_0 の行 chains(候補の label ごと。labels の先頭が A)の表の行。窓の比を持つ撮影では、A との差の列も出す。
@@ -140,7 +123,7 @@ export function chainTableOf(labels, chains) {
 
 // 表の読み方の行。
 export const CHAIN_NOTES = [
-  'C_0 は最後の拡大の前の補正(帯に分けない候補は raw)。d = μ(C_0) − μ_A(C_0) は恒等からのずれで、RMS の比の分母は μ_A の RMS、',
+  'C_0 は最後の拡大の前の補正(帯に分けない候補は raw)。d = μ(C_0) − μ(帯の和) は恒等からのずれで、RMS の比の分母は μ_A の RMS、',
   '床は偶数番目と奇数番目のパスでそれぞれ求めた d の差の半分の RMS(同じ分母)。変調は |d| や s の測る画素での平均を、走査の',
   `画素の座標を周期 ${PERIODS.join('・')} で割った余りの組ごとに集めた最大 / 最小(1 に近いほど段の格子が無い)。s = √(Σ_c V_c(C_0))、`,
   '見込み p = √(V_0 + Σ_{ℓ≥1} box_ℓ(V_ℓ) / 4^ℓ)(V_ℓ はその候補の帯 ℓ の V、box_ℓ は走査の 2^ℓ 画素四方の整列したブロックの平均。',
@@ -149,7 +132,6 @@ export const CHAIN_NOTES = [
 
 // 保存した画像の説明の行。
 export const CHAIN_IMAGE_NOTES = [
-  `- \`<撮影>.<候補>.{mean-c0,dev8}.png\` — μ(C_0) と d を ${EMPHASIS} 倍に強調した符号つきの表示(線形 sRGB ${EMPHASIS_GRAY} の灰色の`,
-  `  土台と、それに q を足して [0, 1] へ切った色の Oklab の差を ${EMPHASIS} 倍)。\`std.png\` — s / ${SIGMA_WHITE} の灰色。`,
-  `  \`std-ratio.png\` — log2(s / p) を ±${STD_RATIO_OCTAVES} で青〜灰〜赤。印の外は濃い青。`,
+  `- \`<撮影>.<候補>.std.png\` — s / ${SIGMA_WHITE} の灰色。\`std-ratio.png\` — log2(s / p) を ±${STD_RATIO_OCTAVES} で青〜灰〜赤。`,
+  '  印の外は濃い青。',
 ];

@@ -25,9 +25,9 @@ const MODE = { occlusion: 1, indirect: 2 };
 // アンチエイリアス(値 0 はなし)は表示を縁の向こうへ広げ、どちらも基準の合成には掛からないので切る。
 const EVALUATION_GRAPHICS = { lens: false, antialias: 0 };
 
-// 評価の組。set は tuning(調整用)・checking(確認用)・correctness(解析値との照合)・flicker(ちらつき)、mode は
-// 描画設定 screenSpaceDiffuse の値、dolly はカメラの距離の倍率の常用対数。key は撮影名に、遮蔽の方式なら
-// @occlusion、カメラを引いたなら @dolly<フレーム> を付けたもの。
+// 評価の組。set は tuning(調整用)・checking(確認用)・correctness(解析値との照合)・flicker(ちらつき)・holes(拡大の
+// 重みの全滅による欠けの再現)、mode は描画設定 screenSpaceDiffuse の値、dolly はカメラの距離の倍率の常用対数。key は
+// 撮影名に、遮蔽の方式なら @occlusion、カメラを引いたなら @dolly<フレーム> を付けたもの。
 const DOLLY_STEP = 0.0005;
 const DOLLY_FRAMES = 6;
 const entry = (set, caseName, shot, mode = MODE.indirect, dolly = 0) => {
@@ -51,6 +51,7 @@ export const ENTRIES = [
     'plane-moon-horizon', 'plane-ambient', 'plane-earth-low-grazing', 'plane-ambient-grazing',
   ].flatMap((shot) => Object.values(MODE).map((mode) => entry('correctness', 'plane', shot, mode))),
   ...Array.from({ length: DOLLY_FRAMES }, (_, k) => entry('flicker', 'bay', 'bay', MODE.indirect, (k + 1) * DOLLY_STEP)),
+  ...['clutter', 'clutter-far'].map((shot) => entry('holes', 'clutter', shot)),
 ];
 
 // 評価の組のうち、entries(撮影の key を , で並べた文字列)と sets(set を , で並べた文字列)の両方に当たるもの。
@@ -67,6 +68,15 @@ export function selectedEntries({ entries, sets }) {
 export function entryInMode(e, modeName) {
   if (!Object.hasOwn(MODE, modeName)) throw new Error(`unknown mode ${modeName}: one of ${Object.keys(MODE).join(', ')}`);
   return entry(e.set, e.caseName, e.shot, MODE[modeName], e.dolly);
+}
+
+// 記録に残った撮影の key(方式を揃えて撮ったものは @occlusion 付き)の撮影。
+export function entryOfKey(key) {
+  const listed = ENTRIES.find((e) => e.key === key);
+  if (listed !== undefined) return listed;
+  const occluded = ENTRIES.find((e) => `${e.key}@occlusion` === key);
+  if (occluded === undefined) throw new Error(`no entry has the key ${key}`);
+  return entryInMode(occluded, 'occlusion');
 }
 
 // 受け手の近傍の半径に効きを渡すフェードの外側 [走査の画素](src/render/pipeline/screen-space/hemisphere-scan.ts の
@@ -111,9 +121,9 @@ export function candidateSeedOf(k, referencePasses) {
 
 // いまの精細さの段(src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_TIERS)。
 export const TIERS = {
-  low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 1 / 8 },
-  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 1 / 8 },
-  high: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 1 / 8 },
+  low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 3 / 4 },
+  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 3 / 4 },
+  high: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 3 / 4 },
 };
 // 中の段の、帯に分けない愚直な点。走査の帯 0 が raw。
 export const MEDIUM_RAW_TIER = { ...TIERS.medium, bandCount: 1 };
@@ -210,6 +220,41 @@ function labOf(devTools) {
     setTier: (tier) => call(`setScanTier(${JSON.stringify(tier)})`),
     // seed は seedOf の返す [x, y]。
     setSeed: ([x, y]) => call(`setScanSeed(${x}, ${y})`),
+    // 近傍拡散補正の段の範囲 range('all'・'scan'・'chain')だけを描く。'chain' は帯を詰めた描画先の値から鎖を描く。
+    setStageRange: (range) => call(`setScanStageRange(${JSON.stringify(range)})`),
+    // 直前のフレームの入力のまま、走査だけをホワイトノイズのパス first〜first + count − 1 で描き直し、帯を詰めた
+    // テクスチャを偶数番目と奇数番目のパスに分けてページの GPU の和へ足す。和は takePassSums で受け取る。
+    accumulateWhitePasses: (first, count) => call(`accumulateWhitePasses(${first}, ${count})`),
+    // accumulateWhitePasses の値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
+    // テクスチャごとの、画素ごとに RGBA の Float32Array)を受け取り、ページの和を 0 に戻す。
+    async takePassSums() {
+      const shapes = await devTools.evaluate(`window.renderLab.takePassSums().then((taken) => {
+        window.__ssdPassSums = taken;
+        const shapeOf = (halves) => halves.map((images) => images.map(({ rgba }) => rgba.length));
+        return { sums: shapeOf(taken.sums), squares: shapeOf(taken.squares) };
+      })`);
+      // 和 kind('sums' か 'squares')の [偶奇][テクスチャ] を受け取る。
+      const receiveHalves = async (kind) => {
+        const halves = [];
+        for (const [parity, lengths] of shapes[kind].entries()) {
+          const images = [];
+          for (const [i, length] of lengths.entries()) {
+            images.push(await receiveFloats(devTools, `window.__ssdPassSums.${kind}[${parity}][${i}].rgba`, length));
+          }
+          halves.push(images);
+        }
+        return halves;
+      };
+      const taken = { sums: await receiveHalves('sums'), squares: await receiveHalves('squares') };
+      await devTools.evaluate('delete window.__ssdPassSums');
+      return taken;
+    },
+    // いまの段の、走査が帯を詰めた描画先の index 枚目へ、走査の解像度の画素ごとの RGBA の ΔE rgba(Float32Array)を書く。
+    async writePackedBands(index, rgba) {
+      await sendArray(devTools, 'window.__ssdPacked', rgba);
+      await call(`writePackedBands(${index}, window.__ssdPacked)`);
+      await devTools.evaluate('delete window.__ssdPacked');
+    },
     setTarget: (target) => call(`setTarget(${JSON.stringify(target)})`),
     exposureFactor: () => call('exposureFactor()'),
     // 段 tiers を rounds 巡交互に測る。段と巡が多いと CDP の 1 要求の待ちを越えるので、ページの中で走らせて
@@ -250,6 +295,9 @@ function labOf(devTools) {
       await devTools.evaluate('delete window.__ssdFloat');
       return out;
     },
+    // 直前のフレームの中間ターゲット name の寸法 [width, height]。
+    floatSizeOf: (name) => devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})
+      .then(({ width, height }) => [width, height])`),
     // 直前のフレームの中間ターゲット name の先頭 channels 成分を、ページの中に name ごとに積む slot 番目の和へ足す。
     // 積んだ和は takeAccumulated で受け取る。
     accumulateFloat: (name, channels, slot) => devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})
@@ -299,7 +347,8 @@ function labOf(devTools) {
       for (const [slot, sum] of sums.entries()) await sendArray(devTools, `${destination}.slots[${slot}]`, sum);
     },
     // name の全 slot の和を count で割った HDR の平均を、直前のフレームと同じ合成で表示にし、線形 sRGB(画素ごとに
-    // 3 つ)で返す。合成の値を [0, 1] へ切ってから線形へ戻すので、撮った PNG と同じ量になる。
+    // 3 つ)で返す。拡散照度は本番の材質パスと同じく負の成分を 0 へ切る。合成の値を [0, 1] へ切ってから線形へ戻すので、
+    // 撮った PNG と同じ量になる。
     async displayOfMean(name, count) {
       const length = await devTools.evaluate(`(async () => {
         const { width, height, channels, slots } = window.__ssdSums[${JSON.stringify(name)}];
@@ -308,7 +357,7 @@ function labOf(devTools) {
           for (let k = 0; k < 3; k++) {
             let v = 0;
             for (const slot of slots) if (slot !== undefined) v += slot[p * channels + k];
-            rgba[p * 4 + k] = v / ${count};
+            rgba[p * 4 + k] = ${name === 'diffuse' ? `Math.max(0, v / ${count})` : `v / ${count}`};
           }
           rgba[p * 4 + 3] = 1;
         }
@@ -546,6 +595,29 @@ export function ratioColorOf(current, baseline, floor, octaves) {
   const t = Math.max(-1, Math.min(1, Math.log2(current / baseline) / octaves));
   const end = t < 0 ? LOWER_RATIO_COLOR : HIGHER_RATIO_COLOR;
   return SAME_RATIO_COLOR.map((v, c) => v + Math.abs(t) * (end[c] - v));
+}
+
+// 符号つきの値の写し方: 成分ごとに 0.5 + g·v を [0, 1] へ切って符号値にする(sRGB の変換をしない。0 が 50% の灰色で、土台の
+// 画像を足さない)。差分の係数 DIFFERENCE_GAIN と、補正項の係数を決める百分位と、それに係数を掛けた値の上限。
+export const DIFFERENCE_GAIN = 8;
+const SIGNED_GAIN_PERCENTILE = 0.995;
+const SIGNED_PEAK_LIMIT = 0.45;
+
+// 画素ごとに rgb を並べた符号つきの値 values を係数 gain で写した、画素 p の色(rgb、[0, 1] へ切る前)。
+export const signedColorOf = (values, gain) => (p) => [0, 1, 2].map((c) => 0.5 + gain * values[3 * p + c]);
+
+// 補正項を写す係数: 撮影ごとの { values, mask }(画素ごとに rgb の値と、測る画素の印)の並び fields の、印の立った画素の
+// |v|(成分ごと)の SIGNED_GAIN_PERCENTILE の百分位 p について、g·p ≤ SIGNED_PEAK_LIMIT を満たす最大の 2 の冪 g。p = 0 なら 1。
+export function signedGainOf(fields) {
+  const magnitudes = [];
+  for (const { values, mask } of fields) {
+    for (let p = 0; p < mask.length; p++) {
+      if (mask[p]) for (let c = 0; c < 3; c++) magnitudes.push(Math.abs(values[3 * p + c]));
+    }
+  }
+  const sorted = Float64Array.from(magnitudes).sort();
+  const peak = sorted[Math.floor(SIGNED_GAIN_PERCENTILE * (sorted.length - 1))];
+  return peak > 0 ? 2 ** Math.floor(Math.log2(SIGNED_PEAK_LIMIT / peak)) : 1;
 }
 
 // ---- 解析値のある窓 ----

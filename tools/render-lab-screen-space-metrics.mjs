@@ -1,6 +1,6 @@
 // 近傍拡散補正の画質と費用の計測。ヘッドレス Chrome で .render-lab/ を開き、評価の組の撮影を、走査の段と
 // ブルーノイズの seed を与えて撮る。画質は補正項だけを、アルベド 1 の面の表示の尺度 q = 露出係数·ΔE/π で測る。
-// 5 つの使い方がある。
+// 7 つの使い方がある。
 //
 //   reference [--name D] [--entries K,...] [--sets S,...] --slices S --steps T --passes N
 //     基準 B(全解像度・均しなし・1 パス S スライス × 片側 T 歩で、seed を変えた N パスの補正の和と、目で見る画像の
@@ -21,15 +21,24 @@
 //   rescore <出力先> [--reference D]
 //     compare が残した撮影を、撮り直さずにいまの指標で採点し直し、表を <出力先>/report.md へ書く。D の既定は撮影に
 //     使った基準。
-//   variance [<candidates.json>] [--entries K,...] [--sets S,...] [--mode M] [--passes N] [--out O]
-//     候補の段(既定は中の帯に分けない段)の拡大の前の帯ごとの補正を、全候補で共通の seed の列で N パス(既定 256、4 の
-//     倍数)撮り、seed についての帯ごとの画素ごとの分散と、帯の和の収束先の移動と費用を、先頭の候補(帯に分けない段)と
-//     比べる表にする。帯に分けない候補では、画素ごとの分布の形(歪度・尖度を、|μ| の帯・μ の符号・bay の窓で分けたもの)と、
-//     1 パスの誤差の空間の相関 R(s) の表も出す。最後の拡大の前の補正 C_0 も積み、先頭の候補からの恒等のずれと、揺れと
+//   variance [<candidates.json>] [--entries K,...] [--sets S,...] [--mode M] [--passes N] [--keep-passes P] [--out O]
+//     候補の段(既定は中の帯に分けない段)の拡大の前の帯ごとの補正と帯の和を、全候補で共通の seed の列で N パス(既定 256、
+//     4 の倍数)撮り、seed についての帯ごとと帯の和の画素ごとの分散と、帯の和の収束先の移動と費用を、先頭の候補と比べる表に
+//     する。先頭 P パス(既定 64、4 の倍数)の帯の値は、鎖をやり直す(chain)ために半精度のまま残す。帯に分けない候補では、画素ごとの分布の形(歪度・尖度を、|μ| の帯・μ の符号・bay の窓で分けたもの)と、
+//     1 パスの誤差の空間の相関 R(s) の表も出す。最後の拡大の前の補正 C_0 も積み、同じパスの帯の和からの恒等のずれと、揺れと
 //     その見込みの比・段の周期の変調・bay の系の窓の比の表と、強調・揺れ・その比・表示の画像を候補ごとに出す。帯ごとと C_0 の
 //     画素ごとの統計と目で見る画像も .render-lab-shots/ssd-variance/<O>/ へ書く。O の既定は HEAD の短いハッシュ。
 //     --entries も --sets も無ければ tuning。M(occlusion か indirect)を与えると、選んだ撮影をその方式で撮る(key は遮蔽なら
 //     <撮影>@occlusion)。
+//   bands [<candidate.json>] [--entries K,...] [--sets S,...] [--passes N] [--keep-passes K] [--out O]
+//     候補の段 { label, tier }(既定は中の段)の走査の帯を撮影ごとに撮る — 走査のずれをホワイトノイズから引いた N パス(既定
+//     51200、偶数)をページの GPU で積んだ帯ごとと帯の和の収束先と、本番のブルーノイズの先頭 K パス(既定 64)の帯の値と
+//     その C_0 の統計を .render-lab-shots/ssd-bands/<O>/ へ書く。撮り終えた撮影は飛ばすので、落ちても続きから撮れる。
+//   chain <帯の撮影の置き場> [--bands L] [--candidates <candidates.json>] [--display-seeds N] [--frame-pass k] [--out O]
+//     bands(帯の平均だけなら variance)が .render-lab-shots/<帯の撮影の置き場>/ に残した候補 L の帯を、走査を撮り直さずに、
+//     候補の段 { label, tier }(tier は L の段との差分、isolatedBand は残す帯。既定は帯に分けない raw・L・帯を 1 つだけ残した
+//     もの)の鎖へ流し込み直す。帯の全パスの平均の鎖の出力(C_0 と段ごとの帯)、走査を描かずに seed を N 回回した表示、残したパスを
+//     1 枚ずつ流し込んだ C_0 の統計(恒等のずれと揺れ)とパス k の 1 パスの絵を .render-lab-shots/ssd-chain/<O>/ へ書く。
 //
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -44,6 +53,8 @@ import {
   writeHalfFloats,
 } from './screen-space-lab.mjs';
 import { check, reference } from './screen-space-reference.mjs';
+import { bands } from './screen-space-bands.mjs';
+import { rechain } from './screen-space-rechain.mjs';
 import { variance } from './screen-space-variance.mjs';
 
 // 境界とみなす法線のなす角の余弦と深度の表示の差 [LSB]、境界の帯の幅 [画素]。
@@ -354,12 +365,12 @@ function reportOf(record, results, flicker, scales) {
   ].join('\n');
 }
 
-const COMMANDS = { reference, check, compare, rescore, variance };
+const COMMANDS = { reference, check, compare, rescore, variance, bands, chain: rechain };
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   if (!Object.hasOwn(COMMANDS, command)) {
-    throw new Error('usage: node tools/render-lab-screen-space-metrics.mjs reference|check|compare|rescore|variance [...]');
+    throw new Error('usage: node tools/render-lab-screen-space-metrics.mjs reference|check|compare|rescore|variance|bands|chain [...]');
   }
   await COMMANDS[command](parseArgs(rest));
 }

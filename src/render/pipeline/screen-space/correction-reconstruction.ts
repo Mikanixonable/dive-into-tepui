@@ -2,15 +2,23 @@
 // 段の部品。補正には受け手ごとの天体照が掛かっているので、内隅や輪郭を越えて混ぜない。
 import type * as THREE from 'three/webgpu';
 import {
-  If, bool, clamp, exp2, float, floor, ivec2, screenSize, screenUV, select, textureLoad, vec2, vec3,
+  If, abs, clamp, cos, dot, exp2, float, floor, ivec2, length, max, min, mix, normalize, round, screenSize, screenUV,
+  select, sin, textureLoad, vec2, vec3,
 } from 'three/tsl';
 import { gbufferTexelOf } from './hemisphere-scan';
-import { QUAD_OFFSETS, WEIGHT_EPSILON, bilinearWeightOf } from './band-pyramid';
-import type { SurfaceWeight, Texel } from './surface-weight';
+import { VOID_EXPONENT, type SurfaceReceiver, type SurfaceWeight, type Texel } from './surface-weight';
 import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
-// 拡大の面の重み — 接平面からの距離の許容 [受け手の足跡] と、法線の重みが半分になる角 [rad](20°)。
-const UPSAMPLE_DISTANCE_TOLERANCE = 1;
+// 最後の拡大で読む疎なタップの数と、タップ間の黄金角 [rad]。
+const UPSAMPLE_TAP_COUNT = 8;
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+// 拡大の半径 [全解像度の画素] — 補正が粗い段まで均されているとき(A = 1)と、均されていないとき(A = 0)。
+const SMOOTHED_UPSAMPLE_RADIUS = 12 / Math.SQRT2;
+const UNSMOOTHED_UPSAMPLE_RADIUS = 24 / Math.SQRT2;
+// 拡大の楕円の異方性の柔らかさ a — 短い半軸を (a + c)/(a + 1) 倍、長い半軸をその逆数倍にする。c は受け手の法線と
+// 視線のなす角の余弦。
+const UPSAMPLE_ANISOTROPY_SOFTNESS = 1 / 2;
+// 拡大の面の重みの、法線の重みが半分になる角 [rad](20°)。
 const UPSAMPLE_HALF_WEIGHT_ANGLE = Math.PI / 9;
 
 export class CorrectionReconstruction {
@@ -19,48 +27,72 @@ export class CorrectionReconstruction {
     private readonly weight: SurfaceWeight, private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
   ) {}
 
-  // 描画バッファの解像度で描いている画素の補正を、走査の画面の上で囲む 2×2 の走査の画素の補正 source(rgb)から 1 つ
-  // 選んで写す。選ぶ確率は双線形の重み × 面の重みに比例し、choice(0..1)で引く。受け手と同じ面の標本がなければ 0。
+  // 描画バッファの画素の補正を、走査の画素の補正 source(rgb。α は粗い段まで均された割合 A)から K 本を疎に読み、面の
+  // 重みで平均して求める。タップは受け手の面を画面に写した楕円(surfaceEllipseOf)に黄金角の螺旋で置き、半径は最寄りの
+  // 走査の画素の A が小さいほど広げる。rotation(0..1)は画素ごとに独立な螺旋の回転。空だけなら最寄りの走査の画素へ延長する。
   // **Fn の中の、受け手が補正を受ける分岐から呼ぶこと。**
-  public stochasticUpsampled(source: THREE.Texture, choice: FloatNode): Vec3Node {
+  public sparseUpsampled(source: THREE.Texture, rotation: FloatNode): Vec3Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
     const receiver = this.weight.receiverAt(pixel);
-    // 囲む 4 つの、双線形の重み × 面の重み。
-    const { corner, fraction } = this.upsampleCornerOf(pixel);
-    const taps = QUAD_OFFSETS.map(([dx, dy]) => {
-      const tap = this.clampToScan(ivec2(corner.add(vec2(dx, dy)))).toVar();
-      const exponent = this.weight.exponentOf(receiver, this.gbufferTexelOfScan(tap),
-        float(UPSAMPLE_DISTANCE_TOLERANCE), float(UPSAMPLE_HALF_WEIGHT_ANGLE));
-      return { tap, weight: exp2(exponent.negate()).mul(bilinearWeightOf(fraction, dx, dy)).toVar() };
+    const position = vec2(pixel).add(0.5).mul(this.scanSize).div(this.fullSize).sub(0.5).toVar();
+    const scale = this.scanSize.div(this.fullSize).toVar();
+    const nearest = textureLoad(source, this.clampToScan(ivec2(round(position)))).toVar();
+    const radius = mix(float(UNSMOOTHED_UPSAMPLE_RADIUS), float(SMOOTHED_UPSAMPLE_RADIUS), clamp(nearest.a, 0, 1));
+    const { across, along } = this.surfaceEllipseOf(receiver, radius);
+    const angle = rotation.mul(2 * Math.PI).toVar();
+    const cosAngle = cos(angle).toVar();
+    const sinAngle = sin(angle).toVar();
+    const taps = Array.from({ length: UPSAMPLE_TAP_COUNT }, (_, index) => {
+      // 単位円盤の螺旋の点。中心を空けて、どのタップも画素ごとに回す。
+      const radial = Math.sqrt((index + 0.5) / UPSAMPLE_TAP_COUNT);
+      const x = radial * Math.cos(index * GOLDEN_ANGLE);
+      const y = radial * Math.sin(index * GOLDEN_ANGLE);
+      const offset = across.mul(cosAngle.mul(x).sub(sinAngle.mul(y)))
+        .add(along.mul(sinAngle.mul(x).add(cosAngle.mul(y)))).mul(scale);
+      const tap = this.clampToScan(ivec2(round(position.add(offset)))).toVar();
+      const texel = this.gbufferTexelOfScan(tap).toVar();
+      const tolerance = max(length(vec2(texel.sub(pixel))), 1);
+      const exponent = this.weight.exponentOf(receiver, texel, tolerance,
+        float(UPSAMPLE_HALF_WEIGHT_ANGLE)).toVar();
+      return { tap, exponent };
     });
-    const total = float(0).toVar();
-    for (const { weight } of taps) total.addAssign(weight);
-    // 重みの累積が、choice を両端を除いた区間へ写した値 × 重みの和を初めて超えたタップを選ぶ。
-    const threshold = choice.mul(255 / 256).add(0.5 / 256).mul(total).toVar();
-    const chosen = ivec2(taps[taps.length - 1]!.tap).toVar();
-    const pending = bool(true).toVar();
-    const cumulative = float(0).toVar();
-    for (const { tap, weight } of taps) {
-      cumulative.addAssign(weight);
-      If(pending.and(cumulative.greaterThan(threshold)), () => {
-        chosen.assign(tap);
-        pending.assign(bool(false));
-      });
-    }
-    return select(total.greaterThan(WEIGHT_EPSILON), textureLoad(source, chosen).rgb, vec3(0));
+    // 指数の最小値を引くと、全タップの重みが float の丸めで 0 になる場合も平均を保てる。
+    const least = float(VOID_EXPONENT).toVar();
+    for (const { exponent } of taps) least.assign(min(least, exponent));
+    const result = vec3(0).toVar();
+    If(least.lessThan(VOID_EXPONENT), () => {
+      const sum = vec3(0).toVar();
+      const total = float(0).toVar();
+      for (const { tap, exponent } of taps) {
+        const weight = select(exponent.lessThan(VOID_EXPONENT), exp2(least.sub(exponent)), float(0));
+        sum.addAssign(textureLoad(source, tap).rgb.mul(weight));
+        total.addAssign(weight);
+      }
+      result.assign(sum.div(total));
+    }).Else(() => {
+      result.assign(nearest.rgb);
+    });
+    return result;
   }
 
-  // 描画バッファの画素 pixel の中心を囲む 4 つの走査の画素の中心のうち左上のもの corner と、そこからのずれ
-  // fraction [走査の画素]。
-  private upsampleCornerOf(pixel: Texel): { readonly corner: Vec2Node; readonly fraction: Vec2Node } {
-    // 走査の上の位置 ((2·pixel + 1)·scanSize − fullSize) / (2·fullSize) を整数で割る — 浮動小数の割り算では、解像度が
-    // 同じとき整数に乗る位置が下へずれ、左上の隣が重みを持つ。割られる数は fullSize を足して非負にしてある。
-    const span = ivec2(this.fullSize).mul(2).toVar();
-    const shifted = ivec2(pixel).mul(2).add(1).mul(ivec2(this.scanSize)).add(ivec2(this.fullSize)).toVar();
-    const quotient = shifted.div(span).toVar();
+  // 受け手 receiver の面の上の円を画面に写した楕円の、面積が半径 radius の円と同じ半軸 [全解像度の画素] — 法線を画面へ
+  // 写した向きの across と、それに垂直な along。法線が視線から傾くほど across が縮み、along が同じ比で伸びる
+  // (UPSAMPLE_ANISOTROPY_SOFTNESS)。
+  private surfaceEllipseOf(
+    receiver: SurfaceReceiver, radius: FloatNode,
+  ): { readonly across: Vec2Node; readonly along: Vec2Node } {
+    const view = normalize(receiver.position).toVar();
+    const facing = abs(dot(receiver.normal, view));
+    // 法線の視線に垂直な成分を透視で画面へ写した向き(画面の y は下向き)。受け手が正面を向くと定まらないので x 軸にする。
+    const tangent = receiver.normal.sub(view.mul(dot(receiver.normal, view))).toVar();
+    const projected = tangent.xy.sub(receiver.position.xy.mul(tangent.z.div(receiver.position.z))).mul(vec2(1, -1))
+      .toVar();
+    const projectedLength = length(projected);
+    const direction = select(projectedLength.greaterThan(1e-6), projected.div(projectedLength), vec2(1, 0)).toVar();
+    const squash = facing.add(UPSAMPLE_ANISOTROPY_SOFTNESS).div(1 + UPSAMPLE_ANISOTROPY_SOFTNESS).toVar();
     return {
-      corner: vec2(quotient.sub(1)).toVar(),
-      fraction: vec2(shifted.sub(quotient.mul(span))).div(vec2(span)).toVar(),
+      across: direction.mul(radius.mul(squash)),
+      along: vec2(direction.y.negate(), direction.x).mul(radius.div(squash)),
     };
   }
 
