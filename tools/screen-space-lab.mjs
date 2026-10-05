@@ -347,7 +347,8 @@ function labOf(devTools) {
       for (const [slot, sum] of sums.entries()) await sendArray(devTools, `${destination}.slots[${slot}]`, sum);
     },
     // name の全 slot の和を count で割った HDR の平均を、直前のフレームと同じ合成で表示にし、線形 sRGB(画素ごとに
-    // 3 つ)で返す。合成の値を [0, 1] へ切ってから線形へ戻すので、撮った PNG と同じ量になる。
+    // 3 つ)で返す。拡散照度は本番の材質パスと同じく負の成分を 0 へ切る。合成の値を [0, 1] へ切ってから線形へ戻すので、
+    // 撮った PNG と同じ量になる。
     async displayOfMean(name, count) {
       const length = await devTools.evaluate(`(async () => {
         const { width, height, channels, slots } = window.__ssdSums[${JSON.stringify(name)}];
@@ -356,7 +357,7 @@ function labOf(devTools) {
           for (let k = 0; k < 3; k++) {
             let v = 0;
             for (const slot of slots) if (slot !== undefined) v += slot[p * channels + k];
-            rgba[p * 4 + k] = v / ${count};
+            rgba[p * 4 + k] = ${name === 'diffuse' ? `Math.max(0, v / ${count})` : `v / ${count}`};
           }
           rgba[p * 4 + 3] = 1;
         }
