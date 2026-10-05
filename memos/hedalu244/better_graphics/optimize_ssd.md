@@ -1,212 +1,785 @@
-# 近傍拡散補正の、絵を変えない高速化（叩き台）
+# 近傍拡散補正の、絵を変えない高速化（計画）
 
-**叩き台。** 2026-10-05 に、手順8-6 を締めたセッションで、見つけた問題と作業範囲・位置づけ・いま行う理由を書き出したもの。計画の詰め
-（`/write-plan` の形 — 目的・変えない挙動・達成目標・手順・見積り・落とし穴）と実施は別のセッションで行う。ここに書いた「直し方」は見込みで、
-決めたことではない。
+**計画ファイル。** `/run-plan` で上から実施し、完了した手順はこの文書から消す。手順を消すときは、その結果を「実測の記録」へ書き足す。
+第 1 部（手順1〜12）は `ssd-8-band-blocks`、第 2 部（手順13〜25）は `ssd-7-single-scale` の worktree で行い、この計画書は `ssd-8-band-blocks` の
+上で更新する。行番号は `ssd-8-band-blocks` の `d45408370`（コードは `df66be62d` と同じ）、7 の枝は `e725ba9be` のもの。
 
 ---
 
-## 本体の計画との関係
+## 目的
 
-- 本体は `memos/hedalu244/better_graphics/screenspace-diffuse.md`（近傍拡散補正のデノイズを作り直す計画）。この高速化はその**臨時の手順**で、
-  手順8-6（最後の拡大）を締めた後、手順8-7（Q と早く並べる）の前に入れる（本体の決めたこと 17）。本体の手順の番号は振らない。
-- 本体の手順はどれも「同じ時間の品質か、同じ品質の時間で比べる」（本体の方針）。8-7 は、手順7 の最良（Q、ブランチ `ssd-7-single-scale`）と
-  手順8（ブランチ `ssd-8-band-blocks`）の時間と品質を並べ、8 を続けるかを決める。
-- **品質を犠牲に速さを上げる調整はここに含めない。** 最後の拡大の選ぶ形やタップを減らすことは、本体の 8-8 の「最後の拡大の残り」の 2 で行う
-  （ユーザー、2026-10-05）。ここで行うのは、出力の絵を変えずに費用だけを減らす変更に限る。
+近傍拡散補正（遮蔽と照り返し）の描画段は、render-lab の 960×540・`bay`・中の段・帯の数 4 で、照り返しの源 0.37・走査 4.54・代表縮小 0.24・
+帯縮小 0.26・合流 0.43・最後の拡大 3.2 ms（計 約 9.0 ms。マテリアル行 0.93 ms の約 10 倍、予算は照り返しありの中で 5 倍）を使っている。
+このうちに、出力を変えずに消せる費用がある。
 
-## いま行う理由（2026-10-05、ユーザー）
+- **全解像度の G バッファを、走査の格子で散らばって読み直している。** 走査の解像度（1/4）の G バッファの写しがどこにも無く、走査の歩（1 画素
+  40 歩 × 深度と法線）・最後の拡大のタップ（1 画素 8 本 × 深度と法線）・鎖の代表の面が、全解像度の深度と法線を 4 画素おきに読む。読みが持ち込む
+  キャッシュの行の大半を使わず、作業集合は 4 MB 余り（深度 r32float と法線 rg16float が各 2.07 MB）になる。
+- **画素ごとに整数の割り算をしている。** 走査の画素が表す G バッファの画素を `gbufferTexelOf` が i32 の割り算 2 回で求め、走査で 1 画素 82 回、
+  最後の拡大で 16 回走る。
+- 歩ごとの位置の復元、消灯した天体のスロットの計算、同じ画素を読む描画命令の分かれ、フレームで一定の値の画素ごとの計算。
 
-- 手順8-6 で最後の拡大の読みを数えると、1 画素あたり 29 回の読みのうち 16 回が、全解像度の G バッファの深度と法線を走査の格子の画素で散らばって
-  読むものだった。**走査の解像度の G バッファの写しがどこにも無い** — 走査・代表の縮小列・鎖・拡大のどれもが、全解像度の G バッファを読み直している。
-  ほかにも、同じ画素の深度の読み直し、逆射影の重複、フレームで一定の値の画素ごとの計算、タップごとの整数の割り算がある（下の「見つかった問題」）。
-- これらは最後の拡大だけでなく、**走査（手順7 と 8 で共通）、手順7 の均しと拡大、手順8 の鎖と拡大のすべてに効く。** 8-7 で 7 と 8 の時間を比べる
-  前に、両方の枝に同じだけ入れて条件を揃えておかないと、比べる時間に無駄の多寡が混ざる（どちらの枝も同じ走査を持つので順位が逆転するとは限らない
-  が、走査の無駄が大きいほど 7 と 8 の再構成の差が薄まって見え、拡大の段の無駄は枝ごとに形が違う）。
-- 絵を変えないので、品質の比較（S・目視・盲検）はやり直さずに済む。**最優先**（ユーザー）。
+これらを、**補正項の値を変えずに（丸めの手順だけは、1 シードの値が雑音の入れ替わりとして変わってよいが、収束先は変えない）**消し、効きを 1 つずつ測って採否を決める。いま行うのは、近傍拡散補正の
+デノイズの計画（`memos/hedalu244/better_graphics/screenspace-diffuse.md`）の手順8-7 で手順7 の最良（Q、`ssd-7-single-scale`）と手順8 の時間を比べる
+前に、両方の枝から同じ種類の無駄を除いて条件を揃えるため — 走査は両方の枝が持つので、走査の無駄が大きいほど 7 と 8 の再構成の差が薄まって見え、
+拡大の段の無駄は枝ごとに形が違う。
 
-## 見つかった問題
+**品質を犠牲に速さを上げる調整（タップを減らす、選ぶ形を変える、解像度を下げる）は含めない。** それは手順8-8 以降で行う。
 
-### 最後の拡大（手順8 の枝、`df66be62d`。`correction-reconstruction.ts` の `sparseUpsampled` と、`screen-space-pass.ts` の `whereResolved`）
+---
 
-描画バッファの 1 画素あたり（補正を受けない画素は判定の深度 1 回で終わる）:
+## 決めたこと
 
-| 読むもの | 回数 | 備考 |
-| --- | --- | --- |
-| 判定の深度（`whereResolved`） | 1 | |
-| 受け手の深度・法線（`SurfaceWeight.receiverAt`） | 2 | 深度は判定と同じ画素の読み直し |
-| 最寄りの走査画素の補正（A と空の延長） | 1 | |
-| 回転のブルーノイズ | 1 | |
-| タップの深度・法線（`SurfaceWeight.exponentOf`） | 16 | 全解像度の G バッファを走査の格子の画素 (4i+2, 4j+2) で散らばって読む |
-| タップの値 | 8 | 走査の解像度の小さいテクスチャ |
+覆すときは、各項の「覆すと」に書いた手順を書き直す。
 
-- **散らばった G バッファの読み** — 最も効いている疑い。走査の格子の画素は 16 画素に 1 つなので、キャッシュの 1 行に入る画素の大半が使われない。隣の
-  画素とは回転が独立なので、1 つの warp が長軸 r/s（最大 17 × 3 ≈ 51 px）の範囲へ散らばって読む。手順8-6 の候補で、拡大の費用は半径に連れて動いた
-  （平面の大半が 4.2 px の候補 2.3 ms、8.5〜17 px の候補 3.0〜3.25 ms。本体の判断材料「手順8-6 の実測」）。
-- **整数の割り算** — タップごとに `gbufferTexelOf`（`hemisphere-scan.ts`）が整数の割り算を 2 回（8 タップで 16 回）。GPU では整数の割り算は
-  ソフトウェアで組まれることが多い。`gbufferTexelOf` のコメント: 浮動小数の floor では、解像度が半分のとき画素の中心が G バッファの画素の境に乗り、
-  採る画素が画素ごとに揺れる — 浮動小数へ替えるなら、整数と同じ画素を選ぶことを確かめる形にする。
-- **重複と、フレームで一定の値の画素ごとの計算** — 判定と受け手で深度を 2 回読み、視点座標への逆射影（`getViewPosition`）を 2 回する。
-  `receiverAt` は `transpose(projectionInverse)` とベクトルの積（`w` はフレームで一定）、`projection.mul(vec4(0, 1, 0, 0)).y`（一定）を画素ごとに計算する。
-  `exponentOf` の `cos(halfWeightAngle)` は定数（畳まれる見込みだが未確認）。
-- 2 点（旧い確率的な拡大 13 回の読みで 1.9 ms、いま 29 回で 3.2 ms。render-lab 960×540、Intel HD 520）からの粗い見積もりでは、画素ごとの固定費が
-  0.8〜0.9 ms で、残りはタップの数と散らばりで決まる。
+1. **第 1 部を `ssd-8-band-blocks` で、第 2 部を `ssd-7-single-scale` の worktree で行い、共通の祖先 `screen-space-lighting` には入れない。**
+   中間の読み戻しと計測の道具が揃っているのは 8 の枝なので、候補の採否と効きは第 1 部で決める。第 2 部では、採った共通の変更（写し・走査・源）を
+   7 の走査（帯を持たない）へ当て直し、7 だけの段（均しと確率的な拡大）に写しを使う変更を足す。採否が決まった枝が本体へ入るので、祖先へ入れて
+   両方へ取り込む手間（8 の枝は走査を帯へ分けていて衝突する）を掛けない。**覆すと**: 第 2 部を省くなら、8-7 は Q のいまの費用と比べ、「7 は無駄を
+   残している」と書き添える。祖先へ入れるなら、走査と源の手順（2・4〜6・9・10）を `screen-space-lighting` で行い、両方の枝へ取り込む手順を足す（面の重みと
+   拡大・鎖は枝ごとに別のコードなので、手順3・7・8・11・12 は枝で行う）。
+2. **前後の 2 つの形を同じページに載せて費用を測り、同じセッションで絵を比べる（一時の切り替え）。** ページを読み直すと同じビルドでも GPU の
+   計時が 0.6〜1.04 倍ぶれ、セッションをまたぐと読み戻しが離散的なモードで揺れる（同じ bundle で拡大の後が半精度の 1 刻みで約 390 画素違った）—
+   版をまたいだ比較では、小さな効きも厳密な一致も読めない。新しい形を既定（variant 0）として書き、前の形を一時の variant 1 に残す。前の形と一時の
+   仕組みを外せば、測った形がそのまま commit される。**覆すと**: 前後を別のビルドで測り、費用はマテリアル行に対する比を読み直しを交互に 3 回ずつの
+   中央値で、絵は 2 セッションずつ撮って前どうしの差を床にして比べる（分解能が下がり、手順10〜12 は測れない見込み）。
+3. **費用は `bay` の 1 場面で測る。** 負荷の予算と同じ場面。効きが場面に依るもの（手順6 の消灯したスロット）は、記録に場面の条件を書く。
+   **覆すと**: `cornell-box` を足して 2 場面で測り、両方で判定する（測る時間は倍）。
+4. **絵は 6 撮影の、補正項の中間の読み戻しで比べる。** 表示の最終の絵は、半影など補正項の外の要因でも揺れて差が埋もれるので使わない。撮影は
+   幾何が複雑で差の出やすいもの（「測定と判定の規則」）。**覆すと**: 撮影の組を変える（10 撮影以内）。
+5. **丸めの差は容認する。ただし、丸めの差を生む変更は「丸め」の手順として 1 つずつ切り出し、差が雑音の入れ替わりにすぎないことを多シードで
+   確かめる**（2026-10-06、ユーザー）。同じ値を別のシェーダで求め直すと、同じ式でも最後の桁が変わりうる。この推定量は乱択（ブルーノイズの
+   回転と歩のずれ、扇形の端の丸め、拡大の螺旋の回転）と閾値（扇形のビット、同じ平面の判定、面の重みの全滅、タップの画素への丸め）を含むので、
+   最後の桁の違いが閾値をまたぐと、その画素の値が丸めの桁を大きく超えて変わり、拡大のタップを通して周りの画素へも広がる。大きく見える差が
+   単なる雑音の入れ替わり（収束先が動かない）か、偏り（収束先が動く）かは 1 シードの差では分からないので、差が大きいときは画像を目で見て、
+   多シードの平均（収束先）の差が雑音の大きさで減っていくことを確かめる（「測定と判定の規則」）。切り出しは次の 3 つで保つ。
+   (a) 丸めの手順は丸めを生む変更だけを持つ（WGSL の diff がその変更だけ）。(b) 一致の手順は前後とも同じ丸めの状態で比べるので、丸めの手順の
+   後でも差 0 で判定できる。(c) 一致のはずの手順に差が出たら、丸めとして通さず誤りとして調べる — 避けられない丸めの源だと分かったら、それを
+   別の丸めの手順に切り出して計画を書き直す。丸めの手順は手順5 と、第 2 部の手順16（手順5 の当て直し）・25。
+6. **効きが分解能以下のときは、新旧を問わず、採る積極的な理由がある形を残す**（2026-10-06、ユーザー）。同じ速さなら古い形を残す、には理由が
+   無い。比べるのは (a) ほかの候補との依存 — 後の候補の前提になるか、ぶつかるか（手順5 と手順9 の 1 標本のバイト数など）、(b) 設計の素直さと
+   拡張のしやすさ — 表し方が揃うか、特別扱い・持ち越す状態・引数が増えるか減るか、(c) 足すもの — 描画先・uniform・描画命令・分岐。比べた
+   理由と結論を「実測の記録」に書く。どちらにも決め手が無いときはユーザーに問う。分解能を超えて悪化し、実装が正しいなら取り下げる（見込みが
+   外れた）。
+7. **見積りの上限が分解能を下回り、採る積極的な理由（決めたこと 6 の (a)(b)）も無い候補は着手しない。見積りは手順を締めるたびに較正して
+   並べ直す。** 効きが測れず設計も良くならない変更は、確かめようのない差分を増やすだけになる。見積りはコードの読み取りと、着手前に記録された
+   実測（「改善量の見積り」の単位の費用）だけから出したので、外れうる。**覆すと**: 全候補を手順の並びどおり 1 つずつ測る。
+8. **1 つの写しが生む効きを、機序ごとに別の手順にする。** 読みの局所性（手順2・3）、整数の割り算（手順4・7）、位置の復元（手順5）。写しを読む
+   形にすれば 3 つを一度に消せるが、どれが効いたか分からず、見積りの較正もできない。並びは見積りの大きい順だが、依存のある組（走査の 2 → 4 → 5、
+   拡大の 3 → 7）は依存の順にする — 手順5 を手順4 より先にすると、整数の割り算も一緒に消える。**覆すと**: 走査と拡大でそれぞれ 1 手順に
+   まとめる（手順4・5・7 が消え、効きの内訳は残らない）。
+9. **写しは G バッファの値をそのまま持ち、読む側の式を変えない（手順5 を除く）。** G バッファの画素の座標（整数を単精度で厳密に）・素の深度
+   （単精度のまま）・法線（半精度の rg のまま）を写すので、読む側が uv・位置・法線を求める式は同じ入力から同じ値を作る。位置や復号した法線を
+   焼くと別のシェーダで同じ式を評価するので丸めで違いうる — 位置は歩ごとの費用が大きいので手順5 で丸めとして試し、法線の復号は 1 歩あたりの
+   演算が小さいので試さない。段 1 以上の代表も、同じ 3 つの値を写して持つ（決めたこと 12）。**覆すと**: 復号した法線を写しへ焼く手順を
+   手順5 の後に足す（丸め）。
+10. **ライティングパスと共有のモジュールの既存の式は変えない。** `ShadingSample` と `PlanetLightSource` はライティングパスも使うので、式を変えると
+    補正項の読み戻しの外の絵に波及する。足すのは読む口（`PlanetLightSource.isLitAt`）だけ。**覆すと**: 「着手しない候補」の 3・4 を候補に
+    戻し、絵の比較にライティングパスの出力（読み戻しの `diffuse`）を足す。
+11. **WebGPU の既定の上限（描画先 1 標本 32 B）を守る。** 描画先を足す・広げる手順（2・5・8・9）は 1 標本のバイト数を記録し、超える組は
+    着手しない（手順5 を採ったら、手順9 は 36 B になる）。帯の数 5（既定の上限で書ける帯の数）を書けなくする変更もしない — 「着手しない
+    候補」の 1。**覆すと**: 上限を引き上げたデバイスを要求する（`requiredLimits`。対応しない環境では起動できなくなる）。
+12. **走査の写しを代表の縮小列の段 0 にし、段 1 以上の代表も座標でなく値（G バッファの画素の座標・素の深度・法線の rg）で持つ**
+    （2026-10-06、ユーザー）。いまの代表は段ごとに G バッファの画素の座標だけを持ち、代表の縮小・帯の縮小・合流・デバッグ表示が、その座標を
+    読んでから全解像度の G バッファの深度と法線を読む（読みが前の読みの結果を待つ）。値で持てば、使う側は段の写しを 2 回読むだけになり（待ち
+    合わせが無く、子や親は 2×2 で隣り合う）、描画命令の数は変わらない（段 0 は手順2 で足す写し、段 1〜3 はいまの代表縮小の 3 本のまま）。
+    代表を走査の画素の座標で持って写しを読む形（読みは 3 回のまま、待ち合わせも残る）と効きは同等か少し上の見込みで、表し方が 1 つに揃う
+    素直さを優先した。写しと代表の縮小列は 1 つのモジュール（`ScreenSpaceInputPyramid`）が持ち、段 0 だけを読む走査と最後の拡大は、その面
+    だけの interface（葉のモジュール `texel-surface.ts`）で受ける。**覆すと**: 写しを別のモジュールにし、手順8 を「代表を走査の画素の座標で
+    持ち、面を写しから読む」に替える。
 
-### 走査・照り返しの源・代表の縮小列・帯の縮小と合流・手順7 の均しと拡大
+---
 
-同じ種類の無駄が全段にある。最も大きいのは、**走査の歩もすべて走査の格子の画素で全解像度の G バッファを読んでいる**こと（歩の画素は走査の画素の
-座標で、`surfaceAt` → `gbufferTexelOf` で G バッファの画素へ写して深度と法線を読む。`hemisphere-scan.ts` の歩のループ）。中の設定では 1 画素あたり
-40 歩 × 深度と法線で、歩ごとに整数の割り算も 2 回ある。走査はいま最も重い段（4.5 ms）。段ごとの詳細は下の「段ごとの洗い出し」。
+## 変えない挙動
 
-## 作業範囲
+`DEVELOP/SPEC/RENDERING.md` の近傍の拡散光パス（描画パスの 4）・描画設定の「遮蔽と照り返し」「遮蔽と照り返しの精細さ」・デバッグの計測の節を
+読んで振り分けた。仕様が書くのは見え方と設定と計測の行で、この計画はそれより強く、補正項の値そのものを保存する。
 
-### 対象のコード
+**保存する挙動**（全手順の実施後にここを 1 つずつ当てる）
 
-- **共通の部品**（手順7 と 8 の枝の共通の祖先 `aedad080b` にあり、両方の枝が使う）— `src/render/pipeline/screen-space/hemisphere-scan.ts`
-  （走査と `gbufferTexelOf`・`gbufferUVOf`・`texelCenterUV`・`projectedRadius`）、`surface-weight.ts`（面の重み）、`screen-space-pass.ts`（段の組み立てと
-  `whereResolved`）、`src/render/pipeline/gbuffer.ts`（`octDecodeNormal`）、`src/render/blue-noise.ts`。
-- **手順8 の枝だけ** — `screen-space-input-pyramid.ts`（代表の縮小列）、`band-pyramid.ts`（帯の縮小と合流）、`correction-reconstruction.ts`（8-6 の拡大）、
-  `diffuse-correction.ts`（段ごとの描画先）。
-- **手順7 の枝だけ** — 単一スケールの疎な均しと確率的な拡大（`ssd-7-single-scale` の `bd8d96638`）。
-- 道具（GPU の計時と、出力の一致の確かめ） — `tools/render-lab/lab.ts`、`tools/screen-space-lab.mjs`。
+1. **補正項の値。** 「測定と判定の規則」の 6 撮影で、前後を同じセッションで描いた中間の読み戻し（照り返しの源・走査の帯・代表・帯の縮小・合流・
+   最後の拡大）が、一致の手順では全成分で同じ。丸めの手順では、差が規則の範囲内で、多シードの平均（収束先）が動かない。
+2. **描画設定。** 項目は「方式」と「精細さ」のまま、段の値（`SCAN_TIERS`）も変えない。設定は増えない。
+3. **デバッグ表示。** 照り返しの源・補正・帯・帯の縮小・代表の面・合流の表示が同じ像を映す（代表を値で持つ手順8 の後も同じ法線）。
+4. **GPU の計時の行。** 近傍拡散補正の描画命令が、それぞれ行として実行順に並ぶ（仕様: 「GPU側の各描画段の実際の処理時間が実行順に個別の行として
+   並ぶ」）。写しの段は行を足し、1 本にまとめた段（手順9）は行を 1 つにする。
+5. **ほかの描画パス。** ライティングパス以降と、方式がオフのフレームの描画は触らない（決めたこと 10）。
 
-### 枝の扱い（詰めるときに決める）
+**直す挙動** — なし。丸めの手順（手順5・16・25）は、1 シードの補正項の値が変わりうる（雑音の入れ替わり）が、収束先は変えない。
 
-- 手順7 と 8 の枝はどちらも `screen-space-lighting` から切っていて、共通の祖先は `aedad080b`（`screen-space-lighting` はその後に docs の commit が 2 つ
-  あるだけ）。共通の部品の高速化は、`screen-space-lighting` に入れてから両方の枝へ取り込む形が素直（同じ commit が両方に入り、8-7 の条件が揃う）。
-  ただし手順8 の枝は走査の出力を帯へ分けていて（手順8-1）、走査のコードが祖先から変わっているので、取り込みで衝突しうる。衝突の大きさは段ごとの
-  洗い出しで確かめる。
-- 枝ごとの部分（手順7 の均しと拡大、手順8 の鎖と拡大）は、それぞれの枝で入れる。
-- 走査の解像度の G バッファの写しのように、新しい段（描画先）を足す変更は、共通の部品として `screen-space-lighting` で足し、各枝の段がそれを読む形に
-  する見込み。手順8 の代表の縮小列（段 1 以上は G バッファの画素の座標を焼いている）がそれを読むかは、手順8 の枝で決める。
+---
 
-### 「絵を変えない」の判定（詰めるときに決める）
+## 達成目標
 
-- 目標はビット一致。変更の種類ごとに、ビット一致を求めるもの（読みの重複を消す、同じ値を写しから読む）と、浮動小数の丸め程度の差を容れるもの
-  （フレームで一定の値を CPU で求めて uniform にする — CPU の倍精度と GPU の単精度で丸めが違いうる）を分ける。
-- 確かめ方の候補: 段ごとの出力（走査の帯、鎖の段、最後の拡大の補正）を同じページで前後の版を交互に読み戻して比べる。本体の判断材料の「計測環境の癖」
-  のとおり、Chrome のセッションが離散的なモードに分かれて、同じコードでも読み戻しが半精度の 1 刻みで数百画素違うことがあるので、前後は同じ
-  セッションで比べるか、生成された WGSL で判定する。整数の割り算の置き換えは、全解像度と走査の解像度の組（1/4・1/2、奇数の幅を含む）で、選ぶ画素が
-  整数の版と一致することを CPU 側で全数確かめられる。
-- 費用は同じページで交互に測った対の比の中央値（本体の「計測環境の癖」、ローカルの GPU 計測の癖 — A/A で 0.999〜1.002 に収まることを先に確かめる）。
-  段ごとの行（照り返し源・走査・代表縮小・帯縮小・合流・拡大、手順7 なら均しと拡大）で前後を並べる。
+1. 第 1 部の候補（手順2〜12）すべてに、採否（採用・取り下げ・着手せず）と、見積りと実測の効きが「実測の記録」にある。
+2. 採った手順は 1 手順 1 commit で `ssd-8-band-blocks` にあり、どの commit も、その手順の絵の判定と費用の判定を通っている。
+3. 「実測の記録」に、採った手順の和の対の比の積（着手前に対する、近傍拡散補正の和の比）と、最後の版の行ごとの費用 [ms] がある。
+4. 第 2 部について、1〜3 が `ssd-7-single-scale` で満たされている（候補は手順14〜25）。
+5. 両方の枝で `npm run typecheck`・`npm run check:boundaries`・`npm run test:render` が通り、一時の仕組みの名前 `buildingVariant` が `src/` と
+   `tools/` に 0 件。
+6. 本体の計画書の判断材料「いまの精細さと費用」に両方の枝の新しい行ごとの費用があり、この計画書が消えている（手順26）。
 
-## 段ごとの洗い出し
+---
 
-2026-10-05 の読み取りの調査（手順8 の枝は `df66be62d`、手順7 の枝は `ssd-7-single-scale` の `bd8d96638`。生成された WGSL は見ていないので、同じ式が
-本当に 2 回出ているか、コンパイラが共通部分式の削除やループ不変の外出しをしているかは未確認）。走査の 3 ファイル（`hemisphere-scan.ts`・
-`slice-sectors.ts`・`tangent-segments.ts`）は、手順7 の枝では祖先 `aedad080b` のままで、手順8 の枝は `hemisphere-scan.ts` だけを変えている（帯への振り分け、
-分母のループ、切片ごとに vec3 を 4 本積む形）。
+## 測定と判定の規則
 
-### 段の並びと費用（render-lab の 960×540、帯の数 4、Intel HD 520。マテリアル行 0.93 ms）
+### 費用
 
-| 段 | 解像度 | 書く先 | 費用 [ms] |
+- **場面** — render-lab 960×540、`bay`（照り返しの方式、中の段 `TIERS.medium`、帯の数 4）。
+- **前後** — 同じページに、前の形を variant 1、新しい形を variant 0 として載せる（決めたこと 2）。測る前に両方を 1 度描いてシェーダを組む
+  （初回の組み立ては約 1 分）。
+- **測り方** — `measureTierRounds([前, 後], 5)`。巡ごとに順を入れ替え、1 回は暖機 6 フレーム + 30 フレームの p50。長い計測はページの中で走らせて
+  待つ（CDP の要求ごとの待ちは 60 秒）。
+- **行** — 近傍拡散の各行（写し・照り返し源・走査・代表縮小・帯縮小・合流・拡大のうちある行）と、その和。対照にマテリアル行。
+- **読む量** — 巡 k の対の比 r_k = 後 / 前（行ごとと和）の中央値 r̃ と最小〜最大。効き E = (1 − r̃_和) × T（T は前の和の巡の中央値 [ms]。
+  短くなった量で、正が速い）。
+- **分解能** — 手順1 で、同じコードの variant 0 と 1（別々に組んだ同じシェーダ）を 3 セッション（Chrome を開き直す）で測り、和の |r̃ − 1| の最大を
+  B_和、行ごとの最大を B_行 とする。B_和 が 2% を超えたら巡を 9 に増やして測り直し、それでも超えればその値を分解能として進む。
+- **判定** — 見積り（表の値は負が短くなる向き）の大きさを [lo, hi] とする（例: −0.3〜−0.89 なら lo = 0.3、hi = 0.89）。足す描画命令などの
+  増分は差し引いた和で見積もってある。
+  1. E ≥ lo かつ E > B_和·T → 採る。
+  2. B_和·T < E < lo → 実装を疑う: 変えた段の WGSL の前後の diff で、意図した読み・割り算・式が消え、ほかが変わっていないかを確かめる。正しければ
+     採り、見積りの外れと理由を記録する。
+  3. |E| ≤ B_和·T（分解能以下）→ 実装を疑う（2 と同じ確かめ）。誤りがあれば直して測り直す。正しければ、新旧のどちらを残すかを、採る積極的な
+     理由（依存・設計の素直さ・足すもの）で決め、理由と結論を記録する（決めたこと 6）。
+  4. E < −B_和·T（分解能を超えて悪化）→ 実装を疑う（2 と同じ確かめ）。正しければ取り下げる。
+  - あわせて、狙った行が見積りの向きに動き、狙っていない行が B_行 を超えて動いていないかを見る。狙っていない行が動いたら（キャッシュの持ち越し
+    など）理由を記録する。マテリアル行が B_行 を超えて動いたら、ページの状態が揺れたとみて測り直す。
+- **較正** — 手順を締めるたびに、実測から単位の費用（散らばった読み s・整数の割り算 1 回・描画命令の固定費 d）を置き直し、残りの候補の見積りを
+  更新して並べ直す。見積りの hi が B_和·T を下回り、採る積極的な理由も無い候補は着手しない（決めたこと 7）。
+
+### 絵
+
+- **撮影 6** — `clutter`（細い部材と重みの全滅）、`cornell-box`（曲面・波板・トーラスノット）、`bay-earth-open`（トラス・光る箱・地球の天体照）、
+  `slope-fan`（斜面の扇）、`groove-ladder-near`（溝と円柱が近く、歩が遠くまで散る）を照り返しの方式で、`bay-earth-open` を遮蔽の方式で
+  （照り返しの源を描かない経路）。中の段、`seedOf(0)`、ブルーノイズ（本番の経路）。手順12 だけはホワイトノイズのパス 0 でも比べる。
+- **描き方** — 1 つのセッションで、撮影ごとに方式をオフにして 1 度描いて全描画先を空にしてから（前の撮影や前の variant の値が残った描画先を
+  読んで一致に見えるのを防ぐ）、前 → 後の順に、続けて 2 回同じ読み戻しになるまで描き直して（上限 6 回）読み戻す。
+- **読み戻し** — 照り返しの源 `surface-radiance`、走査 `packed-bands-0..2`、代表 `representative-1..3`、帯の縮小 `reduced-1-0..2`・
+  `reduced-2-0..1`・`reduced-3-0`、合流 `merged-0..2`、最後の拡大 `correction`。写し `scan-surface-*` は前後の両方に同じ形であるときだけ。
+- **比べ方** — 半精度の読み戻しは、成分ごとの差を前の値の半精度の刻み（2^(⌊log₂ max(|v|, 2⁻¹⁴)⌋ − 10)）で数える。単精度（代表・写し）はビットで
+  比べる。読み戻しごとに、差のある成分の数・最大の差 [刻み]・4 刻みを超える画素（外れ）の数・外れの 4 連結の塊の数と最大の大きさを表にし、
+  差のある読み戻しは差の大きさの地図（PNG）を書く。
+- **多シードの比べ方**（丸めの手順で外れが出たとき）— `seedOf(0..63)` の 64 シードを同じセッションで、シードごとに前 → 後の順に描き、走査の帯の和
+  `band-sum` と `correction` を読み戻して、画素・成分ごとに対の差 d_k = 後 − 前 の和と二乗の和を倍精度で積む。平均 d̄ と、その標準誤差
+  SE = √((Σd²/K − d̄²)/(K − 1))、z = d̄ / SE（SE = 0 の成分は d̄ = 0 であること）を求め、補正を受ける画素（拡大の後は `r_px` > 2 走査画素）で
+  数える。出すもの: |z| > 3 の成分の割合、先頭 16 シードと 64 シードの d̄ の RMS の比、z の地図（±4 で切った符号の色の PNG）、前・後の 1 シードの
+  `correction` と差（×8）を並べた PNG。対象は `clutter`・`cornell-box`・`bay-earth-open`。
+- **判定**
+  - **一致**（変える式がビットで同じ値を作る手順）: 全成分の差が 0。差が 1 つでもあれば実装の誤りとみて、費用を測る前に直す。
+  - **丸め**（決めたこと 5）: 外れ（4 刻みを超える成分）が無ければ、丸めの桁の差なので通す。外れがあれば多シードで比べ、次をすべて満たせば
+    雑音の入れ替わりとして通す — (a) |z| > 3 の成分が 1% 以下（偏りが無ければ約 0.3%）、(b) d̄ の RMS が 16 シードから 64 シードで 0.65 倍以下に
+    減る（雑音なら 0.5 倍、収束先が動いていれば 1 倍に近い）、(c) z の地図に線・縁に沿った帯・面の広がりが無く、前後の 1 シードの画像を並べて
+    見ても、どちらかにだけある構造（筋・塊・欠け）が無い。(c) は配った側が目で見る。満たさなければ、収束先を動かす偏りとみて調べ、偏りの源を
+    除けなければ取り下げる。際どいときはユーザーに問う。
+- **順** — 絵を費用より先に確かめる。誤った実装の費用は読まない。
+
+---
+
+## 改善量の見積り
+
+### 単位の費用（着手前の実測から。render-lab 960×540、`bay`、中、帯の数 4、Intel HD Graphics 520）
+
+- **d — 描画命令 1 本の固定費 ≈ 0.08 ms。** 代表縮小の行は 3 本で 0.24 ms、画素は計 10,710（120×68 + 60×34 + 30×17）で 1 画素の読みは 8 回程度と
+  軽い。1 画素の読みが約 3 倍の帯縮小（0.26 ms）が代表縮小とほぼ同じことも、固定費が支配する読みと合う。
+- **s — 散らばった G バッファの読み 1 回の上乗せ ≈ 0.071〜0.107 ns/画素。** 最後の拡大の 2 つの候補（同じ 29 回の読みで、タップが広く散る
+  3.21 ms と、平面の大半で半径 4.2 px と狭い 2.32 ms）の差 0.89 ms のうち、散らばって読む 24 回のうち G バッファの 16 回の分を 2/3〜全部
+  （0.59〜0.89 ms）とし、16 回 × 518,400 画素で割った。
+- **t — 最後の拡大のタップ 1 本 ≈ 0.24 ms。** 旧い拡大（読み 13 回）1.92 ms と、いまの拡大（29 回）3.2 ms の傾き 0.080 ms/(読み・全画素) ×
+  タップあたり読み 3 回。
+- **整数の割り算 1 回 ≈ 浮動小数の演算 10〜30 回分**（仮定。GPU に 32 bit の整数の割り算の命令は無く、逆数と補正の列に展開される見込み。WGSL の
+  i32 の割り算は 0 除算と INT_MIN / −1 の扱いも伴う）。演算 1 回の費用は、描画バッファの解像度で e_full ≈ 0.77 µs/(演算・全画素)（t の半分を
+  タップの演算 約 155 回が占めるとして 0.12 ms / 155）、走査で e_scan ≈ 0.21 µs/(演算・走査の全画素)（走査 4.54 ms を、読み取りで数えた 1 画素
+  約 22,000 演算 — 歩 40 × 約 500 + 歩の外 約 2,000 — で割った）。
+- **位置の復元** — 歩ごとの位置の復元（`getViewPosition`: 4×4 の行列とベクトルの積と 3 成分の割り算）を丸ごと消すと、走査が 0.88〜0.91 倍
+  だった（当時の段。帯の積み先は無かった）。
+
+### 第 1 部の候補（並びは「手順の組み立て」の規則による）
+
+| 手順 | 変更 | 機序 | 導出 | 見積り [ms] | 絵 |
+| --- | --- | --- | --- | --- | --- |
+| 2 | 写しの段を足し、走査の歩が深度と法線を写しから読む | 読みの局所性 | 下限: 歩の読み 32,400 × 40 × 2 = 2.6M 回 × s = 0.18〜0.28。上限: 歩は受け手から R_px（数十〜百走査画素）まで散り、64 B の行のうち使うのが G バッファで 4 B、写しで 16 + 4 B、作業集合は 4.1 MB → 0.65 MB なので s の 4 倍として 1.1。写しの段 +0.08〜+0.1（d + 32,400 画素の読み 2 回） | −0.08〜−1.0 | 一致 |
+| 3 | 最後の拡大のタップが深度と法線を写しから読む | 読みの局所性 | s の元の 0.59〜0.89 のうち、写しへ替えて消える分を 1/2〜全部 | −0.3〜−0.89 | 一致 |
+| 4 | 走査が G バッファの画素の座標を写しから読む | 整数の割り算 | 82 回/画素 × 10〜30 演算 × e_scan | −0.17〜−0.51 | 一致 |
+| 5 | 走査が位置を写しから読む | 位置の復元 | 位置の復元を消して 0.88〜0.91 倍。いまの歩は帯の積みで重いので割合を 6〜12% として × 4.54 = 0.27〜0.54。歩の読み 1 回の増分 +0.02〜+0.03 | −0.24〜−0.52 | 丸め |
+| 6 | 消灯した天体のスロットを一様な分岐で飛ばす | 使わない計算 | 1 スロット 1 画素 約 1,400 演算（画素ごとの照度と球冠 約 250、スライスごとの球冠 2 回と扇形 約 215 × 4、塞いだ切片ごと 約 22 × 約 15）× e_scan × 0.5〜1.2 | −0.14〜−0.35（`bay`。2 体が点灯する場面では 0） | 一致 |
+| 7 | 最後の拡大のタップが座標を写しから読む | 整数の割り算 | 16 回/画素 × 10〜30 演算 × e_full | −0.12〜−0.37 | 一致 |
+| 8 | 代表の縮小列を値で持ち、鎖が段の値を直に読む | 読みの数・待ち合わせ・局所性・割り算 | 鎖の 3 行 0.93 ms のうち描画命令 9 本 × d ≈ 0.72 ms を固定費とみると、読みと演算は約 0.2 ms。代表の読みが「座標 1 回 → 全解像度の G バッファ 2 回」から「段の値 2 回」になり（帯の縮小と合流の 1 画素の面の読み 15 回 → 10 回、待ち合わせ無し）、段 0 の代表の割り算（約 0.2M 回）も消える。その 1/4〜3/4 が減るとみる。代表縮小の書き込みの増分（8 → 20 B × 10,710 画素）は無視できる | −0.05〜−0.15 | 一致 |
+| 9 | 照り返しの源と写しを 1 本の描画命令にする | 固定費 | d | −0.06〜−0.08（照り返しの方式） | 一致 |
+| 10 | 受け手の視線の近平面と遠平面の点をスライスのループの外で 1 度だけ組む | 位置の復元の重複 | 1 画素 6 回 × 位置の復元 1 回分（上の 0.41〜0.54 ms の 1/40）。コンパイラが既にループの外へ出していれば 0 | 0〜−0.08 | 一致 |
+| 11 | 受け手の定数を行列の積から要素の読みへ | 使わない計算 | 受け手 1 つ 約 28 演算 × e_full | −0.01〜−0.03 | 一致 |
+| 12 | 走査のずれの select を一様な分岐へ | 使わない計算 | 本番で捨てるホワイトノイズ 約 75 演算 × e_scan | −0.01〜−0.03 | 一致 |
+
+第 2 部の候補の見積りは、第 1 部の実測から手順13 で置く。7 の走査は帯の積み先を持たないが、帯の数 4 の走査は帯の数 1 の 1.00〜1.07 倍
+だったので、共通の変更の効きは第 1 部の実測 × 0.93〜1 を初めの見積りにする。
+
+---
+
+## 主要な型と署名
+
+```ts
+// ---- 一時の切り替え(commit しない。.render-lab-shots/ssd-opt/work/variant-8.patch、第 2 部は variant-7.patch) ----
+// screen-space-pass.ts
+export interface ScanTier {
+  // …既存の scale・sliceCount・stepCount・bandCount・bandScale
+  readonly variant?: 0 | 1;          // 1 はその手順の前の形。省くと 0
+}
+// 描画命令を組んでいるあいだの variant。変える箇所は組むときにこれを読み、0 なら新しい形、1 なら前の形を組む。
+export let buildingVariant: 0 | 1 = 0;
+// stagesByBandCount の鍵を `${count}:${variant}` にし、stagesOf は組むあいだだけ buildingVariant を段の variant にする。
+
+// ---- 道具(commit する。手順1) ----
+// tools/render-lab/lab.ts — measureTiers(422–442)はこれの巡の中央値にする
+public async measureTierRounds(
+  tiers: readonly ScanTier[], rounds: number,
+): Promise<readonly (readonly Readonly<Record<string, number>>[])[] | null>;  // [段][巡] の行の名前 → p50 [ms]。GPU の計測に未対応なら null
+public async screenSpaceShaders(): Promise<readonly { readonly label: string; readonly wgsl: string }[]>;  // いまの段の描画命令の順
+export type FloatTargetName = … | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1 | 2}`;
+// screen-space-pass.ts — compile(220–227)と同じく描画先へ当て、renderer.debug.getShaderAsync で引く
+public async stageShaders(
+  camera: THREE.Camera, width: number, height: number,
+): Promise<readonly { readonly gpuPass: GpuPassId; readonly wgsl: string }[]>;
+// screen-space-input-pyramid.ts
+public representativeTexture(level: number): THREE.Texture;   // 段 level(1 以上)の代表の描画先
+
+// tools/screen-space-ab.mjs(新規)。<段> は `<TIERS の名前>:<variant>`(例 medium:1)。出力は .render-lab-shots/ssd-opt/<名前>/ の
+// report.md・record.json と、identity は差の地図の PNG(--seeds K では「多シードの比べ方」の表・z の地図・前後を並べた PNG)、
+// wgsl は <段>/<行>.wgsl。
+//   node tools/screen-space-ab.mjs identity <前の段> <後の段> [--entries <key,...>] [--targets <名前,...>] [--white-noise <パス>] [--seeds <K>] --out <名前>
+//   node tools/screen-space-ab.mjs cost <前の段> <後の段> [--entry bay] [--rounds 5] --out <名前>
+//   node tools/screen-space-ab.mjs wgsl <段> --out <名前>
+
+// ---- 本番のコード ----
+// texel-surface.ts(新規の葉のモジュール、手順2。three と tsl-types の型だけを引く)
+export type Texel = THREE.Node<'ivec2'>;   // surface-weight.ts から移す
+export interface TexelSurface {
+  readonly texel: Texel;              // G バッファの画素の整数座標
+  readonly depth: FloatNode;          // 素の深度(0 なら面が無い)
+  readonly encodedNormal: Vec2Node;   // G バッファの法線の rg のまま(octDecodeNormal で戻す)
+}
+// 走査の解像度の面の写し(段 0)を読む面。走査と最後の拡大は段 0 しか読まないので、代表の縮小列の全体でなくこれで受ける。
+export interface ScanSurfaces {
+  scanSurfaceAt(pixel: Texel): TexelSurface;                        // 走査の画素 pixel の面
+  scanPositionAt(pixel: Texel): { readonly position: Vec3Node; readonly depth: FloatNode };   // 手順5
+}
+
+// surface-weight.ts(手順3)
+export class SurfaceWeight {
+  public surfaceAt(texel: Texel): TexelSurface;                     // G バッファから読む
+  public receiverAt(surface: TexelSurface): SurfaceReceiver;        // 旧 (texel: Texel)
+  public exponentOf(
+    receiver: SurfaceReceiver, surface: TexelSurface, tolerance: FloatNode, halfWeightAngle: FloatNode,
+  ): FloatNode;                                                     // 旧 (receiver, texel: Texel, …)
+}
+
+// screen-space-input-pyramid.ts — 段ごとの代表の面。段 0 は走査の画素が表す G バッファの画素(gbufferTexelOf)の値の写し(手順2)、
+// 段 1 以上は 4 つの子から secondNearest で選んだ子の値(手順8。それまでは座標だけ)。走査・拡大・鎖は、全解像度の G バッファを
+// 走査の格子で読む代わりにここを読む。
+export class ScreenSpaceInputPyramid implements ScanSurfaces {
+  public constructor(gbuffer: GBufferPass, projectionInverse: Mat4Uniform, fullSize: Vec2Node, scanSize: Vec2Node);  // いまのまま
+  public get scanStage(): ScreenSpaceStage;                         // 手順2。段 0 を書く描画命令(gpuPass は GPU_PASS.nearbyDiffuseScanSurface)
+  public scanSurfaceAt(pixel: Texel): TexelSurface;                 // 手順2
+  public scanPositionAt(pixel: Texel): { readonly position: Vec3Node; readonly depth: FloatNode };   // 手順5
+  public surfaceAt(level: number, pixel: Texel): TexelSurface;     // 手順8。段 level の画素 pixel の代表の面(段 0 は scanSurfaceAt)
+  public scanStageOf(radiance: Vec4Node | null): ScreenSpaceStage; // 手順9。scanStage を置き換え、段 0 と照り返しの源を 1 本で書く(null は源 0)
+  public get radianceTexture(): THREE.Texture;                      // 手順9
+  public stagesUpTo(levelCount: number): ScreenSpaceStage[];        // いまのまま(段 1..levelCount − 1)
+  // 手順8 で消す: representativeAt(level, pixel): Texel と hasSurface(texel): BoolNode(使う側は surface.depth > 0 で判定する)
+}
+// 段の描画先(どれも Nearest。単精度の描画先はフィルタできない):
+//   段 0、手順2: [rgba32float (G バッファの画素の x, y, 素の深度, 0), rg16float (法線の rg)]            = 1 標本 20 B
+//   段 0、手順5: [rgba32float (x, y, 素の深度, 位置 z), rg16float (法線の rg), rg32float (位置 x, y)]   = 28 B
+//   段 0、手順9: 手順2 の 2 枚 + rgba16float (照り返しの源)                                              = 28 B(手順5 を採ったら 36 B で超える)
+//   段 1 以上、手順8: 段 0 の手順2 と同じ 2 枚(いまは rg32float の座標 1 枚)                           = 20 B
+// 手順8。子の候補は面の値ごと運び、選んだ子の面を返す。
+export interface RepresentativeCandidate {
+  readonly hasSurface: BoolNode;
+  readonly distance: FloatNode;
+  readonly surface: TexelSurface;     // 旧 texel: Vec2Node
+}
+export function secondNearest(children: readonly RepresentativeCandidate[]): TexelSurface;   // 旧: 座標(Vec2Node)を返す
+
+// hemisphere-scan.ts(手順2。PlanetIllumination の lit は手順6)
+export function scanHemisphere(
+  surfaces: ScanSurfaces, gbufferSize: Vec2Node, projection: Mat4Uniform, projectionInverse: Mat4Uniform,
+  sliceCount: IntNode, stepCount: IntNode, noise: Vec3Node, ambientIrradiance: Vec3Node,
+  planets: readonly PlanetIllumination[], radiance: THREE.Texture | null, bands: BandSplit,
+): Vec3Node[];                        // 旧: 先頭が depth と normal のテクスチャの 2 引数
+export interface PlanetIllumination {
+  readonly cap: PlanetCap;
+  readonly irradiance: Vec3Node;
+  readonly lit: BoolNode;             // スロットが点灯しているか(フレームで一様)
+}
+// planet-light-source.ts(手順6)
+public isLitAt(slot: number): BoolNode;                             // PlanetLightSource。スロットの半径 > 0
+
+// correction-reconstruction.ts(手順3)
+public constructor(weight: SurfaceWeight, surfaces: ScanSurfaces, fullSize: Vec2Node, scanSize: Vec2Node);
+
+// tangent-segments.ts(手順10)
+export interface ReceiverRay {
+  readonly uv: Vec2Node;              // 受け手の uv
+  readonly near: Vec3Node;            // その視線の近平面の点(view 空間)
+  readonly span: Vec3Node;            // 近平面の点から遠平面の点までの変位
+}
+export function receiverRayAt(uv: Vec2Node, projectionInverse: Mat4Uniform): ReceiverRay;
+export function sideRays(
+  slice: Slice, receiver: Vec3Node, ray: ReceiverRay, uvStep: Vec2Node, projectionInverse: Mat4Uniform,
+): SideRays;                          // 旧 (slice, receiver, uv, uvStep, projectionInverse)
+```
+
+---
+
+## 手順
+
+### 手順の組み立て
+
+- **並び** — 見積りの中央値の大きい順。並ぶときは下限の大きいほうを先にする。写しを初めて要る手順（手順2）が写しの段を作り、その費用を
+  その手順の見積りから差し引く。依存のある組は依存の順（決めたこと 8）。手順を締めるたびに見積りを較正して、残りを並べ直す（決めたこと 7）。
+- **各手順の進め方**（手順ごとに違うのは、変更が必要な箇所・判定の種類・見積りだけ）
+  1. 一時の仕組みの patch を当てる。当たらなければ（前の手順が `stagesOf` などを変えた）、その場で作り直す。
+  2. 新しい形を既定（variant 0）として書き、前の形を `buildingVariant === 1` の枝に残す。前の形は、直前の commit の行を写して作る（書き直さない）。
+  3. render-lab を組み（`webpack --config webpack.render-lab.config.js --mode production`）、`identity medium:1 medium:0` → 絵の判定。
+     通らなければ直す。
+  4. `cost medium:1 medium:0` → 費用の判定。`wgsl medium:1` と `wgsl medium:0` で、変えた段の WGSL を diff し、意図した箇所だけが変わり、
+     ほかの段の WGSL が同じであることを見る（採るときも 1 度は見る）。
+  5. 採るなら、前の形の枝と一時の仕組みを外し（`git apply -R` と、前の枝を手で消す）、`grep -rn buildingVariant src tools` が 0 件、
+     `NODE_OPTIONS=--max-old-space-size=8192 npm run typecheck`・`npm run test:render`・ファイルや import を足したら `npm run check:boundaries` →
+     commit（`perf(render): …`）。取り下げるなら、作業ツリーの変更を捨てる。
+  6. 「実測の記録」へ行を足し、手順を消す（`docs(memo): …` の commit を別にする）。
+- **重い処理は 1 つずつ前面で** — webpack・tsc・`test:render`・Chrome の計測を重ねるとメモリ 8 GB で落ちる。始める前に空きメモリ（1.2 GB 未満なら
+  始めない）と、残った chrome・node を確かめる。出力は E: の `.render-lab-shots/ssd-opt/<手順>/`（C: は空きが少ない。道具の Chrome の profile が
+  C: の `%TEMP%\tepui-render-lab-*` に残っていたら消す）。
+- **配り方** — 各手順の実装・確かめ・計測はサブエージェントへ配り（`/delegate`）、止まる地点（絵の判定に落ちた、費用の判定が 2 か 3 に入った、
+  1 標本のバイト数が上限を超えた）を渡す。採否と見積りの較正は配った側が行う。
+
+### 手順 1. 測定と絵の確かめの道具を揃え、分解能と着手前の費用を測る
+
+**目的** — 以後の全手順が同じ規則で前後を比べられるようにする。前後の 2 つの形を同じページに載せる一時の仕組み、同じセッションで中間の
+読み戻しを比べる道具、行ごとの対の比を測る道具、描画命令ごとの WGSL を出す口を作り、同じコードどうし（A/A'）で費用の分解能と絵の一致を
+確かめ、着手前の行ごとの費用を記録する。この時点で絵は変えない。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `tools/render-lab/lab.ts` | `measureTierRounds` を足し、`measureTiers`（422–442）をその巡の中央値にする。読み戻しの名前（38–53）と `floatTextureOf`（595–617）へ `surface-radiance`（`screenSpace.surfaceRadianceTexture`）と `representative-1..3` を足す。`screenSpaceShaders` を足す。 |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | `stageShaders` を足す。 |
+| `src/render/pipeline/screen-space/screen-space-input-pyramid.ts` | `representativeTexture(level)` を足す（`levelOf(level).target.texture`、140–143）。 |
+| `tools/screen-space-lab.mjs` | 道具の口に `measureTierRounds`・`screenSpaceShaders`・方式の切り替え（撮影ごとにオフで 1 度描くため）を足す。長い計測は `measureTiers` の口（262–270）と同じく、ページの中で走らせて待つ。 |
+| `tools/screen-space-ab.mjs`（新規） | `identity`（`--seeds` の多シードの比べ方を含む）・`cost`・`wgsl`（「主要な型と署名」）。撮影・読み戻し・比べ方・判定の表は「測定と判定の規則」のとおり。 |
+| `.render-lab-shots/ssd-opt/work/variant-8.patch`（新規、commit しない） | 一時の切り替え（`ScanTier.variant`・`buildingVariant`・`stagesOf`（246–272）の鍵）。 |
+
+**達成条件と検証**
+
+- patch を当て、variant 0 と 1 が同じコードのまま、`identity medium:1 medium:0 --out 1-aa` が 6 撮影 × 全読み戻しで差 0。
+- 同じく `identity medium:1 medium:0 --seeds 4 --out 1-aa-seeds` で、多シードの対の差が全成分 0（シードの切り替えと積み方の確かめ）。
+- `cost medium:1 medium:0` を 3 セッションで測り、B_和・B_行 を「実測の記録」に書く。B_和 > 2% なら巡 9 で測り直す。
+- 着手前の行ごとの費用（`cost` の前の側の巡の中央値 [ms]）・和・マテリアル行に対する比を記録する。単位の費用の元にした値（代表縮小 0.24 ms
+  など）からセッションの揺れを超えてずれていたら、見積りを置き直して並べ直す。
+- `wgsl medium:0 --out 1-wgsl` で全描画命令の WGSL が出て、走査の段の歩のループの中に G バッファの深度と法線の `textureLoad` と i32 の割り算が
+  あることを確かめる（以後の diff の基準）。
+- patch を外した状態で `npm run typecheck`・`npm run test:render` が通る。道具と口だけを commit する（`feat(tools): …`）。
+
+### 手順 2. 代表の縮小列に段 0 の写しを足し、走査の歩が深度と法線を写しから読む
+
+**目的** — 走査の歩（1 画素 40 歩 × 深度と法線）が全解像度の G バッファを 4 画素おきに散らばって読むのを、走査の解像度の詰まった写しから読む
+形にする。写しは代表の縮小列の段 0 として、走査の画素が表す G バッファの画素の値をそのまま持つので、読む値は変わらない（決めたこと 9・12）。
+歩が使う G バッファの画素の座標と uv は、この手順ではまだ `gbufferTexelOf` で求める（整数の割り算の効きを手順4 で分けて測るため）。段 1 以上
+の代表と鎖は変えない（手順8）。この時点で絵は変えない。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/texel-surface.ts`（新規、葉） | `Texel`（`surface-weight.ts` 13 から移す）・`TexelSurface`・`ScanSurfaces`（「主要な型と署名」）。`Texel` を引く `band-pyramid.ts`（10）・`correction-reconstruction.ts`（9）・`screen-space-input-pyramid.ts`（12）の import をここへ替える。 |
+| `src/render/pipeline/screen-space/screen-space-input-pyramid.ts` | 段 0 の描画先（2 枚・1 標本 20 B、Nearest）と、それを書く描画命令 `scanStage` を構築子（77–80）で作る。描画命令は走査の画素ごとに `gbufferTexelOf` で G バッファの画素を求め、深度と法線を `textureLoad` で読んで、座標・深度・法線の rg をそのまま書く。`scanSurfaceAt` を足し、`ScanSurfaces` を満たす。`setSize`（123–）・`targets`（117–）・`dispose`（132–）に段 0 を含める。段 1 以上（`levels` 73、`representativeAt` 83–86・`selectedAt` 155–168）は変えない。 |
+| `src/render/gpu-timings.ts` | `nearbyDiffuseScanSurface` を `bounceSource`（13）の前に足して以後の番号をずらし、`GPU_PASS_LABELS`（36–41）に「近傍拡散写し」を足す。 |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` | `scanHemisphere`（71–166）の深度と法線のテクスチャの引数を `ScanSurfaces` に替える。`surfaceAt`（203–216）の深度（209）と法線（212）を `surfaces.scanSurfaceAt(pixel)` から取る。座標（207）と uv（208）はそのまま。受け手（78）と歩（149）は `surfaceAt` を通るので変えない。 |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | `stagesOf`（254–258）の両方の方式の列の先頭へ `this.surfaces.scanStage` を置き、`createScanStage`（299–303）は `this.surfaces` を渡す。寸法・空にする列・解放は `surfaces` の `setSize`（391）・`targets`（407）・`dispose`（235）がすでに通るので変えない。 |
+| `tools/render-lab/lab.ts` | 読み戻し `scan-surface-0`・`scan-surface-1`（`ScreenSpaceInputPyramid` に段 0 の描画先を返す口を足す）。 |
+| `tools/screen-space-variance.mjs`・`tools/screen-space-ab.mjs` | 費用の行の並び（`COST_ROWS` 34–36 ほか）に「近傍拡散写し」を足す。 |
+
+**判定** 一致。**見積り** −0.08〜−1.0 ms（走査 −0.18〜−1.1、写しの行 +0.08〜+0.1）。
+
+**達成条件と検証**
+
+- `identity`: 6 撮影 × 全読み戻しで差 0（写しは前に無いので比べない）。特に遮蔽の方式の撮影で差 0（写しの描画命令を遮蔽の列にも置いた確かめ）。
+- `cost`: 走査の行が下がり、写しの行が足される。和で判定する。
+- `wgsl`: 走査の段の歩のループの中の深度と法線の `textureLoad` が写しの 2 枚に替わり、i32 の割り算は残っている。
+- `npm run typecheck`・`npm run test:render`・`npm run check:boundaries`（新規ファイル）。写しの描画先が 1 標本 20 B（記録する）。
+
+### 手順 3. 最後の拡大のタップが、深度と法線を写しから読む
+
+**目的** — 最後の拡大の 8 本のタップが全解像度の G バッファを走査の格子で散らばって読む深度と法線（1 画素 16 回）を、写しから読む。タップの
+G バッファの画素の座標（`gbufferTexelOfScan` の整数の割り算）はこの手順では残す（手順7 で分けて測る）。この時点で絵は変えない。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/surface-weight.ts` | `surfaceAt(texel)` を足し、`receiverAt`（36–52）と `exponentOf`（57–67）が `TexelSurface` を受ける形にする。G バッファを読むのは `surfaceAt` だけになる。 |
+| `src/render/pipeline/screen-space/correction-reconstruction.ts` | 構築子（26–28）で `ScanSurfaces` を受ける。`sparseUpsampled` のタップ（45–58）で、深度と法線を `surfaces.scanSurfaceAt(tap)` から、座標を `gbufferTexelOfScan`（53）から取る。受け手（36）は `weight.receiverAt(weight.surfaceAt(pixel))`。 |
+| `src/render/pipeline/screen-space/band-pyramid.ts` | `reduced`（184・188–189）と `merged`（213・219–220）の `receiverAt`・`exponentOf` を `surfaceAt(texel)` を通す形に替える（読む場所は G バッファのまま）。 |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | `CorrectionReconstruction` の構築（155）へ `this.surfaces`（153 で作る）を渡す。 |
+
+**判定** 一致。**見積り** −0.3〜−0.89 ms（拡大の行）。
+
+**達成条件と検証**
+
+- `identity`: 差 0。
+- `cost`: 拡大の行が下がる。鎖の行（帯縮小・合流）は B_行 の中（読む場所を変えていない）。
+- `wgsl`: 拡大の段のタップの深度と法線の `textureLoad` が写しに替わり、i32 の割り算は残る。鎖の段の WGSL は変わらない。
+- `npm run typecheck`・`npm run test:render`。
+
+### 手順 4. 走査が、G バッファの画素の座標を写しから読む
+
+**目的** — 走査の受け手と歩の G バッファの画素の座標を写しから読み、`gbufferTexelOf` の i32 の割り算（1 画素 82 回）を除く。座標は写しの段が
+同じ式で求めた整数なので、値は変わらない。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` | `surfaceAt`（203–216）の座標（207）を `gbufferTexelOf` から `surfaces.scanSurfaceAt(pixel).texel` に替える。uv（208）は `texelCenterUV(texel, gbufferSize)` のまま。 |
+
+`ShadingSample` へ渡す `gbufferUV`（`screen-space-pass.ts` 126、1 画素 2 回）は残す（「着手しない候補」の 7）。
+
+**判定** 一致。**見積り** −0.17〜−0.51 ms（走査の行）。
+
+**達成条件と検証**
+
+- `identity`: 差 0。
+- `cost`: 走査の行。実測から整数の割り算 1 回の費用を置き直し、手順7 の見積りを更新する。
+- `wgsl`: 走査の段の歩のループから i32 の割り算が消える。
+- `npm run typecheck`・`npm run test:render`。
+
+### 手順 5. 走査が、位置を写しから読む（丸め）
+
+**目的** — 走査の受け手と歩が、view 空間の位置を写しから読む。歩ごとの uv と位置の復元（`texelCenterUV` と `getViewPosition`）を、写しの段で
+1 画素 1 回に畳む。写しの段と走査の段は別のシェーダなので、同じ式でも位置の最後の桁が違いうる（判定は丸め）。受け手の位置も写しから取り、
+受け手から標本への変位を同じ出どころの位置どうしで引く。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/texel-surface.ts` | `ScanSurfaces` に `scanPositionAt` を足す。 |
+| `src/render/pipeline/screen-space/screen-space-input-pyramid.ts` | 段 0 の描画先を 3 枚・1 標本 28 B にし（「主要な型と署名」。1・2 枚目の形は段 1 以上と同じまま）、`scanPositionAt` を足す。位置は構築子がすでに受けている `projectionInverse` で `getViewPosition(texelCenterUV(texel, fullSize), depth, projectionInverse)`。 |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` | `surfaceAt`（203–216）が位置を `scanPositionAt` から取り、`getViewPosition`（214）を除く。標本の側では uv を組まない。受け手の uv（83・130 が使う）は `texelCenterUV` のまま。 |
+| `tools/render-lab/lab.ts` | 読み戻し `scan-surface-2`。 |
+
+**判定** 丸め（写しの読み戻しは形が変わるので比べない）。**見積り** −0.24〜−0.52 ms（走査の行）。
+
+**達成条件と検証**
+
+- `identity`: 外れが無ければ通す。外れがあれば `identity medium:1 medium:0 --seeds 64` で「多シードの比べ方」の (a)〜(c) を当て、外れの画素の
+  位置（どの読み戻しの、どの幾何の上か）と、(c) の目視の所見を記録する。
+- 切り出し: この手順の WGSL の diff が、写しの段で位置を書くことと、走査の段で位置を読むことだけである（決めたこと 5 の (a)）。
+- `cost`: 走査の行。
+- `wgsl`: 走査の段の歩のループから、行列とベクトルの積と uv の割り算が消える。
+- `npm run typecheck`・`npm run test:render`。写しの描画先が 1 標本 28 B（記録する）。採ったら、手順9 は 36 B で上限を超えるので着手しない（記録する）。
+
+### 手順 6. 消灯した天体のスロットを、一様な分岐で飛ばす
+
+**目的** — 消灯したスロット（半径 0）の照度・球冠・扇形の測度を、フレームで一様な条件の分岐で飛ばす。消灯したスロットの寄与はいまも厳密に 0 を
+足しているので（照度が 0、楔の重みが 0）、値は変わらない。`bay` は地球 1 体なのでスロット 1 が消灯している。2 体が点灯する場面では効かない。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/lighting/planet-light-source.ts` | `PlanetLightSource`（284–363）に `isLitAt(slot)`（スロットの半径の uniform > 0）を足す。既存の式は変えない。 |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` | `PlanetIllumination`（33–36）に `lit` を足す。受け手の照度と球冠（92–94）、分母の楔の重み（104–106）、`SliceOcclusion` の構築の天体ごとの形（247–251）、`add` の天体ごとの積み（271–273）を `If(lit)` の中へ移す。変数は分岐の外へ置き、点灯しているスロットの式と足す順は変えない。 |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | `createScanStage`（295–298）で `lit` を渡す。照り返しの源の天体照（366 の `planetLight.diffuseIrradiance`）を、スロットごとの `diffuseIrradianceAtSlot` を `If(isLitAt)` で同じ順に足す形にする。 |
+
+**判定** 一致。**見積り** −0.14〜−0.35 ms（`bay` の走査と照り返し源の行）。
+
+**達成条件と検証**
+
+- `identity`: 差 0（6 撮影のどれも点灯は 1 体以下で、消灯の経路を通る）。
+- `cost`: 走査の行と照り返し源の行。記録に「`bay`（1 体）での効き。2 体が点灯する場面では 0」と書く。
+- `wgsl`: 天体ごとの処理が uniform の条件の `if` の中にある。
+- `npm run typecheck`・`npm run test:render`。
+
+### 手順 7. 最後の拡大のタップが、G バッファの画素の座標を写しから読む
+
+**目的** — 最後の拡大のタップの座標を写しから読み、`gbufferTexelOfScan` の i32 の割り算（1 画素 16 回）を除く。値は変わらない。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/correction-reconstruction.ts` | タップ（53）の座標を `surfaces.scanSurfaceAt(tap).texel` に替える。使われなくなる `gbufferTexelOfScan`（100–102）と `gbufferTexelOf` の import（8）を消す。 |
+
+**判定** 一致。**見積り** −0.12〜−0.37 ms（拡大の行。手順4 の実測で置き直す）。
+
+**達成条件と検証**
+
+- `identity`: 差 0。`cost`: 拡大の行。`wgsl`: 拡大の段から i32 の割り算が消える。
+- `npm run typecheck`・`npm run test:render`。
+
+### 手順 8. 代表の縮小列を値で持ち、鎖が段の値を直に読む
+
+**目的** — 段 1 以上の代表はいま G バッファの画素の座標だけを持ち、代表の縮小・帯の縮小・合流・デバッグ表示が、その座標を読んでから全解像度の
+G バッファの深度と法線を読む（前の読みの結果を待つ読み）。段 0 の代表は `gbufferTexelOf` の割り算で求める。段 1 以上も段 0 と同じく、選んだ子の
+値（G バッファの画素の座標・素の深度・法線の rg）をそのまま写して持ち、使う側は段の値を直に読む（決めたこと 12）。代表は平均せず、実在する
+G バッファの画素 1 つの値を写すので、値は変わらない。描画命令の数も変わらない。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/screen-space-input-pyramid.ts` | `RepresentativeCandidate`（24–）と `secondNearest`（32–）が候補の面ごと運び、選んだ子の `TexelSurface` を返す形にする（奥行きの比べ方と順はいまのまま。選ぶ `select` を座標から面の 3 つの値へ広げる）。段 1 以上の描画先（`createLevelTarget` 62–69）を段 0 と同じ 2 枚・1 標本 20 B にし、`createLevel`（146–）は 2 枚へ書く。`selectedAt`（155–168）は子の面を `surfaceAt(level − 1, child)` から取る（奥行きは `getViewPosition(texelCenterUV(surface.texel, fullSize), surface.depth, …)` のまま）。`surfaceAt(level, pixel)` を足し、`representativeAt`（83–86）と `hasSurface`（89–91）を消す。 |
+| `src/render/pipeline/screen-space/band-pyramid.ts` | `reduced`（179–199）と `merged`（205–238）で、受け手と子・親の面を `surfaces.surfaceAt(…)` から取り、`weight.receiverAt`・`weight.exponentOf` へ渡す。面の有無は `surface.depth > 0` で見る。 |
+| `src/render/pipeline/debug-composites.ts` | `representativeNormal`（136–142）を `surfaceAt(level, pixel)` の法線と深度から読む。 |
+| `tools/render-lab/lab.ts` | 読み戻し `representative-ℓ` は段 ℓ の 1 枚目（座標と深度）を読む。 |
+| `tests/render/screen-space-band-pyramid.test.ts` | `secondNearest` の検査（71–88）を、候補が面を運ぶ形に書き直す（選ぶ子の規則は同じ）。 |
+
+**判定** 一致。`representative-*` は持つ値の形が変わるので比べない — 下流（帯の縮小・合流・拡大）が差 0 なら、代表は同じ子を選んでいる。
+**見積り** −0.05〜−0.15 ms（代表縮小・帯縮小・合流の行）。
+
+**達成条件と検証**
+
+- `identity`: `representative-*` を除いて差 0。render-lab のデバッグ表示「代表の面の法線（段 1〜3）」を前後で 1 撮影ずつ目で見て同じ。
+- `cost`: 鎖の 3 行の和（代表縮小の行は書き込みが 8 → 20 B に増える分だけ上がりうる）。`wgsl`: 鎖の段から、座標を読んでから G バッファを
+  読む読みと、段 0 の代表の i32 の割り算が消える。
+- `npm run typecheck`・`npm run test:render`。段 1 以上の描画先が 1 標本 20 B（記録する）。
+
+### 手順 9. 照り返しの源と段 0 の写しを、1 本の描画命令で書く
+
+**手順5 を採ったら着手しない**（1 標本 36 B で上限 32 B を超える。決めたこと 11）。
+
+**目的** — 照り返しの源と段 0 の写しは、同じ走査の画素の G バッファを読む別々の描画命令で、照り返しの方式では固定費を 2 本ぶん払っている。
+1 本の描画命令で両方を書く。遮蔽の方式では写しと 0 の源を書く。値は変わらない。代表の縮小列のモジュールが、段 0 の面と一緒に、その面が放つ
+放射輝度の描画先も持つことになる（値を組むのはいまどおり `ScreenSpacePass`）。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/screen-space-input-pyramid.ts` | 段 0 の描画先に照り返しの源（rgba16float、名前 `surfaceRadiance`）を足して 1 標本 28 B にし、`scanStage` を `scanStageOf(radiance)` に替える（null は源へ `vec4(0)` を書く — いまの遮蔽の方式で空にした値と同じ）。`radianceTexture` を足す。 |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | `sourceTarget`（103）・`sourceStage`（104・156）・`createSourceStage`（275–281）を消し、照り返しの源の値（`whereResolved` と `emittedRadiance`、346–370 はそのまま）を `surfaces.scanStageOf` へ渡す。`stagesOf`（254–257）の方式の列の先頭を方式ごとの描画命令に替え、`createScanStage`（250）は `surfaces.radianceTexture` を渡す。`surfaceRadianceTexture`（160）は `surfaces.radianceTexture` を返す。`clearUnwritten`（406–408）の遮蔽の列から源を外す。 |
+| `src/render/gpu-timings.ts` | 「照り返し源」と「近傍拡散写し」の行を 1 つ（「近傍拡散写しと源」）にまとめる。 |
+| `tools/screen-space-variance.mjs`・`tools/screen-space-ab.mjs` | 費用の行の並び。 |
+
+`debug-composites.ts` の照り返しの源の表示（81）は `surfaceRadianceTexture` を読むので変えない。
+
+**判定** 一致。**見積り** −0.06〜−0.08 ms（照り返しの方式の、写しと源の行の和）。
+
+**達成条件と検証**
+
+- `identity`: 差 0（遮蔽の方式の `surface-radiance` は前後とも 0）。`cost`: 写しと源の行の和。
+- `npm run typecheck`・`npm run test:render`。段 0 の描画先が 1 標本 28 B。
+
+### 手順 10. 受け手の視線の近平面と遠平面の点を、スライスのループの外で 1 度だけ組む
+
+**目的** — 受け手の視線（`viewRayAt`、83）と、スライスごとの `sideRays`（130–131）は、同じ受け手の uv で近平面と遠平面の点
+（`getViewPosition` 2 回）を組んでいる。これをスライスのループの外で 1 度だけ組み、スライスごとに組むのは隣の uv の 2 回だけにする。同じ式を
+同じ入力で 1 度にするだけなので、値は変わらない（受け手の視線の向き `normalize(遠 − 近)` も同じ変位から取る）。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/tangent-segments.ts` | `ReceiverRay` と `receiverRayAt` を足し、`sideRays`（110–127）が受け手の近平面の点と変位（114–115）を `ReceiverRay` から受ける形にする。 |
+| `src/render/pipeline/screen-space/hemisphere-scan.ts` | `scanHemisphere` でスライスのループ（122）の前に `receiverRayAt(receiver.uv, …)` を組み、受け手の視線（83）をその変位から、`sideRays` の呼び出し（130–131）をそれを渡す形にする。 |
+
+**判定** 一致。**見積り** 0〜−0.08 ms（走査の行）。
+
+**達成条件と検証**
+
+- `identity`: 差 0。`cost`: 走査の行（コンパイラが既にループの外へ出していれば効きは分解能以下になり、そのときは決めたこと 6 で決める — 受け手の
+  視線と `sideRays` が同じ点を共有するのは素直さの側、`sideRays` の引数の形が変わるのは中立）。`wgsl`: スライスのループの中の `getViewPosition` の展開が 4 回から 2 回になる。
+- `npm run typecheck`・`npm run test:render`。
+
+### 手順 11. 受け手の定数を、行列とベクトルの積から要素の読みへ
+
+**目的** — `SurfaceWeight.receiverAt` は、受け手ごとに `transpose(projectionInverse)·(0, 0, 0, 1)`（逆射影行列の 4 行目）と
+`projection·(0, 1, 0, 0)` の y（射影行列の (1, 1) 成分）を行列とベクトルの積で求めている（41–43・47）。0 と 1 を掛けて 0 を足す積は要素
+そのものなので、要素を読む形にしても値は変わらない。最後の拡大（全画素）と鎖が受け手ごとに使う。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/surface-weight.ts` | `receiverAt` の `w`（47）を `projectionInverse` の各列の w の vec4、`yScale`（43）を `projection` の列 1 の y にする。接平面（46）は `transpose` のまま。 |
+
+**判定** 一致。**見積り** −0.01〜−0.03 ms（拡大の行）。
+
+**達成条件と検証**
+
+- `identity`: 差 0。`cost`: 拡大の行。`wgsl`: 受け手の行列とベクトルの積が消える。
+- `npm run typecheck`・`npm run test:render`。
+
+### 手順 12. 走査のずれの select を、一様な分岐へ
+
+**目的** — 走査の 3 つのずれ（`screen-space-pass.ts` 288–294）は、道具のためのホワイトノイズ（整数のハッシュ 12 回）と本番のブルーノイズ・
+層別の回転を `select` で選ぶので、本番でも両方を求めている。選ぶ条件（`whiteNoisePass < 0`）はフレームで一様なので、分岐にして片方だけを
+求める。値は変わらない。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | `createScanStage` のずれ（288–294）を、変数へ `If(useBlue)` の両側で代入する形にする。 |
+
+**判定** 一致（ブルーノイズとホワイトノイズのパス 0 の両方で比べる）。**見積り** −0.01〜−0.03 ms（走査の行）。
+
+**達成条件と検証**
+
+- `identity`（既定）と `identity --white-noise 0`: どちらも差 0。`cost`: 走査の行。
+- `npm run typecheck`・`npm run test:render`。
+
+### 手順 13. 7 の枝に検証基盤を写し、分解能と着手前の費用を測り、第 2 部を並べる
+
+**目的** — 第 1 部と同じ規則で 7 の枝を測れるようにし、第 1 部の実測で第 2 部の候補の見積りを置き、大きい順に並べ直す（この文書の手順14〜25 の
+並びと見積りを書き換える）。第 1 部で取り下げた・着手しなかった変更の当て直しは候補から外す。この時点で絵は変えない。
+
+**変更が必要な箇所**（7 の枝。worktree は `git worktree add ../dive-into-tepui-ssd7 ssd-7-single-scale` で作り、`node_modules` と
+`.render-lab-shots` をジャンクションで繋ぐ — 無いと依存が引けず、撮影が C: に書かれる）
+
+| ファイル | 何をするか |
+| --- | --- |
+| `tools/render-lab/lab.ts` | `measureTierRounds`・`screenSpaceShaders` と、読み戻し（`FloatTargetName` 39–40、`floatTextureOf` 467–）に `surface-radiance`・`sparse-0`・`sparse-1`（`sparseCorrectionTextures`）を足す。 |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | `stageShaders` を足す。 |
+| `tools/screen-space-lab.mjs` | 道具の口。 |
+| `tools/screen-space-ab.mjs`（第 1 部から写す） | 読み戻しの既定を 7 の段（`surface-radiance`・`raw-correction`・`sparse-0`・`sparse-1`・`denoised-correction`・`correction`）、費用の行を 7 の行（照り返し源・走査・均し・拡大）、多シードの読み戻しを `raw-correction`・`denoised-correction`・`correction` にする。 |
+| `.render-lab-shots/ssd-opt/work/variant-7.patch`（新規、commit しない） | 7 は描画命令の列を構築子（121–145）で組むので、`buildingVariant` を 0 と 1 にして 2 揃い組み、`currentStages`（213–216）が段の variant で選ぶ。 |
+
+**達成条件と検証**
+
+- A/A' の `identity` が 6 撮影 × 全読み戻しで差 0。分解能を 3 セッションで測り、着手前の行ごとの費用を記録する。
+- 手順14〜25 の見積りを、第 1 部の実測（共通の変更は × 7 の走査 / 8 の走査）と単位の費用で書き直し、並べ直してある。
+- 7 の枝で `npm run typecheck`・`npm run test:render`。道具と口だけを 7 の枝に commit する。
+
+### 手順 14〜25. 7 の枝の候補（仮の並び。手順13 で並べ直す）
+
+どれも第 1 部の「各手順の進め方」と判定の規則で 1 つずつ行い、7 の枝に 1 手順 1 commit で入れる。共通の変更の当て直しは、「実測の記録」の
+第 1 部の commit の差分を 7 のファイルへ当て直す（7 の走査は帯を持たず、`hemisphere-scan.ts` の行が違う）。7 には代表の縮小列が無いので、
+段 0 の写しは、段 0 だけを持つ `ScanSurface`（新規 `scan-surface.ts`。`ScanSurfaces` を満たし、`scanStage`・`scanSurfaceAt`・`scanPositionAt`・
+`scanStageOf`・`radianceTexture` を第 1 部の `ScreenSpaceInputPyramid` の段 0 と同じ形で持つ）に持たせる。走査と拡大・均しは `ScanSurfaces` で
+受けるので、その式は第 1 部と同じになる。
+
+| 手順 | 変更 | 当て直す第 1 部の手順 | 7 の変更が必要な箇所 | 判定 | 初めの見積り [ms] |
+| --- | --- | --- | --- | --- | --- |
+| 14 | 写しの段を足し、走査の歩が深度と法線を写しから読む | 2 | `texel-surface.ts`（新規、`Texel` を `surface-weight.ts` 20 から移す）・`scan-surface.ts`（新規）・`gpu-timings.ts`・`hemisphere-scan.ts`（`scanHemisphere` 63、`surfaceAt` 179–）・`screen-space-pass.ts`（構築子 121–145、`createScanStages` 224–251、`prepare` 323–、`clearUnwritten`・`dispose`）・`lab.ts`（読み戻し）・`screen-space-ab.mjs`（行） | 一致 | 第 1 部の手順2 の実測 × 0.93〜1 |
+| 15 | 走査が座標を写しから読む | 4 | `hemisphere-scan.ts`（`surfaceAt` 179–） | 一致 | 手順4 × 0.93〜1 |
+| 16 | 走査が位置を写しから読む（第 1 部で採ったときだけ） | 5 | `scan-surface.ts`・`hemisphere-scan.ts`・`screen-space-pass.ts`・`lab.ts` | 丸め | 手順5 × 0.93〜1 |
+| 17 | 確率的な拡大の 4 本のタップと受け手が、深度と法線を写しから読む | 3 | `surface-weight.ts`（`receiverAt` 42–57・`exponentOf` 68–76 を `TexelSurface` を受ける形に、`surfaceAt` を足す）・`correction-reconstruction.ts`（構築子 30–35、`stochasticUpsampled` 77–102 のタップ 84）・`screen-space-pass.ts`（構築 128–129） | 一致 | −0.07〜−0.44（タップは囲む 2×2 で隣の画素と揃い、s の 1/4〜1 倍 × 8 回 × 518,400） |
+| 18 | 消灯したスロットを飛ばす | 6 | `planet-light-source.ts`（`isLitAt`）・`hemisphere-scan.ts`（天体の処理）・`screen-space-pass.ts`（`createScanStages` 240–242、`emittedRadiance`） | 一致 | 手順6 × 0.93〜1 |
+| 19 | 均しの 3 段（疎 2・密 1）のタップと受け手が、深度と法線を写しから読む | 3 の形 | `correction-reconstruction.ts`（`scanReceiver` 105–108・`addTap` 112–118） | 一致 | −0.13〜−0.19（1 走査画素の G バッファの読み 56 回 × 32,400 × s） |
+| 20 | 確率的な拡大のタップが座標を写しから読む | 7 | `correction-reconstruction.ts`（タップ 84 の `gbufferTexelOfScan`） | 一致 | 手順7 の単位の費用 × 8 回/画素 |
+| 21 | 均しのタップと受け手が座標を写しから読む | 7 の形 | `correction-reconstruction.ts`（107・115）・`surface-weight.ts`（`reachTolerance` 61–63 は座標を受けるまま） | 一致 | 整数の割り算 56 回/走査画素 × 単位の費用 |
+| 22 | 照り返しの源と写しを 1 本に（手順16 を採らず、第 1 部で採ったときだけ） | 9 | `scan-surface.ts`・`screen-space-pass.ts`（`createScanStages` 224–251 の源の段、`sourceTarget`）・`gpu-timings.ts` | 一致 | 手順9 の実測 |
+| 23 | 受け手の視線の点をスライスのループの外へ | 10 | `tangent-segments.ts`（`sideRays`）・`hemisphere-scan.ts` | 一致 | 手順10 × 0.93〜1 |
+| 24 | 受け手の定数を要素の読みへ | 11 | `surface-weight.ts`（`receiverAt` 47–49・53） | 一致 | 手順11（7 は均しの 3 段でも受け手を組む） |
+| 25 | 疎な均しのタップの点を定数にし、回転の cos・sin を 1 度だけ求めて回す（7 だけ） | — | `correction-reconstruction.ts`（`sparseDenoised` 40–54。`Loop` を JS で 8 本に開き、螺旋の点 ρ = r·√(i/7)・黄金角を定数にする — 8 の枝の最後の拡大 `sparseUpsampled` と同じ形）。タップの位置を画素へ丸める `round` の行き先が丸めで変わりうる | 丸め | −0.02〜−0.07（2 段 × 8 本の sqrt・cos・sin 48 回 → 2 段の cos・sin 4 回、約 350 演算/走査画素 × 0.05〜0.21 µs） |
+
+手順8（代表を値で持つ）は 7 に鎖が無いので、手順12（ずれの select）は 7 の走査がブルーノイズだけを読むので、どちらも当てない。
+
+**達成条件と検証**（各手順）— 第 1 部と同じ。`identity` の読み戻しは手順13 の既定、`cost` は 7 の行。7 の枝で `npm run typecheck`・
+`npm run test:render`、ファイルを足したら `npm run check:boundaries`。
+
+### 手順 26. 本体の計画書へ結果を移し、この計画書を消す
+
+**目的** — 手順8-7 が使う費用を本体の計画書に置き、臨時の作業を閉じる。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `memos/hedalu244/better_graphics/screenspace-diffuse.md` | 判断材料「いまの精細さと費用」へ、両方の枝の新しい行ごとの費用（`bay`・中、ms とマテリアル行に対する比）、採った手順の一覧（commit）、取り下げた・着手しなかった手順と理由を書く。冒頭の「まず臨時の高速化（決めたこと 17。…）を済ませてから」と決めたこと 17 を済んだ形に書き換える。本体の手順8 の「枝をまたいだ比べ方」の費用の前提を新しい費用にする。 |
+| この計画書 | 消す。第 2 部の worktree を `git worktree remove` で片付ける（先に `node_modules` と `.render-lab-shots` のジャンクションを `cmd //c rmdir` で外す）。 |
+
+**達成条件と検証**
+
+- 本体の計画書の判断材料に、2 つの枝の行ごとの費用と採った commit がある。
+- `git ls-files memos/hedalu244/better_graphics/optimize_ssd.md` が空。`git worktree list` に 7 の worktree が無い。docs(memo) の commit。
+
+---
+
+## 着手しない候補
+
+**(A) 理由があって着手しないもの**
+
+| # | 候補 | 見積り | 着手しない理由 |
 | --- | --- | --- | --- |
-| 照り返しの源（照り返しの方式のときだけ） | 240×135 | rgba16f 1 枚 | 0.37 |
-| 走査 | 240×135 | rgba16f 3 枚（手順7 は 1 枚） | 4.54 |
-| 代表の縮小（段 1〜3。手順8 だけ） | 120×68 〜 30×17 | rg32f（G バッファの画素の座標） | 0.24 |
-| 帯の縮小（段 1〜3。手順8 だけ） | 同上 | rgba16f 3 / 2 / 1 枚 | 0.26 |
-| 合流（段 2〜0。手順8 だけ） | 60×34 〜 240×135 | rgba16f 1 枚 | 0.43 |
-| 最後の拡大（手順8） | 960×540 | rgba16f 1 枚 | 3.2 |
-| 疎な均し ×2・密な 3×3・確率的な拡大（手順7 だけ） | 240×135・960×540 | — | 均し 約 1.0、拡大 約 1.2（本体の判断材料「手順7 の実測」） |
+| 1 | 代表の縮小を帯の縮小へ畳む（描画命令 3 本減） | −0.15〜−0.24 ms（代表縮小の行はほぼ固定費） | 1 本の描画命令は 1 つの描画先にしか書けないので、段 ℓ の代表を段 ℓ の帯の描画先の 1 枚として足すことになる。代表を値で持つと（手順8、20 B）、帯の数 4 でも段 1 が 24 + 20 = 44 B になり、1 標本 32 B の上限を超える（決めたこと 11）。座標だけで持っても（8 B）帯の数 5 で段 1 が 40 B になる。帯の描画先の余りの半精度のチャンネルへ詰めるには段 2・3 で余りが足りない |
+| 2 | 分母のループを走査のループへまとめる | 走査の 4% 程度（スライスごとに sliceAt と球冠 2 つ、約 220 演算 × 4） | 分母を後で掛けるには、帯 4 × （環境光と照り返し、天体 2）の積み先 36 成分が要り（いま 12）、占有が落ちて走査が重くなる見込み |
+| 3 | `ShadingSample` の十字の寄せの読みを、走査と照り返しの源で避ける | 走査の 0.5% 未満（受け手の深度の読み 7 回と位置の復元 2 回は 1 画素 1 度） | ライティングパスと共有のクラス（決めたこと 10）。効きも分解能以下の見込み |
+| 4 | 天体照の光源モデルの select を分岐にする | 走査の 2% 程度（一様球のときの写しの読み） | `PlanetLightSource` の式はライティングパスと共有（決めたこと 10） |
+| 5 | `pow` の `log2(radius)` を歩のループの外へ | 走査の 2% 以下 | Intel Gen9 は pow を 1 命令で持つ見込みで、exp2 へ替えても命令は減らない |
+| 6 | 7 の密な 3×3 の添字の mod と div | ほぼ 0 | 定数 3 の割り算は、コンパイラが掛け算へ替える見込み |
 
-手順8 の合計は約 9.3 ms（マテリアル比 約 10）。本体の「負荷の予算」は照り返しありの中で 5 倍、高で 8 倍。
+**(B) 見積りが分解能に近く、手順1 の分解能 B_和·T が見積りの上限を下回ったとき、または採る積極的な理由（決めたこと 6 の (a)(b)）があるときだけ、手順12（第 2 部は手順25）の後に候補へ足すもの**
 
-### 読み（補正を受ける画素 1 つあたり。S はスライス数、N は片側の歩数 — 中は S = 4・N = 5 で歩は 2SN = 40。「格子」は全解像度の G バッファを走査の格子の画素で読むもの）
+| # | 候補 | 見積り | 備考 |
+| --- | --- | --- | --- |
+| 7 | `ShadingSample` へ渡す `gbufferUV` の割り算（走査・照り返しの源・合流の段 0、各 1 画素 2 回）を写しの座標へ | −0.01〜−0.04 ms | `screen-space-pass.ts` 126 だけで、共有のクラスの式は変えない |
+| 8 | CPU で求めた uniform に置き換える（足跡の係数 `2 / (yScale·fullSize.y)`・合流の許容 `fullSize.x / scanSize.x · 2^ℓ`・`length(scanSize)`） | どれも 0.01 ms 未満 | 丸め。光源の `viewPositionOf` は共有のクラスなので含めない |
+| 9 | 補正を受けるかの判定を段をまたいで使い回す（照り返しの源・合流の段 0 が走査と同じ判定を求め直す） | 0.01 ms 程度 | 判定を持たせる描画先が要る |
+| 10 | 7 の拡大の位置の整数の割り算（`upsampleCornerOf` 122–132、1 画素 2 回） | −0.02〜−0.05 ms | 写しでは置き換えられず（描画バッファの画素から走査の位置を求める）、厳密に同じ画素を選ぶには軸ごとの表が要る |
 
-| 段 | 読みの内訳 | 同じ画素の読み直し | 走査の解像度の写しで置き換えられる読み | 整数の割り算 |
-| --- | --- | --- | --- | --- |
-| 照り返しの源 | 深度 7（同じ画素 3 + 十字の 4 近傍 4）、法線・ベース色・発光・影 各 1、天体の写し 2。すべて格子 | 深度 3 回、4 近傍の 4 回は使われない | 深度 7・法線 1 | 2 |
-| 走査 | 受け手の深度 7（同じ画素 3 + 4 近傍 4）・法線 2、天体の写し 2、ブルーノイズ 2。歩ごとに深度 1・法線 ≤ 1（格子）と照り返しの源 ≤ 1 | 受け手の深度 3 回・法線 2 回、4 近傍は使われない | 受け手と歩のすべて（深度 7 + 2SN、法線 2 + 2SN） | 4 + 4SN（中 84） |
-| 代表の縮小 段 ℓ | 子 4 の代表の座標（ℓ ≥ 2）、深度 4（格子） | — | 深度 4 | 段 1 で 8 |
-| 帯の縮小 段 ℓ | 代表の座標 1、代表の深度 2・法線 1、子の代表の座標と深度 4・法線 4、子の帯 8〜12 | 代表の深度 2 回 | 深度 6・法線 5 | 段 1 で 8 |
-| 合流 段 k | 代表の座標 1、代表の深度 2（段 0 は 3）・法線 1、親の代表の座標・深度・法線 各 4、親の値 4 + 実効画素数 4、自分の帯 2〜3 | 代表の深度 2〜3 回。段 2 は親の値と実効画素数が同じテクスチャの同じ画素 | 深度 6・法線 5 | 段 0 で 6、ほかは 2（`pixel.div(2)`） |
-| 最後の拡大（手順8） | 上の「最後の拡大」の表（29 回） | 深度 2 回 | タップの深度 8・法線 8 | 16 |
-| 疎な均し 1 段（手順7） | 深度 2 + 8、法線 1 + 8、値 8、ブルーノイズ 1 | 深度 2 回 | 深度 10・法線 9 | 20 |
-| 密な 3×3（手順7） | 深度 2 + 9、法線 1 + 9、値 9 | 深度 2 回 | 深度 11・法線 10 | 40（うち 18 はループの添字の mod と div） |
-| 確率的な拡大（手順7） | 深度 2 + 4、法線 1 + 4、値 1、ブルーノイズ 1 | 深度 2 回 | タップの深度 4・法線 4 | 10 |
+---
 
-走査の解像度で持っているのは、照り返しの源・代表の座標（段 1 以上）・帯と合流だけで、G バッファの写し（深度と法線）はどの枝にも無い。深度（単精度の生の
-値）と 8 進の法線（2 成分）をそのまま写せば、読む値は一致する。ただし `exponentOf` は G バッファの画素の座標そのもの（`texelCenterUV` と許容の距離）も
-使うので、座標も写しから引けるようにするか、下の整数の割り算の置き換えと組にする。代表は段 0（格子の画素）から選ぶので、代表の座標を走査の画素の
-座標で持つこともできる（`gbufferTexelOf` は単射）。写しを誰が描くかは未決（照り返しの源は同じ画素を読むので兼ねられるが、遮蔽の方式では描かない）。
+## 見積り
 
-### 同じ値の再計算（どれもビット一致の見込み）
+作業時間。実装は小（式の置き換え 1 か所）0.5 h、中（引数の形を変える・描画先を足す）1.5 h、大（モジュールを足す）2.5 h。確かめは 1 手順あたり、
+webpack 1 min + `identity`（2 variant × 2 方式のシェーダの組み立て 約 4 min + 6 撮影 × 2 × 約 5 s）約 5 min + `cost`（5 巡 × 2 × 約 3 s と前置き）
+約 2 min + `wgsl` 1 min + typecheck 2 min + `test:render` 3 min = 約 15 min、記録と手順の削除 15 min で、計 0.5 h。
 
-- **走査と照り返しの源の受け手** — `ShadingSample`（`lighting/shading-sample.ts`）は、面の無い画素を十字の隣へ寄せる `shadingUV` を select の連鎖で
-  組むので、5 候補の深度をいつも読む。補正を受ける分岐の中では受け手の面があるので、寄せは働かず `uv` のまま。受け手の深度・位置（`getViewPosition`）は
-  `surfaceAt` と `ShadingSample` で 2 回ずつ求めている（法線は片方が線形のサンプラを通るので、一致は画素の中心で読む前提）。**`ShadingSample` はライティング
-  パスと共有するクラスで、寄せはライティングパスでは効いている（同ファイルの TODO）** — 走査と照り返しの源の側だけで読み直しを避ける形にする。
-- **手順8 の走査のスライス** — 分母のループと走査のループが `sliceAt` と天体ごとの `capInSlice` を 2 回ずつ組む（手順8-1 で分母のループを足した。
-  手順7 はループ 1 本）。1 本にまとめると割り算の順が変わるので、丸め程度の差になりうる。
-- **走査のループ不変** — `viewRayAt` と、スライスごとの `sideRays` の逆射影が同じ入力から同じ値を作る。歩の `pixelAlong(previousRho)` は前の歩の画素と
-  同じ式。`pow(radius, u − 1)` の `log2(radius)` はループ不変。
-- **`gbufferTexelOf` と `getViewPosition` の重複** — 走査の受け手と `gbufferUV`、合流の段 0 の `gbufferUV` と `representativeAt(0)`、判定（`whereResolved` の
-  `resolvesNearbyAt`）と受け手（`receiverAt`）。
-- **天体照** — `capAt` と `diffuseIrradianceAt`（`planet-light-source.ts`）が、中心の向き・角の大きさを天体ごとに別のノードで 2 回組む（コンパイラが
-  共通部分式を消していれば効果は無い）。
-- **段をまたいだ再計算** — 補正を受けるかの判定（`resolvesNearby`。深度・逆射影・行列とベクトルの積 2 回）を、照り返しの源・走査・合流の段 0 が
-  走査の画素ごとに求め直す。照り返しの源と走査が、同じ受け手の環境光と天体照を求め直す。代表の縮小 ℓ が選んだ子の代表と深度を、帯の縮小 ℓ が読み直す
-  （同じ解像度・同じ画素の 2 段で、1 本にまとめれば描画命令が 3 本減る）。帯の縮小 k と合流 k（k = 1, 2）が、同じ代表で `receiverAt` を組む。
+| 手順 | 内訳 | 時間 |
+| --- | --- | --- |
+| 1 | 道具 3.5 h + A/A' 3 セッション × （組み立て 4 min + 費用 2 min）+ `identity` 5 min + 記録 15 min | 4 h |
+| 2 | 大 2.5 h + 0.5 h | 3 h |
+| 3 | 中 1.5 h + 0.5 h | 2 h |
+| 4 | 小 0.5 h + 0.5 h | 1 h |
+| 5 | 中 1.5 h + 0.5 h + 丸めの判定（多シード 3 撮影 × 64 シード × 2 × 約 2 s ≈ 13 min と、z の地図と画像の目視・記録）0.75 h | 2.75 h |
+| 6 | 中 1.5 h + 0.5 h | 2 h |
+| 7 | 小 0.5 h + 0.5 h | 1 h |
+| 8 | 中 1.5 h + 0.5 h + 検査の書き直し 0.25 h + デバッグ表示の目視 0.25 h | 2.5 h |
+| 9 | 中 1.5 h + 0.5 h（手順5 を採ったら 0） | 0〜2 h |
+| 10〜12 | 小 3 × （0.5 h + 0.5 h） | 3 h |
+| 13 | worktree とジャンクション 0.25 h + 道具を写す 1.5 h + A/A' と着手前の費用 0.5 h + 並べ直し 0.5 h | 2.75 h |
+| 14〜25 | 当て直し 7 手順 × （差分を当て直す 0.75 h + 0.5 h）+ 7 だけの 5 手順 × （中 1.5 h か小 0.5 h + 0.5 h）+ 丸めの判定 2 手順（16・25）× 0.75 h | 約 16.5 h |
+| 26 | 本体の計画書の更新 0.75 h + 片付け 0.25 h | 1 h |
 
-### select の両辺と、使わない枝の計算（ビット一致の見込み）
+計 約 44 h（第 1 部 約 23 h、第 2 部 約 20 h）。取り下げ・着手しない候補が出るほど減る。改善量の見積りは「改善量の見積り」の節。
 
-- **走査のずれ** — `screen-space-pass.ts` の `noise` は、道具のためのホワイトノイズ（PCG の整数ハッシュ 12 回）と本番のブルーノイズ・層別の回転
-  （11 桁）を select で選ぶので、本番でも両方を計算する。選ぶ条件は uniform なので、分岐にすれば片方だけになる。
-- **天体照のモード** — 写しを持つ天体と一様な球の天体を select で選ぶので、一様な球でも写しの三線形の読みと面の当たりを計算する（照り返しの源と走査の
-  2 スロット）。消灯中のスロット（半径 0）も常に 2 本ぶん計算する。
-- **最後の拡大** — タップの法線は深度が 0 でも読む（`exponentOf` の select）。
+---
 
-### フレームで一定の値の画素ごとの計算
+## リスクと落とし穴
 
-- ビット一致の見込み: `receiverAt` の `w = transpose(projectionInverse)·(0, 0, 0, 1)`（逆射影の 4 行目そのもの）と `yScale = projection·(0, 1, 0, 0)`
-  （projection[1][1]）、`sizeAt`（2 の冪の割り算）。
-- 丸め程度の差: 足跡の係数 `2 / (yScale·fullSize.y)`（積だけを uniform にすれば一致）、合流の許容 `fullSize.x / scanSize.x·2^ℓ`、`length(scanSize)`、
-  光源の `viewPositionOf`（太陽と天体の中心を、照り返しの源で 6 回・走査で 7 回 view 空間へ写す。CPU の倍精度のほうが正確で、天体の大きい座標では
-  単精度の打ち消しで 1 ULP を超えて違いうる）。
-- 選ぶ画素が変わりうる（閾値・floor・round を通る）: 最後の拡大の位置の `.mul(scanSize).div(fullSize)` と `scale`、走査の `÷ sliceCount`・`÷ stepCount` を
-  逆数の掛け算にすること、`projectedRadius` の式の組み替え（`radius > 1` の判定に乗る画素）。
+| リスク | 影響 | 露見する場所 |
+| --- | --- | --- |
+| 一時の仕組み・前の形の枝が commit に残る | 使われない分岐と、段の列の鍵の一時の形が本番に残る | 各手順の commit の前の `grep -rn buildingVariant src tools`（手順2〜12・14〜25）、達成目標 5 |
+| 前の形（variant 1）を書き直して、着手前と違う形にする | 絵の一致も費用も、着手前でないものと比べる | 各手順の `wgsl` の diff — 変えた段の変えた箇所以外と、ほかの段の WGSL が、前後で同じか（手順2〜12・14〜25） |
+| 写しの描画先が半精度で作られる、またはフィルタ付きで作られる | 深度と座標が丸まる（一致に落ちる）か、パイプラインの生成が落ちる | 手順2 の `identity` と、写しの読み戻しの値が G バッファの値と同じか |
+| 写しを書く前に読む・遮蔽の方式の列に写しを入れ忘れる | 前のフレームや前の撮影の写しを読んで一致に見える | 撮影ごとにオフで描画先を空にしてから描く（手順1 の道具）。手順2 の遮蔽の方式の撮影 |
+| 画面外の標本の範囲外の読みの値が、G バッファと写しで違う | 使われない値のはずだが、使われていれば差が出る | 手順2・4・5 の `identity`（`groove-ladder-near`・`clutter` の画面の縁） |
+| 描画先の 1 標本が 32 B を超える | パイプラインの生成が落ちる | 手順2・5・8・9 の記録（段 0 が 20・28・—・28 B、段 1 以上が手順8 で 20 B）。手順5 を採ったら手順9 を着手しない |
+| 代表を値で運ぶ `secondNearest` が、座標だけを運んでいたときと違う子を選ぶ（深さが同じ子の扱い、面の無い子の既定） | 代表が変わり、帯の縮小と合流の値が変わる | 手順8 の `identity`（下流の差 0）と、書き直した `secondNearest` の検査 |
+| 丸めの差が乱択と閾値を通して大きく広がり、雑音の入れ替わりか偏り（収束先が動く）かを 1 シードで取り違える | 偏りを雑音として通す、または雑音を誤りとして棄てる | 手順5・16・25 の多シードの比べ方（z の絶対値が 3 を超える割合、16 → 64 シードの d̄ の減り方、z の地図）と、前後の画像の目視 |
+| 一致のはずの手順に丸めの差が混ざる、または丸めの手順にほかの変更が混ざる | 丸めとして通した差に誤りが隠れる | 一致の手順は差 0 だけを通す（決めたこと 5 の (c)）。丸めの手順の WGSL の diff がその変更だけか（手順5・16・25） |
+| 測る場面 `bay` に固有の効き（消灯したスロット）を一般の効きと読む | 本番の 2 体の場面で効かない費用を 8-7 の比較の前提にする | 手順6・18 の記録に場面の条件を書き、手順26 で本体へ移すときも添える |
+| 分解能が粗く、小さい候補を誤って採る・棄てる | 効かない複雑さが残る、効く変更を棄てる | 手順1 の A/A'、手順10〜12・23・24 の判定 |
+| セッションのモードの差を、手順の差と読む | 一致を誤りと、誤りを一致と読む | 絵も費用も同じセッションで前後を比べる（全手順） |
+| 初回のシェーダの組み立て（約 1 min）が計時に入る | 先に測った側が重く出る | 測る前に両方を描く（手順1 の道具）。マテリアル行の比の確かめ |
+| 狙っていない行の変化（キャッシュの持ち越し）を見落とす | 効きの出どころを読み違え、較正を誤る | 各手順の行ごとの比の記録（全手順） |
+| 単位の費用が古い計測（当時の段・帯なし）に基づく | 並びが外れ、着手の要否を誤る | 手順1 の着手前の費用との照合と、手順ごとの較正 |
+| patch が前の手順の commit の後で当たらない | 一時の仕組みの作り直しの誤りで、前後の形が入れ替わる | 各手順の A/A' の代わりに、`identity` の前の側の読み戻しが直前の手順の後の側と同じ形か（`wgsl` の diff） |
+| 重い処理を重ねてメモリ 8 GB で落ちる・C: が埋まる | PC ごと落ち、撮影が途中で欠ける | 各手順の前の空きメモリと残ったプロセスの確かめ、出力は E:。手順13 で worktree の `.render-lab-shots` をジャンクションにする |
+| 第 2 部で第 1 部の差分を、帯の無い 7 の走査へ別の式で当て直す | 7 の走査の値が変わる | 手順14〜16 の `identity`（一致） |
 
-### 整数の割り算
+---
 
-- **`gbufferTexelOf`**（`hemisphere-scan.ts`） — `ivec2` どうしの割り算 2 回。走査で 1 画素あたり 4 + 4SN（中 84）、最後の拡大で 16、手順7 の均しで 20〜40。
-  軸ごとに独立（x は pixel.x と幅だけで決まる）なので、ビット一致のまま除く形が 2 つある — CPU で整数のまま求めた軸ごとの表から引く、走査の解像度の
-  写しに座標を焼いて読む側では割らない。浮動小数へ替えるなら、選ぶ画素が整数の版と一致することを全解像度と走査の解像度の組で全数確かめる
-  （コードのコメント: 「整数で割る — 解像度が半分なら画素の中心は G バッファの画素の境に乗り、浮動小数の floor では採る画素が画素ごとに揺れる」）。
-  符号なしにするなら、走査の歩の画素は画面の外で負になる（画面外の標本は `onScreen` で捨てるが、読む前に負の座標で割る）ことに注意。
-- **`pixel.div(2)`**（合流） — 非負の画素を定数 2 で割るのでシフトにできる。
-- **手順7 の密な 3×3 のループの添字の mod と div** — 入れ子の Loop の添字が同名で化けるのを避けた 1 本のループ（コメントのとおり）。JS で展開すれば定数。
-- **同じ除数で何度も割る浮動小数の割り算**（逆数の掛け算にすると丸め程度の差） — 合流の重みの和（4 回）と実効画素数、`weightedBands` の重みの和、
-  `sectorPosition` の測度の和、`texelCenterUV` の ÷ fullSize、`getViewPosition` の ÷ w。
+## 実測の記録
 
-### そのほか
+手順を消すときに 1 行ずつ書き足す。E は近傍拡散補正の和が短くなった量（正が速い）、比は狙った行の r̃（最小〜最大）。
 
-- 走査のスライス数と歩数は uniform の int なのでループは展開されない。歩ごとに分岐が 4 つある。
-- 手順8 の走査は、増分を帯へ分けて vec3 を 4 本積み、帯の重み（log2 と clamp）を計算し、3 枚（24 B/px）を書く。手順7 は 1 枚（8 B/px）。
-- 手順7 の疎な均しは、タップをループで回すので、タップごとに cos・sin・sqrt を計算する（手順8 の最後の拡大のように、回転を 1 回の cos・sin と定数の
-  点にすると丸め程度の差）。
+**着手前**（手順1 で書く）— 行ごとの費用 [ms]（写し・照り返し源・走査・代表縮小・帯縮小・合流・拡大・和・マテリアル行）、分解能 B_和・B_行、
+単位の費用の置き直し。
 
-### 効きの見込み（推定。測っていない）
-
-- **走査の解像度の G バッファの写し**が最も効く見込み。走査の歩の読み（中で 1 画素あたり 80 回近く）と最後の拡大のタップの読み（16 回）が、ストライド 4 で
-  散らばった全解像度の読みから、走査の解像度の小さい連続したテクスチャの読みに変わり、整数の割り算も消せる。手順8-6 の候補で、拡大の費用がタップの
-  散らばり（半径）に連れて 2.3〜3.25 ms と動いたのが手がかり。本体の判断材料「いまの精細さと費用」の「結果を変えない省略の余地は小さい（位置の復元を
-  丸ごと消しても 0.88〜0.91 倍）」は演算を削った試しで、読みの局所性は試していない。
-- 受け手の読み直しや光源の重複は、走査の解像度（画素は 1/16）なので数十 µs 程度の見込み（本体の判断材料「手順7 で出た不具合と対処」で、全解像度で
-  受け手の遠方光を求め直すと約 +1 ms だったことからの推定）。
-
-## 未決事項（詰めるときに決める）
-
-- 枝の扱い（上）と、取り込みの衝突の大きさ（手順8 の枝は走査の `hemisphere-scan.ts` を変えている）。
-- 走査の解像度の G バッファの写しの形式（深度は単精度の生の値、法線は 8 進の 2 成分 — 元と同じ値を持てばビット一致）と、何を持たせるか
-  （深度と法線だけか、G バッファの画素の座標・視点座標の位置・接平面まで焼くか — 焼くほど読む側の計算が減るが、写しの段の費用と描画先の大きさが
-  増え、復号した値を焼くと別のシェーダで同じ式を評価するので丸め程度の差が出うる）。誰が描くか（照り返しの源が兼ねるか、独立の段か）。手順8 の
-  代表の縮小列（G バッファの画素の座標を焼いている）を写しの座標へ揃えるか。
-- `ShadingSample` の寄せ（十字の隣）をライティングパスに残したまま、走査と照り返しの源だけ読み直しを避ける形。
-- 費用の見込みと、効いた量を測る順（最も効く疑いの散らばった読みから測るか、軽いものからまとめるか）。変更ごとに同じページで前後を交互に測り、
-  段ごとの行で効いた量を記録する。
-- 調査で確かめていないこと — 生成された WGSL（同じ式が 2 回出ているか、共通部分式の削除・ループ不変の外出し・整数の割り算の包み方）、線形の
-  サンプラで読んだ法線と `textureLoad` の値が画素の中心で一致するか、補正を受ける画素の割合と天体照のモード・消灯スロットの頻度、各段の費用を
-  読みと演算のどちらが決めているか。生成された WGSL は Node で `WGSLNodeBuilder` とスタブの renderer から作れる（生成の前に `setRenderTarget` しないと
-  MRT の出力が落ちて空のシェーダになる）ので、詰める最初に見ておくと、重複のうち WGSL に 1 回しか出ないものを候補から外せる（ドライバのコンパイラが
-  消すかは、WGSL からは分からない — 測る）。
+| 手順 | 枝 | 絵の判定 | 見積り [ms] | 実測の効き E [ms] | 狙った行の比 | 採否 | commit | メモ |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
