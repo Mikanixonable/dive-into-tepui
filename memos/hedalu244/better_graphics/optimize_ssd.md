@@ -226,7 +226,10 @@ export interface ScanTier {
 }
 // 描画命令を組んでいるあいだの variant。変える箇所は組むときにこれを読み、0 なら新しい形、1 なら前の形を組む。
 export let buildingVariant: 0 | 1 = 0;
-// stagesByBandCount の鍵を `${count}:${variant}` にし、stagesOf は組むあいだだけ buildingVariant を段の variant にする。
+// stagesByBandCount の鍵を `${count}:${variant}` にし、currentStages が buildingVariant を段の variant にして、次に引くまで保つ
+// (TSL の Fn の中身は初めて描くときに組まれるので、組むあいだだけでは Fn の中で読んだ値が常に 0 になる)。照り返しの源(構築子で
+// 組む sourceStage)と代表の縮小列(surfaces.stagesUpTo)は variant の間で共有なので、そこを変える手順(2・8・9)は patch で
+// variant ごとに分ける。
 
 // ---- 道具(commit する。手順1) ----
 // tools/render-lab/lab.ts — measureTiers(422–442)はこれの巡の中央値にする
@@ -352,34 +355,6 @@ export function sideRays(
   C: の `%TEMP%\tepui-render-lab-*` に残っていたら消す）。
 - **配り方** — 各手順の実装・確かめ・計測はサブエージェントへ配り（`/delegate`）、止まる地点（絵の判定に落ちた、費用の判定が 2 か 3 に入った、
   1 標本のバイト数が上限を超えた）を渡す。採否と見積りの較正は配った側が行う。
-
-### 手順 1. 測定と絵の確かめの道具を揃え、分解能と着手前の費用を測る
-
-**目的** — 以後の全手順が同じ規則で前後を比べられるようにする。前後の 2 つの形を同じページに載せる一時の仕組み、同じセッションで中間の
-読み戻しを比べる道具、行ごとの対の比を測る道具、描画命令ごとの WGSL を出す口を作り、同じコードどうし（A/A'）で費用の分解能と絵の一致を
-確かめ、着手前の行ごとの費用を記録する。この時点で絵は変えない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `tools/render-lab/lab.ts` | `measureTierRounds` を足し、`measureTiers`（422–442）をその巡の中央値にする。読み戻しの名前（38–53）と `floatTextureOf`（595–617）へ `surface-radiance`（`screenSpace.surfaceRadianceTexture`）と `representative-1..3` を足す。`screenSpaceShaders` を足す。 |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` | `stageShaders` を足す。 |
-| `src/render/pipeline/screen-space/screen-space-input-pyramid.ts` | `representativeTexture(level)` を足す（`levelOf(level).target.texture`、140–143）。 |
-| `tools/screen-space-lab.mjs` | 道具の口に `measureTierRounds`・`screenSpaceShaders`・方式の切り替え（撮影ごとにオフで 1 度描くため）を足す。長い計測は `measureTiers` の口（262–270）と同じく、ページの中で走らせて待つ。 |
-| `tools/screen-space-ab.mjs`（新規） | `identity`（`--seeds` の多シードの比べ方を含む）・`cost`・`wgsl`（「主要な型と署名」）。撮影・読み戻し・比べ方・判定の表は「測定と判定の規則」のとおり。 |
-| `.render-lab-shots/ssd-opt/work/variant-8.patch`（新規、commit しない） | 一時の切り替え（`ScanTier.variant`・`buildingVariant`・`stagesOf`（246–272）の鍵）。 |
-
-**達成条件と検証**
-
-- patch を当て、variant 0 と 1 が同じコードのまま、`identity medium:1 medium:0 --out 1-aa` が 6 撮影 × 全読み戻しで差 0。
-- 同じく `identity medium:1 medium:0 --seeds 4 --out 1-aa-seeds` で、多シードの対の差が全成分 0（シードの切り替えと積み方の確かめ）。
-- `cost medium:1 medium:0` を 3 セッションで測り、B_和・B_行 を「実測の記録」に書く。B_和 > 2% なら巡 9 で測り直す。
-- 着手前の行ごとの費用（`cost` の前の側の巡の中央値 [ms]）・和・マテリアル行に対する比を記録する。単位の費用の元にした値（代表縮小 0.24 ms
-  など）からセッションの揺れを超えてずれていたら、見積りを置き直して並べ直す。
-- `wgsl medium:0 --out 1-wgsl` で全描画命令の WGSL が出て、走査の段の歩のループの中に G バッファの深度と法線の `textureLoad` と i32 の割り算が
-  あることを確かめる（以後の diff の基準）。
-- patch を外した状態で `npm run typecheck`・`npm run test:render` が通る。道具と口だけを commit する（`feat(tools): …`）。
 
 ### 手順 2. 代表の縮小列に段 0 の写しを足し、走査の歩が深度と法線を写しから読む
 
@@ -778,8 +753,26 @@ webpack 1 min + `identity`（2 variant × 2 方式のシェーダの組み立て
 
 手順を消すときに 1 行ずつ書き足す。E は近傍拡散補正の和が短くなった量（正が速い）、比は狙った行の r̃（最小〜最大）。
 
-**着手前**（手順1 で書く）— 行ごとの費用 [ms]（写し・照り返し源・走査・代表縮小・帯縮小・合流・拡大・和・マテリアル行）、分解能 B_和・B_行、
-単位の費用の置き直し。
+**着手前**（手順1、`35f6714ab`）— `cost medium:1 medium:0`（同じコードの A/A'）を 3 セッション。行ごとの費用は前の側の巡の中央値 [ms]。
+
+| 行 | A | B | C | B_行 |
+| --- | --- | --- | --- | --- |
+| 照り返し源 | 0.328 | 0.340 | 0.348 | 2.81% |
+| 走査 | 4.521 | 3.659 | 3.659 | 0.63% |
+| 代表縮小 | 0.220 | 0.230 | 0.218 | 4.10% |
+| 帯縮小 | 0.256 | 0.246 | 0.259 | 4.43% |
+| 合流 | 0.398 | 0.392 | 0.401 | 5.32% |
+| 拡大 | 3.129 | 3.280 | 3.267 | 0.25% |
+| 和 | 8.851 | 8.129 | 8.149 | 0.92%（B_和） |
+| マテリアル | 0.849 | 0.864 | 0.845 | 3.91% |
+
+- 分解能 B_和 = 0.92%（2% 以下なので巡 5 のまま）、B_和·T ≈ 0.075〜0.081 ms。A/A' の `identity` は 6 撮影 × 17 読み戻しで差 0、`--seeds 4` も
+  全成分 0。対照（`medium:0` と `low:0`）では 17 のうち 13 に差が出て、差を検出できる。
+- 走査はセッション A だけ 4.52 ms、B・C は 3.66 ms（0.81 倍）で、セッションの揺れ。単位の費用の元の 4.54 ms は A と同じ側なので、走査に比例する
+  見積り（手順2・4・5・6・10・12 の走査の分）は 0.81〜1 倍に縮みうるとみて読む。並びは変わらない。ほかの行は元の値の 0.9〜1.0 倍で、d は
+  代表縮小 3 本 0.22 ms から ≈ 0.073 ms。
+- 見積りの上限が B_和·T を下回る手順11・12 は、手順4・7 の較正の後に、決めたこと 7 で着手の要否を決める。
+- `wgsl medium:0`: 走査の歩のループの中に、i32 の割り算（`gbufferTexelOf`）と G バッファの深度・法線の `textureLoad` がある（以後の diff の基準）。
 
 | 手順 | 枝 | 絵の判定 | 見積り [ms] | 実測の効き E [ms] | 狙った行の比 | 採否 | commit | メモ |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
