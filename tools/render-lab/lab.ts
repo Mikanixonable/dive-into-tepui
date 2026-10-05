@@ -39,14 +39,18 @@ import type { Mat4Uniform } from '../../src/render/tsl-types';
 // は帯の縮小の段 m。枚数は WebGPU の既定の上限で書ける帯の数 5 の分だけ並べる。
 type PackedBandsName = `packed-bands-${0 | 1 | 2 | 3}` | `reduced-${1 | 2 | 3 | 4}-${0 | 1 | 2}`;
 const PACKED_BANDS_NAME_PATTERN = /^(?:packed-bands|reduced-(\d))-(\d)$/;
+// 近傍拡散補正の拡大と合流の段 k の出力の読み戻しの名前。
+type MergedName = `merged-${0 | 1 | 2 | 3}`;
+const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 
 // 読み戻せる浮動小数の中間ターゲット。PackedBandsName は、いまの段の帯の数の段 m の描画先が帯 m〜帯の数 − 1 を詰めた
 // i 枚目のテクスチャ(段の帯 b の rgb は、テクスチャを並べた通しのチャンネル 3(b − m)..3(b − m) + 2。帯の数 1 では
-// 'packed-bands-0' の rgb が帯に分けない補正)。'band-sum' は走査の帯の和(rgb、α は 0)。'scan-correction' は走査の
-// 解像度の、最後の拡大の前の補正(rgb。帯の数 1 では帯 0、2 以上では拡大と合流の段 0 の出力)。'hdr' は合成が読む線形の
-// 絵、'projected-radius' は受け手の近傍の半径が写る描画バッファの画素数で、面の無い画素は 0。
-export type FloatTargetName = PackedBandsName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse' | 'hdr'
-  | 'projected-radius';
+// 'packed-bands-0' の rgb が帯に分けない補正)。MergedName は、いまの段の帯の数の拡大と合流の段 k の出力(rgb は C_k)。
+// 'band-sum' は走査の帯の和(rgb、α は 0)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では
+// 帯 0、2 以上では 'merged-0' と同じ)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る描画
+// バッファの画素数で、面の無い画素は 0。
+export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse'
+  | 'hdr' | 'projected-radius';
 
 // accumulateWhitePasses が GPU の終わりを待つ間隔 [パス]。
 const WHITE_PASSES_PER_WAIT = 256;
@@ -596,9 +600,14 @@ export class LabView {
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
       case 'hdr': return this.pipeline.hdrTexture;
       default: {
+        const count = screenSpace.bandCount;
+        const [, mergedLevel] = MERGED_NAME_PATTERN.exec(name) ?? [];
+        if (mergedLevel !== undefined) {
+          if (Number(mergedLevel) >= count - 1) throw new Error(`render-lab: ${count} bands have no "${name}"`);
+          return diffuseCorrection.mergedTarget(count, Number(mergedLevel)).texture;
+        }
         // 帯を詰めたテクスチャは、いまの段の帯の数の、名前の段(無ければ走査の段 0)の描画先から引く。
         const [, level = '0', index] = PACKED_BANDS_NAME_PATTERN.exec(name)!;
-        const count = screenSpace.bandCount;
         const texture = Number(level) < count
           ? diffuseCorrection.bandTarget(count, Number(level)).textures[Number(index)] : undefined;
         if (texture === undefined) throw new Error(`render-lab: ${count} bands have no "${name}"`);
