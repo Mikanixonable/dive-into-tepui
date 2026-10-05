@@ -77,7 +77,9 @@ declare global {
       setScanStageRange: (range: ScreenSpaceStageRange) => void;
       setScanWhiteNoisePass: (pass: number | null) => void;
       accumulateWhitePasses: (first: number, count: number) => Promise<void>;
-      takePassSums: () => Promise<readonly (readonly FloatImage[])[]>;
+      takePassSums: () => Promise<{
+        readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
+      }>;
       writePackedBands: (index: number, rgba: Float32Array) => void;
       readFloat: (name: FloatTargetName) => Promise<FloatImage>;
       composite: (hdr: FloatImage) => Promise<FloatImage>;

@@ -45,7 +45,7 @@ export function statisticsOf(slots, scale, passes) {
 }
 
 // n 個の値の和 sum と二乗和 squareSum からの不偏分散。
-const unbiasedVarianceOf = (sum, squareSum, n) => (squareSum - sum * sum / n) / (n - 1);
+export const unbiasedVarianceOf = (sum, squareSum, n) => (squareSum - sum * sum / n) / (n - 1);
 
 // 測る画素の印の外の色(sRGB の符号値)。
 const UNMEASURED = [0, 0, 80];

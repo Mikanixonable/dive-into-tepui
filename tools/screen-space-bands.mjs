@@ -1,14 +1,14 @@
 // 近傍拡散補正の走査の帯の撮影。候補の段 1 つで、撮影ごとに (1) 帯の収束先 — 走査のずれをホワイトノイズから引いたパスを
-// ページの GPU で偶数番目と奇数番目に分けて積んだ、帯ごとと帯の和の平均・偶数番目と奇数番目の平均 — と、(2) 本番のブルー
-// ノイズの先頭のパスの帯の値(半精度のまま)とその C_0 の統計を、.render-lab-shots/ssd-bands/<出力先>/ へ書く。鎖のやり直し
-// (rechain)が読む。撮影ごとに書くので、落ちても撮り終えた撮影を飛ばして続きから撮れる。
+// ページの GPU で偶数番目と奇数番目に分けて積んだ、帯ごとと帯の和の平均・偶数番目と奇数番目の平均と、帯ごとの 1 パスの
+// 分散 — と、(2) 本番のブルーノイズの先頭のパスの帯の値(半精度のまま)とその C_0 の統計を、.render-lab-shots/ssd-bands/
+// <出力先>/ へ書く。鎖のやり直し(rechain)が読む。撮影ごとに書くので、落ちても撮り終えた撮影を飛ばして続きから撮れる。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   fixed, headHash, maskedMeanOf, packedBandsNamesOf, seedOf, selectedEntries, shotsDir, table, TIERS, unpackedBand,
   withLab, writeFloats,
 } from './screen-space-lab.mjs';
-import { BLOCKS, keptPassesFileOf, scanMaskOf, statisticsOf } from './screen-space-scan.mjs';
+import { BLOCKS, keptPassesFileOf, scanMaskOf, statisticsOf, unbiasedVarianceOf } from './screen-space-scan.mjs';
 
 const USAGE = 'usage: bands [<candidate.json>] [--entries <key,...>] [--sets <set,...>] [--passes <N>] [--keep-passes <K>] '
   + '[--out <名前>]';
@@ -86,18 +86,26 @@ async function captureShot(lab, dir, entry, { candidate, passes, keptPasses }) {
   // ΔE から q(露出係数·ΔE/π)への係数。
   const scale = exposure / Math.PI;
   const whiteStarted = Date.now();
-  const halves = await whitePassSumsOf(lab, passes);
+  const { sums, squares } = await whitePassSumsOf(lab, passes);
   const passSeconds = (Date.now() - whiteStarted) / 1000 / passes;
   const [width, height] = await lab.floatSizeOf('packed-bands-0');
   const write = (kind, values) => writeFloats(path.join(dir, 'data', `${entry.key}.${label}.${kind}.f32`), Float32Array.from(values));
   // 帯ごとの偶数番目・奇数番目の平均(q)。
-  const bandHalves = Array.from({ length: tier.bandCount }, (_, band) => halves.map(
+  const bandHalves = Array.from({ length: tier.bandCount }, (_, band) => sums.map(
     (packed) => unpackedBand(packed, band).map((v) => scale * v / (passes / 2))));
   const sumHalves = [0, 1].map((h) => bandHalves[0][h].map((_, i) => bandHalves.reduce((sum, b) => sum + b[h][i], 0)));
   for (const [name, [even, odd]] of [...bandHalves.map((b, band) => [`band${band}`, b]), ['sum', sumHalves]]) {
     write(`${name}.mean`, even.map((v, i) => (v + odd[i]) / 2));
     write(`${name}.even`, even);
     write(`${name}.odd`, odd);
+  }
+  // 帯ごとの、1 パスの値の画素ごとの不偏分散(q²)。
+  for (let band = 0; band < tier.bandCount; band++) {
+    const [sum, square] = [sums, squares].map((halves) => {
+      const [even, odd] = halves.map((packed) => unpackedBand(packed, band));
+      return even.map((v, i) => v + odd[i]);
+    });
+    write(`band${band}.variance`, sum.map((s, i) => scale * scale * unbiasedVarianceOf(s, square[i], passes)));
   }
   const keptStarted = Date.now();
   if (keptPasses > 0) await captureKeptPasses(lab, dir, entry.key, candidate, keptPasses, scale);
@@ -114,19 +122,22 @@ async function captureShot(lab, dir, entry, { candidate, passes, keptPasses }) {
   };
 }
 
-// 表示中の撮影の、ホワイトノイズのパス 0〜passes − 1 の、帯を詰めたテクスチャの和 [偶数番目, 奇数番目](テクスチャごとに
-// 画素ごとの RGBA の ΔE の和。Float64Array)。
+// 表示中の撮影の、ホワイトノイズのパス 0〜passes − 1 の、帯を詰めたテクスチャの値の和 sums と成分ごとの二乗の和 squares。
+// どちらも [偶数番目, 奇数番目] の、テクスチャごとに画素ごとの RGBA の(ΔE の)和の Float64Array。
 async function whitePassSumsOf(lab, passes) {
-  let halves = null;
+  const zerosOf = (halves) => halves.map((textures) => textures.map((values) => new Float64Array(values.length)));
+  let totals = null;
   for (let first = 0; first < passes; first += PASSES_PER_TAKE) {
     await lab.accumulateWhitePasses(first, Math.min(PASSES_PER_TAKE, passes - first));
-    const sums = await lab.takePassSums();
-    halves ??= sums.map((textures) => textures.map((values) => new Float64Array(values.length)));
-    for (const [h, textures] of sums.entries()) {
-      for (const [i, values] of textures.entries()) values.forEach((v, j) => { halves[h][i][j] += v; });
+    const taken = await lab.takePassSums();
+    totals ??= { sums: zerosOf(taken.sums), squares: zerosOf(taken.squares) };
+    for (const kind of ['sums', 'squares']) {
+      for (const [h, textures] of taken[kind].entries()) {
+        for (const [i, values] of textures.entries()) values.forEach((v, j) => { totals[kind][h][i][j] += v; });
+      }
     }
   }
-  return halves;
+  return totals;
 }
 
 // 表示中の撮影 key を、候補 candidate の段のブルーノイズのパス 0〜count − 1 で撮り、帯を詰めたテクスチャの値を半精度のまま
@@ -180,6 +191,8 @@ function reportOf({ head, passes, keptPasses, candidates: [candidate], entries, 
     '', '## 保存したもの', '',
     '- `data/<撮影>.<候補>.{band<ℓ>,sum}.{mean,even,odd}.f32` — 帯 ℓ と帯の和の q の、ホワイトノイズの全パスの平均と偶数番目・',
     '  奇数番目のパスの平均。単精度で、走査の解像度の画素ごとに rgb、行は上から。',
+    '- `data/<撮影>.<候補>.band<ℓ>.variance.f32` — 帯 ℓ の、ホワイトノイズの 1 パスの値の画素ごとの不偏分散(q²)。並びは',
+    '  mean と同じ。帯の和の分散は帯どうしの共分散が要るので出さない。',
     `- \`data/<撮影>.<候補>.packed<i>.passes.f16\` — 先頭 ${keptPasses} パス(ブルーノイズ)の、走査が帯を詰めた描画先の i 枚目の`,
     '  値(ΔE)。パスの順に、走査の解像度の画素ごとに RGBA を半精度で並べたもの(帯 b の成分 c は通しのチャンネル 3b + c)。',
     '- `data/<撮影>.<候補>.kept-c0.{mean,variance,even,odd}.f32` — その残したパスの C_0 の q の統計。',
