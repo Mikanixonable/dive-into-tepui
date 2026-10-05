@@ -113,6 +113,11 @@ export class ScreenSpaceInputPyramid {
     return Array.from({ length: levelCount - 1 }, (_, index) => this.levelOf(index + 1));
   }
 
+  // 段 level(1 以上)の代表の描画先のテクスチャ(rg = G バッファの画素の整数座標)。まだ無い段は、このときに作る。
+  public representativeTexture(level: number): THREE.Texture {
+    return this.levelOf(level).target.texture;
+  }
+
   // 作った段の描画先。
   public get targets(): readonly THREE.RenderTarget[] {
     return this.levels.map(({ target }) => target);

@@ -169,6 +169,18 @@ async function receiveFloats(devTools, source, length, type = Float32Array) {
   return out;
 }
 
+// ページの式 promise が解決する値(小さな JSON)を、ページの中で走らせて終わりを待って受け取る。CDP の 1 要求の待ち
+// (60 秒)を越える処理のためのもの。label は失敗と時間切れの知らせに添える名前。
+async function awaitInPage(devTools, promise, label, timeoutMs = MEASURE_TIMEOUT_MS) {
+  await devTools.evaluate(`(window.__ssdTask = null, Promise.resolve().then(() => ${promise})
+    .then((value) => { window.__ssdTask = { value }; }, (e) => { window.__ssdTask = { error: String(e) }; }), 0)`);
+  await waitFor(devTools, 'window.__ssdTask !== null', label, timeoutMs);
+  const { value, error } = await devTools.evaluate('window.__ssdTask');
+  await devTools.evaluate('delete window.__ssdTask');
+  if (error !== undefined) throw new Error(`${label} failed: ${error}`);
+  return value;
+}
+
 // ページの式 source が解決する Float32Array を受け取る。
 async function receiveResolvedFloats(devTools, source) {
   const length = await devTools.evaluate(
@@ -257,16 +269,103 @@ function labOf(devTools) {
     },
     setTarget: (target) => call(`setTarget(${JSON.stringify(target)})`),
     exposureFactor: () => call('exposureFactor()'),
-    // 段 tiers を rounds 巡交互に測る。段と巡が多いと CDP の 1 要求の待ちを越えるので、ページの中で走らせて
-    // 終わりを待つ。
-    async measureTiers(tiers, rounds) {
-      await devTools.evaluate(`(window.__ssdCosts = null, window.renderLab.measureTiers(${JSON.stringify(tiers)}, ${rounds})
-        .then((costs) => { window.__ssdCosts = { costs }; }, (e) => { window.__ssdCosts = { error: String(e) }; }), 0)`);
-      await waitFor(devTools, 'window.__ssdCosts !== null', 'the tier costs', MEASURE_TIMEOUT_MS);
-      const { costs, error } = await devTools.evaluate('window.__ssdCosts');
-      await devTools.evaluate('delete window.__ssdCosts');
-      if (error !== undefined) throw new Error(`measureTiers failed: ${error}`);
-      return costs;
+    // 段 tiers を rounds 巡交互に測り、段ごとの GPU の行の名前から p50 [ms] の巡の中央値への表を返す。
+    measureTiers: (tiers, rounds) => awaitInPage(devTools,
+      `window.renderLab.measureTiers(${JSON.stringify(tiers)}, ${rounds})`, 'the tier costs'),
+    // 段 tiers を rounds 巡交互に測り、[段][巡] の GPU の行の名前から p50 [ms] への表を返す。GPU の計測に未対応なら null。
+    measureTierRounds: (tiers, rounds) => awaitInPage(devTools,
+      `window.renderLab.measureTierRounds(${JSON.stringify(tiers)}, ${rounds})`, 'the tier rounds'),
+    // いまの段の近傍拡散補正の描画命令の、実行順の [{ label, wgsl }](label は GPU の行の名前)。
+    async screenSpaceShaders() {
+      const count = await awaitInPage(devTools, `window.renderLab.screenSpaceShaders()
+        .then((shaders) => { window.__ssdShaders = shaders; return shaders.length; })`, 'the stage shaders');
+      const shaders = [];
+      for (let i = 0; i < count; i++) shaders.push(await devTools.evaluate(`window.__ssdShaders[${i}]`));
+      await devTools.evaluate('delete window.__ssdShaders');
+      return shaders;
+    },
+    // 近傍拡散補正の方式をオフにして 1 フレーム描き、その全描画先を空にする。方式は撮影のものへ戻り、段は保つ。
+    clearScreenSpace: () => call('clearScreenSpace()'),
+    // 走査のずれを、pass が null ならブルーノイズ(本番)から、整数ならパスの番号 pass のホワイトノイズから引く。
+    setWhiteNoisePass: (pass) => call(`setScanWhiteNoisePass(${JSON.stringify(pass)})`),
+    // 描き直しては中間ターゲット names を読み戻し、続けて 2 回がビットで同じになった読み戻しを返す。返り値は
+    // { renders, images } で、renders は描いた回数、images は names の順の { width, height, rgba }(rgba は画素ごとに RGBA の
+    // Float32Array)。MAX_SETTLE_CAPTURES 回描いても揃わなければ投げる。
+    async readSettled(names) {
+      const { renders, sizes } = await awaitInPage(devTools, `(async () => {
+        const sameBits = (a, b) => {
+          const [x, y] = [a, b].map((v) => new Uint32Array(v.buffer, v.byteOffset, v.length));
+          return x.length === y.length && x.every((bits, i) => bits === y[i]);
+        };
+        let previous = null;
+        for (let renders = 1; renders <= ${MAX_SETTLE_CAPTURES}; renders++) {
+          window.renderLab.render();
+          const images = [];
+          for (const name of ${JSON.stringify(names)}) images.push(await window.renderLab.readFloat(name));
+          if (previous !== null && images.every((image, i) => sameBits(image.rgba, previous[i].rgba))) {
+            window.__ssdSettled = images;
+            return { renders, sizes: images.map(({ width, height }) => [width, height]) };
+          }
+          previous = images;
+        }
+        throw new Error('the readbacks did not settle within ${MAX_SETTLE_CAPTURES} renders');
+      })()`, 'the settled readbacks');
+      const images = [];
+      for (const [i, [width, height]] of sizes.entries()) {
+        const rgba = await receiveFloats(devTools, `window.__ssdSettled[${i}].rgba`, width * height * 4);
+        images.push({ width, height, rgba });
+      }
+      await devTools.evaluate('delete window.__ssdSettled');
+      return { renders, images };
+    },
+    // seed([x, y])の 1 フレームを段 before → after の順に描き、中間ターゲット names の rgb の対の差 d = after − before を、
+    // ページの中に name ごとに積む和と二乗和(倍精度)へ足す。積んだ回数が earlyCount になったら、その時点の和を控える。
+    // 最初に積んだフレームの両方の読み戻しも控える。積んだものは takePairDifferences で受け取る。
+    accumulatePairDifference: (names, [x, y], before, after, earlyCount) => awaitInPage(devTools, `(async () => {
+      const read = async () => {
+        const images = [];
+        for (const name of ${JSON.stringify(names)}) images.push(await window.renderLab.readFloat(name));
+        return images;
+      };
+      window.renderLab.setScanSeed(${x}, ${y});
+      window.renderLab.setScanTier(${JSON.stringify(before)});
+      window.renderLab.render();
+      const befores = await read();
+      window.renderLab.setScanTier(${JSON.stringify(after)});
+      window.renderLab.render();
+      const afters = await read();
+      for (const [i, name] of ${JSON.stringify(names)}.entries()) {
+        const { width, height, rgba } = afters[i];
+        const pair = ((window.__ssdPairs ??= {})[name] ??= { width, height, count: 0,
+          sum: new Float64Array(width * height * 3), squareSum: new Float64Array(width * height * 3), early: null,
+          first: { before: befores[i].rgba, after: rgba } });
+        for (let p = 0; p < width * height; p++) {
+          for (let c = 0; c < 3; c++) {
+            const d = rgba[4 * p + c] - befores[i].rgba[4 * p + c];
+            pair.sum[3 * p + c] += d;
+            pair.squareSum[3 * p + c] += d * d;
+          }
+        }
+        pair.count++;
+        if (pair.count === ${earlyCount}) pair.early = Float64Array.from(pair.sum);
+      }
+    })()`, 'the pair difference'),
+    // accumulatePairDifference で積んだ name の { width, height, count, sum, squareSum, early, first } を受け取り、ページから
+    // 消す。sum・squareSum・early(控えていなければ null)は画素ごとに rgb の Float64Array、first は最初に積んだフレームの
+    // { before, after }(画素ごとに RGBA の Float32Array)。
+    async takePairDifferences(name) {
+      const source = `window.__ssdPairs[${JSON.stringify(name)}]`;
+      const [width, height, count, hasEarly] = await devTools.evaluate(
+        `[${source}.width, ${source}.height, ${source}.count, ${source}.early !== null]`);
+      const receive = (key) => receiveFloats(devTools, `${source}.${key}`, width * height * 3, Float64Array);
+      const receiveFirst = (key) => receiveFloats(devTools, `${source}.first.${key}`, width * height * 4);
+      const taken = {
+        width, height, count, sum: await receive('sum'), squareSum: await receive('squareSum'),
+        early: hasEarly ? await receive('early') : null,
+        first: { before: await receiveFirst('before'), after: await receiveFirst('after') },
+      };
+      await devTools.evaluate(`delete ${source}`);
+      return taken;
     },
     // いまの絵を、連続する 2 回が一致するまで撮り直して PNG の Buffer で返す。
     async capturePng() {
