@@ -204,9 +204,9 @@ export function projectedRadius(position: Vec3Node, projection: Mat4Uniform, sca
 function surfaceAt(
   surfaces: ScanSurfaces, gbufferSize: Vec2Node, projectionInverse: Mat4Uniform, pixel: Vec2Node,
 ): GBufferSurface {
-  const texel = gbufferTexelOf(pixel, gbufferSize, screenSize).toVar();
-  const uv = texelCenterUV(texel, gbufferSize).toVar();
   const surface = surfaces.scanSurfaceAt(ivec2(pixel));
+  const texel = surface.texel.toVar();
+  const uv = texelCenterUV(texel, gbufferSize).toVar();
   const rawDepth = surface.depth.toVar();
   const surfaceNormal = vec3(0, 0, 1).toVar();
   If(rawDepth.greaterThan(0), () => {
