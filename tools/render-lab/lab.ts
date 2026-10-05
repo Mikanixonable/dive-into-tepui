@@ -49,7 +49,7 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // 'packed-bands-0' の rgb が帯に分けない補正)。MergedName は、いまの段の帯の数の拡大と合流の段 k の出力(rgb は C_k)。
 // 'band-sum' は走査の帯の和(rgb、α は 0)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では
 // 帯 0、2 以上では 'merged-0' と同じ)。'surface-radiance' は照り返しの源(走査の解像度の rgb)、'representative-ℓ' は代表の
-// 段 ℓ の G バッファの画素の整数座標(rg、ba は 0)。'scan-surface-0' は走査の面の写しの (G バッファの画素の x, y,
+// 段 ℓ の G バッファの画素の整数座標と素の深度(rgb、a は 0)。'scan-surface-0' は走査の面の写しの (G バッファの画素の x, y,
 // 素の深度, 0)、'scan-surface-1' はその法線の rg(ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の
 // 半径が写る描画バッファの画素数で、面の無い画素は 0。
 export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse'

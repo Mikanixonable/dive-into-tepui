@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, float, floor, int, ivec2, log, max, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign, texture,
-  textureLoad, uniform, vec3, vec4,
+  uniform, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from './gbuffer';
 import { compositeMaterial } from './composite-material';
@@ -132,17 +132,12 @@ export class DebugComposites {
     return vec4(this.signedCorrection(vec4(value, 1)), 1);
   }
 
-  // 段 level の代表の面の法線を 0..1 へ写した色。代表に面がなければ黒。段 0 は面の写しを直接読む。
+  // 段 level の代表の面の法線を 0..1 へ写した色。代表に面がなければ黒。段の写しの法線を直接読む。
   private representativeNormal(level: number): Vec3Node {
     const surfaces = this.screenSpacePass.inputPyramid;
     const pixel = ivec2(floor(screenUV.mul(surfaces.sizeAt(level))));
-    if (level === 0) {
-      const { depth, encodedNormal } = surfaces.scanSurfaceAt(pixel);
-      return select(depth.greaterThan(0), octDecodeNormal(encodedNormal).mul(0.5).add(0.5), vec3(0));
-    }
-    const texel = surfaces.representativeAt(level, pixel);
-    const normal = octDecodeNormal(textureLoad(this.gbuffer.normalTexture, texel).rg).mul(0.5).add(0.5);
-    return select(surfaces.hasSurface(texel), normal, vec3(0));
+    const { depth, encodedNormal } = surfaces.surfaceAt(level, pixel);
+    return select(depth.greaterThan(0), octDecodeNormal(encodedNormal).mul(0.5).add(0.5), vec3(0));
   }
 
   // 深度と影スロットの表示が読む実カメラ camera の値を書き込む。

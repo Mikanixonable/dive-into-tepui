@@ -179,15 +179,14 @@ export class BandPyramid {
   // 面の重みで平均する。段 level の代表に面がなければ 0。**Fn の中から呼ぶこと。**
   public reduced(finer: readonly THREE.Texture[], count: number, level: number): Vec4Node[] {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
-    const representative = this.surfaces.representativeAt(level, pixel).toVar();
+    const representative = this.surfaces.surfaceAt(level, pixel);
     const outputs = Array.from({ length: packedTextureCount(count, level) }, () => vec4(0).toVar());
-    If(this.surfaces.hasSurface(representative), () => {
-      const receiver = this.weight.receiverAt(this.weight.surfaceAt(representative));
+    If(representative.depth.greaterThan(0), () => {
+      const receiver = this.weight.receiverAt(representative);
       const { distance, angle } = this.toleranceAt(level);
       // 子の代表自身は重み 1 なので、重みの和は 1 以上。
       const children = this.surfaces.childrenOf(pixel).map((child) => {
-        const exponent = this.weight.exponentOf(
-          receiver, this.weight.surfaceAt(this.surfaces.representativeAt(level - 1, child)), distance, angle);
+        const exponent = this.weight.exponentOf(receiver, this.surfaces.surfaceAt(level - 1, child), distance, angle);
         const weight = select(this.surfaces.contains(level - 1, child), exp2(exponent.negate()), float(0)).toVar();
         // 子の先頭の帯は段 level − 1 の帯で、段 level へは持ち上げない。
         const { bands: [, ...bands], effectivePixels } = levelAt(finer, count, level - 1, child);
@@ -208,17 +207,16 @@ export class BandPyramid {
     level: number,
   ): Vec4Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
-    const representative = this.surfaces.representativeAt(level, pixel).toVar();
+    const representative = this.surfaces.surfaceAt(level, pixel);
     const result = vec4(0).toVar();
-    If(this.surfaces.hasSurface(representative), () => {
-      const receiver = this.weight.receiverAt(this.weight.surfaceAt(representative));
+    If(representative.depth.greaterThan(0), () => {
+      const receiver = this.weight.receiverAt(representative);
       // 段 level + 1 の 4 画素の面の重みは、その代表を段 level の代表と比べたもの(画面の外は 0)。
       const { distance, angle } = this.toleranceAt(level + 1);
       const containing = pixel.div(2);
       const parents = coarseNeighbors(vec2(pixel)).map(({ texel, weight }): ParentPixel => {
         const parent = ivec2(texel).toVar();
-        const exponent = this.weight.exponentOf(
-          receiver, this.weight.surfaceAt(this.surfaces.representativeAt(level + 1, parent)), distance, angle);
+        const exponent = this.weight.exponentOf(receiver, this.surfaces.surfaceAt(level + 1, parent), distance, angle);
         const coarseValue = textureLoad(coarse, parent);
         return {
           bilinear: weight,
