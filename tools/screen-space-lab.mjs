@@ -25,9 +25,9 @@ const MODE = { occlusion: 1, indirect: 2 };
 // アンチエイリアス(値 0 はなし)は表示を縁の向こうへ広げ、どちらも基準の合成には掛からないので切る。
 const EVALUATION_GRAPHICS = { lens: false, antialias: 0 };
 
-// 評価の組。set は tuning(調整用)・checking(確認用)・correctness(解析値との照合)・flicker(ちらつき)、mode は
-// 描画設定 screenSpaceDiffuse の値、dolly はカメラの距離の倍率の常用対数。key は撮影名に、遮蔽の方式なら
-// @occlusion、カメラを引いたなら @dolly<フレーム> を付けたもの。
+// 評価の組。set は tuning(調整用)・checking(確認用)・correctness(解析値との照合)・flicker(ちらつき)・holes(拡大の
+// 重みの全滅による欠けの再現)、mode は描画設定 screenSpaceDiffuse の値、dolly はカメラの距離の倍率の常用対数。key は
+// 撮影名に、遮蔽の方式なら @occlusion、カメラを引いたなら @dolly<フレーム> を付けたもの。
 const DOLLY_STEP = 0.0005;
 const DOLLY_FRAMES = 6;
 const entry = (set, caseName, shot, mode = MODE.indirect, dolly = 0) => {
@@ -51,6 +51,7 @@ export const ENTRIES = [
     'plane-moon-horizon', 'plane-ambient', 'plane-earth-low-grazing', 'plane-ambient-grazing',
   ].flatMap((shot) => Object.values(MODE).map((mode) => entry('correctness', 'plane', shot, mode))),
   ...Array.from({ length: DOLLY_FRAMES }, (_, k) => entry('flicker', 'bay', 'bay', MODE.indirect, (k + 1) * DOLLY_STEP)),
+  ...['clutter', 'clutter-far'].map((shot) => entry('holes', 'clutter', shot)),
 ];
 
 // 評価の組のうち、entries(撮影の key を , で並べた文字列)と sets(set を , で並べた文字列)の両方に当たるもの。
