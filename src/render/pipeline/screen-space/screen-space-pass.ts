@@ -152,7 +152,7 @@ export class ScreenSpacePass {
     const weight = new SurfaceWeight(gbuffer, this.projection, this.projectionInverse, this.fullSize);
     this.surfaces = new ScreenSpaceInputPyramid(gbuffer, this.projectionInverse, this.fullSize, this.scanSize);
     this.bandPyramid = new BandPyramid(this.surfaces, weight, this.fullSize, this.scanSize);
-    this.reconstruction = new CorrectionReconstruction(weight, this.fullSize, this.scanSize);
+    this.reconstruction = new CorrectionReconstruction(weight, this.surfaces, this.fullSize, this.scanSize);
     this.sourceStage = this.createSourceStage(sun);
   }
 
