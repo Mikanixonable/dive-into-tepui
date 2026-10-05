@@ -1,16 +1,13 @@
 // 受け手の面に対する、G バッファの画素の面の重み。受け手の接平面から離れた面と、向きの違う面の重みを落とす。
-import type * as THREE from 'three/webgpu';
 import { cos, dot, float, getViewPosition, select, textureLoad, transpose, vec4 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { texelCenterUV } from './hemisphere-scan';
 import type { GBufferPass } from '../gbuffer';
+import type { Texel } from './texel-surface';
 import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 面の写っていない標本の重みの指数。重みは 0 になる。
 export const VOID_EXPONENT = 1e4;
-
-// G バッファの画素の整数座標。
-export type Texel = THREE.Node<'ivec2'>;
 
 // 重みを測る受け手の面。texel は受け手の G バッファの画素。接平面は、逆射影する前の座標 c = (NDC の xy, 素の深度, 1) の
 // 一次式で持ち、dot(plane, c) / dot(w, c) が c の点の接平面からの符号付きの距離 [m] になる。position と normal は受け手の

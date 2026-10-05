@@ -49,11 +49,13 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // 'packed-bands-0' の rgb が帯に分けない補正)。MergedName は、いまの段の帯の数の拡大と合流の段 k の出力(rgb は C_k)。
 // 'band-sum' は走査の帯の和(rgb、α は 0)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では
 // 帯 0、2 以上では 'merged-0' と同じ)。'surface-radiance' は照り返しの源(走査の解像度の rgb)、'representative-ℓ' は代表の
-// 段 ℓ の G バッファの画素の整数座標(rg、ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が
-// 写る描画バッファの画素数で、面の無い画素は 0。
+// 段 ℓ の G バッファの画素の整数座標(rg、ba は 0)。'scan-surface-0' は走査の面の写しの (G バッファの画素の x, y,
+// 素の深度, 0)、'scan-surface-1' はその法線の rg(ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の
+// 半径が写る描画バッファの画素数で、面の無い画素は 0。
 export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse'
-  | 'surface-radiance' | `representative-${1 | 2 | 3}` | 'hdr' | 'projected-radius';
+  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius';
 const REPRESENTATIVE_NAME_PATTERN = /^representative-(\d)$/;
+const SCAN_SURFACE_NAME_PATTERN = /^scan-surface-([01])$/;
 
 // 描画先の形式ごとの、画素あたりの成分の数。
 const CHANNELS_OF_FORMAT: Readonly<Partial<Record<THREE.AnyPixelFormat, number>>> = {
@@ -636,6 +638,10 @@ export class LabView {
       case 'hdr': return this.pipeline.hdrTexture;
       default: {
         const count = screenSpace.bandCount;
+        const [, scanSurfaceIndex] = SCAN_SURFACE_NAME_PATTERN.exec(name) ?? [];
+        if (scanSurfaceIndex !== undefined) {
+          return screenSpace.inputPyramid.scanSurfaceTexture(Number(scanSurfaceIndex) as 0 | 1);
+        }
         // 代表の段は、いまの段の帯の数の鎖が読む段 1..帯の数 − 1。
         const [, representativeLevel] = REPRESENTATIVE_NAME_PATTERN.exec(name) ?? [];
         if (representativeLevel !== undefined) {

@@ -7,7 +7,8 @@ import {
   If, clamp, exp2, float, floor, ivec2, max, min, screenSize, screenUV, select, textureLoad, vec2, vec3, vec4,
 } from 'three/tsl';
 import type { ScreenSpaceInputPyramid } from './screen-space-input-pyramid';
-import type { SurfaceWeight, Texel } from './surface-weight';
+import type { SurfaceWeight } from './surface-weight';
+import type { Texel } from './texel-surface';
 import type { BoolNode, FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // RGBA のテクスチャ 1 枚のチャンネルの数。

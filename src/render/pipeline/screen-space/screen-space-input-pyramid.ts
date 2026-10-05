@@ -1,15 +1,16 @@
 // 近傍拡散補正の段ごとの代表の面。段 ℓ の画素は走査の 2^ℓ 画素四方を受け持ち、その中で実在する G バッファの画素 1 つを
-// 代表に持つ。段 0 の代表は走査の画素が読む G バッファの画素で、段 1 から上は描画先へ焼く。段の寸法の規則もここが持つ。
+// 代表に持つ。段 0 の代表は走査の画素が読む G バッファの画素で、その面の値は走査の解像度の描画先へ写す。段 1 から上は
+// 代表の座標を描画先へ焼く。段の寸法の規則もここが持つ。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, ceil, float, floor, getViewPosition, ivec2, max, min, mrt, screenSize, screenUV, select, textureLoad, vec2,
+  Fn, ceil, float, floor, getViewPosition, ivec2, max, min, mrt, screenSize, screenUV, select, textureLoad, vec2, vec4,
 } from 'three/tsl';
 import { GPU_PASS } from '../../gpu-timings';
 import { gbufferTexelOf, texelCenterUV } from './hemisphere-scan';
 import { QUAD_OFFSETS } from './band-pyramid';
-import { stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
+import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
 import type { GBufferPass } from '../gbuffer';
-import type { Texel } from './surface-weight';
+import type { ScanSurfaces, Texel, TexelSurface } from './texel-surface';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node } from '../../tsl-types';
 
 // 面のない子の、視点からの深さ [m]。どの面よりも遠い。
@@ -68,7 +69,25 @@ function createLevelTarget(level: number): THREE.RenderTarget {
   return target;
 }
 
-export class ScreenSpaceInputPyramid {
+// 段 0 の面の写しの描画先。1 枚目は rgba32float で (G バッファの画素の x, y, 素の深度, 0)、2 枚目は rg16float で法線の rg。
+// 1 枚目の rgba32float はフィルタできず、どちらも textureLoad だけで読むので、サンプラを Nearest に明示する。
+function createScanSurfaceTarget(): THREE.RenderTarget {
+  const target = new THREE.RenderTarget(1, 1, {
+    count: 2, type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  });
+  const [locatedTexture, normalTexture] = target.textures;
+  locatedTexture!.name = 'scanSurfaceLocated';
+  normalTexture!.name = 'scanSurfaceNormal';
+  normalTexture!.format = THREE.RGFormat;
+  normalTexture!.type = THREE.HalfFloatType;
+  return target;
+}
+
+export class ScreenSpaceInputPyramid implements ScanSurfaces {
+  // 段 0 の面の写しを書く描画命令。
+  public readonly scanStage: ScreenSpaceStage;
+  private readonly scanTarget = createScanSurfaceTarget();
   // 段 1 から順の、代表を焼く描画命令(描画先は段の代表の描画先)。必要になった段まで作る。
   private readonly levels: ScreenSpaceStage[] = [];
 
@@ -77,7 +96,29 @@ export class ScreenSpaceInputPyramid {
   public constructor(
     private readonly gbuffer: GBufferPass, private readonly projectionInverse: Mat4Uniform,
     private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
-  ) {}
+  ) {
+    const material = multiOutputMaterial(this.scanTarget, () => {
+      const texel = gbufferTexelOf(floor(screenUV.mul(screenSize)), this.fullSize, this.scanSize).toVar();
+      return [
+        vec4(vec2(texel), textureLoad(this.gbuffer.depthTexture, texel).r, 0),
+        vec4(textureLoad(this.gbuffer.normalTexture, texel).rg, 0, 0),
+      ];
+    });
+    this.scanStage = { material, target: this.scanTarget, gpuPass: GPU_PASS.nearbyDiffuseScanSurface };
+  }
+
+  // 走査の画素 pixel(整数座標)が表す G バッファの画素の面。段 0 の写しを書いた後に読むこと。
+  public scanSurfaceAt(pixel: Texel): TexelSurface {
+    const located = textureLoad(this.scanTarget.textures[0]!, pixel);
+    return {
+      texel: ivec2(located.xy), depth: located.z, encodedNormal: textureLoad(this.scanTarget.textures[1]!, pixel).xy,
+    };
+  }
+
+  // 段 0 の面の写しのテクスチャ index(0 が (x, y, 素の深度)、1 が法線の rg)。
+  public scanSurfaceTexture(index: 0 | 1): THREE.Texture {
+    return this.scanTarget.textures[index]!;
+  }
 
   // 段 level の画素 pixel(整数座標)の代表の G バッファの画素。段 1 から上は、その段を焼いた後に読むこと。
   public representativeAt(level: number, pixel: Texel): Texel {
@@ -118,14 +159,17 @@ export class ScreenSpaceInputPyramid {
     return this.levelOf(level).target.texture;
   }
 
-  // 作った段の描画先。
+  // 段 0 の写しと、作った段の描画先。
   public get targets(): readonly THREE.RenderTarget[] {
-    return this.levels.map(({ target }) => target);
+    return [this.scanTarget, ...this.levels.map(({ target }) => target)];
   }
 
-  // 作った段の描画先を、走査の寸法 scanWidth × scanHeight から決まる段の寸法へ合わせる。寸法が変わった描画先だけを
-  // 確保し直す。
+  // 段 0 の写しと作った段の描画先を、走査の寸法 scanWidth × scanHeight から決まる段の寸法へ合わせる。寸法が変わった
+  // 描画先だけを確保し直す。
   public setSize(scanWidth: number, scanHeight: number): void {
+    if (this.scanTarget.width !== scanWidth || this.scanTarget.height !== scanHeight) {
+      this.scanTarget.setSize(scanWidth, scanHeight);
+    }
     for (const [index, { target }] of this.levels.entries()) {
       const width = levelExtent(scanWidth, index + 1);
       const height = levelExtent(scanHeight, index + 1);
@@ -133,9 +177,9 @@ export class ScreenSpaceInputPyramid {
     }
   }
 
-  // 作った段の描画先とマテリアルを解放する。
+  // 段 0 の写しと作った段の描画先とマテリアルを解放する。
   public dispose(): void {
-    for (const { target, material } of this.levels) {
+    for (const { target, material } of [this.scanStage, ...this.levels]) {
       target.dispose();
       material.dispose();
     }

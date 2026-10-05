@@ -6,7 +6,8 @@ import {
   select, sin, textureLoad, vec2, vec3,
 } from 'three/tsl';
 import { gbufferTexelOf } from './hemisphere-scan';
-import { VOID_EXPONENT, type SurfaceReceiver, type SurfaceWeight, type Texel } from './surface-weight';
+import { VOID_EXPONENT, type SurfaceReceiver, type SurfaceWeight } from './surface-weight';
+import type { Texel } from './texel-surface';
 import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
 // 最後の拡大で読む疎なタップの数と、タップ間の黄金角 [rad]。

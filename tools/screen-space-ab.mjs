@@ -111,8 +111,8 @@ function writeRecord(dir, record, report) {
 
 // ---- 比べ方 ----
 
-// 単精度の描画先から読む読み戻し(代表)。ほかは半精度。
-const SINGLE_PRECISION_TARGET = /^representative-/;
+// 単精度の描画先から読む読み戻し(代表と、面の写しの座標・深度)。ほかは半精度。
+const SINGLE_PRECISION_TARGET = /^(?:representative-|scan-surface-0$)/;
 
 // 単精度の値 v の 2 進の指数 ⌊log₂|v|⌋(0 と非正規化数は −127)。
 const floatOfBits = new Float32Array(1);
