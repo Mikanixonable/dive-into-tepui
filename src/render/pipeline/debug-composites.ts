@@ -122,13 +122,12 @@ export class DebugComposites {
         return target.level < count ? vec4(this.representativeNormal(target.level), 1) : null;
       case 'merged': {
         if (target.level >= count - 1) return null;
-        const merged = texture(corrections.mergedTarget(count, target.level).texture, screenUV);
-        return vec4(this.signedCorrection(merged), 1);
+        return this.signedColor(texture(corrections.mergedTarget(count, target.level).texture, screenUV).rgb);
       }
     }
   }
 
-  // 帯の補正 value を、符号を色分けして映す色。詰めた帯の α は帯の値なので、書かれた画素として扱う。
+  // 帯や合流の補正 value を、符号を色分けして映す色。詰めた帯や合流の出力の α は値なので、書かれた画素として扱う。
   private signedColor(value: Vec3Node): Vec4Node {
     return vec4(this.signedCorrection(vec4(value, 1)), 1);
   }

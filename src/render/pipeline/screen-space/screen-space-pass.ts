@@ -54,9 +54,9 @@ const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
   [SCREEN_SPACE_QUALITY.high]: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 3 / 4 },
 };
 
-// 確率的な拡大の選択が読むブルーノイズのずれ [タイルの幅]。走査の 0・½・27/64 との差がタイルの自己相関の小さい所に
+// 疎な拡大の回転が読むブルーノイズのずれ [タイルの幅]。走査の 0・½・27/64 との差がタイルの自己相関の小さい所に
 // 来るものを実測で選んだ。
-const UPSAMPLE_CHOICE_SHIFT = 23 / 64;
+const UPSAMPLE_ROTATION_SHIFT = 23 / 64;
 
 // 走査画素の下位 bit から回転の上位の 2 bit ずつへ写す。整列した 2^level 四方には 4^level 個の
 // 等間隔な回転が 1 個ずつ入る。11 桁なら 2048 四方まで繰り返さない。
@@ -274,7 +274,9 @@ export class ScreenSpacePass {
   // 照り返しの源の描画命令を組む。sun は照り返しの源になる面を照らす太陽。
   private createSourceStage(sun: SunSource): ScreenSpaceStage {
     const source = stageMaterial();
-    source.mrtNode = mrt({ surfaceRadiance: this.whereResolved(this.gbufferUV, () => this.emittedRadiance(sun)) });
+    source.mrtNode = mrt({
+      surfaceRadiance: this.whereResolved(this.gbufferUV, () => vec4(this.emittedRadiance(sun), 1)),
+    });
     return { material: source, target: this.sourceTarget, gpuPass: GPU_PASS.bounceSource };
   }
 
@@ -315,39 +317,40 @@ export class ScreenSpacePass {
       const level = count - 2 - index;
       const target = this.output.mergedTarget(count, level);
       const coarse = this.output.mergedTexture(count, level + 1);
+      const coarseBands = this.output.bandTarget(count, level + 1).textures;
       const own = this.output.bandTarget(count, level).textures;
-      const value = (): Vec4Node => this.bandPyramid.merged(coarse, own, count, level);
+      const value = (): Vec4Node => this.bandPyramid.merged(coarse, coarseBands, own, count, level);
       // 段 0 の受け手は走査の受け手なので、走査と同じく補正を受けない受け手を 0 で塗る。
       const material = stageMaterial();
       material.mrtNode = mrt({
-        [target.texture.name]: level === 0 ? this.whereResolved(this.gbufferUV, () => value().rgb) : Fn(value)(),
+        [target.texture.name]: level === 0 ? this.whereResolved(this.gbufferUV, value) : Fn(value)(),
       });
       return { material, target, gpuPass: GPU_PASS.nearbyDiffuseMerge };
     });
     return [...reduce, ...merge];
   }
 
-  // 帯の数 count の、走査の解像度の最後の拡大の前の補正を、描画バッファの解像度へ確率的に拡大する描画命令を組む。
+  // 帯の数 count の、走査の解像度の最後の拡大の前の補正を、描画バッファの解像度へ疎なタップで拡大する描画命令を組む。
   // 拡大は描画バッファの解像度の受け手で、補正を受けるかを測り直す。
   private createUpsampleStage(count: number): ScreenSpaceStage {
     const source = this.output.mergedTexture(count, 0);
-    const choice = this.blueNoise.atScreenPixel(this.seed.add(UPSAMPLE_CHOICE_SHIFT));
+    const rotation = this.blueNoise.atScreenPixel(this.seed.add(UPSAMPLE_ROTATION_SHIFT));
     const upsample = stageMaterial();
     upsample.mrtNode = mrt({ diffuseCorrection: this.whereResolved(screenUV,
-      () => this.reconstruction.stochasticUpsampled(source, choice)) });
+      () => vec4(this.reconstruction.sparseUpsampled(source, rotation), 1)) });
     return { material: upsample, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
   }
 
   // 描いている画素を、uv(描いている画素に当たる G バッファの uv)の面が補正を受ける(resolvesNearbyAt)ときだけ
-  // value で塗り、ほかは 0 で塗る出力。value は一様でない分岐の中で組むので、テクスチャは段を明示して読むこと。
-  private whereResolved(uv: Vec2Node, value: () => Vec3Node): Vec4Node {
+  // value で塗り、ほかは (0, 0, 0, 1) で塗る出力。value は一様でない分岐の中で組むので、テクスチャは段を明示して読むこと。
+  private whereResolved(uv: Vec2Node, value: () => Vec4Node): Vec4Node {
     return Fn(() => {
-      const result = vec3(0).toVar();
+      const result = vec4(0, 0, 0, 1).toVar();
       const depth = textureLoad(this.gbuffer.depthTexture, ivec2(floor(uv.mul(this.fullSize)))).r.toVar();
       If(this.resolvesNearbyAt(depth, uv), () => {
         result.assign(value());
       });
-      return vec4(result, 1);
+      return result;
     })();
   }
 

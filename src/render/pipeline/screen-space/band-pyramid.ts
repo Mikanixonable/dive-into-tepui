@@ -117,22 +117,25 @@ export function effectivePixelsOf(
 }
 
 // 段 k の画素を囲む段 k + 1 の画素 1 つ — 双線形の重み bilinear(β)、その代表を段 k の代表と比べた面の重み surface
-// (w。画面の外は 0)、C_{k+1} の値 value とその実効画素数 effectivePixels(1 未満は 1 とみなす)、段 k の画素を含むか
-// containsPixel。
+// (w。画面の外は 0)、C_{k+1} の値 value とその実効画素数 effectivePixels(1 未満は 1 とみなす)、C_{k+1} のうち最も粗い
+// 段まで均された割合 smoothedShare(A_{k+1}。最も粗い段は 1)、段 k の画素を含むか containsPixel。
 export interface ParentPixel {
   readonly bilinear: FloatNode;
   readonly surface: FloatNode;
   readonly value: Vec3Node;
   readonly effectivePixels: FloatNode;
+  readonly smoothedShare: FloatNode;
   readonly containsPixel: BoolNode;
 }
 
-// 段 k の拡大と合流の出力 C_k = D_k + α·Ū + (1 − α)·T_k。direct は D_k(段 k の帯 k)、remainder は T_k(段 k の帯 k + 1
-// 以降の和)、remainderPixels はその実効画素数、parents は段 k の画素を囲む段 k + 1 の 4 画素。Ū は親の C_{k+1} を β·w で
-// 正規化した平均で、α は親の面が合う確からしさ × T_k と Ū の分散から決まる縮小推定の比。
+// 段 k の拡大と合流の出力 C_k = D_k + α·Ū + (1 − α)·T_k と、そのうち最も粗い段まで均された割合 A_k = α·Ā_{k+1}
+// (遠い帯の値のうち、どの段の合流でも均す前の値に置き換わらなかった割合)。direct は D_k(段 k の帯 k)、remainder は
+// T_k(段 k の帯 k + 1 以降の和)、remainderPixels はその実効画素数、parents は段 k の画素を囲む段 k + 1 の 4 画素。Ū と
+// Ā_{k+1} は親の C_{k+1} と A_{k+1} を β·w で正規化した平均で、α は親の面が合う確からしさ × T_k と Ū の分散から決まる
+// 縮小推定の比。
 export function mergedCorrection(
   direct: Vec3Node, remainder: Vec3Node, remainderPixels: FloatNode, parents: readonly ParentPixel[],
-): Vec3Node {
+): { readonly correction: Vec3Node; readonly smoothedShare: FloatNode } {
   // 親の重み β·w を、和が 1 になるよう正規化した重み v。
   const weights: FloatNode[] = parents.map(({ bilinear, surface }) => bilinear.mul(surface).toVar());
   const total = weights.reduce((sum, weight) => sum.add(weight));
@@ -155,7 +158,11 @@ export function mergedCorrection(
   const differenceVariance = meanVariance.add(remainderVariance).sub(covariance.mul(2));
   const shrinkage = clamp(remainderVariance.sub(covariance).div(max(differenceVariance, WEIGHT_EPSILON)), 0, 1);
   const ratio = confidence.mul(shrinkage).toVar();
-  return direct.add(mean.mul(ratio)).add(remainder.mul(ratio.oneMinus()));
+  const parentShare = terms.map(({ parent, share }) => parent.smoothedShare.mul(share)).reduce((a, b) => a.add(b));
+  return {
+    correction: direct.add(mean.mul(ratio)).add(remainder.mul(ratio.oneMinus())),
+    smoothedShare: ratio.mul(parentShare),
+  };
 }
 
 // 帯の縮小と、粗い段からの拡大と合流を組む。段の画素どうしは、代表の面の重みで比べる。
@@ -191,10 +198,14 @@ export class BandPyramid {
     return outputs;
   }
 
-  // 段 level の描いている画素の、拡大と合流の出力 — rgb は C_level、α は段 level の実効画素数(段 0 は 1)。段 level の帯を
-  // 詰めたテクスチャ own(帯 level..count − 1)と、段 level + 1 の C と実効画素数を持つテクスチャ coarse から、
-  // mergedCorrection で求める。段 level の代表に面がなければ 0。**Fn の中から呼ぶこと。**
-  public merged(coarse: THREE.Texture, own: readonly THREE.Texture[], count: number, level: number): Vec4Node {
+  // 段 level の描いている画素の、拡大と合流の出力 — rgb は C_level、α は最も粗い段まで均された割合 A_level。段 level の帯を
+  // 詰めたテクスチャ own(帯 level..count − 1)、段 level + 1 の C と A を持つテクスチャ coarse(最も粗い段ならその段の帯)、
+  // 段 level + 1 の帯を詰めたテクスチャ coarseBands から、mergedCorrection で求める。段 level の代表に面がなければ 0。
+  // **Fn の中から呼ぶこと。**
+  public merged(
+    coarse: THREE.Texture, coarseBands: readonly THREE.Texture[], own: readonly THREE.Texture[], count: number,
+    level: number,
+  ): Vec4Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
     const representative = this.surfaces.representativeAt(level, pixel).toVar();
     const result = vec4(0).toVar();
@@ -212,14 +223,16 @@ export class BandPyramid {
           bilinear: weight,
           surface: select(this.surfaces.contains(level + 1, parent), exp2(exponent.negate()), float(0)).toVar(),
           value: coarseValue.rgb,
-          effectivePixels: coarseValue.w,
+          effectivePixels: textureLoad(coarseBands.at(-1)!, parent).w,
+          smoothedShare: level + 1 === count - 1 ? float(1) : coarseValue.w,
           containsPixel: parent.x.equal(containing.x).and(parent.y.equal(containing.y)),
         };
       });
       // 段 level の帯 level と、帯 level + 1 以降の和。
       const { bands: [direct, ...farther], effectivePixels } = levelAt(own, count, level, pixel);
       const remainder = farther.reduce((sum, band) => sum.add(band));
-      result.assign(vec4(mergedCorrection(direct!, remainder, effectivePixels, parents), effectivePixels));
+      const { correction, smoothedShare } = mergedCorrection(direct!, remainder, effectivePixels, parents);
+      result.assign(vec4(correction, smoothedShare));
     });
     return result;
   }

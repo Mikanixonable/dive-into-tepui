@@ -27,17 +27,18 @@ function vectorNode([x, y, z]: readonly number[]): Vec3Node {
 }
 
 // 段 k の画素 pixel を囲む段 k + 1 の 4 画素。面の重みは surfaceAt(画素 pixel を含む段 k + 1 の画素からのずれ)、
-// C_{k+1} はどれも value、実効画素数はどれも parentPixels。
+// C_{k+1} はどれも value、実効画素数はどれも parentPixels、均された割合はどれも parentShare。
 function parentsAround(
   pixel: readonly [number, number], surfaceAt: (offset: readonly number[]) => number, value: readonly number[],
-  parentPixels: number,
+  parentPixels: number, parentShare = 1,
 ): ParentPixel[] {
   const containing = pixel.map((coordinate) => Math.floor(coordinate / 2));
   return coarseNeighbors(vec2(pixel[0], pixel[1])).map(({ texel, weight }) => {
     const offset = componentsOf(texel).map((coordinate, axis) => coordinate - containing[axis]!);
     return {
       bilinear: weight, surface: float(surfaceAt(offset)), value: vectorNode(value),
-      effectivePixels: float(parentPixels), containsPixel: bool(offset.every((d) => d === 0)),
+      effectivePixels: float(parentPixels), smoothedShare: float(parentShare),
+      containsPixel: bool(offset.every((d) => d === 0)),
     };
   });
 }
@@ -153,7 +154,8 @@ export function register(): void {
       for (const { own, parent } of PIXEL_COUNTS) {
         const parents = parentsAround([5, 2], () => 0, remainder, parent)
           .map((parentPixel, index) => ({ ...parentPixel, surface: float(surfaces[index]!) }));
-        const merged = componentsOf(mergedCorrection(vectorNode(direct), vectorNode(remainder), float(own), parents));
+        const merged = componentsOf(
+          mergedCorrection(vectorNode(direct), vectorNode(remainder), float(own), parents).correction);
         for (const [channel, value] of merged.entries()) {
           near(value, direct[channel]! + remainder[channel]!, 1e-12, `${surfaces} n_T ${own}`);
         }
@@ -166,7 +168,8 @@ export function register(): void {
     const ratioOf = (pixel: readonly [number, number], surfaceAt: (offset: readonly number[]) => number,
       own: number, parent: number): number => {
       const parents = parentsAround(pixel, surfaceAt, [1, 1, 1], parent);
-      return componentsOf(mergedCorrection(vectorNode([0, 0, 0]), vectorNode([0, 0, 0]), float(own), parents))[0]!;
+      return componentsOf(
+        mergedCorrection(vectorNode([0, 0, 0]), vectorNode([0, 0, 0]), float(own), parents).correction)[0]!;
     };
     for (const pixel of MERGE_PIXELS) {
       for (const { own, parent } of PIXEL_COUNTS) {
@@ -177,6 +180,21 @@ export function register(): void {
         near(ratioOf(pixel, (offset) => (offset.every((d) => d !== 0) ? 1 : 0), own, parent), parent / (parent + own),
           1e-12, `${label} 斜向かい`);
         near(ratioOf(pixel, () => 0, own, parent), 0, 1e-12, `${label} 合わない`);
+      }
+    }
+  });
+
+  test('screen space band pyramid: 合流の出力の均された割合は、混合比 × 親の均された割合', () => {
+    const parentShare = 0.375;
+    for (const pixel of MERGE_PIXELS) {
+      for (const surfaces of [() => 1, (offset: readonly number[]) => (offset.every((d) => d !== 0) ? 1 : 0), () => 0]) {
+        for (const { own, parent } of PIXEL_COUNTS) {
+          // D = T = 0 で親の C をどれも 1 にすると、C_k の各成分が混合比 α になる。
+          const { correction, smoothedShare } = mergedCorrection(vectorNode([0, 0, 0]), vectorNode([0, 0, 0]),
+            float(own), parentsAround(pixel, surfaces, [1, 1, 1], parent, parentShare));
+          near(evaluateShaderNode(smoothedShare) as number, componentsOf(correction)[0]! * parentShare, 1e-12,
+            `(${pixel}) n_T ${own} m ${parent}`);
+        }
       }
     }
   });

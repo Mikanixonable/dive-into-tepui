@@ -7,18 +7,19 @@ import type { GBufferPass } from '../gbuffer';
 import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 面の写っていない標本の重みの指数。重みは 0 になる。
-const VOID_EXPONENT = 1e4;
+export const VOID_EXPONENT = 1e4;
 
 // G バッファの画素の整数座標。
 export type Texel = THREE.Node<'ivec2'>;
 
 // 重みを測る受け手の面。texel は受け手の G バッファの画素。接平面は、逆射影する前の座標 c = (NDC の xy, 素の深度, 1) の
-// 一次式で持ち、dot(plane, c) / dot(w, c) が c の点の接平面からの符号付きの距離 [m] になる。footprint はそこに写る
-// 全解像度の画素 1 つの幅 [m]。
+// 一次式で持ち、dot(plane, c) / dot(w, c) が c の点の接平面からの符号付きの距離 [m] になる。position と normal は受け手の
+// 視点座標の位置 [m] と法線、footprint はそこに写る全解像度の画素 1 つの幅 [m]。
 export interface SurfaceReceiver {
   readonly texel: Texel;
   readonly plane: Vec4Node;
   readonly w: Vec4Node;
+  readonly position: Vec3Node;
   readonly normal: Vec3Node;
   readonly footprint: FloatNode;
 }
@@ -44,6 +45,7 @@ export class SurfaceWeight {
       texel,
       plane: toClip.mul(vec4(normal, dot(normal, position).negate())).toVar(),
       w: toClip.mul(vec4(0, 0, 0, 1)).toVar(),
+      position,
       normal,
       footprint: clipW.mul(2).div(yScale.mul(this.fullSize.y)).toVar(),
     };
