@@ -11,7 +11,7 @@ import { QUAD_OFFSETS } from './band-pyramid';
 import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
 import type { GBufferPass } from '../gbuffer';
 import type { ScanSurfaces, Texel, TexelSurface } from './texel-surface';
-import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node } from '../../tsl-types';
+import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec4Node } from '../../tsl-types';
 
 // 面のない子の、視点からの深さ [m]。どの面よりも遠い。
 const NO_SURFACE_DISTANCE = 1e30;
@@ -69,24 +69,25 @@ function createLevelTarget(level: number): THREE.RenderTarget {
   return target;
 }
 
-// 段 0 の面の写しの描画先。1 枚目は rgba32float で (G バッファの画素の x, y, 素の深度, 0)、2 枚目は rg16float で法線の rg。
-// 1 枚目の rgba32float はフィルタできず、どちらも textureLoad だけで読むので、サンプラを Nearest に明示する。
+// 段 0 の面の写しと、その面が放つ放射輝度の描画先。1 枚目は rgba32float で (G バッファの画素の x, y, 素の深度, 0)、2 枚目は
+// rg16float で法線の rg、3 枚目は rgba16float で放射輝度。rgba32float はフィルタできず、どれも textureLoad だけで読むので、
+// サンプラを Nearest に明示する。
 function createScanSurfaceTarget(): THREE.RenderTarget {
   const target = new THREE.RenderTarget(1, 1, {
-    count: 2, type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+    count: 3, type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
     minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
   });
-  const [locatedTexture, normalTexture] = target.textures;
+  const [locatedTexture, normalTexture, radianceTexture] = target.textures;
   locatedTexture!.name = 'scanSurfaceLocated';
   normalTexture!.name = 'scanSurfaceNormal';
   normalTexture!.format = THREE.RGFormat;
   normalTexture!.type = THREE.HalfFloatType;
+  radianceTexture!.name = 'surfaceRadiance';
+  radianceTexture!.type = THREE.HalfFloatType;
   return target;
 }
 
 export class ScreenSpaceInputPyramid implements ScanSurfaces {
-  // 段 0 の面の写しを書く描画命令。
-  public readonly scanStage: ScreenSpaceStage;
   private readonly scanTarget = createScanSurfaceTarget();
   // 段 1 から順の、代表を焼く描画命令(描画先は段の代表の描画先)。必要になった段まで作る。
   private readonly levels: ScreenSpaceStage[] = [];
@@ -96,23 +97,30 @@ export class ScreenSpaceInputPyramid implements ScanSurfaces {
   public constructor(
     private readonly gbuffer: GBufferPass, private readonly projectionInverse: Mat4Uniform,
     private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
-  ) {
+  ) {}
+
+  // 段 0 の面の写しと、その面が放つ放射輝度 radiance(走査の画素ごとの値。null なら 0)を書く描画命令。マテリアルの
+  // 解放は呼び出し側が行う。
+  public scanStageOf(radiance: Vec4Node | null): ScreenSpaceStage {
     const material = multiOutputMaterial(this.scanTarget, () => {
       const texel = gbufferTexelOf(floor(screenUV.mul(screenSize)), this.fullSize, this.scanSize).toVar();
       return [
         vec4(vec2(texel), textureLoad(this.gbuffer.depthTexture, texel).r, 0),
         vec4(textureLoad(this.gbuffer.normalTexture, texel).rg, 0, 0),
+        radiance ?? vec4(0),
       ];
     });
-    this.scanStage = { material, target: this.scanTarget, gpuPass: GPU_PASS.nearbyDiffuseScanSurface };
+    return { material, target: this.scanTarget, gpuPass: GPU_PASS.nearbyDiffuseScanSurface };
   }
+
+  // 走査の解像度の、面が放つ放射輝度(rgb。SUN_IRRADIANCE_1AU の目盛り)のテクスチャ。
+  public get radianceTexture(): THREE.Texture { return this.scanTarget.textures[2]!; }
 
   // 走査の画素 pixel(整数座標)が表す G バッファの画素の面。段 0 の写しを書いた後に読むこと。
   public scanSurfaceAt(pixel: Texel): TexelSurface {
-    const located = textureLoad(this.scanTarget.textures[0]!, pixel);
-    return {
-      texel: ivec2(located.xy), depth: located.z, encodedNormal: textureLoad(this.scanTarget.textures[1]!, pixel).xy,
-    };
+    const [locatedTexture, normalTexture] = this.scanTarget.textures;
+    const located = textureLoad(locatedTexture!, pixel);
+    return { texel: ivec2(located.xy), depth: located.z, encodedNormal: textureLoad(normalTexture!, pixel).xy };
   }
 
   // 段 0 の面の写しのテクスチャ index(0 が (x, y, 素の深度)、1 が法線の rg)。
@@ -179,7 +187,8 @@ export class ScreenSpaceInputPyramid implements ScanSurfaces {
 
   // 段 0 の写しと作った段の描画先とマテリアルを解放する。
   public dispose(): void {
-    for (const { target, material } of [this.scanStage, ...this.levels]) {
+    this.scanTarget.dispose();
+    for (const { target, material } of this.levels) {
       target.dispose();
       material.dispose();
     }
