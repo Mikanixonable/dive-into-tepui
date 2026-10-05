@@ -1,7 +1,7 @@
 // 近傍拡散補正の段ごとの代表の選び方と、帯の縮小・粗い段からの拡大と合流を、双線形の重みの和と象限、面の数ごとの
 // 選び方、実効画素数の定義、合流の混合比の極限、一様な値の恒等で検査する。
 import * as assert from 'node:assert/strict';
-import { bool, float, vec2, vec3 } from 'three/tsl';
+import { bool, float, ivec2, vec2, vec3 } from 'three/tsl';
 import {
   coarseNeighbors, effectivePixelsOf, mergedCorrection, packedReducedBands, packedTextureCount, unpackedBands,
   weightedBands, type ParentPixel,
@@ -81,9 +81,13 @@ export function register(): void {
     ];
     for (const { children, expected } of cases) {
       const chosen = secondNearest(children.map(([hasSurface, distance], index) => ({
-        hasSurface: bool(hasSurface), distance: float(distance), texel: vec2(index, 10 * index),
+        hasSurface: bool(hasSurface), distance: float(distance),
+        surface: { texel: ivec2(index, 10 * index), depth: float(index), encodedNormal: vec2(index, -index) },
       })));
-      assert.deepStrictEqual(componentsOf(chosen), [expected, 10 * expected], JSON.stringify(children));
+      // 選ばれた子の面が、座標・深度・法線のそろった値で返る。
+      assert.deepStrictEqual(componentsOf(chosen.texel), [expected, 10 * expected], JSON.stringify(children));
+      assert.deepStrictEqual([componentsOf(chosen.depth)].flat(), [expected], JSON.stringify(children));
+      assert.deepStrictEqual(componentsOf(chosen.encodedNormal), [expected, -expected], JSON.stringify(children));
     }
   });
 
