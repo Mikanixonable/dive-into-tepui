@@ -225,23 +225,29 @@ function labOf(devTools) {
     // 直前のフレームの入力のまま、走査だけをホワイトノイズのパス first〜first + count − 1 で描き直し、帯を詰めた
     // テクスチャを偶数番目と奇数番目のパスに分けてページの GPU の和へ足す。和は takePassSums で受け取る。
     accumulateWhitePasses: (first, count) => call(`accumulateWhitePasses(${first}, ${count})`),
-    // accumulateWhitePasses の和 [偶数番目, 奇数番目](帯を詰めたテクスチャごとの、画素ごとに RGBA の Float32Array)を受け取り、
-    // ページの和を 0 に戻す。
+    // accumulateWhitePasses の値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
+    // テクスチャごとの、画素ごとに RGBA の Float32Array)を受け取り、ページの和を 0 に戻す。
     async takePassSums() {
-      const shape = await devTools.evaluate(`window.renderLab.takePassSums().then((sums) => {
-        window.__ssdPassSums = sums;
-        return sums.map((images) => images.map(({ rgba }) => rgba.length));
+      const shapes = await devTools.evaluate(`window.renderLab.takePassSums().then((taken) => {
+        window.__ssdPassSums = taken;
+        const shapeOf = (halves) => halves.map((images) => images.map(({ rgba }) => rgba.length));
+        return { sums: shapeOf(taken.sums), squares: shapeOf(taken.squares) };
       })`);
-      const sums = [];
-      for (const [parity, lengths] of shape.entries()) {
-        const images = [];
-        for (const [i, length] of lengths.entries()) {
-          images.push(await receiveFloats(devTools, `window.__ssdPassSums[${parity}][${i}].rgba`, length));
+      // 和 kind('sums' か 'squares')の [偶奇][テクスチャ] を受け取る。
+      const receiveHalves = async (kind) => {
+        const halves = [];
+        for (const [parity, lengths] of shapes[kind].entries()) {
+          const images = [];
+          for (const [i, length] of lengths.entries()) {
+            images.push(await receiveFloats(devTools, `window.__ssdPassSums.${kind}[${parity}][${i}].rgba`, length));
+          }
+          halves.push(images);
         }
-        sums.push(images);
-      }
+        return halves;
+      };
+      const taken = { sums: await receiveHalves('sums'), squares: await receiveHalves('squares') };
       await devTools.evaluate('delete window.__ssdPassSums');
-      return sums;
+      return taken;
     },
     // いまの段の、走査が帯を詰めた描画先の index 枚目へ、走査の解像度の画素ごとの RGBA の ΔE rgba(Float32Array)を書く。
     async writePackedBands(index, rgba) {

@@ -486,19 +486,27 @@ export class LabView {
     }
   }
 
-  // accumulateWhitePasses で足した和 [偶数番目, 奇数番目](どちらも帯を詰めたテクスチャごと)を読み戻し、和を 0 に戻す。
-  public async takePassSums(): Promise<readonly (readonly FloatImage[])[]> {
+  // accumulateWhitePasses で足した値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
+  // テクスチャごと)を読み戻し、和を 0 に戻す。
+  public async takePassSums(): Promise<{
+    readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
+  }> {
     const accumulator = this.passAccumulator;
     if (accumulator === null) throw new Error('render-lab: no passes accumulated');
     // 偶奇ごと・テクスチャごとに読み戻す。
-    const sums: FloatImage[][] = [];
-    for (const textures of accumulator.textures) {
-      const images: FloatImage[] = [];
-      for (const texture of textures) images.push(await this.readBack(texture));
-      sums.push(images);
-    }
+    const readBackHalves = async (halves: readonly (readonly THREE.Texture[])[]): Promise<FloatImage[][]> => {
+      const images: FloatImage[][] = [];
+      for (const textures of halves) {
+        const half: FloatImage[] = [];
+        for (const texture of textures) half.push(await this.readBack(texture));
+        images.push(half);
+      }
+      return images;
+    };
+    const sums = await readBackHalves(accumulator.sumTextures);
+    const squares = await readBackHalves(accumulator.squareTextures);
     accumulator.clear();
-    return sums;
+    return { sums, squares };
   }
 
   // いまの段の帯の数の、走査の帯を詰めた描画先の index 枚目('packed-bands-<index>')へ、走査の解像度の画素ごとの RGBA の
