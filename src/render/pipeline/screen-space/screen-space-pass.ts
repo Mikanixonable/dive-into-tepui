@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, float, floor, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint, uniform,
+  Fn, If, float, floor, fract, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint, uniform,
   vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
@@ -58,6 +58,20 @@ const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
 // 来るものを実測で選んだ。
 const UPSAMPLE_CHOICE_SHIFT = 23 / 64;
 
+// 走査画素の下位 bit から回転の上位の 2 bit ずつへ写す。整列した 2^level 四方には 4^level 個の
+// 等間隔な回転が 1 個ずつ入る。11 桁なら 2048 四方まで繰り返さない。
+function stratifiedRotation(pixel: Vec2Node, seed: FloatNode): FloatNode {
+  const x = uint(pixel.x);
+  const y = uint(pixel.y);
+  let rotation: FloatNode = seed;
+  for (let level = 0; level < 11; level++) {
+    const digit = x.shiftRight(uint(level)).bitAnd(uint(1))
+      .add(y.shiftRight(uint(level)).bitAnd(uint(1)).shiftLeft(uint(1)));
+    rotation = rotation.add(float(digit).mul(1 / 4 ** (level + 1)));
+  }
+  return fract(rotation);
+}
+
 // 描画命令を出す方式ごとの、描画命令の列。
 type ModeStages = Readonly<
   Record<Exclude<ScreenSpaceDiffuse, typeof SCREEN_SPACE_DIFFUSE.off>, readonly ScreenSpaceStage[]>
@@ -101,8 +115,8 @@ export class ScreenSpacePass {
   private readonly bandScale: FloatUniform = uniform(1);
   // 走査のずれをホワイトノイズから引くパスの番号(setWhiteNoisePass)。負ならブルーノイズから引く。
   private readonly whiteNoisePass = uniform(-1, 'int');
-  // 走査と拡大が読むブルーノイズの 2 次元のずれ [タイルの幅]。(0, 0) 以外の値は、同じ推定を独立な標本で繰り返す
-  // ためのもの。
+  // 走査の全体の回転と、歩み・丸めのブルーノイズ、拡大のブルーノイズを変える seed [タイルの幅]。
+  // (0, 0) 以外の値は、同じ推定を独立な標本で繰り返すためのもの。
   private readonly seed: Vec2Uniform = uniform(new THREE.Vector2(0, 0));
   // 描画バッファと走査の解像度 [px]。解像度の違う段どうしで、対応する画素を引くのに使う。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
@@ -166,7 +180,7 @@ export class ScreenSpacePass {
     this.tier = tier;
   }
 
-  // 次の render から、走査と拡大が読むブルーノイズを (x, y) [タイルの幅] だけずらす。
+  // 次の render から、走査の全体の回転とブルーノイズのずれを (x, y) [タイルの幅] にする。
   public setSeed(x: number, y: number): void {
     this.seed.value.set(x, y);
   }
@@ -268,13 +282,14 @@ export class ScreenSpacePass {
   // 描画命令を組む。radiance は照り返しの源の放射輝度で、null なら照り返しを集めない。
   private createScanStage(count: number, radiance: THREE.Texture | null): ScreenSpaceStage {
     const target = this.output.bandTarget(count, 0);
-    // 丸めのずれのタイルのずれ 27/64 は、回転(0)・歩みのずれ(½)と画素ごとに相関しないものを実測で選んだ。
-    const blue = vec3(
-      this.blueNoise.atScreenPixel(this.seed), this.blueNoise.atScreenPixel(this.seed.add(0.5)),
-      this.blueNoise.atScreenPixel(this.seed.add(27 / 64)));
+    // 丸めのずれのタイルのずれ 27/64 は、歩みのずれ(½)と画素ごとに相関しないものを実測で選んだ。
     const whiteAt = (component: number): FloatNode => whiteNoiseAt(this.scanPixel, uint(this.whiteNoisePass), component);
-    const white = vec3(whiteAt(0), whiteAt(1), whiteAt(2));
-    const noise = select(this.whiteNoisePass.lessThan(0), blue, white);
+    const useBlue = this.whiteNoisePass.lessThan(0);
+    const noise = vec3(
+      select(useBlue, stratifiedRotation(this.scanPixel, this.seed.x), whiteAt(0)),
+      select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(0.5)), whiteAt(1)),
+      select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(27 / 64)), whiteAt(2)),
+    );
     const planets: readonly PlanetIllumination[] = Array.from({ length: MAX_PLANET_LIGHT_SLOTS }, (_, slot) => ({
       cap: this.planetLight.capAt(this.sample, slot),
       irradiance: this.planetLight.diffuseIrradianceAtSlot(this.sample, slot),
