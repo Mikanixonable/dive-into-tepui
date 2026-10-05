@@ -5,7 +5,6 @@ import {
   If, abs, clamp, cos, dot, exp2, float, floor, ivec2, length, max, min, mix, normalize, round, screenSize, screenUV,
   select, sin, textureLoad, vec2, vec3,
 } from 'three/tsl';
-import { gbufferTexelOf } from './hemisphere-scan';
 import { VOID_EXPONENT, type SurfaceReceiver, type SurfaceWeight } from './surface-weight';
 import type { ScanSurfaces, Texel, TexelSurface } from './texel-surface';
 import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
@@ -53,9 +52,9 @@ export class CorrectionReconstruction {
       const offset = across.mul(cosAngle.mul(x).sub(sinAngle.mul(y)))
         .add(along.mul(sinAngle.mul(x).add(cosAngle.mul(y)))).mul(scale);
       const tap = this.clampToScan(ivec2(round(position.add(offset)))).toVar();
-      const texel = this.gbufferTexelOfScan(tap).toVar();
-      const tolerance = max(length(vec2(texel.sub(pixel))), 1);
-      const surface = this.scanSurfaceAt(tap, texel);
+      const scanSurface = this.surfaces.scanSurfaceAt(tap);
+      const surface: TexelSurface = { ...scanSurface, texel: scanSurface.texel.toVar() };
+      const tolerance = max(length(vec2(surface.texel.sub(pixel))), 1);
       const exponent = this.weight.exponentOf(receiver, surface, tolerance,
         float(UPSAMPLE_HALF_WEIGHT_ANGLE)).toVar();
       return { tap, exponent };
@@ -98,17 +97,6 @@ export class CorrectionReconstruction {
       across: direction.mul(radius.mul(squash)),
       along: vec2(direction.y.negate(), direction.x).mul(radius.div(squash)),
     };
-  }
-
-  // 走査の画素 tap の面。G バッファの画素の座標は texel(gbufferTexelOfScan の値)を使う。
-  private scanSurfaceAt(tap: Texel, texel: Texel): TexelSurface {
-    const { depth, encodedNormal } = this.surfaces.scanSurfaceAt(tap);
-    return { texel, depth, encodedNormal };
-  }
-
-  // 走査の画素 texel が表す G バッファの画素。
-  private gbufferTexelOfScan(texel: Texel): Texel {
-    return gbufferTexelOf(vec2(texel), this.fullSize, this.scanSize);
   }
 
   // 走査の画素 texel を画面の内側へ寄せる。
