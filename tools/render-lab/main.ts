@@ -87,6 +87,11 @@ declare global {
       measureTiers: (
         tiers: readonly ScanTier[], rounds: number,
       ) => Promise<readonly Readonly<Record<string, number | null>>[]>;
+      measureTierRounds: (
+        tiers: readonly ScanTier[], rounds: number,
+      ) => Promise<readonly (readonly Readonly<Record<string, number>>[])[] | null>;
+      screenSpaceShaders: () => Promise<readonly { readonly label: string; readonly wgsl: string }[]>;
+      clearScreenSpace: () => void;
       errorScales: readonly number[];
       falseStructureEpsilons: readonly number[];
       errorMetrics: (
@@ -360,6 +365,9 @@ async function init(): Promise<void> {
     composite: (hdr) => view.composite(hdr),
     exposureFactor: () => view.exposureFactor,
     measureTiers: (tiers, rounds) => view.measureTiers(tiers, rounds),
+    measureTierRounds: (tiers, rounds) => view.measureTierRounds(tiers, rounds),
+    screenSpaceShaders: () => view.screenSpaceShaders(),
+    clearScreenSpace: () => view.clearScreenSpace(),
     errorScales: ERROR_SCALES,
     falseStructureEpsilons: FALSE_STRUCTURE_EPSILONS,
     errorMetrics: (error, converged, mask, width, height, magnification) => (

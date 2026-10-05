@@ -21,6 +21,7 @@ import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-rend
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import { SCREEN_SPACE_DIFFUSE } from '../../src/render/pipeline/screen-space/screen-space-pass';
 import { CASES, type CaseName } from './cases';
 import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
@@ -47,10 +48,17 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // i 枚目のテクスチャ(段の帯 b の rgb は、テクスチャを並べた通しのチャンネル 3(b − m)..3(b − m) + 2。帯の数 1 では
 // 'packed-bands-0' の rgb が帯に分けない補正)。MergedName は、いまの段の帯の数の拡大と合流の段 k の出力(rgb は C_k)。
 // 'band-sum' は走査の帯の和(rgb、α は 0)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では
-// 帯 0、2 以上では 'merged-0' と同じ)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が写る描画
-// バッファの画素数で、面の無い画素は 0。
+// 帯 0、2 以上では 'merged-0' と同じ)。'surface-radiance' は照り返しの源(走査の解像度の rgb)、'representative-ℓ' は代表の
+// 段 ℓ の G バッファの画素の整数座標(rg、ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の半径が
+// 写る描画バッファの画素数で、面の無い画素は 0。
 export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse'
-  | 'hdr' | 'projected-radius';
+  | 'surface-radiance' | `representative-${1 | 2 | 3}` | 'hdr' | 'projected-radius';
+const REPRESENTATIVE_NAME_PATTERN = /^representative-(\d)$/;
+
+// 描画先の形式ごとの、画素あたりの成分の数。
+const CHANNELS_OF_FORMAT: Readonly<Partial<Record<THREE.AnyPixelFormat, number>>> = {
+  [THREE.RedFormat]: 1, [THREE.RGFormat]: 2, [THREE.RGBAFormat]: 4,
+};
 
 // accumulateWhitePasses が GPU の終わりを待つ間隔 [パス]。
 const WHITE_PASSES_PER_WAIT = 256;
@@ -417,27 +425,49 @@ export class LabView {
   }
 
   // いまのケース・観察の向き・描画設定のまま、近傍拡散補正の走査の段 tiers を rounds 巡(奇数巡目は逆順)交互に
-  // 測る。返り値は段ごとの、GPU の行の名前から p50 [ms] の巡の中央値への表で、GPU の計測に対応していなければ値は
-  // null。段は最後に測ったものが残る。
-  public async measureTiers(
+  // 測る。返り値は [段][巡] の、GPU の行の名前から p50 [ms] への表で、GPU の計測に対応していなければ null。段は最後に
+  // 測ったものが残る。
+  public async measureTierRounds(
     tiers: readonly ScanTier[], rounds: number,
-  ): Promise<readonly Readonly<Record<string, number | null>>[]> {
-    // 段ごと・行ごとの、巡ごとの p50。
-    const samples = tiers.map(() => GPU_PASS_LABELS.map(() => [] as number[]));
-    let supported = true;
+  ): Promise<readonly (readonly Readonly<Record<string, number>>[])[] | null> {
+    const results = tiers.map((): Readonly<Record<string, number>>[] => []);
     // 巡ごとに順を入れ替えて、熱によるずれを段の差と取り違えないようにする。
     for (let round = 0; round < rounds; round++) {
       const order = round % 2 === 0 ? [...tiers.keys()] : [...tiers.keys()].reverse();
       for (const index of order) {
         this.pipeline.screenSpace.setTier(tiers[index]!);
         const result = await this.measureCurrent();
-        supported &&= result.gpuSupported;
-        for (const [row, label] of GPU_PASS_LABELS.entries()) samples[index]![row]!.push(result.gpuPassMs[label]!.p50);
+        if (!result.gpuSupported) return null;
+        results[index]!.push(Object.fromEntries(GPU_PASS_LABELS.map((label) => [label, result.gpuPassMs[label]!.p50])));
       }
     }
-    return samples.map((rows) => Object.fromEntries(
-      GPU_PASS_LABELS.map((label, row) => [label, supported ? distributionOf(rows[row]!).p50 : null]),
-    ));
+    return results;
+  }
+
+  // measureTierRounds と同じく測り、段ごとの、GPU の行の名前から p50 [ms] の巡の中央値への表を返す。GPU の計測に
+  // 対応していなければ値は null。
+  public async measureTiers(
+    tiers: readonly ScanTier[], rounds: number,
+  ): Promise<readonly Readonly<Record<string, number | null>>[]> {
+    const rows = await this.measureTierRounds(tiers, rounds);
+    return tiers.map((_, index) => Object.fromEntries(GPU_PASS_LABELS.map((label) => [
+      label, rows === null ? null : distributionOf(rows[index]!.map((row) => row[label]!)).p50,
+    ])));
+  }
+
+  // いまのケースの、いまの方式と段の近傍拡散補正の描画命令の、実行順の GPU の行の名前とフラグメントシェーダの WGSL。
+  public async screenSpaceShaders(): Promise<readonly { readonly label: string; readonly wgsl: string }[]> {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    const stages = await this.pipeline.screenSpace.stageShaders(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT);
+    return stages.map(({ gpuPass, wgsl }) => ({ label: GPU_PASS_LABELS[gpuPass]!, wgsl }));
+  }
+
+  // 近傍拡散補正の方式をオフにして 1 フレーム描き、その全描画先を空にする。方式は描画設定のものへ戻し、段は保つ。
+  public clearScreenSpace(): void {
+    const { screenSpace } = this.pipeline;
+    screenSpace.setMode(SCREEN_SPACE_DIFFUSE.off);
+    this.render();
+    screenSpace.setMode(this.graphics.current.screenSpaceDiffuse);
   }
 
   // 次に描くフレームから、近傍拡散補正を段 tier で走査する。描画品質設定が変わると精細さの段へ戻る。
@@ -572,35 +602,46 @@ export class LabView {
     return display;
   }
 
-  // 描画先のテクスチャ texture を浮動小数で読み戻す。
+  // 描画先のテクスチャ texture を浮動小数で読み戻す。成分が 4 つに満たない形式では、無い成分を 0 にする。
   private async readBack(texture: THREE.Texture): Promise<FloatImage> {
     const target = texture.renderTarget;
     if (target === null) throw new Error(`render-lab: "${texture.name}" is not a render target`);
+    const channels = CHANNELS_OF_FORMAT[texture.format];
+    if (channels === undefined) throw new Error(`render-lab: "${texture.name}" has an unreadable format`);
     const { width, height } = target;
     const data = await this.renderer.readRenderTargetPixelsAsync(
       target, 0, 0, width, height, target.textures.indexOf(texture),
     );
     // 行の終わりは 256 byte の境まで詰め物が入る。最後の行には入らない。
-    const rowStride = height > 1 ? (data.length - width * 4) / (height - 1) : width * 4;
+    const rowStride = height > 1 ? (data.length - width * channels) / (height - 1) : width * channels;
     const toFloat = data instanceof Uint16Array ? THREE.DataUtils.fromHalfFloat : (v: number) => v;
     const rgba = new Float32Array(width * height * 4);
     for (let y = 0; y < height; y++) {
-      for (let i = 0; i < width * 4; i++) rgba[y * width * 4 + i] = toFloat(data[y * rowStride + i]!);
+      for (let x = 0; x < width; x++) {
+        const [from, to] = [y * rowStride + x * channels, (y * width + x) * 4];
+        for (let c = 0; c < channels; c++) rgba[to + c] = toFloat(data[from + c]!);
+      }
     }
     return { width, height, rgba };
   }
 
-  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数で帯を詰めた描画先に無い段か枚数なら
-  // 投げる。
+  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数の鎖に無い段か枚数なら投げる。
   private floatTextureOf(name: Exclude<FloatTargetName, 'band-sum' | 'projected-radius'>): THREE.Texture {
     const { screenSpace, diffuseCorrection } = this.pipeline;
     switch (name) {
       case 'scan-correction': return diffuseCorrection.mergedTexture(screenSpace.bandCount, 0);
       case 'correction': return diffuseCorrection.texture;
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
+      case 'surface-radiance': return screenSpace.surfaceRadianceTexture;
       case 'hdr': return this.pipeline.hdrTexture;
       default: {
         const count = screenSpace.bandCount;
+        // 代表の段は、いまの段の帯の数の鎖が読む段 1..帯の数 − 1。
+        const [, representativeLevel] = REPRESENTATIVE_NAME_PATTERN.exec(name) ?? [];
+        if (representativeLevel !== undefined) {
+          if (Number(representativeLevel) >= count) throw new Error(`render-lab: ${count} bands have no "${name}"`);
+          return screenSpace.inputPyramid.representativeTexture(Number(representativeLevel));
+        }
         const [, mergedLevel] = MERGED_NAME_PATTERN.exec(name) ?? [];
         if (mergedLevel !== undefined) {
           if (Number(mergedLevel) >= count - 1) throw new Error(`render-lab: ${count} bands have no "${name}"`);

@@ -7,7 +7,7 @@ import {
   Fn, If, float, floor, fract, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint, uniform,
   vec3, vec4,
 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
 import { ShadingSample } from '../lighting/shading-sample';
 import { MAX_PLANET_LIGHT_SLOTS, type PlanetLightSource } from '../lighting/planet-light-source';
@@ -224,6 +224,26 @@ export class ScreenSpacePass {
       this.quad.material = material;
       await compileInto(this.renderer, target, this.quad, this.quad.camera);
     }
+  }
+
+  // いまの方式と段の全段の、実行順の GPU の行とフラグメントシェーダの WGSL。それぞれの描画先へ当てて組む。
+  public async stageShaders(
+    camera: THREE.Camera, width: number, height: number,
+  ): Promise<readonly { readonly gpuPass: GpuPassId; readonly wgsl: string }[]> {
+    const stages = this.currentStages();
+    this.prepare(camera, width, height);
+    // 組むときの根は、板を描くときと同じく光源の無い空の Scene にする。
+    const root = new THREE.Scene();
+    const shaders: { readonly gpuPass: GpuPassId; readonly wgsl: string }[] = [];
+    for (const { material, target, gpuPass } of stages) {
+      this.quad.material = material;
+      this.renderer.setRenderTarget(target);
+      const { fragmentShader } = await this.renderer.debug.getShaderAsync(root, this.quad.camera, this.quad);
+      if (fragmentShader === null) throw new Error(`screen-space: stage ${gpuPass} has no fragment shader`);
+      shaders.push({ gpuPass, wgsl: fragmentShader });
+    }
+    this.renderer.setRenderTarget(null);
+    return shaders;
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで共有する単一の板
