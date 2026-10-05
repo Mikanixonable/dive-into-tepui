@@ -5,8 +5,8 @@ import {
   If, abs, clamp, cos, dot, exp2, float, floor, ivec2, length, max, min, mix, normalize, round, screenSize, screenUV,
   select, sin, textureLoad, vec2, vec3,
 } from 'three/tsl';
-import { gbufferTexelOf } from './hemisphere-scan';
-import { VOID_EXPONENT, type SurfaceReceiver, type SurfaceWeight, type Texel } from './surface-weight';
+import { VOID_EXPONENT, type SurfaceReceiver, type SurfaceWeight } from './surface-weight';
+import type { ScanSurfaces, Texel, TexelSurface } from './texel-surface';
 import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
 // 最後の拡大で読む疎なタップの数と、タップ間の黄金角 [rad]。
@@ -22,9 +22,11 @@ const UPSAMPLE_ANISOTROPY_SOFTNESS = 1 / 2;
 const UPSAMPLE_HALF_WEIGHT_ANGLE = Math.PI / 9;
 
 export class CorrectionReconstruction {
-  // weight は受け手と標本の面の重み、fullSize と scanSize は描画バッファと走査の解像度 [px]。
+  // weight は受け手と標本の面の重み、surfaces は標本の面を読む走査の解像度の面、fullSize と scanSize は描画バッファと
+  // 走査の解像度 [px]。
   public constructor(
-    private readonly weight: SurfaceWeight, private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
+    private readonly weight: SurfaceWeight, private readonly surfaces: ScanSurfaces,
+    private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
   ) {}
 
   // 描画バッファの画素の補正を、走査の画素の補正 source(rgb。α は粗い段まで均された割合 A)から K 本を疎に読み、面の
@@ -33,7 +35,7 @@ export class CorrectionReconstruction {
   // **Fn の中の、受け手が補正を受ける分岐から呼ぶこと。**
   public sparseUpsampled(source: THREE.Texture, rotation: FloatNode): Vec3Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
-    const receiver = this.weight.receiverAt(pixel);
+    const receiver = this.weight.receiverAt(this.weight.surfaceAt(pixel));
     const position = vec2(pixel).add(0.5).mul(this.scanSize).div(this.fullSize).sub(0.5).toVar();
     const scale = this.scanSize.div(this.fullSize).toVar();
     const nearest = textureLoad(source, this.clampToScan(ivec2(round(position)))).toVar();
@@ -50,9 +52,10 @@ export class CorrectionReconstruction {
       const offset = across.mul(cosAngle.mul(x).sub(sinAngle.mul(y)))
         .add(along.mul(sinAngle.mul(x).add(cosAngle.mul(y)))).mul(scale);
       const tap = this.clampToScan(ivec2(round(position.add(offset)))).toVar();
-      const texel = this.gbufferTexelOfScan(tap).toVar();
-      const tolerance = max(length(vec2(texel.sub(pixel))), 1);
-      const exponent = this.weight.exponentOf(receiver, texel, tolerance,
+      const scanSurface = this.surfaces.scanSurfaceAt(tap);
+      const surface: TexelSurface = { ...scanSurface, texel: scanSurface.texel.toVar() };
+      const tolerance = max(length(vec2(surface.texel.sub(pixel))), 1);
+      const exponent = this.weight.exponentOf(receiver, surface, tolerance,
         float(UPSAMPLE_HALF_WEIGHT_ANGLE)).toVar();
       return { tap, exponent };
     });
@@ -94,11 +97,6 @@ export class CorrectionReconstruction {
       across: direction.mul(radius.mul(squash)),
       along: vec2(direction.y.negate(), direction.x).mul(radius.div(squash)),
     };
-  }
-
-  // 走査の画素 texel が表す G バッファの画素。
-  private gbufferTexelOfScan(texel: Texel): Texel {
-    return gbufferTexelOf(vec2(texel), this.fullSize, this.scanSize);
   }
 
   // 走査の画素 texel を画面の内側へ寄せる。

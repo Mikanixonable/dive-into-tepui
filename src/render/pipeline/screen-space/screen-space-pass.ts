@@ -7,7 +7,7 @@ import {
   Fn, If, float, floor, fract, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint, uniform,
   vec3, vec4,
 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
 import { ShadingSample } from '../lighting/shading-sample';
 import { MAX_PLANET_LIGHT_SLOTS, type PlanetLightSource } from '../lighting/planet-light-source';
@@ -88,20 +88,10 @@ interface BandCountStages {
   readonly own: readonly ScreenSpaceStage[];
 }
 
-// 走査の解像度の描画先(rgba16float)。名前 name は MRT の出力と結び付く。
-function createScanTarget(name: string): THREE.RenderTarget {
-  const target = new THREE.RenderTarget(1, 1, {
-    type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
-    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
-  });
-  target.texture.name = name;
-  return target;
-}
-
 export class ScreenSpacePass {
-  // 照り返しの源の描画先と、それを書く描画命令。
-  private readonly sourceTarget = createScanTarget('surfaceRadiance');
-  private readonly sourceStage: ScreenSpaceStage;
+  // 方式ごとの、段 0 の面の写しと源を書く描画命令。
+  private readonly occlusionSurfaceStage: ScreenSpaceStage;
+  private readonly indirectSurfaceStage: ScreenSpaceStage;
   // 帯の数ごとの描画命令。初めてその帯の数で描くときに組む。
   private readonly stagesByBandCount = new Map<number, BandCountStages>();
   private readonly quad = new QuadMesh();
@@ -152,12 +142,14 @@ export class ScreenSpacePass {
     const weight = new SurfaceWeight(gbuffer, this.projection, this.projectionInverse, this.fullSize);
     this.surfaces = new ScreenSpaceInputPyramid(gbuffer, this.projectionInverse, this.fullSize, this.scanSize);
     this.bandPyramid = new BandPyramid(this.surfaces, weight, this.fullSize, this.scanSize);
-    this.reconstruction = new CorrectionReconstruction(weight, this.fullSize, this.scanSize);
-    this.sourceStage = this.createSourceStage(sun);
+    this.reconstruction = new CorrectionReconstruction(weight, this.surfaces, this.fullSize, this.scanSize);
+    this.occlusionSurfaceStage = this.surfaces.scanStageOf(null);
+    this.indirectSurfaceStage = this.surfaces.scanStageOf(
+      this.whereResolved(this.gbufferUV, () => vec4(this.emittedRadiance(sun), 1)));
   }
 
   // 走査の解像度。rgb = 照り返しの源として面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)。方式が遮蔽では 0。
-  public get surfaceRadianceTexture(): THREE.Texture { return this.sourceTarget.texture; }
+  public get surfaceRadianceTexture(): THREE.Texture { return this.surfaces.radianceTexture; }
 
   // いまの段で補正を分ける帯の数。
   public get bandCount(): number { return this.tier.bandCount; }
@@ -206,7 +198,7 @@ export class ScreenSpacePass {
     // **描画先の寸法を合わせる前に列を組む** — 代表の段の描画先は、列を組むときに作られる。
     const stages = this.currentStages();
     this.prepare(camera, width, height);
-    // 照り返しの源 → 走査 → 代表の縮小列 → 帯の縮小 → 拡大と合流 → 拡大の順に、段ごとの描画先へ書く。
+    // 面の写し → 照り返しの源 → 走査 → 代表の縮小列 → 帯の縮小 → 拡大と合流 → 拡大の順に、段ごとの描画先へ書く。
     for (const { material, target, gpuPass } of stages) {
       this.renderer.setRenderTarget(target);
       this.quad.material = material;
@@ -226,11 +218,33 @@ export class ScreenSpacePass {
     }
   }
 
+  // いまの方式と段の全段の、実行順の GPU の行とフラグメントシェーダの WGSL。それぞれの描画先へ当てて組む。
+  public async stageShaders(
+    camera: THREE.Camera, width: number, height: number,
+  ): Promise<readonly { readonly gpuPass: GpuPassId; readonly wgsl: string }[]> {
+    const stages = this.currentStages();
+    this.prepare(camera, width, height);
+    // 組むときの根は、板を描くときと同じく光源の無い空の Scene にする。
+    const root = new THREE.Scene();
+    const shaders: { readonly gpuPass: GpuPassId; readonly wgsl: string }[] = [];
+    for (const { material, target, gpuPass } of stages) {
+      this.quad.material = material;
+      this.renderer.setRenderTarget(target);
+      const { fragmentShader } = await this.renderer.debug.getShaderAsync(root, this.quad.camera, this.quad);
+      if (fragmentShader === null) throw new Error(`screen-space: stage ${gpuPass} has no fragment shader`);
+      shaders.push({ gpuPass, wgsl: fragmentShader });
+    }
+    this.renderer.setRenderTarget(null);
+    return shaders;
+  }
+
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで共有する単一の板
   // なので、ここでは解放しない。
   public dispose(): void {
-    this.sourceTarget.dispose();
-    const own = [this.sourceStage, ...[...this.stagesByBandCount.values()].flatMap((stages) => stages.own)];
+    const own = [
+      this.occlusionSurfaceStage, this.indirectSurfaceStage,
+      ...[...this.stagesByBandCount.values()].flatMap((stages) => stages.own),
+    ];
     for (const material of new Set(own.map(({ material }) => material))) material.dispose();
     this.surfaces.dispose();
     this.blueNoise.dispose();
@@ -247,13 +261,13 @@ export class ScreenSpacePass {
     const built = this.stagesByBandCount.get(count);
     if (built !== undefined) return built;
     const occlusionScan = this.createScanStage(count, null);
-    const indirectScan = this.createScanStage(count, this.sourceTarget.texture);
+    const indirectScan = this.createScanStage(count, this.surfaces.radianceTexture);
     // 走査より後の段は方式によらないので、両方の方式で同じ描画命令を使う。
     const chain = this.createChainStages(count);
     const upsample = this.createUpsampleStage(count);
     const scans: ModeStages = {
-      [SCREEN_SPACE_DIFFUSE.occlusion]: [occlusionScan],
-      [SCREEN_SPACE_DIFFUSE.indirect]: [this.sourceStage, indirectScan],
+      [SCREEN_SPACE_DIFFUSE.occlusion]: [this.occlusionSurfaceStage, occlusionScan],
+      [SCREEN_SPACE_DIFFUSE.indirect]: [this.indirectSurfaceStage, indirectScan],
     };
     const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, upsample];
     const stages: BandCountStages = {
@@ -269,15 +283,6 @@ export class ScreenSpacePass {
     };
     this.stagesByBandCount.set(count, stages);
     return stages;
-  }
-
-  // 照り返しの源の描画命令を組む。sun は照り返しの源になる面を照らす太陽。
-  private createSourceStage(sun: SunSource): ScreenSpaceStage {
-    const source = stageMaterial();
-    source.mrtNode = mrt({
-      surfaceRadiance: this.whereResolved(this.gbufferUV, () => vec4(this.emittedRadiance(sun), 1)),
-    });
-    return { material: source, target: this.sourceTarget, gpuPass: GPU_PASS.bounceSource };
   }
 
   // 受け手へ届く遠方の拡散光のうち塞がれた照度と照り返しの差を、帯の数 count の帯ごとに求めて詰めて書く、走査の
@@ -297,8 +302,8 @@ export class ScreenSpacePass {
       irradiance: this.planetLight.diffuseIrradianceAtSlot(this.sample, slot),
     }));
     const material = multiOutputMaterial(target, () => packedBands(scanHemisphere(
-      this.gbuffer.depthTexture, this.gbuffer.normalTexture, this.fullSize, this.projection, this.projectionInverse,
-      this.sliceCount, this.stepCount, noise, this.ambient.irradiance(this.sample), planets, radiance,
+      this.surfaces, this.fullSize, this.projection, this.projectionInverse, this.sliceCount, this.stepCount, noise,
+      this.ambient.irradiance(this.sample), planets, radiance,
       { count, scale: this.bandScale },
     )));
     return { material, target, gpuPass: GPU_PASS.nearbyDiffuseScan };
@@ -384,10 +389,6 @@ export class ScreenSpacePass {
     this.bandScale.value = tier.bandScale;
     const scanWidth = Math.max(1, Math.ceil(width * tier.scale));
     const scanHeight = Math.max(1, Math.ceil(height * tier.scale));
-    // 描画先の寸法は、変わったときだけ確保し直す。
-    if (this.sourceTarget.width !== scanWidth || this.sourceTarget.height !== scanHeight) {
-      this.sourceTarget.setSize(scanWidth, scanHeight);
-    }
     this.surfaces.setSize(scanWidth, scanHeight);
     const levelSizes = Array.from({ length: tier.bandCount }, (_, level) =>
       [levelExtent(scanWidth, level), levelExtent(scanHeight, level)] as const);
@@ -400,13 +401,10 @@ export class ScreenSpacePass {
     this.sample.sync(camera);
   }
 
-  // いまの方式で前の像が残る描画先 — 遮蔽では照り返しの源、オフでは全部 — を空へ戻す。残すと、デバッグ表示に
-  // 切る直前の像が凍ったまま出る。
+  // 方式がオフで前の像が残る描画先 — 全部 — を空へ戻す。残すと、デバッグ表示に切る直前の像が凍ったまま出る。
   private clearUnwritten(): void {
-    const unwritten = this.mode === SCREEN_SPACE_DIFFUSE.off
-      ? [this.sourceTarget, ...this.surfaces.targets, ...this.output.targets]
-      : this.mode === SCREEN_SPACE_DIFFUSE.occlusion ? [this.sourceTarget] : [];
-    if (unwritten.length === 0) return;
+    if (this.mode !== SCREEN_SPACE_DIFFUSE.off) return;
+    const unwritten = [...this.surfaces.targets, ...this.output.targets];
     // 消去色はレンダラーを共有する他のパスのものなので、退避して黒の透明で消し、戻す。
     const savedClearAlpha = this.renderer.getClearAlpha();
     this.renderer.getClearColor(this.savedClearColor);

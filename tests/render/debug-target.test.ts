@@ -18,7 +18,7 @@ export function register(): void {
     // 解像度への拡大。
     const chain = [
       'band-0', 'band-1', 'band-2', 'band-3', 'band-4',
-      'representative-1', 'representative-2', 'representative-3', 'representative-4',
+      'representative-0', 'representative-1', 'representative-2', 'representative-3', 'representative-4',
       'reduced-1-band-1', 'reduced-1-band-2', 'reduced-1-band-3', 'reduced-1-band-4',
       'reduced-2-band-2', 'reduced-2-band-3', 'reduced-2-band-4',
       'reduced-3-band-3', 'reduced-3-band-4',
