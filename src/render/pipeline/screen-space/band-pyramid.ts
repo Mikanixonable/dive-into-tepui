@@ -182,12 +182,12 @@ export class BandPyramid {
     const representative = this.surfaces.representativeAt(level, pixel).toVar();
     const outputs = Array.from({ length: packedTextureCount(count, level) }, () => vec4(0).toVar());
     If(this.surfaces.hasSurface(representative), () => {
-      const receiver = this.weight.receiverAt(representative);
+      const receiver = this.weight.receiverAt(this.weight.surfaceAt(representative));
       const { distance, angle } = this.toleranceAt(level);
       // 子の代表自身は重み 1 なので、重みの和は 1 以上。
       const children = this.surfaces.childrenOf(pixel).map((child) => {
         const exponent = this.weight.exponentOf(
-          receiver, this.surfaces.representativeAt(level - 1, child), distance, angle);
+          receiver, this.weight.surfaceAt(this.surfaces.representativeAt(level - 1, child)), distance, angle);
         const weight = select(this.surfaces.contains(level - 1, child), exp2(exponent.negate()), float(0)).toVar();
         // 子の先頭の帯は段 level − 1 の帯で、段 level へは持ち上げない。
         const { bands: [, ...bands], effectivePixels } = levelAt(finer, count, level - 1, child);
@@ -211,14 +211,14 @@ export class BandPyramid {
     const representative = this.surfaces.representativeAt(level, pixel).toVar();
     const result = vec4(0).toVar();
     If(this.surfaces.hasSurface(representative), () => {
-      const receiver = this.weight.receiverAt(representative);
+      const receiver = this.weight.receiverAt(this.weight.surfaceAt(representative));
       // 段 level + 1 の 4 画素の面の重みは、その代表を段 level の代表と比べたもの(画面の外は 0)。
       const { distance, angle } = this.toleranceAt(level + 1);
       const containing = pixel.div(2);
       const parents = coarseNeighbors(vec2(pixel)).map(({ texel, weight }): ParentPixel => {
         const parent = ivec2(texel).toVar();
         const exponent = this.weight.exponentOf(
-          receiver, this.surfaces.representativeAt(level + 1, parent), distance, angle);
+          receiver, this.weight.surfaceAt(this.surfaces.representativeAt(level + 1, parent)), distance, angle);
         const coarseValue = textureLoad(coarse, parent);
         return {
           bilinear: weight,
