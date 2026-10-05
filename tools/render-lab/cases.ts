@@ -20,6 +20,7 @@ import { GROOVE_LADDER_CASES } from './groove-ladder-case';
 import { SLOPE_FAN_CASES } from './slope-fan-case';
 import { CORNELL_BOX_CASES } from './cornell-box-case';
 import { PLANE_CASES } from './plane-case';
+import { CLUTTER_CASES } from './clutter-case';
 import {
   circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, texturedBody, VIEW_HEIGHT, VIEW_WIDTH,
   type CaseBuilder, type LabCase,
@@ -177,6 +178,7 @@ export const CASES = {
   ...SLOPE_FAN_CASES,
   ...CORNELL_BOX_CASES,
   ...PLANE_CASES,
+  ...CLUTTER_CASES,
   'order': order,
   'march-slab': marchSlab,
   ...SHIP_CASES,
