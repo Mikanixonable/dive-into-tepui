@@ -10,6 +10,7 @@ export const CHAIN_DEBUG_TARGETS = [
   { id: 'band-2', kind: 'band', level: 0, band: 2 },
   { id: 'band-3', kind: 'band', level: 0, band: 3 },
   { id: 'band-4', kind: 'band', level: 0, band: 4 },
+  { id: 'representative-0', kind: 'representative', level: 0 },
   { id: 'representative-1', kind: 'representative', level: 1 },
   { id: 'representative-2', kind: 'representative', level: 2 },
   { id: 'representative-3', kind: 'representative', level: 3 },
