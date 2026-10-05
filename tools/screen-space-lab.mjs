@@ -320,7 +320,8 @@ function labOf(devTools) {
     },
     // seed([x, y])の 1 フレームを段 before → after の順に描き、中間ターゲット names の rgb の対の差 d = after − before を、
     // ページの中に name ごとに積む和と二乗和(倍精度)へ足す。積んだ回数が earlyCount になったら、その時点の和を控える。
-    // 最初に積んだフレームの両方の読み戻しも控える。積んだものは takePairDifferences で受け取る。
+    // 最初に積んだフレームの両方の読み戻しも控える。積んだものは takePairDifferences で受け取る。name ごとに、フレームごとの
+    // 差のある成分の数(全画素の rgb で d ≠ 0 の数)も控える。
     accumulatePairDifference: (names, [x, y], before, after, earlyCount) => awaitInPage(devTools, `(async () => {
       const read = async () => {
         const images = [];
@@ -336,6 +337,11 @@ function labOf(devTools) {
       const afters = await read();
       for (const [i, name] of ${JSON.stringify(names)}.entries()) {
         const { width, height, rgba } = afters[i];
+        let differing = 0;
+        for (let p = 0; p < width * height; p++) {
+          for (let c = 0; c < 3; c++) if (rgba[4 * p + c] !== befores[i].rgba[4 * p + c]) differing++;
+        }
+        ((window.__ssdDiffering ??= {})[name] ??= []).push(differing);
         const pair = ((window.__ssdPairs ??= {})[name] ??= { width, height, count: 0,
           sum: new Float64Array(width * height * 3), squareSum: new Float64Array(width * height * 3), early: null,
           first: { before: befores[i].rgba, after: rgba } });
@@ -350,17 +356,22 @@ function labOf(devTools) {
         if (pair.count === ${earlyCount}) pair.early = Float64Array.from(pair.sum);
       }
     })()`, 'the pair difference'),
+    // accumulatePairDifference で積んだ和を names について捨てる(フレームごとの差のある成分の数は残る)。
+    discardPairDifferences: (names) => devTools.evaluate(
+      `for (const name of ${JSON.stringify(names)}) delete window.__ssdPairs[name]`),
     // accumulatePairDifference で積んだ name の { width, height, count, sum, squareSum, early, first } を受け取り、ページから
-    // 消す。sum・squareSum・early(控えていなければ null)は画素ごとに rgb の Float64Array、first は最初に積んだフレームの
-    // { before, after }(画素ごとに RGBA の Float32Array)。
+    // 消す。differing はフレームごとの差のある成分の数の並び。sum・squareSum・early(控えていなければ null)は画素ごとに
+    // rgb の Float64Array、first は最初に積んだフレームの { before, after }(画素ごとに RGBA の Float32Array)。
     async takePairDifferences(name) {
       const source = `window.__ssdPairs[${JSON.stringify(name)}]`;
       const [width, height, count, hasEarly] = await devTools.evaluate(
         `[${source}.width, ${source}.height, ${source}.count, ${source}.early !== null]`);
       const receive = (key) => receiveFloats(devTools, `${source}.${key}`, width * height * 3, Float64Array);
       const receiveFirst = (key) => receiveFloats(devTools, `${source}.first.${key}`, width * height * 4);
+      const differing = await devTools.evaluate(`window.__ssdDiffering[${JSON.stringify(name)}]`);
+      await devTools.evaluate(`delete window.__ssdDiffering[${JSON.stringify(name)}]`);
       const taken = {
-        width, height, count, sum: await receive('sum'), squareSum: await receive('squareSum'),
+        width, height, count, differing, sum: await receive('sum'), squareSum: await receive('squareSum'),
         early: hasEarly ? await receive('early') : null,
         first: { before: await receiveFirst('before'), after: await receiveFirst('after') },
       };

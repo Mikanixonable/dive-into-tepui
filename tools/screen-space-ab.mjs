@@ -40,6 +40,8 @@ const SEED_TARGETS = ['band-sum', 'correction'];
 const OUTLIER_STEPS = 4;
 // 多シードで、d̄ の RMS の比を取る先頭のシードの数と、偏りとして数える z の大きさ、z の地図の端の z。
 const EARLY_SEEDS = 16;
+// 積む前に前 → 後を描いて捨てる暖機のシード数(積むシードの後ろの seedOf から取る)。ドライバの組み方の切り替えを積む前に起こす。
+const WARMUP_SEEDS = 32;
 const LARGE_Z = 3;
 const Z_MAP_LIMIT = 4;
 
@@ -287,8 +289,12 @@ async function identityOverSeeds(dir, before, after, options) {
       await lab.setSeed(seedOf(0));
       const radius = await lab.readFloat('projected-radius', 1);
       const exposure = await lab.exposureFactor();
-      // 両方の形を、空にした描画先から落ち着くまで描いてから積む。
+      // 両方の形を、空にした描画先から落ち着くまで描き、暖機してから積む。
       for (const { tier } of [before, after]) await drawSettled(lab, tier, names);
+      for (let k = 0; k < WARMUP_SEEDS; k++) {
+        await lab.accumulatePairDifference(names, seedOf(seedCount + k), before.tier, after.tier, EARLY_SEEDS);
+      }
+      await lab.discardPairDifferences(names);
       for (let k = 0; k < seedCount; k++) {
         await lab.accumulatePairDifference(names, seedOf(k), before.tier, after.tier, EARLY_SEEDS);
       }
@@ -297,7 +303,9 @@ async function identityOverSeeds(dir, before, after, options) {
         const pair = await lab.takePairDifferences(name);
         const mask = scanMaskOf(radius, before.tier.scale, pair.width, pair.height);
         const { z, ...statistics } = seedStatisticsOf(pair, mask);
-        measured[entry.key][name] = { width: pair.width, height: pair.height, ...statistics };
+        measured[entry.key][name] = {
+          width: pair.width, height: pair.height, differingPerSeed: pair.differing, ...statistics,
+        };
         writeFileSync(path.join(dir, `${entry.key}.${name}.z.png`), scanPngOf(pair.width, pair.height, mask,
           (p) => [0, 1, 2].map((c) => 0.5 + Math.max(-Z_MAP_LIMIT, Math.min(Z_MAP_LIMIT, z[3 * p + c])) / (2 * Z_MAP_LIMIT))));
         writeFileSync(path.join(dir, `${entry.key}.${name}.pair.png`), pairPngOf(pair, mask, exposure));
@@ -360,6 +368,14 @@ function pairPngOf({ width, height, first }, mask, exposure) {
   return encodeRgbPng(panels.length * WIDTH, HEIGHT, codes);
 }
 
+// 数の並び counts を EARLY_SEEDS ごとに区切った平均の並び。
+function blockMeansOf(counts) {
+  return Array.from({ length: Math.ceil(counts.length / EARLY_SEEDS) }, (_, b) => {
+    const block = counts.slice(b * EARLY_SEEDS, (b + 1) * EARLY_SEEDS);
+    return block.reduce((sum, n) => sum + n, 0) / block.length;
+  });
+}
+
 // identity --seeds の記録 record の表。
 function seedReportOf({ head, before, after, seeds, names, entries, shots }) {
   const rows = entries.flatMap((key) => names.map((name) => {
@@ -378,6 +394,12 @@ function seedReportOf({ head, before, after, seeds, names, entries, shots }) {
       '撮影', '読み戻し', '測る成分', '差のある成分', 'SE = 0 で d̄ ≠ 0', `z の絶対値 > ${LARGE_Z} の割合`,
       `RMS(d̄ の先頭 ${EARLY_SEEDS}) / RMS(d̄)`, 'RMS(d̄)',
     ], rows),
+    '', '## ドライバの組み方の切り替え', '',
+    `暖機 ${WARMUP_SEEDS} シード + 積んだ ${seeds} シードを ${EARLY_SEEDS} シードずつ区切った、全画素の差のある成分の数の平均(左が暖機の先頭)。`,
+    '数が区切りで定常でなければ、ドライバの組み方が切り替わっている。シードごとの数は record.json の differingPerSeed。',
+    '', ...table(['撮影', '読み戻し', '区切りごとの平均'], entries.flatMap((key) => names.map((name) => [
+      key, name, blockMeansOf(shots[key][name].differingPerSeed).map((mean) => fixed(mean, 1)).join(' / '),
+    ]))),
     '', '## 保存したもの', '',
     `- \`<撮影>.<読み戻し>.z.png\` — z を成分ごとに 0.5 + z/${2 * Z_MAP_LIMIT} で [0, 1] へ切った色(±${Z_MAP_LIMIT} で端)を、`,
     '  絵の寸法へ最近傍で広げたもの。測らない画素は濃い青。',
