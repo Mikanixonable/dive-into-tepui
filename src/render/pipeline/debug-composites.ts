@@ -132,10 +132,14 @@ export class DebugComposites {
     return vec4(this.signedCorrection(vec4(value, 1)), 1);
   }
 
-  // 段 level の代表の面の法線を 0..1 へ写した色。代表に面がなければ黒。
+  // 段 level の代表の面の法線を 0..1 へ写した色。代表に面がなければ黒。段 0 は面の写しを直接読む。
   private representativeNormal(level: number): Vec3Node {
     const surfaces = this.screenSpacePass.inputPyramid;
     const pixel = ivec2(floor(screenUV.mul(surfaces.sizeAt(level))));
+    if (level === 0) {
+      const { depth, encodedNormal } = surfaces.scanSurfaceAt(pixel);
+      return select(depth.greaterThan(0), octDecodeNormal(encodedNormal).mul(0.5).add(0.5), vec3(0));
+    }
     const texel = surfaces.representativeAt(level, pixel);
     const normal = octDecodeNormal(textureLoad(this.gbuffer.normalTexture, texel).rg).mul(0.5).add(0.5);
     return select(surfaces.hasSurface(texel), normal, vec3(0));

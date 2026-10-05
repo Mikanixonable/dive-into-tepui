@@ -206,7 +206,7 @@ export class ScreenSpacePass {
     // **描画先の寸法を合わせる前に列を組む** — 代表の段の描画先は、列を組むときに作られる。
     const stages = this.currentStages();
     this.prepare(camera, width, height);
-    // 照り返しの源 → 走査 → 代表の縮小列 → 帯の縮小 → 拡大と合流 → 拡大の順に、段ごとの描画先へ書く。
+    // 面の写し → 照り返しの源 → 走査 → 代表の縮小列 → 帯の縮小 → 拡大と合流 → 拡大の順に、段ごとの描画先へ書く。
     for (const { material, target, gpuPass } of stages) {
       this.renderer.setRenderTarget(target);
       this.quad.material = material;
@@ -272,8 +272,8 @@ export class ScreenSpacePass {
     const chain = this.createChainStages(count);
     const upsample = this.createUpsampleStage(count);
     const scans: ModeStages = {
-      [SCREEN_SPACE_DIFFUSE.occlusion]: [occlusionScan],
-      [SCREEN_SPACE_DIFFUSE.indirect]: [this.sourceStage, indirectScan],
+      [SCREEN_SPACE_DIFFUSE.occlusion]: [this.surfaces.scanStage, occlusionScan],
+      [SCREEN_SPACE_DIFFUSE.indirect]: [this.surfaces.scanStage, this.sourceStage, indirectScan],
     };
     const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, upsample];
     const stages: BandCountStages = {
@@ -317,8 +317,8 @@ export class ScreenSpacePass {
       irradiance: this.planetLight.diffuseIrradianceAtSlot(this.sample, slot),
     }));
     const material = multiOutputMaterial(target, () => packedBands(scanHemisphere(
-      this.gbuffer.depthTexture, this.gbuffer.normalTexture, this.fullSize, this.projection, this.projectionInverse,
-      this.sliceCount, this.stepCount, noise, this.ambient.irradiance(this.sample), planets, radiance,
+      this.surfaces, this.fullSize, this.projection, this.projectionInverse, this.sliceCount, this.stepCount, noise,
+      this.ambient.irradiance(this.sample), planets, radiance,
       { count, scale: this.bandScale },
     )));
     return { material, target, gpuPass: GPU_PASS.nearbyDiffuseScan };

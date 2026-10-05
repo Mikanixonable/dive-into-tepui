@@ -21,6 +21,7 @@ import {
   type SlicePoint,
 } from './tangent-segments';
 import type { PlanetCap } from '../lighting/planet-light-source';
+import type { ScanSurfaces } from './texel-surface';
 import type {
   BoolNode, FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec3Node,
 } from '../../tsl-types';
@@ -59,9 +60,9 @@ interface GBufferSurface {
   readonly normal: Vec3Node;
 }
 
-// 走査の解像度で描いている画素を受け手として、寸法 gbufferSize [px] の G バッファの素の深度 depth と法線 normal
-// (view 空間、oct 符号化)を走査し、受け手の拡散照度の補正(照り返し − 塞がれた照度)を帯 bands ごとに返す(長さは
-// 帯の数で、和が帯に分けない補正)。受け手と標本は、走査の画素が表す G バッファの画素(gbufferUVOf)の値を読む。
+// 走査の解像度で描いている画素を受け手として、走査の解像度の面 surfaces(素の深度と view 空間の oct 符号化の法線)を
+// 走査し、受け手の拡散照度の補正(照り返し − 塞がれた照度)を帯 bands ごとに返す(長さは帯の数で、和が帯に分けない
+// 補正)。受け手と標本は、走査の画素が表す G バッファの画素(gbufferUVOf)の値を読む。gbufferSize はその G バッファの寸法 [px]。
 // projection / projectionInverse は実カメラの射影行列とその逆、sliceCount はスライスの数、stepCount は片側の歩数、
 // noise は画素ごとの互いに独立な 0..1 の組(x がスライスの回転、y が歩みのずれ、z が扇形の端の丸めのずれ)。
 // ambientIrradiance と planets は、近くの構造に遮られないときに受け手へ届く一様な環境光の照度と天体照。radiance は
@@ -69,13 +70,13 @@ interface GBufferSurface {
 // 偽の受け手は 0。**Fn の中から呼ぶこと。** noise・ambientIrradiance・planets は一様でない分岐の中で読むので、
 // テクスチャを段を明示して読む式で渡すこと。
 export function scanHemisphere(
-  depth: THREE.Texture, normal: THREE.Texture, gbufferSize: Vec2Node, projection: Mat4Uniform,
+  surfaces: ScanSurfaces, gbufferSize: Vec2Node, projection: Mat4Uniform,
   projectionInverse: Mat4Uniform, sliceCount: IntNode, stepCount: IntNode, noise: Vec3Node,
   ambientIrradiance: Vec3Node, planets: readonly PlanetIllumination[], radiance: THREE.Texture | null,
   bands: BandSplit,
 ): Vec3Node[] {
   // 受け手。ループの中と外の両方から読むので、先に変数へ置く。
-  const receiver = surfaceAt(depth, normal, gbufferSize, projectionInverse, floor(screenUV.mul(screenSize)));
+  const receiver = surfaceAt(surfaces, gbufferSize, projectionInverse, floor(screenUV.mul(screenSize)));
   const radius = projectedRadius(receiver.position, projection, screenSize).toVar();
   const corrections = Array.from({ length: bands.count }, () => vec3(0).toVar());
   If(resolvesNearby(receiver.depth, radius), () => {
@@ -146,7 +147,7 @@ export function scanHemisphere(
         Loop({ start: 0, end: stepCount, type: 'int', condition: '<' }, ({ i: step }) => {
           const rho = stepDistance(float(step).add(sliceJitter)).toVar();
           const samplePixel = pixelAlong(screenStep, rho).toVar();
-          const sample = surfaceAt(depth, normal, gbufferSize, projectionInverse, samplePixel);
+          const sample = surfaceAt(surfaces, gbufferSize, projectionInverse, samplePixel);
           const toSample = sample.position.sub(receiver.position).toVar();
           // 遮るのは、画面の中で面が写っている、受け手から半径の内側の標本。
           const onScreen = samplePixel.x.greaterThanEqual(0).and(samplePixel.y.greaterThanEqual(0))
@@ -201,15 +202,15 @@ export function projectedRadius(position: Vec3Node, projection: Mat4Uniform, sca
 
 // 走査の解像度の画素 pixel(整数座標)が表す G バッファの画素の面。面が写っていない画素の法線は (0, 0, 1)。
 function surfaceAt(
-  depth: THREE.Texture, normal: THREE.Texture, gbufferSize: Vec2Node, projectionInverse: Mat4Uniform,
-  pixel: Vec2Node,
+  surfaces: ScanSurfaces, gbufferSize: Vec2Node, projectionInverse: Mat4Uniform, pixel: Vec2Node,
 ): GBufferSurface {
   const texel = gbufferTexelOf(pixel, gbufferSize, screenSize).toVar();
   const uv = texelCenterUV(texel, gbufferSize).toVar();
-  const rawDepth = textureLoad(depth, texel).r.toVar();
+  const surface = surfaces.scanSurfaceAt(ivec2(pixel));
+  const rawDepth = surface.depth.toVar();
   const surfaceNormal = vec3(0, 0, 1).toVar();
   If(rawDepth.greaterThan(0), () => {
-    surfaceNormal.assign(octDecodeNormal(textureLoad(normal, texel).rg));
+    surfaceNormal.assign(octDecodeNormal(surface.encodedNormal));
   });
   const position = getViewPosition(uv, rawDepth, projectionInverse).toVar();
   return { uv, depth: rawDepth, position, normal: surfaceNormal };
