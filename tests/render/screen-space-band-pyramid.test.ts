@@ -1,8 +1,11 @@
-// 近傍拡散補正の段ごとの代表の選び方と、帯の縮小・粗い段からの拡大と合流の重みを、双線形の重みの和と象限、面の数ごとの
-// 選び方、一様な値の恒等で検査する。
+// 近傍拡散補正の段ごとの代表の選び方と、帯の縮小・粗い段からの拡大と合流を、双線形の重みの和と象限、面の数ごとの
+// 選び方、実効画素数の定義、合流の混合比の極限、一様な値の恒等で検査する。
 import * as assert from 'node:assert/strict';
 import { bool, float, vec2, vec3 } from 'three/tsl';
-import { coarseNeighbors, mergedCorrection, weightedBands } from '../../src/render/pipeline/screen-space/band-pyramid';
+import {
+  coarseNeighbors, effectivePixelsOf, mergedCorrection, packedReducedBands, packedTextureCount, unpackedBands,
+  weightedBands, type ParentPixel,
+} from '../../src/render/pipeline/screen-space/band-pyramid';
 import { secondNearest } from '../../src/render/pipeline/screen-space/screen-space-input-pyramid';
 import { test } from '../harness';
 import { evaluateShaderNode } from './tsl-node-evaluator';
@@ -22,6 +25,27 @@ function componentsOf(node: unknown): number[] {
 function vectorNode([x, y, z]: readonly number[]): Vec3Node {
   return vec3(x!, y!, z!);
 }
+
+// 段 k の画素 pixel を囲む段 k + 1 の 4 画素。面の重みは surfaceAt(画素 pixel を含む段 k + 1 の画素からのずれ)、
+// C_{k+1} はどれも value、実効画素数はどれも parentPixels。
+function parentsAround(
+  pixel: readonly [number, number], surfaceAt: (offset: readonly number[]) => number, value: readonly number[],
+  parentPixels: number,
+): ParentPixel[] {
+  const containing = pixel.map((coordinate) => Math.floor(coordinate / 2));
+  return coarseNeighbors(vec2(pixel[0], pixel[1])).map(({ texel, weight }) => {
+    const offset = componentsOf(texel).map((coordinate, axis) => coordinate - containing[axis]!);
+    return {
+      bilinear: weight, surface: float(surfaceAt(offset)), value: vectorNode(value),
+      effectivePixels: float(parentPixels), containsPixel: bool(offset.every((d) => d === 0)),
+    };
+  });
+}
+
+// 段 k の画素の実効画素数 n_T と、それを囲む親の実効画素数 m の組。段 0 は n_T = 1。
+const PIXEL_COUNTS = [{ own: 1, parent: 4 }, { own: 4, parent: 16 }, { own: 2.5, parent: 7 }] as const;
+// 合流を確かめる段 k の画素。
+const MERGE_PIXELS = [[0, 0], [1, 0], [0, 1], [5, 2], [6, 9]] as const;
 
 export function register(): void {
   test('screen space band pyramid: 粗い段の 4 画素の双線形の重みは和が 1 で、画素を含む粗い画素が 9/16、斜向かいが 1/16', () => {
@@ -83,16 +107,76 @@ export function register(): void {
     assert.deepStrictEqual(empty, [[0, 0, 0], [0, 0, 0]]);
   });
 
-  test('screen space band pyramid: 合流は、粗い段の C が一様なら面の重みによらず D + T を返す', () => {
+  test('screen space band pyramid: 縮小の実効画素数は、等しい重みなら子の 4 倍、重みを持つ子が 1 つならその子の値、重みが無ければ 0', () => {
+    const effectivePixels = (weights: readonly number[], pixels: readonly number[]): number =>
+      evaluateShaderNode(effectivePixelsOf(weights.map((weight, index) => ({
+        weight: float(weight), effectivePixels: float(pixels[index]!),
+      })))) as number;
+    for (const pixels of [1, 4, 2.5]) {
+      for (const weight of [1, 0.3]) {
+        near(effectivePixels([weight, weight, weight, weight], [pixels, pixels, pixels, pixels]), 4 * pixels, 1e-12,
+          `等しい重み ${weight}、子 ${pixels}`);
+        near(effectivePixels([0, weight, 0, 0], [16, pixels, 16, 16]), pixels, 1e-12, `子 1 つ ${weight}、子 ${pixels}`);
+      }
+    }
+    // 1 未満の子の実効画素数は 1 とみなす。
+    near(effectivePixels([1, 1, 1, 1], [0, 0, 0, 0]), 4, 1e-12, '子 0');
+    // 偏った重みでは (Σw)² / Σw² へ減る(Kish の実効標本数)。
+    near(effectivePixels([1, 0.5, 0, 0], [1, 1, 1, 1]), 1.5 ** 2 / 1.25, 1e-12, '偏った重み');
+    assert.strictEqual(effectivePixels([0, 0, 0, 0], [1, 1, 1, 1]), 0);
+  });
+
+  test('screen space band pyramid: 段 1 以降の帯は段 0 と同じ並びで、実効画素数を最後のテクスチャの w に、余りを 0 に持つ', () => {
+    for (let count = 2; count <= 5; count++) {
+      for (let level = 1; level < count; level++) {
+        const label = `${count} 帯の段 ${level}`;
+        const values = Array.from({ length: count - level }, (_, band) => [band + 0.25, -band - 0.5, 3 * band + 1]);
+        const packed = packedReducedBands(values.map(vectorNode), float(37.5));
+        // 帯の rgb と実効画素数の 1 チャンネルを持つ枚数。
+        const textureCount = Math.ceil((3 * (count - level) + 1) / 4);
+        assert.strictEqual(packedTextureCount(count, level), textureCount, label);
+        assert.strictEqual(packed.length, textureCount, label);
+        const channels = packed.flatMap((value) => evaluateShaderNode(value) as number[]);
+        const spare = channels.slice(3 * values.length, -1);
+        assert.strictEqual(channels.at(-1), 37.5, label);
+        assert.deepStrictEqual(spare, Array(spare.length).fill(0), label);
+        const unpacked = unpackedBands(packed, values.length).map((band) => evaluateShaderNode(band));
+        assert.deepStrictEqual(unpacked, values, label);
+      }
+    }
+  });
+
+  test('screen space band pyramid: 合流は、粗い段の C が一様で T と等しければ、面の重みと実効画素数によらず D + T を返す', () => {
     const direct = [1, 2, 3];
     const remainder = [-0.5, 4, 0.25];
-    for (const surfaceWeights of [[1, 1, 1, 1], [0, 0, 0, 0], [1, 0.2, 0, 0.7]]) {
-      const coarse = coarseNeighbors(vec2(5, 2)).map(({ weight }, index) => ({
-        weight: weight.mul(surfaceWeights[index]!), value: vectorNode(remainder),
-      }));
-      const merged = componentsOf(mergedCorrection(vectorNode(direct), vectorNode(remainder), coarse));
-      for (const [channel, value] of merged.entries()) {
-        near(value, direct[channel]! + remainder[channel]!, 1e-12, `${surfaceWeights}`);
+    for (const surfaces of [[1, 1, 1, 1], [0, 0, 0, 0], [1, 0.2, 0, 0.7]]) {
+      for (const { own, parent } of PIXEL_COUNTS) {
+        const parents = parentsAround([5, 2], () => 0, remainder, parent)
+          .map((parentPixel, index) => ({ ...parentPixel, surface: float(surfaces[index]!) }));
+        const merged = componentsOf(mergedCorrection(vectorNode(direct), vectorNode(remainder), float(own), parents));
+        for (const [channel, value] of merged.entries()) {
+          near(value, direct[channel]! + remainder[channel]!, 1e-12, `${surfaces} n_T ${own}`);
+        }
+      }
+    }
+  });
+
+  test('screen space band pyramid: 合流の混合比は、平らなら 1、自分を含む親だけが合えば 1、斜向かいだけなら m / (m + n_T)、どれも合わなければ 0', () => {
+    // D = T = 0 で親の C をどれも 1 にすると、C_k の各成分が混合比 α になる。
+    const ratioOf = (pixel: readonly [number, number], surfaceAt: (offset: readonly number[]) => number,
+      own: number, parent: number): number => {
+      const parents = parentsAround(pixel, surfaceAt, [1, 1, 1], parent);
+      return componentsOf(mergedCorrection(vectorNode([0, 0, 0]), vectorNode([0, 0, 0]), float(own), parents))[0]!;
+    };
+    for (const pixel of MERGE_PIXELS) {
+      for (const { own, parent } of PIXEL_COUNTS) {
+        const label = `(${pixel}) n_T ${own} m ${parent}`;
+        near(ratioOf(pixel, () => 1, own, parent), 1, 1e-12, `${label} 平ら`);
+        near(ratioOf(pixel, (offset) => (offset.every((d) => d === 0) ? 1 : 0), own, parent), 1, 1e-12,
+          `${label} 自分を含む親`);
+        near(ratioOf(pixel, (offset) => (offset.every((d) => d !== 0) ? 1 : 0), own, parent), parent / (parent + own),
+          1e-12, `${label} 斜向かい`);
+        near(ratioOf(pixel, () => 0, own, parent), 0, 1e-12, `${label} 合わない`);
       }
     }
   });

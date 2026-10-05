@@ -301,11 +301,11 @@ export class ScreenSpacePass {
       const target = this.output.mergedTarget(count, level);
       const coarse = this.output.mergedTexture(count, level + 1);
       const own = this.output.bandTarget(count, level).textures;
-      const value = (): Vec3Node => this.bandPyramid.merged(coarse, own, count, level);
+      const value = (): Vec4Node => this.bandPyramid.merged(coarse, own, count, level);
       // 段 0 の受け手は走査の受け手なので、走査と同じく補正を受けない受け手を 0 で塗る。
       const material = stageMaterial();
       material.mrtNode = mrt({
-        [target.texture.name]: level === 0 ? this.whereResolved(this.gbufferUV, value) : Fn(() => vec4(value(), 1))(),
+        [target.texture.name]: level === 0 ? this.whereResolved(this.gbufferUV, () => value().rgb) : Fn(value)(),
       });
       return { material, target, gpuPass: GPU_PASS.nearbyDiffuseMerge };
     });
