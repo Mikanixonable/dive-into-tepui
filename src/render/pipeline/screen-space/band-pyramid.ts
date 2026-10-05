@@ -1,11 +1,14 @@
 // 画面距離の帯ごとに分けた近傍拡散補正の、描画先への詰め方と、段ごとの縮小、粗い段からの拡大と合流。帯 b の rgb は、
-// RGBA のテクスチャを並べた通しのチャンネル 3b..3b + 2 へ順に詰める。段 m の画素は走査の 2^m 画素四方を受け持って帯 m
-// 以降を持ち、段の画素どうしは代表の面の重みで比べる。
+// RGBA のテクスチャを並べた通しのチャンネル 3b..3b + 2 へ順に詰め、段 1 以降は実効画素数(値の分散が走査の 1 画素の何分の
+// 1 か)を最後のテクスチャの w に持つ。段 m の画素は走査の 2^m 画素四方を受け持って帯 m 以降を持ち、段の画素どうしは代表の
+// 面の重みで比べる。
 import type * as THREE from 'three/webgpu';
-import { If, exp2, float, floor, ivec2, screenSize, screenUV, select, textureLoad, vec2, vec3, vec4 } from 'three/tsl';
+import {
+  If, clamp, exp2, float, floor, ivec2, max, min, screenSize, screenUV, select, textureLoad, vec2, vec3, vec4,
+} from 'three/tsl';
 import type { ScreenSpaceInputPyramid } from './screen-space-input-pyramid';
 import type { SurfaceWeight, Texel } from './surface-weight';
-import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
+import type { BoolNode, FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // RGBA のテクスチャ 1 枚のチャンネルの数。
 const CHANNELS_PER_TEXTURE = 4;
@@ -19,22 +22,39 @@ const DISTANCE_TOLERANCE_SCALE = 1;
 const FIRST_HALF_WEIGHT_ANGLE = Math.PI / 9;
 const HALF_WEIGHT_ANGLE_RATIO = 1;
 
-// 帯の数 count の補正を詰める RGBA のテクスチャの枚数。
-export function packedTextureCount(count: number): number {
-  return Math.ceil((3 * count) / CHANNELS_PER_TEXTURE);
+// チャンネルの数 channels を詰める RGBA のテクスチャの枚数。
+function textureCountOf(channels: number): number {
+  return Math.ceil(channels / CHANNELS_PER_TEXTURE);
 }
 
-// 帯ごとの補正 bands を、packedTextureCount 枚の RGBA へ詰める。余りのチャンネルは 0。
-export function packedBands(bands: readonly Vec3Node[]): Vec4Node[] {
-  const channels: FloatNode[] = bands.flatMap((band) => [band.x, band.y, band.z]);
+// 帯の数 count の段 level の帯を詰める RGBA のテクスチャの枚数。段 1 以降は実効画素数のチャンネルを 1 つ足して数える。
+export function packedTextureCount(count: number, level: number): number {
+  return textureCountOf(3 * (count - level) + (level === 0 ? 0 : 1));
+}
+
+// チャンネルの並び channels を、RGBA のテクスチャの並びへ順に詰める。最後のテクスチャの余りのチャンネルは 0。
+function packedChannels(channels: readonly FloatNode[]): Vec4Node[] {
   const channelAt = (index: number): FloatNode => channels[index] ?? float(0);
-  return Array.from({ length: packedTextureCount(bands.length) }, (_, texture) => {
+  return Array.from({ length: textureCountOf(channels.length) }, (_, texture) => {
     const first = texture * CHANNELS_PER_TEXTURE;
     return vec4(channelAt(first), channelAt(first + 1), channelAt(first + 2), channelAt(first + 3));
   });
 }
 
-// packedBands で詰めた値 packed から、count 個の帯ごとの補正を取り出す。
+// 段 0 の帯ごとの補正 bands を、packedTextureCount 枚の RGBA へ詰める。余りのチャンネルは 0。
+export function packedBands(bands: readonly Vec3Node[]): Vec4Node[] {
+  return packedChannels(bands.flatMap((band) => [band.x, band.y, band.z]));
+}
+
+// 段 1 以降の帯ごとの補正 bands と実効画素数 effectivePixels を、packedTextureCount 枚の RGBA へ詰める。帯は packedBands と
+// 同じ並びで、実効画素数は最後のテクスチャの w。余りのチャンネルは 0。
+export function packedReducedBands(bands: readonly Vec3Node[], effectivePixels: FloatNode): Vec4Node[] {
+  const channels = bands.flatMap((band) => [band.x, band.y, band.z]);
+  const padding = textureCountOf(channels.length + 1) * CHANNELS_PER_TEXTURE - channels.length - 1;
+  return packedChannels([...channels, ...Array.from({ length: padding }, () => float(0)), effectivePixels]);
+}
+
+// packedBands か packedReducedBands で詰めた値 packed から、count 個の帯ごとの補正を取り出す。
 export function unpackedBands(packed: readonly Vec4Node[], count: number): Vec3Node[] {
   const channels: FloatNode[] = packed.flatMap((value) => [value.x, value.y, value.z, value.w]);
   return Array.from({ length: count }, (_, band) => {
@@ -43,9 +63,16 @@ export function unpackedBands(packed: readonly Vec4Node[], count: number): Vec3N
   });
 }
 
-// packedBands で詰めて描いたテクスチャ textures の画素 texel から、count 個の帯ごとの補正を読む。
-export function bandsAt(textures: readonly THREE.Texture[], count: number, texel: Texel): Vec3Node[] {
-  return unpackedBands(textures.map((texture) => textureLoad(texture, texel)), count);
+// 帯の数 count の段 level の帯を詰めて描いたテクスチャ textures の画素 texel の、帯 level..count − 1 の補正 bands と
+// 実効画素数 effectivePixels(段 0 は 1)。
+export function levelAt(
+  textures: readonly THREE.Texture[], count: number, level: number, texel: Texel,
+): { readonly bands: Vec3Node[]; readonly effectivePixels: FloatNode } {
+  const packed = textures.map((texture) => textureLoad(texture, texel));
+  return {
+    bands: unpackedBands(packed, count - level),
+    effectivePixels: level === 0 ? float(1) : packed.at(-1)!.w,
+  };
 }
 
 // 左上の角からのずれ fraction [画素] の点に対する、角から (dx, dy) の画素の双線形の重み。
@@ -77,14 +104,58 @@ export function weightedBands(
   });
 }
 
-// 段 k の拡大と合流の出力 C_k = D_k + Σ β_i·w_i·C_{k+1}(i) + (1 − Σ β_i·w_i)·T_k。direct は D_k(段 k の帯 k)、remainder は
-// T_k(段 k の帯 k + 1 以降の和)、coarse は段 k + 1 の画素ごとの重み β_i·w_i と C_{k+1}(i)。
+// 子ごとの重み weight と実効画素数 effectivePixels(1 未満は 1 とみなす)から、子の重み付き平均の実効画素数
+// (Σw)² / Σ(w² / n)。重みの和が WEIGHT_EPSILON 以下なら 0。
+export function effectivePixelsOf(
+  children: readonly { readonly weight: FloatNode; readonly effectivePixels: FloatNode }[],
+): FloatNode {
+  const total = children.map(({ weight }) => weight).reduce((sum, weight) => sum.add(weight));
+  // 重み付きの和 Σw·x の分散 [走査の 1 画素の分散]。
+  const sumVariance = children.map(({ weight, effectivePixels }) => weight.mul(weight).div(max(effectivePixels, 1)))
+    .reduce((sum, variance) => sum.add(variance));
+  return select(total.greaterThan(WEIGHT_EPSILON), total.mul(total).div(sumVariance), float(0));
+}
+
+// 段 k の画素を囲む段 k + 1 の画素 1 つ — 双線形の重み bilinear(β)、その代表を段 k の代表と比べた面の重み surface
+// (w。画面の外は 0)、C_{k+1} の値 value とその実効画素数 effectivePixels(1 未満は 1 とみなす)、段 k の画素を含むか
+// containsPixel。
+export interface ParentPixel {
+  readonly bilinear: FloatNode;
+  readonly surface: FloatNode;
+  readonly value: Vec3Node;
+  readonly effectivePixels: FloatNode;
+  readonly containsPixel: BoolNode;
+}
+
+// 段 k の拡大と合流の出力 C_k = D_k + α·Ū + (1 − α)·T_k。direct は D_k(段 k の帯 k)、remainder は T_k(段 k の帯 k + 1
+// 以降の和)、remainderPixels はその実効画素数、parents は段 k の画素を囲む段 k + 1 の 4 画素。Ū は親の C_{k+1} を β·w で
+// 正規化した平均で、α は親の面が合う確からしさ × T_k と Ū の分散から決まる縮小推定の比。
 export function mergedCorrection(
-  direct: Vec3Node, remainder: Vec3Node, coarse: readonly { readonly weight: FloatNode; readonly value: Vec3Node }[],
+  direct: Vec3Node, remainder: Vec3Node, remainderPixels: FloatNode, parents: readonly ParentPixel[],
 ): Vec3Node {
-  const confidence = coarse.map(({ weight }) => weight).reduce((sum, weight) => sum.add(weight));
-  const upsampled = coarse.map(({ weight, value }) => value.mul(weight)).reduce((sum, value) => sum.add(value));
-  return direct.add(upsampled).add(remainder.mul(float(1).sub(confidence)));
+  // 親の重み β·w を、和が 1 になるよう正規化した重み v。
+  const weights: FloatNode[] = parents.map(({ bilinear, surface }) => bilinear.mul(surface).toVar());
+  const total = weights.reduce((sum, weight) => sum.add(weight));
+  const terms = parents.map((parent, index) => ({
+    parent, share: weights[index]!.div(max(total, WEIGHT_EPSILON)).toVar(), pixels: max(parent.effectivePixels, 1),
+  }));
+  // 面が合う確からしさ π と、親の平均 Ū とその分散 V_U [走査の 1 画素の分散]。
+  const confidence = terms.map(({ parent, share }) => share.mul(parent.surface)).reduce((a, b) => a.add(b));
+  const mean = terms.map(({ parent, share }) => parent.value.mul(share)).reduce((a, b) => a.add(b));
+  const meanVariance = terms.map(({ share, pixels }) => share.mul(share).div(pixels)).reduce((a, b) => a.add(b));
+  // T_k の分散 V_T と、Ū との共分散。T_k が Ū に占める重みは、自分を含む親の中で T_k が占める割合を実効画素数の比で
+  // 見積もったもの。T_k の標本は Ū にも入っている — 共分散を省くと、平らな所でも均していない T_k が混ざる。
+  const remainderVariance = float(1).div(remainderPixels);
+  const overlap = terms.map(({ parent, share, pixels }) =>
+    select(parent.containsPixel, share.mul(remainderPixels).div(pixels), float(0))).reduce((a, b) => a.add(b));
+  // 共分散の見積もりは V_U と V_T の小さいほうで抑える — 超えると比の分母が負へ回り、比が 1 から 0 へ跳ぶ。この範囲なら比は
+  // 0〜1 に収まる。
+  const covariance = min(overlap.mul(remainderVariance), min(meanVariance, remainderVariance));
+  // T_k と Ū の凸結合の二乗誤差を最小にする比(経験ベイズの縮小推定)。
+  const differenceVariance = meanVariance.add(remainderVariance).sub(covariance.mul(2));
+  const shrinkage = clamp(remainderVariance.sub(covariance).div(max(differenceVariance, WEIGHT_EPSILON)), 0, 1);
+  const ratio = confidence.mul(shrinkage).toVar();
+  return direct.add(mean.mul(ratio)).add(remainder.mul(ratio.oneMinus()));
 }
 
 // 帯の縮小と、粗い段からの拡大と合流を組む。段の画素どうしは、代表の面の重みで比べる。
@@ -95,13 +166,13 @@ export class BandPyramid {
     private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
   ) {}
 
-  // 段 level の描いている画素の、帯 level..count − 1 を詰めた値(packedBands の並び)。段 level − 1 の帯を詰めたテクスチャ
-  // finer(帯 level − 1..count − 1)の 4 つの子の帯を、子の代表を段 level の代表と比べた面の重みで平均する。段 level の
-  // 代表に面がなければ 0。**Fn の中から呼ぶこと。**
+  // 段 level(1 以上)の描いている画素の、帯 level..count − 1 と実効画素数を詰めた値(packedReducedBands の並び)。段
+  // level − 1 の帯を詰めたテクスチャ finer(帯 level − 1..count − 1)の 4 つの子の帯を、子の代表を段 level の代表と比べた
+  // 面の重みで平均する。段 level の代表に面がなければ 0。**Fn の中から呼ぶこと。**
   public reduced(finer: readonly THREE.Texture[], count: number, level: number): Vec4Node[] {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
     const representative = this.surfaces.representativeAt(level, pixel).toVar();
-    const outputs = Array.from({ length: packedTextureCount(count - level) }, () => vec4(0).toVar());
+    const outputs = Array.from({ length: packedTextureCount(count, level) }, () => vec4(0).toVar());
     If(this.surfaces.hasSurface(representative), () => {
       const receiver = this.weight.receiverAt(representative);
       const { distance, angle } = this.toleranceAt(level);
@@ -111,35 +182,44 @@ export class BandPyramid {
           receiver, this.surfaces.representativeAt(level - 1, child), distance, angle);
         const weight = select(this.surfaces.contains(level - 1, child), exp2(exponent.negate()), float(0)).toVar();
         // 子の先頭の帯は段 level − 1 の帯で、段 level へは持ち上げない。
-        const [, ...bands] = bandsAt(finer, count - level + 1, child);
-        return { weight, bands };
+        const { bands: [, ...bands], effectivePixels } = levelAt(finer, count, level - 1, child);
+        return { weight, bands, effectivePixels };
       });
-      for (const [index, value] of packedBands(weightedBands(children)).entries()) outputs[index]!.assign(value);
+      const packed = packedReducedBands(weightedBands(children), effectivePixelsOf(children));
+      for (const [index, value] of packed.entries()) outputs[index]!.assign(value);
     });
     return outputs;
   }
 
-  // 段 level の描いている画素の C_level(rgb)。段 level の帯を詰めたテクスチャ own(帯 level..count − 1)の帯 level に、
-  // 段 level + 1 の C(coarse の rgb)を囲む 4 画素から双線形の重み × 面の重みで拡大して足し、重みの欠けた分を own の
-  // 帯 level + 1 以降の和で埋める。段 level の代表に面がなければ 0。**Fn の中から呼ぶこと。**
-  public merged(coarse: THREE.Texture, own: readonly THREE.Texture[], count: number, level: number): Vec3Node {
+  // 段 level の描いている画素の、拡大と合流の出力 — rgb は C_level、α は段 level の実効画素数(段 0 は 1)。段 level の帯を
+  // 詰めたテクスチャ own(帯 level..count − 1)と、段 level + 1 の C と実効画素数を持つテクスチャ coarse から、
+  // mergedCorrection で求める。段 level の代表に面がなければ 0。**Fn の中から呼ぶこと。**
+  public merged(coarse: THREE.Texture, own: readonly THREE.Texture[], count: number, level: number): Vec4Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
     const representative = this.surfaces.representativeAt(level, pixel).toVar();
-    const result = vec3(0).toVar();
+    const result = vec4(0).toVar();
     If(this.surfaces.hasSurface(representative), () => {
       const receiver = this.weight.receiverAt(representative);
-      // 段 level + 1 の 4 画素の重みは、双線形の重み × その代表を段 level の代表と比べた面の重み(画面の外は 0)。
+      // 段 level + 1 の 4 画素の面の重みは、その代表を段 level の代表と比べたもの(画面の外は 0)。
       const { distance, angle } = this.toleranceAt(level + 1);
-      const upsampled = coarseNeighbors(vec2(pixel)).map(({ texel, weight }) => {
+      const containing = pixel.div(2);
+      const parents = coarseNeighbors(vec2(pixel)).map(({ texel, weight }): ParentPixel => {
         const parent = ivec2(texel).toVar();
         const exponent = this.weight.exponentOf(
           receiver, this.surfaces.representativeAt(level + 1, parent), distance, angle);
-        const surfaceWeight = select(this.surfaces.contains(level + 1, parent), exp2(exponent.negate()), float(0));
-        return { weight: weight.mul(surfaceWeight).toVar(), value: textureLoad(coarse, parent).rgb };
+        const coarseValue = textureLoad(coarse, parent);
+        return {
+          bilinear: weight,
+          surface: select(this.surfaces.contains(level + 1, parent), exp2(exponent.negate()), float(0)).toVar(),
+          value: coarseValue.rgb,
+          effectivePixels: coarseValue.w,
+          containsPixel: parent.x.equal(containing.x).and(parent.y.equal(containing.y)),
+        };
       });
-      // 段 level の帯 level と、重みの欠けた分を埋める帯 level + 1 以降の和。
-      const [direct, ...farther] = bandsAt(own, count - level, pixel);
-      result.assign(mergedCorrection(direct!, farther.reduce((sum, band) => sum.add(band)), upsampled));
+      // 段 level の帯 level と、帯 level + 1 以降の和。
+      const { bands: [direct, ...farther], effectivePixels } = levelAt(own, count, level, pixel);
+      const remainder = farther.reduce((sum, band) => sum.add(band));
+      result.assign(vec4(mergedCorrection(direct!, remainder, effectivePixels, parents), effectivePixels));
     });
     return result;
   }

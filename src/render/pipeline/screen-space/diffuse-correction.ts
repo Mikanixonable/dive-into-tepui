@@ -28,8 +28,9 @@ function fitSize(target: THREE.RenderTarget, width: number, height: number): voi
   if (target.width !== width || target.height !== height) target.setSize(width, height);
 }
 
-// 帯の数 1 つぶんの、段ごとの描画先 — bands[m] は段 m の帯 m..count − 1 を packedBands の並びで詰めたもの(段 0 が走査の
-// 出力)、merged[k] は段 k(0..count − 2)の拡大と合流の出力 C_k(rgb)。
+// 帯の数 1 つぶんの、段ごとの描画先 — bands[m] は段 m の帯 m..count − 1 を詰めたもの(段 0 が走査の出力で packedBands、
+// 段 1 以降は実効画素数も持つ packedReducedBands の並び)、merged[k] は段 k(0..count − 2)の拡大と合流の出力(rgb は C_k、
+// 段 1 以降の α は段 k の実効画素数)。
 interface BandChainTargets {
   readonly bands: readonly THREE.RenderTarget[];
   readonly merged: readonly THREE.RenderTarget[];
@@ -55,8 +56,8 @@ export class DiffuseCorrection {
     return this.chainOf(count).merged[level]!;
   }
 
-  // 帯の数 count の C_level(rgb)を持つテクスチャ。最も粗い段 count − 1 では、その段の帯(帯 count − 1 だけ)の描画先。
-  // 段 0 が、走査の解像度の、最後の拡大の前の補正。
+  // 帯の数 count の C_level(rgb)と、段 1 以降なら段 level の実効画素数(α)を持つテクスチャ。最も粗い段 count − 1 では、
+  // その段の帯(帯 count − 1 と実効画素数)の描画先。段 0 が、走査の解像度の、最後の拡大の前の補正。
   public mergedTexture(count: number, level: number): THREE.Texture {
     return level === count - 1 ? this.bandTarget(count, level).texture : this.mergedTarget(count, level).texture;
   }
@@ -96,10 +97,10 @@ export class DiffuseCorrection {
   private chainOf(count: number): BandChainTargets {
     const existing = this.chains.get(count);
     if (existing !== undefined) return existing;
-    // 段 level の帯の描画先は帯 level..count − 1 を詰める枚数を持ち、拡大と合流の出力は最も粗い段のぶんだけ少ない。
+    // 段 level の帯の描画先は段 level の帯を詰める枚数を持ち、拡大と合流の出力は最も粗い段のぶんだけ少ない。
     const chain: BandChainTargets = {
       bands: Array.from({ length: count }, (_, level) =>
-        createTarget(packedTextureCount(count - level), `diffuseCorrectionBands${level}`)),
+        createTarget(packedTextureCount(count, level), `diffuseCorrectionBands${level}`)),
       merged: Array.from({ length: count - 1 }, (_, level) =>
         createTarget(1, `mergedDiffuseCorrection${level}`)),
     };
