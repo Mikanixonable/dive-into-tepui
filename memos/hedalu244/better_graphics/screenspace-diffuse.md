@@ -750,8 +750,7 @@ L = 4 なら 256 から上が段 3 に溜まる。κ を倍にすると各帯が
 7 の最良（以下 **Q**。`ssd-7-single-scale` の中の段 = 疎な 2 段 8 + 8 + 密な 3×3）は、その枝を checkout して同じ撮影の組・同じ B で撮り、出力（compare の表と
 撮影）だけを持ってくる。8 の枝に Q を切り替える一時コードは持たない。8-6 の拡大は鎖の A を読むので Q へは写さない（決めたこと 18）。
 7 の枝は臨時の高速化で作った worktree `C:/Users/takayuki/Documents/GitHub/dive-into-tepui-ssd7`（`ssd-7-single-scale`、`node_modules` と
-`.render-lab-shots` は本体と E: へのジャンクション）に checkout してあり、Q と raw はそこで撮れる。片付けは、ジャンクションを `cmd //c rmdir` で外して
-から `git worktree remove`（再帰削除は E: の中身を消す）。エージェントの安全策は E: を指すジャンクションの `rmdir` を止めるので、外すのはユーザーが行う。
+`.render-lab-shots` は本体と E: へのジャンクション）に checkout してあり、Q と raw はそこで撮れる。8-7 で撮り終えたら片付ける（手順は 8-7 の達成条件）。
 
 - **枝をまたいだ比べ方** — S は同じ B に対する値なのでそのまま並べ、差が同じセッションで seed を変えたぶれ（S で −11〜+4%）以内なら同等とみなす。費用は
   ページの読み直しで 0.6〜1.04 倍ぶれるので ms では比べず、同じページで測ったマテリアル行に対する比で比べ、枝を交互に読み直して（Q・8・Q・8・Q・8）
@@ -872,6 +871,26 @@ L = 4 なら 256 から上が段 3 に溜まる。κ を倍にすると各帯が
   | 欠け・光漏れ（輪郭・細い物）、締まった構造のぼけ | 8-8 の最後の拡大の、全部のタップが外れたときの扱いと許容、合流の面の重みの許容（8-8 の (d)）、8-10 の偏りの側の手当て |
 
 **達成条件** — 表・画像・判断と、8 の弱点の種類、8-8〜8-10 で試す候補の一覧を判断材料へ。盲検の結果を「ノイズに対するユーザー評価」の節 18 へ（原文のまま）。
+Q と raw を撮り終え、出力を持ってきたら、7 の枝の worktree `C:/Users/takayuki/Documents/GitHub/dive-into-tepui-ssd7` を片付ける。
+
+- **順を守る** — `node_modules` と `.render-lab-shots` は本体の `node_modules` と E: の撮影置き場（`E:\dive-into-tepui-shots`）へのジャンクションなので、
+  先にジャンクションだけを外してから worktree を消す。いきなり `git worktree remove --force` や再帰削除をすると、ジャンクションを辿って本体の依存や
+  E: の撮影を消しうる。PowerShell（Git Bash なら `cmd //c` にしてパスを引用符で囲む）で:
+
+  ```
+  cmd /c rmdir C:\Users\takayuki\Documents\GitHub\dive-into-tepui-ssd7\.render-lab-shots
+  cmd /c rmdir C:\Users\takayuki\Documents\GitHub\dive-into-tepui-ssd7\node_modules
+  git worktree remove C:/Users/takayuki/Documents/GitHub/dive-into-tepui-ssd7
+  ```
+
+  `rmdir`（`/s` を付けない）はジャンクションそのものだけを外す。`git worktree remove` が未追跡のファイルで止まったら、中身を確かめてから消す。
+- **ジャンクションを外すのはユーザー** — エージェントの安全策は E: を指すジャンクションの `rmdir` を止める（2026-10-06）。エージェントは上の手順を
+  ユーザーに頼み、別の消し方で迂回しない。
+- **確かめ** — `git worktree list` に `dive-into-tepui-ssd7` が無く、`E:\dive-into-tepui-shots` と本体の `node_modules` が残っている。ブランチ
+  `ssd-7-single-scale` は消さない（Q の正本）。
+- 後の手順（8-11 の盲検など）で Q を撮り直すときは、`git worktree add ../dive-into-tepui-ssd7 ssd-7-single-scale` で作り直し、
+  `cmd /c mklink /J <worktree>\node_modules <本体>\node_modules` と `cmd /c mklink /J <worktree>\.render-lab-shots E:\dive-into-tepui-shots` で繋ぐ
+  （無いと依存が引けず、撮影が C: に書かれる）。
 
 #### 8-8. 輝点と粒を詰める — 拡大と合流の未均しの混入と、最後の拡大の残り（旧 8-6 と 8-6 の残り）
 
