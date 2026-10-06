@@ -375,54 +375,35 @@ export function sideRays(
 - **配り方** — 各手順の実装・確かめ・計測はサブエージェントへ配り（`/delegate`）、止まる地点（絵の判定に落ちた、費用の判定が 2 か 3 に入った、
   1 標本のバイト数が上限を超えた）を渡す。採否と見積りの較正は配った側が行う。
 
-### 手順 13. 7 の枝に検証基盤を写し、分解能と着手前の費用を測り、第 2 部を並べる
+### 手順 14〜25. 7 の枝の候補（手順13 で並べ直した。上から実施する）
 
-**目的** — 第 1 部と同じ規則で 7 の枝を測れるようにし、第 1 部の実測で第 2 部の候補の見積りを置き、大きい順に並べ直す（この文書の手順14〜25 の
-並びと見積りを書き換える）。第 1 部で取り下げた・着手しなかった変更の当て直しは候補から外す。この時点で絵は変えない。
+どれも第 1 部の「各手順の進め方」と判定の規則で 1 つずつ行い、7 の枝に 1 手順 1 commit で入れる。worktree は
+`C:/Users/takayuki/Documents/GitHub/dive-into-tepui-ssd7`（`node_modules` と `.render-lab-shots` はジャンクション）、一時の切り替えは
+`.render-lab-shots/ssd-opt/work/variant-7.patch`（7 は描画命令の列を構築子で 2 揃い組み、`currentStages` が段の variant で選ぶ。照り返しの源と
+均しの段は variant ごとに作られるが、描画先は共有）。共通の変更の当て直しは、「実測の記録」の第 1 部の commit の差分の意図を 7 のファイルへ
+書き写す（7 の走査は帯を持たず、拡大は確率的で、均しの段がある）。7 には代表の縮小列が無いので、段 0 の写しは、段 0 だけを持つ `ScanSurface`
+（新規 `scan-surface.ts`。`ScanSurfaces` を満たし、第 1 部の `ScreenSpaceInputPyramid` の段 0 と同じ形 — 手順22 で `scanStageOf`・
+`radianceTexture`）に持たせる。走査と拡大・均しは `ScanSurfaces` で受けるので、その式は第 1 部と同じになる。
 
-**変更が必要な箇所**（7 の枝。worktree は `git worktree add ../dive-into-tepui-ssd7 ssd-7-single-scale` で作り、`node_modules` と
-`.render-lab-shots` をジャンクションで繋ぐ — 無いと依存が引けず、撮影が C: に書かれる）
+見積りは第 1 部の実測から置いた（7 の走査は 8 の 0.85〜1 倍とみる。単位: 走査の歩の散らばった読み 1 回 0.27 ns/走査画素（手順2）、拡大の
+タップの読み 1 回 0.13 ns/画素（手順3）、走査の vec2 の割り算 1 回 0.196 ns/走査画素（手順4）。独立なタップの割り算は待ちに隠れて ≈ 0（手順7））。
+並びは中央値の大きい順、ただし手順14 は写しを作るので先頭。
 
-| ファイル | 何をするか |
-| --- | --- |
-| `tools/render-lab/lab.ts` | `measureTierRounds`・`screenSpaceShaders` と、読み戻し（`FloatTargetName` 39–40、`floatTextureOf` 467–）に `surface-radiance`・`sparse-0`・`sparse-1`（`sparseCorrectionTextures`）を足す。 |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` | `stageShaders` を足す。 |
-| `tools/screen-space-lab.mjs` | 道具の口。 |
-| `tools/screen-space-ab.mjs`（第 1 部から写す） | 読み戻しの既定を 7 の段（`surface-radiance`・`raw-correction`・`sparse-0`・`sparse-1`・`denoised-correction`・`correction`）、費用の行を 7 の行（照り返し源・走査・均し・拡大）、多シードの読み戻しを `raw-correction`・`denoised-correction`・`correction` にする。 |
-| `.render-lab-shots/ssd-opt/work/variant-7.patch`（新規、commit しない） | 7 は描画命令の列を構築子（121–145）で組むので、`buildingVariant` を 0 と 1 にして 2 揃い組み、`currentStages`（213–216）が段の variant で選ぶ。 |
+| 順 | 手順 | 変更 | 当て直す第 1 部の手順 | 7 の変更が必要な箇所 | 判定 | 見積り [ms] | 導出 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 14 | 写しの段を足し、走査の歩が深度と法線を写しから読む | 2 | `texel-surface.ts`（新規、`Texel` を `surface-weight.ts` から移す）・`scan-surface.ts`（新規）・`gpu-timings.ts`・`hemisphere-scan.ts`（`scanHemisphere`・`surfaceAt`）・`screen-space-pass.ts`（構築子・`createScanStages`・`prepare`・`clearUnwritten`・`dispose`）・デバッグ表示（写しの永続中間ターゲット）・`lab.ts`（読み戻し）・`screen-space-ab.mjs`（単精度の読み戻しの名前） | 一致 | −0.17〜−0.40 | 第 1 部で走査 0.839 倍（−0.69）・写しの行 +0.29。7 の走査 3.33 ms で −0.46〜−0.69、写し +0.29 |
+| 2 | 19 | 均しの 3 段（疎 2・密 1）のタップと受け手が、深度と法線を写しから読む | 3 の形 | `surface-weight.ts`（`surfaceAt` を足し、`receiverAt`・`exponentOf` を `TexelSurface` を受ける形に — 手順17 と共通なので先にここで）・`correction-reconstruction.ts`（`scanReceiver`・`addTap`）・`screen-space-pass.ts`（構築） | 一致 | −0.25〜−0.51 | 均しの G バッファの読み 59 回/走査画素（深度 31・法線 28）× 32,400 × 0.13〜0.27 ns。均しの行は 0.97 ms |
+| 3 | 17 | 確率的な拡大の 4 本のタップが、深度と法線を写しから読む | 3 | `correction-reconstruction.ts`（`stochasticUpsampled` のタップ） | 一致 | −0.13〜−0.54 | タップの読み 8 回/画素 × 518,400 × 0.13 ns × 1/4〜1（タップは囲む 2×2 で隣の画素と揃い、局所性が既に良い側を下限に）。受け手は描画バッファの画素なので G バッファのまま |
+| 4 | 15 | 走査が座標を写しから読む | 4 | `hemisphere-scan.ts`（`surfaceAt`） | 一致 | −0.22〜−0.26 | 第 1 部の手順4（−0.26、vec2 の割り算 41 回/走査画素）× 0.85〜1。7 も歩 40 + 前置き |
+| 5 | 22 | 照り返しの源と写しを 1 本に | 9 | `scan-surface.ts`（`scanStageOf`・`radianceTexture`）・`screen-space-pass.ts`（源の段・`sourceTarget`。方式ごとの 2 本を構築子で 1 度だけ組む）・`gpu-timings.ts`・`tests/render/gpu-timings.test.ts` | 一致 | −0.17〜−0.21（照り返しの方式） | 第 1 部の手順9（中央値 +0.187、写しと源の行の差 −0.20〜−0.23） |
+| 6 | 21 | 均しのタップと受け手が座標を写しから読む | 7 の形 | `correction-reconstruction.ts`（`scanReceiver`・`addTap`）・`surface-weight.ts`（`reachTolerance` は座標を受けるまま） | 一致 | 0〜−0.20 | vec2 の割り算 31 回/走査画素 × 0.196 ns が上限、独立なタップで待ちが隠れれば 0。分解能以下なら手順7 と同じく設計で選ぶ（タップの面を写しから一括で読む） |
+| 7 | 25 | 疎な均しのタップの点を定数にし、回転の cos・sin を 1 度だけ求めて回す（7 だけ） | — | `correction-reconstruction.ts`（`sparseDenoised`。`Loop` を JS で 8 本に開き、螺旋の点を定数にする — 8 の枝の最後の拡大 `sparseUpsampled` と同じ形）。タップの位置を画素へ丸める `round` の行き先が丸めで変わりうる | 丸め | 0〜−0.07 | タップの位置は読みの番地を決める演算（約 350 演算/走査画素 × e_scan 0.17〜0.21 µs）。設計の理由: 8 の枝の拡大と同じ形 |
+| 8 | 20 | 確率的な拡大のタップが座標を写しから読む | 7 | `correction-reconstruction.ts`（タップの `gbufferTexelOfScan`） | 一致 | ≈ 0 | 第 1 部の手順7 は分解能以下で設計で採った。7 は割り算 4 回/画素でさらに小さい。タップの面を写しから一括で読む形にそろえる（決めたこと 6 の (b)） |
 
-**達成条件と検証**
+当て直さないもの: 手順16（第 1 部の手順5 を取り下げ）・18（手順6 を取り下げ）・23（手順10 を取り下げ）・24（手順11 を着手せず）。手順8 は 7 に
+鎖が無いので、手順12 は 7 の走査がブルーノイズだけを読むので当てない。
 
-- A/A' の `identity` が 6 撮影 × 全読み戻しで差 0。分解能を 3 セッションで測り、着手前の行ごとの費用を記録する。
-- 手順14〜25 の見積りを、第 1 部の実測（共通の変更は × 7 の走査 / 8 の走査）と単位の費用で書き直し、並べ直してある。
-- 7 の枝で `npm run typecheck`・`npm run test:render`。道具と口だけを 7 の枝に commit する。
-
-### 手順 14〜25. 7 の枝の候補（仮の並び。手順13 で並べ直す）
-
-どれも第 1 部の「各手順の進め方」と判定の規則で 1 つずつ行い、7 の枝に 1 手順 1 commit で入れる。共通の変更の当て直しは、「実測の記録」の
-第 1 部の commit の差分を 7 のファイルへ当て直す（7 の走査は帯を持たず、`hemisphere-scan.ts` の行が違う）。7 には代表の縮小列が無いので、
-段 0 の写しは、段 0 だけを持つ `ScanSurface`（新規 `scan-surface.ts`。`ScanSurfaces` を満たし、`scanStage`・`scanSurfaceAt`・`scanPositionAt`・
-`scanStageOf`・`radianceTexture` を第 1 部の `ScreenSpaceInputPyramid` の段 0 と同じ形で持つ）に持たせる。走査と拡大・均しは `ScanSurfaces` で
-受けるので、その式は第 1 部と同じになる。
-
-| 手順 | 変更 | 当て直す第 1 部の手順 | 7 の変更が必要な箇所 | 判定 | 初めの見積り [ms] |
-| --- | --- | --- | --- | --- | --- |
-| 14 | 写しの段を足し、走査の歩が深度と法線を写しから読む | 2 | `texel-surface.ts`（新規、`Texel` を `surface-weight.ts` 20 から移す）・`scan-surface.ts`（新規）・`gpu-timings.ts`・`hemisphere-scan.ts`（`scanHemisphere` 63、`surfaceAt` 179–）・`screen-space-pass.ts`（構築子 121–145、`createScanStages` 224–251、`prepare` 323–、`clearUnwritten`・`dispose`）・`lab.ts`（読み戻し）・`screen-space-ab.mjs`（行） | 一致 | 第 1 部の手順2 の実測 × 0.93〜1 |
-| 15 | 走査が座標を写しから読む | 4 | `hemisphere-scan.ts`（`surfaceAt` 179–） | 一致 | 手順4 × 0.93〜1 |
-| 16 | 走査が位置を写しから読む（第 1 部で採ったときだけ） | 5 | `scan-surface.ts`・`hemisphere-scan.ts`・`screen-space-pass.ts`・`lab.ts` | 丸め | 手順5 × 0.93〜1 |
-| 17 | 確率的な拡大の 4 本のタップと受け手が、深度と法線を写しから読む | 3 | `surface-weight.ts`（`receiverAt` 42–57・`exponentOf` 68–76 を `TexelSurface` を受ける形に、`surfaceAt` を足す）・`correction-reconstruction.ts`（構築子 30–35、`stochasticUpsampled` 77–102 のタップ 84）・`screen-space-pass.ts`（構築 128–129） | 一致 | −0.07〜−0.44（タップは囲む 2×2 で隣の画素と揃い、s の 1/4〜1 倍 × 8 回 × 518,400） |
-| 18 | 消灯したスロットを飛ばす | 6 | `planet-light-source.ts`（`isLitAt`）・`hemisphere-scan.ts`（天体の処理）・`screen-space-pass.ts`（`createScanStages` 240–242、`emittedRadiance`） | 一致 | 手順6 × 0.93〜1 |
-| 19 | 均しの 3 段（疎 2・密 1）のタップと受け手が、深度と法線を写しから読む | 3 の形 | `correction-reconstruction.ts`（`scanReceiver` 105–108・`addTap` 112–118） | 一致 | −0.13〜−0.19（1 走査画素の G バッファの読み 56 回 × 32,400 × s） |
-| 20 | 確率的な拡大のタップが座標を写しから読む | 7 | `correction-reconstruction.ts`（タップ 84 の `gbufferTexelOfScan`） | 一致 | 手順7 の単位の費用 × 8 回/画素 |
-| 21 | 均しのタップと受け手が座標を写しから読む | 7 の形 | `correction-reconstruction.ts`（107・115）・`surface-weight.ts`（`reachTolerance` 61–63 は座標を受けるまま） | 一致 | 整数の割り算 56 回/走査画素 × 単位の費用 |
-| 22 | 照り返しの源と写しを 1 本に（手順16 を採らず、第 1 部で採ったときだけ） | 9 | `scan-surface.ts`・`screen-space-pass.ts`（`createScanStages` 224–251 の源の段、`sourceTarget`）・`gpu-timings.ts` | 一致 | 手順9 の実測 |
-| 23 | 受け手の視線の点をスライスのループの外へ | 10 | `tangent-segments.ts`（`sideRays`）・`hemisphere-scan.ts` | 一致 | 手順10 × 0.93〜1 |
-| 24 | 受け手の定数を要素の読みへ | 11 | `surface-weight.ts`（`receiverAt` 47–49・53） | 一致 | 手順11（7 は均しの 3 段でも受け手を組む） |
-| 25 | 疎な均しのタップの点を定数にし、回転の cos・sin を 1 度だけ求めて回す（7 だけ） | — | `correction-reconstruction.ts`（`sparseDenoised` 40–54。`Loop` を JS で 8 本に開き、螺旋の点 ρ = r·√(i/7)・黄金角を定数にする — 8 の枝の最後の拡大 `sparseUpsampled` と同じ形）。タップの位置を画素へ丸める `round` の行き先が丸めで変わりうる | 丸め | −0.02〜−0.07（2 段 × 8 本の sqrt・cos・sin 48 回 → 2 段の cos・sin 4 回、約 350 演算/走査画素 × 0.05〜0.21 µs） |
-
-手順8（代表を値で持つ）は 7 に鎖が無いので、手順12（ずれの select）は 7 の走査がブルーノイズだけを読むので、どちらも当てない。
-
-**達成条件と検証**（各手順）— 第 1 部と同じ。`identity` の読み戻しは手順13 の既定、`cost` は 7 の行。7 の枝で `npm run typecheck`・
+**達成条件と検証**（各手順）— 第 1 部と同じ。`identity` の読み戻しは 7 の既定、`cost` は 7 の行。7 の worktree で `npm run typecheck`・
 `npm run test:render`、ファイルを足したら `npm run check:boundaries`。
 
 ### 手順 26. 本体の計画書へ結果を移し、この計画書を消す
@@ -564,6 +545,23 @@ webpack 1 min + `identity`（2 variant × 2 方式のシェーダの組み立て
 - 第 2 部（手順13〜）への持ち越し: 手順5・6・10 を取り下げ、11・12 を着手しなかったので、その当て直し（手順16・18・23・24）は
   候補から外す。手順22（源と写しを 1 本に）は、手順16 が外れ手順9 を採ったので当て直す。判定は「一致」は最大 4 セッションで差 0 を探す、効きが 3·B_和·T 未満
   は 3 セッションの中央値、多シードは暖機つきで (c) に構造が見えたら系統差の大きさを前の形の群間の差と比べる（測定と判定の規則）。
+
+**第 2 部の着手前**（手順13、7 の枝 `c01146547`）— `cost medium:1 medium:0`（A/A'）を 3 セッション。前の側の巡の中央値 [ms]。
+
+| 行 | a | b | c | B_行 |
+| --- | --- | --- | --- | --- |
+| 照り返し源 | 0.355 | 0.352 | 0.344 | 5.0% |
+| 走査 | 3.291 | 3.331 | 3.568 | 1.25% |
+| 均し（3 本） | 0.972 | 1.047 | 0.952 | 2.8% |
+| 拡大 | 1.263 | 1.256 | 1.097 | 0.67% |
+| 和 | 5.896 | 5.973 | 5.959 | 0.86%（B_和） |
+| マテリアル | 0.889 | 0.907 | 0.920 | 2.8% |
+
+- B_和 = 0.86%（巡 5 のまま）、B_和·T ≈ 0.05 ms、3·B_和·T ≈ 0.15 ms。A/A' の `identity` は 6 撮影 × 6 読み戻しで差 0、`--seeds 4` も全成分 0。
+  対照（`medium:1` と `high:0`）では 6 のうち 5 に差。
+- 道具は第 1 部の `35f6714ab`・`f5f11d895` を写した。7 の枝に無かった撮影 `clutter` も 8 の枝から写した（決めたこと 4 の 6 撮影）。
+- `wgsl medium:0` で数えた G バッファの読みと i32 の vec2 の割り算: 走査は歩 40 × （深度・法線・割り算 各 1）+ 前置き（深度 7・法線 1・割り算 2）、
+  確率的な拡大は描画バッファの画素あたり深度 6・法線 5・割り算 4（タップ 4 本 + 受け手）、均しは走査画素あたり 3 段で深度 31・法線 28・割り算 31。
 
 | 手順 | 枝 | 絵の判定 | 見積り [ms] | 実測の効き E [ms] | 狙った行の比 | 採否 | commit | メモ |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
