@@ -1,6 +1,6 @@
 // 近傍拡散補正の段ごとの代表の面。段 ℓ の画素は走査の 2^ℓ 画素四方を受け持ち、その中で実在する G バッファの画素 1 つを
-// 代表に持つ。段 0 の代表は走査の画素が読む G バッファの画素で、その面の値は走査の解像度の描画先へ写す。段 1 から上は
-// 選んだ子の面の値を描画先へ写す。段の寸法の規則もここが持つ。
+// 代表に持つ。段 0 の描画先には面の写しと、その面が放つ放射輝度を持つ。段 1 から上は選んだ子の面の値を描画先へ写す。
+// 段の寸法の規則もここが持つ。
 import * as THREE from 'three/webgpu';
 import {
   ceil, float, floor, getViewPosition, ivec2, max, min, screenSize, screenUV, select, textureLoad, vec2, vec4,
@@ -67,34 +67,30 @@ function ordered(a: Ranked, b: Ranked): readonly [Ranked, Ranked] {
   ];
 }
 
-// 段 level(1 以上)の代表の面の描画先。段 0 の写しの 1・2 枚目と同じく、1 枚目は rgba32float で (G バッファの画素の x, y,
-// 素の深度, 0)、2 枚目は rg16float で法線の rg。サンプラは Nearest に明示する。
-function createLevelSurfaceTarget(level: number): THREE.RenderTarget {
+// 面の位置と法線を持つ描画先。1 枚目は rgba32float で (G バッファの画素の x, y, 素の深度, 0)、2 枚目は rg16float で法線の rg。
+// **rgba32float はフィルタできない** — サンプラを Nearest に明示しないと three が線形フィルタを要求し、パイプライン生成が落ちる。
+function createSurfaceTarget(name: string, count = 2): THREE.RenderTarget {
   const target = new THREE.RenderTarget(1, 1, {
-    count: 2, type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+    count, type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
     minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
   });
   const [locatedTexture, normalTexture] = target.textures;
-  locatedTexture!.name = `surfaceRepresentative${level}Located`;
-  normalTexture!.name = `surfaceRepresentative${level}Normal`;
+  locatedTexture!.name = `${name}Located`;
+  normalTexture!.name = `${name}Normal`;
   normalTexture!.format = THREE.RGFormat;
   normalTexture!.type = THREE.HalfFloatType;
   return target;
 }
 
-// 段 0 の面の写しと、その面が放つ放射輝度の描画先。1 枚目は rgba32float で (G バッファの画素の x, y, 素の深度, 0)、2 枚目は
-// rg16float で法線の rg、3 枚目は rgba16float で放射輝度。rgba32float はフィルタできず、どれも textureLoad だけで読むので、
-// サンプラを Nearest に明示する。
+// 段 level(1 以上)の代表の面の描画先。
+function createLevelSurfaceTarget(level: number): THREE.RenderTarget {
+  return createSurfaceTarget(`surfaceRepresentative${level}`);
+}
+
+// 段 0 の面の写しと、その面が放つ放射輝度の描画先。3 枚目は rgba16float で照り返しの源。
 function createScanSurfaceTarget(): THREE.RenderTarget {
-  const target = new THREE.RenderTarget(1, 1, {
-    count: 3, type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
-    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
-  });
-  const [locatedTexture, normalTexture, radianceTexture] = target.textures;
-  locatedTexture!.name = 'scanSurfaceLocated';
-  normalTexture!.name = 'scanSurfaceNormal';
-  normalTexture!.format = THREE.RGFormat;
-  normalTexture!.type = THREE.HalfFloatType;
+  const target = createSurfaceTarget('scanSurface', 3);
+  const radianceTexture = target.textures[2]!;
   radianceTexture!.name = 'surfaceRadiance';
   radianceTexture!.type = THREE.HalfFloatType;
   return target;
@@ -105,7 +101,7 @@ export class ScreenSpaceInputPyramid implements ScanSurfaces {
   // 段 1 から順の、代表の面を写す描画命令(描画先は段の代表の描画先)。必要になった段まで作る。
   private readonly levels: ScreenSpaceStage[] = [];
 
-  // gbuffer は代表の深度を読む G バッファ、projectionInverse は実カメラの逆射影行列、fullSize と scanSize は描画
+  // gbuffer は段 0 の面の写しが深度と法線を読む G バッファ、projectionInverse は実カメラの逆射影行列、fullSize と scanSize は描画
   // バッファと走査の解像度 [px]。
   public constructor(
     private readonly gbuffer: GBufferPass, private readonly projectionInverse: Mat4Uniform,
@@ -131,9 +127,7 @@ export class ScreenSpaceInputPyramid implements ScanSurfaces {
 
   // 走査の画素 pixel(整数座標)が表す G バッファの画素の面。段 0 の写しを書いた後に読むこと。
   public scanSurfaceAt(pixel: Texel): TexelSurface {
-    const [locatedTexture, normalTexture] = this.scanTarget.textures;
-    const located = textureLoad(locatedTexture!, pixel);
-    return { texel: ivec2(located.xy), depth: located.z, encodedNormal: textureLoad(normalTexture!, pixel).xy };
+    return surfaceFromTextures(this.scanTarget.textures, pixel);
   }
 
   // 段 0 の面の写しのテクスチャ index(0 が (x, y, 素の深度)、1 が法線の rg)。
@@ -144,9 +138,7 @@ export class ScreenSpaceInputPyramid implements ScanSurfaces {
   // 段 level の画素 pixel(整数座標)の代表の面。段 1 から上は、その段を書いた後に読むこと。
   public surfaceAt(level: number, pixel: Texel): TexelSurface {
     if (level === 0) return this.scanSurfaceAt(pixel);
-    const [locatedTexture, normalTexture] = this.levelOf(level).target.textures;
-    const located = textureLoad(locatedTexture!, pixel);
-    return { texel: ivec2(located.xy), depth: located.z, encodedNormal: textureLoad(normalTexture!, pixel).xy };
+    return surfaceFromTextures(this.levelOf(level).target.textures, pixel);
   }
 
   // 段 level の寸法 [段の画素]。
@@ -204,7 +196,7 @@ export class ScreenSpaceInputPyramid implements ScanSurfaces {
     }
   }
 
-  // 段 level の代表を焼く描画命令。まだ無ければ、段 1 から level までを作る。
+  // 段 level の代表の面を写す描画命令。まだ無ければ、段 1 から level までを作る。
   private levelOf(level: number): ScreenSpaceStage {
     while (this.levels.length < level) this.levels.push(this.createLevel(this.levels.length + 1));
     return this.levels[level - 1]!;
@@ -238,4 +230,11 @@ export class ScreenSpaceInputPyramid implements ScanSurfaces {
       };
     }));
   }
+}
+
+// 位置と法線のテクスチャから画素の面を読む。
+function surfaceFromTextures(textures: readonly THREE.Texture[], pixel: Texel): TexelSurface {
+  const [locatedTexture, normalTexture] = textures;
+  const located = textureLoad(locatedTexture!, pixel);
+  return { texel: ivec2(located.xy), depth: located.z, encodedNormal: textureLoad(normalTexture!, pixel).xy };
 }

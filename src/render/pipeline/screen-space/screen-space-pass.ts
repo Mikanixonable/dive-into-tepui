@@ -77,12 +77,12 @@ type ModeStages = Readonly<
   Record<Exclude<ScreenSpaceDiffuse, typeof SCREEN_SPACE_DIFFUSE.off>, readonly ScreenSpaceStage[]>
 >;
 
-// render が描く段の範囲。all は全段、scan は照り返しの源と走査まで、chain は走査より後だけ(走査の描画先に残った帯の
+// render が描く段の範囲。all は全段、scan は面の写しと源と走査まで、chain は走査より後だけ(走査の描画先に残った帯の
 // 値から描く)。scan と chain は、道具が走査と鎖を分けて描くためのもの。
 export type ScreenSpaceStageRange = 'all' | 'scan' | 'chain';
 
 // 帯の数 1 つぶんの描画命令 — 描く段の範囲と方式ごとの列 ranges と、そのうちこのパスが帯の数ごとに組んだもの own
-// (照り返しの源と代表の縮小列を除く)。
+// (面の写しと源、および代表の縮小列を除く)。
 interface BandCountStages {
   readonly ranges: Readonly<Record<ScreenSpaceStageRange, ModeStages>>;
   readonly own: readonly ScreenSpaceStage[];
@@ -198,7 +198,7 @@ export class ScreenSpacePass {
     // **描画先の寸法を合わせる前に列を組む** — 代表の段の描画先は、列を組むときに作られる。
     const stages = this.currentStages();
     this.prepare(camera, width, height);
-    // 面の写し → 照り返しの源 → 走査 → 代表の縮小列 → 帯の縮小 → 拡大と合流 → 拡大の順に、段ごとの描画先へ書く。
+    // 面の写しと源 → 走査 → 代表の縮小列 → 帯の縮小 → 拡大と合流 → 拡大の順に、段ごとの描画先へ書く。
     for (const { material, target, gpuPass } of stages) {
       this.renderer.setRenderTarget(target);
       this.quad.material = material;
