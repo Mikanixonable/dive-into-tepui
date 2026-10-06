@@ -46,7 +46,7 @@ const LARGE_Z = 3;
 const Z_MAP_LIMIT = 4;
 
 // 費用の行: 近傍拡散補正の行(GPU_PASS_LABELS の名前で選ぶ)とその和、対照のマテリアルの行。
-const NEARBY_ROW_PATTERN = /^(照り返し源|近傍拡散)/;
+const NEARBY_ROW_PATTERN = /^近傍拡散/;
 const SUM_ROW = '近傍拡散の和';
 const MATERIAL_ROW = 'マテリアル';
 
