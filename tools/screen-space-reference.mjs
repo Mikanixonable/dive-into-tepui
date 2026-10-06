@@ -18,6 +18,11 @@ const MAX_PASS_SAMPLES = 256;
 // 最も細かい帯の R(1) のこの倍以下。
 const CONVERGED_G_RATIO = 1 / 10;
 const CONVERGED_R_RATIO = 1.5;
+// 補正の収束先の撮影と、判定が比べる相手が読む中間ターゲット。最後の拡大(解像度 1 でも疎なタップで均す)の前の、走査の
+// 解像度の補正。帯の数 1・解像度 1 の段では、これが全解像度の raw の補正になる。保存では kind 'correction' と呼ぶ。
+const RAW_CORRECTION_TARGET = 'scan-correction';
+// 保存の kind の、ページで積む中間ターゲットの名前。
+const targetOfKind = (kind) => (kind === 'correction' ? RAW_CORRECTION_TARGET : kind);
 
 // 基準の組 name の撮影 entry の、偶数番目と奇数番目のパスの補正の平均の q の組 halves と、測る画素の印 mask
 // (比べる相手の走査でフェードの外にある面)。
@@ -94,7 +99,7 @@ async function extendReference(lab, name, entry, tier, passes) {
   // あれば、ページへ戻してから続ける。
   const kinds = ['hdr', 'correction', ...(entry.set === 'correctness' ? ['diffuse'] : [])];
   if (saved !== null) {
-    for (const kind of kinds) await lab.restoreAccumulated(kind, 3, referenceSumsOf(name, entry, kind));
+    for (const kind of kinds) await lab.restoreAccumulated(targetOfKind(kind), 3, referenceSumsOf(name, entry, kind));
   }
   // パスを描く。絵の落ち着きを待つのは最初のパスだけで、以後は seed だけが変わる。
   const passesStarted = Date.now();
@@ -103,7 +108,7 @@ async function extendReference(lab, name, entry, tier, passes) {
     await lab.setSeed(seedOf(k));
     if (k === done) await lab.capturePng();
     else await lab.render();
-    for (const kind of kinds) await lab.accumulateFloat(kind, 3, k % 2);
+    for (const kind of kinds) await lab.accumulateFloat(targetOfKind(kind), 3, k % 2);
     if (k === done) firstPassSeconds = (Date.now() - passesStarted) / 1000;
   }
   const passSeconds = (Date.now() - passesStarted) / 1000;
@@ -111,7 +116,7 @@ async function extendReference(lab, name, entry, tier, passes) {
   const display = await lab.displayOfMean('hdr', passes);
   const exposure = await lab.exposureFactor();
   const sums = {};
-  for (const kind of kinds) sums[kind] = await lab.takeAccumulated(kind, 2);
+  for (const kind of kinds) sums[kind] = await lab.takeAccumulated(targetOfKind(kind), 2);
   const seconds = (Date.now() - started) / 1000;
   writeReferencePasses(name, entry, {
     slices: tier.sliceCount, steps: tier.stepCount, passes, exposure, seconds: (saved?.seconds ?? 0) + seconds,
@@ -157,7 +162,7 @@ export async function check({ positional, options }) {
       await lab.setTier(MEDIUM_RAW_TIER);
       await lab.setSeed(candidateSeedOf(0, builtMetaOf(name, entry).passes));
       await lab.capturePng();
-      out.push(await checkRowOf(lab, name, entry, await lab.readFloat('correction', 3)));
+      out.push(await checkRowOf(lab, name, entry, await lab.readFloat(RAW_CORRECTION_TARGET, 3)));
     }
     return out;
   });
