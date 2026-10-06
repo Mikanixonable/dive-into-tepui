@@ -18,7 +18,7 @@ const MAX_PASS_SAMPLES = 256;
 // 最も細かい帯の R(1) のこの倍以下。
 const CONVERGED_G_RATIO = 1 / 10;
 const CONVERGED_R_RATIO = 1.5;
-// 補正の収束先の撮影と、判定が比べる相手が読む中間ターゲット。最後の拡大(解像度 1 でも疎なタップで均す)の前の、走査の
+// 補正の収束先の撮影が積む中間ターゲット。最後の拡大(解像度 1 でも疎なタップで均す)の前の、走査の
 // 解像度の補正。帯の数 1・解像度 1 の段では、これが全解像度の raw の補正になる。保存では kind 'correction' と呼ぶ。
 const RAW_CORRECTION_TARGET = 'scan-correction';
 // 保存の kind の、ページで積む中間ターゲットの名前。
@@ -162,7 +162,7 @@ export async function check({ positional, options }) {
       await lab.setTier(MEDIUM_RAW_TIER);
       await lab.setSeed(candidateSeedOf(0, builtMetaOf(name, entry).passes));
       await lab.capturePng();
-      out.push(await checkRowOf(lab, name, entry, await lab.readFloat(RAW_CORRECTION_TARGET, 3)));
+      out.push(await checkRowOf(lab, name, entry, await lab.readFloat('correction', 3)));
     }
     return out;
   });
