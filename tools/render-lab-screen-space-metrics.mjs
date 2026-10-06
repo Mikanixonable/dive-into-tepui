@@ -322,7 +322,7 @@ function reportOf(record, results, flicker, scales) {
   // 費用は近傍拡散補正の行の和の、マテリアルの行に対する比の、候補のパス数 passes 倍。
   const costOf = (row, passes) => {
     if (row === null) return null;
-    const parts = ['照り返し源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大']
+    const parts = ['近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大']
       .map((label) => row[label]);
     const material = row['マテリアル'];
     if (material === null || parts.some((v) => v === null)) return null;

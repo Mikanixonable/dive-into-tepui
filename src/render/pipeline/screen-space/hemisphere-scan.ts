@@ -62,7 +62,8 @@ interface GBufferSurface {
 
 // 走査の解像度で描いている画素を受け手として、走査の解像度の面 surfaces(素の深度と view 空間の oct 符号化の法線)を
 // 走査し、受け手の拡散照度の補正(照り返し − 塞がれた照度)を帯 bands ごとに返す(長さは帯の数で、和が帯に分けない
-// 補正)。受け手と標本は、走査の画素が表す G バッファの画素(gbufferUVOf)の値を読む。gbufferSize はその G バッファの寸法 [px]。
+// 補正)。受け手と標本は、走査の画素が表す G バッファの画素(gbufferUVOf)の値を読む。
+// gbufferSize はその G バッファの寸法 [px]。
 // projection / projectionInverse は実カメラの射影行列とその逆、sliceCount はスライスの数、stepCount は片側の歩数、
 // noise は画素ごとの互いに独立な 0..1 の組(x がスライスの回転、y が歩みのずれ、z が扇形の端の丸めのずれ)。
 // ambientIrradiance と planets は、近くの構造に遮られないときに受け手へ届く一様な環境光の照度と天体照。radiance は
