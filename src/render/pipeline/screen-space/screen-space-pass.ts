@@ -15,7 +15,7 @@ import { compileInto } from '../compile-into';
 import {
   gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
 } from './hemisphere-scan';
-import { BandPyramid, packedBands } from './band-pyramid';
+import { BandPyramid, packedBands, type MergeKernel } from './band-pyramid';
 import { CorrectionReconstruction } from './correction-reconstruction';
 import { ScreenSpaceInputPyramid, levelExtent } from './screen-space-input-pyramid';
 import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
@@ -170,6 +170,16 @@ export class ScreenSpacePass {
   // 次の render から段 tier で走査する。次に setQuality を呼ぶまで保つ。
   public setTier(tier: ScanTier): void {
     this.tier = tier;
+  }
+
+  // render-lab の比較用に合流の核を切り替え、核を含む鎖のマテリアルを組み直す。
+  public setMergeKernel(kernel: MergeKernel): void {
+    if (this.bandPyramid.currentMergeKernel === kernel) return;
+    this.bandPyramid.setMergeKernel(kernel);
+    for (const stages of this.stagesByBandCount.values()) {
+      for (const material of new Set(stages.own.map(({ material }) => material))) material.dispose();
+    }
+    this.stagesByBandCount.clear();
   }
 
   // 次の render から、走査の全体の回転とブルーノイズのずれを (x, y) [タイルの幅] にする。

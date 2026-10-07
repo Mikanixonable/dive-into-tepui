@@ -120,9 +120,13 @@ export class DebugComposites {
       }
       case 'representative':
         return target.level < count ? vec4(this.representativeNormal(target.level), 1) : null;
-      case 'merged': {
+      case 'merged':
+      case 'merged-share': {
         if (target.level >= count - 1) return null;
-        return this.signedColor(texture(corrections.mergedTarget(count, target.level).texture, screenUV).rgb);
+        const merged = texture(corrections.mergedTarget(count, target.level).texture, screenUV);
+        return target.kind === 'merged'
+          ? this.signedColor(merged.rgb)
+          : vec4(vec3(merged.a), 1);
       }
     }
   }

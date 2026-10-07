@@ -23,7 +23,8 @@ export function register(): void {
       'reduced-2-band-2', 'reduced-2-band-3', 'reduced-2-band-4',
       'reduced-3-band-3', 'reduced-3-band-4',
       'reduced-4-band-4',
-      'merged-3', 'merged-2', 'merged-1', 'merged-0',
+      'merged-3', 'merged-share-3', 'merged-2', 'merged-share-2',
+      'merged-1', 'merged-share-1', 'merged-0', 'merged-share-0',
     ] as const;
     before('bounce-source', chain[0]);
     for (const [index, id] of chain.slice(1).entries()) before(chain[index]!, id);

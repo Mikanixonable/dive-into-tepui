@@ -26,12 +26,16 @@ export const CHAIN_DEBUG_TARGETS = [
   { id: 'reduced-3-band-4', kind: 'reduced', level: 3, band: 4 },
   { id: 'reduced-4-band-4', kind: 'reduced', level: 4, band: 4 },
   { id: 'merged-3', kind: 'merged', level: 3 },
+  { id: 'merged-share-3', kind: 'merged-share', level: 3 },
   { id: 'merged-2', kind: 'merged', level: 2 },
+  { id: 'merged-share-2', kind: 'merged-share', level: 2 },
   { id: 'merged-1', kind: 'merged', level: 1 },
+  { id: 'merged-share-1', kind: 'merged-share', level: 1 },
   { id: 'merged-0', kind: 'merged', level: 0 },
+  { id: 'merged-share-0', kind: 'merged-share', level: 0 },
 ] as const satisfies readonly (
   | { readonly id: string; readonly kind: 'band' | 'reduced'; readonly level: number; readonly band: number }
-  | { readonly id: string; readonly kind: 'representative' | 'merged'; readonly level: number }
+  | { readonly id: string; readonly kind: 'representative' | 'merged' | 'merged-share'; readonly level: number }
 )[];
 export type ChainDebugTarget = (typeof CHAIN_DEBUG_TARGETS)[number];
 export type ChainDebugTargetId = ChainDebugTarget['id'];
@@ -43,6 +47,7 @@ function chainLabelOf(target: ChainDebugTarget): string {
     case 'representative': return `代表の面の法線(段 ${target.level})`;
     case 'reduced': return `縮小した帯 ${target.band}(段 ${target.level})`;
     case 'merged': return `合流した拡散照度補正(段 ${target.level})`;
+    case 'merged-share': return `均された割合 A(段 ${target.level})`;
   }
 }
 
