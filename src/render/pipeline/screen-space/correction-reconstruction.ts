@@ -2,19 +2,21 @@
 // 段の部品。補正には受け手ごとの天体照が掛かっているので、内隅や輪郭を越えて混ぜない。
 import type * as THREE from 'three/webgpu';
 import {
-  If, abs, clamp, cos, dot, exp2, float, floor, ivec2, length, max, min, mix, normalize, round, screenSize, screenUV,
+  If, abs, clamp, cos, dot, exp2, float, floor, ivec2, length, max, min, normalize, round, screenSize, screenUV,
   select, sin, textureLoad, vec2, vec3,
 } from 'three/tsl';
 import { VOID_EXPONENT, type SurfaceReceiver, type SurfaceWeight } from './surface-weight';
+import { projectedRadius } from './hemisphere-scan';
 import type { ScanSurfaces, Texel, TexelSurface } from './texel-surface';
-import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
+import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
 // 最後の拡大で読む疎なタップの数と、タップ間の黄金角 [rad]。
 const UPSAMPLE_TAP_COUNT = 8;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-// 拡大の半径 [全解像度の画素] — 補正が粗い段まで均されているとき(A = 1)と、均されていないとき(A = 0)。
-const SMOOTHED_UPSAMPLE_RADIUS = 12 / Math.SQRT2;
-const UNSMOOTHED_UPSAMPLE_RADIUS = 24 / Math.SQRT2;
+// 拡大の半径の下限 [全解像度の画素]。走査の解像度に起因するエイリアスを隠すので、受け手の距離によらず画面の画素で固定する。
+const UPSAMPLE_FLOOR_RADIUS = 12 / Math.SQRT2;
+// 補正が均されていない分の輝点を慣らす半径の、受け手の近傍の投影半径に対する比。
+const UPSAMPLE_RADIUS_PER_PROJECTED_RADIUS = 0.0351;
 // 拡大の楕円の異方性の柔らかさ a — 短い半軸を (a + c)/(a + 1) 倍、長い半軸をその逆数倍にする。c は受け手の法線と
 // 視線のなす角の余弦。
 const UPSAMPLE_ANISOTROPY_SOFTNESS = 1 / 2;
@@ -23,15 +25,16 @@ const UPSAMPLE_HALF_WEIGHT_ANGLE = Math.PI / 9;
 
 export class CorrectionReconstruction {
   // weight は受け手と標本の面の重み、surfaces は標本の面を読む走査の解像度の面、fullSize と scanSize は描画バッファと
-  // 走査の解像度 [px]。
+  // 走査の解像度 [px]、projection は走査と同じ射影行列。
   public constructor(
     private readonly weight: SurfaceWeight, private readonly surfaces: ScanSurfaces,
-    private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
+    private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node, private readonly projection: Mat4Uniform,
   ) {}
 
   // 描画バッファの画素の補正を、走査の画素の補正 source(rgb。α は粗い段まで均された割合 A)から K 本を疎に読み、面の
-  // 重みで平均して求める。タップは受け手の面を画面に写した楕円(surfaceEllipseOf)に黄金角の螺旋で置き、半径は最寄りの
-  // 走査の画素の A が小さいほど広げる。rotation(0..1)は画素ごとに独立な螺旋の回転。空だけなら最寄りの走査の画素へ延長する。
+  // 重みで平均して求める。タップは受け手の面を画面に写した楕円(surfaceEllipseOf)に黄金角の螺旋で置き、半径は受け手の
+  // 近傍の投影半径に比例させ、最寄りの走査の画素の A が大きいほど縮める。rotation(0..1)は画素ごとに独立な螺旋の回転。
+  // 空だけなら最寄りの走査の画素へ延長する。
   // **Fn の中の、受け手が補正を受ける分岐から呼ぶこと。**
   public sparseUpsampled(source: THREE.Texture, rotation: FloatNode): Vec3Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
@@ -39,7 +42,9 @@ export class CorrectionReconstruction {
     const position = vec2(pixel).add(0.5).mul(this.scanSize).div(this.fullSize).sub(0.5).toVar();
     const scale = this.scanSize.div(this.fullSize).toVar();
     const nearest = textureLoad(source, this.clampToScan(ivec2(round(position)))).toVar();
-    const radius = mix(float(UNSMOOTHED_UPSAMPLE_RADIUS), float(SMOOTHED_UPSAMPLE_RADIUS), clamp(nearest.a, 0, 1));
+    const projected = projectedRadius(receiver.position, this.projection, this.fullSize);
+    const radius = max(float(UPSAMPLE_FLOOR_RADIUS),
+      projected.mul(UPSAMPLE_RADIUS_PER_PROJECTED_RADIUS).mul(float(1).sub(clamp(nearest.a, 0, 1))));
     const { across, along } = this.surfaceEllipseOf(receiver, radius);
     const angle = rotation.mul(2 * Math.PI).toVar();
     const cosAngle = cos(angle).toVar();

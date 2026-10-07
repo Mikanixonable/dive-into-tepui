@@ -13,8 +13,8 @@
 //   compare [<candidates.json>] [--reference D] [--entries K,...] [--sets S,...] [--out O]
 //     候補 { label, tier, passes }(passes の既定は 1)を B と比べ、指標と費用の表を出す。passes パスの候補は、seed を変えた
 //     passes パスの補正の平均を 1 枚の出力とし、費用を段の passes 倍に数える。既定の候補は中の段と、その帯に分けない段
-//     (-raw)と、それの 2・4・8 パス。候補の段の 1 パスの歩数が B と違うか、スライス数が B と同じでも、ともに 4 の倍数でも
-//     なければ撮る前に止まる。候補の seed は seed の列の末尾から取って B のパスと重ねず、重なるなら止まる。偽の構造の
+//     (-raw)と、それの 2・4・8 パス。候補の段の 1 パスの歩数が B と違えば撮る前に止まる(スライス数は
+//     収束先に依らないので問わない)。候補の seed は seed の列の末尾から取って B のパスと重ねず、重なるなら止まる。偽の構造の
 //     地図と、表示の誤差を 8 倍にした画像を .render-lab-shots/ssd-compare/<O>/ へ書き、候補の撮影(captures/)と費用・
 //     拡散照度から数えた値(record.json)も残す。
 //     --entries と --sets は reference と同じ。
@@ -61,8 +61,6 @@ import { variance } from './screen-space-variance.mjs';
 const EDGE_NORMAL_COS = Math.cos(Math.PI / 6);
 const EDGE_DEPTH_LSB = 3;
 const EDGE_BAND = 2;
-// スライス数がこの倍数どうしの段は、天体照の楔の核が同じで収束先を共有する — 同じ基準で採点できる。
-const SHARED_SLICE_MULTIPLE = 4;
 // 表示の 1 LSB に当たる、黒の近くの線形の値。
 const DISPLAY_LSB = 1 / (255 * 12.92);
 
@@ -115,14 +113,13 @@ function candidatesOf(file) {
   });
 }
 
-// 候補 candidates の段の 1 パスの片側の歩数が基準 references のどの撮影の記録とも同じで、スライス数が同じか、どちらも
-// SHARED_SLICE_MULTIPLE の倍数であることを確かめる。違えば、違う候補ごとに両者の数を並べて投げる。
+// 候補 candidates の段の 1 パスの片側の歩数が基準 references のどの撮影の記録とも同じであることを確かめる。違えば、
+// 違う候補ごとに両者の数を並べて投げる。
 function checkSampleCounts(candidates, references) {
   const countsOf = (slices, steps) => `${slices} slices × ${steps} steps`;
-  const sharesSlices = (a, b) => a === b || (a % SHARED_SLICE_MULTIPLE === 0 && b % SHARED_SLICE_MULTIPLE === 0);
   const metas = Object.values(references).map(({ meta }) => meta);
   const mismatches = candidates.flatMap(({ label, tier }) => {
-    const unlike = metas.filter(({ slices, steps }) => steps !== tier.stepCount || !sharesSlices(slices, tier.sliceCount));
+    const unlike = metas.filter(({ steps }) => steps !== tier.stepCount);
     const others = new Set(unlike.map(({ slices, steps }) => countsOf(slices, steps)));
     return others.size === 0 ? []
       : [`${label}: ${countsOf(tier.sliceCount, tier.stepCount)} per pass, reference ${[...others].join(' / ')}`];

@@ -43,13 +43,13 @@ export interface BandSplit {
   readonly scale: FloatNode;
 }
 
-// 受け手へ届く遠方の拡散光と、新しく塞いだ測度をその光の塞がれた割合へ写す分母の逆数。ambient は一様な環境光の照度、
-// inverseAverage は 1 / (スライスの重みの和 × SECTOR_COUNT)、planets は天体照ごとに 1 / 楔の重みの和 inverseWedgeSum を
+// 受け手へ届く遠方の拡散光と、新しく塞いだ測度をその光の塞がれた割合へ写す尺度。ambient は一様な環境光の照度、
+// hemisphereScale は 1 / (スライスの数 × SECTOR_COUNT)、planets は天体照ごとに楔の尺度 wedgeScale = 4 / スライスの数を
 // 添えたもの。
 interface DistantLight {
   readonly ambient: Vec3Node;
-  readonly inverseAverage: FloatNode;
-  readonly planets: readonly (PlanetIllumination & { readonly inverseWedgeSum: FloatNode })[];
+  readonly hemisphereScale: FloatNode;
+  readonly planets: readonly (PlanetIllumination & { readonly wedgeScale: FloatNode })[];
 }
 
 // G バッファの画素 1 つの面(view 空間)。depth は素の深度で、0 なら面が写っていない。
@@ -94,26 +94,14 @@ export function scanHemisphere(
     const planetVars: readonly PlanetIllumination[] = planets.map(({ cap, irradiance }) => ({
       cap: { direction: cap.direction.toVar(), cosAngle: cap.cosAngle.toVar() }, irradiance: irradiance.toVar(),
     }));
-    // 等間隔に取ったスライスのうち index 本目。分母のループと走査のループが、同じスライスを組む。
+    // 視線に垂直な面の中で等間隔に取ったスライスのうち index 本目。
     const sliceOf = (index: IntNode): Slice =>
       sliceAt(float(index).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiver.normal);
-    // 分母 — スライスの重みの和と、天体ごとの楔の重みの和。歩みによらないので、走査の前に求める。
-    const weightSum = float(0).toVar();
-    const wedgeSums = planetVars.map(() => float(0).toVar());
-    Loop({ start: 0, end: sliceCount, type: 'int', condition: '<' }, ({ i }) => {
-      const slice = sliceOf(i);
-      weightSum.addAssign(slice.weight);
-      for (const [index, { cap }] of planetVars.entries()) {
-        wedgeSums[index]!.addAssign(capInSlice(slice, cap, dither).wedge);
-      }
-    });
-    // 扇形の数をスライスの重みで均して SECTOR_COUNT で割ると、半球の余弦重みの測度に対する割合になる。
+    // スライスの重みの期待値は 1、楔の重みの期待値は 1/4 なので、期待値で割る。
     const light: DistantLight = {
       ambient,
-      inverseAverage: float(1).div(max(weightSum, 1e-6).mul(SECTOR_COUNT)).toVar(),
-      planets: planetVars.map((planet, index) => ({
-        ...planet, inverseWedgeSum: float(1).div(max(wedgeSums[index]!, 1e-6)).toVar(),
-      })),
+      hemisphereScale: float(1).div(float(sliceCount).mul(SECTOR_COUNT)).toVar(),
+      planets: planetVars.map((planet) => ({ ...planet, wedgeScale: float(4).div(float(sliceCount)).toVar() })),
     };
     // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。受け手自身の画素を読まない 1 走査画素先から半径までを、
     // 指数で近くへ寄せて配る（半径が大きくても受け手のそばを粗くしない）。
@@ -245,10 +233,10 @@ class SliceOcclusion {
     private readonly bands: BandSplit, private readonly corrections: readonly Vec3Node[],
     private readonly radiance: THREE.Texture | null,
   ) {
-    this.hemisphereWeight = slice.weight.mul(light.inverseAverage).toVar();
-    this.planets = light.planets.map(({ cap, irradiance, inverseWedgeSum }) => {
+    this.hemisphereWeight = slice.weight.mul(light.hemisphereScale).toVar();
+    this.planets = light.planets.map(({ cap, irradiance, wedgeScale }) => {
       const { range, width, wedge } = capInSlice(slice, cap, dither);
-      const capWeight = wedge.div(max(width, 1e-6)).mul(inverseWedgeSum).toVar();
+      const capWeight = wedge.div(max(width, 1e-6)).mul(wedgeScale).toVar();
       return { irradiance, sectors: rangeSectors(range), capWeight };
     });
   }
