@@ -17,9 +17,6 @@ const CHANNELS_PER_TEXTURE = 4;
 export const QUAD_OFFSETS = [[0, 0], [1, 0], [0, 1], [1, 1]] as const;
 // 重みの和がこれ以下なら、重みを持つ標本がないとみなす。0 で割らないための値。
 export const WEIGHT_EPSILON = 1e-6;
-// 合流の核。実験候補は render-lab からだけ切り替える。
-export type MergeKernel =
-  | 'bilinear' | 'no-bilinear-confidence' | 'no-bilinear-confidence-and-interpolation' | 'tent-3x3';
 // 段の画素どうしを比べる面の重みの調整値 — 接平面からの距離の許容の係数 c_z [段の画素の幅]、段 1 の法線の重みが
 // 半分になる角 θ_1 [rad](20°)と、その段ごとの公比 r。
 const DISTANCE_TOLERANCE_SCALE = 1;
@@ -79,23 +76,6 @@ export function levelAt(
   };
 }
 
-// 左上の角からのずれ fraction [画素] の点に対する、角から (dx, dy) の画素の双線形の重み。
-export function bilinearWeightOf(fraction: Vec2Node, dx: 0 | 1, dy: 0 | 1): FloatNode {
-  return (dx === 0 ? fraction.x.oneMinus() : fraction.x).mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
-}
-
-// 段 k の画素 pixel(整数座標)の中心を囲む段 k + 1 の 4 画素 texel(整数座標。段の画面の外もありうる)と、その双線形の
-// 重み weight。重みの和は 1 で、pixel を含む段 k + 1 の画素が 9/16、斜向かいが 1/16。
-export function coarseNeighbors(pixel: Vec2Node): { readonly texel: Vec2Node; readonly weight: FloatNode }[] {
-  // 段 k + 1 の画素を単位とし、画素の中心を整数に乗せた座標。
-  const position = pixel.add(0.5).mul(0.5).sub(0.5);
-  const corner = floor(position);
-  const fraction = position.sub(corner);
-  return QUAD_OFFSETS.map(([dx, dy]) => ({
-    texel: corner.add(vec2(dx, dy)), weight: bilinearWeightOf(fraction, dx, dy),
-  }));
-}
-
 // 段 k の画素を含む段 k + 1 の画素を中心とした 3×3 の親と、[1, 2, 1]⊗[1, 2, 1]/16 の重み。
 export function tentNeighbors(pixel: Vec2Node): { readonly texel: Vec2Node; readonly weight: FloatNode }[] {
   const center = floor(pixel.mul(0.5));
@@ -144,30 +124,19 @@ export interface ParentPixel {
 // 段 k の拡大と合流の出力 C_k = D_k + α·Ū + (1 − α)·T_k と、そのうち最も粗い段まで均された割合 A_k = α·Ā_{k+1}
 // (遠い帯の値のうち、どの段の合流でも均す前の値に置き換わらなかった割合)。direct は D_k(段 k の帯 k)、remainder は
 // T_k(段 k の帯 k + 1 以降の和)、remainderPixels はその実効画素数、parents は親候補とその空間補間重み・面の重み・値・
-// 実効画素数・均された割合を持つ。既定の平均の重みは空間補間の重み×w(3×3ではテント×w)、補間から β を外す候補は w。既定の確からしさは平均用の重みで
-// 見た面の重み、β を外す候補は面の重み自身で正規化した重みで見た面の重み。Ū と Ā_{k+1} は親の C_{k+1} と A_{k+1} を
-// 選んだ重みで正規化した平均。
+// 実効画素数・均された割合を持つ。Ū と Ā_{k+1} はテント×面の重みで正規化した平均、α は面の重みで見た面の確からしさと
+// T_k・Ū の分散から決まる縮小推定の比。
 export function mergedCorrection(
   direct: Vec3Node, remainder: Vec3Node, remainderPixels: FloatNode, parents: readonly ParentPixel[],
-  kernel: MergeKernel = 'tent-3x3',
 ): { readonly correction: Vec3Node; readonly smoothedShare: FloatNode } {
-  // 空間補間の重みと面の重みの積(既定)、または面の重みだけを和が 1 になるよう正規化する。
-  const weights: FloatNode[] = parents.map(({ interpolationWeight, surface }) =>
-    (kernel === 'no-bilinear-confidence-and-interpolation' ? surface : interpolationWeight.mul(surface)).toVar());
+  // テントと面の重みの積を和が 1 になるよう正規化する。
+  const weights: FloatNode[] = parents.map(({ interpolationWeight, surface }) => interpolationWeight.mul(surface).toVar());
   const total = weights.reduce((sum, weight) => sum.add(weight));
   const terms = parents.map((parent, index) => ({
     parent, share: weights[index]!.div(max(total, WEIGHT_EPSILON)).toVar(), pixels: max(parent.effectivePixels, 1),
   }));
   // 面が合う確からしさ π と、親の平均 Ū とその分散 V_U [走査の 1 画素の分散]。
-  const confidence = kernel === 'no-bilinear-confidence' || kernel === 'no-bilinear-confidence-and-interpolation'
-    ? (() => {
-      const surfaceTotal = parents.map(({ surface }) => surface).reduce((a, b) => a.add(b));
-      const squaredSurfaceTotal = parents.map(({ surface }) => surface.mul(surface)).reduce((a, b) => a.add(b));
-      // 確からしさ用の v_i ∝ w_i で平均し、Σw が 0 のときは確からしさを 0 にする。
-      return select(surfaceTotal.greaterThan(WEIGHT_EPSILON),
-        squaredSurfaceTotal.div(max(surfaceTotal, WEIGHT_EPSILON)), float(0));
-    })()
-    : terms.map(({ parent, share }) => share.mul(parent.surface)).reduce((a, b) => a.add(b));
+  const confidence = terms.map(({ parent, share }) => share.mul(parent.surface)).reduce((a, b) => a.add(b));
   const mean = terms.map(({ parent, share }) => parent.value.mul(share)).reduce((a, b) => a.add(b));
   const meanVariance = terms.map(({ share, pixels }) => share.mul(share).div(pixels)).reduce((a, b) => a.add(b));
   // T_k の分散 V_T と、Ū との共分散。T_k が Ū に占める重みは、自分を含む親の中で T_k が占める割合を実効画素数の比で
@@ -191,19 +160,11 @@ export function mergedCorrection(
 
 // 帯の縮小と、粗い段からの拡大と合流を組む。段の画素どうしは、代表の面の重みで比べる。
 export class BandPyramid {
-  private mergeKernel: MergeKernel = 'tent-3x3';
   // surfaces は段ごとの代表の面、weight は面の重み、fullSize と scanSize は描画バッファと走査の解像度 [px]。
   public constructor(
     private readonly surfaces: ScreenSpaceInputPyramid, private readonly weight: SurfaceWeight,
     private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
   ) {}
-
-  // render-lab の実験用。次に鎖を組むときから合流の核を切り替える。
-  public setMergeKernel(kernel: MergeKernel): void {
-    this.mergeKernel = kernel;
-  }
-
-  public get currentMergeKernel(): MergeKernel { return this.mergeKernel; }
 
   // 段 level(1 以上)の描いている画素の、帯 level..count − 1 と実効画素数を詰めた値(packedReducedBands の並び)。段
   // level − 1 の帯を詰めたテクスチャ finer(帯 level − 1..count − 1)の 4 つの子の帯を、子の代表を段 level の代表と比べた
@@ -231,7 +192,7 @@ export class BandPyramid {
 
   // 段 level の描いている画素の、拡大と合流の出力 — rgb は C_level、α は最も粗い段まで均された割合 A_level。段 level の帯を
   // 詰めたテクスチャ own(帯 level..count − 1)、段 level + 1 の C と A を持つテクスチャ coarse(最も粗い段ならその段の帯)、
-  // 段 level + 1 の帯を詰めたテクスチャ coarseBands から、既定は4親、3×3候補は9親を使って mergedCorrection で求める。
+  // 段 level + 1 の帯を詰めたテクスチャ coarseBands から、3×3 テントの9親を使って mergedCorrection で求める。
   // 段 level の代表に面がなければ 0。
   // **Fn の中から呼ぶこと。**
   public merged(
@@ -246,8 +207,7 @@ export class BandPyramid {
       // 親の面の重みは、その代表を段 level の代表と比べたもの(画面の外は 0)。
       const { distance, angle } = this.toleranceAt(level + 1);
       const containing = pixel.div(2);
-      const neighbors = this.mergeKernel === 'tent-3x3' ? tentNeighbors(vec2(pixel)) : coarseNeighbors(vec2(pixel));
-      const parents = neighbors.map(({ texel, weight }): ParentPixel => {
+      const parents = tentNeighbors(vec2(pixel)).map(({ texel, weight }): ParentPixel => {
         const parent = ivec2(texel).toVar();
         const exponent = this.weight.exponentOf(receiver, this.surfaces.surfaceAt(level + 1, parent), distance, angle);
         const coarseValue = textureLoad(coarse, parent);
@@ -263,7 +223,7 @@ export class BandPyramid {
       // 段 level の帯 level と、帯 level + 1 以降の和。
       const { bands: [direct, ...farther], effectivePixels } = levelAt(own, count, level, pixel);
       const remainder = farther.reduce((sum, band) => sum.add(band));
-      const { correction, smoothedShare } = mergedCorrection(direct!, remainder, effectivePixels, parents, this.mergeKernel);
+      const { correction, smoothedShare } = mergedCorrection(direct!, remainder, effectivePixels, parents);
       result.assign(vec4(correction, smoothedShare));
     });
     return result;

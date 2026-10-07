@@ -12,7 +12,6 @@ const port = 8769;
 const debugPort = 9446;
 
 const USAGE = 'usage: node tools/render-lab-measure.mjs [巡回数] [軸]';
-const MERGE_GRAPHICS = { screenSpaceDiffuse: 2, screenSpaceQuality: 1 };
 
 // 測る軸。framings の angles はケース既定の観察の向きへ重ねる。variants の graphics は setGraphicsOption へ
 // 渡す描画設定の差分で、差分に無い鍵は直前に測った段の値のまま残る。rows は result.gpuPassMs の行名
@@ -45,26 +44,6 @@ const AXES = {
       { label: '遮蔽と照り返し・低', graphics: { screenSpaceDiffuse: 2, screenSpaceQuality: 0 } },
       { label: '遮蔽と照り返し・中', graphics: { screenSpaceDiffuse: 2, screenSpaceQuality: 1 } },
       { label: '遮蔽と照り返し・高', graphics: { screenSpaceDiffuse: 2, screenSpaceQuality: 2 } },
-    ],
-    rows: [
-      '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大', 'マテリアル',
-    ],
-    ratioRows: ['近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大'],
-    ratioLabel: '近傍拡散合計',
-  },
-  'screen-space-merge': {
-    statistic: 'p50',
-    framings: [
-      { label: 'cornell-box', caseName: 'cornell-box', shotName: 'cornell-box' },
-      { label: 'clutter', caseName: 'clutter', shotName: 'clutter' },
-      { label: 'bay-earth-open', caseName: 'bay', shotName: 'bay-earth-open' },
-    ],
-    variants: [
-      { label: '基準', mergeKernel: 'bilinear', graphics: MERGE_GRAPHICS },
-      { label: 'βを確からしさから除外', mergeKernel: 'no-bilinear-confidence', graphics: MERGE_GRAPHICS },
-      { label: '確からしさのβを外したまま補間からも除外',
-        mergeKernel: 'no-bilinear-confidence-and-interpolation', graphics: MERGE_GRAPHICS },
-      { label: '3×3テント', mergeKernel: 'tent-3x3', graphics: MERGE_GRAPHICS },
     ],
     rows: [
       '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大', 'マテリアル',
@@ -158,30 +137,14 @@ async function main() {
       { length: passes }, (_, index) => (index % 2 === 0 ? combos : [...combos].reverse()),
     )) {
       for (const { framing, variant } of pass) {
-        for (const [option, value] of Object.entries(variant.graphics ?? {})) {
+        for (const [option, value] of Object.entries(variant.graphics)) {
           await devTools.evaluate(
             `window.renderLab.setGraphicsOption(${JSON.stringify(option)}, ${JSON.stringify(value)})`,
           );
         }
-        let result;
-        if (framing.shotName !== undefined) {
-          const graphics = variant.graphics ?? {};
-          await devTools.evaluate(
-            `window.renderLab.showShot(${JSON.stringify(framing.caseName)}, ${JSON.stringify(framing.shotName)}, `
-            + `${JSON.stringify(graphics)})`,
-          );
-          if (variant.mergeKernel !== undefined) {
-            await devTools.evaluate(`window.renderLab.setMergeKernel(${JSON.stringify(variant.mergeKernel)})`);
-          }
-          result = await devTools.evaluate('window.renderLab.measureCurrent()');
-        } else {
-          if (variant.mergeKernel !== undefined) {
-            await devTools.evaluate(`window.renderLab.setMergeKernel(${JSON.stringify(variant.mergeKernel)})`);
-          }
-          result = await devTools.evaluate(
-            `window.renderLab.measure(${JSON.stringify(framing.caseName)}, ${JSON.stringify(framing.angles)})`,
-          );
-        }
+        const result = await devTools.evaluate(
+          `window.renderLab.measure(${JSON.stringify(framing.caseName)}, ${JSON.stringify(framing.angles)})`,
+        );
         const key = `${framing.label} / ${variant.label}`;
         const values = axis.rows.map((row) => result.gpuSupported ? result.gpuPassMs[row]?.[statistic] ?? null : null);
         const entry = measurements.get(key) ?? { supported: result.gpuSupported, runs: [] };
