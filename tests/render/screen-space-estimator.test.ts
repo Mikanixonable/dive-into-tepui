@@ -19,9 +19,9 @@ import type { FloatNode, Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 // スライス 1 枚を刻む扇形の数。
 const SECTOR_COUNT = 32;
 const HALF_PI = Math.PI / 2;
-// 受け手の視線(view 空間の単位ベクトル)と、スライスの画面上の角 [rad]。
+// 受け手の視線(view 空間の単位ベクトル)と、スライスの視線に垂直な面の中の角 [rad]。
 const VIEW = new THREE.Vector3(0.2, -0.3, 1).normalize();
-const SLICE_ANGLE = 0.7;
+const SLICE_PSI = 0.7;
 // 球冠を置くスライスの、射影した法線の角 n [rad]。半球は [n − π/2, n + π/2] ≈ [−1.07, 2.07]。
 const CAP_NORMAL_ANGLE = 0.5;
 // 球冠の中心の角・半幅 [rad] と、スライス平面の外への傾き [rad]。半球の外・中・地平をまたぐものを並べる。
@@ -89,11 +89,25 @@ function expectedPosition(h: number, n: number, dither: number): number {
   return measureCoordinate(h, n) + dither - 0.5;
 }
 
-// VIEW と画面上の向き SLICE_ANGLE が張るスライス平面の中で VIEW から角 h だけ回した単位ベクトルを、平面の外へ
+// 視線 view に垂直な面の中の、画面の右から測った角 psi の単位ベクトル。
+function orthoOf(view: THREE.Vector3, psi: number): THREE.Vector3 {
+  const right = new THREE.Vector3(1, 0, 0).addScaledVector(view, -view.x).normalize();
+  const up = new THREE.Vector3().crossVectors(view, right);
+  return right.multiplyScalar(Math.cos(psi)).addScaledVector(up, Math.sin(psi));
+}
+
+// 視線 view のスライスのうち、画面上の角 angle の向きに写るもの(スライス平面が画面と交わる向きが angle)の psi。
+function psiOfScreenAngle(view: THREE.Vector3, angle: number): number {
+  const screen = new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0);
+  const ortho = screen.addScaledVector(view, -screen.dot(view));
+  const right = orthoOf(view, 0);
+  return Math.atan2(ortho.dot(orthoOf(view, Math.PI / 2)), ortho.dot(right));
+}
+
+// VIEW と角 SLICE_PSI の向きが張るスライス平面の中で VIEW から角 h だけ回した単位ベクトルを、平面の外へ
 // tilt だけ傾けたもの。平面へ射影した角は h のまま。
 function inSlice(h: number, tilt: number): THREE.Vector3 {
-  const screen = new THREE.Vector3(Math.cos(SLICE_ANGLE), Math.sin(SLICE_ANGLE), 0);
-  const ortho = screen.clone().addScaledVector(VIEW, -screen.dot(VIEW)).normalize();
+  const ortho = orthoOf(VIEW, SLICE_PSI);
   const axis = new THREE.Vector3().crossVectors(VIEW, ortho);
   return VIEW.clone().multiplyScalar(Math.cos(h)).addScaledVector(ortho, Math.sin(h))
     .multiplyScalar(Math.cos(tilt)).addScaledVector(axis, Math.sin(tilt));
@@ -101,7 +115,7 @@ function inSlice(h: number, tilt: number): THREE.Vector3 {
 
 // 射影した法線の角が n のスライス。法線は平面の外へも傾ける。
 function sliceWithNormalAngle(n: number): ReturnType<typeof sliceAt> {
-  return sliceAt(float(SLICE_ANGLE), vectorNode(VIEW), vectorNode(inSlice(n, 0.4)));
+  return sliceAt(float(SLICE_PSI), vectorNode(VIEW), vectorNode(inSlice(n, 0.4)));
 }
 
 // 射影した法線の角が CAP_NORMAL_ANGLE のスライスへ写した、球冠 cap の範囲。
@@ -180,8 +194,8 @@ function bayScan(): BayScan {
   // スライス平面は、カメラ・受け手・1 画素先の床の点を通る。
   const receiver = onPlane(FLOOR, RECEIVER_UV);
   const next = onPlane(FLOOR, RECEIVER_UV.clone().add(uvStep));
-  const slice = sliceAt(float(BAY_SLICE_ANGLE), vectorNode(receiver.clone().normalize().negate()),
-    vectorNode(FLOOR.normal));
+  const view = receiver.clone().normalize().negate();
+  const slice = sliceAt(float(psiOfScreenAngle(view, BAY_SLICE_ANGLE)), vectorNode(view), vectorNode(FLOOR.normal));
   return {
     uvStep,
     receiver,
@@ -363,22 +377,69 @@ export function register(): void {
     }
   });
 
-  test('screen space estimator: 4 の倍数本の等間隔のスライスの楔の重みは、どの方位でも和が本数 / 4', () => {
-    // 視線が画面に垂直なら、画面上で等間隔のスライスは視線のまわりでも等間隔。
-    const view = new THREE.Vector3(0, 0, 1);
-    const azimuths = Array.from({ length: 24 }, (_, k) => (k + 0.1) * 2 * Math.PI / 24);
-    for (const sliceCount of [4, 8, 16]) {
-      for (const rotation of [0, 0.37]) {
-        const slices = Array.from({ length: sliceCount }, (_, i) =>
-          sliceAt(float((i + rotation) * Math.PI / sliceCount), vectorNode(view), vectorNode(view)));
+  test('screen space estimator: スライスは視線に垂直な単位長さの向きと、画面と交わる向き(z 成分 0)で組まれる', () => {
+    const views = [VIEW, new THREE.Vector3(0, 0, 1), new THREE.Vector3(-0.6, 0.4, 0.7).normalize()];
+    for (const view of views) {
+      for (const psi of [0, 0.7, 2, -1.3, 3]) {
+        const slice = sliceAt(float(psi), vectorNode(view), vectorNode(view));
+        const ortho = vectorOf(slice.orthoDirection);
+        const label = `view=${view.toArray()} psi=${psi}`;
+        near(ortho.length(), 1, 1e-9, `${label} 単位長さ`);
+        near(ortho.dot(view), 0, 1e-9, `${label} 視線に垂直`);
+        near(ortho.distanceTo(orthoOf(view, psi)), 0, 1e-9, `${label} 角`);
+        // スライス平面は視線と ortho が張り、その法線 axis と画面の向きは直交する。
+        const [x, y] = evaluateShaderNode(slice.screenDirection) as number[];
+        const screen = new THREE.Vector3(x, -y!, 0);
+        near(screen.length(), 1, 1e-9, `${label} 画面の向きは単位長さ`);
+        near(screen.dot(vectorOf(slice.axis)), 0, 1e-9, `${label} 画面の向きはスライス平面の上`);
+        near(psiOfScreenAngle(view, Math.atan2(screen.y, screen.x)), Math.atan2(Math.sin(psi), Math.cos(psi)), 1e-9,
+          `${label} 往復`);
+        near(vectorOf(slice.axis).dot(view), 0, 1e-9, `${label} axis`);
+        near(vectorOf(slice.axis).dot(ortho), 0, 1e-9, `${label} axis`);
+      }
+    }
+  });
+
+  test('screen space estimator: ψ で等間隔な楔の重みの和は、4 の倍数本ならどの回転でも本数 / 4、他の本数でも回転の平均が本数 / 4', () => {
+    const azimuths = Array.from({ length: 12 }, (_, k) => (k + 0.1) * 2 * Math.PI / 12);
+    const rotations = Array.from({ length: 64 }, (_, k) => (k + 0.5) / 64);
+    for (const view of [new THREE.Vector3(0, 0, 1), VIEW]) {
+      for (const sliceCount of [2, 3, 4, 8]) {
         for (const elevation of [0.3, 1.2, 2.6]) {
           for (const azimuth of azimuths) {
             const direction = new THREE.Vector3(Math.sin(elevation) * Math.cos(azimuth),
               Math.sin(elevation) * Math.sin(azimuth), Math.cos(elevation));
-            const sum = slices.map((slice) => valueOf(wedgeWeight(slice, vectorNode(direction))))
-              .reduce((total, weight) => total + weight, 0);
-            near(sum, sliceCount / 4, 1e-9, `slices=${sliceCount} rotation=${rotation} azimuth=${azimuth}`);
+            const sums = rotations.map((rotation) => {
+              let total = 0;
+              for (let i = 0; i < sliceCount; i++) {
+                const slice = sliceAt(float((i + rotation) * Math.PI / sliceCount), vectorNode(view), vectorNode(view));
+                total += valueOf(wedgeWeight(slice, vectorNode(direction)));
+              }
+              return total;
+            });
+            const label = `view=${view.toArray()} slices=${sliceCount} azimuth=${azimuth}`;
+            near(sums.reduce((sum, value) => sum + value, 0) / sums.length, sliceCount / 4, 2e-3, `${label} 平均`);
+            if (sliceCount % 4 === 0) for (const sum of sums) near(sum, sliceCount / 4, 1e-9, label);
           }
+        }
+      }
+    }
+  });
+
+  test('screen space estimator: ψ で等間隔なスライスの重みは、本数によらず回転についての平均が 1', () => {
+    const rotations = Array.from({ length: 64 }, (_, k) => (k + 0.5) / 64);
+    for (const view of [new THREE.Vector3(0, 0, 1), VIEW]) {
+      for (const n of [0, 0.5, 1.2]) {
+        const normal = view.clone().applyAxisAngle(orthoOf(view, 0.4), n);
+        for (const sliceCount of [1, 2, 3, 4]) {
+          let total = 0;
+          for (const rotation of rotations) {
+            for (let i = 0; i < sliceCount; i++) {
+              const slice = sliceAt(float((i + rotation) * Math.PI / sliceCount), vectorNode(view), vectorNode(normal));
+              total += valueOf(slice.weight);
+            }
+          }
+          near(total / (rotations.length * sliceCount), 1, 2e-3, `view=${view.toArray()} n=${n} slices=${sliceCount}`);
         }
       }
     }
@@ -426,7 +487,8 @@ export function register(): void {
       const projectionInverse = uniform(projection.clone().invert());
       const receiverRay = viewRayAt(projectionInverse, vec2(uv.x, uv.y));
       const receiver = vectorOf(receiverRay.origin).addScaledVector(vectorOf(receiverRay.direction), 5);
-      const slice = sliceAt(float(angle), receiverRay.direction.negate(), vectorNode(normal));
+      const view = vectorOf(receiverRay.direction).negate();
+      const slice = sliceAt(float(psiOfScreenAngle(view, angle)), vectorNode(view), vectorNode(normal));
       const rays = sideRays(slice, vectorNode(receiver), vec2(uv.x, uv.y), vec2(uvStep.x, uvStep.y), projectionInverse);
       for (const rho of [0, 1, 7.5, 60, 240]) {
         const target = uv.clone().addScaledVector(uvStep, rho);
