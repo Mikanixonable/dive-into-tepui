@@ -3,8 +3,8 @@
 import * as assert from 'node:assert/strict';
 import { bool, float, ivec2, vec2, vec3 } from 'three/tsl';
 import {
-  coarseNeighbors, effectivePixelsOf, mergedCorrection, packedReducedBands, packedTextureCount, unpackedBands,
-  weightedBands, type ParentPixel,
+  coarseNeighbors, effectivePixelsOf, mergedCorrection, packedReducedBands, packedTextureCount, tentNeighbors,
+  unpackedBands, weightedBands, type ParentPixel,
 } from '../../src/render/pipeline/screen-space/band-pyramid';
 import { secondNearest } from '../../src/render/pipeline/screen-space/screen-space-input-pyramid';
 import { test } from '../harness';
@@ -36,7 +36,7 @@ function parentsAround(
   return coarseNeighbors(vec2(pixel[0], pixel[1])).map(({ texel, weight }) => {
     const offset = componentsOf(texel).map((coordinate, axis) => coordinate - containing[axis]!);
     return {
-      bilinear: weight, surface: float(surfaceAt(offset)), value: vectorNode(value),
+      interpolationWeight: weight, surface: float(surfaceAt(offset)), value: vectorNode(value),
       effectivePixels: float(parentPixels), smoothedShare: float(parentShare),
       containsPixel: bool(offset.every((d) => d === 0)),
     };
@@ -64,6 +64,23 @@ export function register(): void {
         assert.ok(offset.every((d, axis) => d === 0 || d === side[axis]), `${label} ${texel}`);
         const expected = (offset[0] === 0 ? 3 / 4 : 1 / 4) * (offset[1] === 0 ? 3 / 4 : 1 / 4);
         near(weight, expected, 1e-12, `${label} ${texel}`);
+      }
+    }
+  });
+
+  test('screen space band pyramid: 3×3 テントは含む親を中心に対称で、重みの和が 1', () => {
+    for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1], [6, 9]] as const) {
+      const neighbors = tentNeighbors(vec2(x, y)).map(({ texel, weight }) => ({
+        texel: componentsOf(texel), weight: evaluateShaderNode(weight) as number,
+      }));
+      const center = [Math.floor(x / 2), Math.floor(y / 2)];
+      assert.strictEqual(neighbors.length, 9);
+      near(neighbors.reduce((sum, neighbor) => sum + neighbor.weight, 0), 1, 1e-12, `(${x}, ${y}) 和`);
+      for (const neighbor of neighbors) {
+        const offset = neighbor.texel.map((coordinate, axis) => coordinate - center[axis]!);
+        assert.ok(offset.every((delta) => delta >= -1 && delta <= 1), `(${x}, ${y}) ${neighbor.texel}`);
+        const expected = (offset[0] === 0 ? 2 : 1) * (offset[1] === 0 ? 2 : 1) / 16;
+        near(neighbor.weight, expected, 1e-12, `(${x}, ${y}) ${neighbor.texel}`);
       }
     }
   });
@@ -201,5 +218,54 @@ export function register(): void {
         }
       }
     }
+  });
+
+  test('screen space band pyramid: 確からしさから双線形係数を外すと、面の重みで正規化した平均になる', () => {
+    const bilinear = [0.5625, 0.1875, 0.1875, 0.0625];
+    const surfaces = [1, 0.5, 0, 0];
+    const makeParents = (weights: readonly number[]): ParentPixel[] => weights.map((weight, index) => ({
+      interpolationWeight: float(weight), surface: float(surfaces[index]!), value: vectorNode([1, 1, 1]),
+      effectivePixels: float(1e6), smoothedShare: float(1), containsPixel: bool(index === 0),
+    }));
+    const measuredShare = (
+      weights: readonly number[], kernel: 'bilinear' | 'no-bilinear-confidence'
+        | 'no-bilinear-confidence-and-interpolation',
+    ): number =>
+      componentsOf(mergedCorrection(vectorNode([0, 0, 0]), vectorNode([0, 0, 0]), float(1), makeParents(weights), kernel)
+        .correction)[0]!;
+    const candidateA = measuredShare(bilinear, 'no-bilinear-confidence');
+    const candidateB = measuredShare([...bilinear].reverse(), 'no-bilinear-confidence');
+    const candidateC = measuredShare(bilinear, 'no-bilinear-confidence-and-interpolation');
+    near(candidateA, candidateB, 1e-5, 'β の並びに依存しない');
+    near(candidateA, candidateC, 1e-5, 'βなし補間も確からしさの式は維持する');
+    assert.ok(Math.abs(measuredShare(bilinear, 'bilinear') - measuredShare([...bilinear].reverse(), 'bilinear')) > 0.05);
+  });
+
+  test('screen space band pyramid: βなし確からしさは斜向かいの親1つだけが合っても1になる', () => {
+    const parents: ParentPixel[] = [0, 1, 2, 3].map((index) => ({
+      interpolationWeight: float([0.5625, 0.1875, 0.1875, 0.0625][index]!),
+      surface: float(index === 3 ? 1 : 0), value: vectorNode([1, 1, 1]),
+      effectivePixels: float(1e6), smoothedShare: float(1), containsPixel: bool(false),
+    }));
+    for (const kernel of ['no-bilinear-confidence', 'no-bilinear-confidence-and-interpolation'] as const) {
+      const correction = mergedCorrection(
+        vectorNode([0, 0, 0]), vectorNode([0, 0, 0]), float(1), parents, kernel,
+      ).correction;
+      near(componentsOf(correction)[0]!, 1, 1e-5, kernel);
+    }
+  });
+
+  test('screen space band pyramid: 確からしさからβを外したうえで、補間からもβを外す', () => {
+    const parents: ParentPixel[] = [0.5625, 0.1875, 0.1875, 0.0625].map((bilinear, index) => ({
+      interpolationWeight: float(bilinear), surface: float(1), value: vectorNode([index * 2, index * 2, index * 2]),
+      effectivePixels: float(1e6), smoothedShare: float(1), containsPixel: bool(index === 0),
+    }));
+    const output = (kernel: 'bilinear' | 'no-bilinear-confidence-and-interpolation'): number[] => componentsOf(mergedCorrection(
+      vectorNode([0, 0, 0]), vectorNode([0, 0, 0]), float(1), parents, kernel,
+    ).correction);
+    const baseline = output('bilinear')[0]!;
+    const candidate = output('no-bilinear-confidence-and-interpolation')[0]!;
+    near(candidate, 3, 1e-5, '4親を等重みにした平均');
+    assert.ok(Math.abs(candidate - baseline) > 0.5);
   });
 }
