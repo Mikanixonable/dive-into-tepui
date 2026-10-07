@@ -39,12 +39,17 @@ export interface SectorRange {
   readonly upper: FloatNode;
 }
 
-// 画面上の角 angle [rad] の向きのスライスを、受け手の視線 view と法線 normal から組む。**Fn の中から呼ぶこと。**
-export function sliceAt(angle: FloatNode, view: Vec3Node, normal: Vec3Node): Slice {
+// 視線 view に垂直な面の中の角 psi [rad](画面の右の向きから測る)の向きを含むスライスを、受け手の法線 normal から
+// 組む。**Fn の中から呼ぶこと。**
+// スライスは psi で等間隔に取る。psi が一様なら、スライスの重みの期待値は 1、楔の重みの期待値は 1/4 と閉じた式になり、
+// 比でなく期待値で割れる — 推定量がスライスの数に依らなくなる。
+export function sliceAt(psi: FloatNode, view: Vec3Node, normal: Vec3Node): Slice {
   // view 空間の x・y は画面の右・上に揃っている。uv の y は下向き。
-  const direction = vec3(cos(angle), sin(angle), 0).toVar();
-  const orthoDirection = normalize(direction.sub(view.mul(dot(direction, view)))).toVar();
-  const axis = normalize(cross(direction, view)).toVar();
+  const right = normalize(vec3(1, 0, 0).sub(view.mul(view.x)));
+  const orthoDirection = right.mul(cos(psi)).add(cross(view, right).mul(sin(psi))).toVar();
+  // スライス平面が画面と交わる向き。
+  const screenDirection = normalize(orthoDirection.sub(view.mul(orthoDirection.z.div(view.z))).xy).toVar();
+  const axis = normalize(cross(orthoDirection, view)).toVar();
   const projectedNormal = normal.sub(axis.mul(dot(normal, axis))).toVar();
   const projectedLength = length(projectedNormal).toVar();
   const cosNormal = clamp(dot(projectedNormal, view).div(max(projectedLength, 1e-6)), 0, 1).toVar();
@@ -52,7 +57,7 @@ export function sliceAt(angle: FloatNode, view: Vec3Node, normal: Vec3Node): Sli
   const sinNormal = sin(normalAngle).toVar();
   const totalMeasure = cosNormal.add(normalAngle.mul(sinNormal)).toVar();
   return {
-    screenDirection: vec2(direction.x, direction.y.negate()).toVar(),
+    screenDirection: vec2(screenDirection.x, screenDirection.y.negate()).toVar(),
     view,
     orthoDirection,
     axis,
@@ -109,8 +114,7 @@ export function capRange(slice: Slice, cap: PlanetCap, dither: FloatNode): Secto
   };
 }
 
-// 楔の半幅 [rad]。等間隔のスライスが 4 の倍数本なら、どの方位でも楔の重みの和が本数 / 4 になり、天体照の核が
-// スライスの数に依らない。
+// 楔の半幅 [rad]。スライスの向きが視線に垂直な面の中で一様なら、楔の重みの期待値は 1/4 になる。
 const WEDGE_HALF_WIDTH = Math.PI / 4;
 
 // スライスが、向き direction(view 空間)の天体の方位のまわりの楔を代表する重み。視線の成分を除いた向きと
