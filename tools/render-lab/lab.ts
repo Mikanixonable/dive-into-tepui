@@ -22,7 +22,6 @@ import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { SCREEN_SPACE_DIFFUSE } from '../../src/render/pipeline/screen-space/screen-space-pass';
-import type { MergeKernel } from '../../src/render/pipeline/screen-space/band-pyramid';
 import { CASES, type CaseName } from './cases';
 import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
@@ -476,12 +475,6 @@ export class LabView {
   // 次に描くフレームから、近傍拡散補正を段 tier で走査する。描画品質設定が変わると精細さの段へ戻る。
   public setScanTier(tier: ScanTier): void {
     this.pipeline.screenSpace.setTier(tier);
-  }
-
-  // 次の render から合流の核を切り替え、実験候補の段を組み直す。
-  public setMergeKernel(kernel: MergeKernel): void {
-    this.pipeline.screenSpace.setMergeKernel(kernel);
-    this.render();
   }
 
   // 次に描くフレームから、近傍拡散補正の走査が読むブルーノイズを (x, y) [タイルの幅] だけずらす。
