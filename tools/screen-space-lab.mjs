@@ -413,6 +413,17 @@ function labOf(devTools) {
       await devTools.evaluate('delete window.__ssdCorrectionImage');
       return pngOf(dataUrl);
     },
+    async composite(image) {
+      await sendArray(devTools, 'window.__ssdCompositeInput', image.rgba);
+      const [width, height] = await devTools.evaluate(`window.renderLab.composite({
+        width: ${image.width}, height: ${image.height}, rgba: window.__ssdCompositeInput }).then((result) => {
+          window.__ssdCompositeOutput = result.rgba;
+          return [result.width, result.height];
+        })`);
+      const rgba = await receiveFloats(devTools, 'window.__ssdCompositeOutput', width * height * 4);
+      await devTools.evaluate('delete window.__ssdCompositeInput; delete window.__ssdCompositeOutput');
+      return { width, height, rgba };
+    },
     async signedCorrectionDisplay(image, exposure) {
       await sendArray(devTools, 'window.__ssdCorrectionImage', image.rgba);
       const [width, height] = await devTools.evaluate(`(window.__ssdDisplay = window.renderLab.signedCorrectionDisplay({
