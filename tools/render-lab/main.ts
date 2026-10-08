@@ -84,6 +84,7 @@ declare global {
       ) => void;
       setScanSeed: (x: number, y: number) => void;
       setScanStageRange: (range: ScreenSpaceStageRange) => void;
+      setUpsampleAlphaOne: (enabled: boolean) => void;
       setScanWhiteNoisePass: (pass: number | null) => void;
       accumulateWhitePasses: (first: number, count: number) => Promise<void>;
       takePassSums: () => Promise<{
@@ -372,6 +373,7 @@ async function init(): Promise<void> {
       view.setScreenSpaceExperiment(variant, tier, sparseTapCount),
     setScanSeed: (x, y) => view.setScanSeed(x, y),
     setScanStageRange: (range) => view.setScanStageRange(range),
+    setUpsampleAlphaOne: (enabled) => view.setUpsampleAlphaOne(enabled),
     setScanWhiteNoisePass: (pass) => view.setScanWhiteNoisePass(pass),
     accumulateWhitePasses: (first, count) => view.accumulateWhitePasses(first, count),
     takePassSums: () => view.takePassSums(),
