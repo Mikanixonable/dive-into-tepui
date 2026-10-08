@@ -39,13 +39,32 @@ export const SCREEN_SPACE_QUALITY = { low: 0, medium: 1, high: 2 } as const;
 type ScreenSpaceQuality = (typeof SCREEN_SPACE_QUALITY)[keyof typeof SCREEN_SPACE_QUALITY];
 
 // 走査の段。scale は走査の解像度の描画バッファに対する比、sliceCount はスライスの数、stepCount は片側の歩数、
-// bandCount と bandScale は補正を遮りの画面距離で分ける帯の数と尺度(BandSplit の count と scale)。
+// bandCount と bandScale は補正を遮りの画面距離で分ける帯の数と、遮蔽の尺度 κ_o(BandSplit の count と occlusionScale)。
+// bandFactors は帯の座標に向きの因子を入れる撮影用の欄で、省くと強さ 0・照り返しの κ_b = bandScale(距離だけ)。
 export interface ScanTier {
   readonly scale: number;
   readonly sliceCount: number;
   readonly stepCount: number;
   readonly bandCount: number;
   readonly bandScale: number;
+  readonly bandFactors?: BandFactors;
+}
+
+// 照り返しの尺度 κ_b と、因子の強さ s(0..1。省くと 0)。bounce は照り返しの a〜d、occlusion は遮蔽の b〜d
+// (FacingStrengths の欄)。
+export interface BandFactors {
+  readonly bounceScale?: number;
+  readonly bounce?: {
+    readonly senderFacing?: number;
+    readonly receiverFacing?: number;
+    readonly receiverView?: number;
+    readonly senderView?: number;
+  };
+  readonly occlusion?: {
+    readonly receiverFacing?: number;
+    readonly receiverView?: number;
+    readonly senderView?: number;
+  };
 }
 // 精細さの段ごとの走査。値は、解像度・スライス数・歩数の候補の組の費用と画質の指標を実測して選んだ。
 // TODO: 中のスライス数と歩数、帯の数と尺度は仮置き。費用と画質の指標の実測から選び直す。
@@ -110,6 +129,11 @@ export class ScreenSpacePass {
   private readonly sliceCount = uniform(1, 'int');
   private readonly stepCount = uniform(1, 'int');
   private readonly bandScale: FloatUniform = uniform(1);
+  private readonly bounceBandScale: FloatUniform = uniform(1);
+  private readonly bounceStrengths = {
+    senderFacing: uniform(0), receiverFacing: uniform(0), receiverView: uniform(0), senderView: uniform(0),
+  };
+  private readonly occlusionStrengths = { receiverFacing: uniform(0), receiverView: uniform(0), senderView: uniform(0) };
   // 走査のずれをホワイトノイズから引くパスの番号(setWhiteNoisePass)。負ならブルーノイズから引く。
   private readonly whiteNoisePass = uniform(-1, 'int');
   // 走査の全体の回転と、歩み・丸めのブルーノイズ、拡大のブルーノイズを変える seed [タイルの幅]。
@@ -393,7 +417,10 @@ export class ScreenSpacePass {
       const corrections = scanHemisphere(
         this.surfaces, this.fullSize, this.projection, this.projectionInverse, this.sliceCount, this.stepCount, noise,
         this.ambient.irradiance(this.sample), planets, radiance,
-        { count, scale: this.bandScale },
+        {
+          count, bounceScale: this.bounceBandScale, bounce: this.bounceStrengths,
+          occlusionScale: this.bandScale, occlusion: this.occlusionStrengths,
+        },
       );
       return directCorrection ? [vec4(corrections[0]!, float(1))] : packedBands(corrections);
     });
@@ -494,6 +521,15 @@ export class ScreenSpacePass {
     this.sliceCount.value = tier.sliceCount;
     this.stepCount.value = tier.stepCount;
     this.bandScale.value = tier.bandScale;
+    const factors = tier.bandFactors;
+    this.bounceBandScale.value = factors?.bounceScale ?? tier.bandScale;
+    this.bounceStrengths.senderFacing.value = factors?.bounce?.senderFacing ?? 0;
+    this.bounceStrengths.receiverFacing.value = factors?.bounce?.receiverFacing ?? 0;
+    this.bounceStrengths.receiverView.value = factors?.bounce?.receiverView ?? 0;
+    this.bounceStrengths.senderView.value = factors?.bounce?.senderView ?? 0;
+    this.occlusionStrengths.receiverFacing.value = factors?.occlusion?.receiverFacing ?? 0;
+    this.occlusionStrengths.receiverView.value = factors?.occlusion?.receiverView ?? 0;
+    this.occlusionStrengths.senderView.value = factors?.occlusion?.senderView ?? 0;
     const scanWidth = Math.max(1, Math.ceil(width * tier.scale));
     const scanHeight = Math.max(1, Math.ceil(height * tier.scale));
     this.surfaces.setSize(scanWidth, scanHeight);
