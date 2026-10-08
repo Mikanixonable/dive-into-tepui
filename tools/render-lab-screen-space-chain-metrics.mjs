@@ -42,10 +42,15 @@ const passesArgument = process.argv.find((arg) => arg.startsWith('--passes='));
 const PASSES = passesArgument === undefined ? 1024 : Number(passesArgument.split('=')[1]);
 if (![1024, 2048, 4096].includes(PASSES)) throw new Error('--passes must be 1024, 2048, or 4096');
 const runArgument = process.argv.find((arg) => arg.startsWith('--run='));
-if (runArgument === undefined) throw new Error('usage: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--scene=<name>] [--dry-run]');
+if (runArgument === undefined) throw new Error('usage: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>] [--dry-run|--reindex]');
 const RUN_LABEL = runArgument.slice('--run='.length);
 if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(RUN_LABEL)) throw new Error('--run must be a safe lowercase label (letters, digits, hyphens)');
+const baselineArgument = process.argv.find((arg) => arg.startsWith('--baseline='));
+const BASELINE_LABEL = baselineArgument === undefined ? 'before-a' : baselineArgument.slice('--baseline='.length);
+if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(BASELINE_LABEL)) throw new Error('--baseline must be a safe lowercase label');
 const DRY_RUN = process.argv.includes('--dry-run');
+const REINDEX = process.argv.includes('--reindex');
+if (DRY_RUN && REINDEX) throw new Error('--dry-run and --reindex are exclusive');
 const sceneArgument = process.argv.find((arg) => arg.startsWith('--scene='));
 const scenes = sceneArgument === undefined ? SCENES : SCENES.filter(({ name }) => name === sceneArgument.split('=')[1]);
 if (scenes.length === 0) throw new Error(`unknown scene: ${sceneArgument}`);
@@ -104,7 +109,7 @@ function validChunkCount(scene) {
 }
 
 if (DRY_RUN) {
-  console.log(JSON.stringify({ run: RUN_LABEL, scanSourceSignature: COMMON_SIGNATURE, passes: PASSES, chunkPasses: CHUNK_PASSES,
+  console.log(JSON.stringify({ run: RUN_LABEL, baseline: BASELINE_LABEL, scanSourceSignature: COMMON_SIGNATURE, passes: PASSES, chunkPasses: CHUNK_PASSES,
     scenes: scenes.map((scene) => ({ name: scene.name, sceneSourceSignature: sceneSourceSignatures.get(scene.name),
       cacheKey: cacheKeys.get(scene.name), validChunks: validChunkCount(scene), totalChunks: Math.ceil(PASSES / CHUNK_PASSES) })) }, null, 2));
   process.exit(0);
@@ -152,7 +157,7 @@ function cacheKeyOf(scene) {
 function captureConditions() {
   return { viewport: [WIDTH, HEIGHT], scanResolution: [SCAN_WIDTH, SCAN_HEIGHT], tier: TIER, passes: PASSES,
     chunkPasses: CHUNK_PASSES, invariantPass: INVARIANT_PASS,
-    noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: 'before-a' };
+    noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: BASELINE_LABEL };
 }
 
 function readFloats(file) {
@@ -306,11 +311,37 @@ function writeIndex() {
   writeFileSync(RUN_INDEX, `<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>8-15 \u753b\u9762\u7a7a\u9593\u62e1\u6563 - ${escapeHtml(RUN_LABEL)}</title>
 <style>:root{--page:#17191d;--panel:#222;--text:#eee;--line:#555;--space:24px;--gap:18px}body{margin:var(--space);background:var(--page);color:var(--text);font:14px system-ui}h1{font-size:24px}nav{position:sticky;top:0;padding:12px;background:var(--page);z-index:1}section{scroll-margin-top:64px;margin:28px 0}section h2{border-bottom:1px solid var(--line);padding-bottom:8px}.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:var(--gap)}figure{margin:0}img{display:block;width:100%;background:var(--panel);image-rendering:auto}figcaption{padding:7px}a{color:inherit}</style>
-<h1>8-15 \u753b\u9762\u7a7a\u9593\u62e1\u6563 - ${escapeHtml(RUN_LABEL)}</h1><p>${PASSES} \u30d1\u30b9\u3002\u8d70\u67fb\u89e3\u50cf\u5ea6 ${SCAN_WIDTH}&times;${SCAN_HEIGHT}\u3002signed RGB \u306f\u7dda\u5f62\u5024\u3092\u7070\u8272\u4e2d\u5fc3\u3067\u8868\u793a\u3057\u3001\u5404\u5834\u9762\u3067 before-a \u306e\u56fa\u5b9a\u30b9\u30b1\u30fc\u30eb\u3092\u4f7f\u3044\u307e\u3059\u3002\u64ae\u5f71\u6761\u4ef6\u3068\u5168\u30b9\u30b1\u30fc\u30eb\u306f record.json \u306b\u8a18\u9332\u3057\u307e\u3059\u3002</p><nav>${navigation}</nav><main>${sections.join('\n')}</main></html>`);
+<h1>8-15 \u753b\u9762\u7a7a\u9593\u62e1\u6563 - ${escapeHtml(RUN_LABEL)}</h1><p>${PASSES} \u30d1\u30b9\u3002\u8d70\u67fb\u89e3\u50cf\u5ea6 ${SCAN_WIDTH}&times;${SCAN_HEIGHT}\u3002signed RGB \u306f\u7dda\u5f62\u5024\u3092\u7070\u8272\u4e2d\u5fc3\u3067\u8868\u793a\u3057\u3001\u5404\u5834\u9762\u3067 ${escapeHtml(BASELINE_LABEL)} \u306e\u56fa\u5b9a\u30b9\u30b1\u30fc\u30eb\u3092\u4f7f\u3044\u307e\u3059\u3002\u64ae\u5f71\u6761\u4ef6\u3068\u5168\u30b9\u30b1\u30fc\u30eb\u306f record.json \u306b\u8a18\u9332\u3057\u307e\u3059\u3002</p><nav>${navigation}</nav><main>${sections.join('\n')}</main></html>`);
 }
+function writeLandingIndex() {
+  const labels = readdirSync(RUNS, { withFileTypes: true })
+    .filter((item) => item.isDirectory() && existsSync(path.join(RUNS, item.name, 'record.json'))
+      && existsSync(path.join(RUNS, item.name, 'index.html')))
+    .map((item) => item.name).sort((a, b) => a === 'before-a' ? -1 : b === 'before-a' ? 1 : a.localeCompare(b));
+  const links = labels.map((label) => `<li><a href="runs/${escapeHtml(label)}/index.html">${escapeHtml(label)}</a></li>`).join('\n');
+  const legacy = existsSync(path.join(OUTPUT, 'archive', 'legacy-single-scene', 'index.html'))
+    ? '<p><a href="archive/legacy-single-scene/index.html">整理前の単独撮影</a></p>' : '';
+  const olderReference = existsSync(path.join(shotsDir, 'ssd-8-15-reference', 'index.html'))
+    ? '<p><a href="../ssd-8-15-reference/index.html">初期の品質参照</a></p>' : '';
+  const angledCase = existsSync(path.join(shotsDir, 'ssd-8-15-angled-v2', 'angled-bounce.png'))
+    ? '<p><a href="../ssd-8-15-angled-v2/angled-bounce.png">角度付きケースの通常像</a></p>' : '';
+  writeFileSync(path.join(OUTPUT, 'index.html'), `<!doctype html><html lang="ja"><meta charset="utf-8">
+<title>8-15 帯鎖の撮影記録</title><h1>8-15 帯鎖の撮影記録</h1><p>候補aの実施前は before-a。以後の候補は別の記録に保存する。</p><ul>${links}</ul><h2>過去の診断</h2>${legacy}${olderReference}${angledCase}</html>`);
+}
+
 function escapeHtml(value) {
   return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+if (REINDEX) {
+  if (!existsSync(RUN_RECORD)) throw new Error(`run has no record.json: ${RUN_DIR}`);
+  for (const scene of Object.values(runRecord.scenes)) {
+    writeFileSync(path.join(RUN_DIR, scene.scene, 'metrics.json'), JSON.stringify(scene, null, 2));
+  }
+  writeIndex();
+  writeLandingIndex();
+  process.exit(0);
 }
 
 mkdirSync(RUN_DIR, { recursive: true });
@@ -318,15 +349,15 @@ const invocationStartedAt = new Date().toISOString();
 const invocationStart = performance.now();
 
 function baselineSceneOf(scene) {
-  if (RUN_LABEL === 'before-a') return null;
-  const baselineRecordPath = path.join(RUNS, 'before-a', 'record.json');
-  if (!existsSync(baselineRecordPath)) throw new Error(`before-a baseline is required before run ${RUN_LABEL}`);
+  if (RUN_LABEL === BASELINE_LABEL) return null;
+  const baselineRecordPath = path.join(RUNS, BASELINE_LABEL, 'record.json');
+  if (!existsSync(baselineRecordPath)) throw new Error(`${BASELINE_LABEL} baseline is required before run ${RUN_LABEL}`);
   const baselineRecord = JSON.parse(readFileSync(baselineRecordPath, 'utf8'));
   if (JSON.stringify(baselineRecord.conditions) !== JSON.stringify(captureConditions())) {
-    throw new Error(`before-a baseline conditions do not match run ${RUN_LABEL}`);
+    throw new Error(`${BASELINE_LABEL} baseline conditions do not match run ${RUN_LABEL}`);
   }
   const baselineScene = baselineRecord.scenes?.[scene.name];
-  if (!baselineScene) throw new Error(`before-a baseline scene is missing: ${scene.name}`);
+  if (!baselineScene) throw new Error(`${BASELINE_LABEL} baseline scene is missing: ${scene.name}`);
   return baselineScene;
 }
 
@@ -348,7 +379,6 @@ for (const scene of scenes) {
       await lab.setWhiteNoisePass(INVARIANT_PASS);
       await lab.render();
       const rawOne = await lab.readFloat('band-sum', 4);
-      const rawMergedInvariant = await lab.readFloat('merged-0', 4);
       await lab.setTier(TIER);
       await lab.render();
       const invariantBandOne = await lab.readFloat('band-sum', 4);
@@ -357,16 +387,6 @@ for (const scene of scenes) {
       if (sumInvariant.meanAbsolute > 1e-4 || sumInvariant.maximumAbsolute > 0.01) {
         throw new Error(`${scene.name}: one-pass band sum changed: ${JSON.stringify(sumInvariant)}`);
       }
-      const invariantAlphaRaw = alphaMap(rawMergedInvariant);
-      const invariantAlphaBands = alphaMap(invariantMergedOne);
-      let invariantAlphaMaximumDifference = 0;
-      for (let p = 0; p < invariantAlphaRaw.length; p++) {
-        invariantAlphaMaximumDifference = Math.max(invariantAlphaMaximumDifference, Math.abs(invariantAlphaRaw[p] - invariantAlphaBands[p]));
-      }
-      if (invariantAlphaMaximumDifference > 0.001) {
-        throw new Error(`${scene.name}: invariant-pass A changed across band counts: ${invariantAlphaMaximumDifference}`);
-      }
-
       await lab.setWhiteNoisePass(null);
       await lab.setSeed(seedOf(0));
       await lab.render();
@@ -374,13 +394,21 @@ for (const scene of scenes) {
       const mergedOne = await lab.readFloat('merged-0', 4);
 
       const alpha = alphaMap(mergedOne);
-      const baselineFile = RUN_LABEL === 'before-a'
-        ? path.join(dir, 'one-pass-a.f32')
-        : path.join(RUNS, 'before-a', scene.name, 'one-pass-a.f32');
-      if (RUN_LABEL !== 'before-a' && !existsSync(baselineFile)) {
-        throw new Error(`${scene.name}: before-a one-pass A file is missing`);
+      const invariantAlpha = alphaMap(invariantMergedOne);
+      let invariantAlphaMaximumDifference = 0;
+      for (let p = 0; p < alpha.length; p++) {
+        invariantAlphaMaximumDifference = Math.max(invariantAlphaMaximumDifference, Math.abs(invariantAlpha[p] - alpha[p]));
       }
-      if (RUN_LABEL === 'before-a' && !existsSync(baselineFile)) writeFloats(baselineFile, alpha);
+      if (invariantAlphaMaximumDifference !== 0) {
+        throw new Error(`${scene.name}: A changed between invariant and display seeds: ${invariantAlphaMaximumDifference}`);
+      }
+      const baselineFile = RUN_LABEL === BASELINE_LABEL
+        ? path.join(dir, 'one-pass-a.f32')
+        : path.join(RUNS, BASELINE_LABEL, scene.name, 'one-pass-a.f32');
+      if (RUN_LABEL !== BASELINE_LABEL && !existsSync(baselineFile)) {
+        throw new Error(`${scene.name}: ${BASELINE_LABEL} one-pass A file is missing`);
+      }
+      if (RUN_LABEL === BASELINE_LABEL && !existsSync(baselineFile)) writeFloats(baselineFile, alpha);
       const baselineAlpha = readFloats(baselineFile);
       if (baselineAlpha.length !== alpha.length) throw new Error(`${scene.name}: A baseline size changed`);
       let alphaMaximumDifference = 0, alphaDifferentPixels = 0, alphaDifferenceSum = 0;
@@ -436,16 +464,16 @@ for (const scene of scenes) {
         { id: 'converged-band-sum', label: `${PASSES}\u30d1\u30b9\u30fb4\u5e2f\u5408\u8a08`, values: full.bandSum },
         { id: 'converged-merged', label: `${PASSES}\u30d1\u30b9\u30fb\u5408\u6d41\u7d50\u679c`, values: full.merged },
       ];
-      const baselineScaleFile = path.join(RUNS, 'before-a', scene.name, 'display-scales.json');
+      const baselineScaleFile = path.join(RUNS, BASELINE_LABEL, scene.name, 'display-scales.json');
       let displayScales;
-      if (RUN_LABEL === 'before-a') {
+      if (RUN_LABEL === BASELINE_LABEL) {
         displayScales = existsSync(baselineScaleFile) ? JSON.parse(readFileSync(baselineScaleFile, 'utf8')) : {
           scan: { quantile: SCAN_DISPLAY_QUANTILE, scale: imageScale(scanImages.map(({ values }) => values), SCAN_DISPLAY_QUANTILE) },
           structure: { quantile: STRUCTURE_DISPLAY_QUANTILE, scale: imageScale([structure], STRUCTURE_DISPLAY_QUANTILE) },
           noise: { quantile: NOISE_DISPLAY_QUANTILE, scale: null },
         };
       } else {
-        if (!existsSync(baselineScaleFile)) throw new Error(`${scene.name}: before-a display scales are missing`);
+        if (!existsSync(baselineScaleFile)) throw new Error(`${scene.name}: ${BASELINE_LABEL} display scales are missing`);
         displayScales = JSON.parse(readFileSync(baselineScaleFile, 'utf8'));
       }
 
@@ -463,13 +491,13 @@ for (const scene of scenes) {
       }
       const noise = Float32Array.from(noiseSquares, (sum, i) => i % 4 === 3 ? 1 : Math.sqrt(sum / NOISE_PASSES));
       if (onePassAlphaMaximumDifference !== 0) throw new Error(`${scene.name}: A varied across one-pass seeds`);
-      if (RUN_LABEL === 'before-a' && displayScales.noise.scale === null) {
+      if (RUN_LABEL === BASELINE_LABEL && displayScales.noise.scale === null) {
         displayScales.noise.scale = imageScale([noise], NOISE_DISPLAY_QUANTILE, true);
       }
       if (!Number.isFinite(displayScales.scan.scale) || !Number.isFinite(displayScales.structure.scale)
         || !Number.isFinite(displayScales.noise.scale) || displayScales.scan.scale <= 0
         || displayScales.structure.scale <= 0 || displayScales.noise.scale <= 0) {
-        throw new Error(`${scene.name}: invalid before-a display scales`);
+        throw new Error(`${scene.name}: invalid ${BASELINE_LABEL} display scales`);
       }
 
       writeFloats(path.join(dir, `structure-${PASSES}.rgba.f32`), structure);
@@ -529,7 +557,7 @@ for (const scene of scenes) {
       writeFileSync(path.join(dir, 'rois.png'), roisPng(full.bandSum, scene.rois, displayScales.scan.scale));
 
       const outputs = [
-        'one-pass-a.f32', 'display-scales.json', `structure-${PASSES}.rgba.f32`,
+        'metrics.json', 'one-pass-a.f32', 'display-scales.json', `structure-${PASSES}.rgba.f32`,
         `structure-half-difference-${PASSES}.rgba.f32`, `band-sum-${PASSES}.rgba.f32`, `merged-${PASSES}.rgba.f32`,
         `noise-rms-${PASSES}.rgba.f32`, `structure-${PASSES}.png`, `structure-half-difference-${PASSES}.png`,
         `noise-rms-${PASSES}.png`, 'rois.png', 'one-pass-correction.png', 'one-pass-diffuse-clay.png',
@@ -543,7 +571,8 @@ for (const scene of scenes) {
         scanSourceSignature: COMMON_SIGNATURE, sceneSourceSignature: sceneSourceSignatures.get(scene.name),
         cacheKey: cacheKeys.get(scene.name), cache: { path: path.relative(OUTPUT, cache).replaceAll('\\', '/'),
           hits: cacheHits, misses: cacheMisses, totalChunks: Math.ceil(PASSES / CHUNK_PASSES) },
-        captureCommand: `node tools/render-lab-screen-space-chain-metrics.mjs --run=${RUN_LABEL} --scene=${scene.name} --passes=${PASSES}`,
+        captureCommand: `node tools/render-lab-screen-space-chain-metrics.mjs --run=${RUN_LABEL} --scene=${scene.name} --passes=${PASSES}`
+          + (BASELINE_LABEL === 'before-a' ? '' : ` --baseline=${BASELINE_LABEL}`),
         captureStartedAt: sceneStartedAt, captureWallTimeMs: performance.now() - sceneStarted,
         conditions: captureConditions(), exposure, blueNoiseSeed: seedOf(0),
         whiteNoise: { onePassInvariantPass: INVARIANT_PASS, convergedPassIndices: [0, PASSES - 1],
@@ -556,6 +585,7 @@ for (const scene of scenes) {
         alphaChangeFromRgb, alphaVariationAcrossNoisePasses: onePassAlphaMaximumDifference,
         displayScales, rois, scanImages: scanImages.map(({ id, label, png, f32 }) => ({ id, label, png, f32 })), outputs,
       };
+      writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify(result, null, 2));
       runRecord.scenes[scene.name] = result;
       recordSnapshot();
       completed = true;
@@ -574,3 +604,4 @@ runRecord.lastInvocation = {
 };
 recordSnapshot();
 writeIndex();
+writeLandingIndex();
