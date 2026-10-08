@@ -9,7 +9,8 @@ export function register(): void {
     assert.equal(new Set(GPU_PASS_LABELS).size, GPU_PASS_COUNT);
     assert.deepEqual(Object.values(GPU_PASS), [...Array(GPU_PASS_COUNT).keys()]);
     assert.deepEqual(GPU_PASS_LABELS.slice(GPU_PASS.cloudShadow, GPU_PASS.lighting + 1), [
-      '雲影', '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大',
+      '雲影', '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流',
+      '近傍拡散 joint-bilateral 均し', '近傍拡散拡大', '近傍拡散パス平均',
       'ライティング',
     ]);
   });

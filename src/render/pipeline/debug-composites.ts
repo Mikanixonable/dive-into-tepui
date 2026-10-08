@@ -93,6 +93,10 @@ export class DebugComposites {
     return this.chainMaterialsOf(this.screenSpacePass.bandCount).get(view) ?? this.blankMaterial;
   }
 
+  public signedCorrectionMaterial(source: THREE.Texture): THREE.MeshBasicNodeMaterial {
+    return compositeMaterial(vec4(this.signedCorrection(texture(source, screenUV)), 1), this.gbuffer.depthTexture);
+  }
+
   // 帯の数 count で描いた帯と段の表示の合成マテリアル。その帯の数に無い帯と段は持たない。初めて引いたときに組む。
   private chainMaterialsOf(count: number): ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial> {
     const existing = this.chainMaterials.get(count);

@@ -222,6 +222,19 @@ export class RenderPipeline {
     material.dispose();
   }
 
+  public renderSignedCorrectionComposite(hdr: THREE.Texture, target: THREE.RenderTarget): void {
+    const material = this.debugComposites.signedCorrectionMaterial(hdr);
+    const outputTarget = this.renderer.getOutputRenderTarget();
+    try {
+      this.renderer.setOutputRenderTarget(target);
+      this.renderer.setRenderTarget(null);
+      new QuadMesh(material).render(this.renderer);
+    } finally {
+      this.renderer.setOutputRenderTarget(outputTarget);
+      material.dispose();
+    }
+  }
+
   // 共有ターゲットと表示用ターゲットを描画バッファの寸法へ合わせ、その寸法を返す。
   private syncTargetSize(): THREE.Vector2 {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
