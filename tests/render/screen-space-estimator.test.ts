@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { bool, float, uint, uniform, vec2, vec3 } from 'three/tsl';
-import { bandWeights, clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
+import { bandWeights, clipToCircle, projectedRadius, sourceDirectionCosine } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
   angleOf, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt, toSliceCoordinates,
   wedgeWeight,
@@ -467,6 +467,28 @@ export function register(): void {
   test('screen space estimator: 帯が 1 つなら、増分は画面距離によらずすべてその帯へ入る', () => {
     for (const rho of [0.5, 8, 700]) {
       assert.deepStrictEqual(bandWeights({ count: 1, scale: float(1 / 8) }, float(rho)).map(valueOf), [1]);
+    }
+  });
+
+  test('screen space estimator: 送り手の内積は照り返しの帯だけを細かくし、遮蔽と帯和を保つ', () => {
+    const bands = { count: 4, scale: float(0.75) };
+    const rho = float(8);
+    const blocked = bandWeights(bands, rho).map(valueOf);
+    for (const [normal, expected] of [
+      [new THREE.Vector3(0, 0, -1), 1],
+      [new THREE.Vector3(Math.sqrt(3) / 2, 0, -0.5), 0.5],
+      [new THREE.Vector3(1, 0, 0), 0],
+      [new THREE.Vector3(0, 0, 1), 0],
+    ] as const) {
+      const cosine = valueOf(sourceDirectionCosine(vectorNode(normal), vec3(0, 0, 2)));
+      near(cosine, expected, 1e-12, '送り手の内積');
+      const bounced = bandWeights(bands, rho.mul(cosine)).map(valueOf);
+      near(bounced.reduce((sum, value) => sum + value, 0), 1, 1e-12, '照り返しの帯和');
+      near(blocked.reduce((sum, value) => sum + value, 0), 1, 1e-12, '遮蔽の帯和');
+      assert.ok(bounced.every((value) => Number.isFinite(value) && value >= 0));
+      assert.ok(blocked.every((value) => Number.isFinite(value) && value >= 0));
+      if (expected === 0) assert.deepStrictEqual(bounced, [1, 0, 0, 0]);
+      if (expected === 1) assert.deepStrictEqual(bounced, blocked);
     }
   });
 

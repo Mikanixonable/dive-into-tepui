@@ -1,5 +1,6 @@
 // 受け手 1 画素のまわりの半球を、画面に写った近くの構造に対して一度だけ走査し、遠方の拡散光(一様な環境光と
-// 天体照)のうち近くの構造に塞がれた照度と、塞いでいる面が返す照度(照り返し)の差を、遮りの画面距離の帯ごとに答える。
+// 天体照)のうち近くの構造に塞がれた照度と、塞いでいる面が返す照度(照り返し)の差を帯ごとに答える。
+// 遮蔽は遮りの画面距離、照り返しはその距離と送り手の指向性に応じて、同じ標本から別々の帯へ積む。
 //
 // 画面上の向き(スライス)を数本取り、それぞれ両側へ深度を引く。深度の標本 1 つは、画面上で隣り合う標本との
 // あいだを受け持つ接平面の切片とみなし、スライスの中の遮りは扇形のビットマスクで持つ(Therrien, Levesque, Gilet
@@ -170,7 +171,7 @@ function capInSlice(slice: Slice, cap: PlanetCap, dither: FloatNode): {
 // 画面距離 rho [走査の画素] の遮りの増分を帯 bands へ分ける、帯ごとの重み。重みは 0 以上で、和は 1。
 export function bandWeights(bands: BandSplit, rho: FloatNode): FloatNode[] {
   if (bands.count === 1) return [float(1)];
-  const coordinate = clamp(log2(bands.scale.mul(rho)), 0, bands.count - 1);
+  const coordinate = clamp(log2(max(bands.scale.mul(rho), 1e-6)), 0, bands.count - 1);
   return Array.from({ length: bands.count }, (_, band) => max(float(1).sub(abs(coordinate.sub(band))), 0));
 }
 
@@ -242,9 +243,11 @@ class SliceOcclusion {
   }
 
   // 受け手から見て角 lower..upper を占める切片を、手前の切片の後ろへ積む。falloff はその標本の距離重み、
-  // facesReceiver は標本が受け手へ面を向けているか、rho と pixel は標本の画面距離 [走査の画素] と走査の画素。
+  // facesReceiver は標本が受け手へ面を向けているか、sourceCosine はその法線と受け手への方向の内積。
+  // rho と pixel は標本の画面距離 [走査の画素] と走査の画素。
   public add(
-    lower: FloatNode, upper: FloatNode, falloff: FloatNode, facesReceiver: BoolNode, rho: FloatNode, pixel: Vec2Node,
+    lower: FloatNode, upper: FloatNode, falloff: FloatNode, facesReceiver: BoolNode,
+    sourceCosine: FloatNode, rho: FloatNode, pixel: Vec2Node,
   ): void {
     const sectors = segmentSectors(
       sectorPosition(this.slice, lower, this.dither), sectorPosition(this.slice, upper, this.dither)).toVar();
@@ -270,9 +273,19 @@ class SliceOcclusion {
           received.assign(textureLoad(radiance, ivec2(pixel)).rgb.mul(Math.PI).mul(hemisphere));
         });
       }
-      const increment = signedDiffuseCorrection(received, blockedIrradiance).toVar();
-      const weights = bandWeights(this.bands, rho);
-      for (const [band, correction] of this.corrections.entries()) correction.addAssign(increment.mul(weights[band]!));
+      if (radiance === null) {
+        const increment = signedDiffuseCorrection(received, blockedIrradiance).toVar();
+        const weights = bandWeights(this.bands, rho);
+        for (const [band, correction] of this.corrections.entries()) correction.addAssign(increment.mul(weights[band]!));
+      } else {
+        const blockedWeights = bandWeights(this.bands, rho);
+        const bounceWeights = bandWeights(this.bands, rho.mul(sourceCosine));
+        for (const [band, correction] of this.corrections.entries()) {
+          correction.addAssign(signedDiffuseCorrection(
+            received.mul(bounceWeights[band]!), blockedIrradiance.mul(blockedWeights[band]!),
+          ));
+        }
+      }
     });
   }
 }
@@ -288,6 +301,7 @@ class SideWalk {
   // 直前の標本の切片の下端(円で切った点)と距離重み。上端は次の標本で決まる。
   private readonly previousLower = vec2(0).toVar();
   private readonly previousFalloff = float(0).toVar();
+  private readonly previousSourceCosine = float(0).toVar();
 
   // screenStep はこの側の画面上の歩み [uv/走査の画素]、rays はこの側の視線、occlusion は切片を積むスライスの遮り、
   // receiver は最初の「直前の標本」とする受け手自身。
@@ -314,6 +328,7 @@ class SideWalk {
     // この標本を直前の標本として持ち越す。面がなければ、持ち越した値は旗で読まれない。
     this.previousLower.assign(clipToCircle(sample.position, farLower));
     this.previousFalloff.assign(max(float(1).sub(dot(toSample, toSample).div(WORLD_RADIUS * WORLD_RADIUS)), 0));
+    this.previousSourceCosine.assign(sourceDirectionCosine(normal, toSample));
     this.previous.position.assign(sample.position);
     this.previous.normal.assign(sample.normal);
     this.previous.offset.assign(sample.offset);
@@ -338,8 +353,13 @@ class SideWalk {
     const lowest = angularlyLower(angularlyLower(this.previousLower, position), upper);
     const highest = angularlyHigher(angularlyHigher(this.previousLower, position), upper);
     this.occlusion.add(angleOf(this.slice, lowest), angleOf(this.slice, highest), this.previousFalloff,
-      offset.lessThan(0), this.previousRho, pixelAlong(this.screenStep, this.previousRho));
+      offset.lessThan(0), this.previousSourceCosine, this.previousRho, pixelAlong(this.screenStep, this.previousRho));
   }
+}
+
+// 送り手の外向き法線と送り手から受け手への方向の内積。負値と零距離を帯座標へ渡さない。
+export function sourceDirectionCosine(normal: Vec3Node, toSample: Vec3Node): FloatNode {
+  return clamp(dot(normal, toSample.negate()).div(max(length(toSample), 1e-6)), 0, 1);
 }
 
 // 受け手を中心とする半径 WORLD_RADIUS の円の内側の点 from から、点 end へ向かう線分を円の内側で切った先の点
