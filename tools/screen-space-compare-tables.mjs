@@ -81,7 +81,8 @@ export function invariantTableOf(scene, runs, field, title) {
     rowOf('RMS', runs, scene, (m) => sci(m[field]?.rms)),
     rowOf('最大絶対差', runs, scene, (m) => sci(m[field]?.maximumAbsolute)),
     rowOf('最大 / 許容(丸め幅の和)', runs, scene, (m) => fixed(m[field]?.maximumToleranceRatio, 3)),
-    rowOf('丸め幅を超えた数', runs, scene, (m) => m[field]?.roundingExceeded?.count),
+    rowOf('丸め幅を超えた数(成分)', runs, scene, (m) => m[field]?.roundingExceeded?.count),
+    rowOf('許容超えの画素数', runs, scene, (m) => m[field]?.roundingExceeded?.pixelCount),
     rowOf('差の地図', runs, scene, (m) => m[field]?.differenceMap),
   ];
   return { title: `${scene} ${title}`, header: ['', ...runs], rows };

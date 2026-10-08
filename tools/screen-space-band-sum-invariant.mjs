@@ -2,7 +2,7 @@
 import { unpackedBand } from './screen-space-lab.mjs';
 import { signedPng } from './screen-space-chain-runs.mjs';
 
-const POSITION_LIMIT = 16;
+const POSITION_LIMIT = 256;
 const HALF_SUBNORMAL_SPACING = 2 ** -24;
 const HALF_NORMAL_MINIMUM = 2 ** -14;
 const HALF_MANTISSA_BITS = 10;
@@ -24,6 +24,7 @@ export function bandSumInvariant(raw, bands) {
   const pixels = raw.length / 4;
   const difference = new Float32Array(pixels * 3);
   const exceeded = [];
+  const exceededPixels = new Set();
   let exceededCount = 0, sum = 0, squares = 0, maximumAbsolute = 0, maximumRatio = 0;
   for (let p = 0; p < pixels; p++) for (let c = 0; c < 3; c++) {
     const i = p * 3 + c;
@@ -41,12 +42,13 @@ export function bandSumInvariant(raw, bands) {
     maximumRatio = Math.max(maximumRatio, Math.abs(delta) / tolerance);
     if (Math.abs(delta) > tolerance) {
       exceededCount++;
-      if (exceeded.length < POSITION_LIMIT) exceeded.push({ pixel: p, channel: c, difference: delta, tolerance });
+      exceededPixels.add(p);
+      if (exceeded.length < POSITION_LIMIT) exceeded.push({ pixel: p, channel: c, raw: rawValue, difference: delta, tolerance });
     }
   }
   const count = pixels * 3;
   return { stats: { meanAbsolute: sum / count, rms: Math.sqrt(squares / count), maximumAbsolute,
-    maximumToleranceRatio: maximumRatio, roundingExceeded: { count: exceededCount, firstPositions: exceeded } }, difference };
+    maximumToleranceRatio: maximumRatio, roundingExceeded: { count: exceededCount, pixelCount: exceededPixels.size, firstPositions: exceeded } }, difference };
 }
 
 // 白色雑音のパス pass で、1帯の撮影と tier の撮影を比べる。呼ぶとき lab は tier の描画を終えた状態になる。

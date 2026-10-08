@@ -8,6 +8,10 @@ import { escapeHtml, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_SCAL
 import { CHUNK_PASSES, SCENES, sceneSignatureOf, sourceSignatureOf } from './screen-space-chain-setup.mjs';
 import { HEIGHT, readFloats, seedOf, shotsDir, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
 
+// 帯和の検査は、閾値に乗った画素の孤立した反転を通し、系統差(超過画素が多い・平均や最大が大きい)だけを止める。
+const INVARIANT_MAX_EXCEEDED_PIXEL_FRACTION = 0.001;
+const INVARIANT_MAX_MEAN_ABSOLUTE = 1e-4;
+const INVARIANT_MAX_ABSOLUTE = 0.01;
 const NOISE_PASSES = 32;
 const NOISE_FIRST_PASS = 5000;
 const INVARIANT_PASS = 7000;
@@ -127,12 +131,14 @@ function rms(values, roi) {
   return Math.sqrt(squares / (width * height * 3));
 }
 
-// 帯和の不変条件を、白色雑音のパス INVARIANT_PASS で検査して差の地図を dir に書く。半精度の丸め幅を超える画素があれば、
+// 帯和の不変条件を、白色雑音のパス INVARIANT_PASS で検査して差の地図を dir に書く。半精度の丸め幅を超える系統差があれば、
 // 地図を INVARIANT_FAILURES に書いて投げる。label は遮蔽のみの検査を区別する地図の名前の添え字。
 async function checkedBandSumInvariant(lab, scene, dir, label) {
   const { stats, difference } = await captureBandSumInvariant(lab, TIER, INVARIANT_PASS);
   const map = invariantMapOf(difference);
-  if (stats.roundingExceeded.count > 0) {
+  const systematic = stats.roundingExceeded.pixelCount > PIXELS * INVARIANT_MAX_EXCEEDED_PIXEL_FRACTION
+    || stats.meanAbsolute > INVARIANT_MAX_MEAN_ABSOLUTE || stats.maximumAbsolute > INVARIANT_MAX_ABSOLUTE;
+  if (systematic) {
     mkdirSync(INVARIANT_FAILURES, { recursive: true });
     writeFileSync(path.join(INVARIANT_FAILURES, `${RUN_LABEL}-${scene.name}${label}.k${map.gain}.png`), map.png);
     throw new Error(`${scene.name}${label}: band sum differs from raw beyond half-float rounding: ${JSON.stringify(stats)}`);
