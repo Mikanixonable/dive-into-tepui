@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { getViewPosition, ivec2, screenCoordinate, screenUV, select, textureLoad, uniform, vec2, vec4 } from 'three/tsl';
-import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
+import { GPU_PASS, GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import { projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
   ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
@@ -33,7 +33,9 @@ import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/g
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
-import type { ScanTier, ScreenSpaceStageRange } from '../../src/render/pipeline/screen-space/screen-space-pass';
+import type {
+  ScanTier, ScreenSpaceExperimentVariant, ScreenSpaceStageRange,
+} from '../../src/render/pipeline/screen-space/screen-space-pass';
 import type { Mat4Uniform } from '../../src/render/tsl-types';
 
 // 近傍拡散補正の、帯を詰めた描画先の i 枚目のテクスチャの読み戻しの名前。'packed-bands-i' は走査(段 0)、'reduced-m-i'
@@ -87,6 +89,7 @@ export interface LabMeasurement {
   readonly cpuRenderMs: SampleDistribution;
   readonly gpuSupported: boolean;
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
+  readonly gpuPassMsById: Readonly<Record<string, SampleDistribution>>;
   readonly proteinMotion: ProteinMotionMetricSummary;
   readonly proteinCase?: LabCase['proteinMotion'];
 }
@@ -421,6 +424,9 @@ export class LabView {
       cpuRenderMs: distributionOf(cpuSamples),
       gpuSupported: this.gpu.snapshot().supported,
       gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distributionOf(gpuSamples[index]!)])),
+      gpuPassMsById: Object.fromEntries(Object.entries(GPU_PASS).map(([id, index]) => [
+        id, distributionOf(gpuSamples[index]!),
+      ])),
       proteinMotion: motion.summary(),
       proteinCase: this.current?.proteinMotion,
     };
@@ -475,6 +481,60 @@ export class LabView {
   // 次に描くフレームから、近傍拡散補正を段 tier で走査する。描画品質設定が変わると精細さの段へ戻る。
   public setScanTier(tier: ScanTier): void {
     this.pipeline.screenSpace.setTier(tier);
+  }
+
+  // render-lab 専用の比較方式を切り替える。本番 graphics settings には露出しない。
+  public setScreenSpaceExperiment(
+    variant: ScreenSpaceExperimentVariant | null, tier: ScanTier, sparseTapCount = 8,
+  ): void {
+    this.pipeline.screenSpace.setTier(tier);
+    this.pipeline.screenSpace.setExperiment(variant, sparseTapCount);
+    if (variant !== null) this.pipeline.screenSpace.setMode(SCREEN_SPACE_DIFFUSE.indirect);
+    else this.pipeline.screenSpace.setMode(this.graphics.current.screenSpaceDiffuse);
+  }
+
+  // 完成した補正を独立パスごとに描き、その出力を平均する一候補の GPU 費用を測る。
+  public async measureScreenSpacePaths(
+    seeds: readonly (readonly [number, number])[], sampleCount = 8,
+  ): Promise<{
+    readonly gpuSupported: boolean;
+    readonly gpuPassMsById: Readonly<Record<string, SampleDistribution>>;
+  }> {
+    if (this.current === null) throw new Error('render-lab: no case selected for screen-space timing');
+    if (seeds.length < 1 || !Number.isInteger(sampleCount) || sampleCount < 1
+      || seeds.some(([x, y]) => !Number.isFinite(x) || !Number.isFinite(y))) {
+      throw new RangeError('render-lab: path measurement needs positive integer counts');
+    }
+    const screenSpace = this.pipeline.screenSpace;
+    const target = screenSpace.experimentOutputTarget;
+    const accumulator = new PassAccumulator(this.renderer, target.textures, target.width, target.height);
+    const samples = Object.fromEntries(Object.keys(GPU_PASS).map((id) => [id, [] as number[]]));
+    try {
+      for (let sample = 0; sample < sampleCount; sample++) {
+        await this.gpu.waitForResolve();
+        this.gpu.reset();
+        accumulator.clear(() => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
+        for (const [path, seed] of seeds.entries()) {
+          screenSpace.setWhiteNoisePass(null);
+          screenSpace.setSeed(seed[0], seed[1]);
+          screenSpace.renderExperimentPath(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT, path === 0);
+          accumulator.add((path % 2) as 0 | 1, () => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
+        }
+        accumulator.writeAverage(target, seeds.length, () => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
+        await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
+        this.gpu.resolve();
+        await this.gpu.waitForResolve();
+        const timings = this.gpu.snapshot();
+        for (const [id, index] of Object.entries(GPU_PASS)) samples[id]!.push(timings.elapsedMs[index] ?? 0);
+      }
+      return {
+        gpuSupported: this.gpu.snapshot().supported,
+        gpuPassMsById: Object.fromEntries(Object.entries(samples).map(([id, values]) => [id, distributionOf(values)])),
+      };
+    } finally {
+      screenSpace.setWhiteNoisePass(null);
+      accumulator.dispose();
+    }
   }
 
   // 次に描くフレームから、近傍拡散補正の走査が読むブルーノイズを (x, y) [タイルの幅] だけずらす。
@@ -602,6 +662,51 @@ export class LabView {
     const display = await this.readBack(this.compositeTarget.texture);
     texture.dispose();
     return display;
+  }
+
+  public signedCorrectionDisplay(hdr: FloatImage, exposure = this.pipeline.exposure.factorValue): FloatImage {
+    if (hdr.rgba.length !== hdr.width * hdr.height * 4) throw new RangeError('render-lab: invalid RGBA image');
+    const output = new Float32Array(hdr.rgba.length);
+    const oetf = (value: number): number => value <= 0.0031308
+      ? 12.92 * value : 1.055 * value ** (1 / 2.4) - 0.055;
+    for (let i = 0; i < hdr.rgba.length; i += 4) {
+      if (hdr.rgba[i + 3] === 0) continue;
+      const value = [0, 1, 2].map((c) => Math.abs(hdr.rgba[i + c]!) * exposure);
+      const minimum = Math.min(...value);
+      const offset = minimum < 0.08 ? minimum - 6.25 * minimum * minimum : 0.04;
+      const color = value.map((channel) => channel - offset);
+      const peak = Math.max(...color);
+      if (peak >= 0.76) {
+        const newPeak = 1 - 0.24 * 0.24 / (peak + 0.24 - 0.76);
+        const desaturation = 1 - 1 / (0.15 * (peak - newPeak) + 1);
+        for (let c = 0; c < 3; c++) {
+          color[c] = color[c]! * (newPeak / peak) * (1 - desaturation) + newPeak * desaturation;
+        }
+      }
+      for (let c = 0; c < 3; c++) {
+        const magnitude = oetf(Math.max(0, color[c]!));
+        const signedCode = 0.5 + Math.sign(hdr.rgba[i + c]!) * magnitude * 0.5;
+        output[i + c] = signedCode;
+      }
+      output[i + 3] = 1;
+    }
+    return { width: hdr.width, height: hdr.height, rgba: output };
+  }
+
+  public async signedCorrectionPng(hdr: FloatImage): Promise<string> {
+    if (hdr.rgba.length !== hdr.width * hdr.height * 4) throw new RangeError('render-lab: invalid RGBA image');
+    if (hdr.width !== VIEW_WIDTH || hdr.height !== VIEW_HEIGHT) throw new RangeError('render-lab: signed PNG needs the viewport size');
+    const texture = new THREE.DataTexture(hdr.rgba, hdr.width, hdr.height, THREE.RGBAFormat, THREE.FloatType);
+    texture.minFilter = THREE.NearestFilter;
+    texture.magFilter = THREE.NearestFilter;
+    texture.needsUpdate = true;
+    try {
+      this.pipeline.renderSignedCorrectionComposite(texture, this.captureTarget);
+      const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
+      return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
+    } finally {
+      texture.dispose();
+    }
   }
 
   // 描画先のテクスチャ texture を浮動小数で読み戻す。成分が 4 つに満たない形式では、無い成分を 0 にする。
@@ -781,6 +886,43 @@ export class LabView {
     }
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
+  }
+
+  public async captureCorrectionProbe(): Promise<{
+    readonly capture: string; readonly signed: string; readonly exposureFactor: number;
+    readonly meanAbsoluteError: number; readonly maxAbsoluteError: number;
+  }> {
+    this.renderer.setOutputRenderTarget(this.captureTarget);
+    let capturePixelsPromise: ReturnType<typeof this.renderer.readRenderTargetPixelsAsync>;
+    let hdrPromise: Promise<FloatImage>;
+    let exposureFactor: number;
+    try {
+      this.render();
+      exposureFactor = this.exposureFactor;
+      capturePixelsPromise = this.renderer.readRenderTargetPixelsAsync(
+        this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT,
+      );
+      hdrPromise = this.readBack(this.floatTextureOf('correction'));
+    } finally {
+      this.renderer.setOutputRenderTarget(null);
+    }
+    const [capturePixels, hdr] = await Promise.all([capturePixelsPromise!, hdrPromise!]);
+    const signedDisplay = this.signedCorrectionDisplay(hdr, exposureFactor!);
+    const signedPixels = Uint8Array.from(signedDisplay.rgba, (value) => Math.round(Math.max(0, Math.min(1, value)) * 255));
+    let sum = 0;
+    let maximum = 0;
+    for (let i = 0; i < capturePixels.length; i++) {
+      const difference = Math.abs(capturePixels[i]! - signedPixels[i]!);
+      sum += difference;
+      maximum = Math.max(maximum, difference);
+    }
+    return {
+      capture: pixelsToPngDataUrl(new Uint8Array(capturePixels.buffer), VIEW_WIDTH, VIEW_HEIGHT),
+      signed: pixelsToPngDataUrl(signedPixels, VIEW_WIDTH, VIEW_HEIGHT),
+      exposureFactor: exposureFactor!,
+      meanAbsoluteError: sum / capturePixels.length / 255,
+      maxAbsoluteError: maximum / 255,
+    };
   }
 }
 

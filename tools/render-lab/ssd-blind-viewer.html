@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>補正画像の比較</title>
+  <style>
+    :root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; }
+    body { margin: 0; padding: 16px; color: #e4e7e9; background: #111315; }
+    main { width: 960px; }
+    h1 { margin: 0 0 12px; font-size: 19px; font-weight: 600; }
+    p { margin: 8px 0; color: #aeb5ba; }
+    .bar, .section { margin: 8px 0; padding: 10px; background: #1b1e21; border: 1px solid #444b50; }
+    .bar { display: flex; align-items: center; gap: 8px; }
+    label { color: #b5bdc2; }
+    select, button, textarea { color: #e4e7e9; background: #111315; border: 1px solid #4a5258; border-radius: 3px; font: inherit; }
+    select, button { min-height: 34px; padding: 4px 9px; }
+    button { cursor: pointer; }
+    button[aria-pressed="true"] { color: #101214; background: #d5e2e8; }
+    button:focus-visible, [tabindex]:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #8ec8dd; outline-offset: 2px; }
+    #sceneStatus { margin-left: auto; color: #c2c9ce; }
+    #candidateButtons { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+    #candidateButtons button { min-height: 40px; font-variant-numeric: tabular-nums; }
+    #rankList { list-style: none; margin: 8px 0 0; padding: 0; }
+    #rankList li { display: grid; grid-template-columns: 38px 56px 100px 1fr; align-items: center; gap: 8px; min-height: 42px; padding: 3px 6px; border-top: 1px solid #343a3f; }
+    #rankList li:first-child { border-top: 0; }
+    #rankList li.dragging { opacity: .45; }
+    .handle { display: inline-grid; place-items: center; width: 32px; height: 32px; cursor: grab; touch-action: none; user-select: none; color: #aeb5ba; border: 1px solid #3e464c; border-radius: 3px; }
+    .handle:active { cursor: grabbing; }
+    .tie-button { justify-self: start; }
+    .rank-position { color: #aeb5ba; font-variant-numeric: tabular-nums; }
+    #reason { box-sizing: border-box; width: 100%; min-height: 76px; padding: 8px; resize: vertical; }
+    #image { display: block; width: 960px; height: 540px; image-rendering: auto; }
+    figure { margin: 10px 0 0; }
+    .compare-layout { display: grid; grid-template-columns: 960px; gap: 12px; align-items: start; }
+    .candidate-label { justify-self: start; min-height: 32px; padding: 2px 8px; font-variant-numeric: tabular-nums; font-weight: 650; }
+    @media (min-width: 1500px) {
+      main { width: 1440px; }
+      .compare-layout { grid-template-columns: 960px 464px; gap: 16px; }
+      .compare-layout > .section { margin-top: 10px; }
+    }
+    figcaption, #status, #saveStatus, #copyStatus { color: #aeb5ba; }
+    #exportText { box-sizing: border-box; width: 960px; min-height: 220px; margin-top: 8px; padding: 8px; }
+    #error { color: #ffaaaa; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>補正画像の品質順位</h1>
+    <p>各シーンで12候補を見比べ、順位を並べ替えてください。初期順は仮置きです。「順位を確定」するまでは未評価として記録します。同率は隣の候補と指定できます。</p>
+    <div class="bar">
+      <label for="scene">シーン</label><select id="scene"></select>
+      <span id="sceneStatus" aria-live="polite"></span>
+    </div>
+    <section class="section" aria-labelledby="candidateHeading">
+      <strong id="candidateHeading">候補</strong>
+      <div id="candidateButtons" aria-label="候補を表示"></div>
+    </section>
+    <div class="bar">
+      <label for="view">表示</label>
+      <select id="view">
+        <option value="first">seed 1</option>
+        <option value="second">seed 2</option>
+        <option value="mean">32組平均</option>
+        <option value="deviation0">seed 1 − 平均</option>
+        <option value="deviation1">seed 2 − 平均</option>
+        <option value="variance">32組分散</option>
+        <option value="B">B参照（暫定・順位外）</option>
+      </select>
+      <span id="status" aria-live="polite"></span>
+    </div>
+    <div class="compare-layout">
+      <figure>
+        <img id="image" width="960" height="540" alt="選択した補正画像">
+        <figcaption>画像は960×540の等倍表示です。Bは暫定参照で、候補順位には含めません。</figcaption>
+      </figure>
+      <section class="section" aria-labelledby="rankingHeading">
+      <strong id="rankingHeading">順位</strong>
+      <p id="rankStatus" aria-live="polite">未評価です。並べ替え後に順位を確定してください。</p>
+      <ol id="rankList" aria-label="順位。候補をドラッグ、タッチ、またはフォーカスして上下矢印で並べ替え"></ol>
+      <div class="bar">
+        <button id="confirmRanking" type="button">順位を確定</button>
+        <button id="markUnrated" type="button">未評価に戻す</button>
+        <span id="saveStatus" aria-live="polite">自動保存</span>
+      </div>
+      <label for="reason">理由</label>
+      <textarea id="reason" placeholder="見比べた点や判断理由を記録"></textarea>
+      </section>
+    </div>
+    <div class="bar">
+      <button id="copyAll" type="button">3シーンの順位と理由をコピー</button>
+      <span id="copyStatus" aria-live="polite"></span>
+    </div>
+    <textarea id="exportText" hidden aria-label="コピーする順位と理由。選択してコピーできます"></textarea>
+    <p id="error" role="alert"></p>
+  </main>
+  <script id="viewer-data" type="application/json">__VIEWER_DATA__</script>
+  <script>
+    const data = JSON.parse(document.querySelector('#viewer-data').textContent);
+    const sceneSelect = document.querySelector('#scene');
+    const viewSelect = document.querySelector('#view');
+    const candidateButtons = document.querySelector('#candidateButtons');
+    const rankList = document.querySelector('#rankList');
+    const image = document.querySelector('#image');
+    const status = document.querySelector('#status');
+    const sceneStatus = document.querySelector('#sceneStatus');
+    const rankStatus = document.querySelector('#rankStatus');
+    const reason = document.querySelector('#reason');
+    const error = document.querySelector('#error');
+    const exportText = document.querySelector('#exportText');
+    const copyStatus = document.querySelector('#copyStatus');
+    const notePrefix = 'ssd8-blind-all12-v1/';
+    const imagePath = new Map(data.images.map((item) => [`${item.stimulusId}|${item.view}`, item.path]));
+    const assignmentByScene = new Map(data.assignments.map((item) => [item.scene, item]));
+    let currentLabel = data.labels[0];
+    let state = emptyState();
+    let pointerDragLabel = null;
+
+    function emptyState() {
+      return { order: [...data.labels], tiedPairs: [], rated: false, reason: '' };
+    }
+    function stateKey(scene) { return `${notePrefix}${scene}`; }
+    function pairKey(previous, current) { return `${previous}>${current}`; }
+    function readState(scene) {
+      try {
+        const value = JSON.parse(localStorage.getItem(stateKey(scene)) ?? 'null');
+        if (value && Array.isArray(value.order) && value.order.length === data.labels.length
+            && new Set(value.order).size === data.labels.length
+            && data.labels.every((label) => value.order.includes(label))) {
+          return { order: value.order, tiedPairs: Array.isArray(value.tiedPairs) ? value.tiedPairs : [],
+            rated: value.rated === true, reason: typeof value.reason === 'string' ? value.reason : '' };
+        }
+      } catch { /* Use an explicitly unrated initial order when local storage is unavailable. */ }
+      return emptyState();
+    }
+    function currentOrder() { return [...rankList.querySelectorAll('li')].map((item) => item.dataset.label); }
+    function pruneTies(order, tiedPairs) {
+      const adjacent = new Set(order.slice(1).map((label, index) => pairKey(order[index], label)));
+      return tiedPairs.filter((pair) => adjacent.has(pair));
+    }
+    function formatRanking(order, tiedPairs) {
+      const ties = new Set(pruneTies(order, tiedPairs));
+      const groups = [];
+      for (const [index, label] of order.entries()) {
+        const previous = order[index - 1];
+        if (previous && ties.has(pairKey(previous, label))) groups.at(-1).push(label);
+        else groups.push([label]);
+      }
+      return groups.map((group) => group.join(' = ')).join(' > ');
+    }
+    function saveState() {
+      state.order = currentOrder();
+      state.tiedPairs = pruneTies(state.order, state.tiedPairs);
+      state.reason = reason.value;
+      try {
+        localStorage.setItem(stateKey(sceneSelect.value), JSON.stringify(state));
+        document.querySelector('#saveStatus').textContent = state.rated ? '保存済み・順位確定' : '保存済み・未評価';
+      } catch {
+        document.querySelector('#saveStatus').textContent = '保存できません。コピーして控えてください。';
+      }
+    }
+    function moveLabel(label, targetLabel, after) {
+      const row = rankList.querySelector(`li[data-label="${label}"]`);
+      const target = rankList.querySelector(`li[data-label="${targetLabel}"]`);
+      if (!row || !target || row === target) return;
+      rankList.insertBefore(row, after ? target.nextSibling : target);
+      state.order = currentOrder();
+      state.tiedPairs = pruneTies(state.order, state.tiedPairs);
+      state.rated = false;
+      refreshRankMetadata();
+      saveState();
+    }
+    function rankPosition(order, tiedPairs, label) {
+      const ties = new Set(pruneTies(order, tiedPairs));
+      let rank = 1;
+      for (const [index, current] of order.entries()) {
+        if (current === label) return String(rank).padStart(2, '0');
+        if (index + 1 < order.length && !ties.has(pairKey(current, order[index + 1]))) rank++;
+      }
+      return '';
+    }
+    function refreshRankMetadata() {
+      const order = currentOrder();
+      state.order = order;
+      state.tiedPairs = pruneTies(order, state.tiedPairs);
+      const ties = new Set(state.tiedPairs);
+      for (const [index, row] of [...rankList.children].entries()) {
+        const label = row.dataset.label;
+        row.querySelector('.rank-position').textContent = rankPosition(order, state.tiedPairs, label);
+        const previous = order[index - 1];
+        const tie = row.querySelector('.tie-button');
+        const key = previous ? pairKey(previous, label) : '';
+        tie.disabled = index === 0;
+        tie.textContent = index === 0 ? '同率なし' : '前と同率';
+        tie.setAttribute('aria-pressed', String(Boolean(key && ties.has(key))));
+      }
+      rankStatus.textContent = state.rated
+        ? `順位確定: ${formatRanking(order, state.tiedPairs)}`
+        : '未評価です。並べ替え後に順位を確定してください。';
+      sceneStatus.textContent = state.rated ? '順位確定済み' : '未評価';
+      document.querySelector('#confirmRanking').disabled = state.rated;
+      document.querySelector('#markUnrated').disabled = !state.rated;
+    }
+    function renderRankList() {
+      const order = state.order;
+      const ties = new Set(pruneTies(order, state.tiedPairs));
+      rankList.replaceChildren();
+      for (const [index, label] of order.entries()) {
+        const row = document.createElement('li');
+        row.dataset.label = label;
+        const handle = document.createElement('span');
+        handle.className = 'handle'; handle.tabIndex = 0; handle.textContent = '↕';
+        handle.setAttribute('role', 'button');
+        handle.setAttribute('aria-label', `候補${label}を移動。上下矢印で並べ替え`);
+        handle.addEventListener('keydown', (event) => {
+          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+          event.preventDefault();
+          const source = currentOrder();
+          const currentIndex = source.indexOf(label);
+          const nextIndex = Math.max(0, Math.min(source.length - 1, currentIndex + (event.key === 'ArrowUp' ? -1 : 1)));
+          if (nextIndex === currentIndex) return;
+          const targetLabel = source[nextIndex];
+          moveLabel(label, targetLabel, event.key === 'ArrowDown');
+          rankList.querySelector(`li[data-label="${label}"] .handle`)?.focus();
+        });
+        handle.addEventListener('pointerdown', (event) => {
+          pointerDragLabel = label;
+          row.classList.add('dragging');
+          handle.setPointerCapture(event.pointerId);
+          event.preventDefault();
+        });
+        handle.addEventListener('pointermove', (event) => {
+          if (pointerDragLabel !== label) return;
+          const under = document.elementFromPoint(event.clientX, event.clientY)?.closest('#rankList li[data-label]');
+          if (!under || under.dataset.label === label) return;
+          const bounds = under.getBoundingClientRect();
+          moveLabel(label, under.dataset.label, event.clientY >= bounds.top + bounds.height / 2);
+        });
+        const endDrag = () => {
+          if (pointerDragLabel === label) {
+            pointerDragLabel = null;
+            rankList.querySelectorAll('.dragging').forEach((item) => item.classList.remove('dragging'));
+            saveState();
+          }
+        };
+        handle.addEventListener('pointerup', endDrag);
+        handle.addEventListener('pointercancel', endDrag);
+
+        const position = document.createElement('span');
+        position.className = 'rank-position';
+        position.textContent = rankPosition(order, state.tiedPairs, label);
+        const candidate = document.createElement('button');
+        candidate.type = 'button'; candidate.className = 'candidate-label'; candidate.textContent = label;
+        candidate.setAttribute('aria-label', `候補${label}を表示`);
+        candidate.addEventListener('click', () => { currentLabel = label; updateImage(); });
+        const tie = document.createElement('button');
+        tie.type = 'button'; tie.className = 'tie-button';
+        tie.textContent = index === 0 ? '同率なし' : '前と同率';
+        tie.disabled = index === 0;
+        const key = index > 0 ? pairKey(order[index - 1], label) : '';
+        tie.setAttribute('aria-pressed', String(Boolean(key && ties.has(key))));
+        tie.addEventListener('click', () => {
+          const order = currentOrder();
+          const index = order.indexOf(label);
+          if (index <= 0) return;
+          const key = pairKey(order[index - 1], label);
+          const current = new Set(state.tiedPairs);
+          if (current.has(key)) current.delete(key); else current.add(key);
+          state.tiedPairs = [...current]; state.rated = false;
+          renderRankList(); saveState();
+        });
+        row.append(handle, position, candidate, tie);
+        rankList.append(row);
+      }
+      rankStatus.textContent = state.rated
+        ? `順位確定: ${formatRanking(state.order, state.tiedPairs)}`
+        : '未評価です。並べ替え後に順位を確定してください。';
+      sceneStatus.textContent = state.rated ? '順位確定済み' : '未評価';
+      document.querySelector('#confirmRanking').disabled = state.rated;
+      document.querySelector('#markUnrated').disabled = !state.rated;
+    }
+    function renderCandidates() {
+      candidateButtons.replaceChildren();
+      for (const label of data.labels) {
+        const button = document.createElement('button');
+        button.type = 'button'; button.textContent = label; button.dataset.label = label;
+        button.setAttribute('aria-pressed', String(label === currentLabel));
+        button.addEventListener('click', () => { currentLabel = label; updateImage(); });
+        candidateButtons.append(button);
+      }
+    }
+    function updateImage() {
+      const assignment = assignmentByScene.get(sceneSelect.value);
+      if (!assignment) { error.textContent = 'このシーンの画像がありません。'; return; }
+      const isReference = viewSelect.value === 'B';
+      const item = isReference ? assignment.reference : assignment.candidates.find((candidate) => candidate.label === currentLabel);
+      const view = isReference ? 'B' : viewSelect.value;
+      const source = item && imagePath.get(`${item.stimulusId}|${view}`);
+      if (!source) { error.textContent = `画像がありません: ${view}`; return; }
+      error.textContent = '';
+      image.src = source;
+      image.alt = isReference ? '暫定参照 B' : `候補${currentLabel}の${view}画像`;
+      status.textContent = isReference ? 'B参照（暫定・順位外）' : `候補 ${currentLabel}`;
+      for (const button of candidateButtons.querySelectorAll('button')) {
+        button.setAttribute('aria-pressed', String(button.dataset.label === currentLabel));
+      }
+    }
+    function loadScene() {
+      state = readState(sceneSelect.value);
+      reason.value = state.reason;
+      renderRankList();
+      updateImage();
+      sceneStatus.textContent = state.rated ? '順位確定済み' : '未評価';
+      document.querySelector('#saveStatus').textContent = state.rated ? '保存済み・順位確定' : '保存済み・未評価';
+    }
+    function exportAll() {
+      return data.scenes.map((scene) => {
+        const saved = readState(scene);
+        const ranking = saved.rated ? formatRanking(saved.order, saved.tiedPairs) : '(not rated)';
+        return `${scene}\nRanking: ${ranking}\nReason: ${saved.reason.trim() || '(none)'}\n`;
+      }).join('\n');
+    }
+
+    for (const scene of data.scenes) {
+      const option = document.createElement('option'); option.value = scene; option.textContent = scene; sceneSelect.append(option);
+    }
+    renderCandidates();
+    loadScene();
+    sceneSelect.addEventListener('change', loadScene);
+    viewSelect.addEventListener('change', updateImage);
+    reason.addEventListener('input', saveState);
+    document.querySelector('#confirmRanking').addEventListener('click', () => {
+      state.order = currentOrder(); state.rated = true; saveState(); renderRankList();
+      sceneStatus.textContent = '順位確定済み';
+    });
+    document.querySelector('#markUnrated').addEventListener('click', () => {
+      state.rated = false; saveState(); renderRankList(); sceneStatus.textContent = '未評価';
+    });
+    document.querySelector('#copyAll').addEventListener('click', async () => {
+      const result = exportAll();
+      try {
+        await navigator.clipboard.writeText(result);
+        exportText.hidden = true; copyStatus.textContent = '3シーン分をコピーしました。';
+      } catch {
+        exportText.hidden = false; exportText.value = result; exportText.focus(); exportText.select();
+        copyStatus.textContent = 'コピーできるよう全結果を選択しました。Ctrl+Cでコピーしてください。';
+      }
+    });
+    window.addEventListener('keydown', (event) => {
+      if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement
+          || event.target instanceof HTMLTextAreaElement || event.target.closest('#rankList')) return;
+      if (/^[1-9]$/.test(event.key)) currentLabel = event.key.padStart(2, '0');
+      else if (event.key === '0') currentLabel = '10';
+      else return;
+      updateImage();
+    });
+  </script>
+</body>
+</html>

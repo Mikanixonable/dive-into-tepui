@@ -30,7 +30,9 @@ import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
-import type { ScanTier, ScreenSpaceStageRange } from '../../src/render/pipeline/screen-space/screen-space-pass';
+import type {
+  ScanTier, ScreenSpaceExperimentVariant, ScreenSpaceStageRange,
+} from '../../src/render/pipeline/screen-space/screen-space-pass';
 
 // 恒星の距離のつまみの下限・上限。つまみは距離を**天文単位の常用対数で持つ** — 見かけ径が 1px を切る
 // あたりの変化を読みたいので、AU を直に刻むと近距離側が粗すぎて追えない。下限の 0.01 AU は太陽が
@@ -64,15 +66,22 @@ declare global {
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
       capture: () => Promise<string>;
+      captureCorrectionProbe: () => ReturnType<LabView['captureCorrectionProbe']>;
       render: () => void;
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
-      measureCurrent: () => Promise<LabMeasurement>;
+      measureCurrent: (warmupFrames?: number, sampleFrames?: number) => Promise<LabMeasurement>;
+      measureScreenSpacePaths: (
+        seeds: readonly (readonly [number, number])[], sampleCount?: number,
+      ) => ReturnType<LabView['measureScreenSpacePaths']>;
       showShot: (name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>) => Promise<void>;
       setScanTier: (tier: ScanTier) => void;
+      setScreenSpaceExperiment: (
+        variant: ScreenSpaceExperimentVariant | null, tier: ScanTier, sparseTapCount?: number,
+      ) => void;
       setScanSeed: (x: number, y: number) => void;
       setScanStageRange: (range: ScreenSpaceStageRange) => void;
       setScanWhiteNoisePass: (pass: number | null) => void;
@@ -83,6 +92,8 @@ declare global {
       writePackedBands: (index: number, rgba: Float32Array) => void;
       readFloat: (name: FloatTargetName) => Promise<FloatImage>;
       composite: (hdr: FloatImage) => Promise<FloatImage>;
+      signedCorrectionDisplay: (hdr: FloatImage, exposureFactor?: number) => FloatImage;
+      signedCorrectionPng: (hdr: FloatImage) => Promise<string>;
       exposureFactor: () => number;
       measureTiers: (
         tiers: readonly ScanTier[], rounds: number,
@@ -340,6 +351,7 @@ async function init(): Promise<void> {
       return pngs;
     },
     capture: () => view.capture(),
+    captureCorrectionProbe: () => view.captureCorrectionProbe(),
     render: () => view.render(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
@@ -348,13 +360,16 @@ async function init(): Promise<void> {
       settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
     },
     measure: (name, angles) => view.measure(name, angles),
-    measureCurrent: () => view.measureCurrent(),
+    measureCurrent: (warmupFrames, sampleFrames) => view.measureCurrent(warmupFrames, sampleFrames),
+    measureScreenSpacePaths: (seeds, sampleCount) => view.measureScreenSpacePaths(seeds, sampleCount),
     showShot: async (name, shotName, graphics) => {
       await view.showShot(name, shotName, graphics);
       syncAngles();
       targets.setSelected(view.debugTarget);
     },
     setScanTier: (tier) => view.setScanTier(tier),
+    setScreenSpaceExperiment: (variant, tier, sparseTapCount) =>
+      view.setScreenSpaceExperiment(variant, tier, sparseTapCount),
     setScanSeed: (x, y) => view.setScanSeed(x, y),
     setScanStageRange: (range) => view.setScanStageRange(range),
     setScanWhiteNoisePass: (pass) => view.setScanWhiteNoisePass(pass),
@@ -363,6 +378,8 @@ async function init(): Promise<void> {
     writePackedBands: (index, rgba) => view.writePackedBands(index, rgba),
     readFloat: (name) => view.readFloat(name),
     composite: (hdr) => view.composite(hdr),
+    signedCorrectionDisplay: (hdr, exposureFactor) => view.signedCorrectionDisplay(hdr, exposureFactor),
+    signedCorrectionPng: (hdr) => view.signedCorrectionPng(hdr),
     exposureFactor: () => view.exposureFactor,
     measureTiers: (tiers, rounds) => view.measureTiers(tiers, rounds),
     measureTierRounds: (tiers, rounds) => view.measureTierRounds(tiers, rounds),

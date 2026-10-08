@@ -25,6 +25,7 @@ export class PassAccumulator {
   private readonly quad = new QuadMesh();
   // 和の描画先の 2 枚へ 0 を書く材質。
   private readonly zeroMaterial = stageMaterial();
+  private readonly averageMaterials = new Map<string, THREE.MeshBasicNodeMaterial>();
 
   // sources は足すテクスチャ(どれも width × height の RGBA)。
   public constructor(
@@ -60,10 +61,11 @@ export class PassAccumulator {
   }
 
   // 直前に描いた sources を、偶奇 parity(0 が偶数番目のパス)の和へ足す。
-  public add(parity: 0 | 1): void {
+  public add(parity: 0 | 1, beforeRender?: () => void): void {
     for (const sum of this.sums[parity]!) {
       this.renderer.setRenderTarget(sum.targets[1 - sum.current]!);
       this.quad.material = sum.materials[sum.current];
+      beforeRender?.();
       this.quad.render(this.renderer);
       sum.current = sum.current === 0 ? 1 : 0;
     }
@@ -82,15 +84,38 @@ export class PassAccumulator {
   }
 
   // 和を 0 に戻す。
-  public clear(): void {
+  public clear(beforeRender?: () => void): void {
     // renderer.clear は MRT の 2 枚目以降を消去色によらず α = 1 で消すので、0 を書いて消す。
     this.quad.material = this.zeroMaterial;
     for (const sum of this.sums.flat()) {
       for (const target of sum.targets) {
         this.renderer.setRenderTarget(target);
+        beforeRender?.();
         this.quad.render(this.renderer);
       }
+      sum.current = 0;
     }
+    this.renderer.setRenderTarget(null);
+  }
+
+  // 2 つの偶奇和を平均し、完成画像ターゲットへ書く。
+  public writeAverage(
+    target: THREE.RenderTarget, count: number, beforeRender?: () => void,
+  ): void {
+    if (!Number.isInteger(count) || count < 1) throw new RangeError('render-lab: average needs at least one path');
+    const key = `${target.texture.name}:${count}`;
+    let material = this.averageMaterials.get(key);
+    if (material === undefined) {
+      const pixel = ivec2(screenCoordinate.xy);
+      const sum = textureLoad(this.sumTextures[0]![0]!, pixel).add(textureLoad(this.sumTextures[1]![0]!, pixel));
+      material = stageMaterial();
+      material.mrtNode = mrt({ [target.texture.name]: sum.div(count) });
+      this.averageMaterials.set(key, material);
+    }
+    this.renderer.setRenderTarget(target);
+    this.quad.material = material;
+    beforeRender?.();
+    this.quad.render(this.renderer);
     this.renderer.setRenderTarget(null);
   }
 
@@ -100,6 +125,7 @@ export class PassAccumulator {
       for (const target of sum.targets) target.dispose();
       for (const material of sum.materials) material.dispose();
     }
+    for (const material of this.averageMaterials.values()) material.dispose();
     this.zeroMaterial.dispose();
   }
 }
