@@ -16,9 +16,23 @@ const SCAN_HEIGHT = HEIGHT / 4;
 const PIXELS = SCAN_WIDTH * SCAN_HEIGHT;
 const TIER = { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 0.75 };
 const SCENES = [
-  { name: 'bay-earth-open', caseName: 'bay', shot: 'bay-earth-open', roi: [125, 30, 31, 19] },
-  { name: 'cornell-box', caseName: 'cornell-box', shot: 'cornell-box', roi: [30, 42, 28, 33] },
-  { name: 'bay-dark', caseName: 'bay', shot: 'bay-dark', roi: [105, 30, 46, 43] },
+  { name: 'bay-earth-open', caseName: 'bay', shot: 'bay-earth-open', rois: { target: [125, 30, 31, 19] } },
+  { name: 'cornell-box', caseName: 'cornell-box', shot: 'cornell-box', rois: { target: [30, 42, 28, 33] } },
+  { name: 'bay-dark', caseName: 'bay', shot: 'bay-dark', rois: { target: [105, 30, 46, 43] } },
+  // 各板の内側の床。core は蝶番から 0.75 m まで、wide は 1.5 m から 4 m まで、板の中心線の幅 ±0.3 m。
+  // gap は隣り合う板の隙間の真後ろの床(半径 10.3〜11.5 m、隙間の中央から ±0.5 m)。
+  // カメラの投影で床の4隅を走査画素へ落とし、外接箱を内側へ丸めて、板に掛かる行を除いた。
+  {
+    name: 'angled-bounce', caseName: 'angled-bounce', shot: 'angled-bounce',
+    rois: {
+      'core-30': [38, 75, 11, 5], 'core-60': [80, 70, 8, 4], 'core-90': [116, 69, 8, 3],
+      'core-120': [152, 70, 8, 4], 'core-150': [191, 76, 11, 4],
+      'wide-30': [39, 84, 17, 25], 'wide-60': [80, 78, 12, 22], 'wide-90': [114, 77, 12, 20],
+      'wide-120': [148, 78, 12, 22], 'wide-150': [184, 84, 17, 25],
+      'gap-30-60': [57, 65, 14, 6], 'gap-60-90': [96, 63, 12, 4],
+      'gap-90-120': [132, 63, 12, 4], 'gap-120-150': [169, 65, 14, 6],
+    },
+  },
 ];
 const passesArgument = process.argv.find((arg) => arg.startsWith('--passes='));
 const PASSES = passesArgument === undefined ? 1024 : Number(passesArgument.split('=')[1]);
@@ -121,10 +135,25 @@ async function clayPng(lab) {
   return encodeRgbPng(WIDTH, HEIGHT, rgb);
 }
 
-function signedPng(values, scale) {
+function signedRgb(values, scale) {
   const rgb = new Uint8Array(PIXELS * 3);
   for (let p = 0; p < PIXELS; p++) for (let c = 0; c < 3; c++) {
     rgb[p * 3 + c] = Math.round(127.5 + 127.5 * Math.max(-1, Math.min(1, values[p * 4 + c] / scale)));
+  }
+  return rgb;
+}
+
+function signedPng(values, scale) {
+  return encodeRgbPng(SCAN_WIDTH, SCAN_HEIGHT, signedRgb(values, scale));
+}
+
+// 帯和を signedPng の写像で描き、ROI の枠を1画素の白で重ねる。
+function roisPng(bandSum, rois) {
+  const rgb = signedRgb(bandSum, imageScale([{ bandSum }], 'bandSum', 0.999, false));
+  const mark = (x, y) => rgb.fill(255, (y * SCAN_WIDTH + x) * 3, (y * SCAN_WIDTH + x) * 3 + 3);
+  for (const [left, top, width, height] of Object.values(rois)) {
+    for (let x = left; x < left + width; x++) { mark(x, top); mark(x, top + height - 1); }
+    for (let y = top; y < top + height; y++) { mark(left, y); mark(left + width - 1, y); }
   }
   return encodeRgbPng(SCAN_WIDTH, SCAN_HEIGHT, rgb);
 }
@@ -270,8 +299,15 @@ for (const scene of scenes) {
       { width: WIDTH, height: HEIGHT, rgba: bypassCorrection }));
     writeFileSync(path.join(dir, `bypass-mean-${PASSES}-diffuse-clay.png`), await clayPng(lab));
     await lab.setUpsampleAlphaOne(false);
-    const structureRms = rms(structure, scene.roi);
-    const residualRms = rms(structureHalfDifference, scene.roi) / 2;
+    const rois = Object.fromEntries(Object.entries(scene.rois).map(([name, rect]) => {
+      const structureRms = rms(structure, rect);
+      const residualRms = rms(structureHalfDifference, rect) / 2;
+      return [name, {
+        rect, structureRms, residualRms,
+        residualToStructureRatio: residualRms / Math.max(structureRms, 1e-12),
+        noiseRms: rms(noise, rect), signalRms: rms(full.bandSum, rect),
+      }];
+    }));
     const result = {
       scene: scene.name, passes: PASSES, sourceSignature: signature, exposure,
       onePassBandSum: sumInvariant, onePassAlphaMaximumDifference: alphaMaximumDifference,
@@ -279,16 +315,16 @@ for (const scene of scenes) {
       onePassAlphaMeanAbsoluteDifference: alphaDifferenceSum / alpha.length,
       alphaChangeFromRgb,
       alphaVariationAcrossNoisePasses: onePassAlphaMaximumDifference,
-      structureRmsInRoi: structureRms, halfDifferenceResidualRmsInRoi: residualRms,
-      residualToStructureRatio: residualRms / Math.max(structureRms, 1e-12),
-      noiseRmsInRoi: rms(noise, scene.roi), roi: scene.roi,
+      rois,
       referenceCache: path.relative(OUTPUT, cache).replaceAll('\\', '/'),
     };
-    records.push({ ...result, structure, structureHalfDifference, noise });
+    records.push({ ...result, structure, structureHalfDifference, noise, bandSum: full.bandSum, rects: scene.rois });
     writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify(result, null, 2));
-    console.log(`${scene.name}: ${PASSES} passes, structure RMS ${structureRms.toFixed(6)}, `
-      + `half-difference / structure ${(result.residualToStructureRatio * 100).toFixed(1)}%, `
-      + `noise RMS ${result.noiseRmsInRoi.toFixed(6)}`);
+    for (const [name, m] of Object.entries(rois)) {
+      console.log(`${scene.name}/${name}: structure ${m.structureRms.toFixed(6)}, `
+        + `residual/structure ${(m.residualToStructureRatio * 100).toFixed(1)}%, `
+        + `noise ${m.noiseRms.toFixed(6)}, signal ${m.signalRms.toFixed(6)}`);
+    }
     });
   } catch (error) {
     if (error?.code !== 'EPERM' || !records.some(({ scene: name }) => name === scene.name)) throw error;
@@ -305,12 +341,14 @@ for (const record of records) {
   writeFileSync(path.join(dir, `structure-half-difference-${PASSES}.png`),
     signedPng(record.structureHalfDifference, halfDifferenceScale));
   writeFileSync(path.join(dir, `noise-rms-${PASSES}.png`), magnitudePng(record.noise, noiseScale));
+  writeFileSync(path.join(dir, 'rois.png'), roisPng(record.bandSum, record.rects));
 }
-const metrics = records.map(({ structure, structureHalfDifference, noise, ...record }) => record);
+const metrics = records.map(({ structure, structureHalfDifference, noise, bandSum, rects, ...record }) => record);
 writeFileSync(path.join(OUTPUT, 'record.json'), JSON.stringify({ passes: PASSES, sourceSignature: signature,
   structureScale, halfDifferenceScale, noiseScale, structureQuantile: 0.999, noiseQuantile: 0.995,
   metrics }, null, 2));
 const cards = metrics.flatMap(({ scene }) => [
+  [`${scene}/rois.png`, `評価範囲: ${PASSES}パスの収束帯和と ROI の枠`],
   [`${scene}/structure-${PASSES}.png`, '構造誤差: 4帯の収束帯和 − 縮小・合流'],
   [`${scene}/structure-half-difference-${PASSES}.png`, '収束確認: 前半と後半の構造誤差の差'],
   [`${scene}/noise-rms-${PASSES}.png`, '1パス雑音: 合流後 − 収束合流後の32パス二乗平均'],
