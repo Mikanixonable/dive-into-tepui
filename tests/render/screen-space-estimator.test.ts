@@ -546,6 +546,22 @@ export function register(): void {
     near(weights.reduce((sum, weight, band) => sum + weight * band, 0), Math.log2(0.75 * rho) - 1, 1e-12, '重みの平均');
   });
 
+  test('screen space estimator: 割る因子は冪 cos^s で弱め、s = 0 で距離だけ、cos = 0 は最も粗い帯へ頭打ちで有限', () => {
+    const rho = 2;
+    const strength = (receiverFacing: number): BandSplit => ({
+      ...bandsWith(4, 0.75, 0),
+      bounce: { senderFacing: float(0), receiverFacing: float(receiverFacing), receiverView: float(0), senderView: float(0) },
+    });
+    const coordinateOf = (bands: BandSplit, cosine: number): number => {
+      const weights = bounceWeights(bands, float(rho), float(1), { ...facingOf(1), receiverFacing: float(cosine) }).map(valueOf);
+      assert.ok(weights.every((weight) => Number.isFinite(weight) && weight >= 0));
+      return weights.reduce((sum, weight, band) => sum + weight * band, 0);
+    };
+    near(coordinateOf(strength(0.5), 0.25), Math.log2(0.75 * rho) + 1, 1e-12, 's = 1/2, cos = 1/4');
+    near(coordinateOf(strength(0.5), 0), 3, 1e-12, 's = 1/2, cos = 0');
+    near(coordinateOf(strength(0), 0), Math.log2(0.75 * rho), 1e-12, 's = 0, cos = 0');
+  });
+
   test('screen space estimator: 標本の向きの内積は 0..1 に収まり、零距離でも有限', () => {
     const receiverNormal = new THREE.Vector3(0, 0, 1);
     const senderNormal = new THREE.Vector3(1, 0, 0);
