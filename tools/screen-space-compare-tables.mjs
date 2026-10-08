@@ -2,12 +2,14 @@
 // { title, header, rows }(セルは文字列)で返す。ページと要約が同じ表を描く。
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { BASELINE_RUN, metricsOf } from './screen-space-chain-runs.mjs';
+import { BASELINE_RUN, factorsLabelOfRun, metricsOf } from './screen-space-chain-runs.mjs';
 import { bandsDirOf } from './screen-space-chain-bands.mjs';
 import { fixed } from './screen-space-lab.mjs';
 
 const jsonOrNull = (file) => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null);
-const columnName = (run, scene) => `${run} (${metricsOf(run, scene).conditions.passes}パス)`;
+// 表の列見出し。候補名に因子の組の表示を添える。
+const columnHeader = (run) => `${run} ${factorsLabelOfRun(run)}`;
+const columnName = (run, scene) => `${columnHeader(run)} (${metricsOf(run, scene).conditions.passes}パス)`;
 const sci = (value) => (value === null || value === undefined ? '—' : value.toExponential(2));
 
 // 候補ごとに値 valueOf(metrics) を並べた表の行。値が無ければ —。
@@ -20,7 +22,8 @@ export function conditionTablesOf(scene, runs) {
     ['走査解像度', (m) => m.conditions.scanResolution.join('×')],
     ['スライス×片側の歩', (m) => `${m.conditions.tier.sliceCount}×${m.conditions.tier.stepCount}`],
     ['帯数', (m) => m.conditions.tier.bandCount],
-    ['κ (bandScale)', (m) => m.conditions.tier.bandScale],
+    ['因子の組', (m) => factorsLabelOfRun(m.run)],
+    ['κ_o (bandScale)', (m) => m.conditions.tier.bandScale],
     ['パス数', (m) => m.conditions.passes],
     ['雑音のパス', (m) => `白色雑音 ${m.conditions.noisePasses.first}〜${m.conditions.noisePasses.first + m.conditions.noisePasses.count - 1}`],
     ['帯和検査のパス', (m) => `白色雑音 ${m.conditions.invariantPass}`],
@@ -36,7 +39,7 @@ export function conditionTablesOf(scene, runs) {
     if (new Set(row.slice(1)).size === 1) fixedRows.push([label, String(row[1])]);
     else differingRows.push(row.map(String));
   }
-  return { fixed: fixedRows, differing: { title: '候補ごとに違う値', header: ['', ...runs], rows: differingRows } };
+  return { fixed: fixedRows, differing: { title: '候補ごとに違う値', header: ['', ...runs.map(columnHeader)], rows: differingRows } };
 }
 
 // ROI ごとの構造誤差 RMS・前後半残留/構造・1パス雑音 RMS の表(3枚)。セルは「値 (基準比)」。
@@ -46,22 +49,27 @@ export function roiTablesOf(scene, runs) {
     { title: '構造誤差 RMS', read: (roi) => roi.structureRms, text: (v) => fixed(v, 5) },
     { title: '前後半残留 / 構造誤差', read: (roi) => roi.residualToStructureRatio, text: (v) => `${fixed(100 * v, 1)}%` },
     { title: '1パス雑音 RMS', read: (roi) => roi.noiseRms, text: (v) => fixed(v, 5) },
+    { title: '1パスの最大偏差 p99(32パスのうち画素ごとの最大)', read: (roi) => roi.maxDeviation?.maxP99, text: (v) => fixed(v, 5) },
+    { title: '画素ごとの最大偏差 / RMS の中央値(白色雑音で約 2、1回だけの輝点で約 5.7)', read: (roi) => roi.maxDeviation?.ratioMedian, text: (v) => fixed(v, 2) },
+    ...[0, 1, 2, 3].map((band) => ({ title: `帯${band} の標準偏差 RMS`, read: (roi) => roi.bandStdRms?.[band], text: (v) => fixed(v, 5) })),
   ];
-  const roiNames = Object.keys((baseline ?? metricsOf(runs[0], scene)).rois);
+  const roiNames = [...new Set(runs.flatMap((run) => Object.keys(metricsOf(run, scene).rois)))];
   return metrics.map(({ title, read, text }) => ({
     title: `${scene} ${title}(括弧内は ${BASELINE_RUN} 比)`,
     header: ['ROI', ...runs.map((run) => columnName(run, scene))],
     rows: roiNames.map((name) => [name, ...runs.map((run) => {
       const roi = metricsOf(run, scene).rois[name];
-      if (roi === undefined) return '—';
+      if (roi === undefined || read(roi) == null) return '—';
       const base = baseline?.rois[name];
-      const ratio = base === undefined || read(base) === 0 ? '—' : `×${fixed(read(roi) / read(base), 2)}`;
+      const ratio = base === undefined || !read(base) ? '—' : `×${fixed(read(roi) / read(base), 2)}`;
       return `${text(read(roi))} (${ratio})`;
     })]),
   }));
 }
 
-// 帯ごとの Σ絶対値・正の和・負の和と、Σ|値| で重みを付けた平均の帯番号。kind は 'converged' か 'one-pass'。
+const BAND_TABLE_TITLES = { converged: '収束した', 'converged-std': '収束した帯の標準偏差の', 'one-pass': '1パスの' };
+
+// 帯ごとの Σ絶対値・正の和・負の和と、Σ|値| で重みを付けた平均の帯番号。kind は 'converged'・'converged-std'(標準偏差)・'one-pass'。
 export function bandTableOf(scene, runs, kind) {
   const summaries = runs.map((run) => jsonOrNull(path.join(bandsDirOf(run, scene), `${kind}-bands.json`)));
   const rows = [];
@@ -71,7 +79,7 @@ export function bandTableOf(scene, runs, kind) {
     }
   }
   rows.push(['平均の帯番号 Σk·E_k / ΣE_k', ...summaries.map((s) => (s === null ? '—' : fixed(s.meanBandNumber, 3)))]);
-  return { title: `${scene} ${kind === 'converged' ? '収束した' : '1パスの'}4帯の大きさ`, header: ['', ...runs], rows };
+  return { title: `${scene} ${BAND_TABLE_TITLES[kind]}4帯の大きさ`, header: ['', ...runs.map(columnHeader)], rows };
 }
 
 // 帯和の不変条件(raw − 4帯和)。field は metrics の 'onePassBandSum' か 'occlusionOnlyBandSum'。
@@ -85,12 +93,12 @@ export function invariantTableOf(scene, runs, field, title) {
     rowOf('許容超えの画素数', runs, scene, (m) => m[field]?.roundingExceeded?.pixelCount),
     rowOf('差の地図', runs, scene, (m) => m[field]?.differenceMap),
   ];
-  return { title: `${scene} ${title}`, header: ['', ...runs], rows };
+  return { title: `${scene} ${title}`, header: ['', ...runs.map(columnHeader)], rows };
 }
 
 // A の検査値。
 export function alphaTableOf(scene, runs) {
-  return { title: `${scene} A の検査値`, header: ['', ...runs], rows: [
+  return { title: `${scene} A の検査値`, header: ['', ...runs.map(columnHeader)], rows: [
     rowOf('帯 RGB を変えたときの A の変化', runs, scene, (m) => sci(m.alphaChangeFromRgb)),
     rowOf('独立1パス間の A の変動', runs, scene, (m) => sci(m.alphaVariationAcrossNoisePasses)),
     rowOf('帯和検査と表示 seed の A の差', runs, scene, (m) => sci(m.onePassInvariantAlphaMaximumDifference)),

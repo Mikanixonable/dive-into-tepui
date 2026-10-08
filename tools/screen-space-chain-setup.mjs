@@ -2,14 +2,20 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { TIER_FACTORS_FIELD } from './screen-space-chain-factors.mjs';
+import { SCAN_SCALE } from './screen-space-chain-runs.mjs';
 import { HEIGHT, WIDTH } from './screen-space-lab.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 export const CHUNK_PASSES = 256;
+
+// 撮影の走査の段。bandScale が κ_o、factors(因子の組。省くと欄ごと無し)が因子と κ_b。
+export const tierOf = (bandScale, factors = null) => ({ scale: SCAN_SCALE, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale,
+  ...(factors === null ? {} : { [TIER_FACTORS_FIELD]: factors }) });
 export const SCENES = [
-  { name: 'bay-earth-open', caseName: 'bay', caseFile: 'tools/render-lab/bay-cases.ts', shot: 'bay-earth-open', rois: { target: [125, 30, 31, 19] } },
-  { name: 'cornell-box', caseName: 'cornell-box', caseFile: 'tools/render-lab/cornell-box-case.ts', shot: 'cornell-box', rois: { target: [30, 42, 28, 33] } },
-  { name: 'bay-dark', caseName: 'bay', caseFile: 'tools/render-lab/bay-cases.ts', shot: 'bay-dark', rois: { target: [105, 30, 46, 43] } },
+  { name: 'bay-earth-open', caseName: 'bay', caseFile: 'tools/render-lab/bay-cases.ts', shot: 'bay-earth-open', rois: { target: [125, 30, 31, 19], 'w1-wall': [137, 25, 16, 16] } },
+  { name: 'cornell-box', caseName: 'cornell-box', caseFile: 'tools/render-lab/cornell-box-case.ts', shot: 'cornell-box', rois: { target: [30, 42, 28, 33], 'w3-glow': [112, 24, 44, 30] } },
+  { name: 'bay-dark', caseName: 'bay', caseFile: 'tools/render-lab/bay-cases.ts', shot: 'bay-dark', rois: { target: [105, 30, 46, 43], 'w1-wall': [137, 25, 16, 16] } },
   // 各板の内側の床。core は蝶番から 0.75 m まで、wide は 1.5 m から 4 m まで、板の中心線の幅 ±0.3 m。
   // gap は隣り合う板の隙間の真後ろの床(半径 10.3〜11.5 m、隙間の中央から ±0.5 m)。
   // カメラの投影で床の4隅を走査画素へ落とし、外接箱を内側へ丸めて、板に掛かる行を除いた。

@@ -1,14 +1,13 @@
 // 撮影済みの run へ、blue-noise seed 0 の1パスの4帯(float と基準の尺度の符号付き PNG)を書き足す。
+// 新しく撮る run は render-lab-screen-space-chain-metrics.mjs が同じものを書くので、これは古い run の補いに使う。
 // 使い方: node tools/render-lab-screen-space-one-pass-bands.mjs --run=<label> [--scene=<name>]
 // run の記録の走査ソース署名・ケースの署名が現在のビルドと一致するときだけ撮り、記録は書き換えない。
 // 出力は runs/<run>/<ケース>/bands/ の one-pass-band-* と one-pass-bands.json。
-import { writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { BAND_COUNT, bandScaleOf, bandStatsOf, bandsDirOf, writeBandImages } from './screen-space-chain-bands.mjs';
-import { bandSumInvariant } from './screen-space-band-sum-invariant.mjs';
-import { BASELINE_RUN, metricsOf, recordOf, sceneDirOf } from './screen-space-chain-runs.mjs';
+import { bandScaleOf, readBands, writeOnePassBands } from './screen-space-chain-bands.mjs';
+import { metricsOf, recordOf, sceneDirOf } from './screen-space-chain-runs.mjs';
 import { SCENES, sceneSignatureOf, sourceSignatureOf } from './screen-space-chain-setup.mjs';
-import { readFloats, seedOf, unpackedBand, withLab, writeFloats } from './screen-space-lab.mjs';
+import { readFloats, seedOf, withLab } from './screen-space-lab.mjs';
 
 const argumentOf = (name) => process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
 const run = argumentOf('run');
@@ -39,23 +38,14 @@ for (const scene of scenes) {
       await lab.setWhiteNoisePass(null);
       await lab.setSeed(seedOf(0));
       await lab.render();
-      const packed = [];
-      for (let texture = 0; texture < 3; texture++) packed.push(await lab.readFloat(`packed-bands-${texture}`, 4));
-      bands = Array.from({ length: BAND_COUNT }, (_, band) => unpackedBand(packed, band));
+      bands = await readBands(lab);
     });
   } catch (error) {
     // 撮影後の Chrome のプロファイル削除の EPERM は無視する。
     if (error?.code !== 'EPERM' || bands === undefined) throw error;
   }
-  const dir = bandsDirOf(run, scene.name);
-  const scale = bandScaleOf(scene.name);
-  const files = writeBandImages(dir, 'one-pass-band', bands, scale);
-  for (const [band, values] of bands.entries()) writeFloats(path.join(dir, `one-pass-band-${band}.rgb.f32`), values);
-  // 記録済みの1パスの帯和(同じ seed・同じ描画)との照合。
+  // 記録済みの1パスの帯和(同じ seed・同じ描画)との照合つき。
   const recorded = readFloats(path.join(sceneDirOf(run, scene.name), 'scan-one-pass-band-sum.rgba.f32'));
-  const { stats } = bandSumInvariant(recorded, bands);
-  const summary = { run, scene: scene.name, blueNoiseSeed: seedOf(0), scale: { baseline: BASELINE_RUN, value: scale },
-    ...bandStatsOf(bands), againstRecordedBandSum: stats, files };
-  writeFileSync(path.join(dir, 'one-pass-bands.json'), JSON.stringify(summary, null, 2));
-  console.log(`${run}/${scene.name}: mean band ${summary.meanBandNumber?.toFixed(3)}, recorded-sum exceed ${stats.roundingExceeded.count}`);
+  const summary = writeOnePassBands(run, scene.name, bands, bandScaleOf(scene.name), recorded);
+  console.log(`${run}/${scene.name}: mean band ${summary.meanBandNumber?.toFixed(3)}, recorded-sum exceed ${summary.againstRecordedBandSum.roundingExceeded.count}`);
 }

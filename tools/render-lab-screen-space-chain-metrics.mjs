@@ -1,12 +1,23 @@
 // 手順8-15の帯鎖を、走査解像度の構造誤差と1パス雑音に分けて撮る。
+// 帯ごとの標準偏差(輝点の探索)・画素ごとの最大偏差・帯ごとの1パス・seed 違いの1パスの補正項も同じ撮影で書く。
+// 使い方: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>]
+//   [--passes=1024|2048|4096] [--band-scale=<κ_o>] [--factors=kb=0.6,b.d=1,b.a=0.5,o.d=1] [--occlusion-invariant]
+//   [--dry-run | --reindex | --cache-only]
+// --factors は帯座標の因子の組(書式は screen-space-chain-factors.mjs)。--cache-only は撮影済みの run の収束の積算のキャッシュに
+// 足りない和・二乗の和だけを撮り足して標準偏差の帯を書く(ほかの出力と記録は触らない)。
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { encodeRgbPng } from './png.mjs';
 import { captureBandSumInvariant, invariantMapOf } from './screen-space-band-sum-invariant.mjs';
-import { escapeHtml, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_SCALE, SCAN_WIDTH, signedPng, signedRgb } from './screen-space-chain-runs.mjs';
-import { CHUNK_PASSES, SCENES, sceneSignatureOf, sourceSignatureOf } from './screen-space-chain-setup.mjs';
-import { HEIGHT, readFloats, seedOf, shotsDir, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
+import { BAND_COUNT, bandScaleOf, readBands, scaleOfBands, stdBandsOfCache, writeConvergedStdBands, writeOnePassBands } from './screen-space-chain-bands.mjs';
+import { cachedMean, chunkComplete, chunkFile } from './screen-space-chain-cache.mjs';
+import { accumulateMaxDeviation, deviationStatsOf, rgbaOfScalar, roiRms } from './screen-space-chain-deviation.mjs';
+import { parseFactors, TIER_FACTORS_FIELD } from './screen-space-chain-factors.mjs';
+import { ONE_PASS_CORRECTION_SEEDS, writeLandingIndex, writeRunIndex } from './screen-space-chain-index.mjs';
+import { BASELINE_RUN, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_WIDTH, signedPng, signedRgb } from './screen-space-chain-runs.mjs';
+import { CHUNK_PASSES, SCENES, sceneSignatureOf, sourceSignatureOf, tierOf } from './screen-space-chain-setup.mjs';
+import { HEIGHT, readFloats, seedOf, unpackedBand, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
 
 // 帯和の検査は、閾値に乗った画素の孤立した反転を通し、系統差(超過画素が多い・平均や最大が大きい)だけを止める。
 const INVARIANT_MAX_EXCEEDED_PIXEL_FRACTION = 0.001;
@@ -15,34 +26,32 @@ const INVARIANT_MAX_ABSOLUTE = 0.01;
 const NOISE_PASSES = 32;
 const NOISE_FIRST_PASS = 5000;
 const INVARIANT_PASS = 7000;
-const bandScaleArgument = process.argv.find((arg) => arg.startsWith('--band-scale='));
-const bandScale = bandScaleArgument === undefined ? 0.75 : Number(bandScaleArgument.slice('--band-scale='.length));
-if (!Number.isFinite(bandScale) || bandScale < 0) throw new Error('--band-scale must be finite and nonnegative');
-const TIER = { scale: SCAN_SCALE, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale };
 const SCAN_DISPLAY_QUANTILE = 0.999;
 const STRUCTURE_DISPLAY_QUANTILE = 0.999;
 const NOISE_DISPLAY_QUANTILE = 0.995;
-const passesArgument = process.argv.find((arg) => arg.startsWith('--passes='));
-const PASSES = passesArgument === undefined ? 1024 : Number(passesArgument.split('=')[1]);
+
+const argumentOf = (name) => process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+const bandScale = argumentOf('band-scale') === undefined ? 0.75 : Number(argumentOf('band-scale'));
+if (!Number.isFinite(bandScale) || bandScale < 0) throw new Error('--band-scale must be finite and nonnegative');
+const FACTORS = argumentOf('factors') === undefined ? null : parseFactors(argumentOf('factors'), bandScale);
+const TIER = tierOf(bandScale, FACTORS);
+const PASSES = argumentOf('passes') === undefined ? 1024 : Number(argumentOf('passes'));
 if (![1024, 2048, 4096].includes(PASSES)) throw new Error('--passes must be 1024, 2048, or 4096');
-const runArgument = process.argv.find((arg) => arg.startsWith('--run='));
-if (runArgument === undefined) throw new Error('usage: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>] [--occlusion-invariant] [--dry-run|--reindex]');
-const RUN_LABEL = runArgument.slice('--run='.length);
+const RUN_LABEL = argumentOf('run');
+if (RUN_LABEL === undefined) throw new Error('usage: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>] [--factors=...] [--occlusion-invariant] [--dry-run|--reindex|--cache-only]');
 if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(RUN_LABEL)) throw new Error('--run must be a safe lowercase label (letters, digits, hyphens)');
-const baselineArgument = process.argv.find((arg) => arg.startsWith('--baseline='));
-const BASELINE_LABEL = baselineArgument === undefined ? 'before-a' : baselineArgument.slice('--baseline='.length);
+const BASELINE_LABEL = argumentOf('baseline') ?? BASELINE_RUN;
 if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(BASELINE_LABEL)) throw new Error('--baseline must be a safe lowercase label');
 const DRY_RUN = process.argv.includes('--dry-run');
 const REINDEX = process.argv.includes('--reindex');
+const CACHE_ONLY = process.argv.includes('--cache-only');
 const OCCLUSION_INVARIANT = process.argv.includes('--occlusion-invariant');
+if ([DRY_RUN, REINDEX, CACHE_ONLY].filter(Boolean).length > 1) throw new Error('--dry-run, --reindex and --cache-only are exclusive');
 const INVARIANT_FAILURES = path.join(OUTPUT, 'invariant-failures');
-if (DRY_RUN && REINDEX) throw new Error('--dry-run and --reindex are exclusive');
-const sceneArgument = process.argv.find((arg) => arg.startsWith('--scene='));
-const scenes = sceneArgument === undefined ? SCENES : SCENES.filter(({ name }) => name === sceneArgument.split('=')[1]);
-if (scenes.length === 0) throw new Error(`unknown scene: ${sceneArgument}`);
+const scenes = argumentOf('scene') === undefined ? SCENES : SCENES.filter(({ name }) => name === argumentOf('scene'));
+if (scenes.length === 0) throw new Error(`unknown scene: ${argumentOf('scene')}`);
 const RUN_DIR = path.join(RUNS, RUN_LABEL);
 const RUN_RECORD = path.join(RUN_DIR, 'record.json');
-const RUN_INDEX = path.join(RUN_DIR, 'index.html');
 const COMMON_SIGNATURE = sourceSignatureOf(TIER);
 const sceneSourceSignatures = new Map(SCENES.map((scene) => [scene.name, sceneSignatureOf(scene, COMMON_SIGNATURE)]));
 const cacheKeys = new Map(SCENES.map((scene) => [scene.name, cacheKeyOf(scene)]));
@@ -75,6 +84,7 @@ function existingRunRecord() {
   return record;
 }
 
+// 因子の欄は TIER に指定されたときだけ入るので、因子なしの run の鍵・署名・条件は因子の導入前と変わらない。
 const runRecord = existingRunRecord() ?? {
   schema: 2, run: RUN_LABEL, createdAt: new Date().toISOString(),
   scanSourceSignature: COMMON_SIGNATURE, conditions: captureConditions(), scenes: {},
@@ -84,20 +94,17 @@ function cacheDirOf(scene) {
   return path.join(OUTPUT, 'cache', scene.name, cacheKeys.get(scene.name));
 }
 
-function validChunkCount(scene) {
-  const cache = cacheDirOf(scene);
+function validChunks(scene, kind) {
   let count = 0;
-  for (let first = 0; first < PASSES; first += CHUNK_PASSES) {
-    const files = [0, 1, 2].map((texture) => chunkFile(cache, first, texture));
-    if (files.every((file) => existsSync(file) && readFileSync(file).byteLength === PIXELS * 4 * 4)) count++;
-  }
+  for (let first = 0; first < PASSES; first += CHUNK_PASSES) if (chunkComplete(cacheDirOf(scene), first, kind)) count++;
   return count;
 }
 
 if (DRY_RUN) {
   console.log(JSON.stringify({ run: RUN_LABEL, baseline: BASELINE_LABEL, scanSourceSignature: COMMON_SIGNATURE, passes: PASSES, chunkPasses: CHUNK_PASSES,
     scenes: scenes.map((scene) => ({ name: scene.name, sceneSourceSignature: sceneSourceSignatures.get(scene.name),
-      cacheKey: cacheKeys.get(scene.name), validChunks: validChunkCount(scene), totalChunks: Math.ceil(PASSES / CHUNK_PASSES) })) }, null, 2));
+      cacheKey: cacheKeys.get(scene.name), validChunks: validChunks(scene, 'sum'), validSquaresChunks: validChunks(scene, 'sumsq'),
+      totalChunks: Math.ceil(PASSES / CHUNK_PASSES) })) }, null, 2));
   process.exit(0);
 }
 
@@ -112,6 +119,14 @@ function captureConditions() {
     noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: BASELINE_LABEL };
 }
 
+// 候補どうしで違ってよい条件(κ と因子の組)を除いた条件。
+function sharedConditionsOf(conditions) {
+  const shared = structuredClone(conditions);
+  delete shared.tier.bandScale;
+  delete shared.tier[TIER_FACTORS_FIELD];
+  return shared;
+}
+
 function rgbDifference(a, b) {
   const result = new Float32Array(a.length);
   for (let i = 0; i < result.length; i += 4) {
@@ -119,16 +134,6 @@ function rgbDifference(a, b) {
     result[i + 3] = 1;
   }
   return result;
-}
-
-function rms(values, roi) {
-  const [left, top, width, height] = roi;
-  let squares = 0;
-  for (let y = top; y < top + height; y++) for (let x = left; x < left + width; x++) {
-    const p = (y * SCAN_WIDTH + x) * 4;
-    for (let c = 0; c < 3; c++) squares += values[p + c] ** 2;
-  }
-  return Math.sqrt(squares / (width * height * 3));
 }
 
 // 帯和の不変条件を、白色雑音のパス INVARIANT_PASS で検査して差の地図を dir に書く。半精度の丸め幅を超える系統差があれば、
@@ -148,26 +153,7 @@ async function checkedBandSumInvariant(lab, scene, dir, label) {
   return { ...stats, differenceMap };
 }
 
-function alphaMap(merged) {
-  return Float32Array.from({ length: PIXELS }, (_, p) => merged[p * 4 + 3]);
-}
-
-function chunkFile(cache, first, texture) {
-  return path.join(cache, `sum-${String(first).padStart(4, '0')}-packed-${texture}.f32`);
-}
-
-function cachedMean(cache, first, end) {
-  const sums = Array.from({ length: 3 }, () => new Float64Array(PIXELS * 4));
-  for (let pass = first; pass < end; pass += CHUNK_PASSES) {
-    for (let texture = 0; texture < 3; texture++) {
-      const values = readFloats(chunkFile(cache, pass, texture));
-      if (values.length !== PIXELS * 4) throw new Error(`invalid cached scan chunk ${pass}/${texture}`);
-      const sum = sums[texture];
-      for (let i = 0; i < sum.length; i++) sum[i] += values[i];
-    }
-  }
-  return sums.map((values) => Float32Array.from(values, (value) => value / (end - first)));
-}
+const alphaMap = (merged) => Float32Array.from({ length: PIXELS }, (_, p) => merged[p * 4 + 3]);
 
 async function mergedOf(lab, packed) {
   for (const [index, rgba] of packed.entries()) await lab.writePackedBands(index, rgba);
@@ -227,48 +213,9 @@ function recordSnapshot() {
   writeFileSync(RUN_RECORD, JSON.stringify(runRecord, null, 2));
 }
 
-function writeIndex() {
-  const scenes = Object.values(runRecord.scenes);
-  const navigation = scenes.map((scene) => `<a href="#${escapeHtml(scene.scene)}">${escapeHtml(scene.scene)}</a>`).join(' | ');
-  const sections = scenes.map((scene) => {
-    const dir = path.join(RUN_DIR, scene.scene);
-    const entries = [
-      ...scene.scanImages.map((item) => [item.png, `${item.label}（${item.id.startsWith('one-pass') ? 1 : PASSES}\u30d1\u30b9\u3001\u7dda\u5f62 signed RGB\u3001\u4e2d\u592e\u7070\u8272\u304c\u30bc\u30ed\u3001\u8868\u793a\u5e45 \u00b1${scene.displayScales.scan.scale}\u3001q=${scene.displayScales.scan.quantile}）`]),
-      ['rois.png', `${PASSES}\u30d1\u30b9\u5e73\u5747\u30fbROI\u4f4d\u7f6e`],
-      [`structure-${PASSES}.png`, `\u69cb\u9020\u5dee\u5206\u3001\u8868\u793a\u5e45 \u00b1${scene.displayScales.structure.scale}`],
-      [`structure-half-difference-${PASSES}.png`, `\u69cb\u9020\u5dee\u5206\u306e\u534a\u5dee\u5206\u3001\u540c\u3058\u8868\u793a\u5e45 \u00b1${scene.displayScales.structure.scale}`],
-      [`noise-rms-${PASSES}.png`, `1\u30d1\u30b9\u306e\u30ce\u30a4\u30ba RMS\u3001\u8868\u793a\u5e45 ${scene.displayScales.noise.scale}`],
-      ['one-pass-correction.png', '1\u30d1\u30b9\u306e\u30d5\u30eb\u89e3\u50cf\u5ea6\u88dc\u6b63'],
-      [`mean-${PASSES}-correction.png`, `${PASSES}\u30d1\u30b9\u5e73\u5747\u306e\u30d5\u30eb\u89e3\u50cf\u5ea6\u88dc\u6b63`],
-      [`bypass-mean-${PASSES}-correction.png`, `${PASSES}\u30d1\u30b9\u5e73\u5747\u30fb\u5e2f\u5408\u8a08\u8ff4\u907f\u306e\u88dc\u6b63`],
-      ['one-pass-diffuse-clay.png', '1\u30d1\u30b9\u306e\u62e1\u6563\u5149\u30af\u30ec\u30a4\u8868\u793a'],
-      [`mean-${PASSES}-diffuse-clay.png`, `${PASSES}\u30d1\u30b9\u5e73\u5747\u306e\u62e1\u6563\u5149\u30af\u30ec\u30a4\u8868\u793a`],
-      [`bypass-mean-${PASSES}-diffuse-clay.png`, `${PASSES}\u30d1\u30b9\u5e73\u5747\u30fb\u5e2f\u5408\u8a08\u8ff4\u907f\u306e\u30af\u30ec\u30a4\u8868\u793a`],
-    ];
-    if (existsSync(path.join(dir, 'rois-on-render.png'))) entries.unshift(['rois-on-render.png', '\u30d5\u30eb\u89e3\u50cf\u5ea6 ROI \u30aa\u30fc\u30d0\u30fc\u30ec\u30a4']);
-    const cards = entries.filter(([file]) => scene.outputs.includes(file) || (file === 'rois-on-render.png' && existsSync(path.join(dir, file))))
-      .map(([file, label]) => `<figure><a href="${scene.scene}/${file}"><img src="${scene.scene}/${file}" alt=""></a><figcaption>${escapeHtml(label)}</figcaption></figure>`).join('\n');
-    return `<section id="${escapeHtml(scene.scene)}"><h2>${escapeHtml(scene.scene)}</h2><p>${PASSES} \u30d1\u30b9\u53ce\u675f\u753b\u50cf\u3001\u8d70\u67fb\u753b\u50cf\u306e\u8868\u793a\u5e45 \u00b1${scene.displayScales.scan.scale} (q=${scene.displayScales.scan.quantile})\u3001\u69cb\u9020\u5dee\u5206\u306e\u8868\u793a\u5e45 \u00b1${scene.displayScales.structure.scale} (q=${scene.displayScales.structure.quantile})\u3002</p><div class="gallery">${cards}</div></section>`;
-  });
-  writeFileSync(RUN_INDEX, `<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>8-15 \u753b\u9762\u7a7a\u9593\u62e1\u6563 - ${escapeHtml(RUN_LABEL)}</title>
-<style>:root{--page:#17191d;--panel:#222;--text:#eee;--line:#555;--space:24px;--gap:18px}body{margin:var(--space);background:var(--page);color:var(--text);font:14px system-ui}h1{font-size:24px}nav{position:sticky;top:0;padding:12px;background:var(--page);z-index:1}section{scroll-margin-top:64px;margin:28px 0}section h2{border-bottom:1px solid var(--line);padding-bottom:8px}.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:var(--gap)}figure{margin:0}img{display:block;width:100%;background:var(--panel);image-rendering:auto}figcaption{padding:7px}a{color:inherit}</style>
-<h1>8-15 \u753b\u9762\u7a7a\u9593\u62e1\u6563 - ${escapeHtml(RUN_LABEL)}</h1><p>${PASSES} \u30d1\u30b9\u3002\u8d70\u67fb\u89e3\u50cf\u5ea6 ${SCAN_WIDTH}&times;${SCAN_HEIGHT}\u3002signed RGB \u306f\u7dda\u5f62\u5024\u3092\u7070\u8272\u4e2d\u5fc3\u3067\u8868\u793a\u3057\u3001\u5404\u5834\u9762\u3067 ${escapeHtml(BASELINE_LABEL)} \u306e\u56fa\u5b9a\u30b9\u30b1\u30fc\u30eb\u3092\u4f7f\u3044\u307e\u3059\u3002\u64ae\u5f71\u6761\u4ef6\u3068\u5168\u30b9\u30b1\u30fc\u30eb\u306f record.json \u306b\u8a18\u9332\u3057\u307e\u3059\u3002</p><nav>${navigation}</nav><main>${sections.join('\n')}</main></html>`);
-}
-function writeLandingIndex() {
-  const labels = readdirSync(RUNS, { withFileTypes: true })
-    .filter((item) => item.isDirectory() && existsSync(path.join(RUNS, item.name, 'record.json'))
-      && existsSync(path.join(RUNS, item.name, 'index.html')))
-    .map((item) => item.name).sort((a, b) => a === 'before-a' ? -1 : b === 'before-a' ? 1 : a.localeCompare(b));
-  const links = labels.map((label) => `<li><a href="runs/${escapeHtml(label)}/index.html">${escapeHtml(label)}</a></li>`).join('\n');
-  const legacy = existsSync(path.join(OUTPUT, 'archive', 'legacy-single-scene', 'index.html'))
-    ? '<p><a href="archive/legacy-single-scene/index.html">整理前の単独撮影</a></p>' : '';
-  const olderReference = existsSync(path.join(shotsDir, 'ssd-8-15-reference', 'index.html'))
-    ? '<p><a href="../ssd-8-15-reference/index.html">初期の品質参照</a></p>' : '';
-  const angledCase = existsSync(path.join(shotsDir, 'ssd-8-15-angled-v2', 'angled-bounce.png'))
-    ? '<p><a href="../ssd-8-15-angled-v2/angled-bounce.png">角度付きケースの通常像</a></p>' : '';
-  writeFileSync(path.join(OUTPUT, 'index.html'), `<!doctype html><html lang="ja"><meta charset="utf-8">
-<title>8-15 帯鎖の撮影記録</title><h1>8-15 帯鎖の撮影記録</h1><p>候補aの実施前は before-a。以後の候補は別の記録に保存する。</p><ul>${links}</ul><h2>過去の診断</h2>${legacy}${olderReference}${angledCase}</html>`);
+function writeIndexes() {
+  writeRunIndex(RUN_DIR, runRecord, PASSES, BASELINE_LABEL);
+  writeLandingIndex();
 }
 
 if (REINDEX) {
@@ -276,12 +223,12 @@ if (REINDEX) {
   for (const scene of Object.values(runRecord.scenes)) {
     writeFileSync(path.join(RUN_DIR, scene.scene, 'metrics.json'), JSON.stringify(scene, null, 2));
   }
-  writeIndex();
-  writeLandingIndex();
+  writeIndexes();
   process.exit(0);
 }
+if (CACHE_ONLY && !existsSync(RUN_RECORD)) throw new Error(`--cache-only needs an existing run: ${RUN_DIR}`);
 
-mkdirSync(RUN_DIR, { recursive: true });
+if (!CACHE_ONLY) mkdirSync(RUN_DIR, { recursive: true });
 const invocationStartedAt = new Date().toISOString();
 const invocationStart = performance.now();
 
@@ -290,10 +237,7 @@ function baselineSceneOf(scene) {
   const baselineRecordPath = path.join(RUNS, BASELINE_LABEL, 'record.json');
   if (!existsSync(baselineRecordPath)) throw new Error(`${BASELINE_LABEL} baseline is required before run ${RUN_LABEL}`);
   const baselineRecord = JSON.parse(readFileSync(baselineRecordPath, 'utf8'));
-  const baselineConditions = structuredClone(baselineRecord.conditions);
-  const runConditions = captureConditions();
-  baselineConditions.tier.bandScale = runConditions.tier.bandScale;
-  if (JSON.stringify(baselineConditions) !== JSON.stringify(runConditions)) {
+  if (JSON.stringify(sharedConditionsOf(baselineRecord.conditions)) !== JSON.stringify(sharedConditionsOf(captureConditions()))) {
     throw new Error(`${BASELINE_LABEL} baseline conditions do not match run ${RUN_LABEL}`);
   }
   const baselineScene = baselineRecord.scenes?.[scene.name];
@@ -301,244 +245,316 @@ function baselineSceneOf(scene) {
   return baselineScene;
 }
 
+// 収束の積算のキャッシュに足りないチャンクを撮って埋め、{ hits, misses } を返す。和か二乗の和の片方だけが無いチャンクは、
+// 無い方のファイルだけを書く(既にある和は書き換えない)。
+async function fillCache(lab, scene, cache) {
+  const hits = [], misses = [];
+  for (let first = 0; first < PASSES; first += CHUNK_PASSES) {
+    const needSums = !chunkComplete(cache, first), needSquares = !chunkComplete(cache, first, 'sumsq');
+    if (!needSums && !needSquares) {
+      hits.push(first);
+      continue;
+    }
+    misses.push(first);
+    await lab.accumulateWhitePasses(first, CHUNK_PASSES);
+    const taken = await lab.takePassSums(needSquares);
+    const writeSums = (kind, halves) => {
+      for (let texture = 0; texture < 3; texture++) {
+        const even = halves[0][texture], odd = halves[1][texture];
+        writeFloats(chunkFile(cache, first, texture, kind), Float32Array.from(even, (value, i) => value + odd[i]));
+      }
+    };
+    if (needSums) writeSums('sum', taken.sums);
+    if (needSquares) writeSums('sumsq', taken.squares);
+    console.log(`${scene.name}: cached scan passes ${first}–${first + CHUNK_PASSES - 1}`);
+  }
+  return { hits, misses };
+}
+
+// 1パスの A の検査(帯和検査・基準・帯 RGB の変更に対する不変)。mergedOne は seed 0 の1パス。
+async function alphaChecks(lab, scene, dir, mergedOne, invariantMergedOne) {
+  const alpha = alphaMap(mergedOne);
+  const invariantAlpha = alphaMap(invariantMergedOne);
+  let invariantAlphaMaximumDifference = 0;
+  for (let p = 0; p < alpha.length; p++) {
+    invariantAlphaMaximumDifference = Math.max(invariantAlphaMaximumDifference, Math.abs(invariantAlpha[p] - alpha[p]));
+  }
+  if (invariantAlphaMaximumDifference !== 0) {
+    throw new Error(`${scene.name}: A changed between invariant and display seeds: ${invariantAlphaMaximumDifference}`);
+  }
+  const baselineFile = path.join(RUN_LABEL === BASELINE_LABEL ? dir : path.join(RUNS, BASELINE_LABEL, scene.name), 'one-pass-a.f32');
+  if (RUN_LABEL !== BASELINE_LABEL && !existsSync(baselineFile)) {
+    throw new Error(`${scene.name}: ${BASELINE_LABEL} one-pass A file is missing`);
+  }
+  if (RUN_LABEL === BASELINE_LABEL && !existsSync(baselineFile)) writeFloats(baselineFile, alpha);
+  const baselineAlpha = readFloats(baselineFile);
+  if (baselineAlpha.length !== alpha.length) throw new Error(`${scene.name}: A baseline size changed`);
+  let alphaMaximumDifference = 0, alphaDifferentPixels = 0, alphaDifferenceSum = 0;
+  for (let i = 0; i < alpha.length; i++) {
+    const delta = Math.abs(alpha[i] - baselineAlpha[i]);
+    alphaMaximumDifference = Math.max(alphaMaximumDifference, delta);
+    alphaDifferenceSum += delta;
+    if (delta !== 0) alphaDifferentPixels++;
+  }
+  if (alphaMaximumDifference > 0.001) {
+    throw new Error(`${scene.name}: one-pass A changed: max ${alphaMaximumDifference}, ${alphaDifferentPixels} pixels`);
+  }
+  writeFloats(path.join(dir, 'one-pass-a.f32'), alpha);
+  const zeros = Array.from({ length: 3 }, () => new Float32Array(PIXELS * 4));
+  const zeroRgb = await mergedOf(lab, zeros);
+  let alphaChangeFromRgb = 0;
+  for (let p = 0; p < PIXELS; p++) {
+    alphaChangeFromRgb = Math.max(alphaChangeFromRgb, Math.abs(zeroRgb.merged[p * 4 + 3] - alpha[p]));
+  }
+  if (alphaChangeFromRgb !== 0) throw new Error(`${scene.name}: changing only band RGB changed A by ${alphaChangeFromRgb}`);
+  return { invariantAlphaMaximumDifference, alphaMaximumDifference, alphaDifferentPixels,
+    alphaMeanAbsoluteDifference: alphaDifferenceSum / alpha.length, alphaChangeFromRgb };
+}
+
+// 独立な NOISE_PASSES 個の1パスと収束した合流 convergedMerged の差。画素ごとの RMS(noise)と最大偏差(maxima)、A の変動。
+async function measureNoise(lab, convergedMerged) {
+  const noiseSquares = new Float64Array(PIXELS * 4);
+  const maxima = new Float32Array(PIXELS);
+  let alphaVariation = 0;
+  await lab.setStageRange('all');
+  for (let pass = NOISE_FIRST_PASS; pass < NOISE_FIRST_PASS + NOISE_PASSES; pass++) {
+    await lab.setWhiteNoisePass(pass);
+    await lab.render();
+    const one = await lab.readFloat('merged-0', 4);
+    for (let i = 0; i < one.length; i += 4) {
+      for (let c = 0; c < 3; c++) noiseSquares[i + c] += (one[i + c] - convergedMerged[i + c]) ** 2;
+      alphaVariation = Math.max(alphaVariation, Math.abs(one[i + 3] - convergedMerged[i + 3]));
+    }
+    accumulateMaxDeviation(maxima, one, convergedMerged);
+  }
+  const noise = Float32Array.from(noiseSquares, (sum, i) => i % 4 === 3 ? 1 : Math.sqrt(sum / NOISE_PASSES));
+  return { noise, maxima, alphaVariation };
+}
+
+// 表示の尺度。基準の run は、記録があればそれを使い、無い(または新しい欄が無い)ものを撮影した値から決める。
+// 候補は基準の記録を使う。scale が null の欄は基準の撮影で埋める。
+function displayScalesOf(scene, scanImages, structure) {
+  const baselineScaleFile = path.join(RUNS, BASELINE_LABEL, scene.name, 'display-scales.json');
+  const exists = existsSync(baselineScaleFile);
+  if (RUN_LABEL !== BASELINE_LABEL && !exists) throw new Error(`${scene.name}: ${BASELINE_LABEL} display scales are missing`);
+  const scales = exists ? JSON.parse(readFileSync(baselineScaleFile, 'utf8')) : {
+    scan: { quantile: SCAN_DISPLAY_QUANTILE, scale: imageScale(scanImages.map(({ values }) => values), SCAN_DISPLAY_QUANTILE) },
+    structure: { quantile: STRUCTURE_DISPLAY_QUANTILE, scale: imageScale([structure], STRUCTURE_DISPLAY_QUANTILE) },
+    noise: { quantile: NOISE_DISPLAY_QUANTILE, scale: null },
+  };
+  if (scales.maxDeviation === undefined) {
+    if (RUN_LABEL !== BASELINE_LABEL) throw new Error(`${scene.name}: ${BASELINE_LABEL} display scales lack maxDeviation; recapture ${BASELINE_LABEL}`);
+    scales.maxDeviation = { quantile: NOISE_DISPLAY_QUANTILE, scale: null };
+  }
+  return scales;
+}
+
+function checkedScales(scene, scales) {
+  for (const { scale } of [scales.scan, scales.structure, scales.noise, scales.maxDeviation]) {
+    if (!Number.isFinite(scale) || scale <= 0) throw new Error(`${scene.name}: invalid ${BASELINE_LABEL} display scales`);
+  }
+}
+
+// 1パス(白色雑音なし、ブルーノイズ)の補正項を、seed 0 と ONE_PASS_CORRECTION_SEEDS の seed で撮って dir へ。
+// 終わると seed 0 で描き直した状態になる。
+async function captureOnePassCorrections(lab, dir) {
+  await lab.setWhiteNoisePass(null);
+  await lab.setTier(TIER);
+  await lab.setStageRange('all');
+  await lab.setUpsampleAlphaOne(false);
+  for (const k of [0, ...ONE_PASS_CORRECTION_SEEDS]) {
+    await lab.setSeed(seedOf(k));
+    await lab.render();
+    const name = k === 0 ? 'one-pass-correction.png' : `one-pass-correction-seed${k}.png`;
+    writeFileSync(path.join(dir, name), await lab.signedCorrectionPng({ width: WIDTH, height: HEIGHT, rgba: await lab.readFloat('correction', 4) }));
+    if (k === 0) writeFileSync(path.join(dir, 'one-pass-diffuse-clay.png'), await clayPng(lab));
+  }
+  await lab.setSeed(seedOf(0));
+  await lab.render();
+}
+
+// 収束した4帯の平均 mean から、収束平均・帯合計迂回の補正項とクレイを dir へ。
+async function captureConvergedCorrections(lab, dir, mean, bandSum) {
+  const correctionPng = async () => lab.signedCorrectionPng({ width: WIDTH, height: HEIGHT, rgba: await lab.readFloat('correction', 4) });
+  await mergedOf(lab, mean);
+  await lab.setUpsampleAlphaOne(true);
+  await lab.render();
+  writeFileSync(path.join(dir, `mean-${PASSES}-correction.png`), await correctionPng());
+  writeFileSync(path.join(dir, `mean-${PASSES}-diffuse-clay.png`), await clayPng(lab));
+  await lab.setTier({ ...TIER, bandCount: 1 });
+  await lab.render();
+  await lab.writePackedBands(0, bandSum);
+  await lab.setStageRange('chain');
+  await lab.setUpsampleAlphaOne(true);
+  await lab.render();
+  writeFileSync(path.join(dir, `bypass-mean-${PASSES}-correction.png`), await correctionPng());
+  writeFileSync(path.join(dir, `bypass-mean-${PASSES}-diffuse-clay.png`), await clayPng(lab));
+  await lab.setUpsampleAlphaOne(false);
+  await lab.setStageRange('all');
+}
+
+async function captureScene(lab, scene, dir, cache) {
+  baselineSceneOf(scene);
+  const sceneStartedAt = new Date().toISOString();
+  const sceneStarted = performance.now();
+  let occlusionBandSum = null;
+  if (OCCLUSION_INVARIANT && scene.hasOcclusionOnly !== false) {
+    await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 1, set: 'tuning', key: scene.name });
+    await lab.setUpsampleAlphaOne(false);
+    occlusionBandSum = await checkedBandSumInvariant(lab, scene, dir, '-occlusion');
+  }
+  await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 2, set: 'tuning', key: scene.name });
+  const exposure = await lab.exposureFactor();
+  await lab.setUpsampleAlphaOne(false);
+  const sumInvariant = await checkedBandSumInvariant(lab, scene, dir, '');
+  const invariantMergedOne = await lab.readFloat('merged-0', 4);
+  await lab.setWhiteNoisePass(null);
+  await lab.setSeed(seedOf(0));
+  await lab.render();
+  const bandOne = await lab.readFloat('band-sum', 4);
+  const mergedOne = await lab.readFloat('merged-0', 4);
+  const onePassBands = await readBands(lab);
+  const alphaResult = await alphaChecks(lab, scene, dir, mergedOne, invariantMergedOne);
+
+  const { hits: cacheHits, misses: cacheMisses } = await fillCache(lab, scene, cache);
+  const mean = cachedMean(cache, 0, PASSES);
+  for (const [index, packed] of mean.entries()) writeFloats(path.join(cache, `mean-${PASSES}-packed-${index}.f32`), packed);
+  const stdBands = stdBandsOfCache(cache, PASSES);
+  const full = await mergedOf(lab, mean);
+  const structure = rgbDifference(full.bandSum, full.merged);
+  const firstHalf = await mergedOf(lab, cachedMean(cache, 0, PASSES / 2));
+  const secondHalf = await mergedOf(lab, cachedMean(cache, PASSES / 2, PASSES));
+  const structureHalfDifference = rgbDifference(
+    rgbDifference(firstHalf.bandSum, firstHalf.merged),
+    rgbDifference(secondHalf.bandSum, secondHalf.merged));
+
+  const scanImages = [
+    { id: 'one-pass-band-sum', label: '1パス・4帯合計 (seed 0)', values: bandOne },
+    { id: 'one-pass-merged', label: '1パス・合流結果 (seed 0)', values: mergedOne },
+    { id: 'converged-band-sum', label: `${PASSES}パス・4帯合計`, values: full.bandSum },
+    { id: 'converged-merged', label: `${PASSES}パス・合流結果`, values: full.merged },
+  ];
+  const displayScales = displayScalesOf(scene, scanImages, structure);
+  const { noise, maxima, alphaVariation } = await measureNoise(lab, full.merged);
+  if (alphaVariation !== 0) throw new Error(`${scene.name}: A varied across one-pass seeds`);
+  const maxDeviation = rgbaOfScalar(maxima);
+  if (RUN_LABEL === BASELINE_LABEL) {
+    displayScales.noise.scale ??= imageScale([noise], NOISE_DISPLAY_QUANTILE, true);
+    displayScales.maxDeviation.scale ??= imageScale([maxDeviation], displayScales.maxDeviation.quantile, true);
+  }
+  checkedScales(scene, displayScales);
+
+  const bandScaleHere = RUN_LABEL === BASELINE_RUN
+    ? scaleOfBands(Array.from({ length: BAND_COUNT }, (_, band) => unpackedBand(mean, band))) : bandScaleOf(scene.name);
+  writeOnePassBands(RUN_LABEL, scene.name, onePassBands, bandScaleHere, bandOne);
+  writeFloats(path.join(dir, `structure-${PASSES}.rgba.f32`), structure);
+  writeFloats(path.join(dir, `structure-half-difference-${PASSES}.rgba.f32`), structureHalfDifference);
+  writeFloats(path.join(dir, `band-sum-${PASSES}.rgba.f32`), full.bandSum);
+  writeFloats(path.join(dir, `merged-${PASSES}.rgba.f32`), full.merged);
+  writeFloats(path.join(dir, `noise-rms-${PASSES}.rgba.f32`), noise);
+  writeFloats(path.join(dir, `max-deviation-${PASSES}.rgba.f32`), maxDeviation);
+  for (const image of scanImages) {
+    image.f32 = `scan-${image.id}.rgba.f32`;
+    image.png = `scan-${image.id}.signed.png`;
+    writeFloats(path.join(dir, image.f32), image.values);
+    writeFileSync(path.join(dir, image.png), signedPng(image.values, 4, displayScales.scan.scale));
+  }
+
+  await captureOnePassCorrections(lab, dir);
+  await captureConvergedCorrections(lab, dir, mean, full.bandSum);
+
+  const rois = Object.fromEntries(Object.entries(scene.rois).map(([name, rect]) => {
+    const structureRms = roiRms(structure, 4, rect);
+    const residualRms = roiRms(structureHalfDifference, 4, rect) / 2;
+    return [name, { rect, structureRms, residualRms,
+      residualToStructureRatio: residualRms / Math.max(structureRms, 1e-12),
+      noiseRms: roiRms(noise, 4, rect), signalRms: roiRms(full.bandSum, 4, rect),
+      maxDeviation: deviationStatsOf(noise, maxima, rect), bandStdRms: stdBands.map((band) => roiRms(band, 3, rect)) }];
+  }));
+  writeFileSync(path.join(dir, 'display-scales.json'), JSON.stringify(displayScales, null, 2));
+  writeFileSync(path.join(dir, `structure-${PASSES}.png`), signedPng(structure, 4, displayScales.structure.scale));
+  writeFileSync(path.join(dir, `structure-half-difference-${PASSES}.png`), signedPng(structureHalfDifference, 4, displayScales.structure.scale));
+  writeFileSync(path.join(dir, `noise-rms-${PASSES}.png`), magnitudePng(noise, displayScales.noise.scale));
+  writeFileSync(path.join(dir, `max-deviation-${PASSES}.png`), magnitudePng(maxDeviation, displayScales.maxDeviation.scale));
+  writeFileSync(path.join(dir, 'rois.png'), roisPng(full.bandSum, scene.rois, displayScales.scan.scale));
+
+  const outputs = [
+    'metrics.json', 'one-pass-a.f32', 'display-scales.json', `structure-${PASSES}.rgba.f32`,
+    `structure-half-difference-${PASSES}.rgba.f32`, `band-sum-${PASSES}.rgba.f32`, `merged-${PASSES}.rgba.f32`,
+    `noise-rms-${PASSES}.rgba.f32`, `max-deviation-${PASSES}.rgba.f32`, `structure-${PASSES}.png`,
+    `structure-half-difference-${PASSES}.png`, `noise-rms-${PASSES}.png`, `max-deviation-${PASSES}.png`, 'rois.png',
+    'one-pass-correction.png', ...ONE_PASS_CORRECTION_SEEDS.map((seed) => `one-pass-correction-seed${seed}.png`),
+    'one-pass-diffuse-clay.png', `mean-${PASSES}-correction.png`, `mean-${PASSES}-diffuse-clay.png`,
+    `bypass-mean-${PASSES}-correction.png`, `bypass-mean-${PASSES}-diffuse-clay.png`,
+    ...scanImages.flatMap((image) => [image.f32, image.png]),
+    sumInvariant.differenceMap, ...(occlusionBandSum === null ? [] : [occlusionBandSum.differenceMap]),
+  ];
+  if (existsSync(path.join(dir, 'rois-on-render.png'))) outputs.push('rois-on-render.png');
+  const result = {
+    scene: scene.name, run: RUN_LABEL, caseName: scene.caseName, shot: scene.shot,
+    scanSourceSignature: COMMON_SIGNATURE, sceneSourceSignature: sceneSourceSignatures.get(scene.name),
+    cacheKey: cacheKeys.get(scene.name), cache: { path: path.relative(OUTPUT, cache).replaceAll('\\', '/'),
+      hits: cacheHits, misses: cacheMisses, totalChunks: Math.ceil(PASSES / CHUNK_PASSES) },
+    captureCommand: `node tools/render-lab-screen-space-chain-metrics.mjs --run=${RUN_LABEL} --scene=${scene.name} --passes=${PASSES}`
+      + (BASELINE_LABEL === BASELINE_RUN ? '' : ` --baseline=${BASELINE_LABEL}`)
+      + (argumentOf('band-scale') === undefined ? '' : ` --band-scale=${bandScale}`)
+      + (argumentOf('factors') === undefined ? '' : ` --factors=${argumentOf('factors')}`),
+    captureStartedAt: sceneStartedAt, captureWallTimeMs: performance.now() - sceneStarted,
+    conditions: captureConditions(), exposure, blueNoiseSeed: seedOf(0),
+    whiteNoise: { onePassInvariantPass: INVARIANT_PASS, convergedPassIndices: [0, PASSES - 1],
+      noisePassIndices: [NOISE_FIRST_PASS, NOISE_FIRST_PASS + NOISE_PASSES - 1] },
+    onePassBandSum: sumInvariant, occlusionOnlyBandSum: occlusionBandSum,
+    onePassInvariantAlphaMaximumDifference: alphaResult.invariantAlphaMaximumDifference,
+    onePassAlphaMaximumDifference: alphaResult.alphaMaximumDifference,
+    onePassAlphaDifferentPixels: alphaResult.alphaDifferentPixels,
+    onePassAlphaMeanAbsoluteDifference: alphaResult.alphaMeanAbsoluteDifference,
+    alphaChangeFromRgb: alphaResult.alphaChangeFromRgb, alphaVariationAcrossNoisePasses: alphaVariation,
+    displayScales, rois, scanImages: scanImages.map(({ id, label, png, f32 }) => ({ id, label, png, f32 })), outputs,
+  };
+  writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify(result, null, 2));
+  runRecord.scenes[scene.name] = result;
+  recordSnapshot();
+  writeConvergedStdBands(RUN_LABEL, scene.name);
+  console.log(`${scene.name}: ${cacheHits.length} cache hits, ${cacheMisses.length} misses; ${result.captureWallTimeMs.toFixed(0)} ms`);
+}
+
+// --cache-only: 記録済みの run のキャッシュの不足を埋める。
+async function fillCacheOnly(lab, scene, cache) {
+  await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 2, set: 'tuning', key: scene.name });
+  await lab.setUpsampleAlphaOne(false);
+  await lab.setTier(TIER);
+  await lab.setWhiteNoisePass(null);
+  await lab.setSeed(seedOf(0));
+  await lab.render();
+  const { hits, misses } = await fillCache(lab, scene, cache);
+  console.log(`${scene.name}: ${hits.length} cache hits, ${misses.length} misses`);
+}
+
 for (const scene of scenes) {
   const dir = path.join(RUN_DIR, scene.name);
   const cache = cacheDirOf(scene);
-  mkdirSync(dir, { recursive: true });
+  if (!CACHE_ONLY) mkdirSync(dir, { recursive: true });
   mkdirSync(cache, { recursive: true });
-  const baselineScene = baselineSceneOf(scene);
-  const sceneStartedAt = new Date().toISOString();
-  const sceneStarted = performance.now();
   let completed = false;
   try {
     await withLab(async (lab) => {
-      let occlusionBandSum = null;
-      if (OCCLUSION_INVARIANT && scene.hasOcclusionOnly !== false) {
-        await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 1, set: 'tuning', key: scene.name });
-        await lab.setUpsampleAlphaOne(false);
-        occlusionBandSum = await checkedBandSumInvariant(lab, scene, dir, '-occlusion');
-      }
-      await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 2, set: 'tuning', key: scene.name });
-      const exposure = await lab.exposureFactor();
-      await lab.setUpsampleAlphaOne(false);
-      const sumInvariant = await checkedBandSumInvariant(lab, scene, dir, '');
-      const invariantMergedOne = await lab.readFloat('merged-0', 4);
-      await lab.setWhiteNoisePass(null);
-      await lab.setSeed(seedOf(0));
-      await lab.render();
-      const bandOne = await lab.readFloat('band-sum', 4);
-      const mergedOne = await lab.readFloat('merged-0', 4);
-
-      const alpha = alphaMap(mergedOne);
-      const invariantAlpha = alphaMap(invariantMergedOne);
-      let invariantAlphaMaximumDifference = 0;
-      for (let p = 0; p < alpha.length; p++) {
-        invariantAlphaMaximumDifference = Math.max(invariantAlphaMaximumDifference, Math.abs(invariantAlpha[p] - alpha[p]));
-      }
-      if (invariantAlphaMaximumDifference !== 0) {
-        throw new Error(`${scene.name}: A changed between invariant and display seeds: ${invariantAlphaMaximumDifference}`);
-      }
-      const baselineFile = RUN_LABEL === BASELINE_LABEL
-        ? path.join(dir, 'one-pass-a.f32')
-        : path.join(RUNS, BASELINE_LABEL, scene.name, 'one-pass-a.f32');
-      if (RUN_LABEL !== BASELINE_LABEL && !existsSync(baselineFile)) {
-        throw new Error(`${scene.name}: ${BASELINE_LABEL} one-pass A file is missing`);
-      }
-      if (RUN_LABEL === BASELINE_LABEL && !existsSync(baselineFile)) writeFloats(baselineFile, alpha);
-      const baselineAlpha = readFloats(baselineFile);
-      if (baselineAlpha.length !== alpha.length) throw new Error(`${scene.name}: A baseline size changed`);
-      let alphaMaximumDifference = 0, alphaDifferentPixels = 0, alphaDifferenceSum = 0;
-      for (let i = 0; i < alpha.length; i++) {
-        const delta = Math.abs(alpha[i] - baselineAlpha[i]);
-        alphaMaximumDifference = Math.max(alphaMaximumDifference, delta);
-        alphaDifferenceSum += delta;
-        if (delta !== 0) alphaDifferentPixels++;
-      }
-      if (alphaMaximumDifference > 0.001) {
-        throw new Error(`${scene.name}: one-pass A changed: max ${alphaMaximumDifference}, ${alphaDifferentPixels} pixels`);
-      }
-      writeFloats(path.join(dir, 'one-pass-a.f32'), alpha);
-
-      const zeros = Array.from({ length: 3 }, () => new Float32Array(PIXELS * 4));
-      const zeroRgb = await mergedOf(lab, zeros);
-      let alphaChangeFromRgb = 0;
-      for (let p = 0; p < PIXELS; p++) {
-        alphaChangeFromRgb = Math.max(alphaChangeFromRgb, Math.abs(zeroRgb.merged[p * 4 + 3] - alpha[p]));
-      }
-      if (alphaChangeFromRgb !== 0) throw new Error(`${scene.name}: changing only band RGB changed A by ${alphaChangeFromRgb}`);
-
-      const cacheHits = [], cacheMisses = [];
-      for (let first = 0; first < PASSES; first += CHUNK_PASSES) {
-        const files = [0, 1, 2].map((texture) => chunkFile(cache, first, texture));
-        if (files.every((file) => existsSync(file) && readFileSync(file).byteLength === PIXELS * 4 * 4)) {
-          cacheHits.push(first);
-          continue;
-        }
-        cacheMisses.push(first);
-        await lab.accumulateWhitePasses(first, CHUNK_PASSES);
-        const taken = await lab.takePassSums(false);
-        for (let texture = 0; texture < 3; texture++) {
-          const even = taken.sums[0][texture], odd = taken.sums[1][texture];
-          const sum = Float32Array.from(even, (value, i) => value + odd[i]);
-          writeFloats(files[texture], sum);
-        }
-        console.log(`${scene.name}: cached scan passes ${first}–${first + CHUNK_PASSES - 1}`);
-      }
-      const mean = cachedMean(cache, 0, PASSES);
-      for (const [index, packed] of mean.entries()) writeFloats(path.join(cache, `mean-${PASSES}-packed-${index}.f32`), packed);
-      const full = await mergedOf(lab, mean);
-      const structure = rgbDifference(full.bandSum, full.merged);
-      const firstHalf = await mergedOf(lab, cachedMean(cache, 0, PASSES / 2));
-      const secondHalf = await mergedOf(lab, cachedMean(cache, PASSES / 2, PASSES));
-      const structureHalfDifference = rgbDifference(
-        rgbDifference(firstHalf.bandSum, firstHalf.merged),
-        rgbDifference(secondHalf.bandSum, secondHalf.merged));
-
-      const scanImages = [
-        { id: 'one-pass-band-sum', label: '1\u30d1\u30b9\u30fb4\u5e2f\u5408\u8a08 (seed 0)', values: bandOne },
-        { id: 'one-pass-merged', label: '1\u30d1\u30b9\u30fb\u5408\u6d41\u7d50\u679c (seed 0)', values: mergedOne },
-        { id: 'converged-band-sum', label: `${PASSES}\u30d1\u30b9\u30fb4\u5e2f\u5408\u8a08`, values: full.bandSum },
-        { id: 'converged-merged', label: `${PASSES}\u30d1\u30b9\u30fb\u5408\u6d41\u7d50\u679c`, values: full.merged },
-      ];
-      const baselineScaleFile = path.join(RUNS, BASELINE_LABEL, scene.name, 'display-scales.json');
-      let displayScales;
-      if (RUN_LABEL === BASELINE_LABEL) {
-        displayScales = existsSync(baselineScaleFile) ? JSON.parse(readFileSync(baselineScaleFile, 'utf8')) : {
-          scan: { quantile: SCAN_DISPLAY_QUANTILE, scale: imageScale(scanImages.map(({ values }) => values), SCAN_DISPLAY_QUANTILE) },
-          structure: { quantile: STRUCTURE_DISPLAY_QUANTILE, scale: imageScale([structure], STRUCTURE_DISPLAY_QUANTILE) },
-          noise: { quantile: NOISE_DISPLAY_QUANTILE, scale: null },
-        };
-      } else {
-        if (!existsSync(baselineScaleFile)) throw new Error(`${scene.name}: ${BASELINE_LABEL} display scales are missing`);
-        displayScales = JSON.parse(readFileSync(baselineScaleFile, 'utf8'));
-      }
-
-      const noiseSquares = new Float64Array(PIXELS * 4);
-      let onePassAlphaMaximumDifference = 0;
-      await lab.setStageRange('all');
-      for (let pass = NOISE_FIRST_PASS; pass < NOISE_FIRST_PASS + NOISE_PASSES; pass++) {
-        await lab.setWhiteNoisePass(pass);
-        await lab.render();
-        const one = await lab.readFloat('merged-0', 4);
-        for (let i = 0; i < one.length; i += 4) {
-          for (let c = 0; c < 3; c++) noiseSquares[i + c] += (one[i + c] - full.merged[i + c]) ** 2;
-          onePassAlphaMaximumDifference = Math.max(onePassAlphaMaximumDifference, Math.abs(one[i + 3] - full.merged[i + 3]));
-        }
-      }
-      const noise = Float32Array.from(noiseSquares, (sum, i) => i % 4 === 3 ? 1 : Math.sqrt(sum / NOISE_PASSES));
-      if (onePassAlphaMaximumDifference !== 0) throw new Error(`${scene.name}: A varied across one-pass seeds`);
-      if (RUN_LABEL === BASELINE_LABEL && displayScales.noise.scale === null) {
-        displayScales.noise.scale = imageScale([noise], NOISE_DISPLAY_QUANTILE, true);
-      }
-      if (!Number.isFinite(displayScales.scan.scale) || !Number.isFinite(displayScales.structure.scale)
-        || !Number.isFinite(displayScales.noise.scale) || displayScales.scan.scale <= 0
-        || displayScales.structure.scale <= 0 || displayScales.noise.scale <= 0) {
-        throw new Error(`${scene.name}: invalid ${BASELINE_LABEL} display scales`);
-      }
-
-      writeFloats(path.join(dir, `structure-${PASSES}.rgba.f32`), structure);
-      writeFloats(path.join(dir, `structure-half-difference-${PASSES}.rgba.f32`), structureHalfDifference);
-      writeFloats(path.join(dir, `band-sum-${PASSES}.rgba.f32`), full.bandSum);
-      writeFloats(path.join(dir, `merged-${PASSES}.rgba.f32`), full.merged);
-      writeFloats(path.join(dir, `noise-rms-${PASSES}.rgba.f32`), noise);
-      for (const image of scanImages) {
-        image.f32 = `scan-${image.id}.rgba.f32`;
-        image.png = `scan-${image.id}.signed.png`;
-        writeFloats(path.join(dir, image.f32), image.values);
-        writeFileSync(path.join(dir, image.png), signedPng(image.values, 4, displayScales.scan.scale));
-      }
-
-      await lab.setWhiteNoisePass(null);
-      await lab.setSeed(seedOf(0));
-      await lab.setTier(TIER);
-      await lab.setStageRange('all');
-      await lab.setUpsampleAlphaOne(false);
-      await lab.render();
-      const oneCorrection = await lab.readFloat('correction', 4);
-      writeFileSync(path.join(dir, 'one-pass-correction.png'), await lab.signedCorrectionPng(
-        { width: WIDTH, height: HEIGHT, rgba: oneCorrection }));
-      writeFileSync(path.join(dir, 'one-pass-diffuse-clay.png'), await clayPng(lab));
-      await mergedOf(lab, mean);
-      await lab.setUpsampleAlphaOne(true);
-      await lab.render();
-      const convergedCorrection = await lab.readFloat('correction', 4);
-      writeFileSync(path.join(dir, `mean-${PASSES}-correction.png`), await lab.signedCorrectionPng(
-        { width: WIDTH, height: HEIGHT, rgba: convergedCorrection }));
-      writeFileSync(path.join(dir, `mean-${PASSES}-diffuse-clay.png`), await clayPng(lab));
-      await lab.setTier({ ...TIER, bandCount: 1 });
-      await lab.render();
-      await lab.writePackedBands(0, full.bandSum);
-      await lab.setStageRange('chain');
-      await lab.setUpsampleAlphaOne(true);
-      await lab.render();
-      const bypassCorrection = await lab.readFloat('correction', 4);
-      writeFileSync(path.join(dir, `bypass-mean-${PASSES}-correction.png`), await lab.signedCorrectionPng(
-        { width: WIDTH, height: HEIGHT, rgba: bypassCorrection }));
-      writeFileSync(path.join(dir, `bypass-mean-${PASSES}-diffuse-clay.png`), await clayPng(lab));
-      await lab.setUpsampleAlphaOne(false);
-      await lab.setStageRange('all');
-
-      const rois = Object.fromEntries(Object.entries(scene.rois).map(([name, rect]) => {
-        const structureRms = rms(structure, rect);
-        const residualRms = rms(structureHalfDifference, rect) / 2;
-        return [name, { rect, structureRms, residualRms,
-          residualToStructureRatio: residualRms / Math.max(structureRms, 1e-12),
-          noiseRms: rms(noise, rect), signalRms: rms(full.bandSum, rect) }];
-      }));
-      writeFileSync(path.join(dir, 'display-scales.json'), JSON.stringify(displayScales, null, 2));
-      writeFileSync(path.join(dir, `structure-${PASSES}.png`), signedPng(structure, 4, displayScales.structure.scale));
-      writeFileSync(path.join(dir, `structure-half-difference-${PASSES}.png`),
-        signedPng(structureHalfDifference, 4, displayScales.structure.scale));
-      writeFileSync(path.join(dir, `noise-rms-${PASSES}.png`), magnitudePng(noise, displayScales.noise.scale));
-      writeFileSync(path.join(dir, 'rois.png'), roisPng(full.bandSum, scene.rois, displayScales.scan.scale));
-
-      const outputs = [
-        'metrics.json', 'one-pass-a.f32', 'display-scales.json', `structure-${PASSES}.rgba.f32`,
-        `structure-half-difference-${PASSES}.rgba.f32`, `band-sum-${PASSES}.rgba.f32`, `merged-${PASSES}.rgba.f32`,
-        `noise-rms-${PASSES}.rgba.f32`, `structure-${PASSES}.png`, `structure-half-difference-${PASSES}.png`,
-        `noise-rms-${PASSES}.png`, 'rois.png', 'one-pass-correction.png', 'one-pass-diffuse-clay.png',
-        `mean-${PASSES}-correction.png`, `mean-${PASSES}-diffuse-clay.png`,
-        `bypass-mean-${PASSES}-correction.png`, `bypass-mean-${PASSES}-diffuse-clay.png`,
-        ...scanImages.flatMap((image) => [image.f32, image.png]),
-        sumInvariant.differenceMap, ...(occlusionBandSum === null ? [] : [occlusionBandSum.differenceMap]),
-      ];
-      if (existsSync(path.join(dir, 'rois-on-render.png'))) outputs.push('rois-on-render.png');
-      const result = {
-        scene: scene.name, run: RUN_LABEL, caseName: scene.caseName, shot: scene.shot,
-        scanSourceSignature: COMMON_SIGNATURE, sceneSourceSignature: sceneSourceSignatures.get(scene.name),
-        cacheKey: cacheKeys.get(scene.name), cache: { path: path.relative(OUTPUT, cache).replaceAll('\\', '/'),
-          hits: cacheHits, misses: cacheMisses, totalChunks: Math.ceil(PASSES / CHUNK_PASSES) },
-        captureCommand: `node tools/render-lab-screen-space-chain-metrics.mjs --run=${RUN_LABEL} --scene=${scene.name} --passes=${PASSES}`
-          + (BASELINE_LABEL === 'before-a' ? '' : ` --baseline=${BASELINE_LABEL}`),
-        captureStartedAt: sceneStartedAt, captureWallTimeMs: performance.now() - sceneStarted,
-        conditions: captureConditions(), exposure, blueNoiseSeed: seedOf(0),
-        whiteNoise: { onePassInvariantPass: INVARIANT_PASS, convergedPassIndices: [0, PASSES - 1],
-          noisePassIndices: [NOISE_FIRST_PASS, NOISE_FIRST_PASS + NOISE_PASSES - 1] },
-        onePassBandSum: sumInvariant, occlusionOnlyBandSum: occlusionBandSum,
-        onePassInvariantAlphaMaximumDifference: invariantAlphaMaximumDifference,
-        onePassAlphaMaximumDifference: alphaMaximumDifference,
-        onePassAlphaDifferentPixels: alphaDifferentPixels,
-        onePassAlphaMeanAbsoluteDifference: alphaDifferenceSum / alpha.length,
-        alphaChangeFromRgb, alphaVariationAcrossNoisePasses: onePassAlphaMaximumDifference,
-        displayScales, rois, scanImages: scanImages.map(({ id, label, png, f32 }) => ({ id, label, png, f32 })), outputs,
-      };
-      writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify(result, null, 2));
-      runRecord.scenes[scene.name] = result;
-      recordSnapshot();
+      if (CACHE_ONLY) await fillCacheOnly(lab, scene, cache);
+      else await captureScene(lab, scene, dir, cache);
       completed = true;
-      console.log(`${scene.name}: ${cacheHits.length} cache hits, ${cacheMisses.length} misses; ${result.captureWallTimeMs.toFixed(0)} ms`);
     });
   } catch (error) {
     if (error?.code !== 'EPERM' || !completed) throw error;
     console.warn(`${scene.name}: outputs and record saved; Chrome profile cleanup returned EPERM`);
   }
+  if (CACHE_ONLY && writeConvergedStdBands(RUN_LABEL, scene.name) === null) console.warn(`${scene.name}: standard deviation bands were not written`);
 }
 
-runRecord.lastInvocation = {
-  command: `node tools/render-lab-screen-space-chain-metrics.mjs ${process.argv.slice(2).join(' ')}`,
-  startedAt: invocationStartedAt, finishedAt: new Date().toISOString(),
-  wallTimeMs: performance.now() - invocationStart, scenes: scenes.map(({ name }) => name),
-};
-recordSnapshot();
-writeIndex();
-writeLandingIndex();
+if (!CACHE_ONLY) {
+  runRecord.lastInvocation = {
+    command: `node tools/render-lab-screen-space-chain-metrics.mjs ${process.argv.slice(2).join(' ')}`,
+    startedAt: invocationStartedAt, finishedAt: new Date().toISOString(),
+    wallTimeMs: performance.now() - invocationStart, scenes: scenes.map(({ name }) => name),
+  };
+  recordSnapshot();
+  writeIndexes();
+}

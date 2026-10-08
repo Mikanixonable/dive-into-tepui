@@ -2,6 +2,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { encodeRgbPng } from './png.mjs';
+import { factorsLabelOf } from './screen-space-chain-factors.mjs';
 import { HEIGHT, shotsDir, WIDTH } from './screen-space-lab.mjs';
 
 export const OUTPUT = path.join(shotsDir, 'ssd-8-15-chain-metrics');
@@ -30,6 +31,9 @@ export function metricsOf(run, scene) {
 
 export const recordOf = (run) => JSON.parse(readFileSync(path.join(RUNS, run, 'record.json'), 'utf8'));
 
+// run の因子の組の読める表示(因子を使わない run は「なし」)。
+export const factorsLabelOfRun = (run) => factorsLabelOf(recordOf(run).conditions.tier);
+
 // 画素ごとに stride 成分の並び values の先頭 3 成分を、中間灰を 0 とする線形表示 0.5 + 0.5 × 値 / scale の RGB8 へ。
 export function signedRgb(values, stride, scale) {
   const pixels = values.length / stride;
@@ -43,6 +47,16 @@ export function signedRgb(values, stride, scale) {
 // 走査解像度の画素ごとに stride 成分の並びを signedRgb の写像で描いた PNG。
 export const signedPng = (values, stride, scale) =>
   encodeRgbPng(SCAN_WIDTH, SCAN_HEIGHT, signedRgb(values, stride, scale));
+
+// 非負の値 values の先頭 3 成分を、0 を黒、scale を白とする線形表示の PNG(走査解像度)。
+export function unsignedPng(values, stride, scale) {
+  const pixels = values.length / stride;
+  const rgb = new Uint8Array(pixels * 3);
+  for (let p = 0; p < pixels; p++) for (let c = 0; c < 3; c++) {
+    rgb[p * 3 + c] = Math.round(255 * Math.max(0, Math.min(1, values[p * stride + c] / scale)));
+  }
+  return encodeRgbPng(SCAN_WIDTH, SCAN_HEIGHT, rgb);
+}
 
 export function escapeHtml(value) {
   return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
