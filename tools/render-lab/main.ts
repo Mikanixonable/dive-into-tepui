@@ -87,7 +87,7 @@ declare global {
       setUpsampleAlphaOne: (enabled: boolean) => void;
       setScanWhiteNoisePass: (pass: number | null) => void;
       accumulateWhitePasses: (first: number, count: number) => Promise<void>;
-      takePassSums: () => Promise<{
+      takePassSums: (includeSquares?: boolean) => Promise<{
         readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
       }>;
       writePackedBands: (index: number, rgba: Float32Array) => void;
@@ -376,7 +376,7 @@ async function init(): Promise<void> {
     setUpsampleAlphaOne: (enabled) => view.setUpsampleAlphaOne(enabled),
     setScanWhiteNoisePass: (pass) => view.setScanWhiteNoisePass(pass),
     accumulateWhitePasses: (first, count) => view.accumulateWhitePasses(first, count),
-    takePassSums: () => view.takePassSums(),
+    takePassSums: (includeSquares) => view.takePassSums(includeSquares),
     writePackedBands: (index, rgba) => view.writePackedBands(index, rgba),
     readFloat: (name) => view.readFloat(name),
     composite: (hdr) => view.composite(hdr),
