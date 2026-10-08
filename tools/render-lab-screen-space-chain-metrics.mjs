@@ -12,7 +12,10 @@ const CHUNK_PASSES = 256;
 const NOISE_PASSES = 32;
 const NOISE_FIRST_PASS = 5000;
 const INVARIANT_PASS = 7000;
-const TIER = { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 0.75 };
+const bandScaleArgument = process.argv.find((arg) => arg.startsWith('--band-scale='));
+const bandScale = bandScaleArgument === undefined ? 0.75 : Number(bandScaleArgument.slice('--band-scale='.length));
+if (!Number.isFinite(bandScale) || bandScale < 0) throw new Error('--band-scale must be finite and nonnegative');
+const TIER = { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale };
 const SCAN_DISPLAY_QUANTILE = 0.999;
 const STRUCTURE_DISPLAY_QUANTILE = 0.999;
 const NOISE_DISPLAY_QUANTILE = 0.995;
@@ -353,7 +356,10 @@ function baselineSceneOf(scene) {
   const baselineRecordPath = path.join(RUNS, BASELINE_LABEL, 'record.json');
   if (!existsSync(baselineRecordPath)) throw new Error(`${BASELINE_LABEL} baseline is required before run ${RUN_LABEL}`);
   const baselineRecord = JSON.parse(readFileSync(baselineRecordPath, 'utf8'));
-  if (JSON.stringify(baselineRecord.conditions) !== JSON.stringify(captureConditions())) {
+  const baselineConditions = structuredClone(baselineRecord.conditions);
+  const runConditions = captureConditions();
+  baselineConditions.tier.bandScale = runConditions.tier.bandScale;
+  if (JSON.stringify(baselineConditions) !== JSON.stringify(runConditions)) {
     throw new Error(`${BASELINE_LABEL} baseline conditions do not match run ${RUN_LABEL}`);
   }
   const baselineScene = baselineRecord.scenes?.[scene.name];
