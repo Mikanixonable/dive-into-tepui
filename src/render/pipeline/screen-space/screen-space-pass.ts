@@ -103,6 +103,8 @@ export class ScreenSpacePass {
   // QuadMesh は固定直交カメラで描かれるため、実カメラの射影行列とその逆は毎フレーム自前で書き込む。
   private readonly projection: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly projectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
+  // render-lab の参照撮影で、最後の拡大の不確かさ入力だけを A = 1 に固定する。
+  private readonly upsampleAlphaOne: FloatUniform = uniform(0);
   // 走査と帯の段。
   private tier: ScanTier;
   private readonly sliceCount = uniform(1, 'int');
@@ -150,7 +152,9 @@ export class ScreenSpacePass {
     const weight = new SurfaceWeight(gbuffer, this.projection, this.projectionInverse, this.fullSize);
     this.surfaces = new ScreenSpaceInputPyramid(gbuffer, this.projectionInverse, this.fullSize, this.scanSize);
     this.bandPyramid = new BandPyramid(this.surfaces, weight, this.fullSize, this.scanSize);
-    this.reconstruction = new CorrectionReconstruction(weight, this.surfaces, this.fullSize, this.scanSize, this.projection);
+    this.reconstruction = new CorrectionReconstruction(
+      weight, this.surfaces, this.fullSize, this.scanSize, this.projection, this.upsampleAlphaOne,
+    );
     this.qReconstruction = new QReconstruction(weight, this.surfaces, this.fullSize, this.scanSize);
     this.occlusionSurfaceStage = this.surfaces.scanStageOf(null);
     this.indirectSurfaceStage = this.surfaces.scanStageOf(
@@ -201,6 +205,11 @@ export class ScreenSpacePass {
   // (DiffuseCorrection.bandTarget の段 0)に置かれた帯の値を読む。
   public setStageRange(range: ScreenSpaceStageRange): void {
     this.stageRange = range;
+  }
+
+  // render-lab 専用。通常描画では false に戻して使う。
+  public setUpsampleAlphaOne(enabled: boolean): void {
+    this.upsampleAlphaOne.value = enabled ? 1 : 0;
   }
 
   // 比較用の再構成を選ぶ。null は通常の本番経路へ戻す。

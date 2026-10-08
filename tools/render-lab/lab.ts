@@ -547,6 +547,11 @@ export class LabView {
     this.pipeline.screenSpace.setStageRange(range);
   }
 
+  // render-lab の参照撮影で、最後の拡大の A だけを 1 に固定する。通常経路へ戻すときは false を渡す。
+  public setUpsampleAlphaOne(enabled: boolean): void {
+    this.pipeline.screenSpace.setUpsampleAlphaOne(enabled);
+  }
+
   // 次に描くフレームから、近傍拡散補正の走査のずれを、pass が null ならブルーノイズから、整数ならパスの番号 pass の
   // ホワイトノイズから引く。
   public setScanWhiteNoisePass(pass: number | null): void {

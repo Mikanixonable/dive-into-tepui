@@ -234,6 +234,7 @@ function labOf(devTools) {
     setSeed: ([x, y]) => call(`setScanSeed(${x}, ${y})`),
     // 近傍拡散補正の段の範囲 range('all'・'scan'・'chain')だけを描く。'chain' は帯を詰めた描画先の値から鎖を描く。
     setStageRange: (range) => call(`setScanStageRange(${JSON.stringify(range)})`),
+    setUpsampleAlphaOne: (enabled) => call(`setUpsampleAlphaOne(${JSON.stringify(enabled)})`),
     // 直前のフレームの入力のまま、走査だけをホワイトノイズのパス first〜first + count − 1 で描き直し、帯を詰めた
     // テクスチャを偶数番目と奇数番目のパスに分けてページの GPU の和へ足す。和は takePassSums で受け取る。
     accumulateWhitePasses: (first, count) => call(`accumulateWhitePasses(${first}, ${count})`),
@@ -404,6 +405,23 @@ function labOf(devTools) {
       const out = await receiveFloats(devTools, 'window.__ssdFloat', width * height * channels);
       await devTools.evaluate('delete window.__ssdFloat');
       return out;
+    },
+    async signedCorrectionPng(image) {
+      await sendArray(devTools, 'window.__ssdCorrectionImage', image.rgba);
+      const dataUrl = await devTools.evaluate(`window.renderLab.signedCorrectionPng({
+        width: ${image.width}, height: ${image.height}, rgba: window.__ssdCorrectionImage })`);
+      await devTools.evaluate('delete window.__ssdCorrectionImage');
+      return pngOf(dataUrl);
+    },
+    async signedCorrectionDisplay(image, exposure) {
+      await sendArray(devTools, 'window.__ssdCorrectionImage', image.rgba);
+      const [width, height] = await devTools.evaluate(`(window.__ssdDisplay = window.renderLab.signedCorrectionDisplay({
+        width: ${image.width}, height: ${image.height}, rgba: window.__ssdCorrectionImage }, ${exposure}),
+        [window.__ssdDisplay.width, window.__ssdDisplay.height])`);
+      const rgba = await receiveFloats(devTools, 'window.__ssdDisplay.rgba', width * height * 4);
+      await devTools.evaluate('delete window.__ssdCorrectionImage');
+      await devTools.evaluate('delete window.__ssdDisplay');
+      return { width, height, rgba };
     },
     // 直前のフレームの中間ターゲット name の寸法 [width, height]。
     floatSizeOf: (name) => devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})
