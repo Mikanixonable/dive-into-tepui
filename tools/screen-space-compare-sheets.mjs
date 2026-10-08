@@ -4,8 +4,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { decodePng, encodeRgbPng } from './png.mjs';
 import { BAND_COUNT, ZOOMS } from './screen-space-chain-bands.mjs';
-import { imageFileOf, KINDS } from './screen-space-compare-kinds.mjs';
-import { sceneDirOf } from './screen-space-chain-runs.mjs';
+import { BAND_SERIES, imageFileOf, KINDS } from './screen-space-compare-kinds.mjs';
+import { factorsLabelOfRun, sceneDirOf } from './screen-space-chain-runs.mjs';
 
 const CELL_WIDTH = 480, CELL_HEIGHT = 270, GAP = 4;
 
@@ -56,14 +56,14 @@ export function writeSheets(scene, runs, outDir) {
       return file === null ? null : cellOf(path.join(sceneDirOf(run, scene), file));
     }));
     writeFileSync(path.join(outDir, `${name}.png`), sheetPng(cells));
-    sheets.push({ name, file: `${name}.png`, columns, rows: rowLabels });
+    sheets.push({ name, file: `${name}.png`, columns, columnLabels: columns.map(factorsLabelOfRun), rows: rowLabels });
   };
   const bandRows = Array.from({ length: BAND_COUNT }, (_, band) => `帯${band}`);
-  for (const prefix of ['converged', 'one-pass']) {
-    const kinds = KINDS.filter(({ id }) => id.startsWith(`${prefix}-band-`));
+  for (const { prefix, sheet } of BAND_SERIES) {
+    const kinds = KINDS.filter(({ series }) => series === prefix);
     for (const zoom of ZOOMS) {
       const columns = runs.filter((run) => imageFileOf(kinds[0], run, scene, zoom) !== null);
-      add(`${prefix}-bands.x${zoom}`, bandRows, columns, (run, band) => imageFileOf(kinds[band], run, scene, zoom));
+      add(`${sheet}.x${zoom}`, bandRows, columns, (run, band) => imageFileOf(kinds[band], run, scene, zoom));
     }
   }
   for (const kind of KINDS.filter(({ zoomable }) => !zoomable)) {

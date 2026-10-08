@@ -47,14 +47,14 @@ function render() {
   buttons('scenes', data.scenes.map((s, i) => [s.name, (i + 1) + ' ' + s.name]), (k) => k === state.scene, (k) => { state.scene = k; render(); });
   buttons('kinds', data.kinds.map((k) => [k.id, k.group + ' / ' + k.label]), (k) => k === state.kind, (k) => { state.kind = k; render(); },
     (k) => runs().some((run) => sceneOf().files[k]?.[run]));
-  buttons('runs', runs().map((r) => [r, r]), (k) => k === state.run, (k) => { state.run = k; render(); }, (k) => fileOf(k) !== undefined);
+  buttons('runs', runs().map((r) => [r, r + ' [' + data.labels[r] + ']']), (k) => k === state.run, (k) => { state.run = k; render(); }, (k) => fileOf(k) !== undefined);
   buttons('zooms', [[1, '×1'], [4, '×4']], (k) => k === state.zoom, (k) => { state.zoom = k; render(); }, () => kindOf().zoomable);
   const file = fileOf(state.run);
   image.hidden = file === undefined;
   if (file !== undefined) image.src = file;
   image.dataset.resolution = kindOf().resolution;
   caption.textContent = file === undefined ? '(この候補にこの画像は無い)'
-    : state.scene + ' / ' + kindOf().label + ' / ' + state.run + (kindOf().zoomable ? ' / ×' + state.zoom : '') + ' / ' + file;
+    : state.scene + ' / ' + kindOf().label + ' / ' + state.run + ' [' + data.labels[state.run] + ']' + (kindOf().zoomable ? ' / ×' + state.zoom : '') + ' / ' + file;
   for (const section of document.querySelectorAll('section[data-scene]')) section.hidden = section.dataset.scene !== state.scene;
 }
 function step(list, current, delta) { return list[(list.indexOf(current) + delta + list.length) % list.length]; }
@@ -90,9 +90,10 @@ function conditionsHtml(conditions) {
 }
 
 // scenes は { name, runs, files(画像の種類 id → run → [x1 のパス, x4 のパス])、conditions, roiTables } の並び。
-// パスはページからの相対。
-export function pageHtml(scenes) {
+// パスはページからの相対。labels は run → 因子の組の表示。
+export function pageHtml(scenes, labels) {
   const data = {
+    labels,
     scenes: scenes.map(({ name, runs, files }) => ({ name, runs, files })),
     kinds: KINDS.map(({ id, group, label, resolution, zoomable }) => ({ id, group, label, resolution: resolution === FULL ? 'full' : 'scan', zoomable })),
   };

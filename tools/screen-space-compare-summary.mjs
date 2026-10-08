@@ -1,9 +1,10 @@
 // 候補比較の数値の要約(markdown)。ケースごとに、条件・ROI・帯の大きさ・帯和の不変条件・A の検査値の表を並べる。
+import { factorsLabelOfRun } from './screen-space-chain-runs.mjs';
 import { table } from './screen-space-lab.mjs';
 
 // scenes は { name, conditions, roiTables, bandTables, invariantTables, alphaTable } の並び。
 export function summaryMarkdown(scenes, runs) {
-  const lines = ['# 8-15 候補比較の要約', '', `候補: ${runs.join(', ')}`, ''];
+  const lines = ['# 8-15 候補比較の要約', '', '候補:', ...runs.map((run) => `- ${run}: ${factorsLabelOfRun(run)}`), ''];
   const section = ({ title, header, rows }) => [`#### ${title}`, '', ...table(header, rows), ''];
   for (const scene of scenes) {
     lines.push(`## ${scene.name}`, '', '### 条件', '', ...table(['条件', '値'], scene.conditions.fixed), '',
