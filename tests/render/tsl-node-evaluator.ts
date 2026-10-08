@@ -103,6 +103,7 @@ function evaluateMath(node: ShaderNode, evaluate: Evaluate): ShaderValue {
     case 'acos': return Math.acos(value as number);
     case 'max': return Math.max(value as number, evaluate(node.bNode) as number);
     case 'min': return Math.min(value as number, evaluate(node.bNode) as number);
+    case 'pow': return (value as number) ** (evaluate(node.bNode) as number);
     case 'dot': {
       const left = value as ShaderVector;
       const right = evaluate(node.bNode) as ShaderVector;
