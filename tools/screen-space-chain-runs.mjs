@@ -31,8 +31,11 @@ export function metricsOf(run, scene) {
 
 export const recordOf = (run) => JSON.parse(readFileSync(path.join(RUNS, run, 'record.json'), 'utf8'));
 
-// run の因子の組の読める表示(因子を使わない run は「なし」)。
-export const factorsLabelOfRun = (run) => factorsLabelOf(recordOf(run).conditions.tier);
+// run の因子の組の読める表示。runs/<run>/label.txt があればその1行、無ければ記録から作る(因子を使わない run は「なし」)。
+export function factorsLabelOfRun(run) {
+  const file = path.join(RUNS, run, 'label.txt');
+  return existsSync(file) ? readFileSync(file, 'utf8').trim() : factorsLabelOf(recordOf(run).conditions.tier);
+}
 
 // 画素ごとに stride 成分の並び values の先頭 3 成分を、中間灰を 0 とする線形表示 0.5 + 0.5 × 値 / scale の RGB8 へ。
 export function signedRgb(values, stride, scale) {
