@@ -3,49 +3,26 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { encodeRgbPng } from './png.mjs';
-import { HEIGHT, seedOf, shotsDir, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
+import { captureBandSumInvariant, invariantMapOf } from './screen-space-band-sum-invariant.mjs';
+import { escapeHtml, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_SCALE, SCAN_WIDTH, signedPng, signedRgb } from './screen-space-chain-runs.mjs';
+import { CHUNK_PASSES, SCENES, sceneSignatureOf, sourceSignatureOf } from './screen-space-chain-setup.mjs';
+import { HEIGHT, readFloats, seedOf, shotsDir, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
 
-const ROOT = path.resolve(import.meta.dirname, '..');
-const OUTPUT = path.join(shotsDir, 'ssd-8-15-chain-metrics');
-const RUNS = path.join(OUTPUT, 'runs');
-const CHUNK_PASSES = 256;
 const NOISE_PASSES = 32;
 const NOISE_FIRST_PASS = 5000;
 const INVARIANT_PASS = 7000;
 const bandScaleArgument = process.argv.find((arg) => arg.startsWith('--band-scale='));
 const bandScale = bandScaleArgument === undefined ? 0.75 : Number(bandScaleArgument.slice('--band-scale='.length));
 if (!Number.isFinite(bandScale) || bandScale < 0) throw new Error('--band-scale must be finite and nonnegative');
-const TIER = { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale };
+const TIER = { scale: SCAN_SCALE, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale };
 const SCAN_DISPLAY_QUANTILE = 0.999;
 const STRUCTURE_DISPLAY_QUANTILE = 0.999;
 const NOISE_DISPLAY_QUANTILE = 0.995;
-const SCAN_WIDTH = Math.round(WIDTH * TIER.scale);
-const SCAN_HEIGHT = Math.round(HEIGHT * TIER.scale);
-const PIXELS = SCAN_WIDTH * SCAN_HEIGHT;
-const SCENES = [
-  { name: 'bay-earth-open', caseName: 'bay', caseFile: 'tools/render-lab/bay-cases.ts', shot: 'bay-earth-open', rois: { target: [125, 30, 31, 19] } },
-  { name: 'cornell-box', caseName: 'cornell-box', caseFile: 'tools/render-lab/cornell-box-case.ts', shot: 'cornell-box', rois: { target: [30, 42, 28, 33] } },
-  { name: 'bay-dark', caseName: 'bay', caseFile: 'tools/render-lab/bay-cases.ts', shot: 'bay-dark', rois: { target: [105, 30, 46, 43] } },
-  // 各板の内側の床。core は蝶番から 0.75 m まで、wide は 1.5 m から 4 m まで、板の中心線の幅 ±0.3 m。
-  // gap は隣り合う板の隙間の真後ろの床(半径 10.3〜11.5 m、隙間の中央から ±0.5 m)。
-  // カメラの投影で床の4隅を走査画素へ落とし、外接箱を内側へ丸めて、板に掛かる行を除いた。
-  {
-    name: 'angled-bounce', caseName: 'angled-bounce', caseFile: 'tools/render-lab/angled-bounce-case.ts', shot: 'angled-bounce',
-    rois: {
-      'core-30': [38, 75, 11, 5], 'core-60': [80, 70, 8, 4], 'core-90': [116, 69, 8, 3],
-      'core-120': [152, 70, 8, 4], 'core-150': [191, 76, 11, 4],
-      'wide-30': [39, 84, 17, 25], 'wide-60': [80, 78, 12, 22], 'wide-90': [114, 77, 12, 20],
-      'wide-120': [148, 78, 12, 22], 'wide-150': [184, 84, 17, 25],
-      'gap-30-60': [57, 65, 14, 6], 'gap-60-90': [96, 63, 12, 4],
-      'gap-90-120': [132, 63, 12, 4], 'gap-120-150': [169, 65, 14, 6],
-    },
-  },
-];
 const passesArgument = process.argv.find((arg) => arg.startsWith('--passes='));
 const PASSES = passesArgument === undefined ? 1024 : Number(passesArgument.split('=')[1]);
 if (![1024, 2048, 4096].includes(PASSES)) throw new Error('--passes must be 1024, 2048, or 4096');
 const runArgument = process.argv.find((arg) => arg.startsWith('--run='));
-if (runArgument === undefined) throw new Error('usage: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>] [--dry-run|--reindex]');
+if (runArgument === undefined) throw new Error('usage: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>] [--occlusion-invariant] [--dry-run|--reindex]');
 const RUN_LABEL = runArgument.slice('--run='.length);
 if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(RUN_LABEL)) throw new Error('--run must be a safe lowercase label (letters, digits, hyphens)');
 const baselineArgument = process.argv.find((arg) => arg.startsWith('--baseline='));
@@ -53,6 +30,8 @@ const BASELINE_LABEL = baselineArgument === undefined ? 'before-a' : baselineArg
 if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(BASELINE_LABEL)) throw new Error('--baseline must be a safe lowercase label');
 const DRY_RUN = process.argv.includes('--dry-run');
 const REINDEX = process.argv.includes('--reindex');
+const OCCLUSION_INVARIANT = process.argv.includes('--occlusion-invariant');
+const INVARIANT_FAILURES = path.join(OUTPUT, 'invariant-failures');
 if (DRY_RUN && REINDEX) throw new Error('--dry-run and --reindex are exclusive');
 const sceneArgument = process.argv.find((arg) => arg.startsWith('--scene='));
 const scenes = sceneArgument === undefined ? SCENES : SCENES.filter(({ name }) => name === sceneArgument.split('=')[1]);
@@ -60,8 +39,8 @@ if (scenes.length === 0) throw new Error(`unknown scene: ${sceneArgument}`);
 const RUN_DIR = path.join(RUNS, RUN_LABEL);
 const RUN_RECORD = path.join(RUN_DIR, 'record.json');
 const RUN_INDEX = path.join(RUN_DIR, 'index.html');
-const COMMON_SIGNATURE = sourceSignature();
-const sceneSourceSignatures = new Map(SCENES.map((scene) => [scene.name, sceneSignature(scene)]));
+const COMMON_SIGNATURE = sourceSignatureOf(TIER);
+const sceneSourceSignatures = new Map(SCENES.map((scene) => [scene.name, sceneSignatureOf(scene, COMMON_SIGNATURE)]));
 const cacheKeys = new Map(SCENES.map((scene) => [scene.name, cacheKeyOf(scene)]));
 
 function existingRunRecord() {
@@ -118,40 +97,6 @@ if (DRY_RUN) {
   process.exit(0);
 }
 
-function sourceSignature() {
-  const hash = createHash('sha256').update('ssd-8-15-scan-source-v2');
-  const files = [
-    ...filesIn('src/render/pipeline/screen-space'),
-    'src/render/pipeline/gbuffer.ts', 'src/render/pipeline/material-pass.ts',
-    'src/render/pipeline/light-prepass.ts', 'src/render/pipeline/lit-layer.ts',
-    'src/render/pipeline/render-pipeline.ts', 'src/render/pipeline/view-ray.ts',
-    'src/render/pipeline/exposure.ts', 'src/render/graphics-settings.ts',
-    'tools/render-lab/lab.ts', 'tools/render-lab/main.ts',
-    'tools/render-lab/pass-accumulator.ts', 'tools/render-lab/lab-case.ts',
-    'tools/screen-space-lab.mjs',
-  ].sort();
-  for (const relative of files) hash.update(relative).update(readFileSync(path.join(ROOT, relative)));
-  hash.update(JSON.stringify({ width: WIDTH, height: HEIGHT, tier: TIER, chunkPasses: CHUNK_PASSES }));
-  return hash.digest('hex').slice(0, 16);
-}
-
-function filesIn(folder) {
-  const found = [];
-  for (const item of readdirSync(path.join(ROOT, folder), { withFileTypes: true })) {
-    const relative = path.join(folder, item.name);
-    if (item.isDirectory()) found.push(...filesIn(relative));
-    else if (item.name.endsWith('.ts')) found.push(relative);
-  }
-  return found;
-}
-
-function sceneSignature(scene) {
-  const relative = scene.caseFile;
-  return createHash('sha256').update(COMMON_SIGNATURE).update(JSON.stringify({ name: scene.name, caseName: scene.caseName, shot: scene.shot }))
-    .update(relative).update(readFileSync(path.join(ROOT, relative)))
-    .digest('hex').slice(0, 16);
-}
-
 function cacheKeyOf(scene) {
   return createHash('sha256').update('ssd-8-15-chunk-cache-v2').update(sceneSourceSignatures.get(scene.name))
     .update(`chunkPasses:${CHUNK_PASSES}`).update(JSON.stringify(TIER)).digest('hex').slice(0, 16);
@@ -161,11 +106,6 @@ function captureConditions() {
   return { viewport: [WIDTH, HEIGHT], scanResolution: [SCAN_WIDTH, SCAN_HEIGHT], tier: TIER, passes: PASSES,
     chunkPasses: CHUNK_PASSES, invariantPass: INVARIANT_PASS,
     noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: BASELINE_LABEL };
-}
-
-function readFloats(file) {
-  const bytes = readFileSync(file);
-  return new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
 function rgbDifference(a, b) {
@@ -187,14 +127,19 @@ function rms(values, roi) {
   return Math.sqrt(squares / (width * height * 3));
 }
 
-function invariantDifference(raw, bandSum) {
-  let sum = 0, maximum = 0;
-  for (let i = 0; i < raw.length; i += 4) for (let c = 0; c < 3; c++) {
-    const delta = Math.abs(raw[i + c] - bandSum[i + c]);
-    sum += delta;
-    maximum = Math.max(maximum, delta);
+// 帯和の不変条件を、白色雑音のパス INVARIANT_PASS で検査して差の地図を dir に書く。半精度の丸め幅を超える画素があれば、
+// 地図を INVARIANT_FAILURES に書いて投げる。label は遮蔽のみの検査を区別する地図の名前の添え字。
+async function checkedBandSumInvariant(lab, scene, dir, label) {
+  const { stats, difference } = await captureBandSumInvariant(lab, TIER, INVARIANT_PASS);
+  const map = invariantMapOf(difference);
+  if (stats.roundingExceeded.count > 0) {
+    mkdirSync(INVARIANT_FAILURES, { recursive: true });
+    writeFileSync(path.join(INVARIANT_FAILURES, `${RUN_LABEL}-${scene.name}${label}.k${map.gain}.png`), map.png);
+    throw new Error(`${scene.name}${label}: band sum differs from raw beyond half-float rounding: ${JSON.stringify(stats)}`);
   }
-  return { meanAbsolute: sum / (PIXELS * 3), maximumAbsolute: maximum };
+  const differenceMap = `band-sum-invariant-diff${label}.k${map.gain}.png`;
+  writeFileSync(path.join(dir, differenceMap), map.png);
+  return { ...stats, differenceMap };
 }
 
 function alphaMap(merged) {
@@ -239,21 +184,9 @@ async function clayPng(lab) {
   return encodeRgbPng(WIDTH, HEIGHT, rgb);
 }
 
-function signedRgb(values, scale) {
-  const rgb = new Uint8Array(PIXELS * 3);
-  for (let p = 0; p < PIXELS; p++) for (let c = 0; c < 3; c++) {
-    rgb[p * 3 + c] = Math.round(127.5 + 127.5 * Math.max(-1, Math.min(1, values[p * 4 + c] / scale)));
-  }
-  return rgb;
-}
-
-function signedPng(values, scale) {
-  return encodeRgbPng(SCAN_WIDTH, SCAN_HEIGHT, signedRgb(values, scale));
-}
-
 // 帯和を signedPng の写像で描き、ROI の枠を1画素の白で重ねる。
 function roisPng(bandSum, rois, scale) {
-  const rgb = signedRgb(bandSum, scale);
+  const rgb = signedRgb(bandSum, 4, scale);
   const mark = (x, y) => rgb.fill(255, (y * SCAN_WIDTH + x) * 3, (y * SCAN_WIDTH + x) * 3 + 3);
   for (const [left, top, width, height] of Object.values(rois)) {
     for (let x = left; x < left + width; x++) { mark(x, top); mark(x, top + height - 1); }
@@ -332,11 +265,6 @@ function writeLandingIndex() {
 <title>8-15 帯鎖の撮影記録</title><h1>8-15 帯鎖の撮影記録</h1><p>候補aの実施前は before-a。以後の候補は別の記録に保存する。</p><ul>${links}</ul><h2>過去の診断</h2>${legacy}${olderReference}${angledCase}</html>`);
 }
 
-function escapeHtml(value) {
-  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}
-
 if (REINDEX) {
   if (!existsSync(RUN_RECORD)) throw new Error(`run has no record.json: ${RUN_DIR}`);
   for (const scene of Object.values(runRecord.scenes)) {
@@ -378,21 +306,17 @@ for (const scene of scenes) {
   let completed = false;
   try {
     await withLab(async (lab) => {
+      let occlusionBandSum = null;
+      if (OCCLUSION_INVARIANT && scene.hasOcclusionOnly !== false) {
+        await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 1, set: 'tuning', key: scene.name });
+        await lab.setUpsampleAlphaOne(false);
+        occlusionBandSum = await checkedBandSumInvariant(lab, scene, dir, '-occlusion');
+      }
       await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 2, set: 'tuning', key: scene.name });
       const exposure = await lab.exposureFactor();
       await lab.setUpsampleAlphaOne(false);
-      await lab.setTier({ ...TIER, bandCount: 1 });
-      await lab.setWhiteNoisePass(INVARIANT_PASS);
-      await lab.render();
-      const rawOne = await lab.readFloat('band-sum', 4);
-      await lab.setTier(TIER);
-      await lab.render();
-      const invariantBandOne = await lab.readFloat('band-sum', 4);
+      const sumInvariant = await checkedBandSumInvariant(lab, scene, dir, '');
       const invariantMergedOne = await lab.readFloat('merged-0', 4);
-      const sumInvariant = invariantDifference(rawOne, invariantBandOne);
-      if (sumInvariant.meanAbsolute > 1e-4 || sumInvariant.maximumAbsolute > 0.01) {
-        throw new Error(`${scene.name}: one-pass band sum changed: ${JSON.stringify(sumInvariant)}`);
-      }
       await lab.setWhiteNoisePass(null);
       await lab.setSeed(seedOf(0));
       await lab.render();
@@ -515,7 +439,7 @@ for (const scene of scenes) {
         image.f32 = `scan-${image.id}.rgba.f32`;
         image.png = `scan-${image.id}.signed.png`;
         writeFloats(path.join(dir, image.f32), image.values);
-        writeFileSync(path.join(dir, image.png), signedPng(image.values, displayScales.scan.scale));
+        writeFileSync(path.join(dir, image.png), signedPng(image.values, 4, displayScales.scan.scale));
       }
 
       await lab.setWhiteNoisePass(null);
@@ -556,9 +480,9 @@ for (const scene of scenes) {
           noiseRms: rms(noise, rect), signalRms: rms(full.bandSum, rect) }];
       }));
       writeFileSync(path.join(dir, 'display-scales.json'), JSON.stringify(displayScales, null, 2));
-      writeFileSync(path.join(dir, `structure-${PASSES}.png`), signedPng(structure, displayScales.structure.scale));
+      writeFileSync(path.join(dir, `structure-${PASSES}.png`), signedPng(structure, 4, displayScales.structure.scale));
       writeFileSync(path.join(dir, `structure-half-difference-${PASSES}.png`),
-        signedPng(structureHalfDifference, displayScales.structure.scale));
+        signedPng(structureHalfDifference, 4, displayScales.structure.scale));
       writeFileSync(path.join(dir, `noise-rms-${PASSES}.png`), magnitudePng(noise, displayScales.noise.scale));
       writeFileSync(path.join(dir, 'rois.png'), roisPng(full.bandSum, scene.rois, displayScales.scan.scale));
 
@@ -570,6 +494,7 @@ for (const scene of scenes) {
         `mean-${PASSES}-correction.png`, `mean-${PASSES}-diffuse-clay.png`,
         `bypass-mean-${PASSES}-correction.png`, `bypass-mean-${PASSES}-diffuse-clay.png`,
         ...scanImages.flatMap((image) => [image.f32, image.png]),
+        sumInvariant.differenceMap, ...(occlusionBandSum === null ? [] : [occlusionBandSum.differenceMap]),
       ];
       if (existsSync(path.join(dir, 'rois-on-render.png'))) outputs.push('rois-on-render.png');
       const result = {
@@ -583,7 +508,7 @@ for (const scene of scenes) {
         conditions: captureConditions(), exposure, blueNoiseSeed: seedOf(0),
         whiteNoise: { onePassInvariantPass: INVARIANT_PASS, convergedPassIndices: [0, PASSES - 1],
           noisePassIndices: [NOISE_FIRST_PASS, NOISE_FIRST_PASS + NOISE_PASSES - 1] },
-        onePassBandSum: sumInvariant,
+        onePassBandSum: sumInvariant, occlusionOnlyBandSum: occlusionBandSum,
         onePassInvariantAlphaMaximumDifference: invariantAlphaMaximumDifference,
         onePassAlphaMaximumDifference: alphaMaximumDifference,
         onePassAlphaDifferentPixels: alphaDifferentPixels,
