@@ -240,11 +240,11 @@ function labOf(devTools) {
     accumulateWhitePasses: (first, count) => call(`accumulateWhitePasses(${first}, ${count})`),
     // accumulateWhitePasses の値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
     // テクスチャごとの、画素ごとに RGBA の Float32Array)を受け取り、ページの和を 0 に戻す。
-    async takePassSums() {
-      const shapes = await devTools.evaluate(`window.renderLab.takePassSums().then((taken) => {
+    async takePassSums(includeSquares = true) {
+      const shapes = await devTools.evaluate(`window.renderLab.takePassSums(${JSON.stringify(includeSquares)}).then((taken) => {
         window.__ssdPassSums = taken;
         const shapeOf = (halves) => halves.map((images) => images.map(({ rgba }) => rgba.length));
-        return { sums: shapeOf(taken.sums), squares: shapeOf(taken.squares) };
+        return { sums: shapeOf(taken.sums), squares: taken.squares.length ? shapeOf(taken.squares) : [] };
       })`);
       // 和 kind('sums' か 'squares')の [偶奇][テクスチャ] を受け取る。
       const receiveHalves = async (kind) => {
@@ -258,7 +258,7 @@ function labOf(devTools) {
         }
         return halves;
       };
-      const taken = { sums: await receiveHalves('sums'), squares: await receiveHalves('squares') };
+      const taken = { sums: await receiveHalves('sums'), squares: includeSquares ? await receiveHalves('squares') : [] };
       await devTools.evaluate('delete window.__ssdPassSums');
       return taken;
     },

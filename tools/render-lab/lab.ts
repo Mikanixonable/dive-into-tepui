@@ -589,7 +589,7 @@ export class LabView {
 
   // accumulateWhitePasses で足した値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
   // テクスチャごと)を読み戻し、和を 0 に戻す。
-  public async takePassSums(): Promise<{
+  public async takePassSums(includeSquares = true): Promise<{
     readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
   }> {
     const accumulator = this.passAccumulator;
@@ -605,7 +605,7 @@ export class LabView {
       return images;
     };
     const sums = await readBackHalves(accumulator.sumTextures);
-    const squares = await readBackHalves(accumulator.squareTextures);
+    const squares = includeSquares ? await readBackHalves(accumulator.squareTextures) : [];
     accumulator.clear();
     return { sums, squares };
   }
