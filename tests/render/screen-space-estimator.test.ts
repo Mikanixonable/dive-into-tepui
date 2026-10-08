@@ -2,7 +2,10 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { bool, float, uint, uniform, vec2, vec3 } from 'three/tsl';
-import { bandWeights, clipToCircle, projectedRadius, sourceDirectionCosine } from '../../src/render/pipeline/screen-space/hemisphere-scan';
+import {
+  bandCoordinate, bandWeights, bounceWeights, occlusionWeights, sampleFacing, type BandSplit, type SampleFacing,
+} from '../../src/render/pipeline/screen-space/band-split';
+import { clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
   angleOf, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt, toSliceCoordinates,
   wedgeWeight,
@@ -52,6 +55,25 @@ function valueOf(node: unknown): number {
 // 同じ値の vec3 定数ノード。
 function vectorNode(vector: THREE.Vector3): Vec3Node {
   return vec3(vector.x, vector.y, vector.z);
+}
+
+// 帯の分け方の組。強さ s はどの因子にも同じ値を入れる。
+function bandsWith(count: number, scale: number, strength: number): BandSplit {
+  const s = float(strength);
+  return {
+    count, bounceScale: float(scale), bounce: { senderFacing: s, receiverFacing: s, receiverView: s, senderView: s },
+    occlusionScale: float(scale), occlusion: { receiverFacing: s, receiverView: s, senderView: s },
+  };
+}
+
+// 向きの内積が cos の標本。
+function facingOf(cosine: number): SampleFacing {
+  return { senderFacing: float(cosine), receiverFacing: float(cosine), senderView: float(cosine) };
+}
+
+// 距離だけの帯の座標 log₂(κρ) を 0..count − 1 へ寄せたもの。
+function distanceCoordinate(count: number, scale: number, rho: number): number {
+  return Math.min(Math.max(Math.log2(scale * rho), 0), count - 1);
 }
 
 // 立っているビットの数。
@@ -449,15 +471,15 @@ export function register(): void {
     for (const count of [2, 5]) {
       for (const scale of [1 / 8, 1 / 4]) {
         for (const rho of [1, 3, 7.5, 8, 11, 16, 40, 100, 128, 300, 700]) {
-          const weights = bandWeights({ count, scale: float(scale) }, float(rho)).map(valueOf);
+          const coordinate = bandCoordinate(count, float(scale), float(rho), float(1), float(1));
+          const weights = bandWeights(count, coordinate).map(valueOf);
           const label = `count=${count} scale=${scale} rho=${rho}`;
           assert.strictEqual(weights.length, count, label);
           assert.ok(weights.every((weight) => weight >= 0), `${label} 重み ${weights}`);
           near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, `${label} 和`);
-          // 帯の座標 log₂(scale·ρ) は、両端の帯で頭打ちになる。
-          const coordinate = Math.min(Math.max(Math.log2(scale * rho), 0), count - 1);
-          near(weights.reduce((sum, weight, band) => sum + weight * band, 0), coordinate, 1e-12, `${label} 座標`);
-          assert.ok(weights.every((weight, band) => weight === 0 || Math.abs(band - coordinate) < 1),
+          const expected = distanceCoordinate(count, scale, rho);
+          near(weights.reduce((sum, weight, band) => sum + weight * band, 0), expected, 1e-12, `${label} 座標`);
+          assert.ok(weights.every((weight, band) => weight === 0 || Math.abs(band - expected) < 1),
             `${label} 重み ${weights}`);
         }
       }
@@ -466,29 +488,78 @@ export function register(): void {
 
   test('screen space estimator: 帯が 1 つなら、増分は画面距離によらずすべてその帯へ入る', () => {
     for (const rho of [0.5, 8, 700]) {
-      assert.deepStrictEqual(bandWeights({ count: 1, scale: float(1 / 8) }, float(rho)).map(valueOf), [1]);
+      const coordinate = bandCoordinate(1, float(1 / 8), float(rho), float(1), float(1));
+      assert.deepStrictEqual(bandWeights(1, coordinate).map(valueOf), [1]);
     }
   });
 
-  test('screen space estimator: 送り手の内積は照り返しの帯だけを細かくし、遮蔽と帯和を保つ', () => {
-    const bands = { count: 4, scale: float(0.75) };
+  test('screen space estimator: 強さ 0 なら、向きによらず照り返しも遮蔽も距離だけの帯の重みと一致する', () => {
+    for (const rho of [1, 8, 40, 700]) {
+      for (const cosine of [0, 0.3, 1]) {
+        const bands = bandsWith(4, 0.75, 0);
+        const expected = bandWeights(4, float(distanceCoordinate(4, 0.75, rho))).map(valueOf);
+        assert.deepStrictEqual(occlusionWeights(bands, float(rho), float(cosine), facingOf(cosine)).map(valueOf), expected);
+        assert.deepStrictEqual(bounceWeights(bands, float(rho), float(cosine), facingOf(cosine)).map(valueOf), expected);
+      }
+    }
+  });
+
+  test('screen space estimator: 掛ける因子の 0 は帯 0 へ、割る因子の 0 は最も粗い帯へ頭打ちになり、NaN を作らない', () => {
     const rho = float(8);
-    const blocked = bandWeights(bands, rho).map(valueOf);
-    for (const [normal, expected] of [
-      [new THREE.Vector3(0, 0, -1), 1],
-      [new THREE.Vector3(Math.sqrt(3) / 2, 0, -0.5), 0.5],
-      [new THREE.Vector3(1, 0, 0), 0],
-      [new THREE.Vector3(0, 0, 1), 0],
+    const one = float(1);
+    const zero = float(0);
+    const lowest = valueOf(bandCoordinate(4, float(0.75), rho, zero, one));
+    const highest = valueOf(bandCoordinate(4, float(0.75), rho, one, zero));
+    const both = valueOf(bandCoordinate(4, float(0.75), rho, zero, zero));
+    assert.strictEqual(lowest, 0);
+    assert.strictEqual(highest, 3);
+    assert.ok(Number.isFinite(both) && both >= 0 && both <= 3, `両方 0: ${both}`);
+    // 因子を通した形でも同じ。
+    const bands = bandsWith(4, 0.75, 1);
+    for (const weights of [
+      bounceWeights(bands, rho, zero, facingOf(0)), occlusionWeights(bands, rho, zero, facingOf(0)),
+      bounceWeights(bands, rho, one, { senderFacing: zero, receiverFacing: one, senderView: one }),
+      bounceWeights(bands, rho, one, { senderFacing: one, receiverFacing: zero, senderView: one }),
+    ].map((nodes) => nodes.map(valueOf))) {
+      assert.ok(weights.every((weight) => Number.isFinite(weight) && weight >= 0));
+      near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
+    }
+    assert.deepStrictEqual(
+      bounceWeights(bands, rho, one, { senderFacing: zero, receiverFacing: one, senderView: one }).map(valueOf),
+      [1, 0, 0, 0]);
+    assert.deepStrictEqual(
+      bounceWeights(bands, rho, one, { senderFacing: one, receiverFacing: zero, senderView: one }).map(valueOf),
+      [0, 0, 0, 1]);
+  });
+
+  test('screen space estimator: 強さ 1/2 の掛ける因子は cos = 0 でも波長を半分にするだけ', () => {
+    const half = float(0.5);
+    const bands: BandSplit = {
+      ...bandsWith(6, 0.75, 0),
+      bounce: { senderFacing: half, receiverFacing: float(0), receiverView: float(0), senderView: float(0) },
+    };
+    const rho = 40;
+    // a だけが s = 1/2 で cos θ = 0。
+    const coordinate = bandCoordinate(6, float(0.75), float(rho), float(0.5), float(1));
+    near(valueOf(coordinate), Math.log2(0.75 * rho) - 1, 1e-12, '座標');
+    const weights = bounceWeights(bands, float(rho), float(1), facingOf(0)).map(valueOf);
+    near(weights.reduce((sum, weight, band) => sum + weight * band, 0), Math.log2(0.75 * rho) - 1, 1e-12, '重みの平均');
+  });
+
+  test('screen space estimator: 標本の向きの内積は 0..1 に収まり、零距離でも有限', () => {
+    const receiverNormal = new THREE.Vector3(0, 0, 1);
+    const senderNormal = new THREE.Vector3(1, 0, 0);
+    for (const [toSample, expected] of [
+      [new THREE.Vector3(-2, 0, 0), { senderFacing: 1, receiverFacing: 0 }],
+      [new THREE.Vector3(2, 0, 0), { senderFacing: 0, receiverFacing: 0 }],
+      [new THREE.Vector3(0, 0, 3), { senderFacing: 0, receiverFacing: 1 }],
+      [new THREE.Vector3(0, 0, 0), { senderFacing: 0, receiverFacing: 0 }],
     ] as const) {
-      const cosine = valueOf(sourceDirectionCosine(vectorNode(normal), vec3(0, 0, 2)));
-      near(cosine, expected, 1e-12, '送り手の内積');
-      const bounced = bandWeights(bands, rho.mul(cosine)).map(valueOf);
-      near(bounced.reduce((sum, value) => sum + value, 0), 1, 1e-12, '照り返しの帯和');
-      near(blocked.reduce((sum, value) => sum + value, 0), 1, 1e-12, '遮蔽の帯和');
-      assert.ok(bounced.every((value) => Number.isFinite(value) && value >= 0));
-      assert.ok(blocked.every((value) => Number.isFinite(value) && value >= 0));
-      if (expected === 0) assert.deepStrictEqual(bounced, [1, 0, 0, 0]);
-      if (expected === 1) assert.deepStrictEqual(bounced, blocked);
+      const facing = sampleFacing(vectorNode(receiverNormal), vectorNode(senderNormal), vectorNode(toSample),
+        vec3(1, 0, 0));
+      near(valueOf(facing.senderFacing), expected.senderFacing, 1e-12, `送り手 ${toSample.toArray()}`);
+      near(valueOf(facing.receiverFacing), expected.receiverFacing, 1e-12, `受け手 ${toSample.toArray()}`);
+      near(valueOf(facing.senderView), 1, 1e-12, '送り手と視線');
     }
   });
 
