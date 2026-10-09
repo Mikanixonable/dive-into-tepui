@@ -1,10 +1,8 @@
 # 局所反射 — 滑らかな面に近くの物体を映す（計画）
 
-**計画ファイル。** `/run-plan` で上から実施し、完了した手順はこの文書から消す。**拡散の近傍光輸送
-（遮蔽と照り返し）が main へ入った後**、その時点のコードで target / timing 構成を再監査してから着手する
-（手順1）。拡散の近傍光輸送は別ブランチで大きく作り直されており、このブランチにあるその計画書は
-着手時点の構成の根拠にならない。この計画は、拡散側がどう差し替わっても衝突しない境界（「拡散側との
-境界」）だけを前提にする。
+**計画ファイル。** `/run-plan` で上から実施し、完了した手順はこの文書から消す。着手時点の構成は
+`screenspace-base`（`3e646383`、拡散の近傍光輸送は main へ未マージ）で監査した（「着手時点の構成」）。
+この計画は、拡散側がどう差し替わっても衝突しない境界（「拡散側との境界」）だけを前提にする。
 
 ---
 
@@ -42,7 +40,7 @@
 - **鏡面の遮りを拡散の遮蔽から作らない。** 近傍拡散補正の遮蔽から、GTSO 風の一つのローブの鏡面
   可視率（`specularVisibility`）を作らない。粗さ・視線・反射ベクトルを必要とする鏡面の遮りは、拡散の
   遮蔽の副産物ではない。局所反射自身が「近傍へ当たった像」と「その向こうの遠方鏡面光を置き換える
-  重み」を所有する（手順1〜3）。
+  重み」を所有する（手順2・3）。
 - **置換重み**: `w = roughness fade × edge fade × distance fade × hit confidence`。追跡が1回だけ作り、
   遠方鏡面の弱めと像の加算に1回ずつ使う（手順2・3）。
 - **遠方鏡面との合成は、`w = 1` で遠方鏡面がそっくり像へ入れ替わる形にする。** 照度バッファの鏡面を
@@ -65,7 +63,7 @@
 ### 拡散側との境界
 
 拡散の近傍光輸送はマテリアルパスより前で完結し、マテリアルパスは局所拡散光を足す形に差し替わる。
-どう差し替わっても衝突しないよう、局所反射の触れる範囲を次に限る（手順1〜3）。
+どう差し替わっても衝突しないよう、局所反射の触れる範囲を次に限る（手順2・3）。
 
 - **弱めるのは鏡面反射だけ。** `1 − w` を掛けるのは、天体照と環境光の光源が照度バッファの鏡面へ書く
   寄与だけ。拡散の寄与、照度バッファの拡散、近傍拡散補正、局所拡散光には一切触れない。太陽の鏡面も
@@ -122,6 +120,34 @@
   ので、「映り込みの追跡」と「映り込み」を実行順にそれぞれ置く。`tests/render/gpu-timings.test.ts` の
   順序の固定もそれに合わせる。
 
+### 着手時点の構成（`3e646383` の監査）
+
+- **境界は成り立つ。** `specularVisibility` は0件。環境光・天体照は近傍拡散補正を読まない。拡散側は
+  マテリアルパスに手を入れておらず、照度補正を光源 `DiffuseCorrectionSource`（鏡面は0）として照度
+  バッファの拡散へ足す。拡散側は照度バッファの鏡面もマテリアル出力の写しも持たない。
+- **光源は1つ1枚の加算描画**（`[sun, planet slot×2, ambient, correction]`）。`1 − w` を掛けるのは
+  `AmbientSource.contribution` と `PlanetLightSlot.contribution` の `specular` だけ。画素ごとの target を
+  光源から読む前例は `DiffuseCorrection.at(sample)` で、`ScreenSpaceReflection` はこの形（render-pipeline
+  が持ち、書くパスと読む光源へ渡す）を写す。光源のマテリアルは遅延生成して使い回すので、オン / オフは
+  マテリアルを作り直さず、オフで target を `w = 0` にクリアして切る（`1 − 0` は厳密に1）。
+- **`R`** は `material-pass.ts` の `mix(vec3(0.04), baseColor, metalness)`（`basecolorTexture` の rgb /
+  a）。`R` は `material-pass.ts` から export する関数にし、像の解決がそれを import する。lighting/ は F0 を
+  知らない設計なので、そこへは置かない。
+- **パス順**: 影マップ → G バッファ → 影 → 天体照の bake → 遮蔽と照り返し → ライティング → マテリアル
+  → 大気 → …。追跡は遮蔽と照り返しの直後・ライティングの直前、像の解決はマテリアルと大気の間。
+  `compile()` の段表・`dispose()`・`buildDebugComposites` にも足す。
+- **GPU の行**は0から連番で、テストが `[0..N)` を固定する。「映り込みの追跡」は「近傍拡散復元」と
+  「ライティング」の間、「映り込み」は「マテリアル」と「大気」の間へ挿し、以降は繰り下げる。
+- **デバッグ表示**: 追跡の4つは `correction` と `diffuse` の間、`reflection` は `material` と
+  `atmosphere` の間。デバッグ「マテリアル」は像を足す前のマテリアル出力を見せる — `inspectBackdrop`
+  を像の解決より前へ移す。
+- **写し**: 大気パスの写し（`backdropTarget` / `inspectTarget`）は像を足した後の時点のものなので共有
+  できない。局所反射は mip 付きの写しを自前で持つ。
+- **半解像度の深度**は拡散側に無い（拡散は全解像度の G バッファ深度を点読みする）。追跡パスが新規に
+  縮小する。深度は逆Z、空は0。blue noise は `src/render/blue-noise.ts` の `BlueNoise` を自前で持つ。
+- **置き場**: 追跡の3ファイルは `screen-space/`（拡散側と同じ3分割）、像の解決は
+  `src/render/pipeline/reflection-pass.ts`。
+
 ### 先行研究から採る範囲
 
 | 論文・実装 | この計画で採るもの | 採らないもの |
@@ -150,33 +176,9 @@
 
 ## 手順
 
-### 手順 1. 着手時点の構成を監査し、局所反射の before を2組撮る
-
-**目的** — この計画が前提にする構成を着手時点のコードで確かめ、`leo-metal` と `bay-metal` に近くの
-物体がまだ映っていないことを確認して比較基準を残す。コードは変えない。
-
-**変更が必要な箇所** — なし（コードは変えない）。
-
-**達成条件と検証**
-
-- `grep -rn "specularVisibility" src/` が0件で、遠方鏡面
-  （`src/render/pipeline/lighting/ambient-source.ts` / `src/render/pipeline/lighting/planet-light-source.ts`）が
-  近傍拡散補正を読んでいない。
-- 「拡散側との境界」が着手時点のコードで成り立つかを確かめる。
-  - 照度バッファの鏡面へ、太陽と天体照・環境光が別の光源として書いていて、後者だけに `1 − w` を
-    掛けられる。
-  - マテリアルパスが照度バッファの鏡面へ掛けている係数を特定し、`R` として切り出せる。
-  - 拡散側が照度バッファの鏡面やマテリアル出力の写しを独自に持っていないか（持っていれば、それに
-    触れない形で手順2・3を直す）。
-- 着手時点の target / timing 構成 — `src/render/pipeline/render-pipeline.ts` のパス順、
-  `src/render/gpu-timings.ts` の行、`src/render/pipeline/debug-target.ts` の並び — を確かめ、手順2〜4の
-  変更箇所、デバッグ表示と GPU 行を挿す位置、見積りをそれに合わせて直す。
-- `DEVELOP/SPEC/RENDERING.md` の映り込みの記述が、目的に書いた振舞いから変わっていない。変わって
-  いれば、この計画を直してから進む。
-- `npm run render-lab:shot -- ssr-before-1` と `-- ssr-before-2`。
-- `leo-metal` の粗さ0.05の球に隣の球、`bay-metal` の粗さ0.05の板に立方体と薬莢が映っていないことを
-  画像で確認する。
-- 見積りの負荷の初期予算を、同じ機材・同じ session の before の実測で確かめ直す。
+before は `.render-lab-shots/ssr-before-1` / `ssr-before-2`（`3e646383`、各67枚、2組の md5 は全一致）。
+`leo-metal` の粗さ0.05の球に映るのは地球の天体照と太陽の点だけ、`bay-metal` の粗さ0.05の板に映るのは
+地球の雲模様だけで、どちらも近くの物体は映っていない。
 
 ### 手順 2. 鏡の向きへ追跡し、遠方鏡面との置換重みを作る
 
@@ -190,11 +192,11 @@
 | `src/render/pipeline/screen-space/reflection-trace.ts`（新規） | 深度の透視補正追跡、blue-noise jitter、hit / miss、画面端・距離・粗さ confidence。ray thickness の単位と根拠をここに閉じる。遠方光・マテリアル出力・拡散側の target は読まない |
 | `src/render/pipeline/screen-space/reflection-trace-pass.ts`（新規） | 深度の縮小と追跡の dispatch、target の持ち主。`screen-space-pass.ts` とは別のパスで、拡散側と target / GPU 行を共有しない |
 | `src/render/pipeline/screen-space/screen-space-reflection.ts`（新規） | 全解像度 target。`rg = hit uv`、`b = view-space hit distance [m]`、`a = w` の符号化と、遠方鏡面を置換する読み口 |
-| `src/render/pipeline/lighting/ambient-source.ts` / `src/render/pipeline/lighting/planet-light-source.ts` | 局所反射オン時だけ、鏡面の寄与へ `farSpecularWeight` を掛ける。拡散の寄与には掛けない。近傍拡散補正は参照しない |
+| `src/render/pipeline/lighting/ambient-source.ts` / `src/render/pipeline/lighting/planet-light-source.ts` | コンストラクタで `ScreenSpaceReflection` を受け取り、鏡面の寄与へ `farSpecularWeight` を掛ける（オフでは target が `w = 0` なので係数は厳密に1）。拡散の寄与には掛けない。近傍拡散補正は参照しない |
 | `src/render/graphics-settings.ts` | `screenSpaceSpecular` と `screenSpaceSpecularQuality` を足す |
-| `src/render/pipeline/render-pipeline.ts` | 追跡パスをライトプリパスより前に呼び、設定を配る |
-| `src/render/pipeline/debug-target.ts` / `src/render/pipeline/render-pipeline.ts` | `reflection-depth` / `reflection-hit` / `reflection-distance` / `reflection-weight` を生成順の位置へ足し、実 target を直接表示する |
-| `src/render/gpu-timings.ts` | 「映り込みの追跡」を実行順の位置へ足す。数値IDはそのとき採番する |
+| `src/render/pipeline/render-pipeline.ts` | 追跡パスを遮蔽と照り返しの直後・ライトプリパスの直前に呼び、`rebuildForGraphics` で設定を配る。`compile()` の段表と `dispose()` にも足す |
+| `src/render/pipeline/debug-target.ts` / `src/render/pipeline/render-pipeline.ts` | `reflection-depth` / `reflection-hit` / `reflection-distance` / `reflection-weight` を `correction` と `diffuse` の間へ足し、`buildDebugComposites` で実 target を直接表示する |
+| `src/render/gpu-timings.ts` | 「映り込みの追跡」を「近傍拡散復元」と「ライティング」の間へ挿し、以降の ID を繰り下げる |
 | `tests/render/debug-target.test.ts` / `tests/render/gpu-timings.test.ts` | 順序の固定を直す |
 | `tools/render-lab/` の case | 追跡の4つのデバッグ表示を `leo-metal` / `bay-metal` で撮る case を足す |
 
@@ -215,6 +217,7 @@ export class ScreenSpaceReflection {
 - 映り込みオンとオフでデバッグ「拡散照度」が pixel diff 0（達成目標4）。
 - 映り込みオフの組は `ssr-before-*` と封筒外0件。オフでは追跡の4つのデバッグ表示が黒。
 - render-lab の描画設定に2項目が出て、デバッグ表示に4つのボタンがパス順の位置に並ぶ。
+- `leo-metal` と `bay-metal` で GPU「映り込みの追跡」の行を測り、見積りの1歩あたりの費用を実測で置き換える。
 - commit: `feat(render): 滑らかな面の映る向きを追い遠方鏡面を置き換える`
 
 ### 手順 3. 当たった像を粗さに応じて足す
@@ -226,16 +229,14 @@ export class ScreenSpaceReflection {
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/pipeline/lighting/specular-reflectance.ts`（新規、置き場は手順1の監査で決め直す） | 鏡面反射率 `R` を G バッファから求める関数。マテリアルパスと像の解決が共有する |
-| `src/render/pipeline/material-pass.ts` | 鏡面の係数を `R` の呼び出しへ置き換えるだけ。拡散の項・合成・パス順は変えない |
-| `src/render/pipeline/reflection-pass.ts`（新規） | マテリアル出力の写しと縮小列、roughness LOD、hit uv 解決、`R × w × I` の加算。GPU「映り込み」へ計上。マテリアル出力以外に読むのは追跡の target と G バッファだけ |
-| `src/render/pipeline/render-pipeline.ts` | マテリアルパス後・大気前に呼ぶ |
-| `src/render/gpu-timings.ts` | 「映り込み」を実行順の位置へ足す |
-| `src/render/pipeline/debug-target.ts` | `reflection`「映り込み」をマテリアルと大気の間へ足す |
+| `src/render/pipeline/material-pass.ts` | 鏡面反射率 `R` を G バッファから求める関数を切り出して export し、鏡面の係数をその呼び出しへ置き換えるだけ。拡散の項・合成・パス順は変えない |
+| `src/render/pipeline/reflection-pass.ts`（新規） | マテリアル出力の写し（mip 付き、自前で持つ）と縮小列、roughness LOD、hit uv 解決、`material-pass.ts` の `R` を使った `R × w × I` の加算。GPU「映り込み」へ計上。マテリアル出力以外に読むのは追跡の target と G バッファだけ |
+| `src/render/pipeline/render-pipeline.ts` | マテリアルパス後・大気前に呼ぶ。`inspectBackdrop` を像の解決より前へ移し、デバッグ「マテリアル」が像を含まないようにする。`compile()` の段表と `dispose()` にも足す |
+| `src/render/gpu-timings.ts` | 「映り込み」を「マテリアル」と「大気」の間へ挿し、以降の ID を繰り下げる |
+| `src/render/pipeline/debug-target.ts` | `reflection`「映り込み」を `material` と `atmosphere` の間へ足す |
 | `tests/render/debug-target.test.ts` / `tests/render/gpu-timings.test.ts` | 順序の固定を直す |
 
-写しの持ち主は、大気パス（`src/render/pipeline/atmosphere-pass.ts`）が持つマテリアル出力のcopyと
-共有できるかを `/ownership` で確かめて決める。共有 target を書きながら読まない。
+大気パスの写しは像を足した後の時点のものなので共有しない。共有 target を書きながら読まない。
 
 **達成条件と検証**
 
@@ -258,7 +259,7 @@ export class ScreenSpaceReflection {
 | --- | --- |
 | `src/render/pipeline/screen-space/reflection-trace.ts` / `src/render/pipeline/reflection-pass.ts` | 粗さ・画面端・距離のフェード、hit tolerance を追い込む |
 | `src/render/graphics-settings.ts` | `screenSpaceSpecularQuality` の各段の値とプリセットを実測で確定する |
-| `tools/render-lab-measure.mjs` | `screen-space` の軸に映り込みオン/オフと精細さの段を足す |
+| `tools/render-lab-measure.mjs` | `screen-space` の軸に映り込みオン/オフと精細さの段を足し、構図に `leo-metal` / `bay-metal` を足す（既定の構図 bay は白い面がほぼ粗さ0.7で、追跡がほとんど歩かず負荷を過小に読む） |
 | `memos/hedalu244/better_graphics/pipeline.md` | パス表と残件を更新する |
 
 **達成条件と検証**
@@ -279,20 +280,22 @@ export class ScreenSpaceReflection {
 
 | 作業 | 手順 | 中央見積り |
 | --- | --- | ---: |
-| before と最終監査 | 1・4 | 3 h |
+| 最終監査 | 4 | 1 h |
 | 追跡と深度の縮小 | 2 | 8 h |
 | 置換境界と設定・デバッグ表示 | 2 | 4 h |
 | `R` の切り出しと置換一致のプローブ | 3 | 2 h |
 | 縮小列と像 | 3 | 6 h |
 | 精細さの段・品質・負荷・比較 | 4 | 7 h |
 
-**合計 30 h。** 手順1の監査で着手時点の target / timing 構成を確かめてから更新する。
+**合計 28 h。**
 
-負荷の初期予算は、960×540 の実測で半解像度の深度標本1回がマテリアル行の約0.1倍だったことから置く。
-32歩の追跡 32 × 0.1 = 3.2倍、全解像度の写しと5段の縮小列1.0倍、全解像度の解決1.0倍、合計約5.2倍を
-出発点とする。追跡パスが自前で持つ深度の縮小はこれに加わる。これは採用値ではなく、手順1で同じ
-機材・同じ session の before を取り直して確かめる仮説である。達成目標5の5倍以下へは、画を見ずに歩数
-だけ削らず、hit率・miss率・edge fade と内訳を合わせて追い込む。
+負荷の初期予算（960×540、Intel gen-12lp、`3e646383` のマテリアル行 ≈ 0.30 ms）。拡散の走査の段の差から
+出した1/4解像度の標本1回の限界費用は 0.023 ms（マテリアル行の約0.08倍）で、半解像度へ直すと1歩
+約0.3倍。これは深度と法線を読み遮りを計算する標本の値なので上限で、深度だけを読む追跡の1歩は
+0.1〜0.3倍と置く。32歩の追跡 3.2〜9.9倍、写しと縮小列約1倍、解決約1倍（拡散の全解像度の多タップ段の
+復元が約1.9倍）、深度の縮小と固定費約0.5倍で、合計約5.7〜12倍。達成目標5の5倍以下は精細さ「中」
+32歩では危ういので、「中」の初期値は手順2の追跡行の実測まで仮置きとする。5倍以下へは、画を見ずに
+歩数だけ削らず、hit率・miss率・edge fade と内訳を合わせて追い込む。
 
 ---
 
@@ -300,12 +303,12 @@ export class ScreenSpaceReflection {
 
 | リスク | 影響 | 露見する手順 |
 | --- | --- | --- |
-| 局所反射が近傍拡散補正の遮蔽（GTSO 風の鏡面遮蔽）に再依存する | 不自然な鏡面影が復活する | 手順1で `specularVisibility` 0件を確認し、手順2で局所反射が所有する confidence だけを使う |
-| 拡散側のファイル・target・パス順に依存する | 拡散側の差し替えで衝突し、マージのたびに作り直しになる | 手順1で境界を監査し、手順2で追跡を独立パスにし、手順2・3で拡散のデバッグ表示が pixel diff 0 であることを確かめる |
+| 局所反射が近傍拡散補正の遮蔽（GTSO 風の鏡面遮蔽）に再依存する | 不自然な鏡面影が復活する | 着手時点で `specularVisibility` 0件。手順2で局所反射が所有する confidence だけを使う |
+| 拡散側のファイル・target・パス順に依存する | 拡散側の差し替えで衝突し、マージのたびに作り直しになる | 着手時点で境界は成立。手順2で追跡を独立パスにし、手順2・3で拡散のデバッグ表示が pixel diff 0 であることを確かめる |
 | 像と遠方鏡面に別々の係数を掛ける | `w = 1` で鏡面の明るさが段差になり、マテリアル側の係数変更で食い違いが広がる | 手順3で `R` を1つの関数にし、置換一致のプローブで確かめる |
 | 空の深度を hit として扱う | 虚空が黒い像として映る | 手順2で空・画面外・カメラ向き ray を明示的に miss とし、`leo-metal` 上端を確認 |
 | 粗さ fade と遠方鏡面の置換を二重適用する | 中間粗さだけ天体照の映り込みが過剰に暗くなる | 手順2・3で同じ `w` を置換と像に一度ずつ使い、手順4で `bay-metal` の粗さ sweep を測る |
-| 太陽の鏡面まで弱める | 仕様に反して太陽のハイライトが映り込みで消える | 手順1で光源ごとに弱められることを確かめ、手順2で天体照・環境光の光源だけに掛ける |
+| 太陽の鏡面まで弱める | 仕様に反して太陽のハイライトが映り込みで消える | 着手時点で光源ごとに弱められる。手順2で天体照・環境光の光源だけに掛ける |
 | 局所反射の解決で書き込み中の共有 target を読む | WebGPU validation error で画面全体が失敗する | 手順3で copy / ownership を先に確定し、同じ描画命令の read-write を禁止 |
 | 縮小列の特定 mip へ描けない | 粗い面でも像が鋭いままになる | 手順3の最小プローブで各 mip を別色にし、LOD と実 target を照合 |
 | debug のために段を再実行する | 見ている値と通常フレームが違う | 手順2・3でデバッグ表示が実 target を直接読むことを確認 |
