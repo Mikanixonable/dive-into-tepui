@@ -167,6 +167,22 @@
   1歩あたりはマテリアルの0.01〜0.03倍で見積りよりずっと安く、固定費（全解像度のシェーディング入力の
   読み出しと深度の縮小、約0.7倍）が支配的。
 
+### 像の実装（手順3、`613e1d706`）
+
+- `R` は `material-pass.ts` の `specularReflectanceAt(gbuffer, uv)`。マテリアルパスと像の解決が呼ぶ。
+- 写しは作らない。縮小列の段0は共有の描画先（マテリアル出力）そのもの、段1〜4は自前の rgba16f で画面の
+  1/2^k、前の段を双線形で1回読む 2×2 平均（`LEVEL_COUNT = 5` は仮置き、TODO 付き）。mip へ描かないのは、
+  three がサンプル用のバインドで全 mip を束ね、別 mip への書き込みが read-write の検証エラーになるため。
+- 描画順は 縮小 → 像の解決（`imageTarget` へ `R × w × I`）→ 加算（`imageTarget` を One/One で共有の描画先へ、
+  α は0）。6回の描画をすべて GPU「映り込み」へ計上する。デバッグ「映り込み」は `imageTarget` を直接映す。
+- LOD: α = 粗さ²、ローブの半幅 2α [rad]（天体照の鏡面フィルタ角と同じ値）、円の半径 = 当たり距離 × tan(2α)。
+  当たった点と横へ半径ずらした点を射影して半径を画素で測り、lod = clamp(log2(max(2·半径px, 1)), 0, 4)。
+  段の間は tent 重みで隣り合う2段を線形補間する。
+- `inspectBackdrop` は像の解決の前へ移した。hit uv は rgba16f のまま（中の精度では hit uv 自体が2 px 刻みで、
+  半精度の誤差は目視で区別できない）。
+- 負荷（960×540、Intel gen-12lp、精細さ中、p50）: 追跡 + 映り込み = `leo-metal` 0.685 + 0.276 ms（マテリアル
+  0.453 ms の2.12倍）、`bay-metal` 0.354 + 0.252 ms（マテリアル 0.335 ms の1.81倍）。
+
 ### 先行研究から採る範囲
 
 | 論文・実装 | この計画で採るもの | 採らないもの |
@@ -198,38 +214,15 @@
 before は `.render-lab-shots/ssr-before-1` / `ssr-before-2`（`3e646383`、各67枚、2組の md5 は全一致）。
 `leo-metal` の粗さ0.05の球に映るのは地球の天体照と太陽の点だけ、`bay-metal` の粗さ0.05の板に映るのは
 地球の雲模様だけで、どちらも近くの物体は映っていない。render-lab の既定は高プリセット（映り込みオン）
-なので、オフの組は `npm run render-lab:shot -- <名前> screenSpaceSpecular=false` で撮る。手順2の時点で
-オフの組は before とビット一致（封筒外 0/67）、オンの組（像なし）は封筒外 26/67 で差は金属・滑らかな面に
-収まる。
+なので、オフの組は `npm run render-lab:shot -- <名前> screenSpaceSpecular=false` で撮る。手順3の時点
+（`613e1d706`）でオフの組 `ssr-step3-off` は before とビット一致（封筒外 0/67）。オンの組 `ssr-on` は封筒外
+30/67（差分画像を見た範囲では粗さの小さい面の映り込み）。
 
-### 手順 3. 当たった像を粗さに応じて足す
-
-**目的** — 当たった点の色をマテリアルパス出力の縮小列から粗さに応じて読み、マテリアルパスと同じ
-鏡面反射率 `R` を掛けた `R × w × I` をマテリアル後・大気前へ足す。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/pipeline/material-pass.ts` | 鏡面反射率 `R` を G バッファから求める関数を切り出して export し、鏡面の係数をその呼び出しへ置き換えるだけ。拡散の項・合成・パス順は変えない |
-| `src/render/pipeline/reflection-pass.ts`（新規） | マテリアル出力の写し（mip 付き、自前で持つ）と縮小列、roughness LOD、hit uv 解決、`material-pass.ts` の `R` を使った `R × w × I` の加算。GPU「映り込み」へ計上。マテリアル出力以外に読むのは追跡の target と G バッファだけ |
-| `src/render/pipeline/render-pipeline.ts` | マテリアルパス後・大気前に呼ぶ。`inspectBackdrop` を像の解決より前へ移し、デバッグ「マテリアル」が像を含まないようにする。`compile()` の段表と `dispose()` にも足す |
-| `src/render/gpu-timings.ts` | 「映り込み」を「マテリアル」と「大気」の間へ挿し、以降の ID を繰り下げる |
-| `src/render/pipeline/debug-target.ts` | `reflection`「映り込み」を `material` と `atmosphere` の間へ足す |
-| `tests/render/debug-target.test.ts` / `tests/render/gpu-timings.test.ts` | 順序の固定を直す |
-
-大気パスの写しは像を足した後の時点のものなので共有しない。共有 target を書きながら読まない。
-hit uv は半精度なので、像のずれとして見えるなら判定の target を rgba32f にする（`screen-space-reflection.ts`）。
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run check:boundaries` / `npm run test:render`。
-- 映り込みオフのデバッグ「マテリアル」が着手時点と pixel diff 0（`R` の切り出しで値が変わっていない）。
-- 縮小列の各 mip を別色にした最小プローブで、選んだ LOD と実 target が一致する。
-- 置換の一致を確かめる最小プローブ: 遠方鏡面と同じ放射輝度を像として返す場面で、`w = 1` の画素の
-  鏡面反射光が映り込みオフと一致する（係数の食い違いがない）。
-- `npm run render-lab:shot -- ssr-on` で達成目標1〜4。デバッグ「映り込み」は像だけを表示する。
-- commit: `feat(render): 滑らかな面に近くの物体の像を映す`
+手順3の時点で達成目標1〜4は render-lab で確かめた。`leo-metal` の粗さ0.05の金属球の右縁に隣の球、下縁に
+下の球が映る。`bay-metal` の粗さ0.05の板では地球の雲の像に代わって荷室の壁・床と薬莢が映るが、白い立方体が
+映っているかは目視で断定できていない。粗さ0.4の板はぼけ、粗さ0.8の板はレンズオフでオン / オフ差0。
+オフの「マテリアル」「鏡面照度」は着手時点とビット一致、オンの「拡散照度」と拡散側の中間 target 4つは
+オフとビット一致。LOD のプローブ（段ごとに別色）と置換一致のプローブ（`w = 1` で `I = S_far`）も通した。
 
 ### 手順 4. 精細さの段を決め、追い込み、比較して main へ送る
 
@@ -240,8 +233,9 @@ hit uv は半精度なので、像のずれとして見えるなら判定の tar
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/pipeline/screen-space/reflection-trace.ts` / `src/render/pipeline/reflection-pass.ts` | 粗さ・画面端・距離のフェード、hit tolerance を追い込む。手順2の時点で、当たりと外れの境が数十 px 幅のまだらに散る（`bay-metal` の粗さ0.4の板の上部・薬莢、`leo-metal` の球の縁。刻みの粗さ・jitter・細い物体の取りこぼし） |
-| `src/render/pipeline/screen-space/reflection-trace-pass.ts` | `TRACE_TIERS` の仮置きと TODO を実測で置き換える |
+| `src/render/pipeline/screen-space/reflection-trace.ts` / `src/render/pipeline/reflection-pass.ts` | 粗さ・画面端・距離のフェード、hit tolerance を追い込む。手順3の時点で次の2つが残る。当たりと外れの境が数十 px 幅のまだらに散り、像にもまだらとして出る（`bay-metal` の粗さ0.4の板の上部・薬莢、`leo-metal` の球の縁。刻みの粗さ・jitter・細い物体の取りこぼし）。`bay-metal` の粗さ0.05の板に黒い点が散る（`w = 1` で約1〜2 cm 先に当たる自己交差が、暗い自分の面の色を読む） |
+| `src/render/pipeline/screen-space/reflection-trace-pass.ts` / `src/render/pipeline/reflection-pass.ts` | `TRACE_TIERS` と `LEVEL_COUNT` の仮置きと TODO を実測で置き換える。段数5では粗さ0.25〜0.4の多くの画素が段4に張り付き、ぼけの上限が段数で決まっている |
+| `src/render/pipeline/render-pipeline.ts` | 611行で lint の max-lines（500）の警告が出る（着手時点で既に554行）。`/refactor` で分けるか判断する |
 | `src/render/graphics-settings.ts` | `screenSpaceSpecularQuality` の各段の値とプリセットを実測で確定する |
 | `tools/render-lab-measure.mjs` | `screen-space` の軸に映り込みオン/オフと精細さの段を足し、構図に `leo-metal` / `bay-metal` を足す（既定の構図 bay は白い面がほぼ粗さ0.7で、追跡がほとんど歩かず負荷を過小に読む） |
 | `memos/hedalu244/better_graphics/pipeline.md` | パス表と残件を更新する |
@@ -253,6 +247,11 @@ hit uv は半精度なので、像のずれとして見えるなら判定の tar
 - `node tools/render-lab-measure.mjs 3 screen-space` で達成目標5。精細さの各段の負荷と画を並べ、段の値を
   決めた根拠を commit メッセージに残す。
 - `bay-metal` の粗さ sweep（0.05 / 0.4 / 0.8）で、中間粗さの天体照の映り込みだけが過剰に暗くならない。
+- `bay-metal` の粗さ0.05の板に白い立方体が映ることを確かめる（達成目標2）。今の観察の向きで立方体が反射の
+  向きに入らないなら、case の向きを直す。
+- `DEVELOP/SPEC/RENDERING.md` は描画を13段階で数え、映り込みはマテリアルの後の1段だけを持つ。追跡は
+  ライティングより前で走る（GPU 行・デバッグ表示もその位置）。SPEC に追跡の段を書き足すか、映り込みの
+  段の前処理として扱うかをユーザーに問う（書き足すなら `/modify-feature`）。
 - ゲームの描画設定パネル・デバッグ情報ウィンドウと render-lab で達成目標7。
 - `npm run typecheck` / `npm run check:boundaries` / `npm run test:render` / `npm run test:settings`。
 - `/refactor` / `/comment-cleanup` / `/send-pr`。
@@ -265,16 +264,13 @@ hit uv は半精度なので、像のずれとして見えるなら判定の tar
 | 作業 | 手順 | 中央見積り |
 | --- | --- | ---: |
 | 最終監査 | 4 | 1 h |
-| `R` の切り出しと置換一致のプローブ | 3 | 2 h |
-| 縮小列と像 | 3 | 6 h |
 | 精細さの段・品質・負荷・比較 | 4 | 7 h |
 
-**残り合計 16 h。**
+**残り合計 8 h。**
 
-負荷の予算（960×540、Intel gen-12lp）。追跡の行は精細さ「中」でマテリアルの約1.1〜1.5倍と実測した
-（「追跡の実装」）。残りは写しと縮小列約1倍、解決約1倍（拡散の全解像度の多タップ段の復元が約1.9倍）と
-見て、合計約3〜3.5倍。達成目標5の5倍以下に収まる見込みだが、像の解決の実測で確かめる。5倍を超えたら、
-画を見ずに歩数だけ削らず、hit率・miss率・edge fade と内訳を合わせて追い込む。
+負荷は精細さ「中」で追跡 + 映り込みがマテリアルの1.8〜2.1倍（「像の実装」）。達成目標5の5倍以下には
+余裕があるので、段数・歩数を増やす余地として使える。5倍を超えたら、画を見ずに歩数だけ削らず、hit率・
+miss率・edge fade と内訳を合わせて追い込む。
 
 ---
 
