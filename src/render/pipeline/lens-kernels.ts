@@ -2,7 +2,7 @@
 // 直書きの係数だと、あとで刻みを変えたときに総和が静かに 1 からずれ、核が光を増やす(あるいは
 // 減らす)ようになってしまう。総和が 1 なら出力は入力の最大値(太陽面の 4.62e4)を超えないので、
 // 半精度浮動小数点の上限(65504)を跨ぐことも構造的に起きない。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { and, greaterThan, lessThan, screenSize, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
 import type { FloatNode, Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
 import type { AperturePsfTap } from './aperture-psf';

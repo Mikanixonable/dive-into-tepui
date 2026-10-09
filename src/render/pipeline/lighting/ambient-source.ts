@@ -1,7 +1,7 @@
 // 面の向きによらない一様な環境光。ゲームプレイのために物理から外す光源で、恒星の色にも明るさにも
 // 依らない無彩色の定数を、恒星からの距離の逆二乗で減衰させ、影に遮られずに届ける
 // (DEVELOP/SPEC/RENDERING.md「地球の描画」)。強さは setFraction() で毎フレーム受ける。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { PI, dot, uniform, vec3 } from 'three/tsl';
 import type { FloatUniform, Vec3Node } from '../../tsl-types';
 import { REFERENCE_RADIANT_INTENSITY, type SunLight } from '../sun-light';

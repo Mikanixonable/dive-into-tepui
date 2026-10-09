@@ -7,8 +7,8 @@
 // 読む位置はサブステップの中点から引くので、外挿の幅は subDt/2 に収まる。
 import { nearestAtmosphereBody } from '../../physics/attractor';
 import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
-import { Vec3 } from '../../math/vec3';
-import { ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
+import type { Vec3 } from '../../math/vec3';
+import { type ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
 import type { CelestialBody } from '../../physics/celestial-body';
 
 export class SubstepCelestialBodies {

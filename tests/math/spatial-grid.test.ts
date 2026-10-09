@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { SpatialGrid } from '../../src/math/spatial-grid';
-import { v3, Vec3, sub, len } from '../../src/math/vec3';
+import { v3, type Vec3, sub, len } from '../../src/math/vec3';
 
 function mulberry32(seed: number): () => number {
   let a = seed;

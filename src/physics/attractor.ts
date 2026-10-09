@@ -2,10 +2,10 @@
 // その場の軌道時間スケール。天体位置は基準時刻 pivot で取得した値から目標時刻へ外挿して用いるため、
 // 引数 pivot には天体一覧を解決した基準時刻を指定する。
 // THREE/DOM 非依存の純関数群。
-import { KinematicState } from './kinematic-state';
+import type { KinematicState } from './kinematic-state';
 import { keplerPeriod, orbitalElementsOf } from './elements';
 import type { FrameAnchorSource } from './frame';
-import { Vec3, len, lenSq, sub, v3 } from '../math/vec3';
+import { type Vec3, len, lenSq, sub, v3 } from '../math/vec3';
 import type { CelestialBody } from './celestial-body';
 
 // 天体 attractor が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。

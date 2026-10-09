@@ -2,7 +2,7 @@
 // 1フレームぶんのエッジトリガ(押した瞬間のキー/クリック/右クリック/マウス移動量)を
 // update() で確定させる。エッジトリガは先着順の消費モデルで、
 // take* の handler が true を返したイベントはキューから取り除かれる。
-import { KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
+import { type KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 
 // これ未満の累積移動量ならドラッグではなくクリック扱い [px]
 export const CLICK_MOVE_THRESHOLD = 6;
