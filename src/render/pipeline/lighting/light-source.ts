@@ -8,10 +8,10 @@ import type { ShadingSample } from './shading-sample';
 // 光源 1 つがシェーディング点へ届ける照度。マテリアル固有の F0(反射率の色)を知らないため、
 // 鏡面は F0=1 で仮に評価した値になる — フレネル項をマテリアルパス側で掛け直す前提の、
 // ライトプリパスという構成そのものが持つ制約。
-export type LightContribution = {
+export interface LightContribution {
   readonly diffuse: Vec3Node;
   readonly specular: Vec3Node;
-};
+}
 
 export interface LightSource {
   // このフレームに寄与があるか。偽なら描画命令は発行されない。
