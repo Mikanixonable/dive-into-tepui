@@ -7,16 +7,16 @@
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, pow, screenSize,
-  screenUV, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
+  If, Loop, acos, atan, bool, clamp, cos, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, pow,
+  screenSize, screenUV, select, sin, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
 import { facingCosine, sampleBandWeights, type BandSplit } from './band-split';
 import { signedDiffuseCorrection } from './diffuse-correction';
 import {
-  SECTOR_COUNT, angleOf, bitCount, capMeasure, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors,
-  sliceAt, toSliceCoordinates, type RangeSectors, type Slice,
+  SECTOR_COUNT, angleOf, bitCount, capArc, capMeasure, maskedMeasure, rangeSectors, sectorPosition, sectorRange,
+  segmentSectors, sliceAt, toSliceCoordinates, type RangeSectors, type Slice,
 } from './slice-sectors';
 import {
   angularlyHigher, angularlyLower, rayAt, samplePoint, sideRays, splitSegments, tangentHit, type SideRays,
@@ -40,20 +40,37 @@ export function widenedCap(cap: PlanetCap): PlanetCap {
   return { direction: cap.direction, cosAngle: min(cap.cosAngle, Math.cos(MIN_CAP_ANGLE)) };
 }
 
+// 広げた円盤の中の向き direction を、円盤の中心 center(単位ベクトル)からの角を scale 倍した向きへ写す。
+// 中心から見た方位は変えない。direction が中心とほぼ一致するときは center。
+export function scaledAboutCenter(direction: Vec3Node, center: Vec3Node, scale: FloatNode): Vec3Node {
+  const cosTheta = clamp(dot(direction, center), -1, 1);
+  const perpendicular = direction.sub(center.mul(cosTheta));
+  const sinTheta = length(perpendicular);
+  const theta = atan(sinTheta, cosTheta).mul(scale);
+  const tangent = perpendicular.div(max(sinTheta, 1e-6));
+  return select(sinTheta.lessThan(1e-6), center, center.mul(cos(theta)).add(tangent.mul(sin(theta))));
+}
+
 // 受け手を照らす天体照 1 つ。cap は受け手から見た球冠(view 空間)、irradiance は近くの構造に遮られないときに
-// 届く拡散照度(SUN_IRRADIANCE_1AU の目盛り)。
+// 届く拡散照度(SUN_IRRADIANCE_1AU の目盛り)。relativeRadiance は、実際の円盤の上の向き direction(view 空間)を
+// 角幅 filterAngle [rad] で読んだ放射輝度を、irradiance の元の放射輝度で割った相対値(成分ごと。一様なら 1)。
 export interface PlanetIllumination {
   readonly cap: PlanetCap;
   readonly irradiance: Vec3Node;
+  readonly relativeRadiance: (direction: Vec3Node, filterAngle: FloatNode) => Vec3Node;
 }
 
 // 受け手へ届く遠方の拡散光と、新しく塞いだ測度をその光の塞がれた割合へ写す尺度。ambient は一様な環境光の照度、
 // hemisphereScale は 1 / (スライスの数 × SECTOR_COUNT)、planets は天体照ごとに(視半径を広げた)円盤の尺度
-// capScale = 1 / (スライスの数 × SECTOR_COUNT × 円盤の測度) を添えたもの。
+// capScale = 1 / (スライスの数 × SECTOR_COUNT × 円盤の測度) と、広げた円盤の角を実際の円盤の角へ写す倍率
+// discScale = 実際の視半径 / 広げた視半径 を添えたもの。
 interface DistantLight {
   readonly ambient: Vec3Node;
   readonly hemisphereScale: FloatNode;
-  readonly planets: readonly (PlanetIllumination & { readonly capScale: FloatNode })[];
+  readonly planets: readonly (PlanetIllumination & {
+    readonly capScale: FloatNode;
+    readonly discScale: FloatNode;
+  })[];
 }
 
 // G バッファの画素 1 つの面(view 空間)。depth は素の深度で、0 なら面が写っていない。
@@ -99,11 +116,17 @@ export function scanHemisphere(
     const hemisphereScale = float(1).div(float(sliceCount).mul(SECTOR_COUNT)).toVar();
     // 天体照の円盤は視半径を広げ、受け手ごとに 1 回その測度を求める。円盤が地平の下で測度が 0 のときは、下限で
     // 0 除算を避ける — 弧は半球の外で幅 0 になるので掛かる測度も 0。
-    const planetLights = planets.map(({ cap, irradiance }) => {
+    const planetLights = planets.map(({ cap, irradiance, relativeRadiance }) => {
       const widened = widenedCap(cap);
       const wideCap = { direction: widened.direction.toVar(), cosAngle: widened.cosAngle.toVar() };
       const measure = capMeasure(wideCap, receiver.normal);
-      return { cap: wideCap, irradiance: irradiance.toVar(), capScale: hemisphereScale.div(max(measure, 1e-6)).toVar() };
+      return {
+        cap: wideCap,
+        irradiance: irradiance.toVar(),
+        relativeRadiance,
+        capScale: hemisphereScale.div(max(measure, 1e-6)).toVar(),
+        discScale: acos(clamp(cap.cosAngle, -1, 1)).div(acos(wideCap.cosAngle)).toVar(),
+      };
     });
     // 視線に垂直な面の中で等間隔に取ったスライスのうち index 本目。
     const sliceOf = (index: IntNode): Slice =>
@@ -208,8 +231,8 @@ class SliceOcclusion {
   private readonly blocked = uint(0).toVar();
   // 新しく塞いだ扇形の数を、受け手の半球の余弦重みの測度に対する割合へ写す重み。
   private readonly hemisphereWeight: FloatNode;
-  // 天体ごとの照度 irradiance、球冠をビットごとに測る形 sectors と、塞いだ球冠の測度をその天体照の塞がれた割合へ写す
-  // 重み capWeight。
+  // 天体ごとの、円盤の上の相対放射輝度を掛けた照度 irradiance、球冠をビットごとに測る形 sectors と、塞いだ球冠の
+  // 測度をその天体照の塞がれた割合へ写す重み capWeight。
   private readonly planets: readonly {
     readonly irradiance: Vec3Node;
     readonly sectors: RangeSectors;
@@ -225,11 +248,20 @@ class SliceOcclusion {
     private readonly corrections: readonly Vec3Node[], private readonly radiance: THREE.Texture | null,
   ) {
     this.hemisphereWeight = slice.weight.mul(light.hemisphereScale).toVar();
-    this.planets = light.planets.map(({ cap, irradiance, capScale }) => ({
-      irradiance,
-      sectors: rangeSectors(capRange(slice, cap, dither)),
-      capWeight: slice.weight.mul(capScale).toVar(),
-    }));
+    this.planets = light.planets.map(({ cap, irradiance, relativeRadiance, capScale, discScale }) => {
+      const arc = capArc(slice, cap);
+      // 弧の中点の向きを実際の円盤へ写して読む。フィルタの幅は弧を写した長さにする — 1 点で読むと、満ち欠けの境が
+      // 弧に沿うときに弧の平均から外れる。
+      const middle = arc.lower.add(arc.upper).mul(0.5);
+      const direction = slice.view.mul(cos(middle)).add(slice.orthoDirection.mul(sin(middle)));
+      const filterAngle = max(arc.upper.sub(arc.lower), 1e-4).mul(discScale);
+      const relative = relativeRadiance(scaledAboutCenter(direction, cap.direction, discScale), filterAngle);
+      return {
+        irradiance: irradiance.mul(relative).toVar(),
+        sectors: rangeSectors(sectorRange(slice, arc, dither)),
+        capWeight: slice.weight.mul(capScale).toVar(),
+      };
+    });
   }
 
   // 受け手から見て角 lower..upper を占める切片を、手前の切片の後ろへ積む。falloff はその標本の距離重み、
