@@ -8,14 +8,14 @@ import type { Composer, ComposerNote } from '../composer';
 import { cycleAt, phaseValue, scaleFreq } from './utils';
 
 export class AntipodeComposer implements Composer {
-  constructor(private readonly params: AntipodeParams) {}
+  public constructor(private readonly params: AntipodeParams) {}
 
-  get stepDurSec(): number {
+  public get stepDurSec(): number {
     return this.params.stepDur;
   }
 
   // stab と各 arp 層のうち、このステップが打ち込みの位置になっている層だけを移調して返す。
-  notesAt(step: number): ComposerNote[] {
+  public notesAt(step: number): ComposerNote[] {
     const { transpose } = this.params;
     const shift = phaseValue(transpose, step);
     const notes: ComposerNote[] = [];

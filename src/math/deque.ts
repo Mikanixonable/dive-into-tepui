@@ -5,18 +5,18 @@ export class Deque<T> {
     private count = 0;
 
     // 初期容量(2の冪に切り上げ)でバッファを確保する。
-    constructor(capacity = 8) {
+    public constructor(capacity = 8) {
         capacity = Math.max(2, 1 << Math.ceil(Math.log2(capacity)));
         this.buffer = new Array(capacity);
     }
 
     // 現在の要素数
-    get size() {
+    public get size() {
         return this.count;
     }
 
     // 現在1つ以上の要素があるか
-    get empty() {
+    public get empty() {
         return this.count === 0;
     }
 
@@ -52,7 +52,7 @@ export class Deque<T> {
     }
 
     // 左端を0とする論理インデックス i の要素を返す。範囲外なら例外。
-    at(i: number): T {
+    public at(i: number): T {
         if (i < 0 || i >= this.count)
             throw new RangeError();
 
@@ -60,17 +60,17 @@ export class Deque<T> {
     }
 
     // 左端の要素を返す。空なら例外。
-    peekLeft(): T {
+    public peekLeft(): T {
         return this.at(0);
     }
 
     // 右端の要素を返す。空なら例外。
-    peekRight(): T {
+    public peekRight(): T {
         return this.at(this.count - 1);
     }
 
     // 左端に要素を追加する。
-    pushLeft(value: T) {
+    public pushLeft(value: T) {
         this.ensureCapacity();
 
         this.start--;
@@ -79,7 +79,7 @@ export class Deque<T> {
     }
 
     // 右端に要素を追加する。
-    pushRight(value: T) {
+    public pushRight(value: T) {
         this.ensureCapacity();
 
         this.buffer[this.index(this.end)] = value;
@@ -87,7 +87,7 @@ export class Deque<T> {
     }
 
     // 左端の要素を取り除いて返す。空なら例外。
-    popLeft(): T {
+    public popLeft(): T {
         if (this.empty)
             throw new RangeError();
 
@@ -103,7 +103,7 @@ export class Deque<T> {
     }
 
     // 右端の要素を取り除いて返す。空なら例外。
-    popRight(): T {
+    public popRight(): T {
         if (this.empty)
             throw new RangeError();
 
@@ -118,7 +118,7 @@ export class Deque<T> {
     }
 
     // 左からn要素まとめて削除 clear=falseのときO(1) clear=trueのときO(n)
-    deleteLeftN(n: number, clear = false) {
+    public deleteLeftN(n: number, clear = false) {
         if (n < 0 || n > this.count)
             throw new RangeError();
 
@@ -131,7 +131,7 @@ export class Deque<T> {
     }
 
     // 右からn要素まとめて削除 clear=falseのときO(1) clear=trueのときO(n)
-    deleteRightN(n: number, clear = false) {
+    public deleteRightN(n: number, clear = false) {
         if (n < 0 || n > this.count)
             throw new RangeError();
 
@@ -143,7 +143,7 @@ export class Deque<T> {
     }
 
     // 要素を空にする。clearMemory=trueのときO(n)でメモリを解放する。clearMemory=falseのときO(1)
-    clear(clearMemory = false) {
+    public clear(clearMemory = false) {
         if (clearMemory)
             for (let i = 0; i < this.count; i++)
                 this.buffer[this.index(this.start + i)] = undefined;
