@@ -1,7 +1,7 @@
 // 映り込みのぼけ方のケース。粗さを段に振った金属の帯を床に並べ、帯ごとに同じ発光球を1つずつ映し、地球の鏡面像も
 // 同じ床に映す。同じ粗さの面で、近くの物体の像と遠方の光の像が同じ規則でぼけるかを、帯を横に並べて読む試験体。
 // 対照のケースは発光球の代わりに同じ場所・大きさ・放射輝度の球光源を置き、ライティングパスが積分した鏡面像を映す。
-// 帯ごとの像の縁の幅と縮小段の内訳は tools/render-lab-reflection-levels.mjs が撮影から表にする。
+// 帯ごとの像の縁の幅と明るさは tools/render-lab-reflection-levels.mjs が撮影から表にする。
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
@@ -149,11 +149,9 @@ function reflectionLadder(): LabCase {
       'ladder-off': { view: {}, graphics: off },
       // 地球の像の縁は、トーンマッピングだけを通した鏡面照度で測る。映り込みを切り、置換で弱めない。
       'ladder-off-specular': { view: {}, graphics: off, debugTarget: 'specular' },
-      // 映り込みを切ったフレームの縮小段は、何も読んでいないので一面の黒。
-      'ladder-off-level': { view: {}, graphics: off, debugTarget: 'reflection-level' },
-      'ladder-roughness': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'roughness' },      'ladder-weight': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-weight' },
+      'ladder-roughness': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'roughness' },
+      'ladder-weight': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-weight' },
       'ladder-distance': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-distance' },
-      'ladder-level': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-level' },
       'ladder-reflection': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection' },
     },
   };

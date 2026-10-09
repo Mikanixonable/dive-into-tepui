@@ -24,7 +24,7 @@ import { SphereSpecular } from './lighting/sphere-light';
 import { SphereLights } from './lighting/sphere-lights';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
-import { REFLECTION_LEVEL_COUNT, ReflectionPass } from './reflection-pass';
+import { ReflectionPass } from './reflection-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { SCREEN_SPACE_DIFFUSE, ScreenSpacePass } from './screen-space/screen-space-pass';
 import { DiffuseCorrection } from './screen-space/diffuse-correction';
@@ -296,7 +296,6 @@ export class RenderPipeline {
         vec4(this.toneMapped(texture(this.screenSpacePass.surfaceRadianceTexture, screenUV).rgb), 1),
       ),
       material: inspectMaterial,
-      'reflection-level': this.buildCompositeMaterial(vec4(this.reflectionLevelDebugNode(), 1)),
       reflection: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.reflectionPass.texture, screenUV).rgb), 1),
       ),
@@ -383,15 +382,6 @@ export class RenderPipeline {
     const distance = this.reflection.hitDistanceAt(screenUV);
     const scaled = log(distance.div(0.01)).div(Math.log(REFLECTION_DISTANCE_DEBUG_RANGE / 0.01));
     return select(distance.greaterThan(0), scaled.clamp(0, 1), float(0));
-  }
-
-  // 映り込みの像の解決が読んだ縮小列の段を、段 + 1 を段数で割った線形の灰へ写し、いちばん粗い段を白にする。置換の
-  // 重みが 0 の画素は青、像を書いていない(映り込みを切った)フレームは黒。tools/render-lab-reflection-levels.mjs が
-  // 同じ目盛りで段へ戻す。
-  private reflectionLevelDebugNode(): Vec3Node {
-    const level = this.reflectionPass.levelAt(screenUV);
-    const gray = vec3(level.add(1).div(REFLECTION_LEVEL_COUNT).clamp(0, 1));
-    return select(level.greaterThan(-0.5), gray, select(level.greaterThan(-1.5), vec3(0, 0, 1), vec3(0)));
   }
 
   // 共有ターゲットと表示用ターゲットを描画バッファの寸法へ合わせ、その寸法を返す。
