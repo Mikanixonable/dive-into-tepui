@@ -13,6 +13,7 @@ import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { Quat } from '../../math/quat';
 import type { Ray } from '../../math/ray';
+import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import type { ProteinCombatReadout } from '../protein/protein-schema';
@@ -54,7 +55,7 @@ export class EnemyInspection implements InspectedObject {
   public get id(): string { return this.source.id; }
   public get name(): string { return this.source.name; }
   public get gone(): boolean { return !this.source.motion.alive; }
-  public get orbitState() { return this.source.motion.state; }
+  public get orbitState(): KinematicState { return this.source.motion.state; }
   public readonly glyph = ENTITY_GLYPH.enemyShip;
   public get glyphSvg(): string { return shipMarkerSvg(false); }
   public readonly listSection = 'enemy' as const;
