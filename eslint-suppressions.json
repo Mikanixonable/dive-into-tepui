@@ -29,15 +29,7 @@
       "count": 1
     }
   },
-  "src/game/dynamic/dynamic-entity/casing-collision.ts": {
-    "local/explicit-public-return-type": {
-      "count": 2
-    }
-  },
   "src/game/dynamic/dynamic-entity/dynamic-entity.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 2
     }
@@ -64,11 +56,6 @@
   },
   "src/game/dynamic/dynamic-entity/protein-enemy.ts": {
     "no-restricted-syntax": {
-      "count": 2
-    }
-  },
-  "src/game/dynamic/dynamic-entity/ship.ts": {
-    "local/explicit-public-return-type": {
       "count": 2
     }
   },
@@ -142,18 +129,8 @@
       "count": 1
     }
   },
-  "src/game/pickable/enemy-inspection.ts": {
-    "local/explicit-public-return-type": {
-      "count": 1
-    }
-  },
   "src/game/pickable/map-picking.ts": {
     "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/game/plan/plan-editor.ts": {
-    "local/explicit-public-return-type": {
       "count": 1
     }
   },
@@ -207,20 +184,7 @@
       "count": 1
     }
   },
-  "src/hud/widgets/pulldown.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    }
-  },
-  "src/hud/widgets/segmented-control.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    }
-  },
   "src/hud/widgets/tab-bar.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 1
     }
@@ -236,15 +200,7 @@
     }
   },
   "src/hud/windows/property-window.ts": {
-    "local/explicit-public-return-type": {
-      "count": 1
-    },
     "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/input/input.ts": {
-    "@typescript-eslint/parameter-properties": {
       "count": 1
     }
   },
@@ -279,9 +235,6 @@
     }
   },
   "src/math/deque.ts": {
-    "local/explicit-public-return-type": {
-      "count": 7
-    },
     "no-restricted-syntax": {
       "count": 2
     }
@@ -311,26 +264,6 @@
       "count": 2
     }
   },
-  "src/render/camera/floating-origin.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 2
-    }
-  },
-  "src/render/celestial-grid.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    }
-  },
-  "src/render/celestial/celestial-entity/geostationary-overlay.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    }
-  },
-  "src/render/celestial/celestial-surface.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    }
-  },
   "src/render/celestial/ring.ts": {
     "no-restricted-syntax": {
       "count": 1
@@ -338,21 +271,6 @@
   },
   "src/render/earth-surface-factory.ts": {
     "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/render/instanced-pool.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    }
-  },
-  "src/render/pipeline/antialias-pass.ts": {
-    "@typescript-eslint/parameter-properties": {
-      "count": 1
-    }
-  },
-  "src/render/pipeline/light-prepass.ts": {
-    "@typescript-eslint/parameter-properties": {
       "count": 1
     }
   },
@@ -368,11 +286,6 @@
   },
   "src/render/protein/protein-ribbon-color.ts": {
     "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/render/scale-grid.ts": {
-    "@typescript-eslint/parameter-properties": {
       "count": 1
     }
   },
@@ -413,11 +326,6 @@
   },
   "tests/game/map-visibility.test.ts": {
     "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "tests/perf/sphere-contact-sweeps.ts": {
-    "local/explicit-public-return-type": {
       "count": 1
     }
   },

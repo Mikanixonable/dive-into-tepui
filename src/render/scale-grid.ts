@@ -90,13 +90,11 @@ class ScaleGridPlane {
   private readonly levels: readonly GridLevel[];
   private readonly initialBasis: PlaneBasis;
   private readonly label: HTMLDivElement;
-  private basis: PlaneBasis;
   private readonly basisRotation = new THREE.Quaternion();
 
   // 全ズーム段ぶんの十字群を scene へ、縮尺ラベルを document.body へ置く。
-  public constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
+  public constructor(scene: THREE.Scene, private basis: PlaneBasis, color: number, name: string) {
     this.initialBasis = basis;
-    this.basis = basis;
     this.levels = GRID_SPACINGS.map((spacing) => {
       const made = makeLine(color);
       const geometry = new THREE.BufferGeometry();
