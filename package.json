@@ -112,5 +112,8 @@
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@sarap422/font-hackgen": "^1.0.0",
     "three": "0.185.1"
+  },
+  "overrides": {
+    "sharp": "^0.35.5"
   }
 }
