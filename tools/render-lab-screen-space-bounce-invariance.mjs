@@ -1,10 +1,11 @@
 // 走査の天体照の遮りの積分を書き換える前後で、照り返し(方式 2 の値 − 方式 1 の値)が変わらないことの確かめ。
 // 中の段・seedOf(0〜3)の各 1 フレームの帯ごとの出力と最終の補正を、方式 1・2 で float のまま撮り、2 つの撮影の照り返しの差を
 // 半精度の丸めの許容と比べて数える。
-//   node tools/render-lab-screen-space-bounce-invariance.mjs capture <名前>        (先に render-lab を組むこと)
+//   node tools/render-lab-screen-space-bounce-invariance.mjs capture <名前> [--planet-light-model <0|1>]  (先に render-lab を組むこと)
 //   node tools/render-lab-screen-space-bounce-invariance.mjs compare <名前A> <名前B>
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { parseArgs } from 'node:util';
 import { encodeRgbPng } from './png.mjs';
 import {
   headHash, packedBandsNamesOf, readFloats, seedOf, shotsDir, table, TIERS, WIDTH, withLab, writeFloats,
@@ -31,6 +32,12 @@ const HALF_SUBNORMAL_STEP = 4 * 2 ** -25;
 
 const fileOf = (name, { shot, mode, seed, target }) => path.join(outDir, name, `${shot}.m${mode}.s${seed}.${target}.f32`);
 
+const { positionals: [command, ...names], values: options } = parseArgs({
+  allowPositionals: true, options: { 'planet-light-model': { type: 'string' } },
+});
+// 撮影の描画設定 planetLightModel を差し替える値。null なら撮影の描画設定のまま撮る。
+const planetLightModelArgument = options['planet-light-model'] === undefined ? null : Number(options['planet-light-model']);
+
 async function capture(name) {
   const started = Date.now();
   mkdirSync(path.join(outDir, name), { recursive: true });
@@ -42,6 +49,7 @@ async function capture(name) {
     await withLab(async (lab) => {
       for (const job of pendingJobs) {
         await lab.show({ caseName: job.caseName, shot: job.shot, mode: job.mode, dolly: 0, key: job.shot });
+        if (planetLightModelArgument !== null) await lab.setGraphicsOption('planetLightModel', planetLightModelArgument);
         await lab.setTier(TIER);
         for (let seed = 0; seed < SEED_COUNT; seed++) {
           if (isDone(job, seed)) continue;
@@ -118,7 +126,6 @@ function compare(a, b) {
   console.log(lines.join('\n'));
 }
 
-const [command, ...names] = process.argv.slice(2);
 if (command === 'capture' && names.length === 1) await capture(names[0]);
 else if (command === 'compare' && names.length === 2) compare(...names);
-else throw new Error('usage: capture <名前> | compare <名前A> <名前B>');
+else throw new Error('usage: capture <名前> [--planet-light-model <0|1>] | compare <名前A> <名前B>');
