@@ -14,11 +14,11 @@ export class NanWatchdog {
   // 壊れた値を報告済みか。
   private tripped = false;
 
-  constructor(private readonly events: RunEventSink) { }
+  public constructor(private readonly events: RunEventSink) { }
 
   // 操作対象と simTime を見る軽い検査。phase には直前に走ったフェーズの名を渡す(そこが発生源と
   // 分かる)。controlled が null なら何もしない。
-  checkControlled(
+  public checkControlled(
     phase: string, controlled: SimulationControlled | null, simTime: number, dt: number, simDt: number,
   ): void {
     if (this.tripped || !controlled) return;
@@ -37,7 +37,7 @@ export class NanWatchdog {
 
   // 操作対象に加えて全エンティティの位置・速度を見る重い検査。操作対象の汚染は、先に壊れた他の
   // エンティティ(薬莢・破片・弾)から接触で伝わることが多い。フレームにつき一度だけ呼ぶこと。
-  checkAll(
+  public checkAll(
     phase: string, controlled: SimulationControlled | null, entities: readonly SimulationState[],
     simTime: number, dt: number, simDt: number,
   ): void {

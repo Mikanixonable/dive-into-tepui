@@ -149,9 +149,9 @@ const PERIOD_REF_FLOOR_HOURS = 0.1;
 const OVERLAY_ID = 'object-placer';
 
 export class ObjectPlacerPanel implements OverlayHandle {
-  onConfirm: ((name: string, form: ObjectPlacerForm) => void) | null = null;
+  public onConfirm: ((name: string, form: ObjectPlacerForm) => void) | null = null;
 
-  get isOpen(): boolean { return this.overlayManager.isOverlayOpen(OVERLAY_ID); }
+  public get isOpen(): boolean { return this.overlayManager.isOverlayOpen(OVERLAY_ID); }
 
   private readonly panel: HTMLElement;
   private readonly entityKind: SegmentedControl<ObjectPlacementSelection>;
@@ -196,7 +196,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
   // 物体配置パネルの DOM を組み立てる。基準天体・ラグランジュ系の選択肢は celestialSystem が
   // 実際に持つ天体から組む。要素は開くまで DOM へ挿さず、overlayManager が window の層へ置く。
-  constructor(
+  public constructor(
     private readonly celestialSystem: CelestialSystem,
     private readonly overlayManager: OverlayManager,
   ) {
@@ -497,7 +497,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   }
 
   // 現在のフォームの値を、選ばれた組・種別が使う値だけを読み取って ObjectPlacerForm へ組む。
-  getForm(): ObjectPlacerForm {
+  public getForm(): ObjectPlacerForm {
     const selection = this.entityKindValue;
     // ラグランジュ点指定: 軌道種別が使う振幅だけを読む。
     if (this.placementModeValue === 'lagrange') {
@@ -564,7 +564,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
   // 検証結果を差分反映する。前回と同じ内容なら DOM に触らない(該当欄の枠色とメッセージ一覧を
   // まとめて持つ)。
-  setIssues(issues: readonly PlacementFieldIssue[]): void {
+  public setIssues(issues: readonly PlacementFieldIssue[]): void {
     // sizeModeValue も差分判定に含める: 'eccentricity' が指す行(fieldRowFor)は
     // sizeMode によって変わるため、issues の中身が変わらなくても再反映が要る場合がある。
     const key = `${this.sizeModeValue}|${issues.map((issue) => `${issue.field}:${issue.message}`).join('|')}`;
@@ -586,7 +586,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   }
 
   // パネルを開く。preset があればその種別ぶんだけ事前入力してから開く。
-  open(preset?: ObjectPlacerPreset): void {
+  public open(preset?: ObjectPlacerPreset): void {
     // 事前入力の範囲は preset の種別で決まる。
     if (preset?.kind === 'form') {
       this.selectEntityKind(preset.selection);
@@ -642,18 +642,18 @@ export class ObjectPlacerPanel implements OverlayHandle {
   }
 
   // パネルを閉じ、オーバーレイの登録も外す。開いていなければ何も起きない。
-  close(): void {
+  public close(): void {
     if (!this.isOpen) return;
     this.panel.classList.add('hidden');
     this.overlayManager.close(OVERLAY_ID);
   }
 
-  contains(target: Node): boolean {
+  public contains(target: Node): boolean {
     return this.panel.contains(target);
   }
 
   // パネル DOM と登録を取り除き、基準天体・系の ObjectPicker もあわせて片付ける。
-  dispose(): void {
+  public dispose(): void {
     this.close();
     this.unsubscribeViewport();
     this.panel.remove();
@@ -662,7 +662,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
   }
 
   // 項目ショートカットを受ける。Enter なら確定して true を返す。
-  handleShortcut(code: string): boolean {
+  public handleShortcut(code: string): boolean {
     if (code !== 'Enter') return false;
     this.confirm();
     return true;
