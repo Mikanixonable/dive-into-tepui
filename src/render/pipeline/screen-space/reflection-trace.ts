@@ -91,7 +91,7 @@ export function traceReflection(
         const sceneZ = viewZOf(sceneDepth, projectionInverse).toVar();
         const nearZ = max(previousZ, rayZ);
         const farZ = min(previousZ, rayZ);
-        If(farZ.lessThan(sceneZ).and(nearZ.greaterThan(sceneZ.add(sceneZ.mul(THICKNESS_PER_DISTANCE)))), () => {
+        If(farZ.lessThan(sceneZ).and(nearZ.greaterThan(thicknessFarZ(sceneZ))), () => {
           hitT.assign(t);
           Break();
         });
@@ -184,9 +184,15 @@ function exitFraction(start: FloatNode, delta: FloatNode, size: FloatNode): Floa
 }
 
 // 素の深度 depth(逆 Z)の面の view 空間の奥行き z。透視でも平行投影でも、z は画面上の位置によらない。
-function viewZOf(depth: FloatNode, projectionInverse: Mat4Uniform): FloatNode {
+export function viewZOf(depth: FloatNode, projectionInverse: Mat4Uniform): FloatNode {
   const position = projectionInverse.mul(vec4(0, 0, depth, 1));
   return position.z.div(position.w);
+}
+
+// view 空間の奥行き surfaceZ に写った面が、ray thickness だけ奥へ続いた先の奥行き z。面の写った深度から
+// この奥行きまでが、ray が当たる物体の中。
+export function thicknessFarZ(surfaceZ: FloatNode): FloatNode {
+  return surfaceZ.add(surfaceZ.mul(THICKNESS_PER_DISTANCE));
 }
 
 // 面 sample の ray の起点を法線の向きへ浮かせる高さ [m]。平らな面が、自分を写した深度の画素で自分の奥へ入らない
