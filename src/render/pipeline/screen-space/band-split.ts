@@ -14,8 +14,10 @@ export interface FacingStrengths {
 
 // 補正を遮りの画面距離 ρ [走査の画素] と向きで分ける帯。count は帯の数(1 なら分けない)で、帯 b は座標 b を受け持つ。
 // 遮蔽に送り手の向きの因子 senderFacing はない(光を返す面の向きの話)。
+// senderFacingExponent は掛ける因子 a の冪 p((1 − s) + s·(cos θ)^p。省くと 1)。
 export interface BandSplit {
   readonly count: number;
+  readonly senderFacingExponent?: FloatNode;
   readonly bounceScale: FloatNode;
   readonly bounce: FacingStrengths;
   readonly occlusionScale: FloatNode;
@@ -56,6 +58,12 @@ export function sampleFacing(
 
 function weakened(strength: FloatNode, cosine: FloatNode): FloatNode {
   return float(1).sub(strength).add(strength.mul(cosine));
+}
+
+// 送り手の向きの因子 a。cos θ = 0 でも NaN を出さないよう、冪の前に下限を置く。
+function senderFacingMultiplier(bands: BandSplit, cosine: FloatNode): FloatNode {
+  const exponent = bands.senderFacingExponent;
+  return weakened(bands.bounce.senderFacing, exponent === undefined ? cosine : pow(max(cosine, COORDINATE_FLOOR), exponent));
 }
 
 // 受け手の法線と受け手→カメラの内積 cos ε を、弱めずに帯の座標へ掛ける因子 c。斜めに見る受け手は画面上で縮むので、
@@ -115,7 +123,7 @@ export function bounceWeights(
   const { bounceScale, bounce } = bands;
   const coordinate = bandCoordinate(
     bands.count, bounceScale, rho,
-    weakened(bounce.senderFacing, facing.senderFacing).mul(receiverViewMultiplier(receiverView)),
+    senderFacingMultiplier(bands, facing.senderFacing).mul(receiverViewMultiplier(receiverView)),
     weakenedDivisor(bounce.receiverFacing, facing.receiverFacing)
       .mul(senderViewDivisor(facing)),
   );

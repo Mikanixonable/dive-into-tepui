@@ -7,7 +7,7 @@ import { HEIGHT, shotsDir, WIDTH } from './screen-space-lab.mjs';
 
 export const OUTPUT = path.join(shotsDir, 'ssd-8-15-chain-metrics');
 export const RUNS = path.join(OUTPUT, 'runs');
-export const BASELINE_RUN = 'before-a';
+export const BASELINE_RUN = 'w0';
 export const SCAN_SCALE = 0.25;
 export const SCAN_WIDTH = Math.round(WIDTH * SCAN_SCALE);
 export const SCAN_HEIGHT = Math.round(HEIGHT * SCAN_SCALE);

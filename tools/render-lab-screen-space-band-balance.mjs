@@ -1,8 +1,9 @@
 // 手順8-15の因子の組と κ の候補について、成分ごとの平均の帯(Σ|値| で重みを付けた帯番号)を測り、基準(因子なし、
-// κ_b = κ_o = 0.75)と平均の帯が揃う κ を求める。--target を渡すと、基準はその場で測らず過去の出力の基準の行の値を使う
+// κ_b = κ_o = 0.75。--baseline-*-scale で変える)と平均の帯が揃う κ を求める。--target を渡すと、基準はその場で測らず過去の出力の基準の行の値を使う
 // (固定の因子 d を入れる前に測った、距離だけの帯座標)。照り返し = 「照り返しあり − 遮蔽のみ」の収束した帯、遮蔽 = 「遮蔽のみ」の収束した帯。
 // 使い方: node tools/render-lab-screen-space-band-balance.mjs [--factors=b.d=1,o.d=1] [--bounce-scales=0.5,0.6,0.75]
-//   [--occlusion-scales=0.75] [--target=<過去の band-balance の label>] [--passes=128] [--scene=<name>] [--label=<出力名>]
+//   [--occlusion-scales=0.75] [--target=<過去の band-balance の label>]
+//   [--baseline-bounce-scale=<κ_b>] [--baseline-occlusion-scale=<κ_o>](基準を測る κ。省くと 0.75) [--passes=128] [--scene=<name>] [--label=<出力名>]
 // 1 つの Chrome で全ケースを測る。mode 1(遮蔽のみ)は κ_b に依らないので、同じ遮蔽の因子・κ_o なら使い回す。組の切り替えは setTier だけ。
 // 揃う κ は、候補の平均の帯が基準の値をまたぐ隣り合う 2 点の間を、κ の対数について線形補間して出す(またがなければ null)。
 // 角度ケースは遮蔽が 0 なので遮蔽の欄を省く。出力は OUTPUT/band-balance/<label>.json と .md(label の既定は latest)。
@@ -30,7 +31,11 @@ const scenes = argumentOf('scene') === undefined ? SCENES : SCENES.filter(({ nam
 if (scenes.length === 0) throw new Error(`unknown scene: ${argumentOf('scene')}`);
 
 // 測る組。baseline は因子なし(欄ごと無し)、candidates は κ_o × κ_b の全組(--factors を省くと因子の強さは全部 0)。
-const baselineTier = tierOf(BASELINE_KAPPA);
+const baselineBounceScale = Number(argumentOf('baseline-bounce-scale') ?? BASELINE_KAPPA);
+const baselineOcclusionScale = Number(argumentOf('baseline-occlusion-scale') ?? BASELINE_KAPPA);
+if (!(baselineBounceScale > 0) || !(baselineOcclusionScale > 0)) throw new Error('baseline κ must be positive numbers');
+const baselineTier = baselineBounceScale === baselineOcclusionScale && baselineBounceScale === BASELINE_KAPPA ? tierOf(BASELINE_KAPPA)
+  : tierOf(baselineOcclusionScale, { ...parseFactors('kb=0', baselineOcclusionScale), bounceScale: baselineBounceScale });
 const candidateTiers = occlusionScales.flatMap((ko) => bounceScales.map((kb) => tierOf(ko, { ...parseFactors(factorsText ?? 'kb=0', ko), bounceScale: kb })));
 const allTiers = TARGET === undefined ? [baselineTier, ...candidateTiers] : candidateTiers;
 // mode 1 の結果は、遮蔽の因子と κ_o が同じ組で共通。
