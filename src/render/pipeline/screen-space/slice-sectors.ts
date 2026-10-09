@@ -99,10 +99,16 @@ export function segmentSectors(lower: FloatNode, upper: FloatNode): UintNode {
   return sectorsBelow(floor(upper.add(0.5))).bitAnd(sectorsBelow(floor(lower.add(0.5))).bitNot());
 }
 
-// 球冠 cap の円盤とスライスの大円の交わりの弧を半球で切り、扇形の座標(sectorPosition)で返す。弧の中心は球冠の
+// スライスの中の向きの区間を、視線から測った角 [rad] で表したもの。lower ≤ upper。
+export interface SliceArc {
+  readonly lower: FloatNode;
+  readonly upper: FloatNode;
+}
+
+// 球冠 cap の円盤とスライスの大円の交わりの弧を半球で切り、視線から測った角 [rad] で返す。弧の中心は球冠の
 // 中心の向きを平面へ射影した角で、半幅は平面が円盤を切る長さで決まる。平面が円盤を外れるときと、半球の外に
 // あるときは幅 0。cap.direction は単位ベクトル。
-export function capRange(slice: Slice, cap: PlanetCap, dither: FloatNode): SectorRange {
+export function capArc(slice: Slice, cap: PlanetCap): SliceArc {
   const projected = toSliceCoordinates(slice, cap.direction).toVar();
   const center = atan(projected.y, projected.x).toVar();
   // 中心を半球の側へ寄せる。半球は π、弧は高々 π を占めるので、重なる弧は 1 つしかない。
@@ -112,8 +118,16 @@ export function capRange(slice: Slice, cap: PlanetCap, dither: FloatNode): Secto
   const lowerEdge = slice.normalAngle.sub(HALF_PI);
   const upperEdge = slice.normalAngle.add(HALF_PI);
   return {
-    lower: sectorPosition(slice, clamp(shifted.sub(halfWidth), lowerEdge, upperEdge), dither).toVar(),
-    upper: sectorPosition(slice, clamp(shifted.add(halfWidth), lowerEdge, upperEdge), dither).toVar(),
+    lower: clamp(shifted.sub(halfWidth), lowerEdge, upperEdge).toVar(),
+    upper: clamp(shifted.add(halfWidth), lowerEdge, upperEdge).toVar(),
+  };
+}
+
+// 視線から測った角の区間 arc を、扇形の座標(sectorPosition)の区間にする。
+export function sectorRange(slice: Slice, arc: SliceArc, dither: FloatNode): SectorRange {
+  return {
+    lower: sectorPosition(slice, arc.lower, dither).toVar(),
+    upper: sectorPosition(slice, arc.upper, dither).toVar(),
   };
 }
 

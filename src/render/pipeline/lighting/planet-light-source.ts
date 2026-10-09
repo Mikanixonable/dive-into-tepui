@@ -35,6 +35,9 @@ const MIN_VISIBLE_CAP_ANGLE = 1e-4;
 // 光源モデルの選択値。graphics-settings.ts の planetLightModel の選択肢と対応する。
 const PLANET_LIGHT_MODEL = { uniformSphere: 0, textured: 1 } as const;
 
+// 相対放射輝度を求めるときの、拡散が使う放射輝度 L̄ の下限(成分ごと)。L̄ が 0 に近い成分は天体照も 0 に近い。
+const MIN_MEAN_RADIANCE = 1e-6;
+
 // 拡散のローブを覆うフィルタの角幅 [rad]。クランプドコサイン(立体角 π)と同じ立体角の円錐の半角。
 const DIFFUSE_FILTER_ANGLE = 1.05;
 
@@ -194,6 +197,19 @@ class PlanetLightSlot implements LightSource {
     };
   }
 
+  // 受け手 sample から見て direction(view 空間)の向きの放射輝度を、拡散が使う放射輝度 L̄ で割った相対値
+  // (成分ごと)。filterAngle [rad] は写しを読むフィルタの角幅。写しから読むときだけ読み、それ以外は厳密に vec3(1)。
+  public relativeRadianceAt(sample: ShadingSample, direction: Vec3Node, filterAngle: FloatNode): Vec3Node {
+    const center = sample.viewPositionOf(this.slot.center);
+    const toCenter = center.sub(sample.position);
+    const sinSigmaSqr = this.sinSigmaSqrOf(toCenter);
+    const lightDir = this.capOf(toCenter, sinSigmaSqr).direction;
+    const sphereRadiance = this.uniformSphereRadiance(sample, center, lightDir, sinSigmaSqr);
+    const mean = this.diffuseRadiance(sample, lightDir, sinSigmaSqr, sphereRadiance);
+    const sampled = this.image.radianceAt(sample.worldPosition, sample.worldDirectionOf(direction), filterAngle);
+    return select(this.textured.and(this.imaged), sampled.div(max(mean, MIN_MEAN_RADIANCE)), vec3(1));
+  }
+
   // 受け手 sample へこのスロットの天体が届ける拡散照度。contribution の拡散と同じ値。
   public diffuseIrradianceAt(sample: ShadingSample): Vec3Node {
     const center = sample.viewPositionOf(this.slot.center);
@@ -205,15 +221,22 @@ class PlanetLightSlot implements LightSource {
   }
 
   // 球冠の向き lightDir・視半径の正弦の 2 乗 sinSigmaSqr・一様球の放射輝度 sphereRadiance の天体が届ける拡散照度。
-  // 光源モデルがテクスチャなら、放射輝度を写しから法線のまわりで読む。
   private diffuseIrradianceFor(
     sample: ShadingSample, lightDir: Vec3Node,
     sinSigmaSqr: FloatNode, sphereRadiance: Vec3Node,
   ): Vec3Node {
-    const radiance = select(this.textured,
+    return this.diffuseIrradiance(sample,
+      this.diffuseRadiance(sample, lightDir, sinSigmaSqr, sphereRadiance), lightDir, sinSigmaSqr);
+  }
+
+  // 拡散が使う放射輝度 L̄。光源モデルがテクスチャなら写しから法線のまわりで読み、そうでなければ sphereRadiance。
+  private diffuseRadiance(
+    sample: ShadingSample, lightDir: Vec3Node,
+    sinSigmaSqr: FloatNode, sphereRadiance: Vec3Node,
+  ): Vec3Node {
+    return select(this.textured,
       this.imageRadiance(sample, sample.normal, float(DIFFUSE_FILTER_ANGLE), lightDir, sinSigmaSqr, sphereRadiance),
       sphereRadiance);
-    return this.diffuseIrradiance(sample, radiance, lightDir, sinSigmaSqr);
   }
 
   // 放射輝度 radiance で届く球光源の放射照度 E = π·L̄·sin²σ × クリップ係数(全可視では saturate(cosβ)
@@ -312,6 +335,13 @@ export class PlanetLightSource {
   // 受け手 sample へスロット slot の天体が届ける拡散照度。そのスロットの光源が寄与する拡散と同じ値。
   public diffuseIrradianceAtSlot(sample: ShadingSample, slot: number): Vec3Node {
     return this.slotSources[slot]!.diffuseIrradianceAt(sample);
+  }
+
+  // 受け手 sample から見たスロット slot の天体の、direction(view 空間)の向きの相対放射輝度。
+  public relativeRadianceAt(
+    sample: ShadingSample, slot: number, direction: Vec3Node, filterAngle: FloatNode,
+  ): Vec3Node {
+    return this.slotSources[slot]!.relativeRadianceAt(sample, direction, filterAngle);
   }
 
   // 同時に使用するスロット本数を変更する。次回の set() 呼び出し時から適用される。

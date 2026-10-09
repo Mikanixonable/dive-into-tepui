@@ -5,9 +5,11 @@ import { bool, float, uint, uniform, vec2, vec3 } from 'three/tsl';
 import {
   bandCoordinate, bandWeights, facingCosine, sampleBandWeights, SENDER_VIEW_EXPONENT, type BandSplit,
 } from '../../src/render/pipeline/screen-space/band-split';
-import { clipToCircle, projectedRadius, widenedCap } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
-  angleOf, capMeasure, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt,
+  clipToCircle, projectedRadius, scaledAboutCenter, widenedCap,
+} from '../../src/render/pipeline/screen-space/hemisphere-scan';
+import {
+  angleOf, capArc, capMeasure, maskedMeasure, rangeSectors, sectorPosition, sectorRange, segmentSectors, sliceAt,
   toSliceCoordinates,
 } from '../../src/render/pipeline/screen-space/slice-sectors';
 import {
@@ -144,10 +146,11 @@ function sliceWithNormalAngle(n: number): ReturnType<typeof sliceAt> {
 }
 
 // 射影した法線の角が CAP_NORMAL_ANGLE のスライスへ写した、球冠 cap の範囲。
-function capRangeOf(cap: Cap, dither: FloatNode): ReturnType<typeof capRange> {
-  return capRange(sliceWithNormalAngle(CAP_NORMAL_ANGLE), {
+function capRangeOf(cap: Cap, dither: FloatNode): ReturnType<typeof sectorRange> {
+  const slice = sliceWithNormalAngle(CAP_NORMAL_ANGLE);
+  return sectorRange(slice, capArc(slice, {
     direction: vectorNode(inSlice(cap.center, cap.tilt)), cosAngle: float(Math.cos(cap.sigma)),
-  }, dither);
+  }), dither);
 }
 
 // 向き direction・視半径の余弦 cosAngle の球冠(view 空間)。
@@ -217,7 +220,7 @@ function discMeasure({ direction, cosAngle }: DiscCap, normal: THREE.Vector3): n
 function sliceAveragedMeasure(cap: DiscCap, normal: THREE.Vector3, sliceCount: number): number {
   const psi = uniform(0);
   const slice = sliceAt(psi, vectorNode(VIEW), vectorNode(normal));
-  const range = capRange(slice, planetCapOf(cap), float(0.5));
+  const range = sectorRange(slice, capArc(slice, planetCapOf(cap)), float(0.5));
   const packed = vec3(slice.weight, range.lower, range.upper);
   const rotationCount = DISC_SAMPLES / sliceCount;
   let total = 0;
@@ -420,6 +423,45 @@ export function register(): void {
         }
       }
     }
+  });
+
+  test('screen space estimator: capArc は、円盤に入る向きの端の角そのもので、円盤に入る向きがなければ幅 0', () => {
+    const slice = sliceWithNormalAngle(CAP_NORMAL_ANGLE);
+    for (const cap of CAPS) {
+      const arc = capArc(slice, {
+        direction: vectorNode(inSlice(cap.center, cap.tilt)), cosAngle: float(Math.cos(cap.sigma)),
+      });
+      const edges = arcEdges(cap, CAP_NORMAL_ANGLE);
+      const label = `center=${cap.center} sigma=${cap.sigma} tilt=${cap.tilt}`;
+      if (edges === null) {
+        near(valueOf(arc.upper) - valueOf(arc.lower), 0, 1e-9, label);
+      } else {
+        near(valueOf(arc.lower), edges[0], 1e-5, `${label} 下端`);
+        near(valueOf(arc.upper), edges[1], 1e-5, `${label} 上端`);
+      }
+    }
+  });
+
+  test('screen space estimator: scaledAboutCenter は、倍率 1 で恒等、中心からの角を倍率倍にし、中心から見た方位を保つ', () => {
+    const center = directionAt(0.8, 0.3);
+    const axisU = new THREE.Vector3().crossVectors(center, new THREE.Vector3(0, 1, 0)).normalize();
+    const axisV = new THREE.Vector3().crossVectors(center, axisU);
+    for (const theta of [0.2, 0.7, 1.3]) {
+      for (const azimuth of [0, 1.9, 4.4]) {
+        const tangent = axisU.clone().multiplyScalar(Math.cos(azimuth)).addScaledVector(axisV, Math.sin(azimuth));
+        const direction = center.clone().multiplyScalar(Math.cos(theta)).addScaledVector(tangent, Math.sin(theta));
+        for (const scale of [1, 0.4, 0]) {
+          const scaled = vectorOf(scaledAboutCenter(vectorNode(direction), vectorNode(center), float(scale)));
+          const label = `theta=${theta} azimuth=${azimuth} scale=${scale}`;
+          near(scaled.angleTo(center), theta * scale, 1e-5, `${label} 角`);
+          if (scale === 1) near(scaled.distanceTo(direction), 0, 1e-5, `${label} 恒等`);
+          if (scale > 0) near(scaled.clone().sub(center.clone().multiplyScalar(scaled.dot(center))).normalize().dot(tangent), 1, 1e-5, `${label} 方位`);
+        }
+      }
+    }
+    // 中心そのものの向きは中心のまま(0 除算で NaN にならない)。
+    const atCenter = vectorOf(scaledAboutCenter(vectorNode(center), vectorNode(center), float(0.5)));
+    near(atCenter.distanceTo(center), 0, 1e-6, '中心');
   });
 
   test('screen space estimator: 同じずれで丸めた隣の切片は継ぎ目なく並び、立つビット数の期待値は区間の測度', () => {
