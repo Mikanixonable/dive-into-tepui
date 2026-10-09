@@ -45,45 +45,58 @@ function imageTarget(): THREE.RenderTarget {
   });
 }
 
-// 縮小列の段の奥行きの描画先の名前。MRT の出力と結び付く。
+// 縮小列の段の描画先のテクスチャの名前。MRT の出力と結び付く。
 const LEVEL_DEPTH = 'reflectionLevelDepth';
+const LEVEL_RADIANCE = 'reflectionLevelRadiance';
 
-// view 空間の奥行き 2 つを 32bit 浮動小数で持つ描画先。読むのは textureLoad だけ。
-function depthTarget(): THREE.RenderTarget {
-  const target = new THREE.RenderTarget(1, 1, {
-    type: THREE.FloatType, format: THREE.RGFormat, depthBuffer: false, samples: 0,
-    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
-  });
-  target.texture.name = LEVEL_DEPTH;
+// 縮小列の段 1 以降の 1 段の描画先。奥行きのテクスチャは view 空間の奥行き 2 つを 32bit 浮動小数で持ち、読むのは
+// textureLoad だけ。放射輝度のテクスチャは半精度。
+function levelTarget(): THREE.RenderTarget {
+  const target = new THREE.RenderTarget(1, 1, { count: 2, depthBuffer: false, samples: 0 });
+  const [depth, radiance] = target.textures;
+  // 添付ごとのフォーマット。名前は levelMaterial の MRT の出力と結び付く。
+  depth!.name = LEVEL_DEPTH;
+  depth!.format = THREE.RGFormat;
+  depth!.type = THREE.FloatType;
+  depth!.minFilter = THREE.NearestFilter;
+  depth!.magFilter = THREE.NearestFilter;
+  radiance!.name = LEVEL_RADIANCE;
+  radiance!.format = THREE.RGBAFormat;
+  radiance!.type = THREE.HalfFloatType;
   return target;
 }
 
-// 全画面で depthTarget へ depth を書くマテリアル。色の出力を通さずに書く — 負の奥行きが色として 0 へ丸められる。
-function depthMaterial(depth: Vec4Node): THREE.MeshBasicNodeMaterial {
+// 全画面で levelTarget へ depth と radiance を書くマテリアル。色の出力を通さずに書く — 負の奥行きが色として 0 へ
+// 丸められる。
+function levelMaterial(depth: Vec4Node, radiance: Vec4Node): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial({
     depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
   });
-  material.mrtNode = mrt({ [LEVEL_DEPTH]: depth });
+  material.mrtNode = mrt({ [LEVEL_DEPTH]: depth, [LEVEL_RADIANCE]: radiance });
   return material;
 }
 
 // 縮小列の段 1 以降の 1 段。前の段の 2 × 2 の画素を 1 つにまとめる。まとめた描画画素のうち、いちばん手前の面から
 // ray thickness の奥までに収まる画素を手前の層と呼び、それより奥は段の画素が写す面の奥にある別の物体として除く。
-// depthTarget は rg が手前の層のいちばん手前といちばん奥の view 空間の奥行き z、radianceTarget は rgba が手前の層の
-// 放射輝度の和と画素数を、ともにまとめた描画画素の数で割ったもの。
+// target の奥行きのテクスチャは rg が手前の層のいちばん手前といちばん奥の view 空間の奥行き z、放射輝度のテクスチャは
+// rgba が手前の層の放射輝度の和と画素数を、ともにまとめた描画画素の数で割ったもの。
 interface ReductionLevel {
-  readonly depthTarget: THREE.RenderTarget;
-  readonly depthMaterial: THREE.MeshBasicNodeMaterial;
-  readonly radianceTarget: THREE.RenderTarget;
-  readonly radianceMaterial: THREE.MeshBasicNodeMaterial;
+  readonly target: THREE.RenderTarget;
+  readonly material: THREE.MeshBasicNodeMaterial;
 }
 
-// 縮小列の 1 つの段から読んだ画素。radiance は ReductionLevel の radianceTarget の値、nearestZ / layerFarZ は手前の層の
+// 縮小列の 1 つの段から読んだ画素。radiance は ReductionLevel の放射輝度のテクスチャの値、nearestZ / layerFarZ は手前の層の
 // いちばん手前といちばん奥の view 空間の奥行き z。
 interface ReducedTexel {
   readonly radiance: Vec4Node;
   readonly nearestZ: FloatNode;
   readonly layerFarZ: FloatNode;
+}
+
+// 縮小列の段の画素がまとめる、1 つ細かい段の画素。inside はその画素が画面の中にあるか。
+interface ReducedChild {
+  readonly inside: BoolNode;
+  readonly texel: ReducedTexel;
 }
 
 export class ReflectionPass {
@@ -117,13 +130,10 @@ export class ReflectionPass {
     this.depth = gbuffer.depthTexture;
     const levels: ReductionLevel[] = [];
     for (let level = 1; level < LEVEL_COUNT; level++) {
-      const depth = depthTarget();
       const finer = levels[level - 2] ?? null;
       levels.push({
-        depthTarget: depth,
-        depthMaterial: depthMaterial(this.reducedDepth(finer, level)),
-        radianceTarget: imageTarget(),
-        radianceMaterial: stageMaterial(this.reducedRadiance(finer, level, depth.texture)),
+        target: levelTarget(),
+        material: levelMaterial(this.reducedDepth(finer, level), this.reducedRadiance(finer, level)),
       });
     }
     this.levels = levels;
@@ -174,10 +184,8 @@ export class ReflectionPass {
   // なので、ここでは解放しない。
   public dispose(): void {
     for (const level of this.levels) {
-      level.depthTarget.dispose();
-      level.depthMaterial.dispose();
-      level.radianceTarget.dispose();
-      level.radianceMaterial.dispose();
+      level.target.dispose();
+      level.material.dispose();
     }
     this.imageTarget.dispose();
     this.resolveMaterial.dispose();
@@ -187,23 +195,17 @@ export class ReflectionPass {
   // 描画命令の列。マテリアルとその描画先の組を、書く順に並べる。
   private stages(): readonly (readonly [THREE.MeshBasicNodeMaterial, THREE.RenderTarget])[] {
     return [
-      ...this.levels.flatMap((level) => [
-        [level.depthMaterial, level.depthTarget] as const,
-        [level.radianceMaterial, level.radianceTarget] as const,
-      ]),
+      ...this.levels.map((level) => [level.material, level.target] as const),
       [this.resolveMaterial, this.imageTarget],
       [this.addMaterial, this.sharedTarget],
     ];
   }
 
-  // 段 level の画素の depthTarget の値。finer は 1 つ細かい段で、段 1 では null(描画画素そのもの)。
+  // 段 level の画素の奥行きのテクスチャの値。finer は 1 つ細かい段で、段 1 では null(描画画素そのもの)。
   private reducedDepth(finer: ReductionLevel | null, level: number): Vec4Node {
     return Fn(() => {
       const children = this.childrenOf(finer, level);
-      // いちばん手前は、子のいちばん手前の最大(view 空間の z は手前ほど大きい)。左上の子は必ず画面の中にある。
-      const nearestZ = children.reduce<FloatNode>(
-        (z, { inside, texel }) => select(inside, max(z, texel.nearestZ), z), children[0]!.texel.nearestZ,
-      ).toVar();
+      const nearestZ = this.nearestZOf(children).toVar();
       // 手前の層のいちばん奥は、手前の層に収まる子のいちばん奥の最小。
       const slabFarZ = thicknessFarZ(nearestZ).toVar();
       const layerFarZ = children.reduce<FloatNode>(
@@ -214,12 +216,14 @@ export class ReflectionPass {
     })();
   }
 
-  // 段 level の画素の radianceTarget の値。finer は reducedDepth と同じで、depth は同じ段の depthTarget。手前の層に
-  // 丸ごと収まる子だけを足す — 層をまたぐ子の手前側の画素は落ちるが、奥の物体は混ざらない。
-  private reducedRadiance(finer: ReductionLevel | null, level: number, depth: THREE.Texture): Vec4Node {
+  // 段 level の画素の放射輝度のテクスチャの値。finer は reducedDepth と同じ。手前の層に丸ごと収まる子だけを足す —
+  // 層をまたぐ子の手前側の画素は落ちるが、奥の物体は混ざらない。
+  private reducedRadiance(finer: ReductionLevel | null, level: number): Vec4Node {
     return Fn(() => {
-      const slabFarZ = thicknessFarZ(textureLoad(depth, ivec2(floor(screenUV.mul(screenSize)))).r).toVar();
-      return this.childrenOf(finer, level).reduce<Vec4Node>(
+      const children = this.childrenOf(finer, level);
+      // 同じ段の奥行きのテクスチャと同じ手前の層の範囲を、子から求め直す。
+      const slabFarZ = thicknessFarZ(this.nearestZOf(children)).toVar();
+      return children.reduce<Vec4Node>(
         (sum, { inside, texel }) => sum.add(
           select(inside.and(texel.layerFarZ.greaterThanEqual(slabFarZ)), texel.radiance, vec4(0)),
         ),
@@ -228,11 +232,15 @@ export class ReflectionPass {
     })();
   }
 
-  // 段 level の描いている画素がまとめる、1 つ細かい段 finer の 2 × 2 の画素。inside はその画素が画面の中にあるか。
-  // **Fn の中から呼ぶこと。**
-  private childrenOf(
-    finer: ReductionLevel | null, level: number,
-  ): readonly { readonly inside: BoolNode; readonly texel: ReducedTexel }[] {
+  // 子 children の手前の層のいちばん手前の最大(view 空間の z は手前ほど大きい)。左上の子は必ず画面の中にある。
+  private nearestZOf(children: readonly ReducedChild[]): FloatNode {
+    return children.reduce<FloatNode>(
+      (z, { inside, texel }) => select(inside, max(z, texel.nearestZ), z), children[0]!.texel.nearestZ,
+    );
+  }
+
+  // 段 level の描いている画素がまとめる、1 つ細かい段 finer の 2 × 2 の画素。**Fn の中から呼ぶこと。**
+  private childrenOf(finer: ReductionLevel | null, level: number): readonly ReducedChild[] {
     const base = floor(screenUV.mul(screenSize)).mul(2).toVar();
     const finerSize = ceil(this.fullSize.div(2 ** (level - 1))).toVar();
     return [vec2(0, 0), vec2(1, 0), vec2(0, 1), vec2(1, 1)].map((offset) => {
@@ -321,8 +329,9 @@ export class ReflectionPass {
       const z = viewZOf(textureLoad(this.depth, texel).r, this.projectionInverse).toVar();
       return { radiance: vec4(textureLoad(this.sharedTarget.texture, texel).rgb, 1), nearestZ: z, layerFarZ: z };
     }
-    const depth = textureLoad(level.depthTarget.texture, texel).toVar();
-    return { radiance: textureLoad(level.radianceTarget.texture, texel), nearestZ: depth.r, layerFarZ: depth.g };
+    const [depthTexture, radianceTexture] = level.target.textures;
+    const depth = textureLoad(depthTexture!, texel).toVar();
+    return { radiance: textureLoad(radianceTexture!, texel), nearestZ: depth.r, layerFarZ: depth.g };
   }
 
   // 描画先を描画バッファの寸法へ合わせ、実カメラの行列を書き込む。
@@ -335,8 +344,8 @@ export class ReflectionPass {
       const span = 2 ** (index + 1);
       const levelWidth = Math.max(1, Math.ceil(width / span));
       const levelHeight = Math.max(1, Math.ceil(height / span));
-      for (const target of [level.depthTarget, level.radianceTarget]) {
-        if (target.width !== levelWidth || target.height !== levelHeight) target.setSize(levelWidth, levelHeight);
+      if (level.target.width !== levelWidth || level.target.height !== levelHeight) {
+        level.target.setSize(levelWidth, levelHeight);
       }
     }
     this.fullSize.value.set(width, height);
