@@ -7,7 +7,7 @@ import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CasingPool } from '../../src/render/dynamic/dynamic-entity/casing-view';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
 import { directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
-import { EARTH_AWAY, labCamera, OBLIQUE_SUN_DIR, type CaseBuilder, type LabCase } from './lab-case';
+import { EARTH_AWAY, flickerShots, labCamera, OBLIQUE_SUN_DIR, type CaseBuilder, type LabCase } from './lab-case';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
 // 白い面の線形の灰色の値と粗さ。
@@ -388,6 +388,8 @@ function bay(): LabCase {
       'bay-metal-reflection-image': {
         view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'raw-reflection',
       },
+      // 映り込みのちらつき。粗さ 0.4 の板と薬莢の点描の揺れ。
+      ...flickerShots('bay-metal', METAL_VIEW),
     },
   };
 }

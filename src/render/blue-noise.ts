@@ -9,14 +9,16 @@
 // **画素座標だけから引くので時間で動かない。** 動くノイズは、静止した絵ではちらつきとして目に付く。
 import * as THREE from 'three/webgpu';
 import { floor, ivec2, mod, round, screenCoordinate, textureLoad } from 'three/tsl';
-import type { FloatNode } from './tsl-types';
+import type { FloatNode, Vec2Node } from './tsl-types';
 import { BLUE_NOISE_TILE_BASE64, BLUE_NOISE_TILE_SIZE } from './blue-noise-tile.generated';
 
 export class BlueNoise {
   private readonly tile: THREE.DataTexture;
 
-  // タイルを 1 枚だけ GPU へ載せる。解放は呼び出し側が dispose で行う。
-  public constructor() {
+  // タイルを 1 枚だけ GPU へ載せる。解放は呼び出し側が dispose で行う。tileOffset はタイルを読む位置へ足すずらし
+  // [px](整数)で、どの tileShift の値も同じだけずれる — 画面が整数 px 動いて、各画素の引く値が入れ替わるのと同じ。
+  // null ならずらさない。
+  public constructor(private readonly tileOffset: Vec2Node | null = null) {
     const bytes = Uint8Array.from(atob(BLUE_NOISE_TILE_BASE64), (c) => c.charCodeAt(0));
     this.tile = new THREE.DataTexture(
       bytes, BLUE_NOISE_TILE_SIZE, BLUE_NOISE_TILE_SIZE, THREE.RedFormat, THREE.UnsignedByteType,
@@ -29,7 +31,9 @@ export class BlueNoise {
   // 対する割合で、読む位置を斜めにずらす。同じ画素にもう 1 つ別の値が要るときは 0.5 にする。
   // 3 つ目以降の tileShift は、同じ画素で使うほかの tileShift との差が、どれもタイルの自己相関の小さい所に来る値にする。
   public atScreenPixel(tileShift = 0): FloatNode {
-    const texel = mod(floor(screenCoordinate.xy).add(tileShift * BLUE_NOISE_TILE_SIZE), BLUE_NOISE_TILE_SIZE);
+    const pixel = floor(screenCoordinate.xy);
+    const shifted = this.tileOffset === null ? pixel : pixel.add(this.tileOffset);
+    const texel = mod(shifted.add(tileShift * BLUE_NOISE_TILE_SIZE), BLUE_NOISE_TILE_SIZE);
     return textureLoad(this.tile, ivec2(texel)).r;
   }
 

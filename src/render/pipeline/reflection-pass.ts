@@ -74,7 +74,9 @@ export class ReflectionPass {
   private readonly stepCount = uniform(1, 'int');
   // 描画バッファの画素の、反射する面のシェーディング入力。
   private readonly sample: ShadingSample;
-  private readonly blueNoise = new BlueNoise();
+  // ray の向きと開始点のずらしを引く blue noise と、そのタイルを読む位置のずらし [px]。
+  private readonly noiseOffset: Vec2Uniform = uniform(new THREE.Vector2());
+  private readonly blueNoise = new BlueNoise(this.noiseOffset);
   // GGX のアルベドを引く係数表。
   private readonly ltcTables = createLtcTables();
   // 直前に render したときのオン / オフ。null はまだ render していないこと。
@@ -113,6 +115,12 @@ export class ReflectionPass {
   // 次の render から精細さ quality の解像度と歩数で追跡する。
   public setQuality(quality: ScreenSpaceSpecularQuality): void {
     this.quality = quality;
+  }
+
+  // 次の render から、ray の向きと開始点のずらしを引く blue noise のタイルを (x, y) [px](整数)ずらして読む。
+  // 既定は (0, 0)。
+  public setNoiseOffset(x: number, y: number): void {
+    this.noiseOffset.value.set(x, y);
   }
 
   // 1 フレームぶんを描く。マテリアルパスの後に、G バッファと同じ寸法 width × height で呼ぶ。camera は深度から

@@ -12,7 +12,7 @@ export function register(): void {
       '雲影', '照り返し源', '近傍拡散走査', '近傍拡散復元', 'ライティング',
     ]);
     assert.deepEqual(GPU_PASS_LABELS.slice(GPU_PASS.material, GPU_PASS.atmosphere + 1), [
-      'マテリアル', '映り込み', '陰影の合成', '大気',
+      'マテリアル', '映り込み', '映り込みの均し', '陰影の合成', '大気',
     ]);
   });
 

@@ -49,6 +49,32 @@ const AXES = {
     ratioRows: ['照り返し源', '近傍拡散走査', '近傍拡散復元'],
     ratioLabel: '近傍拡散合計',
   },
+  // 値は src/render/graphics-settings.ts の screenSpaceSpecular / screenSpaceSpecularQuality の選択肢。構図は映り込みの
+  // 出る金属面 — 材質の格子の既定の向き(leo-metal)と、荷室の金属の板(bay-metal。tools/render-lab/bay-cases.ts の
+  // METAL_VIEW)。
+  reflection: {
+    statistic: 'p50',
+    framings: [
+      { label: 'leo-metal', caseName: 'materials', angles: {} },
+      {
+        label: 'bay-metal',
+        caseName: 'bay',
+        angles: {
+          cameraAzimuthDeg: 30, cameraElevationDeg: 20, cameraDistanceLog: Math.log10(6.5 / 11.6),
+          earthAzimuthDeg: 130, earthElevationDeg: -12,
+        },
+      },
+    ],
+    variants: [
+      { label: 'オフ', graphics: { screenSpaceSpecular: false } },
+      { label: '低', graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 0 } },
+      { label: '中', graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 1 } },
+      { label: '高', graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 2 } },
+    ],
+    rows: ['ライティング', 'マテリアル', '映り込み', '映り込みの均し', '陰影の合成'],
+    ratioRows: ['映り込み', '映り込みの均し', '陰影の合成'],
+    ratioLabel: '映り込み合計',
+  },
 };
 
 // 軸の rows に含めると、ratioRows の中央値の和をこの行の中央値で割った比の列が表に付く。
