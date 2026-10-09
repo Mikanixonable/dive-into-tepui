@@ -5,10 +5,10 @@ import { bool, float, uint, uniform, vec2, vec3 } from 'three/tsl';
 import {
   bandCoordinate, bandWeights, facingCosine, sampleBandWeights, SENDER_VIEW_EXPONENT, type BandSplit,
 } from '../../src/render/pipeline/screen-space/band-split';
-import { clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
+import { clipToCircle, projectedRadius, widenedCap } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
-  angleOf, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt, toSliceCoordinates,
-  wedgeWeight,
+  angleOf, capMeasure, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt,
+  toSliceCoordinates,
 } from '../../src/render/pipeline/screen-space/slice-sectors';
 import {
   rayAt, samplePoint, sideRays, splitSegments, type SideRays, type SlicePoint,
@@ -18,6 +18,7 @@ import { viewRayAt } from '../../src/render/pipeline/view-ray';
 import { test } from '../harness';
 import { evaluateShaderNode } from './tsl-node-evaluator';
 import type { FloatNode, Vec2Node, Vec3Node } from '../../src/render/tsl-types';
+import type { PlanetCap } from '../../src/render/pipeline/lighting/planet-light-source';
 
 // スライス 1 枚を刻む扇形の数。
 const SECTOR_COUNT = 32;
@@ -27,20 +28,31 @@ const VIEW = new THREE.Vector3(0.2, -0.3, 1).normalize();
 const SLICE_PSI = 0.7;
 // 球冠を置くスライスの、射影した法線の角 n [rad]。半球は [n − π/2, n + π/2] ≈ [−1.07, 2.07]。
 const CAP_NORMAL_ANGLE = 0.5;
-// 球冠の中心の角・半幅 [rad] と、スライス平面の外への傾き [rad]。半球の外・中・地平をまたぐものを並べる。
+// 球冠の中心を平面へ射影した角・視半径 [rad] と、スライス平面の外への傾き [rad]。平面が中心を通るもの、傾きが
+// 半幅より小さいもの、平面が円盤を外れるもの、縁をかすめるもの、地平をまたぐもの、半球の外のものを並べる。
 const CAPS = [
-  { center: 2.8, halfWidth: 0.3, tilt: 0.5 },
-  { center: -1.8, halfWidth: 0.4, tilt: 0 },
-  // 後ろ向き。2π 回すと上の地平の外。
-  { center: -2.9, halfWidth: 0.2, tilt: 0.3 },
-  { center: 0.9, halfWidth: 0.3, tilt: 0.5 },
-  { center: 1.9, halfWidth: 0.4, tilt: 0 },
-  { center: -1.0, halfWidth: 0.3, tilt: 0.2 },
-  // 後ろ向き。2π 回すと上の地平をまたぐ。
-  { center: -3.0, halfWidth: 1.3, tilt: 0 },
+  { center: 0.9, sigma: 0.6, tilt: 0 },
+  { center: 0.9, sigma: 0.6, tilt: 0.4 },
+  { center: 0.9, sigma: 0.5, tilt: 0.55 },
+  { center: 0.2, sigma: 0.6, tilt: 0.58 },
+  { center: 2.4, sigma: 0.7, tilt: 0.2 },
+  { center: -1.0, sigma: 0.7, tilt: 0.1 },
+  // 後ろ向き。2π 回すと上の地平にわずかにかかる。
+  { center: -3.3, sigma: 1.0, tilt: 0.1 },
+  { center: -2.2, sigma: 1.0, tilt: 0 },
 ] as const;
 
 type Cap = typeof CAPS[number];
+
+// 円盤の測度の検査で振る値。視半径 [rad]、視線からの角 [rad]、視線のまわりの方位 [rad]、受け手の法線の視線からの
+// 傾き [rad]。視線のそばから地平を越えて一部が地平の下に入るところまで、左右と奥行きの両方の向きを振る。
+const DISC_SIGMAS = [Math.PI / 8, Math.PI / 4, Math.PI / 3];
+const DISC_ALPHAS = [0.15, 0.8, 1.4, 1.7];
+const DISC_AZIMUTHS = [0.3, 2.0, 4.2];
+const DISC_NORMAL_TILTS = [0, 0.7];
+const DISC_NORMAL_AZIMUTH = 2.1;
+// スライスの回転の標本の総数(本数 × 回転の数)。4 以下のどの本数でも割り切れる。
+const DISC_SAMPLES = 360;
 
 // 差が tolerance 以内であることを検査する。
 function near(actual: number, expected: number, tolerance: number, label: string): void {
@@ -134,8 +146,118 @@ function sliceWithNormalAngle(n: number): ReturnType<typeof sliceAt> {
 // 射影した法線の角が CAP_NORMAL_ANGLE のスライスへ写した、球冠 cap の範囲。
 function capRangeOf(cap: Cap, dither: FloatNode): ReturnType<typeof capRange> {
   return capRange(sliceWithNormalAngle(CAP_NORMAL_ANGLE), {
-    direction: vectorNode(inSlice(cap.center, cap.tilt)), cosAngle: float(Math.cos(cap.halfWidth)),
+    direction: vectorNode(inSlice(cap.center, cap.tilt)), cosAngle: float(Math.cos(cap.sigma)),
   }, dither);
+}
+
+// 向き direction・視半径の余弦 cosAngle の球冠(view 空間)。
+interface DiscCap {
+  readonly direction: THREE.Vector3;
+  readonly cosAngle: number;
+}
+
+// DiscCap をノードの球冠にしたもの。
+function planetCapOf({ direction, cosAngle }: DiscCap): PlanetCap {
+  return { direction: vectorNode(direction), cosAngle: float(cosAngle) };
+}
+
+// 視線 VIEW から角 alpha、視線のまわりの方位 azimuth の向き。
+function directionAt(alpha: number, azimuth: number): THREE.Vector3 {
+  return VIEW.clone().multiplyScalar(Math.cos(alpha)).addScaledVector(orthoOf(VIEW, azimuth), Math.sin(alpha));
+}
+
+// 円盤の検査の 1 例 — 球冠と受け手の法線。
+interface DiscCase {
+  readonly cap: DiscCap;
+  readonly normal: THREE.Vector3;
+  readonly label: string;
+}
+
+// 視半径 sigmas ごとに、視線との角・方位・法線の傾きを振った例。
+function discCases(sigmas: readonly number[]): DiscCase[] {
+  const cases: DiscCase[] = [];
+  for (const tilt of DISC_NORMAL_TILTS) {
+    for (const sigma of sigmas) {
+      for (const alpha of DISC_ALPHAS) {
+        for (const azimuth of DISC_AZIMUTHS) {
+          cases.push({
+            cap: { direction: directionAt(alpha, azimuth), cosAngle: Math.cos(sigma) },
+            normal: directionAt(tilt, DISC_NORMAL_AZIMUTH),
+            label: `tilt=${tilt} sigma=${sigma} alpha=${alpha} azimuth=${azimuth}`,
+          });
+        }
+      }
+    }
+  }
+  return cases;
+}
+
+// 円盤のうち法線 normal の地平の上にある部分の余弦重みの測度 (1/π)∫ max(n·ω, 0) dω(半球全体が 1)の数値積分。
+// 円盤の中心のまわりの球面座標 (θ, φ) で積分する。n·ω = (n·c) cos θ + |n⊥| sin θ cos φ(φ は n⊥ から測る)。
+function discMeasure({ direction, cosAngle }: DiscCap, normal: THREE.Vector3): number {
+  const alongCenter = normal.dot(direction);
+  const acrossCenter = normal.clone().addScaledVector(direction, -alongCenter).length();
+  const sigma = Math.acos(cosAngle);
+  const thetaSteps = 200;
+  const phiSteps = 400;
+  let sum = 0;
+  for (let i = 0; i < thetaSteps; i++) {
+    const theta = (i + 0.5) * sigma / thetaSteps;
+    let ring = 0;
+    for (let j = 0; j < phiSteps; j++) {
+      ring += Math.max(alongCenter * Math.cos(theta) + acrossCenter * Math.sin(theta) * Math.cos((j + 0.5) * 2 * Math.PI / phiSteps), 0);
+    }
+    sum += ring * Math.sin(theta);
+  }
+  return sum * (sigma / thetaSteps) * (2 * Math.PI / phiSteps) / Math.PI;
+}
+
+// ψ で等間隔な sliceCount 本のスライスについて、Σ_i w_i·(弧の上端 − 下端) / (sliceCount·SECTOR_COUNT) の、
+// 回転についての平均。
+function sliceAveragedMeasure(cap: DiscCap, normal: THREE.Vector3, sliceCount: number): number {
+  const psi = uniform(0);
+  const slice = sliceAt(psi, vectorNode(VIEW), vectorNode(normal));
+  const range = capRange(slice, planetCapOf(cap), float(0.5));
+  const packed = vec3(slice.weight, range.lower, range.upper);
+  const rotationCount = DISC_SAMPLES / sliceCount;
+  let total = 0;
+  for (let rotation = 0; rotation < rotationCount; rotation++) {
+    for (let i = 0; i < sliceCount; i++) {
+      psi.value = (i + (rotation + 0.5) / rotationCount) * Math.PI / sliceCount;
+      const [weight, lower, upper] = evaluateShaderNode(packed) as number[];
+      total += weight! * (upper! - lower!) / (sliceCount * SECTOR_COUNT);
+    }
+  }
+  return total / rotationCount;
+}
+
+// 射影した法線の角が n のスライスの半球 [n − π/2, n + π/2] の上で、球冠 cap の円盤に入る向きの端。スライスの
+// 半円の上の向きを総当たりで調べて内外を決め、境は二分法で詰める。円盤に入る向きがなければ null。
+function arcEdges(cap: Cap, n: number): readonly [number, number] | null {
+  const center = inSlice(cap.center, cap.tilt);
+  const isInside = (h: number): boolean => inSlice(h, 0).dot(center) >= Math.cos(cap.sigma);
+  // outside から inside へ向かう境。
+  const boundary = (outside: number, inside: number): number => {
+    let from = outside;
+    let to = inside;
+    for (let k = 0; k < 60; k++) {
+      const middle = (from + to) / 2;
+      if (isInside(middle)) to = middle;
+      else from = middle;
+    }
+    return (from + to) / 2;
+  };
+  const steps = 3600;
+  const lowerEdge = n - HALF_PI;
+  const angles = Array.from({ length: steps + 1 }, (_, k) => lowerEdge + Math.PI * k / steps);
+  const flags = angles.map(isInside);
+  const first = flags.indexOf(true);
+  if (first < 0) return null;
+  const last = flags.lastIndexOf(true);
+  return [
+    first === 0 ? angles[0]! : boundary(angles[first - 1]!, angles[first]!),
+    last === steps ? angles[steps]! : boundary(angles[last + 1]!, angles[last]!),
+  ];
 }
 
 // 正方形の画角の透視投影(WebGPU の座標系、逆深度)。uv の等方な歩みが view 空間でも等方になる。
@@ -265,18 +387,6 @@ function endPosition({ slice }: BayScan, sample: SlicePoint, end: Vec2Node, dith
   return valueOf(sectorPosition(slice, angleOf(slice, clipToCircle(sample.position, end)), float(dither)));
 }
 
-// 球冠の角の区間を半球 [n − π/2, n + π/2] で切ったもの。2π の周期のうち半球と重なるものを取り、どれも
-// 重ならなければ null。
-function clippedCap(cap: Cap, n: number): readonly [number, number] | null {
-  for (const turn of [-1, 0, 1]) {
-    const center = cap.center + turn * 2 * Math.PI;
-    const lower = Math.max(center - cap.halfWidth, n - HALF_PI);
-    const upper = Math.min(center + cap.halfWidth, n + HALF_PI);
-    if (lower < upper) return [lower, upper];
-  }
-  return null;
-}
-
 // この層の回帰テストを登録する。
 export function register(): void {
   test('screen space estimator: 扇形の座標は角について単調で、半球の両端を dither − ½ と 32 + dither − ½ へ写す', () => {
@@ -294,19 +404,19 @@ export function register(): void {
     }
   });
 
-  test('screen space estimator: 球冠の範囲は半球で切った区間の余弦重み測度で、半球の外なら幅 0', () => {
+  test('screen space estimator: 円盤の弧の両端は、スライスの半円の上で円盤に入る向きの端の余弦重み測度で、円盤に入る向きがなければ幅 0', () => {
     for (const dither of [0.13, 0.71]) {
       for (const cap of CAPS) {
         const range = capRangeOf(cap, float(dither));
         const lower = valueOf(range.lower);
         const upper = valueOf(range.upper);
-        const clipped = clippedCap(cap, CAP_NORMAL_ANGLE);
-        const label = `center=${cap.center} dither=${dither}`;
-        if (clipped === null) {
+        const edges = arcEdges(cap, CAP_NORMAL_ANGLE);
+        const label = `center=${cap.center} sigma=${cap.sigma} tilt=${cap.tilt} dither=${dither}`;
+        if (edges === null) {
           near(upper - lower, 0, 1e-9, label);
         } else {
-          near(lower, expectedPosition(clipped[0], CAP_NORMAL_ANGLE, dither), 1e-5, `${label} 下端`);
-          near(upper, expectedPosition(clipped[1], CAP_NORMAL_ANGLE, dither), 1e-5, `${label} 上端`);
+          near(lower, expectedPosition(edges[0], CAP_NORMAL_ANGLE, dither), 1e-5, `${label} 下端`);
+          near(upper, expectedPosition(edges[1], CAP_NORMAL_ANGLE, dither), 1e-5, `${label} 上端`);
         }
       }
     }
@@ -371,21 +481,21 @@ export function register(): void {
     }
   });
 
-  test('screen space estimator: 球冠の触れる扇形をすべて立てた切片は、同じずれの下で球冠の幅だけ塞ぐ', () => {
+  test('screen space estimator: 円盤の弧の触れる扇形をすべて立てた切片は、同じずれの下で弧の幅だけ塞ぐ', () => {
     const slice = sliceWithNormalAngle(CAP_NORMAL_ANGLE);
     // 扇形の座標 position を含む扇形の番号。両端の扇形は半球の縁までを受け持つ。
     const sectorOf = (position: number): number => Math.min(Math.max(Math.floor(position), 0), SECTOR_COUNT - 1);
     for (const cap of CAPS) {
-      const clipped = clippedCap(cap, CAP_NORMAL_ANGLE);
-      if (clipped === null) continue;
+      const edges = arcEdges(cap, CAP_NORMAL_ANGLE);
+      if (edges === null) continue;
       for (const dither of ditherGrid(64)) {
         const range = capRangeOf(cap, float(dither));
-        // 球冠の両端を同じずれで扇形の座標へ写し、外側の扇形の境まで広げた切片。同じ区間の切片では、中心が区間の
+        // 弧の両端を同じずれで扇形の座標へ写し、外側の扇形の境まで広げた切片。同じ区間の切片では、中心が区間の
         // 外にある端の扇形が立たず、その分だけ幅に届かない。
-        const first = sectorOf(valueOf(sectorPosition(slice, float(clipped[0]), float(dither))));
-        const last = sectorOf(valueOf(sectorPosition(slice, float(clipped[1]), float(dither))));
+        const first = sectorOf(valueOf(sectorPosition(slice, float(edges[0]), float(dither))));
+        const last = sectorOf(valueOf(sectorPosition(slice, float(edges[1]), float(dither))));
         const blocked = valueOf(maskedMeasure(segmentSectors(float(first), float(last + 1)), rangeSectors(range)));
-        near(blocked, valueOf(range.upper) - valueOf(range.lower), 1e-9, `center=${cap.center} dither=${dither}`);
+        near(blocked, valueOf(range.upper) - valueOf(range.lower), 1e-9, `center=${cap.center} tilt=${cap.tilt} dither=${dither}`);
       }
     }
   });
@@ -413,29 +523,38 @@ export function register(): void {
     }
   });
 
-  test('screen space estimator: ψ で等間隔な楔の重みの和は、4 の倍数本ならどの回転でも本数 / 4、他の本数でも回転の平均が本数 / 4', () => {
-    const azimuths = Array.from({ length: 12 }, (_, k) => (k + 0.1) * 2 * Math.PI / 12);
-    const rotations = Array.from({ length: 64 }, (_, k) => (k + 0.5) / 64);
-    for (const view of [new THREE.Vector3(0, 0, 1), VIEW]) {
-      for (const sliceCount of [2, 3, 4, 8]) {
-        for (const elevation of [0.3, 1.2, 2.6]) {
-          for (const azimuth of azimuths) {
-            const direction = new THREE.Vector3(Math.sin(elevation) * Math.cos(azimuth),
-              Math.sin(elevation) * Math.sin(azimuth), Math.cos(elevation));
-            const sums = rotations.map((rotation) => {
-              let total = 0;
-              for (let i = 0; i < sliceCount; i++) {
-                const slice = sliceAt(float((i + rotation) * Math.PI / sliceCount), vectorNode(view), vectorNode(view));
-                total += valueOf(wedgeWeight(slice, vectorNode(direction)));
-              }
-              return total;
-            });
-            const label = `view=${view.toArray()} slices=${sliceCount} azimuth=${azimuth}`;
-            near(sums.reduce((sum, value) => sum + value, 0) / sums.length, sliceCount / 4, 2e-3, `${label} 平均`);
-            if (sliceCount % 4 === 0) for (const sum of sums) near(sum, sliceCount / 4, 1e-9, label);
-          }
-        }
+  test('screen space estimator: ψ で等間隔なスライスの円盤の弧の長さは、回転について平均すると円盤の余弦重みの測度に一致する', () => {
+    for (const { cap, normal, label } of discCases(DISC_SIGMAS)) {
+      const expected = discMeasure(cap, normal);
+      for (const sliceCount of [1, 2, 3, 4]) {
+        near(sliceAveragedMeasure(cap, normal, sliceCount), expected, 1e-3 * expected + 1e-5, `${label} slices=${sliceCount}`);
       }
+    }
+  });
+
+  test('screen space estimator: 円盤の測度 capMeasure は、地平で切れる場合も数値積分に一致する', () => {
+    for (const { cap, normal, label } of discCases(DISC_SIGMAS)) {
+      const expected = discMeasure(cap, normal);
+      near(valueOf(capMeasure(planetCapOf(cap), vectorNode(normal))), expected, 3e-4 * expected + 1e-5, label);
+    }
+  });
+
+  test('screen space estimator: 小さい天体は向きを保ったまま下限の視半径へ広がり、広げた円盤でも弧の平均が測度に一致し、大きい天体は広げない', () => {
+    const small = planetCapOf({ direction: directionAt(0.8, 0.3), cosAngle: Math.cos(Math.PI / 180) });
+    const widened = widenedCap(small);
+    assert.deepEqual(evaluateShaderNode(widened.direction), evaluateShaderNode(small.direction));
+    const widenedCosine = valueOf(widened.cosAngle);
+    assert.ok(widenedCosine < Math.cos(Math.PI / 180), `広がる ${widenedCosine}`);
+    const large = planetCapOf({ direction: directionAt(0.8, 0.3), cosAngle: Math.cos(1.2) });
+    near(valueOf(widenedCap(large).cosAngle), Math.cos(1.2), 1e-12, '大きい天体');
+    // 広げた視半径を下限の σ_min として、小さい天体の向きを振った円盤でも、弧の回転の平均と capMeasure が数値積分に一致する。
+    const sigmaMin = Math.acos(widenedCosine);
+    for (const { cap, normal, label } of discCases([sigmaMin])) {
+      const wide = widenedCap(planetCapOf({ direction: cap.direction, cosAngle: Math.cos(Math.PI / 180) }));
+      const widenedDisc = { direction: cap.direction, cosAngle: valueOf(wide.cosAngle) };
+      const expected = discMeasure(widenedDisc, normal);
+      near(sliceAveragedMeasure(widenedDisc, normal, 2), expected, 1e-3 * expected + 1e-5, `${label} 平均`);
+      near(valueOf(capMeasure(wide, vectorNode(normal))), expected, 3e-4 * expected + 1e-5, `${label} 測度`);
     }
   });
 

@@ -8,15 +8,15 @@
 import type * as THREE from 'three/webgpu';
 import {
   If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, pow, screenSize,
-  screenUV, select, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
+  screenUV, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
 import { facingCosine, sampleBandWeights, type BandSplit } from './band-split';
 import { signedDiffuseCorrection } from './diffuse-correction';
 import {
-  SECTOR_COUNT, angleOf, bitCount, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt,
-  toSliceCoordinates, wedgeWeight, type RangeSectors, type SectorRange, type Slice,
+  SECTOR_COUNT, angleOf, bitCount, capMeasure, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors,
+  sliceAt, toSliceCoordinates, type RangeSectors, type Slice,
 } from './slice-sectors';
 import {
   angularlyHigher, angularlyLower, rayAt, samplePoint, sideRays, splitSegments, tangentHit, type SideRays,
@@ -31,6 +31,15 @@ import type {
 // 遮りを探す距離 [m]。受け手からこれより遠い面は遮らない。
 const WORLD_RADIUS = 4;
 
+// 天体照の円盤の視半径の下限 [rad]。小さい天体はスライスにめったに当たらず、当たると大きく引く裾の重い外れ値に
+// なるので、視半径をここまで広げる。広げた円盤の測度で割るので、遮られないときの照度は変わらない。
+const MIN_CAP_ANGLE = Math.PI / 8;
+
+// 視半径を MIN_CAP_ANGLE まで広げた球冠(向きはそのまま)。
+export function widenedCap(cap: PlanetCap): PlanetCap {
+  return { direction: cap.direction, cosAngle: min(cap.cosAngle, Math.cos(MIN_CAP_ANGLE)) };
+}
+
 // 受け手を照らす天体照 1 つ。cap は受け手から見た球冠(view 空間)、irradiance は近くの構造に遮られないときに
 // 届く拡散照度(SUN_IRRADIANCE_1AU の目盛り)。
 export interface PlanetIllumination {
@@ -39,12 +48,12 @@ export interface PlanetIllumination {
 }
 
 // 受け手へ届く遠方の拡散光と、新しく塞いだ測度をその光の塞がれた割合へ写す尺度。ambient は一様な環境光の照度、
-// hemisphereScale は 1 / (スライスの数 × SECTOR_COUNT)、planets は天体照ごとに楔の尺度 wedgeScale = 4 / スライスの数を
-// 添えたもの。
+// hemisphereScale は 1 / (スライスの数 × SECTOR_COUNT)、planets は天体照ごとに(視半径を広げた)円盤の尺度
+// capScale = 1 / (スライスの数 × SECTOR_COUNT × 円盤の測度) を添えたもの。
 interface DistantLight {
   readonly ambient: Vec3Node;
   readonly hemisphereScale: FloatNode;
-  readonly planets: readonly (PlanetIllumination & { readonly wedgeScale: FloatNode })[];
+  readonly planets: readonly (PlanetIllumination & { readonly capScale: FloatNode })[];
 }
 
 // G バッファの画素 1 つの面(view 空間)。depth は素の深度で、0 なら面が写っていない。
@@ -87,18 +96,20 @@ export function scanHemisphere(
     // 遠方の光は面の値を読む式から組まれている。**ループへ入る前に変数へ置く** — ループの中で初めて組むと、
     // スライスごとに面を読み直し、ループの後の照度もループの中で読んだ値に頼る。
     const ambient = ambientIrradiance.toVar();
-    const planetVars: readonly PlanetIllumination[] = planets.map(({ cap, irradiance }) => ({
-      cap: { direction: cap.direction.toVar(), cosAngle: cap.cosAngle.toVar() }, irradiance: irradiance.toVar(),
-    }));
+    const hemisphereScale = float(1).div(float(sliceCount).mul(SECTOR_COUNT)).toVar();
+    // 天体照の円盤は視半径を広げ、受け手ごとに 1 回その測度を求める。円盤が地平の下で測度が 0 のときは、下限で
+    // 0 除算を避ける — 弧は半球の外で幅 0 になるので掛かる測度も 0。
+    const planetLights = planets.map(({ cap, irradiance }) => {
+      const widened = widenedCap(cap);
+      const wideCap = { direction: widened.direction.toVar(), cosAngle: widened.cosAngle.toVar() };
+      const measure = capMeasure(wideCap, receiver.normal);
+      return { cap: wideCap, irradiance: irradiance.toVar(), capScale: hemisphereScale.div(max(measure, 1e-6)).toVar() };
+    });
     // 視線に垂直な面の中で等間隔に取ったスライスのうち index 本目。
     const sliceOf = (index: IntNode): Slice =>
       sliceAt(float(index).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiver.normal);
-    // スライスの重みの期待値は 1、楔の重みの期待値は 1/4 なので、期待値で割る。
-    const light: DistantLight = {
-      ambient,
-      hemisphereScale: float(1).div(float(sliceCount).mul(SECTOR_COUNT)).toVar(),
-      planets: planetVars.map((planet) => ({ ...planet, wedgeScale: float(4).div(float(sliceCount)).toVar() })),
-    };
+    // スライスの重みの期待値は 1 なので、期待値で割る。
+    const light: DistantLight = { ambient, hemisphereScale, planets: planetLights };
     // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。受け手自身の画素を読まない 1 走査画素先から半径までを、
     // 指数で近くへ寄せて配る（半径が大きくても受け手のそばを粗くしない）。
     const stepDistance = (progress: FloatNode): FloatNode => {
@@ -151,18 +162,6 @@ export function scanHemisphere(
     for (const correction of corrections) correction.mulAssign(fade);
   });
   return corrections;
-}
-
-// スライス slice へ写した球冠 cap の、扇形の座標の範囲 range とその幅 width、スライスが天体の方位の楔を代表する
-// 重み wedge(幅が 0 なら 0)。dither は扇形の端の丸めのずれ。**Fn の中から呼ぶこと。**
-function capInSlice(slice: Slice, cap: PlanetCap, dither: FloatNode): {
-  readonly range: SectorRange;
-  readonly width: FloatNode;
-  readonly wedge: FloatNode;
-} {
-  const range = capRange(slice, cap, dither);
-  const width = range.upper.sub(range.lower).toVar();
-  return { range, width, wedge: select(width.greaterThan(0), wedgeWeight(slice, cap.direction), float(0)).toVar() };
 }
 
 // 受け手の近くを走査するか — 面が写っていて(素の深度 depth > 0)、半径が走査の画面へ 1 画素より大きく写る
@@ -226,11 +225,11 @@ class SliceOcclusion {
     private readonly corrections: readonly Vec3Node[], private readonly radiance: THREE.Texture | null,
   ) {
     this.hemisphereWeight = slice.weight.mul(light.hemisphereScale).toVar();
-    this.planets = light.planets.map(({ cap, irradiance, wedgeScale }) => {
-      const { range, width, wedge } = capInSlice(slice, cap, dither);
-      const capWeight = wedge.div(max(width, 1e-6)).mul(wedgeScale).toVar();
-      return { irradiance, sectors: rangeSectors(range), capWeight };
-    });
+    this.planets = light.planets.map(({ cap, irradiance, capScale }) => ({
+      irradiance,
+      sectors: rangeSectors(capRange(slice, cap, dither)),
+      capWeight: slice.weight.mul(capScale).toVar(),
+    }));
   }
 
   // 受け手から見て角 lower..upper を占める切片を、手前の切片の後ろへ積む。falloff はその標本の距離重み、
