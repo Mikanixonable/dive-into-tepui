@@ -10,7 +10,7 @@
 // メッシュを、同じ枠・同じ uv の別の層へ分けて撮る。混ぜると、遠くて淡いものが至近の濃いものを
 // 追い出す。
 import * as THREE from 'three/webgpu';
-import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
+import { MeshBasicNodeMaterial, type WebGPURenderer } from 'three/webgpu';
 import { float, positionView, uniform, uniformArray, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { extentForTexel } from '../../shadow-demand';

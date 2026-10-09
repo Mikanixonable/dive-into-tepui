@@ -9,18 +9,18 @@
 // (NEGLIGIBLE_BODY_OFFSET)。落とす変位の合計はその定数以下で、系の天体はまとめてその量だけ
 // 主星に対してずれる。**系の内側の相対幾何は動かない** — 衛星も同じ本体から組むため。
 // THREE/DOM 非依存。
-import { Vec3, addScaled, v3 } from '../math/vec3';
-import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
-import { PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
-import { PlanetDef } from './celestial-body-def';
+import { type Vec3, addScaled, v3 } from '../math/vec3';
+import { type PointEphemeris, boundBaryStateAt } from './ephemeris/point';
+import { PlanetMotion, type SatelliteMotion, type StarMotion } from './celestial-motion';
+import type { PlanetDef } from './celestial-body-def';
 import {
-  KeplerOrbit, PlanetAngles, keplerOrbitAccel, keplerOrbitState, planetAngles,
+  type KeplerOrbit, type PlanetAngles, keplerOrbitAccel, keplerOrbitState, planetAngles,
 } from './kepler-orbit';
 import {
-  KinematicState, addPrimaryRelative, fromStarRelative, kinematicState,
+  type KinematicState, addPrimaryRelative, fromStarRelative, kinematicState,
 } from './kinematic-state';
-import { SatelliteOrbit, satelliteState } from './satellite-orbit';
-import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
+import { type SatelliteOrbit, satelliteState } from './satellite-orbit';
+import { type TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 
 // 惑星本体の位置を組むとき、重心補正から落としてよい変位の合計 [m]。衛星の惑星相対軌道は
 // 平均要素の二体解へ周期補正項を重ねたモデルで、真値との差は km の桁ある(satellite-orbit.ts

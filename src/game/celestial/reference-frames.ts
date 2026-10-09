@@ -4,13 +4,13 @@
 // 「どの座標系が存在するか」と「その原点・姿勢・角速度が時刻 t で何になるか」を提供する。
 // THREE/DOM 非依存。
 import { Q_IDENTITY, qFromBasis } from '../../math/quat';
-import { CelestialMotion, OrbitingMotion, SatelliteMotion } from '../../physics/celestial-motion';
-import { EciTransform } from '../../physics/eci-transform';
+import { type CelestialMotion, OrbitingMotion, SatelliteMotion } from '../../physics/celestial-motion';
+import type { EciTransform } from '../../physics/eci-transform';
 import {
-  FrameAnchorSource, FrameRotationSource, FrameTransform, ReferenceFrame, rotationSourceKey,
+  type FrameAnchorSource, type FrameRotationSource, type FrameTransform, type ReferenceFrame, rotationSourceKey,
 } from '../../physics/frame';
-import { FrameRotation } from '../../physics/celestial-body';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import type { FrameRotation } from '../../physics/celestial-body';
+import { type KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { cross, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
 
 // 回転しない座標系(ReferenceFrame.rotatingWith === null)の姿勢・角速度。
