@@ -2,7 +2,7 @@
 // 同じ基底構築・透視除算になっていることを、手計算できる配置で検証する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { metersPerPixel, ndcToScreen, projectToNdc, Viewpoint } from '../../src/math/projection';
+import { metersPerPixel, ndcToScreen, projectToNdc, type Viewpoint } from '../../src/math/projection';
 import { addScaled, cross, norm, sub, v3 } from '../../src/math/vec3';
 
 export function register(): void {

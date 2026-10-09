@@ -1,10 +1,10 @@
 // 再突入時に機首前方へ出るプラズマ状の燃焼エフェクト。動圧から発光の強さと大きさを求め、
 // 対気速度方向の前方へ置く発光ビルボード2枚(コア+アウター)を所有する。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { addScaled, lenSq, norm } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { Billboard } from '../../billboard';
-import { FloatingOrigin } from '../../camera/floating-origin';
+import type { FloatingOrigin } from '../../camera/floating-origin';
 
 const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める動圧 [Pa]
 const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度になる動圧 [Pa]

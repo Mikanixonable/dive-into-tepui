@@ -11,6 +11,8 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "resolveJsonModule": false,
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
     "rootDir": "."
   },

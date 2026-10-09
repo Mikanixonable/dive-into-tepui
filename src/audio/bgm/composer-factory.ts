@@ -1,7 +1,7 @@
 // トラックの kind と Composer の実装を結びつける唯一の場所。ここに分岐が集まっているので、
 // Composer を増やしても再生側(bgm.ts)は変わらない。
-import { BgmTrack } from './tracks/types';
-import { Composer } from './composer';
+import type { BgmTrack } from './tracks/types';
+import type { Composer } from './composer';
 import { PhasingComposer } from './composers/phasing-composer';
 import { AntipodeComposer } from './composers/antipode-composer';
 import { SuiteComposer } from './composers/suite-composer';

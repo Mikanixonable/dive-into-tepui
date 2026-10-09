@@ -3,15 +3,15 @@
 // 真値は同じ運動を N 分割で積んだ経路から取り、粗い1歩の端点にはその積分の端点をそのまま使う
 // — 測りたいのは端点を結ぶ近似の誤差であって、粗い RK4 の積分誤差ではない。
 import { fixedMotion } from '../physics/test-helpers';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import {
-  SweptSphereContact, curveSphereContact, linearSphereContact,
+  type SweptSphereContact, curveSphereContact, linearSphereContact,
 } from '../../src/physics/sphere-contact';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Atmosphere } from '../../src/physics/atmosphere';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import type { Atmosphere } from '../../src/physics/atmosphere';
 import { EARTH_ATMOSPHERE, MU_EARTH, MU_MOON, R_EARTH_EQ, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
-import { Vec3, add, len, sub, v3 } from '../../src/math/vec3';
+import { type Vec3, add, len, sub, v3 } from '../../src/math/vec3';
 
 const G = 6.674e-11;
 // 密度 2000 kg/m³ の小天体。表面すれすれの円軌道の周期は密度だけで決まる。
@@ -45,7 +45,7 @@ export function withThrust(central: CelestialMotion, thrust: Vec3): Advance {
   return (s, dt) => stepDynamics(s, dt, [central], [], null, 0, 0, 0, thrust);
 }
 
-export const still: Advance = (s, dt) => kinematicState<'eci'>(s.t + dt, s.r, s.v);
+export const still: Advance = (s, dt): KinematicState<'eci'> => kinematicState(s.t + dt, s.r, s.v);
 
 // 判定にかける1区間。radiusSum は費用の計測で使う代表値で、精度の計測では二分探索で動かす。
 export interface Sweep {

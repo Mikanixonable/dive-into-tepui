@@ -1,9 +1,9 @@
 // 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト・散乱円盤の点群のマップビュー表示。群ごとの
 // 表示属性（描画半径・色）を定義し、軌道要素から算出した位置を群ごとに単一の InstancedMesh へ配置する。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../math/vec3';
-import { PointElements, pointPositionAt } from '../../physics/point-orbit';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { Vec3 } from '../../math/vec3';
+import { type PointElements, pointPositionAt } from '../../physics/point-orbit';
+import type { FloatingOrigin } from '../camera/floating-origin';
 
 // 表示する点群1群。drawRadius と color は群ごとの見た目。
 export interface PointFieldGroup {

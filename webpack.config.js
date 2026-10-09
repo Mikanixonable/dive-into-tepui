@@ -29,6 +29,11 @@ const earthSurfaceManifestUrl = configuredEarthSurfaceManifestUrl
       : DEFAULT_EARTH_SURFACE_R2_MANIFEST_URL);
 
 module.exports = {
+  cache: {
+    type: 'filesystem',
+    name: 'tepui',
+    cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
+  },
   entry: {
     main: './src/main.ts',
     'earth-surface-terrain-worker': './src/render/earth-surface-terrain-worker.ts',

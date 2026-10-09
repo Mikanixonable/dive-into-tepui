@@ -1,7 +1,7 @@
 // ピンホールカメラ投影(Vec3 → NDC → ピクセル)と、その逆の画面上の点を通る視線。
 // カメラの絶対 ECI 視点状態と対象の絶対 ECI 位置から計算する。基底の組み方と透視除算は
 // THREE.Object3D.lookAt / PerspectiveCamera と同じ式なので、描画と画面上の位置が一致する。
-import { Vec3, add, cross, dot, norm, scale, sub } from './vec3';
+import { type Vec3, add, cross, dot, norm, scale, sub } from './vec3';
 import type { Ray } from './ray';
 
 export interface Projected { readonly x: number; readonly y: number; readonly front: boolean }

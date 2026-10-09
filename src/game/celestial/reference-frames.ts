@@ -4,13 +4,13 @@
 // 「どの座標系が存在するか」と「その原点・姿勢・角速度が時刻 t で何になるか」を提供する。
 // THREE/DOM 非依存。
 import { Q_IDENTITY, qFromBasis } from '../../math/quat';
-import { CelestialMotion, OrbitingMotion, SatelliteMotion } from '../../physics/celestial-motion';
-import { EciTransform } from '../../physics/eci-transform';
+import { type CelestialMotion, OrbitingMotion, SatelliteMotion } from '../../physics/celestial-motion';
+import type { EciTransform } from '../../physics/eci-transform';
 import {
-  FrameAnchorSource, FrameRotationSource, FrameTransform, ReferenceFrame, rotationSourceKey,
+  type FrameAnchorSource, type FrameRotationSource, type FrameTransform, type ReferenceFrame, rotationSourceKey,
 } from '../../physics/frame';
-import { FrameRotation } from '../../physics/celestial-body';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import type { FrameRotation } from '../../physics/celestial-body';
+import { type KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { cross, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
 
 // 回転しない座標系(ReferenceFrame.rotatingWith === null)の姿勢・角速度。
@@ -32,12 +32,12 @@ export class ReferenceFrames {
   private readonly frameCache = new Map<string, Map<string, ReferenceFrame>>();
 
   // origin 中心・無回転の慣性系。frameOf(origin.id, null) と同一参照。
-  readonly inertialFrame: ReferenceFrame;
+  public readonly inertialFrame: ReferenceFrame;
   // 全天体の慣性系 + 公転天体ぶんの回転系。値は frameOf が返すのと同じ参照になる。
-  readonly frames: readonly ReferenceFrame[];
+  public readonly frames: readonly ReferenceFrame[];
 
   // motions は宣言順の全登録天体、eci は天体の値を ECI へ移す変換器(その原点が慣性系の中心)。
-  constructor(motions: readonly CelestialMotion[], private readonly eci: EciTransform) {
+  public constructor(motions: readonly CelestialMotion[], private readonly eci: EciTransform) {
     this.motionsById = Object.fromEntries(motions.map((m) => [m.id, m]));
     const originId = eci.originId;
     this.inertialFrame = this.frameOf(originId, null);
@@ -52,7 +52,7 @@ export class ReferenceFrames {
   // center 中心・rotatingWith の回転(公転か自転)に合わせて回る座標系(rotatingWith が null
   // なら慣性系)。同じ対には常に同じ参照を返す。center/rotatingWith.id は登録されていない id
   // (生存中の重力天体・機体・役割トークン)でもよい — transformAt 側がその場合の解決を担う。
-  frameOf(center: string, rotatingWith: FrameRotationSource | null): ReferenceFrame {
+  public frameOf(center: string, rotatingWith: FrameRotationSource | null): ReferenceFrame {
     let byRotation = this.frameCache.get(center);
     if (byRotation === undefined) {
       byRotation = new Map();
@@ -69,11 +69,11 @@ export class ReferenceFrames {
   }
 
   // 登録の有無を問わず center 中心の慣性系を返す、frameOf(id, null) の別名。
-  frameFor(id: string): ReferenceFrame { return this.frameOf(id, null); }
+  public frameFor(id: string): ReferenceFrame { return this.frameOf(id, null); }
 
   // ReferenceFrame の時刻 t における剛体運動。origin は frame.center の状態、回転は
   // frameRotationAt が決める。
-  transformAt(frame: ReferenceFrame, t: number, source: FrameAnchorSource): FrameTransform {
+  public transformAt(frame: ReferenceFrame, t: number, source: FrameAnchorSource): FrameTransform {
     const origin = this.anchorStateAt(frame.center, t, source);
     const rotation = this.frameRotationAt(frame.rotatingWith, t, source) ?? IDENTITY_ROTATION;
     return { origin: origin.r, originVel: origin.v, q: rotation.q, omega: rotation.omega };

@@ -15,12 +15,12 @@ export const LINE_RENDER_ORDER = {
 } as const;
 
 // 破線パターン。dashSize/gapSize は線が描かれる座標系での実距離 [m]。
-type LineDash = { readonly dashSize: number; readonly gapSize: number };
+interface LineDash { readonly dashSize: number; readonly gapSize: number }
 
 // 線の見た目を決める値。
-export type LineStyle = {
+export interface LineStyle {
   readonly color: string | number;
   readonly opacity: number;
   readonly renderOrder: number;
   readonly dash?: LineDash;
-};
+}

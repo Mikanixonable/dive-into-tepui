@@ -1,9 +1,9 @@
 // 天体1体の静的な記述。恒星・惑星・衛星それぞれの宣言と、その部品(自転極モデル・
 // 2次重力場・形状・環系)、恒星に分類される天体の絞り込み、および宣言を simTime 基準へ畳む変換。
-import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero } from './kepler-orbit';
-import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
+import { JULIAN_CENTURY, type KeplerOrbit, keplerOrbitForSimZero } from './kepler-orbit';
+import { type SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
 import { SECONDS_PER_DAY } from './time';
-import { Vec3, v3 } from '../math/vec3';
+import { type Vec3, v3 } from '../math/vec3';
 import type { AtmosphereDef } from './atmosphere';
 import type { CelestialBody } from './celestial-body';
 

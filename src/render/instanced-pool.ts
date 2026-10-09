@@ -12,7 +12,6 @@ const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 // 毎フレーム呼び、その間に push した Object3D の変換をまとめて描画する。
 export class InstancedPool {
   private readonly mesh: THREE.InstancedMesh;
-  private readonly capacity: number;
   private count = 0;
   // 前フレームに使った枠数。今フレームで余った枠だけをゼロ行列へ戻すために持つ。
   private lastCount = 0;
@@ -39,12 +38,11 @@ export class InstancedPool {
     scene: THREE.Scene,
     geometry: THREE.BufferGeometry,
     material: THREE.Material,
-    capacity: number,
+    private readonly capacity: number,
     perInstanceColor = false,
     renderOrder = 0,
     perInstanceThermal = false,
   ) {
-    this.capacity = capacity;
     this.mesh = new THREE.InstancedMesh(geometry, material, this.capacity);
     this.mesh.renderOrder = renderOrder;
     // 変換は storage バッファで渡す。既定の属性だと容量ぶんの mat4 が uniform 配列として

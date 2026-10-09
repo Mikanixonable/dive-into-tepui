@@ -15,7 +15,7 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 import { CloudPatternTransport, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT, windBandsAt } from './atmospheric-wind';
 
 // 1 本の帯へ読み込む物理風 [m/s]。CloudPatternTransport がこれをノイズ空間の角位相へ変換する。
-type CirculationBand = { readonly latitudeRad: number; readonly east: number; readonly north: number };
+interface CirculationBand { readonly latitudeRad: number; readonly east: number; readonly north: number }
 
 // 帯の表は北から南へ並び、中心緯度は FIRST_LATITUDE から BAND_SPACING 刻みで番号から出る。
 const FIRST_LATITUDE = THREE.MathUtils.degToRad(75);
@@ -49,10 +49,10 @@ const BREATH_PERIOD = 7 * 86400;
 
 // 帯 1 本と、そこへ寄せる重み。混ざる 2 本の重みは二乗和が 1 に保たれる対で、境目ではどちらも
 // 1/√2 になる。
-type WeightedBand = {
+interface WeightedBand {
   readonly index: FloatNode;
   readonly weight: FloatNode;
-};
+}
 
 export class Circulation {
   private readonly patternTransport: CloudPatternTransport;

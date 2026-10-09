@@ -160,13 +160,11 @@ class GridPlane {
   private readonly labelLayer: HTMLDivElement;
   private readonly labels: HTMLDivElement[] = [];
   private readonly gridLabels: { el: HTMLDivElement; lat: number; lon: number }[] = [];
-  private readonly basis: PlaneBasis;
   private readonly realisticColor: string;
   private readonly styleGate = new RenderStyleGate();
 
   // 面 1 枚ぶんの線を scene へ、ラベル層を document.body へ組み立てる。
-  public constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
-    this.basis = basis;
+  public constructor(scene: THREE.Scene, private readonly basis: PlaneBasis, color: number, name: string) {
     this.realisticColor = `#${color.toString(16).padStart(6, '0')}`;
     this.labelLayer = document.createElement('div');
     this.labelLayer.className = 'celestial-grid-labels';

@@ -5,7 +5,7 @@ import { decodeEarthTerrainOffThread } from './earth-surface-terrain-worker-clie
 import type { EarthSurfaceTerrainFormat } from './earth-surface-format';
 import { earthTileId } from './earth-surface-tile-key';
 import type { EarthTileKey } from './earth-surface-tile-key';
-import { EarthSurfaceTileSource } from './earth-surface-tile-source';
+import type { EarthSurfaceTileSource } from './earth-surface-tile-source';
 import type { EarthSurfaceTileDescriptor } from './earth-surface-tile-source';
 import { EarthSurfaceHttpError, EarthSurfaceRequestError } from './earth-surface-request-errors';
 

@@ -88,7 +88,7 @@ export class BodyShadow {
   private readonly bodyFromWorldArray: THREE.UniformArrayNode<'mat4'>;
 
   // 上限ぶんの uniform を確保する。件数は固定なので、天体が増減してもグラフの形は変わらない。
-  constructor(private readonly sunLight: SunLight) {
+  public constructor(private readonly sunLight: SunLight) {
     this.centers = Array.from({ length: MAX_SHADOW_BODIES }, () => new THREE.Vector3());
     this.axes = Array.from({ length: MAX_SHADOW_BODIES }, () => new THREE.Vector3());
     this.bodyFromWorld = Array.from({ length: MAX_SHADOW_BODIES }, () => new THREE.Matrix4());
@@ -98,7 +98,7 @@ export class BodyShadow {
   }
 
   // このフレームで影を落とす天体の列(描画座標)。MAX_SHADOW_BODIES を超えた分は捨てる。
-  set(bodies: readonly ShadowBody[]): void {
+  public set(bodies: readonly ShadowBody[]): void {
     for (const [i, axes] of this.axes.entries()) {
       const body = bodies[i];
       // 空きスロットは半軸 0 で消す — 実効半径が 0 になり、透過率がそのまま素通しへ倒れる。
@@ -110,10 +110,10 @@ export class BodyShadow {
   }
 
   // このフレームに影を落とす天体が 1 体でもあるか。**スロットは先頭から詰めるので先頭だけ見れば足りる。**
-  casts(): boolean { return this.axes[0]!.lengthSq() > 0; }
+  public casts(): boolean { return this.axes[0]!.lengthSq() > 0; }
 
   // 描画座標の点 worldPos へ、天体を通ってきた恒星の直射光が届く割合 0..1。
-  transmittance(worldPos: Vec3Node): FloatNode {
+  public transmittance(worldPos: Vec3Node): FloatNode {
     const sunDist = this.sunLight.distanceFrom(worldPos);
     const sunDir = this.sunLight.directionFrom(worldPos);
     const sunAngRadius = this.sunLight.angularRadiusFrom(worldPos);

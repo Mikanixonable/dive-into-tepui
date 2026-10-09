@@ -1,9 +1,9 @@
 // 軌道上の特徴点(赤道交点 EqAN/EqDN、相対交点 AN/DN 等)を算出する純関数群。
 import { frameOfCelestialBody, toFrameState } from './frame';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt, orbitalElementsOf } from './elements';
-import { KinematicState } from './kinematic-state';
+import type { KinematicState } from './kinematic-state';
 import { findEquatorCrossings } from './trajectory-features';
-import { Vec3, add } from '../math/vec3';
+import { type Vec3, add } from '../math/vec3';
 import type { CelestialBody } from './celestial-body';
 
 interface OrbitNodeState {

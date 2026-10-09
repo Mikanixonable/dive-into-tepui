@@ -1,6 +1,6 @@
 import { EPHEMERIS_PACK_VERSION } from './pack-format';
 import { profileAtOrNull } from './profile';
-import { createJulianDate, TdbJulianDate } from '../time';
+import { createJulianDate, type TdbJulianDate } from '../time';
 
 // スナップショットが「どの元期・どの暦プロファイル・どの pack で作られたか」。
 // JSON の素の値だけから成り、この形のまま直列化の形を兼ねる。

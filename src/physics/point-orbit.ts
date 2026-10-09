@@ -3,7 +3,7 @@
 import { Q_ECLY_TO_ECI } from './ecliptic';
 import { positionFromOrbitalElements, trueAnomalyFromMean } from './elements';
 import { qRotate } from '../math/quat';
-import { Vec3 } from '../math/vec3';
+import type { Vec3 } from '../math/vec3';
 
 // 1点の軌道。平均運動を要素と一緒に持つのは、位置評価が毎フレーム全点に及ぶため
 // (a から毎回 sqrt を引くのを避ける)。

@@ -6,7 +6,7 @@ import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { VisibleGuideLine } from '../../render/celestial/orbit-guide/orbit-guide-view';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { isCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { LinePickable } from './line-pickable';
+import type { LinePickable } from './line-pickable';
 
 // 線1本あたりの当たり判定用サンプル点数。ピクセル半径内かの判定に足りる粗さで固定する。
 const ORBIT_PICK_SAMPLES = 128;

@@ -10,19 +10,19 @@
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
-import { KinematicState, kinematicState } from './kinematic-state';
-import { add, cross, sub, v3, Vec3 } from '../math/vec3';
-import { Q_IDENTITY, Quat, qInvert, qRotate } from '../math/quat';
+import { type KinematicState, kinematicState } from './kinematic-state';
+import { add, cross, sub, v3, type Vec3 } from '../math/vec3';
+import { Q_IDENTITY, type Quat, qInvert, qRotate } from '../math/quat';
 import type { CelestialBody } from './celestial-body';
 
 // 座標系 = 「どの天体を原点に置くか」×「何の回転(公転か自転)に合わせて回すか
 // (null = 回さない)」。値は必ず ReferenceFrames の frames/frameFor/frameOf の要素を参照する —
 // リテラルで組むと参照同一性が崩れ、trajectory-line.ts の `frame === lastFrame` による
 // キャッシュ判定が毎フレーム外れて描画が無駄に重くなる。
-export type ReferenceFrame = {
+export interface ReferenceFrame {
   readonly center: string; // 登録天体・生存中の重力天体・機体の id か、役割トークン
   readonly rotatingWith: FrameRotationSource | null;
-};
+}
 
 // 参照フレームの基準・回転対象を、特定の対象を直接指定せずロール（役割）で参照するためのもの。予約 id では
 // '@' を頭に付ける — 天体・機体の id は小文字 ASCII と '-'/':' だけで組まれる。
@@ -70,12 +70,12 @@ export function rotationSourceKey(rotatingWith: FrameRotationSource | null): str
 // Frame の時刻 t における剛体運動。origin/originVel は ECI での原点の位置・速度、
 // q は「座標系相対 → ECI」の姿勢、omega は ECI 成分の角速度。回転軸が時刻とともに向きを
 // 変える系(月回転系など)もあるため、軸と回転角の対ではなくこの対で扱う。
-export type FrameTransform = {
+export interface FrameTransform {
   readonly origin: Vec3;
   readonly originVel: Vec3;
   readonly q: Quat;
   readonly omega: Vec3;
-};
+}
 
 // 座標系相対の「点」(位置。原点移動 + 回転のアフィン変換)。
 export type FramePoint = { x: number; y: number; z: number } & { readonly __tag: 'framePoint'; };

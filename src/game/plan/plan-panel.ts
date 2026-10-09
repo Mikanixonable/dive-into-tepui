@@ -1,8 +1,8 @@
 // 軌道計画パネル(#hud-plan)の DOM: ノード一覧・噴射後軌道要素・Δv 手動入力欄(数値入力+
 // 長押しボタン)を組み立て、渡された表示値を書き込む。
-import { OrbitalElements, apsisAltitudes } from '../../physics/elements';
+import { type OrbitalElements, apsisAltitudes } from '../../physics/elements';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
-import { Vec3 } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL, FONT_XXS, SPACE_1, SPACE_2, SPACE_3, SPACE_4 } from '../../theme';
 import { HoldButton, ValueInput } from '../../hud/widgets';
 import { fmtDist, fmtTime } from '../../hud/utils';

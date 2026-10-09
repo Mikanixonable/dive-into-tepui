@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 
 export function disposeOwnedRenderResources(root: THREE.Object3D): void {
   root.traverse((child) => {

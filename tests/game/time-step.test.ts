@@ -5,9 +5,9 @@ import {
 } from '../../src/game/dynamic/time-step';
 import { test } from '../harness';
 import { v3 } from '../../src/math/vec3';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
-import { Atmosphere } from '../../src/physics/atmosphere';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { Atmosphere } from '../../src/physics/atmosphere';
 
 // 基準楕円体の半径がちょうど 1000 の真球で、層は1つだけの試験用の大気。高度がそのまま読める。
 const UNIT_ATMOSPHERE: Atmosphere = {

@@ -1,6 +1,6 @@
 // 描画時と同じターゲットへパイプラインを組み、初回描画のコンパイル待ちを先に終える。
-import * as THREE from 'three/webgpu';
-import { WebGPURenderer } from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 
 // target の添付形式と深度・ステンシル設定を保ったまま object をコンパイルする。
 export async function compileInto(

@@ -17,7 +17,7 @@ function predictorDt(period: number): number {
   return Math.max(ARC_MIN_STEP_DT, period / ARC_STEPS_PER_REV);
 }
 
-type BudgetScenario = { label: string; steps: number };
+interface BudgetScenario { label: string; steps: number }
 
 function budgetScenarios(): BudgetScenario[] {
   return [

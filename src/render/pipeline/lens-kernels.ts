@@ -2,7 +2,7 @@
 // 直書きの係数だと、あとで刻みを変えたときに総和が静かに 1 からずれ、核が光を増やす(あるいは
 // 減らす)ようになってしまう。総和が 1 なら出力は入力の最大値(太陽面の 4.62e4)を超えないので、
 // 半精度浮動小数点の上限(65504)を跨ぐことも構造的に起きない。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { and, greaterThan, lessThan, screenSize, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
 import type { FloatNode, Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
 import type { AperturePsfTap } from './aperture-psf';
@@ -30,7 +30,7 @@ const GHOST_SOURCE_TEXELS: readonly [number, number, number, number] = [1, 2, 4,
 
 // 絞りの反射像 1 枚。**どのパラメータも光軸(画面中心)まわりの回転と可換**で、それが像を光点と
 // 中心を結ぶ直線の上へ並べる。
-type Ghost = {
+interface Ghost {
   // GHOST_REFERENCE_RADIUS での倍率。**読む位置に掛かる**ので、像はこの逆数に拡大される。
   // 負なら中心を挟んだ反対側。
   readonly scale: number;
@@ -45,7 +45,7 @@ type Ghost = {
   readonly tint: readonly [number, number, number];
   // 色収差。チャンネルごとに倍率をこの割合だけずらす。
   readonly dispersion: number;
-};
+}
 
 // scale と power が像の位置・形、softness がぼけ具合、weight が光量の配分を決める。
 // 像の倍率は半径だけの関数なので、光点と画面中心を結ぶ直線上へ配置される。

@@ -1,9 +1,9 @@
 // 自分と対象の2つの位置を結ぶ直線を1本描く。
 import * as THREE from 'three/webgpu';
-import { add, sub, v3, Vec3 } from '../../math/vec3';
+import { add, sub, v3, type Vec3 } from '../../math/vec3';
 import type { CameraFrame } from '../camera/camera-frame';
-import { Curve, CurveKnots } from '../curve';
-import { LineStyle } from '../line-style';
+import { Curve, type CurveKnots } from '../curve';
+import type { LineStyle } from '../line-style';
 
 export class TargetRelativeLine {
   private readonly curve: Curve;

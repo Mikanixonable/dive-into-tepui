@@ -2,7 +2,7 @@
 // (params)の形をここで定める。曲そのもののデータは tracks.ts、
 // 音符を実際の響きにする楽器の宣言は ../instruments/types.ts。
 // Composer を増やすときは、対応する区画へ params 型を書き、union へ1行加える。
-import { InstrumentDef } from '../instruments/types';
+import type { InstrumentDef } from '../instruments/types';
 
 // ============================================================================ 共通
 

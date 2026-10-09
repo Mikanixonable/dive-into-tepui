@@ -135,13 +135,12 @@ export class CelestialSurface implements CelestialSurfaceLike {
   // 段ごとの半径 1 の球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
-  private readonly fallbackAttachment: CelestialSurfaceMaterialAttachment;
   private activeAttachment: CelestialSurfaceMaterialAttachment;
 
   // material と deferred のテクスチャは解放までこの表面が持つ。photometry / textureUrl は静的事実。
   // lightSource は光源として焼くときに読むベース色で、単色の面では null。
   private constructor(
-    fallbackAttachment: CelestialSurfaceMaterialAttachment,
+    private readonly fallbackAttachment: CelestialSurfaceMaterialAttachment,
     public readonly photometry: SurfacePhotometry | null,
     public readonly textureUrl: string | null,
     private readonly lightSource: {
@@ -149,7 +148,6 @@ export class CelestialSurface implements CelestialSurfaceLike {
       readonly map: LightSourceMap;
     } | null = null,
   ) {
-    this.fallbackAttachment = fallbackAttachment;
     this.activeAttachment = fallbackAttachment;
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     // 段ごとにメッシュを持つ — WebGPU では mesh.geometry の差し替えが効かない。

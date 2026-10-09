@@ -4,13 +4,13 @@
 import assert from 'node:assert/strict';
 import { test } from '../harness';
 import { generatePointField, jupiterMeanLongitude } from '../../src/game/celestial/solar-system/point-field';
-import { PointElements, pointPositionAt } from '../../src/physics/point-orbit';
+import { type PointElements, pointPositionAt } from '../../src/physics/point-orbit';
 import { AU } from '../../src/physics/astronomical-unit';
 import { eciToEcl } from '../../src/physics/ecliptic';
 import type { PointField } from '../../src/render/celestial/point-field-view';
 import type { Vec3 } from '../../src/math/vec3';
 import { motionOf, orbitingMotionOf, solarSystemParts, TEST_EPOCH } from '../physics/test-helpers';
-import { createJulianDate, TdbJulianDate } from '../../src/physics/time';
+import { createJulianDate, type TdbJulianDate } from '../../src/physics/time';
 
 const DEG = Math.PI / 180;
 

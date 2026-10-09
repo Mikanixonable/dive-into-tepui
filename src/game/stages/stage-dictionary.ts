@@ -1,5 +1,5 @@
 // ステージクラスの一覧と、id からの引き当て。
-import { StageClass } from './stage';
+import type { StageClass } from './stage';
 import { Stage00 } from './stage00';
 import { Stage0 } from './stage0';
 import { Stage1 } from './stage1';

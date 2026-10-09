@@ -29,19 +29,19 @@ const SLOT_DEBUG_COLORS: readonly (readonly [number, number, number])[] = [
 ];
 
 export class MeshShadow {
-  constructor(
+  public constructor(
     private readonly sunLight: SunLight,
     private readonly shadowMaps: ShadowMaps,
   ) {}
 
   // このフレームにメッシュの影があるか。
-  casts(): boolean { return this.shadowMaps.casts(); }
+  public casts(): boolean { return this.shadowMaps.casts(); }
 
   // 選んだ 1 スロットだけを引く — 透過率は恒星円盤の遮られずに残る面積比なので、枠の重なった
   // スロットの答えを掛け合わせると同じメッシュの半影が二重に濃くなる。判定を select ではなく If で
   // 書き、選ぶ段と引く段を分けるのは、虚空の画素からテクスチャフェッチを消すため(select は両辺を
   // 評価する)。normal は受け手の面の法線で、バイアスを法線方向のオフセットで入れるために要る。
-  transmittance(worldPos: Vec3Node, normal: Vec3Node): FloatNode {
+  public transmittance(worldPos: Vec3Node, normal: Vec3Node): FloatNode {
     const sunDir = this.sunLight.directionFrom(worldPos);
     const sunAngRadius = this.sunLight.angularRadiusFrom(worldPos);
     return Fn(() => {
@@ -60,7 +60,7 @@ export class MeshShadow {
   }
 
   // デバッグ表示「影マップのスロット」の色。選ばれたスロットの色で、どれも覆っていなければ黒。
-  slotDebugColor(worldPos: Vec3Node): Vec3Node {
+  public slotDebugColor(worldPos: Vec3Node): Vec3Node {
     return Fn(() => {
       const selected = this.selectSlot(worldPos);
       const color = vec3(0, 0, 0).toVar();

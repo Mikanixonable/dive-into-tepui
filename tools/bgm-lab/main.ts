@@ -1,9 +1,9 @@
 // BGM の作曲用プレビューの画面まわり。曲を選び、任意のステップから鳴らし、声部を抜き差し
 // しながら tracks.ts の値を詰めるための道具。鳴らす仕組みそのものは lab-player.ts。
 import { BGM_TRACKS } from '../../src/audio/bgm/tracks/tracks';
-import { BgmTrack, PhaseCycle } from '../../src/audio/bgm/tracks/types';
+import type { BgmTrack, PhaseCycle } from '../../src/audio/bgm/tracks/types';
 import { trackCycleSteps } from '../../src/audio/bgm/track-cycle';
-import { LabPlayer, LoopRange } from './lab-player';
+import { LabPlayer, type LoopRange } from './lab-player';
 
 const STATE_KEY = 'tepui.bgmLab';
 

@@ -7,7 +7,7 @@ import { cassiniSpinAxis, latLonOf, meridianDirection, orthogonalizedTo } from '
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { keplerOrbitNormal } from '../../src/physics/kepler-orbit';
 import { MOON_OBLIQUITY } from '../../src/game/celestial/solar-system/earth-system';
-import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
+import { type Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const MOON_ORBIT_INC = (5.145 * Math.PI) / 180;
 const R2D = 180 / Math.PI;

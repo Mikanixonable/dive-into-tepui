@@ -20,7 +20,7 @@ export class StatusPanel {
   private readonly powerMeter: Meter;
 
   // 非表示状態のパネル DOM を組み立てて root に追加する
-  constructor(root: HTMLElement) {
+  public constructor(root: HTMLElement) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-stagestatus';
     this.panel.className = 'panel hidden';
@@ -38,7 +38,7 @@ export class StatusPanel {
   }
 
   // ステージ固有の UI(トグル等)を左部へ永続的に追加する。sync の innerHTML 書き換え対象外。
-  appendLeftWidget(el: HTMLElement): void {
+  public appendLeftWidget(el: HTMLElement): void {
     this.leftWidgets.appendChild(el);
   }
 
@@ -54,7 +54,7 @@ export class StatusPanel {
 
   // 毎フレーム(sync 時)呼ぶ。player が null ならパネルを畳む。DOM の書き換えは
   // 内容が変わったフレームだけに絞る。
-  sync(player: ModularShip | null, message: string, kills: number): void {
+  public sync(player: ModularShip | null, message: string, kills: number): void {
     this.panel.classList.toggle('hidden', !player);
     if (!player) return;
 
@@ -87,7 +87,7 @@ export class StatusPanel {
 
   // root へ追加したパネル DOM を取り除く。左部ウィジェット枠に他クラスが差し込んだ要素も
   // その配下なので一緒に消える。
-  dispose(): void {
+  public dispose(): void {
     this.panel.remove();
   }
 }

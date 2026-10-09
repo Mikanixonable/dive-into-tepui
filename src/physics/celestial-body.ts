@@ -16,7 +16,7 @@ export interface BodyOrientation {
 
 // 天体に固定した回転基準系の、ECI に対する姿勢 q と角速度 omega [rad/s](ECI 成分)。
 // 回転軸が一定とは限らないので、軸と回転角の対ではなくこの対で扱う。
-export type FrameRotation = { readonly q: Quat; readonly omega: Vec3 };
+export interface FrameRotation { readonly q: Quat; readonly omega: Vec3 }
 
 // 2次重力場の非軸対称成分(赤道断面の楕円性)を、ある時刻の姿勢へ解決した形。主軸座標系で
 // 表すため S22 は恒等的に 0 になり、長軸の向きだけで姿勢が決まる。

@@ -1,6 +1,6 @@
 // 恒星の直射光の寄与。光源モデルの設定で「点光源 + GGX」と「一様球の閉じた解 + LTC」を
 // 選ぶ。どちらも影パスの透過率を掛けて出す。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { PI, clamp, dot, length, max, normalize, saturate, texture } from 'three/tsl';
 import { ggxSpecularFactor } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';

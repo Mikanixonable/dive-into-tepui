@@ -6,7 +6,7 @@ import {
   type RayHit, type SphereHit, type Triangle, type TriangleBVH,
   buildBVH, raycastTriangles, sphereCollideTriangles,
 } from '../../src/math/triangle-mesh';
-import { v3, Vec3, sub, cross, norm } from '../../src/math/vec3';
+import { v3, type Vec3, sub, cross, norm } from '../../src/math/vec3';
 
 function mulberry32(seed: number): () => number {
   let a = seed;

@@ -1,9 +1,9 @@
 import { icrfToGameEci } from '../icrf';
-import { EphemerisPointKind, EphemerisPoints, PointEphemeris } from './point';
+import type { EphemerisPointKind, EphemerisPoints, PointEphemeris } from './point';
 import { ChebyshevEphemeris } from './pack-evaluator';
-import { KinematicState, kinematicState } from '../kinematic-state';
-import { DecodedPack, decodePack, toChebyshevPack } from './pack-format';
-import { j2000EphemerisSeconds, TdbJulianDate } from '../time';
+import { type KinematicState, kinematicState } from '../kinematic-state';
+import { type DecodedPack, decodePack, toChebyshevPack } from './pack-format';
+import { j2000EphemerisSeconds, type TdbJulianDate } from '../time';
 
 // バイナリ pack の J2000 ET 秒を、構築時に一度だけ元期起点の simTime へ寄せる。**ET 秒が
 // 外へ出るのはここまで** — 有効期間も評価の引数も simTime で話す。寄せる理由は2つで、
@@ -14,15 +14,15 @@ export class PackEphemeris {
   private readonly bodyPoints: Readonly<Record<string, EphemerisPointKind>>;
 
   // pack が実際に覆う絶対時刻の範囲(J2000 ET 秒)。要求期間がこの中に収まるかの判定に使う。
-  readonly validStartEt: number;
-  readonly validEndEt: number;
+  public readonly validStartEt: number;
+  public readonly validEndEt: number;
   // manifest が宣言する payload の SHA-256。profile の packId と突き合わせる識別子。
-  readonly payloadSha256: string | undefined;
+  public readonly payloadSha256: string | undefined;
 
   // **decoded は保持しない。** 係数は評価器が payload へのビューとして持ち、ここで要るのは
   // manifest のごく一部だけ — 参照を保持し続けると manifestJson(2.2 MB)と 10054 個の series
   // オブジェクトが pack と同じ寿命で残る。
-  constructor(decoded: DecodedPack, epoch: TdbJulianDate) {
+  public constructor(decoded: DecodedPack, epoch: TdbJulianDate) {
     this.evaluator = new ChebyshevEphemeris(
       toChebyshevPack(decoded, j2000EphemerisSeconds(epoch)));
     this.bodyPoints = decoded.manifest.bodyPoints ?? {};
@@ -32,13 +32,13 @@ export class PackEphemeris {
   }
 
   // pack のバイト列から組む。形式が壊れていれば PackFormatError。
-  static fromBytes(bytes: Uint8Array, epoch: TdbJulianDate): PackEphemeris {
+  public static fromBytes(bytes: Uint8Array, epoch: TdbJulianDate): PackEphemeris {
     return new PackEphemeris(decodePack(bytes), epoch);
   }
 
   // 収録している全 id ぶんの暦と種別を1度で組む。**これが供給源の外向きの形** —
   // 引く側は id と種別で問い合わせ直さず、解決済みの一覧を受け取る。
-  ephemerisPoints(): EphemerisPoints {
+  public ephemerisPoints(): EphemerisPoints {
     const points = new Map<string, { kind: EphemerisPointKind; ephemeris: PointEphemeris }>();
     for (const id of this.evaluator.bodyIds) {
       const ephemeris = this.pointEphemerisOf(id);
@@ -64,15 +64,15 @@ export class PackEphemeris {
 // 評価器の1系列ぶんを PointEphemeris として見せる窓。id を構築時に固定し、ICRF 軸を
 // ゲーム ECI 軸へ変換する。原点は太陽系重心のまま。
 class ChebyshevPointEphemeris implements PointEphemeris {
-  constructor(
+  public constructor(
     private readonly evaluator: ChebyshevEphemeris,
     private readonly id: string,
-    readonly validStartSimTime: number,
-    readonly validEndSimTime: number,
+    public readonly validStartSimTime: number,
+    public readonly validEndSimTime: number,
   ) {}
 
   // simTime での太陽系重心原点・ゲーム ECI 軸の位置速度。simTime が有限でなければ RangeError。
-  baryStateAt(simTime: number): KinematicState<'numeric'> {
+  public baryStateAt(simTime: number): KinematicState<'numeric'> {
     if (!Number.isFinite(simTime)) throw new RangeError(`simTime は有限値でなければならない: ${simTime}`);
     const state = this.evaluator.icrfStateAt(this.id, simTime);
     return kinematicState<'numeric'>(simTime, icrfToGameEci(state.r), icrfToGameEci(state.v));

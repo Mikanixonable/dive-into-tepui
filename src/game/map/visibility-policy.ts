@@ -9,12 +9,12 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 
-export type MapVisibility = {
+export interface MapVisibility {
   readonly icon: boolean;
   readonly label: boolean;
   readonly orbit: boolean;
   readonly pickable: boolean;
-};
+}
 
 // マップ上に記号か軌道線のどちらかで現れるか。
 export function appearsOnMap(visibility: MapVisibility): boolean {
@@ -103,7 +103,7 @@ export class MapVisibilityPolicy {
 
   // focusId は注視中の対象、nearbyIds は近傍として常時表示へ格上げする天体の id。どちらも
   // 省くと格上げが効かず、トグルだけで決まる。
-  constructor(
+  public constructor(
     private readonly celestialBodies: CelestialBodies,
     private readonly toggles: MapDisplayToggles,
     private readonly focusId?: string,
@@ -114,7 +114,7 @@ export class MapVisibilityPolicy {
   }
 
   // 天体 id あるいはラグランジュ点 id の表示判定。星系に無い id はすべて伏せた判定になる。
-  body(id: string): MapVisibility {
+  public body(id: string): MapVisibility {
     const cached = this.bodyResults.get(id);
     if (cached !== undefined) return cached;
 
@@ -139,7 +139,7 @@ export class MapVisibilityPolicy {
   }
 
   // ゲーム内 entity の種別ごとの表示判定。isActivePlayer はいま操作している自艦にだけ立てる。
-  entity(kind: DynamicEntityKind, isActivePlayer = false): MapVisibility {
+  public entity(kind: DynamicEntityKind, isActivePlayer = false): MapVisibility {
     const key = `${kind}:${isActivePlayer ? 'active' : 'inactive'}`;
     const cached = this.entityResults.get(key);
     if (cached !== undefined) return cached;

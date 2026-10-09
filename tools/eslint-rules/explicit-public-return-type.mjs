@@ -51,7 +51,8 @@ export default {
       },
 
       MethodDefinition(node) {
-        if (node.kind === 'constructor' || node.accessibility === 'private') return;
+        // set アクセサは TypeScript 上戻り値型を書けないため検査しない。
+        if (node.kind === 'constructor' || node.kind === 'set' || node.accessibility === 'private') return;
         reportIfMissing(node.value);
       },
 

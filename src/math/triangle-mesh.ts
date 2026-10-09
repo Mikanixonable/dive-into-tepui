@@ -1,6 +1,6 @@
 // 三角形の集合を BVH へ束ね、レイと球の最近接触を求める。座標系と長さの単位は
 // 呼び出し側の三角形に従うので、変換は呼び出し側で済ませてから渡す。
-import { Vec3, v3, add, sub, scale, dot, len, cross, norm } from './vec3';
+import { type Vec3, v3, add, sub, scale, dot, len, cross, norm } from './vec3';
 
 export interface Triangle {
   readonly a: Vec3;

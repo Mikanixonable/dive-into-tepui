@@ -14,9 +14,9 @@
 // アルベド(倍率の導出元であり、輝点の明るさを引くのにも要る)。averageHue は緯度重み付き
 // 平均色の色み(Rec.709 輝度 1 へ正規化した線形 RGB)で、天体を光源にするときの色。
 // 倍率と同じ測り方で 2026-08-27 に一度だけ測った。
-export type CelestialTexture = {
+export interface CelestialTexture {
   readonly url: string;
   readonly albedoScale: number;
   readonly bondAlbedo: number;
   readonly averageHue: readonly [number, number, number];
-};
+}

@@ -2,11 +2,11 @@
 import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import { Vec3, add, len, scale, sub, v3 } from '../../src/math/vec3';
+import { type Vec3, add, len, scale, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 

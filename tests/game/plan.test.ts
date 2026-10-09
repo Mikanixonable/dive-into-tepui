@@ -1,5 +1,5 @@
 // 計画の区間長・アプシス高度が、その場で最も強く引く天体を中心として求まることの回帰。
-import { motionOf, solarSystemParts, stateOf } from '../physics/test-helpers';
+import { solarSystemParts, stateOf } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
 import { strongestAttractor } from '../../src/physics/attractor';

@@ -2,7 +2,7 @@
 // 対気速度・抗力加速度。固有名詞を持たず、大気の中身はすべて呼び出し側が渡す
 // Atmosphere に載っている。THREE/DOM 非依存の純粋関数。
 
-import { Vec3, cross, dot, len, scale, sub, v3 } from '../math/vec3';
+import { type Vec3, cross, dot, len, scale, sub, v3 } from '../math/vec3';
 
 // 区分指数モデルの1層: [基準高度 h0 [m], 基準密度 ρ0 [kg/m^3], スケールハイト H [m]]。
 // 基準高度の昇順に並べる。密度は H = R*T/(M·g) が層ごとに桁で違う(地球で 5.4〜268 km)
@@ -11,12 +11,12 @@ type AtmosphereLayer = readonly [number, number, number];
 
 // 天体大気の静的定義。基準楕円体（平均海面）は衝突外接球（天体表面半径）と独立した
 // 定義域を持つため、別パラメータとして管理する。
-export type AtmosphereDef = {
+export interface AtmosphereDef {
   readonly equatorRadius: number; // 基準楕円体の赤道半径 [m]
   readonly polarRadius: number; // 基準楕円体の極半径 [m]
   readonly spinRate: number; // 自転角速度 [rad/s](大気は天体と共回転する)
   readonly layers: readonly AtmosphereLayer[];
-};
+}
 
 // 実行時の大気。静的な定義に、評価時刻における自転軸を付加したもの
 // (Degree2GravityDef → Degree2Gravity と同様の二段階構成)。

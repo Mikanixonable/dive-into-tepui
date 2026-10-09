@@ -1,7 +1,7 @@
 // フレーム最初のパス: lit-opaque 層(lit-layer.ts)のオブジェクトだけを対象に、深度・法線・
 // ラフネス・ベース色・金属度・自己発光を MRT(複数レンダーターゲット)へ描く。
 import * as THREE from 'three/webgpu';
-import { WebGPURenderer } from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 import {
   abs, diffuseColor, emissive, float, metalness, mrt, normalize, normalView, roughness, screenUV, select, step,
   texture, vec3, vec4,

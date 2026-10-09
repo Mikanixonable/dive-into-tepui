@@ -8,7 +8,7 @@ export class AudioEngine {
   private readonly pending: (() => void)[] = [];
 
   // 初回ユーザー入力をキャプチャフェーズで監視し、UIクリック時の即時発音に対応する。
-  constructor() {
+  public constructor() {
     const open = (): void => {
       document.removeEventListener('pointerdown', open, true);
       document.removeEventListener('keydown', open, true);
@@ -19,17 +19,17 @@ export class AudioEngine {
     document.addEventListener('visibilitychange', () => this.syncSuspension());
   }
 
-  get ctx(): AudioContext | null {
+  public get ctx(): AudioContext | null {
     return this._ctx;
   }
 
-  get noiseBuf(): AudioBuffer | null {
+  public get noiseBuf(): AudioBuffer | null {
     return this._noiseBuf;
   }
 
   // ctx が開いたときに一度だけ呼ぶ購読。すでに開いていれば即座に呼ぶ。開くまで鳴らせない
   // 音源が、開いた時点で自分の宣言を鳴らし直すために使う。
-  whenUnlocked(listener: () => void): void {
+  public whenUnlocked(listener: () => void): void {
     if (this._ctx) listener();
     else this.pending.push(listener);
   }
@@ -61,7 +61,7 @@ export class AudioEngine {
   }
 
   // 指定音高のトーンを、即時発音・指数減衰で単発鳴らす。
-  tone(freq: number, duration: number, volume: number, type: OscillatorType = 'sine'): void {
+  public tone(freq: number, duration: number, volume: number, type: OscillatorType = 'sine'): void {
     const ctx = this._ctx;
     if (!ctx) return;
     const osc = ctx.createOscillator();
@@ -77,7 +77,7 @@ export class AudioEngine {
   }
 
   // 共有ノイズバッファをフィルタ・減衰させ、短いバースト音として鳴らす。
-  noiseBurst(duration: number, filterType: BiquadFilterType, freq: number, volume: number): void {
+  public noiseBurst(duration: number, filterType: BiquadFilterType, freq: number, volume: number): void {
     const ctx = this._ctx;
     if (!ctx || !this._noiseBuf) return;
     const src = ctx.createBufferSource();

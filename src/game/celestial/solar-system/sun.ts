@@ -1,6 +1,6 @@
 // 太陽の静的事実。
 import * as THREE from 'three/webgpu';
-import { StarDef } from '../../../physics/celestial-body-def';
+import type { StarDef } from '../../../physics/celestial-body-def';
 import { AU, SOLAR_CONSTANT } from '../../../physics/astronomical-unit';
 
 export const MU_SUN = 1.32712440018e20; // 太陽重力定数 [m^3/s^2]

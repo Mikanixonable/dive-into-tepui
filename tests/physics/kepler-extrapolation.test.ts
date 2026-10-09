@@ -3,10 +3,10 @@ import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { extrapolatedRelativeState, extrapolatedRelativeStates } from '../../src/physics/kepler-extrapolation';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
-import { KinematicState, kinematicState, toPrimaryRelative } from '../../src/physics/kinematic-state';
+import { type KinematicState, kinematicState, toPrimaryRelative } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { len, sub, v3 } from '../../src/math/vec3';
 

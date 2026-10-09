@@ -4,8 +4,8 @@
 // 四度堆積のパッドと低いドローン、ときおりの高音の煌めきが重なる。打楽器は使わない。
 // 移調とオクターブ移動という周期の異なる 2 つの循環をさらに重ねるので、全体が一巡するまでの
 // 長さは各周期の最小公倍数まで伸びる。音階・パターン・各レイヤーの値は PhasingParams が持つ。
-import { PhasingParams, PulseVoice } from '../tracks/types';
-import { Composer, ComposerNote } from '../composer';
+import type { PhasingParams, PulseVoice } from '../tracks/types';
+import type { Composer, ComposerNote } from '../composer';
 import { cycleAt, phaseValue, scaleFreq } from './utils';
 
 // 1スケールステップあたりの半音数の近似(長2度)。音階を引く声部は移調をインデックスの
@@ -13,14 +13,14 @@ import { cycleAt, phaseValue, scaleFreq } from './utils';
 const SEMITONES_PER_SCALE_STEP = 2;
 
 export class PhasingComposer implements Composer {
-  constructor(private readonly params: PhasingParams) {}
+  public constructor(private readonly params: PhasingParams) {}
 
-  get stepDurSec(): number {
+  public get stepDurSec(): number {
     return this.params.stepDur;
   }
 
   // このステップで鳴る声部A/B・パッド・ドローン・煌めきを、その順に並べて返す。
-  notesAt(step: number): ComposerNote[] {
+  public notesAt(step: number): ComposerNote[] {
     const params = this.params;
     const transpose = phaseValue(params.transpose, step);
     const octave = phaseValue(params.octave, step);

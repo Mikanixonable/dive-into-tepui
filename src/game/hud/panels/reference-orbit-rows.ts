@@ -1,6 +1,6 @@
 // 軌道ガイドタブ「基本」群のうち、地球専用参照軌道(太陽同期準回帰・ドーンダスク・モルニヤ・
 // ツンドラ)の行。各行は自分の DOM を組み、設定値を表示へ映す。
-import { SegmentedControl, ToggleSwitch, ValueInput, type Button } from '../../../hud/widgets';
+import { SegmentedControl, ToggleSwitch, type ValueInput, type Button } from '../../../hud/widgets';
 import {
   DIRECTION_ITEMS, OPACITY_MAPPING, PERIGEE_ALTITUDE_MAPPING, RAAN_MAPPING,
   REPEAT_DAYS_MAPPING, REVS_PER_REPEAT_MAPPING,

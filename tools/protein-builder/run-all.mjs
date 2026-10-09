@@ -2,9 +2,9 @@
 // Run a protein-builder action for every protein definition in the repository.
 import { access, readdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { runTask } from '../run-tasks.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, '../..');
@@ -53,27 +53,28 @@ if (!supportedActions.has(action)) {
     console.error(`[protein-runner] no protein.config.json files found below ${proteinRoot}`);
     process.exitCode = 1;
   } else {
+    // 蛋白ごとの処理は互いに独立なので同時に走らせる。出力は各行へ蛋白名を付ける。
+    const tasks = [];
     let failed = 0;
     for (const configPath of configs) {
-      const label = relative(repositoryRoot, configPath);
+      const protein = basename(dirname(configPath));
       try {
         const config = JSON.parse(await readFile(configPath, 'utf8'));
         const [script, ...argumentsForScript] = commandFor(config, configPath);
-        console.log(`[protein-runner] ${action}: ${label}`);
         const localPython = join(repositoryRoot, '.venv-protein-builder/bin/python');
         const executable = script.endsWith('.py') ? (process.env.PROTEIN_PYTHON ?? (existsSync(localPython) ? localPython : 'python3')) : process.execPath;
-        const result = spawnSync(executable, [join(builderRoot, script), ...argumentsForScript], {
-          cwd: repositoryRoot,
-          stdio: 'inherit',
-        });
-        if (result.error || result.status !== 0) {
-          failed += 1;
-          const detail = result.error?.message ?? `exit code ${result.status ?? 'unknown'}`;
-          console.error(`[protein-runner] FAILED ${label}: ${detail}`);
-        }
+        tasks.push({ label: protein, command: executable, args: [join(builderRoot, script), ...argumentsForScript], cwd: repositoryRoot });
       } catch (error) {
         failed += 1;
-        console.error(`[protein-runner] FAILED ${label}: ${error.message}`);
+        console.error(`[protein-runner] FAILED ${protein}: ${error.message}`);
+      }
+    }
+    const results = await Promise.all(tasks.map(runTask));
+    for (const result of results) {
+      if (result.code !== 0) {
+        failed += 1;
+        const detail = result.error?.message ?? `exit code ${result.code}`;
+        console.error(`[protein-runner] FAILED ${result.label}: ${detail}`);
       }
     }
     if (failed > 0) {
