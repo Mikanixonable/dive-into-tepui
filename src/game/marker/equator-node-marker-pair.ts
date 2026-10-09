@@ -41,7 +41,7 @@ export class EquatorNodeMarkerPair {
   private readonly descending: EquatorNodeMarker;
 
   // 所有個体に一意な昇交点・降交点マーカーを1つずつ作る。
-  constructor(private readonly ownerId: string) {
+  public constructor(private readonly ownerId: string) {
     this.ascending = new EquatorNodeMarker(ownerId, 'ascending');
     this.descending = new EquatorNodeMarker(ownerId, 'descending');
   }
@@ -49,7 +49,7 @@ export class EquatorNodeMarkerPair {
   // 交点を、この個体について画面に出ている線の上で求め直す。折れ線が出ていれば表示中の
   // 全区間が対象で、出ていなければ解析軌道楕円 — 楕円は中心天体に固定して描かれるので、
   // 交点もその天体の慣性系で表示時刻へ写す。
-  update(motion: DynamicMotion, ownerName: string, inputs: EquatorNodeInputs): void {
+  public update(motion: DynamicMotion, ownerName: string, inputs: EquatorNodeInputs): void {
     const path = inputs.paths.displayedPathOf(this.ownerId);
     if (path !== null) this.solve(inputs, ownerName, path.frame, motion.state, path.samples);
     else this.solve(inputs, ownerName, null, motion.stateAt(inputs.displayTime, inputs.celestialBodies), []);
@@ -89,7 +89,7 @@ export class EquatorNodeMarkerPair {
   }
 
   // 交点を出す理由が無くなったことを記録する。
-  retire(): void {
+  public retire(): void {
     this.ascending.retire();
     this.descending.retire();
   }
@@ -101,13 +101,13 @@ export class EquatorNodeMarkerPair {
   }
 
   // 右クリック対象として公開する EqAN/EqDN アイコン。出す理由が残っているぶんを返す。
-  pickables(): readonly ObjectPickable[] {
+  public pickables(): readonly ObjectPickable[] {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }
 
   // 求まっている交点の △▽ マーカーの宣言を out へ積む。celestialBodies は遮蔽判定に使う
   // 天体で、celestialBodiesPivot はその位置を引く時刻。
-  pushDeclarations(
+  public pushDeclarations(
     out: MarkerDeclaration[], project: ProjectFn, cameraPos: Vec3,
     celestialBodies: readonly CelestialBody[],
     celestialBodiesPivot: number, occludeByBodies: boolean, timeLabel: TimeLabelSetting,
