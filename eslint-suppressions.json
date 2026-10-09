@@ -1251,9 +1251,6 @@
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 6
-    },
     "@typescript-eslint/parameter-properties": {
       "count": 1
     }

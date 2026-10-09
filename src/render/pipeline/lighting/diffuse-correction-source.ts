@@ -18,7 +18,7 @@ export class DiffuseCorrectionSource implements LightSource {
   // 同じ signed target をライトプリパスの拡散だけへ加算する。面の無い画素は contributionMaterial が除く。
   public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     this.builtMaterial ??= contributionMaterial(sample, {
-      diffuse: this.correction.at(sample), specular: vec3(0),
+      diffuse: this.correction.at(sample), specular: vec3(0), specularReach: 'direct',
     });
     return this.builtMaterial;
   }

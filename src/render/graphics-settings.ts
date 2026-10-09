@@ -7,7 +7,7 @@ import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
-import { SCREEN_SPACE_SPECULAR_QUALITY } from './pipeline/screen-space/reflection-trace-pass';
+import { SCREEN_SPACE_SPECULAR_QUALITY } from './pipeline/reflection-pass';
 import { SCREEN_SPACE_DIFFUSE, SCREEN_SPACE_QUALITY } from './pipeline/screen-space/screen-space-pass';
 
 export type QualityPreset = 'low' | 'medium' | 'high';

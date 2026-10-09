@@ -373,14 +373,11 @@ function bay(): LabCase {
       'bay-edge': { view: cameraAt(35, 40, 6) },
       // 映り込み。
       'bay-metal': { view: METAL_VIEW },
-      'bay-metal-specular': { view: METAL_VIEW, debugTarget: 'specular' },
+      'bay-metal-specular': { view: METAL_VIEW, debugTarget: 'far-specular' },
       // 近くの物体の映り込みと、追跡の中間結果。
       'bay-metal-reflection': { view: METAL_VIEW, graphics: { screenSpaceSpecular: true } },
       'bay-metal-reflection-depth': {
         view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-depth',
-      },
-      'bay-metal-reflection-hit': {
-        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-hit',
       },
       'bay-metal-reflection-distance': {
         view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-distance',

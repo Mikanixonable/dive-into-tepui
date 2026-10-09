@@ -1,6 +1,6 @@
-// G バッファ(法線・粗さ・深度)だけを読み、そのシェーディング点に届く光の量を拡散/鏡面の
-// 2枚の照度バッファへ書く。素材のアルベド・金属度・F0 は一切知らない — それらを掛けて最終色を
-// 出すのはマテリアルパスの役目で、このパスは「どれだけの光が、どこから届くか」だけを答える。
+// G バッファ(法線・粗さ・深度)だけを読み、そのシェーディング点に届く光の量を拡散・直接の鏡面・
+// 遠方の鏡面の3枚の照度バッファへ書く。素材のアルベド・金属度・F0 は一切知らない — それらを掛けて
+// 最終色を出すのはマテリアルパスの役目で、このパスは「どれだけの光が、どこから届くか」だけを答える。
 //
 // 照度バッファを 0 でクリアし、光源 1 つにつきフルスクリーン 1 枚を加算合成で積む。寄与の
 // 中身はそれぞれの光源(lighting/)が持ち、このパスは器に徹する。
@@ -22,8 +22,8 @@ export class LightPrepass {
   // クリア色の退避先。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
-  // 照度バッファ 2 枚と、sources が共有するシェーディング入力を組む。sources の順に積む。
-  constructor(
+  // 照度バッファ 3 枚と、sources が共有するシェーディング入力を組む。sources の順に積む。
+  public constructor(
     renderer: WebGPURenderer,
     gbuffer: GBufferPass,
     private readonly sources: readonly LightSource[],
@@ -31,27 +31,29 @@ export class LightPrepass {
   ) {
     this.renderer = renderer;
 
-    // diffuse/specular の2枚。WebGPU に3チャンネル16bit浮動小数点フォーマットは無いため、
-    // rgba16float(a は未使用)を使う。
-    this.target = new THREE.RenderTarget(1, 1, { count: 2, depthBuffer: false, samples: 0 });
-    const [diffuseTex, specularTex] = this.target.textures;
-    diffuseTex!.name = 'diffuse';
-    diffuseTex!.format = THREE.RGBAFormat;
-    diffuseTex!.type = THREE.HalfFloatType;
-    specularTex!.name = 'specular';
-    specularTex!.format = THREE.RGBAFormat;
-    specularTex!.type = THREE.HalfFloatType;
+    // WebGPU に3チャンネル16bit浮動小数点フォーマットは無いため、rgba16float(a は未使用)を使う。
+    // 名前は光源のマテリアルが書く MRT の出力と結び付く。
+    this.target = new THREE.RenderTarget(1, 1, { count: 3, depthBuffer: false, samples: 0 });
+    for (const [index, name] of ['diffuse', 'directSpecular', 'farSpecular'].entries()) {
+      const texture = this.target.textures[index]!;
+      texture.name = name;
+      texture.format = THREE.RGBAFormat;
+      texture.type = THREE.HalfFloatType;
+    }
 
     this.sample = new ShadingSample(gbuffer);
     this.quad = new QuadMesh();
   }
 
-  get diffuseTexture(): THREE.Texture { return this.target.textures[0]!; }
-  get specularTexture(): THREE.Texture { return this.target.textures[1]!; }
+  public get diffuseTexture(): THREE.Texture { return this.target.textures[0]!; }
+  // 近くの物体の映り込みが置き換えない鏡面の照度(太陽など)。
+  public get directSpecularTexture(): THREE.Texture { return this.target.textures[1]!; }
+  // 近くの物体の映り込みが置き換える鏡面の照度(天体照と環境光)。
+  public get farSpecularTexture(): THREE.Texture { return this.target.textures[2]!; }
 
   // 寄与のある光源を順に照度バッファへ積む。camera は共有のシェーディング入力の行列を
   // 毎フレーム引き直すためだけに使い、シーン自体は描かない(光源ごとのフルスクリーンのみ)。
-  render(camera: THREE.Camera, width: number, height: number): void {
+  public render(camera: THREE.Camera, width: number, height: number): void {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     this.sample.sync(camera);
 
@@ -78,7 +80,7 @@ export class LightPrepass {
   }
 
   // 光源ごとの全マテリアルを照度ターゲットへ事前コンパイルする。
-  async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
+  public async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     this.sample.sync(camera);
     for (const source of this.sources) {
@@ -89,7 +91,7 @@ export class LightPrepass {
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
-  dispose(): void {
+  public dispose(): void {
     this.target.dispose();
     for (const source of this.sources) source.dispose();
   }

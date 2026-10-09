@@ -70,7 +70,7 @@ class SphereLightSource implements LightSource {
     const diffuse = this.radianceUniform.mul(PI).mul(radius).mul(radius).div(distSqr)
       .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr));
     const specular = this.radianceUniform.mul(this.sphereSpecular.factor(sample, center, radius));
-    return { diffuse, specular };
+    return { diffuse, specular, specularReach: 'direct' };
   }
 }
 

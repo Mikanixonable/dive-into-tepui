@@ -9,10 +9,10 @@ export function register(): void {
     assert.equal(new Set(GPU_PASS_LABELS).size, GPU_PASS_COUNT);
     assert.deepEqual(Object.values(GPU_PASS), [...Array(GPU_PASS_COUNT).keys()]);
     assert.deepEqual(GPU_PASS_LABELS.slice(GPU_PASS.cloudShadow, GPU_PASS.lighting + 1), [
-      '雲影', '照り返し源', '近傍拡散走査', '近傍拡散復元', '映り込みの追跡', 'ライティング',
+      '雲影', '照り返し源', '近傍拡散走査', '近傍拡散復元', 'ライティング',
     ]);
     assert.deepEqual(GPU_PASS_LABELS.slice(GPU_PASS.material, GPU_PASS.atmosphere + 1), [
-      'マテリアル', '映り込み', '大気',
+      'マテリアル', '映り込み', '陰影の合成', '大気',
     ]);
   });
 

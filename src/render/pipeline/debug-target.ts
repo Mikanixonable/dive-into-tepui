@@ -1,10 +1,11 @@
 // render/pipeline/ の中間ターゲットを画面全体へ映すデバッグ表示の選択肢。
 export type DebugTargetId =
   | 'off' | 'normal' | 'roughness' | 'basecolor' | 'metalness' | 'emissive' | 'depth'
-  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'specular' | 'correction' | 'raw-correction'
-  | 'denoised-correction'
-  | 'reflection-depth' | 'reflection-hit' | 'reflection-distance' | 'reflection-weight'
-  | 'bounce-source' | 'material' | 'reflection' | 'atmosphere' | 'lens' | 'planet-light';
+  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'direct-specular' | 'far-specular'
+  | 'correction' | 'raw-correction' | 'denoised-correction'
+  | 'bounce-source' | 'material' | 'reflection-source'
+  | 'reflection-depth' | 'reflection-weight' | 'reflection-distance' | 'reflection'
+  | 'atmosphere' | 'lens' | 'planet-light';
 
 // 通常だけを先頭の例外とし、以後は各 target が本番フレームで生成される依存順に並べる。
 export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
@@ -23,13 +24,14 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['raw-correction', 'raw 拡散照度補正'],
   ['denoised-correction', '均した拡散照度補正'],
   ['correction', '拡散照度補正'],
-  ['reflection-depth', '映り込みの深度'],
-  ['reflection-hit', '映り込みの当たり位置'],
-  ['reflection-distance', '映り込みの当たり距離'],
-  ['reflection-weight', '映り込みの置換重み'],
   ['diffuse', '拡散照度'],
-  ['specular', '鏡面照度'],
+  ['direct-specular', '直接の鏡面照度'],
+  ['far-specular', '遠方の鏡面照度'],
   ['material', 'マテリアル'],
+  ['reflection-source', '映り込みの像の元'],
+  ['reflection-depth', '映り込みの深度'],
+  ['reflection-weight', '映り込みの置換重み'],
+  ['reflection-distance', '映り込みの当たり距離'],
   ['reflection', '映り込み'],
   ['atmosphere', '大気'],
   ['lens', 'レンズ'],
