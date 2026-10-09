@@ -22,16 +22,16 @@ export class AmbientSource implements LightSource {
   private cached: THREE.MeshBasicNodeMaterial | null = null;
 
   // sunLight からは減衰の中心となる位置を読む。
-  constructor(private readonly sunLight: SunLight) {}
+  public constructor(private readonly sunLight: SunLight) {}
 
   // 基準の放射照度へ掛ける割合。0 で消灯。
-  get fraction(): number { return this.fractionUniform.value; }
-  setFraction(fraction: number): void { this.fractionUniform.value = fraction; }
+  public get fraction(): number { return this.fractionUniform.value; }
+  public setFraction(fraction: number): void { this.fractionUniform.value = fraction; }
 
-  hasContribution(): boolean { return this.fraction > 0; }
+  public hasContribution(): boolean { return this.fraction > 0; }
 
   // 環境光の寄与のマテリアル。強さはユニフォームなので初回だけ組めば足りる。
-  material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
+  public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     this.cached ??= contributionMaterial(sample, this.contribution(sample));
     return this.cached;
   }
@@ -46,7 +46,7 @@ export class AmbientSource implements LightSource {
   }
 
   // 組んだマテリアルを解放する。
-  dispose(): void {
+  public dispose(): void {
     this.cached?.dispose();
   }
 }
