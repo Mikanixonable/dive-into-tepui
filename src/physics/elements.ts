@@ -2,14 +2,14 @@
 // 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、OrbitalElements 自身が
 // 中心天体とその瞬間の状態を保持する。THREE/DOM 非依存の純粋関数群。
 import { frameOfCelestialBody, toFrameState } from './frame';
-import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../math/vec3';
+import { type KinematicState, kinematicState } from './kinematic-state';
+import { type Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../math/vec3';
 import type { CelestialBody } from './celestial-body';
 
 // 軌道上の位相の基準 — simTime が t のときのこの軌道上の真近点角が nu。**元期ではない**
 // (軌道要素そのものの元期は simTime=0)。形だけを指定した参照軌道は位相を持たないので、
 // この基準も持たない。
-type OrbitPhaseRef = { readonly t: number; readonly nu: number };
+interface OrbitPhaseRef { readonly t: number; readonly nu: number }
 
 export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)

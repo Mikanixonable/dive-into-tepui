@@ -1,6 +1,6 @@
-import { KinematicState, kinematicState } from '../kinematic-state';
-import { Vec3, v3 } from '../../math/vec3';
-import {
+import { type KinematicState, kinematicState } from '../kinematic-state';
+import { type Vec3, v3 } from '../../math/vec3';
+import type {
   ChebyshevBodySegments,
   ChebyshevPack,
   ChebyshevSegment,
@@ -8,16 +8,16 @@ import {
 } from './pack-types';
 
 class InvalidChebyshevPackError extends Error {
-  constructor(message: string) {
+  public constructor(message: string) {
     super(`Invalid Chebyshev ephemeris pack: ${message}`);
     this.name = 'InvalidChebyshevPackError';
   }
 }
 
 export class ChebyshevBodyNotFoundError extends Error {
-  readonly bodyId: string;
+  public readonly bodyId: string;
 
-  constructor(bodyId: string) {
+  public constructor(bodyId: string) {
     super(`Chebyshev ephemeris body not found: ${bodyId}`);
     this.name = 'ChebyshevBodyNotFoundError';
     this.bodyId = bodyId;
@@ -25,12 +25,12 @@ export class ChebyshevBodyNotFoundError extends Error {
 }
 
 export class ChebyshevTimeOutOfRangeError extends RangeError {
-  readonly bodyId: string;
-  readonly time: number;
-  readonly start: number;
-  readonly end: number;
+  public readonly bodyId: string;
+  public readonly time: number;
+  public readonly start: number;
+  public readonly end: number;
 
-  constructor(bodyId: string, time: number, start: number, end: number) {
+  public constructor(bodyId: string, time: number, start: number, end: number) {
     super(`Chebyshev ephemeris time ${time} is outside ${bodyId}'s validity [${start}, ${end}]`);
     this.name = 'ChebyshevTimeOutOfRangeError';
     this.bodyId = bodyId;
@@ -217,7 +217,7 @@ export class ChebyshevEphemeris {
 
   // **manifest は保持しない。** 構築時の検証で使い切りで、以後読む者がいない —
   // 保持し続けると 10054 個のセグメント metadata が pack と同じ寿命で残る。
-  constructor(input: ChebyshevPack) {
+  public constructor(input: ChebyshevPack) {
     const bodies = input.bodies;
     for (const body of bodies) validateBody(body);
     validateManifest(input, bodies);
@@ -231,12 +231,12 @@ export class ChebyshevEphemeris {
   }
 
   // 収録している天体 id(pack の並び順)。
-  get bodyIds(): readonly string[] {
+  public get bodyIds(): readonly string[] {
     return [...this.bodiesById.keys()];
   }
 
   // 天体 id が答えられる時刻の範囲。収録していなければ null。
-  validRangeOf(id: string): { readonly start: number; readonly end: number } | null {
+  public validRangeOf(id: string): { readonly start: number; readonly end: number } | null {
     const segments = this.bodiesById.get(id)?.body.segments;
     if (segments === undefined) return null;
     return { start: segments[0]!.start, end: segments[segments.length - 1]!.end };
@@ -256,7 +256,7 @@ export class ChebyshevEphemeris {
   }
 
   // 太陽系重心中心・ICRF 軸の位置・速度。time は pack を組んだ側が決めた時刻軸の秒。
-  icrfStateAt(bodyId: string, time: number): KinematicState<'icrf'> {
+  public icrfStateAt(bodyId: string, time: number): KinematicState<'icrf'> {
     const evaluated = evaluateSegment(this.segmentOf(bodyId, time), time);
     return kinematicState<'icrf'>(time, evaluated.position, evaluated.velocity);
   }

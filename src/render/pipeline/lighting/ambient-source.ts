@@ -1,7 +1,7 @@
 // 面の向きによらない一様な環境光。ゲームプレイのために物理から外す光源で、恒星の色にも明るさにも
 // 依らない無彩色の定数を、恒星からの距離の逆二乗で減衰させ、影に遮られずに届ける
 // (DEVELOP/SPEC/RENDERING.md「地球の描画」)。強さは setFraction() で毎フレーム受ける。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { PI, dot, uniform, vec3 } from 'three/tsl';
 import type { FloatUniform, Vec3Node } from '../../tsl-types';
 import { REFERENCE_RADIANT_INTENSITY, type SunLight } from '../sun-light';
@@ -22,16 +22,16 @@ export class AmbientSource implements LightSource {
   private cached: THREE.MeshBasicNodeMaterial | null = null;
 
   // sunLight からは減衰の中心となる位置を読む。
-  constructor(private readonly sunLight: SunLight) {}
+  public constructor(private readonly sunLight: SunLight) {}
 
   // 基準の放射照度へ掛ける割合。0 で消灯。
-  get fraction(): number { return this.fractionUniform.value; }
-  setFraction(fraction: number): void { this.fractionUniform.value = fraction; }
+  public get fraction(): number { return this.fractionUniform.value; }
+  public setFraction(fraction: number): void { this.fractionUniform.value = fraction; }
 
-  hasContribution(): boolean { return this.fraction > 0; }
+  public hasContribution(): boolean { return this.fraction > 0; }
 
   // 環境光の寄与のマテリアル。強さはユニフォームなので初回だけ組めば足りる。
-  material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
+  public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     this.cached ??= contributionMaterial(sample, this.contribution(sample));
     return this.cached;
   }
@@ -46,7 +46,7 @@ export class AmbientSource implements LightSource {
   }
 
   // 組んだマテリアルを解放する。
-  dispose(): void {
+  public dispose(): void {
     this.cached?.dispose();
   }
 }

@@ -1,8 +1,8 @@
 import modernPackUrl from '../../assets/ephemeris/modern-2026-10y.epk';
 import farFuturePackUrl from '../../assets/ephemeris/far-future-20115-10y.epk';
-import { EphemerisPoints } from './point';
-import { EphemerisProfileId, profileAt } from './profile';
-import { j2000EphemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../time';
+import type { EphemerisPoints } from './point';
+import { type EphemerisProfileId, profileAt } from './profile';
+import { j2000EphemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, type TdbJulianDate } from '../time';
 import { PackEphemeris } from './pack';
 
 const PACK_URLS: Readonly<Record<EphemerisProfileId, string>> = {

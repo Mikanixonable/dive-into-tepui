@@ -6,7 +6,7 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { add, v3 } from '../../src/math/vec3';
 import {
-  EARTH, SOLVERS, Solver, Sweep, againstBody, circular, companion, freeFall, solve, still, sweepOf,
+  EARTH, SOLVERS, type Solver, type Sweep, againstBody, circular, companion, freeFall, solve, still, sweepOf,
 } from './sphere-contact-sweeps';
 
 const STEP_DT = 20;

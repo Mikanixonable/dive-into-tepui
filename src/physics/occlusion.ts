@@ -2,7 +2,7 @@
 // 純幾何判定(レイと球の交差)。天体の位置は pivot で引くので、判定する点と同じ時刻を渡す。
 // マップビューでの軌道要素アイコンの表示可否とピック候補の選出可否は、この1関数を両方が
 // 呼ぶことで揃える — 見えているのに押せない/見えないのに押せる、という食い違いを防ぐ。
-import { addScaled, dot, len, lenSq, scale, sub, Vec3 } from '../math/vec3';
+import { addScaled, dot, len, lenSq, scale, sub, type Vec3 } from '../math/vec3';
 import type { CelestialBody } from './celestial-body';
 
 // 手前側交点が対象点よりこの距離以上カメラ寄りのときだけ遮蔽と判定する余裕。対象点自身が

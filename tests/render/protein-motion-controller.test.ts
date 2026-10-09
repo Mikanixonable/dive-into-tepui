@@ -52,7 +52,7 @@ function assetFor(residueCount: number, modeCount = 24): ProteinMotionAsset {
 }
 
 /** Reference projection: mode displacements dotted with the controller's current coefficients, for every residue. */
-function projectAllResidues(controller: ProteinMotionController, residueCount: number, asset: ProteinMotionAsset): Float32Array {
+function projectAllResidues(controller: ProteinMotionController, residueCount: number, _asset: ProteinMotionAsset): Float32Array {
   const target = new Float32Array(residueCount * 4);
   controller.projectResidues(Array.from({ length: residueCount }, (_, index) => index), target);
   return target;

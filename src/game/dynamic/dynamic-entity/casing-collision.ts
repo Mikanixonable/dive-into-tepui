@@ -4,7 +4,7 @@ import { add, addScaled, dot, lenSq, sub, v3, type Vec3 } from '../../../math/ve
 import type { ContactGeometry } from '../../../physics/collision-response';
 import {
   capsuleCapsuleContact, sweptCapsuleCapsuleContact, capsuleSphereContact,
-  sweptSphereCapsuleContact, type Capsule,
+  sweptSphereCapsuleContact, type Capsule, type CapsuleHit,
 } from '../../../physics/capsule-contact';
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
@@ -40,7 +40,7 @@ function casingCapsule(self: { readonly att: Attitude }, state: KinematicState, 
 export function casingSphereCollision(
   self: EntityContactParticipant, sphereCenter: Vec3,
   sphereRadius: number, selfState: KinematicState, selfAttitude = self.att,
-) {
+): CapsuleHit | null {
   const d = sub(sphereCenter, selfState.r);
   const maxDist = CASING_COLLISION_BOUND_RADIUS + sphereRadius;
   if (lenSq(d) > maxDist * maxDist) return null;
@@ -58,7 +58,7 @@ export function casingSweptSphereCollision(
   selfState: KinematicState,
   _previousSelfAttitude = self.prevAtt,
   selfAttitude = self.att,
-) {
+): { readonly hit: CapsuleHit; readonly toi: number } | null {
   // 掃引中の回転は近似で無視し、終端姿勢のカプセルを動かす。
   void _previousSelfAttitude;
   return sweptSphereCapsuleContact(
