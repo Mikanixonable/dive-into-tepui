@@ -503,7 +503,6 @@ export function register(): void {
   test('celestial-motion: トリトンは海王星の自転に対して逆行する', () => {
     const t = 1e7;
     const neptune = orbitingMotionOf(parts, 'neptune');
-    const triton = orbitingMotionOf(parts, 'triton');
     const rel = sub(stateOf(parts, 'triton', t).r, stateOf(parts, 'neptune', t).r);
     const relVel = sub(stateOf(parts, 'triton', t).v, stateOf(parts, 'neptune', t).v);
     const h = cross(rel, relVel);
