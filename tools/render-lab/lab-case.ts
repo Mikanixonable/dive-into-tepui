@@ -15,6 +15,7 @@ import type { Albedo } from '../../src/render/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
 import type { ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
+import type { SphereLightValue } from '../../src/render/pipeline/lighting/sphere-lights';
 import type { LineStyle } from '../../src/render/line-style';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import type { ProteinLabCaseMetadata } from './protein-cases';
@@ -90,6 +91,8 @@ export interface LabCase {
     readonly axis: THREE.Vector3;
     readonly bands: readonly RingBand[];
   };
+  // ライティングパスへ渡す、影を持たない球光源。省くと置かない。
+  readonly sphereLights?: readonly SphereLightValue[];
   // ケースの部品が揃い、絵として比べられる状態になったか。持たせると、撮影はこれが真になるまで
   // 1 フレームずつ描いて待つ。
   readonly ready?: () => boolean;
