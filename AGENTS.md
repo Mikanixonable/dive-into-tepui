@@ -114,6 +114,9 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 
 **`tools/boundary-allowlist.json` が空になってから main へ送る。**
 
+**worktree で実施した作業は、統合と commit が完了した時点で worktree を削除する。** 残ってよいのは
+継続作業中のものだけ。
+
 **main へ送るときの手順は `/send-pr` が正本。**
 
 ### ブランチ命名規則
