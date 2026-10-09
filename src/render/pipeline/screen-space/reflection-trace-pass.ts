@@ -19,8 +19,8 @@ import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec2Uniform } from '../
 export const SCREEN_SPACE_SPECULAR_QUALITY = { low: 0, medium: 1, high: 2 } as const;
 type ScreenSpaceSpecularQuality = (typeof SCREEN_SPACE_SPECULAR_QUALITY)[keyof typeof SCREEN_SPACE_SPECULAR_QUALITY];
 
-// 精細さの段ごとの追跡。scale は追跡する深度の解像度の描画バッファに対する比(1/2 か 1)、stepCount は ray 1 本の
-// 歩数。
+// 精細さの段ごとの追跡。scale は追跡する深度の解像度の描画バッファに対する比で、1 / 整数(1/2 か 1)に限る —
+// 深度の画素 1 つが描画バッファの画素の整数個四方を覆う前提で縮小と追跡が揃う。stepCount は ray 1 本の歩数。
 interface TraceTier {
   readonly scale: number;
   readonly stepCount: number;
@@ -52,10 +52,13 @@ export class ReflectionTracePass {
   private readonly projection: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly projectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly near = uniform(1);
-  // 描画バッファと追跡する深度の解像度 [px]、深度の画素 1 つが覆う描画バッファの画素の一辺の数、歩数。
+  // 描画バッファの解像度 [px]、それを footprint で割った追跡する深度の画素を単位とする画面の寸法(割り切れなければ
+  // 端の深度の画素は画面の外へはみ出す)、深度の画素 1 つが覆う描画バッファの画素の一辺の数、歩数。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly traceSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly footprint = uniform(1, 'int');
+  // 描画バッファの画素 1 つの横の幅(x, y)。clip 座標の w を掛けると view 空間の長さ [m] になる。
+  private readonly pixelSpan: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly stepCount = uniform(1, 'int');
   // 描画バッファの画素の、反射する面のシェーディング入力。
   private readonly sample: ShadingSample;
@@ -136,12 +139,13 @@ export class ReflectionTracePass {
   // 落とさない。
   private downsampledDepth(gbuffer: GBufferPass): FloatNode {
     return Fn(() => {
-      // 覆う範囲の左上の画素と、描画バッファの端の画素。
-      const base = floor(floor(screenUV.mul(screenSize)).mul(this.fullSize).div(this.traceSize)).toVar();
+      // 覆う範囲の左上の画素と、描画バッファの端の画素。左上は整数どうしの積で求める — 整数値の積は浮動小数でも
+      // 厳密だが、除算は丸めで floor を 1 px 手前へずらし、追跡の画素と覆う範囲が食い違う。
+      const footprint: IntNode = this.footprint;
+      const base = floor(screenUV.mul(screenSize)).mul(float(footprint)).toVar();
       const last = this.fullSize.sub(1).toVar();
       const nearest = float(0).toVar();
       // 覆う範囲を footprint × footprint で走り、いちばん手前を採る。
-      const footprint: IntNode = this.footprint;
       Loop({ start: 0, end: footprint, type: 'int', condition: '<' }, ({ i }) => {
         Loop({ start: 0, end: footprint, type: 'int', condition: '<' }, ({ i: j }) => {
           const texel = ivec2(min(base.add(vec2(float(i), float(j))), last));
@@ -159,8 +163,8 @@ export class ReflectionTracePass {
       // 面の写っている画素だけを追跡する。
       If(gbuffer.covered(), () => {
         const hit = traceReflection(
-          this.depthTarget.texture, this.traceSize, this.projection, this.projectionInverse, this.near,
-          this.stepCount, this.blueNoise.atScreenPixel(), this.sample,
+          this.depthTarget.texture, this.footprint, this.traceSize, this.pixelSpan, this.projection,
+          this.projectionInverse, this.near, this.stepCount, this.blueNoise.atScreenPixel(), this.sample,
         );
         result.assign(encodedReflection(hit.hitUV, hit.distance, hit.weight));
       });
@@ -172,9 +176,10 @@ export class ReflectionTracePass {
   private prepare(camera: THREE.Camera, width: number, height: number): void {
     const tier = TRACE_TIERS[this.quality];
     this.stepCount.value = tier.stepCount;
-    this.footprint.value = Math.round(1 / tier.scale);
-    const traceWidth = Math.max(1, Math.ceil(width * tier.scale));
-    const traceHeight = Math.max(1, Math.ceil(height * tier.scale));
+    const footprint = Math.round(1 / tier.scale);
+    this.footprint.value = footprint;
+    const traceWidth = Math.max(1, Math.ceil(width / footprint));
+    const traceHeight = Math.max(1, Math.ceil(height / footprint));
     // 描画先の寸法は、変わったときだけ確保し直す。
     if (this.depthTarget.width !== traceWidth || this.depthTarget.height !== traceHeight) {
       this.depthTarget.setSize(traceWidth, traceHeight);
@@ -183,10 +188,13 @@ export class ReflectionTracePass {
       this.output.target.setSize(width, height);
     }
     this.fullSize.value.set(width, height);
-    this.traceSize.value.set(traceWidth, traceHeight);
+    this.traceSize.value.set(width / footprint, height / footprint);
     // 実カメラの行列と近クリップ距離。
     this.projection.value.copy(camera.projectionMatrix);
     this.projectionInverse.value.copy(camera.projectionMatrixInverse);
+    // 画素 1 つは NDC で 2 / 寸法、view 空間では clip の w あたりその 1 / 射影の対角成分。
+    const matrix = camera.projectionMatrix.elements;
+    this.pixelSpan.value.set(2 / (width * matrix[0]!), 2 / (height * matrix[5]!));
     if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
       this.near.value = camera.near;
     }
