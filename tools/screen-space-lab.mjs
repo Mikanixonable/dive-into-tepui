@@ -232,6 +232,8 @@ function labOf(devTools) {
     // 観察の向きを部分的に差し替えて描く。changes は render-lab の観察の向き(LabViewAngles)の一部。
     setView: (changes) => call(`setView(${JSON.stringify(changes)})`),
     setTier: (tier) => call(`setScanTier(${JSON.stringify(tier)})`),
+    // 撮影が宣言した描画設定は show の引数より強いので、撮影の設定を show のあとで差し替えるときに使う。
+    setGraphicsOption: (key, value) => call(`setGraphicsOption(${JSON.stringify(key)}, ${JSON.stringify(value)})`),
     // seed は seedOf の返す [x, y]。
     setSeed: ([x, y]) => call(`setScanSeed(${x}, ${y})`),
     // 近傍拡散補正の段の範囲 range('all'・'scan'・'chain')だけを描く。'chain' は帯を詰めた描画先の値から鎖を描く。
