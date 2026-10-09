@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { bool, float, uint, uniform, vec2, vec3 } from 'three/tsl';
 import {
-  bandCoordinate, bandWeights, bounceWeights, occlusionWeights, sampleFacing, SENDER_VIEW_EXPONENT, type BandSplit, type SampleFacing,
+  bandCoordinate, bandWeights, facingCosine, sampleBandWeights, SENDER_VIEW_EXPONENT, type BandSplit,
 } from '../../src/render/pipeline/screen-space/band-split';
 import { clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
@@ -57,18 +57,9 @@ function vectorNode(vector: THREE.Vector3): Vec3Node {
   return vec3(vector.x, vector.y, vector.z);
 }
 
-// 帯の分け方の組。強さ s はどの因子にも同じ値を入れる。
-function bandsWith(count: number, scale: number, strength: number): BandSplit {
-  const s = float(strength);
-  return {
-    count, bounceScale: float(scale), bounce: { senderFacing: s, receiverFacing: s },
-    occlusionScale: float(scale), occlusion: { receiverFacing: s },
-  };
-}
-
-// 向きの内積が cos の標本。送り手と視線の内積 senderView は固定の因子 d の入力で、既定は 1(因子が効かない)。
-function facingOf(cosine: number, senderView = 1): SampleFacing {
-  return { senderFacing: float(cosine), receiverFacing: float(cosine), senderView: float(senderView) };
+// 帯の分け方の組。
+function bandsWith(count: number, scale: number): BandSplit {
+  return { count, scale: float(scale) };
 }
 
 // 距離だけの帯の座標 log₂(κρ) を 0..count − 1 へ寄せたもの。
@@ -493,14 +484,10 @@ export function register(): void {
     }
   });
 
-  test('screen space estimator: 強さ 0 なら、受け手と視線・送り手と視線が正対のとき、向きによらず照り返しも遮蔽も距離だけの帯の重みと一致する', () => {
+  test('screen space estimator: 受け手・送り手とも視線に正対なら、帯の重みは距離だけの重みと一致する', () => {
     for (const rho of [1, 8, 40, 700]) {
-      for (const cosine of [0, 0.3, 1]) {
-        const bands = bandsWith(4, 0.75, 0);
-        const expected = bandWeights(4, float(distanceCoordinate(4, 0.75, rho))).map(valueOf);
-        assert.deepStrictEqual(occlusionWeights(bands, float(rho), float(1), facingOf(cosine)).map(valueOf), expected);
-        assert.deepStrictEqual(bounceWeights(bands, float(rho), float(1), facingOf(cosine)).map(valueOf), expected);
-      }
+      const expected = bandWeights(4, float(distanceCoordinate(4, 0.75, rho))).map(valueOf);
+      assert.deepStrictEqual(sampleBandWeights(bandsWith(4, 0.75), float(rho), float(1), float(1)).map(valueOf), expected);
     }
   });
 
@@ -514,123 +501,53 @@ export function register(): void {
     assert.strictEqual(lowest, 0);
     assert.strictEqual(highest, 3);
     assert.ok(Number.isFinite(both) && both >= 0 && both <= 3, `両方 0: ${both}`);
-    // 因子を通した形でも同じ。
-    const bands = bandsWith(4, 0.75, 1);
-    for (const weights of [
-      bounceWeights(bands, rho, zero, facingOf(0)), occlusionWeights(bands, rho, zero, facingOf(0)),
-      bounceWeights(bands, rho, one, { senderFacing: zero, receiverFacing: one, senderView: one }),
-      bounceWeights(bands, rho, one, { senderFacing: one, receiverFacing: zero, senderView: one }),
-    ].map((nodes) => nodes.map(valueOf))) {
+    // 固定の因子 c・d を通した形でも同じ。
+    const bands = bandsWith(4, 0.75);
+    const receiverEdge = sampleBandWeights(bands, rho, zero, float(1)).map(valueOf);
+    const senderEdge = sampleBandWeights(bands, rho, one, float(0)).map(valueOf);
+    const bothEdge = sampleBandWeights(bands, rho, zero, float(0)).map(valueOf);
+    for (const weights of [receiverEdge, senderEdge, bothEdge]) {
       assert.ok(weights.every((weight) => Number.isFinite(weight) && weight >= 0));
       near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
     }
-    assert.deepStrictEqual(
-      bounceWeights(bands, rho, one, { senderFacing: zero, receiverFacing: one, senderView: one }).map(valueOf),
-      [1, 0, 0, 0]);
-    assert.deepStrictEqual(
-      bounceWeights(bands, rho, one, { senderFacing: one, receiverFacing: zero, senderView: one }).map(valueOf),
-      [0, 0, 0, 1]);
+    assert.deepStrictEqual(receiverEdge, [1, 0, 0, 0]);
+    assert.deepStrictEqual(senderEdge, [0, 0, 0, 1]);
   });
 
-  test('screen space estimator: 強さ 1/2 の掛ける因子は cos = 0 でも波長を半分にするだけ', () => {
-    const half = float(0.5);
-    const bands: BandSplit = {
-      ...bandsWith(6, 0.75, 0),
-      bounce: { senderFacing: half, receiverFacing: float(0) },
-    };
-    const rho = 40;
-    // a だけが s = 1/2 で cos θ = 0。
-    const coordinate = bandCoordinate(6, float(0.75), float(rho), float(0.5), float(1));
-    near(valueOf(coordinate), Math.log2(0.75 * rho) - 1, 1e-12, '座標');
-    const weights = bounceWeights(bands, float(rho), float(1), facingOf(0)).map(valueOf);
-    near(weights.reduce((sum, weight, band) => sum + weight * band, 0), Math.log2(0.75 * rho) - 1, 1e-12, '重みの平均');
-  });
+  // 重み weights の帯の番号の平均(帯の座標)。重みは有限で 0 以上、和は 1。
+  function meanBandOf(weights: FloatNode[]): number {
+    const values = weights.map(valueOf);
+    assert.ok(values.every((weight) => Number.isFinite(weight) && weight >= 0));
+    near(values.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
+    return values.reduce((sum, weight, band) => sum + weight * band, 0);
+  }
 
-  test('screen space estimator: 掛ける因子 a の冪 p と強さ s は距離・c・d の式どおりに帯の座標を動かし、cos θ = 0 でも有限', () => {
+  test('screen space estimator: 受け手と視線の内積 c は弱めずに掛かり、cos ε = 0 は帯 0 へ頭打ちで有限', () => {
     const rho = 40;
-    const base = Math.log2(0.75 * rho);
-    const meanBandOf = (weights: FloatNode[]): number => {
-      const values = weights.map(valueOf);
-      assert.ok(values.every((weight) => Number.isFinite(weight) && weight >= 0));
-      near(values.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
-      return values.reduce((sum, weight, band) => sum + weight * band, 0);
-    };
-    // [s, p, cos θ, 期待する座標]。座標 = log₂(κρ) + log₂((1 − s) + s·(cos θ)^p)。
-    for (const [s, p, cosine, expected] of [[1, 0.5, 0.25, base - 1], [2 / 3, 1, 0, base - Math.log2(3)]] as const) {
-      const bands: BandSplit = {
-        ...bandsWith(8, 0.75, 0), senderFacingExponent: float(p),
-        bounce: { senderFacing: float(s), receiverFacing: float(0) },
-      };
-      near(meanBandOf(bounceWeights(bands, float(rho), float(1), { ...facingOf(1), senderFacing: float(cosine) })), expected, 1e-5, `s = ${s}, p = ${p}, cos θ = ${cosine}`);
-    }
-  });
-
-  test('screen space estimator: 受け手と視線の内積 c は照り返しにも遮蔽にも固定で掛かり、cos ε = 0 は帯 0 へ頭打ちで有限', () => {
-    const rho = 40;
-    const bands = bandsWith(6, 0.75, 0);
-    const meanBandOf = (weights: FloatNode[]): number => {
-      const values = weights.map(valueOf);
-      assert.ok(values.every((weight) => Number.isFinite(weight) && weight >= 0));
-      near(values.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
-      return values.reduce((sum, weight, band) => sum + weight * band, 0);
-    };
+    const bands = bandsWith(6, 0.75);
     const base = Math.log2(0.75 * rho);
     // [cos ε, n_s·v_s, 期待する座標]。座標 = log₂(κρ) + log₂(cos ε) − ½·log₂(n_s·v_s)。
     for (const [cosine, senderView, expected] of [[1, 1, base], [0.5, 1, base - 1], [0.5, 0.25, base], [0, 1, 0]] as const) {
-      const facing = facingOf(1, senderView);
-      near(meanBandOf(bounceWeights(bands, float(rho), float(cosine), facing)), expected, 1e-6, `照り返し cos ε = ${cosine}`);
-      near(meanBandOf(occlusionWeights(bands, float(rho), float(cosine), facing)), expected, 1e-6, `遮蔽 cos ε = ${cosine}`);
+      near(meanBandOf(sampleBandWeights(bands, float(rho), float(cosine), float(senderView))), expected, 1e-6, `cos ε = ${cosine}`);
     }
   });
 
-  test('screen space estimator: 割る因子は冪 cos^s で弱め、s = 0 で距離だけ、cos = 0 は最も粗い帯へ頭打ちで有限', () => {
-    const rho = 2;
-    const strength = (receiverFacing: number): BandSplit => ({
-      ...bandsWith(4, 0.75, 0),
-      bounce: { senderFacing: float(0), receiverFacing: float(receiverFacing) },
-    });
-    const coordinateOf = (bands: BandSplit, cosine: number): number => {
-      const weights = bounceWeights(bands, float(rho), float(1), { ...facingOf(1), receiverFacing: float(cosine) }).map(valueOf);
-      assert.ok(weights.every((weight) => Number.isFinite(weight) && weight >= 0));
-      return weights.reduce((sum, weight, band) => sum + weight * band, 0);
-    };
-    near(coordinateOf(strength(0.5), 0.25), Math.log2(0.75 * rho) + 1, 1e-12, 's = 1/2, cos = 1/4');
-    near(coordinateOf(strength(0.5), 0), 3, 1e-12, 's = 1/2, cos = 0');
-    near(coordinateOf(strength(0), 0), Math.log2(0.75 * rho), 1e-12, 's = 0, cos = 0');
-  });
-
-  test('screen space estimator: 送り手と視線の内積 d は照り返しにも遮蔽にも固定で、冪 1/2 で割る', () => {
+  test('screen space estimator: 送り手と視線の内積 d は冪 1/2 で割り、n_s·v_s = 0 は最も粗い帯へ頭打ちで有限', () => {
     assert.strictEqual(SENDER_VIEW_EXPONENT, 0.5);
     const rho = 2;
-    const bands = bandsWith(4, 0.75, 0);
-    const meanBandOf = (weights: FloatNode[]): number => {
-      const values = weights.map(valueOf);
-      assert.ok(values.every((weight) => Number.isFinite(weight) && weight >= 0));
-      near(values.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
-      return values.reduce((sum, weight, band) => sum + weight * band, 0);
-    };
+    const bands = bandsWith(4, 0.75);
     const base = Math.log2(0.75 * rho);
     for (const [senderView, expected] of [[1, base], [0.25, base + 1], [0, 3]] as const) {
-      const facing = facingOf(1, senderView);
-      near(meanBandOf(bounceWeights(bands, float(rho), float(1), facing)), expected, 1e-12, `照り返し d = ${senderView}`);
-      near(meanBandOf(occlusionWeights(bands, float(rho), float(1), facing)), expected, 1e-12, `遮蔽 d = ${senderView}`);
+      near(meanBandOf(sampleBandWeights(bands, float(rho), float(1), float(senderView))), expected, 1e-12, `d = ${senderView}`);
     }
   });
 
-  test('screen space estimator: 標本の向きの内積は 0..1 に収まり、零距離でも有限', () => {
-    const receiverNormal = new THREE.Vector3(0, 0, 1);
-    const senderNormal = new THREE.Vector3(1, 0, 0);
-    for (const [toSample, expected] of [
-      [new THREE.Vector3(-2, 0, 0), { senderFacing: 1, receiverFacing: 0 }],
-      [new THREE.Vector3(2, 0, 0), { senderFacing: 0, receiverFacing: 0 }],
-      [new THREE.Vector3(0, 0, 3), { senderFacing: 0, receiverFacing: 1 }],
-      [new THREE.Vector3(0, 0, 0), { senderFacing: 0, receiverFacing: 0 }],
+  test('screen space estimator: 向きの内積 facingCosine は 0..1 に収まる', () => {
+    const senderNormal = vectorNode(new THREE.Vector3(1, 0, 0));
+    for (const [toCamera, expected] of [
+      [vec3(1, 0, 0), 1], [vec3(0, 0, 1), 0], [vec3(-1, 0, 0), 0], [vec3(0.6, 0, 0.8), 0.6],
     ] as const) {
-      const facing = sampleFacing(vectorNode(receiverNormal), vectorNode(senderNormal), vectorNode(toSample),
-        vec3(1, 0, 0));
-      near(valueOf(facing.senderFacing), expected.senderFacing, 1e-12, `送り手 ${toSample.toArray()}`);
-      near(valueOf(facing.receiverFacing), expected.receiverFacing, 1e-12, `受け手 ${toSample.toArray()}`);
-      near(valueOf(facing.senderView), 1, 1e-12, '送り手と視線');
+      near(valueOf(facingCosine(senderNormal, toCamera)), expected, 1e-12, `視線 ${expected}`);
     }
   });
 
