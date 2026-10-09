@@ -198,9 +198,13 @@ fix(ship): ドッキング時のモジュール干渉を修正
 - プレフィックス以外は日本語を第一言語とする
 - subjectは簡潔に、bodyは詳細に
 - 1commitで1つの変更にする
+- `docs(spec):` は SPEC/ 更新専用の単独 commit で、`src/` と混ぜない（「文書の運用規則」が正本）
 - 既存commitのmessage修正は避ける（force pushのリスク）
 
 ## コマンド
+
+載せるのは、作業の流れの中で使い分けが要るものだけ。データ取得・生成のパイプライン全量は
+`package.json` の scripts が一覧である。
 
 | コマンド | 用途 | いつ走らせるか |
 | --- | --- | --- |
@@ -217,7 +221,7 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
 | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
 | `npm run build` | `docs/` への本番ビルド | **main へ送る前**(`/send-pr`)。公開は CI が行う |
-| `npm run ci` | 上記 + アセット・テーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
+| `npm run ci` | 上記の検証一式 + 生成物(protein・地表)とテーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
 | `npm run bgm-lab` | BGM の試聴環境(http://localhost:8081) | 曲を調整するとき |
 | `npm run render-lab` | 描画の実験環境(http://localhost:8082) | 描画を目で確かめるとき |
 | `npm run render-lab:shot` | 描画の実験環境の撮影(`-- <組の名前>` で `.render-lab-shots/<組の名前>/`、省くと `.render-lab/shots/`) | 描画を画像で確かめるとき |
