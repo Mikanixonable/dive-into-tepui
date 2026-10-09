@@ -3,13 +3,14 @@
 //
 // 使い方: node tools/render-lab-reflection-levels.mjs <shots-dir>。dir は相対ならリポジトリ根から。
 //
-// 1. 帯 × 縮小段: ladder-roughness で画素を帯へ振り分け、ladder-level を段へ戻して、置換の重みが正の画素を段ごとに
-//    数える。「張り付き」は縮小列のいちばん粗い段に張り付いた画素の、重みが正の画素に対する割合。
-// 2. 縁の幅: 帯の中心線に沿った縦の断面で、発光球の像(ladder-reflection)と地球の像(ladder-off-specular)の縁が
+// 画素は ladder-roughness で帯へ振り分ける。
+// 1. 縁の幅: 帯の中心線に沿った縦の断面で、発光球の像(ladder-reflection)と地球の像(ladder-off-specular)の縁が
 //    10% から 90% の明るさへ上がるまでの px を測る。球は、同じ場所の球光源をライティングパスで照らした対照の像
 //    (天体照を切った ladder-lights-no-planet-specular)の縁の幅と並べ、両方を鏡面ローブの予測幅とも並べる。
 //    球の予測は、ローブの円の直径 2·d·tan(2α) を当たった点の奥行きで画面へ写した px、地球の予測は、ローブの角幅 2·2α を画素の角幅で割った px。
 //    球の縁は手前側(画面の下側)で測る — 奥側は帯の奥の端が近く、ぼけた縁が帯からはみ出す。
+// 2. 像の明るさ: 帯の画素の、発光球の像(ladder-reflection)の明るさの最大と和を、対照の像
+//    (ladder-lights-no-planet-specular)のそれと比べる。ぼかしで明るさが失われていないかを読む。
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { decodePng } from './png.mjs';
@@ -28,13 +29,6 @@ const SPHERE_RADIUS = 0.4;
 // 描画の大きさと縦の画角(tools/render-lab/lab-case.ts)。
 const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
-// 縮小列の段数は src の定数から読む。縮小段のデバッグ表示は、段 + 1 を段数で割った灰(src/render/pipeline/render-pipeline.ts)。
-const LEVEL_COUNT = (() => {
-  const source = readFileSync(path.join(root, 'src/render/pipeline/reflection-pass.ts'), 'utf8');
-  const match = /^export const REFLECTION_LEVEL_COUNT = (\d+);/m.exec(source);
-  if (match === null) throw new Error('REFLECTION_LEVEL_COUNT not found in reflection-pass.ts');
-  return Number(match[1]);
-})();
 // 鏡面ローブの半幅 [rad] の、GGX の α に対する比(src/render/pipeline/lighting/ggx.ts の LOBE_HALF_WIDTH_PER_ALPHA)。
 const LOBE_HALF_WIDTH_PER_ALPHA = 2;
 
@@ -44,8 +38,6 @@ const ROUGHNESS_TOLERANCE = 0.01;
 // この粗さの面として照合し、予測する。
 const MIN_ROUGHNESS = 0.0525;
 const effectiveRoughness = (roughness) => Math.max(roughness, MIN_ROUGHNESS);
-// いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の白の側の刻み(段数 13 で段約 0.12)を覆う。
-const STUCK_MARGIN = 0.15;
 // 断面の 1 行として扱うのに要る、その行の帯の画素の数と、中心線の左右に平均する画素の数。
 const MIN_ROW_PIXELS = 5;
 const PROFILE_HALF_WIDTH = 2;
@@ -122,38 +114,6 @@ function bandMap(shot) {
     }
   }
   return bands;
-}
-
-// 縮小段のデバッグ表示の画素の段。置換の重みが 0 の画素(青)と像を書いていない画素(黒)は null。
-function levelOf([r, g, b]) {
-  if (b > 128 && r < 64 && g < 64) return null;
-  if (r === 0 && g === 0 && b === 0) return null;
-  return srgbToLinear(r / 255) * LEVEL_COUNT - 1;
-}
-
-// 表 1: 帯 × 縮小段の画素数。
-function levelTable(bands, levelShot) {
-  const top = LEVEL_COUNT - 1;
-  const rows = ROUGHNESSES.map(() => ({ weighted: 0, bins: new Array(top).fill(0), stuck: 0 }));
-  for (let y = 0; y < levelShot.height; y++) {
-    for (let x = 0; x < levelShot.width; x++) {
-      const band = bands[y * levelShot.width + x];
-      if (band < 0) continue;
-      const level = levelOf(levelShot.at(x, y));
-      if (level === null) continue;
-      const row = rows[band];
-      row.weighted++;
-      if (level >= top - STUCK_MARGIN) row.stuck++;
-      else row.bins[Math.min(Math.max(Math.floor(level), 0), top - 1)]++;
-    }
-  }
-  const header = ['帯', '粗さ', 'w>0', ...Array.from({ length: top }, (_, k) => `段${k}〜${k + 1}`), `段${top}張り付き`, '張り付き%'];
-  const lines = [header, header.map(() => '---')];
-  for (const [index, row] of rows.entries()) {
-    const share = row.weighted === 0 ? '-' : (100 * row.stuck / row.weighted).toFixed(1);
-    lines.push([index, ROUGHNESSES[index], row.weighted, ...row.bins, row.stuck, share]);
-  }
-  return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
 }
 
 // 帯 band の中心線に沿った縦の断面。value(x, y) を中心線の左右 PROFILE_HALF_WIDTH 画素で平均し、上の行から並べる。
@@ -239,7 +199,7 @@ function predictedEarthWidth(alpha) {
   return 2 * LOBE_HALF_WIDTH_PER_ALPHA * alpha * FOCAL;
 }
 
-// 表 2: 帯ごとの縁の幅と、対照の球光源の縁の幅・予測幅。
+// 表 1: 帯ごとの縁の幅と、対照の球光源の縁の幅・予測幅。
 function edgeTable(bands, sphereShot, lightShot, earthShot) {
   const { width, height } = sphereShot;
   const sphere = (x, y) => tonemappedLuminance(sphereShot.at(x, y));
@@ -275,22 +235,47 @@ function edgeTable(bands, sphereShot, lightShot, earthShot) {
   return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
 }
 
+// 撮影 shot の帯ごとの、画素の明るさの最大と和。
+function bandBrightness(bands, shot) {
+  const rows = ROUGHNESSES.map(() => ({ peak: 0, sum: 0 }));
+  for (let y = 0; y < shot.height; y++) {
+    for (let x = 0; x < shot.width; x++) {
+      const band = bands[y * shot.width + x];
+      if (band < 0) continue;
+      const luminance = tonemappedLuminance(shot.at(x, y));
+      rows[band].peak = Math.max(rows[band].peak, luminance);
+      rows[band].sum += luminance;
+    }
+  }
+  return rows;
+}
+
+// 表 2: 帯ごとの、発光球の像の明るさの最大と和の、対照の像に対する比。
+function brightnessTable(bands, sphereShot, lightShot) {
+  const sphere = bandBrightness(bands, sphereShot);
+  const light = bandBrightness(bands, lightShot);
+  const ratio = (measured, reference) => (reference <= 0 ? '-' : (measured / reference).toFixed(2));
+  const header = ['帯', '粗さ', '頂 球 / 球光源', '和 球 / 球光源'];
+  const lines = [header, header.map(() => '---')];
+  for (const [index, roughness] of ROUGHNESSES.entries()) {
+    lines.push([
+      index, roughness, ratio(sphere[index].peak, light[index].peak), ratio(sphere[index].sum, light[index].sum),
+    ]);
+  }
+  return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
+}
+
 function main() {
   const [dirArg] = process.argv.slice(2);
   if (dirArg === undefined) throw new Error(USAGE);
   const dir = path.resolve(root, dirArg);
-  const roughnessShot = readShot(dir, 'ladder-roughness');
-  const bands = bandMap(roughnessShot);
-  console.log(`縮小列の段数 ${LEVEL_COUNT}(段 0〜${LEVEL_COUNT - 1})\n`);
-  console.log('帯 × 縮小段(置換の重みが正の画素)\n');
-  console.log(levelTable(bands, readShot(dir, 'ladder-level')));
-  console.log('\n縁の幅 [px](10% → 90%)\n');
-  console.log(edgeTable(
-    bands,
-    readShot(dir, 'ladder-reflection'),
-    readShot(dir, 'ladder-lights-no-planet-specular'),
-    readShot(dir, 'ladder-off-specular'),
-  ));
+  const bands = bandMap(readShot(dir, 'ladder-roughness'));
+  const sphereShot = readShot(dir, 'ladder-reflection');
+  const lightShot = readShot(dir, 'ladder-lights-no-planet-specular');
+  console.log('縁の幅 [px](10% → 90%)\n');
+  console.log(edgeTable(bands, sphereShot, lightShot, readShot(dir, 'ladder-off-specular')));
+  console.log('\n像の明るさ(トーンマッピングを戻した輝度)\n');
+  console.log(brightnessTable(bands, sphereShot, lightShot));
 }
 
 main();
