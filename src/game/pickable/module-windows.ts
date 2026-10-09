@@ -78,9 +78,8 @@ export class ModuleWindows implements ModuleWindowOpener {
     this.windows.set(key, entry);
     win.onSelect = (act) => {
       if (!ship.inspection.hasModule(moduleId)) return;
-      if (act === 'deployModule' || act === 'stowModule') {
-        this.submit(entry, act);
-      } else if (act === 'toggleBoosterModule') {
+      if (act === 'deployModule' || act === 'stowModule' || act === 'toggleBoosterModule'
+        || act === 'repairDockedModules' || act === 'selectCockpitModule') {
         this.submit(entry, act);
       } else if (act === 'decoupleModule') {
         this.confirmation.open({ message: `${moduleId} を作動させますか？` }, (confirmed) => {
@@ -117,10 +116,6 @@ export class ModuleWindows implements ModuleWindowOpener {
             (confirmed) => { if (confirmed) this.submit(entry, 'undockModule'); },
           );
         } else this.submit(entry, 'undockModule');
-      } else if (act === 'repairDockedModules') {
-        this.submit(entry, act);
-      } else if (act === 'selectCockpitModule') {
-        this.submit(entry, act);
       }
     };
     win.onClose = () => { this.windows.delete(key); };

@@ -1,11 +1,10 @@
-import { Button, Meter } from '../../../hud/widgets';
+import { Button, buildSpan, Meter } from '../../../hud/widgets';
 import { ShipConstructionCatalog } from './ship-construction-catalog';
 import { formatConstructionMetric, formatConstructionNumber } from './ship-construction-format';
+import { hiddenShipConstructionModel } from '../../ship/ship-construction-types';
 import type { ConstructionRole, ShipConstructionPanelModel } from '../../ship/ship-construction-types';
 import type { HudEls, HudElId } from '../hud-els';
 import type { ConstructionMetricUnit } from './ship-construction-format';
-
-const DEFAULT_CAPABILITIES = { thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0 };
 
 interface MetricPair {
   readonly value: HTMLElement;
@@ -107,7 +106,7 @@ export class ShipConstructionPanel {
     destructive.className = 'construction-destructive-actions';
     destructive.appendChild(this.discard.element);
     actions.append(this.place.element, this.remove.element, this.finish.element, destructive);
-    this.sync(hiddenModel());
+    this.sync(hiddenShipConstructionModel());
   }
 
   // 毎フレームの snapshot を、現在値・配置後差分・候補・操作可能状態へ分解して同期する。
@@ -158,10 +157,10 @@ export class ShipConstructionPanel {
         button.element.classList.add('construction-slot-button');
         button.element.dataset['valid'] = String(slot.valid);
         button.element.title = slot.reason ?? 'このスロットを選択';
-        button.element.replaceChildren(textSpan('construction-slot-label', slot.label));
+        button.element.replaceChildren(buildSpan('construction-slot-label', slot.label));
         // 無効なスロットは選べない。理由はホバーの説明文だけに置かず、ボタン内に明示する。
         if (slot.reason !== null) {
-          button.element.appendChild(textSpan('construction-slot-reason', slot.reason));
+          button.element.appendChild(buildSpan('construction-slot-reason', slot.reason));
         }
         this.slotList.appendChild(button.element);
         this.slotButtons.set(slot.id, button);
@@ -196,24 +195,6 @@ export class ShipConstructionPanel {
       preview: els.get(previewId),
     };
   }
-}
-
-// コンストラクタ直後とモード終了時に使う、表示資源を持たないsnapshot。
-function hiddenModel(): ShipConstructionPanelModel {
-  return {
-    visible: false, shipName: '—', dockLabel: '—', moduleCount: 0, totalMass: 0, hp: 0, maxHp: 0,
-    capabilities: DEFAULT_CAPABILITIES, preview: null, role: 'material', warning: null,
-    selectedDefinitionId: 'cockpit-standard', selectedModuleName: 'コックピット', selectedSlotId: 'axial',
-    slots: [], canPlace: false, canRemove: false, canFinish: false,
-  };
-}
-
-// 指定した表示クラスと文言を持つラベルを作る。
-function textSpan(className: string, text: string): HTMLElement {
-  const span = document.createElement('span');
-  span.className = className;
-  span.textContent = text;
-  return span;
 }
 
 // 配置後の値と増減を示し、差分がないときは空文字を返す。

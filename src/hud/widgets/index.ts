@@ -1,5 +1,5 @@
 // hud/widgets/ の公開 API をまとめて再 export するバレル。
-export { buildGroupTitle, buildLabeledRow } from './widget-base';
+export { buildGroupTitle, buildLabeledRow, buildSpan } from './widget-base';
 export { Button, type ButtonVariant } from './button';
 export { ToggleSwitch } from './toggle-switch';
 export { SegmentedControl } from './segmented-control';
