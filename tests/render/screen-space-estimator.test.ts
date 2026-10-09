@@ -61,8 +61,8 @@ function vectorNode(vector: THREE.Vector3): Vec3Node {
 function bandsWith(count: number, scale: number, strength: number): BandSplit {
   const s = float(strength);
   return {
-    count, bounceScale: float(scale), bounce: { senderFacing: s, receiverFacing: s, receiverView: s },
-    occlusionScale: float(scale), occlusion: { receiverFacing: s, receiverView: s },
+    count, bounceScale: float(scale), bounce: { senderFacing: s, receiverFacing: s },
+    occlusionScale: float(scale), occlusion: { receiverFacing: s },
   };
 }
 
@@ -493,13 +493,13 @@ export function register(): void {
     }
   });
 
-  test('screen space estimator: 強さ 0 なら、向きによらず照り返しも遮蔽も距離だけの帯の重みと一致する', () => {
+  test('screen space estimator: 強さ 0 なら、受け手と視線・送り手と視線が正対のとき、向きによらず照り返しも遮蔽も距離だけの帯の重みと一致する', () => {
     for (const rho of [1, 8, 40, 700]) {
       for (const cosine of [0, 0.3, 1]) {
         const bands = bandsWith(4, 0.75, 0);
         const expected = bandWeights(4, float(distanceCoordinate(4, 0.75, rho))).map(valueOf);
-        assert.deepStrictEqual(occlusionWeights(bands, float(rho), float(cosine), facingOf(cosine)).map(valueOf), expected);
-        assert.deepStrictEqual(bounceWeights(bands, float(rho), float(cosine), facingOf(cosine)).map(valueOf), expected);
+        assert.deepStrictEqual(occlusionWeights(bands, float(rho), float(1), facingOf(cosine)).map(valueOf), expected);
+        assert.deepStrictEqual(bounceWeights(bands, float(rho), float(1), facingOf(cosine)).map(valueOf), expected);
       }
     }
   });
@@ -536,7 +536,7 @@ export function register(): void {
     const half = float(0.5);
     const bands: BandSplit = {
       ...bandsWith(6, 0.75, 0),
-      bounce: { senderFacing: half, receiverFacing: float(0), receiverView: float(0) },
+      bounce: { senderFacing: half, receiverFacing: float(0) },
     };
     const rho = 40;
     // a だけが s = 1/2 で cos θ = 0。
@@ -546,21 +546,21 @@ export function register(): void {
     near(weights.reduce((sum, weight, band) => sum + weight * band, 0), Math.log2(0.75 * rho) - 1, 1e-12, '重みの平均');
   });
 
-  test('screen space estimator: 掛ける因子 c の冪 p = 1/2・s = 1 は cos ε = 1/4 で波長を半分にし、cos ε = 0 でも有限で帯 0', () => {
+  test('screen space estimator: 受け手と視線の内積 c は照り返しにも遮蔽にも固定で掛かり、cos ε = 0 は帯 0 へ頭打ちで有限', () => {
     const rho = 40;
-    const bands: BandSplit = {
-      ...bandsWith(6, 0.75, 0), receiverViewExponent: float(0.5),
-      bounce: { senderFacing: float(0), receiverFacing: float(0), receiverView: float(1) },
-      occlusion: { receiverFacing: float(0), receiverView: float(1) },
-    };
+    const bands = bandsWith(6, 0.75, 0);
     const meanBandOf = (weights: FloatNode[]): number => {
       const values = weights.map(valueOf);
       assert.ok(values.every((weight) => Number.isFinite(weight) && weight >= 0));
+      near(values.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
       return values.reduce((sum, weight, band) => sum + weight * band, 0);
     };
-    for (const [cosine, expected] of [[0.25, Math.log2(0.75 * rho) - 1], [0, 0]] as const) {
-      near(meanBandOf(bounceWeights(bands, float(rho), float(cosine), facingOf(1))), expected, 1e-6, `照り返し cos ε = ${cosine}`);
-      near(meanBandOf(occlusionWeights(bands, float(rho), float(cosine), facingOf(1))), expected, 1e-6, `遮蔽 cos ε = ${cosine}`);
+    const base = Math.log2(0.75 * rho);
+    // [cos ε, n_s·v_s, 期待する座標]。座標 = log₂(κρ) + log₂(cos ε) − ½·log₂(n_s·v_s)。
+    for (const [cosine, senderView, expected] of [[1, 1, base], [0.5, 1, base - 1], [0.5, 0.25, base], [0, 1, 0]] as const) {
+      const facing = facingOf(1, senderView);
+      near(meanBandOf(bounceWeights(bands, float(rho), float(cosine), facing)), expected, 1e-6, `照り返し cos ε = ${cosine}`);
+      near(meanBandOf(occlusionWeights(bands, float(rho), float(cosine), facing)), expected, 1e-6, `遮蔽 cos ε = ${cosine}`);
     }
   });
 
@@ -568,7 +568,7 @@ export function register(): void {
     const rho = 2;
     const strength = (receiverFacing: number): BandSplit => ({
       ...bandsWith(4, 0.75, 0),
-      bounce: { senderFacing: float(0), receiverFacing: float(receiverFacing), receiverView: float(0) },
+      bounce: { senderFacing: float(0), receiverFacing: float(receiverFacing) },
     });
     const coordinateOf = (bands: BandSplit, cosine: number): number => {
       const weights = bounceWeights(bands, float(rho), float(1), { ...facingOf(1), receiverFacing: float(cosine) }).map(valueOf);
