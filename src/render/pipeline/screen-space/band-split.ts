@@ -1,17 +1,17 @@
 // 補正の増分を、標本の画面距離と向きから帯へ分ける。帯の座標は、距離だけの log₂(κ·ρ) に、向きの内積の因子を
-// 掛ける・割る形で補う。照り返しと遮蔽は別の κ と強さで別の帯へ積む(8-15 の撮影用。採った因子だけの固定の式に直す)。
+// 掛ける・割る形で補う。照り返しと遮蔽は別の κ と強さで別の帯へ積む(因子 a〜c は 8-15 の撮影用の切り替えで、採った
+// 因子だけの固定の式に直す)。送り手の向きの因子 d は強さを持たず、照り返しにも遮蔽にも固定で掛かる。
 import { abs, clamp, dot, float, length, log2, max, pow } from 'three/tsl';
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 
 // 因子の強さ(0..1)。s = 0 なら因子は 1(効かない)、s = 1 ならそのまま cos。中間の弱め方は、掛ける因子(a・c)は
 // 線形 (1 − s) + s·cos、割る因子(b・d)は冪 cos^s。
 // senderFacing は送り手の法線と送り手→受け手、receiverFacing は受け手の法線と受け手→送り手、receiverView は
-// 受け手の法線と受け手→カメラ、senderView は送り手の法線と送り手→カメラの内積。
+// 受け手の法線と受け手→カメラの内積。
 export interface FacingStrengths {
   readonly senderFacing: FloatNode;
   readonly receiverFacing: FloatNode;
   readonly receiverView: FloatNode;
-  readonly senderView: FloatNode;
 }
 
 // 補正を遮りの画面距離 ρ [走査の画素] と向きで分ける帯。count は帯の数(1 なら分けない)で、帯 b は座標 b を受け持つ。
@@ -30,6 +30,11 @@ export interface SampleFacing {
   readonly receiverFacing: FloatNode;
   readonly senderView: FloatNode;
 }
+
+// 送り手の法線と送り手→カメラの内積 n_s·v_s を割る因子 d の冪。画面に側面を向ける送り手は踏まれにくく、切片を交点まで
+// 延ばす方式で大きく数えられて疎な輝点になるので、大きな帯で均す。冪は f(0) = 0・f(1) = 1 を保ち、側面を最も粗い帯へ送る。
+// tools/screen-space-chain-factors.mjs の FIXED_FACTORS が撮影の条件に写しを持つ。
+export const SENDER_VIEW_EXPONENT = 0.5;
 
 // 帯の座標に入れる、0 の手前の下限。
 const COORDINATE_FLOOR = 1e-6;
@@ -58,8 +63,12 @@ function weakened(strength: FloatNode, cosine: FloatNode): FloatNode {
 // 割る因子の弱め方。0 は最も粗い帯へ頭打ちになるだけで安全なので下限は要らず、冪なら側面(cos → 0)を最も粗い帯へ送りつつ
 // 中くらいの cos の動きを s で縮められる(線形だと cos = 0 でも最大 log₂(1/(1 − s)) 帯しか動かない)。
 // pow に渡す前の下限は NaN と 0^0 を避けるためで、s = 0 なら 1。
-function weakenedDivisor(strength: FloatNode, cosine: FloatNode): FloatNode {
+function weakenedDivisor(strength: FloatNode | number, cosine: FloatNode): FloatNode {
   return pow(max(cosine, COORDINATE_FLOOR), strength);
+}
+
+function senderViewDivisor(facing: SampleFacing): FloatNode {
+  return weakenedDivisor(SENDER_VIEW_EXPONENT, facing.senderView);
 }
 
 // 帯の座標 log₂(κ·ρ·multiply / divide) を 0..count − 1 へ寄せる。
@@ -87,7 +96,7 @@ export function occlusionWeights(
   const coordinate = bandCoordinate(
     bands.count, occlusionScale, rho, weakened(occlusion.receiverView, receiverView),
     weakenedDivisor(occlusion.receiverFacing, facing.receiverFacing)
-      .mul(weakenedDivisor(occlusion.senderView, facing.senderView)),
+      .mul(senderViewDivisor(facing)),
   );
   return bandWeights(bands.count, coordinate);
 }
@@ -101,7 +110,7 @@ export function bounceWeights(
     bands.count, bounceScale, rho,
     weakened(bounce.senderFacing, facing.senderFacing).mul(weakened(bounce.receiverView, receiverView)),
     weakenedDivisor(bounce.receiverFacing, facing.receiverFacing)
-      .mul(weakenedDivisor(bounce.senderView, facing.senderView)),
+      .mul(senderViewDivisor(facing)),
   );
   return bandWeights(bands.count, coordinate);
 }

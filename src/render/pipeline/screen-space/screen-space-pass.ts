@@ -50,7 +50,7 @@ export interface ScanTier {
   readonly bandFactors?: BandFactors;
 }
 
-// 照り返しの尺度 κ_b と、因子の強さ s(0..1。省くと 0)。bounce は照り返しの a〜d、occlusion は遮蔽の b〜d
+// 照り返しの尺度 κ_b と、因子の強さ s(0..1。省くと 0)。bounce は照り返しの a〜c、occlusion は遮蔽の b・c
 // (FacingStrengths の欄)。
 export interface BandFactors {
   readonly bounceScale?: number;
@@ -58,20 +58,18 @@ export interface BandFactors {
     readonly senderFacing?: number;
     readonly receiverFacing?: number;
     readonly receiverView?: number;
-    readonly senderView?: number;
   };
   readonly occlusion?: {
     readonly receiverFacing?: number;
     readonly receiverView?: number;
-    readonly senderView?: number;
   };
 }
 // 精細さの段ごとの走査。値は、解像度・スライス数・歩数の候補の組の費用と画質の指標を実測して選んだ。
 // TODO: 中のスライス数と歩数、帯の数と尺度は仮置き。費用と画質の指標の実測から選び直す。
 const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
-  [SCREEN_SPACE_QUALITY.low]: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 3 / 4 },
-  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 3 / 4 },
-  [SCREEN_SPACE_QUALITY.high]: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 3 / 4 },
+  [SCREEN_SPACE_QUALITY.low]: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 0.52 },
+  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 0.52 },
+  [SCREEN_SPACE_QUALITY.high]: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 0.52 },
 };
 
 // 疎な拡大の回転が読むブルーノイズのずれ [タイルの幅]。走査の 0・½・27/64 との差がタイルの自己相関の小さい所に
@@ -131,9 +129,9 @@ export class ScreenSpacePass {
   private readonly bandScale: FloatUniform = uniform(1);
   private readonly bounceBandScale: FloatUniform = uniform(1);
   private readonly bounceStrengths = {
-    senderFacing: uniform(0), receiverFacing: uniform(0), receiverView: uniform(0), senderView: uniform(0),
+    senderFacing: uniform(0), receiverFacing: uniform(0), receiverView: uniform(0),
   };
-  private readonly occlusionStrengths = { receiverFacing: uniform(0), receiverView: uniform(0), senderView: uniform(0) };
+  private readonly occlusionStrengths = { receiverFacing: uniform(0), receiverView: uniform(0) };
   // 走査のずれをホワイトノイズから引くパスの番号(setWhiteNoisePass)。負ならブルーノイズから引く。
   private readonly whiteNoisePass = uniform(-1, 'int');
   // 走査の全体の回転と、歩み・丸めのブルーノイズ、拡大のブルーノイズを変える seed [タイルの幅]。
@@ -526,10 +524,8 @@ export class ScreenSpacePass {
     this.bounceStrengths.senderFacing.value = factors?.bounce?.senderFacing ?? 0;
     this.bounceStrengths.receiverFacing.value = factors?.bounce?.receiverFacing ?? 0;
     this.bounceStrengths.receiverView.value = factors?.bounce?.receiverView ?? 0;
-    this.bounceStrengths.senderView.value = factors?.bounce?.senderView ?? 0;
     this.occlusionStrengths.receiverFacing.value = factors?.occlusion?.receiverFacing ?? 0;
     this.occlusionStrengths.receiverView.value = factors?.occlusion?.receiverView ?? 0;
-    this.occlusionStrengths.senderView.value = factors?.occlusion?.senderView ?? 0;
     const scanWidth = Math.max(1, Math.ceil(width * tier.scale));
     const scanHeight = Math.max(1, Math.ceil(height * tier.scale));
     this.surfaces.setSize(scanWidth, scanHeight);
