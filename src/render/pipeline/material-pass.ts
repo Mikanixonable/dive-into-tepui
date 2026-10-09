@@ -3,7 +3,7 @@
 // (このパスがそこへの最初の書き込みなのでクリアする)。背景専用レイヤーの星野を陰影より先に
 // 描くのと、G バッファの深度を同じターゲットへ複製するのもこのパスが担う。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { BRDF_Lambert, Discard, Fn, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { WORLD_BACKGROUND_LAYER } from './lit-layer';

@@ -1,9 +1,9 @@
 // 1曲を、指定のステップから鳴らす作曲用の再生機。本番の TrackPlayback を、区間ループと
 // ミュートを被せた Composer の上で回し、いま鳴っているステップを画面へ答える。
-import { BgmTrack } from '../../src/audio/bgm/tracks/types';
+import type { BgmTrack } from '../../src/audio/bgm/tracks/types';
 import { createComposer } from '../../src/audio/bgm/composer-factory';
 import { TrackPlayback } from '../../src/audio/bgm/track-playback';
-import { Composer, ComposerNote } from '../../src/audio/bgm/composer';
+import type { Composer, ComposerNote } from '../../src/audio/bgm/composer';
 
 const LOOKAHEAD_SEC = 0.6; // まとめて予約する先読みの幅
 const PUMP_INTERVAL_MS = 120; // 予約を足しに行く間隔

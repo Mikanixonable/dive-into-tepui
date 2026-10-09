@@ -2,11 +2,11 @@
 // elements.ts の orbitPlaneBasis(inc, raan, argp → pHat/qHat) の逆変換を行うのみであり、
 // 新しい軌道計算はしない。中心天体の選定・要素化・真近点角の算出は celestial-body.ts/elements.ts の
 // 既存関数(strongestAttractor/elementsAround/trueAnomalyAt/apsisAltitudes)をそのまま使う。
-import { KinematicState } from '../../physics/kinematic-state';
+import type { KinematicState } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
-import { OrbitalElements, apsisAltitudes, trueAnomalyAt, orbitalElementsOf } from '../../physics/elements';
-import { Vec3, cross, dot, len, norm, v3 } from '../../math/vec3';
+import { type OrbitalElements, apsisAltitudes, trueAnomalyAt, orbitalElementsOf } from '../../physics/elements';
+import { type Vec3, cross, dot, len, norm, v3 } from '../../math/vec3';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ElementsForm } from './object-placer-panel';
 
