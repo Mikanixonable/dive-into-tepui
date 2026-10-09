@@ -1,4 +1,4 @@
-// 滑らかな面の画素 1 つから鏡の向きへ ray を 1 本出し、画面に写った深度の上を進めて、近くの物体に当たった位置と
+// 滑らかな面の画素 1 つから反射の向きへ ray を 1 本出し、画面に写った深度の上を進めて、近くの物体に当たった位置と
 // 距離、その像が遠方の鏡面光を置き換える重み w を求める。ray は画面空間で透視補正した刻みで進める(McGuire &
 // Mara 2014「Efficient GPU Screen-Space Ray Tracing」)。判定は幾何 — 深度と、反射する面の位置・向き・粗さ —
 // だけから決まる。
@@ -7,6 +7,8 @@ import {
   Break, If, Loop, abs, dot, float, floor, ivec2, length, max, min, mix, select, smoothstep, textureLoad, vec2, vec4,
 } from 'three/tsl';
 import type { ShadingSample } from '../lighting/shading-sample';
+import { sampleGgxReflection, type GgxReflectionSample } from '../lighting/ggx';
+import type { BlueNoise } from '../../blue-noise';
 import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
 // 近くの物体として映す距離の上限 [m]。艦艇・基地の規模の構造は収め、天体には届かない長さ — 天体の鏡面像は
@@ -33,12 +35,19 @@ const EDGE_FADE_WIDTH = 0.1;
 // 知覚的粗さがこの値までの面には全量を映し、NO_REFLECTION_ROUGHNESS で 0 にする。
 const FULL_REFLECTION_ROUGHNESS = 0.3;
 const NO_REFLECTION_ROUGHNESS = 0.6;
-// 鏡の向きと視点への向きの余弦がこの範囲で、重みを 0 へ落とす。視点へ戻る ray が映すのはカメラの後ろで、
+// ray の向きと視点への向きの余弦がこの範囲で、重みを 0 へ落とす。視点へ戻る ray が映すのはカメラの後ろで、
 // 画面に写っていない。
 const CAMERA_FACING_FADE_START = 0.6;
 const CAMERA_FACING_FADE_END = 0.9;
 // 当たった刻みの区間を二分して、当たった位置を詰める回数。
 const REFINE_STEPS = 4;
+
+// 描画バッファの画素の面 sample から追跡する ray の向きと、その重み。画素ごとに固定の blue noise で鏡面ローブから
+// 選ぶので、同じ解像度で同じ画素を塗るパスはどれも同じ向きを引き直せる。追跡の開始点のずらし(tileShift 0)とは
+// 別の値を使う。
+export function reflectionRayOf(sample: ShadingSample, blueNoise: BlueNoise): GgxReflectionSample {
+  return sampleGgxReflection(sample, vec2(blueNoise.atScreenPixel(0.5), blueNoise.atScreenPixel(27 / 64)));
+}
 
 // 判定の結果。当たらなかった画素ではどれも 0。
 export interface ReflectionHit {
@@ -46,11 +55,12 @@ export interface ReflectionHit {
   readonly hitUV: Vec2Node;
   // 反射する面から当たった点までの view 空間の距離 [m]。
   readonly distance: FloatNode;
-  // 置換の重み w = 粗さ × 画面の縁 × 距離 × 当たりの確からしさ。
+  // 置換の重み w = 粗さ × 画面の縁 × 距離 × 当たりの確からしさ × ray の重み。
   readonly weight: FloatNode;
 }
 
-// 面 sample の鏡の向きの ray を、素の深度 depth(逆 Z、虚空は 0)の上で stepCount 歩進めて判定する。depth の画素
+// 面 sample から向き direction(view 空間の単位ベクトル)の ray を、素の深度 depth(逆 Z、虚空は 0)の上で
+// stepCount 歩進めて判定する。rayWeight は ray が選ばれた重みで、w へ掛ける — 0 の ray は進めない。depth の画素
 // 1 つは描画バッファの画素 footprint 個四方のいちばん手前の深度を持つ。traceSize は depth の画素を単位とする画面の
 // 寸法で、割り切れなければ端の画素が画面の外へはみ出す。pixelSpan は描画バッファの画素 1 つの横の幅(x, y)で、
 // clip 座標の w を掛けると view 空間の長さ [m] になる。projection / projectionInverse は実カメラの射影行列とその逆、
@@ -59,16 +69,16 @@ export interface ReflectionHit {
 export function traceReflection(
   depth: THREE.Texture, footprint: IntNode, traceSize: Vec2Node, pixelSpan: Vec2Node, projection: Mat4Uniform,
   projectionInverse: Mat4Uniform, near: FloatNode, stepCount: IntNode, jitter: FloatNode, sample: ShadingSample,
+  direction: Vec3Node, rayWeight: FloatNode,
 ): ReflectionHit {
   const hitUV = vec2(0).toVar();
   const distance = float(0).toVar();
   const weight = float(0).toVar();
-  const direction = sample.reflected.toVar();
-  // 当たり方によらない重み。0 の面は追跡を打ち切る。
+  // 当たり方によらない重み。0 の ray は追跡を打ち切る。
   const roughnessFade = float(1).sub(smoothstep(FULL_REFLECTION_ROUGHNESS, NO_REFLECTION_ROUGHNESS, sample.roughness));
   const facingFade = float(1).sub(
     smoothstep(CAMERA_FACING_FADE_START, CAMERA_FACING_FADE_END, dot(direction, sample.viewDir)));
-  const surfaceWeight = roughnessFade.mul(facingFade).toVar();
+  const surfaceWeight = roughnessFade.mul(facingFade).mul(rayWeight).toVar();
   If(surfaceWeight.greaterThan(0), () => {
     // ray の両端。視点へ向かう ray は近クリップ面で止める — その先は透視の除算が裏返る。
     const origin = sample.position.add(sample.normal.mul(originLift(sample, footprint, pixelSpan, projection))).toVar();

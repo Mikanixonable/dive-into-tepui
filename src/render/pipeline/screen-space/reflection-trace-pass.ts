@@ -1,4 +1,4 @@
-// 映り込みの追跡のパス。G バッファの深度を追跡の解像度へ縮小し、滑らかな面の画素ごとに鏡の向きの ray をその上で
+// 映り込みの追跡のパス。G バッファの深度を追跡の解像度へ縮小し、滑らかな面の画素ごとに反射の向きの ray をその上で
 // 進めて、当たった位置・距離・置換の重みを描画バッファの解像度の判定(ScreenSpaceReflection)へ書く。描画設定の
 // オン / オフと精細さを受け、オフのフレームは描画命令を出さない。
 import * as THREE from 'three/webgpu';
@@ -9,8 +9,10 @@ import {
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
 import { ShadingSample } from '../lighting/shading-sample';
+import { ggxAlbedo } from '../lighting/ltc';
+import { createLtcTables } from '../lighting/ltc-table.generated';
 import { compileInto } from '../compile-into';
-import { traceReflection } from './reflection-trace';
+import { reflectionRayOf, traceReflection } from './reflection-trace';
 import { encodedReflection, type ScreenSpaceReflection } from './screen-space-reflection';
 import type { GBufferPass } from '../gbuffer';
 import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec2Uniform } from '../../tsl-types';
@@ -63,6 +65,8 @@ export class ReflectionTracePass {
   // 描画バッファの画素の、反射する面のシェーディング入力。
   private readonly sample: ShadingSample;
   private readonly blueNoise = new BlueNoise();
+  // GGX のアルベドを引く係数表。
+  private readonly ltcTables = createLtcTables();
   // 直前に render したときのオン / オフ。null はまだ render していないこと。
   private renderedEnabled: boolean | null = null;
   // 空へ戻すときに退避する消去色。毎フレーム確保しないよう 1 つだけ持つ。
@@ -128,6 +132,8 @@ export class ReflectionTracePass {
     this.downsampleMaterial.dispose();
     this.traceMaterial.dispose();
     this.blueNoise.dispose();
+    this.ltcTables.ltc1.dispose();
+    this.ltcTables.ltc2.dispose();
   }
 
   // 描画命令の列。マテリアルとその描画先の組を、書く順に並べる。
@@ -162,9 +168,13 @@ export class ReflectionTracePass {
       const result = vec4(0).toVar();
       // 面の写っている画素だけを追跡する。
       If(gbuffer.covered(), () => {
+        // 鏡面ローブから向きを選び、重みをアルベドで割る — 全方向が近くの物体に当たる面で、w の期待値が 1 になる。
+        const ray = reflectionRayOf(this.sample, this.blueNoise);
+        const albedo = ggxAlbedo(this.ltcTables.ltc2, this.sample.normal, this.sample.viewDir, this.sample.roughness);
         const hit = traceReflection(
           this.depthTarget.texture, this.footprint, this.traceSize, this.pixelSpan, this.projection,
           this.projectionInverse, this.near, this.stepCount, this.blueNoise.atScreenPixel(), this.sample,
+          ray.direction, ray.weight.div(max(albedo, 1e-3)),
         );
         result.assign(encodedReflection(hit.hitUV, hit.distance, hit.weight));
       });

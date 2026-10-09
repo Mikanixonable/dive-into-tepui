@@ -10,7 +10,8 @@ import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { ShadingSample } from './lighting/shading-sample';
 import { specularReflectanceAt } from './material-pass';
 import { compileInto } from './compile-into';
-import { thicknessFarZ, viewZOf } from './screen-space/reflection-trace';
+import { reflectionRayOf, thicknessFarZ, viewZOf } from './screen-space/reflection-trace';
+import { BlueNoise } from '../blue-noise';
 import type { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import type { GBufferPass } from './gbuffer';
 import type { FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../tsl-types';
@@ -45,6 +46,8 @@ export class ReflectionPass {
   private readonly quad = new QuadMesh();
   // 反射する面のシェーディング入力。
   private readonly sample: ShadingSample;
+  // 追跡した ray の向きを引き直す blue noise。
+  private readonly blueNoise = new BlueNoise();
   // G バッファの素の深度(逆 Z、虚空は 0)。
   private readonly depth: THREE.DepthTexture;
   // QuadMesh は固定直交カメラで描かれるため、実カメラの射影行列の逆は毎フレーム自前で書き込む。
@@ -112,6 +115,7 @@ export class ReflectionPass {
     this.imageTarget.dispose();
     this.resolveMaterial.dispose();
     this.addMaterial.dispose();
+    this.blueNoise.dispose();
   }
 
   // 描画命令の列。マテリアルとその描画先の組を、書く順に並べる。
@@ -130,7 +134,8 @@ export class ReflectionPass {
       const weight = reflection.weightAt(screenUV).toVar();
       If(weight.greaterThan(0), () => {
         const distance = reflection.hitDistanceAt(screenUV).toVar();
-        const hitZ = this.sample.position.add(this.sample.reflected.mul(distance)).z;
+        const direction = reflectionRayOf(this.sample, this.blueNoise).direction;
+        const hitZ = this.sample.position.add(direction.mul(distance)).z;
         const radiance = this.radianceAt(reflection.hitUVAt(screenUV), hitZ);
         image.assign(specularReflectanceAt(gbuffer, screenUV).mul(weight).mul(radiance));
       });

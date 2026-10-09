@@ -5,9 +5,10 @@
 // 積分の式は three の RectAreaLightNode 内部の LTC_Evaluate と同じもの(Heitz らの
 // Real-Time Polygonal-Light Shading with Linearly Transformed Cosines)。three はこれを
 // 公開していないので、ここに 8 角形版として持つ。
+import type * as THREE from 'three/webgpu';
 import {
   Fn, abs, clamp, cross, dot, float, inverseSqrt, length, mat3, max, normalize, select,
-  sqrt, vec2, vec3,
+  sqrt, texture, vec2, vec3,
 } from 'three/tsl';
 import type { FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 import { LTC_TABLE_SIZE } from './ltc-table.generated';
@@ -21,6 +22,12 @@ export function ltcUv(normal: Vec3Node, viewDir: Vec3Node, roughness: FloatNode)
   const bias = 0.5 / LTC_TABLE_SIZE;
   const dotNV = clamp(dot(normal, viewDir), 0, 1);
   return vec2(roughness, sqrt(float(1).sub(dotNV))).mul(scale).add(bias);
+}
+
+// F0=1 の GGX の方向アルベド ∫ D·V·(N·L) dl(0..1)。係数表 2 の x(正規化係数)を引く。一様でない分岐の中から
+// 読んでよい。
+export function ggxAlbedo(ltc2: THREE.Texture, normal: Vec3Node, viewDir: Vec3Node, roughness: FloatNode): FloatNode {
+  return texture(ltc2, ltcUv(normal, viewDir, roughness)).level(float(0)).x;
 }
 
 // 係数表 1 の 1 サンプル(vec4)から逆変換行列を組む。
