@@ -1,17 +1,17 @@
 // マップのガイドとして描く軌道の曲線(ECI [m])。焼き込みカタログ(orbit-catalog.ts)の
 // 無次元形状を、その瞬間の実際の天体位置・公転面から組んだ回転座標系へ載せて返す。
 // リサジュー軌道だけは連続な族として焼き込まないので、Richardson の解析近似から直に組む。
-import { Vec3Tuple } from './cr3bp';
-import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
+import type { Vec3Tuple } from './cr3bp';
+import { type CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
 import type { CollinearPoint, SecondaryFrame } from './lagrange';
 import {
-  CATALOG_STRIDE, CatalogFamily, CatalogSystem, CatalogSystemId, decodeCatalogPoints,
+  CATALOG_STRIDE, type CatalogFamily, type CatalogSystem, type CatalogSystemId, decodeCatalogPoints,
 } from './orbit-catalog';
 import {
-  LocalTime, dawnDuskElements, molniyaElements, sunSyncRepeatGroundTrackElements, tundraElements,
+  type LocalTime, dawnDuskElements, molniyaElements, sunSyncRepeatGroundTrackElements, tundraElements,
 } from './earth-reference-orbits';
-import { OrbitalElements, positionOnOrbit, trueAnomalyFromMean } from './elements';
-import { Vec3, add, cross, len, norm, scale, sub } from '../math/vec3';
+import { type OrbitalElements, positionOnOrbit, trueAnomalyFromMean } from './elements';
+import { type Vec3, add, cross, len, norm, scale, sub } from '../math/vec3';
 import type { CelestialBody } from './celestial-body';
 
 // ガイド線の曲線の渡し方。閉じた式で書けるものは関数、焼き込みの離散サンプルしか無いものは

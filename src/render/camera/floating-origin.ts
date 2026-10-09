@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { sub, Vec3 } from '../../math/vec3';
+import { sub, type Vec3 } from '../../math/vec3';
 
 
 // フローティングオリジン: 描画フレームの原点として毎フレーム取り直す、ECI 上の一点の運動状態。

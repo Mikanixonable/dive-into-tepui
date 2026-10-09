@@ -4,7 +4,7 @@
 // 受け取る画像は表示用の階調を持つこと。エッジ検出の閾値はそのスケールで定義されていて、
 // 線形の明るさで渡すと暗い面の境目がすべて閾値の下に沈む。
 import * as THREE from 'three/webgpu';
-import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { MeshBasicNodeMaterial, QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { colorSpaceToWorking, texture } from 'three/tsl';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';

@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { memoParseIndependent } from '../baked-model';
 import { DynamicView } from '../dynamic-view';
 import enemyData from '../../../assets/models/enemy.json';

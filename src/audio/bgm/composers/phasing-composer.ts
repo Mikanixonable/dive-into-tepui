@@ -4,8 +4,8 @@
 // 四度堆積のパッドと低いドローン、ときおりの高音の煌めきが重なる。打楽器は使わない。
 // 移調とオクターブ移動という周期の異なる 2 つの循環をさらに重ねるので、全体が一巡するまでの
 // 長さは各周期の最小公倍数まで伸びる。音階・パターン・各レイヤーの値は PhasingParams が持つ。
-import { PhasingParams, PulseVoice } from '../tracks/types';
-import { Composer, ComposerNote } from '../composer';
+import type { PhasingParams, PulseVoice } from '../tracks/types';
+import type { Composer, ComposerNote } from '../composer';
 import { cycleAt, phaseValue, scaleFreq } from './utils';
 
 // 1スケールステップあたりの半音数の近似(長2度)。音階を引く声部は移調をインデックスの

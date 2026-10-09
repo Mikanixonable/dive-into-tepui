@@ -10,9 +10,9 @@
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
-import { KinematicState, kinematicState } from './kinematic-state';
-import { add, cross, sub, v3, Vec3 } from '../math/vec3';
-import { Q_IDENTITY, Quat, qInvert, qRotate } from '../math/quat';
+import { type KinematicState, kinematicState } from './kinematic-state';
+import { add, cross, sub, v3, type Vec3 } from '../math/vec3';
+import { Q_IDENTITY, type Quat, qInvert, qRotate } from '../math/quat';
 import type { CelestialBody } from './celestial-body';
 
 // 座標系 = 「どの天体を原点に置くか」×「何の回転(公転か自転)に合わせて回すか

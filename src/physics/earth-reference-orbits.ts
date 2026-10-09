@@ -2,7 +2,7 @@
 // ドーンダスク・モルニヤ・ツンドラ)の軌道要素を組む。いずれも中心天体の重心を原点とした
 // OrbitalElements を生成する。中心天体の重力パラメータや扁平度は引数の天体定義から取得する。
 import {
-  meanMotionFromSemiMajor, orbitalElementsFromClassical, OrbitalElements, semiMajorFromMeanMotion,
+  meanMotionFromSemiMajor, orbitalElementsFromClassical, type OrbitalElements, semiMajorFromMeanMotion,
   semiMajorFromPeriod,
 } from './elements';
 import type { CelestialBody } from './celestial-body';
