@@ -6,6 +6,11 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 
 module.exports = {
+  cache: {
+    type: 'filesystem',
+    name: 'render-lab',
+    cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
+  },
   entry: './tools/render-lab/main.ts',
   resolve: {
     extensions: ['.ts', '.js'],
