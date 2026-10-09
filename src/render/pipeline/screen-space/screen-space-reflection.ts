@@ -1,4 +1,4 @@
-// 滑らかな面の映り込みの判定結果を、描画バッファの解像度の 1 枚として渡す。画素ごとに、鏡の向きの ray が
+// 滑らかな面の映り込みの判定結果を、描画バッファの解像度の 1 枚として渡す。画素ごとに、反射の向きの ray が
 // 当たった位置 hit uv・当たるまでの距離・近くの物体の像が遠方の鏡面光を置き換える重み w を持つ。
 import * as THREE from 'three/webgpu';
 import { float, texture, vec4 } from 'three/tsl';
@@ -6,7 +6,7 @@ import type { ShadingSample } from '../lighting/shading-sample';
 import type { FloatNode, Vec2Node, Vec4Node } from '../../tsl-types';
 
 // 1 画素ぶんの判定を描画先の texel へ符号化する。hitUV は当たった位置の uv(0..1、上端が原点)、distance は
-// 反射する面から当たった点までの view 空間の距離 [m]、weight は置換の重み w(0..1)。当たらなかった画素は
+// 反射する面から当たった点までの view 空間の距離 [m]、weight は置換の重み w(0 以上。画素ごとには 1 をわずかに超えうるが、期待値は 1 以下)。当たらなかった画素は
 // どれも 0 で書くこと — w = 0 が「遠方の鏡面光をそのまま残す」を表す。
 export function encodedReflection(hitUV: Vec2Node, distance: FloatNode, weight: FloatNode): Vec4Node {
   return vec4(hitUV, distance, weight);

@@ -149,6 +149,8 @@ function reflectionLadder(): LabCase {
       'ladder-off': { view: {}, graphics: off },
       // 地球の像の縁は、トーンマッピングだけを通した鏡面照度で測る。映り込みを切り、置換で弱めない。
       'ladder-off-specular': { view: {}, graphics: off, debugTarget: 'specular' },
+      // 置換で弱めた遠方の鏡面照度。w のまだらは、ladder-off-specular との差に出る。
+      'ladder-specular': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'specular' },
       'ladder-roughness': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'roughness' },
       'ladder-weight': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-weight' },
       'ladder-distance': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-distance' },

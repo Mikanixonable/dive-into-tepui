@@ -10,7 +10,10 @@
 //    球の予測は、ローブの円の直径 2·d·tan(2α) を当たった点の奥行きで画面へ写した px、地球の予測は、ローブの角幅 2·2α を画素の角幅で割った px。
 //    球の縁は手前側(画面の下側)で測る — 奥側は帯の奥の端が近く、ぼけた縁が帯からはみ出す。
 // 2. 像の明るさ: 帯の画素の、発光球の像(ladder-reflection)の明るさの最大と和を、対照の像
-//    (ladder-lights-no-planet-specular)のそれと比べる。ぼかしで明るさが失われていないかを読む。
+//    (ladder-lights-no-planet-specular)のそれと比べる。ぼかしで明るさが失われていないかを読む。明るさの頂の行を
+//    球の中心の鏡像の行と並べ、像が粗さとともに対照と同じ向きへずれるかを読む。
+// 3. まだらの量: 帯の画素の明るさと、そのまわり 5×5 の平均との差の平均。発光球の像と、置換で弱めた遠方の鏡面照度
+//    (ladder-specular)で測り、映り込みを切った鏡面照度(ladder-off-specular)と並べる。
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { decodePng } from './png.mjs';
@@ -46,6 +49,8 @@ const EDGE_REACH_PER_WIDTH = 3;
 const MIN_EDGE_REACH = 20;
 // 縁の内側とみなすのに、明るさが続いていなければならない行数。
 const EDGE_RUN = 8;
+// まだらの量で、画素と比べる平均を取る正方形の半径 [px](5×5)。
+const MOTTLE_RADIUS = 2;
 
 // 画素の焦点距離 [px]。
 const FOCAL = VIEW_HEIGHT / 2 / Math.tan((FOV_DEG / 2) * Math.PI / 180);
@@ -250,16 +255,107 @@ function bandBrightness(bands, shot) {
   return rows;
 }
 
-// 表 2: 帯ごとの、発光球の像の明るさの最大と和の、対照の像に対する比。
+// 帯 band の中心線の上で、発光球の中心の鏡像が写る画面の行。
+function mirrorRow(band) {
+  const azimuth = (band - (ROUGHNESSES.length - 1) / 2) * BAND_SPACING_DEG * Math.PI / 180;
+  const pitch = CAMERA_PITCH_DEG * Math.PI / 180;
+  const forward = SPHERE_DISTANCE * Math.cos(azimuth);
+  const below = -SPHERE_HEIGHT - CAMERA_HEIGHT;
+  const depth = forward * Math.cos(pitch) - below * Math.sin(pitch);
+  const up = below * Math.cos(pitch) + forward * Math.sin(pitch);
+  return VIEW_HEIGHT / 2 - FOCAL * up / depth;
+}
+
+// 断面 profile を縦に幅 width 行の箱で均してから、いちばん明るい行。断面の端では、断面の中にある行だけで均す。
+function peakRow(profile, width) {
+  const half = Math.floor(Math.max(1, width) / 2);
+  let best = null;
+  for (let i = 0; i < profile.length; i++) {
+    let total = 0;
+    let count = 0;
+    for (let k = Math.max(0, i - half); k <= Math.min(profile.length - 1, i + half); k++) {
+      total += profile[k].value;
+      count++;
+    }
+    const value = total / count;
+    if (value > 0 && (best === null || value > best.value)) best = { y: profile[i].y, value };
+  }
+  return best?.y ?? null;
+}
+
+// 表 2: 帯ごとの、発光球の像の明るさの最大と和の、対照の像に対する比と、明るさの頂の行。頂の行は、断面を予測幅の
+// 1/4 の箱で均してから取り、球の中心の鏡像の行と並べる。
 function brightnessTable(bands, sphereShot, lightShot) {
+  const { width, height } = sphereShot;
   const sphere = bandBrightness(bands, sphereShot);
   const light = bandBrightness(bands, lightShot);
   const ratio = (measured, reference) => (reference <= 0 ? '-' : (measured / reference).toFixed(2));
-  const header = ['帯', '粗さ', '頂 球 / 球光源', '和 球 / 球光源'];
+  const row = (v) => (v === null ? '-' : String(v));
+  const header = ['帯', '粗さ', '頂 球 / 球光源', '和 球 / 球光源', '頂の行 球', '頂の行 球光源', '鏡像の中心の行'];
+  const lines = [header, header.map(() => '---')];
+  for (const [index, roughness] of ROUGHNESSES.entries()) {
+    const box = predictedSphereWidth(index, effectiveRoughness(roughness) ** 2) / 4;
+    const peak = (shot) => peakRow(
+      bandProfile(bands, width, height, index, (x, y) => tonemappedLuminance(shot.at(x, y))), box);
+    lines.push([
+      index, roughness, ratio(sphere[index].peak, light[index].peak), ratio(sphere[index].sum, light[index].sum),
+      row(peak(sphereShot)), row(peak(lightShot)), mirrorRow(index).toFixed(1),
+    ]);
+  }
+  return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
+}
+
+// 撮影 shot の帯ごとの、まだらの量 — 帯の画素の明るさと、そのまわり 5×5 の同じ帯の画素の平均との差の平均。帯の
+// 画素の明るさの平均も返す。
+function bandMottle(bands, shot) {
+  const { width, height } = shot;
+  const luminance = new Float64Array(width * height);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) luminance[y * width + x] = tonemappedLuminance(shot.at(x, y));
+  const rows = ROUGHNESSES.map(() => ({ difference: 0, value: 0, count: 0 }));
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const band = bands[y * width + x];
+      if (band < 0) continue;
+      let total = 0;
+      let count = 0;
+      for (let dy = -MOTTLE_RADIUS; dy <= MOTTLE_RADIUS; dy++) {
+        for (let dx = -MOTTLE_RADIUS; dx <= MOTTLE_RADIUS; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height || bands[ny * width + nx] !== band) continue;
+          total += luminance[ny * width + nx];
+          count++;
+        }
+      }
+      const value = luminance[y * width + x];
+      rows[band].difference += Math.abs(value - total / count);
+      rows[band].value += value;
+      rows[band].count++;
+    }
+  }
+  return rows.map(({ difference, value, count }) => ({
+    mottle: count === 0 ? 0 : difference / count, mean: count === 0 ? 0 : value / count,
+  }));
+}
+
+// 表 3: 帯ごとのまだらの量。発光球の像(ladder-reflection)と、置換で弱めた遠方の鏡面照度(ladder-specular)を、
+// 映り込みを切った鏡面照度(ladder-off-specular — 地球の像の模様だけを持つ)と並べる。比は帯の画素の明るさの平均に
+// 対する割合。
+function mottleTable(bands, sphereShot, specularShot, offSpecularShot) {
+  const sphere = bandMottle(bands, sphereShot);
+  const specular = bandMottle(bands, specularShot);
+  const offSpecular = bandMottle(bands, offSpecularShot);
+  const format = (v) => v.toExponential(2);
+  const relative = ({ mottle, mean }) => (mean <= 0 ? '-' : (mottle / mean).toFixed(3));
+  const header = [
+    '帯', '粗さ', '球 まだら', '球 まだら / 平均', '鏡面照度 まだら', '鏡面照度 まだら / 平均', 'オフ まだら', 'オフ まだら / 平均',
+  ];
   const lines = [header, header.map(() => '---')];
   for (const [index, roughness] of ROUGHNESSES.entries()) {
     lines.push([
-      index, roughness, ratio(sphere[index].peak, light[index].peak), ratio(sphere[index].sum, light[index].sum),
+      index, roughness, format(sphere[index].mottle), relative(sphere[index]),
+      format(specular[index].mottle), relative(specular[index]),
+      format(offSpecular[index].mottle), relative(offSpecular[index]),
     ]);
   }
   return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
@@ -276,6 +372,9 @@ function main() {
   console.log(edgeTable(bands, sphereShot, lightShot, readShot(dir, 'ladder-off-specular')));
   console.log('\n像の明るさ(トーンマッピングを戻した輝度)\n');
   console.log(brightnessTable(bands, sphereShot, lightShot));
+  console.log('\nまだらの量(トーンマッピングを戻した輝度)\n');
+  console.log(mottleTable(
+    bands, sphereShot, readShot(dir, 'ladder-specular'), readShot(dir, 'ladder-off-specular')));
 }
 
 main();
