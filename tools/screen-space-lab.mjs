@@ -229,6 +229,8 @@ function labOf(devTools) {
       await call(`showShot(${JSON.stringify(entry.caseName)}, ${JSON.stringify(entry.shot)}, ${JSON.stringify({ ...EVALUATION_GRAPHICS, screenSpaceDiffuse: entry.mode })})`);
       if (entry.dolly) await call(`setView(${JSON.stringify({ cameraDistanceLog: entry.dolly })})`);
     },
+    // 観察の向きを部分的に差し替えて描く。changes は render-lab の観察の向き(LabViewAngles)の一部。
+    setView: (changes) => call(`setView(${JSON.stringify(changes)})`),
     setTier: (tier) => call(`setScanTier(${JSON.stringify(tier)})`),
     // seed は seedOf の返す [x, y]。
     setSeed: ([x, y]) => call(`setScanSeed(${x}, ${y})`),
