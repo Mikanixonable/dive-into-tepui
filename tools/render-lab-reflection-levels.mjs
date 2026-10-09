@@ -51,15 +51,15 @@ const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
 // 鏡面ローブの半幅 [rad] の、GGX の α に対する比(src/render/pipeline/lighting/ggx.ts の LOBE_HALF_WIDTH_PER_ALPHA)。
 const LOBE_HALF_WIDTH_PER_ALPHA = 2;
-// 均しの縮小列の段数は src の定数から読む。均しの段のデバッグ表示は、段 + 1 を段数で割った灰
-// (src/render/pipeline/render-pipeline.ts)。
+// 高さ 540 px の描画バッファで均すのに使う縮小列の段数は src の定数から読む。均しの段のデバッグ表示は、段 + 1 を段数で
+// 割った灰(src/render/pipeline/render-pipeline.ts)。
 const LEVEL_COUNT = (() => {
   const source = readFileSync(path.join(root, 'src/render/pipeline/screen-space/reflection-denoise.ts'), 'utf8');
   const match = /^export const REFLECTION_LEVEL_COUNT = (\d+);/m.exec(source);
   if (match === null) throw new Error('REFLECTION_LEVEL_COUNT not found in reflection-denoise.ts');
   return Number(match[1]);
 })();
-// いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の白の側の刻み(段数 13 で段約 0.12)を覆う。
+// いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の白の側の刻み(段数 13 で段約 0.12、7 で約 0.06)を覆う。
 const STUCK_MARGIN = 0.15;
 
 // 粗さのデバッグ表示から帯を決めるときの、粗さの許す差。いちばん狭い帯の間隔(0.0525 と 0.075)の半分より小さい。

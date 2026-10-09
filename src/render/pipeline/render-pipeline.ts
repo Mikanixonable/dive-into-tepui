@@ -386,9 +386,9 @@ export class RenderPipeline {
     return select(distance.greaterThan(0), scaled.clamp(0, 1), float(0));
   }
 
-  // 映り込みを均すのに読んだ段を、段 + 1 を段数で割った線形の灰へ写し、いちばん粗い段を白にする。w̄ が 0 の画素は青、
-  // 均した値を書いていない(映り込みを切った)フレームは黒。tools/render-lab-reflection-levels.mjs が同じ目盛りで段へ
-  // 戻す。
+  // 映り込みを均すのに読んだ段を、段 + 1 を REFLECTION_LEVEL_COUNT で割った線形の灰へ写す — 高さ 540 px の描画バッファで
+  // いちばん粗い段が白で、それより高い描画バッファの上の段も白。w̄ が 0 の画素は青、均した値を書いていない(映り込みを
+  // 切った)フレームは黒。tools/render-lab-reflection-levels.mjs が同じ目盛りで段へ戻す。
   private reflectionDenoiseLevelDebugNode(): Vec3Node {
     const level = this.reflection.denoiseLevelAt(screenUV);
     const gray = vec3(level.add(1).div(REFLECTION_LEVEL_COUNT).clamp(0, 1));
