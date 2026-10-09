@@ -23,7 +23,8 @@ export function register(): void {
     before('reflection-distance', 'reflection-weight');
     before('reflection-weight', 'diffuse');
     before('diffuse', 'material');
-    before('material', 'reflection');
+    before('material', 'reflection-level');
+    before('reflection-level', 'reflection');
     before('reflection', 'atmosphere');
     before('atmosphere', 'lens');
     assert.ok(!ids.includes('occlusion' as typeof ids[number]));
