@@ -24,6 +24,8 @@ import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node,
 export const REFLECTION_LEVEL_COUNT = 13;
 // 当たり距離を読み始める段(描画画素 16 個四方)。
 const DISTANCE_LEVEL = 4;
+// 受け手を均す段の上限に足す余裕。上限と均す段を求める式の丸めの違いで、均す段が上限をわずかに超えないようにする。
+const LEVEL_CEILING_MARGIN = 1e-3;
 // 均しの広さ: 均すのに読む段の画素の一辺の、像のぼけの短い軸の幅に対する比。短い軸の幅は、鏡像の奥行きへ写した鏡面
 // ローブの円の直径に N·V を掛けたもの — 斜めから見た面の映り込みは、入射面の中へはローブの半幅どおりにぼけ、入射面に
 // 垂直な向きへはその約 N·V 倍しかぼけない。像のぼけは追跡の向きのジッターが縦横とも作るので、均しはまだらを消す幅でよい。
@@ -327,7 +329,8 @@ export class ReflectionDenoise {
 
   // 受け手の画素の均した映り込み(DenoisedReflection)。段 0 から順に、受け手の面に載らない分を 1 つ細かい段の値で埋めた
   // 値を求め、段 DISTANCE_LEVEL から粗い段へ、最初に w̄ が正になった段の (w × d)‾ / w̄ を当たり距離にして均す段を選び、
-  // 選んだ段の両隣を段の端数で混ぜる。どの段でも w̄ が 0 の画素、面の写っていない画素、映り込みの出ない粗さの画素は 0。
+  // 選んだ段の両隣を段の端数で混ぜる。受け手を均す段の上限までに w̄ が正にならない画素、面の写っていない画素、映り込みの
+  // 出ない粗さの画素は 0。
   private denoised(): THREE.Node {
     return Fn(() => {
       const weighted = vec4(0).toVar();
@@ -335,6 +338,9 @@ export class ReflectionDenoise {
       // 均す段。当たり距離が決まるまでは −1。
       const selected = float(-1).toVar();
       If(this.gbuffer.covered().and(this.sample.roughness.lessThan(NO_REFLECTION_ROUGHNESS)), () => {
+        // 当たり距離を探す段の上限。それより粗い段で当たり距離を見つけても、選ぶのは上限より細かい段で、そこまでの段は
+        // どれも w̄ が 0。
+        const searchCeiling = max(float(DISTANCE_LEVEL), ceil(this.levelCeiling())).toVar();
         // 段ごとの埋めた値。段 0 は受け手の画素そのもの。混ぜる 2 段は必ず求めてある。
         const filled: DenoisedValue[] = [{
           weighted: vec4(this.reflection.rawWeightedImageAt(screenUV), this.reflection.rawWeightAt(screenUV)).toVar(),
@@ -351,7 +357,10 @@ export class ReflectionDenoise {
             value.weightedDistance.assign(next.weightedDistance);
           };
           if (index <= DISTANCE_LEVEL) fill();
-          else If(selected.lessThan(0).or(selected.greaterThanEqual(index - 1)), fill);
+          else {
+            const searching = selected.lessThan(0).and(searchCeiling.greaterThanEqual(index));
+            If(searching.or(selected.greaterThanEqual(index - 1)), fill);
+          }
           // 当たり距離が決まったら、均す段を選ぶ。
           if (index < DISTANCE_LEVEL) continue;
           If(selected.lessThan(0).and(value.weighted.a.greaterThan(0)), () => {
@@ -407,14 +416,29 @@ export class ReflectionDenoise {
   }
 
   // 受け手の画素を均す段(小数)。当たり距離 distance [m] で鏡面ローブが張る円を、受け手から見た鏡像の奥行きへ置いて
-  // 画面へ写し、その直径に N·V を掛けた像のぼけの短い軸の幅の DENOISE_WIDTH_PER_SHORT_AXIS 倍が、段の画素 1 つの一辺に
-  // なる段を選ぶ。
+  // 画面へ写した直径で、levelOfDiameter の段を選ぶ。
   private levelOf(distance: FloatNode): FloatNode {
     const position = this.sample.position;
     const range = length(position).toVar();
     // 鏡像は視線の延長上、視点から |P| + d の所にある。
     const mirrorDepth = position.z.negate().mul(range.add(distance)).div(range);
-    const diameter = distance.mul(tan(specularLobeHalfWidth(this.sample))).mul(this.focalLength).div(mirrorDepth).mul(2);
+    return this.levelOfDiameter(
+      distance.mul(tan(specularLobeHalfWidth(this.sample))).mul(this.focalLength).div(mirrorDepth).mul(2),
+    );
+  }
+
+  // 受け手の画素について、levelOf がどの当たり距離でも超えない段(小数)。levelOf の直径の d / 鏡像の奥行き は、d → ∞ で
+  // |P| / −P.z へ近づく。
+  private levelCeiling(): FloatNode {
+    const position = this.sample.position;
+    const diameter = length(position).mul(tan(specularLobeHalfWidth(this.sample))).mul(this.focalLength)
+      .div(position.z.negate()).mul(2);
+    return this.levelOfDiameter(diameter).add(LEVEL_CEILING_MARGIN);
+  }
+
+  // 受け手の画素を、画面へ写した鏡面ローブの円の直径 diameter [px] で均す段(小数)。直径に N·V を掛けた像のぼけの短い軸の
+  // 幅の DENOISE_WIDTH_PER_SHORT_AXIS 倍が、段の画素 1 つの一辺になる段。
+  private levelOfDiameter(diameter: FloatNode): FloatNode {
     // 視線が面に寝て N·V が 0 以下へ落ちる画素は、段 0 で止まる。
     const shortAxis = diameter.mul(dot(this.sample.normal, this.sample.viewDir));
     return clamp(log2(max(shortAxis.mul(DENOISE_WIDTH_PER_SHORT_AXIS), 1)), 0, REFLECTION_LEVEL_COUNT - 1);
