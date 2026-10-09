@@ -226,7 +226,7 @@ export class ReflectionDenoise {
     this.renderer.setRenderTarget(target);
     this.renderer.autoClear = clear;
     this.quad.material = material;
-    this.gpu.beginPass(GPU_PASS.reflection);
+    this.gpu.beginPass(GPU_PASS.reflectionDenoise);
     this.quad.render(this.renderer);
     this.renderer.autoClear = true;
   }

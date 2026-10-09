@@ -422,6 +422,12 @@ export class RenderPipeline {
     this.debugTarget = target;
   }
 
+  // 次のフレームから、映り込みが画素ごとに引く乱数のタイルを (x, y) [px](整数)ずらして読む。既定は (0, 0)。
+  // 画面が整数 px 動いたときと同じ乱数の入れ替わりを、幾何を止めたまま起こす。
+  public setReflectionNoiseOffset(x: number, y: number): void {
+    this.reflectionPass.setNoiseOffset(x, y);
+  }
+
   // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。

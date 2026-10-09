@@ -367,6 +367,7 @@ export class LabView {
   public applyShot(name: string, graphics: Partial<GraphicsSettingsData> = {}): void {
     const shot = this.shots[name];
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
+    this.pipeline.setReflectionNoiseOffset(...(shot.reflectionNoiseOffset ?? [0, 0]));
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
     const target = shot.debugTarget ?? 'off';
