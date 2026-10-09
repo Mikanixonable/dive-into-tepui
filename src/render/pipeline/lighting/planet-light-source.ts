@@ -21,6 +21,7 @@ import type { CloudSpecies } from '../cloud-atmosphere-renderer';
 import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
 import type { ShadingSample } from './shading-sample';
+import type { ScreenSpaceReflection } from '../screen-space/screen-space-reflection';
 
 // 用意するスロットの本数。同時に使う本数は描画設定 planetLightCount(0〜この値)で決まる。
 // 3 体目の放射照度が描画結果に視覚的影響を与えるほど明るい構図は、低高度のイオ周回軌道（イオ本体＋木星）のような場合に
@@ -116,12 +117,13 @@ class PlanetLightSlot implements LightSource {
   private readonly imaged: BoolUniform = uniform(false);
   private readonly textured: BoolUniform = uniform(false);
 
-  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は写しの大気が読む天体の影。
-  // model は描画設定 planetLightModel の値。
+  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は写しの大気が読む天体の影。reflection は、
+  // 近くの物体の像が鏡面を置き換える重みを読む判定。model は描画設定 planetLightModel の値。
   public constructor(
     private readonly sunLight: SunLight,
     bodyShadow: BodyShadow,
     private readonly sphereSpecular: SphereSpecular,
+    private readonly reflection: ScreenSpaceReflection,
     private readonly slot: SlotUniforms,
     private model: number,
   ) {
@@ -172,7 +174,7 @@ class PlanetLightSlot implements LightSource {
     return material;
   }
 
-  // このスロットの球光源がシェーディング点へ届ける照度。
+  // このスロットの球光源がシェーディング点へ届ける照度。鏡面は、近くの物体の像に置き換わるぶんを除く。
   private contribution(sample: ShadingSample): LightContribution {
     const center = sample.viewPositionOf(this.slot.center);
     const toCenter = center.sub(sample.position);
@@ -187,7 +189,8 @@ class PlanetLightSlot implements LightSource {
       : sphereRadiance;
     const diffuse = this.diffuseIrradianceFor(sample, lightDir, sinSigmaSqr, sphereRadiance);
     const specular: Vec3Node = specularRadiance
-      .mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
+      .mul(this.sphereSpecular.factor(sample, center, this.slot.radius))
+      .mul(this.reflection.farSpecularWeight(sample));
     return {
       diffuse,
       specular,
@@ -288,14 +291,15 @@ export class PlanetLightSource {
   );
   private readonly slotSources: readonly PlanetLightSlot[];
 
-  // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、count は同時に使うスロットの本数(描画設定
-  // planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
+  // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、reflection は近くの物体の像が鏡面を
+  // 置き換える重みを読む判定、count は同時に使うスロットの本数(描画設定 planetLightCount の値)、model は光源モデル
+  // (描画設定 planetLightModel の値)。
   public constructor(
-    sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular,
+    sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular, reflection: ScreenSpaceReflection,
     private count: number, model: number,
   ) {
     this.slotSources = this.slots.map((slot) => new PlanetLightSlot(
-      sunLight, bodyShadow, sphereSpecular, slot, model));
+      sunLight, bodyShadow, sphereSpecular, reflection, slot, model));
   }
 
   // 受け手 sample から見たスロット slot の天体の球冠。

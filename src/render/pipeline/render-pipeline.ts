@@ -4,8 +4,8 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  abs, float, int, log, max, neutralToneMapping, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign, texture,
-  uniform, vec3, vec4,
+  abs, float, getViewPosition, int, log, max, neutralToneMapping, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select,
+  sign, texture, uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { ATMOSPHERE_QUALITY } from '../atmosphere';
@@ -26,6 +26,8 @@ import { MaterialPass } from './material-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { SCREEN_SPACE_DIFFUSE, ScreenSpacePass } from './screen-space/screen-space-pass';
 import { DiffuseCorrection } from './screen-space/diffuse-correction';
+import { ReflectionTracePass } from './screen-space/reflection-trace-pass';
+import { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import { BodyShadow } from './shadow/body-shadow';
 import { RingShadow } from './shadow/ring-shadow';
 import { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
@@ -45,6 +47,9 @@ import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
 import { setCelestialSurfaceViewport } from '../celestial/celestial-surface';
 
+// 映り込みの当たり距離のデバッグ表示で白になる距離 [m]。
+const REFLECTION_DISTANCE_DEBUG_RANGE = 1000;
+
 export class RenderPipeline {
   private readonly gbuffer: GBufferPass;
   private readonly shadowPass: ShadowPass;
@@ -56,6 +61,9 @@ export class RenderPipeline {
   private readonly screenSpacePass: ScreenSpacePass;
   // 遮蔽と照り返しのパスが書く符号付き拡散照度補正。補正光源とデバッグ表示が読む。
   private readonly diffuseCorrection: DiffuseCorrection;
+  private readonly reflectionTracePass: ReflectionTracePass;
+  // 映り込みの追跡が書く判定。天体照と環境光の光源とデバッグ表示が読む。
+  private readonly reflection: ScreenSpaceReflection;
   private readonly lightPrepass: LightPrepass;
   // 球光源の鏡面が引く係数表。太陽と天体照で 1 つを共有する。
   private readonly sphereSpecular: SphereSpecular;
@@ -136,19 +144,23 @@ export class RenderPipeline {
       this._bodyShadow, this._ringShadow, this._cumulusShadow, this.meshShadow, gpu,
     );
     this.sphereSpecular = new SphereSpecular();
+    this.reflection = new ScreenSpaceReflection();
     this.sunSource = new SunSource(
       this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
-      this._sunLight, this._bodyShadow, this.sphereSpecular,
+      this._sunLight, this._bodyShadow, this.sphereSpecular, this.reflection,
       graphics.planetLightCount, graphics.planetLightModel,
     );
-    this._ambient = new AmbientSource(this._sunLight);
+    this._ambient = new AmbientSource(this._sunLight, this.reflection);
     this.diffuseCorrection = new DiffuseCorrection();
     this.screenSpacePass = new ScreenSpacePass(
       renderer, this.gbuffer, this.sunSource, this._planetLight, this._ambient, this.diffuseCorrection, gpu,
       graphics.screenSpaceDiffuse, graphics.screenSpaceQuality,
     );
     this.correctionSource = new DiffuseCorrectionSource(this.diffuseCorrection);
+    this.reflectionTracePass = new ReflectionTracePass(
+      renderer, this.gbuffer, this.reflection, gpu, graphics.screenSpaceSpecular, graphics.screenSpaceSpecularQuality,
+    );
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient, this.correctionSource,
     ], gpu);
@@ -241,7 +253,7 @@ export class RenderPipeline {
       emissive: this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.gbuffer.emissiveTexture, screenUV).rgb), 1),
       ),
-      depth: this.buildCompositeMaterial(vec4(vec3(this.logDepthNode()), 1)),
+      depth: this.buildCompositeMaterial(vec4(vec3(this.logDepthNode(texture(this.gbuffer.depthTexture, screenUV).r)), 1)),
       // 4 枚のスロットを 2x2 に並べて画面いっぱいへ映す。線形深度なのでそのまま濃淡として
       // 読め(遠いほど白)、使われていないスロットは真っ白のまま残る。
       'shadow-map': this.buildCompositeMaterial(vec4(vec3(this.shadowSlotGridNode()), 1)),
@@ -263,6 +275,13 @@ export class RenderPipeline {
         this.signedCorrectionDebug(texture(this.screenSpacePass.denoisedCorrectionTexture, screenUV)), 1)),
       correction: this.buildCompositeMaterial(vec4(
         this.signedCorrectionDebug(texture(this.diffuseCorrection.texture, screenUV)), 1)),
+      // 映り込みの深度は近いほど明るく、面の無い画素は黒。当たり位置は uv を赤・緑へ、当たり距離は対数で濃淡へ写す。
+      'reflection-depth': this.buildCompositeMaterial(vec4(vec3(this.reflectionDepthDebugNode()), 1)),
+      'reflection-hit': this.buildCompositeMaterial(vec4(this.reflection.hitUVAt(screenUV), 0, 1)),
+      'reflection-distance': this.buildCompositeMaterial(
+        vec4(vec3(this.reflectionDistanceDebugNode()), 1),
+      ),
+      'reflection-weight': this.buildCompositeMaterial(vec4(vec3(this.reflection.weightAt(screenUV)), 1)),
       'bounce-source': this.buildCompositeMaterial(
         vec4(this.toneMapped(texture(this.screenSpacePass.surfaceRadianceTexture, screenUV).rgb), 1),
       ),
@@ -329,12 +348,27 @@ export class RenderPipeline {
 
   // 深度バッファの生値を near/far 間の対数スケール(0=near, 1=far)へ変換する。素の深度値は
   // near=2m/far=2e12m のスケールでは端に潰れて識別できないため、対数を挟むことで
-  // 精度の落ち方そのものを見えるようにする。
-  private logDepthNode(): FloatNode {
+  // 精度の落ち方そのものを見えるようにする。depth はいま描いている画素の生値。
+  private logDepthNode(depth: FloatNode): FloatNode {
     // 深度の生値から距離への逆写像は投影方式ごとに違う(透視は 1/z、平行投影は線形)ので、
     // 生値ではなく復元位置の view 空間 z から測る — 逆射影行列がその違いを吸収する。
-    const dist = viewPositionAt(this.gbuffer.depthTexture, this.depthDebugProjInv).z.negate();
+    const dist = getViewPosition(screenUV, depth, this.depthDebugProjInv).z.negate();
     return log(dist.div(this.depthDebugNear)).div(log(this.depthDebugFar.div(this.depthDebugNear)));
+  }
+
+  // 映り込みの追跡が縮小した素の深度を、logDepthNode の目盛りを裏返して近いほど明るく写す。面の無い
+  // 画素(と、追跡を切っているフレーム)は黒。
+  private reflectionDepthDebugNode(): FloatNode {
+    const depth = this.reflectionTracePass.depthAt(screenUV);
+    return select(depth.greaterThan(0), this.logDepthNode(depth).oneMinus(), float(0));
+  }
+
+  // 映り込みの当たり距離を、1 cm で 0、REFLECTION_DISTANCE_DEBUG_RANGE で 1 になる対数の濃淡へ写す。当たらなかった
+  // 画素は黒。
+  private reflectionDistanceDebugNode(): FloatNode {
+    const distance = this.reflection.hitDistanceAt(screenUV);
+    const scaled = log(distance.div(0.01)).div(Math.log(REFLECTION_DISTANCE_DEBUG_RANGE / 0.01));
+    return select(distance.greaterThan(0), scaled.clamp(0, 1), float(0));
   }
 
   // 共有ターゲットと表示用ターゲットを描画バッファの寸法へ合わせ、その寸法を返す。
@@ -370,6 +404,8 @@ export class RenderPipeline {
     this.lensEnabled = graphics.lens;
     this.screenSpacePass.setMode(graphics.screenSpaceDiffuse);
     this.screenSpacePass.setQuality(graphics.screenSpaceQuality);
+    this.reflectionTracePass.setEnabled(graphics.screenSpaceSpecular);
+    this.reflectionTracePass.setQuality(graphics.screenSpaceSpecularQuality);
     this.correctionSource.setEnabled(graphics.screenSpaceDiffuse !== SCREEN_SPACE_DIFFUSE.off);
     this.shadowMaps.setQuality(
       graphics.meshShadow,
@@ -408,6 +444,7 @@ export class RenderPipeline {
       ['G バッファ', () => this.gbuffer.compile(scene, camera, width, height)],
       ['影', () => this.shadowPass.compile(camera, width, height)],
       ['遮蔽と照り返し', () => this.screenSpacePass.compile(camera, width, height)],
+      ['映り込みの追跡', () => this.reflectionTracePass.compile(camera, width, height)],
       ['照明', () => this.lightPrepass.compile(camera, width, height)],
     ];
 
@@ -440,11 +477,11 @@ export class RenderPipeline {
     onPass('完了', passes.length, passes.length);
   }
 
-  // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → ライティング → マテリアル →
-  // 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
+  // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → 映り込みの追跡 → ライティング →
+  // マテリアル → 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
   // マテリアル・大気・world・レンズの4つのパスをスキップする。デバッグ表示を選んでいてもパスは省略しない —
-  // 設定で切られているパス(影マップ・遮蔽と照り返し・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
-  // 空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
+  // 設定で切られているパス(影マップ・遮蔽と照り返し・映り込みの追跡・レンズ)を選べば、そのフレームが何も作って
+  // いないことがそのまま空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
   // フレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
@@ -470,6 +507,9 @@ export class RenderPipeline {
 
     // 遮蔽と照り返しのパス。G バッファと影の透過率を読む。
     this.screenSpacePass.render(camera, width, height);
+
+    // 映り込みの追跡。G バッファだけを読み、ライティングパスが天体照と環境光の鏡面を弱める重みを書く。
+    this.reflectionTracePass.render(camera, width, height);
 
     // ライティングパス。G バッファと影の透過率を読む。
     this.lightPrepass.render(camera, width, height);
@@ -536,6 +576,8 @@ export class RenderPipeline {
     this.shadowMaps.dispose();
     this.screenSpacePass.dispose();
     this.diffuseCorrection.dispose();
+    this.reflectionTracePass.dispose();
+    this.reflection.dispose();
     this.lightPrepass.dispose();
     this.sphereSpecular.dispose();
     this.materialPass.dispose();

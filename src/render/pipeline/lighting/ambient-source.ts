@@ -9,6 +9,7 @@ import { REFERENCE_RADIANT_INTENSITY, type SunLight } from '../sun-light';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import type { ShadingSample } from './shading-sample';
+import type { ScreenSpaceReflection } from '../screen-space/screen-space-reflection';
 
 // 1 天文単位で SUN_IRRADIANCE_1AU になる放射照度へ掛ける割合。
 const AMBIENT_FRACTION = 0.03;
@@ -21,8 +22,8 @@ export function ambientFraction(graphics: GraphicsSettingsData): number {
 export class AmbientSource implements LightSource {
   private readonly fractionUniform: FloatUniform = uniform(0);
   private materialValue: THREE.MeshBasicNodeMaterial | null = null;
-  // sunLight から減衰の中心となる位置を読む。
-  constructor(private readonly sunLight: SunLight) {}
+  // sunLight から減衰の中心となる位置を読む。reflection は、近くの物体の像が鏡面を置き換える重みを読む判定。
+  constructor(private readonly sunLight: SunLight, private readonly reflection: ScreenSpaceReflection) {}
 
   // 基準の放射照度へ掛ける割合。0 で消灯。
   get fraction(): number { return this.fractionUniform.value; }
@@ -44,12 +45,13 @@ export class AmbientSource implements LightSource {
 
   // 拡散は、その画素へ届く環境光の放射照度そのもの。鏡面は同じ光を放射輝度 E/π の一様な環境と
   // して映したもので、粗さによらず一定 — 拡散を持たない金属面が影の中で真っ黒に残らないための項。
+  // 鏡面は、近くの物体の像に置き換わるぶんを除く。
   private contribution(sample: ShadingSample): LightContribution {
     const irradiance = this.irradiance(sample);
     const radiance = irradiance.div(PI);
     return {
       diffuse: irradiance,
-      specular: radiance,
+      specular: radiance.mul(this.reflection.farSpecularWeight(sample)),
     };
   }
 
