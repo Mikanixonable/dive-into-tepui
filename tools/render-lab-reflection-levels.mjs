@@ -6,7 +6,8 @@
 // 1. 帯 × 縮小段: ladder-roughness で画素を帯へ振り分け、ladder-level を段へ戻して、置換の重みが正の画素を段ごとに
 //    数える。「張り付き」は縮小列のいちばん粗い段に張り付いた画素の、重みが正の画素に対する割合。
 // 2. 縁の幅: 帯の中心線に沿った縦の断面で、発光球の像(ladder-reflection)と地球の像(ladder-off-specular)の縁が
-//    10% から 90% の明るさへ上がるまでの px を測り、鏡面ローブの予測幅と並べる。球の予測は、ローブの円の直径
+//    10% から 90% の明るさへ上がるまでの px を測る。球は、同じ場所の球光源をライティングパスで照らした対照の像
+//    (ladder-lights-specular)の縁の幅と並べ、両方を鏡面ローブの予測幅とも並べる。球の予測は、ローブの円の直径
 //    2·d·tan(2α) を当たった点の奥行きで画面へ写した px、地球の予測は、ローブの角幅 2·2α を画素の角幅で割った px。
 //    球の縁は手前側(画面の下側)で測る — 奥側は帯の奥の端が近く、ぼけた縁が帯からはみ出す。
 import { readFileSync } from 'node:fs';
@@ -23,7 +24,7 @@ const CAMERA_PITCH_DEG = 10;
 const BAND_SPACING_DEG = 6.6;
 const SPHERE_DISTANCE = 24;
 const SPHERE_HEIGHT = 2;
-const SPHERE_RADIUS = 1;
+const SPHERE_RADIUS = 0.4;
 // 描画の大きさと縦の画角(tools/render-lab/lab-case.ts)。
 const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
@@ -157,15 +158,19 @@ function levelTable(bands, levelShot) {
 function bandProfile(bands, width, height, band, value) {
   const profile = [];
   for (let y = 0; y < height; y++) {
-    let sum = 0;
-    let count = 0;
-    for (let x = 0; x < width; x++) {
-      if (bands[y * width + x] !== band) continue;
-      sum += x;
-      count++;
+    // 帯はその行でいちばん長く続く区間。粗さが偶然近い離れた画素を数えない。
+    let bestStart = 0;
+    let bestLength = 0;
+    for (let x = 0, start = 0; x <= width; x++) {
+      if (x < width && bands[y * width + x] === band) continue;
+      if (x - start > bestLength) {
+        bestStart = start;
+        bestLength = x - start;
+      }
+      start = x + 1;
     }
-    if (count < MIN_ROW_PIXELS) continue;
-    const center = Math.round(sum / count);
+    if (bestLength < MIN_ROW_PIXELS) continue;
+    const center = bestStart + Math.floor(bestLength / 2);
     let total = 0;
     for (let dx = -PROFILE_HALF_WIDTH; dx <= PROFILE_HALF_WIDTH; dx++) total += value(center + dx, y);
     profile.push({ y, value: total / (2 * PROFILE_HALF_WIDTH + 1) });
@@ -232,16 +237,19 @@ function predictedEarthWidth(alpha) {
   return 2 * LOBE_HALF_WIDTH_PER_ALPHA * alpha * FOCAL;
 }
 
-// 表 2: 帯ごとの縁の幅と予測幅。
-function edgeTable(bands, sphereShot, earthShot) {
+// 表 2: 帯ごとの縁の幅と、対照の球光源の縁の幅・予測幅。
+function edgeTable(bands, sphereShot, lightShot, earthShot) {
   const { width, height } = sphereShot;
   const sphere = (x, y) => tonemappedLuminance(sphereShot.at(x, y));
+  const light = (x, y) => tonemappedLuminance(lightShot.at(x, y));
   const earth = (x, y) => tonemappedLuminance(earthShot.at(x, y));
   const format = (v) => (v === null || !Number.isFinite(v) ? '-' : v.toFixed(1));
-  const ratio = (measured, predicted) => (
-    measured === null || !Number.isFinite(predicted) ? '-' : (measured / predicted).toFixed(2)
+  const ratio = (measured, reference) => (
+    measured === null || reference === null || !Number.isFinite(reference) ? '-' : (measured / reference).toFixed(2)
   );
-  const header = ['帯', '粗さ', '球 実測', '球 予測', '球 比', '地球 実測', '地球 予測', '地球 比'];
+  const header = [
+    '帯', '粗さ', '球 実測', '球光源 実測', '球 / 球光源', '球 予測', '球 / 予測', '地球 実測', '地球 予測', '地球 比',
+  ];
   const lines = [header, header.map(() => '---')];
   for (const [index, roughness] of ROUGHNESSES.entries()) {
     const alpha = roughness * roughness;
@@ -250,12 +258,14 @@ function edgeTable(bands, sphereShot, earthShot) {
     const reach = (expected) => Math.max(MIN_EDGE_REACH, Math.ceil(EDGE_REACH_PER_WIDTH * expected));
     // 球の像の手前の縁は画面の下へ、地球の像の縁は地球の内側(下)から上へ向かって暗くなる。
     const sphereWidth = edgeWidth(bandProfile(bands, width, height, index, sphere), 1, reach(sphereExpected));
+    const lightWidth = edgeWidth(bandProfile(bands, width, height, index, light), 1, reach(sphereExpected));
     // 地球の像は帯の手前の端まで続くので、予測幅が断面の半分を超える粗さでは縁が断面に収まらず、測らない。
     const earthProfile = bandProfile(bands, width, height, index, earth);
     const earthWidth = earthExpected > earthProfile.length / 2 ? null : edgeWidth(earthProfile, -1, reach(earthExpected));
     lines.push([
       index, roughness,
-      format(sphereWidth), format(sphereExpected), ratio(sphereWidth, sphereExpected),
+      format(sphereWidth), format(lightWidth), ratio(sphereWidth, lightWidth),
+      format(sphereExpected), ratio(sphereWidth, sphereExpected),
       format(earthWidth), format(earthExpected), ratio(earthWidth, earthExpected),
     ]);
   }
@@ -272,7 +282,10 @@ function main() {
   console.log('帯 × 縮小段(置換の重みが正の画素)\n');
   console.log(levelTable(bands, readShot(dir, 'ladder-level')));
   console.log('\n縁の幅 [px](10% → 90%)\n');
-  console.log(edgeTable(bands, readShot(dir, 'ladder-reflection'), readShot(dir, 'ladder-off-specular')));
+  console.log(edgeTable(
+    bands,
+    readShot(dir, 'ladder-reflection'), readShot(dir, 'ladder-lights-specular'), readShot(dir, 'ladder-off-specular'),
+  ));
 }
 
 main();

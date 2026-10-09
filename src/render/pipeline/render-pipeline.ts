@@ -21,6 +21,7 @@ import { AmbientSource } from './lighting/ambient-source';
 import { DiffuseCorrectionSource } from './lighting/diffuse-correction-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
+import { SphereLights } from './lighting/sphere-lights';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
 import { ReflectionPass } from './reflection-pass';
@@ -75,6 +76,7 @@ export class RenderPipeline {
   private readonly _planetLight: PlanetLightSource;
   private readonly _ambient: AmbientSource;
   private readonly correctionSource: DiffuseCorrectionSource;
+  private readonly _sphereLights: SphereLights;
   private readonly materialPass: MaterialPass;
   private readonly reflectionPass: ReflectionPass;
   private readonly atmospherePass: AtmospherePass;
@@ -117,7 +119,7 @@ export class RenderPipeline {
   private debugTarget: DebugTargetId = 'off';
 
   // 以下は、毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・環境光の割合・
-  // 大気を持つ天体)の書き込み先。
+  // 置く球光源・大気を持つ天体)の書き込み先。
   public get sunLight(): SunLight { return this._sunLight; }
   public get exposure(): Exposure { return this._exposure; }
   public get bodyShadow(): BodyShadow { return this._bodyShadow; }
@@ -125,6 +127,7 @@ export class RenderPipeline {
   public get cumulusShadow(): CloudShadowRenderer { return this._cumulusShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
+  public get sphereLights(): SphereLights { return this._sphereLights; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
 
   // graphics は構築時点の描画品質設定。以後の変更は rebuildForGraphics() で受ける。
@@ -165,8 +168,10 @@ export class RenderPipeline {
     this.reflectionTracePass = new ReflectionTracePass(
       renderer, this.gbuffer, this.reflection, gpu, graphics.screenSpaceSpecular, graphics.screenSpaceSpecularQuality,
     );
+    this._sphereLights = new SphereLights(this.sphereSpecular);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient, this.correctionSource,
+      ...this._sphereLights.sources,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
 
