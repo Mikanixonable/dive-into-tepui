@@ -1,11 +1,12 @@
 // 手順8-15の因子の組と κ の候補について、成分ごとの平均の帯(Σ|値| で重みを付けた帯番号)を測り、基準(因子なし、
-// κ_b = κ_o = 0.75)と平均の帯が揃う κ を求める。照り返し = 「照り返しあり − 遮蔽のみ」の収束した帯、遮蔽 = 「遮蔽のみ」の収束した帯。
+// κ_b = κ_o = 0.75)と平均の帯が揃う κ を求める。--target を渡すと、基準はその場で測らず過去の出力の基準の行の値を使う
+// (固定の因子 d を入れる前に測った、距離だけの帯座標)。照り返し = 「照り返しあり − 遮蔽のみ」の収束した帯、遮蔽 = 「遮蔽のみ」の収束した帯。
 // 使い方: node tools/render-lab-screen-space-band-balance.mjs [--factors=b.d=1,o.d=1] [--bounce-scales=0.5,0.6,0.75]
-//   [--occlusion-scales=0.75] [--passes=128] [--scene=<name>] [--label=<出力名>]
+//   [--occlusion-scales=0.75] [--target=<過去の band-balance の label>] [--passes=128] [--scene=<name>] [--label=<出力名>]
 // 1 つの Chrome で全ケースを測る。mode 1(遮蔽のみ)は κ_b に依らないので、同じ遮蔽の因子・κ_o なら使い回す。組の切り替えは setTier だけ。
 // 揃う κ は、候補の平均の帯が基準の値をまたぐ隣り合う 2 点の間を、κ の対数について線形補間して出す(またがなければ null)。
 // 角度ケースは遮蔽が 0 なので遮蔽の欄を省く。出力は OUTPUT/band-balance/<label>.json と .md(label の既定は latest)。
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { bandStatsOf, BAND_COUNT } from './screen-space-chain-bands.mjs';
 import { factorsLabelOf, FIXED_FACTORS, parseFactors } from './screen-space-chain-factors.mjs';
@@ -23,13 +24,15 @@ const PASSES = Number(argumentOf('passes') ?? 128);
 const LABEL = argumentOf('label') ?? 'latest';
 if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(LABEL)) throw new Error('--label must be a safe lowercase label');
 const factorsText = argumentOf('factors');
+const TARGET = argumentOf('target');
+if (TARGET !== undefined && !/^[a-z0-9][a-z0-9-]{0,47}$/.test(TARGET)) throw new Error('--target must be a safe lowercase label');
 const scenes = argumentOf('scene') === undefined ? SCENES : SCENES.filter(({ name }) => name === argumentOf('scene'));
 if (scenes.length === 0) throw new Error(`unknown scene: ${argumentOf('scene')}`);
 
 // 測る組。baseline は因子なし(欄ごと無し)、candidates は κ_o × κ_b の全組(--factors を省くと因子の強さは全部 0)。
 const baselineTier = tierOf(BASELINE_KAPPA);
 const candidateTiers = occlusionScales.flatMap((ko) => bounceScales.map((kb) => tierOf(ko, { ...parseFactors(factorsText ?? 'kb=0', ko), bounceScale: kb })));
-const allTiers = [baselineTier, ...candidateTiers];
+const allTiers = TARGET === undefined ? [baselineTier, ...candidateTiers] : candidateTiers;
 // mode 1 の結果は、遮蔽の因子と κ_o が同じ組で共通。
 const occlusionKeyOf = (tier) => JSON.stringify([tier.bandScale, tier.bandFactors?.occlusion ?? null]);
 
@@ -113,11 +116,19 @@ function markdownOf(results) {
   return lines.join('\n');
 }
 
+// --target の出力の、ケース scene の基準の行(測った最初の行)の平均の帯。
+function targetBaselineOf(scene) {
+  const file = path.join(OUTPUT, 'band-balance', `${TARGET}.json`);
+  const row = JSON.parse(readFileSync(file, 'utf8')).results.find((result) => result.scene === scene)?.rows[0];
+  if (row === undefined) throw new Error(`--target ${TARGET}: no row for ${scene}`);
+  return row;
+}
+
 const results = [];
 await withLab(async (lab) => {
   for (const scene of scenes) {
     const rows = await measureScene(lab, scene);
-    const matches = matchesOf(rows, rows[0]);
+    const matches = matchesOf(rows, TARGET === undefined ? rows[0] : targetBaselineOf(scene.name));
     results.push({ scene: scene.name, rows, matches });
     console.log(`${scene.name}: measured ${rows.length} settings`);
   }

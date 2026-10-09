@@ -13,7 +13,8 @@ const STRENGTH_KEYS = {
 };
 const SIDES = [['bounce', '照り返し'], ['occlusion', '遮蔽']];
 
-// "kb=0.6,b.c=1,o.c=1" のような書式から因子の組を作る。書かなかった強さは 0(因子なし)、kb(κ_b)は bandScale(κ_o)。
+// "kb=0.6,b.c=1,o.c=1,pc=0.5" のような書式から因子の組を作る。書かなかった強さは 0(因子なし)、kb(κ_b)は bandScale(κ_o)、
+// pc(c の冪 p。照り返しと遮蔽で共通)は書かなければ欄ごと無し(1)。
 export function parseFactors(text, bandScale) {
   const factors = { bounceScale: bandScale,
     bounce: { senderFacing: 0, receiverFacing: 0, receiverView: 0 },
@@ -23,10 +24,11 @@ export function parseFactors(text, bandScale) {
     const value = Number(valueText);
     if (valueText === undefined || valueText === '' || !Number.isFinite(value) || value < 0) throw new Error(`--factors: invalid entry "${pair}"`);
     if (key === 'kb') factors.bounceScale = value;
+    else if (key === 'pc') factors.receiverViewExponent = value;
     else if (STRENGTH_KEYS[key] !== undefined) {
       const [side, name] = STRENGTH_KEYS[key];
       factors[side][name] = value;
-    } else throw new Error(`--factors: unknown key "${key}" (kb, ${Object.keys(STRENGTH_KEYS).join(', ')}; d is fixed in the scan)`);
+    } else throw new Error(`--factors: unknown key "${key}" (kb, pc, ${Object.keys(STRENGTH_KEYS).join(', ')}; d is fixed in the scan)`);
   }
   return factors;
 }
@@ -63,7 +65,9 @@ export function factorsLabelOf(tier, fixedFactors = undefined) {
   const sideText = ([side, title]) => {
     const kappa = side === 'bounce' ? factors?.bounceScale ?? tier.bandScale : tier.bandScale;
     const strengths = factors?.[side] ?? {};
-    const multipliers = [multiplierText(strengths.senderFacing, 'cos θ'), multiplierText(strengths.receiverView, 'cos ε')]
+    const p = factors?.receiverViewExponent ?? 1;
+    const cosEpsilon = p === 1 ? 'cos ε' : p === 0.5 ? '√cos ε' : `(cos ε)^${numberText(p)}`;
+    const multipliers = [multiplierText(strengths.senderFacing, 'cos θ'), multiplierText(strengths.receiverView, cosEpsilon)]
       .filter((text) => text !== null);
     const divisors = [divisorText(strengths.receiverFacing, 'cos φ'),
       divisorText(senderViewExponentOf(side, factors, fixedFactors), 'n_s·v_s', true)].filter((text) => text !== null);

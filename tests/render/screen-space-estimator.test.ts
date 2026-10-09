@@ -546,6 +546,24 @@ export function register(): void {
     near(weights.reduce((sum, weight, band) => sum + weight * band, 0), Math.log2(0.75 * rho) - 1, 1e-12, '重みの平均');
   });
 
+  test('screen space estimator: 掛ける因子 c の冪 p = 1/2・s = 1 は cos ε = 1/4 で波長を半分にし、cos ε = 0 でも有限で帯 0', () => {
+    const rho = 40;
+    const bands: BandSplit = {
+      ...bandsWith(6, 0.75, 0), receiverViewExponent: float(0.5),
+      bounce: { senderFacing: float(0), receiverFacing: float(0), receiverView: float(1) },
+      occlusion: { receiverFacing: float(0), receiverView: float(1) },
+    };
+    const meanBandOf = (weights: FloatNode[]): number => {
+      const values = weights.map(valueOf);
+      assert.ok(values.every((weight) => Number.isFinite(weight) && weight >= 0));
+      return values.reduce((sum, weight, band) => sum + weight * band, 0);
+    };
+    for (const [cosine, expected] of [[0.25, Math.log2(0.75 * rho) - 1], [0, 0]] as const) {
+      near(meanBandOf(bounceWeights(bands, float(rho), float(cosine), facingOf(1))), expected, 1e-6, `照り返し cos ε = ${cosine}`);
+      near(meanBandOf(occlusionWeights(bands, float(rho), float(cosine), facingOf(1))), expected, 1e-6, `遮蔽 cos ε = ${cosine}`);
+    }
+  });
+
   test('screen space estimator: 割る因子は冪 cos^s で弱め、s = 0 で距離だけ、cos = 0 は最も粗い帯へ頭打ちで有限', () => {
     const rho = 2;
     const strength = (receiverFacing: number): BandSplit => ({

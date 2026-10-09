@@ -194,6 +194,57 @@ function buildViewAngleSliders(view: LabView): () => void {
   };
 }
 
+// 仮設の近傍拡散の帯座標 c のトグルの 1 モード。tier は走査の段に足す欄で、κ は成分ごとの平均の帯を c なし(距離だけの
+// 帯座標 w0)に揃える値(tools/render-lab-screen-space-band-balance.mjs の --target=d1 の測定。ケースごとの κ の幾何平均)。
+interface BandCoordinateMode {
+  readonly label: string;
+  readonly tier: Pick<ScanTier, 'bandScale' | 'bandFactors'>;
+}
+// c = cos ε の因子 (1 − s) + s·c^p を、照り返しと遮蔽の両方へ掛けるモード。bounceScale が κ_b、bandScale が κ_o。
+const cFactorMode = (
+  label: string, strength: number, exponent: number, bounceScale: number, bandScale: number,
+): BandCoordinateMode => ({
+  label: `${label} (κ_b ${bounceScale.toFixed(3)} / κ_o ${bandScale.toFixed(3)})`,
+  tier: {
+    bandScale,
+    bandFactors: {
+      bounceScale, receiverViewExponent: exponent,
+      bounce: { receiverView: strength }, occlusion: { receiverView: strength },
+    },
+  },
+});
+const BAND_COORDINATE_MODES = {
+  none: { label: 'c なし (κ_b 0.540 / κ_o 0.499)', tier: { bandScale: 0.499, bandFactors: { bounceScale: 0.540 } } },
+  c: cFactorMode('c', 1, 1, 1.094, 0.849),
+  half: cFactorMode('(1+c)/2', 0.5, 1, 0.697, 0.605),
+  sqrt: cFactorMode('c^½', 1, 0.5, 0.756, 0.640),
+} as const satisfies Record<string, BandCoordinateMode>;
+type BandCoordinateModeId = keyof typeof BAND_COORDINATE_MODES;
+
+// 走査の段のうち、モードの κ を測った段(精細さ「中」)。lab の側で持つのは、描画品質設定が変わると走査の段が精細さの
+// 段へ戻るため。
+const BAND_COORDINATE_BASE_TIER = { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4 };
+
+// 仮設の近傍拡散の帯座標 c(受け手の法線と視線の内積)の切り替えを組む。選んだモードは描画品質設定が変わっても
+// 掛け直す。採否を目で決めるまで残す。
+function buildBandCoordinateToggle(view: LabView, graphics: UserSettings['graphics']): void {
+  let selected: BandCoordinateModeId = 'none';
+  const apply = (): void => {
+    view.setScanTier({ ...BAND_COORDINATE_BASE_TIER, ...BAND_COORDINATE_MODES[selected].tier });
+    view.render();
+  };
+  const items = (Object.keys(BAND_COORDINATE_MODES) as BandCoordinateModeId[])
+    .map((id) => [id, BAND_COORDINATE_MODES[id].label] as const);
+  const control = new SegmentedControl<BandCoordinateModeId>('モード', items, (id) => {
+    selected = id;
+    control.setSelected(id);
+    apply();
+  });
+  document.getElementById('band-coordinate')!.appendChild(control.element);
+  control.setSelected(selected);
+  graphics.subscribe(apply);
+}
+
 // 仮設の雲のつまみ(積雲のディザと、半透明な殻の種類ごとの濃さ・高度・反射率)を組む。つまみは
 // 描画の uniform を書き換え、view をその場で描き直す。
 function buildCloudSliders(view: LabView): void {
@@ -337,6 +388,7 @@ async function init(): Promise<void> {
   };
 
   buildCloudSliders(view);
+  buildBandCoordinateToggle(view, settings.graphics);
 
   targets.setSelected('off');
   selectStyle('realistic');

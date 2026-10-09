@@ -51,9 +51,10 @@ export interface ScanTier {
 }
 
 // 照り返しの尺度 κ_b と、因子の強さ s(0..1。省くと 0)。bounce は照り返しの a〜c、occlusion は遮蔽の b・c
-// (FacingStrengths の欄)。
+// (FacingStrengths の欄)。receiverViewExponent は掛ける因子 c の冪 p(照り返しと遮蔽で共通。省くと 1)。
 export interface BandFactors {
   readonly bounceScale?: number;
+  readonly receiverViewExponent?: number;
   readonly bounce?: {
     readonly senderFacing?: number;
     readonly receiverFacing?: number;
@@ -132,6 +133,7 @@ export class ScreenSpacePass {
     senderFacing: uniform(0), receiverFacing: uniform(0), receiverView: uniform(0),
   };
   private readonly occlusionStrengths = { receiverFacing: uniform(0), receiverView: uniform(0) };
+  private readonly receiverViewExponent: FloatUniform = uniform(1);
   // 走査のずれをホワイトノイズから引くパスの番号(setWhiteNoisePass)。負ならブルーノイズから引く。
   private readonly whiteNoisePass = uniform(-1, 'int');
   // 走査の全体の回転と、歩み・丸めのブルーノイズ、拡大のブルーノイズを変える seed [タイルの幅]。
@@ -416,7 +418,8 @@ export class ScreenSpacePass {
         this.surfaces, this.fullSize, this.projection, this.projectionInverse, this.sliceCount, this.stepCount, noise,
         this.ambient.irradiance(this.sample), planets, radiance,
         {
-          count, bounceScale: this.bounceBandScale, bounce: this.bounceStrengths,
+          count, receiverViewExponent: this.receiverViewExponent,
+          bounceScale: this.bounceBandScale, bounce: this.bounceStrengths,
           occlusionScale: this.bandScale, occlusion: this.occlusionStrengths,
         },
       );
@@ -524,6 +527,7 @@ export class ScreenSpacePass {
     this.bounceStrengths.senderFacing.value = factors?.bounce?.senderFacing ?? 0;
     this.bounceStrengths.receiverFacing.value = factors?.bounce?.receiverFacing ?? 0;
     this.bounceStrengths.receiverView.value = factors?.bounce?.receiverView ?? 0;
+    this.receiverViewExponent.value = factors?.receiverViewExponent ?? 1;
     this.occlusionStrengths.receiverFacing.value = factors?.occlusion?.receiverFacing ?? 0;
     this.occlusionStrengths.receiverView.value = factors?.occlusion?.receiverView ?? 0;
     const scanWidth = Math.max(1, Math.ceil(width * tier.scale));

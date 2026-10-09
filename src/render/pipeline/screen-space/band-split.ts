@@ -16,8 +16,10 @@ export interface FacingStrengths {
 
 // 補正を遮りの画面距離 ρ [走査の画素] と向きで分ける帯。count は帯の数(1 なら分けない)で、帯 b は座標 b を受け持つ。
 // 遮蔽に送り手の向きの因子 senderFacing はない(光を返す面の向きの話)。
+// receiverViewExponent は掛ける因子 c の冪 p((1 − s) + s·(cos ε)^p。照り返しと遮蔽で共通。省くと 1)。
 export interface BandSplit {
   readonly count: number;
+  readonly receiverViewExponent?: FloatNode;
   readonly bounceScale: FloatNode;
   readonly bounce: FacingStrengths;
   readonly occlusionScale: FloatNode;
@@ -60,6 +62,13 @@ function weakened(strength: FloatNode, cosine: FloatNode): FloatNode {
   return float(1).sub(strength).add(strength.mul(cosine));
 }
 
+// 受け手と視線の因子 c。cos ε = 0 でも NaN を出さないよう、冪の前に下限を置く(0 は帯 0 へ頭打ち)。
+function receiverViewMultiplier(bands: BandSplit, strength: FloatNode, cosine: FloatNode): FloatNode {
+  const exponent = bands.receiverViewExponent;
+  if (exponent === undefined) return weakened(strength, cosine);
+  return weakened(strength, pow(max(cosine, COORDINATE_FLOOR), exponent));
+}
+
 // 割る因子の弱め方。0 は最も粗い帯へ頭打ちになるだけで安全なので下限は要らず、冪なら側面(cos → 0)を最も粗い帯へ送りつつ
 // 中くらいの cos の動きを s で縮められる(線形だと cos = 0 でも最大 log₂(1/(1 − s)) 帯しか動かない)。
 // pow に渡す前の下限は NaN と 0^0 を避けるためで、s = 0 なら 1。
@@ -94,7 +103,7 @@ export function occlusionWeights(
 ): FloatNode[] {
   const { occlusionScale, occlusion } = bands;
   const coordinate = bandCoordinate(
-    bands.count, occlusionScale, rho, weakened(occlusion.receiverView, receiverView),
+    bands.count, occlusionScale, rho, receiverViewMultiplier(bands, occlusion.receiverView, receiverView),
     weakenedDivisor(occlusion.receiverFacing, facing.receiverFacing)
       .mul(senderViewDivisor(facing)),
   );
@@ -108,7 +117,7 @@ export function bounceWeights(
   const { bounceScale, bounce } = bands;
   const coordinate = bandCoordinate(
     bands.count, bounceScale, rho,
-    weakened(bounce.senderFacing, facing.senderFacing).mul(weakened(bounce.receiverView, receiverView)),
+    weakened(bounce.senderFacing, facing.senderFacing).mul(receiverViewMultiplier(bands, bounce.receiverView, receiverView)),
     weakenedDivisor(bounce.receiverFacing, facing.receiverFacing)
       .mul(senderViewDivisor(facing)),
   );
