@@ -2,16 +2,14 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { TIER_FACTORS_FIELD } from './screen-space-chain-factors.mjs';
 import { SCAN_SCALE } from './screen-space-chain-runs.mjs';
 import { HEIGHT, WIDTH } from './screen-space-lab.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 export const CHUNK_PASSES = 256;
 
-// 撮影の走査の段。bandScale が κ_o、factors(因子の組。省くと欄ごと無し)が因子と κ_b。
-export const tierOf = (bandScale, factors = null) => ({ scale: SCAN_SCALE, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale,
-  ...(factors === null ? {} : { [TIER_FACTORS_FIELD]: factors }) });
+// 撮影の走査の段。bandScale が κ。
+export const tierOf = (bandScale) => ({ scale: SCAN_SCALE, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale });
 export const SCENES = [
   { name: 'bay-earth-open', caseName: 'bay', caseFile: 'tools/render-lab/bay-cases.ts', shot: 'bay-earth-open', rois: { target: [125, 30, 31, 19], 'w1-wall': [137, 25, 16, 16] } },
   { name: 'cornell-box', caseName: 'cornell-box', caseFile: 'tools/render-lab/cornell-box-case.ts', shot: 'cornell-box', rois: { target: [30, 42, 28, 33], 'w3-glow': [112, 24, 44, 30] } },

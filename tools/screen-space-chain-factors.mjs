@@ -1,5 +1,5 @@
-// 手順8-15の帯座標の因子の組(factors)の、setTier へ渡す欄・短い書式の読み取り・帯座標の式での表示。
-// 欄の名前と形は src/ 側の確定待ち。合わせるのはここ(TIER_FACTORS_FIELD と STRENGTH_KEYS)だけでよい。
+// 手順8-15の帯座標の式の表示。tier の bandFactors は 8-15 で切り替えの口を閉じる前の記録にだけ残り、古い run のラベルを
+// 出すために読む。
 export const TIER_FACTORS_FIELD = 'bandFactors';
 
 // src の走査に固定で入っている因子(band-split.ts の SENDER_VIEW_EXPONENT と receiverViewMultiplier の写し)。撮影の条件の
@@ -11,32 +11,7 @@ export const FIXED_FACTORS = {
   receiverView: { exponent: 1, components: ['bounce', 'occlusion'] },
 };
 
-// 短い書式のキー → [成分, 欄の名前]。キーは計画の記号 a・b(a は照り返しだけ)。c・d は固定の因子なので書式に無い。
-const STRENGTH_KEYS = {
-  'b.a': ['bounce', 'senderFacing'], 'b.b': ['bounce', 'receiverFacing'],
-  'o.b': ['occlusion', 'receiverFacing'],
-};
 const SIDES = [['bounce', '照り返し'], ['occlusion', '遮蔽']];
-
-// "kb=0.6,b.b=1,o.b=1,pa=0.5" のような書式から因子の組を作る。書かなかった強さは 0(因子なし)、kb(κ_b)は bandScale(κ_o)、
-// pa(a の冪 p。照り返しだけ)は書かなければ欄ごと無し(1)。
-export function parseFactors(text, bandScale) {
-  const factors = { bounceScale: bandScale,
-    bounce: { senderFacing: 0, receiverFacing: 0 },
-    occlusion: { receiverFacing: 0 } };
-  for (const pair of text.split(',')) {
-    const [key, valueText] = pair.split('=');
-    const value = Number(valueText);
-    if (valueText === undefined || valueText === '' || !Number.isFinite(value) || value < 0) throw new Error(`--factors: invalid entry "${pair}"`);
-    if (key === 'kb') factors.bounceScale = value;
-    else if (key === 'pa') factors.senderFacingExponent = value;
-    else if (STRENGTH_KEYS[key] !== undefined) {
-      const [side, name] = STRENGTH_KEYS[key];
-      factors[side][name] = value;
-    } else throw new Error(`--factors: unknown key "${key}" (kb, pa, ${Object.keys(STRENGTH_KEYS).join(', ')}; c and d are fixed in the scan)`);
-  }
-  return factors;
-}
 
 const numberText = (value) => String(Number(value.toFixed(3)));
 

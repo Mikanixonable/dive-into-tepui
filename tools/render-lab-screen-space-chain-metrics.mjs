@@ -1,9 +1,9 @@
 // 手順8-15の帯鎖を、走査解像度の構造誤差と1パス雑音に分けて撮る。
 // 帯ごとの標準偏差(輝点の探索)・画素ごとの最大偏差・帯ごとの1パス・seed 違いの1パスの補正項も同じ撮影で書く。
 // 使い方: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>]
-//   [--passes=1024|2048|4096] [--band-scale=<κ_o>] [--factors=kb=0.6,b.d=1,b.a=0.5,o.d=1] [--occlusion-invariant]
+//   [--passes=1024|2048|4096] [--band-scale=<κ>] [--occlusion-invariant]
 //   [--dry-run | --reindex | --cache-only]
-// --factors は帯座標の因子の組(書式は screen-space-chain-factors.mjs)。--cache-only は撮影済みの run の収束の積算のキャッシュに
+// 帯座標の因子 c・d は走査に固定で入っている(FIXED_FACTORS が記録)。--cache-only は撮影済みの run の収束の積算のキャッシュに
 // 足りない和・二乗の和だけを撮り足して標準偏差の帯を書く(ほかの出力と記録は触らない)。
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -13,7 +13,7 @@ import { captureBandSumInvariant, invariantMapOf } from './screen-space-band-sum
 import { BAND_COUNT, bandScaleOf, readBands, scaleOfBands, stdBandsOfCache, writeConvergedStdBands, writeOnePassBands } from './screen-space-chain-bands.mjs';
 import { cachedMean, chunkComplete, chunkFile } from './screen-space-chain-cache.mjs';
 import { accumulateMaxDeviation, deviationStatsOf, rgbaOfScalar, roiRms } from './screen-space-chain-deviation.mjs';
-import { FIXED_FACTORS, parseFactors, TIER_FACTORS_FIELD } from './screen-space-chain-factors.mjs';
+import { FIXED_FACTORS, TIER_FACTORS_FIELD } from './screen-space-chain-factors.mjs';
 import { ONE_PASS_CORRECTION_SEEDS, writeLandingIndex, writeRunIndex } from './screen-space-chain-index.mjs';
 import { BASELINE_RUN, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_WIDTH, signedPng, signedRgb } from './screen-space-chain-runs.mjs';
 import { CHUNK_PASSES, SCENES, sceneSignatureOf, sourceSignatureOf, tierOf } from './screen-space-chain-setup.mjs';
@@ -33,8 +33,8 @@ const NOISE_DISPLAY_QUANTILE = 0.995;
 const argumentOf = (name) => process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
 const bandScale = argumentOf('band-scale') === undefined ? 0.75 : Number(argumentOf('band-scale'));
 if (!Number.isFinite(bandScale) || bandScale < 0) throw new Error('--band-scale must be finite and nonnegative');
-const FACTORS = argumentOf('factors') === undefined ? null : parseFactors(argumentOf('factors'), bandScale);
-const TIER = tierOf(bandScale, FACTORS);
+if (argumentOf('factors') !== undefined) throw new Error('--factors: 8-15 で因子の切り替えを閉じた(a・b は採らず、c・d は走査に固定)');
+const TIER = tierOf(bandScale);
 const PASSES = argumentOf('passes') === undefined ? 1024 : Number(argumentOf('passes'));
 if (![1024, 2048, 4096].includes(PASSES)) throw new Error('--passes must be 1024, 2048, or 4096');
 const RUN_LABEL = argumentOf('run');
@@ -84,7 +84,6 @@ function existingRunRecord() {
   return record;
 }
 
-// 因子の欄は TIER に指定されたときだけ入るので、因子なしの run の鍵・署名・条件は因子の導入前と変わらない。
 const runRecord = existingRunRecord() ?? {
   schema: 2, run: RUN_LABEL, createdAt: new Date().toISOString(),
   scanSourceSignature: COMMON_SIGNATURE, conditions: captureConditions(), scenes: {},
@@ -119,7 +118,7 @@ function captureConditions() {
     noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: BASELINE_LABEL };
 }
 
-// 候補どうしで違ってよい条件(κ と因子の組)と、走査に固定で入る因子の記録を除いた条件。
+// 候補どうしで違ってよい条件(κ と、古い記録の因子の欄)と、走査に固定で入る因子の記録を除いた条件。
 function sharedConditionsOf(conditions) {
   const shared = structuredClone(conditions);
   delete shared.tier.bandScale;
@@ -498,8 +497,7 @@ async function captureScene(lab, scene, dir, cache) {
       hits: cacheHits, misses: cacheMisses, totalChunks: Math.ceil(PASSES / CHUNK_PASSES) },
     captureCommand: `node tools/render-lab-screen-space-chain-metrics.mjs --run=${RUN_LABEL} --scene=${scene.name} --passes=${PASSES}`
       + (BASELINE_LABEL === BASELINE_RUN ? '' : ` --baseline=${BASELINE_LABEL}`)
-      + (argumentOf('band-scale') === undefined ? '' : ` --band-scale=${bandScale}`)
-      + (argumentOf('factors') === undefined ? '' : ` --factors=${argumentOf('factors')}`),
+      + (argumentOf('band-scale') === undefined ? '' : ` --band-scale=${bandScale}`),
     captureStartedAt: sceneStartedAt, captureWallTimeMs: performance.now() - sceneStarted,
     conditions: captureConditions(), exposure, blueNoiseSeed: seedOf(0),
     whiteNoise: { onePassInvariantPass: INVARIANT_PASS, convergedPassIndices: [0, PASSES - 1],
