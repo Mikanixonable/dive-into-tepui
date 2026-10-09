@@ -23,10 +23,14 @@ export function register(): void {
     before('far-specular', 'material');
     before('material', 'reflection-source');
     before('reflection-source', 'reflection-depth');
-    before('reflection-depth', 'reflection-weight');
-    before('reflection-weight', 'reflection-distance');
-    before('reflection-distance', 'reflection');
-    before('reflection', 'atmosphere');
+    before('reflection-depth', 'raw-reflection-weight');
+    before('raw-reflection-weight', 'raw-reflection-distance');
+    before('raw-reflection-distance', 'raw-reflection');
+    before('raw-reflection', 'denoised-reflection-weight');
+    before('denoised-reflection-weight', 'denoised-reflection-distance');
+    before('denoised-reflection-distance', 'denoised-reflection');
+    before('denoised-reflection', 'reflection-denoise-level');
+    before('reflection-denoise-level', 'atmosphere');
     before('atmosphere', 'lens');
     assert.ok(!ids.includes('occlusion' as typeof ids[number]));
     assert.ok(!ids.includes('indirect' as typeof ids[number]));

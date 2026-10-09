@@ -29,6 +29,7 @@ import { ShadingCompositePass } from './shading-composite-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { SCREEN_SPACE_DIFFUSE, ScreenSpacePass } from './screen-space/screen-space-pass';
 import { DiffuseCorrection } from './screen-space/diffuse-correction';
+import { REFLECTION_LEVEL_COUNT } from './screen-space/reflection-denoise';
 import { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import { BodyShadow } from './shadow/body-shadow';
 import { RingShadow } from './shadow/ring-shadow';
@@ -284,11 +285,23 @@ export class RenderPipeline {
       'reflection-source': hdrMaterial(this.materialPass.reflectionSourceTexture),
       // 映り込みの深度は近いほど明るく、面の無い画素は黒。当たり距離は対数で濃淡へ写す。
       'reflection-depth': this.buildCompositeMaterial(vec4(vec3(this.reflectionDepthDebugNode()), 1)),
-      'reflection-weight': this.buildCompositeMaterial(vec4(vec3(this.reflection.weightAt(screenUV)), 1)),
-      'reflection-distance': this.buildCompositeMaterial(
-        vec4(vec3(this.reflectionDistanceDebugNode()), 1),
+      'raw-reflection-weight': this.buildCompositeMaterial(vec4(vec3(this.reflection.rawWeightAt(screenUV)), 1)),
+      'raw-reflection-distance': this.buildCompositeMaterial(
+        vec4(vec3(this.reflectionDistanceDebugNode(this.reflection.rawWeightedDistanceAt(screenUV))), 1),
       ),
-      reflection: this.buildCompositeMaterial(vec4(this.toneMapped(this.reflection.weightedImageAt(screenUV)), 1)),
+      'raw-reflection': this.buildCompositeMaterial(
+        vec4(this.toneMapped(this.reflection.rawWeightedImageAt(screenUV)), 1),
+      ),
+      'denoised-reflection-weight': this.buildCompositeMaterial(
+        vec4(vec3(this.reflection.denoisedWeightAt(screenUV)), 1),
+      ),
+      'denoised-reflection-distance': this.buildCompositeMaterial(
+        vec4(vec3(this.reflectionDistanceDebugNode(this.reflection.denoisedWeightedDistanceAt(screenUV))), 1),
+      ),
+      'denoised-reflection': this.buildCompositeMaterial(
+        vec4(this.toneMapped(this.reflection.denoisedWeightedImageAt(screenUV)), 1),
+      ),
+      'reflection-denoise-level': this.buildCompositeMaterial(vec4(this.reflectionDenoiseLevelDebugNode(), 1)),
       atmosphere: hdrMaterial(this.atmospherePass.inspectTexture),
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
       'planet-light': this.buildCompositeMaterial(
@@ -366,12 +379,20 @@ export class RenderPipeline {
     return select(depth.greaterThan(0), this.logDepthNode(depth).oneMinus(), float(0));
   }
 
-  // 映り込みの重みを掛けた当たり距離 w × d を、1 cm で 0、REFLECTION_DISTANCE_DEBUG_RANGE で 1 になる対数の濃淡へ
-  // 写す。当たらなかった画素は黒。
-  private reflectionDistanceDebugNode(): FloatNode {
-    const distance = this.reflection.weightedDistanceAt(screenUV);
+  // 映り込みの重みを掛けた当たり距離 distance [m] を、1 cm で 0、REFLECTION_DISTANCE_DEBUG_RANGE で 1 になる対数の
+  // 濃淡へ写す。当たらなかった画素は黒。
+  private reflectionDistanceDebugNode(distance: FloatNode): FloatNode {
     const scaled = log(distance.div(0.01)).div(Math.log(REFLECTION_DISTANCE_DEBUG_RANGE / 0.01));
     return select(distance.greaterThan(0), scaled.clamp(0, 1), float(0));
+  }
+
+  // 映り込みを均すのに読んだ段を、段 + 1 を段数で割った線形の灰へ写し、いちばん粗い段を白にする。w̄ が 0 の画素は青、
+  // 均した値を書いていない(映り込みを切った)フレームは黒。tools/render-lab-reflection-levels.mjs が同じ目盛りで段へ
+  // 戻す。
+  private reflectionDenoiseLevelDebugNode(): Vec3Node {
+    const level = this.reflection.denoiseLevelAt(screenUV);
+    const gray = vec3(level.add(1).div(REFLECTION_LEVEL_COUNT).clamp(0, 1));
+    return select(level.greaterThan(-0.5), gray, select(level.greaterThan(-1.5), vec3(0, 0, 1), vec3(0)));
   }
 
   // 共有ターゲットと表示用ターゲットを描画バッファの寸法へ合わせ、その寸法を返す。

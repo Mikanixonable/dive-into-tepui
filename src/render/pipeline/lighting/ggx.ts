@@ -11,7 +11,12 @@ const LOBE_HALF_WIDTH_PER_ALPHA = 2;
 
 // 面 sample の鏡面ローブの半幅 [rad]。遠くの光の写しも近くの物体の像も、同じ粗さの面ではこの幅でぼかす。
 export function specularLobeHalfWidth(sample: ShadingSample): FloatNode {
-  return sample.roughness.mul(sample.roughness).mul(LOBE_HALF_WIDTH_PER_ALPHA);
+  return specularLobeHalfWidthOf(sample.roughness);
+}
+
+// 知覚的粗さ roughness の面の鏡面ローブの半幅 [rad]。
+export function specularLobeHalfWidthOf(roughness: FloatNode): FloatNode {
+  return roughness.mul(roughness).mul(LOBE_HALF_WIDTH_PER_ALPHA);
 }
 
 // 鏡面ローブから選んだ反射の向き 1 本と、その向きで見た放射輝度に掛ける重み。

@@ -1,10 +1,10 @@
 // 映り込みのぼけ方の表。render-lab:shot が撮った組の dir から、粗さの段のケース(tools/render-lab/reflection-cases.ts)の
-// 撮影を読み、5つの表を出す。読むのは PNG だけで、ブラウザは開かない。
+// 撮影を読み、6つの表を出す。読むのは PNG だけで、ブラウザは開かない。
 //
 // 使い方: node tools/render-lab-reflection-levels.mjs <shots-dir>。dir は相対ならリポジトリ根から。
 //
 // 画素は ladder-roughness で帯へ振り分ける。真値は、画素に写る床の点で F0 = 1 の GGX の鏡面を近似を使わずに数値
-// 積分した値。
+// 積分した値。発光球の像・置換の重み・チェッカーの像は、均した映り込みの撮影で読む。
 // 1. 縁の幅: 帯の中心線に沿った縦の断面で、発光球の像(ladder-reflection)と地球の像(ladder-off-specular)の縁が
 //    10% から 90% の明るさへ上がるまでの px を測る。球は、同じ場所の球光源をライティングパスで照らした対照の像
 //    (天体照を切った ladder-lights-no-planet-specular)の縁の幅と並べ、両方を鏡面ローブの予測幅とも並べる。
@@ -23,6 +23,8 @@
 //    0.1% に満たない行 — にある帯の画素のうち、発光球の像(ladder-reflection)の明るさが帯の対照の像
 //    (ladder-lights-no-planet-specular)の頂の 10% 以上の画素の数。鏡面ローブの裾の標本が像から遠くに落とす疎らな
 //    輝点を読む。読める行を真値で決めるのは、8bit の対照の撮影では頂の 0.1% の明るさが 0 に丸まるため。
+// 6. 帯 × 均しの段: 均しの段の撮影(ladder-level)を段へ戻し、w̄ が正の画素を段ごとに数える。「張り付き」は縮小列の
+//    いちばん粗い段に張り付いた画素の、w̄ が正の画素に対する割合。撮影の無い組では飛ばす。
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { decodePng } from './png.mjs';
@@ -49,6 +51,16 @@ const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
 // 鏡面ローブの半幅 [rad] の、GGX の α に対する比(src/render/pipeline/lighting/ggx.ts の LOBE_HALF_WIDTH_PER_ALPHA)。
 const LOBE_HALF_WIDTH_PER_ALPHA = 2;
+// 均しの縮小列の段数は src の定数から読む。均しの段のデバッグ表示は、段 + 1 を段数で割った灰
+// (src/render/pipeline/render-pipeline.ts)。
+const LEVEL_COUNT = (() => {
+  const source = readFileSync(path.join(root, 'src/render/pipeline/screen-space/reflection-denoise.ts'), 'utf8');
+  const match = /^export const REFLECTION_LEVEL_COUNT = (\d+);/m.exec(source);
+  if (match === null) throw new Error('REFLECTION_LEVEL_COUNT not found in reflection-denoise.ts');
+  return Number(match[1]);
+})();
+// いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の白の側の刻み(段数 13 で段約 0.12)を覆う。
+const STUCK_MARGIN = 0.15;
 
 // 粗さのデバッグ表示から帯を決めるときの、粗さの許す差。いちばん狭い帯の間隔(0.0525 と 0.075)の半分より小さい。
 const ROUGHNESS_TOLERANCE = 0.01;
@@ -854,6 +866,40 @@ function distantSpotTable(bands, sphereShot, lightShot) {
   return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
 }
 
+// 均しの段のデバッグ表示の画素の段。w̄ が 0 の画素(青)と均した値を書いていない画素(黒)は null。
+function levelOf([r, g, b]) {
+  if (b > 128 && r < 64 && g < 64) return null;
+  if (r === 0 && g === 0 && b === 0) return null;
+  return srgbToLinear(r / 255) * LEVEL_COUNT - 1;
+}
+
+// 表 6: 帯 × 均しの段の画素数。
+function levelTable(bands, levelShot) {
+  const top = LEVEL_COUNT - 1;
+  const rows = ROUGHNESSES.map(() => ({ weighted: 0, bins: new Array(top).fill(0), stuck: 0 }));
+  for (let y = 0; y < levelShot.height; y++) {
+    for (let x = 0; x < levelShot.width; x++) {
+      const band = bands[y * levelShot.width + x];
+      if (band < 0) continue;
+      const level = levelOf(levelShot.at(x, y));
+      if (level === null) continue;
+      const row = rows[band];
+      row.weighted++;
+      if (level >= top - STUCK_MARGIN) row.stuck++;
+      else row.bins[Math.min(Math.max(Math.floor(level), 0), top - 1)]++;
+    }
+  }
+  const header = [
+    '帯', '粗さ', 'w̄>0', ...Array.from({ length: top }, (_, k) => `段${k}〜${k + 1}`), `段${top}張り付き`, '張り付き%',
+  ];
+  const lines = [header, header.map(() => '---')];
+  for (const [index, row] of rows.entries()) {
+    const share = row.weighted === 0 ? '-' : (100 * row.stuck / row.weighted).toFixed(1);
+    lines.push([index, ROUGHNESSES[index], row.weighted, ...row.bins, row.stuck, share]);
+  }
+  return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
+}
+
 function main() {
   const [dirArg] = process.argv.slice(2);
   if (dirArg === undefined) throw new Error(USAGE);
@@ -875,6 +921,12 @@ function main() {
   }
   console.log('\n像から遠い輝点\n');
   console.log(distantSpotTable(bands, sphereShot, lightShot));
+  console.log(`\n帯 × 均しの段(w̄ が正の画素。段数 ${LEVEL_COUNT}、段 0〜${LEVEL_COUNT - 1})\n`);
+  if (existsSync(path.join(dir, 'ladder-level.png'))) {
+    console.log(levelTable(bands, readShot(dir, 'ladder-level')));
+  } else {
+    console.log('ladder-level の撮影が無い組なので飛ばした。');
+  }
 }
 
 main();

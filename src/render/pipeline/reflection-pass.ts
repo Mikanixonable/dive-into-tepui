@@ -1,6 +1,7 @@
 // 映り込みのパス。G バッファの深度を追跡の解像度へ縮小し、滑らかな面の画素ごとに反射の向きの ray をその上で
 // 進めて、当たった点の像をマテリアルパスの像の元から読み、置換の重みと一緒に映り込みの描画先
-// (ScreenSpaceReflection)へ書く。描画設定のオン / オフと精細さを受け、オフのフレームは描画命令を出さない。
+// (ScreenSpaceReflection)の均す前の側へ書き、それを粗さに応じて均した値を均した側へ書く。描画設定のオン / オフと
+// 精細さを受け、オフのフレームは描画命令を出さない。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
@@ -14,7 +15,8 @@ import { ggxAlbedo } from './lighting/ltc';
 import { createLtcTables } from './lighting/ltc-table.generated';
 import { compileInto } from './compile-into';
 import { reflectionRayOf, thicknessFarZ, traceReflection, viewZOf } from './screen-space/reflection-trace';
-import { encodedReflection, type ScreenSpaceReflection } from './screen-space/screen-space-reflection';
+import { ReflectionDenoise } from './screen-space/reflection-denoise';
+import { encodedRawReflection, type ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import type { GBufferPass } from './gbuffer';
 import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
@@ -54,6 +56,7 @@ export class ReflectionPass {
   });
   private readonly downsampleMaterial = stageMaterial();
   private readonly traceMaterial = stageMaterial();
+  private readonly denoise: ReflectionDenoise;
   private readonly quad = new QuadMesh();
   // G バッファの素の深度(逆 Z、虚空は 0)。
   private readonly depth: THREE.DepthTexture;
@@ -91,9 +94,10 @@ export class ReflectionPass {
     this.sample = new ShadingSample(gbuffer);
     this.downsampleMaterial.mrtNode = mrt({ reflectionDepth: vec4(this.downsampledDepth(gbuffer), 0, 0, 1) });
     const traced = this.tracedReflection(gbuffer, reflectionSource);
-    this.traceMaterial.mrtNode = encodedReflection(
+    this.traceMaterial.mrtNode = encodedRawReflection(
       traced.get('image') as Vec3Node, traced.get('distance') as FloatNode, traced.get('weight') as FloatNode,
     );
+    this.denoise = new ReflectionDenoise(renderer, gbuffer, output, gpu);
   }
 
   // uv(0..1)の画素の、追跡した素の深度(逆 Z、虚空は 0)。
@@ -118,13 +122,14 @@ export class ReflectionPass {
     this.renderedEnabled = this.enabled;
     if (!this.enabled) return;
     this.prepare(camera, width, height);
-    // 深度の縮小 → 追跡と像の順に書く。
+    // 深度の縮小 → 追跡と像 → 均しの順に書く。
     for (const [material, target] of this.stages()) {
       this.renderer.setRenderTarget(target);
       this.quad.material = material;
       this.gpu.beginPass(GPU_PASS.reflection);
       this.quad.render(this.renderer);
     }
+    this.denoise.render(camera, width, height);
     this.renderer.setRenderTarget(null);
   }
 
@@ -136,6 +141,7 @@ export class ReflectionPass {
       this.quad.material = material;
       await compileInto(this.renderer, target, this.quad, this.quad.camera);
     }
+    await this.denoise.compile(camera, width, height);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで共有する単一の板
@@ -144,14 +150,15 @@ export class ReflectionPass {
     this.depthTarget.dispose();
     this.downsampleMaterial.dispose();
     this.traceMaterial.dispose();
+    this.denoise.dispose();
     this.blueNoise.dispose();
     this.ltcTables.ltc1.dispose();
     this.ltcTables.ltc2.dispose();
   }
 
-  // 描画命令の列。マテリアルとその描画先の組を、書く順に並べる。
+  // 均すまでの描画命令の列。マテリアルとその描画先の組を、書く順に並べる。
   private stages(): readonly (readonly [THREE.MeshBasicNodeMaterial, THREE.RenderTarget])[] {
-    return [[this.downsampleMaterial, this.depthTarget], [this.traceMaterial, this.output.target]];
+    return [[this.downsampleMaterial, this.depthTarget], [this.traceMaterial, this.output.rawTarget]];
   }
 
   // 追跡の解像度の画素が覆う G バッファの画素のうち、いちばん手前(逆 Z で最大)の素の深度。細い物体を縮小で
@@ -239,8 +246,8 @@ export class ReflectionPass {
     if (this.depthTarget.width !== traceWidth || this.depthTarget.height !== traceHeight) {
       this.depthTarget.setSize(traceWidth, traceHeight);
     }
-    if (this.output.target.width !== width || this.output.target.height !== height) {
-      this.output.target.setSize(width, height);
+    for (const target of [this.output.rawTarget, this.output.denoisedTarget]) {
+      if (target.width !== width || target.height !== height) target.setSize(width, height);
     }
     this.fullSize.value.set(width, height);
     this.traceSize.value.set(width / footprint, height / footprint);
@@ -256,14 +263,14 @@ export class ReflectionPass {
     this.sample.sync(camera);
   }
 
-  // 縮小した深度と映り込みを空へ戻す。映り込みの w が 0 になるので、遠方の鏡面光は厳密にそのまま残る。残すと、
-  // 切る直前の映り込みが凍ったまま遠方の鏡面光を置き換え続ける。
+  // 縮小した深度と、均す前と均した映り込みを空へ戻す。映り込みの w が 0 になるので、遠方の鏡面光は厳密にそのまま
+  // 残る。残すと、切る直前の映り込みが凍ったまま遠方の鏡面光を置き換え続ける。
   private clearOutputs(): void {
     // 消去色はレンダラーを共有する他のパスのものなので、退避して黒の透明で消し、戻す。
     const savedClearAlpha = this.renderer.getClearAlpha();
     this.renderer.getClearColor(this.savedClearColor);
     this.renderer.setClearColor(0x000000, 0);
-    for (const target of [this.depthTarget, this.output.target]) {
+    for (const target of [this.depthTarget, this.output.rawTarget, this.output.denoisedTarget]) {
       this.renderer.setRenderTarget(target);
       this.renderer.clear(true, false, false);
     }
