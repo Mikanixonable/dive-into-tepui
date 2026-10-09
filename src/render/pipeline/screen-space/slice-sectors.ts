@@ -1,9 +1,10 @@
 // 受け手の視線と画面上の向きが張る平面(スライス)を組み、その中の受け手の半球を余弦重みの測度で扇形に刻む。
-// 向き・切片・球冠を扇形の座標とビットへ写し、ビットが覆う測度と、スライスが天体の方位を代表する重みを答える。
+// 向き・切片・球冠の円盤を扇形の座標とビットへ写し、ビットが覆う測度と、球冠の円盤の測度を答える。
 import {
-  abs, acos, atan, clamp, cos, countOneBits, cross, dot, float, floor, length, max, min, normalize, round, select,
+  acos, atan, clamp, cos, countOneBits, cross, dot, float, floor, length, max, min, normalize, round, select,
   sign, sin, uint, vec2, vec3,
 } from 'three/tsl';
+import { sphereIrradianceFactor } from '../lighting/sphere-light';
 import type { PlanetCap } from '../lighting/planet-light-source';
 import type { FloatNode, UintNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
@@ -41,8 +42,8 @@ export interface SectorRange {
 
 // 視線 view に垂直な面の中の角 psi [rad](画面の右の向きから測る)の向きを含むスライスを、受け手の法線 normal から
 // 組む。**Fn の中から呼ぶこと。**
-// スライスは psi で等間隔に取る。psi が一様なら、スライスの重みの期待値は 1、楔の重みの期待値は 1/4 と閉じた式になり、
-// 比でなく期待値で割れる — 推定量がスライスの数に依らなくなる。
+// スライスは psi で等間隔に取る。psi が一様なら、スライスの重みの期待値は 1 と閉じた式になり、比でなく期待値で
+// 割れる — 推定量がスライスの数に依らなくなる。
 export function sliceAt(psi: FloatNode, view: Vec3Node, normal: Vec3Node): Slice {
   // view 空間の x・y は画面の右・上に揃っている。uv の y は下向き。
   const right = normalize(vec3(1, 0, 0).sub(view.mul(view.x)));
@@ -98,14 +99,16 @@ export function segmentSectors(lower: FloatNode, upper: FloatNode): UintNode {
   return sectorsBelow(floor(upper.add(0.5))).bitAnd(sectorsBelow(floor(lower.add(0.5))).bitNot());
 }
 
-// 球冠 cap をスライスへ写した区間 — 中心の向きを平面へ射影した角を中心とし、視半径を半幅とする — を半球で切り、
-// 扇形の座標(sectorPosition)で返す。半球の外にあれば幅 0。
+// 球冠 cap の円盤とスライスの大円の交わりの弧を半球で切り、扇形の座標(sectorPosition)で返す。弧の中心は球冠の
+// 中心の向きを平面へ射影した角で、半幅は平面が円盤を切る長さで決まる。平面が円盤を外れるときと、半球の外に
+// あるときは幅 0。cap.direction は単位ベクトル。
 export function capRange(slice: Slice, cap: PlanetCap, dither: FloatNode): SectorRange {
   const projected = toSliceCoordinates(slice, cap.direction).toVar();
   const center = atan(projected.y, projected.x).toVar();
-  // 中心を半球の側へ寄せる。半球は π、区間は高々 π を占めるので、重なる区間は 1 つしかない。
+  // 中心を半球の側へ寄せる。半球は π、弧は高々 π を占めるので、重なる弧は 1 つしかない。
   const shifted = center.add(round(slice.normalAngle.sub(center).div(2 * Math.PI)).mul(2 * Math.PI)).toVar();
-  const halfWidth = acos(clamp(cap.cosAngle, -1, 1)).toVar();
+  // 平面の中の向き h と球冠の中心の角距離の余弦は |projected|·cos(h − center)。
+  const halfWidth = acos(clamp(cap.cosAngle.div(max(length(projected), 1e-6)), -1, 1)).toVar();
   const lowerEdge = slice.normalAngle.sub(HALF_PI);
   const upperEdge = slice.normalAngle.add(HALF_PI);
   return {
@@ -114,15 +117,10 @@ export function capRange(slice: Slice, cap: PlanetCap, dither: FloatNode): Secto
   };
 }
 
-// 楔の半幅 [rad]。スライスの向きが視線に垂直な面の中で一様なら、楔の重みの期待値は 1/4 になる。
-const WEDGE_HALF_WIDTH = Math.PI / 4;
-
-// スライスが、向き direction(view 空間)の天体の方位のまわりの楔を代表する重み。視線の成分を除いた向きと
-// スライスの向きの角距離(mod π)が 0 で 1、WEDGE_HALF_WIDTH で 0 になる三角形。
-export function wedgeWeight(slice: Slice, direction: Vec3Node): FloatNode {
-  const across = direction.sub(slice.view.mul(dot(direction, slice.view))).toVar();
-  const cosDistance = abs(dot(across, slice.orthoDirection)).div(max(length(across), 1e-6));
-  return max(float(1).sub(acos(min(cosDistance, 1)).div(WEDGE_HALF_WIDTH)), 0);
+// 球冠 cap の円盤のうち、法線 normal の受け手の地平の上にある部分の余弦重みの測度(受け手の半球全体を 1)。
+export function capMeasure(cap: PlanetCap, normal: Vec3Node): FloatNode {
+  const sinSqr = float(1).sub(cap.cosAngle.mul(cap.cosAngle));
+  return sinSqr.mul(sphereIrradianceFactor(dot(normal, cap.direction), sinSqr));
 }
 
 // 扇形の座標の区間を、立っているビットから測る形 — 区間の下端の扇形 first と上端の扇形 last のビット、そのあいだの
