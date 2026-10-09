@@ -1,7 +1,7 @@
 // 天体ID・役割・回転ゾーンの選択から、パネルへ表示する日本語ラベルを引き当てる。
 // 状態サマリーと回転ゾーンの選択肢で語彙が違う(「自転系」と「自転座標系」など)ので、
 // 関数も用途ごとに分ける。
-import { frameRoleOf, FrameRole, FrameRotationSource } from '../../../physics/frame';
+import { frameRoleOf, type FrameRole, type FrameRotationSource } from '../../../physics/frame';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { CameraRotationFollow } from '../../viewer/focus-camera-selection';
 

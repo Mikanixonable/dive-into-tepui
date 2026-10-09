@@ -1,5 +1,5 @@
 // 視線幾何。始点から前方へ無限に伸びる半直線を表す。
-import { Vec3, dot, lenSq, scale, sub } from './vec3';
+import { type Vec3, dot, lenSq, scale, sub } from './vec3';
 
 // 視線。始点と単位方向ベクトルの組で、どちらも絶対 ECI。
 export type Ray = { origin: Vec3; dir: Vec3 };

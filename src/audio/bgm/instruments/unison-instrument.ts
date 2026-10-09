@@ -1,8 +1,8 @@
 // 同じ音程を少しずつずらした発振器を重ねて厚みを出す楽器。ずれた成分どうしが干渉して
 // ゆっくりしたうねりになる。
 // フィルタと定位は音符ごとに変わらないので、コンストラクタで組んで曲の間ずっと使い回す。
-import { UnisonParams } from './types';
-import { Instrument } from '../instrument';
+import type { UnisonParams } from './types';
+import type { Instrument } from '../instrument';
 
 // 減衰の到達値。0 へは指数で近づけないので、聞こえない程度の小さな値で止める。
 const DECAY_FLOOR = 0.001;
