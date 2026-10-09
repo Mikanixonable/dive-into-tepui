@@ -64,7 +64,7 @@ export class ShadowPass {
 
   // 透過率の書き込み先を確保し、深度から復元した位置で源ごとの透過率を評価するグラフを
   // 一度だけ組む。
-  constructor(
+  public constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
     bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CloudShadowRenderer,
@@ -116,11 +116,11 @@ export class ShadowPass {
     this.quad = new QuadMesh();
   }
 
-  get texture(): THREE.Texture { return this.target.texture; }
+  public get texture(): THREE.Texture { return this.target.texture; }
 
   // 影を落とすものがある源だけを、素通しの 1 へ順に掛け合わせる。camera は逆射影行列と
   // view→描画座標の行列を毎フレーム引き直すためだけに使う。
-  render(camera: THREE.Camera, width: number, height: number): void {
+  public render(camera: THREE.Camera, width: number, height: number): void {
     this.writeCamera(camera, width, height);
 
     // 乗算合成の土台は 1。クリア色は共有状態なので退避して戻す。
@@ -146,7 +146,7 @@ export class ShadowPass {
   }
 
   // 源ごとの全マテリアルを透過率ターゲットへ事前コンパイルする。
-  async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
+  public async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
     this.writeCamera(camera, width, height);
     for (const source of this.sources) {
       this.quad.material = source.material;
@@ -165,7 +165,7 @@ export class ShadowPass {
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
-  dispose(): void {
+  public dispose(): void {
     this.target.dispose();
     for (const source of this.sources) source.material.dispose();
   }

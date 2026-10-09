@@ -130,10 +130,10 @@ export function testEphemerisPoints(
 // 置くので、宣言した値がそのまま ECI 値になる。**回帰テストが天体1体を組むための道具**で、
 // 位置は anchor から等加速度で伸ばした二次曲線に乗る。
 class FixedMotion extends CelestialMotion {
-  readonly def: CelestialBodyDef;
-  readonly kind: CelestialKind;
+  public readonly def: CelestialBodyDef;
+  public readonly kind: CelestialKind;
 
-  constructor(
+  public constructor(
     def: StarDef,
     private readonly anchor: KinematicState,
     private readonly accel: Vec3,
@@ -146,9 +146,9 @@ class FixedMotion extends CelestialMotion {
     this.kind = kind;
   }
 
-  get primary(): CelestialMotion | null { return null; }
+  public get primary(): CelestialMotion | null { return null; }
 
-  analyticStateAt(t: number): KinematicState<'analytic'> {
+  public analyticStateAt(t: number): KinematicState<'analytic'> {
     const s = t - this.anchor.t;
     return kinematicState<'analytic'>(
       t,
@@ -158,14 +158,14 @@ class FixedMotion extends CelestialMotion {
   }
 
   // 主星を置かない道具なので、主星相対と太陽系重心相対は同じ値。
-  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
+  public analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
     const state = this.analyticStateAt(t);
     return kinematicState<'starRel'>(t, state.r, state.v);
   }
 
-  analyticAccelAt(): Vec3 { return this.accel; }
+  public analyticAccelAt(): Vec3 { return this.accel; }
 
-  orientationAt(): BodyOrientation | null { return null; }
+  public orientationAt(): BodyOrientation | null { return null; }
 
   protected computeDegree2At(): Degree2Gravity | null { return this.degree2; }
 
