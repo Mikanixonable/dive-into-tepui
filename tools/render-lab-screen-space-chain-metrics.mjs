@@ -13,7 +13,7 @@ import { captureBandSumInvariant, invariantMapOf } from './screen-space-band-sum
 import { BAND_COUNT, bandScaleOf, readBands, scaleOfBands, stdBandsOfCache, writeConvergedStdBands, writeOnePassBands } from './screen-space-chain-bands.mjs';
 import { cachedMean, chunkComplete, chunkFile } from './screen-space-chain-cache.mjs';
 import { accumulateMaxDeviation, deviationStatsOf, rgbaOfScalar, roiRms } from './screen-space-chain-deviation.mjs';
-import { parseFactors, TIER_FACTORS_FIELD } from './screen-space-chain-factors.mjs';
+import { FIXED_FACTORS, parseFactors, TIER_FACTORS_FIELD } from './screen-space-chain-factors.mjs';
 import { ONE_PASS_CORRECTION_SEEDS, writeLandingIndex, writeRunIndex } from './screen-space-chain-index.mjs';
 import { BASELINE_RUN, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_WIDTH, signedPng, signedRgb } from './screen-space-chain-runs.mjs';
 import { CHUNK_PASSES, SCENES, sceneSignatureOf, sourceSignatureOf, tierOf } from './screen-space-chain-setup.mjs';
@@ -114,16 +114,17 @@ function cacheKeyOf(scene) {
 }
 
 function captureConditions() {
-  return { viewport: [WIDTH, HEIGHT], scanResolution: [SCAN_WIDTH, SCAN_HEIGHT], tier: TIER, passes: PASSES,
+  return { viewport: [WIDTH, HEIGHT], scanResolution: [SCAN_WIDTH, SCAN_HEIGHT], tier: TIER, fixedFactors: FIXED_FACTORS, passes: PASSES,
     chunkPasses: CHUNK_PASSES, invariantPass: INVARIANT_PASS,
     noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: BASELINE_LABEL };
 }
 
-// 候補どうしで違ってよい条件(κ と因子の組)を除いた条件。
+// 候補どうしで違ってよい条件(κ と因子の組)と、走査に固定で入る因子の記録を除いた条件。
 function sharedConditionsOf(conditions) {
   const shared = structuredClone(conditions);
   delete shared.tier.bandScale;
   delete shared.tier[TIER_FACTORS_FIELD];
+  delete shared.fixedFactors;
   return shared;
 }
 

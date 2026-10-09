@@ -31,10 +31,12 @@ export function metricsOf(run, scene) {
 
 export const recordOf = (run) => JSON.parse(readFileSync(path.join(RUNS, run, 'record.json'), 'utf8'));
 
-// run の因子の組の読める表示。runs/<run>/label.txt があればその1行、無ければ記録から作る(因子を使わない run は「なし」)。
+// run の帯座標の式。runs/<run>/label.txt があればその1行、無ければ記録から作る(因子を使わない run は距離だけの式)。
 export function factorsLabelOfRun(run) {
   const file = path.join(RUNS, run, 'label.txt');
-  return existsSync(file) ? readFileSync(file, 'utf8').trim() : factorsLabelOf(recordOf(run).conditions.tier);
+  if (existsSync(file)) return readFileSync(file, 'utf8').trim();
+  const { tier, fixedFactors } = recordOf(run).conditions;
+  return factorsLabelOf(tier, fixedFactors);
 }
 
 // 画素ごとに stride 成分の並び values の先頭 3 成分を、中間灰を 0 とする線形表示 0.5 + 0.5 × 値 / scale の RGB8 へ。

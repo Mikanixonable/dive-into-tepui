@@ -8,7 +8,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { bandStatsOf, BAND_COUNT } from './screen-space-chain-bands.mjs';
-import { factorsLabelOf, parseFactors } from './screen-space-chain-factors.mjs';
+import { factorsLabelOf, FIXED_FACTORS, parseFactors } from './screen-space-chain-factors.mjs';
 import { OUTPUT } from './screen-space-chain-runs.mjs';
 import { SCENES, tierOf } from './screen-space-chain-setup.mjs';
 import { fixed, table, unpackedBand, withLab } from './screen-space-lab.mjs';
@@ -66,7 +66,7 @@ async function measureScene(lab, scene) {
   for (const tier of allTiers) {
     const withBounce = await meanBands(lab, tier);
     const occlusion = occlusionOnly.get(occlusionKeyOf(tier));
-    rows.push({ tier, label: factorsLabelOf(tier), kappaBounce: tier.bandFactors?.bounceScale ?? tier.bandScale, kappaOcclusion: tier.bandScale,
+    rows.push({ tier, label: factorsLabelOf(tier, FIXED_FACTORS), kappaBounce: tier.bandFactors?.bounceScale ?? tier.bandScale, kappaOcclusion: tier.bandScale,
       bounce: summaryOf(hasOcclusion ? minus(withBounce, occlusion) : withBounce),
       occlusion: hasOcclusion ? summaryOf(occlusion) : null });
   }
