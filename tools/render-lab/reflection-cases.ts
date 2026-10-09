@@ -10,8 +10,9 @@ import { labCamera, type CaseBuilder, type LabCase } from './lab-case';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { SphereLightValue } from '../../src/render/pipeline/lighting/sphere-lights';
 
-// 帯の粗さ。帯 k は左から k 番目。
-const ROUGHNESSES = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] as const;
+// 帯の粗さ。帯 k は左から k 番目。鏡に近い側を細かく刻み、0.6 で映り込みが消えるところまでを置く。いちばん
+// 滑らかな帯は、three の標準マテリアルが下から切る粗さ 0.0525 の面として G バッファに載る。
+const ROUGHNESSES = [0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6] as const;
 // 帯の金属の線形の灰色の値(金属度 1 なので鏡面反射率そのもの)。
 const METAL_REFLECTANCE = 0.9;
 
@@ -150,8 +151,7 @@ function reflectionLadder(): LabCase {
       'ladder-off-specular': { view: {}, graphics: off, debugTarget: 'specular' },
       // 映り込みを切ったフレームの縮小段は、何も読んでいないので一面の黒。
       'ladder-off-level': { view: {}, graphics: off, debugTarget: 'reflection-level' },
-      'ladder-roughness': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'roughness' },
-      'ladder-weight': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-weight' },
+      'ladder-roughness': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'roughness' },      'ladder-weight': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-weight' },
       'ladder-distance': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-distance' },
       'ladder-level': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-level' },
       'ladder-reflection': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection' },

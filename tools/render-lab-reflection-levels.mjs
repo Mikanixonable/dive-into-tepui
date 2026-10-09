@@ -18,7 +18,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const USAGE = 'usage: node tools/render-lab-reflection-levels.mjs <shots-dir>';
 
 // ケースの配置(tools/render-lab/reflection-cases.ts と同じ値)。長さは m、角度は deg。
-const ROUGHNESSES = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+const ROUGHNESSES = [0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6];
 const CAMERA_HEIGHT = 2;
 const CAMERA_PITCH_DEG = 10;
 const BAND_SPACING_DEG = 6.6;
@@ -40,8 +40,12 @@ const LEVEL_COUNT = (() => {
 // 鏡面ローブの半幅 [rad] の、GGX の α に対する比(reflection-pass.ts の LOBE_HALF_WIDTH_PER_ALPHA)。
 const LOBE_HALF_WIDTH_PER_ALPHA = 2;
 
-// 粗さのデバッグ表示から帯を決めるときの、粗さの許す差。
-const ROUGHNESS_TOLERANCE = 0.015;
+// 粗さのデバッグ表示から帯を決めるときの、粗さの許す差。いちばん狭い帯の間隔(0.0525 と 0.075)の半分より小さい。
+const ROUGHNESS_TOLERANCE = 0.01;
+// three の MeshStandardNodeMaterial が G バッファへ渡す粗さの下限(getRoughness.js)。これより滑らかな帯は、
+// この粗さの面として照合し、予測する。
+const MIN_ROUGHNESS = 0.0525;
+const effectiveRoughness = (roughness) => Math.max(roughness, MIN_ROUGHNESS);
 // いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の刻み(段で約 0.07)を覆う。
 const STUCK_MARGIN = 0.1;
 // 断面の 1 行として扱うのに要る、その行の帯の画素の数と、中心線の左右に平均する画素の数。
@@ -114,7 +118,7 @@ function bandMap(shot) {
       const roughness = srgbToLinear(shot.at(x, y)[0] / 255);
       let best = -1;
       for (const [index, value] of ROUGHNESSES.entries()) {
-        if (Math.abs(roughness - value) <= ROUGHNESS_TOLERANCE) best = index;
+        if (Math.abs(roughness - effectiveRoughness(value)) <= ROUGHNESS_TOLERANCE) best = index;
       }
       bands[y * shot.width + x] = best;
     }
@@ -245,14 +249,15 @@ function edgeTable(bands, sphereShot, lightShot, earthShot) {
   const earth = (x, y) => tonemappedLuminance(earthShot.at(x, y));
   const format = (v) => (v === null || !Number.isFinite(v) ? '-' : v.toFixed(1));
   const ratio = (measured, reference) => (
-    measured === null || reference === null || !Number.isFinite(reference) ? '-' : (measured / reference).toFixed(2)
+    measured === null || reference === null || !Number.isFinite(reference) || reference <= 0
+      ? '-' : (measured / reference).toFixed(2)
   );
   const header = [
     '帯', '粗さ', '球 実測', '球光源 実測', '球 / 球光源', '球 予測', '球 / 予測', '地球 実測', '地球 予測', '地球 比',
   ];
   const lines = [header, header.map(() => '---')];
   for (const [index, roughness] of ROUGHNESSES.entries()) {
-    const alpha = roughness * roughness;
+    const alpha = effectiveRoughness(roughness) ** 2;
     const sphereExpected = predictedSphereWidth(index, alpha);
     const earthExpected = predictedEarthWidth(alpha);
     const reach = (expected) => Math.max(MIN_EDGE_REACH, Math.ceil(EDGE_REACH_PER_WIDTH * expected));
