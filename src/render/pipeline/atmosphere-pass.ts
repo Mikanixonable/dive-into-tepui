@@ -124,7 +124,7 @@ export class AtmospherePass {
   // 描画デバッグ表示へ渡す1枚。
   public get inspectTexture(): THREE.Texture { return this.inspectTarget.texture; }
 
-  // 大気が最初に重ねる下地を、そのまま点検用の1枚へ控える。render より前に呼ぶこと。
+  // 共有ターゲットにいま描かれている下地を、そのまま点検用の1枚へ控える。render より前に呼ぶこと。
   public inspectBackdrop(): void {
     this.syncSize(this.inspectTarget);
     this.copyInto(this.inspectTarget, this.sharedCopyQuad);

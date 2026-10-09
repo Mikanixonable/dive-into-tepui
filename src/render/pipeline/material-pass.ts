@@ -4,17 +4,25 @@
 // 描くのと、G バッファの深度を同じターゲットへ複製するのもこのパスが担う。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { BRDF_Lambert, Discard, Fn, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
+import { BRDF_Lambert, Discard, Fn, float, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { WORLD_BACKGROUND_LAYER } from './lit-layer';
 import type { GBufferPass } from './gbuffer';
 import type { LightPrepass } from './light-prepass';
-import type { Vec3Node, Vec4Node } from '../tsl-types';
+import type { Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 import { compileInto } from './compile-into';
 
-// 画素の最終的な陰影。拡散は BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面は F0(誘電体 0.04 と
-// 金属色を金属度で混ぜた値)を照度へ掛け、自己発光を足す。照度バッファが持つのは放射照度なので、
-// 掛けるのは反射率ではなく BRDF — 拡散の 1/π を落とすと、それだけで π 倍明るくなる。
+// G バッファの uv の画素の鏡面反射率 R — 照度バッファの鏡面へ掛ける F0(誘電体 0.04 と金属色を金属度で混ぜた値)。
+// 鏡面へ届く光に掛ける係数はすべてこれを使う。一様でない分岐の中から読んでよい。
+export function specularReflectanceAt(gbuffer: GBufferPass, uv: Vec2Node): Vec3Node {
+  // 段を明示して読む — 暗黙の段は画素の間の微分で決まり、一様でない分岐の中では組めない。G バッファの段は 1 つだけ。
+  const material = texture(gbuffer.basecolorTexture, uv).level(float(0));
+  return mix(vec3(0.04), material.rgb, material.a);
+}
+
+// 画素の最終的な陰影。拡散は BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面は鏡面反射率を照度へ掛け、
+// 自己発光を足す。照度バッファが持つのは放射照度なので、掛けるのは反射率ではなく BRDF — 拡散の 1/π を
+// 落とすと、それだけで π 倍明るくなる。
 function shadedColor(lightPrepass: LightPrepass, gbuffer: GBufferPass): Vec4Node {
   return Fn(() => {
     // 物体の無い画素を捨てて、先に描いた星野を残す。
@@ -29,7 +37,7 @@ function shadedColor(lightPrepass: LightPrepass, gbuffer: GBufferPass): Vec4Node
     }) as unknown as Vec3Node;
     const diffuse = texture(lightPrepass.diffuseTexture, screenUV).rgb.mul(lambert);
     const specular = texture(lightPrepass.specularTexture, screenUV).rgb
-      .mul(mix(vec3(0.04), baseColor, metalness));
+      .mul(specularReflectanceAt(gbuffer, screenUV));
     const emissive = texture(gbuffer.emissiveTexture, screenUV).rgb;
 
     return vec4(diffuse.add(specular).add(emissive), 1);

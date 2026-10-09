@@ -157,6 +157,7 @@ function materials(): LabCase {
       'leo-metal-reflection-weight': {
         view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-weight',
       },
+      'leo-metal-reflection-image': { view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection' },
       'leo-metal-terminator': { view: TERMINATOR_SUN },
       // 金属のハイライト。左上の球に、球光源では太陽の円盤が幅十数 px の像として映り、点光源の GGX では
       // 粗さぶんの数 px の点に潰れる。
