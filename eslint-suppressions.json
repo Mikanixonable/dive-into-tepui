@@ -416,38 +416,8 @@
       "count": 1
     }
   },
-  "tests/game/plan.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tests/math/polar-euler.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 2
-    }
-  },
   "tests/perf/sphere-contact-sweeps.ts": {
     "local/explicit-public-return-type": {
-      "count": 1
-    }
-  },
-  "tests/physics/attractor.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tests/physics/celestial-motion.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tests/physics/equatorial-satellites.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tests/physics/frame.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   },
@@ -456,33 +426,8 @@
       "count": 2
     }
   },
-  "tests/physics/window-agreement.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tests/render/earth-surface-resident.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tests/render/protein-motion-controller.test.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
   "tests/repo-assets.ts": {
     "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "tools/earth-surface/test_contract.mjs": {
-    "no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tools/ephemeris/cli.mjs": {
-    "no-unused-vars": {
       "count": 1
     }
   }
