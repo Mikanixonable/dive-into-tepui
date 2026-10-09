@@ -7,8 +7,8 @@
 // 読む位置はサブステップの中点から引くので、外挿の幅は subDt/2 に収まる。
 import { nearestAtmosphereBody } from '../../physics/attractor';
 import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
-import { Vec3 } from '../../math/vec3';
-import { ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
+import type { Vec3 } from '../../math/vec3';
+import { type ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
 import type { CelestialBody } from '../../physics/celestial-body';
 
 export class SubstepCelestialBodies {
@@ -25,7 +25,7 @@ export class SubstepCelestialBodies {
 
   // フレームの時間送り dt 分の区間 [simTime, simTime + dt] で使う天体セットを構築する。重力源の分類も
   // 大気・表面・遮蔽体の一覧も、この区間のどのサブステップからも使い回せる。
-  resetFrame(windows: FrameCelestialBodies, simTime: number, dt: number): void {
+  public resetFrame(windows: FrameCelestialBodies, simTime: number, dt: number): void {
     this._framePivot = simTime + dt / 2;
     const sources = windows.gravityMotions;
     this._gravitySourceCount = sources.length;
@@ -36,35 +36,35 @@ export class SubstepCelestialBodies {
   }
 
   // 区間 [simTime, simTime + dt] のサブステップへ進み、天体の位置を厳密に引く時刻をその中点に取る。
-  beginSubstep(simTime: number, dt: number): void {
+  public beginSubstep(simTime: number, dt: number): void {
     this._pivot = simTime + dt / 2;
   }
 
   // 天体の位置を厳密に引いた時刻。
-  get pivot(): number { return this._pivot; }
+  public get pivot(): number { return this._pivot; }
 
   // 天体セットを構築したフレームの中点時刻。表面候補の粗い絞り込みもこの時刻で構築する。
-  get framePivot(): number { return this._framePivot; }
+  public get framePivot(): number { return this._framePivot; }
 
   // 表面を持ち、かつ太陽を隠しうる相手。半径と位置の幾何だけで決まるので、登録天体の全数。
-  get surface(): readonly CelestialBody[] { return this._surface; }
+  public get surface(): readonly CelestialBody[] { return this._surface; }
 
   // 大気を持つ天体の全数。抗力を及ぼす1体は個体ごとに選ぶ。
-  get atmosphere(): readonly CelestialBody[] { return this._atmosphere; }
+  public get atmosphere(): readonly CelestialBody[] { return this._atmosphere; }
 
   // 日照と受熱の光源になる恒星。無ければ null。
-  get star(): CelestialBody | null { return this._star; }
+  public get star(): CelestialBody | null { return this._star; }
 
   // この区間の重力源の本数。
-  get gravitySourceCount(): number { return this._gravitySourceCount; }
+  public get gravitySourceCount(): number { return this._gravitySourceCount; }
 
   // 位置 r へ効く重力源。返る配列は次の呼び出しで上書きされるので、その場で使い切る。
-  attractorsNear(r: Vec3): readonly CelestialBody[] {
+  public attractorsNear(r: Vec3): readonly CelestialBody[] {
     return attractorsNearInto(r, this.classified, this.nearScratch);
   }
 
   // 位置 r に抗力を及ぼすただ1体の大気天体。無ければ null。
-  atmosphereBodyNear(r: Vec3): CelestialBody | null {
+  public atmosphereBodyNear(r: Vec3): CelestialBody | null {
     return nearestAtmosphereBody(r, this._atmosphere, this._pivot);
   }
 }

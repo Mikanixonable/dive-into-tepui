@@ -2,24 +2,24 @@
 // 自転姿勢・2次重力場・大気・公転回転基準系を時刻から算出・提供する。対象は自身1体分の値。
 // 数値暦が惑星系の重心しか収録していない系では、惑星本体と衛星はそこから重心オフセットを介して
 // 組む。恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
-import { Atmosphere } from './atmosphere';
+import type { Atmosphere } from './atmosphere';
 import { qFromForwardUp } from '../math/quat';
-import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
+import { type PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
-import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
+import { JULIAN_CENTURY, type KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
-import { CelestialBodyDef, PlanetDef, SatelliteDef, StarDef, spinRateOf } from './celestial-body-def';
-import {
-  CelestialKind, Degree2Gravity, FrameRotation, type BodyOrientation, type CelestialBody,
-  type EphemerisBody, type OrbitingCelestialBody,
+import { type CelestialBodyDef, type PlanetDef, type SatelliteDef, type StarDef, spinRateOf } from './celestial-body-def';
+import type {
+  CelestialKind, Degree2Gravity, FrameRotation, BodyOrientation, CelestialBody,
+  EphemerisBody, OrbitingCelestialBody,
 } from './celestial-body';
 import {
-  KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
+  type KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
 } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
-import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
-import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, v3 } from '../math/vec3';
+import { type TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
+import { type Vec3, add, addScaled, cross, len, lenSq, norm, scale, v3 } from '../math/vec3';
 import type { EciTransform } from './eci-transform';
 import type { PlanetSystem } from './planet-system';
 
@@ -53,11 +53,11 @@ function extrapolatedState(eci: EciValues, t: number): KinematicState {
 }
 
 export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
-  abstract readonly def: CelestialBodyDef;
-  abstract readonly kind: CelestialKind;
+  public abstract readonly def: CelestialBodyDef;
+  public abstract readonly kind: CelestialKind;
 
   // 主天体。惑星なら恒星、衛星ならその惑星、恒星自身は null。
-  abstract get primary(): CelestialMotion | null;
+  public abstract get primary(): CelestialMotion | null;
 
   // この天体1体ぶんの数値暦。暦に収録されていない天体では null。
   private bodyEphemeris: PointEphemeris | null = null;
@@ -68,57 +68,57 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
   private readonly eciCache = new TimeRing<EciValues>();
 
   // 自身の暦を関連付ける。関連付けるまでの間や null を設定した後は、解析暦が位置を算出する。
-  bindEphemeris(ephemeris: PointEphemeris | null): void {
+  public bindEphemeris(ephemeris: PointEphemeris | null): void {
     this.bodyEphemeris = ephemeris;
   }
 
   // ECI 化の変換器を結ぶ。結ぶまでは ECI の値を算出できない。
-  bindEciTransform(transform: EciTransform): void {
+  public bindEciTransform(transform: EciTransform): void {
     this.eciTransform = transform;
   }
 
   // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
   // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
-  stateAt(pivot: number, t: number = pivot): KinematicState {
+  public stateAt(pivot: number, t: number = pivot): KinematicState {
     return extrapolatedState(this.eciAt(pivot), t);
   }
 
   // 同等の外挿で位置のみを算出する。毎ステップ全エンティティ分走る経路なので、位置だけで足りる
   // ところではこちらを使う(stateAt より割り当てが 1 つ少ない)。
-  positionAt(pivot: number, t: number = pivot): Vec3 {
+  public positionAt(pivot: number, t: number = pivot): Vec3 {
     return extrapolatedPosition(this.eciAt(pivot), t);
   }
 
   // 時刻 pivot の姿勢込みの2次重力場。2次重力場を持たない天体は null。
-  degree2At(pivot: number): Degree2Gravity | null {
+  public degree2At(pivot: number): Degree2Gravity | null {
     return this.eciAt(pivot).degree2;
   }
 
   // 時刻 pivot の自転軸込みの大気。大気を持たない天体は null。
-  atmosphereAt(pivot: number): Atmosphere | null {
+  public atmosphereAt(pivot: number): Atmosphere | null {
     return this.eciAt(pivot).atmosphere;
   }
 
   // 宣言された天体 id。
-  get id(): string {
+  public get id(): string {
     return this.def.id;
   }
 
   // 解析暦が算出する太陽系重心中心の位置・速度。
-  abstract analyticStateAt(t: number): KinematicState<'analytic'>;
+  public abstract analyticStateAt(t: number): KinematicState<'analytic'>;
 
   // 解析暦が算出する主星中心の位置・速度。**解析経路の ECI 化はこちらどうしの差で組む。**
-  abstract analyticStarRelStateAt(t: number): KinematicState<'starRel'>;
+  public abstract analyticStarRelStateAt(t: number): KinematicState<'starRel'>;
 
   // 解析暦が算出する加速度。用途は基準時刻 pivot から各積分ステージの時刻へ位置を外挿する2次項
   // であるため、**位置モデルの二階微分に揃える** — 二体部分は軌道の n²a³ から取り、惑星本体には衛星から受ける
   // 加速度を入れる。二階微分に載らない衛星の周期補正項ぶんの残差は、外挿幅の2乗で効く
   // (月で 1 歩 20 s のとき数 mm)。
-  abstract analyticAccelAt(t: number): Vec3;
+  public abstract analyticAccelAt(t: number): Vec3;
 
   // 自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。自転モデルを持たない天体は null。
   // 位相は body-orientation.ts の基準方向(天体赤道と ECI 赤道の昇交点)から測る。
-  abstract orientationAt(t: number): BodyOrientation | null;
+  public abstract orientationAt(t: number): BodyOrientation | null;
 
   // 2次重力場を時刻 t の姿勢込みで解決する。2次重力場を持たない天体は null。
   protected abstract computeDegree2At(t: number): Degree2Gravity | null;
@@ -129,7 +129,7 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
   // 自転に固定した回転基準系(ẑ = 自転軸、x̂ = 本初子午線方向)。自転モデルを持たない天体では null。
   // 逆行自転する天体でも ẑ は IAU の「北極」のままで、逆行は omega の符号に現れる
   // (DEVELOP/SPEC/CELESTIAL.md 8節)— x̂ が IAU の極を基準に定義されているため。
-  spinRotationAt(t: number): FrameRotation | null {
+  public spinRotationAt(t: number): FrameRotation | null {
     const orientation = this.orientationAt(t);
     const rate = this.spinRate;
     if (orientation === null || rate === null) return null;
@@ -137,12 +137,12 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
   }
 
   // 自転角速度 [rad/s]。自転モデルを持たない天体は null。
-  get spinRate(): number | null {
+  public get spinRate(): number | null {
     return spinRateOf(this.def);
   }
 
   // 保持する時刻キャッシュを合算した照合の累計。
-  get cacheStats(): TimeCacheStats {
+  public get cacheStats(): TimeCacheStats {
     return this.eciCache.stats;
   }
 
@@ -168,19 +168,19 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
   }
 
   // 自分自身が暦に収録されている範囲での重心中心位置・速度。収録外・有効期間外では null。
-  ownNumericStateAt(t: number): KinematicState<'numeric'> | null {
+  public ownNumericStateAt(t: number): KinematicState<'numeric'> | null {
     return boundBaryStateAt(this.bodyEphemeris, t);
   }
 
   // 数値暦が算出するこの天体の重心中心位置・速度。取得できなければ null。
-  numericStateAt(t: number): KinematicState<'numeric'> | null {
+  public numericStateAt(t: number): KinematicState<'numeric'> | null {
     return this.ownNumericStateAt(t);
   }
 
 }
 
 export class StarMotion extends CelestialMotion {
-  readonly kind: CelestialKind = 'star';
+  public readonly kind: CelestialKind = 'star';
 
   // この恒星を主星とする惑星-衛星系(登録順)。重心の位置を決めるのに要る。
   private readonly systems: PlanetSystem[] = [];
@@ -188,38 +188,38 @@ export class StarMotion extends CelestialMotion {
   private readonly analyticCache = new TimeRing<KinematicState<'analytic'>>();
 
   // 惑星-衛星系は addPlanetSystem で後から登録する。
-  constructor(public readonly def: StarDef) {
+  public constructor(public readonly def: StarDef) {
     super();
   }
 
   // 恒星は階層の根。
-  get primary(): CelestialMotion | null { return null; }
+  public get primary(): CelestialMotion | null { return null; }
 
   // 惑星-衛星系をこの恒星へ登録する。**組むときは planet-system.ts の planetSystem() を使う** —
   // 登録し忘れずに作れる唯一の入口。
-  addPlanetSystem(system: PlanetSystem): void {
+  public addPlanetSystem(system: PlanetSystem): void {
     this.systems.push(system);
   }
 
   // 恒星の太陽系重心状態。同じ時刻に多数から引かれるので1度へ畳む。
-  analyticStateAt(t: number): KinematicState<'analytic'> {
+  public analyticStateAt(t: number): KinematicState<'analytic'> {
     const cached = this.analyticCache.get(t);
     if (cached !== undefined) return cached;
     return this.analyticCache.put(t, this.computeAnalyticStateAt(t));
   }
 
   // 恒星は主星相対系の原点なので、その系での加速度は厳密に 0。
-  analyticAccelAt(): Vec3 {
+  public analyticAccelAt(): Vec3 {
     return v3();
   }
 
   // 主星は自分中心の座標系の原点。
-  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
+  public analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
     return kinematicState<'starRel'>(t, v3(), v3());
   }
 
   // 重心相対位置のキャッシュは恒星1体につき1つなので、ここで一緒に数える。
-  get cacheStats(): TimeCacheStats {
+  public get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(super.cacheStats, this.analyticCache.stats);
   }
 
@@ -246,7 +246,7 @@ export class StarMotion extends CelestialMotion {
   }
 
   // 恒星は自転姿勢を持たない。
-  orientationAt(): BodyOrientation | null {
+  public orientationAt(): BodyOrientation | null {
     return null;
   }
 
@@ -262,19 +262,19 @@ export class StarMotion extends CelestialMotion {
 }
 
 export abstract class OrbitingMotion extends CelestialMotion implements OrbitingCelestialBody {
-  abstract readonly def: PlanetDef | SatelliteDef;
+  public abstract readonly def: PlanetDef | SatelliteDef;
 
   // 主天体。惑星なら恒星、衛星ならその惑星。公転している以上、必ず持つ。
-  abstract get primary(): CelestialMotion;
+  public abstract get primary(): CelestialMotion;
 
   // 二体部分の軌道。衛星は周期摂動項を含まない平均要素。
-  abstract get keplerOrbit(): KeplerOrbit;
+  public abstract get keplerOrbit(): KeplerOrbit;
 
   // 自分に固定した回転基準系(x̂ = 主天体→自分、ẑ = 軌道面法線: SPEC/CELESTIAL.md 8節)。
   // **基底は常に実状態から組む** — 供給源が数値暦でも解析暦でも同じ定義なので、数値暦の
   // 有効期間の端をまたいでも定義は変わらない。角運動量が縮退している時だけ、平面が決まらない
   // ので二体要素へ落ちる。
-  orbitFrameRotationAt(t: number): FrameRotation {
+  public orbitFrameRotationAt(t: number): FrameRotation {
     const rel = this.orbitRelStateAt(t);
     const h = cross(rel.r, rel.v);
     const xHat = norm(rel.r);
@@ -286,7 +286,7 @@ export abstract class OrbitingMotion extends CelestialMotion implements Orbiting
   }
 
   // 軌道面の法線(単位ベクトル、ECI)。基底と同じく実状態から組む。
-  orbitNormalAt(t: number): Vec3 {
+  public orbitNormalAt(t: number): Vec3 {
     const rel = this.orbitRelStateAt(t);
     const h = cross(rel.r, rel.v);
     return lenSq(h) > 0 ? norm(h) : keplerOrbitNormal(this.keplerOrbit, t);
@@ -295,20 +295,20 @@ export abstract class OrbitingMotion extends CelestialMotion implements Orbiting
   // 共線点(L1/L2/L3)が行き先として意味を持つか。副天体が軽いほどヒル半径が縮んで L1 が
   // 表面へ寄るので、副天体半径に対する余裕が minClearanceRatio 倍に満たない系は共線点を
   // 持たないものとして扱う(判定裕度 minClearanceRatio は引数で指定する)。
-  hasUsableCollinearPoints(minClearanceRatio: number): boolean {
+  public hasUsableCollinearPoints(minClearanceRatio: number): boolean {
     const mu = this.massRatio;
     if (mu === null || mu <= 0) return false;
     return collinearClearanceRatio(mu, this.keplerOrbit.a, this.def.radius) >= minClearanceRatio;
   }
 
   // 三角点(L4/L5)が線形安定か(Routh の質量比条件)。
-  hasStableTriangularPoints(): boolean {
+  public hasStableTriangularPoints(): boolean {
     const mu = this.massRatio;
     return mu !== null && mu > 0 && hasStableTriangularPoints(mu);
   }
 
   // 時刻 t の自転軸と自転位相を、PoleModel の分類ごとに解く。
-  orientationAt(t: number): BodyOrientation | null {
+  public orientationAt(t: number): BodyOrientation | null {
     const model = this.def.pole;
     if (model === undefined) return null;
     // 'eciPole' は ECI の極軸そのもの。軸が ECI に固定されているため、ここを時刻に依らない
@@ -393,18 +393,18 @@ export abstract class OrbitingMotion extends CelestialMotion implements Orbiting
 }
 
 export class PlanetMotion extends OrbitingMotion {
-  readonly kind: CelestialKind = 'planet';
+  public readonly kind: CelestialKind = 'planet';
 
   // star は主星。system は自分が属する惑星-衛星系で、軌道と衛星の一覧はそちらが持つ。
   // **組むときは planet-system.ts の planetSystem() を使う** — 系と本体を結び忘れずに作れる唯一の入口。
-  constructor(
+  public constructor(
     public readonly def: PlanetDef, public readonly star: StarMotion, public readonly system: PlanetSystem,
   ) {
     super();
   }
 
-  get primary(): CelestialMotion { return this.star; }
-  get keplerOrbit(): KeplerOrbit { return this.system.orbit; }
+  public get primary(): CelestialMotion { return this.star; }
+  public get keplerOrbit(): KeplerOrbit { return this.system.orbit; }
 
   // 惑星の軌道要素が乗っているのは本体ではなく系の重心。
   protected override orbitPointNumericStateAt(t: number): KinematicState<'numeric'> | null {
@@ -417,7 +417,7 @@ export class PlanetMotion extends OrbitingMotion {
   }
 
   // 本体を収録していない系は、収録された系の重心から重心オフセットぶんを差し引いて補う。
-  override numericStateAt(t: number): KinematicState<'numeric'> | null {
+  public override numericStateAt(t: number): KinematicState<'numeric'> | null {
     const own = this.ownNumericStateAt(t);
     if (own !== null) return own;
     const bary = this.system.ownNumericStateAt(t);
@@ -427,19 +427,19 @@ export class PlanetMotion extends OrbitingMotion {
   }
 
   // 惑星本体の太陽系重心状態。
-  analyticStateAt(t: number): KinematicState<'analytic'> {
+  public analyticStateAt(t: number): KinematicState<'analytic'> {
     return fromStarRelative(this.star.analyticStateAt(t), this.analyticStarRelStateAt(t));
   }
 
   // 惑星本体の主星相対状態。系の重心から衛星ぶんの重心補正を差し引いた位置で、
   // 補正が全衛星に依存するので系がまとめて畳んでいる。
-  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
+  public analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
     return this.system.bodyStarRelStateAt(t);
   }
 
   // 系の重心の主星まわりの二体加速度に、衛星が本体を引く加速度を足したもの。位置モデル
   // 「系の重心 − Σ w_i·ρ_i」の 2 階微分そのもので、加速度を引くのは本体の位置ではなく重心。
-  analyticAccelAt(t: number): Vec3 {
+  public analyticAccelAt(t: number): Vec3 {
     return add(
       keplerOrbitAccel(this.system.orbit, t, this.system.starRelStateAt(t).r),
       this.system.bodyAccelFromSatellitesAt(t),
@@ -447,37 +447,37 @@ export class PlanetMotion extends OrbitingMotion {
   }
 
   // 系のキャッシュは惑星本体と1対1なので、ここで一緒に数える。
-  get cacheStats(): TimeCacheStats {
+  public get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(super.cacheStats, this.system.cacheStats);
   }
 }
 
 export class SatelliteMotion extends OrbitingMotion {
-  readonly kind: CelestialKind = 'satellite';
+  public readonly kind: CelestialKind = 'satellite';
 
   // 系の中での自分の登録順。系が畳んだ一式から自分のぶんを引くのに要る。
   private readonly index: number;
 
   // system は自分が属する惑星-衛星系。自分をその重心補正の対象として登録するので、惑星本体の
   // 絶対位置を初めて引く前に全衛星を作り終えていなければならない。
-  constructor(public readonly def: SatelliteDef, public readonly system: PlanetSystem) {
+  public constructor(public readonly def: SatelliteDef, public readonly system: PlanetSystem) {
     super();
     this.index = system.addSatellite(this);
   }
 
   // 主天体である惑星本体。
-  get planet(): PlanetMotion { return this.system.body; }
+  public get planet(): PlanetMotion { return this.system.body; }
 
-  get primary(): CelestialMotion { return this.planet; }
-  get keplerOrbit(): KeplerOrbit { return this.def.orbit.kepler; }
+  public get primary(): CelestialMotion { return this.planet; }
+  public get keplerOrbit(): KeplerOrbit { return this.def.orbit.kepler; }
 
   // 衛星の太陽系重心状態。
-  analyticStateAt(t: number): KinematicState<'analytic'> {
+  public analyticStateAt(t: number): KinematicState<'analytic'> {
     return fromStarRelative(this.planet.star.analyticStateAt(t), this.analyticStarRelStateAt(t));
   }
 
   // 衛星の主星相対状態。惑星本体へ惑星相対モデルを足した位置で、系がまとめて畳んでいる。
-  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
+  public analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
     return this.system.satelliteStarRelStateAt(this.index, t);
   }
 
@@ -487,7 +487,7 @@ export class SatelliteMotion extends OrbitingMotion {
   }
 
   // 惑星本体の加速度に惑星まわりの二体加速度を足す。
-  analyticAccelAt(t: number): Vec3 {
+  public analyticAccelAt(t: number): Vec3 {
     return add(
       this.planet.analyticAccelAt(t),
       keplerOrbitAccel(this.def.orbit.kepler, t, this.system.satelliteRelStateAt(this.index, t).r),
@@ -495,7 +495,7 @@ export class SatelliteMotion extends OrbitingMotion {
   }
 
   // 未収録の衛星は、数値暦から得られる惑星本体の位置へ惑星相対モデルを加算して補う。
-  override numericStateAt(t: number): KinematicState<'numeric'> | null {
+  public override numericStateAt(t: number): KinematicState<'numeric'> | null {
     const own = this.ownNumericStateAt(t);
     if (own !== null) return own;
     const planet = this.planet.numericStateAt(t);

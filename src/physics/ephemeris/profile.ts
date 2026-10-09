@@ -3,7 +3,7 @@
 
 export type EphemerisProfileId = 'modern-de440' | 'far-future-20000';
 
-type EphemerisProfile = {
+interface EphemerisProfile {
   readonly id: EphemerisProfileId;
   readonly sourceModel: string;
   readonly validStartJdTdb: number;
@@ -12,7 +12,7 @@ type EphemerisProfile = {
   readonly highAccuracyEndJdTdb: number;
   /** Published pack payload identity; changing coefficients invalidates saves. */
   readonly packId: string;
-};
+}
 
 // 有効期間はモデル一般の年代ではなく、同梱済みpackが実際に覆う期間そのもの。
 // 開始時刻を期間外へ変更するときは生成ツールで10年packを再生成し、この宣言も更新する。
@@ -38,7 +38,7 @@ export const EPHEMERIS_PROFILES: Readonly<Record<EphemerisProfileId, EphemerisPr
 };
 
 export class UnsupportedEphemerisEpochError extends RangeError {
-  constructor(readonly jdTdb: number, readonly requestedProfile?: EphemerisProfileId) {
+  public constructor(public readonly jdTdb: number, public readonly requestedProfile?: EphemerisProfileId) {
     super(requestedProfile === undefined
       ? `JD_TDB=${jdTdb} に数値暦を持つ天体暦プロファイルが無い`
       : `JD_TDB=${jdTdb} は天体暦プロファイル ${requestedProfile} の有効期間外`);

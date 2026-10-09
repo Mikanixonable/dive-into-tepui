@@ -1,23 +1,23 @@
 // 現実の太陽系。各系の構築関数を呼んで全天体の運動と見た目を組み、宣言順に並べた
 // CelestialSystem を返す。同じ太陽系を、ECI の中心(originId)を選んで組める。
-import { EphemerisPoints } from '../../../physics/ephemeris/point';
+import type { EphemerisPoints } from '../../../physics/ephemeris/point';
 import { OrbitingMotion, StarMotion } from '../../../physics/celestial-motion';
 import { CelestialSystem } from '../celestial-system';
-import { j2000EphemerisSeconds, TdbJulianDate } from '../../../physics/time';
+import { j2000EphemerisSeconds, type TdbJulianDate } from '../../../physics/time';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { StarCelestialView } from '../../../render/celestial/celestial-entity/star-celestial-view';
 import { PointFieldView } from '../../../render/celestial/point-field-view';
 import { generatePointField } from './point-field';
-import { DwarfPlanetId, DWARF_PLANET_NAMES, dwarfPlanets } from './dwarf-planets';
-import { EarthSystemBodyId, EARTH_SYSTEM_NAMES, earthSystem } from './earth-system';
-import { InnerPlanetId, INNER_PLANET_NAMES, innerPlanets } from './inner-planets';
-import { JupiterSystemBodyId, JUPITER_SYSTEM_NAMES, jupiterSystem } from './jupiter-system';
-import { MarsSystemBodyId, MARS_SYSTEM_NAMES, marsSystem } from './mars-system';
-import { NeptuneSystemBodyId, NEPTUNE_SYSTEM_NAMES, neptuneSystem } from './neptune-system';
-import { SaturnSystemBodyId, SATURN_SYSTEM_NAMES, saturnSystem } from './saturn-system';
-import { SmallBodyId, SMALL_BODY_NAMES, smallBodies } from './small-bodies';
+import { type DwarfPlanetId, DWARF_PLANET_NAMES, dwarfPlanets } from './dwarf-planets';
+import { type EarthSystemBodyId, EARTH_SYSTEM_NAMES, earthSystem } from './earth-system';
+import { type InnerPlanetId, INNER_PLANET_NAMES, innerPlanets } from './inner-planets';
+import { type JupiterSystemBodyId, JUPITER_SYSTEM_NAMES, jupiterSystem } from './jupiter-system';
+import { type MarsSystemBodyId, MARS_SYSTEM_NAMES, marsSystem } from './mars-system';
+import { type NeptuneSystemBodyId, NEPTUNE_SYSTEM_NAMES, neptuneSystem } from './neptune-system';
+import { type SaturnSystemBodyId, SATURN_SYSTEM_NAMES, saturnSystem } from './saturn-system';
+import { type SmallBodyId, SMALL_BODY_NAMES, smallBodies } from './small-bodies';
 import { SUN, SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from './sun';
-import { UranusSystemBodyId, URANUS_SYSTEM_NAMES, uranusSystem } from './uranus-system';
+import { type UranusSystemBodyId, URANUS_SYSTEM_NAMES, uranusSystem } from './uranus-system';
 import type { WebGPURenderer } from 'three/webgpu';
 
 // 太陽系に登録された天体の id。各系の id 集合を合わせたもの。

@@ -7,7 +7,7 @@ export class MaxHeap {
   private count = 0;
 
   // capacity は同時に保持できる要素数の上限。
-  constructor(capacity: number) {
+  public constructor(capacity: number) {
     if (!Number.isInteger(capacity) || capacity < 0) {
       throw new RangeError(`MaxHeap: capacity must be a non-negative integer, got ${capacity}`);
     }
@@ -15,22 +15,22 @@ export class MaxHeap {
     this.values = new Int32Array(capacity);
   }
 
-  get size(): number {
+  public get size(): number {
     return this.count;
   }
 
-  get capacity(): number {
+  public get capacity(): number {
     return this.scores.length;
   }
 
   // 最大スコア。空のときは -Infinity を返すので、「スコアが閾値を超える要素が残っているか」は
   // 空かどうかを別に調べずに書ける。
-  get topScore(): number {
+  public get topScore(): number {
     return this.count > 0 ? this.scores[0]! : -Infinity;
   }
 
   // 要素をスコア付きで積む。容量を超えるとエラー。
-  push(score: number, value: number): void {
+  public push(score: number, value: number): void {
     if (this.count >= this.scores.length) {
       throw new RangeError(`MaxHeap: capacity ${this.scores.length} exceeded`);
     }
@@ -47,7 +47,7 @@ export class MaxHeap {
   }
 
   // スコアが最大の要素を取り出す。同スコアの要素どうしの順序は決めていない。空ならエラー。
-  pop(): number {
+  public pop(): number {
     if (this.count === 0) throw new RangeError('MaxHeap: pop from an empty heap');
     const top = this.values[0]!;
     const n = --this.count;
@@ -70,7 +70,7 @@ export class MaxHeap {
     return top;
   }
 
-  clear(): void {
+  public clear(): void {
     this.count = 0;
   }
 }

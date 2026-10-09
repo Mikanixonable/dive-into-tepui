@@ -28,12 +28,12 @@ export class TimeRing<T> {
   private lastHit = 0;
 
   // get の照合の累計。返る値には影響しない。
-  get stats(): TimeCacheStats {
+  public get stats(): TimeCacheStats {
     return { hits: this.hits, misses: this.misses };
   }
 
   // t に一致する保持値。無ければ undefined。
-  get(t: number): T | undefined {
+  public get(t: number): T | undefined {
     if (this.keys[this.lastHit] === t) {
       this.hits++;
       return this.values[this.lastHit];
@@ -50,7 +50,7 @@ export class TimeRing<T> {
   }
 
   // t をキーに value を最古のスロットへ書き、その value をそのまま返す。
-  put(t: number, value: T): T {
+  public put(t: number, value: T): T {
     this.keys[this.next] = t;
     this.values[this.next] = value;
     this.next = (this.next + 1) % TIME_CACHE_SLOTS;

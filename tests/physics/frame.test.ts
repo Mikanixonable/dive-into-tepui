@@ -1,16 +1,16 @@
 // frame.ts と reference-frames.ts の回帰テスト: 座標系(原点天体 × 回転)の同一性と、その
 // 時刻ごとの剛体運動による点・KinematicState の順逆変換(恒等・往復・既知回転角・速度の
 // 有限差分検証・bake+un-bake 合成・原点が動く系)。
-import { orbitingMotionOf, positionOf, solarSystemParts, stateOf } from './test-helpers';
+import { positionOf, solarSystemParts, stateOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { bodyAnchorSource } from '../../src/physics/attractor';
 import { FrameAnchors } from '../../src/game/frame-anchors';
-import { FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
+import { type FrameAnchorSource, type ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/math/quat';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, add, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { type Vec3, add, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const YEAR = 365.25636 * 86400;
 
