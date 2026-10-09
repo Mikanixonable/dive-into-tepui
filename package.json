@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "description": "地球-月系を舞台とした軌道力学シューティングゲーム",
+  "engines": {
+    "node": ">=22.15.0"
+  },
   "scripts": {
     "dev": "node node_modules/webpack-cli/bin/cli.js serve --mode development",
     "build": "webpack --mode production",
