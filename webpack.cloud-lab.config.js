@@ -6,6 +6,11 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 
 module.exports = {
+  cache: {
+    type: 'filesystem',
+    name: 'cloud-lab',
+    cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
+  },
   // main が実験環境(index.html)、separate が実写の分離環境(separate.html)。
   entry: {
     main: './tools/cloud-lab/main.ts',
