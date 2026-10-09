@@ -34,7 +34,7 @@ const NORMAL_ERROR = Math.sqrt(18) * 2 ** -11;
 const EDGE_FADE_WIDTH = 0.1;
 // 知覚的粗さがこの値までの面には全量を映し、NO_REFLECTION_ROUGHNESS で 0 にする。
 const FULL_REFLECTION_ROUGHNESS = 0.3;
-const NO_REFLECTION_ROUGHNESS = 0.6;
+export const NO_REFLECTION_ROUGHNESS = 0.6;
 // ray の向きと視点への向きの余弦がこの範囲で、重みを 0 へ落とす。視点へ戻る ray が映すのはカメラの後ろで、
 // 画面に写っていない。
 const CAMERA_FACING_FADE_START = 0.6;
@@ -45,7 +45,7 @@ const REFINE_STEPS = 4;
 // 芯の側へ寄せる(Stachowiak 2015「Stochastic Screen-Space Reflections」の truncated distribution sampling)。切った
 // 後の反射の向きのずれは、正面から見た面でローブ半幅の √((1 − b) / b) 倍まで(視線が面に寝るほど遠くへ届く)。
 // 像から遠く離れた所に疎らな輝点を出さないための非物理的な調整で、像の期待値の正確さより輝点が無いことを優先する。
-const LOBE_TAIL_CUT = 0.05;
+const LOBE_TAIL_CUT = 0.2;
 
 // 描画バッファの画素の面 sample から追跡する ray の向きと、その重み。画素ごとに固定の blue noise で鏡面ローブから
 // 選ぶので、同じ解像度で同じ画素を塗るパスはどれも同じ向きを引き直せる。追跡の開始点のずらし(tileShift 0)とは
@@ -211,7 +211,12 @@ export function viewZOf(depth: FloatNode, projectionInverse: Mat4Uniform): Float
 // view 空間の奥行き surfaceZ に写った面が、ray thickness だけ奥へ続いた先の奥行き z。面の写った深度から
 // この奥行きまでが、ray が当たる物体の中。
 export function thicknessFarZ(surfaceZ: FloatNode): FloatNode {
-  return surfaceZ.add(surfaceZ.mul(THICKNESS_PER_DISTANCE));
+  return surfaceZ.sub(rayThicknessAt(surfaceZ));
+}
+
+// view 空間の奥行き surfaceZ に写った面の ray thickness [m]。
+export function rayThicknessAt(surfaceZ: FloatNode): FloatNode {
+  return surfaceZ.negate().mul(THICKNESS_PER_DISTANCE);
 }
 
 // 面 sample の ray の起点を法線の向きへ浮かせる高さ [m]。平らな面が、自分を写した深度の画素で自分の奥へ入らない

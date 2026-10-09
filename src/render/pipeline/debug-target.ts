@@ -4,7 +4,8 @@ export type DebugTargetId =
   | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'direct-specular' | 'far-specular'
   | 'correction' | 'raw-correction' | 'denoised-correction'
   | 'bounce-source' | 'material' | 'reflection-source'
-  | 'reflection-depth' | 'reflection-weight' | 'reflection-distance' | 'reflection'
+  | 'reflection-depth' | 'raw-reflection-weight' | 'raw-reflection-distance' | 'raw-reflection'
+  | 'denoised-reflection-weight' | 'denoised-reflection-distance' | 'denoised-reflection' | 'reflection-denoise-level'
   | 'atmosphere' | 'lens' | 'planet-light';
 
 // 通常だけを先頭の例外とし、以後は各 target が本番フレームで生成される依存順に並べる。
@@ -30,9 +31,13 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['material', 'マテリアル'],
   ['reflection-source', '映り込みの像の元'],
   ['reflection-depth', '映り込みの深度'],
-  ['reflection-weight', '映り込みの置換重み'],
-  ['reflection-distance', '映り込みの当たり距離'],
-  ['reflection', '映り込み'],
+  ['raw-reflection-weight', 'raw 映り込みの置換重み'],
+  ['raw-reflection-distance', 'raw 映り込みの当たり距離'],
+  ['raw-reflection', 'raw 映り込み'],
+  ['denoised-reflection-weight', '均した映り込みの置換重み'],
+  ['denoised-reflection-distance', '均した映り込みの当たり距離'],
+  ['denoised-reflection', '均した映り込み'],
+  ['reflection-denoise-level', '映り込みの均しの段'],
   ['atmosphere', '大気'],
   ['lens', 'レンズ'],
 ];

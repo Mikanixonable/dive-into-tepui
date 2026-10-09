@@ -199,9 +199,11 @@ function reflectionLadder(): LabCase {
       // 地球の像の縁は、トーンマッピングだけを通した遠方の鏡面照度(天体照と環境光)で測る。
       'ladder-off-specular': { view: {}, graphics: off, debugTarget: 'far-specular' },
       'ladder-roughness': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'roughness' },
-      'ladder-weight': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-weight' },
-      'ladder-distance': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-distance' },
-      'ladder-reflection': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection' },
+      // 像・重み・当たり距離は、均した映り込みで読む。
+      'ladder-weight': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'denoised-reflection-weight' },
+      'ladder-distance': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'denoised-reflection-distance' },
+      'ladder-reflection': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'denoised-reflection' },
+      'ladder-level': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-denoise-level' },
     },
   };
 }
@@ -238,8 +240,8 @@ function reflectionLadderChecker(): LabCase {
     earth: LADDER_EARTH,
     shots: {
       'ladder-checker-no-planet': { view: {}, graphics: NO_PLANET_GRAPHICS },
-      // 境の縁の幅は、R を掛ける前の映り込みの像で測る。
-      'ladder-checker-reflection': { view: {}, graphics: NO_PLANET_GRAPHICS, debugTarget: 'reflection' },
+      // 境の縁の幅は、R を掛ける前の均した映り込みの像で測る。
+      'ladder-checker-reflection': { view: {}, graphics: NO_PLANET_GRAPHICS, debugTarget: 'denoised-reflection' },
     },
   };
 }

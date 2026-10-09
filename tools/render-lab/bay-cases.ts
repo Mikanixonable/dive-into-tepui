@@ -380,13 +380,13 @@ function bay(): LabCase {
         view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-depth',
       },
       'bay-metal-reflection-distance': {
-        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-distance',
+        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'raw-reflection-distance',
       },
       'bay-metal-reflection-weight': {
-        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-weight',
+        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'raw-reflection-weight',
       },
       'bay-metal-reflection-image': {
-        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection',
+        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'raw-reflection',
       },
     },
   };

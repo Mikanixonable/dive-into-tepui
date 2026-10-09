@@ -1,7 +1,7 @@
-// 陰影の合成のパス。面の画素の最終の陰影 keep + R × ((1 − w) × 遠方の鏡面照度 + w × I) を、world パスと共有する
-// HDR ターゲットへ書き、G バッファの深度を同じターゲットへ複製する。近くの物体の映り込み(w × I と w)が遠方の
-// 鏡面光を置き換えるのはこの式の中だけで、鏡面反射率 R は両方へ同じ値を一度だけ掛ける。面の無い画素は捨て、先に
-// 描かれた背景を残す。
+// 陰影の合成のパス。面の画素の最終の陰影 keep + R × ((1 − w̄) × 遠方の鏡面照度 + (w × I)‾) を、world パスと共有する
+// HDR ターゲットへ書き、G バッファの深度を同じターゲットへ複製する。近くの物体の均した映り込み((w × I)‾ と w̄)が
+// 遠方の鏡面光を置き換えるのはこの式の中だけで、鏡面反射率 R は両方へ同じ値を一度だけ掛ける。面の無い画素は捨て、
+// 先に描かれた背景を残す。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { Discard, Fn, screenUV, texture, vec4 } from 'three/tsl';
@@ -18,9 +18,9 @@ function composedShading(
 ): Vec4Node {
   return Fn(() => {
     Discard(gbuffer.covered().not());
-    const weight = reflection.weightAt(screenUV);
+    const weight = reflection.denoisedWeightAt(screenUV);
     const replaced = texture(farSpecular, screenUV).rgb.mul(weight.oneMinus())
-      .add(reflection.weightedImageAt(screenUV));
+      .add(reflection.denoisedWeightedImageAt(screenUV));
     const specular = specularReflectanceAt(gbuffer, screenUV).mul(replaced);
     return vec4(texture(keep, screenUV).rgb.add(specular), 1);
   })();
