@@ -368,12 +368,12 @@ export function toChebyshevPack(
 ): ChebyshevPack {
   const bodies = new Map<string, {
     readonly id: string;
-    readonly segments: Array<{
+    readonly segments: {
       readonly start: number;
       readonly end: number;
       readonly degree: number;
       readonly coefficients: [Float64Array, Float64Array, Float64Array];
-    }>;
+    }[];
   }>();
   for (const series of decoded.manifest.series) {
     let body = bodies.get(series.body);

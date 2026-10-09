@@ -15,11 +15,11 @@ export function gravityReachOf(mu: number): number {
 
 // 到達量の内側で加算する天体。r は分類した時刻の ECI 位置 [m]、limitSq は到達量に区間の
 // 移動ぶんを足した判定距離の2乗 [m²]。
-type RangedAttractor = {
+interface RangedAttractor {
   readonly motion: CelestialBody;
   readonly r: Vec3;
   readonly limitSq: number;
-};
+}
 
 // 天体が区間 [tStart, tEnd] のあいだに pivot の位置から離れうる距離の上限 [m]。
 // **pivot は区間の中点であること。** 天体の位置モデルは pivot まわりの2次式 Δ(s) = v·s + ½a·s²
@@ -33,10 +33,10 @@ function intervalDrift(
 }
 
 // 重力源一覧を、常に含める天体(always)と到達量の内側で含める天体(ranged)へ分けたもの。
-export type ClassifiedAttractors = {
+export interface ClassifiedAttractors {
   readonly always: readonly CelestialBody[];
   readonly ranged: readonly RangedAttractor[];
-};
+}
 
 // 重力源一覧を、区間 [tStart, tEnd] の中点 pivot の位置で分類する。ECI 原点を到達量の内側に
 // 持つ天体は、原点補正項 mu/D² が問い合わせ位置に依らず残るので always へ入る(原点天体は

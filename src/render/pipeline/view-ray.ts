@@ -5,10 +5,10 @@ import { float, getViewPosition, normalize, screenUV, texture } from 'three/tsl'
 import type { Mat4Uniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // その画素を通る視線。origin は近平面上の点、direction はカメラから遠ざかる単位ベクトル。
-type ViewRay = {
+interface ViewRay {
   readonly origin: Vec3Node;
   readonly direction: Vec3Node;
-};
+}
 
 // 深度テクスチャの生値から復元した、その画素が写している面の view 空間位置。uv を渡せば
 // 隣接画素の位置も同じ式で引ける。

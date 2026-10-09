@@ -3,7 +3,7 @@
 
 export type EphemerisProfileId = 'modern-de440' | 'far-future-20000';
 
-type EphemerisProfile = {
+interface EphemerisProfile {
   readonly id: EphemerisProfileId;
   readonly sourceModel: string;
   readonly validStartJdTdb: number;
@@ -12,7 +12,7 @@ type EphemerisProfile = {
   readonly highAccuracyEndJdTdb: number;
   /** Published pack payload identity; changing coefficients invalidates saves. */
   readonly packId: string;
-};
+}
 
 // 有効期間はモデル一般の年代ではなく、同梱済みpackが実際に覆う期間そのもの。
 // 開始時刻を期間外へ変更するときは生成ツールで10年packを再生成し、この宣言も更新する。

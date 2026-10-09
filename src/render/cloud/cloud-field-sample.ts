@@ -3,11 +3,11 @@ import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import type { FloatNode, Vec4Node } from '../tsl-types';
 
 // 雲場の生成値と焼いたテクスチャの読み値。雲頂高度はメートルで扱い、RGBAの配置を表現側へ漏らさない。
-export type CloudSample = {
+export interface CloudSample {
   readonly coverage: FloatNode;
   readonly cloudTop: FloatNode;
   readonly translucent: FloatNode;
-};
+}
 
 // 焼いた雲場のRGBAを、生成側と同じ単位の雲標本へ戻す。
 export function cloudSampleFromTexel(texel: Vec4Node): CloudSample {

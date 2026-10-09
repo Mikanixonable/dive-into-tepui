@@ -38,11 +38,11 @@ function maxPrimaryDistance(orbit: SatelliteOrbit): number {
 
 // 系に属する天体1時刻ぶん。body は主星相対、rels は惑星本体相対で、**引かれた衛星だけが
 // 埋まる作業表**(並びは addSatellite の登録順)。重心補正に入る衛星は body を組む時点で埋まる。
-type SystemMembers = {
+interface SystemMembers {
   readonly body: KinematicState<'starRel'>;
   readonly angles: PlanetAngles;
   readonly rels: (KinematicState<'primaryRel'> | undefined)[];
-};
+}
 
 export class PlanetSystem {
   private readonly moons: SatelliteMotion[] = [];

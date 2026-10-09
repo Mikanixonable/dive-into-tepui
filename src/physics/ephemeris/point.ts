@@ -33,10 +33,10 @@ export function boundBaryStateAt(ephemeris: PointEphemeris | null, t: number): K
 // 引く側が id と種別で2度問い合わせる必要も無くなる。id が載っていなければ未収録。
 export type EphemerisPoints = ReadonlyMap<string, EphemerisPoint>;
 
-type EphemerisPoint = {
+interface EphemerisPoint {
   readonly kind: EphemerisPointKind;
   readonly ephemeris: PointEphemeris;
-};
+}
 
 // id が期待した種別で収録されているときだけ、その暦を返す。**種別が食い違えば null** —
 // 系の重心の系列を惑星本体へ結ぶと、その系がまるごと重心オフセットぶんずれる

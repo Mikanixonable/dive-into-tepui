@@ -20,7 +20,7 @@ function layer(colorSrgb: { readonly r: number; readonly g: number; readonly b: 
 }
 
 class MaterialReader implements EarthSurfaceMaterialLayerReader {
-  public readonly detailUvs: Array<{ readonly layer: number; readonly uv: THREE.Vector2 }> = [];
+  public readonly detailUvs: { readonly layer: number; readonly uv: THREE.Vector2 }[] = [];
 
   public constructor(private readonly base: EarthSurfaceLayerSample, private readonly details: ReadonlyMap<number, EarthSurfaceLayerSample>) {}
 

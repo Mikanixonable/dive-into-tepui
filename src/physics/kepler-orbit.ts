@@ -26,7 +26,7 @@ const Q_ZUP_TO_YUP: Quat = qFromAxisAngle(BASIS_ORIGIN, Math.PI / 2);
 // 既定の基準面 = 黄道面。惑星と月の要素はこの面の上で与えられる。
 export const ECLIPTIC_BASIS: Quat = Q_ECL_TO_ECI;
 
-export type KeplerOrbit = {
+export interface KeplerOrbit {
   readonly basisToEci: Quat; // 基準面座標系(z = 基準面の法線)→ ECI
   readonly a: number; // t=0 の軌道長半径 [m]
   readonly aRate: number; // 軌道長半径の変化率 [m/s]
@@ -40,9 +40,9 @@ export type KeplerOrbit = {
   readonly lonPeriRate: number; // 近点の変化率 [rad/s]
   readonly l0: number; // t=0 の平均黄経 L [rad]
   readonly lRate: number; // 平均黄経の変化率 [rad/s](= 2π/公転周期)
-};
+}
 
-type OrbitAngles = {
+interface OrbitAngles {
   readonly a: number;
   readonly e: number;
   readonly inc: number;
@@ -54,7 +54,7 @@ type OrbitAngles = {
   readonly u: number;
   readonly uMean: number; // 平均近点角に対応する昇交点からの角(= L − Ω)
   readonly uRate: number;
-};
+}
 
 // ν̇ と ṙ は離心近点角 E の軌道面内座標 (a(cosE−e), a√(1−e²)sinE) を陽に時間微分して求める —
 // 標準の ν̇ = Ṁ(1+e cosν)²/(1−e²)^1.5 は a・e を定数とみなした式なので、aRate/eRate ≠ 0(惑星
@@ -237,12 +237,12 @@ export function planetOrbit(p: {
   };
 }
 
-export type PlanetAngles = {
+export interface PlanetAngles {
   readonly meanAnomaly: number; // [rad]
   readonly meanLongitude: number; // [rad]
   readonly meanAnomalyRate: number; // [rad/s]
   readonly meanLongitudeRate: number; // [rad/s]
-};
+}
 
 // 惑星-衛星系重心の軌道が t 時点に与える平均近点角・平均黄経と、その変化率。
 export function planetAngles(orbit: KeplerOrbit, t: number): PlanetAngles {

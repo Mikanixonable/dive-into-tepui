@@ -5,18 +5,18 @@ import { Loop, ceil, exp, float, int, max, min, vec3 } from 'three/tsl';
 import type { FloatNode, Vec3Node } from './tsl-types';
 
 // 視線上の 1 点における媒質。
-export type MediumSample = {
+export interface MediumSample {
   // 消散係数 [1/m]。波長ごとに違ってよい。
   readonly extinction: Vec3Node;
   // 単位光学的厚みあたりに、その点が視線へ足す放射輝度。散乱なら「そこへ届く光 × 位相関数」。
   readonly source: Vec3Node;
-};
+}
 
 // 区間を通り抜けたあとの透過率と、区間が視線へ足した放射輝度。
-type RayMarchResult = {
+interface RayMarchResult {
   readonly transmittance: Vec3Node;
   readonly radiance: Vec3Node;
-};
+}
 
 // 区間を steps 個のステップで積分する。**steps は整数でなくてよい** — 端数分は最後のステップが
 // 短くなる形で反映されるため、steps を連続に変化させると積分値も滑らかに変化する。distanceAt は

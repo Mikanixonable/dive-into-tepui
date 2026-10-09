@@ -18,7 +18,7 @@ const TICK_INTERVALS_SEC = [
   365 * 86400,
 ] as const;
 
-export type DisplayTick = { readonly t: number; readonly label: string };
+export interface DisplayTick { readonly t: number; readonly label: string }
 
 // span の目盛り本数(0番目を含む)が maxTicks を超えない最小の間隔を candidates(小さい順)
 // から選ぶ。どの候補でも超えるなら最大の候補を返す。

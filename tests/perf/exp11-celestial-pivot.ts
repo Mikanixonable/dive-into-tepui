@@ -317,11 +317,11 @@ type PivotPolicy = 'substep' | 'frame';
 
 // 1本の積分の結果。closest は closestTo の天体への最接近距離 [m](測らなければ Infinity)、
 // wall は壁時計 [ms]。
-type Integration = {
+interface Integration {
   readonly state: KinematicState;
   readonly closest: number;
   readonly wall: number;
-};
+}
 
 // Simulator.advance と同じ区切りで state0 を tEnd まで積分する(重力と2次重力場だけ、重力源は
 // 全数)。policy が 'frame' なら pivot をフレームの中点に1つ、'substep' ならサブステップごとの
@@ -356,7 +356,7 @@ function integrate(
 
 // 積分のシナリオ。closestTo は最接近距離を測る相手の天体 id(測らないなら null)、heliocentric
 // は終端の太陽中心距離を出すか、period は表に P/simDt を併記する公転周期 [s](併記しないなら null)。
-type Scenario = {
+interface Scenario {
   readonly title: string;
   readonly days: number;
   readonly warps: readonly number[];
@@ -364,7 +364,7 @@ type Scenario = {
   readonly closestTo: string | null;
   readonly heliocentric: boolean;
   readonly period: number | null;
-};
+}
 
 // centerId を中心に半径 radius・法線 normal の円軌道に乗った t = 0 の状態。面内の向きは、
 // ECI の +X(法線に近いときは +Z)を面へ落とした向き。

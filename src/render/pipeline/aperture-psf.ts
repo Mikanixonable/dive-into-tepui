@@ -13,12 +13,12 @@ const APERTURE_PSF_EDGE_INTENSITY = 1 / 4096;
 const APERTURE_PSF_SUPPORT = APERTURE_PSF_TAP_COUNT ** APERTURE_PSF_PASS_COUNT - 1;
 const APERTURE_PSF_FALLOFF = -APERTURE_PSF_SUPPORT / Math.log(APERTURE_PSF_EDGE_INTENSITY);
 
-export type AperturePsfTap = {
+export interface AperturePsfTap {
   // 読み元のテクセルで測った、光芒方向への距離。
   readonly offset: number;
   // この段の正規化済み配分。
   readonly weight: number;
-};
+}
 
 // 正多角形絞りの辺法線。1要素が中心から外向きの腕1本に対応する。
 export const APERTURE_PSF_DIRECTIONS: readonly (readonly [number, number])[] = (() => {

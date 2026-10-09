@@ -36,10 +36,10 @@ const DAY = 86400;
 const SAMPLE_TIMES: readonly number[] = [0, 90 * DAY, 200 * DAY];
 
 // 検査する場所。位置も速度も天体の運動から導き、どこなのかが式から読めるようにする。
-type Site = {
+interface Site {
   readonly name: string;
   readonly stateAt: (t: number) => KinematicState;
-};
+}
 
 // center のまわりの円軌道の状態。offset は center からの相対位置、normal は軌道面法線で、
 // 両者は直交していなければならない。
@@ -117,7 +117,7 @@ function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
 
 // 表面判定の相手を比べる場所。円軌道では1サブステップの間にどの表面へも届かないので、
 // 絞り込みが実際に何かを通す「接触が差し迫った場所」でなければ比べる意味がない。
-type SurfaceSite = { readonly name: string; readonly bodyId: string };
+interface SurfaceSite { readonly name: string; readonly bodyId: string }
 
 // 登録天体のうち μ が最も小さいもの。常時加算される重い天体から最も遠い側の経路
 // (グリッドへ載る側・弧の成員から抜けやすい側)を通る相手として選ぶ。

@@ -14,13 +14,13 @@ export const COLUMN_SPAN = 1000;
 
 // 大量の個体を 1 本のメッシュで描く枝が、自分の広がりを影パスへ渡す口。個体が毎フレーム動く枝は
 // メッシュ自身の外接箱が当てにならないので、userData.shadowExtent にこれを置く。
-export type ShadowExtent = {
+export interface ShadowExtent {
   // 今フレームの全個体を包む描画座標の AABB。
   readonly worldBounds: THREE.Box3;
-};
+}
 
 // 枝 1 つぶんの、影を落とすもの。
-export type ShadowCaster = {
+export interface ShadowCaster {
   readonly box: THREE.Box3;
   readonly center: THREE.Vector3;
   // 枝の中でカメラにいちばん近い実体の点と、そこまでの距離 [m]。**窓の中心と要求精度はこれで
@@ -35,7 +35,7 @@ export type ShadowCaster = {
   // 受け手としての要求 texel [m]。**Infinity なら枠は要らない** — 画面に写らないか、
   // 誰の影も落ちてこない。
   requiredTexel: number;
-};
+}
 
 export class ShadowCasters {
   private readonly casters: ShadowCaster[] = [];

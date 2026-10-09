@@ -30,7 +30,7 @@ const GHOST_SOURCE_TEXELS: readonly [number, number, number, number] = [1, 2, 4,
 
 // 絞りの反射像 1 枚。**どのパラメータも光軸(画面中心)まわりの回転と可換**で、それが像を光点と
 // 中心を結ぶ直線の上へ並べる。
-type Ghost = {
+interface Ghost {
   // GHOST_REFERENCE_RADIUS での倍率。**読む位置に掛かる**ので、像はこの逆数に拡大される。
   // 負なら中心を挟んだ反対側。
   readonly scale: number;
@@ -45,7 +45,7 @@ type Ghost = {
   readonly tint: readonly [number, number, number];
   // 色収差。チャンネルごとに倍率をこの割合だけずらす。
   readonly dispersion: number;
-};
+}
 
 // scale と power が像の位置・形、softness がぼけ具合、weight が光量の配分を決める。
 // 像の倍率は半径だけの関数なので、光点と画面中心を結ぶ直線上へ配置される。

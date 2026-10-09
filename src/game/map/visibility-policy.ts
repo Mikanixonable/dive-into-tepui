@@ -9,12 +9,12 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 
-export type MapVisibility = {
+export interface MapVisibility {
   readonly icon: boolean;
   readonly label: boolean;
   readonly orbit: boolean;
   readonly pickable: boolean;
-};
+}
 
 // マップ上に記号か軌道線のどちらかで現れるか。
 export function appearsOnMap(visibility: MapVisibility): boolean {
