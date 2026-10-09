@@ -1,6 +1,7 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { shuffled } from './screen-space-blind-order.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const shotDir = path.join(root, '.render-lab-shots', 'ssd-8-blind');
@@ -25,28 +26,8 @@ for (const set of sourceKey.assignments) {
   }
 }
 
-function seededRandom(seed, scene) {
-  let counter = 0;
-  return () => {
-    const digest = createHash('sha256').update(`${seed}:${scene}:${counter++}`).digest();
-    return digest.readUInt32BE(0) / 0x1_0000_0000;
-  };
-}
-
-function shuffle(items, seed, scene) {
-  const random = seededRandom(seed, scene);
-  for (let attempt = 0; attempt < 10_000; attempt++) {
-    const shuffled = [...items];
-    for (let index = shuffled.length - 1; index > 0; index--) {
-      const other = Math.floor(random() * (index + 1));
-      [shuffled[index], shuffled[other]] = [shuffled[other], shuffled[index]];
-    }
-    const hasAdjacentRun = shuffled.some((item, index) => index > 0
-      && (item.variant === shuffled[index - 1].variant || item.budget === shuffled[index - 1].budget));
-    if (!hasAdjacentRun) return shuffled;
-  }
-  throw new Error(`could not find a mixed order for ${scene}`);
-}
+// 隣り合う 2 つの候補が同じ方式か同じ予算か。
+const sameSource = (a, b) => a.variant === b.variant || a.budget === b.budget;
 
 function createPrivateKey() {
   const seed = randomBytes(32).toString('hex');
@@ -56,7 +37,7 @@ function createPrivateKey() {
     if (candidates.length !== 12) throw new Error(`${scene} must have 12 source candidates`);
     const ids = new Set(candidates.map(({ stimulusId }) => stimulusId));
     if (ids.size !== 12) throw new Error(`${scene} has duplicate source candidate IDs`);
-    for (const [index, candidate] of shuffle(candidates, seed, scene).entries()) {
+    for (const [index, candidate] of shuffled(candidates, seed, scene, sameSource).entries()) {
       assignments.push({ scene, label: String(index + 1).padStart(2, '0'), ...candidate });
     }
   }
@@ -84,7 +65,7 @@ function validatePrivateKey(key) {
       const item = rows[index];
       if (item.label !== String(index + 1).padStart(2, '0')) throw new Error(`${scene} key rows must be ordered by label`);
       const previous = rows[index - 1];
-      if (previous && (previous.variant === item.variant || previous.budget === item.budget)) {
+      if (previous && sameSource(previous, item)) {
         throw new Error(`${scene} has adjacent source categories in its blind label order`);
       }
       const pair = `${item.scene}|${item.budget}|${item.variant}|${item.stimulusId}`;

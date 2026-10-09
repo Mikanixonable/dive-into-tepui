@@ -2,6 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { openChromeSession, sleep } from './chrome-session.mjs';
+import {
+  CORRECTION_DISPLAY, captureGroups, correctionPng, initStats, spreadPng, stabilizeExposure,
+} from './screen-space-blind-capture.mjs';
 import { seedOf } from './screen-space-lab.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -33,7 +36,7 @@ const configs = {
 const variantOrder = ['band', 'q', 'raw-quarter', 'raw-full'];
 const symbols = ['K', 'M', 'R', 'V'];
 const displayTransform = process.argv.includes('--cpu-display')
-  ? 'signed-correction-cpu-v1' : 'signed-correction-debug-gpu-v1';
+  ? CORRECTION_DISPLAY.cpu : CORRECTION_DISPLAY.gpu;
 const keyPath = path.join(workDir, 'keys', 'key.json');
 const key = JSON.parse((await import('node:fs')).readFileSync(keyPath, 'utf8'));
 const viewerDataPath = path.join(outputDir, 'viewer-data.json');
@@ -66,7 +69,7 @@ function saveViewerData() {
     const assigned = set === undefined ? null : key.assignments.find((item) => item.scene === set.scene && item.budget === set.budget);
     const variantName = set === undefined || variant === null ? null : assigned?.bySymbol[variant]?.variant ?? null;
     const transform = image.displayTransform ?? (image.view === 'B' || set?.scene === 'cornell-box'
-      ? 'signed-correction-debug-gpu-v1' : 'signed-correction-cpu-v1');
+      ? CORRECTION_DISPLAY.gpu : CORRECTION_DISPLAY.cpu);
     return { scene: set?.scene ?? null, budget: set?.budget ?? null, variant: variantName,
       stimulusId: image.stimulusId, view: image.view, exposureFactor: image.exposureFactor, transform };
   });
@@ -109,22 +112,6 @@ function tierOf(variant, slices) {
 function rowsOf(measurement) {
   return Object.fromEntries(Object.entries(measurement.gpuPassMsById)
     .filter(([id]) => id.startsWith('nearbyDiffuse')).map(([id, value]) => [id, value.p50]));
-}
-async function stabilizeExposure(devTools) {
-  const values = await devTools.evaluate(`(async()=>{
-    const values=[];
-    for(let frame=0;frame<8;frame++){
-      window.renderLab.render();values.push(window.renderLab.exposureFactor());
-      if(values.length>=2){const a=values.at(-2),b=values.at(-1);if(Math.abs(a-b)<=Math.max(1,Math.abs(a),Math.abs(b))*1e-7)return values;}
-      await new Promise(requestAnimationFrame);
-    }
-    return values;
-  })()`);
-  const previous=values.at(-2),current=values.at(-1);
-  if(previous===undefined||current===undefined||Math.abs(previous-current)>Math.max(1,Math.abs(previous),Math.abs(current))*1e-7){
-    throw new Error(`exposure did not stabilize: ${JSON.stringify(values)}`);
-  }
-  return { frames: values, factor: current };
 }
 function totalOf(rows) { return Object.values(rows).reduce((a, b) => a + b, 0); }
 function rotate(values, n) { const k = n % values.length; return [...values.slice(k), ...values.slice(0, k)]; }
@@ -203,94 +190,10 @@ async function measureCurveExtra(devTools, scene, round) {
     saveWorkData();
   }
 }
-async function initStats(devTools) {
-  await devTools.evaluate(`(() => { window.__ssdBlind = (() => {
-    const n = 960 * 540 * 3;
-    return { width: 960, height: 540, sum: new Float32Array(n), squareSum: new Float32Array(n),
-      groupCount: 0, first: null, second: null };
-  })(); })()`);
-}
-async function renderCompletedPaths(devTools, seeds) {
-  await devTools.evaluate('window.renderLab.setScanWhiteNoisePass(null)');
-  if (seeds.length === 1) {
-    const [x, y] = seeds[0];
-    await devTools.evaluate(`window.renderLab.setScanSeed(${x}, ${y}); window.renderLab.render()`);
-  } else {
-    const result = await devTools.evaluate(
-      `window.renderLab.measureScreenSpacePaths(${JSON.stringify(seeds)}, 1)`,
-    );
-    if (!result.gpuSupported) throw new Error('GPU timestamp queries unavailable during completed-path capture');
-  }
-}
-async function accumulateCompletedGroup(devTools, group) {
-  await devTools.evaluate(`(() => {
-    const s = window.__ssdBlind, n = s.sum.length, out = new Float32Array(n);
-    const rgba = s.pendingRgba;
-    for (let i = 0, j = 0; i < n; i += 3, j += 4) {
-      const r=rgba[j],g=rgba[j+1],b=rgba[j+2];
-      const values=[r,g,b];
-      for (let c=0;c<3;c++) {
-        const v=values[c]; out[i+c]=v; s.sum[i+c]+=v; s.squareSum[i+c]+=v*v;
-      }
-    }
-    if (${group} === 0) s.first = out;
-    if (${group} === 1) s.second = out;
-    s.groupCount++;
-    delete s.pendingRgba;
-  })()`);
-}
-async function finalizeStats(devTools, budget, variant) {
-  await devTools.evaluate(`(() => {
-    const s = window.__ssdBlind, n = s.sum.length, mean = new Float32Array(n), variance = new Float32Array(n);
-    const deviation0 = new Float32Array(n), deviation1 = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      const m = s.sum[i] / s.groupCount;
-      mean[i] = m;
-      variance[i] = Math.max(0, s.squareSum[i] / s.groupCount - m * m);
-      deviation0[i] = s.first[i] - m;
-      deviation1[i] = s.second[i] - m;
-    }
-    s.result = { mean, variance, deviation0, deviation1, first: s.first, second: s.second };
-    s.sum = null; s.squareSum = null;
-    window.__ssdBlindMeans ??= {};
-    (window.__ssdBlindMeans[${JSON.stringify(budget)}] ??= {})[${JSON.stringify(variant)}] = mean;
-  })()`);
-}
 async function exportPng(devTools, imageId, view, kind, exposureFactor) {
-  const dataUrl = await devTools.evaluate(`(async () => {
-    const s = window.__ssdBlind.result, canvas = document.createElement('canvas');
-    canvas.width = 960; canvas.height = 540;
-    const ctx = canvas.getContext('2d', { alpha: false });
-    const image = ctx.createImageData(960, 540);
-    const putByte = (v) => Math.max(0, Math.min(255, Math.round(v * 255)));
-    if (${JSON.stringify(kind)} === 'radiance') {
-      const src = s[${JSON.stringify(view)}], rgba = new Float32Array(960 * 540 * 4);
-      for (let p = 0, i = 0; p < src.length; p += 3, i += 4) {
-        rgba[i] = src[p]; rgba[i + 1] = src[p + 1]; rgba[i + 2] = src[p + 2]; rgba[i + 3] = 1;
-      }
-      if (${JSON.stringify(displayTransform)} === 'signed-correction-cpu-v1') {
-        const display = window.renderLab.signedCorrectionDisplay({ width: 960, height: 540, rgba }, ${exposureFactor});
-        for (let i = 0; i < display.rgba.length; i++) image.data[i] = putByte(display.rgba[i]);
-        ctx.putImageData(image, 0, 0);
-        return canvas.toDataURL('image/png');
-      }
-      return window.renderLab.signedCorrectionPng({ width: 960, height: 540, rgba });
-    } else if (${JSON.stringify(kind)} === 'deviation') {
-      const src = s[${JSON.stringify(view)}];
-      for (let p = 0, i = 0; p < src.length; p += 3, i += 4) {
-        for (let c = 0; c < 3; c++) image.data[i + c] = putByte(0.5 + 0.5 * Math.max(-1, Math.min(1, src[p + c] / 0.1)));
-        image.data[i + 3] = 255;
-      }
-    } else {
-      const src = s.variance;
-      for (let p = 0, i = 0; p < src.length; p += 3, i += 4) {
-        const value = putByte(Math.min(1, (src[p] + src[p + 1] + src[p + 2]) / 3 / 0.01));
-        image.data[i] = value; image.data[i + 1] = value; image.data[i + 2] = value; image.data[i + 3] = 255;
-      }
-    }
-    ctx.putImageData(image, 0, 0);
-    return canvas.toDataURL('image/png');
-  })()`);
+  const dataUrl = kind === 'radiance'
+    ? await correctionPng(devTools, `window.__ssdBlind.result[${JSON.stringify(view)}]`, displayTransform, exposureFactor)
+    : (await spreadPng(devTools, view)).dataUrl;
   const pathOut = path.join(imageDir, imageId, `${view}.png`);
   mkdirSync(path.dirname(pathOut), { recursive: true });
   writeFileSync(pathOut, Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
@@ -305,21 +208,12 @@ async function generateCandidate(devTools, scene, budget, variant, stimulusId) {
   console.log(`Capture ${scene}/${budget}/${variant}: configure`);
   await setVariant(devTools, variant, config.slices, config.sparseTapCount ?? 8);
   const exposureFactor=await devTools.evaluate('window.renderLab.exposureFactor()');
-  console.log(`Capture ${scene}/${budget}/${variant}: allocate stats`);
-  await initStats(devTools);
-  console.log(`Capture ${scene}/${budget}/${variant}: begin groups`);
-  for (let group = 0; group < 32; group++) {
-    if (group % 8 === 0) console.log(`Capture ${scene}/${budget}/${variant}: group ${group}/32`);
-    const seeds = Array.from({ length: config.paths }, (_, p) => seedOf(group * 4 + p));
-    await renderCompletedPaths(devTools, seeds);
-    await devTools.evaluate(`window.renderLab.readFloat('correction').then(({rgba})=>{window.__ssdBlind.pendingRgba=rgba})`);
-    await accumulateCompletedGroup(devTools, group);
-  }
+  await captureGroups(devTools, config.paths, `Capture ${scene}/${budget}/${variant}`);
   const exposureAfter=await devTools.evaluate('window.renderLab.exposureFactor()');
   if(Math.abs(exposureAfter-exposureFactor)>Math.max(1,Math.abs(exposureFactor))*1e-7){
     throw new Error(`exposure changed during candidate capture ${scene}/${budget}/${variant}: ${exposureFactor} -> ${exposureAfter}`);
   }
-  await finalizeStats(devTools, budget, variant);
+  await devTools.evaluate(`(window.__ssdBlindMeans ??= {}, (window.__ssdBlindMeans[${JSON.stringify(budget)}] ??= {})[${JSON.stringify(variant)}] = window.__ssdBlind.result.mean, 0)`);
   await exportPng(devTools, stimulusId, 'first', 'radiance', exposureFactor);
   await exportPng(devTools, stimulusId, 'second', 'radiance', exposureFactor);
   await exportPng(devTools, stimulusId, 'mean', 'radiance', exposureFactor);
