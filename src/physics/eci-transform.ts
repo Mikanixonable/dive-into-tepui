@@ -12,11 +12,11 @@ import type { EphemerisBody } from './celestial-body';
 // ECI 原点天体が時刻 t に提供する、原点を引くための一式。**供給源が違えば同じ天体に異なる位置を
 // 算出する**ため、ECI 化は必ず同じ経路どうしで差を取る。解析経路は主星相対で持つ
 // (kinematic-state の starRel)。numeric が null の時刻は、全天体が解析経路へ落ちる。
-type OriginState = {
+interface OriginState {
   readonly numeric: KinematicState<'numeric'> | null;
   readonly starRel: KinematicState<'starRel'>;
   readonly accel: Vec3;
-};
+}
 
 export class EciTransform {
   // 全天体が同じ時刻で同じ原点を引くので、原点1体ぶんの一式は1回へ畳む。

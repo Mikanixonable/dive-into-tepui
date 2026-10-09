@@ -28,11 +28,11 @@ import { qRotate } from '../../src/math/quat';
 
 // 地球原点で組んだ現実の太陽系。天体は宣言順(重力源配列・一覧の順序もこの並び)に並び、
 // 1体ずつは id で引く。同一時刻の集合を答える系と、座標系も一緒に持つ。
-export type SolarSystemParts = {
+export interface SolarSystemParts {
   readonly bodies: readonly CelestialMotion[];
   readonly system: CelestialSystem;
   readonly referenceFrames: ReferenceFrames;
-};
+}
 
 // 回帰テストが既定で使う元期。TEST_SIM_ZERO_ET は「simTime=0 を、地球の日心黄経が π になる
 // 瞬間へ合わせる」ための J2000 からの秒数で、その瞬間を絶対時刻として表したものがこれ。
