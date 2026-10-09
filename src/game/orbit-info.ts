@@ -2,7 +2,7 @@
 import { strongestAttractor } from '../physics/attractor';
 import { apsisAltitudes } from '../physics/elements';
 import { kinematicState } from '../physics/kinematic-state';
-import { dot, len, sub, Vec3 } from '../math/vec3';
+import { dot, len, sub, type Vec3 } from '../math/vec3';
 import type { OrbitReference } from './orbit-reference';
 import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
 import type { CelestialBody } from '../physics/celestial-body';

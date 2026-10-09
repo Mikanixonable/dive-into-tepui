@@ -5,8 +5,8 @@ import { test } from '../harness';
 import {
   POLAR_PITCH_LIMIT, eulerFromRotation, rotationFromEuler, sphericalOffset,
 } from '../../src/math/polar-euler';
-import { LOCAL_FORWARD, LOCAL_UP, qFromBasis, qRotate } from '../../src/math/quat';
-import { cross, dot, len, norm, sub, v3, Vec3 } from '../../src/math/vec3';
+import { LOCAL_FORWARD, LOCAL_UP, qRotate } from '../../src/math/quat';
+import { dot, len, norm, sub, v3, type Vec3 } from '../../src/math/vec3';
 
 // 2つの回転が同じ向きを表すか。局所基底の写り先で比べる(q と -q を同一視するため)。
 function sameOrientation(a: Parameters<typeof qRotate>[0], b: Parameters<typeof qRotate>[0], tol = 1e-9): boolean {
