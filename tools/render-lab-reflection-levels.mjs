@@ -28,16 +28,14 @@ const SPHERE_RADIUS = 0.4;
 // 描画の大きさと縦の画角(tools/render-lab/lab-case.ts)。
 const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
-// 縮小段のデバッグ表示で白になる段 + 1(src/render/pipeline/render-pipeline.ts の REFLECTION_LEVEL_DEBUG_RANGE)。
-const LEVEL_DEBUG_RANGE = 9;
-// 縮小列の段数は src の定数から読む。
+// 縮小列の段数は src の定数から読む。縮小段のデバッグ表示は、段 + 1 を段数で割った灰(src/render/pipeline/render-pipeline.ts)。
 const LEVEL_COUNT = (() => {
   const source = readFileSync(path.join(root, 'src/render/pipeline/reflection-pass.ts'), 'utf8');
-  const match = /^const LEVEL_COUNT = (\d+);/m.exec(source);
-  if (match === null) throw new Error('LEVEL_COUNT not found in reflection-pass.ts');
+  const match = /^export const REFLECTION_LEVEL_COUNT = (\d+);/m.exec(source);
+  if (match === null) throw new Error('REFLECTION_LEVEL_COUNT not found in reflection-pass.ts');
   return Number(match[1]);
 })();
-// 鏡面ローブの半幅 [rad] の、GGX の α に対する比(reflection-pass.ts の LOBE_HALF_WIDTH_PER_ALPHA)。
+// 鏡面ローブの半幅 [rad] の、GGX の α に対する比(src/render/pipeline/lighting/ggx.ts の LOBE_HALF_WIDTH_PER_ALPHA)。
 const LOBE_HALF_WIDTH_PER_ALPHA = 2;
 
 // 粗さのデバッグ表示から帯を決めるときの、粗さの許す差。いちばん狭い帯の間隔(0.0525 と 0.075)の半分より小さい。
@@ -46,8 +44,8 @@ const ROUGHNESS_TOLERANCE = 0.01;
 // この粗さの面として照合し、予測する。
 const MIN_ROUGHNESS = 0.0525;
 const effectiveRoughness = (roughness) => Math.max(roughness, MIN_ROUGHNESS);
-// いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の刻み(段で約 0.07)を覆う。
-const STUCK_MARGIN = 0.1;
+// いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の白の側の刻み(段数 13 で段約 0.12)を覆う。
+const STUCK_MARGIN = 0.15;
 // 断面の 1 行として扱うのに要る、その行の帯の画素の数と、中心線の左右に平均する画素の数。
 const MIN_ROW_PIXELS = 5;
 const PROFILE_HALF_WIDTH = 2;
@@ -130,7 +128,7 @@ function bandMap(shot) {
 function levelOf([r, g, b]) {
   if (b > 128 && r < 64 && g < 64) return null;
   if (r === 0 && g === 0 && b === 0) return null;
-  return srgbToLinear(r / 255) * LEVEL_DEBUG_RANGE - 1;
+  return srgbToLinear(r / 255) * LEVEL_COUNT - 1;
 }
 
 // 表 1: 帯 × 縮小段の画素数。

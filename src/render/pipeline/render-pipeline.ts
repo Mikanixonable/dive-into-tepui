@@ -24,7 +24,7 @@ import { SphereSpecular } from './lighting/sphere-light';
 import { SphereLights } from './lighting/sphere-lights';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
-import { ReflectionPass } from './reflection-pass';
+import { REFLECTION_LEVEL_COUNT, ReflectionPass } from './reflection-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { SCREEN_SPACE_DIFFUSE, ScreenSpacePass } from './screen-space/screen-space-pass';
 import { DiffuseCorrection } from './screen-space/diffuse-correction';
@@ -51,8 +51,6 @@ import { setCelestialSurfaceViewport } from '../celestial/celestial-surface';
 
 // 映り込みの当たり距離のデバッグ表示で白になる距離 [m]。
 const REFLECTION_DISTANCE_DEBUG_RANGE = 1000;
-// 映り込みの縮小段のデバッグ表示で白になる段 + 1。tools/render-lab-reflection-levels.mjs が同じ目盛りで段へ戻す。
-const REFLECTION_LEVEL_DEBUG_RANGE = 9;
 
 export class RenderPipeline {
   private readonly gbuffer: GBufferPass;
@@ -387,11 +385,12 @@ export class RenderPipeline {
     return select(distance.greaterThan(0), scaled.clamp(0, 1), float(0));
   }
 
-  // 映り込みの像の解決が読んだ縮小列の段を、段 + 1 を REFLECTION_LEVEL_DEBUG_RANGE で割った線形の灰へ写す。置換の
-  // 重みが 0 の画素は青、像を書いていない(映り込みを切った)フレームは黒。
+  // 映り込みの像の解決が読んだ縮小列の段を、段 + 1 を段数で割った線形の灰へ写し、いちばん粗い段を白にする。置換の
+  // 重みが 0 の画素は青、像を書いていない(映り込みを切った)フレームは黒。tools/render-lab-reflection-levels.mjs が
+  // 同じ目盛りで段へ戻す。
   private reflectionLevelDebugNode(): Vec3Node {
     const level = this.reflectionPass.levelAt(screenUV);
-    const gray = vec3(level.add(1).div(REFLECTION_LEVEL_DEBUG_RANGE).clamp(0, 1));
+    const gray = vec3(level.add(1).div(REFLECTION_LEVEL_COUNT).clamp(0, 1));
     return select(level.greaterThan(-0.5), gray, select(level.greaterThan(-1.5), vec3(0, 0, 1), vec3(0)));
   }
 
