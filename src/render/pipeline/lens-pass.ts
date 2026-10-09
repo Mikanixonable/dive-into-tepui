@@ -30,12 +30,12 @@ const GHOST_SHARE = 0.04;
 
 // 全画面描画フィルタ。入力元のテクセル寸法のみが異なるため uniform で保持する。
 // 描画先ターゲットは呼び出し側が選択し、光条のように複数フィルタが2枚のバッファを交互に利用する場合がある。
-type Filter = {
+interface Filter {
   readonly quad: QuadMesh;
   readonly material: THREE.MeshBasicNodeMaterial;
   // オフセットを測る単位。**読み元**のテクセル寸法であって、書き込み先のではない。
   readonly sourceTexel: Vec2Uniform;
-};
+}
 
 // フィルタと、それ専用の書き込み先。
 type Stage = Filter & { readonly target: THREE.RenderTarget };

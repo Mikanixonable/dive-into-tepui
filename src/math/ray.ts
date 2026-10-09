@@ -2,7 +2,7 @@
 import { type Vec3, dot, lenSq, scale, sub } from './vec3';
 
 // 視線。始点と単位方向ベクトルの組で、どちらも絶対 ECI。
-export type Ray = { origin: Vec3; dir: Vec3 };
+export interface Ray { origin: Vec3; dir: Vec3 }
 
 // 視線が中心 center・半径 radius の球に当たるか。始点が球の内側にあるときも、球が始点より
 // 後方にあって当たらないときも正しく答える。

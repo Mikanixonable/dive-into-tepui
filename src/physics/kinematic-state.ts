@@ -98,11 +98,11 @@ export function addPrimaryRelative<F extends FrameTag>(
 // 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。
 // radOut が動径外向き r̂ と一致するのは r⊥v のとき(円軌道)だけで、離心軌道では
 // 動径から傾く — マーカーの RADIAL OUT/IN や Δv の OUT/IN はこの軸を指す。
-type OrbitAxes = {
+interface OrbitAxes {
   readonly pro: Vec3; // 進行方向
   readonly nrm: Vec3; // 軌道面法線
   readonly radOut: Vec3; // 面内・進行方向に直交(外向き)
-};
+}
 
 // 状態ベクトルから軌道基底を組む。速度または角運動量が縮退していると各軸は NaN になる。
 export function orbitAxes<F extends FrameTag>(s: KinematicState<F>): OrbitAxes {
