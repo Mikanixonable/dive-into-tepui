@@ -13,14 +13,14 @@ import { cycleAt, phaseValue, scaleFreq } from './utils';
 const SEMITONES_PER_SCALE_STEP = 2;
 
 export class PhasingComposer implements Composer {
-  constructor(private readonly params: PhasingParams) {}
+  public constructor(private readonly params: PhasingParams) {}
 
-  get stepDurSec(): number {
+  public get stepDurSec(): number {
     return this.params.stepDur;
   }
 
   // このステップで鳴る声部A/B・パッド・ドローン・煌めきを、その順に並べて返す。
-  notesAt(step: number): ComposerNote[] {
+  public notesAt(step: number): ComposerNote[] {
     const params = this.params;
     const transpose = phaseValue(params.transpose, step);
     const octave = phaseValue(params.octave, step);
