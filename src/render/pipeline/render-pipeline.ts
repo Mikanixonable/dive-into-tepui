@@ -23,6 +23,7 @@ import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
+import { ReflectionPass } from './reflection-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { SCREEN_SPACE_DIFFUSE, ScreenSpacePass } from './screen-space/screen-space-pass';
 import { DiffuseCorrection } from './screen-space/diffuse-correction';
@@ -73,6 +74,7 @@ export class RenderPipeline {
   private readonly _ambient: AmbientSource;
   private readonly correctionSource: DiffuseCorrectionSource;
   private readonly materialPass: MaterialPass;
+  private readonly reflectionPass: ReflectionPass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
   private readonly antialiasPass: AntialiasPass;
@@ -176,6 +178,9 @@ export class RenderPipeline {
     // 深度を 32bit 浮動小数点にするには明示が要る — 省くと depth24plus のまま精度だけ落ちる。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
+    this.reflectionPass = new ReflectionPass(
+      renderer, this.gbuffer, this.reflection, this.target, gpu, graphics.screenSpaceSpecular,
+    );
     this.atmospherePass = new AtmospherePass(
       renderer, this.gbuffer, this.target, this._sunLight, this._bodyShadow, gpu,
     );
@@ -286,6 +291,9 @@ export class RenderPipeline {
         vec4(this.toneMapped(texture(this.screenSpacePass.surfaceRadianceTexture, screenUV).rgb), 1),
       ),
       material: inspectMaterial,
+      reflection: this.buildCompositeMaterial(
+        vec4(this.toneMapped(texture(this.reflectionPass.texture, screenUV).rgb), 1),
+      ),
       atmosphere: inspectMaterial,
       lens: this.buildCompositeMaterial(vec4(this.toneMapped(this.lensPass.redistributedLight()), 1)),
       'planet-light': this.buildCompositeMaterial(
@@ -405,6 +413,7 @@ export class RenderPipeline {
     this.screenSpacePass.setMode(graphics.screenSpaceDiffuse);
     this.screenSpacePass.setQuality(graphics.screenSpaceQuality);
     this.reflectionTracePass.setEnabled(graphics.screenSpaceSpecular);
+    this.reflectionPass.setEnabled(graphics.screenSpaceSpecular);
     this.reflectionTracePass.setQuality(graphics.screenSpaceSpecularQuality);
     this.correctionSource.setEnabled(graphics.screenSpaceDiffuse !== SCREEN_SPACE_DIFFUSE.off);
     this.shadowMaps.setQuality(
@@ -456,6 +465,7 @@ export class RenderPipeline {
       this.quad.material = this.lensEnabled ? this.lensCompositeMaterial : this.compositeMaterials.off;
       passes.push(
         ['マテリアル', () => this.materialPass.compile(scene, camera, this.target)],
+        ['映り込み', () => this.reflectionPass.compile(camera, width, height)],
         ['大気', () => this.atmospherePass.compile(camera)],
         ['ワールド', () => compileInto(this.renderer, this.target, scene, camera)],
       );
@@ -478,11 +488,11 @@ export class RenderPipeline {
   }
 
   // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → 映り込みの追跡 → ライティング →
-  // マテリアル → 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
-  // マテリアル・大気・world・レンズの4つのパスをスキップする。デバッグ表示を選んでいてもパスは省略しない —
-  // 設定で切られているパス(影マップ・遮蔽と照り返し・映り込みの追跡・レンズ)を選べば、そのフレームが何も作って
-  // いないことがそのまま空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
-  // フレームでも撮る。
+  // マテリアル → 映り込み → 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイル
+  // ではマテリアル・映り込み・大気・world・レンズの5つのパスをスキップする。デバッグ表示を選んでいてもパスは省略
+  // しない — 設定で切られているパス(影マップ・遮蔽と照り返し・映り込みの追跡・映り込み・レンズ)を選べば、その
+  // フレームが何も作っていないことがそのまま空として見える。例外はスナップショットのブリットで、「マテリアル」表示の
+  // 間は大気の写らないフレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
@@ -524,9 +534,13 @@ export class RenderPipeline {
       // 最初の書き込みなのでクリアする)へ描く。
       this.materialPass.render(scene, camera, this.target);
 
-      // 大気パス。デバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる
-      // (「マテリアル」は重ねる前の下地なので、大気を描く前に控える)。
+      // 「マテリアル」のデバッグ表示は、映り込みを足す前のマテリアルパスの出力を、大気パスの点検用の1枚へ控える。
       if (this.debugTarget === 'material') this.atmospherePass.inspectBackdrop();
+
+      // 映り込みパス。マテリアルパスの出力を読み、近くの物体の像を同じ this.target へ足す。
+      this.reflectionPass.render(camera, width, height);
+
+      // 大気パス。「大気」のデバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる。
       this.atmospherePass.render(camera);
       if (this.debugTarget === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
@@ -581,6 +595,7 @@ export class RenderPipeline {
     this.lightPrepass.dispose();
     this.sphereSpecular.dispose();
     this.materialPass.dispose();
+    this.reflectionPass.dispose();
     this.atmospherePass.dispose();
     this.overlayPass.dispose();
     this.antialiasPass.dispose();

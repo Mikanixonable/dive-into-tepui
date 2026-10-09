@@ -388,6 +388,9 @@ function bay(): LabCase {
       'bay-metal-reflection-weight': {
         view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-weight',
       },
+      'bay-metal-reflection-image': {
+        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection',
+      },
     },
   };
 }
