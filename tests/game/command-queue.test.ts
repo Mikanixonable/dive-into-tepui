@@ -1,6 +1,7 @@
 // モデル層の外から届いた命令の列が、受け付けた順に1度だけ適用されることを検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
+import { CommandCompletion } from '../../src/game/command-completion';
 import { CommandQueue } from '../../src/game/command-queue';
 
 export function register(): void {
@@ -32,4 +33,31 @@ export function register(): void {
     queue.applyAll();
     assert.deepEqual(applied, ['outer', 'inner']);
   });
+  test('command-queue: 応答は適用まで保留され、失敗後も受け付けた順に命令を適用する', () => {
+    const queue = new CommandQueue();
+    const failed = new CommandCompletion();
+    const succeeded = new CommandCompletion();
+    const failure = new Error('command failed');
+    const applied: string[] = [];
+    queue.submitWithCompletion(() => { applied.push('failed'); throw failure; }, failed);
+    queue.submitWithCompletion(() => { applied.push('succeeded'); }, succeeded);
+    assert.deepEqual(failed.state, { kind: 'pending' });
+    assert.deepEqual(succeeded.state, { kind: 'pending' });
+    assert.deepEqual(applied, []);
+
+    queue.applyAll();
+    assert.deepEqual(failed.state, { kind: 'failed', error: failure });
+    assert.deepEqual(succeeded.state, { kind: 'succeeded' });
+    assert.deepEqual(applied, ['failed', 'succeeded']);
+    queue.applyAll();
+    assert.deepEqual(applied, ['failed', 'succeeded']);
+  });
+
+  test('command-queue: 応答を付けない命令の例外は呼び手へ伝わる', () => {
+    const queue = new CommandQueue();
+    const failure = new Error('unhandled');
+    queue.submit(() => { throw failure; });
+    assert.throws(() => queue.applyAll(), error => error === failure);
+  });
+
 }

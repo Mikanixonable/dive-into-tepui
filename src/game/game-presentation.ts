@@ -38,6 +38,7 @@ import { cameraCommands } from './viewer/camera-commands';
 import { entityDisplayCommands } from './viewer/entity-display-commands';
 import { ObjectWindows } from './pickable/object-windows';
 import { ObjectWindowActions } from './pickable/object-window-actions';
+import { ModuleCommands } from './pickable/module-commands';
 import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
 import { FrameControls } from './hud/frame/frame-controls';
@@ -168,13 +169,14 @@ export class GamePresentation {
     );
     this.confirmation = new ConfirmationOverlay(hud.overlayManager);
     this.shipConstruction = new ShipConstruction(
-      scene.scene, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
+      scene.scene, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
       hud, hud.constructionConfirm,
       (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
     );
     const viewSelectionCommands = viewCommands(commands, viewer.view);
     this.moduleWindows = new ModuleWindows(
-      hud, controlSelection, dynamicSystem, this.shipConstruction,
+      hud, controlSelection, dynamicSystem, new ModuleCommands(commands, controlSelection, dynamicSystem),
+      this.shipConstruction,
       this.confirmation,
       () => {
         if (!viewer.view.canSelect('combat')) return false;
