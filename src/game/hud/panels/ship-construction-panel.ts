@@ -81,6 +81,7 @@ export class ShipConstructionPanel {
     this.completion = els.get('construction-completion');
     this.slotList = els.get('construction-slots');
 
+    // 動的に組む表示部品を、静的な配置枠へ差し込む。
     this.hpMeter = new Meter();
     this.hpMeter.element.classList.add('construction-hp-meter');
     els.get('construction-hp-meter').appendChild(this.hpMeter.element);
@@ -91,12 +92,14 @@ export class ShipConstructionPanel {
       definitionId => this.onSelectionChange?.(definitionId),
     );
 
+    // 小画面用のペイン切替を組む。
     const mobileTabs = els.get('construction-mobile-tabs');
     this.catalogPaneButton = new Button('部品', () => this.setMobilePane('catalog'), undefined, 'secondary');
     this.statusPaneButton = new Button('性能', () => this.setMobilePane('status'), undefined, 'secondary');
     mobileTabs.append(this.catalogPaneButton.element, this.statusPaneButton.element);
     this.setMobilePane('catalog');
 
+    // 操作ボタンを組み、操作の通知へ繋ぐ。
     const actions = els.get('construction-actions');
     this.place = new Button('配置', () => this.onPlace?.(), undefined, 'primary');
     this.remove = new Button('末尾撤去', () => this.onRemove?.(), undefined, 'secondary');
@@ -125,6 +128,7 @@ export class ShipConstructionPanel {
     this.hpMeter.setDanger(model.maxHp > 0 && model.hp / model.maxHp < 0.3);
     this.hpMeter.setLabel(`${formatConstructionNumber(model.hp)} / ${formatConstructionNumber(model.maxHp)}`);
 
+    // 現在値と配置後の見積りを、性能表示へ並べる。
     this.syncMetric(this.capabilities.thrust, model.capabilities.thrust, model.preview === null ? null : model.preview.capabilities.thrust, 'N');
     this.syncMetric(this.capabilities.mainFuel, model.capabilities.mainFuel, model.preview === null ? null : model.preview.capabilities.mainFuel, '');
     this.syncMetric(this.capabilities.rcsFuel, model.capabilities.rcsFuel, model.preview === null ? null : model.preview.capabilities.rcsFuel, '');
@@ -138,6 +142,7 @@ export class ShipConstructionPanel {
     this.selectedModule.textContent = model.selectedModuleName;
     this.selectedSlot.textContent = model.slots.find(slot => slot.id === model.selectedSlotId)?.label ?? '候補なし';
     this.completion.textContent = model.canFinish ? '建造終了可能' : '部品を1個以上配置';
+    // 一覧と操作ボタンの可否を model の値へ揃える。
     this.catalog.sync(model.selectedDefinitionId);
     this.renderSlots(model);
     this.place.setEnabled(model.canPlace);

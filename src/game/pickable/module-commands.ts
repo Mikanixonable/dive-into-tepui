@@ -68,6 +68,7 @@ export class ModuleCommands {
     completion: CommandCompletion,
   ): void {
     this.queue.submitWithCompletion(() => {
+      // 適用時点の状態で、対象の存在と接舷条件を再評価する。
       const entities = this.roster.all();
       if (!ship.motion.alive || !other.motion.alive
         || !entities.includes(ship) || !entities.includes(other)) {
