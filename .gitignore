@@ -1,5 +1,7 @@
 node_modules
 *.log
+.eslintcache
+.tsbuildinfo
 tests/dist/
 tests/dist-perf/
 docs/
