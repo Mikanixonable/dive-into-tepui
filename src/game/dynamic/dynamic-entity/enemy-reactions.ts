@@ -7,7 +7,7 @@ import type { EntityContactParticipant } from '../dynamic-simulation-participant
 import type { EntityRegistry } from '../entity-registry';
 import type { StageOutcome, EnemyDeathCause } from '../../stages/stage-outcome';
 import { bulletReactionOf, type BulletType } from './bullet-reaction';
-import { closingSpeed, type Contact } from './contact';
+import type { Contact } from './contact';
 import { contactDamageSpeed } from './contact-damage';
 import type { Vec3 } from '../../../math/vec3';
 import type { RunEventSink } from '../../run-events';
@@ -43,12 +43,15 @@ export class EnemyReactions {
     this.damagedByContact(contactDamageSpeed(other, contact), contact.selfState.t, 'killed', activeStage, registry);
   }
 
-  // 天体の固体表面へ触れたときの帰結。接近速度で損傷させ、落とせたら衝突として記録する。
+  // 天体の固体表面へ触れたときの帰結。到達は接近速度によらず喪失で、衝突として記録する
+  // (ORBIT.md「接触判定」)。
   public receiveSurfaceContact(
     contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     if (!this.port.motion.alive) return;
-    this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage, registry);
+    this.port.motion.kill();
+    this.port.recordDeath(activeStage, contact.selfState.t, 'collision');
+    this.recordDestroy(registry);
   }
 
   // 大気で焼失したときの帰結。撃破ではなく焼失として戦果へ残す。

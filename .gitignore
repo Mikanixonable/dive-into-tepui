@@ -41,3 +41,4 @@ service-account.json
 
 # Local scratch work
 scratch/
+artifacts/
