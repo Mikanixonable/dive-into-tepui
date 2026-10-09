@@ -1,6 +1,5 @@
 // 要求の到着順、親fallback、同時upload、破棄境界、配列層上限を検査する。
 import * as assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { test } from '../harness';
 import { EarthSurfaceResidentCoordinator } from '../../src/render/earth-surface-resident';
