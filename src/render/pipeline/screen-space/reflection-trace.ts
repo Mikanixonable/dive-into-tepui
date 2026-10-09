@@ -46,7 +46,9 @@ const REFINE_STEPS = 4;
 // 選ぶので、同じ解像度で同じ画素を塗るパスはどれも同じ向きを引き直せる。追跡の開始点のずらし(tileShift 0)とは
 // 別の値を使う。
 export function reflectionRayOf(sample: ShadingSample, blueNoise: BlueNoise): GgxReflectionSample {
-  return sampleGgxReflection(sample, vec2(blueNoise.atScreenPixel(0.5), blueNoise.atScreenPixel(27 / 64)));
+  // u.y = 1 で選ぶ向きは必ず面の下へ潜り、重み 0 の穴になるので、端を含まない層の中心で読む。
+  return sampleGgxReflection(sample,
+    vec2(blueNoise.centeredAtScreenPixel(0.5), blueNoise.centeredAtScreenPixel(27 / 64)));
 }
 
 // 判定の結果。当たらなかった画素ではどれも 0。

@@ -8,7 +8,7 @@
 //
 // **画素座標だけから引くので時間で動かない。** 動くノイズは、静止した絵ではちらつきとして目に付く。
 import * as THREE from 'three/webgpu';
-import { floor, ivec2, mod, screenCoordinate, textureLoad } from 'three/tsl';
+import { floor, ivec2, mod, round, screenCoordinate, textureLoad } from 'three/tsl';
 import type { FloatNode } from './tsl-types';
 import { BLUE_NOISE_TILE_BASE64, BLUE_NOISE_TILE_SIZE } from './blue-noise-tile.generated';
 
@@ -31,6 +31,12 @@ export class BlueNoise {
   public atScreenPixel(tileShift = 0): FloatNode {
     const texel = mod(floor(screenCoordinate.xy).add(tileShift * BLUE_NOISE_TILE_SIZE), BLUE_NOISE_TILE_SIZE);
     return textureLoad(this.tile, ivec2(texel)).r;
+  }
+
+  // atScreenPixel(tileShift) と同じテクセルの 8bit の値 k(0..255)を、256 等分した層の中心 (k + 0.5) / 256 で
+  // 返す。端の 0 と 1 を含まないので、端の値で退化する標本化の乱数に使う。
+  public centeredAtScreenPixel(tileShift = 0): FloatNode {
+    return round(this.atScreenPixel(tileShift).mul(255)).add(0.5).div(256);
   }
 
   // 載せたタイルを解放する。
