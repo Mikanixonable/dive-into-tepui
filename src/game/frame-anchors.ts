@@ -24,7 +24,7 @@ interface AnchorTargets {
 
 // 役割トークンが一時的に解決できないあいだ直前の状態を保つ枠。連続ミスはフレームで数える —
 // 呼び出し回数で数えると、同じフレームに重ねて問われただけで猶予を使い切る。
-type RoleHold = { state: KinematicState | null; misses: number; missFrame: number };
+interface RoleHold { state: KinematicState | null; misses: number; missFrame: number }
 
 export class FrameAnchors implements FrameAnchorSource {
   private _bodiesPivot = 0;

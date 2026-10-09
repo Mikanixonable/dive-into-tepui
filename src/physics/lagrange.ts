@@ -83,14 +83,14 @@ function lagrangePoints(mu: number, place: (x: number, y: number) => Vec3): Lagr
 // 円制限三体問題の量(ラグランジュ点・共線点まわりの局所基底・ガイド軌道)を組むのに要る、
 // ある時刻の副天体系。**位置はすべて ECI で、原点の解決は済んでいる** — この型を受け取る側は
 // 天体暦にも ECI 原点にも触らない。
-export type SecondaryFrame = {
+export interface SecondaryFrame {
   readonly secondary: CelestialBody;
   readonly secondaryState: KinematicState; // 副天体の ECI 瞬間値(t が解決した時刻)
   readonly primary: CelestialBody;
   readonly primaryState: KinematicState; // 主天体の ECI 瞬間値(同じ時刻)
   readonly rotation: FrameRotation; // 副天体の公転回転基準系(x̂ = 主天体→副天体)
   readonly normal: Vec3; // 公転面法線(単位ベクトル、ECI)
-};
+}
 
 // 同時刻の ECI 天体配列と副天体の運動から SecondaryFrame を組む。副天体に主天体が無い、
 // または配列にどちらかが載っていなければ null。
