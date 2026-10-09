@@ -1,7 +1,7 @@
 // frame.ts と reference-frames.ts の回帰テスト: 座標系(原点天体 × 回転)の同一性と、その
 // 時刻ごとの剛体運動による点・KinematicState の順逆変換(恒等・往復・既知回転角・速度の
 // 有限差分検証・bake+un-bake 合成・原点が動く系)。
-import { orbitingMotionOf, positionOf, solarSystemParts, stateOf } from './test-helpers';
+import { positionOf, solarSystemParts, stateOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';

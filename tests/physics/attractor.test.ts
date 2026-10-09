@@ -6,7 +6,7 @@ import { attractorAccel, localOrbitPeriod, orbitingAttractorOf, strongestAttract
 import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { keplerPeriod, orbitalElementsOf, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, MU_MOON, R_EARTH, R_MOON, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
+import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
 import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/sun';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/math/vec3';
 
