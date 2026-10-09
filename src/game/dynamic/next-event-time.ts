@@ -11,7 +11,7 @@ export class NextEventTime {
 
   // simTime 以降で最も早い締切。無ければ null。ステージ側の時刻は艦の現在の Δv と加速度から
   // 毎回決まる生きた値なので、毎回引き直す。
-  at(simTime: number, activeStage: StageSimulationEvents, roster: DynamicSimulationRoster): number | null {
+  public at(simTime: number, activeStage: StageSimulationEvents, roster: DynamicSimulationRoster): number | null {
     const stage = activeStage.nextSimulationEventTime(simTime);
     const entity = this.entityEventTime(simTime, roster);
     if (stage === null) return entity;

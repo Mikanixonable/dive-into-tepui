@@ -28,16 +28,16 @@ function coneMaterial(): THREE.MeshStandardMaterial {
 }
 
 export class SchematicThrustCone {
-  readonly mesh = new THREE.Mesh(coneGeometry(), coneMaterial());
+  public readonly mesh = new THREE.Mesh(coneGeometry(), coneMaterial());
 
-  constructor() {
+  public constructor() {
     markLitOpaque(this.mesh);
     this.mesh.visible = false;
   }
 
   // position(ワールド)を頂点とし、direction(ワールド、非ゼロ)の向きへ出力比 ratio(0..1)
   // に応じて伸びるコーンを合わせる。
-  sync(position: THREE.Vector3, direction: THREE.Vector3, ratio: number, plumeScale = 1): void {
+  public sync(position: THREE.Vector3, direction: THREE.Vector3, ratio: number, plumeScale = 1): void {
     const length = (SCHEMATIC_THRUST_CONE_LENGTH_MIN + SCHEMATIC_THRUST_CONE_LENGTH_SPAN * ratio) * plumeScale;
     const radius = length * SCHEMATIC_THRUST_CONE_RADIUS_RATIO;
     this.mesh.position.copy(position);
@@ -46,12 +46,12 @@ export class SchematicThrustCone {
     this.mesh.visible = true;
   }
 
-  hide(): void {
+  public hide(): void {
     this.mesh.visible = false;
   }
 
   // 親からメッシュを外す。ジオメトリ・マテリアルは全インスタンス共有のため解放しない。
-  dispose(): void {
+  public dispose(): void {
     this.mesh.removeFromParent();
   }
 }

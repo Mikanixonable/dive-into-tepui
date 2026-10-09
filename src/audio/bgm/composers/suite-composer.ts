@@ -13,18 +13,18 @@ export class SuiteComposer implements Composer {
   // 毎ステップ notesAt() → stepDurSec の順に読むので、この順序に依存してよい。
   private currentStepDur: number;
 
-  constructor(params: SuiteParams) {
+  public constructor(params: SuiteParams) {
     this.composers = params.sections.map((section) => new PhasingComposer(section.params));
     this.lengths = params.sections.map((section) => section.lengthSteps);
     this.totalSteps = this.lengths.reduce((sum, n) => sum + n, 0);
     this.currentStepDur = this.composers[0]!.stepDurSec;
   }
 
-  get stepDurSec(): number {
+  public get stepDurSec(): number {
     return this.currentStepDur;
   }
 
-  notesAt(step: number): readonly ComposerNote[] {
+  public notesAt(step: number): readonly ComposerNote[] {
     let local = step % this.totalSteps;
     for (let i = 0; i < this.lengths.length; i++) {
       if (local < this.lengths[i]!) {
