@@ -148,6 +148,25 @@
 - **置き場**: 追跡の3ファイルは `screen-space/`（拡散側と同じ3分割）、像の解決は
   `src/render/pipeline/reflection-pass.ts`。
 
+### 追跡の実装（手順2、`0bf69d7a6`）
+
+- `ScreenSpaceReflection`（`screen-space/screen-space-reflection.ts`）は全解像度 rgba16f。hit uv は半精度で、
+  960幅で約0.5 px、1920幅で約1 px の誤差を持つ。読み口は `farSpecularWeight` のほか `hitUVAt` /
+  `hitDistanceAt` / `weightAt`。
+- 追跡は全解像度の画素ごとに1本。精細さで変わるのは走査する深度の解像度と歩数で、仮置きは
+  低 = 半解像度16歩、中 = 半解像度32歩、高 = 全解像度48歩（`TRACE_TIERS`、TODO 付き）。深度の縮小は
+  2×2 のいちばん手前（逆Z の最大）。
+- ray thickness は面の奥行き |z| の5%、起点は法線へ |z| の0.1%浮かせ、起点の画素を出るまで当たりを
+  取らず、当たった刻みを4回二分する。最大距離 1000 m（天体には届かない長さ）。
+- フェード: 粗さ `1 − smoothstep(0.3, 0.6, r)`（0.6以上は追跡しない）、画面の縁 0.1 uv、距離は上限の
+  80〜100%。hit confidence は鏡の向きと視点への向きの余弦 0.6〜0.9 で0へ落とす fade で、カメラへ向かう
+  ray は加えて近クリップ面で止める（一律に miss にすると `leo-metal` の隣の球の映り込みが半分欠ける）。
+- オフは、切り替わったときに縮小深度と判定を0へクリアし、以後 dispatch しない。
+- 負荷（960×540、Intel gen-12lp、p50）: 追跡の行は `leo-metal` で低 / 中 / 高 = 0.50 / 0.69 / 0.92 ms
+  （マテリアル 0.45 ms、中で約1.5倍）、`bay-metal` で 0.31 / 0.36 / 0.43 ms（マテリアル 0.33 ms、中で約1.1倍）。
+  1歩あたりはマテリアルの0.01〜0.03倍で見積りよりずっと安く、固定費（全解像度のシェーディング入力の
+  読み出しと深度の縮小、約0.7倍）が支配的。
+
 ### 先行研究から採る範囲
 
 | 論文・実装 | この計画で採るもの | 採らないもの |
@@ -178,47 +197,10 @@
 
 before は `.render-lab-shots/ssr-before-1` / `ssr-before-2`（`3e646383`、各67枚、2組の md5 は全一致）。
 `leo-metal` の粗さ0.05の球に映るのは地球の天体照と太陽の点だけ、`bay-metal` の粗さ0.05の板に映るのは
-地球の雲模様だけで、どちらも近くの物体は映っていない。
-
-### 手順 2. 鏡の向きへ追跡し、遠方鏡面との置換重みを作る
-
-**目的** — 反射 ray の hit uv / 距離 / confidence を幾何だけから求め、像を足す前に、hit 部分の
-天体照・環境光の鏡面だけを `1 − w` で弱める。描画設定とデバッグ表示もここで通す。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/pipeline/screen-space/reflection-trace.ts`（新規） | 深度の透視補正追跡、blue-noise jitter、hit / miss、画面端・距離・粗さ confidence。ray thickness の単位と根拠をここに閉じる。遠方光・マテリアル出力・拡散側の target は読まない |
-| `src/render/pipeline/screen-space/reflection-trace-pass.ts`（新規） | 深度の縮小と追跡の dispatch、target の持ち主。`screen-space-pass.ts` とは別のパスで、拡散側と target / GPU 行を共有しない |
-| `src/render/pipeline/screen-space/screen-space-reflection.ts`（新規） | 全解像度 target。`rg = hit uv`、`b = view-space hit distance [m]`、`a = w` の符号化と、遠方鏡面を置換する読み口 |
-| `src/render/pipeline/lighting/ambient-source.ts` / `src/render/pipeline/lighting/planet-light-source.ts` | コンストラクタで `ScreenSpaceReflection` を受け取り、鏡面の寄与へ `farSpecularWeight` を掛ける（オフでは target が `w = 0` なので係数は厳密に1）。拡散の寄与には掛けない。近傍拡散補正は参照しない |
-| `src/render/graphics-settings.ts` | `screenSpaceSpecular` と `screenSpaceSpecularQuality` を足す |
-| `src/render/pipeline/render-pipeline.ts` | 追跡パスを遮蔽と照り返しの直後・ライトプリパスの直前に呼び、`rebuildForGraphics` で設定を配る。`compile()` の段表と `dispose()` にも足す |
-| `src/render/pipeline/debug-target.ts` / `src/render/pipeline/render-pipeline.ts` | `reflection-depth` / `reflection-hit` / `reflection-distance` / `reflection-weight` を `correction` と `diffuse` の間へ足し、`buildDebugComposites` で実 target を直接表示する |
-| `src/render/gpu-timings.ts` | 「映り込みの追跡」を「近傍拡散復元」と「ライティング」の間へ挿し、以降の ID を繰り下げる |
-| `tests/render/debug-target.test.ts` / `tests/render/gpu-timings.test.ts` | 順序の固定を直す |
-| `tools/render-lab/` の case | 追跡の4つのデバッグ表示を `leo-metal` / `bay-metal` で撮る case を足す |
-
-```ts
-export class ScreenSpaceReflection {
-  public readonly texture: THREE.Texture;
-  public farSpecularWeight(sample: ShadingSample): FloatNode; // off/miss は 1、hit は 1-w
-  public dispose(): void;
-}
-```
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run check:boundaries` / `npm run test:render` / `npm run test:settings`。
-- 映り込みオンの `bay-metal` で、粗さ0.05の板の立方体が映るはずの領域から遠方天体照の像が消える。
-  まだ局所像は足さないので、その領域は暗く見える。粗さ0.8はオフと差が3以下。
-- 空・画面外・カメラへ向かう ray が miss になり、`leo-metal` の上端に黒い像が出ない。
-- 映り込みオンとオフでデバッグ「拡散照度」が pixel diff 0（達成目標4）。
-- 映り込みオフの組は `ssr-before-*` と封筒外0件。オフでは追跡の4つのデバッグ表示が黒。
-- render-lab の描画設定に2項目が出て、デバッグ表示に4つのボタンがパス順の位置に並ぶ。
-- `leo-metal` と `bay-metal` で GPU「映り込みの追跡」の行を測り、見積りの1歩あたりの費用を実測で置き換える。
-- commit: `feat(render): 滑らかな面の映る向きを追い遠方鏡面を置き換える`
+地球の雲模様だけで、どちらも近くの物体は映っていない。render-lab の既定は高プリセット（映り込みオン）
+なので、オフの組は `npm run render-lab:shot -- <名前> screenSpaceSpecular=false` で撮る。手順2の時点で
+オフの組は before とビット一致（封筒外 0/67）、オンの組（像なし）は封筒外 26/67 で差は金属・滑らかな面に
+収まる。
 
 ### 手順 3. 当たった像を粗さに応じて足す
 
@@ -237,6 +219,7 @@ export class ScreenSpaceReflection {
 | `tests/render/debug-target.test.ts` / `tests/render/gpu-timings.test.ts` | 順序の固定を直す |
 
 大気パスの写しは像を足した後の時点のものなので共有しない。共有 target を書きながら読まない。
+hit uv は半精度なので、像のずれとして見えるなら判定の target を rgba32f にする（`screen-space-reflection.ts`）。
 
 **達成条件と検証**
 
@@ -257,7 +240,8 @@ export class ScreenSpaceReflection {
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/pipeline/screen-space/reflection-trace.ts` / `src/render/pipeline/reflection-pass.ts` | 粗さ・画面端・距離のフェード、hit tolerance を追い込む |
+| `src/render/pipeline/screen-space/reflection-trace.ts` / `src/render/pipeline/reflection-pass.ts` | 粗さ・画面端・距離のフェード、hit tolerance を追い込む。手順2の時点で、当たりと外れの境が数十 px 幅のまだらに散る（`bay-metal` の粗さ0.4の板の上部・薬莢、`leo-metal` の球の縁。刻みの粗さ・jitter・細い物体の取りこぼし） |
+| `src/render/pipeline/screen-space/reflection-trace-pass.ts` | `TRACE_TIERS` の仮置きと TODO を実測で置き換える |
 | `src/render/graphics-settings.ts` | `screenSpaceSpecularQuality` の各段の値とプリセットを実測で確定する |
 | `tools/render-lab-measure.mjs` | `screen-space` の軸に映り込みオン/オフと精細さの段を足し、構図に `leo-metal` / `bay-metal` を足す（既定の構図 bay は白い面がほぼ粗さ0.7で、追跡がほとんど歩かず負荷を過小に読む） |
 | `memos/hedalu244/better_graphics/pipeline.md` | パス表と残件を更新する |
@@ -281,21 +265,16 @@ export class ScreenSpaceReflection {
 | 作業 | 手順 | 中央見積り |
 | --- | --- | ---: |
 | 最終監査 | 4 | 1 h |
-| 追跡と深度の縮小 | 2 | 8 h |
-| 置換境界と設定・デバッグ表示 | 2 | 4 h |
 | `R` の切り出しと置換一致のプローブ | 3 | 2 h |
 | 縮小列と像 | 3 | 6 h |
 | 精細さの段・品質・負荷・比較 | 4 | 7 h |
 
-**合計 28 h。**
+**残り合計 16 h。**
 
-負荷の初期予算（960×540、Intel gen-12lp、`3e646383` のマテリアル行 ≈ 0.30 ms）。拡散の走査の段の差から
-出した1/4解像度の標本1回の限界費用は 0.023 ms（マテリアル行の約0.08倍）で、半解像度へ直すと1歩
-約0.3倍。これは深度と法線を読み遮りを計算する標本の値なので上限で、深度だけを読む追跡の1歩は
-0.1〜0.3倍と置く。32歩の追跡 3.2〜9.9倍、写しと縮小列約1倍、解決約1倍（拡散の全解像度の多タップ段の
-復元が約1.9倍）、深度の縮小と固定費約0.5倍で、合計約5.7〜12倍。達成目標5の5倍以下は精細さ「中」
-32歩では危ういので、「中」の初期値は手順2の追跡行の実測まで仮置きとする。5倍以下へは、画を見ずに
-歩数だけ削らず、hit率・miss率・edge fade と内訳を合わせて追い込む。
+負荷の予算（960×540、Intel gen-12lp）。追跡の行は精細さ「中」でマテリアルの約1.1〜1.5倍と実測した
+（「追跡の実装」）。残りは写しと縮小列約1倍、解決約1倍（拡散の全解像度の多タップ段の復元が約1.9倍）と
+見て、合計約3〜3.5倍。達成目標5の5倍以下に収まる見込みだが、像の解決の実測で確かめる。5倍を超えたら、
+画を見ずに歩数だけ削らず、hit率・miss率・edge fade と内訳を合わせて追い込む。
 
 ---
 
