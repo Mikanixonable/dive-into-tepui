@@ -12,10 +12,10 @@ const OCTAVE_FADE_START = 0.25;
 
 // ノイズのオクターブ(周波数階層) 1 つ。frequency は 1 rad あたりの山数(角波長 [km] = 6371 / frequency)、
 // amplitude はそのオクターブの寄与度。各オクターブ間の比率は任意で、等比数列である必要はない。
-export type NoiseOctave = {
+export interface NoiseOctave {
   readonly frequency: number;
   readonly amplitude: number;
-};
+}
 
 // 細胞状オクターブ = (CELL_ABSOLUTE_MEAN − |g|) × CELL_TO_NOISE_SCALE。零交差がセル壁となるため、格子に依存しない
 // 不規則な網目構造が生成される。定数は gradientNoise を一様な位置で 60 万点標本化して得た |g| の平均(0.2164)と、

@@ -1,9 +1,9 @@
 // 時刻付き状態(KinematicState)を「いま」として保持し、1ステップ前進させ、任意時刻を引ける単位。
 // 先端(state)を含む間引き済みのサンプル列を持ち、過去方向の履歴にも未来方向の予測列にも使える。
-import { KinematicState, kinematicState } from './kinematic-state';
+import { type KinematicState, kinematicState } from './kinematic-state';
 import { StateQueue } from './state-queue';
 import { extrapolatedRelativeState } from './kepler-extrapolation';
-import { Vec3, add } from '../math/vec3';
+import { type Vec3, add } from '../math/vec3';
 import { stepDynamicsWithSamples, type DynamicsEnvironmentSample } from './dynamics';
 import type { CelestialBody } from './celestial-body';
 

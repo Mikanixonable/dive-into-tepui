@@ -162,12 +162,12 @@ export function calendarBoundaries(
 // 通過時刻ラベルを書くのに要るものの束。**表示側がこれを1つ持ち回る** — 表記の種類・
 // 相対表記の基準時刻・絶対表記の元期は、どれか1つだけ差し替えると表記が食い違う。
 // DisplayWindow から timeLabelSettingOf() で組む。
-export type TimeLabelSetting = {
+export interface TimeLabelSetting {
   readonly mode: TickLabelMode;
   readonly show: boolean;
   readonly nowSimTime: number;
   readonly epochUnixSec: number;
-};
+}
 
 // 目盛りの表示ラベルを返す。'absolute' は rank に応じた暦の書式(時間系は HH:00、日は M/D、
 // 月は M月、年は年)、'relative' は referenceUnix からの経過時間を符号付きで返す

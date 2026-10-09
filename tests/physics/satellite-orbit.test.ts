@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { planetAngles, planetOrbit } from '../../src/physics/kepler-orbit';
-import { PerturbationTerm, satelliteOrbit, satelliteOrbitForSimZero, satelliteState } from '../../src/physics/satellite-orbit';
+import { type PerturbationTerm, satelliteOrbit, satelliteOrbitForSimZero, satelliteState } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { eciToEcl } from '../../src/physics/ecliptic';
 import { EARTH, MOON } from '../../src/game/celestial/solar-system/earth-system';

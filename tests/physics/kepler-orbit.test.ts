@@ -2,9 +2,9 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { assertOmegaMatchesBasis, fixedMotion } from './test-helpers';
-import { OrbitalElements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean } from '../../src/physics/elements';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
-import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
+import { type OrbitalElements, keplerPeriod, timeSincePeriapsis, trueAnomalyFromMean } from '../../src/physics/elements';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
+import { ECLIPTIC_BASIS, type KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { qRotate } from '../../src/math/quat';

@@ -3,8 +3,8 @@
 // 役割トークンは毎フレームその時点の対象へ解決されるので、操作対象の乗り換えやターゲットの
 // 付け替えをまたいでも同じ基準を指し続ける(DEVELOP/SPEC/CELESTIAL.md 8節)。
 import { orbitingAttractorOf } from '../physics/attractor';
-import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
-import { KinematicState } from '../physics/kinematic-state';
+import { type FrameAnchorSource, type FrameRole, frameRoleOf } from '../physics/frame';
+import type { KinematicState } from '../physics/kinematic-state';
 import type { Quat } from '../math/quat';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { CelestialBody } from '../physics/celestial-body';
@@ -24,7 +24,7 @@ interface AnchorTargets {
 
 // 役割トークンが一時的に解決できないあいだ直前の状態を保つ枠。連続ミスはフレームで数える —
 // 呼び出し回数で数えると、同じフレームに重ねて問われただけで猶予を使い切る。
-type RoleHold = { state: KinematicState | null; misses: number; missFrame: number };
+interface RoleHold { state: KinematicState | null; misses: number; missFrame: number }
 
 export class FrameAnchors implements FrameAnchorSource {
   private _bodiesPivot = 0;

@@ -4,7 +4,7 @@
 // 明滅する(MAP.md 4節)。直前フレームの勝者を STICKY_MARGIN_SQ 倍まで有利に扱い、新しい候補が
 // 明確に優勢でない限り系を切り替えない。**per-frame で呼ぶ側がインスタンスを保持して使うこと。**
 import { attractorAccel, strongestAttractor } from '../../physics/attractor';
-import { Vec3, lenSq } from '../../math/vec3';
+import { type Vec3, lenSq } from '../../math/vec3';
 import type { CelestialBodies } from './celestial-bodies';
 
 // 直前フレームの勝者を優遇する倍率(加速度の二乗で比べるので二乗値で持つ)。
