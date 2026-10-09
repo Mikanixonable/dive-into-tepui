@@ -1,6 +1,8 @@
 // 映り込みのぼけ方のケース。粗さを段に振った金属の帯を床に並べ、帯ごとに同じ発光球を1つずつ映し、地球の鏡面像も
 // 同じ床に映す。同じ粗さの面で、近くの物体の像と遠方の光の像が同じ規則でぼけるかを、帯を横に並べて読む試験体。
 // 対照のケースは発光球の代わりに同じ場所・大きさ・放射輝度の球光源を置き、ライティングパスが積分した鏡面像を映す。
+// チェッカーのケースは発光球の代わりに 2×2 のマスの発光板を立て、当たった画素どうしの境のぼけと、縦と横のぼけ方の
+// 違いを映す — 一様な発光球の像は、当たり / 外れの境のぼけしか持たない。
 // 帯ごとの像の縁の幅と明るさは tools/render-lab-reflection-levels.mjs が撮影から表にする。
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
@@ -34,11 +36,16 @@ const BAND_WIDTH_DEG = 5.6;
 // 発光球の中心の高さと半径 [m]。中心は帯の奥の端の真上。像の幅が帯の幅の 1/3 ほどで、帯の中で横へぼける余地を残す。
 const SPHERE_HEIGHT = 2;
 const SPHERE_RADIUS = 0.4;
-// 発光球の放射輝度。「1 天文単位で恒星に正対したアルベド 1 の面 = 1」の目盛り。像がトーンマッピングの圧縮に
-// 掛からない明るさ。
-const SPHERE_RADIANCE = 0.5;
-// 発光球の粗さ。帯のどの粗さとも離し、粗さのデバッグ表示で帯と見分ける。
-const SPHERE_ROUGHNESS = 1;
+// 発光球とチェッカーの発光するマスの放射輝度。「1 天文単位で恒星に正対したアルベド 1 の面 = 1」の目盛り。像が
+// トーンマッピングの圧縮に掛からない明るさ。
+const EMITTER_RADIANCE = 0.5;
+// 発光球とチェッカーのマスの粗さ。帯のどの粗さとも離し、粗さのデバッグ表示で帯と見分ける。
+const EMITTER_ROUGHNESS = 1;
+
+// チェッカーの発光板の幅と高さ [m]。幅は帯の奥の端での帯の幅の弦で、板の鏡像が帯の幅いっぱいに映る — 広げると隣の
+// 帯の像と重なる。高さは床から測り、上下のマスの境の縦のぼけが、粗さ 0.2 の帯までマスの像に収まる大きさ。
+const PLATE_WIDTH = 2 * BAND_OUTER_RADIUS * Math.tan(THREE.MathUtils.degToRad(BAND_WIDTH_DEG / 2));
+const PLATE_HEIGHT = 6;
 
 // 地球の置き方: 真上に、縁がどの方位でも仰角 EARTH_EDGE_ELEVATION_DEG に来る大きさで置く — 縁の鏡像が全帯で同じ
 // 俯角の床に落ち、発光球の像(俯角 8〜11°)より手前に来る。恒星は床の真下なので、見えている側は満ちている。
@@ -56,8 +63,10 @@ const LADDER_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
 const SUN_BELOW = new THREE.Vector3(0, -1, 0);
 
 // どの撮影にも重ねる描画設定。環境光の鏡面は粗さによらない一様な放射輝度でぼけを持たず、帯どうしの差を埋めるので
-// 切る。レンズ効果は縁の明るさの立ち上がりをにじませるので切る。
-const LADDER_GRAPHICS: Partial<GraphicsSettingsData> = { ambient: false, lens: false, screenSpaceSpecular: true };
+// 切る。レンズ効果は縁の明るさの立ち上がりを、アンチエイリアスは孤立した 1 画素の明るさをにじませるので切る。
+const LADDER_GRAPHICS: Partial<GraphicsSettingsData> = {
+  ambient: false, lens: false, antialias: 0, screenSpaceSpecular: true,
+};
 // 天体照を切った撮影の描画設定。地球の像に埋もれる球の像を見る。
 const NO_PLANET_GRAPHICS: Partial<GraphicsSettingsData> = { ...LADDER_GRAPHICS, planetLightCount: 0 };
 
@@ -66,9 +75,14 @@ function bandAzimuthDeg(index: number): number {
   return 180 - (index - (ROUGHNESSES.length - 1) / 2) * BAND_SPACING_DEG;
 }
 
+// 帯 index の中心線の奥の端の、床の上の点(描画座標)。
+function bandEnd(index: number): THREE.Vector3 {
+  return directionFromAngles(bandAzimuthDeg(index), 0, new THREE.Vector3()).multiplyScalar(BAND_OUTER_RADIUS);
+}
+
 // 帯 index の奥の端の上の、発光球(と対照の球光源)の中心(描画座標)。
 function sphereCenter(index: number): THREE.Vector3 {
-  const center = directionFromAngles(bandAzimuthDeg(index), 0, new THREE.Vector3()).multiplyScalar(BAND_OUTER_RADIUS);
+  const center = bandEnd(index);
   center.y = SPHERE_HEIGHT;
   return center;
 }
@@ -93,8 +107,18 @@ function band(index: number): THREE.Mesh {
   return mesh;
 }
 
-// 帯 index の奥の端の上の発光球。ベース色は黒で、自己発光だけで光る。ジオメトリとマテリアルは全球の共有物で、
-// 最初の球が所有する。
+// 発光球とチェッカーの発光するマスのマテリアル。ベース色は黒で、自己発光だけで光る。
+function emitterMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    roughness: EMITTER_ROUGHNESS,
+    metalness: 0,
+    emissive: 0xffffff,
+    emissiveIntensity: EMITTER_RADIANCE,
+  });
+}
+
+// 帯 index の奥の端の上の発光球。ジオメトリとマテリアルは全球の共有物で、最初の球が所有する。
 function emitter(index: number, geometry: THREE.SphereGeometry, material: THREE.Material): THREE.Mesh {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(sphereCenter(index));
@@ -103,22 +127,47 @@ function emitter(index: number, geometry: THREE.SphereGeometry, material: THREE.
   return mesh;
 }
 
-// 帯と、withEmitters なら発光球を 1 つの枝にまとめる — 影パスの枠がケース全体で 1 つになる。
-function structure(withEmitters: boolean): THREE.Object3D {
-  const group = new THREE.Group();
-  group.add(...ROUGHNESSES.map((_, index) => band(index)));
-  if (withEmitters) {
-    // 発光球はどれも同じジオメトリとマテリアルを使う。
-    const geometry = new THREE.SphereGeometry(SPHERE_RADIUS, 64, 32);
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x000000,
-      roughness: SPHERE_ROUGHNESS,
-      metalness: 0,
-      emissive: 0xffffff,
-      emissiveIntensity: SPHERE_RADIANCE,
-    });
-    group.add(...ROUGHNESSES.map((_, index) => emitter(index, geometry, material)));
+// 帯ごとの発光球。
+function emitters(): THREE.Mesh[] {
+  const geometry = new THREE.SphereGeometry(SPHERE_RADIUS, 64, 32);
+  const material = emitterMaterial();
+  return ROUGHNESSES.map((_, index) => emitter(index, geometry, material));
+}
+
+// 帯 index の奥の端に、帯の中心線に垂直に立ててカメラ側へ向けたチェッカーの発光板。2×2 のマスのうち、カメラから
+// 見て左下と右上が glowing、残りが dark。ジオメトリ cell とマテリアルは全板の共有物で、最初の板の、それを使う
+// 最初のマスが所有する。
+function checkerPlate(
+  index: number, cell: THREE.PlaneGeometry, glowing: THREE.Material, dark: THREE.Material,
+): THREE.Object3D {
+  const plate = new THREE.Group();
+  plate.position.copy(bandEnd(index));
+  // マスの面は +Z を向き、右が +X。Y 軸まわりに方位角 + 180° 回すと、面が原点(カメラの真下)を向く。
+  plate.rotation.y = THREE.MathUtils.degToRad(bandAzimuthDeg(index) + 180);
+  for (const column of [0, 1]) {
+    for (const row of [0, 1]) {
+      const mesh = new THREE.Mesh(cell, column === row ? glowing : dark);
+      mesh.position.set((column - 0.5) * PLATE_WIDTH / 2, (row + 0.5) * PLATE_HEIGHT / 2, 0);
+      mesh.userData.ownsGeometry = index === 0 && column === 0 && row === 0;
+      mesh.userData.ownsMaterial = index === 0 && row === 0;
+      plate.add(mesh);
+    }
   }
+  return plate;
+}
+
+// 帯ごとのチェッカーの発光板。
+function checkerPlates(): THREE.Object3D[] {
+  const cell = new THREE.PlaneGeometry(PLATE_WIDTH / 2, PLATE_HEIGHT / 2);
+  const glowing = emitterMaterial();
+  const dark = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: EMITTER_ROUGHNESS, metalness: 0 });
+  return ROUGHNESSES.map((_, index) => checkerPlate(index, cell, glowing, dark));
+}
+
+// 帯と、帯の奥の端に置く物体 targets を 1 つの枝にまとめる — 影パスの枠がケース全体で 1 つになる。
+function structure(targets: readonly THREE.Object3D[]): THREE.Object3D {
+  const group = new THREE.Group();
+  group.add(...ROUGHNESSES.map((_, index) => band(index)), ...targets);
   markLitOpaque(group);
   markShadowCaster(group);
   return group;
@@ -139,7 +188,7 @@ function ladderCamera(): { readonly camera: THREE.PerspectiveCamera; readonly vi
 function reflectionLadder(): LabCase {
   const off = { ...LADDER_GRAPHICS, screenSpaceSpecular: false };
   return {
-    objects: [structure(true)],
+    objects: [structure(emitters())],
     ...ladderCamera(),
     sunDirection: SUN_BELOW,
     earth: LADDER_EARTH,
@@ -161,12 +210,12 @@ function reflectionLadder(): LabCase {
 // 鏡面照度で測る — 球光源の像の手前に地球の像の縁が来ると、粗い帯で縁の幅を読めない。
 function reflectionLadderLights(): LabCase {
   // 球光源は発光球と同じ中心・半径・放射輝度。
-  const radiance = new THREE.Color(SPHERE_RADIANCE, SPHERE_RADIANCE, SPHERE_RADIANCE);
+  const radiance = new THREE.Color(EMITTER_RADIANCE, EMITTER_RADIANCE, EMITTER_RADIANCE);
   const sphereLights: SphereLightValue[] = ROUGHNESSES.map((_, index) => ({
     center: sphereCenter(index), radius: SPHERE_RADIUS, radiance,
   }));
   return {
-    objects: [structure(false)],
+    objects: [structure([])],
     ...ladderCamera(),
     sunDirection: SUN_BELOW,
     earth: LADDER_EARTH,
@@ -179,7 +228,24 @@ function reflectionLadderLights(): LabCase {
   };
 }
 
+// 同じ床と地球に、発光球の代わりにチェッカーの発光板を立てる。どの撮影も天体照を切る — 天体照は黒いマスにも誘電体の
+// 鏡面の照り返しを乗せ、黒いマスの像が 0 にならない。
+function reflectionLadderChecker(): LabCase {
+  return {
+    objects: [structure(checkerPlates())],
+    ...ladderCamera(),
+    sunDirection: SUN_BELOW,
+    earth: LADDER_EARTH,
+    shots: {
+      'ladder-checker-no-planet': { view: {}, graphics: NO_PLANET_GRAPHICS },
+      // 境の縁の幅は、R を掛ける前の映り込みの像で測る。
+      'ladder-checker-reflection': { view: {}, graphics: NO_PLANET_GRAPHICS, debugTarget: 'reflection' },
+    },
+  };
+}
+
 export const REFLECTION_CASES = {
   'reflection-ladder': reflectionLadder,
   'reflection-ladder-lights': reflectionLadderLights,
+  'reflection-ladder-checker': reflectionLadderChecker,
 } as const satisfies Record<string, CaseBuilder>;
