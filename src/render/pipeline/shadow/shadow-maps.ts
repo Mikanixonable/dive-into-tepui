@@ -46,7 +46,7 @@ const NO_CASTERS: readonly ShadowCaster[] = [];
 
 // 受け手が shader 内で動的にスロットを選ぶために引く、スロットごとの値。**スロットの値の
 // 正本はこの 3 本の配列だけで、個別の uniform を別に持たない。**
-export type ShadowSlotUniformArrays = {
+export interface ShadowSlotUniformArrays {
   // 描画座標 → ライト空間クリップ。UV は xy だけを使う。
   readonly lightViewProjection: THREE.UniformArrayNode<'mat4'>;
   // 描画座標 → ライト空間 view。深度は射影の規約(反転深度)に依らないこちらから測る。
@@ -54,7 +54,7 @@ export type ShadowSlotUniformArrays = {
   // (near, far, texelWorld, active)。texelWorld は 1 texel が描画座標で張るメートルで、
   // バイアスとフィルタ半径の単位になる。active が 0 ならそのスロットは空。
   readonly parameters: THREE.UniformArrayNode<'vec4'>;
-};
+}
 
 // ライト空間の線形深度を書く 1 辺 size のレンダーターゲット。
 //

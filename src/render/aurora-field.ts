@@ -1,7 +1,7 @@
 // 決定論的なオーロラ場モデル。地磁気座標系と発光計算を担当し、描画バッファは Aurora クラスが持つ。
 import { dot, v3, type Vec3 } from '../math/vec3';
 
-export type AuroraFieldOptions = {
+export interface AuroraFieldOptions {
   readonly ovalLatitudeDeg: number;
   readonly magneticPoleLatitudeDeg?: number;
   readonly magneticPoleLongitudeDeg?: number;
@@ -9,9 +9,9 @@ export type AuroraFieldOptions = {
   readonly colorSeed: number;
   readonly phaseOffset: number;
   readonly sign: 1 | -1;
-};
+}
 
-export type AuroraFrame = {
+export interface AuroraFrame {
   readonly magneticPoleLatitudeDeg: number;
   readonly magneticLocalTime: number;
   readonly latitudeDeg: number;
@@ -20,10 +20,10 @@ export type AuroraFrame = {
   readonly intensity: number;
   readonly greenEmission: number;
   readonly redEmission: number;
-};
+}
 
 // 磁極を中心とした方位の基準系。theta = 0 が north の向き、theta = π/2 が east の向き。
-type PoleFrame = { readonly pole: Vec3; readonly north: Vec3; readonly east: Vec3 };
+interface PoleFrame { readonly pole: Vec3; readonly north: Vec3; readonly east: Vec3 }
 
 export class AuroraField {
   public constructor(private readonly options: AuroraFieldOptions) {}

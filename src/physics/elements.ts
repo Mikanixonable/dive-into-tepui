@@ -9,7 +9,7 @@ import type { CelestialBody } from './celestial-body';
 // 軌道上の位相の基準 — simTime が t のときのこの軌道上の真近点角が nu。**元期ではない**
 // (軌道要素そのものの元期は simTime=0)。形だけを指定した参照軌道は位相を持たないので、
 // この基準も持たない。
-type OrbitPhaseRef = { readonly t: number; readonly nu: number };
+interface OrbitPhaseRef { readonly t: number; readonly nu: number }
 
 export interface OrbitalElements {
   a: number; // 軌道長半径 [m] (双曲線では負)
