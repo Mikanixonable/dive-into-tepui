@@ -1,12 +1,17 @@
 // hud/widgets/ 全体で共有する土台。個々のウィジェットはここを経由して
 // pointerdown の伝播抑止とタップ領域の拡張を行い、見出し付きの行もここが組む。
 
+// クラスと文言だけの span 要素を作る。
+export function buildSpan(className: string, text: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  return span;
+}
+
 // 行の見出し(.w-group-title)。
 export function buildGroupTitle(text: string): HTMLSpanElement {
-  const heading = document.createElement('span');
-  heading.className = 'w-group-title';
-  heading.textContent = text;
-  return heading;
+  return buildSpan('w-group-title', text);
 }
 
 // 見出し付きの行コンテナを生成する。className は行そのもののクラスで、既定は横並びの行 .w-group。
