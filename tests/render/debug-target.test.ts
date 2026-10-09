@@ -17,7 +17,11 @@ export function register(): void {
     before('bounce-source', 'raw-correction');
     before('raw-correction', 'denoised-correction');
     before('denoised-correction', 'correction');
-    before('correction', 'diffuse');
+    before('correction', 'reflection-depth');
+    before('reflection-depth', 'reflection-hit');
+    before('reflection-hit', 'reflection-distance');
+    before('reflection-distance', 'reflection-weight');
+    before('reflection-weight', 'diffuse');
     before('diffuse', 'material');
     before('material', 'atmosphere');
     before('atmosphere', 'lens');

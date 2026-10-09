@@ -102,6 +102,10 @@ function cameraAt(azimuthDeg: number, elevationDeg: number, distance: number): P
   };
 }
 
+// 映り込みの撮影の観察の向き。右手前から金属の板へ寄せ、地球を +X の地平の下へ移す — 手前の板(粗さ 0.05)が
+// 立方体と薬莢を映すはずの向きに、天体照の像が入る。
+const METAL_VIEW: Partial<LabViewAngles> = { ...cameraAt(30, 20, 6.5), earthAzimuthDeg: 130, earthElevationDeg: -12 };
+
 // 天体照の遮られ方を読む撮影の観察の向き。恒星は床の真下の距離 sunDistanceLogAu [log10 天文単位]、地球は
 // 描画原点から方位 azimuthDeg・仰角 LOW_EARTH_ELEVATION_DEG の向きへ、視半径 radiusDeg [deg] で見える高度に
 // 置く。**恒星を近づけるのは天体照を読める明るさにするため** — 床の真下の恒星は読みどころへ直射を与えず、
@@ -367,12 +371,22 @@ function bay(): LabCase {
       'bay-truss': { view: { ...cameraAt(155, 28, 7.5), earthElevationDeg: -90 } },
       // 画面の縁。右手前から寄せ、画面の左端で −X の端の壁と床を切る。
       'bay-edge': { view: cameraAt(35, 40, 6) },
-      // 映り込み。右手前から金属の板へ寄せる。地球を +X の地平の下へ移す — 手前の板(粗さ 0.05)が立方体と
-      // 薬莢を映すはずの向きに、天体照の像が入る。
-      'bay-metal': { view: { ...cameraAt(30, 20, 6.5), earthAzimuthDeg: 130, earthElevationDeg: -12 } },
-      'bay-metal-specular': {
-        view: { ...cameraAt(30, 20, 6.5), earthAzimuthDeg: 130, earthElevationDeg: -12 },
-        debugTarget: 'specular',
+      // 映り込み。
+      'bay-metal': { view: METAL_VIEW },
+      'bay-metal-specular': { view: METAL_VIEW, debugTarget: 'specular' },
+      // 近くの物体の映り込みと、追跡の中間結果。
+      'bay-metal-reflection': { view: METAL_VIEW, graphics: { screenSpaceSpecular: true } },
+      'bay-metal-reflection-depth': {
+        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-depth',
+      },
+      'bay-metal-reflection-hit': {
+        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-hit',
+      },
+      'bay-metal-reflection-distance': {
+        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-distance',
+      },
+      'bay-metal-reflection-weight': {
+        view: METAL_VIEW, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-weight',
       },
     },
   };

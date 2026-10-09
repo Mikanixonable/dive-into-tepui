@@ -145,6 +145,18 @@ function materials(): LabCase {
     shots: {
       // 金属の行への天体照の映り込みと、その後ろに写る地球そのものを 1 枚の中で見比べる。
       'leo-metal': { view: {} },
+      // 近くの物体の映り込み。金属の行の滑らかな球が隣の球を映す向きと、追跡の中間結果。
+      'leo-metal-reflection': { view: {}, graphics: { screenSpaceSpecular: true } },
+      'leo-metal-reflection-depth': {
+        view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-depth',
+      },
+      'leo-metal-reflection-hit': { view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-hit' },
+      'leo-metal-reflection-distance': {
+        view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-distance',
+      },
+      'leo-metal-reflection-weight': {
+        view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-weight',
+      },
       'leo-metal-terminator': { view: TERMINATOR_SUN },
       // 金属のハイライト。左上の球に、球光源では太陽の円盤が幅十数 px の像として映り、点光源の GGX では
       // 粗さぶんの数 px の点に潰れる。

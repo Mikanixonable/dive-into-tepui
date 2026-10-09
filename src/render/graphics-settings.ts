@@ -7,6 +7,7 @@ import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
+import { SCREEN_SPACE_SPECULAR_QUALITY } from './pipeline/screen-space/reflection-trace-pass';
 import { SCREEN_SPACE_DIFFUSE, SCREEN_SPACE_QUALITY } from './pipeline/screen-space/screen-space-pass';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
@@ -199,6 +200,24 @@ export const GRAPHICS_OPTIONS = {
     items: [[SCREEN_SPACE_QUALITY.low, '低'], [SCREEN_SPACE_QUALITY.medium, '中'], [SCREEN_SPACE_QUALITY.high, '高']],
     presets: {
       low: SCREEN_SPACE_QUALITY.low, medium: SCREEN_SPACE_QUALITY.medium, high: SCREEN_SPACE_QUALITY.medium,
+    },
+  },
+  // 滑らかな面へ、反射方向にある近くの物体を映すか。
+  screenSpaceSpecular: {
+    kind: 'toggle', group: 'light', label: '近くの物体の映り込み',
+    presets: { low: false, medium: false, high: true },
+  },
+  // 近くの物体の映り込みを求める解像度と歩数の段。
+  screenSpaceSpecularQuality: {
+    kind: 'choice', group: 'light', label: '映り込みの精細さ',
+    items: [
+      [SCREEN_SPACE_SPECULAR_QUALITY.low, '低'], [SCREEN_SPACE_SPECULAR_QUALITY.medium, '中'],
+      [SCREEN_SPACE_SPECULAR_QUALITY.high, '高'],
+    ],
+    presets: {
+      low: SCREEN_SPACE_SPECULAR_QUALITY.low,
+      medium: SCREEN_SPACE_SPECULAR_QUALITY.medium,
+      high: SCREEN_SPACE_SPECULAR_QUALITY.medium,
     },
   },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
