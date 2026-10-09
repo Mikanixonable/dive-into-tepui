@@ -97,11 +97,9 @@ export class Input {
   // 直近に成立したクリックがタッチ由来だったか。真なら、二重計上を避けるため
   // ブラウザ標準の dblclick イベントによる合成をこちらで抑止する。
   private lastPointerUpWasTouch = false;
-  private readonly target: HTMLElement;
 
   // キーボード・ポインタ・ホイールのイベントリスナーを登録する。
-  public constructor(target: HTMLElement) {
-    this.target = target;
+  public constructor(private readonly target: HTMLElement) {
     this.attachKeyboardListeners();
     this.attachPointerListeners();
     this.attachWheelListener();
