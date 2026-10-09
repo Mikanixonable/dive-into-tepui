@@ -4,7 +4,7 @@
 // だけから決まる。
 import type * as THREE from 'three/webgpu';
 import {
-  Break, If, Loop, dot, float, floor, ivec2, length, max, min, mix, select, smoothstep, textureLoad, vec2, vec4,
+  Break, If, Loop, abs, dot, float, floor, ivec2, length, max, min, mix, select, smoothstep, textureLoad, vec2, vec4,
 } from 'three/tsl';
 import type { ShadingSample } from '../lighting/shading-sample';
 import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
@@ -20,9 +20,12 @@ const DISTANCE_FADE_START = 0.8;
 // 抜けたとみなす。奥行きに比例させるのは、同じ見かけの大きさの物体は奥行きに比例した厚みを持つため — 厚みを
 // 長さで固定すると、写る物体の規模(m の荷室から km の構造まで)ごとに当たり方が変わる。
 const THICKNESS_PER_DISTANCE = 0.05;
-// ray の起点を面の法線の向きへ浮かせる量の、面の奥行き |z| に対する割合。深度の量子化と縮小で、起点の面が
-// 隣の画素で自分自身を遮らないための逃げ。
-const ORIGIN_OFFSET_PER_DISTANCE = 1e-3;
+// G バッファへの書き込みから位置の復元、ray の射影と補間までの float32 の演算が、view 空間の奥行き |z| に積む
+// 相対誤差の上限。丸め 1 回の 2^-24 を 16 回ぶん見込む。
+const DEPTH_RELATIVE_ERROR = 2 ** -20;
+// G バッファの法線の成分の誤差の上限。半精度の 0.5..1 の丸め 2^-12 が octahedral の座標で 2^-11 になり、復号の
+// 正規化で高々 √18 倍に広がる。
+const NORMAL_ERROR = Math.sqrt(18) * 2 ** -11;
 
 // 当たった位置が画面の縁からこの幅 [uv] の内側にあれば、縁へ向けて重みを 0 へ落とす — 画面の外の物体は
 // 映せないので、縁で像が切れて見えないようにする。
@@ -47,13 +50,15 @@ export interface ReflectionHit {
   readonly weight: FloatNode;
 }
 
-// 面 sample の鏡の向きの ray を、寸法 traceSize [px] の素の深度 depth(逆 Z、虚空は 0)の上で stepCount 歩
-// 進めて判定する。projection / projectionInverse は実カメラの射影行列とその逆、near は近クリップ距離 [m]、
-// jitter は画素ごとの 0..1 で、歩みの位置をずらす。粗さが NO_REFLECTION_ROUGHNESS 以上の面は進めずに 0 を返す。
-// **Fn の中から、面が写っている画素について呼ぶこと。**
+// 面 sample の鏡の向きの ray を、素の深度 depth(逆 Z、虚空は 0)の上で stepCount 歩進めて判定する。depth の画素
+// 1 つは描画バッファの画素 footprint 個四方のいちばん手前の深度を持つ。traceSize は depth の画素を単位とする画面の
+// 寸法で、割り切れなければ端の画素が画面の外へはみ出す。pixelSpan は描画バッファの画素 1 つの横の幅(x, y)で、
+// clip 座標の w を掛けると view 空間の長さ [m] になる。projection / projectionInverse は実カメラの射影行列とその逆、
+// near は近クリップ距離 [m]、jitter は画素ごとの 0..1 で、歩みの位置をずらす。粗さが NO_REFLECTION_ROUGHNESS 以上の
+// 面は進めずに 0 を返す。**Fn の中から、面が写っている画素について呼ぶこと。**
 export function traceReflection(
-  depth: THREE.Texture, traceSize: Vec2Node, projection: Mat4Uniform, projectionInverse: Mat4Uniform,
-  near: FloatNode, stepCount: IntNode, jitter: FloatNode, sample: ShadingSample,
+  depth: THREE.Texture, footprint: IntNode, traceSize: Vec2Node, pixelSpan: Vec2Node, projection: Mat4Uniform,
+  projectionInverse: Mat4Uniform, near: FloatNode, stepCount: IntNode, jitter: FloatNode, sample: ShadingSample,
 ): ReflectionHit {
   const hitUV = vec2(0).toVar();
   const distance = float(0).toVar();
@@ -66,8 +71,7 @@ export function traceReflection(
   const surfaceWeight = roughnessFade.mul(facingFade).toVar();
   If(surfaceWeight.greaterThan(0), () => {
     // ray の両端。視点へ向かう ray は近クリップ面で止める — その先は透視の除算が裏返る。
-    const origin = sample.position.add(sample.normal.mul(sample.position.z.negate().mul(ORIGIN_OFFSET_PER_DISTANCE)))
-      .toVar();
+    const origin = sample.position.add(sample.normal.mul(originLift(sample, footprint, pixelSpan, projection))).toVar();
     const toNearPlane = select(direction.z.greaterThan(0),
       near.negate().sub(origin.z).div(max(direction.z, 1e-6)), float(MAX_TRACE_DISTANCE));
     const end = origin.add(direction.mul(max(min(toNearPlane, MAX_TRACE_DISTANCE), 0))).toVar();
@@ -183,4 +187,28 @@ function exitFraction(start: FloatNode, delta: FloatNode, size: FloatNode): Floa
 function viewZOf(depth: FloatNode, projectionInverse: Mat4Uniform): FloatNode {
   const position = projectionInverse.mul(vec4(0, 0, depth, 1));
   return position.z.div(position.w);
+}
+
+// 面 sample の ray の起点を法線の向きへ浮かせる高さ [m]。平らな面が、自分を写した深度の画素で自分の奥へ入らない
+// 最小の高さで、深度の画素の中で面の傾きが生む高さの差と、奥行きの誤差の上限の和。ray は法線の側へ出るので、
+// 起点で足りれば先の刻みでも足りる。footprint と pixelSpan は traceReflection と同じ。
+function originLift(
+  sample: ShadingSample, footprint: IntNode, pixelSpan: Vec2Node, projection: Mat4Uniform,
+): FloatNode {
+  // 描画バッファの画素 1 つぶん横へ隔たったときの、面の高さの差の 1 次の見積り。法線の誤差は横の成分に足す。
+  const span = pixelSpan.mul(projection.mul(vec4(sample.position, 1)).w);
+  const perPixel = dot(abs(sample.normal.xy).add(NORMAL_ERROR), span);
+  // 深度の画素はいちばん手前を採るので、画素の中の点と、深度を採った画素の中心は最大 footprint − 0.5 px 隔たる。
+  // 差は採った中心での奥行きに比例し、透視では面の奥行きの逆数が画面上で 1 次なので、起点から最大 footprint px
+  // 離れた中心の奥行きは 1 / (1 − footprint × perPixel / |N·P|) 倍まで深い(|N·P| は視点から面の平面までの
+  // 距離、平行投影では w の z 成分 P32 が 0 で 1 倍)。
+  // TODO: 面が視線とほぼ平行で倍率が 2 を超える縁の画素は、根拠なく 2 倍で打ち切っている。
+  const size = float(footprint);
+  const perspective = abs(projection.mul(vec4(0, 0, 1, 0)).w);
+  const shallowing = size.mul(perPixel).mul(perspective).div(abs(dot(sample.normal, sample.position)));
+  const slope = size.sub(0.5).mul(perPixel).div(max(float(1).sub(shallowing), 0.5));
+  // 奥行きの誤差を、視線に沿った差から法線の向きの高さへ写す。
+  const quantization = sample.position.z.negate().mul(DEPTH_RELATIVE_ERROR)
+    .mul(abs(dot(sample.normal, sample.viewDir))).div(abs(sample.viewDir.z));
+  return slope.add(quantization);
 }
