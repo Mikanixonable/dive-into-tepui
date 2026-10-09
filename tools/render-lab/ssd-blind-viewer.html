@@ -47,7 +47,7 @@
 <body>
   <main>
     <h1>補正画像の品質順位</h1>
-    <p>各シーンで12候補を見比べ、順位を並べ替えてください。初期順は仮置きです。「順位を確定」するまでは未評価として記録します。同率は隣の候補と指定できます。</p>
+    <p>各シーンで全候補を見比べ、順位を並べ替えてください。初期順は仮置きです。「順位を確定」するまでは未評価として記録します。同率は隣の候補と指定できます。</p>
     <div class="bar">
       <label for="scene">シーン</label><select id="scene"></select>
       <span id="sceneStatus" aria-live="polite"></span>
@@ -58,21 +58,13 @@
     </section>
     <div class="bar">
       <label for="view">表示</label>
-      <select id="view">
-        <option value="first">seed 1</option>
-        <option value="second">seed 2</option>
-        <option value="mean">32組平均</option>
-        <option value="deviation0">seed 1 − 平均</option>
-        <option value="deviation1">seed 2 − 平均</option>
-        <option value="variance">32組分散</option>
-        <option value="B">B参照（暫定・順位外）</option>
-      </select>
+      <select id="view"></select>
       <span id="status" aria-live="polite"></span>
     </div>
     <div class="compare-layout">
       <figure>
         <img id="image" width="960" height="540" alt="選択した補正画像">
-        <figcaption>画像は960×540の等倍表示です。Bは暫定参照で、候補順位には含めません。</figcaption>
+        <figcaption>画像は960×540の等倍表示です。参照は候補順位には含めません。</figcaption>
       </figure>
       <section class="section" aria-labelledby="rankingHeading">
       <strong id="rankingHeading">順位</strong>
@@ -88,7 +80,7 @@
       </section>
     </div>
     <div class="bar">
-      <button id="copyAll" type="button">3シーンの順位と理由をコピー</button>
+      <button id="copyAll" type="button">全シーンの順位と理由をコピー</button>
       <span id="copyStatus" aria-live="polite"></span>
     </div>
     <textarea id="exportText" hidden aria-label="コピーする順位と理由。選択してコピーできます"></textarea>
@@ -109,7 +101,13 @@
     const error = document.querySelector('#error');
     const exportText = document.querySelector('#exportText');
     const copyStatus = document.querySelector('#copyStatus');
-    const notePrefix = 'ssd8-blind-all12-v1/';
+    // 表示名・参照の絵の種類・保存の鍵の接頭辞を持たないデータは、手順8-14 の盲検のもの。
+    const notePrefix = data.notePrefix ?? 'ssd8-blind-all12-v1/';
+    const referenceViews = data.referenceViews ?? ['B'];
+    const viewLabels = data.viewLabels ?? {
+      first: 'seed 1', second: 'seed 2', mean: '32組平均', deviation0: 'seed 1 − 平均', deviation1: 'seed 2 − 平均',
+      variance: '32組分散', B: 'B参照（暫定・順位外）',
+    };
     const imagePath = new Map(data.images.map((item) => [`${item.stimulusId}|${item.view}`, item.path]));
     const assignmentByScene = new Map(data.assignments.map((item) => [item.scene, item]));
     let currentLabel = data.labels[0];
@@ -292,15 +290,15 @@
     function updateImage() {
       const assignment = assignmentByScene.get(sceneSelect.value);
       if (!assignment) { error.textContent = 'このシーンの画像がありません。'; return; }
-      const isReference = viewSelect.value === 'B';
+      const view = viewSelect.value;
+      const isReference = referenceViews.includes(view);
       const item = isReference ? assignment.reference : assignment.candidates.find((candidate) => candidate.label === currentLabel);
-      const view = isReference ? 'B' : viewSelect.value;
       const source = item && imagePath.get(`${item.stimulusId}|${view}`);
       if (!source) { error.textContent = `画像がありません: ${view}`; return; }
       error.textContent = '';
       image.src = source;
-      image.alt = isReference ? '暫定参照 B' : `候補${currentLabel}の${view}画像`;
-      status.textContent = isReference ? 'B参照（暫定・順位外）' : `候補 ${currentLabel}`;
+      image.alt = isReference ? viewLabels[view] : `候補${currentLabel}の${viewLabels[view]}`;
+      status.textContent = isReference ? viewLabels[view] : `候補 ${currentLabel}`;
       for (const button of candidateButtons.querySelectorAll('button')) {
         button.setAttribute('aria-pressed', String(button.dataset.label === currentLabel));
       }
@@ -324,6 +322,14 @@
     for (const scene of data.scenes) {
       const option = document.createElement('option'); option.value = scene; option.textContent = scene; sceneSelect.append(option);
     }
+    const referenceGroup = document.createElement('optgroup');
+    referenceGroup.label = '参照(順位外)';
+    for (const [parent, views] of [[viewSelect, data.views], [referenceGroup, referenceViews]]) {
+      for (const view of views) {
+        const option = document.createElement('option'); option.value = view; option.textContent = viewLabels[view]; parent.append(option);
+      }
+    }
+    viewSelect.append(referenceGroup);
     renderCandidates();
     loadScene();
     sceneSelect.addEventListener('change', loadScene);
@@ -340,7 +346,7 @@
       const result = exportAll();
       try {
         await navigator.clipboard.writeText(result);
-        exportText.hidden = true; copyStatus.textContent = '3シーン分をコピーしました。';
+        exportText.hidden = true; copyStatus.textContent = '全シーン分をコピーしました。';
       } catch {
         exportText.hidden = false; exportText.value = result; exportText.focus(); exportText.select();
         copyStatus.textContent = 'コピーできるよう全結果を選択しました。Ctrl+Cでコピーしてください。';
@@ -349,9 +355,10 @@
     window.addEventListener('keydown', (event) => {
       if (event.target instanceof HTMLSelectElement || event.target instanceof HTMLInputElement
           || event.target instanceof HTMLTextAreaElement || event.target.closest('#rankList')) return;
-      if (/^[1-9]$/.test(event.key)) currentLabel = event.key.padStart(2, '0');
-      else if (event.key === '0') currentLabel = '10';
-      else return;
+      if (!/^[0-9]$/.test(event.key)) return;
+      const label = event.key === '0' ? '10' : event.key.padStart(2, '0');
+      if (!data.labels.includes(label)) return;
+      currentLabel = label;
       updateImage();
     });
   </script>
