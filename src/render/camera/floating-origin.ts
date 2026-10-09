@@ -9,14 +9,8 @@ import { sub, type Vec3 } from '../../math/vec3';
 //   v … 残像として描く物(弾)が差し引く速度の基準。カメラが注視している点の速度を渡す
 //       (残像の向きは見る側との相対運動で決まる)。
 export class FloatingOrigin {
-  public readonly r: Vec3;
-  private readonly v: Vec3;
-
   // r/v を今フレームの原点・速度基準として固定する。
-  public constructor(r: Vec3, v: Vec3) {
-    this.r = r;
-    this.v = v;
-  }
+  public constructor(public readonly r: Vec3, private readonly v: Vec3) {}
 
   // 慣性系(ECI)の絶対位置を、描画フレーム(原点 = r)の THREE.Vector3 へ変換する。
   public RtoThreeV3(vec: Vec3): THREE.Vector3 {

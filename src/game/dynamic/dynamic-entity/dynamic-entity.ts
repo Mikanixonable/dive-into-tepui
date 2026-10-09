@@ -28,7 +28,6 @@ export interface SerializedDynamicEntityFields extends SerializedKinematicState 
 
 // 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断を持つ。
 export abstract class DynamicEntity {
-  public readonly id: string;
   public readonly motion: DynamicMotion;
   public readonly view: DynamicView;
   // 上限の枠とマップ上の種別(持たなければ null)と、派生 Entity が上書きする能力の旗。
@@ -46,8 +45,7 @@ export abstract class DynamicEntity {
 
   // 識別、Motion、View を1体の寿命へ束ねる。id は採番器が配った識別子で、motionFactory には id を
   // 確定させた自身を渡す。
-  public constructor(motionFactory: DynamicMotionFactory, view: DynamicView, id: string) {
-    this.id = id;
+  public constructor(motionFactory: DynamicMotionFactory, view: DynamicView, public readonly id: string) {
     this.nameValue = this.id;
     this.motion = motionFactory(this);
     this.view = view;
