@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    # three は tools/check-three-pin.mjs で意図的に固定しているため、
+    # Dependabot の自動更新対象から外す
+    ignore:
+      - dependency-name: "three"
+    groups:
+      # dev 依存の minor/patch は1PRにまとめてノイズを抑える。
+      # 本番依存(security 更新含む)は個別PRのままにする
+      dev-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
