@@ -156,8 +156,13 @@
 - 追跡は全解像度の画素ごとに1本。精細さで変わるのは走査する深度の解像度と歩数で、仮置きは
   低 = 半解像度16歩、中 = 半解像度32歩、高 = 全解像度48歩（`TRACE_TIERS`、TODO 付き）。深度の縮小は
   2×2 のいちばん手前（逆Z の最大）。
-- ray thickness は面の奥行き |z| の5%、起点は法線へ |z| の0.1%浮かせ、起点の画素を出るまで当たりを
-  取らず、当たった刻みを4回二分する。最大距離 1000 m（天体には届かない長さ）。
+- ray thickness は面の奥行き |z| の5%。起点の画素を出るまで当たりを取らず、当たった刻みを4回二分する。
+  最大距離 1000 m（天体には届かない長さ）。
+- 起点は法線へ、自分の面へ当たらない最小の高さだけ浮かせる（`314e4b3ba`、`originLift`）。高さは、縮小した
+  深度の画素の中の点と深度を採った描画画素の中心の隔たり（最大 footprint − 0.5 px）で面の傾きが生む高さの差
+  （透視の 2 次項 1/(1 − g) 込み）と、法線・奥行きの量子化の誤差の上限の和。実測で、画素ごとの最悪誤差 /
+  高さは平らな板で最大 0.997、`bay-metal` の板で約1.5〜2 cm。これで `bay-metal` の粗さ0.05の板の自己交差の
+  黒い点は 293 → 0。深度の縮小は除算の丸めで覆う範囲を 1 px 手前へずらしていたので、整数の積に直した。
 - フェード: 粗さ `1 − smoothstep(0.3, 0.6, r)`（0.6以上は追跡しない）、画面の縁 0.1 uv、距離は上限の
   80〜100%。hit confidence は鏡の向きと視点への向きの余弦 0.6〜0.9 で0へ落とす fade で、カメラへ向かう
   ray は加えて近クリップ面で止める（一律に miss にすると `leo-metal` の隣の球の映り込みが半分欠ける）。
@@ -233,7 +238,8 @@ before は `.render-lab-shots/ssr-before-1` / `ssr-before-2`（`3e646383`、各6
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/pipeline/screen-space/reflection-trace.ts` / `src/render/pipeline/reflection-pass.ts` | 粗さ・画面端・距離のフェード、hit tolerance を追い込む。手順3の時点で次の2つが残る。当たりと外れの境が数十 px 幅のまだらに散り、像にもまだらとして出る（`bay-metal` の粗さ0.4の板の上部・薬莢、`leo-metal` の球の縁。刻みの粗さ・jitter・細い物体の取りこぼし）。`bay-metal` の粗さ0.05の板に黒い点が散る（`w = 1` で約1〜2 cm 先に当たる自己交差が、暗い自分の面の色を読む） |
+| `src/render/pipeline/screen-space/reflection-trace.ts` / `src/render/pipeline/reflection-pass.ts` | 粗さ・画面端・距離のフェード、hit tolerance を追い込む。当たりと外れの境が数十 px 幅のまだらに散り、像にもまだらとして出る（`bay-metal` の粗さ0.4の板の上部・薬莢、`leo-metal` の球の縁。刻みの粗さ・jitter・細い物体の取りこぼし） |
+| `src/render/pipeline/screen-space/reflection-trace.ts` | 起点の高さの式（`originLift`）について判断が要る。(a) 起点の画素を出るまで当たりを取らない手当ては、平らな面では起点の高さが覆うので冗長。外すと同じ画素の中の接地物に当たれる。(b) 面が視線とほぼ平行な縁の画素で、2 次項の倍率を根拠なく2倍で打ち切っている（TODO）。(c) 式は「G バッファの法線 = 深度の面の法線」を前提にし、補間法線・ノーマルマップとの差を覆わない。(d) cosθ が法線の誤差より小さい極端な grazing では、反射ベクトルが面の下へ潜りうる。(e) カメラへ向かう ray では、手前の刻みの z と今の画素の深度を比べるため、手前へせり上がる面で理論上誤判定がありうる（撮影では未発生） |
 | `src/render/pipeline/screen-space/reflection-trace-pass.ts` / `src/render/pipeline/reflection-pass.ts` | `TRACE_TIERS` と `LEVEL_COUNT` の仮置きと TODO を実測で置き換える。段数5では粗さ0.25〜0.4の多くの画素が段4に張り付き、ぼけの上限が段数で決まっている |
 | `src/render/pipeline/render-pipeline.ts` | 611行で lint の max-lines（500）の警告が出る（着手時点で既に554行）。`/refactor` で分けるか判断する |
 | `src/render/graphics-settings.ts` | `screenSpaceSpecularQuality` の各段の値とプリセットを実測で確定する |
