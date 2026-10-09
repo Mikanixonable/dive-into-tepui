@@ -2,7 +2,7 @@
 // 段階に分け、段内の独立した検査を同時に走らせる。段2(build)だけが docs/ と
 // src/assets/tepui-rmqr.svg を書き、段3 はその出力を読む。失敗が出た段は全タスクの
 // 完了を待ってから落ち、次の段は始めない。
-import { spawn } from 'node:child_process';
+import { runTask } from './run-tasks.mjs';
 
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const run = (label, command, args) => ({ label, command, args });
@@ -36,31 +36,19 @@ const STAGES = [
   ],
 ];
 
-const runTask = ({ label, command, args }) =>
-  new Promise((resolve) => {
-    const startedAt = performance.now();
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    const forward = (stream, writer) => {
-      let rest = '';
-      stream.on('data', (chunk) => {
-        const lines = (rest + chunk).split('\n');
-        rest = lines.pop();
-        for (const line of lines) writer(`[${label}] ${line}\n`);
-      });
-      stream.on('end', () => {
-        if (rest) writer(`[${label}] ${rest}\n`);
-      });
-    };
-    forward(child.stdout, (text) => process.stdout.write(text));
-    forward(child.stderr, (text) => process.stderr.write(text));
-    child.on('error', (error) => resolve({ label, code: 1, error, elapsed: performance.now() - startedAt }));
-    child.on('close', (code) => resolve({ label, code: code ?? 1, elapsed: performance.now() - startedAt }));
-  });
-
 const seconds = (ms) => (ms / 1000).toFixed(1);
+
+// `--stage=N` でその段だけを走らせる(PR 用の軽い検査で段1だけを使うため)。
+const stageArg = process.argv.find((arg) => arg.startsWith('--stage='));
+const onlyStage = stageArg === undefined ? null : Number(stageArg.slice('--stage='.length));
+if (onlyStage !== null && (!Number.isInteger(onlyStage) || onlyStage < 1 || onlyStage > STAGES.length)) {
+  console.error(`--stage は 1〜${STAGES.length} の整数で指定すること: ${stageArg}`);
+  process.exit(2);
+}
 
 let failed = false;
 for (const [index, stage] of STAGES.entries()) {
+  if (onlyStage !== null && index + 1 !== onlyStage) continue;
   const results = await Promise.all(stage.map(runTask));
   for (const result of results) {
     const status = result.code === 0 ? 'ok' : `FAIL(${result.error ? result.error.message : result.code})`;
