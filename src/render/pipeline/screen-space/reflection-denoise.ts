@@ -111,29 +111,48 @@ interface ReductionLevel {
 }
 
 // 縮小列の段の画素がまとめる、1 つ細かい段の画素。inside はその画素が画面の中にあるか、point はその画素に写る代表の
-// 面の点(view 空間)。
+// 面の点(view 空間)、normal はその面の単位法線(view 空間)。
 interface ReductionChild {
   readonly inside: BoolNode;
   readonly texel: LevelTexel;
   readonly point: Vec3Node;
+  readonly normal: Vec3Node;
+}
+
+// 同じ面とみなす判定に使う形へ戻した代表の面。normal は単位法線(view 空間)、offset は平面の原点からの距離 n·P [m]、
+// lobeHalfWidth は鏡面ローブの半幅 [rad]。
+interface RepresentativeSurface {
+  readonly normal: Vec3Node;
+  readonly offset: FloatNode;
+  readonly lobeHalfWidth: FloatNode;
 }
 
 // 双線形の 4 点の、左上の点からのずれ。
 const CORNERS = [[0, 0], [1, 0], [0, 1], [1, 1]] as const;
 
-// 点 point(view 空間)に載る、法線 normal・知覚的粗さ roughness の面を、代表の面 surface(LevelTexel の surface)と同じ
-// 面とみなす重み(0..1)。法線の向き、代表の平面からの隔たり、鏡面ローブの半幅の近さの重みを掛けたもの。
-// **Fn の中から呼ぶこと。**
-function sameSurfaceWeight(surface: Vec4Node, point: Vec3Node, normal: Vec3Node, roughness: FloatNode): FloatNode {
-  const planeNormal = octDecodeNormal(surface.xy).toVar();
-  const facing = smoothstep(SAME_SURFACE_NORMAL_COSINE.none, SAME_SURFACE_NORMAL_COSINE.full, dot(planeNormal, normal));
+// LevelTexel の surface の符号を戻した代表の面。**Fn の中から呼ぶこと。**
+function representativeSurfaceOf(code: Vec4Node): RepresentativeSurface {
+  return {
+    normal: octDecodeNormal(code.xy).toVar(),
+    offset: code.z,
+    lobeHalfWidth: specularLobeHalfWidthOf(code.w).toVar(),
+  };
+}
+
+// 点 point(view 空間)に載る、法線 normal・鏡面ローブの半幅 lobeHalfWidth の面を、代表の面 surface と同じ面とみなす
+// 重み(0..1)。法線の向き、代表の平面からの隔たり、鏡面ローブの半幅の近さの重みを掛けたもの。**Fn の中から呼ぶこと。**
+function sameSurfaceWeight(
+  surface: RepresentativeSurface, point: Vec3Node, normal: Vec3Node, lobeHalfWidth: FloatNode,
+): FloatNode {
+  const facing = smoothstep(
+    SAME_SURFACE_NORMAL_COSINE.none, SAME_SURFACE_NORMAL_COSINE.full, dot(surface.normal, normal),
+  );
   // 平面からの隔たりは、点の奥行きの ray thickness を目盛りに測る。
-  const offset = abs(dot(planeNormal, point).sub(surface.z)).div(max(rayThicknessAt(point.z), 1e-6));
+  const offset = abs(dot(surface.normal, point).sub(surface.offset)).div(max(rayThicknessAt(point.z), 1e-6));
   const onPlane = float(1).sub(smoothstep(SAME_SURFACE_PLANE_OFFSET.full, SAME_SURFACE_PLANE_OFFSET.none, offset));
   // 半幅の差は、大きいほうの半幅を目盛りに測る。
-  const width = specularLobeHalfWidthOf(surface.w).toVar();
-  const otherWidth = specularLobeHalfWidthOf(roughness).toVar();
-  const difference = abs(width.sub(otherWidth)).div(max(max(width, otherWidth), 1e-6));
+  const width = surface.lobeHalfWidth;
+  const difference = abs(width.sub(lobeHalfWidth)).div(max(max(width, lobeHalfWidth), 1e-6));
   const alike = float(1).sub(smoothstep(
     SAME_SURFACE_LOBE_WIDTH_DIFFERENCE.full, SAME_SURFACE_LOBE_WIDTH_DIFFERENCE.none, difference,
   ));
@@ -252,12 +271,13 @@ export class ReflectionDenoise {
         });
       }
       // 子を、代表の面に載る重みを掛けて足し、段の画素が覆う描画画素の数で割る。
+      const representative = representativeSurfaceOf(surface);
       const weighted = vec4(0).toVar();
       const covered = vec2(0).toVar();
       for (const child of children) {
         If(child.inside, () => {
-          const childNormal = octDecodeNormal(child.texel.surface.xy);
-          const share = sameSurfaceWeight(surface, child.point, childNormal, child.texel.surface.w).toVar();
+          const childWidth = specularLobeHalfWidthOf(child.texel.surface.w);
+          const share = sameSurfaceWeight(representative, child.point, child.normal, childWidth).toVar();
           weighted.addAssign(child.texel.weighted.mul(share));
           covered.addAssign(child.texel.covered.mul(share));
         });
@@ -291,16 +311,18 @@ export class ReflectionDenoise {
     const uv = texel.add(0.5).div(this.fullSize).toVar();
     const point = getViewPosition(uv, depth, this.projectionInverse).toVar();
     const normalCode = textureLoad(this.gbuffer.normalTexture, pixel).rg.toVar();
+    const normal = octDecodeNormal(normalCode).toVar();
     const roughness = textureLoad(this.gbuffer.roughnessTexture, pixel).r;
     // 量は均す前の映り込みそのもの。面が写っていない画素は被覆率 0。
     const coverage = select(depth.greaterThan(0), float(1), float(0));
     return {
       texel: {
-        weighted: vec4(this.reflection.rawWeightedImageAt(uv), this.reflection.rawWeightAt(uv)),
-        covered: vec2(this.reflection.rawWeightedDistanceAt(uv), coverage),
-        surface: vec4(normalCode, dot(octDecodeNormal(normalCode), point), roughness),
+        weighted: this.reflection.rawWeightedReflectionOfPixel(pixel),
+        covered: vec2(this.reflection.rawWeightedDistanceOfPixel(pixel), coverage),
+        surface: vec4(normalCode, dot(normal, point), roughness),
       },
       point,
+      normal,
     };
   }
 
@@ -313,7 +335,7 @@ export class ReflectionDenoise {
     const along = dot(normal, ray.direction).toVar();
     const safeAlong = select(along.greaterThanEqual(0), max(along, 1e-6), min(along, -1e-6));
     const reach = read.surface.z.sub(dot(normal, ray.origin)).div(safeAlong);
-    return { texel: read, point: ray.origin.add(ray.direction.mul(reach)).toVar() };
+    return { texel: read, point: ray.origin.add(ray.direction.mul(reach)).toVar(), normal };
   }
 
   // 段 1 以降の段 level の画素 texel の値。**Fn の中から呼ぶこと。**
@@ -338,6 +360,7 @@ export class ReflectionDenoise {
       // 均す段。当たり距離が決まるまでは −1。
       const selected = float(-1).toVar();
       If(this.gbuffer.covered().and(this.sample.roughness.lessThan(NO_REFLECTION_ROUGHNESS)), () => {
+        const receiverWidth = specularLobeHalfWidth(this.sample).toVar();
         // 当たり距離を探す段の上限。それより粗い段で当たり距離を見つけても、選ぶのは上限より細かい段で、そこまでの段は
         // どれも w̄ が 0。
         const searchCeiling = max(float(DISTANCE_LEVEL), ceil(this.levelCeiling())).toVar();
@@ -352,7 +375,7 @@ export class ReflectionDenoise {
           filled.push(value);
           // 当たり距離を探すあいだと、選んだ段の 1 つ上までの段を求める。
           const fill = (): void => {
-            const next = this.filledAt(this.levels[index - 1]!, finer);
+            const next = this.filledAt(this.levels[index - 1]!, finer, receiverWidth);
             value.weighted.assign(next.weighted);
             value.weightedDistance.assign(next.weightedDistance);
           };
@@ -381,8 +404,9 @@ export class ReflectionDenoise {
   }
 
   // 段 level の、受け手の画素の埋めた値。段 level を受け手の画素の中心で双線形に読み、受け手の面に載る分はその段の値を、
-  // 載らない分と画面の外の分は 1 つ細かい段の埋めた値 finer を使う。**Fn の中から呼ぶこと。**
-  private filledAt(level: ReductionLevel, finer: DenoisedValue): DenoisedValue {
+  // 載らない分と画面の外の分は 1 つ細かい段の埋めた値 finer を使う。receiverWidth は受け手の鏡面ローブの半幅 [rad]。
+  // **Fn の中から呼ぶこと。**
+  private filledAt(level: ReductionLevel, finer: DenoisedValue, receiverWidth: FloatNode): DenoisedValue {
     // 受け手の画素の中心を囲む段の画素 4 つと、双線形の端数。
     const position = screenUV.mul(this.fullSize).div(level.span).sub(0.5).toVar();
     const base = floor(position).toVar();
@@ -400,8 +424,8 @@ export class ReflectionDenoise {
         const read = this.levelTexelAt(level, texel);
         const bilinear = (dx === 0 ? fraction.x.oneMinus() : fraction.x)
           .mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
-        const share = bilinear
-          .mul(sameSurfaceWeight(read.surface, this.sample.position, this.sample.normal, this.sample.roughness))
+        const surface = representativeSurfaceOf(read.surface);
+        const share = bilinear.mul(sameSurfaceWeight(surface, this.sample.position, this.sample.normal, receiverWidth))
           .toVar();
         weighted.addAssign(read.weighted.mul(share));
         covered.addAssign(read.covered.mul(share));

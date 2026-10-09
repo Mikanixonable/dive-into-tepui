@@ -3,8 +3,8 @@
 // 描画先は、同じ 3 つの量を粗さに応じて近傍で均した (w × I)‾・w̄・(w × d)‾ と、均すのに読んだ段を持つ。重みを掛けた
 // 形で持つので、同じ重みで均せば 3 つの量が同じカーネルで均れる。
 import * as THREE from 'three/webgpu';
-import { float, mrt, select, texture, vec4 } from 'three/tsl';
-import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
+import { float, mrt, select, texture, textureLoad, vec4 } from 'three/tsl';
+import type { FloatNode, IVec2Node, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 均した描画先の段の符号。w̄ が正の画素は段 + DENOISE_LEVEL_CODE_OFFSET、w̄ が 0 の画素は UNWEIGHTED_DENOISE_LEVEL_CODE を
 // 書き、空へ戻した 0 は書いていないことを表す。three のマテリアルは出力を 0 で下から切るので、負の値で印を付けられない。
@@ -70,6 +70,16 @@ export class ScreenSpaceReflection {
 
   // uv(0..1)の画素の、均す前の重みを掛けた当たるまでの距離 w × d [m]。
   public rawWeightedDistanceAt(uv: Vec2Node): FloatNode { return texelAt(this.rawTarget, 1, uv).r; }
+
+  // 描画画素 pixel(整数の座標)の、均す前の重みを掛けた像と置換の重み(rgb = w × I、a = w)。
+  public rawWeightedReflectionOfPixel(pixel: IVec2Node): Vec4Node {
+    return textureLoad(this.rawTarget.textures[0]!, pixel);
+  }
+
+  // 描画画素 pixel(整数の座標)の、均す前の重みを掛けた当たるまでの距離 w × d [m]。
+  public rawWeightedDistanceOfPixel(pixel: IVec2Node): FloatNode {
+    return textureLoad(this.rawTarget.textures[1]!, pixel).r;
+  }
 
   // uv(0..1)の画素の、均した重みを掛けた像 (w × I)‾(放射輝度。鏡面反射率を掛ける前)。
   public denoisedWeightedImageAt(uv: Vec2Node): Vec3Node { return texelAt(this.denoisedTarget, 0, uv).rgb; }
