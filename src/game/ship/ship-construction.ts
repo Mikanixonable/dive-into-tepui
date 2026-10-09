@@ -9,6 +9,7 @@ import {
 import { constructionCandidate, hitsConstructionCandidate, type ConstructionCandidate } from './ship-construction-candidates';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { ShipConstructionEdits } from './ship-construction-edits';
+import { hiddenShipConstructionModel } from './ship-construction-types';
 import { CommandCompletion } from '../command-completion';
 import type * as THREE from 'three/webgpu';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -79,6 +80,7 @@ export class ShipConstruction implements OverlayHandle {
   ) {
     this.ghost = new ShipGhostView(scene);
     this.guide = new DockSnapGuideView(scene);
+    // パネルの操作を建造の各手順へ繋ぐ。
     panel.onSelectionChange = (definitionId) => {
       this.definitionId = definitionId;
       this.syncPanel();
@@ -104,10 +106,12 @@ export class ShipConstruction implements OverlayHandle {
       throw new Error('空いている健全な接舷部が必要です');
     }
     if (this.current !== null) this.close();
+    // セッションを開き、予約の開始を命令へ送る。
     const session: ConstructionSession = { ship, dockId, edits: new ShipConstructionEdits(ship, dockId) };
     this.current = session;
     this.submit(session, 'begin', () => session.edits.begin());
     this.normalizeSelection();
+    // 建造モードの入力と表示時刻の境界を開く。
     this.focusDock?.(ship);
     this.previousForceCurrent = this.displayWindow.current.forceCurrent;
     this.displayWindow.setForceCurrent(true);
@@ -127,7 +131,7 @@ export class ShipConstruction implements OverlayHandle {
     this.current = null;
     this.overlayManager.close('ship-construction-mode');
     this.displayWindow.setForceCurrent(this.previousForceCurrent);
-    this.panel.sync(hiddenModel());
+    this.panel.sync(hiddenShipConstructionModel());
     this.ghost.sync(null);
     this.guide.syncAll([]);
   }
@@ -136,6 +140,7 @@ export class ShipConstruction implements OverlayHandle {
   public handlePointer(input: Input, camera: CameraSystem, viewport: Viewport): boolean {
     if (this.current === null) return false;
     input.takeClicks((point) => {
+      // 当たった候補を選択へ進め、選択済みなら配置する。
       const ray = camera.rayThroughScreen(point.x, point.y, viewport);
       const hit = this.candidates().find(candidate => hitsConstructionCandidate(
         ray, candidate, candidate.slot.id === this.selectedSlotId,
@@ -163,6 +168,7 @@ export class ShipConstruction implements OverlayHandle {
     }
     this.normalizeSelection();
     const candidates = this.candidates();
+    // 全候補をガイドへ宣言する。
     const displays: DockSnapGuideDisplay[] = candidates.map(candidate => ({
       id: candidate.slot.id,
       position: this.displayPosition(camera, candidate.guideEci),
@@ -172,6 +178,7 @@ export class ShipConstruction implements OverlayHandle {
       selected: candidate.slot.id === this.selectedSlotId,
     }));
     this.guide.syncAll(displays);
+    // 選択中の候補だけをゴーストへ置く。
     const selected = candidates.find(candidate => candidate.slot.id === this.selectedSlotId) ?? null;
     if (selected === null) {
       this.ghost.sync(null);
@@ -210,6 +217,7 @@ export class ShipConstruction implements OverlayHandle {
     const definitionId = this.definitionId;
     const slotId = this.selectedSlotId;
     this.submit(session, 'place', () => {
+      // まだ使われていない部品idを適用時に採る。
       let id: string;
       do id = `construction-${nextConstructionModule++}`;
       while (session.ship.assembly.module(id) !== null);
@@ -229,6 +237,7 @@ export class ShipConstruction implements OverlayHandle {
     if (session === null) return;
     const draft = this.currentDraft();
     if (draft === null || draft.firstConnectionId === null) return;
+    // 追加枝の役割を判定し、操縦不能な物資なら確定前に確認を挟む。
     const branch = draft.ship.assembly.clone().splitAt(draft.firstConnectionId)[1];
     if (branch.role === 'material') {
       this.confirmation.request({
@@ -252,6 +261,7 @@ export class ShipConstruction implements OverlayHandle {
     if (session === null) return;
     const draft = this.currentDraft();
     if (draft === null) return;
+    // 追加部品があるときだけ、破棄対象を説明する確認を挟む。
     if (draft.addedIds.length > 0) {
       this.confirmation.request({
         title: '建造中の船体を破棄',
@@ -274,6 +284,7 @@ export class ShipConstruction implements OverlayHandle {
     if (draft === null) return [];
     const slots = this.slots(draft);
     const definition = SHIP_MODULE_CATALOG.require(this.definitionId);
+    // 各スロットの配置をECIへ写し、表示に使う候補として組む。
     return slots.flatMap(slot => {
       const candidate = constructionCandidate(
         draft.ship.assembly, slot, definition,
@@ -357,6 +368,7 @@ export class ShipConstruction implements OverlayHandle {
     const slots = this.slots(draft);
     const definition = SHIP_MODULE_CATALOG.require(this.definitionId);
     const selected = this.selectedCandidate();
+    // 追加枝の集計と、部品を足した場合の見積りを組む。
     const branch = draft.firstConnectionId === null
       ? null : draft.ship.assembly.clone().splitAt(draft.firstConnectionId)[1];
     const totals = branch?.totals();
@@ -366,6 +378,7 @@ export class ShipConstruction implements OverlayHandle {
     };
     const preview = selected?.placement.valid ? previewFor(definition, capabilities, totals?.mass ?? 0, totals?.maxHp ?? 0) : null;
     const role = branch?.role ?? 'material';
+    // 候補一覧の表示状態と、選択中候補に対応する警告を組む。
     const slotStates: readonly ConstructionSlotState[] = slots.map(slot => {
       const placement = placementForSlot(draft.ship.assembly, slot, definition);
       return slotState(slot, placement);
@@ -395,6 +408,7 @@ function previewFor(
   const abilities = definition.abilities;
   const fuel = abilities.fuelCapacity ?? 0;
   const fuelKind = abilities.fuelKind;
+  // 初期配置される燃料を含めた現在枝の合計へ、部品1つを足す。
   return {
     mass: mass + definition.dryMass + fuel * (abilities.fuelMassPerUnit ?? 1),
     maxHp: maxHp + definition.maxHp,
@@ -408,13 +422,3 @@ function previewFor(
   };
 }
 
-// モードを閉じた直後もUIが保持する selection/DOM callback を安全な空状態へ戻す。
-function hiddenModel(): ShipConstructionPanelModel {
-  return {
-    visible: false, shipName: '—', dockLabel: '—', moduleCount: 0, totalMass: 0, hp: 0, maxHp: 0,
-    capabilities: { thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0 }, preview: null,
-    role: 'material', warning: null, selectedDefinitionId: 'cockpit-standard',
-    selectedModuleName: 'コックピット', selectedSlotId: 'axial', slots: [],
-    canPlace: false, canRemove: false, canFinish: false,
-  };
-}
