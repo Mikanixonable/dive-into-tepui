@@ -11,11 +11,20 @@
 
 **`DEVELOP/SPEC/` は「どう振舞うべきか」の原本であり、常にコードより先行する。**
 
-- **SPEC/ を開くのは、これから作るものを決めるときだけ**(`/modify-feature`)。書き終えてから
-  コードを書く。**実装を終えたあとに SPEC/ を見に行って突き合わせることはしない。**
+- **SPEC/ を読む入口は3つだけ** — どれも作業を**始める前**に開く。
+  - **これから作るものを決めるとき**(`/modify-feature` `/add-feature`) — いま作る1機能ではなく
+    **その分野の到達点**を掴み、基盤をそこへ耐える形で決めるために読む。掴めないなら該当分野の
+    `memos/` を読み、それでも掴めないならユーザーに問う。
+  - **挙動不変を謳う変更の計画を書くとき**(`/write-plan` `/write-and-run-plan`) —
+    **変えてはいけない挙動と、直してよい挙動を切り分ける**ために読む。書かれている挙動は保存し、
+    書かれていない挙動は保存の対象にしない。
+  - **実装の予定なしに仕様を先へ進めるとき**(`/advance-spec`)。
+- **書き換える入口はそのうち2つだけ** — `/modify-feature` と `/advance-spec`。前者では書き終えて
+  からコードを書く。どちらも仕様の更新を `docs(spec):` で単独 commit にし、`src/` の変更と混ぜない。
+  **実装を終えたあとに SPEC/ を見に行って突き合わせることはしない。**
 - **未実装の記述が残っているのは正常な状態である。** 仕様と実装が一致することを目標にしない。
 - **コードの現状を知るために SPEC/ を読まない。** 現状はコードから調べる。
-- **書き方の規則は `DEVELOP/SPEC/README.md` が正本。** ここには書かない。
+- **書き方・読み方の規則は `DEVELOP/SPEC/README.md` が正本。** ここには書かない。
 
 **`DEVELOP/CODING-RULE.md` はコードを編集するとき常に参照する。** 設計方針・命名規則・
 コメント規約・テストとデバッグコードの正本。既存コードに残る違反を、規則を弱める根拠にしない。
@@ -38,7 +47,9 @@
 | ユーザーが「計画を書いて」と明示した | `/write-plan`(書いて止まり、検査を待つ) |
 | ユーザーが検査した計画ファイルのステップを実施する | `/run-plan` |
 | サブエージェントへ作業を配る | `/delegate`(配る前に) |
+| 中〜大規模な変更を専用 worktree に分け、独立作業を並列委譲したい | `/parallel-worktree-change` |
 | 機能の追加・変更・削除を要求された | `/modify-feature`(書き始める前に) |
+| 実装の予定なしに仕様を進める・棚卸しすると頼まれた | `/advance-spec`(分野を1つ選ぶ。`src/` は触らない) |
 | 調査(コードベース・文献)を要する大規模な機能追加を任された | `/add-feature`(要件定義書/実装計画書を書く。書き始める前に) |
 | HUD/UI/DOM/CSS に触れる | `/ui-design`(書き始める前に) |
 | 描画(`src/render/`・シェーダ)に触れる / 見た目を目で確かめる | `/rendering-workflow` |
@@ -84,17 +95,18 @@
 
 ## 作業のルール
 
-- **検証は変更箇所に対応させる。** 既定は `npm run typecheck` のみで、これは常に走らせる。
-  回帰テストは触った層のものだけ — `src/physics/` なら `npm run test:physics`、以下同様に
-  `test:math` / `test:game` / `test:render`。ヘッドレス実行検証(`/verify`)は
-  ユーザーが実行時の動作確認を明示的に求めたときだけ。変更と無関係な検証に時間を使わない。
-  **例外は main へ送るとき** — そのときだけは変更箇所によらず全部回す(`/send-pr`)。
+- **検証は変更箇所に対応させる。** 各コマンドをいつ走らせるかはコマンド表に従う。
+  ヘッドレス実行検証(`/verify`)はユーザーが実行時の動作確認を明示的に求めたときだけ。
+  変更と無関係な検証に時間を使わない。**例外は main へ送るとき** — そのときだけは
+  変更箇所によらず全部回す(`/send-pr`)。
 
 ## ブランチと main へのマージ
 
 `main` が開発最新版、`release` が安定版(公開されるもの)。`release` は main への push を受けた
 CI が生成するので、**手で触らない。** 変更は main / release 以外のブランチで行い、PR で main へ
 入れる(小規模なら直マージ)。
+
+**`tools/boundary-allowlist.json` が空になってから main へ送る。**
 
 **main へ送るときの手順は `/send-pr` が正本。**
 
@@ -111,11 +123,13 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 | `docs/` | ドキュメント | `docs/api-reference` |
 | `test/` | テスト追加・修正 | `test/cloud-thermodynamics` |
 | `chore/` | その他作業 | `chore/dependency-update` |
-| `wip/` | 作業中（一時的） | `wip/experiment-xyz` |
+| `codex/` | 別系統エージェントの作業ブランチ | `codex/game-wide-refactor` |
+| `backup/` | 退避・スナップショット | `backup/workspace3-2026-09-26` |
 
 **ルール:**
 - 既存ブランチの改名は行わない（別エージェント作業中のため）
 - 新規ブランチは上記規則に従う
+- エージェントの作業区は `workspace<N>`(例: `workspace3`)の命名が既存の慣行としてある
 - マージ完了後はローカル・リモート両方でブランチを削除
 - 日本語のブランチ名は避ける（ASCII推奨）
 
@@ -138,12 +152,15 @@ Conventional Commitsに従い、**日本語を第一言語**とする:
 - `perf`: パフォーマンス改善
 - `docs`: ドキュメント
 - `test`: テスト追加・修正
+- `ci`: CI・ワークフロー設定
+- `build`: ビルド・依存関係
+- `revert`: 変更の取り消し
 - `chore`: その他作業
 - `style`: コードスタイル（ロジック変更なし）
 
 **scope（対象）:**
 - 変更対象のモジュール・ファイル・機能（省略可）
-- 例: `cloud`, `ship`, `render`, `physics`
+- 例: `cloud`, `ship`, `render`, `physics`, `spec`, `memo`
 
 **subject（件名）:**
 - 簡潔な説明（日本語）
@@ -183,50 +200,28 @@ fix(ship): ドッキング時のモジュール干渉を修正
 - 1commitで1つの変更にする
 - 既存commitのmessage修正は避ける（force pushのリスク）
 
-### 定期的なメンテナンス
-
-リポジトリの健全性を保つため、以下のメンテナンスを定期的に行う:
-
-| 頻度 | 作業 | 手順 |
-| --- | --- | --- |
-| 月1回 | 古いブランチの削除 | `git branch --merged` でマージ済みブランチを確認し削除 |
-| 月1回 | リモートブランチの整理 | `git remote prune origin` で削除済みリモートブランチを整理 |
-| 四半期ごと | CI/CD設定の見直し | ワークフローの依存更新、テストカバレッジの確認 |
-| 四半期ごと | 依存パッケージの更新 | `npm audit` で脆弱性チェック、`npm outdated` で更新確認 |
-
-**手順:**
-```bash
-# マージ済みブランチの確認（main/releaseを除く）
-git branch --merged main | grep -v "main" | grep -v "release"
-
-# 古いブランチの削除（安全のため--dry-runで確認）
-git branch --merged main | grep -v "main" | grep -v "release" | xargs git branch -d
-
-# リモートブランチの整理
-git remote prune origin
-
-# 依存パッケージのチェック
-npm audit
-npm outdated
-```
-
 ## コマンド
 
 | コマンド | 用途 | いつ走らせるか |
 | --- | --- | --- |
 | `npm run typecheck` | 型検査 | **常に** |
+| `node tools/check-boundaries.mjs` | 層と境界の検査 | `src/` の置き場を触ったとき |
+| `npm run lint` | CODING-RULE のうち構文で判定できる規則の検査 | **main へ送る前**(`/send-pr`)。点検範囲だけへは `/refactor` `/comment-cleanup` が当てる |
 | `npm run test` | 全層の回帰テスト | **main へ送る前**(`/send-pr`) |
 | `npm run test:physics` | `src/physics/` の回帰テスト | `src/physics/` を触ったとき |
 | `npm run test:math` | `src/math/` の回帰テスト | `src/math/` を触ったとき |
 | `npm run test:game` | `src/game/` の回帰テスト | `src/game/` を触ったとき |
 | `npm run test:render` | `src/render/` の回帰テスト | `src/render/` を触ったとき |
+| `npm run test:settings` | `src/settings/` の回帰テスト | `src/settings/` を触ったとき |
+| `npm run test:launcher` | `src/launcher/` の回帰テスト | `src/launcher/` を触ったとき |
 | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
 | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
 | `npm run build` | `docs/` への本番ビルド | **main へ送る前**(`/send-pr`)。公開は CI が行う |
 | `npm run ci` | 上記 + アセット・テーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
 | `npm run bgm-lab` | BGM の試聴環境(http://localhost:8081) | 曲を調整するとき |
 | `npm run render-lab` | 描画の実験環境(http://localhost:8082) | 描画を目で確かめるとき |
-| `npm run render-lab:shot` | 描画の実験環境の撮影(`.render-lab/shots/`) | 描画を画像で確かめるとき |
+| `npm run render-lab:shot` | 描画の実験環境の撮影(`-- <組の名前>` で `.render-lab-shots/<組の名前>/`、省くと `.render-lab/shots/`) | 描画を画像で確かめるとき |
+| `npm run render-lab:compare` | 描画の実験環境の撮影の前後比較(`.render-lab-shots/compare-<after の名前>/`) | 描画の変更の前後を見比べるとき |
 | `npm run cloud-lab` | 雲の実験環境(http://localhost:8083) | 雲の生成を目で確かめるとき |
 | `npm run cloud-lab:shot` | 雲の実験環境の撮影(`.cloud-lab/shots/`) | 雲を画像で確かめるとき |
 | `npm run cloud-lab:compare` | 生成と実写の統計比較(`.cloud-lab/compare/`) | 雲の生成を実写(8k_clouds)と見比べるとき |
@@ -236,4 +231,3 @@ npm outdated
 
 `npm run export-assets` は実行のたびに全アセットの識別子が振り直されるため、差分が識別子だけの
 ファイルは commit せず戻す。
-
