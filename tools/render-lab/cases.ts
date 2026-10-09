@@ -16,6 +16,7 @@ import { MATERIAL_CASES } from './material-cases';
 import { SHADOW_CASES } from './shadow-cases';
 import { BAY_CASES } from './bay-cases';
 import { BOUNCE_COSINE_CASES } from './bounce-cosine-case';
+import { ANGLED_BOUNCE_CASES } from './angled-bounce-case';
 import { GROOVE_LADDER_CASES } from './groove-ladder-case';
 import { SLOPE_FAN_CASES } from './slope-fan-case';
 import { CORNELL_BOX_CASES } from './cornell-box-case';
@@ -174,6 +175,7 @@ export const CASES = {
   ...SHADOW_CASES,
   ...BAY_CASES,
   ...BOUNCE_COSINE_CASES,
+  ...ANGLED_BOUNCE_CASES,
   ...GROOVE_LADDER_CASES,
   ...SLOPE_FAN_CASES,
   ...CORNELL_BOX_CASES,

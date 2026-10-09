@@ -93,6 +93,10 @@ export class DebugComposites {
     return this.chainMaterialsOf(this.screenSpacePass.bandCount).get(view) ?? this.blankMaterial;
   }
 
+  public signedCorrectionMaterial(source: THREE.Texture): THREE.MeshBasicNodeMaterial {
+    return compositeMaterial(vec4(this.signedCorrection(texture(source, screenUV)), 1), this.gbuffer.depthTexture);
+  }
+
   // 帯の数 count で描いた帯と段の表示の合成マテリアル。その帯の数に無い帯と段は持たない。初めて引いたときに組む。
   private chainMaterialsOf(count: number): ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial> {
     const existing = this.chainMaterials.get(count);
@@ -120,9 +124,13 @@ export class DebugComposites {
       }
       case 'representative':
         return target.level < count ? vec4(this.representativeNormal(target.level), 1) : null;
-      case 'merged': {
+      case 'merged':
+      case 'merged-share': {
         if (target.level >= count - 1) return null;
-        return this.signedColor(texture(corrections.mergedTarget(count, target.level).texture, screenUV).rgb);
+        const merged = texture(corrections.mergedTarget(count, target.level).texture, screenUV);
+        return target.kind === 'merged'
+          ? this.signedColor(merged.rgb)
+          : vec4(vec3(merged.a), 1);
       }
     }
   }

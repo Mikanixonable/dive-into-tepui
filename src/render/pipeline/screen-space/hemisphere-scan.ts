@@ -1,16 +1,18 @@
 // 受け手 1 画素のまわりの半球を、画面に写った近くの構造に対して一度だけ走査し、遠方の拡散光(一様な環境光と
-// 天体照)のうち近くの構造に塞がれた照度と、塞いでいる面が返す照度(照り返し)の差を、遮りの画面距離の帯ごとに答える。
+// 天体照)のうち近くの構造に塞がれた照度と、塞いでいる面が返す照度(照り返し)の差を帯ごとに答える。
+// 補正の増分は、切片の画面距離と向きに応じた帯へ分けて積む。
 //
 // 画面上の向き(スライス)を数本取り、それぞれ両側へ深度を引く。深度の標本 1 つは、画面上で隣り合う標本との
 // あいだを受け持つ接平面の切片とみなし、スライスの中の遮りは扇形のビットマスクで持つ(Therrien, Levesque, Gilet
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, abs, bool, clamp, dot, float, floor, fract, getViewPosition, ivec2, length, log2, max, min, pow, screenSize,
+  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, pow, screenSize,
   screenUV, select, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
+import { facingCosine, sampleBandWeights, type BandSplit } from './band-split';
 import { signedDiffuseCorrection } from './diffuse-correction';
 import {
   SECTOR_COUNT, angleOf, bitCount, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt,
@@ -34,13 +36,6 @@ const WORLD_RADIUS = 4;
 export interface PlanetIllumination {
   readonly cap: PlanetCap;
   readonly irradiance: Vec3Node;
-}
-
-// 塞がれた照度と照り返しの増分を、遮りの画面距離 ρ [走査の画素] で分ける帯。count は帯の数(1 なら分けない)、
-// scale は帯の座標 log₂(scale·ρ) の尺度で、帯 b は座標 b を受け持つ(座標は 0..count − 1 へ寄せる)。
-export interface BandSplit {
-  readonly count: number;
-  readonly scale: FloatNode;
 }
 
 // 受け手へ届く遠方の拡散光と、新しく塞いだ測度をその光の塞がれた割合へ写す尺度。ambient は一様な環境光の照度、
@@ -83,6 +78,7 @@ export function scanHemisphere(
   If(resolvesNearby(receiver.depth, radius), () => {
     // 視線は投影方式によらない形から取る。
     const view = viewRayAt(projectionInverse, receiver.uv).direction.negate().toVar();
+    const receiverView = facingCosine(receiver.normal, view).toVar();
     const rotation = noise.x.toVar();
     const jitter = noise.y.toVar();
     // 丸めのずれは両端を除いた区間へ写す — 0 と 1 では扇形の座標のずれが ±½ ちょうどになり、半球の端に接する
@@ -111,7 +107,7 @@ export function scanHemisphere(
     };
     Loop({ start: 0, end: sliceCount, type: 'int', condition: '<' }, ({ i }) => {
       const slice = sliceOf(i);
-      const occlusion = new SliceOcclusion(slice, dither, light, bands, corrections, radiance);
+      const occlusion = new SliceOcclusion(slice, dither, light, bands, receiverView, corrections, radiance);
       // 受け手自身は、スライスの座標の原点にある、受け手の接平面の点。標本と同じ式で法線を写す — 同じ平面の標本と
       // 法線が一致しないと、平行なはずの 2 直線の交点を拾う。
       const receiverInSlice: SlicePoint = {
@@ -143,7 +139,9 @@ export function scanHemisphere(
             .and(samplePixel.x.lessThan(screenSize.x)).and(samplePixel.y.lessThan(screenSize.y));
           const surface = onScreen.and(sample.depth.greaterThan(0))
             .and(dot(toSample, toSample).lessThanEqual(WORLD_RADIUS * WORLD_RADIUS));
-          walk.visit(rho, surface, toSample, sample.normal);
+          // 送り手の位置での視線(透視でも平行投影でも標本の uv から引く)。
+          const senderToCamera = viewRayAt(projectionInverse, sample.uv).direction.negate();
+          walk.visit(rho, surface, toSample, sample.normal, facingCosine(sample.normal, senderToCamera));
         });
         walk.finish(radius);
       });
@@ -165,13 +163,6 @@ function capInSlice(slice: Slice, cap: PlanetCap, dither: FloatNode): {
   const range = capRange(slice, cap, dither);
   const width = range.upper.sub(range.lower).toVar();
   return { range, width, wedge: select(width.greaterThan(0), wedgeWeight(slice, cap.direction), float(0)).toVar() };
-}
-
-// 画面距離 rho [走査の画素] の遮りの増分を帯 bands へ分ける、帯ごとの重み。重みは 0 以上で、和は 1。
-export function bandWeights(bands: BandSplit, rho: FloatNode): FloatNode[] {
-  if (bands.count === 1) return [float(1)];
-  const coordinate = clamp(log2(bands.scale.mul(rho)), 0, bands.count - 1);
-  return Array.from({ length: bands.count }, (_, band) => max(float(1).sub(abs(coordinate.sub(band))), 0));
 }
 
 // 受け手の近くを走査するか — 面が写っていて(素の深度 depth > 0)、半径が走査の画面へ 1 画素より大きく写る
@@ -227,11 +218,12 @@ class SliceOcclusion {
   }[];
 
   // dither は扇形の端の丸めのずれ、light は受け手へ届く遠方の拡散光、bands と corrections は帯の分け方と帯ごとの
-  // 補正の積み先、radiance は照り返しの源の放射輝度(null なら照り返しを積まない)。
+  // 補正の積み先、receiverView は受け手の法線と受け手→カメラの内積、radiance は照り返しの源の放射輝度(null なら
+  // 照り返しを積まない)。
   public constructor(
     private readonly slice: Slice, private readonly dither: FloatNode, private readonly light: DistantLight,
-    private readonly bands: BandSplit, private readonly corrections: readonly Vec3Node[],
-    private readonly radiance: THREE.Texture | null,
+    private readonly bands: BandSplit, private readonly receiverView: FloatNode,
+    private readonly corrections: readonly Vec3Node[], private readonly radiance: THREE.Texture | null,
   ) {
     this.hemisphereWeight = slice.weight.mul(light.hemisphereScale).toVar();
     this.planets = light.planets.map(({ cap, irradiance, wedgeScale }) => {
@@ -242,9 +234,11 @@ class SliceOcclusion {
   }
 
   // 受け手から見て角 lower..upper を占める切片を、手前の切片の後ろへ積む。falloff はその標本の距離重み、
-  // facesReceiver は標本が受け手へ面を向けているか、rho と pixel は標本の画面距離 [走査の画素] と走査の画素。
+  // facesReceiver は標本が受け手へ面を向けているか、senderView は標本の法線と標本→カメラの内積。
+  // rho と pixel は標本の画面距離 [走査の画素] と走査の画素。
   public add(
-    lower: FloatNode, upper: FloatNode, falloff: FloatNode, facesReceiver: BoolNode, rho: FloatNode, pixel: Vec2Node,
+    lower: FloatNode, upper: FloatNode, falloff: FloatNode, facesReceiver: BoolNode,
+    senderView: FloatNode, rho: FloatNode, pixel: Vec2Node,
   ): void {
     const sectors = segmentSectors(
       sectorPosition(this.slice, lower, this.dither), sectorPosition(this.slice, upper, this.dither)).toVar();
@@ -271,7 +265,7 @@ class SliceOcclusion {
         });
       }
       const increment = signedDiffuseCorrection(received, blockedIrradiance).toVar();
-      const weights = bandWeights(this.bands, rho);
+      const weights = sampleBandWeights(this.bands, rho, this.receiverView, senderView);
       for (const [band, correction] of this.corrections.entries()) correction.addAssign(increment.mul(weights[band]!));
     });
   }
@@ -288,6 +282,7 @@ class SideWalk {
   // 直前の標本の切片の下端(円で切った点)と距離重み。上端は次の標本で決まる。
   private readonly previousLower = vec2(0).toVar();
   private readonly previousFalloff = float(0).toVar();
+  private readonly previousSenderView = float(0).toVar();
 
   // screenStep はこの側の画面上の歩み [uv/走査の画素]、rays はこの側の視線、occlusion は切片を積むスライスの遮り、
   // receiver は最初の「直前の標本」とする受け手自身。
@@ -301,8 +296,10 @@ class SideWalk {
   }
 
   // 画面距離 rho の標本を次に加える。toSample は受け手から標本への変位、normal は標本の法線(view 空間)。hasSurface
-  // が偽なら面のない標本(虚空・画面外・半径の外)で、切片を持たない。
-  public visit(rho: FloatNode, hasSurface: BoolNode, toSample: Vec3Node, normal: Vec3Node): void {
+  // が偽なら面のない標本(虚空・画面外・半径の外)で、切片を持たない。senderView は標本の法線と標本→カメラの内積。
+  public visit(
+    rho: FloatNode, hasSurface: BoolNode, toSample: Vec3Node, normal: Vec3Node, senderView: FloatNode,
+  ): void {
     const sample = samplePoint(this.slice, this.rays, rho, toSample, normal, this.receiver);
     const split = splitSegments(this.rays, this.previous, this.previousRho, sample, rho,
       this.previousHasSurface.and(hasSurface));
@@ -314,6 +311,7 @@ class SideWalk {
     // この標本を直前の標本として持ち越す。面がなければ、持ち越した値は旗で読まれない。
     this.previousLower.assign(clipToCircle(sample.position, farLower));
     this.previousFalloff.assign(max(float(1).sub(dot(toSample, toSample).div(WORLD_RADIUS * WORLD_RADIUS)), 0));
+    this.previousSenderView.assign(senderView);
     this.previous.position.assign(sample.position);
     this.previous.normal.assign(sample.normal);
     this.previous.offset.assign(sample.offset);
@@ -338,7 +336,7 @@ class SideWalk {
     const lowest = angularlyLower(angularlyLower(this.previousLower, position), upper);
     const highest = angularlyHigher(angularlyHigher(this.previousLower, position), upper);
     this.occlusion.add(angleOf(this.slice, lowest), angleOf(this.slice, highest), this.previousFalloff,
-      offset.lessThan(0), this.previousRho, pixelAlong(this.screenStep, this.previousRho));
+      offset.lessThan(0), this.previousSenderView, this.previousRho, pixelAlong(this.screenStep, this.previousRho));
   }
 }
 

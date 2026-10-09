@@ -165,7 +165,7 @@ function foldedBandsOf(bands, count, isolated) {
 }
 
 // 帯の値 bands(帯ごとに画素ごとの rgb の ΔE)を、走査が帯を詰めた描画先へ流し込んで、段の範囲 'chain' で 1 回描く。
-async function drawBands(lab, bands) {
+export async function drawBands(lab, bands) {
   const pixels = bands[0].length / 3;
   const textures = Array.from({ length: Math.ceil(3 * bands.length / 4) }, () => new Float32Array(4 * pixels));
   for (const [band, values] of bands.entries()) {

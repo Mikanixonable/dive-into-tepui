@@ -29,6 +29,7 @@ export class CorrectionReconstruction {
   public constructor(
     private readonly weight: SurfaceWeight, private readonly surfaces: ScanSurfaces,
     private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node, private readonly projection: Mat4Uniform,
+    private readonly forceAlphaOne: FloatNode,
   ) {}
 
   // 描画バッファの画素の補正を、走査の画素の補正 source(rgb。α は粗い段まで均された割合 A)から K 本を疎に読み、面の
@@ -43,8 +44,9 @@ export class CorrectionReconstruction {
     const scale = this.scanSize.div(this.fullSize).toVar();
     const nearest = textureLoad(source, this.clampToScan(ivec2(round(position)))).toVar();
     const projected = projectedRadius(receiver.position, this.projection, this.fullSize);
+    const share = select(this.forceAlphaOne.greaterThan(0.5), float(1), clamp(nearest.a, 0, 1));
     const radius = max(float(UPSAMPLE_FLOOR_RADIUS),
-      projected.mul(UPSAMPLE_RADIUS_PER_PROJECTED_RADIUS).mul(float(1).sub(clamp(nearest.a, 0, 1))));
+      projected.mul(UPSAMPLE_RADIUS_PER_PROJECTED_RADIUS).mul(float(1).sub(share)));
     const { across, along } = this.surfaceEllipseOf(receiver, radius);
     const angle = rotation.mul(2 * Math.PI).toVar();
     const cosAngle = cos(angle).toVar();

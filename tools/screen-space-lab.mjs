@@ -229,21 +229,24 @@ function labOf(devTools) {
       await call(`showShot(${JSON.stringify(entry.caseName)}, ${JSON.stringify(entry.shot)}, ${JSON.stringify({ ...EVALUATION_GRAPHICS, screenSpaceDiffuse: entry.mode })})`);
       if (entry.dolly) await call(`setView(${JSON.stringify({ cameraDistanceLog: entry.dolly })})`);
     },
+    // 観察の向きを部分的に差し替えて描く。changes は render-lab の観察の向き(LabViewAngles)の一部。
+    setView: (changes) => call(`setView(${JSON.stringify(changes)})`),
     setTier: (tier) => call(`setScanTier(${JSON.stringify(tier)})`),
     // seed は seedOf の返す [x, y]。
     setSeed: ([x, y]) => call(`setScanSeed(${x}, ${y})`),
     // 近傍拡散補正の段の範囲 range('all'・'scan'・'chain')だけを描く。'chain' は帯を詰めた描画先の値から鎖を描く。
     setStageRange: (range) => call(`setScanStageRange(${JSON.stringify(range)})`),
+    setUpsampleAlphaOne: (enabled) => call(`setUpsampleAlphaOne(${JSON.stringify(enabled)})`),
     // 直前のフレームの入力のまま、走査だけをホワイトノイズのパス first〜first + count − 1 で描き直し、帯を詰めた
     // テクスチャを偶数番目と奇数番目のパスに分けてページの GPU の和へ足す。和は takePassSums で受け取る。
     accumulateWhitePasses: (first, count) => call(`accumulateWhitePasses(${first}, ${count})`),
     // accumulateWhitePasses の値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
     // テクスチャごとの、画素ごとに RGBA の Float32Array)を受け取り、ページの和を 0 に戻す。
-    async takePassSums() {
-      const shapes = await devTools.evaluate(`window.renderLab.takePassSums().then((taken) => {
+    async takePassSums(includeSquares = true) {
+      const shapes = await devTools.evaluate(`window.renderLab.takePassSums(${JSON.stringify(includeSquares)}).then((taken) => {
         window.__ssdPassSums = taken;
         const shapeOf = (halves) => halves.map((images) => images.map(({ rgba }) => rgba.length));
-        return { sums: shapeOf(taken.sums), squares: shapeOf(taken.squares) };
+        return { sums: shapeOf(taken.sums), squares: taken.squares.length ? shapeOf(taken.squares) : [] };
       })`);
       // 和 kind('sums' か 'squares')の [偶奇][テクスチャ] を受け取る。
       const receiveHalves = async (kind) => {
@@ -257,7 +260,7 @@ function labOf(devTools) {
         }
         return halves;
       };
-      const taken = { sums: await receiveHalves('sums'), squares: await receiveHalves('squares') };
+      const taken = { sums: await receiveHalves('sums'), squares: includeSquares ? await receiveHalves('squares') : [] };
       await devTools.evaluate('delete window.__ssdPassSums');
       return taken;
     },
@@ -404,6 +407,34 @@ function labOf(devTools) {
       const out = await receiveFloats(devTools, 'window.__ssdFloat', width * height * channels);
       await devTools.evaluate('delete window.__ssdFloat');
       return out;
+    },
+    async signedCorrectionPng(image) {
+      await sendArray(devTools, 'window.__ssdCorrectionImage', image.rgba);
+      const dataUrl = await devTools.evaluate(`window.renderLab.signedCorrectionPng({
+        width: ${image.width}, height: ${image.height}, rgba: window.__ssdCorrectionImage })`);
+      await devTools.evaluate('delete window.__ssdCorrectionImage');
+      return pngOf(dataUrl);
+    },
+    async composite(image) {
+      await sendArray(devTools, 'window.__ssdCompositeInput', image.rgba);
+      const [width, height] = await devTools.evaluate(`window.renderLab.composite({
+        width: ${image.width}, height: ${image.height}, rgba: window.__ssdCompositeInput }).then((result) => {
+          window.__ssdCompositeOutput = result.rgba;
+          return [result.width, result.height];
+        })`);
+      const rgba = await receiveFloats(devTools, 'window.__ssdCompositeOutput', width * height * 4);
+      await devTools.evaluate('delete window.__ssdCompositeInput; delete window.__ssdCompositeOutput');
+      return { width, height, rgba };
+    },
+    async signedCorrectionDisplay(image, exposure) {
+      await sendArray(devTools, 'window.__ssdCorrectionImage', image.rgba);
+      const [width, height] = await devTools.evaluate(`(window.__ssdDisplay = window.renderLab.signedCorrectionDisplay({
+        width: ${image.width}, height: ${image.height}, rgba: window.__ssdCorrectionImage }, ${exposure}),
+        [window.__ssdDisplay.width, window.__ssdDisplay.height])`);
+      const rgba = await receiveFloats(devTools, 'window.__ssdDisplay.rgba', width * height * 4);
+      await devTools.evaluate('delete window.__ssdCorrectionImage');
+      await devTools.evaluate('delete window.__ssdDisplay');
+      return { width, height, rgba };
     },
     // 直前のフレームの中間ターゲット name の寸法 [width, height]。
     floatSizeOf: (name) => devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(name)})

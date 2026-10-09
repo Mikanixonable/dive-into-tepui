@@ -76,21 +76,13 @@ export function levelAt(
   };
 }
 
-// 左上の角からのずれ fraction [画素] の点に対する、角から (dx, dy) の画素の双線形の重み。
-export function bilinearWeightOf(fraction: Vec2Node, dx: 0 | 1, dy: 0 | 1): FloatNode {
-  return (dx === 0 ? fraction.x.oneMinus() : fraction.x).mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
-}
-
-// 段 k の画素 pixel(整数座標)の中心を囲む段 k + 1 の 4 画素 texel(整数座標。段の画面の外もありうる)と、その双線形の
-// 重み weight。重みの和は 1 で、pixel を含む段 k + 1 の画素が 9/16、斜向かいが 1/16。
-export function coarseNeighbors(pixel: Vec2Node): { readonly texel: Vec2Node; readonly weight: FloatNode }[] {
-  // 段 k + 1 の画素を単位とし、画素の中心を整数に乗せた座標。
-  const position = pixel.add(0.5).mul(0.5).sub(0.5);
-  const corner = floor(position);
-  const fraction = position.sub(corner);
-  return QUAD_OFFSETS.map(([dx, dy]) => ({
-    texel: corner.add(vec2(dx, dy)), weight: bilinearWeightOf(fraction, dx, dy),
-  }));
+// 段 k の画素を含む段 k + 1 の画素を中心とした 3×3 の親と、[1, 2, 1]⊗[1, 2, 1]/16 の重み。
+export function tentNeighbors(pixel: Vec2Node): { readonly texel: Vec2Node; readonly weight: FloatNode }[] {
+  const center = floor(pixel.mul(0.5));
+  const taps = [1, 2, 1] as const;
+  return [-1, 0, 1].flatMap((dy, y) => [-1, 0, 1].map((dx, x) => ({
+    texel: center.add(vec2(dx, dy)), weight: float(taps[x]! * taps[y]! / 16),
+  })));
 }
 
 // 子ごとの重み weight と帯ごとの値 bands(帯の並びは子によらない)から、帯ごとに重みで正規化した平均。重みの和が
@@ -117,11 +109,11 @@ export function effectivePixelsOf(
   return select(total.greaterThan(WEIGHT_EPSILON), total.mul(total).div(sumVariance), float(0));
 }
 
-// 段 k の画素を囲む段 k + 1 の画素 1 つ — 双線形の重み bilinear(β)、その代表を段 k の代表と比べた面の重み surface
+// 段 k の画素を囲む段 k + 1 の親 1 つ — 空間補間の重み、その代表を段 k の代表と比べた面の重み surface
 // (w。画面の外は 0)、C_{k+1} の値 value とその実効画素数 effectivePixels(1 未満は 1 とみなす)、C_{k+1} のうち最も粗い
 // 段まで均された割合 smoothedShare(A_{k+1}。最も粗い段は 1)、段 k の画素を含むか containsPixel。
 export interface ParentPixel {
-  readonly bilinear: FloatNode;
+  readonly interpolationWeight: FloatNode;
   readonly surface: FloatNode;
   readonly value: Vec3Node;
   readonly effectivePixels: FloatNode;
@@ -131,14 +123,14 @@ export interface ParentPixel {
 
 // 段 k の拡大と合流の出力 C_k = D_k + α·Ū + (1 − α)·T_k と、そのうち最も粗い段まで均された割合 A_k = α·Ā_{k+1}
 // (遠い帯の値のうち、どの段の合流でも均す前の値に置き換わらなかった割合)。direct は D_k(段 k の帯 k)、remainder は
-// T_k(段 k の帯 k + 1 以降の和)、remainderPixels はその実効画素数、parents は段 k の画素を囲む段 k + 1 の 4 画素。Ū と
-// Ā_{k+1} は親の C_{k+1} と A_{k+1} を β·w で正規化した平均で、α は親の面が合う確からしさ × T_k と Ū の分散から決まる
-// 縮小推定の比。
+// T_k(段 k の帯 k + 1 以降の和)、remainderPixels はその実効画素数、parents は親候補とその空間補間重み・面の重み・値・
+// 実効画素数・均された割合を持つ。Ū と Ā_{k+1} はテント×面の重みで正規化した平均、α は面の重みで見た面の確からしさと
+// T_k・Ū の分散から決まる縮小推定の比。
 export function mergedCorrection(
   direct: Vec3Node, remainder: Vec3Node, remainderPixels: FloatNode, parents: readonly ParentPixel[],
 ): { readonly correction: Vec3Node; readonly smoothedShare: FloatNode } {
-  // 親の重み β·w を、和が 1 になるよう正規化した重み v。
-  const weights: FloatNode[] = parents.map(({ bilinear, surface }) => bilinear.mul(surface).toVar());
+  // テントと面の重みの積を和が 1 になるよう正規化する。
+  const weights: FloatNode[] = parents.map(({ interpolationWeight, surface }) => interpolationWeight.mul(surface).toVar());
   const total = weights.reduce((sum, weight) => sum.add(weight));
   const terms = parents.map((parent, index) => ({
     parent, share: weights[index]!.div(max(total, WEIGHT_EPSILON)).toVar(), pixels: max(parent.effectivePixels, 1),
@@ -200,7 +192,8 @@ export class BandPyramid {
 
   // 段 level の描いている画素の、拡大と合流の出力 — rgb は C_level、α は最も粗い段まで均された割合 A_level。段 level の帯を
   // 詰めたテクスチャ own(帯 level..count − 1)、段 level + 1 の C と A を持つテクスチャ coarse(最も粗い段ならその段の帯)、
-  // 段 level + 1 の帯を詰めたテクスチャ coarseBands から、mergedCorrection で求める。段 level の代表に面がなければ 0。
+  // 段 level + 1 の帯を詰めたテクスチャ coarseBands から、3×3 テントの9親を使って mergedCorrection で求める。
+  // 段 level の代表に面がなければ 0。
   // **Fn の中から呼ぶこと。**
   public merged(
     coarse: THREE.Texture, coarseBands: readonly THREE.Texture[], own: readonly THREE.Texture[], count: number,
@@ -211,15 +204,15 @@ export class BandPyramid {
     const result = vec4(0).toVar();
     If(representative.depth.greaterThan(0), () => {
       const receiver = this.weight.receiverAt(representative);
-      // 段 level + 1 の 4 画素の面の重みは、その代表を段 level の代表と比べたもの(画面の外は 0)。
+      // 親の面の重みは、その代表を段 level の代表と比べたもの(画面の外は 0)。
       const { distance, angle } = this.toleranceAt(level + 1);
       const containing = pixel.div(2);
-      const parents = coarseNeighbors(vec2(pixel)).map(({ texel, weight }): ParentPixel => {
+      const parents = tentNeighbors(vec2(pixel)).map(({ texel, weight }): ParentPixel => {
         const parent = ivec2(texel).toVar();
         const exponent = this.weight.exponentOf(receiver, this.surfaces.surfaceAt(level + 1, parent), distance, angle);
         const coarseValue = textureLoad(coarse, parent);
         return {
-          bilinear: weight,
+          interpolationWeight: weight,
           surface: select(this.surfaces.contains(level + 1, parent), exp2(exponent.negate()), float(0)).toVar(),
           value: coarseValue.rgb,
           effectivePixels: textureLoad(coarseBands.at(-1)!, parent).w,
