@@ -41,14 +41,21 @@ const CAMERA_FACING_FADE_START = 0.6;
 const CAMERA_FACING_FADE_END = 0.9;
 // 当たった刻みの区間を二分して、当たった位置を詰める回数。
 const REFINE_STEPS = 4;
+// 鏡面ローブの裾を切る割合 b。マイクロ法線の傾きを決める乱数を 0..1 − b へ縮め、まれにローブの遠くへ飛ぶ標本を
+// 芯の側へ寄せる(Stachowiak 2015「Stochastic Screen-Space Reflections」の truncated distribution sampling)。切った
+// 後の反射の向きのずれは、正面から見た面でローブ半幅の √((1 − b) / b) 倍まで(視線が面に寝るほど遠くへ届く)。
+// 像から遠く離れた所に疎らな輝点を出さないための非物理的な調整で、像の期待値の正確さより輝点が無いことを優先する。
+const LOBE_TAIL_CUT = 0.05;
 
 // 描画バッファの画素の面 sample から追跡する ray の向きと、その重み。画素ごとに固定の blue noise で鏡面ローブから
 // 選ぶので、同じ解像度で同じ画素を塗るパスはどれも同じ向きを引き直せる。追跡の開始点のずらし(tileShift 0)とは
 // 別の値を使う。
 export function reflectionRayOf(sample: ShadingSample, blueNoise: BlueNoise): GgxReflectionSample {
   // u.y = 1 で選ぶ向きは必ず面の下へ潜り、重み 0 の穴になるので、端を含まない層の中心で読む。
-  return sampleGgxReflection(sample,
-    vec2(blueNoise.centeredAtScreenPixel(0.5), blueNoise.centeredAtScreenPixel(27 / 64)));
+  return sampleGgxReflection(sample, vec2(
+    blueNoise.centeredAtScreenPixel(0.5),
+    blueNoise.centeredAtScreenPixel(27 / 64).mul(1 - LOBE_TAIL_CUT),
+  ));
 }
 
 // 判定の結果。当たらなかった画素ではどれも 0。
