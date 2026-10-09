@@ -261,7 +261,13 @@ export async function openChromeSession({
         browser.kill('SIGTERM');
         await Promise.race([once(browser, 'exit'), sleep(2_000)]);
         server.close();
-        rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        // Windows では終了直後の Chrome がプロファイルを掴んだままのことがある。測定結果を失わないよう掃除の失敗では止めず、
+        // C: に溜まったことに気付けるよう残った場所を出す。
+        try {
+          rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+        } catch (error) {
+          console.warn(`Chrome profile was left at ${profile}: ${error.code ?? error}`);
+        }
       },
     };
   } catch (e) {
