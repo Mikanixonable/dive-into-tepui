@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { bool, float, uint, uniform, vec2, vec3 } from 'three/tsl';
 import {
-  bandCoordinate, bandWeights, bounceWeights, occlusionWeights, sampleFacing, type BandSplit, type SampleFacing,
+  bandCoordinate, bandWeights, bounceWeights, occlusionWeights, sampleFacing, SENDER_VIEW_EXPONENT, type BandSplit, type SampleFacing,
 } from '../../src/render/pipeline/screen-space/band-split';
 import { clipToCircle, projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
@@ -61,14 +61,14 @@ function vectorNode(vector: THREE.Vector3): Vec3Node {
 function bandsWith(count: number, scale: number, strength: number): BandSplit {
   const s = float(strength);
   return {
-    count, bounceScale: float(scale), bounce: { senderFacing: s, receiverFacing: s, receiverView: s, senderView: s },
-    occlusionScale: float(scale), occlusion: { receiverFacing: s, receiverView: s, senderView: s },
+    count, bounceScale: float(scale), bounce: { senderFacing: s, receiverFacing: s, receiverView: s },
+    occlusionScale: float(scale), occlusion: { receiverFacing: s, receiverView: s },
   };
 }
 
-// 向きの内積が cos の標本。
-function facingOf(cosine: number): SampleFacing {
-  return { senderFacing: float(cosine), receiverFacing: float(cosine), senderView: float(cosine) };
+// 向きの内積が cos の標本。送り手と視線の内積 senderView は固定の因子 d の入力で、既定は 1(因子が効かない)。
+function facingOf(cosine: number, senderView = 1): SampleFacing {
+  return { senderFacing: float(cosine), receiverFacing: float(cosine), senderView: float(senderView) };
 }
 
 // 距離だけの帯の座標 log₂(κρ) を 0..count − 1 へ寄せたもの。
@@ -536,7 +536,7 @@ export function register(): void {
     const half = float(0.5);
     const bands: BandSplit = {
       ...bandsWith(6, 0.75, 0),
-      bounce: { senderFacing: half, receiverFacing: float(0), receiverView: float(0), senderView: float(0) },
+      bounce: { senderFacing: half, receiverFacing: float(0), receiverView: float(0) },
     };
     const rho = 40;
     // a だけが s = 1/2 で cos θ = 0。
@@ -550,7 +550,7 @@ export function register(): void {
     const rho = 2;
     const strength = (receiverFacing: number): BandSplit => ({
       ...bandsWith(4, 0.75, 0),
-      bounce: { senderFacing: float(0), receiverFacing: float(receiverFacing), receiverView: float(0), senderView: float(0) },
+      bounce: { senderFacing: float(0), receiverFacing: float(receiverFacing), receiverView: float(0) },
     });
     const coordinateOf = (bands: BandSplit, cosine: number): number => {
       const weights = bounceWeights(bands, float(rho), float(1), { ...facingOf(1), receiverFacing: float(cosine) }).map(valueOf);
@@ -560,6 +560,24 @@ export function register(): void {
     near(coordinateOf(strength(0.5), 0.25), Math.log2(0.75 * rho) + 1, 1e-12, 's = 1/2, cos = 1/4');
     near(coordinateOf(strength(0.5), 0), 3, 1e-12, 's = 1/2, cos = 0');
     near(coordinateOf(strength(0), 0), Math.log2(0.75 * rho), 1e-12, 's = 0, cos = 0');
+  });
+
+  test('screen space estimator: 送り手と視線の内積 d は照り返しにも遮蔽にも固定で、冪 1/2 で割る', () => {
+    assert.strictEqual(SENDER_VIEW_EXPONENT, 0.5);
+    const rho = 2;
+    const bands = bandsWith(4, 0.75, 0);
+    const meanBandOf = (weights: FloatNode[]): number => {
+      const values = weights.map(valueOf);
+      assert.ok(values.every((weight) => Number.isFinite(weight) && weight >= 0));
+      near(values.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
+      return values.reduce((sum, weight, band) => sum + weight * band, 0);
+    };
+    const base = Math.log2(0.75 * rho);
+    for (const [senderView, expected] of [[1, base], [0.25, base + 1], [0, 3]] as const) {
+      const facing = facingOf(1, senderView);
+      near(meanBandOf(bounceWeights(bands, float(rho), float(1), facing)), expected, 1e-12, `照り返し d = ${senderView}`);
+      near(meanBandOf(occlusionWeights(bands, float(rho), float(1), facing)), expected, 1e-12, `遮蔽 d = ${senderView}`);
+    }
   });
 
   test('screen space estimator: 標本の向きの内積は 0..1 に収まり、零距離でも有限', () => {
