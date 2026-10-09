@@ -18,10 +18,14 @@ import { NO_REFLECTION_ROUGHNESS, rayThicknessAt } from './reflection-trace';
 import { encodedDenoisedReflection, type ScreenSpaceReflection } from './screen-space-reflection';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../../tsl-types';
 
-// 縮小列の段数。段 0 は均す前の映り込みと G バッファそのもので、段 k は描画画素 2^k 個四方を画素 1 つにまとめる。
-// いちばん粗い段の画素 1 つが 4096 px 四方までの描画バッファ全体を覆う。tools/render-lab-reflection-levels.mjs が
-// この行を文字列で読む。
-export const REFLECTION_LEVEL_COUNT = 13;
+// 高さ LEVEL_REFERENCE_HEIGHT の描画バッファで均すのに使う、縮小列の段数。段 0 は均す前の映り込みと G バッファそのもので、
+// 段 k は描画画素 2^k 個四方を画素 1 つにまとめる。描画バッファの高さが倍になるごとに 1 段増やす — 焦点距離 [px] が倍に
+// なると、同じ粗さの面を均す段は 1 つ上がる。tools/render-lab-reflection-levels.mjs がこの行を文字列で読む。
+export const REFLECTION_LEVEL_COUNT = 7;
+// REFLECTION_LEVEL_COUNT の段数で均す、描画バッファの高さ [px]。
+const LEVEL_REFERENCE_HEIGHT = 540;
+// 縮小列に組む段数。描画バッファの高さ 4320 px(LEVEL_REFERENCE_HEIGHT の 8 倍)まで、均すのに使う段を増やせる。
+const BUILT_LEVEL_COUNT = REFLECTION_LEVEL_COUNT + 3;
 // 当たり距離を読み始める段(描画画素 16 個四方)。
 const DISTANCE_LEVEL = 4;
 // 受け手を均す段の上限に足す余裕。上限と均す段を求める式の丸めの違いで、均す段が上限をわずかに超えないようにする。
@@ -176,6 +180,8 @@ export class ReflectionDenoise {
   // 描画バッファの解像度 [px] と、縦の焦点距離 [px](view 空間の長さ × 焦点距離 / 奥行き が画面の長さ)。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly focalLength = uniform(1);
+  // 均すのに使ういちばん粗い段(小数)。描画バッファの高さで決まる(coarsestLevelOf)。
+  private readonly coarsestLevel = uniform(REFLECTION_LEVEL_COUNT - 1);
 
   // reflection は均す前の映り込みを読み、均した映り込みを書く先。
   public constructor(
@@ -185,7 +191,7 @@ export class ReflectionDenoise {
     this.sample = new ShadingSample(gbuffer);
     // 縮小列の段 1 以降を、細かい段から順に組む。段 k は段 k − 1 を読む。
     const levels: ReductionLevel[] = [];
-    for (let index = 1; index < REFLECTION_LEVEL_COUNT; index++) {
+    for (let index = 1; index < BUILT_LEVEL_COUNT; index++) {
       const origin: Vec2Uniform = uniform(new THREE.Vector2());
       const span = 2 ** index;
       const texel = this.reducedTexel(levels[index - 2] ?? null, origin, span);
@@ -214,8 +220,9 @@ export class ReflectionDenoise {
   // 深度から位置を復元する行列と焦点距離を引き直す。
   public render(camera: THREE.Camera, width: number, height: number): void {
     this.prepare(camera, width, height);
-    // 縮小列を細かい段から書き、均した映り込みを書く。atlas は他の段の矩形を残すので、描く前に消さない。
-    for (const level of this.levels) {
+    // 縮小列を細かい段から、均すのに使ういちばん粗い段の端数を混ぜる段まで書き、均した映り込みを書く。atlas は他の段の
+    // 矩形を残すので、描く前に消さない。
+    for (const level of this.levels.slice(0, Math.ceil(coarsestLevelOf(height)))) {
       level.atlas.viewport.copy(level.viewport);
       this.draw(level.material, level.atlas, false);
     }
@@ -364,12 +371,14 @@ export class ReflectionDenoise {
         // 当たり距離を探す段の上限。それより粗い段で当たり距離を見つけても、選ぶのは上限より細かい段で、そこまでの段は
         // どれも w̄ が 0。
         const searchCeiling = max(float(DISTANCE_LEVEL), ceil(this.levelCeiling())).toVar();
+        // このフレームに書いた段のうち、いちばん粗い段。
+        const lastLevel = ceil(this.coarsestLevel).toVar();
         // 段ごとの埋めた値。段 0 は受け手の画素そのもの。混ぜる 2 段は必ず求めてある。
         const filled: DenoisedValue[] = [{
           weighted: vec4(this.reflection.rawWeightedImageAt(screenUV), this.reflection.rawWeightAt(screenUV)).toVar(),
           weightedDistance: this.reflection.rawWeightedDistanceAt(screenUV).toVar(),
         }];
-        for (let index = 1; index < REFLECTION_LEVEL_COUNT; index++) {
+        for (let index = 1; index < BUILT_LEVEL_COUNT; index++) {
           const value: DenoisedValue = { weighted: vec4(0).toVar(), weightedDistance: float(0).toVar() };
           const finer = filled[index - 1]!;
           filled.push(value);
@@ -382,7 +391,7 @@ export class ReflectionDenoise {
           if (index <= DISTANCE_LEVEL) fill();
           else {
             const searching = selected.lessThan(0).and(searchCeiling.greaterThanEqual(index));
-            If(searching.or(selected.greaterThanEqual(index - 1)), fill);
+            If(searching.or(selected.greaterThanEqual(index - 1)).and(lastLevel.greaterThanEqual(index)), fill);
           }
           // 当たり距離が決まったら、均す段を選ぶ。
           if (index < DISTANCE_LEVEL) continue;
@@ -461,11 +470,11 @@ export class ReflectionDenoise {
   }
 
   // 受け手の画素を、画面へ写した鏡面ローブの円の直径 diameter [px] で均す段(小数)。直径に N·V を掛けた像のぼけの短い軸の
-  // 幅の DENOISE_WIDTH_PER_SHORT_AXIS 倍が、段の画素 1 つの一辺になる段。
+  // 幅の DENOISE_WIDTH_PER_SHORT_AXIS 倍が、段の画素 1 つの一辺になる段で、均すのに使ういちばん粗い段で止まる。
   private levelOfDiameter(diameter: FloatNode): FloatNode {
     // 視線が面に寝て N·V が 0 以下へ落ちる画素は、段 0 で止まる。
     const shortAxis = diameter.mul(dot(this.sample.normal, this.sample.viewDir));
-    return clamp(log2(max(shortAxis.mul(DENOISE_WIDTH_PER_SHORT_AXIS), 1)), 0, REFLECTION_LEVEL_COUNT - 1);
+    return clamp(log2(max(shortAxis.mul(DENOISE_WIDTH_PER_SHORT_AXIS), 1)), 0, this.coarsestLevel);
   }
 
   // 段を atlas の矩形へ並べ、描画先と実カメラの値を書き込む。
@@ -488,6 +497,14 @@ export class ReflectionDenoise {
     this.fullSize.value.set(width, height);
     this.projectionInverse.value.copy(camera.projectionMatrixInverse);
     this.focalLength.value = camera.projectionMatrix.elements[5]! * height / 2;
+    this.coarsestLevel.value = coarsestLevelOf(height);
     this.sample.sync(camera);
   }
+}
+
+// 高さ height [px] の描画バッファで均すのに使う、いちばん粗い段(小数)。高さ LEVEL_REFERENCE_HEIGHT で
+// REFLECTION_LEVEL_COUNT − 1 になり、高さが倍になるごとに 1 上がる。
+function coarsestLevelOf(height: number): number {
+  const level = REFLECTION_LEVEL_COUNT - 1 + Math.log2(height / LEVEL_REFERENCE_HEIGHT);
+  return THREE.MathUtils.clamp(level, DISTANCE_LEVEL, BUILT_LEVEL_COUNT - 1);
 }
