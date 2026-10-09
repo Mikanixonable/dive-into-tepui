@@ -5,6 +5,11 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
+  cache: {
+    type: 'filesystem',
+    name: 'bgm-lab',
+    cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
+  },
   entry: './tools/bgm-lab/main.ts',
   resolve: {
     extensions: ['.ts', '.js'],

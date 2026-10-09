@@ -11,12 +11,12 @@
 
 // 比較関数が受け取る描画項目のうち、既定の比較が読む欄だけ。RenderItem 型は
 // `three/webgpu` から公開されていない。
-type SortItem = {
+interface SortItem {
   readonly groupOrder: number | null;
   readonly renderOrder: number | null;
   readonly z: number | null;
   readonly id: number | null;
-};
+}
 
 // 既定比較を符号反転した比較関数。zOrder は既定が z を並べる向き(不透明は手前から +1、
 // 半透明は奥から -1)。

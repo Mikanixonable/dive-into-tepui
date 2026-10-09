@@ -13,12 +13,12 @@ import { getGlowTexture } from './glow-texture';
 export const POINT_IMAGE_ANGULAR_SIZE = 3.7e-3;
 
 export class Billboard {
-  readonly mesh: THREE.Mesh;
+  public readonly mesh: THREE.Mesh;
   // 明るさ 1 のときの色。sync がこれへ明るさを掛けてマテリアルの色を書く。
   private readonly baseColor: THREE.Color;
 
   // 指定色の発光平面を非表示状態で組み立てる。
-  constructor(color: string | number, renderOrder = 5) {
+  public constructor(color: string | number, renderOrder = 5) {
     this.baseColor = new THREE.Color(color);
     // 加算ブレンドのグローマテリアル
     const mat = new THREE.MeshBasicMaterial({
@@ -36,14 +36,14 @@ export class Billboard {
   }
 
   // 平面を非表示にする。
-  hide(): void {
+  public hide(): void {
     this.mesh.visible = false;
   }
 
   // position は描画フレーム(フローティングオリジン補正済み)の THREE.Vector3。
   // 慣性座標から描画フレームへの変換が済んでいることを前提とする。
   // brightness は 1 を超えうる明るさの倍率で、基準色へ掛かる。
-  sync(position: THREE.Vector3, scale: number, brightness: number, cameraQuat: THREE.Quaternion): void {
+  public sync(position: THREE.Vector3, scale: number, brightness: number, cameraQuat: THREE.Quaternion): void {
     this.mesh.visible = true;
     this.mesh.position.copy(position);
     this.mesh.scale.setScalar(scale);
@@ -53,7 +53,7 @@ export class Billboard {
   }
 
   // ジオメトリ・マテリアルを破棄する。
-  dispose(): void {
+  public dispose(): void {
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
   }

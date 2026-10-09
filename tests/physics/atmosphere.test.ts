@@ -4,7 +4,7 @@
 // ここでは「実装の性質」(連続、非負、単調減少)を検証する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Atmosphere, airspeed, atmosphericDensity, dragAccel, ellipsoidAltitude } from '../../src/physics/atmosphere';
+import { type Atmosphere, airspeed, atmosphericDensity, dragAccel, ellipsoidAltitude } from '../../src/physics/atmosphere';
 import { EARTH_ATMOSPHERE } from '../../src/game/celestial/solar-system/earth-system';
 import { len, v3 } from '../../src/math/vec3';
 

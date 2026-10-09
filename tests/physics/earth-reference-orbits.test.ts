@@ -5,10 +5,10 @@ import { test } from '../harness';
 import {
   dawnDuskElements, molniyaElements, sunSyncRepeatGroundTrackElements, sunSyncRevsPerDayRange, tundraElements,
 } from '../../src/physics/earth-reference-orbits';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { ECI_POLE } from '../../src/physics/ecliptic';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { OrbitalElements } from '../../src/physics/elements';
+import type { OrbitalElements } from '../../src/physics/elements';
 import { J2_EARTH, MU_EARTH, R_EARTH_EQ, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { v3 } from '../../src/math/vec3';
 

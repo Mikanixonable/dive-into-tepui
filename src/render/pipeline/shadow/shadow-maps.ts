@@ -10,7 +10,7 @@
 // メッシュを、同じ枠・同じ uv の別の層へ分けて撮る。混ぜると、遠くて淡いものが至近の濃いものを
 // 追い出す。
 import * as THREE from 'three/webgpu';
-import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
+import { MeshBasicNodeMaterial, type WebGPURenderer } from 'three/webgpu';
 import { float, positionView, uniform, uniformArray, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { extentForTexel } from '../../shadow-demand';
@@ -46,7 +46,7 @@ const NO_CASTERS: readonly ShadowCaster[] = [];
 
 // 受け手が shader 内で動的にスロットを選ぶために引く、スロットごとの値。**スロットの値の
 // 正本はこの 3 本の配列だけで、個別の uniform を別に持たない。**
-export type ShadowSlotUniformArrays = {
+export interface ShadowSlotUniformArrays {
   // 描画座標 → ライト空間クリップ。UV は xy だけを使う。
   readonly lightViewProjection: THREE.UniformArrayNode<'mat4'>;
   // 描画座標 → ライト空間 view。深度は射影の規約(反転深度)に依らないこちらから測る。
@@ -54,7 +54,7 @@ export type ShadowSlotUniformArrays = {
   // (near, far, texelWorld, active)。texelWorld は 1 texel が描画座標で張るメートルで、
   // バイアスとフィルタ半径の単位になる。active が 0 ならそのスロットは空。
   readonly parameters: THREE.UniformArrayNode<'vec4'>;
-};
+}
 
 // ライト空間の線形深度を書く 1 辺 size のレンダーターゲット。
 //
@@ -124,7 +124,7 @@ export class ShadowMaps {
 
   // 上限ぶんの近層・遠層の深度マップと、そこへライト空間の線形深度を書く override マテリアルを
   // 組む。深度マップの実寸は品質が決めるので、確保は最小で起こして setQuality が広げる。
-  constructor(
+  public constructor(
     private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings,
     enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number,
   ) {
@@ -155,27 +155,27 @@ export class ShadowMaps {
   }
 
   // 近層の深度マップ。枠から見て本影が残る距離にあるメッシュだけが、スロットの層へ写る。
-  get texture(): THREE.Texture { return this.target.texture; }
+  public get texture(): THREE.Texture { return this.target.texture; }
 
   // 同じ枠・同じ uv の遠層の深度マップ。本影を失ったメッシュだけが写る。**近層と写るメッシュが
   // 排他なので、2 枚から出した透過率はそのまま掛けられる。**
-  get farTexture(): THREE.Texture { return this.farTarget.texture; }
+  public get farTexture(): THREE.Texture { return this.farTarget.texture; }
 
-  get uniformArrays(): ShadowSlotUniformArrays { return this.slotUniformArrays; }
+  public get uniformArrays(): ShadowSlotUniformArrays { return this.slotUniformArrays; }
 
   // 受け手が texel を単位に幅を組むために引く、スロットの 1 辺 [texel]。
-  get texelsPerSlot(): FloatNode { return this.slotTexels; }
+  public get texelsPerSlot(): FloatNode { return this.slotTexels; }
 
   // 同じく、1 texel ぶんの uv 幅。
-  get uvPerTexel(): FloatNode { return float(1).div(this.slotTexels); }
+  public get uvPerTexel(): FloatNode { return float(1).div(this.slotTexels); }
 
   // このフレームに中身の入ったスロットが 1 つでもあるか。
-  casts(): boolean { return this.slotParameters.some((parameters) => parameters.w > 0); }
+  public casts(): boolean { return this.slotParameters.some((parameters) => parameters.w > 0); }
 
   // 影の品質を設定から受け取る。層付き深度マップは全層で同じ寸法を持つため、枠の数は
   // active の層数だけを変える。張り直しはテクスチャの実体を差し替えないので、受け手が既に
   // 組んだグラフはそのまま生きる。
-  setQuality(enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number): void {
+  public setQuality(enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number): void {
     this.enabled = enabled;
     this.texelsPerPixel = texelsPerPixel;
     const count = Math.min(slotCount, MAX_SHADOW_SLOTS);
@@ -193,7 +193,7 @@ export class ShadowMaps {
 
   // メッシュを枠へまとめ、枠ごとに 1 スロットを描く。影が切られているか、影を要求する受け手が
   // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。
-  render(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
+  public render(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
     this.clearSlots();
     this.clusters.length = 0;
     this.clusterSizes.length = 0;
@@ -242,7 +242,7 @@ export class ShadowMaps {
   }
 
   // 影キャスターを深度マップの添付形式で事前コンパイルする。
-  async compile(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): Promise<void> {
+  public async compile(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): Promise<void> {
     const savedOverride = scene.overrideMaterial;
     try {
       scene.updateMatrixWorld();
@@ -486,7 +486,7 @@ export class ShadowMaps {
   }
 
   // 保持している GPU 資源を解放する。
-  dispose(): void {
+  public dispose(): void {
     this.target.dispose();
     this.farTarget.dispose();
     this.depthMaterial.dispose();

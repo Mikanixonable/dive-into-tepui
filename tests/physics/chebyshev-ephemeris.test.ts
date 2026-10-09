@@ -7,8 +7,8 @@ import {
   evaluateChebyshevWithDerivative,
   findChebyshevSegmentIndex,
 } from '../../src/physics/ephemeris/pack-evaluator';
-import { ChebyshevPack } from '../../src/physics/ephemeris/pack-types';
-import { len, Vec3, v3 } from '../../src/math/vec3';
+import type { ChebyshevPack } from '../../src/physics/ephemeris/pack-types';
+import { len, type Vec3, v3 } from '../../src/math/vec3';
 
 function assertVec3Close(actual: Vec3, expected: Vec3, tolerance = 1e-12): void {
   assert.ok(Math.abs(actual.x - expected.x) <= tolerance, `x: ${actual.x} vs ${expected.x}`);

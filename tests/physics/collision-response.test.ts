@@ -1,10 +1,10 @@
 import * as assert from 'node:assert/strict';
 import {
-  FixedContactResponse, Sphere,
+  type FixedContactResponse, type Sphere,
   distributeFixedContact, distributeSphereContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';
-import { dot, len, lenSq, sub, v3, Vec3 } from '../../src/math/vec3';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { dot, len, lenSq, sub, v3, type Vec3 } from '../../src/math/vec3';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { test } from '../harness';
 
 // 天体との接触を、幾何を出す段と当てる段を繋いで解く — 表面接触の解決器が同じ順で呼ぶ。

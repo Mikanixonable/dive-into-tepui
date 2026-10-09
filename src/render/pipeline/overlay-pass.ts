@@ -4,7 +4,7 @@
 // 模式図スタイルは白背景なので、このチャンネルだけを専用ターゲットへ描いてから、色相を保った
 // まま暗くして重ね描く。
 import * as THREE from 'three/webgpu';
-import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { MeshBasicNodeMaterial, QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { max, min, screenUV, texture, uniform, vec2, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import {

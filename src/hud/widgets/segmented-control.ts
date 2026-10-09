@@ -8,11 +8,9 @@ export class SegmentedControl<T> {
   public readonly element: HTMLElement;
   private readonly buttons = new Map<T, Button>();
   private items: readonly (readonly [T, string, string?])[] = [];
-  private readonly onSelect: (value: T) => void;
 
   // items は [値, 表示ラベル, 任意のアイコンマークアップ] の並びで、その順にボタンを並べる。
-  public constructor(title: string, items: readonly (readonly [T, string, string?])[], onSelect: (value: T) => void) {
-    this.onSelect = onSelect;
+  public constructor(title: string, items: readonly (readonly [T, string, string?])[], private readonly onSelect: (value: T) => void) {
     this.element = buildLabeledRow(title);
     // 初期のボタン列を組む。
     this.setItems(items);

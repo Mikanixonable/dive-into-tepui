@@ -18,13 +18,13 @@ const lineNode: Vec3Node = vec3(LINE_COLOR.r, LINE_COLOR.g, LINE_COLOR.b);
 export class SchematicComposite {
   // 隣接画素を探す距離 [screenUV]。画面解像度が変わるたびに render() 側が書き込む。
   private readonly texelSize: THREE.UniformNode<'vec2', THREE.Vector2>;
-  readonly colorNode: Vec4Node;
+  public readonly colorNode: Vec4Node;
 
   // 深度・法線を読む距離1画素ぶんの隣接判定を4方向ぶん組み、輪郭色/背景色を選ぶ1枚の
   // カラーグラフを一度だけ構築する。projectionMatrixInverse は composite パスの固定直交カメラ
   // ではなく実カメラのものを毎フレーム書き込む必要があるため、外部で管理される uniform を
   // そのまま受け取る。
-  constructor(gbuffer: GBufferPass, projectionMatrixInverse: Mat4Uniform) {
+  public constructor(gbuffer: GBufferPass, projectionMatrixInverse: Mat4Uniform) {
     this.texelSize = uniform(new THREE.Vector2());
 
     const viewZAt = (uv: Vec2Node): Vec3Node['z'] =>
@@ -55,7 +55,7 @@ export class SchematicComposite {
   }
 
   // 画面解像度が変わったフレームで隣接画素までの距離を引き直す。
-  update(width: number, height: number): void {
+  public update(width: number, height: number): void {
     this.texelSize.value.set(SCHEMATIC_EDGE_WIDTH_PX / width, SCHEMATIC_EDGE_WIDTH_PX / height);
   }
 }

@@ -1,7 +1,7 @@
 // 天体の姿勢（自転軸および本初子午線の自転位相）。位置計算から独立した純粋関数群。
-import { Quat, qFromAxisAngle, qFromForwardUp, qRotate } from '../math/quat';
+import { type Quat, qFromAxisAngle, qFromForwardUp, qRotate } from '../math/quat';
 import { ECI_POLE } from './ecliptic';
-import { Vec3, cross, dot, len, norm, projectOntoPlane, v3 } from '../math/vec3';
+import { type Vec3, cross, dot, len, norm, projectOntoPlane, v3 } from '../math/vec3';
 
 // 自転軸が ECI の極と平行なとき、赤道の交線が定まらない代わりに使う基準方向(春分点)。
 const VERNAL: Vec3 = v3(1, 0, 0);

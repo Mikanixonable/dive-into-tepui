@@ -48,11 +48,11 @@ export class CelestialSubLabels {
   private readonly entriesByBody = new Map<string, SubLabelEntry[]>();
   private readonly declarationsScratch: MarkerDeclaration[] = [];
 
-  constructor(private readonly celestialBodies: CelestialBodies) {}
+  public constructor(private readonly celestialBodies: CelestialBodies) {}
 
   // 隠れた項目を天体ラベルへ振り分け、集約先になった天体ラベルをサブ行付きで組み直した宣言を返す。
   // labelStateOf は天体ラベルの今フレームの表示状態を引く関数で、ラベルを持たない id には null。
-  declarations(
+  public declarations(
     hiddenItems: readonly GroupedMarkerItem[],
     labelStateOf: (id: string) => CelestialLabelState | null,
     pivot: number,

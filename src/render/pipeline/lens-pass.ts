@@ -2,7 +2,7 @@
 // カーネルの総和を1に保つ線形処理のため、画面全体の総光量と後段の分離可能性を維持する。
 // 広がりは画面上の視野角に基づいて計算する。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { FloatUniform, Vec2Uniform, Vec3Node } from '../tsl-types';
@@ -30,12 +30,12 @@ const GHOST_SHARE = 0.04;
 
 // 全画面描画フィルタ。入力元のテクセル寸法のみが異なるため uniform で保持する。
 // 描画先ターゲットは呼び出し側が選択し、光条のように複数フィルタが2枚のバッファを交互に利用する場合がある。
-type Filter = {
+interface Filter {
   readonly quad: QuadMesh;
   readonly material: THREE.MeshBasicNodeMaterial;
   // オフセットを測る単位。**読み元**のテクセル寸法であって、書き込み先のではない。
   readonly sourceTexel: Vec2Uniform;
-};
+}
 
 // フィルタと、それ専用の書き込み先。
 type Stage = Filter & { readonly target: THREE.RenderTarget };
@@ -96,7 +96,7 @@ export class LensPass {
   private readonly clearColor = new THREE.Color();
 
   // source は world パスまでが描き終えた HDR の絵。
-  constructor(
+  public constructor(
     private readonly renderer: WebGPURenderer,
     source: THREE.Texture,
     private readonly gpu: GpuTimings,
@@ -142,12 +142,12 @@ export class LensPass {
 
   // 下地へレンズ効果を掛けた色。**滲みが受け取ったぶんだけ元の光点が暗くなる**ので、
   // 加算ではなく混合で書く。
-  blendedWith(base: Vec3Node): Vec3Node {
+  public blendedWith(base: Vec3Node): Vec3Node {
     return mix(base, this.redistributed(1), GLARE_FRACTION);
   }
 
   // 下地と合成する前の、レンズが配り直した光だけ。blendedWith が下地へ混ぜるのと同じ強さで返す。
-  redistributedLight(): Vec3Node {
+  public redistributedLight(): Vec3Node {
     return this.redistributed(GLARE_FRACTION);
   }
 
@@ -162,7 +162,7 @@ export class LensPass {
   }
 
   // 1 フレームぶんのレンズ効果を発行する。呼ぶのは world パスの後・合成パスの前。
-  render(width: number, height: number): void {
+  public render(width: number, height: number): void {
     this.resize(width, height);
     for (const stage of this.down) this.draw(stage, stage.target);
     for (const [axis, passes] of this.diffractionChains.entries()) {
@@ -183,7 +183,7 @@ export class LensPass {
   }
 
   // 各フィルタを実際の縮小ターゲットへ事前コンパイルする。
-  async compile(width: number, height: number): Promise<void> {
+  public async compile(width: number, height: number): Promise<void> {
     this.resize(width, height);
     for (const stage of this.down) await compileInto(this.renderer, stage.target, stage.quad, stage.quad.camera);
     for (const filters of this.diffractionChains) {
@@ -198,7 +198,7 @@ export class LensPass {
   // 設定でレンズ効果が切られている間、render の代わりに呼ぶ。**切り替わった最初の 1 フレーム
   // だけ**、読まれる 3 枚を空へ戻す — 残しておくと「レンズ」デバッグ表示に切る直前の像が凍った
   // まま出力される。中間のダウンサンプリング段および光条用作業ターゲットは参照されないため消去を省略する。
-  clear(width: number, height: number): void {
+  public clear(width: number, height: number): void {
     // 前フレームの出力を一度だけ消去し、無効中の残像を残さない。
     if (!this.drawn) return;
     this.resize(width, height);
@@ -260,7 +260,7 @@ export class LensPass {
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
-  dispose(): void {
+  public dispose(): void {
     for (const stage of [...this.down, ...this.up, this.ghosts]) {
       stage.target.dispose();
       stage.material.dispose();
