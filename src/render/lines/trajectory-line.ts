@@ -2,15 +2,15 @@
 // 座標系相対へ焼き(bake)、表示時刻の座標系の剛体運動で慣性系へ戻して(un-bake)描く。保持区間が
 // to に届かないときは、先端を中心天体まわりの二体軌道とみなして to まで外挿し継ぎ足す。
 import * as THREE from 'three/webgpu';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { FrameAnchorSource, FrameTransform, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
-import { DynamicTrajectory, ExtrapolationCenter } from '../../physics/dynamic-trajectory';
+import { type KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { type FrameAnchorSource, type FrameTransform, framePoint, type ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
+import type { DynamicTrajectory, ExtrapolationCenter } from '../../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
 import { StateQueue } from '../../physics/state-queue';
-import { add, Vec3 } from '../../math/vec3';
+import { add, type Vec3 } from '../../math/vec3';
 import type { CameraFrame } from '../camera/camera-frame';
-import { Curve, CurveKnots } from '../curve';
-import { LineStyle } from '../line-style';
+import { Curve, type CurveKnots } from '../curve';
+import type { LineStyle } from '../line-style';
 import type { CelestialFrameSource } from './celestial-frame-source';
 
 // 頂点数の上限。数百周が重なる区間(28日表示など)は何頂点あっても収束しないので頭打ちにする。

@@ -15,7 +15,7 @@
 //   4. thick = (実写 − veil)/(1 − veil)(スクリーン合成の逆算)。雲頂高度は thick の広い濃さを
 //      土台に細かい起伏を増幅して重ねる。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
   Fn, atan, clamp, cos, exp, float, log, max, min, mrt, screenUV, sin, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';

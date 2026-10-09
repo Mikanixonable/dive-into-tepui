@@ -22,7 +22,6 @@ import {
   EARTH_TERRAIN_LAYOUT,
   EARTH_TERRAIN_PAYLOAD_BYTES,
   EARTH_TERRAIN_SCALAR_UINT8,
-  readBaseColorJpeg,
   validateManifest,
 } from './contract.mjs';
 import { fixtureClimatePng } from './fixture-climate.mjs';
