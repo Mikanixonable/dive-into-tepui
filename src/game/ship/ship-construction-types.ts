@@ -60,3 +60,14 @@ export interface ConstructionConfirmationPort {
   request(request: ConstructionConfirmationRequest, onResult: (confirmed: boolean) => void): void;
   close(): void;
 }
+
+// 閉じた建造パネルへ同期する、表示資源を持たない空のmodel。
+export function hiddenShipConstructionModel(): ShipConstructionPanelModel {
+  return {
+    visible: false, shipName: '—', dockLabel: '—', moduleCount: 0, totalMass: 0, hp: 0, maxHp: 0,
+    capabilities: { thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0 }, preview: null,
+    role: 'material', warning: null, selectedDefinitionId: 'cockpit-standard',
+    selectedModuleName: 'コックピット', selectedSlotId: 'axial', slots: [],
+    canPlace: false, canRemove: false, canFinish: false,
+  };
+}
