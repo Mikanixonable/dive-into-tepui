@@ -79,7 +79,7 @@ export class Input {
   private pinchCentroid: PointerPoint | null = null;
   private pinchAngle = 0;
   // 直近に検知した入力種別が変わるたびに通知する(タッチ⇄マウス/キーボードの切替を含む)。
-  onPointerKindChange: ((kind: PointerKind) => void) | null = null;
+  public onPointerKindChange: ((kind: PointerKind) => void) | null = null;
   private lastPointerKind: PointerKind | null = null;
   // タッチの長押し(右クリック合成)。1本指のジェスチャにしか存在しないので
   // pointers のような Map ではなく単一の状態で持つ。
@@ -100,7 +100,7 @@ export class Input {
   private readonly target: HTMLElement;
 
   // キーボード・ポインタ・ホイールのイベントリスナーを登録する。
-  constructor(target: HTMLElement) {
+  public constructor(target: HTMLElement) {
     this.target = target;
     this.attachKeyboardListeners();
     this.attachPointerListeners();
@@ -408,7 +408,7 @@ export class Input {
   // タッチ UI や HUD の代替操作ボタンからの仮想キー入力。物理キーボードと同じ扱いで
   // 押下中セットとエッジトリガキューへ反映する。ポインタ種別の通知はしない —
   // 呼び出し元がタッチ由来とは限らない(HUD 上の代替ボタンはマウスでも押せる)ため。
-  setVirtualKey(key: KeyBinding, down: boolean): void {
+  public setVirtualKey(key: KeyBinding, down: boolean): void {
     if (down) {
       if (!this.keys.has(key.code)) this.pendingPresses.push(key.code);
       this.keys.add(key.code);
@@ -419,7 +419,7 @@ export class Input {
 
   // key を1フレームぶんだけ押されたことにする。HUD 上の代替操作ボタンが物理キーと
   // 同じ押下エッジを合成する唯一の経路。
-  tapKey(key: KeyBinding): void {
+  public tapKey(key: KeyBinding): void {
     this.setVirtualKey(key, true);
     this.setVirtualKey(key, false);
   }
@@ -437,13 +437,13 @@ export class Input {
   }
 
   // key が現在押下中か返す。takeHeld で確保済みの code は押下と見なさない。
-  down(key: KeyBinding): boolean {
+  public down(key: KeyBinding): boolean {
     return this.isDown(key.code) || (key.altCodes?.some((c) => this.isDown(c)) ?? false);
   }
 
   // 今フレーム key がホールドされていれば、その code (と altCodes) を先着で確保して true を返す。
   // 確保した code は以後 down() / takeKey() / takeKeys() から見えなくなる。
-  takeHeld(key: KeyBinding): boolean {
+  public takeHeld(key: KeyBinding): boolean {
     if (!this.down(key)) return false;
     this.claimedCodes.add(key.code);
     for (const c of key.altCodes ?? []) this.claimedCodes.add(c);
@@ -452,7 +452,7 @@ export class Input {
 
   // フレームの先頭で1度だけ呼ぶ。イベントハンドラが溜めた未確定分を今フレームの
   // スナップショットとして確定し、次フレーム分の蓄積をリセットする。
-  update(): void {
+  public update(): void {
     this.claimedCodes.clear();
     // 蓄積分を今フレームのスナップショットとして確定
     this.framePresses = this.pendingPresses;
@@ -479,7 +479,7 @@ export class Input {
 
   // 今フレームの押下エッジに key があれば消費して true を返す。takeHeld で確保済みの
   // code は渡さない。
-  takeKey(key: KeyBinding): boolean {
+  public takeKey(key: KeyBinding): boolean {
     const i = this.framePresses.findIndex((code) => matchesCode(key, code) && !this.claimedCodes.has(code));
     if (i === -1) return false;
     this.framePresses.splice(i, 1);
@@ -488,7 +488,7 @@ export class Input {
 
   // 今フレームの未消費の押下エッジを順に渡し、handler が true を返したものを消費する。
   // takeHeld で確保済みの code は渡さない。
-  takeKeys(handler: (code: string) => boolean): void {
+  public takeKeys(handler: (code: string) => boolean): void {
     for (const code of [...this.framePresses]) {
       if (this.claimedCodes.has(code)) continue;
       if (!handler(code)) continue;
@@ -498,34 +498,34 @@ export class Input {
   }
 
   // 今フレームの未消費の左クリック(ドラッグでない短い押下)を順に渡し、handler が true を返したものを消費する。
-  takeClicks(handler: (point: PointerPoint) => boolean): void {
+  public takeClicks(handler: (point: PointerPoint) => boolean): void {
     takeFrom(this.frameClicks, handler);
   }
 
   // 今フレームの未消費のダブルクリックを順に渡し、handler が true を返したものを消費する。
-  takeDoubleClicks(handler: (point: PointerPoint) => boolean): void {
+  public takeDoubleClicks(handler: (point: PointerPoint) => boolean): void {
     takeFrom(this.frameDoubleClicks, handler);
   }
 
   // 今フレームの未消費の中ボタンクリックを順に渡し、handler が true を返したものを消費する。
-  takeMiddleClicks(handler: (point: PointerPoint) => boolean): void {
+  public takeMiddleClicks(handler: (point: PointerPoint) => boolean): void {
     takeFrom(this.frameMiddleClicks, handler);
   }
 
   // 今フレームの未消費の右ボタン押下を順に渡し、handler が true を返したものを消費する。
-  takeRightClicks(handler: (point: PointerPoint) => boolean): void {
+  public takeRightClicks(handler: (point: PointerPoint) => boolean): void {
     takeFrom(this.frameRightClicks, handler);
   }
 
   // 今フレームのマウス移動量・パン量・ホイール量を返す。
-  mouse(): MouseDelta {
+  public mouse(): MouseDelta {
     return this.frameMouse;
   }
 
   // window/document/canvas(target)に張った12個のリスナーを外し、releaseAll() で
   // 押下中・ドラッグ中の状態も畳む。target は GameScene 所有で Input 自身より長生きするため、
   // ここで確実に外さないと次に構築する Input へも同じイベントが二重に配送され続ける。
-  dispose(): void {
+  public dispose(): void {
     // window/document に張った5個。
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('keyup', this.handleKeyUp);

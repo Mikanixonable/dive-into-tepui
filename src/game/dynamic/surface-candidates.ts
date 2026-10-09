@@ -47,13 +47,13 @@ export class SurfaceCandidates {
   private readonly reachable: BodyReach[] = [];
 
   // into が選び先とする天体の数。
-  get count(): number { return this.reachable.length; }
+  public get count(): number { return this.reachable.length; }
 
   // 区間 [tStart, tEnd] のあいだに各天体の表面が届きうる範囲を求める。以降の into と narrow は
   // この上で判定するため、区間の内側をさらに細かく分割して判定する個体も再構築が不要。
   // reachMargin は掃引ぶんに掛ける倍率で、1 が掃引そのもの — **絞り込みは安全側に倒してよい（見逃しがなければ過剰検出は許容される）**
   // ため、区間より細かい刻みで再計算した位置とのズレを吸収したい場合は大きめの値を指定する。
-  resetSpan(
+  public resetSpan(
     bodies: readonly CelestialBody[], pivot: number, tStart: number, tEnd: number,
     reachMargin = 1,
   ): void {
@@ -72,14 +72,14 @@ export class SurfaceCandidates {
 
   // narrow で狭めた候補を、区間の全候補へリセットする。**参加者リストや位置が変わる区切りごとに
   // 呼ぶ** — 狭めた結果はある1組の参加者に対してだけ正しい。
-  resetNarrow(): void {
+  public resetNarrow(): void {
     this.reachable.length = 0;
     for (const candidate of this.spanning) this.reachable.push(candidate);
   }
 
   // into の抽出対象を、参加者リストのいずれかが接触しうる天体のみに絞り込む。絞り込み結果は次の resetNarrow
   // まで残るので、**区間を共有する参加者へ続けて into を掛けるあいだにだけ掛ける。**
-  narrow(participants: readonly SurfaceParticipant[]): void {
+  public narrow(participants: readonly SurfaceParticipant[]): void {
     this.reachable.length = 0;
     if (participants.length === 0) return;
 
@@ -98,7 +98,7 @@ export class SurfaceCandidates {
   }
 
   // 参加者1つが区間内に接触しうる天体だけを out へ格納する。out は作業用配列。
-  into(participant: SurfaceParticipant, out: CelestialBody[]): CelestialBody[] {
+  public into(participant: SurfaceParticipant, out: CelestialBody[]): CelestialBody[] {
     out.length = 0;
     const { prevState } = participant;
     const reach = participant.radius + intervalReach(prevState, participant.state);

@@ -45,7 +45,7 @@ export class CloudShadowRenderer {
   private readonly shape: CloudShapeEvaluator;
 
   // 殻 1 体ぶんの uniform を確保する。殻の有無は active で切るので、グラフの形は変わらない。
-  constructor(private readonly sunLight: SunLight) {
+  public constructor(private readonly sunLight: SunLight) {
     this.center = uniform(new THREE.Vector3());
     this.surfaceRadius = uniform(0);
     // 場を持たないフレームでも殻の空間への写しは走るので、半軸は 0 で割らない値から始める。
@@ -57,7 +57,7 @@ export class CloudShadowRenderer {
   }
 
   // このフレームに影を落とす殻。null なら雲の影は落ちない。
-  set(cumulus: ShadowCumulus | null): void {
+  public set(cumulus: ShadowCumulus | null): void {
     this.active.value = cumulus === null ? 0 : 1;
     if (cumulus === null) return;
     this.center.value.copy(cumulus.center);
@@ -69,7 +69,7 @@ export class CloudShadowRenderer {
   }
 
   // このフレームに積雲の殻の影があるか。
-  casts(): boolean { return this.active.value > 0; }
+  public casts(): boolean { return this.active.value > 0; }
 
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
   // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
@@ -79,7 +79,7 @@ export class CloudShadowRenderer {
   // 合計はどれだけ斜めでも τ に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
   // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、粒の振幅を決める。
-  transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
+  public transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
     const sunDir = this.sunLight.directionFrom(worldPos);
     return Fn(() => {
       const transmittance = float(1).toVar();

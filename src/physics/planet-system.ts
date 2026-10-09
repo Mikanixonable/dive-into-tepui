@@ -57,20 +57,20 @@ export class PlanetSystem {
 
   // id は惑星本体と同じ(系と本体は1対1)。暦を id で結ぶのに要る。orbit は系の重心が
   // 主星まわりに描く軌道。
-  constructor(readonly id: string, readonly orbit: KeplerOrbit) {}
+  public constructor(public readonly id: string, public readonly orbit: KeplerOrbit) {}
 
   // 系の重心の暦を結ぶ。暦が惑星本体のほうを収録している系では null のままになる。
-  bindEphemeris(ephemeris: PointEphemeris | null): void {
+  public bindEphemeris(ephemeris: PointEphemeris | null): void {
     this.baryEphemeris = ephemeris;
   }
 
   // 系の重心を暦が直接収録している範囲での状態。収録外・有効期間外では null。
-  ownNumericStateAt(t: number): KinematicState<'numeric'> | null {
+  public ownNumericStateAt(t: number): KinematicState<'numeric'> | null {
     return boundBaryStateAt(this.baryEphemeris, t);
   }
 
   // 系の重心の主星相対状態。軌道だけで決まる二体解で、同じ時刻に複数回引かれるので1度へ畳む。
-  starRelStateAt(t: number): KinematicState<'starRel'> {
+  public starRelStateAt(t: number): KinematicState<'starRel'> {
     const cached = this.starRelCache.get(t);
     if (cached !== undefined) return cached;
     // 惑星の軌道が乗っているのは主星なので、この二体解の中心は主星そのもの。
@@ -79,29 +79,29 @@ export class PlanetSystem {
   }
 
   // 系の重心の太陽系重心状態。
-  analyticStateAt(t: number): KinematicState<'analytic'> {
+  public analyticStateAt(t: number): KinematicState<'analytic'> {
     return fromStarRelative(this.body.star.analyticStateAt(t), this.starRelStateAt(t));
   }
 
   // 惑星本体の主星相対状態。
-  bodyStarRelStateAt(t: number): KinematicState<'starRel'> {
+  public bodyStarRelStateAt(t: number): KinematicState<'starRel'> {
     return this.membersAt(t).body;
   }
 
   // 衛星 index の主星相対状態。index は addSatellite が返した登録順。
-  satelliteStarRelStateAt(index: number, t: number): KinematicState<'starRel'> {
+  public satelliteStarRelStateAt(index: number, t: number): KinematicState<'starRel'> {
     const members = this.membersAt(t);
     return addPrimaryRelative(members.body, this.relFrom(members, index));
   }
 
   // 衛星 index の惑星本体相対の位置・速度。
-  satelliteRelStateAt(index: number, t: number): KinematicState<'primaryRel'> {
+  public satelliteRelStateAt(index: number, t: number): KinematicState<'primaryRel'> {
     return this.relFrom(this.membersAt(t), index);
   }
 
   // 惑星本体が衛星から受ける加速度。位置の重心補正 −Σ w_i·ρ_i の 2 階微分そのもので、
   // **対象とする衛星集合は位置補正と同一** — 位置補正と加速度で考慮する衛星が食い違うと、2 次外挿が位置モデルから乖離する。
-  bodyAccelFromSatellitesAt(t: number): Vec3 {
+  public bodyAccelFromSatellitesAt(t: number): Vec3 {
     const members = this.membersAt(t);
     const muTotal = this.mu;
     let accel: Vec3 = v3();
@@ -116,7 +116,7 @@ export class PlanetSystem {
   }
 
   // デバッグ情報ウィンドウが読む、系が持つ時刻キャッシュのヒット/ミス累計。
-  get cacheStats(): TimeCacheStats {
+  public get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(this.starRelCache.stats, this.membersCache.stats);
   }
 
@@ -184,7 +184,7 @@ export class PlanetSystem {
 
   // この系が重心を分け合う全質量(惑星本体 + 全衛星)。衛星は構築のたびに増えるので、
   // 構築時に畳まず引かれた時点で合算する。
-  get mu(): number {
+  public get mu(): number {
     let total = this.body.def.mu;
     for (const moon of this.moons) total += moon.def.mu;
     return total;
@@ -192,23 +192,23 @@ export class PlanetSystem {
 
   // 衛星モデルが太陽方向を求めるのに要る平均角。重心の軌道から取るので惑星本体の位置に
   // 依存しない — 依存させると惑星本体の評価と相互再帰になる。
-  anglesAt(t: number): PlanetAngles {
+  public anglesAt(t: number): PlanetAngles {
     return planetAngles(this.orbit, t);
   }
 
   // この系の惑星本体。setBody より前に読むと例外。
-  get body(): PlanetMotion {
+  public get body(): PlanetMotion {
     if (this.planetBody === null) throw new Error('PlanetSystem: 惑星本体が設定される前に参照された');
     return this.planetBody;
   }
 
   // この系の衛星(登録順)。重心補正の対象でもある。
-  get satellites(): readonly SatelliteMotion[] {
+  public get satellites(): readonly SatelliteMotion[] {
     return this.moons;
   }
 
   // 惑星本体を決める。2度目の呼び出しは例外。
-  setBody(body: PlanetMotion): void {
+  public setBody(body: PlanetMotion): void {
     if (this.planetBody !== null) {
       throw new Error(`PlanetSystem: 惑星本体は1度だけ設定できる(${this.planetBody.id} → ${body.id})`);
     }
@@ -219,7 +219,7 @@ export class PlanetSystem {
   // 持たない系へは登録できない** — 重心を分け合う比が衛星だけで決まって本体の質量比が 0 に
   // なり、本体が衛星との距離ぶんまるごとずれる。衛星の軌道長半径と周期があれば系の μ は
   // ケプラー第3法則で必ず決まるので、この制約はどの系でも満たせる。
-  addSatellite(satellite: SatelliteMotion): number {
+  public addSatellite(satellite: SatelliteMotion): number {
     if (this.body.def.mu <= 0) {
       throw new Error(`PlanetSystem: μ を持たない ${this.id} へ衛星 ${satellite.def.id} は登録できない`);
     }

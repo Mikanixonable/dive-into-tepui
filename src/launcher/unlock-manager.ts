@@ -34,12 +34,12 @@ export class UnlockManager {
   private clearCounts = loadClearCounts();
 
   // stage が解放済みかどうかを返す。
-  isUnlocked(stage: StageId): boolean {
+  public isUnlocked(stage: StageId): boolean {
     return isStageUnlocked(stage, this.clearCounts);
   }
 
   // ステージクリアを記録し、それによって新たに解放条件を満たしたステージがあれば toast で知らせる。
-  reportClear(stage: StageId, notifier: Notifier): void {
+  public reportClear(stage: StageId, notifier: Notifier): void {
     const newlyUnlocked = STAGE_CLASSES.filter((s) => !isStageUnlocked(s.id, this.clearCounts));
 
     this.clearCounts = { ...this.clearCounts, [stage]: (this.clearCounts[stage] ?? 0) + 1 };

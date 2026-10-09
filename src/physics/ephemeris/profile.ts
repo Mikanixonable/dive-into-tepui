@@ -38,7 +38,7 @@ export const EPHEMERIS_PROFILES: Readonly<Record<EphemerisProfileId, EphemerisPr
 };
 
 export class UnsupportedEphemerisEpochError extends RangeError {
-  constructor(readonly jdTdb: number, readonly requestedProfile?: EphemerisProfileId) {
+  public constructor(public readonly jdTdb: number, public readonly requestedProfile?: EphemerisProfileId) {
     super(requestedProfile === undefined
       ? `JD_TDB=${jdTdb} に数値暦を持つ天体暦プロファイルが無い`
       : `JD_TDB=${jdTdb} は天体暦プロファイル ${requestedProfile} の有効期間外`);

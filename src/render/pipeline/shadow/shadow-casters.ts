@@ -59,7 +59,7 @@ export class ShadowCasters {
   // **層を見るだけでは足りず、Mesh であることまで見る。** シーンルートは全チャンネルを持つ
   // (レンダラがカメラのチャンネルを絞る間も子を辿れるようにするため)ので、レイヤ判定だけで抽出すると
   // ルートに当たり、Box3.expandByObject が子を再帰して天体ごと箱に入れてしまう。
-  collect(
+  public collect(
     scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight,
     texelsPerPixel: number,
   ): readonly ShadowCaster[] {

@@ -23,23 +23,23 @@ export class EciTransform {
   private readonly originCache = new TimeRing<OriginState>();
 
   // origin は ECI 原点に置く天体。原点天体自身も同じ計算を2回引くので、位置は厳密に 0 になる。
-  constructor(private readonly origin: EphemerisBody) {}
+  public constructor(private readonly origin: EphemerisBody) {}
 
   // ECI 原点に置いている天体の id。
-  get originId(): string { return this.origin.id; }
+  public get originId(): string { return this.origin.id; }
 
   // 時刻 t の ECI 位置・速度。
-  stateAt(t: number, motion: EphemerisBody): KinematicState {
+  public stateAt(t: number, motion: EphemerisBody): KinematicState {
     return this.translate(t, motion, this.originStateAt(t));
   }
 
   // 時刻 t の ECI 加速度。供給源が分かれない(数値暦は位置係数しか持たない)ので常に解析。
-  accelAt(t: number, motion: EphemerisBody): Vec3 {
+  public accelAt(t: number, motion: EphemerisBody): Vec3 {
     return sub(motion.analyticAccelAt(t), this.originStateAt(t).accel);
   }
 
   // デバッグ情報ウィンドウが読む、原点一式の時刻キャッシュのヒット/ミス累計。
-  get cacheStats(): TimeCacheStats { return this.originCache.stats; }
+  public get cacheStats(): TimeCacheStats { return this.originCache.stats; }
 
   // 引いた原点一式のもとで平行移動する。原点が数値暦で引けない時刻では、この天体も
   // 引かずに解析経路へ揃える。

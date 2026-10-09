@@ -23,7 +23,7 @@ export class LightPrepass {
   private readonly savedClearColor = new THREE.Color();
 
   // 照度バッファ 2 枚と、sources が共有するシェーディング入力を組む。sources の順に積む。
-  constructor(
+  public constructor(
     renderer: WebGPURenderer,
     gbuffer: GBufferPass,
     private readonly sources: readonly LightSource[],
@@ -46,12 +46,12 @@ export class LightPrepass {
     this.quad = new QuadMesh();
   }
 
-  get diffuseTexture(): THREE.Texture { return this.target.textures[0]!; }
-  get specularTexture(): THREE.Texture { return this.target.textures[1]!; }
+  public get diffuseTexture(): THREE.Texture { return this.target.textures[0]!; }
+  public get specularTexture(): THREE.Texture { return this.target.textures[1]!; }
 
   // 寄与のある光源を順に照度バッファへ積む。camera は共有のシェーディング入力の行列を
   // 毎フレーム引き直すためだけに使い、シーン自体は描かない(光源ごとのフルスクリーンのみ)。
-  render(camera: THREE.Camera, width: number, height: number): void {
+  public render(camera: THREE.Camera, width: number, height: number): void {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     this.sample.sync(camera);
 
@@ -78,7 +78,7 @@ export class LightPrepass {
   }
 
   // 光源ごとの全マテリアルを照度ターゲットへ事前コンパイルする。
-  async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
+  public async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     this.sample.sync(camera);
     for (const source of this.sources) {
@@ -89,7 +89,7 @@ export class LightPrepass {
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
   // 共有する単一の板なので、ここでは解放しない。
-  dispose(): void {
+  public dispose(): void {
     this.target.dispose();
     for (const source of this.sources) source.dispose();
   }

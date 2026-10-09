@@ -22,7 +22,7 @@ export class NearbySystemTracker {
   }
 
   // 直前フレームの勝者を優遇したうえでの CelestialBodies.systemMembersAt。
-  membersAt(celestialBodies: CelestialBodies, cameraPos: Vec3, pivot: number): readonly string[] {
+  public membersAt(celestialBodies: CelestialBodies, cameraPos: Vec3, pivot: number): readonly string[] {
     return celestialBodies.membersFrom(this.chainAt(celestialBodies, cameraPos, pivot));
   }
 

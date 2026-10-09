@@ -17,7 +17,7 @@ export class UnisonInstrument implements Instrument {
   private readonly detunes: number[];
 
   // destination は再生側のゲイン。
-  constructor(
+  public constructor(
     private readonly ctx: AudioContext,
     destination: AudioNode,
     private readonly params: UnisonParams,
@@ -31,7 +31,7 @@ export class UnisonInstrument implements Instrument {
   }
 
   // when から鳴らす。時刻はすべて引数から導き、ctx.currentTime は読まない。
-  play(freq: number, when: number, durationSec: number, velocity: number): void {
+  public play(freq: number, when: number, durationSec: number, velocity: number): void {
     const ctx = this.ctx;
     // 重ねたぶん振幅が積み上がるので、voice 数で割って level の意味を保つ。
     const peak = (velocity * this.params.level) / this.detunes.length;
@@ -54,7 +54,7 @@ export class UnisonInstrument implements Instrument {
   }
 
   // フィルタと定位を音声グラフから外す。
-  dispose(): void {
+  public dispose(): void {
     this.filter.disconnect();
     this.panner.disconnect();
   }
