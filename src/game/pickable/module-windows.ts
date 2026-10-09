@@ -78,6 +78,7 @@ export class ModuleWindows implements ModuleWindowOpener {
     this.windows.set(key, entry);
     win.onSelect = (act) => {
       if (!ship.inspection.hasModule(moduleId)) return;
+      // 確認不要な操作はそのまま命令へ送る。
       if (act === 'deployModule' || act === 'stowModule' || act === 'toggleBoosterModule'
         || act === 'repairDockedModules' || act === 'selectCockpitModule') {
         this.submit(entry, act);
@@ -94,6 +95,7 @@ export class ModuleWindows implements ModuleWindowOpener {
         entry.candidates = null;
         this.syncEntry(entry);
       } else if (act.startsWith('dockCandidate:')) {
+        // 評価済みの候補から選んだ相手へ、接舷の命令を送る。
         const index = Number(act.slice('dockCandidate:'.length));
         const candidate = entry.candidates?.[index];
         if (candidate === undefined) return;
@@ -139,6 +141,7 @@ export class ModuleWindows implements ModuleWindowOpener {
   // 開いている各ウィンドウの値を最新化する。操作対象から外れた艦・失われたモジュールは閉じる。
   public sync(): void {
     this.syncCompletions();
+    // 開いている窓を対象の現状へ揃え、操作対象から外れた窓を畳む。
     for (const entry of [...this.windows.values()]) {
       const { ship, moduleId } = entry;
       const module = ship.assembly.module(moduleId);
@@ -188,6 +191,7 @@ export class ModuleWindows implements ModuleWindowOpener {
 
   // 候補の位置と相対運動を、接舷操作の選択項目へ写す。
   private candidateItems(candidates: readonly DockingCandidate[]): PropertyWindowItem<ModuleAction>[] {
+    // 接舷不可の候補は理由を示し、選べない項目にする。
     return [
       { label: '接舷候補を閉じる', act: 'cancelDockCandidates', keepOpen: true },
       ...candidates.map((candidate, index) => ({
@@ -233,12 +237,14 @@ export class ModuleWindows implements ModuleWindowOpener {
       const state = pending.completion.state;
       if (state.kind === 'pending') continue;
       this.pending.delete(pending);
+      // 成功時に畳む対象として指定された窓を畳む。
       if (state.kind === 'succeeded') {
         for (const entry of pending.closeOnSuccess) {
           if (this.windows.get(`${entry.ship.id}:${entry.moduleId}`) === entry) entry.win.close();
         }
         continue;
       }
+      // 失敗を通知し、接舷条件の不成立では候補を出し直す。
       const error = state.error;
       this.hud.hint(error instanceof Error ? error.message : this.failureText(pending.action), undefined, 'warn');
       const { entry } = pending;
