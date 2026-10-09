@@ -8,8 +8,8 @@
 //     組み直さずにそのまま使える。
 //  2. narrow — 参加者の構成で決まる。区間を共有する多数を同じ時間枠で衝突処理するときだけ得になる
 //     (参加者が1つなら into と同じ判定を二度やることになる)。
-import { KinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, distSq, len, scale, sub, v3 } from '../../math/vec3';
+import type { KinematicState } from '../../physics/kinematic-state';
+import { type Vec3, add, distSq, len, scale, sub, v3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 
 // 区間の始点位置と、そこから表面が区間内に届きうる距離。

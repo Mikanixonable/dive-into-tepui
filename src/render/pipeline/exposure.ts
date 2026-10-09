@@ -1,7 +1,7 @@
 // 露出係数の正本。**いま見ている場所の明るさへ画面をどれだけ合わせるか**を1つの数で持つ。
 // 順応(場所の明るさへ合わせるぶん)と露出補正の積をトーンマッパへ渡し、固定した明るさで描く
 // ものには順応ぶんだけを打ち消す倍率を答える。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from './sun-light';
 import type { FloatNode, FloatUniform } from '../tsl-types';

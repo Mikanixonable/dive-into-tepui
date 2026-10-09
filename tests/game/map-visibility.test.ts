@@ -10,7 +10,7 @@ import {
 import { OrbitingMotion } from '../../src/physics/celestial-motion';
 import {
   applyMapDisplayMode, mapDisplayModeOf, celestialClassVisible, celestialNameVisible,
-  MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, nextMapDisplayMode,
+  type MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, nextMapDisplayMode,
 } from '../../src/game/map/display-toggles';
 import { alwaysFullyVisibleIds } from '../../src/game/map/visibility-policy';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';

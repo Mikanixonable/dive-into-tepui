@@ -1,7 +1,7 @@
 // 同期軌道(自転と同じ周期で公転する赤道円軌道)の高度を示す、マップ専用のリングとラベル。
 // 高度の目盛りとして引く1本。
-import * as THREE from 'three/webgpu';
-import { OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
+import type * as THREE from 'three/webgpu';
+import { type OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
 import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
 import type { CameraFrame } from '../../camera/camera-frame';

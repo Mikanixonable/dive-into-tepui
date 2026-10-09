@@ -1,8 +1,8 @@
 // 複数の PhasingComposer を順番に切り替える Composer。三部構成の曲のように、緩急・音域・
 // 音色の異なる区間を経ながら1曲を通す。各区間の内部ステップは区間に入るたび0から始まる
 // (同じ step には常に同じ音列を返す)。全区間の合計ステップが一巡で、末尾まで来たら先頭へ戻る。
-import { SuiteParams } from '../tracks/types';
-import { Composer, ComposerNote } from '../composer';
+import type { SuiteParams } from '../tracks/types';
+import type { Composer, ComposerNote } from '../composer';
 import { PhasingComposer } from './phasing-composer';
 
 export class SuiteComposer implements Composer {

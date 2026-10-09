@@ -3,8 +3,8 @@
 // 役割トークンは毎フレームその時点の対象へ解決されるので、操作対象の乗り換えやターゲットの
 // 付け替えをまたいでも同じ基準を指し続ける(DEVELOP/SPEC/CELESTIAL.md 8節)。
 import { orbitingAttractorOf } from '../physics/attractor';
-import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
-import { KinematicState } from '../physics/kinematic-state';
+import { type FrameAnchorSource, type FrameRole, frameRoleOf } from '../physics/frame';
+import type { KinematicState } from '../physics/kinematic-state';
 import type { Quat } from '../math/quat';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { CelestialBody } from '../physics/celestial-body';
