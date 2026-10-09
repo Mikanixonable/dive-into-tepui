@@ -7,8 +7,8 @@
 //    数える。「張り付き」は縮小列のいちばん粗い段に張り付いた画素の、重みが正の画素に対する割合。
 // 2. 縁の幅: 帯の中心線に沿った縦の断面で、発光球の像(ladder-reflection)と地球の像(ladder-off-specular)の縁が
 //    10% から 90% の明るさへ上がるまでの px を測る。球は、同じ場所の球光源をライティングパスで照らした対照の像
-//    (ladder-lights-specular)の縁の幅と並べ、両方を鏡面ローブの予測幅とも並べる。球の予測は、ローブの円の直径
-//    2·d·tan(2α) を当たった点の奥行きで画面へ写した px、地球の予測は、ローブの角幅 2·2α を画素の角幅で割った px。
+//    (天体照を切った ladder-lights-no-planet-specular)の縁の幅と並べ、両方を鏡面ローブの予測幅とも並べる。
+//    球の予測は、ローブの円の直径 2·d·tan(2α) を当たった点の奥行きで画面へ写した px、地球の予測は、ローブの角幅 2·2α を画素の角幅で割った px。
 //    球の縁は手前側(画面の下側)で測る — 奥側は帯の奥の端が近く、ぼけた縁が帯からはみ出す。
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -284,7 +284,9 @@ function main() {
   console.log('\n縁の幅 [px](10% → 90%)\n');
   console.log(edgeTable(
     bands,
-    readShot(dir, 'ladder-reflection'), readShot(dir, 'ladder-lights-specular'), readShot(dir, 'ladder-off-specular'),
+    readShot(dir, 'ladder-reflection'),
+    readShot(dir, 'ladder-lights-no-planet-specular'),
+    readShot(dir, 'ladder-off-specular'),
   ));
 }
 
