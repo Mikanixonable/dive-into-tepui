@@ -18,10 +18,15 @@ import type { GBufferPass } from './gbuffer';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
 // 縮小列の段数。段 0 は共有の描画先そのもので、段 k は描画画素 2^k 個四方を画素 1 つにまとめる。
+// tools/render-lab-reflection-levels.mjs がこの行を文字列で読む。
 // TODO: 段数は仮置き。映り込みの精細さの段と合わせて、ぼけの届く粗さと費用を実測して決め直す。
 const LEVEL_COUNT = 5;
 // 鏡面ローブの半幅 [rad] の、GGX の α(知覚的粗さの 2 乗)に対する比。
 const LOBE_HALF_WIDTH_PER_ALPHA = 2;
+// 像の描画先の α は、像の解決が読んだ縮小列の段 + LEVEL_CODE_OFFSET。置換の重みが 0 の画素は 1 を書き、描画先を空へ
+// 戻した 0 は像を書いていないこと。three のマテリアルは出力を 0 で下から切るので、負の値で印を付けられない。
+const LEVEL_CODE_OFFSET = 2;
+const UNWEIGHTED_LEVEL_CODE = 1;
 
 // 全画面で書くマテリアル。additive を立てると、描画先へ加算で積む。
 function stageMaterial(colorNode: Vec4Node, additive = false): THREE.MeshBasicNodeMaterial {
@@ -102,7 +107,8 @@ interface ReducedChild {
 export class ReflectionPass {
   // 縮小列の段 1 以降。段 k は levels[k − 1]。
   private readonly levels: readonly ReductionLevel[];
-  // 共有の描画先へ足す像 R × w × I。足した後もこのフレームの値を残す。
+  // rgb は共有の描画先へ足す像 R × w × I、α は像の解決が読んだ縮小列の段の符号(LEVEL_CODE_OFFSET)。
+  // 足した後もこのフレームの値を残す。
   private readonly imageTarget = imageTarget();
   private readonly resolveMaterial: THREE.MeshBasicNodeMaterial;
   private readonly addMaterial: THREE.MeshBasicNodeMaterial;
@@ -145,6 +151,12 @@ export class ReflectionPass {
 
   // このフレームに共有の描画先へ足した像。
   public get texture(): THREE.Texture { return this.imageTarget.texture; }
+
+  // このフレームに像の解決が uv の画素で読んだ縮小列の段(小数)。置換の重みが 0 の画素は −1、像を書いていない
+  // (映り込みを切った)フレームは −2。
+  public levelAt(uv: Vec2Node): FloatNode {
+    return texture(this.imageTarget.texture, uv).a.sub(LEVEL_CODE_OFFSET);
+  }
 
   // 次の render からオン / オフを enabled にする。
   public setEnabled(enabled: boolean): void {
@@ -252,20 +264,22 @@ export class ReflectionPass {
     });
   }
 
-  // 画素ごとの像 R × w × I。置換の重み w が 0 の画素は 0。
+  // 画素ごとの像 R × w × I と、読んだ縮小列の段の符号。置換の重み w が 0 の画素は像が 0。
   private image(gbuffer: GBufferPass, reflection: ScreenSpaceReflection): Vec4Node {
     return Fn(() => {
       const image = vec3(0).toVar();
+      const levelCode = float(UNWEIGHTED_LEVEL_CODE).toVar();
       // 判定は面の写っている画素にだけ w を書くので、w の正の画素は面の画素。
       const weight = reflection.weightAt(screenUV).toVar();
       If(weight.greaterThan(0), () => {
         const distance = reflection.hitDistanceAt(screenUV).toVar();
         const hit = this.sample.position.add(this.sample.reflected.mul(distance)).toVar();
-        const level = this.levelOf(hit, distance);
+        const level = this.levelOf(hit, distance).toVar();
         const radiance = this.radianceAt(reflection.hitUVAt(screenUV), level, hit.z);
         image.assign(specularReflectanceAt(gbuffer, screenUV).mul(weight).mul(radiance));
+        levelCode.assign(level.add(LEVEL_CODE_OFFSET));
       });
-      return vec4(image, 1);
+      return vec4(image, levelCode);
     })();
   }
 
