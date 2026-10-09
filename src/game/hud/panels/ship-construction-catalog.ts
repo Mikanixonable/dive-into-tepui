@@ -1,5 +1,5 @@
 // 建造部品のカテゴリとカード表示を同期し、部品を選ぶ操作を通知する。
-import { Button, TabBar } from '../../../hud/widgets';
+import { Button, buildSpan, TabBar } from '../../../hud/widgets';
 import { SHIP_MODULE_CATALOG } from '../../ship/ship-module-catalog';
 import { formatConstructionMetric, formatConstructionNumber } from './ship-construction-format';
 import type { ShipModuleCategory, ShipModuleDefinition } from '../../ship/ship-module-definition';
@@ -57,12 +57,12 @@ export class ShipConstructionCatalog {
         button.element.title = moduleDescription(definition);
         // 名称・寸法・主要能力をカードへ載せる。
         button.element.replaceChildren(
-          textSpan('construction-module-name', definition.name),
-          textSpan(
+          buildSpan('construction-module-name', definition.name),
+          buildSpan(
             'construction-module-spec',
             `${formatDimension(definition.length)} m · ${formatConstructionMetric(definition.dryMass, 'kg')} · HP ${formatConstructionNumber(definition.maxHp)}`,
           ),
-          textSpan('construction-module-ability', moduleCardAbility(definition)),
+          buildSpan('construction-module-ability', moduleCardAbility(definition)),
         );
         card.appendChild(button.element);
         this.moduleCards.appendChild(card);
@@ -106,14 +106,6 @@ function moduleDescription(definition: ShipModuleDefinition): string {
   if (abilities.powerGeneration !== undefined) values.push(`発電 ${formatConstructionMetric(abilities.powerGeneration, 'W')}`);
   if (abilities.radiationArea !== undefined) values.push(`放熱面積 ${formatConstructionMetric(abilities.radiationArea, 'm²')}`);
   return values.length === 0 ? definition.name : values.join(' / ');
-}
-
-// 指定した表示クラスと文言を持つラベルを作る。
-function textSpan(className: string, text: string): HTMLElement {
-  const span = document.createElement('span');
-  span.className = className;
-  span.textContent = text;
-  return span;
 }
 
 // 長さ [m] は整数なら小数点を省き、それ以外は小数1桁に丸める。
