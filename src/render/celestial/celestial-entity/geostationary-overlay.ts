@@ -38,12 +38,10 @@ function altitudeLabel(altitude: number): string {
 export class GeostationaryOverlay {
   private readonly line = new EllipseLine(ringStyle(0));
   // 同期軌道の長半径 [m] と、その高度を書いたラベル。
-  private readonly semiMajorAxis: number;
   private readonly label: string;
 
   // semiMajorAxis [m] は of() が表面より外にあることを確かめた同期軌道の長半径。
-  private constructor(motion: CelestialBody, semiMajorAxis: number) {
-    this.semiMajorAxis = semiMajorAxis;
+  private constructor(motion: CelestialBody, private readonly semiMajorAxis: number) {
     this.label = altitudeLabel(semiMajorAxis - motion.def.radius);
   }
 

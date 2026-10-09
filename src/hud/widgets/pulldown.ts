@@ -18,7 +18,6 @@ type ColumnValues<Cols extends readonly PulldownColumn<unknown>[]> = {
 export class Pulldown<Cols extends readonly PulldownColumn<unknown>[]> {
   public readonly element: HTMLElement;
   private readonly selects: readonly HTMLSelectElement[];
-  private readonly columns: Cols;
   // 列ごとに直近で外部状態から反映した値。setSelected() は毎フレーム呼ばれるが、この値と
   // 変わっていなければ selectedIndex に触れない——毎フレーム書き込むと、セットボタンへの
   // クリックがフォーカスを外してから click イベントが発火するまでの一瞬に setSelected の
@@ -28,8 +27,7 @@ export class Pulldown<Cols extends readonly PulldownColumn<unknown>[]> {
 
   // columns は左から並ぶドロップダウンの列。onApply は各列の選択値を列の順に並べたタプルを受け取る。
   // applyLabel に null を渡すと反映ボタンを持たず、選び直した時点で onApply を呼ぶ。
-  public constructor(title: string, columns: Cols, applyLabel: string | null, onApply: (values: ColumnValues<Cols>) => void) {
-    this.columns = columns;
+  public constructor(title: string, private readonly columns: Cols, applyLabel: string | null, onApply: (values: ColumnValues<Cols>) => void) {
     this.element = buildLabeledRow(title);
     this.selects = columns.map((column) => {
       const select = document.createElement('select');

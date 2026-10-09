@@ -45,7 +45,7 @@ export function withThrust(central: CelestialMotion, thrust: Vec3): Advance {
   return (s, dt) => stepDynamics(s, dt, [central], [], null, 0, 0, 0, thrust);
 }
 
-export const still: Advance = (s, dt) => kinematicState<'eci'>(s.t + dt, s.r, s.v);
+export const still: Advance = (s, dt): KinematicState<'eci'> => kinematicState(s.t + dt, s.r, s.v);
 
 // 判定にかける1区間。radiusSum は費用の計測で使う代表値で、精度の計測では二分探索で動かす。
 export interface Sweep {

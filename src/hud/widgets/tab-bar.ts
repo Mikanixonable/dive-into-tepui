@@ -6,11 +6,9 @@ export class TabBar<T> {
   public readonly element: HTMLElement;
   private readonly buttons = new Map<T, Button>();
   private items: readonly (readonly [T, string])[] = [];
-  private readonly onSelect: (value: T) => void;
 
   // items は [値, 表示ラベル] の並びで、その順にタブを並べる。
-  public constructor(items: readonly (readonly [T, string])[], onSelect: (value: T) => void) {
-    this.onSelect = onSelect;
+  public constructor(items: readonly (readonly [T, string])[], private readonly onSelect: (value: T) => void) {
     this.element = document.createElement('div');
     this.element.className = 'w-tabs';
     this.element.setAttribute('role', 'tablist');

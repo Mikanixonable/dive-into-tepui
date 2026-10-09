@@ -11,12 +11,12 @@ export class Deque<T> {
     }
 
     // 現在の要素数
-    public get size() {
+    public get size(): number {
         return this.count;
     }
 
     // 現在1つ以上の要素があるか
-    public get empty() {
+    public get empty(): boolean {
         return this.count === 0;
     }
 
@@ -70,7 +70,7 @@ export class Deque<T> {
     }
 
     // 左端に要素を追加する。
-    public pushLeft(value: T) {
+    public pushLeft(value: T): void {
         this.ensureCapacity();
 
         this.start--;
@@ -79,7 +79,7 @@ export class Deque<T> {
     }
 
     // 右端に要素を追加する。
-    public pushRight(value: T) {
+    public pushRight(value: T): void {
         this.ensureCapacity();
 
         this.buffer[this.index(this.end)] = value;
@@ -118,7 +118,7 @@ export class Deque<T> {
     }
 
     // 左からn要素まとめて削除 clear=falseのときO(1) clear=trueのときO(n)
-    public deleteLeftN(n: number, clear = false) {
+    public deleteLeftN(n: number, clear = false): void {
         if (n < 0 || n > this.count)
             throw new RangeError();
 
@@ -131,7 +131,7 @@ export class Deque<T> {
     }
 
     // 右からn要素まとめて削除 clear=falseのときO(1) clear=trueのときO(n)
-    public deleteRightN(n: number, clear = false) {
+    public deleteRightN(n: number, clear = false): void {
         if (n < 0 || n > this.count)
             throw new RangeError();
 
@@ -143,7 +143,7 @@ export class Deque<T> {
     }
 
     // 要素を空にする。clearMemory=trueのときO(n)でメモリを解放する。clearMemory=falseのときO(1)
-    public clear(clearMemory = false) {
+    public clear(clearMemory = false): void {
         if (clearMemory)
             for (let i = 0; i < this.count; i++)
                 this.buffer[this.index(this.start + i)] = undefined;

@@ -30,16 +30,14 @@ export class AntialiasPass {
   // 方式ごとに1枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの再コンパイルが
   // フレームを止める。
   private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
-  private method: number;
 
   // source は 3D UI パスまでを描き終えた表示用の画像。
   public constructor(
     private readonly renderer: WebGPURenderer,
     private readonly source: THREE.Texture,
     private readonly gpu: GpuTimings,
-    method: number,
+    private method: number,
   ) {
-    this.method = method;
     this.quad = new QuadMesh(this.material());
   }
 

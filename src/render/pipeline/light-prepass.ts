@@ -15,7 +15,6 @@ import { ShadingSample } from './lighting/shading-sample';
 import { compileInto } from './compile-into';
 
 export class LightPrepass {
-  private readonly renderer: WebGPURenderer;
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly sample: ShadingSample;
@@ -24,13 +23,11 @@ export class LightPrepass {
 
   // 照度バッファ 2 枚と、sources が共有するシェーディング入力を組む。sources の順に積む。
   public constructor(
-    renderer: WebGPURenderer,
+    private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
     private readonly sources: readonly LightSource[],
     private readonly gpu: GpuTimings,
   ) {
-    this.renderer = renderer;
-
     // diffuse/specular の2枚。WebGPU に3チャンネル16bit浮動小数点フォーマットは無いため、
     // rgba16float(a は未使用)を使う。
     this.target = new THREE.RenderTarget(1, 1, { count: 2, depthBuffer: false, samples: 0 });
