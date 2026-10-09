@@ -5,8 +5,8 @@ import { orbitingMotionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
-  CATALOG_STRIDE, CatalogFamily, CatalogMember, CatalogSystem, CatalogSystemId, OrbitCatalog,
-  OrbitCatalogIndex, decodeCatalogPoints,
+  CATALOG_STRIDE, type CatalogFamily, type CatalogMember, type CatalogSystem, type CatalogSystemId, type OrbitCatalog,
+  type OrbitCatalogIndex, decodeCatalogPoints,
 } from '../../src/physics/orbit-catalog';
 import { catalogLoop, guideSecondary, rotatingFrame } from '../../src/physics/orbit-guide';
 import { secondaryFrameOf } from '../../src/physics/lagrange';

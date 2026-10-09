@@ -1,6 +1,6 @@
 // 太陽輻射圧によるキャノンボールモデルの加速度。物体を反射率一定の球とみなし、姿勢によらず
 // 太陽 - 物体を結ぶ直線方向にのみ力が働くとする。THREE/DOM 非依存の純関数。
-import { Vec3, v3 } from '../math/vec3';
+import { type Vec3, v3 } from '../math/vec3';
 import type { StarCelestialBody } from './celestial-body-def';
 
 const SPEED_OF_LIGHT = 299792458; // 真空中の光速 [m/s](SI 定義値)

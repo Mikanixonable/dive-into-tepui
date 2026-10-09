@@ -2,9 +2,9 @@
 // (自転軸・軌道面法線・黄道面法線など)は呼び出し側が決めるので、この分解の意味は
 // 「その軸を天頂としたときに、どちらをどれだけ向いているか」になる。
 // yaw/pitch が決めるのは LOCAL_FORWARD の向き、roll がその軸まわりの傾き。
-import { Vec3, addScaled, cross, dot, lenSq, norm, projectOntoPlane, scale, v3 } from './vec3';
+import { type Vec3, addScaled, cross, dot, lenSq, norm, projectOntoPlane, scale, v3 } from './vec3';
 import {
-  LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, Quat, qFromAxisAngle, qFromBasis, qMul, qNormalize, qRotate,
+  LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, type Quat, qFromAxisAngle, qFromBasis, qMul, qNormalize, qRotate,
 } from './quat';
 
 // 真上・真下では方位が定まらないので、仰角をここまでに抑える。

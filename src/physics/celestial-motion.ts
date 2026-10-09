@@ -2,24 +2,24 @@
 // 自転姿勢・2次重力場・大気・公転回転基準系を時刻から算出・提供する。対象は自身1体分の値。
 // 数値暦が惑星系の重心しか収録していない系では、惑星本体と衛星はそこから重心オフセットを介して
 // 組む。恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
-import { Atmosphere } from './atmosphere';
+import type { Atmosphere } from './atmosphere';
 import { qFromForwardUp } from '../math/quat';
-import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
+import { type PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
-import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
+import { JULIAN_CENTURY, type KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
-import { CelestialBodyDef, PlanetDef, SatelliteDef, StarDef, spinRateOf } from './celestial-body-def';
-import {
-  CelestialKind, Degree2Gravity, FrameRotation, type BodyOrientation, type CelestialBody,
-  type EphemerisBody, type OrbitingCelestialBody,
+import { type CelestialBodyDef, type PlanetDef, type SatelliteDef, type StarDef, spinRateOf } from './celestial-body-def';
+import type {
+  CelestialKind, Degree2Gravity, FrameRotation, BodyOrientation, CelestialBody,
+  EphemerisBody, OrbitingCelestialBody,
 } from './celestial-body';
 import {
-  KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
+  type KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
 } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
-import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
-import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, v3 } from '../math/vec3';
+import { type TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
+import { type Vec3, add, addScaled, cross, len, lenSq, norm, scale, v3 } from '../math/vec3';
 import type { EciTransform } from './eci-transform';
 import type { PlanetSystem } from './planet-system';
 

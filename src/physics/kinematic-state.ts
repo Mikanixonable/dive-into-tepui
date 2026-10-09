@@ -1,6 +1,6 @@
 // 状態ベクトル(KinematicState)そのものの定義と、それだけで完結する幾何演算(軌道基底・
 // エルミート補間)。THREE/DOM 非依存の純粋関数群。
-import { Vec3, add, cross, norm, sub, v3, type SerializedVec3 } from '../math/vec3';
+import { type Vec3, add, cross, norm, sub, v3, type SerializedVec3 } from '../math/vec3';
 
 // 位置・速度を**どの供給源から、どの原点で**測っているか。軸はどれもゲーム ECI 軸
 // (icrf だけ ICRF 軸)。**供給源の違いも原点の違いも値からは見分けられない**ので、型で

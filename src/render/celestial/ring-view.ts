@@ -3,17 +3,17 @@
 import * as THREE from 'three/webgpu';
 import type { RenderStyle } from '../render-style';
 import { spinOrientation } from '../../physics/body-orientation';
-import { RingBandDef, RingSystemDef } from '../../physics/celestial-body-def';
-import { Vec3 } from '../../math/vec3';
-import { createOutlineCircle, OutlineCircle } from './outline-circle';
+import type { RingBandDef, RingSystemDef } from '../../physics/celestial-body-def';
+import type { Vec3 } from '../../math/vec3';
+import { createOutlineCircle, type OutlineCircle } from './outline-circle';
 import {
   RING_TILT,
   createAnnulusRing,
   createRingLine,
   createTorusRing,
-  RingLineVisual,
-  RingMaterials,
-  RingVisual,
+  type RingLineVisual,
+  type RingMaterials,
+  type RingVisual,
 } from './ring';
 import { ringPixelCoverage } from './screen-lod';
 import type { GraphicsSettingsData } from '../graphics-settings';

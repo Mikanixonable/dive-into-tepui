@@ -4,7 +4,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { HierarchicalSpatialGrid } from '../../src/math/hierarchical-spatial-grid';
 import { mulberry32 } from '../../src/math/random';
-import { v3, Vec3, sub, len } from '../../src/math/vec3';
+import { v3, type Vec3, sub, len } from '../../src/math/vec3';
 
 // positions[i] と reaches[i] を要素 i として登録し、列挙されたペアを全数探索と突き合わせる。
 // 距離が到達量の和以下のペアを全て含むこと、同じペアを二度返さないこと、自分自身と組まないことを見る。

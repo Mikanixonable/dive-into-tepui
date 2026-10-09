@@ -1,6 +1,6 @@
 // タンパク質1体ぶんの表示定義。表示ツリーを組むために読むアセットの面をここが宣言し、
 // 表示設定から THREE ツリーを組む・組み直す手順を、そのアセットへ束ねて返す。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { buildProteinEnemyShip, replaceProteinEnemyShip } from './protein-enemy-ship';
 import type { ProteinDisplaySettings } from './protein-display';
 import type { ProteinDisplayAsset } from './protein-display-asset';

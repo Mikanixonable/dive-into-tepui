@@ -5,7 +5,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { CameraOrientation } from '../../src/game/viewer/camera-orientation';
 import { POLAR_PITCH_LIMIT, rotationFromEuler } from '../../src/math/polar-euler';
-import { LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qMul, qRotate } from '../../src/math/quat';
+import { LOCAL_FORWARD, LOCAL_UP, type Quat, qFromAxisAngle, qMul, qRotate } from '../../src/math/quat';
 import { dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const POLAR = norm(v3(0.2, 0.9, -0.1));

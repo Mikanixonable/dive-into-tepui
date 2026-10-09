@@ -1,6 +1,6 @@
 // 右クリックの当たり判定にかける線(公転軌道・船の軌道・軌道ガイド・ターゲット相対の直線)の
 // 共通形と、画面上でクリック位置に最も近いものを選ぶ処理。線分の列に対して最短距離で当てる。
-import { Vec3 } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';

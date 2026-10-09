@@ -3,10 +3,10 @@
 // 周期項は二体ケプラー解に黄経・黄緯・動径の補正として重畳する。
 // 中心差や黄緯主傾斜など二体解に含まれる項は除外している。
 // 到達精度: 月において二体解との黄経差最大約2.3°、地心距離は実測範囲（近地点 35.6〜37.0万km、遠地点 40.4〜40.7万km）に概ね収まる。
-import { Quat } from '../math/quat';
+import type { Quat } from '../math/quat';
 import { eclToEci, eciToEcl } from './ecliptic';
-import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState, PlanetAngles } from './kepler-orbit';
-import { KinematicState, kinematicState } from './kinematic-state';
+import { ECLIPTIC_BASIS, type KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState, type PlanetAngles } from './kepler-orbit';
+import { type KinematicState, kinematicState } from './kinematic-state';
 import { dot, len } from '../math/vec3';
 
 const DEG = Math.PI / 180;

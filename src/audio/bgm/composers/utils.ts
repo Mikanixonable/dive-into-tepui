@@ -1,6 +1,6 @@
 // Composer どうしで共有する小さな道具。どれも状態を持たず、トラックのパラメータと
 // ステップ番号だけから値を出す。音集合や循環の中身そのものは各トラックが持つ。
-import { PhaseCycle } from '../tracks/types';
+import type { PhaseCycle } from '../tracks/types';
 
 // 一定ステップごとに切り替わる循環から、このステップの値を取り出す。
 export function phaseValue(cycle: PhaseCycle, step: number): number {

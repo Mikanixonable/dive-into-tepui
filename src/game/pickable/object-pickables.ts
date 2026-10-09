@@ -1,7 +1,7 @@
 // マップ上で「何が選べるか」を1フレーム分組み立てる。被選択物(ObjectPickable)の候補集合と、
 // そのフレームの表示可否(MapVisibilityPolicy)を提供する。候補は2段のピック(SPEC/MAP.md
 // 「クリックとピック」)に対応して2本あり、記号を出していない対象は本体段だけに残る。
-import { objectPickableOf, ObjectPickable } from './object-pickable';
+import { objectPickableOf, type ObjectPickable } from './object-pickable';
 import { focusTargetId } from '../viewer/focus-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -9,7 +9,7 @@ import type { NavTargetPresenter } from '../nav-target-presenter';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { MapCameraSource } from '../viewer/camera-selection';
 import type { CelestialMarkers } from '../marker/celestial-markers';
-import { PlanDisplay } from '../plan/plan-display';
+import type { PlanDisplay } from '../plan/plan-display';
 import type { ControlSelection } from '../control-selection';
 import { isOccluded } from '../../physics/occlusion';
 import { NearbySystemTracker } from '../celestial/nearby-system-tracker';

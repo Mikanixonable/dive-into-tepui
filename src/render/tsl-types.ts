@@ -1,6 +1,6 @@
 // シェーダグラフを組むモジュールが共有する TSL ノード型の語彙。three のノードは
 // 値の型を型引数に持つ Node<T> で表されるので、頻出の組にだけ名前を与える。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 
 // シェーダグラフの中間値。
 export type FloatNode = THREE.Node<'float'>;

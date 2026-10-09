@@ -2,7 +2,7 @@
 // 天体ぶんの公転・自転と、役割(操作対象の船/ターゲット)の公転を選択肢として並べ、
 // 選ばれた回転対象を返す。
 import {
-  FRAME_ROLES, type FrameAnchorSource, FrameRotationSource, frameRoleAnchorId, rotationSourceKey,
+  FRAME_ROLES, type FrameAnchorSource, type FrameRotationSource, frameRoleAnchorId, rotationSourceKey,
 } from '../../../physics/frame';
 import { SegmentedControl } from '../../../hud/widgets';
 import { rotationFollowChoiceLabel, rotationSourceChoiceLabel } from './frame-labels';

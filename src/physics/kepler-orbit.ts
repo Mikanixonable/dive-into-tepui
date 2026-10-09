@@ -6,11 +6,11 @@
 // 傾斜・昇交点・近点はすべて basisToEci が指す基準面(黄道面、あるいは親惑星の赤道面)の上で測る。
 // 位置・速度も軌道法線も回転基準系も、この1つの回転だけを経由して ECI へ出る。
 import { AU } from './astronomical-unit';
-import { Quat, qFromAxisAngle, qMul, qRotate } from '../math/quat';
+import { type Quat, qFromAxisAngle, qMul, qRotate } from '../math/quat';
 import { Q_ECL_TO_ECI } from './ecliptic';
 import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
-import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../math/vec3';
+import { type KinematicState, kinematicState } from './kinematic-state';
+import { type Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../math/vec3';
 import type { FrameRotation } from './celestial-body';
 
 export const JULIAN_CENTURY = 100 * 365.25 * 86400; // [s]

@@ -4,9 +4,9 @@
 // 片方を数値・片方を解析で引くと、その差がそのまま相対位置の誤りになる。原点が数値暦で
 // 引ける時刻だけ両者を数値暦で引き、それ以外は両者を解析へ揃える。
 // THREE/DOM 非依存。
-import { KinematicState, toEci } from './kinematic-state';
-import { TimeCacheStats, TimeRing } from './time-ring';
-import { Vec3, sub } from '../math/vec3';
+import { type KinematicState, toEci } from './kinematic-state';
+import { type TimeCacheStats, TimeRing } from './time-ring';
+import { type Vec3, sub } from '../math/vec3';
 import type { EphemerisBody } from './celestial-body';
 
 // ECI 原点天体が時刻 t に提供する、原点を引くための一式。**供給源が違えば同じ天体に異なる位置を

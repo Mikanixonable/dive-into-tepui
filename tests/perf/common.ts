@@ -3,7 +3,7 @@
 import { solarSystemParts } from '../physics/test-helpers';
 import { nearestAtmosphereBody } from '../../src/physics/attractor';
 import type { FrameCelestialBodies } from '../../src/game/celestial/celestial-bodies';
-import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';

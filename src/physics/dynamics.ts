@@ -2,12 +2,12 @@
 // よる摂動、および一質点にかかる全加速度(重力 + 2次重力場 + 大気抵抗 + 推力)の合成の
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
 import { attractorAccel } from './attractor';
-import { KinematicState, kinematicState } from './kinematic-state';
+import { type KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
 import { isStar } from './celestial-body-def';
-import { Vec3, add, cross, dot, sub, v3 } from '../math/vec3';
+import { type Vec3, add, cross, dot, sub, v3 } from '../math/vec3';
 import type { CelestialBody, Degree2Gravity } from './celestial-body';
 
 export interface DynamicsEnvironmentSample {

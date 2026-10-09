@@ -1,9 +1,9 @@
 // ECI 絶対座標の曲線を1本の折れ線として描き、描画原点の移動へ毎フレーム追随させる。
 // 描かれている曲線上の点を ECI 絶対座標で引ける。
 import * as THREE from 'three/webgpu';
-import { v3, Vec3 } from '../../../math/vec3';
-import { Curve, CurveColorSampler, CurveKnots, CurveSampler } from '../../curve';
-import { LineStyle } from '../../line-style';
+import { v3, type Vec3 } from '../../../math/vec3';
+import { Curve, type CurveColorSampler, type CurveKnots, type CurveSampler } from '../../curve';
+import type { LineStyle } from '../../line-style';
 import type { CameraFrame } from '../../camera/camera-frame';
 
 // 描く曲線の形。閉じた式で書けるものと、離散サンプルの節点列の2つがある。sample と knots は

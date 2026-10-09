@@ -7,10 +7,10 @@ import { test } from '../harness';
 import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { bodyAnchorSource } from '../../src/physics/attractor';
 import { FrameAnchors } from '../../src/game/frame-anchors';
-import { FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
+import { type FrameAnchorSource, type ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
 import { qRotate } from '../../src/math/quat';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { Vec3, add, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { type Vec3, add, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const YEAR = 365.25636 * 86400;
 

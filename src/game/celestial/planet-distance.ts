@@ -1,5 +1,5 @@
 // ECI 位置から最寄りの登録惑星までの距離と、マップ用の距離フェードを求める。
-import { Vec3 } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 
 const MAP_PLANET_SHIP_LABEL_START = 5e8;

@@ -1,9 +1,9 @@
 import { icrfToGameEci } from '../icrf';
-import { EphemerisPointKind, EphemerisPoints, PointEphemeris } from './point';
+import type { EphemerisPointKind, EphemerisPoints, PointEphemeris } from './point';
 import { ChebyshevEphemeris } from './pack-evaluator';
-import { KinematicState, kinematicState } from '../kinematic-state';
-import { DecodedPack, decodePack, toChebyshevPack } from './pack-format';
-import { j2000EphemerisSeconds, TdbJulianDate } from '../time';
+import { type KinematicState, kinematicState } from '../kinematic-state';
+import { type DecodedPack, decodePack, toChebyshevPack } from './pack-format';
+import { j2000EphemerisSeconds, type TdbJulianDate } from '../time';
 
 // バイナリ pack の J2000 ET 秒を、構築時に一度だけ元期起点の simTime へ寄せる。**ET 秒が
 // 外へ出るのはここまで** — 有効期間も評価の引数も simTime で話す。寄せる理由は2つで、

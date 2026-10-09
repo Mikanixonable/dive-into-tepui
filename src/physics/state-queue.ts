@@ -1,7 +1,7 @@
 // KinematicState の時系列を保持し、範囲内の任意時刻をエルミート補間で取得できるキュー。
 // push は最新サンプルを追加する操作。時刻が逆行または重複した場合は、その時刻以降
 // （再計算された区間）を破棄してから追加し直す。
-import { hermiteInterpolate, KinematicState } from './kinematic-state';
+import { hermiteInterpolate, type KinematicState } from './kinematic-state';
 import { Deque } from '../math/deque';
 
 export class StateQueue {

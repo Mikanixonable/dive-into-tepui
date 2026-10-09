@@ -1,6 +1,6 @@
 // 曲が一巡して同じ音列へ戻るまでの長さ。試聴のシークバーの可動域や、作曲用プレビュー
 // (tools/bgm-lab)の一巡表示が、これを基準に位置を扱う。
-import { BgmTrack } from './tracks/types';
+import type { BgmTrack } from './tracks/types';
 
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
 const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b;

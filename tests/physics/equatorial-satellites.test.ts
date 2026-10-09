@@ -5,17 +5,17 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { PlanetMotion, SatelliteMotion, StarMotion } from '../../src/physics/celestial-motion';
-import { PlanetDef, planetDefForSimZero, satelliteDefForSimZero, SatelliteDef } from '../../src/physics/celestial-body-def';
+import { type PlanetDef, planetDefForSimZero, satelliteDefForSimZero, type SatelliteDef } from '../../src/physics/celestial-body-def';
 import { EciTransform } from '../../src/physics/eci-transform';
 import { planetSystem } from '../../src/physics/planet-system';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
-import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
+import type { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { PLUTO } from '../../src/game/celestial/solar-system/dwarf-planets';
 import { EARTH, MOON } from '../../src/game/celestial/solar-system/earth-system';
 import { ORCUS, QUAOAR } from '../../src/game/celestial/solar-system/small-bodies';
 import { SUN } from '../../src/game/celestial/solar-system/sun';
-import { SolarSystemParts, motionOf, orbitingMotionOf, solarSystemParts, stateOf, TEST_SIM_ZERO_ET } from './test-helpers';
-import { Vec3, add, cross, dot, len, norm, scale, sub } from '../../src/math/vec3';
+import { type SolarSystemParts, motionOf, orbitingMotionOf, solarSystemParts, stateOf, TEST_SIM_ZERO_ET } from './test-helpers';
+import { type Vec3, add, cross, dot, len, norm, scale, sub } from '../../src/math/vec3';
 
 // id から静的事実を引くための太陽系。
 const DEFS = solarSystemParts();

@@ -3,11 +3,11 @@
 // イアペトゥス・フェーベの黄道傾斜が公表値と合うこと。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { SatelliteDef } from '../../src/physics/celestial-body-def';
+import type { SatelliteDef } from '../../src/physics/celestial-body-def';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
-import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
+import type { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
-import { SolarSystemParts, motionOf, solarSystemParts, stateOf } from './test-helpers';
+import { type SolarSystemParts, motionOf, solarSystemParts, stateOf } from './test-helpers';
 import { cross, dot, len, norm, sub } from '../../src/math/vec3';
 
 // id から静的事実を引くための太陽系。

@@ -1,9 +1,9 @@
 // 単一トラックの再生状態。トラック固有のフェード用ゲイン、Composer、楽器群、および
 // ステップ進行位置を保持し、指定時刻までの発音を先読みスケジュールする。
-import { Composer, ComposerNote } from './composer';
-import { Instrument } from './instrument';
+import type { Composer, ComposerNote } from './composer';
+import type { Instrument } from './instrument';
 import { createInstrument } from './instrument-factory';
-import { InstrumentDef } from './instruments/types';
+import type { InstrumentDef } from './instruments/types';
 
 // 楽器は音符の長さのあとに短いリリースを持つ。鳴り終える時刻に見込んでおく余裕。
 const RELEASE_TAIL_SEC = 0.25;

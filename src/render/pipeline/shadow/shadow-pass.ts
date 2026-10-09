@@ -6,7 +6,7 @@
 // 積んでも答えは同じになる。源が増えてもマテリアルの組み合わせは増えず、そのフレームに影を
 // 落とすものが無い源は描画命令ごと落とせる。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { Fn, If, dot, float, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { octDecodeNormal, type GBufferPass } from '../gbuffer';

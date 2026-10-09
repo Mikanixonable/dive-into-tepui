@@ -1,14 +1,14 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る2点(EqAN/EqDN)の算出と、△▽ マーカー
 // としての表示・被選択物としての公開。
 import { strongestAttractor } from '../../physics/attractor';
-import { FrameAnchorSource, ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
+import { type FrameAnchorSource, type ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
 import type { KinematicState } from '../../physics/kinematic-state';
-import { Vec3 } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
-import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
+import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import { ObjectPickable } from '../pickable/object-pickable';
+import type { ObjectPickable } from '../pickable/object-pickable';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { CelestialBody } from '../../physics/celestial-body';

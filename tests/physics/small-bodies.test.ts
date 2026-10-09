@@ -2,10 +2,10 @@
 // セドナ(高離心率)のケプラー往復精度、離心率・半径の妥当性、celestialMotions からの取得。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { PlanetDef } from '../../src/physics/celestial-body-def';
+import type { PlanetDef } from '../../src/physics/celestial-body-def';
 import { MU_SUN } from '../../src/game/celestial/solar-system/sun';
 import { keplerPeriod } from '../../src/physics/elements';
-import { KeplerOrbit, keplerOrbitState } from '../../src/physics/kepler-orbit';
+import { type KeplerOrbit, keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { motionOf, solarSystemParts } from './test-helpers';
 import { len, scale, sub } from '../../src/math/vec3';
 

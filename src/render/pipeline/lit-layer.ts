@@ -1,5 +1,5 @@
 // 描画パスがどのオブジェクトを描くかを分ける層(three の Layers チャンネル)と、その印を付ける関数。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 
 // シーン照明を受ける不透明物(艦艇・基地・デブリ・天体の球)のチャンネル。既定のチャンネル0から
 // 外してここへ移すので、印を付けたメッシュは G バッファへ素材を書き出す経路で描かれる。

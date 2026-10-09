@@ -1,7 +1,7 @@
 // 1本の DynamicTrajectory を、評価範囲の終端 end でクリップして取得する処理。end を超える時刻と
 // サンプルを除外し、丸め誤差程度に先端を超える時刻は先端そのものとして返す。
-import { KinematicState } from '../../physics/kinematic-state';
-import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
+import type { KinematicState } from '../../physics/kinematic-state';
+import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 
 // 積分の終端は要求時刻に対して丸め誤差ぶん手前に落ちうる。この幅までは終端そのものとみなす。
 const EPOCH_EPS = 1e-6;

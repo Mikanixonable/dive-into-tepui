@@ -1,5 +1,5 @@
 // 自動セーブを更新する頃合いを実時間で数え、その時が来た周回の状態を SnapshotService へ渡す。
-import { SnapshotService, type SnapshotSource } from './snapshot-service';
+import type { SnapshotService, SnapshotSource } from './snapshot-service';
 
 const AUTOSAVE_INTERVAL_REAL_SEC = 60;
 

@@ -1,8 +1,8 @@
 // 円制限三体問題のラグランジュ点。共線点 γ の求解と、回転系での5点の無次元座標、および
 // 5点それぞれが力学的に意味を持つかの判定。
 import { qRotate } from '../math/quat';
-import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, add, cross, len, sub, v3 } from '../math/vec3';
+import { type KinematicState, kinematicState } from './kinematic-state';
+import { type Vec3, add, cross, len, sub, v3 } from '../math/vec3';
 import type { CelestialBody, FrameRotation, OrbitingCelestialBody } from './celestial-body';
 
 // L4/L5 が線形安定でいられる質量比 mu = m2/(m1+m2) の上限(Routh/Gascheau の基準)。

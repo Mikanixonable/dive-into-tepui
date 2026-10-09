@@ -2,7 +2,7 @@
 // 応じて、基準天体・対象の状態(KinematicState)を解く。
 import { strongestAttractor } from '../physics/attractor';
 import type { CelestialBodies } from './celestial/celestial-bodies';
-import { KinematicState } from '../physics/kinematic-state';
+import type { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../math/vec3';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { NavTargetPresenter } from './nav-target-presenter';

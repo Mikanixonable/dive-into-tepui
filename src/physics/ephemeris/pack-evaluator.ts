@@ -1,6 +1,6 @@
-import { KinematicState, kinematicState } from '../kinematic-state';
-import { Vec3, v3 } from '../../math/vec3';
-import {
+import { type KinematicState, kinematicState } from '../kinematic-state';
+import { type Vec3, v3 } from '../../math/vec3';
+import type {
   ChebyshevBodySegments,
   ChebyshevPack,
   ChebyshevSegment,

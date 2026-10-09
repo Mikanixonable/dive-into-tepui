@@ -1,7 +1,7 @@
 // 軌道ガイド線の描画資源。1フレームぶんの宣言の列を、線1本ごとの曲線と進行方向マーカーへ
 // 反映する。描かれている点列を、宣言が添えた識別情報とともに返す。
 import * as THREE from 'three/webgpu';
-import { GuideCurve, GuideCurveDisplay } from './guide-curve';
+import { GuideCurve, type GuideCurveDisplay } from './guide-curve';
 import { DirectionMarkers } from './direction-markers';
 import { LINE_RENDER_ORDER } from '../../line-style';
 import type { CurveColorSampler } from '../../curve';
