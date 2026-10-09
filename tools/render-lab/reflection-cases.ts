@@ -57,6 +57,8 @@ const SUN_BELOW = new THREE.Vector3(0, -1, 0);
 // どの撮影にも重ねる描画設定。環境光の鏡面は粗さによらない一様な放射輝度でぼけを持たず、帯どうしの差を埋めるので
 // 切る。レンズ効果は縁の明るさの立ち上がりをにじませるので切る。
 const LADDER_GRAPHICS: Partial<GraphicsSettingsData> = { ambient: false, lens: false, screenSpaceSpecular: true };
+// 天体照を切った撮影の描画設定。地球の像に埋もれる球の像を見る。
+const NO_PLANET_GRAPHICS: Partial<GraphicsSettingsData> = { ...LADDER_GRAPHICS, planetLightCount: 0 };
 
 // 帯 index の中心線の方位角 [deg]。帯は画面の左から右へ並ぶ。
 function bandAzimuthDeg(index: number): number {
@@ -142,6 +144,7 @@ function reflectionLadder(): LabCase {
     earth: LADDER_EARTH,
     shots: {
       'ladder': { view: {}, graphics: LADDER_GRAPHICS },
+      'ladder-no-planet': { view: {}, graphics: NO_PLANET_GRAPHICS },
       'ladder-off': { view: {}, graphics: off },
       // 地球の像の縁は、トーンマッピングだけを通した鏡面照度で測る。映り込みを切り、置換で弱めない。
       'ladder-off-specular': { view: {}, graphics: off, debugTarget: 'specular' },
@@ -156,8 +159,8 @@ function reflectionLadder(): LabCase {
   };
 }
 
-// 対照: 同じ床に、発光球の代わりに同じ場所・大きさ・放射輝度の球光源を置く。地球は置かない — 球光源の像の手前に
-// 地球の像の縁が来ると、粗い帯で縁の幅を読めない。
+// 対照: 同じ床と地球に、発光球の代わりに同じ場所・大きさ・放射輝度の球光源を置く。縁の幅は天体照を切った鏡面照度で
+// 測る — 球光源の像の手前に地球の像の縁が来ると、粗い帯で縁の幅を読めない。
 function reflectionLadderLights(): LabCase {
   // 球光源は発光球と同じ中心・半径・放射輝度。
   const radiance = new THREE.Color(SPHERE_RADIANCE, SPHERE_RADIANCE, SPHERE_RADIANCE);
@@ -168,10 +171,12 @@ function reflectionLadderLights(): LabCase {
     objects: [structure(false)],
     ...ladderCamera(),
     sunDirection: SUN_BELOW,
+    earth: LADDER_EARTH,
     sphereLights,
     shots: {
       'ladder-lights': { view: {}, graphics: LADDER_GRAPHICS },
-      'ladder-lights-specular': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'specular' },
+      'ladder-lights-no-planet': { view: {}, graphics: NO_PLANET_GRAPHICS },
+      'ladder-lights-no-planet-specular': { view: {}, graphics: NO_PLANET_GRAPHICS, debugTarget: 'specular' },
     },
   };
 }
