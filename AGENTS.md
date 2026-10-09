@@ -209,7 +209,7 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | コマンド | 用途 | いつ走らせるか |
 | --- | --- | --- |
 | `npm run typecheck` | 型検査 | **常に** |
-| `node tools/check-boundaries.mjs` | 層と境界の検査 | `src/` の置き場を触ったとき |
+| `npm run check:boundaries` | 層と境界の検査 | `src/` の置き場を触ったとき |
 | `npm run lint` | CODING-RULE のうち構文で判定できる規則の検査 | **main へ送る前**(`/send-pr`)。点検範囲だけへは `/refactor` `/comment-cleanup` が当てる |
 | `npm run test` | 全層の回帰テスト | **main へ送る前**(`/send-pr`) |
 | `npm run test:physics` | `src/physics/` の回帰テスト | `src/physics/` を触ったとき |
