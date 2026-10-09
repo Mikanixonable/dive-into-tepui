@@ -94,7 +94,8 @@ async function pack(format, inputPath, outputPath) {
   if (sourceManifest === null || typeof sourceManifest !== 'object' || Array.isArray(sourceManifest)) {
     throw new Error('fixture manifest must be an object');
   }
-  const { payloadSha256: _oldDigest, ...manifestBase } = sourceManifest;
+  const manifestBase = { ...sourceManifest };
+  delete manifestBase.payloadSha256;
   const data = format.buildPackData(manifestBase, segments);
   const digest = payloadSha256(format.encodeFloat64Payload(data.payload));
   const manifest = { ...data.manifest, payloadSha256: digest };

@@ -1,7 +1,7 @@
 // 実シミュレーションと積分弧は、同じ問い(この物体にどの天体が効くか)へ別々の絞り込みで答える。
 // 探し方が違うのは同時性から来る正当な差だが、答えが食い違ってよい理由はない。この2つの窓が
 // 同じ位置・同じ時刻で一致することを、重力と表面判定の両方について固定する。
-import { lagrangeOf, motionOf, orbitingMotionOf, solarSystemParts, stateOf } from './test-helpers';
+import { lagrangeOf, orbitingMotionOf, solarSystemParts, stateOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/attractor';
