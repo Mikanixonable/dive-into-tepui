@@ -1,10 +1,18 @@
-// 点光源近似の GGX 鏡面。放射照度へ掛ける係数を返す。F0=1 で仮に評価した値で、
+// GGX の鏡面。点光源近似で放射照度へ掛ける係数と、像をぼかす鏡面ローブの幅を返す。係数は F0=1 で仮に評価した値で、
 // フレネル項はマテリアルパス側が掛け直す。
 import {
   D_GGX, F_Schlick, V_GGX_SmithCorrelated, dot, float, normalize, saturate,
 } from 'three/tsl';
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 import type { ShadingSample } from './shading-sample';
+
+// 鏡面ローブの半幅 [rad] の、GGX の α(知覚的粗さの 2 乗)に対する比。
+const LOBE_HALF_WIDTH_PER_ALPHA = 2;
+
+// 面 sample の鏡面ローブの半幅 [rad]。遠くの光の写しも近くの物体の像も、同じ粗さの面ではこの幅でぼかす。
+export function specularLobeHalfWidth(sample: ShadingSample): FloatNode {
+  return sample.roughness.mul(sample.roughness).mul(LOBE_HALF_WIDTH_PER_ALPHA);
+}
 
 // 光源方向 lightDir(view 空間、正規化済み)からの放射照度へ掛ける鏡面の係数。
 export function ggxSpecularFactor(sample: ShadingSample, lightDir: Vec3Node): FloatNode {

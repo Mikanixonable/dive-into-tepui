@@ -5,10 +5,11 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, abs, ceil, clamp, float, floor, ivec2, log2, max, min, mrt, screenSize, screenUV, select, tan, texture,
-  textureLoad, uniform, vec2, vec3, vec4,
+  Fn, If, abs, ceil, clamp, float, floor, ivec2, log2, max, min, mrt, screenCoordinate, screenSize, screenUV, select, tan,
+  texture, textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
+import { specularLobeHalfWidth } from './lighting/ggx';
 import { ShadingSample } from './lighting/shading-sample';
 import { specularReflectanceAt } from './material-pass';
 import { compileInto } from './compile-into';
@@ -17,12 +18,10 @@ import type { ScreenSpaceReflection } from './screen-space/screen-space-reflecti
 import type { GBufferPass } from './gbuffer';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
-// 縮小列の段数。段 0 は共有の描画先そのもので、段 k は描画画素 2^k 個四方を画素 1 つにまとめる。
+// 縮小列の段数。段 0 は共有の描画先そのもので、段 k は描画画素 2^k 個四方を画素 1 つにまとめる。いちばん粗い段の
+// 画素 1 つが 4096 px 四方までの描画バッファ全体を覆い、ローブの円が画面より狭いうちは段が足りずに張り付かない。
 // tools/render-lab-reflection-levels.mjs がこの行を文字列で読む。
-// TODO: 段数は仮置き。映り込みの精細さの段と合わせて、ぼけの届く粗さと費用を実測して決め直す。
-const LEVEL_COUNT = 5;
-// 鏡面ローブの半幅 [rad] の、GGX の α(知覚的粗さの 2 乗)に対する比。
-const LOBE_HALF_WIDTH_PER_ALPHA = 2;
+export const REFLECTION_LEVEL_COUNT = 13;
 // 像の描画先の α は、像の解決が読んだ縮小列の段 + LEVEL_CODE_OFFSET。置換の重みが 0 の画素は 1 を書き、描画先を空へ
 // 戻した 0 は像を書いていないこと。three のマテリアルは出力を 0 で下から切るので、負の値で印を付けられない。
 const LEVEL_CODE_OFFSET = 2;
@@ -54,9 +53,9 @@ function imageTarget(): THREE.RenderTarget {
 const LEVEL_DEPTH = 'reflectionLevelDepth';
 const LEVEL_RADIANCE = 'reflectionLevelRadiance';
 
-// 縮小列の段 1 以降の 1 段の描画先。奥行きのテクスチャは view 空間の奥行き 2 つを 32bit 浮動小数で持ち、読むのは
+// 縮小列の段 1 以降を詰める描画先。奥行きのテクスチャは view 空間の奥行き 2 つを 32bit 浮動小数で持ち、読むのは
 // textureLoad だけ。放射輝度のテクスチャは半精度。
-function levelTarget(): THREE.RenderTarget {
+function atlasTarget(): THREE.RenderTarget {
   const target = new THREE.RenderTarget(1, 1, { count: 2, depthBuffer: false, samples: 0 });
   const [depth, radiance] = target.textures;
   // 添付ごとのフォーマット。名前は levelMaterial の MRT の出力と結び付く。
@@ -71,7 +70,7 @@ function levelTarget(): THREE.RenderTarget {
   return target;
 }
 
-// 全画面で levelTarget へ depth と radiance を書くマテリアル。色の出力を通さずに書く — 負の奥行きが色として 0 へ
+// atlasTarget へ depth と radiance を書くマテリアル。色の出力を通さずに書く — 負の奥行きが色として 0 へ
 // 丸められる。
 function levelMaterial(depth: Vec4Node, radiance: Vec4Node): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial({
@@ -83,10 +82,13 @@ function levelMaterial(depth: Vec4Node, radiance: Vec4Node): THREE.MeshBasicNode
 
 // 縮小列の段 1 以降の 1 段。前の段の 2 × 2 の画素を 1 つにまとめる。まとめた描画画素のうち、いちばん手前の面から
 // ray thickness の奥までに収まる画素を手前の層と呼び、それより奥は段の画素が写す面の奥にある別の物体として除く。
-// target の奥行きのテクスチャは rg が手前の層のいちばん手前といちばん奥の view 空間の奥行き z、放射輝度のテクスチャは
-// rgba が手前の層の放射輝度の和と画素数を、ともにまとめた描画画素の数で割ったもの。
+// 段は atlas の中の矩形 viewport を占め、その奥行きのテクスチャは rg が手前の層のいちばん手前といちばん奥の view 空間の
+// 奥行き z、放射輝度のテクスチャは rgba が手前の層の放射輝度の和と画素数を、ともにまとめた描画画素の数で割ったもの。
+// origin は viewport の左上 [px]。
 interface ReductionLevel {
-  readonly target: THREE.RenderTarget;
+  readonly atlas: THREE.RenderTarget;
+  readonly viewport: THREE.Vector4;
+  readonly origin: Vec2Uniform;
   readonly material: THREE.MeshBasicNodeMaterial;
 }
 
@@ -107,6 +109,11 @@ interface ReducedChild {
 export class ReflectionPass {
   // 縮小列の段 1 以降。段 k は levels[k − 1]。
   private readonly levels: readonly ReductionLevel[];
+  // 段 k は atlases[k % 2] に入り、前の段を読みながら書く描画先が読む描画先と別になる。段ごとに描画先を持つと、像の
+  // 解決が読むテクスチャの数が段数に比例し、WebGPU がフラグメントシェーダに保証する 16 枚を超える。
+  private readonly atlases = [atlasTarget(), atlasTarget()] as const;
+  // atlases の寸法 [px]。毎フレーム確保しないよう持っておく。
+  private readonly atlasSizes = [new THREE.Vector2(), new THREE.Vector2()] as const;
   // rgb は共有の描画先へ足す像 R × w × I、α は像の解決が読んだ縮小列の段の符号(LEVEL_CODE_OFFSET)。
   // 足した後もこのフレームの値を残す。
   private readonly imageTarget = imageTarget();
@@ -135,11 +142,14 @@ export class ReflectionPass {
   ) {
     this.depth = gbuffer.depthTexture;
     const levels: ReductionLevel[] = [];
-    for (let level = 1; level < LEVEL_COUNT; level++) {
+    for (let level = 1; level < REFLECTION_LEVEL_COUNT; level++) {
       const finer = levels[level - 2] ?? null;
+      const origin: Vec2Uniform = uniform(new THREE.Vector2());
       levels.push({
-        target: levelTarget(),
-        material: levelMaterial(this.reducedDepth(finer, level), this.reducedRadiance(finer, level)),
+        atlas: this.atlases[level % 2]!,
+        viewport: new THREE.Vector4(),
+        origin,
+        material: levelMaterial(this.reducedDepth(finer, origin, level), this.reducedRadiance(finer, origin, level)),
       });
     }
     this.levels = levels;
@@ -170,10 +180,11 @@ export class ReflectionPass {
     this.renderedEnabled = this.enabled;
     if (!this.enabled) return;
     this.prepare(camera, width, height);
-    // 縮小列 → 像 → 加算の順に書く。どの段も、自分の描画先を読まない。
-    for (const [material, target] of this.stages()) {
+    // 縮小列 → 像 → 加算の順に書く。どの段も、自分の描画先を読まない。atlas は他の段の矩形を残すので消さない。
+    for (const [material, target, viewport] of this.stages()) {
+      if (viewport !== null) target.viewport.copy(viewport);
       this.renderer.setRenderTarget(target);
-      this.renderer.autoClear = target !== this.sharedTarget;
+      this.renderer.autoClear = target === this.imageTarget;
       this.quad.material = material;
       this.gpu.beginPass(GPU_PASS.reflection);
       this.quad.render(this.renderer);
@@ -195,28 +206,27 @@ export class ReflectionPass {
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで共有する単一の板
   // なので、ここでは解放しない。
   public dispose(): void {
-    for (const level of this.levels) {
-      level.target.dispose();
-      level.material.dispose();
-    }
+    for (const level of this.levels) level.material.dispose();
+    for (const atlas of this.atlases) atlas.dispose();
     this.imageTarget.dispose();
     this.resolveMaterial.dispose();
     this.addMaterial.dispose();
   }
 
-  // 描画命令の列。マテリアルとその描画先の組を、書く順に並べる。
-  private stages(): readonly (readonly [THREE.MeshBasicNodeMaterial, THREE.RenderTarget])[] {
+  // 描画命令の列。マテリアルとその描画先、描画先の中の矩形(null は全体)の組を、書く順に並べる。
+  private stages(): readonly (readonly [THREE.MeshBasicNodeMaterial, THREE.RenderTarget, THREE.Vector4 | null])[] {
     return [
-      ...this.levels.map((level) => [level.material, level.target] as const),
-      [this.resolveMaterial, this.imageTarget],
-      [this.addMaterial, this.sharedTarget],
+      ...this.levels.map((level) => [level.material, level.atlas, level.viewport] as const),
+      [this.resolveMaterial, this.imageTarget, null],
+      [this.addMaterial, this.sharedTarget, null],
     ];
   }
 
-  // 段 level の画素の奥行きのテクスチャの値。finer は 1 つ細かい段で、段 1 では null(描画画素そのもの)。
-  private reducedDepth(finer: ReductionLevel | null, level: number): Vec4Node {
+  // 段 level の画素の奥行きのテクスチャの値。finer は 1 つ細かい段で、段 1 では null(描画画素そのもの)。origin は
+  // 段 level の矩形の左上。
+  private reducedDepth(finer: ReductionLevel | null, origin: Vec2Uniform, level: number): Vec4Node {
     return Fn(() => {
-      const children = this.childrenOf(finer, level);
+      const children = this.childrenOf(finer, origin, level);
       const nearestZ = this.nearestZOf(children).toVar();
       // 手前の層のいちばん奥は、手前の層に収まる子のいちばん奥の最小。
       const slabFarZ = thicknessFarZ(nearestZ).toVar();
@@ -230,9 +240,9 @@ export class ReflectionPass {
 
   // 段 level の画素の放射輝度のテクスチャの値。finer は reducedDepth と同じ。手前の層に丸ごと収まる子だけを足す —
   // 層をまたぐ子の手前側の画素は落ちるが、奥の物体は混ざらない。
-  private reducedRadiance(finer: ReductionLevel | null, level: number): Vec4Node {
+  private reducedRadiance(finer: ReductionLevel | null, origin: Vec2Uniform, level: number): Vec4Node {
     return Fn(() => {
-      const children = this.childrenOf(finer, level);
+      const children = this.childrenOf(finer, origin, level);
       // 同じ段の奥行きのテクスチャと同じ手前の層の範囲を、子から求め直す。
       const slabFarZ = thicknessFarZ(this.nearestZOf(children)).toVar();
       return children.reduce<Vec4Node>(
@@ -251,9 +261,10 @@ export class ReflectionPass {
     );
   }
 
-  // 段 level の描いている画素がまとめる、1 つ細かい段 finer の 2 × 2 の画素。**Fn の中から呼ぶこと。**
-  private childrenOf(finer: ReductionLevel | null, level: number): readonly ReducedChild[] {
-    const base = floor(screenUV.mul(screenSize)).mul(2).toVar();
+  // 段 level の描いている画素がまとめる、1 つ細かい段 finer の 2 × 2 の画素。origin は段 level の矩形の左上。
+  // **Fn の中から呼ぶこと。**
+  private childrenOf(finer: ReductionLevel | null, origin: Vec2Uniform, level: number): readonly ReducedChild[] {
+    const base = floor(screenCoordinate).sub(origin).mul(2).toVar();
     const finerSize = ceil(this.fullSize.div(2 ** (level - 1))).toVar();
     return [vec2(0, 0), vec2(1, 0), vec2(0, 1), vec2(1, 1)].map((offset) => {
       const texel = base.add(offset).toVar();
@@ -286,13 +297,12 @@ export class ReflectionPass {
   // 反射する面から距離 distance [m] の view 空間の点 hit で鏡面ローブが張る円を覆う縮小列の段(小数)。円の直径が
   // 段の画素 1 つに収まる段を選ぶ。
   private levelOf(hit: Vec3Node, distance: FloatNode): FloatNode {
-    const alpha = this.sample.roughness.mul(this.sample.roughness);
-    const radius = distance.mul(tan(alpha.mul(LOBE_HALF_WIDTH_PER_ALPHA)));
+    const radius = distance.mul(tan(specularLobeHalfWidth(this.sample)));
     // 当たった点と、そこから画面の横へ円の半径だけずらした点を画面へ写し、半径を画素で測る。
     const center = this.projection.mul(vec4(hit, 1));
     const edge = this.projection.mul(vec4(hit.add(vec3(radius, 0, 0)), 1));
     const radiusPixels = abs(edge.x.div(edge.w).sub(center.x.div(center.w))).mul(0.5).mul(screenSize.x);
-    return clamp(log2(max(radiusPixels.mul(2), 1)), 0, LEVEL_COUNT - 1);
+    return clamp(log2(max(radiusPixels.mul(2), 1)), 0, REFLECTION_LEVEL_COUNT - 1);
   }
 
   // 縮小列を段 level(小数)で読んだ uv の放射輝度。隣り合う 2 段を段の端数で線形に混ぜる。hitZ は当たった点の
@@ -301,7 +311,7 @@ export class ReflectionPass {
   private radianceAt(uv: Vec2Node, level: FloatNode, hitZ: FloatNode): Vec3Node {
     const farZ = thicknessFarZ(hitZ).toVar();
     const radiance = vec3(0).toVar();
-    for (let index = 0; index < LEVEL_COUNT; index++) {
+    for (let index = 0; index < REFLECTION_LEVEL_COUNT; index++) {
       const share = max(float(1).sub(abs(level.sub(index))), 0).toVar();
       If(share.greaterThan(0), () => {
         const covered = this.bilinearAt(uv, index, farZ);
@@ -343,9 +353,10 @@ export class ReflectionPass {
       const z = viewZOf(textureLoad(this.depth, texel).r, this.projectionInverse).toVar();
       return { radiance: vec4(textureLoad(this.sharedTarget.texture, texel).rgb, 1), nearestZ: z, layerFarZ: z };
     }
-    const [depthTexture, radianceTexture] = level.target.textures;
-    const depth = textureLoad(depthTexture!, texel).toVar();
-    return { radiance: textureLoad(radianceTexture!, texel), nearestZ: depth.r, layerFarZ: depth.g };
+    const [depthTexture, radianceTexture] = level.atlas.textures;
+    const atlasTexel = ivec2(vec2(texel).add(level.origin)).toVar();
+    const depth = textureLoad(depthTexture!, atlasTexel).toVar();
+    return { radiance: textureLoad(radianceTexture!, atlasTexel), nearestZ: depth.r, layerFarZ: depth.g };
   }
 
   // 描画先を描画バッファの寸法へ合わせ、実カメラの行列を書き込む。
@@ -354,13 +365,20 @@ export class ReflectionPass {
     if (this.imageTarget.width !== width || this.imageTarget.height !== height) {
       this.imageTarget.setSize(width, height);
     }
+    // 段を atlas の上端に横へ並べる。atlas の幅は並べた段の幅の和、高さはいちばん細かい段の高さ。
+    for (const size of this.atlasSizes) size.set(0, 0);
     for (const [index, level] of this.levels.entries()) {
       const span = 2 ** (index + 1);
+      const atlasSize = this.atlasSizes[(index + 1) % 2]!;
       const levelWidth = Math.max(1, Math.ceil(width / span));
       const levelHeight = Math.max(1, Math.ceil(height / span));
-      if (level.target.width !== levelWidth || level.target.height !== levelHeight) {
-        level.target.setSize(levelWidth, levelHeight);
-      }
+      level.viewport.set(atlasSize.x, 0, levelWidth, levelHeight);
+      level.origin.value.set(atlasSize.x, 0);
+      atlasSize.set(atlasSize.x + levelWidth, Math.max(atlasSize.y, levelHeight));
+    }
+    for (const [index, atlas] of this.atlases.entries()) {
+      const { x, y } = this.atlasSizes[index]!;
+      if (atlas.width !== x || atlas.height !== y) atlas.setSize(x, y);
     }
     this.fullSize.value.set(width, height);
     this.projection.value.copy(camera.projectionMatrix);

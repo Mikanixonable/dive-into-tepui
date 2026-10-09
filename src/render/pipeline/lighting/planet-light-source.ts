@@ -7,6 +7,7 @@ import {
   Fn, PI, acos, asin, clamp, cos, dot, float, length, max, min, normalize, select, sin, sqrt, uniform, vec3,
 } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
+import { specularLobeHalfWidth } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import { PlanetLightImage } from './planet-light-image';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
@@ -258,8 +259,7 @@ class PlanetLightSlot implements LightSource {
 
   // 鏡面が写しを読むフィルタの角幅 [rad]。GGX のローブ半幅 2α と、光源の円錐の半角 σ の小さい方。
   private specularFilterAngle(sample: ShadingSample, sinSigmaSqr: FloatNode): FloatNode {
-    const ggxAlpha = sample.roughness.mul(sample.roughness);
-    return min(ggxAlpha.mul(2), asin(clamp(sqrt(sinSigmaSqr), 0, 1)));
+    return min(specularLobeHalfWidth(sample), asin(clamp(sqrt(sinSigmaSqr), 0, 1)));
   }
 
   // 写しをローブの峰の向きで読んだ放射輝度。lobe は view 空間のローブの峰、filterAngle はその
