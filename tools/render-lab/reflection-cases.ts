@@ -147,10 +147,8 @@ function reflectionLadder(): LabCase {
       'ladder': { view: {}, graphics: LADDER_GRAPHICS },
       'ladder-no-planet': { view: {}, graphics: NO_PLANET_GRAPHICS },
       'ladder-off': { view: {}, graphics: off },
-      // 地球の像の縁は、トーンマッピングだけを通した鏡面照度で測る。映り込みを切り、置換で弱めない。
-      'ladder-off-specular': { view: {}, graphics: off, debugTarget: 'specular' },
-      // 置換で弱めた遠方の鏡面照度。w のまだらは、ladder-off-specular との差に出る。
-      'ladder-specular': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'specular' },
+      // 地球の像の縁は、トーンマッピングだけを通した遠方の鏡面照度(天体照と環境光)で測る。
+      'ladder-off-specular': { view: {}, graphics: off, debugTarget: 'far-specular' },
       'ladder-roughness': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'roughness' },
       'ladder-weight': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-weight' },
       'ladder-distance': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-distance' },
@@ -159,8 +157,8 @@ function reflectionLadder(): LabCase {
   };
 }
 
-// 対照: 同じ床と地球に、発光球の代わりに同じ場所・大きさ・放射輝度の球光源を置く。縁の幅は天体照を切った鏡面照度で
-// 測る — 球光源の像の手前に地球の像の縁が来ると、粗い帯で縁の幅を読めない。
+// 対照: 同じ床と地球に、発光球の代わりに同じ場所・大きさ・放射輝度の球光源を置く。縁の幅は天体照を切った直接の
+// 鏡面照度で測る — 球光源の像の手前に地球の像の縁が来ると、粗い帯で縁の幅を読めない。
 function reflectionLadderLights(): LabCase {
   // 球光源は発光球と同じ中心・半径・放射輝度。
   const radiance = new THREE.Color(SPHERE_RADIANCE, SPHERE_RADIANCE, SPHERE_RADIANCE);
@@ -176,7 +174,7 @@ function reflectionLadderLights(): LabCase {
     shots: {
       'ladder-lights': { view: {}, graphics: LADDER_GRAPHICS },
       'ladder-lights-no-planet': { view: {}, graphics: NO_PLANET_GRAPHICS },
-      'ladder-lights-no-planet-specular': { view: {}, graphics: NO_PLANET_GRAPHICS, debugTarget: 'specular' },
+      'ladder-lights-no-planet-specular': { view: {}, graphics: NO_PLANET_GRAPHICS, debugTarget: 'direct-specular' },
     },
   };
 }

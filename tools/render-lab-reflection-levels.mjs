@@ -1,5 +1,5 @@
 // 映り込みのぼけ方の表。render-lab:shot が撮った組の dir から、粗さの段のケース(tools/render-lab/reflection-cases.ts)の
-// 撮影を読み、2つの表を出す。読むのは PNG だけで、ブラウザは開かない。
+// 撮影を読み、3つの表を出す。読むのは PNG だけで、ブラウザは開かない。
 //
 // 使い方: node tools/render-lab-reflection-levels.mjs <shots-dir>。dir は相対ならリポジトリ根から。
 //
@@ -11,9 +11,10 @@
 //    球の縁は手前側(画面の下側)で測る — 奥側は帯の奥の端が近く、ぼけた縁が帯からはみ出す。
 // 2. 像の明るさ: 帯の画素の、発光球の像(ladder-reflection)の明るさの最大と和を、対照の像
 //    (ladder-lights-no-planet-specular)のそれと比べる。ぼかしで明るさが失われていないかを読む。明るさの頂の行を
-//    球の中心の鏡像の行と並べ、像が粗さとともに対照と同じ向きへずれるかを読む。
-// 3. まだらの量: 帯の画素の明るさと、そのまわり 5×5 の平均との差の平均。発光球の像と、置換で弱めた遠方の鏡面照度
-//    (ladder-specular)で測り、映り込みを切った鏡面照度(ladder-off-specular)と並べる。
+//    球の中心の鏡像の行と並べ、像が粗さとともに対照と同じ向きへずれるかを読む。発光球の像(w·I)も対照(鏡面照度)も
+//    反射率 R を掛ける前の値なので、比は R によらない。
+// 3. まだらの量: 帯の画素の値と、そのまわり 5×5 の平均との差の平均。発光球の像と、置換の重み w(ladder-weight)で
+//    測る。
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { decodePng } from './png.mjs';
@@ -305,12 +306,12 @@ function brightnessTable(bands, sphereShot, lightShot) {
   return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
 }
 
-// 撮影 shot の帯ごとの、まだらの量 — 帯の画素の明るさと、そのまわり 5×5 の同じ帯の画素の平均との差の平均。帯の
-// 画素の明るさの平均も返す。
-function bandMottle(bands, shot) {
+// 撮影 shot の帯ごとの、まだらの量 — 帯の画素の値と、そのまわり 5×5 の同じ帯の画素の平均との差の平均。帯の
+// 画素の値の平均も返す。画素の値は、画素の符号 [r, g, b] から valueOf で読む。
+function bandMottle(bands, shot, valueOf) {
   const { width, height } = shot;
   const luminance = new Float64Array(width * height);
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) luminance[y * width + x] = tonemappedLuminance(shot.at(x, y));
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) luminance[y * width + x] = valueOf(shot.at(x, y));
   const rows = ROUGHNESSES.map(() => ({ difference: 0, value: 0, count: 0 }));
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -338,24 +339,19 @@ function bandMottle(bands, shot) {
   }));
 }
 
-// 表 3: 帯ごとのまだらの量。発光球の像(ladder-reflection)と、置換で弱めた遠方の鏡面照度(ladder-specular)を、
-// 映り込みを切った鏡面照度(ladder-off-specular — 地球の像の模様だけを持つ)と並べる。比は帯の画素の明るさの平均に
-// 対する割合。
-function mottleTable(bands, sphereShot, specularShot, offSpecularShot) {
-  const sphere = bandMottle(bands, sphereShot);
-  const specular = bandMottle(bands, specularShot);
-  const offSpecular = bandMottle(bands, offSpecularShot);
+// 表 3: 帯ごとのまだらの量。発光球の像(ladder-reflection)はトーンマッピングを戻した輝度で、置換の重み
+// (ladder-weight)はトーンマッピングを通さずに出る w で測る。比は帯の画素の値の平均に対する割合。
+function mottleTable(bands, sphereShot, weightShot) {
+  const sphere = bandMottle(bands, sphereShot, tonemappedLuminance);
+  const weight = bandMottle(bands, weightShot, (code) => srgbToLinear(code[0] / 255));
   const format = (v) => v.toExponential(2);
   const relative = ({ mottle, mean }) => (mean <= 0 ? '-' : (mottle / mean).toFixed(3));
-  const header = [
-    '帯', '粗さ', '球 まだら', '球 まだら / 平均', '鏡面照度 まだら', '鏡面照度 まだら / 平均', 'オフ まだら', 'オフ まだら / 平均',
-  ];
+  const header = ['帯', '粗さ', '球 まだら', '球 まだら / 平均', 'w まだら', 'w まだら / 平均'];
   const lines = [header, header.map(() => '---')];
   for (const [index, roughness] of ROUGHNESSES.entries()) {
     lines.push([
       index, roughness, format(sphere[index].mottle), relative(sphere[index]),
-      format(specular[index].mottle), relative(specular[index]),
-      format(offSpecular[index].mottle), relative(offSpecular[index]),
+      format(weight[index].mottle), relative(weight[index]),
     ]);
   }
   return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
@@ -372,9 +368,8 @@ function main() {
   console.log(edgeTable(bands, sphereShot, lightShot, readShot(dir, 'ladder-off-specular')));
   console.log('\n像の明るさ(トーンマッピングを戻した輝度)\n');
   console.log(brightnessTable(bands, sphereShot, lightShot));
-  console.log('\nまだらの量(トーンマッピングを戻した輝度)\n');
-  console.log(mottleTable(
-    bands, sphereShot, readShot(dir, 'ladder-specular'), readShot(dir, 'ladder-off-specular')));
+  console.log('\nまだらの量\n');
+  console.log(mottleTable(bands, sphereShot, readShot(dir, 'ladder-weight')));
 }
 
 main();

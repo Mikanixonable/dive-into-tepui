@@ -150,7 +150,6 @@ function materials(): LabCase {
       'leo-metal-reflection-depth': {
         view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-depth',
       },
-      'leo-metal-reflection-hit': { view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-hit' },
       'leo-metal-reflection-distance': {
         view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-distance',
       },

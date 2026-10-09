@@ -13,10 +13,10 @@ export const GPU_PASS = {
   bounceSource: 6,
   nearbyDiffuseScan: 7,
   nearbyDiffuseReconstruct: 8,
-  reflectionTrace: 9,
-  lighting: 10,
-  material: 11,
-  reflection: 12,
+  lighting: 9,
+  material: 10,
+  reflection: 11,
+  shadingComposite: 12,
   atmosphere: 13,
   cloudAtmosphere: 14,
   world: 15,
@@ -35,8 +35,8 @@ export interface GpuTimingSink {
 // 表示名。並びは GPU_PASS の値の順。
 export const GPU_PASS_LABELS: readonly string[] = [
   '雲の生成', '影マップ', 'Gバッファ', '表面雲', '影', '雲影',
-  '照り返し源', '近傍拡散走査', '近傍拡散復元', '映り込みの追跡', 'ライティング',
-  'マテリアル', '映り込み', '大気', '大気(雲あり)', 'ワールド', 'レンズ', '合成',
+  '照り返し源', '近傍拡散走査', '近傍拡散復元', 'ライティング',
+  'マテリアル', '映り込み', '陰影の合成', '大気', '大気(雲あり)', 'ワールド', 'レンズ', '合成',
   '3D UI', 'アンチエイリアス',
 ];
 
