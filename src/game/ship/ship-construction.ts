@@ -9,6 +9,7 @@ import {
 import { constructionCandidate, hitsConstructionCandidate, type ConstructionCandidate } from './ship-construction-candidates';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { ShipConstructionEdits } from './ship-construction-edits';
+import { hiddenShipConstructionModel } from './ship-construction-types';
 import { CommandCompletion } from '../command-completion';
 import type * as THREE from 'three/webgpu';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -127,7 +128,7 @@ export class ShipConstruction implements OverlayHandle {
     this.current = null;
     this.overlayManager.close('ship-construction-mode');
     this.displayWindow.setForceCurrent(this.previousForceCurrent);
-    this.panel.sync(hiddenModel());
+    this.panel.sync(hiddenShipConstructionModel());
     this.ghost.sync(null);
     this.guide.syncAll([]);
   }
@@ -408,13 +409,3 @@ function previewFor(
   };
 }
 
-// モードを閉じた直後もUIが保持する selection/DOM callback を安全な空状態へ戻す。
-function hiddenModel(): ShipConstructionPanelModel {
-  return {
-    visible: false, shipName: '—', dockLabel: '—', moduleCount: 0, totalMass: 0, hp: 0, maxHp: 0,
-    capabilities: { thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0 }, preview: null,
-    role: 'material', warning: null, selectedDefinitionId: 'cockpit-standard',
-    selectedModuleName: 'コックピット', selectedSlotId: 'axial', slots: [],
-    canPlace: false, canRemove: false, canFinish: false,
-  };
-}
