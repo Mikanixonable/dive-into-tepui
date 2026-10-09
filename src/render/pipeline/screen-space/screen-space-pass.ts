@@ -54,6 +54,7 @@ export interface ScanTier {
 // (FacingStrengths の欄)。
 export interface BandFactors {
   readonly bounceScale?: number;
+  readonly senderFacingExponent?: number;
   readonly bounce?: {
     readonly senderFacing?: number;
     readonly receiverFacing?: number;
@@ -131,6 +132,7 @@ export class ScreenSpacePass {
     senderFacing: uniform(0), receiverFacing: uniform(0),
   };
   private readonly occlusionStrengths = { receiverFacing: uniform(0) };
+  private readonly senderFacingExponent: FloatUniform = uniform(1);
   // 走査のずれをホワイトノイズから引くパスの番号(setWhiteNoisePass)。負ならブルーノイズから引く。
   private readonly whiteNoisePass = uniform(-1, 'int');
   // 走査の全体の回転と、歩み・丸めのブルーノイズ、拡大のブルーノイズを変える seed [タイルの幅]。
@@ -415,7 +417,7 @@ export class ScreenSpacePass {
         this.surfaces, this.fullSize, this.projection, this.projectionInverse, this.sliceCount, this.stepCount, noise,
         this.ambient.irradiance(this.sample), planets, radiance,
         {
-          count,
+          count, senderFacingExponent: this.senderFacingExponent,
           bounceScale: this.bounceBandScale, bounce: this.bounceStrengths,
           occlusionScale: this.bandScale, occlusion: this.occlusionStrengths,
         },
@@ -523,6 +525,7 @@ export class ScreenSpacePass {
     this.bounceBandScale.value = factors?.bounceScale ?? tier.bandScale;
     this.bounceStrengths.senderFacing.value = factors?.bounce?.senderFacing ?? 0;
     this.bounceStrengths.receiverFacing.value = factors?.bounce?.receiverFacing ?? 0;
+    this.senderFacingExponent.value = factors?.senderFacingExponent ?? 1;
     this.occlusionStrengths.receiverFacing.value = factors?.occlusion?.receiverFacing ?? 0;
     const scanWidth = Math.max(1, Math.ceil(width * tier.scale));
     const scanHeight = Math.max(1, Math.ceil(height * tier.scale));

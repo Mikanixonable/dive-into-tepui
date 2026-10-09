@@ -18,7 +18,8 @@ const STRENGTH_KEYS = {
 };
 const SIDES = [['bounce', '照り返し'], ['occlusion', '遮蔽']];
 
-// "kb=0.6,b.b=1,o.b=1" のような書式から因子の組を作る。書かなかった強さは 0(因子なし)、kb(κ_b)は bandScale(κ_o)。
+// "kb=0.6,b.b=1,o.b=1,pa=0.5" のような書式から因子の組を作る。書かなかった強さは 0(因子なし)、kb(κ_b)は bandScale(κ_o)、
+// pa(a の冪 p。照り返しだけ)は書かなければ欄ごと無し(1)。
 export function parseFactors(text, bandScale) {
   const factors = { bounceScale: bandScale,
     bounce: { senderFacing: 0, receiverFacing: 0 },
@@ -28,10 +29,11 @@ export function parseFactors(text, bandScale) {
     const value = Number(valueText);
     if (valueText === undefined || valueText === '' || !Number.isFinite(value) || value < 0) throw new Error(`--factors: invalid entry "${pair}"`);
     if (key === 'kb') factors.bounceScale = value;
+    else if (key === 'pa') factors.senderFacingExponent = value;
     else if (STRENGTH_KEYS[key] !== undefined) {
       const [side, name] = STRENGTH_KEYS[key];
       factors[side][name] = value;
-    } else throw new Error(`--factors: unknown key "${key}" (kb, ${Object.keys(STRENGTH_KEYS).join(', ')}; c and d are fixed in the scan)`);
+    } else throw new Error(`--factors: unknown key "${key}" (kb, pa, ${Object.keys(STRENGTH_KEYS).join(', ')}; c and d are fixed in the scan)`);
   }
   return factors;
 }
@@ -44,6 +46,22 @@ function multiplierText(s, cosine) {
   if (s === 1) return cosine;
   if (s === 0.5) return `(1+${cosine})/2`;
   return `(${numberText(1 - s)}+${numberText(s)}${cosine})`;
+}
+
+// 掛ける因子 a = (1 − s) + s·(cos θ)^p。p = 1・s < 1 はオフセット o = (1 − s)/s の形 (cos θ + o)/(1 + o)。
+// o は 1/2・3/4・1 なら分数(1 は (1+cos θ)/2)、それ以外は小数 3 桁。s = 1・p ≠ 1 は冪の形。
+function senderFacingText(s, p) {
+  if (!(s > 0)) return null;
+  const cosine = 'cos θ';
+  if (p === 1) {
+    if (s === 1) return cosine;
+    const o = (1 - s) / s;
+    const fraction = [[0.5, '1/2', '(3/2)'], [0.75, '3/4', '(7/4)'], [1, null, null]].find(([value]) => Math.abs(o - value) < 1e-3);
+    if (fraction === undefined) return `(${cosine}+${numberText(o)})/${numberText(1 + o)}`;
+    return fraction[1] === null ? `(1+${cosine})/2` : `(${cosine}+${fraction[1]})/${fraction[2]}`;
+  }
+  const power = p === 0.5 ? '√cos θ' : `(${cosine})^${numberText(p)}`;
+  return s === 1 ? power : `(${numberText(1 - s)}+${numberText(s)}${power})`;
 }
 
 // 割る因子(b・d)。s = 1 は cos、s = 1/2 は √、それ以外は cos^s。0 は因子なし。
@@ -80,7 +98,7 @@ export function factorsLabelOf(tier, fixedFactors = undefined) {
     const kappa = side === 'bounce' ? factors?.bounceScale ?? tier.bandScale : tier.bandScale;
     const strengths = factors?.[side] ?? {};
     const fixedExponent = fixedReceiverViewExponentOf(side, fixedFactors);
-    const multipliers = [multiplierText(strengths.senderFacing, 'cos θ'),
+    const multipliers = [senderFacingText(strengths.senderFacing, factors?.senderFacingExponent ?? 1),
       fixedExponent > 0 ? cosEpsilonText(fixedExponent)
         : multiplierText(strengths.receiverView, cosEpsilonText(factors?.receiverViewExponent ?? 1))]
       .filter((text) => text !== null);

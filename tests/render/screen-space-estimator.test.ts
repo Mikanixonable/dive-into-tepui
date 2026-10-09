@@ -546,6 +546,25 @@ export function register(): void {
     near(weights.reduce((sum, weight, band) => sum + weight * band, 0), Math.log2(0.75 * rho) - 1, 1e-12, '重みの平均');
   });
 
+  test('screen space estimator: 掛ける因子 a の冪 p と強さ s は距離・c・d の式どおりに帯の座標を動かし、cos θ = 0 でも有限', () => {
+    const rho = 40;
+    const base = Math.log2(0.75 * rho);
+    const meanBandOf = (weights: FloatNode[]): number => {
+      const values = weights.map(valueOf);
+      assert.ok(values.every((weight) => Number.isFinite(weight) && weight >= 0));
+      near(values.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
+      return values.reduce((sum, weight, band) => sum + weight * band, 0);
+    };
+    // [s, p, cos θ, 期待する座標]。座標 = log₂(κρ) + log₂((1 − s) + s·(cos θ)^p)。
+    for (const [s, p, cosine, expected] of [[1, 0.5, 0.25, base - 1], [2 / 3, 1, 0, base - Math.log2(3)]] as const) {
+      const bands: BandSplit = {
+        ...bandsWith(8, 0.75, 0), senderFacingExponent: float(p),
+        bounce: { senderFacing: float(s), receiverFacing: float(0) },
+      };
+      near(meanBandOf(bounceWeights(bands, float(rho), float(1), { ...facingOf(1), senderFacing: float(cosine) })), expected, 1e-5, `s = ${s}, p = ${p}, cos θ = ${cosine}`);
+    }
+  });
+
   test('screen space estimator: 受け手と視線の内積 c は照り返しにも遮蔽にも固定で掛かり、cos ε = 0 は帯 0 へ頭打ちで有限', () => {
     const rho = 40;
     const bands = bandsWith(6, 0.75, 0);
