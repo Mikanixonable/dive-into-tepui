@@ -195,6 +195,8 @@ function reflectionLadder(): LabCase {
     shots: {
       'ladder': { view: {}, graphics: LADDER_GRAPHICS },
       'ladder-no-planet': { view: {}, graphics: NO_PLANET_GRAPHICS },
+      // 均さない映り込み。像は粗い帯ほど点描になり、広がりと明るさの総量は均したものと同じ。
+      'ladder-no-planet-raw': { view: {}, graphics: { ...NO_PLANET_GRAPHICS, screenSpaceSpecularDenoise: false } },
       'ladder-off': { view: {}, graphics: off },
       // 地球の像の縁は、トーンマッピングだけを通した遠方の鏡面照度(天体照と環境光)で測る。
       'ladder-off-specular': { view: {}, graphics: off, debugTarget: 'far-specular' },
@@ -203,6 +205,8 @@ function reflectionLadder(): LabCase {
       'ladder-weight': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'denoised-reflection-weight' },
       'ladder-distance': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'denoised-reflection-distance' },
       'ladder-reflection': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'denoised-reflection' },
+      // 均す前の像。均した像と同じ物差しで読み、均しが像の明るさの総量を変えないことを確かめる。
+      'ladder-reflection-raw': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'raw-reflection' },
       'ladder-level': { view: {}, graphics: LADDER_GRAPHICS, debugTarget: 'reflection-denoise-level' },
     },
   };

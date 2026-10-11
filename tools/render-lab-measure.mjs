@@ -49,9 +49,9 @@ const AXES = {
     ratioRows: ['照り返し源', '近傍拡散走査', '近傍拡散復元'],
     ratioLabel: '近傍拡散合計',
   },
-  // 値は src/render/graphics-settings.ts の screenSpaceSpecular / screenSpaceSpecularQuality の選択肢。構図は映り込みの
-  // 出る金属面 — 材質の格子の既定の向き(leo-metal)と、荷室の金属の板(bay-metal。tools/render-lab/bay-cases.ts の
-  // METAL_VIEW)。
+  // 値は src/render/graphics-settings.ts の screenSpaceSpecular / screenSpaceSpecularQuality / screenSpaceSpecularDenoise の
+  // 選択肢。構図は映り込みの出る金属面 — 材質の格子の既定の向き(leo-metal)と、荷室の金属の板(bay-metal。
+  // tools/render-lab/bay-cases.ts の METAL_VIEW)。
   reflection: {
     statistic: 'p50',
     framings: [
@@ -67,9 +67,22 @@ const AXES = {
     ],
     variants: [
       { label: 'オフ', graphics: { screenSpaceSpecular: false } },
-      { label: '低', graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 0 } },
-      { label: '中', graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 1 } },
-      { label: '高', graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 2 } },
+      {
+        label: '低',
+        graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 0, screenSpaceSpecularDenoise: true },
+      },
+      {
+        label: '中',
+        graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 1, screenSpaceSpecularDenoise: true },
+      },
+      {
+        label: '高',
+        graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 2, screenSpaceSpecularDenoise: true },
+      },
+      {
+        label: '中・ぼかしオフ',
+        graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 1, screenSpaceSpecularDenoise: false },
+      },
     ],
     rows: ['ライティング', 'マテリアル', '映り込み', '映り込みの均し', '陰影の合成'],
     ratioRows: ['映り込み', '映り込みの均し', '陰影の合成'],

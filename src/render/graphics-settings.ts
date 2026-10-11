@@ -220,6 +220,11 @@ export const GRAPHICS_OPTIONS = {
       high: SCREEN_SPACE_SPECULAR_QUALITY.medium,
     },
   },
+  // 近くの物体の映り込みを粗さに応じて均すか。オフでは粗い面の映り込みが画素ごとの点描のまま見える。
+  screenSpaceSpecularDenoise: {
+    kind: 'toggle', group: 'light', label: '近くの物体の映り込みのぼかし',
+    presets: { low: false, medium: false, high: true },
+  },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
