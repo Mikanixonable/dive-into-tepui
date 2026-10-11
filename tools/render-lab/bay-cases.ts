@@ -390,6 +390,7 @@ function bay(): LabCase {
       },
       // 映り込みのちらつき。粗さ 0.4 の板と薬莢の点描の揺れ。
       ...flickerShots('bay-metal', METAL_VIEW),
+      ...flickerShots('bay-metal-raw', METAL_VIEW, { screenSpaceSpecularDenoise: false }),
     },
   };
 }

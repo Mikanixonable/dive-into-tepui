@@ -182,11 +182,11 @@ export class RenderPipeline {
     this.reflection = new ScreenSpaceReflection();
     this.reflectionPass = new ReflectionPass(
       renderer, this.gbuffer, this.materialPass.reflectionSourceTexture, this.reflection, gpu,
-      graphics.screenSpaceSpecular, graphics.screenSpaceSpecularQuality,
+      graphics.screenSpaceSpecular, graphics.screenSpaceSpecularQuality, graphics.screenSpaceSpecularDenoise,
     );
     this.shadingCompositePass = new ShadingCompositePass(
       renderer, this.gbuffer, this.materialPass.keepTexture, this.lightPrepass.farSpecularTexture, this.reflection,
-      this.target, gpu,
+      this.target, gpu, graphics.screenSpaceSpecularDenoise,
     );
     this.atmospherePass = new AtmospherePass(
       renderer, this.gbuffer, this.target, this._sunLight, this._bodyShadow, gpu,
@@ -436,6 +436,9 @@ export class RenderPipeline {
     this.screenSpacePass.setQuality(graphics.screenSpaceQuality);
     this.reflectionPass.setEnabled(graphics.screenSpaceSpecular);
     this.reflectionPass.setQuality(graphics.screenSpaceSpecularQuality);
+    // 均した映り込みを書く段と、それを読む合成は一緒に切り替える。
+    this.reflectionPass.setDenoised(graphics.screenSpaceSpecularDenoise);
+    this.shadingCompositePass.setDenoised(graphics.screenSpaceSpecularDenoise);
     this.correctionSource.setEnabled(graphics.screenSpaceDiffuse !== SCREEN_SPACE_DIFFUSE.off);
     this.shadowMaps.setQuality(
       graphics.meshShadow,

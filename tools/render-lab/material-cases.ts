@@ -166,6 +166,8 @@ function materials(): LabCase {
       },
       // 映り込みのちらつき。2 列目の球に映る、隣の鏡面の球の太陽のハイライトの明滅。
       ...flickerShots('leo-metal', NEIGHBOR_HIGHLIGHT_SUN),
+      // 映り込みを均さないときのちらつき。ハイライトは画素ごとの点描のまま明滅する。
+      ...flickerShots('leo-metal-raw', NEIGHBOR_HIGHLIGHT_SUN, { screenSpaceSpecularDenoise: false }),
       'leo-metal-terminator': { view: TERMINATOR_SUN },
       // 金属のハイライト。左上の球に、球光源では太陽の円盤が幅十数 px の像として映り、点光源の GGX では
       // 粗さぶんの数 px の点に潰れる。

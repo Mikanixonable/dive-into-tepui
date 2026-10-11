@@ -73,13 +73,16 @@ const FLICKER_GRAPHICS: Partial<GraphicsSettingsData> = { screenSpaceSpecular: t
 
 // 観察の向き view の映り込みを、乱数のタイルを読む位置だけ変えて FLICKER_SHOT_COUNT 枚撮る撮影。鍵は
 // `${name}-flicker-${k}` で、k 番目はタイルを (17k, 29k) px(タイルの幅で剰余)ずらす — 画面が動いて画素の引く
-// 乱数が入れ替わるのと同じ揺れを、幾何を止めたまま撮り、撮影どうしの差で映り込みのちらつきを読む。
-export function flickerShots(name: string, view: Partial<LabViewAngles>): Record<string, LabShot> {
+// 乱数が入れ替わるのと同じ揺れを、幾何を止めたまま撮り、撮影どうしの差で映り込みのちらつきを読む。graphics は
+// ちらつきの撮影の描画設定へさらに重ねる差分。
+export function flickerShots(
+  name: string, view: Partial<LabViewAngles>, graphics: Partial<GraphicsSettingsData> = {},
+): Record<string, LabShot> {
   return Object.fromEntries(Array.from({ length: FLICKER_SHOT_COUNT }, (_, k) => [
     `${name}-flicker-${k}`,
     {
       view,
-      graphics: FLICKER_GRAPHICS,
+      graphics: { ...FLICKER_GRAPHICS, ...graphics },
       reflectionNoiseOffset: [(17 * k) % BLUE_NOISE_TILE_SIZE, (29 * k) % BLUE_NOISE_TILE_SIZE],
     },
   ]));

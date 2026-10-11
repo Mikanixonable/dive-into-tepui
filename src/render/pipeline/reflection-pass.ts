@@ -1,7 +1,7 @@
 // 映り込みのパス。G バッファの深度を追跡の解像度へ縮小し、滑らかな面の画素ごとに反射の向きの ray をその上で
 // 進めて、当たった点の像をマテリアルパスの像の元から読み、置換の重みと一緒に映り込みの描画先
-// (ScreenSpaceReflection)の均す前の側へ書き、それを粗さに応じて均した値を均した側へ書く。描画設定のオン / オフと
-// 精細さを受け、オフのフレームは描画命令を出さない。
+// (ScreenSpaceReflection)の均す前の側へ書き、それを粗さに応じて均した値を均した側へ書く。描画設定のオン / オフ・
+// 精細さ・均しのオン / オフを受け、切った段は描画命令を出さず、その描画先を空にしておく。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
@@ -79,17 +79,19 @@ export class ReflectionPass {
   private readonly blueNoise = new BlueNoise(this.noiseOffset);
   // GGX のアルベドを引く係数表。
   private readonly ltcTables = createLtcTables();
-  // 直前に render したときのオン / オフ。null はまだ render していないこと。
+  // 直前に render したときのオン / オフと、そのフレームで均したか。null はまだ render していないこと。
   private renderedEnabled: boolean | null = null;
+  private renderedDenoised: boolean | null = null;
   // 空へ戻すときに退避する消去色。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
   // reflectionSource は当たった点の像を読む像の元(放射輝度、描画バッファの解像度)。output は映り込みの描画先。
-  // enabled / quality は構築時点の描画設定 screenSpaceSpecular / screenSpaceSpecularQuality の値。
+  // enabled / quality / denoised は構築時点の描画設定 screenSpaceSpecular / screenSpaceSpecularQuality /
+  // screenSpaceSpecularDenoise の値。
   public constructor(
     private readonly renderer: WebGPURenderer, gbuffer: GBufferPass, reflectionSource: THREE.Texture,
     private readonly output: ScreenSpaceReflection, private readonly gpu: GpuTimings,
-    private enabled: boolean, private quality: ScreenSpaceSpecularQuality,
+    private enabled: boolean, private quality: ScreenSpaceSpecularQuality, private denoised: boolean,
   ) {
     this.depthTarget.texture.name = 'reflectionDepth';
     this.depth = gbuffer.depthTexture;
@@ -117,6 +119,11 @@ export class ReflectionPass {
     this.quality = quality;
   }
 
+  // 次の render から、均した映り込みを書くか(denoised が偽なら、均した描画先は空のまま)。
+  public setDenoised(denoised: boolean): void {
+    this.denoised = denoised;
+  }
+
   // 次の render から、ray の向きと開始点のずらしを引く blue noise のタイルを (x, y) [px](整数)ずらして読む。
   // 既定は (0, 0)。
   public setNoiseOffset(x: number, y: number): void {
@@ -126,8 +133,15 @@ export class ReflectionPass {
   // 1 フレームぶんを描く。マテリアルパスの後に、G バッファと同じ寸法 width × height で呼ぶ。camera は深度から
   // 位置を復元する行列を引き直すためだけに使う。
   public render(camera: THREE.Camera, width: number, height: number): void {
-    if (this.enabled !== this.renderedEnabled && !this.enabled) this.clearOutputs();
+    // 切ったばかりの段の描画先を空へ戻す。
+    const denoising = this.enabled && this.denoised;
+    if (this.enabled !== this.renderedEnabled && !this.enabled) {
+      this.clear([this.depthTarget, this.output.rawTarget, this.output.denoisedTarget]);
+    } else if (denoising !== this.renderedDenoised && !denoising) {
+      this.clear([this.output.denoisedTarget]);
+    }
     this.renderedEnabled = this.enabled;
+    this.renderedDenoised = denoising;
     if (!this.enabled) return;
     this.prepare(camera, width, height);
     // 深度の縮小 → 追跡と像 → 均しの順に書く。
@@ -137,11 +151,11 @@ export class ReflectionPass {
       this.gpu.beginPass(GPU_PASS.reflection);
       this.quad.render(this.renderer);
     }
-    this.denoise.render(camera, width, height);
+    if (denoising) this.denoise.render(camera, width, height);
     this.renderer.setRenderTarget(null);
   }
 
-  // オンなら全段のマテリアルを、それぞれの描画先へ事前コンパイルする。
+  // オンなら描く段のマテリアルを、それぞれの描画先へ事前コンパイルする。
   public async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
     if (!this.enabled) return;
     this.prepare(camera, width, height);
@@ -149,7 +163,7 @@ export class ReflectionPass {
       this.quad.material = material;
       await compileInto(this.renderer, target, this.quad, this.quad.camera);
     }
-    await this.denoise.compile(camera, width, height);
+    if (this.denoised) await this.denoise.compile(camera, width, height);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで共有する単一の板
@@ -271,14 +285,14 @@ export class ReflectionPass {
     this.sample.sync(camera);
   }
 
-  // 縮小した深度と、均す前と均した映り込みを空へ戻す。映り込みの w が 0 になるので、遠方の鏡面光は厳密にそのまま
-  // 残る。残すと、切る直前の映り込みが凍ったまま遠方の鏡面光を置き換え続ける。
-  private clearOutputs(): void {
+  // 描画先 targets を空へ戻す。映り込みの w が 0 になるので、遠方の鏡面光は厳密にそのまま残る。残すと、切る直前の
+  // 映り込みが凍ったまま遠方の鏡面光を置き換え続ける。
+  private clear(targets: readonly THREE.RenderTarget[]): void {
     // 消去色はレンダラーを共有する他のパスのものなので、退避して黒の透明で消し、戻す。
     const savedClearAlpha = this.renderer.getClearAlpha();
     this.renderer.getClearColor(this.savedClearColor);
     this.renderer.setClearColor(0x000000, 0);
-    for (const target of [this.depthTarget, this.output.rawTarget, this.output.denoisedTarget]) {
+    for (const target of targets) {
       this.renderer.setRenderTarget(target);
       this.renderer.clear(true, false, false);
     }
