@@ -15,7 +15,7 @@ import type { Albedo } from '../../celestial-albedo';
 import type { GpuTimingSink } from '../../gpu-timings';
 import type { PlanetLightAppearance, PlanetLightSubject } from './planet-light-subject';
 import type {
-  BoolUniform, ColorUniform, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform,
+  BoolNode, BoolUniform, ColorUniform, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform,
 } from '../../tsl-types';
 import type { CloudSpecies } from '../cloud-atmosphere-renderer';
 import type { BodyShadow } from '../shadow/body-shadow';
@@ -197,8 +197,11 @@ class PlanetLightSlot implements LightSource {
     };
   }
 
+  // このスロットの天体の放射輝度が、円盤の上で写しによって変わるか。光源モデルがテクスチャで、写しがある。
+  public imageLit(): BoolNode { return this.textured.and(this.imaged); }
+
   // 受け手 sample から見て direction(view 空間)の向きの放射輝度を、拡散が使う放射輝度 L̄ で割った相対値
-  // (成分ごと)。filterAngle [rad] は写しを読むフィルタの角幅。写しから読むときだけ読み、それ以外は厳密に vec3(1)。
+  // (成分ごと)。filterAngle [rad] は写しを読むフィルタの角幅。**imageLit が真のときだけ呼ぶこと** — 写しを読む。
   public relativeRadianceAt(sample: ShadingSample, direction: Vec3Node, filterAngle: FloatNode): Vec3Node {
     const center = sample.viewPositionOf(this.slot.center);
     const toCenter = center.sub(sample.position);
@@ -207,7 +210,7 @@ class PlanetLightSlot implements LightSource {
     const sphereRadiance = this.uniformSphereRadiance(sample, center, lightDir, sinSigmaSqr);
     const mean = this.diffuseRadiance(sample, lightDir, sinSigmaSqr, sphereRadiance);
     const sampled = this.image.radianceAt(sample.worldPosition, sample.worldDirectionOf(direction), filterAngle);
-    return select(this.textured.and(this.imaged), sampled.div(max(mean, MIN_MEAN_RADIANCE)), vec3(1));
+    return sampled.div(max(mean, MIN_MEAN_RADIANCE));
   }
 
   // 受け手 sample へこのスロットの天体が届ける拡散照度。contribution の拡散と同じ値。
@@ -336,6 +339,9 @@ export class PlanetLightSource {
   public diffuseIrradianceAtSlot(sample: ShadingSample, slot: number): Vec3Node {
     return this.slotSources[slot]!.diffuseIrradianceAt(sample);
   }
+
+  // スロット slot の天体の放射輝度が、円盤の上で写しによって変わるか(変わるときだけ relativeRadianceAt を呼ぶ)。
+  public imageLitAt(slot: number): BoolNode { return this.slotSources[slot]!.imageLit(); }
 
   // 受け手 sample から見たスロット slot の天体の、direction(view 空間)の向きの相対放射輝度。
   public relativeRadianceAt(

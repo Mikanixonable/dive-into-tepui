@@ -389,6 +389,7 @@ export class ScreenSpacePass {
     const planets: readonly PlanetIllumination[] = Array.from({ length: MAX_PLANET_LIGHT_SLOTS }, (_, slot) => ({
       cap: this.planetLight.capAt(this.sample, slot),
       irradiance: this.planetLight.diffuseIrradianceAtSlot(this.sample, slot),
+      imageLit: this.planetLight.imageLitAt(slot),
       relativeRadiance: (direction, filterAngle) =>
         this.planetLight.relativeRadianceAt(this.sample, slot, direction, filterAngle),
     }));
