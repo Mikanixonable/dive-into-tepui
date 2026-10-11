@@ -21,11 +21,12 @@ export function specularReflectanceAt(gbuffer: GBufferPass, uv: Vec2Node): Vec3N
 }
 
 // 映り込みの像の元 M0 の方式(仮)。いずれも放射輝度。
-//   specular — keep + R × 遠方の鏡面照度。面がカメラへ向けて見せる鏡面をそのまま含む。
-//   lambert  — 面を反射率 ρ = 拡散色 + R のランバート面とみなした ρ / π × 拡散照度 + 自己発光。
+//   specular          — keep + R × 遠方の鏡面照度。面がカメラへ向けて見せる鏡面をそのまま含む。
+//   lambert           — 面を反射率 ρ = 拡散色 + R のランバート面とみなした ρ / π × 拡散照度 + 自己発光。
+//   lambert-roughness — lambert の R を知覚的粗さ r で弱めた ρ = 拡散色 + r × R。
 // TODO: 方式を見比べ終えたら1つに確定し、この切り替えを外す。
-export type ReflectionSource = 'specular' | 'lambert';
-export const REFLECTION_SOURCES: readonly ReflectionSource[] = ['specular', 'lambert'];
+export type ReflectionSource = 'specular' | 'lambert' | 'lambert-roughness';
+export const REFLECTION_SOURCES: readonly ReflectionSource[] = ['specular', 'lambert', 'lambert-roughness'];
 
 // BRDF_Lambert(反射率 albedo / π)。@types/three 上の戻り値型はメソッドチェインを持たないため、Vec3Node へ読み替える。
 function lambertOf(albedo: Vec3Node): Vec3Node {
@@ -48,16 +49,22 @@ function shadedOutputs(
   const directSpecular = texture(lightPrepass.directSpecularTexture, screenUV).rgb.mul(reflectance);
   const emissive = texture(gbuffer.emissiveTexture, screenUV).rgb;
   const keep = diffuse.add(directSpecular).add(emissive);
-  // ρ = 拡散色 + R のランバート面は、一様な環境光の下でこのエンジンが描く面(拡散色 × E/π + R × E/π)と一致する。
-  const reflectionSource = source === 'specular'
-    ? keep.add(texture(lightPrepass.farSpecularTexture, screenUV).rgb.mul(reflectance))
-    : irradiance.mul(lambertOf(diffuseColor.add(reflectance))).add(emissive);
+
+  // 像の元。ρ = 拡散色 + R のランバート面は、一様な環境光の下でこのエンジンが描く面(拡散色 × E/π + R × E/π)と一致する。
+  // 鏡面を一様な反射に広げた見え方は、粗い面では元の鏡面に似て、滑らかな面ほど離れる — lambert-roughness はその分 R を弱める。
+  const lambertSourceOf = (specularAlbedo: Vec3Node): Vec3Node =>
+    irradiance.mul(lambertOf(diffuseColor.add(specularAlbedo))).add(emissive);
+  const reflectionSources: Readonly<Record<ReflectionSource, Vec3Node>> = {
+    'specular': keep.add(texture(lightPrepass.farSpecularTexture, screenUV).rgb.mul(reflectance)),
+    'lambert': lambertSourceOf(reflectance),
+    'lambert-roughness': lambertSourceOf(reflectance.mul(texture(gbuffer.roughnessTexture, screenUV).r)),
+  };
 
   // 物体の無い画素は 0。
   const covered = gbuffer.covered();
   return mrt({
     keep: select(covered, vec4(keep, 1), vec4(0)),
-    reflectionSource: select(covered, vec4(reflectionSource, 1), vec4(0)),
+    reflectionSource: select(covered, vec4(reflectionSources[source], 1), vec4(0)),
   });
 }
 
@@ -96,8 +103,9 @@ export class MaterialPass {
       texture.type = THREE.HalfFloatType;
     }
     this.materials = {
-      specular: shadingMaterial(lightPrepass, gbuffer, 'specular'),
-      lambert: shadingMaterial(lightPrepass, gbuffer, 'lambert'),
+      'specular': shadingMaterial(lightPrepass, gbuffer, 'specular'),
+      'lambert': shadingMaterial(lightPrepass, gbuffer, 'lambert'),
+      'lambert-roughness': shadingMaterial(lightPrepass, gbuffer, 'lambert-roughness'),
     };
   }
 
