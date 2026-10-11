@@ -28,6 +28,7 @@ import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
+import type { ReflectionSource } from '../../src/render/pipeline/material-pass';
 import type { RenderStyle } from '../../src/render/render-style';
 
 // 1 ケースの計測結果。所要時間は [ms] の分布で、gpuPassMs はパスのラベルごと。
@@ -192,6 +193,12 @@ export class LabView {
   }
 
   public get debugTarget(): DebugTargetId { return this.selectedDebugTarget; }
+
+  // 映り込みの像の元を方式 source にし、その場で描き直す。ケース・撮影・描画品質設定を切り替えても保つ。
+  public setReflectionSource(source: ReflectionSource): void {
+    this.pipeline.setReflectionSource(source);
+    this.render();
+  }
 
   // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
   public get viewAngles(): LabViewAngles { return this.angles; }

@@ -3,6 +3,7 @@
 // そのまま組む。
 import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
+import { REFLECTION_SOURCES, type ReflectionSource } from '../../src/render/pipeline/material-pass';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import {
   withGraphicsOption, type ChoiceValue, type GraphicsOptionKey, type GraphicsSettingsData,
@@ -63,6 +64,7 @@ declare global {
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
+      setReflectionSource: (source: ReflectionSource) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
       measureCurrent: () => Promise<LabMeasurement>;
     };
@@ -242,6 +244,17 @@ async function init(): Promise<void> {
   panel.onChange = (graphics) => settings.graphics.set(graphics);
   settings.graphics.subscribe((graphics) => panel.sync(graphics));
 
+  // 映り込みの像の元の方式(仮設)を選ぶ。CDP からは名前を文字列で受けるので、候補に無い名前は投げる。
+  const selectReflectionSource = (source: ReflectionSource): void => {
+    if (!REFLECTION_SOURCES.includes(source)) throw new Error(`render-lab: unknown reflection source "${source}"`);
+    reflectionSources.setSelected(source);
+    view.setReflectionSource(source);
+  };
+  const reflectionSources = new SegmentedControl<ReflectionSource>(
+    '方式', REFLECTION_SOURCES.map((source) => [source, source] as const), selectReflectionSource,
+  );
+  document.getElementById('reflection-source')!.appendChild(reflectionSources.element);
+
   const loadButton = new Button('計測', () => { void measureCurrent(); });
   const loadResult = document.getElementById('load-result')!;
   document.getElementById('load-controls')!.appendChild(loadButton.element);
@@ -284,6 +297,7 @@ async function init(): Promise<void> {
 
   targets.setSelected('off');
   selectStyle('realistic');
+  selectReflectionSource('specular');
   selectCase(CASE_NAMES[0]!);
 
   window.renderLab = {
@@ -302,6 +316,7 @@ async function init(): Promise<void> {
     setGraphicsOption: (key, value) => {
       settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
     },
+    setReflectionSource: selectReflectionSource,
     measure: (name, angles) => view.measure(name, angles),
     measureCurrent: () => view.measureCurrent(),
   };

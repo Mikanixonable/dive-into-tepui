@@ -1,6 +1,6 @@
 // ライトプリパスが書いた照度へ G バッファの素材(ベース色・金属度・自己発光)を掛け合わせ、面の画素の
-// 陰影を自分の描画先へ2枚書く — 近くの物体の映り込みが置き換えない成分 keep と、映り込みの像の元
-// M0 = keep + R × 遠方の鏡面照度。背景専用レイヤーの星野を、world パスと共有する HDR ターゲットへ
+// 陰影を自分の描画先へ2枚書く — 近くの物体の映り込みが置き換えない成分 keep と、映り込みの像の元 M0
+// (中身は ReflectionSource の方式で選ぶ。仮)。背景専用レイヤーの星野を、world パスと共有する HDR ターゲットへ
 // 最初に描く(クリアする)のもこのパスが担う。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
@@ -20,39 +20,68 @@ export function specularReflectanceAt(gbuffer: GBufferPass, uv: Vec2Node): Vec3N
   return mix(vec3(0.04), material.rgb, material.a);
 }
 
-// 画素の keep と M0 を MRT の出力として組む。拡散は BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面は鏡面反射率を
-// 照度へ掛け、自己発光を足す。照度バッファが持つのは放射照度なので、掛けるのは反射率ではなく BRDF — 拡散の 1/π を
-// 落とすと、それだけで π 倍明るくなる。
-function shadedOutputs(lightPrepass: LightPrepass, gbuffer: GBufferPass): ReturnType<typeof mrt> {
+// 映り込みの像の元 M0 の方式(仮)。いずれも放射輝度。
+//   specular — keep + R × 遠方の鏡面照度。面がカメラへ向けて見せる鏡面をそのまま含む。
+//   lambert  — 面を反射率 ρ = 拡散色 + R のランバート面とみなした ρ / π × 拡散照度 + 自己発光。
+// TODO: 方式を見比べ終えたら1つに確定し、この切り替えを外す。
+export type ReflectionSource = 'specular' | 'lambert';
+export const REFLECTION_SOURCES: readonly ReflectionSource[] = ['specular', 'lambert'];
+
+// BRDF_Lambert(反射率 albedo / π)。@types/three 上の戻り値型はメソッドチェインを持たないため、Vec3Node へ読み替える。
+function lambertOf(albedo: Vec3Node): Vec3Node {
+  return BRDF_Lambert({ diffuseColor: albedo }) as unknown as Vec3Node;
+}
+
+// 画素の keep と、方式 source の M0 を MRT の出力として組む。拡散は BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面は
+// 鏡面反射率を照度へ掛け、自己発光を足す。照度バッファが持つのは放射照度なので、掛けるのは反射率ではなく BRDF —
+// 拡散の 1/π を落とすと、それだけで π 倍明るくなる。
+function shadedOutputs(
+  lightPrepass: LightPrepass, gbuffer: GBufferPass, source: ReflectionSource,
+): ReturnType<typeof mrt> {
   const material = texture(gbuffer.basecolorTexture, screenUV);
   const baseColor: Vec3Node = material.rgb;
   const metalness = material.a;
-  // BRDF_Lambert の @types/three 上の戻り値型はメソッドチェインを持たないため、Vec3Node へ読み替える。
-  const lambert = BRDF_Lambert({
-    diffuseColor: baseColor.mul(metalness.oneMinus()),
-  }) as unknown as Vec3Node;
+  const diffuseColor = baseColor.mul(metalness.oneMinus());
   const reflectance = specularReflectanceAt(gbuffer, screenUV);
-  const diffuse = texture(lightPrepass.diffuseTexture, screenUV).rgb.mul(lambert);
+  const irradiance = texture(lightPrepass.diffuseTexture, screenUV).rgb;
+  const diffuse = irradiance.mul(lambertOf(diffuseColor));
   const directSpecular = texture(lightPrepass.directSpecularTexture, screenUV).rgb.mul(reflectance);
   const emissive = texture(gbuffer.emissiveTexture, screenUV).rgb;
   const keep = diffuse.add(directSpecular).add(emissive);
-  const source = keep.add(texture(lightPrepass.farSpecularTexture, screenUV).rgb.mul(reflectance));
+  // ρ = 拡散色 + R のランバート面は、一様な環境光の下でこのエンジンが描く面(拡散色 × E/π + R × E/π)と一致する。
+  const reflectionSource = source === 'specular'
+    ? keep.add(texture(lightPrepass.farSpecularTexture, screenUV).rgb.mul(reflectance))
+    : irradiance.mul(lambertOf(diffuseColor.add(reflectance))).add(emissive);
 
   // 物体の無い画素は 0。
   const covered = gbuffer.covered();
   return mrt({
     keep: select(covered, vec4(keep, 1), vec4(0)),
-    reflectionSource: select(covered, vec4(source, 1), vec4(0)),
+    reflectionSource: select(covered, vec4(reflectionSource, 1), vec4(0)),
   });
+}
+
+// 方式 source の M0 を書く陰影の板のマテリアル。
+function shadingMaterial(
+  lightPrepass: LightPrepass, gbuffer: GBufferPass, source: ReflectionSource,
+): THREE.MeshBasicNodeMaterial {
+  const material = new THREE.MeshBasicNodeMaterial({
+    depthTest: false, depthWrite: false, transparent: false, blending: THREE.NoBlending,
+  });
+  material.mrtNode = shadedOutputs(lightPrepass, gbuffer, source);
+  return material;
 }
 
 export class MaterialPass {
   // 0 枚目は keep、1 枚目は像の元 M0。どちらも面の無い画素は 0。
   private readonly target = new THREE.RenderTarget(1, 1, { count: 2, depthBuffer: false, samples: 0 });
-  private readonly material: THREE.MeshBasicNodeMaterial;
-  private readonly quad: QuadMesh;
+  // 像の元の方式ごとの陰影のマテリアル。方式の切り替えでは持ち替えるだけにする — 組み直すとシェーダの再コンパイルが
+  // フレームを止める。
+  private readonly materials: Readonly<Record<ReflectionSource, THREE.MeshBasicNodeMaterial>>;
+  private reflectionSource: ReflectionSource = 'specular';
+  private readonly quad = new QuadMesh();
 
-  // 照度と素材を掛け合わせる全画面の板ポリを一度だけ組み立てる。
+  // 照度と素材を掛け合わせる全画面の板ポリを、像の元の方式ごとに一度だけ組み立てる。
   public constructor(
     private readonly renderer: WebGPURenderer,
     lightPrepass: LightPrepass,
@@ -66,17 +95,21 @@ export class MaterialPass {
       texture.format = THREE.RGBAFormat;
       texture.type = THREE.HalfFloatType;
     }
-    this.material = new THREE.MeshBasicNodeMaterial({
-      depthTest: false, depthWrite: false, transparent: false, blending: THREE.NoBlending,
-    });
-    this.material.mrtNode = shadedOutputs(lightPrepass, gbuffer);
-    this.quad = new QuadMesh(this.material);
+    this.materials = {
+      specular: shadingMaterial(lightPrepass, gbuffer, 'specular'),
+      lambert: shadingMaterial(lightPrepass, gbuffer, 'lambert'),
+    };
   }
 
   // 近くの物体の映り込みが置き換えない成分 keep = 拡散 + R × 直接の鏡面照度 + 自己発光(放射輝度)。
   public get keepTexture(): THREE.Texture { return this.target.textures[0]!; }
-  // 映り込みの像の元 M0 = keep + R × 遠方の鏡面照度(放射輝度)。
+  // 映り込みの像の元 M0(放射輝度)。中身は setReflectionSource で選んだ方式(既定は specular の keep + R × 遠方の鏡面照度)。
   public get reflectionSourceTexture(): THREE.Texture { return this.target.textures[1]!; }
+
+  // 次の render から、像の元を方式 source で書く。TODO: 方式を1つに確定したら外す。
+  public setReflectionSource(source: ReflectionSource): void {
+    this.reflectionSource = source;
+  }
 
   // 背景専用レイヤーを sharedTarget へ、面の陰影を自分の描画先へ描く。描画バッファの寸法 width × height で呼ぶ。
   // camera はこのあと world パスでも使う同一インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
@@ -94,6 +127,7 @@ export class MaterialPass {
     this.renderer.render(scene, camera);
 
     this.renderer.setRenderTarget(this.target);
+    this.quad.material = this.materials[this.reflectionSource];
     this.gpu.beginPass(GPU_PASS.material);
     this.quad.render(this.renderer);
 
@@ -101,15 +135,17 @@ export class MaterialPass {
     camera.layers.mask = savedMask;
   }
 
-  // 背景を共有ターゲットへ、陰影の板を自分の描画先へ事前コンパイルする。
+  // 背景を共有ターゲットへ、いま選んでいる像の元の方式の陰影の板を自分の描画先へ事前コンパイルする。
   public async compile(
     scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget, width: number, height: number,
   ): Promise<void> {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+    // 背景専用レイヤーへ絞ったカメラで組み、呼び出し前のマスクへ戻す。
     const savedMask = camera.layers.mask;
     camera.layers.set(WORLD_BACKGROUND_LAYER);
     try {
       await compileInto(this.renderer, sharedTarget, scene, camera);
+      this.quad.material = this.materials[this.reflectionSource];
       await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
     } finally {
       camera.layers.mask = savedMask;
@@ -119,6 +155,6 @@ export class MaterialPass {
   // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。
   public dispose(): void {
     this.target.dispose();
-    this.material.dispose();
+    for (const material of Object.values(this.materials)) material.dispose();
   }
 }
