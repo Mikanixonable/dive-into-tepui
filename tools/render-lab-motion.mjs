@@ -1,7 +1,8 @@
 // 近傍拡散補正のちらつきを、動く絵で撮る。ヘッドレス Chrome で .render-lab/ を開き、場面ごとに、カメラを止めた列・並進させる
-// 列・回転させる列(1 フレームの動きを描画バッファの画素で段に振る)と、光源を動かす列を描いて、フレームごとの全体の絵・補正
-// (最後の拡大の出力)・前のフレームからの補正の差の PNG と、同じ表面の点の補正の揺れの表を書く。差は参照の再投影で同じ表面の
-// 点どうしを引いたもの。書き先は .render-lab-shots/<組の名前>/ で、表は report.md、見るページは index.html。
+// 列・カメラを中心に回転させる列・周回の中心を中心に回転させる列(1 フレームの動きを描画バッファの画素で段に振る)と、光源を
+// 動かす列を描いて、フレームごとの全体の絵・補正(最後の拡大の出力)・前のフレームからの補正の差の PNG と、同じ表面の点の
+// 補正の揺れの表を書く。差は参照の再投影で同じ表面の点どうしを引いたもの。書き先は .render-lab-shots/<組の名前>/ で、表は
+// report.md、見るページは index.html。
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
 //
 // 使い方: node tools/render-lab-motion.mjs <組の名前> [--scenes=S,...] [--sequences=Q,...] [--frames=N] [--average=K]
@@ -38,17 +39,17 @@ const DIRECTION = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)];
 // 光源を動かす列の、1 フレームの光源の方位の変化 [deg]。
 const LIGHT_STEP_DEG = 0.5;
 
-// 列。frame(k) は k 番目のフレームの、列の最初からのカメラの並進と回転 [描画バッファの画素] と、光源のつまみの変化 [deg]。
+// 列。frame(k) は k 番目のフレームの、列の最初からのカメラの並進・カメラを中心とする回転・周回の中心を中心とする回転(周回)
+// [描画バッファの画素](MotionSequence.moveCamera)と、光源のつまみの変化 [deg]。周回は、周回の中心の点を画面に留めたまま
+// 面を見る向きを変える — 同じ画素の並進と同じだけ向きが変わり、側面の写る面積が変わる。
 const offset = (k, speed) => DIRECTION.map((v) => k * speed * v);
+const still = { translation: [0, 0], rotation: [0, 0], orbit: [0, 0], light: 0 };
 const SEQUENCES = [
-  { name: 'still', frame: () => ({ translation: [0, 0], rotation: [0, 0], light: 0 }) },
-  ...SPEEDS_PX.map((speed) => ({
-    name: `translate-${speed}px`, frame: (k) => ({ translation: offset(k, speed), rotation: [0, 0], light: 0 }),
-  })),
-  ...SPEEDS_PX.map((speed) => ({
-    name: `rotate-${speed}px`, frame: (k) => ({ translation: [0, 0], rotation: offset(k, speed), light: 0 }),
-  })),
-  { name: 'light', lightOnly: true, frame: (k) => ({ translation: [0, 0], rotation: [0, 0], light: k * LIGHT_STEP_DEG }) },
+  { name: 'still', frame: () => still },
+  ...SPEEDS_PX.map((speed) => ({ name: `translate-${speed}px`, frame: (k) => ({ ...still, translation: offset(k, speed) }) })),
+  ...SPEEDS_PX.map((speed) => ({ name: `rotate-${speed}px`, frame: (k) => ({ ...still, rotation: offset(k, speed) }) })),
+  ...SPEEDS_PX.map((speed) => ({ name: `orbit-${speed}px`, frame: (k) => ({ ...still, orbit: offset(k, speed) }) })),
+  { name: 'light', lightOnly: true, frame: (k) => ({ ...still, light: k * LIGHT_STEP_DEG }) },
 ];
 
 // 撮る画像の種類(ファイル名の頭)と、motionFrame の記録の中の場所。
@@ -87,8 +88,8 @@ async function shootSequence(devTools, scene, sequence, frames, averagedSeeds, d
   const summaries = [];
   try {
     for (let k = 0; k < frames; k++) {
-      const { translation, rotation, light } = sequence.frame(k);
-      await call(`moveCamera(${JSON.stringify(translation)}, ${JSON.stringify(rotation)})`);
+      const { translation, rotation, orbit, light } = sequence.frame(k);
+      await call(`moveCamera(${JSON.stringify(translation)}, ${JSON.stringify(rotation)}, ${JSON.stringify(orbit)})`);
       if (base !== null) await call(`setView(${JSON.stringify({ [scene.light]: base + light })})`);
       // 平均の列を撮ると seed は列の最後のものになるので、フレームごとに本番の seed へ戻す。
       await call('setScanSeed(0, 0)');

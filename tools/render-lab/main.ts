@@ -120,7 +120,9 @@ declare global {
       ) => Promise<Float32Array>;
       stochasticUpscale: (scan: Float32Array, geometry: SurfaceGeometry, block: number) => Promise<Float32Array>;
       resetMotion: () => void;
-      moveCamera: (translationPx: readonly [number, number], rotationPx: readonly [number, number]) => void;
+      moveCamera: (
+        translationPx: readonly [number, number], rotationPx: readonly [number, number], orbitPx: readonly [number, number],
+      ) => void;
       motionFrame: (averagedSeeds: readonly (readonly [number, number])[] | null) => Promise<MotionFrameRecord>;
     };
   }
@@ -405,7 +407,7 @@ async function init(): Promise<void> {
       (await planeSmoother()).sparseBilateral(rgb, geometry, radius, shift)),
     stochasticUpscale: async (scan, geometry, block) => (await planeSmoother()).stochasticUpscale(scan, geometry, block),
     resetMotion: () => motion.reset(),
-    moveCamera: (translationPx, rotationPx) => motion.moveCamera(translationPx, rotationPx),
+    moveCamera: (translationPx, rotationPx, orbitPx) => motion.moveCamera(translationPx, rotationPx, orbitPx),
     motionFrame: (averagedSeeds) => motion.frame(averagedSeeds),
   };
 }
