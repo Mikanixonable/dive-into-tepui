@@ -26,7 +26,7 @@ description: 描画コード(src/render/・シェーダ・three.js/WebGPU まわ
 ## 2. 重い機能・見え方を大きく変える機能は、描画設定で切れるようにする
 
 **計算量やコード量が大幅に増える描画機能を足すとき、描画スタイルを大幅に変えるときは、描画品質設定
-(`src/render/graphics-settings.ts` の `GRAPHICS_OPTIONS`)へ項目を足し、オフにするか処理負荷を選べる
+(`src/render/graphics-settings.ts` の `GRAPHICS_FIELDS`)へ分野のノブを足し、オフにするか処理負荷を選べる
 ようにする。** 負荷の段を刻むのが難しいなら、既存の軽い簡易実装へ戻せる選択肢を残す — 新しい実装で
 置き換えるときに、置き換える前の簡易実装を消さない。
 
