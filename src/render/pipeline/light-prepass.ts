@@ -18,17 +18,22 @@ export class LightPrepass {
   private readonly target: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   private readonly sample: ShadingSample;
+  // 積む順の全光源。
+  private readonly sources: readonly LightSource[];
   // クリア色の退避先。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
-  // 照度バッファ 3 枚と、sources が共有するシェーディング入力を組む。sources の順に積む。
+  // 照度バッファ 3 枚と、光源が共有するシェーディング入力を組む。precompiledSources、onDemandSources の順に積む。
+  // precompiledSources は事前コンパイルでマテリアルを組み、onDemandSources は寄与を持った最初のフレームで組む。
   public constructor(
     renderer: WebGPURenderer,
     gbuffer: GBufferPass,
-    private readonly sources: readonly LightSource[],
+    private readonly precompiledSources: readonly LightSource[],
+    onDemandSources: readonly LightSource[],
     private readonly gpu: GpuTimings,
   ) {
     this.renderer = renderer;
+    this.sources = [...precompiledSources, ...onDemandSources];
 
     // WebGPU に3チャンネル16bit浮動小数点フォーマットは無いため、rgba16float(a は未使用)を使う。
     // 名前は光源のマテリアルが書く MRT の出力と結び付く。
@@ -78,11 +83,11 @@ export class LightPrepass {
     this.renderer.setClearColor(this.savedClearColor, savedClearAlpha);
   }
 
-  // 光源ごとの全マテリアルを照度ターゲットへ事前コンパイルする。
+  // precompiledSources の光源ごとの全マテリアルを照度ターゲットへ事前コンパイルする。
   public async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     this.sample.sync(camera);
-    for (const source of this.sources) {
+    for (const source of this.precompiledSources) {
       this.quad.material = source.material(this.sample);
       await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
     }

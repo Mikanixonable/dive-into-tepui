@@ -1,7 +1,6 @@
-// 影を持たない一様な球光源の並び。自己発光の物体と同じ場所・大きさ・放射輝度に置くと、近くの物体の映り込みの像と
-// 比べる対照になる。寄与は恒星の球光源モデルと同じ閉じた解(拡散は Snyder の解析解、
-// 鏡面は LTC)で、影パスの透過率を掛けず、近くの物体の像との置換でも弱めない。光源 1 つが LightSource 1 つで、
-// 置いていない枠は描画命令を出さない。
+// 影を持たない一様な球光源の並び。自己発光の物体と同じ場所・大きさ・放射輝度に置くと、近くの物体の映り込みの像を、
+// 光源として積分した鏡面像と比べる対照になる。寄与は恒星の球光源モデルと同じ閉じた解(拡散は Snyder の解析解、鏡面は
+// LTC)で、鏡面は近くの物体の像が置き換えない直接の鏡面へ積む。光源 1 つが LightSource 1 つで、置いた枠が寄与を持つ。
 import * as THREE from 'three/webgpu';
 import { PI, clamp, dot, length, max, uniform } from 'three/tsl';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
@@ -82,7 +81,8 @@ export class SphereLights {
     this.slots = Array.from({ length: SPHERE_LIGHT_CAPACITY }, () => new SphereLightSource(sphereSpecular));
   }
 
-  // ライトプリパスへ渡す光源の列。
+  // 枠ごとの光源の列。寄与を持った最初のフレームでマテリアルを組む光源として扱うこと — 事前コンパイルで全枠を組むと、
+  // 置かない枠の SPHERE_LIGHT_CAPACITY 枚が起動を遅くする。
   public get sources(): readonly LightSource[] { return this.slots; }
 
   // 置く球光源を values にする。SPHERE_LIGHT_CAPACITY を超えたら投げる。

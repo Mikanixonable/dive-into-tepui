@@ -165,8 +165,7 @@ export class RenderPipeline {
     this._sphereLights = new SphereLights(this.sphereSpecular);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient, this.correctionSource,
-      ...this._sphereLights.sources,
-    ], gpu);
+    ], this._sphereLights.sources, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
 
     // マテリアルパス以降が共有する描画先。**陰影の合成パスと大気パスの生成より先に作る** — どちらも
