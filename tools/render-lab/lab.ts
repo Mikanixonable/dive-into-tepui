@@ -134,6 +134,8 @@ export class LabView {
   private current: LabCase | null = null;
   // スタイルを差し替えるとケースを組み直すので、いま出ているケースの名前も持つ。
   private currentName: CaseName | null = null;
+  // ケースへ渡す論理フレーム。同じ番号で描き直しても、ケースの状態は進まない。
+  private frame = 0;
   private selectedDebugTarget: DebugTargetId = 'off';
   // 画面全体の見せ方。起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
@@ -262,6 +264,7 @@ export class LabView {
   // ケースをいまのスタイルで組み直してシーンへ載せ、それを現在のケースにする。前のケースは解放する。
   private build(name: CaseName): void {
     if (this.current !== null) {
+      this.current.dispose?.();
       this.scene.remove(...this.current.objects);
       this.current.disposeProteinMotion?.();
       for (const root of this.current.objects) disposeOwnedRenderResources(root);
@@ -271,6 +274,7 @@ export class LabView {
     for (const object of built.objects) this.scene.add(object);
     this.current = built;
     this.currentName = name;
+    built.setFrame?.(this.frame);
     // 地球はケースが置き方を宣言したときだけ出し、まずその既定の置き方へ置く。
     if (built.earth !== undefined) {
       this.scene.add(this.earth.object);
@@ -324,6 +328,21 @@ export class LabView {
         merged.cameraElevationDeg, -MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ELEVATION_DEG,
       ),
     };
+    this.render();
+  }
+
+  // 論理フレーム frame を覚え、ケースをその番号の状態へ置いて描き直す。
+  public setFrame(frame: number): void {
+    if (!Number.isInteger(frame) || frame < 0) throw new Error(`render-lab: invalid frame ${frame}`);
+    this.frame = frame;
+    this.current?.setFrame?.(frame);
+    this.render();
+  }
+
+  // 現在のケース固有の値 name を value へ差し替えて描き直す。
+  public setCaseValue(name: string, value: string | number | boolean): void {
+    if (this.current?.setValue === undefined) throw new Error('render-lab: the current case has no configurable values');
+    this.current.setValue(name, value);
     this.render();
   }
 
