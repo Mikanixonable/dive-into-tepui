@@ -4,8 +4,8 @@
 // bind/sample することになる。
 import * as THREE from 'three/webgpu';
 import {
-  abs, float, floor, int, ivec2, log, max, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign, texture,
-  uniform, vec3, vec4,
+  abs, float, floor, getViewPosition, int, ivec2, log, max, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign,
+  texture, uniform, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from './gbuffer';
 import { compositeMaterial } from './composite-material';
@@ -14,6 +14,7 @@ import {
   CHAIN_DEBUG_TARGETS, type ChainDebugTarget, type ChainDebugTargetId, type DebugTargetId,
 } from './debug-target';
 import { unpackedBands } from './screen-space/band-pyramid';
+import { REFLECTION_LEVEL_COUNT } from './screen-space/reflection-denoise';
 import type { GBufferPass } from './gbuffer';
 import type { Exposure } from './exposure';
 import type { ShadowMaps } from './shadow/shadow-maps';
@@ -22,10 +23,16 @@ import type { ShadowPass } from './shadow/shadow-pass';
 import type { LightPrepass } from './light-prepass';
 import type { ScreenSpacePass } from './screen-space/screen-space-pass';
 import type { DiffuseCorrection } from './screen-space/diffuse-correction';
+import type { MaterialPass } from './material-pass';
+import type { ReflectionPass } from './reflection-pass';
+import type { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import type { PlanetLightSource } from './lighting/planet-light-source';
 import type { AtmospherePass } from './atmosphere-pass';
 import type { LensPass } from './lens-pass';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
+
+// 映り込みの当たり距離のデバッグ表示で白になる距離 [m]。
+const REFLECTION_DISTANCE_DEBUG_RANGE = 1000;
 
 // 通常表示を除くデバッグ表示の選択肢。
 export type DebugView = Exclude<DebugTargetId, 'off'>;
@@ -53,34 +60,50 @@ export class DebugComposites {
     private readonly projectionInverse: Mat4Uniform, private readonly shadowMaps: ShadowMaps,
     private readonly meshShadow: MeshShadow, shadowPass: ShadowPass, lightPrepass: LightPrepass,
     private readonly screenSpacePass: ScreenSpacePass, private readonly diffuseCorrection: DiffuseCorrection,
+    materialPass: MaterialPass, private readonly reflectionPass: ReflectionPass,
+    private readonly reflection: ScreenSpaceReflection,
     planetLight: PlanetLightSource, atmospherePass: AtmospherePass, lensPass: LensPass,
   ) {
     const material = (color: Vec4Node): THREE.MeshBasicNodeMaterial => compositeMaterial(color, gbuffer.depthTexture);
     const toneMapped = (color: Vec3Node): Vec4Node => vec4(exposure.toneMapped(color), 1);
+    // 照度・陰影は 1 を超え得る HDR 値なので、通常表示と同じトーンマッピングを通してから
+    // 画面へ出す(1 天文単位の放射照度は π を超えるため、通さないと全面白になる)。
+    const hdr = (source: THREE.Texture): THREE.MeshBasicNodeMaterial => material(
+      toneMapped(texture(source, screenUV).rgb),
+    );
     this.blankMaterial = material(vec4(0, 0, 0, 1));
-    // 「マテリアル」も「大気」も、大気パスが点検用に描く1枚を映すので、材質を共有する。
-    const inspectMaterial = material(toneMapped(texture(atmospherePass.inspectTexture, screenUV).rgb));
     this.materials = {
       normal: material(vec4(octDecodeNormal(texture(gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1)),
       roughness: material(vec4(vec3(texture(gbuffer.roughnessTexture, screenUV).r), 1)),
       basecolor: material(vec4(texture(gbuffer.basecolorTexture, screenUV).rgb, 1)),
       metalness: material(vec4(vec3(this.metalness()), 1)),
-      // 自己発光は 1 を超える HDR 値なので、照度と同じくトーンマッピングを通して出す。
-      emissive: material(toneMapped(texture(gbuffer.emissiveTexture, screenUV).rgb)),
-      depth: material(vec4(vec3(this.logDepth()), 1)),
+      emissive: hdr(gbuffer.emissiveTexture),
+      depth: material(vec4(vec3(this.logDepth(texture(gbuffer.depthTexture, screenUV).r)), 1)),
       // 4 枚のスロットを 2x2 に並べて画面いっぱいへ映す。線形深度なのでそのまま濃淡として
       // 読め(遠いほど白)、使われていないスロットは真っ白のまま残る。
       'shadow-map': material(vec4(vec3(this.shadowSlotGrid()), 1)),
       'shadow-map-slot': material(vec4(this.shadowSlotColor(), 1)),
       shadow: material(vec4(vec3(texture(shadowPass.texture, screenUV).r), 1)),
-      // 照度・陰影は 1 を超え得る HDR 値なので、通常表示と同じトーンマッピングを通してから
-      // 画面へ出す(1 天文単位の放射照度は π を超えるため、通さないと全面白になる)。
-      diffuse: material(toneMapped(texture(lightPrepass.diffuseTexture, screenUV).rgb)),
-      specular: material(toneMapped(texture(lightPrepass.specularTexture, screenUV).rgb)),
+      diffuse: hdr(lightPrepass.diffuseTexture),
+      'direct-specular': hdr(lightPrepass.directSpecularTexture),
+      'far-specular': hdr(lightPrepass.farSpecularTexture),
       correction: material(vec4(this.signedCorrection(texture(diffuseCorrection.texture, screenUV)), 1)),
-      'bounce-source': material(toneMapped(texture(screenSpacePass.surfaceRadianceTexture, screenUV).rgb)),
-      material: inspectMaterial,
-      atmosphere: inspectMaterial,
+      'bounce-source': hdr(screenSpacePass.surfaceRadianceTexture),
+      material: hdr(materialPass.keepTexture),
+      'reflection-source': hdr(materialPass.reflectionSourceTexture),
+      'reflection-depth': material(vec4(vec3(this.reflectionDepth()), 1)),
+      'raw-reflection-weight': material(vec4(vec3(reflection.rawWeightAt(screenUV)), 1)),
+      'raw-reflection-distance': material(
+        vec4(vec3(this.reflectionDistance(reflection.rawWeightedDistanceAt(screenUV))), 1),
+      ),
+      'raw-reflection': material(toneMapped(reflection.rawWeightedImageAt(screenUV))),
+      'denoised-reflection-weight': material(vec4(vec3(reflection.denoisedWeightAt(screenUV)), 1)),
+      'denoised-reflection-distance': material(
+        vec4(vec3(this.reflectionDistance(reflection.denoisedWeightedDistanceAt(screenUV))), 1),
+      ),
+      'denoised-reflection': material(toneMapped(reflection.denoisedWeightedImageAt(screenUV))),
+      'reflection-denoise-level': material(vec4(this.reflectionDenoiseLevel(), 1)),
+      atmosphere: hdr(atmospherePass.inspectTexture),
       lens: material(toneMapped(lensPass.redistributedLight())),
       'planet-light': material(toneMapped(planetLight.imageRadianceAt(screenUV))),
     };
@@ -157,10 +180,10 @@ export class DebugComposites {
     }
   }
 
-  // 全マテリアルを解放する。同じ1枚を複数の選択肢が共有するので、重複を畳んでから解放する。
+  // 全マテリアルを解放する。
   public dispose(): void {
     const chainMaterials = [...this.chainMaterials.values()].flatMap((materials) => [...materials.values()]);
-    for (const material of new Set([...Object.values(this.materials), ...chainMaterials, this.blankMaterial])) {
+    for (const material of [...Object.values(this.materials), ...chainMaterials, this.blankMaterial]) {
       material.dispose();
     }
   }
@@ -209,11 +232,34 @@ export class DebugComposites {
 
   // 深度バッファの生値を near/far 間の対数スケール(0=near, 1=far)へ変換する。素の深度値は
   // near=2m/far=2e12m のスケールでは端に潰れて識別できないため、対数を挟むことで
-  // 精度の落ち方そのものを見えるようにする。
-  private logDepth(): FloatNode {
+  // 精度の落ち方そのものを見えるようにする。depth はいま描いている画素の生値。
+  private logDepth(depth: FloatNode): FloatNode {
     // 深度の生値から距離への逆写像は投影方式ごとに違う(透視は 1/z、平行投影は線形)ので、
     // 生値ではなく復元位置の view 空間 z から測る — 逆射影行列がその違いを吸収する。
-    const dist = viewPositionAt(this.gbuffer.depthTexture, this.projectionInverse).z.negate();
+    const dist = getViewPosition(screenUV, depth, this.projectionInverse).z.negate();
     return log(dist.div(this.near)).div(log(this.far.div(this.near)));
+  }
+
+  // 映り込みのパスが縮小した素の深度を、logDepth の目盛りを裏返して近いほど明るく写す。面の無い
+  // 画素(と、映り込みを切っているフレーム)は黒。
+  private reflectionDepth(): FloatNode {
+    const depth = this.reflectionPass.depthAt(screenUV);
+    return select(depth.greaterThan(0), this.logDepth(depth).oneMinus(), float(0));
+  }
+
+  // 映り込みの重みを掛けた当たり距離 distance [m] を、1 cm で 0、REFLECTION_DISTANCE_DEBUG_RANGE で 1 になる対数の
+  // 濃淡へ写す。当たらなかった画素は黒。
+  private reflectionDistance(distance: FloatNode): FloatNode {
+    const scaled = log(distance.div(0.01)).div(Math.log(REFLECTION_DISTANCE_DEBUG_RANGE / 0.01));
+    return select(distance.greaterThan(0), scaled.clamp(0, 1), float(0));
+  }
+
+  // 映り込みを均すのに読んだ段を、段 + 1 を REFLECTION_LEVEL_COUNT で割った線形の灰(1 で切る)へ写す。w̄ が 0 の画素は
+  // 青、均した値を書いていない(映り込みを切った)フレームは黒。目盛りを変えるときは
+  // tools/render-lab-reflection-levels.mjs の読み戻しも揃える。
+  private reflectionDenoiseLevel(): Vec3Node {
+    const level = this.reflection.denoiseLevelAt(screenUV);
+    const gray = vec3(level.add(1).div(REFLECTION_LEVEL_COUNT).clamp(0, 1));
+    return select(level.greaterThan(-0.5), gray, select(level.greaterThan(-1.5), vec3(0, 0, 1), vec3(0)));
   }
 }

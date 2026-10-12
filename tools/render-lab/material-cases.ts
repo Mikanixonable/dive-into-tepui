@@ -13,7 +13,8 @@ import {
 } from './view-angles';
 import { HULL_EMISS } from '../../src/game/dynamic/dynamic-motion';
 import {
-  detachPoolMesh, EARTH_AWAY, labCamera, OBLIQUE_SUN_DIR, SHIP_ROTATION_PORT, shipAt, SUN_DIR_ANGLES, sunAnglesOf,
+  detachPoolMesh, EARTH_AWAY, flickerShots, labCamera, OBLIQUE_SUN_DIR, SHIP_ROTATION_PORT, shipAt, SUN_DIR_ANGLES,
+  sunAnglesOf,
   type CaseBuilder, type LabCase, type LabShot,
 } from './lab-case';
 
@@ -89,6 +90,10 @@ const METAL_HIGHLIGHT_SUN: Partial<LabViewAngles> = {
 const SIDE_SUN: Partial<LabViewAngles> = {
   sunAzimuthDeg: 0, sunElevationDeg: 0, sunDistanceLogAu: MERCURY_PERIHELION_LOG_AU,
 };
+// 金属の行の左端(粗さ 0.05)の球の太陽のハイライトが、カメラから見て球の 2 列目の側の縁の近くに来る恒星の向き。
+// 2 列目の球(粗さ 0.25)の映り込みの中に、小さく明るいハイライトが入る。行に沿った +X から差すと 2 列目の球の影が
+// ハイライトに落ちるので、上へ傾ける。
+const NEIGHBOR_HIGHLIGHT_SUN = sunAnglesOf(new THREE.Vector3(1, 0.7, -0.3));
 // 太陽を画面へ入れる撮影の向き。太陽は格子の右上の外に来る。既定の地球は画面を埋めて太陽を隠すので遠ざける。
 const SUN_IN_VIEW: Partial<LabViewAngles> = { ...sunAnglesOf(new THREE.Vector3(0.67, 0.29, -1)), ...EARTH_AWAY };
 
@@ -145,6 +150,24 @@ function materials(): LabCase {
     shots: {
       // 金属の行への天体照の映り込みと、その後ろに写る地球そのものを 1 枚の中で見比べる。
       'leo-metal': { view: {} },
+      // 近くの物体の映り込み。金属の行の滑らかな球が隣の球を映す向きと、追跡の中間結果。
+      'leo-metal-reflection': { view: {}, graphics: { screenSpaceSpecular: true } },
+      'leo-metal-reflection-depth': {
+        view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'reflection-depth',
+      },
+      'leo-metal-reflection-distance': {
+        view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'raw-reflection-distance',
+      },
+      'leo-metal-reflection-weight': {
+        view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'raw-reflection-weight',
+      },
+      'leo-metal-reflection-image': {
+        view: {}, graphics: { screenSpaceSpecular: true }, debugTarget: 'raw-reflection',
+      },
+      // 映り込みのちらつき。2 列目の球に映る、隣の鏡面の球の太陽のハイライトの明滅。
+      ...flickerShots('leo-metal', NEIGHBOR_HIGHLIGHT_SUN),
+      // 映り込みを均さないときのちらつき。ハイライトは画素ごとの点描のまま明滅する。
+      ...flickerShots('leo-metal-raw', NEIGHBOR_HIGHLIGHT_SUN, { screenSpaceSpecularDenoise: false }),
       'leo-metal-terminator': { view: TERMINATOR_SUN },
       // 金属のハイライト。左上の球に、球光源では太陽の円盤が幅十数 px の像として映り、点光源の GGX では
       // 粗さぶんの数 px の点に潰れる。

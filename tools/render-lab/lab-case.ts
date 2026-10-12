@@ -10,11 +10,13 @@ import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
+import { BLUE_NOISE_TILE_SIZE } from '../../src/render/blue-noise-tile.generated';
 import { anglesFromDirection, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import type { Albedo } from '../../src/render/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
 import type { ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
+import type { SphereLightValue } from '../../src/render/pipeline/lighting/sphere-lights';
 import type { LineStyle } from '../../src/render/line-style';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import type { ProteinLabCaseMetadata } from './protein-cases';
@@ -60,6 +62,29 @@ export interface LabShot {
   readonly graphics?: Partial<GraphicsSettingsData>;
   // 撮影で表示する実際のパイプライン中間ターゲット。省略時は通常像。
   readonly debugTarget?: DebugTargetId;
+  // 映り込みが画素ごとに引く乱数のタイルを読む位置のずらし [px](整数の x, y)。省略すると (0, 0)。
+  readonly reflectionNoiseOffset?: readonly [number, number];
+}
+
+// ちらつきの撮影の枚数。
+const FLICKER_SHOT_COUNT = 16;
+// ちらつきの撮影の描画設定。アンチエイリアスとレンズ効果は孤立した画素の明るさをにじませるので切る。
+const FLICKER_GRAPHICS: Partial<GraphicsSettingsData> = { screenSpaceSpecular: true, antialias: 0, lens: false };
+
+// 観察の向き view の映り込みを、乱数のタイルを読む位置だけ変えて FLICKER_SHOT_COUNT 枚撮る、鍵
+// `${name}-flicker-${k}` の撮影。画面が動いて画素の引く乱数が入れ替わるのと同じ揺れを幾何を止めたまま撮り、
+// 撮影どうしの差で映り込みのちらつきを読む。graphics はちらつきの撮影の描画設定へ重ねる差分。
+export function flickerShots(
+  name: string, view: Partial<LabViewAngles>, graphics: Partial<GraphicsSettingsData> = {},
+): Record<string, LabShot> {
+  return Object.fromEntries(Array.from({ length: FLICKER_SHOT_COUNT }, (_, k) => [
+    `${name}-flicker-${k}`,
+    {
+      view,
+      graphics: { ...FLICKER_GRAPHICS, ...graphics },
+      reflectionNoiseOffset: [(17 * k) % BLUE_NOISE_TILE_SIZE, (29 * k) % BLUE_NOISE_TILE_SIZE],
+    },
+  ]));
 }
 
 export interface LabCase {
@@ -90,6 +115,8 @@ export interface LabCase {
     readonly axis: THREE.Vector3;
     readonly bands: readonly RingBand[];
   };
+  // ケースに置く、影を持たない球光源。省くと置かない。
+  readonly sphereLights?: readonly SphereLightValue[];
   // ケースの部品が揃い、絵として比べられる状態になったか。持たせると、撮影はこれが真になるまで
   // 1 フレームずつ描いて待つ。
   readonly ready?: () => boolean;

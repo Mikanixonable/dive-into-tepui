@@ -60,7 +60,9 @@ export class SunSource implements LightSource {
   private pointContribution(sample: ShadingSample): LightContribution {
     const irradiance = this.pointIrradiance(sample);
     const lightDir = normalize(this.toSunOf(sample));
-    return { diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)) };
+    return {
+      diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)), specularReach: 'direct',
+    };
   }
 
   // 面から恒星の中心へ向かう view 空間の差分ベクトル [m]。
@@ -89,7 +91,7 @@ export class SunSource implements LightSource {
       .mul(this.sunLight.intensity).div(radius.mul(radius).mul(PI));
     const specular: Vec3Node = radiance
       .mul(this.sphereSpecular.factor(sample, center, radius)).mul(transmittance);
-    return { diffuse, specular };
+    return { diffuse, specular, specularReach: 'direct' };
   }
 
   // 組んだマテリアルを解放する。
