@@ -1,7 +1,7 @@
 // 映り込みのパス。滑らかな面の画素ごとに反射の向きの ray を、追跡の解像度へ縮小した G バッファの深度の上で進め、
 // 当たった点の像を像の元から読んで、置換の重みと一緒に映り込みの描画先(ScreenSpaceReflection)の均す前の側へ書き、
-// 粗さに応じて均した値を均した側へ書く。描画設定のオン / オフ・精細さ・均しのオン / オフを受け、切った段の描画先は
-// 空にしておく。
+// 粗さに応じて均した値を均した側へ書く。オン / オフ・追跡の解像度と歩数・均しのオン / オフを受け、切った段の
+// 描画先は空にしておく。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
@@ -19,23 +19,6 @@ import { ReflectionDenoise } from './screen-space/reflection-denoise';
 import { encodedRawReflection, type ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import type { GBufferPass } from './gbuffer';
 import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../tsl-types';
-
-// 描画設定「映り込みの精細さ」の値。値は保存された設定を読む鍵なので、段を足しても既存の値は動かさない。
-export const SCREEN_SPACE_SPECULAR_QUALITY = { low: 0, medium: 1, high: 2 } as const;
-type ScreenSpaceSpecularQuality = (typeof SCREEN_SPACE_SPECULAR_QUALITY)[keyof typeof SCREEN_SPACE_SPECULAR_QUALITY];
-
-// 精細さの段ごとの追跡。scale は追跡する深度の解像度の描画バッファに対する比で、1 / 整数に限る — 深度の画素 1 つが
-// 描画バッファの画素の整数個四方を覆う前提で縮小と追跡が揃う。stepCount は ray 1 本の歩数。
-interface TraceTier {
-  readonly scale: number;
-  readonly stepCount: number;
-}
-// TODO: 段の値は仮置き。追跡の費用と画を実測して決め直す。
-const TRACE_TIERS: Readonly<Record<ScreenSpaceSpecularQuality, TraceTier>> = {
-  [SCREEN_SPACE_SPECULAR_QUALITY.low]: { scale: 0.5, stepCount: 16 },
-  [SCREEN_SPACE_SPECULAR_QUALITY.medium]: { scale: 0.5, stepCount: 32 },
-  [SCREEN_SPACE_SPECULAR_QUALITY.high]: { scale: 1, stepCount: 48 },
-};
 
 // 画素 1 つぶんの追跡と像の結果。image は当たった点の像 I、distance は当たるまでの距離 [m]、weight は置換の重み w。
 // 当たらなかった画素ではどれも 0。
@@ -86,12 +69,13 @@ export class ReflectionPass {
   // 空へ戻すときに退避する消去色。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
-  // reflectionSource は当たった点の像を読む像の元(放射輝度、描画バッファの解像度)。enabled / quality / denoised は
-  // 構築時点の描画設定 screenSpaceSpecular / screenSpaceSpecularQuality / screenSpaceSpecularDenoise の値。
+  // reflectionSource は当たった点の像を読む像の元(放射輝度、描画バッファの解像度)。enabled / denoised は構築時点の
+  // オン / オフと均すか。traceScale は追跡する深度の解像度の描画バッファに対する比で、1 / 整数に限る — 深度の画素
+  // 1 つが描画バッファの画素の整数個四方を覆う前提で縮小と追跡が揃う。traceStepCount は ray 1 本の歩数。
   public constructor(
     private readonly renderer: WebGPURenderer, gbuffer: GBufferPass, reflectionSource: THREE.Texture,
     private readonly output: ScreenSpaceReflection, private readonly gpu: GpuTimings,
-    private enabled: boolean, private quality: ScreenSpaceSpecularQuality, private denoised: boolean,
+    private enabled: boolean, private traceScale: number, private traceStepCount: number, private denoised: boolean,
   ) {
     this.depthTarget.texture.name = 'reflectionDepth';
     this.depth = gbuffer.depthTexture;
@@ -114,9 +98,10 @@ export class ReflectionPass {
     this.enabled = enabled;
   }
 
-  // 次の render から精細さ quality の解像度と歩数で追跡する。
-  public setQuality(quality: ScreenSpaceSpecularQuality): void {
-    this.quality = quality;
+  // 次の render から、解像度の比 scale(1 / 整数)と ray 1 本の歩数 stepCount で追跡する。
+  public setTrace(scale: number, stepCount: number): void {
+    this.traceScale = scale;
+    this.traceStepCount = stepCount;
   }
 
   // 次の render から、均した映り込みを書くか(denoised が偽なら、均した描画先は空のまま)。
@@ -254,15 +239,14 @@ export class ReflectionPass {
     return sum.rgb.div(max(sum.a, 1e-6));
   }
 
-  // 描画先と歩数を精細さの段へ合わせ、深度から位置を復元する行列を書き込む。
+  // 描画先と歩数を追跡の解像度と歩数へ合わせ、深度から位置を復元する行列を書き込む。
   private prepare(camera: THREE.Camera, width: number, height: number): void {
-    const tier = TRACE_TIERS[this.quality];
-    this.stepCount.value = tier.stepCount;
-    const footprint = Math.round(1 / tier.scale);
+    this.stepCount.value = this.traceStepCount;
+    const footprint = Math.round(1 / this.traceScale);
     this.footprint.value = footprint;
     const traceWidth = Math.max(1, Math.ceil(width / footprint));
     const traceHeight = Math.max(1, Math.ceil(height / footprint));
-    // 描画先の寸法を、描画バッファと精細さの段へ合わせる。
+    // 描画先の寸法を、描画バッファと追跡の解像度へ合わせる。
     if (this.depthTarget.width !== traceWidth || this.depthTarget.height !== traceHeight) {
       this.depthTarget.setSize(traceWidth, traceHeight);
     }

@@ -23,7 +23,7 @@ import type { ShadowPass } from './shadow/shadow-pass';
 import type { LightPrepass } from './light-prepass';
 import type { ScreenSpacePass } from './screen-space/screen-space-pass';
 import type { DiffuseCorrection } from './screen-space/diffuse-correction';
-import type { MaterialPass } from './material-pass';
+import type { ReflectionSourcePass } from './reflection-source-pass';
 import type { ReflectionPass } from './reflection-pass';
 import type { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import type { PlanetLightSource } from './lighting/planet-light-source';
@@ -60,7 +60,7 @@ export class DebugComposites {
     private readonly projectionInverse: Mat4Uniform, private readonly shadowMaps: ShadowMaps,
     private readonly meshShadow: MeshShadow, shadowPass: ShadowPass, lightPrepass: LightPrepass,
     private readonly screenSpacePass: ScreenSpacePass, private readonly diffuseCorrection: DiffuseCorrection,
-    materialPass: MaterialPass, private readonly reflectionPass: ReflectionPass,
+    reflectionSourcePass: ReflectionSourcePass, private readonly reflectionPass: ReflectionPass,
     private readonly reflection: ScreenSpaceReflection,
     planetLight: PlanetLightSource, atmospherePass: AtmospherePass, lensPass: LensPass,
   ) {
@@ -89,8 +89,7 @@ export class DebugComposites {
       'far-specular': hdr(lightPrepass.farSpecularTexture),
       correction: material(vec4(this.signedCorrection(texture(diffuseCorrection.texture, screenUV)), 1)),
       'bounce-source': hdr(screenSpacePass.surfaceRadianceTexture),
-      material: hdr(materialPass.keepTexture),
-      'reflection-source': hdr(materialPass.reflectionSourceTexture),
+      'reflection-source': hdr(reflectionSourcePass.texture),
       'reflection-depth': material(vec4(vec3(this.reflectionDepth()), 1)),
       'raw-reflection-weight': material(vec4(vec3(reflection.rawWeightAt(screenUV)), 1)),
       'raw-reflection-distance': material(

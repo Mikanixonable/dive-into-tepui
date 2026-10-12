@@ -55,7 +55,7 @@ function bounceCosine(): LabCase {
     sunDirection: new THREE.Vector3(0, -1, 0),
     shots: {
       'bounce-cosine': { view: EARTH_AWAY, graphics: GRAPHICS },
-      'bounce-cosine-diffuse': {
+      'bounce-cosine-far-diffuse': {
         view: EARTH_AWAY, graphics: GRAPHICS, debugTarget: 'diffuse',
       },
       'bounce-cosine-correction': {

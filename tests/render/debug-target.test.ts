@@ -13,7 +13,11 @@ export function register(): void {
     before('shadow-map', 'normal');
     before('normal', 'shadow');
     before('shadow', 'planet-light');
-    before('planet-light', 'bounce-source');
+    before('planet-light', 'diffuse');
+    before('diffuse', 'direct-specular');
+    assert.strictEqual(DEBUG_TARGETS.find(([id]) => id === 'diffuse')?.[1], '遠方の拡散照度');
+    before('direct-specular', 'far-specular');
+    before('far-specular', 'bounce-source');
     // 走査の帯 → 代表の縮小列 → 段ごとの帯の縮小(段 m は帯 m〜4) → 粗い段からの拡大と合流 → 描画バッファの
     // 解像度への拡大。
     const chain = [
@@ -29,11 +33,7 @@ export function register(): void {
     before('bounce-source', chain[0]);
     for (const [index, id] of chain.slice(1).entries()) before(chain[index]!, id);
     before(chain[chain.length - 1]!, 'correction');
-    before('correction', 'diffuse');
-    before('diffuse', 'direct-specular');
-    before('direct-specular', 'far-specular');
-    before('far-specular', 'material');
-    before('material', 'reflection-source');
+    before('correction', 'reflection-source');
     before('reflection-source', 'reflection-depth');
     before('reflection-depth', 'raw-reflection-weight');
     before('raw-reflection-weight', 'raw-reflection-distance');

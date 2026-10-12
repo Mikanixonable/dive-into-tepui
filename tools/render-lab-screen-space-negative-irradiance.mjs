@@ -155,14 +155,14 @@ async function captureChainRows(lab, dir) {
   HALVES.forEach((half, h) => writeFloats(path.join(dir, `u3-${half}.f32`), sums[h]));
 }
 
-// 本番(ブルーノイズの seed 0〜PRODUCTION_PASSES − 1)の最終出力の補正を 1 パスずつ撮り、E + C の見える負の画素の数を
-// パスごとに、補正の平均と不偏分散を画素・成分ごとに残す。最初のパスでは、拡散照度の読み戻しが E + C に合うかも調べる。
+// 本番(ブルーノイズの seed 0〜PRODUCTION_PASSES − 1)の補正を 1 パスずつ撮り、E + C の見える負の画素の数を
+// パスごとに、補正の平均と不偏分散を画素・成分ごとに残す。最初のパスでは、拡散照度の読み戻しが E に合うかも調べる。
 async function captureProduction(lab, dir, e, mask, exposure) {
   await prepare(lab, TIER, false);
   const sums = new Float64Array(PIXELS * 3);
   const squares = new Float64Array(PIXELS * 3);
   const counts = [];
-  let diffuseMismatchPixels = 0;
+  let farDiffuseMismatchPixels = 0;
   for (let k = 0; k < PRODUCTION_PASSES; k++) {
     await lab.setSeed(seedOf(k));
     await lab.render();
@@ -170,7 +170,7 @@ async function captureProduction(lab, dir, e, mask, exposure) {
     if (k === 0) {
       const diffuse = await lab.readFloat('diffuse', 3);
       for (let i = 0; i < diffuse.length; i++) {
-        if (Math.abs(diffuse[i] - (e[i] + c[i])) > 2 ** -9 * (Math.abs(e[i]) + Math.abs(c[i])) + 1e-6) diffuseMismatchPixels++;
+        if (Math.abs(diffuse[i] - e[i]) > 2 ** -9 * Math.abs(e[i]) + 1e-6) farDiffuseMismatchPixels++;
       }
     }
     for (let i = 0; i < c.length; i++) {
@@ -184,7 +184,7 @@ async function captureProduction(lab, dir, e, mask, exposure) {
   writeFloats(path.join(dir, 'prod-mean.f32'), Float32Array.from(sums, (v) => v / PRODUCTION_PASSES));
   writeFloats(path.join(dir, 'prod-variance.f32'), Float32Array.from(sums, (sum, i) => (
     (squares[i] - sum * sum / PRODUCTION_PASSES) / (PRODUCTION_PASSES - 1))));
-  return { passes: counts, diffuseMismatchPixels };
+  return { passes: counts, farDiffuseMismatchPixels };
 }
 
 async function captureUnit(lab, { entry, offEntry, dir }) {
@@ -415,14 +415,14 @@ function writeTable(results) {
       r.key, ...[r.check.rms, r.check.productionNoise, r.check.chainNoise].map((v) => v.toExponential(2)),
       fixed(r.check.ratio, 2), r.check.meanDifference.toExponential(2)])),
     '', '## 本番の最終出力(64 パスの 1 パスごと)の見える負の画素 最小 / 中央 / 最大', '',
-    ...table(['撮影', '見える', '0 未満', '拡散照度の読み戻しと E + C が合わない画素'], results.map((r) => {
+    ...table(['撮影', '見える', '0 未満', '遠方拡散照度の読み戻しと E が合わない画素'], results.map((r) => {
       const range = (field) => {
         const sorted = r.production.passes.map((pass) => pass[field]).sort((a, b) => a - b);
         return `${sorted[0]} / ${sorted[Math.floor(sorted.length / 2)]} / ${sorted.at(-1)}`;
       };
-      return [r.key, range('visibleCount'), range('negativeCount'), r.production.diffuseMismatchPixels];
+      return [r.key, range('visibleCount'), range('negativeCount'), r.production.farDiffuseMismatchPixels];
     })),
-    '', '## 窓の比(P_in / P_out の拡散照度の輝度比)', '',
+    '', '## 窓の比(P_in / P_out の E + ΔE の輝度比)', '',
     ...table(['撮影', '解析値', 'B', '2+3', '本番 64 パス'], results.filter((r) => r.windows !== null).map((r) => [
       r.key, analyticRatiosOf(r.key).map((v) => fixed(v, 3)).join(' / '), ...r.windows.map((v) => fixed(v, 3))])),
     '',

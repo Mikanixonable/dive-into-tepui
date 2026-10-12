@@ -197,7 +197,7 @@ async function captureCandidates(lab, dir, entries, candidates, seedGroups, refe
 }
 
 // 表示中の撮影 entry で候補 candidate を seed の組 groups ごとに撮り、組ごとのパスの補正の平均を dir の captures/ へ
-// 書く。目で見る画像を書く撮影では組 0 の表示も書く。組 0 の拡散照度の平均を測る画素の印 mask で畳んだ値
+// 書く。目で見る画像を書く撮影では組 0 の表示も書く。組 0 の E + ΔE の平均を測る画素の印 mask で畳んだ値
 // (diffuseSummaryOf)を返し、ちらつきのフレームでは null を返す。lab は withLab の口。
 async function captureCandidate(lab, dir, entry, candidate, groups, mask) {
   const { label, tier, passes } = candidate;
@@ -207,7 +207,7 @@ async function captureCandidate(lab, dir, entry, candidate, groups, mask) {
   await lab.setTier(tier);
   await lab.setSeed(groups[0][0]);
   const png = await lab.capturePng();
-  // 組ごとに補正を積む。組 0 では拡散照度と、複数パスの表示のための HDR も積む。
+  // 組ごとに補正を積む。組 0 では遠方拡散照度 E と、複数パスの表示のための HDR も積む。
   const firstKinds = [...(flickerFrame ? [] : ['diffuse']), ...(averagedDisplay ? ['hdr'] : [])];
   for (const [index, seeds] of groups.entries()) {
     for (const seed of seeds) {
@@ -227,11 +227,13 @@ async function captureCandidate(lab, dir, entry, candidate, groups, mask) {
   }
   if (averagedDisplay) await lab.dropAccumulated('hdr');
   if (flickerFrame) return null;
-  const [irradiance] = await lab.takeAccumulated('diffuse', 1);
-  return diffuseSummaryOf(entry, irradiance.map((v) => v / passes), mask, await lab.exposureFactor());
+  const [farIrradiance] = await lab.takeAccumulated('diffuse', 1);
+  const correction = sums[0];
+  const irradiance = farIrradiance.map((v, i) => (v + correction[i]) / passes);
+  return diffuseSummaryOf(entry, irradiance, mask, await lab.exposureFactor());
 }
 
-// 撮影 entry の候補の拡散照度 irradiance(rgb)の、測る画素の印 mask の立った画素で負の画素の数と、そのうちアルベド 1 の
+// 撮影 entry の候補の照度 E + ΔE(rgb)の、測る画素の印 mask の立った画素で負の画素の数と、そのうちアルベド 1 の
 // 面の表示(露出係数 exposure)で 1 LSB 以上暗く出るものの数。解析値と照らす撮影では窓の比も。
 function diffuseSummaryOf(entry, irradiance, mask, exposure) {
   let [negatives, visibleNegatives] = [0, 0];

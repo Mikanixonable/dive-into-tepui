@@ -1316,7 +1316,43 @@ joint-bilateral を兼ねるので、この手順はすでに実施されたも�
 
 **達成条件と検証**
 
-- 達成目標 1〜15 と、`screenspace-specular.md`・`screenspace-source.md`・`temporal-denoise.md`・`graphics-settings-feature.md` の達成目標を 1 つずつ当てる。
+- 達成目標 1〜15 と、`temporal-denoise.md`・`graphics-settings-feature.md` の達成目標、下の局所反射と照り返しの源の組み直しの達成目標を
+  1 つずつ当てる（局所反射と組み直しの計画は完了して削除した — `6df5908f4` の `screenspace-specular.md`・`screenspace-source.md`）。
+  - **局所反射**（パス順を組み直した後のコードについて）:
+    1. `leo-metal` の金属・粗さ0.05の球に隣の球が映り、映り込みオフでは映らない。
+    2. `bay-metal` の粗さ0.05の板に白い立方体と薬莢が映って遠方の天体照の像を置き換え、粗さ0.4では像がぼけ、粗さ0.8ではオン / オフの
+       差が 3 LSB 以下。
+    3. 映り込みオフの最終像が、局所反射の着手前（`ssr-before-1/2`）と `npm run render-lab:compare` の封筒内。
+    4. 映り込みオンで、拡散側の中間 target のデバッグ表示（拡散照度補正・照り返しの源と、その raw・均した値）が映り込みオフと
+       pixel diff 0。
+    5. `ssr-after` と `ssr-before-1/2` の比較で、封筒外は局所反射が出る金属面に限られる（before に無い撮影は比較の外）。
+    6. ゲームと render-lab の両方で、局所反射の中間 target のデバッグ表示がパス順の位置に並び、描画設定「近くの物体の映り込み」
+       「映り込みの精細さ」「近くの物体の映り込みのぼかし」が選べる。
+    7. 粗さの段のケースで、発光球の像の縁の幅が粗さ0.2まで単調に増え、対照（同じ場所の球光源をライティングパスで照らした像）の
+       0.5〜2倍。地球の像の縁は予測幅の 0.5〜2倍。チェッカーの縁は、測れる帯で真値の 0.5〜2倍（`ssr-step9i` で、球 / 球光源は
+       粗さ0.3まで 0.80〜0.87）。
+    8. 粗さの段のケースで、像のまだらが粗さ0.3までの帯で粗さ0.05の帯の2倍以下（ぼかしオン）。
+    9. 粗さの段のケースで、粗さ0.05〜0.3の帯の像から遠い輝点が0。
+    10. `leo-metal-flicker` の塊の揺れの最大が、`ssr-step9i` の 6.2 から悪くならない（ちらつきはユーザーが render-lab で容認済み）。
+    11. 像の元の方式は1つだけで、描画設定にも render-lab にも切り替えが無い（`src/`・`tools/` で `setReflectionSource` が0件）。
+
+    確かめ方: `npm run render-lab:shot -- ssr-after` を `ssr-before-1/2`（`3e646383`、局所反射の着手前）と比べて 3・5。
+    `node tools/render-lab-reflection-levels.mjs` と `node tools/render-lab-reflection-flicker.mjs` を `ssr-after` で回して 7〜10。
+    `ssr-before-1/2`・`ssr-step9i`（`f9d56706c`）は別のマシンの `.render-lab-shots/` にしかない — 比較は別のマシンで行うか、こちらで
+    `3e646383` から（追跡を決定的にした `2fbda38db` の修正を当てた一時版で）撮り直す。
+  - **照り返しの源と映り込みの像の元のパス順**（`6df5908f4` の時点ですべて確かめた。後の手順で崩れていないかを当てる）:
+    1. 照り返しの源が光源を求めない — `src/` で `emittedRadiance` が0件、`ScreenSpacePass` の構築が `SunSource` を受けない。
+    2. 近傍補正が光源の列に無い — `src/` で `DiffuseCorrectionSource` が0件。ΔE を照度へ足すのは本マテリアルと映り込みの像の元の
+       2か所で、どちらも同じ関数を通す。
+    3. 陰影の合成パスと `keep` の描画先が無い — `src/` で `ShadingCompositePass`・`keepTexture` が0件。
+    4. 映り込みの像の元の照度は近傍補正を含む。近傍の拡散光は拡散反射光だけに関わり、太陽の直射光と鏡面反射光を遮らない。
+       描画設定「遮蔽と照り返し」（3択）・「近くの物体の映り込み」・「ぼかし」のどの組み合わせでも描け、切られた段は何も作らず、
+       その段のデバッグ表示が黒として見える（`ladder-off-source` は全画素 0）。
+    5. 組み直しの対象の行（ライティング・近傍拡散写しと源・マテリアル・映り込みの像の元）の和が、組み直し前（`518a955d6`）より、
+       映り込みのオン・オフと遮蔽と照り返しのオフで小さい。同じ Chrome session でビルドを読み直しながら交互に測り、組み直しに触れない
+       行の和で正規化して比べる。
+    6. `DEVELOP/SPEC/RENDERING.md` の描画パイプラインの節が新しい順になっている（`76ef6c042`）。
+    7. デバッグ表示と GPU の行が新しい実行順に並び、`npm run test:render` が通る。
 - `DEBUG_TARGETS`・`GPU_PASS`・screen-space の全 target と全設定を列挙し、target とデバッグ表示・GPU の行が一対一で、生成順・実行順に並ぶ。
 - `npm run render-lab:shot -- ssd-after` と
   `npm run render-lab:compare -- .render-lab-shots/ssd-after .render-lab-shots/ssd-before-1 .render-lab-shots/ssd-before-2`。封筒外は近傍拡散補正の

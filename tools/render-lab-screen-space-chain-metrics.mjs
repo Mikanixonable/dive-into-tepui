@@ -163,9 +163,10 @@ async function mergedOf(lab, packed) {
 }
 
 async function clayPng(lab) {
-  const rgba = await lab.readFloat('diffuse', 4);
+  // クレイは合成後の照度を表示するため、遠方照度 E と近傍補正 ΔE を足してから負値を切る。
+  const [rgba, correction] = await Promise.all([lab.readFloat('diffuse', 4), lab.readFloat('correction', 4)]);
   for (let i = 0; i < rgba.length; i += 4) {
-    for (let c = 0; c < 3; c++) rgba[i + c] = Math.max(0, rgba[i + c]);
+    for (let c = 0; c < 3; c++) rgba[i + c] = Math.max(0, rgba[i + c] + correction[i + c]);
     rgba[i + 3] = 1;
   }
   const display = await lab.composite({ width: WIDTH, height: HEIGHT, rgba });

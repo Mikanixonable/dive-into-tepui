@@ -167,15 +167,22 @@ async function capturePasses(lab, entry, candidate, passes, exposure) {
     await lab.accumulateMoments(C0_NAME, 3, k % BLOCKS);
     for (const name of levelNames) await lab.accumulateFloat(name, 3, 0);
     await lab.accumulateFloat('hdr', 3, 0);
-    if (inBay) await lab.accumulateFloat('diffuse', 3, 0);
+    if (inBay) {
+      await lab.accumulateFloat('diffuse', 3, 0);
+      await lab.accumulateFloat('correction', 3, 0);
+    }
     if (bandCount === 1 && k < SAMPLED_PASSES) samples.push(exposedCorrectionOf(await lab.readFloat(names[0], 3), exposure));
     if (k === 0) firstPassSeconds = (Date.now() - started) / 1000;
   }
   const passSeconds = ((Date.now() - started) / 1000 - firstPassSeconds) / (passes - 1);
   const display = await lab.displayOfMean('hdr', passes);
   await lab.dropAccumulated('hdr');
-  const windowRatio = inBay
-    ? windowRatiosOf(entry, (await lab.takeAccumulated('diffuse', 1))[0].map((v) => v / passes))[0] : null;
+  let windowRatio = null;
+  if (inBay) {
+    const [farIrradiance] = await lab.takeAccumulated('diffuse', 1);
+    const [correction] = await lab.takeAccumulated('correction', 1);
+    windowRatio = windowRatiosOf(entry, farIrradiance.map((v, i) => (v + correction[i]) / passes))[0];
+  }
   const packed = [];
   for (const name of names) packed.push(await lab.takeMoments(name, BLOCKS));
   // 帯ごとの冪和を詰めたテクスチャのチャンネルから取り出して、統計にする。

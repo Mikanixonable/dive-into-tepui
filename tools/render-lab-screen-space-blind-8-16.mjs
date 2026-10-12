@@ -177,8 +177,10 @@ async function withScene(scene, work) {
     const adapter = await devTools.evaluate(`(async () => { const a = await navigator.gpu.requestAdapter(), i = a.info ?? {};
       return [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(' / '); })()`);
     await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)}, ${JSON.stringify(scene.shot)})`);
-    await devTools.evaluate(`window.renderLab.setTarget('off'); window.renderLab.setGraphicsOption('screenSpaceDiffuse', 2);
-      window.renderLab.setGraphicsOption('screenSpaceQuality', 2); window.renderLab.setScanWhiteNoisePass(null)`);
+    await devTools.evaluate(`window.renderLab.setTarget('off');
+      window.renderLab.setGraphicsOption('screenSpaceOcclusion', true); window.renderLab.setGraphicsOption('screenSpaceIndirect', true);
+      window.renderLab.setGraphicsOption('screenSpaceSliceCount', 4); window.renderLab.setGraphicsOption('screenSpaceStepCount', 6);
+      window.renderLab.setScanWhiteNoisePass(null)`);
     const exposure = await stabilizeExposure(devTools);
     return await work(devTools, { pageUrl: session.baseUrl, adapter, exposure });
   } finally {
@@ -216,13 +218,12 @@ const holdCorrection = (devTools) => devTools.evaluate(`window.renderLab.readFlo
   window.__ssdCorrection = rgb;
 })`);
 
-// 直前のフレームの、補正を除いた拡散照度 diffuse − correction(画素ごとに rgb)をページの window.__ssdBase に控える。
+// 直前のフレームの遠方拡散照度 E(画素ごとに rgb)をページの window.__ssdBase に控える。
 const holdBase = (devTools) => devTools.evaluate(`(async () => {
   const diffuse = (await window.renderLab.readFloat('diffuse')).rgba;
-  const correction = (await window.renderLab.readFloat('correction')).rgba;
   const base = new Float32Array(diffuse.length / 4 * 3);
   for (let p = 0; p < diffuse.length / 4; p++) {
-    for (let c = 0; c < 3; c++) base[3 * p + c] = diffuse[4 * p + c] - correction[4 * p + c];
+    for (let c = 0; c < 3; c++) base[3 * p + c] = diffuse[4 * p + c];
   }
   window.__ssdBase = base;
 })()`);
@@ -358,9 +359,9 @@ async function check814(devTools, sceneName, stimulusId) {
   };
 }
 
-// band-new の中の段の 1 パスを seed 0 と 1 で描き、補正を除いた拡散照度 diffuse − correction の seed による差を、補正の
+// band-new の中の段の 1 パスを seed 0 と 1 で描き、遠方拡散照度 E の seed による差を、補正の
 // 大きさと半精度の ulp(その画素の拡散照度と土台の大きいほう)で、面の写る画素(surface)と虚空の画素(void)に分けて測る。
-// 虚空の画素の拡散照度は、ライティングが隣の面の uv で引いたもの(隣の画素の補正を含む)。
+// 虚空の画素の遠方拡散照度は、ライティングが隣の面の uv で引いたもの。
 async function checkBase(devTools) {
   for (const k of [0, 1]) {
     await renderOnePass(devTools, 'band-new', tierOf(KAPPA).sliceCount, k);
@@ -378,7 +379,7 @@ async function checkBase(devTools) {
     for (let i = 0; i < a.diffuse.length; i++) {
       if (i % 4 === 3) continue;
       const s = radius[i - i % 4] > 0 ? sums.surface : sums.void;
-      const [baseA, baseB] = [a.diffuse[i] - a.correction[i], b.diffuse[i] - b.correction[i]];
+      const [baseA, baseB] = [a.diffuse[i], b.diffuse[i]];
       const d = Math.abs(baseA - baseB);
       const magnitude = Math.max(Math.abs(a.diffuse[i]), Math.abs(b.diffuse[i]), Math.abs(baseA), Math.abs(baseB));
       const ulps = d === 0 ? 0 : d / ulpOf(magnitude);
@@ -429,7 +430,7 @@ async function check() {
     blind814 !== null && blind814.pre815.pixelsOver2 > MAX_PIXELS_OVER_2 && `${name}: band-pre815 differs from 8-14`,
     blind814 !== null && !(blind814.pre815.meanAbsolute < blind814.bandNew.meanAbsolute * PRE815_DIFFERENCE_RATIO)
       && `${name}: band-pre815 is not much closer to 8-14 than band-new`,
-    base !== null && base.surface.maxUlps > MAX_BASE_ULPS && `${name}: diffuse − correction depends on the seed on surfaces`,
+    base !== null && base.surface.maxUlps > MAX_BASE_ULPS && `${name}: far diffuse depends on the seed on surfaces`,
   ].filter(Boolean));
   console.log(JSON.stringify(results, null, 2));
   if (failures.length > 0) throw new Error(`checks failed:\n${failures.join('\n')}`);

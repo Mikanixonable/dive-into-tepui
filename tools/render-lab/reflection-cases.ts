@@ -194,6 +194,8 @@ function reflectionLadder(): LabCase {
       'ladder-no-planet': { view: {}, graphics: NO_PLANET_GRAPHICS },
       // 均さない映り込み。像は粗い帯ほど点描になり、広がりと明るさの総量は均したものと同じ。
       'ladder-no-planet-raw': { view: {}, graphics: { ...NO_PLANET_GRAPHICS, screenSpaceSpecularDenoise: false } },
+      // 映り込みを切ったフレームの像の元は空(黒)。映り込みを描いた撮影の直後に置き、切り替えで前の像が残らないことを見る。
+      'ladder-off-source': { view: {}, graphics: off, debugTarget: 'reflection-source' },
       'ladder-off': { view: {}, graphics: off },
       // 地球の像の縁は、トーンマッピングだけを通した遠方の鏡面照度(天体照と環境光)で測る。
       'ladder-off-specular': { view: {}, graphics: off, debugTarget: 'far-specular' },

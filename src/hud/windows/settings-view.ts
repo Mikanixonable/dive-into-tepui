@@ -1,5 +1,5 @@
 import type { BgmAudition } from '../../audio/bgm/bgm';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { GraphicsSelection } from '../../render/graphics-selection';
 import { BgmSettingsPanel } from '../panels/bgm-settings-panel';
 import { GraphicsPanel } from '../panels/graphics-panel';
 import { ThemePanel } from '../panels/theme-panel';
@@ -15,14 +15,14 @@ export class SettingsView {
 
   // 配色が選ばれたときに呼ばれる。
   public onThemeIdChange: ((id: string) => void) | null = null;
-  // 描画品質の設定値一式が変わったときに呼ばれる。
-  public onGraphicsChange: ((graphics: GraphicsSettingsData) => void) | null = null;
+  // 描画品質の選び方が変わったときに呼ばれる。
+  public onGraphicsChange: ((selection: GraphicsSelection) => void) | null = null;
   // BGM の音量が変わったときに呼ばれる。
   public onBgmVolumeChange: ((volume: number) => void) | null = null;
 
   // 見出し・内側タブバーと、描画/BGM/配色の3面を組み立てる。graphics・bgmVolume・themeId は
   // 組み立て時の設定値。
-  public constructor(graphics: GraphicsSettingsData, bgmVolume: number, themeId: string) {
+  public constructor(graphics: GraphicsSelection, bgmVolume: number, themeId: string) {
     this.element = document.createElement('section');
     this.element.className = 'pm-settings-view';
     this.element.setAttribute('aria-labelledby', 'hud-settings-title');

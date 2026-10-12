@@ -1,15 +1,16 @@
-// ライトプリパスが書いた照度へ G バッファの素材(ベース色・金属度・自己発光)を掛け合わせ、面の画素の
-// 陰影を自分の描画先へ2枚書く — 近くの物体の映り込みが置き換えない成分 keep と、映り込みの像の元 M0(面を
-// 一様に反射する面とみなした放射輝度)。背景専用レイヤーの星野を、world パスと共有する HDR ターゲットへ
-// 最初に描く(クリアする)のもこのパスが担う。
+// 本マテリアルのパス。ライトプリパスの照度・近傍補正・近くの物体の映り込みへ G バッファの素材(ベース色・金属度・
+// 自己発光)を掛け合わせた面の画素の最終の陰影と、G バッファの深度を、共有の HDR ターゲットへ書く。映り込みは遠方の
+// 鏡面光を置き換える。背景専用レイヤーの星野を共有ターゲットへ最初に描く(クリアする)のもこのパスが担う。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { BRDF_Lambert, float, max, mix, mrt, screenUV, select, texture, vec3, vec4 } from 'three/tsl';
+import { BRDF_Lambert, Discard, Fn, float, max, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { WORLD_BACKGROUND_LAYER } from './lit-layer';
 import type { GBufferPass } from './gbuffer';
 import type { LightPrepass } from './light-prepass';
-import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
+import type { DiffuseCorrection } from './screen-space/diffuse-correction';
+import type { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
+import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 import { compileInto } from './compile-into';
 
 // G バッファの uv の画素の鏡面反射率 R — 照度バッファの鏡面へ掛ける F0(誘電体 0.04 と金属色を金属度で混ぜた値)。
@@ -20,89 +21,144 @@ export function specularReflectanceAt(gbuffer: GBufferPass, uv: Vec2Node): Vec3N
   return mix(vec3(0.04), material.rgb, material.a);
 }
 
-// 粗い面が一様な光を返す反射率 ρ = 拡散色 + 粗さ × 鏡面反射率。
-export function diffuseReflectanceWithRoughSpecular(
-  diffuseColor: Vec3Node, reflectance: Vec3Node, roughness: FloatNode,
-): Vec3Node {
-  return diffuseColor.add(reflectance.mul(roughness));
+// 遠方の拡散照度に近傍補正を足し、0 以上に切った照度。
+export function diffuseIrradianceAt(distant: Vec3Node, correction: Vec3Node): Vec3Node {
+  return max(distant.add(correction), vec3(0));
 }
 
-// BRDF_Lambert(反射率 albedo / π)。@types/three 上の戻り値型はメソッドチェインを持たないため、Vec3Node へ読み替える。
+// 画素 screenUV の拡散照度。correction が null でなければ近傍補正を足して 0 以上に切り、null なら遠方の拡散照度そのもの
+// (近傍補正が空のフレームで補正を読まずに済ませる)。
+export function receivedIrradiance(lightPrepass: LightPrepass, correction: DiffuseCorrection | null): Vec3Node {
+  const distant = texture(lightPrepass.diffuseTexture, screenUV).rgb;
+  return correction === null ? distant : diffuseIrradianceAt(distant, correction.atUv(screenUV));
+}
+
+// BRDF_Lambert(反射率 albedo / π)。照度は放射照度なので、拡散へは反射率ではなく BRDF を掛ける — 1/π を落とすと
+// π 倍明るくなる。@types/three 上の戻り値型はメソッドチェインを持たないため、Vec3Node へ読み替える。
 function lambertOf(albedo: Vec3Node): Vec3Node {
   return BRDF_Lambert({ diffuseColor: albedo }) as unknown as Vec3Node;
 }
 
-// 画素の keep と像の元 M0 を、MRT の出力 keep / reflectionSource として組む。
-function shadedOutputs(lightPrepass: LightPrepass, gbuffer: GBufferPass): ReturnType<typeof mrt> {
-  // 照度は放射照度なので、拡散へは反射率ではなく BRDF を掛ける — 1/π を落とすと π 倍明るくなる。
-  const material = texture(gbuffer.basecolorTexture, screenUV);
-  const baseColor: Vec3Node = material.rgb;
-  const metalness = material.a;
-  const diffuseColor = baseColor.mul(metalness.oneMinus());
-  const reflectance = specularReflectanceAt(gbuffer, screenUV);
-  // 拡散の照度は符号付きの近傍補正を含み、補正が引きすぎると負になるので、0 以上に切ってから掛ける。
-  const irradiance = max(texture(lightPrepass.diffuseTexture, screenUV).rgb, vec3(0));
-  const diffuse = irradiance.mul(lambertOf(diffuseColor));
-  const directSpecular = texture(lightPrepass.directSpecularTexture, screenUV).rgb.mul(reflectance);
-  const emissive = texture(gbuffer.emissiveTexture, screenUV).rgb;
-  const keep = diffuse.add(directSpecular).add(emissive);
+// G バッファの uv の画素の拡散色(ベース色を金属度で弱めたもの)。段を明示して読む。
+function diffuseColorAt(gbuffer: GBufferPass, uv: Vec2Node): Vec3Node {
+  const material = texture(gbuffer.basecolorTexture, uv).level(float(0));
+  return material.rgb.mul(material.a.oneMinus());
+}
 
-  // 像の元は、面を反射率 ρ = 拡散色 + r × R(r は知覚的粗さ)のランバート面とみなした放射輝度。R を足すと一様な環境光の
-  // 下で描く面と一致し、粗さで弱めるのは一様に広げた見え方が滑らかな面ほど元の鏡面から離れるため。描いた鏡面をそのまま
-  // 入れると、小さく明るいハイライトに当たる回数が画素ごとに揺らいでブロック状に明滅し、向きもカメラへ向けた鏡面になる。
-  // 映り込みの中の精度を上げる手段(事前縮小列・粗さの比で鏡面を混ぜる・画面空間より正確な追跡)は設計の判断を要する
-  // ので、指示なしに着手しない。
-  // 拡散照度は近傍の遮蔽と照り返しを含んだまま使う — 抜くと、遮られた隅の面が映り込みの中で明るくなりすぎる。
-  const roughness = texture(gbuffer.roughnessTexture, screenUV).r;
-  const source = irradiance.mul(lambertOf(diffuseReflectanceWithRoughSpecular(diffuseColor, reflectance, roughness)))
-    .add(emissive);
+// G バッファの uv の画素の面を、反射率 ρ = 拡散色 + r × R(r は知覚的粗さ、R は specularReflectanceAt)のランバート面と
+// みなし、照度 irradiance [SUN_IRRADIANCE_1AU の目盛り] の下で放つ放射輝度に自己発光を足したもの。一様でない分岐の中から読んでよい。
+export function lambertianRadianceAt(gbuffer: GBufferPass, uv: Vec2Node, irradiance: Vec3Node): Vec3Node {
+  // R を足すと一様な環境光の下で描く面と一致し、粗さで弱めるのは一様に広げた見え方が滑らかな面ほど元の鏡面から離れるため。
+  // 描いた鏡面をそのまま入れると、小さく明るいハイライトに当たる回数が画素ごとに揺らいでブロック状に明滅し、向きも
+  // カメラへ向けた鏡面になる。
+  const roughness = texture(gbuffer.roughnessTexture, uv).level(float(0)).r;
+  const reflectance = specularReflectanceAt(gbuffer, uv);
+  const albedo = diffuseColorAt(gbuffer, uv).add(reflectance.mul(roughness));
+  return irradiance.mul(lambertOf(albedo)).add(texture(gbuffer.emissiveTexture, uv).level(float(0)).rgb);
+}
 
-  // 物体の無い画素は 0。
-  const covered = gbuffer.covered();
-  return mrt({
-    keep: select(covered, vec4(keep, 1), vec4(0)),
-    reflectionSource: select(covered, vec4(source, 1), vec4(0)),
+// 画素の最終の陰影 拡散 + R × 直接の鏡面照度 + 自己発光 + R × farSpecular。farSpecular は映り込みが置き換えた後の
+// 遠方の鏡面照度。物体の無い画素は捨てる。
+function shadedColor(
+  lightPrepass: LightPrepass, gbuffer: GBufferPass, correction: DiffuseCorrection | null, farSpecular: Vec3Node,
+): Vec4Node {
+  return Fn(() => {
+    Discard(gbuffer.covered().not());
+    // 拡散は照度へ近傍補正を足してから BRDF を掛け、鏡面は照度へ R を掛ける。
+    const diffuse = receivedIrradiance(lightPrepass, correction).mul(lambertOf(diffuseColorAt(gbuffer, screenUV)));
+    const reflectance = specularReflectanceAt(gbuffer, screenUV);
+    const directSpecular = texture(lightPrepass.directSpecularTexture, screenUV).rgb.mul(reflectance);
+    const emissive = texture(gbuffer.emissiveTexture, screenUV).rgb;
+    return vec4(diffuse.add(directSpecular).add(emissive).add(farSpecular.mul(reflectance)), 1);
+  })();
+}
+
+// 陰影の板のマテリアル。深度は G バッファのものを複製する。depthTest を切ったまま depthWrite を立てるので、捨てなかった
+// 画素が無条件に書かれる。
+function shadingMaterial(
+  lightPrepass: LightPrepass, gbuffer: GBufferPass, correction: DiffuseCorrection | null, farSpecular: Vec3Node,
+): THREE.MeshBasicNodeMaterial {
+  const material = new THREE.MeshBasicNodeMaterial({
+    depthTest: false, depthWrite: true, transparent: false, blending: THREE.NoBlending,
   });
+  material.colorNode = shadedColor(lightPrepass, gbuffer, correction, farSpecular);
+  material.depthNode = texture(gbuffer.depthTexture, screenUV).r;
+  return material;
+}
+
+// 遠方の鏡面照度を、重み w と重みを掛けた像 w × I(映り込みの同じ描画先の同じ texel から読んだもの)で置き換えた鏡面照度。
+function replacedFarSpecular(lightPrepass: LightPrepass, weight: FloatNode, weightedImage: Vec3Node): Vec3Node {
+  return texture(lightPrepass.farSpecularTexture, screenUV).rgb.mul(weight.oneMinus()).add(weightedImage);
+}
+
+// 映り込みを読まない・均す前を読む・均したを読むの 3 枚の組。
+interface ReflectionMaterials {
+  readonly off: THREE.MeshBasicNodeMaterial;
+  readonly raw: THREE.MeshBasicNodeMaterial;
+  readonly denoised: THREE.MeshBasicNodeMaterial;
+}
+
+// 近傍補正を読む(correction が null でない)か読まないかの 1 通りについて、映り込みの読み方 3 通りの板を組む。読まない板は
+// 遠方の鏡面照度をそのまま使い、読む 2 枚は均す前・均した映り込みで置き換える。
+function reflectionMaterials(
+  lightPrepass: LightPrepass, gbuffer: GBufferPass, correction: DiffuseCorrection | null,
+  reflection: ScreenSpaceReflection,
+): ReflectionMaterials {
+  // 映り込みを読む 2 枚は、同じ描画先の同じ texel から w と w × I を読む。
+  return {
+    off: shadingMaterial(lightPrepass, gbuffer, correction, texture(lightPrepass.farSpecularTexture, screenUV).rgb),
+    raw: shadingMaterial(
+      lightPrepass, gbuffer, correction,
+      replacedFarSpecular(lightPrepass, reflection.rawWeightAt(screenUV), reflection.rawWeightedImageAt(screenUV)),
+    ),
+    denoised: shadingMaterial(
+      lightPrepass, gbuffer, correction,
+      replacedFarSpecular(
+        lightPrepass, reflection.denoisedWeightAt(screenUV), reflection.denoisedWeightedImageAt(screenUV),
+      ),
+    ),
+  };
 }
 
 export class MaterialPass {
-  // 0 枚目は keep、1 枚目は像の元 M0。どちらも面の無い画素は 0。
-  private readonly target = new THREE.RenderTarget(1, 1, { count: 2, depthBuffer: false, samples: 0 });
-  private readonly material: THREE.MeshBasicNodeMaterial;
-  private readonly quad: QuadMesh;
+  // 近傍補正を読む組と読まない組の、それぞれ 3 枚(計 6 枚)。設定の切り替えでは持ち替える — 組み直すとシェーダの
+  // 再コンパイルがフレームを止める。読むテクスチャは WebGPU が保証する 16 枚に収めること — 超えるとパイプラインの
+  // 生成に失敗して画面全体が黒くなる。
+  private readonly correctedMaterials: ReflectionMaterials;
+  private readonly uncorrectedMaterials: ReflectionMaterials;
+  private readonly quad = new QuadMesh();
 
-  // 照度と素材を掛け合わせる全画面の板ポリを一度だけ組み立てる。
+  // reflectionEnabled / reflectionDenoised / corrected は構築時点の描画設定 screenSpaceSpecular / screenSpaceSpecularDenoise /
+  // 「遮蔽と照り返し」がオフでないか、の値。
   public constructor(
     private readonly renderer: WebGPURenderer,
     lightPrepass: LightPrepass,
     gbuffer: GBufferPass,
+    correction: DiffuseCorrection,
+    reflection: ScreenSpaceReflection,
     private readonly gpu: GpuTimings,
+    private reflectionEnabled: boolean,
+    private reflectionDenoised: boolean,
+    private corrected: boolean,
   ) {
-    // 名前は MRT の出力と結び付く。
-    for (const [index, name] of ['keep', 'reflectionSource'].entries()) {
-      const texture = this.target.textures[index]!;
-      texture.name = name;
-      texture.format = THREE.RGBAFormat;
-      texture.type = THREE.HalfFloatType;
-    }
-    this.material = new THREE.MeshBasicNodeMaterial({
-      depthTest: false, depthWrite: false, transparent: false, blending: THREE.NoBlending,
-    });
-    this.material.mrtNode = shadedOutputs(lightPrepass, gbuffer);
-    this.quad = new QuadMesh(this.material);
+    this.correctedMaterials = reflectionMaterials(lightPrepass, gbuffer, correction, reflection);
+    this.uncorrectedMaterials = reflectionMaterials(lightPrepass, gbuffer, null, reflection);
   }
 
-  // 近くの物体の映り込みが置き換えない成分 keep = 拡散 + R × 直接の鏡面照度 + 自己発光(放射輝度)。
-  public get keepTexture(): THREE.Texture { return this.target.textures[0]!; }
-  // 映り込みの像の元 M0 = (拡散色 + r × R) / π × 拡散照度 + 自己発光(放射輝度)。
-  public get reflectionSourceTexture(): THREE.Texture { return this.target.textures[1]!; }
+  // 次の render から、enabled が偽なら映り込みを読まず、真なら均した(denoised)か均す前の映り込みを読む。
+  public setReflection(enabled: boolean, denoised: boolean): void {
+    this.reflectionEnabled = enabled;
+    this.reflectionDenoised = denoised;
+  }
 
-  // 背景専用レイヤーを sharedTarget へ、面の陰影を自分の描画先へ描く。描画バッファの寸法 width × height で呼ぶ。
-  // camera の layers.mask は呼び出し前の値へ戻して返る。
-  public render(
-    scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget, width: number, height: number,
-  ): void {
-    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+  // 次の render から、corrected が真なら近傍補正を照度へ足して読み、偽なら読まない。
+  public setCorrected(corrected: boolean): void {
+    this.corrected = corrected;
+  }
+
+  // 背景専用レイヤーを sharedTarget へ(クリアして)描き、その上へ面の画素を上書きする。camera の layers.mask は
+  // 呼び出し前の値へ戻して返る。
+  public render(scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget): void {
     const savedMask = camera.layers.mask;
     camera.layers.set(WORLD_BACKGROUND_LAYER);
 
@@ -112,24 +168,27 @@ export class MaterialPass {
     this.renderer.autoClear = true;
     this.renderer.render(scene, camera);
 
-    this.renderer.setRenderTarget(this.target);
+    this.quad.material = this.currentMaterial();
     this.gpu.beginPass(GPU_PASS.material);
+    this.renderer.autoClear = false;
     this.quad.render(this.renderer);
+    this.renderer.autoClear = true;
 
     this.renderer.setRenderTarget(null);
     camera.layers.mask = savedMask;
   }
 
-  // 背景を共有ターゲットへ、陰影の板を自分の描画先へ事前コンパイルする。
-  public async compile(
-    scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget, width: number, height: number,
-  ): Promise<void> {
-    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+  // 背景と 6 枚の陰影の板を共有ターゲットへ事前コンパイルする。
+  public async compile(scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget): Promise<void> {
     const savedMask = camera.layers.mask;
     camera.layers.set(WORLD_BACKGROUND_LAYER);
     try {
       await compileInto(this.renderer, sharedTarget, scene, camera);
-      await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
+      // 設定の切り替えで持ち替える 6 枚とも、初回の切り替えでコンパイルを待たないよう先に組む。
+      for (const material of this.allMaterials()) {
+        this.quad.material = material;
+        await compileInto(this.renderer, sharedTarget, this.quad, this.quad.camera);
+      }
     } finally {
       camera.layers.mask = savedMask;
     }
@@ -137,7 +196,18 @@ export class MaterialPass {
 
   // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。
   public dispose(): void {
-    this.target.dispose();
-    this.material.dispose();
+    for (const material of this.allMaterials()) material.dispose();
+  }
+
+  // 持っている 6 枚すべて。
+  private allMaterials(): THREE.MeshBasicNodeMaterial[] {
+    return [this.correctedMaterials, this.uncorrectedMaterials].flatMap((set) => [set.off, set.raw, set.denoised]);
+  }
+
+  // いまの設定が読む補正と映り込みのマテリアル。
+  private currentMaterial(): THREE.MeshBasicNodeMaterial {
+    const set = this.corrected ? this.correctedMaterials : this.uncorrectedMaterials;
+    if (!this.reflectionEnabled) return set.off;
+    return this.reflectionDenoised ? set.denoised : set.raw;
   }
 }

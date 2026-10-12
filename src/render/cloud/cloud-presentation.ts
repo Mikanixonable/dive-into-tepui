@@ -1,7 +1,7 @@
 // 天体ごとの雲テクスチャと表示状態を統括する境界クラス。雲データ供給源（生成／観測）を選択し、
 // テクスチャの準備および雲面レンダラーの寿命を管理する。
 import * as THREE from 'three/webgpu';
-import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../opaque-cloud-surface-renderer';
+import { OpaqueCloudSurfaceRenderer } from '../opaque-cloud-surface-renderer';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -70,12 +70,12 @@ export class CloudPresentation {
 
   // 描画設定のうち雲にかかわる項目と、見かけ直径 apparentDiameterPx [px] を表示状態へ反映する。
   public syncGraphics(graphics: GraphicsSettingsData, apparentDiameterPx: number): void {
-    // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
+    // 雲全体を描くかと、描くときの雲場の出どころ・積雲の殻の標本の配り方と分割段。
     this.setCloudsVisible(graphics.clouds);
     if (graphics.clouds) {
       this.setSource(graphics.cloudFieldSource);
-      this.setDetail(graphics.cumulusDetail);
-      this.syncLod(apparentDiameterPx);
+      this.surface.setSampling(graphics.cumulusMarchSteps, graphics.cumulusRefineSteps);
+      this.syncLod(graphics.cumulus, apparentDiameterPx);
     }
     // 大気の中へ立てる巻雲と半透明の積雲。
     this.setAtmosphereCloudsVisible(
@@ -113,8 +113,6 @@ export class CloudPresentation {
     this.surface.bind(this.renderInput);
   }
 
-  private setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
-
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   public setCloudsVisible(visible: boolean): void {
     this.cloudVisible = visible;
@@ -127,9 +125,9 @@ export class CloudPresentation {
     this.translucentCumulusVisible = translucentCumulusVisible;
   }
 
-  // 見かけ直径 [px] から不透明表面の分割段を選ぶ。雲を描かないなら隠す。
-  private syncLod(apparentDiameterPx: number): void {
-    if (this.cloudVisible) this.surface.syncLod(apparentDiameterPx);
+  // 見かけ直径 [px] から不透明表面の分割段を選ぶ。雲か積雲の立体 cumulus を描かないなら隠す。
+  private syncLod(cumulus: boolean, apparentDiameterPx: number): void {
+    if (this.cloudVisible && cumulus) this.surface.syncLod(apparentDiameterPx);
     else this.surface.hide();
   }
 

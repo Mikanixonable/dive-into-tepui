@@ -4,7 +4,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { exposedCorrectionOf, rmsOf } from './screen-space-error.mjs';
 import {
-  analyticRatiosOf, builtMetaOf, candidateSeedOf, fixed, HEIGHT, headHash, loadReference, maskOf, MEDIUM_RAW_TIER,
+  analyticRatiosOf, builtMetaOf, candidateSeedOf, farDiffuseSumsOf, fixed, HEIGHT, headHash, loadReference, maskOf, MEDIUM_RAW_TIER,
   readFloats, referenceDirOf, referenceFileOf, referenceMetaOf, referenceSumsOf, seedOf, selectedEntries, table, WIDTH,
   windowRatiosOf, withLab, writeFloats, writeReferencePasses,
 } from './screen-space-lab.mjs';
@@ -99,7 +99,8 @@ async function extendReference(lab, name, entry, tier, passes) {
   // あれば、ページへ戻してから続ける。
   const kinds = ['hdr', 'correction', ...(entry.set === 'correctness' ? ['diffuse'] : [])];
   if (saved !== null) {
-    for (const kind of kinds) await lab.restoreAccumulated(targetOfKind(kind), 3, referenceSumsOf(name, entry, kind));
+    for (const kind of kinds) await lab.restoreAccumulated(targetOfKind(kind), 3,
+      kind === 'diffuse' ? farDiffuseSumsOf(name, entry) : referenceSumsOf(name, entry, kind));
   }
   // パスを描く。絵の落ち着きを待つのは最初のパスだけで、以後は seed だけが変わる。
   const passesStarted = Date.now();
@@ -119,7 +120,8 @@ async function extendReference(lab, name, entry, tier, passes) {
   for (const kind of kinds) sums[kind] = await lab.takeAccumulated(targetOfKind(kind), 2);
   const seconds = (Date.now() - started) / 1000;
   writeReferencePasses(name, entry, {
-    slices: tier.sliceCount, steps: tier.stepCount, passes, exposure, seconds: (saved?.seconds ?? 0) + seconds,
+    slices: tier.sliceCount, steps: tier.stepCount, passes, exposure, diffuseSemantics: 'far-only',
+    seconds: (saved?.seconds ?? 0) + seconds,
   }, sums, display);
   const later = passes - done - 1;
   const perPass = later > 0 ? `${((passSeconds - firstPassSeconds) / later).toFixed(2)} s/パス、` : '';

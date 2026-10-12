@@ -19,14 +19,17 @@ const debugPort = 9447;
 export const WIDTH = 960;
 export const HEIGHT = 540;
 
-// 描画設定 screenSpaceDiffuse の値(src/render/pipeline/screen-space/screen-space-pass.ts)。
+// 近傍拡散補正の方式(src/render/pipeline/screen-space/screen-space-pass.ts の SCREEN_SPACE_DIFFUSE)。遮蔽だけと、
+// 遮蔽と照り返し。
 const MODE = { occlusion: 1, indirect: 2 };
+// 方式 mode を選ぶ描画設定の差分。
+const graphicsOfMode = (mode) => ({ screenSpaceOcclusion: true, screenSpaceIndirect: mode === MODE.indirect });
 // 全撮影へ重ねる描画設定。目で見る画像は候補の表示と基準の合成の差から作る。レンズ効果は明るい面の光を、
 // アンチエイリアス(値 0 はなし)は表示を縁の向こうへ広げ、どちらも基準の合成には掛からないので切る。
 const EVALUATION_GRAPHICS = { lens: false, antialias: 0 };
 
 // 評価の組。set は tuning(調整用)・checking(確認用)・correctness(解析値との照合)・flicker(ちらつき)・holes(拡大の
-// 重みの全滅による欠けの再現)、mode は描画設定 screenSpaceDiffuse の値、dolly はカメラの距離の倍率の常用対数。key は
+// 重みの全滅による欠けの再現)、mode は近傍拡散補正の方式(MODE の値)、dolly はカメラの距離の倍率の常用対数。key は
 // 撮影名に、遮蔽の方式なら @occlusion、カメラを引いたなら @dolly<フレーム> を付けたもの。
 const DOLLY_STEP = 0.0005;
 const DOLLY_FRAMES = 6;
@@ -64,7 +67,7 @@ export function selectedEntries({ entries, sets }) {
   return selected;
 }
 
-// 撮影 e を、描画設定 screenSpaceDiffuse を方式 modeName(MODE の名前)にして撮るもの。
+// 撮影 e を、近傍拡散補正を方式 modeName(MODE の名前)にして撮るもの。
 export function entryInMode(e, modeName) {
   if (!Object.hasOwn(MODE, modeName)) throw new Error(`unknown mode ${modeName}: one of ${Object.keys(MODE).join(', ')}`);
   return entry(e.set, e.caseName, e.shot, MODE[modeName], e.dolly);
@@ -119,7 +122,9 @@ export function candidateSeedOf(k, referencePasses) {
   return SEED_CELLS[index];
 }
 
-// いまの精細さの段(src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_TIERS)。
+// 精細さの段。scale・bandCount・bandScale は src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_SCALE・
+// BAND_COUNT・BAND_SCALE、sliceCount・stepCount は描画設定 screenSpaceSliceCount・screenSpaceStepCount の低・中・高の
+// プリセット(setScan へ渡るもの)。
 export const TIERS = {
   low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 0.38 },
   medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 0.38 },
@@ -226,7 +231,7 @@ function labOf(devTools) {
   return {
     // 評価の組の 1 つ entry を表示する。
     async show(entry) {
-      await call(`showShot(${JSON.stringify(entry.caseName)}, ${JSON.stringify(entry.shot)}, ${JSON.stringify({ ...EVALUATION_GRAPHICS, screenSpaceDiffuse: entry.mode })})`);
+      await call(`showShot(${JSON.stringify(entry.caseName)}, ${JSON.stringify(entry.shot)}, ${JSON.stringify({ ...EVALUATION_GRAPHICS, ...graphicsOfMode(entry.mode) })})`);
       if (entry.dolly) await call(`setView(${JSON.stringify({ cameraDistanceLog: entry.dolly })})`);
     },
     // 観察の向きを部分的に差し替えて描く。changes は render-lab の観察の向き(LabViewAngles)の一部。
@@ -678,6 +683,14 @@ export function builtMetaOf(name, entry) {
 export const referenceSumsOf = (name, entry, kind) => ['even', 'odd']
   .map((half) => readFloats(referenceFileOf(name, entry, `${kind}-${half}.f32`)));
 
+// 基準の組の遠方拡散照度 E の偶数・奇数の和。旧記録の diffuse は E + ΔE なので、補正を除いて返す。
+export function farDiffuseSumsOf(name, entry) {
+  const sums = referenceSumsOf(name, entry, 'diffuse');
+  if (builtMetaOf(name, entry).diffuseSemantics === 'far-only') return sums;
+  const corrections = referenceSumsOf(name, entry, 'correction');
+  return sums.map((sum, half) => sum.map((v, i) => v - corrections[half][i]));
+}
+
 // 基準の組 name の撮影 entry へ、記録 meta と、kind ごとの偶数番目と奇数番目のパスの和の組 sums と、全パスの HDR の
 // 平均の表示 display を書く。
 export function writeReferencePasses(name, entry, meta, sums, display) {
@@ -690,7 +703,7 @@ export function writeReferencePasses(name, entry, meta, sums, display) {
 
 // 基準の組 name の撮影 entries を読む。entry.key ごとの { meta, exposedCorrection, display, diffuse, radius, normal,
 // depth }。exposedCorrection は全パスの補正の平均の q(exposedCorrectionOf)、display は全パスの HDR の平均の表示、
-// diffuse は全パスの拡散照度の平均(解析値と照らす撮影だけ。ほかは null)。
+// diffuse は correctness 撮影の全パス平均 E + ΔE(ほかは null)。
 export function loadReference(name, entries) {
   return Object.fromEntries(entries.map((entry) => {
     const meta = builtMetaOf(name, entry);
@@ -700,11 +713,14 @@ export function loadReference(name, entries) {
       const [even, odd] = referenceSumsOf(name, entry, kind);
       return even.map((v, i) => (v + odd[i]) / meta.passes);
     };
+    const correction = meanOf('correction');
+    const farDiffuse = entry.set === 'correctness' ? farDiffuseSumsOf(name, entry) : null;
     return [entry.key, {
       meta,
       exposedCorrection: exposedCorrectionOf(meanOf('correction'), meta.exposure),
       display: readFloats(referenceFileOf(name, entry, 'display.f32')),
-      diffuse: entry.set === 'correctness' ? meanOf('diffuse') : null,
+      diffuse: farDiffuse === null ? null
+        : farDiffuse[0].map((v, i) => (v + farDiffuse[1][i]) / meta.passes + correction[i]),
       radius: readFloats(referenceFileOf(name, entry, 'radius.f32')),
       normal: linearOfSrgbCodes(normal.data, normal.channels, WIDTH * HEIGHT),
       depth: Uint8Array.from({ length: WIDTH * HEIGHT }, (_, p) => depth.data[p * depth.channels]),

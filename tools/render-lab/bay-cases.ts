@@ -271,25 +271,27 @@ function bay(): LabCase {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4),
       },
-      'bay-earth-open-diffuse': {
+      'bay-earth-open-far-diffuse': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4), debugTarget: 'diffuse',
       },
       'bay-earth-open-correction': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
-        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'correction',
+        graphics: { ...planetLightOnly(4), screenSpaceOcclusion: true, screenSpaceIndirect: false },
+        debugTarget: 'correction',
       },
       'bay-earth-corner': {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4),
       },
-      'bay-earth-corner-diffuse': {
+      'bay-earth-corner-far-diffuse': {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4), debugTarget: 'diffuse',
       },
       'bay-earth-corner-correction': {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
-        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'correction',
+        graphics: { ...planetLightOnly(4), screenSpaceOcclusion: true, screenSpaceIndirect: false },
+        debugTarget: 'correction',
       },
       'bay-moon-open': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, SMALL_EARTH_RADIUS_DEG, SMALL_EARTH_SUN_DISTANCE_LOG_AU),
@@ -301,15 +303,15 @@ function bay(): LabCase {
       },
       'bay-earth-radius-1deg': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, TINY_EARTH_RADIUS_DEG, TINY_EARTH_SUN_DISTANCE_LOG_AU),
-        graphics: planetLightOnly(4), debugTarget: 'diffuse',
+        graphics: planetLightOnly(4), debugTarget: 'correction',
       },
       'bay-earth-radius-3deg': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, SMALL_EARTH_RADIUS_DEG, SMALL_EARTH_SUN_DISTANCE_LOG_AU),
-        graphics: planetLightOnly(4), debugTarget: 'diffuse',
+        graphics: planetLightOnly(4), debugTarget: 'correction',
       },
       'bay-earth-radius-30deg': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
-        graphics: planetLightOnly(4), debugTarget: 'diffuse',
+        graphics: planetLightOnly(4), debugTarget: 'correction',
       },
       // 照り返しの較正。恒星を奥の壁の法線(+Z)に置く — 奥の壁は恒星へ正対し、床と端の壁は直射を掠める
       // だけ。天体照と環境光を切り、地球を遠ざけるので、壁の足元の床 P_base へ届くのは照り返しだけになる。
@@ -323,17 +325,23 @@ function bay(): LabCase {
         view: { ...SUN_BELOW, ...EARTH_AWAY }, graphics: { planetLightCount: 0 }, debugTarget: 'bounce-source',
       },
       'bay-correction': { view: {}, debugTarget: 'correction' },
-      'bay-quality-low': { view: {}, graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse' },
-      'bay-quality-medium': { view: {}, graphics: { screenSpaceQuality: 1 }, debugTarget: 'diffuse' },
-      'bay-quality-high': { view: {}, graphics: { screenSpaceQuality: 2 }, debugTarget: 'diffuse' },
+      'bay-quality-low': {
+        view: {}, graphics: { screenSpaceSliceCount: 2, screenSpaceStepCount: 3 }, debugTarget: 'correction',
+      },
+      'bay-quality-medium': {
+        view: {}, graphics: { screenSpaceSliceCount: 4, screenSpaceStepCount: 5 }, debugTarget: 'correction',
+      },
+      'bay-quality-high': {
+        view: {}, graphics: { screenSpaceSliceCount: 4, screenSpaceStepCount: 6 }, debugTarget: 'correction',
+      },
       // 近傍の半径が、低設定の走査の解像度で 1〜2 px に写る距離。1px は下端のすぐ上、2px は上端の手前。
       'bay-radius-1px': {
         view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 550),
-        graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse',
+        graphics: { screenSpaceSliceCount: 2, screenSpaceStepCount: 3 }, debugTarget: 'correction',
       },
       'bay-radius-2px': {
         view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 325),
-        graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse',
+        graphics: { screenSpaceSliceCount: 2, screenSpaceStepCount: 3 }, debugTarget: 'correction',
       },
       // 細い梁のまわりの暈。後ろからトラスへ寄せて見下ろし、地球を真下へ移す — 奥の壁の上に出た段が、
       // 開口の先の地球の円盤と、その手前の床を背にする。
