@@ -14,7 +14,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { motionPageHtml } from './render-lab-motion-page.mjs';
 import {
-  MOTION_GRAPHICS, PHASE_SOURCES, SCENES, aggregatesOf, evaluateLong, openMotionLab, selectedByName,
+  MOTION_GRAPHICS, PHASE_SOURCES, SCENES, aggregatesOf, evaluateLong, openLabPage, openMotionLab, selectedByName,
 } from './render-lab-motion-scenes.mjs';
 import { table } from './screen-space-lab.mjs';
 
@@ -47,13 +47,19 @@ const SEQUENCES = [
   { name: 'light', lightOnly: true, frame: (k) => ({ ...still, light: k * LIGHT_STEP_DEG }) },
 ];
 
-// 撮る画像の種類(ファイル名の頭)と、motionFrame の記録の中の場所。columns は補正の列の名前(SINGLE_COLUMN を含む)。
+// 撮る画像の種類(ファイル名の頭)と、motionFrame の記録の中の場所(JS の式)。columns は補正の列の名前(SINGLE_COLUMN を含む)。
 function imageKindsOf(columns) {
   return [
     { id: 'capture', label: '全体', source: 'capture', column: null, fromFrame: 0 },
     ...columns.flatMap((column) => [
-      { id: `${column}-correction`, label: `補正 ${column}`, source: `columns.${column}.correction`, column, fromFrame: 0 },
-      { id: `${column}-difference`, label: `補正の差 ×4 ${column}`, source: `columns.${column}.difference`, column, fromFrame: 1 },
+      {
+        id: `${column}-correction`, label: `補正 ${column}`, source: `columns[${JSON.stringify(column)}].correction`,
+        column, fromFrame: 0,
+      },
+      {
+        id: `${column}-difference`, label: `補正の差 ×4 ${column}`, source: `columns[${JSON.stringify(column)}].difference`,
+        column, fromFrame: 1,
+      },
     ]),
   ];
 }
@@ -96,7 +102,7 @@ async function shootSequence(devTools, scene, sequence, frames, columns, kinds, 
         })`, `frame ${k} of ${sequence.name}`);
       // **PNG は 1 枚ずつ受け取る** — CDP の 1 メッセージが約 4 MB を超えると接続が閉じる。
       for (const kind of kinds) {
-        const dataUrl = await devTools.evaluate(`window.__motionRecord.${kind.source.replaceAll('.', '?.')} ?? null`);
+        const dataUrl = await devTools.evaluate(`window.__motionRecord.${kind.source} ?? null`);
         if (dataUrl === null) continue;
         writeFileSync(path.join(dir, `${kind.id}-${String(k).padStart(3, '0')}.png`),
           Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
@@ -120,6 +126,8 @@ async function main() {
   try {
     rmSync(outDir, { recursive: true, force: true });
     for (const scene of scenes) {
+      // 場面ごとにページを開き直す — 1 つのページで撮り続けると、読み戻しの器が溜まって確保に失敗する。
+      await openLabPage(session);
       await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)}, ${JSON.stringify(scene.shot)},
         ${JSON.stringify(MOTION_GRAPHICS)})`);
       for (const sequence of sequences) {

@@ -68,10 +68,15 @@ export async function evaluateLong(devTools, expression, label, timeoutMs = 30 *
   return devTools.evaluate('window.__long.value');
 }
 
-// 組んだ描画テスト環境をヘッドレス Chrome で開き、初期化を待つ。ページが溜めた致命的なイベントの器も返す。
+// 組んだ描画テスト環境をヘッドレス Chrome で開く。ページが溜めた致命的なイベントの器も返す。ページは openLabPage で開く。
 export async function openMotionLab({ port, debugPort, profilePrefix }) {
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({ serveDir: buildDir, port, debugPort, profilePrefix, onEvent });
+  return { session, devTools: session.devTools, fatalEvents };
+}
+
+// セッション session の描画テスト環境のページを開き(開いていれば開き直し)、初期化を待つ。
+export async function openLabPage(session) {
   const { devTools } = session;
   await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
   await waitFor(devTools,
@@ -79,5 +84,4 @@ export async function openMotionLab({ port, debugPort, profilePrefix }) {
     'the render lab to initialise');
   const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
   if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
-  return { session, devTools, fatalEvents };
 }
