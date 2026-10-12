@@ -24,7 +24,11 @@ export function specularReflectanceAt(gbuffer: GBufferPass, uv: Vec2Node): Vec3N
 //   specular          — keep + R × 遠方の鏡面照度。面がカメラへ向けて見せる鏡面をそのまま含む。
 //   lambert           — 面を反射率 ρ = 拡散色 + R のランバート面とみなした ρ / π × 拡散照度 + 自己発光。
 //   lambert-roughness — lambert の R を知覚的粗さ r で弱めた ρ = 拡散色 + r × R。
-// TODO: 方式を見比べ終えたら1つに確定し、この切り替えを外す。
+// 像の元は lambert-roughness に決めている — 映り込みの中の物体の鏡面を、一様な反射に広げた近似。鏡面をそのまま
+// 像の元へ入れると、受け手のローブに比べて小さく明るいハイライトに当たる回数が画素ごとに揺らいでブロック状に明滅し、
+// カメラへ向けた鏡面は追跡した向きの鏡面でもないので指向性も正しくならない。映り込みの中の精度を上げる手段
+// (事前縮小列・粗さの比で鏡面を混ぜる・画面空間より正確な追跡)は設計の判断を要するので、指示なしに着手しない。
+// TODO: 既定はまだ specular。切り替えを外して lambert-roughness だけを残す。
 export type ReflectionSource = 'specular' | 'lambert' | 'lambert-roughness';
 export const REFLECTION_SOURCES: readonly ReflectionSource[] = ['specular', 'lambert', 'lambert-roughness'];
 
