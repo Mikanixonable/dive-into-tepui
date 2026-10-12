@@ -102,17 +102,19 @@ export class ScreenSpaceInputPyramid implements ScanSurfaces {
   private readonly levels: ScreenSpaceStage[] = [];
 
   // gbuffer は段 0 の面の写しが深度と法線を読む G バッファ、projectionInverse は実カメラの逆射影行列、fullSize と scanSize は描画
-  // バッファと走査の解像度 [px]。
+  // バッファと走査の解像度 [px]、representative は走査の画素が受け持つブロックの中の代表の位置 [1/REPRESENTATIVE_STEPS ブロック]
+  // (走査の画素ごとに組む式)。
   public constructor(
     private readonly gbuffer: GBufferPass, private readonly projectionInverse: Mat4Uniform,
-    private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node,
+    private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node, private readonly representative: Texel,
   ) {}
 
   // 段 0 の面の写しと、その面が放つ放射輝度 radiance(走査の画素ごとの値。null なら 0)を書く描画命令。マテリアルの
   // 解放は呼び出し側が行う。
   public scanStageOf(radiance: Vec4Node | null): ScreenSpaceStage {
     const material = multiOutputMaterial(this.scanTarget, () => {
-      const texel = gbufferTexelOf(floor(screenUV.mul(screenSize)), this.fullSize, this.scanSize).toVar();
+      const texel = gbufferTexelOf(floor(screenUV.mul(screenSize)), this.representative, this.fullSize, this.scanSize)
+        .toVar();
       return [
         vec4(vec2(texel), textureLoad(this.gbuffer.depthTexture, texel).r, 0),
         vec4(textureLoad(this.gbuffer.normalTexture, texel).rg, 0, 0),

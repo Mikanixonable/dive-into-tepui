@@ -28,7 +28,10 @@ import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './e
 import { ERROR_SCALES, ErrorMetric, FALSE_STRUCTURE_EPSILONS, type ErrorMeasurement } from './error-metric';
 import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import { MotionSequence, type MotionFrameRecord } from './motion-sequence';
+import { JitterSweep, type SweepRecord } from './jitter-sweep';
+import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
+import type { ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
 import type {
@@ -119,11 +122,20 @@ declare global {
         rgb: Float32Array, geometry: SurfaceGeometry, radius: number, shift: readonly [number, number],
       ) => Promise<Float32Array>;
       stochasticUpscale: (scan: Float32Array, geometry: SurfaceGeometry, block: number) => Promise<Float32Array>;
+      setScanJitter: (jitter: ScanJitter | null) => void;
+      setRasterJitter: (offsetPx: readonly [number, number] | null) => void;
+      scanCellSize: () => number;
       resetMotion: () => void;
       moveCamera: (
         translationPx: readonly [number, number], rotationPx: readonly [number, number], orbitPx: readonly [number, number],
       ) => void;
-      motionFrame: (averagedSeeds: readonly (readonly [number, number])[] | null) => Promise<MotionFrameRecord>;
+      // columns は、位相の列 sequence で描き直した平均の補正を名前 name で添える列。
+      motionFrame: (
+        columns: readonly { readonly name: string; readonly sequence: PhaseSequence }[],
+      ) => Promise<MotionFrameRecord>;
+      jitterSweep: (
+        sequence: PhaseSequence, timeConstants: readonly number[], imagedTimeConstants: readonly number[],
+      ) => Promise<SweepRecord>;
     };
   }
 }
@@ -258,6 +270,7 @@ async function init(): Promise<void> {
   let smoother: Promise<PlaneSmoother> | null = null;
   const planeSmoother = (): Promise<PlaneSmoother> => (smoother ??= PlaneSmoother.create());
   const motion = new MotionSequence(view);
+  const sweep = new JitterSweep(view);
   const syncAngles = buildViewAngleSliders(view);
 
   const shotsRow = document.getElementById('shots')!;
@@ -406,9 +419,15 @@ async function init(): Promise<void> {
     sparseBilateral: async (rgb, geometry, radius, shift) => (
       (await planeSmoother()).sparseBilateral(rgb, geometry, radius, shift)),
     stochasticUpscale: async (scan, geometry, block) => (await planeSmoother()).stochasticUpscale(scan, geometry, block),
+    setScanJitter: (jitter) => view.setScanJitter(jitter),
+    setRasterJitter: (offsetPx) => view.setRasterJitter(offsetPx),
+    scanCellSize: () => view.scanCellSize,
     resetMotion: () => motion.reset(),
     moveCamera: (translationPx, rotationPx, orbitPx) => motion.moveCamera(translationPx, rotationPx, orbitPx),
-    motionFrame: (averagedSeeds) => motion.frame(averagedSeeds),
+    motionFrame: (columns) => motion.frame(
+      columns.map(({ name, sequence }) => ({ name, phases: phasesOf(sequence, view.scanCellSize) }))),
+    jitterSweep: (sequence, timeConstants, imagedTimeConstants) => sweep.sweep(
+      phasesOf(sequence, view.scanCellSize), timeConstants, imagedTimeConstants, view.scanCellSize),
   };
 }
 

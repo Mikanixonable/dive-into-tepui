@@ -28,9 +28,11 @@ import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
 import { LabSun } from './lab-sun';
 import { PassAccumulator } from './pass-accumulator';
+import { PRODUCTION_PHASE, type CorrectionPhase } from './phase-sequence';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
@@ -181,6 +183,8 @@ export class LabView {
   private readonly depthQuad = new QuadMesh();
   // 観察の向きで置いたカメラへ、カメラの座標で重ねる姿勢(setCameraShift)。null なら重ねない。
   private cameraShift: THREE.Matrix4 | null = null;
+  // カメラの射影のずれ [描画バッファの画素](setRasterJitter)。null ならずらさない。
+  private rasterJitterPx: readonly [number, number] | null = null;
   // 与えた HDR を合成した表示を、8 bit へ丸めずに受ける先。合成は深度も写すので深度を持たせる。
   private readonly compositeTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
     type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: true,
@@ -324,6 +328,12 @@ export class LabView {
     this.cameraShift = shift;
   }
 
+  // 次に描くフレームから、カメラの射影を描画バッファの画素で offsetPx(x は右、y は下)だけずらす — ラスタライズの
+  // ジッター。null で外す。
+  public setRasterJitter(offsetPx: readonly [number, number] | null): void {
+    this.rasterJitterPx = offsetPx;
+  }
+
   // 直前に描いたフレームのカメラ。ケースを表示していなければ投げる。
   public get camera(): THREE.PerspectiveCamera {
     if (this.current === null) throw new Error('render-lab: no case selected');
@@ -379,6 +389,8 @@ export class LabView {
     camera.updateMatrixWorld(true);
     camera.fov = this.cameraFovDeg;
     camera.far = farClip(this.cameraDistance);
+    if (this.rasterJitterPx === null) camera.clearViewOffset();
+    else camera.setViewOffset(VIEW_WIDTH, VIEW_HEIGHT, ...this.rasterJitterPx, VIEW_WIDTH, VIEW_HEIGHT);
     camera.updateProjectionMatrix();
     // 恒星・地球・ケースの部品は、このフレームのカメラを置いてから合わせる — 部品はそのカメラを読んでよい。
     // ケースの部品は地球の中心も読むので、地球を先に置く。
@@ -581,6 +593,30 @@ export class LabView {
     this.pipeline.screenSpace.setSeed(x, y);
   }
 
+  // 次に描くフレームから、近傍拡散補正の走査の代表を jitter で選ぶ。null はブロックの中心。
+  public setScanJitter(jitter: ScanJitter | null): void {
+    this.pipeline.screenSpace.setScanJitter(jitter);
+  }
+
+  // いまの段の走査の画素の幅 [描画バッファの画素]。
+  public get scanCellSize(): number { return this.pipeline.screenSpace.scanCellSize; }
+
+  // 位相 phase で近傍拡散補正を描き直す。射影のずれを使う(いま使っている)ならフレーム全体を、そうでなければ直前に描いた
+  // フレームの G バッファなどを入力のまま近傍拡散補正だけを描く。
+  public renderCorrection(phase: CorrectionPhase): void {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    const { screenSpace } = this.pipeline;
+    screenSpace.setSeed(...phase.seed);
+    screenSpace.setScanJitter(phase.scanJitter);
+    // 射影のずれを外すときも、ずれた G バッファを捨てるためにフレーム全体を描き直す。
+    if (phase.rasterJitter !== null || this.rasterJitterPx !== null) {
+      this.setRasterJitter(phase.rasterJitter);
+      this.render();
+    } else {
+      screenSpace.render(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT);
+    }
+  }
+
   // 次に描くフレームから、近傍拡散補正の段の範囲 range だけを描く('chain' は帯を詰めた描画先に置いた値から鎖を描く)。
   public setScanStageRange(range: ScreenSpaceStageRange): void {
     this.pipeline.screenSpace.setStageRange(range);
@@ -649,17 +685,14 @@ export class LabView {
     return { sums, squares };
   }
 
-  // 直前に描いたフレームの G バッファなどを入力のまま、近傍拡散補正だけを seed の列 seeds [タイルの幅] で描き直し、最後の
-  // 拡大の出力(rgba)の平均を返す。終わると、seed は列の最後のもの、'correction' はその seed の出力になる。
-  public async averageCorrection(seeds: readonly (readonly [number, number])[]): Promise<FloatImage> {
-    if (this.current === null) throw new Error('render-lab: no case selected');
-    if (seeds.length === 0) throw new RangeError('render-lab: averaging needs at least one seed');
-    const { screenSpace, diffuseCorrection } = this.pipeline;
-    const { target } = diffuseCorrection;
+  // 直前に描いたフレームを位相の列 phases で描き直し(renderCorrection)、最後の拡大の出力(rgba)の平均を返す。終わると
+  // 位相は本番の静止画のものへ戻り、'correction' はその出力になる。
+  public async averageCorrection(phases: readonly CorrectionPhase[]): Promise<FloatImage> {
+    if (phases.length === 0) throw new RangeError('render-lab: averaging needs at least one phase');
+    const { target } = this.pipeline.diffuseCorrection;
     this.correctionAccumulator ??= new PassAccumulator(this.renderer, [target.texture], target.width, target.height);
-    for (const [k, [x, y]] of seeds.entries()) {
-      screenSpace.setSeed(x, y);
-      screenSpace.render(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT);
+    for (const [k, phase] of phases.entries()) {
+      this.renderCorrection(phase);
       this.correctionAccumulator.add(0);
       // GPU の待ち行列が際限なく伸びないよう、ときどき終わりを待つ。時刻印の器も空ける。
       if (k % CORRECTION_PASSES_PER_WAIT === CORRECTION_PASSES_PER_WAIT - 1) {
@@ -669,7 +702,8 @@ export class LabView {
     }
     const sum = await this.readBack(this.correctionAccumulator.sumTextures[0]![0]!);
     this.correctionAccumulator.clear();
-    return { ...sum, rgba: sum.rgba.map((v) => v / seeds.length) };
+    this.renderCorrection(PRODUCTION_PHASE);
+    return { ...sum, rgba: sum.rgba.map((v) => v / phases.length) };
   }
 
   // いまの段の帯の数の、走査の帯を詰めた描画先の index 枚目('packed-bands-<index>')へ、走査の解像度の画素ごとの RGBA の
