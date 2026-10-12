@@ -1,9 +1,8 @@
 // 描画テスト環境の計測。ヘッドレス Chrome で .render-lab/ を開き、選んだ軸の構図 × 描画設定の段の組ごとに
 // window.renderLab.measure() を呼んで、パス別 GPU 時間のうち軸が読む行を表にする。
 //
-// 使い方: node tools/render-lab-measure.mjs [巡回数] [軸] [reflectionSource=<方式>[,<方式>...]](既定は 2 と
-// atmosphere)。熱によるドリフトを差と切り分けるため、同じ組を巡回数だけ巡り、偶数回目は逆順で回す。結果は巡ごとの
-// 値と、その中央値で出す。reflectionSource は映り込みの像の元の方式(仮)で、並べた方式ごとに組を分けて同じ巡の中で測る。
+// 使い方: node tools/render-lab-measure.mjs [巡回数] [軸](既定は 2 と atmosphere)。熱によるドリフトを
+// 差と切り分けるため、同じ組を巡回数だけ巡り、偶数回目は逆順で回す。結果は巡ごとの値と、その中央値で出す。
 import path from 'node:path';
 import { openChromeSession, sleep } from './chrome-session.mjs';
 
@@ -11,11 +10,8 @@ const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.render-lab');
 const port = 8769;
 const debugPort = 9446;
-// 映り込みの像の元の方式を選ぶ引数の項目名。値は方式の名前(src/render/pipeline/material-pass.ts の ReflectionSource)を
-// カンマで並べたもの。
-const REFLECTION_SOURCE_KEY = 'reflectionSource';
 
-const USAGE = `usage: node tools/render-lab-measure.mjs [巡回数] [軸] [${REFLECTION_SOURCE_KEY}=<方式>[,<方式>...]]`;
+const USAGE = 'usage: node tools/render-lab-measure.mjs [巡回数] [軸]';
 
 // 測る軸。framings の angles はケース既定の観察の向きへ重ねる。variants の graphics は setGraphicsOption へ
 // 渡す描画設定の差分で、差分に無い鍵は直前に測った段の値のまま残る。rows は result.gpuPassMs の行名
@@ -102,15 +98,6 @@ function formatFixed(value, digits) {
   return value === null ? '—' : value.toFixed(digits);
 }
 
-// 引数 arg(省けば undefined)が選ぶ映り込みの像の元の方式の並び。省けば [null] で、render-lab の既定の方式のまま測る。
-// 項目名が違うか方式が空なら使い方を投げる。
-function reflectionSourcesOf(arg) {
-  if (arg === undefined) return [null];
-  const prefix = `${REFLECTION_SOURCE_KEY}=`;
-  if (!arg.startsWith(prefix) || arg.length === prefix.length) throw new Error(USAGE);
-  return arg.slice(prefix.length).split(',');
-}
-
 // null を除いた値の中央値。1つも残らなければ null。
 function medianOf(values) {
   const sorted = values.filter((value) => value !== null).sort((a, b) => a - b);
@@ -162,7 +149,6 @@ async function main() {
   }
   const axis = AXES[axisName];
   const statistic = axis.statistic ?? 'avg';
-  const reflectionSources = reflectionSourcesOf(process.argv[4]);
 
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-render-lab-m-',
@@ -182,29 +168,21 @@ async function main() {
     console.log(`adapter: ${adapter}`);
 
     const measurements = new Map();
-    // 方式どうしの差を巡のドリフトと切り分けるため、方式は同じ構図・段の中で続けて測る。
     const combos = [];
-    for (const framing of axis.framings) {
-      for (const variant of axis.variants) {
-        for (const reflectionSource of reflectionSources) combos.push({ framing, variant, reflectionSource });
-      }
-    }
+    for (const framing of axis.framings) for (const variant of axis.variants) combos.push({ framing, variant });
     for (const pass of Array.from(
       { length: passes }, (_, index) => (index % 2 === 0 ? combos : [...combos].reverse()),
     )) {
-      for (const { framing, variant, reflectionSource } of pass) {
+      for (const { framing, variant } of pass) {
         for (const [option, value] of Object.entries(variant.graphics)) {
           await devTools.evaluate(
             `window.renderLab.setGraphicsOption(${JSON.stringify(option)}, ${JSON.stringify(value)})`,
           );
         }
-        if (reflectionSource !== null) {
-          await devTools.evaluate(`window.renderLab.setReflectionSource(${JSON.stringify(reflectionSource)})`);
-        }
         const result = await devTools.evaluate(
           `window.renderLab.measure(${JSON.stringify(framing.caseName)}, ${JSON.stringify(framing.angles)})`,
         );
-        const key = [framing.label, variant.label, ...(reflectionSource === null ? [] : [reflectionSource])].join(' / ');
+        const key = `${framing.label} / ${variant.label}`;
         const values = axis.rows.map((row) => result.gpuSupported ? result.gpuPassMs[row]?.[statistic] ?? null : null);
         const entry = measurements.get(key) ?? { supported: result.gpuSupported, runs: [] };
         entry.runs.push(values);

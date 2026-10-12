@@ -2,7 +2,7 @@
 // window.renderLab.shoot() を呼んで、ケースが宣言した向きごとの PNG を 1 枚ずつ受け取り、撮影名で書く。
 // 書き先は第 1 引数に撮影の組の名前を渡せば .render-lab-shots/<名前>/、省けば .render-lab/shots で、
 // 撮影の前に作り直す。組の名前に続く「項目=値」(値は JSON。例: planetLightCount=0)は、全ケースの撮影へ
-// 重ねる描画品質設定の差分になる。ただし reflectionSource=<方式> は、全撮影の前に選ぶ映り込みの像の元の方式(仮)。
+// 重ねる描画品質設定の差分になる。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -13,12 +13,8 @@ const port = 8767;
 const debugPort = 9444;
 // いまのケースの撮影結果(撮影名から PNG のデータ URL への表)を、取り出し終えるまでページ内に置く名前。
 const PENDING_PNGS = '__renderLabPendingPngs';
-// 映り込みの像の元の方式を選ぶ引数の項目名。値は JSON ではなく方式の名前そのもの(src/render/pipeline/material-pass.ts の
-// ReflectionSource)。
-const REFLECTION_SOURCE_KEY = 'reflectionSource';
 
-const USAGE = 'usage: node tools/render-lab-shot.mjs [<shot-set-name> [<graphics-option>=<json> ...]'
-  + ` [${REFLECTION_SOURCE_KEY}=<name>]]`;
+const USAGE = 'usage: node tools/render-lab-shot.mjs [<shot-set-name> [<graphics-option>=<json> ...]]';
 
 // 撮影の組の名前 setName(省けば undefined)の書き先。名前が /^[\w.-]+$/ に合わないか . / .. なら
 // 使い方を投げる。
@@ -28,28 +24,18 @@ function outDirOf(setName) {
   return path.join(root, '.render-lab-shots', setName);
 }
 
-// 「項目=値」の並び args を [項目, 値の文字列] の並びへ。= の前が空の引数があれば使い方を投げる。
-function entriesOf(args) {
-  return args.map((arg) => {
+// 「項目=値」の並び args を描画品質設定の差分へ。= の前が空の引数があれば使い方を投げる。
+function graphicsOf(args) {
+  return Object.fromEntries(args.map((arg) => {
     const separator = arg.indexOf('=');
     if (separator <= 0) throw new Error(USAGE);
-    return [arg.slice(0, separator), arg.slice(separator + 1)];
-  });
-}
-
-// 「項目=値」の並び entries のうち、映り込みの像の元の方式を除いたものを描画品質設定の差分へ。
-function graphicsOf(entries) {
-  return Object.fromEntries(
-    entries.filter(([key]) => key !== REFLECTION_SOURCE_KEY).map(([key, value]) => [key, JSON.parse(value)]),
-  );
+    return [arg.slice(0, separator), JSON.parse(arg.slice(separator + 1))];
+  }));
 }
 
 async function main() {
   const outDir = outDirOf(process.argv[2]);
-  const entries = entriesOf(process.argv.slice(3));
-  const graphics = graphicsOf(entries);
-  // 省けば render-lab の既定の方式のまま撮る。
-  const reflectionSource = entries.find(([key]) => key === REFLECTION_SOURCE_KEY)?.[1] ?? null;
+  const graphics = graphicsOf(process.argv.slice(3));
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-render-lab-', onEvent,
@@ -66,9 +52,6 @@ async function main() {
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
 
-    if (reflectionSource !== null) {
-      await devTools.evaluate(`window.renderLab.setReflectionSource(${JSON.stringify(reflectionSource)})`);
-    }
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
     const names = await devTools.evaluate('window.renderLab.cases');
