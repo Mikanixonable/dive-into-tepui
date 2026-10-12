@@ -15,8 +15,8 @@ import { viewRayAt } from '../view-ray';
 import { facingCosine, sampleBandWeights, type BandSplit } from './band-split';
 import { signedDiffuseCorrection } from './diffuse-correction';
 import {
-  SECTOR_COUNT, angleOf, bitCount, capMeasure, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors,
-  sliceAt, toSliceCoordinates, type RangeSectors, type Slice,
+  SECTOR_COUNT, angleOf, bitCount, capMeasure, capRange, hemisphereNormalOf, maskedMeasure, rangeSectors, sectorPosition,
+  segmentSectors, sliceAt, toSliceCoordinates, type RangeSectors, type Slice,
 } from './slice-sectors';
 import {
   angularlyHigher, angularlyLower, rayAt, samplePoint, sideRays, splitSegments, tangentHit, type SideRays,
@@ -89,6 +89,8 @@ export function scanHemisphere(
     // 視線は投影方式によらない形から取る。
     const view = viewRayAt(projectionInverse, receiver.uv).direction.negate().toVar();
     const receiverView = facingCosine(receiver.normal, view).toVar();
+    // 半球と円盤の測度を決める法線。接平面の切片は元の法線で継ぐ。
+    const hemisphereNormal = hemisphereNormalOf(receiver.normal, view).toVar();
     const rotation = noise.x.toVar();
     const jitter = noise.y.toVar();
     // 丸めのずれは両端を除いた区間へ写す — 0 と 1 では扇形の座標のずれが ±½ ちょうどになり、半球の端に接する
@@ -103,12 +105,12 @@ export function scanHemisphere(
     const planetLights = planets.map(({ cap, irradiance }) => {
       const widened = widenedCap(cap);
       const wideCap = { direction: widened.direction.toVar(), cosAngle: widened.cosAngle.toVar() };
-      const measure = capMeasure(wideCap, receiver.normal);
+      const measure = capMeasure(wideCap, hemisphereNormal);
       return { cap: wideCap, irradiance: irradiance.toVar(), capScale: hemisphereScale.div(max(measure, 1e-6)).toVar() };
     });
     // 視線に垂直な面の中で等間隔に取ったスライスのうち index 本目。
     const sliceOf = (index: IntNode): Slice =>
-      sliceAt(float(index).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiver.normal);
+      sliceAt(float(index).add(rotation).mul(Math.PI).div(float(sliceCount)), view, hemisphereNormal);
     // スライスの重みの期待値は 1 なので、期待値で割る。
     const light: DistantLight = { ambient, hemisphereScale, planets: planetLights };
     // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。受け手自身の画素を読まない 1 走査画素先から半径までを、

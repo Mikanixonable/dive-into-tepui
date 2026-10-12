@@ -7,8 +7,8 @@ import {
 } from '../../src/render/pipeline/screen-space/band-split';
 import { clipToCircle, projectedRadius, widenedCap } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
-  angleOf, capMeasure, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors, sliceAt,
-  toSliceCoordinates,
+  angleOf, capMeasure, capRange, hemisphereNormalOf, maskedMeasure, rangeSectors, sectorPosition, segmentSectors,
+  sliceAt, toSliceCoordinates,
 } from '../../src/render/pipeline/screen-space/slice-sectors';
 import {
   rayAt, samplePoint, sideRays, splitSegments, type SideRays, type SlicePoint,
@@ -52,7 +52,7 @@ const DISC_AZIMUTHS = [0.3, 2.0, 4.2];
 const DISC_NORMAL_TILTS = [0, 0.7];
 const DISC_NORMAL_AZIMUTH = 2.1;
 // スライスの回転の標本の総数(本数 × 回転の数)。4 以下のどの本数でも割り切れる。
-const DISC_SAMPLES = 360;
+const DISC_SAMPLES = 720;
 
 // 差が tolerance 以内であることを検査する。
 function near(actual: number, expected: number, tolerance: number, label: string): void {
@@ -573,6 +573,37 @@ export function register(): void {
           }
           near(total / (rotations.length * sliceCount), 1, 2e-3, `view=${view.toArray()} n=${n} slices=${sliceCount}`);
         }
+      }
+    }
+  });
+
+  test('screen space estimator: 視線の裏を向く法線は視線と直交するまで倒され、その法線のスライスの重みの平均は 1・円盤の弧の平均は円盤の測度に一致し、表を向く法線は変わらない', () => {
+    const facing = directionAt(0.6, DISC_NORMAL_AZIMUTH);
+    const rounded = (vector: THREE.Vector3): number[] => vector.toArray().map((v) => +v.toFixed(5));
+    assert.deepEqual(rounded(vectorOf(hemisphereNormalOf(vectorNode(facing), vectorNode(VIEW)))), rounded(facing));
+    for (const along of [-0.2, -0.5]) {
+      const back = VIEW.clone().multiplyScalar(along)
+        .addScaledVector(orthoOf(VIEW, DISC_NORMAL_AZIMUTH), Math.sqrt(1 - along * along));
+      const tilted = vectorOf(hemisphereNormalOf(vectorNode(back), vectorNode(VIEW)));
+      near(tilted.length(), 1, 1e-6, `単位長 ${along}`);
+      near(tilted.dot(VIEW), 0, 1e-6, `視線と直交 ${along}`);
+      // 倒す向きは、視線と元の法線の張る面の中。
+      near(tilted.dot(new THREE.Vector3().crossVectors(VIEW, back)), 0, 1e-6, `面の中 ${along}`);
+      for (const sliceCount of [1, 2, 4]) {
+        let total = 0;
+        for (let rotation = 0; rotation < 64; rotation++) {
+          for (let i = 0; i < sliceCount; i++) {
+            const psi = float((i + (rotation + 0.5) / 64) * Math.PI / sliceCount);
+            total += valueOf(sliceAt(psi, vectorNode(VIEW), vectorNode(tilted)).weight);
+          }
+        }
+        near(total / (64 * sliceCount), 1, 2e-3, `重みの平均 ${along} slices=${sliceCount}`);
+      }
+      for (const cap of discCases(DISC_SIGMAS).map(({ cap: c }) => c)) {
+        const expected = discMeasure(cap, tilted);
+        near(sliceAveragedMeasure(cap, tilted, 2), expected, 1e-3 * expected + 1e-5, `弧の平均 ${along}`);
+        const measure = valueOf(capMeasure(planetCapOf(cap), vectorNode(tilted)));
+        near(measure, expected, 3e-4 * expected + 1e-5, `測度 ${along}`);
       }
     }
   });
