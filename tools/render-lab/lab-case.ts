@@ -71,10 +71,9 @@ const FLICKER_SHOT_COUNT = 16;
 // ちらつきの撮影の描画設定。アンチエイリアスとレンズ効果は孤立した画素の明るさをにじませるので切る。
 const FLICKER_GRAPHICS: Partial<GraphicsSettingsData> = { screenSpaceSpecular: true, antialias: 0, lens: false };
 
-// 観察の向き view の映り込みを、乱数のタイルを読む位置だけ変えて FLICKER_SHOT_COUNT 枚撮る撮影。鍵は
-// `${name}-flicker-${k}` で、k 番目はタイルを (17k, 29k) px(タイルの幅で剰余)ずらす — 画面が動いて画素の引く
-// 乱数が入れ替わるのと同じ揺れを、幾何を止めたまま撮り、撮影どうしの差で映り込みのちらつきを読む。graphics は
-// ちらつきの撮影の描画設定へさらに重ねる差分。
+// 観察の向き view の映り込みを、乱数のタイルを読む位置だけ変えて FLICKER_SHOT_COUNT 枚撮る、鍵
+// `${name}-flicker-${k}` の撮影。画面が動いて画素の引く乱数が入れ替わるのと同じ揺れを幾何を止めたまま撮り、
+// 撮影どうしの差で映り込みのちらつきを読む。graphics はちらつきの撮影の描画設定へ重ねる差分。
 export function flickerShots(
   name: string, view: Partial<LabViewAngles>, graphics: Partial<GraphicsSettingsData> = {},
 ): Record<string, LabShot> {
@@ -116,7 +115,7 @@ export interface LabCase {
     readonly axis: THREE.Vector3;
     readonly bands: readonly RingBand[];
   };
-  // ライティングパスへ渡す、影を持たない球光源。省くと置かない。
+  // ケースに置く、影を持たない球光源。省くと置かない。
   readonly sphereLights?: readonly SphereLightValue[];
   // ケースの部品が揃い、絵として比べられる状態になったか。持たせると、撮影はこれが真になるまで
   // 1 フレームずつ描いて待つ。

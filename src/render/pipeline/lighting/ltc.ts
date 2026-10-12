@@ -24,8 +24,8 @@ export function ltcUv(normal: Vec3Node, viewDir: Vec3Node, roughness: FloatNode)
   return vec2(roughness, sqrt(float(1).sub(dotNV))).mul(scale).add(bias);
 }
 
-// F0=1 の GGX の方向アルベド ∫ D·V·(N·L) dl(0..1)。係数表 2 の x(正規化係数)を引く。一様でない分岐の中から
-// 読んでよい。
+// F0=1 の GGX の方向アルベド ∫ D·V·(N·L) dl(0..1)を、係数表 2 のテクスチャ ltc2 から引く。一様でない分岐の
+// 中から呼んでよい。
 export function ggxAlbedo(ltc2: THREE.Texture, normal: Vec3Node, viewDir: Vec3Node, roughness: FloatNode): FloatNode {
   return texture(ltc2, ltcUv(normal, viewDir, roughness)).level(float(0)).x;
 }

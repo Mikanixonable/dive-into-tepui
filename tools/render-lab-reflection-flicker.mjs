@@ -1,13 +1,11 @@
-// 映り込みのちらつきの表。render-lab:shot が撮った組の dir から、映り込みの乱数のタイルを読む位置だけを変えて撮った
-// 撮影(<構図>-flicker-<k>。tools/render-lab/lab-case.ts の flickerShots)を構図ごとに読み、撮影どうしのあいだの表示の
-// 揺れを表にする。読むのは PNG だけで、ブラウザは開かない。
+// 映り込みのちらつきの表。render-lab:shot が撮った組の dir から、幾何を止めたまま映り込みの乱数のタイルを読む位置を
+// 変えた撮影(<構図>-flicker-<k>。tools/render-lab/lab-case.ts の flickerShots)を構図ごとに読み、撮影どうしのあいだの輝度の
+// 標準偏差(揺れ)を Markdown の表で標準出力へ出す。輝度は sRGB の 8bit の表示値の Rec.709 の重みづけ和(0..255)。
 //
 // 使い方: node tools/render-lab-reflection-flicker.mjs <shots-dir>。dir は相対ならリポジトリ根から。
 //
-// 輝度は sRGB の 8bit の表示値を Rec.709 の重みで足した値(0..255)。揺れは撮影どうしのあいだの標準偏差で、2つ読む。
-// - 画素の揺れ: 画素ごとの輝度の揺れ。1 px のディザも、塊の明滅も出る。
-// - 塊の揺れ: BOX px 四方の箱で均した輝度の揺れ。箱は 1 px ずつずらした全位置で取る。1 px のディザは箱の画素数の
-//   平方根ぶん均れてほとんど出ず、箱より大きな塊の明滅はそのまま出る。
+// 揺れは2つ読む。画素の揺れは画素ごとの揺れで、1 px のディザも塊の明滅も出る。塊の揺れは BOX px 四方の箱で均した
+// 輝度の揺れで、1 px のディザは箱の画素数の平方根ぶん均れてほとんど出ず、箱より大きな塊の明滅はそのまま出る。
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { decodePng } from './png.mjs';
@@ -72,6 +70,7 @@ function deviationOf(images) {
       squares += image[i] * image[i];
     }
     const mean = sum / count;
+    // 二乗の平均 − 平均の二乗は、揺れの無い位置で丸めにより僅かに負になり、そのままでは平方根が NaN になる。
     deviation[i] = Math.sqrt(Math.max(squares / count - mean * mean, 0));
   }
   return deviation;
@@ -88,6 +87,8 @@ function summaryOf(deviation) {
   };
 }
 
+// 引数の dir のちらつきの撮影を構図ごとに読み、構図ごとの揺れを1行ずつ表にして書く。引数が無いか、撮影が1枚も
+// 無ければ投げる。
 function main() {
   const dirArgument = process.argv[2];
   if (dirArgument === undefined) throw new Error(USAGE);

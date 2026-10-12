@@ -34,8 +34,7 @@ export function encodedDenoisedReflection(
   });
 }
 
-// 描画バッファの解像度の、深度を持たない半精度の描画先。names は添付ごとのテクスチャの名前(MRT の出力と結び付く)
-// と形式。
+// 深度を持たない半精度の描画先を 1 × 1 で作る。names は添付ごとのテクスチャの名前(MRT の出力と結び付く)と形式。
 function reflectionTarget(names: readonly (readonly [string, THREE.PixelFormat])[]): THREE.RenderTarget {
   const target = new THREE.RenderTarget(1, 1, {
     count: names.length, depthBuffer: false, samples: 0,

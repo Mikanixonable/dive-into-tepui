@@ -1,7 +1,7 @@
-// 映り込みのパス。G バッファの深度を追跡の解像度へ縮小し、滑らかな面の画素ごとに反射の向きの ray をその上で
-// 進めて、当たった点の像をマテリアルパスの像の元から読み、置換の重みと一緒に映り込みの描画先
-// (ScreenSpaceReflection)の均す前の側へ書き、それを粗さに応じて均した値を均した側へ書く。描画設定のオン / オフ・
-// 精細さ・均しのオン / オフを受け、切った段は描画命令を出さず、その描画先を空にしておく。
+// 映り込みのパス。滑らかな面の画素ごとに反射の向きの ray を、追跡の解像度へ縮小した G バッファの深度の上で進め、
+// 当たった点の像を像の元から読んで、置換の重みと一緒に映り込みの描画先(ScreenSpaceReflection)の均す前の側へ書き、
+// 粗さに応じて均した値を均した側へ書く。描画設定のオン / オフ・精細さ・均しのオン / オフを受け、切った段の描画先は
+// 空にしておく。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
@@ -24,8 +24,8 @@ import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, 
 export const SCREEN_SPACE_SPECULAR_QUALITY = { low: 0, medium: 1, high: 2 } as const;
 type ScreenSpaceSpecularQuality = (typeof SCREEN_SPACE_SPECULAR_QUALITY)[keyof typeof SCREEN_SPACE_SPECULAR_QUALITY];
 
-// 精細さの段ごとの追跡。scale は追跡する深度の解像度の描画バッファに対する比で、1 / 整数(1/2 か 1)に限る —
-// 深度の画素 1 つが描画バッファの画素の整数個四方を覆う前提で縮小と追跡が揃う。stepCount は ray 1 本の歩数。
+// 精細さの段ごとの追跡。scale は追跡する深度の解像度の描画バッファに対する比で、1 / 整数に限る — 深度の画素 1 つが
+// 描画バッファの画素の整数個四方を覆う前提で縮小と追跡が揃う。stepCount は ray 1 本の歩数。
 interface TraceTier {
   readonly scale: number;
   readonly stepCount: number;
@@ -49,7 +49,7 @@ function stageMaterial(): THREE.MeshBasicNodeMaterial {
 }
 
 export class ReflectionPass {
-  // 追跡の解像度の素の深度(逆 Z、虚空は 0)。32bit 浮動小数で持つので、読むのは textureLoad だけ。
+  // 追跡の解像度の素の深度(逆 Z、虚空は 0)。32bit 浮動小数はフィルタできない形式なので、textureLoad で読む。
   private readonly depthTarget = new THREE.RenderTarget(1, 1, {
     type: THREE.FloatType, format: THREE.RedFormat, depthBuffer: false, samples: 0,
     minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
@@ -65,12 +65,13 @@ export class ReflectionPass {
   private readonly projectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly near = uniform(1);
   // 描画バッファの解像度 [px]、それを footprint で割った追跡する深度の画素を単位とする画面の寸法(割り切れなければ
-  // 端の深度の画素は画面の外へはみ出す)、深度の画素 1 つが覆う描画バッファの画素の一辺の数、歩数。
+  // 端の深度の画素は画面の外へはみ出す)、深度の画素 1 つが覆う描画バッファの画素の一辺の数。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly traceSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly footprint = uniform(1, 'int');
   // 描画バッファの画素 1 つの横の幅(x, y)。clip 座標の w を掛けると view 空間の長さ [m] になる。
   private readonly pixelSpan: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
+  // ray 1 本の歩数。
   private readonly stepCount = uniform(1, 'int');
   // 描画バッファの画素の、反射する面のシェーディング入力。
   private readonly sample: ShadingSample;
@@ -85,9 +86,8 @@ export class ReflectionPass {
   // 空へ戻すときに退避する消去色。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
-  // reflectionSource は当たった点の像を読む像の元(放射輝度、描画バッファの解像度)。output は映り込みの描画先。
-  // enabled / quality / denoised は構築時点の描画設定 screenSpaceSpecular / screenSpaceSpecularQuality /
-  // screenSpaceSpecularDenoise の値。
+  // reflectionSource は当たった点の像を読む像の元(放射輝度、描画バッファの解像度)。enabled / quality / denoised は
+  // 構築時点の描画設定 screenSpaceSpecular / screenSpaceSpecularQuality / screenSpaceSpecularDenoise の値。
   public constructor(
     private readonly renderer: WebGPURenderer, gbuffer: GBufferPass, reflectionSource: THREE.Texture,
     private readonly output: ScreenSpaceReflection, private readonly gpu: GpuTimings,
@@ -104,7 +104,7 @@ export class ReflectionPass {
     this.denoise = new ReflectionDenoise(renderer, gbuffer, output, gpu);
   }
 
-  // uv(0..1)の画素の、追跡した素の深度(逆 Z、虚空は 0)。
+  // uv(0..1)の画素の、追跡の解像度へ縮小した素の深度(逆 Z、虚空は 0)。
   public depthAt(uv: Vec2Node): FloatNode {
     return textureLoad(this.depthTarget.texture, ivec2(floor(uv.mul(this.traceSize)))).r;
   }
@@ -130,8 +130,8 @@ export class ReflectionPass {
     this.noiseOffset.value.set(x, y);
   }
 
-  // 1 フレームぶんを描く。マテリアルパスの後に、G バッファと同じ寸法 width × height で呼ぶ。camera は深度から
-  // 位置を復元する行列を引き直すためだけに使う。
+  // 1 フレームぶんを描く。G バッファと像の元を書き終えた後に、G バッファと同じ寸法 width × height で呼ぶ。camera は
+  // G バッファを描いたカメラ。
   public render(camera: THREE.Camera, width: number, height: number): void {
     // 切ったばかりの段の描画先を空へ戻す。
     const denoising = this.enabled && this.denoised;
@@ -166,8 +166,7 @@ export class ReflectionPass {
     if (this.denoised) await this.denoise.compile(camera, width, height);
   }
 
-  // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで共有する単一の板
-  // なので、ここでは解放しない。
+  // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。
   public dispose(): void {
     this.depthTarget.dispose();
     this.downsampleMaterial.dispose();
@@ -183,8 +182,8 @@ export class ReflectionPass {
     return [[this.downsampleMaterial, this.depthTarget], [this.traceMaterial, this.output.rawTarget]];
   }
 
-  // 追跡の解像度の画素が覆う G バッファの画素のうち、いちばん手前(逆 Z で最大)の素の深度。細い物体を縮小で
-  // 落とさない。
+  // 追跡の解像度の画素が覆う G バッファの画素のうち、いちばん手前(逆 Z で最大)の素の深度。手前を採ると、細い物体が
+  // 縮小で消えずに残る。
   private downsampledDepth(gbuffer: GBufferPass): FloatNode {
     return Fn(() => {
       // 覆う範囲の左上の画素と、描画バッファの端の画素。左上は整数どうしの積で求める — 整数値の積は浮動小数でも
@@ -210,7 +209,6 @@ export class ReflectionPass {
       const image = vec3(0).toVar();
       const distance = float(0).toVar();
       const weight = float(0).toVar();
-      // 面の写っている画素だけを追跡する。
       If(gbuffer.covered(), () => {
         // 鏡面ローブから向きを選び、重みをアルベドで割る — 全方向が近くの物体に当たる面で、w の期待値が 1 になる。
         const ray = reflectionRayOf(this.sample, this.blueNoise);
@@ -220,7 +218,7 @@ export class ReflectionPass {
           this.projectionInverse, this.near, this.stepCount, this.blueNoise.atScreenPixel(), this.sample,
           ray.direction, ray.weight.div(max(albedo, 1e-3)),
         );
-        // 当たった画素だけ、当たった点の奥行きを ray から求めて像を読む。
+        // 当たった画素では、当たった点の奥行きを ray から求めて像を読む。
         If(hit.weight.greaterThan(0), () => {
           const hitZ = this.sample.position.add(ray.direction.mul(hit.distance)).z;
           image.assign(this.radianceAt(reflectionSource, hit.hitUV, hitZ));
@@ -233,7 +231,7 @@ export class ReflectionPass {
   }
 
   // 像の元 source を uv で双線形に読んだ放射輝度。hitZ は当たった点の view 空間の奥行きで、それより ray thickness を
-  // 超えて奥の面が写る画素は読まない — ray が当たった面の像ではない。**Fn の中から呼ぶこと。**
+  // 超えて奥の面が写る画素は、当たった面の像ではないので重みを 0 にする。**Fn の中から呼ぶこと。**
   private radianceAt(source: THREE.Texture, uv: Vec2Node, hitZ: FloatNode): Vec3Node {
     const farZ = thicknessFarZ(hitZ).toVar();
     // uv を囲む描画画素 4 つと、双線形の端数。
@@ -264,7 +262,7 @@ export class ReflectionPass {
     this.footprint.value = footprint;
     const traceWidth = Math.max(1, Math.ceil(width / footprint));
     const traceHeight = Math.max(1, Math.ceil(height / footprint));
-    // 描画先の寸法は、変わったときだけ確保し直す。
+    // 描画先の寸法を、描画バッファと精細さの段へ合わせる。
     if (this.depthTarget.width !== traceWidth || this.depthTarget.height !== traceHeight) {
       this.depthTarget.setSize(traceWidth, traceHeight);
     }
