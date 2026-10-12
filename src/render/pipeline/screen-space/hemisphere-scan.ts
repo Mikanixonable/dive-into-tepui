@@ -7,16 +7,16 @@
 // 2023「Screen Space Indirect Lighting with Visibility Bitmask」)。
 import type * as THREE from 'three/webgpu';
 import {
-  If, Loop, acos, atan, bool, clamp, cos, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, pow,
-  screenSize, screenUV, select, sin, smoothstep, sqrt, step, textureLoad, uint, vec2, vec3, vec4,
+  If, Loop, bool, dot, float, floor, fract, getViewPosition, ivec2, length, max, min, pow, screenSize,
+  screenUV, smoothstep, sqrt, textureLoad, uint, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
 import { facingCosine, sampleBandWeights, type BandSplit } from './band-split';
 import { signedDiffuseCorrection } from './diffuse-correction';
 import {
-  SECTOR_COUNT, angleOf, bitCount, capArc, capMeasure, maskedMeasure, rangeSectors, sectorPosition, sectorRange,
-  segmentSectors, sliceAt, toSliceCoordinates, type RangeSectors, type Slice, type SliceArc,
+  SECTOR_COUNT, angleOf, bitCount, capMeasure, capRange, maskedMeasure, rangeSectors, sectorPosition, segmentSectors,
+  sliceAt, toSliceCoordinates, type RangeSectors, type Slice,
 } from './slice-sectors';
 import {
   angularlyHigher, angularlyLower, rayAt, samplePoint, sideRays, splitSegments, tangentHit, type SideRays,
@@ -41,51 +41,21 @@ export function widenedCap(cap: PlanetCap): PlanetCap {
   return { direction: cap.direction, cosAngle: min(cap.cosAngle, Math.cos(MIN_CAP_ANGLE)) };
 }
 
-// 広げた円盤の中の向き direction を、円盤の中心 center(単位ベクトル)からの角を scale 倍した向きへ写す。
-// 中心から見た方位は変えない。direction が中心とほぼ一致するときは center。
-export function scaledAboutCenter(direction: Vec3Node, center: Vec3Node, scale: FloatNode): Vec3Node {
-  const cosTheta = clamp(dot(direction, center), -1, 1);
-  const perpendicular = direction.sub(center.mul(cosTheta));
-  const sinTheta = length(perpendicular);
-  const theta = atan(sinTheta, cosTheta).mul(scale);
-  const tangent = perpendicular.div(max(sinTheta, 1e-6));
-  return select(sinTheta.lessThan(1e-6), center, center.mul(cos(theta)).add(tangent.mul(sin(theta))));
-}
-
 // 受け手を照らす天体照 1 つ。cap は受け手から見た球冠(view 空間)、irradiance は近くの構造に遮られないときに
-// 届く拡散照度(SUN_IRRADIANCE_1AU の目盛り)。relativeRadiance は、実際の円盤の上の向き direction(view 空間)を
-// 角幅 filterAngle [rad] で読んだ放射輝度を、irradiance の元の放射輝度で割った相対値(成分ごと)。imageLit は
-// 放射輝度が円盤の上で変わるかで、偽なら一様(相対値は 1)で relativeRadiance を呼ばない。
+// 届く拡散照度(SUN_IRRADIANCE_1AU の目盛り)。
 export interface PlanetIllumination {
   readonly cap: PlanetCap;
   readonly irradiance: Vec3Node;
-  readonly imageLit: BoolNode;
-  readonly relativeRadiance: (direction: Vec3Node, filterAngle: FloatNode) => Vec3Node;
 }
 
 // 受け手へ届く遠方の拡散光と、新しく塞いだ測度をその光の塞がれた割合へ写す尺度。ambient は一様な環境光の照度、
 // hemisphereScale は 1 / (スライスの数 × SECTOR_COUNT)、planets は天体照ごとに(視半径を広げた)円盤の尺度
-// capScale = 1 / (スライスの数 × SECTOR_COUNT × 円盤の測度) と、広げた円盤の角を実際の円盤の角へ写す倍率
-// discScale = 実際の視半径 / 広げた視半径 と、相対放射輝度の自己正規化 normalizer を添えたもの。
+// capScale = 1 / (スライスの数 × SECTOR_COUNT × 円盤の測度) を添えたもの。
 interface DistantLight {
   readonly ambient: Vec3Node;
   readonly hemisphereScale: FloatNode;
-  readonly planets: readonly (PlanetIllumination & {
-    readonly capScale: FloatNode;
-    readonly discScale: FloatNode;
-    readonly normalizer: RelativeNormalizer;
-  })[];
+  readonly planets: readonly (PlanetIllumination & { readonly capScale: FloatNode })[];
 }
-
-// 受け手ごと・天体ごとの、相対放射輝度の自己正規化。mean は弧の重み付き平均、valid は成分ごとに mean で割ってよいか
-// (0 か 1)。割れない成分の相対放射輝度は 1 にする。
-interface RelativeNormalizer {
-  readonly mean: Vec3Node;
-  readonly valid: Vec3Node;
-}
-
-// 平均が割れる下限(成分ごと)。これ未満は読んだ所がすべて暗いか、どのスライスも円盤に当たらない。
-const MIN_NORMALIZER = 1e-6;
 
 // G バッファの画素 1 つの面(view 空間)。depth は素の深度で、0 なら面が写っていない。
 interface GBufferSurface {
@@ -130,28 +100,17 @@ export function scanHemisphere(
     const hemisphereScale = float(1).div(float(sliceCount).mul(SECTOR_COUNT)).toVar();
     // 天体照の円盤は視半径を広げ、受け手ごとに 1 回その測度を求める。円盤が地平の下で測度が 0 のときは、下限で
     // 0 除算を避ける — 弧は半球の外で幅 0 になるので掛かる測度も 0。
-    const planetLights = planets.map(({ cap, irradiance, imageLit, relativeRadiance }) => {
+    const planetLights = planets.map(({ cap, irradiance }) => {
       const widened = widenedCap(cap);
       const wideCap = { direction: widened.direction.toVar(), cosAngle: widened.cosAngle.toVar() };
       const measure = capMeasure(wideCap, receiver.normal);
-      return {
-        cap: wideCap,
-        irradiance: irradiance.toVar(),
-        imageLit,
-        relativeRadiance,
-        capScale: hemisphereScale.div(max(measure, 1e-6)).toVar(),
-        discScale: acos(clamp(cap.cosAngle, -1, 1)).div(acos(wideCap.cosAngle)).toVar(),
-      };
+      return { cap: wideCap, irradiance: irradiance.toVar(), capScale: hemisphereScale.div(max(measure, 1e-6)).toVar() };
     });
     // 視線に垂直な面の中で等間隔に取ったスライスのうち index 本目。
     const sliceOf = (index: IntNode): Slice =>
       sliceAt(float(index).add(rotation).mul(Math.PI).div(float(sliceCount)), view, receiver.normal);
-    // 相対放射輝度は天体ごとに自己正規化する — 遮りの無いときの天体照を一様な円盤の値に合わせ、写しは円盤のどこを
-    // 塞ぐと多く引くかの分布だけに効かせる(拡散の放射輝度と写しの読みの近似の偏りを総量へ持ち込まない)。
-    const normalizedLights = planetLights.map((planet) => ({
-      ...planet, normalizer: relativeNormalizer(planet, sliceOf, sliceCount, dither),
-    }));
-    const light: DistantLight = { ambient, hemisphereScale, planets: normalizedLights };
+    // スライスの重みの期待値は 1 なので、期待値で割る。
+    const light: DistantLight = { ambient, hemisphereScale, planets: planetLights };
     // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。受け手自身の画素を読まない 1 走査画素先から半径までを、
     // 指数で近くへ寄せて配る（半径が大きくても受け手のそばを粗くしない）。
     const stepDistance = (progress: FloatNode): FloatNode => {
@@ -250,8 +209,8 @@ class SliceOcclusion {
   private readonly blocked = uint(0).toVar();
   // 新しく塞いだ扇形の数を、受け手の半球の余弦重みの測度に対する割合へ写す重み。
   private readonly hemisphereWeight: FloatNode;
-  // 天体ごとの、円盤の上の相対放射輝度を掛けた照度 irradiance、球冠をビットごとに測る形 sectors と、塞いだ球冠の
-  // 測度をその天体照の塞がれた割合へ写す重み capWeight。
+  // 天体ごとの照度 irradiance、球冠をビットごとに測る形 sectors と、塞いだ球冠の測度をその天体照の塞がれた割合へ写す
+  // 重み capWeight。
   private readonly planets: readonly {
     readonly irradiance: Vec3Node;
     readonly sectors: RangeSectors;
@@ -267,20 +226,11 @@ class SliceOcclusion {
     private readonly corrections: readonly Vec3Node[], private readonly radiance: THREE.Texture | null,
   ) {
     this.hemisphereWeight = slice.weight.mul(light.hemisphereScale).toVar();
-    this.planets = light.planets.map((planet) => {
-      const { cap, irradiance, imageLit, capScale, normalizer } = planet;
-      const arc = capArc(slice, cap);
-      const relative = vec3(1).toVar();
-      If(imageLit, () => {
-        const { mean, valid } = normalizer;
-        relative.assign(vec3(1).sub(valid).add(arcRadiance(slice, arc, planet).div(max(mean, MIN_NORMALIZER)).mul(valid)));
-      });
-      return {
-        irradiance: irradiance.mul(relative).toVar(),
-        sectors: rangeSectors(sectorRange(slice, arc, dither)),
-        capWeight: slice.weight.mul(capScale).toVar(),
-      };
-    });
+    this.planets = light.planets.map(({ cap, irradiance, capScale }) => ({
+      irradiance,
+      sectors: rangeSectors(capRange(slice, cap, dither)),
+      capWeight: slice.weight.mul(capScale).toVar(),
+    }));
   }
 
   // 受け手から見て角 lower..upper を占める切片を、手前の切片の後ろへ積む。falloff はその標本の距離重み、
@@ -319,43 +269,6 @@ class SliceOcclusion {
       for (const [band, correction] of this.corrections.entries()) correction.addAssign(increment.mul(weights[band]!));
     });
   }
-}
-
-// 弧 arc を円盤に写して読んだ天体の相対放射輝度。弧の中点の向きを実際の円盤へ写して読み、フィルタの幅は弧を写した
-// 長さにする — 1 点で読むと、満ち欠けの境が弧に沿うときに弧の平均から外れる。
-function arcRadiance(
-  slice: Slice, arc: SliceArc,
-  { cap, discScale, relativeRadiance }: Pick<PlanetIllumination, 'cap' | 'relativeRadiance'> & { discScale: FloatNode },
-): Vec3Node {
-  const middle = arc.lower.add(arc.upper).mul(0.5);
-  const direction = slice.view.mul(cos(middle)).add(slice.orthoDirection.mul(sin(middle)));
-  const filterAngle = max(arc.upper.sub(arc.lower), 1e-4).mul(discScale);
-  return relativeRadiance(scaledAboutCenter(direction, cap.direction, discScale), filterAngle);
-}
-
-// 天体の相対放射輝度の、全スライスの弧の重み付き平均 Σ w·幅·r / Σ w·幅 を求める。幅は弧の扇形の座標での幅。
-// 放射輝度が円盤の上で変わらない(imageLit が偽)ときは写しを読まず、平均 1・valid 1。**Fn の中から呼ぶこと。**
-function relativeNormalizer(
-  planet: Pick<PlanetIllumination, 'cap' | 'imageLit' | 'relativeRadiance'> & { discScale: FloatNode },
-  sliceOf: (index: IntNode) => Slice, sliceCount: IntNode, dither: FloatNode,
-): RelativeNormalizer {
-  const mean = vec3(1).toVar();
-  const valid = vec3(1).toVar();
-  If(planet.imageLit, () => {
-    const weighted = vec3(0).toVar();
-    const total = float(0).toVar();
-    Loop({ start: 0, end: sliceCount, type: 'int', condition: '<' }, ({ i }) => {
-      const slice = sliceOf(i);
-      const arc = capArc(slice, planet.cap);
-      const range = sectorRange(slice, arc, dither);
-      const weight = slice.weight.mul(range.upper.sub(range.lower));
-      weighted.addAssign(arcRadiance(slice, arc, planet).mul(weight));
-      total.addAssign(weight);
-    });
-    mean.assign(weighted.div(max(total, MIN_NORMALIZER)));
-    valid.assign(step(vec3(MIN_NORMALIZER), mean).mul(step(MIN_NORMALIZER, total)));
-  });
-  return { mean, valid };
 }
 
 // スライスの片側を受け手から奥へ歩む。隣り合う標本のあいだを両者の接平面で分け(splitSegments)、切片の上端が
