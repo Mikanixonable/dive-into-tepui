@@ -1,8 +1,13 @@
 # 照り返しの源と映り込みの像の元 — パス順の組み直し（計画）
 
-**計画ファイル。** `/run-plan` で上から実施し、完了した手順はこの文書から消す。**実施は、拡散側のブランチと合わせた後・
-main へ送る前**（`screenspace-specular.md` の手順5）。着手時に、拡散側のブランチで照り返しの源・走査・均しの作り方が
-変わっていないかを確かめ、変わっていたら「現状との差」と「パス数と負荷の見積り」を読み直す。
+**計画ファイル。** `/run-plan` で上から実施し、完了した手順はこの文書から消す。拡散側のブランチと合わせた（`1a86f266f`）。
+**実施は `screenspace-specular.md` の手順4.5（映り込みの追跡を毎フレーム決定的にする）の後、拡散側の手順9 の前**（`screenspace-diffuse.md` の
+決めたこと 38 — 走査の解像度を上げる前に、源の光源の評価をなくし、B を 1 回で作り直すため）。main へは拡散側の手順14 でまとめて送る。
+
+**合わせた後のコードとの差**（2026-10-12 に確かめた）: 照り返しの源は、`ScreenSpacePass` の構築で `ScreenSpaceInputPyramid.scanStageOf` へ渡す値
+（`emittedRadiance(sun)` — 天体照と環境光はパスが持つ）として、段 0 の面の写しと同じ描画で書かれ、`ScreenSpaceInputPyramid` が段ごとに縮める。
+GPU の行は「照り返し源」から「近傍拡散写しと源」（面の写しと源の 1 行）に、「近傍拡散復元」は代表縮小・帯縮小・合流・均し・拡大・パス平均の行に
+分かれた。走査は今も描画設定の全段で縦横 1/4 で、源は `gbufferTexelOf` の画素で読む。下の「現状との差」の考え方はそのまま当てはまる。
 
 ---
 
@@ -88,7 +93,13 @@ GPU の行は「陰影の合成」が消え「映り込みの像の元」が足�
 
 - 上のパス順。原理は「パイプラインの中で複雑な計算を二度しない」「一致すべきものは一度だけ計算する」。
 - 照り返しの源に粗い鏡面（r × R）を入れる — 積極的に検討する（手順2 でユーザーが判定する）。
-- 実施は拡散側のブランチと合わせた後・main へ送る前。
+- 実施は拡散側のブランチと合わせた後、拡散側の手順9 の前（2026-10-12）。
+- **デバッグ表示「拡散照度」の読み方は (a)**（2026-10-12）— 近傍補正を含んだ和を描画先として持たない。道具と撮影は「拡散照度」（遠方光だけになる）と
+  「拡散照度補正」（ΔE）を別々に読み、和が要るところでは自分で足して 0 以上に切る（`tools/render-lab-screen-space-blind-8-16.mjs` の土台の作り方が前例）。
+  表示名は、意味が変わったことが名前で分かるもの（例: 「遠方の拡散照度」 — 鏡面の「直接 / 遠方の鏡面照度」と揃う）に改める。描画バッファの解像度の、
+  拡大済みの補正項の描画先は残る（`screenspace-diffuse.md` の決めたこと 39 — 時間方向の蓄積がこの補正項だけを蓄積する）。(b)（像の元の描画に和を書かせる）は
+  映り込みがオフのフレームで和が消え、拡散側の表示が映り込みの設定に引きずられる。(c)（表示で 2 枚を足す）は CODING-RULE 4.3 の例外が要り、数を読む道具は
+  どのみち書き換える。
 - 組み直しで照り返しの源に起きる、恒星のモデル（点 → 描画設定のモデル）と render-lab の対照の球光源の違いは、微々たるものか、
   差が出るケースが無いかのどちらかなので、個別には確かめない。
 
@@ -106,12 +117,13 @@ GPU の行は「陰影の合成」が消え「映り込みの像の元」が足�
 - **GPU の行は「陰影の合成」を消し、「映り込みの像の元」を局所反射の前に足す**（手順4c）。並びは実行順。
 - **デバッグ表示「マテリアル」（`keep`）は外す**（手順4c）— 描画先が無くなる。本マテリアルは共有の描画先へ直接書き、結果は
   「通常」と後段の表示で見える。
-- **デバッグ表示「拡散照度」は ΔE を含まなくなる**（手順4a）。拡散側の回帰の撮影の多く（`tools/render-lab/bay-cases.ts` 307〜367行の
-  `bay-earth-*-diffuse`・`bay-moon-*`・`bay-quality-*`、`bounce-cosine-case.ts` 59行の `bounce-cosine-diffuse`）は、近傍補正込みの
-  照度をこの表示で読んでいる。**手順4a の前に、拡散側とどう読むかを決める**:
-  (a) 撮影を「拡散照度補正」と最終像で読むように替える。
-  (b) 映り込みの像の元の描画に、近傍補正込みの照度を2枚目として書かせる（VRAM +8 B/px — `keep` が消える分と相殺）。
-  (c) デバッグ表示で照度と ΔE の2枚を足して見せる（表示のための再計算にあたる — CODING-RULE 4.3 の例外として認めるかの判断が要る）。
+- **デバッグ表示「拡散照度」は ΔE を含まなくなる**（手順4a）。読み方はユーザーが決めた (a)（上）。近傍補正込みの照度をこの表示や
+  `readFloat('diffuse')` で読んでいる所は、手順4a で書き換える — 2026-10-12 の grep で、撮影は `tools/render-lab/bay-cases.ts` の `bay-earth-*-diffuse`・
+  `bay-earth-radius-*`・`bay-quality-*`・`bay-radius-*px` と `bounce-cosine-case.ts` の `bounce-cosine-diffuse`、数を読む道具は
+  `render-lab-screen-space-metrics.mjs`（窓の比と負の照度の数 — 拡散側の達成目標3・5）・`render-lab-screen-space-negative-irradiance.mjs`（`diffuse = e + c` の照合）・
+  `render-lab-screen-space-blind-8-16.mjs`（土台 = diffuse − correction）・`render-lab-screen-space-chain-metrics.mjs`（クレイ）・`screen-space-lab.mjs`（正しさの組の
+  `diffuse`）・`screen-space-reference.mjs`・`screen-space-variance.mjs`（窓の比）。どれも例外を出さずに誤った値になるので、着手時に
+  `readFloat('diffuse'`・`'diffuse'`・`debugTarget: 'diffuse'` を grep し直して件数を照合する。
 
 ## 変えない挙動
 
@@ -164,8 +176,9 @@ GPU の行は「陰影の合成」が消え「映り込みの像の元」が足�
 **達成条件と検証**
 
 - `node tools/render-lab-measure.mjs 3 reflection` と `node tools/render-lab-measure.mjs 3 screen-space` を同じ session で回し、
-  ライティング（近傍補正を除く）・近傍補正の加算・照り返し源・マテリアル・映り込み・映り込みの均し・陰影の合成の表を、この計画の
-  「パス数と負荷の見積り」へ実測として書く。プローブは `git stash` で外す。
+  ライティング（近傍補正を除く）・近傍補正の加算・近傍拡散写しと源・マテリアル・映り込み・映り込みの均し・陰影の合成の表を、この計画の
+  「パス数と負荷の見積り」へ実測として書く。「近傍拡散写しと源」は面の写しと源を 1 つの描画で書く行なので、源の光源の評価の分は、源を 0 にした
+  一時版との差で読む。プローブは `git stash` で外す。
 - 撮影の基準を2組撮る — `npm run render-lab:shot -- src-before-1`、`src-before-2`（揺らぎの封筒）。
 
 ### 手順 2. 照り返しの源の反射率に粗い鏡面を入れる（今のパス順のまま）
@@ -178,7 +191,7 @@ GPU の行は「陰影の合成」が消え「映り込みの像の元」が足�
 | ファイル | 変更 |
 | --- | --- |
 | `src/render/pipeline/material-pass.ts` | 一様な反射の反射率 `拡散色 + r × R` を返す関数を、`specularReflectanceAt` の隣に export する。像の元もそれを使う |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` | `emittedRadiance`（228〜240行）の反射率をその関数へ |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | `emittedRadiance` の反射率をその関数へ |
 
 **達成条件と検証**
 
@@ -214,10 +227,11 @@ GPU の行は「陰影の合成」が消え「映り込みの像の元」が足�
 
 | ファイル | 変更 |
 | --- | --- |
-| `src/render/pipeline/render-pipeline.ts` | 光源の列（166〜169行）から近傍補正の光源を外す。`rebuildForGraphics` の `correctionSource.setEnabled` を消す。`MaterialPass` へ `DiffuseCorrection` を渡す |
+| `src/render/pipeline/render-pipeline.ts` | 光源の列から近傍補正の光源を外す。`rebuildForGraphics` の `correctionSource.setEnabled` を消す。`MaterialPass` へ `DiffuseCorrection` を渡す |
 | `src/render/pipeline/lighting/diffuse-correction-source.ts` | 削除 |
-| `src/render/pipeline/material-pass.ts` | 照度 = 照度バッファの拡散 + ΔE を1つの関数で求め、`keep` の拡散と像の元に使う |
-| `tools/render-lab/bay-cases.ts` / `bounce-cosine-case.ts` | デバッグ表示「拡散照度」の撮影を、決めた読み方へ |
+| `src/render/pipeline/material-pass.ts` | 照度 = max(照度バッファの拡散 + ΔE, 0) を1つの関数で求め、`keep` の拡散と像の元に使う（いまは照度バッファの拡散を 0 以上に切っている — 負の照度の切り方は拡散側の決めたこと 10） |
+| `src/render/pipeline/debug-target.ts` | 「拡散照度」の表示名を、遠方光だけであることが分かる名前へ |
+| `tools/render-lab/bay-cases.ts` / `bounce-cosine-case.ts` と、決めたことに挙げた数を読む道具 | 読み方 (a) へ — 補正込みの照度を読んでいた撮影は「拡散照度補正」と最終像で読み、道具は 2 枚を読んで足す |
 
 **達成条件と検証**
 
@@ -233,8 +247,8 @@ GPU の行は「陰影の合成」が消え「映り込みの像の元」が足�
 | ファイル | 変更 |
 | --- | --- |
 | `src/render/pipeline/render-pipeline.ts` | `render()`・`compile()` の順で、ライトプリパスを遮蔽と照り返しのパスの前へ。`ScreenSpacePass` の構築へ照度バッファを渡し、源のための `SunSource` を渡さない |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` | 照り返しの源の段を、照度バッファの拡散と手順2の関数から作る形へ。`emittedRadiance` を消す。走査の遮られた照度（受け手ごとの天体照のスロットと環境光）は今のまま |
-| `src/render/gpu-timings.ts` / `tests/render/gpu-timings.test.ts` | 「ライティング」を「照り返し源」の前へ |
+| `src/render/pipeline/screen-space/screen-space-pass.ts` | 照り返しの源（`ScreenSpaceInputPyramid.scanStageOf` へ渡す値）を、照度バッファの拡散と手順2の関数から作る形へ。`emittedRadiance` を消す。走査の遮られた照度（受け手ごとの天体照のスロットと環境光）は今のまま |
+| `src/render/gpu-timings.ts` / `tests/render/gpu-timings.test.ts` | 「ライティング」を「近傍拡散写しと源」の前へ |
 | `src/render/pipeline/debug-target.ts` / `tests/render/debug-target.test.ts` | 「拡散照度」「直接の鏡面照度」「遠方の鏡面照度」を「照り返しの源」の前へ |
 
 **達成条件と検証**
@@ -299,12 +313,12 @@ GPU の行は「陰影の合成」が消え「映り込みの像の元」が足�
 | 負荷の基準とプローブ | 1 | プローブ 0.25 h + 2軸の計測 0.25 h + 撮影2組 0.1 h + 表 0.2 h | 0.8 h |
 | 照り返しの源の反射率 | 2 | 関数の共有 0.25 h + 撮影と比較 0.1 h + 差分画像の読み 0.3 h | 0.65 h |
 | SPEC | 3 | `/modify-feature` の通読と文面 0.75 h | 0.75 h |
-| 近傍補正の足し場所 | 4a | 3ファイル 0.5 h + 撮影の読み方の変更 0.25 h + 比較 0.25 h | 1 h |
+| 近傍補正の足し場所 | 4a | 3ファイル 0.5 h + 読み方 (a) への撮影と道具の書き換え（約 10 ファイル）1.5 h + 比較 0.25 h | 2.25 h |
 | ライトプリパスを前へ | 4b | 順の入れ替えと源の段 0.75 h + 行とデバッグ表示の並びとテスト 0.5 h + 差分画像の読み 0.5 h | 1.75 h |
 | 像の元の分離と合成の畳み込み | 4c | 新しいパス 0.75 h + 本マテリアルの3枚 1 h + 配線・デバッグ表示・行・テスト・計測の軸 1 h + 比較 0.5 h | 3.25 h |
 | 計測と境界の書き直し | 5 | 交互の計測 0.5 h + 比較 0.25 h + 文面 0.5 h | 1.25 h |
 
-**合計 約 9.5 h**（ユーザーの判定と、拡散側との相談の時間は含めない）。
+**合計 約 10.75 h**（ユーザーの判定の時間は含めない）。
 
 ## リスクと落とし穴
 
@@ -317,4 +331,6 @@ GPU の行は「陰影の合成」が消え「映り込みの像の元」が足�
 | 本マテリアルが読むテクスチャが16枚を超える | パイプラインの生成が失敗し、画面全体が黒くなる（render-lab:shot には Invalid CommandBuffer だけが出る） | 手順4c — 枚数を数える |
 | 照り返しの源の画素の採り方を変える | 拡散側の照り返しの見え方が黙って変わる | 手順4b — 源は `gbufferTexelOf` の画素で読み、`src-step4b` の照り返しの差が恒星のモデルと打ち切りの縁だけであること |
 | 組み直しの前後を別の session で測る | session ごとに絶対値が 3〜4 割ずれ、減ったかを読み違える | 手順1・5 — 同じ session で交互に測る |
-| 拡散側のブランチで照り返しの源の作り方が変わっている | 「現状との差」と見積りが外れ、手順2・4b の変更箇所が合わない | 着手時 — 拡散側のブランチの `screen-space-pass.ts` を読み直す |
+| 拡散側のブランチで照り返しの源の作り方が変わっている | 「現状との差」と見積りが外れ、手順2・4b の変更箇所が合わない | 合わせた時点で確かめた（冒頭の「合わせた後のコードとの差」） |
+| 映り込みの追跡が、この機械（Intel HD 520）では毎フレーム決定的でない | 映り込みをオンにした撮影が落ち着かず `render-lab:shot` が止まり、映り込みのケースを前後で比べられない | 着手前 — `screenspace-specular.md` の手順4.5 を先に済ませる |
+| 組み直しで照り返しの被積分関数が変わったのに、拡散側の B を作り直さない | 拡散側の手順9 の収束先の測りが、古い B との差を読む | 手順2・4b の後 — 拡散側の手順9 の前提（B の作り直し） |

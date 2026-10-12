@@ -12,7 +12,9 @@
 
 各計画ファイル: [`atmosphere_backlog.md`](atmosphere_backlog.md)(大気の残件) /
 [`volume.md`](volume.md)(大気以外の半透明) /
-[`screenspace-diffuse.md`](screenspace-diffuse.md)(近傍の遮蔽と照り返し) / [`screenspace-specular.md`](screenspace-specular.md)(局所反射) / [`shadow_backlog.md`](shadow_backlog.md)(影の残件) /
+[`screenspace-diffuse.md`](screenspace-diffuse.md)(近傍の遮蔽と照り返し) / [`temporal-denoise.md`](temporal-denoise.md)(近傍の遮蔽と照り返しの時間方向の蓄積) /
+[`screenspace-specular.md`](screenspace-specular.md)(局所反射) / [`screenspace-source.md`](screenspace-source.md)(照り返しの源と映り込みの像の元のパス順) /
+[`graphics-settings-feature.md`](graphics-settings-feature.md)(描画品質設定の3層) / [`shadow_backlog.md`](shadow_backlog.md)(影の残件) /
 [`arealight_backlog.md`](arealight_backlog.md)(エリアライトの残件) /
 [`blackbody_backlog.md`](blackbody_backlog.md)(固体の黒体放射の残件) /
 [`exposure_backlog.md`](exposure_backlog.md)(露出の残件) /
