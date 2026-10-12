@@ -177,8 +177,10 @@ async function withScene(scene, work) {
     const adapter = await devTools.evaluate(`(async () => { const a = await navigator.gpu.requestAdapter(), i = a.info ?? {};
       return [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(' / '); })()`);
     await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)}, ${JSON.stringify(scene.shot)})`);
-    await devTools.evaluate(`window.renderLab.setTarget('off'); window.renderLab.setGraphicsOption('screenSpaceDiffuse', 2);
-      window.renderLab.setGraphicsOption('screenSpaceQuality', 2); window.renderLab.setScanWhiteNoisePass(null)`);
+    await devTools.evaluate(`window.renderLab.setTarget('off');
+      window.renderLab.setGraphicsOption('screenSpaceOcclusion', true); window.renderLab.setGraphicsOption('screenSpaceIndirect', true);
+      window.renderLab.setGraphicsOption('screenSpaceSliceCount', 4); window.renderLab.setGraphicsOption('screenSpaceStepCount', 6);
+      window.renderLab.setScanWhiteNoisePass(null)`);
     const exposure = await stabilizeExposure(devTools);
     return await work(devTools, { pageUrl: session.baseUrl, adapter, exposure });
   } finally {

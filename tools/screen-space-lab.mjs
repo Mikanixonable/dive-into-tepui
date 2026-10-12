@@ -19,14 +19,17 @@ const debugPort = 9447;
 export const WIDTH = 960;
 export const HEIGHT = 540;
 
-// 描画設定 screenSpaceDiffuse の値(src/render/pipeline/screen-space/screen-space-pass.ts)。
+// 近傍拡散補正の方式(src/render/pipeline/screen-space/screen-space-pass.ts の SCREEN_SPACE_DIFFUSE)。遮蔽だけと、
+// 遮蔽と照り返し。
 const MODE = { occlusion: 1, indirect: 2 };
+// 方式 mode を選ぶ描画設定の差分。
+const graphicsOfMode = (mode) => ({ screenSpaceOcclusion: true, screenSpaceIndirect: mode === MODE.indirect });
 // 全撮影へ重ねる描画設定。目で見る画像は候補の表示と基準の合成の差から作る。レンズ効果は明るい面の光を、
 // アンチエイリアス(値 0 はなし)は表示を縁の向こうへ広げ、どちらも基準の合成には掛からないので切る。
 const EVALUATION_GRAPHICS = { lens: false, antialias: 0 };
 
 // 評価の組。set は tuning(調整用)・checking(確認用)・correctness(解析値との照合)・flicker(ちらつき)・holes(拡大の
-// 重みの全滅による欠けの再現)、mode は描画設定 screenSpaceDiffuse の値、dolly はカメラの距離の倍率の常用対数。key は
+// 重みの全滅による欠けの再現)、mode は近傍拡散補正の方式(MODE の値)、dolly はカメラの距離の倍率の常用対数。key は
 // 撮影名に、遮蔽の方式なら @occlusion、カメラを引いたなら @dolly<フレーム> を付けたもの。
 const DOLLY_STEP = 0.0005;
 const DOLLY_FRAMES = 6;
@@ -64,7 +67,7 @@ export function selectedEntries({ entries, sets }) {
   return selected;
 }
 
-// 撮影 e を、描画設定 screenSpaceDiffuse を方式 modeName(MODE の名前)にして撮るもの。
+// 撮影 e を、近傍拡散補正を方式 modeName(MODE の名前)にして撮るもの。
 export function entryInMode(e, modeName) {
   if (!Object.hasOwn(MODE, modeName)) throw new Error(`unknown mode ${modeName}: one of ${Object.keys(MODE).join(', ')}`);
   return entry(e.set, e.caseName, e.shot, MODE[modeName], e.dolly);
@@ -119,7 +122,9 @@ export function candidateSeedOf(k, referencePasses) {
   return SEED_CELLS[index];
 }
 
-// いまの精細さの段(src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_TIERS)。
+// 精細さの段。scale・bandCount・bandScale は src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_SCALE・
+// BAND_COUNT・BAND_SCALE、sliceCount・stepCount は描画設定 screenSpaceSliceCount・screenSpaceStepCount の低・中・高の
+// プリセット(setScan へ渡るもの)。
 export const TIERS = {
   low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 0.38 },
   medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 0.38 },
@@ -226,7 +231,7 @@ function labOf(devTools) {
   return {
     // 評価の組の 1 つ entry を表示する。
     async show(entry) {
-      await call(`showShot(${JSON.stringify(entry.caseName)}, ${JSON.stringify(entry.shot)}, ${JSON.stringify({ ...EVALUATION_GRAPHICS, screenSpaceDiffuse: entry.mode })})`);
+      await call(`showShot(${JSON.stringify(entry.caseName)}, ${JSON.stringify(entry.shot)}, ${JSON.stringify({ ...EVALUATION_GRAPHICS, ...graphicsOfMode(entry.mode) })})`);
       if (entry.dolly) await call(`setView(${JSON.stringify({ cameraDistanceLog: entry.dolly })})`);
     },
     // 観察の向きを部分的に差し替えて描く。changes は render-lab の観察の向き(LabViewAngles)の一部。

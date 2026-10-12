@@ -317,12 +317,12 @@ export class PlanetLightSource {
     for (const source of this.slotSources) source.setModel(model);
   }
 
-  // 写しへ大気を写すか(描画設定「大気」がオフでない)を全スロットへ配る。
+  // 写しへ大気を写すか(描画設定「大気」がオン)を全スロットへ配る。
   public setAtmosphereEnabled(enabled: boolean): void {
     for (const source of this.slotSources) source.subject.setAtmosphereEnabled(enabled);
   }
 
-  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲の精細さ」がオフでない)を全スロットへ配る。
+  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲の立体」がオン)を全スロットへ配る。
   public setCumulusEnabled(enabled: boolean): void {
     for (const source of this.slotSources) source.subject.setCumulusEnabled(enabled);
   }

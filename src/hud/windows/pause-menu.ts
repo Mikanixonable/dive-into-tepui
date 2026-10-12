@@ -1,5 +1,5 @@
 import faviconUrl from '../../../public/favicon.svg';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { GraphicsSelection } from '../../render/graphics-selection';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_4 } from '../../theme';
 import { clampOverlayPosition, type Point2 } from '../layout';
@@ -55,7 +55,7 @@ export class PauseMenu implements OverlayHandle {
   // 消音を織り込んだ組み立て時の音量。各操作のコールバックは onXxx フィールドへ後から代入する。
   public constructor(
     root: HTMLElement, overlayManager: OverlayManager,
-    graphics: GraphicsSettingsData, bgmVolume: number, themeId: string,
+    graphics: GraphicsSelection, bgmVolume: number, themeId: string,
   ) {
     injectCommonUiStyle();
     injectOnce('pause-menu', PAUSE_MENU_STYLE);

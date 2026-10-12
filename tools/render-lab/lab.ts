@@ -21,7 +21,8 @@ import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-rend
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import { SCREEN_SPACE_DIFFUSE } from '../../src/render/pipeline/screen-space/screen-space-pass';
+import { SCREEN_SPACE_DIFFUSE, screenSpaceDiffuseOf } from '../../src/render/pipeline/screen-space/screen-space-pass';
+import { resolveGraphics, selectionOfGraphics, type GraphicsSelection } from '../../src/render/graphics-selection';
 import { CASES, type CaseName } from './cases';
 import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
@@ -29,7 +30,7 @@ import { LabSun } from './lab-sun';
 import { PassAccumulator } from './pass-accumulator';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
-import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
@@ -152,8 +153,10 @@ export class LabView {
   // ケースのあいだだけシーンへ出して、観察のつまみの置き方へ描くたびに置き直す。
   private readonly earth = new LabEarth();
 
-  // 起動時の描画品質設定。撮影はこれへ差分を重ねる。
+  // 起動時の描画品質設定の選び方を解いた平らな値一式。撮影はこれへ差分を重ねる。
   private readonly startupGraphics: GraphicsSettingsData;
+  // 描画が読む、いまの選び方を解いた平らな値一式。
+  private resolvedGraphics: GraphicsSettingsData;
 
   // 受け手の近傍の半径が写る画素数を描く先と、その描画命令。深度から位置を戻す実カメラの行列は描くたびに書き込む。
   private readonly radiusTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
@@ -170,20 +173,21 @@ export class LabView {
     type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: true,
   });
 
-  // graphics は描く描画品質設定の器。
+  // graphics は描く描画品質設定の選び方の器。
   private constructor(
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
-    private readonly graphics: StoredSetting<GraphicsSettingsData>,
+    private readonly graphics: StoredSetting<GraphicsSelection>,
   ) {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
     this.ringMaterials = new RingMaterials(pipeline.bodyShadow, pipeline.sunLight);
     this.sun.addTo(this.scene);
-    this.startupGraphics = graphics.current;
-    graphics.subscribe((next) => this.rebuildForGraphics(next));
+    this.startupGraphics = resolveGraphics(graphics.current);
+    this.resolvedGraphics = this.startupGraphics;
+    graphics.subscribe((selection) => this.rebuildForGraphics(resolveGraphics(selection)));
     // 近傍の半径は、近傍拡散補正の走査と同じ式で、描画バッファの画素で測る。
     const radius = new THREE.MeshBasicNodeMaterial({
       depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
@@ -195,10 +199,10 @@ export class LabView {
     this.radiusQuad.material = radius;
   }
 
-  // graphics は描く描画品質設定の器。この時点の値を起動時の設定として控え、以後はその変更を受けて
-  // 描き直す。
+  // graphics は描く描画品質設定の選び方の器。この時点の選び方を起動時の設定として控え、以後はその変更を
+  // 受けて描き直す。
   public static async create(
-    canvas: HTMLCanvasElement, graphics: StoredSetting<GraphicsSettingsData>,
+    canvas: HTMLCanvasElement, graphics: StoredSetting<GraphicsSelection>,
   ): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、深度の分解能と
     // 描画順の並べ替えが本番と別物になる。
@@ -211,7 +215,7 @@ export class LabView {
     await renderer.init();
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
-    const pipeline = new RenderPipeline(renderer, graphics.current, gpu);
+    const pipeline = new RenderPipeline(renderer, resolveGraphics(graphics.current), gpu);
     return new LabView(renderer, pipeline, gpu, graphics);
   }
 
@@ -251,11 +255,12 @@ export class LabView {
     }
     // **カメラの既定を引く前に一度同期する** — 環はここで姿勢が決まるので、同期する前に
     // 物体を包む箱を測ると注視点が原点へ寄る。
-    built.sync?.(this.graphics.current, built.earth === undefined ? null : this.earth.center);
+    built.sync?.(this.resolvedGraphics, built.earth === undefined ? null : this.earth.center);
   }
 
-  // 描画品質設定 graphics でパイプラインを組み直し、その場で描き直す。
+  // 描画品質設定 graphics を以後の描画で読み、パイプラインを組み直して、その場で描き直す。
   private rebuildForGraphics(graphics: GraphicsSettingsData): void {
+    this.resolvedGraphics = graphics;
     this.pipeline.ambient.setFraction(ambientFraction(graphics));
     this.pipeline.rebuildForGraphics(graphics);
     this.render();
@@ -331,7 +336,7 @@ export class LabView {
   // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
   public render(displayTime = 0): void {
     if (this.current === null) return;
-    const graphics = this.graphics.current;
+    const graphics = this.resolvedGraphics;
     // カメラを観察の向きへ置く。画角と遠クリップ距離の書き換えは、投影行列を組み直すまで無言で効かない。
     // 遠クリップ距離は、周回の中心までの距離を注視距離としてゲーム本体と同じ式で引く。
     const camera = this.current.camera;
@@ -371,7 +376,7 @@ export class LabView {
           metersPerPixel: metersPerPixelAtDepth(camera.fov, distance, VIEW_HEIGHT),
         };
       }),
-      graphics.atmosphere,
+      graphics,
     ));
     const startedAt = performance.now();
     this.pipeline.render(this.scene, camera, this.style);
@@ -476,7 +481,7 @@ export class LabView {
     const { screenSpace } = this.pipeline;
     screenSpace.setMode(SCREEN_SPACE_DIFFUSE.off);
     this.render();
-    screenSpace.setMode(this.graphics.current.screenSpaceDiffuse);
+    screenSpace.setMode(screenSpaceDiffuseOf(this.resolvedGraphics));
   }
 
   // 次に描くフレームから、近傍拡散補正を段 tier で走査する。描画品質設定が変わると精細さの段へ戻る。
@@ -491,7 +496,7 @@ export class LabView {
     this.pipeline.screenSpace.setTier(tier);
     this.pipeline.screenSpace.setExperiment(variant, sparseTapCount);
     if (variant !== null) this.pipeline.screenSpace.setMode(SCREEN_SPACE_DIFFUSE.indirect);
-    else this.pipeline.screenSpace.setMode(this.graphics.current.screenSpaceDiffuse);
+    else this.pipeline.screenSpace.setMode(screenSpaceDiffuseOf(this.resolvedGraphics));
   }
 
   // 完成した補正を独立パスごとに描き、その出力を平均する一候補の GPU 費用を測る。
@@ -807,12 +812,16 @@ export class LabView {
     this.showDebugTarget(target);
   }
 
-  // 描画品質設定を next にする。**設定の器は同値でも購読者へ配り、パイプラインを組み直す**ので、
-  // いまの値と 1 項目でも違うときだけ書く。
+  // 描画品質設定を、平らな値一式 next と同じ絵になる選び方にする。**設定の器は同値でも購読者へ配り、
+  // パイプラインを組み直す**ので、解いた値がいまの値と 1 項目でも違うときだけ書く。
   private setGraphics(next: GraphicsSettingsData): void {
-    const current = this.graphics.current;
-    const changed = (Object.keys(next) as GraphicsOptionKey[]).some((key) => next[key] !== current[key]);
-    if (changed) this.graphics.set(next);
+    const selection = selectionOfGraphics(next);
+    // **解いた値どうしで比べる** — オフの分野のノブへ書いた値は選び方に残らないので、next と比べると毎回
+    // 変わったと読む。
+    const resolved = resolveGraphics(selection);
+    const current = this.resolvedGraphics;
+    const changed = (Object.keys(resolved) as GraphicsKey[]).some((key) => resolved[key] !== current[key]);
+    if (changed) this.graphics.set(selection);
   }
 
   // ケースを表示し、ケースが宣言した撮影ごとに applyShot を当てて、キャンバスへ出るのと同じ絵

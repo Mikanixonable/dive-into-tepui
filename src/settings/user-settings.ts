@@ -9,24 +9,32 @@ import {
 } from '../game/hud/hud-selection';
 import { formatMapDisplayToggles, parseMapDisplayToggles } from '../game/map/display-toggles';
 import { formatGridVisibility, parseGridVisibility } from '../render/celestial-grid';
-import { formatGraphics, parseGraphics } from '../render/graphics-settings';
+import { formatGraphicsSelection, parseGraphicsSelection, resolveGraphics } from '../render/graphics-selection';
+import { parseLegacyGraphics } from '../render/legacy-graphics-settings';
 import { formatRenderStyle, parseRenderStyle } from '../render/render-style';
 import { formatThemePalette, parseThemePalette } from '../theme';
-import { StoredSetting } from './stored-setting';
+import { DerivedSetting, StoredSetting } from './stored-setting';
 import type { OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab } from '../game/hud/hud-selection';
 import type { MapDisplayToggles } from '../game/map/display-toggles';
 import type { CelestialGridVisibility } from '../render/celestial-grid';
+import type { GraphicsSelection } from '../render/graphics-selection';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { ThemePalette } from '../theme';
+import type { SettingValue } from './setting-value';
 import type { SettingStorage } from './stored-setting';
+
+// 平らな値一式で保存していた描画の品質設定の鍵。新しい鍵がまだ無い環境で、移行元として読む。
+const LEGACY_GRAPHICS_KEY = 'tepui.settings.graphics';
 
 // ビュー別でない折りたたみ状態の鍵。新しい鍵がまだ無い環境で、移行元として読む。
 const LEGACY_PANEL_COLLAPSED_KEY = 'tepui.panelCollapsed';
 
 export class UserSettings {
-  // 描画の品質設定。
-  public readonly graphics: StoredSetting<GraphicsSettingsData>;
+  // 描画の品質設定の選び方。
+  public readonly graphics: StoredSetting<GraphicsSelection>;
+  // 描画の品質設定の選び方を解いた、描画側が読む値一式。選び方が同じあいだは同じ参照。
+  public readonly resolvedGraphics: SettingValue<GraphicsSettingsData>;
   // 3D 世界を描く画面すべてが共有する見せ方。
   public readonly renderStyle: StoredSetting<RenderStyle>;
   // BGM のユーザー音量。0〜1。
@@ -50,7 +58,13 @@ export class UserSettings {
   // 保存済みの設定が読めなくなる。
   public constructor(storage: SettingStorage) {
     // 画面全体に適用される全域設定。
-    this.graphics = new StoredSetting(storage, 'tepui.settings.graphics', parseGraphics, formatGraphics);
+    const legacyGraphics = storage.read(LEGACY_GRAPHICS_KEY);
+    this.graphics = new StoredSetting(
+      storage, 'tepui.settings.graphics.v2',
+      (text) => (text === null ? parseLegacyGraphics(legacyGraphics) : parseGraphicsSelection(text)),
+      formatGraphicsSelection,
+    );
+    this.resolvedGraphics = new DerivedSetting(this.graphics, resolveGraphics);
     this.renderStyle = new StoredSetting(storage, 'tepui.settings.renderStyle', parseRenderStyle, formatRenderStyle);
     this.bgmVolume = new StoredSetting(storage, 'tepui.settings.bgm_vol', parseBgmVolume, formatBgmVolume);
     this.bgmMuted = new StoredSetting(storage, 'tepui.settings.bgm_muted', parseBgmMuted, formatBgmMuted);
