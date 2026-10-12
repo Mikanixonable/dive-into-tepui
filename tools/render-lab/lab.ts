@@ -355,6 +355,7 @@ export class LabView {
     this.pipeline.exposure.setReference(ORIGIN, this.sun.position, this.sun.intensity);
     // 天体照の光源は地球だけ、影・大気の源は地球のぶんとケースのぶんを合わせて渡す。
     this.pipeline.planetLight.set(earth === null ? [] : [earthLightValue(earth, this.sun, graphics.airglow)]);
+    this.pipeline.sphereLights.set(this.current.sphereLights ?? []);
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
@@ -799,6 +800,7 @@ export class LabView {
   public applyShot(name: string, graphics: Partial<GraphicsSettingsData> = {}): void {
     const shot = this.shots[name];
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
+    this.pipeline.setReflectionNoiseOffset(...(shot.reflectionNoiseOffset ?? [0, 0]));
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
     const target = shot.debugTarget ?? 'off';

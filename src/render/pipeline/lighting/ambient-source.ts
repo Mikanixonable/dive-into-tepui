@@ -46,11 +46,7 @@ export class AmbientSource implements LightSource {
   // して映したもので、粗さによらず一定 — 拡散を持たない金属面が影の中で真っ黒に残らないための項。
   private contribution(sample: ShadingSample): LightContribution {
     const irradiance = this.irradiance(sample);
-    const radiance = irradiance.div(PI);
-    return {
-      diffuse: irradiance,
-      specular: radiance,
-    };
+    return { diffuse: irradiance, specular: irradiance.div(PI), specularReach: 'far' };
   }
 
   // 組んだマテリアルを解放する。

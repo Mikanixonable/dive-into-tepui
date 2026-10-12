@@ -7,6 +7,7 @@ import {
   Fn, PI, acos, asin, clamp, cos, dot, float, length, max, min, normalize, select, sin, sqrt, uniform, vec3,
 } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
+import { specularLobeHalfWidth } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import { PlanetLightImage } from './planet-light-image';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
@@ -116,8 +117,8 @@ class PlanetLightSlot implements LightSource {
   private readonly imaged: BoolUniform = uniform(false);
   private readonly textured: BoolUniform = uniform(false);
 
-  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は写しの大気が読む天体の影。
-  // model は描画設定 planetLightModel の値。
+  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は写しの大気が読む天体の影。model は描画設定
+  // planetLightModel の値。
   public constructor(
     private readonly sunLight: SunLight,
     bodyShadow: BodyShadow,
@@ -186,12 +187,8 @@ class PlanetLightSlot implements LightSource {
         sphereRadiance)
       : sphereRadiance;
     const diffuse = this.diffuseIrradianceFor(sample, lightDir, sinSigmaSqr, sphereRadiance);
-    const specular: Vec3Node = specularRadiance
-      .mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
-    return {
-      diffuse,
-      specular,
-    };
+    const specular: Vec3Node = specularRadiance.mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
+    return { diffuse, specular, specularReach: 'far' };
   }
 
   // 受け手 sample へこのスロットの天体が届ける拡散照度。contribution の拡散と同じ値。
@@ -253,10 +250,9 @@ class PlanetLightSlot implements LightSource {
     return this.slot.radiance.mul(receiverPhase(alpha, capAngle));
   }
 
-  // 鏡面が写しを読むフィルタの角幅 [rad]。GGX のローブ半幅 2α と、光源の円錐の半角 σ の小さい方。
+  // 鏡面が写しを読むフィルタの角幅 [rad]。鏡面ローブの半幅と、光源の円錐の半角 σ の小さい方。
   private specularFilterAngle(sample: ShadingSample, sinSigmaSqr: FloatNode): FloatNode {
-    const ggxAlpha = sample.roughness.mul(sample.roughness);
-    return min(ggxAlpha.mul(2), asin(clamp(sqrt(sinSigmaSqr), 0, 1)));
+    return min(specularLobeHalfWidth(sample), asin(clamp(sqrt(sinSigmaSqr), 0, 1)));
   }
 
   // 写しをローブの峰の向きで読んだ放射輝度。lobe は view 空間のローブの峰、filterAngle はその
@@ -288,11 +284,10 @@ export class PlanetLightSource {
   );
   private readonly slotSources: readonly PlanetLightSlot[];
 
-  // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、count は同時に使うスロットの本数(描画設定
-  // planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
+  // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、count は同時に使うスロットの本数
+  // (描画設定 planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
   public constructor(
-    sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular,
-    private count: number, model: number,
+    sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular, private count: number, model: number,
   ) {
     this.slotSources = this.slots.map((slot) => new PlanetLightSlot(
       sunLight, bodyShadow, sphereSpecular, slot, model));

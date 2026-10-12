@@ -1243,9 +1243,6 @@
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 6
-    },
     "@typescript-eslint/parameter-properties": {
       "count": 1
     }
@@ -1256,11 +1253,6 @@
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 6
-    }
-  },
-  "src/render/pipeline/lighting/light-source.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
     }
   },
   "src/render/pipeline/lighting/ltc-table.generated.ts": {

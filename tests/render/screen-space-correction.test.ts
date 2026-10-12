@@ -86,8 +86,9 @@ export function register(): void {
     const correction = new DiffuseCorrection();
     const source = new DiffuseCorrectionSource(correction);
     const sample = { uv: vec2(0, 0), lit: bool(true) } as unknown as ShadingSample;
-    const output = source.material(sample).mrtNode!.outputNodes as { specular: unknown };
-    assert.deepStrictEqual(evaluateShaderNode(output.specular), [0, 0, 0, 1]);
+    const output = source.material(sample).mrtNode!.outputNodes as { directSpecular: unknown; farSpecular: unknown };
+    assert.deepStrictEqual(evaluateShaderNode(output.directSpecular), [0, 0, 0, 1]);
+    assert.deepStrictEqual(evaluateShaderNode(output.farSpecular), [0, 0, 0, 1]);
     source.dispose();
     correction.dispose();
   });
