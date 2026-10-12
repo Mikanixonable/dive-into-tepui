@@ -40,6 +40,12 @@ export interface SectorRange {
   readonly upper: FloatNode;
 }
 
+// 受け手の半球と円盤の測度を決める法線 — 法線 normal が視線 view の裏を向くとき(n·V < 0)だけ視線と直交するまで
+// 視線の側へ倒したもの。表を向く法線はそのまま。半球とスライスの重みと円盤の測度を同じ法線で揃え、塞がれた割合を 1 以下に保つ。
+export function hemisphereNormalOf(normal: Vec3Node, view: Vec3Node): Vec3Node {
+  return normalize(normal.sub(view.mul(min(dot(normal, view), 0))));
+}
+
 // 視線 view に垂直な面の中の角 psi [rad](画面の右の向きから測る)の向きを含むスライスを、受け手の法線 normal から
 // 組む。**Fn の中から呼ぶこと。**
 // スライスは psi で等間隔に取る。psi が一様なら、スライスの重みの期待値は 1 と閉じた式になり、比でなく期待値で
