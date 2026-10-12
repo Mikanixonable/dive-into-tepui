@@ -11,7 +11,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { motionPageHtml } from './render-lab-motion-page.mjs';
 import {
-  MOTION_GRAPHICS, PHASE_SOURCES, SCENES, aggregatesOf, evaluateLong, openMotionLab, selectedByName,
+  MOTION_GRAPHICS, PHASE_SOURCES, SCENES, aggregatesOf, evaluateLong, openLabPage, openMotionLab, selectedByName,
 } from './render-lab-motion-scenes.mjs';
 import { table } from './screen-space-lab.mjs';
 
@@ -100,6 +100,8 @@ async function main() {
   try {
     rmSync(outDir, { recursive: true, force: true });
     for (const scene of scenes) {
+      // 場面ごとにページを開き直す — 1 つのページで撮り続けると、読み戻しの器が溜まって確保に失敗する。
+      await openLabPage(session);
       await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)}, ${JSON.stringify(scene.shot)},
         ${JSON.stringify(MOTION_GRAPHICS)})`);
       for (const sweep of sweeps) {
