@@ -31,16 +31,19 @@ main へ送るまでを扱う。
 - 精細さの段の調整と負荷の追い込みは、拡散側とまとめて別の計画（`graphics-settings-feature.md`）で行う。
 - 映り込みの像の元は `(拡散色 + r × R) / π × 照度 + 自己発光`（r は知覚的粗さ、照度は近傍補正込み）。映り込みの中の精度を上げる
   手段には、指示なしに着手しない（`screenspace-specular_backlog.md`）。
+- **対照の球光源は残し、置いた枠だけを組む**（`41760f13b`）。粗さの段のケースの対照（`reflection-ladder-lights`）は、局所反射の
+  像が光源として正しく積分した鏡面像に似ているかを測る唯一の物差し。ライトプリパスは光源を「事前コンパイルする列」と「寄与を持った
+  最初のフレームでマテリアルを組む列」で受け、球光源の枠は後者に入る（ゲームの起動の事前コンパイルが組む照明のマテリアルは 5 枚）。
+  パス順の組み直しでライトプリパスを書き換えるときも、この2列を保つ。
 
 **自分が決めたこと**（覆すと括弧内の手順が変わる）。
 
-- **refactor は局所反射が持つファイルに限り、`render-pipeline.ts` の分割（lint の max-lines 500 に対し 631 行）はパス順の組み直しの
-  後に回す**（手順1・5）。組み直しが同じ実行順のコードを書き換え、拡散側のブランチも同じファイルを触るので、先に分けると合わせる
-  ときの衝突が増え、組み直しで書き直すことになる。覆すなら手順1 で分ける。
-- **対照の球光源（一時実装）は、残すならゲームの事前コンパイルから外す形を勧める**（手順2）。粗さの段のケースの対照（`reflection-ladder-lights`）
-  は、局所反射の像が光源として正しく積分した鏡面像に似ているかを測る唯一の物差しで、捨てると縁の幅・明るさの比の表の対照の列が
-  消える。ゲームの起動の事前コンパイルに 16 枚のマテリアルが加わる（render-lab の撮影1組が 30 → 33 秒）のは、置いた枠だけを組む形に
-  すれば消える。
+- **`render-pipeline.ts` の分割（lint の max-lines 500 に対し 627 行）はパス順の組み直しの後に回す**（手順5）。組み直しが同じ実行順の
+  コードを書き換え、拡散側のブランチも同じファイルを触るので、先に分けると合わせるときの衝突が増え、組み直しで書き直すことになる。
+- **映り込みの均しは、縮小列（`screen-space/reflection-reduction.ts` の `ReflectionReduction` — 段を組み、受け手の面に載る分を読む）と、
+  段を選んで均す側（`reflection-denoise.ts` の `ReflectionDenoise`）に分けた**（`d3f0b9426`）。縮小列の画素の形式（代表の面・被覆率）は
+  縮小列の中に閉じる。tools の表は `REFLECTION_LEVEL_COUNT` を `reflection-denoise.ts` から文字列で読むので、定数を動かすときは
+  `tools/render-lab-reflection-levels.mjs` も直す。
 
 ## 前提として守る契約
 
@@ -72,15 +75,15 @@ main へ送るまでを扱う。
   まだら、チェッカーの縁、像から遠い輝点）。`node tools/render-lab-reflection-flicker.mjs <組の dir>`（画素の揺れと 8 × 8 px の塊の揺れ）。
 - **負荷**: `node tools/render-lab-measure.mjs 3 reflection`。比べる2つのビルドは同じ session で交互に測る（session ごとに 3〜4 割ずれる）。
 - **基準の撮影の組**（`.render-lab-shots/`、git に入らない）: `ssr-before-1` / `-2`（`3e646383`、局所反射の着手前、各67枚、2組は md5 一致）、
-  `ssr-step9i`（`f9d56706c`、157枚。今の局所反射）。
+  `ssr-step9i`（`f9d56706c`、157枚。今の局所反射）、`ssr-refactor`（`d3f0b9426`）と `ssr-sphere-lights`（`41760f13b`）はどちらも
+  157枚が `ssr-step9i` と md5 一致。
 - **読むときの落とし穴**: アンチエイリアスはデバッグ表示にも掛かり、孤立した1画素をにじませる（1画素単位で読む撮影は `antialias: 0`）。
   像の明るさの和は、トーンマップを戻してから比べる（8bit の表示値のまま足すと、薄く広げた像が点描の半分以下に読める）。
 
 ## 変えない挙動
 
-手順1（点検）と手順4（拡散側と合わせる）は局所反射の見え方を変えない。
+手順4（拡散側と合わせる）は局所反射の見え方を変えない。
 
-- 手順1: 全撮影が `ssr-step9i` と md5 一致。
 - 手順4: 映り込みのケース（`leo-metal*`・`bay-metal*`・`reflection-ladder*`）の差は、拡散側の変更で照度（近傍補正）が変わった分で
   説明できる。デバッグ表示「raw 映り込み」「均した映り込み」の差が、デバッグ表示「拡散照度」の差のある面にだけ出る。
 
@@ -106,55 +109,6 @@ main へ送る時点（手順6）で、パス順を組み直した後のコー�
 11. 像の元の方式は1つだけで、描画設定にも render-lab にも切り替えが無い（`src/`・`tools/` で `setReflectionSource` が0件）。
 
 ## 手順
-
-### 手順 1. 局所反射の範囲へ `/refactor` と `/comment-cleanup` を通す
-
-**目的** — 拡散側と合わせる前に、局所反射が持つコードを CODING-RULE・ARCHITECTURE に沿わせ、コメントを点検する。この時点で
-挙動は変えない。
-
-**変更が必要な箇所**（着手時点 `3e646383` から局所反射の作業で変えた34ファイル。`git diff --stat 3e646383..HEAD -- src tools tests`）
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/pipeline/screen-space/reflection-denoise.ts` | 510 行で lint の max-lines（500）の警告 — 事後縮小列を組む責務と、均しの解決（段を選び、受け手の面に載る分を埋めて読む）の責務が同居している。分けるかを `/refactor` で判断する |
-| `src/render/pipeline/reflection-pass.ts` / `screen-space/reflection-trace.ts` / `screen-space/screen-space-reflection.ts` / `shading-composite-pass.ts` / `material-pass.ts` | 点検 |
-| `src/render/pipeline/lighting/ggx.ts` / `light-source.ts` / `sphere-lights.ts` / `planet-light-source.ts` / `ambient-source.ts` / `sun-source.ts` / `ltc.ts` / `diffuse-correction-source.ts`、`src/render/pipeline/light-prepass.ts` / `atmosphere-pass.ts` | 点検（鏡面の直接 / 遠方の宣言、標本化、球光源） |
-| `src/render/blue-noise.ts` / `gpu-timings.ts` / `graphics-settings.ts` / `tsl-types.ts`、`src/render/pipeline/debug-target.ts` | 点検 |
-| `src/render/pipeline/render-pipeline.ts` | コメントの点検だけ。分割は手順5 の後（「決めたこと」） |
-| `tools/render-lab/reflection-cases.ts` / `bay-cases.ts` / `material-cases.ts` / `lab-case.ts` / `lab.ts` / `cases.ts`、`tools/render-lab-reflection-levels.mjs`（932 行）/ `render-lab-reflection-flicker.mjs` / `render-lab-measure.mjs` | 点検 |
-| `tests/render/debug-target.test.ts` / `gpu-timings.test.ts` / `screen-space-correction.test.ts` | 点検 |
-
-範囲が34ファイルと広く、互いに独立しているので、`/comment-cleanup` の点検は `/delegate` でサブエージェントへ分けて配ってよい
-（同じファイルを2つのエージェントに配らない。テストを並行で回すときは出力先を分ける）。
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run test:render` / `npm run check:boundaries`。上の範囲へ `npx eslint` を当て、新しい警告が無い
-  （`render-pipeline.ts` の max-lines は残す）。
-- `npm run render-lab:shot -- ssr-refactor` が `ssr-step9i` と全157枚 md5 一致。
-- commit（`refactor(render): …` と、コメントだけなら `docs(render): …`）。
-
-### 手順 2. 対照の球光源（一時実装）の扱いを決める
-
-**目的** — main へ送る前に、ゲームの起動の事前コンパイルに 16 枚のマテリアルを加えている一時実装を、残すか捨てるかを決める。
-**ユーザーに問う** — 勧めは「残し、置いた枠だけを組む」（「決めたこと」）。
-
-**変更が必要な箇所**
-
-| ファイル | 残すとき | 捨てるとき |
-| --- | --- | --- |
-| `src/render/pipeline/lighting/sphere-lights.ts` | 置いていない枠を事前コンパイルしない。一時実装の注記を、局所反射の回帰の道具としての説明へ | 削除 |
-| `src/render/pipeline/render-pipeline.ts` | — | 構築・光源の列・`sphereLights` の口を外す |
-| `tools/render-lab/lab-case.ts` / `lab.ts` | — | `LabCase.sphereLights` と、描くたびに渡す処理を外す |
-| `tools/render-lab/reflection-cases.ts` | — | `reflection-ladder-lights` を外す |
-| `tools/render-lab-reflection-levels.mjs` | — | 対照の列を外す |
-
-**達成条件と検証**
-
-- `npm run typecheck` / `npm run test:render`。
-- 残すとき: 球光源を置いていないとき、`RenderPipeline.compile()`（ライトプリパスの段）が球光源のマテリアルを組まない — 光源ごとに
-  組む所で数を数え、16 枚が入らないことを確かめる。撮影は `ssr-step9i` と md5 一致。
-- 捨てるとき: `src/` と `tools/` で `SphereLights` が0件。対照を除いた撮影は `ssr-step9i` と md5 一致。
 
 ### 手順 3. remote へ push する
 
@@ -219,29 +173,34 @@ main へ送る時点（手順6）で、パス順を組み直した後のコー�
     乱数の 1.0 が 0.53 に写っていた）。デバッグ表示では切るか。
   - SPEC の描画設定の節に「映り込みの精細さ」がまだ無い（「遮蔽と照り返しの精細さ」はある）— `graphics-settings-feature.md` で
     階層化と一緒に書くか、先に書き足すか。
+  - 物理から外れる2つの選択の根拠が SPEC に無く、この計画（達成目標9）と「決めたこと」にしかない — `reflection-trace.ts` の
+    `LOBE_TAIL_CUT`（鏡面ローブの裾を切り、像の期待値の正確さより像から遠い輝点が無いことを優先する）と、`material-pass.ts` の像の元の
+    近似（ρ = 拡散色 + r × R）。CODING-RULE 3.4 では SPEC に根拠が無ければ TODO にする。SPEC（`RENDERING.md` の局所反射）へ書くか、
+    TODO にするか。
 - 残件がなければ、この計画ファイルと `screenspace-source.md` をどうするかをユーザーに問う（`memos/` は人間が管理する）。
 
 ## 見積り
 
 | 作業 | 手順 | 導出 | 中央見積り |
 | --- | --- | --- | ---: |
-| 点検 | 1 | 34ファイルのコメント点検（1ファイル 3〜5分）2 h + `/refactor` の是正 1 h + 撮影と md5 0.1 h | 3 h |
-| 対照の球光源 | 2 | 置いた枠だけを組む形 0.5 h + 事前コンパイルの確認 0.25 h（捨てるなら 5ファイル 0.75 h） | 0.75 h |
+| 点検 | 1 | **実施済み（`d3f0b9426`）。実測 約 1.5 h** — コメント点検をサブエージェント3体へ並行で配って 15 分、均しの分割 0.3 h、撮影 2 組と md5、レビュー | — |
+| 対照の球光源 | 2 | **実施済み（`41760f13b`）。実測 約 0.5 h** — 2列に分ける 3ファイル、事前コンパイルの枚数を使い捨てのテストで数える、撮影と md5 | — |
 | push | 3 | | 0.1 h |
 | 拡散側と合わせる | 4 | 衝突しうる約8ファイル × 15分 2 h + 全テストと撮影の読み 1 h（衝突の量で大きく変わる） | 3 h |
 | パス順の組み直し | 5 | `screenspace-source.md` の見積り | 9.5 h |
 | main へ送る | 6 | 撮影と比較・表 0.5 h + `/send-pr` の全検証と本文 1.5 h | 2 h |
 
-**合計 約 18 h**（ユーザーの判定と、拡散側との相談の時間は含めない）。
+**残り 約 14.6 h**（ユーザーの判定と、拡散側との相談の時間は含めない）。
 
 ## リスクと落とし穴
 
 | リスク | 影響 | 露見する手順 |
 | --- | --- | --- |
-| 点検で絵が変わる | 局所反射の見え方が黙って変わり、以後の比較の基準がずれる | 手順1 — `ssr-step9i` との md5 一致 |
+| 点検で絵が変わる | 局所反射の見え方が黙って変わり、以後の比較の基準がずれる | 手順1・2（`ssr-refactor`・`ssr-sphere-lights` で全枚 md5 一致を確認済み） |
+| `tools/render-lab-reflection-levels.mjs` が、ケースの配置（`reflection-cases.ts`）・描画の寸法（`lab-case.ts`）・ローブの半幅の比（`ggx.ts` の `LOBE_HALF_WIDTH_PER_ALPHA`）を写して持ち、`REFLECTION_LEVEL_COUNT` を `reflection-denoise.ts` から文字列で読む。`render-lab-measure.mjs` の `bay-metal` の向きも `bay-cases.ts` の `METAL_VIEW` の写し | 片方だけ変えると、表が黙って狂うか例外で止まる | 手順5・6 — 定数を動かしたら表のスクリプトを `ssr-after` で回して確かめる |
 | 合わせるときに、像の元が近傍補正込みの照度を読まなくなる | 遮られた隅の面が映り込みの中で明るく浮く（容認しなかった絵になる） | 手順4 — `bay-moon-corner` の映り込みと「拡散照度」の明暗 |
 | デバッグ表示のボタンや GPU の行の並びが、合わせた後のパス順とずれる | 重い場所や生成元を誤認する | 手順4 — テストの並びの固定と、render-lab のボタンの並び |
 | 拡散側の撮影で使うデバッグ表示「拡散照度」の意味が、パス順の組み直しで変わる | 拡散側の回帰が近傍補正を読まなくなる | 手順5 — `screenspace-source.md` の手順4a の前に拡散側と決める |
-| 対照の球光源を捨てて、粗さの段のケースの対照を失う | 局所反射の像が光源の鏡面像に似ているか（達成目標7）を測れなくなる | 手順2 — 捨てる前にユーザーに確かめる |
+| 対照の球光源を捨てて、粗さの段のケースの対照を失う | 局所反射の像が光源の鏡面像に似ているか（達成目標7）を測れなくなる | 手順2 で残すと決めた（ユーザー）。手順5 でライトプリパスを書き換えるとき、球光源の枠を残す |
 | PowerShell の書き込みや Bash のヒアドキュメントで日本語を含むファイルを書き換える | 文字化けし、置換が黙って空振りする | 全手順 — 編集はエディタの機能で行う |
-| 並行するエージェントが同時に `npm run test:*` を回す | `tests/dist` を消して作り直すので、落とし合う | 手順1 — 出力先を分ける |
+| 並行するエージェントが同時に `npm run test:*` を回す | `tests/dist` を消して作り直すので、落とし合う | サブエージェントへ配る手順 — 出力先を分けるか、テストは配った側が回す |
