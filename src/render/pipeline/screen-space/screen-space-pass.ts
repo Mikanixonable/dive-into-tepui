@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
   Fn, If, float, floor, fract, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint, uniform,
-  vec3, vec4,
+  vec2, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
@@ -13,7 +13,7 @@ import { ShadingSample } from '../lighting/shading-sample';
 import { MAX_PLANET_LIGHT_SLOTS, type PlanetLightSource } from '../lighting/planet-light-source';
 import { compileInto } from '../compile-into';
 import {
-  gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
+  REPRESENTATIVE_STEPS, gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
 } from './hemisphere-scan';
 import { BandPyramid, packedBands } from './band-pyramid';
 import { CorrectionReconstruction } from './correction-reconstruction';
@@ -23,11 +23,12 @@ import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './scr
 import { SurfaceWeight } from './surface-weight';
 import { whiteNoiseAt } from './white-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
+import type { ScanJitter } from './frame-jitter';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
 import type { SunSource } from '../lighting/sun-source';
 import type {
-  BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node,
+  BoolNode, FloatNode, FloatUniform, IntNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node,
 } from '../../tsl-types';
 
 // 描画設定「遮蔽と照り返し」の値。値は保存された設定を読む鍵なので、段を足しても既存の値は動かさない。
@@ -59,6 +60,19 @@ const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
 // 疎な拡大の回転が読むブルーノイズのずれ [タイルの幅]。走査の 0・½・27/64 との差がタイルの自己相関の小さい所に
 // 来るものを実測で選んだ。
 const UPSAMPLE_ROTATION_SHIFT = 23 / 64;
+
+// 走査の画素 pixel の代表の、受け持つブロックの中の位置 [1/REPRESENTATIVE_STEPS ブロック] — draw が負なら全ての画素で
+// steps、0 以上なら番号 draw のホワイトノイズ(走査のずれが引く成分 0〜2 とは別の成分)から引いた位置。
+function representativeOf(pixel: Vec2Node, steps: THREE.Node<'ivec2'>, draw: IntNode): THREE.Node<'ivec2'> {
+  const random = ivec2(floor(
+    vec2(whiteNoiseAt(pixel, uint(draw), 3), whiteNoiseAt(pixel, uint(draw), 4)).mul(REPRESENTATIVE_STEPS)));
+  return select(draw.lessThan(0), steps, random);
+}
+
+// ブロックの中の位置 fraction(ブロックの幅に対する割合。0 以上 1 未満)を、代表の位置の刻みへ丸めた整数。
+function representativeStepOf(fraction: number): number {
+  return Math.min(REPRESENTATIVE_STEPS - 1, Math.round(fraction * REPRESENTATIVE_STEPS));
+}
 
 // 走査画素の下位 bit から回転の上位の 2 bit ずつへ写す。整列した 2^level 四方には 4^level 個の
 // 等間隔な回転が 1 個ずつ入る。11 桁なら 2048 四方まで繰り返さない。
@@ -119,9 +133,16 @@ export class ScreenSpacePass {
   // 描画バッファと走査の解像度 [px]。解像度の違う段どうしで、対応する画素を引くのに使う。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly scanSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
-  // 走査の解像度で描いている画素の整数座標と、その画素が表す G バッファの画素の中心の uv。
+  // 走査の代表の選び方(setScanJitter)。representativeDraw が負なら全ての走査の画素の代表が、受け持つブロックの中の
+  // 位置 representativeSteps [1/REPRESENTATIVE_STEPS ブロック] にあり、0 以上なら走査の画素ごとにその番号のホワイトノイズで
+  // 位置を引く。
+  private readonly representativeSteps = uniform(new THREE.Vector2(REPRESENTATIVE_STEPS / 2, REPRESENTATIVE_STEPS / 2), 'ivec2');
+  private readonly representativeDraw = uniform(-1, 'int');
+  // 走査の解像度で描いている画素の整数座標、その画素の代表のブロックの中の位置、その代表の G バッファの画素の中心の uv。
   private readonly scanPixel: Vec2Node = floor(screenUV.mul(screenSize));
-  private readonly gbufferUV: Vec2Node = gbufferUVOf(this.scanPixel, this.fullSize);
+  private readonly representative: THREE.Node<'ivec2'> = representativeOf(
+    this.scanPixel, this.representativeSteps, this.representativeDraw);
+  private readonly gbufferUV: Vec2Node = gbufferUVOf(this.scanPixel, this.representative, this.fullSize);
   // 走査の解像度の画素の、光の向きと面の向きを引くシェーディング入力。
   private readonly sample: ShadingSample;
   // 段ごとの代表の面と、それで比べる帯の縮小・拡大と合流、描画バッファの解像度への拡大。
@@ -151,10 +172,12 @@ export class ScreenSpacePass {
     this.tier = SCAN_TIERS[quality];
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
     const weight = new SurfaceWeight(gbuffer, this.projection, this.projectionInverse, this.fullSize);
-    this.surfaces = new ScreenSpaceInputPyramid(gbuffer, this.projectionInverse, this.fullSize, this.scanSize);
+    this.surfaces = new ScreenSpaceInputPyramid(
+      gbuffer, this.projectionInverse, this.fullSize, this.scanSize, this.representative);
     this.bandPyramid = new BandPyramid(this.surfaces, weight, this.fullSize, this.scanSize);
     this.reconstruction = new CorrectionReconstruction(
-      weight, this.surfaces, this.fullSize, this.scanSize, this.projection, this.upsampleAlphaOne,
+      weight, this.surfaces, this.fullSize, this.scanSize, this.projection,
+      vec2(this.representativeSteps).div(REPRESENTATIVE_STEPS), this.upsampleAlphaOne,
     );
     this.qReconstruction = new QReconstruction(weight, this.surfaces, this.fullSize, this.scanSize);
     this.occlusionSurfaceStage = this.surfaces.scanStageOf(null);
@@ -167,6 +190,9 @@ export class ScreenSpacePass {
 
   // いまの段で補正を分ける帯の数。
   public get bandCount(): number { return this.tier.bandCount; }
+
+  // いまの段の走査の画素の幅 [描画バッファの画素]。走査の代表が巡れるブロックの中の位置は、この 2 乗の数だけある。
+  public get scanCellSize(): number { return Math.round(1 / this.tier.scale); }
 
   public get experimentOutputTarget(): THREE.RenderTarget {
     if (this.experiment === null) throw new Error('screen-space: no experiment is active');
@@ -200,6 +226,22 @@ export class ScreenSpacePass {
   // ノイズ(画素・パス・成分ごとに独立)から引く。多くのパスを平均する道具のためのもの。
   public setWhiteNoisePass(pass: number | null): void {
     this.whiteNoisePass.value = pass ?? -1;
+  }
+
+  // 次の render から、走査の代表を jitter(ScanJitter)で選ぶ。null はブロックの中心。格子のずらしの位置が 0 以上 1 未満の
+  // 範囲を外れたら投げる。
+  public setScanJitter(jitter: ScanJitter | null): void {
+    if (jitter?.kind === 'perPixel') {
+      this.representativeDraw.value = jitter.draw;
+      this.representativeSteps.value.set(REPRESENTATIVE_STEPS / 2, REPRESENTATIVE_STEPS / 2);
+      return;
+    }
+    const [x, y] = jitter?.fraction ?? [0.5, 0.5];
+    if (!(x >= 0 && x < 1 && y >= 0 && y < 1)) {
+      throw new RangeError(`screen-space: the scan representative (${x}, ${y}) is outside its block`);
+    }
+    this.representativeDraw.value = -1;
+    this.representativeSteps.value.set(representativeStepOf(x), representativeStepOf(y));
   }
 
   // 次の render から、段の範囲 range(ScreenSpaceStageRange)だけを描く。chain は走査の描画先

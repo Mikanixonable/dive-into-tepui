@@ -25,22 +25,24 @@ const UPSAMPLE_HALF_WEIGHT_ANGLE = Math.PI / 9;
 
 export class CorrectionReconstruction {
   // weight は受け手と標本の面の重み、surfaces は標本の面を読む走査の解像度の面、fullSize と scanSize は描画バッファと
-  // 走査の解像度 [px]、projection は走査と同じ射影行列。
+  // 走査の解像度 [px]、projection は走査と同じ射影行列、representative は走査の画素の代表のブロックの中の位置(ブロックの
+  // 幅に対する割合。全ての走査の画素で同じ値で、画素ごとに違うときはブロックの中心)。
   public constructor(
     private readonly weight: SurfaceWeight, private readonly surfaces: ScanSurfaces,
     private readonly fullSize: Vec2Node, private readonly scanSize: Vec2Node, private readonly projection: Mat4Uniform,
-    private readonly forceAlphaOne: FloatNode,
+    private readonly representative: Vec2Node, private readonly forceAlphaOne: FloatNode,
   ) {}
 
   // 描画バッファの画素の補正を、走査の画素の補正 source(rgb。α は粗い段まで均された割合 A)から K 本を疎に読み、面の
   // 重みで平均して求める。タップは受け手の面を画面に写した楕円(surfaceEllipseOf)に黄金角の螺旋で置き、半径は受け手の
-  // 近傍の投影半径に比例させ、最寄りの走査の画素の A が大きいほど縮める。rotation(0..1)は画素ごとに独立な螺旋の回転。
-  // 空だけなら最寄りの走査の画素へ延長する。
+  // 近傍の投影半径に比例させ、代表が最寄りの走査の画素の A が大きいほど縮める。rotation(0..1)は画素ごとに独立な螺旋の
+  // 回転。空だけなら代表が最寄りの走査の画素へ延長する。
   // **Fn の中の、受け手が補正を受ける分岐から呼ぶこと。**
   public sparseUpsampled(source: THREE.Texture, rotation: FloatNode): Vec3Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
     const receiver = this.weight.receiverAt(this.weight.surfaceAt(pixel));
-    const position = vec2(pixel).add(0.5).mul(this.scanSize).div(this.fullSize).sub(0.5).toVar();
+    // 走査の画素の座標で、代表がこの画素に最も近い走査の画素が整数になる位置。
+    const position = vec2(pixel).add(0.5).mul(this.scanSize).div(this.fullSize).sub(this.representative).toVar();
     const scale = this.scanSize.div(this.fullSize).toVar();
     const nearest = textureLoad(source, this.clampToScan(ivec2(round(position)))).toVar();
     const projected = projectedRadius(receiver.position, this.projection, this.fullSize);

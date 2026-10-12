@@ -118,6 +118,7 @@ function evaluateMath(node: ShaderNode, evaluate: Evaluate): ShaderValue {
 function evaluateConversion(node: ShaderNode, evaluate: Evaluate): ShaderValue {
   const value = evaluate(node.node);
   if (node.convertTo === 'int' || node.convertTo === 'uint') return Math.trunc(value as number);
+  if (Array.isArray(value) && node.convertTo === `ivec${value.length}`) return value.map((component) => Math.trunc(component));
   const sameShape = Array.isArray(value) ? node.convertTo === `vec${value.length}` : node.convertTo === 'float';
   if (!sameShape) throw new Error(`Unsupported shader conversion to ${node.convertTo}`);
   return value;

@@ -355,19 +355,27 @@ export function clipToCircle(from: Vec2Node, end: Vec2Node): Vec2Node {
   return from.add(span.mul(min(exit, 1)));
 }
 
-// いま描いている解像度の画素 pixel(整数座標)の中心を含む、寸法 gbufferSize [px] の G バッファの画素の中心の uv。
+// 走査の画素が受け持つ G バッファのブロックの中の、代表の位置の刻み [1 ブロックあたり]。位置は 0 以上この値未満の整数で表す。
+export const REPRESENTATIVE_STEPS = 16;
+
+// いま描いている解像度の画素 pixel(整数座標)が受け持つ、寸法 gbufferSize [px] の G バッファのブロックの中の位置
+// representative [1/REPRESENTATIVE_STEPS ブロック](整数座標。0 以上 REPRESENTATIVE_STEPS 未満)にある G バッファの画素の
+// 中心の uv。
 // **G バッファはこの画素(gbufferTexelOf)で読み、深度から位置を戻すのはこの uv で行う** — 画素の角で読むと輪郭で
 // 虚空の値が混ざり、読んだ画素と違う uv で位置を戻すと平らな面が自分自身を遮る。
-export function gbufferUVOf(pixel: Vec2Node, gbufferSize: Vec2Node): Vec2Node {
-  return texelCenterUV(gbufferTexelOf(pixel, gbufferSize, screenSize), gbufferSize);
+export function gbufferUVOf(pixel: Vec2Node, representative: THREE.Node<'ivec2'>, gbufferSize: Vec2Node): Vec2Node {
+  return texelCenterUV(gbufferTexelOf(pixel, representative, gbufferSize, screenSize), gbufferSize);
 }
 
-// 寸法 pixelSize [px] の画面の画素 pixel(整数座標)について、gbufferUVOf が中心の uv を答える G バッファの画素の
+// 寸法 pixelSize [px] の画面の画素 pixel(整数座標)が受け持つ、寸法 gbufferSize [px] の G バッファのブロックの中の位置
+// representative [1/REPRESENTATIVE_STEPS ブロック](整数座標。0 以上 REPRESENTATIVE_STEPS 未満)にある G バッファの画素の
 // 整数座標。
-export function gbufferTexelOf(pixel: Vec2Node, gbufferSize: Vec2Node, pixelSize: Vec2Node): THREE.Node<'ivec2'> {
-  // 整数で割る — 解像度が半分なら画素の中心は G バッファの画素の境に乗り、浮動小数の floor では採る画素が
-  // 画素ごとに揺れる。
-  return ivec2(pixel).mul(2).add(1).mul(ivec2(gbufferSize)).div(ivec2(pixelSize).mul(2));
+export function gbufferTexelOf(
+  pixel: Vec2Node, representative: THREE.Node<'ivec2'>, gbufferSize: Vec2Node, pixelSize: Vec2Node,
+): THREE.Node<'ivec2'> {
+  // **整数で割る** — GPU の浮動小数の割り算は逆数の掛け算で、ブロックの境に乗る位置では floor が 1 画素手前へ落ちる。
+  return ivec2(pixel).mul(REPRESENTATIVE_STEPS).add(representative).mul(ivec2(gbufferSize))
+    .div(ivec2(pixelSize).mul(REPRESENTATIVE_STEPS));
 }
 
 // 寸法 size [px] のテクスチャの画素 texel(整数座標)の中心の uv。

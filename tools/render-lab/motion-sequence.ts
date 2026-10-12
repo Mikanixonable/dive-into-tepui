@@ -1,18 +1,25 @@
 // 動く絵の道具。カメラを 1 フレームずつ動かしながら描き、フレームごとに全体の絵と近傍拡散補正の最後の拡大の出力を撮って、
-// 同じ表面の点の補正の、隣り合うフレームの差を参照の再投影で測る。補正は、そのフレームの 1 パスの列と、そのフレームの
-// G バッファのまま seed の列で描き直した平均の列を並べて撮れる。
+// 同じ表面の点の補正の、隣り合うフレームの差を参照の再投影で測る。補正は、そのフレームの 1 パスの列と、そのフレームを
+// 位相の列で描き直した平均の列を並べて撮れる。
 import * as THREE from 'three/webgpu';
 import { VIEW_HEIGHT } from './lab-case';
 import {
   differenceSummaryOf, reprojectedDifference, reprojectedPixels, type DifferenceSummary,
 } from './reference-reprojection';
+import type { CorrectionPhase } from './phase-sequence';
 import type { FloatImage, LabView } from './lab';
 
 // 補正の差を、補正と同じ符号付きの表示へ写すときに掛ける倍率。
 const DIFFERENCE_DISPLAY_GAIN = 4;
 
-// 撮る補正の列。single はそのフレームの 1 パス、averaged は seed の列の平均。
-type CorrectionColumn = 'single' | 'averaged';
+// そのフレームの 1 パスの補正の列の名前。
+export const SINGLE_COLUMN = 'single';
+
+// 位相の列 phases で描き直した平均の補正の列。name は SINGLE_COLUMN 以外。
+export interface MotionColumn {
+  readonly name: string;
+  readonly phases: readonly CorrectionPhase[];
+}
 
 // 1 フレームで撮った補正の 1 列。PNG はデータ URL で、補正と差は符号付きの表示(差は DIFFERENCE_DISPLAY_GAIN 倍)。差と
 // その要約は、前のフレームに同じ列が無ければ null。要約の尺度は、アルベド 1 の面の表示の尺度 q = 露出係数·ΔE/π。
@@ -22,17 +29,17 @@ export interface MotionColumnRecord {
   readonly summary: DifferenceSummary | null;
 }
 
-// 1 フレームで撮ったもの。capture は全体の絵の PNG のデータ URL。
+// 1 フレームで撮ったもの。capture は全体の絵の PNG のデータ URL、columns は列の名前ごと(SINGLE_COLUMN を含む)。
 export interface MotionFrameRecord {
   readonly capture: string;
-  readonly columns: Readonly<Partial<Record<CorrectionColumn, MotionColumnRecord>>>;
+  readonly columns: Readonly<Record<string, MotionColumnRecord>>;
 }
 
 // 前のフレームのうち、次のフレームとの差に要るもの。
 interface PreviousFrame {
   readonly depth: FloatImage;
   readonly camera: THREE.Camera;
-  readonly corrections: Readonly<Partial<Record<CorrectionColumn, FloatImage>>>;
+  readonly corrections: ReadonlyMap<string, FloatImage>;
 }
 
 export class MotionSequence {
@@ -65,15 +72,18 @@ export class MotionSequence {
     this.view.setCameraShift(orbit.multiply(rest));
   }
 
-  // いまのカメラで 1 フレーム描いて撮り、前のフレームからの補正の差を測る。averagedSeeds [タイルの幅] を渡すと、平均の列も
-  // 撮る(終わると seed は列の最後のもの)。
-  public async frame(averagedSeeds: readonly (readonly [number, number])[] | null): Promise<MotionFrameRecord> {
-    // 平均の列は補正を描き直すので、そのフレームの 1 パスの補正を先に読む。
+  // いまのカメラで 1 フレーム描いて撮り、前のフレームからの補正の差を測る。columns を渡すと、それぞれの位相の列で描き直した
+  // 平均の列も撮る。
+  public async frame(columns: readonly MotionColumn[]): Promise<MotionFrameRecord> {
+    // 平均の列は補正を描き直すので、そのフレームの 1 パスの補正・深度・カメラを先に読む。
     const capture = await this.view.captureSettled('motion frame');
-    const corrections: Partial<Record<CorrectionColumn, FloatImage>> = { single: await this.view.readFloat('correction') };
+    const corrections = new Map<string, FloatImage>([[SINGLE_COLUMN, await this.view.readFloat('correction')]]);
     const depth = await this.view.readFloat('depth');
     const camera = this.view.camera.clone();
-    if (averagedSeeds !== null) corrections.averaged = await this.view.averageCorrection(averagedSeeds);
+    for (const { name, phases } of columns) {
+      if (name === SINGLE_COLUMN) throw new RangeError(`render-lab: the column name ${SINGLE_COLUMN} is the single pass`);
+      corrections.set(name, await this.view.averageCorrection(phases));
+    }
 
     // 列ごとに、前のフレームの同じ列を同じ表面の点で引いた差と、その要約。
     const previous = this.previous;
@@ -81,19 +91,19 @@ export class MotionSequence {
     let surfaceCount = 0;
     for (let p = 0; p < depth.width * depth.height; p++) if (depth.rgba[4 * p]! > 0) surfaceCount++;
     const scale = this.view.exposureFactor / Math.PI;
-    const columns: Partial<Record<CorrectionColumn, MotionColumnRecord>> = {};
-    for (const [column, correction] of Object.entries(corrections) as [CorrectionColumn, FloatImage][]) {
-      const before = previous?.corrections[column];
+    const records: Record<string, MotionColumnRecord> = {};
+    for (const [column, correction] of corrections) {
+      const before = previous?.corrections.get(column);
       const difference = reprojected === null || before === undefined
         ? null : reprojectedDifference(correction, before, reprojected);
-      columns[column] = {
+      records[column] = {
         correction: await this.view.signedCorrectionPng(correction),
         difference: difference === null ? null : await this.view.signedCorrectionPng(amplified(difference)),
         summary: difference === null ? null : differenceSummaryOf(difference, correction, surfaceCount, scale),
       };
     }
     this.previous = { depth, camera, corrections };
-    return { capture, columns };
+    return { capture, columns: records };
   }
 }
 
@@ -106,7 +116,7 @@ function rotationOf(movePx: readonly [number, number], focalPx: number): THREE.Q
 }
 
 // 差 difference の rgb を DIFFERENCE_DISPLAY_GAIN 倍した写し。
-function amplified(difference: FloatImage): FloatImage {
+export function amplified(difference: FloatImage): FloatImage {
   const rgba = difference.rgba.map((v, i) => (i % 4 === 3 ? v : DIFFERENCE_DISPLAY_GAIN * v));
   return { ...difference, rgba };
 }
