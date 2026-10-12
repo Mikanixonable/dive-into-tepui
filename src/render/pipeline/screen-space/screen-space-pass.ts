@@ -12,6 +12,7 @@ import { BlueNoise } from '../../blue-noise';
 import { ShadingSample } from '../lighting/shading-sample';
 import { MAX_PLANET_LIGHT_SLOTS, type PlanetLightSource } from '../lighting/planet-light-source';
 import { compileInto } from '../compile-into';
+import { diffuseReflectanceWithRoughSpecular, specularReflectanceAt } from '../material-pass';
 import {
   gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
 } from './hemisphere-scan';
@@ -474,11 +475,13 @@ export class ScreenSpacePass {
     // G バッファは段を明示して読む — 暗黙の段は画素の間の微分で決まり、一様でない分岐の中では組めない。
     // G バッファの段は 1 つだけ。
     const material = texture(this.gbuffer.basecolorTexture, this.sample.uv).level(float(0));
-    const albedo = material.rgb.mul(material.a.oneMinus());
+    const diffuseColor = material.rgb.mul(material.a.oneMinus());
+    const reflectance = specularReflectanceAt(this.gbuffer, this.sample.uv);
+    const roughness = texture(this.gbuffer.roughnessTexture, this.sample.uv).level(float(0)).r;
     const irradiance = sun.pointIrradiance(this.sample)
       .add(this.planetLight.diffuseIrradiance(this.sample))
       .add(this.ambient.irradiance(this.sample));
-    return albedo.div(Math.PI).mul(irradiance)
+    return diffuseReflectanceWithRoughSpecular(diffuseColor, reflectance, roughness).div(Math.PI).mul(irradiance)
       .add(texture(this.gbuffer.emissiveTexture, this.sample.uv).level(float(0)).rgb);
   }
 

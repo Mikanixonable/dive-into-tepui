@@ -9,7 +9,7 @@ import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { WORLD_BACKGROUND_LAYER } from './lit-layer';
 import type { GBufferPass } from './gbuffer';
 import type { LightPrepass } from './light-prepass';
-import type { Vec2Node, Vec3Node } from '../tsl-types';
+import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 import { compileInto } from './compile-into';
 
 // G バッファの uv の画素の鏡面反射率 R — 照度バッファの鏡面へ掛ける F0(誘電体 0.04 と金属色を金属度で混ぜた値)。
@@ -18,6 +18,13 @@ export function specularReflectanceAt(gbuffer: GBufferPass, uv: Vec2Node): Vec3N
   // 段を明示して読む — 暗黙の段は画素の間の微分で決まり、一様でない分岐の中では組めない。G バッファの段は 1 つだけ。
   const material = texture(gbuffer.basecolorTexture, uv).level(float(0));
   return mix(vec3(0.04), material.rgb, material.a);
+}
+
+// 粗い面が一様な光を返す反射率 ρ = 拡散色 + 粗さ × 鏡面反射率。
+export function diffuseReflectanceWithRoughSpecular(
+  diffuseColor: Vec3Node, reflectance: Vec3Node, roughness: FloatNode,
+): Vec3Node {
+  return diffuseColor.add(reflectance.mul(roughness));
 }
 
 // BRDF_Lambert(反射率 albedo / π)。@types/three 上の戻り値型はメソッドチェインを持たないため、Vec3Node へ読み替える。
@@ -47,7 +54,8 @@ function shadedOutputs(lightPrepass: LightPrepass, gbuffer: GBufferPass): Return
   // ので、指示なしに着手しない。
   // 拡散照度は近傍の遮蔽と照り返しを含んだまま使う — 抜くと、遮られた隅の面が映り込みの中で明るくなりすぎる。
   const roughness = texture(gbuffer.roughnessTexture, screenUV).r;
-  const source = irradiance.mul(lambertOf(diffuseColor.add(reflectance.mul(roughness)))).add(emissive);
+  const source = irradiance.mul(lambertOf(diffuseReflectanceWithRoughSpecular(diffuseColor, reflectance, roughness)))
+    .add(emissive);
 
   // 物体の無い画素は 0。
   const covered = gbuffer.covered();

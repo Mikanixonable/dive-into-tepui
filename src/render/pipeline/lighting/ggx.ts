@@ -30,7 +30,9 @@ export interface GgxReflectionSample {
 // 面 sample の鏡面ローブから、反射の向きを 1 本選ぶ。u は画素ごとの 0..1 の 2 つ組。選んだ向きで見た放射輝度に
 // 重みを掛けたものの期待値が、F0=1 の鏡面の積分 ∫ L·D·V·(N·L) dl になる。
 export function sampleGgxReflection(sample: ShadingSample, u: Vec2Node): GgxReflectionSample {
-  const alpha = sample.roughness.mul(sample.roughness);
+  // α は変数に置く。式のまま使う所へ展開すると、Intel HD 520(Chrome の WebGPU)のドライバが、同じ入力に対して
+  // 一部の画素で別の向きを返す版のコードを実行ごとに選び、映り込みが毎フレーム揺れる。
+  const alpha = sample.roughness.mul(sample.roughness).toVar();
   const alphaSqr = alpha.mul(alpha);
   // 法線を z とする正規直交基底(Duff ら 2017。法線のどの向きでも組める)。
   const normal = sample.normal;
