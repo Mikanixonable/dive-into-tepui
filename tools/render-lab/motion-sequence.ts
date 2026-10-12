@@ -46,17 +46,23 @@ export class MotionSequence {
     this.view.setCameraShift(null);
   }
 
-  // 次に描くフレームから、観察の向きで置いたカメラへ、並進 translationPx と回転 rotationPx [描画バッファの画素] を重ねる。
-  // 並進は周回の中心の深さの点が、回転は画面の中心が、画面の上でその向きと量だけ動くもので、x は右、y は上が正。
-  public moveCamera(translationPx: readonly [number, number], rotationPx: readonly [number, number]): void {
+  // 次に描くフレームから、観察の向きで置いたカメラへ、周回の中心を中心とする回転(周回)orbitPx、並進 translationPx、カメラを
+  // 中心とする回転 rotationPx [描画バッファの画素] をこの順に重ねる。並進は周回の中心の深さの点が、周回と回転は無限遠の点が、
+  // 画面の上でその向きと量だけ動くもので、x は右、y は上が正。周回では、周回の中心が画面の中心に留まる。
+  public moveCamera(
+    translationPx: readonly [number, number], rotationPx: readonly [number, number], orbitPx: readonly [number, number],
+  ): void {
     const focalPx = VIEW_HEIGHT / 2 / Math.tan(THREE.MathUtils.degToRad(this.view.cameraFovDeg) / 2);
-    const metersPerPx = this.view.cameraDistance / focalPx;
-    // 物が画面の右へ動くのはカメラが左へ動くとき。画面が右へ動くのはカメラが左を向く(+Y まわりの正の回転)とき、上へ
-    // 動くのは下を向く(+X まわりの負の回転)とき。
-    const translation = new THREE.Vector3(-translationPx[0] * metersPerPx, -translationPx[1] * metersPerPx, 0);
-    const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(
-      -Math.atan(rotationPx[1] / focalPx), Math.atan(rotationPx[0] / focalPx), 0, 'YXZ'));
-    this.view.setCameraShift(new THREE.Matrix4().compose(translation, rotation, new THREE.Vector3(1, 1, 1)));
+    const distance = this.view.cameraDistance;
+    // 物が画面の右へ動くのはカメラが左へ動くとき。
+    const translation = new THREE.Vector3(-translationPx[0], -translationPx[1], 0).multiplyScalar(distance / focalPx);
+    // 周回の中心はカメラの座標で (0, 0, −距離)。そこを中心に回すと、カメラの位置と向きが同じ回転で回る。
+    const pivot = new THREE.Vector3(0, 0, -distance);
+    const orbit = new THREE.Matrix4().makeTranslation(pivot)
+      .multiply(new THREE.Matrix4().makeRotationFromQuaternion(rotationOf(orbitPx, focalPx)))
+      .multiply(new THREE.Matrix4().makeTranslation(pivot.clone().negate()));
+    const rest = new THREE.Matrix4().compose(translation, rotationOf(rotationPx, focalPx), new THREE.Vector3(1, 1, 1));
+    this.view.setCameraShift(orbit.multiply(rest));
   }
 
   // いまのカメラで 1 フレーム描いて撮り、前のフレームからの補正の差を測る。averagedSeeds [タイルの幅] を渡すと、平均の列も
@@ -89,6 +95,14 @@ export class MotionSequence {
     this.previous = { depth, camera, corrections };
     return { capture, columns };
   }
+}
+
+// 焦点距離 focalPx [描画バッファの画素] のカメラで、無限遠の点を画面の上で movePx [描画バッファの画素](x は右、y は上)だけ
+// 動かす、カメラの座標の回転。画面が右へ動くのはカメラが左を向く(+Y まわりの正の回転)とき、上へ動くのは下を向く
+// (+X まわりの負の回転)とき。
+function rotationOf(movePx: readonly [number, number], focalPx: number): THREE.Quaternion {
+  return new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    -Math.atan(movePx[1] / focalPx), Math.atan(movePx[0] / focalPx), 0, 'YXZ'));
 }
 
 // 差 difference の rgb を DIFFERENCE_DISPLAY_GAIN 倍した写し。
