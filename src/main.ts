@@ -60,7 +60,7 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gameScene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
+    gameScene.syncFrame(viewport, settings.resolvedGraphics.current, debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
     pauseMenu.sync(now);
@@ -149,7 +149,7 @@ function bindSettings(
   settings: UserSettings, hud: Hud, pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {
   const settingsView = pauseMenu.settingsView;
-  settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
+  settingsView.onGraphicsChange = (selection) => settings.graphics.set(selection);
 
   settings.renderStyle.subscribe((style) => debugInfo.syncRenderStyle(style));
   hud.onRenderStyleChange = (style) => settings.renderStyle.set(style);
@@ -201,7 +201,7 @@ async function main() {
   const slots = SaveSlots.load(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const autoSave = new AutoSave(snapshotService);
-  const gameScene = await initScene(settings.graphics.current);
+  const gameScene = await initScene(settings.resolvedGraphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
   const debugInfo = new DebugInfoWindow(
@@ -213,7 +213,7 @@ async function main() {
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
     shell, devices, viewOptionsSettings(settings), settings.themePalette, sections, unlockManager,
-    slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
+    slots, snapshotService, autoSave, settings.resolvedGraphics, settings.renderStyle,
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();

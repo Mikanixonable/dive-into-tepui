@@ -5,8 +5,6 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { screenUV, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import { ATMOSPHERE_QUALITY } from '../atmosphere';
-import { CUMULUS_DETAIL } from '../opaque-cloud-surface-renderer';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
@@ -26,7 +24,7 @@ import { MaterialPass } from './material-pass';
 import { ReflectionPass } from './reflection-pass';
 import { ShadingCompositePass } from './shading-composite-pass';
 import { ShadowPass } from './shadow/shadow-pass';
-import { SCREEN_SPACE_DIFFUSE, ScreenSpacePass } from './screen-space/screen-space-pass';
+import { ScreenSpacePass, screenSpaceDiffuseOf } from './screen-space/screen-space-pass';
 import { DiffuseCorrection } from './screen-space/diffuse-correction';
 import { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import { BodyShadow } from './shadow/body-shadow';
@@ -155,7 +153,7 @@ export class RenderPipeline {
     this._diffuseCorrection = new DiffuseCorrection();
     this.screenSpacePass = new ScreenSpacePass(
       renderer, this._gbuffer, this.sunSource, this._planetLight, this._ambient, this._diffuseCorrection, gpu,
-      graphics.screenSpaceDiffuse, graphics.screenSpaceQuality,
+      screenSpaceDiffuseOf(graphics), graphics.screenSpaceSliceCount, graphics.screenSpaceStepCount,
     );
     this.correctionSource = new DiffuseCorrectionSource(this._diffuseCorrection);
     this._sphereLights = new SphereLights(this.sphereSpecular);
@@ -177,7 +175,8 @@ export class RenderPipeline {
     this.reflection = new ScreenSpaceReflection();
     this.reflectionPass = new ReflectionPass(
       renderer, this._gbuffer, this.materialPass.reflectionSourceTexture, this.reflection, gpu,
-      graphics.screenSpaceSpecular, graphics.screenSpaceSpecularQuality, graphics.screenSpaceSpecularDenoise,
+      graphics.screenSpaceSpecular, graphics.screenSpaceSpecularScale, graphics.screenSpaceSpecularStepCount,
+      graphics.screenSpaceSpecularDenoise,
     );
     this.shadingCompositePass = new ShadingCompositePass(
       renderer, this._gbuffer, this.materialPass.keepTexture, this.lightPrepass.farSpecularTexture, this.reflection,
@@ -287,14 +286,14 @@ export class RenderPipeline {
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
-    this.screenSpacePass.setMode(graphics.screenSpaceDiffuse);
-    this.screenSpacePass.setQuality(graphics.screenSpaceQuality);
+    this.screenSpacePass.setMode(screenSpaceDiffuseOf(graphics));
+    this.screenSpacePass.setScan(graphics.screenSpaceSliceCount, graphics.screenSpaceStepCount);
     this.reflectionPass.setEnabled(graphics.screenSpaceSpecular);
-    this.reflectionPass.setQuality(graphics.screenSpaceSpecularQuality);
+    this.reflectionPass.setTrace(graphics.screenSpaceSpecularScale, graphics.screenSpaceSpecularStepCount);
     // 均した映り込みを書く段と、それを読む合成は一緒に切り替える。
     this.reflectionPass.setDenoised(graphics.screenSpaceSpecularDenoise);
     this.shadingCompositePass.setDenoised(graphics.screenSpaceSpecularDenoise);
-    this.correctionSource.setEnabled(graphics.screenSpaceDiffuse !== SCREEN_SPACE_DIFFUSE.off);
+    this.correctionSource.setEnabled(graphics.screenSpaceOcclusion);
     this.shadowMaps.setQuality(
       graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
@@ -308,8 +307,8 @@ export class RenderPipeline {
     this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
     this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
     // 天体照の写しは、その天体の描画設定で見えている雲と大気を写す。
-    this._planetLight.setAtmosphereEnabled(graphics.atmosphere !== ATMOSPHERE_QUALITY.off);
-    this._planetLight.setCumulusEnabled(graphics.cumulusDetail !== CUMULUS_DETAIL.off);
+    this._planetLight.setAtmosphereEnabled(graphics.atmosphere);
+    this._planetLight.setCumulusEnabled(graphics.cumulus);
     this._planetLight.setCloudShellEnabled('cirrus', graphics.cirrus);
     this._planetLight.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
     this.filmLut.select(graphics.filmLut);

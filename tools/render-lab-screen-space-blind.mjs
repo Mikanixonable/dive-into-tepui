@@ -307,7 +307,7 @@ async function main() {
       if(!(await devTools.evaluate('typeof window.renderLab?.measureScreenSpacePaths === "function"')))throw new Error('render-lab API unavailable');
       const adapter=await devTools.evaluate('(async()=>{const a=await navigator.gpu.requestAdapter(),i=a.info??{};return [i.vendor,i.architecture,i.device,i.description].filter(Boolean).join(" / ")})()');
       await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)},${JSON.stringify(scene.shotName)})`);
-      await devTools.evaluate('window.renderLab.setTarget("off"); window.renderLab.setGraphicsOption("screenSpaceDiffuse",2); window.renderLab.setGraphicsOption("screenSpaceQuality",2); window.renderLab.setScanWhiteNoisePass(null)');
+      await devTools.evaluate('window.renderLab.setTarget("off"); window.renderLab.setGraphicsOption("screenSpaceOcclusion",true); window.renderLab.setGraphicsOption("screenSpaceIndirect",true); window.renderLab.setGraphicsOption("screenSpaceSliceCount",4); window.renderLab.setGraphicsOption("screenSpaceStepCount",6); window.renderLab.setScanWhiteNoisePass(null)');
       const exposureStability=await stabilizeExposure(devTools);
       const displayCheck=await checkSignedDisplay(devTools);
       await setVariant(devTools, 'raw-full', 4);
@@ -368,7 +368,7 @@ async function minimalCheck() {
     const {devTools}=session;
     await devTools.send('Page.navigate',{url:`${session.baseUrl}/`});
     for(let i=0;i<600;i++){if(await devTools.evaluate('typeof window.renderLab?.measureScreenSpacePaths === "function"'))break;await sleep(200);}
-    await devTools.evaluate(`window.renderLab.showShot("bay","bay-dark");window.renderLab.setTarget("off");window.renderLab.setGraphicsOption("screenSpaceDiffuse",2);window.renderLab.setGraphicsOption("screenSpaceQuality",2)`);
+    await devTools.evaluate(`window.renderLab.showShot("bay","bay-dark");window.renderLab.setTarget("off");window.renderLab.setGraphicsOption("screenSpaceOcclusion",true);window.renderLab.setGraphicsOption("screenSpaceIndirect",true);window.renderLab.setGraphicsOption("screenSpaceSliceCount",4);window.renderLab.setGraphicsOption("screenSpaceStepCount",6)`);
     await setVariant(devTools,'band',16);
     await initStats(devTools);
     await devTools.evaluate('window.renderLab.setScanWhiteNoisePass(null);window.renderLab.setScanSeed(0,0);window.renderLab.render()');
@@ -388,7 +388,7 @@ async function curveExtraOnly() {
       const {devTools}=session;
       await devTools.send('Page.navigate',{url:`${session.baseUrl}/`});
       for(let i=0;i<600;i++){if(await devTools.evaluate('typeof window.renderLab?.measureCurrent === "function"'))break;await sleep(200);}
-      await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)},${JSON.stringify(scene.shotName)});window.renderLab.setTarget("off");window.renderLab.setGraphicsOption("screenSpaceDiffuse",2);window.renderLab.setGraphicsOption("screenSpaceQuality",2)`);
+      await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)},${JSON.stringify(scene.shotName)});window.renderLab.setTarget("off");window.renderLab.setGraphicsOption("screenSpaceOcclusion",true);window.renderLab.setGraphicsOption("screenSpaceIndirect",true);window.renderLab.setGraphicsOption("screenSpaceSliceCount",4);window.renderLab.setGraphicsOption("screenSpaceStepCount",6)`);
       await stabilizeExposure(devTools);
       await measureCurveExtra(devTools,scene.id,sceneIndex+1);
     } finally { await session.close(); }
@@ -406,7 +406,7 @@ async function debugCheckOnly() {
       const {devTools}=session;
       await devTools.send('Page.navigate',{url:`${session.baseUrl}/`});
       for(let i=0;i<600;i++){if(await devTools.evaluate('typeof window.renderLab?.measureCurrent === "function"'))break;await sleep(200);}
-      await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)},${JSON.stringify(scene.shotName)});window.renderLab.setTarget("off");window.renderLab.setGraphicsOption("screenSpaceDiffuse",2);window.renderLab.setGraphicsOption("screenSpaceQuality",2)`);
+      await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)},${JSON.stringify(scene.shotName)});window.renderLab.setTarget("off");window.renderLab.setGraphicsOption("screenSpaceOcclusion",true);window.renderLab.setGraphicsOption("screenSpaceIndirect",true);window.renderLab.setGraphicsOption("screenSpaceSliceCount",4);window.renderLab.setGraphicsOption("screenSpaceStepCount",6)`);
       const exposureStability=await stabilizeExposure(devTools);
       const displayCheck=await checkSignedDisplay(devTools);
       await setVariant(devTools,'raw-full',4);

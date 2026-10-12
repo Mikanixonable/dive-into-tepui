@@ -3,7 +3,6 @@
 import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
-import { CUMULUS_DETAIL } from '../../opaque-cloud-surface-renderer';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
 import type { RingBand } from './ring-shadow';
@@ -62,10 +61,9 @@ export function selectShadowBodies<T extends CelestialBody>(
     .map(({ celestialBody }) => celestialBody);
 }
 
-// 積雲の殻を影の源として数える設定か。積雲を描かない設定(雲オフ・積雲の段オフ)では影も消える。
+// 積雲の殻を影の源として数える設定か。積雲を描かない設定(雲オフ・積雲の立体オフ)では影も消える。
 export function castsCumulusShadow(graphics: GraphicsSettingsData): boolean {
-  return graphics.clouds && graphics.cumulusShadow
-    && graphics.cumulusDetail !== CUMULUS_DETAIL.off;
+  return graphics.clouds && graphics.cumulusShadow && graphics.cumulus;
 }
 
 // 環の影を落とす天体を1体選ぶ。画面に環付き天体が複数写る状況は実質起きないので、最も大きく

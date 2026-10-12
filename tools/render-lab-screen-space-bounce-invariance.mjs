@@ -17,7 +17,7 @@ const SHOTS = [
   { shot: 'bay-earth-overhead', caseName: 'bay' }, { shot: 'bay-moon-open', caseName: 'bay' },
   { shot: 'cornell-box', caseName: 'cornell-box' },
 ];
-// 描画設定 screenSpaceDiffuse の値。遮蔽と、遮蔽と照り返し。
+// 近傍拡散補正の方式(screen-space-lab.mjs の MODE の値)。遮蔽と、遮蔽と照り返し。
 const OCCLUSION = 1;
 const INDIRECT = 2;
 const SEED_COUNT = 4;

@@ -8,7 +8,9 @@ const buildDir = path.join(root, '.render-lab');
 
 // 撮る描画設定。映り込みの追跡は GPU によってはフレームごとに決定的でないので切る。レンズ効果は明るい面の光を、
 // アンチエイリアス(値 0 はなし)は縁を広げて補正の揺れに混ぜるので切る。補正は照り返しまで描く方式で撮る。
-export const MOTION_GRAPHICS = { screenSpaceSpecular: false, lens: false, antialias: 0, screenSpaceDiffuse: 2 };
+export const MOTION_GRAPHICS = {
+  screenSpaceSpecular: false, lens: false, antialias: 0, screenSpaceOcclusion: true, screenSpaceIndirect: true,
+};
 
 // 場面。light は光源を動かす列で回す観察の向きのつまみ(光源が自己発光の物だけの場面では null)。
 export const SCENES = [
