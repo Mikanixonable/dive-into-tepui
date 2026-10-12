@@ -17,7 +17,7 @@ const USAGE = 'usage: node tools/render-lab-measure.mjs [巡回数] [軸]';
 // 渡す描画設定の差分で、差分に無い鍵は直前に測った段の値のまま残る。rows は result.gpuPassMs の行名
 // (src/render/gpu-timings.ts の GPU_PASS_LABELS)。
 const AXES = {
-  // 値は大気の品質(src/render/graphics-settings.ts の ATMOSPHERE_QUALITY)。
+  // 値は src/render/graphics-settings.ts の atmosphere と atmosphereSampleBudget(低・中・高はプリセットの標本数)。
   atmosphere: {
     framings: [
       { label: 'earth', caseName: 'earth', angles: {} },
@@ -25,25 +25,57 @@ const AXES = {
       { label: 'earth-mars d=-2', caseName: 'earth-mars', angles: { cameraDistanceLog: -2 } },
     ],
     variants: [
-      { label: 'オフ', graphics: { atmosphere: 0 } },
-      { label: '低', graphics: { atmosphere: 1 } },
-      { label: '中', graphics: { atmosphere: 2 } },
-      { label: '高', graphics: { atmosphere: 3 } },
+      { label: 'オフ', graphics: { atmosphere: false } },
+      { label: '低', graphics: { atmosphere: true, atmosphereSampleBudget: 8 } },
+      { label: '中', graphics: { atmosphere: true, atmosphereSampleBudget: 16 } },
+      { label: '高', graphics: { atmosphere: true, atmosphereSampleBudget: 24 } },
     ],
     rows: ['大気'],
   },
-  // 値は src/render/graphics-settings.ts の screenSpaceDiffuse / screenSpaceQuality の選択肢。
+  // 値は src/render/graphics-settings.ts の screenSpaceOcclusion / screenSpaceIndirect と、screenSpaceSliceCount /
+  // screenSpaceStepCount(低・中・高はプリセットの値)。有無はノブより先に書く — オフの分野へノブを書くと分野が
+  // 点き、直前の段の値が残らない。
   'screen-space': {
     statistic: 'p50',
     framings: [{ label: 'bay', caseName: 'bay', angles: {} }],
     variants: [
-      { label: 'オフ', graphics: { screenSpaceDiffuse: 0 } },
-      { label: '遮蔽・低', graphics: { screenSpaceDiffuse: 1, screenSpaceQuality: 0 } },
-      { label: '遮蔽・中', graphics: { screenSpaceDiffuse: 1, screenSpaceQuality: 1 } },
-      { label: '遮蔽・高', graphics: { screenSpaceDiffuse: 1, screenSpaceQuality: 2 } },
-      { label: '遮蔽と照り返し・低', graphics: { screenSpaceDiffuse: 2, screenSpaceQuality: 0 } },
-      { label: '遮蔽と照り返し・中', graphics: { screenSpaceDiffuse: 2, screenSpaceQuality: 1 } },
-      { label: '遮蔽と照り返し・高', graphics: { screenSpaceDiffuse: 2, screenSpaceQuality: 2 } },
+      { label: 'オフ', graphics: { screenSpaceOcclusion: false } },
+      {
+        label: '遮蔽・低',
+        graphics: {
+          screenSpaceOcclusion: true, screenSpaceIndirect: false, screenSpaceSliceCount: 2, screenSpaceStepCount: 3,
+        },
+      },
+      {
+        label: '遮蔽・中',
+        graphics: {
+          screenSpaceOcclusion: true, screenSpaceIndirect: false, screenSpaceSliceCount: 4, screenSpaceStepCount: 5,
+        },
+      },
+      {
+        label: '遮蔽・高',
+        graphics: {
+          screenSpaceOcclusion: true, screenSpaceIndirect: false, screenSpaceSliceCount: 4, screenSpaceStepCount: 6,
+        },
+      },
+      {
+        label: '遮蔽と照り返し・低',
+        graphics: {
+          screenSpaceOcclusion: true, screenSpaceIndirect: true, screenSpaceSliceCount: 2, screenSpaceStepCount: 3,
+        },
+      },
+      {
+        label: '遮蔽と照り返し・中',
+        graphics: {
+          screenSpaceOcclusion: true, screenSpaceIndirect: true, screenSpaceSliceCount: 4, screenSpaceStepCount: 5,
+        },
+      },
+      {
+        label: '遮蔽と照り返し・高',
+        graphics: {
+          screenSpaceOcclusion: true, screenSpaceIndirect: true, screenSpaceSliceCount: 4, screenSpaceStepCount: 6,
+        },
+      },
     ],
     rows: [
       '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大', 'マテリアル',
@@ -51,9 +83,10 @@ const AXES = {
     ratioRows: ['近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大'],
     ratioLabel: '近傍拡散合計',
   },
-  // 値は src/render/graphics-settings.ts の screenSpaceSpecular / screenSpaceSpecularQuality / screenSpaceSpecularDenoise の
-  // 選択肢。構図は映り込みの出る金属面 — 材質の格子の既定の向き(leo-metal)と、荷室の金属の板(bay-metal。向きは
-  // tools/render-lab/bay-cases.ts の METAL_VIEW と同じ)。
+  // 値は src/render/graphics-settings.ts の screenSpaceSpecular と、screenSpaceSpecularScale / screenSpaceSpecularStepCount
+  // (低・中・高はプリセットの値)/ screenSpaceSpecularDenoise。有無はノブより先に書く。構図は映り込みの出る金属面 —
+  // 材質の格子の既定の向き(leo-metal)と、荷室の金属の板(bay-metal。向きは tools/render-lab/bay-cases.ts の
+  // METAL_VIEW と同じ)。
   reflection: {
     statistic: 'p50',
     framings: [
@@ -71,19 +104,31 @@ const AXES = {
       { label: 'オフ', graphics: { screenSpaceSpecular: false } },
       {
         label: '低',
-        graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 0, screenSpaceSpecularDenoise: true },
+        graphics: {
+          screenSpaceSpecular: true, screenSpaceSpecularScale: 0.5, screenSpaceSpecularStepCount: 16,
+          screenSpaceSpecularDenoise: true,
+        },
       },
       {
         label: '中',
-        graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 1, screenSpaceSpecularDenoise: true },
+        graphics: {
+          screenSpaceSpecular: true, screenSpaceSpecularScale: 0.5, screenSpaceSpecularStepCount: 32,
+          screenSpaceSpecularDenoise: true,
+        },
       },
       {
         label: '高',
-        graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 2, screenSpaceSpecularDenoise: true },
+        graphics: {
+          screenSpaceSpecular: true, screenSpaceSpecularScale: 1, screenSpaceSpecularStepCount: 48,
+          screenSpaceSpecularDenoise: true,
+        },
       },
       {
         label: '中・ぼかしオフ',
-        graphics: { screenSpaceSpecular: true, screenSpaceSpecularQuality: 1, screenSpaceSpecularDenoise: false },
+        graphics: {
+          screenSpaceSpecular: true, screenSpaceSpecularScale: 0.5, screenSpaceSpecularStepCount: 32,
+          screenSpaceSpecularDenoise: false,
+        },
       },
     ],
     rows: ['ライティング', 'マテリアル', '映り込み', '映り込みの均し', '陰影の合成'],

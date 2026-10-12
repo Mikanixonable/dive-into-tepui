@@ -174,8 +174,10 @@ async function main() {
     );
     await devTools.evaluate('window.renderLab.showShot("bay", "bay-dark")');
     await devTools.evaluate('window.renderLab.setTarget("correction")');
-    await devTools.evaluate('window.renderLab.setGraphicsOption("screenSpaceDiffuse", 2)');
-    await devTools.evaluate('window.renderLab.setGraphicsOption("screenSpaceQuality", 2)');
+    await devTools.evaluate('window.renderLab.setGraphicsOption("screenSpaceOcclusion", true)');
+    await devTools.evaluate('window.renderLab.setGraphicsOption("screenSpaceIndirect", true)');
+    await devTools.evaluate('window.renderLab.setGraphicsOption("screenSpaceSliceCount", 4)');
+    await devTools.evaluate('window.renderLab.setGraphicsOption("screenSpaceStepCount", 6)');
     await devTools.evaluate('window.renderLab.setScanSeed(0, 0)');
 
     const results = [];

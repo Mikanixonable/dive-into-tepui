@@ -4,9 +4,8 @@
 import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
-import {
-  withGraphicsOption, type ChoiceValue, type GraphicsOptionKey, type GraphicsSettingsData,
-} from '../../src/render/graphics-settings';
+import type { ChoiceValue, GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import { withGraphicsValue } from '../../src/render/graphics-selection';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
 import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
@@ -53,7 +52,7 @@ const MAX_SHELL_ALTITUDE = 20e3;
 
 // 設定パネルに出さない項目。この環境が原理的に効かせられないものだけを入れる — 並べて何も
 // 起きないと、絵の違いの出どころを読み違える。
-const HIDDEN_GRAPHICS_KEYS: ReadonlySet<GraphicsOptionKey> = new Set<GraphicsOptionKey>([
+const HIDDEN_GRAPHICS_KEYS: ReadonlySet<GraphicsKey> = new Set<GraphicsKey>([
   // 描画は 960x540 固定(撮影した PNG の大きさを決め打ちにするため)。
   'resolutionScale',
 ]);
@@ -71,7 +70,7 @@ declare global {
       setView: (changes: Partial<LabViewAngles>) => void;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
-      setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
+      setGraphicsOption: (key: GraphicsKey, value: boolean | ChoiceValue) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
       measureCurrent: (warmupFrames?: number, sampleFrames?: number) => Promise<LabMeasurement>;
       measureScreenSpacePaths: (
@@ -295,8 +294,8 @@ async function init(): Promise<void> {
   // 描画品質設定のパネル。パネルの操作を設定へ流し、設定の現在値をパネルへ映す。
   const panel = new GraphicsPanel(settings.graphics.current, HIDDEN_GRAPHICS_KEYS);
   document.getElementById('graphics')!.appendChild(panel.element);
-  panel.onChange = (graphics) => settings.graphics.set(graphics);
-  settings.graphics.subscribe((graphics) => panel.sync(graphics));
+  panel.onChange = (selection) => settings.graphics.set(selection);
+  settings.graphics.subscribe((selection) => panel.sync(selection));
 
   const loadButton = new Button('計測', () => { void measureCurrent(); });
   const loadResult = document.getElementById('load-result')!;
@@ -358,7 +357,7 @@ async function init(): Promise<void> {
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
     setGraphicsOption: (key, value) => {
-      settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
+      settings.graphics.set(withGraphicsValue(settings.graphics.current, key, value));
     },
     measure: (name, angles) => view.measure(name, angles),
     measureCurrent: (warmupFrames, sampleFrames) => view.measureCurrent(warmupFrames, sampleFrames),

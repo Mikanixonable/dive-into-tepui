@@ -81,3 +81,28 @@ export class StoredSetting<T> implements SettingValue<T> {
     return () => this.listeners.delete(listener);
   }
 }
+
+// 別の設定の値から導いた値。元の値が差し替わるたびに作り直し、元の値が同じ参照のあいだは同じ参照を返す。
+export class DerivedSetting<S, T> implements SettingValue<T> {
+  private source: S;
+  private value: T;
+
+  // origin は導く元の設定、derive は元の値から導く純関数。
+  public constructor(
+    private readonly origin: SettingValue<S>,
+    private readonly derive: (source: S) => T,
+  ) {
+    this.source = origin.current;
+    this.value = derive(this.source);
+  }
+
+  // 元の現在値から導いた値。元が差し替わっていれば導き直す。
+  public get current(): T {
+    const source = this.origin.current;
+    if (source !== this.source) {
+      this.source = source;
+      this.value = this.derive(source);
+    }
+    return this.value;
+  }
+}

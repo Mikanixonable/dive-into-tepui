@@ -1,6 +1,6 @@
 // 遮蔽と照り返しのパス。G バッファの深度と法線から、画素ごとに近くの構造が遠方の拡散光(天体照と一様な
 // 環境光)を塞いだ照度と、照り返しを描く方式では塞いでいる面が返す照度を求め、その差を符号付きの拡散照度
-// 補正へ書く。描画設定の方式と精細さを受け、方式がオフのフレームは描画命令を出さない。
+// 補正へ書く。方式と走査のスライス数・歩数を受け、方式がオフのフレームは描画命令を出さない。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
@@ -26,17 +26,21 @@ import type { DiffuseCorrection } from './diffuse-correction';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
 import type { SunSource } from '../lighting/sun-source';
+import type { GraphicsSettingsData } from '../../graphics-settings';
 import type {
   BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node,
 } from '../../tsl-types';
 
-// 描画設定「遮蔽と照り返し」の値。値は保存された設定を読む鍵なので、段を足しても既存の値は動かさない。
+// 描くものの方式。オフ / 遮蔽だけ / 遮蔽と照り返し。
 export const SCREEN_SPACE_DIFFUSE = { off: 0, occlusion: 1, indirect: 2 } as const;
 type ScreenSpaceDiffuse = (typeof SCREEN_SPACE_DIFFUSE)[keyof typeof SCREEN_SPACE_DIFFUSE];
 
-// 描画設定「遮蔽と照り返しの精細さ」の値。
-export const SCREEN_SPACE_QUALITY = { low: 0, medium: 1, high: 2 } as const;
-type ScreenSpaceQuality = (typeof SCREEN_SPACE_QUALITY)[keyof typeof SCREEN_SPACE_QUALITY];
+// 描画設定 graphics が選ぶ方式。遮蔽と照り返しの分野がオフならオフ、照り返しがオンなら遮蔽と照り返し、
+// さもなくば遮蔽だけ。
+export function screenSpaceDiffuseOf(graphics: GraphicsSettingsData): ScreenSpaceDiffuse {
+  if (!graphics.screenSpaceOcclusion) return SCREEN_SPACE_DIFFUSE.off;
+  return graphics.screenSpaceIndirect ? SCREEN_SPACE_DIFFUSE.indirect : SCREEN_SPACE_DIFFUSE.occlusion;
+}
 
 // 走査の段。scale は走査の解像度の描画バッファに対する比、sliceCount はスライスの数、stepCount は片側の歩数、
 // bandCount と bandScale は補正を遮りの画面距離で分ける帯の数と、帯の座標の尺度 κ(BandSplit の count と scale)。
@@ -48,13 +52,16 @@ export interface ScanTier {
   readonly bandScale: number;
 }
 
-// 精細さの段ごとの走査。値は、解像度・スライス数・歩数の候補の組の費用と画質の指標を実測して選んだ。
-// TODO: 中のスライス数と歩数、帯の数と尺度は仮置き。費用と画質の指標の実測から選び直す。
-const SCAN_TIERS: Readonly<Record<ScreenSpaceQuality, ScanTier>> = {
-  [SCREEN_SPACE_QUALITY.low]: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 0.38 },
-  [SCREEN_SPACE_QUALITY.medium]: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 0.38 },
-  [SCREEN_SPACE_QUALITY.high]: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 0.38 },
-};
+// 走査の解像度の描画バッファに対する比、帯の数、帯の座標の尺度 κ。スライス数と歩数と組んで段にする。
+// TODO: 帯の数と尺度は仮置き。費用と画質の指標の実測から選び直す。
+const SCAN_SCALE = 0.25;
+const BAND_COUNT = 4;
+const BAND_SCALE = 0.38;
+
+// スライス sliceCount 本・片側 stepCount 歩の走査の段。
+function scanTierOf(sliceCount: number, stepCount: number): ScanTier {
+  return { scale: SCAN_SCALE, sliceCount, stepCount, bandCount: BAND_COUNT, bandScale: BAND_SCALE };
+}
 
 // 疎な拡大の回転が読むブルーノイズのずれ [タイルの幅]。走査の 0・½・27/64 との差がタイルの自己相関の小さい所に
 // 来るものを実測で選んだ。
@@ -141,14 +148,16 @@ export class ScreenSpacePass {
 
   // sun / ambient は照り返しの源になる面を照らす太陽と環境光、planetLight は塞がれ方を数える天体照の
   // 球冠の出どころであり、その面を照らす天体照でもある。ambient と planetLight は受け手へ届く遠方の拡散光でも
-  // ある。output は結果の描画先。mode / quality は構築時点の描画設定 screenSpaceDiffuse / screenSpaceQuality の値。
+  // ある。output は結果の描画先。mode は構築時点の方式、sliceCount / stepCount は構築時点の走査のスライス数と
+  // 片側の歩数。
   public constructor(
     private readonly renderer: WebGPURenderer, private readonly gbuffer: GBufferPass, sun: SunSource,
     private readonly planetLight: PlanetLightSource, private readonly ambient: AmbientSource,
     private readonly output: DiffuseCorrection, private readonly gpu: GpuTimings,
-    private mode: ScreenSpaceDiffuse, quality: ScreenSpaceQuality,
+    private mode: ScreenSpaceDiffuse, sliceCount: number, stepCount: number,
   ) {
-    this.tier = SCAN_TIERS[quality];
+    this.tier = scanTierOf(sliceCount, stepCount);
+    // 走査の解像度の面の読み手と、段ごとの代表の面・帯・再構成を組む。
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
     const weight = new SurfaceWeight(gbuffer, this.projection, this.projectionInverse, this.fullSize);
     this.surfaces = new ScreenSpaceInputPyramid(gbuffer, this.projectionInverse, this.fullSize, this.scanSize);
@@ -181,12 +190,12 @@ export class ScreenSpacePass {
     this.mode = mode;
   }
 
-  // 次の render から精細さ quality の段で走査する。
-  public setQuality(quality: ScreenSpaceQuality): void {
-    this.tier = SCAN_TIERS[quality];
+  // 次の render からスライス sliceCount 本・片側 stepCount 歩で走査する。
+  public setScan(sliceCount: number, stepCount: number): void {
+    this.tier = scanTierOf(sliceCount, stepCount);
   }
 
-  // 次の render から段 tier で走査する。次に setQuality を呼ぶまで保つ。
+  // 次の render から段 tier で走査する。次に setScan を呼ぶまで保つ。
   public setTier(tier: ScanTier): void {
     this.tier = tier;
   }
