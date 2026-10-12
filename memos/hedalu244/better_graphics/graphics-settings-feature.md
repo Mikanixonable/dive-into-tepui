@@ -95,6 +95,12 @@ main の `RENDERING.md` の書き換えと衝突するが、`docs(spec)` の単�
   `UserSettings` が `graphics`（選び方）と `resolvedGraphics`（解いた値）の2つを出す。
 - **手順2 では設定パネルを型に合わせて最小限だけ書き換える**（組み立て時に選び方を受け、項目の操作を「値を1つ書き換える操作」へ、プリセットの
   ボタンを全体の選択へ流す）。3層の構成へ組み直すのは手順4。
+- **render-lab のケース・撮影・CLI の差分（`Partial<GraphicsSettingsData>`）は、起動時の値を解いた平らな値一式の上へ重ね、「その値一式と同じ絵になる
+  選び方」（`selectionOfGraphics`。全体のプリセットと同じ絵ならその名前、さもなくば分野ごとに オフ → 高 → 中 → 低 → カスタム を当てる）へ変換して
+  設定の器へ書く**（手順2 の実施中に決めた）。差分を「値を1つ書き換える操作」で1キーずつ重ねると、分野をオフにした時点でノブの値が捨てられ、
+  撮影の差分がそれをオンに戻したときに分野のプリセットへ落ちる — 作り直し前の平らな意味と食い違い、映り込みと遮蔽の撮影が前後で変わった。
+  旧い鍵の読み替えも同じ関数で選び方を当てる（段を展開した平らな値一式を渡す）。CDP の `setGraphicsOption`（値を1つ）だけは
+  「値を1つ書き換える操作」を通る。
 
 ### 採らない案
 
@@ -335,36 +341,9 @@ main の `RENDERING.md` の書き換えと衝突するが、`docs(spec)` の単�
 
 ## 手順
 
-手順1（SPEC の書き直し）は `graphics-settings` で済んだ（「SPEC へ書く要点」はそのまま本文になった）。
-
-### 手順 2. 設定の型を作り直す
-
-**目的** — 分野・ノブ・プリセット・全体との対応を1つの表で持ち、選び方の保存・解き方・旧形式の読み替えを作る。描画の結果は
-変えない（「変えない挙動」）。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/graphics-settings.ts`（表と平らな値一式の型）・`src/render/graphics-selection.ts`（新）・`src/render/legacy-graphics-settings.ts`（新） | 表・選び方の型・解き方・層ごとの選択を移す操作・値を1つ書き換える操作・保存文字列との変換・旧形式の読み替え（旧い既定と旧い段の表の写しを持つ）。分け方は「この計画で決めたこと」 |
-| `src/hud/panels/graphics-panel.ts` | 型に合わせた最小限の書き換え（「この計画で決めたこと」）。3層の構成は手順4 |
-| `src/render/` の読み手（`render-pipeline.ts` の `rebuildForGraphics`・`shadow/shadow-select.ts`・`cloud/cloud-presentation.ts`・`celestial/celestial-illumination.ts`・`atmosphere.ts` ほか） | 段の値（`cumulusDetail`・`atmosphere`・`screenSpaceQuality`・`screenSpaceSpecularQuality`）の代わりに分けたノブの値を読む。段の表（`SAMPLING_OF_DETAIL`・`TOTAL_SAMPLES_OF_QUALITY`・`SCAN_TIERS`・`TRACE_TIERS`）はノブの値を受け取る形にし、段の値はプリセットの表へ移す |
-| `src/settings/user-settings.ts`・`src/settings/stored-setting.ts` | 新しい鍵・旧い鍵の読み替え・解いた値の `DerivedSetting`（`resolvedGraphics`） |
-| `src/main.ts` | 解いた値を `initScene`・`syncFrame`・`Launcher` へ、選び方をパネルへ渡す |
-| `tools/render-lab/*`・`tools/render-lab-measure.mjs`・`tools/render-lab-screen-space-metrics.mjs`・`tools/render-lab-shot.mjs` | 旧いキーを文字列で渡している箇所をノブのキーへ。`setGraphicsOption` は「値を1つ書き換える操作」へ |
-| `tests/render/`・`tests/settings/user-settings.test.ts` | 読み替え（実在の文字列）・鍵の移行・同じ選び方から同じ参照 |
-
-**達成条件と検証**
-
-- 達成目標2・3・4（データの側）。目標2 は、旧い `QUALITY_PRESETS` を旧い段の表で展開した値と、新しい全体の 低 / 中 / 高 を
-  解いた値を、手順2 の中だけの比較で突き合わせる。`npm run typecheck` / `npm run test:settings` / `npm run test:render` /
-  `npm run check:boundaries`。
-- 同じ選び方を2度解くと同じ参照が返る（テスト）。
-- `grep` で `tools/` と `tests/` に旧いキー（`cumulusDetail`・`screenSpaceQuality`・`screenSpaceSpecularQuality`・
-  `ATMOSPHERE_QUALITY` ほか）が残っていない — ツールが文字列で読むキーは参照検索に出ない。
-- render-lab の撮影を前後で比べ、全体の 低 / 中 / 高 で絵が同じ（`npm run render-lab:shot -- gs-before` を作り直しの前に撮り、
-  後で `gs-after` を撮って `npm run render-lab:compare`）。
-- commit: `refactor(render): 描画品質設定を全体・分野・詳細の値の3層の表で持ち、段に束ねていた値をノブへ分ける`
+手順1（SPEC の書き直し）と手順2（設定の型）は `graphics-settings` で済んだ（「SPEC へ書く要点」はそのまま本文になった。手順2 の達成目標2 は
+一度きりの比較で確かめた — 全体の 中 / 高 を解いた値は旧い `QUALITY_PRESETS` を旧い段の表で展開した値と 37 キー全部一致、低は「オフの分野のノブは中の値に
+解く」の帰結でオフの分野のノブ 10 キーだけが違い、有無のキーは一致。render-lab の撮影は 低 / 中 / 高 とも 181 枚すべて前後で封筒内）。
 
 ### 手順 3. 積雲の刻みと二分を uniform の回数で回す
 
@@ -474,8 +453,8 @@ main の `RENDERING.md` の書き換えと衝突するが、`docs(spec)` の単�
 
 | 作業 | 手順 | 導出 | 中央見積り |
 | --- | --- | --- | ---: |
-| SPEC | 1 | 2文書の書き直し 1 h + 見え方の記述 0.5 h | 1.5 h |
-| 型 | 2 | 表と選び方・解き方 2 h + 読み替えとテスト 1.5 h + 描画側の読み手 約12ファイル 1.5 h + ツールの文字列キー 約10ファイル 1 h + 前後の撮影 0.5 h | 6.5 h |
+| SPEC | 1 | 実測（2026-10-12）: 書き直し 0.5 h | 0.5 h |
+| 型 | 2 | 実測（2026-10-12）: 表と選び方・解き方・読み替え・読み手・テスト 0.5 h（委譲）+ ツール 0.2 h（委譲）+ render-lab の差分の意味の食い違いの切り分けと直し 0.3 h + 前後の撮影 3 組 × 2 回 0.6 h + レビュー 0.4 h | 2 h |
 | 積雲のループ | 3 | 書き換え 0.5 h + 前後の撮影と計測（同じ session で交互に） 0.5 h | 1 h |
 | パネル | 4 | `/ui-design` 0.5 h + 3層の表示 2 h + 見出しと数字付きのスライダー 1 h + render-lab 0.5 h + 目視 0.5 h | 4.5 h |
 | 画面空間の値 | 5 | 映り込みの4つのつまみの撮影と計測（1回の比較 約8分 × 段と候補）2 h + 遮蔽と照り返し（拡散側の手順13 から移した分: 歩数を変える組の B 2 × 9 撮影 × 1024 × 0.28 s = 1.4 h と目視 1.5 h、曲線の上の点選び 1 h、精細さの確かめ 1.5 h、記録 0.5 h）6 h + 表と判断 1.5 h + 全体の撮影 0.5 h | 10 h |
