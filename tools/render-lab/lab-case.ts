@@ -124,6 +124,12 @@ export interface LabCase {
   // earthCenter は地球の中心(描画座標)で、地球を置かないケースでは null。毎フレーム、カメラと地球を
   // 置いたあとに呼ばれるので、同値なら何もしないこと。
   readonly sync?: (graphics: GraphicsSettingsData, earthCenter: THREE.Vector3 | null) => void;
+  // 論理フレーム frame の状態へ置く。同じ番号を繰り返し渡したときは同じ状態になる。
+  readonly setFrame?: (frame: number) => void;
+  // ケース固有の値を差し替える。受け付ける名前と型はケースが検査する。
+  readonly setValue?: (name: string, value: string | number | boolean) => void;
+  // ケースが握る、objects の所有印では解放できない資源を解放する。
+  readonly dispose?: () => void;
   // 計測結果へ添える、タンパク質ケースの識別。
   readonly proteinMotion?: ProteinLabCaseMetadata;
   // 表示時刻 displayTime [s] まで残基 motion を進め、そのフレームの計測値を返す。
@@ -267,6 +273,28 @@ export function slab(
   mesh.userData.ownsGeometry = true;
   mesh.userData.ownsMaterial = true;
   return mesh;
+}
+
+export interface CornellRoomDimensions {
+  readonly halfWidth: number;
+  readonly backZ: number;
+  readonly frontZ: number;
+  readonly height: number;
+  readonly panelThickness: number;
+}
+
+// 左壁が赤、右壁が緑で、手前を開けた Cornell box の殻。
+export function cornellRoomShell(dimensions: CornellRoomDimensions): THREE.Mesh[] {
+  const { halfWidth: w, backZ, frontZ, height, panelThickness: t } = dimensions;
+  const red = standard(new THREE.Vector3(0.63, 0.065, 0.05), WHITE_ROUGHNESS, 0);
+  const green = standard(new THREE.Vector3(0.14, 0.45, 0.091), WHITE_ROUGHNESS, 0);
+  return [
+    slab(new THREE.Vector3(-w - t, -t, backZ - t), new THREE.Vector3(w + t, 0, frontZ)),
+    slab(new THREE.Vector3(-w - t, height, backZ - t), new THREE.Vector3(w + t, height + t, frontZ)),
+    slab(new THREE.Vector3(-w - t, 0, backZ - t), new THREE.Vector3(w + t, height, backZ)),
+    slab(new THREE.Vector3(-w - t, 0, backZ), new THREE.Vector3(-w, height, frontZ), red),
+    slab(new THREE.Vector3(w, 0, backZ), new THREE.Vector3(w + t, height, frontZ), green),
+  ];
 }
 
 // 仮の親 host へ組んで個体を積み終えた InstancedPool の枝を、host から外してケースの物体にする。

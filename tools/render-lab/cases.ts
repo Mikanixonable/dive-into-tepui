@@ -21,6 +21,7 @@ import { ANGLED_BOUNCE_CASES } from './angled-bounce-case';
 import { GROOVE_LADDER_CASES } from './groove-ladder-case';
 import { SLOPE_FAN_CASES } from './slope-fan-case';
 import { CORNELL_BOX_CASES } from './cornell-box-case';
+import { CASING_ROOM_CASES } from './casing-room-case';
 import { PLANE_CASES } from './plane-case';
 import { CLUTTER_CASES } from './clutter-case';
 import {
@@ -181,6 +182,7 @@ export const CASES = {
   ...GROOVE_LADDER_CASES,
   ...SLOPE_FAN_CASES,
   ...CORNELL_BOX_CASES,
+  ...CASING_ROOM_CASES,
   ...PLANE_CASES,
   ...CLUTTER_CASES,
   'order': order,
