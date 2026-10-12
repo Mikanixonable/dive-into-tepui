@@ -91,6 +91,8 @@ description: 機能の追加・変更・削除を要求されたときに必ず�
 ## 6. 書く
 
 `DEVELOP/CODING-RULE.md` に従う。HUD/UI/DOM/CSS に触れるなら、書き始める前に `/ui-design`。
+精度を上げるために作り方を変える・違和感を消すために近似を足すなら、書き始める前に
+`/approximation-tradeoff` で費用に見合うかを決める。
 
 ## 7. 仕上げ
 
