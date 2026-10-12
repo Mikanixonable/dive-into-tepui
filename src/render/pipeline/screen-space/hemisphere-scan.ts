@@ -32,8 +32,9 @@ import type {
 const WORLD_RADIUS = 4;
 
 // 天体照の円盤の視半径の下限 [rad]。小さい天体はスライスにめったに当たらず、当たると大きく引く裾の重い外れ値に
-// なるので、視半径をここまで広げる。広げた円盤の測度で割るので、遮られないときの照度は変わらない。
-const MIN_CAP_ANGLE = Math.PI / 8;
+// なるので、視半径をここまで広げる。広げた円盤の測度で割るので、遮られないときの照度は変わらない。45° は、スライスが
+// 2 本でもどの回転でも少なくとも 1 本が円盤を切る下限。
+const MIN_CAP_ANGLE = Math.PI / 4;
 
 // 視半径を MIN_CAP_ANGLE まで広げた球冠(向きはそのまま)。
 export function widenedCap(cap: PlanetCap): PlanetCap {
