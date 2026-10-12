@@ -53,8 +53,12 @@ function chainLabelOf(target: ChainDebugTarget): string {
 
 export type DebugTargetId =
   | 'off' | 'normal' | 'roughness' | 'basecolor' | 'metalness' | 'emissive' | 'depth'
-  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'specular' | 'correction' | ChainDebugTargetId
-  | 'bounce-source' | 'material' | 'atmosphere' | 'lens' | 'planet-light';
+  | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'direct-specular' | 'far-specular'
+  | 'correction' | ChainDebugTargetId
+  | 'bounce-source' | 'material' | 'reflection-source'
+  | 'reflection-depth' | 'raw-reflection-weight' | 'raw-reflection-distance' | 'raw-reflection'
+  | 'denoised-reflection-weight' | 'denoised-reflection-distance' | 'denoised-reflection' | 'reflection-denoise-level'
+  | 'atmosphere' | 'lens' | 'planet-light';
 
 // 通常だけを先頭の例外とし、以後は各 target が本番フレームで生成される依存順に並べる。
 export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
@@ -73,8 +77,18 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ...CHAIN_DEBUG_TARGETS.map((target) => [target.id, chainLabelOf(target)] as const),
   ['correction', '拡散照度補正'],
   ['diffuse', '拡散照度'],
-  ['specular', '鏡面照度'],
+  ['direct-specular', '直接の鏡面照度'],
+  ['far-specular', '遠方の鏡面照度'],
   ['material', 'マテリアル'],
+  ['reflection-source', '映り込みの像の元'],
+  ['reflection-depth', '映り込みの深度'],
+  ['raw-reflection-weight', 'raw 映り込みの置換重み'],
+  ['raw-reflection-distance', 'raw 映り込みの当たり距離'],
+  ['raw-reflection', 'raw 映り込み'],
+  ['denoised-reflection-weight', '均した映り込みの置換重み'],
+  ['denoised-reflection-distance', '均した映り込みの当たり距離'],
+  ['denoised-reflection', '均した映り込み'],
+  ['reflection-denoise-level', '映り込みの均しの段'],
   ['atmosphere', '大気'],
   ['lens', 'レンズ'],
 ];

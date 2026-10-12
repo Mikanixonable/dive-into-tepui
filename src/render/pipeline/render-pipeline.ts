@@ -20,11 +20,15 @@ import { AmbientSource } from './lighting/ambient-source';
 import { DiffuseCorrectionSource } from './lighting/diffuse-correction-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
+import { SphereLights } from './lighting/sphere-lights';
 import { SunSource } from './lighting/sun-source';
 import { MaterialPass } from './material-pass';
+import { ReflectionPass } from './reflection-pass';
+import { ShadingCompositePass } from './shading-composite-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { SCREEN_SPACE_DIFFUSE, ScreenSpacePass } from './screen-space/screen-space-pass';
 import { DiffuseCorrection } from './screen-space/diffuse-correction';
+import { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import { BodyShadow } from './shadow/body-shadow';
 import { RingShadow } from './shadow/ring-shadow';
 import { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
@@ -54,6 +58,8 @@ export class RenderPipeline {
   private readonly screenSpacePass: ScreenSpacePass;
   // 遮蔽と照り返しのパスが書く符号付き拡散照度補正。補正光源とデバッグ表示が読む。
   private readonly _diffuseCorrection: DiffuseCorrection;
+  // 映り込みのパスが書く映り込み。陰影の合成のパスとデバッグ表示が読む。
+  private readonly reflection: ScreenSpaceReflection;
   private readonly lightPrepass: LightPrepass;
   // 球光源の鏡面が引く係数表。太陽と天体照で 1 つを共有する。
   private readonly sphereSpecular: SphereSpecular;
@@ -62,7 +68,10 @@ export class RenderPipeline {
   private readonly _planetLight: PlanetLightSource;
   private readonly _ambient: AmbientSource;
   private readonly correctionSource: DiffuseCorrectionSource;
+  private readonly _sphereLights: SphereLights;
   private readonly materialPass: MaterialPass;
+  private readonly reflectionPass: ReflectionPass;
+  private readonly shadingCompositePass: ShadingCompositePass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
   private readonly antialiasPass: AntialiasPass;
@@ -97,7 +106,7 @@ export class RenderPipeline {
   private debugTarget: DebugTargetId = 'off';
 
   // 以下は、毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・環境光の割合・
-  // 大気を持つ天体)の書き込み先。
+  // 置く球光源・大気を持つ天体)の書き込み先。
   public get sunLight(): SunLight { return this._sunLight; }
   public get exposure(): Exposure { return this._exposure; }
   public get bodyShadow(): BodyShadow { return this._bodyShadow; }
@@ -105,6 +114,7 @@ export class RenderPipeline {
   public get cumulusShadow(): CloudShadowRenderer { return this._cumulusShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
+  public get sphereLights(): SphereLights { return this._sphereLights; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
 
   // 以下は、近傍拡散補正の段と seed の書き込み先と、読み戻せる中間ターゲットの持ち主。
@@ -139,8 +149,7 @@ export class RenderPipeline {
     this.sunSource = new SunSource(
       this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
-      this._sunLight, this._bodyShadow, this.sphereSpecular,
-      graphics.planetLightCount, graphics.planetLightModel,
+      this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel,
     );
     this._ambient = new AmbientSource(this._sunLight);
     this._diffuseCorrection = new DiffuseCorrection();
@@ -149,13 +158,14 @@ export class RenderPipeline {
       graphics.screenSpaceDiffuse, graphics.screenSpaceQuality,
     );
     this.correctionSource = new DiffuseCorrectionSource(this._diffuseCorrection);
+    this._sphereLights = new SphereLights(this.sphereSpecular);
     this.lightPrepass = new LightPrepass(renderer, this._gbuffer, [
       this.sunSource, ...this._planetLight.lightSources, this._ambient, this.correctionSource,
-    ], gpu);
+    ], this._sphereLights.sources, gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, this._gbuffer, gpu);
 
-    // マテリアルパス以降が共有する描画先。**大気パスの生成より先に作る** — 大気パスは自身が
-    // 読み書きする先としてこれを受け取る。
+    // マテリアルパス以降が共有する描画先。**陰影の合成パスと大気パスの生成より先に作る** — どちらも
+    // 自身が書く先としてこれを受け取る。
     this.target = new THREE.RenderTarget(1, 1, {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
@@ -164,6 +174,15 @@ export class RenderPipeline {
     // 深度を 32bit 浮動小数点にするには明示が要る — 省くと depth24plus のまま精度だけ落ちる。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
+    this.reflection = new ScreenSpaceReflection();
+    this.reflectionPass = new ReflectionPass(
+      renderer, this._gbuffer, this.materialPass.reflectionSourceTexture, this.reflection, gpu,
+      graphics.screenSpaceSpecular, graphics.screenSpaceSpecularQuality, graphics.screenSpaceSpecularDenoise,
+    );
+    this.shadingCompositePass = new ShadingCompositePass(
+      renderer, this._gbuffer, this.materialPass.keepTexture, this.lightPrepass.farSpecularTexture, this.reflection,
+      this.target, gpu, graphics.screenSpaceSpecularDenoise,
+    );
     this.atmospherePass = new AtmospherePass(
       renderer, this._gbuffer, this.target, this._sunLight, this._bodyShadow, gpu,
     );
@@ -191,8 +210,8 @@ export class RenderPipeline {
     );
     this.debugComposites = new DebugComposites(
       this._gbuffer, this._exposure, this.cameraProjectionInverse, this.shadowMaps, this.meshShadow, this.shadowPass,
-      this.lightPrepass, this.screenSpacePass, this._diffuseCorrection, this._planetLight, this.atmospherePass,
-      this.lensPass,
+      this.lightPrepass, this.screenSpacePass, this._diffuseCorrection, this.materialPass, this.reflectionPass,
+      this.reflection, this._planetLight, this.atmospherePass, this.lensPass,
     );
     // 模式図用の合成マテリアル。表示スタイルの切り替えなので、デバッグ表示の選択肢とは別に持つ。
     this.schematicComposite = new SchematicComposite(this._gbuffer, this.cameraProjectionInverse);
@@ -258,12 +277,23 @@ export class RenderPipeline {
     this.debugTarget = target;
   }
 
+  // 次のフレームから、映り込みが画素ごとに引く乱数のタイルを (x, y) [px](整数)ずらして読む。既定は (0, 0)。
+  // 画面が整数 px 動いたときと同じ乱数の入れ替わりを、幾何を止めたまま起こす。
+  public setReflectionNoiseOffset(x: number, y: number): void {
+    this.reflectionPass.setNoiseOffset(x, y);
+  }
+
   // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
     this.screenSpacePass.setMode(graphics.screenSpaceDiffuse);
     this.screenSpacePass.setQuality(graphics.screenSpaceQuality);
+    this.reflectionPass.setEnabled(graphics.screenSpaceSpecular);
+    this.reflectionPass.setQuality(graphics.screenSpaceSpecularQuality);
+    // 均した映り込みを書く段と、それを読む合成は一緒に切り替える。
+    this.reflectionPass.setDenoised(graphics.screenSpaceSpecularDenoise);
+    this.shadingCompositePass.setDenoised(graphics.screenSpaceSpecularDenoise);
     this.correctionSource.setEnabled(graphics.screenSpaceDiffuse !== SCREEN_SPACE_DIFFUSE.off);
     this.shadowMaps.setQuality(
       graphics.meshShadow,
@@ -312,7 +342,9 @@ export class RenderPipeline {
     } else {
       this.quad.material = this.lensEnabled ? this.lensCompositeMaterial : this.compositeMaterial;
       passes.push(
-        ['マテリアル', () => this.materialPass.compile(scene, camera, this.target)],
+        ['マテリアル', () => this.materialPass.compile(scene, camera, this.target, width, height)],
+        ['映り込み', () => this.reflectionPass.compile(camera, width, height)],
+        ['陰影の合成', () => this.shadingCompositePass.compile()],
         ['大気', () => this.atmospherePass.compile(camera)],
         ['ワールド', () => compileInto(this.renderer, this.target, scene, camera)],
       );
@@ -334,12 +366,9 @@ export class RenderPipeline {
     onPass('完了', passes.length, passes.length);
   }
 
-  // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → ライティング → マテリアル →
-  // 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
-  // マテリアル・大気・world・レンズの4つのパスをスキップする。デバッグ表示を選んでいてもパスは省略しない —
-  // 設定で切られているパス(影マップ・遮蔽と照り返し・レンズ)を選べば、そのフレームが何も作っていないことがそのまま
-  // 空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
-  // フレームでも撮る。
+  // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → ライティング → マテリアル → 映り込み →
+  // 陰影の合成 → 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルではマテリアル・
+  // 映り込み・陰影の合成・大気・world・レンズの6つのパスを飛ばす。デバッグ表示の間もすべてのパスを発行する。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
@@ -374,18 +403,22 @@ export class RenderPipeline {
       this.schematicComposite.update(width, height);
       this.quad.material = this.schematicMaterial;
     } else {
-      // マテリアルパス。背景専用レイヤーと陰影を this.target(このあとの world パスと共有 —
-      // 最初の書き込みなのでクリアする)へ描く。
-      this.materialPass.render(scene, camera, this.target);
+      // マテリアルパス。背景専用レイヤーを this.target(このあとの world パスと共有 — 最初の書き込みなので
+      // クリアする)へ、面の陰影を自分の描画先へ描く。
+      this.materialPass.render(scene, camera, this.target, width, height);
 
-      // 大気パス。デバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる
-      // (「マテリアル」は重ねる前の下地なので、大気を描く前に控える)。
-      if (this.debugTarget === 'material') this.atmospherePass.inspectBackdrop();
+      // 映り込みパス。G バッファとマテリアルパスの像の元を読む。
+      this.reflectionPass.render(camera, width, height);
+
+      // 陰影の合成パス。映り込みを切っているフレームも、空の映り込みを読んで面の画素と深度を this.target へ書く。
+      this.shadingCompositePass.render();
+
+      // 大気パス。「大気」のデバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる。
       this.atmospherePass.render(camera);
       if (this.debugTarget === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
       // world パス。LIT_OPAQUE_LAYER・雲殻の層・背景専用レイヤーはチャンネル0から外れているので、既定の
-      // カメラマスクで描く限り重複しない。autoClear を落としてマテリアルパスの描画(色・深度とも)
+      // カメラマスクで描く限り重複しない。autoClear を落として陰影の合成パスまでの描画(色・深度とも)
       // を残したまま重ね描きする — world パスは透明物(オービットライン・プルーム・ビルボード)を
       // 描画順の最後に描くため、不透明な自艦の深度が先に無いと、自艦の手前の透明物が上書きされる。
       this.renderer.setRenderTarget(this.target);
@@ -429,13 +462,17 @@ export class RenderPipeline {
     this.shadowMaps.dispose();
     this.screenSpacePass.dispose();
     this._diffuseCorrection.dispose();
+    this.reflection.dispose();
     this.lightPrepass.dispose();
     this.sphereSpecular.dispose();
     this.materialPass.dispose();
+    this.reflectionPass.dispose();
+    this.shadingCompositePass.dispose();
     this.atmospherePass.dispose();
     this.overlayPass.dispose();
     this.antialiasPass.dispose();
     this.lensPass.dispose();
+    // 共有の描画先と、合成段の材質。
     this.lensCompositeMaterial.dispose();
     this.target.dispose();
     this.displayTarget.dispose();

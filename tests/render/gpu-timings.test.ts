@@ -13,6 +13,9 @@ export function register(): void {
       '近傍拡散 joint-bilateral 均し', '近傍拡散拡大', '近傍拡散パス平均',
       'ライティング',
     ]);
+    assert.deepEqual(GPU_PASS_LABELS.slice(GPU_PASS.material, GPU_PASS.atmosphere + 1), [
+      'マテリアル', '映り込み', '映り込みの均し', '陰影の合成', '大気',
+    ]);
   });
 
   test('gpu timings: 雲の計測範囲と行の名前が固定される', () => {
