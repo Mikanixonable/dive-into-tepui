@@ -3,7 +3,7 @@
 // 場の texel より細かい起伏は天体固定の粒で足す。
 import * as THREE from 'three/webgpu';
 import {
-  Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
+  Discard, Fn, If, Loop, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
   max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
   sqrt, step, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
@@ -27,24 +27,9 @@ const CUMULUS_ROUGHNESS = 1;
 // 画素が抜ける。
 const DITHER_LEVELS = 256;
 
-// 積雲の精細さの段。オフは殻を描かない段。**値は保存された設定を読む鍵なので、段を足すときも
-// 既存の値を動かさない** — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
-export const CUMULUS_DETAIL = { off: 0, coarse: 1, standard: 2, fine: 3 } as const;
-export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL];
-
-// 雲頂を探す標本の配り方。march は殻の中を等間隔にたどる刻みの数(どの交点を見つけるかを決める)、
-// refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を決める)。
-interface CumulusSampling { readonly march: number; readonly refine: number }
-
-// 段ごとの標本の配り方。費用は march + refine 回の標本化。march 0 は殻を描かない段。
-// いちばん粗い段は march を 1 本にして refine で補う — 粗い刻みを 2 本以上にすると、手前と奥で
-// 拾った雲頂が 2 枚の層に重なって見える。
-const SAMPLING_OF_DETAIL = {
-  [CUMULUS_DETAIL.off]: { march: 0, refine: 0 },
-  [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5 },
-  [CUMULUS_DETAIL.standard]: { march: 6, refine: 3 },
-  [CUMULUS_DETAIL.fine]: { march: 12, refine: 3 },
-} as const satisfies Readonly<Record<CumulusDetail, CumulusSampling>>;
+// setSampling で置き直すまでの標本の配り方(刻みの数と二分の回数)。
+const INITIAL_MARCH_STEPS = 6;
+const INITIAL_REFINE_STEPS = 3;
 
 // 粒の 1 波長が何画素を切ったら消し始め、何画素まで残すか。標本化できない粒はモアレにしか
 // ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
@@ -53,9 +38,12 @@ const GRAIN_FADE_FULL_PIXELS = 4;
 
 export class OpaqueCloudSurfaceRenderer {
   private readonly shape: CloudShapeEvaluator;
-  // 標本の配り方と、その回数まで展開したマテリアル。
-  private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
-  private material: THREE.Material;
+  // 雲頂を探す標本の配り方。march は殻の中を等間隔にたどる刻みの数(どの交点を見つけるかを決める)、
+  // refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を決める)。費用は
+  // march + refine 回の標本化。
+  private readonly march = uniform(INITIAL_MARCH_STEPS, 'int');
+  private readonly refine = uniform(INITIAL_REFINE_STEPS, 'int');
+  private readonly material: THREE.Material;
   private readonly blueNoise = new BlueNoise();
   // 読む雲場。出どころが焼いた写しと cap の置き方を bind で写し取る。
   private readonly fieldSampler = new CloudFieldSampler();
@@ -105,35 +93,20 @@ export class OpaqueCloudSurfaceRenderer {
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // 積雲の精細さの段を置き直す。オフなら全段を隠す。
-  public setDetail(detail: CumulusDetail): void {
-    this.setSampling(SAMPLING_OF_DETAIL[detail]);
-    if (detail === CUMULUS_DETAIL.off) this.hide();
-  }
-
   // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
   public bind(input: CloudRenderInput): void {
     this.fieldSampler.bind(input.field);
   }
 
-  // 標本の配り方を置き直す。回数はシェーダへ展開されるので、変わればマテリアルを組み直す。
-  private setSampling(sampling: CumulusSampling): void {
-    if (sampling.march === this.sampling.march && sampling.refine === this.sampling.refine) return;
-    this.sampling = sampling;
-    this.rebuildMaterial();
+  // 標本の配り方を、刻み march 本(1 以上)と二分 refine 回に置き直す。次の描画から効く。
+  public setSampling(march: number, refine: number): void {
+    this.march.value = march;
+    this.refine.value = refine;
   }
 
-  // いまの標本の配り方と雲場でマテリアルを組み直し、全段のメッシュへ張り替える。
-  private rebuildMaterial(): void {
-    const previous = this.material;
-    this.material = this.buildMaterial();
-    for (const mesh of this.meshes.values()) mesh.material = this.material;
-    previous.dispose();
-  }
-
-  // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。精細さがオフなら全段を隠す。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。
   public syncLod(apparentDiameterPx: number): void {
-    const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
+    const level = sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
     for (const [meshLevel, mesh] of this.meshes) mesh.visible = meshLevel === level;
@@ -186,15 +159,14 @@ export class OpaqueCloudSurfaceRenderer {
         along.negate().sub(sqrt(max(groundHalf, 0))),
         along.negate().add(sqrt(max(half.add(1), 0))),
       ), 0);
-      const sampling = this.sampling;
-      const stepLength = marchEnd.div(sampling.march);
+      const stepLength = marchEnd.div(float(this.march)).toVar();
 
       // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。
       const hit = float(0).toVar();
       const above = float(0).toVar();
       const below = marchEnd.toVar();
-      for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
-        const distance = stepLength.mul(stepIndex);
+      Loop({ start: 1, end: this.march, type: 'int', condition: '<=' }, ({ i }) => {
+        const distance = stepLength.mul(float(i)).toVar();
         const inside = this.clearanceAt(
           entry.add(direction.mul(distance)), threshold, grainAmplitude).lessThan(0);
         If(inside.and(hit.lessThan(0.5)), () => {
@@ -202,14 +174,14 @@ export class OpaqueCloudSurfaceRenderer {
           below.assign(distance);
         });
         If(hit.lessThan(0.5), () => { above.assign(distance); });
-      }
+      });
       // 雲頂をまたいだ区間を二分して縁を締める。
-      for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
-        const middle = above.add(below).mul(0.5);
+      Loop({ start: 0, end: this.refine, type: 'int', condition: '<' }, () => {
+        const middle = above.add(below).mul(0.5).toVar();
         const inside = this.clearanceAt(
           entry.add(direction.mul(middle)), threshold, grainAmplitude).lessThan(0);
         If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
-      }
+      });
 
       const hitPoint = entry.add(direction.mul(below)).toVar();
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));

@@ -277,7 +277,8 @@ function bay(): LabCase {
       },
       'bay-earth-open-correction': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
-        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'correction',
+        graphics: { ...planetLightOnly(4), screenSpaceOcclusion: true, screenSpaceIndirect: false },
+        debugTarget: 'correction',
       },
       'bay-earth-corner': {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
@@ -289,7 +290,8 @@ function bay(): LabCase {
       },
       'bay-earth-corner-correction': {
         view: earthLightView(CORNER_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
-        graphics: { ...planetLightOnly(4), screenSpaceDiffuse: 1 }, debugTarget: 'correction',
+        graphics: { ...planetLightOnly(4), screenSpaceOcclusion: true, screenSpaceIndirect: false },
+        debugTarget: 'correction',
       },
       'bay-moon-open': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, SMALL_EARTH_RADIUS_DEG, SMALL_EARTH_SUN_DISTANCE_LOG_AU),
@@ -323,17 +325,23 @@ function bay(): LabCase {
         view: { ...SUN_BELOW, ...EARTH_AWAY }, graphics: { planetLightCount: 0 }, debugTarget: 'bounce-source',
       },
       'bay-correction': { view: {}, debugTarget: 'correction' },
-      'bay-quality-low': { view: {}, graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse' },
-      'bay-quality-medium': { view: {}, graphics: { screenSpaceQuality: 1 }, debugTarget: 'diffuse' },
-      'bay-quality-high': { view: {}, graphics: { screenSpaceQuality: 2 }, debugTarget: 'diffuse' },
+      'bay-quality-low': {
+        view: {}, graphics: { screenSpaceSliceCount: 2, screenSpaceStepCount: 3 }, debugTarget: 'diffuse',
+      },
+      'bay-quality-medium': {
+        view: {}, graphics: { screenSpaceSliceCount: 4, screenSpaceStepCount: 5 }, debugTarget: 'diffuse',
+      },
+      'bay-quality-high': {
+        view: {}, graphics: { screenSpaceSliceCount: 4, screenSpaceStepCount: 6 }, debugTarget: 'diffuse',
+      },
       // 近傍の半径が、低設定の走査の解像度で 1〜2 px に写る距離。1px は下端のすぐ上、2px は上端の手前。
       'bay-radius-1px': {
         view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 550),
-        graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse',
+        graphics: { screenSpaceSliceCount: 2, screenSpaceStepCount: 3 }, debugTarget: 'diffuse',
       },
       'bay-radius-2px': {
         view: cameraAt(CAMERA_AZIMUTH_DEG, CAMERA_ELEVATION_DEG, 325),
-        graphics: { screenSpaceQuality: 0 }, debugTarget: 'diffuse',
+        graphics: { screenSpaceSliceCount: 2, screenSpaceStepCount: 3 }, debugTarget: 'diffuse',
       },
       // 細い梁のまわりの暈。後ろからトラスへ寄せて見下ろし、地球を真下へ移す — 奥の壁の上に出た段が、
       // 開口の先の地球の円盤と、その手前の床を背にする。

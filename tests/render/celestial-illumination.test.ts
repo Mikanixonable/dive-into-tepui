@@ -10,7 +10,7 @@ import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
 import { CameraView } from '../../src/render/camera/camera-view';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3, type Vec3 } from '../../src/math/vec3';
-import { DEFAULT_GRAPHICS } from '../../src/render/graphics-settings';
+import { DEFAULT_GRAPHICS } from '../../src/render/graphics-selection';
 import type { AtmosphereDraw } from '../../src/render/atmosphere';
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';

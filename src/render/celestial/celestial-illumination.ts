@@ -97,7 +97,7 @@ export class CelestialIllumination {
     const atmospheres = this.atmosphereCandidates(sources, displayTime, camera, graphics);
     this.syncPlanetLights(sources, atmospheres, displayTime, camera, sunPos);
     this.syncShadowSources(sources, fo, displayTime, focusPosition, graphics);
-    this.targets.atmosphere.setDraws(atmosphereDraws([...atmospheres.values()], graphics.atmosphere));
+    this.targets.atmosphere.setDraws(atmosphereDraws([...atmospheres.values()], graphics));
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の

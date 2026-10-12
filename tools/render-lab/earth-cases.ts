@@ -8,7 +8,6 @@ import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
-import { ATMOSPHERE_QUALITY } from '../../src/render/atmosphere';
 import { anglesFromDirection, directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import { earthCenterOf } from './lab-earth';
 import {
@@ -135,7 +134,7 @@ function leo(): LabCase {
       // 描画設定で構図から外す。
       'planetshine-far': {
         view: PLANETSHINE_VIEW,
-        graphics: { atmosphere: ATMOSPHERE_QUALITY.off, clouds: false },
+        graphics: { atmosphere: false, clouds: false },
       },
     },
   };

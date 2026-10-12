@@ -7,10 +7,7 @@ import type * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
 import { airglowCutoffAltitude, type AirglowOptics } from './airglow';
 import type { CloudRenderInput } from './cloud/cloud-render-input';
-
-// 大気描画品質の階層。品質を上げるほどサンプリング密度が増加する。
-export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
-type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
+import type { GraphicsSettingsData } from './graphics-settings';
 
 // 大気 1 つぶんの光学パラメータ。散乱係数はいずれも基準球面(天体半径)での値 [1/m]。
 export interface AtmosphereOptics {
@@ -28,15 +25,6 @@ export interface AtmosphereOptics {
 
 // 同時描画可能な大気天体の最大数。描画負荷の上限を制御する。
 export const MAX_ATMOSPHERE_BODIES = 4;
-
-// 品質の段ごとの、大気ぜんぶへ配れるサンプル点の合計。**段が現れるのはこの表だけで、配分は
-// 予算だけを受け取る。** オフの予算 0 は「1 体も描かない」に落ちる。
-const TOTAL_SAMPLES_OF_QUALITY: Readonly<Record<AtmosphereQuality, number>> = {
-  [ATMOSPHERE_QUALITY.off]: 0,
-  [ATMOSPHERE_QUALITY.low]: 8,
-  [ATMOSPHERE_QUALITY.medium]: 16,
-  [ATMOSPHERE_QUALITY.high]: 24,
-};
 
 // 描くと決めた天体へ必ず配るサンプル点の数。
 const MIN_SAMPLES = 2;
@@ -162,16 +150,17 @@ function allocateSamples(
 }
 
 // このフレームに大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数を添えて返す。
-// 品質の段は、大気ぜんぶへ配れるサンプル点の合計だけを決める。
+// 描画設定 graphics からは、大気ぜんぶへ配れるサンプル点の合計だけを読む。大気がオフなら予算 0 で
+// 1 体も描かない。
 export function atmosphereDraws(
   candidates: readonly AtmosphereCandidate[],
-  quality: AtmosphereQuality,
+  graphics: GraphicsSettingsData,
 ): readonly AtmosphereDraw[] {
   return allocateSamples(
     candidates.map((candidate) => ({
       ...candidate,
       score: screenImpact(candidate.body.optics, candidate.body.surfaceRadius, candidate.metersPerPixel),
     })),
-    TOTAL_SAMPLES_OF_QUALITY[quality],
+    graphics.atmosphere ? graphics.atmosphereSampleBudget : 0,
   );
 }

@@ -455,11 +455,11 @@
         <div class="subpanel">
           <div class="subpanel-head"><h3>設定・LODの意味</h3><p>解像度の変更と、形状サンプリングの変更を分離している。</p></div>
           <div class="subpanel-body"><div class="mini-sequence">
-            <div class="mini-row"><div class="mini-number">A</div><div><strong>GraphicsSettings.cumulusDetail</strong><span>ray march: coarse 1+5 / standard 6+3 / fine 12+3</span></div></div>
+            <div class="mini-row"><div class="mini-number">A</div><div><strong>graphics.cumulusMarchSteps / cumulusRefineSteps</strong><span>ray march: 雲頂を探す刻み + 縁を締める二分(低 1+5 / 中・高 6+3)</span></div></div>
             <div class="mini-row"><div class="mini-number">B</div><div><strong>sphereLodLevel(apparentDiameterPx)</strong><span>球メッシュ: 64×48 / 160×120 / 384×288</span></div></div>
             <div class="mini-row"><div class="mini-number">C</div><div><strong>CloudPresentation.aim</strong><span>capRadiusFor(rho, topOverRadius) で視点中心へ再配置</span></div></div>
             <div class="mini-row"><div class="mini-number">D</div><div><strong>CloudFieldSampler.bind</strong><span>texture と CapPlacement を同じスナップショットで更新</span></div></div>
-          </div><a class="source-ref" href="../../src/render/opaque-cloud-surface-renderer.ts#L30"><code>CUMULUS_DETAIL</code></a><span> · </span><a class="source-ref" href="../../src/render/field-projection.ts#L100"><code>OrthographicCap</code></a></div>
+          </div><a class="source-ref" href="../../src/render/graphics-settings.ts#L170"><code>GRAPHICS_FIELDS.cloud.knobs.cumulusMarchSteps</code></a><span> · </span><a class="source-ref" href="../../src/render/opaque-cloud-surface-renderer.ts#L104"><code>OpaqueCloudSurfaceRenderer.setSampling</code></a><span> · </span><a class="source-ref" href="../../src/render/field-projection.ts#L100"><code>OrthographicCap</code></a></div>
         </div>
       </div></div>
     </section>
