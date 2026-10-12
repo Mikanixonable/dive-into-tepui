@@ -23,7 +23,7 @@ import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SphereLights } from './lighting/sphere-lights';
 import { SunSource } from './lighting/sun-source';
-import { MaterialPass, type ReflectionSource } from './material-pass';
+import { MaterialPass } from './material-pass';
 import { ReflectionPass } from './reflection-pass';
 import { ShadingCompositePass } from './shading-composite-pass';
 import { ShadowPass } from './shadow/shadow-pass';
@@ -167,7 +167,7 @@ export class RenderPipeline {
       this.sunSource, ...this._planetLight.lightSources, this._ambient, this.correctionSource,
       ...this._sphereLights.sources,
     ], gpu);
-    this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, this.diffuseCorrection, gpu);
+    this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
 
     // マテリアルパス以降が共有する描画先。**陰影の合成パスと大気パスの生成より先に作る** — どちらも
     // 自身が書く先としてこれを受け取る。
@@ -426,11 +426,6 @@ export class RenderPipeline {
   // 画面が整数 px 動いたときと同じ乱数の入れ替わりを、幾何を止めたまま起こす。
   public setReflectionNoiseOffset(x: number, y: number): void {
     this.reflectionPass.setNoiseOffset(x, y);
-  }
-
-  // 次のフレームから、映り込みの像の元を方式 source で書く。既定は 'specular'。TODO: 方式を1つに確定したら外す。
-  public setReflectionSource(source: ReflectionSource): void {
-    this.materialPass.setReflectionSource(source);
   }
 
   // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
