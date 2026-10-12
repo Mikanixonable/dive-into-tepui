@@ -167,7 +167,7 @@ export class RenderPipeline {
       this.sunSource, ...this._planetLight.lightSources, this._ambient, this.correctionSource,
       ...this._sphereLights.sources,
     ], gpu);
-    this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
+    this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, this.diffuseCorrection, gpu);
 
     // マテリアルパス以降が共有する描画先。**陰影の合成パスと大気パスの生成より先に作る** — どちらも
     // 自身が書く先としてこれを受け取る。
