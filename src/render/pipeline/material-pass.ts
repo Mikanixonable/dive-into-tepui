@@ -9,6 +9,7 @@ import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { WORLD_BACKGROUND_LAYER } from './lit-layer';
 import type { GBufferPass } from './gbuffer';
 import type { LightPrepass } from './light-prepass';
+import type { DiffuseCorrection } from './screen-space/diffuse-correction';
 import type { Vec2Node, Vec3Node } from '../tsl-types';
 import { compileInto } from './compile-into';
 
@@ -24,13 +25,14 @@ export function specularReflectanceAt(gbuffer: GBufferPass, uv: Vec2Node): Vec3N
 //   specular          — keep + R × 遠方の鏡面照度。面がカメラへ向けて見せる鏡面をそのまま含む。
 //   lambert           — 面を反射率 ρ = 拡散色 + R のランバート面とみなした ρ / π × 拡散照度 + 自己発光。
 //   lambert-roughness — lambert の R を知覚的粗さ r で弱めた ρ = 拡散色 + r × R。
+//   bounce            — lambert-roughness の拡散照度から近傍補正 ΔE を抜いた ρ / π × (拡散照度 − ΔE) + 自己発光。
 // 像の元は lambert-roughness に決めている — 映り込みの中の物体の鏡面を、一様な反射に広げた近似。鏡面をそのまま
 // 像の元へ入れると、受け手のローブに比べて小さく明るいハイライトに当たる回数が画素ごとに揺らいでブロック状に明滅し、
 // カメラへ向けた鏡面は追跡した向きの鏡面でもないので指向性も正しくならない。映り込みの中の精度を上げる手段
 // (事前縮小列・粗さの比で鏡面を混ぜる・画面空間より正確な追跡)は設計の判断を要するので、指示なしに着手しない。
-// TODO: 既定はまだ specular。切り替えを外して lambert-roughness だけを残す。
-export type ReflectionSource = 'specular' | 'lambert' | 'lambert-roughness';
-export const REFLECTION_SOURCES: readonly ReflectionSource[] = ['specular', 'lambert', 'lambert-roughness'];
+// TODO: 既定はまだ specular。切り替えを外して lambert-roughness だけを残す。bounce と、それが読む近傍補正も外す。
+export type ReflectionSource = 'specular' | 'lambert' | 'lambert-roughness' | 'bounce';
+export const REFLECTION_SOURCES: readonly ReflectionSource[] = ['specular', 'lambert', 'lambert-roughness', 'bounce'];
 
 // BRDF_Lambert(反射率 albedo / π)。@types/three 上の戻り値型はメソッドチェインを持たないため、Vec3Node へ読み替える。
 function lambertOf(albedo: Vec3Node): Vec3Node {
@@ -39,9 +41,9 @@ function lambertOf(albedo: Vec3Node): Vec3Node {
 
 // 画素の keep と、方式 source の M0 を MRT の出力として組む。拡散は BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面は
 // 鏡面反射率を照度へ掛け、自己発光を足す。照度バッファが持つのは放射照度なので、掛けるのは反射率ではなく BRDF —
-// 拡散の 1/π を落とすと、それだけで π 倍明るくなる。
+// 拡散の 1/π を落とすと、それだけで π 倍明るくなる。correction は bounce が拡散照度から抜く近傍補正。
 function shadedOutputs(
-  lightPrepass: LightPrepass, gbuffer: GBufferPass, source: ReflectionSource,
+  lightPrepass: LightPrepass, gbuffer: GBufferPass, correction: DiffuseCorrection, source: ReflectionSource,
 ): ReturnType<typeof mrt> {
   const material = texture(gbuffer.basecolorTexture, screenUV);
   const baseColor: Vec3Node = material.rgb;
@@ -56,12 +58,14 @@ function shadedOutputs(
 
   // 像の元。ρ = 拡散色 + R のランバート面は、一様な環境光の下でこのエンジンが描く面(拡散色 × E/π + R × E/π)と一致する。
   // 鏡面を一様な反射に広げた見え方は、粗い面では元の鏡面に似て、滑らかな面ほど離れる — lambert-roughness はその分 R を弱める。
-  const lambertSourceOf = (specularAlbedo: Vec3Node): Vec3Node =>
-    irradiance.mul(lambertOf(diffuseColor.add(specularAlbedo))).add(emissive);
+  const lambertSourceOf = (sourceIrradiance: Vec3Node, specularAlbedo: Vec3Node): Vec3Node =>
+    sourceIrradiance.mul(lambertOf(diffuseColor.add(specularAlbedo))).add(emissive);
+  const roughnessFadedReflectance = reflectance.mul(texture(gbuffer.roughnessTexture, screenUV).r);
   const reflectionSources: Readonly<Record<ReflectionSource, Vec3Node>> = {
     'specular': keep.add(texture(lightPrepass.farSpecularTexture, screenUV).rgb.mul(reflectance)),
-    'lambert': lambertSourceOf(reflectance),
-    'lambert-roughness': lambertSourceOf(reflectance.mul(texture(gbuffer.roughnessTexture, screenUV).r)),
+    'lambert': lambertSourceOf(irradiance, reflectance),
+    'lambert-roughness': lambertSourceOf(irradiance, roughnessFadedReflectance),
+    'bounce': lambertSourceOf(irradiance.sub(correction.atUv(screenUV)), roughnessFadedReflectance),
   };
 
   // 物体の無い画素は 0。
@@ -74,12 +78,12 @@ function shadedOutputs(
 
 // 方式 source の M0 を書く陰影の板のマテリアル。
 function shadingMaterial(
-  lightPrepass: LightPrepass, gbuffer: GBufferPass, source: ReflectionSource,
+  lightPrepass: LightPrepass, gbuffer: GBufferPass, correction: DiffuseCorrection, source: ReflectionSource,
 ): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial({
     depthTest: false, depthWrite: false, transparent: false, blending: THREE.NoBlending,
   });
-  material.mrtNode = shadedOutputs(lightPrepass, gbuffer, source);
+  material.mrtNode = shadedOutputs(lightPrepass, gbuffer, correction, source);
   return material;
 }
 
@@ -92,11 +96,13 @@ export class MaterialPass {
   private reflectionSource: ReflectionSource = 'specular';
   private readonly quad = new QuadMesh();
 
-  // 照度と素材を掛け合わせる全画面の板ポリを、像の元の方式ごとに一度だけ組み立てる。
+  // 照度と素材を掛け合わせる全画面の板ポリを、像の元の方式ごとに一度だけ組み立てる。correction は像の元 bounce が
+  // 拡散照度から抜く近傍補正。TODO: bounce を外すとき correction も外す。
   public constructor(
     private readonly renderer: WebGPURenderer,
     lightPrepass: LightPrepass,
     gbuffer: GBufferPass,
+    correction: DiffuseCorrection,
     private readonly gpu: GpuTimings,
   ) {
     // 名前は MRT の出力と結び付く。
@@ -107,9 +113,10 @@ export class MaterialPass {
       texture.type = THREE.HalfFloatType;
     }
     this.materials = {
-      'specular': shadingMaterial(lightPrepass, gbuffer, 'specular'),
-      'lambert': shadingMaterial(lightPrepass, gbuffer, 'lambert'),
-      'lambert-roughness': shadingMaterial(lightPrepass, gbuffer, 'lambert-roughness'),
+      'specular': shadingMaterial(lightPrepass, gbuffer, correction, 'specular'),
+      'lambert': shadingMaterial(lightPrepass, gbuffer, correction, 'lambert'),
+      'lambert-roughness': shadingMaterial(lightPrepass, gbuffer, correction, 'lambert-roughness'),
+      'bounce': shadingMaterial(lightPrepass, gbuffer, correction, 'bounce'),
     };
   }
 
